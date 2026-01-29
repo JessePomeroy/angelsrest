@@ -7,26 +7,10 @@
 	let { children }: { children: Snippet } = $props();
 </script>
 
-<div class="app">
+<div class="flex flex-col min-h-screen">
 	<Nav />
-	<main>
+	<main class="flex-1 max-w-[1400px] mx-auto w-full p-8">
 		{@render children()}
 	</main>
 	<Footer />
 </div>
-
-<style>
-	.app {
-		display: flex;
-		flex-direction: column;
-		min-height: 100vh;
-	}
-
-	main {
-		flex: 1;
-		max-width: var(--max-width);
-		margin: 0 auto;
-		width: 100%;
-		padding: 2rem;
-	}
-</style>

@@ -11,7 +11,7 @@
 </script>
 
 <svelte:head>
-	<title>Studio | and i still hear angels</title>
+	<title>Studio | angelsrest</title>
 </svelte:head>
 
 {#if Studio}

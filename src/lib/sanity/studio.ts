@@ -5,7 +5,7 @@ import { schemaTypes } from './schemas';
 
 export const config = defineConfig({
 	name: 'andistillhearangels',
-	title: 'and i still hear angels',
+	title: 'angelsrest',
 	projectId: import.meta.env.PUBLIC_SANITY_PROJECT_ID || 'your_project_id',
 	dataset: import.meta.env.PUBLIC_SANITY_DATASET || 'production',
 	basePath: '/studio',

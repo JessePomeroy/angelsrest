@@ -5,7 +5,7 @@
 </script>
 
 <svelte:head>
-	<title>Gallery | and i still hear angels</title>
+	<title>Gallery | angelsrest</title>
 </svelte:head>
 
 <section>

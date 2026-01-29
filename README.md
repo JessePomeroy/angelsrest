@@ -1,4 +1,4 @@
-# and i still hear angels
+# angelsrest
 
 Photography portfolio and e-commerce site built with SvelteKit 2, Sanity CMS, and Stripe.
 

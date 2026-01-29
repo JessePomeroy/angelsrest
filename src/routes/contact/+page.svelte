@@ -1,5 +1,5 @@
 <svelte:head>
-	<title>Contact | and i still hear angels</title>
+	<title>Contact | angelsrest</title>
 </svelte:head>
 
 <section>
