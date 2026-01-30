@@ -1,3 +1,7 @@
+<script>
+  import heroGif from "$lib/assets/clouds.gif";
+</script>
+
 <svelte:head>
   <title>angel's rest</title>
   <meta name="description" content="Photography portfolio and print shop" />
@@ -6,9 +10,8 @@
 <section
   class="flex flex-col items-center justify-center text-center min-h-[70vh] gap-6"
 >
-  <h1 class="text-5xl font-extralight tracking-wider lowercase">
-    angel's rest
-  </h1>
+  <img src={heroGif} alt="Angel's Rest" class="max-w-full w-[800px]" />
+
   <p class="text-surface-400 text-sm tracking-[0.2em] lowercase">
     artist in residence[midwest]
   </p>
