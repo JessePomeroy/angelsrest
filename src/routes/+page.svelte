@@ -9,8 +9,8 @@
   <h1 class="text-5xl font-extralight tracking-wider lowercase">
     angel's rest
   </h1>
-  <p class="text-surface-400 text-sm tracking-[0.2em] uppercase">
-    photography &middot; prints &middot; art
+  <p class="text-surface-400 text-sm tracking-[0.2em] lowercase">
+    artist in residence[midwest]
   </p>
   <div class="flex gap-4 mt-4">
     <a

@@ -1,6 +1,7 @@
 <script lang="ts">
   // TODO: Fetch about data from Sanity
   // const query = `*[_type == "about"][0]`;
+  let { data } = $props();
   import portrait from "$lib/assets/DSCF7533.jpg";
 </script>
 
@@ -11,16 +12,23 @@
 <section>
   <div class="content">
     <div class="portrait-placeholder">
-      <img src={portrait} alt="Portrait of the artist" />
+      {#if data.portraitUrl}
+        <img src={data.portraitUrl} alt={data.about?.name} />
+      {:else}
+        <img src={portrait} alt="Portrait" />
+      {/if}
     </div>
     <div class="bio">
-      <h1>About</h1>
+      <h1>{data.about.name}</h1>
       <p>
-        Connect Sanity CMS to populate artist bio, portrait, and social links.
+        {data.about.shortBio}
       </p>
       <p class="muted">
-        This page will display the artist's story, background, and creative
-        philosophy.
+        {#if data.about?.social?.instagram}
+          <a href={data.about.social.instagram} target="_blank" rel="noopener"
+            >Instagram</a
+          >
+        {/if}
       </p>
     </div>
   </div>

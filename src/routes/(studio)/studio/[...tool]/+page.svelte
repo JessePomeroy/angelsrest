@@ -2,11 +2,13 @@
 	import { onMount } from 'svelte';
 	import { config } from '$lib/sanity/studio';
 
-	let Studio: any = $state(null);
+	let el: HTMLDivElement | undefined = $state(undefined);
 
 	onMount(async () => {
-		const mod = await import('sanity');
-		Studio = mod.Studio;
+		if (el) {
+			const { renderStudio } = await import('sanity');
+			renderStudio(el, config);
+		}
 	});
 </script>
 
@@ -14,13 +16,7 @@
 	<title>Studio | angelsrest</title>
 </svelte:head>
 
-{#if Studio}
-	<div id="sanity-studio">
-		<Studio {config} />
-	</div>
-{:else}
-	<div class="loading">Loading studio…</div>
-{/if}
+<div bind:this={el} id="sanity-studio"></div>
 
 <style>
 	#sanity-studio {
@@ -30,13 +26,5 @@
 		top: 0;
 		left: 0;
 		z-index: 100;
-	}
-	.loading {
-		display: flex;
-		align-items: center;
-		justify-content: center;
-		height: 100vh;
-		color: #999;
-		font-family: system-ui;
 	}
 </style>

@@ -6,8 +6,8 @@ import { schemaTypes } from './schemas';
 export const config = defineConfig({
 	name: 'andistillhearangels',
 	title: 'angelsrest',
-	projectId: import.meta.env.PUBLIC_SANITY_PROJECT_ID || 'your_project_id',
-	dataset: import.meta.env.PUBLIC_SANITY_DATASET || 'production',
+	projectId: import.meta.env.VITE_SANITY_PROJECT_ID,
+	dataset: import.meta.env.VITE_SANITY_DATASET || 'production',
 	basePath: '/studio',
 	plugins: [structureTool(), visionTool()],
 	schema: {
