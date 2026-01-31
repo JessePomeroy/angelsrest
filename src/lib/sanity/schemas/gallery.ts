@@ -19,10 +19,26 @@ export const gallery = defineType({
 			validation: (rule) => rule.required()
 		}),
 		defineField({
-			name: 'image',
+			name: 'images',
 			title: 'Image',
-			type: 'image',
-			options: { hotspot: true },
+			type: 'array',
+			of: [
+				defineField({
+				  name: 'image',
+				  type: 'image',
+				  options: {hotspot: true},
+				  fields: [
+					{
+					  name: 'alt',
+					  type: 'string',
+					  title: 'Alternative text',
+					},
+				  ],
+				}),
+			  ],
+			  options: {
+				layout: 'grid', // gives you a nice visual grid in Studio
+			  },
 			validation: (rule) => rule.required()
 		}),
 		defineField({

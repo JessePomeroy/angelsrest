@@ -1,5 +1,5 @@
 <script>
-  import heroGif from "$lib/assets/clouds.gif";
+  import heroGif from "$lib/assets/clouds2.gif";
 </script>
 
 <svelte:head>
