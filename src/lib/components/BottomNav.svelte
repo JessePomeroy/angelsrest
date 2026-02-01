@@ -1,14 +1,22 @@
 <script lang="ts">
   import { page } from "$app/state";
-  import { HouseIcon, ImageIcon, ShoppingBagIcon, UserIcon, MailIcon } from '@lucide/svelte';
-  import { Navigation } from '@skeletonlabs/skeleton-svelte';
+  import {
+    HouseIcon,
+    ImageIcon,
+    ShoppingBagIcon,
+    // BookAIcon,
+    UserIcon,
+    MailIcon,
+  } from "@lucide/svelte";
+  import { Navigation } from "@skeletonlabs/skeleton-svelte";
 
   const links = [
-    { label: 'Home', href: '/', icon: HouseIcon },
-    { label: 'Gallery', href: '/gallery', icon: ImageIcon },
-    { label: 'Shop', href: '/shop', icon: ShoppingBagIcon },
-    { label: 'About', href: '/about', icon: UserIcon },
-    { label: 'Contact', href: '/contact', icon: MailIcon },
+    { label: "Home", href: "/", icon: HouseIcon },
+    { label: "Gallery", href: "/gallery", icon: ImageIcon },
+    { label: "Shop", href: "/shop", icon: ShoppingBagIcon },
+    // { label: "Book", href: "/book", icon: BookAIcon },
+    { label: "About", href: "/about", icon: UserIcon },
+    { label: "Contact", href: "/contact", icon: MailIcon },
   ];
 </script>
 

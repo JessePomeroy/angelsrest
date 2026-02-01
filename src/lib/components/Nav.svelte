@@ -5,6 +5,7 @@
     { href: "/", label: "Home" },
     { href: "/gallery", label: "Gallery" },
     { href: "/shop", label: "Shop" },
+    { href: "/book", label: "Book" },
     { href: "/about", label: "About" },
     { href: "/contact", label: "Contact" },
   ];

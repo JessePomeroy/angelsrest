@@ -26,5 +26,10 @@
       class="btn preset-outlined-surface-50 px-8 py-3 text-xs tracking-[0.15em] uppercase"
       >Shop Prints</a
     >
+    <a
+      href="/book"
+      class="btn preset-outlined-surface-50 px-8 py-3 text-xs tracking-[0.15em] uppercase"
+      >Book Session</a
+    >
   </div>
 </section>
