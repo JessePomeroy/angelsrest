@@ -78,7 +78,13 @@ export const gallery = defineType({
 			title: 'Featured',
 			type: 'boolean',
 			initialValue: false
-		})
+		}),
+		defineField({
+			name: 'previewImage',
+			title: 'Preview Image (first image auto-selected)',
+			type: 'image',
+			options: { source: 'images[0]' } // Auto-picks first image
+		  }),
 	],
 	preview: {
 		select: { title: 'title', media: 'image' }

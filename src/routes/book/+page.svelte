@@ -1,6 +1,5 @@
 <svelte:head>
   <title>book | angel's rest</title>
-  <!-- <script src="https://app.cal.com/embed/embed.js" async></script> -->
   <!-- Cal element-click embed code begins -->
   <script type="text/javascript">
     (function (C, A, L) {
@@ -60,7 +59,7 @@
 
   <button
     type="button"
-    class="px-4 py-2 rounded bg-black text-white"
+    class="px-4 py-2 text-sm tracking-wider lowercase font-light text-surface-50 bg-surface-500 rounded-md"
     data-cal-link="jesse-s1wmio/photosession"
     data-cal-namespace="photosession"
     data-cal-config={JSON.stringify(calConfig)}
