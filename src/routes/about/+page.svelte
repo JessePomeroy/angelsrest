@@ -21,7 +21,7 @@
     <div class="bio">
       <h1>{data.about.name}</h1>
       <p>
-        {data.about.shortBio}
+        {data.about.shortBio}d
       </p>
       <p class="muted">
         {#if data.about?.social?.instagram}

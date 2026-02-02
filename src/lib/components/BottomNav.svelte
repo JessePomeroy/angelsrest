@@ -14,8 +14,8 @@
     { label: "Home", href: "/", icon: HouseIcon },
     { label: "Gallery", href: "/gallery", icon: ImageIcon },
     { label: "Shop", href: "/shop", icon: ShoppingBagIcon },
-    // { label: "Book", href: "/book", icon: BookAIcon },
     { label: "About", href: "/about", icon: UserIcon },
+    // { label: "Book", href: "/book", icon: BookAIcon },
     { label: "Contact", href: "/contact", icon: MailIcon },
   ];
 </script>

@@ -83,7 +83,7 @@ export const gallery = defineType({
 			name: 'previewImage',
 			title: 'Preview Image (first image auto-selected)',
 			type: 'image',
-			options: { source: 'images[0]' } // Auto-picks first image
+			options: { hotspot: true } // Auto-picks first image
 		  }),
 	],
 	preview: {

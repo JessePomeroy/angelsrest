@@ -1,9 +1,9 @@
 <svelte:head>
-  <title>contact | angelsrest</title>
+  <title>contact | angel's rest</title>
 </svelte:head>
 
 <section>
-  <h1>Contact</h1>
+  <h1>contact</h1>
   <p class="description">For inquiries, commissions, and collaborations.</p>
 
   <form

@@ -62,7 +62,6 @@
     class="px-4 py-2 text-sm tracking-wider lowercase font-light text-surface-50 bg-surface-500 rounded-md"
     data-cal-link="jesse-s1wmio/photosession"
     data-cal-namespace="photosession"
-    data-cal-config={JSON.stringify(calConfig)}
   >
     click here
   </button>

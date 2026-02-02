@@ -5,14 +5,14 @@
     { href: "/", label: "Home" },
     { href: "/gallery", label: "Gallery" },
     { href: "/shop", label: "Shop" },
-    { href: "/book", label: "Book" },
     { href: "/about", label: "About" },
+    { href: "/book", label: "Book" },
     { href: "/contact", label: "Contact" },
   ];
 </script>
 
 <nav
-  class="hidden md:flex items-center justify-between px-8 py-6 max-w-[1400px] mx-auto border-b border-surface-500/20"
+  class="hidden md:flex items-center justify-between px-8 py-6 max-w-350 mx-auto border-b border-surface-500/20"
 >
   <a href="/" class="text-sm tracking-widest lowercase font-light"
     >angel's rest</a
