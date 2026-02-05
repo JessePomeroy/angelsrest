@@ -1,5 +1,14 @@
+<script lang="ts">
+  import SEO from "$lib/components/SEO.svelte";
+</script>
+
+<SEO 
+  title="book | angel's rest"
+  description="Book a photography session with Jesse Pomeroy. Portrait, editorial, and event photography."
+  url="https://angelsrest.online/book"
+/>
+
 <svelte:head>
-  <title>book | angel's rest</title>
   <!-- Cal element-click embed code begins -->
   <script type="text/javascript">
     (function (C, A, L) {

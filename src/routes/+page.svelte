@@ -1,11 +1,13 @@
 <script>
   import heroGif from "$lib/assets/clouds2.gif";
+  import SEO from "$lib/components/SEO.svelte";
 </script>
 
-<svelte:head>
-  <title>angel's rest</title>
-  <meta name="description" content="Photography portfolio and print shop" />
-</svelte:head>
+<SEO 
+  title="angel's rest"
+  description="Photography portfolio and print shop by Jesse Pomeroy. Fine art photography, prints, zines, and commissions."
+  url="https://angelsrest.online"
+/>
 
 <section
   class="flex flex-col items-center justify-center text-center min-h-[70vh] gap-6"

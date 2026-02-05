@@ -11,7 +11,7 @@
    */
 
   // Props from parent component
-  // - images: array of image objects with url and optional alt
+  // - images: array of image objects with thumbnail, full, and optional alt
   // - currentIndex: which image to show initially (renamed to initialIndex to capture once)
   // - onClose: callback to close the modal
   let {
@@ -30,6 +30,23 @@
   let offsetX = $state(0); // Current drag offset
   let isDragging = $state(false);
   let startX = 0;
+
+  // Preload adjacent images for smoother navigation
+  function getImageUrl(img: any) {
+    return img?.full || img?.url || img;
+  }
+  
+  $effect(() => {
+    // Preload next and previous images
+    const preloadIndexes = [
+      (index + 1) % images.length,
+      (index - 1 + images.length) % images.length
+    ];
+    preloadIndexes.forEach(i => {
+      const img = new Image();
+      img.src = getImageUrl(images[i]);
+    });
+  });
   // Navigate to next image (wraps around using modulo)
   function next() {
     index = (index + 1) % images.length;
@@ -123,8 +140,8 @@
       - object-contain preserves aspect ratio
     -->
     <img
-      src={images[index]?.url || images[index]}
-      alt=""
+      src={getImageUrl(images[index])}
+      alt={images[index]?.alt || ""}
       class="max-w-full max-h-[90vh] object-contain rounded-md"
       style="transform: translateX({offsetX}px); transition: {isDragging
         ? 'none'

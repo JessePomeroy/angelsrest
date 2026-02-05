@@ -4,19 +4,26 @@
  */
 
 import { client } from '$lib/sanity/client';
+import { urlFor } from '$lib/sanity/image';
 
 export async function load() {
   // Fetch all galleries, ordered by the drag-and-drop orderRank field
-  // (set via @sanity/orderable-document-list in the studio)
   const galleries = await client.fetch(`
     *[_type == "gallery"] | order(orderRank) {
       title,
       "slug": slug.current,
-      "preview": images[0].asset->url,
+      "previewImage": images[0],
       category
     }
   `);
 
-  // Return galleries to the page component via data prop
-  return { galleries };
+  // Build optimized preview URLs (600px wide, webp, 80% quality)
+  const galleriesWithOptimizedImages = galleries.map((gallery: any) => ({
+    ...gallery,
+    preview: gallery.previewImage 
+      ? urlFor(gallery.previewImage).width(600).format('webp').quality(80).url()
+      : null
+  }));
+
+  return { galleries: galleriesWithOptimizedImages };
 }

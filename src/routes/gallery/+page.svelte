@@ -4,10 +4,17 @@
    * Shows a grid of all galleries — click one to view its images.
    * Data comes from +page.server.ts which fetches from Sanity.
    */
+  import SEO from "$lib/components/SEO.svelte";
 
   // Page data from the load function (contains galleries array)
   let { data } = $props();
 </script>
+
+<SEO 
+  title="gallery | angel's rest"
+  description="Photo galleries by Jesse Pomeroy. Portrait, landscape, street, and editorial photography."
+  url="https://angelsrest.online/gallery"
+/>
 
 <!-- 
   Gallery grid

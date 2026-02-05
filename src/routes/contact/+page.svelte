@@ -1,6 +1,12 @@
-<svelte:head>
-  <title>contact | angel's rest</title>
-</svelte:head>
+<script lang="ts">
+  import SEO from "$lib/components/SEO.svelte";
+</script>
+
+<SEO 
+  title="contact | angel's rest"
+  description="Get in touch for photography inquiries, print commissions, and collaborations."
+  url="https://angelsrest.online/contact"
+/>
 
 <section>
   <h1>contact</h1>

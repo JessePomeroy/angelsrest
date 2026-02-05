@@ -3,8 +3,13 @@
    * Gallery Detail Page
    * Shows all images in a single gallery with masonry layout.
    * Click an image to open the lightbox modal.
+   * 
+   * Images are optimized:
+   * - thumbnail (400px) for the grid
+   * - full (1600px) for the lightbox
    */
 
+  import SEO from "$lib/components/SEO.svelte";
   import GalleryModal from "$lib/components/GalleryModal.svelte";
 
   // Page data from the load function (contains gallery object with images)
@@ -21,6 +26,12 @@
   }
 </script>
 
+<SEO 
+  title="{data.gallery.title} | angel's rest"
+  description="Photo gallery: {data.gallery.title}"
+  url="https://angelsrest.online/gallery/{data.gallery.title.toLowerCase().replace(/\s+/g, '-')}"
+/>
+
 <div class="p-4">
   <!-- Back link to gallery index -->
   <a href="/gallery" class="text-sm opacity-70 hover:opacity-100">← Back</a>
@@ -32,7 +43,7 @@
     Masonry image grid using CSS columns
     - columns-2/3/4 creates the masonry effect (images flow into columns)
     - break-inside-avoid prevents images from splitting across columns
-    - Images maintain their natural aspect ratios
+    - Uses optimized thumbnail URLs (400px webp)
   -->
   <div class="columns-2 md:columns-3 lg:columns-4 gap-4 p-4">
     {#each data.gallery.images as image, i}
@@ -41,9 +52,10 @@
         onclick={() => openModal(i)}
       >
         <img
-          src={image.url}
+          src={image.thumbnail}
           alt={image.alt || ""}
           class="w-full h-auto hover:scale-105 transition-transform rounded-md"
+          loading="lazy"
         />
       </button>
     {/each}

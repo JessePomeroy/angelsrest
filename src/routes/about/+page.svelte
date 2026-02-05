@@ -1,13 +1,17 @@
 <script lang="ts">
+  import SEO from "$lib/components/SEO.svelte";
+  import portrait from "$lib/assets/DSCF7533.jpg";
+  
   // TODO: Fetch about data from Sanity
   // const query = `*[_type == "about"][0]`;
   let { data } = $props();
-  import portrait from "$lib/assets/DSCF7533.jpg";
 </script>
 
-<svelte:head>
-  <title>About | angel's rest</title>
-</svelte:head>
+<SEO 
+  title="about | angel's rest"
+  description="About Jesse Pomeroy — photographer, visual artist, and florist based in Michigan."
+  url="https://angelsrest.online/about"
+/>
 
 <section>
   <div class="content">
