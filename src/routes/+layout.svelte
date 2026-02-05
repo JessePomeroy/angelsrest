@@ -10,7 +10,7 @@
 
 <div class="flex flex-col min-h-screen">
   <Nav />
-  <main class="flex-1 max-w-350 mx-auto w-full p-8 pb-24 md:pb-8">
+  <main class="flex-1 max-w-[1400px] mx-auto w-full p-8 pb-24 md:pb-8">
     {@render children()}
   </main>
   <Footer />

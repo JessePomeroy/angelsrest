@@ -7,7 +7,7 @@
 
   // Create builder once
   const builder = createImageUrlBuilder({
-    projectId: import.meta.env.PUBLIC_SANITY_PROJECT_ID, // From .env
+    projectId: import.meta.env.VITE_SANITY_PROJECT_ID,
     dataset: "production",
   });
 </script>

@@ -1,7 +1,7 @@
 import { createImageUrlBuilder } from '@sanity/image-url';
 
 export const imageUrlBuilder = createImageUrlBuilder({
-  projectId: import.meta.env.PUBLIC_SANITY_PROJECT_ID,
+  projectId: import.meta.env.VITE_SANITY_PROJECT_ID,
   dataset: 'production',
 });
 
