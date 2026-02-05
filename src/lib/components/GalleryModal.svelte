@@ -27,7 +27,9 @@
   // Local state for tracking current image
   // We capture initialIndex once — the modal manages its own navigation from there
   let index = $state(initialIndex);
-
+  let offsetX = $state(0); // Current drag offset
+  let isDragging = $state(false);
+  let startX = 0;
   // Navigate to next image (wraps around using modulo)
   function next() {
     index = (index + 1) % images.length;
@@ -50,23 +52,26 @@
   let touchEndX = 0;
 
   function handleTouchStart(e: TouchEvent) {
-    touchStartX = e.touches[0].clientX;
-  }
-  function handleTouchEnd(e: TouchEvent) {
-    touchEndX = e.changedTouches[0].clientX;
-    handleSwipe();
+    isDragging = true;
+    startX = e.touches[0].clientX;
+    offsetX = 0;
   }
 
-  function handleSwipe() {
-    const swipeThreshold = 50; // minimum distance to trigger swipe
-    const diff = touchStartX - touchEndX;
-    if (Math.abs(diff) > swipeThreshold) {
-      if (diff > 0) {
-        next();
-      } else {
-        prev();
-      }
+  function handleTouchMove(e: TouchEvent) {
+    if (!isDragging) return;
+    offsetX = e.touches[0].clientX - startX;
+  }
+
+  function handleTouchEnd() {
+    isDragging = false;
+    const threshold = 50;
+
+    if (offsetX < -threshold) {
+      next();
+    } else if (offsetX > threshold) {
+      prev();
     }
+    offsetX = 0;
   }
 </script>
 
@@ -81,7 +86,7 @@
   - tabindex="-1" makes it focusable for a11y without adding to tab order
 -->
 <div
-  class="fixed inset-0 bg-black/90 z-50 flex items-center justify-center"
+  class="fixed inset-0 bg-black/90 backdrop-blur-sm z-50 flex items-center justify-center"
   onclick={onClose}
   onkeydown={(e) => (e.key === "Enter" || e.key === " ") && onClose()}
   role="dialog"
@@ -120,9 +125,14 @@
     <img
       src={images[index]?.url || images[index]}
       alt=""
-      class="max-w-full max-h-[90vh] object-contain"
+      class="max-w-full max-h-[90vh] object-contain rounded-md"
+      style="transform: translateX({offsetX}px); transition: {isDragging
+        ? 'none'
+        : 'transform 0.2s ease-out'}"
       ontouchstart={handleTouchStart}
+      ontouchmove={handleTouchMove}
       ontouchend={handleTouchEnd}
+      draggable="false"
     />
 
     <!-- Navigation arrows (only shown if more than one image) -->

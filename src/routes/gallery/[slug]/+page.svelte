@@ -11,8 +11,8 @@
   let { data } = $props();
 
   // Modal state
-  let modalOpen = $state(false);      // Whether the lightbox is visible
-  let selectedIndex = $state(0);      // Which image to show in the lightbox
+  let modalOpen = $state(false); // Whether the lightbox is visible
+  let selectedIndex = $state(0); // Which image to show in the lightbox
 
   // Open the modal at a specific image index
   function openModal(index: number) {
@@ -24,7 +24,7 @@
 <div class="p-4">
   <!-- Back link to gallery index -->
   <a href="/gallery" class="text-sm opacity-70 hover:opacity-100">← Back</a>
-  
+
   <!-- Gallery title -->
   <h1 class="text-2xl font-bold mt-2 mb-4">{data.gallery.title}</h1>
 
@@ -43,7 +43,7 @@
         <img
           src={image.url}
           alt={image.alt || ""}
-          class="w-full h-auto hover:scale-105 transition-transform"
+          class="w-full h-auto hover:scale-105 transition-transform rounded-md"
         />
       </button>
     {/each}
