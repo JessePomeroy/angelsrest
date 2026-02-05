@@ -2,7 +2,7 @@
   /**
    * GalleryModal.svelte
    * A fullscreen lightbox modal for viewing images with keyboard navigation.
-   * 
+   *
    * Features:
    * - Arrow keys to navigate between images
    * - Escape key to close
@@ -43,6 +43,30 @@
     if (e.key === "Escape") onClose();
     if (e.key === "ArrowRight") next();
     if (e.key === "ArrowLeft") prev();
+  }
+
+  // Swipe Detection
+  let touchStartX = 0;
+  let touchEndX = 0;
+
+  function handleTouchStart(e: TouchEvent) {
+    touchStartX = e.touches[0].clientX;
+  }
+  function handleTouchEnd(e: TouchEvent) {
+    touchEndX = e.changedTouches[0].clientX;
+    handleSwipe();
+  }
+
+  function handleSwipe() {
+    const swipeThreshold = 50; // minimum distance to trigger swipe
+    const diff = touchStartX - touchEndX;
+    if (Math.abs(diff) > swipeThreshold) {
+      if (diff > 0) {
+        next();
+      } else {
+        prev();
+      }
+    }
   }
 </script>
 
@@ -97,6 +121,8 @@
       src={images[index]?.url || images[index]}
       alt=""
       class="max-w-full max-h-[90vh] object-contain"
+      ontouchstart={handleTouchStart}
+      ontouchend={handleTouchEnd}
     />
 
     <!-- Navigation arrows (only shown if more than one image) -->
