@@ -20,7 +20,7 @@
     <div class="hidden md:block h-36"></div>
   {/if}
 
-  <main class="flex-1 max-w-[1400px] mx-auto w-full p-8 pb-24 md:pb-8">
+  <main class="flex-1 max-w-[1400px] !mx-auto w-full p-8 pb-24 md:pb-8">
     {@render children()}
   </main>
   <Footer />

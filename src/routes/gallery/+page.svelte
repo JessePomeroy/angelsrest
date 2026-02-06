@@ -22,9 +22,9 @@
   - Each gallery links to /gallery/[slug] for the detail view
 -->
 <div class="px-6! md:px-8! lg:px-10!">
-  <div class="grid grid-cols-2 md:grid-cols-3 gap-4">
+  <div class="columns-2 md:columns-3 gap-4">
     {#each data.galleries as gallery}
-      <a href="/gallery/{gallery.slug}" class="group">
+      <a href="/gallery/{gallery.slug}" class="group mb-4 break-inside-avoid block">
         <!-- Image container with overflow hidden for hover effect -->
         <div class="overflow-hidden">
           <img
