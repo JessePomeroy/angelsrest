@@ -1,14 +1,16 @@
 <script lang="ts">
   import type { Snippet } from "svelte";
   import { page } from "$app/stores";
+  import { injectAnalytics } from "@vercel/analytics/sveltekit";
   import headerGif from "$lib/assets/ponyolovesham.gif";
   import Nav from "$lib/components/Nav.svelte";
   import BottomNav from "$lib/components/BottomNav.svelte";
   import Footer from "$lib/components/Footer.svelte";
   import "$lib/styles/global.css";
-  import { Analytics } from "@vercel/analytics/svelte";
 
   let { children }: { children: Snippet } = $props();
+
+  injectAnalytics();
 </script>
 
 <div class="flex flex-col min-h-screen">
