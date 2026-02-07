@@ -3,7 +3,7 @@
   import SEO from "$lib/components/SEO.svelte";
 </script>
 
-<SEO 
+<SEO
   title="angel's rest"
   description="Photography portfolio and print shop by Jesse Pomeroy. Fine art photography, prints, zines, and commissions."
   url="https://angelsrest.online"
@@ -29,7 +29,7 @@
       >Shop Prints</a
     >
     <a
-      href="/book"
+      href="/about"
       class="btn preset-outlined-surface-50 px-8 py-3 text-xs tracking-[0.15em] uppercase"
       >Book Session</a
     >

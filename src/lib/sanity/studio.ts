@@ -8,12 +8,13 @@ import { structureTool } from 'sanity/structure';
 import { visionTool } from '@sanity/vision';
 import { orderableDocumentListDeskItem } from '@sanity/orderable-document-list';
 import { schemaTypes } from './schemas';
+import { PUBLIC_SANITY_PROJECT_ID, PUBLIC_SANITY_DATASET } from '$env/static/public';
 
 export const config = defineConfig({
     name: 'andistillhearangels',
     title: 'angelsrest',
-    projectId: import.meta.env.VITE_SANITY_PROJECT_ID,
-    dataset: import.meta.env.VITE_SANITY_DATASET || 'production',
+    projectId: PUBLIC_SANITY_PROJECT_ID,
+    dataset: PUBLIC_SANITY_DATASET || 'production',
     basePath: '/studio',
     plugins: [
         // Structure tool with custom document organization

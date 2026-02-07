@@ -193,9 +193,11 @@
       <div
         style="margin-top: 80px; padding-top: 40px; border-top: 1px solid rgba(255,255,255,0.2);"
       >
-        <h2 class="mb-2 text-lg">prefer to schedule a call/meeting ?</h2>
+        <h2 class="mb-2 text-lg">
+          book a session -or- prefer to schedule call/meeting ?
+        </h2>
         <p class="text-surface-400 text-sm mb-8">
-          book a time that works for you.
+          select a time that works for you.
         </p>
         <button
           type="button"

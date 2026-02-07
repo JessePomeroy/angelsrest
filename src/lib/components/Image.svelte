@@ -1,5 +1,6 @@
 <script lang="ts">
   import { createImageUrlBuilder } from "@sanity/image-url";
+  import { PUBLIC_SANITY_PROJECT_ID, PUBLIC_SANITY_DATASET } from '$env/static/public';
 
   export let src: any;
   export let alt: string = "";
@@ -7,8 +8,8 @@
 
   // Create builder once
   const builder = createImageUrlBuilder({
-    projectId: import.meta.env.VITE_SANITY_PROJECT_ID,
-    dataset: "production",
+    projectId: PUBLIC_SANITY_PROJECT_ID,
+    dataset: PUBLIC_SANITY_DATASET,
   });
 </script>
 
