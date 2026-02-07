@@ -45,8 +45,8 @@ A phased plan for building out angelsrest.online, ordered to progressively re-le
 - [ ] Shop `[slug]` page — product detail with images, price, variants
 - [ ] Skeleton form elements for variant selection
 
-### About 🔲
-- [ ] Wire up About page to pull from Sanity instead of static content
+### About ✅
+- [x] Wire up About page to pull from Sanity instead of static content
 
 ### Loading & Polish 🔲
 - [ ] Add loading states (Skeleton placeholder components)
@@ -63,12 +63,30 @@ A phased plan for building out angelsrest.online, ordered to progressively re-le
 - [ ] Success/cancel pages for post-checkout
 - [ ] Toast notifications for cart/checkout events
 
+### Stripe Learning Path
+
+**Start here (in order):**
+1. [How Stripe Works](https://docs.stripe.com/payments/checkout/how-checkout-works) — understand the flow
+2. [Stripe Checkout Quickstart](https://docs.stripe.com/checkout/quickstart) — simplest integration
+3. [Create a Checkout Session](https://docs.stripe.com/api/checkout/sessions/create) — API reference
+
+**When building:**
+- [Checkout with SvelteKit](https://docs.stripe.com/payments/checkout) — server-side session creation
+- [Fulfillment & Webhooks](https://docs.stripe.com/payments/checkout/fulfill-orders) — what happens after payment
+- [Test Mode & Test Cards](https://docs.stripe.com/testing) — fake cards for development
+
+**Product setup:**
+- [Products & Prices](https://docs.stripe.com/products-prices/overview) — create in dashboard or via API
+- [One-time vs Recurring](https://docs.stripe.com/products-prices/pricing-models) — prints are one-time
+
+**Key concept:** You don't handle card numbers. Stripe Checkout hosts the payment page — you just create a "session" with what they're buying, redirect them to Stripe, and handle the success/cancel redirect back.
+
 ---
 
 ## Phase 5 — Polish & Ship
 
 - [ ] Image optimization — lazy loading, responsive sizes, Sanity image pipeline
-- [ ] SEO — meta tags, Open Graph, structured data
+- [x] SEO — meta tags, Open Graph (structured data still TODO)
 - [ ] Contact form — email service or Sanity submission
 - [ ] Dark/light mode toggle (Skeleton built-in support)
 - [ ] Performance audit (Lighthouse)
