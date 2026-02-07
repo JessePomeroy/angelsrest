@@ -6,6 +6,7 @@
   import BottomNav from "$lib/components/BottomNav.svelte";
   import Footer from "$lib/components/Footer.svelte";
   import "$lib/styles/global.css";
+  import { Analytics } from "@vercel/analytics/svelte";
 
   let { children }: { children: Snippet } = $props();
 </script>
