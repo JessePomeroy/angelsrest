@@ -1,193 +1,101 @@
 <script lang="ts">
   import SEO from "$lib/components/SEO.svelte";
   import portrait from "$lib/assets/DSCF7533.jpg";
-  
+
   let { data } = $props();
 </script>
 
-<SEO 
+<SEO
   title="about | angel's rest"
   description="About Jesse Pomeroy — photographer, visual artist, and florist based in Michigan. Get in touch for inquiries and collaborations."
   url="https://angelsrest.online/about"
 />
 
-<section class="about">
-  <div class="content">
-    <div class="portrait-placeholder">
+<section class="px-6! md:px-8! lg:px-10!">
+  <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8 lg:gap-12 max-w-[1400px]">
+    <!-- Portrait -->
+    <div class="aspect-[3/4] bg-surface-500/20 border border-surface-500/20">
       {#if data.portraitUrl}
-        <img src={data.portraitUrl} alt={data.about?.name} />
+        <img src={data.portraitUrl} alt={data.about?.name} class="w-full h-full object-cover" />
       {:else}
-        <img src={portrait} alt="Portrait" />
+        <img src={portrait} alt="Portrait" class="w-full h-full object-cover" />
       {/if}
     </div>
-    <div class="bio">
-      <h1>{data.about.name}</h1>
-      <p>
+
+    <!-- Bio -->
+    <div class="pt-4 lg:pt-8">
+      <h1 class="mb-6 text-2xl">{data.about.name}</h1>
+      <p class="leading-relaxed mb-4">
         {data.about.shortBio}
       </p>
-      <p class="muted">
-        {#if data.about?.social?.instagram}
-          <a href={data.about.social.instagram} target="_blank" rel="noopener">Instagram</a>
-        {/if}
-      </p>
+      {#if data.about?.social?.instagram}
+        <p class="text-surface-400">
+          <a href={data.about.social.instagram} target="_blank" rel="noopener" class="hover:text-surface-200 transition-colors">Instagram</a>
+        </p>
+      {/if}
+    </div>
+
+    <!-- Contact Form -->
+    <div class="pt-4 lg:pt-8 md:col-span-2 lg:col-span-1 md:border-t md:border-surface-500/20 md:pt-8 md:mt-4 lg:border-0 lg:mt-0">
+      <h2 class="mb-2 text-lg">get in touch</h2>
+      <p class="text-surface-400 text-sm mb-8">For inquiries, commissions, and collaborations.</p>
+
+      <form
+        onsubmit={(e) => {
+          e.preventDefault();
+        }}
+        class="flex flex-col gap-5"
+      >
+        <div class="flex flex-col gap-2.5">
+          <label for="name" class="text-sm font-medium">Name</label>
+          <input
+            type="text"
+            id="name"
+            name="name"
+            placeholder="Your name"
+            required
+            class="bg-white/5 border border-white/10 text-surface-50 text-sm rounded-lg px-3 py-2.5 shadow-sm placeholder:text-surface-400/70 focus:outline-none focus:border-surface-400 focus:ring-2 focus:ring-white/10 transition-all w-full"
+          />
+        </div>
+        <div class="flex flex-col gap-2.5">
+          <label for="email" class="text-sm font-medium">Email</label>
+          <input
+            type="email"
+            id="email"
+            name="email"
+            placeholder="you@example.com"
+            required
+            class="bg-white/5 border border-white/10 text-surface-50 text-sm rounded-lg px-3 py-2.5 shadow-sm placeholder:text-surface-400/70 focus:outline-none focus:border-surface-400 focus:ring-2 focus:ring-white/10 transition-all w-full"
+          />
+        </div>
+        <div class="flex flex-col gap-2.5">
+          <label for="subject" class="text-sm font-medium">Subject</label>
+          <input
+            type="text"
+            id="subject"
+            name="subject"
+            placeholder="What's this about?"
+            class="bg-white/5 border border-white/10 text-surface-50 text-sm rounded-lg px-3 py-2.5 shadow-sm placeholder:text-surface-400/70 focus:outline-none focus:border-surface-400 focus:ring-2 focus:ring-white/10 transition-all w-full"
+          />
+        </div>
+        <div class="flex flex-col gap-2.5">
+          <label for="message" class="text-sm font-medium">Message</label>
+          <textarea
+            id="message"
+            name="message"
+            rows="4"
+            placeholder="Your message..."
+            required
+            class="bg-white/5 border border-white/10 text-surface-50 text-sm rounded-lg px-3 py-2.5 shadow-sm placeholder:text-surface-400/70 focus:outline-none focus:border-surface-400 focus:ring-2 focus:ring-white/10 transition-all w-full resize-y"
+          ></textarea>
+        </div>
+        <button
+          type="submit"
+          class="mt-2 px-4 py-3 text-sm font-medium uppercase tracking-wide bg-white/5 border border-white/10 text-surface-50 rounded-lg hover:bg-white/10 transition-all cursor-pointer"
+        >
+          Send Message
+        </button>
+      </form>
     </div>
   </div>
 </section>
-
-<section class="contact">
-  <h2>get in touch</h2>
-  <p class="description">For inquiries, commissions, and collaborations.</p>
-
-  <form
-    onsubmit={(e) => {
-      e.preventDefault();
-    }}
-  >
-    <label>
-      <span>Name</span>
-      <input type="text" name="name" required />
-    </label>
-    <label>
-      <span>Email</span>
-      <input type="email" name="email" required />
-    </label>
-    <label>
-      <span>Subject</span>
-      <input type="text" name="subject" />
-    </label>
-    <label>
-      <span>Message</span>
-      <textarea name="message" rows="6" required></textarea>
-    </label>
-    <button type="submit">Send Message</button>
-  </form>
-</section>
-
-<style>
-  /* About section */
-  .about {
-    padding: 2rem 0;
-  }
-
-  .content {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 4rem;
-    align-items: start;
-    max-width: 1000px;
-  }
-
-  .portrait-placeholder {
-    aspect-ratio: 3 / 4;
-    background: var(--color-surface);
-    border: 1px solid var(--color-border);
-  }
-
-  .portrait-placeholder img {
-    width: 100%;
-    height: 100%;
-    object-fit: cover;
-  }
-
-  .bio {
-    padding-top: 2rem;
-  }
-
-  .bio h1 {
-    margin-bottom: 1.5rem;
-  }
-
-  .bio p {
-    line-height: 1.8;
-    margin-bottom: 1rem;
-  }
-
-  .bio .muted {
-    color: var(--color-text-muted);
-  }
-
-  /* Contact section */
-  .contact {
-    padding: 4rem 0 2rem;
-    max-width: 600px;
-    border-top: 1px solid var(--color-border);
-    margin-top: 2rem;
-  }
-
-  .contact h2 {
-    margin-bottom: 0.5rem;
-  }
-
-  .description {
-    color: var(--color-text-muted);
-    font-size: 0.9rem;
-    margin-bottom: 3rem;
-  }
-
-  form {
-    display: flex;
-    flex-direction: column;
-    gap: 1.5rem;
-  }
-
-  label {
-    display: flex;
-    flex-direction: column;
-    gap: 0.5rem;
-  }
-
-  label span {
-    font-size: 0.8rem;
-    letter-spacing: 0.1em;
-    text-transform: uppercase;
-    color: var(--color-text-muted);
-  }
-
-  input,
-  textarea {
-    background: var(--color-surface);
-    border: 1px solid var(--color-border);
-    color: var(--color-text);
-    padding: 0.75rem 1rem;
-    font-family: var(--font-body);
-    font-size: 0.95rem;
-    transition: border-color var(--transition);
-  }
-
-  input:focus,
-  textarea:focus {
-    outline: none;
-    border-color: var(--color-text-muted);
-  }
-
-  textarea {
-    resize: vertical;
-  }
-
-  button {
-    padding: 1rem;
-    font-size: 0.8rem;
-    letter-spacing: 0.15em;
-    text-transform: uppercase;
-    border: 1px solid var(--color-text);
-    background: var(--color-text);
-    color: var(--color-bg);
-    transition: all var(--transition);
-    margin-top: 0.5rem;
-  }
-
-  button:hover {
-    opacity: 0.85;
-  }
-
-  @media (max-width: 768px) {
-    .content {
-      grid-template-columns: 1fr;
-      gap: 2rem;
-    }
-
-    .contact {
-      padding-top: 3rem;
-    }
-  }
-</style>

@@ -16,7 +16,7 @@
   ];
 </script>
 
-<div class="fixed bottom-0 left-0 right-0 z-50 md:hidden">
+<div class="sticky bottom-0 left-0 right-0 z-50 md:hidden">
   <Navigation layout="bar">
     <Navigation.Menu class="grid grid-cols-4 gap-2">
       {#each links as link (link.href)}
