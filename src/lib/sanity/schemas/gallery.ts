@@ -112,8 +112,11 @@ export const gallery = defineType({
 			options: { hotspot: true }
 		}),
 	],
-	// Studio preview shows the title and first image
+	// Studio preview shows the title and first image from the array
 	preview: {
-		select: { title: 'title', media: 'image' }
+		select: { 
+			title: 'title', 
+			media: 'images.0'
+		}
 	}
 });
