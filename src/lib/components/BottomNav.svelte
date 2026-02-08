@@ -3,6 +3,7 @@
   import {
     HouseIcon,
     ImageIcon,
+    PencilLineIcon,
     ShoppingBagIcon,
     UserIcon,
   } from "@lucide/svelte";
@@ -10,7 +11,8 @@
 
   const links = [
     { label: "Home", href: "/", icon: HouseIcon },
-    { label: "Gallery", href: "/gallery", icon: ImageIcon },
+    { label: "Gallery", href: "/gallery", icon: ImageIcon  },
+    { label: "Blog", href: "/blog", icon: PencilLineIcon },
     { label: "Shop", href: "/shop", icon: ShoppingBagIcon },
     { label: "About", href: "/about", icon: UserIcon },
   ];
@@ -18,7 +20,7 @@
 
 <div class="sticky bottom-0 left-0 right-0 z-50 md:hidden">
   <Navigation layout="bar">
-    <Navigation.Menu class="grid grid-cols-4 gap-2">
+    <Navigation.Menu class="grid grid-cols-5 gap-1">
       {#each links as link (link.href)}
         {@const Icon = link.icon}
         <Navigation.TriggerAnchor href={link.href}>
