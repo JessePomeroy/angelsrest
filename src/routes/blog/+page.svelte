@@ -36,37 +36,16 @@
   url="https://angelsrest.online/blog"
 />
 
-<section>
-  <!-- Page heading -->
+<div class="max-w-2xl mx-auto">
   <h1 class="text-2xl font-light tracking-wider lowercase mb-8">blog</h1>
 
-  <!--
-    Conditional rendering with {#if}
-    
-    Check if we have posts before trying to loop through them.
-    This prevents errors if posts is undefined or empty.
-  -->
   {#if data.posts && data.posts.length > 0}
-    <!--
-      CSS Grid layout:
-      - grid-cols-1: 1 column on mobile
-      - md:grid-cols-2: 2 columns on medium screens and up
-      - gap-8: spacing between cards
-    -->
-    <div class="grid grid-cols-1 md:grid-cols-2 gap-8">
-      <!--
-        {#each} loop - iterates over the posts array.
-        For each post, render a BlogCard component.
-        
-        Passing {post} is shorthand for post={post}
-        (when prop name matches variable name)
-      -->
+    <div class="flex flex-col gap-8">
       {#each data.posts as post}
         <BlogCard {post} />
       {/each}
     </div>
   {:else}
-    <!-- Shown when there are no posts yet -->
     <p class="text-surface-400">no posts yet — check back soon!</p>
   {/if}
-</section>
+</div>
