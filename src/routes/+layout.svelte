@@ -24,7 +24,7 @@
   {/if}
 
   <main
-    class="flex-1 max-w-[1400px] !mx-auto w-full px-1 pt-2 pb-32 md:pb-8 md:px-8"
+    class="flex-1 max-w-[1400px] !mx-auto w-full px-1 pt-2 pb-2 md:pb-4 md:px-8"
   >
     {@render children()}
   </main>
