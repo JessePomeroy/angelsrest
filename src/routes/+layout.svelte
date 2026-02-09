@@ -23,7 +23,9 @@
     <div class="hidden md:block h-6"></div>
   {/if}
 
-  <main class="flex-1 max-w-[1400px] !mx-auto w-full px-8 pt-2 pb-32 md:pb-8">
+  <main
+    class="flex-1 max-w-[1400px] !mx-auto w-full px-1 pt-2 pb-32 md:pb-8 md:px-8"
+  >
     {@render children()}
   </main>
   <Footer />
