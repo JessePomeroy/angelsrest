@@ -2,7 +2,7 @@
   Desktop Navigation Component
   
   - Only visible on md+ screens (hidden on mobile, which uses BottomNav)
-  - Shows theme switcher only on homepage
+  - Theme switcher visible on all pages (desktop)
   - Uses gray colors for light mode (better contrast than theme surface colors)
   - Active link detection supports both exact match and prefix match for nested routes
 -->
@@ -10,9 +10,6 @@
 <script lang="ts">
   import { page } from "$app/state";
   import ThemeSwitcher from "./ThemeSwitcher.svelte";
-
-  // Check if we're on the homepage (for conditional theme switcher display)
-  let isHome = $derived(page.url.pathname === "/");
 
   // Navigation links configuration
   const links = [
@@ -56,9 +53,7 @@
       {/each}
     </ul>
     
-    <!-- Theme switcher - only shown on homepage -->
-    {#if isHome}
-      <ThemeSwitcher />
-    {/if}
+    <!-- Theme switcher - visible on all pages (desktop) -->
+    <ThemeSwitcher />
   </div>
 </nav>

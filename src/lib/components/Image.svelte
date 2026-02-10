@@ -1,28 +1,29 @@
+<!--
+  Sanity Image Component
+  
+  Renders images from Sanity CMS with automatic optimization.
+  Uses the shared urlFor helper from sanity/client.
+-->
+
 <script lang="ts">
-  import { createImageUrlBuilder } from "@sanity/image-url";
-  import { PUBLIC_SANITY_PROJECT_ID, PUBLIC_SANITY_DATASET } from '$env/static/public';
+  import { urlFor } from "$lib/sanity/client";
 
   export let src: any;
   export let alt: string = "";
   export let width: number = 800;
-
-  // Create builder once
-  const builder = createImageUrlBuilder({
-    projectId: PUBLIC_SANITY_PROJECT_ID,
-    dataset: PUBLIC_SANITY_DATASET,
-  });
 </script>
 
 {#if src?.asset?._ref}
+  <!-- Sanity image reference -->
   <img
-    src={builder.image(src).width(width).auto("format").quality(75).url()!}
+    src={urlFor(src).width(width).auto("format").quality(75).url()!}
     alt={alt || src.alt || ""}
     class="w-full h-auto object-cover rounded-xl"
     loading="lazy"
     decoding="async"
   />
 {:else}
-  <!-- Fallback for direct asset refs -->
+  <!-- Fallback for direct URLs -->
   <img
     src={src?.asset?.url || src}
     {alt}
@@ -30,18 +31,3 @@
     loading="lazy"
   />
 {/if}
-
-<!-- {#if src}
-  <figure class="img-variant">
-    <img
-      src={src.asset.url}
-      {alt}
-      width={src.asset.metadata.dimensions.width}
-      height={src.asset.metadata.dimensions.height}
-      {sizes}
-      class="object-cover w-full h-auto rounded-xl"
-      loading="lazy"
-      decoding="async"
-    />
-  </figure>
-{/if} -->

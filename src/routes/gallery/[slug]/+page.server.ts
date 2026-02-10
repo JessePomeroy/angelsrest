@@ -5,7 +5,7 @@
  */
 
 import { client } from '$lib/sanity/client';
-import { urlFor } from '$lib/sanity/image';
+import { urlFor } from '$lib/sanity/client';
 import { error } from '@sveltejs/kit';
 
 export async function load({ params }) {

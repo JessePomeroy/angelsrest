@@ -4,7 +4,7 @@
  */
 
 import { client } from '$lib/sanity/client';
-import { urlFor } from '$lib/sanity/image';
+import { urlFor } from '$lib/sanity/client';
 
 export async function load() {
   // Fetch all galleries, ordered by the drag-and-drop orderRank field
