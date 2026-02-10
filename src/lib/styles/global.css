@@ -121,3 +121,12 @@ html:not(.dark) .bottom-nav span,
 html:not(.dark) .bottom-nav svg {
 	color: var(--color-surface-400) !important;
 }
+
+/*
+ * About page form - force dark text in light mode
+ */
+html:not(.dark) form button,
+html:not(.dark) form input,
+html:not(.dark) form textarea {
+	color: #000 !important;
+}

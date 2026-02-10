@@ -293,6 +293,32 @@ Use browser DevTools → Elements panel → look at the element's classes
 2. Check if using `dark:` prefix correctly
 3. Check CSS specificity (global css might override)
 
+### Tailwind dark: Variant Not Working?
+
+Sometimes Tailwind's `dark:` variant fails (e.g., `!text-black dark:!text-white` not applying).
+Use a reactive CSS variable as a workaround:
+
+```svelte
+<script>
+  import { isDark } from "$lib/stores/theme";
+  
+  // Set CSS variable reactively when theme changes
+  $effect(() => {
+    document.documentElement.style.setProperty(
+      '--my-text-color', 
+      $isDark ? '#fafafa' : '#000000'
+    );
+  });
+</script>
+
+<!-- Apply via inline style -->
+<button style="color: var(--my-text-color);">
+  Click me
+</button>
+```
+
+This approach is used on the **About page** (`src/routes/about/+page.svelte`) for form elements using the `--form-text-color` variable.
+
 ---
 
 ## Resources

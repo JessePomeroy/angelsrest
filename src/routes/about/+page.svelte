@@ -1,8 +1,23 @@
 <script lang="ts">
   import SEO from "$lib/components/SEO.svelte";
   import portrait from "$lib/assets/DSCF7533.jpg";
+  import { isDark } from "$lib/stores/theme";
 
   let { data } = $props();
+  
+  /**
+   * Theme-aware form text color
+   * 
+   * Tailwind's dark: variant wasn't working reliably with !text-black,
+   * so we use a CSS variable that updates reactively when the theme changes.
+   * 
+   * The --form-text-color variable is applied via inline styles on form elements.
+   * - Light mode: #000000 (black)
+   * - Dark mode: #fafafa (near-white)
+   */
+  $effect(() => {
+    document.documentElement.style.setProperty('--form-text-color', $isDark ? '#fafafa' : '#000000');
+  });
 
   let status = $state("idle"); // 'idle' | 'sending' | 'success' | 'error'
 
@@ -138,7 +153,7 @@
             name="name"
             placeholder="your name"
             required
-            class="bg-white/5 border border-white/10 text-surface-900 dark:text-surface-50 text-sm rounded-lg px-3 py-2.5 shadow-sm placeholder:text-surface-400/70 focus:outline-none focus:border-surface-400 focus:ring-2 focus:ring-white/10 transition-all w-full"
+            style="color: var(--form-text-color);" class="bg-white/5 border border-white/10 text-sm rounded-lg px-3 py-2.5 shadow-sm placeholder:text-surface-400/70 focus:outline-none focus:border-surface-400 focus:ring-2 focus:ring-white/10 transition-all w-full"
           />
         </div>
         <div class="flex flex-col gap-2.5">
@@ -149,7 +164,7 @@
             name="email"
             placeholder="you@example.com"
             required
-            class="bg-white/5 border border-white/10 text-surface-900 dark:text-surface-50 text-sm rounded-lg px-3 py-2.5 shadow-sm placeholder:text-surface-400/70 focus:outline-none focus:border-surface-400 focus:ring-2 focus:ring-white/10 transition-all w-full"
+            style="color: var(--form-text-color);" class="bg-white/5 border border-white/10 text-sm rounded-lg px-3 py-2.5 shadow-sm placeholder:text-surface-400/70 focus:outline-none focus:border-surface-400 focus:ring-2 focus:ring-white/10 transition-all w-full"
           />
         </div>
         <div class="flex flex-col gap-2.5">
@@ -159,7 +174,7 @@
             id="subject"
             name="subject"
             placeholder="what's this about ?"
-            class="bg-white/5 border border-white/10 text-surface-900 dark:text-surface-50 text-sm rounded-lg px-3 py-2.5 shadow-sm placeholder:text-surface-400/70 focus:outline-none focus:border-surface-400 focus:ring-2 focus:ring-white/10 transition-all w-full"
+            style="color: var(--form-text-color);" class="bg-white/5 border border-white/10 text-sm rounded-lg px-3 py-2.5 shadow-sm placeholder:text-surface-400/70 focus:outline-none focus:border-surface-400 focus:ring-2 focus:ring-white/10 transition-all w-full"
           />
         </div>
         <div class="flex flex-col gap-2.5">
@@ -170,12 +185,13 @@
             rows="4"
             placeholder="your message..."
             required
-            class="bg-white/5 border border-white/10 text-surface-900 dark:text-surface-50 text-sm rounded-lg px-3 py-2.5 shadow-sm placeholder:text-surface-400/70 focus:outline-none focus:border-surface-400 focus:ring-2 focus:ring-white/10 transition-all w-full resize-y"
+            style="color: var(--form-text-color);" class="bg-white/5 border border-white/10 text-sm rounded-lg px-3 py-2.5 shadow-sm placeholder:text-surface-400/70 focus:outline-none focus:border-surface-400 focus:ring-2 focus:ring-white/10 transition-all w-full resize-y"
           ></textarea>
         </div>
         <button
           type="submit"
-          class="mt-2 mb-6 px-4 py-3 text-sm font-medium lowercase tracking-wide bg-white/5 border border-white/10 text-surface-900 dark:text-surface-50 rounded-lg hover:bg-white/10 transition-all cursor-pointer"
+          class="mt-2 mb-6 px-4 py-3 text-sm font-medium lowercase tracking-wide bg-white/5 border border-white/10 rounded-lg hover:bg-white/10 transition-all cursor-pointer"
+          style="color: var(--form-text-color);"
           disabled={status === "sending"}
         >
           {status === "sending" ? "sending..." : "send message"}
@@ -201,7 +217,8 @@
         </p>
         <button
           type="button"
-          class="w-full px-4 py-3 text-sm font-medium lowercase tracking-wide bg-white/5 border border-white/10 text-surface-900 dark:text-surface-50 rounded-lg hover:bg-white/10 transition-all cursor-pointer"
+          class="w-full px-4 py-3 text-sm font-medium lowercase tracking-wide bg-white/5 border border-white/10 rounded-lg hover:bg-white/10 transition-all cursor-pointer"
+          style="color: var(--form-text-color);"
           data-cal-link="jesse-s1wmio/photosession"
           data-cal-namespace="photosession"
         >
