@@ -138,7 +138,7 @@
             name="name"
             placeholder="your name"
             required
-            class="bg-white/5 border border-white/10 text-surface-50 text-sm rounded-lg px-3 py-2.5 shadow-sm placeholder:text-surface-400/70 focus:outline-none focus:border-surface-400 focus:ring-2 focus:ring-white/10 transition-all w-full"
+            class="bg-white/5 border border-white/10 text-surface-900 dark:text-surface-50 text-sm rounded-lg px-3 py-2.5 shadow-sm placeholder:text-surface-400/70 focus:outline-none focus:border-surface-400 focus:ring-2 focus:ring-white/10 transition-all w-full"
           />
         </div>
         <div class="flex flex-col gap-2.5">
@@ -149,7 +149,7 @@
             name="email"
             placeholder="you@example.com"
             required
-            class="bg-white/5 border border-white/10 text-surface-50 text-sm rounded-lg px-3 py-2.5 shadow-sm placeholder:text-surface-400/70 focus:outline-none focus:border-surface-400 focus:ring-2 focus:ring-white/10 transition-all w-full"
+            class="bg-white/5 border border-white/10 text-surface-900 dark:text-surface-50 text-sm rounded-lg px-3 py-2.5 shadow-sm placeholder:text-surface-400/70 focus:outline-none focus:border-surface-400 focus:ring-2 focus:ring-white/10 transition-all w-full"
           />
         </div>
         <div class="flex flex-col gap-2.5">
@@ -159,7 +159,7 @@
             id="subject"
             name="subject"
             placeholder="what's this about ?"
-            class="bg-white/5 border border-white/10 text-surface-50 text-sm rounded-lg px-3 py-2.5 shadow-sm placeholder:text-surface-400/70 focus:outline-none focus:border-surface-400 focus:ring-2 focus:ring-white/10 transition-all w-full"
+            class="bg-white/5 border border-white/10 text-surface-900 dark:text-surface-50 text-sm rounded-lg px-3 py-2.5 shadow-sm placeholder:text-surface-400/70 focus:outline-none focus:border-surface-400 focus:ring-2 focus:ring-white/10 transition-all w-full"
           />
         </div>
         <div class="flex flex-col gap-2.5">
@@ -170,12 +170,12 @@
             rows="4"
             placeholder="your message..."
             required
-            class="bg-white/5 border border-white/10 text-surface-50 text-sm rounded-lg px-3 py-2.5 shadow-sm placeholder:text-surface-400/70 focus:outline-none focus:border-surface-400 focus:ring-2 focus:ring-white/10 transition-all w-full resize-y"
+            class="bg-white/5 border border-white/10 text-surface-900 dark:text-surface-50 text-sm rounded-lg px-3 py-2.5 shadow-sm placeholder:text-surface-400/70 focus:outline-none focus:border-surface-400 focus:ring-2 focus:ring-white/10 transition-all w-full resize-y"
           ></textarea>
         </div>
         <button
           type="submit"
-          class="mt-2 mb-6 px-4 py-3 text-sm font-medium lowercase tracking-wide bg-white/5 border border-white/10 text-surface-900 dark:text-surface-50rounded-lg hover:bg-white/10 transition-all cursor-pointer"
+          class="mt-2 mb-6 px-4 py-3 text-sm font-medium lowercase tracking-wide bg-white/5 border border-white/10 text-surface-900 dark:text-surface-50 rounded-lg hover:bg-white/10 transition-all cursor-pointer"
           disabled={status === "sending"}
         >
           {status === "sending" ? "sending..." : "send message"}
@@ -201,7 +201,7 @@
         </p>
         <button
           type="button"
-          class="w-full px-4 py-3 text-sm font-medium lowercase tracking-wide bg-white/5 border border-white/10 text-surface-900 dark:text-surface-50rounded-lg hover:bg-white/10 transition-all cursor-pointer"
+          class="w-full px-4 py-3 text-sm font-medium lowercase tracking-wide bg-white/5 border border-white/10 text-surface-900 dark:text-surface-50 rounded-lg hover:bg-white/10 transition-all cursor-pointer"
           data-cal-link="jesse-s1wmio/photosession"
           data-cal-namespace="photosession"
         >
