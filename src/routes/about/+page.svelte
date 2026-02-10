@@ -175,7 +175,7 @@
         </div>
         <button
           type="submit"
-          class="mt-2 mb-6 px-4 py-3 text-sm font-medium lowercase tracking-wide bg-white/5 border border-white/10 text-surface-50 rounded-lg hover:bg-white/10 transition-all cursor-pointer"
+          class="mt-2 mb-6 px-4 py-3 text-sm font-medium lowercase tracking-wide bg-white/5 border border-white/10 text-surface-900 dark:text-surface-50rounded-lg hover:bg-white/10 transition-all cursor-pointer"
           disabled={status === "sending"}
         >
           {status === "sending" ? "sending..." : "send message"}
@@ -194,14 +194,14 @@
         style="margin-top: 80px; padding-top: 40px; border-top: 1px solid rgba(255,255,255,0.2);"
       >
         <h2 class="mb-2 text-lg">
-          book a session -or- prefer to schedule call/meeting ?
+          book a session -or- prefer to schedule a call/meeting ?
         </h2>
         <p class="text-surface-400 text-sm mb-8">
           select a time that works for you.
         </p>
         <button
           type="button"
-          class="w-full px-4 py-3 text-sm font-medium lowercase tracking-wide bg-white/5 border border-white/10 text-surface-50 rounded-lg hover:bg-white/10 transition-all cursor-pointer"
+          class="w-full px-4 py-3 text-sm font-medium lowercase tracking-wide bg-white/5 border border-white/10 text-surface-900 dark:text-surface-50rounded-lg hover:bg-white/10 transition-all cursor-pointer"
           data-cal-link="jesse-s1wmio/photosession"
           data-cal-namespace="photosession"
         >
