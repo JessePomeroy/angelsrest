@@ -3,6 +3,15 @@
 	<head>
 		<meta charset="utf-8" />
 		<meta name="viewport" content="width=device-width, initial-scale=1" />
+		<!--
+			Theme initialization script (runs before page render)
+			
+			Prevents flash of wrong theme by setting the correct theme immediately.
+			Checks localStorage first, then falls back to system preference.
+			
+			- Dark mode: class="dark" + data-theme="hamlindigo"
+			- Light mode: no dark class + data-theme="pine"
+		-->
 		<script>
 			(function() {
 				const stored = localStorage.getItem('theme');

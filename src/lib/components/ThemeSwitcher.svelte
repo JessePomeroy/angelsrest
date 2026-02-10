@@ -1,13 +1,30 @@
+<!--
+  ThemeSwitcher Component
+  
+  A pill-shaped toggle for switching between light and dark themes.
+  - Uses sun/moon icons from Lucide
+  - Syncs with the isDark store for reactive updates across the app
+  - Updates both the 'dark' class and 'data-theme' attribute on <html>
+  - Light mode: pine theme | Dark mode: hamlindigo theme
+-->
+
 <script lang="ts">
   import { onMount } from "svelte";
   import { browser } from "$app/environment";
   import { SunIcon, MoonIcon } from "@lucide/svelte";
   import { isDark } from "$lib/stores/theme";
 
+  // Apply theme on component mount
   onMount(() => {
     applyTheme($isDark);
   });
 
+  /**
+   * Apply the theme to the document
+   * - Toggles 'dark' class on <html> for Tailwind dark mode
+   * - Sets 'data-theme' attribute for Skeleton theme switching
+   * - Saves preference to localStorage
+   */
   function applyTheme(dark: boolean) {
     if (browser) {
       const html = document.documentElement;
@@ -22,6 +39,7 @@
     }
   }
 
+  // Theme setter functions - update store and apply
   function setLight() {
     isDark.setLight();
     applyTheme(false);
@@ -33,7 +51,9 @@
   }
 </script>
 
+<!-- Pill container with theme-aware background -->
 <div class="flex items-center bg-surface-200 dark:bg-surface-800 rounded-full p-0.5">
+  <!-- Light mode button -->
   <button
     onclick={setLight}
     class="p-1.5 rounded-full transition-all duration-200 {!$isDark
@@ -43,6 +63,7 @@
   >
     <SunIcon class="size-3" />
   </button>
+  <!-- Dark mode button -->
   <button
     onclick={setDark}
     class="p-1.5 rounded-full transition-all duration-200 {$isDark

@@ -1,12 +1,17 @@
+/* ============================================
+   Global Styles - Angel's Rest
+   ============================================ */
+
 @import 'tailwindcss';
 
 @import '@skeletonlabs/skeleton';
 @import '@skeletonlabs/skeleton-svelte';
+
+/* Skeleton themes - hamlindigo (dark) and pine (light) */
 @import '@skeletonlabs/skeleton/themes/hamlindigo';
 @import '@skeletonlabs/skeleton/themes/pine';
 
-/* ---- Custom overrides ---- */
-
+/* ---- Base Resets ---- */
 
 *,
 *::before,
@@ -30,6 +35,9 @@ html {
 	-moz-osx-font-smoothing: grayscale;
 }
 
+/* ---- Theme-aware Body Styles ---- */
+
+/* Light mode body colors (uses theme CSS variables) */
 body {
 	line-height: 1.6;
 	min-height: 100vh;
@@ -37,10 +45,13 @@ body {
 	color: var(--base-font-color);
 }
 
+/* Dark mode body colors */
 .dark body {
 	background-color: var(--body-background-color-dark);
 	color: var(--base-font-color-dark);
 }
+
+/* ---- Base Element Styles ---- */
 
 a {
 	text-decoration: none;
@@ -67,21 +78,40 @@ h1, h2, h3, h4, h5, h6 {
 	background: rgba(255, 255, 255, 0.15);
 }
 
-/* Override pine theme fonts to match hamlindigo */
+/* ============================================
+   Theme Customizations
+   ============================================ */
+
+/*
+ * Pine theme font override
+ * Pine uses serif fonts by default, but we want consistency with hamlindigo's
+ * sans-serif body / serif heading combination across both themes
+ */
 [data-theme='pine'] {
 	--base-font-family: Seravek, 'Gill Sans Nova', Ubuntu, Calibri, 'DejaVu Sans', source-sans-pro, sans-serif;
 	--heading-font-family: 'Iowan Old Style', 'Palatino Linotype', 'URW Palladio L', P052, serif;
 	--heading-font-weight: bold;
 }
 
-/* Desktop nav styling for light mode */
+/* ============================================
+   Light Mode Accessibility Fixes
+   ============================================ */
+
+/*
+ * Desktop nav - force dark text in light mode
+ * Pine theme's surface colors don't have enough contrast,
+ * so we use explicit gray values
+ */
 @media (min-width: 768px) {
 	html:not(.dark) nav a {
 		color: #111827 !important; /* gray-900 */
 	}
 }
 
-/* Bottom nav styling for light mode */
+/*
+ * Mobile bottom nav - light mode styling
+ * Lighter background and muted text for a softer look
+ */
 html:not(.dark) .bottom-nav {
 	background-color: var(--color-surface-50) !important;
 }
