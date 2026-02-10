@@ -1,8 +1,22 @@
 <!doctype html>
-<html lang="en" data-theme="hamlindigo">
+<html lang="en" data-theme="hamlindigo" class="dark">
 	<head>
 		<meta charset="utf-8" />
 		<meta name="viewport" content="width=device-width, initial-scale=1" />
+		<script>
+			(function() {
+				const stored = localStorage.getItem('theme');
+				const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+				const isDark = stored ? stored === 'dark' : prefersDark;
+				if (isDark) {
+					document.documentElement.classList.add('dark');
+					document.documentElement.setAttribute('data-theme', 'hamlindigo');
+				} else {
+					document.documentElement.classList.remove('dark');
+					document.documentElement.setAttribute('data-theme', 'pine');
+				}
+			})();
+		</script>
 		%sveltekit.head%
 	</head>
 	<body data-sveltekit-preload-data="hover">

@@ -1,6 +1,8 @@
 <script>
-  import heroGif from "$lib/assets/clouds2.gif";
+  import heroGifDark from "$lib/assets/clouds2.gif";
+  import heroGifLight from "$lib/assets/clouds3.gif";
   import SEO from "$lib/components/SEO.svelte";
+  import { isDark } from "$lib/stores/theme";
 </script>
 
 <svelte:head>
@@ -23,7 +25,7 @@
 <section
   class="flex flex-col items-center justify-center text-center min-h-0 gap-4 md:gap-6"
 >
-  <img src={heroGif} alt="Angel's Rest" class="max-w-full w-200 rounded-md" />
+  <img src={$isDark ? heroGifDark : heroGifLight} alt="Angel's Rest" class="max-w-full w-200 rounded-md" />
 
   <p class="text-surface-400 text-sm tracking-[0.2em] lowercase">
     artist in residence[midwest]

@@ -3,6 +3,7 @@
 @import '@skeletonlabs/skeleton';
 @import '@skeletonlabs/skeleton-svelte';
 @import '@skeletonlabs/skeleton/themes/hamlindigo';
+@import '@skeletonlabs/skeleton/themes/pine';
 
 /* ---- Custom overrides ---- */
 
@@ -32,6 +33,13 @@ html {
 body {
 	line-height: 1.6;
 	min-height: 100vh;
+	background-color: var(--body-background-color);
+	color: var(--base-font-color);
+}
+
+.dark body {
+	background-color: var(--body-background-color-dark);
+	color: var(--base-font-color-dark);
 }
 
 a {
@@ -57,4 +65,29 @@ h1, h2, h3, h4, h5, h6 {
 
 ::selection {
 	background: rgba(255, 255, 255, 0.15);
+}
+
+/* Override pine theme fonts to match hamlindigo */
+[data-theme='pine'] {
+	--base-font-family: Seravek, 'Gill Sans Nova', Ubuntu, Calibri, 'DejaVu Sans', source-sans-pro, sans-serif;
+	--heading-font-family: 'Iowan Old Style', 'Palatino Linotype', 'URW Palladio L', P052, serif;
+	--heading-font-weight: bold;
+}
+
+/* Desktop nav styling for light mode */
+@media (min-width: 768px) {
+	html:not(.dark) nav a {
+		color: #111827 !important; /* gray-900 */
+	}
+}
+
+/* Bottom nav styling for light mode */
+html:not(.dark) .bottom-nav {
+	background-color: var(--color-surface-50) !important;
+}
+
+html:not(.dark) .bottom-nav a,
+html:not(.dark) .bottom-nav span,
+html:not(.dark) .bottom-nav svg {
+	color: var(--color-surface-400) !important;
 }
