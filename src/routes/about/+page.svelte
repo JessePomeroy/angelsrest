@@ -1,22 +1,26 @@
 <script lang="ts">
   import SEO from "$lib/components/SEO.svelte";
+  import AsciiImage from "$lib/components/AsciiImage.svelte";
   import portrait from "$lib/assets/DSCF7533.jpg";
   import { isDark } from "$lib/stores/theme";
 
   let { data } = $props();
-  
+
   /**
    * Theme-aware form text color
-   * 
+   *
    * Tailwind's dark: variant wasn't working reliably with !text-black,
    * so we use a CSS variable that updates reactively when the theme changes.
-   * 
+   *
    * The --form-text-color variable is applied via inline styles on form elements.
    * - Light mode: #000000 (black)
    * - Dark mode: #fafafa (near-white)
    */
   $effect(() => {
-    document.documentElement.style.setProperty('--form-text-color', $isDark ? '#fafafa' : '#000000');
+    document.documentElement.style.setProperty(
+      "--form-text-color",
+      $isDark ? "#fafafa" : "#000000",
+    );
   });
 
   let status = $state("idle"); // 'idle' | 'sending' | 'success' | 'error'
@@ -104,18 +108,30 @@
   <div
     class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8 lg:gap-12 max-w-[1400px]"
   >
-    <!-- Portrait - card style matching product images -->
+    <!-- Portrait - card style matching product images, ASCII on hover -->
     <div class="h-fit">
-      <div class="bg-surface-500/10 border border-surface-500/20 p-3 rounded-lg inline-block">
-        <div class="aspect-[3/4] w-64 md:w-72 lg:w-80 overflow-hidden rounded-md">
+      <div
+        class="bg-surface-500/10 border border-surface-500/20 p-3 rounded-lg inline-block"
+      >
+        <div
+          class="aspect-[3/4] w-64 md:w-72 lg:w-80 overflow-hidden rounded-md"
+        >
           {#if data.portraitUrl}
-            <img
+            <AsciiImage
               src={data.portraitUrl}
               alt={data.about?.name}
               class="w-full h-full object-cover"
+              resolution={12}
+              scaleAdjust={1.0}
             />
           {:else}
-            <img src={portrait} alt="Portrait" class="w-full h-full object-cover" />
+            <AsciiImage
+              src={portrait}
+              alt="Portrait"
+              class="w-full h-full object-cover"
+              resolution={14}
+              scaleAdjust={1.0}
+            />
           {/if}
         </div>
       </div>
@@ -157,7 +173,8 @@
             name="name"
             placeholder="your name"
             required
-            style="color: var(--form-text-color);" class="bg-white/5 border border-white/10 text-sm rounded-lg px-3 py-2.5 shadow-sm placeholder:text-surface-400/70 focus:outline-none focus:border-surface-400 focus:ring-2 focus:ring-white/10 transition-all w-full"
+            style="color: var(--form-text-color);"
+            class="bg-white/5 border border-white/10 text-sm rounded-lg px-3 py-2.5 shadow-sm placeholder:text-surface-400/70 focus:outline-none focus:border-surface-400 focus:ring-2 focus:ring-white/10 transition-all w-full"
           />
         </div>
         <div class="flex flex-col gap-2.5">
@@ -168,7 +185,8 @@
             name="email"
             placeholder="you@example.com"
             required
-            style="color: var(--form-text-color);" class="bg-white/5 border border-white/10 text-sm rounded-lg px-3 py-2.5 shadow-sm placeholder:text-surface-400/70 focus:outline-none focus:border-surface-400 focus:ring-2 focus:ring-white/10 transition-all w-full"
+            style="color: var(--form-text-color);"
+            class="bg-white/5 border border-white/10 text-sm rounded-lg px-3 py-2.5 shadow-sm placeholder:text-surface-400/70 focus:outline-none focus:border-surface-400 focus:ring-2 focus:ring-white/10 transition-all w-full"
           />
         </div>
         <div class="flex flex-col gap-2.5">
@@ -178,7 +196,8 @@
             id="subject"
             name="subject"
             placeholder="what's this about ?"
-            style="color: var(--form-text-color);" class="bg-white/5 border border-white/10 text-sm rounded-lg px-3 py-2.5 shadow-sm placeholder:text-surface-400/70 focus:outline-none focus:border-surface-400 focus:ring-2 focus:ring-white/10 transition-all w-full"
+            style="color: var(--form-text-color);"
+            class="bg-white/5 border border-white/10 text-sm rounded-lg px-3 py-2.5 shadow-sm placeholder:text-surface-400/70 focus:outline-none focus:border-surface-400 focus:ring-2 focus:ring-white/10 transition-all w-full"
           />
         </div>
         <div class="flex flex-col gap-2.5">
@@ -189,7 +208,8 @@
             rows="4"
             placeholder="your message..."
             required
-            style="color: var(--form-text-color);" class="bg-white/5 border border-white/10 text-sm rounded-lg px-3 py-2.5 shadow-sm placeholder:text-surface-400/70 focus:outline-none focus:border-surface-400 focus:ring-2 focus:ring-white/10 transition-all w-full resize-y"
+            style="color: var(--form-text-color);"
+            class="bg-white/5 border border-white/10 text-sm rounded-lg px-3 py-2.5 shadow-sm placeholder:text-surface-400/70 focus:outline-none focus:border-surface-400 focus:ring-2 focus:ring-white/10 transition-all w-full resize-y"
           ></textarea>
         </div>
         <button
@@ -210,9 +230,7 @@
       </form>
 
       <!-- Book a call section -->
-      <div
-        class="mt-20 pt-10 border-t border-gray-300 dark:border-white/20"
-      >
+      <div class="mt-20 pt-10 border-t border-gray-300 dark:border-white/20">
         <h2 class="mb-2 text-lg">
           book a session -or- prefer to schedule a call/meeting ?
         </h2>

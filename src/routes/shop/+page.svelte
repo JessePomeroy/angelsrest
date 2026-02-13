@@ -12,7 +12,7 @@
   let filteredProducts = $derived(
     activeCategory === "all"
       ? data.products
-      : data.products.filter((product) => product.category === activeCategory),
+      : data.products.filter((product: { category: string }) => product.category === activeCategory),
   );
 
   const categories = [

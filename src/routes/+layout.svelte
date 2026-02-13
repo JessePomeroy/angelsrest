@@ -13,6 +13,7 @@
   import type { Snippet } from "svelte";
   import { page } from "$app/stores";
   import { injectAnalytics } from "@vercel/analytics/sveltekit";
+  import { onMount } from "svelte";
   
   // Header gif for non-homepage routes
   import headerGif from "$lib/assets/ponyolovesham.gif";
@@ -23,15 +24,28 @@
   import Footer from "$lib/components/Footer.svelte";
   import ThemeSwitcher from "$lib/components/ThemeSwitcher.svelte";
   
+  // Time-aware theming
+  import { timeTheme } from "$lib/stores/timeTheme.svelte";
+  
   import "$lib/styles/global.css";
 
   let { children }: { children: Snippet } = $props();
 
   // Vercel analytics
   injectAnalytics();
+  
+  // Keep time period in sync reactively
+  $effect(() => {
+    // This runs whenever timeTheme.period changes
+    timeTheme.apply();
+  });
+  
+  onMount(() => {
+    return () => timeTheme.destroy();
+  });
 </script>
 
-<div class="flex flex-col min-h-screen">
+<div class="flex flex-col min-h-screen relative z-10">
   <!-- Desktop navigation (hidden on mobile) -->
   <Nav />
   

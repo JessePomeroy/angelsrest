@@ -8,9 +8,15 @@
 <script lang="ts">
   import { urlFor } from "$lib/sanity/client";
 
-  export let src: any;
-  export let alt: string = "";
-  export let width: number = 800;
+  let {
+    src,
+    alt = "",
+    width = 800
+  }: {
+    src: any;
+    alt?: string;
+    width?: number;
+  } = $props();
 </script>
 
 {#if src?.asset?._ref}

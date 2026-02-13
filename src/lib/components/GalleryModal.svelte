@@ -12,11 +12,11 @@
 
   // Props from parent component
   // - images: array of image objects with thumbnail, full, and optional alt
-  // - currentIndex: which image to show initially (renamed to initialIndex to capture once)
+  // - currentIndex: which image to show initially
   // - onClose: callback to close the modal
   let {
     images = [],
-    currentIndex: initialIndex = 0,
+    currentIndex = 0,
     onClose,
   }: {
     images: any[];
@@ -25,8 +25,13 @@
   } = $props();
 
   // Local state for tracking current image
-  // We capture initialIndex once — the modal manages its own navigation from there
-  let index = $state(initialIndex);
+  // Initialized via $effect to sync with currentIndex prop
+  let index = $state(0);
+  
+  // Sync with currentIndex when the prop changes (e.g., modal reopened on different image)
+  $effect(() => {
+    index = currentIndex;
+  });
   let offsetX = $state(0); // Current drag offset
   let isDragging = $state(false);
   let startX = 0;

@@ -21,6 +21,17 @@
 				
 				// Always use hamlindigo
 				document.documentElement.setAttribute('data-theme', 'hamlindigo');
+				
+				// Time-aware theming: set period based on current hour
+				const hour = new Date().getHours();
+				let period = 'afternoon'; // default
+				if (hour >= 5 && hour < 8) period = 'dawn';
+				else if (hour >= 8 && hour < 12) period = 'morning';
+				else if (hour >= 12 && hour < 17) period = 'afternoon';
+				else if (hour >= 17 && hour < 20) period = 'golden';
+				else if (hour >= 20 && hour < 22) period = 'evening';
+				else period = 'night';
+				document.documentElement.setAttribute('data-time-period', period);
 			})();
 		</script>
 		%sveltekit.head%

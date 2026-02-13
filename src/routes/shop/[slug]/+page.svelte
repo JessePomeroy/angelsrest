@@ -196,9 +196,9 @@
   - URL matches the current page for accuracy
 -->
 <SEO 
-  title="{data.product.title} | shop | angel's rest"
-  description="{data.product.description || `${data.product.title} - Available in the Angels Rest shop`}"
-  url="https://angelsrest.online/shop/{data.product.slug}"
+  title={`${data.product.title} | shop | angel's rest`}
+  description={data.product.description || `${data.product.title} - Available in the Angels Rest shop`}
+  url={`https://angelsrest.online/shop/${data.product.slug}`}
 />
 
 <!--
