@@ -104,17 +104,21 @@
   <div
     class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8 lg:gap-12 max-w-[1400px]"
   >
-    <!-- Portrait -->
-    <div class="aspect-[3/4] bg-surface-500/20 border border-surface-500/20">
-      {#if data.portraitUrl}
-        <img
-          src={data.portraitUrl}
-          alt={data.about?.name}
-          class="w-full h-full object-cover"
-        />
-      {:else}
-        <img src={portrait} alt="Portrait" class="w-full h-full object-cover" />
-      {/if}
+    <!-- Portrait - card style matching product images -->
+    <div class="h-fit">
+      <div class="bg-surface-500/10 border border-surface-500/20 p-3 rounded-lg inline-block">
+        <div class="aspect-[3/4] w-64 md:w-72 lg:w-80 overflow-hidden rounded-md">
+          {#if data.portraitUrl}
+            <img
+              src={data.portraitUrl}
+              alt={data.about?.name}
+              class="w-full h-full object-cover"
+            />
+          {:else}
+            <img src={portrait} alt="Portrait" class="w-full h-full object-cover" />
+          {/if}
+        </div>
+      </div>
     </div>
 
     <!-- Bio -->
@@ -190,7 +194,7 @@
         </div>
         <button
           type="submit"
-          class="mt-2 mb-6 px-4 py-3 text-sm font-medium lowercase tracking-wide bg-white/5 border border-white/10 rounded-lg hover:bg-white/10 transition-all cursor-pointer"
+          class="mt-2 mb-6 px-4 py-3 text-sm font-medium lowercase tracking-wide bg-white/5 dark:bg-white/5 border border-gray-300 dark:border-white/10 rounded-lg hover:bg-gray-100 dark:hover:bg-white/10 transition-all cursor-pointer"
           style="color: var(--form-text-color);"
           disabled={status === "sending"}
         >
@@ -207,7 +211,7 @@
 
       <!-- Book a call section -->
       <div
-        style="margin-top: 80px; padding-top: 40px; border-top: 1px solid rgba(255,255,255,0.2);"
+        class="mt-20 pt-10 border-t border-gray-300 dark:border-white/20"
       >
         <h2 class="mb-2 text-lg">
           book a session -or- prefer to schedule a call/meeting ?
@@ -217,7 +221,7 @@
         </p>
         <button
           type="button"
-          class="w-full px-4 py-3 text-sm font-medium lowercase tracking-wide bg-white/5 border border-white/10 rounded-lg hover:bg-white/10 transition-all cursor-pointer"
+          class="w-full px-4 py-3 text-sm font-medium lowercase tracking-wide bg-white/5 dark:bg-white/5 border border-gray-300 dark:border-white/10 rounded-lg hover:bg-gray-100 dark:hover:bg-white/10 transition-all cursor-pointer"
           style="color: var(--form-text-color);"
           data-cal-link="jesse-s1wmio/photosession"
           data-cal-namespace="photosession"

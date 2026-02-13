@@ -7,9 +7,10 @@ This guide explains how Tailwind CSS and global styles work together in the Ange
 ## Project Setup
 
 The project uses:
-- **Tailwind CSS v4** — utility-first CSS framework
+- **Tailwind CSS v4** — utility-first CSS framework (via `@tailwindcss/vite`)
 - **Skeleton UI** — component library built on Tailwind
-- **Global CSS** — custom overrides and imports
+- **Hamlindigo Theme** — single theme for both light and dark modes
+- **Global CSS** — custom gradients, typography, and imports
 
 All styles flow through `src/lib/styles/global.css`.
 
@@ -20,35 +21,60 @@ All styles flow through `src/lib/styles/global.css`.
 ### Structure
 
 ```css
-/* 1. Framework imports */
+/* 1. Tailwind import */
 @import 'tailwindcss';
+
+/* 2. Tailwind v4: Enable class-based dark mode */
+@custom-variant dark (&:where(.dark, .dark *));
+
+/* 3. Skeleton imports */
 @import '@skeletonlabs/skeleton';
 @import '@skeletonlabs/skeleton-svelte';
 
-/* 2. Theme imports */
+/* 4. Single theme for both light and dark modes */
 @import '@skeletonlabs/skeleton/themes/hamlindigo';
-@import '@skeletonlabs/skeleton/themes/pine';
 
-/* 3. Base resets */
-*, *::before, *::after { ... }
-body { ... }
+/* 5. Base resets */
+*, *::before, *::after { box-sizing: border-box; }
 
-/* 4. Theme customizations */
-[data-theme='pine'] { ... }
+/* 6. Body styling with gradient backgrounds */
+body {
+  text-transform: lowercase;
+  background-image: radial-gradient(...);
+}
 
-/* 5. Accessibility fixes */
-html:not(.dark) nav a { ... }
+html.dark body {
+  background-image: radial-gradient(...);
+}
+
+/* 7. Typography customizations */
+h1, h2, h3, h4, h5, h6 { font-weight: 400; }
+
+/* 8. Responsive adjustments */
+@media (min-width: 768px) { ... }
 ```
 
-### Why We Need It
+### Key Design Decisions
 
-| Purpose | Why Global CSS? |
-|---------|-----------------|
-| Import Tailwind | Required entry point |
-| Import Skeleton themes | Can't import in components |
-| CSS variable overrides | Theme-level customizations |
-| Complex selectors | `:not()`, `[data-theme]`, etc. |
-| Third-party component styling | Can't add classes to Skeleton internals |
+| Decision | Reason |
+|----------|--------|
+| Single hamlindigo theme | Consistent colors, simpler code |
+| Global lowercase text | Modern aesthetic |
+| Radial gradient backgrounds | Subtle depth without distraction |
+| Light heading weights | Elegant, minimal feel |
+| Mobile-first gradients | Subtler on small screens |
+
+---
+
+## Tailwind v4 Dark Mode
+
+Tailwind v4 defaults to `@media (prefers-color-scheme: dark)`. We override this to use class-based dark mode:
+
+```css
+@custom-variant dark (&:where(.dark, .dark *));
+```
+
+This enables the `dark:` prefix to work when `.dark` class is on `<html>`.
 
 ---
 
@@ -68,7 +94,7 @@ html:not(.dark) nav a { ... }
 
 ✅ Dark mode variants
 ```svelte
-<p class="text-gray-600 dark:text-surface-400">
+<p class="text-gray-600 dark:text-gray-300">
 ```
 
 ✅ Hover/focus states
@@ -88,64 +114,114 @@ html:not(.dark) nav a { ... }
 @import 'tailwindcss';
 ```
 
-✅ Overriding CSS variables
+✅ Complex selectors
 ```css
-[data-theme='pine'] {
-  --base-font-family: system-ui, sans-serif;
+html.dark body { ... }
+```
+
+✅ Background gradients (can't do radial gradients easily with Tailwind)
+```css
+body {
+  background-image: radial-gradient(ellipse 80% 60% at 30% 20%, ...);
 }
 ```
 
-✅ Complex selectors that Tailwind can't express
+✅ Global text transformations
 ```css
-html:not(.dark) .bottom-nav a { ... }
+body {
+  text-transform: lowercase;
+}
 ```
 
-✅ Styling third-party component internals
+✅ Overriding framework styles
 ```css
-/* Can't add classes to Skeleton's internal markup */
-.bottom-nav [data-navigation] { ... }
-```
-
-✅ Base element resets
-```css
-img {
-  max-width: 100%;
-  display: block;
+.btn {
+  text-transform: lowercase !important;  /* Override Skeleton's uppercase */
 }
 ```
 
 ---
 
-## Tailwind Basics
+## Color Patterns
 
-### Utility Classes
+### Explicit Tailwind Colors (Recommended for Consistency)
 
-Tailwind provides single-purpose utility classes:
+For reliable light/dark mode styling, use explicit Tailwind colors with dark variants:
 
 ```svelte
-<!-- Spacing -->
-<div class="p-4 m-2 gap-8">      <!-- padding, margin, gap -->
-
-<!-- Flexbox -->
-<div class="flex items-center justify-between">
-
-<!-- Grid -->
-<div class="grid grid-cols-3 gap-4">
-
-<!-- Typography -->
-<p class="text-sm font-bold tracking-wide lowercase">
-
-<!-- Colors -->
-<div class="bg-surface-900 text-surface-50 border-surface-500">
-
-<!-- Sizing -->
-<div class="w-full max-w-[1400px] h-screen">
-
-<!-- Borders -->
-<div class="rounded-xl border border-surface-500/20">
+<div class="bg-gray-100 dark:bg-gray-800">
+<p class="text-gray-700 dark:text-gray-300">
+<span class="text-gray-500 dark:text-gray-400">
 ```
 
-### Responsive Prefixes
+### Skeleton Design Tokens
+
+Skeleton provides semantic color classes that automatically adapt:
+
+```svelte
+<!-- Responsive tokens (auto light/dark) -->
+<div class="text-surface-600-300-token">
+<div class="bg-surface-100-800-token">
+
+<!-- Semi-transparent backgrounds -->
+<div class="bg-surface-500/10 border border-surface-500/20">
+```
+
+### Skeleton Button Variants
+
+```svelte
+<button class="btn variant-filled-primary">Primary filled</button>
+<button class="btn variant-soft-surface">Soft surface</button>
+<button class="btn variant-ghost-surface">Ghost</button>
+```
+
+---
+
+## Common Patterns
+
+### Centered Container
+```svelte
+<div class="max-w-[1400px] mx-auto px-4 md:px-8">
+```
+
+### Flex Center
+```svelte
+<div class="flex items-center justify-center">
+```
+
+### Card (Matching Site Style)
+```svelte
+<div class="bg-surface-500/10 border border-surface-500/20 rounded-lg p-4 hover:border-surface-400/40 transition-all">
+```
+
+### Hidden/Shown by Breakpoint
+```svelte
+<!-- Mobile only -->
+<div class="md:hidden">
+
+<!-- Desktop only -->
+<div class="hidden md:block">
+```
+
+### Grid Layouts
+```svelte
+<!-- Two columns on mobile, three on desktop -->
+<div class="grid grid-cols-2 md:grid-cols-3 gap-4">
+
+<!-- Masonry-style columns -->
+<div class="columns-2 md:columns-3 gap-4">
+```
+
+### Transitions
+```svelte
+<a class="transition-colors duration-200">
+<div class="transition-opacity duration-300">
+<button class="transition-all duration-200">
+```
+
+---
+
+## Responsive Prefixes
 
 Mobile-first breakpoints:
 
@@ -159,9 +235,6 @@ Mobile-first breakpoints:
 | `2xl:` | 1536px | Large screens |
 
 ```svelte
-<!-- Hidden on mobile, flex on desktop -->
-<nav class="hidden md:flex">
-
 <!-- Different padding per breakpoint -->
 <main class="px-2 md:px-8 lg:px-16">
 
@@ -169,17 +242,20 @@ Mobile-first breakpoints:
 <div class="flex flex-col md:flex-row">
 ```
 
-### Dark Mode
+---
 
-Use the `dark:` prefix for dark mode styles:
+## Important Modifier
+
+Prefix with `!` to add `!important`:
 
 ```svelte
-<div class="bg-white dark:bg-surface-900">
-<p class="text-gray-900 dark:text-surface-50">
-<a class="text-gray-600 hover:text-gray-900 dark:text-surface-400 dark:hover:text-surface-50">
+<div class="!mx-auto">  <!-- margin: auto !important -->
+<div class="!px-6">     <!-- padding-x: 1.5rem !important -->
 ```
 
-### Arbitrary Values
+---
+
+## Arbitrary Values
 
 Use brackets for custom values:
 
@@ -189,14 +265,7 @@ Use brackets for custom values:
 <div class="grid-cols-[1fr_2fr_1fr]">
 <div class="text-[13px]">
 <div class="bg-[#1a1a2e]">
-```
-
-### Important Modifier
-
-Prefix with `!` to add `!important`:
-
-```svelte
-<div class="!mx-auto">  <!-- margin-left: auto !important; margin-right: auto !important; -->
+<div class="tracking-[0.15em]">
 ```
 
 ---
@@ -220,104 +289,58 @@ surface-900  ████
 surface-950  ████  darkest
 ```
 
-### Usage
-```svelte
-<div class="bg-surface-900 text-surface-50 border-surface-500/20">
-```
-
-### Other Color Scales
-- `primary-*` — brand color
+### Semantic Colors
+- `primary-*` — brand color (indigo in hamlindigo)
 - `secondary-*` — accent color
 - `tertiary-*` — third accent
-- `success-*` — green
+- `success-*` — green (for positive states)
 - `warning-*` — yellow/orange
-- `error-*` — red
-
----
-
-## Common Patterns
-
-### Centered Container
-```svelte
-<div class="max-w-[1400px] mx-auto px-4 md:px-8">
-```
-
-### Flex Center
-```svelte
-<div class="flex items-center justify-center">
-```
-
-### Card
-```svelte
-<div class="bg-surface-800 rounded-xl p-6 border border-surface-500/20">
-```
-
-### Button
-```svelte
-<a class="btn preset-filled-surface-50 px-8 py-3 text-xs tracking-wider uppercase">
-```
-
-### Hidden/Shown by Breakpoint
-```svelte
-<!-- Mobile only -->
-<div class="md:hidden">
-
-<!-- Desktop only -->
-<div class="hidden md:block">
-<!-- or -->
-<div class="hidden md:flex">
-```
-
-### Transitions
-```svelte
-<a class="transition-colors duration-200">
-<div class="transition-opacity duration-300">
-<button class="transition-all duration-200">
-```
+- `error-*` — red (for errors, out of stock)
 
 ---
 
 ## Debugging Tips
 
-### See What Classes Are Applied
-Use browser DevTools → Elements panel → look at the element's classes
+### Classes Not Applying?
 
-### Tailwind Not Working?
-1. Check if class name is correct (typos)
-2. Check if it's being overridden (use `!important` modifier)
-3. Check if the value exists (arbitrary values need brackets)
-4. Check breakpoint logic (mobile-first!)
+1. **Check spelling** — typos are common
+2. **Check specificity** — use `!important` modifier if needed
+3. **Check cascade** — global CSS might override
+4. **Check dark mode** — ensure `dark:` variant is correct
 
 ### Dark Mode Not Working?
-1. Check if `dark` class is on `<html>`
-2. Check if using `dark:` prefix correctly
-3. Check CSS specificity (global css might override)
 
-### Tailwind dark: Variant Not Working?
+1. Check if `dark` class is on `<html>` element
+2. Check if `@custom-variant dark` is in global.css
+3. Check CSS specificity
 
-Sometimes Tailwind's `dark:` variant fails (e.g., `!text-black dark:!text-white` not applying).
-Use a reactive CSS variable as a workaround:
+### Skeleton Classes Not Working?
+
+Some Skeleton classes have built-in styles that override Tailwind:
 
 ```svelte
-<script>
-  import { isDark } from "$lib/stores/theme";
-  
-  // Set CSS variable reactively when theme changes
-  $effect(() => {
-    document.documentElement.style.setProperty(
-      '--my-text-color', 
-      $isDark ? '#fafafa' : '#000000'
-    );
-  });
-</script>
-
-<!-- Apply via inline style -->
-<button style="color: var(--my-text-color);">
-  Click me
+<!-- Skeleton's btn has uppercase, override with inline style -->
+<button 
+  class="btn variant-soft-surface" 
+  style="text-transform: lowercase !important;"
+>
+  lowercase button
 </button>
 ```
 
-This approach is used on the **About page** (`src/routes/about/+page.svelte`) for form elements using the `--form-text-color` variable.
+---
+
+## File Organization
+
+```
+src/lib/styles/
+└── global.css          # All global styles in one file
+
+No separate files for:
+- variables (use Skeleton's built-in CSS variables)
+- resets (included in global.css)
+- themes (single theme import)
+```
 
 ---
 
@@ -325,4 +348,5 @@ This approach is used on the **About page** (`src/routes/about/+page.svelte`) fo
 
 - [Tailwind CSS Docs](https://tailwindcss.com/docs)
 - [Skeleton UI Docs](https://www.skeleton.dev/docs)
+- [Hamlindigo Theme Reference](https://www.skeleton.dev/docs/themes)
 - [Tailwind Cheat Sheet](https://tailwindcomponents.com/cheatsheet/)
