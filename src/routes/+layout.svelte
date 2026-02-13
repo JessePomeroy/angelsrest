@@ -7,9 +7,6 @@
   - Mobile theme switcher (only on homepage)
   - Mobile bottom nav with spacer
   - Footer (desktop only)
-  
-  Theme-aware elements:
-  - Header gif switches between ponyolovesham (dark) / ponyolovesham2 (light)
 -->
 
 <script lang="ts">
@@ -17,18 +14,14 @@
   import { page } from "$app/stores";
   import { injectAnalytics } from "@vercel/analytics/sveltekit";
   
-  // Theme-aware header gifs for non-homepage routes
-  import headerGifDark from "$lib/assets/ponyolovesham.gif";
-  import headerGifLight from "$lib/assets/ponyolovesham2.gif";
+  // Header gif for non-homepage routes
+  import headerGif from "$lib/assets/ponyolovesham.gif";
   
   // Layout components
   import Nav from "$lib/components/Nav.svelte";
   import BottomNav from "$lib/components/BottomNav.svelte";
   import Footer from "$lib/components/Footer.svelte";
   import ThemeSwitcher from "$lib/components/ThemeSwitcher.svelte";
-  
-  // Theme store for reactive gif switching
-  import { isDark } from "$lib/stores/theme";
   
   import "$lib/styles/global.css";
 
@@ -45,8 +38,7 @@
   <!-- Mobile header - only shown on non-homepage routes -->
   {#if $page.url.pathname !== "/"}
     <div class="md:hidden">
-      <!-- Theme-aware gif: dark = ponyolovesham, light = ponyolovesham2 -->
-      <img src={$isDark ? headerGifDark : headerGifLight} alt="" class="w-full" />
+      <img src={headerGif} alt="" class="w-full" />
     </div>
     <div class="h-4 md:hidden"></div>
     <div class="hidden md:block h-6"></div>

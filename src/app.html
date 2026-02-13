@@ -1,29 +1,26 @@
 <!doctype html>
-<html lang="en" data-theme="hamlindigo" class="dark">
+<html lang="en" data-theme="hamlindigo">
 	<head>
 		<meta charset="utf-8" />
 		<meta name="viewport" content="width=device-width, initial-scale=1" />
 		<!--
-			Theme initialization script (runs before page render)
-			
-			Prevents flash of wrong theme by setting the correct theme immediately.
-			Checks localStorage first, then falls back to system preference.
-			
-			- Dark mode: class="dark" + data-theme="hamlindigo"
-			- Light mode: no dark class + data-theme="pine"
+			Clean theme initialization - hamlindigo for both modes
+			Only toggles the 'dark' class for light/dark switching
 		-->
 		<script>
 			(function() {
 				const stored = localStorage.getItem('theme');
 				const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
 				const isDark = stored ? stored === 'dark' : prefersDark;
+				
 				if (isDark) {
 					document.documentElement.classList.add('dark');
-					document.documentElement.setAttribute('data-theme', 'hamlindigo');
 				} else {
 					document.documentElement.classList.remove('dark');
-					document.documentElement.setAttribute('data-theme', 'pine');
 				}
+				
+				// Always use hamlindigo
+				document.documentElement.setAttribute('data-theme', 'hamlindigo');
 			})();
 		</script>
 		%sveltekit.head%

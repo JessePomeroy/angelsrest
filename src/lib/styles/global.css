@@ -1,15 +1,17 @@
 /* ============================================
-   Global Styles - Angel's Rest
+   Global Styles - Angel's Rest (Fresh Start)
    ============================================ */
 
 @import 'tailwindcss';
 
+/* Tailwind v4: Enable class-based dark mode */
+@custom-variant dark (&:where(.dark, .dark *));
+
 @import '@skeletonlabs/skeleton';
 @import '@skeletonlabs/skeleton-svelte';
 
-/* Skeleton themes - hamlindigo (dark) and pine (light) */
+/* Single theme: hamlindigo for both light and dark modes */
 @import '@skeletonlabs/skeleton/themes/hamlindigo';
-@import '@skeletonlabs/skeleton/themes/pine';
 
 /* ---- Base Resets ---- */
 
@@ -19,13 +21,12 @@
 	box-sizing: border-box;
 }
 
-/* Remove default margins/padding on common elements */
+/* Remove default margins/padding */
 body, nav, ul, ol, p, h1, h2, h3, h4, h5, h6 {
 	margin: 0;
 	padding: 0;
 }
 
-/* Remove default list styles */
 ul, ol {
 	list-style: none;
 }
@@ -35,31 +36,89 @@ html {
 	-moz-osx-font-smoothing: grayscale;
 }
 
-/* ---- Theme-aware Body Styles ---- */
+/* ---- Core Theme Setup ---- */
 
-/* Light mode body colors (uses theme CSS variables) */
 body {
 	line-height: 1.6;
 	min-height: 100vh;
-	background-color: var(--body-background-color);
-	color: var(--base-font-color);
+	text-transform: lowercase;
+	background-color: #f1f5f9 !important;
+	background-image: 
+		radial-gradient(
+			ellipse 80% 60% at 30% 20%,
+			rgba(99, 102, 241, 0.08) 0%,
+			transparent 50%
+		),
+		radial-gradient(
+			ellipse 60% 80% at 80% 70%,
+			rgba(139, 92, 246, 0.06) 0%,
+			transparent 50%
+		) !important;
+	background-attachment: fixed;
 }
 
-/* Dark mode body colors */
-.dark body {
-	background-color: var(--body-background-color-dark);
-	color: var(--base-font-color-dark);
+html.dark body {
+	background-color: #1e293b !important;
+	background-image: 
+		radial-gradient(
+			ellipse 80% 60% at 30% 20%,
+			rgba(129, 140, 248, 0.12) 0%,
+			transparent 50%
+		),
+		radial-gradient(
+			ellipse 60% 80% at 80% 70%,
+			rgba(167, 139, 250, 0.08) 0%,
+			transparent 50%
+		) !important;
+	background-attachment: fixed;
 }
 
-/* ---- Base Element Styles ---- */
+/* Desktop: increase gradient intensity */
+@media (min-width: 768px) {
+	body {
+		background-image: 
+			radial-gradient(
+				ellipse 80% 60% at 30% 20%,
+				rgba(99, 102, 241, 0.18) 0%,
+				transparent 50%
+			),
+			radial-gradient(
+				ellipse 60% 80% at 80% 70%,
+				rgba(139, 92, 246, 0.14) 0%,
+				transparent 50%
+			) !important;
+	}
 
+	html.dark body {
+		background-image: 
+			radial-gradient(
+				ellipse 80% 60% at 30% 20%,
+				rgba(129, 140, 248, 0.3) 0%,
+				transparent 50%
+			),
+			radial-gradient(
+				ellipse 60% 80% at 80% 70%,
+				rgba(167, 139, 250, 0.22) 0%,
+				transparent 50%
+			) !important;
+	}
+}
+
+/* Reset heading weights to normal */
+h1, h2, h3, h4, h5, h6 {
+	font-weight: 400;
+	letter-spacing: -0.02em;
+	line-height: 1.2;
+}
+
+/* Basic link and image styles */
 a {
 	text-decoration: none;
 	transition: opacity 0.2s ease;
 }
 
 a:hover {
-	opacity: 0.7;
+	opacity: 0.8;
 }
 
 img {
@@ -68,65 +127,6 @@ img {
 	display: block;
 }
 
-h1, h2, h3, h4, h5, h6 {
-	font-weight: 300;
-	letter-spacing: -0.02em;
-	line-height: 1.2;
-}
-
 ::selection {
-	background: rgba(255, 255, 255, 0.15);
-}
-
-/* ============================================
-   Theme Customizations
-   ============================================ */
-
-/*
- * Pine theme font override
- * Pine uses serif fonts by default, but we want consistency with hamlindigo's
- * sans-serif body / serif heading combination across both themes
- */
-[data-theme='pine'] {
-	--base-font-family: Seravek, 'Gill Sans Nova', Ubuntu, Calibri, 'DejaVu Sans', source-sans-pro, sans-serif;
-	--heading-font-family: 'Iowan Old Style', 'Palatino Linotype', 'URW Palladio L', P052, serif;
-	--heading-font-weight: bold;
-}
-
-/* ============================================
-   Light Mode Accessibility Fixes
-   ============================================ */
-
-/*
- * Desktop nav - force dark text in light mode
- * Pine theme's surface colors don't have enough contrast,
- * so we use explicit gray values
- */
-@media (min-width: 768px) {
-	html:not(.dark) nav a {
-		color: #111827 !important; /* gray-900 */
-	}
-}
-
-/*
- * Mobile bottom nav - light mode styling
- * Lighter background and muted text for a softer look
- */
-html:not(.dark) .bottom-nav {
-	background-color: var(--color-surface-50) !important;
-}
-
-html:not(.dark) .bottom-nav a,
-html:not(.dark) .bottom-nav span,
-html:not(.dark) .bottom-nav svg {
-	color: var(--color-surface-400) !important;
-}
-
-/*
- * About page form - force dark text in light mode
- */
-html:not(.dark) form button,
-html:not(.dark) form input,
-html:not(.dark) form textarea {
-	color: #000 !important;
+	background: rgba(var(--color-primary-500) / 0.3);
 }

@@ -1,48 +1,89 @@
 <script lang="ts">
+  /**
+   * Shop Index Page - Clean Implementation
+   * Using proper Skeleton design tokens with hamlindigo theme
+   */
   import SEO from "$lib/components/SEO.svelte";
-  // TODO: Shop functionality coming later
-  // import { client, urlFor } from '$lib/sanity/client';
-  // const query = `*[_type == "product" && inStock == true] | order(_createdAt desc) { _id, title, slug, images, price, category }`;
+
+  let { data } = $props();
+
+  let activeCategory = $state("all");
+
+  let filteredProducts = $derived(
+    activeCategory === "all"
+      ? data.products
+      : data.products.filter((product) => product.category === activeCategory),
+  );
+
+  const categories = [
+    { label: "All", value: "all" },
+    { label: "Prints", value: "prints" },
+    { label: "Postcards", value: "postcards" },
+    { label: "Tapestries", value: "tapestries" },
+    { label: "Digital", value: "digital" },
+    { label: "Merchandise", value: "merchandise" },
+  ];
 </script>
 
-<SEO 
+<SEO
   title="shop | angel's rest"
-  description="Fine art photography prints, zines, and more. Coming soon."
+  description="Art prints, postcards, woven tapestries, and digital downloads by Jesse Pomeroy."
   url="https://angelsrest.online/shop"
 />
 
-<section class="flex flex-col items-center justify-center min-h-[60vh] text-center">
-  <h1 class="text-4xl md:text-5xl mb-4">shop</h1>
-  <p class="text-lg opacity-70 mb-8">prints, zines, and more</p>
-  <div class="text-sm uppercase tracking-widest opacity-50">coming soon</div>
-</section>
+<div class="px-6! md:px-8! lg:px-10!">
+  <!-- Shop header using proper design tokens -->
+  <div class="text-center mb-8">
+    <h1 class="text-3xl font-bold mb-2">shop</h1>
+    <p class="text-lg text-surface-600-300-token">
+      art prints, tapestries, and digital goods
+    </p>
+  </div>
 
-<!-- 
-  Original shop content (commented out for now):
-  
-  <section>
-    <h1>Shop</h1>
-    <p class="description">Prints, zines, and more. coming soon.</p>
+  <!-- Category filter using Skeleton design system -->
+  <div class="flex flex-wrap justify-center gap-2 mb-8">
+    {#each categories as category}
+      <button
+        class="btn btn-sm {activeCategory === category.value
+          ? 'variant-filled-primary'
+          : 'variant-soft-surface'}"
+        style="text-transform: lowercase !important;"
+        onclick={() => (activeCategory = category.value)}
+      >
+        {category.label}
+      </button>
+    {/each}
+  </div>
 
-    <div class="grid">
-      {#each Array(4) as _, i}
-        <a href="/shop/placeholder-{i + 1}" class="item">
-          <div class="placeholder"></div>
-          <span class="title">Product {i + 1}</span>
-          <span class="price">$25.00</span>
-        </a>
-      {/each}
+  <!-- Product grid using proper surface tokens -->
+  <div class="columns-2 md:columns-3 gap-4">
+    {#each filteredProducts as product}
+      <a
+        href="/shop/{product.slug}"
+        class="group mb-4 break-inside-avoid block"
+      >
+        <!-- Card wrapper - matches BlogCard styling -->
+        <div class="bg-surface-500/10 border border-surface-500/20 p-3 rounded-lg hover:border-surface-400/40 transition-all">
+          <!-- Image container -->
+          <div class="overflow-hidden rounded-md">
+            <img
+              src={product.preview}
+              alt={product.title}
+              class="w-full h-auto object-contain group-hover:scale-105 transition-transform"
+            />
+          </div>
+          <!-- Product info -->
+          <h2 class="mt-2 font-medium text-center">
+            {product.title}
+          </h2>
+        </div>
+      </a>
+    {/each}
+  </div>
+
+  {#if filteredProducts.length === 0}
+    <div class="text-center text-surface-500 mt-12">
+      <p>No products found in this category.</p>
     </div>
-  </section>
-
-  <style>
-    section { padding: 2rem 0; }
-    h1 { margin-bottom: 0.5rem; }
-    .description { color: var(--color-text-muted); font-size: 0.9rem; margin-bottom: 3rem; }
-    .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 2rem; }
-    .item { display: flex; flex-direction: column; color: var(--color-text); }
-    .placeholder { aspect-ratio: 1; background: var(--color-surface); border: 1px solid var(--color-border); margin-bottom: 0.75rem; }
-    .title { font-size: 0.9rem; }
-    .price { font-size: 0.85rem; color: var(--color-text-muted); margin-top: 0.25rem; }
-  </style>
--->
+  {/if}
+</div>
