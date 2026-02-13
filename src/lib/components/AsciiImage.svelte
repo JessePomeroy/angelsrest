@@ -2,16 +2,7 @@
   AsciiImage Component
   
   Displays an image that transforms into ASCII art on hover.
-  Uses canvas to sample pixels and map brightness to characters.
-  On hover: scrambles randomly, then settles into the final ASCII art.
-  
-  Props:
-  - src: image source URL
-  - alt: alt text for accessibility
-  - class: additional CSS classes for the image
-  - charSet: characters to use (dark → light)
-  - resolution: lower = more detailed ASCII (default 4)
-  - settleDuration: how long the scramble → settle animation takes (ms)
+  Renders ASCII to canvas so both image and ASCII use identical object-cover behavior.
 -->
 
 <script lang="ts">
@@ -23,7 +14,7 @@
     class: className = "",
     charSet = " .,:;i1tfLCG08@",
     resolution = 4,
-    settleDuration = 2000
+    settleDuration = 2000,
   }: {
     src: string;
     alt?: string;
@@ -33,22 +24,20 @@
     settleDuration?: number;
   } = $props();
 
-  let canvas: HTMLCanvasElement;
-  let finalAscii = $state("");        // The target ASCII art
-  let displayedAscii = $state("");    // What's currently shown (scrambled → settled)
+  let sourceCanvas: HTMLCanvasElement;
+  let asciiCanvas: HTMLCanvasElement;
+  let asciiDataUrl = $state("");
+  let displayedAsciiUrl = $state("");
   let isHovering = $state(false);
   let imageLoaded = $state(false);
-  let container: HTMLDivElement;
-  
-  let animationFrame: number | null = null;
-  let settledIndices: Set<number> = new Set();
 
-  // Calculate font size based on resolution
-  const fontSize = $derived(resolution * 1.2);
-  const lineHeight = $derived(resolution * 1.1);
-  
-  // Characters to use for scrambling (excluding spaces and newlines)
-  const scrambleChars = $derived(charSet.replace(/\s/g, '') + "!@#$%^&*<>[]{}");
+  let animationFrame: number | null = null;
+  let asciiChars: string[] = [];
+  let settledIndices: Set<number> = new Set();
+  let asciiCols = 0;
+  let asciiRows = 0;
+
+  const scrambleChars = $derived(charSet.replace(/\s/g, "") + "!@#$%^&*<>[]{}");
 
   onMount(() => {
     generateAscii();
@@ -57,50 +46,93 @@
     };
   });
 
-  async function generateAscii() {
+  function generateAscii() {
     const img = new Image();
     img.crossOrigin = "anonymous";
-    
+
     img.onload = () => {
-      const ctx = canvas.getContext("2d");
+      const ctx = sourceCanvas.getContext("2d");
       if (!ctx) return;
 
-      const cols = Math.floor(img.width / resolution);
-      const rows = Math.floor(img.height / (resolution * 1.8));
+      // Store original image dimensions
+      const imgWidth = img.width;
+      const imgHeight = img.height;
 
-      canvas.width = cols;
-      canvas.height = rows;
+      // Calculate ASCII grid
+      asciiCols = Math.floor(imgWidth / resolution);
+      asciiRows = Math.floor(imgHeight / (resolution * 1.8));
 
-      ctx.drawImage(img, 0, 0, cols, rows);
-      const imageData = ctx.getImageData(0, 0, cols, rows);
+      sourceCanvas.width = asciiCols;
+      sourceCanvas.height = asciiRows;
+
+      ctx.drawImage(img, 0, 0, asciiCols, asciiRows);
+
+      // Store original dimensions for canvas rendering
+      (window as any).__asciiImgWidth = imgWidth;
+      (window as any).__asciiImgHeight = imgHeight;
+      const imageData = ctx.getImageData(0, 0, asciiCols, asciiRows);
       const pixels = imageData.data;
 
-      let result = "";
-      
-      for (let y = 0; y < rows; y++) {
-        for (let x = 0; x < cols; x++) {
-          const i = (y * cols + x) * 4;
+      // Build ASCII character array
+      asciiChars = [];
+      for (let y = 0; y < asciiRows; y++) {
+        for (let x = 0; x < asciiCols; x++) {
+          const i = (y * asciiCols + x) * 4;
           const r = pixels[i];
           const g = pixels[i + 1];
           const b = pixels[i + 2];
           const a = pixels[i + 3];
 
           if (a < 128) {
-            result += " ";
+            asciiChars.push(" ");
           } else {
             const brightness = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
             const charIndex = Math.floor(brightness * (charSet.length - 1));
-            result += charSet[charIndex];
+            asciiChars.push(charSet[charIndex]);
           }
         }
-        result += "\n";
       }
 
-      finalAscii = result;
+      // Render final ASCII to canvas and get data URL
+      asciiDataUrl = renderAsciiToCanvas(asciiChars);
       imageLoaded = true;
     };
 
     img.src = src;
+  }
+
+  function renderAsciiToCanvas(chars: string[]): string {
+    // Use original image dimensions so object-cover behaves identically
+    const width = (window as any).__asciiImgWidth || 800;
+    const height = (window as any).__asciiImgHeight || 1000;
+
+    const charWidth = width / asciiCols;
+    const charHeight = height / asciiRows;
+    const fontSize = Math.min(charWidth, charHeight) * 1.2;
+
+    asciiCanvas.width = width;
+    asciiCanvas.height = height;
+
+    const ctx = asciiCanvas.getContext("2d");
+    if (!ctx) return "";
+
+    // Dark background
+    ctx.fillStyle = "#1e293b";
+    ctx.fillRect(0, 0, width, height);
+
+    // Draw ASCII text
+    ctx.fillStyle = "#e2e8f0";
+    ctx.font = `${fontSize}px monospace`;
+    ctx.textBaseline = "top";
+
+    for (let y = 0; y < asciiRows; y++) {
+      for (let x = 0; x < asciiCols; x++) {
+        const char = chars[y * asciiCols + x];
+        ctx.fillText(char, x * charWidth, y * charHeight);
+      }
+    }
+
+    return asciiCanvas.toDataURL();
   }
 
   function getRandomChar(): string {
@@ -108,69 +140,62 @@
   }
 
   function startScrambleAnimation() {
-    if (!finalAscii) return;
-    
-    // Cancel any existing animation
+    if (!asciiChars.length) return;
+
     if (animationFrame) cancelAnimationFrame(animationFrame);
-    
-    // Reset state
+
     settledIndices = new Set();
     const startTime = performance.now();
-    const totalChars = finalAscii.length;
-    
-    // Create array of indices to settle (excluding newlines and spaces)
+
+    // Create shuffled indices for random settling
     const indicesToSettle: number[] = [];
-    for (let i = 0; i < finalAscii.length; i++) {
-      if (finalAscii[i] !== '\n' && finalAscii[i] !== ' ') {
+    for (let i = 0; i < asciiChars.length; i++) {
+      if (asciiChars[i] !== " ") {
         indicesToSettle.push(i);
       }
     }
-    
-    // Shuffle the indices for random settling order
     for (let i = indicesToSettle.length - 1; i > 0; i--) {
       const j = Math.floor(Math.random() * (i + 1));
-      [indicesToSettle[i], indicesToSettle[j]] = [indicesToSettle[j], indicesToSettle[i]];
+      [indicesToSettle[i], indicesToSettle[j]] = [
+        indicesToSettle[j],
+        indicesToSettle[i],
+      ];
     }
 
     function animate(currentTime: number) {
       const elapsed = currentTime - startTime;
       const progress = Math.min(elapsed / settleDuration, 1);
-      
-      // How many characters should be settled by now
+
       const shouldBeSettled = Math.floor(progress * indicesToSettle.length);
-      
-      // Settle new characters
-      while (settledIndices.size < shouldBeSettled && settledIndices.size < indicesToSettle.length) {
+
+      while (
+        settledIndices.size < shouldBeSettled &&
+        settledIndices.size < indicesToSettle.length
+      ) {
         settledIndices.add(indicesToSettle[settledIndices.size]);
       }
-      
-      // Build the display string
-      let result = "";
-      for (let i = 0; i < finalAscii.length; i++) {
-        const char = finalAscii[i];
-        if (char === '\n' || char === ' ') {
-          // Keep whitespace as-is
-          result += char;
+
+      // Build current frame's characters
+      const currentChars: string[] = [];
+      for (let i = 0; i < asciiChars.length; i++) {
+        if (asciiChars[i] === " ") {
+          currentChars.push(" ");
         } else if (settledIndices.has(i)) {
-          // This character has settled
-          result += char;
+          currentChars.push(asciiChars[i]);
         } else {
-          // Still scrambling
-          result += getRandomChar();
+          currentChars.push(getRandomChar());
         }
       }
-      
-      displayedAscii = result;
-      
-      // Continue animation if not complete and still hovering
+
+      displayedAsciiUrl = renderAsciiToCanvas(currentChars);
+
       if (progress < 1 && isHovering) {
         animationFrame = requestAnimationFrame(animate);
       } else if (progress >= 1) {
-        // Ensure final state is correct
-        displayedAscii = finalAscii;
+        displayedAsciiUrl = asciiDataUrl;
       }
     }
-    
+
     animationFrame = requestAnimationFrame(animate);
   }
 
@@ -193,48 +218,37 @@
 </script>
 
 <div
-  bind:this={container}
   class="ascii-image-container relative overflow-hidden"
   onmouseenter={handleMouseEnter}
   onmouseleave={handleMouseLeave}
   role="img"
   aria-label={alt}
 >
-  <!-- Original image - always visible, holds the layout -->
+  <!-- Original image -->
   <img
     {src}
     {alt}
-    class="{className}"
+    class={className}
+    style="visibility: {isHovering && imageLoaded ? 'hidden' : 'visible'};"
   />
-  
-  <!-- ASCII overlay - sits on top with background, no layout impact -->
+
+  <!-- ASCII as image - uses same object-cover as original -->
   {#if imageLoaded && isHovering}
-    <div class="absolute inset-0 bg-surface-900 flex items-center justify-center overflow-hidden">
-      <pre
-        class="ascii-overlay whitespace-pre font-mono pointer-events-none text-surface-100"
-        style="font-size: {fontSize}px; line-height: {lineHeight}px;"
-        aria-hidden="true"
-      >{displayedAscii || finalAscii}</pre>
-    </div>
+    <img
+      src={displayedAsciiUrl || asciiDataUrl}
+      alt=""
+      class="{className} absolute inset-0"
+      aria-hidden="true"
+    />
   {/if}
-  
-  <!-- Hidden canvas for pixel sampling -->
-  <canvas bind:this={canvas} class="hidden" aria-hidden="true"></canvas>
+
+  <!-- Hidden canvases -->
+  <canvas bind:this={sourceCanvas} class="hidden"></canvas>
+  <canvas bind:this={asciiCanvas} class="hidden"></canvas>
 </div>
 
 <style>
   .ascii-image-container {
     cursor: pointer;
-  }
-
-  .ascii-overlay {
-    color: currentColor;
-    opacity: 0.9;
-    background: var(--ascii-bg, transparent);
-  }
-
-  pre {
-    margin: 0;
-    padding: 0;
   }
 </style>
