@@ -114,14 +114,14 @@
               src={data.portraitUrl}
               alt={data.about?.name}
               class="w-full h-full object-cover"
-              resolution={6}
+              resolution={10}
             />
           {:else}
             <AsciiImage
               src={portrait}
               alt="Portrait"
               class="w-full h-full object-cover"
-              resolution={6}
+              resolution={10}
             />
           {/if}
         </div>

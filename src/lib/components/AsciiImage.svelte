@@ -194,25 +194,26 @@
 
 <div
   bind:this={container}
-  class="ascii-image-container relative overflow-hidden w-full h-full"
+  class="ascii-image-container relative overflow-hidden"
   onmouseenter={handleMouseEnter}
   onmouseleave={handleMouseLeave}
   role="img"
   aria-label={alt}
 >
-  <!-- Original image - absolutely positioned, visibility toggles but layout stays fixed -->
+  <!-- Original image -->
   <img
     {src}
     {alt}
     class="{className}"
-    style="visibility: {isHovering && imageLoaded ? 'hidden' : 'visible'};"
+    class:opacity-0={isHovering && imageLoaded}
   />
   
-  <!-- ASCII overlay - only visible on hover, aligned to top-left like object-cover -->
-  {#if imageLoaded && isHovering}
+  <!-- ASCII overlay -->
+  {#if imageLoaded}
     <pre
       class="ascii-overlay absolute inset-0 overflow-hidden whitespace-pre font-mono
-             pointer-events-none"
+             pointer-events-none flex items-center justify-center text-center"
+      class:opacity-0={!isHovering}
       style="font-size: {fontSize}px; line-height: {lineHeight}px;"
       aria-hidden="true"
     >{displayedAscii || finalAscii}</pre>
