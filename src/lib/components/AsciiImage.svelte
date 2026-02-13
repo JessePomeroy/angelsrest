@@ -200,21 +200,22 @@
   role="img"
   aria-label={alt}
 >
-  <!-- Original image -->
+  <!-- Original image - always visible, holds the layout -->
   <img
     {src}
     {alt}
     class="{className}"
-    class:opacity-0={isHovering && imageLoaded}
   />
   
-  <!-- ASCII overlay - only rendered on hover, no centering to prevent zoom -->
+  <!-- ASCII overlay - sits on top with background, no layout impact -->
   {#if imageLoaded && isHovering}
-    <pre
-      class="ascii-overlay absolute top-0 left-0 overflow-hidden whitespace-pre font-mono pointer-events-none"
-      style="font-size: {fontSize}px; line-height: {lineHeight}px;"
-      aria-hidden="true"
-    >{displayedAscii || finalAscii}</pre>
+    <div class="absolute inset-0 bg-surface-900 flex items-center justify-center overflow-hidden">
+      <pre
+        class="ascii-overlay whitespace-pre font-mono pointer-events-none text-surface-100"
+        style="font-size: {fontSize}px; line-height: {lineHeight}px;"
+        aria-hidden="true"
+      >{displayedAscii || finalAscii}</pre>
+    </div>
   {/if}
   
   <!-- Hidden canvas for pixel sampling -->
