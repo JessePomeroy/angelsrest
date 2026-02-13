@@ -50,6 +50,11 @@
     const img = new Image();
     img.crossOrigin = "anonymous";
 
+    img.onerror = (e) => {
+      console.error("ASCII image failed to load:", e);
+      // Try without crossOrigin as fallback (won't work for canvas but at least logs the issue)
+    };
+
     img.onload = () => {
       const ctx = sourceCanvas.getContext("2d");
       if (!ctx) return;
@@ -70,7 +75,14 @@
       // Store original dimensions for canvas rendering
       (window as any).__asciiImgWidth = imgWidth;
       (window as any).__asciiImgHeight = imgHeight;
-      const imageData = ctx.getImageData(0, 0, asciiCols, asciiRows);
+      
+      let imageData;
+      try {
+        imageData = ctx.getImageData(0, 0, asciiCols, asciiRows);
+      } catch (e) {
+        console.error("Canvas tainted - CORS issue with image:", e);
+        return;
+      }
       const pixels = imageData.data;
 
       // Build ASCII character array
