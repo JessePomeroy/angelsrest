@@ -1,5 +1,6 @@
 <script lang="ts">
   import SEO from "$lib/components/SEO.svelte";
+  import AsciiImage from "$lib/components/AsciiImage.svelte";
   import portrait from "$lib/assets/DSCF7533.jpg";
   import { isDark } from "$lib/stores/theme";
 
@@ -104,18 +105,24 @@
   <div
     class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8 lg:gap-12 max-w-[1400px]"
   >
-    <!-- Portrait - card style matching product images -->
+    <!-- Portrait - card style matching product images, ASCII on hover -->
     <div class="h-fit">
       <div class="bg-surface-500/10 border border-surface-500/20 p-3 rounded-lg inline-block">
         <div class="aspect-[3/4] w-64 md:w-72 lg:w-80 overflow-hidden rounded-md">
           {#if data.portraitUrl}
-            <img
+            <AsciiImage
               src={data.portraitUrl}
               alt={data.about?.name}
               class="w-full h-full object-cover"
+              resolution={3}
             />
           {:else}
-            <img src={portrait} alt="Portrait" class="w-full h-full object-cover" />
+            <AsciiImage
+              src={portrait}
+              alt="Portrait"
+              class="w-full h-full object-cover"
+              resolution={3}
+            />
           {/if}
         </div>
       </div>
