@@ -1,0 +1,134 @@
+/* ============================================
+   Time-Aware Theming
+   ============================================
+   
+   Subtle color shifts based on time of day.
+   Works alongside light/dark mode - these are
+   accent/tint overlays, not full theme replacements.
+   
+   Periods:
+   - dawn: soft pink/coral warmth
+   - morning: bright, clear, neutral
+   - afternoon: balanced, slight warmth
+   - golden: amber/honey tones
+   - evening: purple/violet hints
+   - night: cool blue undertones
+   ============================================ */
+
+/* Base transition for smooth period changes */
+:root {
+  --time-tint: transparent;
+  --time-accent: inherit;
+  --time-glow: transparent;
+  transition: 
+    --time-tint 2s ease,
+    --time-accent 2s ease,
+    --time-glow 2s ease;
+}
+
+/* ---- Dawn (5am - 8am) ---- */
+[data-time-period="dawn"] {
+  --time-tint: rgba(251, 207, 232, 0.06);  /* pink-200 */
+  --time-accent: #f9a8d4;                   /* pink-300 */
+  --time-glow: rgba(244, 114, 182, 0.08);  /* pink-400 */
+}
+
+html.dark[data-time-period="dawn"] {
+  --time-tint: rgba(244, 114, 182, 0.08);
+  --time-accent: #f472b6;
+  --time-glow: rgba(236, 72, 153, 0.12);
+}
+
+/* ---- Morning (8am - 12pm) ---- */
+[data-time-period="morning"] {
+  --time-tint: rgba(254, 249, 195, 0.05);  /* yellow-100 */
+  --time-accent: #fde047;                   /* yellow-300 */
+  --time-glow: rgba(250, 204, 21, 0.06);   /* yellow-400 */
+}
+
+html.dark[data-time-period="morning"] {
+  --time-tint: rgba(253, 224, 71, 0.06);
+  --time-accent: #facc15;
+  --time-glow: rgba(234, 179, 8, 0.10);
+}
+
+/* ---- Afternoon (12pm - 5pm) ---- */
+[data-time-period="afternoon"] {
+  --time-tint: rgba(254, 243, 199, 0.04);  /* amber-100 */
+  --time-accent: #fcd34d;                   /* amber-300 */
+  --time-glow: rgba(251, 191, 36, 0.05);   /* amber-400 */
+}
+
+html.dark[data-time-period="afternoon"] {
+  --time-tint: rgba(252, 211, 77, 0.05);
+  --time-accent: #fbbf24;
+  --time-glow: rgba(245, 158, 11, 0.08);
+}
+
+/* ---- Golden Hour (5pm - 8pm) ---- */
+[data-time-period="golden"] {
+  --time-tint: rgba(254, 215, 170, 0.08);  /* orange-200 */
+  --time-accent: #fdba74;                   /* orange-300 */
+  --time-glow: rgba(251, 146, 60, 0.10);   /* orange-400 */
+}
+
+html.dark[data-time-period="golden"] {
+  --time-tint: rgba(251, 146, 60, 0.10);
+  --time-accent: #fb923c;
+  --time-glow: rgba(249, 115, 22, 0.15);
+}
+
+/* ---- Evening (8pm - 10pm) ---- */
+[data-time-period="evening"] {
+  --time-tint: rgba(221, 214, 254, 0.06);  /* violet-200 */
+  --time-accent: #c4b5fd;                   /* violet-300 */
+  --time-glow: rgba(167, 139, 250, 0.08);  /* violet-400 */
+}
+
+html.dark[data-time-period="evening"] {
+  --time-tint: rgba(167, 139, 250, 0.10);
+  --time-accent: #a78bfa;
+  --time-glow: rgba(139, 92, 246, 0.14);
+}
+
+/* ---- Night (10pm - 5am) ---- */
+[data-time-period="night"] {
+  --time-tint: rgba(199, 210, 254, 0.05);  /* indigo-200 */
+  --time-accent: #a5b4fc;                   /* indigo-300 */
+  --time-glow: rgba(129, 140, 248, 0.06);  /* indigo-400 */
+}
+
+html.dark[data-time-period="night"] {
+  --time-tint: rgba(129, 140, 248, 0.08);
+  --time-accent: #818cf8;
+  --time-glow: rgba(99, 102, 241, 0.12);
+}
+
+/* ---- Apply the time tint as a subtle overlay ---- */
+body::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  background: var(--time-tint);
+  z-index: 9999;
+  transition: background 2s ease;
+}
+
+/* Optional: use --time-glow for subtle radial accents */
+body::after {
+  content: '';
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 40vh;
+  pointer-events: none;
+  background: radial-gradient(
+    ellipse 80% 50% at 50% 0%,
+    var(--time-glow) 0%,
+    transparent 70%
+  );
+  z-index: 9998;
+  transition: background 2s ease;
+}
