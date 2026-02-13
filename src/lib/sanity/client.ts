@@ -1,6 +1,5 @@
 import { createClient } from '@sanity/client';
-import { createImageUrlBuilder } from '@sanity/image-url';
-import type { SanityImageSource } from '@sanity/image-url/lib/types/types';
+import { createImageUrlBuilder, type SanityImageSource } from '@sanity/image-url';
 import { env } from '$env/dynamic/public';
 
 export const client = createClient({
