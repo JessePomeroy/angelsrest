@@ -44,10 +44,11 @@
   
   /**
    * Destructure the post for easier access.
+   * Using $derived keeps this reactive if data ever changes.
    * Instead of writing data.post.title everywhere,
    * we can just write post.title
    */
-  const post = data.post;
+  const post = $derived(data.post);
 
   /**
    * Date formatting helper
@@ -70,9 +71,9 @@
   Each post gets its own unique meta tags.
 -->
 <SEO
-  title="{post.title} | angel's rest"
+  title={`${post.title} | angel's rest`}
   description={post.excerpt || `Read ${post.title} on Angel's Rest blog.`}
-  url="https://angelsrest.online/blog/{post.slug.current}"
+  url={`https://angelsrest.online/blog/${post.slug.current}`}
 />
 
 <!--

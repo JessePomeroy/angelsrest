@@ -14,8 +14,8 @@
    */
   let { portableText } = $props();
   
-  // The image data from Sanity
-  const value = portableText?.value;
+  // The image data from Sanity (reactive in case portableText changes)
+  const value = $derived(portableText?.value);
 </script>
 
 {#if value?.asset}
