@@ -73,7 +73,7 @@
             />
           </div>
           <!-- Product info -->
-          <h2 class="mt-2 font-medium text-center">
+          <h2 class="mt-3 text-xs tracking-[0.15em] text-center">
             {product.title}
           </h2>
         </div>

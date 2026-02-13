@@ -34,7 +34,7 @@
           />
         </div>
         <!-- Gallery title -->
-        <h2 class="mt-2 font-medium">{gallery.title}</h2>
+        <h2 class="mt-3 text-xs tracking-[0.15em]">{gallery.title}</h2>
       </a>
     {/each}
   </div>
