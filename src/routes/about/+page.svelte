@@ -121,7 +121,7 @@
             src={portrait}
             alt={data.about?.name || "Portrait"}
             class="w-full h-full object-cover"
-            resolution={14}
+            resolution={24}
           />
         </div>
       </div>
