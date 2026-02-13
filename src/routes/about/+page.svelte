@@ -116,23 +116,13 @@
         <div
           class="aspect-[3/4] w-64 md:w-72 lg:w-80 overflow-hidden rounded-md"
         >
-          {#if data.portraitUrl}
-            <AsciiImage
-              src={data.portraitUrl}
-              alt={data.about?.name}
-              class="w-full h-full object-cover"
-              resolution={12}
-              scaleAdjust={1.0}
-            />
-          {:else}
-            <AsciiImage
-              src={portrait}
-              alt="Portrait"
-              class="w-full h-full object-cover"
-              resolution={14}
-              scaleAdjust={1.0}
-            />
-          {/if}
+          <!-- Always use local portrait for ASCII effect (avoids CORS issues with Sanity CDN) -->
+          <AsciiImage
+            src={portrait}
+            alt={data.about?.name || "Portrait"}
+            class="w-full h-full object-cover"
+            resolution={14}
+          />
         </div>
       </div>
     </div>
