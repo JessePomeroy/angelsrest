@@ -208,11 +208,11 @@
     style="visibility: {isHovering && imageLoaded ? 'hidden' : 'visible'};"
   />
   
-  <!-- ASCII overlay - only visible on hover -->
+  <!-- ASCII overlay - only visible on hover, aligned to top-left like object-cover -->
   {#if imageLoaded && isHovering}
     <pre
       class="ascii-overlay absolute inset-0 overflow-hidden whitespace-pre font-mono
-             pointer-events-none flex items-center justify-center text-center"
+             pointer-events-none"
       style="font-size: {fontSize}px; line-height: {lineHeight}px;"
       aria-hidden="true"
     >{displayedAscii || finalAscii}</pre>
