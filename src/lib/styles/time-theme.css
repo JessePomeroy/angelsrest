@@ -113,6 +113,7 @@ body::before {
   background: var(--time-tint);
   z-index: 9999;
   transition: background 2s ease;
+  mix-blend-mode: soft-light;  /* Tints atmosphere without killing images */
 }
 
 /* Optional: use --time-glow for subtle radial accents */
@@ -131,4 +132,5 @@ body::after {
   );
   z-index: 9998;
   transition: background 2s ease;
+  mix-blend-mode: soft-light;
 }
