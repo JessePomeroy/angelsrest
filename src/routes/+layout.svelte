@@ -45,7 +45,7 @@
   });
 </script>
 
-<div class="flex flex-col min-h-screen">
+<div class="flex flex-col min-h-screen relative z-10">
   <!-- Desktop navigation (hidden on mobile) -->
   <Nav />
   

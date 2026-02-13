@@ -104,19 +104,18 @@ html.dark[data-time-period="night"] {
   --time-glow: rgba(99, 102, 241, 0.12);
 }
 
-/* ---- Apply the time tint as a subtle overlay ---- */
+/* ---- Apply the time tint BEHIND content ---- */
 body::before {
   content: '';
   position: fixed;
   inset: 0;
   pointer-events: none;
   background: var(--time-tint);
-  z-index: 9999;
+  z-index: 0;  /* Behind content */
   transition: background 2s ease;
-  mix-blend-mode: soft-light;  /* Tints atmosphere without killing images */
 }
 
-/* Optional: use --time-glow for subtle radial accents */
+/* Radial glow accent - also behind content */
 body::after {
   content: '';
   position: fixed;
@@ -130,7 +129,6 @@ body::after {
     var(--time-glow) 0%,
     transparent 70%
   );
-  z-index: 9998;
+  z-index: 0;  /* Behind content */
   transition: background 2s ease;
-  mix-blend-mode: soft-light;
 }
