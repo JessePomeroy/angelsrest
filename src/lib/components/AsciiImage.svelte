@@ -208,11 +208,10 @@
     class:opacity-0={isHovering && imageLoaded}
   />
   
-  <!-- ASCII overlay - only rendered on hover -->
+  <!-- ASCII overlay - only rendered on hover, no centering to prevent zoom -->
   {#if imageLoaded && isHovering}
     <pre
-      class="ascii-overlay absolute inset-0 overflow-hidden whitespace-pre font-mono
-             pointer-events-none flex items-center justify-center text-center"
+      class="ascii-overlay absolute top-0 left-0 overflow-hidden whitespace-pre font-mono pointer-events-none"
       style="font-size: {fontSize}px; line-height: {lineHeight}px;"
       aria-hidden="true"
     >{displayedAscii || finalAscii}</pre>
