@@ -28,9 +28,9 @@
 
 /* ---- Dawn (5am - 8am) ---- */
 [data-time-period="dawn"] {
-  --time-tint: rgba(251, 207, 232, 0.06);  /* pink-200 */
+  --time-tint: rgba(251, 207, 232, 0.18);  /* pink-200 — bumped for light mode */
   --time-accent: #f9a8d4;                   /* pink-300 */
-  --time-glow: rgba(244, 114, 182, 0.08);  /* pink-400 */
+  --time-glow: rgba(244, 114, 182, 0.20);  /* pink-400 */
 }
 
 html.dark[data-time-period="dawn"] {
@@ -41,9 +41,9 @@ html.dark[data-time-period="dawn"] {
 
 /* ---- Morning (8am - 12pm) ---- */
 [data-time-period="morning"] {
-  --time-tint: rgba(254, 249, 195, 0.05);  /* yellow-100 */
+  --time-tint: rgba(254, 249, 195, 0.15);  /* yellow-100 — bumped for light mode */
   --time-accent: #fde047;                   /* yellow-300 */
-  --time-glow: rgba(250, 204, 21, 0.06);   /* yellow-400 */
+  --time-glow: rgba(250, 204, 21, 0.18);   /* yellow-400 */
 }
 
 html.dark[data-time-period="morning"] {
@@ -54,9 +54,9 @@ html.dark[data-time-period="morning"] {
 
 /* ---- Afternoon (12pm - 5pm) ---- */
 [data-time-period="afternoon"] {
-  --time-tint: rgba(254, 243, 199, 0.04);  /* amber-100 */
+  --time-tint: rgba(254, 243, 199, 0.12);  /* amber-100 — bumped for light mode */
   --time-accent: #fcd34d;                   /* amber-300 */
-  --time-glow: rgba(251, 191, 36, 0.05);   /* amber-400 */
+  --time-glow: rgba(251, 191, 36, 0.15);   /* amber-400 */
 }
 
 html.dark[data-time-period="afternoon"] {
@@ -67,9 +67,9 @@ html.dark[data-time-period="afternoon"] {
 
 /* ---- Golden Hour (5pm - 8pm) ---- */
 [data-time-period="golden"] {
-  --time-tint: rgba(254, 215, 170, 0.08);  /* orange-200 */
+  --time-tint: rgba(254, 215, 170, 0.20);  /* orange-200 — bumped for light mode */
   --time-accent: #fdba74;                   /* orange-300 */
-  --time-glow: rgba(251, 146, 60, 0.10);   /* orange-400 */
+  --time-glow: rgba(251, 146, 60, 0.22);   /* orange-400 */
 }
 
 html.dark[data-time-period="golden"] {
@@ -80,9 +80,9 @@ html.dark[data-time-period="golden"] {
 
 /* ---- Evening (8pm - 10pm) ---- */
 [data-time-period="evening"] {
-  --time-tint: rgba(221, 214, 254, 0.06);  /* violet-200 */
+  --time-tint: rgba(221, 214, 254, 0.18);  /* violet-200 — bumped for light mode */
   --time-accent: #c4b5fd;                   /* violet-300 */
-  --time-glow: rgba(167, 139, 250, 0.08);  /* violet-400 */
+  --time-glow: rgba(167, 139, 250, 0.20);  /* violet-400 */
 }
 
 html.dark[data-time-period="evening"] {
@@ -93,9 +93,9 @@ html.dark[data-time-period="evening"] {
 
 /* ---- Night (10pm - 5am) ---- */
 [data-time-period="night"] {
-  --time-tint: rgba(199, 210, 254, 0.05);  /* indigo-200 */
+  --time-tint: rgba(199, 210, 254, 0.16);  /* indigo-200 — bumped for light mode */
   --time-accent: #a5b4fc;                   /* indigo-300 */
-  --time-glow: rgba(129, 140, 248, 0.06);  /* indigo-400 */
+  --time-glow: rgba(129, 140, 248, 0.18);  /* indigo-400 */
 }
 
 html.dark[data-time-period="night"] {
