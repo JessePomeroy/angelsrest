@@ -204,7 +204,7 @@
   <img
     {src}
     {alt}
-    class="{className} transition-opacity duration-300 ease-out"
+    class="{className}"
     class:opacity-0={isHovering && imageLoaded}
   />
   
@@ -212,8 +212,7 @@
   {#if imageLoaded}
     <pre
       class="ascii-overlay absolute inset-0 overflow-hidden whitespace-pre font-mono
-             transition-opacity duration-300 ease-out pointer-events-none
-             flex items-center justify-center text-center"
+             pointer-events-none flex items-center justify-center text-center"
       class:opacity-0={!isHovering}
       style="font-size: {fontSize}px; line-height: {lineHeight}px;"
       aria-hidden="true"
