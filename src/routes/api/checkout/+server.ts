@@ -97,6 +97,16 @@ export async function POST({ request }) {
       payment_method_types: ['card'],
       
       /**
+       * Shipping Address Collection
+       * 
+       * For physical products, we need to collect shipping addresses.
+       * Stripe's checkout form will include shipping fields automatically.
+       */
+      shipping_address_collection: {
+        allowed_countries: ['US'], // Add more countries as needed: ['US', 'CA', 'GB']
+      },
+      
+      /**
        * Line Items - What They're Buying
        * 
        * Using price_data instead of pre-created Price objects gives flexibility.

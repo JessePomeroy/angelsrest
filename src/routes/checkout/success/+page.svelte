@@ -1,34 +1,26 @@
 <!--
-  Checkout Success Page - Post-Purchase User Experience
+  Checkout Success Page - Order Confirmation with Details
   
-  This page is where customers land after successful payment.
-  It's their confirmation that everything went smoothly.
-  
-  Key UX Principles Demonstrated:
-  1. Immediate positive confirmation (removes anxiety)
-  2. Clear next steps (what happens now?)
-  3. Multiple navigation options (don't trap users)
-  4. Professional appearance builds trust
-  
-  Educational Notes:
-  - URL will include ?session_id=cs_... parameter from Stripe
-  - This session ID can be used to fetch payment details
-  - Success pages should be reassuring, not salesy
-  - Consider this page for upselling, but carefully
+  Now fetches and displays complete order information including:
+  - Order summary
+  - Shipping address
+  - Payment confirmation
+  - Next steps
 -->
 
 <script lang="ts">
-  /**
-   * Component Dependencies
-   * 
-   * We only need SEO here since this is a simple static page.
-   * In more complex apps, you might:
-   * - Fetch order details using the session_id parameter
-   * - Track conversion events for analytics
-   * - Trigger email confirmations or webhooks
-   * - Show order summary with items purchased
-   */
   import SEO from "$lib/components/SEO.svelte";
+  
+  // Get order details from server loader
+  let { data } = $props();
+  
+  // Format currency for display
+  function formatCurrency(amountInCents: number, currency: string = 'usd') {
+    return new Intl.NumberFormat('en-US', {
+      style: 'currency',
+      currency: currency.toUpperCase(),
+    }).format(amountInCents / 100);
+  }
 </script>
 
 <!--
@@ -46,91 +38,90 @@
   url="https://angelsrest.online/checkout/success"
 />
 
-<!--
-  Page Layout and Visual Hierarchy
+<!-- Success Page Content -->
+<div class="max-w-2xl mx-auto px-6 py-8">
   
-  Design Principles Used:
-  - Vertical centering for focus
-  - Visual confirmation icon (green checkmark)
-  - Progressive information disclosure (most important first)
-  - Clear action buttons for next steps
--->
-<div class="min-h-[60vh] flex flex-col items-center justify-center text-center px-6">
-  
-  <!--
-    Success Icon - Visual Confirmation
+  <!-- Success Icon and Header -->
+  <div class="text-center mb-8">
+    <div class="w-20 h-20 rounded-full bg-green-500/20 flex items-center justify-center mx-auto mb-6">
+      <svg class="w-10 h-10 text-green-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path>
+      </svg>
+    </div>
     
-    Psychology: Visual icons communicate faster than text.
-    Green universally signals success/completion.
-    
-    CSS Techniques:
-    - Rounded background with transparency
-    - SVG for crisp icons at any size
-    - Semantic color (green-500 for success state)
-  -->
-  <div class="w-20 h-20 rounded-full bg-green-500/20 flex items-center justify-center mb-6">
-    <svg class="w-10 h-10 text-green-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-      <!-- Simple checkmark path - universally recognized symbol -->
-      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path>
-    </svg>
+    <h1 class="text-3xl font-semibold mb-4">Thank you for your order!</h1>
+    <p class="text-surface-600-300-token">
+      Your payment was successful. You'll receive an email confirmation shortly.
+    </p>
   </div>
 
-  <!--
-    Primary Message - Immediate Confirmation
-    
-    Writing Guidelines:
-    - Start with gratitude (builds relationship)
-    - Use active voice ("Thank you" not "You are thanked")
-    - Be specific ("order" not "request" or "submission")
-  -->
-  <h1 class="text-3xl font-semibold mb-4">Thank you for your order!</h1>
-  
-  <!--
-    Secondary Information - What Happens Next
-    
-    Customer Questions to Answer:
-    1. Did my payment go through? ✅ (implied by success page)
-    2. Will I get confirmation? ✅ (email mention)
-    3. When will it ship? ✅ (2 weeks mentioned)
-    4. Is this legitimate? ✅ (professional design builds trust)
-    
-    Content Strategy:
-    - Address the most common concerns immediately
-    - Use confident language ("will receive" not "should receive")
-    - Set realistic expectations upfront
-  -->
-  <p class="text-surface-600-300-token mb-2 max-w-md">
-    Your payment was successful. You'll receive an email confirmation shortly.
-  </p>
-  
-  <!--
-    Expectation Setting for Custom Products
-    
-    Why This Matters:
-    - Custom/made-to-order items have longer timelines
-    - Setting expectations prevents support emails
-    - 2 weeks is reasonable for handmade items
-    - Transparency builds trust
-  -->
-  <p class="text-surface-500 text-sm mb-8 max-w-md">
-    Made-to-order items typically ship within 2 weeks.
-  </p>
+  <!-- Order Details (if available) -->
+  {#if data.orderDetails}
+    <div class="bg-surface-100-800-token rounded-lg p-6 mb-8">
+      <h2 class="text-lg font-medium mb-4">Order Details</h2>
+      
+      <!-- Customer Info -->
+      {#if data.orderDetails.customerEmail}
+        <div class="mb-4">
+          <span class="text-sm text-surface-500">Email:</span>
+          <span class="ml-2">{data.orderDetails.customerEmail}</span>
+        </div>
+      {/if}
+      
+      <!-- Order Items -->
+      {#if data.orderDetails.items.length > 0}
+        <div class="mb-4">
+          <h3 class="text-sm font-medium text-surface-600-300-token mb-2">Items:</h3>
+          {#each data.orderDetails.items as item}
+            <div class="flex justify-between items-center py-1">
+              <span>{item.description}</span>
+              <span>{formatCurrency(item.amount, data.orderDetails.currency)}</span>
+            </div>
+          {/each}
+        </div>
+      {/if}
+      
+      <!-- Total -->
+      <div class="border-t border-surface-300-600-token pt-2 mb-4">
+        <div class="flex justify-between items-center font-medium">
+          <span>Total Paid:</span>
+          <span>{formatCurrency(data.orderDetails.amountTotal, data.orderDetails.currency)}</span>
+        </div>
+      </div>
+      
+      <!-- Shipping Address -->
+      {#if data.orderDetails.shippingAddress}
+        <div>
+          <h3 class="text-sm font-medium text-surface-600-300-token mb-2">Shipping Address:</h3>
+          <div class="text-sm text-surface-700-200-token">
+            <div>{data.orderDetails.shippingAddress.name}</div>
+            <div>{data.orderDetails.shippingAddress.line1}</div>
+            {#if data.orderDetails.shippingAddress.line2}
+              <div>{data.orderDetails.shippingAddress.line2}</div>
+            {/if}
+            <div>
+              {data.orderDetails.shippingAddress.city}, {data.orderDetails.shippingAddress.state} {data.orderDetails.shippingAddress.postalCode}
+            </div>
+            <div>{data.orderDetails.shippingAddress.country}</div>
+          </div>
+        </div>
+      {/if}
+    </div>
+  {/if}
 
-  <!--
-    Navigation Options - Don't Trap Users
-    
-    UX Principle: Always provide clear next steps.
-    Two paths accommodate different user intentions:
-    
-    1. "Continue Shopping" - For users who want more items
-    2. "Back to Home" - For users who are done
-    
-    Button Hierarchy:
-    - Primary action (Continue Shopping) uses softer styling
-    - Secondary action (Back to Home) uses stronger styling
-    - This guides users toward more purchases while respecting choice
-  -->
-  <div class="flex gap-4">
+  <!-- Next Steps -->
+  <div class="bg-blue-50 dark:bg-blue-950/30 rounded-lg p-6 mb-8">
+    <h3 class="font-medium mb-2">What happens next?</h3>
+    <ul class="text-sm text-surface-600-300-token space-y-1">
+      <li>• You'll receive an email confirmation shortly</li>
+      <li>• Your order will be processed within 1-2 business days</li>
+      <li>• Made-to-order prints typically ship within 2 weeks</li>
+      <li>• You'll get a tracking number once your order ships</li>
+    </ul>
+  </div>
+
+  <!-- Navigation -->
+  <div class="flex gap-4 justify-center">
     <a href="/shop" class="btn variant-soft-surface">
       Continue Shopping
     </a>

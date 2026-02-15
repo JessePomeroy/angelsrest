@@ -1,209 +1,88 @@
-# angelsrest
+# Angel's Rest
 
-Photography portfolio and e-commerce site built with SvelteKit 2, Sanity CMS, Skeleton UI, and Stripe.
+A personal portfolio and creative studio website for Jesse Pomeroy — photographer, visual artist, florist, and web developer.
 
-**Live:** [angelsrest.online](https://angelsrest.online)
+**Live:** [angelsrest.online](https://angelsrest.online) ✨
 
-## Tech Stack
+## What It Is
 
-- **SvelteKit 2** (Svelte 5 with runes) — Framework
-- **Sanity CMS** — Content management
-- **Skeleton UI** — Component library with Hamlindigo theme
-- **Stripe** — Payment processing (live checkout)
-- **Tailwind CSS v4** — Styling
-- **TypeScript** — Type safety
-- **Vercel** — Hosting with automatic deployments
+Angel's Rest showcases Jesse's multidisciplinary creative work through a thoughtfully designed digital experience. The site combines photography portfolio, art gallery, blog, and e-commerce in one cohesive platform.
 
-## Features
+## ✨ Special Features
 
-### ✅ Implemented
-- **E-commerce checkout** — Full Stripe integration with Buy Now flow
-- **Theming** — Hamlindigo theme with light/dark mode support
-- **Product management** — Drag-and-drop ordering in Sanity Studio
-- **Image optimization** — Automatic WebP conversion and responsive sizes
-- **Mobile-first design** — Responsive layout with bottom navigation
-- **SEO** — Per-page meta tags and OpenGraph support
+### 🕐 Time-Aware Theming
+The site subtly shifts its color palette based on your local time of day:
+- **Dawn** (5-8am): Soft pink and coral warmth
+- **Morning** (8am-12pm): Bright, clear yellows  
+- **Afternoon** (12-5pm): Warm amber baseline
+- **Golden Hour** (5-8pm): Rich orange and honey tones
+- **Evening** (8-10pm): Deep purple and violet
+- **Night** (10pm-5am): Cool indigo and blue
 
-### 🚧 Planned
-- Webhook notifications for orders
-- Email confirmations to customers
-- Inventory management
-- Customer reviews
+The effect is subtle — like natural lighting shifting throughout the day.
 
-## Project Structure
+### 🎨 ASCII Art Portrait
+On the about page, hover over Jesse's portrait to watch it transform into animated ASCII art:
+- Starts with scrambled random characters
+- Gradually "settles" into the final portrait over 2 seconds
+- Rendered to canvas for pixel-perfect alignment with the original image
+- No layout shift or zoom — just pure magic
 
-```
-src/
-├── lib/
-│   ├── components/           # Reusable Svelte components
-│   │   ├── Nav.svelte        # Desktop navigation
-│   │   ├── BottomNav.svelte  # Mobile bottom navigation
-│   │   ├── Footer.svelte     # Desktop footer
-│   │   ├── ThemeSwitcher.svelte  # Light/dark toggle
-│   │   ├── GalleryModal.svelte   # Image lightbox
-│   │   ├── BlogCard.svelte   # Blog post preview cards
-│   │   └── SEO.svelte        # Meta tags component
-│   ├── sanity/
-│   │   └── client.ts         # Sanity client + image URL builder
-│   ├── stores/
-│   │   └── theme.ts          # Theme state management
-│   └── styles/
-│       └── global.css        # Global styles, theming, gradients
-│
-├── routes/
-│   ├── +layout.svelte        # Main layout (nav, footer, theme)
-│   ├── +page.svelte          # Home (hero, CTA buttons)
-│   │
-│   ├── gallery/
-│   │   ├── +page.svelte      # Gallery grid
-│   │   └── [slug]/+page.svelte  # Single gallery view
-│   │
-│   ├── shop/
-│   │   ├── +page.svelte      # Product grid with category filters
-│   │   ├── +page.server.ts   # Product list data loading
-│   │   └── [slug]/
-│   │       ├── +page.svelte  # Product detail with Buy Now
-│   │       └── +page.server.ts  # Product data + image optimization
-│   │
-│   ├── blog/
-│   │   ├── +page.svelte      # Blog listing
-│   │   └── [slug]/+page.svelte  # Blog post
-│   │
-│   ├── about/+page.svelte    # About page with contact form
-│   │
-│   ├── api/
-│   │   └── checkout/
-│   │       └── +server.ts    # Stripe checkout session creation
-│   │
-│   └── checkout/
-│       ├── success/+page.svelte  # Post-payment success
-│       └── cancel/+page.svelte   # Payment cancelled
-│
-└── angelsrest-studio/        # Sanity Studio (separate project)
-    └── schemaTypes/
-        ├── product.ts        # Products with orderRank for reordering
-        ├── gallery.ts        # Gallery images
-        ├── about.ts          # About page content
-        ├── post.ts           # Blog posts
-        └── index.ts          # Schema exports
-```
+### 📱 Thoughtful UX
+- **Mobile-first design** with bottom navigation that feels native
+- **Instant theme switching** between light and dark modes
+- **Smooth animations** and micro-interactions throughout
+- **Typography-focused** with all-lowercase aesthetic
 
-## Sanity Schemas
+## Tech Highlights
 
-| Schema | Purpose | Key Fields |
-|--------|---------|------------|
-| **Product** | Shop items | title, slug, images[], price, category, inStock, orderRank |
-| **Gallery** | Portfolio images | title, slug, image, description, category, featured |
-| **Post** | Blog articles | title, slug, body, author, categories, publishedAt |
-| **About** | Artist bio | bio, portrait, socialLinks |
+**Frontend:** SvelteKit 5 (with runes), TypeScript, Tailwind CSS v4  
+**Design:** Skeleton UI with Hamlindigo theme  
+**Content:** Sanity CMS with real-time editing  
+**Commerce:** Stripe checkout integration  
+**Deployment:** Vercel with automatic deployments
 
-## Getting Started
+## Content Areas
+
+- **Gallery** — Photography portfolio with category filtering and lightbox modal
+- **Shop** — Print sales with live Stripe checkout 
+- **Blog** — Writing and project updates using Sanity's rich text editor
+- **About** — Bio, contact form, and that ASCII portrait trick
+
+## Creative Code
+
+This project explores the intersection of art and web development:
+- **Time as a design element** — the site feels alive and responsive to the natural rhythm of the day
+- **Canvas manipulation** — generating and animating ASCII art in real-time  
+- **Subtle interactions** — effects that enhance without overwhelming
+- **Performance-conscious creativity** — all animations are GPU-accelerated and lightweight
+
+## Local Development
 
 ```bash
-# Install dependencies
+# Clone and install
+git clone [repo-url]
+cd angelsrest
 npm install
 
-# Copy env and fill in your values
+# Set up environment
 cp .env.example .env
+# Add your Sanity project ID, Stripe keys, etc.
 
 # Run dev server
 npm run dev
 
 # Run Sanity Studio (separate terminal)
-cd angelsrest-studio && npm run dev
+cd angelsrest-studio
+npm run dev
 ```
 
-## Environment Variables
+## About Jesse
 
-### Required for Production
+Multidisciplinary artist based in Michigan, working across photography, printmaking, floral design, and web development. Currently exploring how these creative practices intersect and inform each other.
 
-| Variable | Description | Example |
-|----------|-------------|---------|
-| `PUBLIC_SANITY_PROJECT_ID` | Sanity project ID | `n7rvza4g` |
-| `PUBLIC_SANITY_DATASET` | Sanity dataset | `production` |
-| `PUBLIC_SITE_URL` | Your site URL | `https://angelsrest.online` |
-| `STRIPE_SECRET_KEY` | Stripe secret key (server-side) | `sk_live_...` |
-| `RESEND_API_KEY` | Resend email API key | `re_...` |
+**Contact:** Through the site's contact form or [Instagram](https://instagram.com/username)
 
-### Optional
+---
 
-| Variable | Description |
-|----------|-------------|
-| `STRIPE_PUBLIC_KEY` | Stripe publishable key (if using Stripe.js) |
-
-## Stripe Integration
-
-The checkout flow uses Stripe's hosted Checkout Sessions:
-
-1. **User clicks "Buy Now"** on product page
-2. **Frontend calls** `/api/checkout` with product data
-3. **Server creates** Stripe Checkout Session
-4. **User redirected** to Stripe's secure payment page
-5. **After payment**, redirected to `/checkout/success` or `/checkout/cancel`
-
-### Testing Payments
-
-Use Stripe's test cards in test mode:
-- **Success:** `4242 4242 4242 4242`
-- **Decline:** `4000 0000 0000 0002`
-- Any future expiry, any CVC
-
-## Theming
-
-The site uses Skeleton UI's **Hamlindigo** theme for both light and dark modes:
-
-- **Theme toggle:** Sun/moon switcher in navigation
-- **Preference persistence:** Saved to localStorage
-- **System preference:** Respects OS dark mode setting
-- **Gradient backgrounds:** Subtle radial gradients for depth
-
-### Customizing Theme
-
-Edit `src/lib/styles/global.css`:
-- Background gradients (light and dark variants)
-- Heading typography
-- Global text transformations
-
-## Deployment
-
-### Vercel (Recommended)
-
-1. Connect GitHub repository to Vercel
-2. Add environment variables in Vercel dashboard
-3. Deploy automatically on push to `main`
-
-### Environment Variables in Vercel
-
-Navigate to: **Settings → Environment Variables**
-
-Add all required variables. Mark `STRIPE_SECRET_KEY` and `RESEND_API_KEY` as **Sensitive** (Production/Preview only).
-
-## Development Guides
-
-See the `guides/` folder for detailed documentation:
-
-- `theme-switching.md` — How theming works
-- `tailwind-and-global-css.md` — CSS architecture
-
-## Code Quality
-
-The codebase includes comprehensive educational comments explaining:
-- Why architectural decisions were made
-- How patterns work
-- Security considerations
-- Performance implications
-- Future enhancement opportunities
-
-Key files with detailed comments:
-- `/api/checkout/+server.ts` — Payment processing
-- `/shop/[slug]/+page.svelte` — Frontend checkout
-- `/shop/[slug]/+page.server.ts` — Data loading patterns
-- `/checkout/success/+page.svelte` — Post-purchase UX
-
-## Contributing
-
-This is a personal portfolio project, but the code is educational. Feel free to reference patterns for your own projects!
-
-## License
-
-All code is available for learning purposes. Artwork and content are © Jesse Pomeroy.
+*Built with curiosity and attention to detail. All code is educational — feel free to learn from it.*
