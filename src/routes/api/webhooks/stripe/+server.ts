@@ -1,10 +1,17 @@
 /**
- * Stripe Webhook Handler
+ * Stripe Webhook Handler 🪝
  * 
- * Listens for Stripe events and triggers email notifications.
- * This runs when payments are completed, refunded, etc.
+ * This endpoint receives webhook events from Stripe when things happen in your account.
+ * Most importantly: when a customer completes a purchase, we automatically send emails.
  * 
- * Key Security: Stripe signature verification prevents fake webhooks.
+ * 🔒 Security: We verify every webhook came from Stripe using cryptographic signatures
+ * 📧 Automation: Sends confirmation email to customer + notification to admin  
+ * 🔄 Reliability: Even if your checkout page crashes, webhooks still fire
+ * 
+ * Webhook URL: https://www.angelsrest.online/api/webhooks/stripe
+ * Events we handle: checkout.session.completed, payment_intent.payment_failed
+ * 
+ * 📚 See guides/stripe-webhooks.md for full setup and troubleshooting guide
  */
 
 import { json, error } from '@sveltejs/kit';
@@ -16,7 +23,8 @@ const stripe = new Stripe(STRIPE_SECRET_KEY);
 const resend = new Resend(RESEND_API_KEY);
 
 export async function POST({ request }) {
-  const body = await request.text();
+  // Get the raw body and signature from Stripe's webhook request
+  const body = await request.text(); // IMPORTANT: Must be raw text, not JSON
   const signature = request.headers.get('stripe-signature');
 
   if (!signature) {
@@ -27,7 +35,18 @@ export async function POST({ request }) {
   let event: Stripe.Event;
 
   try {
-    // Verify the webhook signature for security
+    /**
+     * 🔒 CRITICAL SECURITY STEP
+     * 
+     * This verifies the webhook actually came from Stripe using cryptographic signatures.
+     * Without this, anyone could send fake "payment completed" requests to your server.
+     * 
+     * How it works:
+     * 1. Stripe signs each webhook with your secret key
+     * 2. We recreate the signature using the same secret + request body
+     * 3. If signatures match = legitimate webhook from Stripe
+     * 4. If they don't match = reject the request
+     */
     event = stripe.webhooks.constructEvent(body, signature, STRIPE_WEBHOOK_SECRET);
   } catch (err: any) {
     console.error('Webhook signature verification failed:', err.message);
@@ -37,22 +56,37 @@ export async function POST({ request }) {
   console.log(`Received webhook: ${event.type}`);
 
   try {
+    /**
+     * 🎯 EVENT ROUTING
+     * 
+     * Stripe sends many different event types. We handle the important ones:
+     * 
+     * checkout.session.completed = Customer successfully paid
+     * payment_intent.payment_failed = Payment was attempted but failed
+     * 
+     * Other events we could handle in the future:
+     * - invoice.payment_succeeded (for subscriptions)
+     * - customer.subscription.deleted (cancellations)  
+     * - charge.dispute.created (chargebacks)
+     */
     switch (event.type) {
       case 'checkout.session.completed': {
+        // ✅ SUCCESS: Customer completed their purchase
         const session = event.data.object as Stripe.Checkout.Session;
         await handleCheckoutCompleted(session);
         break;
       }
       
-      // Add more event types as needed
       case 'payment_intent.payment_failed': {
+        // ❌ FAILURE: Payment attempt was declined/failed
         const paymentIntent = event.data.object as Stripe.PaymentIntent;
         console.log('Payment failed:', paymentIntent.id);
-        // Could send failure notification email here
+        // TODO: Could send "payment failed" email to customer here
         break;
       }
       
       default:
+        // 📝 LOG: We receive but don't process this event type
         console.log(`Unhandled event type: ${event.type}`);
     }
 
@@ -72,13 +106,23 @@ async function handleCheckoutCompleted(session: Stripe.Checkout.Session) {
   console.log('Processing completed checkout:', session.id);
 
   try {
-    // Fetch full session data with expanded fields
+    /**
+     * 📦 FETCH COMPLETE ORDER DATA
+     * 
+     * The webhook gives us basic session info, but we need more details:
+     * - line_items: What exactly did they buy?
+     * - customer_details: Full customer info for email
+     * 
+     * ⚠️ IMPORTANT: We DON'T expand 'shipping_details' because Stripe doesn't 
+     * allow that field to be expanded. Instead, we get shipping info from 
+     * the original session.collected_information.shipping_details
+     */
     const fullSession = await stripe.checkout.sessions.retrieve(session.id, {
-      expand: ['line_items', 'customer_details']
+      expand: ['line_items', 'customer_details'] // Only expand what's allowed
     });
 
     const customerEmail = fullSession.customer_details?.email;
-    const shippingDetails = session.collected_information?.shipping_details; // Use original session data
+    const shippingDetails = session.collected_information?.shipping_details; // From original webhook data
     const lineItems = fullSession.line_items?.data || [];
 
     if (!customerEmail) {

@@ -39,7 +39,7 @@ On the about page, hover over Jesse's portrait to watch it transform into animat
 **Frontend:** SvelteKit 5 (with runes), TypeScript, Tailwind CSS v4  
 **Design:** Skeleton UI with Hamlindigo theme  
 **Content:** Sanity CMS with real-time editing  
-**Commerce:** Stripe checkout integration  
+**Commerce:** Stripe checkout + automated email notifications via webhooks  
 **Deployment:** Vercel with automatic deployments
 
 ## Content Areas
@@ -76,6 +76,13 @@ npm run dev
 cd angelsrest-studio
 npm run dev
 ```
+
+## Technical Guides
+
+**📂 `/guides/`** — Detailed technical documentation:
+- **[Stripe Webhooks](guides/stripe-webhooks.md)** — Complete setup guide for automated email notifications
+- **[Theme Switching](guides/theme-switching.md)** — How the time-aware theming system works  
+- **[Tailwind & CSS](guides/tailwind-and-global-css.md)** — Custom CSS architecture and Tailwind v4 setup
 
 ## About Jesse
 
