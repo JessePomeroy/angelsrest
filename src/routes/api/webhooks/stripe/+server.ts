@@ -74,11 +74,11 @@ async function handleCheckoutCompleted(session: Stripe.Checkout.Session) {
   try {
     // Fetch full session data with expanded fields
     const fullSession = await stripe.checkout.sessions.retrieve(session.id, {
-      expand: ['line_items', 'customer_details', 'shipping_details']
+      expand: ['line_items', 'customer_details']
     });
 
     const customerEmail = fullSession.customer_details?.email;
-    const shippingDetails = fullSession.shipping_details;
+    const shippingDetails = session.collected_information?.shipping_details; // Use original session data
     const lineItems = fullSession.line_items?.data || [];
 
     if (!customerEmail) {
