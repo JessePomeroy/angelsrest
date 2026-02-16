@@ -2,6 +2,8 @@
 
 A personal portfolio and creative studio website for Jesse Pomeroy — photographer, visual artist, florist, and web developer.
 
+**🎓 Educational Resource:** This project includes comprehensive documentation showing how to build a modern web application from scratch. See the [Complete App Roadmap](guides/complete-app-roadmap.md) for a full tutorial covering SvelteKit, Stripe e-commerce, email automation, and production deployment.
+
 **Live:** [angelsrest.online](https://angelsrest.online) ✨
 
 ## What It Is
@@ -80,6 +82,11 @@ npm run dev
 ## Technical Guides
 
 **📂 `/guides/`** — Detailed technical documentation:
+
+### 🎯 **[Complete App Roadmap](guides/complete-app-roadmap.md)**
+**The ultimate guide** — A comprehensive 48,000+ word roadmap taking you from zero to a production web application. Covers everything from initial setup to advanced business operations, organized into 7 progressive phases. Perfect for learning full-stack development systematically.
+
+### 📚 **Specialized Guides**
 - **[Stripe Webhooks](guides/stripe-webhooks.md)** — Complete setup guide for automated email notifications
 - **[Theme Switching](guides/theme-switching.md)** — How the time-aware theming system works  
 - **[Tailwind & CSS](guides/tailwind-and-global-css.md)** — Custom CSS architecture and Tailwind v4 setup
