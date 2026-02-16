@@ -19,12 +19,14 @@
 - **Production-ready** deployment and monitoring
 
 **Tech Stack:**
-- **Frontend:** SvelteKit 5 (with Runes), TypeScript
+- **Frontend:** SvelteKit 5 + Svelte 5 (with Runes), TypeScript
 - **Styling:** Tailwind CSS v4 + Skeleton UI
 - **CMS:** Sanity (headless CMS)
 - **Payments:** Stripe Checkout + Webhooks
 - **Email:** Resend API
 - **Deployment:** Vercel with automatic deployments
+
+> **⚠️ Svelte 5 Required**: This guide uses modern Svelte 5 syntax throughout, including runes (`$state()`, `$props()`, `$effect()`), modern event handlers (`onclick`), and up-to-date patterns. All examples are Svelte 5 compatible.
 
 ---
 
@@ -311,7 +313,7 @@ export const load: PageServerLoad = async () => {
 Create `src/routes/gallery/+page.svelte`:
 ```svelte
 <script lang="ts">
-  export let data;
+  let { data } = $props();
 </script>
 
 <h1>Gallery</h1>
@@ -364,10 +366,10 @@ Build a masonry gallery layout:
 `src/routes/gallery/[slug]/+page.svelte`:
 ```svelte
 <script lang="ts">
-  export let data;
+  let { data } = $props();
   
-  let selectedImage = null;
-  let lightboxOpen = false;
+  let selectedImage = $state(null);
+  let lightboxOpen = $state(false);
   
   function openLightbox(image, index) {
     selectedImage = { ...image, index };
@@ -388,7 +390,7 @@ Build a masonry gallery layout:
   {#each data.gallery.images as image, i}
     <button 
       class="block w-full mb-4 group"
-      on:click={() => openLightbox(image, i)}
+      onclick={() => openLightbox(image, i)}
     >
       <img 
         src={urlFor(image).width(400).url()}
@@ -424,7 +426,6 @@ Create a theme store and switcher:
 
 `src/lib/stores/theme.ts`:
 ```typescript
-import { writable } from 'svelte/store';
 import { browser } from '$app/environment';
 
 // Initialize from localStorage or system preference
@@ -433,25 +434,44 @@ function createThemeStore() {
   const prefersDark = browser && window.matchMedia('(prefers-color-scheme: dark)').matches;
   const initialTheme = stored ? stored === 'dark' : prefersDark;
   
-  const { subscribe, set, update } = writable(initialTheme);
+  let isDark = $state(initialTheme);
+  
+  // Update HTML class and localStorage when theme changes
+  $effect(() => {
+    if (browser) {
+      document.documentElement.classList.toggle('dark', isDark);
+      localStorage.setItem('theme', isDark ? 'dark' : 'light');
+    }
+  });
   
   return {
-    subscribe,
-    setDark: () => set(true),
-    setLight: () => set(false),
-    toggle: () => update(dark => !dark)
+    get isDark() { return isDark; },
+    setDark: () => isDark = true,
+    setLight: () => isDark = false,
+    toggle: () => isDark = !isDark
   };
 }
 
-export const isDark = createThemeStore();
+export const themeStore = createThemeStore();
+```
 
-// Update HTML class when theme changes
-if (browser) {
-  isDark.subscribe(dark => {
-    document.documentElement.classList.toggle('dark', dark);
-    localStorage.setItem('theme', dark ? 'dark' : 'light');
-  });
-}
+**Using the theme store in components:**
+```svelte
+<script>
+  import { themeStore } from '$lib/stores/theme';
+</script>
+
+<!-- Toggle button -->
+<button onclick={() => themeStore.toggle()}>
+  {themeStore.isDark ? '☀️ Light' : '🌙 Dark'}
+</button>
+
+<!-- Conditional rendering -->
+{#if themeStore.isDark}
+  <span>🌙 Dark mode active</span>
+{:else}
+  <span>☀️ Light mode active</span>
+{/if}
 ```
 
 **Key Learnings:**
@@ -697,9 +717,9 @@ Create product page with Buy Now button:
 `src/routes/shop/[slug]/+page.svelte`:
 ```svelte
 <script lang="ts">
-  export let data;
+  let { data } = $props();
   
-  let loading = false;
+  let loading = $state(false);
   
   async function handleBuyNow() {
     loading = true;
@@ -759,7 +779,7 @@ Create product page with Buy Now button:
       {#if data.product.inStock}
         <button 
           class="btn variant-filled-primary w-full md:w-auto px-8 py-3"
-          on:click={handleBuyNow}
+          onclick={handleBuyNow}
           disabled={loading}
         >
           {loading ? 'Processing...' : 'Buy Now'}
