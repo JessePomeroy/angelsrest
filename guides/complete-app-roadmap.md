@@ -26,7 +26,13 @@
 - **Email:** Resend API
 - **Deployment:** Vercel with automatic deployments
 
-> **⚠️ Svelte 5 Required**: This guide uses modern Svelte 5 syntax throughout, including runes (`$state()`, `$props()`, `$effect()`), modern event handlers (`onclick`), and up-to-date patterns. All examples are Svelte 5 compatible.
+> **⚠️ Svelte 5 Required**: This guide uses modern Svelte 5 syntax throughout, including:
+> - **Runes**: `$state()`, `$props()`, `$effect()` instead of stores and exports
+> - **Event handlers**: `onclick` instead of `on:click`
+> - **Content projection**: `{@render children?.()}` and snippets instead of deprecated `<slot />`
+> - **Layout patterns**: `let { children } = $props();` to receive child content
+> 
+> All examples are Svelte 5 compatible and use current best practices.
 
 ---
 
@@ -123,20 +129,53 @@ Create `src/routes/+layout.svelte`:
   import '../lib/styles/global.css';
   import Header from '$lib/components/Header.svelte';
   import Footer from '$lib/components/Footer.svelte';
+  
+  let { children } = $props();
 </script>
 
 <div class="min-h-screen flex flex-col">
   <Header />
   <main class="flex-1">
-    <slot /> <!-- Child pages render here -->
+    {@render children?.()} <!-- Child pages render here -->
   </main>
   <Footer />
 </div>
 ```
 
+**Svelte 5 Snippets Example:**
+```svelte
+<!-- Parent component using snippets -->
+<script>
+  import Card from '$lib/components/Card.svelte';
+</script>
+
+<Card>
+  {#snippet header()}
+    <h2>Welcome!</h2>
+  {/snippet}
+  
+  {#snippet content()}
+    <p>This is the main content area.</p>
+  {/snippet}
+</Card>
+
+<!-- Card.svelte component -->
+<script>
+  let { header, content, children } = $props();
+</script>
+
+<div class="card">
+  <header>{@render header?.()}</header>
+  <main>{@render content?.()}</main>
+  <footer>{@render children?.()}</footer>
+</div>
+```
+
 **Key Learnings:**
 - **Layouts** wrap all pages with common elements (navigation, footer)
-- **Slots** are where child content gets inserted
+- **Snippets & children** — modern way to render child content (replaces deprecated slots)
+- **`{#snippet name()} ... {/snippet}`** — define reusable content blocks
+- **`{@render snippet?.()}`** — render snippets with optional chaining for safety
 - **Flexbox** and **CSS Grid** handle complex layouts easily with Tailwind
 
 #### 1.5 Build Navigation Components
@@ -414,8 +453,8 @@ Build a masonry gallery layout:
 ```
 
 **Key Learnings:**
-- **Event handling** — mouse clicks, keyboard navigation
-- **State management** — component state with Svelte reactivity
+- **Event handling** — modern `onclick` syntax, keyboard navigation
+- **State management** — `$state()` for reactive variables, `$props()` for component props
 - **Modal patterns** — overlays, z-index, accessibility
 - **Image optimization** — responsive images, lazy loading
 - **CSS layouts** — masonry columns, flexbox, grid
@@ -475,7 +514,7 @@ export const themeStore = createThemeStore();
 ```
 
 **Key Learnings:**
-- **Svelte stores** — global state management
+- **Svelte 5 runes** — `$state()` for reactive variables, `$effect()` for side effects
 - **Browser detection** — checking if code runs on client or server
 - **Persistent state** — localStorage for user preferences
 - **CSS class manipulation** — controlling dark mode with JavaScript
