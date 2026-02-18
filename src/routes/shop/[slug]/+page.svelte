@@ -209,7 +209,7 @@
   - Max-width prevents overly wide content
   - Centering for visual balance
 -->
-<div class="px-6! md:px-8! lg:px-10! max-w-6xl mx-auto">
+<div class="max-w-6xl mx-auto">
   
   <!--
     Navigation Breadcrumb
