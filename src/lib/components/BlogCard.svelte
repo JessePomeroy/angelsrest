@@ -99,13 +99,28 @@
   <!-- Text content area -->
   <div class="p-5">
     <!--
+      Post Type Badge
+      Shows the template type for this post (standard posts show nothing)
+    -->
+    {#if post.postType && post.postType !== 'standard'}
+      {@const typeLabel = post.postType === 'caseStudy' ? 'Case Study' 
+        : post.postType === 'behindTheScenes' ? 'BTS' 
+        : post.postType === 'technical' ? 'Technical' 
+        : post.postType === 'clientStory' ? 'Client Story' 
+        : post.postType}
+      <span class="inline-block text-xs tracking-widest text-surface-400 mb-2">
+        {typeLabel}
+      </span>
+    {/if}
+
+    <!--
       Categories (conditional)
       Only renders if categories exist and array has items.
     -->
     {#if post.categories && post.categories.length > 0}
       <div class="flex gap-2 mb-2">
         {#each post.categories as category}
-          <span class="text-xs text-surface-400 tracking-wider">
+          <span class="text-xs text-surface-500 tracking-wider">
             {category.title}
           </span>
         {/each}
