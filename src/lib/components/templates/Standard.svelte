@@ -1,3 +1,12 @@
+<!--
+  Standard Blog Post Template
+  
+  A clean, simple layout for regular blog posts.
+  Features: featured image → body content → back link.
+  
+  Used for: General blog posts without special formatting needs.
+-->
+
 <script lang="ts">
   import { PortableText } from "@portabletext/svelte";
   import PortableTextImage from "../PortableTextImage.svelte";

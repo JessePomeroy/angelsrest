@@ -1,3 +1,17 @@
+<!--
+  Behind the Scenes Template
+  
+  A narrative-focused, storytelling layout with full-width images
+  and serif typography for a more personal, journal-like feel.
+  
+  Features:
+  - Full-width featured image
+  - Larger serif body text for readability
+  - Signature footer with author name
+  
+  Used for: Stories about shoots, personal reflections, process breakdowns.
+-->
+
 <script lang="ts">
   import { PortableText } from "@portabletext/svelte";
   import PortableTextImage from "../PortableTextImage.svelte";

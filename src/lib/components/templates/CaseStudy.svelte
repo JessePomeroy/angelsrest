@@ -1,3 +1,17 @@
+<!--
+  Case Study Template
+  
+  A structured layout for project case studies with dedicated sections
+  for The Brief, The Approach, and The Result.
+  
+  Schema fields used:
+  - brief: What the client needed or project goals
+  - approach: Creative direction, gear choices, film stocks
+  - result: Final delivery or personal reflection
+  
+  Used for: Portfolio pieces, client projects, personal experiments.
+-->
+
 <script lang="ts">
   import { PortableText } from "@portabletext/svelte";
   import PortableTextImage from "../PortableTextImage.svelte";

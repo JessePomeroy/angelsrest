@@ -1,3 +1,17 @@
+<!--
+  Client Story Template
+  
+  A wedding/event story layout with large hero header, testimonial-style
+  brief/result sections, and a warm closing message.
+  
+  Schema fields used:
+  - brief: What the client wanted for their event
+  - approach: How you captured the day
+  - result: Final delivery or favorite moments
+  
+  Used for: Wedding stories, event recaps, couple features.
+-->
+
 <script lang="ts">
   import { PortableText } from "@portabletext/svelte";
   import PortableTextImage from "../PortableTextImage.svelte";

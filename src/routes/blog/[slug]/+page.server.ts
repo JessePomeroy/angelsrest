@@ -41,12 +41,12 @@ export const load = async ({ params }) => {
       slug,
       publishedAt,
       mainImage,
-      postType,
-      brief,
-      approach,
-      result,
-      gearUsed,
-      body,
+      postType,         // Determines which template to render
+      brief,            // For caseStudy/clientStory: project brief
+      approach,         // For caseStudy/clientStory: creative approach
+      result,           // For caseStudy/clientStory: final result/reflection
+      gearUsed,         // For technical: array of gear details
+      body,             // Main Portable Text content
       author->{
         name,
         image,

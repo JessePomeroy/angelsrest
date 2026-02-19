@@ -1,3 +1,15 @@
+<!--
+  Technical Write-up Template
+  
+  A technical-focused layout for gear details, film stocks, and development notes.
+  Features a gear grid and monospace typography.
+  
+  Schema fields used:
+  - gearUsed: Array of { camera, lens, filmStock, developer }
+  
+  Used for: Film stock reviews, gear tests, development notes, technical tutorials.
+-->
+
 <script lang="ts">
   import { PortableText } from "@portabletext/svelte";
   import PortableTextImage from "../PortableTextImage.svelte";

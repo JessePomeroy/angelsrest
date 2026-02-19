@@ -48,8 +48,30 @@ On the about page, hover over Jesse's portrait to watch it transform into animat
 
 - **Gallery** — Photography portfolio with category filtering and lightbox modal
 - **Shop** — Print sales with live Stripe checkout 
-- **Blog** — Writing and project updates using Sanity's rich text editor
+- **Blog** — Flexible blog with 5 template types for different content needs
 - **About** — Bio, contact form, and that ASCII portrait trick
+
+### 📝 Flexible Blog Templates
+
+The blog supports multiple post types, each rendering with a unique visual layout:
+
+| Post Type | Description | Template Fields |
+|-----------|-------------|-----------------|
+| **Standard** | Simple blog layout (default) | None |
+| **Case Study** | Brief → Approach → Result structure | brief, approach, result |
+| **Behind the Scenes** | Narrative, full-width images, serif font | None |
+| **Technical** | Gear grid, monospace font | gearUsed array |
+| **Client Story** | Wedding/event stories with hero header | brief, approach, result |
+
+**Schema location:** `angelsrest-studio/schemaTypes/post.ts`  
+**Template components:** `src/lib/components/templates/`  
+**Rendering logic:** `src/routes/blog/[slug]/+page.svelte`
+
+**To add a new template:**
+1. Create component in `src/lib/components/templates/`
+2. Import and add case in `+page.svelte`
+3. Add entry to Sanity schema options
+4. (Optional) Add template-specific fields with `hidden` property
 
 ## Creative Code
 
