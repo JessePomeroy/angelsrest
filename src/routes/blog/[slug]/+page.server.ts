@@ -41,6 +41,11 @@ export const load = async ({ params }) => {
       slug,
       publishedAt,
       mainImage,
+      postType,
+      brief,
+      approach,
+      result,
+      gearUsed,
       body,
       author->{
         name,

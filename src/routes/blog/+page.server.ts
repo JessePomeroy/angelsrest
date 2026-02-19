@@ -43,6 +43,7 @@ export const load = async () => {
       slug,
       publishedAt,
       mainImage,
+      postType,
       "excerpt": array::join(string::split(pt::text(body), "")[0..200], "") + "...",
       author->{
         name,
