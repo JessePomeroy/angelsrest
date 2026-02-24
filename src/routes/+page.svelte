@@ -8,8 +8,6 @@
 -->
 
 <script>
-import heroGif from "$lib/assets/clouds2.gif";
-import SEO from "$lib/components/SEO.svelte";
 </script>
 
 <!-- 

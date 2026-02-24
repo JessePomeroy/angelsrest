@@ -60,28 +60,28 @@ function prev() {
 }
 
 // Global keyboard handler for navigation and closing
-function handleKeydown(e: KeyboardEvent) {
+function _handleKeydown(e: KeyboardEvent) {
   if (e.key === "Escape") onClose();
   if (e.key === "ArrowRight") next();
   if (e.key === "ArrowLeft") prev();
 }
 
 // Swipe Detection
-let touchStartX = 0;
-let touchEndX = 0;
+let _touchStartX = 0;
+let _touchEndX = 0;
 
-function handleTouchStart(e: TouchEvent) {
+function _handleTouchStart(e: TouchEvent) {
   isDragging = true;
   startX = e.touches[0].clientX;
   offsetX = 0;
 }
 
-function handleTouchMove(e: TouchEvent) {
+function _handleTouchMove(e: TouchEvent) {
   if (!isDragging) return;
   offsetX = e.touches[0].clientX - startX;
 }
 
-function handleTouchEnd() {
+function _handleTouchEnd() {
   isDragging = false;
   const threshold = 50;
 

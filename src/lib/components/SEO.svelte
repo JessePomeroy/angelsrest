@@ -20,7 +20,9 @@ let {
 } = $props();
 
 // Ensure full URL for image (use $derived to track prop changes)
-let fullImageUrl = $derived(image.startsWith("http") ? image : `https://angelsrest.online${image}`);
+let _fullImageUrl = $derived(
+  image.startsWith("http") ? image : `https://angelsrest.online${image}`,
+);
 </script>
 
 <svelte:head>

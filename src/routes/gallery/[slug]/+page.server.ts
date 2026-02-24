@@ -4,9 +4,8 @@
  * The [slug] in the folder name becomes params.slug.
  */
 
-import { client } from "$lib/sanity/client";
-import { urlFor } from "$lib/sanity/client";
 import { error } from "@sveltejs/kit";
+import { client, urlFor } from "$lib/sanity/client";
 
 export async function load({ params }) {
   // Fetch the gallery matching this slug

@@ -8,11 +8,8 @@
 -->
 
 <script lang="ts">
-import { page } from "$app/state";
-import ThemeSwitcher from "./ThemeSwitcher.svelte";
-
 // Navigation links configuration
-const links = [
+const _links = [
   { href: "/", label: "Home" },
   { href: "/gallery", label: "Gallery" },
   { href: "/blog", label: "Blog" },

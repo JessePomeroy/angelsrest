@@ -3,8 +3,7 @@
  * Fetches all galleries from Sanity for the gallery picker page.
  */
 
-import { client } from "$lib/sanity/client";
-import { urlFor } from "$lib/sanity/client";
+import { client, urlFor } from "$lib/sanity/client";
 
 export async function load() {
   // Fetch all galleries, ordered by the drag-and-drop orderRank field

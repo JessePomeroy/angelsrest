@@ -3,7 +3,18 @@
   "linter": {
     "enabled": true,
     "rules": {
-      "recommended": true
+      "recommended": true,
+      "complexity": {
+        "noForEach": "off"
+      },
+      "suspicious": {
+        "noExplicitAny": "off",
+        "noImplicitAnyLet": "off"
+      },
+      "correctness": {
+        "noUnusedVariables": "off",
+        "noInvalidPositionAtImportRule": "off"
+      }
     }
   },
   "formatter": {
@@ -11,5 +22,18 @@
     "indentStyle": "space",
     "indentWidth": 2,
     "lineWidth": 100
+  },
+  "vcs": {
+    "enabled": true,
+    "clientKind": "git",
+    "useIgnoreFile": true
+  },
+  "files": {
+    "ignoreUnknown": true
+  },
+  "css": {
+    "parser": {
+      "tailwindDirectives": true
+    }
   }
 }

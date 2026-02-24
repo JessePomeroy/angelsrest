@@ -1,11 +1,11 @@
 // Import types from SvelteKit
-import type { RequestHandler } from "./$types";
 
 // Import Resend (after you: pnpm add resend)
 import { Resend } from "resend";
-
 // Initialize with API key from environment variable
 import { RESEND_API_KEY } from "$env/static/private";
+import type { RequestHandler } from "./$types";
+
 const resend = new Resend(RESEND_API_KEY);
 
 // Handle POST requests

@@ -17,9 +17,8 @@
  * The [slug] in the folder name becomes params.slug in this function.
  */
 
-import { client } from "$lib/sanity/client";
-import { urlFor } from "$lib/sanity/client";
 import { error } from "@sveltejs/kit";
+import { client, urlFor } from "$lib/sanity/client";
 
 /**
  * Load Function - SvelteKit's Data Loading Pattern

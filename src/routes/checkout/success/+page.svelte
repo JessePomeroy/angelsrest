@@ -9,13 +9,11 @@
 -->
 
 <script lang="ts">
-import SEO from "$lib/components/SEO.svelte";
-
 // Get order details from server loader
 let { data } = $props();
 
 // Format currency for display
-function formatCurrency(amountInCents: number, currency: string = "usd") {
+function _formatCurrency(amountInCents: number, currency: string = "usd") {
   return new Intl.NumberFormat("en-US", {
     style: "currency",
     currency: currency.toUpperCase(),

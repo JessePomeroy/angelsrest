@@ -9,20 +9,17 @@
  * - full (1600px) for the lightbox
  */
 
-import SEO from "$lib/components/SEO.svelte";
-import GalleryModal from "$lib/components/GalleryModal.svelte";
-
 // Page data from the load function (contains gallery object with images)
 let { data } = $props();
 
 // Modal state
-let modalOpen = $state(false); // Whether the lightbox is visible
-let selectedIndex = $state(0); // Which image to show in the lightbox
+let _modalOpen = $state(false); // Whether the lightbox is visible
+let _selectedIndex = $state(0); // Which image to show in the lightbox
 
 // Open the modal at a specific image index
-function openModal(index: number) {
-  selectedIndex = index;
-  modalOpen = true;
+function _openModal(index: number) {
+  _selectedIndex = index;
+  _modalOpen = true;
 }
 </script>
 

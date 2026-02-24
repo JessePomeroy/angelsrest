@@ -10,8 +10,8 @@
  * The brackets [] tell SvelteKit "this part of the URL is a variable"
  */
 
-import { client } from "$lib/sanity/client";
 import { error } from "@sveltejs/kit";
+import { client } from "$lib/sanity/client";
 
 /**
  * The load function receives a context object with useful properties.

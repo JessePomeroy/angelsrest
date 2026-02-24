@@ -10,19 +10,9 @@
 -->
 
 <script lang="ts">
-import type { Snippet } from "svelte";
-import { page } from "$app/stores";
 import { injectAnalytics } from "@vercel/analytics/sveltekit";
+import type { Snippet } from "svelte";
 import { onMount } from "svelte";
-
-// Header gif for non-homepage routes
-import headerGif from "$lib/assets/ponyolovesham.gif";
-
-// Layout components
-import Nav from "$lib/components/Nav.svelte";
-import BottomNav from "$lib/components/BottomNav.svelte";
-import Footer from "$lib/components/Footer.svelte";
-import ThemeSwitcher from "$lib/components/ThemeSwitcher.svelte";
 
 // Time-aware theming
 import { timeTheme } from "$lib/stores/timeTheme.svelte";

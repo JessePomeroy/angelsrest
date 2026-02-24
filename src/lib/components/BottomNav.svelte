@@ -8,12 +8,10 @@
 -->
 
 <script lang="ts">
-import { page } from "$app/state";
 import { HouseIcon, ImageIcon, PencilLineIcon, ShoppingBagIcon, UserIcon } from "@lucide/svelte";
-import { Navigation } from "@skeletonlabs/skeleton-svelte";
 
 // Navigation links with icons
-const links = [
+const _links = [
   { label: "Home", href: "/", icon: HouseIcon },
   { label: "Gallery", href: "/gallery", icon: ImageIcon },
   { label: "Blog", href: "/blog", icon: PencilLineIcon },

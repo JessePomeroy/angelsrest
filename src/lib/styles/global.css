@@ -17,132 +17,116 @@
    - Cross-browser compatibility
    ============================================ */
 
-@import 'tailwindcss';
-@import './time-theme.css';
+@import "tailwindcss";
+@import "./time-theme.css";
 
 /* Tailwind v4: Enable class-based dark mode */
 @custom-variant dark (&:where(.dark, .dark *));
 
-@import '@skeletonlabs/skeleton';
-@import '@skeletonlabs/skeleton-svelte';
+@import "@skeletonlabs/skeleton";
+@import "@skeletonlabs/skeleton-svelte";
 
 /* Single theme: hamlindigo for both light and dark modes */
-@import '@skeletonlabs/skeleton/themes/hamlindigo';
+@import "@skeletonlabs/skeleton/themes/hamlindigo";
 
 /* ---- Base Resets ---- */
 
 *,
 *::before,
 *::after {
-	box-sizing: border-box;
+  box-sizing: border-box;
 }
 
 /* Remove default margins/padding */
-body, nav, ul, ol, p, h1, h2, h3, h4, h5, h6 {
-	margin: 0;
-	padding: 0;
+body,
+nav,
+ul,
+ol,
+p,
+h1,
+h2,
+h3,
+h4,
+h5,
+h6 {
+  margin: 0;
+  padding: 0;
 }
 
-ul, ol {
-	list-style: none;
+ul,
+ol {
+  list-style: none;
 }
 
 html {
-	-webkit-font-smoothing: antialiased;
-	-moz-osx-font-smoothing: grayscale;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
 }
 
 /* ---- Core Theme Setup ---- */
 
 body {
-	line-height: 1.6;
-	min-height: 100vh;
-	text-transform: lowercase;
-	background-color: #f1f5f9 !important;
-	background-image: 
-		radial-gradient(
-			ellipse 80% 60% at 30% 20%,
-			rgba(99, 102, 241, 0.08) 0%,
-			transparent 50%
-		),
-		radial-gradient(
-			ellipse 60% 80% at 80% 70%,
-			rgba(139, 92, 246, 0.06) 0%,
-			transparent 50%
-		) !important;
-	background-attachment: fixed;
+  line-height: 1.6;
+  min-height: 100vh;
+  text-transform: lowercase;
+  background-color: #f1f5f9;
+  background-image:
+    radial-gradient(ellipse 80% 60% at 30% 20%, rgba(99, 102, 241, 0.08) 0%, transparent 50%),
+    radial-gradient(ellipse 60% 80% at 80% 70%, rgba(139, 92, 246, 0.06) 0%, transparent 50%);
+  background-attachment: fixed;
 }
 
 html.dark body {
-	background-color: #1e293b !important;
-	background-image: 
-		radial-gradient(
-			ellipse 80% 60% at 30% 20%,
-			rgba(129, 140, 248, 0.12) 0%,
-			transparent 50%
-		),
-		radial-gradient(
-			ellipse 60% 80% at 80% 70%,
-			rgba(167, 139, 250, 0.08) 0%,
-			transparent 50%
-		) !important;
-	background-attachment: fixed;
+  background-color: #1e293b;
+  background-image:
+    radial-gradient(ellipse 80% 60% at 30% 20%, rgba(129, 140, 248, 0.12) 0%, transparent 50%),
+    radial-gradient(ellipse 60% 80% at 80% 70%, rgba(167, 139, 250, 0.08) 0%, transparent 50%);
+  background-attachment: fixed;
 }
 
 /* Desktop: increase gradient intensity */
 @media (min-width: 768px) {
-	body {
-		background-image: 
-			radial-gradient(
-				ellipse 80% 60% at 30% 20%,
-				rgba(99, 102, 241, 0.18) 0%,
-				transparent 50%
-			),
-			radial-gradient(
-				ellipse 60% 80% at 80% 70%,
-				rgba(139, 92, 246, 0.14) 0%,
-				transparent 50%
-			) !important;
-	}
+  body {
+    background-image:
+      radial-gradient(ellipse 80% 60% at 30% 20%, rgba(99, 102, 241, 0.18) 0%, transparent 50%),
+      radial-gradient(ellipse 60% 80% at 80% 70%, rgba(139, 92, 246, 0.14) 0%, transparent 50%);
+  }
 
-	html.dark body {
-		background-image: 
-			radial-gradient(
-				ellipse 80% 60% at 30% 20%,
-				rgba(129, 140, 248, 0.3) 0%,
-				transparent 50%
-			),
-			radial-gradient(
-				ellipse 60% 80% at 80% 70%,
-				rgba(167, 139, 250, 0.22) 0%,
-				transparent 50%
-			) !important;
-	}
+  html.dark body {
+    background-image:
+      radial-gradient(ellipse 80% 60% at 30% 20%, rgba(129, 140, 248, 0.3) 0%, transparent 50%),
+      radial-gradient(ellipse 60% 80% at 80% 70%, rgba(167, 139, 250, 0.22) 0%, transparent 50%);
+  }
 }
 
 /* Reset heading weights to normal */
-h1, h2, h3, h4, h5, h6 {
-	font-weight: 400;
-	letter-spacing: -0.02em;
-	line-height: 1.2;
+h1,
+h2,
+h3,
+h4,
+h5,
+h6 {
+  font-weight: 400;
+  letter-spacing: -0.02em;
+  line-height: 1.2;
 }
 
 /* Basic link and image styles */
 a {
-	text-decoration: none;
-	transition: opacity 0.2s ease;
+  text-decoration: none;
+  transition: opacity 0.2s ease;
 }
 
 a:hover {
-	opacity: 0.8;
+  opacity: 0.8;
 }
 
 img {
-	max-width: 100%;
-	height: auto;
-	display: block;
+  max-width: 100%;
+  height: auto;
+  display: block;
 }
 
 ::selection {
-	background: rgba(var(--color-primary-500) / 0.3);
+  background: rgba(var(--color-primary-500) / 0.3);
 }

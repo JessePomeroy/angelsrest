@@ -3,8 +3,7 @@
  * Fetches all products from Sanity for the shop page.
  */
 
-import { client } from "$lib/sanity/client";
-import { urlFor } from "$lib/sanity/client";
+import { client, urlFor } from "$lib/sanity/client";
 
 export async function load() {
   // Fetch all products that are in stock, ordered by custom order (orderRank), then featured status, then title

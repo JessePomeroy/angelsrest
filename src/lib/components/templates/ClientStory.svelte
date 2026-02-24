@@ -13,17 +13,15 @@
 -->
 
 <script lang="ts">
-import { PortableText } from "@portabletext/svelte";
 import PortableTextImage from "../PortableTextImage.svelte";
-import { urlFor } from "$lib/sanity/client";
 
-const components = {
+const _components = {
   types: { image: PortableTextImage },
 };
 
 let { post } = $props();
 
-function formatDate(dateStr: string) {
+function _formatDate(dateStr: string) {
   if (!dateStr) return "";
   const date = new Date(dateStr);
   return date.toLocaleDateString("en-US", {

@@ -17,9 +17,6 @@
  * - Responsive design
  */
 
-import SEO from "$lib/components/SEO.svelte";
-import GalleryModal from "$lib/components/GalleryModal.svelte";
-
 /**
  * Props from Server Load Function
  *
@@ -43,9 +40,9 @@ let { data } = $props();
  * - Use meaningful variable names
  * - Initialize with sensible defaults
  */
-let modalOpen = $state(false); // Controls image lightbox visibility
-let selectedIndex = $state(0); // Which image to show in lightbox
-let isLoading = $state(false); // Prevents double-clicks during checkout
+let _modalOpen = $state(false); // Controls image lightbox visibility
+let _selectedIndex = $state(0); // Which image to show in lightbox
+let _isLoading = $state(false); // Prevents double-clicks during checkout
 
 /**
  * Modal Control Functions
@@ -55,9 +52,9 @@ let isLoading = $state(false); // Prevents double-clicks during checkout
  * - Parameters make functions reusable
  * - State updates trigger reactive UI changes
  */
-function openModal(index: number) {
-  selectedIndex = index;
-  modalOpen = true;
+function _openModal(index: number) {
+  _selectedIndex = index;
+  _modalOpen = true;
 }
 
 /**
@@ -68,7 +65,7 @@ function openModal(index: number) {
  * - Easy to test
  * - Reusable across components
  */
-function formatCategory(category: string) {
+function _formatCategory(category: string) {
   return category.charAt(0).toUpperCase() + category.slice(1);
 }
 
@@ -86,9 +83,9 @@ function formatCategory(category: string) {
  * - Loading states for user feedback
  * - Graceful fallbacks for failures
  */
-async function handleCheckout() {
+async function _handleCheckout() {
   // Prevent double-submission while processing
-  isLoading = true;
+  _isLoading = true;
 
   // Debug logging (remove in production)
   console.log("Product data:", data.product);
@@ -177,7 +174,7 @@ async function handleCheckout() {
      * Always reset loading state, regardless of success or failure.
      * This prevents the button from getting stuck in loading state.
      */
-    isLoading = false;
+    _isLoading = false;
   }
 }
 </script>

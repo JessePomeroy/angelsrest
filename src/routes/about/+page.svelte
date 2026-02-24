@@ -1,9 +1,4 @@
 <script lang="ts">
-import SEO from "$lib/components/SEO.svelte";
-import AsciiImage from "$lib/components/AsciiImage.svelte";
-import portrait from "$lib/assets/DSCF7533.jpg";
-import { isDark } from "$lib/stores/theme";
-
 let { data } = $props();
 
 /**
@@ -20,11 +15,11 @@ $effect(() => {
   document.documentElement.style.setProperty("--form-text-color", $isDark ? "#fafafa" : "#000000");
 });
 
-let status = $state("idle"); // 'idle' | 'sending' | 'success' | 'error'
+let _status = $state("idle"); // 'idle' | 'sending' | 'success' | 'error'
 
-async function handleSubmit(e: SubmitEvent) {
+async function _handleSubmit(e: SubmitEvent) {
   e.preventDefault();
-  status = "sending";
+  _status = "sending";
 
   const form = e.target as HTMLFormElement;
   const data = Object.fromEntries(new FormData(form));
@@ -37,13 +32,13 @@ async function handleSubmit(e: SubmitEvent) {
     });
 
     if (res.ok) {
-      status = "success";
+      _status = "success";
       form.reset();
     } else {
-      status = "error";
+      _status = "error";
     }
   } catch {
-    status = "error";
+    _status = "error";
   }
 }
 </script>
