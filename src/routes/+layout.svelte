@@ -14,6 +14,8 @@ import { injectAnalytics } from "@vercel/analytics/sveltekit";
 import { page } from "$app/stores";
 import type { Snippet } from "svelte";
 import { onMount } from "svelte";
+import Nav from "$lib/components/Nav.svelte";
+import BottomNav from "$lib/components/BottomNav.svelte";
 
 // Time-aware theming
 import { timeTheme } from "$lib/stores/timeTheme.svelte";
