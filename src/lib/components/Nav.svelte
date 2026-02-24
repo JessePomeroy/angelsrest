@@ -8,17 +8,17 @@
 -->
 
 <script lang="ts">
-  import { page } from "$app/state";
-  import ThemeSwitcher from "./ThemeSwitcher.svelte";
+import { page } from "$app/state";
+import ThemeSwitcher from "./ThemeSwitcher.svelte";
 
-  // Navigation links configuration
-  const links = [
-    { href: "/", label: "Home" },
-    { href: "/gallery", label: "Gallery" },
-    { href: "/blog", label: "Blog" },
-    { href: "/shop", label: "Shop" },
-    { href: "/about", label: "About" },
-  ];
+// Navigation links configuration
+const links = [
+  { href: "/", label: "Home" },
+  { href: "/gallery", label: "Gallery" },
+  { href: "/blog", label: "Blog" },
+  { href: "/shop", label: "Shop" },
+  { href: "/about", label: "About" },
+];
 </script>
 
 <!-- Desktop nav - hidden on mobile (md:flex), centered with max-width -->

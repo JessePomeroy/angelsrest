@@ -8,52 +8,52 @@
 -->
 
 <script lang="ts">
-  // Import the urlFor helper to generate Sanity image URLs
-  import { urlFor } from "$lib/sanity/client";
+// Import the urlFor helper to generate Sanity image URLs
+import { urlFor } from "$lib/sanity/client";
 
-  /**
-   * TypeScript Interface
-   * 
-   * Defines the shape of the `post` prop we expect.
-   * This helps catch errors and enables autocomplete in your editor.
-   * 
-   * The ? means the field is optional (might not exist).
-   */
-  interface Post {
-    _id: string;
-    title: string;
-    slug: { current: string };  // Sanity slugs are objects with a .current property
-    publishedAt: string;
-    mainImage?: any;            // Sanity image object (complex, so we use 'any')
-    excerpt?: string;
-    author?: {
-      name: string;
-      image?: any;
-    };
-    categories?: { title: string }[];
-  }
+/**
+ * TypeScript Interface
+ *
+ * Defines the shape of the `post` prop we expect.
+ * This helps catch errors and enables autocomplete in your editor.
+ *
+ * The ? means the field is optional (might not exist).
+ */
+interface Post {
+  _id: string;
+  title: string;
+  slug: { current: string }; // Sanity slugs are objects with a .current property
+  publishedAt: string;
+  mainImage?: any; // Sanity image object (complex, so we use 'any')
+  excerpt?: string;
+  author?: {
+    name: string;
+    image?: any;
+  };
+  categories?: { title: string }[];
+}
 
-  /**
-   * Props declaration using Svelte 5 syntax.
-   * 
-   * This component expects a single prop called `post`
-   * that matches the Post interface above.
-   */
-  let { post }: { post: Post } = $props();
+/**
+ * Props declaration using Svelte 5 syntax.
+ *
+ * This component expects a single prop called `post`
+ * that matches the Post interface above.
+ */
+let { post }: { post: Post } = $props();
 
-  /**
-   * Helper function to format dates nicely.
-   * Converts "2024-01-15" to "January 15, 2024"
-   */
-  function formatDate(dateStr: string) {
-    if (!dateStr) return "";
-    const date = new Date(dateStr);
-    return date.toLocaleDateString("en-US", {
-      year: "numeric",
-      month: "long",
-      day: "numeric",
-    });
-  }
+/**
+ * Helper function to format dates nicely.
+ * Converts "2024-01-15" to "January 15, 2024"
+ */
+function formatDate(dateStr: string) {
+  if (!dateStr) return "";
+  const date = new Date(dateStr);
+  return date.toLocaleDateString("en-US", {
+    year: "numeric",
+    month: "long",
+    day: "numeric",
+  });
+}
 </script>
 
 <!--

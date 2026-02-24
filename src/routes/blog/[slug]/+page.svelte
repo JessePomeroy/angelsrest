@@ -21,32 +21,32 @@
 -->
 
 <script lang="ts">
-  import SEO from "$lib/components/SEO.svelte";
-  
-  // Template components - each handles a different post type layout
-  import Standard from "$lib/components/templates/Standard.svelte";
-  import CaseStudy from "$lib/components/templates/CaseStudy.svelte";
-  import BehindTheScenes from "$lib/components/templates/BehindTheScenes.svelte";
-  import Technical from "$lib/components/templates/Technical.svelte";
-  import ClientStory from "$lib/components/templates/ClientStory.svelte";
+import SEO from "$lib/components/SEO.svelte";
 
-  // Get data from +page.server.ts (contains post data including postType)
-  let { data } = $props();
-  const post = $derived(data.post);
+// Template components - each handles a different post type layout
+import Standard from "$lib/components/templates/Standard.svelte";
+import CaseStudy from "$lib/components/templates/CaseStudy.svelte";
+import BehindTheScenes from "$lib/components/templates/BehindTheScenes.svelte";
+import Technical from "$lib/components/templates/Technical.svelte";
+import ClientStory from "$lib/components/templates/ClientStory.svelte";
 
-  // Determine which template to use based on postType field from Sanity
-  // Falls back to 'standard' if postType is missing
-  const templateType = $derived(post.postType || 'standard');
+// Get data from +page.server.ts (contains post data including postType)
+let { data } = $props();
+const post = $derived(data.post);
 
-  // Template mapping - maps postType values to their corresponding components
-  // Add new templates here when creating new post types
-  const templates = {
-    standard: Standard,
-    caseStudy: CaseStudy,
-    behindTheScenes: BehindTheScenes,
-    technical: Technical,
-    clientStory: ClientStory,
-  };
+// Determine which template to use based on postType field from Sanity
+// Falls back to 'standard' if postType is missing
+const templateType = $derived(post.postType || "standard");
+
+// Template mapping - maps postType values to their corresponding components
+// Add new templates here when creating new post types
+const templates = {
+  standard: Standard,
+  caseStudy: CaseStudy,
+  behindTheScenes: BehindTheScenes,
+  technical: Technical,
+  clientStory: ClientStory,
+};
 </script>
 
 <SEO

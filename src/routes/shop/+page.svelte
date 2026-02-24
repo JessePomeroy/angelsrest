@@ -1,28 +1,28 @@
 <script lang="ts">
-  /**
-   * Shop Index Page - Clean Implementation
-   * Using proper Skeleton design tokens with hamlindigo theme
-   */
-  import SEO from "$lib/components/SEO.svelte";
+/**
+ * Shop Index Page - Clean Implementation
+ * Using proper Skeleton design tokens with hamlindigo theme
+ */
+import SEO from "$lib/components/SEO.svelte";
 
-  let { data } = $props();
+let { data } = $props();
 
-  let activeCategory = $state("all");
+let activeCategory = $state("all");
 
-  let filteredProducts = $derived(
-    activeCategory === "all"
-      ? data.products
-      : data.products.filter((product: { category: string }) => product.category === activeCategory),
-  );
+let filteredProducts = $derived(
+  activeCategory === "all"
+    ? data.products
+    : data.products.filter((product: { category: string }) => product.category === activeCategory),
+);
 
-  const categories = [
-    { label: "All", value: "all" },
-    { label: "Prints", value: "prints" },
-    { label: "Postcards", value: "postcards" },
-    { label: "Tapestries", value: "tapestries" },
-    { label: "Digital", value: "digital" },
-    { label: "Merchandise", value: "merchandise" },
-  ];
+const categories = [
+  { label: "All", value: "all" },
+  { label: "Prints", value: "prints" },
+  { label: "Postcards", value: "postcards" },
+  { label: "Tapestries", value: "tapestries" },
+  { label: "Digital", value: "digital" },
+  { label: "Merchandise", value: "merchandise" },
+];
 </script>
 
 <SEO

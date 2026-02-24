@@ -1,187 +1,185 @@
 <script lang="ts">
-  /**
-   * Product Detail Page with Stripe Checkout Integration
-   * 
-   * This component demonstrates several advanced SvelteKit patterns:
-   * 1. Dynamic routing with [slug] parameter
-   * 2. Server-side data loading with type safety
-   * 3. Client-side API interactions
-   * 4. State management with Svelte 5 runes
-   * 5. Error handling and loading states
-   * 
-   * E-commerce Patterns:
-   * - Product gallery with lightbox
-   * - Direct "Buy Now" checkout (no cart)
-   * - Stock status indication
-   * - Category organization
-   * - Responsive design
-   */
+/**
+ * Product Detail Page with Stripe Checkout Integration
+ *
+ * This component demonstrates several advanced SvelteKit patterns:
+ * 1. Dynamic routing with [slug] parameter
+ * 2. Server-side data loading with type safety
+ * 3. Client-side API interactions
+ * 4. State management with Svelte 5 runes
+ * 5. Error handling and loading states
+ *
+ * E-commerce Patterns:
+ * - Product gallery with lightbox
+ * - Direct "Buy Now" checkout (no cart)
+ * - Stock status indication
+ * - Category organization
+ * - Responsive design
+ */
 
-  import SEO from "$lib/components/SEO.svelte";
-  import GalleryModal from "$lib/components/GalleryModal.svelte";
+import SEO from "$lib/components/SEO.svelte";
+import GalleryModal from "$lib/components/GalleryModal.svelte";
 
-  /**
-   * Props from Server Load Function
-   * 
-   * The data prop contains everything returned from +page.server.ts
-   * Type safety ensures we catch errors at build time, not runtime.
-   * 
-   * Key principle: Server-side data loading for SEO and performance
-   */
-  let { data } = $props();
+/**
+ * Props from Server Load Function
+ *
+ * The data prop contains everything returned from +page.server.ts
+ * Type safety ensures we catch errors at build time, not runtime.
+ *
+ * Key principle: Server-side data loading for SEO and performance
+ */
+let { data } = $props();
 
-  /**
-   * Component State with Svelte 5 Runes
-   * 
-   * Runes are Svelte's new reactive system:
-   * - $state() for mutable reactive values
-   * - $derived() for computed values
-   * - More predictable than Svelte 4's reactivity
-   * 
-   * State Management Strategy:
-   * - Keep state minimal and focused
-   * - Use meaningful variable names
-   * - Initialize with sensible defaults
-   */
-  let modalOpen = $state(false);     // Controls image lightbox visibility
-  let selectedIndex = $state(0);     // Which image to show in lightbox
-  let isLoading = $state(false);     // Prevents double-clicks during checkout
+/**
+ * Component State with Svelte 5 Runes
+ *
+ * Runes are Svelte's new reactive system:
+ * - $state() for mutable reactive values
+ * - $derived() for computed values
+ * - More predictable than Svelte 4's reactivity
+ *
+ * State Management Strategy:
+ * - Keep state minimal and focused
+ * - Use meaningful variable names
+ * - Initialize with sensible defaults
+ */
+let modalOpen = $state(false); // Controls image lightbox visibility
+let selectedIndex = $state(0); // Which image to show in lightbox
+let isLoading = $state(false); // Prevents double-clicks during checkout
 
-  /**
-   * Modal Control Functions
-   * 
-   * Clean separation of concerns:
-   * - Functions handle specific UI interactions
-   * - Parameters make functions reusable
-   * - State updates trigger reactive UI changes
-   */
-  function openModal(index: number) {
-    selectedIndex = index;
-    modalOpen = true;
-  }
+/**
+ * Modal Control Functions
+ *
+ * Clean separation of concerns:
+ * - Functions handle specific UI interactions
+ * - Parameters make functions reusable
+ * - State updates trigger reactive UI changes
+ */
+function openModal(index: number) {
+  selectedIndex = index;
+  modalOpen = true;
+}
 
-  /**
-   * Utility Function - String Formatting
-   * 
-   * Small utility functions improve code readability:
-   * - Single responsibility
-   * - Easy to test
-   * - Reusable across components
-   */
-  function formatCategory(category: string) {
-    return category.charAt(0).toUpperCase() + category.slice(1);
-  }
+/**
+ * Utility Function - String Formatting
+ *
+ * Small utility functions improve code readability:
+ * - Single responsibility
+ * - Easy to test
+ * - Reusable across components
+ */
+function formatCategory(category: string) {
+  return category.charAt(0).toUpperCase() + category.slice(1);
+}
 
-  /**
-   * Checkout Handler - The Core E-commerce Logic
-   * 
-   * This async function orchestrates the entire checkout process:
-   * 1. Prevents multiple submissions
-   * 2. Calls our server-side API
-   * 3. Handles errors gracefully
-   * 4. Redirects to Stripe's secure checkout
-   * 
-   * Error Handling Strategy:
-   * - Try/catch for network errors
-   * - Loading states for user feedback
-   * - Graceful fallbacks for failures
-   */
-  async function handleCheckout() {
-    // Prevent double-submission while processing
-    isLoading = true;
-    
-    // Debug logging (remove in production)
-    console.log('Product data:', data.product);
-    
-    try {
+/**
+ * Checkout Handler - The Core E-commerce Logic
+ *
+ * This async function orchestrates the entire checkout process:
+ * 1. Prevents multiple submissions
+ * 2. Calls our server-side API
+ * 3. Handles errors gracefully
+ * 4. Redirects to Stripe's secure checkout
+ *
+ * Error Handling Strategy:
+ * - Try/catch for network errors
+ * - Loading states for user feedback
+ * - Graceful fallbacks for failures
+ */
+async function handleCheckout() {
+  // Prevent double-submission while processing
+  isLoading = true;
+
+  // Debug logging (remove in production)
+  console.log("Product data:", data.product);
+
+  try {
+    /**
+     * Prepare Checkout Data
+     *
+     * We structure the data exactly as our API expects it.
+     * This separation allows the API to validate and transform data.
+     *
+     * Key Fields:
+     * - productId: For tracking and inventory
+     * - title: What customer is buying
+     * - price: How much to charge
+     * - image: For Stripe's checkout display
+     */
+    const checkoutData = {
+      productId: data.product.slug, // Unique identifier
+      title: data.product.title, // Display name
+      price: data.product.price, // Amount in dollars
+      image: data.product.images[0]?.full || null, // Main product image
+    };
+
+    console.log("Sending to checkout:", checkoutData);
+
+    /**
+     * API Call to Create Checkout Session
+     *
+     * fetch() API patterns:
+     * 1. POST method for data mutations
+     * 2. JSON content type header
+     * 3. Stringify body data
+     * 4. Check response status
+     * 5. Parse JSON response
+     *
+     * Security Note: This data goes to our server, not directly to Stripe.
+     * Our server validates and processes it safely.
+     */
+    const response = await fetch("/api/checkout", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(checkoutData),
+    });
+
+    /**
+     * Handle API Response
+     *
+     * Our API returns { sessionId, url } on success.
+     * We use the URL to redirect to Stripe's hosted checkout page.
+     *
+     * Alternative Approach: Use Stripe.js with sessionId
+     * This approach is simpler and more reliable.
+     */
+    const { url } = await response.json();
+
+    if (url) {
       /**
-       * Prepare Checkout Data
-       * 
-       * We structure the data exactly as our API expects it.
-       * This separation allows the API to validate and transform data.
-       * 
-       * Key Fields:
-       * - productId: For tracking and inventory
-       * - title: What customer is buying
-       * - price: How much to charge
-       * - image: For Stripe's checkout display
+       * Redirect to Stripe Checkout
+       *
+       * window.location.href triggers a full page redirect.
+       * Stripe handles the entire payment process from here.
+       * User will return to our success/cancel pages after payment.
        */
-      const checkoutData = {
-        productId: data.product.slug,           // Unique identifier
-        title: data.product.title,              // Display name
-        price: data.product.price,              // Amount in dollars
-        image: data.product.images[0]?.full || null, // Main product image
-      };
-      
-      console.log('Sending to checkout:', checkoutData);
-      
-      /**
-       * API Call to Create Checkout Session
-       * 
-       * fetch() API patterns:
-       * 1. POST method for data mutations
-       * 2. JSON content type header
-       * 3. Stringify body data
-       * 4. Check response status
-       * 5. Parse JSON response
-       * 
-       * Security Note: This data goes to our server, not directly to Stripe.
-       * Our server validates and processes it safely.
-       */
-      const response = await fetch('/api/checkout', {
-        method: 'POST',
-        headers: { 
-          'Content-Type': 'application/json' 
-        },
-        body: JSON.stringify(checkoutData),
-      });
-
-      /**
-       * Handle API Response
-       * 
-       * Our API returns { sessionId, url } on success.
-       * We use the URL to redirect to Stripe's hosted checkout page.
-       * 
-       * Alternative Approach: Use Stripe.js with sessionId
-       * This approach is simpler and more reliable.
-       */
-      const { url } = await response.json();
-      
-      if (url) {
-        /**
-         * Redirect to Stripe Checkout
-         * 
-         * window.location.href triggers a full page redirect.
-         * Stripe handles the entire payment process from here.
-         * User will return to our success/cancel pages after payment.
-         */
-        window.location.href = url;
-      }
-      
-    } catch (err) {
-      /**
-       * Error Handling Best Practices
-       * 
-       * 1. Log detailed errors for debugging
-       * 2. Show user-friendly messages to customers
-       * 3. Don't expose technical details to users
-       * 4. Always reset loading state
-       * 
-       * Production Enhancement: Use toast notifications instead of alert()
-       */
-      console.error('Checkout error:', err);
-      alert('Something went wrong. Please try again.');
-      
-    } finally {
-      /**
-       * Cleanup State
-       * 
-       * Always reset loading state, regardless of success or failure.
-       * This prevents the button from getting stuck in loading state.
-       */
-      isLoading = false;
+      window.location.href = url;
     }
+  } catch (err) {
+    /**
+     * Error Handling Best Practices
+     *
+     * 1. Log detailed errors for debugging
+     * 2. Show user-friendly messages to customers
+     * 3. Don't expose technical details to users
+     * 4. Always reset loading state
+     *
+     * Production Enhancement: Use toast notifications instead of alert()
+     */
+    console.error("Checkout error:", err);
+    alert("Something went wrong. Please try again.");
+  } finally {
+    /**
+     * Cleanup State
+     *
+     * Always reset loading state, regardless of success or failure.
+     * This prevents the button from getting stuck in loading state.
+     */
+    isLoading = false;
   }
+}
 </script>
 
 <!--

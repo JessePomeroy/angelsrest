@@ -1,29 +1,29 @@
 <script lang="ts">
-  /**
-   * Gallery Detail Page
-   * Shows all images in a single gallery with masonry layout.
-   * Click an image to open the lightbox modal.
-   * 
-   * Images are optimized:
-   * - thumbnail (400px) for the grid
-   * - full (1600px) for the lightbox
-   */
+/**
+ * Gallery Detail Page
+ * Shows all images in a single gallery with masonry layout.
+ * Click an image to open the lightbox modal.
+ *
+ * Images are optimized:
+ * - thumbnail (400px) for the grid
+ * - full (1600px) for the lightbox
+ */
 
-  import SEO from "$lib/components/SEO.svelte";
-  import GalleryModal from "$lib/components/GalleryModal.svelte";
+import SEO from "$lib/components/SEO.svelte";
+import GalleryModal from "$lib/components/GalleryModal.svelte";
 
-  // Page data from the load function (contains gallery object with images)
-  let { data } = $props();
+// Page data from the load function (contains gallery object with images)
+let { data } = $props();
 
-  // Modal state
-  let modalOpen = $state(false); // Whether the lightbox is visible
-  let selectedIndex = $state(0); // Which image to show in the lightbox
+// Modal state
+let modalOpen = $state(false); // Whether the lightbox is visible
+let selectedIndex = $state(0); // Which image to show in the lightbox
 
-  // Open the modal at a specific image index
-  function openModal(index: number) {
-    selectedIndex = index;
-    modalOpen = true;
-  }
+// Open the modal at a specific image index
+function openModal(index: number) {
+  selectedIndex = index;
+  modalOpen = true;
+}
 </script>
 
 <SEO 

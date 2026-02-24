@@ -6,16 +6,16 @@
 -->
 
 <script lang="ts">
-  import { urlFor } from "$lib/sanity/client";
+import { urlFor } from "$lib/sanity/client";
 
-  /**
-   * PortableText passes the block value as `portableText.value`
-   * which contains the Sanity image object.
-   */
-  let { portableText } = $props();
-  
-  // The image data from Sanity (reactive in case portableText changes)
-  const value = $derived(portableText?.value);
+/**
+ * PortableText passes the block value as `portableText.value`
+ * which contains the Sanity image object.
+ */
+let { portableText } = $props();
+
+// The image data from Sanity (reactive in case portableText changes)
+const value = $derived(portableText?.value);
 </script>
 
 {#if value?.asset}

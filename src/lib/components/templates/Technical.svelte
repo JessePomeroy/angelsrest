@@ -11,25 +11,25 @@
 -->
 
 <script lang="ts">
-  import { PortableText } from "@portabletext/svelte";
-  import PortableTextImage from "../PortableTextImage.svelte";
-  import { urlFor } from "$lib/sanity/client";
+import { PortableText } from "@portabletext/svelte";
+import PortableTextImage from "../PortableTextImage.svelte";
+import { urlFor } from "$lib/sanity/client";
 
-  const components = {
-    types: { image: PortableTextImage },
-  };
+const components = {
+  types: { image: PortableTextImage },
+};
 
-  let { post } = $props();
+let { post } = $props();
 
-  function formatDate(dateStr: string) {
-    if (!dateStr) return "";
-    const date = new Date(dateStr);
-    return date.toLocaleDateString("en-US", {
-      year: "numeric",
-      month: "long",
-      day: "numeric",
-    });
-  }
+function formatDate(dateStr: string) {
+  if (!dateStr) return "";
+  const date = new Date(dateStr);
+  return date.toLocaleDateString("en-US", {
+    year: "numeric",
+    month: "long",
+    day: "numeric",
+  });
+}
 </script>
 
 <article class="max-w-3xl mx-auto">

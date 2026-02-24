@@ -1,4 +1,4 @@
-import { client, urlFor } from '$lib/sanity/client';
+import { client, urlFor } from "$lib/sanity/client";
 
 export const load = async () => {
   const about = await client.fetch(
@@ -9,13 +9,11 @@ export const load = async () => {
       shortBio,
       email,
       social
-    }`
+    }`,
   );
 
   return {
     about,
-    portraitUrl: about?.portrait
-      ? urlFor(about.portrait).width(800).url()
-      : null
+    portraitUrl: about?.portrait ? urlFor(about.portrait).width(800).url() : null,
   };
 };

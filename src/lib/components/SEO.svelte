@@ -1,26 +1,26 @@
 <script lang="ts">
-  /**
-   * SEO Component
-   * Reusable head tags for consistent SEO across all pages.
-   * Include in each page's <svelte:head> or use directly.
-   */
+/**
+ * SEO Component
+ * Reusable head tags for consistent SEO across all pages.
+ * Include in each page's <svelte:head> or use directly.
+ */
 
-  let {
-    title = "angel's rest",
-    description = "Photography portfolio and print shop by Jesse Pomeroy. Fine art photography, prints, zines, and commissions.",
-    image = "/og-image.jpg",
-    url = "https://angelsrest.online",
-    type = "website"
-  }: {
-    title?: string;
-    description?: string;
-    image?: string;
-    url?: string;
-    type?: string;
-  } = $props();
+let {
+  title = "angel's rest",
+  description = "Photography portfolio and print shop by Jesse Pomeroy. Fine art photography, prints, zines, and commissions.",
+  image = "/og-image.jpg",
+  url = "https://angelsrest.online",
+  type = "website",
+}: {
+  title?: string;
+  description?: string;
+  image?: string;
+  url?: string;
+  type?: string;
+} = $props();
 
-  // Ensure full URL for image (use $derived to track prop changes)
-  let fullImageUrl = $derived(image.startsWith('http') ? image : `https://angelsrest.online${image}`);
+// Ensure full URL for image (use $derived to track prop changes)
+let fullImageUrl = $derived(image.startsWith("http") ? image : `https://angelsrest.online${image}`);
 </script>
 
 <svelte:head>

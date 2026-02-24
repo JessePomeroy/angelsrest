@@ -8,21 +8,21 @@
 -->
 
 <script lang="ts">
-  // SEO component for meta tags (title, description, etc.)
-  import SEO from "$lib/components/SEO.svelte";
-  
-  // Our custom BlogCard component for displaying post previews
-  import BlogCard from "$lib/components/BlogCard.svelte";
+// SEO component for meta tags (title, description, etc.)
+import SEO from "$lib/components/SEO.svelte";
 
-  /**
-   * $props() is Svelte 5's way to receive props.
-   * 
-   * In SvelteKit, pages automatically receive a `data` prop
-   * containing whatever the +page.server.ts load function returned.
-   * 
-   * So: data.posts = the posts array from our server load function
-   */
-  let { data } = $props();
+// Our custom BlogCard component for displaying post previews
+import BlogCard from "$lib/components/BlogCard.svelte";
+
+/**
+ * $props() is Svelte 5's way to receive props.
+ *
+ * In SvelteKit, pages automatically receive a `data` prop
+ * containing whatever the +page.server.ts load function returned.
+ *
+ * So: data.posts = the posts array from our server load function
+ */
+let { data } = $props();
 </script>
 
 <!--

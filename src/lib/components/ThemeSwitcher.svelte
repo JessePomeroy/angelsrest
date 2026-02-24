@@ -6,38 +6,38 @@
 -->
 
 <script lang="ts">
-  import { onMount } from "svelte";
-  import { browser } from "$app/environment";
-  import { SunIcon, MoonIcon } from "@lucide/svelte";
-  import { isDark } from "$lib/stores/theme";
+import { onMount } from "svelte";
+import { browser } from "$app/environment";
+import { SunIcon, MoonIcon } from "@lucide/svelte";
+import { isDark } from "$lib/stores/theme";
 
-  onMount(() => {
-    applyTheme($isDark);
-  });
+onMount(() => {
+  applyTheme($isDark);
+});
 
-  function applyTheme(dark: boolean) {
-    if (browser) {
-      const html = document.documentElement;
-      if (dark) {
-        html.classList.add("dark");
-      } else {
-        html.classList.remove("dark");
-      }
-      // Always hamlindigo
-      html.setAttribute("data-theme", "hamlindigo");
-      localStorage.setItem("theme", dark ? "dark" : "light");
+function applyTheme(dark: boolean) {
+  if (browser) {
+    const html = document.documentElement;
+    if (dark) {
+      html.classList.add("dark");
+    } else {
+      html.classList.remove("dark");
     }
+    // Always hamlindigo
+    html.setAttribute("data-theme", "hamlindigo");
+    localStorage.setItem("theme", dark ? "dark" : "light");
   }
+}
 
-  function setLight() {
-    isDark.setLight();
-    applyTheme(false);
-  }
+function setLight() {
+  isDark.setLight();
+  applyTheme(false);
+}
 
-  function setDark() {
-    isDark.setDark();
-    applyTheme(true);
-  }
+function setDark() {
+  isDark.setDark();
+  applyTheme(true);
+}
 </script>
 
 <!-- Use proper Skeleton design tokens -->
