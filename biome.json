@@ -12,6 +12,8 @@
         "noImplicitAnyLet": "off"
       },
       "correctness": {
+        // Keep this OFF — Biome can't see Svelte template usage and will
+        // rename/remove variables that are actually used in {#each}, {#if}, etc.
         "noUnusedVariables": "off",
         "noInvalidPositionAtImportRule": "off"
       }
@@ -30,6 +32,14 @@
   },
   "files": {
     "ignoreUnknown": true,
+    // ⚠️ IMPORTANT: Biome does NOT understand Svelte files.
+    // It only sees the <script> block, not the template markup.
+    // Running Biome on .svelte files will:
+    //   - Remove component imports (Nav, Footer, etc.) it thinks are "unused"
+    //   - Rename variables used in templates (links → _links)
+    //   - Remove icon imports used in markup
+    // This caused a full site outage (500 on every page) on 2026-02-24.
+    // Use svelte-check for Svelte-specific linting instead.
     "ignore": ["*.svelte"]
   },
   "css": {
