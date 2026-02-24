@@ -1,6 +1,8 @@
 <script lang="ts">
+import SEO from "$lib/components/SEO.svelte";
+import AsciiImage from "$lib/components/AsciiImage.svelte";
+import portrait from "$lib/assets/DSCF7533.jpg";
 import { isDark } from "$lib/stores/theme";
-import { browser } from "$app/environment";
 
 let { data } = $props();
 
@@ -15,15 +17,14 @@ let { data } = $props();
  * - Dark mode: #fafafa (near-white)
  */
 $effect(() => {
-  if (!browser) return;
   document.documentElement.style.setProperty("--form-text-color", $isDark ? "#fafafa" : "#000000");
 });
 
-let _status = $state("idle"); // 'idle' | 'sending' | 'success' | 'error'
+let status = $state("idle"); // 'idle' | 'sending' | 'success' | 'error'
 
-async function _handleSubmit(e: SubmitEvent) {
+async function handleSubmit(e: SubmitEvent) {
   e.preventDefault();
-  _status = "sending";
+  status = "sending";
 
   const form = e.target as HTMLFormElement;
   const data = Object.fromEntries(new FormData(form));
@@ -36,13 +37,13 @@ async function _handleSubmit(e: SubmitEvent) {
     });
 
     if (res.ok) {
-      _status = "success";
+      status = "success";
       form.reset();
     } else {
-      _status = "error";
+      status = "error";
     }
   } catch {
-    _status = "error";
+    status = "error";
   }
 }
 </script>

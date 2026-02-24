@@ -29,7 +29,8 @@
     "useIgnoreFile": true
   },
   "files": {
-    "ignoreUnknown": true
+    "ignoreUnknown": true,
+    "ignore": ["*.svelte"]
   },
   "css": {
     "parser": {

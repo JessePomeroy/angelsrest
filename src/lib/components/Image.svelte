@@ -6,6 +6,8 @@
 -->
 
 <script lang="ts">
+import { urlFor } from "$lib/sanity/client";
+
 let {
   src,
   alt = "",

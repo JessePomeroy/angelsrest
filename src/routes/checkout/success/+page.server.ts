@@ -7,6 +7,7 @@
 
 import Stripe from "stripe";
 import { STRIPE_SECRET_KEY } from "$env/static/private";
+import { error } from "@sveltejs/kit";
 
 const stripe = new Stripe(STRIPE_SECRET_KEY);
 

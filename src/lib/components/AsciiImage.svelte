@@ -27,9 +27,9 @@ let {
 let sourceCanvas: HTMLCanvasElement;
 let asciiCanvas: HTMLCanvasElement;
 let asciiDataUrl = $state("");
-let _displayedAsciiUrl = $state("");
+let displayedAsciiUrl = $state("");
 let isHovering = $state(false);
-let _imageLoaded = $state(false);
+let imageLoaded = $state(false);
 
 let animationFrame: number | null = null;
 let asciiChars: string[] = [];
@@ -37,7 +37,7 @@ let settledIndices: Set<number> = new Set();
 let asciiCols = 0;
 let asciiRows = 0;
 
-const scrambleChars = $derived(`${charSet.replace(/\s/g, "")}!@#$%^&*<>[]{}`);
+const scrambleChars = $derived(charSet.replace(/\s/g, "") + "!@#$%^&*<>[]{}");
 
 onMount(() => {
   generateAscii();
@@ -107,7 +107,7 @@ function generateAscii() {
 
     // Render final ASCII to canvas and get data URL
     asciiDataUrl = renderAsciiToCanvas(asciiChars);
-    _imageLoaded = true;
+    imageLoaded = true;
   };
 
   img.src = src;
@@ -193,12 +193,12 @@ function startScrambleAnimation() {
       }
     }
 
-    _displayedAsciiUrl = renderAsciiToCanvas(currentChars);
+    displayedAsciiUrl = renderAsciiToCanvas(currentChars);
 
     if (progress < 1 && isHovering) {
       animationFrame = requestAnimationFrame(animate);
     } else if (progress >= 1) {
-      _displayedAsciiUrl = asciiDataUrl;
+      displayedAsciiUrl = asciiDataUrl;
     }
   }
 
@@ -212,12 +212,12 @@ function stopAnimation() {
   }
 }
 
-function _handleMouseEnter() {
+function handleMouseEnter() {
   isHovering = true;
   startScrambleAnimation();
 }
 
-function _handleMouseLeave() {
+function handleMouseLeave() {
   isHovering = false;
   stopAnimation();
 }

@@ -17,6 +17,9 @@
  * - Responsive design
  */
 
+import SEO from "$lib/components/SEO.svelte";
+import GalleryModal from "$lib/components/GalleryModal.svelte";
+
 /**
  * Props from Server Load Function
  *
@@ -40,9 +43,9 @@ let { data } = $props();
  * - Use meaningful variable names
  * - Initialize with sensible defaults
  */
-let _modalOpen = $state(false); // Controls image lightbox visibility
-let _selectedIndex = $state(0); // Which image to show in lightbox
-let _isLoading = $state(false); // Prevents double-clicks during checkout
+let modalOpen = $state(false); // Controls image lightbox visibility
+let selectedIndex = $state(0); // Which image to show in lightbox
+let isLoading = $state(false); // Prevents double-clicks during checkout
 
 /**
  * Modal Control Functions
@@ -52,9 +55,9 @@ let _isLoading = $state(false); // Prevents double-clicks during checkout
  * - Parameters make functions reusable
  * - State updates trigger reactive UI changes
  */
-function _openModal(index: number) {
-  _selectedIndex = index;
-  _modalOpen = true;
+function openModal(index: number) {
+  selectedIndex = index;
+  modalOpen = true;
 }
 
 /**
@@ -65,7 +68,7 @@ function _openModal(index: number) {
  * - Easy to test
  * - Reusable across components
  */
-function _formatCategory(category: string) {
+function formatCategory(category: string) {
   return category.charAt(0).toUpperCase() + category.slice(1);
 }
 
@@ -83,9 +86,9 @@ function _formatCategory(category: string) {
  * - Loading states for user feedback
  * - Graceful fallbacks for failures
  */
-async function _handleCheckout() {
+async function handleCheckout() {
   // Prevent double-submission while processing
-  _isLoading = true;
+  isLoading = true;
 
   // Debug logging (remove in production)
   console.log("Product data:", data.product);
@@ -174,7 +177,7 @@ async function _handleCheckout() {
      * Always reset loading state, regardless of success or failure.
      * This prevents the button from getting stuck in loading state.
      */
-    _isLoading = false;
+    isLoading = false;
   }
 }
 </script>

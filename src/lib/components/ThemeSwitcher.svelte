@@ -8,6 +8,7 @@
 <script lang="ts">
 import { onMount } from "svelte";
 import { browser } from "$app/environment";
+import { SunIcon, MoonIcon } from "@lucide/svelte";
 import { isDark } from "$lib/stores/theme";
 
 onMount(() => {
@@ -28,12 +29,12 @@ function applyTheme(dark: boolean) {
   }
 }
 
-function _setLight() {
+function setLight() {
   isDark.setLight();
   applyTheme(false);
 }
 
-function _setDark() {
+function setDark() {
   isDark.setDark();
   applyTheme(true);
 }

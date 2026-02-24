@@ -10,10 +10,15 @@
 -->
 
 <script lang="ts">
-import { injectAnalytics } from "@vercel/analytics/sveltekit";
-import { page } from "$app/stores";
 import type { Snippet } from "svelte";
+import { page } from "$app/stores";
+import { injectAnalytics } from "@vercel/analytics/sveltekit";
 import { onMount } from "svelte";
+
+// Header gif for non-homepage routes
+import headerGif from "$lib/assets/ponyolovesham.gif";
+
+// Layout components
 import Nav from "$lib/components/Nav.svelte";
 import BottomNav from "$lib/components/BottomNav.svelte";
 import Footer from "$lib/components/Footer.svelte";
@@ -44,8 +49,11 @@ onMount(() => {
   <!-- Desktop navigation (hidden on mobile) -->
   <Nav />
   
-  <!-- Mobile header spacer - only shown on non-homepage routes -->
+  <!-- Mobile header - only shown on non-homepage routes -->
   {#if $page.url.pathname !== "/"}
+    <div class="md:hidden">
+      <img src={headerGif} alt="" class="w-full" />
+    </div>
     <div class="h-4 md:hidden"></div>
     <div class="hidden md:block h-6"></div>
   {/if}

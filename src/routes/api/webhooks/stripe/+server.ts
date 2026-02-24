@@ -14,10 +14,10 @@
  * 📚 See guides/stripe-webhooks.md for full setup and troubleshooting guide
  */
 
-import { error, json } from "@sveltejs/kit";
-import { Resend } from "resend";
+import { json, error } from "@sveltejs/kit";
 import Stripe from "stripe";
-import { RESEND_API_KEY, STRIPE_SECRET_KEY, STRIPE_WEBHOOK_SECRET } from "$env/static/private";
+import { Resend } from "resend";
+import { STRIPE_SECRET_KEY, STRIPE_WEBHOOK_SECRET, RESEND_API_KEY } from "$env/static/private";
 
 const stripe = new Stripe(STRIPE_SECRET_KEY);
 const resend = new Resend(RESEND_API_KEY);

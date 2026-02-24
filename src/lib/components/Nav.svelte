@@ -8,7 +8,7 @@
 -->
 
 <script lang="ts">
-import { page } from "$app/stores";
+import { page } from "$app/state";
 import ThemeSwitcher from "./ThemeSwitcher.svelte";
 
 // Navigation links configuration
@@ -41,9 +41,9 @@ const links = [
           -->
           <a
             href={link.href}
-            class="text-xs tracking-wider lowercase transition-colors duration-200 {$page
+            class="text-xs tracking-wider lowercase transition-colors duration-200 {page
               .url.pathname === link.href ||
-            (link.href !== '/' && $page.url.pathname.startsWith(link.href))
+            (link.href !== '/' && page.url.pathname.startsWith(link.href))
               ? 'text-gray-900 dark:text-surface-50'
               : 'text-gray-600 hover:text-gray-900 dark:text-surface-400 dark:hover:text-surface-50'}"
           >

@@ -1,15 +1,21 @@
 <script lang="ts">
+/**
+ * Shop Index Page - Clean Implementation
+ * Using proper Skeleton design tokens with hamlindigo theme
+ */
+import SEO from "$lib/components/SEO.svelte";
+
 let { data } = $props();
 
 let activeCategory = $state("all");
 
-let _filteredProducts = $derived(
+let filteredProducts = $derived(
   activeCategory === "all"
     ? data.products
     : data.products.filter((product: { category: string }) => product.category === activeCategory),
 );
 
-const _categories = [
+const categories = [
   { label: "All", value: "all" },
   { label: "Prints", value: "prints" },
   { label: "Postcards", value: "postcards" },
