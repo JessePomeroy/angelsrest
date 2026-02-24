@@ -12,8 +12,7 @@
         "noImplicitAnyLet": "off"
       },
       "correctness": {
-        // Keep this OFF — Biome can't see Svelte template usage and will
-        // rename/remove variables that are actually used in {#each}, {#if}, etc.
+        // Keep this OFF globally — Biome can't fully see Svelte template usage.
         "noUnusedVariables": "off",
         "noInvalidPositionAtImportRule": "off"
       }
@@ -32,14 +31,19 @@
   },
   "files": {
     "ignoreUnknown": true,
-    // ⚠️ IMPORTANT: Biome does NOT understand Svelte files.
-    // It only sees the <script> block, not the template markup.
-    // Running Biome on .svelte files will:
-    //   - Remove component imports (Nav, Footer, etc.) it thinks are "unused"
-    //   - Rename variables used in templates (links → _links)
-    //   - Remove icon imports used in markup
-    // This caused a full site outage (500 on every page) on 2026-02-24.
-    // Use svelte-check for Svelte-specific linting instead.
+    // ⚠️ IMPORTANT: Biome's Svelte support is EXPERIMENTAL (🟡) as of v2.4.
+    //
+    // It does NOT parse Svelte-specific syntax ({#if}, {#each}, etc.), so:
+    //   - Imports used only in template markup get removed as "unused"
+    //   - Variables referenced in {#each} / {#if} get renamed with _ prefix
+    //   - This caused a full site outage (500 on every page) on 2026-02-24
+    //
+    // The Svelte team also does not recommend switching yet (Oct 2025).
+    // See: https://biomejs.dev/internals/language-support/#html-super-languages-support
+    //
+    // When Biome Svelte support goes stable, remove this ignore and use
+    // overrides instead (see docs for recommended rule disables).
+    // Use `svelte-check` for Svelte-specific linting in the meantime.
     "ignore": ["*.svelte"]
   },
   "css": {
