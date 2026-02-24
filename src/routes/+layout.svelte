@@ -16,6 +16,8 @@ import type { Snippet } from "svelte";
 import { onMount } from "svelte";
 import Nav from "$lib/components/Nav.svelte";
 import BottomNav from "$lib/components/BottomNav.svelte";
+import Footer from "$lib/components/Footer.svelte";
+import ThemeSwitcher from "$lib/components/ThemeSwitcher.svelte";
 
 // Time-aware theming
 import { timeTheme } from "$lib/stores/timeTheme.svelte";
@@ -42,11 +44,8 @@ onMount(() => {
   <!-- Desktop navigation (hidden on mobile) -->
   <Nav />
   
-  <!-- Mobile header - only shown on non-homepage routes -->
-  {#if page.url.pathname !== "/"}
-    <div class="md:hidden">
-      <img src={headerGif} alt="" class="w-full" />
-    </div>
+  <!-- Mobile header spacer - only shown on non-homepage routes -->
+  {#if $page.url.pathname !== "/"}
     <div class="h-4 md:hidden"></div>
     <div class="hidden md:block h-6"></div>
   {/if}
@@ -62,7 +61,7 @@ onMount(() => {
   <Footer />
   
   <!-- Mobile theme toggle - fixed position above bottom nav, homepage only -->
-  {#if page.url.pathname === "/"}
+  {#if $page.url.pathname === "/"}
     <div class="fixed bottom-20 right-4 z-40 md:hidden">
       <ThemeSwitcher />
     </div>
