@@ -1,5 +1,6 @@
 <script lang="ts">
 import { isDark } from "$lib/stores/theme";
+import { browser } from "$app/environment";
 
 let { data } = $props();
 
@@ -14,7 +15,8 @@ let { data } = $props();
  * - Dark mode: #fafafa (near-white)
  */
 $effect(() => {
-  document.documentElement.style.setProperty("--form-text-color", isDark ? "#fafafa" : "#000000");
+  if (!browser) return;
+  document.documentElement.style.setProperty("--form-text-color", $isDark ? "#fafafa" : "#000000");
 });
 
 let _status = $state("idle"); // 'idle' | 'sending' | 'success' | 'error'
