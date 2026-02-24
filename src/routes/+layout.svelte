@@ -11,6 +11,7 @@
 
 <script lang="ts">
 import { injectAnalytics } from "@vercel/analytics/sveltekit";
+import { page } from "$app/stores";
 import type { Snippet } from "svelte";
 import { onMount } from "svelte";
 
@@ -40,7 +41,7 @@ onMount(() => {
   <Nav />
   
   <!-- Mobile header - only shown on non-homepage routes -->
-  {#if $page.url.pathname !== "/"}
+  {#if page.url.pathname !== "/"}
     <div class="md:hidden">
       <img src={headerGif} alt="" class="w-full" />
     </div>
@@ -59,7 +60,7 @@ onMount(() => {
   <Footer />
   
   <!-- Mobile theme toggle - fixed position above bottom nav, homepage only -->
-  {#if $page.url.pathname === "/"}
+  {#if page.url.pathname === "/"}
     <div class="fixed bottom-20 right-4 z-40 md:hidden">
       <ThemeSwitcher />
     </div>
