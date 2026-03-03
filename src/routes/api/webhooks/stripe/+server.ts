@@ -163,7 +163,7 @@ async function sendCustomerConfirmation({
 }: {
   session: Stripe.Checkout.Session;
   customerEmail: string;
-  shippingDetails: Stripe.Checkout.Session.ShippingDetails | null;
+  shippingDetails: any;
   lineItems: Stripe.LineItem[];
 }) {
   const formatCurrency = (amount: number) => {
@@ -236,7 +236,7 @@ async function sendAdminNotification({
 }: {
   session: Stripe.Checkout.Session;
   customerEmail: string;
-  shippingDetails: Stripe.Checkout.Session.ShippingDetails | null;
+  shippingDetails: any;
   lineItems: Stripe.LineItem[];
 }) {
   const formatCurrency = (amount: number) => {

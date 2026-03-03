@@ -23,28 +23,31 @@ export async function load({ url }) {
 
   try {
     // Fetch the checkout session with expanded data
+    // Note: shipping_details cannot be expanded — use collected_information instead
     const session = await stripe.checkout.sessions.retrieve(sessionId, {
-      expand: ["line_items", "customer_details", "shipping_cost", "shipping_details"],
+      expand: ["line_items", "customer_details", "shipping_cost"],
     });
+
+    const shippingDetails = session.collected_information?.shipping_details;
 
     // Transform Stripe data into our format
     const orderDetails = {
       sessionId: session.id,
       customerEmail: session.customer_details?.email,
-      amountTotal: session.amount_total,
+      amountTotal: session.amount_total ?? 0,
       currency: session.currency,
       paymentStatus: session.payment_status,
 
       // Shipping information
-      shippingAddress: session.shipping_details?.address
+      shippingAddress: shippingDetails?.address
         ? {
-            name: session.shipping_details.name,
-            line1: session.shipping_details.address.line1,
-            line2: session.shipping_details.address.line2,
-            city: session.shipping_details.address.city,
-            state: session.shipping_details.address.state,
-            postalCode: session.shipping_details.address.postal_code,
-            country: session.shipping_details.address.country,
+            name: shippingDetails.name,
+            line1: shippingDetails.address.line1,
+            line2: shippingDetails.address.line2,
+            city: shippingDetails.address.city,
+            state: shippingDetails.address.state,
+            postalCode: shippingDetails.address.postal_code,
+            country: shippingDetails.address.country,
           }
         : null,
 
