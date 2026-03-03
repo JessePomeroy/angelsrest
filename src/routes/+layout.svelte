@@ -9,6 +9,17 @@
   - Footer (desktop only)
 -->
 
+<svelte:head>
+  <meta property="og:title" content="Angel's Rest" />
+  <meta property="og:description" content="Photography by Jesse Pomeroy" />
+  <meta property="og:image" content="https://www.angelsrest.online/og-image.png" />
+  <meta property="og:url" content="https://www.angelsrest.online" />
+  <meta property="og:type" content="website" />
+  <meta name="twitter:card" content="summary_large_image" />
+  <meta name="twitter:image" content="https://www.angelsrest.online/og-image.png" />
+  <link rel="icon" type="image/png" href="/favicon.png" />
+</svelte:head>
+
 <script lang="ts">
 import type { Snippet } from "svelte";
 import { page } from "$app/stores";
