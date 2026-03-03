@@ -17,7 +17,7 @@
   <meta property="og:type" content="website" />
   <meta name="twitter:card" content="summary_large_image" />
   <meta name="twitter:image" content="https://www.angelsrest.online/og-image.png" />
-  <link rel="icon" type="image/png" href="/favicon.png" />
+  <link rel="icon" type="image/jpeg" href="/favicon.jpg" />
 </svelte:head>
 
 <script lang="ts">
