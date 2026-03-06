@@ -17,84 +17,97 @@
 import { json, error } from "@sveltejs/kit";
 import Stripe from "stripe";
 import { Resend } from "resend";
-import { STRIPE_SECRET_KEY, STRIPE_WEBHOOK_SECRET, RESEND_API_KEY } from "$env/static/private";
+import {
+	STRIPE_SECRET_KEY,
+	STRIPE_WEBHOOK_SECRET,
+	RESEND_API_KEY,
+} from "$env/static/private";
+import { adminClient } from "$lib/sanity/adminClient";
+import {
+	getNextOrderNumber,
+	orderExistsForSession,
+} from "$lib/orders/orderNumber";
 
 const stripe = new Stripe(STRIPE_SECRET_KEY);
 const resend = new Resend(RESEND_API_KEY);
 
 export async function POST({ request }) {
-  // Get the raw body and signature from Stripe's webhook request
-  const body = await request.text(); // IMPORTANT: Must be raw text, not JSON
-  const signature = request.headers.get("stripe-signature");
+	// Get the raw body and signature from Stripe's webhook request
+	const body = await request.text(); // IMPORTANT: Must be raw text, not JSON
+	const signature = request.headers.get("stripe-signature");
 
-  if (!signature) {
-    console.error("Missing stripe-signature header");
-    throw error(400, "Missing stripe-signature header");
-  }
+	if (!signature) {
+		console.error("Missing stripe-signature header");
+		throw error(400, "Missing stripe-signature header");
+	}
 
-  let event: Stripe.Event;
+	let event: Stripe.Event;
 
-  try {
-    /**
-     * 🔒 CRITICAL SECURITY STEP
-     *
-     * This verifies the webhook actually came from Stripe using cryptographic signatures.
-     * Without this, anyone could send fake "payment completed" requests to your server.
-     *
-     * How it works:
-     * 1. Stripe signs each webhook with your secret key
-     * 2. We recreate the signature using the same secret + request body
-     * 3. If signatures match = legitimate webhook from Stripe
-     * 4. If they don't match = reject the request
-     */
-    event = stripe.webhooks.constructEvent(body, signature, STRIPE_WEBHOOK_SECRET);
-  } catch (err: any) {
-    console.error("Webhook signature verification failed:", err.message);
-    throw error(400, `Webhook Error: ${err.message}`);
-  }
+	try {
+		/**
+		 * 🔒 CRITICAL SECURITY STEP
+		 *
+		 * This verifies the webhook actually came from Stripe using cryptographic signatures.
+		 * Without this, anyone could send fake "payment completed" requests to your server.
+		 *
+		 * How it works:
+		 * 1. Stripe signs each webhook with your secret key
+		 * 2. We recreate the signature using the same secret + request body
+		 * 3. If signatures match = legitimate webhook from Stripe
+		 * 4. If they don't match = reject the request
+		 */
+		event = stripe.webhooks.constructEvent(
+			body,
+			signature,
+			STRIPE_WEBHOOK_SECRET,
+		);
+	} catch (err: any) {
+		console.error("Webhook signature verification failed:", err.message);
+		throw error(400, `Webhook Error: ${err.message}`);
+	}
 
-  console.log(`Received webhook: ${event.type}`);
+	console.log(`Received webhook: ${event.type}`);
 
-  try {
-    /**
-     * 🎯 EVENT ROUTING
-     *
-     * Stripe sends many different event types. We handle the important ones:
-     *
-     * checkout.session.completed = Customer successfully paid
-     * payment_intent.payment_failed = Payment was attempted but failed
-     *
-     * Other events we could handle in the future:
-     * - invoice.payment_succeeded (for subscriptions)
-     * - customer.subscription.deleted (cancellations)
-     * - charge.dispute.created (chargebacks)
-     */
-    switch (event.type) {
-      case "checkout.session.completed": {
-        // ✅ SUCCESS: Customer completed their purchase
-        const session = event.data.object as Stripe.Checkout.Session;
-        await handleCheckoutCompleted(session);
-        break;
-      }
+	try {
+		/**
+		 * 🎯 EVENT ROUTING
+		 *
+		 * Stripe sends many different event types. We handle the important ones:
+		 *
+		 * checkout.session.completed = Customer successfully paid
+		 * payment_intent.payment_failed = Payment was attempted but failed
+		 *
+		 * Other events we could handle in the future:
+		 * - invoice.payment_succeeded (for subscriptions)
+		 * - customer.subscription.deleted (cancellations)
+		 * - charge.dispute.created (chargebacks)
+		 */
+		switch (event.type) {
+			case "checkout.session.completed": {
+				// ✅ SUCCESS: Customer completed their purchase
+				const session = event.data.object as Stripe.Checkout.Session;
+				await handleCheckoutCompleted(session);
+				break;
+			}
 
-      case "payment_intent.payment_failed": {
-        // ❌ FAILURE: Payment attempt was declined/failed
-        const paymentIntent = event.data.object as Stripe.PaymentIntent;
-        console.log("Payment failed:", paymentIntent.id);
-        // TODO: Could send "payment failed" email to customer here
-        break;
-      }
+			case "payment_intent.payment_failed": {
+				// ❌ FAILURE: Payment attempt was declined/failed
+				const paymentIntent = event.data.object as Stripe.PaymentIntent;
+				console.log("Payment failed:", paymentIntent.id);
+				// TODO: Could send "payment failed" email to customer here
+				break;
+			}
 
-      default:
-        // 📝 LOG: We receive but don't process this event type
-        console.log(`Unhandled event type: ${event.type}`);
-    }
+			default:
+				// 📝 LOG: We receive but don't process this event type
+				console.log(`Unhandled event type: ${event.type}`);
+		}
 
-    return json({ received: true });
-  } catch (err) {
-    console.error("Error processing webhook:", err);
-    throw error(500, "Webhook processing failed");
-  }
+		return json({ received: true });
+	} catch (err) {
+		console.error("Error processing webhook:", err);
+		throw error(500, "Webhook processing failed");
+	}
 }
 
 /**
@@ -102,93 +115,101 @@ export async function POST({ request }) {
  * Sends confirmation email to customer and notification to admin
  */
 async function handleCheckoutCompleted(session: Stripe.Checkout.Session) {
-  console.log("Processing completed checkout:", session.id);
+	console.log("Processing completed checkout:", session.id);
 
-  try {
-    /**
-     * 📦 FETCH COMPLETE ORDER DATA
-     *
-     * The webhook gives us basic session info, but we need more details:
-     * - line_items: What exactly did they buy?
-     * - customer_details: Full customer info for email
-     *
-     * ⚠️ IMPORTANT: We DON'T expand 'shipping_details' because Stripe doesn't
-     * allow that field to be expanded. Instead, we get shipping info from
-     * the original session.collected_information.shipping_details
-     */
-    const fullSession = await stripe.checkout.sessions.retrieve(session.id, {
-      expand: ["line_items", "customer_details"], // Only expand what's allowed
-    });
+	try {
+		/**
+		 * 📦 FETCH COMPLETE ORDER DATA
+		 *
+		 * The webhook gives us basic session info, but we need more details:
+		 * - line_items: What exactly did they buy?
+		 * - customer_details: Full customer info for email
+		 *
+		 * ⚠️ IMPORTANT: We DON'T expand 'shipping_details' because Stripe doesn't
+		 * allow that field to be expanded. Instead, we get shipping info from
+		 * the original session.collected_information.shipping_details
+		 */
+		const fullSession = await stripe.checkout.sessions.retrieve(session.id, {
+			expand: ["line_items", "customer_details"], // Only expand what's allowed
+		});
 
-    const customerEmail = fullSession.customer_details?.email;
-    const shippingDetails = session.collected_information?.shipping_details; // From original webhook data
-    const lineItems = fullSession.line_items?.data || [];
+		const customerEmail = fullSession.customer_details?.email;
+		const shippingDetails = session.collected_information?.shipping_details; // From original webhook data
+		const lineItems = fullSession.line_items?.data || [];
 
-    if (!customerEmail) {
-      console.error("No customer email found for session:", session.id);
-      return;
-    }
+		if (!customerEmail) {
+			console.error("No customer email found for session:", session.id);
+			return;
+		}
 
-    // Send customer confirmation email
-    await sendCustomerConfirmation({
-      session: fullSession,
-      customerEmail,
-      shippingDetails,
-      lineItems,
-    });
+		// Send customer confirmation email
+		await sendCustomerConfirmation({
+			session: fullSession,
+			customerEmail,
+			shippingDetails,
+			lineItems,
+		});
 
-    // Send admin notification email
-    await sendAdminNotification({
-      session: fullSession,
-      customerEmail,
-      shippingDetails,
-      lineItems,
-    });
+		// Send admin notification email
+		await sendAdminNotification({
+			session: fullSession,
+			customerEmail,
+			shippingDetails,
+			lineItems,
+		});
 
-    console.log("Emails sent successfully for session:", session.id);
-  } catch (err) {
-    console.error("Error in handleCheckoutCompleted:", err);
-    throw err;
-  }
+		// Create order in Sanity for tracking
+		await createOrderInSanity({
+			session: fullSession,
+			shippingDetails,
+			lineItems,
+		});
+
+		console.log("Emails sent successfully for session:", session.id);
+	} catch (err) {
+		console.error("Error in handleCheckoutCompleted:", err);
+		throw err;
+	}
 }
 
 /**
  * Send order confirmation to customer
  */
 async function sendCustomerConfirmation({
-  session,
-  customerEmail,
-  shippingDetails,
-  lineItems,
+	session,
+	customerEmail,
+	shippingDetails,
+	lineItems,
 }: {
-  session: Stripe.Checkout.Session;
-  customerEmail: string;
-  shippingDetails: any;
-  lineItems: Stripe.LineItem[];
+	session: Stripe.Checkout.Session;
+	customerEmail: string;
+	shippingDetails: any;
+	lineItems: Stripe.LineItem[];
 }) {
-  const formatCurrency = (amount: number) => {
-    return new Intl.NumberFormat("en-US", {
-      style: "currency",
-      currency: "USD",
-    }).format(amount / 100);
-  };
+	const formatCurrency = (amount: number) => {
+		return new Intl.NumberFormat("en-US", {
+			style: "currency",
+			currency: "USD",
+		}).format(amount / 100);
+	};
 
-  const itemsList = lineItems
-    .map(
-      (item) => `• ${item.description} (${item.quantity}x) - ${formatCurrency(item.amount_total)}`,
-    )
-    .join("\n");
+	const itemsList = lineItems
+		.map(
+			(item) =>
+				`• ${item.description} (${item.quantity}x) - ${formatCurrency(item.amount_total)}`,
+		)
+		.join("\n");
 
-  const shippingAddress = shippingDetails?.address
-    ? `
+	const shippingAddress = shippingDetails?.address
+		? `
 ${shippingDetails.name}
 ${shippingDetails.address.line1}
 ${shippingDetails.address.line2 || ""}
 ${shippingDetails.address.city}, ${shippingDetails.address.state} ${shippingDetails.address.postal_code}
 ${shippingDetails.address.country}`.trim()
-    : "No shipping address";
+		: "No shipping address";
 
-  const emailContent = `
+	const emailContent = `
 Hi ${shippingDetails?.name || "there"},
 
 Thank you for your order! Your payment has been successfully processed.
@@ -217,51 +238,52 @@ Angel's Rest
 https://angelsrest.online
   `.trim();
 
-  await resend.emails.send({
-    from: "Angel's Rest <orders@angelsrest.online>",
-    to: [customerEmail],
-    subject: `Order Confirmation - ${session.id}`,
-    text: emailContent,
-  });
+	await resend.emails.send({
+		from: "Angel's Rest <orders@angelsrest.online>",
+		to: [customerEmail],
+		subject: `Order Confirmation - ${session.id}`,
+		text: emailContent,
+	});
 }
 
 /**
  * Send order notification to admin (you)
  */
 async function sendAdminNotification({
-  session,
-  customerEmail,
-  shippingDetails,
-  lineItems,
+	session,
+	customerEmail,
+	shippingDetails,
+	lineItems,
 }: {
-  session: Stripe.Checkout.Session;
-  customerEmail: string;
-  shippingDetails: any;
-  lineItems: Stripe.LineItem[];
+	session: Stripe.Checkout.Session;
+	customerEmail: string;
+	shippingDetails: any;
+	lineItems: Stripe.LineItem[];
 }) {
-  const formatCurrency = (amount: number) => {
-    return new Intl.NumberFormat("en-US", {
-      style: "currency",
-      currency: "USD",
-    }).format(amount / 100);
-  };
+	const formatCurrency = (amount: number) => {
+		return new Intl.NumberFormat("en-US", {
+			style: "currency",
+			currency: "USD",
+		}).format(amount / 100);
+	};
 
-  const itemsList = lineItems
-    .map(
-      (item) => `• ${item.description} (${item.quantity}x) - ${formatCurrency(item.amount_total)}`,
-    )
-    .join("\n");
+	const itemsList = lineItems
+		.map(
+			(item) =>
+				`• ${item.description} (${item.quantity}x) - ${formatCurrency(item.amount_total)}`,
+		)
+		.join("\n");
 
-  const shippingAddress = shippingDetails?.address
-    ? `
+	const shippingAddress = shippingDetails?.address
+		? `
 ${shippingDetails.name}
 ${shippingDetails.address.line1}
 ${shippingDetails.address.line2 || ""}
 ${shippingDetails.address.city}, ${shippingDetails.address.state} ${shippingDetails.address.postal_code}
 ${shippingDetails.address.country}`.trim()
-    : "No shipping address";
+		: "No shipping address";
 
-  const emailContent = `
+	const emailContent = `
 🎉 NEW ORDER RECEIVED!
 
 ORDER DETAILS
@@ -283,10 +305,78 @@ View full details: https://dashboard.stripe.com/payments/${session.payment_inten
 This order was automatically processed through your Angel's Rest website.
   `.trim();
 
-  await resend.emails.send({
-    from: "Angel's Rest Orders <orders@angelsrest.online>",
-    to: ["thinkingofview@gmail.com"],
-    subject: `🛒 New Order: ${formatCurrency(session.amount_total || 0)} from ${shippingDetails?.name || customerEmail}`,
-    text: emailContent,
-  });
+	await resend.emails.send({
+		from: "Angel's Rest Orders <orders@angelsrest.online>",
+		to: ["thinkingofview@gmail.com"],
+		subject: `🛒 New Order: ${formatCurrency(session.amount_total || 0)} from ${shippingDetails?.name || customerEmail}`,
+		text: emailContent,
+	});
+}
+
+/**
+ * Create an order document in Sanity for tracking
+ * This enables custom workflow status, expense tracking, and backup data
+ */
+async function createOrderInSanity({
+	session,
+	shippingDetails,
+	lineItems,
+}: {
+	session: Stripe.Checkout.Session;
+	shippingDetails: any;
+	lineItems: Stripe.LineItem[];
+}) {
+	try {
+		// Check idempotency - don't create duplicate orders
+		const alreadyExists = await orderExistsForSession(session.id);
+		if (alreadyExists) {
+			console.log("Order already exists for session:", session.id);
+			return;
+		}
+
+		// Generate sequential order number
+		const orderNumber = await getNextOrderNumber();
+
+		// Map line items to Sanity format
+		const items = lineItems.map((item) => ({
+			_key: crypto.randomUUID(),
+			productName: item.description || "Unknown Product",
+			quantity: item.quantity || 1,
+			// Use amount_total (total for this line) or unit_amount from price object
+			price: item.amount_total || item.price?.unit_amount || 0,
+		}));
+
+		// Create the order document
+		const orderDoc = {
+			_type: "order",
+			orderNumber,
+			stripeSessionId: session.id,
+			customerEmail: session.customer_details?.email || "",
+			customerName:
+				session.customer_details?.name || shippingDetails?.name || "",
+			shippingAddress: shippingDetails?.address
+				? {
+						line1: shippingDetails.address.line1 || "",
+						line2: shippingDetails.address.line2 || "",
+						city: shippingDetails.address.city || "",
+						state: shippingDetails.address.state || "",
+						postalCode: shippingDetails.address.postal_code || "",
+						country: shippingDetails.address.country || "",
+					}
+				: undefined,
+			items,
+			subtotal: session.amount_subtotal || 0,
+			total: session.amount_total || 0,
+			currency: session.currency || "usd",
+			status: "new",
+			createdAt: new Date().toISOString(),
+			updatedAt: new Date().toISOString(),
+		};
+
+		const result = await adminClient.create(orderDoc);
+		console.log("Created order in Sanity:", orderNumber, result._id);
+	} catch (err) {
+		console.error("Error creating order in Sanity:", err);
+		// Don't throw - we already sent emails, don't fail the webhook
+	}
 }
