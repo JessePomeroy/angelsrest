@@ -190,7 +190,7 @@
 							</div>
 						</td>
 						<td>
-							<span class="badge variant-soft">
+							<span class="bg-surface-500/20 text-surface-100-700-token">
 								{order.items?.length || 0} item{(order.items?.length || 0) !== 1 ? 's' : ''}
 							</span>
 						</td>
@@ -201,7 +201,7 @@
 							<select
 								value={order.status}
 								onchange={(e) => updateStatus(order._id, e.currentTarget.value)}
-								class="select text-sm {statusColors[order.status] || 'badge'} capitalize"
+								class="select text-sm {statusColors[order.status] || } capitalize"
 							>
 								{#each statuses.filter(s => s !== 'all') as status}
 									<option value={status}>{status}</option>
@@ -241,7 +241,7 @@
 				<select
 					value={selectedOrder.status}
 					onchange={(e) => updateStatus(selectedOrder._id, e.currentTarget.value)}
-					class="select {statusColors[selectedOrder.status] || 'badge'} capitalize w-full"
+					class="select {statusColors[selectedOrder.status] || } capitalize w-full"
 				>
 					{#each statuses.filter(s => s !== 'all') as status}
 						<option value={status}>{status}</option>
