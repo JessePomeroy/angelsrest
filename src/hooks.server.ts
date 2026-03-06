@@ -1,5 +1,7 @@
 import { env as privateEnv } from '$env/dynamic/private';
 
+console.log('[HOOKS] hooks.server.ts loaded');
+
 /**
  * SvelteKit hooks
  *
@@ -8,6 +10,7 @@ import { env as privateEnv } from '$env/dynamic/private';
 export const hooks = {
 	handle: [
 		async ({ event, resolve }) => {
+			console.log('[HOOKS] Handling:', event.url.pathname);
 			// Protect /admin routes
 			if (event.url.pathname.startsWith('/admin')) {
 				const ADMIN_PASSWORD = privateEnv.ADMIN_PASSWORD;
@@ -24,6 +27,7 @@ export const hooks = {
 				console.log('[ADMIN] Auth header:', !!authHeader);
 
 				if (!authHeader || !authHeader.startsWith('Basic ')) {
+					console.log('[ADMIN] No auth - returning 401');
 					return new Response('Unauthorized', {
 						status: 401,
 						headers: {
