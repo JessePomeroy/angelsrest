@@ -107,13 +107,75 @@ A phased plan for building out angelsrest.online, ordered to progressively re-le
 
 ### Inventory
 - [ ] Stock tracking in Sanity
-- [ ] Auto-update stock on purchase
-- [ ] Low stock alerts
 
-### Analytics
-- [ ] Order dashboard/admin page
+### Admin Dashboard
+- [ ] Admin orders page (`/admin/orders`)
+  - Fetch orders from Sanity via GROQ
+  - Display orders in sortable/filterable table
+  - Show order details (customer, items, total, status)
+  - Update order status from frontend
+  - Filter by status
+  - Search by customer email/order number
+
+### Analytics (Future)
 - [ ] Revenue tracking
 - [ ] Popular products report
+
+---
+
+## Admin Orders Page Design
+
+**Purpose:** Cleaner order management than Sanity Studio
+
+### Page Layout
+
+**URL:** `/admin/orders`
+
+**Features:**
+- Table view of all orders (newest first)
+- Columns: Order #, Date, Customer, Items, Total, Status
+- Status badges with colors (New=blue, Printing=yellow, Shipped=green, etc.)
+- Click row to expand details
+- Filter dropdown: All, New, Printing, Ready, Shipped, Delivered
+- Search: filter by email or order number
+
+### Status Update
+
+- Click status to change it (dropdown)
+- Updates Sanity in real-time
+- Changes reflect in Sanity Studio too
+
+### Mobile
+
+- Stacks to card view on mobile
+- Horizontal scroll for table on tablet
+
+### Implementation
+
+```
+src/routes/admin/orders/+page.server.ts  // Fetch orders via GROQ
+src/routes/admin/orders/+page.svelte     // Table UI with Skeleton
+src/routes/api/admin/orders/[id]/+server.ts  // Update status
+```
+
+### GROQ Query
+
+```groq
+*[_type == "order"] | order(createdAt desc) {
+  _id,
+  orderNumber,
+  createdAt,
+  customerEmail,
+  customerName,
+  total,
+  status,
+  items[]{
+    productName,
+    quantity,
+    price
+  }
+}
+```
 
 ---
 
