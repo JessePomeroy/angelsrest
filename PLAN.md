@@ -108,14 +108,16 @@ A phased plan for building out angelsrest.online, ordered to progressively re-le
 ### Inventory
 - [ ] Stock tracking in Sanity
 
-### Admin Dashboard
-- [ ] Admin orders page (`/admin/orders`)
-  - Fetch orders from Sanity via GROQ
-  - Display orders in sortable/filterable table
-  - Show order details (customer, items, total, status)
-  - Update order status from frontend
-  - Filter by status
-  - Search by customer email/order number
+### Admin Dashboard ✅
+- [x] Admin orders page (`/admin/orders`)
+  - [x] Fetch orders from Sanity via GROQ
+  - [x] Display orders in sortable/filterable table
+  - [x] Show order details (customer, items, total, status)
+  - [x] Update order status from frontend
+  - [x] Filter by status
+  - [x] Search by customer email/order number
+  - [x] Edit notes in modal
+  - [x] HTTP Basic Auth protection (password-protected)
 
 ### Analytics (Future)
 - [ ] Revenue tracking
@@ -207,6 +209,10 @@ src/routes/api/admin/orders/[id]/+server.ts  // Update status
 | `src/lib/sanity/adminClient.ts` | Write-enabled Sanity client (server-side only) |
 | `src/lib/orders/orderNumber.ts` | Sequential order number generator + idempotency check |
 | `src/routes/api/webhooks/stripe/+server.ts` | Updated — creates order in Sanity on checkout completion |
+| `src/hooks.server.ts` | HTTP Basic Auth protection for /admin routes |
+| `src/routes/admin/orders/+page.server.ts` | Fetch orders from Sanity via GROQ |
+| `src/routes/admin/orders/+page.svelte` | Admin orders dashboard UI |
+| `src/routes/api/admin/orders/[id]/+server.ts` | API to update order status/notes |
 
 ### Sanity Studio (angelsrest-studio)
 | File | Purpose |
@@ -232,6 +238,46 @@ Key documented files:
 - `/shop/[slug]/+page.server.ts` — SvelteKit data loading
 - `/checkout/success/+page.svelte` — Post-purchase UX
 - `/checkout/cancel/+page.svelte` — Abandonment handling
+- `/api/webhooks/stripe/+server.ts` — Webhook handling & order creation
+- `/admin/orders/+page.svelte` — Admin dashboard
+- `hooks.server.ts` — HTTP Basic Auth
+
+---
+
+## Authentication Learning Guide
+
+### HTTP Basic Auth (What We Used)
+
+**How it works:**
+1. User visits protected page
+2. Server checks for `Authorization` header
+3. If missing → returns `401 Unauthorized` + `WWW-Authenticate: Basic` header
+4. Browser shows login popup
+5. User enters credentials
+6. Browser sends `Authorization: Basic base64(username:password)`
+7. Server verifies password
+8. If correct → serve the page
+
+**Pros:** Simple, no database, works everywhere
+**Cons:** No logout, single password, can't track "who"
+
+**Code location:** `src/hooks.server.ts`
+
+### Other Auth Options (For Future)
+
+| Method | Pros | Cons | Use Case |
+|--------|------|------|----------|
+| Session cookies | User tracking, logout | Database needed | Real user accounts |
+| OAuth (Google, GitHub) | No password management | Setup complexity | Social login |
+| JWT tokens | Stateless, scalable | Complexity | APIs, SPAs |
+| Clerk/Auth.js | Full-featured | Third-party dependency | Complete auth solution |
+
+### When to Upgrade?
+
+- Multiple users with different permissions
+- Need user accounts for customers
+- Want "forgot password" flow
+- Need audit logs ("who did what")
 
 ---
 
