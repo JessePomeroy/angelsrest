@@ -221,21 +221,51 @@
 	 * 2. Map each order to an array of values
 	 * 3. Join with commas, wrap in quotes to handle special characters
 	 * 4. Create a Blob (file-like object) and trigger download
+	 * 
+	 * 💡 Tax Tips:
+	 * - "Gross" = what customer paid
+	 * - "Fees" = Stripe fees (deductible expense) - not currently captured, see below
+	 * - "Net" = Gross - Fees = your actual income
+	 * 
+	 * To capture Stripe fees automatically:
+	 * 1. Add 'stripeFees' field to order schema in Sanity
+	 * 2. Update webhook to pass 'application_fee_amount' from Stripe
 	 */
 	// Export filtered orders to CSV
 	function exportCSV() {
-		const headers = ['Order Number', 'Date', 'Customer Name', 'Customer Email', 'Items', 'Total', 'Status', 'Notes'];
+		const headers = [
+			'Order Number', 
+			'Date', 
+			'Customer Name', 
+			'Customer Email', 
+			'Items', 
+			'Gross Revenue',
+			'Stripe Fees', 
+			'Net Revenue',
+			'Status', 
+			'Notes'
+		];
 		
-		const rows = filteredOrders.map((order: any) => [
-			order.orderNumber || '',
-			new Date(order.createdAt).toLocaleDateString('en-US'),
-			order.customerName || '',
-			order.customerEmail || '',
-			(order.items || []).map((i: any) => `${i.productName} x${i.quantity}`).join('; '),
-			(order.total / 100).toFixed(2),
-			order.status || '',
-			order.notes || ''
-		]);
+		const rows = filteredOrders.map((order: any) => {
+			const gross = (order.total || 0) / 100;
+			// Fees would be captured from Stripe - for now show 0
+			// To enable: add stripeFees to order schema + webhook
+			const fees = (order.stripeFees || 0) / 100;
+			const net = gross - fees;
+			
+			return [
+				order.orderNumber || '',
+				new Date(order.createdAt).toLocaleDateString('en-US'),
+				order.customerName || '',
+				order.customerEmail || '',
+				(order.items || []).map((i: any) => `${i.productName} x${i.quantity}`).join('; '),
+				gross.toFixed(2),
+				fees.toFixed(2),
+				net.toFixed(2),
+				order.status || '',
+				order.notes || ''
+			];
+		});
 
 		const csvContent = [
 			headers.join(','),
