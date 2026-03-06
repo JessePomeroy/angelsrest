@@ -133,9 +133,9 @@ async function handleCheckoutCompleted(session: Stripe.Checkout.Session) {
 		let shippingDetails: any;
 
 		try {
-			// Try to fetch full session with line items
+			// Try to fetch full session with line items and payment intent (for fees)
 			fullSession = await stripe.checkout.sessions.retrieve(session.id, {
-				expand: ["line_items", "customer_details"],
+				expand: ["line_items", "customer_details", "payment_intent"],
 			});
 			lineItems = fullSession.line_items?.data || [];
 			shippingDetails = session.collected_information?.shipping_details;
@@ -364,6 +364,11 @@ async function createOrderInSanity({
 			price: item.amount_total || item.price?.unit_amount || 0,
 		}));
 
+		// Get Stripe fees from payment_intent
+		// The payment_intent contains application_fee_amount (your fees)
+		const paymentIntent = (session as any).payment_intent;
+		const stripeFees = paymentIntent?.application_fee_amount || 0;
+
 		// Create the order document
 		const orderDoc = {
 			_type: "order",
@@ -385,6 +390,7 @@ async function createOrderInSanity({
 			items,
 			subtotal: session.amount_subtotal || 0,
 			total: session.amount_total || 0,
+			stripeFees,
 			currency: session.currency || "usd",
 			status: "new",
 			createdAt: new Date().toISOString(),

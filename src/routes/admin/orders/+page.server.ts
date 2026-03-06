@@ -31,6 +31,7 @@ export async function load() {
 		customerEmail,              // Customer's email
 		customerName,               // Customer's name
 		total,                     // Order total in cents
+		stripeFees,                // Stripe transaction fees in cents
 		status,                    // Fulfillment status
 		currency,                  // Currency code (usd, eur, etc.)
 		items[]{                   // Array of items purchased
