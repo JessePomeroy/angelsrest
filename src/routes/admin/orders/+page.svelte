@@ -201,7 +201,7 @@
 							<select
 								value={order.status}
 								onchange={(e) => updateStatus(order._id, e.currentTarget.value)}
-								class="select text-sm {statusColors[order.status] || } capitalize"
+								class="select text-sm {statusColors[order.status] || 'bg-surface-500/20' } capitalize"
 							>
 								{#each statuses.filter(s => s !== 'all') as status}
 									<option value={status}>{status}</option>
@@ -241,7 +241,7 @@
 				<select
 					value={selectedOrder.status}
 					onchange={(e) => updateStatus(selectedOrder._id, e.currentTarget.value)}
-					class="select {statusColors[selectedOrder.status] || } capitalize w-full"
+					class="select {statusColors[selectedOrder.status] || 'bg-surface-500/20' } capitalize w-full"
 				>
 					{#each statuses.filter(s => s !== 'all') as status}
 						<option value={status}>{status}</option>
