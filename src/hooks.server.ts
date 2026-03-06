@@ -9,13 +9,15 @@ export const hooks = {
 	/**
 	 * Handle HTTP requests
 	 *
-	 * Use match() to apply handlers to specific routes.
-	 * The adminAuth handler protects all /admin/* routes.
+	 * Applies adminAuth to routes starting with /admin
 	 */
 	handle: [
-		{
-			match: '/admin/**',
-			handler: adminAuth
+		async ({ event, resolve }) => {
+			// Protect /admin routes
+			if (event.url.pathname.startsWith('/admin')) {
+				return adminAuth({ event, resolve });
+			}
+			return resolve(event);
 		}
 	]
 };
