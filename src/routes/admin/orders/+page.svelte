@@ -6,6 +6,7 @@
 	// Filter state
 	let statusFilter = $state('all');
 	let searchQuery = $state('');
+	let yearFilter = $state('all');
 
 	// Modal state
 	let selectedOrder = $state<any>(null);
@@ -15,12 +16,23 @@
 	// Get unique statuses for filter dropdown
 	const statuses = ['all', 'new', 'printing', 'ready', 'shipped', 'delivered', 'refunded'];
 
+	// Get unique years from orders for the filter
+	let availableYears = $derived(
+		[...new Set(data.orders.map((o: any) => new Date(o.createdAt).getFullYear()))].sort((a, b) => b - a)
+	);
+
 	// Filter orders
 	let filteredOrders = $derived(
 		data.orders.filter((order: any) => {
+			// Status filter
 			if (statusFilter !== 'all' && order.status !== statusFilter) {
 				return false;
 			}
+			// Year filter
+			if (yearFilter !== 'all' && new Date(order.createdAt).getFullYear() !== parseInt(yearFilter)) {
+				return false;
+			}
+			// Search filter
 			if (searchQuery) {
 				const query = searchQuery.toLowerCase();
 				const matchEmail = order.customerEmail?.toLowerCase().includes(query);
@@ -32,6 +44,16 @@
 			}
 			return true;
 		})
+	);
+
+	// Calculate totals for filtered orders
+	let totalRevenue = $derived(
+		filteredOrders.reduce((sum: number, order: any) => sum + (order.total || 0), 0)
+	);
+
+	// Calculate totals for ALL orders (regardless of filter)
+	let allTimeRevenue = $derived(
+		data.orders.reduce((sum: number, order: any) => sum + (order.total || 0), 0)
 	);
 
 	function formatCurrency(amount: number, currency = 'usd') {
@@ -118,6 +140,35 @@
 			notesSaving = false;
 		}
 	}
+
+	// Export filtered orders to CSV
+	function exportCSV() {
+		const headers = ['Order Number', 'Date', 'Customer Name', 'Customer Email', 'Items', 'Total', 'Status', 'Notes'];
+		
+		const rows = filteredOrders.map((order: any) => [
+			order.orderNumber || '',
+			new Date(order.createdAt).toLocaleDateString('en-US'),
+			order.customerName || '',
+			order.customerEmail || '',
+			(order.items || []).map((i: any) => `${i.productName} x${i.quantity}`).join('; '),
+			(order.total / 100).toFixed(2),
+			order.status || '',
+			order.notes || ''
+		]);
+
+		const csvContent = [
+			headers.join(','),
+			...rows.map(row => row.map(cell => `"${String(cell).replace(/"/g, '""')}"`).join(','))
+		].join('\n');
+
+		const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+		const url = URL.createObjectURL(blob);
+		const link = document.createElement('a');
+		link.href = url;
+		link.download = `orders-${yearFilter === 'all' ? 'all' : yearFilter}.csv`;
+		link.click();
+		URL.revokeObjectURL(url);
+	}
 </script>
 
 <SEO title="Orders | Admin" description="Manage orders" />
@@ -128,6 +179,25 @@
 		<p class="text-gray-400">Manage and fulfill orders</p>
 	</header>
 
+	<!-- Revenue Summary -->
+	<div class="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
+		<div class="bg-gray-800 p-4 rounded-lg">
+			<p class="text-gray-400 text-sm">Filtered Revenue</p>
+			<p class="text-2xl font-bold text-green-400">{formatCurrency(totalRevenue)}</p>
+			<p class="text-gray-500 text-sm">{filteredOrders.length} orders</p>
+		</div>
+		<div class="bg-gray-800 p-4 rounded-lg">
+			<p class="text-gray-400 text-sm">All-Time Revenue</p>
+			<p class="text-2xl font-bold">{formatCurrency(allTimeRevenue)}</p>
+			<p class="text-gray-500 text-sm">{data.orders.length} orders</p>
+		</div>
+		<div class="bg-gray-800 p-4 rounded-lg">
+			<p class="text-gray-400 text-sm">Average Order</p>
+			<p class="text-2xl font-bold">{formatCurrency(data.orders.length > 0 ? allTimeRevenue / data.orders.length : 0)}</p>
+			<p class="text-gray-500 text-sm">per order</p>
+		</div>
+	</div>
+
 	<div class="flex flex-col sm:flex-row gap-4 mb-6">
 		<div class="flex-1">
 			<input
@@ -136,6 +206,14 @@
 				placeholder="Search by email, order #, or name..."
 				class="w-full px-4 py-2 bg-gray-800 border border-gray-700 rounded text-white"
 			/>
+		</div>
+		<div class="sm:w-40">
+			<select bind:value={yearFilter} class="w-full px-4 py-2 bg-gray-800 border border-gray-700 rounded text-white">
+				<option value="all">All Years</option>
+				{#each availableYears as year}
+					<option value={year}>{year}</option>
+				{/each}
+			</select>
 		</div>
 		<div class="sm:w-48">
 			<select bind:value={statusFilter} class="w-full px-4 py-2 bg-gray-800 border border-gray-700 rounded text-white">
@@ -146,6 +224,12 @@
 				{/each}
 			</select>
 		</div>
+		<button
+			onclick={exportCSV}
+			class="px-4 py-2 bg-green-600 hover:bg-green-700 rounded text-white whitespace-nowrap"
+		>
+			Export CSV
+		</button>
 	</div>
 
 	<div class="overflow-x-auto">
