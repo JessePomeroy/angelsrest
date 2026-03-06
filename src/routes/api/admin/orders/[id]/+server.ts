@@ -23,8 +23,8 @@ export async function PATCH({ params, request }) {
 	// Read the JSON body to get what fields to update
 	const { status, notes } = await request.json();
 
-	// Basic validation
-	if (!status && !notes) {
+	// Basic validation - both can't be undefined
+	if (status === undefined && notes === undefined) {
 		throw error(400, "At least one field (status or notes) is required");
 	}
 
