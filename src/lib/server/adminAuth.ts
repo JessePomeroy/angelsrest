@@ -1,22 +1,18 @@
 import { json, error } from '@sveltejs/kit';
-import { ADMIN_PASSWORD } from '$env/static/private';
+import { env as privateEnv } from '$env/dynamic/private';
 
 /**
  * HTTP Basic Auth protection for admin routes
  *
  * Checks the Authorization header against ADMIN_PASSWORD env var.
  * If no password is set, allows access (for development).
- *
- * Usage: Add this hook to protect admin routes:
- *   export const hooks = {
- *     handle: [
- *       { match: '/admin/**', handler: adminAuth }
- *     ]
- *   }
  */
 export async function adminAuth({ event, resolve }) {
+	const ADMIN_PASSWORD = privateEnv.ADMIN_PASSWORD;
+
 	// Skip if no password is configured (development mode)
 	if (!ADMIN_PASSWORD) {
+		console.warn('ADMIN_PASSWORD not set - allowing admin access');
 		return resolve(event);
 	}
 
