@@ -118,6 +118,11 @@ A phased plan for building out angelsrest.online, ordered to progressively re-le
   - [x] Search by customer email/order number
   - [x] Edit notes in modal
   - [x] HTTP Basic Auth protection (password-protected)
+  - [x] Year filter
+  - [x] Period filter (today/week/month)
+  - [x] CSV export for taxes
+  - [x] Revenue summary (filtered, all-time, average)
+  - [x] HTTP Basic Auth protection (password-protected)
 
 ### Analytics (Future)
 - [ ] Revenue tracking
