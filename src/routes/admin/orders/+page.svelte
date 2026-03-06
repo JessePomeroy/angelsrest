@@ -58,12 +58,12 @@
 
 	// Status colors
 	const statusColors: Record<string, string> = {
-		new: 'badge-info',
-		printing: 'badge-warning',
-		ready: 'badge-warning',
-		shipped: 'badge-primary',
-		delivered: 'badge-success',
-		refunded: 'badge-error'
+		new: 'bg-blue-500 text-white',
+		printing: 'bg-yellow-500 text-black',
+		ready: 'bg-yellow-500 text-black',
+		shipped: 'bg-purple-500 text-white',
+		delivered: 'bg-green-500 text-white',
+		refunded: 'bg-red-500 text-white'
 	};
 
 	// Update status
