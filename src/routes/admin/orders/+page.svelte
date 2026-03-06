@@ -54,7 +54,8 @@
 					return false;
 				}
 			}
-		 >= range.end))	// Year filter
+
+			// Year filter
 			if (yearFilter !== 'all' && orderDate.getFullYear() !== parseInt(yearFilter)) {
 				return false;
 			}
