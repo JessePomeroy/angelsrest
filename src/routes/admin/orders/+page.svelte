@@ -7,6 +7,7 @@
 	let statusFilter = $state('all');
 	let searchQuery = $state('');
 	let yearFilter = $state('all');
+	let periodFilter = $state('all'); // all, today, week, month
 
 	// Modal state
 	let selectedOrder = $state<any>(null);
@@ -21,15 +22,44 @@
 		[...new Set(data.orders.map((o: any) => new Date(o.createdAt).getFullYear()))].sort((a, b) => b - a)
 	);
 
+	// Helper to get date range based on period
+	function getDateRange(period: string): { start: Date; end: Date } | null {
+		const now = new Date();
+		const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+		
+		switch (period) {
+			case 'today':
+				return { start: today, end: new Date(today.getTime() + 24 * 60 * 60 * 1000) };
+			case 'week':
+				const weekStart = new Date(today);
+				weekStart.setDate(today.getDate() - today.getDay());
+				return { start: weekStart, end: new Date(today.getTime() + 24 * 60 * 60 * 1000) };
+			case 'month':
+				const monthStart = new Date(today.getFullYear(), today.getMonth(), 1);
+				return { start: monthStart, end: new Date(today.getTime() + 24 * 60 * 60 * 1000) };
+			default:
+				return null;
+		}
+	}
+
 	// Filter orders
 	let filteredOrders = $derived(
 		data.orders.filter((order: any) => {
-			// Status filter
-			if (statusFilter !== 'all' && order.status !== statusFilter) {
+			const orderDate = new Date(order.createdAt);
+			
+			// Period filter (today/week/month)
+			if (periodFilter !== 'all') {
+				const range = getDateRange(periodFilter);
+				if (range && (orderDate < range.start || orderDate >= range.end)) {
+					return false;
+				}
+			}
+		 >= range.end))	// Year filter
+			if (yearFilter !== 'all' && orderDate.getFullYear() !== parseInt(yearFilter)) {
 				return false;
 			}
-			// Year filter
-			if (yearFilter !== 'all' && new Date(order.createdAt).getFullYear() !== parseInt(yearFilter)) {
+			// Status filter
+			if (statusFilter !== 'all' && order.status !== statusFilter) {
 				return false;
 			}
 			// Search filter
@@ -206,6 +236,14 @@
 				placeholder="Search by email, order #, or name..."
 				class="w-full px-4 py-2 bg-gray-800 border border-gray-700 rounded text-white"
 			/>
+		</div>
+		<div class="sm:w-32">
+			<select bind:value={periodFilter} class="w-full px-4 py-2 bg-gray-800 border border-gray-700 rounded text-white">
+				<option value="all">All Time</option>
+				<option value="today">Today</option>
+				<option value="week">This Week</option>
+				<option value="month">This Month</option>
+			</select>
 		</div>
 		<div class="sm:w-40">
 			<select bind:value={yearFilter} class="w-full px-4 py-2 bg-gray-800 border border-gray-700 rounded text-white">
