@@ -1,15 +1,28 @@
 <script lang="ts">
+	/**
+	 * Admin Orders Dashboard 💰
+	 * 
+	 * A comprehensive order management system with filtering, sorting, and export capabilities.
+	 * Demonstrates Svelte 5 runes ($state, $derived) for reactive UI.
+	 */
+
 	import SEO from '$lib/components/SEO.svelte';
 
 	let { data } = $props();
 
-	// Filter state
+	/**
+	 * 💡 Svelte 5 Runes:
+	 * - $state() - Makes a variable reactive (like this.filter = 'x' triggers UI update)
+	 * - $derived() - Auto-recalculates when dependencies change
+	 */
+
+	// Filter state - these control what's shown in the table
 	let statusFilter = $state('all');
 	let searchQuery = $state('');
 	let yearFilter = $state('all');
 	let periodFilter = $state('all'); // all, today, week, month
 
-	// Modal state
+	// Modal state - for the order details popup
 	let selectedOrder = $state<any>(null);
 	let notesValue = $state('');
 	let notesSaving = $state(false);
@@ -17,24 +30,40 @@
 	// Get unique statuses for filter dropdown
 	const statuses = ['all', 'new', 'printing', 'ready', 'shipped', 'delivered', 'refunded'];
 
-	// Get unique years from orders for the filter
+	/**
+	 * $derived - Automatically recalculates when data.orders changes
+	 * 
+	 * This extracts unique years from all orders, so the year dropdown
+	 * automatically updates when new orders come in.
+	 * 
+	 * [...new Set(...)] - Creates unique values (removes duplicates)
+	 * .sort((a, b) => b - a) - Sorts newest first
+	 */
 	let availableYears = $derived(
 		[...new Set(data.orders.map((o: any) => new Date(o.createdAt).getFullYear()))].sort((a, b) => b - a)
 	);
 
-	// Helper to get date range based on period
+	/**
+	 * Date range helper for period filters
+	 * 
+	 * Returns start and end dates for: today, this week, this month
+	 * Used to filter orders within a specific time period.
+	 */
 	function getDateRange(period: string): { start: Date; end: Date } | null {
 		const now = new Date();
 		const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
 		
 		switch (period) {
 			case 'today':
+				// Start of today to start of tomorrow
 				return { start: today, end: new Date(today.getTime() + 24 * 60 * 60 * 1000) };
 			case 'week':
+				// Sunday of this week to tomorrow
 				const weekStart = new Date(today);
 				weekStart.setDate(today.getDate() - today.getDay());
 				return { start: weekStart, end: new Date(today.getTime() + 24 * 60 * 60 * 1000) };
 			case 'month':
+				// First day of month to tomorrow
 				const monthStart = new Date(today.getFullYear(), today.getMonth(), 1);
 				return { start: monthStart, end: new Date(today.getTime() + 24 * 60 * 60 * 1000) };
 			default:
@@ -77,6 +106,15 @@
 		})
 	);
 
+	/**
+	 * $derived for revenue calculations
+	 * 
+	 * These automatically update whenever filteredOrders changes.
+	 * So when you filter by year/month, the revenue updates instantly!
+	 * 
+	 * .reduce() adds up all the order totals
+	 * Order amounts are in cents, so we don't divide by 100 until display
+	 */
 	// Calculate totals for filtered orders
 	let totalRevenue = $derived(
 		filteredOrders.reduce((sum: number, order: any) => sum + (order.total || 0), 0)
@@ -172,6 +210,18 @@
 		}
 	}
 
+	/**
+	 * Export to CSV 📊
+	 * 
+	 * CSV (Comma-Separated Values) is a simple format that Excel/Google Sheets can open.
+	 * Perfect for taxes, accounting, or sharing with a bookkeeper.
+	 * 
+	 * How it works:
+	 * 1. Create array of headers
+	 * 2. Map each order to an array of values
+	 * 3. Join with commas, wrap in quotes to handle special characters
+	 * 4. Create a Blob (file-like object) and trigger download
+	 */
 	// Export filtered orders to CSV
 	function exportCSV() {
 		const headers = ['Order Number', 'Date', 'Customer Name', 'Customer Email', 'Items', 'Total', 'Status', 'Notes'];
