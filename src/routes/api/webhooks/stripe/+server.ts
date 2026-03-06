@@ -342,7 +342,8 @@ async function createOrderInSanity({
 			_key: crypto.randomUUID(),
 			productName: item.description || "Unknown Product",
 			quantity: item.quantity || 1,
-			price: item.price_unit || item.amount_total || 0,
+			// Use amount_total (total for this line) or unit_amount from price object
+			price: item.amount_total || item.price?.unit_amount || 0,
 		}));
 
 		// Create the order document
