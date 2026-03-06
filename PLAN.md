@@ -68,10 +68,10 @@ A phased plan for building out angelsrest.online, ordered to progressively re-le
 - [x] Product metadata attached to Stripe sessions
 
 ### Still To Do 🔲
-- [ ] Webhook endpoint for order notifications
-- [ ] Email confirmation to customers
+- [x] Webhook endpoint for order notifications
+- [x] Email confirmation to customers
 - [ ] Inventory management (auto-decrement stock)
-- [ ] Order tracking in Sanity
+- [x] Order tracking in Sanity
 
 ---
 
@@ -92,13 +92,18 @@ A phased plan for building out angelsrest.online, ordered to progressively re-le
 
 ---
 
-## Phase 6 — Business Operations 🔲
+## Phase 6 — Business Operations 🔧
 
-### Order Management
-- [ ] Stripe webhook endpoint (`/api/webhooks/stripe`)
-- [ ] Order notification emails (to seller)
-- [ ] Customer confirmation emails
-- [ ] Order history in Sanity
+### Order Management ✅
+- [x] Stripe webhook endpoint (`/api/webhooks/stripe`)
+- [x] Order notification emails (to seller via Resend)
+- [x] Customer confirmation emails (via Resend)
+- [x] Order history in Sanity (order schema + webhook creates docs)
+- [x] Idempotency check (prevents duplicate orders)
+- [x] Sequential order numbers (ORD-001, ORD-002...)
+- [x] Custom fulfillment status (New → Printing → Ready → Shipped → Delivered)
+- [x] Internal notes field for fulfillment details
+- [x] Admin Sanity client with write token
 
 ### Inventory
 - [ ] Stock tracking in Sanity
@@ -132,6 +137,22 @@ A phased plan for building out angelsrest.online, ordered to progressively re-le
 | `schemaTypes/product.ts` | Added `orderRank` field for drag-and-drop ordering |
 | `sanity.config.ts` | Added `orderableDocumentListDeskItem` for products |
 
+## Files Built During Order History Integration (2026-03-06)
+
+### Frontend (angelsrest)
+| File | Purpose |
+|------|---------|
+| `src/lib/sanity/adminClient.ts` | Write-enabled Sanity client (server-side only) |
+| `src/lib/orders/orderNumber.ts` | Sequential order number generator + idempotency check |
+| `src/routes/api/webhooks/stripe/+server.ts` | Updated — creates order in Sanity on checkout completion |
+
+### Sanity Studio (angelsrest-studio)
+| File | Purpose |
+|------|---------|
+| `schemaTypes/order.ts` | Order document schema (customer, items, shipping, status, notes) |
+| `schemaTypes/index.ts` | Updated — added order import |
+| `sanity.config.ts` | Updated — added Orders to sidebar structure |
+
 ---
 
 ## Code Quality
@@ -149,37 +170,6 @@ Key documented files:
 - `/shop/[slug]/+page.server.ts` — SvelteKit data loading
 - `/checkout/success/+page.svelte` — Post-purchase UX
 - `/checkout/cancel/+page.svelte` — Abandonment handling
-
----
-
-## Stripe Webhook Roadmap (Next Priority)
-
-### Why Webhooks?
-Currently, you only know about orders by checking Stripe Dashboard. Webhooks notify your server in real-time.
-
-### Implementation Plan
-
-1. **Create webhook endpoint**
-   ```
-   src/routes/api/webhooks/stripe/+server.ts
-   ```
-
-2. **Configure Stripe Dashboard**
-   - Add webhook URL
-   - Select events: `checkout.session.completed`
-   - Get webhook signing secret
-
-3. **Handle webhook**
-   - Verify Stripe signature
-   - Extract order details
-   - Send notification email
-   - (Optional) Create order in Sanity
-
-4. **Test with Stripe CLI**
-   ```bash
-   stripe listen --forward-to localhost:5173/api/webhooks/stripe
-   stripe trigger checkout.session.completed
-   ```
 
 ---
 
@@ -217,7 +207,9 @@ Currently, you only know about orders by checking Stripe Dashboard. Webhooks not
 | `PUBLIC_SANITY_DATASET` | Sanity dataset |
 | `PUBLIC_SITE_URL` | Site URL for Stripe redirects |
 | `STRIPE_SECRET_KEY` | Stripe secret key |
+| `STRIPE_WEBHOOK_SECRET` | Stripe webhook signing secret |
 | `RESEND_API_KEY` | Email service API key |
+| `SANITY_WRITE_TOKEN` | Sanity token with write permissions (server-side only) |
 
 ### Vercel Setup
 1. Go to Vercel Dashboard → Project → Settings → Environment Variables
