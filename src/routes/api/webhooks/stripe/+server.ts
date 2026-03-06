@@ -125,17 +125,35 @@ async function handleCheckoutCompleted(session: Stripe.Checkout.Session) {
 		 * - line_items: What exactly did they buy?
 		 * - customer_details: Full customer info for email
 		 *
-		 * ⚠️ IMPORTANT: We DON'T expand 'shipping_details' because Stripe doesn't
-		 * allow that field to be expanded. Instead, we get shipping info from
-		 * the original session.collected_information.shipping_details
+		 * Note: For Stripe CLI test events (stripe trigger), the session doesn't
+		 * actually exist in Stripe, so we'll fall back to event data if retrieval fails.
 		 */
-		const fullSession = await stripe.checkout.sessions.retrieve(session.id, {
-			expand: ["line_items", "customer_details"], // Only expand what's allowed
-		});
+		let fullSession: Stripe.Checkout.Session;
+		let lineItems: Stripe.LineItem[] = [];
+		let shippingDetails: any;
 
-		const customerEmail = fullSession.customer_details?.email;
-		const shippingDetails = session.collected_information?.shipping_details; // From original webhook data
-		const lineItems = fullSession.line_items?.data || [];
+		try {
+			// Try to fetch full session with line items
+			fullSession = await stripe.checkout.sessions.retrieve(session.id, {
+				expand: ["line_items", "customer_details"],
+			});
+			lineItems = fullSession.line_items?.data || [];
+			shippingDetails = session.collected_information?.shipping_details;
+		} catch (retrieveError) {
+			// For test/triggered events, the session might not exist
+			// Use event data directly instead
+			console.log(
+				"Session retrieval failed (likely test event), using event data:",
+				retrieveError,
+			);
+			fullSession = session;
+			// For test events, try to get line items from the event
+			// Note: triggered events may not have full line item data
+			shippingDetails = (session as any).collected_information?.shipping_details;
+		}
+
+		const customerEmail =
+			fullSession.customer_details?.email || (session as any).email;
 
 		if (!customerEmail) {
 			console.error("No customer email found for session:", session.id);
