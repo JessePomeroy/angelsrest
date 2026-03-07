@@ -86,7 +86,7 @@
 					type="email"
 					bind:value={email}
 					placeholder="you@example.com"
-					class="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded text-sm"
+					class="w-full px-3 py-2 bg-gray-900 border border-gray-700 rounded text-sm"
 				/>
 			</div>
 
@@ -97,7 +97,7 @@
 					type="text"
 					bind:value={orderNumber}
 					placeholder="ORD-001"
-					class="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded text-sm"
+					class="w-full px-3 py-2 bg-gray-900 border border-gray-700 rounded text-sm"
 				/>
 			</div>
 
