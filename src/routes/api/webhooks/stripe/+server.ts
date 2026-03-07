@@ -409,11 +409,15 @@ async function createOrderInSanity({
 		}));
 
 		// Create the order document
+		// Extract payment intent ID properly (could be string or object)
+		const paymentIntentId = (session as any).payment_intent;
+		const stripePaymentIntentId = typeof paymentIntentId === 'string' ? paymentIntentId : paymentIntentId?.id;
+		
 		const orderDoc = {
 			_type: "order",
 			orderNumber,
 			stripeSessionId: session.id,
-			stripePaymentIntentId: (session as any).payment_intent,
+			stripePaymentIntentId,
 			customerEmail: session.customer_details?.email || "",
 			customerName:
 				session.customer_details?.name || shippingDetails?.name || "",
