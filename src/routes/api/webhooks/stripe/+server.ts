@@ -14,19 +14,19 @@
  * 📚 See guides/stripe-webhooks.md for full setup and troubleshooting guide
  */
 
-import { json, error } from "@sveltejs/kit";
-import Stripe from "stripe";
+import { error, json } from "@sveltejs/kit";
 import { Resend } from "resend";
+import Stripe from "stripe";
 import {
+	RESEND_API_KEY,
 	STRIPE_SECRET_KEY,
 	STRIPE_WEBHOOK_SECRET,
-	RESEND_API_KEY,
 } from "$env/static/private";
-import { adminClient } from "$lib/sanity/adminClient";
 import {
 	getNextOrderNumber,
 	orderExistsForSession,
 } from "$lib/orders/orderNumber";
+import { adminClient } from "$lib/sanity/adminClient";
 
 const stripe = new Stripe(STRIPE_SECRET_KEY);
 const resend = new Resend(RESEND_API_KEY);
@@ -151,7 +151,11 @@ async function handleCheckoutCompleted(session: Stripe.Checkout.Session) {
 			// Try to fetch full session with line items and payment intent (for fees)
 			// Expand latest_charge.balance_transaction to get fees directly
 			fullSession = await stripe.checkout.sessions.retrieve(session.id, {
-				expand: ["line_items", "customer_details", "payment_intent.latest_charge.balance_transaction"],
+				expand: [
+					"line_items",
+					"customer_details",
+					"payment_intent.latest_charge.balance_transaction",
+				],
 			});
 			lineItems = fullSession.line_items?.data || [];
 			shippingDetails = session.collected_information?.shipping_details;
@@ -160,12 +164,12 @@ async function handleCheckoutCompleted(session: Stripe.Checkout.Session) {
 			try {
 				const paymentIntent = (fullSession as any).payment_intent;
 				console.log("💳 Payment Intent ID:", paymentIntent?.id);
-				
+
 				// Check for balance_transaction (might be nested in latest_charge)
 				const latestCharge = paymentIntent?.latest_charge;
 				const balanceTx = latestCharge?.balance_transaction;
 				console.log("⚡ balance_transaction from expanded charge:", balanceTx);
-				
+
 				if (balanceTx) {
 					stripeFees = balanceTx.fee || 0;
 					console.log("💰 Fees captured:", stripeFees);
@@ -185,7 +189,8 @@ async function handleCheckoutCompleted(session: Stripe.Checkout.Session) {
 			fullSession = session;
 			// For test events, try to get line items from the event
 			// Note: triggered events may not have full line item data
-			shippingDetails = (session as any).collected_information?.shipping_details;
+			shippingDetails = (session as any).collected_information
+				?.shipping_details;
 		}
 
 		const customerEmail =
@@ -442,7 +447,7 @@ async function createOrderInSanity({
 
 /**
  * Handle charge.succeeded webhook
- * 
+ *
  * This fires AFTER checkout.session.completed and has the balance_transaction
  * with actual Stripe fees. We use this to update orders with real fees.
  */
@@ -452,17 +457,25 @@ async function handleChargeSucceeded(charge: Stripe.Charge) {
 
 	try {
 		// Find the order by payment intent ID
-		console.log("🔍 Looking for order with payment intent:", charge.payment_intent);
+		console.log(
+			"🔍 Looking for order with payment intent:",
+			charge.payment_intent,
+		);
 		const query = `*[_type == "order" && stripePaymentIntentId == $paymentIntentId][0]`;
-		const order = await adminClient.fetch(query, { 
-			paymentIntentId: charge.payment_intent
+		const order = await adminClient.fetch(query, {
+			paymentIntentId: charge.payment_intent,
 		});
 
 		if (!order) {
-			console.log("❌ No order found for payment intent:", charge.payment_intent);
+			console.log(
+				"❌ No order found for payment intent:",
+				charge.payment_intent,
+			);
 			// Try alternative lookup - maybe it hasn't been created yet
 			// Let's find ALL orders to debug
-			const allOrders = await adminClient.fetch(`*[_type == "order"] | order(_createdAt desc)[0...3]{orderNumber, stripePaymentIntentId, stripeSessionId}`);
+			const allOrders = await adminClient.fetch(
+				`*[_type == "order"] | order(_createdAt desc)[0...3]{orderNumber, stripePaymentIntentId, stripeSessionId}`,
+			);
 			console.log("📋 Recent orders:", JSON.stringify(allOrders));
 			return;
 		}
@@ -472,17 +485,25 @@ async function handleChargeSucceeded(charge: Stripe.Charge) {
 		// Get balance_transaction for fees
 		if (charge.balance_transaction) {
 			const balanceTx = await stripe.balanceTransactions.retrieve(
-				charge.balance_transaction as string
+				charge.balance_transaction as string,
 			);
 			const fees = balanceTx.fee;
 
 			// Update order with fees
-			await adminClient.patch(order._id).set({
-				stripeFees: fees,
-				updatedAt: new Date().toISOString()
-			}).commit();
+			await adminClient
+				.patch(order._id)
+				.set({
+					stripeFees: fees,
+					updatedAt: new Date().toISOString(),
+				})
+				.commit();
 
-			console.log("✅ Updated order with fees:", order.orderNumber, "fees:", fees);
+			console.log(
+				"✅ Updated order with fees:",
+				order.orderNumber,
+				"fees:",
+				fees,
+			);
 		} else {
 			console.log("No balance_transaction on charge yet");
 		}
@@ -493,58 +514,87 @@ async function handleChargeSucceeded(charge: Stripe.Charge) {
 
 /**
  * Handle payment_intent.succeeded webhook
- * 
+ *
  * This fires after checkout.session.completed and has the balance_transaction
  * with actual Stripe fees. This is the preferred event over charge.succeeded.
  */
-async function handlePaymentIntentSucceeded(paymentIntent: Stripe.PaymentIntent) {
+async function handlePaymentIntentSucceeded(
+	paymentIntent: Stripe.PaymentIntent,
+) {
 	console.log("💎 Processing payment_intent.succeeded:", paymentIntent.id);
 
-	try {
-		// Find the order by payment intent ID
-		console.log("🔍 Looking for order with payment intent:", paymentIntent.id);
-		const query = `*[_type == "order" && stripePaymentIntentId == $paymentIntentId][0]`;
-		const order = await adminClient.fetch(query, { 
-			paymentIntentId: paymentIntent.id
-		});
+	// Retry logic - sometimes the order hasn't been created yet
+	for (let attempt = 1; attempt <= 3; attempt++) {
+		try {
+			// Find the order by payment intent ID
+			console.log(
+				`🔍 Attempt ${attempt}: Looking for order with payment intent:`,
+				paymentIntent.id,
+			);
+			const query = `*[_type == "order" && stripePaymentIntentId == $paymentIntentId][0]`;
+			const order = await adminClient.fetch(query, {
+				paymentIntentId: paymentIntent.id,
+			});
 
-		if (!order) {
-			console.log("❌ No order found for payment intent:", paymentIntent.id);
-			return;
-		}
+			if (!order) {
+				console.log(`❌ Attempt ${attempt}: No order found`);
+				if (attempt < 3) {
+					console.log("⏳ Waiting 2 seconds before retry...");
+					await new Promise((resolve) => setTimeout(resolve, 2000));
+					continue;
+				}
+				return;
+			}
 
-		console.log("✅ Found order:", order.orderNumber);
+			console.log("✅ Found order:", order.orderNumber);
 
-		// Get balance_transaction for fees - try from payment_intent first
-		let fees = 0;
-		
-		// Payment Intent has the charge (for successful payments)
-		if (paymentIntent.latest_charge) {
-			const chargeId = typeof paymentIntent.latest_charge === 'string' 
-				? paymentIntent.latest_charge 
-				: paymentIntent.latest_charge.id;
-			
-			const charge = await stripe.charges.retrieve(chargeId);
-			if (charge.balance_transaction) {
-				const balanceTx = typeof charge.balance_transaction === 'string'
-					? await stripe.balanceTransactions.retrieve(charge.balance_transaction)
-					: charge.balance_transaction;
-				fees = balanceTx.fee;
+			// Get balance_transaction for fees
+			let fees = 0;
+
+			// Payment Intent has the charge (for successful payments)
+			if (paymentIntent.latest_charge) {
+				const chargeId =
+					typeof paymentIntent.latest_charge === "string"
+						? paymentIntent.latest_charge
+						: paymentIntent.latest_charge.id;
+
+				const charge = await stripe.charges.retrieve(chargeId);
+				if (charge.balance_transaction) {
+					const balanceTx =
+						typeof charge.balance_transaction === "string"
+							? await stripe.balanceTransactions.retrieve(
+									charge.balance_transaction,
+								)
+							: charge.balance_transaction;
+					fees = balanceTx.fee;
+				}
+			}
+
+			if (fees > 0) {
+				// Update order with fees
+				await adminClient
+					.patch(order._id)
+					.set({
+						stripeFees: fees,
+						updatedAt: new Date().toISOString(),
+					})
+					.commit();
+
+				console.log(
+					"✅ Updated order with fees:",
+					order.orderNumber,
+					"fees:",
+					fees,
+				);
+			} else {
+				console.log("⚠️ No fees found");
+			}
+			return; // Success - exit the function
+		} catch (err) {
+			console.error("Error on attempt", attempt, ":", err);
+			if (attempt < 3) {
+				await new Promise((resolve) => setTimeout(resolve, 2000));
 			}
 		}
-
-		if (fees > 0) {
-			// Update order with fees
-			await adminClient.patch(order._id).set({
-				stripeFees: fees,
-				updatedAt: new Date().toISOString()
-			}).commit();
-
-			console.log("✅ Updated order with fees:", order.orderNumber, "fees:", fees);
-		} else {
-			console.log("⚠️ No fees found");
-		}
-	} catch (err) {
-		console.error("Error updating order with fees:", err);
 	}
 }
