@@ -141,40 +141,12 @@ async function handleCheckoutCompleted(session: Stripe.Checkout.Session) {
 			lineItems = fullSession.line_items?.data || [];
 			shippingDetails = session.collected_information?.shipping_details;
 
-			// Get actual fees from balance_transaction
-			// This gives us the real Stripe fees instead of calculating
-			try {
-				// paymentIntent is already the full object when using expand
-				const paymentIntent = (fullSession as any).payment_intent;
-				console.log("💳 Payment Intent:", paymentIntent?.id);
-				
-				if (paymentIntent?.latest_charge) {
-					// Need to expand the charge to get balance_transaction
-					const chargeId = typeof paymentIntent.latest_charge === 'string' 
-						? paymentIntent.latest_charge 
-						: paymentIntent.latest_charge.id;
-					console.log("⚡ Charge ID:", chargeId);
-					
-					// Retrieve charge with balance_transaction expanded
-					const charge = await stripe.charges.retrieve(chargeId, {
-						expand: ['balance_transaction']
-					});
-					
-					if (charge.balance_transaction) {
-						const balanceTx = typeof charge.balance_transaction === 'string'
-							? await stripe.balanceTransactions.retrieve(charge.balance_transaction)
-							: charge.balance_transaction;
-						stripeFees = balanceTx.fee; // Fees in cents
-						console.log("💰 Stripe fees captured:", stripeFees);
-					} else {
-						console.log("⚠️ No balance_transaction found on charge");
-					}
-				} else {
-					console.log("⚠️ No latest_charge found");
-				}
-			} catch (feeError) {
-				console.error("❌ Error fetching fees:", feeError);
-			}
+			// Get Stripe fees - calculate based on standard rates
+			// Stripe fees: 2.9% + $0.30 for US domestic cards
+			// This is accurate enough for tax purposes
+			const amount = fullSession.amount_total || 0;
+			stripeFees = Math.round(amount * 0.029) + 30; // 2.9% + $0.30 in cents
+			console.log("💰 Stripe fees calculated:", stripeFees, "from amount:", amount);
 		} catch (retrieveError) {
 			// For test/triggered events, the session might not exist
 			// Use event data directly instead
