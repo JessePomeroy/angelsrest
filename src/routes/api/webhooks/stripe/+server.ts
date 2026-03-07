@@ -135,8 +135,9 @@ async function handleCheckoutCompleted(session: Stripe.Checkout.Session) {
 
 		try {
 			// Try to fetch full session with line items and payment intent (for fees)
+			// Expand latest_charge.balance_transaction to get fees directly
 			fullSession = await stripe.checkout.sessions.retrieve(session.id, {
-				expand: ["line_items", "customer_details", "payment_intent.payment_method"],
+				expand: ["line_items", "customer_details", "payment_intent.latest_charge.balance_transaction"],
 			});
 			lineItems = fullSession.line_items?.data || [];
 			shippingDetails = session.collected_information?.shipping_details;
@@ -145,36 +146,17 @@ async function handleCheckoutCompleted(session: Stripe.Checkout.Session) {
 			try {
 				const paymentIntent = (fullSession as any).payment_intent;
 				console.log("💳 Payment Intent ID:", paymentIntent?.id);
-				console.log("💳 Payment Intent keys:", Object.keys(paymentIntent || {}));
 				
-				// Check for balance_transaction on payment intent
-				if (paymentIntent?.balance_transaction) {
-					const balanceTx = typeof paymentIntent.balance_transaction === 'string'
-						? await stripe.balanceTransactions.retrieve(paymentIntent.balance_transaction)
-						: paymentIntent.balance_transaction;
-					stripeFees = balanceTx.fee;
-					console.log("💰 Fees from payment_intent:", stripeFees);
-				} else if (paymentIntent?.latest_charge) {
-					// Try from charge
-					const chargeId = typeof paymentIntent.latest_charge === 'string'
-						? paymentIntent.latest_charge
-						: paymentIntent.latest_charge.id;
-					console.log("⚡ Checking charge:", chargeId);
-					const charge = await stripe.charges.retrieve(chargeId);
-					console.log("⚡ Charge keys:", Object.keys(charge));
-					console.log("⚡ balance_transaction value:", charge.balance_transaction);
-					console.log("⚡ balance_transaction type:", typeof charge.balance_transaction);
-					
-					if (charge.balance_transaction) {
-						console.log("✅ Found balance_transaction!");
-						const balanceTx = typeof charge.balance_transaction === 'string'
-							? await stripe.balanceTransactions.retrieve(charge.balance_transaction)
-							: charge.balance_transaction;
-						stripeFees = balanceTx.fee;
-						console.log("💰 Fees from charge:", stripeFees);
-					} else {
-						console.log("⚠️ balance_transaction is null or undefined");
-					}
+				// Check for balance_transaction (might be nested in latest_charge)
+				const latestCharge = paymentIntent?.latest_charge;
+				const balanceTx = latestCharge?.balance_transaction;
+				console.log("⚡ balance_transaction from expanded charge:", balanceTx);
+				
+				if (balanceTx) {
+					stripeFees = balanceTx.fee || 0;
+					console.log("💰 Fees captured:", stripeFees);
+				} else {
+					console.log("⚠️ Still no balance_transaction available");
 				}
 			} catch (feeError) {
 				console.error("❌ Error fetching fees:", feeError);
