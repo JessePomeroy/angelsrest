@@ -323,6 +323,182 @@ Key documented files:
 
 ---
 
+## Webhook & Serverless Learning Guide
+
+### How Stripe Webhooks Work
+
+When a customer pays, Stripe doesn't just tell your checkout page — it sends
+HTTP POST requests (webhooks) to your server with event data. This is more
+reliable than client-side callbacks because webhooks fire even if the customer
+closes their browser.
+
+```
+Customer pays → Stripe fires webhooks → Your server processes them
+```
+
+### Webhook Signature Verification
+
+Every webhook includes a `stripe-signature` header. You verify it using your
+webhook secret to prove the request actually came from Stripe (not an attacker).
+
+```typescript
+event = stripe.webhooks.constructEvent(body, signature, STRIPE_WEBHOOK_SECRET);
+```
+
+Without this, anyone could POST fake "payment completed" events to your endpoint.
+
+### Serverless Timing Gotcha ⚠️
+
+On Vercel (and similar serverless platforms), each webhook event runs on a
+**separate, isolated function instance**. When Stripe fires multiple events
+for one purchase (`checkout.session.completed`, `charge.succeeded`,
+`payment_intent.succeeded`), they all arrive within milliseconds of each other
+but execute independently.
+
+**This means:**
+- Handler A can't see data that Handler B is still writing
+- You can't rely on execution order between separate handlers
+- Race conditions are common between concurrent webhook handlers
+
+**Solution:** Keep related logic in ONE handler. If you need data from a later
+Stripe event (like `balance_transaction` for fees), fetch it directly from the
+Stripe API within the same handler after a short delay.
+
+### The `balance_transaction` Pattern
+
+Stripe's `balance_transaction` contains the actual fees they charged, but it's
+not available immediately at checkout time. Our approach:
+
+1. Create the order in `checkout.session.completed`
+2. Wait 3 seconds (`setTimeout`)
+3. Fetch the payment intent with expanded `latest_charge.balance_transaction`
+4. Update the order with the real fee amount
+
+```typescript
+// Wait for Stripe to finalize the transaction
+await new Promise(resolve => setTimeout(resolve, 3000));
+
+const pi = await stripe.paymentIntents.retrieve(paymentIntentId, {
+  expand: ['latest_charge.balance_transaction'],
+});
+
+const fees = pi.latest_charge?.balance_transaction?.fee;
+```
+
+### Stripe `expand` Parameter
+
+By default, Stripe API responses contain IDs for related objects (e.g.,
+`latest_charge: "ch_xxx"`). The `expand` parameter tells Stripe to include
+the full object instead of just the ID:
+
+```typescript
+// Without expand: { latest_charge: "ch_xxx" }
+// With expand:    { latest_charge: { id: "ch_xxx", amount: 1500, ... } }
+stripe.paymentIntents.retrieve(id, {
+  expand: ['latest_charge.balance_transaction'],
+});
+```
+
+You can expand nested paths with dot notation.
+
+---
+
+## TypeScript Learning Guide
+
+### The `Handle` Type Pattern
+
+SvelteKit provides a `Handle` type for hook functions. Without it, destructured
+parameters get implicit `any` types:
+
+```typescript
+// ❌ Error: 'event' implicitly has 'any' type
+export async function adminAuth({ event, resolve }) { ... }
+
+// ✅ Type inferred from Handle
+import type { Handle } from '@sveltejs/kit';
+export const adminAuth: Handle = async ({ event, resolve }) => { ... };
+```
+
+**Why arrow function?** When you assign to a typed `const`, TypeScript infers
+parameter types from the type annotation. Regular `function` declarations can't
+be typed this way — you'd need to annotate each parameter manually.
+
+### The `Set` Type Loss
+
+`new Set()` loses type information when spread back into an array:
+
+```typescript
+// ❌ Type is unknown[] — Set forgets the element type
+[...new Set(numbers)].sort((a, b) => b - a);
+
+// ✅ Cast the result back to the expected type
+([...new Set(numbers)] as number[]).sort((a, b) => b - a);
+```
+
+### Type Guards for String | Object
+
+Stripe sometimes returns a string ID or a full object depending on whether you
+used `expand`. Use `typeof` to handle both:
+
+```typescript
+const rawPaymentIntent = session.payment_intent;
+// Could be "pi_xxx" (string) or { id: "pi_xxx", ... } (object)
+const id = typeof rawPaymentIntent === 'string'
+  ? rawPaymentIntent
+  : rawPaymentIntent?.id;
+```
+
+---
+
+## Accessibility (a11y) Learning Guide
+
+### Why Svelte Warns About Click Events
+
+When you put `onclick` on a non-interactive element (`<div>`, `<tr>`, `<td>`),
+screen readers and keyboard users can't interact with it. Svelte warns you to
+add keyboard support.
+
+### Fix: Make It Interactive
+
+For clickable table rows, add `role`, `tabindex`, and keyboard handler:
+
+```svelte
+<tr
+  role="button"
+  tabindex="0"
+  onclick={() => doSomething()}
+  onkeydown={(e) => {
+    if (e.key === 'Enter' || e.key === ' ') {
+      e.preventDefault();
+      doSomething();
+    }
+  }}
+>
+```
+
+### Fix: Modal Dialog Pattern
+
+Modals should have proper ARIA attributes:
+
+```svelte
+<div role="dialog" aria-modal="true" aria-label="Order details">
+```
+
+### When to Use `svelte-ignore`
+
+Sometimes an element needs a click handler but isn't truly interactive
+(e.g., a backdrop that closes a modal, or a `<td>` that stops click
+propagation). Use the ignore comment:
+
+```svelte
+<!-- svelte-ignore a11y_no_static_element_interactions a11y_click_events_have_key_events -->
+<div onclick={(e) => e.stopPropagation()}>
+```
+
+Only use this when adding keyboard support doesn't make sense for the element.
+
+---
+
 ## Reference Docs
 
 - [Tailwind CSS v4](https://tailwindcss.com/docs)
