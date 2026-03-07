@@ -71,14 +71,14 @@
 	<title>Track Order | Angel's Rest</title>
 </svelte:head>
 
-<div class="min-h-screen bg-gray-950 text-white p-4">
+<div class="min-h-screen text-white p-4">
 	<div class="max-w-md mx-auto">
 		<a href="/" class="text-lg font-bold hover:text-gray-300">← Angel's Rest</a>
 		
 		<h1 class="text-xl font-bold mt-4 mb-1">Track Your Order</h1>
 		<p class="text-gray-400 text-sm mb-4">Enter your order details to check the status</p>
 
-		<div class="rounded-lg border border-gray-800 p-4 space-y-3">
+		<div class="rounded-lg p-4 space-y-3">
 			<div>
 				<label for="email" class="block text-xs text-gray-400 mb-1">Email</label>
 				<input
@@ -115,7 +115,7 @@
 		</div>
 
 		{#if order}
-			<div class="mt-4 rounded-lg border border-gray-800 p-4">
+			<div class="mt-4 rounded-lg p-4">
 				<div class="flex justify-between items-start mb-3">
 					<div>
 						<h2 class="text-lg font-bold">{order.orderNumber}</h2>
