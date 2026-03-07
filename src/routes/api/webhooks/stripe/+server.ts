@@ -131,6 +131,7 @@ async function handleCheckoutCompleted(session: Stripe.Checkout.Session) {
 		let fullSession: Stripe.Checkout.Session;
 		let lineItems: Stripe.LineItem[] = [];
 		let shippingDetails: any;
+		let stripeFees = 0;
 
 		try {
 			// Try to fetch full session with line items and payment intent (for fees)
@@ -139,6 +140,20 @@ async function handleCheckoutCompleted(session: Stripe.Checkout.Session) {
 			});
 			lineItems = fullSession.line_items?.data || [];
 			shippingDetails = session.collected_information?.shipping_details;
+
+			// Get actual fees from balance_transaction
+			// This gives us the real Stripe fees instead of calculating
+			const paymentIntentId = (fullSession as any).payment_intent;
+			if (paymentIntentId) {
+				const paymentIntent = await stripe.paymentIntents.retrieve(paymentIntentId);
+				if (paymentIntent.balance_transaction) {
+					const balanceTx = await stripe.balanceTransactions.retrieve(
+						paymentIntent.balance_transaction as string
+					);
+					stripeFees = balanceTx.fee; // Fees in cents
+					console.log("Stripe fees captured:", stripeFees);
+				}
+			}
 		} catch (retrieveError) {
 			// For test/triggered events, the session might not exist
 			// Use event data directly instead
@@ -181,6 +196,7 @@ async function handleCheckoutCompleted(session: Stripe.Checkout.Session) {
 			session: fullSession,
 			shippingDetails,
 			lineItems,
+			stripeFees,
 		});
 
 		console.log("Emails sent successfully for session:", session.id);
@@ -339,10 +355,12 @@ async function createOrderInSanity({
 	session,
 	shippingDetails,
 	lineItems,
+	stripeFees = 0,
 }: {
 	session: Stripe.Checkout.Session;
 	shippingDetails: any;
 	lineItems: Stripe.LineItem[];
+	stripeFees?: number;
 }) {
 	try {
 		// Check idempotency - don't create duplicate orders
@@ -363,11 +381,6 @@ async function createOrderInSanity({
 			// Use amount_total (total for this line) or unit_amount from price object
 			price: item.amount_total || item.price?.unit_amount || 0,
 		}));
-
-		// Get Stripe fees from payment_intent
-		// The payment_intent contains application_fee_amount (your fees)
-		const paymentIntent = (session as any).payment_intent;
-		const stripeFees = paymentIntent?.application_fee_amount || 0;
 
 		// Create the order document
 		const orderDoc = {
