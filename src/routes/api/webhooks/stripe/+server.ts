@@ -1,17 +1,21 @@
 /**
  * Stripe Webhook Handler 🪝
  *
- * This endpoint receives webhook events from Stripe when things happen in your account.
- * Most importantly: when a customer completes a purchase, we automatically send emails.
+ * Receives webhook events from Stripe when purchases happen.
  *
- * 🔒 Security: We verify every webhook came from Stripe using cryptographic signatures
- * 📧 Automation: Sends confirmation email to customer + notification to admin
- * 🔄 Reliability: Even if your checkout page crashes, webhooks still fire
+ * Flow for a successful purchase:
+ * 1. Customer completes checkout → Stripe fires checkout.session.completed
+ * 2. We send confirmation emails (customer + admin)
+ * 3. We create an order in Sanity CMS for tracking
+ * 4. We fetch actual Stripe fees (with a short delay for availability)
+ *
+ * 🔒 Security: Every webhook is verified via cryptographic signature
+ * 📧 Emails: Customer confirmation + admin notification via Resend
+ * 📦 Orders: Stored in Sanity with sequential numbering (ORD-001, ORD-002...)
+ * 💰 Fees: Actual Stripe transaction fees captured from balance_transaction
  *
  * Webhook URL: https://www.angelsrest.online/api/webhooks/stripe
- * Events we handle: checkout.session.completed, payment_intent.payment_failed
- *
- * 📚 See guides/stripe-webhooks.md for full setup and troubleshooting guide
+ * Events handled: checkout.session.completed, payment_intent.payment_failed
  */
 
 import { error, json } from "@sveltejs/kit";
@@ -31,31 +35,51 @@ import { adminClient } from "$lib/sanity/adminClient";
 const stripe = new Stripe(STRIPE_SECRET_KEY);
 const resend = new Resend(RESEND_API_KEY);
 
+/** Format cents to USD string (e.g., 1500 → "$15.00") */
+const formatCurrency = (amount: number) =>
+	new Intl.NumberFormat("en-US", {
+		style: "currency",
+		currency: "USD",
+	}).format(amount / 100);
+
+/** Format shipping address for emails */
+function formatShippingAddress(shippingDetails: any): string {
+	if (!shippingDetails?.address) return "No shipping address";
+	const { name, address } = shippingDetails;
+	return [
+		name,
+		address.line1,
+		address.line2,
+		`${address.city}, ${address.state} ${address.postal_code}`,
+		address.country,
+	]
+		.filter(Boolean)
+		.join("\n");
+}
+
+/** Format line items for emails */
+function formatLineItems(lineItems: Stripe.LineItem[]): string {
+	return lineItems
+		.map(
+			(item) =>
+				`• ${item.description} (${item.quantity}x) - ${formatCurrency(item.amount_total)}`,
+		)
+		.join("\n");
+}
+
+// ─── Webhook Entry Point ─────────────────────────────────────────────────────
+
 export async function POST({ request }) {
-	// Get the raw body and signature from Stripe's webhook request
-	const body = await request.text(); // IMPORTANT: Must be raw text, not JSON
+	const body = await request.text(); // Must be raw text for signature verification
 	const signature = request.headers.get("stripe-signature");
 
 	if (!signature) {
-		console.error("Missing stripe-signature header");
 		throw error(400, "Missing stripe-signature header");
 	}
 
+	// Verify the webhook came from Stripe (cryptographic signature check)
 	let event: Stripe.Event;
-
 	try {
-		/**
-		 * 🔒 CRITICAL SECURITY STEP
-		 *
-		 * This verifies the webhook actually came from Stripe using cryptographic signatures.
-		 * Without this, anyone could send fake "payment completed" requests to your server.
-		 *
-		 * How it works:
-		 * 1. Stripe signs each webhook with your secret key
-		 * 2. We recreate the signature using the same secret + request body
-		 * 3. If signatures match = legitimate webhook from Stripe
-		 * 4. If they don't match = reject the request
-		 */
 		event = stripe.webhooks.constructEvent(
 			body,
 			signature,
@@ -69,52 +93,24 @@ export async function POST({ request }) {
 	console.log(`Received webhook: ${event.type}`);
 
 	try {
-		/**
-		 * 🎯 EVENT ROUTING
-		 *
-		 * Stripe sends many different event types. We handle the important ones:
-		 *
-		 * checkout.session.completed = Customer successfully paid
-		 * payment_intent.payment_failed = Payment was attempted but failed
-		 *
-		 * Other events we could handle in the future:
-		 * - invoice.payment_succeeded (for subscriptions)
-		 * - customer.subscription.deleted (cancellations)
-		 * - charge.dispute.created (chargebacks)
-		 */
 		switch (event.type) {
 			case "checkout.session.completed": {
-				// ✅ SUCCESS: Customer completed their purchase
 				const session = event.data.object as Stripe.Checkout.Session;
 				await handleCheckoutCompleted(session);
 				break;
 			}
 
-			case "payment_intent.succeeded": {
-				// 💰 Update order with Stripe fees (fires after checkout completes)
-				const paymentIntent = event.data.object as Stripe.PaymentIntent;
-				await handlePaymentIntentSucceeded(paymentIntent);
-				break;
-			}
-
-			case "charge.succeeded": {
-				// Legacy - keeping for fallback, but payment_intent.succeeded is preferred
-				const charge = event.data.object as Stripe.Charge;
-				await handleChargeSucceeded(charge);
-				break;
-			}
-
 			case "payment_intent.payment_failed": {
-				// ❌ FAILURE: Payment attempt was declined/failed
 				const paymentIntent = event.data.object as Stripe.PaymentIntent;
 				console.log("Payment failed:", paymentIntent.id);
-				// TODO: Could send "payment failed" email to customer here
+				// TODO: Could send "payment failed" email to customer
 				break;
 			}
 
 			default:
-				// 📝 LOG: We receive but don't process this event type
-				console.log(`Unhandled event type: ${event.type}`);
+				// Ignore other events (charge.succeeded, payment_intent.succeeded, etc.)
+				// Fees are captured directly in handleCheckoutCompleted
+				break;
 		}
 
 		return json({ received: true });
@@ -124,74 +120,19 @@ export async function POST({ request }) {
 	}
 }
 
+// ─── Checkout Handler ────────────────────────────────────────────────────────
+
 /**
- * Handle completed checkout sessions
- * Sends confirmation email to customer and notification to admin
+ * Handle a completed checkout session.
+ * Sends emails, creates order in Sanity, and captures Stripe fees.
  */
 async function handleCheckoutCompleted(session: Stripe.Checkout.Session) {
 	console.log("Processing completed checkout:", session.id);
 
 	try {
-		/**
-		 * 📦 FETCH COMPLETE ORDER DATA
-		 *
-		 * The webhook gives us basic session info, but we need more details:
-		 * - line_items: What exactly did they buy?
-		 * - customer_details: Full customer info for email
-		 *
-		 * Note: For Stripe CLI test events (stripe trigger), the session doesn't
-		 * actually exist in Stripe, so we'll fall back to event data if retrieval fails.
-		 */
-		let fullSession: Stripe.Checkout.Session;
-		let lineItems: Stripe.LineItem[] = [];
-		let shippingDetails: any;
-		let stripeFees = 0;
-
-		try {
-			// Try to fetch full session with line items and payment intent (for fees)
-			// Expand latest_charge.balance_transaction to get fees directly
-			fullSession = await stripe.checkout.sessions.retrieve(session.id, {
-				expand: [
-					"line_items",
-					"customer_details",
-					"payment_intent.latest_charge.balance_transaction",
-				],
-			});
-			lineItems = fullSession.line_items?.data || [];
-			shippingDetails = session.collected_information?.shipping_details;
-
-			// Get Stripe fees from balance_transaction
-			try {
-				const paymentIntent = (fullSession as any).payment_intent;
-				console.log("💳 Payment Intent ID:", paymentIntent?.id);
-
-				// Check for balance_transaction (might be nested in latest_charge)
-				const latestCharge = paymentIntent?.latest_charge;
-				const balanceTx = latestCharge?.balance_transaction;
-				console.log("⚡ balance_transaction from expanded charge:", balanceTx);
-
-				if (balanceTx) {
-					stripeFees = balanceTx.fee || 0;
-					console.log("💰 Fees captured:", stripeFees);
-				} else {
-					console.log("⚠️ Still no balance_transaction available");
-				}
-			} catch (feeError) {
-				console.error("❌ Error fetching fees:", feeError);
-			}
-		} catch (retrieveError) {
-			// For test/triggered events, the session might not exist
-			// Use event data directly instead
-			console.log(
-				"Session retrieval failed (likely test event), using event data:",
-				retrieveError,
-			);
-			fullSession = session;
-			// For test events, try to get line items from the event
-			// Note: triggered events may not have full line item data
-			shippingDetails = (session as any).collected_information
-				?.shipping_details;
-		}
+		// Fetch full session data with line items and payment details
+		const { fullSession, lineItems, shippingDetails } =
+			await fetchSessionDetails(session);
 
 		const customerEmail =
 			fullSession.customer_details?.email || (session as any).email;
@@ -201,7 +142,8 @@ async function handleCheckoutCompleted(session: Stripe.Checkout.Session) {
 			return;
 		}
 
-		// Send customer confirmation email
+		// Send emails and create order in parallel where possible
+		// (emails first, then order creation which needs sequential number)
 		await sendCustomerConfirmation({
 			session: fullSession,
 			customerEmail,
@@ -209,7 +151,6 @@ async function handleCheckoutCompleted(session: Stripe.Checkout.Session) {
 			lineItems,
 		});
 
-		// Send admin notification email
 		await sendAdminNotification({
 			session: fullSession,
 			customerEmail,
@@ -217,15 +158,13 @@ async function handleCheckoutCompleted(session: Stripe.Checkout.Session) {
 			lineItems,
 		});
 
-		// Create order in Sanity for tracking
 		await createOrderInSanity({
 			session: fullSession,
 			shippingDetails,
 			lineItems,
-			stripeFees,
 		});
 
-		console.log("Emails sent successfully for session:", session.id);
+		console.log("Checkout processed successfully:", session.id);
 	} catch (err) {
 		console.error("Error in handleCheckoutCompleted:", err);
 		throw err;
@@ -233,8 +172,36 @@ async function handleCheckoutCompleted(session: Stripe.Checkout.Session) {
 }
 
 /**
- * Send order confirmation to customer
+ * Fetch complete session data from Stripe.
+ * Expands line items and payment intent for fee access.
+ * Falls back to event data for test/triggered events.
  */
+async function fetchSessionDetails(session: Stripe.Checkout.Session) {
+	let fullSession: Stripe.Checkout.Session;
+	let lineItems: Stripe.LineItem[] = [];
+	let shippingDetails: any;
+
+	try {
+		fullSession = await stripe.checkout.sessions.retrieve(session.id, {
+			expand: ["line_items", "customer_details"],
+		});
+		lineItems = fullSession.line_items?.data || [];
+		shippingDetails = session.collected_information?.shipping_details;
+	} catch (retrieveError) {
+		// For Stripe CLI test events, the session may not exist
+		console.log(
+			"Session retrieval failed (likely test event), using event data",
+		);
+		fullSession = session;
+		shippingDetails = (session as any).collected_information?.shipping_details;
+	}
+
+	return { fullSession, lineItems, shippingDetails };
+}
+
+// ─── Email Functions ─────────────────────────────────────────────────────────
+
+/** Send order confirmation email to the customer */
 async function sendCustomerConfirmation({
 	session,
 	customerEmail,
@@ -246,29 +213,6 @@ async function sendCustomerConfirmation({
 	shippingDetails: any;
 	lineItems: Stripe.LineItem[];
 }) {
-	const formatCurrency = (amount: number) => {
-		return new Intl.NumberFormat("en-US", {
-			style: "currency",
-			currency: "USD",
-		}).format(amount / 100);
-	};
-
-	const itemsList = lineItems
-		.map(
-			(item) =>
-				`• ${item.description} (${item.quantity}x) - ${formatCurrency(item.amount_total)}`,
-		)
-		.join("\n");
-
-	const shippingAddress = shippingDetails?.address
-		? `
-${shippingDetails.name}
-${shippingDetails.address.line1}
-${shippingDetails.address.line2 || ""}
-${shippingDetails.address.city}, ${shippingDetails.address.state} ${shippingDetails.address.postal_code}
-${shippingDetails.address.country}`.trim()
-		: "No shipping address";
-
 	const emailContent = `
 Hi ${shippingDetails?.name || "there"},
 
@@ -279,10 +223,10 @@ Order ID: ${session.id}
 Total: ${formatCurrency(session.amount_total || 0)}
 
 ITEMS ORDERED
-${itemsList}
+${formatLineItems(lineItems)}
 
 SHIPPING ADDRESS
-${shippingAddress}
+${formatShippingAddress(shippingDetails)}
 
 WHAT'S NEXT?
 • Your order will be processed within 1-2 business days
@@ -306,9 +250,7 @@ https://angelsrest.online
 	});
 }
 
-/**
- * Send order notification to admin (you)
- */
+/** Send order notification email to admin */
 async function sendAdminNotification({
 	session,
 	customerEmail,
@@ -320,29 +262,6 @@ async function sendAdminNotification({
 	shippingDetails: any;
 	lineItems: Stripe.LineItem[];
 }) {
-	const formatCurrency = (amount: number) => {
-		return new Intl.NumberFormat("en-US", {
-			style: "currency",
-			currency: "USD",
-		}).format(amount / 100);
-	};
-
-	const itemsList = lineItems
-		.map(
-			(item) =>
-				`• ${item.description} (${item.quantity}x) - ${formatCurrency(item.amount_total)}`,
-		)
-		.join("\n");
-
-	const shippingAddress = shippingDetails?.address
-		? `
-${shippingDetails.name}
-${shippingDetails.address.line1}
-${shippingDetails.address.line2 || ""}
-${shippingDetails.address.city}, ${shippingDetails.address.state} ${shippingDetails.address.postal_code}
-${shippingDetails.address.country}`.trim()
-		: "No shipping address";
-
 	const emailContent = `
 🎉 NEW ORDER RECEIVED!
 
@@ -353,10 +272,10 @@ Total: ${formatCurrency(session.amount_total || 0)}
 Payment Status: ${session.payment_status}
 
 ITEMS TO FULFILL
-${itemsList}
+${formatLineItems(lineItems)}
 
 SHIP TO
-${shippingAddress}
+${formatShippingAddress(shippingDetails)}
 
 STRIPE DASHBOARD
 View full details: https://dashboard.stripe.com/payments/${session.payment_intent}
@@ -373,46 +292,47 @@ This order was automatically processed through your Angel's Rest website.
 	});
 }
 
+// ─── Order Creation ──────────────────────────────────────────────────────────
+
 /**
- * Create an order document in Sanity for tracking
- * This enables custom workflow status, expense tracking, and backup data
+ * Create an order document in Sanity CMS.
+ *
+ * After creating the order, waits 3 seconds then fetches actual Stripe fees
+ * from the balance_transaction (which isn't available immediately at checkout time).
  */
 async function createOrderInSanity({
 	session,
 	shippingDetails,
 	lineItems,
-	stripeFees = 0,
 }: {
 	session: Stripe.Checkout.Session;
 	shippingDetails: any;
 	lineItems: Stripe.LineItem[];
-	stripeFees?: number;
 }) {
 	try {
-		// Check idempotency - don't create duplicate orders
+		// Idempotency check — don't create duplicate orders
 		const alreadyExists = await orderExistsForSession(session.id);
 		if (alreadyExists) {
 			console.log("Order already exists for session:", session.id);
 			return;
 		}
 
-		// Generate sequential order number
 		const orderNumber = await getNextOrderNumber();
 
-		// Map line items to Sanity format
+		// Extract payment intent ID (could be string or expanded object)
+		const rawPaymentIntent = (session as any).payment_intent;
+		const stripePaymentIntentId =
+			typeof rawPaymentIntent === "string"
+				? rawPaymentIntent
+				: rawPaymentIntent?.id;
+
 		const items = lineItems.map((item) => ({
 			_key: crypto.randomUUID(),
 			productName: item.description || "Unknown Product",
 			quantity: item.quantity || 1,
-			// Use amount_total (total for this line) or unit_amount from price object
 			price: item.amount_total || item.price?.unit_amount || 0,
 		}));
 
-		// Create the order document
-		// Extract payment intent ID properly (could be string or object)
-		const paymentIntentId = (session as any).payment_intent;
-		const stripePaymentIntentId = typeof paymentIntentId === 'string' ? paymentIntentId : paymentIntentId?.id;
-		
 		const orderDoc = {
 			_type: "order",
 			orderNumber,
@@ -434,7 +354,6 @@ async function createOrderInSanity({
 			items,
 			subtotal: session.amount_subtotal || 0,
 			total: session.amount_total || 0,
-			stripeFees,
 			currency: session.currency || "usd",
 			status: "new",
 			createdAt: new Date().toISOString(),
@@ -444,191 +363,50 @@ async function createOrderInSanity({
 		const result = await adminClient.create(orderDoc);
 		console.log("Created order in Sanity:", orderNumber, result._id);
 
-		// Now try to fetch actual Stripe fees
-		// The balance_transaction may not be available immediately at checkout time,
-		// so we wait a moment and then fetch the charge directly
-		if (stripePaymentIntentId) {
-			try {
-				// Wait 3 seconds for Stripe to finalize the balance_transaction
-				await new Promise(resolve => setTimeout(resolve, 3000));
-
-				const pi = await stripe.paymentIntents.retrieve(stripePaymentIntentId, {
-					expand: ['latest_charge.balance_transaction'],
-				});
-
-				const charge = (pi as any).latest_charge;
-				const balanceTx = charge?.balance_transaction;
-				const actualFees = balanceTx?.fee;
-
-				if (actualFees && actualFees > 0) {
-					await adminClient.patch(result._id).set({
-						stripeFees: actualFees,
-						updatedAt: new Date().toISOString(),
-					}).commit();
-					console.log("✅ Updated order with actual Stripe fees:", orderNumber, "fees:", actualFees);
-				} else {
-					console.log("⚠️ balance_transaction not available yet after 3s delay");
-				}
-			} catch (feeErr) {
-				console.error("Error fetching fees after order creation:", feeErr);
-			}
-		}
+		// Fetch actual Stripe fees after a short delay
+		// The balance_transaction isn't available immediately at checkout time
+		await captureStripeFees(result._id, orderNumber, stripePaymentIntentId);
 	} catch (err) {
 		console.error("Error creating order in Sanity:", err);
-		// Don't throw - we already sent emails, don't fail the webhook
+		// Don't throw — emails were already sent, don't fail the webhook
 	}
 }
 
 /**
- * Handle charge.succeeded webhook
- *
- * This fires AFTER checkout.session.completed and has the balance_transaction
- * with actual Stripe fees. We use this to update orders with real fees.
+ * Fetch actual Stripe fees from the balance_transaction and update the order.
+ * Waits 3 seconds for Stripe to finalize the transaction before fetching.
  */
-async function handleChargeSucceeded(charge: Stripe.Charge) {
-	console.log("💰 Processing charge.succeeded:", charge.id);
-	console.log("💰 Charge payment_intent:", charge.payment_intent);
+async function captureStripeFees(
+	orderId: string,
+	orderNumber: string,
+	paymentIntentId: string | undefined,
+) {
+	if (!paymentIntentId) return;
 
 	try {
-		// Find the order by payment intent ID
-		console.log(
-			"🔍 Looking for order with payment intent:",
-			charge.payment_intent,
-		);
-		const query = `*[_type == "order" && stripePaymentIntentId == $paymentIntentId][0]`;
-		const order = await adminClient.fetch(query, {
-			paymentIntentId: charge.payment_intent,
+		// Wait for Stripe to finalize the balance_transaction
+		await new Promise((resolve) => setTimeout(resolve, 3000));
+
+		const pi = await stripe.paymentIntents.retrieve(paymentIntentId, {
+			expand: ["latest_charge.balance_transaction"],
 		});
 
-		if (!order) {
-			console.log(
-				"❌ No order found for payment intent:",
-				charge.payment_intent,
-			);
-			// Try alternative lookup - maybe it hasn't been created yet
-			// Let's find ALL orders to debug
-			const allOrders = await adminClient.fetch(
-				`*[_type == "order"] | order(_createdAt desc)[0...3]{orderNumber, stripePaymentIntentId, stripeSessionId}`,
-			);
-			console.log("📋 Recent orders:", JSON.stringify(allOrders));
-			return;
-		}
+		const charge = (pi as any).latest_charge;
+		const fees = charge?.balance_transaction?.fee;
 
-		console.log("✅ Found order:", order.orderNumber);
-
-		// Get balance_transaction for fees
-		if (charge.balance_transaction) {
-			const balanceTx = await stripe.balanceTransactions.retrieve(
-				charge.balance_transaction as string,
-			);
-			const fees = balanceTx.fee;
-
-			// Update order with fees
+		if (fees && fees > 0) {
 			await adminClient
-				.patch(order._id)
+				.patch(orderId)
 				.set({
 					stripeFees: fees,
 					updatedAt: new Date().toISOString(),
 				})
 				.commit();
-
-			console.log(
-				"✅ Updated order with fees:",
-				order.orderNumber,
-				"fees:",
-				fees,
-			);
+			console.log("✅ Captured Stripe fees:", orderNumber, "→", fees, "cents");
 		} else {
-			console.log("No balance_transaction on charge yet");
+			console.log("⚠️ No fees available after delay for:", orderNumber);
 		}
 	} catch (err) {
-		console.error("Error updating order with fees:", err);
-	}
-}
-
-/**
- * Handle payment_intent.succeeded webhook
- *
- * This fires after checkout.session.completed and has the balance_transaction
- * with actual Stripe fees. This is the preferred event over charge.succeeded.
- */
-async function handlePaymentIntentSucceeded(
-	paymentIntent: Stripe.PaymentIntent,
-) {
-	console.log("💎 Processing payment_intent.succeeded:", paymentIntent.id);
-
-	// Retry logic - sometimes the order hasn't been created yet
-	for (let attempt = 1; attempt <= 3; attempt++) {
-		try {
-			// Find the order by payment intent ID
-			console.log(
-				`🔍 Attempt ${attempt}: Looking for order with payment intent:`,
-				paymentIntent.id,
-			);
-			const query = `*[_type == "order" && stripePaymentIntentId == $paymentIntentId][0]`;
-			const order = await adminClient.fetch(query, {
-				paymentIntentId: paymentIntent.id,
-			});
-
-			if (!order) {
-				console.log(`❌ Attempt ${attempt}: No order found`);
-				if (attempt < 3) {
-					console.log("⏳ Waiting 2 seconds before retry...");
-					await new Promise((resolve) => setTimeout(resolve, 2000));
-					continue;
-				}
-				return;
-			}
-
-			console.log("✅ Found order:", order.orderNumber);
-
-			// Get balance_transaction for fees
-			let fees = 0;
-
-			// Payment Intent has the charge (for successful payments)
-			if (paymentIntent.latest_charge) {
-				const chargeId =
-					typeof paymentIntent.latest_charge === "string"
-						? paymentIntent.latest_charge
-						: paymentIntent.latest_charge.id;
-
-				const charge = await stripe.charges.retrieve(chargeId);
-				if (charge.balance_transaction) {
-					const balanceTx =
-						typeof charge.balance_transaction === "string"
-							? await stripe.balanceTransactions.retrieve(
-									charge.balance_transaction,
-								)
-							: charge.balance_transaction;
-					fees = balanceTx.fee;
-				}
-			}
-
-			if (fees > 0) {
-				// Update order with fees
-				await adminClient
-					.patch(order._id)
-					.set({
-						stripeFees: fees,
-						updatedAt: new Date().toISOString(),
-					})
-					.commit();
-
-				console.log(
-					"✅ Updated order with fees:",
-					order.orderNumber,
-					"fees:",
-					fees,
-				);
-			} else {
-				console.log("⚠️ No fees found");
-			}
-			return; // Success - exit the function
-		} catch (err) {
-			console.error("Error on attempt", attempt, ":", err);
-			if (attempt < 3) {
-				await new Promise((resolve) => setTimeout(resolve, 2000));
-			}
-		}
+		console.error("Error capturing fees for:", orderNumber, err);
 	}
 }
