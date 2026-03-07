@@ -367,7 +367,10 @@
 				{#each filteredOrders as order (order._id)}
 					<tr 
 						class="border-b border-gray-800 hover:bg-gray-800 cursor-pointer"
+						role="button"
+						tabindex="0"
 						onclick={() => openOrderDetails(order)}
+						onkeydown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openOrderDetails(order); }}}
 					>
 						<td class="py-3 px-4 font-mono text-sm">{order.orderNumber}</td>
 						<td class="py-3 px-4 text-sm">{formatDate(order.createdAt)}</td>
@@ -383,6 +386,7 @@
 							</span>
 						</td>
 						<td class="py-3 px-4 font-semibold">{formatCurrency(order.total, order.currency)}</td>
+						<!-- svelte-ignore a11y_no_static_element_interactions -->
 						<td class="py-3 px-4" onclick={(e) => e.stopPropagation()}>
 							<select
 								value={order.status}
@@ -408,10 +412,16 @@
 </div>
 
 {#if selectedOrder}
+	<!-- svelte-ignore a11y_no_static_element_interactions -->
 	<div 
 		class="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4"
+		role="dialog"
+		aria-modal="true"
+		aria-label="Order details"
 		onclick={closeModal}
+		onkeydown={(e) => { if (e.key === 'Escape') closeModal(); }}
 	>
+		<!-- svelte-ignore a11y_no_static_element_interactions -->
 		<div 
 			class="bg-gray-800 p-6 rounded-lg max-w-2xl w-full max-h-[90vh] overflow-y-auto"
 			onclick={(e) => e.stopPropagation()}
