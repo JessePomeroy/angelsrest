@@ -401,6 +401,7 @@ async function createOrderInSanity({
 			_type: "order",
 			orderNumber,
 			stripeSessionId: session.id,
+			stripePaymentIntentId: (session as any).payment_intent,
 			customerEmail: session.customer_details?.email || "",
 			customerName:
 				session.customer_details?.name || shippingDetails?.name || "",
@@ -442,18 +443,14 @@ async function handleChargeSucceeded(charge: Stripe.Charge) {
 	console.log("💰 Processing charge.succeeded:", charge.id);
 
 	try {
-		// Find the order by stripe session ID
-		// The charge has payment_intent which has the checkout session
-		const paymentIntentId = charge.payment_intent as string;
-		
-		// Query Sanity for the order with this payment intent
-		const query = `*[_type == "order" && stripeSessionId == $sessionId][0]`;
+		// Find the order by payment intent ID
+		const query = `*[_type == "order" && stripePaymentIntentId == $paymentIntentId][0]`;
 		const order = await adminClient.fetch(query, { 
-			sessionId: `cs_${paymentIntentId.split('_secret_')[0].replace('pi_', '')}` 
+			paymentIntentId: charge.payment_intent
 		});
 
 		if (!order) {
-			console.log("No order found for charge:", charge.id);
+			console.log("No order found for payment intent:", charge.payment_intent);
 			return;
 		}
 
