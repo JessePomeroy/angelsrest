@@ -90,6 +90,13 @@ export async function POST({ request }) {
 				break;
 			}
 
+			case "charge.succeeded": {
+				// 💰 Update order with Stripe fees (available after charge completes)
+				const charge = event.data.object as Stripe.Charge;
+				await handleChargeSucceeded(charge);
+				break;
+			}
+
 			case "payment_intent.payment_failed": {
 				// ❌ FAILURE: Payment attempt was declined/failed
 				const paymentIntent = event.data.object as Stripe.PaymentIntent;
@@ -422,5 +429,54 @@ async function createOrderInSanity({
 	} catch (err) {
 		console.error("Error creating order in Sanity:", err);
 		// Don't throw - we already sent emails, don't fail the webhook
+	}
+}
+
+/**
+ * Handle charge.succeeded webhook
+ * 
+ * This fires AFTER checkout.session.completed and has the balance_transaction
+ * with actual Stripe fees. We use this to update orders with real fees.
+ */
+async function handleChargeSucceeded(charge: Stripe.Charge) {
+	console.log("💰 Processing charge.succeeded:", charge.id);
+
+	try {
+		// Find the order by stripe session ID
+		// The charge has payment_intent which has the checkout session
+		const paymentIntentId = charge.payment_intent as string;
+		
+		// Query Sanity for the order with this payment intent
+		const query = `*[_type == "order" && stripeSessionId == $sessionId][0]`;
+		const order = await adminClient.fetch(query, { 
+			sessionId: `cs_${paymentIntentId.split('_secret_')[0].replace('pi_', '')}` 
+		});
+
+		if (!order) {
+			console.log("No order found for charge:", charge.id);
+			return;
+		}
+
+		console.log("Found order:", order.orderNumber);
+
+		// Get balance_transaction for fees
+		if (charge.balance_transaction) {
+			const balanceTx = await stripe.balanceTransactions.retrieve(
+				charge.balance_transaction as string
+			);
+			const fees = balanceTx.fee;
+
+			// Update order with fees
+			await adminClient.patch(order._id).set({
+				stripeFees: fees,
+				updatedAt: new Date().toISOString()
+			}).commit();
+
+			console.log("✅ Updated order with fees:", order.orderNumber, "fees:", fees);
+		} else {
+			console.log("No balance_transaction on charge yet");
+		}
+	} catch (err) {
+		console.error("Error updating order with fees:", err);
 	}
 }
