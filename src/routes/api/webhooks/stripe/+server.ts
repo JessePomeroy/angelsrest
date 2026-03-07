@@ -443,6 +443,36 @@ async function createOrderInSanity({
 
 		const result = await adminClient.create(orderDoc);
 		console.log("Created order in Sanity:", orderNumber, result._id);
+
+		// Now try to fetch actual Stripe fees
+		// The balance_transaction may not be available immediately at checkout time,
+		// so we wait a moment and then fetch the charge directly
+		if (stripePaymentIntentId) {
+			try {
+				// Wait 3 seconds for Stripe to finalize the balance_transaction
+				await new Promise(resolve => setTimeout(resolve, 3000));
+
+				const pi = await stripe.paymentIntents.retrieve(stripePaymentIntentId, {
+					expand: ['latest_charge.balance_transaction'],
+				});
+
+				const charge = (pi as any).latest_charge;
+				const balanceTx = charge?.balance_transaction;
+				const actualFees = balanceTx?.fee;
+
+				if (actualFees && actualFees > 0) {
+					await adminClient.patch(result._id).set({
+						stripeFees: actualFees,
+						updatedAt: new Date().toISOString(),
+					}).commit();
+					console.log("✅ Updated order with actual Stripe fees:", orderNumber, "fees:", actualFees);
+				} else {
+					console.log("⚠️ balance_transaction not available yet after 3s delay");
+				}
+			} catch (feeErr) {
+				console.error("Error fetching fees after order creation:", feeErr);
+			}
+		}
 	} catch (err) {
 		console.error("Error creating order in Sanity:", err);
 		// Don't throw - we already sent emails, don't fail the webhook
