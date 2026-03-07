@@ -142,13 +142,20 @@ async function handleCheckoutCompleted(session: Stripe.Checkout.Session) {
 			return;
 		}
 
-		// Send emails and create order in parallel where possible
-		// (emails first, then order creation which needs sequential number)
+		// Create order first so we have the order number for the email
+		const orderResult = await createOrderInSanity({
+			session: fullSession,
+			shippingDetails,
+			lineItems,
+		});
+
+		// Send emails with the order number
 		await sendCustomerConfirmation({
 			session: fullSession,
 			customerEmail,
 			shippingDetails,
 			lineItems,
+			orderNumber: orderResult?.orderNumber,
 		});
 
 		await sendAdminNotification({
@@ -156,12 +163,7 @@ async function handleCheckoutCompleted(session: Stripe.Checkout.Session) {
 			customerEmail,
 			shippingDetails,
 			lineItems,
-		});
-
-		await createOrderInSanity({
-			session: fullSession,
-			shippingDetails,
-			lineItems,
+			orderNumber: orderResult?.orderNumber,
 		});
 
 		console.log("Checkout processed successfully:", session.id);
@@ -207,11 +209,13 @@ async function sendCustomerConfirmation({
 	customerEmail,
 	shippingDetails,
 	lineItems,
+	orderNumber,
 }: {
 	session: Stripe.Checkout.Session;
 	customerEmail: string;
 	shippingDetails: any;
 	lineItems: Stripe.LineItem[];
+	orderNumber?: string;
 }) {
 	const emailContent = `
 Hi ${shippingDetails?.name || "there"},
@@ -227,6 +231,9 @@ ${formatLineItems(lineItems)}
 
 SHIPPING ADDRESS
 ${formatShippingAddress(shippingDetails)}
+
+TRACK YOUR ORDER
+View your order status anytime: https://angelsrest.online/orders?email=${encodeURIComponent(customerEmail)}&order=${orderNumber}
 
 WHAT'S NEXT?
 • Your order will be processed within 1-2 business days
@@ -256,11 +263,13 @@ async function sendAdminNotification({
 	customerEmail,
 	shippingDetails,
 	lineItems,
+	orderNumber,
 }: {
 	session: Stripe.Checkout.Session;
 	customerEmail: string;
 	shippingDetails: any;
 	lineItems: Stripe.LineItem[];
+	orderNumber?: string;
 }) {
 	const emailContent = `
 🎉 NEW ORDER RECEIVED!
@@ -287,7 +296,9 @@ This order was automatically processed through your Angel's Rest website.
 	await resend.emails.send({
 		from: "Angel's Rest Orders <orders@angelsrest.online>",
 		to: ["thinkingofview@gmail.com"],
-		subject: `🛒 New Order: ${formatCurrency(session.amount_total || 0)} from ${shippingDetails?.name || customerEmail}`,
+		subject: orderNumber 
+			? `🛒 New Order ${orderNumber}: ${formatCurrency(session.amount_total || 0)} from ${shippingDetails?.name || customerEmail}`
+			: `🛒 New Order: ${formatCurrency(session.amount_total || 0)} from ${shippingDetails?.name || customerEmail}`,
 		text: emailContent,
 	});
 }
@@ -366,9 +377,13 @@ async function createOrderInSanity({
 		// Fetch actual Stripe fees after a short delay
 		// The balance_transaction isn't available immediately at checkout time
 		await captureStripeFees(result._id, orderNumber, stripePaymentIntentId);
+
+		// Return order number for email
+		return { orderNumber, _id: result._id };
 	} catch (err) {
 		console.error("Error creating order in Sanity:", err);
 		// Don't throw — emails were already sent, don't fail the webhook
+		return null;
 	}
 }
 
