@@ -42,7 +42,7 @@
 
 	function formatDate(dateStr: string) {
 		return new Date(dateStr).toLocaleDateString('en-US', {
-			month: 'long',
+			month: 'short',
 			day: 'numeric',
 			year: 'numeric'
 		});
@@ -51,10 +51,19 @@
 	const statusLabels: Record<string, string> = {
 		new: 'New',
 		printing: 'Printing',
-		ready: 'Ready to Ship',
+		ready: 'Ready',
 		shipped: 'Shipped',
 		delivered: 'Delivered',
 		refunded: 'Refunded'
+	};
+
+	const statusColors: Record<string, string> = {
+		new: 'bg-blue-600',
+		printing: 'bg-yellow-500 text-black',
+		ready: 'bg-yellow-500 text-black',
+		shipped: 'bg-purple-600',
+		delivered: 'bg-green-600',
+		refunded: 'bg-red-600'
 	};
 </script>
 
@@ -62,82 +71,80 @@
 	<title>Track Order | Angel's Rest</title>
 </svelte:head>
 
-<div class="min-h-screen bg-gray-900 text-white">
-	<div class="container mx-auto px-4 py-16 max-w-xl">
-		<a href="/" class="text-2xl font-bold hover:text-gray-300">← Angel's Rest</a>
+<div class="min-h-screen bg-gray-900 text-white p-4">
+	<div class="max-w-md mx-auto">
+		<a href="/" class="text-lg font-bold hover:text-gray-300">← Angel's Rest</a>
 		
-		<h1 class="text-3xl font-bold mt-8 mb-2">Track Your Order</h1>
-		<p class="text-gray-400 mb-8">Enter your order details to check the status</p>
+		<h1 class="text-xl font-bold mt-4 mb-1">Track Your Order</h1>
+		<p class="text-gray-400 text-sm mb-4">Enter your order details to check the status</p>
 
-		<div class="bg-gray-800 rounded-lg p-6">
-			<div class="space-y-4">
-				<div>
-					<label for="email" class="block text-sm text-gray-400 mb-1">Email</label>
-					<input
-						id="email"
-						type="email"
-						bind:value={email}
-						placeholder="you@example.com"
-						class="w-full px-4 py-2 bg-gray-700 border border-gray-600 rounded text-white"
-					/>
-				</div>
-
-				<div>
-					<label for="order" class="block text-sm text-gray-400 mb-1">Order Number</label>
-					<input
-						id="order"
-						type="text"
-						bind:value={orderNumber}
-						placeholder="ORD-001"
-						class="w-full px-4 py-2 bg-gray-700 border border-gray-600 rounded text-white"
-					/>
-				</div>
-
-				<button
-					onclick={lookupOrder}
-					disabled={loading}
-					class="w-full py-3 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-600 rounded font-semibold"
-				>
-					{loading ? 'Looking up...' : 'Track Order'}
-				</button>
+		<div class="bg-gray-800 rounded-lg p-4 space-y-3">
+			<div>
+				<label for="email" class="block text-xs text-gray-400 mb-1">Email</label>
+				<input
+					id="email"
+					type="email"
+					bind:value={email}
+					placeholder="you@example.com"
+					class="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded text-sm"
+				/>
 			</div>
 
+			<div>
+				<label for="order" class="block text-xs text-gray-400 mb-1">Order Number</label>
+				<input
+					id="order"
+					type="text"
+					bind:value={orderNumber}
+					placeholder="ORD-001"
+					class="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded text-sm"
+				/>
+			</div>
+
+			<button
+				onclick={lookupOrder}
+				disabled={loading}
+				class="w-full py-2 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-600 rounded text-sm font-medium"
+			>
+				{loading ? 'Looking up...' : 'Track Order'}
+			</button>
+
 			{#if error}
-				<p class="mt-4 text-red-400 text-center">{error}</p>
+				<p class="text-red-400 text-sm text-center">{error}</p>
 			{/if}
 		</div>
 
 		{#if order}
-			<div class="mt-8 bg-gray-800 rounded-lg p-6">
-				<div class="flex justify-between items-start mb-4">
+			<div class="mt-4 bg-gray-800 rounded-lg p-4">
+				<div class="flex justify-between items-start mb-3">
 					<div>
-						<h2 class="text-2xl font-bold">{order.orderNumber}</h2>
-						<p class="text-gray-400">{formatDate(order.createdAt)}</p>
+						<h2 class="text-lg font-bold">{order.orderNumber}</h2>
+						<p class="text-gray-400 text-xs">{formatDate(order.createdAt)}</p>
 					</div>
-					<span class="px-3 py-1 rounded text-sm font-medium bg-blue-600 text-white">
+					<span class="px-2 py-1 rounded text-xs font-medium {statusColors[order.status] || 'bg-gray-600'}">
 						{statusLabels[order.status] || order.status}
 					</span>
 				</div>
 
-				<div class="border-t border-gray-700 pt-4 mt-4">
-					<h3 class="font-semibold mb-2">Items</h3>
-					<ul class="space-y-2">
+				<div class="text-sm">
+					<h3 class="font-medium text-gray-400 text-xs mb-1">Items</h3>
+					<ul class="space-y-1">
 						{#each order.items || [] as item}
-							<li class="flex justify-between">
+							<li class="flex justify-between text-sm">
 								<span>{item.productName} × {item.quantity}</span>
 								<span class="text-gray-400">{formatCurrency(item.price, order.currency)}</span>
 							</li>
 						{/each}
 					</ul>
-					<p class="font-semibold mt-4 text-right">
+					<p class="font-medium mt-2 text-right">
 						Total: {formatCurrency(order.total, order.currency)}
 					</p>
 				</div>
 
 				{#if order.shippingAddress}
-					<div class="border-t border-gray-700 pt-4 mt-4">
-						<h3 class="font-semibold mb-2">Shipping Address</h3>
-						<p class="text-gray-300">
+					<div class="mt-3 pt-3 border-t border-gray-700">
+						<h3 class="font-medium text-gray-400 text-xs mb-1">Ship to</h3>
+						<p class="text-sm text-gray-300">
 							{order.customerName}<br/>
 							{order.shippingAddress.line1}<br/>
 							{#if order.shippingAddress.line2}{order.shippingAddress.line2}<br/>{/if}
