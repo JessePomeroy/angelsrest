@@ -86,7 +86,7 @@
 					type="email"
 					bind:value={email}
 					placeholder="you@example.com"
-					class="w-full px-3 py-2 bg-gray-900 border border-gray-700 rounded text-sm"
+					class="w-full px-3 py-2.5 bg-white/5 border border-white/10 rounded-lg text-sm placeholder:text-gray-400 focus:outline-none focus:border-gray-500 focus:ring-2 focus:ring-white/10"
 				/>
 			</div>
 
@@ -97,14 +97,14 @@
 					type="text"
 					bind:value={orderNumber}
 					placeholder="ORD-001"
-					class="w-full px-3 py-2 bg-gray-900 border border-gray-700 rounded text-sm"
+					class="w-full px-3 py-2.5 bg-white/5 border border-white/10 rounded-lg text-sm placeholder:text-gray-400 focus:outline-none focus:border-gray-500 focus:ring-2 focus:ring-white/10"
 				/>
 			</div>
 
 			<button
 				onclick={lookupOrder}
 				disabled={loading}
-				class="w-full py-2 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-600 rounded text-sm font-medium"
+				class="w-full py-2.5 bg-white/10 hover:bg-white/20 border border-white/10 rounded-lg text-sm font-medium"
 			>
 				{loading ? 'Looking up...' : 'Track Order'}
 			</button>
