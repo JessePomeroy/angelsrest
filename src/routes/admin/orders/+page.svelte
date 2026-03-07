@@ -218,20 +218,19 @@
 	 * 
 	 * How it works:
 	 * 1. Create array of headers
-	 * 2. Map each order to an array of values
+	 * 2. Map each order to an array of values (amounts converted from cents to dollars)
 	 * 3. Join with commas, wrap in quotes to handle special characters
-	 * 4. Create a Blob (file-like object) and trigger download
+	 * 4. Create a Blob (file-like object) and trigger browser download
 	 * 
-	 * 💡 Tax Tips:
-	 * - "Gross" = what customer paid
-	 * - "Fees" = Stripe fees (deductible expense) - not currently captured, see below
-	 * - "Net" = Gross - Fees = your actual income
+	 * 💡 Revenue Columns:
+	 * - "Gross Revenue" = what customer paid (order total)
+	 * - "Stripe Fees" = actual transaction fees from Stripe's balance_transaction
+	 * - "Net Revenue" = Gross - Fees = your actual income
 	 * 
-	 * To capture Stripe fees automatically:
-	 * 1. Add 'stripeFees' field to order schema in Sanity
-	 * 2. Update webhook to pass 'application_fee_amount' from Stripe
+	 * Stripe fees are captured automatically via the webhook handler.
+	 * After checkout completes, we wait 3s then fetch the balance_transaction
+	 * from Stripe which contains the real fee amount.
 	 */
-	// Export filtered orders to CSV
 	function exportCSV() {
 		const headers = [
 			'Order Number', 
@@ -248,8 +247,7 @@
 		
 		const rows = filteredOrders.map((order: any) => {
 			const gross = (order.total || 0) / 100;
-			// Fees would be captured from Stripe - for now show 0
-			// To enable: add stripeFees to order schema + webhook
+			// Actual Stripe fees captured from balance_transaction via webhook
 			const fees = (order.stripeFees || 0) / 100;
 			const net = gross - fees;
 			

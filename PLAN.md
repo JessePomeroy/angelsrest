@@ -104,6 +104,8 @@ A phased plan for building out angelsrest.online, ordered to progressively re-le
 - [x] Custom fulfillment status (New → Printing → Ready → Shipped → Delivered)
 - [x] Internal notes field for fulfillment details
 - [x] Admin Sanity client with write token
+- [x] Actual Stripe fees captured from balance_transaction (3s delay approach)
+- [x] Payment intent ID stored for fee lookups (`stripePaymentIntentId`)
 
 ### Inventory
 - [ ] Stock tracking in Sanity
@@ -120,9 +122,11 @@ A phased plan for building out angelsrest.online, ordered to progressively re-le
   - [x] HTTP Basic Auth protection (password-protected)
   - [x] Year filter
   - [x] Period filter (today/week/month)
-  - [x] CSV export for taxes
+  - [x] CSV export with Gross Revenue / Stripe Fees / Net Revenue columns
   - [x] Revenue summary (filtered, all-time, average)
   - [x] HTTP Basic Auth protection (password-protected)
+  - [x] Accessibility: keyboard navigation on table rows, ARIA roles on modal
+  - [x] TypeScript: proper type annotations (Handle type, Set casting, array types)
 
 ### Analytics (Future)
 - [ ] Revenue tracking
@@ -212,9 +216,10 @@ src/routes/api/admin/orders/[id]/+server.ts  // Update status
 | File | Purpose |
 |------|---------|
 | `src/lib/sanity/adminClient.ts` | Write-enabled Sanity client (server-side only) |
+| `src/lib/server/adminAuth.ts` | HTTP Basic Auth handler (typed with SvelteKit's `Handle`) |
 | `src/lib/orders/orderNumber.ts` | Sequential order number generator + idempotency check |
-| `src/routes/api/webhooks/stripe/+server.ts` | Updated — creates order in Sanity on checkout completion |
-| `src/hooks.server.ts` | HTTP Basic Auth protection for /admin routes |
+| `src/routes/api/webhooks/stripe/+server.ts` | Webhook: creates order, sends emails, captures Stripe fees |
+| `src/hooks.server.ts` | Routes /admin requests through Basic Auth |
 | `src/routes/admin/orders/+page.server.ts` | Fetch orders from Sanity via GROQ |
 | `src/routes/admin/orders/+page.svelte` | Admin orders dashboard UI |
 | `src/routes/api/admin/orders/[id]/+server.ts` | API to update order status/notes |
@@ -222,9 +227,41 @@ src/routes/api/admin/orders/[id]/+server.ts  // Update status
 ### Sanity Studio (angelsrest-studio)
 | File | Purpose |
 |------|---------|
-| `schemaTypes/order.ts` | Order document schema (customer, items, shipping, status, notes) |
+| `schemaTypes/order.ts` | Order schema (customer, items, shipping, status, fees, notes) |
 | `schemaTypes/index.ts` | Updated — added order import |
 | `sanity.config.ts` | Updated — added Orders to sidebar structure |
+
+---
+
+## Stripe Fees Implementation (2026-03-06)
+
+### The Problem
+Stripe's `balance_transaction` (which contains actual fees) isn't available immediately
+when `checkout.session.completed` fires. We tried several approaches:
+
+1. **Expand at checkout time** — `balance_transaction` is null at this point
+2. **Separate `charge.succeeded` webhook** — fires simultaneously on a different serverless
+   instance, race condition with order creation
+3. **Separate `payment_intent.succeeded` webhook** — same timing issue
+4. **Retry logic in separate handlers** — still unreliable due to Vercel serverless isolation
+
+### The Solution
+After creating the order in `handleCheckoutCompleted`, wait 3 seconds, then fetch the
+payment intent with expanded `latest_charge.balance_transaction`. By this point Stripe
+has finalized the transaction. Everything happens in ONE handler — no race conditions.
+
+```
+checkout.session.completed → create order → wait 3s → fetch fees → update order
+```
+
+### Key Fields
+- `stripePaymentIntentId` — stored on order for fee lookups
+- `stripeFees` — actual fee in cents from `balance_transaction.fee`
+
+### Lesson Learned
+On Vercel (serverless), webhook events fire on separate instances simultaneously.
+You can't rely on one webhook handler's work being visible to another handler that
+fires at the same time. Keep related logic in a single handler when possible.
 
 ---
 

@@ -6,6 +6,14 @@ import { env as privateEnv } from '$env/dynamic/private';
  *
  * Checks the Authorization header against ADMIN_PASSWORD env var.
  * If no password is set, allows access (for development).
+ *
+ * 💡 Why Handle type?
+ * SvelteKit's Handle type properly types the { event, resolve } parameters.
+ * Without it, TypeScript infers 'any' for both, causing implicit-any errors.
+ *
+ * 💡 Why arrow function (const adminAuth = async () => {})?
+ * Assigning directly to a typed const lets TypeScript infer parameter types
+ * from the Handle type, avoiding the need to manually annotate each param.
  */
 export const adminAuth: Handle = async ({ event, resolve }) => {
 	const ADMIN_PASSWORD = privateEnv.ADMIN_PASSWORD;
