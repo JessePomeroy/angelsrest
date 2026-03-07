@@ -386,7 +386,7 @@
 							</span>
 						</td>
 						<td class="py-3 px-4 font-semibold">{formatCurrency(order.total, order.currency)}</td>
-						<!-- svelte-ignore a11y_no_static_element_interactions -->
+						<!-- svelte-ignore a11y_no_static_element_interactions a11y_click_events_have_key_events -->
 						<td class="py-3 px-4" onclick={(e) => e.stopPropagation()}>
 							<select
 								value={order.status}
@@ -412,7 +412,7 @@
 </div>
 
 {#if selectedOrder}
-	<!-- svelte-ignore a11y_no_static_element_interactions -->
+	<!-- svelte-ignore a11y_no_static_element_interactions a11y_click_events_have_key_events -->
 	<div 
 		class="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4"
 		role="dialog"
@@ -421,7 +421,7 @@
 		onclick={closeModal}
 		onkeydown={(e) => { if (e.key === 'Escape') closeModal(); }}
 	>
-		<!-- svelte-ignore a11y_no_static_element_interactions -->
+		<!-- svelte-ignore a11y_no_static_element_interactions a11y_click_events_have_key_events -->
 		<div 
 			class="bg-gray-800 p-6 rounded-lg max-w-2xl w-full max-h-[90vh] overflow-y-auto"
 			onclick={(e) => e.stopPropagation()}
