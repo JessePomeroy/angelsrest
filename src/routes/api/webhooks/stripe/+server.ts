@@ -136,17 +136,53 @@ async function handleCheckoutCompleted(session: Stripe.Checkout.Session) {
 		try {
 			// Try to fetch full session with line items and payment intent (for fees)
 			fullSession = await stripe.checkout.sessions.retrieve(session.id, {
-				expand: ["line_items", "customer_details", "payment_intent"],
+				expand: ["line_items", "customer_details", "payment_intent.payment_method"],
 			});
 			lineItems = fullSession.line_items?.data || [];
 			shippingDetails = session.collected_information?.shipping_details;
 
-			// Get Stripe fees - calculate based on standard rates
-			// Stripe fees: 2.9% + $0.30 for US domestic cards
-			// This is accurate enough for tax purposes
-			const amount = fullSession.amount_total || 0;
-			stripeFees = Math.round(amount * 0.029) + 30; // 2.9% + $0.30 in cents
-			console.log("💰 Stripe fees calculated:", stripeFees, "from amount:", amount);
+			// Get Stripe fees from balance_transaction
+			try {
+				const paymentIntent = (fullSession as any).payment_intent;
+				console.log("💳 Payment Intent ID:", paymentIntent?.id);
+				console.log("💳 Payment Intent keys:", Object.keys(paymentIntent || {}));
+				
+				// Check for balance_transaction on payment intent
+				if (paymentIntent?.balance_transaction) {
+					const balanceTx = typeof paymentIntent.balance_transaction === 'string'
+						? await stripe.balanceTransactions.retrieve(paymentIntent.balance_transaction)
+						: paymentIntent.balance_transaction;
+					stripeFees = balanceTx.fee;
+					console.log("💰 Fees from payment_intent:", stripeFees);
+				} else if (paymentIntent?.latest_charge) {
+					// Try from charge
+					const chargeId = typeof paymentIntent.latest_charge === 'string'
+						? paymentIntent.latest_charge
+						: paymentIntent.latest_charge.id;
+					console.log("⚡ Checking charge:", chargeId);
+					const charge = await stripe.charges.retrieve(chargeId);
+					console.log("⚡ Charge keys:", Object.keys(charge));
+					if (charge.balance_transaction) {
+						const balanceTx = typeof charge.balance_transaction === 'string'
+							? await stripe.balanceTransactions.retrieve(charge.balance_transaction)
+							: charge.balance_transaction;
+						stripeFees = balanceTx.fee;
+						console.log("💰 Fees from charge:", stripeFees);
+					}
+				}
+				
+				// If still no fees, calculate
+				if (stripeFees === 0 && fullSession.amount_total) {
+					stripeFees = Math.round(fullSession.amount_total * 0.029) + 30;
+					console.log("💰 Fees calculated as fallback:", stripeFees);
+				}
+			} catch (feeError) {
+				console.error("❌ Error fetching fees:", feeError);
+				// Fallback calculation
+				if (fullSession.amount_total) {
+					stripeFees = Math.round(fullSession.amount_total * 0.029) + 30;
+				}
+			}
 		} catch (retrieveError) {
 			// For test/triggered events, the session might not exist
 			// Use event data directly instead
