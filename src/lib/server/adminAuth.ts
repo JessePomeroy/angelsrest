@@ -1,4 +1,4 @@
-import { json, error } from '@sveltejs/kit';
+import type { Handle } from '@sveltejs/kit';
 import { env as privateEnv } from '$env/dynamic/private';
 
 /**
@@ -7,7 +7,7 @@ import { env as privateEnv } from '$env/dynamic/private';
  * Checks the Authorization header against ADMIN_PASSWORD env var.
  * If no password is set, allows access (for development).
  */
-export async function adminAuth({ event, resolve }) {
+export const adminAuth: Handle = async ({ event, resolve }) => {
 	const ADMIN_PASSWORD = privateEnv.ADMIN_PASSWORD;
 
 	// Skip if no password is configured (development mode)

@@ -40,7 +40,7 @@
 	 * .sort((a, b) => b - a) - Sorts newest first
 	 */
 	let availableYears = $derived(
-		[...new Set(data.orders.map((o: any) => new Date(o.createdAt).getFullYear()))].sort((a, b) => b - a)
+		[...new Set(data.orders.map((o: any) => new Date(o.createdAt).getFullYear()))].sort((a: number, b: number) => b - a)
 	);
 
 	/**
@@ -269,7 +269,7 @@
 
 		const csvContent = [
 			headers.join(','),
-			...rows.map(row => row.map(cell => `"${String(cell).replace(/"/g, '""')}"`).join(','))
+			...rows.map((row: any[]) => row.map((cell: any) => `"${String(cell).replace(/"/g, '""')}"`).join(','))
 		].join('\n');
 
 		const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
