@@ -441,20 +441,26 @@ async function createOrderInSanity({
  */
 async function handleChargeSucceeded(charge: Stripe.Charge) {
 	console.log("💰 Processing charge.succeeded:", charge.id);
+	console.log("💰 Charge payment_intent:", charge.payment_intent);
 
 	try {
 		// Find the order by payment intent ID
+		console.log("🔍 Looking for order with payment intent:", charge.payment_intent);
 		const query = `*[_type == "order" && stripePaymentIntentId == $paymentIntentId][0]`;
 		const order = await adminClient.fetch(query, { 
 			paymentIntentId: charge.payment_intent
 		});
 
 		if (!order) {
-			console.log("No order found for payment intent:", charge.payment_intent);
+			console.log("❌ No order found for payment intent:", charge.payment_intent);
+			// Try alternative lookup - maybe it hasn't been created yet
+			// Let's find ALL orders to debug
+			const allOrders = await adminClient.fetch(`*[_type == "order"] | order(_createdAt desc)[0...3]{orderNumber, stripePaymentIntentId, stripeSessionId}`);
+			console.log("📋 Recent orders:", JSON.stringify(allOrders));
 			return;
 		}
 
-		console.log("Found order:", order.orderNumber);
+		console.log("✅ Found order:", order.orderNumber);
 
 		// Get balance_transaction for fees
 		if (charge.balance_transaction) {
