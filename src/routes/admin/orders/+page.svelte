@@ -40,7 +40,7 @@
 	 * .sort((a, b) => b - a) - Sorts newest first
 	 */
 	let availableYears = $derived(
-		[...new Set(data.orders.map((o: any) => new Date(o.createdAt).getFullYear()))].sort((a: number, b: number) => b - a)
+		([...new Set(data.orders.map((o: any) => new Date(o.createdAt).getFullYear()))] as number[]).sort((a, b) => b - a)
 	);
 
 	/**
