@@ -90,8 +90,15 @@ export async function POST({ request }) {
 				break;
 			}
 
+			case "payment_intent.succeeded": {
+				// 💰 Update order with Stripe fees (fires after checkout completes)
+				const paymentIntent = event.data.object as Stripe.PaymentIntent;
+				await handlePaymentIntentSucceeded(paymentIntent);
+				break;
+			}
+
 			case "charge.succeeded": {
-				// 💰 Update order with Stripe fees (available after charge completes)
+				// Legacy - keeping for fallback, but payment_intent.succeeded is preferred
 				const charge = event.data.object as Stripe.Charge;
 				await handleChargeSucceeded(charge);
 				break;
@@ -478,6 +485,64 @@ async function handleChargeSucceeded(charge: Stripe.Charge) {
 			console.log("✅ Updated order with fees:", order.orderNumber, "fees:", fees);
 		} else {
 			console.log("No balance_transaction on charge yet");
+		}
+	} catch (err) {
+		console.error("Error updating order with fees:", err);
+	}
+}
+
+/**
+ * Handle payment_intent.succeeded webhook
+ * 
+ * This fires after checkout.session.completed and has the balance_transaction
+ * with actual Stripe fees. This is the preferred event over charge.succeeded.
+ */
+async function handlePaymentIntentSucceeded(paymentIntent: Stripe.PaymentIntent) {
+	console.log("💎 Processing payment_intent.succeeded:", paymentIntent.id);
+
+	try {
+		// Find the order by payment intent ID
+		console.log("🔍 Looking for order with payment intent:", paymentIntent.id);
+		const query = `*[_type == "order" && stripePaymentIntentId == $paymentIntentId][0]`;
+		const order = await adminClient.fetch(query, { 
+			paymentIntentId: paymentIntent.id
+		});
+
+		if (!order) {
+			console.log("❌ No order found for payment intent:", paymentIntent.id);
+			return;
+		}
+
+		console.log("✅ Found order:", order.orderNumber);
+
+		// Get balance_transaction for fees - try from payment_intent first
+		let fees = 0;
+		
+		// Payment Intent has the charge (for successful payments)
+		if (paymentIntent.latest_charge) {
+			const chargeId = typeof paymentIntent.latest_charge === 'string' 
+				? paymentIntent.latest_charge 
+				: paymentIntent.latest_charge.id;
+			
+			const charge = await stripe.charges.retrieve(chargeId);
+			if (charge.balance_transaction) {
+				const balanceTx = typeof charge.balance_transaction === 'string'
+					? await stripe.balanceTransactions.retrieve(charge.balance_transaction)
+					: charge.balance_transaction;
+				fees = balanceTx.fee;
+			}
+		}
+
+		if (fees > 0) {
+			// Update order with fees
+			await adminClient.patch(order._id).set({
+				stripeFees: fees,
+				updatedAt: new Date().toISOString()
+			}).commit();
+
+			console.log("✅ Updated order with fees:", order.orderNumber, "fees:", fees);
+		} else {
+			console.log("⚠️ No fees found");
 		}
 	} catch (err) {
 		console.error("Error updating order with fees:", err);
