@@ -143,16 +143,22 @@ async function handleCheckoutCompleted(session: Stripe.Checkout.Session) {
 
 			// Get actual fees from balance_transaction
 			// This gives us the real Stripe fees instead of calculating
-			const paymentIntentId = (fullSession as any).payment_intent;
-			if (paymentIntentId) {
-				const paymentIntent = await stripe.paymentIntents.retrieve(paymentIntentId);
-				if (paymentIntent.balance_transaction) {
-					const balanceTx = await stripe.balanceTransactions.retrieve(
-						paymentIntent.balance_transaction as string
-					);
-					stripeFees = balanceTx.fee; // Fees in cents
-					console.log("Stripe fees captured:", stripeFees);
+			try {
+				const paymentIntentId = (fullSession as any).payment_intent;
+				console.log("Payment Intent ID:", paymentIntentId);
+				if (paymentIntentId) {
+					const paymentIntent = await stripe.paymentIntents.retrieve(paymentIntentId);
+					console.log("Payment Intent:", paymentIntent);
+					if (paymentIntent.balance_transaction) {
+						const balanceTx = await stripe.balanceTransactions.retrieve(
+							paymentIntent.balance_transaction as string
+						);
+						stripeFees = balanceTx.fee; // Fees in cents
+						console.log("Stripe fees captured:", stripeFees);
+					}
 				}
+			} catch (feeError) {
+				console.error("Error fetching fees:", feeError);
 			}
 		} catch (retrieveError) {
 			// For test/triggered events, the session might not exist
