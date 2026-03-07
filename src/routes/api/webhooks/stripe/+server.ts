@@ -170,18 +170,8 @@ async function handleCheckoutCompleted(session: Stripe.Checkout.Session) {
 						console.log("💰 Fees from charge:", stripeFees);
 					}
 				}
-				
-				// If still no fees, calculate
-				if (stripeFees === 0 && fullSession.amount_total) {
-					stripeFees = Math.round(fullSession.amount_total * 0.029) + 30;
-					console.log("💰 Fees calculated as fallback:", stripeFees);
-				}
 			} catch (feeError) {
 				console.error("❌ Error fetching fees:", feeError);
-				// Fallback calculation
-				if (fullSession.amount_total) {
-					stripeFees = Math.round(fullSession.amount_total * 0.029) + 30;
-				}
 			}
 		} catch (retrieveError) {
 			// For test/triggered events, the session might not exist
