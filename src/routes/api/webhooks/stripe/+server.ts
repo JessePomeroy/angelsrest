@@ -162,12 +162,18 @@ async function handleCheckoutCompleted(session: Stripe.Checkout.Session) {
 					console.log("⚡ Checking charge:", chargeId);
 					const charge = await stripe.charges.retrieve(chargeId);
 					console.log("⚡ Charge keys:", Object.keys(charge));
+					console.log("⚡ balance_transaction value:", charge.balance_transaction);
+					console.log("⚡ balance_transaction type:", typeof charge.balance_transaction);
+					
 					if (charge.balance_transaction) {
+						console.log("✅ Found balance_transaction!");
 						const balanceTx = typeof charge.balance_transaction === 'string'
 							? await stripe.balanceTransactions.retrieve(charge.balance_transaction)
 							: charge.balance_transaction;
 						stripeFees = balanceTx.fee;
 						console.log("💰 Fees from charge:", stripeFees);
+					} else {
+						console.log("⚠️ balance_transaction is null or undefined");
 					}
 				}
 			} catch (feeError) {
