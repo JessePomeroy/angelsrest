@@ -1,91 +1,49 @@
-# AGENTS.md — angelsrest
+# AGENTS.md - angelsrest
 
-Photography portfolio and shop for Jesse Pomeroy (angelsrest.online).
-Deployed on Vercel. Content managed via Sanity CMS.
+Rules for working on this codebase.
 
----
+## Project Context
 
-## Stack
+- **Stack:** SvelteKit + Tailwind CSS + Skeleton UI + Sanity CMS + Stripe
+- **Frontend:** `~/Documents/work/angelsrest` → https://angelsrest.online
+- **Studio:** `~/Documents/work/angelsrest-studio` → https://angelsrest.sanity.studio
+- **Spec:** `~/Documents/quilt/02_reference/projects/lumaprints-angelsrest.md`
 
-- **Framework:** SvelteKit (Svelte 5, runes mode)
-- **Styling:** Tailwind 4 + Skeleton UI (v2)
-- **CMS:** Sanity (`@sanity/client`, `@sanity/image-url`)
-- **Commerce:** Stripe (`stripe`, `@stripe/stripe-js`)
-- **Email:** Resend
-- **Linting:** Biome (JS/TS only) + `svelte-check` (Svelte files)
-- **Analytics:** `@vercel/analytics`
-- **Icons:** `@lucide/svelte`
+## Tech Constraints
 
----
+- Use SvelteKit 2 (not Svelte 5 for pages/components, but runes for new code)
+- Tailwind CSS v4 — avoid Skeleton component classes, use plain Tailwind
+- Use `$env/dynamic/private` for env vars in hooks, not `$env/static/private`
+- Biome linter enforced via husky — run checks before reporting done
 
-## Critical Rules
+## Key Files
 
-### Svelte files — never touch with Biome
-Biome does NOT lint or format `.svelte` files. `biome.json` explicitly ignores them.
-- Use `svelte-check` for type checking Svelte files: `pnpm svelte-check`
-- Do NOT add `*.svelte` back to Biome's scope — this caused a production outage before
+- **Stripe webhook:** `src/routes/api/webhooks/stripe/+server.ts`
+- **Admin orders:** `src/routes/admin/orders/+page.svelte`
+- **Order lookup:** `src/routes/orders/+page.svelte`
+- **Sanity client:** `src/lib/sanity/client.ts` (read), `src/lib/sanity/adminClient.ts` (write)
+- **LumaPrints client:** `src/lib/lumaprints/client.ts`
 
-### Svelte 5 runes — always use runes syntax
-- Use `$state`, `$derived`, `$effect`, `$props` — not the legacy Options API
-- Use `$app/state` for page store — NOT `$app/stores`
-- No `export let` for props — use `let { prop } = $props()`
-
-### Skeleton UI
-- Themes: `hamlindigo` (dark), `pine` (light)
-- Import components from `@skeletonlabs/skeleton-svelte`
-- Tailwind dark mode is class-based — check `dark` is on `<html>`, not `data-theme`
-
-### Sanity
-- Project ID: `n7rvza4g`, dataset: `production`
-- Studio lives in the separate `angelsrest-studio` repo — do not edit schema here
-- GROQ queries live in `src/lib/sanity/`
-- Images always go through `@sanity/image-url` builder — never use raw asset URLs
-
-### Git
-- Branch: `main` (production)
-- Do NOT push to `main` without explicit instruction from Jesse
-- Keep commits atomic and descriptive
-- Never force-push or squash public commits
-
----
-
-## Project Structure
-
-```
-src/
-  lib/
-    assets/       # Static assets
-    components/   # Shared Svelte components
-    sanity/       # GROQ queries + Sanity client setup
-    stores/       # Svelte stores (legacy — prefer runes in new code)
-    styles/       # Global CSS
-  routes/
-    +layout.svelte
-    +page.svelte
-    about/
-    api/          # Server-side API routes (Stripe webhooks, etc.)
-    blog/
-    checkout/
-    gallery/
-    shop/
-```
-
----
-
-## Commands
+## Running Checks
 
 ```bash
-pnpm dev          # Dev server
-pnpm build        # Production build
-pnpm preview      # Preview production build
-pnpm svelte-check # Type-check Svelte files
-pnpm biome check  # Lint JS/TS (not .svelte)
+cd ~/Documents/work/angelsrest
+pnpm biome check --write src/
+pnpm svelte-check
 ```
 
----
+## Branching
 
-## Known Gotchas
+- Create a branch: `git checkout -b feature/name`
+- Commit and push
+- Tell Jesse to review
+- Don't push to main without permission
 
-- Tailwind 4's `dark:` variant can fail with `!important` — use reactive CSS variables as workaround
-- Biome rewrote 36 Svelte files in commit `cdcde2d` causing a production outage — `cf2c23f` fixed it
-- The `Nav` component must be imported correctly — it was the symptom of the Biome outage
+## Current Features
+
+- Shop with Stripe checkout
+- Order creation via webhook
+- Customer + admin order emails via Resend
+- Admin dashboard at `/admin/orders` (Basic Auth protected)
+- Order lookup page at `/orders`
+- LumaPrints integration (in progress)
