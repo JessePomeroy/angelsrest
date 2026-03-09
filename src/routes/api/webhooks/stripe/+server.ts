@@ -502,6 +502,7 @@ async function submitToLumaPrints(
 			externalId: orderNumber,
 			storeId: 83765,
 			shippingMethod: 'default' as const,
+			productionTime: 'regular' as const,
 			recipient: {
 				firstName,
 				lastName,
