@@ -34,7 +34,7 @@ import {
 } from "$lib/orders/orderNumber";
 import { adminClient } from "$lib/sanity/adminClient";
 import { createOrder as createLumaPrintsOrder } from "$lib/lumaprints/client";
-import { publicClient } from "$lib/sanity/client";
+import { client as sanityClient } from "$lib/sanity/client";
 
 const stripe = new Stripe(STRIPE_SECRET_KEY);
 const resend = new Resend(RESEND_API_KEY);
@@ -477,7 +477,7 @@ async function submitToLumaPrints(
 				"imageUrl": images[0].asset->url
 			}`;
 			
-			const product = await publicClient.fetch(productQuery, { name: productName });
+			const product = await sanityClient.fetch(productQuery, { name: productName });
 
 			if (product && product.fulfillmentType === 'lumaprints' && product.lumaprintsSubcategoryId) {
 				lumaprintsItems.push({
