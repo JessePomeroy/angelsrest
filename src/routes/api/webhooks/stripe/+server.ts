@@ -508,7 +508,7 @@ async function submitToLumaPrints(
 					subcategoryId: parseInt(paperSubcategoryId, 10),
 					width: paperWidth || 8,
 					height: paperHeight || 10,
-					options: [], // Skip options for now
+					options: [39], // Use option 39 (No Bleed) to avoid aspect ratio issues
 					imageUrl: imageUrl,
 				});
 			}
