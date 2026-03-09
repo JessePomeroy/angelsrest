@@ -371,6 +371,10 @@ async function createOrderInSanity({
 			total: session.amount_total || 0,
 			currency: session.currency || "usd",
 			status: "new",
+			// Paper details from checkout (for LumaPrints fulfillment)
+			paperName: (session as any).metadata?.paperName || '',
+			paperSubcategoryId: (session as any).metadata?.paperSubcategoryId || '',
+			paperSize: ((session as any).metadata?.paperWidth || '') + 'x' + ((session as any).metadata?.paperHeight || ''),
 			createdAt: new Date().toISOString(),
 			updatedAt: new Date().toISOString(),
 		};
