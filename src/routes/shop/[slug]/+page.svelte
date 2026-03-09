@@ -48,10 +48,19 @@ let selectedIndex = $state(0); // Which image to show in lightbox
 let isLoading = $state(false); // Prevents double-clicks during checkout
 let selectedPaperIndex = $state(0); // Index of selected paper for LumaPrints
 
-// Get selected paper from index
+// Get selected paper from index - parse combined value format "Name|subcategoryId|width|height"
 function getSelectedPaper() {
   if (!data.product.availablePapers?.length) return null;
-  return data.product.availablePapers[selectedPaperIndex] || data.product.availablePapers[0];
+  const paper = data.product.availablePapers[selectedPaperIndex] || data.product.availablePapers[0];
+  if (!paper?.name) return null;
+  
+  const parts = paper.name.split('|');
+  return {
+    name: parts[0],
+    subcategoryId: parts[1] || '',
+    width: parseInt(parts[2], 10) || 8,
+    height: parseInt(parts[3], 10) || 10
+  };
 }
 
 /**
@@ -407,7 +416,7 @@ async function handleCheckout() {
           >
             {#each data.product.availablePapers as paper, i}
               <option value={i}>
-                {paper.name} {paper.width}×{paper.height}
+                {paper.name ? paper.name.split('|')[0] : `Option ${i + 1}`}
               </option>
             {/each}
           </select>
