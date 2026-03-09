@@ -7,20 +7,35 @@
  * Auth: Basic HTTP with API Key as username, API Secret as password
  * 
  * Docs: https://api-docs.lumaprints.com
+ * 
+ * Note: Uses dynamic imports to avoid build failures if env vars aren't set.
+ * The API calls will fail gracefully if credentials aren't configured.
  */
 
-import {
-	LUMAPRINTS_API_KEY,
-	LUMAPRINTS_API_SECRET,
-	LUMAPRINTS_STORE_ID,
-} from '$env/static/private';
+import { env as privateEnv } from '$env/dynamic/private';
+
+/**
+ * Get API credentials from environment
+ */
+function getCredentials(): { apiKey: string; apiSecret: string; storeId: string } | null {
+	const apiKey = privateEnv.LUMAPRINTS_API_KEY;
+	const apiSecret = privateEnv.LUMAPRINTS_API_SECRET;
+	const storeId = privateEnv.LUMAPRINTS_STORE_ID;
+
+	if (!apiKey || !apiSecret || !storeId) {
+		console.warn('LumaPrints: Missing API credentials. Set LUMAPRINTS_API_KEY, LUMAPRINTS_API_SECRET, and LUMAPRINTS_STORE_ID.');
+		return null;
+	}
+
+	return { apiKey, apiSecret, storeId };
+}
 
 /**
  * Create Basic Auth header for LumaPrints API
  */
-function getAuthHeader(): string {
-	const credentials = Buffer.from(`${LUMAPRINTS_API_KEY}:${LUMAPRINTS_API_SECRET}`).toString('base64');
-	return `Basic ${credentials}`;
+function getAuthHeader(credentials: { apiKey: string; apiSecret: string }): string {
+	const credentialsStr = Buffer.from(`${credentials.apiKey}:${credentials.apiSecret}`).toString('base64');
+	return `Basic ${credentialsStr}`;
 }
 
 /**
@@ -30,11 +45,16 @@ async function lumaprintsRequest<T>(
 	endpoint: string,
 	options: RequestInit = {}
 ): Promise<T> {
+	const credentials = getCredentials();
+	if (!credentials) {
+		throw new Error('LumaPrints API credentials not configured');
+	}
+
 	const baseUrl = 'https://us.api.lumaprints.com';
 	const response = await fetch(`${baseUrl}${endpoint}`, {
 		...options,
 		headers: {
-			'Authorization': getAuthHeader(),
+			'Authorization': getAuthHeader(credentials),
 			'Content-Type': 'application/json',
 			...options.headers,
 		},
@@ -213,9 +233,13 @@ export async function getProductPricing(products: ProductPricingRequest[]): Prom
  * Submit an order to LumaPrints for fulfillment
  */
 export async function createOrder(order: CreateOrderRequest): Promise<CreateOrderResponse> {
+	const credentials = getCredentials();
+	if (!credentials) {
+		throw new Error('LumaPrints API credentials not configured');
+	}
 	return lumaprintsRequest<CreateOrderResponse>('/api/v1/orders', {
 		method: 'POST',
-		body: JSON.stringify(order),
+		body: JSON.stringify({ ...order, storeId: parseInt(credentials.storeId, 10) }),
 	});
 }
 
@@ -245,6 +269,8 @@ export async function checkImage(imageUrl: string): Promise<{ valid: boolean; me
 /**
  * Get store ID from environment
  */
-export function getStoreId(): number {
-	return parseInt(LUMAPRINTS_STORE_ID, 10);
+export function getStoreId(): number | null {
+	const credentials = getCredentials();
+	if (!credentials) return null;
+	return parseInt(credentials.storeId, 10);
 }

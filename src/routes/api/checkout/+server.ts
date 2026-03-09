@@ -57,7 +57,8 @@ export async function POST({ request }) {
     const body = await request.json();
     console.log("Received checkout request:", JSON.stringify(body, null, 2));
 
-    const { productId, title, price, image } = body;
+    const { productId, title, price, image, paper } = body;
+    console.log("Checkout payload:", { productId, title, price, paper });
 
     /**
      * Input Validation
@@ -163,6 +164,11 @@ export async function POST({ request }) {
        */
       metadata: {
         productId, // Track which product was purchased
+        // Paper selection for LumaPrints fulfillment
+        paperName: paper?.name || '',
+        paperSubcategoryId: paper?.subcategoryId?.toString() || '',
+        paperWidth: paper?.width?.toString() || '',
+        paperHeight: paper?.height?.toString() || '',
       },
     });
 
@@ -175,6 +181,8 @@ export async function POST({ request }) {
      *
      * Alternative: Return sessionId and use Stripe.js redirectToCheckout()
      */
+    console.log("Stripe session created, metadata:", session.metadata);
+
     return json({ sessionId: session.id, url: session.url });
   } catch (err: any) {
     /**

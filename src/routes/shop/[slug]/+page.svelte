@@ -46,6 +46,22 @@ let { data } = $props();
 let modalOpen = $state(false); // Controls image lightbox visibility
 let selectedIndex = $state(0); // Which image to show in lightbox
 let isLoading = $state(false); // Prevents double-clicks during checkout
+let selectedPaperIndex = $state(0); // Index of selected paper for LumaPrints
+
+// Get selected paper from index - parse combined value format "Name|subcategoryId|width|height"
+function getSelectedPaper() {
+  if (!data.product.availablePapers?.length) return null;
+  const paper = data.product.availablePapers[selectedPaperIndex] || data.product.availablePapers[0];
+  if (!paper?.name) return null;
+  
+  const parts = paper.name.split('|');
+  return {
+    name: parts[0],
+    subcategoryId: parts[1] || '',
+    width: parseInt(parts[2], 10) || 8,
+    height: parseInt(parts[3], 10) || 10
+  };
+}
 
 /**
  * Modal Control Functions
@@ -106,11 +122,27 @@ async function handleCheckout() {
      * - price: How much to charge
      * - image: For Stripe's checkout display
      */
+    // Get paper selection safely
+    const selectedPaperData = data.product.availablePapers?.length ? getSelectedPaper() : null;
+    
+    console.log("Paper debug:", {
+      availablePapers: data.product.availablePapers,
+      selectedPaperIndex,
+      selectedPaperData
+    });
+
     const checkoutData = {
       productId: data.product.slug, // Unique identifier
       title: data.product.title, // Display name
       price: data.product.price, // Amount in dollars
       image: data.product.images[0]?.full || null, // Main product image
+      // Paper selection for LumaPrints fulfillment
+      paper: selectedPaperData ? {
+        name: selectedPaperData.name,
+        subcategoryId: selectedPaperData.subcategoryId,
+        width: selectedPaperData.width,
+        height: selectedPaperData.height
+      } : null,
     };
 
     console.log("Sending to checkout:", checkoutData);
@@ -381,6 +413,25 @@ async function handleCheckout() {
         2. Loading: "Processing..." (prevents double-clicks)
         3. Disabled: "Out of Stock" (clear unavailability)
       -->
+      <!-- Paper Selection Dropdown (for LumaPrints products) -->
+      {#if data.product.availablePapers?.length > 0}
+        <div>
+          <label class="block text-sm text-surface-600-300-token mb-1">
+            Paper Type
+          </label>
+          <select
+            class="select w-full"
+            bind:value={selectedPaperIndex}
+          >
+            {#each data.product.availablePapers as paper, i}
+              <option value={i}>
+                {paper.name ? paper.name.split('|')[0] : `Option ${i + 1}`}
+              </option>
+            {/each}
+          </select>
+        </div>
+      {/if}
+
       <div class="space-y-3">
         <button
           class="btn variant-filled-primary w-full"
