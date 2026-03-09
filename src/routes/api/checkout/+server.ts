@@ -181,6 +181,8 @@ export async function POST({ request }) {
      *
      * Alternative: Return sessionId and use Stripe.js redirectToCheckout()
      */
+    console.log("Stripe session created, metadata:", session.metadata);
+
     return json({ sessionId: session.id, url: session.url });
   } catch (err: any) {
     /**
