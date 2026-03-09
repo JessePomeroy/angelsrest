@@ -384,7 +384,7 @@ async function createOrderInSanity({
 
 		// Submit to LumaPrints if any items are LumaPrints-fulfilled
 		// Wait a moment for the order to be fully created first
-		await submitToLumaPrints(result._id, orderNumber, lineItems, shippingDetails);
+		await submitToLumaPrints(result._id, orderNumber, lineItems, shippingDetails, session);
 
 		// Return order number for email
 		return { orderNumber, _id: result._id };
@@ -444,7 +444,8 @@ async function submitToLumaPrints(
 	orderId: string,
 	orderNumber: string,
 	lineItems: Stripe.LineItem[],
-	shippingDetails: any
+	shippingDetails: any,
+	session: Stripe.Checkout.Session
 ) {
 	try {
 		// Check each line item for paper selection from metadata
