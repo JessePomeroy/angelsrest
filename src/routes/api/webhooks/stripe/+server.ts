@@ -461,10 +461,12 @@ async function submitToLumaPrints(
 
 		for (const item of lineItems) {
 			// Get paper info from Stripe metadata (passed during checkout)
-			const paperSubcategoryId = parseInt((session as any).metadata?.paperSubcategoryId || '0', 10);
+			const paperSubcategoryId = (session as any).metadata?.paperSubcategoryId || '';
+			const paperWidth = parseInt((session as any).metadata?.paperWidth || '8', 10);
+			const paperHeight = parseInt((session as any).metadata?.paperHeight || '10', 10);
 
 			// If we have valid paper metadata, create a LumaPrints item
-			if (paperSubcategoryId > 0) {
+			if (paperSubcategoryId) {
 				const paperWidth = parseInt((session as any).metadata?.paperWidth || '8', 10);
 				const paperHeight = parseInt((session as any).metadata?.paperHeight || '10', 10);
 				
@@ -476,7 +478,7 @@ async function submitToLumaPrints(
 					externalItemId: item.id,
 					productName: item.description || 'Print',
 					quantity: item.quantity || 1,
-					subcategoryId: paperSubcategoryId,
+					subcategoryId: parseInt(paperSubcategoryId, 10),
 					width: paperWidth || 8,
 					height: paperHeight || 10,
 					options: [36], // Default to 0.25in bleed
