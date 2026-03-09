@@ -486,7 +486,7 @@ async function submitToLumaPrints(
 					subcategoryId: parseInt(paperSubcategoryId, 10),
 					width: paperWidth || 8,
 					height: paperHeight || 10,
-					options: [36], // Default to 0.25in bleed
+					options: [], // Skip options for now
 					imageUrl: product?.imageUrl || '',
 				});
 			}
