@@ -46,14 +46,13 @@ let { data } = $props();
 let modalOpen = $state(false); // Controls image lightbox visibility
 let selectedIndex = $state(0); // Which image to show in lightbox
 let isLoading = $state(false); // Prevents double-clicks during checkout
-let selectedPaper = $state<any>(null); // Selected paper type for LumaPrints
+let selectedPaperIndex = $state(0); // Index of selected paper for LumaPrints
 
-// Set default paper when product loads
-$effect(() => {
-  if (data.product.availablePapers?.length > 0 && !selectedPaper) {
-    selectedPaper = data.product.availablePapers[0];
-  }
-});
+// Get selected paper from index
+function getSelectedPaper() {
+  if (!data.product.availablePapers?.length) return null;
+  return data.product.availablePapers[selectedPaperIndex] || data.product.availablePapers[0];
+}
 
 /**
  * Modal Control Functions
@@ -120,11 +119,11 @@ async function handleCheckout() {
       price: data.product.price, // Amount in dollars
       image: data.product.images[0]?.full || null, // Main product image
       // Paper selection for LumaPrints fulfillment
-      paper: selectedPaper ? {
-        name: selectedPaper.name,
-        subcategoryId: selectedPaper.subcategoryId,
-        width: selectedPaper.width,
-        height: selectedPaper.height
+      paper: data.product.availablePapers?.length ? {
+        name: getSelectedPaper().name,
+        subcategoryId: getSelectedPaper().subcategoryId,
+        width: getSelectedPaper().width,
+        height: getSelectedPaper().height
       } : null,
     };
 
@@ -404,10 +403,10 @@ async function handleCheckout() {
           </label>
           <select
             class="select w-full"
-            bind:value={selectedPaper}
+            bind:value={selectedPaperIndex}
           >
-            {#each data.product.availablePapers as paper}
-              <option value={paper}>
+            {#each data.product.availablePapers as paper, i}
+              <option value={i}>
                 {paper.name} {paper.width}×{paper.height}
               </option>
             {/each}
