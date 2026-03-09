@@ -7,12 +7,14 @@
  * 1. Customer completes checkout → Stripe fires checkout.session.completed
  * 2. We send confirmation emails (customer + admin)
  * 3. We create an order in Sanity CMS for tracking
- * 4. We fetch actual Stripe fees (with a short delay for availability)
+ * 4. If LumaPrints products → submit to LumaPrints for fulfillment
+ * 5. We fetch actual Stripe fees (with a short delay for availability)
  *
  * 🔒 Security: Every webhook is verified via cryptographic signature
  * 📧 Emails: Customer confirmation + admin notification via Resend
  * 📦 Orders: Stored in Sanity with sequential numbering (ORD-001, ORD-002...)
  * 💰 Fees: Actual Stripe transaction fees captured from balance_transaction
+ * 🖨️ Fulfillment: Fine Art Paper prints auto-submitted to LumaPrints
  *
  * Webhook URL: https://www.angelsrest.online/api/webhooks/stripe
  * Events handled: checkout.session.completed, payment_intent.payment_failed
@@ -31,6 +33,8 @@ import {
 	orderExistsForSession,
 } from "$lib/orders/orderNumber";
 import { adminClient } from "$lib/sanity/adminClient";
+import { createOrder as createLumaPrintsOrder } from "$lib/lumaprints/client";
+import { publicClient } from "$lib/sanity/client";
 
 const stripe = new Stripe(STRIPE_SECRET_KEY);
 const resend = new Resend(RESEND_API_KEY);
@@ -378,6 +382,10 @@ async function createOrderInSanity({
 		// The balance_transaction isn't available immediately at checkout time
 		await captureStripeFees(result._id, orderNumber, stripePaymentIntentId);
 
+		// Submit to LumaPrints if any items are LumaPrints-fulfilled
+		// Wait a moment for the order to be fully created first
+		await submitToLumaPrints(result._id, orderNumber, lineItems, shippingDetails);
+
 		// Return order number for email
 		return { orderNumber, _id: result._id };
 	} catch (err) {
@@ -423,5 +431,122 @@ async function captureStripeFees(
 		}
 	} catch (err) {
 		console.error("Error capturing fees for:", orderNumber, err);
+	}
+}
+
+/**
+ * Submit order to LumaPrints for fulfillment if it contains LumaPrints products.
+ * 
+ * Looks up each line item in Sanity to check fulfillmentType.
+ * Only submits if at least one item is LumaPrints-fulfilled.
+ */
+async function submitToLumaPrints(
+	orderId: string,
+	orderNumber: string,
+	lineItems: Stripe.LineItem[],
+	shippingDetails: any
+) {
+	try {
+		// Check each line item for LumaPrints fulfillment
+		const lumaprintsItems: {
+			externalItemId: string;
+			productName: string;
+			quantity: number;
+			subcategoryId: number;
+			width: number;
+			height: number;
+			options: number[];
+			imageUrl: string;
+		}[] = [];
+
+		for (const item of lineItems) {
+			// Try to find the product in Sanity by name
+			// Note: In a real implementation, you'd pass product IDs through Stripe metadata
+			// For now, we'll try to match by product description
+			const productName = item.description || '';
+			
+			// Look up product in Sanity
+			const productQuery = `*[_type == "product" && title match $name][0]{
+				_id,
+				title,
+				fulfillmentType,
+				lumaprintsSubcategoryId,
+				printWidth,
+				printHeight,
+				lumaprintsOptions,
+				"imageUrl": images[0].asset->url
+			}`;
+			
+			const product = await publicClient.fetch(productQuery, { name: productName });
+
+			if (product && product.fulfillmentType === 'lumaprints' && product.lumaprintsSubcategoryId) {
+				lumaprintsItems.push({
+					externalItemId: item.id,
+					productName: product.title,
+					quantity: item.quantity || 1,
+					subcategoryId: product.lumaprintsSubcategoryId,
+					width: product.printWidth || 8,
+					height: product.printHeight || 10,
+					options: product.lumaprintsOptions || [36], // Default to 0.25in bleed
+					imageUrl: product.imageUrl || '',
+				});
+			}
+		}
+
+		if (lumaprintsItems.length === 0) {
+			console.log("No LumaPrints items in order:", orderNumber);
+			return;
+		}
+
+		// Build LumaPrints order
+		const nameParts = (shippingDetails?.name || '').split(' ');
+		const firstName = nameParts[0] || '';
+		const lastName = nameParts.slice(1).join(' ') || '';
+
+		const lumaprintsOrder = {
+			externalId: orderNumber,
+			storeId: 83765,
+			shippingMethod: 'default' as const,
+			recipient: {
+				firstName,
+				lastName,
+				addressLine1: shippingDetails?.address?.line1 || '',
+				addressLine2: shippingDetails?.address?.line2 || '',
+				city: shippingDetails?.address?.city || '',
+				state: shippingDetails?.address?.state || '',
+				zipCode: shippingDetails?.address?.postal_code || '',
+				country: shippingDetails?.address?.country || 'US',
+				phone: '',
+			},
+			orderItems: lumaprintsItems.map((item, index) => ({
+				externalItemId: `item-${index + 1}`,
+				subcategoryId: item.subcategoryId,
+				quantity: item.quantity,
+				width: item.width,
+				height: item.height,
+				file: {
+					imageUrl: item.imageUrl,
+				},
+				orderItemOptions: item.options,
+			})),
+		};
+
+		console.log("Submitting to LumaPrints:", orderNumber, lumaprintsItems.length, "items");
+
+		const result = await createLumaPrintsOrder(lumaprintsOrder);
+
+		// Update Sanity order with LumaPrints order number
+		await adminClient.patch(orderId).set({
+			lumaprintsOrderNumber: result.orderNumber,
+			fulfillmentType: 'lumaprints',
+			updatedAt: new Date().toISOString(),
+		}).commit();
+
+		console.log("✅ Submitted to LumaPrints:", orderNumber, "→", result.orderNumber);
+
+	} catch (err) {
+		console.error("Error submitting to LumaPrints:", err);
+		// Don't fail the webhook - just log the error
+		// Order is still created in Sanity, fulfillment can be done manually
 	}
 }

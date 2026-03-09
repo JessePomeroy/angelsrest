@@ -9,11 +9,7 @@
  * Docs: https://api-docs.lumaprints.com
  */
 
-import {
-	LUMAPRINTS_API_KEY,
-	LUMAPRINTS_API_SECRET,
-	LUMAPRINTS_STORE_ID,
-} from '$env/static/private';
+import { LUMAPRINTS_API_KEY, LUMAPRINTS_API_SECRET, LUMAPRINTS_STORE_ID } from '$env/dynamic/private';
 
 /**
  * Create Basic Auth header for LumaPrints API
@@ -246,5 +242,5 @@ export async function checkImage(imageUrl: string): Promise<{ valid: boolean; me
  * Get store ID from environment
  */
 export function getStoreId(): number {
-	return parseInt(LUMAPRINTS_STORE_ID, 10);
+	return parseInt(String(LUMAPRINTS_STORE_ID), 10);
 }
