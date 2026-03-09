@@ -62,7 +62,13 @@ export async function load({ params }) {
       category,
       featured,
       inStock,
-      images[]
+      images[],
+      availablePapers[]{
+        name,
+        subcategoryId,
+        width,
+        height
+      }
     }
   `,
     {
