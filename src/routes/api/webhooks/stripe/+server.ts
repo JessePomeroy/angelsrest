@@ -475,9 +475,8 @@ async function submitToLumaPrints(
 				const paperWidth = parseInt((session as any).metadata?.paperWidth || '8', 10);
 				const paperHeight = parseInt((session as any).metadata?.paperHeight || '10', 10);
 				
-				// Get image URL from the product in Sanity
-				const productQuery = `*[_type == "product" && title match $name][0]{ "imageUrl": images[0].asset->url }`;
-				const product = await sanityClient.fetch(productQuery, { name: item.description || '' });
+				// Get image URL - strip query params that might confuse LumaPrints
+				const baseImageUrl = (product?.imageUrl || '').split('?')[0];
 
 				lumaprintsItems.push({
 					externalItemId: item.id,
