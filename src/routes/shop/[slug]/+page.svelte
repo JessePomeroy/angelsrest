@@ -122,17 +122,26 @@ async function handleCheckout() {
      * - price: How much to charge
      * - image: For Stripe's checkout display
      */
+    // Get paper selection safely
+    const selectedPaperData = data.product.availablePapers?.length ? getSelectedPaper() : null;
+    
+    console.log("Paper debug:", {
+      availablePapers: data.product.availablePapers,
+      selectedPaperIndex,
+      selectedPaperData
+    });
+
     const checkoutData = {
       productId: data.product.slug, // Unique identifier
       title: data.product.title, // Display name
       price: data.product.price, // Amount in dollars
       image: data.product.images[0]?.full || null, // Main product image
       // Paper selection for LumaPrints fulfillment
-      paper: data.product.availablePapers?.length ? {
-        name: getSelectedPaper().name,
-        subcategoryId: getSelectedPaper().subcategoryId,
-        width: getSelectedPaper().width,
-        height: getSelectedPaper().height
+      paper: selectedPaperData ? {
+        name: selectedPaperData.name,
+        subcategoryId: selectedPaperData.subcategoryId,
+        width: selectedPaperData.width,
+        height: selectedPaperData.height
       } : null,
     };
 
