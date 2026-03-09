@@ -531,7 +531,7 @@ async function submitToLumaPrints(
 			})),
 		};
 
-		console.log("Submitting to LumaPrints:", orderNumber, lumaprintsItems.length, "items");
+		console.log("Submitting to LumaPrints:", orderNumber, lumaprintsItems.length, "items", JSON.stringify(lumaprintsItems));
 
 		const result = await createLumaPrintsOrder(lumaprintsOrder);
 
