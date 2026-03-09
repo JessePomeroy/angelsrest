@@ -12,14 +12,14 @@ let activeCategory = $state("all");
 // Show collections only for Prints category, products for everything else
 let showCollections = $derived(activeCategory === "prints");
 
-// Filter products by category (exclude prints unless they have no collection, or handle separately)
+// Filter products by category 
 let filteredProducts = $derived(
 	activeCategory === "all"
 		? data.products.filter(
 				(p: any) => p.category !== "prints" || !p.collection?.slug,
 			)
 		: activeCategory === "prints"
-			? [] // Don't show individual prints when Prints is selected, show collections instead
+			? data.products.filter((p: any) => p.category === "prints" && !p.collection?.slug) // Show prints without collection
 			: data.products.filter(
 					(product: { category: string }) =>
 						product.category === activeCategory,
