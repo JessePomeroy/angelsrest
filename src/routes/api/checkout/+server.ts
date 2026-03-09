@@ -58,6 +58,7 @@ export async function POST({ request }) {
     console.log("Received checkout request:", JSON.stringify(body, null, 2));
 
     const { productId, title, price, image, paper } = body;
+    console.log("Checkout payload:", { productId, title, price, paper });
 
     /**
      * Input Validation
