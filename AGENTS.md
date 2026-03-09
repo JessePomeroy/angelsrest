@@ -46,4 +46,20 @@ pnpm svelte-check
 - Customer + admin order emails via Resend
 - Admin dashboard at `/admin/orders` (Basic Auth protected)
 - Order lookup page at `/orders`
-- LumaPrints integration (in progress)
+- LumaPrints integration (IN PROGRESS - see below)
+
+## LumaPrints Integration Status
+
+**What's working:**
+- Paper selection dropdown on product page
+- Metadata flows through checkout → Stripe → webhook
+- Order created in Sanity with paper details
+
+**Issue (UNRESOLVED):**
+- LumaPrints API rejects all orders with aspect ratio errors
+- Even valid sizes (4×6, 6×9) fail with "expectedAspectRatio: 7:11" or "11:17"
+- Pricing API accepts sizes, but order API rejects them
+- Likely need to contact LumaPrints support or use manual fulfillment
+
+**Active branches:**
+- `feature/paper-selection` - current work on paper dropdown
