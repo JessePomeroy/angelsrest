@@ -17,8 +17,8 @@
  * - Responsive design
  */
 
-import SEO from "$lib/components/SEO.svelte";
 import GalleryModal from "$lib/components/GalleryModal.svelte";
+import SEO from "$lib/components/SEO.svelte";
 
 /**
  * Props from Server Load Function
@@ -50,18 +50,20 @@ let selectedPaperIndex = $state(0); // Index of selected paper for LumaPrints
 
 // Get selected paper from index - parse combined value format "Name|subcategoryId|width|height"
 function getSelectedPaper() {
-  if (!data.product.availablePapers?.length) return null;
-  const paper = data.product.availablePapers[selectedPaperIndex] || data.product.availablePapers[0];
-  if (!paper?.name) return null;
-  
-  const parts = paper.name.split('|');
-  return {
-    name: parts[0],
-    subcategoryId: parts[1] || '',
-    width: parseInt(parts[2], 10) || 8,
-    height: parseInt(parts[3], 10) || 10,
-    price: paper.price || null,
-  };
+	if (!data.product.availablePapers?.length) return null;
+	const paper =
+		data.product.availablePapers[selectedPaperIndex] ||
+		data.product.availablePapers[0];
+	if (!paper?.name) return null;
+
+	const parts = paper.name.split("|");
+	return {
+		name: parts[0],
+		subcategoryId: parts[1] || "",
+		width: parseInt(parts[2], 10) || 8,
+		height: parseInt(parts[3], 10) || 10,
+		price: paper.price || null,
+	};
 }
 
 /**
@@ -73,8 +75,8 @@ function getSelectedPaper() {
  * - State updates trigger reactive UI changes
  */
 function openModal(index: number) {
-  selectedIndex = index;
-  modalOpen = true;
+	selectedIndex = index;
+	modalOpen = true;
 }
 
 /**
@@ -86,7 +88,7 @@ function openModal(index: number) {
  * - Reusable across components
  */
 function formatCategory(category: string) {
-  return category.charAt(0).toUpperCase() + category.slice(1);
+	return category.charAt(0).toUpperCase() + category.slice(1);
 }
 
 /**
@@ -104,114 +106,118 @@ function formatCategory(category: string) {
  * - Graceful fallbacks for failures
  */
 async function handleCheckout() {
-  // Prevent double-submission while processing
-  isLoading = true;
+	// Prevent double-submission while processing
+	isLoading = true;
 
-  // Debug logging (remove in production)
-  console.log("Product data:", data.product);
+	// Debug logging (remove in production)
+	console.log("Product data:", data.product);
 
-  try {
-    /**
-     * Prepare Checkout Data
-     *
-     * We structure the data exactly as our API expects it.
-     * This separation allows the API to validate and transform data.
-     *
-     * Key Fields:
-     * - productId: For tracking and inventory
-     * - title: What customer is buying
-     * - price: How much to charge
-     * - image: For Stripe's checkout display
-     */
-    // Get paper selection safely
-    const selectedPaperData = data.product.availablePapers?.length ? getSelectedPaper() : null;
-    
-    console.log("Paper debug:", {
-      availablePapers: data.product.availablePapers,
-      selectedPaperIndex,
-      selectedPaperData
-    });
+	try {
+		/**
+		 * Prepare Checkout Data
+		 *
+		 * We structure the data exactly as our API expects it.
+		 * This separation allows the API to validate and transform data.
+		 *
+		 * Key Fields:
+		 * - productId: For tracking and inventory
+		 * - title: What customer is buying
+		 * - price: How much to charge
+		 * - image: For Stripe's checkout display
+		 */
+		// Get paper selection safely
+		const selectedPaperData = data.product.availablePapers?.length
+			? getSelectedPaper()
+			: null;
 
-    const checkoutData = {
-      productId: data.product.slug, // Unique identifier
-      title: data.product.title, // Display name
-      price: selectedPaperData?.price || data.product.price, // Use paper price if set, else base price
-      image: data.product.images[0]?.full || null, // Main product image
-      // Paper selection for LumaPrints fulfillment
-      paper: selectedPaperData ? {
-        name: selectedPaperData.name,
-        subcategoryId: selectedPaperData.subcategoryId,
-        width: selectedPaperData.width,
-        height: selectedPaperData.height
-      } : null,
-    };
+		console.log("Paper debug:", {
+			availablePapers: data.product.availablePapers,
+			selectedPaperIndex,
+			selectedPaperData,
+		});
 
-    console.log("Sending to checkout:", checkoutData);
+		const checkoutData = {
+			productId: data.product.slug, // Unique identifier
+			title: data.product.title, // Display name
+			price: selectedPaperData?.price || data.product.price, // Use paper price if set, else base price
+			image: data.product.images[0]?.full || null, // Main product image
+			// Paper selection for LumaPrints fulfillment
+			paper: selectedPaperData
+				? {
+						name: selectedPaperData.name,
+						subcategoryId: selectedPaperData.subcategoryId,
+						width: selectedPaperData.width,
+						height: selectedPaperData.height,
+					}
+				: null,
+		};
 
-    /**
-     * API Call to Create Checkout Session
-     *
-     * fetch() API patterns:
-     * 1. POST method for data mutations
-     * 2. JSON content type header
-     * 3. Stringify body data
-     * 4. Check response status
-     * 5. Parse JSON response
-     *
-     * Security Note: This data goes to our server, not directly to Stripe.
-     * Our server validates and processes it safely.
-     */
-    const response = await fetch("/api/checkout", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify(checkoutData),
-    });
+		console.log("Sending to checkout:", checkoutData);
 
-    /**
-     * Handle API Response
-     *
-     * Our API returns { sessionId, url } on success.
-     * We use the URL to redirect to Stripe's hosted checkout page.
-     *
-     * Alternative Approach: Use Stripe.js with sessionId
-     * This approach is simpler and more reliable.
-     */
-    const { url } = await response.json();
+		/**
+		 * API Call to Create Checkout Session
+		 *
+		 * fetch() API patterns:
+		 * 1. POST method for data mutations
+		 * 2. JSON content type header
+		 * 3. Stringify body data
+		 * 4. Check response status
+		 * 5. Parse JSON response
+		 *
+		 * Security Note: This data goes to our server, not directly to Stripe.
+		 * Our server validates and processes it safely.
+		 */
+		const response = await fetch("/api/checkout", {
+			method: "POST",
+			headers: {
+				"Content-Type": "application/json",
+			},
+			body: JSON.stringify(checkoutData),
+		});
 
-    if (url) {
-      /**
-       * Redirect to Stripe Checkout
-       *
-       * window.location.href triggers a full page redirect.
-       * Stripe handles the entire payment process from here.
-       * User will return to our success/cancel pages after payment.
-       */
-      window.location.href = url;
-    }
-  } catch (err) {
-    /**
-     * Error Handling Best Practices
-     *
-     * 1. Log detailed errors for debugging
-     * 2. Show user-friendly messages to customers
-     * 3. Don't expose technical details to users
-     * 4. Always reset loading state
-     *
-     * Production Enhancement: Use toast notifications instead of alert()
-     */
-    console.error("Checkout error:", err);
-    alert("Something went wrong. Please try again.");
-  } finally {
-    /**
-     * Cleanup State
-     *
-     * Always reset loading state, regardless of success or failure.
-     * This prevents the button from getting stuck in loading state.
-     */
-    isLoading = false;
-  }
+		/**
+		 * Handle API Response
+		 *
+		 * Our API returns { sessionId, url } on success.
+		 * We use the URL to redirect to Stripe's hosted checkout page.
+		 *
+		 * Alternative Approach: Use Stripe.js with sessionId
+		 * This approach is simpler and more reliable.
+		 */
+		const { url } = await response.json();
+
+		if (url) {
+			/**
+			 * Redirect to Stripe Checkout
+			 *
+			 * window.location.href triggers a full page redirect.
+			 * Stripe handles the entire payment process from here.
+			 * User will return to our success/cancel pages after payment.
+			 */
+			window.location.href = url;
+		}
+	} catch (err) {
+		/**
+		 * Error Handling Best Practices
+		 *
+		 * 1. Log detailed errors for debugging
+		 * 2. Show user-friendly messages to customers
+		 * 3. Don't expose technical details to users
+		 * 4. Always reset loading state
+		 *
+		 * Production Enhancement: Use toast notifications instead of alert()
+		 */
+		console.error("Checkout error:", err);
+		alert("Something went wrong. Please try again.");
+	} finally {
+		/**
+		 * Cleanup State
+		 *
+		 * Always reset loading state, regardless of success or failure.
+		 * This prevents the button from getting stuck in loading state.
+		 */
+		isLoading = false;
+	}
 }
 </script>
 
