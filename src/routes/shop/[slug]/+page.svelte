@@ -59,7 +59,8 @@ function getSelectedPaper() {
     name: parts[0],
     subcategoryId: parts[1] || '',
     width: parseInt(parts[2], 10) || 8,
-    height: parseInt(parts[3], 10) || 10
+    height: parseInt(parts[3], 10) || 10,
+    price: paper.price || null,
   };
 }
 
@@ -134,7 +135,7 @@ async function handleCheckout() {
     const checkoutData = {
       productId: data.product.slug, // Unique identifier
       title: data.product.title, // Display name
-      price: data.product.price, // Amount in dollars
+      price: selectedPaperData?.price || data.product.price, // Use paper price if set, else base price
       image: data.product.images[0]?.full || null, // Main product image
       // Paper selection for LumaPrints fulfillment
       paper: selectedPaperData ? {
@@ -368,7 +369,7 @@ async function handleCheckout() {
         - Bold weight for emphasis
       -->
       <div class="text-3xl font-semibold text-surface-900-50-token">
-        ${data.product.price}
+        ${getSelectedPaper()?.price || data.product.price}
       </div>
 
       <!--

@@ -35,7 +35,10 @@ export async function GET() {
 				),
 			})),
 		});
-	} catch (err) {
-		return json({ error: err.message }, { status: 500 });
+	} catch (err: unknown) {
+		return json(
+			{ error: err instanceof Error ? err.message : String(err) },
+			{ status: 500 },
+		);
 	}
 }
