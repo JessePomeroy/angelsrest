@@ -28,12 +28,12 @@ import {
 	STRIPE_SECRET_KEY,
 	STRIPE_WEBHOOK_SECRET,
 } from "$env/static/private";
+import { createOrder as createLumaPrintsOrder } from "$lib/lumaprints/client";
 import {
 	getNextOrderNumber,
 	orderExistsForSession,
 } from "$lib/orders/orderNumber";
 import { adminClient } from "$lib/sanity/adminClient";
-import { createOrder as createLumaPrintsOrder } from "$lib/lumaprints/client";
 import { client as sanityClient } from "$lib/sanity/client";
 
 const stripe = new Stripe(STRIPE_SECRET_KEY);
@@ -300,7 +300,7 @@ This order was automatically processed through your Angel's Rest website.
 	await resend.emails.send({
 		from: "Angel's Rest Orders <orders@angelsrest.online>",
 		to: ["thinkingofview@gmail.com"],
-		subject: orderNumber 
+		subject: orderNumber
 			? `🛒 New Order ${orderNumber}: ${formatCurrency(session.amount_total || 0)} from ${shippingDetails?.name || customerEmail}`
 			: `🛒 New Order: ${formatCurrency(session.amount_total || 0)} from ${shippingDetails?.name || customerEmail}`,
 		text: emailContent,
@@ -372,9 +372,12 @@ async function createOrderInSanity({
 			currency: session.currency || "usd",
 			status: "new",
 			// Paper details from checkout (for LumaPrints fulfillment)
-			paperName: (session as any).metadata?.paperName || '',
-			paperSubcategoryId: (session as any).metadata?.paperSubcategoryId || '',
-			paperSize: ((session as any).metadata?.paperWidth || '') + 'x' + ((session as any).metadata?.paperHeight || ''),
+			paperName: (session as any).metadata?.paperName || "",
+			paperSubcategoryId: (session as any).metadata?.paperSubcategoryId || "",
+			paperSize:
+				((session as any).metadata?.paperWidth || "") +
+				"x" +
+				((session as any).metadata?.paperHeight || ""),
 			createdAt: new Date().toISOString(),
 			updatedAt: new Date().toISOString(),
 		};
@@ -388,7 +391,13 @@ async function createOrderInSanity({
 
 		// Submit to LumaPrints if any items are LumaPrints-fulfilled
 		// Wait a moment for the order to be fully created first
-		await submitToLumaPrints(result._id, orderNumber, lineItems, shippingDetails, session);
+		await submitToLumaPrints(
+			result._id,
+			orderNumber,
+			lineItems,
+			shippingDetails,
+			session,
+		);
 
 		// Return order number for email
 		return { orderNumber, _id: result._id };
@@ -440,7 +449,7 @@ async function captureStripeFees(
 
 /**
  * Submit order to LumaPrints for fulfillment if it contains LumaPrints products.
- * 
+ *
  * Looks up each line item in Sanity to check fulfillmentType.
  * Only submits if at least one item is LumaPrints-fulfilled.
  */
@@ -449,7 +458,7 @@ async function submitToLumaPrints(
 	orderNumber: string,
 	lineItems: Stripe.LineItem[],
 	shippingDetails: any,
-	session: Stripe.Checkout.Session
+	session: Stripe.Checkout.Session,
 ) {
 	try {
 		// Check each line item for paper selection from metadata
@@ -466,27 +475,40 @@ async function submitToLumaPrints(
 
 		for (const item of lineItems) {
 			// Get paper info from Stripe metadata (passed during checkout)
-			const paperSubcategoryId = (session as any).metadata?.paperSubcategoryId || '';
-			const paperWidth = parseInt((session as any).metadata?.paperWidth || '8', 10);
-			const paperHeight = parseInt((session as any).metadata?.paperHeight || '10', 10);
+			const paperSubcategoryId =
+				(session as any).metadata?.paperSubcategoryId || "";
+			const paperWidth = parseInt(
+				(session as any).metadata?.paperWidth || "8",
+				10,
+			);
+			const paperHeight = parseInt(
+				(session as any).metadata?.paperHeight || "10",
+				10,
+			);
 
 			// If we have valid paper metadata, create a LumaPrints item
 			if (paperSubcategoryId) {
-				const paperWidth = parseInt((session as any).metadata?.paperWidth || '8', 10);
-				const paperHeight = parseInt((session as any).metadata?.paperHeight || '10', 10);
-				
-				// Get image URL - strip query params that might confuse LumaPrints
-				const baseImageUrl = (product?.imageUrl || '').split('?')[0];
+				const paperWidth = parseInt(
+					(session as any).metadata?.paperWidth || "8",
+					10,
+				);
+				const paperHeight = parseInt(
+					(session as any).metadata?.paperHeight || "10",
+					10,
+				);
+
+				// Get image URL from session metadata
+				const imageUrl = (session as any).metadata?.imageUrl || "";
 
 				lumaprintsItems.push({
 					externalItemId: item.id,
-					productName: item.description || 'Print',
+					productName: item.description || "Print",
 					quantity: item.quantity || 1,
 					subcategoryId: parseInt(paperSubcategoryId, 10),
 					width: paperWidth || 8,
 					height: paperHeight || 10,
 					options: [], // Skip options for now
-					imageUrl: product?.imageUrl || '',
+					imageUrl: imageUrl,
 				});
 			}
 		}
@@ -497,25 +519,25 @@ async function submitToLumaPrints(
 		}
 
 		// Build LumaPrints order
-		const nameParts = (shippingDetails?.name || '').split(' ');
-		const firstName = nameParts[0] || '';
-		const lastName = nameParts.slice(1).join(' ') || '';
+		const nameParts = (shippingDetails?.name || "").split(" ");
+		const firstName = nameParts[0] || "";
+		const lastName = nameParts.slice(1).join(" ") || "";
 
 		const lumaprintsOrder = {
 			externalId: orderNumber,
 			storeId: 83765,
-			shippingMethod: 'default' as const,
-			productionTime: 'regular' as const,
+			shippingMethod: "default" as const,
+			productionTime: "regular" as const,
 			recipient: {
 				firstName,
 				lastName,
-				addressLine1: shippingDetails?.address?.line1 || '',
-				addressLine2: shippingDetails?.address?.line2 || '',
-				city: shippingDetails?.address?.city || '',
-				state: shippingDetails?.address?.state || '',
-				zipCode: shippingDetails?.address?.postal_code || '',
-				country: shippingDetails?.address?.country || 'US',
-				phone: '',
+				addressLine1: shippingDetails?.address?.line1 || "",
+				addressLine2: shippingDetails?.address?.line2 || "",
+				city: shippingDetails?.address?.city || "",
+				state: shippingDetails?.address?.state || "",
+				zipCode: shippingDetails?.address?.postal_code || "",
+				country: shippingDetails?.address?.country || "US",
+				phone: "",
 			},
 			orderItems: lumaprintsItems.map((item, index) => ({
 				externalItemId: `item-${index + 1}`,
@@ -530,19 +552,32 @@ async function submitToLumaPrints(
 			})),
 		};
 
-		console.log("Submitting to LumaPrints:", orderNumber, lumaprintsItems.length, "items", JSON.stringify(lumaprintsItems));
+		console.log(
+			"Submitting to LumaPrints:",
+			orderNumber,
+			lumaprintsItems.length,
+			"items",
+			JSON.stringify(lumaprintsItems),
+		);
 
 		const result = await createLumaPrintsOrder(lumaprintsOrder);
 
 		// Update Sanity order with LumaPrints order number
-		await adminClient.patch(orderId).set({
-			lumaprintsOrderNumber: result.orderNumber,
-			fulfillmentType: 'lumaprints',
-			updatedAt: new Date().toISOString(),
-		}).commit();
+		await adminClient
+			.patch(orderId)
+			.set({
+				lumaprintsOrderNumber: result.orderNumber,
+				fulfillmentType: "lumaprints",
+				updatedAt: new Date().toISOString(),
+			})
+			.commit();
 
-		console.log("✅ Submitted to LumaPrints:", orderNumber, "→", result.orderNumber);
-
+		console.log(
+			"✅ Submitted to LumaPrints:",
+			orderNumber,
+			"→",
+			result.orderNumber,
+		);
 	} catch (err) {
 		console.error("Error submitting to LumaPrints:", err);
 		// Don't fail the webhook - just log the error
