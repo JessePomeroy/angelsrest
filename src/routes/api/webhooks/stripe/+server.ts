@@ -34,7 +34,7 @@ import {
 } from "$lib/orders/orderNumber";
 import { adminClient } from "$lib/sanity/adminClient";
 import { createOrder as createLumaPrintsOrder } from "$lib/lumaprints/client";
-import { publicClient } from "$lib/sanity/client";
+import { client as sanityClient } from "$lib/sanity/client";
 
 const stripe = new Stripe(STRIPE_SECRET_KEY);
 const resend = new Resend(RESEND_API_KEY);
@@ -447,7 +447,7 @@ async function submitToLumaPrints(
 	shippingDetails: any
 ) {
 	try {
-		// Check each line item for LumaPrints fulfillment
+		// Check each line item for paper selection from metadata
 		const lumaprintsItems: {
 			externalItemId: string;
 			productName: string;
@@ -460,35 +460,29 @@ async function submitToLumaPrints(
 		}[] = [];
 
 		for (const item of lineItems) {
-			// Try to find the product in Sanity by name
-			// Note: In a real implementation, you'd pass product IDs through Stripe metadata
-			// For now, we'll try to match by product description
-			const productName = item.description || '';
-			
-			// Look up product in Sanity
-			const productQuery = `*[_type == "product" && title match $name][0]{
-				_id,
-				title,
-				fulfillmentType,
-				lumaprintsSubcategoryId,
-				printWidth,
-				printHeight,
-				lumaprintsOptions,
-				"imageUrl": images[0].asset->url
-			}`;
-			
-			const product = await publicClient.fetch(productQuery, { name: productName });
+			// Get paper info from Stripe metadata (passed during checkout)
+			const paperSubcategoryId = (session as any).metadata?.paperSubcategoryId || '';
+			const paperWidth = parseInt((session as any).metadata?.paperWidth || '8', 10);
+			const paperHeight = parseInt((session as any).metadata?.paperHeight || '10', 10);
 
-			if (product && product.fulfillmentType === 'lumaprints' && product.lumaprintsSubcategoryId) {
+			// If we have valid paper metadata, create a LumaPrints item
+			if (paperSubcategoryId) {
+				const paperWidth = parseInt((session as any).metadata?.paperWidth || '8', 10);
+				const paperHeight = parseInt((session as any).metadata?.paperHeight || '10', 10);
+				
+				// Get image URL from the product in Sanity
+				const productQuery = `*[_type == "product" && title match $name][0]{ "imageUrl": images[0].asset->url }`;
+				const product = await sanityClient.fetch(productQuery, { name: item.description || '' });
+
 				lumaprintsItems.push({
 					externalItemId: item.id,
-					productName: product.title,
+					productName: item.description || 'Print',
 					quantity: item.quantity || 1,
-					subcategoryId: product.lumaprintsSubcategoryId,
-					width: product.printWidth || 8,
-					height: product.printHeight || 10,
-					options: product.lumaprintsOptions || [36], // Default to 0.25in bleed
-					imageUrl: product.imageUrl || '',
+					subcategoryId: parseInt(paperSubcategoryId, 10),
+					width: paperWidth || 8,
+					height: paperHeight || 10,
+					options: [36], // Default to 0.25in bleed
+					imageUrl: product?.imageUrl || '',
 				});
 			}
 		}

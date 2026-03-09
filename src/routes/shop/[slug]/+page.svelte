@@ -46,6 +46,14 @@ let { data } = $props();
 let modalOpen = $state(false); // Controls image lightbox visibility
 let selectedIndex = $state(0); // Which image to show in lightbox
 let isLoading = $state(false); // Prevents double-clicks during checkout
+let selectedPaper = $state<any>(null); // Selected paper type for LumaPrints
+
+// Set default paper when product loads
+$effect(() => {
+  if (data.product.availablePapers?.length > 0 && !selectedPaper) {
+    selectedPaper = data.product.availablePapers[0];
+  }
+});
 
 /**
  * Modal Control Functions
@@ -111,6 +119,13 @@ async function handleCheckout() {
       title: data.product.title, // Display name
       price: data.product.price, // Amount in dollars
       image: data.product.images[0]?.full || null, // Main product image
+      // Paper selection for LumaPrints fulfillment
+      paper: selectedPaper ? {
+        name: selectedPaper.name,
+        subcategoryId: selectedPaper.subcategoryId,
+        width: selectedPaper.width,
+        height: selectedPaper.height
+      } : null,
     };
 
     console.log("Sending to checkout:", checkoutData);
@@ -381,6 +396,25 @@ async function handleCheckout() {
         2. Loading: "Processing..." (prevents double-clicks)
         3. Disabled: "Out of Stock" (clear unavailability)
       -->
+      <!-- Paper Selection Dropdown (for LumaPrints products) -->
+      {#if data.product.availablePapers?.length > 0}
+        <div>
+          <label class="block text-sm text-surface-600-300-token mb-1">
+            Paper Type
+          </label>
+          <select
+            class="select w-full"
+            bind:value={selectedPaper}
+          >
+            {#each data.product.availablePapers as paper}
+              <option value={paper}>
+                {paper.name} {paper.width}×{paper.height}
+              </option>
+            {/each}
+          </select>
+        </div>
+      {/if}
+
       <div class="space-y-3">
         <button
           class="btn variant-filled-primary w-full"
