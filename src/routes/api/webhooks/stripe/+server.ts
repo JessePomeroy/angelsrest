@@ -497,8 +497,10 @@ async function submitToLumaPrints(
 					10,
 				);
 
-				// Get image URL from session metadata
-				const imageUrl = (session as any).metadata?.imageUrl || "";
+				// Get image URL from session metadata, strip query params and use jpg
+				const rawImageUrl = (session as any).metadata?.imageUrl || "";
+				// Remove all query params and force jpg format (LumaPrints accepts JPEG/PNG, not webp)
+				const imageUrl = rawImageUrl.split("?")[0].replace(/\.webp$/, ".jpg");
 
 				lumaprintsItems.push({
 					externalItemId: item.id,
