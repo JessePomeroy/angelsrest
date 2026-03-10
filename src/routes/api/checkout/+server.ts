@@ -19,6 +19,7 @@ import { error, json } from "@sveltejs/kit";
 import Stripe from "stripe";
 import { STRIPE_SECRET_KEY } from "$env/static/private";
 import { PUBLIC_SITE_URL } from "$env/static/public";
+import { client } from "$lib/sanity/client";
 
 /**
  * Initialize Stripe with Secret Key
@@ -80,6 +81,63 @@ export async function POST({ request }) {
 			throw error(400, "Missing required fields: productId, title, price");
 		}
 
+		// Fetch product category for coupon validation
+		const product = await client.fetch(
+			`*[_type == "product" && slug.current == $slug][0]{ category }`,
+			{ slug: productId },
+		);
+		const productCategory = product?.category;
+
+		// Validate and apply coupon if provided
+		let discountAmount = 0;
+		let appliedCoupon = null;
+		if (coupon) {
+			const couponData = await client.fetch(
+				`*[_type == "coupon" && code == $code && active == true][0]{
+					code,
+					discountType,
+					discountValue,
+					allowedCategories,
+					allowedProducts->slug.current,
+					maxUses,
+					currentUses
+				}`,
+				{ code: coupon.toUpperCase() },
+			);
+
+			if (!couponData) {
+				throw error(400, "Invalid coupon code");
+			}
+
+			// Check usage limit
+			if (couponData.maxUses && couponData.currentUses >= couponData.maxUses) {
+				throw error(400, "Coupon code has reached its usage limit");
+			}
+
+			// Check if product is allowed
+			const productSlug = productId;
+			const isAllowed =
+				!couponData.allowedCategories?.length ||
+				couponData.allowedCategories.includes(productCategory) ||
+				couponData.allowedProducts?.includes(productSlug);
+
+			if (!isAllowed) {
+				throw error(400, "This coupon is not valid for this product");
+			}
+
+			// Calculate discount
+			if (couponData.discountType === "percent") {
+				discountAmount = (price * couponData.discountValue) / 100;
+			} else {
+				discountAmount = couponData.discountValue;
+			}
+
+			appliedCoupon = couponData.code;
+			console.log(`Applied coupon: ${appliedCoupon}, discount: $${discountAmount.toFixed(2)}`);
+		}
+
+		const finalPrice = Math.max(0, price - discountAmount);
+
 		/**
 		 * Create Stripe Checkout Session
 		 *
@@ -137,7 +195,7 @@ export async function POST({ request }) {
 						 * Always multiply by 100 and round to avoid floating point errors.
 						 * Math.round() handles edge cases like $19.999 → 1999
 						 */
-						unit_amount: Math.round(price * 100),
+						unit_amount: Math.round(finalPrice * 100),
 					},
 					quantity: 1, // Fixed quantity for "Buy Now" pattern
 				},
@@ -178,10 +236,11 @@ export async function POST({ request }) {
 				paperHeight: paper?.height?.toString() || "",
 				// Image URL for LumaPrints
 				imageUrl: image || "",
+				// Coupon applied
+				couponCode: appliedCoupon || "",
+				originalPrice: price.toString(),
+				discountAmount: discountAmount.toString(),
 			},
-
-			// Apply coupon code if provided
-			...(coupon && { discounts: [{ coupon: coupon }] }),
 		});
 
 		/**
