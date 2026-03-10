@@ -100,70 +100,77 @@ async function handleCheckout() {
 		{/if}
 	</div>
 
-	<!-- Images grid -->
-	{#if data.images.length > 0}
-		<div class="columns-2 md:columns-3 gap-4 mb-8">
-			{#each data.images as image}
-				<div class="mb-4 break-inside-avoid">
-					<img
-						src={image.thumb}
-						alt={image.alt}
-						class="w-full h-auto rounded-lg"
+	<!-- Two column layout: images left, purchase right -->
+	<div class="grid md:grid-cols-3 gap-8">
+		<!-- Images column (spans 2) -->
+		<div class="md:col-span-2">
+			{#if data.images.length > 0}
+				<div class="columns-2 md:columns-3 gap-4">
+					{#each data.images as image}
+						<div class="mb-4 break-inside-avoid">
+							<img
+								src={image.thumb}
+								alt={image.alt}
+								class="w-full h-auto rounded-lg"
+							/>
+						</div>
+					{/each}
+				</div>
+			{/if}
+		</div>
+
+		<!-- Purchase section (right sidebar) -->
+		<div class="md:col-span-1">
+			<div class="sticky top-8 bg-surface-500/10 border border-surface-500/20 rounded-lg p-6">
+				<div class="text-3xl font-semibold text-surface-900-50-token mb-4">
+					${selectedPaperData?.price || data.printSet.price}
+				</div>
+
+				<!-- Paper selection -->
+				{#if data.printSet.availablePapers?.length > 0}
+					<div class="mb-4">
+						<label class="block text-sm text-surface-600-300-token mb-1">
+							Paper Type
+						</label>
+						<select
+							bind:value={selectedPaperIndex}
+							class="select w-full"
+						>
+							{#each data.printSet.availablePapers as paper, i}
+								{@const parts = paper.name.split('|')}
+								{@const paperPrice = paper.price ? ` (+$${paper.price})` : ''}
+								<option value={i}>{parts[0]}{paperPrice}</option>
+							{/each}
+						</select>
+					</div>
+				{/if}
+
+				<!-- Coupon code -->
+				<div class="mt-4">
+					<label class="block text-sm text-surface-600-300-token mb-1">
+						promo code
+					</label>
+					<input
+						type="text"
+						bind:value={couponCode}
+						placeholder="enter code"
+						class="w-full px-3 py-2 bg-surface-500/10 border border-surface-500/20 rounded-md text-sm lowercase"
 					/>
 				</div>
-			{/each}
-		</div>
-	{/if}
 
-	<!-- Purchase section -->
-	<div class="max-w-md mx-auto bg-surface-500/10 border border-surface-500/20 rounded-lg p-6">
-		<div class="text-3xl font-semibold text-surface-900-50-token mb-4">
-			${selectedPaperData?.price || data.printSet.price}
-		</div>
-
-		<!-- Paper selection -->
-		{#if data.printSet.availablePapers?.length > 0}
-			<div class="mb-4">
-				<label class="block text-sm text-surface-600-300-token mb-1">
-					Paper Type
-				</label>
-				<select
-					bind:value={selectedPaperIndex}
-					class="select w-full"
+				<!-- Buy button -->
+				<button
+					onclick={handleCheckout}
+					disabled={isLoading}
+					class="btn variant-filled-primary w-full mt-4"
 				>
-					{#each data.printSet.availablePapers as paper, i}
-						{@const parts = paper.name.split('|')}
-						{@const paperPrice = paper.price ? ` (+$${paper.price})` : ''}
-						<option value={i}>{parts[0]}{paperPrice}</option>
-					{/each}
-				</select>
+					{isLoading ? "Processing..." : "Buy Now"}
+				</button>
+
+				<p class="text-xs text-surface-500 text-center mt-2">
+					Secure checkout powered by Stripe
+				</p>
 			</div>
-		{/if}
-
-		<!-- Coupon code -->
-		<div class="mt-4">
-			<label class="block text-sm text-surface-600-300-token mb-1">
-				promo code
-			</label>
-			<input
-				type="text"
-				bind:value={couponCode}
-				placeholder="enter code"
-				class="w-full px-3 py-2 bg-surface-500/10 border border-surface-500/20 rounded-md text-sm lowercase"
-			/>
 		</div>
-
-		<!-- Buy button -->
-		<button
-			onclick={handleCheckout}
-			disabled={isLoading}
-			class="btn variant-filled-primary w-full mt-4"
-		>
-			{isLoading ? "Processing..." : "Buy Now"}
-		</button>
-
-		<p class="text-xs text-surface-500 text-center mt-2">
-			Secure checkout powered by Stripe
-		</p>
 	</div>
 </div>
