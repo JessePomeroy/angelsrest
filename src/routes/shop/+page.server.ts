@@ -36,7 +36,7 @@ export async function load() {
     *[_type == "printCollection" && !defined(parent)] | order(orderRank, title asc) {
       title,
       "slug": slug.current,
-      coverImage,
+      previewImage,
       description,
       "previewProduct": *[_type == "product" && references(^._id)][0].images[0]
     }
@@ -45,9 +45,9 @@ export async function load() {
 	// Build collection cover URLs - fallback to first product's image
 	const collectionsWithImages = collections.map((collection: any) => ({
 		...collection,
-		alt: collection.coverImage?.alt || "",
-		coverImage: collection.coverImage
-			? urlFor(collection.coverImage).width(600).format("webp").quality(80).url()
+		alt: collection.previewImage?.alt || "",
+		previewImage: collection.previewImage
+			? urlFor(collection.previewImage).width(600).format("webp").quality(80).url()
 			: collection.previewProduct
 				? urlFor(collection.previewProduct).width(600).format("webp").quality(80).url()
 				: null,
@@ -59,7 +59,7 @@ export async function load() {
       title,
       "slug": slug.current,
       images[0..1],
-      coverImage,
+      previewImage,
       price,
       description
     }
@@ -70,7 +70,7 @@ export async function load() {
 		...set,
 		preview1: set.images?.[0] ? urlFor(set.images[0]).width(300).format("webp").quality(80).url() : null,
 		preview2: set.images?.[1] ? urlFor(set.images[1]).width(300).format("webp").quality(80).url() : null,
-		coverImage: set.coverImage ? urlFor(set.coverImage).width(600).format("webp").quality(80).url() : null,
+		previewImage: set.previewImage ? urlFor(set.previewImage).width(600).format("webp").quality(80).url() : null,
 	}));
 
 	return {

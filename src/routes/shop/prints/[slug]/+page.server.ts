@@ -13,7 +13,7 @@ export async function load({ params }) {
     *[_type == "printCollection" && slug.current == $slug][0]{
       title,
       description,
-      coverImage,
+      previewImage,
       "parent": parent->{
         title,
         "slug": slug.current
@@ -33,7 +33,7 @@ export async function load({ params }) {
     *[_type == "printCollection" && references(*[_type == "printCollection" && slug.current == $slug]._id)] | order(orderRank, title asc) {
       title,
       "slug": slug.current,
-      coverImage
+      previewImage
     }
   `,
 		{ slug: params.slug },
@@ -46,7 +46,7 @@ export async function load({ params }) {
       title,
       "slug": slug.current,
       images[0..1],
-      coverImage,
+      previewImage,
       price
     }
   `,
@@ -66,8 +66,8 @@ export async function load({ params }) {
 	);
 
 	// Build optimized image URLs
-	const coverImageUrl = collection.coverImage
-		? urlFor(collection.coverImage).width(800).format("webp").quality(80).url()
+	const previewImageUrl = collection.previewImage
+		? urlFor(collection.previewImage).width(800).format("webp").quality(80).url()
 		: null;
 
 	const productsWithImages = products.map((product: any) => ({
@@ -80,9 +80,9 @@ export async function load({ params }) {
 	// Build sub-collection cover URLs
 	const subCollectionsWithImages = subCollections.map((sub: any) => ({
 		...sub,
-		alt: sub.coverImage?.alt || "",
-		coverImage: sub.coverImage
-			? urlFor(sub.coverImage).width(600).format("webp").quality(80).url()
+		alt: sub.previewImage?.alt || "",
+		previewImage: sub.previewImage
+			? urlFor(sub.previewImage).width(600).format("webp").quality(80).url()
 			: null,
 	}));
 
@@ -91,15 +91,15 @@ export async function load({ params }) {
 		...set,
 		preview1: set.images?.[0] ? urlFor(set.images[0]).width(300).format("webp").quality(80).url() : null,
 		preview2: set.images?.[1] ? urlFor(set.images[1]).width(300).format("webp").quality(80).url() : null,
-		coverImage: set.coverImage ? urlFor(set.coverImage).width(600).format("webp").quality(80).url() : null,
+		previewImage: set.previewImage ? urlFor(set.previewImage).width(600).format("webp").quality(80).url() : null,
 	}));
 
 	return {
 		collection: {
 			title: collection.title,
 			description: collection.description,
-			coverImage: coverImageUrl,
-			alt: collection.coverImage?.alt || "",
+			previewImage: previewImageUrl,
+			alt: collection.previewImage?.alt || "",
 			parent: collection.parent,
 		},
 		subCollections: subCollectionsWithImages,

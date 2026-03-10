@@ -13,7 +13,7 @@ export async function load({ params }) {
     *[_type == "printSet" && slug.current == $slug][0]{
       title,
       description,
-      coverImage,
+      previewImage,
       images,
       price,
       availablePapers,
@@ -31,8 +31,8 @@ export async function load({ params }) {
 	}
 
 	// Build optimized image URLs
-	const coverImageUrl = printSet.coverImage
-		? urlFor(printSet.coverImage).width(800).format("webp").quality(80).url()
+	const previewImageUrl = printSet.previewImage
+		? urlFor(printSet.previewImage).width(800).format("webp").quality(80).url()
 		: null;
 
 	const imagesWithUrls = (printSet.images || []).map((image: any) => ({
@@ -45,8 +45,8 @@ export async function load({ params }) {
 		printSet: {
 			title: printSet.title,
 			description: printSet.description,
-			coverImage: coverImageUrl,
-			alt: printSet.coverImage?.alt || "",
+			previewImage: previewImageUrl,
+			alt: printSet.previewImage?.alt || "",
 			price: printSet.price,
 			availablePapers: printSet.availablePapers || [],
 			parent: printSet.parent,

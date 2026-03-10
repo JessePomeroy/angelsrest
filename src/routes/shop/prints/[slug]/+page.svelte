@@ -37,10 +37,10 @@ let { data } = $props();
   </div>
 
   <!-- Cover image (if exists) -->
-  {#if data.collection.coverImage}
+  {#if data.collection.previewImage}
     <div class="mb-8 max-w-2xl mx-auto">
       <img
-        src={data.collection.coverImage}
+        src={data.collection.previewImage}
         alt={data.collection.alt || data.collection.title}
         class="w-full h-auto rounded-lg"
       />
@@ -60,7 +60,7 @@ let { data } = $props();
             <div class="bg-surface-500/10 border border-surface-500/20 p-3 rounded-lg hover:border-surface-400/40 transition-all">
               <div class="overflow-hidden rounded-md">
                 <img
-                  src={subCollection.coverImage}
+                  src={subCollection.previewImage}
                   alt={subCollection.alt || subCollection.title}
                   class="w-full h-auto object-contain group-hover:scale-105 transition-transform"
                 />

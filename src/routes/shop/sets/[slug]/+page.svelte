@@ -36,7 +36,7 @@ async function handleCheckout() {
 		productId: data.printSet.slug,
 		title: data.printSet.title,
 		price: selectedPaperData?.price || data.printSet.price,
-		image: data.printSet.coverImage,
+		image: data.printSet.previewImage,
 		paper: selectedPaperData
 			? {
 					name: selectedPaperData.name,

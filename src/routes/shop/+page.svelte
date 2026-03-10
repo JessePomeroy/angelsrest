@@ -87,7 +87,7 @@ const categories = [
           <div class="bg-surface-500/10 border border-surface-500/20 p-3 rounded-lg hover:border-surface-400/40 transition-all">
             <div class="overflow-hidden rounded-md">
               <img
-                src={collection.coverImage}
+                src={collection.previewImage}
                 alt={collection.alt || collection.title}
                 class="w-full h-auto object-contain group-hover:scale-105 transition-transform"
               />
