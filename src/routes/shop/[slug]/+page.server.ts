@@ -133,6 +133,7 @@ export async function load({ params }) {
 		 * - 90% quality (high quality for main display)
 		 */
 		full: urlFor(image).width(1200).format("webp").quality(90).url(),
+		original: urlFor(image).url(), // Full original for LumaPrints
 
 		/**
 		 * Alt Text for Accessibility

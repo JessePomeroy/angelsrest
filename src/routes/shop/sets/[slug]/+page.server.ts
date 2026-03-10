@@ -38,6 +38,7 @@ export async function load({ params }) {
 	const imagesWithUrls = (printSet.images || []).map((image: any) => ({
 		full: urlFor(image).width(1200).format("webp").quality(90).url(),
 		thumb: urlFor(image).width(400).format("webp").quality(80).url(),
+		original: urlFor(image).url(), // Full original for LumaPrints
 		alt: image.alt || "",
 	}));
 

@@ -47,7 +47,7 @@ async function handleCheckout() {
 			: null,
 		coupon: couponCode.trim() || null,
 		isPrintSet: true,
-		images: data.images.map((img: any) => img.full),
+		images: data.images.map((img: any) => img.original),
 	};
 
 	try {

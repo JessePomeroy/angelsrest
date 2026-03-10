@@ -141,7 +141,7 @@ async function handleCheckout() {
 			productId: data.product.slug, // Unique identifier
 			title: data.product.title, // Display name
 			price: selectedPaperData?.price || data.product.price, // Use paper price if set, else base price
-			image: data.product.images[0]?.full || null, // Main product image
+			image: data.product.images[0]?.original || null, // Full original for LumaPrints
 			// Paper selection for LumaPrints fulfillment
 			paper: selectedPaperData
 				? {
