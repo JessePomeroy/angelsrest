@@ -13,7 +13,11 @@ export async function load({ params }) {
     *[_type == "printCollection" && slug.current == $slug][0]{
       title,
       description,
-      coverImage
+      coverImage,
+      "parent": parent->{
+        title,
+        "slug": slug.current
+      }
     }
   `,
 		{ slug: params.slug },
@@ -23,7 +27,17 @@ export async function load({ params }) {
 		throw error(404, "Collection not found");
 	}
 
-	// Fetch all products in this collection
+	// Fetch sub-collections (child collections)
+	const subCollections = await client.fetch(
+		`
+    *[_type == "printCollection" && references(*[_type == "printCollection" && slug.current == $slug]._id)] | order(orderRank, title asc) {
+      title,
+      "slug": slug.current,
+      coverImage
+    }
+  `,
+		{ slug: params.slug },
+	);
 	const products = await client.fetch(
 		`
     *[_type == "product" && references(*[_type == "printCollection" && slug.current == $slug]._id) && inStock == true] | order(orderRank, title asc) {
@@ -48,13 +62,24 @@ export async function load({ params }) {
 			: null,
 	}));
 
+	// Build sub-collection cover URLs
+	const subCollectionsWithImages = subCollections.map((sub: any) => ({
+		...sub,
+		alt: sub.coverImage?.alt || "",
+		coverImage: sub.coverImage
+			? urlFor(sub.coverImage).width(600).format("webp").quality(80).url()
+			: null,
+	}));
+
 	return {
 		collection: {
 			title: collection.title,
 			description: collection.description,
 			coverImage: coverImageUrl,
 			alt: collection.coverImage?.alt || "",
+			parent: collection.parent,
 		},
+		subCollections: subCollectionsWithImages,
 		products: productsWithImages,
 	};
 }

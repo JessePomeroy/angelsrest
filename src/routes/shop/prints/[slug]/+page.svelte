@@ -15,10 +15,18 @@ let { data } = $props();
 />
 
 <div class="px-6! md:px-8! lg:px-10!">
-  <!-- Back link -->
-  <a href="/shop" class="inline-block mb-6 text-sm text-surface-600-300-token hover:text-surface-400">
-    ← back to shop
-  </a>
+  <!-- Back link with breadcrumb -->
+  <div class="mb-6">
+    <a href="/shop" class="inline-block text-sm text-surface-600-300-token hover:text-surface-400">
+      ← back to shop
+    </a>
+    {#if data.collection.parent}
+      <span class="mx-2 text-surface-500">/</span>
+      <a href="/shop/prints/{data.collection.parent.slug}" class="inline-block text-sm text-surface-600-300-token hover:text-surface-400">
+        {data.collection.parent.title}
+      </a>
+    {/if}
+  </div>
 
   <!-- Collection header -->
   <div class="text-center mb-8">
@@ -36,6 +44,34 @@ let { data } = $props();
         alt={data.collection.alt || data.collection.title}
         class="w-full h-auto rounded-lg"
       />
+    </div>
+  {/if}
+
+  <!-- Sub-collections grid -->
+  {#if data.subCollections && data.subCollections.length > 0}
+    <div class="mb-8">
+      <h2 class="text-xl font-semibold mb-4">collections</h2>
+      <div class="columns-2 md:columns-3 gap-4">
+        {#each data.subCollections as subCollection}
+          <a
+            href="/shop/prints/{subCollection.slug}"
+            class="group mb-4 break-inside-avoid block"
+          >
+            <div class="bg-surface-500/10 border border-surface-500/20 p-3 rounded-lg hover:border-surface-400/40 transition-all">
+              <div class="overflow-hidden rounded-md">
+                <img
+                  src={subCollection.coverImage}
+                  alt={subCollection.alt || subCollection.title}
+                  class="w-full h-auto object-contain group-hover:scale-105 transition-transform"
+                />
+              </div>
+              <h2 class="mt-3 text-xs tracking-[0.15em] text-center">
+                {subCollection.title}
+              </h2>
+            </div>
+          </a>
+        {/each}
+      </div>
     </div>
   {/if}
 
