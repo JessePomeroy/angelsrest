@@ -1,7 +1,13 @@
 <script lang="ts">
 /**
- * Shop Index Page - Clean Implementation
- * Using proper Skeleton design tokens with hamlindigo theme
+ * Shop Index Page
+ * 
+ * Shows products organized by category:
+ * - All: non-print products + individual prints without collections
+ * - Prints: collections + print sets + individual prints
+ * - Other categories: products in that category
+ * 
+ * Collections and Print Sets are specific to the Prints category.
  */
 import SEO from "$lib/components/SEO.svelte";
 
@@ -12,7 +18,10 @@ let activeCategory = $state("all");
 // Show collections only for Prints category, products for everything else
 let showCollections = $derived(activeCategory === "prints");
 
-// Filter products by category 
+// Filter products by category:
+// - "all": exclude prints that belong to collections (they show in collections instead)
+// - "prints": show only prints without a collection link
+// - other: filter by exact category match
 let filteredProducts = $derived(
 	activeCategory === "all"
 		? data.products.filter(
@@ -26,12 +35,12 @@ let filteredProducts = $derived(
 				),
 );
 
-// Collections to show when Prints is selected
+// Collections (printCollection schema) - only show for Prints category
 let filteredCollections = $derived(
 	activeCategory === "prints" ? data.collections : [],
 );
 
-// Print sets to show
+// Print sets (printSet schema) - only show for Prints category
 let filteredPrintSets = $derived(
 	activeCategory === "prints" ? data.printSets : [],
 );

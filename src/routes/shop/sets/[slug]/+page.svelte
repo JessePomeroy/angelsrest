@@ -1,18 +1,26 @@
 <script lang="ts">
 /**
  * Print Set Detail Page
- * Shows set images and allows purchase of the entire set
+ * Shows all images in a set and allows purchase of the entire set as one product.
+ * 
+ * Key differences from regular products:
+ * - Multiple images (all sent to LumaPrints for printing)
+ * - Uses original/full quality images for printing, not compressed webp
+ * - Paper selection applies to ALL prints in the set
  */
 import SEO from "$lib/components/SEO.svelte";
 
 let { data } = $props();
 
-// State
+// State for form inputs
 let selectedPaperIndex = $state(0);
 let couponCode = $state("");
 let isLoading = $state(false);
 
-// Parse paper options
+/**
+ * Parse paper option from Sanity format: "Name|subcategoryId|width|height"
+ * Example: "Archival Matte 4×6|103001|4|6"
+ */
 function getSelectedPaper() {
 	if (!data.printSet.availablePapers?.length) return null;
 	const paper = data.printSet.availablePapers[selectedPaperIndex];
@@ -29,14 +37,22 @@ function getSelectedPaper() {
 
 const selectedPaperData = $derived(getSelectedPaper());
 
+/**
+ * Handle checkout submission
+ * Sends all images to LumaPrints (one print per image)
+ * Uses original/full quality images for printing
+ */
 async function handleCheckout() {
 	isLoading = true;
 
+	// Build checkout payload
+	// isPrintSet: tells the backend this is a print set order
+	// images: ALL images from the set (original quality for LumaPrints)
 	const checkoutData = {
 		productId: data.printSet.slug,
 		title: data.printSet.title,
 		price: selectedPaperData?.price || data.printSet.price,
-		image: data.printSet.previewImage,
+		image: data.printSet.previewImage, // Preview for Stripe checkout display
 		paper: selectedPaperData
 			? {
 					name: selectedPaperData.name,
@@ -46,8 +62,8 @@ async function handleCheckout() {
 				}
 			: null,
 		coupon: couponCode.trim() || null,
-		isPrintSet: true,
-		images: data.images.map((img: any) => img.original),
+		isPrintSet: true, // Flag for print set handling
+		images: data.images.map((img: any) => img.original), // Original images for LumaPrints
 	};
 
 	try {

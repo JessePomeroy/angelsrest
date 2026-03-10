@@ -1,12 +1,22 @@
 /**
  * Shop Index - Server Load Function
- * Fetches all products, print collections, and print sets from Sanity for the shop page.
+ * 
+ * Fetches data for the shop page:
+ * 1. Products - individual items for sale
+ * 2. Print Collections - groups of prints (hierarchical, can be nested)
+ * 3. Print Sets - curated bundles of multiple images sold together
+ * 
+ * Products show under different tabs:
+ * - All: products not in collections
+ * - Prints: collections, sets, and individual prints without collections
+ * - Other categories: products in that category
  */
 
 import { client, urlFor } from "$lib/sanity/client";
 
 export async function load() {
-	// Fetch all products that are in stock, ordered by custom order (orderRank), then featured status, then title
+	// Fetch all products that are in stock
+	// Includes collection reference for filtering
 	const products = await client.fetch(`
     *[_type == "product" && inStock == true] | order(orderRank, featured desc, title asc) {
       title,
@@ -16,7 +26,7 @@ export async function load() {
       category,
       featured,
       inStock,
-      "collection": collection->{
+      "collection": collection->{ // Link to parent printCollection
         "slug": slug.current,
         title
       }
@@ -31,7 +41,7 @@ export async function load() {
 			: null,
 	}));
 
-	// Fetch top-level print collections (no parent)
+	// Fetch top-level print collections only (no parent = root level)
 	const collections = await client.fetch(`
     *[_type == "printCollection" && !defined(parent)] | order(orderRank, title asc) {
       title,
@@ -41,7 +51,7 @@ export async function load() {
     }
   `);
 
-	// Build collection preview URLs
+	// Build collection preview URLs (compressed for display)
 	const collectionsWithImages = collections.map((collection: any) => ({
 		...collection,
 		alt: collection.previewImage?.alt || "",
