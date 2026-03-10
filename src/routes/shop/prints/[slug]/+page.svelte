@@ -36,17 +36,6 @@ let { data } = $props();
     {/if}
   </div>
 
-  <!-- Cover image (if exists) -->
-  {#if data.collection.previewImage}
-    <div class="mb-8 max-w-2xl mx-auto">
-      <img
-        src={data.collection.previewImage}
-        alt={data.collection.alt || data.collection.title}
-        class="w-full h-auto rounded-lg"
-      />
-    </div>
-  {/if}
-
   <!-- Sub-collections grid -->
   {#if data.subCollections && data.subCollections.length > 0}
     <div class="mb-8">
