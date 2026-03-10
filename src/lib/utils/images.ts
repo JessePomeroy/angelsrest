@@ -37,7 +37,7 @@ export function buildImageUrl(
 	if (!image) return null;
 
 	const builder = urlFor(image);
-	const { width, quality, format } = { ...defaults.display, ...options };
+	const { width, height, quality, format } = { ...defaults.display, ...options };
 
 	let result = builder;
 
