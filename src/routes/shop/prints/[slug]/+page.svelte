@@ -86,12 +86,22 @@ let { data } = $props();
             class="group mb-4 break-inside-avoid block"
           >
             <div class="bg-surface-500/10 border border-surface-500/20 p-3 rounded-lg hover:border-surface-400/40 transition-all">
-              <div class="overflow-hidden rounded-md">
-                <img
-                  src={set.coverImage}
-                  alt={set.alt || set.title}
-                  class="w-full h-auto object-contain group-hover:scale-105 transition-transform"
-                />
+              <!-- Two images side by side -->
+              <div class="grid grid-cols-2 gap-0.5 overflow-hidden rounded-md">
+                {#if set.preview1}
+                  <img
+                    src={set.preview1}
+                    alt="{set.title} - image 1"
+                    class="w-full h-auto object-contain group-hover:scale-105 transition-transform"
+                  />
+                {/if}
+                {#if set.preview2}
+                  <img
+                    src={set.preview2}
+                    alt="{set.title} - image 2"
+                    class="w-full h-auto object-contain group-hover:scale-105 transition-transform"
+                  />
+                {/if}
               </div>
               <h2 class="mt-3 text-xs tracking-[0.15em] text-center">
                 {set.title}
