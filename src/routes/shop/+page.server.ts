@@ -37,17 +37,20 @@ export async function load() {
       title,
       "slug": slug.current,
       coverImage,
-      description
+      description,
+      "previewProduct": *[_type == "product" && references(^._id)][0].images[0]
     }
   `);
 
-	// Build collection cover URLs
+	// Build collection cover URLs - fallback to first product's image
 	const collectionsWithImages = collections.map((collection: any) => ({
 		...collection,
 		alt: collection.coverImage?.alt || "",
 		coverImage: collection.coverImage
 			? urlFor(collection.coverImage).width(600).format("webp").quality(80).url()
-			: null,
+			: collection.previewProduct
+				? urlFor(collection.previewProduct).width(600).format("webp").quality(80).url()
+				: null,
 	}));
 
 	// Fetch top-level print sets (no parent)
