@@ -1,7 +1,16 @@
 <script lang="ts">
 /**
  * Print Collection Detail Page
- * Shows all prints in a collection (grid like gallery)
+ *
+ * Displays the contents of a print collection:
+ * 1. Sub-collections (nested collections within this one)
+ * 2. Print sets (curated bundles of images)
+ * 3. Individual products assigned to this collection
+ *
+ * Supports breadcrumb navigation for nested collections.
+ * No large header/cover image — only small preview thumbnails on cards.
+ *
+ * Route: /shop/prints/[slug]
  */
 import SEO from "$lib/components/SEO.svelte";
 
