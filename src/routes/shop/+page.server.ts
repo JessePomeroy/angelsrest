@@ -55,19 +55,19 @@ export async function load() {
     *[_type == "printSet" && !defined(parent) && inStock == true] | order(orderRank, featured desc, title asc) {
       title,
       "slug": slug.current,
+      images[0..1],
       coverImage,
       price,
       description
     }
   `);
 
-	// Build print set cover URLs
+	// Build print set preview images (first two images for half/half display)
 	const printSetsWithImages = printSets.map((set: any) => ({
 		...set,
-		alt: set.coverImage?.alt || "",
-		coverImage: set.coverImage
-			? urlFor(set.coverImage).width(600).format("webp").quality(80).url()
-			: null,
+		preview1: set.images?.[0] ? urlFor(set.images[0]).width(300).format("webp").quality(80).url() : null,
+		preview2: set.images?.[1] ? urlFor(set.images[1]).width(300).format("webp").quality(80).url() : null,
+		coverImage: set.coverImage ? urlFor(set.coverImage).width(600).format("webp").quality(80).url() : null,
 	}));
 
 	return {
