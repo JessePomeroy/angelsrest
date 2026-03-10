@@ -13,12 +13,7 @@ export async function load({ params }) {
     *[_type == "printCollection" && slug.current == $slug][0]{
       title,
       description,
-      "coverImage": coverImage.asset->{
-        _ref,
-        assetId,
-        metadata
-      },
-      "alt": coverImage.alt
+      coverImage
     }
   `,
 		{ slug: params.slug },
@@ -58,7 +53,7 @@ export async function load({ params }) {
 			title: collection.title,
 			description: collection.description,
 			coverImage: coverImageUrl,
-			alt: collection.alt,
+			alt: collection.coverImage?.alt || "",
 		},
 		products: productsWithImages,
 	};

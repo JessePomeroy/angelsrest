@@ -36,12 +36,7 @@ export async function load() {
     *[_type == "printCollection"] | order(orderRank, title asc) {
       title,
       "slug": slug.current,
-      "coverImage": coverImage.asset->{
-        _ref,
-        assetId,
-        metadata
-      },
-      "alt": coverImage.alt,
+      coverImage,
       description
     }
   `);
@@ -49,12 +44,9 @@ export async function load() {
 	// Build collection cover URLs
 	const collectionsWithImages = collections.map((collection: any) => ({
 		...collection,
+		alt: collection.coverImage?.alt || "",
 		coverImage: collection.coverImage
-			? urlFor(collection.coverImage)
-					.width(600)
-					.format("webp")
-					.quality(80)
-					.url()
+			? urlFor(collection.coverImage).width(600).format("webp").quality(80).url()
 			: null,
 	}));
 
