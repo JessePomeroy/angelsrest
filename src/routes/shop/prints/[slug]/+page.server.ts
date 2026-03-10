@@ -38,7 +38,8 @@ export async function load({ params }) {
 			title,
 			"slug": slug.current,
 			previewImage
-		}`
+		}`,
+		{ slug: params.slug },
 	);
 
 	// Fetch print sets in this collection
@@ -50,7 +51,8 @@ export async function load({ params }) {
 			images[0..1],
 			previewImage,
 			price
-		}`
+		}`,
+		{ slug: params.slug },
 	);
 
 	// Fetch products in this collection
@@ -61,7 +63,8 @@ export async function load({ params }) {
 			"slug": slug.current,
 			"previewImage": images[0],
 			price
-		}`
+		}`,
+		{ slug: params.slug },
 	);
 
 	// Build URLs
