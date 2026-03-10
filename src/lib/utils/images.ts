@@ -5,7 +5,7 @@
  * Provides consistent sizing and format across the app.
  */
 
-import urlFor from '$lib/sanity/client';
+import { urlFor } from '$lib/sanity/client';
 
 /**
  * Image URL options
