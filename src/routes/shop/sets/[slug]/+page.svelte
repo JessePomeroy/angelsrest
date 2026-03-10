@@ -1,41 +1,33 @@
 <script lang="ts">
 /**
  * Print Set Detail Page
+ * 
  * Shows all images in a set and allows purchase of the entire set as one product.
  * 
- * Key differences from regular products:
+ * Key features:
  * - Multiple images (all sent to LumaPrints for printing)
- * - Uses original/full quality images for printing, not compressed webp
+ * - Original/full quality images for printing (not compressed webp)
  * - Paper selection applies to ALL prints in the set
+ * - Two-column layout: images left, purchase form right
  */
 import SEO from "$lib/components/SEO.svelte";
+import { parsePaperOption, imageSet } from "$lib/utils/images";
+import type { ParsedPaper, ProductImage } from "$lib/types/shop";
 
 let { data } = $props();
 
-// State for form inputs
+// Form state
 let selectedPaperIndex = $state(0);
 let couponCode = $state("");
 let isLoading = $state(false);
 
-/**
- * Parse paper option from Sanity format: "Name|subcategoryId|width|height"
- * Example: "Archival Matte 4×6|103001|4|6"
- */
-function getSelectedPaper() {
+// Parse selected paper option
+const selectedPaperData: ParsedPaper | null = $derived.by(() => {
 	if (!data.printSet.availablePapers?.length) return null;
 	const paper = data.printSet.availablePapers[selectedPaperIndex];
 	if (!paper) return null;
-	const parts = paper.name.split('|');
-	return {
-		name: parts[0],
-		subcategoryId: parts[1] || '',
-		width: parseInt(parts[2], 10) || 8,
-		height: parseInt(parts[3], 10) || 10,
-		price: paper.price || null,
-	};
-}
-
-const selectedPaperData = $derived(getSelectedPaper());
+	return parsePaperOption(paper);
+});
 
 /**
  * Handle checkout submission
@@ -45,31 +37,27 @@ const selectedPaperData = $derived(getSelectedPaper());
 async function handleCheckout() {
 	isLoading = true;
 
-	// Build checkout payload
-	// isPrintSet: tells the backend this is a print set order
-	// images: ALL images from the set (original quality for LumaPrints)
 	const checkoutData = {
 		productId: data.printSet.slug,
 		title: data.printSet.title,
 		price: selectedPaperData?.price || data.printSet.price,
-		image: data.printSet.previewImage, // Preview for Stripe checkout display
-		paper: selectedPaperData
-			? {
-					name: selectedPaperData.name,
-					subcategoryId: selectedPaperData.subcategoryId,
-					width: selectedPaperData.width,
-					height: selectedPaperData.height,
-				}
-			: null,
+		image: data.printSet.previewImage,
+		paper: selectedPaperData ? {
+			name: selectedPaperData.name,
+			subcategoryId: selectedPaperData.subcategoryId,
+			width: selectedPaperData.width,
+			height: selectedPaperData.height,
+		} : null,
 		coupon: couponCode.trim() || null,
-		isPrintSet: true, // Flag for print set handling
-		images: data.images.map((img: any) => img.original), // Original images for LumaPrints
+		isPrintSet: true,
+		// Send original images to LumaPrints (not compressed)
+		images: (data.images as ProductImage[]).map(img => img.original),
 	};
 
 	try {
 		const response = await fetch("/api/checkout", {
 			method: "POST",
-			headers: {"Content-Type": "application/json"},
+			headers: { "Content-Type": "application/json" },
 			body: JSON.stringify(checkoutData),
 		});
 
@@ -96,7 +84,7 @@ async function handleCheckout() {
 />
 
 <div class="px-6! md:px-8! lg:px-10!">
-	<!-- Back link with breadcrumb -->
+	<!-- Breadcrumb navigation -->
 	<div class="mb-6">
 		<a href="/shop" class="inline-block text-sm text-surface-600-300-token hover:text-surface-400">
 			← back to shop
@@ -109,6 +97,7 @@ async function handleCheckout() {
 		{/if}
 	</div>
 
+	<!-- Collection title and description -->
 	<div class="text-center mb-8">
 		<h1 class="text-3xl font-bold mb-2">{data.printSet.title}</h1>
 		{#if data.printSet.description}
@@ -116,16 +105,16 @@ async function handleCheckout() {
 		{/if}
 	</div>
 
-	<!-- Two column layout: images left, purchase right -->
+	<!-- Two-column layout: images left, purchase right -->
 	<div class="grid md:grid-cols-3 gap-8">
-		<!-- Images column (spans 2) -->
+		<!-- Images grid (spans 2 columns) -->
 		<div class="md:col-span-2">
 			{#if data.images.length > 0}
 				<div class="columns-2 md:columns-3 gap-4">
 					{#each data.images as image}
 						<div class="mb-4 break-inside-avoid">
 							<img
-								src={image.thumb}
+								src={(image as ProductImage).thumb}
 								alt={image.alt}
 								class="w-full h-auto rounded-lg"
 							/>
@@ -135,33 +124,31 @@ async function handleCheckout() {
 			{/if}
 		</div>
 
-		<!-- Purchase section (right sidebar) -->
+		<!-- Purchase sidebar (sticks to right) -->
 		<div class="md:col-span-1">
 			<div class="sticky top-8 bg-surface-500/10 border border-surface-500/20 rounded-lg p-6">
+				<!-- Price -->
 				<div class="text-3xl font-semibold text-surface-900-50-token mb-4">
 					${selectedPaperData?.price || data.printSet.price}
 				</div>
 
-				<!-- Paper selection -->
+				<!-- Paper selection dropdown -->
 				{#if data.printSet.availablePapers?.length > 0}
 					<div class="mb-4">
 						<label class="block text-sm text-surface-600-300-token mb-1">
 							Paper Type
 						</label>
-						<select
-							bind:value={selectedPaperIndex}
-							class="select w-full"
-						>
+						<select bind:value={selectedPaperIndex} class="select w-full">
 							{#each data.printSet.availablePapers as paper, i}
-								{@const parts = paper.name.split('|')}
-								{@const paperPrice = paper.price ? ` (+$${paper.price})` : ''}
-								<option value={i}>{parts[0]}{paperPrice}</option>
+								{@const parsed = parsePaperOption(paper)}
+								{@const priceNote = paper.price ? ` (+$${paper.price})` : ''}
+								<option value={i}>{parsed.name}{priceNote}</option>
 							{/each}
 						</select>
 					</div>
 				{/if}
 
-				<!-- Coupon code -->
+				<!-- Coupon code input -->
 				<div class="mt-4">
 					<label class="block text-sm text-surface-600-300-token mb-1">
 						promo code

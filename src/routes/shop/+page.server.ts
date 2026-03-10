@@ -12,76 +12,76 @@
  * - Other categories: products in that category
  */
 
-import { client, urlFor } from "$lib/sanity/client";
+import { client } from "$lib/sanity/client";
+import { previewUrl, imageSet } from "$lib/utils/images";
+import type { Product, PrintCollection, PrintSet } from "$lib/types/shop";
 
 export async function load() {
-	// Fetch all products that are in stock
-	// Includes collection reference for filtering
+	// Fetch products that are in stock
 	const products = await client.fetch(`
-    *[_type == "product" && inStock == true] | order(orderRank, featured desc, title asc) {
-      title,
-      "slug": slug.current,
-      "previewImage": images[0],
-      price,
-      category,
-      featured,
-      inStock,
-      "collection": collection->{ // Link to parent printCollection
-        "slug": slug.current,
-        title
-      }
-    }
-  `);
+		*[_type == "product" && inStock == true] 
+		| order(orderRank, featured desc, title asc) {
+			title,
+			"slug": slug.current,
+			"previewImage": images[0],
+			price,
+			category,
+			featured,
+			inStock,
+			"collection": collection->{
+				"slug": slug.current,
+				title
+			}
+		}
+	`);
 
-	// Build optimized preview URLs (600px wide, webp, 80% quality)
-	const productsWithOptimizedImages = products.map((product: any) => ({
+	// Build optimized product URLs
+	const productsWithImages = (products as Product[]).map((product) => ({
 		...product,
-		preview: product.previewImage
-			? urlFor(product.previewImage).width(600).format("webp").quality(80).url()
-			: null,
+		preview: previewUrl(product.previewImage),
 	}));
 
-	// Fetch top-level print collections only (no parent = root level)
+	// Fetch top-level collections only (no parent = root level)
 	const collections = await client.fetch(`
-    *[_type == "printCollection" && !defined(parent)] | order(orderRank, title asc) {
-      title,
-      "slug": slug.current,
-      previewImage,
-      description
-    }
-  `);
+		*[_type == "printCollection" && !defined(parent)] 
+		| order(orderRank, title asc) {
+			title,
+			"slug": slug.current,
+			previewImage,
+			description
+		}
+	`);
 
-	// Build collection preview URLs (compressed for display)
-	const collectionsWithImages = collections.map((collection: any) => ({
+	// Build collection preview URLs
+	const collectionsWithImages = (collections as PrintCollection[]).map((collection) => ({
 		...collection,
-		alt: collection.previewImage?.alt || "",
-		previewImage: collection.previewImage
-			? urlFor(collection.previewImage).width(600).format("webp").quality(80).url()
-			: null,
+		alt: collection.previewImage?.alt || '',
+		previewImage: previewUrl(collection.previewImage),
 	}));
 
 	// Fetch top-level print sets (no parent)
 	const printSets = await client.fetch(`
-    *[_type == "printSet" && !defined(parent) && inStock == true] | order(orderRank, featured desc, title asc) {
-      title,
-      "slug": slug.current,
-      images[0..1],
-      previewImage,
-      price,
-      description
-    }
-  `);
+		*[_type == "printSet" && !defined(parent) && inStock == true] 
+		| order(orderRank, featured desc, title asc) {
+			title,
+			"slug": slug.current,
+			images[0..1],
+			previewImage,
+			price,
+			description
+		}
+	`);
 
-	// Build print set preview images (first two images for half/half display)
-	const printSetsWithImages = printSets.map((set: any) => ({
+	// Build print set URLs (first two images for preview)
+	const printSetsWithImages = (printSets as any[]).map((set) => ({
 		...set,
-		preview1: set.images?.[0] ? urlFor(set.images[0]).width(300).format("webp").quality(80).url() : null,
-		preview2: set.images?.[1] ? urlFor(set.images[1]).width(300).format("webp").quality(80).url() : null,
-		previewImage: set.previewImage ? urlFor(set.previewImage).width(600).format("webp").quality(80).url() : null,
+		preview1: imageSet(set.images?.[0])?.thumb,
+		preview2: imageSet(set.images?.[1])?.thumb,
+		previewImage: previewUrl(set.previewImage),
 	}));
 
 	return {
-		products: productsWithOptimizedImages,
+		products: productsWithImages,
 		collections: collectionsWithImages,
 		printSets: printSetsWithImages,
 	};
