@@ -98,7 +98,7 @@ export async function POST({ request }) {
 					discountType,
 					discountValue,
 					allowedCategories,
-					allowedProducts->slug.current,
+					"allowedProductSlugs": allowedProducts[]->slug.current,
 					maxUses,
 					currentUses
 				}`,
@@ -119,7 +119,7 @@ export async function POST({ request }) {
 			const isAllowed =
 				!couponData.allowedCategories?.length ||
 				couponData.allowedCategories.includes(productCategory) ||
-				couponData.allowedProducts?.includes(productSlug);
+				(couponData.allowedProductSlugs || []).includes(productSlug);
 
 			if (!isAllowed) {
 				throw error(400, "This coupon is not valid for this product");
