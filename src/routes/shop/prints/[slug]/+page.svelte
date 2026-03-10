@@ -75,6 +75,37 @@ let { data } = $props();
     </div>
   {/if}
 
+  <!-- Print Sets in this collection -->
+  {#if data.printSets && data.printSets.length > 0}
+    <div class="mb-8">
+      <h2 class="text-xl font-semibold mb-4">sets</h2>
+      <div class="columns-2 md:columns-3 gap-4">
+        {#each data.printSets as set}
+          <a
+            href="/shop/sets/{set.slug}"
+            class="group mb-4 break-inside-avoid block"
+          >
+            <div class="bg-surface-500/10 border border-surface-500/20 p-3 rounded-lg hover:border-surface-400/40 transition-all">
+              <div class="overflow-hidden rounded-md">
+                <img
+                  src={set.coverImage}
+                  alt={set.alt || set.title}
+                  class="w-full h-auto object-contain group-hover:scale-105 transition-transform"
+                />
+              </div>
+              <h2 class="mt-3 text-xs tracking-[0.15em] text-center">
+                {set.title}
+              </h2>
+              {#if set.price}
+                <p class="text-xs text-center text-surface-500 mt-1">${set.price}</p>
+              {/if}
+            </div>
+          </a>
+        {/each}
+      </div>
+    </div>
+  {/if}
+
   <!-- Products grid -->
   {#if data.products.length > 0}
     <div class="columns-2 md:columns-3 gap-4">

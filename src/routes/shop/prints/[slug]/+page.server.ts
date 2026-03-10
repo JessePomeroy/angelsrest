@@ -38,6 +38,20 @@ export async function load({ params }) {
   `,
 		{ slug: params.slug },
 	);
+
+	// Fetch print sets in this collection
+	const printSets = await client.fetch(
+		`
+    *[_type == "printSet" && references(*[_type == "printCollection" && slug.current == $slug]._id) && inStock == true] | order(orderRank, title asc) {
+      title,
+      "slug": slug.current,
+      coverImage,
+      price
+    }
+  `,
+		{ slug: params.slug },
+	);
+
 	const products = await client.fetch(
 		`
     *[_type == "product" && references(*[_type == "printCollection" && slug.current == $slug]._id) && inStock == true] | order(orderRank, title asc) {
@@ -71,6 +85,15 @@ export async function load({ params }) {
 			: null,
 	}));
 
+	// Build print set cover URLs
+	const printSetsWithImages = printSets.map((set: any) => ({
+		...set,
+		alt: set.coverImage?.alt || "",
+		coverImage: set.coverImage
+			? urlFor(set.coverImage).width(600).format("webp").quality(80).url()
+			: null,
+	}));
+
 	return {
 		collection: {
 			title: collection.title,
@@ -80,6 +103,7 @@ export async function load({ params }) {
 			parent: collection.parent,
 		},
 		subCollections: subCollectionsWithImages,
+		printSets: printSetsWithImages,
 		products: productsWithImages,
 	};
 }
