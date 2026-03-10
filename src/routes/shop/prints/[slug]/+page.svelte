@@ -23,7 +23,7 @@ let { data } = $props();
   url="https://angelsrest.online/shop/prints/{data.collection.slug}"
 />
 
-<div class="px-6! md:px-8! lg:px-10!">
+<div class="px-2! md:px-8! lg:px-10!">
   <!-- Back link with breadcrumb -->
   <div class="mb-6">
     <a href="/shop" class="inline-block text-sm text-surface-600-300-token hover:text-surface-400">
@@ -38,7 +38,7 @@ let { data } = $props();
   </div>
 
   <!-- Collection header -->
-  <div class="text-center mb-8">
+  <div class="text-center mb-6">
     <h1 class="text-3xl font-bold mb-2">{data.collection.title}</h1>
     {#if data.collection.description}
       <p class="text-lg text-surface-600-300-token">{data.collection.description}</p>
@@ -47,15 +47,15 @@ let { data } = $props();
 
   <!-- Sub-collections grid -->
   {#if data.subCollections && data.subCollections.length > 0}
-    <div class="mb-8">
-      <h2 class="text-xl font-semibold mb-4">collections</h2>
-      <div class="columns-2 md:columns-3 gap-4">
+    <div class="mb-6">
+      <h2 class="text-xl font-semibold mb-3">collections</h2>
+      <div class="columns-2 md:columns-3 gap-2">
         {#each data.subCollections as subCollection}
           <a
             href="/shop/prints/{subCollection.slug}"
-            class="group mb-4 break-inside-avoid block"
+            class="group mb-2 break-inside-avoid block"
           >
-            <div class="bg-surface-500/10 border border-surface-500/20 p-3 rounded-lg hover:border-surface-400/40 transition-all">
+            <div class="bg-surface-500/10 border border-surface-500/20 p-2 rounded-lg hover:border-surface-400/40 transition-all">
               <div class="overflow-hidden rounded-md">
                 <img
                   src={subCollection.previewImage}
@@ -63,7 +63,7 @@ let { data } = $props();
                   class="w-full h-auto object-contain group-hover:scale-105 transition-transform"
                 />
               </div>
-              <h2 class="mt-3 text-xs tracking-[0.15em] text-center">
+              <h2 class="mt-2 text-xs tracking-[0.15em] text-center">
                 {subCollection.title}
               </h2>
             </div>
@@ -75,15 +75,15 @@ let { data } = $props();
 
   <!-- Print Sets in this collection -->
   {#if data.printSets && data.printSets.length > 0}
-    <div class="mb-8">
-      <h2 class="text-xl font-semibold mb-4">sets</h2>
-      <div class="columns-2 md:columns-3 gap-4">
+    <div class="mb-6">
+      <h2 class="text-xl font-semibold mb-3">sets</h2>
+      <div class="columns-2 md:columns-3 gap-2">
         {#each data.printSets as set}
           <a
             href="/shop/sets/{set.slug}"
-            class="group mb-4 break-inside-avoid block"
+            class="group mb-2 break-inside-avoid block"
           >
-            <div class="bg-surface-500/10 border border-surface-500/20 p-3 rounded-lg hover:border-surface-400/40 transition-all">
+            <div class="bg-surface-500/10 border border-surface-500/20 p-2 rounded-lg hover:border-surface-400/40 transition-all">
               <!-- Two images side by side -->
               <div class="grid grid-cols-2 gap-0.5 overflow-hidden rounded-md">
                 {#if set.preview1}
@@ -101,7 +101,7 @@ let { data } = $props();
                   />
                 {/if}
               </div>
-              <h2 class="mt-3 text-xs tracking-[0.15em] text-center">
+              <h2 class="mt-2 text-xs tracking-[0.15em] text-center">
                 {set.title}
               </h2>
               {#if set.price}
@@ -116,13 +116,13 @@ let { data } = $props();
 
   <!-- Products grid -->
   {#if data.products.length > 0}
-    <div class="columns-2 md:columns-3 gap-4">
+    <div class="columns-2 md:columns-3 gap-2">
       {#each data.products as product}
         <a
           href="/shop/{product.slug}"
-          class="group mb-4 break-inside-avoid block"
+          class="group mb-2 break-inside-avoid block"
         >
-          <div class="bg-surface-500/10 border border-surface-500/20 p-3 rounded-lg hover:border-surface-400/40 transition-all">
+          <div class="bg-surface-500/10 border border-surface-500/20 p-2 rounded-lg hover:border-surface-400/40 transition-all">
             <div class="overflow-hidden rounded-md">
               <img
                 src={product.preview}
@@ -130,7 +130,7 @@ let { data } = $props();
                 class="w-full h-auto object-contain group-hover:scale-105 transition-transform"
               />
             </div>
-            <h2 class="mt-3 text-xs tracking-[0.15em] text-center">
+            <h2 class="mt-2 text-xs tracking-[0.15em] text-center">
               {product.title}
             </h2>
           </div>

@@ -70,9 +70,9 @@ const categories = [
 	url="https://angelsrest.online/shop"
 />
 
-<div class="px-6! md:px-8! lg:px-10!">
+<div class="px-2! md:px-8! lg:px-10!">
 	<!-- Shop header -->
-	<div class="text-center mb-8">
+	<div class="text-center mb-6">
 		<h1 class="text-3xl font-bold mb-2">shop</h1>
 		<p class="text-lg text-surface-600-300-token">
 			art prints, tapestries, and digital goods
