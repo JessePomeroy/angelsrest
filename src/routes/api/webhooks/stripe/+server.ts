@@ -461,6 +461,16 @@ async function submitToLumaPrints(
 	session: Stripe.Checkout.Session,
 ) {
 	try {
+		// Check if this is a print set order
+		const isPrintSet = (session as any).metadata?.isPrintSet === "true";
+		const imageUrlsJson = (session as any).metadata?.imageUrls || "[]";
+		let imageUrls: string[] = [];
+		try {
+			imageUrls = JSON.parse(imageUrlsJson);
+		} catch {
+			imageUrls = [];
+		}
+
 		// Check each line item for paper selection from metadata
 		const lumaprintsItems: {
 			externalItemId: string;
@@ -473,45 +483,43 @@ async function submitToLumaPrints(
 			imageUrl: string;
 		}[] = [];
 
-		for (const item of lineItems) {
-			// Get paper info from Stripe metadata (passed during checkout)
-			const paperSubcategoryId =
-				(session as any).metadata?.paperSubcategoryId || "";
-			const paperWidth = parseInt(
-				(session as any).metadata?.paperWidth || "8",
-				10,
-			);
-			const paperHeight = parseInt(
-				(session as any).metadata?.paperHeight || "10",
-				10,
-			);
+		// Get paper info from Stripe metadata (passed during checkout)
+		const paperSubcategoryId = (session as any).metadata?.paperSubcategoryId || "";
+		const paperWidth = parseInt((session as any).metadata?.paperWidth || "8", 10);
+		const paperHeight = parseInt((session as any).metadata?.paperHeight || "10", 10);
 
-			// If we have valid paper metadata, create a LumaPrints item
-			if (paperSubcategoryId) {
-				const paperWidth = parseInt(
-					(session as any).metadata?.paperWidth || "8",
-					10,
-				);
-				const paperHeight = parseInt(
-					(session as any).metadata?.paperHeight || "10",
-					10,
-				);
-
-				// Get image URL from session metadata, strip query params and convert to jpg
-				const rawImageUrl = (session as any).metadata?.imageUrl || "";
+		if (isPrintSet && imageUrls.length > 0) {
+			// Print set: create one LumaPrints item per image
+			for (let i = 0; i < imageUrls.length; i++) {
+				const rawImageUrl = imageUrls[i] || "";
 				const imageUrl = rawImageUrl.split("?")[0].replace(/\.webp$/, ".jpg");
 
 				lumaprintsItems.push({
-					externalItemId: item.id,
-					productName: item.description || "Print",
-					quantity: item.quantity || 1,
-					subcategoryId: parseInt(paperSubcategoryId, 10),
+					externalItemId: `print-set-${i + 1}`,
+					productName: `${(session as any).metadata?.productId} - ${i + 1}/${imageUrls.length}`,
+					quantity: 1,
+					subcategoryId: parseInt(paperSubcategoryId, 10) || 103001,
 					width: paperWidth || 8,
 					height: paperHeight || 10,
-					options: [39], // Use option 39 (No Bleed) to avoid aspect ratio issues
-					imageUrl: imageUrl,
+					options: [39],
+					imageUrl,
 				});
 			}
+		} else if (paperSubcategoryId) {
+			// Single product: create one item
+			const rawImageUrl = (session as any).metadata?.imageUrl || "";
+			const imageUrl = rawImageUrl.split("?")[0].replace(/\.webp$/, ".jpg");
+
+			lumaprintsItems.push({
+				externalItemId: item.id,
+				productName: item.description || "Print",
+				quantity: item.quantity || 1,
+				subcategoryId: parseInt(paperSubcategoryId, 10),
+				width: paperWidth || 8,
+				height: paperHeight || 10,
+				options: [39],
+				imageUrl,
+			});
 		}
 
 		if (lumaprintsItems.length === 0) {

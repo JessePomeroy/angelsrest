@@ -58,7 +58,7 @@ export async function POST({ request }) {
 		const body = await request.json();
 		console.log("Received checkout request:", JSON.stringify(body, null, 2));
 
-		const { productId, title, price, image, paper, coupon } = body;
+		const { productId, title, price, image, paper, coupon, isPrintSet, images } = body;
 		console.log("Checkout payload:", { productId, title, price, paper });
 
 		/**
@@ -229,13 +229,16 @@ export async function POST({ request }) {
 			 */
 			metadata: {
 				productId, // Track which product was purchased
+				isPrintSet: isPrintSet ? "true" : "false",
+				// For print sets: store all image URLs
+				imageUrls: isPrintSet && images ? JSON.stringify(images) : "",
+				// For single products: store single image URL
+				imageUrl: !isPrintSet ? (image || "") : "",
 				// Paper selection for LumaPrints fulfillment
 				paperName: paper?.name || "",
 				paperSubcategoryId: paper?.subcategoryId?.toString() || "",
 				paperWidth: paper?.width?.toString() || "",
 				paperHeight: paper?.height?.toString() || "",
-				// Image URL for LumaPrints
-				imageUrl: image || "",
 				// Coupon applied
 				couponCode: appliedCoupon || "",
 				originalPrice: price.toString(),
