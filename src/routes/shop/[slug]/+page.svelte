@@ -47,6 +47,7 @@ let modalOpen = $state(false); // Controls image lightbox visibility
 let selectedIndex = $state(0); // Which image to show in lightbox
 let isLoading = $state(false); // Prevents double-clicks during checkout
 let selectedPaperIndex = $state(0); // Index of selected paper for LumaPrints
+let couponCode = $state(""); // Coupon/promo code
 
 // Get selected paper from index - parse combined value format "Name|subcategoryId|width|height"
 function getSelectedPaper() {
@@ -150,6 +151,7 @@ async function handleCheckout() {
 						height: selectedPaperData.height,
 					}
 				: null,
+			coupon: couponCode.trim() || null,
 		};
 
 		console.log("Sending to checkout:", checkoutData);
@@ -407,6 +409,19 @@ async function handleCheckout() {
           <div class="w-3 h-3 rounded-full bg-error-500"></div>
           <span class="text-sm text-surface-600-300-token">Out of stock</span>
         {/if}
+      </div>
+
+      <!-- Coupon Code Input -->
+      <div class="mt-4">
+        <label class="block text-sm text-surface-600-300-token mb-1">
+          promo code
+        </label>
+        <input
+          type="text"
+          bind:value={couponCode}
+          placeholder="enter code"
+          class="w-full px-3 py-2 bg-surface-500/10 border border-surface-500/20 rounded-md text-sm lowercase"
+        />
       </div>
 
       <!--

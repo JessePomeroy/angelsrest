@@ -57,7 +57,7 @@ export async function POST({ request }) {
 		const body = await request.json();
 		console.log("Received checkout request:", JSON.stringify(body, null, 2));
 
-		const { productId, title, price, image, paper } = body;
+		const { productId, title, price, image, paper, coupon } = body;
 		console.log("Checkout payload:", { productId, title, price, paper });
 
 		/**
@@ -179,6 +179,9 @@ export async function POST({ request }) {
 				// Image URL for LumaPrints
 				imageUrl: image || "",
 			},
+
+			// Apply coupon code if provided
+			...(coupon && { discounts: [{ coupon: coupon }] }),
 		});
 
 		/**
