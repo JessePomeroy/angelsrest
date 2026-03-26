@@ -1,0 +1,47 @@
+/* ============================================
+   Film Grain Overlay
+   ============================================
+   
+   Animated film grain using SVG feTurbulence filter.
+   No image assets needed — fully generative.
+   
+   Tunable via CSS custom properties:
+   - --grain-opacity: how visible the grain is
+   - --grain-blend: blend mode (overlay works best)
+   ============================================ */
+
+:root {
+  --grain-opacity: 0.12;
+  --grain-blend: overlay;
+}
+
+html.dark {
+  --grain-opacity: 0.18;
+}
+
+/* The grain layer — animated for realistic feel */
+.grain-overlay {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 9999;
+  opacity: var(--grain-opacity);
+  mix-blend-mode: var(--grain-blend);
+  filter: url(#grain-filter);
+  animation: grain 0.4s steps(1) infinite;
+}
+
+/* Shift the noise around to simulate film grain movement */
+@keyframes grain {
+  0%, 100% { transform: translate(0, 0); }
+  25%      { transform: translate(-2%, -3%); }
+  50%      { transform: translate(3%, 2%); }
+  75%      { transform: translate(-3%, 1%); }
+}
+
+/* Reduce grain motion for users who prefer reduced motion */
+@media (prefers-reduced-motion: reduce) {
+  .grain-overlay {
+    animation: none;
+  }
+}

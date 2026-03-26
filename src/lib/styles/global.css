@@ -19,6 +19,7 @@
 
 @import 'tailwindcss';
 @import './time-theme.css';
+@import './grain.css';
 
 /* Tailwind v4: Enable class-based dark mode */
 @custom-variant dark (&:where(.dark, .dark *));

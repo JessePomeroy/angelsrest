@@ -2,9 +2,10 @@
    Time-Aware Theming
    ============================================
    
-   Subtle color shifts based on time of day.
-   Works alongside light/dark mode - these are
-   accent/tint overlays, not full theme replacements.
+   Color shifts based on time of day.
+   Works alongside light/dark mode — these tint
+   the background, accent UI elements, and add
+   atmospheric glow.
    
    Periods:
    - dawn: soft pink/coral warmth
@@ -20,88 +21,102 @@
   --time-tint: transparent;
   --time-accent: inherit;
   --time-glow: transparent;
+  --time-border: transparent;
   transition:
     --time-tint 2s ease,
     --time-accent 2s ease,
-    --time-glow 2s ease;
+    --time-glow 2s ease,
+    --time-border 2s ease;
 }
 
 /* ---- Dawn (5am - 8am) ---- */
 [data-time-period="dawn"] {
-  --time-tint: rgba(251, 207, 232, 0.18); /* pink-200 — bumped for light mode */
-  --time-accent: #f9a8d4; /* pink-300 */
-  --time-glow: rgba(244, 114, 182, 0.2); /* pink-400 */
+  --time-tint: rgba(251, 207, 232, 0.25);
+  --time-accent: #f9a8d4;
+  --time-glow: rgba(244, 114, 182, 0.3);
+  --time-border: rgba(244, 114, 182, 0.15);
 }
 
 html.dark[data-time-period="dawn"] {
-  --time-tint: rgba(244, 114, 182, 0.08);
+  --time-tint: rgba(244, 114, 182, 0.12);
   --time-accent: #f472b6;
-  --time-glow: rgba(236, 72, 153, 0.12);
+  --time-glow: rgba(236, 72, 153, 0.2);
+  --time-border: rgba(236, 72, 153, 0.1);
 }
 
 /* ---- Morning (8am - 12pm) ---- */
 [data-time-period="morning"] {
-  --time-tint: rgba(254, 249, 195, 0.15); /* yellow-100 — bumped for light mode */
-  --time-accent: #fde047; /* yellow-300 */
-  --time-glow: rgba(250, 204, 21, 0.18); /* yellow-400 */
+  --time-tint: rgba(254, 249, 195, 0.22);
+  --time-accent: #fde047;
+  --time-glow: rgba(250, 204, 21, 0.25);
+  --time-border: rgba(250, 204, 21, 0.12);
 }
 
 html.dark[data-time-period="morning"] {
-  --time-tint: rgba(253, 224, 71, 0.06);
+  --time-tint: rgba(253, 224, 71, 0.1);
   --time-accent: #facc15;
-  --time-glow: rgba(234, 179, 8, 0.1);
+  --time-glow: rgba(234, 179, 8, 0.15);
+  --time-border: rgba(234, 179, 8, 0.08);
 }
 
 /* ---- Afternoon (12pm - 5pm) ---- */
 [data-time-period="afternoon"] {
-  --time-tint: rgba(254, 243, 199, 0.12); /* amber-100 — bumped for light mode */
-  --time-accent: #fcd34d; /* amber-300 */
-  --time-glow: rgba(251, 191, 36, 0.15); /* amber-400 */
+  --time-tint: rgba(254, 243, 199, 0.18);
+  --time-accent: #fcd34d;
+  --time-glow: rgba(251, 191, 36, 0.22);
+  --time-border: rgba(251, 191, 36, 0.1);
 }
 
 html.dark[data-time-period="afternoon"] {
-  --time-tint: rgba(252, 211, 77, 0.05);
+  --time-tint: rgba(252, 211, 77, 0.08);
   --time-accent: #fbbf24;
-  --time-glow: rgba(245, 158, 11, 0.08);
+  --time-glow: rgba(245, 158, 11, 0.12);
+  --time-border: rgba(245, 158, 11, 0.06);
 }
 
 /* ---- Golden Hour (5pm - 8pm) ---- */
 [data-time-period="golden"] {
-  --time-tint: rgba(254, 215, 170, 0.2); /* orange-200 — bumped for light mode */
-  --time-accent: #fdba74; /* orange-300 */
-  --time-glow: rgba(251, 146, 60, 0.22); /* orange-400 */
+  --time-tint: rgba(254, 215, 170, 0.3);
+  --time-accent: #fdba74;
+  --time-glow: rgba(251, 146, 60, 0.35);
+  --time-border: rgba(251, 146, 60, 0.18);
 }
 
 html.dark[data-time-period="golden"] {
-  --time-tint: rgba(251, 146, 60, 0.1);
+  --time-tint: rgba(251, 146, 60, 0.15);
   --time-accent: #fb923c;
-  --time-glow: rgba(249, 115, 22, 0.15);
+  --time-glow: rgba(249, 115, 22, 0.22);
+  --time-border: rgba(249, 115, 22, 0.1);
 }
 
 /* ---- Evening (8pm - 10pm) ---- */
 [data-time-period="evening"] {
-  --time-tint: rgba(221, 214, 254, 0.18); /* violet-200 — bumped for light mode */
-  --time-accent: #c4b5fd; /* violet-300 */
-  --time-glow: rgba(167, 139, 250, 0.2); /* violet-400 */
+  --time-tint: rgba(221, 214, 254, 0.25);
+  --time-accent: #c4b5fd;
+  --time-glow: rgba(167, 139, 250, 0.3);
+  --time-border: rgba(167, 139, 250, 0.15);
 }
 
 html.dark[data-time-period="evening"] {
-  --time-tint: rgba(167, 139, 250, 0.1);
+  --time-tint: rgba(167, 139, 250, 0.14);
   --time-accent: #a78bfa;
-  --time-glow: rgba(139, 92, 246, 0.14);
+  --time-glow: rgba(139, 92, 246, 0.2);
+  --time-border: rgba(139, 92, 246, 0.1);
 }
 
 /* ---- Night (10pm - 5am) ---- */
 [data-time-period="night"] {
-  --time-tint: rgba(199, 210, 254, 0.16); /* indigo-200 — bumped for light mode */
-  --time-accent: #a5b4fc; /* indigo-300 */
-  --time-glow: rgba(129, 140, 248, 0.18); /* indigo-400 */
+  --time-tint: rgba(199, 210, 254, 0.22);
+  --time-accent: #a5b4fc;
+  --time-glow: rgba(129, 140, 248, 0.28);
+  --time-border: rgba(129, 140, 248, 0.14);
 }
 
 html.dark[data-time-period="night"] {
-  --time-tint: rgba(129, 140, 248, 0.08);
+  --time-tint: rgba(129, 140, 248, 0.12);
   --time-accent: #818cf8;
-  --time-glow: rgba(99, 102, 241, 0.12);
+  --time-glow: rgba(99, 102, 241, 0.18);
+  --time-border: rgba(99, 102, 241, 0.08);
 }
 
 /* ---- Apply the time tint BEHIND content ---- */
@@ -111,20 +126,43 @@ body::before {
   inset: 0;
   pointer-events: none;
   background: var(--time-tint);
-  z-index: 0; /* Behind content */
+  z-index: 0;
   transition: background 2s ease;
 }
 
-/* Radial glow accent - also behind content */
+/* Radial glow accent — larger and more visible */
 body::after {
   content: "";
   position: fixed;
   top: 0;
   left: 0;
   right: 0;
-  height: 40vh;
+  height: 50vh;
   pointer-events: none;
-  background: radial-gradient(ellipse 80% 50% at 50% 0%, var(--time-glow) 0%, transparent 70%);
-  z-index: 0; /* Behind content */
+  background: radial-gradient(ellipse 90% 60% at 50% 0%, var(--time-glow) 0%, transparent 70%);
+  z-index: 0;
   transition: background 2s ease;
+}
+
+/* ---- Time-aware UI accents ---- */
+
+/* Nav border picks up time color */
+[data-time-period] nav {
+  border-color: var(--time-border) !important;
+}
+
+/* Card borders get a subtle time tint on hover */
+[data-time-period] .group:hover > div {
+  border-color: var(--time-accent) !important;
+  opacity: 0.85;
+}
+
+/* Footer border picks up time color */
+[data-time-period] footer {
+  border-color: var(--time-border) !important;
+}
+
+/* Selection color matches time period */
+[data-time-period] ::selection {
+  background: color-mix(in srgb, var(--time-accent) 30%, transparent);
 }

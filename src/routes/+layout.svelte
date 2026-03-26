@@ -56,6 +56,22 @@ onMount(() => {
 });
 </script>
 
+<!-- SVG filter for film grain — generates fractal noise, no image needed -->
+<svg style="display:none" aria-hidden="true">
+  <filter id="grain-filter">
+    <feTurbulence
+      type="fractalNoise"
+      baseFrequency="0.65"
+      numOctaves="3"
+      stitchTiles="stitch"
+    />
+    <feColorMatrix type="saturate" values="0" />
+  </filter>
+</svg>
+
+<!-- Grain overlay — styled in grain.css -->
+<div class="grain-overlay" aria-hidden="true"></div>
+
 <div class="flex flex-col min-h-screen relative z-10">
   <!-- Desktop navigation (hidden on mobile) -->
   <Nav />
