@@ -99,7 +99,7 @@ function formatDate(dateStr: string) {
 
   <!-- Gallery Body -->
   {#if post.body}
-    <div class="prose prose-invert prose-surface max-w-none">
+    <div class="prose dark:prose-invert max-w-none">
       <PortableText value={post.body} {components} />
     </div>
   {/if}

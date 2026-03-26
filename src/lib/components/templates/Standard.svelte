@@ -78,7 +78,7 @@ function formatDate(dateStr: string) {
   {/if}
 
   <!-- Body -->
-  <div class="prose prose-invert prose-surface max-w-none">
+  <div class="prose dark:prose-invert max-w-none">
     {#if post.body}
       <PortableText value={post.body} {components} />
     {/if}
