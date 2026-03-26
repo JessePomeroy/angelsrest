@@ -38,13 +38,15 @@
 	box-sizing: border-box;
 }
 
-/* Remove default margins/padding */
-body, nav, ul, ol, p, h1, h2, h3, h4, h5, h6 {
+/* Remove default margins/padding (except inside prose/blog content) */
+body, nav, p, h1, h2, h3, h4, h5, h6 {
 	margin: 0;
 	padding: 0;
 }
 
-ul, ol {
+:where(ul, ol):not(:where(.prose *)) {
+	margin: 0;
+	padding: 0;
 	list-style: none;
 }
 
@@ -121,20 +123,20 @@ html.dark body {
 	}
 }
 
-/* Reset heading weights to normal */
-h1, h2, h3, h4, h5, h6 {
+/* Reset heading weights (except inside prose/blog content) */
+:where(h1, h2, h3, h4, h5, h6):not(:where(.prose *)) {
 	font-weight: 400;
 	letter-spacing: -0.02em;
 	line-height: 1.2;
 }
 
-/* Basic link and image styles */
-a {
+/* Basic link and image styles (except inside prose/blog content) */
+:where(a):not(:where(.prose *)) {
 	text-decoration: none;
 	transition: opacity 0.2s ease;
 }
 
-a:hover {
+:where(a):not(:where(.prose *)):hover {
 	opacity: 0.8;
 }
 
