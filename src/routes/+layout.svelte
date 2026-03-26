@@ -61,8 +61,8 @@ onMount(() => {
   <filter id="grain-filter">
     <feTurbulence
       type="fractalNoise"
-      baseFrequency="0.35"
-      numOctaves="3"
+      baseFrequency="0.5"
+      numOctaves="5"
       stitchTiles="stitch"
     />
     <feColorMatrix type="saturate" values="0" />
