@@ -61,6 +61,8 @@ export async function load({ url }) {
 
       // Metadata
       productId: session.metadata?.productId,
+      productSlug: session.metadata?.productSlug || "",
+      isDigital: session.metadata?.isDigital === "true",
     };
 
     return {

@@ -90,8 +90,24 @@ function formatCurrency(amountInCents: number | null, currency: string = "usd") 
         </div>
       </div>
       
-      <!-- Shipping Address -->
-      {#if data.orderDetails.shippingAddress}
+      <!-- Digital Download -->
+      {#if data.orderDetails.isDigital}
+        <div class="mt-6 p-4 bg-green-500/10 border border-green-500/20 rounded-lg">
+          <h3 class="text-lg font-medium mb-2">your download is ready</h3>
+          <a
+            href="/api/download?session_id={data.orderDetails.sessionId}&slug={data.orderDetails.productSlug}"
+            class="btn variant-filled-primary px-8 py-3 w-full text-center"
+          >
+            download now
+          </a>
+          <p class="text-sm text-surface-500 mt-2 text-center">
+            bookmark this page to re-download anytime.
+          </p>
+        </div>
+      {/if}
+
+      <!-- Shipping Address (physical products only) -->
+      {#if !data.orderDetails.isDigital && data.orderDetails.shippingAddress}
         <div>
           <h3 class="text-sm font-medium text-surface-600-300-token mb-2">Shipping Address:</h3>
           <div class="text-sm text-surface-700-200-token">
@@ -110,16 +126,27 @@ function formatCurrency(amountInCents: number | null, currency: string = "usd") 
     </div>
   {/if}
 
-  <!-- Next Steps -->
-  <div class="bg-blue-50 dark:bg-blue-950/30 rounded-lg p-6 mb-8">
-    <h3 class="font-medium mb-2">What happens next?</h3>
-    <ul class="text-sm text-surface-600-300-token space-y-1">
-      <li>• You'll receive an email confirmation shortly</li>
-      <li>• Your order will be processed within 1-2 business days</li>
-      <li>• Made-to-order prints typically ship within 2 weeks</li>
-      <li>• You'll get a tracking number once your order ships</li>
-    </ul>
-  </div>
+  <!-- Next Steps (different for digital vs physical) -->
+  {#if data.orderDetails?.isDigital}
+    <div class="bg-blue-50 dark:bg-blue-950/30 rounded-lg p-6 mb-8">
+      <h3 class="font-medium mb-2">what's included</h3>
+      <ul class="text-sm text-surface-600-300-token space-y-1">
+        <li>- check your email for the order confirmation</li>
+        <li>- your download link above will always work</li>
+        <li>- questions? email hello@angelsrest.online</li>
+      </ul>
+    </div>
+  {:else}
+    <div class="bg-blue-50 dark:bg-blue-950/30 rounded-lg p-6 mb-8">
+      <h3 class="font-medium mb-2">What happens next?</h3>
+      <ul class="text-sm text-surface-600-300-token space-y-1">
+        <li>- You'll receive an email confirmation shortly</li>
+        <li>- Your order will be processed within 1-2 business days</li>
+        <li>- Made-to-order prints typically ship within 2 weeks</li>
+        <li>- You'll get a tracking number once your order ships</li>
+      </ul>
+    </div>
+  {/if}
 
   <!-- Navigation -->
   <div class="flex gap-4 justify-center">

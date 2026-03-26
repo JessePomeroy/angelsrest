@@ -87,6 +87,7 @@ export async function POST({ request }) {
 			{ slug: productId },
 		);
 		const productCategory = product?.category;
+		const isDigital = productCategory === 'digital';
 
 		// Validate and apply coupon if provided
 		let discountAmount = 0;
@@ -162,15 +163,12 @@ export async function POST({ request }) {
 			 */
 			payment_method_types: ["card"],
 
-			/**
-			 * Shipping Address Collection
-			 *
-			 * For physical products, we need to collect shipping addresses.
-			 * Stripe's checkout form will include shipping fields automatically.
-			 */
-			shipping_address_collection: {
-				allowed_countries: ["US"], // Add more countries as needed: ['US', 'CA', 'GB']
-			},
+			// Only collect shipping for physical products
+			...(isDigital ? {} : {
+				shipping_address_collection: {
+					allowed_countries: ["US"],
+				},
+			}),
 
 			/**
 			 * Line Items - What They're Buying
@@ -229,6 +227,8 @@ export async function POST({ request }) {
 			 */
 			metadata: {
 				productId, // Track which product was purchased
+				productSlug: productId, // For digital download lookup
+				isDigital: isDigital ? "true" : "false",
 				isPrintSet: isPrintSet ? "true" : "false",
 				// For print sets: store all image URLs
 				imageUrls: isPrintSet && images ? JSON.stringify(images) : "",

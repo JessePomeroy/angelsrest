@@ -435,8 +435,8 @@ async function handleCheckout() {
         2. Loading: "Processing..." (prevents double-clicks)
         3. Disabled: "Out of Stock" (clear unavailability)
       -->
-      <!-- Paper Selection Dropdown (for LumaPrints products) -->
-      {#if data.product.availablePapers?.length > 0}
+      <!-- Paper Selection Dropdown (for LumaPrints products, hidden for digital) -->
+      {#if data.product.category !== 'digital' && data.product.availablePapers?.length > 0}
         <div>
           <label class="block text-sm text-surface-600-300-token mb-1">
             Paper Type
@@ -460,22 +460,19 @@ async function handleCheckout() {
           disabled={!data.product.inStock || isLoading}
           onclick={handleCheckout}
         >
-          <!--
-            Dynamic Button Text
-            
-            Conditional rendering provides clear feedback:
-            - Shows current state to user
-            - Prevents confusion during processing
-            - Handles edge cases gracefully
-          -->
           {#if isLoading}
-            Processing...
-          {:else if data.product.inStock}
-            Buy Now
+            processing...
+          {:else if !data.product.inStock}
+            out of stock
+          {:else if data.product.category === 'digital'}
+            buy & download
           {:else}
-            Out of Stock
+            buy now
           {/if}
         </button>
+        {#if data.product.category === 'digital'}
+          <p class="text-xs text-surface-500 text-center">instant download after payment</p>
+        {/if}
         
         <!--
           Trust Badge

@@ -221,18 +221,15 @@ async function sendCustomerConfirmation({
 	lineItems: Stripe.LineItem[];
 	orderNumber?: string;
 }) {
-	const emailContent = `
-Hi ${shippingDetails?.name || "there"},
+	const isDigital = (session as any).metadata?.isDigital === "true";
+	const productSlug = (session as any).metadata?.productSlug || "";
 
-Thank you for your order! Your payment has been successfully processed.
+	const digitalSection = isDigital ? `
+DOWNLOAD YOUR PURCHASE
+https://www.angelsrest.online/checkout/success?session_id=${session.id}
 
-ORDER DETAILS
-Order ID: ${session.id}
-Total: ${formatCurrency(session.amount_total || 0)}
-
-ITEMS ORDERED
-${formatLineItems(lineItems)}
-
+Your download link will remain active. Visit the link above anytime to re-download.
+` : `
 SHIPPING ADDRESS
 ${formatShippingAddress(shippingDetails)}
 
@@ -243,7 +240,21 @@ WHAT'S NEXT?
 • Your order will be processed within 1-2 business days
 • Made-to-order prints typically ship within 2 weeks
 • You'll receive tracking information once your order ships
-• If you have any questions, just reply to this email
+`;
+
+	const emailContent = `
+Hi ${shippingDetails?.name || session.customer_details?.name || "there"},
+
+Thank you for your order! Your payment has been successfully processed.
+
+ORDER DETAILS
+Order ID: ${session.id}
+Total: ${formatCurrency(session.amount_total || 0)}
+
+ITEMS ORDERED
+${formatLineItems(lineItems)}
+${digitalSection}
+If you have any questions, just reply to this email.
 
 Thank you for supporting Angel's Rest!
 
@@ -348,6 +359,8 @@ async function createOrderInSanity({
 			price: item.amount_total || item.price?.unit_amount || 0,
 		}));
 
+		const isDigital = (session as any).metadata?.isDigital === "true";
+
 		const orderDoc = {
 			_type: "order",
 			orderNumber,
@@ -370,7 +383,9 @@ async function createOrderInSanity({
 			subtotal: session.amount_subtotal || 0,
 			total: session.amount_total || 0,
 			currency: session.currency || "usd",
-			status: "new",
+			// Digital products are delivered instantly, no shipping needed
+			status: isDigital ? "delivered" : "new",
+			fulfillmentType: isDigital ? "digital" : undefined,
 			// Paper details from checkout (for LumaPrints fulfillment)
 			paperName: (session as any).metadata?.paperName || "",
 			paperSubcategoryId: (session as any).metadata?.paperSubcategoryId || "",
