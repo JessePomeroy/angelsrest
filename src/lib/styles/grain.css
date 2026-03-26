@@ -11,15 +11,15 @@
    ============================================ */
 
 :root {
-  --grain-opacity: 0.12;
+  --grain-opacity: 0.14;
   --grain-blend: overlay;
 }
 
 html.dark {
-  --grain-opacity: 0.18;
+  --grain-opacity: 0.20;
 }
 
-/* The grain layer — animated for realistic feel */
+/* Static film grain — no animation */
 .grain-overlay {
   position: fixed;
   inset: 0;
@@ -28,20 +28,4 @@ html.dark {
   opacity: var(--grain-opacity);
   mix-blend-mode: var(--grain-blend);
   filter: url(#grain-filter);
-  animation: grain 0.4s steps(1) infinite;
-}
-
-/* Shift the noise around to simulate film grain movement */
-@keyframes grain {
-  0%, 100% { transform: translate(0, 0); }
-  25%      { transform: translate(-2%, -3%); }
-  50%      { transform: translate(3%, 2%); }
-  75%      { transform: translate(-3%, 1%); }
-}
-
-/* Reduce grain motion for users who prefer reduced motion */
-@media (prefers-reduced-motion: reduce) {
-  .grain-overlay {
-    animation: none;
-  }
 }
