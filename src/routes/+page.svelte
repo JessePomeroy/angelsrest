@@ -13,16 +13,20 @@
 </script>
 
 <!--
-  Desktop-only styles: lock viewport to prevent scroll
-  This keeps the entire homepage (nav + content + footer) visible without scrolling
+  Desktop styles: fit everything in the viewport without scrolling.
+  Uses dvh (dynamic viewport height) which accounts for browser chrome
+  (address bar, bookmarks bar, etc). Falls back to vh for older browsers.
+  min-height instead of height means content can still overflow if the
+  viewport is too short, rather than getting clipped.
 -->
 <svelte:head>
     <style>
         @media (min-width: 768px) {
             html,
             body {
-                overflow: hidden;
                 height: 100vh;
+                height: 100dvh;
+                overflow: auto;
             }
         }
     </style>
@@ -35,9 +39,9 @@
     url="https://angelsrest.online"
 />
 
-<!-- Hero section -->
+<!-- Hero section - fills available space between nav and footer, centers content -->
 <section
-    class="flex flex-col items-center justify-center text-center min-h-0 gap-4 md:gap-6"
+    class="flex flex-col items-center justify-center text-center min-h-0 flex-1 gap-4 md:gap-6"
 >
     <!-- Hero gif -->
     <img src={heroGif} alt="Angel's Rest" class="max-w-full w-200 rounded-md" />
