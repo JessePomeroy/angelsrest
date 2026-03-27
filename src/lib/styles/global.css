@@ -64,6 +64,7 @@ html {
 /* ---- Core Theme Setup ---- */
 
 body {
+	font-family: 'Synonym', sans-serif;
 	line-height: 1.6;
 	min-height: 100vh;
 	text-transform: lowercase;
@@ -129,9 +130,10 @@ html.dark body {
 	}
 }
 
-/* Reset heading weights (except inside prose/blog content) */
+/* Heading typography (except inside prose/blog content) */
 :where(h1, h2, h3, h4, h5, h6):not(:where(.prose *)) {
-	font-weight: 400;
+	font-family: 'Chillax', sans-serif;
+	font-weight: 600;
 	letter-spacing: -0.02em;
 	line-height: 1.2;
 }
@@ -154,4 +156,8 @@ img {
 
 ::selection {
 	background: rgba(var(--color-primary-500) / 0.3);
+}
+/* Blog prose headings use Chillax display font */
+.prose :where(h1, h2, h3, h4, h5, h6) {
+	font-family: 'Chillax', sans-serif;
 }
