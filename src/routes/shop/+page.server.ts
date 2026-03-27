@@ -20,7 +20,7 @@ export async function load() {
 	// Fetch products that are in stock
 	const products = await client.fetch(`
 		*[_type == "product" && inStock == true] 
-		| order(orderRank, featured desc, title asc) {
+		| order(featured desc, orderRank, title asc) {
 			title,
 			"slug": slug.current,
 			"previewImage": images[0],
@@ -62,7 +62,7 @@ export async function load() {
 	// Fetch top-level print sets (no parent)
 	const printSets = await client.fetch(`
 		*[_type == "printSet" && !defined(parent) && inStock == true] 
-		| order(orderRank, featured desc, title asc) {
+		| order(featured desc, orderRank, title asc) {
 			title,
 			"slug": slug.current,
 			images[0..1],

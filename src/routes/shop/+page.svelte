@@ -154,7 +154,10 @@ const categories = [
 		<div class="columns-2 md:columns-3 gap-2">
 			{#each filteredProducts as product}
 				<a href="/shop/{product.slug}" class="group mb-2 break-inside-avoid block">
-					<div class="bg-surface-500/10 border border-surface-500/20 p-2 rounded-lg hover:border-surface-400/40 transition-all">
+					<div class="{product.featured
+						? 'featured-card bg-[color-mix(in_srgb,var(--time-accent)_8%,transparent)] border-[var(--time-accent)]'
+						: 'bg-surface-500/10 border-surface-500/20'
+					} border p-2 rounded-lg hover:border-surface-400/40 transition-all">
 						{#if product.preview}
 							<div class="overflow-hidden rounded-md">
 								<img

@@ -144,6 +144,14 @@ body::after {
   transition: background 2s ease;
 }
 
+/* ---- Featured product cards ---- */
+
+/* Featured cards glow on hover */
+[data-time-period] .featured-card:hover {
+  box-shadow: 0 0 20px var(--time-glow);
+  border-color: var(--time-accent) !important;
+}
+
 /* ---- Time-aware UI accents ---- */
 
 /* Nav border picks up time color */
