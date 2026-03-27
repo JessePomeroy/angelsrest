@@ -144,6 +144,15 @@ body::after {
   transition: background 2s ease;
 }
 
+/* ---- Active tab styling ---- */
+
+[data-time-period] .active-tab {
+  background: color-mix(in srgb, var(--time-accent) 20%, transparent);
+  color: var(--time-accent);
+  box-shadow: 0 0 12px var(--time-glow);
+  border: 1px solid color-mix(in srgb, var(--time-accent) 40%, transparent);
+}
+
 /* ---- Featured product cards ---- */
 
 /* Featured cards glow on hover */

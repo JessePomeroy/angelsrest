@@ -84,7 +84,7 @@ const categories = [
 		{#each categories as category}
 			<button
 				class="btn btn-sm {activeCategory === category.value
-					? 'variant-filled-primary'
+					? 'active-tab'
 					: 'variant-soft-surface'}"
 				style="text-transform: lowercase !important;"
 				onclick={() => (activeCategory = category.value)}
