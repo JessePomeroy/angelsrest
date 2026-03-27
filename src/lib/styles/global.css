@@ -18,6 +18,7 @@
    ============================================ */
 
 @import 'tailwindcss';
+@plugin '@tailwindcss/typography';
 @import './time-theme.css';
 @import './grain.css';
 
