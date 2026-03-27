@@ -39,7 +39,12 @@
 }
 
 /* Remove default margins/padding (except inside prose/blog content) */
-body, nav, p, h1, h2, h3, h4, h5, h6 {
+body, nav {
+	margin: 0;
+	padding: 0;
+}
+
+:where(p, h1, h2, h3, h4, h5, h6):not(:where(.prose *)) {
 	margin: 0;
 	padding: 0;
 }
