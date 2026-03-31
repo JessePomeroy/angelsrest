@@ -19,7 +19,7 @@
 
     import GalleryModal from "$lib/components/GalleryModal.svelte";
     import SEO from "$lib/components/SEO.svelte";
-    import { parsePaperOption } from "$lib/utils/images.js";
+    import { parsePaperOption } from "$lib/utils/images";
     import type { ParsedPaper } from "$lib/types/shop";
 
     /**
@@ -52,7 +52,7 @@
     let couponCode = $state(""); // Coupon/promo code
 
     // Get selected paper from index - parse combined value format "Name|subcategoryId|width|height"
-    const getSelectedPaper: ParsedPaper | null = $derived.by(() => {
+    const selectedPaperData: ParsedPaper | null = $derived.by(() => {
         if (!data.product.availablePapers?.length) return null;
         const paper =
             data.product.availablePapers[selectedPaperIndex] ||
@@ -120,10 +120,6 @@
              * - price: How much to charge
              * - image: For Stripe's checkout display
              */
-            // Get paper selection safely
-            const selectedPaperData = data.product.availablePapers?.length
-                ? getSelectedPaper
-                : null;
 
             console.log("Paper debug:", {
                 availablePapers: data.product.availablePapers,
@@ -376,7 +372,7 @@
         - Bold weight for emphasis
       -->
             <div class="text-3xl font-semibold text-surface-900-50-token">
-                ${getSelectedPaper?.price || data.product.price}
+                ${selectedPaperData?.price || data.product.price}
             </div>
 
             <!--
