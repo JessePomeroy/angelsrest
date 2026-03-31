@@ -290,6 +290,7 @@
                     <img
                         src={data.product.images[0].full}
                         alt={data.product.images[0].alt}
+                        loading="lazy"
                         class="w-full h-auto hover:scale-105 transition-transform rounded-md"
                     />
                 </button>
@@ -311,6 +312,7 @@
                                 <img
                                     src={image.thumbnail}
                                     alt={image.alt}
+                                    loading="lazy"
                                     class="w-full h-full object-cover hover:scale-105 transition-transform"
                                 />
                             </button>

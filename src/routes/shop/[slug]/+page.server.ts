@@ -18,7 +18,7 @@
  */
 
 import { error } from "@sveltejs/kit";
-import { client, urlFor } from "$lib/sanity/client";
+import { client } from "$lib/sanity/client";
 import { thumbnailUrl, displayUrl, originalUrl } from "$lib/utils/images";
 
 /**
