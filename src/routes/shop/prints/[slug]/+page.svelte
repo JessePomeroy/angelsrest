@@ -60,6 +60,7 @@ let { data } = $props();
                 <img
                   src={subCollection.previewImage}
                   alt={subCollection.alt || subCollection.title}
+                  loading="lazy"
                   class="w-full h-auto object-contain group-hover:scale-105 transition-transform"
                 />
               </div>
@@ -90,14 +91,16 @@ let { data } = $props();
                   <img
                     src={set.preview1}
                     alt="{set.title} - image 1"
-                    class="w-full h-auto object-contain group-hover:scale-105 transition-transform"
+                    loading="lazy"
+                  class="w-full h-auto object-contain group-hover:scale-105 transition-transform"
                   />
                 {/if}
                 {#if set.preview2}
                   <img
                     src={set.preview2}
                     alt="{set.title} - image 2"
-                    class="w-full h-auto object-contain group-hover:scale-105 transition-transform"
+                    loading="lazy"
+                  class="w-full h-auto object-contain group-hover:scale-105 transition-transform"
                   />
                 {/if}
               </div>
@@ -127,7 +130,8 @@ let { data } = $props();
               <img
                 src={product.preview}
                 alt={product.title}
-                class="w-full h-auto object-contain group-hover:scale-105 transition-transform"
+                loading="lazy"
+                  class="w-full h-auto object-contain group-hover:scale-105 transition-transform"
               />
             </div>
             <h2 class="mt-2 text-xs tracking-[0.15em] text-center">
