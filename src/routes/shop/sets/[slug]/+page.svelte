@@ -12,6 +12,7 @@
      */
     import SEO from "$lib/components/SEO.svelte";
     import { parsePaperOption, imageSet } from "$lib/utils/images";
+    import { createCheckout } from "$lib/utils/checkout";
     import type { ParsedPaper, ProductImage } from "$lib/types/shop";
 
     let { data } = $props();
@@ -36,44 +37,22 @@
      */
     async function handleCheckout() {
         isLoading = true;
-
-        const checkoutData = {
-            productId: data.printSet.slug,
-            title: data.printSet.title,
-            price: selectedPaperData?.price || data.printSet.price,
-            image: data.printSet.previewImage,
-            paper: selectedPaperData
-                ? {
-                      name: selectedPaperData.name,
-                      subcategoryId: selectedPaperData.subcategoryId,
-                      width: selectedPaperData.width,
-                      height: selectedPaperData.height,
-                  }
-                : null,
-            coupon: couponCode.trim() || null,
-            isPrintSet: true,
-            // Send original images to LumaPrints (not compressed)
-            images: (data.images as ProductImage[]).map((img) => img.original),
-        };
-
         try {
-            const response = await fetch("/api/checkout", {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify(checkoutData),
+            const url = await createCheckout({
+                productId: data.printSet.slug,
+                title: data.printSet.title,
+                price: selectedPaperData?.price || data.printSet.price,
+                image: data.printSet.previewImage,
+                paper: selectedPaperData,
+                coupon: couponCode.trim() || null,
+                isPrintSet: true,
+                images: (data.images as ProductImage[]).map((img) => img.original),
             });
-
-            const result = await response.json();
-
-            if (result.url) {
-                window.location.href = result.url;
-            } else if (result.error) {
-                alert(result.error);
-                isLoading = false;
-            }
-        } catch (err) {
+            window.location.href = url;
+        } catch (err: any) {
             console.error("Checkout error:", err);
-            alert("Something went wrong. Please try again.");
+            alert(err.message || "something went wrong. please try again.");
+        } finally {
             isLoading = false;
         }
     }
