@@ -42,9 +42,16 @@ import "$lib/styles/global.css";
 
 let { children, data }: { children: Snippet; data: any } = $props();
 
+let isPortal = $derived($page.url.pathname.startsWith("/portal"));
+
 const ogTitle = $derived(data.siteSettings?.siteTitle || "Angel's Rest");
-const ogDesc = $derived(data.siteSettings?.seo?.description || "Photography by Jesse Pomeroy");
-const ogImage = $derived(data.siteSettings?.seo?.ogImageUrl || "https://www.angelsrest.online/og-image.png");
+const ogDesc = $derived(
+	data.siteSettings?.seo?.description || "Photography by Jesse Pomeroy",
+);
+const ogImage = $derived(
+	data.siteSettings?.seo?.ogImageUrl ||
+		"https://www.angelsrest.online/og-image.png",
+);
 
 // Vercel analytics
 injectAnalytics();
@@ -81,43 +88,47 @@ onMount(() => {
   </filter>
 </svg>
 
-<!-- Grain overlay — styled in grain.css -->
-<div class="grain-overlay" aria-hidden="true"></div>
+{#if isPortal}
+  {@render children()}
+{:else}
+  <!-- Grain overlay — styled in grain.css -->
+  <div class="grain-overlay" aria-hidden="true"></div>
 
-<div class="flex flex-col min-h-screen relative z-10">
-  <!-- Desktop navigation (hidden on mobile) -->
-  <Nav />
-  
-  <!-- Mobile header - only shown on non-homepage routes -->
-  {#if $page.url.pathname !== "/"}
-    <div class="md:hidden">
-      <img src={headerGif} alt="" class="w-full" />
-    </div>
-    <div class="h-4 md:hidden"></div>
-    <div class="hidden md:block h-6"></div>
-  {/if}
+  <div class="flex flex-col min-h-screen relative z-10">
+    <!-- Desktop navigation (hidden on mobile) -->
+    <Nav />
 
-  <!-- Main content area -->
-  <main
-    class="flex-1 max-w-[1400px] !mx-auto w-full px-1 pt-2 pb-2 md:pb-4 md:px-8"
-  >
-    {@render children()}
-  </main>
-  
-  <!-- Desktop footer (hidden on mobile) -->
-  <Footer siteSettings={data.siteSettings} />
-  
-  <!-- Mobile theme toggle - fixed position above bottom nav, homepage only -->
-  {#if $page.url.pathname === "/"}
-    <div class="fixed bottom-20 right-4 z-40 md:hidden">
-      <ThemeSwitcher />
-    </div>
-  {/if}
-  
-  <!-- Spacer to prevent content from hiding behind fixed bottom nav -->
-  <div class="h-20 md:hidden"></div>
-  
-  <!-- Mobile bottom navigation (hidden on desktop) -->
-  <BottomNav />
-</div>
+    <!-- Mobile header - only shown on non-homepage routes -->
+    {#if $page.url.pathname !== "/"}
+      <div class="md:hidden">
+        <img src={headerGif} alt="" class="w-full" />
+      </div>
+      <div class="h-4 md:hidden"></div>
+      <div class="hidden md:block h-6"></div>
+    {/if}
+
+    <!-- Main content area -->
+    <main
+      class="flex-1 max-w-[1400px] !mx-auto w-full px-1 pt-2 pb-2 md:pb-4 md:px-8"
+    >
+      {@render children()}
+    </main>
+
+    <!-- Desktop footer (hidden on mobile) -->
+    <Footer siteSettings={data.siteSettings} />
+
+    <!-- Mobile theme toggle - fixed position above bottom nav, homepage only -->
+    {#if $page.url.pathname === "/"}
+      <div class="fixed bottom-20 right-4 z-40 md:hidden">
+        <ThemeSwitcher />
+      </div>
+    {/if}
+
+    <!-- Spacer to prevent content from hiding behind fixed bottom nav -->
+    <div class="h-20 md:hidden"></div>
+
+    <!-- Mobile bottom navigation (hidden on desktop) -->
+    <BottomNav />
+  </div>
+{/if}
 

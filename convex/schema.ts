@@ -325,6 +325,24 @@ export default defineSchema({
 		.index("by_siteUrl", ["siteUrl"])
 		.index("by_siteUrl_and_type", ["siteUrl", "type"]),
 
+	// Portal share tokens — public links for clients to view/act on documents
+	portalTokens: defineTable({
+		token: v.string(),
+		siteUrl: v.string(),
+		type: v.union(
+			v.literal("invoice"),
+			v.literal("quote"),
+			v.literal("contract"),
+		),
+		documentId: v.string(),
+		clientId: v.id("photographyClients"),
+		expiresAt: v.optional(v.number()),
+		used: v.boolean(),
+	})
+		.index("by_token", ["token"])
+		.index("by_siteUrl", ["siteUrl"])
+		.index("by_documentId", ["documentId"]),
+
 	// Contact form inquiries (from public site visitors)
 	inquiries: defineTable({
 		siteUrl: v.string(),

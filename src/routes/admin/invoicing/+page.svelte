@@ -14,6 +14,7 @@ let selectedInvoice = $state<any>(null);
 let editMode = $state(false);
 let confirmDelete = $state(false);
 let saving = $state(false);
+let shareLinkCopied = $state(false);
 let sending = $state(false);
 let sendResult = $state<"success" | "error" | null>(null);
 
@@ -332,9 +333,12 @@ async function sendInvoiceEmail() {
 	sending = true;
 	sendResult = null;
 	try {
-		const res = await fetch(`/api/admin/invoicing/${selectedInvoice._id}/send`, {
-			method: "POST",
-		});
+		const res = await fetch(
+			`/api/admin/invoicing/${selectedInvoice._id}/send`,
+			{
+				method: "POST",
+			},
+		);
 		if (res.ok) {
 			sendResult = "success";
 			const idx = data.invoices.findIndex(
@@ -409,6 +413,34 @@ async function deleteInvoice() {
 		console.error("Failed to delete invoice:", err);
 	} finally {
 		saving = false;
+	}
+}
+
+async function copyShareLink() {
+	if (!selectedInvoice) return;
+	shareLinkCopied = false;
+	try {
+		const res = await fetch("/api/admin/portal", {
+			method: "POST",
+			headers: { "Content-Type": "application/json" },
+			body: JSON.stringify({
+				type: "invoice",
+				documentId: selectedInvoice._id,
+				clientId: selectedInvoice.clientId,
+			}),
+		});
+		if (res.ok) {
+			const { token } = await res.json();
+			await navigator.clipboard.writeText(
+				`https://angelsrest.online/portal/${token}`,
+			);
+			shareLinkCopied = true;
+			setTimeout(() => {
+				shareLinkCopied = false;
+			}, 3000);
+		}
+	} catch (err) {
+		console.error("Failed to create share link:", err);
 	}
 }
 </script>
@@ -859,6 +891,11 @@ async function deleteInvoice() {
 						</div>
 					</div>
 
+					<div class="share-link-row">
+						<button class="btn-share" onclick={copyShareLink}>
+							{shareLinkCopied ? "link copied!" : "copy share link"}
+						</button>
+					</div>
 					<div class="modal-actions detail-actions">
 						{#if confirmDelete}
 							<span class="confirm-text">delete this invoice?</span>
@@ -1324,6 +1361,29 @@ async function deleteInvoice() {
 		justify-content: flex-end;
 		gap: 10px;
 		padding-top: 6px;
+	}
+
+	.share-link-row {
+		display: flex;
+		justify-content: flex-end;
+		padding: 12px 0 0;
+	}
+
+	.btn-share {
+		padding: 5px 14px;
+		border-radius: 6px;
+		font-size: 0.78rem;
+		font-family: "Synonym", system-ui, sans-serif;
+		cursor: pointer;
+		background: transparent;
+		color: var(--admin-text-muted);
+		border: 1px solid var(--admin-border);
+		transition: color 0.15s, border-color 0.15s;
+	}
+
+	.btn-share:hover {
+		color: var(--admin-accent);
+		border-color: var(--admin-accent);
 	}
 
 	.btn-cancel,
