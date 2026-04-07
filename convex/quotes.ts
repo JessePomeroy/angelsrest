@@ -1,0 +1,202 @@
+import { v } from "convex/values";
+import { mutation, query } from "./_generated/server";
+
+export const list = query({
+	args: {
+		siteUrl: v.string(),
+		status: v.optional(v.string()),
+	},
+	handler: async (ctx, { siteUrl, status }) => {
+		const all = await ctx.db
+			.query("quotes")
+			.withIndex("by_siteUrl", (q) => q.eq("siteUrl", siteUrl))
+			.order("desc")
+			.collect();
+
+		const withClients = await Promise.all(
+			all.map(async (quote) => {
+				const client = await ctx.db.get(quote.clientId);
+				return { ...quote, clientName: client?.name ?? "unknown" };
+			}),
+		);
+
+		if (status) return withClients.filter((q) => q.status === status);
+		return withClients;
+	},
+});
+
+export const get = query({
+	args: { quoteId: v.id("quotes") },
+	handler: async (ctx, { quoteId }) => {
+		const quote = await ctx.db.get(quoteId);
+		if (!quote) return null;
+		const client = await ctx.db.get(quote.clientId);
+		return {
+			...quote,
+			clientName: client?.name ?? "unknown",
+			clientEmail: client?.email,
+		};
+	},
+});
+
+export const create = mutation({
+	args: {
+		siteUrl: v.string(),
+		quoteNumber: v.string(),
+		clientId: v.id("photographyClients"),
+		category: v.optional(v.union(v.literal("photography"), v.literal("web"))),
+		packages: v.array(
+			v.object({
+				name: v.string(),
+				description: v.optional(v.string()),
+				price: v.number(),
+				included: v.optional(v.array(v.string())),
+			}),
+		),
+		validUntil: v.optional(v.string()),
+		notes: v.optional(v.string()),
+	},
+	handler: async (ctx, args) => {
+		return await ctx.db.insert("quotes", {
+			...args,
+			status: "draft",
+		});
+	},
+});
+
+export const update = mutation({
+	args: {
+		quoteId: v.id("quotes"),
+		packages: v.optional(
+			v.array(
+				v.object({
+					name: v.string(),
+					description: v.optional(v.string()),
+					price: v.number(),
+					included: v.optional(v.array(v.string())),
+				}),
+			),
+		),
+		validUntil: v.optional(v.string()),
+		notes: v.optional(v.string()),
+		status: v.optional(v.string()),
+	},
+	handler: async (ctx, { quoteId, ...updates }) => {
+		const patch: Record<string, unknown> = {};
+		for (const [key, val] of Object.entries(updates)) {
+			if (val !== undefined) patch[key] = val;
+		}
+		if (Object.keys(patch).length > 0) {
+			await ctx.db.patch(quoteId, patch);
+		}
+	},
+});
+
+export const markSent = mutation({
+	args: { quoteId: v.id("quotes") },
+	handler: async (ctx, { quoteId }) => {
+		await ctx.db.patch(quoteId, { status: "sent", sentAt: Date.now() });
+	},
+});
+
+export const markAccepted = mutation({
+	args: { quoteId: v.id("quotes") },
+	handler: async (ctx, { quoteId }) => {
+		await ctx.db.patch(quoteId, { status: "accepted", acceptedAt: Date.now() });
+	},
+});
+
+export const markDeclined = mutation({
+	args: { quoteId: v.id("quotes") },
+	handler: async (ctx, { quoteId }) => {
+		await ctx.db.patch(quoteId, { status: "declined" });
+	},
+});
+
+export const remove = mutation({
+	args: { quoteId: v.id("quotes") },
+	handler: async (ctx, { quoteId }) => {
+		await ctx.db.delete(quoteId);
+	},
+});
+
+// Quote presets
+export const listPresets = query({
+	args: { siteUrl: v.string() },
+	handler: async (ctx, { siteUrl }) => {
+		return await ctx.db
+			.query("quotePresets")
+			.withIndex("by_siteUrl", (q) => q.eq("siteUrl", siteUrl))
+			.collect();
+	},
+});
+
+export const createPreset = mutation({
+	args: {
+		siteUrl: v.string(),
+		name: v.string(),
+		category: v.optional(v.union(v.literal("photography"), v.literal("web"))),
+		packages: v.array(
+			v.object({
+				name: v.string(),
+				description: v.optional(v.string()),
+				price: v.number(),
+				included: v.optional(v.array(v.string())),
+			}),
+		),
+	},
+	handler: async (ctx, args) => {
+		return await ctx.db.insert("quotePresets", args);
+	},
+});
+
+export const updatePreset = mutation({
+	args: {
+		presetId: v.id("quotePresets"),
+		name: v.optional(v.string()),
+		category: v.optional(v.union(v.literal("photography"), v.literal("web"))),
+		packages: v.optional(
+			v.array(
+				v.object({
+					name: v.string(),
+					description: v.optional(v.string()),
+					price: v.number(),
+					included: v.optional(v.array(v.string())),
+				}),
+			),
+		),
+	},
+	handler: async (ctx, { presetId, ...updates }) => {
+		const patch: Record<string, unknown> = {};
+		for (const [key, val] of Object.entries(updates)) {
+			if (val !== undefined) patch[key] = val;
+		}
+		if (Object.keys(patch).length > 0) {
+			await ctx.db.patch(presetId, patch);
+		}
+	},
+});
+
+export const removePreset = mutation({
+	args: { presetId: v.id("quotePresets") },
+	handler: async (ctx, { presetId }) => {
+		await ctx.db.delete(presetId);
+	},
+});
+
+export const getNextNumber = query({
+	args: { siteUrl: v.string() },
+	handler: async (ctx, { siteUrl }) => {
+		const quotes = await ctx.db
+			.query("quotes")
+			.withIndex("by_siteUrl", (q) => q.eq("siteUrl", siteUrl))
+			.order("desc")
+			.take(1);
+
+		const latest = quotes[0];
+		if (!latest) return "QT-001";
+
+		const num = Number.parseInt(latest.quoteNumber.replace("QT-", ""), 10);
+		return `QT-${String(num + 1).padStart(3, "0")}`;
+	},
+});

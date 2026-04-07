@@ -180,6 +180,7 @@ export default defineSchema({
 		siteUrl: v.string(),
 		quoteNumber: v.string(),
 		clientId: v.id("photographyClients"),
+		category: v.optional(v.union(v.literal("photography"), v.literal("web"))),
 		status: v.union(
 			v.literal("draft"),
 			v.literal("sent"),
@@ -197,15 +198,35 @@ export default defineSchema({
 		),
 		validUntil: v.optional(v.string()),
 		notes: v.optional(v.string()),
+		sentAt: v.optional(v.number()),
+		acceptedAt: v.optional(v.number()),
+		convertedToInvoice: v.optional(v.id("invoices")),
 	})
 		.index("by_siteUrl", ["siteUrl"])
-		.index("by_client", ["clientId"]),
+		.index("by_client", ["clientId"])
+		.index("by_siteUrl_status", ["siteUrl", "status"]),
+
+	// Quote presets — saved package configurations for quick loading
+	quotePresets: defineTable({
+		siteUrl: v.string(),
+		name: v.string(),
+		category: v.optional(v.union(v.literal("photography"), v.literal("web"))),
+		packages: v.array(
+			v.object({
+				name: v.string(),
+				description: v.optional(v.string()),
+				price: v.number(),
+				included: v.optional(v.array(v.string())),
+			}),
+		),
+	}).index("by_siteUrl", ["siteUrl"]),
 
 	// Contracts — Full tier only
 	contracts: defineTable({
 		siteUrl: v.string(),
 		title: v.string(),
 		clientId: v.id("photographyClients"),
+		category: v.optional(v.union(v.literal("photography"), v.literal("web"))),
 		templateId: v.optional(v.id("contractTemplates")),
 		status: v.union(
 			v.literal("draft"),
@@ -218,10 +239,12 @@ export default defineSchema({
 		eventLocation: v.optional(v.string()),
 		totalPrice: v.optional(v.number()),
 		depositAmount: v.optional(v.number()),
+		sentAt: v.optional(v.number()),
 		signedAt: v.optional(v.number()),
 	})
 		.index("by_siteUrl", ["siteUrl"])
-		.index("by_client", ["clientId"]),
+		.index("by_client", ["clientId"])
+		.index("by_siteUrl_status", ["siteUrl", "status"]),
 
 	// Contract templates — Full tier only
 	contractTemplates: defineTable({
