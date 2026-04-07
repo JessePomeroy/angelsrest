@@ -21,20 +21,19 @@
  */
 
 import { error, json } from "@sveltejs/kit";
+import { ConvexHttpClient } from "convex/browser";
 import { Resend } from "resend";
 import Stripe from "stripe";
+import { env as publicEnv } from "$env/dynamic/public";
 import {
 	RESEND_API_KEY,
 	STRIPE_SECRET_KEY,
 	STRIPE_WEBHOOK_SECRET,
 } from "$env/static/private";
 import { createOrder as createLumaPrintsOrder } from "$lib/lumaprints/client";
-import {
-	getNextOrderNumber,
-	orderExistsForSession,
-} from "$lib/orders/orderNumber";
-import { adminClient } from "$lib/sanity/adminClient";
-import { client as sanityClient } from "$lib/sanity/client";
+import { api } from "../../../../../convex/_generated/api";
+
+const convex = new ConvexHttpClient(publicEnv.PUBLIC_CONVEX_URL!);
 
 const stripe = new Stripe(STRIPE_SECRET_KEY);
 const resend = new Resend(RESEND_API_KEY);
@@ -147,7 +146,7 @@ async function handleCheckoutCompleted(session: Stripe.Checkout.Session) {
 		}
 
 		// Create order first so we have the order number for the email
-		const orderResult = await createOrderInSanity({
+		const orderResult = await createOrderInConvex({
 			session: fullSession,
 			shippingDetails,
 			lineItems,
@@ -323,12 +322,12 @@ This order was automatically processed through your Angel's Rest website.
 // ─── Order Creation ──────────────────────────────────────────────────────────
 
 /**
- * Create an order document in Sanity CMS.
+ * Create an order in Convex.
  *
  * After creating the order, waits 3 seconds then fetches actual Stripe fees
  * from the balance_transaction (which isn't available immediately at checkout time).
  */
-async function createOrderInSanity({
+async function createOrderInConvex({
 	session,
 	shippingDetails,
 	lineItems,
@@ -338,14 +337,10 @@ async function createOrderInSanity({
 	lineItems: Stripe.LineItem[];
 }) {
 	try {
-		// Idempotency check — don't create duplicate orders
-		const alreadyExists = await orderExistsForSession(session.id);
-		if (alreadyExists) {
-			console.log("Order already exists for session:", session.id);
-			return;
-		}
-
-		const orderNumber = await getNextOrderNumber();
+		// Get next order number from Convex
+		const orderNumber = await convex.query(api.orders.getNextOrderNumber, {
+			siteUrl: "angelsrest.online",
+		});
 
 		// Extract payment intent ID (could be string or expanded object)
 		const rawPaymentIntent = (session as any).payment_intent;
@@ -355,7 +350,6 @@ async function createOrderInSanity({
 				: rawPaymentIntent?.id;
 
 		const items = lineItems.map((item) => ({
-			_key: crypto.randomUUID(),
 			productName: item.description || "Unknown Product",
 			quantity: item.quantity || 1,
 			price: item.amount_total || item.price?.unit_amount || 0,
@@ -363,18 +357,19 @@ async function createOrderInSanity({
 
 		const isDigital = (session as any).metadata?.isDigital === "true";
 
-		const orderDoc = {
-			_type: "order",
+		// Create order in Convex
+		const orderId = await convex.mutation(api.orders.create, {
+			siteUrl: "angelsrest.online",
 			orderNumber,
 			stripeSessionId: session.id,
-			stripePaymentIntentId,
 			customerEmail: session.customer_details?.email || "",
 			customerName:
-				session.customer_details?.name || shippingDetails?.name || "",
+				session.customer_details?.name || shippingDetails?.name || undefined,
+			stripePaymentIntentId: stripePaymentIntentId || undefined,
 			shippingAddress: shippingDetails?.address
 				? {
 						line1: shippingDetails.address.line1 || "",
-						line2: shippingDetails.address.line2 || "",
+						line2: shippingDetails.address.line2 || undefined,
 						city: shippingDetails.address.city || "",
 						state: shippingDetails.address.state || "",
 						postalCode: shippingDetails.address.postal_code || "",
@@ -382,45 +377,31 @@ async function createOrderInSanity({
 					}
 				: undefined,
 			items,
-			subtotal: session.amount_subtotal || 0,
 			total: session.amount_total || 0,
-			currency: session.currency || "usd",
-			// Digital products are delivered instantly, no shipping needed
-			status: isDigital ? "delivered" : "new",
-			fulfillmentType: isDigital ? "digital" : undefined,
-			// Paper details from checkout (for LumaPrints fulfillment)
-			paperName: (session as any).metadata?.paperName || "",
-			paperSubcategoryId: (session as any).metadata?.paperSubcategoryId || "",
-			paperSize:
-				((session as any).metadata?.paperWidth || "") +
-				"x" +
-				((session as any).metadata?.paperHeight || ""),
-			createdAt: new Date().toISOString(),
-			updatedAt: new Date().toISOString(),
-		};
+			subtotal: session.amount_subtotal || undefined,
+			fulfillmentType: isDigital ? "digital" : "self",
+			paperName: (session as any).metadata?.paperName || undefined,
+			paperSubcategoryId:
+				(session as any).metadata?.paperSubcategoryId || undefined,
+		});
 
-		const result = await adminClient.create(orderDoc);
-		console.log("Created order in Sanity:", orderNumber, result._id);
+		console.log("Created order in Convex:", orderNumber, orderId);
 
 		// Fetch actual Stripe fees after a short delay
-		// The balance_transaction isn't available immediately at checkout time
-		await captureStripeFees(result._id, orderNumber, stripePaymentIntentId);
+		await captureStripeFees(orderId, orderNumber, stripePaymentIntentId);
 
-		// Submit to LumaPrints if any items are LumaPrints-fulfilled
-		// Wait a moment for the order to be fully created first
+		// Submit to LumaPrints if applicable
 		await submitToLumaPrints(
-			result._id,
+			orderId,
 			orderNumber,
 			lineItems,
 			shippingDetails,
 			session,
 		);
 
-		// Return order number for email
-		return { orderNumber, _id: result._id };
+		return { orderNumber, _id: orderId };
 	} catch (err) {
-		console.error("Error creating order in Sanity:", err);
-		// Don't throw — emails were already sent, don't fail the webhook
+		console.error("Error creating order in Convex:", err);
 		return null;
 	}
 }
@@ -430,7 +411,7 @@ async function createOrderInSanity({
  * Waits 3 seconds for Stripe to finalize the transaction before fetching.
  */
 async function captureStripeFees(
-	orderId: string,
+	orderId: any,
 	orderNumber: string,
 	paymentIntentId: string | undefined,
 ) {
@@ -448,13 +429,10 @@ async function captureStripeFees(
 		const fees = charge?.balance_transaction?.fee;
 
 		if (fees && fees > 0) {
-			await adminClient
-				.patch(orderId)
-				.set({
-					stripeFees: fees,
-					updatedAt: new Date().toISOString(),
-				})
-				.commit();
+			await convex.mutation(api.orders.updateStatus, {
+				orderId,
+				stripeFees: fees,
+			});
 			console.log("✅ Captured Stripe fees:", orderNumber, "→", fees, "cents");
 		} else {
 			console.log("⚠️ No fees available after delay for:", orderNumber);
@@ -471,7 +449,7 @@ async function captureStripeFees(
  * Only submits if at least one item is LumaPrints-fulfilled.
  */
 async function submitToLumaPrints(
-	orderId: string,
+	orderId: any,
 	orderNumber: string,
 	lineItems: Stripe.LineItem[],
 	shippingDetails: any,
@@ -596,15 +574,11 @@ async function submitToLumaPrints(
 
 		const result = await createLumaPrintsOrder(lumaprintsOrder);
 
-		// Update Sanity order with LumaPrints order number
-		await adminClient
-			.patch(orderId)
-			.set({
-				lumaprintsOrderNumber: result.orderNumber,
-				fulfillmentType: "lumaprints",
-				updatedAt: new Date().toISOString(),
-			})
-			.commit();
+		// Update Convex order with LumaPrints order number
+		await convex.mutation(api.orders.updateStatus, {
+			orderId,
+			lumaprintsOrderNumber: result.orderNumber,
+		});
 
 		console.log(
 			"✅ Submitted to LumaPrints:",
