@@ -33,6 +33,15 @@ import { env as privateEnv } from "$env/dynamic/private";
  * @param {Function} resolve - Function to continue processing the request
  */
 export async function handle({ event, resolve }) {
+	// Detect Sanity preview mode from cookie (set by /api/draft/enable)
+	const isPreview = event.cookies.get("__sanity_preview") === "true";
+	event.locals.isPreview = isPreview;
+
+	// Allow draft API routes without auth (Sanity Studio calls these)
+	if (event.url.pathname.startsWith("/api/draft")) {
+		return resolve(event);
+	}
+
 	// Protect /admin routes - check if the URL starts with /admin
 	if (event.url.pathname.startsWith("/admin")) {
 		// Get password from environment variables

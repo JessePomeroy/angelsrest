@@ -1,11 +1,11 @@
 /**
  * Image URL Builder Utilities
- * 
+ *
  * Centralized image URL generation for Sanity images.
  * Provides consistent sizing and format across the app.
  */
 
-import { urlFor } from '$lib/sanity/client';
+import { urlFor } from "$lib/sanity/client";
 
 /**
  * Image URL options
@@ -14,17 +14,17 @@ export interface ImageUrlOptions {
 	width?: number;
 	height?: number;
 	quality?: number;
-	format?: 'webp' | 'jpg' | 'png';
+	format?: "webp" | "jpg" | "png";
 }
 
 /**
  * Default options for different use cases
  */
 const defaults = {
-	preview: { width: 600, quality: 80, format: 'webp' as const },
-	thumbnail: { width: 400, quality: 80, format: 'webp' as const },
-	display: { width: 1200, quality: 90, format: 'webp' as const },
-	full: { quality: 90, format: 'jpg' as const },
+	preview: { width: 600, quality: 80, format: "webp" as const },
+	thumbnail: { width: 400, quality: 80, format: "webp" as const },
+	display: { width: 1200, quality: 90, format: "webp" as const },
+	full: { quality: 90, format: "jpg" as const },
 };
 
 /**
@@ -32,12 +32,15 @@ const defaults = {
  */
 export function buildImageUrl(
 	image: any,
-	options: ImageUrlOptions = {}
+	options: ImageUrlOptions = {},
 ): string | null {
 	if (!image) return null;
 
 	const builder = urlFor(image);
-	const { width, height, quality, format } = { ...defaults.display, ...options };
+	const { width, height, quality, format } = {
+		...defaults.display,
+		...options,
+	};
 
 	let result = builder;
 
@@ -81,14 +84,16 @@ export function originalUrl(image: any): string | null {
  * Build set of URLs for a product image
  * Used when you need multiple sizes
  */
-export function imageSet(image: any): { full: string; thumb: string; original: string; alt: string } | null {
+export function imageSet(
+	image: any,
+): { full: string; thumb: string; original: string; alt: string } | null {
 	if (!image) return null;
-	
+
 	return {
-		full: displayUrl(image),
-		thumb: thumbnailUrl(image),
-		original: originalUrl(image),
-		alt: image.alt || '',
+		full: displayUrl(image) || "",
+		thumb: thumbnailUrl(image) || "",
+		original: originalUrl(image) || "",
+		alt: image.alt || "",
 	};
 }
 
@@ -104,10 +109,10 @@ export function parsePaperOption(paper: { name: string; price?: number }): {
 	height: number;
 	price: number | null;
 } {
-	const parts = paper.name.split('|');
+	const parts = paper.name.split("|");
 	return {
-		name: parts[0] || '',
-		subcategoryId: parts[1] || '',
+		name: parts[0] || "",
+		subcategoryId: parts[1] || "",
 		width: parseInt(parts[2], 10) || 8,
 		height: parseInt(parts[3], 10) || 10,
 		price: paper.price || null,

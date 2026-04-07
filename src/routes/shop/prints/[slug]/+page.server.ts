@@ -1,8 +1,8 @@
 /**
  * Print Collection Detail - Server Load Function
- * 
+ *
  * Fetches a print collection, its sub-collections, print sets, and products.
- * 
+ *
  * Hierarchy:
  * - Collections can have parent collections (nested)
  * - Collections contain products and print sets
@@ -10,7 +10,7 @@
 
 import { error } from "@sveltejs/kit";
 import { client } from "$lib/sanity/client";
-import { previewUrl, imageSet } from "$lib/utils/images";
+import { imageSet, previewUrl } from "$lib/utils/images";
 
 export async function load({ params }) {
 	// Fetch the collection with parent reference
@@ -91,6 +91,7 @@ export async function load({ params }) {
 	return {
 		collection: {
 			title: collection.title,
+			slug: params.slug,
 			description: collection.description,
 			previewImage: previewImageUrl,
 			alt: collection.previewImage?.alt || "",

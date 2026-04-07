@@ -1,6 +1,6 @@
 /**
  * TypeScript Types for Shop Data
- * 
+ *
  * Shared types for products, print collections, print sets, and paper options.
  */
 
@@ -32,9 +32,9 @@ export interface ParsedPaper {
  * Product image with multiple URL variants
  */
 export interface ProductImage {
-	full: string;      // 1200px webp for display
-	thumb: string;     // 400px webp for thumbnails
-	original: string;  // Full original for LumaPrints
+	full: string; // 1200px webp for display
+	thumb: string; // 400px webp for thumbnails
+	original: string; // Full original for LumaPrints
 	alt: string;
 }
 
@@ -77,6 +77,8 @@ export interface PrintSet {
 	title: string;
 	slug: string;
 	previewImage: string | null;
+	preview1?: string;
+	preview2?: string;
 	price: number;
 	description?: string;
 	availablePapers: PaperOption[];
@@ -112,7 +114,7 @@ export interface CheckoutData {
  */
 export interface CouponValidation {
 	code: string;
-	discountType: 'percent' | 'fixed';
+	discountType: "percent" | "fixed";
 	discountValue: number;
 	allowedCategories: string[];
 	allowedProductSlugs: string[];

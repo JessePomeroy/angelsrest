@@ -1,11 +1,11 @@
 /**
  * Shop Index - Server Load Function
- * 
+ *
  * Fetches data for the shop page:
  * 1. Products - individual items for sale
  * 2. Print Collections - groups of prints (hierarchical, can be nested)
  * 3. Print Sets - curated bundles of multiple images sold together
- * 
+ *
  * Products show under different tabs:
  * - All: products not in collections
  * - Prints: collections, sets, and individual prints without collections
@@ -13,8 +13,7 @@
  */
 
 import { client } from "$lib/sanity/client";
-import { previewUrl, imageSet } from "$lib/utils/images";
-import type { Product, PrintCollection, PrintSet } from "$lib/types/shop";
+import { imageSet, previewUrl } from "$lib/utils/images";
 
 export async function load() {
 	// Fetch products that are in stock
@@ -36,7 +35,7 @@ export async function load() {
 	`);
 
 	// Build optimized product URLs
-	const productsWithImages = (products as Product[]).map((product) => ({
+	const productsWithImages = (products as any[]).map((product) => ({
 		...product,
 		preview: previewUrl(product.previewImage),
 	}));
@@ -53,9 +52,9 @@ export async function load() {
 	`);
 
 	// Build collection preview URLs
-	const collectionsWithImages = (collections as PrintCollection[]).map((collection) => ({
+	const collectionsWithImages = (collections as any[]).map((collection) => ({
 		...collection,
-		alt: collection.previewImage?.alt || '',
+		alt: collection.previewImage?.alt || "",
 		previewImage: previewUrl(collection.previewImage),
 	}));
 

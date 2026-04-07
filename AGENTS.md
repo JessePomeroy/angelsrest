@@ -4,14 +4,14 @@ Rules for working on this codebase.
 
 ## Project Context
 
-- **Stack:** SvelteKit + Tailwind CSS + Skeleton UI + Sanity CMS + Stripe
+- **Stack:** SvelteKit 5 (runes) + Tailwind CSS v4 + Sanity CMS + Stripe + LumaPrints + Resend
 - **Frontend:** `~/Documents/work/angelsrest` → https://angelsrest.online
 - **Studio:** `~/Documents/work/angelsrest-studio` → https://angelsrest.sanity.studio
-- **Spec:** `~/Documents/quilt/02_reference/projects/lumaprints-angelsrest.md`
+- **CRM Spec:** `~/Documents/quilt/02_reference/projects/photographer_crm/implementation-spec.md`
 
 ## Tech Constraints
 
-- Use SvelteKit 2 (not Svelte 5 for pages/components, but runes for new code)
+- SvelteKit 5 with Svelte 5 runes (`$props()`, `$state()`, `$derived()`, `$effect()`)
 - Tailwind CSS v4 — avoid Skeleton component classes, use plain Tailwind
 - Use `$env/dynamic/private` for env vars in hooks, not `$env/static/private`
 - Biome linter enforced via husky — run checks before reporting done
@@ -22,7 +22,21 @@ Rules for working on this codebase.
 - **Admin orders:** `src/routes/admin/orders/+page.svelte`
 - **Order lookup:** `src/routes/orders/+page.svelte`
 - **Sanity client:** `src/lib/sanity/client.ts` (read), `src/lib/sanity/adminClient.ts` (write)
+- **Sanity preview client:** `src/lib/sanity/previewClient.ts` (draft-aware, for visual editing)
 - **LumaPrints client:** `src/lib/lumaprints/client.ts`
+- **Server hooks:** `src/hooks.server.ts` (admin auth + preview mode detection)
+- **Root layout:** `src/routes/+layout.svelte` (visual editing overlay when previewing)
+- **Root layout server:** `src/routes/+layout.server.ts` (passes isPreview to all pages)
+
+## Preview / Visual Editing
+
+Sanity Presentation plugin connects Studio to this frontend for live preview:
+
+- **Enable:** `GET /api/draft/enable` — validates Sanity preview secret, sets `__sanity_preview` cookie
+- **Disable:** `GET /api/draft/disable` — clears cookie
+- **Detection:** `hooks.server.ts` reads cookie → sets `locals.isPreview`
+- **Overlay:** `+layout.svelte` calls `enableVisualEditing()` in onMount when `data.isPreview` is true
+- **Env var:** `SANITY_PREVIEW_TOKEN` (Viewer role token from Sanity)
 
 ## Running Checks
 
@@ -30,6 +44,7 @@ Rules for working on this codebase.
 cd ~/Documents/work/angelsrest
 pnpm biome check --write src/
 pnpm svelte-check
+pnpm build
 ```
 
 ## Branching
@@ -46,20 +61,16 @@ pnpm svelte-check
 - Customer + admin order emails via Resend
 - Admin dashboard at `/admin/orders` (Basic Auth protected)
 - Order lookup page at `/orders`
-- LumaPrints integration (IN PROGRESS - see below)
+- Sanity visual editing / live preview via Presentation plugin
+- LumaPrints integration (paper selection, fulfillment)
 
-## LumaPrints Integration Status
+## Platform Context
 
-**What's working:**
-- Paper selection dropdown on product page
-- Metadata flows through checkout → Stripe → webhook
-- Order created in Sanity with paper details
+This site is the **hub** of the photographer CRM platform:
+- **angelsrest** = your personal site + platform management server
+- **angelsrest-studio** = your Sanity CMS (content only)
+- **Convex** = operational backend (orders, CRM, messages, tiers) — coming soon
+- **admin-dashboard** = shared admin package for all client sites — coming soon
+- **reflecting-pool** = first client template — coming soon
 
-**Issue (UNRESOLVED):**
-- LumaPrints API rejects all orders with aspect ratio errors
-- Even valid sizes (4×6, 6×9) fail with "expectedAspectRatio: 7:11" or "11:17"
-- Pricing API accepts sizes, but order API rejects them
-- Likely need to contact LumaPrints support or use manual fulfillment
-
-**Active branches:**
-- `feature/paper-selection` - current work on paper dropdown
+Platform admin routes will be added at `/admin/clients`, `/admin/messages`, and `/api/platform/*`.

@@ -21,18 +21,18 @@
 </svelte:head>
 
 <script lang="ts">
-import type { Snippet } from "svelte";
-import { page } from "$app/stores";
+import { enableVisualEditing } from "@sanity/visual-editing";
 import { injectAnalytics } from "@vercel/analytics/sveltekit";
+import type { Snippet } from "svelte";
 import { onMount } from "svelte";
+import { page } from "$app/stores";
 
 // Header gif for non-homepage routes
 import headerGif from "$lib/assets/ponyolovesham.gif";
-
-// Layout components
-import Nav from "$lib/components/Nav.svelte";
 import BottomNav from "$lib/components/BottomNav.svelte";
 import Footer from "$lib/components/Footer.svelte";
+// Layout components
+import Nav from "$lib/components/Nav.svelte";
 import ThemeSwitcher from "$lib/components/ThemeSwitcher.svelte";
 
 // Time-aware theming
@@ -40,19 +40,28 @@ import { timeTheme } from "$lib/stores/timeTheme.svelte";
 
 import "$lib/styles/global.css";
 
-let { children }: { children: Snippet } = $props();
+let { children, data }: { children: Snippet; data: { isPreview: boolean } } =
+	$props();
 
 // Vercel analytics
 injectAnalytics();
 
 // Keep time period in sync reactively
 $effect(() => {
-  // This runs whenever timeTheme.period changes
-  timeTheme.apply();
+	// This runs whenever timeTheme.period changes
+	timeTheme.apply();
 });
 
 onMount(() => {
-  return () => timeTheme.destroy();
+	// Enable Sanity Visual Editing overlay when in preview mode
+	if (data.isPreview) {
+		const disable = enableVisualEditing();
+		return () => {
+			disable();
+			timeTheme.destroy();
+		};
+	}
+	return () => timeTheme.destroy();
 });
 </script>
 
@@ -108,3 +117,4 @@ onMount(() => {
   <!-- Mobile bottom navigation (hidden on desktop) -->
   <BottomNav />
 </div>
+

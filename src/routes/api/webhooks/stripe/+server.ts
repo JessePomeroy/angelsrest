@@ -224,12 +224,14 @@ async function sendCustomerConfirmation({
 	const isDigital = (session as any).metadata?.isDigital === "true";
 	const productSlug = (session as any).metadata?.productSlug || "";
 
-	const digitalSection = isDigital ? `
+	const digitalSection = isDigital
+		? `
 DOWNLOAD YOUR PURCHASE
 https://www.angelsrest.online/checkout/success?session_id=${session.id}
 
 Your download link will remain active. Visit the link above anytime to re-download.
-` : `
+`
+		: `
 SHIPPING ADDRESS
 ${formatShippingAddress(shippingDetails)}
 
@@ -499,9 +501,16 @@ async function submitToLumaPrints(
 		}[] = [];
 
 		// Get paper info from Stripe metadata (passed during checkout)
-		const paperSubcategoryId = (session as any).metadata?.paperSubcategoryId || "";
-		const paperWidth = parseInt((session as any).metadata?.paperWidth || "8", 10);
-		const paperHeight = parseInt((session as any).metadata?.paperHeight || "10", 10);
+		const paperSubcategoryId =
+			(session as any).metadata?.paperSubcategoryId || "";
+		const paperWidth = parseInt(
+			(session as any).metadata?.paperWidth || "8",
+			10,
+		);
+		const paperHeight = parseInt(
+			(session as any).metadata?.paperHeight || "10",
+			10,
+		);
 
 		if (isPrintSet && imageUrls.length > 0) {
 			// Print set: create one LumaPrints item per image
@@ -525,10 +534,11 @@ async function submitToLumaPrints(
 			const rawImageUrl = (session as any).metadata?.imageUrl || "";
 			const imageUrl = rawImageUrl.split("?")[0].replace(/\.webp$/, ".jpg");
 
+			const item = lineItems[0];
 			lumaprintsItems.push({
-				externalItemId: item.id,
-				productName: item.description || "Print",
-				quantity: item.quantity || 1,
+				externalItemId: item?.id || "single-item",
+				productName: item?.description || "Print",
+				quantity: item?.quantity || 1,
 				subcategoryId: parseInt(paperSubcategoryId, 10),
 				width: paperWidth || 8,
 				height: paperHeight || 10,
