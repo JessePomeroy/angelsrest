@@ -1,5 +1,6 @@
 import { paginationOptsValidator } from "convex/server";
 import { v } from "convex/values";
+import { internal } from "./_generated/api";
 import { mutation, query } from "./_generated/server";
 
 export const listClients = query({
@@ -78,7 +79,7 @@ export const createClient = mutation({
 		siteUrl_client: v.optional(v.string()),
 	},
 	handler: async (ctx, args) => {
-		return await ctx.db.insert("photographyClients", {
+		const clientId = await ctx.db.insert("photographyClients", {
 			...args,
 			type:
 				(args.type as
@@ -94,6 +95,15 @@ export const createClient = mutation({
 					| undefined) || undefined,
 			status: "lead",
 		});
+
+		await ctx.runMutation(internal.activityLog.logActivity, {
+			siteUrl: args.siteUrl,
+			clientId,
+			action: "client_created",
+			description: `client "${args.name}" created`,
+		});
+
+		return clientId;
 	},
 });
 
@@ -112,8 +122,8 @@ export const updateClient = mutation({
 		siteUrl_client: v.optional(v.string()),
 	},
 	handler: async (ctx, { clientId, siteUrl, ...updates }) => {
-		const doc = await ctx.db.get(clientId);
-		if (!doc || doc.siteUrl !== siteUrl) {
+		const existing = await ctx.db.get(clientId);
+		if (!existing || existing.siteUrl !== siteUrl) {
 			throw new Error("Not found");
 		}
 		const patch: Record<string, unknown> = {};
@@ -122,6 +132,16 @@ export const updateClient = mutation({
 		}
 		if (Object.keys(patch).length > 0) {
 			await ctx.db.patch(clientId, patch);
+		}
+
+		// Log status changes
+		if (updates.status && updates.status !== existing.status) {
+			await ctx.runMutation(internal.activityLog.logActivity, {
+				siteUrl: existing.siteUrl,
+				clientId,
+				action: "status_changed",
+				description: `status changed to ${updates.status}`,
+			});
 		}
 	},
 });

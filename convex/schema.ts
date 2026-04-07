@@ -347,6 +347,34 @@ export default defineSchema({
 		.index("by_siteUrl", ["siteUrl"])
 		.index("by_documentId", ["documentId"]),
 
+	// Tags for categorizing clients
+	clientTags: defineTable({
+		siteUrl: v.string(),
+		name: v.string(),
+		color: v.optional(v.string()), // hex color for display
+	}).index("by_siteUrl", ["siteUrl"]),
+
+	// Many-to-many: which tags are on which clients
+	clientTagAssignments: defineTable({
+		siteUrl: v.string(),
+		clientId: v.id("photographyClients"),
+		tagId: v.id("clientTags"),
+	})
+		.index("by_siteUrl", ["siteUrl"])
+		.index("by_clientId", ["clientId"])
+		.index("by_tagId", ["tagId"]),
+
+	// Activity log for tracking interactions
+	activityLog: defineTable({
+		siteUrl: v.string(),
+		clientId: v.id("photographyClients"),
+		action: v.string(),
+		description: v.string(),
+		metadata: v.optional(v.string()),
+	})
+		.index("by_siteUrl", ["siteUrl"])
+		.index("by_clientId", ["clientId"]),
+
 	// Contact form inquiries (from public site visitors)
 	inquiries: defineTable({
 		siteUrl: v.string(),

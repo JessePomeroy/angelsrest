@@ -7,6 +7,7 @@ let { data } = $props();
 // Filter state
 let categoryFilter = $state("all");
 let statusFilter = $state("all");
+let tagFilter = $state("all");
 let searchQuery = $state("");
 
 // Modal state
@@ -15,6 +16,32 @@ let selectedClient = $state<any>(null);
 let editMode = $state(false);
 let confirmDelete = $state(false);
 let saving = $state(false);
+
+// Tag state
+let showTagManager = $state(false);
+let newTagName = $state("");
+let newTagColor = $state("#818cf8");
+let clientTags = $state<any[]>([]);
+let clientActivity = $state<any[]>([]);
+let loadingTags = $state(false);
+let loadingActivity = $state(false);
+let showTagPicker = $state(false);
+
+// Tag assignments cache: clientId -> tagId[]
+let tagAssignments = $state<Record<string, any[]>>({});
+
+const tagColors = [
+	"#818cf8",
+	"#f472b6",
+	"#34d399",
+	"#fbbf24",
+	"#fb923c",
+	"#a78bfa",
+	"#38bdf8",
+	"#f87171",
+	"#4ade80",
+	"#c084fc",
+];
 
 // Form state
 let formName = $state("");
@@ -43,6 +70,11 @@ let filteredClients = $derived(
 		if (categoryFilter !== "all" && client.category !== categoryFilter)
 			return false;
 		if (statusFilter !== "all" && client.status !== statusFilter) return false;
+		if (tagFilter !== "all") {
+			const assignments = tagAssignments[client._id];
+			if (!assignments || !assignments.some((t: any) => t._id === tagFilter))
+				return false;
+		}
 		if (searchQuery) {
 			const q = searchQuery.toLowerCase();
 			const matchName = client.name?.toLowerCase().includes(q);
@@ -74,16 +106,24 @@ function closeAddModal() {
 	showAddModal = false;
 }
 
-function openDetailModal(client: any) {
+async function openDetailModal(client: any) {
 	selectedClient = { ...client };
 	editMode = false;
 	confirmDelete = false;
+	showTagPicker = false;
+	await Promise.all([
+		loadClientTags(client._id),
+		loadClientActivity(client._id),
+	]);
 }
 
 function closeDetailModal() {
 	selectedClient = null;
 	editMode = false;
 	confirmDelete = false;
+	showTagPicker = false;
+	clientTags = [];
+	clientActivity = [];
 }
 
 function startEdit() {
@@ -102,6 +142,139 @@ function startEdit() {
 
 function cancelEdit() {
 	editMode = false;
+}
+
+async function loadClientTags(clientId: string) {
+	loadingTags = true;
+	try {
+		const res = await fetch(`/api/admin/crm/${clientId}/tags`);
+		if (res.ok) {
+			const result = await res.json();
+			clientTags = result.tags || [];
+			tagAssignments[clientId] = clientTags;
+			tagAssignments = { ...tagAssignments };
+		}
+	} catch (err) {
+		console.error("Failed to load client tags:", err);
+	} finally {
+		loadingTags = false;
+	}
+}
+
+async function loadClientActivity(clientId: string) {
+	loadingActivity = true;
+	try {
+		const res = await fetch(`/api/admin/crm/${clientId}/activity`);
+		if (res.ok) {
+			const result = await res.json();
+			clientActivity = result.activity || [];
+		}
+	} catch (err) {
+		console.error("Failed to load client activity:", err);
+	} finally {
+		loadingActivity = false;
+	}
+}
+
+// Load tags for all clients on mount
+async function loadAllClientTags() {
+	for (const client of data.clients) {
+		try {
+			const res = await fetch(`/api/admin/crm/${client._id}/tags`);
+			if (res.ok) {
+				const result = await res.json();
+				tagAssignments[client._id] = result.tags || [];
+			}
+		} catch {
+			// Ignore individual failures
+		}
+	}
+	tagAssignments = { ...tagAssignments };
+}
+
+$effect(() => {
+	if (data.clients.length > 0) {
+		loadAllClientTags();
+	}
+});
+
+async function assignTagToClient(tagId: string) {
+	if (!selectedClient) return;
+	try {
+		const res = await fetch(`/api/admin/tags/${tagId}`, {
+			method: "POST",
+			headers: { "Content-Type": "application/json" },
+			body: JSON.stringify({ clientId: selectedClient._id }),
+		});
+		if (res.ok) {
+			await loadClientTags(selectedClient._id);
+			await loadClientActivity(selectedClient._id);
+		}
+	} catch (err) {
+		console.error("Failed to assign tag:", err);
+	}
+}
+
+async function removeTagFromClient(tagId: string) {
+	if (!selectedClient) return;
+	try {
+		const res = await fetch(`/api/admin/tags/${tagId}/remove`, {
+			method: "POST",
+			headers: { "Content-Type": "application/json" },
+			body: JSON.stringify({ clientId: selectedClient._id }),
+		});
+		if (res.ok) {
+			await loadClientTags(selectedClient._id);
+			await loadClientActivity(selectedClient._id);
+		}
+	} catch (err) {
+		console.error("Failed to remove tag:", err);
+	}
+}
+
+async function createTag() {
+	if (!newTagName) return;
+	saving = true;
+	try {
+		const res = await fetch("/api/admin/tags", {
+			method: "POST",
+			headers: { "Content-Type": "application/json" },
+			body: JSON.stringify({ name: newTagName, color: newTagColor }),
+		});
+		if (res.ok) {
+			const result = await res.json();
+			data.tags = [
+				...data.tags,
+				{ _id: result.id, name: newTagName, color: newTagColor },
+			];
+			newTagName = "";
+			newTagColor = "#818cf8";
+		}
+	} catch (err) {
+		console.error("Failed to create tag:", err);
+	} finally {
+		saving = false;
+	}
+}
+
+async function deleteTag(tagId: string) {
+	try {
+		const res = await fetch(`/api/admin/tags/${tagId}`, {
+			method: "DELETE",
+		});
+		if (res.ok) {
+			data.tags = data.tags.filter((t: any) => t._id !== tagId);
+			// Remove from local assignments cache
+			for (const clientId of Object.keys(tagAssignments)) {
+				tagAssignments[clientId] = tagAssignments[clientId].filter(
+					(t: any) => t._id !== tagId,
+				);
+			}
+			tagAssignments = { ...tagAssignments };
+		}
+	} catch (err) {
+		console.error("Failed to delete tag:", err);
+	}
 }
 
 async function saveNewClient() {
@@ -169,6 +342,7 @@ async function saveEdit() {
 			}
 			selectedClient = { ...selectedClient, ...body };
 			editMode = false;
+			await loadClientActivity(selectedClient._id);
 		}
 	} catch (err) {
 		console.error("Failed to update client:", err);
@@ -212,6 +386,7 @@ async function quickStatusUpdate(clientId: string, newStatus: string) {
 			}
 			if (selectedClient?._id === clientId) {
 				selectedClient = { ...selectedClient, status: newStatus };
+				await loadClientActivity(clientId);
 			}
 		}
 	} catch (err) {
@@ -253,6 +428,40 @@ function getCategoryColor(category: string): string {
 	return category === "photography"
 		? "var(--status-peach)"
 		: "var(--status-lavender)";
+}
+
+function relativeTime(timestamp: number): string {
+	const now = Date.now();
+	const diff = now - timestamp;
+	const minutes = Math.floor(diff / 60000);
+	const hours = Math.floor(diff / 3600000);
+	const days = Math.floor(diff / 86400000);
+
+	if (minutes < 1) return "just now";
+	if (minutes < 60) return `${minutes}m ago`;
+	if (hours < 24) return `${hours}h ago`;
+	if (days < 30) return `${days}d ago`;
+	return formatDate(timestamp);
+}
+
+function getActivityIcon(action: string): string {
+	const icons: Record<string, string> = {
+		client_created: "\u2022",
+		status_changed: "\u25CB",
+		invoice_created: "\u25A1",
+		invoice_sent: "\u25B7",
+		invoice_paid: "\u2713",
+		quote_created: "\u25A1",
+		quote_sent: "\u25B7",
+		quote_accepted: "\u2713",
+		contract_created: "\u25A1",
+		contract_sent: "\u25B7",
+		contract_signed: "\u2713",
+		tag_added: "+",
+		tag_removed: "\u2212",
+		note_added: "\u266A",
+	};
+	return icons[action] || "\u2022";
 }
 </script>
 
@@ -300,12 +509,25 @@ function getCategoryColor(category: string): string {
 				<option value={s}>{formatStatus(s)}</option>
 			{/each}
 		</select>
+		{#if data.tags.length > 0}
+			<select class="filter-select" bind:value={tagFilter}>
+				<option value="all">all tags</option>
+				{#each data.tags as tag (tag._id)}
+					<option value={tag._id}>
+						{tag.name}
+					</option>
+				{/each}
+			</select>
+		{/if}
 		<input
 			class="filter-search"
 			type="text"
 			placeholder="search by name or email..."
 			bind:value={searchQuery}
 		/>
+		<button class="btn-manage-tags" onclick={() => { showTagManager = true; }}>
+			manage tags
+		</button>
 	</div>
 
 	<!-- Client table -->
@@ -334,7 +556,18 @@ function getCategoryColor(category: string): string {
 							onclick={() => openDetailModal(client)}
 							onkeydown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); openDetailModal(client); } }}
 						>
-							<td class="td-name">{client.name}</td>
+							<td class="td-name">
+								<span class="name-with-tags">
+									{client.name}
+									{#if tagAssignments[client._id]?.length}
+										<span class="tag-dots">
+											{#each tagAssignments[client._id] as tag (tag._id)}
+												<span class="tag-dot-inline" style="background: {tag.color || '#818cf8'}" title={tag.name}></span>
+											{/each}
+										</span>
+									{/if}
+								</span>
+							</td>
 							<td class="td-email">{client.email || "\u2014"}</td>
 							<td>
 								<span class="category-indicator" style="color: {getCategoryColor(client.category)}">
@@ -435,7 +668,7 @@ function getCategoryColor(category: string): string {
 <!-- Detail / Edit Modal -->
 {#if selectedClient}
 	<div class="modal-overlay" role="dialog" tabindex="-1" aria-modal="true" aria-label="Client details" onclick={closeDetailModal} onkeydown={(e) => { if (e.key === "Escape") closeDetailModal(); }}>
-		<div class="modal-content" role="presentation" onclick={(e) => e.stopPropagation()} onkeydown={(e) => e.stopPropagation()}>
+		<div class="modal-content modal-content-wide" role="presentation" onclick={(e) => e.stopPropagation()} onkeydown={(e) => e.stopPropagation()}>
 			<div class="modal-header">
 				<h2 class="modal-title">{editMode ? "edit client" : selectedClient.name}</h2>
 				<button class="modal-close" aria-label="Close" onclick={closeDetailModal}>
@@ -528,6 +761,45 @@ function getCategoryColor(category: string): string {
 						{/if}
 					</div>
 
+					<!-- Tags section -->
+					<div class="detail-tags-section">
+						<div class="detail-tags-header">
+							<span class="detail-label">tags</span>
+							<button class="btn-tag-toggle" onclick={() => { showTagPicker = !showTagPicker; }}>
+								{showTagPicker ? "done" : "+ add"}
+							</button>
+						</div>
+						{#if loadingTags}
+							<span class="loading-text">loading...</span>
+						{:else}
+							<div class="detail-tags-list">
+								{#each clientTags as tag (tag._id)}
+									<span class="detail-tag">
+										<span class="tag-dot-inline" style="background: {tag.color || '#818cf8'}"></span>
+										{tag.name}
+										<button class="tag-remove-btn" onclick={() => removeTagFromClient(tag._id)} aria-label="Remove tag {tag.name}">&times;</button>
+									</span>
+								{/each}
+								{#if clientTags.length === 0 && !showTagPicker}
+									<span class="no-tags-text">no tags</span>
+								{/if}
+							</div>
+							{#if showTagPicker}
+								<div class="tag-picker">
+									{#each data.tags.filter((t: any) => !clientTags.some((ct: any) => ct._id === t._id)) as tag (tag._id)}
+										<button class="tag-picker-item" onclick={() => assignTagToClient(tag._id)}>
+											<span class="tag-dot-inline" style="background: {tag.color || '#818cf8'}"></span>
+											{tag.name}
+										</button>
+									{/each}
+									{#if data.tags.filter((t: any) => !clientTags.some((ct: any) => ct._id === t._id)).length === 0}
+										<span class="no-tags-text">all tags assigned</span>
+									{/if}
+								</div>
+							{/if}
+						{/if}
+					</div>
+
 					<div class="detail-fields">
 						{#if selectedClient.email}
 							<div class="detail-field">
@@ -581,6 +853,26 @@ function getCategoryColor(category: string): string {
 						</div>
 					</div>
 
+					<!-- Activity timeline -->
+					<div class="activity-section">
+						<span class="detail-label">activity</span>
+						{#if loadingActivity}
+							<span class="loading-text">loading...</span>
+						{:else if clientActivity.length === 0}
+							<span class="no-activity-text">no activity yet</span>
+						{:else}
+							<div class="activity-list">
+								{#each clientActivity as entry (entry._id)}
+									<div class="activity-entry">
+										<span class="activity-icon">{getActivityIcon(entry.action)}</span>
+										<span class="activity-desc">{entry.description}</span>
+										<span class="activity-time">{relativeTime(entry._creationTime)}</span>
+									</div>
+								{/each}
+							</div>
+						{/if}
+					</div>
+
 					<div class="modal-actions detail-actions">
 						{#if confirmDelete}
 							<span class="confirm-text">delete this client?</span>
@@ -595,6 +887,62 @@ function getCategoryColor(category: string): string {
 					</div>
 				</div>
 			{/if}
+		</div>
+	</div>
+{/if}
+
+<!-- Tag Manager Modal -->
+{#if showTagManager}
+	<div class="modal-overlay" role="dialog" tabindex="-1" aria-modal="true" aria-label="Manage tags" onclick={() => { showTagManager = false; }} onkeydown={(e) => { if (e.key === "Escape") showTagManager = false; }}>
+		<div class="modal-content modal-content-narrow" role="presentation" onclick={(e) => e.stopPropagation()} onkeydown={(e) => e.stopPropagation()}>
+			<div class="modal-header">
+				<h2 class="modal-title">manage tags</h2>
+				<button class="modal-close" aria-label="Close" onclick={() => { showTagManager = false; }}>
+					<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" /></svg>
+				</button>
+			</div>
+
+			<div class="tag-manager-body">
+				<form class="tag-create-form" onsubmit={(e) => { e.preventDefault(); createTag(); }}>
+					<input
+						class="form-input tag-name-input"
+						type="text"
+						placeholder="new tag name..."
+						bind:value={newTagName}
+					/>
+					<div class="tag-color-picker">
+						{#each tagColors as color}
+							<button
+								type="button"
+								class="color-swatch"
+								class:selected={newTagColor === color}
+								style="background: {color}"
+								onclick={() => { newTagColor = color; }}
+								aria-label="Select color {color}"
+							></button>
+						{/each}
+					</div>
+					<button type="submit" class="btn-save" disabled={saving || !newTagName}>
+						{saving ? "creating..." : "create tag"}
+					</button>
+				</form>
+
+				{#if data.tags.length > 0}
+					<div class="tag-list">
+						{#each data.tags as tag (tag._id)}
+							<div class="tag-list-item">
+								<span class="tag-dot-inline" style="background: {tag.color || '#818cf8'}"></span>
+								<span class="tag-list-name">{tag.name}</span>
+								<button class="tag-delete-btn" onclick={() => deleteTag(tag._id)} aria-label="Delete tag {tag.name}">
+									<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" /></svg>
+								</button>
+							</div>
+						{/each}
+					</div>
+				{:else}
+					<div class="no-tags-text">no tags created yet</div>
+				{/if}
+			</div>
 		</div>
 	</div>
 {/if}
@@ -666,6 +1014,7 @@ function getCategoryColor(category: string): string {
 		gap: 10px;
 		margin-bottom: 24px;
 		flex-wrap: wrap;
+		align-items: center;
 	}
 
 	.filter-select,
@@ -689,6 +1038,24 @@ function getCategoryColor(category: string): string {
 	.filter-search {
 		flex: 1;
 		min-width: 180px;
+	}
+
+	.btn-manage-tags {
+		padding: 7px 12px;
+		background: transparent;
+		color: var(--admin-text-muted);
+		border: 1px solid var(--admin-border);
+		border-radius: 6px;
+		font-size: 0.78rem;
+		font-family: "Synonym", system-ui, sans-serif;
+		cursor: pointer;
+		transition: color 0.15s, border-color 0.15s;
+		white-space: nowrap;
+	}
+
+	.btn-manage-tags:hover {
+		color: var(--admin-text);
+		border-color: var(--admin-border-strong);
 	}
 
 	/* Table */
@@ -732,6 +1099,26 @@ function getCategoryColor(category: string): string {
 	.td-name {
 		font-weight: 500;
 		color: var(--admin-heading);
+	}
+
+	.name-with-tags {
+		display: inline-flex;
+		align-items: center;
+		gap: 8px;
+	}
+
+	.tag-dots {
+		display: inline-flex;
+		gap: 3px;
+		align-items: center;
+	}
+
+	.tag-dot-inline {
+		display: inline-block;
+		width: 8px;
+		height: 8px;
+		border-radius: 50%;
+		flex-shrink: 0;
 	}
 
 	.td-email {
@@ -799,6 +1186,14 @@ function getCategoryColor(category: string): string {
 		max-height: 90vh;
 		overflow-y: auto;
 		box-shadow: 0 24px 80px rgba(0, 0, 0, 0.5);
+	}
+
+	.modal-content-wide {
+		max-width: 600px;
+	}
+
+	.modal-content-narrow {
+		max-width: 420px;
 	}
 
 	.modal-header {
@@ -973,11 +1368,103 @@ function getCategoryColor(category: string): string {
 		color: var(--admin-text-muted);
 	}
 
+	/* Tags in detail */
+	.detail-tags-section {
+		display: flex;
+		flex-direction: column;
+		gap: 8px;
+	}
+
+	.detail-tags-header {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+	}
+
+	.btn-tag-toggle {
+		background: none;
+		border: none;
+		color: var(--admin-accent);
+		font-size: 0.76rem;
+		font-family: "Synonym", system-ui, sans-serif;
+		cursor: pointer;
+		padding: 2px 6px;
+		border-radius: 4px;
+		transition: background 0.15s;
+	}
+
+	.btn-tag-toggle:hover {
+		background: rgba(129, 140, 248, 0.1);
+	}
+
+	.detail-tags-list {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 6px;
+		align-items: center;
+	}
+
+	.detail-tag {
+		display: inline-flex;
+		align-items: center;
+		gap: 5px;
+		font-size: 0.78rem;
+		color: var(--admin-text);
+	}
+
+	.tag-remove-btn {
+		background: none;
+		border: none;
+		color: var(--admin-text-subtle);
+		cursor: pointer;
+		font-size: 0.85rem;
+		padding: 0 2px;
+		line-height: 1;
+		transition: color 0.15s;
+	}
+
+	.tag-remove-btn:hover {
+		color: var(--status-rose);
+	}
+
+	.no-tags-text,
+	.loading-text {
+		font-size: 0.76rem;
+		color: var(--admin-text-subtle);
+	}
+
+	.tag-picker {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 4px;
+		padding-top: 4px;
+		border-top: 1px solid var(--admin-border);
+	}
+
+	.tag-picker-item {
+		display: inline-flex;
+		align-items: center;
+		gap: 5px;
+		padding: 3px 8px;
+		background: rgba(255, 255, 255, 0.03);
+		border: 1px solid var(--admin-border);
+		border-radius: 4px;
+		color: var(--admin-text-muted);
+		font-size: 0.76rem;
+		font-family: "Synonym", system-ui, sans-serif;
+		cursor: pointer;
+		transition: border-color 0.15s, color 0.15s;
+	}
+
+	.tag-picker-item:hover {
+		border-color: var(--admin-border-strong);
+		color: var(--admin-text);
+	}
+
 	.detail-fields {
 		display: flex;
 		flex-direction: column;
 		gap: 12px;
-		padding-top: 4px;
 		border-top: 1px solid var(--admin-border);
 		padding-top: 16px;
 	}
@@ -1049,6 +1536,59 @@ function getCategoryColor(category: string): string {
 		background: rgba(255, 255, 255, 0.05);
 	}
 
+	/* Activity timeline */
+	.activity-section {
+		display: flex;
+		flex-direction: column;
+		gap: 8px;
+		border-top: 1px solid var(--admin-border);
+		padding-top: 16px;
+	}
+
+	.no-activity-text {
+		font-size: 0.76rem;
+		color: var(--admin-text-subtle);
+	}
+
+	.activity-list {
+		display: flex;
+		flex-direction: column;
+		gap: 0;
+	}
+
+	.activity-entry {
+		display: flex;
+		align-items: baseline;
+		gap: 8px;
+		padding: 8px 0;
+		border-bottom: 1px solid var(--admin-border);
+		font-size: 0.8rem;
+	}
+
+	.activity-entry:last-child {
+		border-bottom: none;
+	}
+
+	.activity-icon {
+		color: var(--admin-text-subtle);
+		font-size: 0.85rem;
+		flex-shrink: 0;
+		width: 14px;
+		text-align: center;
+	}
+
+	.activity-desc {
+		color: var(--admin-text-muted);
+		flex: 1;
+	}
+
+	.activity-time {
+		color: var(--admin-text-subtle);
+		font-size: 0.72rem;
+		white-space: nowrap;
+		flex-shrink: 0;
+	}
+
 	.detail-actions {
 		border-top: 1px solid var(--admin-border);
 		padding-top: 16px;
@@ -1059,6 +1599,85 @@ function getCategoryColor(category: string): string {
 		color: var(--status-rose);
 		margin-right: auto;
 		align-self: center;
+	}
+
+	/* Tag Manager */
+	.tag-manager-body {
+		padding: 0 28px 28px;
+		display: flex;
+		flex-direction: column;
+		gap: 20px;
+	}
+
+	.tag-create-form {
+		display: flex;
+		flex-direction: column;
+		gap: 10px;
+	}
+
+	.tag-name-input {
+		width: 100%;
+	}
+
+	.tag-color-picker {
+		display: flex;
+		gap: 6px;
+		flex-wrap: wrap;
+	}
+
+	.color-swatch {
+		width: 22px;
+		height: 22px;
+		border-radius: 50%;
+		border: 2px solid transparent;
+		cursor: pointer;
+		transition: border-color 0.15s, transform 0.15s;
+	}
+
+	.color-swatch:hover {
+		transform: scale(1.15);
+	}
+
+	.color-swatch.selected {
+		border-color: var(--admin-heading);
+	}
+
+	.tag-list {
+		display: flex;
+		flex-direction: column;
+		gap: 0;
+	}
+
+	.tag-list-item {
+		display: flex;
+		align-items: center;
+		gap: 8px;
+		padding: 10px 0;
+		border-bottom: 1px solid var(--admin-border);
+	}
+
+	.tag-list-item:last-child {
+		border-bottom: none;
+	}
+
+	.tag-list-name {
+		flex: 1;
+		font-size: 0.85rem;
+		color: var(--admin-text);
+	}
+
+	.tag-delete-btn {
+		background: none;
+		border: none;
+		color: var(--admin-text-subtle);
+		cursor: pointer;
+		padding: 4px;
+		border-radius: 4px;
+		transition: color 0.15s;
+	}
+
+	.tag-delete-btn:hover {
+		color: var(--status-rose);
 	}
 
 	/* Responsive */
@@ -1118,6 +1737,10 @@ function getCategoryColor(category: string): string {
 		}
 
 		.detail-body {
+			padding: 0 20px 20px;
+		}
+
+		.tag-manager-body {
 			padding: 0 20px 20px;
 		}
 	}

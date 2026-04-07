@@ -1,4 +1,5 @@
 import { v } from "convex/values";
+import { internal } from "./_generated/api";
 import { mutation, query } from "./_generated/server";
 
 export const list = query({
@@ -52,11 +53,20 @@ export const create = mutation({
 	},
 	handler: async (ctx, args) => {
 		const client = await ctx.db.get(args.clientId);
-		return await ctx.db.insert("contracts", {
+		const contractId = await ctx.db.insert("contracts", {
 			...args,
 			clientName: client?.name ?? "unknown",
 			status: "draft",
 		});
+
+		await ctx.runMutation(internal.activityLog.logActivity, {
+			siteUrl: args.siteUrl,
+			clientId: args.clientId,
+			action: "contract_created",
+			description: `contract "${args.title}" created`,
+		});
+
+		return contractId;
 	},
 });
 
@@ -90,22 +100,36 @@ export const update = mutation({
 export const markSent = mutation({
 	args: { contractId: v.id("contracts"), siteUrl: v.string() },
 	handler: async (ctx, { contractId, siteUrl }) => {
-		const doc = await ctx.db.get(contractId);
-		if (!doc || doc.siteUrl !== siteUrl) {
+		const contract = await ctx.db.get(contractId);
+		if (!contract || contract.siteUrl !== siteUrl) {
 			throw new Error("Not found");
 		}
 		await ctx.db.patch(contractId, { status: "sent", sentAt: Date.now() });
+
+		await ctx.runMutation(internal.activityLog.logActivity, {
+			siteUrl: contract.siteUrl,
+			clientId: contract.clientId,
+			action: "contract_sent",
+			description: `contract "${contract.title}" sent`,
+		});
 	},
 });
 
 export const markSigned = mutation({
 	args: { contractId: v.id("contracts"), siteUrl: v.string() },
 	handler: async (ctx, { contractId, siteUrl }) => {
-		const doc = await ctx.db.get(contractId);
-		if (!doc || doc.siteUrl !== siteUrl) {
+		const contract = await ctx.db.get(contractId);
+		if (!contract || contract.siteUrl !== siteUrl) {
 			throw new Error("Not found");
 		}
 		await ctx.db.patch(contractId, { status: "signed", signedAt: Date.now() });
+
+		await ctx.runMutation(internal.activityLog.logActivity, {
+			siteUrl: contract.siteUrl,
+			clientId: contract.clientId,
+			action: "contract_signed",
+			description: `contract "${contract.title}" signed`,
+		});
 	},
 });
 

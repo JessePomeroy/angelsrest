@@ -1,4 +1,5 @@
 import { v } from "convex/values";
+import { internal } from "./_generated/api";
 import { mutation, query } from "./_generated/server";
 
 export const list = query({
@@ -56,11 +57,20 @@ export const create = mutation({
 	},
 	handler: async (ctx, args) => {
 		const client = await ctx.db.get(args.clientId);
-		return await ctx.db.insert("quotes", {
+		const quoteId = await ctx.db.insert("quotes", {
 			...args,
 			clientName: client?.name ?? "unknown",
 			status: "draft",
 		});
+
+		await ctx.runMutation(internal.activityLog.logActivity, {
+			siteUrl: args.siteUrl,
+			clientId: args.clientId,
+			action: "quote_created",
+			description: `quote ${args.quoteNumber} created`,
+		});
+
+		return quoteId;
 	},
 });
 
@@ -100,22 +110,36 @@ export const update = mutation({
 export const markSent = mutation({
 	args: { quoteId: v.id("quotes"), siteUrl: v.string() },
 	handler: async (ctx, { quoteId, siteUrl }) => {
-		const doc = await ctx.db.get(quoteId);
-		if (!doc || doc.siteUrl !== siteUrl) {
+		const quote = await ctx.db.get(quoteId);
+		if (!quote || quote.siteUrl !== siteUrl) {
 			throw new Error("Not found");
 		}
 		await ctx.db.patch(quoteId, { status: "sent", sentAt: Date.now() });
+
+		await ctx.runMutation(internal.activityLog.logActivity, {
+			siteUrl: quote.siteUrl,
+			clientId: quote.clientId,
+			action: "quote_sent",
+			description: `quote ${quote.quoteNumber} sent`,
+		});
 	},
 });
 
 export const markAccepted = mutation({
 	args: { quoteId: v.id("quotes"), siteUrl: v.string() },
 	handler: async (ctx, { quoteId, siteUrl }) => {
-		const doc = await ctx.db.get(quoteId);
-		if (!doc || doc.siteUrl !== siteUrl) {
+		const quote = await ctx.db.get(quoteId);
+		if (!quote || quote.siteUrl !== siteUrl) {
 			throw new Error("Not found");
 		}
 		await ctx.db.patch(quoteId, { status: "accepted", acceptedAt: Date.now() });
+
+		await ctx.runMutation(internal.activityLog.logActivity, {
+			siteUrl: quote.siteUrl,
+			clientId: quote.clientId,
+			action: "quote_accepted",
+			description: `quote ${quote.quoteNumber} accepted`,
+		});
 	},
 });
 
