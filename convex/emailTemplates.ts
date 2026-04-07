@@ -18,6 +18,22 @@ export const get = query({
 	},
 });
 
+export const getByCategory = query({
+	args: {
+		siteUrl: v.string(),
+		category: v.string(),
+	},
+	handler: async (ctx, { siteUrl, category }) => {
+		return await ctx.db
+			.query("emailTemplates")
+			.withIndex("by_siteUrl_category", (q) =>
+				q.eq("siteUrl", siteUrl).eq("category", category as any),
+			)
+			.take(1)
+			.then((results) => results[0] ?? null);
+	},
+});
+
 export const create = mutation({
 	args: {
 		siteUrl: v.string(),
