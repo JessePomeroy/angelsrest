@@ -1,10 +1,9 @@
 import { json } from "@sveltejs/kit";
-import { ConvexHttpClient } from "convex/browser";
-import { env as publicEnv } from "$env/dynamic/public";
-import { api } from "../../../../../convex/_generated/api";
+import { api } from "$convex/api";
+import { getConvex } from "$lib/server/convexClient";
 import type { RequestHandler } from "./$types";
 
-const convex = new ConvexHttpClient(publicEnv.PUBLIC_CONVEX_URL || "");
+const convex = getConvex();
 
 export const GET: RequestHandler = async ({ url }) => {
 	const siteUrl = url.searchParams.get("siteUrl");

@@ -1,10 +1,10 @@
 import { error, json } from "@sveltejs/kit";
-import { ConvexHttpClient } from "convex/browser";
-import { env as publicEnv } from "$env/dynamic/public";
-import { api } from "../../../../../convex/_generated/api";
-import type { Id } from "../../../../../convex/_generated/dataModel";
+import { api } from "$convex/api";
+import type { Id } from "$convex/dataModel";
+import { SITE_DOMAIN } from "$lib/config/site";
+import { getConvex } from "$lib/server/convexClient";
 
-const convex = new ConvexHttpClient(publicEnv.PUBLIC_CONVEX_URL || "");
+const convex = getConvex();
 
 export async function POST({ request }) {
 	const data = await request.json();
@@ -13,7 +13,7 @@ export async function POST({ request }) {
 		if (data._type === "template") {
 			const variables = data.variables?.length ? data.variables : undefined;
 			const id = await convex.mutation(api.contracts.createTemplate, {
-				siteUrl: "angelsrest.online",
+				siteUrl: SITE_DOMAIN,
 				name: data.name,
 				body: data.body,
 				variables,
@@ -26,7 +26,7 @@ export async function POST({ request }) {
 		}
 
 		const args: Record<string, unknown> = {
-			siteUrl: "angelsrest.online",
+			siteUrl: SITE_DOMAIN,
 			title: data.title,
 			clientId: data.clientId as Id<"photographyClients">,
 			body: data.body,

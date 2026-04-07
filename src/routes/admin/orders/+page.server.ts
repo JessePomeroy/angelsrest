@@ -1,12 +1,12 @@
-import { ConvexHttpClient } from "convex/browser";
-import { env as publicEnv } from "$env/dynamic/public";
-import { api } from "../../../../convex/_generated/api";
+import { api } from "$convex/api";
+import { SITE_DOMAIN } from "$lib/config/site";
+import { getConvex } from "$lib/server/convexClient";
 
-const convex = new ConvexHttpClient(publicEnv.PUBLIC_CONVEX_URL || "");
+const convex = getConvex();
 
 export async function load() {
 	const rawOrders = await convex.query(api.orders.list, {
-		siteUrl: "angelsrest.online",
+		siteUrl: SITE_DOMAIN,
 	});
 
 	// Map Convex format to match what the orders page expects

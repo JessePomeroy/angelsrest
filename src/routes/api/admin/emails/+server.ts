@@ -1,9 +1,9 @@
 import { error, json } from "@sveltejs/kit";
-import { ConvexHttpClient } from "convex/browser";
-import { env as publicEnv } from "$env/dynamic/public";
-import { api } from "../../../../../convex/_generated/api";
+import { api } from "$convex/api";
+import { SITE_DOMAIN } from "$lib/config/site";
+import { getConvex } from "$lib/server/convexClient";
 
-const convex = new ConvexHttpClient(publicEnv.PUBLIC_CONVEX_URL || "");
+const convex = getConvex();
 
 export async function POST({ request }) {
 	const data = await request.json();
@@ -16,7 +16,7 @@ export async function POST({ request }) {
 		const variables = data.variables?.length ? data.variables : undefined;
 
 		const id = await convex.mutation(api.emailTemplates.create, {
-			siteUrl: "angelsrest.online",
+			siteUrl: SITE_DOMAIN,
 			name: data.name,
 			category: data.category,
 			subject: data.subject,

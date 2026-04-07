@@ -21,19 +21,19 @@
  */
 
 import { error, json } from "@sveltejs/kit";
-import { ConvexHttpClient } from "convex/browser";
 import { Resend } from "resend";
 import Stripe from "stripe";
-import { env as publicEnv } from "$env/dynamic/public";
+import { api } from "$convex/api";
 import {
 	RESEND_API_KEY,
 	STRIPE_SECRET_KEY,
 	STRIPE_WEBHOOK_SECRET,
 } from "$env/static/private";
+import { SITE_DOMAIN } from "$lib/config/site";
 import { createOrder as createLumaPrintsOrder } from "$lib/lumaprints/client";
-import { api } from "../../../../../convex/_generated/api";
+import { getConvex } from "$lib/server/convexClient";
 
-const convex = new ConvexHttpClient(publicEnv.PUBLIC_CONVEX_URL || "");
+const convex = getConvex();
 
 const stripe = new Stripe(STRIPE_SECRET_KEY);
 const resend = new Resend(RESEND_API_KEY);
@@ -347,7 +347,7 @@ async function createOrderInConvex({
 	try {
 		// Get next order number from Convex
 		const orderNumber = await convex.query(api.orders.getNextOrderNumber, {
-			siteUrl: "angelsrest.online",
+			siteUrl: SITE_DOMAIN,
 		});
 
 		// Extract payment intent ID (could be string or expanded object)
@@ -369,7 +369,7 @@ async function createOrderInConvex({
 
 		// Create order in Convex
 		const orderId = await convex.mutation(api.orders.create, {
-			siteUrl: "angelsrest.online",
+			siteUrl: SITE_DOMAIN,
 			orderNumber,
 			stripeSessionId: session.id,
 			customerEmail: session.customer_details?.email || "",

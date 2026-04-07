@@ -1,10 +1,10 @@
 import { error, json } from "@sveltejs/kit";
-import { ConvexHttpClient } from "convex/browser";
-import { env as publicEnv } from "$env/dynamic/public";
-import { api } from "../../../../../convex/_generated/api";
-import type { Id } from "../../../../../convex/_generated/dataModel";
+import { api } from "$convex/api";
+import type { Id } from "$convex/dataModel";
+import { SITE_DOMAIN } from "$lib/config/site";
+import { getConvex } from "$lib/server/convexClient";
 
-const convex = new ConvexHttpClient(publicEnv.PUBLIC_CONVEX_URL || "");
+const convex = getConvex();
 
 export async function POST({ request }) {
 	const data = await request.json();
@@ -15,7 +15,7 @@ export async function POST({ request }) {
 
 	try {
 		const args: Record<string, unknown> = {
-			siteUrl: "angelsrest.online",
+			siteUrl: SITE_DOMAIN,
 			invoiceNumber: data.invoiceNumber,
 			clientId: data.clientId as Id<"photographyClients">,
 			invoiceType: data.invoiceType || "one-time",

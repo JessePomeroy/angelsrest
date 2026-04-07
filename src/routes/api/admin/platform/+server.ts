@@ -1,9 +1,8 @@
 import { error, json } from "@sveltejs/kit";
-import { ConvexHttpClient } from "convex/browser";
-import { env as publicEnv } from "$env/dynamic/public";
-import { api } from "../../../../../convex/_generated/api";
+import { api } from "$convex/api";
+import { getConvex } from "$lib/server/convexClient";
 
-const convex = new ConvexHttpClient(publicEnv.PUBLIC_CONVEX_URL || "");
+const convex = getConvex();
 
 export async function POST({ request }) {
 	const data = await request.json();

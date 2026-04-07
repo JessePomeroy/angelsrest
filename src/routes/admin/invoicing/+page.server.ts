@@ -1,15 +1,15 @@
-import { ConvexHttpClient } from "convex/browser";
-import { env as publicEnv } from "$env/dynamic/public";
-import { api } from "../../../../convex/_generated/api";
+import { api } from "$convex/api";
+import { SITE_DOMAIN } from "$lib/config/site";
+import { getConvex } from "$lib/server/convexClient";
 
-const convex = new ConvexHttpClient(publicEnv.PUBLIC_CONVEX_URL || "");
+const convex = getConvex();
 
 export async function load() {
 	const [invoices, clients, nextNumber] = await Promise.all([
-		convex.query(api.invoices.list, { siteUrl: "angelsrest.online" }),
-		convex.query(api.crm.listClients, { siteUrl: "angelsrest.online" }),
+		convex.query(api.invoices.list, { siteUrl: SITE_DOMAIN }),
+		convex.query(api.crm.listClients, { siteUrl: SITE_DOMAIN }),
 		convex.query(api.invoices.getNextNumber, {
-			siteUrl: "angelsrest.online",
+			siteUrl: SITE_DOMAIN,
 		}),
 	]);
 	return { invoices, clients, nextNumber };
