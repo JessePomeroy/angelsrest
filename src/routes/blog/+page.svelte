@@ -9,10 +9,10 @@
 
 <script lang="ts">
 // SEO component for meta tags (title, description, etc.)
-import SEO from "$lib/components/SEO.svelte";
 
 // Our custom BlogCard component for displaying post previews
 import BlogCard from "$lib/components/BlogCard.svelte";
+import SEO from "$lib/components/SEO.svelte";
 
 /**
  * $props() is Svelte 5's way to receive props.

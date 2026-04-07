@@ -1,19 +1,19 @@
-import { json } from '@sveltejs/kit';
-import { client } from '$lib/sanity/client';
+import { json } from "@sveltejs/kit";
+import { client } from "$lib/sanity/client";
 
 /**
  * Order lookup API
- * 
+ *
  * GET /api/orders/lookup?email=...&order=...
  * Returns order details if email and order number match
  */
 
 export async function GET({ url }) {
-	const email = url.searchParams.get('email');
-	const orderNumber = url.searchParams.get('order');
+	const email = url.searchParams.get("email");
+	const orderNumber = url.searchParams.get("order");
 
 	if (!email || !orderNumber) {
-		return json({ error: 'Email and order number required' }, { status: 400 });
+		return json({ error: "Email and order number required" }, { status: 400 });
 	}
 
 	try {
@@ -41,12 +41,12 @@ export async function GET({ url }) {
 		const order = await client.fetch(query, { email, orderNumber });
 
 		if (!order) {
-			return json({ error: 'Order not found' }, { status: 404 });
+			return json({ error: "Order not found" }, { status: 404 });
 		}
 
 		return json({ order });
 	} catch (err) {
-		console.error('Order lookup error:', err);
-		return json({ error: 'Failed to look up order' }, { status: 500 });
+		console.error("Order lookup error:", err);
+		return json({ error: "Failed to look up order" }, { status: 500 });
 	}
 }

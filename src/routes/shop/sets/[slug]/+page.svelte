@@ -1,61 +1,61 @@
 <script lang="ts">
-    /**
-     * Print Set Detail Page
-     *
-     * Shows all images in a set and allows purchase of the entire set as one product.
-     *
-     * Key features:
-     * - Multiple images (all sent to LumaPrints for printing)
-     * - Original/full quality images for printing (not compressed webp)
-     * - Paper selection applies to ALL prints in the set
-     * - Two-column layout: images left, purchase form right
-     */
-    import SEO from "$lib/components/SEO.svelte";
-    import { parsePaperOption, imageSet } from "$lib/utils/images";
-    import { createCheckout } from "$lib/utils/checkout";
-    import type { ParsedPaper, ProductImage } from "$lib/types/shop";
+/**
+ * Print Set Detail Page
+ *
+ * Shows all images in a set and allows purchase of the entire set as one product.
+ *
+ * Key features:
+ * - Multiple images (all sent to LumaPrints for printing)
+ * - Original/full quality images for printing (not compressed webp)
+ * - Paper selection applies to ALL prints in the set
+ * - Two-column layout: images left, purchase form right
+ */
+import SEO from "$lib/components/SEO.svelte";
+import type { ParsedPaper, ProductImage } from "$lib/types/shop";
+import { createCheckout } from "$lib/utils/checkout";
+import { imageSet, parsePaperOption } from "$lib/utils/images";
 
-    let { data } = $props();
+let { data } = $props();
 
-    // Form state
-    let selectedPaperIndex = $state(0);
-    let couponCode = $state("");
-    let isLoading = $state(false);
+// Form state
+let selectedPaperIndex = $state(0);
+let couponCode = $state("");
+let isLoading = $state(false);
 
-    // Parse selected paper option
-    const selectedPaperData: ParsedPaper | null = $derived.by(() => {
-        if (!data.printSet.availablePapers?.length) return null;
-        const paper = data.printSet.availablePapers[selectedPaperIndex];
-        if (!paper) return null;
-        return parsePaperOption(paper);
-    });
+// Parse selected paper option
+const selectedPaperData: ParsedPaper | null = $derived.by(() => {
+	if (!data.printSet.availablePapers?.length) return null;
+	const paper = data.printSet.availablePapers[selectedPaperIndex];
+	if (!paper) return null;
+	return parsePaperOption(paper);
+});
 
-    /**
-     * Handle checkout submission
-     * Sends all images to LumaPrints (one print per image)
-     * Uses original/full quality images for printing
-     */
-    async function handleCheckout() {
-        isLoading = true;
-        try {
-            const url = await createCheckout({
-                productId: data.printSet.slug,
-                title: data.printSet.title,
-                price: selectedPaperData?.price || data.printSet.price,
-                image: data.printSet.previewImage,
-                paper: selectedPaperData,
-                coupon: couponCode.trim() || null,
-                isPrintSet: true,
-                images: (data.images as ProductImage[]).map((img) => img.original),
-            });
-            window.location.href = url;
-        } catch (err: any) {
-            console.error("Checkout error:", err);
-            alert(err.message || "something went wrong. please try again.");
-        } finally {
-            isLoading = false;
-        }
-    }
+/**
+ * Handle checkout submission
+ * Sends all images to LumaPrints (one print per image)
+ * Uses original/full quality images for printing
+ */
+async function handleCheckout() {
+	isLoading = true;
+	try {
+		const url = await createCheckout({
+			productId: data.printSet.slug,
+			title: data.printSet.title,
+			price: selectedPaperData?.price || data.printSet.price,
+			image: data.printSet.previewImage,
+			paper: selectedPaperData,
+			coupon: couponCode.trim() || null,
+			isPrintSet: true,
+			images: (data.images as ProductImage[]).map((img) => img.original),
+		});
+		window.location.href = url;
+	} catch (err: any) {
+		console.error("Checkout error:", err);
+		alert(err.message || "something went wrong. please try again.");
+	} finally {
+		isLoading = false;
+	}
+}
 </script>
 
 <SEO

@@ -1,29 +1,35 @@
 /**
  * LumaPrints API Client
- * 
+ *
  * Handles communication with LumaPrints print-on-demand API.
- * 
+ *
  * Base URL: https://us.api.lumaprints.com (production)
  * Auth: Basic HTTP with API Key as username, API Secret as password
- * 
+ *
  * Docs: https://api-docs.lumaprints.com
- * 
+ *
  * Note: Uses dynamic imports to avoid build failures if env vars aren't set.
  * The API calls will fail gracefully if credentials aren't configured.
  */
 
-import { env as privateEnv } from '$env/dynamic/private';
+import { env as privateEnv } from "$env/dynamic/private";
 
 /**
  * Get API credentials from environment
  */
-function getCredentials(): { apiKey: string; apiSecret: string; storeId: string } | null {
+function getCredentials(): {
+	apiKey: string;
+	apiSecret: string;
+	storeId: string;
+} | null {
 	const apiKey = privateEnv.LUMAPRINTS_API_KEY;
 	const apiSecret = privateEnv.LUMAPRINTS_API_SECRET;
 	const storeId = privateEnv.LUMAPRINTS_STORE_ID;
 
 	if (!apiKey || !apiSecret || !storeId) {
-		console.warn('LumaPrints: Missing API credentials. Set LUMAPRINTS_API_KEY, LUMAPRINTS_API_SECRET, and LUMAPRINTS_STORE_ID.');
+		console.warn(
+			"LumaPrints: Missing API credentials. Set LUMAPRINTS_API_KEY, LUMAPRINTS_API_SECRET, and LUMAPRINTS_STORE_ID.",
+		);
 		return null;
 	}
 
@@ -33,8 +39,13 @@ function getCredentials(): { apiKey: string; apiSecret: string; storeId: string 
 /**
  * Create Basic Auth header for LumaPrints API
  */
-function getAuthHeader(credentials: { apiKey: string; apiSecret: string }): string {
-	const credentialsStr = Buffer.from(`${credentials.apiKey}:${credentials.apiSecret}`).toString('base64');
+function getAuthHeader(credentials: {
+	apiKey: string;
+	apiSecret: string;
+}): string {
+	const credentialsStr = Buffer.from(
+		`${credentials.apiKey}:${credentials.apiSecret}`,
+	).toString("base64");
 	return `Basic ${credentialsStr}`;
 }
 
@@ -43,19 +54,19 @@ function getAuthHeader(credentials: { apiKey: string; apiSecret: string }): stri
  */
 async function lumaprintsRequest<T>(
 	endpoint: string,
-	options: RequestInit = {}
+	options: RequestInit = {},
 ): Promise<T> {
 	const credentials = getCredentials();
 	if (!credentials) {
-		throw new Error('LumaPrints API credentials not configured');
+		throw new Error("LumaPrints API credentials not configured");
 	}
 
-	const baseUrl = 'https://us.api.lumaprints.com';
+	const baseUrl = "https://us.api.lumaprints.com";
 	const response = await fetch(`${baseUrl}${endpoint}`, {
 		...options,
 		headers: {
-			'Authorization': getAuthHeader(credentials),
-			'Content-Type': 'application/json',
+			Authorization: getAuthHeader(credentials),
+			"Content-Type": "application/json",
 			...options.headers,
 		},
 	});
@@ -152,8 +163,20 @@ export interface OrderItem {
 export interface CreateOrderRequest {
 	externalId: string;
 	storeId: number;
-	shippingMethod?: 'default' | 'pickup' | 'ground' | 'ground_economy' | '2_day' | 'overnight' | 'usps_ground_advantage' | 'usps_priority_mail' | 'usps_first_class_mail_international' | 'usus_priority_mail_international' | 'usps_priority_mail_express_international' | 'freight';
-	productionTime?: 'regular' | 'nextday' | 'sameday';
+	shippingMethod?:
+		| "default"
+		| "pickup"
+		| "ground"
+		| "ground_economy"
+		| "2_day"
+		| "overnight"
+		| "usps_ground_advantage"
+		| "usps_priority_mail"
+		| "usps_first_class_mail_international"
+		| "usus_priority_mail_international"
+		| "usps_priority_mail_express_international"
+		| "freight";
+	productionTime?: "regular" | "nextday" | "sameday";
 	specialInstructions?: string;
 	printouts?: string[];
 	recipient: Recipient;
@@ -195,51 +218,69 @@ export interface LumaPrintsOrder {
  * Get all stores available for the account
  */
 export async function getStores(): Promise<LumaPrintsStore[]> {
-	return lumaprintsRequest<LumaPrintsStore[]>('/api/v1/stores');
+	return lumaprintsRequest<LumaPrintsStore[]>("/api/v1/stores");
 }
 
 /**
  * Get all product categories
  */
 export async function getCategories(): Promise<LumaPrintsCategory[]> {
-	return lumaprintsRequest<LumaPrintsCategory[]>('/api/v1/products/categories');
+	return lumaprintsRequest<LumaPrintsCategory[]>("/api/v1/products/categories");
 }
 
 /**
  * Get subcategories for a category
  */
-export async function getSubcategories(categoryId: number): Promise<LumaPrintsSubcategory[]> {
-	return lumaprintsRequest<LumaPrintsSubcategory[]>(`/api/v1/products/categories/${categoryId}/subcategories`);
+export async function getSubcategories(
+	categoryId: number,
+): Promise<LumaPrintsSubcategory[]> {
+	return lumaprintsRequest<LumaPrintsSubcategory[]>(
+		`/api/v1/products/categories/${categoryId}/subcategories`,
+	);
 }
 
 /**
  * Get options for a subcategory (e.g., bleed size)
  */
-export async function getOptions(subcategoryId: number): Promise<LumaPrintsOption[]> {
-	return lumaprintsRequest<LumaPrintsOption[]>(`/api/v1/products/subcategories/${subcategoryId}/options`);
+export async function getOptions(
+	subcategoryId: number,
+): Promise<LumaPrintsOption[]> {
+	return lumaprintsRequest<LumaPrintsOption[]>(
+		`/api/v1/products/subcategories/${subcategoryId}/options`,
+	);
 }
 
 /**
  * Get pricing for one or more products
  */
-export async function getProductPricing(products: ProductPricingRequest[]): Promise<ProductPricingResponse[]> {
-	return lumaprintsRequest<ProductPricingResponse[]>('/api/v1/pricing/products', {
-		method: 'POST',
-		body: JSON.stringify(products),
-	});
+export async function getProductPricing(
+	products: ProductPricingRequest[],
+): Promise<ProductPricingResponse[]> {
+	return lumaprintsRequest<ProductPricingResponse[]>(
+		"/api/v1/pricing/products",
+		{
+			method: "POST",
+			body: JSON.stringify(products),
+		},
+	);
 }
 
 /**
  * Submit an order to LumaPrints for fulfillment
  */
-export async function createOrder(order: CreateOrderRequest): Promise<CreateOrderResponse> {
+export async function createOrder(
+	order: CreateOrderRequest,
+): Promise<CreateOrderResponse> {
 	const credentials = getCredentials();
 	if (!credentials) {
-		throw new Error('LumaPrints API credentials not configured');
+		throw new Error("LumaPrints API credentials not configured");
 	}
-	return lumaprintsRequest<CreateOrderResponse>('/api/v1/orders', {
-		method: 'POST',
-		body: JSON.stringify({ ...order, storeId: parseInt(credentials.storeId, 10) }),
+	return lumaprintsRequest<CreateOrderResponse>("/api/v1/orders", {
+		method: "POST",
+		body: JSON.stringify({
+			...order,
+			storeId: parseInt(credentials.storeId, 10),
+		}),
 	});
 }
 
@@ -254,10 +295,12 @@ export async function getOrder(orderNumber: string): Promise<LumaPrintsOrder> {
  * Validate that an image meets DPI requirements for a subcategory
  * Returns success/failure info
  */
-export async function checkImage(imageUrl: string): Promise<{ valid: boolean; message?: string }> {
+export async function checkImage(
+	imageUrl: string,
+): Promise<{ valid: boolean; message?: string }> {
 	try {
-		const result = await lumaprintsRequest<any>('/api/v1/images/check', {
-			method: 'POST',
+		const result = await lumaprintsRequest<any>("/api/v1/images/check", {
+			method: "POST",
 			body: JSON.stringify({ imageUrl }),
 		});
 		return { valid: true, message: result.message };

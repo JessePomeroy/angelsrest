@@ -17,19 +17,19 @@
    - Cross-browser compatibility
    ============================================ */
 
-@import 'tailwindcss';
+@import "tailwindcss";
 @plugin '@tailwindcss/typography';
-@import './time-theme.css';
-@import './grain.css';
+@import "./time-theme.css";
+@import "./grain.css";
 
 /* Tailwind v4: Enable class-based dark mode */
 @custom-variant dark (&:where(.dark, .dark *));
 
-@import '@skeletonlabs/skeleton';
-@import '@skeletonlabs/skeleton-svelte';
+@import "@skeletonlabs/skeleton";
+@import "@skeletonlabs/skeleton-svelte";
 
 /* Single theme: hamlindigo for both light and dark modes */
-@import '@skeletonlabs/skeleton/themes/hamlindigo';
+@import "@skeletonlabs/skeleton/themes/hamlindigo";
 
 /* ---- Base Resets ---- */
 
@@ -40,7 +40,8 @@
 }
 
 /* Remove default margins/padding (except inside prose/blog content) */
-body, nav {
+body,
+nav {
 	margin: 0;
 	padding: 0;
 }
@@ -64,12 +65,12 @@ html {
 /* ---- Core Theme Setup ---- */
 
 body {
-	font-family: 'Synonym', sans-serif;
+	font-family: "Synonym", sans-serif;
 	line-height: 1.6;
 	min-height: 100vh;
 	text-transform: lowercase;
 	background-color: #f1f5f9 !important;
-	background-image: 
+	background-image:
 		radial-gradient(
 			ellipse 80% 60% at 30% 20%,
 			rgba(99, 102, 241, 0.08) 0%,
@@ -85,7 +86,7 @@ body {
 
 html.dark body {
 	background-color: #1e293b !important;
-	background-image: 
+	background-image:
 		radial-gradient(
 			ellipse 80% 60% at 30% 20%,
 			rgba(129, 140, 248, 0.12) 0%,
@@ -102,7 +103,7 @@ html.dark body {
 /* Desktop: increase gradient intensity */
 @media (min-width: 768px) {
 	body {
-		background-image: 
+		background-image:
 			radial-gradient(
 				ellipse 80% 60% at 30% 20%,
 				rgba(99, 102, 241, 0.18) 0%,
@@ -116,7 +117,7 @@ html.dark body {
 	}
 
 	html.dark body {
-		background-image: 
+		background-image:
 			radial-gradient(
 				ellipse 80% 60% at 30% 20%,
 				rgba(129, 140, 248, 0.3) 0%,
@@ -132,7 +133,7 @@ html.dark body {
 
 /* Heading typography (except inside prose/blog content) */
 :where(h1, h2, h3, h4, h5, h6):not(:where(.prose *)) {
-	font-family: 'Chillax', sans-serif;
+	font-family: "Chillax", sans-serif;
 	font-weight: 600;
 	letter-spacing: -0.02em;
 	line-height: 1.2;
@@ -159,5 +160,5 @@ img {
 }
 /* Blog prose headings use Chillax display font */
 .prose :where(h1, h2, h3, h4, h5, h6) {
-	font-family: 'Chillax', sans-serif;
+	font-family: "Chillax", sans-serif;
 }

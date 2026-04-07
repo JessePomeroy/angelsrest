@@ -1,5 +1,5 @@
-import type { Handle } from '@sveltejs/kit';
-import { env as privateEnv } from '$env/dynamic/private';
+import type { Handle } from "@sveltejs/kit";
+import { env as privateEnv } from "$env/dynamic/private";
 
 /**
  * HTTP Basic Auth protection for admin routes
@@ -20,36 +20,36 @@ export const adminAuth: Handle = async ({ event, resolve }) => {
 
 	// Skip if no password is configured (development mode)
 	if (!ADMIN_PASSWORD) {
-		console.warn('ADMIN_PASSWORD not set - allowing admin access');
+		console.warn("ADMIN_PASSWORD not set - allowing admin access");
 		return resolve(event);
 	}
 
-	const authHeader = event.request.headers.get('authorization');
+	const authHeader = event.request.headers.get("authorization");
 
-	if (!authHeader || !authHeader.startsWith('Basic ')) {
-		return new Response('Unauthorized', {
+	if (!authHeader || !authHeader.startsWith("Basic ")) {
+		return new Response("Unauthorized", {
 			status: 401,
 			headers: {
-				'WWW-Authenticate': 'Basic realm="Admin"',
-				'Content-Type': 'text/plain'
-			}
+				"WWW-Authenticate": 'Basic realm="Admin"',
+				"Content-Type": "text/plain",
+			},
 		});
 	}
 
 	// Decode base64 credentials
 	const base64Credentials = authHeader.slice(6);
 	const credentials = atob(base64Credentials);
-	const [username, password] = credentials.split(':');
+	const [username, password] = credentials.split(":");
 
 	if (password !== ADMIN_PASSWORD) {
-		return new Response('Unauthorized', {
+		return new Response("Unauthorized", {
 			status: 401,
 			headers: {
-				'WWW-Authenticate': 'Basic realm="Admin"',
-				'Content-Type': 'text/plain'
-			}
+				"WWW-Authenticate": 'Basic realm="Admin"',
+				"Content-Type": "text/plain",
+			},
 		});
 	}
 
 	return resolve(event);
-}
+};

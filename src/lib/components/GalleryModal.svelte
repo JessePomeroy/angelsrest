@@ -15,13 +15,13 @@
 // - currentIndex: which image to show initially
 // - onClose: callback to close the modal
 let {
-  images = [],
-  currentIndex = 0,
-  onClose,
+	images = [],
+	currentIndex = 0,
+	onClose,
 }: {
-  images: any[];
-  currentIndex: number;
-  onClose: () => void;
+	images: any[];
+	currentIndex: number;
+	onClose: () => void;
 } = $props();
 
 // Local state for tracking current image
@@ -30,7 +30,7 @@ let index = $state(0);
 
 // Sync with currentIndex when the prop changes (e.g., modal reopened on different image)
 $effect(() => {
-  index = currentIndex;
+	index = currentIndex;
 });
 let offsetX = $state(0); // Current drag offset
 let isDragging = $state(false);
@@ -38,32 +38,35 @@ let startX = 0;
 
 // Preload adjacent images for smoother navigation
 function getImageUrl(img: any) {
-  return img?.full || img?.url || img;
+	return img?.full || img?.url || img;
 }
 
 $effect(() => {
-  // Preload next and previous images
-  const preloadIndexes = [(index + 1) % images.length, (index - 1 + images.length) % images.length];
-  preloadIndexes.forEach((i) => {
-    const img = new Image();
-    img.src = getImageUrl(images[i]);
-  });
+	// Preload next and previous images
+	const preloadIndexes = [
+		(index + 1) % images.length,
+		(index - 1 + images.length) % images.length,
+	];
+	preloadIndexes.forEach((i) => {
+		const img = new Image();
+		img.src = getImageUrl(images[i]);
+	});
 });
 // Navigate to next image (wraps around using modulo)
 function next() {
-  index = (index + 1) % images.length;
+	index = (index + 1) % images.length;
 }
 
 // Navigate to previous image (wraps around)
 function prev() {
-  index = (index - 1 + images.length) % images.length;
+	index = (index - 1 + images.length) % images.length;
 }
 
 // Global keyboard handler for navigation and closing
 function handleKeydown(e: KeyboardEvent) {
-  if (e.key === "Escape") onClose();
-  if (e.key === "ArrowRight") next();
-  if (e.key === "ArrowLeft") prev();
+	if (e.key === "Escape") onClose();
+	if (e.key === "ArrowRight") next();
+	if (e.key === "ArrowLeft") prev();
 }
 
 // Swipe Detection
@@ -71,26 +74,26 @@ let touchStartX = 0;
 let touchEndX = 0;
 
 function handleTouchStart(e: TouchEvent) {
-  isDragging = true;
-  startX = e.touches[0].clientX;
-  offsetX = 0;
+	isDragging = true;
+	startX = e.touches[0].clientX;
+	offsetX = 0;
 }
 
 function handleTouchMove(e: TouchEvent) {
-  if (!isDragging) return;
-  offsetX = e.touches[0].clientX - startX;
+	if (!isDragging) return;
+	offsetX = e.touches[0].clientX - startX;
 }
 
 function handleTouchEnd() {
-  isDragging = false;
-  const threshold = 50;
+	isDragging = false;
+	const threshold = 50;
 
-  if (offsetX < -threshold) {
-    next();
-  } else if (offsetX > threshold) {
-    prev();
-  }
-  offsetX = 0;
+	if (offsetX < -threshold) {
+		next();
+	} else if (offsetX > threshold) {
+		prev();
+	}
+	offsetX = 0;
 }
 </script>
 

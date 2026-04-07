@@ -1,125 +1,125 @@
 <script lang="ts">
-    /**
-     * Product Detail Page with Stripe Checkout Integration
-     *
-     * This component demonstrates several advanced SvelteKit patterns:
-     * 1. Dynamic routing with [slug] parameter
-     * 2. Server-side data loading with type safety
-     * 3. Client-side API interactions
-     * 4. State management with Svelte 5 runes
-     * 5. Error handling and loading states
-     *
-     * E-commerce Patterns:
-     * - Product gallery with lightbox
-     * - Direct "Buy Now" checkout (no cart)
-     * - Stock status indication
-     * - Category organization
-     * - Responsive design
-     */
+/**
+ * Product Detail Page with Stripe Checkout Integration
+ *
+ * This component demonstrates several advanced SvelteKit patterns:
+ * 1. Dynamic routing with [slug] parameter
+ * 2. Server-side data loading with type safety
+ * 3. Client-side API interactions
+ * 4. State management with Svelte 5 runes
+ * 5. Error handling and loading states
+ *
+ * E-commerce Patterns:
+ * - Product gallery with lightbox
+ * - Direct "Buy Now" checkout (no cart)
+ * - Stock status indication
+ * - Category organization
+ * - Responsive design
+ */
 
-    import GalleryModal from "$lib/components/GalleryModal.svelte";
-    import SEO from "$lib/components/SEO.svelte";
-    import { parsePaperOption } from "$lib/utils/images";
-    import { createCheckout } from "$lib/utils/checkout";
-    import type { ParsedPaper } from "$lib/types/shop";
+import GalleryModal from "$lib/components/GalleryModal.svelte";
+import SEO from "$lib/components/SEO.svelte";
+import type { ParsedPaper } from "$lib/types/shop";
+import { createCheckout } from "$lib/utils/checkout";
+import { parsePaperOption } from "$lib/utils/images";
 
-    /**
-     * Props from Server Load Function
-     *
-     * The data prop contains everything returned from +page.server.ts
-     * Type safety ensures we catch errors at build time, not runtime.
-     *
-     * Key principle: Server-side data loading for SEO and performance
-     */
-    let { data } = $props();
+/**
+ * Props from Server Load Function
+ *
+ * The data prop contains everything returned from +page.server.ts
+ * Type safety ensures we catch errors at build time, not runtime.
+ *
+ * Key principle: Server-side data loading for SEO and performance
+ */
+let { data } = $props();
 
-    /**
-     * Component State with Svelte 5 Runes
-     *
-     * Runes are Svelte's new reactive system:
-     * - $state() for mutable reactive values
-     * - $derived() for computed values
-     * - More predictable than Svelte 4's reactivity
-     *
-     * State Management Strategy:
-     * - Keep state minimal and focused
-     * - Use meaningful variable names
-     * - Initialize with sensible defaults
-     */
-    let modalOpen = $state(false); // Controls image lightbox visibility
-    let selectedIndex = $state(0); // Which image to show in lightbox
-    let isLoading = $state(false); // Prevents double-clicks during checkout
-    let selectedPaperIndex = $state(0); // Index of selected paper for LumaPrints
-    let couponCode = $state(""); // Coupon/promo code
+/**
+ * Component State with Svelte 5 Runes
+ *
+ * Runes are Svelte's new reactive system:
+ * - $state() for mutable reactive values
+ * - $derived() for computed values
+ * - More predictable than Svelte 4's reactivity
+ *
+ * State Management Strategy:
+ * - Keep state minimal and focused
+ * - Use meaningful variable names
+ * - Initialize with sensible defaults
+ */
+let modalOpen = $state(false); // Controls image lightbox visibility
+let selectedIndex = $state(0); // Which image to show in lightbox
+let isLoading = $state(false); // Prevents double-clicks during checkout
+let selectedPaperIndex = $state(0); // Index of selected paper for LumaPrints
+let couponCode = $state(""); // Coupon/promo code
 
-    // Get selected paper from index - parse combined value format "Name|subcategoryId|width|height"
-    const selectedPaperData: ParsedPaper | null = $derived.by(() => {
-        if (!data.product.availablePapers?.length) return null;
-        const paper =
-            data.product.availablePapers[selectedPaperIndex] ||
-            data.product.availablePapers[0];
-        if (!paper?.name) return null;
-        return parsePaperOption(paper);
-    });
+// Get selected paper from index - parse combined value format "Name|subcategoryId|width|height"
+const selectedPaperData: ParsedPaper | null = $derived.by(() => {
+	if (!data.product.availablePapers?.length) return null;
+	const paper =
+		data.product.availablePapers[selectedPaperIndex] ||
+		data.product.availablePapers[0];
+	if (!paper?.name) return null;
+	return parsePaperOption(paper);
+});
 
-    /**
-     * Modal Control Functions
-     *
-     * Clean separation of concerns:
-     * - Functions handle specific UI interactions
-     * - Parameters make functions reusable
-     * - State updates trigger reactive UI changes
-     */
-    function openModal(index: number) {
-        selectedIndex = index;
-        modalOpen = true;
-    }
+/**
+ * Modal Control Functions
+ *
+ * Clean separation of concerns:
+ * - Functions handle specific UI interactions
+ * - Parameters make functions reusable
+ * - State updates trigger reactive UI changes
+ */
+function openModal(index: number) {
+	selectedIndex = index;
+	modalOpen = true;
+}
 
-    /**
-     * Utility Function - String Formatting
-     *
-     * Small utility functions improve code readability:
-     * - Single responsibility
-     * - Easy to test
-     * - Reusable across components
-     */
-    function formatCategory(category: string) {
-        return category.charAt(0).toUpperCase() + category.slice(1);
-    }
+/**
+ * Utility Function - String Formatting
+ *
+ * Small utility functions improve code readability:
+ * - Single responsibility
+ * - Easy to test
+ * - Reusable across components
+ */
+function formatCategory(category: string) {
+	return category.charAt(0).toUpperCase() + category.slice(1);
+}
 
-    /**
-     * Checkout Handler - The Core E-commerce Logic
-     *
-     * This async function orchestrates the entire checkout process:
-     * 1. Prevents multiple submissions
-     * 2. Calls our server-side API
-     * 3. Handles errors gracefully
-     * 4. Redirects to Stripe's secure checkout
-     *
-     * Error Handling Strategy:
-     * - Try/catch for network errors
-     * - Loading states for user feedback
-     * - Graceful fallbacks for failures
-     */
-    async function handleCheckout() {
-        isLoading = true;
-        try {
-            const url = await createCheckout({
-                productId: data.product.slug,
-                title: data.product.title,
-                price: selectedPaperData?.price || data.product.price,
-                image: data.product.images[0]?.original || null,
-                paper: selectedPaperData,
-                coupon: couponCode.trim() || null,
-            });
-            window.location.href = url;
-        } catch (err: any) {
-            console.error("Checkout error:", err);
-            alert(err.message || "something went wrong. please try again.");
-        } finally {
-            isLoading = false;
-        }
-    }
+/**
+ * Checkout Handler - The Core E-commerce Logic
+ *
+ * This async function orchestrates the entire checkout process:
+ * 1. Prevents multiple submissions
+ * 2. Calls our server-side API
+ * 3. Handles errors gracefully
+ * 4. Redirects to Stripe's secure checkout
+ *
+ * Error Handling Strategy:
+ * - Try/catch for network errors
+ * - Loading states for user feedback
+ * - Graceful fallbacks for failures
+ */
+async function handleCheckout() {
+	isLoading = true;
+	try {
+		const url = await createCheckout({
+			productId: data.product.slug,
+			title: data.product.title,
+			price: selectedPaperData?.price || data.product.price,
+			image: data.product.images[0]?.original || null,
+			paper: selectedPaperData,
+			coupon: couponCode.trim() || null,
+		});
+		window.location.href = url;
+	} catch (err: any) {
+		console.error("Checkout error:", err);
+		alert(err.message || "something went wrong. please try again.");
+	} finally {
+		isLoading = false;
+	}
+}
 </script>
 
 <!--

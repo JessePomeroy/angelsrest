@@ -58,7 +58,16 @@ export async function POST({ request }) {
 		const body = await request.json();
 		console.log("Received checkout request:", JSON.stringify(body, null, 2));
 
-		const { productId, title, price, image, paper, coupon, isPrintSet, images } = body;
+		const {
+			productId,
+			title,
+			price,
+			image,
+			paper,
+			coupon,
+			isPrintSet,
+			images,
+		} = body;
 		console.log("Checkout payload:", { productId, title, price, paper });
 
 		/**
@@ -87,7 +96,7 @@ export async function POST({ request }) {
 			{ slug: productId },
 		);
 		const productCategory = product?.category;
-		const isDigital = productCategory === 'digital';
+		const isDigital = productCategory === "digital";
 
 		// Validate and apply coupon if provided
 		let discountAmount = 0;
@@ -134,7 +143,9 @@ export async function POST({ request }) {
 			}
 
 			appliedCoupon = couponData.code;
-			console.log(`Applied coupon: ${appliedCoupon}, discount: $${discountAmount.toFixed(2)}`);
+			console.log(
+				`Applied coupon: ${appliedCoupon}, discount: $${discountAmount.toFixed(2)}`,
+			);
 		}
 
 		const finalPrice = Math.max(0, price - discountAmount);
@@ -164,11 +175,13 @@ export async function POST({ request }) {
 			payment_method_types: ["card"],
 
 			// Only collect shipping for physical products
-			...(isDigital ? {} : {
-				shipping_address_collection: {
-					allowed_countries: ["US"],
-				},
-			}),
+			...(isDigital
+				? {}
+				: {
+						shipping_address_collection: {
+							allowed_countries: ["US"],
+						},
+					}),
 
 			/**
 			 * Line Items - What They're Buying
@@ -233,7 +246,7 @@ export async function POST({ request }) {
 				// For print sets: store all image URLs
 				imageUrls: isPrintSet && images ? JSON.stringify(images) : "",
 				// For single products: store single image URL
-				imageUrl: !isPrintSet ? (image || "") : "",
+				imageUrl: !isPrintSet ? image || "" : "",
 				// Paper selection for LumaPrints fulfillment
 				paperName: paper?.name || "",
 				paperSubcategoryId: paper?.subcategoryId?.toString() || "",

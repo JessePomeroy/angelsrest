@@ -6,37 +6,37 @@
 -->
 
 <script lang="ts">
+import { MoonIcon, SunIcon } from "@lucide/svelte";
 import { onMount } from "svelte";
 import { browser } from "$app/environment";
-import { SunIcon, MoonIcon } from "@lucide/svelte";
 import { isDark } from "$lib/stores/theme";
 
 onMount(() => {
-  applyTheme($isDark);
+	applyTheme($isDark);
 });
 
 function applyTheme(dark: boolean) {
-  if (browser) {
-    const html = document.documentElement;
-    if (dark) {
-      html.classList.add("dark");
-    } else {
-      html.classList.remove("dark");
-    }
-    // Always hamlindigo
-    html.setAttribute("data-theme", "hamlindigo");
-    localStorage.setItem("theme", dark ? "dark" : "light");
-  }
+	if (browser) {
+		const html = document.documentElement;
+		if (dark) {
+			html.classList.add("dark");
+		} else {
+			html.classList.remove("dark");
+		}
+		// Always hamlindigo
+		html.setAttribute("data-theme", "hamlindigo");
+		localStorage.setItem("theme", dark ? "dark" : "light");
+	}
 }
 
 function setLight() {
-  isDark.setLight();
-  applyTheme(false);
+	isDark.setLight();
+	applyTheme(false);
 }
 
 function setDark() {
-  isDark.setDark();
-  applyTheme(true);
+	isDark.setDark();
+	applyTheme(true);
 }
 </script>
 

@@ -21,22 +21,22 @@ import { client } from "$lib/sanity/client";
  * - On the server when navigating (SvelteKit fetches data before showing page)
  */
 export const load = async () => {
-  /**
-   * GROQ Query Breakdown:
-   *
-   * *[_type == "post"]              → Get all documents where type is "post"
-   * | order(publishedAt desc)       → Sort by publishedAt, newest first
-   * { ... }                         → Select only these fields (projection)
-   *
-   * Inside the projection:
-   * - _id, title, slug, etc.        → Direct fields from the post
-   * - "excerpt": ...                → Computed field (creates a text preview)
-   * - author->{ name, image }       → Follows the reference to author, gets their name/image
-   * - categories[]->{ title }       → Follows array of category references, gets titles
-   *
-   * The -> syntax "dereferences" a reference (follows the link to another document).
-   */
-  const posts = await client.fetch(`
+	/**
+	 * GROQ Query Breakdown:
+	 *
+	 * *[_type == "post"]              → Get all documents where type is "post"
+	 * | order(publishedAt desc)       → Sort by publishedAt, newest first
+	 * { ... }                         → Select only these fields (projection)
+	 *
+	 * Inside the projection:
+	 * - _id, title, slug, etc.        → Direct fields from the post
+	 * - "excerpt": ...                → Computed field (creates a text preview)
+	 * - author->{ name, image }       → Follows the reference to author, gets their name/image
+	 * - categories[]->{ title }       → Follows array of category references, gets titles
+	 *
+	 * The -> syntax "dereferences" a reference (follows the link to another document).
+	 */
+	const posts = await client.fetch(`
     *[_type == "post"] | order(publishedAt desc) {
       _id,
       title,
@@ -55,11 +55,11 @@ export const load = async () => {
     }
   `);
 
-  /**
-   * Return the data object.
-   * This becomes `data.posts` in +page.svelte via:
-   * let { data } = $props();
-   * data.posts → the array we fetched
-   */
-  return { posts };
+	/**
+	 * Return the data object.
+	 * This becomes `data.posts` in +page.svelte via:
+	 * let { data } = $props();
+	 * data.posts → the array we fetched
+	 */
+	return { posts };
 };

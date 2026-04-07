@@ -1,283 +1,318 @@
 <script lang="ts">
-	/**
-	 * Admin Orders Dashboard 💰
-	 * 
-	 * A comprehensive order management system with filtering, sorting, and export capabilities.
-	 * Demonstrates Svelte 5 runes ($state, $derived) for reactive UI.
-	 */
+/**
+ * Admin Orders Dashboard 💰
+ *
+ * A comprehensive order management system with filtering, sorting, and export capabilities.
+ * Demonstrates Svelte 5 runes ($state, $derived) for reactive UI.
+ */
 
-	import SEO from '$lib/components/SEO.svelte';
+import SEO from "$lib/components/SEO.svelte";
 
-	let { data } = $props();
+let { data } = $props();
 
-	/**
-	 * 💡 Svelte 5 Runes:
-	 * - $state() - Makes a variable reactive (like this.filter = 'x' triggers UI update)
-	 * - $derived() - Auto-recalculates when dependencies change
-	 */
+/**
+ * 💡 Svelte 5 Runes:
+ * - $state() - Makes a variable reactive (like this.filter = 'x' triggers UI update)
+ * - $derived() - Auto-recalculates when dependencies change
+ */
 
-	// Filter state - these control what's shown in the table
-	let statusFilter = $state('all');
-	let searchQuery = $state('');
-	let yearFilter = $state('all');
-	let periodFilter = $state('all'); // all, today, week, month
+// Filter state - these control what's shown in the table
+let statusFilter = $state("all");
+let searchQuery = $state("");
+let yearFilter = $state("all");
+let periodFilter = $state("all"); // all, today, week, month
 
-	// Modal state - for the order details popup
-	let selectedOrder = $state<any>(null);
-	let notesValue = $state('');
-	let notesSaving = $state(false);
+// Modal state - for the order details popup
+let selectedOrder = $state<any>(null);
+let notesValue = $state("");
+let notesSaving = $state(false);
 
-	// Get unique statuses for filter dropdown
-	const statuses = ['all', 'new', 'printing', 'ready', 'shipped', 'delivered', 'refunded'];
+// Get unique statuses for filter dropdown
+const statuses = [
+	"all",
+	"new",
+	"printing",
+	"ready",
+	"shipped",
+	"delivered",
+	"refunded",
+];
 
-	/**
-	 * $derived - Automatically recalculates when data.orders changes
-	 * 
-	 * This extracts unique years from all orders, so the year dropdown
-	 * automatically updates when new orders come in.
-	 * 
-	 * [...new Set(...)] - Creates unique values (removes duplicates)
-	 * .sort((a, b) => b - a) - Sorts newest first
-	 */
-	let availableYears = $derived(
-		([...new Set(data.orders.map((o: any) => new Date(o.createdAt).getFullYear()))] as number[]).sort((a, b) => b - a)
-	);
+/**
+ * $derived - Automatically recalculates when data.orders changes
+ *
+ * This extracts unique years from all orders, so the year dropdown
+ * automatically updates when new orders come in.
+ *
+ * [...new Set(...)] - Creates unique values (removes duplicates)
+ * .sort((a, b) => b - a) - Sorts newest first
+ */
+let availableYears = $derived(
+	(
+		[
+			...new Set(
+				data.orders.map((o: any) => new Date(o.createdAt).getFullYear()),
+			),
+		] as number[]
+	).sort((a, b) => b - a),
+);
 
-	/**
-	 * Date range helper for period filters
-	 * 
-	 * Returns start and end dates for: today, this week, this month
-	 * Used to filter orders within a specific time period.
-	 */
-	function getDateRange(period: string): { start: Date; end: Date } | null {
-		const now = new Date();
-		const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-		
-		switch (period) {
-			case 'today':
-				// Start of today to start of tomorrow
-				return { start: today, end: new Date(today.getTime() + 24 * 60 * 60 * 1000) };
-			case 'week':
-				// Sunday of this week to tomorrow
-				const weekStart = new Date(today);
-				weekStart.setDate(today.getDate() - today.getDay());
-				return { start: weekStart, end: new Date(today.getTime() + 24 * 60 * 60 * 1000) };
-			case 'month':
-				// First day of month to tomorrow
-				const monthStart = new Date(today.getFullYear(), today.getMonth(), 1);
-				return { start: monthStart, end: new Date(today.getTime() + 24 * 60 * 60 * 1000) };
-			default:
-				return null;
+/**
+ * Date range helper for period filters
+ *
+ * Returns start and end dates for: today, this week, this month
+ * Used to filter orders within a specific time period.
+ */
+function getDateRange(period: string): { start: Date; end: Date } | null {
+	const now = new Date();
+	const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+
+	switch (period) {
+		case "today":
+			// Start of today to start of tomorrow
+			return {
+				start: today,
+				end: new Date(today.getTime() + 24 * 60 * 60 * 1000),
+			};
+		case "week": {
+			// Sunday of this week to tomorrow
+			const weekStart = new Date(today);
+			weekStart.setDate(today.getDate() - today.getDay());
+			return {
+				start: weekStart,
+				end: new Date(today.getTime() + 24 * 60 * 60 * 1000),
+			};
 		}
+		case "month": {
+			// First day of month to tomorrow
+			const monthStart = new Date(today.getFullYear(), today.getMonth(), 1);
+			return {
+				start: monthStart,
+				end: new Date(today.getTime() + 24 * 60 * 60 * 1000),
+			};
+		}
+		default:
+			return null;
 	}
+}
 
-	// Filter orders
-	let filteredOrders = $derived(
-		data.orders.filter((order: any) => {
-			const orderDate = new Date(order.createdAt);
-			
-			// Period filter (today/week/month)
-			if (periodFilter !== 'all') {
-				const range = getDateRange(periodFilter);
-				if (range && (orderDate < range.start || orderDate >= range.end)) {
-					return false;
-				}
-			}
+// Filter orders
+let filteredOrders = $derived(
+	data.orders.filter((order: any) => {
+		const orderDate = new Date(order.createdAt);
 
-			// Year filter
-			if (yearFilter !== 'all' && orderDate.getFullYear() !== parseInt(yearFilter)) {
+		// Period filter (today/week/month)
+		if (periodFilter !== "all") {
+			const range = getDateRange(periodFilter);
+			if (range && (orderDate < range.start || orderDate >= range.end)) {
 				return false;
 			}
-			// Status filter
-			if (statusFilter !== 'all' && order.status !== statusFilter) {
+		}
+
+		// Year filter
+		if (
+			yearFilter !== "all" &&
+			orderDate.getFullYear() !== parseInt(yearFilter)
+		) {
+			return false;
+		}
+		// Status filter
+		if (statusFilter !== "all" && order.status !== statusFilter) {
+			return false;
+		}
+		// Search filter
+		if (searchQuery) {
+			const query = searchQuery.toLowerCase();
+			const matchEmail = order.customerEmail?.toLowerCase().includes(query);
+			const matchNumber = order.orderNumber?.toLowerCase().includes(query);
+			const matchName = order.customerName?.toLowerCase().includes(query);
+			if (!matchEmail && !matchNumber && !matchName) {
 				return false;
 			}
-			// Search filter
-			if (searchQuery) {
-				const query = searchQuery.toLowerCase();
-				const matchEmail = order.customerEmail?.toLowerCase().includes(query);
-				const matchNumber = order.orderNumber?.toLowerCase().includes(query);
-				const matchName = order.customerName?.toLowerCase().includes(query);
-				if (!matchEmail && !matchNumber && !matchName) {
-					return false;
-				}
-			}
-			return true;
-		})
-	);
+		}
+		return true;
+	}),
+);
 
-	/**
-	 * $derived for revenue calculations
-	 * 
-	 * These automatically update whenever filteredOrders changes.
-	 * So when you filter by year/month, the revenue updates instantly!
-	 * 
-	 * .reduce() adds up all the order totals
-	 * Order amounts are in cents, so we don't divide by 100 until display
-	 */
-	// Calculate totals for filtered orders
-	let totalRevenue = $derived(
-		filteredOrders.reduce((sum: number, order: any) => sum + (order.total || 0), 0)
-	);
+/**
+ * $derived for revenue calculations
+ *
+ * These automatically update whenever filteredOrders changes.
+ * So when you filter by year/month, the revenue updates instantly!
+ *
+ * .reduce() adds up all the order totals
+ * Order amounts are in cents, so we don't divide by 100 until display
+ */
+// Calculate totals for filtered orders
+let totalRevenue = $derived(
+	filteredOrders.reduce(
+		(sum: number, order: any) => sum + (order.total || 0),
+		0,
+	),
+);
 
-	// Calculate totals for ALL orders (regardless of filter)
-	let allTimeRevenue = $derived(
-		data.orders.reduce((sum: number, order: any) => sum + (order.total || 0), 0)
-	);
+// Calculate totals for ALL orders (regardless of filter)
+let allTimeRevenue = $derived(
+	data.orders.reduce((sum: number, order: any) => sum + (order.total || 0), 0),
+);
 
-	function formatCurrency(amount: number, currency = 'usd') {
-		return new Intl.NumberFormat('en-US', {
-			style: 'currency',
-			currency: currency.toUpperCase()
-		}).format(amount / 100);
-	}
+function formatCurrency(amount: number, currency = "usd") {
+	return new Intl.NumberFormat("en-US", {
+		style: "currency",
+		currency: currency.toUpperCase(),
+	}).format(amount / 100);
+}
 
-	function formatDate(dateStr: string) {
-		return new Date(dateStr).toLocaleDateString('en-US', {
-			month: 'short',
-			day: 'numeric',
-			year: 'numeric',
-			hour: 'numeric',
-			minute: '2-digit'
+function formatDate(dateStr: string) {
+	return new Date(dateStr).toLocaleDateString("en-US", {
+		month: "short",
+		day: "numeric",
+		year: "numeric",
+		hour: "numeric",
+		minute: "2-digit",
+	});
+}
+
+function getStatusClass(status: string): string {
+	const colors: Record<string, string> = {
+		new: "bg-blue-600 text-white px-2 py-1 rounded text-xs",
+		printing: "bg-yellow-500 text-black px-2 py-1 rounded text-xs",
+		ready: "bg-yellow-500 text-black px-2 py-1 rounded text-xs",
+		shipped: "bg-purple-600 text-white px-2 py-1 rounded text-xs",
+		delivered: "bg-green-600 text-white px-2 py-1 rounded text-xs",
+		refunded: "bg-red-600 text-white px-2 py-1 rounded text-xs",
+	};
+	return colors[status] || "bg-gray-500 text-white px-2 py-1 rounded text-xs";
+}
+
+async function updateStatus(orderId: string, newStatus: string) {
+	try {
+		const response = await fetch(`/api/admin/orders/${orderId}`, {
+			method: "PATCH",
+			headers: { "Content-Type": "application/json" },
+			body: JSON.stringify({ status: newStatus }),
 		});
-	}
-
-	function getStatusClass(status: string): string {
-		const colors: Record<string, string> = {
-			new: 'bg-blue-600 text-white px-2 py-1 rounded text-xs',
-			printing: 'bg-yellow-500 text-black px-2 py-1 rounded text-xs',
-			ready: 'bg-yellow-500 text-black px-2 py-1 rounded text-xs',
-			shipped: 'bg-purple-600 text-white px-2 py-1 rounded text-xs',
-			delivered: 'bg-green-600 text-white px-2 py-1 rounded text-xs',
-			refunded: 'bg-red-600 text-white px-2 py-1 rounded text-xs'
-		};
-		return colors[status] || 'bg-gray-500 text-white px-2 py-1 rounded text-xs';
-	}
-
-	async function updateStatus(orderId: string, newStatus: string) {
-		try {
-			const response = await fetch(`/api/admin/orders/${orderId}`, {
-				method: 'PATCH',
-				headers: { 'Content-Type': 'application/json' },
-				body: JSON.stringify({ status: newStatus })
-			});
-			if (response.ok) {
-				const order = data.orders.find((o: any) => o._id === orderId);
-				if (order) {
-					order.status = newStatus;
-					data.orders = [...data.orders];
-				}
-				if (selectedOrder?._id === orderId) {
-					selectedOrder.status = newStatus;
-				}
+		if (response.ok) {
+			const order = data.orders.find((o: any) => o._id === orderId);
+			if (order) {
+				order.status = newStatus;
+				data.orders = [...data.orders];
 			}
-		} catch (err) {
-			console.error('Failed to update status:', err);
-		}
-	}
-
-	function openOrderDetails(order: any) {
-		selectedOrder = order;
-		notesValue = order.notes || '';
-	}
-
-	function closeModal() {
-		selectedOrder = null;
-	}
-
-	async function saveNotes() {
-		if (!selectedOrder) return;
-
-		notesSaving = true;
-		try {
-			const response = await fetch(`/api/admin/orders/${selectedOrder._id}`, {
-				method: 'PATCH',
-				headers: { 'Content-Type': 'application/json' },
-				body: JSON.stringify({ notes: notesValue })
-			});
-			if (response.ok) {
-				const order = data.orders.find((o: any) => o._id === selectedOrder._id);
-				if (order) {
-					order.notes = notesValue;
-					data.orders = [...data.orders];
-				}
-				selectedOrder.notes = notesValue;
+			if (selectedOrder?._id === orderId) {
+				selectedOrder.status = newStatus;
 			}
-		} catch (err) {
-			console.error('Failed to save notes:', err);
-		} finally {
-			notesSaving = false;
 		}
+	} catch (err) {
+		console.error("Failed to update status:", err);
 	}
+}
 
-	/**
-	 * Export to CSV 📊
-	 * 
-	 * CSV (Comma-Separated Values) is a simple format that Excel/Google Sheets can open.
-	 * Perfect for taxes, accounting, or sharing with a bookkeeper.
-	 * 
-	 * How it works:
-	 * 1. Create array of headers
-	 * 2. Map each order to an array of values (amounts converted from cents to dollars)
-	 * 3. Join with commas, wrap in quotes to handle special characters
-	 * 4. Create a Blob (file-like object) and trigger browser download
-	 * 
-	 * 💡 Revenue Columns:
-	 * - "Gross Revenue" = what customer paid (order total)
-	 * - "Stripe Fees" = actual transaction fees from Stripe's balance_transaction
-	 * - "Net Revenue" = Gross - Fees = your actual income
-	 * 
-	 * Stripe fees are captured automatically via the webhook handler.
-	 * After checkout completes, we wait 3s then fetch the balance_transaction
-	 * from Stripe which contains the real fee amount.
-	 */
-	function exportCSV() {
-		const headers = [
-			'Order Number', 
-			'Date', 
-			'Customer Name', 
-			'Customer Email', 
-			'Items', 
-			'Gross Revenue',
-			'Stripe Fees', 
-			'Net Revenue',
-			'Status', 
-			'Notes'
+function openOrderDetails(order: any) {
+	selectedOrder = order;
+	notesValue = order.notes || "";
+}
+
+function closeModal() {
+	selectedOrder = null;
+}
+
+async function saveNotes() {
+	if (!selectedOrder) return;
+
+	notesSaving = true;
+	try {
+		const response = await fetch(`/api/admin/orders/${selectedOrder._id}`, {
+			method: "PATCH",
+			headers: { "Content-Type": "application/json" },
+			body: JSON.stringify({ notes: notesValue }),
+		});
+		if (response.ok) {
+			const order = data.orders.find((o: any) => o._id === selectedOrder._id);
+			if (order) {
+				order.notes = notesValue;
+				data.orders = [...data.orders];
+			}
+			selectedOrder.notes = notesValue;
+		}
+	} catch (err) {
+		console.error("Failed to save notes:", err);
+	} finally {
+		notesSaving = false;
+	}
+}
+
+/**
+ * Export to CSV 📊
+ *
+ * CSV (Comma-Separated Values) is a simple format that Excel/Google Sheets can open.
+ * Perfect for taxes, accounting, or sharing with a bookkeeper.
+ *
+ * How it works:
+ * 1. Create array of headers
+ * 2. Map each order to an array of values (amounts converted from cents to dollars)
+ * 3. Join with commas, wrap in quotes to handle special characters
+ * 4. Create a Blob (file-like object) and trigger browser download
+ *
+ * 💡 Revenue Columns:
+ * - "Gross Revenue" = what customer paid (order total)
+ * - "Stripe Fees" = actual transaction fees from Stripe's balance_transaction
+ * - "Net Revenue" = Gross - Fees = your actual income
+ *
+ * Stripe fees are captured automatically via the webhook handler.
+ * After checkout completes, we wait 3s then fetch the balance_transaction
+ * from Stripe which contains the real fee amount.
+ */
+function exportCSV() {
+	const headers = [
+		"Order Number",
+		"Date",
+		"Customer Name",
+		"Customer Email",
+		"Items",
+		"Gross Revenue",
+		"Stripe Fees",
+		"Net Revenue",
+		"Status",
+		"Notes",
+	];
+
+	const rows = filteredOrders.map((order: any) => {
+		const gross = (order.total || 0) / 100;
+		// Actual Stripe fees captured from balance_transaction via webhook
+		const fees = (order.stripeFees || 0) / 100;
+		const net = gross - fees;
+
+		return [
+			order.orderNumber || "",
+			new Date(order.createdAt).toLocaleDateString("en-US"),
+			order.customerName || "",
+			order.customerEmail || "",
+			(order.items || [])
+				.map((i: any) => `${i.productName} x${i.quantity}`)
+				.join("; "),
+			gross.toFixed(2),
+			fees.toFixed(2),
+			net.toFixed(2),
+			order.status || "",
+			order.notes || "",
 		];
-		
-		const rows = filteredOrders.map((order: any) => {
-			const gross = (order.total || 0) / 100;
-			// Actual Stripe fees captured from balance_transaction via webhook
-			const fees = (order.stripeFees || 0) / 100;
-			const net = gross - fees;
-			
-			return [
-				order.orderNumber || '',
-				new Date(order.createdAt).toLocaleDateString('en-US'),
-				order.customerName || '',
-				order.customerEmail || '',
-				(order.items || []).map((i: any) => `${i.productName} x${i.quantity}`).join('; '),
-				gross.toFixed(2),
-				fees.toFixed(2),
-				net.toFixed(2),
-				order.status || '',
-				order.notes || ''
-			];
-		});
+	});
 
-		const csvContent = [
-			headers.join(','),
-			...rows.map((row: any[]) => row.map((cell: any) => `"${String(cell).replace(/"/g, '""')}"`).join(','))
-		].join('\n');
+	const csvContent = [
+		headers.join(","),
+		...rows.map((row: any[]) =>
+			row.map((cell: any) => `"${String(cell).replace(/"/g, '""')}"`).join(","),
+		),
+	].join("\n");
 
-		const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-		const url = URL.createObjectURL(blob);
-		const link = document.createElement('a');
-		link.href = url;
-		link.download = `orders-${yearFilter === 'all' ? 'all' : yearFilter}.csv`;
-		link.click();
-		URL.revokeObjectURL(url);
-	}
+	const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
+	const url = URL.createObjectURL(blob);
+	const link = document.createElement("a");
+	link.href = url;
+	link.download = `orders-${yearFilter === "all" ? "all" : yearFilter}.csv`;
+	link.click();
+	URL.revokeObjectURL(url);
+}
 </script>
 
 <SEO title="Orders | Admin" description="Manage orders" />

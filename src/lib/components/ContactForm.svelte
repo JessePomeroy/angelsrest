@@ -1,52 +1,52 @@
 <script lang="ts">
-    /** ContactFrom.svelte
-     * contact form extracted out of the about page during refactor
-     */
-    import { isDark } from "$lib/stores/theme";
+/** ContactFrom.svelte
+ * contact form extracted out of the about page during refactor
+ */
+import { isDark } from "$lib/stores/theme";
 
-    /**
-     * Theme-aware form text color
-     *
-     * Tailwind's dark: variant wasn't working reliably with !text-black,
-     * so we use a CSS variable that updates reactively when the theme changes.
-     *
-     * The --form-text-color variable is applied via inline styles on form elements.
-     * - Light mode: #000000 (black)
-     * - Dark mode: #fafafa (near-white)
-     */
-    $effect(() => {
-        document.documentElement.style.setProperty(
-            "--form-text-color",
-            $isDark ? "#fafafa" : "#000000",
-        );
-    });
+/**
+ * Theme-aware form text color
+ *
+ * Tailwind's dark: variant wasn't working reliably with !text-black,
+ * so we use a CSS variable that updates reactively when the theme changes.
+ *
+ * The --form-text-color variable is applied via inline styles on form elements.
+ * - Light mode: #000000 (black)
+ * - Dark mode: #fafafa (near-white)
+ */
+$effect(() => {
+	document.documentElement.style.setProperty(
+		"--form-text-color",
+		$isDark ? "#fafafa" : "#000000",
+	);
+});
 
-    let status = $state("idle"); // 'idle' | 'sending' | 'success' | 'error'
+let status = $state("idle"); // 'idle' | 'sending' | 'success' | 'error'
 
-    async function handleSubmit(e: SubmitEvent) {
-        e.preventDefault();
-        status = "sending";
+async function handleSubmit(e: SubmitEvent) {
+	e.preventDefault();
+	status = "sending";
 
-        const form = e.target as HTMLFormElement;
-        const data = Object.fromEntries(new FormData(form));
+	const form = e.target as HTMLFormElement;
+	const data = Object.fromEntries(new FormData(form));
 
-        try {
-            const res = await fetch("/api/contact", {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify(data),
-            });
+	try {
+		const res = await fetch("/api/contact", {
+			method: "POST",
+			headers: { "Content-Type": "application/json" },
+			body: JSON.stringify(data),
+		});
 
-            if (res.ok) {
-                status = "success";
-                form.reset();
-            } else {
-                status = "error";
-            }
-        } catch {
-            status = "error";
-        }
-    }
+		if (res.ok) {
+			status = "success";
+			form.reset();
+		} else {
+			status = "error";
+		}
+	} catch {
+		status = "error";
+	}
+}
 </script>
 
 <!-- Contact Form -->

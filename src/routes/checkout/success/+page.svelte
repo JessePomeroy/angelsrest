@@ -15,12 +15,15 @@ import SEO from "$lib/components/SEO.svelte";
 let { data } = $props();
 
 // Format currency for display
-function formatCurrency(amountInCents: number | null, currency: string = "usd") {
-  if (amountInCents === null || amountInCents === undefined) return "-";
-  return new Intl.NumberFormat("en-US", {
-    style: "currency",
-    currency: currency.toUpperCase(),
-  }).format(amountInCents / 100);
+function formatCurrency(
+	amountInCents: number | null,
+	currency: string = "usd",
+) {
+	if (amountInCents === null || amountInCents === undefined) return "-";
+	return new Intl.NumberFormat("en-US", {
+		style: "currency",
+		currency: currency.toUpperCase(),
+	}).format(amountInCents / 100);
 }
 </script>
 

@@ -1,70 +1,72 @@
 <script lang="ts">
-	import { page } from '$app/stores';
+import { page } from "$app/stores";
 
-	let email = $state($page.url.searchParams.get('email') || '');
-	let orderNumber = $state($page.url.searchParams.get('order') || '');
-	let loading = $state(false);
-	let error = $state('');
-	let order: any = $state(null);
+let email = $state($page.url.searchParams.get("email") || "");
+let orderNumber = $state($page.url.searchParams.get("order") || "");
+let loading = $state(false);
+let error = $state("");
+let order: any = $state(null);
 
-	async function lookupOrder() {
-		if (!email || !orderNumber) {
-			error = 'Please enter both email and order number';
-			return;
+async function lookupOrder() {
+	if (!email || !orderNumber) {
+		error = "Please enter both email and order number";
+		return;
+	}
+
+	loading = true;
+	error = "";
+	order = null;
+
+	try {
+		const response = await fetch(
+			`/api/orders/lookup?email=${encodeURIComponent(email)}&order=${encodeURIComponent(orderNumber)}`,
+		);
+		const data = await response.json();
+
+		if (response.ok && data.order) {
+			order = data.order;
+		} else {
+			error = data.error || "Order not found";
 		}
-
-		loading = true;
-		error = '';
-		order = null;
-
-		try {
-			const response = await fetch(`/api/orders/lookup?email=${encodeURIComponent(email)}&order=${encodeURIComponent(orderNumber)}`);
-			const data = await response.json();
-			
-			if (response.ok && data.order) {
-				order = data.order;
-			} else {
-				error = data.error || 'Order not found';
-			}
-		} catch (err) {
-			error = 'Failed to look up order';
-		} finally {
-			loading = false;
-		}
+	} catch (err) {
+		error = "Failed to look up order";
+	} finally {
+		loading = false;
 	}
+}
 
-	function formatCurrency(amount: number, currency = 'usd') {
-		return new Intl.NumberFormat('en-US', {
-			style: 'currency',
-			currency: currency.toUpperCase()
-		}).format(amount / 100);
-	}
+function formatCurrency(amount: number, currency = "usd") {
+	return new Intl.NumberFormat("en-US", {
+		style: "currency",
+		currency: currency.toUpperCase(),
+	}).format(amount / 100);
+}
 
-	function formatDate(dateStr: string) {
-		return new Date(dateStr).toLocaleDateString('en-US', {
-			month: 'short',
-			day: 'numeric',
-			year: 'numeric'
-		});
-	}
+function formatDate(dateStr: string) {
+	return new Date(dateStr).toLocaleDateString("en-US", {
+		month: "short",
+		day: "numeric",
+		year: "numeric",
+	});
+}
 
-	const statusLabels: Record<string, string> = {
-		new: 'New',
-		printing: 'Printing',
-		ready: 'Ready',
-		shipped: 'Shipped',
-		delivered: 'Delivered',
-		refunded: 'Refunded'
-	};
+const statusLabels: Record<string, string> = {
+	new: "New",
+	printing: "Printing",
+	ready: "Ready",
+	shipped: "Shipped",
+	delivered: "Delivered",
+	refunded: "Refunded",
+};
 
-	const statusColors: Record<string, string> = {
-		new: 'bg-blue-600',
-		printing: 'bg-yellow-500 text-black',
-		ready: 'bg-yellow-500 text-black',
-		shipped: 'bg-purple-600',
-		delivered: 'bg-green-600',
-		refunded: 'bg-red-600'
-	};
+const statusColors: Record<string, string> = {
+	new: "bg-blue-600",
+	printing: "bg-yellow-500 text-black",
+	ready: "bg-yellow-500 text-black",
+	shipped: "bg-purple-600",
+	delivered: "bg-green-600",
+	refunded: "bg-red-600",
+};
 </script>
 
 <svelte:head>

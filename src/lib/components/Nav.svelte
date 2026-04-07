@@ -13,11 +13,11 @@ import ThemeSwitcher from "./ThemeSwitcher.svelte";
 
 // Navigation links configuration
 const links = [
-  { href: "/", label: "Home" },
-  { href: "/gallery", label: "Gallery" },
-  { href: "/blog", label: "Blog" },
-  { href: "/shop", label: "Shop" },
-  { href: "/about", label: "About" },
+	{ href: "/", label: "Home" },
+	{ href: "/gallery", label: "Gallery" },
+	{ href: "/blog", label: "Blog" },
+	{ href: "/shop", label: "Shop" },
+	{ href: "/about", label: "About" },
 ];
 </script>
 

@@ -1,8 +1,8 @@
 /**
  * Print Set Detail - Server Load Function
- * 
+ *
  * Fetches a print set and its images from Sanity.
- * 
+ *
  * Image handling:
  * - Thumbnails: 400px webp for grid display
  * - Full display: 1200px webp for lightbox
@@ -11,8 +11,8 @@
 
 import { error } from "@sveltejs/kit";
 import { client } from "$lib/sanity/client";
-import { previewUrl, imageSet } from "$lib/utils/images";
 import type { PrintSet } from "$lib/types/shop";
+import { imageSet, previewUrl } from "$lib/utils/images";
 
 export async function load({ params }) {
 	// Fetch the print set
@@ -40,9 +40,9 @@ export async function load({ params }) {
 	const previewImageUrl = previewUrl(printSet.previewImage);
 
 	// Build image set for each image (thumb, full, original)
-	const imagesWithUrls = (printSet.images || []).map((image: any) => 
-		imageSet(image)
-	).filter(Boolean);
+	const imagesWithUrls = (printSet.images || [])
+		.map((image: any) => imageSet(image))
+		.filter(Boolean);
 
 	return {
 		printSet: {

@@ -9,13 +9,13 @@
 import { urlFor } from "$lib/sanity/client";
 
 let {
-  src,
-  alt = "",
-  width = 800,
+	src,
+	alt = "",
+	width = 800,
 }: {
-  src: any;
-  alt?: string;
-  width?: number;
+	src: any;
+	alt?: string;
+	width?: number;
 } = $props();
 </script>
 

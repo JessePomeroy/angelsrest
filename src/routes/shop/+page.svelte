@@ -1,74 +1,74 @@
 <script lang="ts">
-    /**
-     * Shop Index Page
-     *
-     * Shows products organized by category:
-     * - All: non-print products + individual prints without collections
-     * - Prints: collections + print sets + individual prints
-     * - Other categories: products in that category
-     *
-     * Collections and Print Sets are specific to the Prints category.
-     */
-    import SEO from "$lib/components/SEO.svelte";
-    import type { Product, PrintCollection, PrintSet } from "$lib/types/shop";
+/**
+ * Shop Index Page
+ *
+ * Shows products organized by category:
+ * - All: non-print products + individual prints without collections
+ * - Prints: collections + print sets + individual prints
+ * - Other categories: products in that category
+ *
+ * Collections and Print Sets are specific to the Prints category.
+ */
+import SEO from "$lib/components/SEO.svelte";
+import type { PrintCollection, PrintSet, Product } from "$lib/types/shop";
 
-    let { data } = $props();
+let { data } = $props();
 
-    let activeCategory = $state("all");
+let activeCategory = $state("all");
 
-    // Determine what to show based on active category
-    const categoryConfig = {
-        all: { showCollections: false, showPrintSets: false },
-        prints: { showCollections: true, showPrintSets: true },
-        postcards: { showCollections: false, showPrintSets: false },
-        tapestries: { showCollections: false, showPrintSets: false },
-        digital: { showCollections: false, showPrintSets: false },
-        merchandise: { showCollections: false, showPrintSets: false },
-    } as const;
+// Determine what to show based on active category
+const categoryConfig = {
+	all: { showCollections: false, showPrintSets: false },
+	prints: { showCollections: true, showPrintSets: true },
+	postcards: { showCollections: false, showPrintSets: false },
+	tapestries: { showCollections: false, showPrintSets: false },
+	digital: { showCollections: false, showPrintSets: false },
+	merchandise: { showCollections: false, showPrintSets: false },
+} as const;
 
-    // Get current category config
-    const config = $derived(
-        categoryConfig[activeCategory as keyof typeof categoryConfig] ??
-            categoryConfig.all,
-    );
+// Get current category config
+const config = $derived(
+	categoryConfig[activeCategory as keyof typeof categoryConfig] ??
+		categoryConfig.all,
+);
 
-    // Filter products based on category
-    // - "all": exclude prints that belong to collections
-    // - "prints": show only prints without a collection link
-    // - other: filter by exact category match
-    const filteredProducts = $derived.by(() => {
-        const products = data.products as Product[];
+// Filter products based on category
+// - "all": exclude prints that belong to collections
+// - "prints": show only prints without a collection link
+// - other: filter by exact category match
+const filteredProducts = $derived.by(() => {
+	const products = data.products as Product[];
 
-        if (activeCategory === "all") {
-            return products.filter(
-                (p) => p.category !== "prints" || !p.collection?.slug,
-            );
-        }
-        if (activeCategory === "prints") {
-            return products.filter(
-                (p) => p.category === "prints" && !p.collection?.slug,
-            );
-        }
-        return products.filter((p) => p.category === activeCategory);
-    });
+	if (activeCategory === "all") {
+		return products.filter(
+			(p) => p.category !== "prints" || !p.collection?.slug,
+		);
+	}
+	if (activeCategory === "prints") {
+		return products.filter(
+			(p) => p.category === "prints" && !p.collection?.slug,
+		);
+	}
+	return products.filter((p) => p.category === activeCategory);
+});
 
-    // Collections and print sets only show for Prints category
-    const filteredCollections = $derived(
-        config.showCollections ? (data.collections as PrintCollection[]) : [],
-    );
+// Collections and print sets only show for Prints category
+const filteredCollections = $derived(
+	config.showCollections ? (data.collections as PrintCollection[]) : [],
+);
 
-    const filteredPrintSets = $derived(
-        config.showPrintSets ? (data.printSets as PrintSet[]) : [],
-    );
+const filteredPrintSets = $derived(
+	config.showPrintSets ? (data.printSets as PrintSet[]) : [],
+);
 
-    const categories = [
-        { label: "All", value: "all" },
-        { label: "Prints", value: "prints" },
-        { label: "Postcards", value: "postcards" },
-        { label: "Tapestries", value: "tapestries" },
-        { label: "Digital", value: "digital" },
-        { label: "Merchandise", value: "merchandise" },
-    ] as const;
+const categories = [
+	{ label: "All", value: "all" },
+	{ label: "Prints", value: "prints" },
+	{ label: "Postcards", value: "postcards" },
+	{ label: "Tapestries", value: "tapestries" },
+	{ label: "Digital", value: "digital" },
+	{ label: "Merchandise", value: "merchandise" },
+] as const;
 </script>
 
 <SEO

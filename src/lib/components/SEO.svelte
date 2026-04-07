@@ -6,21 +6,23 @@
  */
 
 let {
-  title = "angel's rest",
-  description = "Photography portfolio and print shop by Jesse Pomeroy. Fine art photography, prints, zines, and commissions.",
-  image = "/og-image.jpg",
-  url = "https://angelsrest.online",
-  type = "website",
+	title = "angel's rest",
+	description = "Photography portfolio and print shop by Jesse Pomeroy. Fine art photography, prints, zines, and commissions.",
+	image = "/og-image.jpg",
+	url = "https://angelsrest.online",
+	type = "website",
 }: {
-  title?: string;
-  description?: string;
-  image?: string;
-  url?: string;
-  type?: string;
+	title?: string;
+	description?: string;
+	image?: string;
+	url?: string;
+	type?: string;
 } = $props();
 
 // Ensure full URL for image (use $derived to track prop changes)
-let fullImageUrl = $derived(image.startsWith("http") ? image : `https://angelsrest.online${image}`);
+let fullImageUrl = $derived(
+	image.startsWith("http") ? image : `https://angelsrest.online${image}`,
+);
 </script>
 
 <svelte:head>

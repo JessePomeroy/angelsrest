@@ -11,21 +11,21 @@
    ============================================ */
 
 :root {
-  --grain-opacity: 0.14;
-  --grain-blend: overlay;
+	--grain-opacity: 0.14;
+	--grain-blend: overlay;
 }
 
 html.dark {
-  --grain-opacity: 0.20;
+	--grain-opacity: 0.2;
 }
 
 /* Static film grain — no animation */
 .grain-overlay {
-  position: fixed;
-  inset: 0;
-  pointer-events: none;
-  z-index: 1;
-  opacity: var(--grain-opacity);
-  mix-blend-mode: var(--grain-blend);
-  filter: url(#grain-filter);
+	position: fixed;
+	inset: 0;
+	pointer-events: none;
+	z-index: 1;
+	opacity: var(--grain-opacity);
+	mix-blend-mode: var(--grain-blend);
+	filter: url(#grain-filter);
 }

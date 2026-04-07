@@ -1,10 +1,10 @@
 <script lang="ts">
-    import SEO from "$lib/components/SEO.svelte";
-    import AsciiImage from "$lib/components/AsciiImage.svelte";
-    import portrait from "$lib/assets/DSCF7533.jpg";
-    import ContactForm from "$lib/components/ContactForm.svelte";
+import portrait from "$lib/assets/DSCF7533.jpg";
+import AsciiImage from "$lib/components/AsciiImage.svelte";
+import ContactForm from "$lib/components/ContactForm.svelte";
+import SEO from "$lib/components/SEO.svelte";
 
-    let { data } = $props();
+let { data } = $props();
 </script>
 
 <svelte:head>
