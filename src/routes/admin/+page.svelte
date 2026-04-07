@@ -11,6 +11,12 @@ let { data } = $props();
 const stats = $derived(data.stats);
 const dailyRevenue = $derived(data.dailyRevenue);
 const recentOrders = $derived(data.recentOrders);
+const crmStats = $derived(data.crmStats);
+const invoiceStats = $derived(data.invoiceStats);
+const pendingInvoiceAmount = $derived(data.pendingInvoiceAmount);
+const quoteStats = $derived(data.quoteStats);
+const newInquiryCount = $derived(data.newInquiryCount);
+const activityFeed = $derived(data.activityFeed);
 
 // Sparkline chart calculations
 const chartHeight = 60;
@@ -27,6 +33,22 @@ let sparklinePath = $derived(() => {
 	});
 	return `M${points.join(" L")}`;
 });
+
+function getActivityStatusColor(type: string, status: string): string {
+	if (type === "order") return getStatusColor(status);
+	const colors: Record<string, string> = {
+		draft: "var(--status-slate)",
+		sent: "var(--status-lavender)",
+		paid: "var(--status-sage)",
+		overdue: "var(--status-rose)",
+		partial: "var(--status-amber)",
+		canceled: "var(--status-rose)",
+		accepted: "var(--status-sage)",
+		declined: "var(--status-rose)",
+		expired: "var(--status-slate)",
+	};
+	return colors[status] || "var(--status-slate)";
+}
 
 let sparklineArea = $derived(() => {
 	const points = dailyRevenue.map((d: { amount: number }, i: number) => {
@@ -76,6 +98,57 @@ let sparklineArea = $derived(() => {
 				<path d={sparklinePath()} fill="none" stroke="rgba(129, 140, 248, 0.35)" stroke-width="1.5" />
 			</svg>
 		</div>
+	</div>
+
+	<!-- Activity summary -->
+	<div class="activity-summary">
+		<h2 class="section-label">activity</h2>
+		<p class="summary-line">
+			<span class="summary-value">{crmStats.total}</span> clients
+			<span class="summary-sep">&middot;</span>
+			<span class="summary-value">{crmStats.leads}</span> leads
+			<span class="summary-sep">&middot;</span>
+			<span class="summary-value">{crmStats.booked}</span> booked
+			<span class="summary-sep">&middot;</span>
+			<span class="summary-value">{crmStats.inProgress}</span> in progress
+		</p>
+		<p class="summary-line">
+			<span class="summary-value">{invoiceStats.draft + invoiceStats.sent}</span> invoices outstanding
+			<span class="summary-sep">&middot;</span>
+			<span class="summary-value">{formatCurrency(pendingInvoiceAmount)}</span> pending
+		</p>
+		<p class="summary-line">
+			<span class="summary-value">{quoteStats.sent}</span> quotes awaiting response
+		</p>
+		{#if newInquiryCount > 0}
+			<p class="summary-line inquiry-highlight">
+				<span class="summary-value">{newInquiryCount}</span> new {newInquiryCount === 1 ? 'inquiry' : 'inquiries'}
+			</p>
+		{/if}
+	</div>
+
+	<!-- Recent activity feed -->
+	<div class="feed-section">
+		<h2 class="section-label">recent activity</h2>
+		{#if activityFeed.length === 0}
+			<p class="empty-state">no recent activity</p>
+		{:else}
+			<ul class="activity-feed">
+				{#each activityFeed as item}
+					<li class="feed-item">
+						<span class="feed-type-badge feed-type-{item.type}">{item.type}</span>
+						<span class="feed-description">{item.description}</span>
+						<span class="feed-meta">
+							<span class="feed-date">{formatDate(item.createdAt)}</span>
+							<span class="status-indicator">
+								<span class="status-dot" style="background: {getActivityStatusColor(item.type, item.status)}"></span>
+								{formatStatus(item.status)}
+							</span>
+						</span>
+					</li>
+				{/each}
+			</ul>
+		{/if}
 	</div>
 
 	<!-- Recent orders -->
@@ -213,6 +286,7 @@ let sparklineArea = $derived(() => {
 
 	.table-wrap {
 		overflow-x: auto;
+		-webkit-overflow-scrolling: touch;
 	}
 
 	.orders-table {
@@ -298,13 +372,115 @@ let sparklineArea = $derived(() => {
 		font-size: 0.88rem;
 	}
 
+	/* Activity summary */
+	.activity-summary {
+		margin-bottom: 48px;
+	}
+
+	.summary-line {
+		font-size: 0.86rem;
+		color: var(--admin-text-muted);
+		margin: 0 0 6px;
+		line-height: 1.6;
+	}
+
+	.summary-value {
+		font-weight: 500;
+		color: var(--admin-heading);
+	}
+
+	.summary-sep {
+		color: var(--admin-text-subtle);
+		margin: 0 4px;
+	}
+
+	.inquiry-highlight {
+		color: var(--admin-accent);
+	}
+
+	.inquiry-highlight .summary-value {
+		color: var(--admin-accent);
+	}
+
+	/* Activity feed */
+	.feed-section {
+		margin-bottom: 48px;
+	}
+
+	.activity-feed {
+		list-style: none;
+		margin: 0;
+		padding: 0;
+	}
+
+	.feed-item {
+		display: flex;
+		align-items: center;
+		gap: 12px;
+		padding: 12px 0;
+		border-bottom: 1px solid var(--admin-border);
+		font-size: 0.86rem;
+	}
+
+	.feed-item:first-child {
+		border-top: 1px solid var(--admin-border);
+	}
+
+	.feed-type-badge {
+		font-size: 0.7rem;
+		font-weight: 500;
+		letter-spacing: 0.03em;
+		color: var(--admin-text-subtle);
+		min-width: 52px;
+		text-align: center;
+	}
+
+	.feed-type-order {
+		color: var(--status-peach);
+	}
+
+	.feed-type-invoice {
+		color: var(--status-sage);
+	}
+
+	.feed-type-quote {
+		color: var(--status-lavender);
+	}
+
+	.feed-description {
+		flex: 1;
+		color: var(--admin-text);
+		min-width: 0;
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
+	}
+
+	.feed-meta {
+		display: flex;
+		align-items: center;
+		gap: 12px;
+		flex-shrink: 0;
+	}
+
+	.feed-date {
+		font-size: 0.78rem;
+		color: var(--admin-text-subtle);
+	}
+
 	@media (max-width: 768px) {
 		.dashboard {
-			padding: 28px 20px;
+			padding: 20px 16px;
+		}
+
+		.page-header {
+			margin-bottom: 28px;
 		}
 
 		.stats-line {
 			gap: 8px;
+			margin-bottom: 32px;
+			padding-bottom: 24px;
 		}
 
 		.stat-sep {
@@ -316,6 +492,33 @@ let sparklineArea = $derived(() => {
 			flex-direction: column;
 			gap: 2px;
 			margin-bottom: 8px;
+		}
+
+		.summary-line {
+			line-height: 1.8;
+		}
+
+		.summary-sep {
+			display: none;
+		}
+
+		.summary-line span {
+			display: inline;
+		}
+
+		.feed-item {
+			flex-wrap: wrap;
+			gap: 8px;
+		}
+
+		.feed-meta {
+			width: 100%;
+			padding-left: 64px;
+		}
+
+		.feed-type-badge {
+			min-width: 44px;
+			font-size: 0.68rem;
 		}
 	}
 </style>

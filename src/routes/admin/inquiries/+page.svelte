@@ -253,6 +253,7 @@ function replyViaEmail(email: string, subject: string) {
 
 	.table-wrap {
 		overflow-x: auto;
+		-webkit-overflow-scrolling: touch;
 	}
 
 	.inquiries-table {
@@ -479,7 +480,34 @@ function replyViaEmail(email: string, subject: string) {
 
 	@media (max-width: 768px) {
 		.inquiries-page {
-			padding: 28px 20px;
+			padding: 20px 16px;
+		}
+
+		.toolbar {
+			flex-direction: column;
+			align-items: flex-start;
+			gap: 8px;
+		}
+
+		.modal-content {
+			max-width: 100%;
+			margin: 0;
+			border-radius: 12px 12px 0 0;
+			padding: 24px 20px;
+		}
+
+		.modal-overlay {
+			align-items: flex-end;
+			padding: 0;
+		}
+
+		.modal-actions {
+			flex-direction: column;
+		}
+
+		.modal-actions .action-btn {
+			width: 100%;
+			text-align: center;
 		}
 	}
 </style>

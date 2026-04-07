@@ -581,6 +581,7 @@ function exportCSV() {
 	/* Table */
 	.table-wrap {
 		overflow-x: auto;
+		-webkit-overflow-scrolling: touch;
 	}
 
 	.orders-table {
@@ -833,7 +834,7 @@ function exportCSV() {
 
 	@media (max-width: 768px) {
 		.orders-page {
-			padding: 28px 20px;
+			padding: 20px 16px;
 		}
 
 		.filter-bar {
@@ -856,6 +857,26 @@ function exportCSV() {
 			flex-basis: 100%;
 			gap: 6px;
 			margin-bottom: 4px;
+		}
+
+		.modal-content {
+			max-width: 100%;
+			margin: 0;
+			border-radius: 12px 12px 0 0;
+			max-height: 90vh;
+		}
+
+		.modal-overlay {
+			align-items: flex-end;
+			padding: 0;
+		}
+
+		.modal-header {
+			padding: 20px 20px 0;
+		}
+
+		.modal-body {
+			padding: 20px;
 		}
 	}
 </style>

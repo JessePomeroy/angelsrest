@@ -1333,6 +1333,7 @@ async function deletePreset() {
 	/* Table */
 	.table-wrap {
 		overflow-x: auto;
+		-webkit-overflow-scrolling: touch;
 	}
 
 	.q-table {
@@ -1964,7 +1965,7 @@ async function deletePreset() {
 	/* Responsive */
 	@media (max-width: 768px) {
 		.quote-page {
-			padding: 28px 20px;
+			padding: 20px 16px;
 		}
 
 		.page-header {
@@ -1973,6 +1974,20 @@ async function deletePreset() {
 
 		.btn-add {
 			align-self: flex-start;
+		}
+
+		.stats-line {
+			flex-direction: column;
+			gap: 4px;
+		}
+
+		.stat-sep {
+			display: none;
+		}
+
+		.tab-bar {
+			overflow-x: auto;
+			-webkit-overflow-scrolling: touch;
 		}
 
 		.filter-bar {
@@ -1989,6 +2004,33 @@ async function deletePreset() {
 
 		.modal-content {
 			max-width: 100%;
+		}
+
+		.modal-overlay {
+			align-items: flex-end;
+			padding: 0;
+		}
+
+		.modal-content {
+			border-radius: 12px 12px 0 0;
+		}
+
+		.modal-header {
+			padding: 20px 20px 16px;
+		}
+
+		.modal-form {
+			padding: 0 20px 20px;
+		}
+
+		.detail-body {
+			padding: 0 20px 20px;
+		}
+
+		.preset-item {
+			flex-direction: column;
+			align-items: flex-start;
+			gap: 6px;
 		}
 	}
 </style>

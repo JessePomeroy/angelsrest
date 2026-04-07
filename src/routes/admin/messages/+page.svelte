@@ -577,7 +577,11 @@ function handleKeydown(e: KeyboardEvent) {
 	/* Mobile responsive */
 	@media (max-width: 768px) {
 		.messages-page {
-			padding: 20px 16px;
+			padding: 16px 12px;
+		}
+
+		.page-header {
+			margin-bottom: 16px;
 		}
 
 		.messages-layout {

@@ -189,7 +189,7 @@ const studioBaseUrl = "https://angelsrest.sanity.studio";
 
 	@media (max-width: 768px) {
 		.galleries-page {
-			padding: 28px 20px;
+			padding: 20px 16px;
 		}
 
 		.gallery-row {
@@ -198,9 +198,23 @@ const studioBaseUrl = "https://angelsrest.sanity.studio";
 			gap: 10px;
 		}
 
+		.gallery-info {
+			flex-direction: column;
+			gap: 2px;
+		}
+
 		.gallery-meta {
 			flex-wrap: wrap;
 			gap: 12px;
+		}
+
+		.gallery-actions {
+			width: 100%;
+		}
+
+		.action-link {
+			flex: 1;
+			text-align: center;
 		}
 	}
 </style>
