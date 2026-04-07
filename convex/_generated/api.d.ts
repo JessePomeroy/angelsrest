@@ -23,25 +23,25 @@ import type * as quotes from "../quotes.js";
 import type * as tags from "../tags.js";
 
 import type {
-	ApiFromModules,
-	FilterApi,
-	FunctionReference,
+  ApiFromModules,
+  FilterApi,
+  FunctionReference,
 } from "convex/server";
 
 declare const fullApi: ApiFromModules<{
-	activityLog: typeof activityLog;
-	contracts: typeof contracts;
-	crm: typeof crm;
-	emailLog: typeof emailLog;
-	emailTemplates: typeof emailTemplates;
-	invoices: typeof invoices;
-	kanban: typeof kanban;
-	messages: typeof messages;
-	orders: typeof orders;
-	platform: typeof platform;
-	portal: typeof portal;
-	quotes: typeof quotes;
-	tags: typeof tags;
+  activityLog: typeof activityLog;
+  contracts: typeof contracts;
+  crm: typeof crm;
+  emailLog: typeof emailLog;
+  emailTemplates: typeof emailTemplates;
+  invoices: typeof invoices;
+  kanban: typeof kanban;
+  messages: typeof messages;
+  orders: typeof orders;
+  platform: typeof platform;
+  portal: typeof portal;
+  quotes: typeof quotes;
+  tags: typeof tags;
 }>;
 
 /**
@@ -53,8 +53,8 @@ declare const fullApi: ApiFromModules<{
  * ```
  */
 export declare const api: FilterApi<
-	typeof fullApi,
-	FunctionReference<any, "public">
+  typeof fullApi,
+  FunctionReference<any, "public">
 >;
 
 /**
@@ -66,8 +66,8 @@ export declare const api: FilterApi<
  * ```
  */
 export declare const internal: FilterApi<
-	typeof fullApi,
-	FunctionReference<any, "internal">
+  typeof fullApi,
+  FunctionReference<any, "internal">
 >;
 
 export declare const components: {};
