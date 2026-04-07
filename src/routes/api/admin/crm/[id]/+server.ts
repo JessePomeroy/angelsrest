@@ -2,8 +2,9 @@ import { error, json } from "@sveltejs/kit";
 import { ConvexHttpClient } from "convex/browser";
 import { env as publicEnv } from "$env/dynamic/public";
 import { api } from "../../../../../../convex/_generated/api";
+import type { Id } from "../../../../../../convex/_generated/dataModel";
 
-const convex = new ConvexHttpClient(publicEnv.PUBLIC_CONVEX_URL!);
+const convex = new ConvexHttpClient(publicEnv.PUBLIC_CONVEX_URL || "");
 
 export async function PATCH({ params, request }) {
 	const { id } = params;
@@ -11,7 +12,7 @@ export async function PATCH({ params, request }) {
 
 	try {
 		await convex.mutation(api.crm.updateClient, {
-			clientId: id as any,
+			clientId: id as Id<"photographyClients">,
 			...data,
 		});
 		return json({ success: true });
@@ -26,7 +27,7 @@ export async function DELETE({ params }) {
 
 	try {
 		await convex.mutation(api.crm.deleteClient, {
-			clientId: id as any,
+			clientId: id as Id<"photographyClients">,
 		});
 		return json({ success: true });
 	} catch (err) {

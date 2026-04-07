@@ -92,7 +92,7 @@ async function migrate() {
 		}
 
 		// Map items to Convex format
-		const items = (order.items || []).map((item: any) => ({
+		const items = (order.items || []).map((item: Record<string, unknown>) => ({
 			productName: item.productName || item.title || "Print",
 			quantity: item.quantity || 1,
 			price: item.price || 0,

@@ -33,7 +33,7 @@ import {
 import { createOrder as createLumaPrintsOrder } from "$lib/lumaprints/client";
 import { api } from "../../../../../convex/_generated/api";
 
-const convex = new ConvexHttpClient(publicEnv.PUBLIC_CONVEX_URL!);
+const convex = new ConvexHttpClient(publicEnv.PUBLIC_CONVEX_URL || "");
 
 const stripe = new Stripe(STRIPE_SECRET_KEY);
 const resend = new Resend(RESEND_API_KEY);
@@ -46,6 +46,7 @@ const formatCurrency = (amount: number) =>
 	}).format(amount / 100);
 
 /** Format shipping address for emails */
+// biome-ignore lint/suspicious/noExplicitAny: Stripe SDK types
 function formatShippingAddress(shippingDetails: any): string {
 	if (!shippingDetails?.address) return "No shipping address";
 	const { name, address } = shippingDetails;
@@ -88,6 +89,7 @@ export async function POST({ request }) {
 			signature,
 			STRIPE_WEBHOOK_SECRET,
 		);
+		// biome-ignore lint/suspicious/noExplicitAny: Stripe SDK types
 	} catch (err: any) {
 		console.error("Webhook signature verification failed:", err.message);
 		throw error(400, `Webhook Error: ${err.message}`);
@@ -138,6 +140,7 @@ async function handleCheckoutCompleted(session: Stripe.Checkout.Session) {
 			await fetchSessionDetails(session);
 
 		const customerEmail =
+			// biome-ignore lint/suspicious/noExplicitAny: Stripe SDK types
 			fullSession.customer_details?.email || (session as any).email;
 
 		if (!customerEmail) {
@@ -184,6 +187,7 @@ async function handleCheckoutCompleted(session: Stripe.Checkout.Session) {
 async function fetchSessionDetails(session: Stripe.Checkout.Session) {
 	let fullSession: Stripe.Checkout.Session;
 	let lineItems: Stripe.LineItem[] = [];
+	// biome-ignore lint/suspicious/noExplicitAny: Stripe SDK types
 	let shippingDetails: any;
 
 	try {
@@ -192,12 +196,13 @@ async function fetchSessionDetails(session: Stripe.Checkout.Session) {
 		});
 		lineItems = fullSession.line_items?.data || [];
 		shippingDetails = session.collected_information?.shipping_details;
-	} catch (retrieveError) {
+	} catch {
 		// For Stripe CLI test events, the session may not exist
 		console.log(
 			"Session retrieval failed (likely test event), using event data",
 		);
 		fullSession = session;
+		// biome-ignore lint/suspicious/noExplicitAny: Stripe SDK types
 		shippingDetails = (session as any).collected_information?.shipping_details;
 	}
 
@@ -216,12 +221,13 @@ async function sendCustomerConfirmation({
 }: {
 	session: Stripe.Checkout.Session;
 	customerEmail: string;
+	// biome-ignore lint/suspicious/noExplicitAny: Stripe SDK types
 	shippingDetails: any;
 	lineItems: Stripe.LineItem[];
 	orderNumber?: string;
 }) {
+	// biome-ignore lint/suspicious/noExplicitAny: Stripe SDK types
 	const isDigital = (session as any).metadata?.isDigital === "true";
-	const productSlug = (session as any).metadata?.productSlug || "";
 
 	const digitalSection = isDigital
 		? `
@@ -283,6 +289,7 @@ async function sendAdminNotification({
 }: {
 	session: Stripe.Checkout.Session;
 	customerEmail: string;
+	// biome-ignore lint/suspicious/noExplicitAny: Stripe SDK types
 	shippingDetails: any;
 	lineItems: Stripe.LineItem[];
 	orderNumber?: string;
@@ -333,6 +340,7 @@ async function createOrderInConvex({
 	lineItems,
 }: {
 	session: Stripe.Checkout.Session;
+	// biome-ignore lint/suspicious/noExplicitAny: Stripe SDK types
 	shippingDetails: any;
 	lineItems: Stripe.LineItem[];
 }) {
@@ -343,6 +351,7 @@ async function createOrderInConvex({
 		});
 
 		// Extract payment intent ID (could be string or expanded object)
+		// biome-ignore lint/suspicious/noExplicitAny: Stripe SDK types
 		const rawPaymentIntent = (session as any).payment_intent;
 		const stripePaymentIntentId =
 			typeof rawPaymentIntent === "string"
@@ -355,6 +364,7 @@ async function createOrderInConvex({
 			price: item.amount_total || item.price?.unit_amount || 0,
 		}));
 
+		// biome-ignore lint/suspicious/noExplicitAny: Stripe SDK types
 		const isDigital = (session as any).metadata?.isDigital === "true";
 
 		// Create order in Convex
@@ -380,8 +390,10 @@ async function createOrderInConvex({
 			total: session.amount_total || 0,
 			subtotal: session.amount_subtotal || undefined,
 			fulfillmentType: isDigital ? "digital" : "self",
+			// biome-ignore lint/suspicious/noExplicitAny: Stripe SDK types
 			paperName: (session as any).metadata?.paperName || undefined,
 			paperSubcategoryId:
+				// biome-ignore lint/suspicious/noExplicitAny: Stripe SDK types
 				(session as any).metadata?.paperSubcategoryId || undefined,
 		});
 
@@ -411,6 +423,7 @@ async function createOrderInConvex({
  * Waits 3 seconds for Stripe to finalize the transaction before fetching.
  */
 async function captureStripeFees(
+	// biome-ignore lint/suspicious/noExplicitAny: Stripe SDK types
 	orderId: any,
 	orderNumber: string,
 	paymentIntentId: string | undefined,
@@ -425,6 +438,7 @@ async function captureStripeFees(
 			expand: ["latest_charge.balance_transaction"],
 		});
 
+		// biome-ignore lint/suspicious/noExplicitAny: Stripe SDK types
 		const charge = (pi as any).latest_charge;
 		const fees = charge?.balance_transaction?.fee;
 
@@ -449,15 +463,19 @@ async function captureStripeFees(
  * Only submits if at least one item is LumaPrints-fulfilled.
  */
 async function submitToLumaPrints(
+	// biome-ignore lint/suspicious/noExplicitAny: Stripe SDK types
 	orderId: any,
 	orderNumber: string,
 	lineItems: Stripe.LineItem[],
+	// biome-ignore lint/suspicious/noExplicitAny: Stripe SDK types
 	shippingDetails: any,
 	session: Stripe.Checkout.Session,
 ) {
 	try {
 		// Check if this is a print set order
+		// biome-ignore lint/suspicious/noExplicitAny: Stripe SDK types
 		const isPrintSet = (session as any).metadata?.isPrintSet === "true";
+		// biome-ignore lint/suspicious/noExplicitAny: Stripe SDK types
 		const imageUrlsJson = (session as any).metadata?.imageUrls || "[]";
 		let imageUrls: string[] = [];
 		try {
@@ -480,12 +498,15 @@ async function submitToLumaPrints(
 
 		// Get paper info from Stripe metadata (passed during checkout)
 		const paperSubcategoryId =
+			// biome-ignore lint/suspicious/noExplicitAny: Stripe SDK types
 			(session as any).metadata?.paperSubcategoryId || "";
 		const paperWidth = parseInt(
+			// biome-ignore lint/suspicious/noExplicitAny: Stripe SDK types
 			(session as any).metadata?.paperWidth || "8",
 			10,
 		);
 		const paperHeight = parseInt(
+			// biome-ignore lint/suspicious/noExplicitAny: Stripe SDK types
 			(session as any).metadata?.paperHeight || "10",
 			10,
 		);
@@ -498,6 +519,7 @@ async function submitToLumaPrints(
 
 				lumaprintsItems.push({
 					externalItemId: `print-set-${i + 1}`,
+					// biome-ignore lint/suspicious/noExplicitAny: Stripe SDK types
 					productName: `${(session as any).metadata?.productId} - ${i + 1}/${imageUrls.length}`,
 					quantity: 1,
 					subcategoryId: parseInt(paperSubcategoryId, 10) || 103001,
@@ -509,6 +531,7 @@ async function submitToLumaPrints(
 			}
 		} else if (paperSubcategoryId) {
 			// Single product: create one item
+			// biome-ignore lint/suspicious/noExplicitAny: Stripe SDK types
 			const rawImageUrl = (session as any).metadata?.imageUrl || "";
 			const imageUrl = rawImageUrl.split("?")[0].replace(/\.webp$/, ".jpg");
 

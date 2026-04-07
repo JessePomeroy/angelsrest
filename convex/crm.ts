@@ -55,7 +55,18 @@ export const createClient = mutation({
 	handler: async (ctx, args) => {
 		return await ctx.db.insert("photographyClients", {
 			...args,
-			type: (args.type as any) || undefined,
+			type:
+				(args.type as
+					| "wedding"
+					| "portrait"
+					| "family"
+					| "commercial"
+					| "event"
+					| "website"
+					| "redesign"
+					| "maintenance"
+					| "other"
+					| undefined) || undefined,
 			status: "lead",
 		});
 	},
@@ -75,7 +86,7 @@ export const updateClient = mutation({
 		siteUrl_client: v.optional(v.string()),
 	},
 	handler: async (ctx, { clientId, ...updates }) => {
-		const patch: Record<string, any> = {};
+		const patch: Record<string, unknown> = {};
 		for (const [key, val] of Object.entries(updates)) {
 			if (val !== undefined) patch[key] = val;
 		}

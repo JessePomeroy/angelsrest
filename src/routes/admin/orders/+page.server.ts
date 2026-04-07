@@ -2,7 +2,7 @@ import { ConvexHttpClient } from "convex/browser";
 import { env as publicEnv } from "$env/dynamic/public";
 import { api } from "../../../../convex/_generated/api";
 
-const convex = new ConvexHttpClient(publicEnv.PUBLIC_CONVEX_URL!);
+const convex = new ConvexHttpClient(publicEnv.PUBLIC_CONVEX_URL || "");
 
 export async function load() {
 	const rawOrders = await convex.query(api.orders.list, {

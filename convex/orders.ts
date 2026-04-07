@@ -11,7 +11,18 @@ export const list = query({
 			return await ctx.db
 				.query("orders")
 				.withIndex("by_siteUrl_status", (q) =>
-					q.eq("siteUrl", siteUrl).eq("status", status as any),
+					q
+						.eq("siteUrl", siteUrl)
+						.eq(
+							"status",
+							status as
+								| "new"
+								| "printing"
+								| "ready"
+								| "shipped"
+								| "delivered"
+								| "refunded",
+						),
 				)
 				.order("desc")
 				.collect();
@@ -91,7 +102,7 @@ export const updateStatus = mutation({
 		stripePaymentIntentId: v.optional(v.string()),
 	},
 	handler: async (ctx, { orderId, ...updates }) => {
-		const patch: Record<string, any> = {};
+		const patch: Record<string, unknown> = {};
 		for (const [key, val] of Object.entries(updates)) {
 			if (val !== undefined) patch[key] = val;
 		}

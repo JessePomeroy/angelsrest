@@ -80,7 +80,7 @@ export const updateSubscription = mutation({
 
 		if (!client) return;
 
-		const patch: Record<string, any> = {
+		const patch: Record<string, unknown> = {
 			tier: args.tier,
 			subscriptionStatus: args.subscriptionStatus,
 		};
