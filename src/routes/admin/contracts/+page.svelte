@@ -17,6 +17,8 @@ let selectedContract = $state<any>(null);
 let editMode = $state(false);
 let confirmDelete = $state(false);
 let saving = $state(false);
+let sending = $state(false);
+let sendResult = $state<"success" | "error" | null>(null);
 
 // Template modal state
 let showTemplateModal = $state(false);
@@ -174,12 +176,14 @@ function openDetailModal(contract: any) {
 	selectedContract = { ...contract };
 	editMode = false;
 	confirmDelete = false;
+	sendResult = null;
 }
 
 function closeDetailModal() {
 	selectedContract = null;
 	editMode = false;
 	confirmDelete = false;
+	sendResult = null;
 }
 
 function startEdit() {
@@ -258,6 +262,35 @@ async function saveEdit() {
 		console.error("Failed to update contract:", err);
 	} finally {
 		saving = false;
+	}
+}
+
+async function sendContractEmail() {
+	if (!selectedContract) return;
+	sending = true;
+	sendResult = null;
+	try {
+		const res = await fetch(`/api/admin/contracts/${selectedContract._id}/send`, {
+			method: "POST",
+		});
+		if (res.ok) {
+			sendResult = "success";
+			const idx = data.contracts.findIndex(
+				(c: any) => c._id === selectedContract._id,
+			);
+			if (idx !== -1) {
+				data.contracts[idx] = { ...data.contracts[idx], status: "sent" };
+				data.contracts = [...data.contracts];
+			}
+			selectedContract = { ...selectedContract, status: "sent" };
+		} else {
+			sendResult = "error";
+		}
+	} catch (err) {
+		console.error("Failed to send contract email:", err);
+		sendResult = "error";
+	} finally {
+		sending = false;
 	}
 }
 
@@ -1070,6 +1103,11 @@ async function deleteTemplate() {
 									confirmDelete = false;
 								}}>no</button
 							>
+						{:else if sendResult === "success"}
+							<span class="send-success">email sent</span>
+						{:else if sendResult === "error"}
+							<span class="send-error">failed to send</span>
+							<button class="btn-cancel" onclick={() => { sendResult = null; }}>dismiss</button>
 						{:else if selectedContract.status === "draft"}
 							<button
 								class="btn-danger-outline"
@@ -1080,6 +1118,13 @@ async function deleteTemplate() {
 							<button class="btn-cancel" onclick={startEdit}
 								>edit</button
 							>
+							<button
+								class="btn-send"
+								onclick={sendContractEmail}
+								disabled={sending}
+							>
+								{sending ? "sending..." : "send email"}
+							</button>
 							<button
 								class="btn-save"
 								onclick={() => contractAction("send")}
@@ -1741,6 +1786,36 @@ async function deleteTemplate() {
 	.btn-save:disabled {
 		opacity: 0.4;
 		cursor: not-allowed;
+	}
+
+	.btn-send {
+		background: rgba(74, 222, 128, 0.12);
+		border-color: rgba(74, 222, 128, 0.25);
+		color: #4ade80;
+		font-weight: 500;
+	}
+
+	.btn-send:hover {
+		background: rgba(74, 222, 128, 0.2);
+	}
+
+	.btn-send:disabled {
+		opacity: 0.4;
+		cursor: not-allowed;
+	}
+
+	.send-success {
+		font-size: 0.82rem;
+		color: #4ade80;
+		margin-right: auto;
+		align-self: center;
+	}
+
+	.send-error {
+		font-size: 0.82rem;
+		color: var(--status-rose);
+		margin-right: auto;
+		align-self: center;
 	}
 
 	.btn-danger {

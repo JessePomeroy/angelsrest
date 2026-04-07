@@ -305,6 +305,26 @@ export default defineSchema({
 		.index("by_siteUrl", ["siteUrl"])
 		.index("by_siteUrl_and_projectType", ["siteUrl", "projectType"]),
 
+	// Email sending log
+	emailLog: defineTable({
+		siteUrl: v.string(),
+		to: v.string(),
+		subject: v.string(),
+		type: v.union(
+			v.literal("invoice"),
+			v.literal("quote"),
+			v.literal("contract"),
+			v.literal("reminder"),
+			v.literal("custom"),
+		),
+		relatedId: v.optional(v.string()),
+		status: v.union(v.literal("sent"), v.literal("failed")),
+		error: v.optional(v.string()),
+		resendId: v.optional(v.string()),
+	})
+		.index("by_siteUrl", ["siteUrl"])
+		.index("by_siteUrl_and_type", ["siteUrl", "type"]),
+
 	// Contact form inquiries (from public site visitors)
 	inquiries: defineTable({
 		siteUrl: v.string(),

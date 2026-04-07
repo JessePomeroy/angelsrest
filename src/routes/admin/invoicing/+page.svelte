@@ -14,6 +14,8 @@ let selectedInvoice = $state<any>(null);
 let editMode = $state(false);
 let confirmDelete = $state(false);
 let saving = $state(false);
+let sending = $state(false);
+let sendResult = $state<"success" | "error" | null>(null);
 
 // Create form state
 let formNumber = $state("");
@@ -178,12 +180,14 @@ function openDetailModal(invoice: any) {
 	selectedInvoice = { ...invoice };
 	editMode = false;
 	confirmDelete = false;
+	sendResult = null;
 }
 
 function closeDetailModal() {
 	selectedInvoice = null;
 	editMode = false;
 	confirmDelete = false;
+	sendResult = null;
 }
 
 function startEdit() {
@@ -320,6 +324,35 @@ async function saveEdit() {
 		console.error("Failed to update invoice:", err);
 	} finally {
 		saving = false;
+	}
+}
+
+async function sendInvoiceEmail() {
+	if (!selectedInvoice) return;
+	sending = true;
+	sendResult = null;
+	try {
+		const res = await fetch(`/api/admin/invoicing/${selectedInvoice._id}/send`, {
+			method: "POST",
+		});
+		if (res.ok) {
+			sendResult = "success";
+			const idx = data.invoices.findIndex(
+				(i: any) => i._id === selectedInvoice._id,
+			);
+			if (idx !== -1) {
+				data.invoices[idx] = { ...data.invoices[idx], status: "sent" };
+				data.invoices = [...data.invoices];
+			}
+			selectedInvoice = { ...selectedInvoice, status: "sent" };
+		} else {
+			sendResult = "error";
+		}
+	} catch (err) {
+		console.error("Failed to send invoice email:", err);
+		sendResult = "error";
+	} finally {
+		sending = false;
 	}
 }
 
@@ -833,9 +866,17 @@ async function deleteInvoice() {
 								{saving ? "deleting..." : "yes, delete"}
 							</button>
 							<button class="btn-cancel" onclick={() => { confirmDelete = false; }}>no</button>
+						{:else if sendResult === "success"}
+							<span class="send-success">email sent</span>
+						{:else if sendResult === "error"}
+							<span class="send-error">failed to send</span>
+							<button class="btn-cancel" onclick={() => { sendResult = null; }}>dismiss</button>
 						{:else if selectedInvoice.status === "draft"}
 							<button class="btn-danger-outline" onclick={() => { confirmDelete = true; }}>delete</button>
 							<button class="btn-cancel" onclick={startEdit}>edit</button>
+							<button class="btn-send" onclick={sendInvoiceEmail} disabled={sending}>
+								{sending ? "sending..." : "send email"}
+							</button>
 							<button class="btn-save" onclick={() => invoiceAction("send")} disabled={saving}>
 								{saving ? "..." : "mark as sent"}
 							</button>
@@ -1323,6 +1364,36 @@ async function deleteInvoice() {
 	.btn-save:disabled {
 		opacity: 0.4;
 		cursor: not-allowed;
+	}
+
+	.btn-send {
+		background: rgba(74, 222, 128, 0.12);
+		border-color: rgba(74, 222, 128, 0.25);
+		color: #4ade80;
+		font-weight: 500;
+	}
+
+	.btn-send:hover {
+		background: rgba(74, 222, 128, 0.2);
+	}
+
+	.btn-send:disabled {
+		opacity: 0.4;
+		cursor: not-allowed;
+	}
+
+	.send-success {
+		font-size: 0.82rem;
+		color: #4ade80;
+		margin-right: auto;
+		align-self: center;
+	}
+
+	.send-error {
+		font-size: 0.82rem;
+		color: var(--status-rose);
+		margin-right: auto;
+		align-self: center;
 	}
 
 	.btn-action {
