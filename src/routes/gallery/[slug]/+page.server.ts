@@ -14,7 +14,12 @@ export async function load({ params }) {
 		`
     *[_type == "gallery" && slug.current == $slug][0]{
       title,
-      images[]
+      description,
+      images[],
+      seo{
+        description,
+        "ogImageUrl": ogImage.asset->url
+      }
     }
   `,
 		{ slug: params.slug },
@@ -35,6 +40,8 @@ export async function load({ params }) {
 	return {
 		gallery: {
 			title: gallery.title,
+			description: gallery.description || null,
+			seo: gallery.seo || null,
 			images: optimizedImages,
 		},
 	};

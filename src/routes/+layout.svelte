@@ -10,13 +10,13 @@
 -->
 
 <svelte:head>
-  <meta property="og:title" content="Angel's Rest" />
-  <meta property="og:description" content="Photography by Jesse Pomeroy" />
-  <meta property="og:image" content="https://www.angelsrest.online/og-image.png" />
+  <meta property="og:title" content={ogTitle} />
+  <meta property="og:description" content={ogDesc} />
+  <meta property="og:image" content={ogImage} />
   <meta property="og:url" content="https://www.angelsrest.online" />
   <meta property="og:type" content="website" />
   <meta name="twitter:card" content="summary_large_image" />
-  <meta name="twitter:image" content="https://www.angelsrest.online/og-image.png" />
+  <meta name="twitter:image" content={ogImage} />
   <link rel="icon" type="image/png" href="/favicon.png" />
 </svelte:head>
 
@@ -40,8 +40,11 @@ import { timeTheme } from "$lib/stores/timeTheme.svelte";
 
 import "$lib/styles/global.css";
 
-let { children, data }: { children: Snippet; data: { isPreview: boolean } } =
-	$props();
+let { children, data }: { children: Snippet; data: any } = $props();
+
+const ogTitle = $derived(data.siteSettings?.siteTitle || "Angel's Rest");
+const ogDesc = $derived(data.siteSettings?.seo?.description || "Photography by Jesse Pomeroy");
+const ogImage = $derived(data.siteSettings?.seo?.ogImageUrl || "https://www.angelsrest.online/og-image.png");
 
 // Vercel analytics
 injectAnalytics();
@@ -102,7 +105,7 @@ onMount(() => {
   </main>
   
   <!-- Desktop footer (hidden on mobile) -->
-  <Footer />
+  <Footer siteSettings={data.siteSettings} />
   
   <!-- Mobile theme toggle - fixed position above bottom nav, homepage only -->
   {#if $page.url.pathname === "/"}

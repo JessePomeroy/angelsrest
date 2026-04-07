@@ -1,10 +1,12 @@
 <script lang="ts">
+import { PortableText } from "@portabletext/svelte";
 import portrait from "$lib/assets/DSCF7533.jpg";
 import AsciiImage from "$lib/components/AsciiImage.svelte";
 import ContactForm from "$lib/components/ContactForm.svelte";
 import SEO from "$lib/components/SEO.svelte";
 
 let { data } = $props();
+const contact = $derived(data.contactPage);
 </script>
 
 <svelte:head>
@@ -56,7 +58,8 @@ let { data } = $props();
 
 <SEO
     title="about | angel's rest"
-    description="About Jesse Pomeroy — photographer, visual artist, and florist based in Michigan. Get in touch for inquiries and collaborations."
+    description={data.about?.seo?.description || "About Jesse Pomeroy — photographer, visual artist, and web developer. Get in touch for inquiries and collaborations."}
+    image={data.about?.seo?.ogImageUrl || "/og-image.jpg"}
     url="https://angelsrest.online/about"
 />
 
@@ -105,27 +108,43 @@ let { data } = $props();
             class="pt-4 lg:pt-8 md:col-span-2 lg:col-span-1 md:border-t md:border-surface-500/20 md:pt-8 md:mt-4 lg:border-0 lg:mt-0"
         >
             <!-- contact form -->
-            <ContactForm />
-            <!-- Book a call section -->
-            <div
-                class="mt-20 pt-10 border-t border-gray-300 dark:border-white/20"
-            >
-                <h2 class="mb-2 text-lg">
-                    book a session -or- prefer to schedule a call/meeting ?
-                </h2>
+            {#if contact?.heading}
+                <h2 class="mb-2 text-lg">{contact.heading.toLowerCase()}</h2>
+            {:else}
+                <h2 class="mb-2 text-lg">get in touch</h2>
+            {/if}
+            {#if contact?.intro}
+                <div class="text-surface-400 text-sm mb-8 leading-relaxed">
+                    <PortableText value={contact.intro} />
+                </div>
+            {:else}
                 <p class="text-surface-400 text-sm mb-8">
-                    select a time that works for you.
+                    for inquiries, commissions, and collaborations.
                 </p>
-                <button
-                    type="button"
-                    class="w-full px-4 py-3 text-sm font-medium lowercase tracking-wide bg-white/5 dark:bg-white/5 border border-gray-300 dark:border-white/10 rounded-lg hover:bg-gray-100 dark:hover:bg-white/10 transition-all cursor-pointer"
-                    style="color: var(--form-text-color);"
-                    data-cal-link="jesse-s1wmio/photosession"
-                    data-cal-namespace="photosession"
+            {/if}
+            <ContactForm hideHeader={!!contact?.heading} />
+            <!-- Book a call section -->
+            {#if contact?.bookingEnabled}
+                <div
+                    class="mt-20 pt-10 border-t border-gray-300 dark:border-white/20"
                 >
-                    book a time
-                </button>
-            </div>
+                    <h2 class="mb-2 text-lg">
+                        book a session -or- prefer to schedule a call/meeting ?
+                    </h2>
+                    <p class="text-surface-400 text-sm mb-8">
+                        select a time that works for you.
+                    </p>
+                    <button
+                        type="button"
+                        class="w-full px-4 py-3 text-sm font-medium lowercase tracking-wide bg-white/5 dark:bg-white/5 border border-gray-300 dark:border-white/10 rounded-lg hover:bg-gray-100 dark:hover:bg-white/10 transition-all cursor-pointer"
+                        style="color: var(--form-text-color);"
+                        data-cal-link="jesse-s1wmio/photosession"
+                        data-cal-namespace="photosession"
+                    >
+                        book a time
+                    </button>
+                </div>
+            {/if}
         </div>
     </div>
 </section>

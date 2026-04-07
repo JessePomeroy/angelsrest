@@ -135,8 +135,8 @@ async function handleCheckout() {
 -->
 <SEO
     title={`${data.product.title} | shop | angel's rest`}
-    description={data.product.description ||
-        `${data.product.title} - Available in the Angels Rest shop`}
+    description={data.product.seo?.description || data.product.description || `${data.product.title} - Available in the Angels Rest shop`}
+    image={data.product.seo?.ogImageUrl || data.product.images[0]?.full || "/og-image.jpg"}
     url={`https://angelsrest.online/shop/${data.product.slug}`}
 />
 

@@ -26,9 +26,10 @@ function openModal(index: number) {
 }
 </script>
 
-<SEO 
+<SEO
   title="{data.gallery.title} | angel's rest"
-  description="Photo gallery: {data.gallery.title}"
+  description={data.gallery.seo?.description || data.gallery.description || `Photo gallery: ${data.gallery.title}`}
+  image={data.gallery.seo?.ogImageUrl || data.gallery.images[0]?.full || "/og-image.jpg"}
   url="https://angelsrest.online/gallery/{data.gallery.title.toLowerCase().replace(/\s+/g, '-')}"
 />
 

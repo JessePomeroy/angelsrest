@@ -1,8 +1,10 @@
 <script lang="ts">
-/** ContactFrom.svelte
+/** ContactForm.svelte
  * contact form extracted out of the about page during refactor
  */
 import { isDark } from "$lib/stores/theme";
+
+let { hideHeader = false }: { hideHeader?: boolean } = $props();
 
 /**
  * Theme-aware form text color
@@ -51,10 +53,12 @@ async function handleSubmit(e: SubmitEvent) {
 
 <!-- Contact Form -->
 <div>
-    <h2 class="mb-2 text-lg">get in touch</h2>
-    <p class="text-surface-400 text-sm mb-8">
-        for inquiries, commissions, and collaborations.
-    </p>
+    {#if !hideHeader}
+        <h2 class="mb-2 text-lg">get in touch</h2>
+        <p class="text-surface-400 text-sm mb-8">
+            for inquiries, commissions, and collaborations.
+        </p>
+    {/if}
 
     <form onsubmit={handleSubmit} class="flex flex-col gap-5">
         <div class="flex flex-col gap-2.5">

@@ -69,6 +69,10 @@ export async function load({ params }) {
         subcategoryId,
         width,
         height
+      },
+      seo{
+        description,
+        "ogImageUrl": ogImage.asset->url
       }
     }
   `,
