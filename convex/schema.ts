@@ -244,6 +244,10 @@ export default defineSchema({
 		depositAmount: v.optional(v.number()),
 		sentAt: v.optional(v.number()),
 		signedAt: v.optional(v.number()),
+		signedByName: v.optional(v.string()),
+		signedByEmail: v.optional(v.string()),
+		signatureData: v.optional(v.string()),
+		signedIp: v.optional(v.string()),
 	})
 		.index("by_siteUrl", ["siteUrl"])
 		.index("by_client", ["clientId"])

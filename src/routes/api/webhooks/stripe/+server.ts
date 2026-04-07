@@ -101,6 +101,20 @@ export async function POST({ request }) {
 		switch (event.type) {
 			case "checkout.session.completed": {
 				const session = event.data.object as Stripe.Checkout.Session;
+
+				// Invoice payment — mark paid in Convex and skip order creation
+				if (session.metadata?.type === "invoice_payment") {
+					const invoiceId = session.metadata.invoiceId;
+					if (invoiceId) {
+						// biome-ignore lint/suspicious/noExplicitAny: Convex Id type
+						await convex.mutation(api.invoices.markPaid, {
+							invoiceId: invoiceId as any,
+						});
+						console.log("Invoice marked paid:", invoiceId);
+					}
+					break;
+				}
+
 				await handleCheckoutCompleted(session);
 				break;
 			}
