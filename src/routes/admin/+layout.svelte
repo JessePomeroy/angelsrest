@@ -14,6 +14,7 @@ const navItems = [
 	{ href: "/admin/invoicing", label: "invoicing", icon: "invoicing" },
 	{ href: "/admin/quotes", label: "quotes", icon: "quotes" },
 	{ href: "/admin/contracts", label: "contracts", icon: "contracts" },
+	{ href: "/admin/emails", label: "emails", icon: "emails" },
 ];
 
 function isActive(href: string, pathname: string): boolean {
@@ -73,6 +74,8 @@ function closeMobileMenu() {
 						<path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/>
 					{:else if item.icon === "contracts"}
 							<path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 013 3L7 19l-4 1 1-4L16.5 3.5z"/>
+						{:else if item.icon === "emails"}
+							<rect x="2" y="4" width="20" height="16" rx="2"/><path d="M22 7l-10 7L2 7"/>
 						{/if}
 					</svg>
 					<span>{item.label}</span>
