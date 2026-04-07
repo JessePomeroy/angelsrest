@@ -125,6 +125,7 @@ export default defineSchema({
 		siteUrl: v.string(),
 		invoiceNumber: v.string(),
 		clientId: v.id("photographyClients"),
+		clientName: v.optional(v.string()),
 		invoiceType: v.union(
 			v.literal("one-time"),
 			v.literal("recurring"),
@@ -183,6 +184,7 @@ export default defineSchema({
 		siteUrl: v.string(),
 		quoteNumber: v.string(),
 		clientId: v.id("photographyClients"),
+		clientName: v.optional(v.string()),
 		category: v.optional(v.union(v.literal("photography"), v.literal("web"))),
 		status: v.union(
 			v.literal("draft"),
@@ -229,6 +231,7 @@ export default defineSchema({
 		siteUrl: v.string(),
 		title: v.string(),
 		clientId: v.id("photographyClients"),
+		clientName: v.optional(v.string()),
 		category: v.optional(v.union(v.literal("photography"), v.literal("web"))),
 		templateId: v.optional(v.id("contractTemplates")),
 		status: v.union(

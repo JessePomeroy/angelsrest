@@ -13,15 +13,13 @@ export const list = query({
 			.order("desc")
 			.collect();
 
-		const withClients = await Promise.all(
-			all.map(async (contract) => {
-				const client = await ctx.db.get(contract.clientId);
-				return { ...contract, clientName: client?.name ?? "unknown" };
-			}),
-		);
+		const results = all.map((contract) => ({
+			...contract,
+			clientName: contract.clientName ?? "unknown",
+		}));
 
-		if (status) return withClients.filter((c) => c.status === status);
-		return withClients;
+		if (status) return results.filter((c) => c.status === status);
+		return results;
 	},
 });
 
@@ -53,8 +51,10 @@ export const create = mutation({
 		depositAmount: v.optional(v.number()),
 	},
 	handler: async (ctx, args) => {
+		const client = await ctx.db.get(args.clientId);
 		return await ctx.db.insert("contracts", {
 			...args,
+			clientName: client?.name ?? "unknown",
 			status: "draft",
 		});
 	},

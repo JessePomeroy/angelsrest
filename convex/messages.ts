@@ -44,29 +44,49 @@ export const markRead = mutation({
 
 export const allThreads = query({
 	handler: async (ctx) => {
-		const clients = await ctx.db.query("platformClients").collect();
+		// Fetch all messages once instead of per-client
+		const allMessages = await ctx.db
+			.query("platformMessages")
+			.order("desc")
+			.collect();
 
-		return await Promise.all(
-			clients.map(async (client) => {
-				const unread = await ctx.db
-					.query("platformMessages")
-					.withIndex("by_siteUrl_unread", (q) =>
-						q.eq("siteUrl", client.siteUrl).eq("read", false),
-					)
-					.collect();
+		// Group by siteUrl: track latest message and unread count
+		const threadMap = new Map<
+			string,
+			{ latestMessage: (typeof allMessages)[0] | null; unreadCount: number }
+		>();
 
-				const messages = await ctx.db
-					.query("platformMessages")
-					.withIndex("by_siteUrl", (q) => q.eq("siteUrl", client.siteUrl))
-					.order("desc")
-					.take(1);
+		for (const msg of allMessages) {
+			const existing = threadMap.get(msg.siteUrl);
+			if (!existing) {
+				threadMap.set(msg.siteUrl, {
+					latestMessage: msg,
+					unreadCount: !msg.read && msg.sender === "client" ? 1 : 0,
+				});
+			} else {
+				if (!msg.read && msg.sender === "client") {
+					existing.unreadCount += 1;
+				}
+			}
+		}
 
-				return {
+		// Look up client info for each unique siteUrl
+		const threads = [];
+		for (const [siteUrl, data] of threadMap) {
+			const client = await ctx.db
+				.query("platformClients")
+				.withIndex("by_siteUrl", (q) => q.eq("siteUrl", siteUrl))
+				.first();
+
+			if (client) {
+				threads.push({
 					client,
-					unreadCount: unread.filter((m) => m.sender === "client").length,
-					latestMessage: messages[0] ?? null,
-				};
-			}),
-		);
+					unreadCount: data.unreadCount,
+					latestMessage: data.latestMessage,
+				});
+			}
+		}
+
+		return threads;
 	},
 });

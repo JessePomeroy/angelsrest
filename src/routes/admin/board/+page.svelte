@@ -1,5 +1,6 @@
 <script lang="ts">
 import { dndzone } from "svelte-dnd-action";
+import { invalidateAll } from "$app/navigation";
 import FeatureGate from "$lib/admin/components/FeatureGate.svelte";
 import SEO from "$lib/components/SEO.svelte";
 
@@ -143,7 +144,8 @@ async function initBoard() {
 			headers: { "Content-Type": "application/json" },
 			body: JSON.stringify({ projectType: selectedType }),
 		});
-		window.location.reload();
+		await invalidateAll();
+		saving = false;
 	} catch (err) {
 		console.error("Failed to init board:", err);
 		saving = false;
@@ -165,7 +167,8 @@ async function addColumn() {
 		});
 		newColumnName = "";
 		showAddColumn = false;
-		window.location.reload();
+		saving = false;
+		await invalidateAll();
 	} catch (err) {
 		console.error("Failed to add column:", err);
 		saving = false;
@@ -183,8 +186,11 @@ async function renameColumn(columnId: string) {
 				name: editingColumnName.trim(),
 			}),
 		});
+		// Update local state directly
+		const col = columns.find((c) => c.id === columnId);
+		if (col) col.name = editingColumnName.trim();
 		editingColumnId = null;
-		window.location.reload();
+		invalidateAll();
 	} catch (err) {
 		console.error("Failed to rename column:", err);
 	}
@@ -204,8 +210,15 @@ async function deleteColumn(columnId: string) {
 				moveToColumnId: remaining[0].id,
 			}),
 		});
+		// Update local state: move cards to first remaining column
+		const deletedCol = columns.find((c) => c.id === columnId);
+		const targetCol = columns.find((c) => c.id === remaining[0].id);
+		if (deletedCol && targetCol) {
+			targetCol.cards = [...targetCol.cards, ...deletedCol.cards];
+		}
+		columns = columns.filter((c) => c.id !== columnId);
 		showColumnMenu = null;
-		window.location.reload();
+		invalidateAll();
 	} catch (err) {
 		console.error("Failed to delete column:", err);
 	}
