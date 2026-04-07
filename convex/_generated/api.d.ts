@@ -8,15 +8,19 @@
  * @module
  */
 
+import type * as activityLog from "../activityLog.js";
 import type * as contracts from "../contracts.js";
 import type * as crm from "../crm.js";
+import type * as emailLog from "../emailLog.js";
 import type * as emailTemplates from "../emailTemplates.js";
 import type * as invoices from "../invoices.js";
 import type * as kanban from "../kanban.js";
 import type * as messages from "../messages.js";
 import type * as orders from "../orders.js";
 import type * as platform from "../platform.js";
+import type * as portal from "../portal.js";
 import type * as quotes from "../quotes.js";
+import type * as tags from "../tags.js";
 
 import type {
 	ApiFromModules,
@@ -25,15 +29,19 @@ import type {
 } from "convex/server";
 
 declare const fullApi: ApiFromModules<{
+	activityLog: typeof activityLog;
 	contracts: typeof contracts;
 	crm: typeof crm;
+	emailLog: typeof emailLog;
 	emailTemplates: typeof emailTemplates;
 	invoices: typeof invoices;
 	kanban: typeof kanban;
 	messages: typeof messages;
 	orders: typeof orders;
 	platform: typeof platform;
+	portal: typeof portal;
 	quotes: typeof quotes;
+	tags: typeof tags;
 }>;
 
 /**

@@ -167,7 +167,8 @@ export const convertToInvoice = mutation({
 
 		// Convert packages to invoice line items
 		const items = quote.packages.map((pkg) => ({
-			description: pkg.name + (pkg.description ? ` \u2014 ${pkg.description}` : ""),
+			description:
+				pkg.name + (pkg.description ? ` \u2014 ${pkg.description}` : ""),
 			quantity: 1,
 			unitPrice: pkg.price,
 		}));

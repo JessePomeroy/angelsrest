@@ -1,7 +1,7 @@
 import { error, json } from "@sveltejs/kit";
 import { api } from "$convex/api";
 import type { Id } from "$convex/dataModel";
-import { SITE_URL } from "$lib/config/site";
+import { SITE_DOMAIN, SITE_URL } from "$lib/config/site";
 import { getConvex } from "$lib/server/convexClient";
 import { replaceTemplateVariables, sendEmail } from "$lib/server/email";
 
@@ -107,6 +107,7 @@ export async function POST({ params }) {
 		// mark invoice as sent
 		await convex.mutation(api.invoices.markSent, {
 			invoiceId: id as Id<"invoices">,
+			siteUrl: SITE_DOMAIN,
 		});
 
 		return json({ success: true });

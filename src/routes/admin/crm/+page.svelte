@@ -245,8 +245,8 @@ async function createTag() {
 			const result = await res.json();
 			data.tags = [
 				...data.tags,
-				{ _id: result.id, name: newTagName, color: newTagColor },
-			];
+				{ _id: result.id, name: newTagName, color: newTagColor, _creationTime: Date.now(), siteUrl: "" },
+			] as typeof data.tags;
 			newTagName = "";
 			newTagColor = "#818cf8";
 		}

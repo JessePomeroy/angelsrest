@@ -109,6 +109,7 @@ export async function POST({ request }) {
 						// biome-ignore lint/suspicious/noExplicitAny: Convex Id type
 						await convex.mutation(api.invoices.markPaid, {
 							invoiceId: invoiceId as any,
+							siteUrl: session.metadata?.siteUrl || SITE_DOMAIN,
 						});
 						console.log("Invoice marked paid:", invoiceId);
 					}

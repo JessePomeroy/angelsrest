@@ -1,7 +1,7 @@
+import { Resend } from "resend";
 import { RESEND_API_KEY } from "$env/static/private";
 import { adminClient } from "$lib/sanity/adminClient";
 import { trimString, validateEmail } from "$lib/server/validation";
-import { Resend } from "resend";
 import type { RequestHandler } from "./$types";
 
 const resend = new Resend(RESEND_API_KEY);
