@@ -1,6 +1,11 @@
 <script lang="ts">
 import FeatureGate from "$lib/admin/components/FeatureGate.svelte";
+import type { ActivityLogEntry, Client, ClientTag } from "$lib/admin/types";
 import SEO from "$lib/components/SEO.svelte";
+import ClientCreateModal from "./ClientCreateModal.svelte";
+import ClientDetailModal from "./ClientDetailModal.svelte";
+import ClientTable from "./ClientTable.svelte";
+import TagManager from "./TagManager.svelte";
 
 let { data } = $props();
 
@@ -12,137 +17,64 @@ let searchQuery = $state("");
 
 // Modal state
 let showAddModal = $state(false);
-let selectedClient = $state<any>(null);
-let editMode = $state(false);
-let confirmDelete = $state(false);
+let selectedClient = $state<Client | null>(null);
+let showTagManager = $state(false);
 let saving = $state(false);
 
-// Tag state
-let showTagManager = $state(false);
-let newTagName = $state("");
-let newTagColor = $state("#818cf8");
-let clientTags = $state<any[]>([]);
-let clientActivity = $state<any[]>([]);
+// Detail modal data
+let clientTags = $state<ClientTag[]>([]);
+let clientActivity = $state<ActivityLogEntry[]>([]);
 let loadingTags = $state(false);
 let loadingActivity = $state(false);
-let showTagPicker = $state(false);
 
-// Tag assignments cache: clientId -> tagId[]
-let tagAssignments = $state<Record<string, any[]>>({});
+// Tag assignments cache: clientId -> tags
+let tagAssignments = $state<Record<string, ClientTag[]>>({});
 
-const tagColors = [
-	"#818cf8",
-	"#f472b6",
-	"#34d399",
-	"#fbbf24",
-	"#fb923c",
-	"#a78bfa",
-	"#38bdf8",
-	"#f87171",
-	"#4ade80",
-	"#c084fc",
-];
-
-// Form state
-let formName = $state("");
-let formEmail = $state("");
-let formPhone = $state("");
-let formCategory = $state<"photography" | "web">("photography");
-let formType = $state("");
-let formClientWebsite = $state("");
-let formSource = $state("");
-let formNotes = $state("");
-let formStatus = $state("lead");
-
-const photographyTypes = [
-	"wedding",
-	"portrait",
-	"family",
-	"commercial",
-	"event",
-];
-const webTypes = ["website", "redesign", "maintenance", "other"];
 const allStatuses = ["lead", "booked", "in-progress", "completed", "archived"];
-const sources = ["referral", "instagram", "website", "word of mouth", "other"];
 
 let filteredClients = $derived(
-	data.clients.filter((client: any) => {
+	data.clients.filter((client: Client) => {
 		if (categoryFilter !== "all" && client.category !== categoryFilter)
 			return false;
 		if (statusFilter !== "all" && client.status !== statusFilter) return false;
 		if (tagFilter !== "all") {
 			const assignments = tagAssignments[client._id];
-			if (!assignments || !assignments.some((t: any) => t._id === tagFilter))
+			if (!assignments || !assignments.some((t) => t._id === tagFilter))
 				return false;
 		}
 		if (searchQuery) {
 			const q = searchQuery.toLowerCase();
-			const matchName = client.name?.toLowerCase().includes(q);
-			const matchEmail = client.email?.toLowerCase().includes(q);
-			if (!matchName && !matchEmail) return false;
+			if (
+				!client.name?.toLowerCase().includes(q) &&
+				!client.email?.toLowerCase().includes(q)
+			)
+				return false;
 		}
 		return true;
 	}),
 );
 
-function resetForm() {
-	formName = "";
-	formEmail = "";
-	formPhone = "";
-	formCategory = "photography";
-	formType = "";
-	formClientWebsite = "";
-	formSource = "";
-	formNotes = "";
-	formStatus = "lead";
+// Load tags for all clients on mount
+async function loadAllClientTags() {
+	for (const client of data.clients) {
+		try {
+			const res = await fetch(`/api/admin/crm/${client._id}/tags`);
+			if (res.ok) {
+				const result = await res.json();
+				tagAssignments[client._id] = result.tags || [];
+			}
+		} catch {
+			// ignore individual failures
+		}
+	}
+	tagAssignments = { ...tagAssignments };
 }
 
-function openAddModal() {
-	resetForm();
-	showAddModal = true;
-}
-
-function closeAddModal() {
-	showAddModal = false;
-}
-
-async function openDetailModal(client: any) {
-	selectedClient = { ...client };
-	editMode = false;
-	confirmDelete = false;
-	showTagPicker = false;
-	await Promise.all([
-		loadClientTags(client._id),
-		loadClientActivity(client._id),
-	]);
-}
-
-function closeDetailModal() {
-	selectedClient = null;
-	editMode = false;
-	confirmDelete = false;
-	showTagPicker = false;
-	clientTags = [];
-	clientActivity = [];
-}
-
-function startEdit() {
-	if (!selectedClient) return;
-	formName = selectedClient.name || "";
-	formEmail = selectedClient.email || "";
-	formPhone = selectedClient.phone || "";
-	formCategory = selectedClient.category || "photography";
-	formType = selectedClient.type || "";
-	formClientWebsite = selectedClient.siteUrl_client || "";
-	formSource = selectedClient.source || "";
-	formNotes = selectedClient.notes || "";
-	formStatus = selectedClient.status || "lead";
-	editMode = true;
-}
-
-function cancelEdit() {
-	editMode = false;
-}
+$effect(() => {
+	if (data.clients.length > 0) {
+		loadAllClientTags();
+	}
+});
 
 async function loadClientTags(clientId: string) {
 	loadingTags = true;
@@ -176,27 +108,111 @@ async function loadClientActivity(clientId: string) {
 	}
 }
 
-// Load tags for all clients on mount
-async function loadAllClientTags() {
-	for (const client of data.clients) {
-		try {
-			const res = await fetch(`/api/admin/crm/${client._id}/tags`);
-			if (res.ok) {
-				const result = await res.json();
-				tagAssignments[client._id] = result.tags || [];
-			}
-		} catch {
-			// Ignore individual failures
-		}
-	}
-	tagAssignments = { ...tagAssignments };
+async function openDetailModal(client: Client) {
+	selectedClient = { ...client } as Client;
+	await Promise.all([
+		loadClientTags(client._id),
+		loadClientActivity(client._id),
+	]);
 }
 
-$effect(() => {
-	if (data.clients.length > 0) {
-		loadAllClientTags();
+function closeDetailModal() {
+	selectedClient = null;
+	clientTags = [];
+	clientActivity = [];
+}
+
+async function saveNewClient(body: Record<string, string | undefined>) {
+	saving = true;
+	try {
+		const res = await fetch("/api/admin/crm", {
+			method: "POST",
+			headers: { "Content-Type": "application/json" },
+			body: JSON.stringify(body),
+		});
+		if (res.ok) {
+			showAddModal = false;
+			window.location.reload();
+		}
+	} catch (err) {
+		console.error("Failed to create client:", err);
+	} finally {
+		saving = false;
 	}
-});
+}
+
+async function saveEdit(body: Record<string, string | undefined>) {
+	if (!selectedClient) return;
+	saving = true;
+	try {
+		const res = await fetch(`/api/admin/crm/${selectedClient._id}`, {
+			method: "PATCH",
+			headers: { "Content-Type": "application/json" },
+			body: JSON.stringify(body),
+		});
+		if (res.ok) {
+			const idx = data.clients.findIndex(
+				(c: Client) => c._id === selectedClient!._id,
+			);
+			if (idx !== -1) {
+				data.clients[idx] = { ...data.clients[idx], ...body } as Client;
+				data.clients = [...data.clients];
+			}
+			selectedClient = { ...selectedClient, ...body } as Client;
+			await loadClientActivity(selectedClient._id);
+		}
+	} catch (err) {
+		console.error("Failed to update client:", err);
+	} finally {
+		saving = false;
+	}
+}
+
+async function deleteClient() {
+	if (!selectedClient) return;
+	saving = true;
+	try {
+		const res = await fetch(`/api/admin/crm/${selectedClient._id}`, {
+			method: "DELETE",
+		});
+		if (res.ok) {
+			data.clients = data.clients.filter(
+				(c: Client) => c._id !== selectedClient!._id,
+			);
+			closeDetailModal();
+		}
+	} catch (err) {
+		console.error("Failed to delete client:", err);
+	} finally {
+		saving = false;
+	}
+}
+
+async function quickStatusUpdate(newStatus: string) {
+	if (!selectedClient) return;
+	const clientId = selectedClient._id;
+	try {
+		const res = await fetch(`/api/admin/crm/${clientId}`, {
+			method: "PATCH",
+			headers: { "Content-Type": "application/json" },
+			body: JSON.stringify({ status: newStatus }),
+		});
+		if (res.ok) {
+			const idx = data.clients.findIndex((c: Client) => c._id === clientId);
+			if (idx !== -1) {
+				data.clients[idx] = {
+					...data.clients[idx],
+					status: newStatus,
+				} as Client;
+				data.clients = [...data.clients];
+			}
+			selectedClient = { ...selectedClient, status: newStatus } as Client;
+			await loadClientActivity(clientId);
+		}
+	} catch (err) {
+		console.error("Failed to update status:", err);
+	}
+}
 
 async function assignTagToClient(tagId: string) {
 	if (!selectedClient) return;
@@ -232,23 +248,20 @@ async function removeTagFromClient(tagId: string) {
 	}
 }
 
-async function createTag() {
-	if (!newTagName) return;
+async function createTag(name: string, color: string) {
 	saving = true;
 	try {
 		const res = await fetch("/api/admin/tags", {
 			method: "POST",
 			headers: { "Content-Type": "application/json" },
-			body: JSON.stringify({ name: newTagName, color: newTagColor }),
+			body: JSON.stringify({ name, color }),
 		});
 		if (res.ok) {
 			const result = await res.json();
 			data.tags = [
 				...data.tags,
-				{ _id: result.id, name: newTagName, color: newTagColor, _creationTime: Date.now(), siteUrl: "" },
+				{ _id: result.id, name, color, _creationTime: Date.now(), siteUrl: "" },
 			] as typeof data.tags;
-			newTagName = "";
-			newTagColor = "#818cf8";
 		}
 	} catch (err) {
 		console.error("Failed to create tag:", err);
@@ -259,15 +272,12 @@ async function createTag() {
 
 async function deleteTag(tagId: string) {
 	try {
-		const res = await fetch(`/api/admin/tags/${tagId}`, {
-			method: "DELETE",
-		});
+		const res = await fetch(`/api/admin/tags/${tagId}`, { method: "DELETE" });
 		if (res.ok) {
-			data.tags = data.tags.filter((t: any) => t._id !== tagId);
-			// Remove from local assignments cache
+			data.tags = data.tags.filter((t: ClientTag) => t._id !== tagId);
 			for (const clientId of Object.keys(tagAssignments)) {
 				tagAssignments[clientId] = tagAssignments[clientId].filter(
-					(t: any) => t._id !== tagId,
+					(t) => t._id !== tagId,
 				);
 			}
 			tagAssignments = { ...tagAssignments };
@@ -277,191 +287,11 @@ async function deleteTag(tagId: string) {
 	}
 }
 
-async function saveNewClient() {
-	if (!formName || !formCategory) return;
-	saving = true;
-	try {
-		const body: Record<string, string | undefined> = {
-			name: formName,
-			category: formCategory,
-			email: formEmail || undefined,
-			phone: formPhone || undefined,
-			type: formType || undefined,
-			source: formSource || undefined,
-			notes: formNotes || undefined,
-		};
-		if (formCategory === "web" && formClientWebsite) {
-			body.siteUrl_client = formClientWebsite;
-		}
-		const res = await fetch("/api/admin/crm", {
-			method: "POST",
-			headers: { "Content-Type": "application/json" },
-			body: JSON.stringify(body),
-		});
-		if (res.ok) {
-			closeAddModal();
-			window.location.reload();
-		}
-	} catch (err) {
-		console.error("Failed to create client:", err);
-	} finally {
-		saving = false;
-	}
-}
-
-async function saveEdit() {
-	if (!selectedClient || !formName || !formCategory) return;
-	saving = true;
-	try {
-		const body: Record<string, string | undefined> = {
-			name: formName,
-			category: formCategory,
-			email: formEmail || undefined,
-			phone: formPhone || undefined,
-			type: formType || undefined,
-			source: formSource || undefined,
-			notes: formNotes || undefined,
-			status: formStatus,
-		};
-		if (formCategory === "web") {
-			body.siteUrl_client = formClientWebsite || undefined;
-		}
-		const res = await fetch(`/api/admin/crm/${selectedClient._id}`, {
-			method: "PATCH",
-			headers: { "Content-Type": "application/json" },
-			body: JSON.stringify(body),
-		});
-		if (res.ok) {
-			// Update local data
-			const idx = data.clients.findIndex(
-				(c: any) => c._id === selectedClient._id,
-			);
-			if (idx !== -1) {
-				data.clients[idx] = { ...data.clients[idx], ...body };
-				data.clients = [...data.clients];
-			}
-			selectedClient = { ...selectedClient, ...body };
-			editMode = false;
-			await loadClientActivity(selectedClient._id);
-		}
-	} catch (err) {
-		console.error("Failed to update client:", err);
-	} finally {
-		saving = false;
-	}
-}
-
-async function deleteClient() {
-	if (!selectedClient) return;
-	saving = true;
-	try {
-		const res = await fetch(`/api/admin/crm/${selectedClient._id}`, {
-			method: "DELETE",
-		});
-		if (res.ok) {
-			data.clients = data.clients.filter(
-				(c: any) => c._id !== selectedClient._id,
-			);
-			closeDetailModal();
-		}
-	} catch (err) {
-		console.error("Failed to delete client:", err);
-	} finally {
-		saving = false;
-	}
-}
-
-async function quickStatusUpdate(clientId: string, newStatus: string) {
-	try {
-		const res = await fetch(`/api/admin/crm/${clientId}`, {
-			method: "PATCH",
-			headers: { "Content-Type": "application/json" },
-			body: JSON.stringify({ status: newStatus }),
-		});
-		if (res.ok) {
-			const idx = data.clients.findIndex((c: any) => c._id === clientId);
-			if (idx !== -1) {
-				data.clients[idx] = { ...data.clients[idx], status: newStatus as any };
-				data.clients = [...data.clients];
-			}
-			if (selectedClient?._id === clientId) {
-				selectedClient = { ...selectedClient, status: newStatus };
-				await loadClientActivity(clientId);
-			}
-		}
-	} catch (err) {
-		console.error("Failed to update status:", err);
-	}
-}
-
-function formatDate(timestamp: number) {
-	return new Date(timestamp).toLocaleDateString("en-US", {
-		month: "short",
-		day: "numeric",
-		year: "numeric",
-	});
-}
-
 function formatStatus(status: string) {
 	return status
 		.split("-")
 		.map((w) => w.charAt(0).toUpperCase() + w.slice(1))
 		.join(" ");
-}
-
-function formatType(type: string) {
-	return type.charAt(0).toUpperCase() + type.slice(1);
-}
-
-function getStatusColor(status: string): string {
-	const colors: Record<string, string> = {
-		lead: "var(--status-slate)",
-		booked: "var(--status-amber)",
-		"in-progress": "var(--status-lavender)",
-		completed: "var(--status-sage)",
-		archived: "var(--admin-text-subtle)",
-	};
-	return colors[status] || "var(--status-slate)";
-}
-
-function getCategoryColor(category: string): string {
-	return category === "photography"
-		? "var(--status-peach)"
-		: "var(--status-lavender)";
-}
-
-function relativeTime(timestamp: number): string {
-	const now = Date.now();
-	const diff = now - timestamp;
-	const minutes = Math.floor(diff / 60000);
-	const hours = Math.floor(diff / 3600000);
-	const days = Math.floor(diff / 86400000);
-
-	if (minutes < 1) return "just now";
-	if (minutes < 60) return `${minutes}m ago`;
-	if (hours < 24) return `${hours}h ago`;
-	if (days < 30) return `${days}d ago`;
-	return formatDate(timestamp);
-}
-
-function getActivityIcon(action: string): string {
-	const icons: Record<string, string> = {
-		client_created: "\u2022",
-		status_changed: "\u25CB",
-		invoice_created: "\u25A1",
-		invoice_sent: "\u25B7",
-		invoice_paid: "\u2713",
-		quote_created: "\u25A1",
-		quote_sent: "\u25B7",
-		quote_accepted: "\u2713",
-		contract_created: "\u25A1",
-		contract_sent: "\u25B7",
-		contract_signed: "\u2713",
-		tag_added: "+",
-		tag_removed: "\u2212",
-		note_added: "\u266A",
-	};
-	return icons[action] || "\u2022";
 }
 </script>
 
@@ -473,13 +303,12 @@ function getActivityIcon(action: string): string {
 		<div class="header-left">
 			<h1>clients</h1>
 		</div>
-		<button class="btn-add" onclick={openAddModal}>
+		<button class="btn-add" onclick={() => { showAddModal = true; }}>
 			<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" /></svg>
 			add client
 		</button>
 	</header>
 
-	<!-- Stats as inline text -->
 	<div class="stats-line">
 		<span>{data.stats.total} total</span>
 		<span class="stat-sep">&middot;</span>
@@ -496,7 +325,6 @@ function getActivityIcon(action: string): string {
 		<span>{data.stats.web} web</span>
 	</div>
 
-	<!-- Filter bar -->
 	<div class="filter-bar">
 		<select class="filter-select" bind:value={categoryFilter}>
 			<option value="all">all categories</option>
@@ -513,443 +341,45 @@ function getActivityIcon(action: string): string {
 			<select class="filter-select" bind:value={tagFilter}>
 				<option value="all">all tags</option>
 				{#each data.tags as tag (tag._id)}
-					<option value={tag._id}>
-						{tag.name}
-					</option>
+					<option value={tag._id}>{tag.name}</option>
 				{/each}
 			</select>
 		{/if}
-		<input
-			class="filter-search"
-			type="text"
-			placeholder="search by name or email..."
-			bind:value={searchQuery}
-		/>
-		<button class="btn-manage-tags" onclick={() => { showTagManager = true; }}>
-			manage tags
-		</button>
+		<input class="filter-search" type="text" placeholder="search by name or email..." bind:value={searchQuery} />
+		<button class="btn-manage-tags" onclick={() => { showTagManager = true; }}>manage tags</button>
 	</div>
 
-	<!-- Client table -->
-	{#if filteredClients.length === 0}
-		<div class="empty-state">no clients found</div>
-	{:else}
-		<div class="table-wrap">
-			<table class="client-table">
-				<thead>
-					<tr>
-						<th>name</th>
-						<th>email</th>
-						<th>category</th>
-						<th>type</th>
-						<th>status</th>
-						<th>source</th>
-						<th>added</th>
-					</tr>
-				</thead>
-				<tbody>
-					{#each filteredClients as client (client._id)}
-						<tr
-							class="client-row"
-							role="button"
-							tabindex="0"
-							onclick={() => openDetailModal(client)}
-							onkeydown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); openDetailModal(client); } }}
-						>
-							<td class="td-name">
-								<span class="name-with-tags">
-									{client.name}
-									{#if tagAssignments[client._id]?.length}
-										<span class="tag-dots">
-											{#each tagAssignments[client._id] as tag (tag._id)}
-												<span class="tag-dot-inline" style="background: {tag.color || '#818cf8'}" title={tag.name}></span>
-											{/each}
-										</span>
-									{/if}
-								</span>
-							</td>
-							<td class="td-email">{client.email || "\u2014"}</td>
-							<td>
-								<span class="category-indicator" style="color: {getCategoryColor(client.category)}">
-									{client.category === "photography" ? "photo" : "web"}
-								</span>
-							</td>
-							<td class="td-type">{client.type ? formatType(client.type) : "\u2014"}</td>
-							<td>
-								<span class="status-indicator">
-									<span class="status-dot" style="background: {getStatusColor(client.status)}"></span>
-									{formatStatus(client.status)}
-								</span>
-							</td>
-							<td class="td-source">{client.source || "\u2014"}</td>
-							<td class="td-date">{formatDate(client._creationTime)}</td>
-						</tr>
-					{/each}
-				</tbody>
-			</table>
-		</div>
-	{/if}
+	<ClientTable clients={filteredClients} {tagAssignments} onselect={openDetailModal} />
 </div>
 
-<!-- Add Client Modal -->
 {#if showAddModal}
-	<div class="modal-overlay" role="dialog" tabindex="-1" aria-modal="true" aria-label="Add client" onclick={closeAddModal} onkeydown={(e) => { if (e.key === "Escape") closeAddModal(); }}>
-		<div class="modal-content" role="presentation" onclick={(e) => e.stopPropagation()} onkeydown={(e) => e.stopPropagation()}>
-			<div class="modal-header">
-				<h2 class="modal-title">add client</h2>
-				<button class="modal-close" aria-label="Close" onclick={closeAddModal}>
-					<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" /></svg>
-				</button>
-			</div>
-
-			<form class="modal-form" onsubmit={(e) => { e.preventDefault(); saveNewClient(); }}>
-				<div class="form-group">
-					<label class="form-label" for="add-name">name <span class="required">*</span></label>
-					<input id="add-name" class="form-input" type="text" bind:value={formName} required />
-				</div>
-				<div class="form-row">
-					<div class="form-group">
-						<label class="form-label" for="add-email">email</label>
-						<input id="add-email" class="form-input" type="email" bind:value={formEmail} />
-					</div>
-					<div class="form-group">
-						<label class="form-label" for="add-phone">phone</label>
-						<input id="add-phone" class="form-input" type="tel" bind:value={formPhone} />
-					</div>
-				</div>
-				<div class="form-row">
-					<div class="form-group">
-						<label class="form-label" for="add-category">category <span class="required">*</span></label>
-						<select id="add-category" class="form-input" bind:value={formCategory} onchange={() => { formType = ""; }}>
-							<option value="photography">photography</option>
-							<option value="web">web</option>
-						</select>
-					</div>
-					<div class="form-group">
-						<label class="form-label" for="add-type">type</label>
-						<select id="add-type" class="form-input" bind:value={formType}>
-							<option value="">select type...</option>
-							{#each formCategory === "photography" ? photographyTypes : webTypes as t}
-								<option value={t}>{formatType(t)}</option>
-							{/each}
-						</select>
-					</div>
-				</div>
-				{#if formCategory === "web"}
-					<div class="form-group">
-						<label class="form-label" for="add-website">client website</label>
-						<input id="add-website" class="form-input" type="url" placeholder="https://" bind:value={formClientWebsite} />
-					</div>
-				{/if}
-				<div class="form-group">
-					<label class="form-label" for="add-source">source</label>
-					<select id="add-source" class="form-input" bind:value={formSource}>
-						<option value="">select source...</option>
-						{#each sources as s}
-							<option value={s}>{formatType(s)}</option>
-						{/each}
-					</select>
-				</div>
-				<div class="form-group">
-					<label class="form-label" for="add-notes">notes</label>
-					<textarea id="add-notes" class="form-input form-textarea" bind:value={formNotes} rows="3" placeholder="additional notes..."></textarea>
-				</div>
-				<div class="modal-actions">
-					<button type="button" class="btn-cancel" onclick={closeAddModal}>cancel</button>
-					<button type="submit" class="btn-save" disabled={saving || !formName}>
-						{saving ? "saving..." : "save client"}
-					</button>
-				</div>
-			</form>
-		</div>
-	</div>
+	<ClientCreateModal {saving} onsave={saveNewClient} onclose={() => { showAddModal = false; }} />
 {/if}
 
-<!-- Detail / Edit Modal -->
 {#if selectedClient}
-	<div class="modal-overlay" role="dialog" tabindex="-1" aria-modal="true" aria-label="Client details" onclick={closeDetailModal} onkeydown={(e) => { if (e.key === "Escape") closeDetailModal(); }}>
-		<div class="modal-content modal-content-wide" role="presentation" onclick={(e) => e.stopPropagation()} onkeydown={(e) => e.stopPropagation()}>
-			<div class="modal-header">
-				<h2 class="modal-title">{editMode ? "edit client" : selectedClient.name}</h2>
-				<button class="modal-close" aria-label="Close" onclick={closeDetailModal}>
-					<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" /></svg>
-				</button>
-			</div>
-
-			{#if editMode}
-				<form class="modal-form" onsubmit={(e) => { e.preventDefault(); saveEdit(); }}>
-					<div class="form-group">
-						<label class="form-label" for="edit-name">name <span class="required">*</span></label>
-						<input id="edit-name" class="form-input" type="text" bind:value={formName} required />
-					</div>
-					<div class="form-row">
-						<div class="form-group">
-							<label class="form-label" for="edit-email">email</label>
-							<input id="edit-email" class="form-input" type="email" bind:value={formEmail} />
-						</div>
-						<div class="form-group">
-							<label class="form-label" for="edit-phone">phone</label>
-							<input id="edit-phone" class="form-input" type="tel" bind:value={formPhone} />
-						</div>
-					</div>
-					<div class="form-row">
-						<div class="form-group">
-							<label class="form-label" for="edit-category">category <span class="required">*</span></label>
-							<select id="edit-category" class="form-input" bind:value={formCategory} onchange={() => { formType = ""; }}>
-								<option value="photography">photography</option>
-								<option value="web">web</option>
-							</select>
-						</div>
-						<div class="form-group">
-							<label class="form-label" for="edit-type">type</label>
-							<select id="edit-type" class="form-input" bind:value={formType}>
-								<option value="">select type...</option>
-								{#each formCategory === "photography" ? photographyTypes : webTypes as t}
-									<option value={t}>{formatType(t)}</option>
-								{/each}
-							</select>
-						</div>
-					</div>
-					{#if formCategory === "web"}
-						<div class="form-group">
-							<label class="form-label" for="edit-website">client website</label>
-							<input id="edit-website" class="form-input" type="url" placeholder="https://" bind:value={formClientWebsite} />
-						</div>
-					{/if}
-					<div class="form-row">
-						<div class="form-group">
-							<label class="form-label" for="edit-source">source</label>
-							<select id="edit-source" class="form-input" bind:value={formSource}>
-								<option value="">select source...</option>
-								{#each sources as s}
-									<option value={s}>{formatType(s)}</option>
-								{/each}
-							</select>
-						</div>
-						<div class="form-group">
-							<label class="form-label" for="edit-status">status</label>
-							<select id="edit-status" class="form-input" bind:value={formStatus}>
-								{#each allStatuses as s}
-									<option value={s}>{formatStatus(s)}</option>
-								{/each}
-							</select>
-						</div>
-					</div>
-					<div class="form-group">
-						<label class="form-label" for="edit-notes">notes</label>
-						<textarea id="edit-notes" class="form-input form-textarea" bind:value={formNotes} rows="3"></textarea>
-					</div>
-					<div class="modal-actions">
-						<button type="button" class="btn-cancel" onclick={cancelEdit}>cancel</button>
-						<button type="submit" class="btn-save" disabled={saving || !formName}>
-							{saving ? "saving..." : "save changes"}
-						</button>
-					</div>
-				</form>
-			{:else}
-				<div class="detail-body">
-					<div class="detail-meta-line">
-						<span class="category-indicator" style="color: {getCategoryColor(selectedClient.category)}">{selectedClient.category === "photography" ? "photography" : "web"}</span>
-						<span class="meta-sep">&middot;</span>
-						<span class="status-indicator">
-							<span class="status-dot" style="background: {getStatusColor(selectedClient.status)}"></span>
-							{formatStatus(selectedClient.status)}
-						</span>
-						{#if selectedClient.type}
-							<span class="meta-sep">&middot;</span>
-							<span class="detail-type">{formatType(selectedClient.type)}</span>
-						{/if}
-					</div>
-
-					<!-- Tags section -->
-					<div class="detail-tags-section">
-						<div class="detail-tags-header">
-							<span class="detail-label">tags</span>
-							<button class="btn-tag-toggle" onclick={() => { showTagPicker = !showTagPicker; }}>
-								{showTagPicker ? "done" : "+ add"}
-							</button>
-						</div>
-						{#if loadingTags}
-							<span class="loading-text">loading...</span>
-						{:else}
-							<div class="detail-tags-list">
-								{#each clientTags as tag (tag._id)}
-									<span class="detail-tag">
-										<span class="tag-dot-inline" style="background: {tag.color || '#818cf8'}"></span>
-										{tag.name}
-										<button class="tag-remove-btn" onclick={() => removeTagFromClient(tag._id)} aria-label="Remove tag {tag.name}">&times;</button>
-									</span>
-								{/each}
-								{#if clientTags.length === 0 && !showTagPicker}
-									<span class="no-tags-text">no tags</span>
-								{/if}
-							</div>
-							{#if showTagPicker}
-								<div class="tag-picker">
-									{#each data.tags.filter((t: any) => !clientTags.some((ct: any) => ct._id === t._id)) as tag (tag._id)}
-										<button class="tag-picker-item" onclick={() => assignTagToClient(tag._id)}>
-											<span class="tag-dot-inline" style="background: {tag.color || '#818cf8'}"></span>
-											{tag.name}
-										</button>
-									{/each}
-									{#if data.tags.filter((t: any) => !clientTags.some((ct: any) => ct._id === t._id)).length === 0}
-										<span class="no-tags-text">all tags assigned</span>
-									{/if}
-								</div>
-							{/if}
-						{/if}
-					</div>
-
-					<div class="detail-fields">
-						{#if selectedClient.email}
-							<div class="detail-field">
-								<span class="detail-label">email</span>
-								<span class="detail-value">{selectedClient.email}</span>
-							</div>
-						{/if}
-						{#if selectedClient.phone}
-							<div class="detail-field">
-								<span class="detail-label">phone</span>
-								<span class="detail-value">{selectedClient.phone}</span>
-							</div>
-						{/if}
-						{#if selectedClient.source}
-							<div class="detail-field">
-								<span class="detail-label">source</span>
-								<span class="detail-value">{selectedClient.source}</span>
-							</div>
-						{/if}
-						{#if selectedClient.siteUrl_client}
-							<div class="detail-field">
-								<span class="detail-label">client website</span>
-								<a class="detail-link" href={selectedClient.siteUrl_client} target="_blank" rel="noopener noreferrer">{selectedClient.siteUrl_client}</a>
-							</div>
-						{/if}
-						<div class="detail-field">
-							<span class="detail-label">added</span>
-							<span class="detail-value">{formatDate(selectedClient._creationTime)}</span>
-						</div>
-						{#if selectedClient.notes}
-							<div class="detail-field">
-								<span class="detail-label">notes</span>
-								<span class="detail-value detail-notes">{selectedClient.notes}</span>
-							</div>
-						{/if}
-					</div>
-
-					<div class="detail-status-row">
-						<span class="detail-label">quick status</span>
-						<div class="status-buttons">
-							{#each allStatuses as s}
-								<button
-									class="status-btn"
-									class:active={selectedClient.status === s}
-									style={selectedClient.status === s ? `color: ${getStatusColor(s)}; border-color: ${getStatusColor(s)}` : ''}
-									onclick={() => quickStatusUpdate(selectedClient._id, s)}
-								>
-									{formatStatus(s)}
-								</button>
-							{/each}
-						</div>
-					</div>
-
-					<!-- Activity timeline -->
-					<div class="activity-section">
-						<span class="detail-label">activity</span>
-						{#if loadingActivity}
-							<span class="loading-text">loading...</span>
-						{:else if clientActivity.length === 0}
-							<span class="no-activity-text">no activity yet</span>
-						{:else}
-							<div class="activity-list">
-								{#each clientActivity as entry (entry._id)}
-									<div class="activity-entry">
-										<span class="activity-icon">{getActivityIcon(entry.action)}</span>
-										<span class="activity-desc">{entry.description}</span>
-										<span class="activity-time">{relativeTime(entry._creationTime)}</span>
-									</div>
-								{/each}
-							</div>
-						{/if}
-					</div>
-
-					<div class="modal-actions detail-actions">
-						{#if confirmDelete}
-							<span class="confirm-text">delete this client?</span>
-							<button class="btn-danger" onclick={deleteClient} disabled={saving}>
-								{saving ? "deleting..." : "yes, delete"}
-							</button>
-							<button class="btn-cancel" onclick={() => { confirmDelete = false; }}>no</button>
-						{:else}
-							<button class="btn-danger-outline" onclick={() => { confirmDelete = true; }}>delete</button>
-							<button class="btn-save" onclick={startEdit}>edit</button>
-						{/if}
-					</div>
-				</div>
-			{/if}
-		</div>
-	</div>
+	<ClientDetailModal
+		client={selectedClient}
+		{clientTags}
+		{clientActivity}
+		availableTags={data.tags}
+		{loadingTags}
+		{loadingActivity}
+		{saving}
+		onclose={closeDetailModal}
+		onsave={saveEdit}
+		ondelete={deleteClient}
+		onstatuschange={quickStatusUpdate}
+		ontagassign={assignTagToClient}
+		ontagremove={removeTagFromClient}
+	/>
 {/if}
 
-<!-- Tag Manager Modal -->
 {#if showTagManager}
-	<div class="modal-overlay" role="dialog" tabindex="-1" aria-modal="true" aria-label="Manage tags" onclick={() => { showTagManager = false; }} onkeydown={(e) => { if (e.key === "Escape") showTagManager = false; }}>
-		<div class="modal-content modal-content-narrow" role="presentation" onclick={(e) => e.stopPropagation()} onkeydown={(e) => e.stopPropagation()}>
-			<div class="modal-header">
-				<h2 class="modal-title">manage tags</h2>
-				<button class="modal-close" aria-label="Close" onclick={() => { showTagManager = false; }}>
-					<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" /></svg>
-				</button>
-			</div>
-
-			<div class="tag-manager-body">
-				<form class="tag-create-form" onsubmit={(e) => { e.preventDefault(); createTag(); }}>
-					<input
-						class="form-input tag-name-input"
-						type="text"
-						placeholder="new tag name..."
-						bind:value={newTagName}
-					/>
-					<div class="tag-color-picker">
-						{#each tagColors as color}
-							<button
-								type="button"
-								class="color-swatch"
-								class:selected={newTagColor === color}
-								style="background: {color}"
-								onclick={() => { newTagColor = color; }}
-								aria-label="Select color {color}"
-							></button>
-						{/each}
-					</div>
-					<button type="submit" class="btn-save" disabled={saving || !newTagName}>
-						{saving ? "creating..." : "create tag"}
-					</button>
-				</form>
-
-				{#if data.tags.length > 0}
-					<div class="tag-list">
-						{#each data.tags as tag (tag._id)}
-							<div class="tag-list-item">
-								<span class="tag-dot-inline" style="background: {tag.color || '#818cf8'}"></span>
-								<span class="tag-list-name">{tag.name}</span>
-								<button class="tag-delete-btn" onclick={() => deleteTag(tag._id)} aria-label="Delete tag {tag.name}">
-									<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" /></svg>
-								</button>
-							</div>
-						{/each}
-					</div>
-				{:else}
-					<div class="no-tags-text">no tags created yet</div>
-				{/if}
-			</div>
-		</div>
-	</div>
+	<TagManager tags={data.tags} {saving} oncreate={createTag} ondelete={deleteTag} onclose={() => { showTagManager = false; }} />
 {/if}
 </FeatureGate>
 
 <style>
-	/* Page layout */
 	.crm-page {
 		padding: 48px 40px;
 		max-width: 1200px;
@@ -993,7 +423,6 @@ function getActivityIcon(action: string): string {
 		border-color: var(--admin-text-muted);
 	}
 
-	/* Stats line */
 	.stats-line {
 		display: flex;
 		align-items: baseline;
@@ -1008,7 +437,6 @@ function getActivityIcon(action: string): string {
 		color: var(--admin-text-subtle);
 	}
 
-	/* Filter bar */
 	.filter-bar {
 		display: flex;
 		gap: 10px;
@@ -1058,629 +486,6 @@ function getActivityIcon(action: string): string {
 		border-color: var(--admin-border-strong);
 	}
 
-	/* Table */
-	.table-wrap {
-		overflow-x: auto;
-		-webkit-overflow-scrolling: touch;
-	}
-
-	.client-table {
-		width: 100%;
-		border-collapse: collapse;
-		text-align: left;
-		font-size: 0.85rem;
-	}
-
-	.client-table th {
-		padding: 0 16px 12px 0;
-		color: var(--admin-text-subtle);
-		font-weight: 400;
-		font-size: 0.75rem;
-		letter-spacing: 0.04em;
-		border-bottom: 1px solid var(--admin-border);
-		white-space: nowrap;
-	}
-
-	.client-table td {
-		padding: 14px 16px 14px 0;
-		border-bottom: 1px solid var(--admin-border);
-		white-space: nowrap;
-	}
-
-	.client-row {
-		cursor: pointer;
-		transition: background 0.12s;
-	}
-
-	.client-row:hover {
-		background: var(--admin-active);
-	}
-
-	.td-name {
-		font-weight: 500;
-		color: var(--admin-heading);
-	}
-
-	.name-with-tags {
-		display: inline-flex;
-		align-items: center;
-		gap: 8px;
-	}
-
-	.tag-dots {
-		display: inline-flex;
-		gap: 3px;
-		align-items: center;
-	}
-
-	.tag-dot-inline {
-		display: inline-block;
-		width: 8px;
-		height: 8px;
-		border-radius: 50%;
-		flex-shrink: 0;
-	}
-
-	.td-email {
-		color: var(--admin-text-muted);
-		font-size: 0.82rem;
-	}
-
-	.td-type,
-	.td-source {
-		color: var(--admin-text-muted);
-	}
-
-	.td-date {
-		color: var(--admin-text-muted);
-		font-size: 0.8rem;
-	}
-
-	/* Status / Category indicators */
-	.category-indicator {
-		font-size: 0.8rem;
-		font-weight: 400;
-	}
-
-	.status-indicator {
-		display: inline-flex;
-		align-items: center;
-		gap: 6px;
-		font-size: 0.8rem;
-		color: var(--admin-text-muted);
-	}
-
-	.status-dot {
-		width: 7px;
-		height: 7px;
-		border-radius: 50%;
-		flex-shrink: 0;
-	}
-
-	/* Empty state */
-	.empty-state {
-		padding: 48px 0;
-		color: var(--admin-text-subtle);
-		font-size: 0.88rem;
-	}
-
-	/* Modal */
-	.modal-overlay {
-		position: fixed;
-		inset: 0;
-		z-index: 100;
-		display: flex;
-		align-items: center;
-		justify-content: center;
-		background: rgba(0, 0, 0, 0.4);
-		backdrop-filter: blur(8px);
-		padding: 1rem;
-	}
-
-	.modal-content {
-		background: var(--admin-bg, #1e293b);
-		border: 1px solid var(--admin-border);
-		border-radius: 12px;
-		width: 100%;
-		max-width: 540px;
-		max-height: 90vh;
-		overflow-y: auto;
-		box-shadow: 0 24px 80px rgba(0, 0, 0, 0.5);
-	}
-
-	.modal-content-wide {
-		max-width: 600px;
-	}
-
-	.modal-content-narrow {
-		max-width: 420px;
-	}
-
-	.modal-header {
-		display: flex;
-		align-items: center;
-		justify-content: space-between;
-		padding: 24px 28px 20px;
-	}
-
-	.modal-title {
-		font-family: "Chillax", sans-serif;
-		font-size: 1.1rem;
-		font-weight: 500;
-		color: var(--admin-heading);
-		margin: 0;
-	}
-
-	.modal-close {
-		background: none;
-		border: none;
-		color: var(--admin-text-muted);
-		cursor: pointer;
-		padding: 4px;
-		border-radius: 4px;
-		transition: color 0.15s;
-	}
-
-	.modal-close:hover {
-		color: var(--admin-heading);
-	}
-
-	/* Form */
-	.modal-form {
-		padding: 0 28px 28px;
-		display: flex;
-		flex-direction: column;
-		gap: 14px;
-	}
-
-	.form-row {
-		display: grid;
-		grid-template-columns: 1fr 1fr;
-		gap: 14px;
-	}
-
-	.form-group {
-		display: flex;
-		flex-direction: column;
-		gap: 4px;
-	}
-
-	.form-label {
-		font-size: 0.76rem;
-		color: var(--admin-text-muted);
-		font-weight: 400;
-		letter-spacing: 0.02em;
-	}
-
-	.required {
-		color: var(--status-rose);
-	}
-
-	.form-input {
-		padding: 8px 10px;
-		background: rgba(255, 255, 255, 0.03);
-		color: var(--admin-text);
-		border: 1px solid var(--admin-border-strong);
-		border-radius: 6px;
-		font-size: 0.85rem;
-		font-family: "Synonym", system-ui, sans-serif;
-		outline: none;
-		transition: border-color 0.15s;
-	}
-
-	.form-input:focus {
-		border-color: var(--admin-accent);
-	}
-
-	.form-textarea {
-		resize: vertical;
-		min-height: 60px;
-		font-family: inherit;
-	}
-
-	.modal-actions {
-		display: flex;
-		justify-content: flex-end;
-		gap: 10px;
-		padding-top: 6px;
-	}
-
-	.btn-cancel,
-	.btn-save,
-	.btn-danger,
-	.btn-danger-outline {
-		padding: 7px 16px;
-		border-radius: 6px;
-		font-size: 0.82rem;
-		font-family: "Synonym", system-ui, sans-serif;
-		cursor: pointer;
-		transition: background 0.15s, border-color 0.15s, opacity 0.15s;
-		border: 1px solid transparent;
-	}
-
-	.btn-cancel {
-		background: transparent;
-		color: var(--admin-text-muted);
-		border-color: var(--admin-border-strong);
-	}
-
-	.btn-cancel:hover {
-		color: var(--admin-text);
-	}
-
-	.btn-save {
-		background: rgba(129, 140, 248, 0.15);
-		border-color: rgba(129, 140, 248, 0.25);
-		color: var(--admin-accent-hover);
-		font-weight: 500;
-	}
-
-	.btn-save:hover {
-		background: rgba(129, 140, 248, 0.22);
-	}
-
-	.btn-save:disabled {
-		opacity: 0.4;
-		cursor: not-allowed;
-	}
-
-	.btn-danger {
-		background: rgba(248, 113, 113, 0.15);
-		border-color: rgba(248, 113, 113, 0.3);
-		color: var(--status-rose);
-	}
-
-	.btn-danger:disabled {
-		opacity: 0.4;
-		cursor: not-allowed;
-	}
-
-	.btn-danger-outline {
-		background: transparent;
-		color: var(--status-rose);
-		border-color: rgba(248, 113, 113, 0.25);
-	}
-
-	.btn-danger-outline:hover {
-		background: rgba(248, 113, 113, 0.08);
-	}
-
-	/* Detail view */
-	.detail-body {
-		padding: 0 28px 28px;
-		display: flex;
-		flex-direction: column;
-		gap: 20px;
-	}
-
-	.detail-meta-line {
-		display: flex;
-		align-items: center;
-		gap: 8px;
-		font-size: 0.85rem;
-	}
-
-	.meta-sep {
-		color: var(--admin-text-subtle);
-	}
-
-	.detail-type {
-		color: var(--admin-text-muted);
-	}
-
-	/* Tags in detail */
-	.detail-tags-section {
-		display: flex;
-		flex-direction: column;
-		gap: 8px;
-	}
-
-	.detail-tags-header {
-		display: flex;
-		align-items: center;
-		justify-content: space-between;
-	}
-
-	.btn-tag-toggle {
-		background: none;
-		border: none;
-		color: var(--admin-accent);
-		font-size: 0.76rem;
-		font-family: "Synonym", system-ui, sans-serif;
-		cursor: pointer;
-		padding: 2px 6px;
-		border-radius: 4px;
-		transition: background 0.15s;
-	}
-
-	.btn-tag-toggle:hover {
-		background: rgba(129, 140, 248, 0.1);
-	}
-
-	.detail-tags-list {
-		display: flex;
-		flex-wrap: wrap;
-		gap: 6px;
-		align-items: center;
-	}
-
-	.detail-tag {
-		display: inline-flex;
-		align-items: center;
-		gap: 5px;
-		font-size: 0.78rem;
-		color: var(--admin-text);
-	}
-
-	.tag-remove-btn {
-		background: none;
-		border: none;
-		color: var(--admin-text-subtle);
-		cursor: pointer;
-		font-size: 0.85rem;
-		padding: 0 2px;
-		line-height: 1;
-		transition: color 0.15s;
-	}
-
-	.tag-remove-btn:hover {
-		color: var(--status-rose);
-	}
-
-	.no-tags-text,
-	.loading-text {
-		font-size: 0.76rem;
-		color: var(--admin-text-subtle);
-	}
-
-	.tag-picker {
-		display: flex;
-		flex-wrap: wrap;
-		gap: 4px;
-		padding-top: 4px;
-		border-top: 1px solid var(--admin-border);
-	}
-
-	.tag-picker-item {
-		display: inline-flex;
-		align-items: center;
-		gap: 5px;
-		padding: 3px 8px;
-		background: rgba(255, 255, 255, 0.03);
-		border: 1px solid var(--admin-border);
-		border-radius: 4px;
-		color: var(--admin-text-muted);
-		font-size: 0.76rem;
-		font-family: "Synonym", system-ui, sans-serif;
-		cursor: pointer;
-		transition: border-color 0.15s, color 0.15s;
-	}
-
-	.tag-picker-item:hover {
-		border-color: var(--admin-border-strong);
-		color: var(--admin-text);
-	}
-
-	.detail-fields {
-		display: flex;
-		flex-direction: column;
-		gap: 12px;
-		border-top: 1px solid var(--admin-border);
-		padding-top: 16px;
-	}
-
-	.detail-field {
-		display: flex;
-		flex-direction: column;
-		gap: 2px;
-	}
-
-	.detail-label {
-		font-size: 0.72rem;
-		color: var(--admin-text-subtle);
-		letter-spacing: 0.04em;
-		font-weight: 400;
-	}
-
-	.detail-value {
-		font-size: 0.88rem;
-		color: var(--admin-heading);
-	}
-
-	.detail-notes {
-		white-space: pre-wrap;
-		line-height: 1.5;
-	}
-
-	.detail-link {
-		font-size: 0.88rem;
-		color: var(--admin-accent);
-		text-decoration: none;
-	}
-
-	.detail-link:hover {
-		text-decoration: underline;
-	}
-
-	.detail-status-row {
-		display: flex;
-		flex-direction: column;
-		gap: 8px;
-		padding-top: 4px;
-	}
-
-	.status-buttons {
-		display: flex;
-		flex-wrap: wrap;
-		gap: 6px;
-	}
-
-	.status-btn {
-		padding: 4px 10px;
-		border-radius: 5px;
-		font-size: 0.72rem;
-		font-family: "Synonym", system-ui, sans-serif;
-		cursor: pointer;
-		background: transparent;
-		color: var(--admin-text-muted);
-		border: 1px solid var(--admin-border);
-		transition: all 0.15s;
-	}
-
-	.status-btn:hover {
-		border-color: var(--admin-border-strong);
-		color: var(--admin-text);
-	}
-
-	.status-btn.active {
-		background: rgba(255, 255, 255, 0.05);
-	}
-
-	/* Activity timeline */
-	.activity-section {
-		display: flex;
-		flex-direction: column;
-		gap: 8px;
-		border-top: 1px solid var(--admin-border);
-		padding-top: 16px;
-	}
-
-	.no-activity-text {
-		font-size: 0.76rem;
-		color: var(--admin-text-subtle);
-	}
-
-	.activity-list {
-		display: flex;
-		flex-direction: column;
-		gap: 0;
-	}
-
-	.activity-entry {
-		display: flex;
-		align-items: baseline;
-		gap: 8px;
-		padding: 8px 0;
-		border-bottom: 1px solid var(--admin-border);
-		font-size: 0.8rem;
-	}
-
-	.activity-entry:last-child {
-		border-bottom: none;
-	}
-
-	.activity-icon {
-		color: var(--admin-text-subtle);
-		font-size: 0.85rem;
-		flex-shrink: 0;
-		width: 14px;
-		text-align: center;
-	}
-
-	.activity-desc {
-		color: var(--admin-text-muted);
-		flex: 1;
-	}
-
-	.activity-time {
-		color: var(--admin-text-subtle);
-		font-size: 0.72rem;
-		white-space: nowrap;
-		flex-shrink: 0;
-	}
-
-	.detail-actions {
-		border-top: 1px solid var(--admin-border);
-		padding-top: 16px;
-	}
-
-	.confirm-text {
-		font-size: 0.82rem;
-		color: var(--status-rose);
-		margin-right: auto;
-		align-self: center;
-	}
-
-	/* Tag Manager */
-	.tag-manager-body {
-		padding: 0 28px 28px;
-		display: flex;
-		flex-direction: column;
-		gap: 20px;
-	}
-
-	.tag-create-form {
-		display: flex;
-		flex-direction: column;
-		gap: 10px;
-	}
-
-	.tag-name-input {
-		width: 100%;
-	}
-
-	.tag-color-picker {
-		display: flex;
-		gap: 6px;
-		flex-wrap: wrap;
-	}
-
-	.color-swatch {
-		width: 22px;
-		height: 22px;
-		border-radius: 50%;
-		border: 2px solid transparent;
-		cursor: pointer;
-		transition: border-color 0.15s, transform 0.15s;
-	}
-
-	.color-swatch:hover {
-		transform: scale(1.15);
-	}
-
-	.color-swatch.selected {
-		border-color: var(--admin-heading);
-	}
-
-	.tag-list {
-		display: flex;
-		flex-direction: column;
-		gap: 0;
-	}
-
-	.tag-list-item {
-		display: flex;
-		align-items: center;
-		gap: 8px;
-		padding: 10px 0;
-		border-bottom: 1px solid var(--admin-border);
-	}
-
-	.tag-list-item:last-child {
-		border-bottom: none;
-	}
-
-	.tag-list-name {
-		flex: 1;
-		font-size: 0.85rem;
-		color: var(--admin-text);
-	}
-
-	.tag-delete-btn {
-		background: none;
-		border: none;
-		color: var(--admin-text-subtle);
-		cursor: pointer;
-		padding: 4px;
-		border-radius: 4px;
-		transition: color 0.15s;
-	}
-
-	.tag-delete-btn:hover {
-		color: var(--status-rose);
-	}
-
-	/* Responsive */
 	@media (max-width: 768px) {
 		.crm-page {
 			padding: 20px 16px;
@@ -1709,39 +514,6 @@ function getActivityIcon(action: string): string {
 
 		.filter-search {
 			min-width: unset;
-		}
-
-		.form-row {
-			grid-template-columns: 1fr;
-		}
-
-		.modal-content {
-			max-width: 100%;
-		}
-
-		.modal-overlay {
-			align-items: flex-end;
-			padding: 0;
-		}
-
-		.modal-content {
-			border-radius: 12px 12px 0 0;
-		}
-
-		.modal-header {
-			padding: 20px 20px 16px;
-		}
-
-		.modal-form {
-			padding: 0 20px 20px;
-		}
-
-		.detail-body {
-			padding: 0 20px 20px;
-		}
-
-		.tag-manager-body {
-			padding: 0 20px 20px;
 		}
 	}
 </style>
