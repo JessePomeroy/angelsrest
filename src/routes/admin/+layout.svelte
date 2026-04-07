@@ -1,6 +1,10 @@
 <script lang="ts">
 import { page } from "$app/stores";
 import { type Feature, hasFeature, type Tier } from "$lib/admin/features";
+import { setupConvex } from "convex-svelte";
+import { PUBLIC_CONVEX_URL } from "$env/static/public";
+
+setupConvex(PUBLIC_CONVEX_URL);
 
 let { data, children } = $props();
 

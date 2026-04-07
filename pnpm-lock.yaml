@@ -41,6 +41,9 @@ importers:
       convex:
         specifier: ^1.34.1
         version: 1.34.1(react@19.2.4)
+      convex-svelte:
+        specifier: ^0.0.12
+        version: 0.0.12(convex@1.34.1(react@19.2.4))(svelte@5.53.3)
       isomorphic-dompurify:
         specifier: ^3.7.1
         version: 3.7.1(@noble/hashes@2.0.1)
@@ -1323,6 +1326,12 @@ packages:
   compute-scroll-into-view@3.1.1:
     resolution: {integrity: sha512-VRhuHOLoKYOy4UbilLbUzbYg93XLjv2PncJC50EuTWPA3gaja1UjBsUP/D/9/juV3vQFr6XBEzn9KCAHdUvOHw==}
 
+  convex-svelte@0.0.12:
+    resolution: {integrity: sha512-sUZoYp4ZsokyvKlbbg1dWYB7MkAjZn4nNG9DnADEt9L6KTKuhhnEIt6fdLj+3GnVBUGDTssm17+7ppzFc4y7Gg==}
+    peerDependencies:
+      convex: ^1.10.0
+      svelte: ^5.0.0
+
   convex@1.34.1:
     resolution: {integrity: sha512-ooyFnZVVq0u6b5zt0Ptq8QB2ixhf/2vXe+PIcUtdtrs0lq/TwpkmmruHdqkFmWgMd6N+Tmfy8AGkz6QnZUYZBA==}
     engines: {node: '>=18.0.0', npm: '>=7.0.0'}
@@ -1843,6 +1852,11 @@ packages:
     resolution: {integrity: sha512-2oMpl67a3zCH9H79LeMcbDhXW/UmWG/y2zuqnF2jQq5uq9TbM9TVyXvA4+t+ne2IIkBdrLpAaRQAvo7YI/Yyeg==}
     engines: {node: '>=18.0.0', npm: '>=8.0.0'}
     hasBin: true
+
+  runed@0.31.1:
+    resolution: {integrity: sha512-v3czcTnO+EJjiPvD4dwIqfTdHLZ8oH0zJheKqAHh9QMViY7Qb29UlAMRpX7ZtHh7AFqV60KmfxaJ9QMy+L1igQ==}
+    peerDependencies:
+      svelte: ^5.7.0
 
   rxjs@7.8.2:
     resolution: {integrity: sha512-dhKf903U/PQZY6boNNtAGdWbG85WAbjT/1xYoZIC7FAY0yWapOBQVsVrDl58W86//e1VpMNBtRV4MaXfdMySFA==}
@@ -3315,6 +3329,13 @@ snapshots:
 
   compute-scroll-into-view@3.1.1: {}
 
+  convex-svelte@0.0.12(convex@1.34.1(react@19.2.4))(svelte@5.53.3):
+    dependencies:
+      convex: 1.34.1(react@19.2.4)
+      esm-env: 1.2.2
+      runed: 0.31.1(svelte@5.53.3)
+      svelte: 5.53.3
+
   convex@1.34.1(react@19.2.4):
     dependencies:
       esbuild: 0.27.0
@@ -3847,6 +3868,11 @@ snapshots:
       '@rollup/rollup-win32-x64-gnu': 4.59.0
       '@rollup/rollup-win32-x64-msvc': 4.59.0
       fsevents: 2.3.3
+
+  runed@0.31.1(svelte@5.53.3):
+    dependencies:
+      esm-env: 1.2.2
+      svelte: 5.53.3
 
   rxjs@7.8.2:
     dependencies:
