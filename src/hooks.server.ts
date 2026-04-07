@@ -42,8 +42,11 @@ export async function handle({ event, resolve }) {
 		return resolve(event);
 	}
 
-	// Protect /admin routes - check if the URL starts with /admin
-	if (event.url.pathname.startsWith("/admin")) {
+	// Protect /admin and /api/admin routes
+	if (
+		event.url.pathname.startsWith("/admin") ||
+		event.url.pathname.startsWith("/api/admin")
+	) {
 		// Get password from environment variables
 		const ADMIN_PASSWORD = privateEnv.ADMIN_PASSWORD;
 
