@@ -65,17 +65,16 @@ const contact = $derived(data.contactPage);
 
 <section class="px-6! md:px-8! lg:px-10!">
     <div
-        class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8 lg:gap-12 max-w-[1400px]"
+        class="grid grid-cols-1 md:grid-cols-[auto_1fr] lg:grid-cols-[auto_1fr_1fr] gap-6 lg:gap-10 max-w-[1400px]"
     >
-        <!-- Portrait - card style matching product images, ASCII on hover -->
+        <!-- Portrait -->
         <div class="h-fit">
             <div
-                class="bg-surface-500/10 border border-surface-500/20 p-3 rounded-lg inline-block"
+                class="bg-surface-500/10 border border-surface-500/20 p-2 rounded-lg inline-block"
             >
                 <div
                     class="aspect-[3/4] w-64 md:w-72 lg:w-80 overflow-hidden rounded-md"
                 >
-                    <!-- Always use local portrait for ASCII effect (avoids CORS issues with Sanity CDN) -->
                     <AsciiImage
                         src={portrait}
                         alt={data.about?.name || "Portrait"}
@@ -87,13 +86,13 @@ const contact = $derived(data.contactPage);
         </div>
 
         <!-- Bio -->
-        <div class="pt-4 lg:pt-8">
-            <h1 class="mb-6 text-2xl">{data.about.name}</h1>
-            <p class="leading-relaxed mb-4">
+        <div class="pt-2 lg:pt-4">
+            <h1 class="mb-3 text-2xl">{data.about.name}</h1>
+            <p class="leading-relaxed mb-3 text-sm">
                 {data.about.shortBio}
             </p>
             {#if data.about?.social?.instagram}
-                <p class="text-surface-400">
+                <p class="text-surface-400 text-sm">
                     <a
                         href={data.about.social.instagram}
                         target="_blank"
@@ -103,40 +102,14 @@ const contact = $derived(data.contactPage);
                     >
                 </p>
             {/if}
-        </div>
-        <div
-            class="pt-4 lg:pt-8 md:col-span-2 lg:col-span-1 md:border-t md:border-surface-500/20 md:pt-8 md:mt-4 lg:border-0 lg:mt-0"
-        >
-            <!-- contact form -->
-            {#if contact?.heading}
-                <h2 class="mb-2 text-lg">{contact.heading.toLowerCase()}</h2>
-            {:else}
-                <h2 class="mb-2 text-lg">get in touch</h2>
-            {/if}
-            {#if contact?.intro}
-                <div class="text-surface-400 text-sm mb-8 leading-relaxed">
-                    <PortableText value={contact.intro} />
-                </div>
-            {:else}
-                <p class="text-surface-400 text-sm mb-8">
-                    for inquiries, commissions, and collaborations.
-                </p>
-            {/if}
-            <ContactForm hideHeader={!!contact?.heading} />
-            <!-- Book a call section -->
             {#if contact?.bookingEnabled}
-                <div
-                    class="mt-20 pt-10 border-t border-gray-300 dark:border-white/20"
-                >
-                    <h2 class="mb-2 text-lg">
-                        book a session -or- prefer to schedule a call/meeting ?
-                    </h2>
-                    <p class="text-surface-400 text-sm mb-8">
-                        select a time that works for you.
+                <div class="mt-4 pt-4 border-t border-surface-500/20">
+                    <p class="text-surface-400 text-xs mb-3">
+                        want to book a session or schedule a call?
                     </p>
                     <button
                         type="button"
-                        class="w-full px-4 py-3 text-sm font-medium lowercase tracking-wide bg-white/5 dark:bg-white/5 border border-gray-300 dark:border-white/10 rounded-lg hover:bg-gray-100 dark:hover:bg-white/10 transition-all cursor-pointer"
+                        class="px-4 py-2.5 text-sm font-medium lowercase tracking-wide bg-white/5 border border-gray-300 dark:border-white/10 rounded-lg hover:bg-gray-100 dark:hover:bg-white/10 transition-all cursor-pointer"
                         style="color: var(--form-text-color);"
                         data-cal-link="jesse-s1wmio/photosession"
                         data-cal-namespace="photosession"
@@ -145,6 +118,27 @@ const contact = $derived(data.contactPage);
                     </button>
                 </div>
             {/if}
+        </div>
+
+        <!-- Contact form -->
+        <div
+            class="pt-2 lg:pt-4 md:col-span-2 lg:col-span-1 md:border-t md:border-surface-500/20 md:pt-6 md:mt-2 lg:border-0 lg:mt-0"
+        >
+            {#if contact?.heading}
+                <h2 class="mb-2 text-lg">{contact.heading.toLowerCase()}</h2>
+            {:else}
+                <h2 class="mb-2 text-lg">get in touch</h2>
+            {/if}
+            {#if contact?.intro}
+                <div class="text-surface-400 text-sm mb-4 leading-relaxed">
+                    <PortableText value={contact.intro} />
+                </div>
+            {:else}
+                <p class="text-surface-400 text-sm mb-4">
+                    for inquiries, commissions, and collaborations.
+                </p>
+            {/if}
+            <ContactForm hideHeader={!!contact?.heading} />
         </div>
     </div>
 </section>
