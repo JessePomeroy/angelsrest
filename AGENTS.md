@@ -4,10 +4,11 @@ Rules for working on this codebase.
 
 ## Project Context
 
-- **Stack:** SvelteKit 5 (runes) + Tailwind CSS v4 + Sanity CMS + Stripe + LumaPrints + Resend
+- **Stack:** SvelteKit 5 (runes) + Tailwind CSS v4 + Sanity CMS + Convex + Stripe + LumaPrints + Resend
 - **Frontend:** `~/Documents/work/angelsrest` → https://angelsrest.online
 - **Studio:** `~/Documents/work/angelsrest-studio` → https://angelsrest.sanity.studio
 - **CRM Spec:** `~/Documents/quilt/02_reference/projects/photographer_crm/implementation-spec.md`
+- **User Guide:** `~/Documents/quilt/02_reference/projects/photographer_crm/crm-user-guide.md`
 
 ## Tech Constraints
 
@@ -15,27 +16,56 @@ Rules for working on this codebase.
 - Tailwind CSS v4 — avoid Skeleton component classes, use plain Tailwind
 - Use `$env/dynamic/private` for env vars in hooks, not `$env/static/private`
 - Biome linter enforced via husky — run checks before reporting done
+- Admin pages use scoped `<style>` blocks with `--admin-*` CSS custom properties, NOT Tailwind
 
 ## Key Files
 
+- **Convex client helper:** `src/lib/server/convexClient.ts` — use `getConvex()` instead of instantiating ConvexHttpClient
+- **Site config:** `src/lib/config/site.ts` — `SITE_DOMAIN`, `SITE_URL`, `SITE_URL_WWW`
+- **Convex path alias:** `$convex` → `./convex/_generated` (configured in svelte.config.js)
 - **Stripe webhook:** `src/routes/api/webhooks/stripe/+server.ts`
-- **Admin orders:** `src/routes/admin/orders/+page.svelte`
-- **Order lookup:** `src/routes/orders/+page.svelte`
 - **Sanity client:** `src/lib/sanity/client.ts` (read), `src/lib/sanity/adminClient.ts` (write)
-- **Sanity preview client:** `src/lib/sanity/previewClient.ts` (draft-aware, for visual editing)
+- **Sanity preview client:** `src/lib/sanity/previewClient.ts` (draft-aware)
 - **LumaPrints client:** `src/lib/lumaprints/client.ts`
-- **Server hooks:** `src/hooks.server.ts` (admin auth + preview mode detection)
-- **Root layout:** `src/routes/+layout.svelte` (visual editing overlay when previewing)
-- **Root layout server:** `src/routes/+layout.server.ts` (passes isPreview to all pages)
+- **Server hooks:** `src/hooks.server.ts` (admin auth + preview mode)
+
+## Data Layer
+
+- **Sanity:** Content only — galleries, products, collections, about, blog, inquiries, siteSettings, contactPage
+- **Convex:** Operations — orders, CRM clients, invoices, quotes, contracts, email templates, platform clients, messages
+
+## Admin Dashboard
+
+All admin pages at `/admin/*` protected by HTTP Basic Auth.
+
+| Page | Route | Data Source |
+|------|-------|-------------|
+| Dashboard | `/admin` | Convex orders |
+| Orders | `/admin/orders` | Convex orders |
+| Inquiries | `/admin/inquiries` | Sanity inquiries |
+| Galleries | `/admin/galleries` | Sanity galleries |
+| Clients (CRM) | `/admin/crm` | Convex photographyClients |
+| Invoicing | `/admin/invoicing` | Convex invoices |
+| Quotes | `/admin/quotes` | Convex quotes + quotePresets |
+| Contracts | `/admin/contracts` | Convex contracts + contractTemplates |
+| Email Templates | `/admin/emails` | Convex emailTemplates |
+| Messages | `/admin/messages` | Convex platformMessages |
+| Platform Clients | `/admin/platform` | Convex platformClients |
+
+## Admin Design System
+
+- Fonts: "Chillax" for headings, "Synonym" for body
+- All text lowercase
+- No card-style bordered boxes — use whitespace and typography
+- Status indicators: small colored dots + text, not bordered pill badges
+- Tables: subtle borders, generous padding, no card wrapper
+- Modals: backdrop-filter: blur(8px) with rgba(0,0,0,0.4) overlay
+- CSS custom properties defined in `+layout.svelte`: `--admin-bg`, `--admin-surface`, `--admin-heading`, `--admin-text`, `--admin-text-muted`, `--admin-text-subtle`, `--admin-border`, `--admin-border-strong`, `--admin-accent`, `--status-*`
 
 ## Preview / Visual Editing
 
-Sanity Presentation plugin connects Studio to this frontend for live preview:
-
-- **Enable:** `GET /api/draft/enable` — validates Sanity preview secret, sets `__sanity_preview` cookie
+- **Enable:** `GET /api/draft/enable` — validates Sanity preview secret, sets cookie
 - **Disable:** `GET /api/draft/disable` — clears cookie
-- **Detection:** `hooks.server.ts` reads cookie → sets `locals.isPreview`
-- **Overlay:** `+layout.svelte` calls `enableVisualEditing()` in onMount when `data.isPreview` is true
 - **Env var:** `SANITY_PREVIEW_TOKEN` (Viewer role token from Sanity)
 
 ## Running Checks
@@ -43,7 +73,7 @@ Sanity Presentation plugin connects Studio to this frontend for live preview:
 ```bash
 cd ~/Documents/work/angelsrest
 pnpm biome check --write src/
-pnpm svelte-check
+npx svelte-check
 pnpm build
 ```
 
@@ -54,26 +84,14 @@ pnpm build
 - Tell Jesse to review
 - Don't push to main without permission
 
-## Current Features
-
-- Shop with Stripe checkout
-- Order creation via webhook
-- Customer + admin order emails via Resend
-- Admin dashboard at `/admin/orders` (Basic Auth protected)
-- Order lookup page at `/orders`
-- Sanity visual editing / live preview via Presentation plugin
-- LumaPrints integration (paper selection, fulfillment)
-
 ## Platform Context
 
 This site is the **hub** of the photographer CRM platform:
-- **angelsrest** = your personal site + platform management server
-- **angelsrest-studio** = your Sanity CMS (content only)
-- **Convex** = operational backend (orders, CRM, messages, tiers) — coming soon
-- **admin-dashboard** = shared admin package for all client sites — coming soon
-- **reflecting-pool** = first client template — coming soon
-
-Platform admin routes will be added at `/admin/clients`, `/admin/messages`, and `/api/platform/*`.
+- **angelsrest** = personal site + platform management server
+- **angelsrest-studio** = Sanity CMS (content only)
+- **Convex** = operational backend (orders, CRM, messages, tiers)
+- **admin-dashboard** = shared admin package (to be extracted when stable)
+- **reflecting-pool** = first client template
 
 <!-- convex-ai-start -->
 This project uses [Convex](https://convex.dev) as its backend.
