@@ -13,18 +13,15 @@ export const list = query({
 			.order("desc")
 			.collect();
 
-		// Resolve client names
-		const withClients = await Promise.all(
-			all.map(async (invoice) => {
-				const client = await ctx.db.get(invoice.clientId);
-				return { ...invoice, clientName: client?.name ?? "unknown" };
-			}),
-		);
+		const results = all.map((invoice) => ({
+			...invoice,
+			clientName: invoice.clientName ?? "unknown",
+		}));
 
 		if (status) {
-			return withClients.filter((inv) => inv.status === status);
+			return results.filter((inv) => inv.status === status);
 		}
-		return withClients;
+		return results;
 	},
 });
 
@@ -83,8 +80,10 @@ export const create = mutation({
 		parentInvoiceId: v.optional(v.id("invoices")),
 	},
 	handler: async (ctx, args) => {
+		const client = await ctx.db.get(args.clientId);
 		return await ctx.db.insert("invoices", {
 			...args,
+			clientName: client?.name ?? "unknown",
 			status: "draft",
 		});
 	},

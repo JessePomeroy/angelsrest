@@ -1,3 +1,4 @@
+import { paginationOptsValidator } from "convex/server";
 import { v } from "convex/values";
 import { mutation, query } from "./_generated/server";
 
@@ -30,6 +31,30 @@ export const listClients = query({
 			return results.filter((c) => c.status === status);
 		}
 		return results;
+	},
+});
+
+export const listClientsPaginated = query({
+	args: {
+		siteUrl: v.string(),
+		paginationOpts: paginationOptsValidator,
+		category: v.optional(v.union(v.literal("photography"), v.literal("web"))),
+	},
+	handler: async (ctx, { siteUrl, paginationOpts, category }) => {
+		if (category) {
+			return await ctx.db
+				.query("photographyClients")
+				.withIndex("by_siteUrl_category", (q) =>
+					q.eq("siteUrl", siteUrl).eq("category", category),
+				)
+				.order("desc")
+				.paginate(paginationOpts);
+		}
+		return await ctx.db
+			.query("photographyClients")
+			.withIndex("by_siteUrl", (q) => q.eq("siteUrl", siteUrl))
+			.order("desc")
+			.paginate(paginationOpts);
 	},
 });
 

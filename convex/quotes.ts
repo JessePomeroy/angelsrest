@@ -13,15 +13,13 @@ export const list = query({
 			.order("desc")
 			.collect();
 
-		const withClients = await Promise.all(
-			all.map(async (quote) => {
-				const client = await ctx.db.get(quote.clientId);
-				return { ...quote, clientName: client?.name ?? "unknown" };
-			}),
-		);
+		const results = all.map((quote) => ({
+			...quote,
+			clientName: quote.clientName ?? "unknown",
+		}));
 
-		if (status) return withClients.filter((q) => q.status === status);
-		return withClients;
+		if (status) return results.filter((q) => q.status === status);
+		return results;
 	},
 });
 
@@ -57,8 +55,10 @@ export const create = mutation({
 		notes: v.optional(v.string()),
 	},
 	handler: async (ctx, args) => {
+		const client = await ctx.db.get(args.clientId);
 		return await ctx.db.insert("quotes", {
 			...args,
+			clientName: client?.name ?? "unknown",
 			status: "draft",
 		});
 	},
@@ -135,10 +135,12 @@ export const convertToInvoice = mutation({
 		}));
 
 		// Create the invoice
+		const client = await ctx.db.get(quote.clientId);
 		const invoiceId = await ctx.db.insert("invoices", {
 			siteUrl: quote.siteUrl,
 			invoiceNumber,
 			clientId: quote.clientId,
+			clientName: client?.name ?? quote.clientName ?? "unknown",
 			invoiceType,
 			status: "draft",
 			items,
