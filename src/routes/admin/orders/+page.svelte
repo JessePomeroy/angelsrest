@@ -195,7 +195,7 @@ async function updateStatus(orderId: string, newStatus: string) {
 		if (response.ok) {
 			const order = data.orders.find((o: any) => o._id === orderId);
 			if (order) {
-				order.status = newStatus;
+				order.status = newStatus as any;
 				data.orders = [...data.orders];
 			}
 			if (selectedOrder?._id === orderId) {

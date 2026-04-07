@@ -1,11 +1,13 @@
-import { client } from "$lib/sanity/client";
+import { ConvexHttpClient } from "convex/browser";
+import { env as publicEnv } from "$env/dynamic/public";
+import { api } from "../../../convex/_generated/api";
+
+const convex = new ConvexHttpClient(publicEnv.PUBLIC_CONVEX_URL!);
 
 export async function load() {
-	const orders = await client.fetch(`
-		*[_type == "order"] | order(createdAt desc) {
-			_id, orderNumber, createdAt, customerEmail, customerName, total, stripeFees, status
-		}
-	`);
+	const orders = await convex.query(api.orders.list, {
+		siteUrl: "angelsrest.online",
+	});
 
 	const now = new Date();
 	const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
@@ -30,7 +32,7 @@ export async function load() {
 		const total = order.total || 0;
 		allTimeRevenue += total;
 
-		const orderDate = new Date(order.createdAt);
+		const orderDate = new Date(order._creationTime);
 		if (orderDate >= todayStart) todayRevenue += total;
 		if (orderDate >= weekStart) weekRevenue += total;
 		if (orderDate >= monthStart) monthRevenue += total;
@@ -48,7 +50,16 @@ export async function load() {
 		}),
 	);
 
-	const recentOrders = orders.slice(0, 10);
+	const recentOrders = orders.slice(0, 10).map((order) => ({
+		_id: order._id,
+		orderNumber: order.orderNumber,
+		createdAt: new Date(order._creationTime).toISOString(),
+		customerEmail: order.customerEmail,
+		customerName: order.customerName || "",
+		total: order.total,
+		stripeFees: order.stripeFees || 0,
+		status: order.status,
+	}));
 
 	return {
 		stats: {

@@ -1,12 +1,9 @@
 import { json } from "@sveltejs/kit";
-import { client } from "$lib/sanity/client";
+import { ConvexHttpClient } from "convex/browser";
+import { env as publicEnv } from "$env/dynamic/public";
+import { api } from "../../../../../convex/_generated/api";
 
-/**
- * Order lookup API
- *
- * GET /api/orders/lookup?email=...&order=...
- * Returns order details if email and order number match
- */
+const convex = new ConvexHttpClient(publicEnv.PUBLIC_CONVEX_URL!);
 
 export async function GET({ url }) {
 	const email = url.searchParams.get("email");
@@ -17,28 +14,11 @@ export async function GET({ url }) {
 	}
 
 	try {
-		const query = `*[_type == "order" && customerEmail == $email && orderNumber == $orderNumber][0]{
+		const order = await convex.query(api.orders.lookup, {
+			siteUrl: "angelsrest.online",
+			email,
 			orderNumber,
-			status,
-			createdAt,
-			total,
-			currency,
-			customerName,
-			items[]{
-				productName,
-				quantity,
-				price
-			},
-			shippingAddress{
-				line1,
-				line2,
-				city,
-				state,
-				postalCode
-			}
-		}`;
-
-		const order = await client.fetch(query, { email, orderNumber });
+		});
 
 		if (!order) {
 			return json({ error: "Order not found" }, { status: 404 });
