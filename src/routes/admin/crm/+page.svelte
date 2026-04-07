@@ -236,6 +236,23 @@ function formatStatus(status: string) {
 function formatType(type: string) {
 	return type.charAt(0).toUpperCase() + type.slice(1);
 }
+
+function getStatusColor(status: string): string {
+	const colors: Record<string, string> = {
+		lead: "var(--status-slate)",
+		booked: "var(--status-amber)",
+		"in-progress": "var(--status-lavender)",
+		completed: "var(--status-sage)",
+		archived: "var(--admin-text-subtle)",
+	};
+	return colors[status] || "var(--status-slate)";
+}
+
+function getCategoryColor(category: string): string {
+	return category === "photography"
+		? "var(--status-peach)"
+		: "var(--status-lavender)";
+}
 </script>
 
 <SEO title="Clients | Admin" description="Manage clients" />
@@ -243,35 +260,40 @@ function formatType(type: string) {
 <div class="crm-page">
 	<header class="page-header">
 		<div class="header-left">
-			<h1 class="page-title">Clients</h1>
-			<p class="page-subtitle">{data.stats.total} total clients</p>
+			<h1>clients</h1>
 		</div>
 		<button class="btn-add" onclick={openAddModal}>
-			<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" /></svg>
-			Add Client
+			<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" /></svg>
+			add client
 		</button>
 	</header>
 
-	<!-- Stats row -->
-	<div class="stats-row">
-		<span class="stat-badge">{data.stats.total} Total</span>
-		<span class="stat-badge" data-status="lead">{data.stats.leads} Leads</span>
-		<span class="stat-badge" data-status="booked">{data.stats.booked} Booked</span>
-		<span class="stat-badge" data-status="in-progress">{data.stats.inProgress} In Progress</span>
-		<span class="stat-badge" data-status="completed">{data.stats.completed} Completed</span>
-		<span class="stat-badge" data-category="photography">{data.stats.photography} Photography</span>
-		<span class="stat-badge" data-category="web">{data.stats.web} Web</span>
+	<!-- Stats as inline text -->
+	<div class="stats-line">
+		<span>{data.stats.total} total</span>
+		<span class="stat-sep">&middot;</span>
+		<span>{data.stats.leads} leads</span>
+		<span class="stat-sep">&middot;</span>
+		<span>{data.stats.booked} booked</span>
+		<span class="stat-sep">&middot;</span>
+		<span>{data.stats.inProgress} in progress</span>
+		<span class="stat-sep">&middot;</span>
+		<span>{data.stats.completed} completed</span>
+		<span class="stat-sep">&middot;</span>
+		<span>{data.stats.photography} photo</span>
+		<span class="stat-sep">&middot;</span>
+		<span>{data.stats.web} web</span>
 	</div>
 
 	<!-- Filter bar -->
 	<div class="filter-bar">
 		<select class="filter-select" bind:value={categoryFilter}>
-			<option value="all">All Categories</option>
-			<option value="photography">Photography</option>
-			<option value="web">Web</option>
+			<option value="all">all categories</option>
+			<option value="photography">photography</option>
+			<option value="web">web</option>
 		</select>
 		<select class="filter-select" bind:value={statusFilter}>
-			<option value="all">All Statuses</option>
+			<option value="all">all statuses</option>
 			{#each allStatuses as s}
 				<option value={s}>{formatStatus(s)}</option>
 			{/each}
@@ -279,49 +301,58 @@ function formatType(type: string) {
 		<input
 			class="filter-search"
 			type="text"
-			placeholder="Search by name or email..."
+			placeholder="search by name or email..."
 			bind:value={searchQuery}
 		/>
 	</div>
 
 	<!-- Client table -->
-	<div class="table-wrap">
-		<table class="client-table">
-			<thead>
-				<tr>
-					<th>Name</th>
-					<th>Email</th>
-					<th>Category</th>
-					<th>Type</th>
-					<th>Status</th>
-					<th>Source</th>
-					<th>Added</th>
-				</tr>
-			</thead>
-			<tbody>
-				{#each filteredClients as client (client._id)}
-					<tr
-						class="client-row"
-						role="button"
-						tabindex="0"
-						onclick={() => openDetailModal(client)}
-						onkeydown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); openDetailModal(client); } }}
-					>
-						<td class="td-name">{client.name}</td>
-						<td class="td-email">{client.email || "\u2014"}</td>
-						<td><span class="category-badge" data-category={client.category}>{client.category === "photography" ? "Photo" : "Web"}</span></td>
-						<td class="td-type">{client.type ? formatType(client.type) : "\u2014"}</td>
-						<td><span class="status-badge" data-status={client.status}>{formatStatus(client.status)}</span></td>
-						<td class="td-source">{client.source || "\u2014"}</td>
-						<td class="td-date">{formatDate(client._creationTime)}</td>
-					</tr>
-				{/each}
-			</tbody>
-		</table>
-	</div>
-
 	{#if filteredClients.length === 0}
-		<div class="empty-state">No clients found</div>
+		<div class="empty-state">no clients found</div>
+	{:else}
+		<div class="table-wrap">
+			<table class="client-table">
+				<thead>
+					<tr>
+						<th>name</th>
+						<th>email</th>
+						<th>category</th>
+						<th>type</th>
+						<th>status</th>
+						<th>source</th>
+						<th>added</th>
+					</tr>
+				</thead>
+				<tbody>
+					{#each filteredClients as client (client._id)}
+						<tr
+							class="client-row"
+							role="button"
+							tabindex="0"
+							onclick={() => openDetailModal(client)}
+							onkeydown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); openDetailModal(client); } }}
+						>
+							<td class="td-name">{client.name}</td>
+							<td class="td-email">{client.email || "\u2014"}</td>
+							<td>
+								<span class="category-indicator" style="color: {getCategoryColor(client.category)}">
+									{client.category === "photography" ? "photo" : "web"}
+								</span>
+							</td>
+							<td class="td-type">{client.type ? formatType(client.type) : "\u2014"}</td>
+							<td>
+								<span class="status-indicator">
+									<span class="status-dot" style="background: {getStatusColor(client.status)}"></span>
+									{formatStatus(client.status)}
+								</span>
+							</td>
+							<td class="td-source">{client.source || "\u2014"}</td>
+							<td class="td-date">{formatDate(client._creationTime)}</td>
+						</tr>
+					{/each}
+				</tbody>
+			</table>
+		</div>
 	{/if}
 </div>
 
@@ -330,39 +361,39 @@ function formatType(type: string) {
 	<div class="modal-overlay" role="dialog" tabindex="-1" aria-modal="true" aria-label="Add client" onclick={closeAddModal} onkeydown={(e) => { if (e.key === "Escape") closeAddModal(); }}>
 		<div class="modal-content" role="presentation" onclick={(e) => e.stopPropagation()} onkeydown={(e) => e.stopPropagation()}>
 			<div class="modal-header">
-				<h2 class="modal-title">Add Client</h2>
+				<h2 class="modal-title">add client</h2>
 				<button class="modal-close" aria-label="Close" onclick={closeAddModal}>
-					<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" /></svg>
+					<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" /></svg>
 				</button>
 			</div>
 
 			<form class="modal-form" onsubmit={(e) => { e.preventDefault(); saveNewClient(); }}>
 				<div class="form-group">
-					<label class="form-label" for="add-name">Name <span class="required">*</span></label>
+					<label class="form-label" for="add-name">name <span class="required">*</span></label>
 					<input id="add-name" class="form-input" type="text" bind:value={formName} required />
 				</div>
 				<div class="form-row">
 					<div class="form-group">
-						<label class="form-label" for="add-email">Email</label>
+						<label class="form-label" for="add-email">email</label>
 						<input id="add-email" class="form-input" type="email" bind:value={formEmail} />
 					</div>
 					<div class="form-group">
-						<label class="form-label" for="add-phone">Phone</label>
+						<label class="form-label" for="add-phone">phone</label>
 						<input id="add-phone" class="form-input" type="tel" bind:value={formPhone} />
 					</div>
 				</div>
 				<div class="form-row">
 					<div class="form-group">
-						<label class="form-label" for="add-category">Category <span class="required">*</span></label>
+						<label class="form-label" for="add-category">category <span class="required">*</span></label>
 						<select id="add-category" class="form-input" bind:value={formCategory} onchange={() => { formType = ""; }}>
-							<option value="photography">Photography</option>
-							<option value="web">Web</option>
+							<option value="photography">photography</option>
+							<option value="web">web</option>
 						</select>
 					</div>
 					<div class="form-group">
-						<label class="form-label" for="add-type">Type</label>
+						<label class="form-label" for="add-type">type</label>
 						<select id="add-type" class="form-input" bind:value={formType}>
-							<option value="">Select type...</option>
+							<option value="">select type...</option>
 							{#each formCategory === "photography" ? photographyTypes : webTypes as t}
 								<option value={t}>{formatType(t)}</option>
 							{/each}
@@ -371,27 +402,27 @@ function formatType(type: string) {
 				</div>
 				{#if formCategory === "web"}
 					<div class="form-group">
-						<label class="form-label" for="add-website">Client Website</label>
+						<label class="form-label" for="add-website">client website</label>
 						<input id="add-website" class="form-input" type="url" placeholder="https://" bind:value={formClientWebsite} />
 					</div>
 				{/if}
 				<div class="form-group">
-					<label class="form-label" for="add-source">Source</label>
+					<label class="form-label" for="add-source">source</label>
 					<select id="add-source" class="form-input" bind:value={formSource}>
-						<option value="">Select source...</option>
+						<option value="">select source...</option>
 						{#each sources as s}
 							<option value={s}>{formatType(s)}</option>
 						{/each}
 					</select>
 				</div>
 				<div class="form-group">
-					<label class="form-label" for="add-notes">Notes</label>
-					<textarea id="add-notes" class="form-input form-textarea" bind:value={formNotes} rows="3" placeholder="Additional notes..."></textarea>
+					<label class="form-label" for="add-notes">notes</label>
+					<textarea id="add-notes" class="form-input form-textarea" bind:value={formNotes} rows="3" placeholder="additional notes..."></textarea>
 				</div>
 				<div class="modal-actions">
-					<button type="button" class="btn-cancel" onclick={closeAddModal}>Cancel</button>
+					<button type="button" class="btn-cancel" onclick={closeAddModal}>cancel</button>
 					<button type="submit" class="btn-save" disabled={saving || !formName}>
-						{saving ? "Saving..." : "Save Client"}
+						{saving ? "saving..." : "save client"}
 					</button>
 				</div>
 			</form>
@@ -404,40 +435,40 @@ function formatType(type: string) {
 	<div class="modal-overlay" role="dialog" tabindex="-1" aria-modal="true" aria-label="Client details" onclick={closeDetailModal} onkeydown={(e) => { if (e.key === "Escape") closeDetailModal(); }}>
 		<div class="modal-content" role="presentation" onclick={(e) => e.stopPropagation()} onkeydown={(e) => e.stopPropagation()}>
 			<div class="modal-header">
-				<h2 class="modal-title">{editMode ? "Edit Client" : selectedClient.name}</h2>
+				<h2 class="modal-title">{editMode ? "edit client" : selectedClient.name}</h2>
 				<button class="modal-close" aria-label="Close" onclick={closeDetailModal}>
-					<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" /></svg>
+					<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" /></svg>
 				</button>
 			</div>
 
 			{#if editMode}
 				<form class="modal-form" onsubmit={(e) => { e.preventDefault(); saveEdit(); }}>
 					<div class="form-group">
-						<label class="form-label" for="edit-name">Name <span class="required">*</span></label>
+						<label class="form-label" for="edit-name">name <span class="required">*</span></label>
 						<input id="edit-name" class="form-input" type="text" bind:value={formName} required />
 					</div>
 					<div class="form-row">
 						<div class="form-group">
-							<label class="form-label" for="edit-email">Email</label>
+							<label class="form-label" for="edit-email">email</label>
 							<input id="edit-email" class="form-input" type="email" bind:value={formEmail} />
 						</div>
 						<div class="form-group">
-							<label class="form-label" for="edit-phone">Phone</label>
+							<label class="form-label" for="edit-phone">phone</label>
 							<input id="edit-phone" class="form-input" type="tel" bind:value={formPhone} />
 						</div>
 					</div>
 					<div class="form-row">
 						<div class="form-group">
-							<label class="form-label" for="edit-category">Category <span class="required">*</span></label>
+							<label class="form-label" for="edit-category">category <span class="required">*</span></label>
 							<select id="edit-category" class="form-input" bind:value={formCategory} onchange={() => { formType = ""; }}>
-								<option value="photography">Photography</option>
-								<option value="web">Web</option>
+								<option value="photography">photography</option>
+								<option value="web">web</option>
 							</select>
 						</div>
 						<div class="form-group">
-							<label class="form-label" for="edit-type">Type</label>
+							<label class="form-label" for="edit-type">type</label>
 							<select id="edit-type" class="form-input" bind:value={formType}>
-								<option value="">Select type...</option>
+								<option value="">select type...</option>
 								{#each formCategory === "photography" ? photographyTypes : webTypes as t}
 									<option value={t}>{formatType(t)}</option>
 								{/each}
@@ -446,22 +477,22 @@ function formatType(type: string) {
 					</div>
 					{#if formCategory === "web"}
 						<div class="form-group">
-							<label class="form-label" for="edit-website">Client Website</label>
+							<label class="form-label" for="edit-website">client website</label>
 							<input id="edit-website" class="form-input" type="url" placeholder="https://" bind:value={formClientWebsite} />
 						</div>
 					{/if}
 					<div class="form-row">
 						<div class="form-group">
-							<label class="form-label" for="edit-source">Source</label>
+							<label class="form-label" for="edit-source">source</label>
 							<select id="edit-source" class="form-input" bind:value={formSource}>
-								<option value="">Select source...</option>
+								<option value="">select source...</option>
 								{#each sources as s}
 									<option value={s}>{formatType(s)}</option>
 								{/each}
 							</select>
 						</div>
 						<div class="form-group">
-							<label class="form-label" for="edit-status">Status</label>
+							<label class="form-label" for="edit-status">status</label>
 							<select id="edit-status" class="form-input" bind:value={formStatus}>
 								{#each allStatuses as s}
 									<option value={s}>{formatStatus(s)}</option>
@@ -470,71 +501,76 @@ function formatType(type: string) {
 						</div>
 					</div>
 					<div class="form-group">
-						<label class="form-label" for="edit-notes">Notes</label>
+						<label class="form-label" for="edit-notes">notes</label>
 						<textarea id="edit-notes" class="form-input form-textarea" bind:value={formNotes} rows="3"></textarea>
 					</div>
 					<div class="modal-actions">
-						<button type="button" class="btn-cancel" onclick={cancelEdit}>Cancel</button>
+						<button type="button" class="btn-cancel" onclick={cancelEdit}>cancel</button>
 						<button type="submit" class="btn-save" disabled={saving || !formName}>
-							{saving ? "Saving..." : "Save Changes"}
+							{saving ? "saving..." : "save changes"}
 						</button>
 					</div>
 				</form>
 			{:else}
 				<div class="detail-body">
-					<div class="detail-badges">
-						<span class="category-badge" data-category={selectedClient.category}>{selectedClient.category === "photography" ? "Photography" : "Web"}</span>
-						<span class="status-badge" data-status={selectedClient.status}>{formatStatus(selectedClient.status)}</span>
+					<div class="detail-meta-line">
+						<span class="category-indicator" style="color: {getCategoryColor(selectedClient.category)}">{selectedClient.category === "photography" ? "photography" : "web"}</span>
+						<span class="meta-sep">&middot;</span>
+						<span class="status-indicator">
+							<span class="status-dot" style="background: {getStatusColor(selectedClient.status)}"></span>
+							{formatStatus(selectedClient.status)}
+						</span>
 						{#if selectedClient.type}
-							<span class="type-badge">{formatType(selectedClient.type)}</span>
+							<span class="meta-sep">&middot;</span>
+							<span class="detail-type">{formatType(selectedClient.type)}</span>
 						{/if}
 					</div>
 
 					<div class="detail-fields">
 						{#if selectedClient.email}
 							<div class="detail-field">
-								<span class="detail-label">Email</span>
+								<span class="detail-label">email</span>
 								<span class="detail-value">{selectedClient.email}</span>
 							</div>
 						{/if}
 						{#if selectedClient.phone}
 							<div class="detail-field">
-								<span class="detail-label">Phone</span>
+								<span class="detail-label">phone</span>
 								<span class="detail-value">{selectedClient.phone}</span>
 							</div>
 						{/if}
 						{#if selectedClient.source}
 							<div class="detail-field">
-								<span class="detail-label">Source</span>
+								<span class="detail-label">source</span>
 								<span class="detail-value">{selectedClient.source}</span>
 							</div>
 						{/if}
 						{#if selectedClient.siteUrl_client}
 							<div class="detail-field">
-								<span class="detail-label">Client Website</span>
+								<span class="detail-label">client website</span>
 								<a class="detail-link" href={selectedClient.siteUrl_client} target="_blank" rel="noopener noreferrer">{selectedClient.siteUrl_client}</a>
 							</div>
 						{/if}
 						<div class="detail-field">
-							<span class="detail-label">Added</span>
+							<span class="detail-label">added</span>
 							<span class="detail-value">{formatDate(selectedClient._creationTime)}</span>
 						</div>
 						{#if selectedClient.notes}
 							<div class="detail-field">
-								<span class="detail-label">Notes</span>
+								<span class="detail-label">notes</span>
 								<span class="detail-value detail-notes">{selectedClient.notes}</span>
 							</div>
 						{/if}
 					</div>
 
 					<div class="detail-status-row">
-						<span class="detail-label">Quick Status</span>
+						<span class="detail-label">quick status</span>
 						<div class="status-buttons">
 							{#each allStatuses as s}
 								<button
 									class="status-btn"
-									data-status={s}
 									class:active={selectedClient.status === s}
+									style={selectedClient.status === s ? `color: ${getStatusColor(s)}; border-color: ${getStatusColor(s)}` : ''}
 									onclick={() => quickStatusUpdate(selectedClient._id, s)}
 								>
 									{formatStatus(s)}
@@ -545,14 +581,14 @@ function formatType(type: string) {
 
 					<div class="modal-actions detail-actions">
 						{#if confirmDelete}
-							<span class="confirm-text">Delete this client?</span>
+							<span class="confirm-text">delete this client?</span>
 							<button class="btn-danger" onclick={deleteClient} disabled={saving}>
-								{saving ? "Deleting..." : "Yes, Delete"}
+								{saving ? "deleting..." : "yes, delete"}
 							</button>
-							<button class="btn-cancel" onclick={() => { confirmDelete = false; }}>No</button>
+							<button class="btn-cancel" onclick={() => { confirmDelete = false; }}>no</button>
 						{:else}
-							<button class="btn-danger-outline" onclick={() => { confirmDelete = true; }}>Delete</button>
-							<button class="btn-save" onclick={startEdit}>Edit</button>
+							<button class="btn-danger-outline" onclick={() => { confirmDelete = true; }}>delete</button>
+							<button class="btn-save" onclick={startEdit}>edit</button>
 						{/if}
 					</div>
 				</div>
@@ -564,100 +600,87 @@ function formatType(type: string) {
 <style>
 	/* Page layout */
 	.crm-page {
-		padding: 2rem;
+		padding: 48px 40px;
 		max-width: 1200px;
-		margin: 0 auto;
 	}
 
 	.page-header {
 		display: flex;
 		align-items: flex-start;
 		justify-content: space-between;
-		margin-bottom: 1.5rem;
+		margin-bottom: 24px;
 		gap: 1rem;
 	}
 
-	.page-title {
-		font-size: 1.75rem;
-		font-weight: 600;
+	.page-header h1 {
+		font-family: "Chillax", sans-serif;
+		font-size: 1.8rem;
+		font-weight: 500;
 		color: var(--admin-heading);
 		margin: 0;
-	}
-
-	.page-subtitle {
-		font-size: 0.875rem;
-		color: var(--admin-text-muted);
-		margin: 0.25rem 0 0;
+		letter-spacing: -0.01em;
 	}
 
 	.btn-add {
 		display: flex;
 		align-items: center;
 		gap: 6px;
-		padding: 8px 16px;
-		background: var(--admin-surface-raised);
-		color: var(--admin-heading);
+		padding: 7px 14px;
+		background: transparent;
+		color: var(--admin-text);
 		border: 1px solid var(--admin-border-strong);
 		border-radius: 6px;
-		font-size: 0.875rem;
+		font-size: 0.82rem;
+		font-family: "Synonym", system-ui, sans-serif;
 		cursor: pointer;
-		transition: background 0.15s, border-color 0.15s;
+		transition: color 0.15s, border-color 0.15s;
 		white-space: nowrap;
 	}
 
 	.btn-add:hover {
-		background: var(--admin-border-strong);
+		color: var(--admin-heading);
+		border-color: var(--admin-text-muted);
 	}
 
-	/* Stats row */
-	.stats-row {
+	/* Stats line */
+	.stats-line {
 		display: flex;
-		flex-wrap: wrap;
+		align-items: baseline;
 		gap: 8px;
-		margin-bottom: 1.25rem;
-	}
-
-	.stat-badge {
-		display: inline-block;
-		padding: 4px 10px;
-		border-radius: 12px;
-		font-size: 0.75rem;
-		font-weight: 500;
-		background: var(--admin-surface-raised);
+		flex-wrap: wrap;
+		margin-bottom: 24px;
+		font-size: 0.82rem;
 		color: var(--admin-text-muted);
-		border: 1px solid var(--admin-border);
 	}
 
-	.stat-badge[data-status="lead"] { color: var(--status-slate); border-color: var(--status-slate); }
-	.stat-badge[data-status="booked"] { color: var(--status-amber); border-color: var(--status-amber); }
-	.stat-badge[data-status="in-progress"] { color: var(--status-lavender); border-color: var(--status-lavender); }
-	.stat-badge[data-status="completed"] { color: var(--status-sage); border-color: var(--status-sage); }
-	.stat-badge[data-category="photography"] { color: var(--status-peach); border-color: var(--status-peach); }
-	.stat-badge[data-category="web"] { color: var(--status-lavender); border-color: var(--status-lavender); }
+	.stat-sep {
+		color: var(--admin-text-subtle);
+	}
 
 	/* Filter bar */
 	.filter-bar {
 		display: flex;
 		gap: 10px;
-		margin-bottom: 1.25rem;
+		margin-bottom: 24px;
 		flex-wrap: wrap;
 	}
 
 	.filter-select,
 	.filter-search {
-		padding: 8px 12px;
-		background: var(--admin-surface);
+		padding: 7px 12px;
+		background: transparent;
 		color: var(--admin-text);
-		border: 1px solid var(--admin-border);
+		border: 1px solid var(--admin-border-strong);
 		border-radius: 6px;
-		font-size: 0.85rem;
+		font-size: 0.83rem;
+		font-family: "Synonym", system-ui, sans-serif;
 		outline: none;
 		transition: border-color 0.15s;
 	}
 
 	.filter-select:focus,
 	.filter-search:focus {
-		border-color: var(--admin-border-strong);
+		border-color: var(--admin-accent);
 	}
 
 	.filter-search {
@@ -668,31 +691,27 @@ function formatType(type: string) {
 	/* Table */
 	.table-wrap {
 		overflow-x: auto;
-		border: 1px solid var(--admin-border);
-		border-radius: 8px;
-		background: var(--admin-surface);
 	}
 
 	.client-table {
 		width: 100%;
 		border-collapse: collapse;
 		text-align: left;
-		font-size: 0.875rem;
+		font-size: 0.85rem;
 	}
 
 	.client-table th {
-		padding: 10px 14px;
-		color: var(--admin-text-muted);
-		font-weight: 500;
+		padding: 0 16px 12px 0;
+		color: var(--admin-text-subtle);
+		font-weight: 400;
 		font-size: 0.75rem;
-		text-transform: uppercase;
-		letter-spacing: 0.05em;
+		letter-spacing: 0.04em;
 		border-bottom: 1px solid var(--admin-border);
 		white-space: nowrap;
 	}
 
 	.client-table td {
-		padding: 10px 14px;
+		padding: 14px 16px 14px 0;
 		border-bottom: 1px solid var(--admin-border);
 		white-space: nowrap;
 	}
@@ -713,12 +732,12 @@ function formatType(type: string) {
 
 	.td-email {
 		color: var(--admin-text-muted);
+		font-size: 0.82rem;
 	}
 
 	.td-type,
 	.td-source {
 		color: var(--admin-text-muted);
-		text-transform: capitalize;
 	}
 
 	.td-date {
@@ -726,65 +745,32 @@ function formatType(type: string) {
 		font-size: 0.8rem;
 	}
 
-	/* Badges */
-	.category-badge,
-	.status-badge,
-	.type-badge {
-		display: inline-block;
-		padding: 2px 8px;
-		border-radius: 10px;
-		font-size: 0.72rem;
-		font-weight: 500;
-		text-transform: capitalize;
+	/* Status / Category indicators */
+	.category-indicator {
+		font-size: 0.8rem;
+		font-weight: 400;
 	}
 
-	.category-badge[data-category="photography"] {
-		background: color-mix(in srgb, var(--status-peach) 18%, transparent);
-		color: var(--status-peach);
-	}
-
-	.category-badge[data-category="web"] {
-		background: color-mix(in srgb, var(--status-lavender) 18%, transparent);
-		color: var(--status-lavender);
-	}
-
-	.status-badge[data-status="lead"] {
-		background: color-mix(in srgb, var(--status-slate) 18%, transparent);
-		color: var(--status-slate);
-	}
-
-	.status-badge[data-status="booked"] {
-		background: color-mix(in srgb, var(--status-amber) 18%, transparent);
-		color: var(--status-amber);
-	}
-
-	.status-badge[data-status="in-progress"] {
-		background: color-mix(in srgb, var(--status-lavender) 18%, transparent);
-		color: var(--status-lavender);
-	}
-
-	.status-badge[data-status="completed"] {
-		background: color-mix(in srgb, var(--status-sage) 18%, transparent);
-		color: var(--status-sage);
-	}
-
-	.status-badge[data-status="archived"] {
-		background: color-mix(in srgb, var(--admin-text-muted) 15%, transparent);
+	.status-indicator {
+		display: inline-flex;
+		align-items: center;
+		gap: 6px;
+		font-size: 0.8rem;
 		color: var(--admin-text-muted);
 	}
 
-	.type-badge {
-		background: var(--admin-surface-raised);
-		color: var(--admin-text-muted);
-		border: 1px solid var(--admin-border);
+	.status-dot {
+		width: 7px;
+		height: 7px;
+		border-radius: 50%;
+		flex-shrink: 0;
 	}
 
 	/* Empty state */
 	.empty-state {
-		text-align: center;
-		padding: 3rem 1rem;
-		color: var(--admin-text-muted);
-		font-size: 0.9rem;
+		padding: 48px 0;
+		color: var(--admin-text-subtle);
+		font-size: 0.88rem;
 	}
 
 	/* Modal */
@@ -795,32 +781,33 @@ function formatType(type: string) {
 		display: flex;
 		align-items: center;
 		justify-content: center;
-		background: rgba(0, 0, 0, 0.6);
+		background: rgba(0, 0, 0, 0.4);
+		backdrop-filter: blur(8px);
 		padding: 1rem;
 	}
 
 	.modal-content {
-		background: var(--admin-surface);
-		border: 1px solid var(--admin-border-strong);
-		border-radius: 10px;
+		background: var(--admin-bg, #1e293b);
+		border: 1px solid var(--admin-border);
+		border-radius: 12px;
 		width: 100%;
 		max-width: 540px;
 		max-height: 90vh;
 		overflow-y: auto;
-		box-shadow: 0 20px 60px rgba(0, 0, 0, 0.4);
+		box-shadow: 0 24px 80px rgba(0, 0, 0, 0.5);
 	}
 
 	.modal-header {
 		display: flex;
 		align-items: center;
 		justify-content: space-between;
-		padding: 18px 20px;
-		border-bottom: 1px solid var(--admin-border);
+		padding: 24px 28px 20px;
 	}
 
 	.modal-title {
+		font-family: "Chillax", sans-serif;
 		font-size: 1.1rem;
-		font-weight: 600;
+		font-weight: 500;
 		color: var(--admin-heading);
 		margin: 0;
 	}
@@ -841,7 +828,7 @@ function formatType(type: string) {
 
 	/* Form */
 	.modal-form {
-		padding: 20px;
+		padding: 0 28px 28px;
 		display: flex;
 		flex-direction: column;
 		gap: 14px;
@@ -860,9 +847,10 @@ function formatType(type: string) {
 	}
 
 	.form-label {
-		font-size: 0.78rem;
+		font-size: 0.76rem;
 		color: var(--admin-text-muted);
-		font-weight: 500;
+		font-weight: 400;
+		letter-spacing: 0.02em;
 	}
 
 	.required {
@@ -871,17 +859,18 @@ function formatType(type: string) {
 
 	.form-input {
 		padding: 8px 10px;
-		background: var(--admin-bg);
+		background: rgba(255, 255, 255, 0.03);
 		color: var(--admin-text);
-		border: 1px solid var(--admin-border);
+		border: 1px solid var(--admin-border-strong);
 		border-radius: 6px;
 		font-size: 0.85rem;
+		font-family: "Synonym", system-ui, sans-serif;
 		outline: none;
 		transition: border-color 0.15s;
 	}
 
 	.form-input:focus {
-		border-color: var(--admin-border-strong);
+		border-color: var(--admin-accent);
 	}
 
 	.form-textarea {
@@ -901,18 +890,19 @@ function formatType(type: string) {
 	.btn-save,
 	.btn-danger,
 	.btn-danger-outline {
-		padding: 8px 16px;
+		padding: 7px 16px;
 		border-radius: 6px;
-		font-size: 0.85rem;
+		font-size: 0.82rem;
+		font-family: "Synonym", system-ui, sans-serif;
 		cursor: pointer;
 		transition: background 0.15s, border-color 0.15s, opacity 0.15s;
 		border: 1px solid transparent;
 	}
 
 	.btn-cancel {
-		background: var(--admin-surface-raised);
+		background: transparent;
 		color: var(--admin-text-muted);
-		border-color: var(--admin-border);
+		border-color: var(--admin-border-strong);
 	}
 
 	.btn-cancel:hover {
@@ -920,58 +910,72 @@ function formatType(type: string) {
 	}
 
 	.btn-save {
-		background: var(--admin-heading);
-		color: var(--admin-bg);
+		background: rgba(129, 140, 248, 0.15);
+		border-color: rgba(129, 140, 248, 0.25);
+		color: var(--admin-accent-hover);
 		font-weight: 500;
 	}
 
 	.btn-save:hover {
-		opacity: 0.9;
+		background: rgba(129, 140, 248, 0.22);
 	}
 
 	.btn-save:disabled {
-		opacity: 0.5;
+		opacity: 0.4;
 		cursor: not-allowed;
 	}
 
 	.btn-danger {
-		background: var(--status-rose);
-		color: #fff;
+		background: rgba(248, 113, 113, 0.15);
+		border-color: rgba(248, 113, 113, 0.3);
+		color: var(--status-rose);
 	}
 
 	.btn-danger:disabled {
-		opacity: 0.5;
+		opacity: 0.4;
 		cursor: not-allowed;
 	}
 
 	.btn-danger-outline {
 		background: transparent;
 		color: var(--status-rose);
-		border-color: var(--status-rose);
+		border-color: rgba(248, 113, 113, 0.25);
 	}
 
 	.btn-danger-outline:hover {
-		background: color-mix(in srgb, var(--status-rose) 12%, transparent);
+		background: rgba(248, 113, 113, 0.08);
 	}
 
 	/* Detail view */
 	.detail-body {
-		padding: 20px;
+		padding: 0 28px 28px;
 		display: flex;
 		flex-direction: column;
-		gap: 18px;
+		gap: 20px;
 	}
 
-	.detail-badges {
+	.detail-meta-line {
 		display: flex;
+		align-items: center;
 		gap: 8px;
-		flex-wrap: wrap;
+		font-size: 0.85rem;
+	}
+
+	.meta-sep {
+		color: var(--admin-text-subtle);
+	}
+
+	.detail-type {
+		color: var(--admin-text-muted);
 	}
 
 	.detail-fields {
 		display: flex;
 		flex-direction: column;
-		gap: 10px;
+		gap: 12px;
+		padding-top: 4px;
+		border-top: 1px solid var(--admin-border);
+		padding-top: 16px;
 	}
 
 	.detail-field {
@@ -982,14 +986,13 @@ function formatType(type: string) {
 
 	.detail-label {
 		font-size: 0.72rem;
-		color: var(--admin-text-muted);
-		text-transform: uppercase;
-		letter-spacing: 0.05em;
-		font-weight: 500;
+		color: var(--admin-text-subtle);
+		letter-spacing: 0.04em;
+		font-weight: 400;
 	}
 
 	.detail-value {
-		font-size: 0.9rem;
+		font-size: 0.88rem;
 		color: var(--admin-heading);
 	}
 
@@ -999,8 +1002,8 @@ function formatType(type: string) {
 	}
 
 	.detail-link {
-		font-size: 0.9rem;
-		color: var(--status-lavender);
+		font-size: 0.88rem;
+		color: var(--admin-accent);
 		text-decoration: none;
 	}
 
@@ -1011,7 +1014,8 @@ function formatType(type: string) {
 	.detail-status-row {
 		display: flex;
 		flex-direction: column;
-		gap: 6px;
+		gap: 8px;
+		padding-top: 4px;
 	}
 
 	.status-buttons {
@@ -1022,10 +1026,11 @@ function formatType(type: string) {
 
 	.status-btn {
 		padding: 4px 10px;
-		border-radius: 14px;
+		border-radius: 5px;
 		font-size: 0.72rem;
+		font-family: "Synonym", system-ui, sans-serif;
 		cursor: pointer;
-		background: var(--admin-surface-raised);
+		background: transparent;
 		color: var(--admin-text-muted);
 		border: 1px solid var(--admin-border);
 		transition: all 0.15s;
@@ -1036,43 +1041,17 @@ function formatType(type: string) {
 		color: var(--admin-text);
 	}
 
-	.status-btn[data-status="lead"].active {
-		background: color-mix(in srgb, var(--status-slate) 20%, transparent);
-		color: var(--status-slate);
-		border-color: var(--status-slate);
-	}
-
-	.status-btn[data-status="booked"].active {
-		background: color-mix(in srgb, var(--status-amber) 20%, transparent);
-		color: var(--status-amber);
-		border-color: var(--status-amber);
-	}
-
-	.status-btn[data-status="in-progress"].active {
-		background: color-mix(in srgb, var(--status-lavender) 20%, transparent);
-		color: var(--status-lavender);
-		border-color: var(--status-lavender);
-	}
-
-	.status-btn[data-status="completed"].active {
-		background: color-mix(in srgb, var(--status-sage) 20%, transparent);
-		color: var(--status-sage);
-		border-color: var(--status-sage);
-	}
-
-	.status-btn[data-status="archived"].active {
-		background: color-mix(in srgb, var(--admin-text-muted) 15%, transparent);
-		color: var(--admin-text-muted);
-		border-color: var(--admin-text-muted);
+	.status-btn.active {
+		background: rgba(255, 255, 255, 0.05);
 	}
 
 	.detail-actions {
 		border-top: 1px solid var(--admin-border);
-		padding-top: 14px;
+		padding-top: 16px;
 	}
 
 	.confirm-text {
-		font-size: 0.85rem;
+		font-size: 0.82rem;
 		color: var(--status-rose);
 		margin-right: auto;
 		align-self: center;
@@ -1081,7 +1060,7 @@ function formatType(type: string) {
 	/* Responsive */
 	@media (max-width: 768px) {
 		.crm-page {
-			padding: 1.25rem 1rem;
+			padding: 28px 20px;
 		}
 
 		.page-header {

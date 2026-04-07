@@ -83,15 +83,14 @@ function replyViaEmail(email: string, subject: string) {
 
 <div class="inquiries-page">
 	<header class="page-header">
-		<h1>Inquiries</h1>
-		<p class="subtitle">Messages from your contact form</p>
+		<h1>inquiries</h1>
 	</header>
 
 	<div class="toolbar">
 		<select class="filter-select" bind:value={statusFilter}>
 			{#each statusOptions as status}
 				<option value={status}>
-					{status === "all" ? "All Statuses" : status.charAt(0).toUpperCase() + status.slice(1)}
+					{status === "all" ? "all statuses" : status}
 				</option>
 			{/each}
 		</select>
@@ -99,18 +98,18 @@ function replyViaEmail(email: string, subject: string) {
 	</div>
 
 	{#if filteredInquiries.length === 0}
-		<div class="empty-state">No inquiries found</div>
+		<div class="empty-state">no inquiries found</div>
 	{:else}
 		<div class="table-wrap">
 			<table class="inquiries-table">
 				<thead>
 					<tr>
-						<th>Date</th>
-						<th>Name</th>
-						<th>Email</th>
-						<th>Subject</th>
-						<th>Preview</th>
-						<th>Status</th>
+						<th>date</th>
+						<th>name</th>
+						<th>email</th>
+						<th>subject</th>
+						<th>preview</th>
+						<th>status</th>
 						<th></th>
 					</tr>
 				</thead>
@@ -123,12 +122,13 @@ function replyViaEmail(email: string, subject: string) {
 							<td>{inq.subject || "\u2014"}</td>
 							<td class="preview-cell">{truncate(inq.message)}</td>
 							<td>
-								<span class="status-badge" style="background: {getStatusColor(inq.status)}">
+								<span class="status-indicator">
+									<span class="status-dot" style="background: {getStatusColor(inq.status)}"></span>
 									{inq.status || "new"}
 								</span>
 							</td>
 							<td>
-								<button class="view-btn" onclick={() => openInquiry(inq)}>View</button>
+								<button class="view-btn" onclick={() => openInquiry(inq)}>view</button>
 							</td>
 						</tr>
 					{/each}
@@ -152,9 +152,9 @@ function replyViaEmail(email: string, subject: string) {
 		<div class="modal-content" role="presentation" onclick={(e) => e.stopPropagation()} onkeydown={(e) => e.stopPropagation()}>
 			<div class="modal-header">
 				<div>
-					<h2>{selectedInquiry.subject || "No Subject"}</h2>
+					<h2>{selectedInquiry.subject || "no subject"}</h2>
 					<p class="modal-meta">
-						From <strong>{selectedInquiry.name || "Unknown"}</strong>
+						from <strong>{selectedInquiry.name || "unknown"}</strong>
 						&middot; {formatDateTime(selectedInquiry.submittedAt)}
 					</p>
 				</div>
@@ -163,37 +163,38 @@ function replyViaEmail(email: string, subject: string) {
 
 			<div class="modal-details">
 				<div class="detail-row">
-					<span class="detail-label">Email</span>
+					<span class="detail-label">email</span>
 					<span>{selectedInquiry.email || "\u2014"}</span>
 				</div>
 				{#if selectedInquiry.phone}
 					<div class="detail-row">
-						<span class="detail-label">Phone</span>
+						<span class="detail-label">phone</span>
 						<span>{selectedInquiry.phone}</span>
 					</div>
 				{/if}
 				<div class="detail-row">
-					<span class="detail-label">Status</span>
-					<span class="status-badge" style="background: {getStatusColor(selectedInquiry.status)}">
+					<span class="detail-label">status</span>
+					<span class="status-indicator">
+						<span class="status-dot" style="background: {getStatusColor(selectedInquiry.status)}"></span>
 						{selectedInquiry.status || "new"}
 					</span>
 				</div>
 			</div>
 
 			<div class="message-body">
-				<h3>Message</h3>
+				<h3>message</h3>
 				<p>{selectedInquiry.message || "No message content."}</p>
 			</div>
 
 			<div class="modal-actions">
 				{#if selectedInquiry.status !== "read"}
 					<button class="action-btn" onclick={() => updateStatus(selectedInquiry._id, "read")}>
-						Mark Read
+						mark read
 					</button>
 				{/if}
 				{#if selectedInquiry.status !== "replied"}
 					<button class="action-btn" onclick={() => updateStatus(selectedInquiry._id, "replied")}>
-						Mark Replied
+						mark replied
 					</button>
 				{/if}
 				{#if selectedInquiry.email}
@@ -201,7 +202,7 @@ function replyViaEmail(email: string, subject: string) {
 						class="action-btn primary"
 						onclick={() => replyViaEmail(selectedInquiry.email, selectedInquiry.subject)}
 					>
-						Reply via Email
+						reply via email
 					</button>
 				{/if}
 			</div>
@@ -211,53 +212,47 @@ function replyViaEmail(email: string, subject: string) {
 
 <style>
 	.inquiries-page {
-		padding: 32px;
+		padding: 48px 40px;
 		max-width: 1100px;
 	}
 
 	.page-header {
-		margin-bottom: 24px;
+		margin-bottom: 32px;
 	}
 
 	.page-header h1 {
-		font-size: 1.6rem;
-		font-weight: 600;
+		font-family: "Chillax", sans-serif;
+		font-size: 1.8rem;
+		font-weight: 500;
 		color: var(--admin-heading);
-		margin: 0 0 4px;
-	}
-
-	.subtitle {
-		color: var(--admin-text-muted);
-		font-size: 0.9rem;
 		margin: 0;
+		letter-spacing: -0.01em;
 	}
 
 	.toolbar {
 		display: flex;
 		align-items: center;
 		gap: 16px;
-		margin-bottom: 20px;
+		margin-bottom: 24px;
 	}
 
 	.filter-select {
-		padding: 8px 12px;
-		background: var(--admin-surface);
+		padding: 7px 12px;
+		background: transparent;
 		border: 1px solid var(--admin-border-strong);
 		border-radius: 6px;
 		color: var(--admin-text);
-		font-size: 0.85rem;
+		font-size: 0.83rem;
+		font-family: "Synonym", system-ui, sans-serif;
 	}
 
 	.count {
-		font-size: 0.82rem;
+		font-size: 0.8rem;
 		color: var(--admin-text-subtle);
 	}
 
 	.table-wrap {
 		overflow-x: auto;
-		background: var(--admin-surface);
-		border: 1px solid var(--admin-border);
-		border-radius: 8px;
 	}
 
 	.inquiries-table {
@@ -269,16 +264,15 @@ function replyViaEmail(email: string, subject: string) {
 
 	.inquiries-table th {
 		color: var(--admin-text-subtle);
-		font-weight: 500;
-		font-size: 0.78rem;
-		text-transform: uppercase;
-		letter-spacing: 0.05em;
-		padding: 10px 12px;
-		border-bottom: 1px solid var(--admin-border-strong);
+		font-weight: 400;
+		font-size: 0.75rem;
+		letter-spacing: 0.04em;
+		padding: 0 16px 12px 0;
+		border-bottom: 1px solid var(--admin-border);
 	}
 
 	.inquiries-table td {
-		padding: 10px 12px;
+		padding: 14px 16px 14px 0;
 		border-bottom: 1px solid var(--admin-border);
 		color: var(--admin-text);
 	}
@@ -309,23 +303,29 @@ function replyViaEmail(email: string, subject: string) {
 		white-space: nowrap;
 	}
 
-	.status-badge {
-		display: inline-block;
-		padding: 3px 10px;
-		border-radius: 12px;
-		font-size: 0.75rem;
-		font-weight: 500;
-		color: #fff;
-		text-transform: capitalize;
+	.status-indicator {
+		display: inline-flex;
+		align-items: center;
+		gap: 6px;
+		font-size: 0.8rem;
+		color: var(--admin-text-muted);
+	}
+
+	.status-dot {
+		width: 7px;
+		height: 7px;
+		border-radius: 50%;
+		flex-shrink: 0;
 	}
 
 	.view-btn {
-		padding: 5px 14px;
-		background: var(--admin-surface-raised);
+		padding: 4px 12px;
+		background: transparent;
 		border: 1px solid var(--admin-border-strong);
 		border-radius: 5px;
 		color: var(--admin-text-muted);
-		font-size: 0.78rem;
+		font-size: 0.76rem;
+		font-family: "Synonym", system-ui, sans-serif;
 		cursor: pointer;
 		transition: color 0.15s, border-color 0.15s;
 	}
@@ -336,12 +336,9 @@ function replyViaEmail(email: string, subject: string) {
 	}
 
 	.empty-state {
-		text-align: center;
-		padding: 48px;
+		padding: 48px 0;
 		color: var(--admin-text-subtle);
-		background: var(--admin-surface);
-		border: 1px solid var(--admin-border);
-		border-radius: 8px;
+		font-size: 0.88rem;
 	}
 
 	/* Modal */
@@ -352,37 +349,40 @@ function replyViaEmail(email: string, subject: string) {
 		display: flex;
 		align-items: center;
 		justify-content: center;
-		background: rgba(0, 0, 0, 0.6);
+		background: rgba(0, 0, 0, 0.4);
+		backdrop-filter: blur(8px);
 		padding: 16px;
 	}
 
 	.modal-content {
-		background: var(--admin-surface);
-		border: 1px solid var(--admin-border-strong);
-		border-radius: 10px;
+		background: var(--admin-bg, #1e293b);
+		border: 1px solid var(--admin-border);
+		border-radius: 12px;
 		width: 100%;
-		max-width: 560px;
+		max-width: 540px;
 		max-height: 85vh;
 		overflow-y: auto;
-		padding: 28px;
+		padding: 32px;
+		box-shadow: 0 24px 80px rgba(0, 0, 0, 0.5);
 	}
 
 	.modal-header {
 		display: flex;
 		justify-content: space-between;
 		align-items: flex-start;
-		margin-bottom: 20px;
+		margin-bottom: 24px;
 	}
 
 	.modal-header h2 {
+		font-family: "Chillax", sans-serif;
 		font-size: 1.15rem;
-		font-weight: 600;
+		font-weight: 500;
 		color: var(--admin-heading);
 		margin: 0 0 4px;
 	}
 
 	.modal-meta {
-		font-size: 0.82rem;
+		font-size: 0.8rem;
 		color: var(--admin-text-muted);
 		margin: 0;
 	}
@@ -391,24 +391,24 @@ function replyViaEmail(email: string, subject: string) {
 		background: none;
 		border: none;
 		color: var(--admin-text-subtle);
-		font-size: 1.2rem;
+		font-size: 1rem;
 		cursor: pointer;
 		padding: 4px;
 		line-height: 1;
+		transition: color 0.15s;
 	}
 
 	.close-btn:hover {
-		color: var(--admin-accent-hover);
+		color: var(--admin-heading);
 	}
 
 	.modal-details {
 		display: flex;
 		flex-direction: column;
-		gap: 8px;
-		margin-bottom: 20px;
-		padding: 16px;
-		background: var(--admin-surface-raised);
-		border-radius: 6px;
+		gap: 10px;
+		margin-bottom: 24px;
+		padding-bottom: 20px;
+		border-bottom: 1px solid var(--admin-border);
 	}
 
 	.detail-row {
@@ -420,25 +420,25 @@ function replyViaEmail(email: string, subject: string) {
 
 	.detail-label {
 		color: var(--admin-text-subtle);
-		min-width: 60px;
+		min-width: 50px;
+		font-size: 0.78rem;
 	}
 
 	.message-body {
-		margin-bottom: 24px;
+		margin-bottom: 28px;
 	}
 
 	.message-body h3 {
-		font-size: 0.82rem;
-		font-weight: 500;
+		font-size: 0.78rem;
+		font-weight: 400;
 		color: var(--admin-text-subtle);
-		text-transform: uppercase;
-		letter-spacing: 0.05em;
-		margin: 0 0 8px;
+		letter-spacing: 0.04em;
+		margin: 0 0 10px;
 	}
 
 	.message-body p {
 		font-size: 0.9rem;
-		line-height: 1.6;
+		line-height: 1.7;
 		color: var(--admin-text);
 		white-space: pre-wrap;
 		margin: 0;
@@ -451,34 +451,35 @@ function replyViaEmail(email: string, subject: string) {
 	}
 
 	.action-btn {
-		padding: 8px 18px;
+		padding: 7px 16px;
 		border-radius: 6px;
-		font-size: 0.82rem;
+		font-size: 0.8rem;
+		font-family: "Synonym", system-ui, sans-serif;
 		cursor: pointer;
 		border: 1px solid var(--admin-border-strong);
-		background: var(--admin-surface-raised);
+		background: transparent;
 		color: var(--admin-text);
 		transition: color 0.15s, border-color 0.15s;
 	}
 
 	.action-btn:hover {
-		color: var(--admin-accent-hover);
-		border-color: var(--admin-accent);
+		color: var(--admin-heading);
+		border-color: var(--admin-text-muted);
 	}
 
 	.action-btn.primary {
-		background: rgba(255, 255, 255, 0.1);
-		border-color: rgba(255, 255, 255, 0.2);
-		color: var(--admin-heading);
+		background: rgba(129, 140, 248, 0.12);
+		border-color: rgba(129, 140, 248, 0.25);
+		color: var(--admin-accent-hover);
 	}
 
 	.action-btn.primary:hover {
-		background: rgba(255, 255, 255, 0.15);
+		background: rgba(129, 140, 248, 0.18);
 	}
 
 	@media (max-width: 768px) {
 		.inquiries-page {
-			padding: 20px 16px;
+			padding: 28px 20px;
 		}
 	}
 </style>

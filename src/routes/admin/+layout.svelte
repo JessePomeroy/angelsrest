@@ -6,11 +6,11 @@ let { children } = $props();
 let mobileMenuOpen = $state(false);
 
 const navItems = [
-	{ href: "/admin", label: "Dashboard", icon: "grid" },
-	{ href: "/admin/orders", label: "Orders", icon: "package" },
-	{ href: "/admin/inquiries", label: "Inquiries", icon: "mail" },
-	{ href: "/admin/galleries", label: "Galleries", icon: "image" },
-	{ href: "/admin/crm", label: "Clients", icon: "clients" },
+	{ href: "/admin", label: "dashboard", icon: "grid" },
+	{ href: "/admin/orders", label: "orders", icon: "package" },
+	{ href: "/admin/inquiries", label: "inquiries", icon: "mail" },
+	{ href: "/admin/galleries", label: "galleries", icon: "image" },
+	{ href: "/admin/crm", label: "clients", icon: "clients" },
 ];
 
 function isActive(href: string, pathname: string): boolean {
@@ -31,7 +31,7 @@ function closeMobileMenu() {
 			<span class="hamburger-line" class:open={mobileMenuOpen}></span>
 			<span class="hamburger-line" class:open={mobileMenuOpen}></span>
 		</button>
-		<span class="mobile-brand">Angel's Rest</span>
+		<span class="mobile-brand">angel's rest</span>
 	</header>
 
 	<!-- Mobile overlay -->
@@ -42,8 +42,7 @@ function closeMobileMenu() {
 	<!-- Sidebar -->
 	<aside class="sidebar" class:sidebar-open={mobileMenuOpen}>
 		<div class="sidebar-brand">
-			<span class="brand-text">Angel's Rest</span>
-			<span class="brand-sub">Admin</span>
+			<span class="brand-text">angel's rest</span>
 		</div>
 
 		<nav class="sidebar-nav">
@@ -77,7 +76,7 @@ function closeMobileMenu() {
 				<svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
 					<line x1="19" y1="12" x2="5" y2="12" /><polyline points="12 19 5 12 12 5" />
 				</svg>
-				<span>Back to site</span>
+				<span>back to site</span>
 			</a>
 		</div>
 	</aside>
@@ -90,29 +89,31 @@ function closeMobileMenu() {
 
 <style>
 	.admin-layout {
-		--admin-bg: #1a1f2e;
-		--admin-surface: #242a3b;
-		--admin-surface-raised: #2b3244;
-		--admin-border: rgba(255, 255, 255, 0.08);
-		--admin-border-strong: rgba(255, 255, 255, 0.14);
-		--admin-heading: rgba(255, 255, 255, 0.95);
-		--admin-text: rgba(255, 255, 255, 0.82);
-		--admin-text-muted: rgba(255, 255, 255, 0.55);
-		--admin-text-subtle: rgba(255, 255, 255, 0.35);
-		--admin-accent: rgba(255, 255, 255, 0.85);
-		--admin-accent-hover: rgba(255, 255, 255, 1);
-		--admin-active: rgba(255, 255, 255, 0.08);
-		--status-slate: #6b7fa8;
-		--status-amber: #b89a5e;
-		--status-lavender: #9d7eb3;
+		--admin-bg: #1e293b;
+		--admin-surface: rgba(255, 255, 255, 0.03);
+		--admin-surface-raised: rgba(255, 255, 255, 0.05);
+		--admin-border: rgba(255, 255, 255, 0.06);
+		--admin-border-strong: rgba(255, 255, 255, 0.1);
+		--admin-heading: rgba(255, 255, 255, 0.92);
+		--admin-text: rgba(255, 255, 255, 0.72);
+		--admin-text-muted: rgba(255, 255, 255, 0.45);
+		--admin-text-subtle: rgba(255, 255, 255, 0.28);
+		--admin-accent: #818cf8;
+		--admin-accent-hover: #a5b4fc;
+		--admin-active: rgba(129, 140, 248, 0.08);
+		--status-slate: #94a3b8;
+		--status-amber: #d4a053;
+		--status-lavender: #a78bfa;
 		--status-peach: #c48b6a;
-		--status-sage: #7ea487;
-		--status-rose: #b87c7c;
+		--status-sage: #6ee7b7;
+		--status-rose: #f87171;
 
 		display: flex;
 		min-height: 100vh;
 		background: var(--admin-bg);
 		color: var(--admin-text);
+		font-family: "Synonym", system-ui, sans-serif;
+		text-transform: lowercase;
 	}
 
 	/* Mobile header */
@@ -123,19 +124,20 @@ function closeMobileMenu() {
 		left: 0;
 		right: 0;
 		height: 56px;
-		background: var(--admin-surface);
+		background: var(--admin-bg);
 		border-bottom: 1px solid var(--admin-border);
 		align-items: center;
-		padding: 0 16px;
+		padding: 0 20px;
 		z-index: 40;
-		gap: 12px;
+		gap: 14px;
 	}
 
 	.mobile-brand {
+		font-family: "Chillax", sans-serif;
 		font-size: 1.05rem;
-		font-weight: 600;
+		font-weight: 500;
 		color: var(--admin-heading);
-		letter-spacing: 0.02em;
+		letter-spacing: 0.01em;
 	}
 
 	.hamburger {
@@ -149,15 +151,15 @@ function closeMobileMenu() {
 	}
 
 	.hamburger-line {
-		width: 22px;
-		height: 2px;
-		background: var(--admin-text);
+		width: 20px;
+		height: 1.5px;
+		background: var(--admin-text-muted);
 		border-radius: 1px;
 		transition: transform 0.2s, opacity 0.2s;
 	}
 
 	.hamburger-line.open:nth-child(1) {
-		transform: translateY(7px) rotate(45deg);
+		transform: translateY(6.5px) rotate(45deg);
 	}
 
 	.hamburger-line.open:nth-child(2) {
@@ -165,14 +167,15 @@ function closeMobileMenu() {
 	}
 
 	.hamburger-line.open:nth-child(3) {
-		transform: translateY(-7px) rotate(-45deg);
+		transform: translateY(-6.5px) rotate(-45deg);
 	}
 
 	.mobile-overlay {
 		display: none;
 		position: fixed;
 		inset: 0;
-		background: rgba(0, 0, 0, 0.5);
+		background: rgba(0, 0, 0, 0.4);
+		backdrop-filter: blur(4px);
 		z-index: 45;
 	}
 
@@ -182,8 +185,8 @@ function closeMobileMenu() {
 		top: 0;
 		left: 0;
 		bottom: 0;
-		width: 240px;
-		background: var(--admin-surface);
+		width: 220px;
+		background: var(--admin-bg);
 		border-right: 1px solid var(--admin-border);
 		display: flex;
 		flex-direction: column;
@@ -191,33 +194,23 @@ function closeMobileMenu() {
 	}
 
 	.sidebar-brand {
-		padding: 24px 20px 20px;
-		border-bottom: 1px solid var(--admin-border);
-		display: flex;
-		flex-direction: column;
-		gap: 2px;
+		padding: 28px 24px 24px;
 	}
 
 	.brand-text {
-		font-size: 1.1rem;
-		font-weight: 600;
+		font-family: "Chillax", sans-serif;
+		font-size: 1.15rem;
+		font-weight: 500;
 		color: var(--admin-heading);
-		letter-spacing: 0.02em;
-	}
-
-	.brand-sub {
-		font-size: 0.75rem;
-		color: var(--admin-text-subtle);
-		text-transform: uppercase;
-		letter-spacing: 0.1em;
+		letter-spacing: 0.01em;
 	}
 
 	.sidebar-nav {
 		flex: 1;
-		padding: 12px 8px;
+		padding: 8px 12px;
 		display: flex;
 		flex-direction: column;
-		gap: 2px;
+		gap: 1px;
 	}
 
 	.nav-item {
@@ -228,29 +221,35 @@ function closeMobileMenu() {
 		border-radius: 6px;
 		color: var(--admin-text-muted);
 		text-decoration: none;
-		font-size: 0.9rem;
-		transition: color 0.15s, background 0.15s;
+		font-family: "Synonym", system-ui, sans-serif;
+		font-size: 0.88rem;
+		font-weight: 400;
+		letter-spacing: 0.01em;
+		transition: color 0.15s;
 	}
 
 	.nav-item:hover {
-		color: var(--admin-accent-hover);
-		background: var(--admin-active);
+		color: var(--admin-heading);
 	}
 
 	.nav-item.active {
 		color: var(--admin-heading);
-		background: var(--admin-active);
+		font-weight: 500;
 	}
 
 	.nav-icon {
-		width: 18px;
-		height: 18px;
+		width: 17px;
+		height: 17px;
 		flex-shrink: 0;
+		opacity: 0.7;
+	}
+
+	.nav-item.active .nav-icon {
+		opacity: 1;
 	}
 
 	.sidebar-footer {
-		padding: 12px 8px;
-		border-top: 1px solid var(--admin-border);
+		padding: 16px 12px;
 	}
 
 	.back-link {
@@ -261,19 +260,19 @@ function closeMobileMenu() {
 		border-radius: 6px;
 		color: var(--admin-text-subtle);
 		text-decoration: none;
-		font-size: 0.85rem;
-		transition: color 0.15s, background 0.15s;
+		font-family: "Synonym", system-ui, sans-serif;
+		font-size: 0.82rem;
+		transition: color 0.15s;
 	}
 
 	.back-link:hover {
-		color: var(--admin-accent-hover);
-		background: var(--admin-active);
+		color: var(--admin-text);
 	}
 
 	/* Main content */
 	.admin-main {
 		flex: 1;
-		margin-left: 240px;
+		margin-left: 220px;
 		min-height: 100vh;
 	}
 

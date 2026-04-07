@@ -1,6 +1,6 @@
 <script lang="ts">
 /**
- * Admin Orders Dashboard 💰
+ * Admin Orders Dashboard
  *
  * A comprehensive order management system with filtering, sorting, and export capabilities.
  * Demonstrates Svelte 5 runes ($state, $derived) for reactive UI.
@@ -9,12 +9,6 @@
 import SEO from "$lib/components/SEO.svelte";
 
 let { data } = $props();
-
-/**
- * 💡 Svelte 5 Runes:
- * - $state() - Makes a variable reactive (like this.filter = 'x' triggers UI update)
- * - $derived() - Auto-recalculates when dependencies change
- */
 
 // Filter state - these control what's shown in the table
 let statusFilter = $state("all");
@@ -38,15 +32,6 @@ const statuses = [
 	"refunded",
 ];
 
-/**
- * $derived - Automatically recalculates when data.orders changes
- *
- * This extracts unique years from all orders, so the year dropdown
- * automatically updates when new orders come in.
- *
- * [...new Set(...)] - Creates unique values (removes duplicates)
- * .sort((a, b) => b - a) - Sorts newest first
- */
 let availableYears = $derived(
 	(
 		[
@@ -57,25 +42,17 @@ let availableYears = $derived(
 	).sort((a, b) => b - a),
 );
 
-/**
- * Date range helper for period filters
- *
- * Returns start and end dates for: today, this week, this month
- * Used to filter orders within a specific time period.
- */
 function getDateRange(period: string): { start: Date; end: Date } | null {
 	const now = new Date();
 	const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
 
 	switch (period) {
 		case "today":
-			// Start of today to start of tomorrow
 			return {
 				start: today,
 				end: new Date(today.getTime() + 24 * 60 * 60 * 1000),
 			};
 		case "week": {
-			// Sunday of this week to tomorrow
 			const weekStart = new Date(today);
 			weekStart.setDate(today.getDate() - today.getDay());
 			return {
@@ -84,7 +61,6 @@ function getDateRange(period: string): { start: Date; end: Date } | null {
 			};
 		}
 		case "month": {
-			// First day of month to tomorrow
 			const monthStart = new Date(today.getFullYear(), today.getMonth(), 1);
 			return {
 				start: monthStart,
@@ -134,16 +110,6 @@ let filteredOrders = $derived(
 	}),
 );
 
-/**
- * $derived for revenue calculations
- *
- * These automatically update whenever filteredOrders changes.
- * So when you filter by year/month, the revenue updates instantly!
- *
- * .reduce() adds up all the order totals
- * Order amounts are in cents, so we don't divide by 100 until display
- */
-// Calculate totals for filtered orders
 let totalRevenue = $derived(
 	filteredOrders.reduce(
 		(sum: number, order: any) => sum + (order.total || 0),
@@ -151,7 +117,6 @@ let totalRevenue = $derived(
 	),
 );
 
-// Calculate totals for ALL orders (regardless of filter)
 let allTimeRevenue = $derived(
 	data.orders.reduce((sum: number, order: any) => sum + (order.total || 0), 0),
 );
@@ -173,16 +138,16 @@ function formatDate(dateStr: string) {
 	});
 }
 
-function getStatusClass(status: string): string {
+function getStatusColor(status: string): string {
 	const colors: Record<string, string> = {
-		new: "bg-blue-600 text-white px-2 py-1 rounded text-xs",
-		printing: "bg-yellow-500 text-black px-2 py-1 rounded text-xs",
-		ready: "bg-yellow-500 text-black px-2 py-1 rounded text-xs",
-		shipped: "bg-purple-600 text-white px-2 py-1 rounded text-xs",
-		delivered: "bg-green-600 text-white px-2 py-1 rounded text-xs",
-		refunded: "bg-red-600 text-white px-2 py-1 rounded text-xs",
+		new: "var(--status-slate)",
+		printing: "var(--status-amber)",
+		ready: "var(--status-lavender)",
+		shipped: "var(--status-peach)",
+		delivered: "var(--status-sage)",
+		refunded: "var(--status-rose)",
 	};
-	return colors[status] || "bg-gray-500 text-white px-2 py-1 rounded text-xs";
+	return colors[status] || "var(--status-slate)";
 }
 
 async function updateStatus(orderId: string, newStatus: string) {
@@ -241,27 +206,6 @@ async function saveNotes() {
 	}
 }
 
-/**
- * Export to CSV 📊
- *
- * CSV (Comma-Separated Values) is a simple format that Excel/Google Sheets can open.
- * Perfect for taxes, accounting, or sharing with a bookkeeper.
- *
- * How it works:
- * 1. Create array of headers
- * 2. Map each order to an array of values (amounts converted from cents to dollars)
- * 3. Join with commas, wrap in quotes to handle special characters
- * 4. Create a Blob (file-like object) and trigger browser download
- *
- * 💡 Revenue Columns:
- * - "Gross Revenue" = what customer paid (order total)
- * - "Stripe Fees" = actual transaction fees from Stripe's balance_transaction
- * - "Net Revenue" = Gross - Fees = your actual income
- *
- * Stripe fees are captured automatically via the webhook handler.
- * After checkout completes, we wait 3s then fetch the balance_transaction
- * from Stripe which contains the real fee amount.
- */
 function exportCSV() {
 	const headers = [
 		"Order Number",
@@ -278,7 +222,6 @@ function exportCSV() {
 
 	const rows = filteredOrders.map((order: any) => {
 		const gross = (order.total || 0) / 100;
-		// Actual Stripe fees captured from balance_transaction via webhook
 		const fees = (order.stripeFees || 0) / 100;
 		const net = gross - fees;
 
@@ -317,136 +260,123 @@ function exportCSV() {
 
 <SEO title="Orders | Admin" description="Manage orders" />
 
-<div class="container mx-auto px-4 py-8 max-w-6xl">
-	<header class="mb-8">
-		<h1 class="text-3xl font-bold">Orders</h1>
-		<p class="text-gray-400">Manage and fulfill orders</p>
+<div class="orders-page">
+	<header class="page-header">
+		<h1>orders</h1>
 	</header>
 
-	<!-- Revenue Summary -->
-	<div class="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
-		<div class="bg-gray-800 p-4 rounded-lg">
-			<p class="text-gray-400 text-sm">Filtered Revenue</p>
-			<p class="text-2xl font-bold text-green-400">{formatCurrency(totalRevenue)}</p>
-			<p class="text-gray-500 text-sm">{filteredOrders.length} orders</p>
-		</div>
-		<div class="bg-gray-800 p-4 rounded-lg">
-			<p class="text-gray-400 text-sm">All-Time Revenue</p>
-			<p class="text-2xl font-bold">{formatCurrency(allTimeRevenue)}</p>
-			<p class="text-gray-500 text-sm">{data.orders.length} orders</p>
-		</div>
-		<div class="bg-gray-800 p-4 rounded-lg">
-			<p class="text-gray-400 text-sm">Average Order</p>
-			<p class="text-2xl font-bold">{formatCurrency(data.orders.length > 0 ? allTimeRevenue / data.orders.length : 0)}</p>
-			<p class="text-gray-500 text-sm">per order</p>
-		</div>
+	<!-- Revenue as inline text -->
+	<div class="stats-line">
+		<span class="stat-item">
+			<span class="stat-label">filtered</span>
+			<span class="stat-value">{formatCurrency(totalRevenue)}</span>
+			<span class="stat-sub">{filteredOrders.length} orders</span>
+		</span>
+		<span class="stat-sep">&middot;</span>
+		<span class="stat-item">
+			<span class="stat-label">all time</span>
+			<span class="stat-value">{formatCurrency(allTimeRevenue)}</span>
+			<span class="stat-sub">{data.orders.length} orders</span>
+		</span>
+		<span class="stat-sep">&middot;</span>
+		<span class="stat-item">
+			<span class="stat-label">avg</span>
+			<span class="stat-value">{formatCurrency(data.orders.length > 0 ? allTimeRevenue / data.orders.length : 0)}</span>
+		</span>
 	</div>
 
-	<div class="flex flex-col sm:flex-row gap-4 mb-6">
-		<div class="flex-1">
-			<input
-				type="text"
-				bind:value={searchQuery}
-				placeholder="Search by email, order #, or name..."
-				class="w-full px-4 py-2 bg-gray-800 border border-gray-700 rounded text-white"
-			/>
-		</div>
-		<div class="sm:w-32">
-			<select bind:value={periodFilter} class="w-full px-4 py-2 bg-gray-800 border border-gray-700 rounded text-white">
-				<option value="all">All Time</option>
-				<option value="today">Today</option>
-				<option value="week">This Week</option>
-				<option value="month">This Month</option>
-			</select>
-		</div>
-		<div class="sm:w-40">
-			<select bind:value={yearFilter} class="w-full px-4 py-2 bg-gray-800 border border-gray-700 rounded text-white">
-				<option value="all">All Years</option>
-				{#each availableYears as year}
-					<option value={year}>{year}</option>
-				{/each}
-			</select>
-		</div>
-		<div class="sm:w-48">
-			<select bind:value={statusFilter} class="w-full px-4 py-2 bg-gray-800 border border-gray-700 rounded text-white">
-				{#each statuses as status}
-					<option value={status}>
-						{status === 'all' ? 'All Statuses' : status.charAt(0).toUpperCase() + status.slice(1)}
-					</option>
-				{/each}
-			</select>
-		</div>
-		<button
-			onclick={exportCSV}
-			class="px-4 py-2 bg-green-600 hover:bg-green-700 rounded text-white whitespace-nowrap"
-		>
-			Export CSV
+	<!-- Filters -->
+	<div class="filter-bar">
+		<input
+			type="text"
+			bind:value={searchQuery}
+			placeholder="search by email, order #, or name..."
+			class="filter-search"
+		/>
+		<select bind:value={periodFilter} class="filter-select">
+			<option value="all">all time</option>
+			<option value="today">today</option>
+			<option value="week">this week</option>
+			<option value="month">this month</option>
+		</select>
+		<select bind:value={yearFilter} class="filter-select">
+			<option value="all">all years</option>
+			{#each availableYears as year}
+				<option value={year}>{year}</option>
+			{/each}
+		</select>
+		<select bind:value={statusFilter} class="filter-select">
+			{#each statuses as status}
+				<option value={status}>
+					{status === 'all' ? 'all statuses' : status}
+				</option>
+			{/each}
+		</select>
+		<button class="btn-export" onclick={exportCSV}>
+			export csv
 		</button>
 	</div>
 
-	<div class="overflow-x-auto">
-		<table class="w-full text-left">
-			<thead>
-				<tr class="border-b border-gray-700">
-					<th class="py-3 px-4">Order</th>
-					<th class="py-3 px-4">Date</th>
-					<th class="py-3 px-4">Customer</th>
-					<th class="py-3 px-4">Items</th>
-					<th class="py-3 px-4">Total</th>
-					<th class="py-3 px-4">Status</th>
-				</tr>
-			</thead>
-			<tbody>
-				{#each filteredOrders as order (order._id)}
-					<tr 
-						class="border-b border-gray-800 hover:bg-gray-800 cursor-pointer"
-						role="button"
-						tabindex="0"
-						onclick={() => openOrderDetails(order)}
-						onkeydown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openOrderDetails(order); }}}
-					>
-						<td class="py-3 px-4 font-mono text-sm">{order.orderNumber}</td>
-						<td class="py-3 px-4 text-sm">{formatDate(order.createdAt)}</td>
-						<td class="py-3 px-4">
-							<div class="flex flex-col">
-								<span>{order.customerName || '—'}</span>
-								<span class="text-gray-400 text-sm">{order.customerEmail || '—'}</span>
-							</div>
-						</td>
-						<td class="py-3 px-4">
-							<span class="bg-gray-700 px-2 py-1 rounded text-xs">
-								{order.items?.length || 0} item{(order.items?.length || 0) !== 1 ? 's' : ''}
-							</span>
-						</td>
-						<td class="py-3 px-4 font-semibold">{formatCurrency(order.total, order.currency)}</td>
-						<!-- svelte-ignore a11y_no_static_element_interactions a11y_click_events_have_key_events -->
-						<td class="py-3 px-4" onclick={(e) => e.stopPropagation()}>
-							<select
-								value={order.status}
-								onchange={(e) => updateStatus(order._id, e.currentTarget.value)}
-								class="px-3 py-1 bg-gray-800 border border-gray-700 rounded text-white text-sm capitalize"
-							>
-								{#each statuses.filter(s => s !== 'all') as status}
-									<option value={status}>{status}</option>
-								{/each}
-							</select>
-						</td>
-					</tr>
-				{/each}
-			</tbody>
-		</table>
-	</div>
-
+	<!-- Orders table -->
 	{#if filteredOrders.length === 0}
-		<div class="text-center py-12 text-gray-400">
-			No orders found
+		<div class="empty-state">no orders found</div>
+	{:else}
+		<div class="table-wrap">
+			<table class="orders-table">
+				<thead>
+					<tr>
+						<th>order</th>
+						<th>date</th>
+						<th>customer</th>
+						<th>items</th>
+						<th>total</th>
+						<th>status</th>
+					</tr>
+				</thead>
+				<tbody>
+					{#each filteredOrders as order (order._id)}
+						<tr
+							class="order-row"
+							role="button"
+							tabindex="0"
+							onclick={() => openOrderDetails(order)}
+							onkeydown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openOrderDetails(order); }}}
+						>
+							<td class="td-order">{order.orderNumber}</td>
+							<td class="td-date">{formatDate(order.createdAt)}</td>
+							<td>
+								<div class="customer-cell">
+									<span class="customer-name">{order.customerName || '\u2014'}</span>
+									<span class="customer-email">{order.customerEmail || '\u2014'}</span>
+								</div>
+							</td>
+							<td class="td-items">
+								{order.items?.length || 0} item{(order.items?.length || 0) !== 1 ? 's' : ''}
+							</td>
+							<td class="td-total">{formatCurrency(order.total, order.currency)}</td>
+							<!-- svelte-ignore a11y_no_static_element_interactions a11y_click_events_have_key_events -->
+							<td onclick={(e) => e.stopPropagation()}>
+								<select
+									value={order.status}
+									onchange={(e) => updateStatus(order._id, e.currentTarget.value)}
+									class="status-select"
+								>
+									{#each statuses.filter(s => s !== 'all') as status}
+										<option value={status}>{status}</option>
+									{/each}
+								</select>
+							</td>
+						</tr>
+					{/each}
+				</tbody>
+			</table>
 		</div>
 	{/if}
 </div>
 
 {#if selectedOrder}
 	<div
-		class="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4"
+		class="modal-overlay"
 		role="dialog"
 		tabindex="-1"
 		aria-modal="true"
@@ -455,81 +385,477 @@ function exportCSV() {
 		onkeydown={(e) => { if (e.key === 'Escape') closeModal(); }}
 	>
 		<div
-			class="bg-gray-800 p-6 rounded-lg max-w-2xl w-full max-h-[90vh] overflow-y-auto"
+			class="modal-content"
 			role="presentation"
 			onclick={(e) => e.stopPropagation()}
 			onkeydown={(e) => e.stopPropagation()}
 		>
-			<div class="flex justify-between items-start mb-4">
+			<div class="modal-header">
 				<div>
-					<h2 class="text-2xl font-bold">{selectedOrder.orderNumber}</h2>
-					<p class="text-gray-400">{formatDate(selectedOrder.createdAt)}</p>
+					<h2 class="modal-title">{selectedOrder.orderNumber}</h2>
+					<p class="modal-meta">{formatDate(selectedOrder.createdAt)}</p>
 				</div>
-				<button 
-					class="text-gray-400 hover:text-white text-xl"
-					onclick={closeModal}
-				>✕</button>
+				<button class="modal-close" onclick={closeModal}>&#10005;</button>
 			</div>
 
-			<div class="mb-4">
-				<label for="order-status" class="block mb-2 text-sm text-gray-400">Status</label>
-				<select
-					id="order-status"
-					value={selectedOrder.status}
-					onchange={(e) => updateStatus(selectedOrder._id, e.currentTarget.value)}
-					class="w-full px-4 py-2 bg-gray-700 border border-gray-600 rounded text-white capitalize"
-				>
-					{#each statuses.filter(s => s !== 'all') as status}
-						<option value={status}>{status}</option>
-					{/each}
-				</select>
-			</div>
-
-			<div class="mb-4">
-				<h3 class="text-lg font-semibold mb-2">Customer</h3>
-				<p><strong>Name:</strong> {selectedOrder.customerName || '—'}</p>
-				<p><strong>Email:</strong> {selectedOrder.customerEmail || '—'}</p>
-			</div>
-
-			{#if selectedOrder.shippingAddress}
-				<div class="mb-4">
-					<h3 class="text-lg font-semibold mb-2">Shipping Address</h3>
-					<p>{selectedOrder.shippingAddress.line1}</p>
-					{#if selectedOrder.shippingAddress.line2}<p>{selectedOrder.shippingAddress.line2}</p>{/if}
-					<p>{selectedOrder.shippingAddress.city}, {selectedOrder.shippingAddress.state} {selectedOrder.shippingAddress.postalCode}</p>
-					<p>{selectedOrder.shippingAddress.country}</p>
+			<div class="modal-body">
+				<div class="modal-field">
+					<label class="field-label" for="modal-status">status</label>
+					<select
+						id="modal-status"
+						value={selectedOrder.status}
+						onchange={(e) => updateStatus(selectedOrder._id, e.currentTarget.value)}
+						class="form-input"
+					>
+						{#each statuses.filter(s => s !== 'all') as status}
+							<option value={status}>{status}</option>
+						{/each}
+					</select>
 				</div>
-			{/if}
 
-			<div class="mb-4">
-				<h3 class="text-lg font-semibold mb-2">Items</h3>
-				<ul class="list-disc pl-4">
-					{#each selectedOrder.items || [] as item}
-						<li>
-							{item.productName} × {item.quantity} — {formatCurrency(item.price, selectedOrder.currency)}
-						</li>
-					{/each}
-				</ul>
-				<p class="mt-2 font-semibold">Total: {formatCurrency(selectedOrder.total, selectedOrder.currency)}</p>
-			</div>
+				<div class="modal-section">
+					<h3 class="section-label">customer</h3>
+					<p class="section-text">{selectedOrder.customerName || '\u2014'}</p>
+					<p class="section-text-muted">{selectedOrder.customerEmail || '\u2014'}</p>
+				</div>
 
-			<div class="mb-4">
-				<label for="order-notes" class="block mb-2 text-sm text-gray-400">Notes</label>
-				<textarea
-					id="order-notes"
-					bind:value={notesValue}
-					class="w-full px-4 py-2 bg-gray-700 border border-gray-600 rounded text-white"
-					rows="3"
-					placeholder="Add fulfillment notes"
-				></textarea>
-				<button
-					class="mt-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 rounded text-white"
-					disabled={notesSaving}
-					onclick={saveNotes}
-				>
-					{notesSaving ? 'Saving...' : 'Save Notes'}
-				</button>
+				{#if selectedOrder.shippingAddress}
+					<div class="modal-section">
+						<h3 class="section-label">shipping address</h3>
+						<p class="section-text">{selectedOrder.shippingAddress.line1}</p>
+						{#if selectedOrder.shippingAddress.line2}<p class="section-text">{selectedOrder.shippingAddress.line2}</p>{/if}
+						<p class="section-text">{selectedOrder.shippingAddress.city}, {selectedOrder.shippingAddress.state} {selectedOrder.shippingAddress.postalCode}</p>
+						<p class="section-text">{selectedOrder.shippingAddress.country}</p>
+					</div>
+				{/if}
+
+				<div class="modal-section">
+					<h3 class="section-label">items</h3>
+					<ul class="items-list">
+						{#each selectedOrder.items || [] as item}
+							<li>
+								{item.productName} x {item.quantity} — {formatCurrency(item.price, selectedOrder.currency)}
+							</li>
+						{/each}
+					</ul>
+					<p class="items-total">total: {formatCurrency(selectedOrder.total, selectedOrder.currency)}</p>
+				</div>
+
+				<div class="modal-field">
+					<label class="field-label" for="modal-notes">notes</label>
+					<textarea
+						id="modal-notes"
+						bind:value={notesValue}
+						class="form-input form-textarea"
+						rows="3"
+						placeholder="add fulfillment notes"
+					></textarea>
+					<button
+						class="btn-save"
+						disabled={notesSaving}
+						onclick={saveNotes}
+					>
+						{notesSaving ? 'saving...' : 'save notes'}
+					</button>
+				</div>
 			</div>
 		</div>
 	</div>
 {/if}
+
+<style>
+	.orders-page {
+		padding: 48px 40px;
+		max-width: 1200px;
+	}
+
+	.page-header {
+		margin-bottom: 32px;
+	}
+
+	.page-header h1 {
+		font-family: "Chillax", sans-serif;
+		font-size: 1.8rem;
+		font-weight: 500;
+		color: var(--admin-heading);
+		margin: 0;
+		letter-spacing: -0.01em;
+	}
+
+	/* Stats line */
+	.stats-line {
+		display: flex;
+		align-items: baseline;
+		gap: 12px;
+		flex-wrap: wrap;
+		margin-bottom: 32px;
+		padding-bottom: 24px;
+		border-bottom: 1px solid var(--admin-border);
+	}
+
+	.stat-item {
+		display: inline-flex;
+		align-items: baseline;
+		gap: 6px;
+	}
+
+	.stat-label {
+		font-size: 0.82rem;
+		color: var(--admin-text-muted);
+	}
+
+	.stat-value {
+		font-size: 1.1rem;
+		font-weight: 500;
+		color: var(--admin-heading);
+	}
+
+	.stat-sub {
+		font-size: 0.78rem;
+		color: var(--admin-text-subtle);
+	}
+
+	.stat-sep {
+		color: var(--admin-text-subtle);
+	}
+
+	/* Filters */
+	.filter-bar {
+		display: flex;
+		gap: 10px;
+		margin-bottom: 24px;
+		flex-wrap: wrap;
+	}
+
+	.filter-search {
+		flex: 1;
+		min-width: 200px;
+		padding: 7px 12px;
+		background: transparent;
+		border: 1px solid var(--admin-border-strong);
+		border-radius: 6px;
+		color: var(--admin-text);
+		font-size: 0.83rem;
+		font-family: "Synonym", system-ui, sans-serif;
+		outline: none;
+		transition: border-color 0.15s;
+	}
+
+	.filter-search:focus {
+		border-color: var(--admin-accent);
+	}
+
+	.filter-search::placeholder {
+		color: var(--admin-text-subtle);
+	}
+
+	.filter-select {
+		padding: 7px 12px;
+		background: transparent;
+		border: 1px solid var(--admin-border-strong);
+		border-radius: 6px;
+		color: var(--admin-text);
+		font-size: 0.83rem;
+		font-family: "Synonym", system-ui, sans-serif;
+		outline: none;
+	}
+
+	.btn-export {
+		padding: 7px 14px;
+		background: transparent;
+		border: 1px solid var(--admin-border-strong);
+		border-radius: 6px;
+		color: var(--admin-text);
+		font-size: 0.82rem;
+		font-family: "Synonym", system-ui, sans-serif;
+		cursor: pointer;
+		transition: color 0.15s, border-color 0.15s;
+		white-space: nowrap;
+	}
+
+	.btn-export:hover {
+		color: var(--admin-heading);
+		border-color: var(--admin-text-muted);
+	}
+
+	/* Table */
+	.table-wrap {
+		overflow-x: auto;
+	}
+
+	.orders-table {
+		width: 100%;
+		border-collapse: collapse;
+		text-align: left;
+		font-size: 0.85rem;
+	}
+
+	.orders-table th {
+		padding: 0 16px 12px 0;
+		color: var(--admin-text-subtle);
+		font-weight: 400;
+		font-size: 0.75rem;
+		letter-spacing: 0.04em;
+		border-bottom: 1px solid var(--admin-border);
+	}
+
+	.orders-table td {
+		padding: 14px 16px 14px 0;
+		border-bottom: 1px solid var(--admin-border);
+	}
+
+	.order-row {
+		cursor: pointer;
+		transition: background 0.12s;
+	}
+
+	.order-row:hover {
+		background: var(--admin-active);
+	}
+
+	.td-order {
+		font-family: monospace;
+		font-size: 0.8rem;
+		color: var(--admin-text-muted);
+	}
+
+	.td-date {
+		font-size: 0.82rem;
+		color: var(--admin-text-muted);
+		white-space: nowrap;
+	}
+
+	.customer-cell {
+		display: flex;
+		flex-direction: column;
+	}
+
+	.customer-name {
+		color: var(--admin-heading);
+	}
+
+	.customer-email {
+		font-size: 0.78rem;
+		color: var(--admin-text-subtle);
+	}
+
+	.td-items {
+		font-size: 0.82rem;
+		color: var(--admin-text-muted);
+	}
+
+	.td-total {
+		font-weight: 500;
+		color: var(--admin-heading);
+	}
+
+	.status-select {
+		padding: 4px 8px;
+		background: transparent;
+		border: 1px solid var(--admin-border-strong);
+		border-radius: 5px;
+		color: var(--admin-text);
+		font-size: 0.78rem;
+		font-family: "Synonym", system-ui, sans-serif;
+	}
+
+	.empty-state {
+		padding: 48px 0;
+		color: var(--admin-text-subtle);
+		font-size: 0.88rem;
+	}
+
+	/* Modal */
+	.modal-overlay {
+		position: fixed;
+		inset: 0;
+		z-index: 100;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		background: rgba(0, 0, 0, 0.4);
+		backdrop-filter: blur(8px);
+		padding: 16px;
+	}
+
+	.modal-content {
+		background: var(--admin-bg, #1e293b);
+		border: 1px solid var(--admin-border);
+		border-radius: 12px;
+		width: 100%;
+		max-width: 600px;
+		max-height: 90vh;
+		overflow-y: auto;
+		box-shadow: 0 24px 80px rgba(0, 0, 0, 0.5);
+	}
+
+	.modal-header {
+		display: flex;
+		justify-content: space-between;
+		align-items: flex-start;
+		padding: 28px 28px 0;
+	}
+
+	.modal-title {
+		font-family: "Chillax", sans-serif;
+		font-size: 1.2rem;
+		font-weight: 500;
+		color: var(--admin-heading);
+		margin: 0;
+	}
+
+	.modal-meta {
+		font-size: 0.82rem;
+		color: var(--admin-text-muted);
+		margin: 4px 0 0;
+	}
+
+	.modal-close {
+		background: none;
+		border: none;
+		color: var(--admin-text-subtle);
+		font-size: 1rem;
+		cursor: pointer;
+		padding: 4px;
+		transition: color 0.15s;
+	}
+
+	.modal-close:hover {
+		color: var(--admin-heading);
+	}
+
+	.modal-body {
+		padding: 24px 28px 28px;
+		display: flex;
+		flex-direction: column;
+		gap: 20px;
+	}
+
+	.modal-field {
+		display: flex;
+		flex-direction: column;
+		gap: 6px;
+	}
+
+	.field-label {
+		font-size: 0.76rem;
+		color: var(--admin-text-subtle);
+		letter-spacing: 0.04em;
+	}
+
+	.modal-section {
+		padding-top: 4px;
+	}
+
+	.section-label {
+		font-family: "Synonym", system-ui, sans-serif;
+		font-size: 0.76rem;
+		font-weight: 400;
+		color: var(--admin-text-subtle);
+		letter-spacing: 0.04em;
+		margin: 0 0 8px;
+	}
+
+	.section-text {
+		font-size: 0.88rem;
+		color: var(--admin-heading);
+		margin: 0 0 2px;
+	}
+
+	.section-text-muted {
+		font-size: 0.82rem;
+		color: var(--admin-text-muted);
+		margin: 0;
+	}
+
+	.items-list {
+		list-style: none;
+		padding: 0;
+		margin: 0;
+		display: flex;
+		flex-direction: column;
+		gap: 4px;
+		font-size: 0.86rem;
+		color: var(--admin-text);
+	}
+
+	.items-total {
+		margin: 10px 0 0;
+		font-weight: 500;
+		font-size: 0.9rem;
+		color: var(--admin-heading);
+	}
+
+	.form-input {
+		padding: 8px 10px;
+		background: rgba(255, 255, 255, 0.03);
+		color: var(--admin-text);
+		border: 1px solid var(--admin-border-strong);
+		border-radius: 6px;
+		font-size: 0.85rem;
+		font-family: "Synonym", system-ui, sans-serif;
+		outline: none;
+		transition: border-color 0.15s;
+	}
+
+	.form-input:focus {
+		border-color: var(--admin-accent);
+	}
+
+	.form-textarea {
+		resize: vertical;
+		min-height: 60px;
+	}
+
+	.btn-save {
+		align-self: flex-start;
+		margin-top: 4px;
+		padding: 7px 16px;
+		background: rgba(129, 140, 248, 0.15);
+		border: 1px solid rgba(129, 140, 248, 0.25);
+		border-radius: 6px;
+		color: var(--admin-accent-hover);
+		font-size: 0.82rem;
+		font-family: "Synonym", system-ui, sans-serif;
+		font-weight: 500;
+		cursor: pointer;
+		transition: background 0.15s;
+	}
+
+	.btn-save:hover {
+		background: rgba(129, 140, 248, 0.22);
+	}
+
+	.btn-save:disabled {
+		opacity: 0.4;
+		cursor: not-allowed;
+	}
+
+	@media (max-width: 768px) {
+		.orders-page {
+			padding: 28px 20px;
+		}
+
+		.filter-bar {
+			flex-direction: column;
+		}
+
+		.filter-search {
+			min-width: unset;
+		}
+
+		.stats-line {
+			gap: 8px;
+		}
+
+		.stat-sep {
+			display: none;
+		}
+
+		.stat-item {
+			flex-basis: 100%;
+			gap: 6px;
+			margin-bottom: 4px;
+		}
+	}
+</style>

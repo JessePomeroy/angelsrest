@@ -13,7 +13,7 @@ const dailyRevenue = $derived(data.dailyRevenue);
 const recentOrders = $derived(data.recentOrders);
 
 // Sparkline chart calculations
-const chartHeight = 80;
+const chartHeight = 60;
 const chartWidth = 600;
 let maxRevenue = $derived(
 	Math.max(...dailyRevenue.map((d: { amount: number }) => d.amount), 1),
@@ -40,57 +40,59 @@ let sparklineArea = $derived(() => {
 
 <div class="dashboard">
 	<header class="page-header">
-		<h1>Dashboard</h1>
-		<p class="subtitle">Overview of your store</p>
+		<h1>dashboard</h1>
 	</header>
 
-	<!-- Stat cards -->
-	<div class="stat-grid">
-		<div class="stat-card">
-			<span class="stat-label">Today</span>
+	<!-- Stats as inline text -->
+	<div class="stats-line">
+		<span class="stat-item">
+			<span class="stat-label">today</span>
 			<span class="stat-value">{formatCurrency(stats.todayRevenue)}</span>
-		</div>
-		<div class="stat-card">
-			<span class="stat-label">This Week</span>
+		</span>
+		<span class="stat-sep">&middot;</span>
+		<span class="stat-item">
+			<span class="stat-label">this week</span>
 			<span class="stat-value">{formatCurrency(stats.weekRevenue)}</span>
-		</div>
-		<div class="stat-card">
-			<span class="stat-label">This Month</span>
+		</span>
+		<span class="stat-sep">&middot;</span>
+		<span class="stat-item">
+			<span class="stat-label">this month</span>
 			<span class="stat-value">{formatCurrency(stats.monthRevenue)}</span>
-		</div>
-		<div class="stat-card">
-			<span class="stat-label">All Time</span>
+		</span>
+		<span class="stat-sep">&middot;</span>
+		<span class="stat-item">
+			<span class="stat-label">all time</span>
 			<span class="stat-value">{formatCurrency(stats.allTimeRevenue)}</span>
 			<span class="stat-sub">{stats.totalOrders} orders</span>
-		</div>
+		</span>
 	</div>
 
 	<!-- Sparkline chart -->
-	<div class="chart-card">
-		<h2 class="chart-title">Revenue (Last 30 Days)</h2>
+	<div class="chart-section">
+		<h2 class="section-label">revenue — last 30 days</h2>
 		<div class="chart-container">
 			<svg viewBox="0 0 {chartWidth} {chartHeight}" preserveAspectRatio="none" class="chart-svg">
-				<path d={sparklineArea()} fill="rgba(255,255,255,0.04)" />
-				<path d={sparklinePath()} fill="none" stroke="rgba(255,255,255,0.4)" stroke-width="2" />
+				<path d={sparklineArea()} fill="rgba(129, 140, 248, 0.06)" />
+				<path d={sparklinePath()} fill="none" stroke="rgba(129, 140, 248, 0.35)" stroke-width="1.5" />
 			</svg>
 		</div>
 	</div>
 
 	<!-- Recent orders -->
-	<div class="orders-card">
-		<h2 class="section-title">Recent Orders</h2>
+	<div class="orders-section">
+		<h2 class="section-label">recent orders</h2>
 		{#if recentOrders.length === 0}
-			<p class="empty-state">No orders yet</p>
+			<p class="empty-state">no orders yet</p>
 		{:else}
 			<div class="table-wrap">
 				<table class="orders-table">
 					<thead>
 						<tr>
-							<th>Order</th>
-							<th>Date</th>
-							<th>Customer</th>
-							<th>Total</th>
-							<th>Status</th>
+							<th>order</th>
+							<th>date</th>
+							<th>customer</th>
+							<th>total</th>
+							<th>status</th>
 						</tr>
 					</thead>
 					<tbody>
@@ -106,7 +108,8 @@ let sparklineArea = $derived(() => {
 								</td>
 								<td class="bold">{formatCurrency(order.total)}</td>
 								<td>
-									<span class="status-badge" style="background: {getStatusColor(order.status)}">
+									<span class="status-indicator">
+										<span class="status-dot" style="background: {getStatusColor(order.status)}"></span>
 										{formatStatus(order.status)}
 									</span>
 								</td>
@@ -116,7 +119,7 @@ let sparklineArea = $derived(() => {
 				</table>
 			</div>
 			<div class="view-all">
-				<a href="/admin/orders">View all orders</a>
+				<a href="/admin/orders">view all orders &rarr;</a>
 			</div>
 		{/if}
 	</div>
@@ -124,80 +127,78 @@ let sparklineArea = $derived(() => {
 
 <style>
 	.dashboard {
-		padding: 32px;
-		max-width: 1100px;
+		padding: 48px 40px;
+		max-width: 1000px;
 	}
 
 	.page-header {
-		margin-bottom: 28px;
+		margin-bottom: 40px;
 	}
 
 	.page-header h1 {
-		font-size: 1.6rem;
-		font-weight: 600;
+		font-family: "Chillax", sans-serif;
+		font-size: 1.8rem;
+		font-weight: 500;
 		color: var(--admin-heading);
-		margin: 0 0 4px;
-	}
-
-	.subtitle {
-		color: var(--admin-text-muted);
-		font-size: 0.9rem;
 		margin: 0;
+		letter-spacing: -0.01em;
 	}
 
-	.stat-grid {
-		display: grid;
-		grid-template-columns: repeat(4, 1fr);
-		gap: 16px;
-		margin-bottom: 24px;
-	}
-
-	.stat-card {
-		background: var(--admin-surface);
-		border: 1px solid var(--admin-border);
-		border-radius: 8px;
-		padding: 20px;
+	/* Stats line */
+	.stats-line {
 		display: flex;
-		flex-direction: column;
-		gap: 4px;
+		align-items: baseline;
+		gap: 12px;
+		flex-wrap: wrap;
+		margin-bottom: 48px;
+		padding-bottom: 32px;
+		border-bottom: 1px solid var(--admin-border);
+	}
+
+	.stat-item {
+		display: inline-flex;
+		align-items: baseline;
+		gap: 6px;
 	}
 
 	.stat-label {
-		font-size: 0.8rem;
+		font-size: 0.82rem;
 		color: var(--admin-text-muted);
-		text-transform: uppercase;
-		letter-spacing: 0.05em;
 	}
 
 	.stat-value {
-		font-size: 1.4rem;
-		font-weight: 600;
+		font-size: 1.1rem;
+		font-weight: 500;
 		color: var(--admin-heading);
 	}
 
 	.stat-sub {
-		font-size: 0.8rem;
+		font-size: 0.78rem;
 		color: var(--admin-text-subtle);
 	}
 
-	.chart-card {
-		background: var(--admin-surface);
-		border: 1px solid var(--admin-border);
-		border-radius: 8px;
-		padding: 20px;
-		margin-bottom: 24px;
+	.stat-sep {
+		color: var(--admin-text-subtle);
+		font-size: 0.9rem;
 	}
 
-	.chart-title {
-		font-size: 0.95rem;
-		font-weight: 500;
+	/* Chart */
+	.chart-section {
+		margin-bottom: 48px;
+	}
+
+	.section-label {
+		font-family: "Synonym", system-ui, sans-serif;
+		font-size: 0.78rem;
+		font-weight: 400;
 		color: var(--admin-text-muted);
+		letter-spacing: 0.04em;
 		margin: 0 0 16px;
 	}
 
 	.chart-container {
 		width: 100%;
-		height: 80px;
+		height: 60px;
 	}
 
 	.chart-svg {
@@ -205,18 +206,9 @@ let sparklineArea = $derived(() => {
 		height: 100%;
 	}
 
-	.orders-card {
-		background: var(--admin-surface);
-		border: 1px solid var(--admin-border);
-		border-radius: 8px;
-		padding: 20px;
-	}
-
-	.section-title {
-		font-size: 0.95rem;
-		font-weight: 500;
-		color: var(--admin-text-muted);
-		margin: 0 0 16px;
+	/* Orders */
+	.orders-section {
+		margin-bottom: 32px;
 	}
 
 	.table-wrap {
@@ -227,21 +219,20 @@ let sparklineArea = $derived(() => {
 		width: 100%;
 		border-collapse: collapse;
 		text-align: left;
-		font-size: 0.88rem;
+		font-size: 0.86rem;
 	}
 
 	.orders-table th {
 		color: var(--admin-text-subtle);
-		font-weight: 500;
-		font-size: 0.78rem;
-		text-transform: uppercase;
-		letter-spacing: 0.05em;
-		padding: 8px 12px;
-		border-bottom: 1px solid var(--admin-border-strong);
+		font-weight: 400;
+		font-size: 0.75rem;
+		letter-spacing: 0.04em;
+		padding: 0 16px 12px 0;
+		border-bottom: 1px solid var(--admin-border);
 	}
 
 	.orders-table td {
-		padding: 10px 12px;
+		padding: 14px 16px 14px 0;
 		border-bottom: 1px solid var(--admin-border);
 		color: var(--admin-text);
 	}
@@ -252,11 +243,13 @@ let sparklineArea = $derived(() => {
 
 	.mono {
 		font-family: monospace;
-		font-size: 0.82rem;
+		font-size: 0.8rem;
+		color: var(--admin-text-muted);
 	}
 
 	.bold {
-		font-weight: 600;
+		font-weight: 500;
+		color: var(--admin-heading);
 	}
 
 	.customer-cell {
@@ -265,29 +258,34 @@ let sparklineArea = $derived(() => {
 	}
 
 	.email {
-		font-size: 0.78rem;
+		font-size: 0.76rem;
 		color: var(--admin-text-subtle);
 	}
 
-	.status-badge {
-		display: inline-block;
-		padding: 3px 10px;
-		border-radius: 12px;
-		font-size: 0.75rem;
-		font-weight: 500;
-		color: #fff;
-		text-transform: capitalize;
+	.status-indicator {
+		display: inline-flex;
+		align-items: center;
+		gap: 6px;
+		font-size: 0.8rem;
+		color: var(--admin-text-muted);
+	}
+
+	.status-dot {
+		width: 7px;
+		height: 7px;
+		border-radius: 50%;
+		flex-shrink: 0;
 	}
 
 	.view-all {
-		padding-top: 16px;
-		text-align: center;
+		padding-top: 20px;
 	}
 
 	.view-all a {
 		color: var(--admin-text-muted);
 		text-decoration: none;
-		font-size: 0.85rem;
+		font-size: 0.82rem;
+		transition: color 0.15s;
 	}
 
 	.view-all a:hover {
@@ -295,24 +293,29 @@ let sparklineArea = $derived(() => {
 	}
 
 	.empty-state {
-		text-align: center;
-		padding: 32px;
+		padding: 40px 0;
 		color: var(--admin-text-subtle);
+		font-size: 0.88rem;
 	}
 
 	@media (max-width: 768px) {
 		.dashboard {
-			padding: 20px 16px;
+			padding: 28px 20px;
 		}
 
-		.stat-grid {
-			grid-template-columns: repeat(2, 1fr);
+		.stats-line {
+			gap: 8px;
 		}
-	}
 
-	@media (max-width: 480px) {
-		.stat-grid {
-			grid-template-columns: 1fr;
+		.stat-sep {
+			display: none;
+		}
+
+		.stat-item {
+			flex-basis: 45%;
+			flex-direction: column;
+			gap: 2px;
+			margin-bottom: 8px;
 		}
 	}
 </style>
