@@ -36,6 +36,15 @@ export async function PATCH({ params, request }) {
 			await convex.mutation(api.quotes.markDeclined, {
 				quoteId: id as Id<"quotes">,
 			});
+		} else if (data.action === "convert") {
+			const invoiceId = await convex.mutation(api.quotes.convertToInvoice, {
+				quoteId: id as Id<"quotes">,
+				invoiceNumber: data.invoiceNumber,
+				invoiceType: data.invoiceType || "one-time",
+				dueDate: data.dueDate || undefined,
+				notes: data.notes || undefined,
+			});
+			return json({ success: true, invoiceId });
 		} else if (data.action === "expire") {
 			await convex.mutation(api.quotes.update, {
 				quoteId: id as Id<"quotes">,

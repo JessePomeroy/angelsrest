@@ -64,6 +64,15 @@ let presetPackages = $state<
 let presetNewIncludedItem = $state<Record<number, string>>({});
 let confirmDeletePreset = $state(false);
 
+// Convert to invoice state
+let showConvertForm = $state(false);
+let convertInvoiceNumber = $state("");
+let convertInvoiceType = $state("one-time");
+let convertDueDate = $state("");
+let convertNotes = $state("");
+let converting = $state(false);
+let convertSuccess = $state(false);
+
 const allStatuses = ["draft", "sent", "accepted", "declined", "expired"];
 
 let filteredQuotes = $derived(
@@ -252,12 +261,21 @@ function openDetailModal(quote: any) {
 	selectedQuote = { ...quote };
 	editMode = false;
 	confirmDelete = false;
+	showConvertForm = false;
+	convertInvoiceNumber = data.nextInvoiceNumber;
+	convertInvoiceType = "one-time";
+	convertDueDate = "";
+	convertNotes = quote.notes || "";
+	converting = false;
+	convertSuccess = false;
 }
 
 function closeDetailModal() {
 	selectedQuote = null;
 	editMode = false;
 	confirmDelete = false;
+	showConvertForm = false;
+	convertSuccess = false;
 }
 
 function startEdit() {
@@ -423,6 +441,44 @@ async function deleteQuote() {
 		console.error("Failed to delete quote:", err);
 	} finally {
 		saving = false;
+	}
+}
+
+async function convertToInvoice() {
+	if (!selectedQuote || !convertInvoiceNumber) return;
+	converting = true;
+	try {
+		const body: Record<string, unknown> = {
+			action: "convert",
+			invoiceNumber: convertInvoiceNumber,
+			invoiceType: convertInvoiceType,
+		};
+		if (convertDueDate) body.dueDate = convertDueDate;
+		if (convertNotes) body.notes = convertNotes;
+
+		const res = await fetch(`/api/admin/quotes/${selectedQuote._id}`, {
+			method: "PATCH",
+			headers: { "Content-Type": "application/json" },
+			body: JSON.stringify(body),
+		});
+		if (res.ok) {
+			const result = await res.json();
+			const invoiceId = result.invoiceId || "converted";
+			const idx = data.quotes.findIndex(
+				(q: any) => q._id === selectedQuote._id,
+			);
+			if (idx !== -1) {
+				data.quotes[idx] = { ...data.quotes[idx], convertedToInvoice: invoiceId };
+				data.quotes = [...data.quotes];
+			}
+			selectedQuote = { ...selectedQuote, convertedToInvoice: invoiceId };
+			showConvertForm = false;
+			convertSuccess = true;
+		}
+	} catch (err) {
+		console.error("Failed to convert quote to invoice:", err);
+	} finally {
+		converting = false;
 	}
 }
 
@@ -1052,12 +1108,66 @@ async function deletePreset() {
 							</button>
 						{:else if selectedQuote.status === "accepted"}
 							<span class="accepted-note">accepted on {formatTimestamp(selectedQuote.acceptedAt)}</span>
+							{#if !selectedQuote.convertedToInvoice && !convertSuccess}
+								<button class="btn-save" onclick={() => { showConvertForm = !showConvertForm; }} disabled={converting}>
+									convert to invoice
+								</button>
+							{/if}
 						{:else if selectedQuote.status === "declined"}
 							<span class="declined-note">declined</span>
 						{:else if selectedQuote.status === "expired"}
 							<span class="expired-note">expired</span>
 						{/if}
 					</div>
+
+					{#if selectedQuote.status === "accepted"}
+						{#if convertSuccess || selectedQuote.convertedToInvoice}
+							<div class="convert-status">
+								<span class="status-indicator">
+									<span class="status-dot" style="background: var(--status-sage)"></span>
+									invoice created — <a class="convert-link" href="/admin/invoicing">view invoices</a>
+								</span>
+							</div>
+						{:else if showConvertForm}
+							<div class="convert-section">
+								<div class="convert-section-header">
+									<span class="form-label">convert to invoice</span>
+								</div>
+								<form class="convert-form" onsubmit={(e) => { e.preventDefault(); convertToInvoice(); }}>
+									<div class="form-row">
+										<div class="form-group">
+											<label class="form-label" for="convert-number">invoice number</label>
+											<input id="convert-number" class="form-input" type="text" bind:value={convertInvoiceNumber} required />
+										</div>
+										<div class="form-group">
+											<label class="form-label" for="convert-type">invoice type</label>
+											<select id="convert-type" class="form-input" bind:value={convertInvoiceType}>
+												<option value="one-time">one-time</option>
+												<option value="package">package</option>
+												<option value="deposit">deposit</option>
+												<option value="milestone">milestone</option>
+												<option value="recurring">recurring</option>
+											</select>
+										</div>
+									</div>
+									<div class="form-group">
+										<label class="form-label" for="convert-due">due date</label>
+										<input id="convert-due" class="form-input" type="date" bind:value={convertDueDate} />
+									</div>
+									<div class="form-group">
+										<label class="form-label" for="convert-notes">notes</label>
+										<textarea id="convert-notes" class="form-input form-textarea" bind:value={convertNotes} rows="2"></textarea>
+									</div>
+									<div class="convert-actions">
+										<button type="button" class="btn-cancel" onclick={() => { showConvertForm = false; }}>cancel</button>
+										<button type="submit" class="btn-save" disabled={converting || !convertInvoiceNumber}>
+											{converting ? "creating..." : "create invoice"}
+										</button>
+									</div>
+								</form>
+							</div>
+						{/if}
+					{/if}
 				</div>
 			{/if}
 		</div>
@@ -1960,6 +2070,47 @@ async function deletePreset() {
 		font-size: 0.82rem;
 		color: var(--admin-text-subtle);
 		margin-left: auto;
+	}
+
+	/* Convert to invoice */
+	.convert-section {
+		border-top: 1px solid var(--admin-border);
+		padding-top: 16px;
+		display: flex;
+		flex-direction: column;
+		gap: 10px;
+	}
+
+	.convert-section-header {
+		margin-bottom: 2px;
+	}
+
+	.convert-form {
+		display: flex;
+		flex-direction: column;
+		gap: 12px;
+	}
+
+	.convert-actions {
+		display: flex;
+		justify-content: flex-end;
+		gap: 10px;
+		padding-top: 4px;
+	}
+
+	.convert-status {
+		border-top: 1px solid var(--admin-border);
+		padding-top: 16px;
+	}
+
+	.convert-link {
+		color: var(--admin-accent);
+		text-decoration: none;
+		font-size: 0.8rem;
+	}
+
+	.convert-link:hover {
+		text-decoration: underline;
 	}
 
 	/* Responsive */

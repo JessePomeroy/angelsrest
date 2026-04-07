@@ -106,6 +106,53 @@ export const markAccepted = mutation({
 	},
 });
 
+export const convertToInvoice = mutation({
+	args: {
+		quoteId: v.id("quotes"),
+		invoiceNumber: v.string(),
+		invoiceType: v.union(
+			v.literal("one-time"),
+			v.literal("recurring"),
+			v.literal("deposit"),
+			v.literal("package"),
+			v.literal("milestone"),
+		),
+		dueDate: v.optional(v.string()),
+		notes: v.optional(v.string()),
+	},
+	handler: async (
+		ctx,
+		{ quoteId, invoiceNumber, invoiceType, dueDate, notes },
+	) => {
+		const quote = await ctx.db.get(quoteId);
+		if (!quote) throw new Error("Quote not found");
+
+		// Convert packages to invoice line items
+		const items = quote.packages.map((pkg) => ({
+			description: pkg.name + (pkg.description ? ` — ${pkg.description}` : ""),
+			quantity: 1,
+			unitPrice: pkg.price,
+		}));
+
+		// Create the invoice
+		const invoiceId = await ctx.db.insert("invoices", {
+			siteUrl: quote.siteUrl,
+			invoiceNumber,
+			clientId: quote.clientId,
+			invoiceType,
+			status: "draft",
+			items,
+			dueDate,
+			notes: notes || quote.notes || undefined,
+		});
+
+		// Link the quote to the invoice
+		await ctx.db.patch(quoteId, { convertedToInvoice: invoiceId });
+
+		return invoiceId;
+	},
+});
+
 export const markDeclined = mutation({
 	args: { quoteId: v.id("quotes") },
 	handler: async (ctx, { quoteId }) => {
