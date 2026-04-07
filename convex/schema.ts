@@ -122,10 +122,18 @@ export default defineSchema({
 		siteUrl: v.string(),
 		invoiceNumber: v.string(),
 		clientId: v.id("photographyClients"),
+		invoiceType: v.union(
+			v.literal("one-time"),
+			v.literal("recurring"),
+			v.literal("deposit"),
+			v.literal("package"),
+			v.literal("milestone"),
+		),
 		status: v.union(
 			v.literal("draft"),
 			v.literal("sent"),
 			v.literal("paid"),
+			v.literal("partial"),
 			v.literal("overdue"),
 			v.literal("canceled"),
 		),
@@ -141,6 +149,27 @@ export default defineSchema({
 		dueDate: v.optional(v.string()),
 		sentAt: v.optional(v.number()),
 		paidAt: v.optional(v.number()),
+		// Recurring config
+		recurring: v.optional(
+			v.object({
+				interval: v.union(
+					v.literal("weekly"),
+					v.literal("monthly"),
+					v.literal("quarterly"),
+					v.literal("yearly"),
+				),
+				nextDueDate: v.optional(v.string()),
+				endDate: v.optional(v.string()),
+			}),
+		),
+		// Deposit/milestone tracking
+		depositPercent: v.optional(v.number()),
+		totalProject: v.optional(v.number()),
+		paidAmount: v.optional(v.number()),
+		// Milestone tracking
+		milestoneName: v.optional(v.string()),
+		milestoneIndex: v.optional(v.number()),
+		parentInvoiceId: v.optional(v.id("invoices")),
 	})
 		.index("by_siteUrl", ["siteUrl"])
 		.index("by_client", ["clientId"])
