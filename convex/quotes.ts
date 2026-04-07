@@ -1,4 +1,5 @@
 import { v } from "convex/values";
+import { internal } from "./_generated/api";
 import { mutation, query } from "./_generated/server";
 
 export const list = query({
@@ -57,10 +58,19 @@ export const create = mutation({
 		notes: v.optional(v.string()),
 	},
 	handler: async (ctx, args) => {
-		return await ctx.db.insert("quotes", {
+		const quoteId = await ctx.db.insert("quotes", {
 			...args,
 			status: "draft",
 		});
+
+		await ctx.runMutation(internal.activityLog.logActivity, {
+			siteUrl: args.siteUrl,
+			clientId: args.clientId,
+			action: "quote_created",
+			description: `quote ${args.quoteNumber} created`,
+		});
+
+		return quoteId;
 	},
 });
 
@@ -95,14 +105,34 @@ export const update = mutation({
 export const markSent = mutation({
 	args: { quoteId: v.id("quotes") },
 	handler: async (ctx, { quoteId }) => {
+		const quote = await ctx.db.get(quoteId);
 		await ctx.db.patch(quoteId, { status: "sent", sentAt: Date.now() });
+
+		if (quote) {
+			await ctx.runMutation(internal.activityLog.logActivity, {
+				siteUrl: quote.siteUrl,
+				clientId: quote.clientId,
+				action: "quote_sent",
+				description: `quote ${quote.quoteNumber} sent`,
+			});
+		}
 	},
 });
 
 export const markAccepted = mutation({
 	args: { quoteId: v.id("quotes") },
 	handler: async (ctx, { quoteId }) => {
+		const quote = await ctx.db.get(quoteId);
 		await ctx.db.patch(quoteId, { status: "accepted", acceptedAt: Date.now() });
+
+		if (quote) {
+			await ctx.runMutation(internal.activityLog.logActivity, {
+				siteUrl: quote.siteUrl,
+				clientId: quote.clientId,
+				action: "quote_accepted",
+				description: `quote ${quote.quoteNumber} accepted`,
+			});
+		}
 	},
 });
 

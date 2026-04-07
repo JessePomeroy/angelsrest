@@ -1,4 +1,5 @@
 import { v } from "convex/values";
+import { internal } from "./_generated/api";
 import { mutation, query } from "./_generated/server";
 
 export const list = query({
@@ -53,10 +54,19 @@ export const create = mutation({
 		depositAmount: v.optional(v.number()),
 	},
 	handler: async (ctx, args) => {
-		return await ctx.db.insert("contracts", {
+		const contractId = await ctx.db.insert("contracts", {
 			...args,
 			status: "draft",
 		});
+
+		await ctx.runMutation(internal.activityLog.logActivity, {
+			siteUrl: args.siteUrl,
+			clientId: args.clientId,
+			action: "contract_created",
+			description: `contract "${args.title}" created`,
+		});
+
+		return contractId;
 	},
 });
 
@@ -85,14 +95,34 @@ export const update = mutation({
 export const markSent = mutation({
 	args: { contractId: v.id("contracts") },
 	handler: async (ctx, { contractId }) => {
+		const contract = await ctx.db.get(contractId);
 		await ctx.db.patch(contractId, { status: "sent", sentAt: Date.now() });
+
+		if (contract) {
+			await ctx.runMutation(internal.activityLog.logActivity, {
+				siteUrl: contract.siteUrl,
+				clientId: contract.clientId,
+				action: "contract_sent",
+				description: `contract "${contract.title}" sent`,
+			});
+		}
 	},
 });
 
 export const markSigned = mutation({
 	args: { contractId: v.id("contracts") },
 	handler: async (ctx, { contractId }) => {
+		const contract = await ctx.db.get(contractId);
 		await ctx.db.patch(contractId, { status: "signed", signedAt: Date.now() });
+
+		if (contract) {
+			await ctx.runMutation(internal.activityLog.logActivity, {
+				siteUrl: contract.siteUrl,
+				clientId: contract.clientId,
+				action: "contract_signed",
+				description: `contract "${contract.title}" signed`,
+			});
+		}
 	},
 });
 

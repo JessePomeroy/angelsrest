@@ -43,8 +43,13 @@ import "$lib/styles/global.css";
 let { children, data }: { children: Snippet; data: any } = $props();
 
 const ogTitle = $derived(data.siteSettings?.siteTitle || "Angel's Rest");
-const ogDesc = $derived(data.siteSettings?.seo?.description || "Photography by Jesse Pomeroy");
-const ogImage = $derived(data.siteSettings?.seo?.ogImageUrl || "https://www.angelsrest.online/og-image.png");
+const ogDesc = $derived(
+	data.siteSettings?.seo?.description || "Photography by Jesse Pomeroy",
+);
+const ogImage = $derived(
+	data.siteSettings?.seo?.ogImageUrl ||
+		"https://www.angelsrest.online/og-image.png",
+);
 
 // Vercel analytics
 injectAnalytics();
