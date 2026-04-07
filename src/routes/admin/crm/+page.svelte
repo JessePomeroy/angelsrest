@@ -1,4 +1,5 @@
 <script lang="ts">
+import FeatureGate from "$lib/admin/components/FeatureGate.svelte";
 import SEO from "$lib/components/SEO.svelte";
 
 let { data } = $props();
@@ -257,6 +258,7 @@ function getCategoryColor(category: string): string {
 
 <SEO title="Clients | Admin" description="Manage clients" />
 
+<FeatureGate feature="crm" tier={data.tier}>
 <div class="crm-page">
 	<header class="page-header">
 		<div class="header-left">
@@ -596,6 +598,7 @@ function getCategoryColor(category: string): string {
 		</div>
 	</div>
 {/if}
+</FeatureGate>
 
 <style>
 	/* Page layout */

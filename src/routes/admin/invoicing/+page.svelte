@@ -1,4 +1,5 @@
 <script lang="ts">
+import FeatureGate from "$lib/admin/components/FeatureGate.svelte";
 import SEO from "$lib/components/SEO.svelte";
 
 let { data } = $props();
@@ -381,6 +382,7 @@ async function deleteInvoice() {
 
 <SEO title="Invoicing | Admin" description="Manage invoices" />
 
+<FeatureGate feature="invoicing" tier={data.tier}>
 <div class="invoice-page">
 	<header class="page-header">
 		<div class="header-left">
@@ -855,6 +857,7 @@ async function deleteInvoice() {
 		</div>
 	</div>
 {/if}
+</FeatureGate>
 
 <style>
 	.invoice-page {

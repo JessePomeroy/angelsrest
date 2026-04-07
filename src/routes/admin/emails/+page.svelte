@@ -1,4 +1,5 @@
 <script lang="ts">
+import FeatureGate from "$lib/admin/components/FeatureGate.svelte";
 import SEO from "$lib/components/SEO.svelte";
 
 let { data } = $props();
@@ -241,6 +242,7 @@ async function deleteTemplate() {
 
 <SEO title="Email Templates | Admin" description="Manage email templates" />
 
+<FeatureGate feature="emails" tier={data.tier}>
 <div class="emails-page">
 	<header class="page-header">
 		<div class="header-left">
@@ -527,6 +529,7 @@ async function deleteTemplate() {
 		</div>
 	</div>
 {/if}
+</FeatureGate>
 
 <style>
 	.emails-page {

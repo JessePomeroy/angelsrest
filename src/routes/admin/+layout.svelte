@@ -1,26 +1,66 @@
 <script lang="ts">
 import { page } from "$app/stores";
+import { type Feature, hasFeature, type Tier } from "$lib/admin/features";
 
-let { children } = $props();
+let { data, children } = $props();
 
+let tier: Tier = $derived(data.tier);
 let mobileMenuOpen = $state(false);
 
-const navItems = [
-	{ href: "/admin", label: "dashboard", icon: "grid" },
-	{ href: "/admin/orders", label: "orders", icon: "package" },
-	{ href: "/admin/inquiries", label: "inquiries", icon: "mail" },
-	{ href: "/admin/galleries", label: "galleries", icon: "image" },
-	{ href: "/admin/crm", label: "clients", icon: "clients" },
-	{ href: "/admin/invoicing", label: "invoicing", icon: "invoicing" },
-	{ href: "/admin/quotes", label: "quotes", icon: "quotes" },
-	{ href: "/admin/contracts", label: "contracts", icon: "contracts" },
-	{ href: "/admin/emails", label: "emails", icon: "emails" },
-	{ href: "/admin/messages", label: "messages", icon: "messages" },
+const navItems: {
+	href: string;
+	label: string;
+	icon: string;
+	feature?: Feature;
+	separator?: boolean;
+	creatorOnly?: boolean;
+}[] = [
+	{ href: "/admin", label: "dashboard", icon: "grid", feature: "dashboard" },
+	{
+		href: "/admin/orders",
+		label: "orders",
+		icon: "package",
+		feature: "orders",
+	},
+	{
+		href: "/admin/inquiries",
+		label: "inquiries",
+		icon: "mail",
+		feature: "inquiries",
+	},
+	{
+		href: "/admin/galleries",
+		label: "galleries",
+		icon: "image",
+		feature: "galleries",
+	},
+	{ href: "/admin/crm", label: "clients", icon: "clients", feature: "crm" },
+	{
+		href: "/admin/invoicing",
+		label: "invoicing",
+		icon: "invoicing",
+		feature: "invoicing",
+	},
+	{ href: "/admin/quotes", label: "quotes", icon: "quotes", feature: "quotes" },
+	{
+		href: "/admin/contracts",
+		label: "contracts",
+		icon: "contracts",
+		feature: "contracts",
+	},
+	{ href: "/admin/emails", label: "emails", icon: "emails", feature: "emails" },
+	{
+		href: "/admin/messages",
+		label: "messages",
+		icon: "messages",
+		feature: "messages",
+	},
 	{
 		href: "/admin/platform",
 		label: "platform",
 		icon: "platform",
 		separator: true,
+		creatorOnly: true,
 	},
 ];
 
@@ -58,14 +98,20 @@ function closeMobileMenu() {
 
 		<nav class="sidebar-nav">
 			{#each navItems as item}
+				{@const locked = item.feature ? !hasFeature(tier, item.feature) : false}
+				{@const hidden = item.creatorOnly && !data.isCreator}
+				{#if hidden}
+					<!-- hidden for non-creator -->
+				{:else}
 				{#if item.separator}
 					<div class="nav-separator"></div>
 				{/if}
 				<a
-					href={item.href}
+					href={locked ? "#" : item.href}
 					class="nav-item"
-					class:active={isActive(item.href, $page.url.pathname)}
-					onclick={closeMobileMenu}
+					class:active={!locked && isActive(item.href, $page.url.pathname)}
+					class:locked
+					onclick={(e) => { if (locked) e.preventDefault(); closeMobileMenu(); }}
 				>
 					<svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
 						{#if item.icon === "grid"}
@@ -93,7 +139,13 @@ function closeMobileMenu() {
 						{/if}
 					</svg>
 					<span>{item.label}</span>
+					{#if locked}
+						<svg class="lock-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+							<rect x="3" y="11" width="18" height="11" rx="2" ry="2" /><path d="M7 11V7a5 5 0 0110 0v4" />
+						</svg>
+					{/if}
 				</a>
+				{/if}
 			{/each}
 		</nav>
 
@@ -278,6 +330,22 @@ function closeMobileMenu() {
 
 	.nav-item.active .nav-icon {
 		opacity: 1;
+	}
+
+	.nav-item.locked {
+		opacity: 0.35;
+		cursor: default;
+	}
+
+	.nav-item.locked:hover {
+		color: var(--admin-text-muted);
+	}
+
+	.lock-icon {
+		width: 12px;
+		height: 12px;
+		margin-left: auto;
+		opacity: 0.5;
 	}
 
 	.sidebar-footer {

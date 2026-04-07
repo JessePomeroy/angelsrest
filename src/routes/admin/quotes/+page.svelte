@@ -1,4 +1,5 @@
 <script lang="ts">
+import FeatureGate from "$lib/admin/components/FeatureGate.svelte";
 import SEO from "$lib/components/SEO.svelte";
 
 let { data } = $props();
@@ -468,7 +469,10 @@ async function convertToInvoice() {
 				(q: any) => q._id === selectedQuote._id,
 			);
 			if (idx !== -1) {
-				data.quotes[idx] = { ...data.quotes[idx], convertedToInvoice: invoiceId };
+				data.quotes[idx] = {
+					...data.quotes[idx],
+					convertedToInvoice: invoiceId,
+				};
 				data.quotes = [...data.quotes];
 			}
 			selectedQuote = { ...selectedQuote, convertedToInvoice: invoiceId };
@@ -665,6 +669,7 @@ async function deletePreset() {
 
 <SEO title="Quotes | Admin" description="Manage quotes" />
 
+<FeatureGate feature="quotes" tier={data.tier}>
 <div class="quote-page">
 	<header class="page-header">
 		<div class="header-left">
@@ -1318,6 +1323,7 @@ async function deletePreset() {
 		</div>
 	</div>
 {/if}
+</FeatureGate>
 
 <style>
 	.quote-page {

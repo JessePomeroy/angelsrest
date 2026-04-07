@@ -1,4 +1,5 @@
 <script lang="ts">
+import FeatureGate from "$lib/admin/components/FeatureGate.svelte";
 import SEO from "$lib/components/SEO.svelte";
 
 interface Thread {
@@ -27,7 +28,7 @@ interface Message {
 	_creationTime: number;
 }
 
-let { data }: { data: { threads: Thread[] } } = $props();
+let { data } = $props();
 
 let threads: Thread[] = $state([]);
 let threadsInitialized = false;
@@ -167,6 +168,7 @@ function handleKeydown(e: KeyboardEvent) {
 
 <SEO title="Messages | Admin" description="Platform client messages" />
 
+<FeatureGate feature="messages" tier={data.tier}>
 <div class="messages-page">
 	<header class="page-header">
 		<h1>messages</h1>
@@ -259,6 +261,7 @@ function handleKeydown(e: KeyboardEvent) {
 		</div>
 	{/if}
 </div>
+</FeatureGate>
 
 <style>
 	.messages-page {
