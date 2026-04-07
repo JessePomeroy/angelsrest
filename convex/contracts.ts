@@ -109,6 +109,22 @@ export const markSigned = mutation({
 	},
 });
 
+export const sign = mutation({
+	args: {
+		contractId: v.id("contracts"),
+		signedByName: v.string(),
+		signedByEmail: v.optional(v.string()),
+		signatureData: v.optional(v.string()),
+	},
+	handler: async (ctx, { contractId, ...signData }) => {
+		await ctx.db.patch(contractId, {
+			...signData,
+			status: "signed",
+			signedAt: Date.now(),
+		});
+	},
+});
+
 export const remove = mutation({
 	args: { contractId: v.id("contracts"), siteUrl: v.string() },
 	handler: async (ctx, { contractId, siteUrl }) => {
