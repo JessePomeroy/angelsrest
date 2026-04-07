@@ -3,6 +3,7 @@ import { formatDateTime } from "../utils";
 
 let { data } = $props();
 
+// svelte-ignore state_referenced_locally
 let inquiries = $state(data.inquiries);
 let selectedInquiry = $state<any>(null);
 let statusFilter = $state("all");
@@ -139,17 +140,16 @@ function replyViaEmail(email: string, subject: string) {
 
 <!-- Detail modal -->
 {#if selectedInquiry}
-	<!-- svelte-ignore a11y_no_static_element_interactions a11y_click_events_have_key_events -->
 	<div
 		class="modal-overlay"
 		role="dialog"
+		tabindex="-1"
 		aria-modal="true"
 		aria-label="Inquiry details"
 		onclick={closeModal}
 		onkeydown={(e) => { if (e.key === "Escape") closeModal(); }}
 	>
-		<!-- svelte-ignore a11y_no_static_element_interactions a11y_click_events_have_key_events -->
-		<div class="modal-content" onclick={(e) => e.stopPropagation()}>
+		<div class="modal-content" role="presentation" onclick={(e) => e.stopPropagation()} onkeydown={(e) => e.stopPropagation()}>
 			<div class="modal-header">
 				<div>
 					<h2>{selectedInquiry.subject || "No Subject"}</h2>

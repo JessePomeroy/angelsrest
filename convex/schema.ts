@@ -80,33 +80,42 @@ export default defineSchema({
 		.index("by_orderNumber", ["siteUrl", "orderNumber"])
 		.index("by_customerEmail", ["siteUrl", "customerEmail"]),
 
-	// Photographer's clients (the people they photograph) — Full tier only
+	// Clients (photography clients + web dev clients)
 	photographyClients: defineTable({
 		siteUrl: v.string(),
 		name: v.string(),
 		email: v.optional(v.string()),
 		phone: v.optional(v.string()),
+		category: v.union(v.literal("photography"), v.literal("web")),
 		type: v.optional(
 			v.union(
+				// Photography types
 				v.literal("wedding"),
 				v.literal("portrait"),
 				v.literal("family"),
 				v.literal("commercial"),
 				v.literal("event"),
+				// Web dev types
+				v.literal("website"),
+				v.literal("redesign"),
+				v.literal("maintenance"),
 				v.literal("other"),
 			),
 		),
 		status: v.union(
 			v.literal("lead"),
 			v.literal("booked"),
+			v.literal("in-progress"),
 			v.literal("completed"),
 			v.literal("archived"),
 		),
 		source: v.optional(v.string()),
 		notes: v.optional(v.string()),
+		siteUrl_client: v.optional(v.string()),
 	})
 		.index("by_siteUrl", ["siteUrl"])
-		.index("by_siteUrl_status", ["siteUrl", "status"]),
+		.index("by_siteUrl_status", ["siteUrl", "status"])
+		.index("by_siteUrl_category", ["siteUrl", "category"]),
 
 	// Invoices — Full tier only
 	invoices: defineTable({

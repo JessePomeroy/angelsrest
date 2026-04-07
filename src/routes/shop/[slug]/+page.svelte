@@ -323,10 +323,11 @@ async function handleCheckout() {
 
             <!-- Coupon Code Input -->
             <div class="mt-4">
-                <label class="block text-sm text-surface-600-300-token mb-1">
+                <label for="promo-code" class="block text-sm text-surface-600-300-token mb-1">
                     promo code
                 </label>
                 <input
+                    id="promo-code"
                     type="text"
                     bind:value={couponCode}
                     placeholder="enter code"
@@ -349,11 +350,13 @@ async function handleCheckout() {
             {#if data.product.category !== "digital" && data.product.availablePapers?.length > 0}
                 <div>
                     <label
+                        for="paper-type"
                         class="block text-sm text-surface-600-300-token mb-1"
                     >
                         Paper Type
                     </label>
                     <select
+                        id="paper-type"
                         class="select w-full"
                         bind:value={selectedPaperIndex}
                     >

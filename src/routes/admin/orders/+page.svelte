@@ -445,19 +445,20 @@ function exportCSV() {
 </div>
 
 {#if selectedOrder}
-	<!-- svelte-ignore a11y_no_static_element_interactions a11y_click_events_have_key_events -->
-	<div 
+	<div
 		class="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4"
 		role="dialog"
+		tabindex="-1"
 		aria-modal="true"
 		aria-label="Order details"
 		onclick={closeModal}
 		onkeydown={(e) => { if (e.key === 'Escape') closeModal(); }}
 	>
-		<!-- svelte-ignore a11y_no_static_element_interactions a11y_click_events_have_key_events -->
-		<div 
+		<div
 			class="bg-gray-800 p-6 rounded-lg max-w-2xl w-full max-h-[90vh] overflow-y-auto"
+			role="presentation"
 			onclick={(e) => e.stopPropagation()}
+			onkeydown={(e) => e.stopPropagation()}
 		>
 			<div class="flex justify-between items-start mb-4">
 				<div>
@@ -471,8 +472,9 @@ function exportCSV() {
 			</div>
 
 			<div class="mb-4">
-				<label class="block mb-2 text-sm text-gray-400">Status</label>
+				<label for="order-status" class="block mb-2 text-sm text-gray-400">Status</label>
 				<select
+					id="order-status"
 					value={selectedOrder.status}
 					onchange={(e) => updateStatus(selectedOrder._id, e.currentTarget.value)}
 					class="w-full px-4 py-2 bg-gray-700 border border-gray-600 rounded text-white capitalize"
@@ -512,8 +514,9 @@ function exportCSV() {
 			</div>
 
 			<div class="mb-4">
-				<label class="block mb-2 text-sm text-gray-400">Notes</label>
+				<label for="order-notes" class="block mb-2 text-sm text-gray-400">Notes</label>
 				<textarea
+					id="order-notes"
 					bind:value={notesValue}
 					class="w-full px-4 py-2 bg-gray-700 border border-gray-600 rounded text-white"
 					rows="3"

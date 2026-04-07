@@ -8,7 +8,9 @@ import {
 
 let { data } = $props();
 
-const { stats, dailyRevenue, recentOrders } = data;
+const stats = $derived(data.stats);
+const dailyRevenue = $derived(data.dailyRevenue);
+const recentOrders = $derived(data.recentOrders);
 
 // Sparkline chart calculations
 const chartHeight = 80;

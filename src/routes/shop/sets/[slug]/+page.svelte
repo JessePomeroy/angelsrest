@@ -131,11 +131,13 @@ async function handleCheckout() {
                 {#if data.printSet.availablePapers?.length > 0}
                     <div class="mb-4">
                         <label
+                            for="set-paper-type"
                             class="block text-sm text-surface-600-300-token mb-1"
                         >
                             Paper Type
                         </label>
                         <select
+                            id="set-paper-type"
                             bind:value={selectedPaperIndex}
                             class="select w-full"
                         >
@@ -155,11 +157,13 @@ async function handleCheckout() {
                 <!-- Coupon code input -->
                 <div class="mt-4">
                     <label
+                        for="set-promo-code"
                         class="block text-sm text-surface-600-300-token mb-1"
                     >
                         promo code
                     </label>
                     <input
+                        id="set-promo-code"
                         type="text"
                         bind:value={couponCode}
                         placeholder="enter code"

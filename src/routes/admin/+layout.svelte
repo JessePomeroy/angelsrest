@@ -10,6 +10,7 @@ const navItems = [
 	{ href: "/admin/orders", label: "Orders", icon: "package" },
 	{ href: "/admin/inquiries", label: "Inquiries", icon: "mail" },
 	{ href: "/admin/galleries", label: "Galleries", icon: "image" },
+	{ href: "/admin/crm", label: "Clients", icon: "clients" },
 ];
 
 function isActive(href: string, pathname: string): boolean {
@@ -35,8 +36,7 @@ function closeMobileMenu() {
 
 	<!-- Mobile overlay -->
 	{#if mobileMenuOpen}
-		<!-- svelte-ignore a11y_no_static_element_interactions a11y_click_events_have_key_events -->
-		<div class="mobile-overlay" onclick={closeMobileMenu}></div>
+		<button class="mobile-overlay" onclick={closeMobileMenu} aria-label="Close menu"></button>
 	{/if}
 
 	<!-- Sidebar -->
@@ -63,6 +63,8 @@ function closeMobileMenu() {
 							<path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z" /><polyline points="22,6 12,13 2,6" />
 						{:else if item.icon === "image"}
 							<rect x="3" y="3" width="18" height="18" rx="2" ry="2" /><circle cx="8.5" cy="8.5" r="1.5" /><polyline points="21 15 16 10 5 21" />
+						{:else if item.icon === "clients"}
+							<path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87"/><path d="M16 3.13a4 4 0 010 7.75"/>
 						{/if}
 					</svg>
 					<span>{item.label}</span>

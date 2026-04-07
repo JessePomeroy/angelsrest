@@ -1,7 +1,7 @@
 <script lang="ts">
 let { data } = $props();
 
-const galleries = data.galleries;
+const galleries = $derived(data.galleries);
 
 const studioBaseUrl = "https://angelsrest.sanity.studio";
 </script>
