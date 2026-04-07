@@ -44,7 +44,7 @@
     // When Biome Svelte support goes stable, remove this ignore and use
     // overrides instead (see docs for recommended rule disables).
     // Use `svelte-check` for Svelte-specific linting in the meantime.
-    "ignore": ["*.svelte"]
+    "ignore": ["*.svelte", "convex/_generated/**"]
   },
   "css": {
     "parser": {
