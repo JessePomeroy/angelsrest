@@ -13,18 +13,15 @@ export const list = query({
 			.order("desc")
 			.collect();
 
-		// Resolve client names
-		const withClients = await Promise.all(
-			all.map(async (invoice) => {
-				const client = await ctx.db.get(invoice.clientId);
-				return { ...invoice, clientName: client?.name ?? "unknown" };
-			}),
-		);
+		const results = all.map((invoice) => ({
+			...invoice,
+			clientName: invoice.clientName ?? "unknown",
+		}));
 
 		if (status) {
-			return withClients.filter((inv) => inv.status === status);
+			return results.filter((inv) => inv.status === status);
 		}
-		return withClients;
+		return results;
 	},
 });
 
@@ -83,8 +80,10 @@ export const create = mutation({
 		parentInvoiceId: v.optional(v.id("invoices")),
 	},
 	handler: async (ctx, args) => {
+		const client = await ctx.db.get(args.clientId);
 		return await ctx.db.insert("invoices", {
 			...args,
+			clientName: client?.name ?? "unknown",
 			status: "draft",
 		});
 	},
@@ -93,6 +92,7 @@ export const create = mutation({
 export const update = mutation({
 	args: {
 		invoiceId: v.id("invoices"),
+		siteUrl: v.string(),
 		items: v.optional(
 			v.array(
 				v.object({
@@ -107,7 +107,11 @@ export const update = mutation({
 		dueDate: v.optional(v.string()),
 		status: v.optional(v.string()),
 	},
-	handler: async (ctx, { invoiceId, ...updates }) => {
+	handler: async (ctx, { invoiceId, siteUrl, ...updates }) => {
+		const doc = await ctx.db.get(invoiceId);
+		if (!doc || doc.siteUrl !== siteUrl) {
+			throw new Error("Not found");
+		}
 		const patch: Record<string, unknown> = {};
 		for (const [key, val] of Object.entries(updates)) {
 			if (val !== undefined) patch[key] = val;
@@ -119,8 +123,12 @@ export const update = mutation({
 });
 
 export const markSent = mutation({
-	args: { invoiceId: v.id("invoices") },
-	handler: async (ctx, { invoiceId }) => {
+	args: { invoiceId: v.id("invoices"), siteUrl: v.string() },
+	handler: async (ctx, { invoiceId, siteUrl }) => {
+		const doc = await ctx.db.get(invoiceId);
+		if (!doc || doc.siteUrl !== siteUrl) {
+			throw new Error("Not found");
+		}
 		await ctx.db.patch(invoiceId, {
 			status: "sent",
 			sentAt: Date.now(),
@@ -129,8 +137,12 @@ export const markSent = mutation({
 });
 
 export const markPaid = mutation({
-	args: { invoiceId: v.id("invoices") },
-	handler: async (ctx, { invoiceId }) => {
+	args: { invoiceId: v.id("invoices"), siteUrl: v.string() },
+	handler: async (ctx, { invoiceId, siteUrl }) => {
+		const doc = await ctx.db.get(invoiceId);
+		if (!doc || doc.siteUrl !== siteUrl) {
+			throw new Error("Not found");
+		}
 		await ctx.db.patch(invoiceId, {
 			status: "paid",
 			paidAt: Date.now(),
@@ -139,8 +151,12 @@ export const markPaid = mutation({
 });
 
 export const remove = mutation({
-	args: { invoiceId: v.id("invoices") },
-	handler: async (ctx, { invoiceId }) => {
+	args: { invoiceId: v.id("invoices"), siteUrl: v.string() },
+	handler: async (ctx, { invoiceId, siteUrl }) => {
+		const doc = await ctx.db.get(invoiceId);
+		if (!doc || doc.siteUrl !== siteUrl) {
+			throw new Error("Not found");
+		}
 		await ctx.db.delete(invoiceId);
 	},
 });

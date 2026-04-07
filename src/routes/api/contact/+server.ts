@@ -1,6 +1,7 @@
-import { Resend } from "resend";
 import { RESEND_API_KEY } from "$env/static/private";
 import { adminClient } from "$lib/sanity/adminClient";
+import { trimString, validateEmail } from "$lib/server/validation";
+import { Resend } from "resend";
 import type { RequestHandler } from "./$types";
 
 const resend = new Resend(RESEND_API_KEY);
@@ -8,28 +9,37 @@ const resend = new Resend(RESEND_API_KEY);
 export const POST: RequestHandler = async ({ request }) => {
 	const { name, email, subject, message } = await request.json();
 
-	if (!name || !email || !message) {
+	const trimmedName = trimString(name, 255);
+	const trimmedEmail = trimString(email, 255);
+	const trimmedSubject = trimString(subject, 255);
+	const trimmedMessage = trimString(message, 5000);
+
+	if (!trimmedName || !trimmedEmail || !trimmedMessage) {
 		return new Response(JSON.stringify({ error: "Missing required fields" }), {
 			status: 400,
 		});
 	}
 
+	if (!validateEmail(trimmedEmail)) {
+		return new Response(JSON.stringify({ error: "Invalid email format" }), {
+			status: 400,
+		});
+	}
+
 	try {
-		// Send email via Resend
 		await resend.emails.send({
 			from: "contact@angelsrest.online",
 			to: "thinkingofview@gmail.com",
-			subject: subject || `Contact from ${name}`,
-			text: `Name: ${name}\nEmail: ${email}\n\n${message}`,
+			subject: trimmedSubject || `Contact from ${trimmedName}`,
+			text: `Name: ${trimmedName}\nEmail: ${trimmedEmail}\n\n${trimmedMessage}`,
 		});
 
-		// Create inquiry document in Sanity
 		await adminClient.create({
 			_type: "inquiry",
-			name,
-			email,
-			subject: subject || null,
-			message,
+			name: trimmedName,
+			email: trimmedEmail,
+			subject: trimmedSubject || null,
+			message: trimmedMessage,
 			status: "new",
 			submittedAt: new Date().toISOString(),
 		});

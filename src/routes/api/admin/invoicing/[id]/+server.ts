@@ -1,6 +1,7 @@
 import { error, json } from "@sveltejs/kit";
 import { api } from "$convex/api";
 import type { Id } from "$convex/dataModel";
+import { SITE_DOMAIN } from "$lib/config/site";
 import { getConvex } from "$lib/server/convexClient";
 
 const convex = getConvex();
@@ -13,24 +14,29 @@ export async function PATCH({ params, request }) {
 		if (data.action === "send") {
 			await convex.mutation(api.invoices.markSent, {
 				invoiceId: id as Id<"invoices">,
+				siteUrl: SITE_DOMAIN,
 			});
 		} else if (data.action === "pay") {
 			await convex.mutation(api.invoices.markPaid, {
 				invoiceId: id as Id<"invoices">,
+				siteUrl: SITE_DOMAIN,
 			});
 		} else if (data.action === "overdue") {
 			await convex.mutation(api.invoices.update, {
 				invoiceId: id as Id<"invoices">,
+				siteUrl: SITE_DOMAIN,
 				status: "overdue",
 			});
 		} else if (data.action === "cancel") {
 			await convex.mutation(api.invoices.update, {
 				invoiceId: id as Id<"invoices">,
+				siteUrl: SITE_DOMAIN,
 				status: "canceled",
 			});
 		} else {
 			await convex.mutation(api.invoices.update, {
 				invoiceId: id as Id<"invoices">,
+				siteUrl: SITE_DOMAIN,
 				...data,
 			});
 		}
@@ -47,6 +53,7 @@ export async function DELETE({ params }) {
 	try {
 		await convex.mutation(api.invoices.remove, {
 			invoiceId: id as Id<"invoices">,
+			siteUrl: SITE_DOMAIN,
 		});
 		return json({ success: true });
 	} catch (err) {

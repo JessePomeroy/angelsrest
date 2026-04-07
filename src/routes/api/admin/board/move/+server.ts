@@ -1,5 +1,6 @@
 import { error, json } from "@sveltejs/kit";
 import { api } from "$convex/api";
+import { SITE_DOMAIN } from "$lib/config/site";
 import { getConvex } from "$lib/server/convexClient";
 
 const convex = getConvex();
@@ -17,6 +18,7 @@ export async function POST({ request }) {
 	try {
 		await convex.mutation(api.kanban.moveCard, {
 			clientId,
+			siteUrl: SITE_DOMAIN,
 			targetColumnId,
 			targetPosition,
 		});

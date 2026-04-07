@@ -3,47 +3,68 @@ import { api } from "$convex/api";
 import type { Id } from "$convex/dataModel";
 import { SITE_DOMAIN } from "$lib/config/site";
 import { getConvex } from "$lib/server/convexClient";
+import { trimString, validatePositiveNumber } from "$lib/server/validation";
 
 const convex = getConvex();
 
 export async function POST({ request }) {
 	const data = await request.json();
 
-	if (!data.invoiceNumber || !data.clientId || !data.items?.length) {
+	const invoiceNumber = trimString(data.invoiceNumber, 255);
+	if (!invoiceNumber || !data.clientId || !data.items?.length) {
 		throw error(400, "Invoice number, client, and at least one item required");
+	}
+
+	// Validate item prices
+	for (const item of data.items) {
+		if (!item.description || typeof item.description !== "string") {
+			throw error(400, "Each item must have a description");
+		}
+		item.description = item.description.trim().slice(0, 255);
+		item.quantity = validatePositiveNumber(item.quantity, "quantity");
+		item.unitPrice = validatePositiveNumber(item.unitPrice, "unitPrice");
 	}
 
 	try {
 		const args: Record<string, unknown> = {
 			siteUrl: SITE_DOMAIN,
-			invoiceNumber: data.invoiceNumber,
+			invoiceNumber,
 			clientId: data.clientId as Id<"photographyClients">,
 			invoiceType: data.invoiceType || "one-time",
 			items: data.items,
-			taxPercent: data.taxPercent || undefined,
-			notes: data.notes || undefined,
-			dueDate: data.dueDate || undefined,
+			taxPercent:
+				data.taxPercent !== undefined
+					? validatePositiveNumber(data.taxPercent, "taxPercent")
+					: undefined,
+			notes: trimString(data.notes, 5000) || undefined,
+			dueDate: trimString(data.dueDate, 255) || undefined,
 		};
 
-		// Recurring fields
 		if (data.recurring) {
 			args.recurring = data.recurring;
 		}
 
-		// Deposit fields
 		if (data.depositPercent !== undefined) {
-			args.depositPercent = data.depositPercent;
+			args.depositPercent = validatePositiveNumber(
+				data.depositPercent,
+				"depositPercent",
+			);
 		}
 		if (data.totalProject !== undefined) {
-			args.totalProject = data.totalProject;
+			args.totalProject = validatePositiveNumber(
+				data.totalProject,
+				"totalProject",
+			);
 		}
 
-		// Milestone fields
 		if (data.milestoneName) {
-			args.milestoneName = data.milestoneName;
+			args.milestoneName = trimString(data.milestoneName, 255);
 		}
 		if (data.milestoneIndex !== undefined) {
-			args.milestoneIndex = data.milestoneIndex;
+			args.milestoneIndex = validatePositiveNumber(
+				data.milestoneIndex,
+				"milestoneIndex",
+			);
 		}
 		if (data.parentInvoiceId) {
 			args.parentInvoiceId = data.parentInvoiceId as Id<"invoices">;

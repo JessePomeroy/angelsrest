@@ -1,4 +1,5 @@
 <script lang="ts">
+import DOMPurify from "isomorphic-dompurify";
 import FeatureGate from "$lib/admin/components/FeatureGate.svelte";
 import SEO from "$lib/components/SEO.svelte";
 
@@ -375,7 +376,7 @@ async function deleteTemplate() {
 				{#if formBody}
 					<div class="preview-section">
 						<span class="preview-label">preview</span>
-						<div class="preview-body">{@html highlightVariables(formBody)}</div>
+						<div class="preview-body">{@html DOMPurify.sanitize(highlightVariables(formBody))}</div>
 					</div>
 				{/if}
 
@@ -469,7 +470,7 @@ async function deleteTemplate() {
 					{#if editBody}
 						<div class="preview-section">
 							<span class="preview-label">preview</span>
-							<div class="preview-body">{@html highlightVariables(editBody)}</div>
+							<div class="preview-body">{@html DOMPurify.sanitize(highlightVariables(editBody))}</div>
 						</div>
 					{/if}
 
@@ -497,7 +498,7 @@ async function deleteTemplate() {
 					<div class="detail-fields">
 						<div class="detail-field">
 							<span class="detail-label">body</span>
-							<div class="detail-body-text">{@html highlightVariables(selectedTemplate.body)}</div>
+							<div class="detail-body-text">{@html DOMPurify.sanitize(highlightVariables(selectedTemplate.body))}</div>
 						</div>
 
 						{#if selectedTemplate.variables?.length}

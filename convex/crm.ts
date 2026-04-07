@@ -1,3 +1,4 @@
+import { paginationOptsValidator } from "convex/server";
 import { v } from "convex/values";
 import { mutation, query } from "./_generated/server";
 
@@ -30,6 +31,30 @@ export const listClients = query({
 			return results.filter((c) => c.status === status);
 		}
 		return results;
+	},
+});
+
+export const listClientsPaginated = query({
+	args: {
+		siteUrl: v.string(),
+		paginationOpts: paginationOptsValidator,
+		category: v.optional(v.union(v.literal("photography"), v.literal("web"))),
+	},
+	handler: async (ctx, { siteUrl, paginationOpts, category }) => {
+		if (category) {
+			return await ctx.db
+				.query("photographyClients")
+				.withIndex("by_siteUrl_category", (q) =>
+					q.eq("siteUrl", siteUrl).eq("category", category),
+				)
+				.order("desc")
+				.paginate(paginationOpts);
+		}
+		return await ctx.db
+			.query("photographyClients")
+			.withIndex("by_siteUrl", (q) => q.eq("siteUrl", siteUrl))
+			.order("desc")
+			.paginate(paginationOpts);
 	},
 });
 
@@ -75,6 +100,7 @@ export const createClient = mutation({
 export const updateClient = mutation({
 	args: {
 		clientId: v.id("photographyClients"),
+		siteUrl: v.string(),
 		name: v.optional(v.string()),
 		email: v.optional(v.string()),
 		phone: v.optional(v.string()),
@@ -85,7 +111,11 @@ export const updateClient = mutation({
 		notes: v.optional(v.string()),
 		siteUrl_client: v.optional(v.string()),
 	},
-	handler: async (ctx, { clientId, ...updates }) => {
+	handler: async (ctx, { clientId, siteUrl, ...updates }) => {
+		const doc = await ctx.db.get(clientId);
+		if (!doc || doc.siteUrl !== siteUrl) {
+			throw new Error("Not found");
+		}
 		const patch: Record<string, unknown> = {};
 		for (const [key, val] of Object.entries(updates)) {
 			if (val !== undefined) patch[key] = val;
@@ -97,8 +127,12 @@ export const updateClient = mutation({
 });
 
 export const deleteClient = mutation({
-	args: { clientId: v.id("photographyClients") },
-	handler: async (ctx, { clientId }) => {
+	args: { clientId: v.id("photographyClients"), siteUrl: v.string() },
+	handler: async (ctx, { clientId, siteUrl }) => {
+		const doc = await ctx.db.get(clientId);
+		if (!doc || doc.siteUrl !== siteUrl) {
+			throw new Error("Not found");
+		}
 		await ctx.db.delete(clientId);
 	},
 });

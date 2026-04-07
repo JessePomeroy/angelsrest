@@ -67,6 +67,7 @@ export const create = mutation({
 export const update = mutation({
 	args: {
 		quoteId: v.id("quotes"),
+		siteUrl: v.string(),
 		packages: v.optional(
 			v.array(
 				v.object({
@@ -81,7 +82,11 @@ export const update = mutation({
 		notes: v.optional(v.string()),
 		status: v.optional(v.string()),
 	},
-	handler: async (ctx, { quoteId, ...updates }) => {
+	handler: async (ctx, { quoteId, siteUrl, ...updates }) => {
+		const doc = await ctx.db.get(quoteId);
+		if (!doc || doc.siteUrl !== siteUrl) {
+			throw new Error("Not found");
+		}
 		const patch: Record<string, unknown> = {};
 		for (const [key, val] of Object.entries(updates)) {
 			if (val !== undefined) patch[key] = val;
@@ -93,15 +98,23 @@ export const update = mutation({
 });
 
 export const markSent = mutation({
-	args: { quoteId: v.id("quotes") },
-	handler: async (ctx, { quoteId }) => {
+	args: { quoteId: v.id("quotes"), siteUrl: v.string() },
+	handler: async (ctx, { quoteId, siteUrl }) => {
+		const doc = await ctx.db.get(quoteId);
+		if (!doc || doc.siteUrl !== siteUrl) {
+			throw new Error("Not found");
+		}
 		await ctx.db.patch(quoteId, { status: "sent", sentAt: Date.now() });
 	},
 });
 
 export const markAccepted = mutation({
-	args: { quoteId: v.id("quotes") },
-	handler: async (ctx, { quoteId }) => {
+	args: { quoteId: v.id("quotes"), siteUrl: v.string() },
+	handler: async (ctx, { quoteId, siteUrl }) => {
+		const doc = await ctx.db.get(quoteId);
+		if (!doc || doc.siteUrl !== siteUrl) {
+			throw new Error("Not found");
+		}
 		await ctx.db.patch(quoteId, { status: "accepted", acceptedAt: Date.now() });
 	},
 });
@@ -109,6 +122,7 @@ export const markAccepted = mutation({
 export const convertToInvoice = mutation({
 	args: {
 		quoteId: v.id("quotes"),
+		siteUrl: v.string(),
 		invoiceNumber: v.string(),
 		invoiceType: v.union(
 			v.literal("one-time"),
@@ -122,14 +136,14 @@ export const convertToInvoice = mutation({
 	},
 	handler: async (
 		ctx,
-		{ quoteId, invoiceNumber, invoiceType, dueDate, notes },
+		{ quoteId, siteUrl, invoiceNumber, invoiceType, dueDate, notes },
 	) => {
 		const quote = await ctx.db.get(quoteId);
-		if (!quote) throw new Error("Quote not found");
+		if (!quote || quote.siteUrl !== siteUrl) throw new Error("Not found");
 
 		// Convert packages to invoice line items
 		const items = quote.packages.map((pkg) => ({
-			description: pkg.name + (pkg.description ? ` — ${pkg.description}` : ""),
+			description: pkg.name + (pkg.description ? ` \u2014 ${pkg.description}` : ""),
 			quantity: 1,
 			unitPrice: pkg.price,
 		}));
@@ -154,15 +168,23 @@ export const convertToInvoice = mutation({
 });
 
 export const markDeclined = mutation({
-	args: { quoteId: v.id("quotes") },
-	handler: async (ctx, { quoteId }) => {
+	args: { quoteId: v.id("quotes"), siteUrl: v.string() },
+	handler: async (ctx, { quoteId, siteUrl }) => {
+		const doc = await ctx.db.get(quoteId);
+		if (!doc || doc.siteUrl !== siteUrl) {
+			throw new Error("Not found");
+		}
 		await ctx.db.patch(quoteId, { status: "declined" });
 	},
 });
 
 export const remove = mutation({
-	args: { quoteId: v.id("quotes") },
-	handler: async (ctx, { quoteId }) => {
+	args: { quoteId: v.id("quotes"), siteUrl: v.string() },
+	handler: async (ctx, { quoteId, siteUrl }) => {
+		const doc = await ctx.db.get(quoteId);
+		if (!doc || doc.siteUrl !== siteUrl) {
+			throw new Error("Not found");
+		}
 		await ctx.db.delete(quoteId);
 	},
 });
@@ -200,6 +222,7 @@ export const createPreset = mutation({
 export const updatePreset = mutation({
 	args: {
 		presetId: v.id("quotePresets"),
+		siteUrl: v.string(),
 		name: v.optional(v.string()),
 		category: v.optional(v.union(v.literal("photography"), v.literal("web"))),
 		packages: v.optional(
@@ -213,7 +236,11 @@ export const updatePreset = mutation({
 			),
 		),
 	},
-	handler: async (ctx, { presetId, ...updates }) => {
+	handler: async (ctx, { presetId, siteUrl, ...updates }) => {
+		const doc = await ctx.db.get(presetId);
+		if (!doc || doc.siteUrl !== siteUrl) {
+			throw new Error("Not found");
+		}
 		const patch: Record<string, unknown> = {};
 		for (const [key, val] of Object.entries(updates)) {
 			if (val !== undefined) patch[key] = val;
@@ -225,8 +252,12 @@ export const updatePreset = mutation({
 });
 
 export const removePreset = mutation({
-	args: { presetId: v.id("quotePresets") },
-	handler: async (ctx, { presetId }) => {
+	args: { presetId: v.id("quotePresets"), siteUrl: v.string() },
+	handler: async (ctx, { presetId, siteUrl }) => {
+		const doc = await ctx.db.get(presetId);
+		if (!doc || doc.siteUrl !== siteUrl) {
+			throw new Error("Not found");
+		}
 		await ctx.db.delete(presetId);
 	},
 });

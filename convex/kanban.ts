@@ -199,10 +199,18 @@ export const initializeBoard = mutation({
 export const moveCard = mutation({
 	args: {
 		clientId: v.id("photographyClients"),
+		siteUrl: v.string(),
 		targetColumnId: v.string(),
 		targetPosition: v.number(),
 	},
-	handler: async (ctx, { clientId, targetColumnId, targetPosition }) => {
+	handler: async (
+		ctx,
+		{ clientId, siteUrl, targetColumnId, targetPosition },
+	) => {
+		const doc = await ctx.db.get(clientId);
+		if (!doc || doc.siteUrl !== siteUrl) {
+			throw new Error("Not found");
+		}
 		await ctx.db.patch(clientId, {
 			boardColumnId: targetColumnId,
 			boardPosition: targetPosition,
@@ -213,11 +221,14 @@ export const moveCard = mutation({
 export const addColumn = mutation({
 	args: {
 		configId: v.id("boardConfigs"),
+		siteUrl: v.string(),
 		name: v.string(),
 	},
-	handler: async (ctx, { configId, name }) => {
+	handler: async (ctx, { configId, siteUrl, name }) => {
 		const config = await ctx.db.get(configId);
-		if (!config) return;
+		if (!config || config.siteUrl !== siteUrl) {
+			throw new Error("Not found");
+		}
 
 		const newColumn = {
 			id: generateId(),
@@ -236,12 +247,15 @@ export const addColumn = mutation({
 export const renameColumn = mutation({
 	args: {
 		configId: v.id("boardConfigs"),
+		siteUrl: v.string(),
 		columnId: v.string(),
 		name: v.string(),
 	},
-	handler: async (ctx, { configId, columnId, name }) => {
+	handler: async (ctx, { configId, siteUrl, columnId, name }) => {
 		const config = await ctx.db.get(configId);
-		if (!config) return;
+		if (!config || config.siteUrl !== siteUrl) {
+			throw new Error("Not found");
+		}
 
 		await ctx.db.patch(configId, {
 			columns: config.columns.map((col) =>
@@ -254,12 +268,15 @@ export const renameColumn = mutation({
 export const deleteColumn = mutation({
 	args: {
 		configId: v.id("boardConfigs"),
+		siteUrl: v.string(),
 		columnId: v.string(),
 		moveToColumnId: v.optional(v.string()),
 	},
-	handler: async (ctx, { configId, columnId, moveToColumnId }) => {
+	handler: async (ctx, { configId, siteUrl, columnId, moveToColumnId }) => {
 		const config = await ctx.db.get(configId);
-		if (!config) return;
+		if (!config || config.siteUrl !== siteUrl) {
+			throw new Error("Not found");
+		}
 
 		// Move clients from deleted column to target column (or first remaining)
 		const remainingColumns = config.columns.filter((c) => c.id !== columnId);
@@ -294,11 +311,14 @@ export const deleteColumn = mutation({
 export const reorderColumns = mutation({
 	args: {
 		configId: v.id("boardConfigs"),
+		siteUrl: v.string(),
 		columnIds: v.array(v.string()),
 	},
-	handler: async (ctx, { configId, columnIds }) => {
+	handler: async (ctx, { configId, siteUrl, columnIds }) => {
 		const config = await ctx.db.get(configId);
-		if (!config) return;
+		if (!config || config.siteUrl !== siteUrl) {
+			throw new Error("Not found");
+		}
 
 		const columnMap = new Map(config.columns.map((c) => [c.id, c]));
 		const reordered = columnIds

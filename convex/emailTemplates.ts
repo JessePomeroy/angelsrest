@@ -18,6 +18,22 @@ export const get = query({
 	},
 });
 
+export const getByCategory = query({
+	args: {
+		siteUrl: v.string(),
+		category: v.string(),
+	},
+	handler: async (ctx, { siteUrl, category }) => {
+		return await ctx.db
+			.query("emailTemplates")
+			.withIndex("by_siteUrl_category", (q) =>
+				q.eq("siteUrl", siteUrl).eq("category", category as any),
+			)
+			.take(1)
+			.then((results) => results[0] ?? null);
+	},
+});
+
 export const create = mutation({
 	args: {
 		siteUrl: v.string(),
@@ -43,13 +59,18 @@ export const create = mutation({
 export const update = mutation({
 	args: {
 		templateId: v.id("emailTemplates"),
+		siteUrl: v.string(),
 		name: v.optional(v.string()),
 		category: v.optional(v.string()),
 		subject: v.optional(v.string()),
 		body: v.optional(v.string()),
 		variables: v.optional(v.array(v.string())),
 	},
-	handler: async (ctx, { templateId, ...updates }) => {
+	handler: async (ctx, { templateId, siteUrl, ...updates }) => {
+		const doc = await ctx.db.get(templateId);
+		if (!doc || doc.siteUrl !== siteUrl) {
+			throw new Error("Not found");
+		}
 		const patch: Record<string, unknown> = {};
 		for (const [key, val] of Object.entries(updates)) {
 			if (val !== undefined) patch[key] = val;
@@ -61,8 +82,12 @@ export const update = mutation({
 });
 
 export const remove = mutation({
-	args: { templateId: v.id("emailTemplates") },
-	handler: async (ctx, { templateId }) => {
+	args: { templateId: v.id("emailTemplates"), siteUrl: v.string() },
+	handler: async (ctx, { templateId, siteUrl }) => {
+		const doc = await ctx.db.get(templateId);
+		if (!doc || doc.siteUrl !== siteUrl) {
+			throw new Error("Not found");
+		}
 		await ctx.db.delete(templateId);
 	},
 });

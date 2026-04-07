@@ -63,6 +63,7 @@ export const create = mutation({
 export const update = mutation({
 	args: {
 		contractId: v.id("contracts"),
+		siteUrl: v.string(),
 		title: v.optional(v.string()),
 		body: v.optional(v.string()),
 		eventDate: v.optional(v.string()),
@@ -71,7 +72,11 @@ export const update = mutation({
 		depositAmount: v.optional(v.number()),
 		status: v.optional(v.string()),
 	},
-	handler: async (ctx, { contractId, ...updates }) => {
+	handler: async (ctx, { contractId, siteUrl, ...updates }) => {
+		const doc = await ctx.db.get(contractId);
+		if (!doc || doc.siteUrl !== siteUrl) {
+			throw new Error("Not found");
+		}
 		const patch: Record<string, unknown> = {};
 		for (const [key, val] of Object.entries(updates)) {
 			if (val !== undefined) patch[key] = val;
@@ -83,22 +88,34 @@ export const update = mutation({
 });
 
 export const markSent = mutation({
-	args: { contractId: v.id("contracts") },
-	handler: async (ctx, { contractId }) => {
+	args: { contractId: v.id("contracts"), siteUrl: v.string() },
+	handler: async (ctx, { contractId, siteUrl }) => {
+		const doc = await ctx.db.get(contractId);
+		if (!doc || doc.siteUrl !== siteUrl) {
+			throw new Error("Not found");
+		}
 		await ctx.db.patch(contractId, { status: "sent", sentAt: Date.now() });
 	},
 });
 
 export const markSigned = mutation({
-	args: { contractId: v.id("contracts") },
-	handler: async (ctx, { contractId }) => {
+	args: { contractId: v.id("contracts"), siteUrl: v.string() },
+	handler: async (ctx, { contractId, siteUrl }) => {
+		const doc = await ctx.db.get(contractId);
+		if (!doc || doc.siteUrl !== siteUrl) {
+			throw new Error("Not found");
+		}
 		await ctx.db.patch(contractId, { status: "signed", signedAt: Date.now() });
 	},
 });
 
 export const remove = mutation({
-	args: { contractId: v.id("contracts") },
-	handler: async (ctx, { contractId }) => {
+	args: { contractId: v.id("contracts"), siteUrl: v.string() },
+	handler: async (ctx, { contractId, siteUrl }) => {
+		const doc = await ctx.db.get(contractId);
+		if (!doc || doc.siteUrl !== siteUrl) {
+			throw new Error("Not found");
+		}
 		await ctx.db.delete(contractId);
 	},
 });
@@ -129,11 +146,16 @@ export const createTemplate = mutation({
 export const updateTemplate = mutation({
 	args: {
 		templateId: v.id("contractTemplates"),
+		siteUrl: v.string(),
 		name: v.optional(v.string()),
 		body: v.optional(v.string()),
 		variables: v.optional(v.array(v.string())),
 	},
-	handler: async (ctx, { templateId, ...updates }) => {
+	handler: async (ctx, { templateId, siteUrl, ...updates }) => {
+		const doc = await ctx.db.get(templateId);
+		if (!doc || doc.siteUrl !== siteUrl) {
+			throw new Error("Not found");
+		}
 		const patch: Record<string, unknown> = {};
 		for (const [key, val] of Object.entries(updates)) {
 			if (val !== undefined) patch[key] = val;
@@ -145,8 +167,12 @@ export const updateTemplate = mutation({
 });
 
 export const removeTemplate = mutation({
-	args: { templateId: v.id("contractTemplates") },
-	handler: async (ctx, { templateId }) => {
+	args: { templateId: v.id("contractTemplates"), siteUrl: v.string() },
+	handler: async (ctx, { templateId, siteUrl }) => {
+		const doc = await ctx.db.get(templateId);
+		if (!doc || doc.siteUrl !== siteUrl) {
+			throw new Error("Not found");
+		}
 		await ctx.db.delete(templateId);
 	},
 });

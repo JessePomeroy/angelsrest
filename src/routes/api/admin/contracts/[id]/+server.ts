@@ -1,6 +1,7 @@
 import { error, json } from "@sveltejs/kit";
 import { api } from "$convex/api";
 import type { Id } from "$convex/dataModel";
+import { SITE_DOMAIN } from "$lib/config/site";
 import { getConvex } from "$lib/server/convexClient";
 
 const convex = getConvex();
@@ -17,6 +18,7 @@ export async function PATCH({ params, request }) {
 			if (data.variables !== undefined) updates.variables = data.variables;
 			await convex.mutation(api.contracts.updateTemplate, {
 				templateId: id as Id<"contractTemplates">,
+				siteUrl: SITE_DOMAIN,
 				...updates,
 			});
 			return json({ success: true });
@@ -25,14 +27,17 @@ export async function PATCH({ params, request }) {
 		if (data.action === "send") {
 			await convex.mutation(api.contracts.markSent, {
 				contractId: id as Id<"contracts">,
+				siteUrl: SITE_DOMAIN,
 			});
 		} else if (data.action === "sign") {
 			await convex.mutation(api.contracts.markSigned, {
 				contractId: id as Id<"contracts">,
+				siteUrl: SITE_DOMAIN,
 			});
 		} else {
 			await convex.mutation(api.contracts.update, {
 				contractId: id as Id<"contracts">,
+				siteUrl: SITE_DOMAIN,
 				...data,
 			});
 		}
@@ -58,10 +63,12 @@ export async function DELETE({ params, request }) {
 		if (isTemplate) {
 			await convex.mutation(api.contracts.removeTemplate, {
 				templateId: id as Id<"contractTemplates">,
+				siteUrl: SITE_DOMAIN,
 			});
 		} else {
 			await convex.mutation(api.contracts.remove, {
 				contractId: id as Id<"contracts">,
+				siteUrl: SITE_DOMAIN,
 			});
 		}
 		return json({ success: true });

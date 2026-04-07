@@ -1,6 +1,7 @@
 import { error, json } from "@sveltejs/kit";
 import { api } from "$convex/api";
 import type { Id } from "$convex/dataModel";
+import { SITE_DOMAIN } from "$lib/config/site";
 import { getConvex } from "$lib/server/convexClient";
 
 const convex = getConvex();
@@ -19,6 +20,7 @@ export async function PATCH({ params, request }) {
 
 		await convex.mutation(api.emailTemplates.update, {
 			templateId: id as Id<"emailTemplates">,
+			siteUrl: SITE_DOMAIN,
 			...updates,
 		});
 		return json({ success: true });
@@ -34,6 +36,7 @@ export async function DELETE({ params }) {
 	try {
 		await convex.mutation(api.emailTemplates.remove, {
 			templateId: id as Id<"emailTemplates">,
+			siteUrl: SITE_DOMAIN,
 		});
 		return json({ success: true });
 	} catch (err) {
