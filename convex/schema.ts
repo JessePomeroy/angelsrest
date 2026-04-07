@@ -125,6 +125,7 @@ export default defineSchema({
 		siteUrl: v.string(),
 		invoiceNumber: v.string(),
 		clientId: v.id("photographyClients"),
+		clientName: v.optional(v.string()),
 		invoiceType: v.union(
 			v.literal("one-time"),
 			v.literal("recurring"),
@@ -183,6 +184,7 @@ export default defineSchema({
 		siteUrl: v.string(),
 		quoteNumber: v.string(),
 		clientId: v.id("photographyClients"),
+		clientName: v.optional(v.string()),
 		category: v.optional(v.union(v.literal("photography"), v.literal("web"))),
 		status: v.union(
 			v.literal("draft"),
@@ -229,6 +231,7 @@ export default defineSchema({
 		siteUrl: v.string(),
 		title: v.string(),
 		clientId: v.id("photographyClients"),
+		clientName: v.optional(v.string()),
 		category: v.optional(v.union(v.literal("photography"), v.literal("web"))),
 		templateId: v.optional(v.id("contractTemplates")),
 		status: v.union(
@@ -301,6 +304,44 @@ export default defineSchema({
 	})
 		.index("by_siteUrl", ["siteUrl"])
 		.index("by_siteUrl_and_projectType", ["siteUrl", "projectType"]),
+
+	// Email sending log
+	emailLog: defineTable({
+		siteUrl: v.string(),
+		to: v.string(),
+		subject: v.string(),
+		type: v.union(
+			v.literal("invoice"),
+			v.literal("quote"),
+			v.literal("contract"),
+			v.literal("reminder"),
+			v.literal("custom"),
+		),
+		relatedId: v.optional(v.string()),
+		status: v.union(v.literal("sent"), v.literal("failed")),
+		error: v.optional(v.string()),
+		resendId: v.optional(v.string()),
+	})
+		.index("by_siteUrl", ["siteUrl"])
+		.index("by_siteUrl_and_type", ["siteUrl", "type"]),
+
+	// Portal share tokens — public links for clients to view/act on documents
+	portalTokens: defineTable({
+		token: v.string(),
+		siteUrl: v.string(),
+		type: v.union(
+			v.literal("invoice"),
+			v.literal("quote"),
+			v.literal("contract"),
+		),
+		documentId: v.string(),
+		clientId: v.id("photographyClients"),
+		expiresAt: v.optional(v.number()),
+		used: v.boolean(),
+	})
+		.index("by_token", ["token"])
+		.index("by_siteUrl", ["siteUrl"])
+		.index("by_documentId", ["documentId"]),
 
 	// Contact form inquiries (from public site visitors)
 	inquiries: defineTable({

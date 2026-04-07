@@ -17,6 +17,9 @@ let selectedQuote = $state<any>(null);
 let editMode = $state(false);
 let confirmDelete = $state(false);
 let saving = $state(false);
+let sending = $state(false);
+let shareLinkCopied = $state(false);
+let sendResult = $state<"success" | "error" | null>(null);
 
 // Create form state
 let formNumber = $state("");
@@ -269,6 +272,7 @@ function openDetailModal(quote: any) {
 	convertNotes = quote.notes || "";
 	converting = false;
 	convertSuccess = false;
+	sendResult = null;
 }
 
 function closeDetailModal() {
@@ -277,6 +281,7 @@ function closeDetailModal() {
 	confirmDelete = false;
 	showConvertForm = false;
 	convertSuccess = false;
+	sendResult = null;
 }
 
 function startEdit() {
@@ -388,6 +393,35 @@ async function saveEdit() {
 		console.error("Failed to update quote:", err);
 	} finally {
 		saving = false;
+	}
+}
+
+async function sendQuoteEmail() {
+	if (!selectedQuote) return;
+	sending = true;
+	sendResult = null;
+	try {
+		const res = await fetch(`/api/admin/quotes/${selectedQuote._id}/send`, {
+			method: "POST",
+		});
+		if (res.ok) {
+			sendResult = "success";
+			const idx = data.quotes.findIndex(
+				(q: any) => q._id === selectedQuote._id,
+			);
+			if (idx !== -1) {
+				data.quotes[idx] = { ...data.quotes[idx], status: "sent" };
+				data.quotes = [...data.quotes];
+			}
+			selectedQuote = { ...selectedQuote, status: "sent" };
+		} else {
+			sendResult = "error";
+		}
+	} catch (err) {
+		console.error("Failed to send quote email:", err);
+		sendResult = "error";
+	} finally {
+		sending = false;
 	}
 }
 
@@ -663,6 +697,34 @@ async function deletePreset() {
 		console.error("Failed to delete preset:", err);
 	} finally {
 		saving = false;
+	}
+}
+
+async function copyShareLink() {
+	if (!selectedQuote) return;
+	shareLinkCopied = false;
+	try {
+		const res = await fetch("/api/admin/portal", {
+			method: "POST",
+			headers: { "Content-Type": "application/json" },
+			body: JSON.stringify({
+				type: "quote",
+				documentId: selectedQuote._id,
+				clientId: selectedQuote.clientId,
+			}),
+		});
+		if (res.ok) {
+			const { token } = await res.json();
+			await navigator.clipboard.writeText(
+				`https://angelsrest.online/portal/${token}`,
+			);
+			shareLinkCopied = true;
+			setTimeout(() => {
+				shareLinkCopied = false;
+			}, 3000);
+		}
+	} catch (err) {
+		console.error("Failed to create share link:", err);
 	}
 }
 </script>
@@ -1093,6 +1155,11 @@ async function deletePreset() {
 						</div>
 					</div>
 
+					<div class="share-link-row">
+						<button class="btn-share" onclick={copyShareLink}>
+							{shareLinkCopied ? "link copied!" : "copy share link"}
+						</button>
+					</div>
 					<div class="modal-actions detail-actions">
 						{#if confirmDelete}
 							<span class="confirm-text">delete this quote?</span>
@@ -1100,9 +1167,17 @@ async function deletePreset() {
 								{saving ? "deleting..." : "yes, delete"}
 							</button>
 							<button class="btn-cancel" onclick={() => { confirmDelete = false; }}>no</button>
+						{:else if sendResult === "success"}
+							<span class="send-success">email sent</span>
+						{:else if sendResult === "error"}
+							<span class="send-error">failed to send</span>
+							<button class="btn-cancel" onclick={() => { sendResult = null; }}>dismiss</button>
 						{:else if selectedQuote.status === "draft"}
 							<button class="btn-danger-outline" onclick={() => { confirmDelete = true; }}>delete</button>
 							<button class="btn-cancel" onclick={startEdit}>edit</button>
+							<button class="btn-send" onclick={sendQuoteEmail} disabled={sending}>
+								{sending ? "sending..." : "send email"}
+							</button>
 							<button class="btn-save" onclick={() => quoteAction("send")} disabled={saving}>
 								{saving ? "..." : "mark as sent"}
 							</button>
@@ -1857,6 +1932,29 @@ async function deletePreset() {
 		padding-top: 6px;
 	}
 
+	.share-link-row {
+		display: flex;
+		justify-content: flex-end;
+		padding: 12px 0 0;
+	}
+
+	.btn-share {
+		padding: 5px 14px;
+		border-radius: 6px;
+		font-size: 0.78rem;
+		font-family: "Synonym", system-ui, sans-serif;
+		cursor: pointer;
+		background: transparent;
+		color: var(--admin-text-muted);
+		border: 1px solid var(--admin-border);
+		transition: color 0.15s, border-color 0.15s;
+	}
+
+	.btn-share:hover {
+		color: var(--admin-accent);
+		border-color: var(--admin-accent);
+	}
+
 	.btn-cancel,
 	.btn-save,
 	.btn-danger,
@@ -1894,6 +1992,36 @@ async function deletePreset() {
 	.btn-save:disabled {
 		opacity: 0.4;
 		cursor: not-allowed;
+	}
+
+	.btn-send {
+		background: rgba(74, 222, 128, 0.12);
+		border-color: rgba(74, 222, 128, 0.25);
+		color: #4ade80;
+		font-weight: 500;
+	}
+
+	.btn-send:hover {
+		background: rgba(74, 222, 128, 0.2);
+	}
+
+	.btn-send:disabled {
+		opacity: 0.4;
+		cursor: not-allowed;
+	}
+
+	.send-success {
+		font-size: 0.82rem;
+		color: #4ade80;
+		margin-right: auto;
+		align-self: center;
+	}
+
+	.send-error {
+		font-size: 0.82rem;
+		color: var(--status-rose);
+		margin-right: auto;
+		align-self: center;
 	}
 
 	.btn-danger {
