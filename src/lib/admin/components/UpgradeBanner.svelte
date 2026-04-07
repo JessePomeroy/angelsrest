@@ -24,6 +24,7 @@ const featureLabels: Record<Feature, string> = {
 	inquiries: "inquiries",
 	galleries: "galleries",
 	crm: "client management",
+	board: "project board",
 	invoicing: "invoicing",
 	quotes: "quotes",
 	contracts: "contracts",

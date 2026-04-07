@@ -7,6 +7,7 @@ export const FEATURES = {
 
 	// Full tier — requires CRM subscription
 	crm: "full",
+	board: "full",
 	invoicing: "full",
 	quotes: "full",
 	contracts: "full",

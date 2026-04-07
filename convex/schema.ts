@@ -112,10 +112,13 @@ export default defineSchema({
 		source: v.optional(v.string()),
 		notes: v.optional(v.string()),
 		siteUrl_client: v.optional(v.string()),
+		boardColumnId: v.optional(v.string()),
+		boardPosition: v.optional(v.number()),
 	})
 		.index("by_siteUrl", ["siteUrl"])
 		.index("by_siteUrl_status", ["siteUrl", "status"])
-		.index("by_siteUrl_category", ["siteUrl", "category"]),
+		.index("by_siteUrl_category", ["siteUrl", "category"])
+		.index("by_siteUrl_and_boardColumnId", ["siteUrl", "boardColumnId"]),
 
 	// Invoices — Full tier only
 	invoices: defineTable({
@@ -283,6 +286,21 @@ export default defineSchema({
 	})
 		.index("by_siteUrl", ["siteUrl"])
 		.index("by_siteUrl_unread", ["siteUrl", "read"]),
+
+	// Kanban board configurations — Full tier only
+	boardConfigs: defineTable({
+		siteUrl: v.string(),
+		projectType: v.string(),
+		columns: v.array(
+			v.object({
+				id: v.string(),
+				name: v.string(),
+				position: v.number(),
+			}),
+		),
+	})
+		.index("by_siteUrl", ["siteUrl"])
+		.index("by_siteUrl_and_projectType", ["siteUrl", "projectType"]),
 
 	// Contact form inquiries (from public site visitors)
 	inquiries: defineTable({

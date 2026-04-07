@@ -43,7 +43,8 @@
     "@vercel/analytics": "^1.6.1",
     "convex": "^1.34.1",
     "resend": "^6.9.1",
-    "stripe": "^20.3.0"
+    "stripe": "^20.3.0",
+    "svelte-dnd-action": "^0.9.69"
   },
   "lint-staged": {
     "!(convex/_generated/**)*.{js,ts}": [
