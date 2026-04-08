@@ -1,4 +1,4 @@
-import type { Tier } from "$lib/admin/features";
+import type { Tier } from "@jessepomeroy/admin";
 
 export async function load(): Promise<{ tier: Tier; isCreator: boolean }> {
 	// angelsrest is the creator's site — always full tier

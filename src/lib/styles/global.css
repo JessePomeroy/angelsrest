@@ -64,6 +64,13 @@ html {
 
 /* ---- Core Theme Setup ---- */
 
+:root {
+	--admin-dark-rgb: 30, 41, 59;
+	--admin-light-rgb: 241, 245, 249;
+	--admin-accent-color: #818cf8;
+	--admin-accent-color-hover: #a5b4fc;
+}
+
 body {
 	font-family: "Synonym", sans-serif;
 	line-height: 1.6;

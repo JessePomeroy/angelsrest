@@ -43,6 +43,7 @@ import "$lib/styles/global.css";
 let { children, data }: { children: Snippet; data: any } = $props();
 
 let isPortal = $derived($page.url.pathname.startsWith("/portal"));
+let isAdmin = $derived($page.url.pathname.startsWith("/admin"));
 
 const ogTitle = $derived(data.siteSettings?.siteTitle || "Angel's Rest");
 const ogDesc = $derived(
@@ -90,6 +91,9 @@ onMount(() => {
 
 {#if isPortal}
   {@render children()}
+{:else if isAdmin}
+  {@render children()}
+  <BottomNav />
 {:else}
   <!-- Grain overlay — styled in grain.css -->
   <div class="grain-overlay" aria-hidden="true"></div>
