@@ -16,6 +16,7 @@ export const createAuth = (ctx: GenericCtx<DataModel>) => {
 			siteUrl,
 			"http://localhost:5173",
 			"https://acoustic-kiwi-347.convex.site",
+			"https://loyal-swan-967.convex.site",
 			"https://angelsrest.online",
 			"https://www.angelsrest.online",
 		],
