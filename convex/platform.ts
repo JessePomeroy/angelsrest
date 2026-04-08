@@ -91,3 +91,32 @@ export const updateSubscription = mutation({
 		await ctx.db.patch(client._id, patch);
 	},
 });
+
+export const updateClient = mutation({
+	args: {
+		clientId: v.id("platformClients"),
+		name: v.optional(v.string()),
+		email: v.optional(v.string()),
+		siteUrl: v.optional(v.string()),
+		sanityProjectId: v.optional(v.string()),
+		tier: v.optional(v.union(v.literal("basic"), v.literal("full"))),
+		subscriptionStatus: v.optional(
+			v.union(
+				v.literal("active"),
+				v.literal("canceled"),
+				v.literal("past_due"),
+				v.literal("none"),
+			),
+		),
+		notes: v.optional(v.string()),
+	},
+	handler: async (ctx, { clientId, ...updates }) => {
+		const patch: Record<string, unknown> = {};
+		for (const [key, val] of Object.entries(updates)) {
+			if (val !== undefined) patch[key] = val;
+		}
+		if (Object.keys(patch).length > 0) {
+			await ctx.db.patch(clientId, patch);
+		}
+	},
+});
