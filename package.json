@@ -32,7 +32,7 @@
     "vite": "^7.3.1"
   },
   "dependencies": {
-    "@jessepomeroy/admin": "^0.5.0",
+    "@jessepomeroy/admin": "^0.5.1",
     "@lucide/svelte": "^0.563.1",
     "@portabletext/svelte": "^3.0.1",
     "@sanity/client": "^7.20.0",
