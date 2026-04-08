@@ -32,8 +32,11 @@
     "vite": "^7.3.1"
   },
   "dependencies": {
-    "@jessepomeroy/admin": "^0.5.2",
+    "@convex-dev/better-auth": "^0.11.4",
+    "@jessepomeroy/admin": "file:../admin-dashboard",
     "@lucide/svelte": "^0.563.1",
+    "@mmailaender/convex-better-auth-svelte": "^0.7.2",
+    "@mmailaender/convex-svelte": "^0.18.0",
     "@portabletext/svelte": "^3.0.1",
     "@sanity/client": "^7.20.0",
     "@sanity/image-url": "^2.0.3",
@@ -43,6 +46,7 @@
     "@tailwindcss/typography": "^0.5.19",
     "@types/dompurify": "^3.2.0",
     "@vercel/analytics": "^1.6.1",
+    "better-auth": "1.5.3",
     "convex": "^1.34.1",
     "convex-svelte": "^0.0.12",
     "isomorphic-dompurify": "^3.7.1",
