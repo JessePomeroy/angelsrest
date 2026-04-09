@@ -66,15 +66,15 @@ async function acceptQuote() {
 		});
 		if (res.ok) {
 			actionResult = "success";
-			actionMessage = "Quote accepted! Your photographer will be in touch.";
+			actionMessage = "quote accepted! we'll be in touch.";
 			data.document = { ...data.document, status: "accepted" };
 		} else {
 			actionResult = "error";
-			actionMessage = "Something went wrong. Please try again.";
+			actionMessage = "something went wrong. please try again.";
 		}
 	} catch {
 		actionResult = "error";
-		actionMessage = "Something went wrong. Please try again.";
+		actionMessage = "something went wrong. please try again.";
 	} finally {
 		actionLoading = false;
 	}
@@ -89,15 +89,15 @@ async function declineQuote() {
 		});
 		if (res.ok) {
 			actionResult = "success";
-			actionMessage = "Quote declined.";
+			actionMessage = "quote declined.";
 			data.document = { ...data.document, status: "declined" };
 		} else {
 			actionResult = "error";
-			actionMessage = "Something went wrong. Please try again.";
+			actionMessage = "something went wrong. please try again.";
 		}
 	} catch {
 		actionResult = "error";
-		actionMessage = "Something went wrong. Please try again.";
+		actionMessage = "something went wrong. please try again.";
 	} finally {
 		actionLoading = false;
 	}
@@ -115,7 +115,7 @@ async function signContract() {
 		});
 		if (res.ok) {
 			actionResult = "success";
-			actionMessage = "Contract signed successfully!";
+			actionMessage = "contract signed successfully!";
 			data.document = {
 				...data.document,
 				status: "signed",
@@ -123,11 +123,11 @@ async function signContract() {
 			};
 		} else {
 			actionResult = "error";
-			actionMessage = "Something went wrong. Please try again.";
+			actionMessage = "something went wrong. please try again.";
 		}
 	} catch {
 		actionResult = "error";
-		actionMessage = "Something went wrong. Please try again.";
+		actionMessage = "something went wrong. please try again.";
 	} finally {
 		actionLoading = false;
 	}
