@@ -137,7 +137,7 @@ export const listBoardConfigs = query({
 		return await ctx.db
 			.query("boardConfigs")
 			.withIndex("by_siteUrl", (q) => q.eq("siteUrl", siteUrl))
-			.collect();
+			.take(50);
 	},
 });
 
@@ -175,7 +175,7 @@ export const initializeBoard = mutation({
 		const clients = await ctx.db
 			.query("photographyClients")
 			.withIndex("by_siteUrl", (q) => q.eq("siteUrl", siteUrl))
-			.collect();
+			.take(1000);
 
 		const matchingClients = clients.filter((c) => c.type === projectType);
 		// Track position counters per column
@@ -294,7 +294,7 @@ export const deleteColumn = mutation({
 				.withIndex("by_siteUrl_and_boardColumnId", (q) =>
 					q.eq("siteUrl", config.siteUrl).eq("boardColumnId", columnId),
 				)
-				.collect();
+				.take(500);
 
 			for (const client of clients) {
 				await ctx.db.patch(client._id, {

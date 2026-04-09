@@ -9,7 +9,7 @@ export const list = query({
 			.query("platformMessages")
 			.withIndex("by_siteUrl", (q) => q.eq("siteUrl", siteUrl))
 			.order("asc")
-			.collect();
+			.take(500);
 	},
 });
 
@@ -37,7 +37,7 @@ export const markRead = mutation({
 			.withIndex("by_siteUrl_unread", (q) =>
 				q.eq("siteUrl", siteUrl).eq("read", false),
 			)
-			.collect();
+			.take(500);
 
 		for (const msg of unread) {
 			await ctx.db.patch(msg._id, { read: true });
@@ -52,7 +52,7 @@ export const allThreads = query({
 		const allMessages = await ctx.db
 			.query("platformMessages")
 			.order("desc")
-			.collect();
+			.take(5000);
 
 		// Group by siteUrl: track latest message and unread count
 		const threadMap = new Map<

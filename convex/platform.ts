@@ -25,7 +25,7 @@ export const checkTier = query({
 export const listAll = query({
 	handler: async (ctx) => {
 		await requireAuth(ctx);
-		return await ctx.db.query("platformClients").order("desc").collect();
+		return await ctx.db.query("platformClients").order("desc").take(100);
 	},
 });
 

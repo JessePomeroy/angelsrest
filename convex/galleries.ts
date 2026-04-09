@@ -127,12 +127,17 @@ export const listBySite = query({
 			.order("desc")
 			.take(100);
 
-		const withClients = await Promise.all(
-			galleries.map(async (gallery) => {
-				const client = await ctx.db.get(gallery.clientId);
-				return { ...gallery, clientName: client?.name ?? "Unknown" };
-			}),
-		);
+		// Collect unique client IDs
+		const clientIds = [...new Set(galleries.map((g) => g.clientId))];
+		const clientMap = new Map();
+		for (const id of clientIds) {
+			const client = await ctx.db.get(id);
+			if (client) clientMap.set(id, client);
+		}
+		const withClients = galleries.map((gallery) => ({
+			...gallery,
+			clientName: clientMap.get(gallery.clientId)?.name ?? "Unknown",
+		}));
 		return withClients;
 	},
 });

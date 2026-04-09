@@ -39,7 +39,7 @@ export const adminAuth: Handle = async ({ event, resolve }) => {
 	// Decode base64 credentials
 	const base64Credentials = authHeader.slice(6);
 	const credentials = atob(base64Credentials);
-	const [username, password] = credentials.split(":");
+	const [_username, password] = credentials.split(":");
 
 	if (password !== ADMIN_PASSWORD) {
 		return new Response("Unauthorized", {

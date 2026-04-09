@@ -118,7 +118,8 @@ export default defineSchema({
 		.index("by_siteUrl", ["siteUrl"])
 		.index("by_siteUrl_status", ["siteUrl", "status"])
 		.index("by_siteUrl_category", ["siteUrl", "category"])
-		.index("by_siteUrl_and_boardColumnId", ["siteUrl", "boardColumnId"]),
+		.index("by_siteUrl_and_boardColumnId", ["siteUrl", "boardColumnId"])
+		.index("by_siteUrl_and_status", ["siteUrl", "status"]),
 
 	// Invoices — Full tier only
 	invoices: defineTable({
@@ -432,7 +433,8 @@ export default defineSchema({
 		),
 	})
 		.index("by_gallery", ["galleryId"])
-		.index("by_siteUrl", ["siteUrl"]),
+		.index("by_siteUrl", ["siteUrl"])
+		.index("by_siteUrl_and_galleryId", ["siteUrl", "galleryId"]),
 
 	// Contact form inquiries (from public site visitors)
 	inquiries: defineTable({

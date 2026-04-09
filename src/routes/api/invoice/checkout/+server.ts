@@ -36,7 +36,7 @@ export async function POST({ request }) {
 		const taxAmount = invoice.taxPercent
 			? subtotal * (invoice.taxPercent / 100)
 			: 0;
-		const total = subtotal + taxAmount;
+		const _total = subtotal + taxAmount;
 
 		// Build Stripe line items from invoice items
 		const lineItems: Stripe.Checkout.SessionCreateParams.LineItem[] =

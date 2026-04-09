@@ -20,7 +20,7 @@ export async function PUT({ request, url }: { request: Request; url: URL }) {
 				Authorization: `Bearer ${secret}`,
 			},
 			body: request.body,
-			// @ts-ignore
+			// @ts-expect-error
 			duplex: "half",
 		},
 	);

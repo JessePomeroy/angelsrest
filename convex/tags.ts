@@ -9,7 +9,7 @@ export const listTags = query({
 		return await ctx.db
 			.query("clientTags")
 			.withIndex("by_siteUrl", (q) => q.eq("siteUrl", siteUrl))
-			.collect();
+			.take(200);
 	},
 });
 
@@ -19,7 +19,7 @@ export const getClientTags = query({
 		const assignments = await ctx.db
 			.query("clientTagAssignments")
 			.withIndex("by_clientId", (q) => q.eq("clientId", clientId))
-			.collect();
+			.take(50);
 
 		const tags = [];
 		for (const assignment of assignments) {
@@ -52,7 +52,7 @@ export const deleteTag = mutation({
 		const assignments = await ctx.db
 			.query("clientTagAssignments")
 			.withIndex("by_tagId", (q) => q.eq("tagId", tagId))
-			.collect();
+			.take(500);
 
 		for (const assignment of assignments) {
 			await ctx.db.delete(assignment._id);
@@ -74,7 +74,7 @@ export const assignTag = mutation({
 		const existing = await ctx.db
 			.query("clientTagAssignments")
 			.withIndex("by_clientId", (q) => q.eq("clientId", args.clientId))
-			.collect();
+			.take(100);
 
 		const alreadyAssigned = existing.find((a) => a.tagId === args.tagId);
 		if (alreadyAssigned) return alreadyAssigned._id;
@@ -107,7 +107,7 @@ export const removeTag = mutation({
 		const assignments = await ctx.db
 			.query("clientTagAssignments")
 			.withIndex("by_clientId", (q) => q.eq("clientId", args.clientId))
-			.collect();
+			.take(100);
 
 		const toRemove = assignments.find((a) => a.tagId === args.tagId);
 		if (toRemove) {

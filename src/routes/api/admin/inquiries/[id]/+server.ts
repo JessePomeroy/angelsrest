@@ -3,6 +3,12 @@ import { adminClient } from "$lib/sanity/adminClient";
 import type { RequestHandler } from "./$types";
 
 export const PATCH: RequestHandler = async ({ params, request }) => {
+	// Verify Better Auth session cookie exists
+	const cookies = request.headers.get("cookie") || "";
+	if (!cookies.includes("better-auth.session_token")) {
+		throw error(401, "Unauthorized");
+	}
+
 	const { id } = params;
 	const body = await request.json();
 

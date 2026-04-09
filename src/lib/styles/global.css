@@ -76,7 +76,7 @@ body {
 	line-height: 1.6;
 	min-height: 100vh;
 	text-transform: lowercase;
-	background-color: #f1f5f9 !important;
+	background-color: #f1f5f9;
 	background-image:
 		radial-gradient(
 			ellipse 80% 60% at 30% 20%,
@@ -87,12 +87,12 @@ body {
 			ellipse 60% 80% at 80% 70%,
 			rgba(139, 92, 246, 0.06) 0%,
 			transparent 50%
-		) !important;
+		);
 	background-attachment: fixed;
 }
 
 html.dark body {
-	background-color: #1e293b !important;
+	background-color: #1e293b;
 	background-image:
 		radial-gradient(
 			ellipse 80% 60% at 30% 20%,
@@ -103,7 +103,7 @@ html.dark body {
 			ellipse 60% 80% at 80% 70%,
 			rgba(167, 139, 250, 0.08) 0%,
 			transparent 50%
-		) !important;
+		);
 	background-attachment: fixed;
 }
 
@@ -120,7 +120,7 @@ html.dark body {
 				ellipse 60% 80% at 80% 70%,
 				rgba(139, 92, 246, 0.14) 0%,
 				transparent 50%
-			) !important;
+			);
 	}
 
 	html.dark body {
@@ -134,7 +134,7 @@ html.dark body {
 				ellipse 60% 80% at 80% 70%,
 				rgba(167, 139, 250, 0.22) 0%,
 				transparent 50%
-			) !important;
+			);
 	}
 }
 

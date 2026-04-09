@@ -13,7 +13,7 @@ export const list = query({
 			.query("quotes")
 			.withIndex("by_siteUrl", (q) => q.eq("siteUrl", siteUrl))
 			.order("desc")
-			.collect();
+			.take(200);
 
 		const results = all.map((quote) => ({
 			...quote,
@@ -228,7 +228,7 @@ export const listPresets = query({
 		return await ctx.db
 			.query("quotePresets")
 			.withIndex("by_siteUrl", (q) => q.eq("siteUrl", siteUrl))
-			.collect();
+			.take(100);
 	},
 });
 

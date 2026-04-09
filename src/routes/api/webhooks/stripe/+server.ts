@@ -24,6 +24,7 @@ import { error, json } from "@sveltejs/kit";
 import { Resend } from "resend";
 import Stripe from "stripe";
 import { api } from "$convex/api";
+import { env } from "$env/dynamic/private";
 import {
 	RESEND_API_KEY,
 	STRIPE_SECRET_KEY,
@@ -333,7 +334,7 @@ This order was automatically processed through your Angel's Rest website.
 
 	await resend.emails.send({
 		from: "Angel's Rest Orders <orders@angelsrest.online>",
-		to: ["thinkingofview@gmail.com"],
+		to: [env.NOTIFICATION_EMAIL || "thinkingofview@gmail.com"],
 		subject: orderNumber
 			? `🛒 New Order ${orderNumber}: ${formatCurrency(session.amount_total || 0)} from ${shippingDetails?.name || customerEmail}`
 			: `🛒 New Order: ${formatCurrency(session.amount_total || 0)} from ${shippingDetails?.name || customerEmail}`,
@@ -360,11 +361,6 @@ async function createOrderInConvex({
 	lineItems: Stripe.LineItem[];
 }) {
 	try {
-		// Get next order number from Convex
-		const orderNumber = await convex.query(api.orders.getNextOrderNumber, {
-			siteUrl: SITE_DOMAIN,
-		});
-
 		// Extract payment intent ID (could be string or expanded object)
 		// biome-ignore lint/suspicious/noExplicitAny: Stripe SDK types
 		const rawPaymentIntent = (session as any).payment_intent;
@@ -382,35 +378,37 @@ async function createOrderInConvex({
 		// biome-ignore lint/suspicious/noExplicitAny: Stripe SDK types
 		const isDigital = (session as any).metadata?.isDigital === "true";
 
-		// Create order in Convex
-		const orderId = await convex.mutation(api.orders.create, {
-			siteUrl: SITE_DOMAIN,
-			orderNumber,
-			stripeSessionId: session.id,
-			customerEmail: session.customer_details?.email || "",
-			customerName:
-				session.customer_details?.name || shippingDetails?.name || undefined,
-			stripePaymentIntentId: stripePaymentIntentId || undefined,
-			shippingAddress: shippingDetails?.address
-				? {
-						line1: shippingDetails.address.line1 || "",
-						line2: shippingDetails.address.line2 || undefined,
-						city: shippingDetails.address.city || "",
-						state: shippingDetails.address.state || "",
-						postalCode: shippingDetails.address.postal_code || "",
-						country: shippingDetails.address.country || "",
-					}
-				: undefined,
-			items,
-			total: session.amount_total || 0,
-			subtotal: session.amount_subtotal || undefined,
-			fulfillmentType: isDigital ? "digital" : "self",
-			// biome-ignore lint/suspicious/noExplicitAny: Stripe SDK types
-			paperName: (session as any).metadata?.paperName || undefined,
-			paperSubcategoryId:
+		// Create order in Convex (order number generated atomically in mutation)
+		const { _id: orderId, orderNumber } = await convex.mutation(
+			api.orders.create,
+			{
+				siteUrl: SITE_DOMAIN,
+				stripeSessionId: session.id,
+				customerEmail: session.customer_details?.email || "",
+				customerName:
+					session.customer_details?.name || shippingDetails?.name || undefined,
+				stripePaymentIntentId: stripePaymentIntentId || undefined,
+				shippingAddress: shippingDetails?.address
+					? {
+							line1: shippingDetails.address.line1 || "",
+							line2: shippingDetails.address.line2 || undefined,
+							city: shippingDetails.address.city || "",
+							state: shippingDetails.address.state || "",
+							postalCode: shippingDetails.address.postal_code || "",
+							country: shippingDetails.address.country || "",
+						}
+					: undefined,
+				items,
+				total: session.amount_total || 0,
+				subtotal: session.amount_subtotal || undefined,
+				fulfillmentType: isDigital ? "digital" : "self",
 				// biome-ignore lint/suspicious/noExplicitAny: Stripe SDK types
-				(session as any).metadata?.paperSubcategoryId || undefined,
-		});
+				paperName: (session as any).metadata?.paperName || undefined,
+				paperSubcategoryId:
+					// biome-ignore lint/suspicious/noExplicitAny: Stripe SDK types
+					(session as any).metadata?.paperSubcategoryId || undefined,
+			},
+		);
 
 		console.log("Created order in Convex:", orderNumber, orderId);
 

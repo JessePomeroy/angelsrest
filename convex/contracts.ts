@@ -13,7 +13,7 @@ export const list = query({
 			.query("contracts")
 			.withIndex("by_siteUrl", (q) => q.eq("siteUrl", siteUrl))
 			.order("desc")
-			.collect();
+			.take(200);
 
 		const results = all.map((contract) => ({
 			...contract,
@@ -172,7 +172,7 @@ export const listTemplates = query({
 		return await ctx.db
 			.query("contractTemplates")
 			.withIndex("by_siteUrl", (q) => q.eq("siteUrl", siteUrl))
-			.collect();
+			.take(100);
 	},
 });
 

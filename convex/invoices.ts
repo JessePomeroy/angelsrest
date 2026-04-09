@@ -13,7 +13,7 @@ export const list = query({
 			.query("invoices")
 			.withIndex("by_siteUrl", (q) => q.eq("siteUrl", siteUrl))
 			.order("desc")
-			.collect();
+			.take(200);
 
 		const results = all.map((invoice) => ({
 			...invoice,

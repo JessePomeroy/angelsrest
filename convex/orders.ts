@@ -25,20 +25,20 @@ export const list = query({
 						),
 				)
 				.order("desc")
-				.collect();
+				.take(500);
 		}
 		return await ctx.db
 			.query("orders")
 			.withIndex("by_siteUrl", (q) => q.eq("siteUrl", siteUrl))
 			.order("desc")
-			.collect();
+			.take(500);
 	},
 });
 
 export const create = mutation({
 	args: {
 		siteUrl: v.string(),
-		orderNumber: v.string(),
+		orderNumber: v.optional(v.string()),
 		stripeSessionId: v.string(),
 		customerEmail: v.string(),
 		customerName: v.optional(v.string()),
@@ -74,10 +74,32 @@ export const create = mutation({
 		discountAmount: v.optional(v.number()),
 	},
 	handler: async (ctx, args) => {
-		return await ctx.db.insert("orders", {
+		// Use provided order number or generate one atomically
+		let orderNumber = args.orderNumber;
+		if (!orderNumber) {
+			const latest = await ctx.db
+				.query("orders")
+				.withIndex("by_siteUrl", (q) => q.eq("siteUrl", args.siteUrl))
+				.order("desc")
+				.take(1);
+
+			orderNumber = "ORD-001";
+			if (latest[0]) {
+				const num = Number.parseInt(
+					latest[0].orderNumber.replace("ORD-", ""),
+					10,
+				);
+				orderNumber = `ORD-${String(num + 1).padStart(3, "0")}`;
+			}
+		}
+
+		const _id = await ctx.db.insert("orders", {
 			...args,
+			orderNumber,
 			status: "new",
 		});
+
+		return { _id, orderNumber };
 	},
 });
 
@@ -148,7 +170,7 @@ export const getStats = query({
 			.query("orders")
 			.withIndex("by_siteUrl", (q) => q.eq("siteUrl", siteUrl))
 			.order("desc")
-			.collect();
+			.take(5000);
 
 		const now = new Date();
 		const todayStart = new Date(

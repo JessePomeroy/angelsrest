@@ -148,9 +148,8 @@ async function seed() {
 	];
 
 	for (const o of orderData) {
-		const id = await convex.mutation(api.orders.create, {
+		const { _id: id, orderNumber } = await convex.mutation(api.orders.create, {
 			siteUrl: SITE,
-			orderNumber: o.orderNumber,
 			stripeSessionId: `cs_seed_${o.orderNumber}`,
 			customerEmail: o.customerEmail,
 			customerName: o.customerName,
@@ -165,7 +164,7 @@ async function seed() {
 				stripeFees: Math.round(o.total * 0.029 + 30),
 			});
 		}
-		console.log(`  order: ${o.orderNumber} — $${(o.total / 100).toFixed(2)}`);
+		console.log(`  order: ${orderNumber} — $${(o.total / 100).toFixed(2)}`);
 	}
 
 	// --- Invoices ---

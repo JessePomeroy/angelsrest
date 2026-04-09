@@ -162,25 +162,25 @@ body::after {
 /* Featured cards glow on hover */
 [data-time-period] .featured-card:hover {
 	box-shadow: 0 0 20px var(--time-glow);
-	border-color: var(--time-accent) !important;
+	border-color: var(--time-accent);
 }
 
 /* ---- Time-aware UI accents ---- */
 
 /* Nav border picks up time color */
 [data-time-period] nav {
-	border-color: var(--time-border) !important;
+	border-color: var(--time-border);
 }
 
 /* Card borders get a subtle time tint on hover */
 [data-time-period] .group:hover > div {
-	border-color: var(--time-accent) !important;
+	border-color: var(--time-accent);
 	opacity: 0.85;
 }
 
 /* Footer border picks up time color */
 [data-time-period] footer {
-	border-color: var(--time-border) !important;
+	border-color: var(--time-border);
 }
 
 /* Selection color matches time period */
@@ -192,6 +192,6 @@ body::after {
 [data-time-period] input:focus,
 [data-time-period] textarea:focus,
 [data-time-period] select:focus {
-	border-color: var(--time-accent) !important;
+	border-color: var(--time-accent);
 	box-shadow: 0 0 0 2px color-mix(in srgb, var(--time-accent) 15%, transparent);
 }

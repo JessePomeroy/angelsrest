@@ -5,7 +5,6 @@
  * This runs server-side, so we can safely use the Stripe secret key.
  */
 
-import { error } from "@sveltejs/kit";
 import Stripe from "stripe";
 import { STRIPE_SECRET_KEY } from "$env/static/private";
 

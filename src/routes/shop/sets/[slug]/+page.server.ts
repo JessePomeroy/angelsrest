@@ -11,7 +11,6 @@
 
 import { error } from "@sveltejs/kit";
 import { client } from "$lib/sanity/client";
-import type { PrintSet } from "$lib/types/shop";
 import { imageSet, previewUrl } from "$lib/utils/images";
 
 export async function load({ params }) {

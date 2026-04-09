@@ -107,9 +107,10 @@ export const getUnreadFlags = query({
 			.order("desc")
 			.take(10);
 		for (const q of recentQuotes) {
+			const actionTime = q.acceptedAt || q._creationTime;
 			if (
 				(q.status === "accepted" || q.status === "declined") &&
-				q._creationTime > quotesLastSeen
+				actionTime > quotesLastSeen
 			) {
 				flags.quotes = true;
 				break;
@@ -124,9 +125,10 @@ export const getUnreadFlags = query({
 			.order("desc")
 			.take(10);
 		for (const inv of recentInvoices) {
+			const actionTime = inv.paidAt || inv._creationTime;
 			if (
 				(inv.status === "paid" || inv.status === "overdue") &&
-				inv._creationTime > invoicesLastSeen
+				actionTime > invoicesLastSeen
 			) {
 				flags.invoices = true;
 				break;
@@ -141,7 +143,8 @@ export const getUnreadFlags = query({
 			.order("desc")
 			.take(10);
 		for (const c of recentContracts) {
-			if (c.status === "signed" && c._creationTime > contractsLastSeen) {
+			const actionTime = c.signedAt || c._creationTime;
+			if (c.status === "signed" && actionTime > contractsLastSeen) {
 				flags.contracts = true;
 				break;
 			}

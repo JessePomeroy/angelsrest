@@ -18,7 +18,7 @@ export const listClients = query({
 					q.eq("siteUrl", siteUrl).eq("category", category),
 				)
 				.order("desc")
-				.collect();
+				.take(500);
 			if (status) {
 				return results.filter((c) => c.status === status);
 			}
@@ -28,7 +28,7 @@ export const listClients = query({
 			.query("photographyClients")
 			.withIndex("by_siteUrl", (q) => q.eq("siteUrl", siteUrl))
 			.order("desc")
-			.collect();
+			.take(500);
 		if (status) {
 			return results.filter((c) => c.status === status);
 		}
@@ -167,7 +167,7 @@ export const getStats = query({
 		const all = await ctx.db
 			.query("photographyClients")
 			.withIndex("by_siteUrl", (q) => q.eq("siteUrl", siteUrl))
-			.collect();
+			.take(1000);
 
 		return {
 			total: all.length,
