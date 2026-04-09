@@ -337,6 +337,7 @@ export default defineSchema({
 			v.literal("invoice"),
 			v.literal("quote"),
 			v.literal("contract"),
+			v.literal("gallery"),
 		),
 		documentId: v.string(),
 		clientId: v.id("photographyClients"),
@@ -374,6 +375,64 @@ export default defineSchema({
 	})
 		.index("by_siteUrl", ["siteUrl"])
 		.index("by_clientId", ["clientId"]),
+
+	// Gallery delivery — private photo galleries for client delivery
+	galleries: defineTable({
+		siteUrl: v.string(),
+		clientId: v.id("photographyClients"),
+		name: v.string(),
+		slug: v.string(),
+		status: v.union(
+			v.literal("draft"),
+			v.literal("uploading"),
+			v.literal("published"),
+			v.literal("archived"),
+		),
+		coverImageKey: v.optional(v.string()),
+		imageCount: v.number(),
+		totalSizeBytes: v.number(),
+		password: v.optional(v.string()),
+		expiresAt: v.optional(v.number()),
+		downloadEnabled: v.boolean(),
+		favoritesEnabled: v.boolean(),
+	})
+		.index("by_siteUrl", ["siteUrl"])
+		.index("by_siteUrl_status", ["siteUrl", "status"])
+		.index("by_siteUrl_and_slug", ["siteUrl", "slug"])
+		.index("by_client", ["clientId"]),
+
+	// Gallery images — individual photos in a delivery gallery
+	galleryImages: defineTable({
+		siteUrl: v.string(),
+		galleryId: v.id("galleries"),
+		r2Key: v.string(),
+		filename: v.string(),
+		sizeBytes: v.number(),
+		width: v.number(),
+		height: v.number(),
+		order: v.number(),
+		isFavorite: v.boolean(),
+		downloadCount: v.number(),
+	})
+		.index("by_gallery", ["galleryId"])
+		.index("by_siteUrl", ["siteUrl"])
+		.index("by_r2Key", ["r2Key"]),
+
+	// Gallery download tracking
+	galleryDownloads: defineTable({
+		siteUrl: v.string(),
+		galleryId: v.id("galleries"),
+		imageId: v.optional(v.id("galleryImages")),
+		downloadedAt: v.number(),
+		ipHash: v.string(),
+		type: v.union(
+			v.literal("single"),
+			v.literal("zip"),
+			v.literal("favorites"),
+		),
+	})
+		.index("by_gallery", ["galleryId"])
+		.index("by_siteUrl", ["siteUrl"]),
 
 	// Contact form inquiries (from public site visitors)
 	inquiries: defineTable({

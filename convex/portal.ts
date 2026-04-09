@@ -9,6 +9,7 @@ export const createToken = mutation({
 			v.literal("invoice"),
 			v.literal("quote"),
 			v.literal("contract"),
+			v.literal("gallery"),
 		),
 		documentId: v.string(),
 		clientId: v.id("photographyClients"),
@@ -70,6 +71,8 @@ export const getByToken = query({
 			document = await ctx.db.get(tokenDoc.documentId as Id<"quotes">);
 		} else if (tokenDoc.type === "contract") {
 			document = await ctx.db.get(tokenDoc.documentId as Id<"contracts">);
+		} else if (tokenDoc.type === "gallery") {
+			document = await ctx.db.get(tokenDoc.documentId as Id<"galleries">);
 		}
 
 		if (!document) return null;
