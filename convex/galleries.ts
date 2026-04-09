@@ -68,7 +68,27 @@ export const remove = mutation({
 	handler: async (ctx, { id }) => {
 		const gallery = await ctx.db.get(id);
 		if (!gallery) throw new Error("Gallery not found");
-		await ctx.db.patch(id, { status: "archived" as const });
+
+		// Delete all images in the gallery
+		const images = await ctx.db
+			.query("galleryImages")
+			.withIndex("by_gallery", (q) => q.eq("galleryId", id))
+			.take(2000);
+		for (const image of images) {
+			await ctx.db.delete(image._id);
+		}
+
+		// Delete all download records
+		const downloads = await ctx.db
+			.query("galleryDownloads")
+			.withIndex("by_gallery", (q) => q.eq("galleryId", id))
+			.take(2000);
+		for (const dl of downloads) {
+			await ctx.db.delete(dl._id);
+		}
+
+		// Delete the gallery itself
+		await ctx.db.delete(id);
 	},
 });
 
