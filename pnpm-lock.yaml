@@ -12,8 +12,8 @@ importers:
         specifier: ^0.11.4
         version: 0.11.4(@standard-schema/spec@1.1.0)(better-auth@1.5.3(@sveltejs/kit@2.53.0(@sveltejs/vite-plugin-svelte@6.2.4(svelte@5.53.3)(vite@7.3.1(@types/node@25.3.0)(jiti@2.6.1)(lightningcss@1.31.1)(tsx@4.21.0)(yaml@2.8.2)))(svelte@5.53.3)(typescript@5.9.3)(vite@7.3.1(@types/node@25.3.0)(jiti@2.6.1)(lightningcss@1.31.1)(tsx@4.21.0)(yaml@2.8.2)))(react-dom@19.2.4(react@19.2.4))(react@19.2.4)(svelte@5.53.3))(convex@1.34.1(react@19.2.4))(react@19.2.4)(typescript@5.9.3)
       '@jessepomeroy/admin':
-        specifier: 0.8.2
-        version: 0.8.2(@sveltejs/kit@2.53.0(@sveltejs/vite-plugin-svelte@6.2.4(svelte@5.53.3)(vite@7.3.1(@types/node@25.3.0)(jiti@2.6.1)(lightningcss@1.31.1)(tsx@4.21.0)(yaml@2.8.2)))(svelte@5.53.3)(typescript@5.9.3)(vite@7.3.1(@types/node@25.3.0)(jiti@2.6.1)(lightningcss@1.31.1)(tsx@4.21.0)(yaml@2.8.2)))(convex-svelte@0.0.12(convex@1.34.1(react@19.2.4))(svelte@5.53.3))(convex@1.34.1(react@19.2.4))(isomorphic-dompurify@3.7.1(@noble/hashes@2.0.1))(resend@6.9.2)(svelte-dnd-action@0.9.69(svelte@5.53.3))(svelte@5.53.3)
+        specifier: 0.9.0
+        version: 0.9.0(@sveltejs/kit@2.53.0(@sveltejs/vite-plugin-svelte@6.2.4(svelte@5.53.3)(vite@7.3.1(@types/node@25.3.0)(jiti@2.6.1)(lightningcss@1.31.1)(tsx@4.21.0)(yaml@2.8.2)))(svelte@5.53.3)(typescript@5.9.3)(vite@7.3.1(@types/node@25.3.0)(jiti@2.6.1)(lightningcss@1.31.1)(tsx@4.21.0)(yaml@2.8.2)))(convex-svelte@0.0.12(convex@1.34.1(react@19.2.4))(svelte@5.53.3))(convex@1.34.1(react@19.2.4))(isomorphic-dompurify@3.7.1(@noble/hashes@2.0.1))(resend@6.9.2)(svelte-dnd-action@0.9.69(svelte@5.53.3))(svelte@5.53.3)
       '@lucide/svelte':
         specifier: ^0.563.1
         version: 0.563.1(svelte@5.53.3)
@@ -662,8 +662,8 @@ packages:
       svelte: ^5.0.0
       svelte-dnd-action: ^0.9.0
 
-  '@jessepomeroy/admin@0.8.2':
-    resolution: {integrity: sha512-2/yfjrK8bTxxb0H8cMzuaIqGxHAyezjATgJUHeBfJWu/idOgTqyrPdQGBLJSa4xZzzagoKOeBG88IJ1kpTQIiQ==, tarball: https://npm.pkg.github.com/download/@jessepomeroy/admin/0.8.2/1585824b15ad0b9d723a29ce4cb0f58a052a1d38}
+  '@jessepomeroy/admin@0.9.0':
+    resolution: {integrity: sha512-pUgVd13BXVlb4oy7R0L7UmSKn9K7k1Dijw2sTGWmF2B0VZ+v0HPVUiTbxj7LLmfxfuYgW4f7w3FShgzCg1M66A==, tarball: https://npm.pkg.github.com/download/@jessepomeroy/admin/0.9.0/2c3db3f46ed3147d9d1f06560f14241bd17eec71}
     peerDependencies:
       '@sveltejs/kit': ^2.0.0
       convex: ^1.30.0
@@ -2816,7 +2816,7 @@ snapshots:
       svelte: 5.53.3
       svelte-dnd-action: 0.9.69(svelte@5.53.3)
 
-  '@jessepomeroy/admin@0.8.2(@sveltejs/kit@2.53.0(@sveltejs/vite-plugin-svelte@6.2.4(svelte@5.53.3)(vite@7.3.1(@types/node@25.3.0)(jiti@2.6.1)(lightningcss@1.31.1)(tsx@4.21.0)(yaml@2.8.2)))(svelte@5.53.3)(typescript@5.9.3)(vite@7.3.1(@types/node@25.3.0)(jiti@2.6.1)(lightningcss@1.31.1)(tsx@4.21.0)(yaml@2.8.2)))(convex-svelte@0.0.12(convex@1.34.1(react@19.2.4))(svelte@5.53.3))(convex@1.34.1(react@19.2.4))(isomorphic-dompurify@3.7.1(@noble/hashes@2.0.1))(resend@6.9.2)(svelte-dnd-action@0.9.69(svelte@5.53.3))(svelte@5.53.3)':
+  '@jessepomeroy/admin@0.9.0(@sveltejs/kit@2.53.0(@sveltejs/vite-plugin-svelte@6.2.4(svelte@5.53.3)(vite@7.3.1(@types/node@25.3.0)(jiti@2.6.1)(lightningcss@1.31.1)(tsx@4.21.0)(yaml@2.8.2)))(svelte@5.53.3)(typescript@5.9.3)(vite@7.3.1(@types/node@25.3.0)(jiti@2.6.1)(lightningcss@1.31.1)(tsx@4.21.0)(yaml@2.8.2)))(convex-svelte@0.0.12(convex@1.34.1(react@19.2.4))(svelte@5.53.3))(convex@1.34.1(react@19.2.4))(isomorphic-dompurify@3.7.1(@noble/hashes@2.0.1))(resend@6.9.2)(svelte-dnd-action@0.9.69(svelte@5.53.3))(svelte@5.53.3)':
     dependencies:
       '@jessepomeroy/admin': 0.8.1(@sveltejs/kit@2.53.0(@sveltejs/vite-plugin-svelte@6.2.4(svelte@5.53.3)(vite@7.3.1(@types/node@25.3.0)(jiti@2.6.1)(lightningcss@1.31.1)(tsx@4.21.0)(yaml@2.8.2)))(svelte@5.53.3)(typescript@5.9.3)(vite@7.3.1(@types/node@25.3.0)(jiti@2.6.1)(lightningcss@1.31.1)(tsx@4.21.0)(yaml@2.8.2)))(convex-svelte@0.0.12(convex@1.34.1(react@19.2.4))(svelte@5.53.3))(convex@1.34.1(react@19.2.4))(isomorphic-dompurify@3.7.1(@noble/hashes@2.0.1))(resend@6.9.2)(svelte-dnd-action@0.9.69(svelte@5.53.3))(svelte@5.53.3)
       '@sveltejs/kit': 2.53.0(@sveltejs/vite-plugin-svelte@6.2.4(svelte@5.53.3)(vite@7.3.1(@types/node@25.3.0)(jiti@2.6.1)(lightningcss@1.31.1)(tsx@4.21.0)(yaml@2.8.2)))(svelte@5.53.3)(typescript@5.9.3)(vite@7.3.1(@types/node@25.3.0)(jiti@2.6.1)(lightningcss@1.31.1)(tsx@4.21.0)(yaml@2.8.2))
