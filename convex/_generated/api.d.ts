@@ -15,6 +15,7 @@ import type * as contracts from "../contracts.js";
 import type * as crm from "../crm.js";
 import type * as emailLog from "../emailLog.js";
 import type * as emailTemplates from "../emailTemplates.js";
+import type * as galleries from "../galleries.js";
 import type * as http from "../http.js";
 import type * as invoices from "../invoices.js";
 import type * as kanban from "../kanban.js";
@@ -39,6 +40,7 @@ declare const fullApi: ApiFromModules<{
   crm: typeof crm;
   emailLog: typeof emailLog;
   emailTemplates: typeof emailTemplates;
+  galleries: typeof galleries;
   http: typeof http;
   invoices: typeof invoices;
   kanban: typeof kanban;

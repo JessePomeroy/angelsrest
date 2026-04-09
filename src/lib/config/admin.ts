@@ -1,4 +1,4 @@
-import type { AdminConfig, AdminServerConfig } from "@jessepomeroy/admin";
+import type { AdminConfig } from "@jessepomeroy/admin";
 import { api } from "$convex/api";
 
 export const adminConfig: AdminConfig = {
@@ -7,5 +7,6 @@ export const adminConfig: AdminConfig = {
 	fromEmail: "Angel's Rest <noreply@angelsrest.online>",
 	isCreator: true,
 	sanityStudioUrl: "https://angelsrest.sanity.studio",
+	galleryWorkerUrl: "https://gallery-worker.thinkingofview.workers.dev",
 	api,
 };

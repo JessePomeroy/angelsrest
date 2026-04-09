@@ -9,6 +9,8 @@ export const adminServerConfig: AdminServerConfig = {
 	fromEmail: "Angel's Rest <noreply@angelsrest.online>",
 	isCreator: true,
 	sanityStudioUrl: "https://angelsrest.sanity.studio",
+	galleryWorkerUrl: "https://gallery-worker.thinkingofview.workers.dev",
+	galleryAdminSecret: privateEnv.GALLERY_ADMIN_SECRET ?? "",
 	api,
 	convexUrl: publicEnv.PUBLIC_CONVEX_URL ?? "",
 	resendApiKey: privateEnv.RESEND_API_KEY ?? "",
