@@ -1,5 +1,5 @@
 <script lang="ts">
-import { setupConvex, useConvexClient } from "convex-svelte";
+import { setupConvex, useConvexClient } from "@mmailaender/convex-svelte";
 import { PUBLIC_CONVEX_URL } from "$env/static/public";
 import { api } from "$convex/api";
 
