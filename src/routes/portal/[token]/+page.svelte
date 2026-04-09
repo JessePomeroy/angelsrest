@@ -29,11 +29,11 @@ function formatTimestamp(ts: number | undefined): string {
 	});
 }
 
-function formatCurrency(amount: number): string {
+function formatCurrency(cents: number): string {
 	return new Intl.NumberFormat("en-US", {
 		style: "currency",
 		currency: "USD",
-	}).format(amount);
+	}).format(cents / 100);
 }
 
 function getQuoteTotal(packages: { price: number }[]): number {
