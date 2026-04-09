@@ -446,4 +446,14 @@ export default defineSchema({
 	})
 		.index("by_siteUrl", ["siteUrl"])
 		.index("by_siteUrl_status", ["siteUrl", "status"]),
+
+	// Admin sidebar notification tracking
+	adminLastSeen: defineTable({
+		siteUrl: v.string(),
+		userId: v.string(),
+		page: v.string(),
+		lastSeenAt: v.number(),
+	})
+		.index("by_siteUrl_and_userId", ["siteUrl", "userId"])
+		.index("by_siteUrl_and_userId_and_page", ["siteUrl", "userId", "page"]),
 });
