@@ -17,6 +17,7 @@ export const checkTier = query({
 		return {
 			tier: client.tier,
 			subscriptionStatus: client.subscriptionStatus,
+			siteName: client.name,
 		};
 	},
 });

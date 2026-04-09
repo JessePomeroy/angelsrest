@@ -20,12 +20,11 @@ export async function load({ params }) {
 	// Get the platform client name for display
 	let businessName = result.token.siteUrl;
 	try {
-		const clients = await convex.query(api.platform.listAll, {});
-		const siteClient = clients.find(
-			(c: { siteUrl: string }) => c.siteUrl === result.token.siteUrl,
-		);
-		if (siteClient) {
-			businessName = siteClient.name;
+		const tierResult = await convex.query(api.platform.checkTier, {
+			siteUrl: result.token.siteUrl,
+		});
+		if (tierResult.siteName) {
+			businessName = tierResult.siteName;
 		}
 	} catch {
 		// Fallback to siteUrl
