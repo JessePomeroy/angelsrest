@@ -1,6 +1,7 @@
 import { v } from "convex/values";
 import { internal } from "./_generated/api";
 import { mutation, query } from "./_generated/server";
+import { requireAuth } from "./authHelpers";
 
 export const listTags = query({
 	args: { siteUrl: v.string() },
@@ -38,6 +39,7 @@ export const createTag = mutation({
 		color: v.optional(v.string()),
 	},
 	handler: async (ctx, args) => {
+		await requireAuth(ctx);
 		return await ctx.db.insert("clientTags", args);
 	},
 });
@@ -45,6 +47,7 @@ export const createTag = mutation({
 export const deleteTag = mutation({
 	args: { tagId: v.id("clientTags") },
 	handler: async (ctx, { tagId }) => {
+		await requireAuth(ctx);
 		// Delete all assignments for this tag
 		const assignments = await ctx.db
 			.query("clientTagAssignments")
@@ -66,6 +69,7 @@ export const assignTag = mutation({
 		tagId: v.id("clientTags"),
 	},
 	handler: async (ctx, args) => {
+		await requireAuth(ctx);
 		// Check if already assigned
 		const existing = await ctx.db
 			.query("clientTagAssignments")
@@ -99,6 +103,7 @@ export const removeTag = mutation({
 		tagId: v.id("clientTags"),
 	},
 	handler: async (ctx, args) => {
+		await requireAuth(ctx);
 		const assignments = await ctx.db
 			.query("clientTagAssignments")
 			.withIndex("by_clientId", (q) => q.eq("clientId", args.clientId))

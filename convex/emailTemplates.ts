@@ -1,5 +1,6 @@
 import { v } from "convex/values";
 import { mutation, query } from "./_generated/server";
+import { requireAuth } from "./authHelpers";
 
 export const list = query({
 	args: { siteUrl: v.string() },
@@ -52,6 +53,7 @@ export const create = mutation({
 		variables: v.optional(v.array(v.string())),
 	},
 	handler: async (ctx, args) => {
+		await requireAuth(ctx);
 		return await ctx.db.insert("emailTemplates", args);
 	},
 });
@@ -67,6 +69,7 @@ export const update = mutation({
 		variables: v.optional(v.array(v.string())),
 	},
 	handler: async (ctx, { templateId, siteUrl, ...updates }) => {
+		await requireAuth(ctx);
 		const doc = await ctx.db.get(templateId);
 		if (!doc || doc.siteUrl !== siteUrl) {
 			throw new Error("Not found");
@@ -84,6 +87,7 @@ export const update = mutation({
 export const remove = mutation({
 	args: { templateId: v.id("emailTemplates"), siteUrl: v.string() },
 	handler: async (ctx, { templateId, siteUrl }) => {
+		await requireAuth(ctx);
 		const doc = await ctx.db.get(templateId);
 		if (!doc || doc.siteUrl !== siteUrl) {
 			throw new Error("Not found");

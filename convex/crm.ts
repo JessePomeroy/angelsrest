@@ -2,6 +2,7 @@ import { paginationOptsValidator } from "convex/server";
 import { v } from "convex/values";
 import { internal } from "./_generated/api";
 import { mutation, query } from "./_generated/server";
+import { requireAuth } from "./authHelpers";
 
 export const listClients = query({
 	args: {
@@ -79,6 +80,7 @@ export const createClient = mutation({
 		siteUrl_client: v.optional(v.string()),
 	},
 	handler: async (ctx, args) => {
+		await requireAuth(ctx);
 		const clientId = await ctx.db.insert("photographyClients", {
 			...args,
 			type:
@@ -122,6 +124,7 @@ export const updateClient = mutation({
 		siteUrl_client: v.optional(v.string()),
 	},
 	handler: async (ctx, { clientId, siteUrl, ...updates }) => {
+		await requireAuth(ctx);
 		const existing = await ctx.db.get(clientId);
 		if (!existing || existing.siteUrl !== siteUrl) {
 			throw new Error("Not found");
@@ -149,6 +152,7 @@ export const updateClient = mutation({
 export const deleteClient = mutation({
 	args: { clientId: v.id("photographyClients"), siteUrl: v.string() },
 	handler: async (ctx, { clientId, siteUrl }) => {
+		await requireAuth(ctx);
 		const doc = await ctx.db.get(clientId);
 		if (!doc || doc.siteUrl !== siteUrl) {
 			throw new Error("Not found");

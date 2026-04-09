@@ -1,6 +1,7 @@
 import { v } from "convex/values";
 import { internal } from "./_generated/api";
 import { mutation, query } from "./_generated/server";
+import { requireAuth } from "./authHelpers";
 
 export const list = query({
 	args: {
@@ -52,6 +53,7 @@ export const create = mutation({
 		depositAmount: v.optional(v.number()),
 	},
 	handler: async (ctx, args) => {
+		await requireAuth(ctx);
 		const client = await ctx.db.get(args.clientId);
 		const contractId = await ctx.db.insert("contracts", {
 			...args,
@@ -83,6 +85,7 @@ export const update = mutation({
 		status: v.optional(v.string()),
 	},
 	handler: async (ctx, { contractId, siteUrl, ...updates }) => {
+		await requireAuth(ctx);
 		const doc = await ctx.db.get(contractId);
 		if (!doc || doc.siteUrl !== siteUrl) {
 			throw new Error("Not found");
@@ -118,6 +121,7 @@ export const markSent = mutation({
 export const markSigned = mutation({
 	args: { contractId: v.id("contracts"), siteUrl: v.string() },
 	handler: async (ctx, { contractId, siteUrl }) => {
+		await requireAuth(ctx);
 		const contract = await ctx.db.get(contractId);
 		if (!contract || contract.siteUrl !== siteUrl) {
 			throw new Error("Not found");
@@ -152,6 +156,7 @@ export const sign = mutation({
 export const remove = mutation({
 	args: { contractId: v.id("contracts"), siteUrl: v.string() },
 	handler: async (ctx, { contractId, siteUrl }) => {
+		await requireAuth(ctx);
 		const doc = await ctx.db.get(contractId);
 		if (!doc || doc.siteUrl !== siteUrl) {
 			throw new Error("Not found");
@@ -179,6 +184,7 @@ export const createTemplate = mutation({
 		variables: v.optional(v.array(v.string())),
 	},
 	handler: async (ctx, args) => {
+		await requireAuth(ctx);
 		return await ctx.db.insert("contractTemplates", args);
 	},
 });
@@ -192,6 +198,7 @@ export const updateTemplate = mutation({
 		variables: v.optional(v.array(v.string())),
 	},
 	handler: async (ctx, { templateId, siteUrl, ...updates }) => {
+		await requireAuth(ctx);
 		const doc = await ctx.db.get(templateId);
 		if (!doc || doc.siteUrl !== siteUrl) {
 			throw new Error("Not found");
@@ -209,6 +216,7 @@ export const updateTemplate = mutation({
 export const removeTemplate = mutation({
 	args: { templateId: v.id("contractTemplates"), siteUrl: v.string() },
 	handler: async (ctx, { templateId, siteUrl }) => {
+		await requireAuth(ctx);
 		const doc = await ctx.db.get(templateId);
 		if (!doc || doc.siteUrl !== siteUrl) {
 			throw new Error("Not found");

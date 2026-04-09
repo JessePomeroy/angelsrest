@@ -1,5 +1,6 @@
 import { v } from "convex/values";
 import { mutation, query } from "./_generated/server";
+import { requireAuth } from "./authHelpers";
 
 const DEFAULT_COLUMNS: Record<string, string[]> = {
 	wedding: [
@@ -145,6 +146,7 @@ export const listBoardConfigs = query({
 export const initializeBoard = mutation({
 	args: { siteUrl: v.string(), projectType: v.string() },
 	handler: async (ctx, { siteUrl, projectType }) => {
+		await requireAuth(ctx);
 		// Check if board already exists
 		const existing = await ctx.db
 			.query("boardConfigs")
@@ -207,6 +209,7 @@ export const moveCard = mutation({
 		ctx,
 		{ clientId, siteUrl, targetColumnId, targetPosition },
 	) => {
+		await requireAuth(ctx);
 		const doc = await ctx.db.get(clientId);
 		if (!doc || doc.siteUrl !== siteUrl) {
 			throw new Error("Not found");
@@ -225,6 +228,7 @@ export const addColumn = mutation({
 		name: v.string(),
 	},
 	handler: async (ctx, { configId, siteUrl, name }) => {
+		await requireAuth(ctx);
 		const config = await ctx.db.get(configId);
 		if (!config || config.siteUrl !== siteUrl) {
 			throw new Error("Not found");
@@ -252,6 +256,7 @@ export const renameColumn = mutation({
 		name: v.string(),
 	},
 	handler: async (ctx, { configId, siteUrl, columnId, name }) => {
+		await requireAuth(ctx);
 		const config = await ctx.db.get(configId);
 		if (!config || config.siteUrl !== siteUrl) {
 			throw new Error("Not found");
@@ -273,6 +278,7 @@ export const deleteColumn = mutation({
 		moveToColumnId: v.optional(v.string()),
 	},
 	handler: async (ctx, { configId, siteUrl, columnId, moveToColumnId }) => {
+		await requireAuth(ctx);
 		const config = await ctx.db.get(configId);
 		if (!config || config.siteUrl !== siteUrl) {
 			throw new Error("Not found");
@@ -315,6 +321,7 @@ export const reorderColumns = mutation({
 		columnIds: v.array(v.string()),
 	},
 	handler: async (ctx, { configId, siteUrl, columnIds }) => {
+		await requireAuth(ctx);
 		const config = await ctx.db.get(configId);
 		if (!config || config.siteUrl !== siteUrl) {
 			throw new Error("Not found");

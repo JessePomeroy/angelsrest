@@ -1,5 +1,6 @@
 import { v } from "convex/values";
 import { mutation, query } from "./_generated/server";
+import { requireAuth } from "./authHelpers";
 
 export const create = mutation({
 	args: {
@@ -13,6 +14,7 @@ export const create = mutation({
 		expiresAt: v.optional(v.number()),
 	},
 	handler: async (ctx, args) => {
+		await requireAuth(ctx);
 		const existing = await ctx.db
 			.query("galleries")
 			.withIndex("by_siteUrl_and_slug", (q) =>
@@ -50,6 +52,7 @@ export const update = mutation({
 		favoritesEnabled: v.optional(v.boolean()),
 	},
 	handler: async (ctx, { id, ...fields }) => {
+		await requireAuth(ctx);
 		const gallery = await ctx.db.get(id);
 		if (!gallery) throw new Error("Gallery not found");
 
@@ -66,6 +69,7 @@ export const update = mutation({
 export const remove = mutation({
 	args: { id: v.id("galleries") },
 	handler: async (ctx, { id }) => {
+		await requireAuth(ctx);
 		const gallery = await ctx.db.get(id);
 		if (!gallery) throw new Error("Gallery not found");
 
@@ -157,6 +161,7 @@ export const addImage = mutation({
 		height: v.number(),
 	},
 	handler: async (ctx, args) => {
+		await requireAuth(ctx);
 		const gallery = await ctx.db.get(args.galleryId);
 		if (!gallery) throw new Error("Gallery not found");
 
@@ -185,6 +190,7 @@ export const addImage = mutation({
 export const removeImage = mutation({
 	args: { id: v.id("galleryImages") },
 	handler: async (ctx, { id }) => {
+		await requireAuth(ctx);
 		const image = await ctx.db.get(id);
 		if (!image) throw new Error("Image not found");
 
@@ -211,6 +217,7 @@ export const reorderImages = mutation({
 		),
 	},
 	handler: async (ctx, { updates }) => {
+		await requireAuth(ctx);
 		for (const { id, order } of updates) {
 			await ctx.db.patch(id, { order });
 		}

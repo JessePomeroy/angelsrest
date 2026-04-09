@@ -1,5 +1,6 @@
 import { v } from "convex/values";
 import { mutation, query } from "./_generated/server";
+import { requireAuth } from "./authHelpers";
 
 export const checkTier = query({
 	args: { siteUrl: v.string() },
@@ -22,6 +23,7 @@ export const checkTier = query({
 
 export const listAll = query({
 	handler: async (ctx) => {
+		await requireAuth(ctx);
 		return await ctx.db.query("platformClients").order("desc").collect();
 	},
 });
@@ -55,6 +57,7 @@ export const createClient = mutation({
 		notes: v.optional(v.string()),
 	},
 	handler: async (ctx, args) => {
+		await requireAuth(ctx);
 		return await ctx.db.insert("platformClients", args);
 	},
 });
@@ -111,6 +114,7 @@ export const updateClient = mutation({
 		notes: v.optional(v.string()),
 	},
 	handler: async (ctx, { clientId, ...updates }) => {
+		await requireAuth(ctx);
 		const patch: Record<string, unknown> = {};
 		for (const [key, val] of Object.entries(updates)) {
 			if (val !== undefined) patch[key] = val;

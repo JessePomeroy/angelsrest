@@ -11,6 +11,7 @@
 import type * as activityLog from "../activityLog.js";
 import type * as adminAuth from "../adminAuth.js";
 import type * as auth from "../auth.js";
+import type * as authHelpers from "../authHelpers.js";
 import type * as contracts from "../contracts.js";
 import type * as crm from "../crm.js";
 import type * as emailLog from "../emailLog.js";
@@ -36,6 +37,7 @@ declare const fullApi: ApiFromModules<{
   activityLog: typeof activityLog;
   adminAuth: typeof adminAuth;
   auth: typeof auth;
+  authHelpers: typeof authHelpers;
   contracts: typeof contracts;
   crm: typeof crm;
   emailLog: typeof emailLog;

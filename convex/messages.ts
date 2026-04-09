@@ -1,5 +1,6 @@
 import { v } from "convex/values";
 import { mutation, query } from "./_generated/server";
+import { requireAuth } from "./authHelpers";
 
 export const list = query({
 	args: { siteUrl: v.string() },
@@ -19,6 +20,7 @@ export const send = mutation({
 		content: v.string(),
 	},
 	handler: async (ctx, args) => {
+		await requireAuth(ctx);
 		return await ctx.db.insert("platformMessages", {
 			...args,
 			read: false,
@@ -29,6 +31,7 @@ export const send = mutation({
 export const markRead = mutation({
 	args: { siteUrl: v.string() },
 	handler: async (ctx, { siteUrl }) => {
+		await requireAuth(ctx);
 		const unread = await ctx.db
 			.query("platformMessages")
 			.withIndex("by_siteUrl_unread", (q) =>
@@ -44,6 +47,7 @@ export const markRead = mutation({
 
 export const allThreads = query({
 	handler: async (ctx) => {
+		await requireAuth(ctx);
 		// Fetch all messages once instead of per-client
 		const allMessages = await ctx.db
 			.query("platformMessages")

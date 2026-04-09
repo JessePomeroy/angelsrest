@@ -1,6 +1,7 @@
 import { v } from "convex/values";
 import { internal } from "./_generated/api";
 import { mutation, query } from "./_generated/server";
+import { requireAuth } from "./authHelpers";
 
 export const list = query({
 	args: {
@@ -56,6 +57,7 @@ export const create = mutation({
 		notes: v.optional(v.string()),
 	},
 	handler: async (ctx, args) => {
+		await requireAuth(ctx);
 		const client = await ctx.db.get(args.clientId);
 		const quoteId = await ctx.db.insert("quotes", {
 			...args,
@@ -93,6 +95,7 @@ export const update = mutation({
 		status: v.optional(v.string()),
 	},
 	handler: async (ctx, { quoteId, siteUrl, ...updates }) => {
+		await requireAuth(ctx);
 		const doc = await ctx.db.get(quoteId);
 		if (!doc || doc.siteUrl !== siteUrl) {
 			throw new Error("Not found");
@@ -162,6 +165,7 @@ export const convertToInvoice = mutation({
 		ctx,
 		{ quoteId, siteUrl, invoiceNumber, invoiceType, dueDate, notes },
 	) => {
+		await requireAuth(ctx);
 		const quote = await ctx.db.get(quoteId);
 		if (!quote || quote.siteUrl !== siteUrl) throw new Error("Not found");
 
@@ -208,6 +212,7 @@ export const markDeclined = mutation({
 export const remove = mutation({
 	args: { quoteId: v.id("quotes"), siteUrl: v.string() },
 	handler: async (ctx, { quoteId, siteUrl }) => {
+		await requireAuth(ctx);
 		const doc = await ctx.db.get(quoteId);
 		if (!doc || doc.siteUrl !== siteUrl) {
 			throw new Error("Not found");
@@ -242,6 +247,7 @@ export const createPreset = mutation({
 		),
 	},
 	handler: async (ctx, args) => {
+		await requireAuth(ctx);
 		return await ctx.db.insert("quotePresets", args);
 	},
 });
@@ -264,6 +270,7 @@ export const updatePreset = mutation({
 		),
 	},
 	handler: async (ctx, { presetId, siteUrl, ...updates }) => {
+		await requireAuth(ctx);
 		const doc = await ctx.db.get(presetId);
 		if (!doc || doc.siteUrl !== siteUrl) {
 			throw new Error("Not found");
@@ -281,6 +288,7 @@ export const updatePreset = mutation({
 export const removePreset = mutation({
 	args: { presetId: v.id("quotePresets"), siteUrl: v.string() },
 	handler: async (ctx, { presetId, siteUrl }) => {
+		await requireAuth(ctx);
 		const doc = await ctx.db.get(presetId);
 		if (!doc || doc.siteUrl !== siteUrl) {
 			throw new Error("Not found");
