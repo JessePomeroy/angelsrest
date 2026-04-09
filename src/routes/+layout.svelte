@@ -98,6 +98,8 @@ onMount(() => {
   <!-- Grain overlay — styled in grain.css -->
   <div class="grain-overlay" aria-hidden="true"></div>
 
+  <a href="#main-content" class="skip-link">Skip to content</a>
+
   <div class="flex flex-col min-h-screen relative z-10">
     <!-- Desktop navigation (hidden on mobile) -->
     <Nav />
@@ -113,6 +115,7 @@ onMount(() => {
 
     <!-- Main content area -->
     <main
+      id="main-content"
       class="flex-1 max-w-[1400px] !mx-auto w-full px-1 pt-2 pb-2 md:pb-4 md:px-8"
     >
       {@render children()}
@@ -135,4 +138,20 @@ onMount(() => {
     <BottomNav />
   </div>
 {/if}
+
+<style>
+.skip-link {
+  position: absolute;
+  left: -9999px;
+  top: 0;
+  z-index: 999;
+  padding: 8px 16px;
+  background: var(--color-surface-100);
+  color: var(--color-surface-900);
+}
+.skip-link:focus {
+  left: 8px;
+  top: 8px;
+}
+</style>
 

@@ -1,19 +1,4 @@
 <script lang="ts">
-/**
- * GalleryModal.svelte
- * A fullscreen lightbox modal for viewing images with keyboard navigation.
- *
- * Features:
- * - Arrow keys to navigate between images
- * - Escape key to close
- * - Click backdrop to close
- * - Click image/controls without closing (stopPropagation)
- */
-
-// Props from parent component
-// - images: array of image objects with thumbnail, full, and optional alt
-// - currentIndex: which image to show initially
-// - onClose: callback to close the modal
 let {
 	images = [],
 	currentIndex = 0,
@@ -24,25 +9,34 @@ let {
 	onClose: () => void;
 } = $props();
 
-// Local state for tracking current image
-// Initialized via $effect to sync with currentIndex prop
 let index = $state(0);
+let dialogEl = $state<HTMLDivElement | null>(null);
+let previouslyFocused: HTMLElement | null = null;
 
-// Sync with currentIndex when the prop changes (e.g., modal reopened on different image)
 $effect(() => {
 	index = currentIndex;
 });
-let offsetX = $state(0); // Current drag offset
+
+$effect(() => {
+	if (dialogEl) {
+		previouslyFocused = document.activeElement as HTMLElement;
+		const closeBtn = dialogEl.querySelector<HTMLElement>('[aria-label="Close lightbox"]');
+		closeBtn?.focus();
+	}
+	return () => {
+		previouslyFocused?.focus();
+	};
+});
+
+let offsetX = $state(0);
 let isDragging = $state(false);
 let startX = 0;
 
-// Preload adjacent images for smoother navigation
 function getImageUrl(img: any) {
 	return img?.full || img?.url || img;
 }
 
 $effect(() => {
-	// Preload next and previous images
 	const preloadIndexes = [
 		(index + 1) % images.length,
 		(index - 1 + images.length) % images.length,
@@ -52,26 +46,37 @@ $effect(() => {
 		img.src = getImageUrl(images[i]);
 	});
 });
-// Navigate to next image (wraps around using modulo)
+
 function next() {
 	index = (index + 1) % images.length;
 }
 
-// Navigate to previous image (wraps around)
 function prev() {
 	index = (index - 1 + images.length) % images.length;
 }
 
-// Global keyboard handler for navigation and closing
 function handleKeydown(e: KeyboardEvent) {
 	if (e.key === "Escape") onClose();
 	if (e.key === "ArrowRight") next();
 	if (e.key === "ArrowLeft") prev();
+	if (e.key === "Tab" && dialogEl) {
+		const focusable = dialogEl.querySelectorAll<HTMLElement>(
+			'button:not([disabled]), [tabindex]:not([tabindex="-1"])'
+		);
+		if (focusable.length === 0) return;
+		const first = focusable[0];
+		const last = focusable[focusable.length - 1];
+		if (e.shiftKey && document.activeElement === first) {
+			e.preventDefault();
+			last.focus();
+		} else if (!e.shiftKey && document.activeElement === last) {
+			e.preventDefault();
+			first.focus();
+		}
+	}
 }
 
-// Swipe Detection
 let touchStartX = 0;
-let touchEndX = 0;
 
 function handleTouchStart(e: TouchEvent) {
 	isDragging = true;
@@ -86,67 +91,42 @@ function handleTouchMove(e: TouchEvent) {
 
 function handleTouchEnd() {
 	isDragging = false;
-	const threshold = 50;
-
-	if (offsetX < -threshold) {
-		next();
-	} else if (offsetX > threshold) {
-		prev();
-	}
+	if (offsetX < -50) next();
+	else if (offsetX > 50) prev();
 	offsetX = 0;
 }
 </script>
 
-<!-- Attach keyboard listener to the window so it works regardless of focus -->
-<svelte:window on:keydown={handleKeydown} />
+<svelte:window onkeydown={handleKeydown} />
 
-<!-- 
-  Backdrop (dark overlay)
-  - Clicking it closes the modal
-  - Has keyboard handler for a11y (Enter/Space also close)
-  - role="dialog" and aria-modal for screen readers
-  - tabindex="-1" makes it focusable for a11y without adding to tab order
--->
 <div
   class="fixed inset-0 bg-black/90 backdrop-blur-sm z-50 flex items-center justify-center"
   onclick={onClose}
-  onkeydown={(e) => (e.key === "Enter" || e.key === " ") && onClose()}
   role="dialog"
   aria-modal="true"
-  tabindex="-1"
+  aria-label="Image lightbox — {index + 1} of {images.length}"
+  bind:this={dialogEl}
 >
-  <!-- 
-    Content container
-    - stopPropagation prevents clicks on image/buttons from bubbling up to close the modal
-    - role="presentation" tells a11y tools this div isn't interactive itself
-  -->
   <div
     class="relative max-w-[90vw] max-h-[90vh]"
     onclick={(e) => e.stopPropagation()}
-    role="presentation"
+    role="document"
   >
-    <!-- Close button (top right) -->
     <button
       class="absolute top-4 right-4 z-10 p-2 text-white/70 rounded-full hover:bg-white hover:text-black"
-      aria-label="Close"
+      aria-label="Close lightbox"
       onclick={onClose}
     >
       x
     </button>
 
-    <!-- Image counter showing current position (e.g., "3/10") -->
-    <div class="absolute top-4 left-4 text-white/70 text-sm">
+    <div class="absolute top-4 left-4 text-white/70 text-sm" aria-live="polite">
       {index + 1}/{images.length}
     </div>
 
-    <!-- 
-      The main image
-      - max-w-full and max-h-[90vh] keep it within viewport bounds
-      - object-contain preserves aspect ratio
-    -->
     <img
       src={getImageUrl(images[index])}
-      alt={images[index]?.alt || ""}
+      alt={images[index]?.alt || `Gallery image ${index + 1} of ${images.length}`}
       class="max-w-full max-h-[90vh] object-contain rounded-md"
       style="transform: translateX({offsetX}px); transition: {isDragging
         ? 'none'
@@ -157,11 +137,11 @@ function handleTouchEnd() {
       draggable="false"
     />
 
-    <!-- Navigation arrows (only shown if more than one image) -->
     {#if images.length > 1}
       <button
         type="button"
         class="absolute left-4 top-1/2 -translate-y-1/2 text-white/70 hover:text-white text-4xl"
+        aria-label="Previous image"
         onclick={prev}
       >
         ‹
@@ -169,6 +149,7 @@ function handleTouchEnd() {
       <button
         type="button"
         class="absolute right-4 top-1/2 -translate-y-1/2 text-white/70 hover:text-white text-4xl"
+        aria-label="Next image"
         onclick={next}
       >
         ›

@@ -10,7 +10,7 @@ import { urlFor } from "$lib/sanity/client";
 
 let {
 	src,
-	alt = "",
+	alt = "Image",
 	width = 800,
 }: {
 	src: any;

@@ -57,9 +57,9 @@ function formatDate(dateStr: string) {
   <!-- Gear Grid -->
   {#if post.gearUsed && post.gearUsed.length > 0}
     <section class="mb-12">
-      <h3 class="text-sm tracking-widest text-surface-400 uppercase mb-4">
+      <h2 class="text-sm tracking-widest text-surface-400 uppercase mb-4">
         Gear Used
-      </h3>
+      </h2>
       <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
         {#each post.gearUsed as gear}
           <div class="bg-surface-800/50 p-4 rounded-lg text-center">

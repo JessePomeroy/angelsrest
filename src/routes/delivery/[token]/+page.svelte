@@ -12,13 +12,20 @@ let images = $state(data.images);
 let lightboxIndex = $state(-1);
 let lightboxOpen = $derived(lightboxIndex >= 0);
 let downloading = $state(false);
+let lightboxEl = $state<HTMLDivElement | null>(null);
+let previouslyFocused: HTMLElement | null = null;
 
 function openLightbox(index: number) {
+	previouslyFocused = document.activeElement as HTMLElement;
 	lightboxIndex = index;
+	requestAnimationFrame(() => {
+		lightboxEl?.querySelector<HTMLElement>('.lb-close')?.focus();
+	});
 }
 
 function closeLightbox() {
 	lightboxIndex = -1;
+	previouslyFocused?.focus();
 }
 
 function handleKeydown(e: KeyboardEvent) {
@@ -26,6 +33,21 @@ function handleKeydown(e: KeyboardEvent) {
 	if (e.key === "Escape") closeLightbox();
 	if (e.key === "ArrowRight" && lightboxIndex < images.length - 1) lightboxIndex++;
 	if (e.key === "ArrowLeft" && lightboxIndex > 0) lightboxIndex--;
+	if (e.key === "Tab" && lightboxEl) {
+		const focusable = lightboxEl.querySelectorAll<HTMLElement>(
+			'a[href], button:not([disabled])'
+		);
+		if (focusable.length === 0) return;
+		const first = focusable[0];
+		const last = focusable[focusable.length - 1];
+		if (e.shiftKey && document.activeElement === first) {
+			e.preventDefault();
+			last.focus();
+		} else if (!e.shiftKey && document.activeElement === last) {
+			e.preventDefault();
+			first.focus();
+		}
+	}
 }
 
 async function toggleFavorite(index: number) {
@@ -108,6 +130,10 @@ async function downloadFavorites() {
 let favoriteCount = $derived(images.filter((img: any) => img.isFavorite).length);
 </script>
 
+<svelte:head>
+	<title>{data.gallery.name} | Gallery</title>
+</svelte:head>
+
 <svelte:window onkeydown={handleKeydown} />
 
 <div class="gallery-page">
@@ -136,8 +162,8 @@ let favoriteCount = $derived(images.filter((img: any) => img.isFavorite).length)
 	<div class="image-grid">
 		{#each images as image, i (image._id)}
 			<div class="grid-cell">
-				<button class="image-btn" onclick={() => openLightbox(i)}>
-					<img src={image.thumbUrl} alt={image.filename} loading="lazy" />
+				<button class="image-btn" onclick={() => openLightbox(i)} aria-label={"View photo " + (i + 1) + " of " + images.length}>
+					<img src={image.thumbUrl} alt={"Photo " + (i + 1) + ": " + image.filename} loading="lazy" />
 				</button>
 				{#if data.gallery.favoritesEnabled}
 					<button
@@ -155,16 +181,16 @@ let favoriteCount = $derived(images.filter((img: any) => img.isFavorite).length)
 </div>
 
 {#if lightboxOpen}
-	<div class="lightbox" role="dialog" aria-modal="true" onclick={closeLightbox}>
+	<div class="lightbox" role="dialog" aria-modal="true" aria-label="Image lightbox" bind:this={lightboxEl} onclick={closeLightbox}>
 		<div class="lightbox-content" onclick={(e) => e.stopPropagation()}>
 			<img src={images[lightboxIndex].previewUrl} alt={images[lightboxIndex].filename} />
 			<div class="lightbox-controls">
-				<span class="lightbox-counter">{lightboxIndex + 1} / {images.length}</span>
+				<span class="lightbox-counter" aria-live="polite">{lightboxIndex + 1} / {images.length}</span>
 				<span class="lightbox-filename">{images[lightboxIndex].filename}</span>
 				<div class="lightbox-actions">
 					{#if data.gallery.favoritesEnabled}
 						<button
-							class="lb-btn"
+							class="lb-btn" aria-label={images[lightboxIndex].isFavorite ? "Remove from favorites" : "Add to favorites"}
 							class:is-fav={images[lightboxIndex].isFavorite}
 							onclick={() => toggleFavorite(lightboxIndex)}
 						>
@@ -172,7 +198,7 @@ let favoriteCount = $derived(images.filter((img: any) => img.isFavorite).length)
 						</button>
 					{/if}
 					{#if data.gallery.downloadEnabled}
-						<a class="lb-btn" href={images[lightboxIndex].downloadUrl} download>
+						<a class="lb-btn" aria-label={images[lightboxIndex].isFavorite ? "Remove from favorites" : "Add to favorites"} href={images[lightboxIndex].downloadUrl} download>
 							↓ download
 						</a>
 					{/if}
@@ -180,12 +206,12 @@ let favoriteCount = $derived(images.filter((img: any) => img.isFavorite).length)
 			</div>
 		</div>
 		{#if lightboxIndex > 0}
-			<button class="lb-nav lb-prev" onclick={(e) => { e.stopPropagation(); lightboxIndex--; }}>‹</button>
+			<button class="lb-nav lb-prev" aria-label="Previous image" onclick={(e) => { e.stopPropagation(); lightboxIndex--; }}>‹</button>
 		{/if}
 		{#if lightboxIndex < images.length - 1}
-			<button class="lb-nav lb-next" onclick={(e) => { e.stopPropagation(); lightboxIndex++; }}>›</button>
+			<button class="lb-nav lb-next" aria-label="Next image" onclick={(e) => { e.stopPropagation(); lightboxIndex++; }}>›</button>
 		{/if}
-		<button class="lb-close" onclick={closeLightbox}>✕</button>
+		<button class="lb-close" aria-label="Close lightbox" onclick={closeLightbox}>✕</button>
 	</div>
 {/if}
 
@@ -291,7 +317,9 @@ let favoriteCount = $derived(images.filter((img: any) => img.isFavorite).length)
 		transition: opacity 0.15s;
 	}
 
-	.grid-cell:hover .fav-btn { opacity: 1; }
+	.grid-cell:hover .fav-btn,
+	.grid-cell:focus-within .fav-btn,
+	.fav-btn:focus { opacity: 1; }
 	.fav-btn.is-fav { opacity: 1; color: #e74c3c; background: rgba(0, 0, 0, 0.5); }
 
 	/* Lightbox */

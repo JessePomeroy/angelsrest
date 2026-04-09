@@ -87,9 +87,11 @@ const categories = [
     </div>
 
     <!-- Category filter tabs -->
-    <div class="flex flex-wrap justify-center gap-2 mb-8">
+    <div class="flex flex-wrap justify-center gap-2 mb-8" role="tablist">
         {#each categories as category}
             <button
+                role="tab"
+                aria-selected={activeCategory === category.value}
                 class="btn btn-sm {activeCategory === category.value
                     ? 'active-tab'
                     : 'variant-soft-surface'}"

@@ -76,6 +76,8 @@ function done() {
 		bind:this={canvas}
 		{width}
 		{height}
+		role="img"
+		aria-label="Signature drawing area. Use the canvas to draw your signature."
 		onmousedown={startDraw}
 		onmousemove={draw}
 		onmouseup={stopDraw}
@@ -85,8 +87,8 @@ function done() {
 		ontouchend={stopDraw}
 	></canvas>
 	<div class="actions">
-		<button type="button" class="clear" onclick={clear}>clear</button>
-		<button type="button" class="done" onclick={done} disabled={!hasDrawn}>done</button>
+		<button type="button" class="clear" onclick={clear} aria-label="Clear signature">clear</button>
+		<button type="button" class="done" onclick={done} disabled={!hasDrawn} aria-label="Accept signature">done</button>
 	</div>
 </div>
 

@@ -117,11 +117,13 @@ async function handleSubmit(e: SubmitEvent) {
             {status === "sending" ? "sending..." : "send message"}
         </button>
 
-        {#if status === "success"}
-            <p class="text-green-400">message sent !</p>
-        {/if}
-        {#if status === "error"}
-            <p class="text-red-400">something went wrong. try again ?</p>
-        {/if}
+        <div aria-live="polite">
+            {#if status === "success"}
+                <p class="text-green-400">message sent !</p>
+            {/if}
+            {#if status === "error"}
+                <p class="text-red-400">something went wrong. try again ?</p>
+            {/if}
+        </div>
     </form>
 </div>

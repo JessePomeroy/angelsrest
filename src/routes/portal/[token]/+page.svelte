@@ -141,11 +141,13 @@ async function signContract() {
 		<span class="business-name">{data.businessName}</span>
 	</header>
 
-	{#if actionResult}
-		<div class="action-banner" class:success={actionResult === "success"} class:error-banner={actionResult === "error"}>
-			{actionMessage}
-		</div>
-	{/if}
+	<div aria-live="assertive">
+		{#if actionResult}
+			<div class="action-banner" class:success={actionResult === "success"} class:error-banner={actionResult === "error"}>
+				{actionMessage}
+			</div>
+		{/if}
+	</div>
 
 	<main class="portal-card">
 		{#if data.type === "quote"}
@@ -262,10 +264,10 @@ async function signContract() {
 				<table class="line-items">
 					<thead>
 						<tr>
-							<th class="th-desc">Description</th>
-							<th class="th-qty">Qty</th>
-							<th class="th-price">Unit Price</th>
-							<th class="th-total">Total</th>
+							<th scope="col" class="th-desc">Description</th>
+							<th scope="col" class="th-qty">Qty</th>
+							<th scope="col" class="th-price">Unit Price</th>
+							<th scope="col" class="th-total">Total</th>
 						</tr>
 					</thead>
 					<tbody>

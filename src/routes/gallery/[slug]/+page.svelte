@@ -51,10 +51,11 @@ function openModal(index: number) {
       <button
         class="mb-2 w-full break-inside-avoid"
         onclick={() => openModal(i)}
+        aria-label="View image {i + 1}"
       >
         <img
           src={image.thumbnail}
-          alt={image.alt || ""}
+          alt={image.alt || "Gallery image " + (i + 1)}
           class="w-full h-auto hover:scale-105 transition-transform rounded-md"
           loading="lazy"
         />

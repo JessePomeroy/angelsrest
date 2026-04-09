@@ -80,7 +80,7 @@ const statusColors: Record<string, string> = {
 		<h1 class="text-xl font-bold mt-4 mb-1">Track Your Order</h1>
 		<p class="text-gray-400 text-sm mb-4">Enter your order details to check the status</p>
 
-		<div class="rounded-lg p-4 space-y-3">
+		<form class="rounded-lg p-4 space-y-3" onsubmit={(e) => { e.preventDefault(); lookupOrder(); }}>
 			<div>
 				<label for="email" class="block text-xs text-gray-400 mb-1">Email</label>
 				<input
@@ -104,18 +104,21 @@ const statusColors: Record<string, string> = {
 			</div>
 
 			<button
-				onclick={lookupOrder}
+				type="submit"
 				disabled={loading}
 				class="w-full py-2 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-600 rounded text-sm font-medium"
 			>
 				{loading ? 'Looking up...' : 'Track Order'}
 			</button>
 
-			{#if error}
-				<p class="text-red-400 text-sm text-center">{error}</p>
-			{/if}
-		</div>
+			<div aria-live="polite">
+				{#if error}
+					<p class="text-red-400 text-sm text-center">{error}</p>
+				{/if}
+			</div>
+		</form>
 
+		<div aria-live="polite">
 		{#if order}
 			<div class="mt-4 rounded-lg p-4">
 				<div class="flex justify-between items-start mb-3">
@@ -156,5 +159,6 @@ const statusColors: Record<string, string> = {
 				{/if}
 			</div>
 		{/if}
+		</div>
 	</div>
 </div>

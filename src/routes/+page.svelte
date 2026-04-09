@@ -40,6 +40,8 @@ import SEO from "$lib/components/SEO.svelte";
 />
 
 <!-- Hero section - fills available space between nav and footer, centers content -->
+<h1 class="sr-only">Angel's Rest Photography</h1>
+
 <section
     class="flex flex-col items-center justify-center text-center min-h-0 flex-1 gap-4 md:gap-6"
 >

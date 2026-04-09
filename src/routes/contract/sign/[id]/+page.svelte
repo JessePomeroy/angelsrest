@@ -123,16 +123,20 @@ function formatCurrency(amount: number) {
 				</div>
 
 				<div class="field">
-					<label>signature *</label>
-					<SignaturePad onSign={handleSignature} />
+					<label id="signature-label">signature *</label>
+					<div aria-labelledby="signature-label">
+						<SignaturePad onSign={handleSignature} />
+					</div>
 					{#if signatureData}
 						<p class="captured">signature captured</p>
 					{/if}
 				</div>
 
-				{#if errorMsg}
-					<p class="error">{errorMsg}</p>
-				{/if}
+				<div aria-live="polite">
+					{#if errorMsg}
+						<p class="error">{errorMsg}</p>
+					{/if}
+				</div>
 
 				<button onclick={submit} disabled={submitting} type="button">
 					{submitting ? 'signing...' : 'sign contract'}

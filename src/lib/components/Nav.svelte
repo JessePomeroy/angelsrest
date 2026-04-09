@@ -23,6 +23,7 @@ const links = [
 
 <!-- Desktop nav - hidden on mobile (md:flex), centered with max-width -->
 <nav
+  aria-label="Main navigation"
   class="hidden md:flex w-full items-center justify-between px-8 py-6 max-w-[1400px] !mx-auto border-b border-surface-500/20"
 >
   <!-- Site title/logo -->

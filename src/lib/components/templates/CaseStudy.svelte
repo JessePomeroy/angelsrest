@@ -71,27 +71,27 @@ function formatDate(dateStr: string) {
   <div class="grid gap-8 mb-12">
     {#if post.brief}
       <section class="bg-surface-800/50 p-6 rounded-lg">
-        <h3 class="text-sm tracking-widest text-surface-400 uppercase mb-2">
+        <h2 class="text-sm tracking-widest text-surface-400 uppercase mb-2">
           The Brief
-        </h3>
+        </h2>
         <p class="text-lg">{post.brief}</p>
       </section>
     {/if}
 
     {#if post.approach}
       <section class="bg-surface-800/50 p-6 rounded-lg">
-        <h3 class="text-sm tracking-widest text-surface-400 uppercase mb-2">
+        <h2 class="text-sm tracking-widest text-surface-400 uppercase mb-2">
           The Approach
-        </h3>
+        </h2>
         <p class="text-lg">{post.approach}</p>
       </section>
     {/if}
 
     {#if post.result}
       <section class="bg-surface-800/50 p-6 rounded-lg">
-        <h3 class="text-sm tracking-widest text-surface-400 uppercase mb-2">
+        <h2 class="text-sm tracking-widest text-surface-400 uppercase mb-2">
           The Result
-        </h3>
+        </h2>
         <p class="text-lg">{post.result}</p>
       </section>
     {/if}
