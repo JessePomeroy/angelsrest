@@ -2,19 +2,14 @@ import { error, json } from "@sveltejs/kit";
 import { api } from "$convex/api";
 import type { Id } from "$convex/dataModel";
 import { getConvex } from "$lib/server/convexClient";
+import { validatePortalToken } from "$lib/server/portalToken";
 
 const convex = getConvex();
 
 export async function POST({ params, request }) {
 	const { token } = params;
 
-	const result = await convex.query(api.portal.getByToken, { token });
-	if (!result || result.expired) {
-		throw error(404, "Invalid or expired token");
-	}
-	if (result.token.type !== "contract") {
-		throw error(400, "This token is not for a contract");
-	}
+	const result = await validatePortalToken(convex, token, "contract");
 
 	const body = await request.json();
 	if (!body.signerName?.trim()) {
