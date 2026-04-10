@@ -1,5 +1,6 @@
 import { v } from "convex/values";
 import { mutation, query } from "./_generated/server";
+import { getNextSequentialNumber } from "./helpers/numbering";
 
 export const list = query({
 	args: {
@@ -86,23 +87,15 @@ export const create = mutation({
 		}
 
 		// Use provided order number or generate one atomically
-		let orderNumber = args.orderNumber;
-		if (!orderNumber) {
-			const latest = await ctx.db
-				.query("orders")
-				.withIndex("by_siteUrl", (q) => q.eq("siteUrl", args.siteUrl))
-				.order("desc")
-				.take(1);
-
-			orderNumber = "ORD-001";
-			if (latest[0]) {
-				const num = Number.parseInt(
-					latest[0].orderNumber.replace("ORD-", ""),
-					10,
-				);
-				orderNumber = `ORD-${String(num + 1).padStart(3, "0")}`;
-			}
-		}
+		const orderNumber =
+			args.orderNumber ||
+			(await getNextSequentialNumber(
+				ctx,
+				"orders",
+				args.siteUrl,
+				"orderNumber",
+				"ORD-",
+			));
 
 		const _id = await ctx.db.insert("orders", {
 			...args,
@@ -256,16 +249,12 @@ export const getStats = query({
 export const getNextOrderNumber = query({
 	args: { siteUrl: v.string() },
 	handler: async (ctx, { siteUrl }) => {
-		const orders = await ctx.db
-			.query("orders")
-			.withIndex("by_siteUrl", (q) => q.eq("siteUrl", siteUrl))
-			.order("desc")
-			.take(1);
-
-		const latest = orders[0];
-		if (!latest) return "ORD-001";
-
-		const num = Number.parseInt(latest.orderNumber.replace("ORD-", ""), 10);
-		return `ORD-${String(num + 1).padStart(3, "0")}`;
+		return getNextSequentialNumber(
+			ctx,
+			"orders",
+			siteUrl,
+			"orderNumber",
+			"ORD-",
+		);
 	},
 });

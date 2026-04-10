@@ -2,6 +2,7 @@ import { v } from "convex/values";
 import { internal } from "./_generated/api";
 import { mutation, query } from "./_generated/server";
 import { requireAuth } from "./authHelpers";
+import { getNextSequentialNumber } from "./helpers/numbering";
 
 export const list = query({
 	args: {
@@ -300,16 +301,12 @@ export const removePreset = mutation({
 export const getNextNumber = query({
 	args: { siteUrl: v.string() },
 	handler: async (ctx, { siteUrl }) => {
-		const quotes = await ctx.db
-			.query("quotes")
-			.withIndex("by_siteUrl", (q) => q.eq("siteUrl", siteUrl))
-			.order("desc")
-			.take(1);
-
-		const latest = quotes[0];
-		if (!latest) return "QT-001";
-
-		const num = Number.parseInt(latest.quoteNumber.replace("QT-", ""), 10);
-		return `QT-${String(num + 1).padStart(3, "0")}`;
+		return getNextSequentialNumber(
+			ctx,
+			"quotes",
+			siteUrl,
+			"quoteNumber",
+			"QT-",
+		);
 	},
 });
