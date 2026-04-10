@@ -124,9 +124,27 @@ This is intentionally different from reflecting-pool, which marks the order `ful
 LUMAPRINTS_API_KEY=...
 LUMAPRINTS_API_SECRET=...
 LUMAPRINTS_STORE_ID=83765
+LUMAPRINTS_USE_SANDBOX=true    # optional; default is production
 ```
 
-All three are set in Vercel for production. Locally they live in `.env`. Tests mock them via `src/__mocks__/env-dynamic.ts`.
+All are set via Vercel environment variables for deployed environments, or via `.env` for local development. Tests mock them via `src/__mocks__/env-dynamic.ts`.
+
+### Production vs sandbox routing
+
+LumaPrints exposes a sandbox environment at `https://us.api-sandbox.lumaprints.com` that accepts fake orders for testing. The client picks which URL to hit based on `LUMAPRINTS_USE_SANDBOX`:
+
+- `LUMAPRINTS_USE_SANDBOX=true` → sandbox
+- unset or anything else → production
+
+**Recommended Vercel configuration:**
+
+| Vercel environment | `LUMAPRINTS_USE_SANDBOX` | Why |
+|---|---|---|
+| Production | `false` (or unset) | Real orders, real customers |
+| Preview | `true` | Every PR branch deploys to a preview URL. Test the full checkout + webhook flow there without polluting production data or triggering real fulfillment. |
+| Development (`.env.local`) | `true` | Local `pnpm dev` should never submit real orders |
+
+**Why an explicit env var instead of `NODE_ENV` or Vite's `import.meta.env.DEV`:** those build-mode flags are `true` only for `pnpm dev`. Vercel sets `NODE_ENV=production` on every deploy including preview branches, so a `NODE_ENV`-based switch would route preview-branch checkouts to **production** LumaPrints — a silent footgun for any PR touching the webhook. The dedicated env var gives each Vercel target independent control.
 
 ---
 

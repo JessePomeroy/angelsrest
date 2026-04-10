@@ -1,11 +1,16 @@
 // LumaPrints API client — server-only.
 // See LUMAPRINTS.md for full spec and known issues.
 //
-// Ported from reflecting-pool's cleaner implementation per audit #22.
-// Key differences from reflecting-pool:
+// Ported from reflecting-pool's cleaner implementation per audit #22, with
+// two upgrades over both the original angelsrest client and reflecting-pool:
 //   - Uses $env/dynamic/private (not static) to match angelsrest's existing
 //     env access pattern and test mocking setup.
-//   - Sandbox switch uses NODE_ENV at runtime instead of Vite's import.meta.
+//   - Sandbox switch is driven by an explicit LUMAPRINTS_USE_SANDBOX env var
+//     instead of NODE_ENV or import.meta.env.DEV. Those build-mode flags are
+//     both true only for `pnpm dev` and leave Vercel preview deployments
+//     pointing at production LumaPrints — a silent footgun for any PR that
+//     touches checkout. An explicit var lets each Vercel target (local,
+//     preview, production) be configured independently.
 
 import { env } from "$env/dynamic/private";
 import type {
@@ -17,7 +22,7 @@ import type {
 } from "$lib/shop/types";
 
 const BASE_URL =
-	process.env.NODE_ENV === "development"
+	env.LUMAPRINTS_USE_SANDBOX === "true"
 		? "https://us.api-sandbox.lumaprints.com"
 		: "https://us.api.lumaprints.com";
 
