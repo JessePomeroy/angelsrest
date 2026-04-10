@@ -8,7 +8,17 @@ let { data } = $props();
 setupConvex(PUBLIC_CONVEX_URL);
 const client = useConvexClient();
 
-let images = $state(data.images);
+// The server is the source of truth for images. We overlay optimistic
+// favorite toggles via a per-image override map so that (a) navigations
+// naturally flow through without clobbering user intent, and (b) the
+// read path stays derived from props instead of stale-captured state.
+let favoriteOverrides = $state(new Map<string, boolean>());
+let images = $derived(
+	data.images.map((img) => ({
+		...img,
+		isFavorite: favoriteOverrides.get(img._id) ?? img.isFavorite,
+	})),
+);
 let lightboxIndex = $state(-1);
 let lightboxOpen = $derived(lightboxIndex >= 0);
 let downloading = $state(false);
@@ -55,9 +65,10 @@ async function toggleFavorite(index: number) {
 	const image = images[index];
 	const newVal = !image.isFavorite;
 
-	// Optimistic update
-	images[index] = { ...image, isFavorite: newVal };
-	images = [...images];
+	// Optimistic override — derived images will pick this up on next read
+	const next = new Map(favoriteOverrides);
+	next.set(image._id, newVal);
+	favoriteOverrides = next;
 
 	await client.mutation(api.galleries.updateImage, {
 		id: image._id as any,
@@ -181,8 +192,20 @@ let favoriteCount = $derived(images.filter((img: any) => img.isFavorite).length)
 </div>
 
 {#if lightboxOpen}
-	<div class="lightbox" role="dialog" aria-modal="true" aria-label="Image lightbox" bind:this={lightboxEl} onclick={closeLightbox}>
-		<div class="lightbox-content" onclick={(e) => e.stopPropagation()}>
+	<div
+		class="lightbox"
+		role="dialog"
+		aria-modal="true"
+		aria-label="Image lightbox"
+		tabindex="-1"
+		bind:this={lightboxEl}
+		onclick={(e) => {
+			// Backdrop click: only close when the target is the backdrop itself
+			if (e.target === e.currentTarget) closeLightbox();
+		}}
+		onkeydown={handleKeydown}
+	>
+		<div class="lightbox-content">
 			<img src={images[lightboxIndex].previewUrl} alt={images[lightboxIndex].filename} />
 			<div class="lightbox-controls">
 				<span class="lightbox-counter" aria-live="polite">{lightboxIndex + 1} / {images.length}</span>

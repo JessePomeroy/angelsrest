@@ -101,17 +101,19 @@ function handleTouchEnd() {
 
 <div
   class="fixed inset-0 bg-black/90 backdrop-blur-sm z-50 flex items-center justify-center"
-  onclick={onClose}
+  onclick={(e) => {
+    // Only close when the click hits the backdrop itself, not a child.
+    // Removes the need for stopPropagation on the inner content div.
+    if (e.target === e.currentTarget) onClose();
+  }}
+  onkeydown={handleKeydown}
   role="dialog"
   aria-modal="true"
   aria-label="Image lightbox — {index + 1} of {images.length}"
+  tabindex="-1"
   bind:this={dialogEl}
 >
-  <div
-    class="relative max-w-[90vw] max-h-[90vh]"
-    onclick={(e) => e.stopPropagation()}
-    role="document"
-  >
+  <div class="relative max-w-[90vw] max-h-[90vh]" role="document">
     <button
       class="absolute top-4 right-4 z-10 p-2 text-white/70 rounded-full hover:bg-white hover:text-black"
       aria-label="Close lightbox"

@@ -72,12 +72,19 @@ function done() {
 </script>
 
 <div class="signature-pad">
+	<!--
+		A signature canvas is an interactive drawing surface, not static
+		content. role="img" is wrong (implies read-only) and Svelte flags
+		it. Leaving the role off lets the canvas be treated as a custom
+		widget; aria-label still describes its purpose to screen readers,
+		and the "clear" / "done" buttons below give keyboard-only users a
+		way to interact without drawing.
+	-->
 	<canvas
 		bind:this={canvas}
 		{width}
 		{height}
-		role="img"
-		aria-label="Signature drawing area. Use the canvas to draw your signature."
+		aria-label="Signature drawing area. Use the canvas to draw your signature, or the buttons below to clear or accept."
 		onmousedown={startDraw}
 		onmousemove={draw}
 		onmouseup={stopDraw}

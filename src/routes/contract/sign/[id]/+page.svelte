@@ -123,6 +123,13 @@ function formatCurrency(amount: number) {
 				</div>
 
 				<div class="field">
+					<!--
+						Svelte can't statically see into the SignaturePad
+						component to verify the canvas is nested under this
+						label. The runtime relationship is wired explicitly
+						via aria-labelledby on the wrapping div.
+					-->
+					<!-- svelte-ignore a11y_label_has_associated_control -->
 					<label id="signature-label">signature *</label>
 					<div aria-labelledby="signature-label">
 						<SignaturePad onSign={handleSignature} />
