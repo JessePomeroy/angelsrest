@@ -2,6 +2,7 @@ import { v } from "convex/values";
 import { internal } from "./_generated/api";
 import { mutation, query } from "./_generated/server";
 import { requireAuth } from "./authHelpers";
+import { markDocumentSent } from "./helpers/marking";
 import { getNextSequentialNumber } from "./helpers/numbering";
 import { patchDocument } from "./helpers/patching";
 
@@ -104,18 +105,13 @@ export const update = mutation({
 export const markSent = mutation({
 	args: { quoteId: v.id("quotes"), siteUrl: v.string() },
 	handler: async (ctx, { quoteId, siteUrl }) => {
-		const quote = await ctx.db.get(quoteId);
-		if (!quote || quote.siteUrl !== siteUrl) {
-			throw new Error("Not found");
-		}
-		await ctx.db.patch(quoteId, { status: "sent", sentAt: Date.now() });
-
-		await ctx.runMutation(internal.activityLog.logActivity, {
-			siteUrl: quote.siteUrl,
-			clientId: quote.clientId,
-			action: "quote_sent",
-			description: `quote ${quote.quoteNumber} sent`,
-		});
+		await markDocumentSent(
+			ctx,
+			quoteId,
+			siteUrl,
+			"quote_sent",
+			(quote) => `quote ${quote.quoteNumber} sent`,
+		);
 	},
 });
 

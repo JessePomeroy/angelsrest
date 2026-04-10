@@ -2,6 +2,7 @@ import { v } from "convex/values";
 import { internal } from "./_generated/api";
 import { mutation, query } from "./_generated/server";
 import { requireAuth } from "./authHelpers";
+import { markDocumentSent } from "./helpers/marking";
 import { patchDocument } from "./helpers/patching";
 
 export const list = query({
@@ -93,18 +94,13 @@ export const update = mutation({
 export const markSent = mutation({
 	args: { contractId: v.id("contracts"), siteUrl: v.string() },
 	handler: async (ctx, { contractId, siteUrl }) => {
-		const contract = await ctx.db.get(contractId);
-		if (!contract || contract.siteUrl !== siteUrl) {
-			throw new Error("Not found");
-		}
-		await ctx.db.patch(contractId, { status: "sent", sentAt: Date.now() });
-
-		await ctx.runMutation(internal.activityLog.logActivity, {
-			siteUrl: contract.siteUrl,
-			clientId: contract.clientId,
-			action: "contract_sent",
-			description: `contract "${contract.title}" sent`,
-		});
+		await markDocumentSent(
+			ctx,
+			contractId,
+			siteUrl,
+			"contract_sent",
+			(contract) => `contract "${contract.title}" sent`,
+		);
 	},
 });
 
