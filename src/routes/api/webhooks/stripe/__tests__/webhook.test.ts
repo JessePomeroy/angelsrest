@@ -33,45 +33,20 @@ vi.mock("resend", () => ({
 	},
 }));
 
-vi.mock("$lib/server/lumaprints", () => ({
-	createOrder: vi.fn().mockResolvedValue({ orderNumber: "LP-12345" }),
-	// buildLumaPrintsOrder runs for real — it's a pure function with no
-	// network, and the webhook test already covers the end-to-end flow.
-	buildLumaPrintsOrder: vi.fn((externalId, recipient, items) => ({
-		externalId,
-		storeId: 83765,
-		shippingMethod: "default",
-		recipient: {
-			firstName: recipient.firstName,
-			lastName: recipient.lastName,
-			addressLine1: recipient.address1,
-			addressLine2: recipient.address2 || "",
-			city: recipient.city,
-			state: recipient.state,
-			zipCode: recipient.zip,
-			country: recipient.country,
-			phone: recipient.phone || "",
-		},
-		orderItems: items.map((item: unknown, i: number) => {
-			const it = item as {
-				imageUrl: string;
-				paperSubcategoryId: number;
-				width: number;
-				height: number;
-				quantity: number;
-			};
-			return {
-				externalItemId: `${externalId}-item-${i + 1}`,
-				subcategoryId: it.paperSubcategoryId,
-				quantity: it.quantity,
-				width: it.width,
-				height: it.height,
-				file: { imageUrl: it.imageUrl.split("?")[0] },
-				orderItemOptions: [39],
-			};
-		}),
-	})),
-}));
+// Mock only the network boundary (createOrder). buildLumaPrintsOrder and
+// cleanImageUrl are pure functions with no network or env side effects —
+// running them for real means this test exercises the same code path as
+// production. Divergence risk = 0. Pattern mirrors
+// createEmailSendHandler.test.ts in the admin-dashboard package.
+vi.mock("$lib/server/lumaprints", async () => {
+	const actual = await vi.importActual<typeof import("$lib/server/lumaprints")>(
+		"$lib/server/lumaprints",
+	);
+	return {
+		...actual,
+		createOrder: vi.fn().mockResolvedValue({ orderNumber: "LP-12345" }),
+	};
+});
 
 vi.mock("$convex/api", () => ({
 	api: {
