@@ -3,6 +3,7 @@ import { internal } from "./_generated/api";
 import { mutation, query } from "./_generated/server";
 import { requireAuth } from "./authHelpers";
 import { getNextSequentialNumber } from "./helpers/numbering";
+import { patchDocument } from "./helpers/patching";
 
 export const list = query({
 	args: {
@@ -121,18 +122,7 @@ export const update = mutation({
 		status: v.optional(v.string()),
 	},
 	handler: async (ctx, { invoiceId, siteUrl, ...updates }) => {
-		await requireAuth(ctx);
-		const doc = await ctx.db.get(invoiceId);
-		if (!doc || doc.siteUrl !== siteUrl) {
-			throw new Error("Not found");
-		}
-		const patch: Record<string, unknown> = {};
-		for (const [key, val] of Object.entries(updates)) {
-			if (val !== undefined) patch[key] = val;
-		}
-		if (Object.keys(patch).length > 0) {
-			await ctx.db.patch(invoiceId, patch);
-		}
+		await patchDocument(ctx, invoiceId, siteUrl, updates);
 	},
 });
 

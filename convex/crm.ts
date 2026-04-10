@@ -3,6 +3,7 @@ import { v } from "convex/values";
 import { internal } from "./_generated/api";
 import { mutation, query } from "./_generated/server";
 import { requireAuth } from "./authHelpers";
+import { patchDocument } from "./helpers/patching";
 
 export const listClients = query({
 	args: {
@@ -124,18 +125,7 @@ export const updateClient = mutation({
 		siteUrl_client: v.optional(v.string()),
 	},
 	handler: async (ctx, { clientId, siteUrl, ...updates }) => {
-		await requireAuth(ctx);
-		const existing = await ctx.db.get(clientId);
-		if (!existing || existing.siteUrl !== siteUrl) {
-			throw new Error("Not found");
-		}
-		const patch: Record<string, unknown> = {};
-		for (const [key, val] of Object.entries(updates)) {
-			if (val !== undefined) patch[key] = val;
-		}
-		if (Object.keys(patch).length > 0) {
-			await ctx.db.patch(clientId, patch);
-		}
+		const existing = await patchDocument(ctx, clientId, siteUrl, updates);
 
 		// Log status changes
 		if (updates.status && updates.status !== existing.status) {

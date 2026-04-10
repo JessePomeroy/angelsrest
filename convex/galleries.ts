@@ -1,6 +1,7 @@
 import { v } from "convex/values";
 import { mutation, query } from "./_generated/server";
 import { requireAuth } from "./authHelpers";
+import { patchDocument } from "./helpers/patching";
 
 export const create = mutation({
 	args: {
@@ -35,6 +36,7 @@ export const create = mutation({
 export const update = mutation({
 	args: {
 		id: v.id("galleries"),
+		siteUrl: v.string(),
 		name: v.optional(v.string()),
 		slug: v.optional(v.string()),
 		status: v.optional(
@@ -51,18 +53,8 @@ export const update = mutation({
 		downloadEnabled: v.optional(v.boolean()),
 		favoritesEnabled: v.optional(v.boolean()),
 	},
-	handler: async (ctx, { id, ...fields }) => {
-		await requireAuth(ctx);
-		const gallery = await ctx.db.get(id);
-		if (!gallery) throw new Error("Gallery not found");
-
-		const updates: Record<string, unknown> = {};
-		for (const [key, value] of Object.entries(fields)) {
-			if (value !== undefined) updates[key] = value;
-		}
-		if (Object.keys(updates).length > 0) {
-			await ctx.db.patch(id, updates);
-		}
+	handler: async (ctx, { id, siteUrl, ...fields }) => {
+		await patchDocument(ctx, id, siteUrl, fields);
 	},
 });
 
