@@ -11,7 +11,11 @@ export const adminServerConfig: AdminServerConfig = {
 	sanityStudioUrl: "https://angelsrest.sanity.studio",
 	galleryWorkerUrl: "https://gallery-worker.thinkingofview.workers.dev",
 	galleryAdminSecret: privateEnv.GALLERY_ADMIN_SECRET ?? "",
-	api,
+	// Map Convex's `galleries` namespace to the package's `galleryDelivery` key.
+	api: {
+		...api,
+		galleryDelivery: api.galleries,
+	},
 	convexUrl: publicEnv.PUBLIC_CONVEX_URL ?? "",
 	resendApiKey: privateEnv.RESEND_API_KEY ?? "",
 };
