@@ -1,4 +1,4 @@
-import { error, json } from "@sveltejs/kit";
+import { json } from "@sveltejs/kit";
 import Stripe from "stripe";
 import { api } from "$convex/api";
 import {
@@ -6,30 +6,18 @@ import {
 	STRIPE_SECRET_KEY,
 } from "$env/static/private";
 import { getConvex } from "$lib/server/convexClient";
+import { verifyStripeWebhook } from "$lib/server/stripeWebhook";
 
 const stripe = new Stripe(STRIPE_SECRET_KEY);
 const convex = getConvex();
 
 export async function POST({ request }) {
-	const body = await request.text();
-	const signature = request.headers.get("stripe-signature");
-
-	if (!signature) {
-		throw error(400, "Missing stripe-signature header");
-	}
-
-	let event: Stripe.Event;
-	try {
-		event = stripe.webhooks.constructEvent(
-			body,
-			signature,
-			STRIPE_PLATFORM_WEBHOOK_SECRET,
-		);
-	} catch (err: unknown) {
-		const message = err instanceof Error ? err.message : "Unknown error";
-		console.error("Platform webhook signature verification failed:", message);
-		throw error(400, `Webhook Error: ${message}`);
-	}
+	const event = await verifyStripeWebhook(
+		request,
+		stripe,
+		STRIPE_PLATFORM_WEBHOOK_SECRET,
+		"Platform webhook",
+	);
 
 	console.log(`Platform webhook received: ${event.type}`);
 

@@ -33,6 +33,7 @@ import {
 import { SITE_DOMAIN } from "$lib/config/site";
 import { createOrder as createLumaPrintsOrder } from "$lib/lumaprints/client";
 import { getConvex } from "$lib/server/convexClient";
+import { verifyStripeWebhook } from "$lib/server/stripeWebhook";
 
 const convex = getConvex();
 
@@ -105,26 +106,11 @@ Action required:
 // ─── Webhook Entry Point ─────────────────────────────────────────────────────
 
 export async function POST({ request }) {
-	const body = await request.text(); // Must be raw text for signature verification
-	const signature = request.headers.get("stripe-signature");
-
-	if (!signature) {
-		throw error(400, "Missing stripe-signature header");
-	}
-
-	// Verify the webhook came from Stripe (cryptographic signature check)
-	let event: Stripe.Event;
-	try {
-		event = stripe.webhooks.constructEvent(
-			body,
-			signature,
-			STRIPE_WEBHOOK_SECRET,
-		);
-		// biome-ignore lint/suspicious/noExplicitAny: Stripe SDK types
-	} catch (err: any) {
-		console.error("Webhook signature verification failed:", err.message);
-		throw error(400, `Webhook Error: ${err.message}`);
-	}
+	const event = await verifyStripeWebhook(
+		request,
+		stripe,
+		STRIPE_WEBHOOK_SECRET,
+	);
 
 	console.log(`Received webhook: ${event.type}`);
 
