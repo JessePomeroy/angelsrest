@@ -78,6 +78,20 @@ This lives in `src/lib/server/lumaprints.ts` as `cleanImageUrl()` and is called 
 
 ---
 
+## Pricing
+
+Retail prices come from **Sanity**, not from code. Each shop product and print set has a `price` field that's fetched in the shop load functions:
+
+- `src/routes/shop/+page.server.ts` — shop index grid
+- `src/routes/shop/prints/[slug]/+page.server.ts` — single print page
+- `src/routes/shop/sets/[slug]/+page.server.ts` — print set page
+
+There is intentionally **no local `src/lib/shop/pricing.ts`** in this repo. Sanity is the source of truth and Margaret edits prices there directly. A local lookup table would duplicate Sanity and risk drift — reflecting-pool uses a local table because its prices are author-owned and version-controlled, but angelsrest's are merchant-owned.
+
+Wholesale cost data (what LumaPrints charges us per print) lives in the reference doc at `/Users/jessepomeroy/Documents/quilt/02_reference/lumaprints-api-reference.md`. Use that when setting retail prices in Sanity so you can see your margin at a glance.
+
+---
+
 ## Where the code lives
 
 | File | Purpose |
