@@ -31,9 +31,13 @@ import {
 	STRIPE_WEBHOOK_SECRET,
 } from "$env/static/private";
 import { SITE_DOMAIN } from "$lib/config/site";
-import { createOrder as createLumaPrintsOrder } from "$lib/lumaprints/client";
 import { getConvex } from "$lib/server/convexClient";
+import {
+	buildLumaPrintsOrder,
+	createOrder as createLumaPrintsOrder,
+} from "$lib/server/lumaprints";
 import { verifyStripeWebhook } from "$lib/server/stripeWebhook";
+import type { OrderItem, Recipient } from "$lib/shop/types";
 
 const convex = getConvex();
 
@@ -502,146 +506,111 @@ async function captureStripeFees(
 }
 
 /**
+ * Build the list of LumaPrints order items from Stripe checkout metadata.
+ *
+ * Handles two shapes of order:
+ *   - Print set: `metadata.isPrintSet === "true"` with an `imageUrls` JSON array,
+ *     one LumaPrints item per image, same paper/size for every image.
+ *   - Single print: one item built from `metadata.imageUrl` + the first line item
+ *     for the quantity.
+ *
+ * Returns an empty array if no paper was selected at checkout — caller treats
+ * that as "no LumaPrints items in this order" and short-circuits.
+ *
+ * Pure-ish: no network, no Convex, no fetch. Testable in isolation once the
+ * session/lineItems shapes are known.
+ */
+function buildOrderItemsFromSession(
+	session: Stripe.Checkout.Session,
+	lineItems: Stripe.LineItem[],
+): OrderItem[] {
+	// biome-ignore lint/suspicious/noExplicitAny: Stripe metadata is string-only
+	const meta = (session.metadata ?? {}) as Record<string, any>;
+
+	const paperSubcategoryId = parseInt(meta.paperSubcategoryId ?? "", 10);
+	if (!paperSubcategoryId) return [];
+
+	const width = parseInt(meta.paperWidth ?? "8", 10) || 8;
+	const height = parseInt(meta.paperHeight ?? "10", 10) || 10;
+
+	const isPrintSet = meta.isPrintSet === "true";
+	if (isPrintSet) {
+		let imageUrls: string[] = [];
+		try {
+			imageUrls = JSON.parse(meta.imageUrls ?? "[]");
+		} catch {
+			imageUrls = [];
+		}
+		return imageUrls.map((imageUrl) => ({
+			imageUrl,
+			paperSubcategoryId,
+			width,
+			height,
+			quantity: 1,
+		}));
+	}
+
+	const imageUrl = meta.imageUrl ?? "";
+	if (!imageUrl) return [];
+	return [
+		{
+			imageUrl,
+			paperSubcategoryId,
+			width,
+			height,
+			quantity: lineItems[0]?.quantity ?? 1,
+		},
+	];
+}
+
+/** Build a LumaPrints recipient from Stripe shipping details. */
+function buildRecipientFromShipping(
+	// biome-ignore lint/suspicious/noExplicitAny: Stripe SDK shipping_details is loosely typed
+	shippingDetails: any,
+): Recipient {
+	const nameParts = (shippingDetails?.name || "").split(" ");
+	return {
+		firstName: nameParts[0] || "",
+		lastName: nameParts.slice(1).join(" ") || "",
+		address1: shippingDetails?.address?.line1 || "",
+		address2: shippingDetails?.address?.line2 || "",
+		city: shippingDetails?.address?.city || "",
+		state: shippingDetails?.address?.state || "",
+		zip: shippingDetails?.address?.postal_code || "",
+		country: shippingDetails?.address?.country || "US",
+	};
+}
+
+/**
  * Submit order to LumaPrints for fulfillment if it contains LumaPrints products.
  *
- * Looks up each line item in Sanity to check fulfillmentType.
- * Only submits if at least one item is LumaPrints-fulfilled.
+ * Critical path (audit #1): if the LumaPrints call fails, this function
+ * throws so the webhook returns 500 and Stripe retries. Order creation is
+ * idempotent upstream so retries are safe.
  */
 async function submitToLumaPrints(
-	// biome-ignore lint/suspicious/noExplicitAny: Stripe SDK types
+	// biome-ignore lint/suspicious/noExplicitAny: Convex Id types
 	orderId: any,
 	orderNumber: string,
 	lineItems: Stripe.LineItem[],
-	// biome-ignore lint/suspicious/noExplicitAny: Stripe SDK types
+	// biome-ignore lint/suspicious/noExplicitAny: Stripe SDK shipping_details is loosely typed
 	shippingDetails: any,
 	session: Stripe.Checkout.Session,
 ) {
-	// Check if this is a print set order
-	// biome-ignore lint/suspicious/noExplicitAny: Stripe SDK types
-	const isPrintSet = (session as any).metadata?.isPrintSet === "true";
-	// biome-ignore lint/suspicious/noExplicitAny: Stripe SDK types
-	const imageUrlsJson = (session as any).metadata?.imageUrls || "[]";
-	let imageUrls: string[] = [];
-	try {
-		imageUrls = JSON.parse(imageUrlsJson);
-	} catch {
-		imageUrls = [];
-	}
-
-	// Check each line item for paper selection from metadata
-	const lumaprintsItems: {
-		externalItemId: string;
-		productName: string;
-		quantity: number;
-		subcategoryId: number;
-		width: number;
-		height: number;
-		options: number[];
-		imageUrl: string;
-	}[] = [];
-
-	// Get paper info from Stripe metadata (passed during checkout)
-	const paperSubcategoryId =
-		// biome-ignore lint/suspicious/noExplicitAny: Stripe SDK types
-		(session as any).metadata?.paperSubcategoryId || "";
-	const paperWidth = parseInt(
-		// biome-ignore lint/suspicious/noExplicitAny: Stripe SDK types
-		(session as any).metadata?.paperWidth || "8",
-		10,
-	);
-	const paperHeight = parseInt(
-		// biome-ignore lint/suspicious/noExplicitAny: Stripe SDK types
-		(session as any).metadata?.paperHeight || "10",
-		10,
-	);
-
-	if (isPrintSet && imageUrls.length > 0) {
-		// Print set: create one LumaPrints item per image
-		for (let i = 0; i < imageUrls.length; i++) {
-			const rawImageUrl = imageUrls[i] || "";
-			const imageUrl = rawImageUrl.split("?")[0].replace(/\.webp$/, ".jpg");
-
-			lumaprintsItems.push({
-				externalItemId: `print-set-${i + 1}`,
-				// biome-ignore lint/suspicious/noExplicitAny: Stripe SDK types
-				productName: `${(session as any).metadata?.productId} - ${i + 1}/${imageUrls.length}`,
-				quantity: 1,
-				subcategoryId: parseInt(paperSubcategoryId, 10) || 103001,
-				width: paperWidth || 8,
-				height: paperHeight || 10,
-				options: [39],
-				imageUrl,
-			});
-		}
-	} else if (paperSubcategoryId) {
-		// Single product: create one item
-		// biome-ignore lint/suspicious/noExplicitAny: Stripe SDK types
-		const rawImageUrl = (session as any).metadata?.imageUrl || "";
-		const imageUrl = rawImageUrl.split("?")[0].replace(/\.webp$/, ".jpg");
-
-		const item = lineItems[0];
-		lumaprintsItems.push({
-			externalItemId: item?.id || "single-item",
-			productName: item?.description || "Print",
-			quantity: item?.quantity || 1,
-			subcategoryId: parseInt(paperSubcategoryId, 10),
-			width: paperWidth || 8,
-			height: paperHeight || 10,
-			options: [39],
-			imageUrl,
-		});
-	}
-
-	if (lumaprintsItems.length === 0) {
+	const items = buildOrderItemsFromSession(session, lineItems);
+	if (items.length === 0) {
 		console.log("No LumaPrints items in order:", orderNumber);
 		return;
 	}
 
-	// Build LumaPrints order
-	const nameParts = (shippingDetails?.name || "").split(" ");
-	const firstName = nameParts[0] || "";
-	const lastName = nameParts.slice(1).join(" ") || "";
+	const recipient = buildRecipientFromShipping(shippingDetails);
+	const lpOrder = buildLumaPrintsOrder(orderNumber, recipient, items);
 
-	const lumaprintsOrder = {
-		externalId: orderNumber,
-		storeId: 83765,
-		shippingMethod: "default" as const,
-		productionTime: "regular" as const,
-		recipient: {
-			firstName,
-			lastName,
-			addressLine1: shippingDetails?.address?.line1 || "",
-			addressLine2: shippingDetails?.address?.line2 || "",
-			city: shippingDetails?.address?.city || "",
-			state: shippingDetails?.address?.state || "",
-			zipCode: shippingDetails?.address?.postal_code || "",
-			country: shippingDetails?.address?.country || "US",
-			phone: "",
-		},
-		orderItems: lumaprintsItems.map((item, index) => ({
-			externalItemId: `item-${index + 1}`,
-			subcategoryId: item.subcategoryId,
-			quantity: item.quantity,
-			width: item.width,
-			height: item.height,
-			file: {
-				imageUrl: item.imageUrl,
-			},
-			orderItemOptions: item.options,
-		})),
-	};
+	console.log("Submitting to LumaPrints:", orderNumber, items.length, "items");
 
-	console.log(
-		"Submitting to LumaPrints:",
-		orderNumber,
-		lumaprintsItems.length,
-		"items",
-		JSON.stringify(lumaprintsItems),
-	);
+	const result = await createLumaPrintsOrder(lpOrder);
 
-	const result = await createLumaPrintsOrder(lumaprintsOrder);
-
-	// Update Convex order with LumaPrints order number
+	// Update Convex order with the LumaPrints order number
 	await convex.mutation(api.orders.updateStatus, {
 		orderId,
 		lumaprintsOrderNumber: result.orderNumber,
