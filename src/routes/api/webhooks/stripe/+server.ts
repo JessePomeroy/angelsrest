@@ -72,6 +72,36 @@ function formatLineItems(lineItems: Stripe.LineItem[]): string {
 		.join("\n");
 }
 
+// ─── Failure Alerting ────────────────────────────────────────────────────────
+
+/** Send an alert email when a critical webhook operation fails */
+async function sendFailureAlert(
+	eventType: string,
+	sessionId: string,
+	errorMessage: string,
+) {
+	try {
+		await resend.emails.send({
+			from: "Angel's Rest Alerts <orders@angelsrest.online>",
+			to: [env.NOTIFICATION_EMAIL || "thinkingofview@gmail.com"],
+			subject: `🚨 Webhook failure: ${eventType}`,
+			text: `A critical webhook operation failed. Stripe will retry automatically.
+
+Event: ${eventType}
+Session: ${sessionId}
+Error: ${errorMessage}
+
+Action required:
+- Check Stripe dashboard for the payment: https://dashboard.stripe.com
+- If retries exhaust, manually fulfill the order
+- Check server logs for full stack trace`,
+		});
+	} catch (emailErr) {
+		// Alert email itself failed — log but don't throw (we're already in error handling)
+		console.error("Failed to send failure alert email:", emailErr);
+	}
+}
+
 // ─── Webhook Entry Point ─────────────────────────────────────────────────────
 
 export async function POST({ request }) {
@@ -107,8 +137,8 @@ export async function POST({ request }) {
 				if (session.metadata?.type === "invoice_payment") {
 					const invoiceId = session.metadata.invoiceId;
 					if (invoiceId) {
-						// biome-ignore lint/suspicious/noExplicitAny: Convex Id type
 						await convex.mutation(api.invoices.markPaid, {
+							// biome-ignore lint/suspicious/noExplicitAny: Convex Id type
 							invoiceId: invoiceId as any,
 							siteUrl: session.metadata?.siteUrl || SITE_DOMAIN,
 						});
@@ -136,7 +166,14 @@ export async function POST({ request }) {
 
 		return json({ received: true });
 	} catch (err) {
-		console.error("Error processing webhook:", err);
+		const sessionId =
+			event.type === "checkout.session.completed"
+				? (event.data.object as Stripe.Checkout.Session).id
+				: "unknown";
+		const errorMessage = err instanceof Error ? err.message : String(err);
+
+		console.error("Webhook processing failed:", event.type, sessionId, err);
+		await sendFailureAlert(event.type, sessionId, errorMessage);
 		throw error(500, "Webhook processing failed");
 	}
 }
@@ -150,49 +187,53 @@ export async function POST({ request }) {
 async function handleCheckoutCompleted(session: Stripe.Checkout.Session) {
 	console.log("Processing completed checkout:", session.id);
 
+	// Fetch full session data with line items and payment details
+	const { fullSession, lineItems, shippingDetails } =
+		await fetchSessionDetails(session);
+
+	const customerEmail =
+		// biome-ignore lint/suspicious/noExplicitAny: Stripe SDK types
+		fullSession.customer_details?.email || (session as any).email;
+
+	if (!customerEmail) {
+		console.error("No customer email found for session:", session.id);
+		return;
+	}
+
+	// Create order — this is critical and MUST succeed for the webhook to return 200.
+	// If this throws, Stripe will retry (order creation is idempotent via stripeSessionId).
+	const orderResult = await createOrderInConvex({
+		session: fullSession,
+		shippingDetails,
+		lineItems,
+	});
+
+	// Emails are non-critical — order is already created, don't fail the webhook over email
 	try {
-		// Fetch full session data with line items and payment details
-		const { fullSession, lineItems, shippingDetails } =
-			await fetchSessionDetails(session);
-
-		const customerEmail =
-			// biome-ignore lint/suspicious/noExplicitAny: Stripe SDK types
-			fullSession.customer_details?.email || (session as any).email;
-
-		if (!customerEmail) {
-			console.error("No customer email found for session:", session.id);
-			return;
-		}
-
-		// Create order first so we have the order number for the email
-		const orderResult = await createOrderInConvex({
-			session: fullSession,
-			shippingDetails,
-			lineItems,
-		});
-
-		// Send emails with the order number
 		await sendCustomerConfirmation({
 			session: fullSession,
 			customerEmail,
 			shippingDetails,
 			lineItems,
-			orderNumber: orderResult?.orderNumber,
+			orderNumber: orderResult.orderNumber,
 		});
+	} catch (err) {
+		console.error("Failed to send customer confirmation (non-fatal):", err);
+	}
 
+	try {
 		await sendAdminNotification({
 			session: fullSession,
 			customerEmail,
 			shippingDetails,
 			lineItems,
-			orderNumber: orderResult?.orderNumber,
+			orderNumber: orderResult.orderNumber,
 		});
-
-		console.log("Checkout processed successfully:", session.id);
 	} catch (err) {
-		console.error("Error in handleCheckoutCompleted:", err);
-		throw err;
+		console.error("Failed to send admin notification (non-fatal):", err);
 	}
+
+	console.log("Checkout processed successfully:", session.id);
 }
 
 /**
@@ -360,75 +401,80 @@ async function createOrderInConvex({
 	shippingDetails: any;
 	lineItems: Stripe.LineItem[];
 }) {
-	try {
-		// Extract payment intent ID (could be string or expanded object)
-		// biome-ignore lint/suspicious/noExplicitAny: Stripe SDK types
-		const rawPaymentIntent = (session as any).payment_intent;
-		const stripePaymentIntentId =
-			typeof rawPaymentIntent === "string"
-				? rawPaymentIntent
-				: rawPaymentIntent?.id;
+	// Extract payment intent ID (could be string or expanded object)
+	// biome-ignore lint/suspicious/noExplicitAny: Stripe SDK types
+	const rawPaymentIntent = (session as any).payment_intent;
+	const stripePaymentIntentId =
+		typeof rawPaymentIntent === "string"
+			? rawPaymentIntent
+			: rawPaymentIntent?.id;
 
-		const items = lineItems.map((item) => ({
-			productName: item.description || "Unknown Product",
-			quantity: item.quantity || 1,
-			price: item.amount_total || item.price?.unit_amount || 0,
-		}));
+	const items = lineItems.map((item) => ({
+		productName: item.description || "Unknown Product",
+		quantity: item.quantity || 1,
+		price: item.amount_total || item.price?.unit_amount || 0,
+	}));
 
-		// biome-ignore lint/suspicious/noExplicitAny: Stripe SDK types
-		const isDigital = (session as any).metadata?.isDigital === "true";
+	// biome-ignore lint/suspicious/noExplicitAny: Stripe SDK types
+	const isDigital = (session as any).metadata?.isDigital === "true";
 
-		// Create order in Convex (order number generated atomically in mutation)
-		const { _id: orderId, orderNumber } = await convex.mutation(
-			api.orders.create,
-			{
-				siteUrl: SITE_DOMAIN,
-				stripeSessionId: session.id,
-				customerEmail: session.customer_details?.email || "",
-				customerName:
-					session.customer_details?.name || shippingDetails?.name || undefined,
-				stripePaymentIntentId: stripePaymentIntentId || undefined,
-				shippingAddress: shippingDetails?.address
-					? {
-							line1: shippingDetails.address.line1 || "",
-							line2: shippingDetails.address.line2 || undefined,
-							city: shippingDetails.address.city || "",
-							state: shippingDetails.address.state || "",
-							postalCode: shippingDetails.address.postal_code || "",
-							country: shippingDetails.address.country || "",
-						}
-					: undefined,
-				items,
-				total: session.amount_total || 0,
-				subtotal: session.amount_subtotal || undefined,
-				fulfillmentType: isDigital ? "digital" : "self",
+	// Create order in Convex (idempotent — returns existing order if session already processed)
+	const { _id: orderId, orderNumber } = await convex.mutation(
+		api.orders.create,
+		{
+			siteUrl: SITE_DOMAIN,
+			stripeSessionId: session.id,
+			customerEmail: session.customer_details?.email || "",
+			customerName:
+				session.customer_details?.name || shippingDetails?.name || undefined,
+			stripePaymentIntentId: stripePaymentIntentId || undefined,
+			shippingAddress: shippingDetails?.address
+				? {
+						line1: shippingDetails.address.line1 || "",
+						line2: shippingDetails.address.line2 || undefined,
+						city: shippingDetails.address.city || "",
+						state: shippingDetails.address.state || "",
+						postalCode: shippingDetails.address.postal_code || "",
+						country: shippingDetails.address.country || "",
+					}
+				: undefined,
+			items,
+			total: session.amount_total || 0,
+			subtotal: session.amount_subtotal || undefined,
+			fulfillmentType: isDigital ? "digital" : "self",
+			// biome-ignore lint/suspicious/noExplicitAny: Stripe SDK types
+			paperName: (session as any).metadata?.paperName || undefined,
+			paperSubcategoryId:
 				// biome-ignore lint/suspicious/noExplicitAny: Stripe SDK types
-				paperName: (session as any).metadata?.paperName || undefined,
-				paperSubcategoryId:
-					// biome-ignore lint/suspicious/noExplicitAny: Stripe SDK types
-					(session as any).metadata?.paperSubcategoryId || undefined,
-			},
-		);
+				(session as any).metadata?.paperSubcategoryId || undefined,
+		},
+	);
 
-		console.log("Created order in Convex:", orderNumber, orderId);
+	console.log("Created order in Convex:", orderNumber, orderId);
 
-		// Fetch actual Stripe fees after a short delay
+	// Non-critical: capture fees — can be reconciled manually later
+	try {
 		await captureStripeFees(orderId, orderNumber, stripePaymentIntentId);
-
-		// Submit to LumaPrints if applicable
-		await submitToLumaPrints(
-			orderId,
-			orderNumber,
-			lineItems,
-			shippingDetails,
-			session,
-		);
-
-		return { orderNumber, _id: orderId };
 	} catch (err) {
-		console.error("Error creating order in Convex:", err);
-		return null;
+		console.error(
+			"Failed to capture Stripe fees (non-fatal):",
+			orderNumber,
+			err,
+		);
 	}
+
+	// Critical: LumaPrints submission — if this fails, customer paid but nothing prints.
+	// Let it throw so the webhook returns 500 and Stripe retries.
+	// Order creation is idempotent, so retries are safe.
+	await submitToLumaPrints(
+		orderId,
+		orderNumber,
+		lineItems,
+		shippingDetails,
+		session,
+	);
+
+	return { orderNumber, _id: orderId };
 }
 
 /**
@@ -484,147 +530,141 @@ async function submitToLumaPrints(
 	shippingDetails: any,
 	session: Stripe.Checkout.Session,
 ) {
+	// Check if this is a print set order
+	// biome-ignore lint/suspicious/noExplicitAny: Stripe SDK types
+	const isPrintSet = (session as any).metadata?.isPrintSet === "true";
+	// biome-ignore lint/suspicious/noExplicitAny: Stripe SDK types
+	const imageUrlsJson = (session as any).metadata?.imageUrls || "[]";
+	let imageUrls: string[] = [];
 	try {
-		// Check if this is a print set order
+		imageUrls = JSON.parse(imageUrlsJson);
+	} catch {
+		imageUrls = [];
+	}
+
+	// Check each line item for paper selection from metadata
+	const lumaprintsItems: {
+		externalItemId: string;
+		productName: string;
+		quantity: number;
+		subcategoryId: number;
+		width: number;
+		height: number;
+		options: number[];
+		imageUrl: string;
+	}[] = [];
+
+	// Get paper info from Stripe metadata (passed during checkout)
+	const paperSubcategoryId =
 		// biome-ignore lint/suspicious/noExplicitAny: Stripe SDK types
-		const isPrintSet = (session as any).metadata?.isPrintSet === "true";
+		(session as any).metadata?.paperSubcategoryId || "";
+	const paperWidth = parseInt(
 		// biome-ignore lint/suspicious/noExplicitAny: Stripe SDK types
-		const imageUrlsJson = (session as any).metadata?.imageUrls || "[]";
-		let imageUrls: string[] = [];
-		try {
-			imageUrls = JSON.parse(imageUrlsJson);
-		} catch {
-			imageUrls = [];
-		}
+		(session as any).metadata?.paperWidth || "8",
+		10,
+	);
+	const paperHeight = parseInt(
+		// biome-ignore lint/suspicious/noExplicitAny: Stripe SDK types
+		(session as any).metadata?.paperHeight || "10",
+		10,
+	);
 
-		// Check each line item for paper selection from metadata
-		const lumaprintsItems: {
-			externalItemId: string;
-			productName: string;
-			quantity: number;
-			subcategoryId: number;
-			width: number;
-			height: number;
-			options: number[];
-			imageUrl: string;
-		}[] = [];
-
-		// Get paper info from Stripe metadata (passed during checkout)
-		const paperSubcategoryId =
-			// biome-ignore lint/suspicious/noExplicitAny: Stripe SDK types
-			(session as any).metadata?.paperSubcategoryId || "";
-		const paperWidth = parseInt(
-			// biome-ignore lint/suspicious/noExplicitAny: Stripe SDK types
-			(session as any).metadata?.paperWidth || "8",
-			10,
-		);
-		const paperHeight = parseInt(
-			// biome-ignore lint/suspicious/noExplicitAny: Stripe SDK types
-			(session as any).metadata?.paperHeight || "10",
-			10,
-		);
-
-		if (isPrintSet && imageUrls.length > 0) {
-			// Print set: create one LumaPrints item per image
-			for (let i = 0; i < imageUrls.length; i++) {
-				const rawImageUrl = imageUrls[i] || "";
-				const imageUrl = rawImageUrl.split("?")[0].replace(/\.webp$/, ".jpg");
-
-				lumaprintsItems.push({
-					externalItemId: `print-set-${i + 1}`,
-					// biome-ignore lint/suspicious/noExplicitAny: Stripe SDK types
-					productName: `${(session as any).metadata?.productId} - ${i + 1}/${imageUrls.length}`,
-					quantity: 1,
-					subcategoryId: parseInt(paperSubcategoryId, 10) || 103001,
-					width: paperWidth || 8,
-					height: paperHeight || 10,
-					options: [39],
-					imageUrl,
-				});
-			}
-		} else if (paperSubcategoryId) {
-			// Single product: create one item
-			// biome-ignore lint/suspicious/noExplicitAny: Stripe SDK types
-			const rawImageUrl = (session as any).metadata?.imageUrl || "";
+	if (isPrintSet && imageUrls.length > 0) {
+		// Print set: create one LumaPrints item per image
+		for (let i = 0; i < imageUrls.length; i++) {
+			const rawImageUrl = imageUrls[i] || "";
 			const imageUrl = rawImageUrl.split("?")[0].replace(/\.webp$/, ".jpg");
 
-			const item = lineItems[0];
 			lumaprintsItems.push({
-				externalItemId: item?.id || "single-item",
-				productName: item?.description || "Print",
-				quantity: item?.quantity || 1,
-				subcategoryId: parseInt(paperSubcategoryId, 10),
+				externalItemId: `print-set-${i + 1}`,
+				// biome-ignore lint/suspicious/noExplicitAny: Stripe SDK types
+				productName: `${(session as any).metadata?.productId} - ${i + 1}/${imageUrls.length}`,
+				quantity: 1,
+				subcategoryId: parseInt(paperSubcategoryId, 10) || 103001,
 				width: paperWidth || 8,
 				height: paperHeight || 10,
 				options: [39],
 				imageUrl,
 			});
 		}
+	} else if (paperSubcategoryId) {
+		// Single product: create one item
+		// biome-ignore lint/suspicious/noExplicitAny: Stripe SDK types
+		const rawImageUrl = (session as any).metadata?.imageUrl || "";
+		const imageUrl = rawImageUrl.split("?")[0].replace(/\.webp$/, ".jpg");
 
-		if (lumaprintsItems.length === 0) {
-			console.log("No LumaPrints items in order:", orderNumber);
-			return;
-		}
-
-		// Build LumaPrints order
-		const nameParts = (shippingDetails?.name || "").split(" ");
-		const firstName = nameParts[0] || "";
-		const lastName = nameParts.slice(1).join(" ") || "";
-
-		const lumaprintsOrder = {
-			externalId: orderNumber,
-			storeId: 83765,
-			shippingMethod: "default" as const,
-			productionTime: "regular" as const,
-			recipient: {
-				firstName,
-				lastName,
-				addressLine1: shippingDetails?.address?.line1 || "",
-				addressLine2: shippingDetails?.address?.line2 || "",
-				city: shippingDetails?.address?.city || "",
-				state: shippingDetails?.address?.state || "",
-				zipCode: shippingDetails?.address?.postal_code || "",
-				country: shippingDetails?.address?.country || "US",
-				phone: "",
-			},
-			orderItems: lumaprintsItems.map((item, index) => ({
-				externalItemId: `item-${index + 1}`,
-				subcategoryId: item.subcategoryId,
-				quantity: item.quantity,
-				width: item.width,
-				height: item.height,
-				file: {
-					imageUrl: item.imageUrl,
-				},
-				orderItemOptions: item.options,
-			})),
-		};
-
-		console.log(
-			"Submitting to LumaPrints:",
-			orderNumber,
-			lumaprintsItems.length,
-			"items",
-			JSON.stringify(lumaprintsItems),
-		);
-
-		const result = await createLumaPrintsOrder(lumaprintsOrder);
-
-		// Update Convex order with LumaPrints order number
-		await convex.mutation(api.orders.updateStatus, {
-			orderId,
-			lumaprintsOrderNumber: result.orderNumber,
+		const item = lineItems[0];
+		lumaprintsItems.push({
+			externalItemId: item?.id || "single-item",
+			productName: item?.description || "Print",
+			quantity: item?.quantity || 1,
+			subcategoryId: parseInt(paperSubcategoryId, 10),
+			width: paperWidth || 8,
+			height: paperHeight || 10,
+			options: [39],
+			imageUrl,
 		});
-
-		console.log(
-			"✅ Submitted to LumaPrints:",
-			orderNumber,
-			"→",
-			result.orderNumber,
-		);
-	} catch (err) {
-		console.error("Error submitting to LumaPrints:", err);
-		// Don't fail the webhook - just log the error
-		// Order is still created in Sanity, fulfillment can be done manually
 	}
+
+	if (lumaprintsItems.length === 0) {
+		console.log("No LumaPrints items in order:", orderNumber);
+		return;
+	}
+
+	// Build LumaPrints order
+	const nameParts = (shippingDetails?.name || "").split(" ");
+	const firstName = nameParts[0] || "";
+	const lastName = nameParts.slice(1).join(" ") || "";
+
+	const lumaprintsOrder = {
+		externalId: orderNumber,
+		storeId: 83765,
+		shippingMethod: "default" as const,
+		productionTime: "regular" as const,
+		recipient: {
+			firstName,
+			lastName,
+			addressLine1: shippingDetails?.address?.line1 || "",
+			addressLine2: shippingDetails?.address?.line2 || "",
+			city: shippingDetails?.address?.city || "",
+			state: shippingDetails?.address?.state || "",
+			zipCode: shippingDetails?.address?.postal_code || "",
+			country: shippingDetails?.address?.country || "US",
+			phone: "",
+		},
+		orderItems: lumaprintsItems.map((item, index) => ({
+			externalItemId: `item-${index + 1}`,
+			subcategoryId: item.subcategoryId,
+			quantity: item.quantity,
+			width: item.width,
+			height: item.height,
+			file: {
+				imageUrl: item.imageUrl,
+			},
+			orderItemOptions: item.options,
+		})),
+	};
+
+	console.log(
+		"Submitting to LumaPrints:",
+		orderNumber,
+		lumaprintsItems.length,
+		"items",
+		JSON.stringify(lumaprintsItems),
+	);
+
+	const result = await createLumaPrintsOrder(lumaprintsOrder);
+
+	// Update Convex order with LumaPrints order number
+	await convex.mutation(api.orders.updateStatus, {
+		orderId,
+		lumaprintsOrderNumber: result.orderNumber,
+	});
+
+	console.log(
+		"✅ Submitted to LumaPrints:",
+		orderNumber,
+		"→",
+		result.orderNumber,
+	);
 }
