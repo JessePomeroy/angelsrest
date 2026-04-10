@@ -74,6 +74,17 @@ export const create = mutation({
 		discountAmount: v.optional(v.number()),
 	},
 	handler: async (ctx, args) => {
+		// Idempotency: if an order with this stripeSessionId already exists, return it
+		const existing = await ctx.db
+			.query("orders")
+			.withIndex("by_stripeSessionId", (q) =>
+				q.eq("stripeSessionId", args.stripeSessionId),
+			)
+			.unique();
+		if (existing) {
+			return { _id: existing._id, orderNumber: existing.orderNumber };
+		}
+
 		// Use provided order number or generate one atomically
 		let orderNumber = args.orderNumber;
 		if (!orderNumber) {
