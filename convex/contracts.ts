@@ -4,6 +4,7 @@ import { mutation, query } from "./_generated/server";
 import { requireAuth } from "./authHelpers";
 import { markDocumentSent } from "./helpers/marking";
 import { patchDocument } from "./helpers/patching";
+import { queryBySiteUrl } from "./helpers/querying";
 
 export const list = query({
 	args: {
@@ -11,19 +12,11 @@ export const list = query({
 		status: v.optional(v.string()),
 	},
 	handler: async (ctx, { siteUrl, status }) => {
-		const all = await ctx.db
-			.query("contracts")
-			.withIndex("by_siteUrl", (q) => q.eq("siteUrl", siteUrl))
-			.order("desc")
-			.take(200);
-
-		const results = all.map((contract) => ({
+		const all = await queryBySiteUrl(ctx, "contracts", siteUrl, { status });
+		return all.map((contract) => ({
 			...contract,
 			clientName: contract.clientName ?? "unknown",
 		}));
-
-		if (status) return results.filter((c) => c.status === status);
-		return results;
 	},
 });
 

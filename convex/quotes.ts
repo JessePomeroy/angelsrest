@@ -5,6 +5,7 @@ import { requireAuth } from "./authHelpers";
 import { markDocumentSent } from "./helpers/marking";
 import { getNextSequentialNumber } from "./helpers/numbering";
 import { patchDocument } from "./helpers/patching";
+import { queryBySiteUrl } from "./helpers/querying";
 
 export const list = query({
 	args: {
@@ -12,19 +13,11 @@ export const list = query({
 		status: v.optional(v.string()),
 	},
 	handler: async (ctx, { siteUrl, status }) => {
-		const all = await ctx.db
-			.query("quotes")
-			.withIndex("by_siteUrl", (q) => q.eq("siteUrl", siteUrl))
-			.order("desc")
-			.take(200);
-
-		const results = all.map((quote) => ({
+		const all = await queryBySiteUrl(ctx, "quotes", siteUrl, { status });
+		return all.map((quote) => ({
 			...quote,
 			clientName: quote.clientName ?? "unknown",
 		}));
-
-		if (status) return results.filter((q) => q.status === status);
-		return results;
 	},
 });
 
