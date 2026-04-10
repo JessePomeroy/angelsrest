@@ -2,6 +2,16 @@ import type { Doc, TableNames } from "../_generated/dataModel";
 import type { QueryCtx } from "../_generated/server";
 
 /**
+ * Tables in the schema that have both a `siteUrl` field and a `by_siteUrl`
+ * index. Derived structurally from the generated Doc types, so adding a
+ * new siteUrl-indexed table extends this automatically — no enumeration
+ * to maintain.
+ */
+type TableWithSiteUrl = {
+	[K in TableNames]: Doc<K> extends { siteUrl: string } ? K : never;
+}[TableNames];
+
+/**
  * List documents for a given siteUrl in descending creation order, with
  * optional post-fetch status filtering.
  *
@@ -14,18 +24,23 @@ import type { QueryCtx } from "../_generated/server";
  * have a compound `by_siteUrl_status` index and want the more efficient
  * path (like orders.list) should query directly rather than use this helper.
  */
-export async function queryBySiteUrl<T extends TableNames>(
+export async function queryBySiteUrl<T extends TableWithSiteUrl>(
 	ctx: QueryCtx,
 	table: T,
 	siteUrl: string,
 	options?: { status?: string; limit?: number },
 ): Promise<Doc<T>[]> {
 	const limit = options?.limit ?? 200;
-	const all = await ctx.db
+	const all = (await ctx.db
 		.query(table)
-		.withIndex("by_siteUrl", (q) => q.eq("siteUrl", siteUrl))
+		.withIndex("by_siteUrl" as never, (q) =>
+			(q as unknown as { eq: (f: string, v: string) => typeof q }).eq(
+				"siteUrl",
+				siteUrl,
+			),
+		)
 		.order("desc")
-		.take(limit);
+		.take(limit)) as Doc<T>[];
 	const status = options?.status;
 	if (status === undefined) return all;
 	return all.filter((doc) => (doc as { status?: string }).status === status);
