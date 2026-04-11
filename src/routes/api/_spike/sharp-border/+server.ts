@@ -113,10 +113,11 @@ async function processOne(
 	// each stage separately would create unrealistic numbers because
 	// libvips fuses operations internally.
 	//
-	// Encoding at q95 because that's what PR #6 will ship. Source images
-	// should be fetched at `?q=95` from the Sanity CDN (default no-param
-	// URLs serve ~q80 compressed versions). Fetching q95 sources and
-	// re-encoding at q95 preserves the intended print quality.
+	// Encoding at q100 to match Jesse's PR #6 target (maximum quality for
+	// print). Source images should be fetched at `?q=100` from the Sanity
+	// CDN — the default no-param URL serves ~q80, `?q=95` serves 11 MB,
+	// `?q=100` serves 25 MB for the 5152×7728 event-gallery assets. q=100
+	// is the highest quality Sanity's CDN will serve.
 	const encoded = await sharp(sourceBuffer)
 		.extend({
 			top: borderPx,
@@ -125,7 +126,7 @@ async function processOne(
 			right: borderPx,
 			background: { r: 255, g: 255, b: 255, alpha: 1 },
 		})
-		.jpeg({ quality: 95 })
+		.jpeg({ quality: 100 })
 		.toBuffer();
 	const t3 = Date.now();
 
