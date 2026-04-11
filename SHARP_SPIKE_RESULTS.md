@@ -7,18 +7,32 @@
 
 ---
 
-## Verdict: **PASS** — Sharp is feasible for PR #6 at target quality (q95 source + q95 output).
+## Verdict: **PASS with conditions** — Sharp is feasible for PR #6 at maximum quality (q=100 source + q=100 output), but parallel downloads become mandatory, not optional.
 
-All four thresholds from the spec note were met with meaningful headroom. Proceed with the Sharp border compositing work in PR #6.
+Jesse's final quality decision: **use `?q=100` for all images submitted to LumaPrints for printing.** The spike was verified end-to-end at this quality level.
 
-| Threshold | Target | Measured (q95 pipeline) | Status |
+| Threshold | Target | Measured (q100 pipeline) | Status |
 |---|---|---|---|
-| Single-item composite < 5s | < 5000 ms | 2093 ms cold (q80 source), ~1600–1800 ms warm (q95) | PASS |
-| 5-item sequential < 20s (10s webhook headroom) | < 20000 ms | **8553 ms warm (q95+q95)** | PASS — 11.5s headroom |
-| Memory RSS delta < 500 MB | < 512 MB | 288 MB overall (q95 pipeline) | PASS |
+| Single-item composite < 5s | < 5000 ms | ~1.6–1.9s warm, ~2.5–3s cold | PASS |
+| 5-item sequential < 20s (10s webhook headroom) | < 20000 ms | **8694 ms warm** / ~**17000 ms cold** (projected) | PASS (tight on cold) |
+| Memory RSS delta < 500 MB | < 512 MB | 366 MB overall (q100 pipeline) | PASS |
 | Cold start penalty < 3s | < 3000 ms | ~300–500 ms above warm baseline | PASS |
 
-**Crucial finding: download time is latency-bound, not bandwidth-bound.** Going from the default CDN compressed sources (3.9 MB avg) to q=95 sources (9.5 MB avg) barely changed download time (4175–8364 ms range for 5 sequential fetches). Vercel → Sanity CDN has high backbone bandwidth; the bottleneck is per-request TLS handshake / time-to-first-byte. **Quality is essentially free on the download side**, which is critical because q95 is the target shipping quality for PR #6.
+**The cold-CDN case at ~17s is tight** — only 3 seconds of headroom for the rest of the webhook work (Stripe verify, Convex order write, LumaPrints submit, email). **This makes parallel downloads NON-OPTIONAL for PR #6**, not just an optimization. With parallel downloads, the cold total drops to ~10 seconds (slowest single fetch ~2.6s + Sharp sum 7.2s), which leaves a comfortable ~15s of remaining webhook budget.
+
+### Key finding: download time scaling
+
+Earlier q=80 → q=95 comparisons suggested "downloads are latency-bound, not bandwidth-bound." This was partially wrong — it was CDN-cache-hit-bound. When requests hit Sanity's CDN edge cache, downloads are fast regardless of file size. When requests miss the edge (cold), bytes matter.
+
+| Pipeline | Source bytes | Download sum (cold) | Download sum (warm edge) | Sharp sum | Total |
+|---|---|---|---|---|---|
+| q80 source + q92 output | 17.9 MB | ~8100 ms | ~5800 ms | 3690 ms | 9.5–11.8s |
+| q95 source + q95 output | 47.5 MB | — | 4175 ms | 4354 ms | 8.6s |
+| q100 source + q95 output | 104.1 MB | 9766 ms | — | 4845 ms | 14.6s |
+| **q100 source + q100 output** | **104.1 MB** | **~9800 ms** (proj) | **1494 ms** | **7167 ms** | **8.7s warm / ~17s cold** |
+
+- **Sharp at q=100 output is ~65% slower than q=95** per image (1263–1604 ms vs 839–951 ms for the same 40-megapixel sources). This was the biggest surprise — JPEG q=100 encoding stresses libjpeg significantly more than q=95 because the quantization tables approach lossless.
+- **Output file sizes match source file sizes** at q=100+q=100 (104 MB in, 106 MB out). Quality is preserved through the pipeline.
 
 ---
 
@@ -183,10 +197,46 @@ Cold-start total (2093 ms) vs warm single-item average (~2000 ms) shows the cold
 
 ---
 
-## Follow-up investigations flagged
+## Mandatory requirements for PR #6
 
-1. **Parallelize downloads in PR #6.** Sharp must run sequentially (memory pressure), but downloads can run concurrently. Would cut the 5-image total from 8.6s to ~5–6s. Easy win, implement from the start.
-2. **Keep-alive connection pooling.** Node's default `fetch` creates a new TLS session per call. Sharing an undici `Agent` with `keepAlive: true` across the print-set fetches might cut another ~500 ms off the download sum. Worth testing in PR #6.
-3. **Small drive-by PR: append `?q=95` to LumaPrints image URLs in the current webhook.** The existing webhook submits default-quality (~q80) CDN URLs to LumaPrints. PR #6 will naturally use `?q=95` for its own pipeline, but the *current* (non-bordered) submission path should also be upgraded. Tiny change, meaningful quality improvement, not in audit #24 scope but worth tracking as a follow-up audit item.
+1. **Parallel downloads are NOT optional at q=100.** The cold-CDN + q=100 source case puts the sequential pipeline at ~17 seconds, leaving only 3 seconds of webhook headroom. Parallel downloads drop this to ~10 seconds (bottleneck becomes the single slowest fetch, ~2.6s). Implementation pattern:
+   ```ts
+   // Download all sources in parallel
+   const buffers = await Promise.all(
+     urls.map(async (url) => Buffer.from(await (await fetch(url)).arrayBuffer()))
+   );
+   // Composite sequentially (memory pressure — each Sharp op can use 100+ MB)
+   const composites: Buffer[] = [];
+   for (const buf of buffers) {
+     composites.push(
+       await sharp(buf).extend(...).jpeg({ quality: 100 }).toBuffer()
+     );
+   }
+   // Upload all composites in parallel
+   await Promise.all(composites.map(...));
+   ```
+2. **Use `?q=100` for all LumaPrints submissions.** Jesse's quality decision. Applies to BOTH the new Sharp-composited path AND the existing non-bordered webhook path (see drive-by below).
+3. **Keep-alive connection pooling via undici Agent.** Node's default `fetch` creates a new TLS session per call. Sharing an undici `Agent` with `keepAlive: true` across the print-set fetches should cut ~200-500 ms per request. Worth implementing.
 
-These are explicit follow-ups for the PR #6 design phase, not blockers for this spike.
+## Forward-looking concern: high-resolution photographers
+
+The spike numbers are specific to Jesse's event gallery (40 MP, 5152×7728 sources producing ~25 MB at q=100). Photographers with higher-resolution cameras produce proportionally larger q=100 outputs:
+
+| Camera class | Pixels | Estimated q=100 size | Webhook viability |
+|---|---|---|---|
+| 24–45 MP (most pro cameras) | 6000×4000–8192×5464 | 15–30 MB | comfortable |
+| 60–70 MP (A7R V, etc.) | ~9500×6300 | ~38 MB | workable with parallel DL |
+| 100 MP medium format | ~11600×8700 | ~62 MB | **tight — may exceed budget** |
+| 150 MP medium format | ~14200×10650 | ~90 MB | **likely exceeds 30s hard limit** |
+
+**Recommendation: use `?max=8000&q=100` instead of bare `?q=100`.** Sanity's `max` parameter caps the longest edge at the specified pixel count. 8000 pixels on the long edge is still print-quality for 40×60 inch prints at 200 DPI, and bounds the worst-case source bytes at ~30–40 MB regardless of the source camera. Simple one-line fix that future-proofs the platform for high-res photographers without any architectural changes.
+
+**Alternative:** accept that high-res photographers may need a different pipeline (background job via Convex scheduled actions) when demand arrives. Don't build that preemptively.
+
+## Follow-up items flagged
+
+1. **Drive-by PR (new audit item): upgrade the current webhook's LumaPrints URLs to `?max=8000&q=100`.** The existing non-bordered print pipeline has been submitting default-quality (~q80) URLs to LumaPrints since launch. This is a tiny change (one string manipulation before the LumaPrints submit call) and has meaningful quality improvement for every current print order. Not in audit #24 scope but should be its own small PR before PR #6 ships.
+2. **Decide: `?max=8000&q=100` vs bare `?q=100`.** My recommendation is to add the max parameter for future-proofing. Jesse's call.
+3. **Sanity CDN latency variance.** The cold-cache download time (1300–2600 ms per fetch) is worth investigating with a keep-alive agent. If the keep-alive pattern doesn't help, the variance may be intrinsic to Sanity CDN edge infrastructure and we just have to live with it.
+
+These are all explicit follow-ups for the PR #6 design phase.
