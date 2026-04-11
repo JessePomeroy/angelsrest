@@ -112,6 +112,11 @@ async function processOne(
 	// libvips stream. This is what production would look like. Measuring
 	// each stage separately would create unrealistic numbers because
 	// libvips fuses operations internally.
+	//
+	// Encoding at q95 because that's what PR #6 will ship. Source images
+	// should be fetched at `?q=95` from the Sanity CDN (default no-param
+	// URLs serve ~q80 compressed versions). Fetching q95 sources and
+	// re-encoding at q95 preserves the intended print quality.
 	const encoded = await sharp(sourceBuffer)
 		.extend({
 			top: borderPx,
@@ -120,7 +125,7 @@ async function processOne(
 			right: borderPx,
 			background: { r: 255, g: 255, b: 255, alpha: 1 },
 		})
-		.jpeg({ quality: 92 })
+		.jpeg({ quality: 95 })
 		.toBuffer();
 	const t3 = Date.now();
 
