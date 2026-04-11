@@ -1,9 +1,17 @@
 /**
  * SvelteKit Server Hooks
  *
- * Security headers and Sanity preview mode detection.
- * Admin auth is handled client-side by Better Auth via the admin package.
+ * Composes:
+ * - Sentry request handler (audit #50a — error capture, no perf tracing)
+ * - Security headers + Sanity preview detection (existing)
+ *
+ * The Sentry init itself lives in `instrumentation.server.ts` per
+ * SvelteKit 2.31+ pattern. This file only wires the request/error hooks.
  */
+
+import * as Sentry from "@sentry/sveltekit";
+import type { Handle } from "@sveltejs/kit";
+import { sequence } from "@sveltejs/kit/hooks";
 
 function addSecurityHeaders(response: Response): Response {
 	const cloned = new Response(response.body, response);
@@ -24,7 +32,7 @@ function addSecurityHeaders(response: Response): Response {
 	return cloned;
 }
 
-export async function handle({ event, resolve }) {
+const appHandle: Handle = async ({ event, resolve }) => {
 	// Detect Sanity preview mode from cookie (set by /api/draft/enable)
 	const isPreview = event.cookies.get("__sanity_preview") === "true";
 	event.locals.isPreview = isPreview;
@@ -37,4 +45,8 @@ export async function handle({ event, resolve }) {
 	}
 
 	return addSecurityHeaders(response);
-}
+};
+
+export const handle = sequence(Sentry.sentryHandle(), appHandle);
+
+export const handleError = Sentry.handleErrorWithSentry();

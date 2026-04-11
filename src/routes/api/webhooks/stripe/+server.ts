@@ -32,6 +32,7 @@ import {
 } from "$env/static/private";
 import { SITE_DOMAIN } from "$lib/config/site";
 import { getConvex } from "$lib/server/convexClient";
+import { logStructured, timed } from "$lib/server/logger";
 import {
 	buildLumaPrintsOrder,
 	createOrder as createLumaPrintsOrder,
@@ -120,7 +121,21 @@ export async function POST({ request }) {
 		STRIPE_WEBHOOK_SECRET,
 	);
 
-	console.log(`Received webhook: ${event.type}`);
+	// Track total webhook duration manually (rather than via `timed`) so the
+	// existing catch path stays exactly as it was — we want a single
+	// captureException, not double-capture from `timed` + outer catch.
+	const webhookStart = Date.now();
+	const sessionId =
+		event.type === "checkout.session.completed"
+			? (event.data.object as Stripe.Checkout.Session).id
+			: undefined;
+
+	logStructured({
+		event: "webhook.received",
+		stage: "webhook",
+		sessionId,
+		meta: { stripeEventType: event.type },
+	});
 
 	try {
 		switch (event.type) {
@@ -136,7 +151,11 @@ export async function POST({ request }) {
 							invoiceId: invoiceId as any,
 							siteUrl: session.metadata?.siteUrl || SITE_DOMAIN,
 						});
-						console.log("Invoice marked paid:", invoiceId);
+						logStructured({
+							event: "invoice.marked_paid",
+							stage: "webhook",
+							meta: { invoiceId },
+						});
 					}
 					break;
 				}
@@ -147,7 +166,12 @@ export async function POST({ request }) {
 
 			case "payment_intent.payment_failed": {
 				const paymentIntent = event.data.object as Stripe.PaymentIntent;
-				console.log("Payment failed:", paymentIntent.id);
+				logStructured({
+					event: "payment.failed",
+					level: "warn",
+					stage: "webhook",
+					meta: { paymentIntentId: paymentIntent.id },
+				});
 				// TODO: Could send "payment failed" email to customer
 				break;
 			}
@@ -158,16 +182,28 @@ export async function POST({ request }) {
 				break;
 		}
 
+		logStructured({
+			event: "webhook.processed",
+			stage: "webhook",
+			sessionId,
+			durationMs: Date.now() - webhookStart,
+			meta: { stripeEventType: event.type },
+		});
+
 		return json({ received: true });
 	} catch (err) {
-		const sessionId =
-			event.type === "checkout.session.completed"
-				? (event.data.object as Stripe.Checkout.Session).id
-				: "unknown";
 		const errorMessage = err instanceof Error ? err.message : String(err);
 
-		console.error("Webhook processing failed:", event.type, sessionId, err);
-		await sendFailureAlert(event.type, sessionId, errorMessage);
+		logStructured({
+			event: "webhook.failed",
+			level: "error",
+			stage: "webhook",
+			sessionId,
+			durationMs: Date.now() - webhookStart,
+			error: err,
+			meta: { stripeEventType: event.type },
+		});
+		await sendFailureAlert(event.type, sessionId ?? "unknown", errorMessage);
 		throw error(500, "Webhook processing failed");
 	}
 }
@@ -483,10 +519,17 @@ async function createOrderInConvex({
 		);
 	} catch (err) {
 		const classification = classifyLumaPrintsFailure(err);
-		console.error(
-			`LumaPrints submission failed for order ${orderNumber} (${classification}):`,
-			err,
-		);
+		// `timed` inside submitToLumaPrints already captured the exception
+		// to Sentry — log the classification as a follow-up info event so
+		// dashboards can group "permanent vs transient" without producing
+		// a duplicate Sentry issue.
+		logStructured({
+			event: "lumaprints.classified",
+			level: "warn",
+			stage: "lumaprints_submit",
+			orderId: orderNumber,
+			meta: { classification },
+		});
 
 		if (classification === "transient") {
 			// Re-throw — Stripe retries the webhook.
@@ -548,9 +591,13 @@ async function handlePermanentFulfillmentFailure({
 				: (session.payment_intent?.id ?? undefined);
 
 		if (!paymentIntentId) {
-			console.error(
-				`Cannot refund order ${orderNumber}: no payment_intent on session`,
-			);
+			logStructured({
+				event: "refund.skipped",
+				level: "error",
+				stage: "stripe_refund",
+				orderId: orderNumber,
+				error: new Error("no payment_intent on session"),
+			});
 		} else {
 			const refund = await stripe.refunds.create({
 				payment_intent: paymentIntentId,
@@ -562,15 +609,21 @@ async function handlePermanentFulfillmentFailure({
 				},
 			});
 			stripeRefundId = refund.id;
-			console.log(
-				`Stripe refund created for ${orderNumber}: ${refund.id} (${refund.status})`,
-			);
+			logStructured({
+				event: "refund.created",
+				stage: "stripe_refund",
+				orderId: orderNumber,
+				meta: { refundId: refund.id, refundStatus: refund.status },
+			});
 		}
 	} catch (refundErr) {
-		console.error(
-			`Stripe refund failed for ${orderNumber} (non-fatal, continuing):`,
-			refundErr,
-		);
+		logStructured({
+			event: "refund.failed",
+			level: "error",
+			stage: "stripe_refund",
+			orderId: orderNumber,
+			error: refundErr,
+		});
 	}
 
 	// 2. Mark Convex order fulfillment_error
@@ -582,10 +635,13 @@ async function handlePermanentFulfillmentFailure({
 			stripeRefundId,
 		});
 	} catch (convexErr) {
-		console.error(
-			`Convex status update failed for ${orderNumber} (non-fatal, continuing):`,
-			convexErr,
-		);
+		logStructured({
+			event: "fulfillment_error.convex_update_failed",
+			level: "error",
+			stage: "fulfillment_failure",
+			orderId: orderNumber,
+			error: convexErr,
+		});
 	}
 
 	// 3. Admin email
@@ -598,10 +654,13 @@ async function handlePermanentFulfillmentFailure({
 			total: session.amount_total ?? 0,
 		});
 	} catch (emailErr) {
-		console.error(
-			`Admin email failed for ${orderNumber} (non-fatal, continuing):`,
-			emailErr,
-		);
+		logStructured({
+			event: "fulfillment_error.email_failed",
+			level: "error",
+			stage: "email_admin",
+			orderId: orderNumber,
+			error: emailErr,
+		});
 	}
 }
 
@@ -783,16 +842,30 @@ async function submitToLumaPrints(
 ) {
 	const items = buildOrderItemsFromSession(session, lineItems);
 	if (items.length === 0) {
-		console.log("No LumaPrints items in order:", orderNumber);
+		logStructured({
+			event: "lumaprints.skipped",
+			stage: "lumaprints_submit",
+			orderId: orderNumber,
+			meta: { reason: "no LumaPrints items in order" },
+		});
 		return;
 	}
 
 	const recipient = buildRecipientFromShipping(shippingDetails);
 	const lpOrder = buildLumaPrintsOrder(orderNumber, recipient, items);
 
-	console.log("Submitting to LumaPrints:", orderNumber, items.length, "items");
-
-	const result = await createLumaPrintsOrder(lpOrder);
+	// `timed` logs an info entry with durationMs on success and an error
+	// entry (with Sentry capture) on failure, then re-throws so the caller's
+	// classify-and-fallback path runs unchanged.
+	const result = await timed(
+		{
+			event: "lumaprints.submitted",
+			stage: "lumaprints_submit",
+			orderId: orderNumber,
+			meta: { itemCount: items.length },
+		},
+		() => createLumaPrintsOrder(lpOrder),
+	);
 
 	// Update Convex order with the LumaPrints order number
 	await convex.mutation(api.orders.updateStatus, {
@@ -800,10 +873,10 @@ async function submitToLumaPrints(
 		lumaprintsOrderNumber: result.orderNumber,
 	});
 
-	console.log(
-		"✅ Submitted to LumaPrints:",
-		orderNumber,
-		"→",
-		result.orderNumber,
-	);
+	logStructured({
+		event: "lumaprints.recorded",
+		stage: "lumaprints_submit",
+		orderId: orderNumber,
+		meta: { lumaprintsOrderNumber: result.orderNumber },
+	});
 }

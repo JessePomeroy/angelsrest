@@ -10,6 +10,13 @@ const config = {
 		alias: {
 			$convex: "./convex/_generated",
 		},
+		experimental: {
+			// Required for src/instrumentation.server.ts to be loaded
+			// at server startup (audit #50a — Sentry init).
+			instrumentation: {
+				server: true,
+			},
+		},
 	},
 };
 
