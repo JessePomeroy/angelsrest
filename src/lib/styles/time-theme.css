@@ -206,6 +206,10 @@ body::after {
 [data-time-period] .time-aware-text {
 	color: var(--time-accent);
 	text-shadow: 0 0 12px var(--time-glow);
+	/* Slightly heavier than the default button weight so the CTA stays
+	 * legible at low-contrast time periods (afternoon, morning) where the
+	 * accent color is a soft yellow against a light surface. */
+	font-weight: 500;
 	transition:
 		color 2s ease,
 		text-shadow 2s ease;
