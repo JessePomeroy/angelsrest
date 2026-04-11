@@ -28,6 +28,10 @@ import type { CartItem } from "$lib/shop/cart";
  *
  *   { u: imageUrl, s: subcategoryId, w: widthInches, h: heightInches, q: quantity }
  *
+ * Paper fields (`s`, `w`, `h`) are omitted for non-print merch (tapestries,
+ * etc.) — the webhook decoder uses the absence of `s` as the signal to
+ * skip LumaPrints submission for that line.
+ *
  * Reserving ~10 keys for non-cart metadata leaves ~40 cart-item slots —
  * enforced by the 40-item cap in `validateCart`.
  */
@@ -37,13 +41,16 @@ export function buildCartMetadata(items: CartItem[]): Record<string, string> {
 		cartItemCount: String(items.length),
 	};
 	items.forEach((item, i) => {
-		meta[`cartItem_${i}`] = JSON.stringify({
+		const payload: Record<string, unknown> = {
 			u: item.imageUrl,
-			s: item.paperSubcategoryId,
-			w: item.paperWidth,
-			h: item.paperHeight,
 			q: item.quantity,
-		});
+		};
+		if (typeof item.paperSubcategoryId === "number") {
+			payload.s = item.paperSubcategoryId;
+			payload.w = item.paperWidth;
+			payload.h = item.paperHeight;
+		}
+		meta[`cartItem_${i}`] = JSON.stringify(payload);
 	});
 	return meta;
 }
@@ -54,6 +61,11 @@ export function buildCartMetadata(items: CartItem[]): Record<string, string> {
  *
  * Runs at the trust boundary, so it has to defend against shapes that
  * the TS types claim can't happen — clients can send anything.
+ *
+ * Paper fields are validated only when present. Non-print merch
+ * (tapestries etc.) is identified by the absence of `paperSubcategoryId`
+ * and skips the paper-shape checks. Print items must still provide a
+ * complete and consistent paper config or they're rejected.
  */
 export function validateCart(items: unknown): string | null {
 	if (!Array.isArray(items)) return "items must be an array";
@@ -71,14 +83,21 @@ export function validateCart(items: unknown): string | null {
 		if (typeof item.imageUrl !== "string" || !item.imageUrl) {
 			return "cart item missing imageUrl";
 		}
-		if (typeof item.paperSubcategoryId !== "number") {
-			return "cart item missing paperSubcategoryId";
+		// Paper fields are optional, but if any are present they must ALL
+		// be present and well-formed — partial paper config is a bug.
+		const hasPaperSubcategory = typeof item.paperSubcategoryId === "number";
+		const hasPaperWidth = typeof item.paperWidth === "number";
+		const hasPaperHeight = typeof item.paperHeight === "number";
+		const anyPaper = hasPaperSubcategory || hasPaperWidth || hasPaperHeight;
+		const allPaper = hasPaperSubcategory && hasPaperWidth && hasPaperHeight;
+		if (anyPaper && !allPaper) {
+			return "cart item has incomplete paper config";
 		}
-		if (typeof item.paperWidth !== "number" || item.paperWidth <= 0) {
-			return "cart item missing or invalid paperWidth";
+		if (hasPaperWidth && (item.paperWidth as number) <= 0) {
+			return "cart item has invalid paperWidth";
 		}
-		if (typeof item.paperHeight !== "number" || item.paperHeight <= 0) {
-			return "cart item missing or invalid paperHeight";
+		if (hasPaperHeight && (item.paperHeight as number) <= 0) {
+			return "cart item has invalid paperHeight";
 		}
 		if (
 			typeof item.quantity !== "number" ||

@@ -25,7 +25,17 @@
 /** Whether a cart entry is a single print or a multi-image print set. */
 export type CartItemType = "print" | "set";
 
-/** A line item in the shopping cart. */
+/**
+ * A line item in the shopping cart.
+ *
+ * Paper fields are OPTIONAL. They are present for LumaPrints prints (where
+ * the photographer picked a specific paper × size variant) and absent for
+ * self-fulfilled merch like tapestries, where the product is a single SKU
+ * with a fixed price. The presence of `paperSubcategoryId` is the canonical
+ * signal used by `buildOrderItemsFromSession` in the Stripe webhook to
+ * decide whether the line gets submitted to LumaPrints or treated as
+ * self-fulfilled.
+ */
 export interface CartItem {
 	/** Stable identity assigned at add-time. UUID-shaped. */
 	id: string;
@@ -39,14 +49,14 @@ export interface CartItem {
 	imageUrl: string;
 	/** For print sets: all images in the set. Undefined for single prints. */
 	imageUrls?: string[];
-	/** Display name for the selected paper. */
-	paperName: string;
-	/** LumaPrints subcategory ID for the selected paper. */
-	paperSubcategoryId: number;
-	/** Print width in inches. */
-	paperWidth: number;
-	/** Print height in inches. */
-	paperHeight: number;
+	/** Display name for the selected paper. Absent for non-print merch. */
+	paperName?: string;
+	/** LumaPrints subcategory ID for the selected paper. Absent for non-print merch. */
+	paperSubcategoryId?: number;
+	/** Print width in inches. Absent for non-print merch. */
+	paperWidth?: number;
+	/** Print height in inches. Absent for non-print merch. */
+	paperHeight?: number;
 	/** Always in [1, MAX_QUANTITY_PER_LINE]. */
 	quantity: number;
 	/**
@@ -79,6 +89,10 @@ export function emptyCart(now: Date = new Date()): CartState {
  * with a quantity bump rather than appearing twice. Same product with a
  * different paper or size produces a separate line — that's the explicit
  * UX choice (per the cart scoping discussion 2026-04-11).
+ *
+ * For non-print merch (no paper info), the key collapses to slug + type +
+ * image, so two adds of the same tapestry merge into one line. Distinct
+ * tapestries still produce distinct lines because the image differs.
  */
 export function itemMatchKey(
 	item: Pick<
@@ -95,12 +109,15 @@ export function itemMatchKey(
 	return [
 		item.productSlug,
 		item.type,
+		// Paper fields stringified — `undefined` becomes the literal string
+		// "undefined", which is fine because every non-print merch item gets
+		// the same suffix and the slug+image still differentiates them.
 		String(item.paperSubcategoryId),
 		String(item.paperWidth),
 		String(item.paperHeight),
 		// Print sets have multiple images; single prints have one. Joining
 		// the array gives a stable comparison key for sets, while single
-		// prints fall through to the imageUrl.
+		// prints (and non-print merch) fall through to the imageUrl.
 		item.imageUrls ? item.imageUrls.join(",") : item.imageUrl,
 	].join("|");
 }

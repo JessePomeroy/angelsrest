@@ -163,6 +163,57 @@ describe("__test__buildOrderItemsFromSession — cart shape (PR C)", () => {
 		expect(orderItems[0].imageUrl).toBe("a.jpg");
 	});
 
+	it("skips merch entries (no paper info) so they aren't sent to LumaPrints", () => {
+		// A merch item is encoded with just { u, q } — no s/w/h. The decoder
+		// should treat its absence as the signal to skip LumaPrints
+		// submission entirely. The Convex order itself is built from the
+		// Stripe line items elsewhere, so the customer still has a record.
+		const session = makeSession({
+			isCart: "true",
+			cartItemCount: "1",
+			cartItem_0: JSON.stringify({
+				u: "https://cdn.sanity.io/images/abc/tapestry.jpg",
+				q: 1,
+			}),
+		});
+		expect(__test__buildOrderItemsFromSession(session, [])).toEqual([]);
+	});
+
+	it("returns only the print rows in a mixed prints + merch cart", () => {
+		const items: CartItem[] = [
+			makeItem({
+				id: "print",
+				imageUrl: "https://cdn.sanity.io/images/abc/print.jpg",
+			}),
+			// Build a merch item by stripping the paper fields
+			{
+				...makeItem({ id: "merch" }),
+				paperName: undefined,
+				paperSubcategoryId: undefined,
+				paperWidth: undefined,
+				paperHeight: undefined,
+				imageUrl: "https://cdn.sanity.io/images/abc/tapestry.jpg",
+			},
+			makeItem({
+				id: "print2",
+				imageUrl: "https://cdn.sanity.io/images/abc/print2.jpg",
+				paperWidth: 16,
+				paperHeight: 24,
+			}),
+		];
+		const session = makeSession(buildCartMetadata(items));
+		const orderItems = __test__buildOrderItemsFromSession(session, []);
+		// Only the two print items should make it through to LumaPrints.
+		expect(orderItems).toHaveLength(2);
+		expect(orderItems[0].imageUrl).toBe(
+			"https://cdn.sanity.io/images/abc/print.jpg",
+		);
+		expect(orderItems[1].imageUrl).toBe(
+			"https://cdn.sanity.io/images/abc/print2.jpg",
+		);
+		expect(orderItems[1].width).toBe(16);
+	});
+
 	it("ignores top-level paperSubcategoryId when isCart is set", () => {
 		// Cart entries should drive everything; top-level metadata is
 		// either absent or irrelevant for cart checkouts.

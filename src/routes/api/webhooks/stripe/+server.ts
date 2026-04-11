@@ -787,28 +787,34 @@ function buildOrderItemsFromSession(
 			const raw = meta[`cartItem_${i}`];
 			if (typeof raw !== "string" || !raw) continue;
 			try {
-				// Compact representation from buildCartMetadata: { u, s, w, h, q }
+				// Compact representation from buildCartMetadata: { u, q, and
+				// optionally s/w/h }. Items WITHOUT s/w/h are non-print merch
+				// (e.g. tapestries) — these still appear in the Convex order
+				// (built from Stripe line items elsewhere) but are intentionally
+				// skipped here so they aren't submitted to LumaPrints.
 				const parsed = JSON.parse(raw) as {
-					u: string;
-					s: number;
-					w: number;
-					h: number;
-					q: number;
+					u?: string;
+					s?: number;
+					w?: number;
+					h?: number;
+					q?: number;
 				};
-				if (
-					typeof parsed.u !== "string" ||
-					typeof parsed.s !== "number" ||
-					typeof parsed.w !== "number" ||
-					typeof parsed.h !== "number" ||
-					typeof parsed.q !== "number"
-				) {
+				if (typeof parsed.u !== "string" || typeof parsed.q !== "number") {
+					continue;
+				}
+				const hasPaper =
+					typeof parsed.s === "number" &&
+					typeof parsed.w === "number" &&
+					typeof parsed.h === "number";
+				if (!hasPaper) {
+					// Self-fulfilled merch — skip LumaPrints submission entirely.
 					continue;
 				}
 				items.push({
 					imageUrl: parsed.u,
-					paperSubcategoryId: parsed.s,
-					width: parsed.w,
-					height: parsed.h,
+					paperSubcategoryId: parsed.s as number,
+					width: parsed.w as number,
+					height: parsed.h as number,
 					quantity: parsed.q,
 				});
 			} catch {

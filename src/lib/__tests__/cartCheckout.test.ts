@@ -28,6 +28,24 @@ function makeItem(overrides: Partial<CartItem> = {}): CartItem {
 	};
 }
 
+/**
+ * Build a non-print merch cart item — no paper fields. Models the
+ * tapestry / postcard / merchandise case where the product is a single
+ * SKU with a fixed price and no LumaPrints submission.
+ */
+function makeMerchItem(overrides: Partial<CartItem> = {}): CartItem {
+	return {
+		id: "merch-1",
+		productSlug: "pokemon-tapestry",
+		type: "print",
+		title: "Pokemon Starters Tapestry",
+		imageUrl: "https://cdn.sanity.io/images/abc/pokemon-tapestry.jpg",
+		quantity: 1,
+		unitPriceCents: 18900,
+		...overrides,
+	};
+}
+
 describe("validateCart", () => {
 	it("accepts a single valid print item", () => {
 		expect(validateCart([makeItem()])).toBeNull();
@@ -70,15 +88,30 @@ describe("validateCart", () => {
 		expect(validateCart([makeItem({ imageUrl: "" })])).toMatch(/imageUrl/);
 	});
 
-	it("rejects an item missing paperSubcategoryId", () => {
-		// Force a missing field via Object spread + cast — validateCart
-		// runs at the trust boundary so it has to defend against shapes
-		// that the TS types claim can't happen.
-		const bad = { ...makeItem(), paperSubcategoryId: undefined } as unknown;
-		expect(validateCart([bad])).toMatch(/paperSubcategoryId/);
+	it("accepts a non-print merch item with no paper fields", () => {
+		// Tapestries / postcards / etc. have no paper × size variants.
+		// They go in the cart with just title + image + price.
+		expect(validateCart([makeMerchItem()])).toBeNull();
 	});
 
-	it("rejects zero or negative width/height", () => {
+	it("accepts a mixed cart of prints and merch", () => {
+		expect(
+			validateCart([
+				makeItem(),
+				makeMerchItem(),
+				makeItem({ id: "b", productSlug: "other" }),
+			]),
+		).toBeNull();
+	});
+
+	it("rejects an item with partial paper config", () => {
+		// All-or-nothing rule: if any paper field is present, all must be.
+		// A missing subcategoryId on an otherwise-print item is a bug.
+		const bad = { ...makeItem(), paperSubcategoryId: undefined } as unknown;
+		expect(validateCart([bad])).toMatch(/incomplete paper config/);
+	});
+
+	it("rejects zero or negative width/height when paper is present", () => {
 		expect(validateCart([makeItem({ paperWidth: 0 })])).toMatch(/paperWidth/);
 		expect(validateCart([makeItem({ paperHeight: -1 })])).toMatch(
 			/paperHeight/,
@@ -120,7 +153,7 @@ describe("buildCartMetadata", () => {
 		expect(meta.cartItem_3).toBeUndefined();
 	});
 
-	it("uses the abbreviated key format the webhook expects", () => {
+	it("uses the abbreviated key format the webhook expects for prints", () => {
 		const meta = buildCartMetadata([
 			makeItem({
 				imageUrl: "https://cdn.sanity.io/images/abc/foo.jpg",
@@ -138,6 +171,26 @@ describe("buildCartMetadata", () => {
 			h: 12,
 			q: 3,
 		});
+	});
+
+	it("omits paper fields from the encoded payload for merch items", () => {
+		const meta = buildCartMetadata([makeMerchItem({ quantity: 2 })]);
+		const parsed = JSON.parse(meta.cartItem_0);
+		expect(parsed).toEqual({
+			u: "https://cdn.sanity.io/images/abc/pokemon-tapestry.jpg",
+			q: 2,
+		});
+		expect(parsed.s).toBeUndefined();
+		expect(parsed.w).toBeUndefined();
+		expect(parsed.h).toBeUndefined();
+	});
+
+	it("encodes a mixed cart with prints and merch in the right shapes", () => {
+		const meta = buildCartMetadata([makeItem(), makeMerchItem()]);
+		const print = JSON.parse(meta.cartItem_0);
+		const merch = JSON.parse(meta.cartItem_1);
+		expect(print.s).toBe(103001);
+		expect(merch.s).toBeUndefined();
 	});
 
 	it("stays under the 500-char Stripe metadata value cap for realistic URLs", () => {

@@ -19,6 +19,8 @@
 
 import GalleryModal from "$lib/components/GalleryModal.svelte";
 import SEO from "$lib/components/SEO.svelte";
+import { cart } from "$lib/shop/cart.svelte";
+import { cartUI } from "$lib/shop/cartUI.svelte";
 import type { ParsedPaper } from "$lib/types/shop";
 import { createCheckout } from "$lib/utils/checkout";
 import { parsePaperOption } from "$lib/utils/images";
@@ -119,6 +121,47 @@ async function handleCheckout() {
 	} finally {
 		isLoading = false;
 	}
+}
+
+/**
+ * Add to Cart — wires the product into the shared cart store. Available
+ * for any in-stock non-digital product. LumaPrints prints carry their
+ * selected paper × size; self-fulfilled merch (tapestries, etc.) goes in
+ * with no paper info, which is the webhook's signal to skip LumaPrints
+ * submission for that line.
+ */
+const canAddToCart = $derived(
+	data.product.category !== "digital" && data.product.inStock,
+);
+
+function handleAddToCart() {
+	if (!canAddToCart) return;
+	const priceDollars = selectedPaperData?.price ?? data.product.price;
+	if (typeof priceDollars !== "number") return;
+
+	const hasPaper = !!selectedPaperData;
+	cart.add({
+		productSlug: data.product.slug,
+		type: "print",
+		title: data.product.title,
+		imageUrl:
+			data.product.images[0]?.original || data.product.images[0]?.full || "",
+		...(hasPaper
+			? {
+					paperName: selectedPaperData.name,
+					paperSubcategoryId: Number.parseInt(
+						selectedPaperData.subcategoryId,
+						10,
+					),
+					paperWidth: selectedPaperData.width,
+					paperHeight: selectedPaperData.height,
+				}
+			: {}),
+		quantity: 1,
+		unitPriceCents: Math.round(priceDollars * 100),
+	});
+
+	cartUI.open();
 }
 </script>
 
@@ -372,6 +415,14 @@ async function handleCheckout() {
             {/if}
 
             <div class="space-y-3">
+                {#if canAddToCart}
+                    <button
+                        class="btn variant-soft-surface w-full"
+                        onclick={handleAddToCart}
+                    >
+                        add to cart
+                    </button>
+                {/if}
                 <button
                     class="btn variant-filled-primary w-full"
                     disabled={!data.product.inStock || isLoading}

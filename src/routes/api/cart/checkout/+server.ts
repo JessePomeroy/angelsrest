@@ -53,18 +53,26 @@ export async function POST({ request }) {
 		// Build one Stripe line item per cart entry. Stripe expects each
 		// line item with its own price_data and quantity — perfect for
 		// our shape since each cart entry has its own snapshot price.
+		// Non-print merch (no paper info) gets a simpler product name with
+		// no paper/size suffix.
 		const lineItems: Stripe.Checkout.SessionCreateParams.LineItem[] = items.map(
-			(item) => ({
-				price_data: {
-					currency: "usd",
-					product_data: {
-						name: `${item.title} — ${item.paperName}, ${item.paperWidth}×${item.paperHeight}`,
-						images: item.imageUrl ? [item.imageUrl] : [],
+			(item) => {
+				const hasPaper = typeof item.paperSubcategoryId === "number";
+				const name = hasPaper
+					? `${item.title} — ${item.paperName}, ${item.paperWidth}×${item.paperHeight}`
+					: item.title;
+				return {
+					price_data: {
+						currency: "usd",
+						product_data: {
+							name,
+							images: item.imageUrl ? [item.imageUrl] : [],
+						},
+						unit_amount: item.unitPriceCents,
 					},
-					unit_amount: item.unitPriceCents,
-				},
-				quantity: item.quantity,
-			}),
+					quantity: item.quantity,
+				};
+			},
 		);
 
 		const session = await stripe.checkout.sessions.create({
