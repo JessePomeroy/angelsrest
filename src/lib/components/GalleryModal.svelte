@@ -20,7 +20,9 @@ $effect(() => {
 $effect(() => {
 	if (dialogEl) {
 		previouslyFocused = document.activeElement as HTMLElement;
-		const closeBtn = dialogEl.querySelector<HTMLElement>('[aria-label="Close lightbox"]');
+		const closeBtn = dialogEl.querySelector<HTMLElement>(
+			'[aria-label="Close lightbox"]',
+		);
 		closeBtn?.focus();
 	}
 	return () => {
@@ -61,7 +63,7 @@ function handleKeydown(e: KeyboardEvent) {
 	if (e.key === "ArrowLeft") prev();
 	if (e.key === "Tab" && dialogEl) {
 		const focusable = dialogEl.querySelectorAll<HTMLElement>(
-			'button:not([disabled]), [tabindex]:not([tabindex="-1"])'
+			'button:not([disabled]), [tabindex]:not([tabindex="-1"])',
 		);
 		if (focusable.length === 0) return;
 		const first = focusable[0];

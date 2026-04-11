@@ -4,7 +4,10 @@ import { page } from "$app/stores";
 
 let { data } = $props();
 
-let activeTab = $derived(($page.url.searchParams.get("tab") as "portfolio" | "delivery") ?? "portfolio");
+let activeTab = $derived(
+	($page.url.searchParams.get("tab") as "portfolio" | "delivery") ??
+		"portfolio",
+);
 </script>
 
 <GalleriesPage {data} {activeTab} />

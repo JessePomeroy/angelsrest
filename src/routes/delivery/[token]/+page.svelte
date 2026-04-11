@@ -1,7 +1,7 @@
 <script lang="ts">
 import { setupConvex, useConvexClient } from "@mmailaender/convex-svelte";
-import { PUBLIC_CONVEX_URL } from "$env/static/public";
 import { api } from "$convex/api";
+import { PUBLIC_CONVEX_URL } from "$env/static/public";
 
 let { data } = $props();
 
@@ -29,7 +29,7 @@ function openLightbox(index: number) {
 	previouslyFocused = document.activeElement as HTMLElement;
 	lightboxIndex = index;
 	requestAnimationFrame(() => {
-		lightboxEl?.querySelector<HTMLElement>('.lb-close')?.focus();
+		lightboxEl?.querySelector<HTMLElement>(".lb-close")?.focus();
 	});
 }
 
@@ -41,11 +41,12 @@ function closeLightbox() {
 function handleKeydown(e: KeyboardEvent) {
 	if (!lightboxOpen) return;
 	if (e.key === "Escape") closeLightbox();
-	if (e.key === "ArrowRight" && lightboxIndex < images.length - 1) lightboxIndex++;
+	if (e.key === "ArrowRight" && lightboxIndex < images.length - 1)
+		lightboxIndex++;
 	if (e.key === "ArrowLeft" && lightboxIndex > 0) lightboxIndex--;
 	if (e.key === "Tab" && lightboxEl) {
 		const focusable = lightboxEl.querySelectorAll<HTMLElement>(
-			'a[href], button:not([disabled])'
+			"a[href], button:not([disabled])",
 		);
 		if (focusable.length === 0) return;
 		const first = focusable[0];
@@ -106,7 +107,9 @@ async function downloadAll() {
 }
 
 async function downloadFavorites() {
-	const favKeys = images.filter((img: any) => img.isFavorite).map((img: any) => img.r2Key);
+	const favKeys = images
+		.filter((img: any) => img.isFavorite)
+		.map((img: any) => img.r2Key);
 	if (favKeys.length === 0) {
 		alert("No favorites selected yet.");
 		return;
@@ -138,7 +141,9 @@ async function downloadFavorites() {
 	}
 }
 
-let favoriteCount = $derived(images.filter((img: any) => img.isFavorite).length);
+let favoriteCount = $derived(
+	images.filter((img: any) => img.isFavorite).length,
+);
 </script>
 
 <svelte:head>
