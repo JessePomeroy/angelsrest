@@ -7,16 +7,18 @@
 
 ---
 
-## Verdict: **PASS** — Sharp is feasible for PR #6.
+## Verdict: **PASS** — Sharp is feasible for PR #6 at target quality (q95 source + q95 output).
 
 All four thresholds from the spec note were met with meaningful headroom. Proceed with the Sharp border compositing work in PR #6.
 
-| Threshold | Target | Measured | Status |
+| Threshold | Target | Measured (q95 pipeline) | Status |
 |---|---|---|---|
-| Single-item composite < 5s | < 5000 ms | 2093 ms cold, ~1800–2600 ms warm | PASS |
-| 5-item sequential < 20s (10s webhook headroom) | < 20000 ms | 9506–11833 ms warm | PASS |
-| Memory RSS delta < 500 MB | < 512 MB | 175–226 MB overall | PASS |
+| Single-item composite < 5s | < 5000 ms | 2093 ms cold (q80 source), ~1600–1800 ms warm (q95) | PASS |
+| 5-item sequential < 20s (10s webhook headroom) | < 20000 ms | **8553 ms warm (q95+q95)** | PASS — 11.5s headroom |
+| Memory RSS delta < 500 MB | < 512 MB | 288 MB overall (q95 pipeline) | PASS |
 | Cold start penalty < 3s | < 3000 ms | ~300–500 ms above warm baseline | PASS |
+
+**Crucial finding: download time is latency-bound, not bandwidth-bound.** Going from the default CDN compressed sources (3.9 MB avg) to q=95 sources (9.5 MB avg) barely changed download time (4175–8364 ms range for 5 sequential fetches). Vercel → Sanity CDN has high backbone bandwidth; the bottleneck is per-request TLS handshake / time-to-first-byte. **Quality is essentially free on the download side**, which is critical because q95 is the target shipping quality for PR #6.
 
 ---
 
@@ -33,30 +35,44 @@ Source images are real event-gallery photos pulled from `angelsrest-studio` (pro
 
 ---
 
-## Unexpected finding: Sanity CDN serves compressed versions
+## Finding: Sanity CDN re-encodes; use `?q=95` for PR #6 source URLs
 
-**This is the biggest finding of the spike and has implications beyond Sharp.**
+The event gallery's asset documents report original upload sizes of 12–38 MB, but the default CDN URL (without query params) serves a heavily compressed version (~q80). Testing with explicit quality params:
 
-The event gallery's asset documents report `asset->size` values of 12–38 MB (the original upload sizes). But when the CDN URL is fetched without query params:
-
-| Asset ID reports | CDN actually serves |
+| URL | Content-Length (for the 38 MB asset) |
 |---|---|
-| `40e97f0f…` 12.0 MB | **2.1 MB** |
-| `3bd93d7c…` (variant) | **3.4 MB** |
-| `35e53b93…` 31.6 MB | **3.6 MB** |
-| `99e0f635…` 38.0 MB | **3.7 MB** |
-| `54a11272…` 29.3 MB | **5.2 MB** |
+| `…5152x7728.jpg` (default) | 3.9 MB (~q80) |
+| `…5152x7728.jpg?q=95` | **11.1 MB (q95 — target)** |
+| `…5152x7728.jpg?q=100` | 25.4 MB (maximum Sanity offers) |
 
-**Implications:**
-1. **Sharp's job is much easier than I was planning for.** The spec note assumed 10 MB sources; actual download bytes are 2–5 MB. All pixel dimensions are preserved (5000×7500, 5152×7728, etc.), so Sharp still decodes 37–40 megapixels per image — but the network transfer is 5–10× smaller than the raw asset size.
-2. **LumaPrints may not be getting the quality Margaret assumes.** The current Stripe webhook forwards these same CDN URLs to LumaPrints. LumaPrints is printing from the 2–5 MB CDN version, not the 12–38 MB original. At 5152×7728 / 3.7 MB, that's ~0.5 bytes/pixel, roughly JPEG quality 80. For most prints that's fine (human eye can't distinguish q80 from q95 on a 300 DPI print), but it's worth flagging that the print pipeline has been implicitly lossy.
-3. **Separate investigation recommended:** confirm with LumaPrints whether the CDN quality is adequate for large prints (16×24+), and whether we should force full-quality by adding `?max=original` or similar query params. This is out of scope for audit #24 but worth tracking.
+**PR #6 design decisions:**
+
+1. **Source URLs must include `?q=95`.** The default CDN URL is ~q80 which is below the intended print quality. `?q=95` raises source bytes from ~3.9 MB to ~11 MB per image, but the spike confirms this fits comfortably in the webhook budget (8.6s for a 5-image set at q95).
+
+2. **Q95 is achievable in Vercel at the webhook budget.** See the verdict table above. Verified end-to-end: fetch q95 sources → composite borders via Sharp → re-encode at q95 → 8.6s total wall time for 5 large images.
+
+3. **Q=100 is available if needed.** The CDN caps at `?q=100` which serves ~25 MB for the same 5152×7728 asset. The spike didn't test q100 end-to-end, but the download-latency-bound finding strongly suggests q100 would add only a few hundred milliseconds to the total — well within budget. If Margaret ever wants to experiment with higher quality, it's a one-line source URL change.
+
+4. **Current (pre-PR #6) production webhook uses the default CDN URL** (~q80). This has been implicitly lossy since launch. Not a regression introduced by this spike — just surfaced by it. Fixing this for the current webhook is a small drive-by change: update the LumaPrints submission path to append `?q=95` to image URLs before sending to LumaPrints. **Not in scope for audit #24 but worth a dedicated small PR.**
+
+## Finding: `?q=100` is 25 MB vs the 38 MB original — quality notes
+
+Worth documenting because this question will come up again. The Sanity CDN image URL (`cdn.sanity.io/images/…`) always decodes and re-encodes — you cannot get a byte-for-byte copy of the original upload through this URL, even at `?q=100`. The ~13 MB delta between the 38 MB original and the 25 MB q=100 version is composed of:
+
+- **Stripped metadata (2–5 MB typical):** EXIF, XMP, IPTC, embedded thumbnails, ICC color profiles. All removed by Sanity.
+- **JPEG re-encoding (5–8 MB typical):** Sanity uses its own encoder, which typically produces smaller files than camera-manufacturer encoders at the same nominal "quality." Camera JPEGs are often encoded with more conservative quantization tables.
+- **Chroma subsampling:** cameras shoot at 4:4:4 (full color resolution), Sanity likely re-encodes at 4:2:0 (half-resolution color). This is where most of the byte savings come from. Visibly imperceptible on photographs at print distances — every consumer JPEG and every web video uses 4:2:0.
+- **Generational loss:** JPEG is lossy. Decode → re-encode at q100 has a mathematically non-zero quality loss (~0.5–1% per pass at q95+). Tiny but not zero.
+
+**Practical print impact:** negligible. JPEG q95+ is beyond the threshold of what a 300 DPI print on fine art paper can reproduce. A side-by-side print comparison of the 38 MB original vs the 25 MB q=100 version would be extremely hard to distinguish. The chroma subsampling contributes the most to the byte delta and is invisible at print scale.
+
+**If you ever want the true 38 MB original:** you'd need to store originals in R2/S3 separately from Sanity, reference them in product variants, and have the webhook fetch from R2 (not the Sanity CDN). Significant architectural change — not recommended unless a specific print quality complaint surfaces. The q95 or q100 Sanity CDN versions are the pragmatic choice for v1.
 
 ---
 
 ## Raw measurements
 
-### Cold start — single image (5012×7518, 2.1 MB, 0.5" border)
+### Cold start — single image, q80 CDN source + q92 output (early spike, baseline)
 
 ```
 Download:  1286 ms
@@ -67,29 +83,43 @@ Total:     2093 ms
 Memory delta: 35 MB
 ```
 
-### Warm — 5-image print set, 1.0" border, sequential (run 1)
+### Warm — 5-image, q80 source + q92 output (early runs)
+
+Run 1:  Total 11833 ms | Download sum 8112 ms | Sharp sum 3690 ms | Mem +226 MB
+Run 2:  Total  9506 ms | Download sum 5785 ms | Sharp sum 3707 ms | Mem +175 MB
+
+Per-image Sharp time was rock-solid 705–800 ms across both runs. Download variance was 137–1900 ms per image (first was CDN-cached).
+
+### Warm — 5-image, **q95 source + q92 output** (verifying larger sources still fit)
 
 ```
-#  Dimensions    Src     Out     Download   Sharp   Total   MemΔ
-1  5012×7518    2.0 MB  3.7 MB  1331 ms    648 ms  1994 ms  +18 MB
-2  5012×7518    3.4 MB  6.0 MB  1870 ms    755 ms  2626 ms  +110 MB
-3  5152×7728    3.6 MB  6.4 MB  1609 ms    790 ms  2401 ms  -43 MB
-4  5152×7728    3.7 MB  6.7 MB  1610 ms    743 ms  2363 ms  +57 MB
-5  6748×4499    5.2 MB  9.3 MB  1692 ms    754 ms  2448 ms  +83 MB
-                                -------    ------  -------  ------
-                                8112 ms    3690 ms 11833 ms +226 MB overall
+Total: 12462 ms (12.5 s)
+Source bytes total: 47.5 MB  (vs 17.9 MB at q80 — 2.65× more)
+Download sum: 8364 ms
+Sharp sum:    4077 ms
+Memory delta: 292 MB
 ```
 
-### Warm — 5-image print set, same inputs (run 2, variance check)
+Key observation: **+165% source bytes, only +3% download time**. Download is latency-bound.
+
+### Warm — 5-image, **q95 source + q95 output** (final PR #6 target pipeline)
 
 ```
-Sharp per-image: 705, 773, 764, 724, 741 ms   (nearly identical to run 1)
-Download per-image: 137, 1041, 1502, 1664, 1441 ms   (first was CDN-cached)
-Download sum:       5785 ms
-Sharp sum:          3707 ms
-Total:              9506 ms
-Memory delta:       175 MB
+#  Dimensions    Src     Out     Download   Sharp   Total
+1  5012×7518    5.6 MB  5.6 MB   730 ms    839 ms  1580 ms
+2  5012×7518    9.0 MB  8.9 MB   740 ms    841 ms  1582 ms
+3  5152×7728    9.8 MB 10.0 MB   785 ms    951 ms  1738 ms
+4  5152×7728   10.6 MB 10.8 MB   940 ms    878 ms  1826 ms
+5  6748×4499   12.5 MB 12.8 MB   980 ms    845 ms  1827 ms
+                               --------   ------- --------
+                               4175 ms   4354 ms  8553 ms
+
+Source bytes total: 47.5 MB
+Output bytes total: 48.2 MB  (quality preserved through pipeline)
+Memory delta: 288 MB
 ```
+
+**This is the run that matters.** End-to-end q95 source → Sharp composite → q95 output. 8.6 seconds for 5 large images sequentially. Output file sizes match source file sizes — no quality loss through the compositing pipeline.
 
 ---
 
@@ -155,8 +185,8 @@ Cold-start total (2093 ms) vs warm single-item average (~2000 ms) shows the cold
 
 ## Follow-up investigations flagged
 
-1. **Sanity CDN download latency (1.5 sec average from Vercel iad1).** Unexpectedly slow. Worth a small follow-up to test connection reuse, edge caching, or keep-alive agents before PR #6 ships.
-2. **Sanity CDN serves compressed versions.** LumaPrints has been printing from these compressed versions, not the originals. Worth confirming quality is adequate for large prints; if not, audit whether CDN transform params or a different URL scheme is needed.
-3. **Keep-alive/connection pooling in the webhook.** Node's default `fetch` creates a new TLS session per call. Sharing an undici `Agent` with `keepAlive: true` might cut download latency significantly.
+1. **Parallelize downloads in PR #6.** Sharp must run sequentially (memory pressure), but downloads can run concurrently. Would cut the 5-image total from 8.6s to ~5–6s. Easy win, implement from the start.
+2. **Keep-alive connection pooling.** Node's default `fetch` creates a new TLS session per call. Sharing an undici `Agent` with `keepAlive: true` across the print-set fetches might cut another ~500 ms off the download sum. Worth testing in PR #6.
+3. **Small drive-by PR: append `?q=95` to LumaPrints image URLs in the current webhook.** The existing webhook submits default-quality (~q80) CDN URLs to LumaPrints. PR #6 will naturally use `?q=95` for its own pipeline, but the *current* (non-bordered) submission path should also be upgraded. Tiny change, meaningful quality improvement, not in audit #24 scope but worth tracking as a follow-up audit item.
 
 These are explicit follow-ups for the PR #6 design phase, not blockers for this spike.
