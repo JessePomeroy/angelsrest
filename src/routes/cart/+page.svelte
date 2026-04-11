@@ -98,7 +98,15 @@ async function checkout() {
       </a>
     </div>
   {:else}
-    <div class="grid md:grid-cols-3 gap-8">
+    <!--
+      Mobile (default): line items stack above the order summary, single
+      column. The summary uses a top-border separator instead of a full
+      bordered card so it doesn't read as a heavy panel jammed into the
+      narrow viewport.
+      Desktop (md+): two columns with the summary as a sticky bordered
+      card on the right.
+    -->
+    <div class="grid grid-cols-1 md:grid-cols-3 md:gap-8">
       <!-- Line items -->
       <div class="md:col-span-2">
         <ul class="list-none p-0 m-0 border-t border-surface-500/15">
@@ -112,7 +120,8 @@ async function checkout() {
 
       <!-- Totals / checkout panel -->
       <aside
-        class="md:sticky md:top-8 self-start space-y-4 p-6 border border-surface-500/20 rounded-md"
+        class="self-start space-y-4 mt-6 pt-6 border-t border-surface-500/15
+               md:mt-0 md:p-6 md:border md:border-surface-500/20 md:rounded-md md:sticky md:top-8"
       >
         <h2 class="text-sm tracking-widest lowercase font-light">order summary</h2>
 

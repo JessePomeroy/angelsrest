@@ -56,7 +56,7 @@ const extraImageCount = $derived(
   <div
     class="relative flex-shrink-0 {variant === 'drawer'
       ? 'w-16 h-16'
-      : 'w-24 h-24'} overflow-hidden rounded-md bg-surface-500/10"
+      : 'w-20 h-20 md:w-24 md:h-24'} overflow-hidden rounded-md bg-surface-500/10"
   >
     {#if item.imageUrl}
       <img
@@ -78,9 +78,17 @@ const extraImageCount = $derived(
 
   <!-- Body -->
   <div class="flex-1 min-w-0 flex flex-col gap-1">
+    <!--
+      `block` is required for `truncate` to actually clip — anchors are
+      `display: inline` by default, where overflow/text-ellipsis are
+      no-ops. Without this, a long product title (e.g. the godzilla
+      tapestry) overflows its parent flex column, pushes the price + X
+      button off-screen, AND inflates the page width past the viewport
+      so the order summary below also clips.
+    -->
     <a
       href={`/shop/${item.productSlug}`}
-      class="text-sm font-medium leading-tight truncate hover:underline"
+      class="block text-sm font-medium leading-tight truncate hover:underline"
     >
       {item.title}
     </a>
