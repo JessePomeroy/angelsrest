@@ -751,17 +751,24 @@ async function captureStripeFees(
 /**
  * Build the list of LumaPrints order items from Stripe checkout metadata.
  *
- * Handles two shapes of order:
- *   - Print set: `metadata.isPrintSet === "true"` with an `imageUrls` JSON array,
- *     one LumaPrints item per image, same paper/size for every image.
- *   - Single print: one item built from `metadata.imageUrl` + the first line item
- *     for the quantity.
+ * Handles three shapes of order:
+ *   - **Cart** (added cart PR C): `metadata.isCart === "true"` with one
+ *     `cartItem_{n}` JSON entry per line. Each cart item carries its own
+ *     paper/size, so this branch ignores the top-level paper metadata.
+ *     Encoding contract is shared with `buildCartMetadata` in
+ *     `src/routes/api/cart/checkout/+server.ts` — keep them in sync.
+ *   - **Print set:** `metadata.isPrintSet === "true"` with an `imageUrls`
+ *     JSON array, one LumaPrints item per image, same paper/size for
+ *     every image. Reads paper from top-level metadata.
+ *   - **Single print:** one item built from `metadata.imageUrl` + the
+ *     first line item for the quantity. Reads paper from top-level metadata.
  *
- * Returns an empty array if no paper was selected at checkout — caller treats
- * that as "no LumaPrints items in this order" and short-circuits.
+ * Returns an empty array when there's nothing to fulfill (no LumaPrints
+ * items in the order, e.g. digital-only or invoice payments). Caller
+ * treats that as a short-circuit.
  *
- * Pure-ish: no network, no Convex, no fetch. Testable in isolation once the
- * session/lineItems shapes are known.
+ * Pure-ish: no network, no Convex, no fetch. Testable in isolation once
+ * the session/lineItems shapes are known.
  */
 function buildOrderItemsFromSession(
 	session: Stripe.Checkout.Session,
@@ -770,11 +777,54 @@ function buildOrderItemsFromSession(
 	// biome-ignore lint/suspicious/noExplicitAny: Stripe metadata is string-only
 	const meta = (session.metadata ?? {}) as Record<string, any>;
 
-	const paperSubcategoryId = parseInt(meta.paperSubcategoryId ?? "", 10);
+	// ─── Path 1: Cart (multi-item, per-line paper/size) ───────────────────
+	if (meta.isCart === "true") {
+		const count = Number.parseInt(meta.cartItemCount ?? "0", 10);
+		if (!Number.isFinite(count) || count <= 0) return [];
+
+		const items: OrderItem[] = [];
+		for (let i = 0; i < count; i++) {
+			const raw = meta[`cartItem_${i}`];
+			if (typeof raw !== "string" || !raw) continue;
+			try {
+				// Compact representation from buildCartMetadata: { u, s, w, h, q }
+				const parsed = JSON.parse(raw) as {
+					u: string;
+					s: number;
+					w: number;
+					h: number;
+					q: number;
+				};
+				if (
+					typeof parsed.u !== "string" ||
+					typeof parsed.s !== "number" ||
+					typeof parsed.w !== "number" ||
+					typeof parsed.h !== "number" ||
+					typeof parsed.q !== "number"
+				) {
+					continue;
+				}
+				items.push({
+					imageUrl: parsed.u,
+					paperSubcategoryId: parsed.s,
+					width: parsed.w,
+					height: parsed.h,
+					quantity: parsed.q,
+				});
+			} catch {
+				// Skip malformed entries — partial fulfillment is better than
+				// throwing the entire order on the floor for one bad row.
+			}
+		}
+		return items;
+	}
+
+	// ─── Existing paths use top-level paperSubcategoryId ──────────────────
+	const paperSubcategoryId = Number.parseInt(meta.paperSubcategoryId ?? "", 10);
 	if (!paperSubcategoryId) return [];
 
-	const width = parseInt(meta.paperWidth ?? "8", 10) || 8;
-	const height = parseInt(meta.paperHeight ?? "10", 10) || 10;
+	const width = Number.parseInt(meta.paperWidth ?? "8", 10) || 8;
+	const height = Number.parseInt(meta.paperHeight ?? "10", 10) || 10;
 
 	const isPrintSet = meta.isPrintSet === "true";
 	if (isPrintSet) {
@@ -805,6 +855,14 @@ function buildOrderItemsFromSession(
 		},
 	];
 }
+
+/**
+ * Exported for tests only — the production code path goes through
+ * `buildOrderItemsFromSession` above. Re-exporting this lets the cart
+ * PR C tests exercise the parser without spinning up the full webhook
+ * harness.
+ */
+export const __test__buildOrderItemsFromSession = buildOrderItemsFromSession;
 
 /** Build a LumaPrints recipient from Stripe shipping details. */
 function buildRecipientFromShipping(
