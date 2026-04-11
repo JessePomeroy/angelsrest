@@ -37,6 +37,10 @@ import {
 	createOrder as createLumaPrintsOrder,
 } from "$lib/server/lumaprints";
 import { verifyStripeWebhook } from "$lib/server/stripeWebhook";
+import {
+	classifyLumaPrintsFailure,
+	formatFailureForAdmin,
+} from "$lib/server/webhookErrorClassification";
 import type { OrderItem, Recipient } from "$lib/shop/types";
 
 const convex = getConvex();
@@ -453,18 +457,198 @@ async function createOrderInConvex({
 		);
 	}
 
-	// Critical: LumaPrints submission — if this fails, customer paid but nothing prints.
-	// Let it throw so the webhook returns 500 and Stripe retries.
-	// Order creation is idempotent, so retries are safe.
-	await submitToLumaPrints(
-		orderId,
-		orderNumber,
-		lineItems,
-		shippingDetails,
-		session,
-	);
+	// Critical: LumaPrints submission.
+	//
+	// Audit #23 PR #3 expanded the error handling here into a 3-signal fallback:
+	// - **Transient errors** (network, LumaPrints 5xx, unknown) → re-throw so
+	//   the webhook returns 500 and Stripe retries with backoff. Order creation
+	//   is idempotent via `by_stripeSessionId`, so retries are safe. This is
+	//   audit #1's original behavior, preserved for transient failures.
+	// - **Permanent errors** (4xx from LumaPrints, invalid payload, rejected
+	//   image, validation failure) → take the refund path: auto-refund the
+	//   customer via Stripe, mark the order `fulfillment_error` in Convex,
+	//   email the admin with full error context, and return 200 so Stripe
+	//   doesn't retry (the underlying problem is permanent).
+	//
+	// Classification lives in `webhookErrorClassification.ts` and is
+	// conservative: unknown errors default to transient so we don't refund
+	// customers based on our own bugs.
+	try {
+		await submitToLumaPrints(
+			orderId,
+			orderNumber,
+			lineItems,
+			shippingDetails,
+			session,
+		);
+	} catch (err) {
+		const classification = classifyLumaPrintsFailure(err);
+		console.error(
+			`LumaPrints submission failed for order ${orderNumber} (${classification}):`,
+			err,
+		);
+
+		if (classification === "transient") {
+			// Re-throw — Stripe retries the webhook.
+			throw err;
+		}
+
+		// Permanent failure: refund + mark order + notify admin + return 200.
+		await handlePermanentFulfillmentFailure({
+			orderId,
+			orderNumber,
+			error: err,
+			session,
+			customerEmail:
+				// biome-ignore lint/suspicious/noExplicitAny: Stripe SDK types
+				(session as any).customer_details?.email ?? "unknown",
+		});
+	}
 
 	return { orderNumber, _id: orderId };
+}
+
+/**
+ * 3-signal permanent-failure fallback introduced in audit #23 PR #3.
+ *
+ * 1. Auto-refund via `stripe.refunds.create` with reason
+ *    `requested_by_customer` and a metadata note pointing at the order.
+ * 2. Mark the Convex order `fulfillment_error` with the human-readable
+ *    error message and the Stripe refund ID for audit trail.
+ * 3. Send an admin email with order details, error message, and a link
+ *    to the order in the admin dashboard.
+ *
+ * All three signals are best-effort — if any one fails, we log and
+ * continue so the other two still fire. The caller returns 200 to Stripe
+ * unconditionally after this runs: the underlying LumaPrints failure is
+ * permanent, retries won't help.
+ */
+async function handlePermanentFulfillmentFailure({
+	orderId,
+	orderNumber,
+	error: fulfillmentError,
+	session,
+	customerEmail,
+}: {
+	// biome-ignore lint/suspicious/noExplicitAny: Convex Id types
+	orderId: any;
+	orderNumber: string;
+	error: unknown;
+	session: Stripe.Checkout.Session;
+	customerEmail: string;
+}) {
+	const errorSummary = formatFailureForAdmin(fulfillmentError);
+	let stripeRefundId: string | undefined;
+
+	// 1. Stripe refund
+	try {
+		const paymentIntentId =
+			typeof session.payment_intent === "string"
+				? session.payment_intent
+				: (session.payment_intent?.id ?? undefined);
+
+		if (!paymentIntentId) {
+			console.error(
+				`Cannot refund order ${orderNumber}: no payment_intent on session`,
+			);
+		} else {
+			const refund = await stripe.refunds.create({
+				payment_intent: paymentIntentId,
+				reason: "requested_by_customer",
+				metadata: {
+					orderNumber,
+					fulfillmentError: errorSummary.slice(0, 500),
+					automated: "audit_23_pr_3",
+				},
+			});
+			stripeRefundId = refund.id;
+			console.log(
+				`Stripe refund created for ${orderNumber}: ${refund.id} (${refund.status})`,
+			);
+		}
+	} catch (refundErr) {
+		console.error(
+			`Stripe refund failed for ${orderNumber} (non-fatal, continuing):`,
+			refundErr,
+		);
+	}
+
+	// 2. Mark Convex order fulfillment_error
+	try {
+		await convex.mutation(api.orders.updateStatus, {
+			orderId,
+			status: "fulfillment_error",
+			fulfillmentError: errorSummary.slice(0, 1000),
+			stripeRefundId,
+		});
+	} catch (convexErr) {
+		console.error(
+			`Convex status update failed for ${orderNumber} (non-fatal, continuing):`,
+			convexErr,
+		);
+	}
+
+	// 3. Admin email
+	try {
+		await sendFulfillmentFailureAlert({
+			orderNumber,
+			customerEmail,
+			errorSummary,
+			stripeRefundId,
+			total: session.amount_total ?? 0,
+		});
+	} catch (emailErr) {
+		console.error(
+			`Admin email failed for ${orderNumber} (non-fatal, continuing):`,
+			emailErr,
+		);
+	}
+}
+
+/**
+ * Admin notification email for permanent fulfillment failures.
+ * Sent to NOTIFICATION_EMAIL (with Jesse's personal Gmail as fallback,
+ * matching the pattern used elsewhere in this file).
+ */
+async function sendFulfillmentFailureAlert({
+	orderNumber,
+	customerEmail,
+	errorSummary,
+	stripeRefundId,
+	total,
+}: {
+	orderNumber: string;
+	customerEmail: string;
+	errorSummary: string;
+	stripeRefundId: string | undefined;
+	total: number;
+}) {
+	const adminEmail = env.NOTIFICATION_EMAIL || "thinkingofview@gmail.com";
+	const refundLine = stripeRefundId
+		? `✅ Customer auto-refunded via Stripe (refund ID: ${stripeRefundId})`
+		: "⚠️ Refund FAILED — manual intervention required";
+
+	await resend.emails.send({
+		from: "Angel's Rest Alerts <orders@angelsrest.online>",
+		to: [adminEmail],
+		subject: `[URGENT] Fulfillment error on order ${orderNumber}`,
+		text: `
+Order ${orderNumber} permanently failed at LumaPrints submission.
+
+Customer: ${customerEmail}
+Amount: ${formatCurrency(total)}
+
+${refundLine}
+
+Error details:
+${errorSummary}
+
+The order has been marked fulfillment_error in the admin dashboard.
+No action required unless the refund failed above.
+
+Admin dashboard: https://${SITE_DOMAIN}/admin/orders
+`.trim(),
+	});
 }
 
 /**
