@@ -71,7 +71,18 @@ export default defineSchema({
 			v.literal("shipped"),
 			v.literal("delivered"),
 			v.literal("refunded"),
+			// audit #23 PR #3: permanent fulfillment failure. The customer has
+			// been auto-refunded via Stripe, the admin has been emailed, and
+			// the Stripe webhook returned 200 (no retry). Admin reviews the
+			// `fulfillmentError` field to understand what went wrong.
+			v.literal("fulfillment_error"),
 		),
+		// audit #23 PR #3: set alongside status=fulfillment_error. The human-
+		// readable error message from the failed LumaPrints submission.
+		fulfillmentError: v.optional(v.string()),
+		// audit #23 PR #3: the Stripe refund ID created automatically when the
+		// order transitioned to fulfillment_error.
+		stripeRefundId: v.optional(v.string()),
 		notes: v.optional(v.string()),
 	})
 		.index("by_siteUrl", ["siteUrl"])

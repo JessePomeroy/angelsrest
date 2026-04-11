@@ -118,6 +118,7 @@ export const updateStatus = mutation({
 				v.literal("shipped"),
 				v.literal("delivered"),
 				v.literal("refunded"),
+				v.literal("fulfillment_error"),
 			),
 		),
 		notes: v.optional(v.string()),
@@ -126,6 +127,8 @@ export const updateStatus = mutation({
 		lumaprintsOrderNumber: v.optional(v.string()),
 		stripeFees: v.optional(v.number()),
 		stripePaymentIntentId: v.optional(v.string()),
+		fulfillmentError: v.optional(v.string()),
+		stripeRefundId: v.optional(v.string()),
 	},
 	handler: async (ctx, { orderId, ...updates }) => {
 		const patch: Record<string, unknown> = {};
