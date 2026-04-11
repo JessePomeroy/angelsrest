@@ -103,6 +103,125 @@ export async function getShipping(
 }
 
 /**
+ * Pre-validate an image against a subcategory + desired print dimensions.
+ * Called at checkout time to catch images that can't print cleanly BEFORE
+ * the customer pays, instead of failing mid-webhook after payment.
+ *
+ * LumaPrints returns `{ valid: true }` when the image is suitable, or
+ * `{ valid: false, message, recommendedWidth, recommendedHeight, expectedAspectRatio }`
+ * when the image will be rejected (low resolution, wrong aspect ratio, etc.).
+ *
+ * Throws `LumaPrintsError` for network/server errors; these are transient
+ * and should NOT block checkout (degrade gracefully — return { valid: true }
+ * from the callsite if the API is down so checkout stays usable).
+ */
+export async function checkImageConfig(input: {
+	imageUrl: string;
+	subcategoryId: number;
+	width: number;
+	height: number;
+}): Promise<{
+	valid: boolean;
+	message?: string;
+	recommendedWidth?: number;
+	recommendedHeight?: number;
+	expectedAspectRatio?: number;
+}> {
+	const res = await fetch(`${BASE_URL}/api/v1/images/checkImageConfig`, {
+		method: "POST",
+		headers: getHeaders(),
+		body: JSON.stringify({
+			imageUrl: cleanImageUrl(input.imageUrl),
+			subcategoryId: input.subcategoryId,
+			width: input.width,
+			height: input.height,
+		}),
+	});
+
+	if (!res.ok) {
+		const details = await res.json().catch(() => ({
+			message: res.statusText,
+		}));
+		throw new LumaPrintsError("Image validation request failed", details);
+	}
+
+	return res.json();
+}
+
+/**
+ * Shipping method returned by LumaPrints' pricing endpoint. Multiple methods
+ * are returned per quote (USPS ground/priority/express, FedEx ground/2-day/
+ * overnight, etc.); the frontend picks one or shows all.
+ */
+export interface LumaPrintsShippingMethod {
+	carrier: string;
+	method: string;
+	cost: number;
+}
+
+/**
+ * Get shipping price estimates for a given basket + destination.
+ * Returns all available shipping methods with their costs in USD.
+ *
+ * Called at checkout to show the customer real-time shipping costs before
+ * they pay. If the call fails (network issue, LumaPrints 5xx), the caller
+ * should fall back to a flat-rate shipping configured elsewhere — the
+ * checkout flow must never be blocked on LumaPrints availability.
+ *
+ * Items use LumaPrints subcategoryIds and physical dimensions in inches.
+ * Options arrays (e.g. `[39]` for No Bleed) match the ones used in
+ * `buildLumaPrintsOrder()`.
+ */
+export async function getShippingPrice(input: {
+	items: Array<{
+		subcategoryId: number;
+		width: number;
+		height: number;
+		quantity: number;
+		orderItemOptions?: number[];
+	}>;
+	recipient: Recipient;
+}): Promise<{
+	shippingMethods: LumaPrintsShippingMethod[];
+}> {
+	const res = await fetch(`${BASE_URL}/api/v1/pricing/shipping`, {
+		method: "POST",
+		headers: getHeaders(),
+		body: JSON.stringify({
+			storeId: Number(env.LUMAPRINTS_STORE_ID ?? 0),
+			shippingMethod: "default",
+			recipient: {
+				firstName: input.recipient.firstName,
+				lastName: input.recipient.lastName,
+				addressLine1: input.recipient.address1,
+				addressLine2: input.recipient.address2 || "",
+				city: input.recipient.city,
+				state: input.recipient.state,
+				zipCode: input.recipient.zip,
+				country: input.recipient.country,
+				phone: input.recipient.phone || "",
+			},
+			orderItems: input.items.map((item) => ({
+				subcategoryId: item.subcategoryId,
+				quantity: item.quantity,
+				width: item.width,
+				height: item.height,
+				orderItemOptions: item.orderItemOptions ?? [39],
+			})),
+		}),
+	});
+
+	if (!res.ok) {
+		const details = await res.json().catch(() => ({
+			message: res.statusText,
+		}));
+		throw new LumaPrintsError("Shipping price request failed", details);
+	}
+
+	return res.json();
+}
+
+/**
  * Build a LumaPrints order payload from our domain types.
  * Pure function — no network, no side effects. Testable in isolation.
  *

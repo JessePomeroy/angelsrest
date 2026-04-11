@@ -2,8 +2,10 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { OrderItem, Recipient } from "$lib/shop/types";
 import {
 	buildLumaPrintsOrder,
+	checkImageConfig,
 	cleanImageUrl,
 	createOrder,
+	getShippingPrice,
 	LumaPrintsError,
 } from "../server/lumaprints";
 
@@ -260,5 +262,265 @@ describe("createOrder", () => {
 		);
 		const result = await createOrder(order);
 		expect(result).toEqual(mockResponse);
+	});
+});
+
+// ─── audit #23 PR #3: checkImageConfig + getShippingPrice helpers ─────────
+
+describe("checkImageConfig", () => {
+	beforeEach(() => {
+		vi.unstubAllGlobals();
+	});
+
+	it("returns the API response unchanged on success", async () => {
+		const mockResponse = { valid: true };
+		const fetchMock = vi.fn().mockResolvedValue({
+			ok: true,
+			json: vi.fn().mockResolvedValue(mockResponse),
+		});
+		vi.stubGlobal("fetch", fetchMock);
+
+		const result = await checkImageConfig({
+			imageUrl: "https://cdn.sanity.io/images/proj/dataset/photo.jpg?w=1200",
+			subcategoryId: 103001,
+			width: 8,
+			height: 10,
+		});
+
+		expect(result).toEqual(mockResponse);
+	});
+
+	it("returns a valid:false response with recommendations when image is unsuitable", async () => {
+		const mockResponse = {
+			valid: false,
+			message: "Resolution too low for requested size",
+			recommendedWidth: 4,
+			recommendedHeight: 5,
+			expectedAspectRatio: 0.8,
+		};
+		vi.stubGlobal(
+			"fetch",
+			vi.fn().mockResolvedValue({
+				ok: true,
+				json: vi.fn().mockResolvedValue(mockResponse),
+			}),
+		);
+
+		const result = await checkImageConfig({
+			imageUrl: "https://cdn.sanity.io/images/proj/dataset/small.jpg",
+			subcategoryId: 103001,
+			width: 16,
+			height: 20,
+		});
+
+		expect(result).toEqual(mockResponse);
+	});
+
+	it("strips query params from the image URL before sending to LumaPrints", async () => {
+		const fetchMock = vi.fn().mockResolvedValue({
+			ok: true,
+			json: vi.fn().mockResolvedValue({ valid: true }),
+		});
+		vi.stubGlobal("fetch", fetchMock);
+
+		await checkImageConfig({
+			imageUrl:
+				"https://cdn.sanity.io/images/proj/dataset/photo.jpg?w=1200&fm=webp&q=80",
+			subcategoryId: 103001,
+			width: 8,
+			height: 10,
+		});
+
+		const callArgs = fetchMock.mock.calls[0];
+		const body = JSON.parse(callArgs[1].body as string);
+		expect(body.imageUrl).toBe(
+			"https://cdn.sanity.io/images/proj/dataset/photo.jpg",
+		);
+	});
+
+	it("throws LumaPrintsError with API details on non-ok response", async () => {
+		const apiError = { message: "Invalid subcategory" };
+		vi.stubGlobal(
+			"fetch",
+			vi.fn().mockResolvedValue({
+				ok: false,
+				statusText: "Bad Request",
+				json: vi.fn().mockResolvedValue(apiError),
+			}),
+		);
+
+		try {
+			await checkImageConfig({
+				imageUrl: "https://cdn.sanity.io/images/proj/dataset/photo.jpg",
+				subcategoryId: 999999,
+				width: 8,
+				height: 10,
+			});
+			expect.fail("should have thrown");
+		} catch (err) {
+			expect(err).toBeInstanceOf(LumaPrintsError);
+			expect((err as LumaPrintsError).details).toEqual(apiError);
+		}
+	});
+
+	it("falls back to statusText when the error response is not JSON", async () => {
+		vi.stubGlobal(
+			"fetch",
+			vi.fn().mockResolvedValue({
+				ok: false,
+				statusText: "Internal Server Error",
+				json: vi.fn().mockRejectedValue(new Error("not json")),
+			}),
+		);
+
+		try {
+			await checkImageConfig({
+				imageUrl: "https://cdn.sanity.io/images/proj/dataset/photo.jpg",
+				subcategoryId: 103001,
+				width: 8,
+				height: 10,
+			});
+			expect.fail("should have thrown");
+		} catch (err) {
+			expect(err).toBeInstanceOf(LumaPrintsError);
+			expect((err as LumaPrintsError).details).toEqual({
+				message: "Internal Server Error",
+			});
+		}
+	});
+});
+
+describe("getShippingPrice", () => {
+	beforeEach(() => {
+		vi.unstubAllGlobals();
+	});
+
+	it("returns parsed shipping methods on success", async () => {
+		const mockResponse = {
+			message: "",
+			shippingMethods: [
+				{
+					carrier: "USPS",
+					method: "usps_ground_advantage",
+					cost: 6.31,
+				},
+				{
+					carrier: "FedEx/UPS/GLS",
+					method: "ground",
+					cost: 13.71,
+				},
+			],
+		};
+		vi.stubGlobal(
+			"fetch",
+			vi.fn().mockResolvedValue({
+				ok: true,
+				json: vi.fn().mockResolvedValue(mockResponse),
+			}),
+		);
+
+		const result = await getShippingPrice({
+			items: [
+				{
+					subcategoryId: 103001,
+					width: 8,
+					height: 10,
+					quantity: 1,
+				},
+			],
+			recipient: mockRecipient,
+		});
+
+		expect(result.shippingMethods).toHaveLength(2);
+		expect(result.shippingMethods[0]).toEqual({
+			carrier: "USPS",
+			method: "usps_ground_advantage",
+			cost: 6.31,
+		});
+	});
+
+	it("maps our Recipient type to LumaPrints' address schema in the payload", async () => {
+		const fetchMock = vi.fn().mockResolvedValue({
+			ok: true,
+			json: vi.fn().mockResolvedValue({ shippingMethods: [] }),
+		});
+		vi.stubGlobal("fetch", fetchMock);
+
+		await getShippingPrice({
+			items: [{ subcategoryId: 103001, width: 8, height: 10, quantity: 2 }],
+			recipient: mockRecipient,
+		});
+
+		const body = JSON.parse(fetchMock.mock.calls[0][1].body as string);
+		expect(body.recipient).toEqual({
+			firstName: "Jane",
+			lastName: "Doe",
+			addressLine1: "123 Main St",
+			addressLine2: "Apt 4",
+			city: "Detroit",
+			state: "MI",
+			zipCode: "48201",
+			country: "US",
+			phone: "313-555-1234",
+		});
+		expect(body.orderItems[0]).toEqual({
+			subcategoryId: 103001,
+			quantity: 2,
+			width: 8,
+			height: 10,
+			orderItemOptions: [39],
+		});
+	});
+
+	it("respects custom orderItemOptions when provided", async () => {
+		const fetchMock = vi.fn().mockResolvedValue({
+			ok: true,
+			json: vi.fn().mockResolvedValue({ shippingMethods: [] }),
+		});
+		vi.stubGlobal("fetch", fetchMock);
+
+		await getShippingPrice({
+			items: [
+				{
+					subcategoryId: 103001,
+					width: 8,
+					height: 10,
+					quantity: 1,
+					orderItemOptions: [36],
+				},
+			],
+			recipient: mockRecipient,
+		});
+
+		const body = JSON.parse(fetchMock.mock.calls[0][1].body as string);
+		expect(body.orderItems[0].orderItemOptions).toEqual([36]);
+	});
+
+	it("throws LumaPrintsError on non-ok response", async () => {
+		vi.stubGlobal(
+			"fetch",
+			vi.fn().mockResolvedValue({
+				ok: false,
+				statusText: "Bad Request",
+				json: vi.fn().mockResolvedValue({ message: "invalid address" }),
+			}),
+		);
+
+		try {
+			await getShippingPrice({
+				items: [
+					{
+						subcategoryId: 103001,
+						width: 8,
+						height: 10,
+						quantity: 1,
+					},
+				],
+				recipient: mockRecipient,
+			});
+			expect.fail("should have thrown");
+		} catch (err) {
+			expect(err).toBeInstanceOf(LumaPrintsError);
+		}
 	});
 });
