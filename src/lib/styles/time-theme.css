@@ -195,3 +195,18 @@ body::after {
 	border-color: var(--time-accent);
 	box-shadow: 0 0 0 2px color-mix(in srgb, var(--time-accent) 15%, transparent);
 }
+
+/* ---- Time-aware text utility ---- */
+
+/* Apply to any text node that should pick up the current time period's
+ * accent color, with a subtle atmospheric glow. Used for primary CTA copy
+ * (e.g. cart "checkout" button) so the most-clicked surfaces breathe with
+ * the rest of the page's time tint.
+ */
+[data-time-period] .time-aware-text {
+	color: var(--time-accent);
+	text-shadow: 0 0 12px var(--time-glow);
+	transition:
+		color 2s ease,
+		text-shadow 2s ease;
+}
