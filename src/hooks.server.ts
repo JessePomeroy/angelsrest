@@ -16,7 +16,10 @@ function addSecurityHeaders(response: Response): Response {
 	);
 	cloned.headers.set(
 		"Content-Security-Policy",
-		"default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' https://cdn.sanity.io data: blob:; font-src 'self' https://fonts.gstatic.com; connect-src 'self' wss://*.convex.cloud https://*.convex.cloud https://*.sanity.io; frame-ancestors 'none'",
+		// Fontshare hosts the CSS at api.fontshare.com and the font files at
+		// cdn.fontshare.com — both origins must be allowed or the browser
+		// silently blocks the fonts and falls back to system default.
+		"default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://api.fontshare.com; img-src 'self' https://cdn.sanity.io data: blob:; font-src 'self' https://api.fontshare.com https://cdn.fontshare.com; connect-src 'self' wss://*.convex.cloud https://*.convex.cloud https://*.sanity.io; frame-ancestors 'none'",
 	);
 	return cloned;
 }
