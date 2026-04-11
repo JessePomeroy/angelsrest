@@ -787,17 +787,20 @@ function buildOrderItemsFromSession(
 			const raw = meta[`cartItem_${i}`];
 			if (typeof raw !== "string" || !raw) continue;
 			try {
-				// Compact representation from buildCartMetadata: { u, q, and
-				// optionally s/w/h }. Items WITHOUT s/w/h are non-print merch
-				// (e.g. tapestries) — these still appear in the Convex order
-				// (built from Stripe line items elsewhere) but are intentionally
-				// skipped here so they aren't submitted to LumaPrints.
+				// Compact representation from buildCartMetadata. Field semantics:
+				//  - `u` always present: cover image (cart UI thumbnail)
+				//  - `q` always present: cart line quantity
+				//  - `s/w/h` for LumaPrints prints; absent → self-fulfilled merch,
+				//    skip the line entirely
+				//  - `i` for print sets: array of image URLs to expand into one
+				//    OrderItem per image, multiplied through by `q`
 				const parsed = JSON.parse(raw) as {
 					u?: string;
 					s?: number;
 					w?: number;
 					h?: number;
 					q?: number;
+					i?: string[];
 				};
 				if (typeof parsed.u !== "string" || typeof parsed.q !== "number") {
 					continue;
@@ -808,6 +811,21 @@ function buildOrderItemsFromSession(
 					typeof parsed.h === "number";
 				if (!hasPaper) {
 					// Self-fulfilled merch — skip LumaPrints submission entirely.
+					continue;
+				}
+				// Print set: expand to one OrderItem per image. Quantity carries
+				// through, so buying 2 of a 3-image set submits 6 prints total.
+				if (Array.isArray(parsed.i) && parsed.i.length > 0) {
+					for (const url of parsed.i) {
+						if (typeof url !== "string" || !url) continue;
+						items.push({
+							imageUrl: url,
+							paperSubcategoryId: parsed.s as number,
+							width: parsed.w as number,
+							height: parsed.h as number,
+							quantity: parsed.q,
+						});
+					}
 					continue;
 				}
 				items.push({

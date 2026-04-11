@@ -11,6 +11,8 @@
  * - Two-column layout: images left, purchase form right
  */
 import SEO from "$lib/components/SEO.svelte";
+import { cart } from "$lib/shop/cart.svelte";
+import { cartUI } from "$lib/shop/cartUI.svelte";
 import type { ParsedPaper, ProductImage } from "$lib/types/shop";
 import { createCheckout } from "$lib/utils/checkout";
 import { imageSet, parsePaperOption } from "$lib/utils/images";
@@ -55,6 +57,44 @@ async function handleCheckout() {
 	} finally {
 		isLoading = false;
 	}
+}
+
+/**
+ * Add to Cart — wires the print set into the shared cart store as a
+ * single line with type=set and the full original-quality imageUrls
+ * array attached. The cart drawer renders the cover image with a "+N"
+ * extra-image badge to communicate that the line is a multi-print set.
+ *
+ * The webhook decoder expands set entries into one OrderItem per image
+ * at the cart line's quantity, so buying 2 of a 3-image set submits 6
+ * prints to LumaPrints.
+ */
+function handleAddToCart() {
+	if (!selectedPaperData) return;
+	const priceDollars =
+		selectedPaperData.price ?? data.printSet.price;
+	if (typeof priceDollars !== "number") return;
+
+	const originalUrls = (data.images as ProductImage[]).map(
+		(img) => img.original,
+	);
+	if (originalUrls.length === 0) return;
+
+	cart.add({
+		productSlug: data.printSet.slug,
+		type: "set",
+		title: data.printSet.title,
+		imageUrl: data.printSet.previewImage || originalUrls[0],
+		imageUrls: originalUrls,
+		paperName: selectedPaperData.name,
+		paperSubcategoryId: Number.parseInt(selectedPaperData.subcategoryId, 10),
+		paperWidth: selectedPaperData.width,
+		paperHeight: selectedPaperData.height,
+		quantity: 1,
+		unitPriceCents: Math.round(priceDollars * 100),
+	});
+
+	cartUI.open();
 }
 </script>
 
@@ -171,17 +211,27 @@ async function handleCheckout() {
                     />
                 </div>
 
-                <!-- Buy button -->
-                <button
-                    onclick={handleCheckout}
-                    disabled={isLoading}
-                    class="btn variant-filled-primary w-full mt-4"
-                >
-                    {isLoading ? "Processing..." : "Buy Now"}
-                </button>
+                <!-- Add to cart + Buy now -->
+                <div class="space-y-3 mt-4">
+                    {#if selectedPaperData}
+                        <button
+                            onclick={handleAddToCart}
+                            class="btn variant-soft-surface w-full"
+                        >
+                            add to cart
+                        </button>
+                    {/if}
+                    <button
+                        onclick={handleCheckout}
+                        disabled={isLoading}
+                        class="btn variant-filled-primary w-full"
+                    >
+                        {isLoading ? "processing..." : "buy now"}
+                    </button>
+                </div>
 
                 <p class="text-xs text-surface-500 text-center mt-2">
-                    Secure checkout powered by Stripe
+                    secure checkout powered by stripe
                 </p>
             </div>
         </div>

@@ -58,6 +58,33 @@ function makeItem(overrides: Partial<CartItem> = {}): CartItem {
 	};
 }
 
+/**
+ * Build a print set cart item — type=set with an imageUrls array. The
+ * webhook decoder should expand a set entry into one OrderItem per image
+ * in the array, multiplying through by the cart line's quantity.
+ */
+function makeSetItem(overrides: Partial<CartItem> = {}): CartItem {
+	return {
+		id: "set-1",
+		productSlug: "tide-set",
+		type: "set",
+		title: "Tide Set",
+		imageUrl: "https://cdn.sanity.io/images/abc/tide-cover.jpg",
+		imageUrls: [
+			"https://cdn.sanity.io/images/abc/tide-1.jpg",
+			"https://cdn.sanity.io/images/abc/tide-2.jpg",
+			"https://cdn.sanity.io/images/abc/tide-3.jpg",
+		],
+		paperName: "Glossy",
+		paperSubcategoryId: 103007,
+		paperWidth: 6,
+		paperHeight: 9,
+		quantity: 1,
+		unitPriceCents: 12000,
+		...overrides,
+	};
+}
+
 function makeSession(
 	metadata: Record<string, string>,
 ): Stripe.Checkout.Session {
@@ -212,6 +239,69 @@ describe("__test__buildOrderItemsFromSession — cart shape (PR C)", () => {
 			"https://cdn.sanity.io/images/abc/print2.jpg",
 		);
 		expect(orderItems[1].width).toBe(16);
+	});
+
+	it("expands a set entry into one OrderItem per image in the imageUrls array", () => {
+		const session = makeSession(buildCartMetadata([makeSetItem()]));
+		const orderItems = __test__buildOrderItemsFromSession(session, []);
+		expect(orderItems).toHaveLength(3);
+		expect(orderItems.map((i) => i.imageUrl)).toEqual([
+			"https://cdn.sanity.io/images/abc/tide-1.jpg",
+			"https://cdn.sanity.io/images/abc/tide-2.jpg",
+			"https://cdn.sanity.io/images/abc/tide-3.jpg",
+		]);
+		// Every image inherits the set's paper config.
+		for (const item of orderItems) {
+			expect(item.paperSubcategoryId).toBe(103007);
+			expect(item.width).toBe(6);
+			expect(item.height).toBe(9);
+			expect(item.quantity).toBe(1);
+		}
+	});
+
+	it("multiplies set images by the cart line quantity", () => {
+		// Buying 2 of a 3-image set submits each image with quantity 2,
+		// matching "I want two of this print set."
+		const session = makeSession(
+			buildCartMetadata([makeSetItem({ quantity: 2 })]),
+		);
+		const orderItems = __test__buildOrderItemsFromSession(session, []);
+		expect(orderItems).toHaveLength(3);
+		for (const item of orderItems) {
+			expect(item.quantity).toBe(2);
+		}
+	});
+
+	it("returns the union of single prints, merch (skipped), and set expansions", () => {
+		const items: CartItem[] = [
+			makeItem({
+				id: "print",
+				imageUrl: "https://cdn.sanity.io/images/abc/print.jpg",
+			}),
+			// Merch item — paper fields stripped to model the tapestry case
+			{
+				...makeItem({ id: "merch" }),
+				paperName: undefined,
+				paperSubcategoryId: undefined,
+				paperWidth: undefined,
+				paperHeight: undefined,
+				imageUrl: "https://cdn.sanity.io/images/abc/tapestry.jpg",
+			},
+			makeSetItem({ id: "set", quantity: 1 }),
+		];
+		const session = makeSession(buildCartMetadata(items));
+		const orderItems = __test__buildOrderItemsFromSession(session, []);
+		// 1 print + 0 merch + 3 set images = 4 LumaPrints OrderItems
+		expect(orderItems).toHaveLength(4);
+		expect(orderItems[0].imageUrl).toBe(
+			"https://cdn.sanity.io/images/abc/print.jpg",
+		);
+		expect(orderItems[1].imageUrl).toBe(
+			"https://cdn.sanity.io/images/abc/tide-1.jpg",
+		);
+		expect(orderItems[3].imageUrl).toBe(
+			"https://cdn.sanity.io/images/abc/tide-3.jpg",
+		);
 	});
 
 	it("ignores top-level paperSubcategoryId when isCart is set", () => {

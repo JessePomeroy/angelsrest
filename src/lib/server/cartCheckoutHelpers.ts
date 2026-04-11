@@ -1,5 +1,6 @@
 /**
- * Cart checkout pure helpers (cart PR C of the cart stack).
+ * Cart checkout pure helpers (cart PR C of the cart stack, extended in PR
+ * D for non-print merch and PR E for print sets).
  *
  * Lives in its own module rather than inside `routes/api/cart/checkout/+server.ts`
  * because SvelteKit's `+server.ts` files only allow specific named exports
@@ -14,6 +15,17 @@
 
 import type { CartItem } from "$lib/shop/cart";
 
+/** Stripe metadata per-value limit. */
+const STRIPE_METADATA_VALUE_MAX = 500;
+
+/**
+ * Safety margin for the cart item value size — leaves room for any future
+ * fields without bumping us against Stripe's hard 500-char per-value cap.
+ * Sets that pack many full-resolution image URLs into the `i` array will
+ * be rejected by `validateCart` if their encoded payload exceeds this.
+ */
+export const CART_ITEM_PAYLOAD_MAX = 480;
+
 /**
  * Build the compact per-item metadata payload that the webhook will
  * decode. Stripe metadata constraints relevant here:
@@ -26,11 +38,16 @@ import type { CartItem } from "$lib/shop/cart";
  * each cart item gets its own metadata key `cartItem_{n}` containing a
  * compact JSON object with abbreviated keys:
  *
- *   { u: imageUrl, s: subcategoryId, w: widthInches, h: heightInches, q: quantity }
+ *   { u: imageUrl, q: quantity, s?: subcategoryId, w?: width, h?: height, i?: imageUrls[] }
  *
- * Paper fields (`s`, `w`, `h`) are omitted for non-print merch (tapestries,
- * etc.) — the webhook decoder uses the absence of `s` as the signal to
- * skip LumaPrints submission for that line.
+ * Field semantics:
+ *  - `u` is the cover image used by the cart UI thumbnail
+ *  - `q` is the cart line quantity (multiplied through to LumaPrints)
+ *  - `s/w/h` are present for LumaPrints prints, omitted for self-fulfilled
+ *    merch (tapestries etc.) — the webhook decoder uses the absence of `s`
+ *    as the signal to skip LumaPrints submission for that line
+ *  - `i` is present for print sets — the full array of image URLs to
+ *    submit to LumaPrints, with one OrderItem per image at quantity `q`
  *
  * Reserving ~10 keys for non-cart metadata leaves ~40 cart-item slots —
  * enforced by the 40-item cap in `validateCart`.
@@ -50,6 +67,9 @@ export function buildCartMetadata(items: CartItem[]): Record<string, string> {
 			payload.w = item.paperWidth;
 			payload.h = item.paperHeight;
 		}
+		if (item.type === "set" && item.imageUrls && item.imageUrls.length > 0) {
+			payload.i = item.imageUrls;
+		}
 		meta[`cartItem_${i}`] = JSON.stringify(payload);
 	});
 	return meta;
@@ -66,6 +86,13 @@ export function buildCartMetadata(items: CartItem[]): Record<string, string> {
  * (tapestries etc.) is identified by the absence of `paperSubcategoryId`
  * and skips the paper-shape checks. Print items must still provide a
  * complete and consistent paper config or they're rejected.
+ *
+ * Print sets (`type: "set"`) require a non-empty `imageUrls` array. The
+ * encoded metadata payload size is checked against Stripe's 500-char
+ * per-value cap because sets with many full-resolution image URLs can
+ * blow past it — for those, the only supported path right now is the
+ * legacy single-set Buy Now flow, which encodes the same data into
+ * top-level metadata keys instead of one cart-item value.
  */
 export function validateCart(items: unknown): string | null {
 	if (!Array.isArray(items)) return "items must be an array";
@@ -76,12 +103,21 @@ export function validateCart(items: unknown): string | null {
 	}
 	for (const item of items as CartItem[]) {
 		if (!item || typeof item !== "object") return "invalid cart item";
-		if (item.type === "set") {
-			return "print sets in cart are not yet supported (cart PR E)";
+		if (item.type !== "print" && item.type !== "set") {
+			return "invalid cart item type";
 		}
-		if (item.type !== "print") return "invalid cart item type";
 		if (typeof item.imageUrl !== "string" || !item.imageUrl) {
 			return "cart item missing imageUrl";
+		}
+		if (item.type === "set") {
+			if (!Array.isArray(item.imageUrls) || item.imageUrls.length === 0) {
+				return "set cart item missing imageUrls";
+			}
+			for (const url of item.imageUrls) {
+				if (typeof url !== "string" || !url) {
+					return "set cart item has invalid imageUrls entry";
+				}
+			}
 		}
 		// Paper fields are optional, but if any are present they must ALL
 		// be present and well-formed — partial paper config is a bug.
@@ -112,6 +148,19 @@ export function validateCart(items: unknown): string | null {
 			!Number.isInteger(item.unitPriceCents)
 		) {
 			return "cart item unitPriceCents must be a non-negative integer";
+		}
+	}
+	// After per-item validation, size-check the encoded metadata payload.
+	// Sets with many full-resolution image URLs can blow past Stripe's
+	// 500-char per-value cap — reject early with a clear message instead
+	// of letting the Stripe API reject the whole checkout call later.
+	const meta = buildCartMetadata(items as CartItem[]);
+	for (const [key, value] of Object.entries(meta)) {
+		if (key.startsWith("cartItem_") && value.length > CART_ITEM_PAYLOAD_MAX) {
+			return "set has too many images for cart checkout — please use Buy Now";
+		}
+		if (value.length > STRIPE_METADATA_VALUE_MAX) {
+			return "cart item payload exceeds Stripe metadata limit";
 		}
 	}
 	return null;

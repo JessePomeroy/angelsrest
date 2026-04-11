@@ -46,6 +46,33 @@ function makeMerchItem(overrides: Partial<CartItem> = {}): CartItem {
 	};
 }
 
+/**
+ * Build a print set cart item — type=set with an imageUrls array.
+ * Models the bundled-prints case (e.g. "Tide Set" — 3 photos sold
+ * together as one purchase, all printed on the same paper).
+ */
+function makeSetItem(overrides: Partial<CartItem> = {}): CartItem {
+	return {
+		id: "set-1",
+		productSlug: "tide-set",
+		type: "set",
+		title: "Tide Set",
+		imageUrl: "https://cdn.sanity.io/images/abc/tide-cover.jpg",
+		imageUrls: [
+			"https://cdn.sanity.io/images/abc/tide-1.jpg",
+			"https://cdn.sanity.io/images/abc/tide-2.jpg",
+			"https://cdn.sanity.io/images/abc/tide-3.jpg",
+		],
+		paperName: "Glossy",
+		paperSubcategoryId: 103007,
+		paperWidth: 6,
+		paperHeight: 9,
+		quantity: 1,
+		unitPriceCents: 12000,
+		...overrides,
+	};
+}
+
 describe("validateCart", () => {
 	it("accepts a single valid print item", () => {
 		expect(validateCart([makeItem()])).toBeNull();
@@ -78,14 +105,37 @@ describe("validateCart", () => {
 		expect(validateCart(items)).toMatch(/too large/);
 	});
 
-	it("rejects print sets explicitly (deferred to PR E)", () => {
-		expect(validateCart([makeItem({ type: "set" })])).toMatch(
-			/print sets in cart are not yet supported/,
-		);
+	it("accepts a print set item with a populated imageUrls array", () => {
+		expect(validateCart([makeSetItem()])).toBeNull();
 	});
 
 	it("rejects an item missing imageUrl", () => {
 		expect(validateCart([makeItem({ imageUrl: "" })])).toMatch(/imageUrl/);
+	});
+
+	it("rejects a set item missing imageUrls", () => {
+		const bad = { ...makeSetItem(), imageUrls: undefined } as unknown;
+		expect(validateCart([bad])).toMatch(/set cart item missing imageUrls/);
+	});
+
+	it("rejects a set item with an empty imageUrls array", () => {
+		expect(validateCart([makeSetItem({ imageUrls: [] })])).toMatch(
+			/missing imageUrls/,
+		);
+	});
+
+	it("rejects a set with too many images for the metadata cap", () => {
+		// Each ~90 char URL takes ~95 chars after JSON encoding. With 8 of
+		// them plus the rest of the payload we exceed the 480-char safety
+		// margin and should bounce with the "use Buy Now" message.
+		const tooMany = Array.from(
+			{ length: 8 },
+			(_, i) =>
+				`https://cdn.sanity.io/images/n7rvza4g/production/abc123def456789-1200x800-${i}.jpg`,
+		);
+		expect(validateCart([makeSetItem({ imageUrls: tooMany })])).toMatch(
+			/too many images/,
+		);
 	});
 
 	it("accepts a non-print merch item with no paper fields", () => {
@@ -94,13 +144,9 @@ describe("validateCart", () => {
 		expect(validateCart([makeMerchItem()])).toBeNull();
 	});
 
-	it("accepts a mixed cart of prints and merch", () => {
+	it("accepts a mixed cart of prints, merch, and sets", () => {
 		expect(
-			validateCart([
-				makeItem(),
-				makeMerchItem(),
-				makeItem({ id: "b", productSlug: "other" }),
-			]),
+			validateCart([makeItem(), makeMerchItem(), makeSetItem()]),
 		).toBeNull();
 	});
 
@@ -191,6 +237,28 @@ describe("buildCartMetadata", () => {
 		const merch = JSON.parse(meta.cartItem_1);
 		expect(print.s).toBe(103001);
 		expect(merch.s).toBeUndefined();
+	});
+
+	it("encodes the imageUrls array as `i` for set items", () => {
+		const meta = buildCartMetadata([makeSetItem()]);
+		const parsed = JSON.parse(meta.cartItem_0);
+		expect(parsed.i).toEqual([
+			"https://cdn.sanity.io/images/abc/tide-1.jpg",
+			"https://cdn.sanity.io/images/abc/tide-2.jpg",
+			"https://cdn.sanity.io/images/abc/tide-3.jpg",
+		]);
+		// Cover image stays as `u` so the cart UI can show one thumbnail.
+		expect(parsed.u).toBe("https://cdn.sanity.io/images/abc/tide-cover.jpg");
+		// Paper info is preserved alongside `i`.
+		expect(parsed.s).toBe(103007);
+		expect(parsed.w).toBe(6);
+		expect(parsed.h).toBe(9);
+	});
+
+	it("omits `i` from non-set items", () => {
+		const meta = buildCartMetadata([makeItem(), makeMerchItem()]);
+		expect(JSON.parse(meta.cartItem_0).i).toBeUndefined();
+		expect(JSON.parse(meta.cartItem_1).i).toBeUndefined();
 	});
 
 	it("stays under the 500-char Stripe metadata value cap for realistic URLs", () => {
