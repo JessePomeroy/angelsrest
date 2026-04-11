@@ -115,10 +115,16 @@ describe("buildLumaPrintsOrder", () => {
 		}
 	});
 
-	it("strips query params from image URLs in order items", () => {
+	it("transforms image URLs to print quality (max=8000&q=100) for order items", () => {
+		// Drive-by 2026-04-11: was "strips query params from image URLs"
+		// (cleanImageUrl). Now uses prepareSanityUrlForPrint which strips
+		// existing params AND appends ?max=8000&q=100 for max print quality.
 		const order = buildLumaPrintsOrder("order-6", mockRecipient, mockItems);
 		for (const item of order.orderItems) {
-			expect(item.file.imageUrl).not.toContain("?");
+			expect(item.file.imageUrl).toContain("?max=8000&q=100");
+			// Original webp/q=80 params from mockItems should be gone
+			expect(item.file.imageUrl).not.toContain("fm=webp");
+			expect(item.file.imageUrl).not.toContain("w=1200");
 		}
 	});
 
@@ -176,9 +182,10 @@ describe("buildLumaPrintsOrder", () => {
 		);
 		expect(order.orderItems).toHaveLength(3);
 		expect(order.orderItems[2].externalItemId).toBe("print-set-order-item-3");
-		// All items stripped of query params
+		// All items use print quality URLs (existing query params replaced)
 		for (const item of order.orderItems) {
-			expect(item.file.imageUrl).not.toContain("?");
+			expect(item.file.imageUrl).toContain("?max=8000&q=100");
+			expect(item.file.imageUrl).not.toContain("w=1200");
 		}
 	});
 });

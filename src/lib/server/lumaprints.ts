@@ -13,6 +13,7 @@
 //     preview, production) be configured independently.
 
 import { env } from "$env/dynamic/private";
+import { prepareSanityUrlForPrint } from "$lib/shop/lumaprintsUrls";
 import type {
 	LumaPrintsOrder,
 	LumaPrintsOrderResponse,
@@ -106,7 +107,12 @@ export async function getShipping(
  * Pure function — no network, no side effects. Testable in isolation.
  *
  * CRITICAL constraints:
- * - cleanImageUrl() strips query params from all image URLs
+ * - prepareSanityUrlForPrint() strips existing query params and appends
+ *   `?max=8000&q=100` for maximum print quality. The default Sanity CDN
+ *   URL serves a ~q80 compressed version that's noticeably below print
+ *   quality, and the previous behavior here (just stripping params via
+ *   cleanImageUrl) inherited that compression. See lumaprintsUrls.ts and
+ *   memory `project_print_quality_q100` for the full decision context.
  * - ALWAYS uses option 39 (No Bleed) — never option 36, which triggers
  *   aspect-ratio validation errors. See LUMAPRINTS.md "Known Issues".
  */
@@ -137,7 +143,11 @@ export function buildLumaPrintsOrder(
 			width: item.width,
 			height: item.height,
 			file: {
-				imageUrl: cleanImageUrl(item.imageUrl), // CRITICAL: strip query params
+				// Audit drive-by 2026-04-11: was `cleanImageUrl(item.imageUrl)`,
+				// which stripped query params but left the URL pointing at the
+				// default ~q80 compressed CDN version. Replaced with the print-
+				// quality variant.
+				imageUrl: prepareSanityUrlForPrint(item.imageUrl),
 			},
 			orderItemOptions: [39], // ALWAYS No Bleed (option 39)
 		})),
