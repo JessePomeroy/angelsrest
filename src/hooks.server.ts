@@ -24,10 +24,22 @@ function addSecurityHeaders(response: Response): Response {
 	);
 	cloned.headers.set(
 		"Content-Security-Policy",
-		// Fontshare hosts the CSS at api.fontshare.com and the font files at
-		// cdn.fontshare.com — both origins must be allowed or the browser
-		// silently blocks the fonts and falls back to system default.
-		"default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://api.fontshare.com; img-src 'self' https://cdn.sanity.io data: blob:; font-src 'self' https://api.fontshare.com https://cdn.fontshare.com; connect-src 'self' wss://*.convex.cloud https://*.convex.cloud https://*.sanity.io; frame-ancestors 'none'",
+		// Origin allowlist by directive — every entry below was added because
+		// some real piece of the site needed it. Verify before extending.
+		//
+		// - Fontshare CSS lives at api.fontshare.com and the font binaries at
+		//   cdn.fontshare.com. Both origins must be allowed or the browser
+		//   silently blocks the fonts and falls back to system default. Lesson
+		//   from the 2026-04-09 Fontshare hotfix (`feedback_csp_verify_origins`).
+		// - Sentry ingest (audit #50a) lives at *.ingest.sentry.io with regional
+		//   variants like *.ingest.us.sentry.io. The wildcard *.sentry.io covers
+		//   both. Without this entry, Sentry's SDK initializes successfully but
+		//   every captured exception is silently CSP-blocked at the connect-src
+		//   layer — the SDK tries to POST envelopes to ingest and the browser
+		//   refuses. Caught during end-to-end Sentry verification 2026-04-11
+		//   (which is exactly the kind of mistake `feedback_csp_verify_origins`
+		//   was written to prevent).
+		"default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://api.fontshare.com; img-src 'self' https://cdn.sanity.io data: blob:; font-src 'self' https://api.fontshare.com https://cdn.fontshare.com; connect-src 'self' wss://*.convex.cloud https://*.convex.cloud https://*.sanity.io https://*.sentry.io; frame-ancestors 'none'",
 	);
 	return cloned;
 }
