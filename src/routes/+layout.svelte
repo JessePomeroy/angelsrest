@@ -30,10 +30,13 @@ import { page } from "$app/stores";
 // Header gif for non-homepage routes
 import headerGif from "$lib/assets/ponyolovesham.gif";
 import BottomNav from "$lib/components/BottomNav.svelte";
+import CartDrawer from "$lib/components/cart/CartDrawer.svelte";
+import CartIcon from "$lib/components/cart/CartIcon.svelte";
 import Footer from "$lib/components/Footer.svelte";
 // Layout components
 import Nav from "$lib/components/Nav.svelte";
 import ThemeSwitcher from "$lib/components/ThemeSwitcher.svelte";
+import { cart } from "$lib/shop/cart.svelte";
 
 // Time-aware theming
 import { timeTheme } from "$lib/stores/timeTheme.svelte";
@@ -131,12 +134,33 @@ onMount(() => {
       </div>
     {/if}
 
+    <!--
+      Mobile cart pill — fixed above the bottom nav, only when the cart has
+      items. On the homepage where the ThemeSwitcher also lives at bottom-20,
+      the cart pill stacks above it at bottom-36. On other routes the cart
+      sits alone at bottom-36, still well clear of the BottomNav.
+    -->
+    {#if cart.itemCount > 0}
+      <div class="fixed bottom-36 right-4 z-40 md:hidden">
+        <CartIcon variant="pill" />
+      </div>
+    {/if}
+
     <!-- Spacer to prevent content from hiding behind fixed bottom nav -->
     <div class="h-20 md:hidden"></div>
 
     <!-- Mobile bottom navigation (hidden on desktop) -->
     <BottomNav />
   </div>
+{/if}
+
+<!--
+  Cart drawer — mounted once at the layout root so any CartIcon (desktop nav,
+  mobile pill) can open it via the cartUI store. Skipped on portal/admin
+  routes since they don't share the public site chrome.
+-->
+{#if !isPortal && !isAdmin}
+  <CartDrawer />
 {/if}
 
 <style>

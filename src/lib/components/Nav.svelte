@@ -9,6 +9,7 @@
 
 <script lang="ts">
 import { page } from "$app/state";
+import CartIcon from "./cart/CartIcon.svelte";
 import ThemeSwitcher from "./ThemeSwitcher.svelte";
 
 // Navigation links configuration
@@ -56,5 +57,8 @@ const links = [
     
     <!-- Theme switcher - visible on all pages (desktop) -->
     <ThemeSwitcher />
+
+    <!-- Cart icon - opens drawer; badge shows live item count -->
+    <CartIcon variant="nav" />
   </div>
 </nav>

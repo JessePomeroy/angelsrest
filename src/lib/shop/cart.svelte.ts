@@ -36,10 +36,15 @@ class CartStore {
 
 	/**
 	 * Set to true once a stale cart was cleared on hydrate. The CartDrawer
-	 * (PR B) reads this to show a one-time "we cleared your old cart" toast.
-	 * Reset to false after the UI consumes it.
+	 * reads this to show a one-time "we cleared your old cart" toast and
+	 * calls `dismissExpiredFlag()` after the user acknowledges it.
 	 */
 	cartWasExpiredOnLoad = $state(false);
+
+	/** Reset the expired-on-load flag after the drawer/page surfaces it. */
+	dismissExpiredFlag() {
+		this.cartWasExpiredOnLoad = false;
+	}
 
 	constructor() {
 		if (browser) {
