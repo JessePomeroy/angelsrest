@@ -67,40 +67,11 @@ $effect(() => {
 	}
 });
 
-// Border options available for the selected paper + size
-const v2Borders = $derived.by(() => {
-	if (data.setType !== "v2" || !selectedPaperSlug || !selectedSizeSlug)
-		return [];
-	const values = Array.from(
-		new Set<string>(
-			data.printSet.variants
-				.filter(
-					(v: any) =>
-						v.paper === selectedPaperSlug && v.size === selectedSizeSlug,
-				)
-				.map((v: any) => v.borderWidth || "none"),
-		),
-	);
-	return V2_BORDER_OPTIONS.filter((b) => values.includes(b.value));
-});
-
-$effect(() => {
-	if (
-		v2Borders.length > 0 &&
-		!v2Borders.some((b) => b.value === selectedBorderWidth)
-	) {
-		selectedBorderWidth = v2Borders[0].value;
-	}
-});
-
 const selectedVariant = $derived.by(() => {
 	if (data.setType !== "v2") return null;
 	return (
 		data.printSet.variants.find(
-			(v: any) =>
-				v.paper === selectedPaperSlug &&
-				v.size === selectedSizeSlug &&
-				(v.borderWidth || "none") === selectedBorderWidth,
+			(v: any) => v.paper === selectedPaperSlug && v.size === selectedSizeSlug,
 		) ?? null
 	);
 });
@@ -327,13 +298,13 @@ function handleV1AddToCart() {
 							</select>
 						</div>
 
-						{#if v2Borders.length > 1}
+						{#if data.printSet.bordersEnabled !== false}
 							<div>
 								<label for="set-border" class="block text-sm text-surface-600-300-token mb-1">
 									Border
 								</label>
 								<select id="set-border" class="select w-full" bind:value={selectedBorderWidth}>
-									{#each v2Borders as border}
+									{#each V2_BORDER_OPTIONS as border}
 										<option value={border.value}>{border.label}</option>
 									{/each}
 								</select>

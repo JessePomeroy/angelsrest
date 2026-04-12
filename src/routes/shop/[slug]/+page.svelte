@@ -71,42 +71,13 @@ $effect(() => {
 	}
 });
 
-// Border options available for the selected paper + size
-const v2Borders = $derived.by(() => {
-	if (data.productType !== "v2" || !selectedPaperSlug || !selectedSizeSlug)
-		return [];
-	const values = Array.from(
-		new Set<string>(
-			data.product.variants
-				.filter(
-					(v: any) =>
-						v.paper === selectedPaperSlug && v.size === selectedSizeSlug,
-				)
-				.map((v: any) => v.borderWidth || "none"),
-		),
-	);
-	return V2_BORDER_OPTIONS.filter((b) => values.includes(b.value));
-});
-
-// Initialize selected border when paper/size changes
-$effect(() => {
-	if (
-		v2Borders.length > 0 &&
-		!v2Borders.some((b) => b.value === selectedBorderWidth)
-	) {
-		selectedBorderWidth = v2Borders[0].value;
-	}
-});
-
-// The matching variant for the current paper + size + border selection
+// The matching variant for the current paper + size selection
+// (border is a customer choice, not a variant dimension)
 const selectedVariant = $derived.by(() => {
 	if (data.productType !== "v2") return null;
 	return (
 		data.product.variants.find(
-			(v: any) =>
-				v.paper === selectedPaperSlug &&
-				v.size === selectedSizeSlug &&
-				(v.borderWidth || "none") === selectedBorderWidth,
+			(v: any) => v.paper === selectedPaperSlug && v.size === selectedSizeSlug,
 		) ?? null
 	);
 });
@@ -263,7 +234,7 @@ function handleV1AddToCart() {
 	url={`https://angelsrest.online/shop/${data.product.slug}`}
 />
 
-<div class="max-w-6xl mx-auto">
+<div class="max-w-6xl mx-auto px-4 md:px-8">
 	<a href="/shop" class="text-sm opacity-70 hover:opacity-100 mb-4 inline-block">
 		← Back to shop
 	</a>
@@ -389,13 +360,13 @@ function handleV1AddToCart() {
 						</select>
 					</div>
 
-					{#if v2Borders.length > 1}
+					{#if data.product.bordersEnabled !== false}
 						<div>
 							<label for="border-select" class="block text-sm text-surface-600-300-token mb-1">
 								Border
 							</label>
 							<select id="border-select" class="select w-full" bind:value={selectedBorderWidth}>
-								{#each v2Borders as border}
+								{#each V2_BORDER_OPTIONS as border}
 									<option value={border.value}>{border.label}</option>
 								{/each}
 							</select>
@@ -423,18 +394,18 @@ function handleV1AddToCart() {
 
 				<StickyMobileBar>
 					{#snippet children(isStuck)}
-						<div class="flex items-center justify-between gap-2">
-							<div class="flex items-center gap-1.5 min-w-0">
+						<div class="flex flex-wrap items-center justify-between gap-x-4 gap-y-1">
+							<div class="flex items-center gap-1.5">
 								{#if selectedVariant}
-									<span class="text-xl font-semibold shrink-0">${selectedVariant.retailPrice}</span>
-									<span class="text-xs truncate {isStuck ? 'text-surface-300' : 'text-surface-600-300-token'}">
+									<span class="text-xl font-semibold">${selectedVariant.retailPrice}</span>
+									<span class="text-xs {isStuck ? 'text-surface-300' : 'text-surface-600-300-token'}">
 										{getPaper(selectedPaperSlug)?.name} · {getSize(selectedSizeSlug)?.label}{selectedBorderWidth !== 'none' ? ` · ${selectedBorderWidth}" border` : ''}
 									</span>
 								{:else}
 									<span class="text-sm text-surface-500">Select paper & size</span>
 								{/if}
 							</div>
-							<div class="flex gap-1.5 shrink-0">
+							<div class="flex gap-1.5">
 								{#if data.product.inStock && selectedVariant}
 									<button class="btn btn-sm text-xs px-2 variant-soft-surface" onclick={handleV2AddToCart}>
 										add to cart
