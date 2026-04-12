@@ -350,6 +350,38 @@ function handleV1AddToCart() {
 				<p class="text-xs text-surface-500">
 					Secure checkout powered by Stripe
 				</p>
+
+				<!-- Price bar: lives here in flow, sticks to bottom when scrolled past -->
+				<div class="sticky bottom-16 md:bottom-0 z-40 -mx-6 px-4 py-3 border-t border-surface-500/20 bg-surface-50-900-token">
+					<div class="flex items-center justify-between gap-4">
+						<div>
+							{#if selectedVariant}
+								<span class="text-2xl font-semibold">${selectedVariant.retailPrice}</span>
+								<span class="text-sm text-surface-600-300-token ml-2">
+									{getPaper(selectedPaperSlug)?.name} · {getSize(selectedSizeSlug)?.label}
+								</span>
+							{:else}
+								<span class="text-surface-500">Select paper & size</span>
+							{/if}
+						</div>
+						<div class="flex gap-2">
+							{#if data.product.inStock && selectedVariant}
+								<button class="btn btn-sm variant-soft-surface" onclick={handleV2AddToCart}>
+									add to cart
+								</button>
+								<button
+									class="btn btn-sm variant-filled-primary"
+									disabled={isLoading}
+									onclick={handleV2Checkout}
+								>
+									{isLoading ? "processing..." : "buy now"}
+								</button>
+							{:else if !data.product.inStock}
+								<button class="btn btn-sm variant-filled-primary" disabled>out of stock</button>
+							{/if}
+						</div>
+					</div>
+				</div>
 			{:else}
 				<!-- ═══ V1 Layout (merch, postcards, tapestries, digital) ═══ -->
 				<div class="text-3xl font-semibold text-surface-900-50-token">
@@ -417,43 +449,6 @@ function handleV1AddToCart() {
 		</div>
 	</div>
 </div>
-
-<!-- Sticky price bar for V2 products -->
-<!-- Desktop: sticky at bottom of viewport. Mobile: sits above the bottom nav (64px). -->
-{#if data.productType === "v2"}
-	<div class="fixed left-0 right-0 z-40 border-t border-surface-500/20 bg-surface-50-900-token px-4 py-3 bottom-16 md:bottom-0">
-		<div class="max-w-6xl mx-auto flex items-center justify-between gap-4">
-			<div>
-				{#if selectedVariant}
-					<span class="text-2xl font-semibold">${selectedVariant.retailPrice}</span>
-					<span class="text-sm text-surface-600-300-token ml-2">
-						{getPaper(selectedPaperSlug)?.name} · {getSize(selectedSizeSlug)?.label}
-					</span>
-				{:else}
-					<span class="text-surface-500">Select paper & size</span>
-				{/if}
-			</div>
-			<div class="flex gap-2">
-				{#if data.product.inStock && selectedVariant}
-					<button class="btn btn-sm variant-soft-surface" onclick={handleV2AddToCart}>
-						add to cart
-					</button>
-					<button
-						class="btn btn-sm variant-filled-primary"
-						disabled={isLoading}
-						onclick={handleV2Checkout}
-					>
-						{isLoading ? "processing..." : "buy now"}
-					</button>
-				{:else if !data.product.inStock}
-					<button class="btn btn-sm variant-filled-primary" disabled>out of stock</button>
-				{/if}
-			</div>
-		</div>
-	</div>
-	<!-- Spacer so content isn't hidden behind sticky bar -->
-	<div class="h-20"></div>
-{/if}
 
 {#if modalOpen}
 	<GalleryModal
