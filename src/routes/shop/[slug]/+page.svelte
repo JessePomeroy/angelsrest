@@ -4,7 +4,12 @@ import SEO from "$lib/components/SEO.svelte";
 import StickyMobileBar from "$lib/components/StickyMobileBar.svelte";
 import { cart } from "$lib/shop/cart.svelte";
 import { cartUI } from "$lib/shop/cartUI.svelte";
-import { getPaper, getSize } from "$lib/shop/v2Catalog";
+import {
+	getBorder,
+	getPaper,
+	getSize,
+	V2_BORDER_OPTIONS,
+} from "$lib/shop/v2Catalog";
 import type { ParsedPaper } from "$lib/types/shop";
 import { createCheckout } from "$lib/utils/checkout";
 import { parsePaperOption } from "$lib/utils/images";
@@ -19,6 +24,7 @@ let couponCode = $state("");
 // ─── V2 state ───────────────────────────────────────────────
 let selectedPaperSlug = $state("");
 let selectedSizeSlug = $state("");
+let selectedBorderWidth = $state("none");
 
 // Unique papers available on this product (from enabled variants)
 const v2Papers = $derived.by(() => {
@@ -65,12 +71,42 @@ $effect(() => {
 	}
 });
 
-// The matching variant for the current paper + size selection
+// Border options available for the selected paper + size
+const v2Borders = $derived.by(() => {
+	if (data.productType !== "v2" || !selectedPaperSlug || !selectedSizeSlug)
+		return [];
+	const values = Array.from(
+		new Set<string>(
+			data.product.variants
+				.filter(
+					(v: any) =>
+						v.paper === selectedPaperSlug && v.size === selectedSizeSlug,
+				)
+				.map((v: any) => v.borderWidth || "none"),
+		),
+	);
+	return V2_BORDER_OPTIONS.filter((b) => values.includes(b.value));
+});
+
+// Initialize selected border when paper/size changes
+$effect(() => {
+	if (
+		v2Borders.length > 0 &&
+		!v2Borders.some((b) => b.value === selectedBorderWidth)
+	) {
+		selectedBorderWidth = v2Borders[0].value;
+	}
+});
+
+// The matching variant for the current paper + size + border selection
 const selectedVariant = $derived.by(() => {
 	if (data.productType !== "v2") return null;
 	return (
 		data.product.variants.find(
-			(v: any) => v.paper === selectedPaperSlug && v.size === selectedSizeSlug,
+			(v: any) =>
+				v.paper === selectedPaperSlug &&
+				v.size === selectedSizeSlug &&
+				(v.borderWidth || "none") === selectedBorderWidth,
 		) ?? null
 	);
 });
@@ -145,6 +181,7 @@ function handleV2AddToCart() {
 	const size = getSize(selectedSizeSlug);
 	if (!paper || !size) return;
 
+	const border = getBorder(selectedBorderWidth);
 	cart.add({
 		productSlug: data.product.slug,
 		type: "print",
@@ -155,6 +192,7 @@ function handleV2AddToCart() {
 		paperSubcategoryId: paper.subcategoryId,
 		paperWidth: size.width,
 		paperHeight: size.height,
+		...(border && border.inches > 0 ? { borderWidth: border.inches } : {}),
 		quantity: 1,
 		unitPriceCents: Math.round(selectedVariant.retailPrice * 100),
 	});
@@ -304,7 +342,7 @@ function handleV1AddToCart() {
 						{#if selectedVariant}
 							${selectedVariant.retailPrice}
 							<span class="text-base font-normal text-surface-600-300-token">
-								{getPaper(selectedPaperSlug)?.name} · {getSize(selectedSizeSlug)?.label}
+								{getPaper(selectedPaperSlug)?.name} · {getSize(selectedSizeSlug)?.label}{selectedBorderWidth !== 'none' ? ` · ${selectedBorderWidth}" border` : ''}
 							</span>
 						{:else}
 							<span class="text-base text-surface-500">Select paper & size</span>
@@ -350,6 +388,19 @@ function handleV1AddToCart() {
 							{/each}
 						</select>
 					</div>
+
+					{#if v2Borders.length > 1}
+						<div>
+							<label for="border-select" class="block text-sm text-surface-600-300-token mb-1">
+								Border
+							</label>
+							<select id="border-select" class="select w-full" bind:value={selectedBorderWidth}>
+								{#each v2Borders as border}
+									<option value={border.value}>{border.label}</option>
+								{/each}
+							</select>
+						</div>
+					{/if}
 				</div>
 
 				<!-- Coupon -->
@@ -377,7 +428,7 @@ function handleV1AddToCart() {
 								{#if selectedVariant}
 									<span class="text-xl font-semibold shrink-0">${selectedVariant.retailPrice}</span>
 									<span class="text-xs truncate {isStuck ? 'text-surface-300' : 'text-surface-600-300-token'}">
-										{getPaper(selectedPaperSlug)?.name} · {getSize(selectedSizeSlug)?.label}
+										{getPaper(selectedPaperSlug)?.name} · {getSize(selectedSizeSlug)?.label}{selectedBorderWidth !== 'none' ? ` · ${selectedBorderWidth}" border` : ''}
 									</span>
 								{:else}
 									<span class="text-sm text-surface-500">Select paper & size</span>

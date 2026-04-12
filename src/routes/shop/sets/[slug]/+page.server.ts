@@ -15,7 +15,7 @@ const V2_QUERY = `
     description,
     previewImage,
     images,
-    variants[enabled == true]{paper, size, retailPrice},
+    variants[enabled == true]{paper, size, retailPrice, borderWidth},
     inStock,
     "parent": parent->{
       title,

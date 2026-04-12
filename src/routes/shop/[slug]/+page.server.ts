@@ -15,7 +15,7 @@ const V2_QUERY = `
     title,
     description,
     image,
-    variants[enabled == true]{paper, size, retailPrice},
+    variants[enabled == true]{paper, size, retailPrice, borderWidth},
     inStock,
     featured
   }

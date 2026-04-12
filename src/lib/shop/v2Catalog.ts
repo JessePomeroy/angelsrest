@@ -81,6 +81,19 @@ export const V2_SIZES: V2Size[] = [
 	{ slug: "40x60", label: "40×60", width: 40, height: 60 },
 ];
 
+export interface V2BorderOption {
+	value: string;
+	label: string;
+	inches: number;
+}
+
+export const V2_BORDER_OPTIONS: V2BorderOption[] = [
+	{ value: "none", label: "No border", inches: 0 },
+	{ value: "0.25", label: '0.25"', inches: 0.25 },
+	{ value: "0.5", label: '0.5"', inches: 0.5 },
+	{ value: "1", label: '1"', inches: 1 },
+];
+
 /** Look up paper metadata by slug. */
 export function getPaper(slug: string): V2Paper | undefined {
 	return V2_PAPERS.find((p) => p.slug === slug);
@@ -89,4 +102,9 @@ export function getPaper(slug: string): V2Paper | undefined {
 /** Look up size metadata by slug. */
 export function getSize(slug: string): V2Size | undefined {
 	return V2_SIZES.find((s) => s.slug === slug);
+}
+
+/** Look up border option by value. */
+export function getBorder(value: string): V2BorderOption | undefined {
+	return V2_BORDER_OPTIONS.find((b) => b.value === value);
 }
