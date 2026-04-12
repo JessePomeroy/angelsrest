@@ -25,7 +25,7 @@ $effect(() => {
 		([entry]) => {
 			isBarStuck = !entry.isIntersecting;
 		},
-		{ threshold: 0 },
+		{ threshold: 0, rootMargin: "0px 0px -64px 0px" },
 	);
 	observer.observe(stickyBarSentinel);
 	return () => observer.disconnect();
