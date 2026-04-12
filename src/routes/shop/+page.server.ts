@@ -1,24 +1,46 @@
 /**
- * Shop Index - Server Load Function
+ * Shop Index — Server Load Function
  *
  * Fetches data for the shop page:
- * 1. Products - individual items for sale
- * 2. Print Collections - groups of prints (hierarchical, can be nested)
- * 3. Print Sets - curated bundles of multiple images sold together
+ * 1. V2 print products (lumaProductV2) — the primary prints catalog
+ * 2. V1 products (product) — postcards, tapestries, digital, merchandise
+ * 3. Print collections — hierarchical groups
+ * 4. V2 print sets (lumaPrintSetV2) — curated bundles
+ * 5. V1 print sets (printSet) — legacy bundles not yet migrated
  *
- * Products show under different tabs:
- * - All: products not in collections
- * - Prints: collections, sets, and individual prints without collections
- * - Other categories: products in that category
+ * V2 and V1 products are merged into a single list for display. The page
+ * component doesn't need to distinguish between them — URLs work the same
+ * (/shop/[slug] handles both types).
  */
 
 import { client } from "$lib/sanity/client";
+import { getPaper, getSize } from "$lib/shop/v2Catalog";
 import { imageSet, previewUrl } from "$lib/utils/images";
 
 export async function load() {
-	// Fetch products that are in stock
-	const products = await client.fetch(`
-		*[_type == "product" && inStock == true] 
+	// V2 print products
+	const v2Products = await client.fetch(`
+		*[_type == "lumaProductV2" && inStock == true]
+		| order(featured desc, title asc) {
+			title,
+			"slug": slug.current,
+			"previewImage": image,
+			"category": "prints",
+			featured,
+			inStock,
+			"startingPrice": variants[enabled == true] | order(retailPrice asc) [0].retailPrice
+		}
+	`);
+
+	const v2WithImages = (v2Products as any[]).map((p) => ({
+		...p,
+		preview: previewUrl(p.previewImage),
+		price: p.startingPrice,
+	}));
+
+	// V1 products (non-print: postcards, tapestries, digital, merchandise)
+	const v1Products = await client.fetch(`
+		*[_type == "product" && inStock == true]
 		| order(featured desc, orderRank, title asc) {
 			title,
 			"slug": slug.current,
@@ -34,15 +56,17 @@ export async function load() {
 		}
 	`);
 
-	// Build optimized product URLs
-	const productsWithImages = (products as any[]).map((product) => ({
-		...product,
-		preview: previewUrl(product.previewImage),
+	const v1WithImages = (v1Products as any[]).map((p) => ({
+		...p,
+		preview: previewUrl(p.previewImage),
 	}));
 
-	// Fetch top-level collections only (no parent = root level)
+	// Merge V2 + V1 into a single products list
+	const products = [...v2WithImages, ...v1WithImages];
+
+	// Print collections (shared by V1 and V2)
 	const collections = await client.fetch(`
-		*[_type == "printCollection" && !defined(parent)] 
+		*[_type == "printCollection" && !defined(parent)]
 		| order(orderRank, title asc) {
 			title,
 			"slug": slug.current,
@@ -51,16 +75,36 @@ export async function load() {
 		}
 	`);
 
-	// Build collection preview URLs
-	const collectionsWithImages = (collections as any[]).map((collection) => ({
-		...collection,
-		alt: collection.previewImage?.alt || "",
-		previewImage: previewUrl(collection.previewImage),
+	const collectionsWithImages = (collections as any[]).map((c) => ({
+		...c,
+		alt: c.previewImage?.alt || "",
+		previewImage: previewUrl(c.previewImage),
 	}));
 
-	// Fetch top-level print sets (no parent)
-	const printSets = await client.fetch(`
-		*[_type == "printSet" && !defined(parent) && inStock == true] 
+	// V2 print sets
+	const v2Sets = await client.fetch(`
+		*[_type == "lumaPrintSetV2" && inStock == true]
+		| order(featured desc, title asc) {
+			title,
+			"slug": slug.current,
+			images[0..1],
+			previewImage,
+			description,
+			"startingPrice": variants[enabled == true] | order(retailPrice asc) [0].retailPrice
+		}
+	`);
+
+	const v2SetsWithImages = (v2Sets as any[]).map((s) => ({
+		...s,
+		preview1: imageSet(s.images?.[0])?.thumb,
+		preview2: imageSet(s.images?.[1])?.thumb,
+		previewImage: previewUrl(s.previewImage),
+		price: s.startingPrice,
+	}));
+
+	// V1 print sets (legacy — will be migrated to V2)
+	const v1Sets = await client.fetch(`
+		*[_type == "printSet" && !defined(parent) && inStock == true]
 		| order(featured desc, orderRank, title asc) {
 			title,
 			"slug": slug.current,
@@ -71,17 +115,19 @@ export async function load() {
 		}
 	`);
 
-	// Build print set URLs (first two images for preview)
-	const printSetsWithImages = (printSets as any[]).map((set) => ({
-		...set,
-		preview1: imageSet(set.images?.[0])?.thumb,
-		preview2: imageSet(set.images?.[1])?.thumb,
-		previewImage: previewUrl(set.previewImage),
+	const v1SetsWithImages = (v1Sets as any[]).map((s) => ({
+		...s,
+		preview1: imageSet(s.images?.[0])?.thumb,
+		preview2: imageSet(s.images?.[1])?.thumb,
+		previewImage: previewUrl(s.previewImage),
 	}));
 
+	// Merge V2 + V1 print sets
+	const printSets = [...v2SetsWithImages, ...v1SetsWithImages];
+
 	return {
-		products: productsWithImages,
+		products,
 		collections: collectionsWithImages,
-		printSets: printSetsWithImages,
+		printSets,
 	};
 }
