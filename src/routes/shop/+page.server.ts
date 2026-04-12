@@ -61,8 +61,10 @@ export async function load() {
 		preview: previewUrl(p.previewImage),
 	}));
 
-	// Merge V2 + V1 into a single products list
-	const products = [...v2WithImages, ...v1WithImages];
+	// Merge V2 + V1 into a single products list, featured items first
+	const products = [...v2WithImages, ...v1WithImages].sort(
+		(a, b) => (b.featured ? 1 : 0) - (a.featured ? 1 : 0),
+	);
 
 	// Print collections (shared by V1 and V2)
 	const collections = await client.fetch(`
