@@ -67,11 +67,11 @@ export const POST: RequestHandler = async ({ request }) => {
 	try {
 		body = await request.json();
 	} catch {
-		return error(400, "Invalid JSON body");
+		throw error(400, "Invalid JSON body");
 	}
 
 	if (!isValidRequest(body)) {
-		return error(
+		throw error(
 			400,
 			"Missing or invalid fields: items (non-empty array with subcategoryId/width/height/quantity) + recipient (firstName/lastName/address1/city/state/zip/country)",
 		);

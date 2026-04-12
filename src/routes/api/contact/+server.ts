@@ -1,3 +1,4 @@
+import { json } from "@sveltejs/kit";
 import { Resend } from "resend";
 import { env } from "$env/dynamic/private";
 import { RESEND_API_KEY } from "$env/static/private";
@@ -16,15 +17,11 @@ export const POST: RequestHandler = async ({ request }) => {
 	const trimmedMessage = trimString(message, 5000);
 
 	if (!trimmedName || !trimmedEmail || !trimmedMessage) {
-		return new Response(JSON.stringify({ error: "Missing required fields" }), {
-			status: 400,
-		});
+		return json({ error: "Missing required fields" }, { status: 400 });
 	}
 
 	if (!validateEmail(trimmedEmail)) {
-		return new Response(JSON.stringify({ error: "Invalid email format" }), {
-			status: 400,
-		});
+		return json({ error: "Invalid email format" }, { status: 400 });
 	}
 
 	try {
@@ -45,11 +42,9 @@ export const POST: RequestHandler = async ({ request }) => {
 			submittedAt: new Date().toISOString(),
 		});
 
-		return new Response(JSON.stringify({ success: true }), { status: 200 });
+		return json({ success: true });
 	} catch (err) {
 		console.error("Contact form error:", err);
-		return new Response(JSON.stringify({ error: "Failed to send" }), {
-			status: 500,
-		});
+		return json({ error: "Failed to send" }, { status: 500 });
 	}
 };
