@@ -30,53 +30,80 @@ let isLoading = $state(false);
 let couponCode = $state("");
 
 // ─── V2 state ───────────────────────────────────────────────
-let selectedPaperSlug = $state("");
+let selectedMaterial = $state("");
 let selectedSizeSlug = $state("");
 let selectedBorderWidth = $state("none");
 let selectedFrame = $state("none");
-let selectedCanvas = $state("none");
 
-// When a frame is selected, force border to 0.25" (minimum for mat overlap)
+// Derive whether the selected material is canvas or paper
+const isCanvasSelected = $derived(selectedMaterial.startsWith("canvas-"));
+const selectedPaperSlug = $derived(isCanvasSelected ? "" : selectedMaterial);
+const selectedCanvasThickness = $derived(
+	isCanvasSelected ? selectedMaterial.replace("canvas-", "") : "none",
+);
+
+// When a frame is selected, force border to 0.25"
+// When canvas is selected, disable border and frame
 $effect(() => {
-	if (selectedFrame !== "none") {
+	if (isCanvasSelected) {
+		selectedBorderWidth = "none";
+		selectedFrame = "none";
+	} else if (selectedFrame !== "none") {
 		selectedBorderWidth = String(FRAMED_BORDER_INCHES);
 	}
 });
 
-// Unique papers available on this product (from enabled variants)
-const v2Papers = $derived.by(() => {
+// Material options: papers + canvas (when enabled)
+const v2Materials = $derived.by(() => {
 	if (data.productType !== "v2") return [];
-	const slugs = Array.from(
+	const paperSlugs = Array.from(
 		new Set<string>(data.product.variants.map((v: any) => v.paper)),
 	);
-	return slugs.map((slug) => {
+	const papers = paperSlugs.map((slug) => {
 		const meta = getPaper(slug);
-		return { slug, name: meta?.name ?? slug };
+		return { value: slug, label: meta?.name ?? slug, group: "paper" as const };
 	});
+	if (data.product.canvasEnabled) {
+		const canvasOptions = V2_CANVAS_OPTIONS.map((c) => ({
+			value: `canvas-${c.value}`,
+			label: c.label,
+			group: "canvas" as const,
+		}));
+		return [...papers, ...canvasOptions];
+	}
+	return papers;
 });
 
-// Initialize selected paper to first available
+// Initialize selected material to first available
 $effect(() => {
-	if (data.productType === "v2" && v2Papers.length > 0 && !selectedPaperSlug) {
-		selectedPaperSlug = v2Papers[0].slug;
+	if (
+		data.productType === "v2" &&
+		v2Materials.length > 0 &&
+		!selectedMaterial
+	) {
+		selectedMaterial = v2Materials[0].value;
 	}
 });
 
-// Sizes available for the selected paper
+// For variant matching when canvas is selected, use the first paper
+const effectivePaperSlug = $derived(
+	selectedPaperSlug ||
+		(data.productType === "v2" ? data.product.variants[0]?.paper : ""),
+);
+
+// Sizes available for the selected material
 const v2Sizes = $derived.by(() => {
-	if (data.productType !== "v2" || !selectedPaperSlug) return [];
+	if (data.productType !== "v2" || !effectivePaperSlug) return [];
 	const slugs = Array.from(
 		new Set<string>(
 			data.product.variants
-				.filter((v: any) => v.paper === selectedPaperSlug)
+				.filter((v: any) => v.paper === effectivePaperSlug)
 				.map((v: any) => v.size),
 		),
 	);
-	// Filter to canvas-compatible sizes when canvas is selected
-	const filtered =
-		selectedCanvas !== "none"
-			? slugs.filter((s) => CANVAS_AVAILABLE_SIZES.has(s))
-			: slugs;
+	const filtered = isCanvasSelected
+		? slugs.filter((s) => CANVAS_AVAILABLE_SIZES.has(s))
+		: slugs;
 	return filtered.map((slug) => {
 		const meta = getSize(slug);
 		return { slug, label: meta?.label ?? slug };
@@ -99,7 +126,7 @@ const selectedVariant = $derived.by(() => {
 	if (data.productType !== "v2") return null;
 	return (
 		data.product.variants.find(
-			(v: any) => v.paper === selectedPaperSlug && v.size === selectedSizeSlug,
+			(v: any) => v.paper === effectivePaperSlug && v.size === selectedSizeSlug,
 		) ?? null
 	);
 });
@@ -125,8 +152,11 @@ function openModal(index: number) {
 
 // Frame surcharge: wholesale × multiplier, added when a frame is selected
 const canvasSurcharge = $derived.by(() => {
-	if (data.productType !== "v2" || selectedCanvas === "none") return 0;
-	const wholesale = getCanvasWholesaleCost(selectedCanvas, selectedSizeSlug);
+	if (data.productType !== "v2" || !isCanvasSelected) return 0;
+	const wholesale = getCanvasWholesaleCost(
+		selectedCanvasThickness,
+		selectedSizeSlug,
+	);
 	if (!wholesale) return 0;
 	const multiplier = data.product.canvasMarkupMultiplier ?? 2;
 	return Math.round(wholesale * multiplier * 100) / 100;
@@ -196,7 +226,9 @@ function handleV2AddToCart() {
 
 	const border = getBorder(selectedBorderWidth);
 	const frame = getFrame(selectedFrame);
-	const canvas = getCanvas(selectedCanvas);
+	const canvas = isCanvasSelected
+		? getCanvas(selectedCanvasThickness)
+		: undefined;
 	cart.add({
 		productSlug: data.product.slug,
 		type: "print",
@@ -365,7 +397,7 @@ function handleV1AddToCart() {
 						{#if selectedVariant}
 							${displayPrice}
 							<span class="text-base font-normal text-surface-600-300-token">
-								{getPaper(selectedPaperSlug)?.name} · {getSize(selectedSizeSlug)?.label}{selectedBorderWidth !== 'none' ? ` · ${selectedBorderWidth}" border` : ''}{selectedCanvas !== 'none' ? ` · ${getCanvas(selectedCanvas)?.label}` : ''}{selectedFrame !== 'none' ? ` · ${getFrame(selectedFrame)?.label} frame` : ''}
+								{isCanvasSelected ? getCanvas(selectedCanvasThickness)?.label : getPaper(selectedPaperSlug)?.name} · {getSize(selectedSizeSlug)?.label}{selectedBorderWidth !== 'none' ? ` · ${selectedBorderWidth}" border` : ''}{selectedFrame !== 'none' ? ` · ${getFrame(selectedFrame)?.label} frame` : ''}
 							</span>
 						{:else}
 							<span class="text-base text-surface-500">Select paper & size</span>
@@ -391,12 +423,12 @@ function handleV1AddToCart() {
 
 				<div class="space-y-4">
 					<div>
-						<label for="paper-select" class="block text-sm text-surface-600-300-token mb-1">
-							Paper
+						<label for="material-select" class="block text-sm text-surface-600-300-token mb-1">
+							Material
 						</label>
-						<select id="paper-select" class="select w-full" bind:value={selectedPaperSlug}>
-							{#each v2Papers as paper}
-								<option value={paper.slug}>{paper.name}</option>
+						<select id="material-select" class="select w-full" bind:value={selectedMaterial}>
+							{#each v2Materials as mat}
+								<option value={mat.value}>{mat.label}</option>
 							{/each}
 						</select>
 					</div>
@@ -412,21 +444,7 @@ function handleV1AddToCart() {
 						</select>
 					</div>
 
-					{#if data.product.canvasEnabled}
-						<div>
-							<label for="canvas-select" class="block text-sm text-surface-600-300-token mb-1">
-								Canvas
-							</label>
-							<select id="canvas-select" class="select w-full" bind:value={selectedCanvas}>
-								<option value="none">No canvas (fine art paper)</option>
-								{#each V2_CANVAS_OPTIONS as canvas}
-									<option value={canvas.value}>{canvas.label}</option>
-								{/each}
-							</select>
-						</div>
-					{/if}
-
-					{#if data.product.bordersEnabled !== false}
+					{#if data.product.bordersEnabled !== false && !isCanvasSelected}
 						<div>
 							<label for="border-select" class="block text-sm text-surface-600-300-token mb-1">
 								Border
@@ -447,7 +465,7 @@ function handleV1AddToCart() {
 						</div>
 					{/if}
 
-					{#if data.product.framedEnabled}
+					{#if data.product.framedEnabled && !isCanvasSelected}
 						<div>
 							<label for="frame-select" class="block text-sm text-surface-600-300-token mb-1">
 								Frame
@@ -486,7 +504,7 @@ function handleV1AddToCart() {
 								{#if selectedVariant}
 									<span class="text-xl font-semibold">${displayPrice}</span>
 									<span class="text-xs {isStuck ? 'text-surface-300' : 'text-surface-600-300-token'}">
-										{getPaper(selectedPaperSlug)?.name} · {getSize(selectedSizeSlug)?.label}{selectedBorderWidth !== 'none' ? ` · ${selectedBorderWidth}" border` : ''}{selectedCanvas !== 'none' ? ` · ${getCanvas(selectedCanvas)?.label}` : ''}{selectedFrame !== 'none' ? ` · ${getFrame(selectedFrame)?.label} frame` : ''}
+										{isCanvasSelected ? getCanvas(selectedCanvasThickness)?.label : getPaper(selectedPaperSlug)?.name} · {getSize(selectedSizeSlug)?.label}{selectedBorderWidth !== 'none' ? ` · ${selectedBorderWidth}" border` : ''}{selectedFrame !== 'none' ? ` · ${getFrame(selectedFrame)?.label} frame` : ''}
 									</span>
 								{:else}
 									<span class="text-sm text-surface-500">Select paper & size</span>
