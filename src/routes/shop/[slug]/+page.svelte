@@ -393,7 +393,7 @@ function handleV1AddToCart() {
 					class="md:hidden py-2 px-4 transition-colors duration-200 {isBarStuck ? 'fixed bottom-[calc(4rem-1px)] left-0 right-0 z-40 bg-surface-900 text-surface-50' : ''}"
 				>
 					<div class="flex items-center justify-between gap-2">
-						<div class="flex items-baseline gap-1.5 min-w-0">
+						<div class="flex items-center gap-1.5 min-w-0">
 							{#if selectedVariant}
 								<span class="text-xl font-semibold shrink-0">${selectedVariant.retailPrice}</span>
 								<span class="text-xs truncate {isBarStuck ? 'text-surface-300' : 'text-surface-600-300-token'}">
