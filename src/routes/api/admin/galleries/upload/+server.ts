@@ -2,7 +2,8 @@ import { error, json } from "@sveltejs/kit";
 import { env } from "$env/dynamic/private";
 import { requireAuth } from "$lib/server/adminAuth";
 
-const WORKER_URL = "https://gallery-worker.thinkingofview.workers.dev";
+const WORKER_URL =
+	env.GALLERY_WORKER_URL ?? "https://gallery-worker.thinkingofview.workers.dev";
 
 export async function PUT({ request, url, cookies }) {
 	requireAuth(cookies);

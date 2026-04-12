@@ -3,7 +3,8 @@ import { error, json } from "@sveltejs/kit";
 import { env } from "$env/dynamic/private";
 import { requireAuth } from "./adminAuth";
 
-const WORKER_URL = "https://gallery-worker.thinkingofview.workers.dev";
+const WORKER_URL =
+	env.GALLERY_WORKER_URL ?? "https://gallery-worker.thinkingofview.workers.dev";
 
 /**
  * Factory for JSON-body proxy routes that forward a request to the gallery
