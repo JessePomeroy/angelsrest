@@ -68,6 +68,8 @@ export interface OrderItem {
 	quantity: number;
 	/** Border width in inches. When set, the webhook runs Sharp to composite a white border. */
 	borderWidth?: number;
+	/** LumaPrints frame subcategory ID (105001-105007). When set, the order is submitted as framed. */
+	frameSubcategoryId?: number;
 }
 
 /** LumaPrints API order payload */

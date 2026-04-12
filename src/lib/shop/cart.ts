@@ -59,6 +59,8 @@ export interface CartItem {
 	paperHeight?: number;
 	/** Border width in inches (0.25, 0.5, 1). Absent means no border. */
 	borderWidth?: number;
+	/** LumaPrints frame subcategory ID (105001-105007). Absent means unframed. */
+	frameSubcategoryId?: number;
 	/** Always in [1, MAX_QUANTITY_PER_LINE]. */
 	quantity: number;
 	/**
@@ -105,6 +107,7 @@ export function itemMatchKey(
 		| "paperWidth"
 		| "paperHeight"
 		| "borderWidth"
+		| "frameSubcategoryId"
 		| "imageUrl"
 		| "imageUrls"
 	>,
@@ -119,6 +122,7 @@ export function itemMatchKey(
 		String(item.paperWidth),
 		String(item.paperHeight),
 		String(item.borderWidth),
+		String(item.frameSubcategoryId),
 		// Print sets have multiple images; single prints have one. Joining
 		// the array gives a stable comparison key for sets, while single
 		// prints (and non-print merch) fall through to the imageUrl.

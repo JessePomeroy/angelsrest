@@ -255,20 +255,36 @@ export function buildLumaPrintsOrder(
 			country: recipient.country,
 			phone: recipient.phone || "",
 		},
-		orderItems: items.map((item, i) => ({
-			externalItemId: `${externalId}-item-${i + 1}`,
-			subcategoryId: item.paperSubcategoryId,
-			quantity: item.quantity,
-			width: item.width,
-			height: item.height,
-			file: {
-				// Audit drive-by 2026-04-11: was `cleanImageUrl(item.imageUrl)`,
-				// which stripped query params but left the URL pointing at the
-				// default ~q80 compressed CDN version. Replaced with the print-
-				// quality variant.
-				imageUrl: prepareSanityUrlForPrint(item.imageUrl),
-			},
-			orderItemOptions: [39], // ALWAYS No Bleed (option 39)
-		})),
+		orderItems: items.map((item, i) => {
+			const isFramed =
+				typeof item.frameSubcategoryId === "number" &&
+				item.frameSubcategoryId > 0;
+			// Framed items use the frame subcategory (105xxx) instead of paper (103xxx).
+			// The paper type is communicated via orderItemOptions (option 74 = Archival Matte).
+			const subcategoryId = isFramed
+				? item.frameSubcategoryId!
+				: item.paperSubcategoryId;
+			// For bordered prints that were Sharp-composited, the imageUrl is
+			// already an R2 URL — don't run it through prepareSanityUrlForPrint.
+			const isBordered =
+				typeof item.borderWidth === "number" && item.borderWidth > 0;
+			const imageUrl = isBordered
+				? item.imageUrl
+				: prepareSanityUrlForPrint(item.imageUrl);
+			const options: number[] = [39]; // ALWAYS No Bleed
+			if (isFramed) {
+				options.push(67); // Mat size: 2" (LumaPrints option ID)
+				options.push(96); // Mat color: White (LumaPrints option ID)
+			}
+			return {
+				externalItemId: `${externalId}-item-${i + 1}`,
+				subcategoryId,
+				quantity: item.quantity,
+				width: item.width,
+				height: item.height,
+				file: { imageUrl },
+				orderItemOptions: options,
+			};
+		}),
 	};
 }

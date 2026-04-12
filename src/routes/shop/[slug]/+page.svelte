@@ -5,10 +5,13 @@ import StickyMobileBar from "$lib/components/StickyMobileBar.svelte";
 import { cart } from "$lib/shop/cart.svelte";
 import { cartUI } from "$lib/shop/cartUI.svelte";
 import {
+	FRAMED_BORDER_INCHES,
 	getBorder,
+	getFrame,
 	getPaper,
 	getSize,
 	V2_BORDER_OPTIONS,
+	V2_FRAME_OPTIONS,
 } from "$lib/shop/v2Catalog";
 import type { ParsedPaper } from "$lib/types/shop";
 import { createCheckout } from "$lib/utils/checkout";
@@ -25,6 +28,14 @@ let couponCode = $state("");
 let selectedPaperSlug = $state("");
 let selectedSizeSlug = $state("");
 let selectedBorderWidth = $state("none");
+let selectedFrame = $state("none");
+
+// When a frame is selected, force border to 0.25" (minimum for mat overlap)
+$effect(() => {
+	if (selectedFrame !== "none") {
+		selectedBorderWidth = String(FRAMED_BORDER_INCHES);
+	}
+});
 
 // Unique papers available on this product (from enabled variants)
 const v2Papers = $derived.by(() => {
@@ -153,6 +164,7 @@ function handleV2AddToCart() {
 	if (!paper || !size) return;
 
 	const border = getBorder(selectedBorderWidth);
+	const frame = getFrame(selectedFrame);
 	cart.add({
 		productSlug: data.product.slug,
 		type: "print",
@@ -164,6 +176,9 @@ function handleV2AddToCart() {
 		paperWidth: size.width,
 		paperHeight: size.height,
 		...(border && border.inches > 0 ? { borderWidth: border.inches } : {}),
+		...(frame && frame.subcategoryId > 0
+			? { frameSubcategoryId: frame.subcategoryId }
+			: {}),
 		quantity: 1,
 		unitPriceCents: Math.round(selectedVariant.retailPrice * 100),
 	});
@@ -313,7 +328,7 @@ function handleV1AddToCart() {
 						{#if selectedVariant}
 							${selectedVariant.retailPrice}
 							<span class="text-base font-normal text-surface-600-300-token">
-								{getPaper(selectedPaperSlug)?.name} · {getSize(selectedSizeSlug)?.label}{selectedBorderWidth !== 'none' ? ` · ${selectedBorderWidth}" border` : ''}
+								{getPaper(selectedPaperSlug)?.name} · {getSize(selectedSizeSlug)?.label}{selectedBorderWidth !== 'none' ? ` · ${selectedBorderWidth}" border` : ''}{selectedFrame !== 'none' ? ` · ${getFrame(selectedFrame)?.label} frame` : ''}
 							</span>
 						{:else}
 							<span class="text-base text-surface-500">Select paper & size</span>
@@ -365,9 +380,30 @@ function handleV1AddToCart() {
 							<label for="border-select" class="block text-sm text-surface-600-300-token mb-1">
 								Border
 							</label>
-							<select id="border-select" class="select w-full" bind:value={selectedBorderWidth}>
+							<select
+								id="border-select"
+								class="select w-full"
+								bind:value={selectedBorderWidth}
+								disabled={selectedFrame !== "none"}
+							>
 								{#each V2_BORDER_OPTIONS as border}
 									<option value={border.value}>{border.label}</option>
+								{/each}
+							</select>
+							{#if selectedFrame !== "none"}
+								<p class="text-xs text-surface-500 mt-1">border included with frame</p>
+							{/if}
+						</div>
+					{/if}
+
+					{#if data.product.framedEnabled}
+						<div>
+							<label for="frame-select" class="block text-sm text-surface-600-300-token mb-1">
+								Frame
+							</label>
+							<select id="frame-select" class="select w-full" bind:value={selectedFrame}>
+								{#each V2_FRAME_OPTIONS as frame}
+									<option value={frame.value}>{frame.label}</option>
 								{/each}
 							</select>
 						</div>
@@ -399,7 +435,7 @@ function handleV1AddToCart() {
 								{#if selectedVariant}
 									<span class="text-xl font-semibold">${selectedVariant.retailPrice}</span>
 									<span class="text-xs {isStuck ? 'text-surface-300' : 'text-surface-600-300-token'}">
-										{getPaper(selectedPaperSlug)?.name} · {getSize(selectedSizeSlug)?.label}{selectedBorderWidth !== 'none' ? ` · ${selectedBorderWidth}" border` : ''}
+										{getPaper(selectedPaperSlug)?.name} · {getSize(selectedSizeSlug)?.label}{selectedBorderWidth !== 'none' ? ` · ${selectedBorderWidth}" border` : ''}{selectedFrame !== 'none' ? ` · ${getFrame(selectedFrame)?.label} frame` : ''}
 									</span>
 								{:else}
 									<span class="text-sm text-surface-500">Select paper & size</span>

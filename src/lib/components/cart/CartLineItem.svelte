@@ -94,7 +94,7 @@ const extraImageCount = $derived(
     </a>
     {#if item.paperName && item.paperWidth && item.paperHeight}
       <div class="text-xs text-surface-600-300-token lowercase truncate">
-        {item.paperName} · {item.paperWidth}×{item.paperHeight}{item.borderWidth ? ` · ${item.borderWidth}" border` : ''}
+        {item.paperName} · {item.paperWidth}×{item.paperHeight}{item.borderWidth ? ` · ${item.borderWidth}" border` : ''}{item.frameSubcategoryId ? ' · framed' : ''}
       </div>
     {/if}
 

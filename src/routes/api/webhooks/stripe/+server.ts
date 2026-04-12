@@ -802,6 +802,7 @@ function buildOrderItemsFromSession(
 					q?: number;
 					i?: string[];
 					b?: number;
+					f?: number;
 				};
 				if (typeof parsed.u !== "string" || typeof parsed.q !== "number") {
 					continue;
@@ -814,10 +815,10 @@ function buildOrderItemsFromSession(
 					// Self-fulfilled merch — skip LumaPrints submission entirely.
 					continue;
 				}
-				// Print set: expand to one OrderItem per image. Quantity carries
-				// through, so buying 2 of a 3-image set submits 6 prints total.
 				const border =
 					typeof parsed.b === "number" && parsed.b > 0 ? parsed.b : undefined;
+				const frame =
+					typeof parsed.f === "number" && parsed.f > 0 ? parsed.f : undefined;
 				if (Array.isArray(parsed.i) && parsed.i.length > 0) {
 					for (const url of parsed.i) {
 						if (typeof url !== "string" || !url) continue;
@@ -828,6 +829,7 @@ function buildOrderItemsFromSession(
 							height: parsed.h as number,
 							quantity: parsed.q,
 							borderWidth: border,
+							frameSubcategoryId: frame,
 						});
 					}
 					continue;
@@ -839,6 +841,7 @@ function buildOrderItemsFromSession(
 					height: parsed.h as number,
 					quantity: parsed.q,
 					borderWidth: border,
+					frameSubcategoryId: frame,
 				});
 			} catch {
 				// Skip malformed entries — partial fulfillment is better than

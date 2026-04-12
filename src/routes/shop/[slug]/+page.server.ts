@@ -17,6 +17,7 @@ const V2_QUERY = `
     image,
     variants[enabled == true]{paper, size, retailPrice},
     bordersEnabled,
+    framedEnabled,
     inStock,
     featured
   }
@@ -61,6 +62,7 @@ export async function load({ params }) {
 				description: v2Product.description,
 				variants: v2Product.variants || [],
 				bordersEnabled: v2Product.bordersEnabled ?? true,
+				framedEnabled: v2Product.framedEnabled ?? false,
 				inStock: v2Product.inStock ?? true,
 				featured: v2Product.featured ?? false,
 				images: image

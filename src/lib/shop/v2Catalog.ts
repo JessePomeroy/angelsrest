@@ -104,7 +104,33 @@ export function getSize(slug: string): V2Size | undefined {
 	return V2_SIZES.find((s) => s.slug === slug);
 }
 
+export interface V2FrameOption {
+	value: string;
+	label: string;
+	subcategoryId: number;
+}
+
+export const V2_FRAME_OPTIONS: V2FrameOption[] = [
+	{ value: "none", label: "No frame", subcategoryId: 0 },
+	{ value: "0.875-black", label: '0.875" Black', subcategoryId: 105001 },
+	{ value: "0.875-white", label: '0.875" White', subcategoryId: 105002 },
+	{ value: "0.875-oak", label: '0.875" Oak', subcategoryId: 105003 },
+	{ value: "1.25-black", label: '1.25" Black', subcategoryId: 105005 },
+	{ value: "1.25-white", label: '1.25" White', subcategoryId: 105006 },
+	{ value: "1.25-oak", label: '1.25" Oak', subcategoryId: 105007 },
+];
+
+/** When framed, border is locked to 0.25" and mat to 2" white. */
+export const FRAMED_BORDER_INCHES = 0.25;
+export const FRAMED_MAT_SIZE_OPTION_ID = 67; // 2" mat (LumaPrints option ID)
+export const FRAMED_MAT_COLOR_OPTION_ID = 96; // White mat (LumaPrints option ID)
+
 /** Look up border option by value. */
 export function getBorder(value: string): V2BorderOption | undefined {
 	return V2_BORDER_OPTIONS.find((b) => b.value === value);
+}
+
+/** Look up frame option by value. */
+export function getFrame(value: string): V2FrameOption | undefined {
+	return V2_FRAME_OPTIONS.find((f) => f.value === value);
 }
