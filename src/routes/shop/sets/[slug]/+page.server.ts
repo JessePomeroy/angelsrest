@@ -1,59 +1,92 @@
 /**
- * Print Set Detail - Server Load Function
+ * Print Set Detail — Server Load Function
  *
- * Fetches a print set and its images from Sanity.
- *
- * Image handling:
- * - Thumbnails: 400px webp for grid display
- * - Full display: 1200px webp for lightbox
- * - Original: full quality for LumaPrints printing
+ * Queries lumaPrintSetV2 for the set data, images, and variants.
+ * Falls back to V1 printSet for legacy sets not yet migrated.
  */
 
 import { error } from "@sveltejs/kit";
 import { client } from "$lib/sanity/client";
 import { imageSet, previewUrl } from "$lib/utils/images";
 
-export async function load({ params }) {
-	// Fetch the print set
-	const printSet = await client.fetch(
-		`*[_type == "printSet" && slug.current == $slug][0]{
-			title,
-			description,
-			previewImage,
-			images,
-			price,
-			availablePapers,
-			"parent": parent->{
-				title,
-				"slug": slug.current
-			}
-		}`,
-		{ slug: params.slug },
-	);
+const V2_QUERY = `
+  *[_type == "lumaPrintSetV2" && slug.current == $slug][0]{
+    title,
+    description,
+    previewImage,
+    images,
+    variants[enabled == true]{paper, size, retailPrice},
+    inStock,
+    "parent": parent->{
+      title,
+      "slug": slug.current
+    }
+  }
+`;
 
-	if (!printSet) {
-		throw error(404, "Print set not found");
+const V1_QUERY = `
+  *[_type == "printSet" && slug.current == $slug][0]{
+    title,
+    description,
+    previewImage,
+    images,
+    price,
+    availablePapers,
+    "parent": parent->{
+      title,
+      "slug": slug.current
+    }
+  }
+`;
+
+export async function load({ params }) {
+	const slug = params.slug;
+
+	// Try V2 first
+	const v2Set = await client.fetch(V2_QUERY, { slug });
+
+	if (v2Set) {
+		const preview = previewUrl(v2Set.previewImage);
+		const images = (v2Set.images || [])
+			.map((img: any) => imageSet(img))
+			.filter(Boolean);
+
+		return {
+			setType: "v2" as const,
+			printSet: {
+				title: v2Set.title,
+				slug,
+				description: v2Set.description,
+				previewImage: preview,
+				variants: v2Set.variants || [],
+				inStock: v2Set.inStock ?? true,
+				parent: v2Set.parent,
+			},
+			images,
+		};
 	}
 
-	// Build preview image URL
-	const previewImageUrl = previewUrl(printSet.previewImage);
+	// Fall back to V1
+	const v1Set = await client.fetch(V1_QUERY, { slug });
 
-	// Build image set for each image (thumb, full, original)
-	const imagesWithUrls = (printSet.images || [])
-		.map((image: any) => imageSet(image))
+	if (!v1Set) throw error(404, "Print set not found");
+
+	const preview = previewUrl(v1Set.previewImage);
+	const images = (v1Set.images || [])
+		.map((img: any) => imageSet(img))
 		.filter(Boolean);
 
 	return {
+		setType: "v1" as const,
 		printSet: {
-			title: printSet.title,
-			description: printSet.description,
-			previewImage: previewImageUrl,
-			alt: printSet.previewImage?.alt || "",
-			price: printSet.price,
-			availablePapers: printSet.availablePapers || [],
-			parent: printSet.parent,
-			slug: params.slug,
+			title: v1Set.title,
+			slug,
+			description: v1Set.description,
+			previewImage: preview,
+			price: v1Set.price,
+			availablePapers: v1Set.availablePapers || [],
+			parent: v1Set.parent,
 		},
-		images: imagesWithUrls,
+		images,
 	};
 }
