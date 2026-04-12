@@ -15,15 +15,9 @@ let selectedIndex = $state(0);
 let isLoading = $state(false);
 let couponCode = $state("");
 
-// Sticky bar: track when it should go fixed and preserve its space in flow
+// Sticky bar: CSS sticky handles positioning (no reflow), observer only toggles bg color
 let stickyBarSentinel: HTMLDivElement | undefined = $state();
-let barRef: HTMLDivElement | undefined = $state();
 let isBarStuck = $state(false);
-let barHeight = $state(0);
-
-$effect(() => {
-	if (barRef) barHeight = barRef.offsetHeight;
-});
 
 $effect(() => {
 	if (!stickyBarSentinel) return;
@@ -391,12 +385,10 @@ function handleV1AddToCart() {
 					Secure checkout powered by Stripe
 				</p>
 
-				<!-- Wrapper preserves the bar's space in flow when it goes fixed -->
-				<div class="md:hidden" style:min-height={isBarStuck ? `${barHeight}px` : undefined}>
-					<div
-						bind:this={barRef}
-						class="py-2 px-4 transition-colors duration-200 {isBarStuck ? 'fixed bottom-[calc(4rem-1px)] left-0 right-0 z-40 bg-surface-900 text-surface-50' : ''}"
-					>
+				<!-- Sticky price bar: CSS sticky handles positioning, observer only toggles bg -->
+				<div
+					class="md:hidden sticky bottom-[calc(4rem-1px)] z-40 py-2 px-4 transition-colors duration-200 {isBarStuck ? 'bg-surface-900 text-surface-50' : ''}"
+				>
 						<div class="flex items-center justify-between gap-2">
 							<div class="flex items-center gap-1.5 min-w-0">
 								{#if selectedVariant}
@@ -426,8 +418,7 @@ function handleV1AddToCart() {
 							</div>
 						</div>
 					</div>
-				</div>
-				<!-- Sentinel: after the wrapper so it stays stable when bar goes fixed -->
+				<!-- Sentinel: tracks when the bar reaches the nav for bg toggle -->
 				<div bind:this={stickyBarSentinel} class="md:hidden h-0"></div>
 			{:else}
 				<!-- ═══ V1 Layout (merch, postcards, tapestries, digital) ═══ -->
