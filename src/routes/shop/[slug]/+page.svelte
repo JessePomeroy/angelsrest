@@ -387,8 +387,9 @@ function handleV1AddToCart() {
 
 				<!-- Sticky price bar: CSS sticky handles positioning, observer only toggles bg -->
 				<div
-					class="md:hidden sticky bottom-[calc(4rem-1px)] z-40 py-2 px-4 transition-all duration-200 {isBarStuck ? 'bg-surface-900 text-surface-50' : ''}"
-				style:box-shadow={isBarStuck ? '-100vw 0 0 0 rgb(var(--color-surface-900)), 100vw 0 0 0 rgb(var(--color-surface-900))' : 'none'}
+					class="md:hidden sticky bottom-[calc(4rem-1px)] z-40 py-2 px-4 transition-all duration-200 {isBarStuck ? 'text-surface-50' : ''}"
+				style:background={isBarStuck ? 'var(--color-surface-900)' : undefined}
+				style:box-shadow={isBarStuck ? '-50vw 0 0 0 var(--color-surface-900), 50vw 0 0 0 var(--color-surface-900)' : undefined}
 				>
 						<div class="flex items-center justify-between gap-2">
 							<div class="flex items-center gap-1.5 min-w-0">
