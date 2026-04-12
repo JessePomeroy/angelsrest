@@ -390,33 +390,33 @@ function handleV1AddToCart() {
 
 				<!-- Mobile price bar: inline when in view, fixed full-width when stuck -->
 				<div
-					class="md:hidden py-3 px-4 transition-colors duration-200 {isBarStuck ? 'fixed bottom-16 left-0 right-0 z-40 bg-surface-900 text-surface-50' : ''}"
+					class="md:hidden py-2 px-4 transition-colors duration-200 {isBarStuck ? 'fixed bottom-[calc(4rem-1px)] left-0 right-0 z-40 bg-surface-900 text-surface-50' : ''}"
 				>
-					<div class="flex items-center justify-between gap-4">
-						<div>
+					<div class="flex items-center justify-between gap-2">
+						<div class="flex items-baseline gap-1.5 min-w-0">
 							{#if selectedVariant}
-								<span class="text-2xl font-semibold">${selectedVariant.retailPrice}</span>
-								<span class="text-sm ml-2 {isBarStuck ? 'text-surface-300' : 'text-surface-600-300-token'}">
+								<span class="text-xl font-semibold shrink-0">${selectedVariant.retailPrice}</span>
+								<span class="text-xs truncate {isBarStuck ? 'text-surface-300' : 'text-surface-600-300-token'}">
 									{getPaper(selectedPaperSlug)?.name} · {getSize(selectedSizeSlug)?.label}
 								</span>
 							{:else}
-								<span class="text-surface-500">Select paper & size</span>
+								<span class="text-sm text-surface-500">Select paper & size</span>
 							{/if}
 						</div>
-						<div class="flex gap-2">
+						<div class="flex gap-1.5 shrink-0">
 							{#if data.product.inStock && selectedVariant}
-								<button class="btn btn-sm variant-soft-surface" onclick={handleV2AddToCart}>
+								<button class="btn btn-sm text-xs px-2 variant-soft-surface" onclick={handleV2AddToCart}>
 									add to cart
 								</button>
 								<button
-									class="btn btn-sm variant-filled-primary"
+									class="btn btn-sm text-xs px-2 variant-filled-primary"
 									disabled={isLoading}
 									onclick={handleV2Checkout}
 								>
-									{isLoading ? "processing..." : "buy now"}
+									{isLoading ? "..." : "buy now"}
 								</button>
 							{:else if !data.product.inStock}
-								<button class="btn btn-sm variant-filled-primary" disabled>out of stock</button>
+								<button class="btn btn-sm text-xs px-2 variant-filled-primary" disabled>out of stock</button>
 							{/if}
 						</div>
 					</div>
