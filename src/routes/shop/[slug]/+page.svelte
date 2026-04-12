@@ -15,9 +15,15 @@ let selectedIndex = $state(0);
 let isLoading = $state(false);
 let couponCode = $state("");
 
-// Sticky bar detection: when the sentinel scrolls out of view, the bar is stuck
+// Sticky bar: track when it should go fixed and preserve its space in flow
 let stickyBarSentinel: HTMLDivElement | undefined = $state();
+let barRef: HTMLDivElement | undefined = $state();
 let isBarStuck = $state(false);
+let barHeight = $state(0);
+
+$effect(() => {
+	if (barRef) barHeight = barRef.offsetHeight;
+});
 
 $effect(() => {
 	if (!stickyBarSentinel) return;
@@ -385,40 +391,43 @@ function handleV1AddToCart() {
 					Secure checkout powered by Stripe
 				</p>
 
-				<!-- Mobile price bar: inline when in view, fixed full-width when stuck -->
-				<div
-					class="md:hidden py-2 px-4 transition-colors duration-200 {isBarStuck ? 'fixed bottom-[calc(4rem-1px)] left-0 right-0 z-40 bg-surface-900 text-surface-50' : ''}"
-				>
-					<div class="flex items-center justify-between gap-2">
-						<div class="flex items-center gap-1.5 min-w-0">
-							{#if selectedVariant}
-								<span class="text-xl font-semibold shrink-0">${selectedVariant.retailPrice}</span>
-								<span class="text-xs truncate {isBarStuck ? 'text-surface-300' : 'text-surface-600-300-token'}">
-									{getPaper(selectedPaperSlug)?.name} · {getSize(selectedSizeSlug)?.label}
-								</span>
-							{:else}
-								<span class="text-sm text-surface-500">Select paper & size</span>
-							{/if}
-						</div>
-						<div class="flex gap-1.5 shrink-0">
-							{#if data.product.inStock && selectedVariant}
-								<button class="btn btn-sm text-xs px-2 variant-soft-surface" onclick={handleV2AddToCart}>
-									add to cart
-								</button>
-								<button
-									class="btn btn-sm text-xs px-2 variant-filled-primary"
-									disabled={isLoading}
-									onclick={handleV2Checkout}
-								>
-									{isLoading ? "..." : "buy now"}
-								</button>
-							{:else if !data.product.inStock}
-								<button class="btn btn-sm text-xs px-2 variant-filled-primary" disabled>out of stock</button>
-							{/if}
+				<!-- Wrapper preserves the bar's space in flow when it goes fixed -->
+				<div class="md:hidden" style:min-height={isBarStuck ? `${barHeight}px` : undefined}>
+					<div
+						bind:this={barRef}
+						class="py-2 px-4 transition-colors duration-200 {isBarStuck ? 'fixed bottom-[calc(4rem-1px)] left-0 right-0 z-40 bg-surface-900 text-surface-50' : ''}"
+					>
+						<div class="flex items-center justify-between gap-2">
+							<div class="flex items-center gap-1.5 min-w-0">
+								{#if selectedVariant}
+									<span class="text-xl font-semibold shrink-0">${selectedVariant.retailPrice}</span>
+									<span class="text-xs truncate {isBarStuck ? 'text-surface-300' : 'text-surface-600-300-token'}">
+										{getPaper(selectedPaperSlug)?.name} · {getSize(selectedSizeSlug)?.label}
+									</span>
+								{:else}
+									<span class="text-sm text-surface-500">Select paper & size</span>
+								{/if}
+							</div>
+							<div class="flex gap-1.5 shrink-0">
+								{#if data.product.inStock && selectedVariant}
+									<button class="btn btn-sm text-xs px-2 variant-soft-surface" onclick={handleV2AddToCart}>
+										add to cart
+									</button>
+									<button
+										class="btn btn-sm text-xs px-2 variant-filled-primary"
+										disabled={isLoading}
+										onclick={handleV2Checkout}
+									>
+										{isLoading ? "..." : "buy now"}
+									</button>
+								{:else if !data.product.inStock}
+									<button class="btn btn-sm text-xs px-2 variant-filled-primary" disabled>out of stock</button>
+								{/if}
+							</div>
 						</div>
 					</div>
 				</div>
-				<!-- Sentinel: below the bar so it triggers when the bar's bottom reaches the nav -->
+				<!-- Sentinel: after the wrapper so it stays stable when bar goes fixed -->
 				<div bind:this={stickyBarSentinel} class="md:hidden h-0"></div>
 			{:else}
 				<!-- ═══ V1 Layout (merch, postcards, tapestries, digital) ═══ -->
