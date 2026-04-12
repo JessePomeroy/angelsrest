@@ -7,6 +7,7 @@ export const env = {
 	// that runtime hits. Flip to "true" if a test specifically needs to
 	// verify sandbox routing.
 	LUMAPRINTS_USE_SANDBOX: "false",
+	STRIPE_CRM_PRICE_ID: "price_test_xxx",
 	GALLERY_ADMIN_SECRET: "test-secret",
 	BETTER_AUTH_SECRET: "test-secret",
 };

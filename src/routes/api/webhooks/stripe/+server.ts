@@ -44,6 +44,12 @@ import {
 } from "$lib/server/webhookErrorClassification";
 import type { OrderItem, Recipient } from "$lib/shop/types";
 
+/** Shipping details extracted from `session.collected_information`. */
+type ShippingDetails =
+	| Stripe.Checkout.Session.CollectedInformation.ShippingDetails
+	| null
+	| undefined;
+
 const convex = getConvex();
 
 const stripe = new Stripe(STRIPE_SECRET_KEY);
@@ -57,8 +63,7 @@ const formatCurrency = (amount: number) =>
 	}).format(amount / 100);
 
 /** Format shipping address for emails */
-// biome-ignore lint/suspicious/noExplicitAny: Stripe SDK types
-function formatShippingAddress(shippingDetails: any): string {
+function formatShippingAddress(shippingDetails: ShippingDetails): string {
 	if (!shippingDetails?.address) return "No shipping address";
 	const { name, address } = shippingDetails;
 	return [
@@ -222,8 +227,7 @@ async function handleCheckoutCompleted(session: Stripe.Checkout.Session) {
 		await fetchSessionDetails(session);
 
 	const customerEmail =
-		// biome-ignore lint/suspicious/noExplicitAny: Stripe SDK types
-		fullSession.customer_details?.email || (session as any).email;
+		fullSession.customer_details?.email || session.customer_email;
 
 	if (!customerEmail) {
 		console.error("No customer email found for session:", session.id);
@@ -274,8 +278,7 @@ async function handleCheckoutCompleted(session: Stripe.Checkout.Session) {
 async function fetchSessionDetails(session: Stripe.Checkout.Session) {
 	let fullSession: Stripe.Checkout.Session;
 	let lineItems: Stripe.LineItem[] = [];
-	// biome-ignore lint/suspicious/noExplicitAny: Stripe SDK types
-	let shippingDetails: any;
+	let shippingDetails: ShippingDetails;
 
 	try {
 		fullSession = await stripe.checkout.sessions.retrieve(session.id, {
@@ -289,8 +292,7 @@ async function fetchSessionDetails(session: Stripe.Checkout.Session) {
 			"Session retrieval failed (likely test event), using event data",
 		);
 		fullSession = session;
-		// biome-ignore lint/suspicious/noExplicitAny: Stripe SDK types
-		shippingDetails = (session as any).collected_information?.shipping_details;
+		shippingDetails = session.collected_information?.shipping_details;
 	}
 
 	return { fullSession, lineItems, shippingDetails };
@@ -308,13 +310,11 @@ async function sendCustomerConfirmation({
 }: {
 	session: Stripe.Checkout.Session;
 	customerEmail: string;
-	// biome-ignore lint/suspicious/noExplicitAny: Stripe SDK types
-	shippingDetails: any;
+	shippingDetails: ShippingDetails;
 	lineItems: Stripe.LineItem[];
 	orderNumber?: string;
 }) {
-	// biome-ignore lint/suspicious/noExplicitAny: Stripe SDK types
-	const isDigital = (session as any).metadata?.isDigital === "true";
+	const isDigital = session.metadata?.isDigital === "true";
 
 	const digitalSection = isDigital
 		? `
@@ -376,8 +376,7 @@ async function sendAdminNotification({
 }: {
 	session: Stripe.Checkout.Session;
 	customerEmail: string;
-	// biome-ignore lint/suspicious/noExplicitAny: Stripe SDK types
-	shippingDetails: any;
+	shippingDetails: ShippingDetails;
 	lineItems: Stripe.LineItem[];
 	orderNumber?: string;
 }) {
@@ -427,13 +426,11 @@ async function createOrderInConvex({
 	lineItems,
 }: {
 	session: Stripe.Checkout.Session;
-	// biome-ignore lint/suspicious/noExplicitAny: Stripe SDK types
-	shippingDetails: any;
+	shippingDetails: ShippingDetails;
 	lineItems: Stripe.LineItem[];
 }) {
 	// Extract payment intent ID (could be string or expanded object)
-	// biome-ignore lint/suspicious/noExplicitAny: Stripe SDK types
-	const rawPaymentIntent = (session as any).payment_intent;
+	const rawPaymentIntent = session.payment_intent;
 	const stripePaymentIntentId =
 		typeof rawPaymentIntent === "string"
 			? rawPaymentIntent
@@ -445,8 +442,7 @@ async function createOrderInConvex({
 		price: item.amount_total || item.price?.unit_amount || 0,
 	}));
 
-	// biome-ignore lint/suspicious/noExplicitAny: Stripe SDK types
-	const isDigital = (session as any).metadata?.isDigital === "true";
+	const isDigital = session.metadata?.isDigital === "true";
 
 	// Create order in Convex (idempotent — returns existing order if session already processed)
 	const { _id: orderId, orderNumber } = await convex.mutation(
@@ -472,11 +468,8 @@ async function createOrderInConvex({
 			total: session.amount_total || 0,
 			subtotal: session.amount_subtotal || undefined,
 			fulfillmentType: isDigital ? "digital" : "self",
-			// biome-ignore lint/suspicious/noExplicitAny: Stripe SDK types
-			paperName: (session as any).metadata?.paperName || undefined,
-			paperSubcategoryId:
-				// biome-ignore lint/suspicious/noExplicitAny: Stripe SDK types
-				(session as any).metadata?.paperSubcategoryId || undefined,
+			paperName: session.metadata?.paperName || undefined,
+			paperSubcategoryId: session.metadata?.paperSubcategoryId || undefined,
 		},
 	);
 
@@ -542,9 +535,7 @@ async function createOrderInConvex({
 			orderNumber,
 			error: err,
 			session,
-			customerEmail:
-				// biome-ignore lint/suspicious/noExplicitAny: Stripe SDK types
-				(session as any).customer_details?.email ?? "unknown",
+			customerEmail: session.customer_details?.email ?? "unknown",
 		});
 	}
 
@@ -730,9 +721,16 @@ async function captureStripeFees(
 			expand: ["latest_charge.balance_transaction"],
 		});
 
-		// biome-ignore lint/suspicious/noExplicitAny: Stripe SDK types
-		const charge = (pi as any).latest_charge;
-		const fees = charge?.balance_transaction?.fee;
+		const charge = pi.latest_charge;
+		// After expand, latest_charge is a Charge object with balance_transaction expanded
+		const balanceTxn =
+			typeof charge === "object" && charge !== null
+				? charge.balance_transaction
+				: undefined;
+		const fees =
+			typeof balanceTxn === "object" && balanceTxn !== null
+				? balanceTxn.fee
+				: undefined;
 
 		if (fees && fees > 0) {
 			await convex.mutation(api.orders.updateStatus, {
@@ -860,8 +858,14 @@ function buildOrderItemsFromSession(
 	const paperSubcategoryId = Number.parseInt(meta.paperSubcategoryId ?? "", 10);
 	if (!paperSubcategoryId) return [];
 
-	const width = Number.parseInt(meta.paperWidth ?? "8", 10) || 8;
-	const height = Number.parseInt(meta.paperHeight ?? "10", 10) || 10;
+	const DEFAULT_PAPER_WIDTH = 8;
+	const DEFAULT_PAPER_HEIGHT = 10;
+	const width =
+		Number.parseInt(meta.paperWidth ?? String(DEFAULT_PAPER_WIDTH), 10) ||
+		DEFAULT_PAPER_WIDTH;
+	const height =
+		Number.parseInt(meta.paperHeight ?? String(DEFAULT_PAPER_HEIGHT), 10) ||
+		DEFAULT_PAPER_HEIGHT;
 
 	const isPrintSet = meta.isPrintSet === "true";
 	if (isPrintSet) {
@@ -903,8 +907,7 @@ export const __test__buildOrderItemsFromSession = buildOrderItemsFromSession;
 
 /** Build a LumaPrints recipient from Stripe shipping details. */
 function buildRecipientFromShipping(
-	// biome-ignore lint/suspicious/noExplicitAny: Stripe SDK shipping_details is loosely typed
-	shippingDetails: any,
+	shippingDetails: ShippingDetails,
 ): Recipient {
 	const nameParts = (shippingDetails?.name || "").split(" ");
 	return {
@@ -927,12 +930,11 @@ function buildRecipientFromShipping(
  * idempotent upstream so retries are safe.
  */
 async function submitToLumaPrints(
-	// biome-ignore lint/suspicious/noExplicitAny: Convex Id types
+	// biome-ignore lint/suspicious/noExplicitAny: Convex Id type mismatch
 	orderId: any,
 	orderNumber: string,
 	lineItems: Stripe.LineItem[],
-	// biome-ignore lint/suspicious/noExplicitAny: Stripe SDK shipping_details is loosely typed
-	shippingDetails: any,
+	shippingDetails: ShippingDetails,
 	session: Stripe.Checkout.Session,
 ) {
 	const items = buildOrderItemsFromSession(session, lineItems);
