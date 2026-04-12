@@ -1,6 +1,7 @@
 <script lang="ts">
 import GalleryModal from "$lib/components/GalleryModal.svelte";
 import SEO from "$lib/components/SEO.svelte";
+import StickyMobileBar from "$lib/components/StickyMobileBar.svelte";
 import { cart } from "$lib/shop/cart.svelte";
 import { cartUI } from "$lib/shop/cartUI.svelte";
 import { getPaper, getSize } from "$lib/shop/v2Catalog";
@@ -14,22 +15,6 @@ let modalOpen = $state(false);
 let selectedIndex = $state(0);
 let isLoading = $state(false);
 let couponCode = $state("");
-
-// Sticky bar: CSS sticky handles positioning (no reflow), observer only toggles bg color
-let stickyBarSentinel: HTMLDivElement | undefined = $state();
-let isBarStuck = $state(false);
-
-$effect(() => {
-	if (!stickyBarSentinel) return;
-	const observer = new IntersectionObserver(
-		([entry]) => {
-			isBarStuck = !entry.isIntersecting;
-		},
-		{ threshold: 0, rootMargin: "0px 0px -64px 0px" },
-	);
-	observer.observe(stickyBarSentinel);
-	return () => observer.disconnect();
-});
 
 // ─── V2 state ───────────────────────────────────────────────
 let selectedPaperSlug = $state("");
@@ -385,17 +370,13 @@ function handleV1AddToCart() {
 					Secure checkout powered by Stripe
 				</p>
 
-				<!-- Sticky price bar: CSS sticky handles positioning, observer only toggles bg -->
-				<div
-					class="md:hidden sticky bottom-[calc(4rem-1px)] z-40 py-2 px-4 transition-all duration-200 {isBarStuck ? 'text-surface-50' : ''}"
-				style:background={isBarStuck ? 'var(--color-surface-900)' : undefined}
-				style:box-shadow={isBarStuck ? '-50vw 0 0 0 var(--color-surface-900), 50vw 0 0 0 var(--color-surface-900)' : undefined}
-				>
+				<StickyMobileBar>
+					{#snippet children(isStuck)}
 						<div class="flex items-center justify-between gap-2">
 							<div class="flex items-center gap-1.5 min-w-0">
 								{#if selectedVariant}
 									<span class="text-xl font-semibold shrink-0">${selectedVariant.retailPrice}</span>
-									<span class="text-xs truncate {isBarStuck ? 'text-surface-300' : 'text-surface-600-300-token'}">
+									<span class="text-xs truncate {isStuck ? 'text-surface-300' : 'text-surface-600-300-token'}">
 										{getPaper(selectedPaperSlug)?.name} · {getSize(selectedSizeSlug)?.label}
 									</span>
 								{:else}
@@ -419,9 +400,8 @@ function handleV1AddToCart() {
 								{/if}
 							</div>
 						</div>
-					</div>
-				<!-- Sentinel: tracks when the bar reaches the nav for bg toggle -->
-				<div bind:this={stickyBarSentinel} class="md:hidden h-0"></div>
+					{/snippet}
+				</StickyMobileBar>
 			{:else}
 				<!-- ═══ V1 Layout (merch, postcards, tapestries, digital) ═══ -->
 				<div class="text-3xl font-semibold text-surface-900-50-token">
