@@ -308,7 +308,7 @@ function handleV1AddToCart() {
 				<!-- ═══ V2 Configurator ═══ -->
 
 				<!-- Desktop: inline price bar with buttons (no sticky needed) -->
-				<div class="hidden md:flex items-center justify-between gap-4 py-2">
+				<div class="hidden md:flex items-baseline justify-between gap-4 py-2">
 					<div class="text-3xl font-semibold text-surface-900-50-token">
 						{#if selectedVariant}
 							${selectedVariant.retailPrice}
@@ -428,7 +428,7 @@ function handleV1AddToCart() {
 				<!-- ═══ V1 Layout (merch, postcards, tapestries, digital) ═══ -->
 
 				<!-- Desktop: inline price + buttons -->
-				<div class="hidden md:flex items-center justify-between gap-4 py-2">
+				<div class="hidden md:flex items-baseline justify-between gap-4 py-2">
 					<div class="text-3xl font-semibold text-surface-900-50-token">
 						${displayPrice}
 					</div>

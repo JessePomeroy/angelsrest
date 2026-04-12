@@ -7,6 +7,7 @@
  * configurator with per-set pricing; V1 uses the legacy single dropdown.
  */
 import SEO from "$lib/components/SEO.svelte";
+import StickyMobileBar from "$lib/components/StickyMobileBar.svelte";
 import { cart } from "$lib/shop/cart.svelte";
 import { cartUI } from "$lib/shop/cartUI.svelte";
 import {
@@ -214,193 +215,264 @@ function handleV1AddToCart() {
 	url="https://angelsrest.online/shop/sets/{data.printSet.slug}"
 />
 
-<div class="px-6! md:px-8! lg:px-10!">
-	<!-- Breadcrumb -->
-	<div class="mb-6">
-		<a href="/shop" class="inline-block text-sm text-surface-600-300-token hover:text-surface-400">
-			← back to shop
-		</a>
+<div class="max-w-6xl mx-auto px-4 md:px-8">
+	<a href="/shop" class="text-sm opacity-70 hover:opacity-100 mb-4 inline-block">
+		← Back to shop
 		{#if data.printSet.parent}
 			<span class="mx-2 text-surface-500">/</span>
-			<a
-				href="/shop/prints/{data.printSet.parent.slug}"
-				class="inline-block text-sm text-surface-600-300-token hover:text-surface-400"
-			>
-				{data.printSet.parent.title}
-			</a>
+			{data.printSet.parent.title}
 		{/if}
-	</div>
+	</a>
 
-	<!-- Title + description -->
-	<div class="text-center mb-8">
-		<h1 class="text-3xl font-bold mb-2">{data.printSet.title}</h1>
-		{#if data.printSet.description}
-			<p class="text-lg text-surface-600-300-token">{data.printSet.description}</p>
-		{/if}
-	</div>
-
-	<!-- Two-column: images left, purchase right -->
-	<div class="grid md:grid-cols-3 gap-8">
+	<div class="grid md:grid-cols-2 gap-8">
 		<!-- Images grid -->
-		<div class="md:col-span-2">
+		<div class="space-y-4">
 			{#if data.images.length > 0}
-				<div class="columns-2 md:columns-3 gap-4">
+				<div class="columns-2 gap-2">
 					{#each data.images as image}
-						<div class="mb-4 break-inside-avoid">
+						<div class="mb-2 break-inside-avoid">
 							<img
 								src={(image as ProductImage).thumb}
 								alt={image.alt}
 								loading="lazy"
-								class="w-full h-auto rounded-lg"
+								class="w-full h-auto rounded-md"
 							/>
 						</div>
 					{/each}
 				</div>
+			{:else}
+				<div class="aspect-square bg-surface-100-800-token rounded-md flex items-center justify-center">
+					<span class="text-surface-500">No images</span>
+				</div>
 			{/if}
 		</div>
 
-		<!-- Purchase sidebar -->
-		<div class="md:col-span-1">
-			<div class="sticky top-8 bg-surface-500/10 border border-surface-500/20 rounded-lg p-6">
-				{#if data.setType === "v2"}
-					<!-- ═══ V2 Configurator ═══ -->
-					{#if selectedVariant}
-						<div class="text-3xl font-semibold text-surface-900-50-token mb-1">
-							${selectedVariant.retailPrice}
-						</div>
-						<div class="text-sm text-surface-600-300-token mb-4">
-							{data.images.length} print{data.images.length === 1 ? "" : "s"} ·
-							{getPaper(selectedPaperSlug)?.name} · {getSize(selectedSizeSlug)?.label}
-						</div>
+		<!-- Product details -->
+		<div class="space-y-6">
+			<div>
+				<h1 class="text-3xl font-semibold mb-2">{data.printSet.title}</h1>
+				<span class="text-sm text-surface-600-300-token">
+					{data.images.length} print{data.images.length === 1 ? "" : "s"} in this set
+				</span>
+			</div>
+
+			{#if data.printSet.description}
+				<div class="text-surface-700-200-token">
+					<p>{data.printSet.description}</p>
+				</div>
+			{/if}
+
+			<!-- Stock status -->
+			{#if data.setType === "v2"}
+				<div class="flex items-center gap-2">
+					{#if data.printSet.inStock}
+						<div class="w-3 h-3 rounded-full bg-success-500"></div>
+						<span class="text-sm text-surface-600-300-token">In stock</span>
 					{:else}
-						<div class="text-surface-500 mb-4">Select paper & size</div>
+						<div class="w-3 h-3 rounded-full bg-error-500"></div>
+						<span class="text-sm text-surface-600-300-token">Out of stock</span>
 					{/if}
+				</div>
+			{/if}
 
-					<div class="space-y-4 mb-4">
-						<div>
-							<label for="set-paper" class="block text-sm text-surface-600-300-token mb-1">
-								Paper
-							</label>
-							<select id="set-paper" class="select w-full" bind:value={selectedPaperSlug}>
-								{#each v2Papers as paper}
-									<option value={paper.slug}>{paper.name}</option>
-								{/each}
-							</select>
-						</div>
-						<div>
-							<label for="set-size" class="block text-sm text-surface-600-300-token mb-1">
-								Size
-							</label>
-							<select id="set-size" class="select w-full" bind:value={selectedSizeSlug}>
-								{#each v2Sizes as size}
-									<option value={size.slug}>{size.label}</option>
-								{/each}
-							</select>
-						</div>
+			{#if data.setType === "v2"}
+				<!-- ═══ V2 Configurator ═══ -->
 
-						{#if data.printSet.bordersEnabled !== false}
-							<div>
-								<label for="set-border" class="block text-sm text-surface-600-300-token mb-1">
-									Border
-								</label>
-								<select id="set-border" class="select w-full" bind:value={selectedBorderWidth}>
-									{#each V2_BORDER_OPTIONS as border}
-										<option value={border.value}>{border.label}</option>
-									{/each}
-								</select>
-							</div>
+				<!-- Desktop: inline price + buttons -->
+				<div class="hidden md:flex items-baseline justify-between gap-4 py-2">
+					<div class="text-3xl font-semibold text-surface-900-50-token">
+						{#if selectedVariant}
+							${selectedVariant.retailPrice}
+							<span class="text-base font-normal text-surface-600-300-token">
+								{getPaper(selectedPaperSlug)?.name} · {getSize(selectedSizeSlug)?.label}{selectedBorderWidth !== 'none' ? ` · ${selectedBorderWidth}" border` : ''}
+							</span>
+						{:else}
+							<span class="text-base text-surface-500">Select paper & size</span>
 						{/if}
 					</div>
-
-					<!-- Coupon -->
-					<div class="mb-4">
-						<label for="set-promo" class="block text-sm text-surface-600-300-token mb-1">
-							promo code
-						</label>
-						<input
-							id="set-promo"
-							type="text"
-							bind:value={couponCode}
-							placeholder="enter code"
-							class="w-full px-3 py-2 bg-surface-500/10 border border-surface-500/20 rounded-md text-sm lowercase"
-						/>
-					</div>
-
-					<div class="space-y-3">
+					<div class="flex gap-2 shrink-0">
 						{#if data.printSet.inStock && selectedVariant}
-							<button class="btn variant-soft-surface w-full" onclick={handleV2AddToCart}>
+							<button class="btn btn-sm variant-soft-surface" onclick={handleV2AddToCart}>
 								add to cart
 							</button>
 							<button
-								class="btn variant-filled-primary w-full"
+								class="btn btn-sm variant-filled-primary"
 								disabled={isLoading}
 								onclick={handleV2Checkout}
 							>
 								{isLoading ? "processing..." : "buy now"}
 							</button>
 						{:else if !data.printSet.inStock}
-							<button class="btn variant-filled-primary w-full" disabled>out of stock</button>
-						{:else}
-							<button class="btn variant-filled-primary w-full" disabled>
-								select paper & size
-							</button>
+							<button class="btn btn-sm variant-filled-primary" disabled>out of stock</button>
 						{/if}
 					</div>
-				{:else}
-					<!-- ═══ V1 Layout ═══ -->
-					<div class="text-3xl font-semibold text-surface-900-50-token mb-4">
-						${selectedPaperData?.price || data.printSet.price}
+				</div>
+
+				<div class="space-y-4">
+					<div>
+						<label for="set-paper" class="block text-sm text-surface-600-300-token mb-1">
+							Paper
+						</label>
+						<select id="set-paper" class="select w-full" bind:value={selectedPaperSlug}>
+							{#each v2Papers as paper}
+								<option value={paper.slug}>{paper.name}</option>
+							{/each}
+						</select>
+					</div>
+					<div>
+						<label for="set-size" class="block text-sm text-surface-600-300-token mb-1">
+							Size
+						</label>
+						<select id="set-size" class="select w-full" bind:value={selectedSizeSlug}>
+							{#each v2Sizes as size}
+								<option value={size.slug}>{size.label}</option>
+							{/each}
+						</select>
 					</div>
 
-					{#if data.printSet.availablePapers?.length > 0}
-						<div class="mb-4">
-							<label for="set-paper-type" class="block text-sm text-surface-600-300-token mb-1">
-								Paper Type
+					{#if data.printSet.bordersEnabled !== false}
+						<div>
+							<label for="set-border" class="block text-sm text-surface-600-300-token mb-1">
+								Border
 							</label>
-							<select id="set-paper-type" bind:value={selectedPaperIndex} class="select w-full">
-								{#each data.printSet.availablePapers as paper, i}
-									{@const parsed = parsePaperOption(paper)}
-									{@const priceNote = paper.price ? ` (+$${paper.price})` : ""}
-									<option value={i}>{parsed.name}{priceNote}</option>
+							<select id="set-border" class="select w-full" bind:value={selectedBorderWidth}>
+								{#each V2_BORDER_OPTIONS as border}
+									<option value={border.value}>{border.label}</option>
 								{/each}
 							</select>
 						</div>
 					{/if}
+				</div>
 
-					<!-- Coupon -->
-					<div class="mb-4">
-						<label for="set-promo-v1" class="block text-sm text-surface-600-300-token mb-1">
-							promo code
-						</label>
-						<input
-							id="set-promo-v1"
-							type="text"
-							bind:value={couponCode}
-							placeholder="enter code"
-							class="w-full px-3 py-2 bg-surface-500/10 border border-surface-500/20 rounded-md text-sm lowercase"
-						/>
+				<!-- Coupon -->
+				<div>
+					<label for="set-promo" class="block text-sm text-surface-600-300-token mb-1">
+						promo code
+					</label>
+					<input
+						id="set-promo"
+						type="text"
+						bind:value={couponCode}
+						placeholder="enter code"
+						class="w-full px-3 py-2 bg-surface-500/10 border border-surface-500/20 rounded-md text-sm lowercase"
+					/>
+				</div>
+
+				<p class="text-xs text-surface-500">
+					Secure checkout powered by Stripe
+				</p>
+
+				<StickyMobileBar>
+					{#snippet children(isStuck)}
+						<div class="flex flex-wrap items-center justify-between gap-x-4 gap-y-1">
+							<div class="flex items-center gap-1.5">
+								{#if selectedVariant}
+									<span class="text-xl font-semibold">${selectedVariant.retailPrice}</span>
+									<span class="text-xs {isStuck ? 'text-surface-300' : 'text-surface-600-300-token'}">
+										{getPaper(selectedPaperSlug)?.name} · {getSize(selectedSizeSlug)?.label}{selectedBorderWidth !== 'none' ? ` · ${selectedBorderWidth}" border` : ''}
+									</span>
+								{:else}
+									<span class="text-sm text-surface-500">Select paper & size</span>
+								{/if}
+							</div>
+							<div class="flex gap-1.5">
+								{#if data.printSet.inStock && selectedVariant}
+									<button class="btn btn-sm text-xs px-2 variant-soft-surface" onclick={handleV2AddToCart}>
+										add to cart
+									</button>
+									<button
+										class="btn btn-sm text-xs px-2 variant-filled-primary"
+										disabled={isLoading}
+										onclick={handleV2Checkout}
+									>
+										{isLoading ? "..." : "buy now"}
+									</button>
+								{:else if !data.printSet.inStock}
+									<button class="btn btn-sm text-xs px-2 variant-filled-primary" disabled>out of stock</button>
+								{/if}
+							</div>
+						</div>
+					{/snippet}
+				</StickyMobileBar>
+			{:else}
+				<!-- ═══ V1 Layout ═══ -->
+				<div class="hidden md:flex items-baseline justify-between gap-4 py-2">
+					<div class="text-3xl font-semibold text-surface-900-50-token">
+						${selectedPaperData?.price || data.printSet.price}
 					</div>
-
-					<div class="space-y-3">
+					<div class="flex gap-2 shrink-0">
 						{#if selectedPaperData}
-							<button class="btn variant-soft-surface w-full" onclick={handleV1AddToCart}>
+							<button class="btn btn-sm variant-soft-surface" onclick={handleV1AddToCart}>
 								add to cart
 							</button>
 						{/if}
 						<button
-							class="btn variant-filled-primary w-full"
+							class="btn btn-sm variant-filled-primary"
 							disabled={isLoading}
 							onclick={handleV1Checkout}
 						>
 							{isLoading ? "processing..." : "buy now"}
 						</button>
 					</div>
+				</div>
+
+				{#if data.printSet.availablePapers?.length > 0}
+					<div>
+						<label for="set-paper-type" class="block text-sm text-surface-600-300-token mb-1">
+							Paper Type
+						</label>
+						<select id="set-paper-type" bind:value={selectedPaperIndex} class="select w-full">
+							{#each data.printSet.availablePapers as paper, i}
+								{@const parsed = parsePaperOption(paper)}
+								{@const priceNote = paper.price ? ` (+$${paper.price})` : ""}
+								<option value={i}>{parsed.name}{priceNote}</option>
+							{/each}
+						</select>
+					</div>
 				{/if}
 
-				<p class="text-xs text-surface-500 text-center mt-2">
-					secure checkout powered by stripe
+				<!-- Coupon -->
+				<div>
+					<label for="set-promo-v1" class="block text-sm text-surface-600-300-token mb-1">
+						promo code
+					</label>
+					<input
+						id="set-promo-v1"
+						type="text"
+						bind:value={couponCode}
+						placeholder="enter code"
+						class="w-full px-3 py-2 bg-surface-500/10 border border-surface-500/20 rounded-md text-sm lowercase"
+					/>
+				</div>
+
+				<p class="text-xs text-surface-500">
+					Secure checkout powered by Stripe
 				</p>
-			</div>
+
+				<StickyMobileBar>
+					{#snippet children(isStuck)}
+						<div class="flex flex-wrap items-center justify-between gap-x-4 gap-y-1">
+							<div class="flex items-center gap-1.5">
+								<span class="text-xl font-semibold">${selectedPaperData?.price || data.printSet.price}</span>
+							</div>
+							<div class="flex gap-1.5">
+								{#if selectedPaperData}
+									<button class="btn btn-sm text-xs px-2 variant-soft-surface" onclick={handleV1AddToCart}>
+										add to cart
+									</button>
+								{/if}
+								<button
+									class="btn btn-sm text-xs px-2 variant-filled-primary"
+									disabled={isLoading}
+									onclick={handleV1Checkout}
+								>
+									{isLoading ? "..." : "buy now"}
+								</button>
+							</div>
+						</div>
+					{/snippet}
+				</StickyMobileBar>
+			{/if}
 		</div>
 	</div>
 </div>
