@@ -385,9 +385,6 @@ function handleV1AddToCart() {
 					Secure checkout powered by Stripe
 				</p>
 
-				<!-- Sentinel: when this scrolls out of view, the bar is stuck -->
-				<div bind:this={stickyBarSentinel} class="md:hidden h-0"></div>
-
 				<!-- Mobile price bar: inline when in view, fixed full-width when stuck -->
 				<div
 					class="md:hidden py-2 px-4 transition-colors duration-200 {isBarStuck ? 'fixed bottom-[calc(4rem-1px)] left-0 right-0 z-40 bg-surface-900 text-surface-50' : ''}"
@@ -421,6 +418,8 @@ function handleV1AddToCart() {
 						</div>
 					</div>
 				</div>
+				<!-- Sentinel: below the bar so it triggers when the bar's bottom reaches the nav -->
+				<div bind:this={stickyBarSentinel} class="md:hidden h-0"></div>
 			{:else}
 				<!-- ═══ V1 Layout (merch, postcards, tapestries, digital) ═══ -->
 				<div class="text-3xl font-semibold text-surface-900-50-token">
