@@ -94,9 +94,27 @@ export const V2_BORDER_OPTIONS: V2BorderOption[] = [
 	{ value: "1", label: '1"', inches: 1 },
 ];
 
-/** Look up paper metadata by slug. */
+/** Display names for canvas paper slugs. */
+const CANVAS_NAMES: Record<string, string> = {
+	"canvas-black-0.75": 'Canvas Black — 0.75" stretch',
+	"canvas-black-1.25": 'Canvas Black — 1.25" stretch',
+	"canvas-black-1.50": 'Canvas Black — 1.50" stretch',
+	"canvas-black-rolled": "Canvas Black — rolled",
+	"canvas-white-0.75": 'Canvas White — 0.75" stretch',
+	"canvas-white-1.25": 'Canvas White — 1.25" stretch',
+	"canvas-white-1.50": 'Canvas White — 1.50" stretch',
+	"canvas-white-rolled": "Canvas White — rolled",
+};
+
+/** Look up paper metadata by slug. Returns a synthetic entry for canvas slugs. */
 export function getPaper(slug: string): V2Paper | undefined {
-	return V2_PAPERS.find((p) => p.slug === slug);
+	const paper = V2_PAPERS.find((p) => p.slug === slug);
+	if (paper) return paper;
+	const canvasName = CANVAS_NAMES[slug];
+	if (canvasName) {
+		return { slug, name: canvasName, subcategoryId: 0, description: "" };
+	}
+	return undefined;
 }
 
 /** Look up size metadata by slug. */
@@ -165,31 +183,44 @@ export function getFrameWholesaleCost(
 	return FRAME_WHOLESALE_COSTS[thickness]?.[sizeSlug] ?? null;
 }
 
-export interface V2CanvasOption {
-	value: string;
-	label: string;
-	subcategoryId: number;
+/** Check if a paper slug is a canvas type. */
+export function isCanvasPaper(slug: string): boolean {
+	return slug.startsWith("canvas-");
 }
 
-export const V2_CANVAS_OPTIONS: V2CanvasOption[] = [
-	{ value: "0.75", label: '0.75" Gallery Wrap', subcategoryId: 101001 },
-	{ value: "1.25", label: '1.25" Gallery Wrap', subcategoryId: 101002 },
-	{ value: "1.50", label: '1.50" Gallery Wrap', subcategoryId: 101003 },
-	{ value: "rolled", label: "Rolled (unstretched)", subcategoryId: 101005 },
-];
+/**
+ * Canvas subcategory IDs by thickness. Color doesn't affect the subcategory —
+ * wrap color is an orderItemOption, not a subcategory dimension.
+ */
+const CANVAS_SUBCATEGORY_IDS: Record<string, number> = {
+	"0.75": 101001,
+	"1.25": 101002,
+	"1.50": 101003,
+	rolled: 101005,
+};
 
-/** Canvas wrap is always Solid Black (LumaPrints option ID 3). */
-export const CANVAS_WRAP_OPTION_ID = 3;
+/** LumaPrints wrap option IDs: Solid Black = 3, Solid White needs investigation. */
+const CANVAS_WRAP_OPTIONS: Record<string, number> = {
+	black: 3,
+	white: 3, // TODO: confirm white wrap option ID with LumaPrints API
+};
 
-/** Sizes available for canvas (8×10 and up). */
-export const CANVAS_AVAILABLE_SIZES = new Set([
-	"8x10",
-	"11x14",
-	"16x20",
-	"24x36",
-	"30x40",
-	"40x60",
-]);
+/**
+ * Parse a canvas paper slug into its subcategory ID and wrap option ID.
+ * e.g. "canvas-black-0.75" → { subcategoryId: 101001, wrapOptionId: 3 }
+ */
+export function parseCanvasSlug(
+	slug: string,
+): { subcategoryId: number; wrapOptionId: number } | null {
+	const match = slug.match(/^canvas-(black|white)-(.+)$/);
+	if (!match) return null;
+	const color = match[1];
+	const thickness = match[2];
+	const subcategoryId = CANVAS_SUBCATEGORY_IDS[thickness];
+	const wrapOptionId = CANVAS_WRAP_OPTIONS[color];
+	if (!subcategoryId || !wrapOptionId) return null;
+	return { subcategoryId, wrapOptionId };
+}
 
 export const CANVAS_WHOLESALE_COSTS: Record<string, Record<string, number>> = {
 	"0.75": {
@@ -232,11 +263,6 @@ export function getCanvasWholesaleCost(
 	sizeSlug: string,
 ): number | null {
 	return CANVAS_WHOLESALE_COSTS[thickness]?.[sizeSlug] ?? null;
-}
-
-/** Look up canvas option by value. */
-export function getCanvas(value: string): V2CanvasOption | undefined {
-	return V2_CANVAS_OPTIONS.find((c) => c.value === value);
 }
 
 /** Look up border option by value. */
