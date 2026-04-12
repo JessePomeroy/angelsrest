@@ -20,6 +20,7 @@ import Stripe from "stripe";
 import { STRIPE_SECRET_KEY } from "$env/static/private";
 import { PUBLIC_SITE_URL } from "$env/static/public";
 import { client } from "$lib/sanity/client";
+import { validateAndApplyCoupon } from "$lib/server/coupon";
 
 /**
  * Initialize Stripe with Secret Key
@@ -100,52 +101,16 @@ export async function POST({ request }) {
 
 		// Validate and apply coupon if provided
 		let discountAmount = 0;
-		let appliedCoupon = null;
+		let appliedCoupon: string | null = null;
 		if (coupon) {
-			const couponData = await client.fetch(
-				`*[_type == "coupon" && code == $code && active == true][0]{
-					code,
-					discountType,
-					discountValue,
-					allowedCategories,
-					"allowedProductSlugs": allowedProducts[]->slug.current,
-					maxUses,
-					currentUses
-				}`,
-				{ code: coupon.toUpperCase() },
+			const result = await validateAndApplyCoupon(
+				coupon,
+				productId,
+				productCategory,
+				price,
 			);
-
-			if (!couponData) {
-				throw error(400, "Invalid coupon code");
-			}
-
-			// Check usage limit
-			if (couponData.maxUses && couponData.currentUses >= couponData.maxUses) {
-				throw error(400, "Coupon code has reached its usage limit");
-			}
-
-			// Check if product is allowed
-			const productSlug = productId;
-			const isAllowed =
-				!couponData.allowedCategories?.length ||
-				couponData.allowedCategories.includes(productCategory) ||
-				(couponData.allowedProductSlugs || []).includes(productSlug);
-
-			if (!isAllowed) {
-				throw error(400, "This coupon is not valid for this product");
-			}
-
-			// Calculate discount
-			if (couponData.discountType === "percent") {
-				discountAmount = (price * couponData.discountValue) / 100;
-			} else {
-				discountAmount = couponData.discountValue;
-			}
-
-			appliedCoupon = couponData.code;
-			console.log(
-				`Applied coupon: ${appliedCoupon}, discount: $${discountAmount.toFixed(2)}`,
-			);
+			discountAmount = result.discountAmount;
+			appliedCoupon = result.appliedCoupon;
 		}
 
 		const finalPrice = Math.max(0, price - discountAmount);
