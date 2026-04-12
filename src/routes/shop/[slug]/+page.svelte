@@ -388,9 +388,9 @@ function handleV1AddToCart() {
 				<!-- Sentinel: when this scrolls out of view, the bar is stuck -->
 				<div bind:this={stickyBarSentinel} class="md:hidden h-0"></div>
 
-				<!-- Mobile sticky price bar: full-width, opaque when stuck, transparent in home -->
+				<!-- Mobile price bar: inline when in view, fixed full-width when stuck -->
 				<div
-					class="md:hidden sticky bottom-16 z-40 py-3 px-4 w-screen relative left-1/2 -translate-x-1/2 transition-colors duration-200 {isBarStuck ? 'bg-surface-900 text-surface-50' : ''}"
+					class="md:hidden py-3 px-4 transition-colors duration-200 {isBarStuck ? 'fixed bottom-16 left-0 right-0 z-40 bg-surface-900 text-surface-50' : ''}"
 				>
 					<div class="flex items-center justify-between gap-4">
 						<div>
