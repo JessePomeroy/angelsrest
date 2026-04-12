@@ -1,12 +1,15 @@
 import { json } from "@sveltejs/kit";
 import { Resend } from "resend";
+import { api } from "$convex/api";
 import { env } from "$env/dynamic/private";
 import { RESEND_API_KEY } from "$env/static/private";
-import { adminClient } from "$lib/sanity/adminClient";
+import { SITE_DOMAIN } from "$lib/config/site";
+import { getConvex } from "$lib/server/convexClient";
 import { trimString, validateEmail } from "$lib/server/validation";
 import type { RequestHandler } from "./$types";
 
 const resend = new Resend(RESEND_API_KEY);
+const convex = getConvex();
 
 export const POST: RequestHandler = async ({ request }) => {
 	const { name, email, subject, message } = await request.json();
@@ -32,14 +35,12 @@ export const POST: RequestHandler = async ({ request }) => {
 			text: `Name: ${trimmedName}\nEmail: ${trimmedEmail}\n\n${trimmedMessage}`,
 		});
 
-		await adminClient.create({
-			_type: "inquiry",
+		await convex.mutation(api.inquiries.create, {
+			siteUrl: SITE_DOMAIN,
 			name: trimmedName,
 			email: trimmedEmail,
-			subject: trimmedSubject || null,
+			subject: trimmedSubject || undefined,
 			message: trimmedMessage,
-			status: "new",
-			submittedAt: new Date().toISOString(),
 		});
 
 		return json({ success: true });
