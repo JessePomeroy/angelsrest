@@ -404,8 +404,34 @@ function handleV1AddToCart() {
 				</StickyMobileBar>
 			{:else}
 				<!-- ═══ V1 Layout (merch, postcards, tapestries, digital) ═══ -->
-				<div class="text-3xl font-semibold text-surface-900-50-token">
-					${displayPrice}
+
+				<!-- Desktop: inline price + buttons -->
+				<div class="hidden md:flex items-center justify-between gap-4 py-2">
+					<div class="text-3xl font-semibold text-surface-900-50-token">
+						${displayPrice}
+					</div>
+					<div class="flex gap-2">
+						{#if canAddToCartV1}
+							<button class="btn btn-sm variant-soft-surface" onclick={handleV1AddToCart}>
+								add to cart
+							</button>
+						{/if}
+						<button
+							class="btn btn-sm variant-filled-primary"
+							disabled={!data.product.inStock || isLoading}
+							onclick={handleV1Checkout}
+						>
+							{#if isLoading}
+								processing...
+							{:else if !data.product.inStock}
+								out of stock
+							{:else if data.product.category === "digital"}
+								buy & download
+							{:else}
+								buy now
+							{/if}
+						</button>
+					</div>
 				</div>
 
 				<!-- Coupon -->
@@ -437,34 +463,50 @@ function handleV1AddToCart() {
 					</div>
 				{/if}
 
-				<div class="space-y-3">
-					{#if canAddToCartV1}
-						<button class="btn variant-soft-surface w-full" onclick={handleV1AddToCart}>
-							add to cart
-						</button>
-					{/if}
-					<button
-						class="btn variant-filled-primary w-full"
-						disabled={!data.product.inStock || isLoading}
-						onclick={handleV1Checkout}
-					>
-						{#if isLoading}
-							processing...
-						{:else if !data.product.inStock}
-							out of stock
-						{:else if data.product.category === "digital"}
-							buy & download
-						{:else}
-							buy now
-						{/if}
-					</button>
-					{#if data.product.category === "digital"}
-						<p class="text-xs text-surface-500 text-center">instant download after payment</p>
-					{/if}
-					<p class="text-xs text-surface-500 text-center">
-						Secure checkout powered by Stripe
-					</p>
-				</div>
+				{#if data.product.category === "digital"}
+					<p class="text-xs text-surface-500">instant download after payment</p>
+				{/if}
+				<p class="text-xs text-surface-500">
+					Secure checkout powered by Stripe
+				</p>
+
+				<!-- Mobile: sticky bar -->
+				<StickyMobileBar>
+					{#snippet children(isStuck)}
+						<div class="flex items-center justify-between gap-2">
+							<div class="flex items-center gap-1.5 min-w-0">
+								<span class="text-xl font-semibold shrink-0">${displayPrice}</span>
+								{#if data.product.category}
+									<span class="text-xs truncate {isStuck ? 'text-surface-300' : 'text-surface-600-300-token'}">
+										{data.product.category}
+									</span>
+								{/if}
+							</div>
+							<div class="flex gap-1.5 shrink-0">
+								{#if canAddToCartV1}
+									<button class="btn btn-sm text-xs px-2 variant-soft-surface" onclick={handleV1AddToCart}>
+										add to cart
+									</button>
+								{/if}
+								<button
+									class="btn btn-sm text-xs px-2 variant-filled-primary"
+									disabled={!data.product.inStock || isLoading}
+									onclick={handleV1Checkout}
+								>
+									{#if isLoading}
+										...
+									{:else if !data.product.inStock}
+										sold out
+									{:else if data.product.category === "digital"}
+										download
+									{:else}
+										buy now
+									{/if}
+								</button>
+							</div>
+						</div>
+					{/snippet}
+				</StickyMobileBar>
 			{/if}
 		</div>
 	</div>
