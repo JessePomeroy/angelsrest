@@ -70,6 +70,8 @@ export interface OrderItem {
 	borderWidth?: number;
 	/** LumaPrints frame subcategory ID (105001-105007). When set, the order is submitted as framed. */
 	frameSubcategoryId?: number;
+	/** LumaPrints canvas subcategory ID (101001-101005). When set, submitted as canvas with solid black wrap. */
+	canvasSubcategoryId?: number;
 }
 
 /** LumaPrints API order payload */

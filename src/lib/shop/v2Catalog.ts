@@ -165,6 +165,80 @@ export function getFrameWholesaleCost(
 	return FRAME_WHOLESALE_COSTS[thickness]?.[sizeSlug] ?? null;
 }
 
+export interface V2CanvasOption {
+	value: string;
+	label: string;
+	subcategoryId: number;
+}
+
+export const V2_CANVAS_OPTIONS: V2CanvasOption[] = [
+	{ value: "0.75", label: '0.75" Gallery Wrap', subcategoryId: 101001 },
+	{ value: "1.25", label: '1.25" Gallery Wrap', subcategoryId: 101002 },
+	{ value: "1.50", label: '1.50" Gallery Wrap', subcategoryId: 101003 },
+	{ value: "rolled", label: "Rolled (unstretched)", subcategoryId: 101005 },
+];
+
+/** Canvas wrap is always Solid Black (LumaPrints option ID 3). */
+export const CANVAS_WRAP_OPTION_ID = 3;
+
+/** Sizes available for canvas (8×10 and up). */
+export const CANVAS_AVAILABLE_SIZES = new Set([
+	"8x10",
+	"11x14",
+	"16x20",
+	"24x36",
+	"30x40",
+	"40x60",
+]);
+
+export const CANVAS_WHOLESALE_COSTS: Record<string, Record<string, number>> = {
+	"0.75": {
+		"8x10": 9.89,
+		"11x14": 12.09,
+		"16x20": 24.35,
+		"24x36": 39.56,
+		"30x40": 66.85,
+		"40x60": 120.12,
+	},
+	"1.25": {
+		"8x10": 10.99,
+		"11x14": 13.19,
+		"16x20": 25.95,
+		"24x36": 42.21,
+		"30x40": 50.99,
+		"40x60": 112.07,
+	},
+	"1.50": {
+		"8x10": 12.09,
+		"11x14": 14.29,
+		"16x20": 30.73,
+		"24x36": 50.19,
+		"30x40": 60.29,
+		"40x60": 131.03,
+	},
+	rolled: {
+		"8x10": 9.13,
+		"11x14": 12.2,
+		"16x20": 14.92,
+		"24x36": 24.8,
+		"30x40": 32.83,
+		"40x60": 51.51,
+	},
+};
+
+/** Get canvas wholesale cost for a thickness + size combo. */
+export function getCanvasWholesaleCost(
+	thickness: string,
+	sizeSlug: string,
+): number | null {
+	return CANVAS_WHOLESALE_COSTS[thickness]?.[sizeSlug] ?? null;
+}
+
+/** Look up canvas option by value. */
+export function getCanvas(value: string): V2CanvasOption | undefined {
+	return V2_CANVAS_OPTIONS.find((c) => c.value === value);
+}
+
 /** Look up border option by value. */
 export function getBorder(value: string): V2BorderOption | undefined {
 	return V2_BORDER_OPTIONS.find((b) => b.value === value);

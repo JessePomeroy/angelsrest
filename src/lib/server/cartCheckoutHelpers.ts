@@ -76,6 +76,12 @@ export function buildCartMetadata(items: CartItem[]): Record<string, string> {
 		) {
 			payload.f = item.frameSubcategoryId;
 		}
+		if (
+			typeof item.canvasSubcategoryId === "number" &&
+			item.canvasSubcategoryId > 0
+		) {
+			payload.c = item.canvasSubcategoryId;
+		}
 		if (item.type === "set" && item.imageUrls && item.imageUrls.length > 0) {
 			payload.i = item.imageUrls;
 		}

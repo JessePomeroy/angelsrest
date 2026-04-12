@@ -256,14 +256,18 @@ export function buildLumaPrintsOrder(
 			phone: recipient.phone || "",
 		},
 		orderItems: items.map((item, i) => {
+			const isCanvas =
+				typeof item.canvasSubcategoryId === "number" &&
+				item.canvasSubcategoryId > 0;
 			const isFramed =
 				typeof item.frameSubcategoryId === "number" &&
 				item.frameSubcategoryId > 0;
-			// Framed items use the frame subcategory (105xxx) instead of paper (103xxx).
-			// The paper type is communicated via orderItemOptions (option 74 = Archival Matte).
-			const subcategoryId = isFramed
-				? item.frameSubcategoryId!
-				: item.paperSubcategoryId;
+			// Priority: canvas > frame > paper subcategory
+			const subcategoryId = isCanvas
+				? item.canvasSubcategoryId!
+				: isFramed
+					? item.frameSubcategoryId!
+					: item.paperSubcategoryId;
 			// For bordered prints that were Sharp-composited, the imageUrl is
 			// already an R2 URL — don't run it through prepareSanityUrlForPrint.
 			const isBordered =
@@ -271,10 +275,15 @@ export function buildLumaPrintsOrder(
 			const imageUrl = isBordered
 				? item.imageUrl
 				: prepareSanityUrlForPrint(item.imageUrl);
-			const options: number[] = [39]; // ALWAYS No Bleed
-			if (isFramed) {
-				options.push(67); // Mat size: 2" (LumaPrints option ID)
-				options.push(96); // Mat color: White (LumaPrints option ID)
+			const options: number[] = [];
+			if (isCanvas) {
+				options.push(3); // Solid Color wrap (black)
+			} else {
+				options.push(39); // No Bleed (fine art paper)
+				if (isFramed) {
+					options.push(67); // Mat size: 2"
+					options.push(96); // Mat color: White
+				}
 			}
 			return {
 				externalItemId: `${externalId}-item-${i + 1}`,

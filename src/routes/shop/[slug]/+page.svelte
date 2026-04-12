@@ -5,13 +5,17 @@ import StickyMobileBar from "$lib/components/StickyMobileBar.svelte";
 import { cart } from "$lib/shop/cart.svelte";
 import { cartUI } from "$lib/shop/cartUI.svelte";
 import {
+	CANVAS_AVAILABLE_SIZES,
 	FRAMED_BORDER_INCHES,
 	getBorder,
+	getCanvas,
+	getCanvasWholesaleCost,
 	getFrame,
 	getFrameWholesaleCost,
 	getPaper,
 	getSize,
 	V2_BORDER_OPTIONS,
+	V2_CANVAS_OPTIONS,
 	V2_FRAME_OPTIONS,
 } from "$lib/shop/v2Catalog";
 import type { ParsedPaper } from "$lib/types/shop";
@@ -30,6 +34,7 @@ let selectedPaperSlug = $state("");
 let selectedSizeSlug = $state("");
 let selectedBorderWidth = $state("none");
 let selectedFrame = $state("none");
+let selectedCanvas = $state("none");
 
 // When a frame is selected, force border to 0.25" (minimum for mat overlap)
 $effect(() => {
@@ -67,7 +72,12 @@ const v2Sizes = $derived.by(() => {
 				.map((v: any) => v.size),
 		),
 	);
-	return slugs.map((slug) => {
+	// Filter to canvas-compatible sizes when canvas is selected
+	const filtered =
+		selectedCanvas !== "none"
+			? slugs.filter((s) => CANVAS_AVAILABLE_SIZES.has(s))
+			: slugs;
+	return filtered.map((slug) => {
 		const meta = getSize(slug);
 		return { slug, label: meta?.label ?? slug };
 	});
@@ -114,6 +124,14 @@ function openModal(index: number) {
 }
 
 // Frame surcharge: wholesale × multiplier, added when a frame is selected
+const canvasSurcharge = $derived.by(() => {
+	if (data.productType !== "v2" || selectedCanvas === "none") return 0;
+	const wholesale = getCanvasWholesaleCost(selectedCanvas, selectedSizeSlug);
+	if (!wholesale) return 0;
+	const multiplier = data.product.canvasMarkupMultiplier ?? 2;
+	return Math.round(wholesale * multiplier * 100) / 100;
+});
+
 const frameSurcharge = $derived.by(() => {
 	if (data.productType !== "v2" || selectedFrame === "none") return 0;
 	const wholesale = getFrameWholesaleCost(selectedFrame, selectedSizeSlug);
@@ -122,12 +140,12 @@ const frameSurcharge = $derived.by(() => {
 	return Math.round(wholesale * multiplier * 100) / 100;
 });
 
-// Display price (variant retail + frame surcharge if applicable)
+// Display price (variant retail + canvas/frame surcharges)
 const displayPrice = $derived.by(() => {
 	if (data.productType === "v2") {
 		const base = selectedVariant?.retailPrice ?? null;
 		if (base === null) return null;
-		return Math.round((base + frameSurcharge) * 100) / 100;
+		return Math.round((base + canvasSurcharge + frameSurcharge) * 100) / 100;
 	}
 	return selectedPaperData?.price ?? data.product.price ?? null;
 });
@@ -178,6 +196,7 @@ function handleV2AddToCart() {
 
 	const border = getBorder(selectedBorderWidth);
 	const frame = getFrame(selectedFrame);
+	const canvas = getCanvas(selectedCanvas);
 	cart.add({
 		productSlug: data.product.slug,
 		type: "print",
@@ -191,6 +210,9 @@ function handleV2AddToCart() {
 		...(border && border.inches > 0 ? { borderWidth: border.inches } : {}),
 		...(frame && frame.subcategoryId > 0
 			? { frameSubcategoryId: frame.subcategoryId }
+			: {}),
+		...(canvas && canvas.subcategoryId > 0
+			? { canvasSubcategoryId: canvas.subcategoryId }
 			: {}),
 		quantity: 1,
 		unitPriceCents: Math.round(
@@ -343,7 +365,7 @@ function handleV1AddToCart() {
 						{#if selectedVariant}
 							${displayPrice}
 							<span class="text-base font-normal text-surface-600-300-token">
-								{getPaper(selectedPaperSlug)?.name} · {getSize(selectedSizeSlug)?.label}{selectedBorderWidth !== 'none' ? ` · ${selectedBorderWidth}" border` : ''}{selectedFrame !== 'none' ? ` · ${getFrame(selectedFrame)?.label} frame` : ''}
+								{getPaper(selectedPaperSlug)?.name} · {getSize(selectedSizeSlug)?.label}{selectedBorderWidth !== 'none' ? ` · ${selectedBorderWidth}" border` : ''}{selectedCanvas !== 'none' ? ` · ${getCanvas(selectedCanvas)?.label}` : ''}{selectedFrame !== 'none' ? ` · ${getFrame(selectedFrame)?.label} frame` : ''}
 							</span>
 						{:else}
 							<span class="text-base text-surface-500">Select paper & size</span>
@@ -389,6 +411,20 @@ function handleV1AddToCart() {
 							{/each}
 						</select>
 					</div>
+
+					{#if data.product.canvasEnabled}
+						<div>
+							<label for="canvas-select" class="block text-sm text-surface-600-300-token mb-1">
+								Canvas
+							</label>
+							<select id="canvas-select" class="select w-full" bind:value={selectedCanvas}>
+								<option value="none">No canvas (fine art paper)</option>
+								{#each V2_CANVAS_OPTIONS as canvas}
+									<option value={canvas.value}>{canvas.label}</option>
+								{/each}
+							</select>
+						</div>
+					{/if}
 
 					{#if data.product.bordersEnabled !== false}
 						<div>
@@ -450,7 +486,7 @@ function handleV1AddToCart() {
 								{#if selectedVariant}
 									<span class="text-xl font-semibold">${displayPrice}</span>
 									<span class="text-xs {isStuck ? 'text-surface-300' : 'text-surface-600-300-token'}">
-										{getPaper(selectedPaperSlug)?.name} · {getSize(selectedSizeSlug)?.label}{selectedBorderWidth !== 'none' ? ` · ${selectedBorderWidth}" border` : ''}{selectedFrame !== 'none' ? ` · ${getFrame(selectedFrame)?.label} frame` : ''}
+										{getPaper(selectedPaperSlug)?.name} · {getSize(selectedSizeSlug)?.label}{selectedBorderWidth !== 'none' ? ` · ${selectedBorderWidth}" border` : ''}{selectedCanvas !== 'none' ? ` · ${getCanvas(selectedCanvas)?.label}` : ''}{selectedFrame !== 'none' ? ` · ${getFrame(selectedFrame)?.label} frame` : ''}
 									</span>
 								{:else}
 									<span class="text-sm text-surface-500">Select paper & size</span>

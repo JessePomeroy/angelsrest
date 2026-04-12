@@ -803,6 +803,7 @@ function buildOrderItemsFromSession(
 					i?: string[];
 					b?: number;
 					f?: number;
+					c?: number;
 				};
 				if (typeof parsed.u !== "string" || typeof parsed.q !== "number") {
 					continue;
@@ -819,6 +820,8 @@ function buildOrderItemsFromSession(
 					typeof parsed.b === "number" && parsed.b > 0 ? parsed.b : undefined;
 				const frame =
 					typeof parsed.f === "number" && parsed.f > 0 ? parsed.f : undefined;
+				const canvas =
+					typeof parsed.c === "number" && parsed.c > 0 ? parsed.c : undefined;
 				if (Array.isArray(parsed.i) && parsed.i.length > 0) {
 					for (const url of parsed.i) {
 						if (typeof url !== "string" || !url) continue;
@@ -830,6 +833,7 @@ function buildOrderItemsFromSession(
 							quantity: parsed.q,
 							borderWidth: border,
 							frameSubcategoryId: frame,
+							canvasSubcategoryId: canvas,
 						});
 					}
 					continue;
@@ -842,6 +846,7 @@ function buildOrderItemsFromSession(
 					quantity: parsed.q,
 					borderWidth: border,
 					frameSubcategoryId: frame,
+					canvasSubcategoryId: canvas,
 				});
 			} catch {
 				// Skip malformed entries — partial fulfillment is better than

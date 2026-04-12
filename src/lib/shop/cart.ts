@@ -61,6 +61,8 @@ export interface CartItem {
 	borderWidth?: number;
 	/** LumaPrints frame subcategory ID (105001-105007). Absent means unframed. */
 	frameSubcategoryId?: number;
+	/** LumaPrints canvas subcategory ID (101001-101005). Absent means not canvas. */
+	canvasSubcategoryId?: number;
 	/** Always in [1, MAX_QUANTITY_PER_LINE]. */
 	quantity: number;
 	/**
@@ -108,6 +110,7 @@ export function itemMatchKey(
 		| "paperHeight"
 		| "borderWidth"
 		| "frameSubcategoryId"
+		| "canvasSubcategoryId"
 		| "imageUrl"
 		| "imageUrls"
 	>,
@@ -123,6 +126,7 @@ export function itemMatchKey(
 		String(item.paperHeight),
 		String(item.borderWidth),
 		String(item.frameSubcategoryId),
+		String(item.canvasSubcategoryId),
 		// Print sets have multiple images; single prints have one. Joining
 		// the array gives a stable comparison key for sets, while single
 		// prints (and non-print merch) fall through to the imageUrl.
