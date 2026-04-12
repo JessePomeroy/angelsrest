@@ -17,6 +17,8 @@ import {
 	getFrameWholesaleCost,
 	getPaper,
 	getSize,
+	isCanvasPaper,
+	parseCanvasSlug,
 	V2_BORDER_OPTIONS,
 	V2_FRAME_OPTIONS,
 } from "$lib/shop/v2Catalog";
@@ -35,8 +37,13 @@ let selectedSizeSlug = $state("");
 let selectedBorderWidth = $state("none");
 let selectedFrame = $state("none");
 
+const isCanvasSelected = $derived(isCanvasPaper(selectedPaperSlug));
+
 $effect(() => {
-	if (selectedFrame !== "none") {
+	if (isCanvasSelected) {
+		selectedBorderWidth = "none";
+		selectedFrame = "none";
+	} else if (selectedFrame !== "none") {
 		selectedBorderWidth = String(FRAMED_BORDER_INCHES);
 	}
 });
@@ -170,6 +177,9 @@ function handleV2AddToCart() {
 
 	const border = getBorder(selectedBorderWidth);
 	const frame = getFrame(selectedFrame);
+	const canvasInfo = isCanvasSelected
+		? parseCanvasSlug(selectedPaperSlug)
+		: null;
 	cart.add({
 		productSlug: data.printSet.slug,
 		type: "set",
@@ -184,6 +194,7 @@ function handleV2AddToCart() {
 		...(frame && frame.subcategoryId > 0
 			? { frameSubcategoryId: frame.subcategoryId }
 			: {}),
+		...(canvasInfo ? { canvasSubcategoryId: canvasInfo.subcategoryId } : {}),
 		quantity: 1,
 		unitPriceCents: Math.round(
 			(displaySetPrice ?? selectedVariant.retailPrice) * 100,
@@ -344,7 +355,7 @@ function handleV1AddToCart() {
 				<div class="space-y-4">
 					<div>
 						<label for="set-paper" class="block text-sm text-surface-600-300-token mb-1">
-							Paper
+							Material
 						</label>
 						<select id="set-paper" class="select w-full" bind:value={selectedPaperSlug}>
 							{#each v2Papers as paper}
@@ -363,7 +374,7 @@ function handleV1AddToCart() {
 						</select>
 					</div>
 
-					{#if data.printSet.bordersEnabled !== false}
+					{#if data.printSet.bordersEnabled !== false && !isCanvasSelected}
 						<div>
 							<label for="set-border" class="block text-sm text-surface-600-300-token mb-1">
 								Border
@@ -384,7 +395,7 @@ function handleV1AddToCart() {
 						</div>
 					{/if}
 
-					{#if data.printSet.framedEnabled}
+					{#if data.printSet.framedEnabled && !isCanvasSelected}
 						<div>
 							<label for="set-frame" class="block text-sm text-surface-600-300-token mb-1">
 								Frame
