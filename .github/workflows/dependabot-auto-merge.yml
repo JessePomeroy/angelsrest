@@ -17,8 +17,19 @@ jobs:
         with:
           github-token: "${{ secrets.GITHUB_TOKEN }}"
 
+      # Always auto-merge @jessepomeroy/admin (any version bump)
+      - name: Auto-merge admin package updates
+        if: contains(steps.metadata.outputs.dependency-names, '@jessepomeroy/admin')
+        run: gh pr merge --auto --squash "$PR_URL"
+        env:
+          PR_URL: ${{ github.event.pull_request.html_url }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      # Auto-merge minor and patch updates for everything else
       - name: Auto-merge minor and patch updates
-        if: steps.metadata.outputs.update-type == 'version-update:semver-minor' || steps.metadata.outputs.update-type == 'version-update:semver-patch'
+        if: |
+          !contains(steps.metadata.outputs.dependency-names, '@jessepomeroy/admin') &&
+          (steps.metadata.outputs.update-type == 'version-update:semver-minor' || steps.metadata.outputs.update-type == 'version-update:semver-patch')
         run: gh pr merge --auto --squash "$PR_URL"
         env:
           PR_URL: ${{ github.event.pull_request.html_url }}
