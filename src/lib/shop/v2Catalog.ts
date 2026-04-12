@@ -125,6 +125,46 @@ export const FRAMED_BORDER_INCHES = 0.25;
 export const FRAMED_MAT_SIZE_OPTION_ID = 67; // 2" mat (LumaPrints option ID)
 export const FRAMED_MAT_COLOR_OPTION_ID = 96; // White mat (LumaPrints option ID)
 
+/**
+ * Frame wholesale costs by thickness and size. All colors within a
+ * thickness are the same price. Queried from LumaPrints product
+ * pricing API on 2026-04-12.
+ */
+export const FRAME_WHOLESALE_COSTS: Record<string, Record<string, number>> = {
+	"0.875": {
+		"4x6": 15.94,
+		"5x7": 16.85,
+		"6x9": 18.33,
+		"8x10": 20.08,
+		"11x14": 24.65,
+		"16x20": 35.12,
+		"24x36": 66.4,
+		"30x40": 84.26,
+		"40x60": 146.31,
+	},
+	"1.25": {
+		"4x6": 16.35,
+		"5x7": 17.34,
+		"6x9": 18.94,
+		"8x10": 20.8,
+		"11x14": 25.66,
+		"16x20": 36.58,
+		"24x36": 68.84,
+		"30x40": 87.12,
+		"40x60": 150.37,
+	},
+};
+
+/** Get the frame wholesale cost for a frame option + size combo. */
+export function getFrameWholesaleCost(
+	frameValue: string,
+	sizeSlug: string,
+): number | null {
+	// frameValue is e.g. "0.875-black" → thickness is "0.875"
+	const thickness = frameValue.split("-")[0];
+	return FRAME_WHOLESALE_COSTS[thickness]?.[sizeSlug] ?? null;
+}
+
 /** Look up border option by value. */
 export function getBorder(value: string): V2BorderOption | undefined {
 	return V2_BORDER_OPTIONS.find((b) => b.value === value);

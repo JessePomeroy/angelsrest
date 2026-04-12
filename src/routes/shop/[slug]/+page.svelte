@@ -8,6 +8,7 @@ import {
 	FRAMED_BORDER_INCHES,
 	getBorder,
 	getFrame,
+	getFrameWholesaleCost,
 	getPaper,
 	getSize,
 	V2_BORDER_OPTIONS,
@@ -112,10 +113,21 @@ function openModal(index: number) {
 	modalOpen = true;
 }
 
-// Display price
+// Frame surcharge: wholesale × multiplier, added when a frame is selected
+const frameSurcharge = $derived.by(() => {
+	if (data.productType !== "v2" || selectedFrame === "none") return 0;
+	const wholesale = getFrameWholesaleCost(selectedFrame, selectedSizeSlug);
+	if (!wholesale) return 0;
+	const multiplier = data.product.frameMarkupMultiplier ?? 2;
+	return Math.round(wholesale * multiplier * 100) / 100;
+});
+
+// Display price (variant retail + frame surcharge if applicable)
 const displayPrice = $derived.by(() => {
 	if (data.productType === "v2") {
-		return selectedVariant?.retailPrice ?? null;
+		const base = selectedVariant?.retailPrice ?? null;
+		if (base === null) return null;
+		return Math.round((base + frameSurcharge) * 100) / 100;
 	}
 	return selectedPaperData?.price ?? data.product.price ?? null;
 });
@@ -128,10 +140,11 @@ function handleV2Checkout() {
 	const paper = getPaper(selectedPaperSlug);
 	const size = getSize(selectedSizeSlug);
 
+	const checkoutPrice = displayPrice ?? selectedVariant.retailPrice;
 	createCheckout({
 		productId: data.product.slug,
 		title: data.product.title,
-		price: selectedVariant.retailPrice,
+		price: checkoutPrice,
 		image: data.product.images[0]?.original || null,
 		paper:
 			paper && size
@@ -140,7 +153,7 @@ function handleV2Checkout() {
 						subcategoryId: String(paper.subcategoryId),
 						width: size.width,
 						height: size.height,
-						price: selectedVariant.retailPrice,
+						price: checkoutPrice,
 					}
 				: null,
 		coupon: couponCode.trim() || null,
@@ -180,7 +193,9 @@ function handleV2AddToCart() {
 			? { frameSubcategoryId: frame.subcategoryId }
 			: {}),
 		quantity: 1,
-		unitPriceCents: Math.round(selectedVariant.retailPrice * 100),
+		unitPriceCents: Math.round(
+			(displayPrice ?? selectedVariant.retailPrice) * 100,
+		),
 	});
 	cartUI.open();
 }
@@ -326,7 +341,7 @@ function handleV1AddToCart() {
 				<div class="hidden md:flex items-baseline justify-between gap-4 py-2">
 					<div class="text-3xl font-semibold text-surface-900-50-token">
 						{#if selectedVariant}
-							${selectedVariant.retailPrice}
+							${displayPrice}
 							<span class="text-base font-normal text-surface-600-300-token">
 								{getPaper(selectedPaperSlug)?.name} · {getSize(selectedSizeSlug)?.label}{selectedBorderWidth !== 'none' ? ` · ${selectedBorderWidth}" border` : ''}{selectedFrame !== 'none' ? ` · ${getFrame(selectedFrame)?.label} frame` : ''}
 							</span>
@@ -433,7 +448,7 @@ function handleV1AddToCart() {
 						<div class="flex flex-wrap items-center justify-between gap-x-4 gap-y-1">
 							<div class="flex items-center gap-1.5">
 								{#if selectedVariant}
-									<span class="text-xl font-semibold">${selectedVariant.retailPrice}</span>
+									<span class="text-xl font-semibold">${displayPrice}</span>
 									<span class="text-xs {isStuck ? 'text-surface-300' : 'text-surface-600-300-token'}">
 										{getPaper(selectedPaperSlug)?.name} · {getSize(selectedSizeSlug)?.label}{selectedBorderWidth !== 'none' ? ` · ${selectedBorderWidth}" border` : ''}{selectedFrame !== 'none' ? ` · ${getFrame(selectedFrame)?.label} frame` : ''}
 									</span>

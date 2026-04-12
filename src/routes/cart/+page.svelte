@@ -15,8 +15,8 @@
 
 <script lang="ts">
 import { ArrowLeftIcon } from "@lucide/svelte";
-import SEO from "$lib/components/SEO.svelte";
 import CartLineItem from "$lib/components/cart/CartLineItem.svelte";
+import SEO from "$lib/components/SEO.svelte";
 import { cart } from "$lib/shop/cart.svelte";
 import { createCartCheckout } from "$lib/utils/cartCheckout";
 

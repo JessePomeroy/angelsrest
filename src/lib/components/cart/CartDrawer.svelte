@@ -22,8 +22,8 @@
 
 <script lang="ts">
 import { ArrowRightIcon, XIcon } from "@lucide/svelte";
-import { fade, fly } from "svelte/transition";
 import { cubicOut } from "svelte/easing";
+import { fade, fly } from "svelte/transition";
 import { goto } from "$app/navigation";
 import { cart } from "$lib/shop/cart.svelte";
 import { cartUI } from "$lib/shop/cartUI.svelte";
