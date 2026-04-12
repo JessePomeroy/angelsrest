@@ -39,7 +39,7 @@ function addSecurityHeaders(response: Response): Response {
 		//   refuses. Caught during end-to-end Sentry verification 2026-04-11
 		//   (which is exactly the kind of mistake `feedback_csp_verify_origins`
 		//   was written to prevent).
-		"default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://api.fontshare.com; img-src 'self' https://cdn.sanity.io data: blob:; font-src 'self' https://api.fontshare.com https://cdn.fontshare.com; connect-src 'self' wss://*.convex.cloud https://*.convex.cloud https://*.sanity.io https://*.sentry.io; frame-ancestors 'none'",
+		"default-src 'self'; script-src 'self' 'unsafe-inline' https://va.vercel-scripts.com; style-src 'self' 'unsafe-inline' https://api.fontshare.com; img-src 'self' https://cdn.sanity.io data: blob:; font-src 'self' https://api.fontshare.com https://cdn.fontshare.com; connect-src 'self' wss://*.convex.cloud https://*.convex.cloud https://*.sanity.io https://*.sentry.io https://va.vercel-scripts.com; frame-ancestors 'none'",
 	);
 	return cloned;
 }
