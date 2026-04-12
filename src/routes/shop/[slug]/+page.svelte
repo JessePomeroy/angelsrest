@@ -381,17 +381,17 @@ function handleV1AddToCart() {
 					Secure checkout powered by Stripe
 				</p>
 
-				<!-- Mobile sticky price bar: opaque in flow, sticks above bottom nav -->
-				<div class="md:hidden sticky bottom-16 z-40 -mx-6 px-4 py-3 border-t border-surface-500/20 bg-[rgb(var(--color-surface-900))]">
+				<!-- Mobile sticky price bar: opaque dark bg, sticks above bottom nav -->
+				<div class="md:hidden sticky bottom-16 z-40 px-4 py-3 rounded-lg bg-surface-900 text-surface-50">
 					<div class="flex items-center justify-between gap-4">
 						<div>
 							{#if selectedVariant}
-								<span class="text-2xl font-semibold text-white">${selectedVariant.retailPrice}</span>
-								<span class="text-sm text-surface-300 ml-2">
+								<span class="text-2xl font-semibold">${selectedVariant.retailPrice}</span>
+								<span class="text-sm opacity-70 ml-2">
 									{getPaper(selectedPaperSlug)?.name} · {getSize(selectedSizeSlug)?.label}
 								</span>
 							{:else}
-								<span class="text-surface-400">Select paper & size</span>
+								<span class="opacity-50">Select paper & size</span>
 							{/if}
 						</div>
 						<div class="flex gap-2">
