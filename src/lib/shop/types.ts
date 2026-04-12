@@ -66,6 +66,8 @@ export interface OrderItem {
 	width: number;
 	height: number;
 	quantity: number;
+	/** Border width in inches. When set, the webhook runs Sharp to composite a white border. */
+	borderWidth?: number;
 }
 
 /** LumaPrints API order payload */

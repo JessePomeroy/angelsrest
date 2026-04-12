@@ -67,6 +67,9 @@ export function buildCartMetadata(items: CartItem[]): Record<string, string> {
 			payload.w = item.paperWidth;
 			payload.h = item.paperHeight;
 		}
+		if (typeof item.borderWidth === "number" && item.borderWidth > 0) {
+			payload.b = item.borderWidth;
+		}
 		if (item.type === "set" && item.imageUrls && item.imageUrls.length > 0) {
 			payload.i = item.imageUrls;
 		}

@@ -44,6 +44,7 @@ export type LogStage =
 	| "webhook"
 	| "order_create"
 	| "fee_capture"
+	| "sharp_composite"
 	| "lumaprints_submit"
 	| "lumaprints_validate"
 	| "lumaprints_shipping"

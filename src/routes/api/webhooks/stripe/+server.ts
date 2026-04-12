@@ -801,6 +801,7 @@ function buildOrderItemsFromSession(
 					h?: number;
 					q?: number;
 					i?: string[];
+					b?: number;
 				};
 				if (typeof parsed.u !== "string" || typeof parsed.q !== "number") {
 					continue;
@@ -815,6 +816,8 @@ function buildOrderItemsFromSession(
 				}
 				// Print set: expand to one OrderItem per image. Quantity carries
 				// through, so buying 2 of a 3-image set submits 6 prints total.
+				const border =
+					typeof parsed.b === "number" && parsed.b > 0 ? parsed.b : undefined;
 				if (Array.isArray(parsed.i) && parsed.i.length > 0) {
 					for (const url of parsed.i) {
 						if (typeof url !== "string" || !url) continue;
@@ -824,6 +827,7 @@ function buildOrderItemsFromSession(
 							width: parsed.w as number,
 							height: parsed.h as number,
 							quantity: parsed.q,
+							borderWidth: border,
 						});
 					}
 					continue;
@@ -834,6 +838,7 @@ function buildOrderItemsFromSession(
 					width: parsed.w as number,
 					height: parsed.h as number,
 					quantity: parsed.q,
+					borderWidth: border,
 				});
 			} catch {
 				// Skip malformed entries — partial fulfillment is better than
@@ -931,6 +936,34 @@ async function submitToLumaPrints(
 			meta: { reason: "no LumaPrints items in order" },
 		});
 		return;
+	}
+
+	// ─── Sharp border compositing ────────────────────────────────────
+	// Detect items with a borderWidth, run Sharp to composite a white
+	// border, upload to R2, and replace the image URL with the R2 URL.
+	const borderedItems = items
+		.map((item, index) => ({
+			index,
+			imageUrl: item.imageUrl,
+			borderWidthInches: item.borderWidth ?? 0,
+		}))
+		.filter((item) => item.borderWidthInches > 0);
+
+	if (borderedItems.length > 0) {
+		const { processBorderedPrints } = await import("$lib/server/sharpBorder");
+		const urlMap = await timed(
+			{
+				event: "sharp.bordered",
+				stage: "sharp_composite",
+				orderId: orderNumber,
+				meta: { borderedCount: borderedItems.length },
+			},
+			() => processBorderedPrints(borderedItems, orderNumber),
+		);
+		// Replace original URLs with R2 URLs for bordered items
+		for (const [index, r2Url] of urlMap) {
+			items[index].imageUrl = r2Url;
+		}
 	}
 
 	const recipient = buildRecipientFromShipping(shippingDetails);
