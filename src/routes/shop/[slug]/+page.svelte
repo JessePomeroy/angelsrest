@@ -15,6 +15,22 @@ let selectedIndex = $state(0);
 let isLoading = $state(false);
 let couponCode = $state("");
 
+// Sticky bar detection: when the sentinel scrolls out of view, the bar is stuck
+let stickyBarSentinel: HTMLDivElement | undefined = $state();
+let isBarStuck = $state(false);
+
+$effect(() => {
+	if (!stickyBarSentinel) return;
+	const observer = new IntersectionObserver(
+		([entry]) => {
+			isBarStuck = !entry.isIntersecting;
+		},
+		{ threshold: 0 },
+	);
+	observer.observe(stickyBarSentinel);
+	return () => observer.disconnect();
+});
+
 // ─── V2 state ───────────────────────────────────────────────
 let selectedPaperSlug = $state("");
 let selectedSizeSlug = $state("");
@@ -327,18 +343,6 @@ function handleV1AddToCart() {
 					</div>
 				</div>
 
-				<!-- Mobile: price shown inline (hidden on desktop) -->
-				<div class="md:hidden text-3xl font-semibold text-surface-900-50-token">
-					{#if selectedVariant}
-						${selectedVariant.retailPrice}
-						<span class="text-base font-normal text-surface-600-300-token">
-							{getPaper(selectedPaperSlug)?.name} · {getSize(selectedSizeSlug)?.label}
-						</span>
-					{:else}
-						<span class="text-base text-surface-500">Select paper & size</span>
-					{/if}
-				</div>
-
 				<div class="space-y-4">
 					<div>
 						<label for="paper-select" class="block text-sm text-surface-600-300-token mb-1">
@@ -381,17 +385,22 @@ function handleV1AddToCart() {
 					Secure checkout powered by Stripe
 				</p>
 
-				<!-- Mobile sticky price bar: opaque dark bg, sticks above bottom nav -->
-				<div class="md:hidden sticky bottom-16 z-40 px-4 py-3 rounded-lg bg-surface-900 text-surface-50">
+				<!-- Sentinel: when this scrolls out of view, the bar is stuck -->
+				<div bind:this={stickyBarSentinel} class="md:hidden h-0"></div>
+
+				<!-- Mobile sticky price bar: full-width, opaque when stuck, transparent in home -->
+				<div
+					class="md:hidden sticky bottom-16 z-40 py-3 px-4 w-screen relative left-1/2 -translate-x-1/2 transition-colors duration-200 {isBarStuck ? 'bg-surface-900 text-surface-50' : ''}"
+				>
 					<div class="flex items-center justify-between gap-4">
 						<div>
 							{#if selectedVariant}
 								<span class="text-2xl font-semibold">${selectedVariant.retailPrice}</span>
-								<span class="text-sm opacity-70 ml-2">
+								<span class="text-sm ml-2 {isBarStuck ? 'text-surface-300' : 'text-surface-600-300-token'}">
 									{getPaper(selectedPaperSlug)?.name} · {getSize(selectedSizeSlug)?.label}
 								</span>
 							{:else}
-								<span class="opacity-50">Select paper & size</span>
+								<span class="text-surface-500">Select paper & size</span>
 							{/if}
 						</div>
 						<div class="flex gap-2">
