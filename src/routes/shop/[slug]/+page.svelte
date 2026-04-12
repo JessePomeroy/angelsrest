@@ -296,6 +296,19 @@ function handleV1AddToCart() {
 
 			{#if data.productType === "v2"}
 				<!-- ═══ V2 Configurator ═══ -->
+
+				<!-- Price display -->
+				<div class="text-3xl font-semibold text-surface-900-50-token">
+					{#if selectedVariant}
+						${selectedVariant.retailPrice}
+						<span class="text-base font-normal text-surface-600-300-token">
+							{getPaper(selectedPaperSlug)?.name} · {getSize(selectedSizeSlug)?.label}
+						</span>
+					{:else}
+						<span class="text-base text-surface-500">Select paper & size</span>
+					{/if}
+				</div>
+
 				<div class="space-y-4">
 					<div>
 						<label for="paper-select" class="block text-sm text-surface-600-300-token mb-1">
@@ -334,30 +347,9 @@ function handleV1AddToCart() {
 					/>
 				</div>
 
-				<!-- V2 buttons (hidden — sticky bar at bottom handles CTA) -->
-				<div class="space-y-3 hidden md:block">
-					{#if data.product.inStock && selectedVariant}
-						<button class="btn variant-soft-surface w-full" onclick={handleV2AddToCart}>
-							add to cart
-						</button>
-						<button
-							class="btn variant-filled-primary w-full"
-							disabled={isLoading}
-							onclick={handleV2Checkout}
-						>
-							{isLoading ? "processing..." : "buy now"}
-						</button>
-					{:else if !data.product.inStock}
-						<button class="btn variant-filled-primary w-full" disabled>out of stock</button>
-					{:else}
-						<button class="btn variant-filled-primary w-full" disabled>
-							select paper & size
-						</button>
-					{/if}
-					<p class="text-xs text-surface-500 text-center">
-						Secure checkout powered by Stripe
-					</p>
-				</div>
+				<p class="text-xs text-surface-500">
+					Secure checkout powered by Stripe
+				</p>
 			{:else}
 				<!-- ═══ V1 Layout (merch, postcards, tapestries, digital) ═══ -->
 				<div class="text-3xl font-semibold text-surface-900-50-token">
@@ -426,9 +418,10 @@ function handleV1AddToCart() {
 	</div>
 </div>
 
-<!-- Sticky price bar for V2 products (mobile + desktop) -->
+<!-- Sticky price bar for V2 products -->
+<!-- Desktop: sticky at bottom of viewport. Mobile: sits above the bottom nav (64px). -->
 {#if data.productType === "v2"}
-	<div class="fixed bottom-0 left-0 right-0 z-40 border-t border-surface-500/20 bg-surface-50-900-token px-4 py-3">
+	<div class="fixed left-0 right-0 z-40 border-t border-surface-500/20 bg-surface-50-900-token px-4 py-3 bottom-16 md:bottom-0">
 		<div class="max-w-6xl mx-auto flex items-center justify-between gap-4">
 			<div>
 				{#if selectedVariant}
