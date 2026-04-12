@@ -297,8 +297,38 @@ function handleV1AddToCart() {
 			{#if data.productType === "v2"}
 				<!-- ═══ V2 Configurator ═══ -->
 
-				<!-- Price display -->
-				<div class="text-3xl font-semibold text-surface-900-50-token">
+				<!-- Desktop: inline price bar with buttons (no sticky needed) -->
+				<div class="hidden md:flex items-center justify-between gap-4 py-2">
+					<div class="text-3xl font-semibold text-surface-900-50-token">
+						{#if selectedVariant}
+							${selectedVariant.retailPrice}
+							<span class="text-base font-normal text-surface-600-300-token">
+								{getPaper(selectedPaperSlug)?.name} · {getSize(selectedSizeSlug)?.label}
+							</span>
+						{:else}
+							<span class="text-base text-surface-500">Select paper & size</span>
+						{/if}
+					</div>
+					<div class="flex gap-2">
+						{#if data.product.inStock && selectedVariant}
+							<button class="btn btn-sm variant-soft-surface" onclick={handleV2AddToCart}>
+								add to cart
+							</button>
+							<button
+								class="btn btn-sm variant-filled-primary"
+								disabled={isLoading}
+								onclick={handleV2Checkout}
+							>
+								{isLoading ? "processing..." : "buy now"}
+							</button>
+						{:else if !data.product.inStock}
+							<button class="btn btn-sm variant-filled-primary" disabled>out of stock</button>
+						{/if}
+					</div>
+				</div>
+
+				<!-- Mobile: price shown inline (hidden on desktop) -->
+				<div class="md:hidden text-3xl font-semibold text-surface-900-50-token">
 					{#if selectedVariant}
 						${selectedVariant.retailPrice}
 						<span class="text-base font-normal text-surface-600-300-token">
@@ -351,17 +381,17 @@ function handleV1AddToCart() {
 					Secure checkout powered by Stripe
 				</p>
 
-				<!-- Price bar: lives here in flow, sticks to bottom when scrolled past -->
-				<div class="sticky bottom-16 md:bottom-0 z-40 -mx-6 px-4 py-3 border-t border-surface-500/20 bg-surface-50-900-token">
+				<!-- Mobile sticky price bar: opaque in flow, sticks above bottom nav -->
+				<div class="md:hidden sticky bottom-16 z-40 -mx-6 px-4 py-3 border-t border-surface-500/20 bg-[rgb(var(--color-surface-900))]">
 					<div class="flex items-center justify-between gap-4">
 						<div>
 							{#if selectedVariant}
-								<span class="text-2xl font-semibold">${selectedVariant.retailPrice}</span>
-								<span class="text-sm text-surface-600-300-token ml-2">
+								<span class="text-2xl font-semibold text-white">${selectedVariant.retailPrice}</span>
+								<span class="text-sm text-surface-300 ml-2">
 									{getPaper(selectedPaperSlug)?.name} · {getSize(selectedSizeSlug)?.label}
 								</span>
 							{:else}
-								<span class="text-surface-500">Select paper & size</span>
+								<span class="text-surface-400">Select paper & size</span>
 							{/if}
 						</div>
 						<div class="flex gap-2">
