@@ -18,4 +18,15 @@ Sentry.init({
 	sendDefaultPii: false,
 });
 
-export const handleError = Sentry.handleErrorWithSentry();
+const sentryHandleError = Sentry.handleErrorWithSentry();
+
+export const handleError: typeof sentryHandleError = (input) => {
+	const msg = input.error instanceof Error ? input.error.message : "";
+	if (msg.includes("Failed to fetch dynamically imported module")) {
+		// After a deploy, old chunk hashes no longer exist on the server.
+		// A full reload lets the browser fetch the current entry point.
+		window.location.reload();
+		return;
+	}
+	return sentryHandleError(input);
+};
