@@ -14,13 +14,22 @@
 import { PortableText } from "@portabletext/svelte";
 import { urlFor } from "$lib/sanity/client";
 import PortableTextImage from "../PortableTextImage.svelte";
-import { formatDate } from "$lib/utils/format";
 
 const components = {
 	types: { image: PortableTextImage },
 };
 
 let { post } = $props();
+
+function formatDate(dateStr: string) {
+	if (!dateStr) return "";
+	const date = new Date(dateStr);
+	return date.toLocaleDateString("en-US", {
+		year: "numeric",
+		month: "long",
+		day: "numeric",
+	});
+}
 </script>
 
 <article class="max-w-3xl mx-auto">

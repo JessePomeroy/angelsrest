@@ -17,7 +17,6 @@
 import { MinusIcon, PlusIcon, XIcon } from "@lucide/svelte";
 import type { CartItem } from "$lib/shop/cart";
 import { cart } from "$lib/shop/cart.svelte";
-import { formatCents } from "$lib/utils/format";
 
 interface Props {
 	item: CartItem;
@@ -28,6 +27,10 @@ interface Props {
 let { item, variant = "drawer" }: Props = $props();
 
 const lineSubtotal = $derived(item.unitPriceCents * item.quantity);
+
+function formatCents(cents: number): string {
+	return `$${(cents / 100).toFixed(2)}`;
+}
 
 function decrement() {
 	cart.updateQuantity(item.id, item.quantity - 1);

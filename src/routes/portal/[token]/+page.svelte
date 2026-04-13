@@ -1,6 +1,5 @@
 <script lang="ts">
 import SEO from "$lib/components/SEO.svelte";
-import { formatCents, formatDate, formatTimestamp } from "$lib/utils/format";
 
 let { data }: { data: any } = $props();
 
@@ -10,6 +9,32 @@ let actionMessage = $state("");
 
 // Contract signing
 let signerName = $state("");
+
+function formatDate(dateStr: string | undefined): string {
+	if (!dateStr) return "—";
+	const d = new Date(dateStr);
+	return d.toLocaleDateString("en-US", {
+		year: "numeric",
+		month: "long",
+		day: "numeric",
+	});
+}
+
+function formatTimestamp(ts: number | undefined): string {
+	if (!ts) return "—";
+	return new Date(ts).toLocaleDateString("en-US", {
+		year: "numeric",
+		month: "long",
+		day: "numeric",
+	});
+}
+
+function formatCurrency(cents: number): string {
+	return new Intl.NumberFormat("en-US", {
+		style: "currency",
+		currency: "USD",
+	}).format(cents / 100);
+}
 
 function getQuoteTotal(packages: { price: number }[]): number {
 	return packages.reduce((sum, pkg) => sum + pkg.price, 0);
@@ -159,7 +184,7 @@ async function signContract() {
 					<div class="package-card">
 						<div class="package-header">
 							<h3 class="package-name">{pkg.name}</h3>
-							<span class="package-price">{formatCents(pkg.price)}</span>
+							<span class="package-price">{formatCurrency(pkg.price)}</span>
 						</div>
 						{#if pkg.description}
 							<p class="package-desc">{pkg.description}</p>
@@ -176,7 +201,7 @@ async function signContract() {
 
 				<div class="total-row">
 					<span class="total-label">Total</span>
-					<span class="total-amount">{formatCents(getQuoteTotal(doc.packages))}</span>
+					<span class="total-amount">{formatCurrency(getQuoteTotal(doc.packages))}</span>
 				</div>
 
 				{#if doc.notes}
@@ -250,8 +275,8 @@ async function signContract() {
 							<tr>
 								<td>{item.description}</td>
 								<td class="td-center">{item.quantity}</td>
-								<td class="td-right">{formatCents(item.unitPrice)}</td>
-								<td class="td-right">{formatCents(item.quantity * item.unitPrice)}</td>
+								<td class="td-right">{formatCurrency(item.unitPrice)}</td>
+								<td class="td-right">{formatCurrency(item.quantity * item.unitPrice)}</td>
 							</tr>
 						{/each}
 					</tbody>
@@ -260,17 +285,17 @@ async function signContract() {
 				<div class="invoice-totals">
 					<div class="subtotal-row">
 						<span>Subtotal</span>
-						<span>{formatCents(getInvoiceSubtotal(doc.items))}</span>
+						<span>{formatCurrency(getInvoiceSubtotal(doc.items))}</span>
 					</div>
 					{#if doc.taxPercent}
 						<div class="subtotal-row">
 							<span>Tax ({doc.taxPercent}%)</span>
-							<span>{formatCents(getInvoiceSubtotal(doc.items) * (doc.taxPercent / 100))}</span>
+							<span>{formatCurrency(getInvoiceSubtotal(doc.items) * (doc.taxPercent / 100))}</span>
 						</div>
 					{/if}
 					<div class="total-row">
 						<span class="total-label">Total</span>
-						<span class="total-amount">{formatCents(getInvoiceTotal(doc.items, doc.taxPercent))}</span>
+						<span class="total-amount">{formatCurrency(getInvoiceTotal(doc.items, doc.taxPercent))}</span>
 					</div>
 				</div>
 
@@ -337,13 +362,13 @@ async function signContract() {
 						{#if doc.totalPrice}
 							<div class="pricing-row">
 								<span>Total Price</span>
-								<span>{formatCents(doc.totalPrice)}</span>
+								<span>{formatCurrency(doc.totalPrice)}</span>
 							</div>
 						{/if}
 						{#if doc.depositAmount}
 							<div class="pricing-row">
 								<span>Deposit Required</span>
-								<span>{formatCents(doc.depositAmount)}</span>
+								<span>{formatCurrency(doc.depositAmount)}</span>
 							</div>
 						{/if}
 					</div>
@@ -368,7 +393,7 @@ async function signContract() {
 				</div>
 			{:else if doc.status === "signed"}
 				<div class="status-message success-message">
-					This contract was signed on {doc.signedAt ? formatTimestamp(doc.signedAt) : ""}.
+					This contract was signed on {formatTimestamp(doc.signedAt)}.
 				</div>
 			{/if}
 		{/if}

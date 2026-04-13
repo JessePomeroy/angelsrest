@@ -1,6 +1,5 @@
 <script lang="ts">
 import { page } from "$app/stores";
-import { formatCents, formatDate } from "$lib/utils/format";
 
 let email = $state($page.url.searchParams.get("email") || "");
 let orderNumber = $state($page.url.searchParams.get("order") || "");
@@ -34,6 +33,21 @@ async function lookupOrder() {
 	} finally {
 		loading = false;
 	}
+}
+
+function formatCurrency(amount: number, currency = "usd") {
+	return new Intl.NumberFormat("en-US", {
+		style: "currency",
+		currency: currency.toUpperCase(),
+	}).format(amount / 100);
+}
+
+function formatDate(dateStr: string) {
+	return new Date(dateStr).toLocaleDateString("en-US", {
+		month: "short",
+		day: "numeric",
+		year: "numeric",
+	});
 }
 
 const statusLabels: Record<string, string> = {
@@ -123,12 +137,12 @@ const statusColors: Record<string, string> = {
 						{#each order.items || [] as item}
 							<li class="flex justify-between text-sm">
 								<span>{item.productName} × {item.quantity}</span>
-								<span class="text-gray-400">{formatCents(item.price, order.currency)}</span>
+								<span class="text-gray-400">{formatCurrency(item.price, order.currency)}</span>
 							</li>
 						{/each}
 					</ul>
 					<p class="font-medium mt-2 text-right">
-						Total: {formatCents(order.total, order.currency)}
+						Total: {formatCurrency(order.total, order.currency)}
 					</p>
 				</div>
 
