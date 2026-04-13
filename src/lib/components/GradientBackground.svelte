@@ -3,42 +3,60 @@
 
   Desktop: two gradient orbs follow the cursor with heavy easing.
   Mobile: CSS animation drifts the orbs around the viewport.
-  Colors come from time-theme CSS vars (currently hardcoded golden for testing).
+  Colors come from time-theme CSS vars.
+
+  Performance: no blur filters, no SVG filters. Soft edges come from
+  wide gradient stops. Positioning via translate3d (compositor-only).
+  rAF loop stops when cursor is idle.
 -->
 
 <script lang="ts">
 import { onMount } from "svelte";
-import { browser } from "$app/environment";
 
-let currentX = $state(0.3);
-let currentY = $state(0.2);
+let orbPrimary = $state<HTMLDivElement>();
+let orbSecondary = $state<HTMLDivElement>();
 let hasMouse = $state(false);
-let animFrame: number;
 
 onMount(() => {
 	let mouseX = 0.3;
 	let mouseY = 0.2;
+	let currentX = 0.3;
+	let currentY = 0.2;
+	let animFrame = 0;
+	let idle = true;
 
 	const onMouseMove = (e: MouseEvent) => {
 		hasMouse = true;
 		mouseX = e.clientX / window.innerWidth;
 		mouseY = e.clientY / window.innerHeight;
+		if (idle) {
+			idle = false;
+			animFrame = requestAnimationFrame(animate);
+		}
 	};
 
 	window.addEventListener("mousemove", onMouseMove, { passive: true });
 
-	const lerp = (a: number, b: number, t: number) => a + (b - a) * t;
-
 	function animate() {
-		if (hasMouse) {
-			currentX = lerp(currentX, mouseX, 0.03);
-			currentY = lerp(currentY, mouseY, 0.03);
-		}
-		animFrame = requestAnimationFrame(animate);
-	}
+		currentX += (mouseX - currentX) * 0.03;
+		currentY += (mouseY - currentY) * 0.03;
 
-	if (browser) {
-		animFrame = requestAnimationFrame(animate);
+		// Position via translate3d — compositor-only, no layout thrashing
+		const px = currentX * 100;
+		const py = currentY * 100;
+		if (orbPrimary) {
+			orbPrimary.style.transform = `translate3d(${px - 50}vw, ${py - 50}vh, 0)`;
+		}
+		if (orbSecondary) {
+			orbSecondary.style.transform = `translate3d(${(100 - px) - 50}vw, ${(100 - py) - 50}vh, 0)`;
+		}
+
+		// Stop looping once converged (within 0.1% of target)
+		if (Math.abs(mouseX - currentX) > 0.001 || Math.abs(mouseY - currentY) > 0.001) {
+			animFrame = requestAnimationFrame(animate);
+		} else {
+			idle = true;
+		}
 	}
 
 	return () => {
@@ -54,16 +72,8 @@ onMount(() => {
 >
 	{#if hasMouse}
 		<!-- Desktop: cursor-following orbs -->
-		<div
-			class="orb orb-primary"
-			style:left="{currentX * 100}%"
-			style:top="{currentY * 100}%"
-		></div>
-		<div
-			class="orb orb-secondary"
-			style:left="{(1 - currentX) * 100}%"
-			style:top="{(1 - currentY) * 100}%"
-		></div>
+		<div class="orb orb-primary" bind:this={orbPrimary}></div>
+		<div class="orb orb-secondary" bind:this={orbSecondary}></div>
 	{:else}
 		<!-- Mobile: CSS-animated drifting orbs -->
 		<div class="orb orb-primary animate-drift-1"></div>
@@ -75,52 +85,49 @@ onMount(() => {
 	.orb {
 		position: absolute;
 		border-radius: 50%;
-		transform: translate(-50%, -50%);
+		will-change: transform;
 	}
 
 	.orb-primary {
-		width: 90vmax;
-		height: 90vmax;
-		filter: blur(80px);
+		width: 100vmax;
+		height: 100vmax;
 		opacity: 0.8;
 		background: radial-gradient(
 			circle,
 			var(--time-glow, rgba(129, 140, 248, 0.28)) 0%,
-			var(--time-glow, rgba(129, 140, 248, 0.2)) 20%,
-			var(--time-glow, rgba(129, 140, 248, 0.12)) 40%,
-			var(--time-glow, rgba(129, 140, 248, 0.05)) 55%,
-			transparent 70%
+			var(--time-glow, rgba(129, 140, 248, 0.18)) 15%,
+			var(--time-glow, rgba(129, 140, 248, 0.10)) 30%,
+			var(--time-glow, rgba(129, 140, 248, 0.04)) 45%,
+			transparent 60%
 		);
-		filter: blur(80px);
 	}
 
 	.orb-secondary {
-		width: 70vmax;
-		height: 70vmax;
+		width: 80vmax;
+		height: 80vmax;
 		opacity: 0.6;
 		background: radial-gradient(
 			circle,
 			var(--time-tint, rgba(167, 139, 250, 0.22)) 0%,
-			var(--time-tint, rgba(167, 139, 250, 0.16)) 20%,
-			var(--time-tint, rgba(167, 139, 250, 0.09)) 40%,
-			var(--time-tint, rgba(167, 139, 250, 0.03)) 55%,
-			transparent 70%
+			var(--time-tint, rgba(167, 139, 250, 0.14)) 15%,
+			var(--time-tint, rgba(167, 139, 250, 0.07)) 30%,
+			var(--time-tint, rgba(167, 139, 250, 0.02)) 45%,
+			transparent 60%
 		);
-		filter: blur(60px);
 	}
 
 	@keyframes drift-1 {
-		0%, 100% { left: 30%; top: 20%; }
-		25% { left: 65%; top: 40%; }
-		50% { left: 40%; top: 70%; }
-		75% { left: 20%; top: 45%; }
+		0%, 100% { transform: translate3d(-20vw, -30vh, 0); }
+		25% { transform: translate3d(15vw, -10vh, 0); }
+		50% { transform: translate3d(-10vw, 20vh, 0); }
+		75% { transform: translate3d(-30vw, -5vh, 0); }
 	}
 
 	@keyframes drift-2 {
-		0%, 100% { left: 70%; top: 75%; }
-		25% { left: 35%; top: 50%; }
-		50% { left: 60%; top: 25%; }
-		75% { left: 80%; top: 55%; }
+		0%, 100% { transform: translate3d(20vw, 25vh, 0); }
+		25% { transform: translate3d(-15vw, 0vh, 0); }
+		50% { transform: translate3d(10vw, -25vh, 0); }
+		75% { transform: translate3d(30vw, 5vh, 0); }
 	}
 
 	.animate-drift-1 {

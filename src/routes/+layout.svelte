@@ -61,10 +61,6 @@ const ogImage = $derived(
 // Vercel analytics
 injectAnalytics();
 
-// Animated film grain — change seed ~8fps for a subtle flicker
-let grainTurbulence: SVGFETurbulenceElement;
-let grainFrame: number;
-
 // Keep time period in sync reactively
 $effect(() => {
 	// This runs whenever timeTheme.period changes
@@ -72,47 +68,19 @@ $effect(() => {
 });
 
 onMount(() => {
-	// Grain animation: update seed at ~8fps for film-like flicker
-	let lastGrainTime = 0;
-	function animateGrain(time: number) {
-		if (time - lastGrainTime > 125) { // ~8fps
-			grainTurbulence?.setAttribute("seed", String(Math.floor(Math.random() * 1000)));
-			lastGrainTime = time;
-		}
-		grainFrame = requestAnimationFrame(animateGrain);
-	}
-	grainFrame = requestAnimationFrame(animateGrain);
-
 	// Enable Sanity Visual Editing overlay when in preview mode
 	if (data.isPreview) {
 		const disable = enableVisualEditing();
 		return () => {
 			disable();
-			cancelAnimationFrame(grainFrame);
 			timeTheme.destroy();
 		};
 	}
 	return () => {
-		cancelAnimationFrame(grainFrame);
 		timeTheme.destroy();
 	};
 });
 </script>
-
-<!-- SVG filter for animated film grain — seed changes create flicker -->
-<svg style="display:none" aria-hidden="true">
-  <filter id="grain-filter">
-    <feTurbulence
-      bind:this={grainTurbulence}
-      type="fractalNoise"
-      baseFrequency="0.5"
-      numOctaves="5"
-      stitchTiles="stitch"
-      seed="0"
-    />
-    <feColorMatrix type="saturate" values="0" />
-  </filter>
-</svg>
 
 {#if isPortal}
   {@render children()}

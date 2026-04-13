@@ -1,10 +1,11 @@
 /* ============================================
    Film Grain Overlay
    ============================================
-   
-   Animated film grain using SVG feTurbulence filter.
-   No image assets needed — fully generative.
-   
+
+   Animated film grain using a static noise PNG tile.
+   CSS animation shifts the background position for flicker.
+   No SVG filters, no JS animation loop.
+
    Tunable via CSS custom properties:
    - --grain-opacity: how visible the grain is
    - --grain-blend: blend mode (overlay works best)
@@ -19,13 +20,26 @@ html.dark {
 	--grain-opacity: 0.2;
 }
 
-/* Film grain — animated via JS seed change in +layout.svelte (~8fps flicker) */
+/* Film grain — CSS-only flicker via background-position animation */
 .grain-overlay {
 	position: fixed;
-	inset: 0;
+	inset: -50%;
+	width: 200%;
+	height: 200%;
 	pointer-events: none;
 	z-index: 1;
 	opacity: var(--grain-opacity);
 	mix-blend-mode: var(--grain-blend);
-	filter: url(#grain-filter);
+	background-image: url("/grain.png");
+	background-repeat: repeat;
+	animation: grain-shift 3s steps(6) infinite;
+}
+
+@keyframes grain-shift {
+	0% { transform: translate(0, 0); }
+	16% { transform: translate(-5%, -8%); }
+	33% { transform: translate(3%, -3%); }
+	50% { transform: translate(-8%, 2%); }
+	66% { transform: translate(6%, -6%); }
+	83% { transform: translate(-3%, 5%); }
 }
