@@ -19,7 +19,7 @@ html.dark {
 	--grain-opacity: 0.2;
 }
 
-/* Static film grain — no animation */
+/* Film grain — animated via JS seed change in +layout.svelte (~8fps flicker) */
 .grain-overlay {
 	position: fixed;
 	inset: 0;

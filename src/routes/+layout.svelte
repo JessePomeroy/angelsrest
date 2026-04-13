@@ -31,6 +31,7 @@ import { page } from "$app/stores";
 import headerGif from "$lib/assets/ponyolovesham.gif";
 import BottomNav from "$lib/components/BottomNav.svelte";
 import CartDrawer from "$lib/components/cart/CartDrawer.svelte";
+import GradientBackground from "$lib/components/GradientBackground.svelte";
 import CartIcon from "$lib/components/cart/CartIcon.svelte";
 import Footer from "$lib/components/Footer.svelte";
 // Layout components
@@ -60,6 +61,10 @@ const ogImage = $derived(
 // Vercel analytics
 injectAnalytics();
 
+// Animated film grain — change seed ~8fps for a subtle flicker
+let grainTurbulence: SVGFETurbulenceElement;
+let grainFrame: number;
+
 // Keep time period in sync reactively
 $effect(() => {
 	// This runs whenever timeTheme.period changes
@@ -67,26 +72,43 @@ $effect(() => {
 });
 
 onMount(() => {
+	// Grain animation: update seed at ~8fps for film-like flicker
+	let lastGrainTime = 0;
+	function animateGrain(time: number) {
+		if (time - lastGrainTime > 125) { // ~8fps
+			grainTurbulence?.setAttribute("seed", String(Math.floor(Math.random() * 1000)));
+			lastGrainTime = time;
+		}
+		grainFrame = requestAnimationFrame(animateGrain);
+	}
+	grainFrame = requestAnimationFrame(animateGrain);
+
 	// Enable Sanity Visual Editing overlay when in preview mode
 	if (data.isPreview) {
 		const disable = enableVisualEditing();
 		return () => {
 			disable();
+			cancelAnimationFrame(grainFrame);
 			timeTheme.destroy();
 		};
 	}
-	return () => timeTheme.destroy();
+	return () => {
+		cancelAnimationFrame(grainFrame);
+		timeTheme.destroy();
+	};
 });
 </script>
 
-<!-- SVG filter for film grain — generates fractal noise, no image needed -->
+<!-- SVG filter for animated film grain — seed changes create flicker -->
 <svg style="display:none" aria-hidden="true">
   <filter id="grain-filter">
     <feTurbulence
+      bind:this={grainTurbulence}
       type="fractalNoise"
       baseFrequency="0.5"
       numOctaves="5"
       stitchTiles="stitch"
+      seed="0"
     />
     <feColorMatrix type="saturate" values="0" />
   </filter>
@@ -98,7 +120,10 @@ onMount(() => {
   {@render children()}
   <BottomNav />
 {:else}
-  <!-- Grain overlay — styled in grain.css -->
+  <!-- Dynamic gradient background — cursor-reactive on desktop, drifting on mobile -->
+  <GradientBackground />
+
+  <!-- Animated film grain overlay — styled in grain.css -->
   <div class="grain-overlay" aria-hidden="true"></div>
 
   <a href="#main-content" class="skip-link">Skip to content</a>
