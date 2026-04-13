@@ -1,6 +1,5 @@
 <script lang="ts">
 import {
-	type AdminAuthClient,
 	AdminLayout,
 	AuthGuard,
 	setAdminConfig,
@@ -13,7 +12,7 @@ import { adminConfig } from "$lib/config/admin";
 createSvelteAuthClient({ authClient, convexUrl: PUBLIC_CONVEX_URL });
 setAdminConfig({
 	...adminConfig,
-	authClient: authClient as unknown as AdminAuthClient,
+	authClient,
 });
 
 let { data, children } = $props();
