@@ -10,6 +10,7 @@
 <script lang="ts">
 // Import the urlFor helper to generate Sanity image URLs
 import { urlFor } from "$lib/sanity/client";
+import { formatDate } from "$lib/utils/format";
 
 /**
  * TypeScript Interface
@@ -40,20 +41,6 @@ interface Post {
  * that matches the Post interface above.
  */
 let { post }: { post: Post } = $props();
-
-/**
- * Helper function to format dates nicely.
- * Converts "2024-01-15" to "January 15, 2024"
- */
-function formatDate(dateStr: string) {
-	if (!dateStr) return "";
-	const date = new Date(dateStr);
-	return date.toLocaleDateString("en-US", {
-		year: "numeric",
-		month: "long",
-		day: "numeric",
-	});
-}
 </script>
 
 <!--

@@ -1,5 +1,6 @@
 <script lang="ts">
 import SignaturePad from "$lib/components/SignaturePad.svelte";
+import { formatCents } from "$lib/utils/format";
 
 let { data } = $props();
 let contract = $derived(data.contract);
@@ -54,13 +55,6 @@ async function submit() {
 		submitting = false;
 	}
 }
-
-function formatCurrency(amount: number) {
-	return new Intl.NumberFormat("en-US", {
-		style: "currency",
-		currency: "USD",
-	}).format(amount);
-}
 </script>
 
 <svelte:head>
@@ -100,9 +94,9 @@ function formatCurrency(amount: number) {
 
 			{#if contract.totalPrice}
 				<div class="details">
-					<p><span class="label">total</span> {formatCurrency(contract.totalPrice)}</p>
+					<p><span class="label">total</span> {formatCents(contract.totalPrice)}</p>
 					{#if contract.depositAmount}
-						<p><span class="label">deposit</span> {formatCurrency(contract.depositAmount)}</p>
+						<p><span class="label">deposit</span> {formatCents(contract.depositAmount)}</p>
 					{/if}
 				</div>
 			{/if}
