@@ -224,7 +224,7 @@ $effect(() => {
         </button>
 
         <p class="text-[10px] text-surface-500 text-center mt-3">
-          shipping calculated at checkout · secure payment by stripe
+          free shipping · secure payment by stripe
         </p>
       </footer>
     {/if}

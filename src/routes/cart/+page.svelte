@@ -132,7 +132,7 @@ async function checkout() {
           </div>
           <div class="flex justify-between text-surface-600-300-token">
             <span class="lowercase">shipping</span>
-            <span class="lowercase">calculated at checkout</span>
+            <span class="lowercase">included</span>
           </div>
         </div>
 
