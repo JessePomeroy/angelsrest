@@ -32,6 +32,7 @@ import headerGif from "$lib/assets/ponyolovesham.gif";
 import BottomNav from "$lib/components/BottomNav.svelte";
 import CartDrawer from "$lib/components/cart/CartDrawer.svelte";
 import GradientBackground from "$lib/components/GradientBackground.svelte";
+import GrainOverlay from "$lib/components/GrainOverlay.svelte";
 import CartIcon from "$lib/components/cart/CartIcon.svelte";
 import Footer from "$lib/components/Footer.svelte";
 // Layout components
@@ -91,8 +92,8 @@ onMount(() => {
   <!-- Dynamic gradient background — cursor-reactive on desktop, drifting on mobile -->
   <GradientBackground />
 
-  <!-- Animated film grain overlay — styled in grain.css -->
-  <div class="grain-overlay" aria-hidden="true"></div>
+  <!-- WebGL film grain — per-pixel noise, no tiling -->
+  <GrainOverlay />
 
   <a href="#main-content" class="skip-link">Skip to content</a>
 
