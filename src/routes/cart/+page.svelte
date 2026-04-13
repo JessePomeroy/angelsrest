@@ -19,6 +19,7 @@ import CartLineItem from "$lib/components/cart/CartLineItem.svelte";
 import SEO from "$lib/components/SEO.svelte";
 import { cart } from "$lib/shop/cart.svelte";
 import { createCartCheckout } from "$lib/utils/cartCheckout";
+import { formatCents } from "$lib/utils/format";
 
 let isCheckingOut = $state(false);
 let checkoutError = $state<string | null>(null);
@@ -28,10 +29,6 @@ const totalCents = $derived(cart.totalCents);
 const itemCount = $derived(cart.itemCount);
 const isEmpty = $derived(cart.isEmpty);
 const wasExpired = $derived(cart.cartWasExpiredOnLoad);
-
-function formatCents(cents: number): string {
-	return `$${(cents / 100).toFixed(2)}`;
-}
 
 function dismissExpired() {
 	cart.dismissExpiredFlag();

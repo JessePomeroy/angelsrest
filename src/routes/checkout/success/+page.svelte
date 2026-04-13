@@ -10,21 +10,10 @@
 
 <script lang="ts">
 import SEO from "$lib/components/SEO.svelte";
+import { formatCents } from "$lib/utils/format";
 
 // Get order details from server loader
 let { data } = $props();
-
-// Format currency for display
-function formatCurrency(
-	amountInCents: number | null,
-	currency: string = "usd",
-) {
-	if (amountInCents === null || amountInCents === undefined) return "-";
-	return new Intl.NumberFormat("en-US", {
-		style: "currency",
-		currency: currency.toUpperCase(),
-	}).format(amountInCents / 100);
-}
 </script>
 
 <!--
@@ -79,7 +68,7 @@ function formatCurrency(
           {#each data.orderDetails.items as item}
             <div class="flex justify-between items-center py-1">
               <span>{item.description ?? "Item"}</span>
-              <span>{formatCurrency(item.amount ?? 0, data.orderDetails.currency ?? "usd")}</span>
+              <span>{formatCents(item.amount ?? 0, data.orderDetails.currency ?? "usd")}</span>
             </div>
           {/each}
         </div>
@@ -89,7 +78,7 @@ function formatCurrency(
       <div class="border-t border-surface-300-600-token pt-2 mb-4">
         <div class="flex justify-between items-center font-medium">
           <span>Total Paid:</span>
-          <span>{formatCurrency(data.orderDetails.amountTotal ?? 0, data.orderDetails.currency ?? "usd")}</span>
+          <span>{formatCents(data.orderDetails.amountTotal ?? 0, data.orderDetails.currency ?? "usd")}</span>
         </div>
       </div>
       
