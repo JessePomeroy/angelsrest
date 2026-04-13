@@ -1,12 +1,19 @@
 <!--
   AsciiImage Component
-  
+
   Displays an image that transforms into ASCII art on hover.
   Renders ASCII to canvas so both image and ASCII use identical object-cover behavior.
 -->
 
 <script lang="ts">
 import { onMount } from "svelte";
+import {
+	calcGridSize,
+	pixelsToAscii,
+	buildScramblePool,
+	buildSettleOrder,
+	buildAnimationFrame,
+} from "$lib/utils/asciiGenerator";
 
 let {
 	src,
@@ -36,45 +43,40 @@ let asciiChars: string[] = [];
 let settledIndices: Set<number> = new Set();
 let asciiCols = 0;
 let asciiRows = 0;
+let imgWidth = 0;
+let imgHeight = 0;
 
-const scrambleChars = $derived(charSet.replace(/\s/g, "") + "!@#$%^&*<>[]{}");
+const scramblePool = $derived(buildScramblePool(charSet));
 
 onMount(() => {
-	generateAscii();
+	loadAndGenerate();
 	return () => {
 		if (animationFrame) cancelAnimationFrame(animationFrame);
 	};
 });
 
-function generateAscii() {
+function loadAndGenerate() {
 	const img = new Image();
 	img.crossOrigin = "anonymous";
 
 	img.onerror = (e) => {
 		console.error("ASCII image failed to load:", e);
-		// Try without crossOrigin as fallback (won't work for canvas but at least logs the issue)
 	};
 
 	img.onload = () => {
 		const ctx = sourceCanvas.getContext("2d");
 		if (!ctx) return;
 
-		// Store original image dimensions
-		const imgWidth = img.width;
-		const imgHeight = img.height;
+		imgWidth = img.width;
+		imgHeight = img.height;
 
-		// Calculate ASCII grid
-		asciiCols = Math.floor(imgWidth / resolution);
-		asciiRows = Math.floor(imgHeight / (resolution * 1.8));
+		const grid = calcGridSize(imgWidth, imgHeight, resolution);
+		asciiCols = grid.cols;
+		asciiRows = grid.rows;
 
 		sourceCanvas.width = asciiCols;
 		sourceCanvas.height = asciiRows;
-
 		ctx.drawImage(img, 0, 0, asciiCols, asciiRows);
-
-		// Store original dimensions for canvas rendering
-		(window as any).__asciiImgWidth = imgWidth;
-		(window as any).__asciiImgHeight = imgHeight;
 
 		let imageData;
 		try {
@@ -83,29 +85,8 @@ function generateAscii() {
 			console.error("Canvas tainted - CORS issue with image:", e);
 			return;
 		}
-		const pixels = imageData.data;
 
-		// Build ASCII character array
-		asciiChars = [];
-		for (let y = 0; y < asciiRows; y++) {
-			for (let x = 0; x < asciiCols; x++) {
-				const i = (y * asciiCols + x) * 4;
-				const r = pixels[i];
-				const g = pixels[i + 1];
-				const b = pixels[i + 2];
-				const a = pixels[i + 3];
-
-				if (a < 128) {
-					asciiChars.push(" ");
-				} else {
-					const brightness = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
-					const charIndex = Math.floor(brightness * (charSet.length - 1));
-					asciiChars.push(charSet[charIndex]);
-				}
-			}
-		}
-
-		// Render final ASCII to canvas and get data URL
+		asciiChars = pixelsToAscii(imageData.data, asciiCols, asciiRows, charSet);
 		asciiDataUrl = renderAsciiToCanvas(asciiChars);
 		imageLoaded = true;
 	};
@@ -114,9 +95,8 @@ function generateAscii() {
 }
 
 function renderAsciiToCanvas(chars: string[]): string {
-	// Use original image dimensions so object-cover behaves identically
-	const width = (window as any).__asciiImgWidth || 800;
-	const height = (window as any).__asciiImgHeight || 1000;
+	const width = imgWidth || 800;
+	const height = imgHeight || 1000;
 
 	const charWidth = width / asciiCols;
 	const charHeight = height / asciiRows;
@@ -128,11 +108,9 @@ function renderAsciiToCanvas(chars: string[]): string {
 	const ctx = asciiCanvas.getContext("2d");
 	if (!ctx) return "";
 
-	// Dark background
 	ctx.fillStyle = "#1e293b";
 	ctx.fillRect(0, 0, width, height);
 
-	// Draw ASCII text
 	ctx.fillStyle = "#e2e8f0";
 	ctx.font = `${fontSize}px monospace`;
 	ctx.textBaseline = "top";
@@ -147,10 +125,6 @@ function renderAsciiToCanvas(chars: string[]): string {
 	return asciiCanvas.toDataURL();
 }
 
-function getRandomChar(): string {
-	return scrambleChars[Math.floor(Math.random() * scrambleChars.length)];
-}
-
 function startScrambleAnimation() {
 	if (!asciiChars.length) return;
 
@@ -158,21 +132,7 @@ function startScrambleAnimation() {
 
 	settledIndices = new Set();
 	const startTime = performance.now();
-
-	// Create shuffled indices for random settling
-	const indicesToSettle: number[] = [];
-	for (let i = 0; i < asciiChars.length; i++) {
-		if (asciiChars[i] !== " ") {
-			indicesToSettle.push(i);
-		}
-	}
-	for (let i = indicesToSettle.length - 1; i > 0; i--) {
-		const j = Math.floor(Math.random() * (i + 1));
-		[indicesToSettle[i], indicesToSettle[j]] = [
-			indicesToSettle[j],
-			indicesToSettle[i],
-		];
-	}
+	const indicesToSettle = buildSettleOrder(asciiChars);
 
 	function animate(currentTime: number) {
 		const elapsed = currentTime - startTime;
@@ -187,18 +147,7 @@ function startScrambleAnimation() {
 			settledIndices.add(indicesToSettle[settledIndices.size]);
 		}
 
-		// Build current frame's characters
-		const currentChars: string[] = [];
-		for (let i = 0; i < asciiChars.length; i++) {
-			if (asciiChars[i] === " ") {
-				currentChars.push(" ");
-			} else if (settledIndices.has(i)) {
-				currentChars.push(asciiChars[i]);
-			} else {
-				currentChars.push(getRandomChar());
-			}
-		}
-
+		const currentChars = buildAnimationFrame(asciiChars, settledIndices, scramblePool);
 		displayedAsciiUrl = renderAsciiToCanvas(currentChars);
 
 		if (progress < 1 && isHovering) {
