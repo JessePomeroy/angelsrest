@@ -77,14 +77,14 @@ export const getUnreadFlags = query({
 			flags.inquiries = true;
 		}
 
-		// Messages: any unread client messages
-		const unreadMsg = await ctx.db
+		// Messages: any new message since last seen
+		const messagesLastSeen = lastSeenMap.get("messages") ?? 0;
+		const newMsg = await ctx.db
 			.query("platformMessages")
-			.withIndex("by_siteUrl_unread", (q) =>
-				q.eq("siteUrl", siteUrl).eq("read", false),
-			)
+			.withIndex("by_siteUrl", (q) => q.eq("siteUrl", siteUrl))
+			.order("desc")
 			.take(1);
-		if (unreadMsg.length > 0) {
+		if (newMsg[0] && newMsg[0]._creationTime > messagesLastSeen) {
 			flags.messages = true;
 		}
 

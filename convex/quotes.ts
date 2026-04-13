@@ -66,6 +66,7 @@ export const create = mutation({
 			clientId: args.clientId,
 			action: "quote_created",
 			description: `quote ${args.quoteNumber} created`,
+			metadata: JSON.stringify({ docType: "quote", docId: quoteId }),
 		});
 
 		return quoteId;
@@ -122,6 +123,7 @@ export const markAccepted = mutation({
 			clientId: quote.clientId,
 			action: "quote_accepted",
 			description: `quote ${quote.quoteNumber} accepted`,
+			metadata: JSON.stringify({ docType: "quote", docId: quoteId }),
 		});
 	},
 });

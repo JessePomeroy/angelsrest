@@ -28,10 +28,13 @@ export async function markDocumentSent<T extends SendableTable>(
 		status: "sent",
 		sentAt: Date.now(),
 	});
+	// Determine docType from the action prefix (e.g. "invoice_sent" → "invoice")
+	const docType = action.split("_")[0];
 	await ctx.runMutation(internal.activityLog.logActivity, {
 		siteUrl,
 		clientId: doc.clientId,
 		action,
 		description: describe(doc),
+		metadata: JSON.stringify({ docType, docId: id }),
 	});
 }

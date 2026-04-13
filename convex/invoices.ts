@@ -89,6 +89,7 @@ export const create = mutation({
 			clientId: args.clientId,
 			action: "invoice_created",
 			description: `invoice ${args.invoiceNumber} created`,
+			metadata: JSON.stringify({ docType: "invoice", docId: invoiceId }),
 		});
 
 		return invoiceId;
@@ -148,6 +149,7 @@ export const markPaid = mutation({
 			clientId: invoice.clientId,
 			action: "invoice_paid",
 			description: `invoice ${invoice.invoiceNumber} marked as paid`,
+			metadata: JSON.stringify({ docType: "invoice", docId: invoiceId }),
 		});
 	},
 });

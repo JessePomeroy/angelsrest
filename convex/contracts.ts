@@ -61,6 +61,7 @@ export const create = mutation({
 			clientId: args.clientId,
 			action: "contract_created",
 			description: `contract "${args.title}" created`,
+			metadata: JSON.stringify({ docType: "contract", docId: contractId }),
 		});
 
 		return contractId;
@@ -112,6 +113,7 @@ export const markSigned = mutation({
 			clientId: contract.clientId,
 			action: "contract_signed",
 			description: `contract "${contract.title}" signed`,
+			metadata: JSON.stringify({ docType: "contract", docId: contractId }),
 		});
 	},
 });
