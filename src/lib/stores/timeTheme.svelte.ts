@@ -15,13 +15,7 @@
 
 import { browser } from "$app/environment";
 
-export type TimePeriod =
-	| "dawn"
-	| "morning"
-	| "afternoon"
-	| "golden"
-	| "evening"
-	| "night";
+export type TimePeriod = "dawn" | "morning" | "afternoon" | "golden" | "evening" | "night";
 
 function getTimePeriod(hour: number): TimePeriod {
 	if (hour >= 5 && hour < 8) return "dawn";

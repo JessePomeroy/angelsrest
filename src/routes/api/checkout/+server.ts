@@ -59,16 +59,7 @@ export async function POST({ request }) {
 		const body = await request.json();
 		console.log("Received checkout request:", JSON.stringify(body, null, 2));
 
-		const {
-			productId,
-			title,
-			price,
-			image,
-			paper,
-			coupon,
-			isPrintSet,
-			images,
-		} = body;
+		const { productId, title, price, image, paper, coupon, isPrintSet, images } = body;
 		console.log("Checkout payload:", { productId, title, price, paper });
 
 		/**
@@ -80,14 +71,7 @@ export async function POST({ request }) {
 		 * - Better to fail fast with clear errors than mysterious Stripe errors
 		 */
 		if (!productId || !title || !price) {
-			console.log(
-				"Missing fields - productId:",
-				productId,
-				"title:",
-				title,
-				"price:",
-				price,
-			);
+			console.log("Missing fields - productId:", productId, "title:", title, "price:", price);
 			throw error(400, "Missing required fields: productId, title, price");
 		}
 
@@ -103,12 +87,7 @@ export async function POST({ request }) {
 		let discountAmount = 0;
 		let appliedCoupon: string | null = null;
 		if (coupon) {
-			const result = await validateAndApplyCoupon(
-				coupon,
-				productId,
-				productCategory,
-				price,
-			);
+			const result = await validateAndApplyCoupon(coupon, productId, productCategory, price);
 			discountAmount = result.discountAmount;
 			appliedCoupon = result.appliedCoupon;
 		}

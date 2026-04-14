@@ -135,10 +135,7 @@ describe("logStructured", () => {
 
 			expect(sentryMocks.captureException).toHaveBeenCalledTimes(1);
 			expect(sentryMocks.captureException).toHaveBeenCalledWith(err);
-			expect(sentryMocks.setTag).toHaveBeenCalledWith(
-				"stage",
-				"lumaprints_submit",
-			);
+			expect(sentryMocks.setTag).toHaveBeenCalledWith("stage", "lumaprints_submit");
 			expect(sentryMocks.setTag).toHaveBeenCalledWith("orderId", "ORD-007");
 			expect(sentryMocks.addBreadcrumb).not.toHaveBeenCalled();
 		});
@@ -219,12 +216,9 @@ describe("timed", () => {
 	it("logs an error entry with durationMs and re-throws on failure", async () => {
 		const err = new Error("network down");
 		await expect(
-			timed(
-				{ event: "lumaprints.submitted", stage: "lumaprints_submit" },
-				async () => {
-					throw err;
-				},
-			),
+			timed({ event: "lumaprints.submitted", stage: "lumaprints_submit" }, async () => {
+				throw err;
+			}),
 		).rejects.toThrow("network down");
 
 		expect(errorSpy).toHaveBeenCalledTimes(1);

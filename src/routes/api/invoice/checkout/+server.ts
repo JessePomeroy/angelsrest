@@ -33,29 +33,22 @@ export async function POST({ request }) {
 				sum + item.quantity * item.unitPrice,
 			0,
 		);
-		const taxAmount = invoice.taxPercent
-			? subtotal * (invoice.taxPercent / 100)
-			: 0;
+		const taxAmount = invoice.taxPercent ? subtotal * (invoice.taxPercent / 100) : 0;
 		const _total = subtotal + taxAmount;
 
 		// Build Stripe line items from invoice items
-		const lineItems: Stripe.Checkout.SessionCreateParams.LineItem[] =
-			invoice.items.map(
-				(item: {
-					description: string;
-					quantity: number;
-					unitPrice: number;
-				}) => ({
-					price_data: {
-						currency: "usd",
-						product_data: {
-							name: item.description,
-						},
-						unit_amount: Math.round(item.unitPrice * 100),
+		const lineItems: Stripe.Checkout.SessionCreateParams.LineItem[] = invoice.items.map(
+			(item: { description: string; quantity: number; unitPrice: number }) => ({
+				price_data: {
+					currency: "usd",
+					product_data: {
+						name: item.description,
 					},
-					quantity: item.quantity,
-				}),
-			);
+					unit_amount: Math.round(item.unitPrice * 100),
+				},
+				quantity: item.quantity,
+			}),
+		);
 
 		// Add tax as a separate line item if applicable
 		if (taxAmount > 0) {
@@ -89,8 +82,7 @@ export async function POST({ request }) {
 		if (err && typeof err === "object" && "status" in err) {
 			throw err;
 		}
-		const message =
-			err instanceof Error ? err.message : "Failed to create checkout session";
+		const message = err instanceof Error ? err.message : "Failed to create checkout session";
 		console.error("Invoice checkout error:", message);
 		throw error(500, message);
 	}

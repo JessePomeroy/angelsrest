@@ -30,10 +30,7 @@ const defaults = {
 /**
  * Build an optimized image URL from a Sanity image
  */
-export function buildImageUrl(
-	image: any,
-	options: ImageUrlOptions = {},
-): string | null {
+export function buildImageUrl(image: any, options: ImageUrlOptions = {}): string | null {
 	if (!image) return null;
 
 	const builder = urlFor(image);

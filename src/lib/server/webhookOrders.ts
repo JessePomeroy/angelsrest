@@ -12,14 +12,8 @@ import type Stripe from "stripe";
 import { api } from "$convex/api";
 import { SITE_DOMAIN } from "$lib/config/site";
 import { logStructured, timed } from "$lib/server/logger";
-import {
-	buildLumaPrintsOrder,
-	createOrder as createLumaPrintsOrder,
-} from "$lib/server/lumaprints";
-import {
-	buildOrderItemsFromSession,
-	buildRecipientFromShipping,
-} from "$lib/server/webhookDecoder";
+import { buildLumaPrintsOrder, createOrder as createLumaPrintsOrder } from "$lib/server/lumaprints";
+import { buildOrderItemsFromSession, buildRecipientFromShipping } from "$lib/server/webhookDecoder";
 import type { ShippingDetails } from "$lib/server/webhookEmails";
 import { sendFulfillmentFailureAlert } from "$lib/server/webhookEmails";
 import {
@@ -56,9 +50,7 @@ export async function createOrderInConvex(
 	// Extract payment intent ID (could be string or expanded object)
 	const rawPaymentIntent = session.payment_intent;
 	const stripePaymentIntentId =
-		typeof rawPaymentIntent === "string"
-			? rawPaymentIntent
-			: rawPaymentIntent?.id;
+		typeof rawPaymentIntent === "string" ? rawPaymentIntent : rawPaymentIntent?.id;
 
 	const items = lineItems.map((item) => ({
 		productName: item.description || "Unknown Product",
@@ -69,51 +61,37 @@ export async function createOrderInConvex(
 	const isDigital = session.metadata?.isDigital === "true";
 
 	// Create order in Convex (idempotent — returns existing order if session already processed)
-	const { _id: orderId, orderNumber } = await convex.mutation(
-		api.orders.create,
-		{
-			siteUrl: SITE_DOMAIN,
-			stripeSessionId: session.id,
-			customerEmail: session.customer_details?.email || "",
-			customerName:
-				session.customer_details?.name || shippingDetails?.name || undefined,
-			stripePaymentIntentId: stripePaymentIntentId || undefined,
-			shippingAddress: shippingDetails?.address
-				? {
-						line1: shippingDetails.address.line1 || "",
-						line2: shippingDetails.address.line2 || undefined,
-						city: shippingDetails.address.city || "",
-						state: shippingDetails.address.state || "",
-						postalCode: shippingDetails.address.postal_code || "",
-						country: shippingDetails.address.country || "",
-					}
-				: undefined,
-			items,
-			total: session.amount_total || 0,
-			subtotal: session.amount_subtotal || undefined,
-			fulfillmentType: isDigital ? "digital" : "self",
-			paperName: session.metadata?.paperName || undefined,
-			paperSubcategoryId: session.metadata?.paperSubcategoryId || undefined,
-		},
-	);
+	const { _id: orderId, orderNumber } = await convex.mutation(api.orders.create, {
+		siteUrl: SITE_DOMAIN,
+		stripeSessionId: session.id,
+		customerEmail: session.customer_details?.email || "",
+		customerName: session.customer_details?.name || shippingDetails?.name || undefined,
+		stripePaymentIntentId: stripePaymentIntentId || undefined,
+		shippingAddress: shippingDetails?.address
+			? {
+					line1: shippingDetails.address.line1 || "",
+					line2: shippingDetails.address.line2 || undefined,
+					city: shippingDetails.address.city || "",
+					state: shippingDetails.address.state || "",
+					postalCode: shippingDetails.address.postal_code || "",
+					country: shippingDetails.address.country || "",
+				}
+			: undefined,
+		items,
+		total: session.amount_total || 0,
+		subtotal: session.amount_subtotal || undefined,
+		fulfillmentType: isDigital ? "digital" : "self",
+		paperName: session.metadata?.paperName || undefined,
+		paperSubcategoryId: session.metadata?.paperSubcategoryId || undefined,
+	});
 
 	console.log("Created order in Convex:", orderNumber, orderId);
 
 	// Non-critical: capture fees — can be reconciled manually later
 	try {
-		await captureStripeFees(
-			stripe,
-			convex,
-			orderId,
-			orderNumber,
-			stripePaymentIntentId,
-		);
+		await captureStripeFees(stripe, convex, orderId, orderNumber, stripePaymentIntentId);
 	} catch (err) {
-		console.error(
-			"Failed to capture Stripe fees (non-fatal):",
-			orderNumber,
-			err,
-		);
+		console.error("Failed to capture Stripe fees (non-fatal):", orderNumber, err);
 	}
 
 	// Critical: LumaPrints submission.
@@ -133,14 +111,7 @@ export async function createOrderInConvex(
 	// conservative: unknown errors default to transient so we don't refund
 	// customers based on our own bugs.
 	try {
-		await submitToLumaPrints(
-			convex,
-			orderId,
-			orderNumber,
-			lineItems,
-			shippingDetails,
-			session,
-		);
+		await submitToLumaPrints(convex, orderId, orderNumber, lineItems, shippingDetails, session);
 	} catch (err) {
 		const classification = classifyLumaPrintsFailure(err);
 		// `timed` inside submitToLumaPrints already captured the exception
@@ -325,13 +296,8 @@ export async function captureStripeFees(
 		const charge = pi.latest_charge;
 		// After expand, latest_charge is a Charge object with balance_transaction expanded
 		const balanceTxn =
-			typeof charge === "object" && charge !== null
-				? charge.balance_transaction
-				: undefined;
-		const fees =
-			typeof balanceTxn === "object" && balanceTxn !== null
-				? balanceTxn.fee
-				: undefined;
+			typeof charge === "object" && charge !== null ? charge.balance_transaction : undefined;
+		const fees = typeof balanceTxn === "object" && balanceTxn !== null ? balanceTxn.fee : undefined;
 
 		if (fees && fees > 0) {
 			await convex.mutation(api.orders.updateStatus, {

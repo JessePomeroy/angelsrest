@@ -89,9 +89,7 @@ async function processOne(
 	// Download the source image
 	const downloadRes = await fetch(imageUrl);
 	if (!downloadRes.ok) {
-		throw new Error(
-			`Download failed: ${downloadRes.status} ${downloadRes.statusText}`,
-		);
+		throw new Error(`Download failed: ${downloadRes.status} ${downloadRes.statusText}`);
 	}
 	const sourceBuffer = Buffer.from(await downloadRes.arrayBuffer());
 	const t1 = Date.now();
@@ -132,9 +130,7 @@ async function processOne(
 
 	const memAfter = process.memoryUsage().rss;
 
-	const outputSha256 = returnHash
-		? createHash("sha256").update(encoded).digest("hex")
-		: undefined;
+	const outputSha256 = returnHash ? createHash("sha256").update(encoded).digest("hex") : undefined;
 
 	return {
 		url: imageUrl,
@@ -159,10 +155,7 @@ export const POST: RequestHandler = async ({ request }) => {
 	// Bearer token auth
 	const expectedToken = env.SHARP_SPIKE_TOKEN;
 	if (!expectedToken) {
-		return json(
-			{ error: "SHARP_SPIKE_TOKEN env var not set on the server" },
-			{ status: 500 },
-		);
+		return json({ error: "SHARP_SPIKE_TOKEN env var not set on the server" }, { status: 500 });
 	}
 	const authHeader = request.headers.get("authorization");
 	if (authHeader !== `Bearer ${expectedToken}`) {
@@ -181,15 +174,8 @@ export const POST: RequestHandler = async ({ request }) => {
 	const targetDpi = body.targetDpi ?? 300;
 	const returnHash = body.returnHash ?? false;
 
-	if (
-		typeof borderInches !== "number" ||
-		borderInches <= 0 ||
-		borderInches > 5
-	) {
-		return json(
-			{ error: "borderInches must be a number between 0 and 5" },
-			{ status: 400 },
-		);
+	if (typeof borderInches !== "number" || borderInches <= 0 || borderInches > 5) {
+		return json({ error: "borderInches must be a number between 0 and 5" }, { status: 400 });
 	}
 
 	const urls = body.imageUrls ?? (body.imageUrl ? [body.imageUrl] : []);
@@ -240,9 +226,7 @@ export const POST: RequestHandler = async ({ request }) => {
 			errorCount: errors.length,
 			totalSourceBytes: results.reduce((sum, r) => sum + r.sourceBytes, 0),
 			totalOutputBytes: results.reduce((sum, r) => sum + r.outputBytes, 0),
-			memOverallDeltaMb: Math.round(
-				(memOverallAfter - memOverallBefore) / (1024 * 1024),
-			),
+			memOverallDeltaMb: Math.round((memOverallAfter - memOverallBefore) / (1024 * 1024)),
 		},
 		perImage: results,
 		errors,

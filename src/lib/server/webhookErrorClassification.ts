@@ -33,11 +33,7 @@ export function classifyLumaPrintsFailure(err: unknown): FailureClassification {
 		// Node's fetch throws AbortError / TypeError for network-layer issues.
 		// These are always transient.
 		const name = err.name;
-		if (
-			name === "AbortError" ||
-			name === "TimeoutError" ||
-			name === "TypeError"
-		) {
+		if (name === "AbortError" || name === "TimeoutError" || name === "TypeError") {
 			return "transient";
 		}
 		// Any other generic Error — unknown cause, default to transient so we
@@ -53,9 +49,7 @@ export function classifyLumaPrintsFailure(err: unknown): FailureClassification {
  * We look for HTTP status codes and specific error messages that indicate
  * permanent failures. Everything else is transient.
  */
-function classifyLumaPrintsErrorDetails(
-	details: unknown,
-): FailureClassification {
+function classifyLumaPrintsErrorDetails(details: unknown): FailureClassification {
 	if (!details || typeof details !== "object") {
 		return "transient";
 	}
@@ -109,9 +103,7 @@ function classifyLumaPrintsErrorDetails(
 function extractMessageString(obj: Record<string, unknown>): string | null {
 	if (typeof obj.message === "string") return obj.message;
 	if (Array.isArray(obj.message)) {
-		return obj.message
-			.filter((m): m is string => typeof m === "string")
-			.join("; ");
+		return obj.message.filter((m): m is string => typeof m === "string").join("; ");
 	}
 	return null;
 }
@@ -123,9 +115,7 @@ function extractMessageString(obj: Record<string, unknown>): string | null {
 export function formatFailureForAdmin(err: unknown): string {
 	if (err instanceof LumaPrintsError) {
 		const message = err.message;
-		const detailsStr = err.details
-			? `\nDetails: ${JSON.stringify(err.details).slice(0, 500)}`
-			: "";
+		const detailsStr = err.details ? `\nDetails: ${JSON.stringify(err.details).slice(0, 500)}` : "";
 		return `${message}${detailsStr}`;
 	}
 	if (err instanceof Error) {

@@ -50,9 +50,7 @@ export async function load({ params }) {
 
 	if (v2Set) {
 		const preview = previewUrl(v2Set.previewImage);
-		const images = (v2Set.images || [])
-			.map((img: any) => imageSet(img))
-			.filter(Boolean);
+		const images = (v2Set.images || []).map((img: any) => imageSet(img)).filter(Boolean);
 
 		return {
 			setType: "v2" as const,
@@ -78,9 +76,7 @@ export async function load({ params }) {
 	if (!v1Set) throw error(404, "Print set not found");
 
 	const preview = previewUrl(v1Set.previewImage);
-	const images = (v1Set.images || [])
-		.map((img: any) => imageSet(img))
-		.filter(Boolean);
+	const images = (v1Set.images || []).map((img: any) => imageSet(img)).filter(Boolean);
 
 	return {
 		setType: "v1" as const,

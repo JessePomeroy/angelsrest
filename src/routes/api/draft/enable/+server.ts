@@ -13,10 +13,7 @@ const client = createClient({
 });
 
 export async function GET({ url, cookies }) {
-	const { isValid, redirectTo = "/" } = await validatePreviewUrl(
-		client,
-		url.toString(),
-	);
+	const { isValid, redirectTo = "/" } = await validatePreviewUrl(client, url.toString());
 
 	if (!isValid) {
 		return new Response("Invalid preview URL", { status: 403 });

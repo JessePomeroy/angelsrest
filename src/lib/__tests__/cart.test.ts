@@ -21,9 +21,7 @@ import {
 let nextId = 0;
 const idGen = () => `test-id-${++nextId}`;
 
-function makePrintItem(
-	overrides: Partial<Omit<CartItem, "id">> = {},
-): Omit<CartItem, "id"> {
+function makePrintItem(overrides: Partial<Omit<CartItem, "id">> = {}): Omit<CartItem, "id"> {
 	return {
 		productSlug: "shore-no-1",
 		type: "print",
@@ -39,9 +37,7 @@ function makePrintItem(
 	};
 }
 
-function makeSetItem(
-	overrides: Partial<Omit<CartItem, "id">> = {},
-): Omit<CartItem, "id"> {
+function makeSetItem(overrides: Partial<Omit<CartItem, "id">> = {}): Omit<CartItem, "id"> {
 	return {
 		productSlug: "tide-set",
 		type: "set",
@@ -146,50 +142,27 @@ describe("addItemToCart", () => {
 			idGen,
 		);
 		expect(cart.items).toHaveLength(2);
-		expect(cart.items.map((i) => i.paperName)).toEqual([
-			"Archival Matte",
-			"Glossy",
-		]);
+		expect(cart.items.map((i) => i.paperName)).toEqual(["Archival Matte", "Glossy"]);
 	});
 
 	it("adds a separate line for the same product with a different size", () => {
-		let cart = addItemToCart(
-			emptyCart(),
-			makePrintItem({ paperWidth: 8, paperHeight: 12 }),
-			idGen,
-		);
-		cart = addItemToCart(
-			cart,
-			makePrintItem({ paperWidth: 16, paperHeight: 24 }),
-			idGen,
-		);
+		let cart = addItemToCart(emptyCart(), makePrintItem({ paperWidth: 8, paperHeight: 12 }), idGen);
+		cart = addItemToCart(cart, makePrintItem({ paperWidth: 16, paperHeight: 24 }), idGen);
 		expect(cart.items).toHaveLength(2);
 	});
 
 	it("clamps quantity above MAX_QUANTITY_PER_LINE", () => {
-		const cart = addItemToCart(
-			emptyCart(),
-			makePrintItem({ quantity: 999 }),
-			idGen,
-		);
+		const cart = addItemToCart(emptyCart(), makePrintItem({ quantity: 999 }), idGen);
 		expect(cart.items[0].quantity).toBe(MAX_QUANTITY_PER_LINE);
 	});
 
 	it("clamps quantity below 1 to 1", () => {
-		const cart = addItemToCart(
-			emptyCart(),
-			makePrintItem({ quantity: 0 }),
-			idGen,
-		);
+		const cart = addItemToCart(emptyCart(), makePrintItem({ quantity: 0 }), idGen);
 		expect(cart.items[0].quantity).toBe(1);
 	});
 
 	it("clamps merged quantity above the cap", () => {
-		let cart = addItemToCart(
-			emptyCart(),
-			makePrintItem({ quantity: 15 }),
-			idGen,
-		);
+		let cart = addItemToCart(emptyCart(), makePrintItem({ quantity: 15 }), idGen);
 		cart = addItemToCart(cart, makePrintItem({ quantity: 15 }), idGen);
 		expect(cart.items[0].quantity).toBe(MAX_QUANTITY_PER_LINE);
 	});
@@ -249,11 +222,7 @@ describe("updateItemQuantity", () => {
 describe("removeItemFromCart", () => {
 	it("removes the matching item by id", () => {
 		let cart = addItemToCart(emptyCart(), makePrintItem(), idGen);
-		cart = addItemToCart(
-			cart,
-			makePrintItem({ productSlug: "other-print" }),
-			idGen,
-		);
+		cart = addItemToCart(cart, makePrintItem({ productSlug: "other-print" }), idGen);
 		expect(cart.items).toHaveLength(2);
 		const firstId = cart.items[0].id;
 		cart = removeItemFromCart(cart, firstId);
@@ -302,16 +271,8 @@ describe("cartTotalCents", () => {
 
 describe("cartItemCount", () => {
 	it("sums quantities across line items", () => {
-		let cart = addItemToCart(
-			emptyCart(),
-			makePrintItem({ quantity: 2 }),
-			idGen,
-		);
-		cart = addItemToCart(
-			cart,
-			makePrintItem({ productSlug: "other", quantity: 3 }),
-			idGen,
-		);
+		let cart = addItemToCart(emptyCart(), makePrintItem({ quantity: 2 }), idGen);
+		cart = addItemToCart(cart, makePrintItem({ productSlug: "other", quantity: 3 }), idGen);
 		expect(cartItemCount(cart)).toBe(5);
 	});
 
@@ -347,9 +308,7 @@ describe("isCartExpired", () => {
 	it("uses CART_EXPIRY_DAYS as the boundary", () => {
 		// Exactly one millisecond past the expiry window
 		const now = new Date("2026-04-11T00:00:00Z");
-		const justPastExpiry = new Date(
-			now.getTime() - (CART_EXPIRY_DAYS * 24 * 60 * 60 * 1000 + 1),
-		);
+		const justPastExpiry = new Date(now.getTime() - (CART_EXPIRY_DAYS * 24 * 60 * 60 * 1000 + 1));
 		const cart: CartState = {
 			items: [],
 			updatedAt: justPastExpiry.toISOString(),

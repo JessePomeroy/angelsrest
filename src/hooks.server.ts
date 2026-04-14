@@ -18,10 +18,7 @@ function addSecurityHeaders(response: Response): Response {
 	cloned.headers.set("X-Frame-Options", "DENY");
 	cloned.headers.set("X-Content-Type-Options", "nosniff");
 	cloned.headers.set("Referrer-Policy", "strict-origin-when-cross-origin");
-	cloned.headers.set(
-		"Permissions-Policy",
-		"camera=(), microphone=(), geolocation=()",
-	);
+	cloned.headers.set("Permissions-Policy", "camera=(), microphone=(), geolocation=()");
 	cloned.headers.set(
 		"Content-Security-Policy",
 		// Origin allowlist by directive — every entry below was added because

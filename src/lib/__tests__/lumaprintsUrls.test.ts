@@ -10,8 +10,7 @@ describe("prepareSanityUrlForPrint", () => {
 	});
 
 	it("strips existing query params before appending the print params", () => {
-		const url =
-			"https://cdn.sanity.io/images/proj/dataset/photo.jpg?w=1200&fm=webp&q=80";
+		const url = "https://cdn.sanity.io/images/proj/dataset/photo.jpg?w=1200&fm=webp&q=80";
 		expect(prepareSanityUrlForPrint(url)).toBe(
 			"https://cdn.sanity.io/images/proj/dataset/photo.jpg?max=8000&q=100",
 		);
@@ -32,8 +31,7 @@ describe("prepareSanityUrlForPrint", () => {
 	});
 
 	it("strips fragment identifiers in addition to query params", () => {
-		const url =
-			"https://cdn.sanity.io/images/proj/dataset/photo.jpg?w=1200#fragment";
+		const url = "https://cdn.sanity.io/images/proj/dataset/photo.jpg?w=1200#fragment";
 		expect(prepareSanityUrlForPrint(url)).toBe(
 			"https://cdn.sanity.io/images/proj/dataset/photo.jpg?max=8000&q=100",
 		);
@@ -62,8 +60,6 @@ describe("prepareSanityUrlForPrint", () => {
 		// Non-Sanity URLs are not the intended use case, but the function
 		// should still produce a sensible result rather than throwing.
 		const url = "https://example.com/photo.jpg?token=abc";
-		expect(prepareSanityUrlForPrint(url)).toBe(
-			"https://example.com/photo.jpg?max=8000&q=100",
-		);
+		expect(prepareSanityUrlForPrint(url)).toBe("https://example.com/photo.jpg?max=8000&q=100");
 	});
 });

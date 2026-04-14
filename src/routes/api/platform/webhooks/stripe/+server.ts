@@ -1,10 +1,7 @@
 import { json } from "@sveltejs/kit";
 import Stripe from "stripe";
 import { api } from "$convex/api";
-import {
-	STRIPE_PLATFORM_WEBHOOK_SECRET,
-	STRIPE_SECRET_KEY,
-} from "$env/static/private";
+import { STRIPE_PLATFORM_WEBHOOK_SECRET, STRIPE_SECRET_KEY } from "$env/static/private";
 import { getConvex } from "$lib/server/convexClient";
 import { verifyStripeWebhook } from "$lib/server/stripeWebhook";
 
@@ -65,28 +62,16 @@ export async function POST({ request }) {
 				await convex.mutation(api.platform.updateSubscription, {
 					siteUrl: client.siteUrl,
 					tier: isActive ? "full" : "basic",
-					subscriptionStatus: subscription.status as
-						| "active"
-						| "canceled"
-						| "past_due"
-						| "none",
+					subscriptionStatus: subscription.status as "active" | "canceled" | "past_due" | "none",
 				});
-				console.log(
-					"Subscription updated for:",
-					client.siteUrl,
-					"→",
-					subscription.status,
-				);
+				console.log("Subscription updated for:", client.siteUrl, "→", subscription.status);
 			}
 			break;
 		}
 
 		case "invoice.payment_failed": {
 			const invoice = event.data.object as Stripe.Invoice;
-			console.log(
-				"Subscription payment failed for customer:",
-				invoice.customer,
-			);
+			console.log("Subscription payment failed for customer:", invoice.customer);
 			break;
 		}
 	}

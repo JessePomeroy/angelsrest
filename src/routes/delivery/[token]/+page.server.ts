@@ -4,8 +4,7 @@ import { env } from "$env/dynamic/private";
 import { getConvex } from "$lib/server/convexClient";
 
 const convex = getConvex();
-const WORKER_URL =
-	env.GALLERY_WORKER_URL ?? "https://gallery-worker.thinkingofview.workers.dev";
+const WORKER_URL = env.GALLERY_WORKER_URL ?? "https://gallery-worker.thinkingofview.workers.dev";
 
 export async function load({ params }) {
 	const { token } = params;

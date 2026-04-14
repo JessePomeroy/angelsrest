@@ -88,11 +88,7 @@ export const POST: RequestHandler = async ({ request }) => {
 		// Return a flat-rate fallback and log the upstream failure for admin
 		// visibility.
 		if (err instanceof LumaPrintsError) {
-			console.warn(
-				"LumaPrints shipping price failed, degrading:",
-				err.message,
-				err.details,
-			);
+			console.warn("LumaPrints shipping price failed, degrading:", err.message, err.details);
 		} else {
 			console.error("Unexpected error in getShippingPrice:", err);
 		}

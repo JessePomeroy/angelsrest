@@ -31,22 +31,19 @@ export const V2_PAPERS: V2Paper[] = [
 		slug: "archival-matte",
 		name: "Archival Matte",
 		subcategoryId: 103001,
-		description:
-			"Bright white archival paper with a matte finish. Smudge-resistant.",
+		description: "Bright white archival paper with a matte finish. Smudge-resistant.",
 	},
 	{
 		slug: "glossy",
 		name: "Glossy",
 		subcategoryId: 103007,
-		description:
-			"Ultra-smooth high-gloss finish. Vibrant color and deep blacks.",
+		description: "Ultra-smooth high-gloss finish. Vibrant color and deep blacks.",
 	},
 	{
 		slug: "hot-press",
 		name: "Hot Press",
 		subcategoryId: 103002,
-		description:
-			"100% cotton rag fine art paper. Smooth, wide color gamut, archival.",
+		description: "100% cotton rag fine art paper. Smooth, wide color gamut, archival.",
 	},
 	{
 		slug: "cold-press",
@@ -58,8 +55,7 @@ export const V2_PAPERS: V2Paper[] = [
 		slug: "semi-glossy-luster",
 		name: "Semi-Glossy (Luster)",
 		subcategoryId: 103005,
-		description:
-			"Satin finish with no glare and no fingerprints. Portrait standard.",
+		description: "Satin finish with no glare and no fingerprints. Portrait standard.",
 	},
 	{
 		slug: "somerset-velvet",
@@ -174,10 +170,7 @@ export const FRAME_WHOLESALE_COSTS: Record<string, Record<string, number>> = {
 };
 
 /** Get the frame wholesale cost for a frame option + size combo. */
-export function getFrameWholesaleCost(
-	frameValue: string,
-	sizeSlug: string,
-): number | null {
+export function getFrameWholesaleCost(frameValue: string, sizeSlug: string): number | null {
 	// frameValue is e.g. "0.875-black" → thickness is "0.875"
 	const thickness = frameValue.split("-")[0];
 	return FRAME_WHOLESALE_COSTS[thickness]?.[sizeSlug] ?? null;
@@ -258,10 +251,7 @@ export const CANVAS_WHOLESALE_COSTS: Record<string, Record<string, number>> = {
 };
 
 /** Get canvas wholesale cost for a thickness + size combo. */
-export function getCanvasWholesaleCost(
-	thickness: string,
-	sizeSlug: string,
-): number | null {
+export function getCanvasWholesaleCost(thickness: string, sizeSlug: string): number | null {
 	return CANVAS_WHOLESALE_COSTS[thickness]?.[sizeSlug] ?? null;
 }
 

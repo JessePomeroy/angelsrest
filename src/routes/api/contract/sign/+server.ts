@@ -6,8 +6,7 @@ const convex = getConvex();
 
 export async function POST({ request }) {
 	try {
-		const { contractId, signedByName, signedByEmail, signatureData } =
-			await request.json();
+		const { contractId, signedByName, signedByEmail, signatureData } = await request.json();
 
 		if (!contractId || !signedByName) {
 			throw error(400, "Missing required fields");
@@ -26,8 +25,7 @@ export async function POST({ request }) {
 		if (err && typeof err === "object" && "status" in err) {
 			throw err;
 		}
-		const message =
-			err instanceof Error ? err.message : "Failed to sign contract";
+		const message = err instanceof Error ? err.message : "Failed to sign contract";
 		console.error("Contract sign error:", message);
 		throw error(500, message);
 	}

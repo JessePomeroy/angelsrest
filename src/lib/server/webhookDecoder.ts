@@ -77,12 +77,9 @@ export function buildOrderItemsFromSession(
 					// Self-fulfilled merch — skip LumaPrints submission entirely.
 					continue;
 				}
-				const border =
-					typeof parsed.b === "number" && parsed.b > 0 ? parsed.b : undefined;
-				const frame =
-					typeof parsed.f === "number" && parsed.f > 0 ? parsed.f : undefined;
-				const canvas =
-					typeof parsed.c === "number" && parsed.c > 0 ? parsed.c : undefined;
+				const border = typeof parsed.b === "number" && parsed.b > 0 ? parsed.b : undefined;
+				const frame = typeof parsed.f === "number" && parsed.f > 0 ? parsed.f : undefined;
+				const canvas = typeof parsed.c === "number" && parsed.c > 0 ? parsed.c : undefined;
 				if (Array.isArray(parsed.i) && parsed.i.length > 0) {
 					for (const url of parsed.i) {
 						if (typeof url !== "string" || !url) continue;
@@ -124,11 +121,9 @@ export function buildOrderItemsFromSession(
 	const DEFAULT_PAPER_WIDTH = 8;
 	const DEFAULT_PAPER_HEIGHT = 10;
 	const width =
-		Number.parseInt(meta.paperWidth ?? String(DEFAULT_PAPER_WIDTH), 10) ||
-		DEFAULT_PAPER_WIDTH;
+		Number.parseInt(meta.paperWidth ?? String(DEFAULT_PAPER_WIDTH), 10) || DEFAULT_PAPER_WIDTH;
 	const height =
-		Number.parseInt(meta.paperHeight ?? String(DEFAULT_PAPER_HEIGHT), 10) ||
-		DEFAULT_PAPER_HEIGHT;
+		Number.parseInt(meta.paperHeight ?? String(DEFAULT_PAPER_HEIGHT), 10) || DEFAULT_PAPER_HEIGHT;
 
 	const isPrintSet = meta.isPrintSet === "true";
 	if (isPrintSet) {
@@ -161,9 +156,7 @@ export function buildOrderItemsFromSession(
 }
 
 /** Build a LumaPrints recipient from Stripe shipping details. */
-export function buildRecipientFromShipping(
-	shippingDetails: ShippingDetails,
-): Recipient {
+export function buildRecipientFromShipping(shippingDetails: ShippingDetails): Recipient {
 	const nameParts = (shippingDetails?.name || "").split(" ");
 	return {
 		firstName: nameParts[0] || "",

@@ -55,10 +55,7 @@ describe("classifyLumaPrintsFailure", () => {
 
 		it("classifies array-form validation messages as permanent", () => {
 			const err = new LumaPrintsError("validation error", {
-				message: [
-					"orderItems.0.width must be a positive number",
-					"recipient.zipCode is required",
-				],
+				message: ["orderItems.0.width must be a positive number", "recipient.zipCode is required"],
 			});
 			expect(classifyLumaPrintsFailure(err)).toBe("permanent");
 		});

@@ -18,11 +18,7 @@ import { error, json } from "@sveltejs/kit";
 import { Resend } from "resend";
 import Stripe from "stripe";
 import { api } from "$convex/api";
-import {
-	RESEND_API_KEY,
-	STRIPE_SECRET_KEY,
-	STRIPE_WEBHOOK_SECRET,
-} from "$env/static/private";
+import { RESEND_API_KEY, STRIPE_SECRET_KEY, STRIPE_WEBHOOK_SECRET } from "$env/static/private";
 import { SITE_DOMAIN } from "$lib/config/site";
 import { getConvex } from "$lib/server/convexClient";
 import { logStructured } from "$lib/server/logger";
@@ -44,11 +40,7 @@ const resend = new Resend(RESEND_API_KEY);
 // ─── Webhook Entry Point ─────────────────────────────────────────────────────
 
 export async function POST({ request }) {
-	const event = await verifyStripeWebhook(
-		request,
-		stripe,
-		STRIPE_WEBHOOK_SECRET,
-	);
+	const event = await verifyStripeWebhook(request, stripe, STRIPE_WEBHOOK_SECRET);
 
 	// Track total webhook duration manually (rather than via `timed`) so the
 	// existing catch path stays exactly as it was — we want a single
@@ -132,12 +124,7 @@ export async function POST({ request }) {
 			error: err,
 			meta: { stripeEventType: event.type },
 		});
-		await sendFailureAlert(
-			resend,
-			event.type,
-			sessionId ?? "unknown",
-			errorMessage,
-		);
+		await sendFailureAlert(resend, event.type, sessionId ?? "unknown", errorMessage);
 		throw error(500, "Webhook processing failed");
 	}
 }
@@ -152,11 +139,9 @@ async function handleCheckoutCompleted(session: Stripe.Checkout.Session) {
 	console.log("Processing completed checkout:", session.id);
 
 	// Fetch full session data with line items and payment details
-	const { fullSession, lineItems, shippingDetails } =
-		await fetchSessionDetails(session);
+	const { fullSession, lineItems, shippingDetails } = await fetchSessionDetails(session);
 
-	const customerEmail =
-		fullSession.customer_details?.email || session.customer_email;
+	const customerEmail = fullSession.customer_details?.email || session.customer_email;
 
 	if (!customerEmail) {
 		console.error("No customer email found for session:", session.id);
@@ -220,9 +205,7 @@ async function fetchSessionDetails(session: Stripe.Checkout.Session) {
 		shippingDetails = session.collected_information?.shipping_details;
 	} catch {
 		// For Stripe CLI test events, the session may not exist
-		console.log(
-			"Session retrieval failed (likely test event), using event data",
-		);
+		console.log("Session retrieval failed (likely test event), using event data");
 		fullSession = session;
 		shippingDetails = session.collected_information?.shipping_details;
 	}

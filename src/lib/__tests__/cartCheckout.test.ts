@@ -99,9 +99,7 @@ describe("validateCart", () => {
 	});
 
 	it("rejects a cart over the 40-item Stripe metadata cap", () => {
-		const items = Array.from({ length: 41 }, (_, i) =>
-			makeItem({ id: `item-${i}` }),
-		);
+		const items = Array.from({ length: 41 }, (_, i) => makeItem({ id: `item-${i}` }));
 		expect(validateCart(items)).toMatch(/too large/);
 	});
 
@@ -119,9 +117,7 @@ describe("validateCart", () => {
 	});
 
 	it("rejects a set item with an empty imageUrls array", () => {
-		expect(validateCart([makeSetItem({ imageUrls: [] })])).toMatch(
-			/missing imageUrls/,
-		);
+		expect(validateCart([makeSetItem({ imageUrls: [] })])).toMatch(/missing imageUrls/);
 	});
 
 	it("rejects a set with too many images for the metadata cap", () => {
@@ -133,9 +129,7 @@ describe("validateCart", () => {
 			(_, i) =>
 				`https://cdn.sanity.io/images/n7rvza4g/production/abc123def456789-1200x800-${i}.jpg`,
 		);
-		expect(validateCart([makeSetItem({ imageUrls: tooMany })])).toMatch(
-			/too many images/,
-		);
+		expect(validateCart([makeSetItem({ imageUrls: tooMany })])).toMatch(/too many images/);
 	});
 
 	it("accepts a non-print merch item with no paper fields", () => {
@@ -145,9 +139,7 @@ describe("validateCart", () => {
 	});
 
 	it("accepts a mixed cart of prints, merch, and sets", () => {
-		expect(
-			validateCart([makeItem(), makeMerchItem(), makeSetItem()]),
-		).toBeNull();
+		expect(validateCart([makeItem(), makeMerchItem(), makeSetItem()])).toBeNull();
 	});
 
 	it("rejects an item with partial paper config", () => {
@@ -159,9 +151,7 @@ describe("validateCart", () => {
 
 	it("rejects zero or negative width/height when paper is present", () => {
 		expect(validateCart([makeItem({ paperWidth: 0 })])).toMatch(/paperWidth/);
-		expect(validateCart([makeItem({ paperHeight: -1 })])).toMatch(
-			/paperHeight/,
-		);
+		expect(validateCart([makeItem({ paperHeight: -1 })])).toMatch(/paperHeight/);
 	});
 
 	it("rejects non-integer or zero quantities", () => {
@@ -171,12 +161,8 @@ describe("validateCart", () => {
 	});
 
 	it("rejects negative or non-integer unitPriceCents", () => {
-		expect(validateCart([makeItem({ unitPriceCents: -100 })])).toMatch(
-			/unitPriceCents/,
-		);
-		expect(validateCart([makeItem({ unitPriceCents: 4500.5 })])).toMatch(
-			/unitPriceCents/,
-		);
+		expect(validateCart([makeItem({ unitPriceCents: -100 })])).toMatch(/unitPriceCents/);
+		expect(validateCart([makeItem({ unitPriceCents: 4500.5 })])).toMatch(/unitPriceCents/);
 	});
 });
 
@@ -188,11 +174,7 @@ describe("buildCartMetadata", () => {
 	});
 
 	it("encodes one cartItem_{n} key per item", () => {
-		const meta = buildCartMetadata([
-			makeItem(),
-			makeItem({ id: "b" }),
-			makeItem({ id: "c" }),
-		]);
+		const meta = buildCartMetadata([makeItem(), makeItem({ id: "b" }), makeItem({ id: "c" })]);
 		expect(meta.cartItem_0).toBeTruthy();
 		expect(meta.cartItem_1).toBeTruthy();
 		expect(meta.cartItem_2).toBeTruthy();
@@ -270,9 +252,7 @@ describe("buildCartMetadata", () => {
 	});
 
 	it("stays under the 50-key Stripe metadata cap for the maximum cart size", () => {
-		const items = Array.from({ length: 40 }, (_, i) =>
-			makeItem({ id: `item-${i}` }),
-		);
+		const items = Array.from({ length: 40 }, (_, i) => makeItem({ id: `item-${i}` }));
 		const meta = buildCartMetadata(items);
 		// 40 cartItem_* keys + isCart + cartItemCount = 42 total
 		expect(Object.keys(meta).length).toBeLessThanOrEqual(50);

@@ -79,9 +79,7 @@ describe("POST /api/portal/[token]/accept", () => {
 	});
 
 	it("returns 404 when token is expired", async () => {
-		mockConvexQuery.mockResolvedValue(
-			makeTokenRecord({ type: "quote", expired: true }),
-		);
+		mockConvexQuery.mockResolvedValue(makeTokenRecord({ type: "quote", expired: true }));
 
 		try {
 			await POST(makeReq("expired-token"));
@@ -248,9 +246,7 @@ describe("POST /api/portal/[token]/sign", () => {
 		);
 		mockConvexMutation.mockResolvedValue(null);
 
-		const response = await POST(
-			makeReq("good-token", { signerName: "Jane Doe" }),
-		);
+		const response = await POST(makeReq("good-token", { signerName: "Jane Doe" }));
 		expect(response.status).toBe(200);
 
 		expect(mockConvexMutation).toHaveBeenCalledWith("contracts.markSigned", {

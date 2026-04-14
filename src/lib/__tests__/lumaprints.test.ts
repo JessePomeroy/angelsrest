@@ -27,8 +27,7 @@ const mockRecipient: Recipient = {
 
 const mockItems: OrderItem[] = [
 	{
-		imageUrl:
-			"https://cdn.sanity.io/images/proj/dataset/photo.jpg?w=1200&fm=webp&q=80",
+		imageUrl: "https://cdn.sanity.io/images/proj/dataset/photo.jpg?w=1200&fm=webp&q=80",
 		paperSubcategoryId: 103001,
 		width: 8,
 		height: 12,
@@ -38,11 +37,8 @@ const mockItems: OrderItem[] = [
 
 describe("cleanImageUrl", () => {
 	it("strips query parameters from Sanity CDN URLs", () => {
-		const url =
-			"https://cdn.sanity.io/images/proj/dataset/photo.jpg?w=1200&fm=webp&q=80";
-		expect(cleanImageUrl(url)).toBe(
-			"https://cdn.sanity.io/images/proj/dataset/photo.jpg",
-		);
+		const url = "https://cdn.sanity.io/images/proj/dataset/photo.jpg?w=1200&fm=webp&q=80";
+		expect(cleanImageUrl(url)).toBe("https://cdn.sanity.io/images/proj/dataset/photo.jpg");
 	});
 
 	it("handles URLs without query params unchanged", () => {
@@ -67,11 +63,7 @@ describe("cleanImageUrl", () => {
 
 describe("buildLumaPrintsOrder", () => {
 	it("creates correct top-level structure", () => {
-		const order = buildLumaPrintsOrder(
-			"sanity-order-123",
-			mockRecipient,
-			mockItems,
-		);
+		const order = buildLumaPrintsOrder("sanity-order-123", mockRecipient, mockItems);
 		expect(order.externalId).toBe("sanity-order-123");
 		// from mock env LUMAPRINTS_STORE_ID = "83765" in src/__mocks__/env-dynamic.ts
 		expect(order.storeId).toBe(83765);
@@ -135,11 +127,7 @@ describe("buildLumaPrintsOrder", () => {
 			{ ...mockItems[0], imageUrl: "https://cdn.example.com/a.jpg" },
 			{ ...mockItems[0], imageUrl: "https://cdn.example.com/b.jpg" },
 		];
-		const order = buildLumaPrintsOrder(
-			"multi-order",
-			mockRecipient,
-			multiItems,
-		);
+		const order = buildLumaPrintsOrder("multi-order", mockRecipient, multiItems);
 		expect(order.orderItems[0].externalItemId).toBe("multi-order-item-1");
 		expect(order.orderItems[1].externalItemId).toBe("multi-order-item-2");
 	});
@@ -177,11 +165,7 @@ describe("buildLumaPrintsOrder", () => {
 				quantity: 1,
 			},
 		];
-		const order = buildLumaPrintsOrder(
-			"print-set-order",
-			mockRecipient,
-			printSetItems,
-		);
+		const order = buildLumaPrintsOrder("print-set-order", mockRecipient, printSetItems);
 		expect(order.orderItems).toHaveLength(3);
 		expect(order.orderItems[2].externalItemId).toBe("print-set-order-item-3");
 		// All items use print quality URLs (existing query params replaced)
@@ -255,11 +239,7 @@ describe("createOrder", () => {
 			}),
 		);
 
-		const order = buildLumaPrintsOrder(
-			"success-order",
-			mockRecipient,
-			mockItems,
-		);
+		const order = buildLumaPrintsOrder("success-order", mockRecipient, mockItems);
 		const result = await createOrder(order);
 		expect(result).toEqual(mockResponse);
 	});
@@ -324,8 +304,7 @@ describe("checkImageConfig", () => {
 		vi.stubGlobal("fetch", fetchMock);
 
 		await checkImageConfig({
-			imageUrl:
-				"https://cdn.sanity.io/images/proj/dataset/photo.jpg?w=1200&fm=webp&q=80",
+			imageUrl: "https://cdn.sanity.io/images/proj/dataset/photo.jpg?w=1200&fm=webp&q=80",
 			subcategoryId: 103001,
 			width: 8,
 			height: 10,
@@ -333,9 +312,7 @@ describe("checkImageConfig", () => {
 
 		const callArgs = fetchMock.mock.calls[0];
 		const body = JSON.parse(callArgs[1].body as string);
-		expect(body.imageUrl).toBe(
-			"https://cdn.sanity.io/images/proj/dataset/photo.jpg",
-		);
+		expect(body.imageUrl).toBe("https://cdn.sanity.io/images/proj/dataset/photo.jpg");
 	});
 
 	it("throws LumaPrintsError with API details on non-ok response", async () => {

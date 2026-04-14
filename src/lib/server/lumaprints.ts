@@ -58,9 +58,7 @@ export class LumaPrintsError extends Error {
 }
 
 /** Submit an order to LumaPrints */
-export async function createOrder(
-	order: LumaPrintsOrder,
-): Promise<LumaPrintsOrderResponse> {
+export async function createOrder(order: LumaPrintsOrder): Promise<LumaPrintsOrderResponse> {
 	const res = await fetch(`${BASE_URL}/api/v1/orders`, {
 		method: "POST",
 		headers: getHeaders(),
@@ -89,13 +87,10 @@ export async function getOrder(
 }
 
 /** Get shipment tracking for an order */
-export async function getShipping(
-	orderNumber: string,
-): Promise<LumaPrintsShipment[]> {
-	const res = await fetch(
-		`${BASE_URL}/api/v1/orders/${orderNumber}/shipments`,
-		{ headers: getHeaders() },
-	);
+export async function getShipping(orderNumber: string): Promise<LumaPrintsShipment[]> {
+	const res = await fetch(`${BASE_URL}/api/v1/orders/${orderNumber}/shipments`, {
+		headers: getHeaders(),
+	});
 	if (!res.ok) {
 		throw new LumaPrintsError(`Failed to get shipments for ${orderNumber}`);
 	}
@@ -256,12 +251,8 @@ export function buildLumaPrintsOrder(
 			phone: recipient.phone || "",
 		},
 		orderItems: items.map((item, i) => {
-			const isCanvas =
-				typeof item.canvasSubcategoryId === "number" &&
-				item.canvasSubcategoryId > 0;
-			const isFramed =
-				typeof item.frameSubcategoryId === "number" &&
-				item.frameSubcategoryId > 0;
+			const isCanvas = typeof item.canvasSubcategoryId === "number" && item.canvasSubcategoryId > 0;
+			const isFramed = typeof item.frameSubcategoryId === "number" && item.frameSubcategoryId > 0;
 			// Priority: canvas > frame > paper subcategory
 			const subcategoryId = isCanvas
 				? item.canvasSubcategoryId!
@@ -270,11 +261,8 @@ export function buildLumaPrintsOrder(
 					: item.paperSubcategoryId;
 			// For bordered prints that were Sharp-composited, the imageUrl is
 			// already an R2 URL — don't run it through prepareSanityUrlForPrint.
-			const isBordered =
-				typeof item.borderWidth === "number" && item.borderWidth > 0;
-			const imageUrl = isBordered
-				? item.imageUrl
-				: prepareSanityUrlForPrint(item.imageUrl);
+			const isBordered = typeof item.borderWidth === "number" && item.borderWidth > 0;
+			const imageUrl = isBordered ? item.imageUrl : prepareSanityUrlForPrint(item.imageUrl);
 			const options: number[] = [];
 			if (isCanvas) {
 				options.push(3); // Solid Color wrap (black)

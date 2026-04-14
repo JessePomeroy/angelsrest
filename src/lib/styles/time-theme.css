@@ -139,11 +139,7 @@ body::after {
 	right: 0;
 	height: 50vh;
 	pointer-events: none;
-	background: radial-gradient(
-		ellipse 90% 60% at 50% 0%,
-		var(--time-glow) 0%,
-		transparent 70%
-	);
+	background: radial-gradient(ellipse 90% 60% at 50% 0%, var(--time-glow) 0%, transparent 70%);
 	z-index: 0;
 	transition: background 2s ease;
 }

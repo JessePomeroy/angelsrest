@@ -28,10 +28,7 @@ import { error, json } from "@sveltejs/kit";
 import Stripe from "stripe";
 import { STRIPE_SECRET_KEY } from "$env/static/private";
 import { PUBLIC_SITE_URL } from "$env/static/public";
-import {
-	buildCartMetadata,
-	validateCart,
-} from "$lib/server/cartCheckoutHelpers";
+import { buildCartMetadata, validateCart } from "$lib/server/cartCheckoutHelpers";
 import type { CartItem } from "$lib/shop/cart";
 
 const stripe = new Stripe(STRIPE_SECRET_KEY);
@@ -55,25 +52,23 @@ export async function POST({ request }) {
 		// our shape since each cart entry has its own snapshot price.
 		// Non-print merch (no paper info) gets a simpler product name with
 		// no paper/size suffix.
-		const lineItems: Stripe.Checkout.SessionCreateParams.LineItem[] = items.map(
-			(item) => {
-				const hasPaper = typeof item.paperSubcategoryId === "number";
-				const name = hasPaper
-					? `${item.title} — ${item.paperName}, ${item.paperWidth}×${item.paperHeight}`
-					: item.title;
-				return {
-					price_data: {
-						currency: "usd",
-						product_data: {
-							name,
-							images: item.imageUrl ? [item.imageUrl] : [],
-						},
-						unit_amount: item.unitPriceCents,
+		const lineItems: Stripe.Checkout.SessionCreateParams.LineItem[] = items.map((item) => {
+			const hasPaper = typeof item.paperSubcategoryId === "number";
+			const name = hasPaper
+				? `${item.title} — ${item.paperName}, ${item.paperWidth}×${item.paperHeight}`
+				: item.title;
+			return {
+				price_data: {
+					currency: "usd",
+					product_data: {
+						name,
+						images: item.imageUrl ? [item.imageUrl] : [],
 					},
-					quantity: item.quantity,
-				};
-			},
-		);
+					unit_amount: item.unitPriceCents,
+				},
+				quantity: item.quantity,
+			};
+		});
 
 		const session = await stripe.checkout.sessions.create({
 			payment_method_types: ["card"],

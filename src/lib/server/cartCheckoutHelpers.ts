@@ -70,16 +70,10 @@ export function buildCartMetadata(items: CartItem[]): Record<string, string> {
 		if (typeof item.borderWidth === "number" && item.borderWidth > 0) {
 			payload.b = item.borderWidth;
 		}
-		if (
-			typeof item.frameSubcategoryId === "number" &&
-			item.frameSubcategoryId > 0
-		) {
+		if (typeof item.frameSubcategoryId === "number" && item.frameSubcategoryId > 0) {
 			payload.f = item.frameSubcategoryId;
 		}
-		if (
-			typeof item.canvasSubcategoryId === "number" &&
-			item.canvasSubcategoryId > 0
-		) {
+		if (typeof item.canvasSubcategoryId === "number" && item.canvasSubcategoryId > 0) {
 			payload.c = item.canvasSubcategoryId;
 		}
 		if (item.type === "set" && item.imageUrls && item.imageUrls.length > 0) {

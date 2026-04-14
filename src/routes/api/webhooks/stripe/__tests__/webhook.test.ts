@@ -42,9 +42,8 @@ vi.mock("resend", () => ({
 // createEmailSendHandler.test.ts in the admin-dashboard package.
 const mockCreateLumaOrder = vi.fn();
 vi.mock("$lib/server/lumaprints", async () => {
-	const actual = await vi.importActual<typeof import("$lib/server/lumaprints")>(
-		"$lib/server/lumaprints",
-	);
+	const actual =
+		await vi.importActual<typeof import("$lib/server/lumaprints")>("$lib/server/lumaprints");
 	return {
 		...actual,
 		createOrder: mockCreateLumaOrder,

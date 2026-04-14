@@ -7,8 +7,7 @@ import { adminConfig } from "./admin";
 export const adminServerConfig: AdminServerConfig = {
 	...adminConfig,
 	galleryWorkerUrl:
-		privateEnv.GALLERY_WORKER_URL ??
-		"https://gallery-worker.thinkingofview.workers.dev",
+		privateEnv.GALLERY_WORKER_URL ?? "https://gallery-worker.thinkingofview.workers.dev",
 	galleryAdminSecret: privateEnv.GALLERY_ADMIN_SECRET ?? "",
 	convexUrl: publicEnv.PUBLIC_CONVEX_URL ?? "",
 	resendApiKey: privateEnv.RESEND_API_KEY ?? "",

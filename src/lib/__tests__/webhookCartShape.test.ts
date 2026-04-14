@@ -85,9 +85,7 @@ function makeSetItem(overrides: Partial<CartItem> = {}): CartItem {
 	};
 }
 
-function makeSession(
-	metadata: Record<string, string>,
-): Stripe.Checkout.Session {
+function makeSession(metadata: Record<string, string>): Stripe.Checkout.Session {
 	return { metadata } as unknown as Stripe.Checkout.Session;
 }
 
@@ -232,12 +230,8 @@ describe("__test__buildOrderItemsFromSession — cart shape (PR C)", () => {
 		const orderItems = __test__buildOrderItemsFromSession(session, []);
 		// Only the two print items should make it through to LumaPrints.
 		expect(orderItems).toHaveLength(2);
-		expect(orderItems[0].imageUrl).toBe(
-			"https://cdn.sanity.io/images/abc/print.jpg",
-		);
-		expect(orderItems[1].imageUrl).toBe(
-			"https://cdn.sanity.io/images/abc/print2.jpg",
-		);
+		expect(orderItems[0].imageUrl).toBe("https://cdn.sanity.io/images/abc/print.jpg");
+		expect(orderItems[1].imageUrl).toBe("https://cdn.sanity.io/images/abc/print2.jpg");
 		expect(orderItems[1].width).toBe(16);
 	});
 
@@ -262,9 +256,7 @@ describe("__test__buildOrderItemsFromSession — cart shape (PR C)", () => {
 	it("multiplies set images by the cart line quantity", () => {
 		// Buying 2 of a 3-image set submits each image with quantity 2,
 		// matching "I want two of this print set."
-		const session = makeSession(
-			buildCartMetadata([makeSetItem({ quantity: 2 })]),
-		);
+		const session = makeSession(buildCartMetadata([makeSetItem({ quantity: 2 })]));
 		const orderItems = __test__buildOrderItemsFromSession(session, []);
 		expect(orderItems).toHaveLength(3);
 		for (const item of orderItems) {
@@ -293,15 +285,9 @@ describe("__test__buildOrderItemsFromSession — cart shape (PR C)", () => {
 		const orderItems = __test__buildOrderItemsFromSession(session, []);
 		// 1 print + 0 merch + 3 set images = 4 LumaPrints OrderItems
 		expect(orderItems).toHaveLength(4);
-		expect(orderItems[0].imageUrl).toBe(
-			"https://cdn.sanity.io/images/abc/print.jpg",
-		);
-		expect(orderItems[1].imageUrl).toBe(
-			"https://cdn.sanity.io/images/abc/tide-1.jpg",
-		);
-		expect(orderItems[3].imageUrl).toBe(
-			"https://cdn.sanity.io/images/abc/tide-3.jpg",
-		);
+		expect(orderItems[0].imageUrl).toBe("https://cdn.sanity.io/images/abc/print.jpg");
+		expect(orderItems[1].imageUrl).toBe("https://cdn.sanity.io/images/abc/tide-1.jpg");
+		expect(orderItems[3].imageUrl).toBe("https://cdn.sanity.io/images/abc/tide-3.jpg");
 	});
 
 	it("ignores top-level paperSubcategoryId when isCart is set", () => {
@@ -330,9 +316,7 @@ describe("__test__buildOrderItemsFromSession — backwards compat", () => {
 		const lineItems = [{ quantity: 2 } as Stripe.LineItem];
 		const orderItems = __test__buildOrderItemsFromSession(session, lineItems);
 		expect(orderItems).toHaveLength(1);
-		expect(orderItems[0].imageUrl).toBe(
-			"https://cdn.sanity.io/images/abc/legacy.jpg",
-		);
+		expect(orderItems[0].imageUrl).toBe("https://cdn.sanity.io/images/abc/legacy.jpg");
 		expect(orderItems[0].quantity).toBe(2);
 	});
 

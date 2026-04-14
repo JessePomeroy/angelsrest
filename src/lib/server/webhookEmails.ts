@@ -26,9 +26,7 @@ export const formatCurrency = (amount: number) =>
 	}).format(amount / 100);
 
 /** Format shipping address for emails */
-export function formatShippingAddress(
-	shippingDetails: ShippingDetails,
-): string {
+export function formatShippingAddress(shippingDetails: ShippingDetails): string {
 	if (!shippingDetails?.address) return "No shipping address";
 	const { name, address } = shippingDetails;
 	return [
@@ -46,8 +44,7 @@ export function formatShippingAddress(
 export function formatLineItems(lineItems: Stripe.LineItem[]): string {
 	return lineItems
 		.map(
-			(item) =>
-				`• ${item.description} (${item.quantity}x) - ${formatCurrency(item.amount_total)}`,
+			(item) => `• ${item.description} (${item.quantity}x) - ${formatCurrency(item.amount_total)}`,
 		)
 		.join("\n");
 }

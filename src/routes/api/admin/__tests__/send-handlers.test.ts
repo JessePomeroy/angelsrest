@@ -90,9 +90,7 @@ describe.each([
 
 	it("delegates to the package handler when auth passes", async () => {
 		mockGetToken.mockReturnValue("valid-session-token");
-		mockHandler.mockResolvedValue(
-			new Response(JSON.stringify({ sent: true }), { status: 200 }),
-		);
+		mockHandler.mockResolvedValue(new Response(JSON.stringify({ sent: true }), { status: 200 }));
 
 		const POST = await loadHandler(path);
 		const event = makeEvent();

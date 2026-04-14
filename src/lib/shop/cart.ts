@@ -224,10 +224,7 @@ export function cartItemCount(cart: CartState): number {
  * The reactive store uses this on hydrate to throw out stale carts and
  * show a "we cleared your old cart" toast.
  */
-export function isCartExpired(
-	cart: CartState,
-	now: Date = new Date(),
-): boolean {
+export function isCartExpired(cart: CartState, now: Date = new Date()): boolean {
 	const updated = new Date(cart.updatedAt);
 	const ageMs = now.getTime() - updated.getTime();
 	const expiryMs = CART_EXPIRY_DAYS * 24 * 60 * 60 * 1000;
@@ -245,10 +242,7 @@ function clampQuantity(qty: number): number {
  * cryptographic strength — they only need to be unique within one cart.
  */
 function generateId(): string {
-	if (
-		typeof crypto !== "undefined" &&
-		typeof crypto.randomUUID === "function"
-	) {
+	if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
 		return crypto.randomUUID();
 	}
 	return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;

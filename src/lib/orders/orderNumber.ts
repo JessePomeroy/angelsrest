@@ -42,9 +42,7 @@ export async function getNextOrderNumber(): Promise<string> {
  * Check if an order already exists for a Stripe session
  * Used for idempotency - prevents duplicate orders if webhook fires multiple times
  */
-export async function orderExistsForSession(
-	stripeSessionId: string,
-): Promise<boolean> {
+export async function orderExistsForSession(stripeSessionId: string): Promise<boolean> {
 	try {
 		const query = `count(*[_type == "order" && stripeSessionId == $sessionId]) > 0`;
 		const exists = await adminClient.fetch<boolean>(query, {

@@ -89,18 +89,13 @@ export function logStructured(entry: StructuredLogEntry): void {
 		...entry.meta,
 		...(entry.error !== undefined
 			? {
-					errorMessage:
-						entry.error instanceof Error
-							? entry.error.message
-							: String(entry.error),
+					errorMessage: entry.error instanceof Error ? entry.error.message : String(entry.error),
 				}
 			: {}),
 	};
 
 	// Drop undefined keys so log lines stay scannable
-	const cleaned = Object.fromEntries(
-		Object.entries(payload).filter(([, v]) => v !== undefined),
-	);
+	const cleaned = Object.fromEntries(Object.entries(payload).filter(([, v]) => v !== undefined));
 
 	// Use the matching console method so Vercel + dev terminals colorize correctly
 	if (level === "error") {

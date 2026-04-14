@@ -32,9 +32,7 @@ export async function composeBorderedPrint(
 	const printUrl = prepareSanityUrlForPrint(imageUrl);
 	const response = await fetch(printUrl);
 	if (!response.ok) {
-		throw new Error(
-			`Failed to fetch image for border compositing: ${response.status} ${printUrl}`,
-		);
+		throw new Error(`Failed to fetch image for border compositing: ${response.status} ${printUrl}`);
 	}
 	const sourceBuffer = Buffer.from(await response.arrayBuffer());
 
@@ -85,9 +83,7 @@ export async function uploadBorderedPrintToR2(
 
 	if (!response.ok) {
 		const text = await response.text();
-		throw new Error(
-			`R2 upload failed for bordered print: ${response.status} ${text}`,
-		);
+		throw new Error(`R2 upload failed for bordered print: ${response.status} ${text}`);
 	}
 
 	// Return the public URL for the uploaded image
@@ -116,10 +112,7 @@ export async function processBorderedPrints(
 	// Sequential Sharp compositing (memory pressure — each op can use 100+ MB)
 	const composites: { index: number; buffer: Buffer }[] = [];
 	for (const item of items) {
-		const buffer = await composeBorderedPrint(
-			item.imageUrl,
-			item.borderWidthInches,
-		);
+		const buffer = await composeBorderedPrint(item.imageUrl, item.borderWidthInches);
 		composites.push({ index: item.index, buffer });
 	}
 

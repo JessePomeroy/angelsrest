@@ -36,8 +36,6 @@ export const load = async () => {
 	return {
 		about,
 		contactPage,
-		portraitUrl: about?.portrait
-			? urlFor(about.portrait).width(800).url()
-			: null,
+		portraitUrl: about?.portrait ? urlFor(about.portrait).width(800).url() : null,
 	};
 };
