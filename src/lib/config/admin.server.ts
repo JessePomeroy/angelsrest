@@ -19,6 +19,8 @@ export const adminServerConfig: AdminServerConfig = {
 				return [name, rest.join("=")];
 			}),
 		);
-		return getToken({ get: (name: string) => cookies[name] }) ?? null;
+		return (
+			getToken({ get: (name: string) => cookies[name] } as import("@sveltejs/kit").Cookies) ?? null
+		);
 	},
 };
