@@ -33,7 +33,7 @@ jobs:
         run: pnpm biome check src/
 
       - name: Type check
-        run: npx svelte-check --threshold error
+        run: npx svelte-kit sync && npx svelte-check --threshold error
 
       - name: Build
         if: ${{ vars.CI_BUILD_ENABLED == 'true' }}
