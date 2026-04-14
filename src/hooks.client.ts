@@ -30,5 +30,6 @@ export const handleError: typeof sentryHandleError = (
 		window.location.reload();
 		return;
 	}
-	return sentryHandleError(input);
+	// eslint-disable-next-line @typescript-eslint/no-explicit-any -- Sentry types expect server RequestEvent, but client passes NavigationEvent
+	return sentryHandleError(input as any);
 };
