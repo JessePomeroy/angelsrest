@@ -33,6 +33,15 @@ jobs:
         run: pnpm biome check src/
 
       - name: Type check
+        env:
+          STRIPE_SECRET_KEY: ${{ secrets.STRIPE_SECRET_KEY }}
+          STRIPE_WEBHOOK_SECRET: ${{ secrets.STRIPE_WEBHOOK_SECRET }}
+          RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
+          PUBLIC_SITE_URL: https://www.angelsrest.online
+          PUBLIC_STRIPE_PUBLIC_KEY: ${{ secrets.PUBLIC_STRIPE_PUBLIC_KEY }}
+          PUBLIC_SANITY_PROJECT_ID: ${{ secrets.PUBLIC_SANITY_PROJECT_ID }}
+          PUBLIC_SANITY_DATASET: production
+          PUBLIC_CONVEX_URL: ${{ secrets.PUBLIC_CONVEX_URL }}
         run: npx svelte-kit sync && npx svelte-check --threshold error
 
       - name: Build
