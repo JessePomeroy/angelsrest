@@ -27,7 +27,7 @@ jobs:
 
       - run: pnpm install --frozen-lockfile
         env:
-          NPM_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          NPM_TOKEN: ${{ secrets.GH_PACKAGES_TOKEN }}
 
       - name: Lint
         run: pnpm biome check src/
