@@ -20,10 +20,9 @@ Sentry.init({
 
 const sentryHandleError = Sentry.handleErrorWithSentry();
 
-export const handleError: typeof sentryHandleError = (input: {
-	error: unknown;
-	event: unknown;
-}) => {
+export const handleError: typeof sentryHandleError = (
+	input: Parameters<typeof sentryHandleError>[0],
+) => {
 	const msg = input.error instanceof Error ? input.error.message : "";
 	if (msg.includes("Failed to fetch dynamically imported module")) {
 		// After a deploy, old chunk hashes no longer exist on the server.
