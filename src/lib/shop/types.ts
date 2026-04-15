@@ -33,8 +33,10 @@ export interface OrderItem {
 	borderWidth?: number;
 	/** LumaPrints frame subcategory ID (105001-105007). When set, the order is submitted as framed. */
 	frameSubcategoryId?: number;
-	/** LumaPrints canvas subcategory ID (101001-101005). When set, submitted as canvas with solid black wrap. */
+	/** LumaPrints canvas subcategory ID (101001-101005). When set, submitted as canvas. */
 	canvasSubcategoryId?: number;
+	/** Canvas wrap color hex code for solid-color wrap (e.g. "#000000" for black, "#FFFFFF" for white). */
+	canvasWrapHex?: string;
 }
 
 /** LumaPrints API order payload */
@@ -61,6 +63,7 @@ export interface LumaPrintsOrder {
 		height: number;
 		file: { imageUrl: string };
 		orderItemOptions: number[];
+		solidColorHexCode?: string;
 	}[];
 }
 

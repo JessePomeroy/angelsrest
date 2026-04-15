@@ -193,34 +193,32 @@ const CANVAS_SUBCATEGORY_IDS: Record<string, number> = {
 };
 
 /**
- * LumaPrints wrap option IDs.
- *
- * WARNING: "white" is currently hardcoded to the same option ID as "black" (3).
- * This is almost certainly wrong — white canvas orders will be submitted to
- * LumaPrints requesting a BLACK wrap, producing incorrect products.
- * The correct white wrap option ID must be confirmed via the LumaPrints API
- * before white canvas variants go live in the shop.
+ * LumaPrints "Solid Color" wrap is option ID 3 for all colors.
+ * The actual color is specified via solidColorHexCode in the order payload.
+ * Defaults to black (#000000) if omitted.
  */
-const CANVAS_WRAP_OPTIONS: Record<string, number> = {
-	black: 3,
-	white: 3, // FIXME: wrong — needs real white wrap option ID from LumaPrints
+const CANVAS_WRAP_OPTION_ID = 3;
+
+const CANVAS_WRAP_HEX: Record<string, string> = {
+	black: "#000000",
+	white: "#FFFFFF",
 };
 
 /**
- * Parse a canvas paper slug into its subcategory ID and wrap option ID.
- * e.g. "canvas-black-0.75" → { subcategoryId: 101001, wrapOptionId: 3 }
+ * Parse a canvas paper slug into its subcategory ID, wrap option ID, and hex.
+ * e.g. "canvas-black-0.75" → { subcategoryId: 101001, wrapOptionId: 3, wrapHex: "#000000" }
  */
 export function parseCanvasSlug(
 	slug: string,
-): { subcategoryId: number; wrapOptionId: number } | null {
+): { subcategoryId: number; wrapOptionId: number; wrapHex: string } | null {
 	const match = slug.match(/^canvas-(black|white)-(.+)$/);
 	if (!match) return null;
 	const color = match[1];
 	const thickness = match[2];
 	const subcategoryId = CANVAS_SUBCATEGORY_IDS[thickness];
-	const wrapOptionId = CANVAS_WRAP_OPTIONS[color];
-	if (!subcategoryId || !wrapOptionId) return null;
-	return { subcategoryId, wrapOptionId };
+	const wrapHex = CANVAS_WRAP_HEX[color];
+	if (!subcategoryId || !wrapHex) return null;
+	return { subcategoryId, wrapOptionId: CANVAS_WRAP_OPTION_ID, wrapHex };
 }
 
 export const CANVAS_WHOLESALE_COSTS: Record<string, Record<string, number>> = {

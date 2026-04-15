@@ -201,7 +201,9 @@ function handleV2AddToCart() {
 		...(frame && frame.subcategoryId > 0
 			? { frameSubcategoryId: frame.subcategoryId }
 			: {}),
-		...(canvasInfo ? { canvasSubcategoryId: canvasInfo.subcategoryId } : {}),
+		...(canvasInfo
+			? { canvasSubcategoryId: canvasInfo.subcategoryId, canvasWrapHex: canvasInfo.wrapHex }
+			: {}),
 		quantity: 1,
 		unitPriceCents: Math.round(
 			(displayPrice ?? selectedVariant.retailPrice) * 100,

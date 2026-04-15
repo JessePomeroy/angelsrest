@@ -63,6 +63,8 @@ export interface CartItem {
 	frameSubcategoryId?: number;
 	/** LumaPrints canvas subcategory ID (101001-101005). Absent means not canvas. */
 	canvasSubcategoryId?: number;
+	/** Canvas wrap color hex (e.g. "#000000"). Only present for canvas items. */
+	canvasWrapHex?: string;
 	/** Always in [1, MAX_QUANTITY_PER_LINE]. */
 	quantity: number;
 	/**
@@ -111,6 +113,7 @@ export function itemMatchKey(
 		| "borderWidth"
 		| "frameSubcategoryId"
 		| "canvasSubcategoryId"
+		| "canvasWrapHex"
 		| "imageUrl"
 		| "imageUrls"
 	>,
@@ -127,6 +130,7 @@ export function itemMatchKey(
 		String(item.borderWidth),
 		String(item.frameSubcategoryId),
 		String(item.canvasSubcategoryId),
+		String(item.canvasWrapHex),
 		// Print sets have multiple images; single prints have one. Joining
 		// the array gives a stable comparison key for sets, while single
 		// prints (and non-print merch) fall through to the imageUrl.

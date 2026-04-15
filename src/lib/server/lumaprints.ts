@@ -264,8 +264,10 @@ export function buildLumaPrintsOrder(
 			const isBordered = typeof item.borderWidth === "number" && item.borderWidth > 0;
 			const imageUrl = isBordered ? item.imageUrl : prepareSanityUrlForPrint(item.imageUrl);
 			const options: number[] = [];
+			let solidColorHexCode: string | undefined;
 			if (isCanvas) {
-				options.push(3); // Solid Color wrap (black)
+				options.push(3); // Solid Color wrap
+				solidColorHexCode = item.canvasWrapHex || "#000000";
 			} else {
 				options.push(39); // No Bleed (fine art paper)
 				if (isFramed) {
@@ -281,6 +283,7 @@ export function buildLumaPrintsOrder(
 				height: item.height,
 				file: { imageUrl },
 				orderItemOptions: options,
+				...(solidColorHexCode ? { solidColorHexCode } : {}),
 			};
 		}),
 	};
