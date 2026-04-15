@@ -179,7 +179,6 @@ export async function handlePermanentFulfillmentFailure(
 		session,
 		customerEmail,
 	}: {
-		// biome-ignore lint/suspicious/noExplicitAny: Convex Id types
 		orderId: any;
 		orderNumber: string;
 		error: unknown;
@@ -278,7 +277,6 @@ export async function handlePermanentFulfillmentFailure(
 export async function captureStripeFees(
 	stripe: Stripe,
 	convex: ConvexHttpClient,
-	// biome-ignore lint/suspicious/noExplicitAny: Stripe SDK types
 	orderId: any,
 	orderNumber: string,
 	paymentIntentId: string | undefined,
@@ -322,7 +320,6 @@ export async function captureStripeFees(
  */
 async function submitToLumaPrints(
 	convex: ConvexHttpClient,
-	// biome-ignore lint/suspicious/noExplicitAny: Convex Id type mismatch
 	orderId: any,
 	orderNumber: string,
 	lineItems: Stripe.LineItem[],

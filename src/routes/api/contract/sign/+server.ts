@@ -12,7 +12,6 @@ export async function POST({ request }) {
 			throw error(400, "Missing required fields");
 		}
 
-		// biome-ignore lint/suspicious/noExplicitAny: Convex Id type
 		await convex.mutation(api.contracts.sign, {
 			contractId: contractId as any,
 			signedByName,

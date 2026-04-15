@@ -1,53 +1,53 @@
 {
-  "$schema": "https://biomejs.dev/schemas/2.4.4/schema.json",
-  "linter": {
-    "enabled": true,
-    "rules": {
-      "recommended": true,
-      "complexity": {
-        "noForEach": "off"
-      },
-      "suspicious": {
-        "noExplicitAny": "off",
-        "noImplicitAnyLet": "off"
-      },
-      "correctness": {
-        "noUnusedVariables": "off",
-        "noInvalidPositionAtImportRule": "off"
-      }
-    }
-  },
-  "formatter": {
-    "enabled": true,
-    "indentStyle": "tab",
-    "lineWidth": 100
-  },
-  "vcs": {
-    "enabled": true,
-    "clientKind": "git",
-    "useIgnoreFile": true
-  },
-  "files": {
-    "ignoreUnknown": true,
-    "includes": ["src/**", "!convex/_generated/**"]
-  },
-  "overrides": [
-    {
-      "includes": ["**/*.svelte"],
-      "linter": {
-        "enabled": false
-      },
-      "formatter": {
-        "enabled": false
-      },
-      "assist": {
-        "enabled": false
-      }
-    }
-  ],
-  "css": {
-    "parser": {
-      "tailwindDirectives": true
-    }
-  }
+	"$schema": "https://biomejs.dev/schemas/2.4.4/schema.json",
+	"linter": {
+		"enabled": true,
+		"rules": {
+			"recommended": true,
+			"complexity": {
+				"noForEach": "off"
+			},
+			"suspicious": {
+				"noExplicitAny": "off",
+				"noImplicitAnyLet": "off"
+			},
+			"correctness": {
+				"noUnusedVariables": "off",
+				"noInvalidPositionAtImportRule": "off"
+			}
+		}
+	},
+	"formatter": {
+		"enabled": true,
+		"indentStyle": "tab",
+		"lineWidth": 100
+	},
+	"vcs": {
+		"enabled": true,
+		"clientKind": "git",
+		"useIgnoreFile": true
+	},
+	"files": {
+		"ignoreUnknown": true,
+		"includes": ["src/**", "!convex/_generated"]
+	},
+	"overrides": [
+		{
+			"includes": ["**/*.svelte"],
+			"linter": {
+				"enabled": false
+			},
+			"formatter": {
+				"enabled": false
+			},
+			"assist": {
+				"enabled": false
+			}
+		}
+	],
+	"css": {
+		"parser": {
+			"tailwindDirectives": true
+		}
+	}
 }

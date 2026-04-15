@@ -68,7 +68,6 @@ export async function POST({ request }) {
 					const invoiceId = session.metadata.invoiceId;
 					if (invoiceId) {
 						await convex.mutation(api.invoices.markPaid, {
-							// biome-ignore lint/suspicious/noExplicitAny: Convex Id type
 							invoiceId: invoiceId as any,
 							siteUrl: session.metadata?.siteUrl || SITE_DOMAIN,
 						});

@@ -25,7 +25,6 @@ vi.mock("@sentry/sveltekit", () => {
 import * as Sentry from "@sentry/sveltekit";
 import { logStructured, timed } from "../server/logger";
 
-// biome-ignore lint/suspicious/noExplicitAny: test access to mock internals
 const sentryMocks = (Sentry as any).__mocks as {
 	captureException: ReturnType<typeof vi.fn>;
 	addBreadcrumb: ReturnType<typeof vi.fn>;

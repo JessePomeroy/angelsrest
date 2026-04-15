@@ -14,7 +14,6 @@
  */
 
 import { client } from "$lib/sanity/client";
-import { getPaper, getSize } from "$lib/shop/v2Catalog";
 import { imageSet, previewUrl } from "$lib/utils/images";
 
 export async function load() {

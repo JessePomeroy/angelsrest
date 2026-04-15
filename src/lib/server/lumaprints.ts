@@ -255,9 +255,9 @@ export function buildLumaPrintsOrder(
 			const isFramed = typeof item.frameSubcategoryId === "number" && item.frameSubcategoryId > 0;
 			// Priority: canvas > frame > paper subcategory
 			const subcategoryId = isCanvas
-				? item.canvasSubcategoryId!
+				? (item.canvasSubcategoryId as number)
 				: isFramed
-					? item.frameSubcategoryId!
+					? (item.frameSubcategoryId as number)
 					: item.paperSubcategoryId;
 			// For bordered prints that were Sharp-composited, the imageUrl is
 			// already an R2 URL — don't run it through prepareSanityUrlForPrint.

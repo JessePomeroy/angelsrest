@@ -35,7 +35,6 @@ export function buildOrderItemsFromSession(
 	session: Stripe.Checkout.Session,
 	lineItems: Stripe.LineItem[],
 ): OrderItem[] {
-	// biome-ignore lint/suspicious/noExplicitAny: Stripe metadata is string-only
 	const meta = (session.metadata ?? {}) as Record<string, any>;
 
 	// ─── Path 1: Cart (multi-item, per-line paper/size) ───────────────────
