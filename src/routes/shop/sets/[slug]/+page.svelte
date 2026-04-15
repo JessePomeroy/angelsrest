@@ -155,9 +155,9 @@ function handleV2Checkout() {
 		.then((url) => {
 			window.location.href = url;
 		})
-		.catch((err: any) => {
+		.catch((err: unknown) => {
 			console.error("Checkout error:", err);
-			alert(err.message || "something went wrong. please try again.");
+			alert(err instanceof Error ? err.message : "something went wrong. please try again.");
 		})
 		.finally(() => {
 			isLoading = false;
@@ -218,9 +218,9 @@ async function handleV1Checkout() {
 			images: (data.images as ProductImage[]).map((img) => img.original),
 		});
 		window.location.href = url;
-	} catch (err: any) {
+	} catch (err: unknown) {
 		console.error("Checkout error:", err);
-		alert(err.message || "something went wrong. please try again.");
+		alert(err instanceof Error ? err.message : "something went wrong. please try again.");
 	} finally {
 		isLoading = false;
 	}

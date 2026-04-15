@@ -192,10 +192,18 @@ const CANVAS_SUBCATEGORY_IDS: Record<string, number> = {
 	rolled: 101005,
 };
 
-/** LumaPrints wrap option IDs: Solid Black = 3, Solid White needs investigation. */
+/**
+ * LumaPrints wrap option IDs.
+ *
+ * WARNING: "white" is currently hardcoded to the same option ID as "black" (3).
+ * This is almost certainly wrong — white canvas orders will be submitted to
+ * LumaPrints requesting a BLACK wrap, producing incorrect products.
+ * The correct white wrap option ID must be confirmed via the LumaPrints API
+ * before white canvas variants go live in the shop.
+ */
 const CANVAS_WRAP_OPTIONS: Record<string, number> = {
 	black: 3,
-	white: 3, // TODO: confirm white wrap option ID with LumaPrints API
+	white: 3, // FIXME: wrong — needs real white wrap option ID from LumaPrints
 };
 
 /**

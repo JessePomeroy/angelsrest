@@ -1,15 +1,6 @@
-/**
- * Image URL Builder Utilities
- *
- * Centralized image URL generation for Sanity images.
- * Provides consistent sizing and format across the app.
- */
-
+import type { SanityImageSource } from "@sanity/image-url";
 import { urlFor } from "$lib/sanity/client";
 
-/**
- * Image URL options
- */
 export interface ImageUrlOptions {
 	width?: number;
 	height?: number;
@@ -17,9 +8,6 @@ export interface ImageUrlOptions {
 	format?: "webp" | "jpg" | "png";
 }
 
-/**
- * Default options for different use cases
- */
 const defaults = {
 	preview: { width: 600, quality: 80, format: "webp" as const },
 	thumbnail: { width: 400, quality: 80, format: "webp" as const },
@@ -27,10 +15,10 @@ const defaults = {
 	full: { quality: 90, format: "jpg" as const },
 };
 
-/**
- * Build an optimized image URL from a Sanity image
- */
-export function buildImageUrl(image: any, options: ImageUrlOptions = {}): string | null {
+export function buildImageUrl(
+	image: SanityImageSource,
+	options: ImageUrlOptions = {},
+): string | null {
 	if (!image) return null;
 
 	const builder = urlFor(image);
@@ -49,40 +37,24 @@ export function buildImageUrl(image: any, options: ImageUrlOptions = {}): string
 	return result.url();
 }
 
-/**
- * Build preview image URL (600px, webp, 80%)
- */
-export function previewUrl(image: any): string | null {
+export function previewUrl(image: SanityImageSource): string | null {
 	return buildImageUrl(image, defaults.preview);
 }
 
-/**
- * Build thumbnail URL (400px, webp, 80%)
- */
-export function thumbnailUrl(image: any): string | null {
+export function thumbnailUrl(image: SanityImageSource): string | null {
 	return buildImageUrl(image, defaults.thumbnail);
 }
 
-/**
- * Build display image URL (1200px, webp, 90%)
- */
-export function displayUrl(image: any): string | null {
+export function displayUrl(image: SanityImageSource): string | null {
 	return buildImageUrl(image, defaults.display);
 }
 
-/**
- * Build original full quality URL (jpg)
- */
-export function originalUrl(image: any): string | null {
+export function originalUrl(image: SanityImageSource): string | null {
 	return buildImageUrl(image, defaults.full);
 }
 
-/**
- * Build set of URLs for a product image
- * Used when you need multiple sizes
- */
 export function imageSet(
-	image: any,
+	image: SanityImageSource & { alt?: string },
 ): { full: string; thumb: string; original: string; alt: string } | null {
 	if (!image) return null;
 
@@ -94,11 +66,7 @@ export function imageSet(
 	};
 }
 
-/**
- * Parse paper option string from Sanity
- * Format: "Name|subcategoryId|width|height"
- * Example: "Archival Matte 4×6|103001|4|6"
- */
+/** Format: "Name|subcategoryId|width|height" e.g. "Archival Matte 4x6|103001|4|6" */
 export function parsePaperOption(paper: { name: string; price?: number }): {
 	name: string;
 	subcategoryId: string;

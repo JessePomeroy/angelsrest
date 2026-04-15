@@ -41,9 +41,9 @@ async function checkout() {
 	try {
 		const url = await createCartCheckout(items);
 		window.location.href = url;
-	} catch (err: any) {
+	} catch (err: unknown) {
 		console.error("Cart checkout error:", err);
-		checkoutError = err?.message || "checkout failed. please try again.";
+		checkoutError = err instanceof Error ? err.message : "checkout failed. please try again.";
 		isCheckingOut = false;
 	}
 }
