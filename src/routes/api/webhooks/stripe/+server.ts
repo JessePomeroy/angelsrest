@@ -29,6 +29,7 @@ import {
 	sendAdminNotification,
 	sendCustomerConfirmation,
 	sendFailureAlert,
+	sendPaymentFailedEmail,
 } from "$lib/server/webhookEmails";
 import { createOrderInConvex } from "$lib/server/webhookOrders";
 
@@ -86,13 +87,27 @@ export async function POST({ request }) {
 
 			case "payment_intent.payment_failed": {
 				const paymentIntent = event.data.object as Stripe.PaymentIntent;
+				const failureMessage =
+					paymentIntent.last_payment_error?.message || "Your payment method was declined.";
 				logStructured({
 					event: "payment.failed",
 					level: "warn",
 					stage: "webhook",
-					meta: { paymentIntentId: paymentIntent.id },
+					meta: {
+						paymentIntentId: paymentIntent.id,
+						failureMessage,
+					},
 				});
-				// TODO: Could send "payment failed" email to customer
+				if (paymentIntent.receipt_email) {
+					try {
+						await sendPaymentFailedEmail(resend, {
+							customerEmail: paymentIntent.receipt_email,
+							errorMessage: failureMessage,
+						});
+					} catch (err) {
+						console.error("Failed to send payment-failed email (non-fatal):", err);
+					}
+				}
 				break;
 			}
 

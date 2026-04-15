@@ -190,6 +190,40 @@ This order was automatically processed through your Angel's Rest website.
 	});
 }
 
+/** Send payment-failed notification to the customer */
+export async function sendPaymentFailedEmail(
+	resend: Resend,
+	{
+		customerEmail,
+		errorMessage,
+	}: {
+		customerEmail: string;
+		errorMessage: string;
+	},
+) {
+	await resend.emails.send({
+		from: "Angel's Rest <orders@angelsrest.online>",
+		to: [customerEmail],
+		subject: "Payment could not be processed - Angel's Rest",
+		text: `
+Hi there,
+
+We weren't able to process your recent payment.
+
+Reason: ${errorMessage}
+
+If you'd like to try again, visit our shop: https://${SITE_DOMAIN}/shop
+
+If you believe this is an error or need help, just reply to this email.
+
+Best regards,
+Jesse Pomeroy
+Angel's Rest
+https://${SITE_DOMAIN}
+`.trim(),
+	});
+}
+
 /**
  * Admin notification email for permanent fulfillment failures.
  * Sent to NOTIFICATION_EMAIL (with Jesse's personal Gmail as fallback,
