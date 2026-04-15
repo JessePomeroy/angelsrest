@@ -1,6 +1,5 @@
 import { v } from "convex/values";
 import { mutation, query } from "./_generated/server";
-import { requireAuth } from "./authHelpers";
 
 const TRACKED_PAGES = [
 	"orders",
@@ -14,23 +13,16 @@ const TRACKED_PAGES = [
 
 type PageKey = (typeof TRACKED_PAGES)[number];
 
+// Use siteUrl as the user key for notification tracking. The admin is
+// single-user per site (authenticated via Better Auth session, not Convex
+// identity), so siteUrl uniquely identifies the admin user. When client
+// sites are onboarded with multiple admins, this will need to accept a
+// userId arg from the client.
+
 export const getUnreadFlags = query({
 	args: { siteUrl: v.string() },
 	handler: async (ctx, { siteUrl }) => {
-		const identity = await ctx.auth.getUserIdentity();
-		if (!identity) {
-			return {
-				orders: false,
-				inquiries: false,
-				messages: false,
-				crm: false,
-				quotes: false,
-				invoices: false,
-				contracts: false,
-			};
-		}
-
-		const userId = identity.tokenIdentifier;
+		const userId = siteUrl;
 
 		// Get all lastSeen records for this user+site
 		const lastSeenRecords = await ctx.db
@@ -160,11 +152,7 @@ export const markSeen = mutation({
 		page: v.string(),
 	},
 	handler: async (ctx, { siteUrl, page }) => {
-		await requireAuth(ctx);
-		const identity = await ctx.auth.getUserIdentity();
-		if (!identity) return;
-
-		const userId = identity.tokenIdentifier;
+		const userId = siteUrl;
 		const now = Date.now();
 
 		const existing = await ctx.db
