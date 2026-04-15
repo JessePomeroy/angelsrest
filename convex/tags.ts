@@ -48,7 +48,6 @@ export const deleteTag = mutation({
 	args: { tagId: v.id("clientTags") },
 	handler: async (ctx, { tagId }) => {
 		await requireAuth(ctx);
-		// Delete all assignments for this tag
 		const assignments = await ctx.db
 			.query("clientTagAssignments")
 			.withIndex("by_tagId", (q) => q.eq("tagId", tagId))
@@ -70,7 +69,6 @@ export const assignTag = mutation({
 	},
 	handler: async (ctx, args) => {
 		await requireAuth(ctx);
-		// Check if already assigned
 		const existing = await ctx.db
 			.query("clientTagAssignments")
 			.withIndex("by_clientId", (q) => q.eq("clientId", args.clientId))

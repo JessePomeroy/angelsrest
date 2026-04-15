@@ -147,7 +147,6 @@ export const initializeBoard = mutation({
 	args: { siteUrl: v.string(), projectType: v.string() },
 	handler: async (ctx, { siteUrl, projectType }) => {
 		await requireAuth(ctx);
-		// Check if board already exists
 		const existing = await ctx.db
 			.query("boardConfigs")
 			.withIndex("by_siteUrl_and_projectType", (q) =>
@@ -156,7 +155,6 @@ export const initializeBoard = mutation({
 			.first();
 		if (existing) return existing._id;
 
-		// Create columns from defaults
 		const columnNames = DEFAULT_COLUMNS[projectType] || DEFAULT_COLUMNS.other;
 		const columns = columnNames.map((name, i) => ({
 			id: generateId(),

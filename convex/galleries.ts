@@ -65,7 +65,6 @@ export const remove = mutation({
 		const gallery = await ctx.db.get(id);
 		if (!gallery) throw new Error("Gallery not found");
 
-		// Delete all images in the gallery
 		const images = await ctx.db
 			.query("galleryImages")
 			.withIndex("by_gallery", (q) => q.eq("galleryId", id))
@@ -74,7 +73,6 @@ export const remove = mutation({
 			await ctx.db.delete(image._id);
 		}
 
-		// Delete all download records
 		const downloads = await ctx.db
 			.query("galleryDownloads")
 			.withIndex("by_gallery", (q) => q.eq("galleryId", id))
@@ -83,7 +81,6 @@ export const remove = mutation({
 			await ctx.db.delete(dl._id);
 		}
 
-		// Delete the gallery itself
 		await ctx.db.delete(id);
 	},
 });

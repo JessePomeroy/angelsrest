@@ -55,15 +55,12 @@ export const getByToken = query({
 			.unique();
 		if (!tokenDoc) return null;
 
-		// Check expiry
 		if (tokenDoc.expiresAt && Date.now() > tokenDoc.expiresAt) {
 			return { expired: true as const };
 		}
 
-		// Fetch client
 		const client = await ctx.db.get(tokenDoc.clientId);
 
-		// Fetch the related document
 		let document = null;
 		if (tokenDoc.type === "invoice") {
 			document = await ctx.db.get(tokenDoc.documentId as Id<"invoices">);
