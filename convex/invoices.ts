@@ -2,6 +2,7 @@ import { v } from "convex/values";
 import { internal } from "./_generated/api";
 import { mutation, query } from "./_generated/server";
 import { requireAuth } from "./authHelpers";
+import { deleteDocument } from "./helpers/deleting";
 import { markDocumentSent } from "./helpers/marking";
 import { getNextSequentialNumber } from "./helpers/numbering";
 import { patchDocument } from "./helpers/patching";
@@ -157,12 +158,7 @@ export const markPaid = mutation({
 export const remove = mutation({
 	args: { invoiceId: v.id("invoices"), siteUrl: v.string() },
 	handler: async (ctx, { invoiceId, siteUrl }) => {
-		await requireAuth(ctx);
-		const doc = await ctx.db.get(invoiceId);
-		if (!doc || doc.siteUrl !== siteUrl) {
-			throw new Error("Not found");
-		}
-		await ctx.db.delete(invoiceId);
+		await deleteDocument(ctx, invoiceId, siteUrl);
 	},
 });
 

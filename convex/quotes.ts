@@ -2,10 +2,12 @@ import { v } from "convex/values";
 import { internal } from "./_generated/api";
 import { mutation, query } from "./_generated/server";
 import { requireAuth } from "./authHelpers";
+import { deleteDocument } from "./helpers/deleting";
 import { markDocumentSent } from "./helpers/marking";
 import { getNextSequentialNumber } from "./helpers/numbering";
 import { patchDocument } from "./helpers/patching";
 import { queryBySiteUrl } from "./helpers/querying";
+import { categoryValidator } from "./helpers/validators";
 
 export const list = query({
 	args: {
@@ -40,7 +42,7 @@ export const create = mutation({
 		siteUrl: v.string(),
 		quoteNumber: v.string(),
 		clientId: v.id("photographyClients"),
-		category: v.optional(v.union(v.literal("photography"), v.literal("web"))),
+		category: v.optional(categoryValidator),
 		packages: v.array(
 			v.object({
 				name: v.string(),
@@ -194,12 +196,7 @@ export const markDeclined = mutation({
 export const remove = mutation({
 	args: { quoteId: v.id("quotes"), siteUrl: v.string() },
 	handler: async (ctx, { quoteId, siteUrl }) => {
-		await requireAuth(ctx);
-		const doc = await ctx.db.get(quoteId);
-		if (!doc || doc.siteUrl !== siteUrl) {
-			throw new Error("Not found");
-		}
-		await ctx.db.delete(quoteId);
+		await deleteDocument(ctx, quoteId, siteUrl);
 	},
 });
 
@@ -218,7 +215,7 @@ export const createPreset = mutation({
 	args: {
 		siteUrl: v.string(),
 		name: v.string(),
-		category: v.optional(v.union(v.literal("photography"), v.literal("web"))),
+		category: v.optional(categoryValidator),
 		packages: v.array(
 			v.object({
 				name: v.string(),
@@ -239,7 +236,7 @@ export const updatePreset = mutation({
 		presetId: v.id("quotePresets"),
 		siteUrl: v.string(),
 		name: v.optional(v.string()),
-		category: v.optional(v.union(v.literal("photography"), v.literal("web"))),
+		category: v.optional(categoryValidator),
 		packages: v.optional(
 			v.array(
 				v.object({
@@ -252,30 +249,14 @@ export const updatePreset = mutation({
 		),
 	},
 	handler: async (ctx, { presetId, siteUrl, ...updates }) => {
-		await requireAuth(ctx);
-		const doc = await ctx.db.get(presetId);
-		if (!doc || doc.siteUrl !== siteUrl) {
-			throw new Error("Not found");
-		}
-		const patch: Record<string, unknown> = {};
-		for (const [key, val] of Object.entries(updates)) {
-			if (val !== undefined) patch[key] = val;
-		}
-		if (Object.keys(patch).length > 0) {
-			await ctx.db.patch(presetId, patch);
-		}
+		await patchDocument(ctx, presetId, siteUrl, updates);
 	},
 });
 
 export const removePreset = mutation({
 	args: { presetId: v.id("quotePresets"), siteUrl: v.string() },
 	handler: async (ctx, { presetId, siteUrl }) => {
-		await requireAuth(ctx);
-		const doc = await ctx.db.get(presetId);
-		if (!doc || doc.siteUrl !== siteUrl) {
-			throw new Error("Not found");
-		}
-		await ctx.db.delete(presetId);
+		await deleteDocument(ctx, presetId, siteUrl);
 	},
 });
 

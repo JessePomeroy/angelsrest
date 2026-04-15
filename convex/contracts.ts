@@ -2,9 +2,11 @@ import { v } from "convex/values";
 import { internal } from "./_generated/api";
 import { mutation, query } from "./_generated/server";
 import { requireAuth } from "./authHelpers";
+import { deleteDocument } from "./helpers/deleting";
 import { markDocumentSent } from "./helpers/marking";
 import { patchDocument } from "./helpers/patching";
 import { queryBySiteUrl } from "./helpers/querying";
+import { categoryValidator } from "./helpers/validators";
 
 export const list = query({
 	args: {
@@ -39,7 +41,7 @@ export const create = mutation({
 		siteUrl: v.string(),
 		title: v.string(),
 		clientId: v.id("photographyClients"),
-		category: v.optional(v.union(v.literal("photography"), v.literal("web"))),
+		category: v.optional(categoryValidator),
 		templateId: v.optional(v.id("contractTemplates")),
 		body: v.string(),
 		eventDate: v.optional(v.string()),
@@ -137,12 +139,7 @@ export const sign = mutation({
 export const remove = mutation({
 	args: { contractId: v.id("contracts"), siteUrl: v.string() },
 	handler: async (ctx, { contractId, siteUrl }) => {
-		await requireAuth(ctx);
-		const doc = await ctx.db.get(contractId);
-		if (!doc || doc.siteUrl !== siteUrl) {
-			throw new Error("Not found");
-		}
-		await ctx.db.delete(contractId);
+		await deleteDocument(ctx, contractId, siteUrl);
 	},
 });
 
@@ -179,29 +176,13 @@ export const updateTemplate = mutation({
 		variables: v.optional(v.array(v.string())),
 	},
 	handler: async (ctx, { templateId, siteUrl, ...updates }) => {
-		await requireAuth(ctx);
-		const doc = await ctx.db.get(templateId);
-		if (!doc || doc.siteUrl !== siteUrl) {
-			throw new Error("Not found");
-		}
-		const patch: Record<string, unknown> = {};
-		for (const [key, val] of Object.entries(updates)) {
-			if (val !== undefined) patch[key] = val;
-		}
-		if (Object.keys(patch).length > 0) {
-			await ctx.db.patch(templateId, patch);
-		}
+		await patchDocument(ctx, templateId, siteUrl, updates);
 	},
 });
 
 export const removeTemplate = mutation({
 	args: { templateId: v.id("contractTemplates"), siteUrl: v.string() },
 	handler: async (ctx, { templateId, siteUrl }) => {
-		await requireAuth(ctx);
-		const doc = await ctx.db.get(templateId);
-		if (!doc || doc.siteUrl !== siteUrl) {
-			throw new Error("Not found");
-		}
-		await ctx.db.delete(templateId);
+		await deleteDocument(ctx, templateId, siteUrl);
 	},
 });

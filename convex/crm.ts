@@ -3,12 +3,14 @@ import { v } from "convex/values";
 import { internal } from "./_generated/api";
 import { mutation, query } from "./_generated/server";
 import { requireAuth } from "./authHelpers";
+import { deleteDocument } from "./helpers/deleting";
 import { patchDocument } from "./helpers/patching";
+import { categoryValidator } from "./helpers/validators";
 
 export const listClients = query({
 	args: {
 		siteUrl: v.string(),
-		category: v.optional(v.union(v.literal("photography"), v.literal("web"))),
+		category: v.optional(categoryValidator),
 		status: v.optional(v.string()),
 	},
 	handler: async (ctx, { siteUrl, category, status }) => {
@@ -41,7 +43,7 @@ export const listClientsPaginated = query({
 	args: {
 		siteUrl: v.string(),
 		paginationOpts: paginationOptsValidator,
-		category: v.optional(v.union(v.literal("photography"), v.literal("web"))),
+		category: v.optional(categoryValidator),
 	},
 	handler: async (ctx, { siteUrl, paginationOpts, category }) => {
 		if (category) {
@@ -74,7 +76,7 @@ export const createClient = mutation({
 		name: v.string(),
 		email: v.optional(v.string()),
 		phone: v.optional(v.string()),
-		category: v.union(v.literal("photography"), v.literal("web")),
+		category: categoryValidator,
 		type: v.optional(v.string()),
 		source: v.optional(v.string()),
 		notes: v.optional(v.string()),
@@ -117,7 +119,7 @@ export const updateClient = mutation({
 		name: v.optional(v.string()),
 		email: v.optional(v.string()),
 		phone: v.optional(v.string()),
-		category: v.optional(v.union(v.literal("photography"), v.literal("web"))),
+		category: v.optional(categoryValidator),
 		type: v.optional(v.string()),
 		status: v.optional(v.string()),
 		source: v.optional(v.string()),
@@ -142,12 +144,7 @@ export const updateClient = mutation({
 export const deleteClient = mutation({
 	args: { clientId: v.id("photographyClients"), siteUrl: v.string() },
 	handler: async (ctx, { clientId, siteUrl }) => {
-		await requireAuth(ctx);
-		const doc = await ctx.db.get(clientId);
-		if (!doc || doc.siteUrl !== siteUrl) {
-			throw new Error("Not found");
-		}
-		await ctx.db.delete(clientId);
+		await deleteDocument(ctx, clientId, siteUrl);
 	},
 });
 

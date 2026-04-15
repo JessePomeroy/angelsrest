@@ -11,19 +11,13 @@ import type { Resend } from "resend";
 import type Stripe from "stripe";
 import { env } from "$env/dynamic/private";
 import { SITE_DOMAIN } from "$lib/config/site";
+import { formatCents } from "$lib/utils/format";
 
 /** Shipping details extracted from `session.collected_information`. */
 export type ShippingDetails =
 	| Stripe.Checkout.Session.CollectedInformation.ShippingDetails
 	| null
 	| undefined;
-
-/** Format cents to USD string (e.g., 1500 → "$15.00") */
-export const formatCurrency = (amount: number) =>
-	new Intl.NumberFormat("en-US", {
-		style: "currency",
-		currency: "USD",
-	}).format(amount / 100);
 
 /** Format shipping address for emails */
 export function formatShippingAddress(shippingDetails: ShippingDetails): string {
@@ -43,9 +37,7 @@ export function formatShippingAddress(shippingDetails: ShippingDetails): string 
 /** Format line items for emails */
 export function formatLineItems(lineItems: Stripe.LineItem[]): string {
 	return lineItems
-		.map(
-			(item) => `• ${item.description} (${item.quantity}x) - ${formatCurrency(item.amount_total)}`,
-		)
+		.map((item) => `• ${item.description} (${item.quantity}x) - ${formatCents(item.amount_total)}`)
 		.join("\n");
 }
 
@@ -126,7 +118,7 @@ Thank you for your order! Your payment has been successfully processed.
 
 ORDER DETAILS
 Order ID: ${session.id}
-Total: ${formatCurrency(session.amount_total || 0)}
+Total: ${formatCents(session.amount_total || 0)}
 
 ITEMS ORDERED
 ${formatLineItems(lineItems)}
@@ -172,7 +164,7 @@ export async function sendAdminNotification(
 ORDER DETAILS
 Order ID: ${session.id}
 Customer: ${customerEmail}
-Total: ${formatCurrency(session.amount_total || 0)}
+Total: ${formatCents(session.amount_total || 0)}
 Payment Status: ${session.payment_status}
 
 ITEMS TO FULFILL
@@ -192,8 +184,8 @@ This order was automatically processed through your Angel's Rest website.
 		from: "Angel's Rest Orders <orders@angelsrest.online>",
 		to: [env.NOTIFICATION_EMAIL || "thinkingofview@gmail.com"],
 		subject: orderNumber
-			? `🛒 New Order ${orderNumber}: ${formatCurrency(session.amount_total || 0)} from ${shippingDetails?.name || customerEmail}`
-			: `🛒 New Order: ${formatCurrency(session.amount_total || 0)} from ${shippingDetails?.name || customerEmail}`,
+			? `🛒 New Order ${orderNumber}: ${formatCents(session.amount_total || 0)} from ${shippingDetails?.name || customerEmail}`
+			: `🛒 New Order: ${formatCents(session.amount_total || 0)} from ${shippingDetails?.name || customerEmail}`,
 		text: emailContent,
 	});
 }
@@ -232,7 +224,7 @@ export async function sendFulfillmentFailureAlert(
 Order ${orderNumber} permanently failed at LumaPrints submission.
 
 Customer: ${customerEmail}
-Amount: ${formatCurrency(total)}
+Amount: ${formatCents(total)}
 
 ${refundLine}
 

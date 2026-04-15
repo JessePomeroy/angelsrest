@@ -1,6 +1,8 @@
 import { v } from "convex/values";
 import { mutation, query } from "./_generated/server";
 import { requireAuth } from "./authHelpers";
+import { deleteDocument } from "./helpers/deleting";
+import { patchDocument } from "./helpers/patching";
 
 export const list = query({
 	args: { siteUrl: v.string() },
@@ -69,29 +71,13 @@ export const update = mutation({
 		variables: v.optional(v.array(v.string())),
 	},
 	handler: async (ctx, { templateId, siteUrl, ...updates }) => {
-		await requireAuth(ctx);
-		const doc = await ctx.db.get(templateId);
-		if (!doc || doc.siteUrl !== siteUrl) {
-			throw new Error("Not found");
-		}
-		const patch: Record<string, unknown> = {};
-		for (const [key, val] of Object.entries(updates)) {
-			if (val !== undefined) patch[key] = val;
-		}
-		if (Object.keys(patch).length > 0) {
-			await ctx.db.patch(templateId, patch);
-		}
+		await patchDocument(ctx, templateId, siteUrl, updates);
 	},
 });
 
 export const remove = mutation({
 	args: { templateId: v.id("emailTemplates"), siteUrl: v.string() },
 	handler: async (ctx, { templateId, siteUrl }) => {
-		await requireAuth(ctx);
-		const doc = await ctx.db.get(templateId);
-		if (!doc || doc.siteUrl !== siteUrl) {
-			throw new Error("Not found");
-		}
-		await ctx.db.delete(templateId);
+		await deleteDocument(ctx, templateId, siteUrl);
 	},
 });
