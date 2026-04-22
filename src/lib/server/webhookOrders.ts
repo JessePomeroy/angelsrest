@@ -61,7 +61,7 @@ export async function createOrderInConvex(
 	const isDigital = session.metadata?.isDigital === "true";
 
 	// Create order in Convex (idempotent — returns existing order if session already processed)
-	const { _id: orderId, orderNumber } = await convex.mutation(api.orders.create, {
+	const orderResult = await convex.mutation(api.orders.create, {
 		siteUrl: SITE_DOMAIN,
 		stripeSessionId: session.id,
 		customerEmail: session.customer_details?.email || "",
@@ -84,17 +84,42 @@ export async function createOrderInConvex(
 		paperName: session.metadata?.paperName || undefined,
 		paperSubcategoryId: session.metadata?.paperSubcategoryId || undefined,
 	});
+	const { _id: orderId, orderNumber, alreadyExisted } = orderResult;
+	const existingLumaprintsOrderNumber = orderResult.lumaprintsOrderNumber;
+	const existingStripeFees = orderResult.stripeFees;
 
-	console.log("Created order in Convex:", orderNumber, orderId);
+	logStructured({
+		event: alreadyExisted ? "order.rehydrated" : "order.created",
+		stage: "order_create",
+		orderId: orderNumber,
+		meta: { alreadyExisted },
+	});
 
-	// Non-critical: capture fees — can be reconciled manually later
-	try {
-		await captureStripeFees(stripe, convex, orderId, orderNumber, stripePaymentIntentId);
-	} catch (err) {
-		console.error("Failed to capture Stripe fees (non-fatal):", orderNumber, err);
+	// Non-critical: capture fees — can be reconciled manually later.
+	// Skip if fees were already captured on a prior webhook attempt; Stripe
+	// retries would otherwise re-fetch the balance_transaction and re-patch
+	// the order unnecessarily.
+	if (existingStripeFees === undefined) {
+		try {
+			await captureStripeFees(stripe, convex, orderId, orderNumber, stripePaymentIntentId);
+		} catch (err) {
+			console.error("Failed to capture Stripe fees (non-fatal):", orderNumber, err);
+		}
+	} else {
+		logStructured({
+			event: "stripe_fees.skipped",
+			stage: "order_create",
+			orderId: orderNumber,
+			meta: { reason: "already captured", stripeFees: existingStripeFees },
+		});
 	}
 
 	// Critical: LumaPrints submission.
+	//
+	// Idempotency guard (audit C13): if a prior webhook retry already submitted
+	// this order to LumaPrints, `orders.create` returns the persisted
+	// `lumaprintsOrderNumber`. We short-circuit here to prevent double-submission
+	// which would otherwise produce two physical prints for one charge.
 	//
 	// Audit #23 PR #3 expanded the error handling here into a 3-signal fallback:
 	// - **Transient errors** (network, LumaPrints 5xx, unknown) → re-throw so
@@ -110,6 +135,19 @@ export async function createOrderInConvex(
 	// Classification lives in `webhookErrorClassification.ts` and is
 	// conservative: unknown errors default to transient so we don't refund
 	// customers based on our own bugs.
+	if (existingLumaprintsOrderNumber) {
+		logStructured({
+			event: "lumaprints.skipped",
+			stage: "lumaprints_submit",
+			orderId: orderNumber,
+			meta: {
+				reason: "already submitted on prior webhook attempt",
+				lumaprintsOrderNumber: existingLumaprintsOrderNumber,
+			},
+		});
+		return { orderNumber, _id: orderId, alreadyExisted };
+	}
+
 	try {
 		await submitToLumaPrints(convex, orderId, orderNumber, lineItems, shippingDetails, session);
 	} catch (err) {
@@ -144,7 +182,7 @@ export async function createOrderInConvex(
 		);
 	}
 
-	return { orderNumber, _id: orderId };
+	return { orderNumber, _id: orderId, alreadyExisted };
 }
 
 /**

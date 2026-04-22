@@ -36,14 +36,22 @@ let selectedFrame = $state("none");
 // Canvas is just a paper type — detect it for UI rules (hide border/frame)
 const isCanvasSelected = $derived(isCanvasPaper(selectedPaperSlug));
 
-// When a frame is selected, force border to 0.25"
-// When canvas is selected, disable border and frame
+// When a frame is selected, force border to FRAMED_BORDER_INCHES.
+// When canvas is selected, disable border and frame.
+//
+// Guard each write on a current-value check so the effect is idempotent —
+// without the guards, Svelte 5 could re-schedule this effect every time
+// selectedFrame/selectedBorderWidth are touched and in pathological state
+// fire an effect_update_depth_exceeded. See audit H23.
 $effect(() => {
 	if (isCanvasSelected) {
-		selectedBorderWidth = "none";
-		selectedFrame = "none";
+		if (selectedBorderWidth !== "none") selectedBorderWidth = "none";
+		if (selectedFrame !== "none") selectedFrame = "none";
 	} else if (selectedFrame !== "none") {
-		selectedBorderWidth = String(FRAMED_BORDER_INCHES);
+		const framedWidth = String(FRAMED_BORDER_INCHES);
+		if (selectedBorderWidth !== framedWidth) {
+			selectedBorderWidth = framedWidth;
+		}
 	}
 });
 

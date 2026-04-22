@@ -39,12 +39,17 @@ let selectedFrame = $state("none");
 
 const isCanvasSelected = $derived(isCanvasPaper(selectedPaperSlug));
 
+// Idempotent guards — see audit H23 + shop/[slug]/+page.svelte for the
+// full explanation.
 $effect(() => {
 	if (isCanvasSelected) {
-		selectedBorderWidth = "none";
-		selectedFrame = "none";
+		if (selectedBorderWidth !== "none") selectedBorderWidth = "none";
+		if (selectedFrame !== "none") selectedFrame = "none";
 	} else if (selectedFrame !== "none") {
-		selectedBorderWidth = String(FRAMED_BORDER_INCHES);
+		const framedWidth = String(FRAMED_BORDER_INCHES);
+		if (selectedBorderWidth !== framedWidth) {
+			selectedBorderWidth = framedWidth;
+		}
 	}
 });
 

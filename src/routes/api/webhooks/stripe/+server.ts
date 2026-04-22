@@ -173,29 +173,41 @@ async function handleCheckoutCompleted(session: Stripe.Checkout.Session) {
 		},
 	);
 
-	// Emails are non-critical — order is already created, don't fail the webhook over email
-	try {
-		await sendCustomerConfirmation(resend, {
-			session: fullSession,
-			customerEmail,
-			shippingDetails,
-			lineItems,
-			orderNumber: orderResult.orderNumber,
-		});
-	} catch (err) {
-		console.error("Failed to send customer confirmation (non-fatal):", err);
-	}
+	// Emails are non-critical — order is already created, don't fail the webhook over email.
+	//
+	// Dedupe on retry (audit H6): if the order already existed (Stripe retried
+	// a previously-successful webhook), both confirmation emails were already
+	// sent. Skip sending them again to avoid spamming the customer with a
+	// duplicate receipt for every retry.
+	if (orderResult.alreadyExisted) {
+		console.log(
+			"Skipping confirmation emails — order was already processed:",
+			orderResult.orderNumber,
+		);
+	} else {
+		try {
+			await sendCustomerConfirmation(resend, {
+				session: fullSession,
+				customerEmail,
+				shippingDetails,
+				lineItems,
+				orderNumber: orderResult.orderNumber,
+			});
+		} catch (err) {
+			console.error("Failed to send customer confirmation (non-fatal):", err);
+		}
 
-	try {
-		await sendAdminNotification(resend, {
-			session: fullSession,
-			customerEmail,
-			shippingDetails,
-			lineItems,
-			orderNumber: orderResult.orderNumber,
-		});
-	} catch (err) {
-		console.error("Failed to send admin notification (non-fatal):", err);
+		try {
+			await sendAdminNotification(resend, {
+				session: fullSession,
+				customerEmail,
+				shippingDetails,
+				lineItems,
+				orderNumber: orderResult.orderNumber,
+			});
+		} catch (err) {
+			console.error("Failed to send admin notification (non-fatal):", err);
+		}
 	}
 
 	console.log("Checkout processed successfully:", session.id);

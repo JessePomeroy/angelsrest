@@ -1,29 +1,30 @@
 import { v } from "convex/values";
 import { mutation, query } from "./_generated/server";
+import { requireAuth } from "./authHelpers";
 import { getNextSequentialNumber } from "./helpers/numbering";
+
+const orderStatusValidator = v.union(
+	v.literal("new"),
+	v.literal("printing"),
+	v.literal("ready"),
+	v.literal("shipped"),
+	v.literal("delivered"),
+	v.literal("refunded"),
+	v.literal("fulfillment_error"),
+);
 
 export const list = query({
 	args: {
 		siteUrl: v.string(),
-		status: v.optional(v.string()),
+		status: v.optional(orderStatusValidator),
 	},
 	handler: async (ctx, { siteUrl, status }) => {
+		await requireAuth(ctx);
 		if (status) {
 			return await ctx.db
 				.query("orders")
 				.withIndex("by_siteUrl_status", (q) =>
-					q
-						.eq("siteUrl", siteUrl)
-						.eq(
-							"status",
-							status as
-								| "new"
-								| "printing"
-								| "ready"
-								| "shipped"
-								| "delivered"
-								| "refunded",
-						),
+					q.eq("siteUrl", siteUrl).eq("status", status),
 				)
 				.order("desc")
 				.take(500);
@@ -36,6 +37,15 @@ export const list = query({
 	},
 });
 
+/**
+ * @audit C4 — Called by the main shop Stripe webhook; currently public (no
+ * auth). Stripe signature is validated in the SvelteKit layer; the mutation
+ * itself is invokable directly. Idempotency on `by_stripeSessionId` limits
+ * damage (duplicate session IDs are rejected) but a caller can still create
+ * forged orders with fabricated session IDs.
+ *
+ * TODO: convert to `internalMutation` + call via Convex `httpAction`.
+ */
 export const create = mutation({
 	args: {
 		siteUrl: v.string(),
@@ -75,7 +85,12 @@ export const create = mutation({
 		discountAmount: v.optional(v.number()),
 	},
 	handler: async (ctx, args) => {
-		// Idempotency: if an order with this stripeSessionId already exists, return it
+		// Idempotency: if an order with this stripeSessionId already exists,
+		// return it along with fulfillment state so the caller can skip
+		// already-completed side effects (LumaPrints submission, fee capture,
+		// confirmation emails). Previously only `_id` and `orderNumber` were
+		// returned, which caused retries to re-submit to LumaPrints and
+		// re-email the customer. See audit C13.
 		const existing = await ctx.db
 			.query("orders")
 			.withIndex("by_stripeSessionId", (q) =>
@@ -83,7 +98,14 @@ export const create = mutation({
 			)
 			.unique();
 		if (existing) {
-			return { _id: existing._id, orderNumber: existing.orderNumber };
+			return {
+				_id: existing._id,
+				orderNumber: existing.orderNumber,
+				alreadyExisted: true as const,
+				lumaprintsOrderNumber: existing.lumaprintsOrderNumber,
+				status: existing.status,
+				stripeFees: existing.stripeFees,
+			};
 		}
 
 		// Use provided order number or generate one atomically
@@ -103,24 +125,30 @@ export const create = mutation({
 			status: "new",
 		});
 
-		return { _id, orderNumber };
+		return {
+			_id,
+			orderNumber,
+			alreadyExisted: false as const,
+			lumaprintsOrderNumber: undefined,
+			status: "new" as const,
+			stripeFees: undefined,
+		};
 	},
 });
 
+/**
+ * @audit C4 — Called by the webhook AND by the admin UI. Currently public,
+ * so anyone who knows an `orderId` can flip status/tracking/refund fields.
+ *
+ * TODO: split into two functions:
+ *   - `updateStatusByAdmin` (requires auth, siteUrl ownership check)
+ *   - `_updateStatusInternal` (internalMutation, called via httpAction from
+ *      signature-validated webhook)
+ */
 export const updateStatus = mutation({
 	args: {
 		orderId: v.id("orders"),
-		status: v.optional(
-			v.union(
-				v.literal("new"),
-				v.literal("printing"),
-				v.literal("ready"),
-				v.literal("shipped"),
-				v.literal("delivered"),
-				v.literal("refunded"),
-				v.literal("fulfillment_error"),
-			),
-		),
+		status: v.optional(orderStatusValidator),
 		notes: v.optional(v.string()),
 		trackingNumber: v.optional(v.string()),
 		trackingUrl: v.optional(v.string()),
@@ -173,6 +201,7 @@ export const lookup = query({
 export const getStats = query({
 	args: { siteUrl: v.string() },
 	handler: async (ctx, { siteUrl }) => {
+		await requireAuth(ctx);
 		const orders = await ctx.db
 			.query("orders")
 			.withIndex("by_siteUrl", (q) => q.eq("siteUrl", siteUrl))
@@ -252,6 +281,7 @@ export const getStats = query({
 export const getNextOrderNumber = query({
 	args: { siteUrl: v.string() },
 	handler: async (ctx, { siteUrl }) => {
+		await requireAuth(ctx);
 		return getNextSequentialNumber(
 			ctx,
 			"orders",

@@ -33,17 +33,30 @@ type TableWithSiteUrl =
 	| "quotes";
 
 /**
+ * Tables that ALSO have a `by_siteUrl_status` compound index. Listed
+ * explicitly because each table's `status` enum is different and the
+ * Convex type system cannot generically prove a shared shape.
+ */
+const TABLES_WITH_STATUS_INDEX = new Set<TableWithSiteUrl>([
+	"contracts",
+	"invoices",
+	"orders",
+	"quotes",
+	"inquiries",
+]);
+
+/**
  * List documents for a given siteUrl in descending creation order, with
- * optional post-fetch status filtering.
+ * optional status filtering.
  *
- * Mirrors the pattern previously duplicated in quotes.list, contracts.list,
- * and invoices.list: `by_siteUrl` index → `.order("desc")` → `.take(limit)`
- * → optional post-filter by status.
+ * When `status` is provided AND the table has a `by_siteUrl_status`
+ * compound index (see `TABLES_WITH_STATUS_INDEX`), the helper uses the
+ * compound index for an efficient index-side filter. Otherwise it falls
+ * back to fetching by `by_siteUrl` and post-filtering in memory.
  *
- * Note: this helper uses the `by_siteUrl` index and post-filters for status
- * so behavior is identical to the original implementations. Callers that
- * have a compound `by_siteUrl_status` index and want the more efficient
- * path (like orders.list) should query directly rather than use this helper.
+ * Previously this helper ALWAYS post-filtered, which meant any status-filtered
+ * list could silently drop results once the total row count for the siteUrl
+ * exceeded `limit` — see audit H12.
  */
 export async function queryBySiteUrl<T extends TableWithSiteUrl>(
 	ctx: QueryCtx,
@@ -52,18 +65,29 @@ export async function queryBySiteUrl<T extends TableWithSiteUrl>(
 	options?: { status?: string; limit?: number },
 ): Promise<Doc<T>[]> {
 	const limit = options?.limit ?? 200;
-	// Two `as never` casts inside the index range: Convex types .eq() with a
-	// concrete field path per-table, and with a generic `T extends union` the
-	// compiler can't resolve the shared "siteUrl" path or its value type.
-	// TableWithSiteUrl enumerates only tables where this call is valid at
-	// runtime (string `siteUrl` + `by_siteUrl` index), so the casts are
-	// honest escape hatches rather than load-bearing lies.
+	const status = options?.status;
+
+	// Fast path: compound index covers `[siteUrl, status]`.
+	if (status !== undefined && TABLES_WITH_STATUS_INDEX.has(table)) {
+		// Two `as never` casts are required because Convex's query-builder
+		// types the field paths per-table; with a generic `T extends union`
+		// the compiler can't resolve the shared "siteUrl"/"status" paths.
+		// The membership check above enforces the runtime invariant.
+		return await ctx.db
+			.query(table)
+			.withIndex("by_siteUrl_status" as never, (q: any) =>
+				q.eq("siteUrl", siteUrl).eq("status", status),
+			)
+			.order("desc")
+			.take(limit);
+	}
+
+	// Generic path: by_siteUrl + post-filter.
 	const all = await ctx.db
 		.query(table)
 		.withIndex("by_siteUrl", (q) => q.eq("siteUrl" as never, siteUrl as never))
 		.order("desc")
 		.take(limit);
-	const status = options?.status;
 	if (status === undefined) return all;
 	return all.filter((doc) => (doc as { status?: string }).status === status);
 }
