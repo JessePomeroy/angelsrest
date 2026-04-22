@@ -1,11 +1,15 @@
 import type { Doc, Id, TableNames } from "../_generated/dataModel";
 import type { MutationCtx } from "../_generated/server";
-import { requireAuth } from "../authHelpers";
+import { requireSiteAdmin } from "../authHelpers";
 
 /**
- * Patch a document with auth, siteUrl ownership check, and undefined-filtering.
+ * Patch a document with tenant-admin auth, siteUrl ownership check, and
+ * undefined-filtering.
  *
- * - Verifies the caller is authenticated.
+ * - Verifies the caller is an authenticated admin of `siteUrl` (audit C8).
+ *   Previously this only checked "somebody is logged in," which meant an
+ *   authenticated user on tenant A could pass siteUrl of tenant B and mutate
+ *   their documents.
  * - Loads the document and throws "Not found" if missing or its siteUrl
  *   doesn't match the supplied siteUrl.
  * - Filters undefined values from `updates` (so optional args left off the
@@ -21,7 +25,7 @@ export async function patchDocument<T extends TableNames>(
 	siteUrl: string,
 	updates: Record<string, unknown>,
 ): Promise<Doc<T>> {
-	await requireAuth(ctx);
+	await requireSiteAdmin(ctx, siteUrl);
 	const doc = await ctx.db.get(id);
 	if (!doc || (doc as { siteUrl?: string }).siteUrl !== siteUrl) {
 		throw new Error("Not found");

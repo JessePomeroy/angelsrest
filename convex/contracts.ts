@@ -1,7 +1,7 @@
 import { v } from "convex/values";
 import { internal } from "./_generated/api";
 import { mutation, query } from "./_generated/server";
-import { requireAuth } from "./authHelpers";
+import { requireAuth, requireSiteAdmin } from "./authHelpers";
 import { deleteDocument } from "./helpers/deleting";
 import { markDocumentSent } from "./helpers/marking";
 import { patchDocument } from "./helpers/patching";
@@ -105,7 +105,7 @@ export const markSent = mutation({
 export const markSigned = mutation({
 	args: { contractId: v.id("contracts"), siteUrl: v.string() },
 	handler: async (ctx, { contractId, siteUrl }) => {
-		await requireAuth(ctx);
+		await requireSiteAdmin(ctx, siteUrl);
 		const contract = await ctx.db.get(contractId);
 		if (!contract || contract.siteUrl !== siteUrl) {
 			throw new Error("Not found");

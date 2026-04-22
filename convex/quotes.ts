@@ -1,7 +1,7 @@
 import { v } from "convex/values";
 import { internal } from "./_generated/api";
 import { mutation, query } from "./_generated/server";
-import { requireAuth } from "./authHelpers";
+import { requireAuth, requireSiteAdmin } from "./authHelpers";
 import { deleteDocument } from "./helpers/deleting";
 import { markDocumentSent } from "./helpers/marking";
 import { getNextSequentialNumber } from "./helpers/numbering";
@@ -121,7 +121,7 @@ export const markSent = mutation({
 export const markAccepted = mutation({
 	args: { quoteId: v.id("quotes"), siteUrl: v.string() },
 	handler: async (ctx, { quoteId, siteUrl }) => {
-		await requireAuth(ctx);
+		await requireSiteAdmin(ctx, siteUrl);
 		const quote = await ctx.db.get(quoteId);
 		if (!quote || quote.siteUrl !== siteUrl) {
 			throw new Error("Not found");
@@ -157,7 +157,7 @@ export const convertToInvoice = mutation({
 		ctx,
 		{ quoteId, siteUrl, invoiceNumber, invoiceType, dueDate, notes },
 	) => {
-		await requireAuth(ctx);
+		await requireSiteAdmin(ctx, siteUrl);
 		const quote = await ctx.db.get(quoteId);
 		if (!quote || quote.siteUrl !== siteUrl) throw new Error("Not found");
 
@@ -196,7 +196,7 @@ export const convertToInvoice = mutation({
 export const markDeclined = mutation({
 	args: { quoteId: v.id("quotes"), siteUrl: v.string() },
 	handler: async (ctx, { quoteId, siteUrl }) => {
-		await requireAuth(ctx);
+		await requireSiteAdmin(ctx, siteUrl);
 		const doc = await ctx.db.get(quoteId);
 		if (!doc || doc.siteUrl !== siteUrl) {
 			throw new Error("Not found");
