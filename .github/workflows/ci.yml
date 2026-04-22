@@ -6,6 +6,11 @@ on:
   pull_request:
     branches: [main]
 
+# Audit H43: cancel in-progress runs for the same ref when a newer push arrives.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
 permissions:
   contents: read
   packages: read
@@ -29,8 +34,11 @@ jobs:
         env:
           NPM_TOKEN: ${{ secrets.GH_PACKAGES_TOKEN }}
 
+      # Audit H50: match the local `pnpm lint` command (biome check .) so CI
+      # and local linting agree on scope. Previously CI scanned only src/,
+      # which meant scripts/ and convex/ lint errors slipped through.
       - name: Lint
-        run: pnpm biome check src/
+        run: pnpm lint
 
       - name: Type check
         env:
@@ -45,4 +53,9 @@ jobs:
           PUBLIC_CONVEX_URL: https://placeholder.convex.cloud
           GALLERY_WORKER_URL: placeholder
           GALLERY_ADMIN_SECRET: placeholder
-        run: npx svelte-kit sync && npx svelte-check --threshold error
+        run: pnpm check
+
+      # Audit H41: run the full vitest suite on every PR / push so regressions
+      # land in the status check, not in production.
+      - name: Tests
+        run: pnpm test
