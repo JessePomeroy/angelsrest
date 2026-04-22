@@ -28,9 +28,16 @@ export async function requireAuth(ctx: MutationCtx | QueryCtx) {
  * mirrored in `.env`/Vercel as `WEBHOOK_SECRET`. Generate with:
  *   openssl rand -base64 32
  *
- * NOTE: If `WEBHOOK_SECRET` is unset on the Convex deployment, this helper
- * refuses ALL callers (fail-closed) to avoid a deploy-time regression
- * opening the same hole this fix closes.
+ * Auth priority (cheapest check first):
+ *   1. If the caller presents a `providedSecret` AND `WEBHOOK_SECRET` is
+ *      set AND they match, accept as webhook.
+ *   2. Else if `allowAuth` and the caller is authenticated, accept as auth.
+ *   3. Else reject.
+ *
+ * The absence of `WEBHOOK_SECRET` on the deployment does NOT block
+ * authenticated admin callers (which is how the admin UI calls these
+ * mutations). It only means the webhook path can't authenticate, which
+ * is the correct fail-closed behavior for that path.
  */
 export async function requireWebhookCallerOrAuth(
 	ctx: MutationCtx | QueryCtx,
@@ -38,13 +45,19 @@ export async function requireWebhookCallerOrAuth(
 	{ allowAuth = true }: { allowAuth?: boolean } = {},
 ) {
 	const expected = process.env.WEBHOOK_SECRET;
-	if (!expected) {
-		throw new Error(
-			"Webhook authorization is not configured on this deployment (WEBHOOK_SECRET env var missing). Run `npx convex env set WEBHOOK_SECRET <value>`.",
-		);
-	}
-	if (providedSecret && constantTimeEquals(providedSecret, expected)) {
-		return { via: "webhook" as const };
+	if (providedSecret) {
+		if (!expected) {
+			throw new Error(
+				"Webhook authorization is not configured on this deployment (WEBHOOK_SECRET env var missing). Run `npx convex env set WEBHOOK_SECRET <value>`.",
+			);
+		}
+		if (constantTimeEquals(providedSecret, expected)) {
+			return { via: "webhook" as const };
+		}
+		// Secret was supplied but didn't match — don't silently fall through to
+		// auth; that could mask a misconfiguration or an attacker probing the
+		// secret. Reject hard.
+		throw new Error("Not authorized (webhook secret mismatch)");
 	}
 	if (allowAuth) {
 		const identity = await ctx.auth.getUserIdentity();
