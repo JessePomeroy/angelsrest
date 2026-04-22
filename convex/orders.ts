@@ -1,4 +1,5 @@
 import { v } from "convex/values";
+import { internal } from "./_generated/api";
 import { mutation, query } from "./_generated/server";
 import { requireAuth, requireWebhookCallerOrAuth } from "./authHelpers";
 import { getNextSequentialNumber } from "./helpers/numbering";
@@ -125,6 +126,19 @@ export const create = mutation({
 			orderNumber,
 			status: "new",
 		});
+
+		// Schedule Stripe fee capture off the webhook hot path (audit H5).
+		// Stripe's balance_transaction isn't populated the instant
+		// checkout.session.completed fires, so we wait 15s then fetch.
+		// The action is idempotent and reschedules itself up to 3 times if
+		// the fee still isn't available — see convex/stripeFees.ts.
+		if (rest.stripePaymentIntentId) {
+			await ctx.scheduler.runAfter(
+				15_000,
+				internal.stripeFees.captureFeesForOrder,
+				{ orderId: _id },
+			);
+		}
 
 		return {
 			_id,

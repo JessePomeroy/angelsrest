@@ -33,6 +33,8 @@ import type * as orders from "../orders.js";
 import type * as platform from "../platform.js";
 import type * as portal from "../portal.js";
 import type * as quotes from "../quotes.js";
+import type * as stripeFees from "../stripeFees.js";
+import type * as stripeFeesStore from "../stripeFeesStore.js";
 import type * as tags from "../tags.js";
 
 import type {
@@ -67,6 +69,8 @@ declare const fullApi: ApiFromModules<{
   platform: typeof platform;
   portal: typeof portal;
   quotes: typeof quotes;
+  stripeFees: typeof stripeFees;
+  stripeFeesStore: typeof stripeFeesStore;
   tags: typeof tags;
 }>;
 

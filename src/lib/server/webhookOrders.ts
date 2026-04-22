@@ -112,17 +112,11 @@ export async function createOrderInConvex(
 		meta: { alreadyExisted },
 	});
 
-	// Non-critical: capture fees — can be reconciled manually later.
-	// Skip if fees were already captured on a prior webhook attempt; Stripe
-	// retries would otherwise re-fetch the balance_transaction and re-patch
-	// the order unnecessarily.
-	if (existingStripeFees === undefined) {
-		try {
-			await captureStripeFees(stripe, convex, orderId, orderNumber, stripePaymentIntentId);
-		} catch (err) {
-			console.error("Failed to capture Stripe fees (non-fatal):", orderNumber, err);
-		}
-	} else {
+	// Fee capture runs off the hot path (audit H5): `orders.create` schedules
+	// `stripeFees.captureFeesForOrder` to run 15s after the order is created,
+	// so the webhook doesn't block on Stripe's balance_transaction becoming
+	// available. See convex/stripeFees.ts for the action + retry policy.
+	if (existingStripeFees !== undefined) {
 		logStructured({
 			event: "stripe_fees.skipped",
 			stage: "order_create",
@@ -323,48 +317,6 @@ export async function handlePermanentFulfillmentFailure(
 			orderId: orderNumber,
 			error: emailErr,
 		});
-	}
-}
-
-/**
- * Fetch actual Stripe fees from the balance_transaction and update the order.
- * Waits 3 seconds for Stripe to finalize the transaction before fetching.
- */
-export async function captureStripeFees(
-	stripe: Stripe,
-	convex: ConvexHttpClient,
-	orderId: any,
-	orderNumber: string,
-	paymentIntentId: string | undefined,
-) {
-	if (!paymentIntentId) return;
-
-	try {
-		// Wait for Stripe to finalize the balance_transaction
-		await new Promise((resolve) => setTimeout(resolve, 3000));
-
-		const pi = await stripe.paymentIntents.retrieve(paymentIntentId, {
-			expand: ["latest_charge.balance_transaction"],
-		});
-
-		const charge = pi.latest_charge;
-		// After expand, latest_charge is a Charge object with balance_transaction expanded
-		const balanceTxn =
-			typeof charge === "object" && charge !== null ? charge.balance_transaction : undefined;
-		const fees = typeof balanceTxn === "object" && balanceTxn !== null ? balanceTxn.fee : undefined;
-
-		if (fees && fees > 0) {
-			await convex.mutation(api.orders.updateStatus, {
-				webhookSecret: getWebhookSecret(),
-				orderId,
-				stripeFees: fees,
-			});
-			console.log("✅ Captured Stripe fees:", orderNumber, "→", fees, "cents");
-		} else {
-			console.log("⚠️ No fees available after delay for:", orderNumber);
-		}
-	} catch (err) {
-		console.error("Error capturing fees for:", orderNumber, err);
 	}
 }
 
