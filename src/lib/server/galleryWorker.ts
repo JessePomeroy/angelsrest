@@ -21,7 +21,7 @@ export function createGalleryWorkerProxy(
 	} = {},
 ): RequestHandler {
 	return async ({ request, cookies }) => {
-		requireAuth(cookies);
+		await requireAuth(cookies);
 		const secret = env.GALLERY_ADMIN_SECRET;
 		if (!secret) throw error(500, "GALLERY_ADMIN_SECRET not configured");
 

@@ -2,6 +2,27 @@ import { v } from "convex/values";
 import { query } from "./_generated/server";
 
 /**
+ * Return the currently-authenticated identity for this request, or null if
+ * the caller has no valid Better Auth session.
+ *
+ * Used by SvelteKit server-side guards (audit H3/H4) to validate a session
+ * token before rendering admin-only pages. Cheaper than `checkAdminAccess`
+ * when all you need is "is this token valid" without the siteUrl check.
+ */
+export const whoami = query({
+	args: {},
+	handler: async (ctx) => {
+		const identity = await ctx.auth.getUserIdentity();
+		if (!identity) return null;
+		return {
+			email: identity.email ?? null,
+			name: identity.name ?? null,
+			subject: identity.subject,
+		};
+	},
+});
+
+/**
  * Check whether the *currently authenticated* user is an admin for the given
  * site. Previously this accepted a client-supplied `email` argument which was
  * an auth bypass: any unauthenticated caller could pass the creator's email

@@ -7,7 +7,7 @@ setServerConfig(adminServerConfig);
 
 const handler = createInvoiceSendHandler();
 
-export const POST: RequestHandler = (event) => {
-	requireAuth(event.cookies);
+export const POST: RequestHandler = async (event) => {
+	await requireAuth(event.cookies);
 	return handler(event);
 };

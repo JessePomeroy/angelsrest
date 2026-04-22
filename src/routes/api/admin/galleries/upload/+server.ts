@@ -5,7 +5,7 @@ import { requireAuth } from "$lib/server/adminAuth";
 const WORKER_URL = env.GALLERY_WORKER_URL ?? "https://gallery-worker.thinkingofview.workers.dev";
 
 export async function PUT({ request, url, cookies }) {
-	requireAuth(cookies);
+	await requireAuth(cookies);
 	const secret = env.GALLERY_ADMIN_SECRET;
 	if (!secret) throw error(500, "GALLERY_ADMIN_SECRET not configured");
 

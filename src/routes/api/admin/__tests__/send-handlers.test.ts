@@ -33,6 +33,18 @@ vi.mock("@mmailaender/convex-better-auth-svelte/sveltekit", () => ({
 	getToken: mockGetToken,
 }));
 
+const mockConvexQuery = vi.fn();
+const mockConvexSetAuth = vi.fn();
+vi.mock("convex/browser", () => ({
+	ConvexHttpClient: class MockConvexHttpClient {
+		setAuth = mockConvexSetAuth;
+		query = mockConvexQuery;
+	},
+}));
+vi.mock("$convex/api", () => ({
+	api: { adminAuth: { whoami: "adminAuth.whoami" } },
+}));
+
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
 function makeEvent() {
@@ -73,6 +85,7 @@ describe.each([
 ])("POST /api/admin/$name send handler", ({ path, mockHandler }) => {
 	beforeEach(() => {
 		vi.clearAllMocks();
+		mockConvexQuery.mockReset();
 	});
 
 	it("returns 401 when no session token is present", async () => {
@@ -88,8 +101,27 @@ describe.each([
 		expect(mockHandler).not.toHaveBeenCalled();
 	});
 
+	it("returns 401 when Convex rejects the session", async () => {
+		mockGetToken.mockReturnValue("stale-token");
+		mockConvexQuery.mockResolvedValue(null);
+		const POST = await loadHandler(path);
+
+		try {
+			await POST(makeEvent());
+			expect.fail("should have thrown");
+		} catch (err: any) {
+			expect(err.status).toBe(401);
+		}
+		expect(mockHandler).not.toHaveBeenCalled();
+	});
+
 	it("delegates to the package handler when auth passes", async () => {
 		mockGetToken.mockReturnValue("valid-session-token");
+		mockConvexQuery.mockResolvedValue({
+			email: "admin@example.com",
+			name: "Admin",
+			subject: "user-1",
+		});
 		mockHandler.mockResolvedValue(new Response(JSON.stringify({ sent: true }), { status: 200 }));
 
 		const POST = await loadHandler(path);
@@ -105,6 +137,11 @@ describe.each([
 
 	it("propagates errors thrown by the package handler", async () => {
 		mockGetToken.mockReturnValue("valid-session-token");
+		mockConvexQuery.mockResolvedValue({
+			email: "admin@example.com",
+			name: "Admin",
+			subject: "user-1",
+		});
 		mockHandler.mockRejectedValue(new Error("resend exploded"));
 
 		const POST = await loadHandler(path);
