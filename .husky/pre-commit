@@ -1,1 +1,7 @@
+# 1. Secret scan — block any live-key patterns from entering git history.
+#    See scripts/check-secrets.sh for what's scanned and how to allowlist
+#    legitimate placeholders.
+./scripts/check-secrets.sh
+
+# 2. Lint + format on staged files (biome via lint-staged).
 pnpm lint-staged

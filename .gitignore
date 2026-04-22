@@ -22,3 +22,7 @@ Thumbs.db
 vite.config.js.timestamp-*
 vite.config.ts.timestamp-*
 .claude/worktrees/
+
+# Audit / rotation working docs — do not commit
+AUDIT.md
+ROTATION.md
