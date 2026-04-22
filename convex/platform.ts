@@ -1,6 +1,6 @@
 import { v } from "convex/values";
 import { mutation, query } from "./_generated/server";
-import { requireAuth } from "./authHelpers";
+import { requireAuth, requireWebhookCallerOrAuth } from "./authHelpers";
 
 export const checkTier = query({
 	args: { siteUrl: v.string() },
@@ -30,17 +30,17 @@ export const listAll = query({
 });
 
 /**
- * @audit C5 — This query is called by the platform Stripe webhook and is
- * currently public (no auth). The webhook validates its Stripe signature in
- * the SvelteKit layer, but this Convex function can still be invoked
- * directly by anyone who knows the deployment URL.
- *
- * TODO: convert to `internalQuery` + call via Convex `httpAction` that
- * validates the Stripe signature inside Convex, rather than in SvelteKit.
+ * Look up a platform client by Stripe subscription ID. Called by the
+ * platform Stripe webhook with the shared `webhookSecret`; rejected
+ * otherwise. Audit C5.
  */
 export const getBySubscriptionId = query({
-	args: { subscriptionId: v.string() },
-	handler: async (ctx, { subscriptionId }) => {
+	args: {
+		subscriptionId: v.string(),
+		webhookSecret: v.optional(v.string()),
+	},
+	handler: async (ctx, { subscriptionId, webhookSecret }) => {
+		await requireWebhookCallerOrAuth(ctx, webhookSecret);
 		return await ctx.db
 			.query("platformClients")
 			.withIndex("by_stripeSubscriptionId", (q) =>
@@ -73,17 +73,13 @@ export const createClient = mutation({
 });
 
 /**
- * @audit C5 — Called by the platform Stripe webhook; currently public (no
- * auth). The Stripe signature is validated in the SvelteKit layer but this
- * Convex mutation can be invoked directly. A caller who knows the Convex
- * URL and a target `siteUrl` can flip subscription tier at will.
- *
- * TODO: convert to `internalMutation` + call via a Convex `httpAction` that
- * validates the Stripe signature inside Convex.
+ * Flip a site's subscription tier. Called by the platform Stripe webhook
+ * with the shared `webhookSecret`; rejected otherwise. Audit C5.
  */
 export const updateSubscription = mutation({
 	args: {
 		siteUrl: v.string(),
+		webhookSecret: v.optional(v.string()),
 		tier: v.union(v.literal("basic"), v.literal("full")),
 		subscriptionStatus: v.union(
 			v.literal("active"),
@@ -95,6 +91,7 @@ export const updateSubscription = mutation({
 		stripeSubscriptionId: v.optional(v.string()),
 	},
 	handler: async (ctx, args) => {
+		await requireWebhookCallerOrAuth(ctx, args.webhookSecret);
 		const client = await ctx.db
 			.query("platformClients")
 			.withIndex("by_siteUrl", (q) => q.eq("siteUrl", args.siteUrl))

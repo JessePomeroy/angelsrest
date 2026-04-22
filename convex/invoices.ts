@@ -1,7 +1,7 @@
 import { v } from "convex/values";
 import { internal } from "./_generated/api";
 import { mutation, query } from "./_generated/server";
-import { requireAuth } from "./authHelpers";
+import { requireAuth, requireWebhookCallerOrAuth } from "./authHelpers";
 import { deleteDocument } from "./helpers/deleting";
 import { markDocumentSent } from "./helpers/marking";
 import { getNextSequentialNumber } from "./helpers/numbering";
@@ -144,13 +144,29 @@ export const markSent = mutation({
 	},
 });
 
+/**
+ * Mark an invoice paid. Called by:
+ *   - The Stripe webhook on `checkout.session.completed` (passes
+ *     `webhookSecret`) — customer paid via the portal.
+ *   - The admin UI ("mark paid" button) — uses an authenticated session.
+ *
+ * Audit C4 pattern: either webhook secret or admin session is required.
+ */
 export const markPaid = mutation({
-	args: { invoiceId: v.id("invoices"), siteUrl: v.string() },
-	handler: async (ctx, { invoiceId, siteUrl }) => {
-		await requireAuth(ctx);
+	args: {
+		invoiceId: v.id("invoices"),
+		siteUrl: v.string(),
+		webhookSecret: v.optional(v.string()),
+	},
+	handler: async (ctx, { invoiceId, siteUrl, webhookSecret }) => {
+		await requireWebhookCallerOrAuth(ctx, webhookSecret);
 		const invoice = await ctx.db.get(invoiceId);
 		if (!invoice || invoice.siteUrl !== siteUrl) {
 			throw new Error("Not found");
+		}
+		if (invoice.status === "paid") {
+			// Idempotent — retry-safe on Stripe webhook replays.
+			return;
 		}
 		await ctx.db.patch(invoiceId, {
 			status: "paid",

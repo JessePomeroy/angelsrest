@@ -10,4 +10,5 @@ export const env = {
 	STRIPE_CRM_PRICE_ID: "price_test_xxx",
 	GALLERY_ADMIN_SECRET: "test-secret",
 	BETTER_AUTH_SECRET: "test-secret",
+	WEBHOOK_SECRET: "test-webhook-secret",
 };

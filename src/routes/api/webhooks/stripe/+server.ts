@@ -18,6 +18,7 @@ import { error, json } from "@sveltejs/kit";
 import { Resend } from "resend";
 import Stripe from "stripe";
 import { api } from "$convex/api";
+import { env } from "$env/dynamic/private";
 import { RESEND_API_KEY, STRIPE_SECRET_KEY, STRIPE_WEBHOOK_SECRET } from "$env/static/private";
 import { SITE_DOMAIN } from "$lib/config/site";
 import { getConvex } from "$lib/server/convexClient";
@@ -68,7 +69,12 @@ export async function POST({ request }) {
 				if (session.metadata?.type === "invoice_payment") {
 					const invoiceId = session.metadata.invoiceId;
 					if (invoiceId) {
+						const webhookSecret = env.WEBHOOK_SECRET;
+						if (!webhookSecret) {
+							throw new Error("WEBHOOK_SECRET not configured");
+						}
 						await convex.mutation(api.invoices.markPaid, {
+							webhookSecret,
 							invoiceId: invoiceId as any,
 							siteUrl: session.metadata?.siteUrl || SITE_DOMAIN,
 						});

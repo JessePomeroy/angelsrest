@@ -10,6 +10,7 @@ import type { ConvexHttpClient } from "convex/browser";
 import type { Resend } from "resend";
 import type Stripe from "stripe";
 import { api } from "$convex/api";
+import { env } from "$env/dynamic/private";
 import { SITE_DOMAIN } from "$lib/config/site";
 import { logStructured, timed } from "$lib/server/logger";
 import { buildLumaPrintsOrder, createOrder as createLumaPrintsOrder } from "$lib/server/lumaprints";
@@ -20,6 +21,21 @@ import {
 	classifyLumaPrintsFailure,
 	formatFailureForAdmin,
 } from "$lib/server/webhookErrorClassification";
+
+/**
+ * Shared secret between the SvelteKit webhook and Convex. Must be set in
+ * both environments (Vercel `WEBHOOK_SECRET` and `npx convex env set
+ * WEBHOOK_SECRET`). Audit C4/C5.
+ */
+function getWebhookSecret(): string {
+	const secret = env.WEBHOOK_SECRET;
+	if (!secret) {
+		throw new Error(
+			"WEBHOOK_SECRET is not set — cannot call webhook-gated Convex mutations. Set it in Vercel and run `npx convex env set WEBHOOK_SECRET <value>`.",
+		);
+	}
+	return secret;
+}
 
 /**
  * Create an order in Convex.
@@ -62,6 +78,7 @@ export async function createOrderInConvex(
 
 	// Create order in Convex (idempotent — returns existing order if session already processed)
 	const orderResult = await convex.mutation(api.orders.create, {
+		webhookSecret: getWebhookSecret(),
 		siteUrl: SITE_DOMAIN,
 		stripeSessionId: session.id,
 		customerEmail: session.customer_details?.email || "",
@@ -273,6 +290,7 @@ export async function handlePermanentFulfillmentFailure(
 	// 2. Mark Convex order fulfillment_error
 	try {
 		await convex.mutation(api.orders.updateStatus, {
+			webhookSecret: getWebhookSecret(),
 			orderId,
 			status: "fulfillment_error",
 			fulfillmentError: errorSummary.slice(0, 1000),
@@ -337,6 +355,7 @@ export async function captureStripeFees(
 
 		if (fees && fees > 0) {
 			await convex.mutation(api.orders.updateStatus, {
+				webhookSecret: getWebhookSecret(),
 				orderId,
 				stripeFees: fees,
 			});
@@ -421,6 +440,7 @@ async function submitToLumaPrints(
 
 	// Update Convex order with the LumaPrints order number
 	await convex.mutation(api.orders.updateStatus, {
+		webhookSecret: getWebhookSecret(),
 		orderId,
 		lumaprintsOrderNumber: result.orderNumber,
 	});

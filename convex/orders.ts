@@ -1,6 +1,6 @@
 import { v } from "convex/values";
 import { mutation, query } from "./_generated/server";
-import { requireAuth } from "./authHelpers";
+import { requireAuth, requireWebhookCallerOrAuth } from "./authHelpers";
 import { getNextSequentialNumber } from "./helpers/numbering";
 
 const orderStatusValidator = v.union(
@@ -38,17 +38,15 @@ export const list = query({
 });
 
 /**
- * @audit C4 — Called by the main shop Stripe webhook; currently public (no
- * auth). Stripe signature is validated in the SvelteKit layer; the mutation
- * itself is invokable directly. Idempotency on `by_stripeSessionId` limits
- * damage (duplicate session IDs are rejected) but a caller can still create
- * forged orders with fabricated session IDs.
- *
- * TODO: convert to `internalMutation` + call via Convex `httpAction`.
+ * Create a new order. Called by the Stripe webhook (with `webhookSecret`) or
+ * by admin tooling (with an authenticated session). Audit C4: the old
+ * version accepted any caller; now requires either the shared webhook
+ * secret or an authenticated admin.
  */
 export const create = mutation({
 	args: {
 		siteUrl: v.string(),
+		webhookSecret: v.optional(v.string()),
 		orderNumber: v.optional(v.string()),
 		stripeSessionId: v.string(),
 		customerEmail: v.string(),
@@ -85,6 +83,9 @@ export const create = mutation({
 		discountAmount: v.optional(v.number()),
 	},
 	handler: async (ctx, args) => {
+		await requireWebhookCallerOrAuth(ctx, args.webhookSecret);
+		// Don't let the secret leak into the stored document.
+		const { webhookSecret: _discard, ...rest } = args;
 		// Idempotency: if an order with this stripeSessionId already exists,
 		// return it along with fulfillment state so the caller can skip
 		// already-completed side effects (LumaPrints submission, fee capture,
@@ -120,7 +121,7 @@ export const create = mutation({
 			));
 
 		const _id = await ctx.db.insert("orders", {
-			...args,
+			...rest,
 			orderNumber,
 			status: "new",
 		});
@@ -137,17 +138,17 @@ export const create = mutation({
 });
 
 /**
- * @audit C4 — Called by the webhook AND by the admin UI. Currently public,
- * so anyone who knows an `orderId` can flip status/tracking/refund fields.
+ * Update an order. Called by the webhook (fee capture, LumaPrints number,
+ * refund fields — with `webhookSecret`) and by the admin UI (tracking /
+ * status overrides — with an authenticated session).
  *
- * TODO: split into two functions:
- *   - `updateStatusByAdmin` (requires auth, siteUrl ownership check)
- *   - `_updateStatusInternal` (internalMutation, called via httpAction from
- *      signature-validated webhook)
+ * Audit C4: the old version accepted any caller; now requires either the
+ * shared webhook secret or an authenticated admin.
  */
 export const updateStatus = mutation({
 	args: {
 		orderId: v.id("orders"),
+		webhookSecret: v.optional(v.string()),
 		status: v.optional(orderStatusValidator),
 		notes: v.optional(v.string()),
 		trackingNumber: v.optional(v.string()),
@@ -158,7 +159,8 @@ export const updateStatus = mutation({
 		fulfillmentError: v.optional(v.string()),
 		stripeRefundId: v.optional(v.string()),
 	},
-	handler: async (ctx, { orderId, ...updates }) => {
+	handler: async (ctx, { orderId, webhookSecret, ...updates }) => {
+		await requireWebhookCallerOrAuth(ctx, webhookSecret);
 		const patch: Record<string, unknown> = {};
 		for (const [key, val] of Object.entries(updates)) {
 			if (val !== undefined) patch[key] = val;
