@@ -1,8 +1,29 @@
 <script lang="ts">
+import { invalidateAll } from "$app/navigation";
 import SEO from "$lib/components/SEO.svelte";
 import { formatCents, formatDate, formatTimestamp } from "$lib/utils/format";
 
 let { data }: { data: any } = $props();
+
+// Local copy of the document so we can reflect optimistic state changes after
+// accept/decline/sign without mutating the load-function prop (a Svelte 5
+// anti-pattern — the prop is not reactively owned by this component and the
+// mutation breaks on refresh/invalidation).
+//
+// We track `data.document` reactively in a $derived; the local $state only
+// holds optimistic overrides. `document` reads from the override when present
+// and falls back to the fresh prop value.
+let optimisticDocument = $state<any>(null);
+const document = $derived(optimisticDocument ?? data.document);
+
+// Clear the override whenever the load function produces a new document
+// (e.g. after `invalidateAll()` runs). Without this, a stale optimistic copy
+// would keep overriding authoritative server state.
+$effect(() => {
+	// Read data.document to register the dependency, then reset override.
+	data.document;
+	optimisticDocument = null;
+});
 
 let actionLoading = $state(false);
 let actionResult = $state<"success" | "error" | null>(null);
@@ -42,7 +63,10 @@ async function acceptQuote() {
 		if (res.ok) {
 			actionResult = "success";
 			actionMessage = "quote accepted! we'll be in touch.";
-			data.document = { ...data.document, status: "accepted" };
+			optimisticDocument = { ...data.document, status: "accepted" };
+			// Refresh load data so navigation reflects the new state; the
+			// $effect will clear the optimistic override once fresh data arrives.
+			await invalidateAll();
 		} else {
 			actionResult = "error";
 			actionMessage = "something went wrong. please try again.";
@@ -65,7 +89,8 @@ async function declineQuote() {
 		if (res.ok) {
 			actionResult = "success";
 			actionMessage = "quote declined.";
-			data.document = { ...data.document, status: "declined" };
+			optimisticDocument = { ...data.document, status: "declined" };
+			await invalidateAll();
 		} else {
 			actionResult = "error";
 			actionMessage = "something went wrong. please try again.";
@@ -91,11 +116,12 @@ async function signContract() {
 		if (res.ok) {
 			actionResult = "success";
 			actionMessage = "contract signed successfully!";
-			data.document = {
+			optimisticDocument = {
 				...data.document,
 				status: "signed",
 				signedAt: Date.now(),
 			};
+			await invalidateAll();
 		} else {
 			actionResult = "error";
 			actionMessage = "something went wrong. please try again.";
@@ -116,7 +142,7 @@ async function signContract() {
 		<span class="business-name">{data.businessName}</span>
 	</header>
 
-	<div aria-live="assertive">
+	<div aria-live="polite">
 		{#if actionResult}
 			<div class="action-banner" class:success={actionResult === "success"} class:error-banner={actionResult === "error"}>
 				{actionMessage}
@@ -126,7 +152,7 @@ async function signContract() {
 
 	<main class="portal-card">
 		{#if data.type === "quote"}
-			{@const doc = data.document}
+			{@const doc = document}
 			<div class="doc-header">
 				<div class="doc-type">Quote</div>
 				<h1 class="doc-number">{doc.quoteNumber}</h1>
@@ -207,7 +233,7 @@ async function signContract() {
 			{/if}
 
 		{:else if data.type === "invoice"}
-			{@const doc = data.document}
+			{@const doc = document}
 			<div class="doc-header">
 				<div class="doc-type">Invoice</div>
 				<h1 class="doc-number">{doc.invoiceNumber}</h1>
@@ -295,7 +321,7 @@ async function signContract() {
 			{/if}
 
 		{:else if data.type === "contract"}
-			{@const doc = data.document}
+			{@const doc = document}
 			<div class="doc-header">
 				<div class="doc-type">Contract</div>
 				<h1 class="doc-number">{doc.title}</h1>

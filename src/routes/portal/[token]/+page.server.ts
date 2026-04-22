@@ -14,7 +14,12 @@ export async function load({ params }) {
 	}
 
 	if (result.expired) {
-		throw error(410, "This link has expired.");
+		// 410 Gone is the correct status for a resource that was once valid
+		// and is now permanently unavailable.
+		throw error(
+			410,
+			result.reason === "used" ? "This link has already been used." : "This link has expired.",
+		);
 	}
 
 	// Get the platform client name for display

@@ -15,36 +15,14 @@ vi.mock("$lib/server/convexClient", () => ({
 vi.mock("$convex/api", () => ({
 	api: {
 		portal: {
-			getByToken: "portal.getByToken",
-			markUsed: "portal.markUsed",
-		},
-		quotes: {
-			markAccepted: "quotes.markAccepted",
-			markDeclined: "quotes.markDeclined",
-		},
-		contracts: {
-			markSigned: "contracts.markSigned",
+			acceptQuote: "portal.acceptQuote",
+			declineQuote: "portal.declineQuote",
+			signContract: "portal.signContract",
 		},
 	},
 }));
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
-
-function makeTokenRecord(overrides: {
-	type: "quote" | "contract" | "invoice";
-	documentId?: string;
-	siteUrl?: string;
-	expired?: boolean;
-}) {
-	return {
-		expired: overrides.expired ?? false,
-		token: {
-			type: overrides.type,
-			documentId: overrides.documentId ?? "doc-123",
-			siteUrl: overrides.siteUrl ?? "angelsrest.online",
-		},
-	};
-}
 
 function makeReq(token: string, body?: unknown) {
 	return {
@@ -56,6 +34,10 @@ function makeReq(token: string, body?: unknown) {
 }
 
 // ─── Tests ────────────────────────────────────────────────────────────────────
+//
+// The portal endpoints now delegate all validation + patching to a single
+// atomic Convex mutation (acceptQuote / declineQuote / signContract). SvelteKit
+// only maps Convex error strings to HTTP statuses.
 
 describe("POST /api/portal/[token]/accept", () => {
 	let POST: (event: any) => Promise<Response>;
@@ -67,9 +49,8 @@ describe("POST /api/portal/[token]/accept", () => {
 		POST = mod.POST as unknown as typeof POST;
 	});
 
-	it("returns 404 when token is not found", async () => {
-		mockConvexQuery.mockResolvedValue(null);
-
+	it("returns 404 when token is invalid", async () => {
+		mockConvexMutation.mockRejectedValue(new Error("Invalid token"));
 		try {
 			await POST(makeReq("bad-token"));
 			expect.fail("should have thrown");
@@ -79,10 +60,19 @@ describe("POST /api/portal/[token]/accept", () => {
 	});
 
 	it("returns 404 when token is expired", async () => {
-		mockConvexQuery.mockResolvedValue(makeTokenRecord({ type: "quote", expired: true }));
-
+		mockConvexMutation.mockRejectedValue(new Error("Token expired"));
 		try {
-			await POST(makeReq("expired-token"));
+			await POST(makeReq("expired"));
+			expect.fail("should have thrown");
+		} catch (err: any) {
+			expect(err.status).toBe(404);
+		}
+	});
+
+	it("returns 404 when token has already been used", async () => {
+		mockConvexMutation.mockRejectedValue(new Error("Token already used"));
+		try {
+			await POST(makeReq("used-token"));
 			expect.fail("should have thrown");
 		} catch (err: any) {
 			expect(err.status).toBe(404);
@@ -90,8 +80,7 @@ describe("POST /api/portal/[token]/accept", () => {
 	});
 
 	it("returns 400 when token type is not quote", async () => {
-		mockConvexQuery.mockResolvedValue(makeTokenRecord({ type: "contract" }));
-
+		mockConvexMutation.mockRejectedValue(new Error("Token is not for a quote"));
 		try {
 			await POST(makeReq("wrong-type"));
 			expect.fail("should have thrown");
@@ -100,34 +89,19 @@ describe("POST /api/portal/[token]/accept", () => {
 		}
 	});
 
-	it("marks quote accepted and burns the token on success", async () => {
-		mockConvexQuery.mockResolvedValue(
-			makeTokenRecord({
-				type: "quote",
-				documentId: "quote-1",
-				siteUrl: "angelsrest.online",
-			}),
-		);
+	it("calls acceptQuote mutation on success", async () => {
 		mockConvexMutation.mockResolvedValue(null);
-
 		const response = await POST(makeReq("good-token"));
 		expect(response.status).toBe(200);
-
-		expect(mockConvexMutation).toHaveBeenCalledWith("quotes.markAccepted", {
-			quoteId: "quote-1",
-			siteUrl: "angelsrest.online",
-		});
-		expect(mockConvexMutation).toHaveBeenCalledWith("portal.markUsed", {
+		expect(mockConvexMutation).toHaveBeenCalledWith("portal.acceptQuote", {
 			token: "good-token",
 		});
 	});
 
-	it("returns 500 when mark-accepted mutation fails", async () => {
-		mockConvexQuery.mockResolvedValue(makeTokenRecord({ type: "quote" }));
+	it("returns 500 on unexpected mutation failure", async () => {
 		mockConvexMutation.mockRejectedValue(new Error("convex down"));
-
 		try {
-			await POST(makeReq("good-token"));
+			await POST(makeReq("good"));
 			expect.fail("should have thrown");
 		} catch (err: any) {
 			expect(err.status).toBe(500);
@@ -145,8 +119,8 @@ describe("POST /api/portal/[token]/decline", () => {
 		POST = mod.POST as unknown as typeof POST;
 	});
 
-	it("returns 404 when token is missing or expired", async () => {
-		mockConvexQuery.mockResolvedValue(null);
+	it("returns 404 when token is invalid", async () => {
+		mockConvexMutation.mockRejectedValue(new Error("Invalid token"));
 		try {
 			await POST(makeReq("bad"));
 			expect.fail("should have thrown");
@@ -156,7 +130,7 @@ describe("POST /api/portal/[token]/decline", () => {
 	});
 
 	it("returns 400 when token is not a quote token", async () => {
-		mockConvexQuery.mockResolvedValue(makeTokenRecord({ type: "contract" }));
+		mockConvexMutation.mockRejectedValue(new Error("Token is not for a quote"));
 		try {
 			await POST(makeReq("wrong"));
 			expect.fail("should have thrown");
@@ -165,24 +139,11 @@ describe("POST /api/portal/[token]/decline", () => {
 		}
 	});
 
-	it("marks quote declined and burns the token on success", async () => {
-		mockConvexQuery.mockResolvedValue(
-			makeTokenRecord({
-				type: "quote",
-				documentId: "quote-2",
-				siteUrl: "angelsrest.online",
-			}),
-		);
+	it("calls declineQuote on success", async () => {
 		mockConvexMutation.mockResolvedValue(null);
-
 		const response = await POST(makeReq("good-token"));
 		expect(response.status).toBe(200);
-
-		expect(mockConvexMutation).toHaveBeenCalledWith("quotes.markDeclined", {
-			quoteId: "quote-2",
-			siteUrl: "angelsrest.online",
-		});
-		expect(mockConvexMutation).toHaveBeenCalledWith("portal.markUsed", {
+		expect(mockConvexMutation).toHaveBeenCalledWith("portal.declineQuote", {
 			token: "good-token",
 		});
 	});
@@ -198,8 +159,25 @@ describe("POST /api/portal/[token]/sign", () => {
 		POST = mod.POST as unknown as typeof POST;
 	});
 
-	it("returns 404 when token is missing or expired", async () => {
-		mockConvexQuery.mockResolvedValue(null);
+	it("returns 400 when signerName is missing or blank", async () => {
+		try {
+			await POST(makeReq("good", { signerName: "   " }));
+			expect.fail("should have thrown");
+		} catch (err: any) {
+			expect(err.status).toBe(400);
+		}
+		try {
+			await POST(makeReq("good", {}));
+			expect.fail("should have thrown");
+		} catch (err: any) {
+			expect(err.status).toBe(400);
+		}
+		// Body not a valid JSON object — still 400
+		expect(mockConvexMutation).not.toHaveBeenCalled();
+	});
+
+	it("returns 404 when token is invalid/expired/used", async () => {
+		mockConvexMutation.mockRejectedValue(new Error("Token already used"));
 		try {
 			await POST(makeReq("bad", { signerName: "Jane" }));
 			expect.fail("should have thrown");
@@ -209,7 +187,7 @@ describe("POST /api/portal/[token]/sign", () => {
 	});
 
 	it("returns 400 when token is not a contract token", async () => {
-		mockConvexQuery.mockResolvedValue(makeTokenRecord({ type: "quote" }));
+		mockConvexMutation.mockRejectedValue(new Error("Token is not for a contract"));
 		try {
 			await POST(makeReq("wrong", { signerName: "Jane" }));
 			expect.fail("should have thrown");
@@ -218,50 +196,26 @@ describe("POST /api/portal/[token]/sign", () => {
 		}
 	});
 
-	it("returns 400 when signerName is missing or blank", async () => {
-		mockConvexQuery.mockResolvedValue(makeTokenRecord({ type: "contract" }));
-
-		try {
-			await POST(makeReq("good", { signerName: "   " }));
-			expect.fail("should have thrown");
-		} catch (err: any) {
-			expect(err.status).toBe(400);
-		}
-
-		try {
-			await POST(makeReq("good", {}));
-			expect.fail("should have thrown");
-		} catch (err: any) {
-			expect(err.status).toBe(400);
-		}
-	});
-
-	it("marks contract signed and burns the token on success", async () => {
-		mockConvexQuery.mockResolvedValue(
-			makeTokenRecord({
-				type: "contract",
-				documentId: "contract-1",
-				siteUrl: "angelsrest.online",
+	it("calls signContract with signerName/email/signatureData on success", async () => {
+		mockConvexMutation.mockResolvedValue(null);
+		const response = await POST(
+			makeReq("good-token", {
+				signerName: "  Jane Doe  ",
+				signerEmail: "jane@example.com",
+				signatureData: "data:image/png;base64,xyz",
 			}),
 		);
-		mockConvexMutation.mockResolvedValue(null);
-
-		const response = await POST(makeReq("good-token", { signerName: "Jane Doe" }));
 		expect(response.status).toBe(200);
-
-		expect(mockConvexMutation).toHaveBeenCalledWith("contracts.markSigned", {
-			contractId: "contract-1",
-			siteUrl: "angelsrest.online",
-		});
-		expect(mockConvexMutation).toHaveBeenCalledWith("portal.markUsed", {
+		expect(mockConvexMutation).toHaveBeenCalledWith("portal.signContract", {
 			token: "good-token",
+			signerName: "Jane Doe",
+			signerEmail: "jane@example.com",
+			signatureData: "data:image/png;base64,xyz",
 		});
 	});
 
-	it("returns 500 when mark-signed mutation fails", async () => {
-		mockConvexQuery.mockResolvedValue(makeTokenRecord({ type: "contract" }));
+	it("returns 500 on unexpected mutation failure", async () => {
 		mockConvexMutation.mockRejectedValue(new Error("convex down"));
-
 		try {
 			await POST(makeReq("good", { signerName: "Jane" }));
 			expect.fail("should have thrown");

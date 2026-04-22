@@ -14,6 +14,7 @@ export const list = query({
 		status: v.optional(v.string()),
 	},
 	handler: async (ctx, { siteUrl, status }) => {
+		await requireAuth(ctx);
 		const all = await queryBySiteUrl(ctx, "contracts", siteUrl, { status });
 		return all.map((contract) => ({
 			...contract,
@@ -25,6 +26,7 @@ export const list = query({
 export const get = query({
 	args: { contractId: v.id("contracts") },
 	handler: async (ctx, { contractId }) => {
+		await requireAuth(ctx);
 		const contract = await ctx.db.get(contractId);
 		if (!contract) return null;
 		const client = await ctx.db.get(contract.clientId);
@@ -120,22 +122,6 @@ export const markSigned = mutation({
 	},
 });
 
-export const sign = mutation({
-	args: {
-		contractId: v.id("contracts"),
-		signedByName: v.string(),
-		signedByEmail: v.optional(v.string()),
-		signatureData: v.optional(v.string()),
-	},
-	handler: async (ctx, { contractId, ...signData }) => {
-		await ctx.db.patch(contractId, {
-			...signData,
-			status: "signed",
-			signedAt: Date.now(),
-		});
-	},
-});
-
 export const remove = mutation({
 	args: { contractId: v.id("contracts"), siteUrl: v.string() },
 	handler: async (ctx, { contractId, siteUrl }) => {
@@ -147,6 +133,7 @@ export const remove = mutation({
 export const listTemplates = query({
 	args: { siteUrl: v.string() },
 	handler: async (ctx, { siteUrl }) => {
+		await requireAuth(ctx);
 		return await ctx.db
 			.query("contractTemplates")
 			.withIndex("by_siteUrl", (q) => q.eq("siteUrl", siteUrl))

@@ -5,6 +5,7 @@ import { requireAuth } from "./authHelpers";
 export const list = query({
 	args: { siteUrl: v.string() },
 	handler: async (ctx, { siteUrl }) => {
+		await requireAuth(ctx);
 		return await ctx.db
 			.query("platformMessages")
 			.withIndex("by_siteUrl", (q) => q.eq("siteUrl", siteUrl))

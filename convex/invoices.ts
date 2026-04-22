@@ -14,6 +14,7 @@ export const list = query({
 		status: v.optional(v.string()),
 	},
 	handler: async (ctx, { siteUrl, status }) => {
+		await requireAuth(ctx);
 		const all = await queryBySiteUrl(ctx, "invoices", siteUrl, { status });
 		return all.map((invoice) => ({
 			...invoice,
@@ -22,6 +23,16 @@ export const list = query({
 	},
 });
 
+/**
+ * @audit C7 — This is currently public (no auth) because the invoice payment
+ * flow at `/api/invoice/checkout` passes a raw `invoiceId`. Anyone who
+ * knows or guesses an invoiceId can read the invoice contents (client
+ * email, line items, amounts).
+ *
+ * TODO: convert `/api/invoice/checkout` to use a portal token (like the
+ * accept/decline/sign flow already does), then make this query require
+ * auth. Once done, remove this comment.
+ */
 export const get = query({
 	args: { invoiceId: v.id("invoices") },
 	handler: async (ctx, { invoiceId }) => {
@@ -136,6 +147,7 @@ export const markSent = mutation({
 export const markPaid = mutation({
 	args: { invoiceId: v.id("invoices"), siteUrl: v.string() },
 	handler: async (ctx, { invoiceId, siteUrl }) => {
+		await requireAuth(ctx);
 		const invoice = await ctx.db.get(invoiceId);
 		if (!invoice || invoice.siteUrl !== siteUrl) {
 			throw new Error("Not found");
@@ -165,6 +177,7 @@ export const remove = mutation({
 export const getNextNumber = query({
 	args: { siteUrl: v.string() },
 	handler: async (ctx, { siteUrl }) => {
+		await requireAuth(ctx);
 		return getNextSequentialNumber(
 			ctx,
 			"invoices",

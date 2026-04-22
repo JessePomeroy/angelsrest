@@ -113,8 +113,12 @@ const STATUS_TO_COLUMN: Record<string, Record<string, string>> = {
 	},
 };
 
+// 128-bit UUID so board-column IDs don't collide within a site. The old
+// `Math.random().toString(36).slice(2,11)` had ~47 bits of entropy, which
+// is a real collision risk when the same generator seeds client
+// `boardColumnId`s during `initializeBoard`. See audit H16.
 function generateId(): string {
-	return Math.random().toString(36).slice(2, 11);
+	return crypto.randomUUID();
 }
 
 // Queries
@@ -122,6 +126,7 @@ function generateId(): string {
 export const getBoardConfig = query({
 	args: { siteUrl: v.string(), projectType: v.string() },
 	handler: async (ctx, { siteUrl, projectType }) => {
+		await requireAuth(ctx);
 		return await ctx.db
 			.query("boardConfigs")
 			.withIndex("by_siteUrl_and_projectType", (q) =>
@@ -134,6 +139,7 @@ export const getBoardConfig = query({
 export const listBoardConfigs = query({
 	args: { siteUrl: v.string() },
 	handler: async (ctx, { siteUrl }) => {
+		await requireAuth(ctx);
 		return await ctx.db
 			.query("boardConfigs")
 			.withIndex("by_siteUrl", (q) => q.eq("siteUrl", siteUrl))

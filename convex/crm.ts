@@ -14,6 +14,7 @@ export const listClients = query({
 		status: v.optional(v.string()),
 	},
 	handler: async (ctx, { siteUrl, category, status }) => {
+		await requireAuth(ctx);
 		if (category) {
 			const results = await ctx.db
 				.query("photographyClients")
@@ -46,6 +47,7 @@ export const listClientsPaginated = query({
 		category: v.optional(categoryValidator),
 	},
 	handler: async (ctx, { siteUrl, paginationOpts, category }) => {
+		await requireAuth(ctx);
 		if (category) {
 			return await ctx.db
 				.query("photographyClients")
@@ -66,6 +68,7 @@ export const listClientsPaginated = query({
 export const getClient = query({
 	args: { clientId: v.id("photographyClients") },
 	handler: async (ctx, { clientId }) => {
+		await requireAuth(ctx);
 		return await ctx.db.get(clientId);
 	},
 });
@@ -151,6 +154,7 @@ export const deleteClient = mutation({
 export const getStats = query({
 	args: { siteUrl: v.string() },
 	handler: async (ctx, { siteUrl }) => {
+		await requireAuth(ctx);
 		const all = await ctx.db
 			.query("photographyClients")
 			.withIndex("by_siteUrl", (q) => q.eq("siteUrl", siteUrl))

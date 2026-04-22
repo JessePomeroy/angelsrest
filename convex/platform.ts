@@ -29,6 +29,15 @@ export const listAll = query({
 	},
 });
 
+/**
+ * @audit C5 — This query is called by the platform Stripe webhook and is
+ * currently public (no auth). The webhook validates its Stripe signature in
+ * the SvelteKit layer, but this Convex function can still be invoked
+ * directly by anyone who knows the deployment URL.
+ *
+ * TODO: convert to `internalQuery` + call via Convex `httpAction` that
+ * validates the Stripe signature inside Convex, rather than in SvelteKit.
+ */
 export const getBySubscriptionId = query({
 	args: { subscriptionId: v.string() },
 	handler: async (ctx, { subscriptionId }) => {
@@ -63,6 +72,15 @@ export const createClient = mutation({
 	},
 });
 
+/**
+ * @audit C5 — Called by the platform Stripe webhook; currently public (no
+ * auth). The Stripe signature is validated in the SvelteKit layer but this
+ * Convex mutation can be invoked directly. A caller who knows the Convex
+ * URL and a target `siteUrl` can flip subscription tier at will.
+ *
+ * TODO: convert to `internalMutation` + call via a Convex `httpAction` that
+ * validates the Stripe signature inside Convex.
+ */
 export const updateSubscription = mutation({
 	args: {
 		siteUrl: v.string(),

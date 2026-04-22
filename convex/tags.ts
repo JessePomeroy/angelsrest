@@ -6,6 +6,7 @@ import { requireAuth } from "./authHelpers";
 export const listTags = query({
 	args: { siteUrl: v.string() },
 	handler: async (ctx, { siteUrl }) => {
+		await requireAuth(ctx);
 		return await ctx.db
 			.query("clientTags")
 			.withIndex("by_siteUrl", (q) => q.eq("siteUrl", siteUrl))
@@ -16,19 +17,17 @@ export const listTags = query({
 export const getClientTags = query({
 	args: { clientId: v.id("photographyClients") },
 	handler: async (ctx, { clientId }) => {
+		await requireAuth(ctx);
 		const assignments = await ctx.db
 			.query("clientTagAssignments")
 			.withIndex("by_clientId", (q) => q.eq("clientId", clientId))
 			.take(50);
 
-		const tags = [];
-		for (const assignment of assignments) {
-			const tag = await ctx.db.get(assignment.tagId);
-			if (tag) {
-				tags.push(tag);
-			}
-		}
-		return tags;
+		// Fan out tag reads in parallel instead of serial (N+1). See audit M25.
+		const tags = await Promise.all(
+			assignments.map((assignment) => ctx.db.get(assignment.tagId)),
+		);
+		return tags.filter((t): t is NonNullable<typeof t> => t !== null);
 	},
 });
 

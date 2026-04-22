@@ -19,10 +19,19 @@ export async function GET({ url, cookies }) {
 		return new Response("Invalid preview URL", { status: 403 });
 	}
 
+	// SameSite=Lax prevents the preview cookie from being sent on cross-site
+	// requests. Previously this was `"none"` which meant any third-party site
+	// could trigger the browser to hit us with preview-mode enabled.
+	//
+	// Sanity's Presentation iframe runs on the same-site Vercel deployment
+	// (or redirects the top-level window), so Lax is sufficient. If a future
+	// use-case requires third-party iframe embedding of preview pages, use
+	// `sameSite: "none"` ONLY paired with `partitioned: true` (CHIPS) and a
+	// CSRF-protected toggle, never both unrestricted.
 	cookies.set("__sanity_preview", "true", {
 		path: "/",
 		httpOnly: true,
-		sameSite: "none",
+		sameSite: "lax",
 		secure: true,
 	});
 

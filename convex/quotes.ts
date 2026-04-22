@@ -15,6 +15,7 @@ export const list = query({
 		status: v.optional(v.string()),
 	},
 	handler: async (ctx, { siteUrl, status }) => {
+		await requireAuth(ctx);
 		const all = await queryBySiteUrl(ctx, "quotes", siteUrl, { status });
 		return all.map((quote) => ({
 			...quote,
@@ -26,6 +27,7 @@ export const list = query({
 export const get = query({
 	args: { quoteId: v.id("quotes") },
 	handler: async (ctx, { quoteId }) => {
+		await requireAuth(ctx);
 		const quote = await ctx.db.get(quoteId);
 		if (!quote) return null;
 		const client = await ctx.db.get(quote.clientId);
@@ -111,9 +113,15 @@ export const markSent = mutation({
 	},
 });
 
+/**
+ * Creator-side mutation: admin clicks "mark accepted" in the CRM UI.
+ * For the client-side portal flow, use `portal.acceptQuote` (token-authorized,
+ * atomic).
+ */
 export const markAccepted = mutation({
 	args: { quoteId: v.id("quotes"), siteUrl: v.string() },
 	handler: async (ctx, { quoteId, siteUrl }) => {
+		await requireAuth(ctx);
 		const quote = await ctx.db.get(quoteId);
 		if (!quote || quote.siteUrl !== siteUrl) {
 			throw new Error("Not found");
@@ -182,9 +190,13 @@ export const convertToInvoice = mutation({
 	},
 });
 
+/**
+ * Creator-side mutation. For portal flow use `portal.declineQuote`.
+ */
 export const markDeclined = mutation({
 	args: { quoteId: v.id("quotes"), siteUrl: v.string() },
 	handler: async (ctx, { quoteId, siteUrl }) => {
+		await requireAuth(ctx);
 		const doc = await ctx.db.get(quoteId);
 		if (!doc || doc.siteUrl !== siteUrl) {
 			throw new Error("Not found");
@@ -204,6 +216,7 @@ export const remove = mutation({
 export const listPresets = query({
 	args: { siteUrl: v.string() },
 	handler: async (ctx, { siteUrl }) => {
+		await requireAuth(ctx);
 		return await ctx.db
 			.query("quotePresets")
 			.withIndex("by_siteUrl", (q) => q.eq("siteUrl", siteUrl))
@@ -263,6 +276,7 @@ export const removePreset = mutation({
 export const getNextNumber = query({
 	args: { siteUrl: v.string() },
 	handler: async (ctx, { siteUrl }) => {
+		await requireAuth(ctx);
 		return getNextSequentialNumber(
 			ctx,
 			"quotes",

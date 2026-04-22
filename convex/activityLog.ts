@@ -1,5 +1,6 @@
 import { v } from "convex/values";
 import { internalMutation, query } from "./_generated/server";
+import { requireAuth } from "./authHelpers";
 
 export const getClientActivity = query({
 	args: {
@@ -7,6 +8,7 @@ export const getClientActivity = query({
 		limit: v.optional(v.number()),
 	},
 	handler: async (ctx, { clientId, limit }) => {
+		await requireAuth(ctx);
 		const take = limit ?? 20;
 		return await ctx.db
 			.query("activityLog")

@@ -1,5 +1,6 @@
 import { v } from "convex/values";
 import { mutation, query } from "./_generated/server";
+import { requireAuth } from "./authHelpers";
 
 const TRACKED_PAGES = [
 	"orders",
@@ -22,6 +23,7 @@ type PageKey = (typeof TRACKED_PAGES)[number];
 export const getUnreadFlags = query({
 	args: { siteUrl: v.string() },
 	handler: async (ctx, { siteUrl }) => {
+		await requireAuth(ctx);
 		const userId = siteUrl;
 
 		// Get all lastSeen records for this user+site
@@ -152,6 +154,7 @@ export const markSeen = mutation({
 		page: v.string(),
 	},
 	handler: async (ctx, { siteUrl, page }) => {
+		await requireAuth(ctx);
 		const userId = siteUrl;
 		const now = Date.now();
 
