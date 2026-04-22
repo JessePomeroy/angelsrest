@@ -9,6 +9,17 @@ import { patchDocument } from "./helpers/patching";
 import { queryBySiteUrl } from "./helpers/querying";
 import { categoryValidator } from "./helpers/validators";
 
+// Keep in sync with the `quotes.status` union in schema.ts. Widening to
+// v.string() here lets nonsense values through arg validation and only fails
+// later at patch time (audit H22).
+const statusValidator = v.union(
+	v.literal("draft"),
+	v.literal("sent"),
+	v.literal("accepted"),
+	v.literal("declined"),
+	v.literal("expired"),
+);
+
 export const list = query({
 	args: {
 		siteUrl: v.string(),
@@ -93,7 +104,7 @@ export const update = mutation({
 		),
 		validUntil: v.optional(v.string()),
 		notes: v.optional(v.string()),
-		status: v.optional(v.string()),
+		status: v.optional(statusValidator),
 	},
 	handler: async (ctx, { quoteId, siteUrl, ...updates }) => {
 		await patchDocument(ctx, quoteId, siteUrl, updates);

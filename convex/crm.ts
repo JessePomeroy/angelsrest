@@ -7,11 +7,22 @@ import { deleteDocument } from "./helpers/deleting";
 import { patchDocument } from "./helpers/patching";
 import { categoryValidator } from "./helpers/validators";
 
+// Keep in sync with the `photographyClients.status` union in schema.ts.
+// Widening to v.string() here lets nonsense values through arg validation
+// and only fails later at patch time (audit H22).
+const statusValidator = v.union(
+	v.literal("lead"),
+	v.literal("booked"),
+	v.literal("in-progress"),
+	v.literal("completed"),
+	v.literal("archived"),
+);
+
 export const listClients = query({
 	args: {
 		siteUrl: v.string(),
 		category: v.optional(categoryValidator),
-		status: v.optional(v.string()),
+		status: v.optional(statusValidator),
 	},
 	handler: async (ctx, { siteUrl, category, status }) => {
 		await requireAuth(ctx);
@@ -124,7 +135,7 @@ export const updateClient = mutation({
 		phone: v.optional(v.string()),
 		category: v.optional(categoryValidator),
 		type: v.optional(v.string()),
-		status: v.optional(v.string()),
+		status: v.optional(statusValidator),
 		source: v.optional(v.string()),
 		notes: v.optional(v.string()),
 		siteUrl_client: v.optional(v.string()),

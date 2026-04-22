@@ -8,6 +8,18 @@ import { getNextSequentialNumber } from "./helpers/numbering";
 import { patchDocument } from "./helpers/patching";
 import { queryBySiteUrl } from "./helpers/querying";
 
+// Keep in sync with the `invoices.status` union in schema.ts. Widening to
+// v.string() here lets nonsense values through arg validation and only fails
+// later at patch time (audit H22).
+const statusValidator = v.union(
+	v.literal("draft"),
+	v.literal("sent"),
+	v.literal("paid"),
+	v.literal("partial"),
+	v.literal("overdue"),
+	v.literal("canceled"),
+);
+
 export const list = query({
 	args: {
 		siteUrl: v.string(),
@@ -124,7 +136,7 @@ export const update = mutation({
 		taxPercent: v.optional(v.number()),
 		notes: v.optional(v.string()),
 		dueDate: v.optional(v.string()),
-		status: v.optional(v.string()),
+		status: v.optional(statusValidator),
 	},
 	handler: async (ctx, { invoiceId, siteUrl, ...updates }) => {
 		await patchDocument(ctx, invoiceId, siteUrl, updates);
