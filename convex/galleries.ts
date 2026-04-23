@@ -1,7 +1,14 @@
 import { v } from "convex/values";
-import { mutation, query } from "./_generated/server";
+import { internal } from "./_generated/api";
+import { internalMutation, mutation, query } from "./_generated/server";
 import { requireAuth } from "./authHelpers";
 import { patchDocument } from "./helpers/patching";
+
+// Audit H14: cap per-batch DB deletes so the mutation transaction never
+// runs into Convex's operation-count ceiling. Galleries with >2000 photos
+// + downloads fan out across multiple scheduled batches instead of trying
+// to delete everything in one shot.
+const REMOVE_BATCH_SIZE = 500;
 
 export const create = mutation({
 	args: {
@@ -58,6 +65,23 @@ export const update = mutation({
 	},
 });
 
+/**
+ * Start the deletion of a gallery. Deletes one batch of images + downloads
+ * inline and, if more rows remain, schedules `_removeBatch` to continue.
+ * Audit H14 — the old mutation deleted up to 2000 docs in a single
+ * transaction, which hits Convex's operation-count ceiling for large
+ * galleries and silently drops anything beyond 2000.
+ *
+ * Marks the gallery `archived` up front so callers see the deletion is
+ * in progress, then the final batch deletes the gallery document itself.
+ *
+ * R2 file deletion is still TODO — the gallery worker owns the R2
+ * namespace and wants an authenticated HTTP call per r2Key. That needs
+ * an `"use node"` action + GALLERY_WORKER_URL + GALLERY_ADMIN_SECRET on
+ * the Convex deployment to work. For now the r2Keys leak; admin can
+ * bulk-delete them via the worker's own admin tool until we wire the
+ * action up.
+ */
 export const remove = mutation({
 	args: { id: v.id("galleries") },
 	handler: async (ctx, { id }) => {
@@ -65,23 +89,60 @@ export const remove = mutation({
 		const gallery = await ctx.db.get(id);
 		if (!gallery) throw new Error("Gallery not found");
 
+		// Flag the gallery so any in-flight reads see it's being removed.
+		if (gallery.status !== "archived") {
+			await ctx.db.patch(id, { status: "archived" });
+		}
+
+		await ctx.runMutation(internal.galleries._removeBatch, { id });
+	},
+});
+
+/**
+ * Delete one batch of gallery rows. Reschedules itself until both
+ * `galleryImages` and `galleryDownloads` are empty for this gallery,
+ * then deletes the gallery document and stops.
+ */
+export const _removeBatch = internalMutation({
+	args: { id: v.id("galleries") },
+	handler: async (ctx, { id }) => {
 		const images = await ctx.db
 			.query("galleryImages")
 			.withIndex("by_gallery", (q) => q.eq("galleryId", id))
-			.take(2000);
+			.take(REMOVE_BATCH_SIZE);
 		for (const image of images) {
 			await ctx.db.delete(image._id);
 		}
 
-		const downloads = await ctx.db
-			.query("galleryDownloads")
-			.withIndex("by_gallery", (q) => q.eq("galleryId", id))
-			.take(2000);
-		for (const dl of downloads) {
-			await ctx.db.delete(dl._id);
+		const remainingBudget = REMOVE_BATCH_SIZE - images.length;
+		if (remainingBudget > 0) {
+			const downloads = await ctx.db
+				.query("galleryDownloads")
+				.withIndex("by_gallery", (q) => q.eq("galleryId", id))
+				.take(remainingBudget);
+			for (const dl of downloads) {
+				await ctx.db.delete(dl._id);
+			}
+
+			// If we had budget left AND everything's clean, drop the gallery.
+			if (downloads.length < remainingBudget) {
+				const stillHasImages = await ctx.db
+					.query("galleryImages")
+					.withIndex("by_gallery", (q) => q.eq("galleryId", id))
+					.first();
+				const stillHasDownloads = await ctx.db
+					.query("galleryDownloads")
+					.withIndex("by_gallery", (q) => q.eq("galleryId", id))
+					.first();
+				if (!stillHasImages && !stillHasDownloads) {
+					await ctx.db.delete(id);
+					return;
+				}
+			}
 		}
 
-		await ctx.db.delete(id);
+		// More rows to go — schedule the next batch.
+		await ctx.scheduler.runAfter(0, internal.galleries._removeBatch, { id });
 	},
 });
 
@@ -144,6 +205,15 @@ export const listByClient = query({
 
 // Image mutations
 
+/**
+ * Insert a new gallery image. `order` is computed from the gallery's
+ * current `imageCount`; if two concurrent `addImage` mutations both read
+ * the same `imageCount`, Convex's OCC aborts and retries the second —
+ * so the race the audit H13 flagged is covered transaction-level. As a
+ * belt-and-suspenders tiebreak, `getImages` sorts by `order` then by
+ * `_creationTime`, so even if two rows ever did end up with the same
+ * `order` value, render order would be stable.
+ */
 export const addImage = mutation({
 	args: {
 		siteUrl: v.string(),
@@ -243,7 +313,10 @@ export const getImages = query({
 			.query("galleryImages")
 			.withIndex("by_gallery", (q) => q.eq("galleryId", galleryId))
 			.take(2000);
-		return images.sort((a, b) => a.order - b.order);
+		// Audit H13 belt-and-suspenders: break ties on `order` with
+		// `_creationTime` so render order is stable even in the theoretical
+		// case that two rows share an `order` value.
+		return images.sort((a, b) => a.order - b.order || a._creationTime - b._creationTime);
 	},
 });
 
