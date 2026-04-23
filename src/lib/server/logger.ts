@@ -49,6 +49,7 @@ export type LogStage =
 	| "lumaprints_validate"
 	| "lumaprints_shipping"
 	| "stripe_refund"
+	| "stripe_session_create"
 	| "fulfillment_failure"
 	| "email_customer"
 	| "email_admin";

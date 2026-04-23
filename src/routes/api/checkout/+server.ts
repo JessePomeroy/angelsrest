@@ -1,6 +1,7 @@
-import { error, json } from "@sveltejs/kit";
+import { json } from "@sveltejs/kit";
 import { PUBLIC_SITE_URL } from "$env/static/public";
 import { client } from "$lib/sanity/client";
+import { ApiErrorCode, apiError } from "$lib/server/apiError";
 import { bindCheckoutSession } from "$lib/server/checkoutBinding";
 import { validateAndApplyCoupon } from "$lib/server/coupon";
 import { logStructured } from "$lib/server/logger";
@@ -38,8 +39,20 @@ export async function POST({ request, cookies }) {
 		});
 
 		if (!productId || !title || !price) {
-			console.log("Missing fields - productId:", productId, "title:", title, "price:", price);
-			throw error(400, "Missing required fields: productId, title, price");
+			logStructured({
+				event: "checkout.missing_fields",
+				level: "warn",
+				meta: {
+					hasProductId: !!productId,
+					hasTitle: !!title,
+					hasPrice: !!price,
+				},
+			});
+			throw apiError(
+				400,
+				ApiErrorCode.MISSING_FIELD,
+				"Missing required fields: productId, title, price",
+			);
 		}
 
 		const product = await client.fetch(
@@ -116,9 +129,17 @@ export async function POST({ request, cookies }) {
 
 		return json({ sessionId: session.id, url: session.url });
 	} catch (err: unknown) {
-		console.error("Stripe checkout error:", err instanceof Error ? err.message : err);
-		console.error("Full error:", err);
+		// Re-throw SvelteKit-shaped errors (from apiError / validateAndApplyCoupon)
+		// so their status + structured body survive the catch.
+		if (err && typeof err === "object" && "status" in err) throw err;
 
-		throw error(500, "Checkout failed. Please try again.");
+		logStructured({
+			event: "checkout.failed",
+			level: "error",
+			stage: "stripe_session_create",
+			error: err,
+		});
+
+		throw apiError(500, ApiErrorCode.UPSTREAM_FAILED, "Checkout failed. Please try again.");
 	}
 }
