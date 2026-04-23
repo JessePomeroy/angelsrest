@@ -50,7 +50,7 @@ let { data } = $props();
     <div class="mb-6">
       <h2 class="text-xl font-semibold mb-3">collections</h2>
       <div class="columns-2 md:columns-3 gap-2">
-        {#each data.subCollections as subCollection}
+        {#each data.subCollections as subCollection (subCollection.slug)}
           <a
             href="/shop/prints/{subCollection.slug}"
             class="group mb-2 break-inside-avoid block"
@@ -79,7 +79,7 @@ let { data } = $props();
     <div class="mb-6">
       <h2 class="text-xl font-semibold mb-3">sets</h2>
       <div class="columns-2 md:columns-3 gap-2">
-        {#each data.printSets as set}
+        {#each data.printSets as set (set.slug)}
           <a
             href="/shop/sets/{set.slug}"
             class="group mb-2 break-inside-avoid block"
@@ -120,7 +120,7 @@ let { data } = $props();
   <!-- Products grid -->
   {#if data.products.length > 0}
     <div class="columns-2 md:columns-3 gap-2">
-      {#each data.products as product}
+      {#each data.products as product (product.slug)}
         <a
           href="/shop/{product.slug}"
           class="group mb-2 break-inside-avoid block"

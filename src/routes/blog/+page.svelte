@@ -41,7 +41,7 @@ let { data } = $props();
 
   {#if data.posts && data.posts.length > 0}
     <div class="flex flex-col gap-8">
-      {#each data.posts as post}
+      {#each data.posts as post (post._id)}
         <BlogCard {post} />
       {/each}
     </div>

@@ -120,7 +120,7 @@ const statusColors: Record<string, string> = {
 				<div class="text-sm">
 					<h3 class="font-medium text-gray-400 text-xs mb-1">Items</h3>
 					<ul class="space-y-1">
-						{#each order.items || [] as item}
+						{#each order.items || [] as item, i (i)}
 							<li class="flex justify-between text-sm">
 								<span>{item.productName} × {item.quantity}</span>
 								<span class="text-gray-400">{formatCents(item.price, order.currency)}</span>

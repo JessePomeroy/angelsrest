@@ -47,7 +47,7 @@ function openModal(index: number) {
     - Uses optimized thumbnail URLs (400px webp)
   -->
   <div class="columns-2 md:columns-3 lg:columns-4 gap-2 px-2 md:px-4">
-    {#each data.gallery.images as image, i}
+    {#each data.gallery.images as image, i (image.full ?? i)}
       <button
         class="mb-2 w-full break-inside-avoid"
         onclick={() => openModal(i)}

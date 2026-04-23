@@ -12,7 +12,7 @@ const socialLinks = $derived(siteSettings?.socialLinks || []);
 >
 	{#if socialLinks.length > 0}
 		<div class="flex justify-center gap-4 mb-3">
-			{#each socialLinks as link}
+			{#each socialLinks as link (link.url)}
 				<a
 					href={link.url}
 					target="_blank"

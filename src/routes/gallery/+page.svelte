@@ -23,7 +23,7 @@ let { data } = $props();
 -->
 <div class="px-2! md:px-8! lg:px-10!">
     <div class="columns-2 md:columns-3 gap-2">
-        {#each data.galleries as gallery}
+        {#each data.galleries as gallery (gallery.slug)}
             <a
                 href="/gallery/{gallery.slug}"
                 class="group mb-2 break-inside-avoid block"

@@ -181,7 +181,7 @@ async function signContract() {
 			</div>
 
 			<div class="doc-body">
-				{#each doc.packages as pkg, i}
+				{#each doc.packages as pkg, i (pkg.name ?? i)}
 					<div class="package-card">
 						<div class="package-header">
 							<h3 class="package-name">{pkg.name}</h3>
@@ -192,7 +192,7 @@ async function signContract() {
 						{/if}
 						{#if pkg.included?.length}
 							<ul class="package-included">
-								{#each pkg.included as item}
+								{#each pkg.included as item (item)}
 									<li>{item}</li>
 								{/each}
 							</ul>
@@ -272,7 +272,7 @@ async function signContract() {
 						</tr>
 					</thead>
 					<tbody>
-						{#each doc.items as item}
+						{#each doc.items as item, i (i)}
 							<tr>
 								<td>{item.description}</td>
 								<td class="td-center">{item.quantity}</td>

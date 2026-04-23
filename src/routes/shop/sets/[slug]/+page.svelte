@@ -280,7 +280,7 @@ function handleV1AddToCart() {
 		<div class="space-y-4">
 			{#if data.images.length > 0}
 				<div class="columns-2 gap-2">
-					{#each data.images as image}
+					{#each data.images as image (image.full ?? image.thumb)}
 						<div class="mb-2 break-inside-avoid">
 							<img
 								src={(image as ProductImage).thumb}
@@ -365,7 +365,7 @@ function handleV1AddToCart() {
 							Material
 						</label>
 						<select id="set-paper" class="select w-full" bind:value={selectedPaperSlug}>
-							{#each v2Papers as paper}
+							{#each v2Papers as paper (paper.slug)}
 								<option value={paper.slug}>{paper.name}</option>
 							{/each}
 						</select>
@@ -375,7 +375,7 @@ function handleV1AddToCart() {
 							Size
 						</label>
 						<select id="set-size" class="select w-full" bind:value={selectedSizeSlug}>
-							{#each v2Sizes as size}
+							{#each v2Sizes as size (size.slug)}
 								<option value={size.slug}>{size.label}</option>
 							{/each}
 						</select>
@@ -392,7 +392,7 @@ function handleV1AddToCart() {
 								bind:value={selectedBorderWidth}
 								disabled={selectedFrame !== 'none'}
 							>
-								{#each V2_BORDER_OPTIONS as border}
+								{#each V2_BORDER_OPTIONS as border (border.value)}
 									<option value={border.value}>{border.label}</option>
 								{/each}
 							</select>
@@ -408,7 +408,7 @@ function handleV1AddToCart() {
 								Frame
 							</label>
 							<select id="set-frame" class="select w-full" bind:value={selectedFrame}>
-								{#each V2_FRAME_OPTIONS as frame}
+								{#each V2_FRAME_OPTIONS as frame (frame.value)}
 									<option value={frame.value}>{frame.label}</option>
 								{/each}
 							</select>
@@ -494,7 +494,7 @@ function handleV1AddToCart() {
 							Paper Type
 						</label>
 						<select id="set-paper-type" bind:value={selectedPaperIndex} class="select w-full">
-							{#each data.printSet.availablePapers as paper, i}
+							{#each data.printSet.availablePapers as paper, i (paper.subcategoryId ?? paper.name ?? i)}
 								{@const parsed = parsePaperOption(paper)}
 								{@const priceNote = paper.price ? ` (+$${paper.price})` : ""}
 								<option value={i}>{parsed.name}{priceNote}</option>

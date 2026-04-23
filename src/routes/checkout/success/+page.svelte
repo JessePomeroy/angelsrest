@@ -80,7 +80,7 @@ let { data } = $props();
       {#if data.orderDetails.items.length > 0}
         <div class="mb-4">
           <h3 class="text-sm font-medium text-surface-600-300-token mb-2">Items:</h3>
-          {#each data.orderDetails.items as item}
+          {#each data.orderDetails.items as item, i (item.description ?? i)}
             <div class="flex justify-between items-center py-1">
               <span>{item.description ?? "Item"}</span>
               <span>{formatCents(item.amount ?? 0, data.orderDetails.currency ?? "usd")}</span>

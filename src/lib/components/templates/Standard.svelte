@@ -26,7 +26,7 @@ let { post } = $props();
     <!-- Categories -->
     {#if post.categories && post.categories.length > 0}
       <div class="flex gap-2 mb-4">
-        {#each post.categories as category}
+        {#each post.categories as category (category.title)}
           <span class="text-xs text-surface-400 tracking-wider">
             {category.title}
           </span>

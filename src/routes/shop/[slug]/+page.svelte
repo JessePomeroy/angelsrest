@@ -304,7 +304,7 @@ function handleV1AddToCart() {
 
 				{#if data.product.images.length > 1}
 					<div class="grid grid-cols-3 gap-2">
-						{#each data.product.images.slice(1) as image, i}
+						{#each data.product.images.slice(1) as image, i (image.full ?? i)}
 							<button
 								class="aspect-square overflow-hidden rounded-md"
 								onclick={() => openModal(i + 1)}
@@ -393,7 +393,7 @@ function handleV1AddToCart() {
 							Material
 						</label>
 						<select id="paper-select" class="select w-full" bind:value={selectedPaperSlug}>
-							{#each v2Papers as paper}
+							{#each v2Papers as paper (paper.slug)}
 								<option value={paper.slug}>{paper.name}</option>
 							{/each}
 						</select>
@@ -404,7 +404,7 @@ function handleV1AddToCart() {
 							Size
 						</label>
 						<select id="size-select" class="select w-full" bind:value={selectedSizeSlug}>
-							{#each v2Sizes as size}
+							{#each v2Sizes as size (size.slug)}
 								<option value={size.slug}>{size.label}</option>
 							{/each}
 						</select>
@@ -421,7 +421,7 @@ function handleV1AddToCart() {
 								bind:value={selectedBorderWidth}
 								disabled={selectedFrame !== "none"}
 							>
-								{#each V2_BORDER_OPTIONS as border}
+								{#each V2_BORDER_OPTIONS as border (border.value)}
 									<option value={border.value}>{border.label}</option>
 								{/each}
 							</select>
@@ -437,7 +437,7 @@ function handleV1AddToCart() {
 								Frame
 							</label>
 							<select id="frame-select" class="select w-full" bind:value={selectedFrame}>
-								{#each V2_FRAME_OPTIONS as frame}
+								{#each V2_FRAME_OPTIONS as frame (frame.value)}
 									<option value={frame.value}>{frame.label}</option>
 								{/each}
 							</select>
@@ -547,7 +547,7 @@ function handleV1AddToCart() {
 							Paper Type
 						</label>
 						<select id="paper-type" class="select w-full" bind:value={selectedPaperIndex}>
-							{#each data.product.availablePapers as paper, i}
+							{#each data.product.availablePapers as paper, i (paper.subcategoryId ?? paper.name ?? i)}
 								<option value={i}>
 									{paper.name ? paper.name.split("|")[0] : `Option ${i + 1}`}
 								</option>

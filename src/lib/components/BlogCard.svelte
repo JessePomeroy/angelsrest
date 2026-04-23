@@ -91,7 +91,7 @@ let { post }: { post: Post } = $props();
     -->
     {#if post.categories && post.categories.length > 0}
       <div class="flex gap-2 mb-2">
-        {#each post.categories as category}
+        {#each post.categories as category (category.title)}
           <span class="text-xs text-surface-500 tracking-wider">
             {category.title}
           </span>

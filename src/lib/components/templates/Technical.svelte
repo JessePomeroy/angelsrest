@@ -52,7 +52,7 @@ let { post } = $props();
         Gear Used
       </h2>
       <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
-        {#each post.gearUsed as gear}
+        {#each post.gearUsed as gear, i (i)}
           <div class="bg-surface-800/50 p-4 rounded-lg text-center">
             {#if gear.camera}
               <p class="text-sm text-surface-300">{gear.camera}</p>

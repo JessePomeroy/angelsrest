@@ -88,7 +88,7 @@ const categories = [
 
     <!-- Category filter tabs -->
     <div class="flex flex-wrap justify-center gap-2 mb-8" role="tablist">
-        {#each categories as category}
+        {#each categories as category (category.value)}
             <button
                 role="tab"
                 aria-selected={activeCategory === category.value}
@@ -108,7 +108,7 @@ const categories = [
         <div class="mb-6">
             <h2 class="text-xl font-semibold mb-3">collections</h2>
             <div class="columns-2 md:columns-3 gap-2">
-                {#each filteredCollections as collection}
+                {#each filteredCollections as collection (collection.slug)}
                     <a
                         href="/shop/prints/{collection.slug}"
                         class="group mb-2 break-inside-avoid block"
@@ -143,7 +143,7 @@ const categories = [
         <div class="mb-6">
             <h2 class="text-xl font-semibold mb-3">sets</h2>
             <div class="columns-2 md:columns-3 gap-2">
-                {#each filteredPrintSets as set}
+                {#each filteredPrintSets as set (set.slug)}
                     <a
                         href="/shop/sets/{set.slug}"
                         class="group mb-2 break-inside-avoid block"
@@ -194,7 +194,7 @@ const categories = [
     <!-- Products grid -->
     {#if filteredProducts.length > 0}
         <div class="columns-2 md:columns-3 gap-2">
-            {#each filteredProducts as product}
+            {#each filteredProducts as product (product.slug)}
                 <a
                     href="/shop/{product.slug}"
                     class="group mb-2 break-inside-avoid block"

@@ -35,7 +35,7 @@ const links = [
   <div class="flex items-center gap-8">
     <!-- Navigation links -->
     <ul class="flex gap-8 list-none">
-      {#each links as link}
+      {#each links as link (link.href)}
         <li>
           <!-- 
             Active state: exact match for home ("/"), prefix match for other routes
