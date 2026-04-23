@@ -13,6 +13,7 @@
  * Usage:
  *   npx tsx scripts/verify-lumaprints-catalog.ts
  *   npx tsx scripts/verify-lumaprints-catalog.ts --paper 103001       # one paper
+ *   npx tsx scripts/verify-lumaprints-catalog.ts --sandbox            # hit sandbox, not prod
  *   npx tsx scripts/verify-lumaprints-catalog.ts --json > matrix.json # machine-readable
  *
  * Sister script: verify-lumaprints-sizes.ts (narrow size verification)
@@ -28,13 +29,17 @@ const API_SECRET = process.env.LUMAPRINTS_API_SECRET;
 const STORE_ID = process.env.LUMAPRINTS_STORE_ID;
 
 if (!API_KEY || !API_SECRET || !STORE_ID) {
-	console.error(
-		"Missing LUMAPRINTS_API_KEY / LUMAPRINTS_API_SECRET / LUMAPRINTS_STORE_ID",
-	);
+	console.error("Missing LUMAPRINTS_API_KEY / LUMAPRINTS_API_SECRET / LUMAPRINTS_STORE_ID");
 	process.exit(1);
 }
 
-const BASE_URL = "https://us.api.lumaprints.com";
+// Audit L19: support `--sandbox` so this script can be pointed at the
+// LumaPrints sandbox without editing code. Matches the sandbox/prod
+// switch the server uses via LUMAPRINTS_USE_SANDBOX in lumaprints.ts.
+const USE_SANDBOX = process.argv.includes("--sandbox");
+const BASE_URL = USE_SANDBOX
+	? "https://us.api-sandbox.lumaprints.com"
+	: "https://us.api.lumaprints.com";
 
 // 7 Fine Art Paper subcategories — Metallic (103006) excluded per spec note Q1.
 const PAPERS: { id: number; name: string; gsm: number | null }[] = [
@@ -140,18 +145,13 @@ async function checkAvailability(
 }
 
 async function main() {
-	const papers = paperFilter
-		? PAPERS.filter((p) => p.id === paperFilter)
-		: PAPERS;
+	const papers = paperFilter ? PAPERS.filter((p) => p.id === paperFilter) : PAPERS;
 	if (papers.length === 0) {
 		console.error(`No paper matched id ${paperFilter}`);
 		process.exit(1);
 	}
 
-	const matrix: Record<
-		string,
-		Record<string, { available: boolean; error?: string }>
-	> = {};
+	const matrix: Record<string, Record<string, { available: boolean; error?: string }>> = {};
 	const totalCalls = papers.length * SIZES.length;
 	let completed = 0;
 
@@ -211,12 +211,8 @@ async function main() {
 	// Summary
 	console.log("\n─── Summary ───");
 	for (const paper of papers) {
-		const available = SIZES.filter(
-			(s) => matrix[paper.name][s.label].available,
-		).length;
-		console.log(
-			`  ${paper.name.padEnd(22)} ${available}/${SIZES.length} sizes available`,
-		);
+		const available = SIZES.filter((s) => matrix[paper.name][s.label].available).length;
+		console.log(`  ${paper.name.padEnd(22)} ${available}/${SIZES.length} sizes available`);
 	}
 
 	// Failures with reasons

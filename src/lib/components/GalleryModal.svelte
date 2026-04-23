@@ -9,13 +9,16 @@ let {
 	onClose: () => void;
 } = $props();
 
-let index = $state(0);
+// Track a local offset from the currentIndex prop rather than mirroring it
+// via $effect (the prop-to-state anti-pattern). When the parent opens the
+// modal on a new image, currentIndex changes; internal next()/prev() bump
+// `offset`, and the rendered index is derived from both.
+let offset = $state(0);
+let index = $derived(
+	((currentIndex + offset) % images.length + images.length) % images.length,
+);
 let dialogEl = $state<HTMLDivElement | null>(null);
 let previouslyFocused: HTMLElement | null = null;
-
-$effect(() => {
-	index = currentIndex;
-});
 
 $effect(() => {
 	if (dialogEl) {
@@ -54,11 +57,11 @@ $effect(() => {
 });
 
 function next() {
-	index = (index + 1) % images.length;
+	offset += 1;
 }
 
 function prev() {
-	index = (index - 1 + images.length) % images.length;
+	offset -= 1;
 }
 
 function handleKeydown(e: KeyboardEvent) {
@@ -112,7 +115,13 @@ function handleTouchEnd() {
     // Removes the need for stopPropagation on the inner content div.
     if (e.target === e.currentTarget) onClose();
   }}
-  onkeydown={handleKeydown}
+  onkeydown={(e) => {
+    // a11y: click handler above needs a matching keyboard handler on the
+    // same element. Escape-to-close is the natural pair. Arrow-key
+    // navigation / tab trap is still handled globally via svelte:window
+    // below so the keys work even when focus has drifted.
+    if (e.key === "Escape" && e.target === e.currentTarget) onClose();
+  }}
   role="dialog"
   aria-modal="true"
   aria-label="Image lightbox — {index + 1} of {images.length}"

@@ -26,9 +26,7 @@ const API_SECRET = process.env.LUMAPRINTS_API_SECRET;
 const STORE_ID = process.env.LUMAPRINTS_STORE_ID;
 
 if (!API_KEY || !API_SECRET || !STORE_ID) {
-	console.error(
-		"Missing LUMAPRINTS_API_KEY / LUMAPRINTS_API_SECRET / LUMAPRINTS_STORE_ID",
-	);
+	console.error("Missing LUMAPRINTS_API_KEY / LUMAPRINTS_API_SECRET / LUMAPRINTS_STORE_ID");
 	process.exit(1);
 }
 
@@ -42,8 +40,7 @@ const BASE_URL = useSandbox
 	: "https://us.api.lumaprints.com";
 
 const subcategoryArg = process.argv.indexOf("--subcategory");
-const SUBCATEGORY_ID =
-	subcategoryArg >= 0 ? Number(process.argv[subcategoryArg + 1]) : 103001; // Archival Matte
+const SUBCATEGORY_ID = subcategoryArg >= 0 ? Number(process.argv[subcategoryArg + 1]) : 103001; // Archival Matte
 
 // Sizes to verify. Existing angelsrest catalog (5) plus a known-good control
 // and a sample of LumaPrints standard sizes we expect to add.
@@ -114,9 +111,7 @@ async function main() {
 	console.log(
 		`\nVerifying Fine Art Paper sizes against subcategory ${SUBCATEGORY_ID} (${useSandbox ? "sandbox" : "production"})\n`,
 	);
-	console.log(
-		`${"Size".padEnd(8)} ${"Expected".padEnd(14)} ${"API".padEnd(8)} Notes`,
-	);
+	console.log(`${"Size".padEnd(8)} ${"Expected".padEnd(14)} ${"API".padEnd(8)} Notes`);
 	console.log("─".repeat(70));
 
 	const results: {
@@ -128,10 +123,7 @@ async function main() {
 
 	for (const size of SIZES) {
 		try {
-			const { ok, status, body } = await getShippingPrice(
-				size.width,
-				size.height,
-			);
+			const { ok, status, body } = await getShippingPrice(size.width, size.height);
 			let note = "";
 			if (ok && typeof body === "object" && body !== null) {
 				const methods = (

@@ -48,7 +48,9 @@ const appHandle: Handle = async ({ event, resolve }) => {
 
 	const response = await resolve(event);
 
-	// Skip security headers for auth API routes (response is immutable)
+	// Skip security headers for auth API routes — the auth library sets its
+	// own Content-Type / Cache-Control on these responses and mutating the
+	// headers here would clobber them.
 	if (event.url.pathname.startsWith("/api/auth")) {
 		return response;
 	}

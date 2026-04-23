@@ -153,9 +153,7 @@ async function migrate() {
 		migrated++;
 	}
 
-	console.log(
-		`\nDone. Migrated ${migrated}, skipped ${skipped} of ${orders.length} total.`,
-	);
+	console.log(`\nDone. Migrated ${migrated}, skipped ${skipped} of ${orders.length} total.`);
 }
 
 migrate().catch((err) => {

@@ -72,8 +72,21 @@ function classifyLumaPrintsErrorDetails(details: unknown): FailureClassification
 	const message = extractMessageString(obj);
 	if (message) {
 		const lower = message.toLowerCase();
+		// Audit L17: "invalid" on its own was too broad — it matched generic
+		// payment-layer strings like "invalid card" that drifted in from
+		// Stripe-adjacent code paths and incorrectly classified transient
+		// issues as permanent. The replacement patterns are all
+		// LumaPrints-payload-specific so the classification only trips when
+		// LumaPrints itself rejected the submission.
 		const permanentPatterns = [
-			"invalid",
+			"invalid image",
+			"invalid dimensions",
+			"invalid paper",
+			"invalid size",
+			"invalid subcategory",
+			"invalid option",
+			"invalid url",
+			"invalid aspect",
 			"not found",
 			"must be",
 			"required",

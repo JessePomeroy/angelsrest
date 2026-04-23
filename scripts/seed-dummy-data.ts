@@ -21,6 +21,15 @@ if (!convexUrl) {
 const convex = new ConvexHttpClient(convexUrl);
 const SITE = "angelsrest.online";
 
+// Audit L20: earlier versions of `remove()` wiped ALL docs matching the
+// siteUrl, which would delete real production data if the script was ever
+// pointed at a live environment. Every seeded doc now gets tagged with
+// this marker in its `notes` field (or the `stripeSessionId` prefix for
+// orders, which already worked) so `remove()` only touches rows it
+// created. None of the schemas needed changing — they already have an
+// optional `notes` string on clients/invoices/quotes.
+const SEED_MARKER = "[seeded]";
+
 async function seed() {
 	console.log("Seeding dummy data...\n");
 
@@ -82,11 +91,11 @@ async function seed() {
 		const id = await convex.mutation(api.crm.createClient, {
 			siteUrl: SITE,
 			...createArgs,
+			notes: SEED_MARKER,
 		});
 		clientIds.push(id);
 		if (status !== "lead") {
 			await convex.mutation(api.crm.updateClient, {
-				// biome-ignore lint/suspicious/noExplicitAny: seed script
 				clientId: id as any,
 				status,
 			});
@@ -210,11 +219,11 @@ async function seed() {
 		const id = await convex.mutation(api.invoices.create, {
 			siteUrl: SITE,
 			invoiceNumber: inv.number,
-			// biome-ignore lint/suspicious/noExplicitAny: seed script
 			clientId: clientIds[inv.clientIdx] as any,
 			invoiceType: inv.type,
 			items: [{ description: "Service", quantity: 1, unitPrice: inv.total }],
 			dueDate: "2026-05-01",
+			notes: SEED_MARKER,
 		});
 		if (inv.status === "sent") {
 			await convex.mutation(api.invoices.markSent, { invoiceId: id });
@@ -222,9 +231,7 @@ async function seed() {
 			await convex.mutation(api.invoices.markSent, { invoiceId: id });
 			await convex.mutation(api.invoices.markPaid, { invoiceId: id });
 		}
-		console.log(
-			`  invoice: ${inv.number} — $${(inv.total / 100).toFixed(2)} (${inv.status})`,
-		);
+		console.log(`  invoice: ${inv.number} — $${(inv.total / 100).toFixed(2)} (${inv.status})`);
 	}
 
 	// --- Quotes ---
@@ -253,7 +260,6 @@ async function seed() {
 		const id = await convex.mutation(api.quotes.create, {
 			siteUrl: SITE,
 			quoteNumber: q.number,
-			// biome-ignore lint/suspicious/noExplicitAny: seed script
 			clientId: clientIds[q.clientIdx] as any,
 			category: q.category,
 			packages: [
@@ -267,15 +273,11 @@ async function seed() {
 					name: "premium",
 					description: "Full coverage",
 					price: 250000,
-					included: [
-						"4 hours",
-						"150 edited photos",
-						"online gallery",
-						"prints",
-					],
+					included: ["4 hours", "150 edited photos", "online gallery", "prints"],
 				},
 			],
 			validUntil: "2026-05-15",
+			notes: SEED_MARKER,
 		});
 		if (q.status === "sent") {
 			await convex.mutation(api.quotes.markSent, { quoteId: id });
@@ -290,9 +292,9 @@ async function seed() {
 }
 
 async function remove() {
-	console.log("Removing dummy data...\n");
+	console.log("Removing dummy data (only docs tagged with SEED_MARKER)...\n");
 
-	// Remove orders with seed session IDs
+	// Remove orders with seed session IDs (tagged via stripeSessionId prefix)
 	const orders = await convex.query(api.orders.list, { siteUrl: SITE });
 	for (const order of orders) {
 		if (order.stripeSessionId.startsWith("cs_seed_")) {
@@ -304,25 +306,31 @@ async function remove() {
 		}
 	}
 
-	// Remove all CRM clients (and their invoices/quotes cascade)
+	// Only remove CRM clients / invoices / quotes this script created —
+	// identified by the SEED_MARKER in their `notes` field. Previously this
+	// block wiped every matching siteUrl row, which would nuke real data.
 	const clients = await convex.query(api.crm.listClients, { siteUrl: SITE });
 	for (const client of clients) {
-		await convex.mutation(api.crm.deleteClient, { clientId: client._id });
-		console.log(`  removed client: ${client.name}`);
+		if (client.notes === SEED_MARKER) {
+			await convex.mutation(api.crm.deleteClient, { clientId: client._id });
+			console.log(`  removed client: ${client.name}`);
+		}
 	}
 
-	// Remove invoices
 	const invoices = await convex.query(api.invoices.list, { siteUrl: SITE });
 	for (const inv of invoices) {
-		await convex.mutation(api.invoices.remove, { invoiceId: inv._id });
-		console.log(`  removed invoice: ${inv.invoiceNumber}`);
+		if (inv.notes === SEED_MARKER) {
+			await convex.mutation(api.invoices.remove, { invoiceId: inv._id });
+			console.log(`  removed invoice: ${inv.invoiceNumber}`);
+		}
 	}
 
-	// Remove quotes
 	const quotes = await convex.query(api.quotes.list, { siteUrl: SITE });
 	for (const q of quotes) {
-		await convex.mutation(api.quotes.remove, { quoteId: q._id });
-		console.log(`  removed quote: ${q.quoteNumber}`);
+		if (q.notes === SEED_MARKER) {
+			await convex.mutation(api.quotes.remove, { quoteId: q._id });
+			console.log(`  removed quote: ${q.quoteNumber}`);
+		}
 	}
 
 	console.log("\nDone. Removed all dummy data.");

@@ -1,8 +1,14 @@
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { sentrySvelteKit } from "@sentry/sveltekit";
 import { sveltekit } from "@sveltejs/kit/vite";
 import tailwindcss from "@tailwindcss/vite";
 import { defineConfig } from "vitest/config";
+
+// Resolve paths against the config file's location, not the cwd. Using
+// `path.resolve(".")` here would silently change behavior depending on
+// where vite/vitest was invoked from.
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 export default defineConfig({
 	plugins: [
@@ -34,9 +40,9 @@ export default defineConfig({
 		environment: "node",
 		globals: true,
 		alias: {
-			"$env/static/private": path.resolve("./src/__mocks__/env-private.ts"),
-			"$env/dynamic/private": path.resolve("./src/__mocks__/env-dynamic.ts"),
-			"$env/static/public": path.resolve("./src/__mocks__/env-public.ts"),
+			"$env/static/private": path.resolve(__dirname, "./src/__mocks__/env-private.ts"),
+			"$env/dynamic/private": path.resolve(__dirname, "./src/__mocks__/env-dynamic.ts"),
+			"$env/static/public": path.resolve(__dirname, "./src/__mocks__/env-public.ts"),
 		},
 	},
 });

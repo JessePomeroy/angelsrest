@@ -15,7 +15,12 @@ let hasDrawn = $state(false);
 
 onMount(() => {
 	ctx = canvas.getContext("2d")!;
-	ctx.strokeStyle = "#1a1a1a";
+	// Read the themed surface-900 so the stroke follows the theme instead of
+	// being hardcoded. Fall back to a dark grey if the var isn't set.
+	const strokeColor = getComputedStyle(canvas)
+		.getPropertyValue("--color-surface-900")
+		.trim() || "#1a1a1a";
+	ctx.strokeStyle = strokeColor;
 	ctx.lineWidth = 2;
 	ctx.lineCap = "round";
 	ctx.lineJoin = "round";
@@ -107,9 +112,9 @@ function done() {
 	}
 
 	canvas {
-		border: 1px solid #ccc;
+		border: 1px solid var(--color-surface-300, #ccc);
 		border-radius: 4px;
-		background: #fff;
+		background: var(--color-surface-50, #fff);
 		cursor: crosshair;
 		touch-action: none;
 		max-width: 100%;
@@ -127,24 +132,24 @@ function done() {
 		font-size: 0.8125rem;
 		border-radius: 4px;
 		cursor: pointer;
-		border: 1px solid #ccc;
-		background: #fff;
-		color: #333;
+		border: 1px solid var(--color-surface-300, #ccc);
+		background: var(--color-surface-50, #fff);
+		color: var(--color-surface-800, #333);
 		transition: background 0.15s;
 	}
 
 	button:hover {
-		background: #f5f5f5;
+		background: var(--color-surface-100, #f5f5f5);
 	}
 
 	button.done {
-		background: #1a1a1a;
-		color: #fff;
-		border-color: #1a1a1a;
+		background: var(--color-surface-900, #1a1a1a);
+		color: var(--color-surface-50, #fff);
+		border-color: var(--color-surface-900, #1a1a1a);
 	}
 
 	button.done:hover {
-		background: #333;
+		background: var(--color-surface-700, #333);
 	}
 
 	button:disabled {

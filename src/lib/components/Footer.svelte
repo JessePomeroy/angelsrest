@@ -1,10 +1,21 @@
 <script lang="ts">
+import { onMount } from "svelte";
+
 let { siteSettings }: { siteSettings?: any } = $props();
 
 const siteName = $derived(
 	siteSettings?.siteTitle?.toLowerCase() || "angelsrest",
 );
 const socialLinks = $derived(siteSettings?.socialLinks || []);
+
+// Audit L6: `new Date().getFullYear()` inlined in the template caused a
+// potential SSR/hydration mismatch across a midnight/new-year boundary
+// (server renders year N, client hydrates year N+1). Pick a static year
+// for SSR and let the client bump it to the live value inside onMount.
+let year = $state(new Date().getFullYear());
+onMount(() => {
+	year = new Date().getFullYear();
+});
 </script>
 
 <footer
@@ -24,5 +35,5 @@ const socialLinks = $derived(siteSettings?.socialLinks || []);
 			{/each}
 		</div>
 	{/if}
-	<p>&copy; {new Date().getFullYear()} {siteName}</p>
+	<p>&copy; {year} {siteName}</p>
 </footer>

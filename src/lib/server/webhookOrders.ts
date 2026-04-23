@@ -23,6 +23,14 @@ import {
 } from "$lib/server/webhookErrorClassification";
 
 /**
+ * Tag written to Stripe refund metadata so we can distinguish automated
+ * refunds from manual ones in the dashboard (audit #23 PR #3). Any time
+ * the origin of an automated refund changes, bump this constant instead
+ * of hunting for stringly-typed magic values in the webhook handler.
+ */
+const REFUND_AUTOMATION_TAG = "audit_23_pr_3";
+
+/**
  * Shared secret between the SvelteKit webhook and Convex. Must be set in
  * both environments (Vercel `WEBHOOK_SECRET` and `npx convex env set
  * WEBHOOK_SECRET`). Audit C4/C5.
@@ -260,7 +268,7 @@ export async function handlePermanentFulfillmentFailure(
 				metadata: {
 					orderNumber,
 					fulfillmentError: errorSummary.slice(0, 500),
-					automated: "audit_23_pr_3",
+					automated: REFUND_AUTOMATION_TAG,
 				},
 			});
 			stripeRefundId = refund.id;

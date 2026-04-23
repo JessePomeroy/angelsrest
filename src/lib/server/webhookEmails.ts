@@ -55,7 +55,7 @@ export async function sendFailureAlert(
 		await resend.emails.send({
 			from: "Angel's Rest Alerts <orders@angelsrest.online>",
 			to: [env.NOTIFICATION_EMAIL || ADMIN_EMAIL],
-			subject: `🚨 Webhook failure: ${eventType}`,
+			subject: `Webhook failure: ${eventType}`,
 			text: `A critical webhook operation failed. Stripe will retry automatically.
 
 Event: ${eventType}
@@ -192,8 +192,8 @@ This order was automatically processed through your Angel's Rest website.
 		from: "Angel's Rest Orders <orders@angelsrest.online>",
 		to: [env.NOTIFICATION_EMAIL || ADMIN_EMAIL],
 		subject: orderNumber
-			? `🛒 New Order ${orderNumber}: ${formatCents(session.amount_total || 0)} from ${shippingDetails?.name || customerEmail}`
-			: `🛒 New Order: ${formatCents(session.amount_total || 0)} from ${shippingDetails?.name || customerEmail}`,
+			? `New Order ${orderNumber}: ${formatCents(session.amount_total || 0)} from ${shippingDetails?.name || customerEmail}`
+			: `New Order: ${formatCents(session.amount_total || 0)} from ${shippingDetails?.name || customerEmail}`,
 		text: emailContent,
 	});
 }

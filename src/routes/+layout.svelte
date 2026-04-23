@@ -25,7 +25,7 @@ import { enableVisualEditing } from "@sanity/visual-editing";
 import { injectAnalytics } from "@vercel/analytics/sveltekit";
 import type { Snippet } from "svelte";
 import { onMount } from "svelte";
-import { page } from "$app/stores";
+import { page } from "$app/state";
 
 // Header gif for non-homepage routes
 import headerGif from "$lib/assets/ponyolovesham.gif";
@@ -48,8 +48,8 @@ import "$lib/styles/global.css";
 
 let { children, data }: { children: Snippet; data: any } = $props();
 
-let isPortal = $derived($page.url.pathname.startsWith("/portal"));
-let isAdmin = $derived($page.url.pathname.startsWith("/admin"));
+let isPortal = $derived(page.url.pathname.startsWith("/portal"));
+let isAdmin = $derived(page.url.pathname.startsWith("/admin"));
 
 const ogTitle = $derived(data.siteSettings?.siteTitle || "Angel's Rest");
 const ogDesc = $derived(
@@ -103,7 +103,7 @@ onMount(() => {
     <Nav />
 
     <!-- Mobile header - only shown on non-homepage routes -->
-    {#if $page.url.pathname !== "/"}
+    {#if page.url.pathname !== "/"}
       <div class="md:hidden">
         <img src={headerGif} alt="" class="w-full" />
       </div>
@@ -123,7 +123,7 @@ onMount(() => {
     <Footer siteSettings={data.siteSettings} />
 
     <!-- Mobile theme toggle - fixed position above bottom nav, homepage only -->
-    {#if $page.url.pathname === "/"}
+    {#if page.url.pathname === "/"}
       <div class="fixed bottom-20 right-4 z-40 md:hidden">
         <ThemeSwitcher />
       </div>

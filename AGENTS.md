@@ -13,7 +13,7 @@ Rules for working on this codebase.
 ## Tech Constraints
 
 - SvelteKit 5 with Svelte 5 runes (`$props()`, `$state()`, `$derived()`, `$effect()`)
-- Tailwind CSS v4 — avoid Skeleton component classes, use plain Tailwind
+- Tailwind CSS v4, Tailwind-first. Do NOT use Skeleton component classes (`.btn`, `.card`, `.input`, etc.) — use plain Tailwind utilities. The only thing we borrow from Skeleton is its surface color scale, which is exposed as CSS custom properties (`--color-surface-50` … `--color-surface-900`). Reference those via `var(--color-surface-X)` in scoped `<style>` blocks or through Tailwind's arbitrary-property syntax.
 - Use `$env/dynamic/private` for env vars in hooks, not `$env/static/private`
 - Biome linter enforced via husky — run checks before reporting done
 - Admin pages use scoped `<style>` blocks with `--admin-*` CSS custom properties, NOT Tailwind

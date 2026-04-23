@@ -29,7 +29,7 @@
 	},
 	"files": {
 		"ignoreUnknown": true,
-		"includes": ["src/**", "!convex/_generated"]
+		"includes": ["src/**", "scripts/**", "!convex/_generated"]
 	},
 	"overrides": [
 		{
