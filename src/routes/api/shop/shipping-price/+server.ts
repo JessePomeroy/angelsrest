@@ -15,6 +15,7 @@
  */
 
 import { error, json } from "@sveltejs/kit";
+import { logStructured } from "$lib/server/logger";
 import { getShippingPrice, LumaPrintsError } from "$lib/server/lumaprints";
 import type { Recipient } from "$lib/shop/types";
 import type { RequestHandler } from "./$types";
@@ -84,26 +85,20 @@ export const POST: RequestHandler = async ({ request }) => {
 		});
 		return json(result);
 	} catch (err) {
-		// Graceful degradation: checkout should never be blocked on LumaPrints.
-		// Return a flat-rate fallback and log the upstream failure for admin
-		// visibility.
-		if (err instanceof LumaPrintsError) {
-			console.warn("LumaPrints shipping price failed, degrading:", err.message, err.details);
-		} else {
-			console.error("Unexpected error in getShippingPrice:", err);
-		}
-
-		// Fallback: a single flat-rate shipping method. The customer sees
-		// "Standard Shipping $X" and checkout proceeds normally.
-		return json({
-			shippingMethods: [
-				{
-					carrier: "Standard",
-					method: "flat_rate_fallback",
-					cost: 8.95,
-				},
-			],
-			degraded: true,
+		// Audit H38: do not silently fall back to $8.95 — that swallows the
+		// pricing delta and the customer gets charged whatever Stripe quotes
+		// without a real upstream estimate. Surface a 503 so the UI can show
+		// an honest "couldn't quote" state and let the customer retry.
+		logStructured({
+			event: "shipping_price.upstream_failed",
+			stage: "lumaprints_shipping",
+			level: "error",
+			error: err,
+			meta: {
+				kind: err instanceof LumaPrintsError ? "lumaprints" : "unknown",
+				details: err instanceof LumaPrintsError ? err.details : undefined,
+			},
 		});
+		throw error(503, "Shipping price unavailable; please try again in a minute.");
 	}
 };

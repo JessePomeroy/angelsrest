@@ -5,16 +5,39 @@ import { PUBLIC_SITE_URL } from "$env/static/public";
 import { client } from "$lib/sanity/client";
 import { bindCheckoutSession } from "$lib/server/checkoutBinding";
 import { validateAndApplyCoupon } from "$lib/server/coupon";
+import { logStructured } from "$lib/server/logger";
 
 const stripe = new Stripe(STRIPE_SECRET_KEY);
 
 export async function POST({ request, cookies }) {
 	try {
 		const body = await request.json();
-		console.log("Received checkout request:", JSON.stringify(body, null, 2));
+		// Audit H33: log only request shape, not values — body contains
+		// customer image URLs (PII) that must not land in access logs.
+		const bodyKeys = body && typeof body === "object" ? Object.keys(body) : [];
+		logStructured({
+			event: "checkout.request_received",
+			meta: {
+				keys: bodyKeys,
+				keyCount: bodyKeys.length,
+				hasImages: Array.isArray(body?.images) ? body.images.length : 0,
+			},
+		});
 
 		const { productId, title, price, image, paper, coupon, isPrintSet, images } = body;
-		console.log("Checkout payload:", { productId, title, price, paper });
+		// Audit H33: redact values — only log presence/types, not raw paper or image.
+		logStructured({
+			event: "checkout.payload_parsed",
+			meta: {
+				hasProductId: typeof productId === "string",
+				hasTitle: typeof title === "string",
+				hasPrice: typeof price === "number",
+				hasPaper: !!paper,
+				hasImage: !!image,
+				isPrintSet: !!isPrintSet,
+				imagesLength: Array.isArray(images) ? images.length : 0,
+			},
+		});
 
 		if (!productId || !title || !price) {
 			console.log("Missing fields - productId:", productId, "title:", title, "price:", price);

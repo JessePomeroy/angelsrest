@@ -121,12 +121,27 @@ export function buildOrderItemsFromSession(
 	const paperSubcategoryId = Number.parseInt(meta.paperSubcategoryId ?? "", 10);
 	if (!paperSubcategoryId) return [];
 
-	const DEFAULT_PAPER_WIDTH = 8;
-	const DEFAULT_PAPER_HEIGHT = 10;
-	const width =
-		Number.parseInt(meta.paperWidth ?? String(DEFAULT_PAPER_WIDTH), 10) || DEFAULT_PAPER_WIDTH;
-	const height =
-		Number.parseInt(meta.paperHeight ?? String(DEFAULT_PAPER_HEIGHT), 10) || DEFAULT_PAPER_HEIGHT;
+	// Audit H37: throw instead of silently defaulting to 8×10. The
+	// classify-and-refund path (audit #23 PR #3) will surface this to
+	// the admin via email + auto-refund rather than printing the wrong
+	// size. Only throws when this session has a paperSubcategoryId
+	// (i.e. we're committed to a LumaPrints submission) — the
+	// no-paperSubcategoryId early return above still handles the
+	// digital/invoice/merch cases.
+	const widthParsed = Number.parseInt(meta.paperWidth ?? "", 10);
+	const heightParsed = Number.parseInt(meta.paperHeight ?? "", 10);
+	if (!Number.isFinite(widthParsed) || widthParsed <= 0) {
+		throw new Error(
+			`Malformed paper dimensions in Stripe session metadata: paperWidth=${JSON.stringify(meta.paperWidth)}`,
+		);
+	}
+	if (!Number.isFinite(heightParsed) || heightParsed <= 0) {
+		throw new Error(
+			`Malformed paper dimensions in Stripe session metadata: paperHeight=${JSON.stringify(meta.paperHeight)}`,
+		);
+	}
+	const width = widthParsed;
+	const height = heightParsed;
 
 	const isPrintSet = meta.isPrintSet === "true";
 	if (isPrintSet) {

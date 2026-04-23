@@ -497,7 +497,9 @@ function handleV1AddToCart() {
 							{#each data.printSet.availablePapers as paper, i (paper.subcategoryId ?? paper.name ?? i)}
 								{@const parsed = parsePaperOption(paper)}
 								{@const priceNote = paper.price ? ` (+$${paper.price})` : ""}
-								<option value={i}>{parsed.name}{priceNote}</option>
+								<!-- Audit H40: parsePaperOption now returns null on malformed input;
+								     fall back to the raw name so the option is still selectable. -->
+								<option value={i}>{parsed?.name ?? paper.name}{priceNote}</option>
 							{/each}
 						</select>
 					</div>

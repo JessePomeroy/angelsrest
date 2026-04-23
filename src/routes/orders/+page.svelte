@@ -19,9 +19,12 @@ async function lookupOrder() {
 	order = null;
 
 	try {
-		const response = await fetch(
-			`/api/orders/lookup?email=${encodeURIComponent(email)}&order=${encodeURIComponent(orderNumber)}`,
-		);
+		// Audit H34: use POST so email is not written to access logs.
+		const response = await fetch("/api/orders/lookup", {
+			method: "POST",
+			headers: { "Content-Type": "application/json" },
+			body: JSON.stringify({ email, orderNumber }),
+		});
 		const data = await response.json();
 
 		if (response.ok && data.order) {

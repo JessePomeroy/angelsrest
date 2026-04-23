@@ -10,12 +10,13 @@
  * `{ valid: false, message, recommendedWidth?, recommendedHeight? }`
  * when it will be rejected (low resolution, wrong aspect ratio, etc.).
  *
- * If LumaPrints' validation API is down, we degrade gracefully by
- * returning `{ valid: true, degraded: true }` — the checkout flow
- * must never be blocked on LumaPrints availability. The webhook's
- * post-payment validation still catches anything that slips through.
+ * If LumaPrints' validation API is down, we fail closed and return
+ * `{ valid: false, reason: "could not verify", degraded: true }` so
+ * the UI surfaces a real error instead of silently letting an
+ * unverified image reach the webhook — audit H39 reversed the
+ * previous fail-open behavior.
  *
- * Added in audit #23 PR #3.
+ * Added in audit #23 PR #3. Updated by audit H39.
  */
 
 import { error, json } from "@sveltejs/kit";
@@ -67,25 +68,28 @@ export const POST: RequestHandler = async ({ request }) => {
 		});
 		return json(result);
 	} catch (err) {
-		// Network / 5xx from LumaPrints: degrade gracefully so checkout isn't
-		// blocked. The customer can still pay; the webhook's post-payment
-		// submission will catch anything that slips through.
+		// Audit H39: fail closed, not open. Returning `{ valid: true }`
+		// on error hid validation outages and let unprintable images
+		// reach the webhook, where a refund-after-the-fact is the only
+		// recourse. Instead surface a "could not verify" result so the
+		// checkout path can show a real error to the customer.
 		if (err instanceof LumaPrintsError) {
 			console.warn(
-				"LumaPrints checkImageConfig failed, degrading to valid:",
+				"LumaPrints checkImageConfig failed, returning valid=false:",
 				err.message,
 				err.details,
 			);
 			return json({
-				valid: true,
+				valid: false,
+				reason: "could not verify",
 				degraded: true,
 				degradedReason: "validation_unavailable",
 			});
 		}
-		// Unknown errors: also degrade rather than block.
 		console.error("Unexpected error in checkImageConfig:", err);
 		return json({
-			valid: true,
+			valid: false,
+			reason: "could not verify",
 			degraded: true,
 			degradedReason: "internal_error",
 		});
