@@ -31,7 +31,10 @@ let {
 	settleDuration?: number;
 } = $props();
 
-let sourceCanvas: HTMLCanvasElement;
+// Audit L7: $state so bind:this stays reactive. asciiCanvas isn't read
+// reactively anywhere (only written inside loadAndGenerate + renderAsciiToCanvas
+// after the bind has settled), so it doesn't need the same treatment.
+let sourceCanvas = $state<HTMLCanvasElement>() as HTMLCanvasElement;
 let asciiCanvas: HTMLCanvasElement;
 let asciiDataUrl = $state("");
 let displayedAsciiUrl = $state("");

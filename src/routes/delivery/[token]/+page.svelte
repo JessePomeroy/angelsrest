@@ -67,15 +67,26 @@ async function toggleFavorite(index: number) {
 	const image = images[index];
 	const newVal = !image.isFavorite;
 
+	// Snapshot for rollback on failure (audit H32). We capture the whole
+	// map rather than the single key so that if parallel writes mutated
+	// other keys mid-flight, we don't accidentally clobber them on rollback.
+	const previousOverrides = favoriteOverrides;
+
 	// Optimistic override — derived images will pick this up on next read
 	const next = new Map(favoriteOverrides);
 	next.set(image._id, newVal);
 	favoriteOverrides = next;
 
-	await client.mutation(api.galleries.updateImage, {
-		id: image._id as any,
-		isFavorite: newVal,
-	});
+	try {
+		await client.mutation(api.galleries.updateImage, {
+			id: image._id as any,
+			isFavorite: newVal,
+		});
+	} catch (err) {
+		console.error("favorite toggle failed", err);
+		favoriteOverrides = previousOverrides;
+		toasts.show("Couldn't update favorite. Please try again.", { type: "error" });
+	}
 }
 
 async function downloadAll() {
@@ -227,7 +238,7 @@ let favoriteCount = $derived(
 						</button>
 					{/if}
 					{#if data.gallery.downloadEnabled}
-						<a class="lb-btn" aria-label={images[lightboxIndex].isFavorite ? "Remove from favorites" : "Add to favorites"} href={images[lightboxIndex].downloadUrl} download>
+						<a class="lb-btn" aria-label="Download original image" href={images[lightboxIndex].downloadUrl} download>
 							↓ download
 						</a>
 					{/if}

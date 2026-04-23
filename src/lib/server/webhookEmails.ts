@@ -10,7 +10,8 @@
 import type { Resend } from "resend";
 import type Stripe from "stripe";
 import { env } from "$env/dynamic/private";
-import { SITE_DOMAIN } from "$lib/config/site";
+import { ADMIN_EMAIL, SITE_DOMAIN } from "$lib/config/site";
+import { logStructured } from "$lib/server/logger";
 import { formatCents } from "$lib/utils/format";
 
 /** Shipping details extracted from `session.collected_information`. */
@@ -53,7 +54,7 @@ export async function sendFailureAlert(
 	try {
 		await resend.emails.send({
 			from: "Angel's Rest Alerts <orders@angelsrest.online>",
-			to: [env.NOTIFICATION_EMAIL || "thinkingofview@gmail.com"],
+			to: [env.NOTIFICATION_EMAIL || ADMIN_EMAIL],
 			subject: `🚨 Webhook failure: ${eventType}`,
 			text: `A critical webhook operation failed. Stripe will retry automatically.
 
@@ -68,7 +69,14 @@ Action required:
 		});
 	} catch (emailErr) {
 		// Alert email itself failed — log but don't throw (we're already in error handling)
-		console.error("Failed to send failure alert email:", emailErr);
+		logStructured({
+			event: "email.failure_alert.failed",
+			level: "error",
+			stage: "email_admin",
+			sessionId,
+			error: emailErr,
+			meta: { eventType },
+		});
 	}
 }
 
@@ -182,7 +190,7 @@ This order was automatically processed through your Angel's Rest website.
 
 	await resend.emails.send({
 		from: "Angel's Rest Orders <orders@angelsrest.online>",
-		to: [env.NOTIFICATION_EMAIL || "thinkingofview@gmail.com"],
+		to: [env.NOTIFICATION_EMAIL || ADMIN_EMAIL],
 		subject: orderNumber
 			? `🛒 New Order ${orderNumber}: ${formatCents(session.amount_total || 0)} from ${shippingDetails?.name || customerEmail}`
 			: `🛒 New Order: ${formatCents(session.amount_total || 0)} from ${shippingDetails?.name || customerEmail}`,
@@ -245,7 +253,7 @@ export async function sendFulfillmentFailureAlert(
 		total: number;
 	},
 ) {
-	const adminEmail = env.NOTIFICATION_EMAIL || "thinkingofview@gmail.com";
+	const adminEmail = env.NOTIFICATION_EMAIL || ADMIN_EMAIL;
 	const refundLine = stripeRefundId
 		? `✅ Customer auto-refunded via Stripe (refund ID: ${stripeRefundId})`
 		: "⚠️ Refund FAILED — manual intervention required";

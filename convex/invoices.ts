@@ -151,6 +151,7 @@ export const markSent = mutation({
 			invoiceId,
 			siteUrl,
 			"invoice_sent",
+			"invoice",
 			(invoice) => `invoice ${invoice.invoiceNumber} sent`,
 		);
 	},

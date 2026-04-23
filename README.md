@@ -87,18 +87,18 @@ This project explores the intersection of art and web development:
 # Clone and install
 git clone [repo-url]
 cd angelsrest
-npm install
+pnpm install
 
 # Set up environment
 cp .env.example .env
 # Add your Sanity project ID, Stripe keys, etc.
 
 # Run dev server
-npm run dev
+pnpm dev
 
 # Run Sanity Studio (separate terminal)
 cd angelsrest-studio
-npm run dev
+pnpm dev
 ```
 
 ## Technical Guides

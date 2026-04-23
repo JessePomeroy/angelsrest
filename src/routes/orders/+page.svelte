@@ -1,5 +1,6 @@
 <script lang="ts">
 import { page } from "$app/stores";
+import { toasts } from "$lib/stores/toast.svelte";
 import { formatCents, formatDate } from "$lib/utils/format";
 
 let email = $state($page.url.searchParams.get("email") || "");
@@ -33,7 +34,9 @@ async function lookupOrder() {
 			error = data.error || "Order not found";
 		}
 	} catch (err) {
+		console.error("orders lookup failed", err);
 		error = "Failed to look up order";
+		toasts.show("Failed to look up order. Please try again.", { type: "error" });
 	} finally {
 		loading = false;
 	}

@@ -106,6 +106,11 @@ export const remove = mutation({
 export const _removeBatch = internalMutation({
 	args: { id: v.id("galleries") },
 	handler: async (ctx, { id }) => {
+		// Look up the gallery once so we have the siteUrl for the
+		// tenant-scoped galleryDownloads index (audit M23).
+		const gallery = await ctx.db.get(id);
+		const siteUrl = gallery?.siteUrl;
+
 		const images = await ctx.db
 			.query("galleryImages")
 			.withIndex("by_gallery", (q) => q.eq("galleryId", id))
@@ -115,10 +120,12 @@ export const _removeBatch = internalMutation({
 		}
 
 		const remainingBudget = REMOVE_BATCH_SIZE - images.length;
-		if (remainingBudget > 0) {
+		if (remainingBudget > 0 && siteUrl) {
 			const downloads = await ctx.db
 				.query("galleryDownloads")
-				.withIndex("by_gallery", (q) => q.eq("galleryId", id))
+				.withIndex("by_siteUrl_and_galleryId", (q) =>
+					q.eq("siteUrl", siteUrl).eq("galleryId", id),
+				)
 				.take(remainingBudget);
 			for (const dl of downloads) {
 				await ctx.db.delete(dl._id);
@@ -132,13 +139,19 @@ export const _removeBatch = internalMutation({
 					.first();
 				const stillHasDownloads = await ctx.db
 					.query("galleryDownloads")
-					.withIndex("by_gallery", (q) => q.eq("galleryId", id))
+					.withIndex("by_siteUrl_and_galleryId", (q) =>
+						q.eq("siteUrl", siteUrl).eq("galleryId", id),
+					)
 					.first();
 				if (!stillHasImages && !stillHasDownloads) {
 					await ctx.db.delete(id);
 					return;
 				}
 			}
+		} else if (remainingBudget > 0 && !siteUrl) {
+			// Gallery document already deleted on a prior batch — nothing
+			// more to sweep (we only scope downloads by (siteUrl, galleryId)).
+			return;
 		}
 
 		// More rows to go — schedule the next batch.
@@ -355,9 +368,16 @@ export const logDownload = mutation({
 export const getDownloadStats = query({
 	args: { galleryId: v.id("galleries") },
 	handler: async (ctx, { galleryId }) => {
+		// Audit M23: scope via `by_siteUrl_and_galleryId` (single source of
+		// truth for tenant-filtered reads) rather than the dropped `by_gallery`.
+		const gallery = await ctx.db.get(galleryId);
+		if (!gallery) return { total: 0, single: 0, zip: 0, favorites: 0 };
+
 		const downloads = await ctx.db
 			.query("galleryDownloads")
-			.withIndex("by_gallery", (q) => q.eq("galleryId", galleryId))
+			.withIndex("by_siteUrl_and_galleryId", (q) =>
+				q.eq("siteUrl", gallery.siteUrl).eq("galleryId", galleryId),
+			)
 			.take(1000);
 
 		return {

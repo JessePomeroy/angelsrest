@@ -10,6 +10,13 @@ import { patchDocument } from "./patching";
 type SendableTable = "quotes" | "contracts" | "invoices";
 
 /**
+ * DocType label used in the activityLog metadata. Audit M28: callers pass
+ * this explicitly — we previously inferred it by splitting `action` on the
+ * first "_", which broke for multi-word actions (e.g. "invoice_partial_paid").
+ */
+type DocType = "quote" | "contract" | "invoice";
+
+/**
  * Mark a quote/contract/invoice as sent and log the corresponding activity.
  *
  * Uses patchDocument under the hood (auth + siteUrl ownership check), patches
@@ -22,14 +29,13 @@ export async function markDocumentSent<T extends SendableTable>(
 	id: Id<T>,
 	siteUrl: string,
 	action: string,
+	docType: DocType,
 	describe: (doc: Doc<T>) => string,
 ): Promise<void> {
 	const doc = await patchDocument(ctx, id, siteUrl, {
 		status: "sent",
 		sentAt: Date.now(),
 	});
-	// Determine docType from the action prefix (e.g. "invoice_sent" → "invoice")
-	const docType = action.split("_")[0];
 	await ctx.runMutation(internal.activityLog.logActivity, {
 		siteUrl,
 		clientId: doc.clientId,

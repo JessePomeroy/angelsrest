@@ -35,7 +35,11 @@ let isDragging = $state(false);
 let startX = 0;
 
 function getImageUrl(img: any) {
-	return img?.full || img?.url || img;
+	// Audit L4: if the image object lacks both `full` and `url`, fall back
+	// to an empty string (which renders a broken image the UI already
+	// handles) rather than returning the whole object — which would
+	// serialize as "[object Object]" into the src attribute.
+	return img?.full || img?.url || "";
 }
 
 $effect(() => {

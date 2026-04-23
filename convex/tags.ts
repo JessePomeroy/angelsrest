@@ -68,12 +68,14 @@ export const assignTag = mutation({
 	},
 	handler: async (ctx, args) => {
 		await requireAuth(ctx);
-		const existing = await ctx.db
+		// Audit M22: compound point-check via `by_clientId_and_tagId`
+		// replaces a linear take(100) + find scan.
+		const alreadyAssigned = await ctx.db
 			.query("clientTagAssignments")
-			.withIndex("by_clientId", (q) => q.eq("clientId", args.clientId))
-			.take(100);
-
-		const alreadyAssigned = existing.find((a) => a.tagId === args.tagId);
+			.withIndex("by_clientId_and_tagId", (q) =>
+				q.eq("clientId", args.clientId).eq("tagId", args.tagId),
+			)
+			.unique();
 		if (alreadyAssigned) return alreadyAssigned._id;
 
 		const id = await ctx.db.insert("clientTagAssignments", args);
@@ -101,12 +103,14 @@ export const removeTag = mutation({
 	},
 	handler: async (ctx, args) => {
 		await requireAuth(ctx);
-		const assignments = await ctx.db
+		// Audit M22: compound index lookup, same motivation as assignTag.
+		const toRemove = await ctx.db
 			.query("clientTagAssignments")
-			.withIndex("by_clientId", (q) => q.eq("clientId", args.clientId))
-			.take(100);
+			.withIndex("by_clientId_and_tagId", (q) =>
+				q.eq("clientId", args.clientId).eq("tagId", args.tagId),
+			)
+			.unique();
 
-		const toRemove = assignments.find((a) => a.tagId === args.tagId);
 		if (toRemove) {
 			await ctx.db.delete(toRemove._id);
 

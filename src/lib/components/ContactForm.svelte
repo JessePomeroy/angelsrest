@@ -17,6 +17,10 @@ let { hideHeader = false }: { hideHeader?: boolean } = $props();
  * - Dark mode: #fafafa (near-white)
  */
 $effect(() => {
+	// Audit M19: `$effect` already runs client-only in Svelte 5, but the
+	// explicit guard documents intent and covers any host that polyfills
+	// `$effect` during SSR (Vite dev warm-up has done this in the past).
+	if (typeof document === "undefined") return;
 	document.documentElement.style.setProperty(
 		"--form-text-color",
 		$isDark ? "#fafafa" : "#000000",

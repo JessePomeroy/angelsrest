@@ -1,7 +1,7 @@
 import { json } from "@sveltejs/kit";
 import { api } from "$convex/api";
 import { env } from "$env/dynamic/private";
-import { SITE_DOMAIN } from "$lib/config/site";
+import { ADMIN_EMAIL, SITE_DOMAIN } from "$lib/config/site";
 import { getConvex } from "$lib/server/convexClient";
 import { getResend } from "$lib/server/resendClient";
 import { trimString, validateEmail } from "$lib/server/validation";
@@ -29,7 +29,7 @@ export const POST: RequestHandler = async ({ request }) => {
 	try {
 		await resend.emails.send({
 			from: "contact@angelsrest.online",
-			to: env.NOTIFICATION_EMAIL || "thinkingofview@gmail.com",
+			to: env.NOTIFICATION_EMAIL || ADMIN_EMAIL,
 			subject: trimmedSubject || `Contact from ${trimmedName}`,
 			text: `Name: ${trimmedName}\nEmail: ${trimmedEmail}\n\n${trimmedMessage}`,
 		});

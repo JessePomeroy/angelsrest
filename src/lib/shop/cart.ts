@@ -240,14 +240,10 @@ function clampQuantity(qty: number): number {
 }
 
 /**
- * Generate a stable identity for a new cart item. Prefers crypto.randomUUID
- * (widely available in modern browsers + Node 19+) and falls back to a
- * timestamp+random string for very old environments. Cart IDs don't need
- * cryptographic strength — they only need to be unique within one cart.
+ * Generate a stable identity for a new cart item. `crypto.randomUUID` is
+ * available in every environment this code runs (modern browsers + Node
+ * 19+); the old `Math.random` fallback (audit L16) was a dead branch.
  */
 function generateId(): string {
-	if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
-		return crypto.randomUUID();
-	}
-	return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
+	return crypto.randomUUID();
 }

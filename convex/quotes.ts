@@ -119,6 +119,7 @@ export const markSent = mutation({
 			quoteId,
 			siteUrl,
 			"quote_sent",
+			"quote",
 			(quote) => `quote ${quote.quoteNumber} sent`,
 		);
 	},
@@ -196,6 +197,16 @@ export const convertToInvoice = mutation({
 
 		// Link the quote to the invoice
 		await ctx.db.patch(quoteId, { convertedToInvoice: invoiceId });
+
+		// Audit M27: observability for the conversion so the client activity
+		// feed reflects both quote and invoice lifecycle in one place.
+		await ctx.runMutation(internal.activityLog.logActivity, {
+			siteUrl: quote.siteUrl,
+			clientId: quote.clientId,
+			action: "quote_converted_to_invoice",
+			description: `quote ${quote.quoteNumber} converted to invoice ${invoiceNumber}`,
+			metadata: JSON.stringify({ quoteId, invoiceId }),
+		});
 
 		return invoiceId;
 	},

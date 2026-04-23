@@ -375,7 +375,10 @@ export default defineSchema({
 	})
 		.index("by_siteUrl", ["siteUrl"])
 		.index("by_clientId", ["clientId"])
-		.index("by_tagId", ["tagId"]),
+		.index("by_tagId", ["tagId"])
+		// Audit M22: fast point-check for "is this tag assigned to this client?"
+		// used by tags.assignTag / tags.removeTag (previously linear take(100) scans).
+		.index("by_clientId_and_tagId", ["clientId", "tagId"]),
 
 	// Activity log for tracking interactions
 	activityLog: defineTable({
@@ -443,7 +446,9 @@ export default defineSchema({
 			v.literal("favorites"),
 		),
 	})
-		.index("by_gallery", ["galleryId"])
+		// Audit M23: dropped redundant `by_gallery` — any galleryId-only query
+		// also needs tenant scoping via siteUrl, so `by_siteUrl_and_galleryId`
+		// covers the same lookups without the duplicate write cost.
 		.index("by_siteUrl", ["siteUrl"])
 		.index("by_siteUrl_and_galleryId", ["siteUrl", "galleryId"]),
 

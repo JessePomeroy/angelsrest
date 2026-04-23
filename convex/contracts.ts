@@ -107,6 +107,7 @@ export const markSent = mutation({
 			contractId,
 			siteUrl,
 			"contract_sent",
+			"contract",
 			(contract) => `contract "${contract.title}" sent`,
 		);
 	},

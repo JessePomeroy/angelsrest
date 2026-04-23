@@ -1,5 +1,6 @@
 import { error } from "@sveltejs/kit";
 import type Stripe from "stripe";
+import { logStructured } from "$lib/server/logger";
 
 /**
  * Read the raw body, extract the `stripe-signature` header, and verify
@@ -26,7 +27,13 @@ export async function verifyStripeWebhook(
 		return stripe.webhooks.constructEvent(body, signature, webhookSecret);
 	} catch (err: unknown) {
 		const message = err instanceof Error ? err.message : "Unknown error";
-		console.error(`${logLabel} signature verification failed:`, message);
+		logStructured({
+			event: "webhook.signature_verification_failed",
+			level: "error",
+			stage: "webhook",
+			error: err,
+			meta: { logLabel, message },
+		});
 		throw error(400, `Webhook Error: ${message}`);
 	}
 }
