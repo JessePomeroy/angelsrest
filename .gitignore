@@ -25,3 +25,18 @@ vite.config.ts.timestamp-*
 # Audit / rotation working docs — do not commit
 AUDIT.md
 ROTATION.md
+
+# Stray tsc emits next to convex sources. If packages/crm-api's tsconfig is
+# ever accidentally run without noEmit, tsc will dump .js/.d.ts/.d.ts.map next
+# to every convex/*.ts (because crm-api's src/ re-exports from ../../convex).
+# Those stray files confuse `npx convex dev`'s esbuild entry-point scan.
+# noEmit: true in packages/crm-api/tsconfig.json is the real fix; this block
+# is a belt that contains the blast radius if the fix is ever unwound.
+convex/*.js
+convex/*.d.ts
+convex/*.d.ts.map
+convex/helpers/*.js
+convex/helpers/*.d.ts
+convex/helpers/*.d.ts.map
+!convex/convex.config.ts
+!convex/_generated/
