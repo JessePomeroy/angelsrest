@@ -2,6 +2,7 @@
 import { setupConvex, useConvexClient } from "@mmailaender/convex-svelte";
 import { api } from "$convex/api";
 import { PUBLIC_CONVEX_URL } from "$env/static/public";
+import { toasts } from "$lib/stores/toast.svelte";
 
 let { data } = $props();
 
@@ -100,7 +101,7 @@ async function downloadAll() {
 		a.click();
 		URL.revokeObjectURL(url);
 	} catch {
-		alert("Download failed. Please try again.");
+		toasts.show("Download failed. Please try again.", { type: "error" });
 	} finally {
 		downloading = false;
 	}
@@ -111,7 +112,7 @@ async function downloadFavorites() {
 		.filter((img: any) => img.isFavorite)
 		.map((img: any) => img.r2Key);
 	if (favKeys.length === 0) {
-		alert("No favorites selected yet.");
+		toasts.show("No favorites selected yet.", { type: "info" });
 		return;
 	}
 	downloading = true;
@@ -135,7 +136,7 @@ async function downloadFavorites() {
 		a.click();
 		URL.revokeObjectURL(url);
 	} catch {
-		alert("Download failed. Please try again.");
+		toasts.show("Download failed. Please try again.", { type: "error" });
 	} finally {
 		downloading = false;
 	}

@@ -38,6 +38,7 @@ import Footer from "$lib/components/Footer.svelte";
 // Layout components
 import Nav from "$lib/components/Nav.svelte";
 import ThemeSwitcher from "$lib/components/ThemeSwitcher.svelte";
+import Toaster from "$lib/components/Toaster.svelte";
 import { cart } from "$lib/shop/cart.svelte";
 
 // Time-aware theming
@@ -156,6 +157,9 @@ onMount(() => {
 {#if !isPortal && !isAdmin}
   <CartDrawer />
 {/if}
+
+<!-- Audit M16: non-blocking toast stack, replaces alert() in shop / delivery. -->
+<Toaster />
 
 <style>
 .skip-link {

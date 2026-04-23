@@ -4,6 +4,7 @@ import SEO from "$lib/components/SEO.svelte";
 import StickyMobileBar from "$lib/components/StickyMobileBar.svelte";
 import { cart } from "$lib/shop/cart.svelte";
 import { cartUI } from "$lib/shop/cartUI.svelte";
+import { toasts } from "$lib/stores/toast.svelte";
 import {
 	FRAMED_BORDER_INCHES,
 	getBorder,
@@ -177,7 +178,7 @@ function handleV2Checkout() {
 		})
 		.catch((err: unknown) => {
 			console.error("Checkout error:", err);
-			alert(err instanceof Error ? err.message : "something went wrong. please try again.");
+			toasts.show(err instanceof Error ? err.message : "something went wrong. please try again.", { type: "error" });
 		})
 		.finally(() => {
 			isLoading = false;
@@ -235,7 +236,7 @@ async function handleV1Checkout() {
 		window.location.href = url;
 	} catch (err: unknown) {
 		console.error("Checkout error:", err);
-		alert(err instanceof Error ? err.message : "something went wrong. please try again.");
+		toasts.show(err instanceof Error ? err.message : "something went wrong. please try again.", { type: "error" });
 	} finally {
 		isLoading = false;
 	}
