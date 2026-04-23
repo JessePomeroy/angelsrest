@@ -1,8 +1,13 @@
-import { error } from "@sveltejs/kit";
-import { createGalleryWorkerProxy } from "$lib/server/galleryWorker";
+import { createGalleryDeleteHandler, setServerConfig } from "@jessepomeroy/admin";
+import { adminServerConfig } from "$lib/config/admin.server";
+import { requireAuth } from "$lib/server/adminAuth";
+import type { RequestHandler } from "./$types";
 
-export const POST = createGalleryWorkerProxy("/upload/delete", {
-	validate: (data) => {
-		if (!data.r2Key) throw error(400, "r2Key is required");
-	},
-});
+setServerConfig(adminServerConfig);
+
+const handler = createGalleryDeleteHandler();
+
+export const POST: RequestHandler = async (event) => {
+	await requireAuth(event.cookies);
+	return handler(event);
+};

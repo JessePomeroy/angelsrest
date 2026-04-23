@@ -17,6 +17,7 @@
 import { error, json } from "@sveltejs/kit";
 import type Stripe from "stripe";
 import { api } from "$convex/api";
+import type { Id } from "$convex/dataModel";
 import { env } from "$env/dynamic/private";
 import { STRIPE_WEBHOOK_SECRET } from "$env/static/private";
 import { SITE_DOMAIN } from "$lib/config/site";
@@ -75,7 +76,7 @@ export async function POST({ request }) {
 						}
 						await convex.mutation(api.invoices.markPaid, {
 							webhookSecret,
-							invoiceId: invoiceId as any,
+							invoiceId: invoiceId as Id<"invoices">,
 							siteUrl: session.metadata?.siteUrl || SITE_DOMAIN,
 						});
 						logStructured({

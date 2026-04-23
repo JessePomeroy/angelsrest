@@ -1,3 +1,13 @@
-import { createGalleryWorkerProxy } from "$lib/server/galleryWorker";
+import { createGalleryProcessHandler, setServerConfig } from "@jessepomeroy/admin";
+import { adminServerConfig } from "$lib/config/admin.server";
+import { requireAuth } from "$lib/server/adminAuth";
+import type { RequestHandler } from "./$types";
 
-export const POST = createGalleryWorkerProxy("/upload/process");
+setServerConfig(adminServerConfig);
+
+const handler = createGalleryProcessHandler();
+
+export const POST: RequestHandler = async (event) => {
+	await requireAuth(event.cookies);
+	return handler(event);
+};

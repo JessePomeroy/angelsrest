@@ -1,6 +1,7 @@
 import { v } from "convex/values";
 import { mutation, query } from "./_generated/server";
 import { requireAuth } from "./authHelpers";
+import { RECENT_ITEMS_LIMIT } from "./helpers/limits";
 
 const TRACKED_PAGES = [
 	"orders",
@@ -99,7 +100,7 @@ export const getUnreadFlags = query({
 			.query("quotes")
 			.withIndex("by_siteUrl", (q) => q.eq("siteUrl", siteUrl))
 			.order("desc")
-			.take(10);
+			.take(RECENT_ITEMS_LIMIT);
 		for (const q of recentQuotes) {
 			const actionTime = q.acceptedAt || q._creationTime;
 			if (
@@ -117,7 +118,7 @@ export const getUnreadFlags = query({
 			.query("invoices")
 			.withIndex("by_siteUrl", (q) => q.eq("siteUrl", siteUrl))
 			.order("desc")
-			.take(10);
+			.take(RECENT_ITEMS_LIMIT);
 		for (const inv of recentInvoices) {
 			const actionTime = inv.paidAt || inv._creationTime;
 			if (
@@ -135,7 +136,7 @@ export const getUnreadFlags = query({
 			.query("contracts")
 			.withIndex("by_siteUrl", (q) => q.eq("siteUrl", siteUrl))
 			.order("desc")
-			.take(10);
+			.take(RECENT_ITEMS_LIMIT);
 		for (const c of recentContracts) {
 			const actionTime = c.signedAt || c._creationTime;
 			if (c.status === "signed" && actionTime > contractsLastSeen) {

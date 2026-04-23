@@ -25,13 +25,14 @@ vi.mock("@sentry/sveltekit", () => {
 import * as Sentry from "@sentry/sveltekit";
 import { logStructured, timed } from "../server/logger";
 
-const sentryMocks = (Sentry as any).__mocks as {
+type SentryMockBag = {
 	captureException: ReturnType<typeof vi.fn>;
 	addBreadcrumb: ReturnType<typeof vi.fn>;
 	setTag: ReturnType<typeof vi.fn>;
 	setExtra: ReturnType<typeof vi.fn>;
 	setContext: ReturnType<typeof vi.fn>;
 };
+const sentryMocks = (Sentry as unknown as { __mocks: SentryMockBag }).__mocks;
 
 describe("logStructured", () => {
 	let logSpy: ReturnType<typeof vi.spyOn>;

@@ -49,7 +49,11 @@ vi.mock("$convex/api", () => ({
 
 function makeEvent() {
 	return {
-		cookies: { get: vi.fn(), getAll: vi.fn(), set: vi.fn() } as any,
+		cookies: {
+			get: vi.fn(),
+			getAll: vi.fn(),
+			set: vi.fn(),
+		} as unknown as import("@sveltejs/kit").Cookies,
 		params: { id: "doc-1" },
 		request: new Request("http://localhost/api/admin/x/doc-1/send", {
 			method: "POST",

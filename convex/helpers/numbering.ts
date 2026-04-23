@@ -1,5 +1,15 @@
 import type { QueryCtx } from "../_generated/server";
 
+/** Tables with a `by_siteUrl` index and a numbered-document field. */
+type NumberedTable = "orders" | "invoices" | "quotes";
+
+/** Per-table name of the number field, mirrored from the schema. */
+type NumberField = {
+	orders: "orderNumber";
+	invoices: "invoiceNumber";
+	quotes: "quoteNumber";
+};
+
 /**
  * Generate the next sequential number for a document type.
  *
@@ -29,24 +39,40 @@ import type { QueryCtx } from "../_generated/server";
  * per (siteUrl, docType) that each creating mutation atomically patches;
  * deferred because the current OCC behavior is correct. See audit H15.
  */
-export async function getNextSequentialNumber(
+export async function getNextSequentialNumber<T extends NumberedTable>(
 	ctx: QueryCtx,
-	table: string,
+	table: T,
 	siteUrl: string,
-	numberField: string,
+	numberField: NumberField[T],
 	prefix: string,
 ): Promise<string> {
-	const latest = await (ctx.db as any)
-		.query(table)
-		.withIndex("by_siteUrl", (q: any) => q.eq("siteUrl", siteUrl))
-		.order("desc")
-		.take(1);
+	let latest: Record<string, unknown> | null;
+	if (table === "orders") {
+		const [row] = await ctx.db
+			.query("orders")
+			.withIndex("by_siteUrl", (q) => q.eq("siteUrl", siteUrl))
+			.order("desc")
+			.take(1);
+		latest = row ?? null;
+	} else if (table === "invoices") {
+		const [row] = await ctx.db
+			.query("invoices")
+			.withIndex("by_siteUrl", (q) => q.eq("siteUrl", siteUrl))
+			.order("desc")
+			.take(1);
+		latest = row ?? null;
+	} else {
+		const [row] = await ctx.db
+			.query("quotes")
+			.withIndex("by_siteUrl", (q) => q.eq("siteUrl", siteUrl))
+			.order("desc")
+			.take(1);
+		latest = row ?? null;
+	}
 
-	if (!latest[0]) return `${prefix}001`;
+	if (!latest) return `${prefix}001`;
 
-	const num = Number.parseInt(
-		(latest[0][numberField] as string).replace(prefix, ""),
-		10,
-	);
+	const existing = latest[numberField] as string;
+	const num = Number.parseInt(existing.replace(prefix, ""), 10);
 	return `${prefix}${String(num + 1).padStart(3, "0")}`;
 }

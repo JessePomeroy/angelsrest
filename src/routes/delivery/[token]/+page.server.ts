@@ -1,5 +1,6 @@
 import { error } from "@sveltejs/kit";
 import { api } from "$convex/api";
+import type { Id } from "$convex/dataModel";
 import { getConvex } from "$lib/server/convexClient";
 import { getGalleryWorkerUrl } from "$lib/server/galleryWorkerUrl";
 
@@ -23,7 +24,7 @@ export async function load({ params }) {
 	}
 
 	const gallery = result.document as {
-		_id: string;
+		_id: Id<"galleries">;
 		name: string;
 		slug: string;
 		status: string;
@@ -39,7 +40,7 @@ export async function load({ params }) {
 	}
 
 	const images = await convex.query(api.galleries.getImages, {
-		galleryId: gallery._id as any,
+		galleryId: gallery._id,
 	});
 
 	const workerUrl = getGalleryWorkerUrl();
@@ -47,7 +48,7 @@ export async function load({ params }) {
 	return {
 		token,
 		gallery,
-		images: images.map((img: any) => ({
+		images: images.map((img) => ({
 			...img,
 			thumbUrl: `${workerUrl}/image/${img.r2Key.replace("/original/", "/thumb/")}`,
 			previewUrl: `${workerUrl}/image/${img.r2Key.replace("/original/", "/preview/")}`,

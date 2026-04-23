@@ -52,6 +52,16 @@ All admin pages at `/admin/*` protected by HTTP Basic Auth.
 | Messages | `/admin/messages` | Convex platformMessages |
 | Platform Clients | `/admin/platform` | Convex platformClients |
 
+## Admin Mutation Transport
+
+Admin mutations go through **HTTP**, not the Convex WebSocket. Critical context before editing anything admin-related:
+
+- **Browser Convex WebSocket is intentionally unauthenticated.** `src/routes/admin/+layout.svelte` uses `setupConvex(PUBLIC_CONVEX_URL)` (no auth). This sidesteps a permanent WebSocket pause bug in `@mmailaender/convex-better-auth-svelte@0.7.3` + `better-auth@1.5.3` during SvelteKit `goto()` navigation.
+- **Admin mutations route through `src/routes/api/admin/mutation/+server.ts`.** This is a universal proxy: accepts `POST { name, args }`, validates the Better Auth cookie via `requireAuth(cookies)`, and forwards on a **fresh** `ConvexHttpClient` (per-request instance — NOT the `getConvex()` singleton — to avoid `setAuth` races between concurrent requests).
+- **The routing is driven by `AdminConfig.mutationTransport: "http"`** set in `src/lib/config/admin.ts`. The `@jessepomeroy/admin` package's `useAdminClient()` is a Proxy-wrapped `ConvexClient` that intercepts `.mutation()` and POSTs to `/api/admin/mutation` when transport is `"http"`. Queries pass through untouched.
+- **Do NOT re-add auth to the browser WebSocket** (via `createSvelteAuthClient` or similar) without reading `~/Documents/quilt/00_inbox/2026-04-23 PR candidate — convex-better-auth-svelte pause bug.md`. The pause bug is a known trap.
+- If you add a new admin mutation that requires auth, you do **not** need a new `+server.ts` — the universal proxy handles any `api.<module>.<fn>` by name. Just call it like any other: `await client.mutation(api.foo.bar, args)`.
+
 ## Admin Design System
 
 - Fonts: "Chillax" for headings, "Synonym" for body

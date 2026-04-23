@@ -2,6 +2,12 @@ import { v } from "convex/values";
 import { internal } from "./_generated/api";
 import { internalMutation, mutation, query } from "./_generated/server";
 import { requireAuth } from "./authHelpers";
+import {
+	COMPACT_LIST_LIMIT,
+	DEFAULT_LIST_LIMIT,
+	GALLERY_IMAGE_LIMIT,
+	LARGE_SCAN_LIMIT,
+} from "./helpers/limits";
 import { patchDocument } from "./helpers/patching";
 
 // Audit H14: cap per-batch DB deletes so the mutation transaction never
@@ -188,7 +194,7 @@ export const listBySite = query({
 			.query("galleries")
 			.withIndex("by_siteUrl", (q) => q.eq("siteUrl", siteUrl))
 			.order("desc")
-			.take(100);
+			.take(DEFAULT_LIST_LIMIT);
 
 		// Collect unique client IDs and fan out the reads in parallel
 		// (audit M24). Mirrors the Promise.all pattern in tags.getClientTags.
@@ -213,7 +219,7 @@ export const listByClient = query({
 			.query("galleries")
 			.withIndex("by_client", (q) => q.eq("clientId", clientId))
 			.order("desc")
-			.take(50);
+			.take(COMPACT_LIST_LIMIT);
 	},
 });
 
@@ -326,7 +332,7 @@ export const getImages = query({
 		const images = await ctx.db
 			.query("galleryImages")
 			.withIndex("by_gallery", (q) => q.eq("galleryId", galleryId))
-			.take(2000);
+			.take(GALLERY_IMAGE_LIMIT);
 		// Audit H13 belt-and-suspenders: break ties on `order` with
 		// `_creationTime` so render order is stable even in the theoretical
 		// case that two rows share an `order` value.
@@ -378,7 +384,7 @@ export const getDownloadStats = query({
 			.withIndex("by_siteUrl_and_galleryId", (q) =>
 				q.eq("siteUrl", gallery.siteUrl).eq("galleryId", galleryId),
 			)
-			.take(1000);
+			.take(LARGE_SCAN_LIMIT);
 
 		return {
 			total: downloads.length,

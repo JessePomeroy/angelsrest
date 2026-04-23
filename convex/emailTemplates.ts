@@ -2,6 +2,7 @@ import { v } from "convex/values";
 import { mutation, query } from "./_generated/server";
 import { requireAuth } from "./authHelpers";
 import { deleteDocument } from "./helpers/deleting";
+import { BULK_SCAN_LIMIT } from "./helpers/limits";
 import { patchDocument } from "./helpers/patching";
 
 const categoryValidator = v.union(
@@ -21,7 +22,7 @@ export const list = query({
 		return await ctx.db
 			.query("emailTemplates")
 			.withIndex("by_siteUrl", (q) => q.eq("siteUrl", siteUrl))
-			.take(500);
+			.take(BULK_SCAN_LIMIT);
 	},
 });
 

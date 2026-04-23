@@ -1,6 +1,7 @@
 import { v } from "convex/values";
 import { mutation, query } from "./_generated/server";
 import { requireAuth } from "./authHelpers";
+import { BULK_SCAN_LIMIT } from "./helpers/limits";
 
 export const list = query({
 	args: { siteUrl: v.string() },
@@ -10,7 +11,7 @@ export const list = query({
 			.query("platformMessages")
 			.withIndex("by_siteUrl", (q) => q.eq("siteUrl", siteUrl))
 			.order("asc")
-			.take(500);
+			.take(BULK_SCAN_LIMIT);
 	},
 });
 
@@ -38,7 +39,7 @@ export const markRead = mutation({
 			.withIndex("by_siteUrl_unread", (q) =>
 				q.eq("siteUrl", siteUrl).eq("read", false),
 			)
-			.take(500);
+			.take(BULK_SCAN_LIMIT);
 
 		for (const msg of unread) {
 			await ctx.db.patch(msg._id, { read: true });
@@ -65,7 +66,7 @@ export const allThreads = query({
 	handler: async (ctx) => {
 		await requireAuth(ctx);
 
-		const clients = await ctx.db.query("platformClients").take(500);
+		const clients = await ctx.db.query("platformClients").take(BULK_SCAN_LIMIT);
 
 		const threads = await Promise.all(
 			clients.map(async (client) => {
@@ -84,7 +85,7 @@ export const allThreads = query({
 					.withIndex("by_siteUrl_unread", (q) =>
 						q.eq("siteUrl", client.siteUrl).eq("read", false),
 					)
-					.take(500);
+					.take(BULK_SCAN_LIMIT);
 
 				const unreadCount = unreadRows.filter((m) => m.sender === "client").length;
 

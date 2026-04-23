@@ -2,6 +2,7 @@ import { v } from "convex/values";
 import { internal } from "./_generated/api";
 import { mutation, query } from "./_generated/server";
 import { requireAuth } from "./authHelpers";
+import { BULK_SCAN_LIMIT, COMPACT_LIST_LIMIT, LOOKUP_LIMIT } from "./helpers/limits";
 
 export const listTags = query({
 	args: { siteUrl: v.string() },
@@ -10,7 +11,7 @@ export const listTags = query({
 		return await ctx.db
 			.query("clientTags")
 			.withIndex("by_siteUrl", (q) => q.eq("siteUrl", siteUrl))
-			.take(200);
+			.take(LOOKUP_LIMIT);
 	},
 });
 
@@ -21,7 +22,7 @@ export const getClientTags = query({
 		const assignments = await ctx.db
 			.query("clientTagAssignments")
 			.withIndex("by_clientId", (q) => q.eq("clientId", clientId))
-			.take(50);
+			.take(COMPACT_LIST_LIMIT);
 
 		// Fan out tag reads in parallel instead of serial (N+1). See audit M25.
 		const tags = await Promise.all(
@@ -50,7 +51,7 @@ export const deleteTag = mutation({
 		const assignments = await ctx.db
 			.query("clientTagAssignments")
 			.withIndex("by_tagId", (q) => q.eq("tagId", tagId))
-			.take(500);
+			.take(BULK_SCAN_LIMIT);
 
 		for (const assignment of assignments) {
 			await ctx.db.delete(assignment._id);

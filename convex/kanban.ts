@@ -1,6 +1,7 @@
 import { v } from "convex/values";
 import { mutation, query } from "./_generated/server";
 import { requireAuth, requireSiteAdmin } from "./authHelpers";
+import { BULK_SCAN_LIMIT, COMPACT_LIST_LIMIT, LARGE_SCAN_LIMIT } from "./helpers/limits";
 
 const DEFAULT_COLUMNS: Record<string, string[]> = {
 	wedding: [
@@ -143,7 +144,7 @@ export const listBoardConfigs = query({
 		return await ctx.db
 			.query("boardConfigs")
 			.withIndex("by_siteUrl", (q) => q.eq("siteUrl", siteUrl))
-			.take(50);
+			.take(COMPACT_LIST_LIMIT);
 	},
 });
 
@@ -179,7 +180,7 @@ export const initializeBoard = mutation({
 		const clients = await ctx.db
 			.query("photographyClients")
 			.withIndex("by_siteUrl", (q) => q.eq("siteUrl", siteUrl))
-			.take(1000);
+			.take(LARGE_SCAN_LIMIT);
 
 		const matchingClients = clients.filter((c) => c.type === projectType);
 		// Track position counters per column
@@ -317,7 +318,7 @@ export const deleteColumn = mutation({
 				.withIndex("by_siteUrl_and_boardColumnId", (q) =>
 					q.eq("siteUrl", config.siteUrl).eq("boardColumnId", columnId),
 				)
-				.take(500);
+				.take(BULK_SCAN_LIMIT);
 
 			// Audit M30: queue migrating clients AFTER the existing cards in the
 			// fallback column so they don't all stack on position 0 and collide
@@ -328,7 +329,7 @@ export const deleteColumn = mutation({
 				.withIndex("by_siteUrl_and_boardColumnId", (q) =>
 					q.eq("siteUrl", config.siteUrl).eq("boardColumnId", fallbackColumnId),
 				)
-				.take(500);
+				.take(BULK_SCAN_LIMIT);
 			let nextPosition = existingInFallback.reduce(
 				(max, c) => Math.max(max, (c.boardPosition ?? -1) + 1),
 				0,

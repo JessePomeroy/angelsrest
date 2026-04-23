@@ -4,6 +4,7 @@ import { internal } from "./_generated/api";
 import { mutation, query } from "./_generated/server";
 import { requireAuth } from "./authHelpers";
 import { deleteDocument } from "./helpers/deleting";
+import { BULK_SCAN_LIMIT, LARGE_SCAN_LIMIT } from "./helpers/limits";
 import { patchDocument } from "./helpers/patching";
 import { categoryValidator } from "./helpers/validators";
 
@@ -33,7 +34,7 @@ export const listClients = query({
 					q.eq("siteUrl", siteUrl).eq("category", category),
 				)
 				.order("desc")
-				.take(500);
+				.take(BULK_SCAN_LIMIT);
 			if (status) {
 				return results.filter((c) => c.status === status);
 			}
@@ -43,7 +44,7 @@ export const listClients = query({
 			.query("photographyClients")
 			.withIndex("by_siteUrl", (q) => q.eq("siteUrl", siteUrl))
 			.order("desc")
-			.take(500);
+			.take(BULK_SCAN_LIMIT);
 		if (status) {
 			return results.filter((c) => c.status === status);
 		}
@@ -169,7 +170,7 @@ export const getStats = query({
 		const all = await ctx.db
 			.query("photographyClients")
 			.withIndex("by_siteUrl", (q) => q.eq("siteUrl", siteUrl))
-			.take(1000);
+			.take(LARGE_SCAN_LIMIT);
 
 		return {
 			total: all.length,

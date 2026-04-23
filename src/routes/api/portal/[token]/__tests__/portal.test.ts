@@ -30,7 +30,7 @@ function makeReq(token: string, body?: unknown) {
 		request: {
 			json: async () => body ?? {},
 		},
-	} as any;
+	} as unknown;
 }
 
 // ─── Tests ────────────────────────────────────────────────────────────────────

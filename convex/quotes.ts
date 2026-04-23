@@ -3,6 +3,7 @@ import { internal } from "./_generated/api";
 import { mutation, query } from "./_generated/server";
 import { requireAuth, requireSiteAdmin } from "./authHelpers";
 import { deleteDocument } from "./helpers/deleting";
+import { DEFAULT_LIST_LIMIT } from "./helpers/limits";
 import { markDocumentSent } from "./helpers/marking";
 import { getNextSequentialNumber } from "./helpers/numbering";
 import { patchDocument } from "./helpers/patching";
@@ -242,7 +243,7 @@ export const listPresets = query({
 		return await ctx.db
 			.query("quotePresets")
 			.withIndex("by_siteUrl", (q) => q.eq("siteUrl", siteUrl))
-			.take(100);
+			.take(DEFAULT_LIST_LIMIT);
 	},
 });
 

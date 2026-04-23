@@ -8,6 +8,7 @@
 import { ConvexHttpClient } from "convex/browser";
 import dotenv from "dotenv";
 import { api } from "../convex/_generated/api";
+import type { Id } from "../convex/_generated/dataModel";
 
 dotenv.config({ path: ".env" });
 dotenv.config({ path: ".env.local", override: true });
@@ -85,7 +86,7 @@ async function seed() {
 		},
 	];
 
-	const clientIds: string[] = [];
+	const clientIds: Id<"photographyClients">[] = [];
 	for (const c of clients) {
 		const { status, ...createArgs } = c;
 		const id = await convex.mutation(api.crm.createClient, {
@@ -96,7 +97,8 @@ async function seed() {
 		clientIds.push(id);
 		if (status !== "lead") {
 			await convex.mutation(api.crm.updateClient, {
-				clientId: id as any,
+				clientId: id,
+				siteUrl: SITE,
 				status,
 			});
 		}
@@ -219,7 +221,7 @@ async function seed() {
 		const id = await convex.mutation(api.invoices.create, {
 			siteUrl: SITE,
 			invoiceNumber: inv.number,
-			clientId: clientIds[inv.clientIdx] as any,
+			clientId: clientIds[inv.clientIdx],
 			invoiceType: inv.type,
 			items: [{ description: "Service", quantity: 1, unitPrice: inv.total }],
 			dueDate: "2026-05-01",
@@ -260,7 +262,7 @@ async function seed() {
 		const id = await convex.mutation(api.quotes.create, {
 			siteUrl: SITE,
 			quoteNumber: q.number,
-			clientId: clientIds[q.clientIdx] as any,
+			clientId: clientIds[q.clientIdx],
 			category: q.category,
 			packages: [
 				{

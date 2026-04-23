@@ -4,12 +4,53 @@ import type { Doc, Id } from "./_generated/dataModel";
 import type { MutationCtx } from "./_generated/server";
 import { mutation, query } from "./_generated/server";
 import { requireAuth } from "./authHelpers";
+import { DEFAULT_LIST_LIMIT } from "./helpers/limits";
 
 /**
  * Shape of the `portalTokens` row. Exported for use by the single-flight
  * action mutations below.
  */
 type PortalTokenDoc = Doc<"portalTokens">;
+
+/** Portal token type-tag values, mirrored from the schema union. */
+type PortalTokenType = PortalTokenDoc["type"];
+
+/**
+ * Map each token `type` to the Convex Id type its `documentId` actually
+ * references. `documentId` is stored as `v.string()` in the schema (audit
+ * M11 — changing that would require a migration); this table is the
+ * TypeScript-level discriminated mapping callers use to stay type-safe.
+ */
+type PortalDocumentIdFor<T extends PortalTokenType> = T extends "invoice"
+	? Id<"invoices">
+	: T extends "quote"
+		? Id<"quotes">
+		: T extends "contract"
+			? Id<"contracts">
+			: T extends "gallery"
+				? Id<"galleries">
+				: never;
+
+/** Portal token narrowed by a specific `type` — `documentId` comes back correctly typed. */
+type NarrowedPortalToken<T extends PortalTokenType> = Omit<
+	PortalTokenDoc,
+	"type" | "documentId"
+> & {
+	type: T;
+	documentId: PortalDocumentIdFor<T>;
+};
+
+/**
+ * Given a token doc that's already had its `type` narrowed (e.g. inside a
+ * branch of `switch (tokenDoc.type)`), return its `documentId` with the
+ * Id type that matches `type`. Runs no runtime check — callers must narrow
+ * first. Replaces per-site `documentId as Id<"...">` casts.
+ */
+function typedDocumentId<T extends PortalTokenType>(
+	doc: PortalTokenDoc & { type: T },
+): PortalDocumentIdFor<T> {
+	return doc.documentId as PortalDocumentIdFor<T>;
+}
 
 /**
  * Validate + load a portal token inside a mutation. The token is the caller's
@@ -25,11 +66,11 @@ type PortalTokenDoc = Doc<"portalTokens">;
  *   - the underlying document exists AND its siteUrl matches the token's
  *     siteUrl (defense in depth against cross-tenant token forgery)
  */
-async function loadPortalTokenForAction(
+async function loadPortalTokenForAction<T extends PortalTokenType>(
 	ctx: MutationCtx,
 	token: string,
-	expectedType: PortalTokenDoc["type"],
-): Promise<PortalTokenDoc> {
+	expectedType: T,
+): Promise<NarrowedPortalToken<T>> {
 	const tokenDoc = await ctx.db
 		.query("portalTokens")
 		.withIndex("by_token", (q) => q.eq("token", token))
@@ -44,7 +85,8 @@ async function loadPortalTokenForAction(
 	if (tokenDoc.type !== expectedType) {
 		throw new Error(`Token is not for a ${expectedType}`);
 	}
-	return tokenDoc;
+	// Narrowed by the runtime `type` check just above.
+	return tokenDoc as unknown as NarrowedPortalToken<T>;
 }
 
 /**
@@ -107,13 +149,13 @@ export const getByToken = query({
 		let document: Doc<"invoices" | "quotes" | "contracts" | "galleries"> | null =
 			null;
 		if (tokenDoc.type === "invoice") {
-			document = await ctx.db.get(tokenDoc.documentId as Id<"invoices">);
+			document = await ctx.db.get(typedDocumentId(tokenDoc));
 		} else if (tokenDoc.type === "quote") {
-			document = await ctx.db.get(tokenDoc.documentId as Id<"quotes">);
+			document = await ctx.db.get(typedDocumentId(tokenDoc));
 		} else if (tokenDoc.type === "contract") {
-			document = await ctx.db.get(tokenDoc.documentId as Id<"contracts">);
+			document = await ctx.db.get(typedDocumentId(tokenDoc));
 		} else if (tokenDoc.type === "gallery") {
-			document = await ctx.db.get(tokenDoc.documentId as Id<"galleries">);
+			document = await ctx.db.get(typedDocumentId(tokenDoc));
 		}
 
 		if (!document) return null;
@@ -142,7 +184,7 @@ export const acceptQuote = mutation({
 	args: { token: v.string() },
 	handler: async (ctx, { token }) => {
 		const tokenDoc = await loadPortalTokenForAction(ctx, token, "quote");
-		const quoteId = tokenDoc.documentId as Id<"quotes">;
+		const quoteId = tokenDoc.documentId;
 		const quote = await ctx.db.get(quoteId);
 		if (!quote || quote.siteUrl !== tokenDoc.siteUrl) {
 			throw new Error("Quote not found");
@@ -174,7 +216,7 @@ export const declineQuote = mutation({
 	args: { token: v.string() },
 	handler: async (ctx, { token }) => {
 		const tokenDoc = await loadPortalTokenForAction(ctx, token, "quote");
-		const quoteId = tokenDoc.documentId as Id<"quotes">;
+		const quoteId = tokenDoc.documentId;
 		const quote = await ctx.db.get(quoteId);
 		if (!quote || quote.siteUrl !== tokenDoc.siteUrl) {
 			throw new Error("Quote not found");
@@ -212,7 +254,7 @@ export const signContract = mutation({
 	handler: async (ctx, { token, signerName, signerEmail, signatureData }) => {
 		if (!signerName.trim()) throw new Error("Signer name is required");
 		const tokenDoc = await loadPortalTokenForAction(ctx, token, "contract");
-		const contractId = tokenDoc.documentId as Id<"contracts">;
+		const contractId = tokenDoc.documentId;
 		const contract = await ctx.db.get(contractId);
 		if (!contract || contract.siteUrl !== tokenDoc.siteUrl) {
 			throw new Error("Contract not found");
@@ -263,6 +305,6 @@ export const listTokens = query({
 			.query("portalTokens")
 			.withIndex("by_siteUrl", (q) => q.eq("siteUrl", siteUrl))
 			.order("desc")
-			.take(100);
+			.take(DEFAULT_LIST_LIMIT);
 	},
 });

@@ -13,13 +13,46 @@
  * (/shop/[slug] handles both types).
  */
 
+import type { SanityImageSource } from "@sanity/image-url";
 import { getSanityClient } from "$lib/sanity/client";
 import { imageSet, previewUrl } from "$lib/utils/images";
+
+// Narrow shapes mirroring each GROQ projection below. Full Sanity codegen
+// is tracked as audit M15/M36; these local types cover this file's needs.
+type ProductRow = {
+	title: string;
+	slug: string;
+	previewImage: SanityImageSource;
+	category: string;
+	featured?: boolean;
+	inStock: boolean;
+	startingPrice?: number;
+	price?: number;
+	collection?: { slug: string; title: string };
+};
+
+type CollectionRow = {
+	title: string;
+	slug: string;
+	previewImage: SanityImageSource & { alt?: string };
+	description?: string;
+};
+
+type PrintSetRow = {
+	title: string;
+	slug: string;
+	images?: Array<SanityImageSource & { alt?: string }>;
+	previewImage: SanityImageSource;
+	description?: string;
+	startingPrice?: number;
+	price?: number;
+	featured?: boolean;
+};
 
 export async function load({ locals }) {
 	const sanity = getSanityClient(locals.isPreview);
 	// V2 print products
-	const v2Products = await sanity.fetch(`
+	const v2Products = await sanity.fetch<ProductRow[]>(`
 		*[_type == "lumaProductV2" && inStock == true]
 		| order(featured desc, title asc) {
 			title,
@@ -32,14 +65,14 @@ export async function load({ locals }) {
 		}
 	`);
 
-	const v2WithImages = (v2Products as any[]).map((p) => ({
+	const v2WithImages = v2Products.map((p) => ({
 		...p,
 		preview: previewUrl(p.previewImage),
 		price: p.startingPrice,
 	}));
 
 	// V1 products (non-print: postcards, tapestries, digital, merchandise)
-	const v1Products = await sanity.fetch(`
+	const v1Products = await sanity.fetch<ProductRow[]>(`
 		*[_type == "product" && inStock == true]
 		| order(featured desc, orderRank, title asc) {
 			title,
@@ -56,7 +89,7 @@ export async function load({ locals }) {
 		}
 	`);
 
-	const v1WithImages = (v1Products as any[]).map((p) => ({
+	const v1WithImages = v1Products.map((p) => ({
 		...p,
 		preview: previewUrl(p.previewImage),
 	}));
@@ -67,7 +100,7 @@ export async function load({ locals }) {
 	);
 
 	// Print collections (shared by V1 and V2)
-	const collections = await sanity.fetch(`
+	const collections = await sanity.fetch<CollectionRow[]>(`
 		*[_type == "printCollection" && !defined(parent)]
 		| order(orderRank, title asc) {
 			title,
@@ -77,14 +110,14 @@ export async function load({ locals }) {
 		}
 	`);
 
-	const collectionsWithImages = (collections as any[]).map((c) => ({
+	const collectionsWithImages = collections.map((c) => ({
 		...c,
 		alt: c.previewImage?.alt || "",
 		previewImage: previewUrl(c.previewImage),
 	}));
 
 	// V2 print sets
-	const v2Sets = await sanity.fetch(`
+	const v2Sets = await sanity.fetch<PrintSetRow[]>(`
 		*[_type == "lumaPrintSetV2" && inStock == true]
 		| order(featured desc, title asc) {
 			title,
@@ -96,16 +129,16 @@ export async function load({ locals }) {
 		}
 	`);
 
-	const v2SetsWithImages = (v2Sets as any[]).map((s) => ({
+	const v2SetsWithImages = v2Sets.map((s) => ({
 		...s,
-		preview1: imageSet(s.images?.[0])?.thumb,
-		preview2: imageSet(s.images?.[1])?.thumb,
+		preview1: s.images?.[0] ? imageSet(s.images[0])?.thumb : undefined,
+		preview2: s.images?.[1] ? imageSet(s.images[1])?.thumb : undefined,
 		previewImage: previewUrl(s.previewImage),
 		price: s.startingPrice,
 	}));
 
 	// V1 print sets (legacy — will be migrated to V2)
-	const v1Sets = await sanity.fetch(`
+	const v1Sets = await sanity.fetch<PrintSetRow[]>(`
 		*[_type == "printSet" && !defined(parent) && inStock == true]
 		| order(featured desc, orderRank, title asc) {
 			title,
@@ -117,10 +150,10 @@ export async function load({ locals }) {
 		}
 	`);
 
-	const v1SetsWithImages = (v1Sets as any[]).map((s) => ({
+	const v1SetsWithImages = v1Sets.map((s) => ({
 		...s,
-		preview1: imageSet(s.images?.[0])?.thumb,
-		preview2: imageSet(s.images?.[1])?.thumb,
+		preview1: s.images?.[0] ? imageSet(s.images[0])?.thumb : undefined,
+		preview2: s.images?.[1] ? imageSet(s.images[1])?.thumb : undefined,
 		previewImage: previewUrl(s.previewImage),
 	}));
 

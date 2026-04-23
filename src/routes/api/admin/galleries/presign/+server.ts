@@ -1,10 +1,13 @@
-import { error } from "@sveltejs/kit";
-import { createGalleryWorkerProxy } from "$lib/server/galleryWorker";
+import { createGalleryPresignHandler, setServerConfig } from "@jessepomeroy/admin";
+import { adminServerConfig } from "$lib/config/admin.server";
+import { requireAuth } from "$lib/server/adminAuth";
+import type { RequestHandler } from "./$types";
 
-export const POST = createGalleryWorkerProxy("/upload/presign", {
-	validate: (data) => {
-		if (!data.siteUrl || !data.galleryId || !data.filename || !data.contentType) {
-			throw error(400, "Missing required fields");
-		}
-	},
-});
+setServerConfig(adminServerConfig);
+
+const handler = createGalleryPresignHandler();
+
+export const POST: RequestHandler = async (event) => {
+	await requireAuth(event.cookies);
+	return handler(event);
+};

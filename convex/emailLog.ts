@@ -1,6 +1,8 @@
 import { v } from "convex/values";
+import type { Id } from "./_generated/dataModel";
 import { mutation, query } from "./_generated/server";
 import { requireAuth } from "./authHelpers";
+import { DEFAULT_LIST_LIMIT } from "./helpers/limits";
 
 const emailTypeValidator = v.union(
 	v.literal("invoice"),
@@ -9,6 +11,29 @@ const emailTypeValidator = v.union(
 	v.literal("reminder"),
 	v.literal("custom"),
 );
+
+/**
+ * Type-level contract between `emailLog.type` and `emailLog.relatedId`
+ * (audit M11). `relatedId` is stored as `v.string()` in the schema so
+ * existing rows don't require a migration, but when present it should be
+ * the Convex Id of the document denoted by `type`.
+ *
+ * Use this map when reading a row back to cast `relatedId` to a typed
+ * `Id<...>`:
+ *
+ *     const id = row.relatedId as RelatedIdFor<typeof row.type>;
+ *
+ * `reminder` and `custom` do not reference a specific document; their
+ * `relatedId` should be omitted.
+ */
+export type RelatedIdFor<T extends "invoice" | "quote" | "contract" | "reminder" | "custom"> =
+	T extends "invoice"
+		? Id<"invoices">
+		: T extends "quote"
+			? Id<"quotes">
+			: T extends "contract"
+				? Id<"contracts">
+				: undefined;
 
 export const list = query({
 	args: {
@@ -24,13 +49,13 @@ export const list = query({
 					q.eq("siteUrl", siteUrl).eq("type", type),
 				)
 				.order("desc")
-				.take(100);
+				.take(DEFAULT_LIST_LIMIT);
 		}
 		return await ctx.db
 			.query("emailLog")
 			.withIndex("by_siteUrl", (q) => q.eq("siteUrl", siteUrl))
 			.order("desc")
-			.take(100);
+			.take(DEFAULT_LIST_LIMIT);
 	},
 });
 

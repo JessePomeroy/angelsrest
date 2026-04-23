@@ -46,7 +46,7 @@ describe("requireAuth", () => {
 			subject: "user-1",
 		});
 
-		const mockCookies = {} as any;
+		const mockCookies = {} as unknown as import("@sveltejs/kit").Cookies;
 		const result = await requireAuth(mockCookies);
 
 		expect(result).toBe("valid-session-token-123");
@@ -58,7 +58,7 @@ describe("requireAuth", () => {
 	it("throws 401 when no session token is present", async () => {
 		mockGetToken.mockReturnValue(null);
 
-		const mockCookies = {} as any;
+		const mockCookies = {} as unknown as import("@sveltejs/kit").Cookies;
 
 		await expect(requireAuth(mockCookies)).rejects.toMatchObject({
 			status: 401,
@@ -70,7 +70,7 @@ describe("requireAuth", () => {
 		mockGetToken.mockReturnValue("stale-token");
 		mockConvexQuery.mockResolvedValue(null);
 
-		const mockCookies = {} as any;
+		const mockCookies = {} as unknown as import("@sveltejs/kit").Cookies;
 		await expect(requireAuth(mockCookies)).rejects.toMatchObject({ status: 401 });
 	});
 
@@ -78,14 +78,14 @@ describe("requireAuth", () => {
 		mockGetToken.mockReturnValue("some-token");
 		mockConvexQuery.mockRejectedValue(new Error("network dropped"));
 
-		const mockCookies = {} as any;
+		const mockCookies = {} as unknown as import("@sveltejs/kit").Cookies;
 		await expect(requireAuth(mockCookies)).rejects.toMatchObject({ status: 401 });
 	});
 
 	it("throws 401 when getToken returns empty string", async () => {
 		mockGetToken.mockReturnValue("");
 
-		const mockCookies = {} as any;
+		const mockCookies = {} as unknown as import("@sveltejs/kit").Cookies;
 		await expect(requireAuth(mockCookies)).rejects.toMatchObject({ status: 401 });
 	});
 });

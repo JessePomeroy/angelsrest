@@ -1,8 +1,10 @@
 <script lang="ts">
 import { setupConvex, useConvexClient } from "@mmailaender/convex-svelte";
 import { api } from "$convex/api";
+import type { Id } from "$convex/dataModel";
 import { PUBLIC_CONVEX_URL } from "$env/static/public";
 import { toasts } from "$lib/stores/toast.svelte";
+import { trapFocus } from "$lib/utils/focusTrap";
 
 let { data } = $props();
 
@@ -45,21 +47,7 @@ function handleKeydown(e: KeyboardEvent) {
 	if (e.key === "ArrowRight" && lightboxIndex < images.length - 1)
 		lightboxIndex++;
 	if (e.key === "ArrowLeft" && lightboxIndex > 0) lightboxIndex--;
-	if (e.key === "Tab" && lightboxEl) {
-		const focusable = lightboxEl.querySelectorAll<HTMLElement>(
-			"a[href], button:not([disabled])",
-		);
-		if (focusable.length === 0) return;
-		const first = focusable[0];
-		const last = focusable[focusable.length - 1];
-		if (e.shiftKey && document.activeElement === first) {
-			e.preventDefault();
-			last.focus();
-		} else if (!e.shiftKey && document.activeElement === last) {
-			e.preventDefault();
-			first.focus();
-		}
-	}
+	if (lightboxEl) trapFocus(e, lightboxEl);
 }
 
 async function toggleFavorite(index: number) {
@@ -79,7 +67,7 @@ async function toggleFavorite(index: number) {
 
 	try {
 		await client.mutation(api.galleries.updateImage, {
-			id: image._id as any,
+			id: image._id as Id<"galleryImages">,
 			isFavorite: newVal,
 		});
 	} catch (err) {
@@ -92,7 +80,7 @@ async function toggleFavorite(index: number) {
 async function downloadAll() {
 	downloading = true;
 	try {
-		const keys = images.map((img: any) => img.r2Key);
+		const keys = images.map((img) => img.r2Key);
 		const res = await fetch(`${data.workerUrl}/download/zip`, {
 			method: "POST",
 			headers: { "Content-Type": "application/json" },
@@ -120,8 +108,8 @@ async function downloadAll() {
 
 async function downloadFavorites() {
 	const favKeys = images
-		.filter((img: any) => img.isFavorite)
-		.map((img: any) => img.r2Key);
+		.filter((img) => img.isFavorite)
+		.map((img) => img.r2Key);
 	if (favKeys.length === 0) {
 		toasts.show("No favorites selected yet.", { type: "info" });
 		return;
@@ -154,7 +142,7 @@ async function downloadFavorites() {
 }
 
 let favoriteCount = $derived(
-	images.filter((img: any) => img.isFavorite).length,
+	images.filter((img) => img.isFavorite).length,
 );
 </script>
 
