@@ -9,12 +9,13 @@
  */
 
 import { error } from "@sveltejs/kit";
-import { client } from "$lib/sanity/client";
+import { getSanityClient } from "$lib/sanity/client";
 import { imageSet, previewUrl } from "$lib/utils/images";
 
-export async function load({ params }) {
+export async function load({ params, locals }) {
+	const sanity = getSanityClient(locals.isPreview);
 	// Fetch the collection with parent reference
-	const collection = await client.fetch(
+	const collection = await sanity.fetch(
 		`*[_type == "printCollection" && slug.current == $slug][0]{
 			title,
 			description,
@@ -32,7 +33,7 @@ export async function load({ params }) {
 	}
 
 	// Fetch sub-collections (children of this collection)
-	const subCollections = await client.fetch(
+	const subCollections = await sanity.fetch(
 		`*[_type == "printCollection" && references(*[_type == "printCollection" && slug.current == $slug]._id)] 
 		| order(orderRank, title asc) {
 			title,
@@ -43,7 +44,7 @@ export async function load({ params }) {
 	);
 
 	// Fetch print sets in this collection
-	const printSets = await client.fetch(
+	const printSets = await sanity.fetch(
 		`*[_type == "printSet" && references(*[_type == "printCollection" && slug.current == $slug]._id) && inStock == true] 
 		| order(orderRank, title asc) {
 			title,
@@ -56,7 +57,7 @@ export async function load({ params }) {
 	);
 
 	// Fetch products in this collection
-	const products = await client.fetch(
+	const products = await sanity.fetch(
 		`*[_type == "product" && references(*[_type == "printCollection" && slug.current == $slug]._id) && inStock == true] 
 		| order(orderRank, title asc) {
 			title,

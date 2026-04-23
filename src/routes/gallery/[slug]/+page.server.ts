@@ -5,12 +5,13 @@
  */
 
 import { error } from "@sveltejs/kit";
-import { client, urlFor } from "$lib/sanity/client";
+import { getSanityClient, urlFor } from "$lib/sanity/client";
 
-export async function load({ params }) {
+export async function load({ params, locals }) {
+	const sanity = getSanityClient(locals.isPreview);
 	// Fetch the gallery matching this slug
 	// $slug is a parameterized query variable (prevents injection)
-	const gallery = await client.fetch(
+	const gallery = await sanity.fetch(
 		`
     *[_type == "gallery" && slug.current == $slug][0]{
       title,

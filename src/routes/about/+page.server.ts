@@ -1,8 +1,9 @@
-import { client, urlFor } from "$lib/sanity/client";
+import { getSanityClient, urlFor } from "$lib/sanity/client";
 
-export const load = async () => {
+export const load = async ({ locals }) => {
+	const sanity = getSanityClient(locals.isPreview);
 	const [about, contactPage] = await Promise.all([
-		client.fetch(
+		sanity.fetch(
 			`*[_type == "about"][0]{
 				name,
 				portrait,
@@ -16,7 +17,7 @@ export const load = async () => {
 				}
 			}`,
 		),
-		client.fetch(
+		sanity.fetch(
 			`*[_type == "contactPage"][0]{
 				heading,
 				intro,

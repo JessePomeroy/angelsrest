@@ -1,8 +1,9 @@
 import { error } from "@sveltejs/kit";
-import { client } from "$lib/sanity/client";
+import { getSanityClient } from "$lib/sanity/client";
 
-export const load = async ({ params }) => {
-	const post = await client.fetch(
+export const load = async ({ params, locals }) => {
+	const sanity = getSanityClient(locals.isPreview);
+	const post = await sanity.fetch(
 		`
     *[_type == "post" && slug.current == $slug][0] {
       _id,

@@ -3,11 +3,12 @@
  * Fetches all galleries from Sanity for the gallery picker page.
  */
 
-import { client, urlFor } from "$lib/sanity/client";
+import { getSanityClient, urlFor } from "$lib/sanity/client";
 
-export async function load() {
+export async function load({ locals }) {
+	const sanity = getSanityClient(locals.isPreview);
 	// Fetch all galleries, ordered by the drag-and-drop orderRank field
-	const galleries = await client.fetch(`
+	const galleries = await sanity.fetch(`
     *[_type == "gallery"] | order(orderRank) {
       title,
       "slug": slug.current,

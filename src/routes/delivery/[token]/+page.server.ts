@@ -1,10 +1,9 @@
 import { error } from "@sveltejs/kit";
 import { api } from "$convex/api";
-import { env } from "$env/dynamic/private";
 import { getConvex } from "$lib/server/convexClient";
+import { getGalleryWorkerUrl } from "$lib/server/galleryWorkerUrl";
 
 const convex = getConvex();
-const WORKER_URL = env.GALLERY_WORKER_URL ?? "https://gallery-worker.thinkingofview.workers.dev";
 
 export async function load({ params }) {
 	const { token } = params;
@@ -43,16 +42,18 @@ export async function load({ params }) {
 		galleryId: gallery._id as any,
 	});
 
+	const workerUrl = getGalleryWorkerUrl();
+
 	return {
 		token,
 		gallery,
 		images: images.map((img: any) => ({
 			...img,
-			thumbUrl: `${WORKER_URL}/image/${img.r2Key.replace("/original/", "/thumb/")}`,
-			previewUrl: `${WORKER_URL}/image/${img.r2Key.replace("/original/", "/preview/")}`,
-			downloadUrl: `${WORKER_URL}/download/${img.r2Key}?token=${token}`,
+			thumbUrl: `${workerUrl}/image/${img.r2Key.replace("/original/", "/thumb/")}`,
+			previewUrl: `${workerUrl}/image/${img.r2Key.replace("/original/", "/preview/")}`,
+			downloadUrl: `${workerUrl}/download/${img.r2Key}?token=${token}`,
 		})),
 		client: result.client,
-		workerUrl: WORKER_URL,
+		workerUrl,
 	};
 }

@@ -1,7 +1,8 @@
-import { client } from "$lib/sanity/client";
+import { getSanityClient } from "$lib/sanity/client";
 
 export async function load({ locals }) {
-	const siteSettings = await client.fetch(
+	const sanity = getSanityClient(locals.isPreview);
+	const siteSettings = await sanity.fetch(
 		`*[_type == "siteSettings"][0]{
 			artistName,
 			siteTitle,

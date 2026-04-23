@@ -2,8 +2,7 @@ import type { RequestHandler } from "@sveltejs/kit";
 import { error, json } from "@sveltejs/kit";
 import { env } from "$env/dynamic/private";
 import { requireAuth } from "./adminAuth";
-
-const WORKER_URL = env.GALLERY_WORKER_URL ?? "https://gallery-worker.thinkingofview.workers.dev";
+import { getGalleryWorkerUrl } from "./galleryWorkerUrl";
 
 /**
  * Factory for JSON-body proxy routes that forward a request to the gallery
@@ -28,7 +27,7 @@ export function createGalleryWorkerProxy(
 		const data = await request.json();
 		options.validate?.(data);
 
-		const res = await fetch(`${WORKER_URL}${workerPath}`, {
+		const res = await fetch(`${getGalleryWorkerUrl()}${workerPath}`, {
 			method: "POST",
 			headers: {
 				"Content-Type": "application/json",

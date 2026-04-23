@@ -13,12 +13,13 @@
  * (/shop/[slug] handles both types).
  */
 
-import { client } from "$lib/sanity/client";
+import { getSanityClient } from "$lib/sanity/client";
 import { imageSet, previewUrl } from "$lib/utils/images";
 
-export async function load() {
+export async function load({ locals }) {
+	const sanity = getSanityClient(locals.isPreview);
 	// V2 print products
-	const v2Products = await client.fetch(`
+	const v2Products = await sanity.fetch(`
 		*[_type == "lumaProductV2" && inStock == true]
 		| order(featured desc, title asc) {
 			title,
@@ -38,7 +39,7 @@ export async function load() {
 	}));
 
 	// V1 products (non-print: postcards, tapestries, digital, merchandise)
-	const v1Products = await client.fetch(`
+	const v1Products = await sanity.fetch(`
 		*[_type == "product" && inStock == true]
 		| order(featured desc, orderRank, title asc) {
 			title,
@@ -66,7 +67,7 @@ export async function load() {
 	);
 
 	// Print collections (shared by V1 and V2)
-	const collections = await client.fetch(`
+	const collections = await sanity.fetch(`
 		*[_type == "printCollection" && !defined(parent)]
 		| order(orderRank, title asc) {
 			title,
@@ -83,7 +84,7 @@ export async function load() {
 	}));
 
 	// V2 print sets
-	const v2Sets = await client.fetch(`
+	const v2Sets = await sanity.fetch(`
 		*[_type == "lumaPrintSetV2" && inStock == true]
 		| order(featured desc, title asc) {
 			title,
@@ -104,7 +105,7 @@ export async function load() {
 	}));
 
 	// V1 print sets (legacy — will be migrated to V2)
-	const v1Sets = await client.fetch(`
+	const v1Sets = await sanity.fetch(`
 		*[_type == "printSet" && !defined(parent) && inStock == true]
 		| order(featured desc, orderRank, title asc) {
 			title,

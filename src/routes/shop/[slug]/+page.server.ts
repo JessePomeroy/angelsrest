@@ -7,7 +7,7 @@
  */
 
 import { error } from "@sveltejs/kit";
-import { client } from "$lib/sanity/client";
+import { getSanityClient } from "$lib/sanity/client";
 import { displayUrl, originalUrl, thumbnailUrl } from "$lib/utils/images";
 
 const V2_QUERY = `
@@ -47,11 +47,12 @@ const V1_QUERY = `
   }
 `;
 
-export async function load({ params }) {
+export async function load({ params, locals }) {
 	const slug = params.slug;
+	const sanity = getSanityClient(locals.isPreview);
 
 	// Try V2 first (prints)
-	const v2Product = await client.fetch(V2_QUERY, { slug });
+	const v2Product = await sanity.fetch(V2_QUERY, { slug });
 
 	if (v2Product) {
 		const image = v2Product.image;
@@ -82,7 +83,7 @@ export async function load({ params }) {
 	}
 
 	// Fall back to V1 (merch, postcards, tapestries, digital)
-	const v1Product = await client.fetch(V1_QUERY, { slug });
+	const v1Product = await sanity.fetch(V1_QUERY, { slug });
 
 	if (!v1Product) throw error(404, "Product not found");
 

@@ -1,10 +1,29 @@
 import path from "node:path";
+import { sentrySvelteKit } from "@sentry/sveltekit";
 import { sveltekit } from "@sveltejs/kit/vite";
 import tailwindcss from "@tailwindcss/vite";
 import { defineConfig } from "vitest/config";
 
 export default defineConfig({
-	plugins: [tailwindcss(), sveltekit()],
+	plugins: [
+		tailwindcss(),
+		// Audit H46: wire the Sentry plugin so source maps are uploaded at
+		// build time. Without this Sentry ingests the minified stack frames
+		// and dashboards are unreadable. The plugin no-ops when
+		// SENTRY_AUTH_TOKEN isn't set (dev builds, CI without Sentry
+		// secrets), so it's safe to leave enabled everywhere.
+		sentrySvelteKit({
+			sourceMapsUploadOptions: {
+				org: process.env.SENTRY_ORG,
+				project: process.env.SENTRY_PROJECT,
+				authToken: process.env.SENTRY_AUTH_TOKEN,
+				// Silence the "SENTRY_AUTH_TOKEN not provided" warning in dev;
+				// when the token is missing the upload is a no-op anyway.
+				telemetry: false,
+			},
+		}),
+		sveltekit(),
+	],
 	server: {
 		fs: {
 			allow: ["convex/_generated"],

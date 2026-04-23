@@ -1,7 +1,8 @@
-import { client } from "$lib/sanity/client";
+import { getSanityClient } from "$lib/sanity/client";
 
-export const load = async () => {
-	const posts = await client.fetch(`
+export const load = async ({ locals }) => {
+	const sanity = getSanityClient(locals.isPreview);
+	const posts = await sanity.fetch(`
     *[_type == "post"] | order(publishedAt desc) {
       _id,
       title,
