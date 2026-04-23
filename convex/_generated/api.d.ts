@@ -14,6 +14,7 @@ import type * as auth from "../auth.js";
 import type * as authHelpers from "../authHelpers.js";
 import type * as contracts from "../contracts.js";
 import type * as crm from "../crm.js";
+import type * as devPasswordReset from "../devPasswordReset.js";
 import type * as emailLog from "../emailLog.js";
 import type * as emailTemplates from "../emailTemplates.js";
 import type * as galleries from "../galleries.js";
@@ -51,6 +52,7 @@ declare const fullApi: ApiFromModules<{
   authHelpers: typeof authHelpers;
   contracts: typeof contracts;
   crm: typeof crm;
+  devPasswordReset: typeof devPasswordReset;
   emailLog: typeof emailLog;
   emailTemplates: typeof emailTemplates;
   galleries: typeof galleries;
