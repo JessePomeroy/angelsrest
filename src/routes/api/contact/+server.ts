@@ -1,17 +1,16 @@
 import { json } from "@sveltejs/kit";
-import { Resend } from "resend";
 import { api } from "$convex/api";
 import { env } from "$env/dynamic/private";
-import { RESEND_API_KEY } from "$env/static/private";
 import { SITE_DOMAIN } from "$lib/config/site";
 import { getConvex } from "$lib/server/convexClient";
+import { getResend } from "$lib/server/resendClient";
 import { trimString, validateEmail } from "$lib/server/validation";
 import type { RequestHandler } from "./$types";
 
-const resend = new Resend(RESEND_API_KEY);
 const convex = getConvex();
 
 export const POST: RequestHandler = async ({ request }) => {
+	const resend = getResend();
 	const { name, email, subject, message } = await request.json();
 
 	const trimmedName = trimString(name, 255);

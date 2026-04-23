@@ -1,12 +1,12 @@
 import { json } from "@sveltejs/kit";
-import Stripe from "stripe";
+import type Stripe from "stripe";
 import { api } from "$convex/api";
 import { env } from "$env/dynamic/private";
-import { STRIPE_PLATFORM_WEBHOOK_SECRET, STRIPE_SECRET_KEY } from "$env/static/private";
+import { STRIPE_PLATFORM_WEBHOOK_SECRET } from "$env/static/private";
 import { getConvex } from "$lib/server/convexClient";
+import { getStripe } from "$lib/server/stripeClient";
 import { verifyStripeWebhook } from "$lib/server/stripeWebhook";
 
-const stripe = new Stripe(STRIPE_SECRET_KEY);
 const convex = getConvex();
 
 function getWebhookSecret(): string {
@@ -20,6 +20,7 @@ function getWebhookSecret(): string {
 }
 
 export async function POST({ request }) {
+	const stripe = getStripe();
 	const event = await verifyStripeWebhook(
 		request,
 		stripe,

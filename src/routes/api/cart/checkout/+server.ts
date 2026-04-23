@@ -25,20 +25,19 @@
  */
 
 import { error, json } from "@sveltejs/kit";
-import Stripe from "stripe";
-import { STRIPE_SECRET_KEY } from "$env/static/private";
+import type Stripe from "stripe";
 import { PUBLIC_SITE_URL } from "$env/static/public";
 import { buildCartMetadata, validateCart } from "$lib/server/cartCheckoutHelpers";
 import { bindCheckoutSession } from "$lib/server/checkoutBinding";
+import { getStripe } from "$lib/server/stripeClient";
 import type { CartItem } from "$lib/shop/cart";
-
-const stripe = new Stripe(STRIPE_SECRET_KEY);
 
 interface CartCheckoutRequest {
 	items: CartItem[];
 }
 
 export async function POST({ request, cookies }) {
+	const stripe = getStripe();
 	try {
 		const body = (await request.json()) as CartCheckoutRequest;
 		const { items } = body;

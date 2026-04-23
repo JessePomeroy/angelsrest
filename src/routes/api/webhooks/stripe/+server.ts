@@ -15,14 +15,15 @@
  */
 
 import { error, json } from "@sveltejs/kit";
-import { Resend } from "resend";
-import Stripe from "stripe";
+import type Stripe from "stripe";
 import { api } from "$convex/api";
 import { env } from "$env/dynamic/private";
-import { RESEND_API_KEY, STRIPE_SECRET_KEY, STRIPE_WEBHOOK_SECRET } from "$env/static/private";
+import { STRIPE_WEBHOOK_SECRET } from "$env/static/private";
 import { SITE_DOMAIN } from "$lib/config/site";
 import { getConvex } from "$lib/server/convexClient";
 import { logStructured } from "$lib/server/logger";
+import { getResend } from "$lib/server/resendClient";
+import { getStripe } from "$lib/server/stripeClient";
 import { verifyStripeWebhook } from "$lib/server/stripeWebhook";
 import { buildOrderItemsFromSession } from "$lib/server/webhookDecoder";
 import type { ShippingDetails } from "$lib/server/webhookEmails";
@@ -36,12 +37,11 @@ import { createOrderInConvex } from "$lib/server/webhookOrders";
 
 const convex = getConvex();
 
-const stripe = new Stripe(STRIPE_SECRET_KEY);
-const resend = new Resend(RESEND_API_KEY);
-
 // ─── Webhook Entry Point ─────────────────────────────────────────────────────
 
 export async function POST({ request }) {
+	const stripe = getStripe();
+	const resend = getResend();
 	const event = await verifyStripeWebhook(request, stripe, STRIPE_WEBHOOK_SECRET);
 
 	// Track total webhook duration manually (rather than via `timed`) so the
@@ -158,6 +158,9 @@ export async function POST({ request }) {
 async function handleCheckoutCompleted(session: Stripe.Checkout.Session) {
 	console.log("Processing completed checkout:", session.id);
 
+	const stripe = getStripe();
+	const resend = getResend();
+
 	// Fetch full session data with line items and payment details
 	const { fullSession, lineItems, shippingDetails } = await fetchSessionDetails(session);
 
@@ -225,6 +228,7 @@ async function handleCheckoutCompleted(session: Stripe.Checkout.Session) {
  * Falls back to event data for test/triggered events.
  */
 async function fetchSessionDetails(session: Stripe.Checkout.Session) {
+	const stripe = getStripe();
 	let fullSession: Stripe.Checkout.Session;
 	let lineItems: Stripe.LineItem[] = [];
 	let shippingDetails: ShippingDetails;

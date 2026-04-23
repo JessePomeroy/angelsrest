@@ -12,13 +12,12 @@
  * "thank you" state with no PII.
  */
 
-import Stripe from "stripe";
-import { STRIPE_SECRET_KEY } from "$env/static/private";
+import type Stripe from "stripe";
 import { isCheckoutSessionOwner } from "$lib/server/checkoutBinding";
-
-const stripe = new Stripe(STRIPE_SECRET_KEY);
+import { getStripe } from "$lib/server/stripeClient";
 
 export async function load({ url, cookies }) {
+	const stripe = getStripe();
 	const sessionId = url.searchParams.get("session_id");
 	const emailParam = url.searchParams.get("email")?.toLowerCase();
 

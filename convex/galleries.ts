@@ -177,12 +177,13 @@ export const listBySite = query({
 			.order("desc")
 			.take(100);
 
-		// Collect unique client IDs
+		// Collect unique client IDs and fan out the reads in parallel
+		// (audit M24). Mirrors the Promise.all pattern in tags.getClientTags.
 		const clientIds = [...new Set(galleries.map((g) => g.clientId))];
+		const clients = await Promise.all(clientIds.map((id) => ctx.db.get(id)));
 		const clientMap = new Map();
-		for (const id of clientIds) {
-			const client = await ctx.db.get(id);
-			if (client) clientMap.set(id, client);
+		for (const client of clients) {
+			if (client) clientMap.set(client._id, client);
 		}
 		const withClients = galleries.map((gallery) => ({
 			...gallery,

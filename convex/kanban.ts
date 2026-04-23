@@ -218,6 +218,25 @@ export const moveCard = mutation({
 		if (!doc || doc.siteUrl !== siteUrl) {
 			throw new Error("Not found");
 		}
+
+		// Audit M29: validate `targetColumnId` against the client's project-type
+		// board config. Without this, a stale/mistyped column id would hide the
+		// card from every column. If the client has no `type` (the project type
+		// used as the config key) there's no config to check — skip validation.
+		if (doc.type) {
+			const config = await ctx.db
+				.query("boardConfigs")
+				.withIndex("by_siteUrl_and_projectType", (q) =>
+					q.eq("siteUrl", siteUrl).eq("projectType", doc.type as string),
+				)
+				.first();
+			if (config && !config.columns.some((c) => c.id === targetColumnId)) {
+				throw new Error(
+					`Invalid targetColumnId "${targetColumnId}" for project type "${doc.type}"`,
+				);
+			}
+		}
+
 		await ctx.db.patch(clientId, {
 			boardColumnId: targetColumnId,
 			boardPosition: targetPosition,
@@ -300,11 +319,27 @@ export const deleteColumn = mutation({
 				)
 				.take(500);
 
+			// Audit M30: queue migrating clients AFTER the existing cards in the
+			// fallback column so they don't all stack on position 0 and collide
+			// with cards already there. Read the current max position in the
+			// fallback column and assign migrating clients `max + 1, max + 2, ...`.
+			const existingInFallback = await ctx.db
+				.query("photographyClients")
+				.withIndex("by_siteUrl_and_boardColumnId", (q) =>
+					q.eq("siteUrl", config.siteUrl).eq("boardColumnId", fallbackColumnId),
+				)
+				.take(500);
+			let nextPosition = existingInFallback.reduce(
+				(max, c) => Math.max(max, (c.boardPosition ?? -1) + 1),
+				0,
+			);
+
 			for (const client of clients) {
 				await ctx.db.patch(client._id, {
 					boardColumnId: fallbackColumnId,
-					boardPosition: client.boardPosition ?? 0,
+					boardPosition: nextPosition,
 				});
+				nextPosition += 1;
 			}
 		}
 

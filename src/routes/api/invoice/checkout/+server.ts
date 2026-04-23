@@ -1,15 +1,15 @@
 import { error, json } from "@sveltejs/kit";
-import Stripe from "stripe";
+import type Stripe from "stripe";
 import { api } from "$convex/api";
-import { STRIPE_SECRET_KEY } from "$env/static/private";
 import { PUBLIC_SITE_URL } from "$env/static/public";
 import { SITE_DOMAIN } from "$lib/config/site";
 import { getConvex } from "$lib/server/convexClient";
+import { getStripe } from "$lib/server/stripeClient";
 
-const stripe = new Stripe(STRIPE_SECRET_KEY);
 const convex = getConvex();
 
 export async function POST({ request }) {
+	const stripe = getStripe();
 	try {
 		const { invoiceId } = await request.json();
 

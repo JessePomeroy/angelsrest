@@ -1,9 +1,6 @@
 import { error, json } from "@sveltejs/kit";
-import Stripe from "stripe";
 import { env } from "$env/dynamic/private";
-import { STRIPE_SECRET_KEY } from "$env/static/private";
-
-const stripe = new Stripe(STRIPE_SECRET_KEY);
+import { getStripe } from "$lib/server/stripeClient";
 
 function getCrmPriceId(): string {
 	const id = env.STRIPE_CRM_PRICE_ID;
@@ -12,6 +9,7 @@ function getCrmPriceId(): string {
 }
 
 export async function POST({ request }) {
+	const stripe = getStripe();
 	const { clientEmail, siteUrl } = await request.json();
 
 	if (!clientEmail || !siteUrl) {

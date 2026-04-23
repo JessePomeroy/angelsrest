@@ -1,15 +1,13 @@
 import { error, json } from "@sveltejs/kit";
-import Stripe from "stripe";
-import { STRIPE_SECRET_KEY } from "$env/static/private";
 import { PUBLIC_SITE_URL } from "$env/static/public";
 import { client } from "$lib/sanity/client";
 import { bindCheckoutSession } from "$lib/server/checkoutBinding";
 import { validateAndApplyCoupon } from "$lib/server/coupon";
 import { logStructured } from "$lib/server/logger";
-
-const stripe = new Stripe(STRIPE_SECRET_KEY);
+import { getStripe } from "$lib/server/stripeClient";
 
 export async function POST({ request, cookies }) {
+	const stripe = getStripe();
 	try {
 		const body = await request.json();
 		// Audit H33: log only request shape, not values — body contains

@@ -57,8 +57,45 @@ class TimeTheme {
 	}
 }
 
-// Singleton instance
-export const timeTheme = new TimeTheme();
+// Audit M18: lazy client-only singleton.
+//
+// A module-top `new TimeTheme()` is risky in SvelteKit SSR because the
+// underlying `$state` cell is shared across all concurrent server
+// requests. This particular class only *mutates* its state inside a
+// `browser`-guarded setInterval, so the server instance never changes
+// in practice — but the shape of the pattern is still load-bearing, and
+// a future edit that sets `#hour` from a load function would silently
+// corrupt state across requests.
+//
+// Defer instantiation to first access. On SSR we return a frozen stub
+// with the public readable surface only (period, apply, destroy); the
+// proxy falls through to the real instance once we're in the browser.
+interface TimeThemePublic {
+	readonly period: TimePeriod;
+	apply(): void;
+	destroy(): void;
+}
+
+const SSR_TIME_THEME_STUB: TimeThemePublic = {
+	period: "afternoon",
+	apply: () => {},
+	destroy: () => {},
+};
+
+let _timeTheme: TimeTheme | null = null;
+export function getTimeTheme(): TimeThemePublic {
+	if (!browser) return SSR_TIME_THEME_STUB;
+	if (!_timeTheme) _timeTheme = new TimeTheme();
+	return _timeTheme;
+}
+
+/** @deprecated Kept for backward compat — prefer `getTimeTheme()`. */
+export const timeTheme: TimeThemePublic = new Proxy(SSR_TIME_THEME_STUB, {
+	get(_target, prop: keyof TimeThemePublic) {
+		const instance = getTimeTheme();
+		return instance[prop];
+	},
+});
 
 /** Get time period for a given hour (useful for testing/preview) */
 export function getTimePeriodForHour(hour: number): TimePeriod {
