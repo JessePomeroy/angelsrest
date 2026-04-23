@@ -220,3 +220,41 @@ export const ensureSiteAdmin = internalMutation({
 		};
 	},
 });
+
+/**
+ * Rename the `siteUrl` on a platformClients row — used when a client's
+ * domain is decided (or changed) after the row was created with a stub
+ * (e.g. reflecting-pool.com → zippymiggy.com).
+ *
+ * Internal-only: callable via `npx convex run platform:renameClientSiteUrl
+ * '{"fromSiteUrl":"old","toSiteUrl":"new"}'`. Idempotent — errors if there's
+ * already a row at `toSiteUrl` (avoids silent merges). Callers responsible
+ * for running `ensureSiteAdmin` afterwards if they also need to update
+ * adminEmails.
+ */
+export const renameClientSiteUrl = internalMutation({
+	args: {
+		fromSiteUrl: v.string(),
+		toSiteUrl: v.string(),
+	},
+	handler: async (ctx, { fromSiteUrl, toSiteUrl }) => {
+		const row = await ctx.db
+			.query("platformClients")
+			.withIndex("by_siteUrl", (q) => q.eq("siteUrl", fromSiteUrl))
+			.first();
+		if (!row) {
+			throw new Error(`No platformClients row with siteUrl="${fromSiteUrl}"`);
+		}
+		const collision = await ctx.db
+			.query("platformClients")
+			.withIndex("by_siteUrl", (q) => q.eq("siteUrl", toSiteUrl))
+			.first();
+		if (collision) {
+			throw new Error(
+				`A platformClients row already exists at siteUrl="${toSiteUrl}" (id=${collision._id}). Delete one before renaming.`,
+			);
+		}
+		await ctx.db.patch(row._id, { siteUrl: toSiteUrl });
+		return { id: row._id, from: fromSiteUrl, to: toSiteUrl };
+	},
+});
