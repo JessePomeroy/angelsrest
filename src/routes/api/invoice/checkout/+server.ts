@@ -27,37 +27,53 @@ export async function POST({ request }) {
 			throw error(400, "Invoice has already been paid");
 		}
 
-		// Calculate total from line items
-		const subtotal = invoice.items.reduce(
-			(sum: number, item: { quantity: number; unitPrice: number }) =>
-				sum + item.quantity * item.unitPrice,
+		// Audit H8: compute in integer cents from the start so cents-
+		// rounding errors don't compound across line items. The Convex
+		// `invoices.items[].unitPrice` schema stores these as dollars
+		// (floats); we round each line's unit price into cents once,
+		// then everything downstream (subtotal, tax, Stripe line_item
+		// unit_amount) stays integer.
+		const lineItemsCents = invoice.items.map(
+			(item: { description: string; quantity: number; unitPrice: number }) => ({
+				description: item.description,
+				quantity: item.quantity,
+				unitPriceCents: Math.round(item.unitPrice * 100),
+			}),
+		);
+		const subtotalCents = lineItemsCents.reduce(
+			(sum: number, item: { quantity: number; unitPriceCents: number }) =>
+				sum + item.quantity * item.unitPriceCents,
 			0,
 		);
-		const taxAmount = invoice.taxPercent ? subtotal * (invoice.taxPercent / 100) : 0;
+		const taxPercent = Number(invoice.taxPercent ?? 0);
+		if (!Number.isFinite(taxPercent) || taxPercent < 0 || taxPercent > 100) {
+			throw error(400, "Invalid invoice tax percentage");
+		}
+		const taxCents = taxPercent > 0 ? Math.round((subtotalCents * taxPercent) / 100) : 0;
 
 		// Build Stripe line items from invoice items
-		const lineItems: Stripe.Checkout.SessionCreateParams.LineItem[] = invoice.items.map(
-			(item: { description: string; quantity: number; unitPrice: number }) => ({
+		const lineItems: Stripe.Checkout.SessionCreateParams.LineItem[] = lineItemsCents.map(
+			(item: { description: string; quantity: number; unitPriceCents: number }) => ({
 				price_data: {
 					currency: "usd",
 					product_data: {
 						name: item.description,
 					},
-					unit_amount: Math.round(item.unitPrice * 100),
+					unit_amount: item.unitPriceCents,
 				},
 				quantity: item.quantity,
 			}),
 		);
 
 		// Add tax as a separate line item if applicable
-		if (taxAmount > 0) {
+		if (taxCents > 0) {
 			lineItems.push({
 				price_data: {
 					currency: "usd",
 					product_data: {
-						name: `Tax (${invoice.taxPercent}%)`,
+						name: `Tax (${taxPercent}%)`,
 					},
-					unit_amount: Math.round(taxAmount * 100),
+					unit_amount: taxCents,
 				},
 				quantity: 1,
 			});
