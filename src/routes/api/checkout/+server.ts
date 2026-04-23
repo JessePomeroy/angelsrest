@@ -3,11 +3,12 @@ import Stripe from "stripe";
 import { STRIPE_SECRET_KEY } from "$env/static/private";
 import { PUBLIC_SITE_URL } from "$env/static/public";
 import { client } from "$lib/sanity/client";
+import { bindCheckoutSession } from "$lib/server/checkoutBinding";
 import { validateAndApplyCoupon } from "$lib/server/coupon";
 
 const stripe = new Stripe(STRIPE_SECRET_KEY);
 
-export async function POST({ request }) {
+export async function POST({ request, cookies }) {
 	try {
 		const body = await request.json();
 		console.log("Received checkout request:", JSON.stringify(body, null, 2));
@@ -87,6 +88,10 @@ export async function POST({ request }) {
 		});
 
 		console.log("Stripe session created, metadata:", session.metadata);
+
+		// Bind this browser to the session so /checkout/success can verify
+		// the caller is the buyer before returning customer PII (audit H30).
+		bindCheckoutSession(cookies, session.id);
 
 		return json({ sessionId: session.id, url: session.url });
 	} catch (err: unknown) {

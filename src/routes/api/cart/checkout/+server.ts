@@ -29,6 +29,7 @@ import Stripe from "stripe";
 import { STRIPE_SECRET_KEY } from "$env/static/private";
 import { PUBLIC_SITE_URL } from "$env/static/public";
 import { buildCartMetadata, validateCart } from "$lib/server/cartCheckoutHelpers";
+import { bindCheckoutSession } from "$lib/server/checkoutBinding";
 import type { CartItem } from "$lib/shop/cart";
 
 const stripe = new Stripe(STRIPE_SECRET_KEY);
@@ -37,7 +38,7 @@ interface CartCheckoutRequest {
 	items: CartItem[];
 }
 
-export async function POST({ request }) {
+export async function POST({ request, cookies }) {
 	try {
 		const body = (await request.json()) as CartCheckoutRequest;
 		const { items } = body;
@@ -81,6 +82,10 @@ export async function POST({ request }) {
 			cancel_url: `${PUBLIC_SITE_URL}/checkout/cancel`,
 			metadata: buildCartMetadata(items),
 		});
+
+		// Bind this browser to the session so /checkout/success can verify
+		// the caller is the buyer before returning customer PII (audit H30).
+		bindCheckoutSession(cookies, session.id);
 
 		return json({ sessionId: session.id, url: session.url });
 	} catch (err: unknown) {

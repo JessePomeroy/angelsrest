@@ -48,8 +48,23 @@ let { data } = $props();
     </p>
   </div>
 
-  <!-- Order Details (if available) -->
-  {#if data.orderDetails}
+  {#if data.unverified}
+    <!--
+      Audit H30: the /checkout/success page used to render customer PII
+      off a session_id URL param alone. If the caller isn't the buyer
+      (no binding cookie), we show a friendlier "look up your order"
+      state instead of PII.
+    -->
+    <div class="bg-surface-100-800-token rounded-lg p-6 mb-8 text-center">
+      <p class="text-sm text-surface-600-300-token">
+        This looks like a shared link. For privacy we don't show order details on this page unless you're the buyer.
+      </p>
+      <p class="text-sm text-surface-600-300-token mt-2">
+        To see your order, look it up with your email and order number at
+        <a href="/orders" class="underline">/orders</a>.
+      </p>
+    </div>
+  {:else if data.orderDetails}
     <div class="bg-surface-100-800-token rounded-lg p-6 mb-8">
       <h2 class="text-lg font-medium mb-4">Order Details</h2>
       
@@ -84,10 +99,16 @@ let { data } = $props();
       
       <!-- Digital Download -->
       {#if data.orderDetails.isDigital}
+        <!--
+          Audit H36: the download URL carries `&email=<buyer>` so it
+          keeps working from a different browser or after the binding
+          cookie expires. The /api/download endpoint accepts either the
+          cookie (immediate path) or the email match (email-link path).
+        -->
         <div class="mt-6 p-4 bg-green-500/10 border border-green-500/20 rounded-lg">
           <h3 class="text-lg font-medium mb-2">your download is ready</h3>
           <a
-            href="/api/download?session_id={data.orderDetails.sessionId}&slug={data.orderDetails.productSlug}"
+            href="/api/download?session_id={data.orderDetails.sessionId}&slug={data.orderDetails.productSlug}{data.orderDetails.customerEmail ? `&email=${encodeURIComponent(data.orderDetails.customerEmail)}` : ''}"
             class="btn variant-filled-primary px-8 py-3 w-full text-center"
           >
             download now
@@ -151,45 +172,3 @@ let { data } = $props();
   </div>
 </div>
 
-<!--
-  Enhancement Ideas for Future Development:
-  
-  1. Order Summary Display:
-     - Fetch order details using session_id URL parameter
-     - Show purchased items, quantities, total paid
-     - Include order number for customer reference
-  
-  2. Next Steps Information:
-     - Estimated delivery date
-     - Tracking information (when available)
-     - Contact information for questions
-  
-  3. Analytics Tracking:
-     - Conversion tracking for ad platforms
-     - Revenue tracking for analytics
-     - Customer acquisition metrics
-  
-  4. Upselling Opportunities:
-     - "Customers who bought this also liked..."
-     - Email subscription signup
-     - Social media follow prompts
-  
-  5. Trust Building Elements:
-     - Customer testimonials
-     - Money-back guarantee reminder
-     - Secure payment badges
-  
-  Code Pattern for Fetching Order Details:
-  ```typescript
-  // In a future load function
-  export async function load({ url }) {
-    const sessionId = url.searchParams.get('session_id');
-    if (sessionId) {
-      // Fetch order details from Stripe or your database
-      const orderDetails = await getOrderBySessionId(sessionId);
-      return { orderDetails };
-    }
-    return {};
-  }
-  ```
--->
