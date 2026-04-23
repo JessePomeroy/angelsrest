@@ -90,7 +90,11 @@ export default defineSchema({
 		.index("by_siteUrl_status", ["siteUrl", "status"])
 		.index("by_stripeSessionId", ["stripeSessionId"])
 		.index("by_orderNumber", ["siteUrl", "orderNumber"])
-		.index("by_customerEmail", ["siteUrl", "customerEmail"]),
+		.index("by_customerEmail", ["siteUrl", "customerEmail"])
+		// Webhook lookup: LumaPrints' shipment.created webhook arrives with
+		// only the LumaPrints order number (no Convex _id). Scoped by siteUrl
+		// so spokes can't read each other's orders.
+		.index("by_lumaprintsOrderNumber", ["siteUrl", "lumaprintsOrderNumber"]),
 
 	// Clients (photography clients + web dev clients)
 	photographyClients: defineTable({

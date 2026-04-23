@@ -18,6 +18,7 @@ import type * as emailLog from "../emailLog.js";
 import type * as emailTemplates from "../emailTemplates.js";
 import type * as galleries from "../galleries.js";
 import type * as helpers_deleting from "../helpers/deleting.js";
+import type * as helpers_limits from "../helpers/limits.js";
 import type * as helpers_marking from "../helpers/marking.js";
 import type * as helpers_numbering from "../helpers/numbering.js";
 import type * as helpers_patching from "../helpers/patching.js";
@@ -54,6 +55,7 @@ declare const fullApi: ApiFromModules<{
   emailTemplates: typeof emailTemplates;
   galleries: typeof galleries;
   "helpers/deleting": typeof helpers_deleting;
+  "helpers/limits": typeof helpers_limits;
   "helpers/marking": typeof helpers_marking;
   "helpers/numbering": typeof helpers_numbering;
   "helpers/patching": typeof helpers_patching;

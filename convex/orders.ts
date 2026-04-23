@@ -2,6 +2,7 @@ import { v } from "convex/values";
 import { internal } from "./_generated/api";
 import { mutation, query } from "./_generated/server";
 import { requireAuth, requireWebhookCallerOrAuth } from "./authHelpers";
+import { AGGREGATE_SCAN_LIMIT, BULK_SCAN_LIMIT } from "./helpers/limits";
 import { getNextSequentialNumber } from "./helpers/numbering";
 
 const orderStatusValidator = v.union(
@@ -28,13 +29,13 @@ export const list = query({
 					q.eq("siteUrl", siteUrl).eq("status", status),
 				)
 				.order("desc")
-				.take(500);
+				.take(BULK_SCAN_LIMIT);
 		}
 		return await ctx.db
 			.query("orders")
 			.withIndex("by_siteUrl", (q) => q.eq("siteUrl", siteUrl))
 			.order("desc")
-			.take(500);
+			.take(BULK_SCAN_LIMIT);
 	},
 });
 
@@ -214,6 +215,45 @@ export const lookup = query({
 	},
 });
 
+/**
+ * Look up an order by the LumaPrints order number assigned at fulfillment
+ * submission. Used by the LumaPrints shipment webhook which only knows the
+ * LP order number, not the Convex `_id`.
+ *
+ * Gated by `requireWebhookCallerOrAuth` so that:
+ *   - The spoke's LumaPrints webhook can call it with `WEBHOOK_SECRET`
+ *   - An authenticated admin can also call it (debugging, manual reruns)
+ * but the query is not publicly invokable.
+ *
+ * Returns `null` if no matching order exists (stale webhook, typo, etc.) —
+ * the caller should log + return 200 so LumaPrints doesn't retry forever.
+ */
+export const getByLumaprintsOrderNumber = query({
+	args: {
+		siteUrl: v.string(),
+		lumaprintsOrderNumber: v.string(),
+		webhookSecret: v.optional(v.string()),
+	},
+	handler: async (ctx, { siteUrl, lumaprintsOrderNumber, webhookSecret }) => {
+		await requireWebhookCallerOrAuth(ctx, webhookSecret);
+		const order = await ctx.db
+			.query("orders")
+			.withIndex("by_lumaprintsOrderNumber", (q) =>
+				q.eq("siteUrl", siteUrl).eq("lumaprintsOrderNumber", lumaprintsOrderNumber),
+			)
+			.first();
+		if (!order) return null;
+		return {
+			_id: order._id,
+			orderNumber: order.orderNumber,
+			status: order.status,
+			customerEmail: order.customerEmail,
+			trackingNumber: order.trackingNumber,
+			trackingUrl: order.trackingUrl,
+		};
+	},
+});
+
 export const getStats = query({
 	args: { siteUrl: v.string() },
 	handler: async (ctx, { siteUrl }) => {
@@ -222,7 +262,7 @@ export const getStats = query({
 			.query("orders")
 			.withIndex("by_siteUrl", (q) => q.eq("siteUrl", siteUrl))
 			.order("desc")
-			.take(5000);
+			.take(AGGREGATE_SCAN_LIMIT);
 
 		const now = new Date();
 		const todayStart = new Date(
