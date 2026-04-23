@@ -1,0 +1,3 @@
+dist/
+# Convex source is copied in during prepublishOnly; keep it out of git.
+convex/

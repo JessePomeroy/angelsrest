@@ -1,0 +1,29 @@
+{
+	"compilerOptions": {
+		"target": "ESNext",
+		"module": "ESNext",
+		"moduleResolution": "bundler",
+		"strict": true,
+		"esModuleInterop": true,
+		"skipLibCheck": true,
+		"forceConsistentCasingInFileNames": true,
+		"resolveJsonModule": true,
+		"declaration": true,
+		"declarationMap": true,
+		"outDir": "dist",
+		"rootDir": "src",
+		// HARD GUARD: do not emit.
+		// src/*.ts re-exports from ../../../convex/_generated/*, which pulls
+		// the entire ../../convex tree into tsc's program. With rootDir: "src"
+		// set, tsc warns (TS6059) but still writes .js/.d.ts/.d.ts.map next to
+		// every source file in ../../convex — ~90 stray files that then
+		// confuse `npx convex dev` (it sees both the .ts source and the
+		// spurious .js as separate esbuild entry points → "Two output files
+		// share the same path" cascade). noEmit keeps type-checking available
+		// without the artifact pollution. Revisit in Gap 2 when the package
+		// gets a real build (sync-convex + outDir outside the convex tree).
+		"noEmit": true
+	},
+	"include": ["src/**/*"],
+	"exclude": ["node_modules", "dist"]
+}
