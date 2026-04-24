@@ -143,6 +143,47 @@ export const updateClient = mutation({
 });
 
 /**
+ * Seed a `platformClients` row from the CLI. Used to bootstrap a new
+ * per-client Convex deployment (Option A migration, Phase 1) — the public
+ * `createClient` mutation gates on `requireAuth`, which no `npx convex run`
+ * caller can satisfy, so CLI-driven onboarding needs an internal path.
+ *
+ * Idempotent by `siteUrl`: re-running on an existing row returns
+ * `{ created: false, id }` without touching fields. To add an admin email
+ * to an existing row, use `ensureSiteAdmin`. To rewrite other fields, use
+ * the authed `updateClient` mutation via the admin UI.
+ *
+ * Usage (from the Convex codebase at `~/Documents/work/angelsrest`):
+ *   CONVEX_DEPLOY_KEY=<client-prod-key> npx convex run platform:seedClient \
+ *     '{"name":"Reflecting Pool","email":"thinkingofview@gmail.com","siteUrl":"zippymiggy.com","tier":"basic","adminEmails":["thinkingofview@gmail.com"]}'
+ */
+export const seedClient = internalMutation({
+	args: {
+		name: v.string(),
+		email: v.string(),
+		siteUrl: v.string(),
+		tier: v.union(v.literal("basic"), v.literal("full")),
+		adminEmails: v.array(v.string()),
+		sanityProjectId: v.optional(v.string()),
+		notes: v.optional(v.string()),
+	},
+	handler: async (ctx, args) => {
+		const existing = await ctx.db
+			.query("platformClients")
+			.withIndex("by_siteUrl", (q) => q.eq("siteUrl", args.siteUrl))
+			.first();
+		if (existing) {
+			return { created: false, id: existing._id };
+		}
+		const id = await ctx.db.insert("platformClients", {
+			...args,
+			subscriptionStatus: "none" as const,
+		});
+		return { created: true, id };
+	},
+});
+
+/**
  * Ensure a `platformClients` row exists in a state that `requireSiteAdmin`
  * will accept: the stored `siteUrl` matches the bare domain the admin
  * dashboard passes, and `adminEmails` includes the given email.
@@ -189,7 +230,7 @@ export const ensureSiteAdmin = internalMutation({
 		}
 		if (!row) {
 			throw new Error(
-				`No platformClients row found for siteUrl="${siteUrl}" (also tried https:// variants). Create it via platform.createClient first.`,
+				`No platformClients row found for siteUrl="${siteUrl}" (also tried https:// variants). Create it via platform.seedClient (CLI-safe) or platform.createClient (browser/authed) first.`,
 			);
 		}
 
