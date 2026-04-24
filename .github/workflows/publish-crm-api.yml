@@ -10,10 +10,16 @@ name: Publish @jessepomeroy/crm-api
 # package.json, so they don't re-trigger publish.
 
 on:
-  push:
-    branches: [main]
-    paths:
-      - "convex/_generated/api.d.ts"
+  # Auto-trigger temporarily disabled. The first real publish of
+  # @jessepomeroy/crm-api is a deliberate event gated on Gap 2 work
+  # (fix the noEmit trap, sync-convex, cut 1.0.0). See Day 3 of
+  # ~/Documents/quilt/02_reference/projects/photographer_crm/migration-execution-order.md.
+  # Restore the push/paths trigger below as the first step of Gap 2.
+  workflow_dispatch:
+  # push:
+  #   branches: [main]
+  #   paths:
+  #     - "convex/_generated/api.d.ts"
 
 # Only one publish run at a time — back-to-back schema changes should serialize.
 concurrency:
