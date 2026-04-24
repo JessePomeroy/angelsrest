@@ -151,11 +151,16 @@ export const updateClient = mutation({
  * Idempotent by `siteUrl`: re-running on an existing row returns
  * `{ created: false, id }` without touching fields. To add an admin email
  * to an existing row, use `ensureSiteAdmin`. To rewrite other fields, use
- * the authed `updateClient` mutation via the admin UI.
+ * the authed `updateClient` mutation via the admin UI, or patch the row
+ * directly via the Convex dashboard for one-off corrections.
+ *
+ * `subscriptionStatus` is optional and defaults to `"none"` — pass the
+ * explicit value at seed time for full-tier clients whose subscription is
+ * active from day one (e.g. reflecting-pool/Maggie).
  *
  * Usage (from the Convex codebase at `~/Documents/work/angelsrest`):
  *   CONVEX_DEPLOY_KEY=<client-prod-key> npx convex run platform:seedClient \
- *     '{"name":"Reflecting Pool","email":"thinkingofview@gmail.com","siteUrl":"zippymiggy.com","tier":"basic","adminEmails":["thinkingofview@gmail.com"]}'
+ *     '{"name":"Reflecting Pool","email":"thinkingofview@gmail.com","siteUrl":"zippymiggy.com","tier":"full","subscriptionStatus":"active","adminEmails":["thinkingofview@gmail.com"]}'
  */
 export const seedClient = internalMutation({
 	args: {
@@ -163,6 +168,14 @@ export const seedClient = internalMutation({
 		email: v.string(),
 		siteUrl: v.string(),
 		tier: v.union(v.literal("basic"), v.literal("full")),
+		subscriptionStatus: v.optional(
+			v.union(
+				v.literal("active"),
+				v.literal("canceled"),
+				v.literal("past_due"),
+				v.literal("none"),
+			),
+		),
 		adminEmails: v.array(v.string()),
 		sanityProjectId: v.optional(v.string()),
 		notes: v.optional(v.string()),
@@ -175,9 +188,10 @@ export const seedClient = internalMutation({
 		if (existing) {
 			return { created: false, id: existing._id };
 		}
+		const { subscriptionStatus, ...rest } = args;
 		const id = await ctx.db.insert("platformClients", {
-			...args,
-			subscriptionStatus: "none" as const,
+			...rest,
+			subscriptionStatus: subscriptionStatus ?? "none",
 		});
 		return { created: true, id };
 	},
