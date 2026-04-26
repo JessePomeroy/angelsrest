@@ -1,0 +1,88 @@
+name: Deploy Convex spokes
+
+# Option A: each spoke site has its own Convex prod deployment. The schema
+# and functions in `convex/` are shared and must be deployed to every spoke
+# whenever main moves. This workflow does that in parallel via a matrix.
+#
+# Triggering: gated on a successful CI run (lint + check + tests). Prevents
+# a broken main from auto-deploying to every prod. Manual override via
+# workflow_dispatch is available for force-redeploys.
+#
+# Adding a new spoke:
+#   1. Append the client to the matrix below.
+#   2. Add a repo secret named CONVEX_DEPLOY_KEY_<UPPER_SNAKE>_PROD
+#      containing the prod deploy key for that spoke.
+#   3. Mirror the change in scripts/deploy-all.sh's CLIENTS array.
+#
+# Coordination with publish-crm-api.yml (currently gated, see Gap 2 / Day 3
+# of migration-execution-order.md): when that workflow's auto-trigger is
+# restored, it must wait until this workflow completes — the package picks
+# up convex/_generated/api.d.ts, which is identical across spokes, but the
+# semantic guarantee is "every prod is on the same code as the published
+# package surface." The simplest serialisation is to point publish-crm-api
+# at `workflow_run: workflows: [Deploy Convex spokes]` once both workflows
+# are stable.
+
+on:
+  workflow_run:
+    workflows: ["CI"]
+    types: [completed]
+    branches: [main]
+  workflow_dispatch:
+
+# Serialise deploys; back-to-back pushes shouldn't race the same prod.
+concurrency:
+  group: deploy-spokes
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  packages: read
+
+jobs:
+  deploy:
+    name: Deploy ${{ matrix.client.name }}
+    runs-on: ubuntu-latest
+    # Skip if CI failed. workflow_dispatch always passes the gate.
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      github.event.workflow_run.conclusion == 'success'
+    strategy:
+      fail-fast: false
+      matrix:
+        client:
+          - name: angelsrest
+            secret: CONVEX_DEPLOY_KEY_ANGELSREST_PROD
+          - name: reflecting-pool
+            secret: CONVEX_DEPLOY_KEY_REFLECTING_POOL_PROD
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # For workflow_run events, check out the SHA that CI validated,
+          # not whatever the default branch happens to be at trigger time.
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+        env:
+          NPM_TOKEN: ${{ secrets.GH_PACKAGES_TOKEN }}
+
+      - name: Deploy Convex (${{ matrix.client.name }})
+        env:
+          CONVEX_DEPLOY_KEY: ${{ secrets[matrix.client.secret] }}
+        run: |
+          if [ -z "${CONVEX_DEPLOY_KEY:-}" ]; then
+            echo "Error: secret ${{ matrix.client.secret }} is empty or unset." >&2
+            echo "Add the deploy key as a repo secret and retry." >&2
+            exit 1
+          fi
+          npx convex deploy
