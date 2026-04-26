@@ -30,6 +30,29 @@ jobs:
           node-version: 22
           cache: pnpm
 
+      # STOPGAP (2026-04-25): angelsrest's package.json has
+      # `"@jessepomeroy/admin": "link:../admin-dashboard"`. On the runner the
+      # sibling directory doesn't exist, so pnpm creates a dead symlink and
+      # svelte-check then fails with 27 "Cannot find module '@jessepomeroy/
+      # admin'" errors. Clone + build the sibling here so the link resolves.
+      # Goes away when Admin Phase 1 (subtree merge into packages/admin/)
+      # lands per migration-execution-order.md Day 4. The repo is public, so
+      # no token is needed for the clone. Corepack auto-switches to the
+      # pnpm version pinned in admin-dashboard's package.json, which also
+      # avoids any pnpm 10 vs 9 lockfile drama.
+      - name: Clone + build admin-dashboard sibling for link dep
+        run: |
+          git clone --depth 1 https://github.com/JessePomeroy/admin-dashboard.git "$RUNNER_WORKSPACE/admin-dashboard"
+          cd "$RUNNER_WORKSPACE/admin-dashboard"
+          pnpm install --frozen-lockfile
+          pnpm build
+        env:
+          # admin-dashboard's .npmrc references ${NPM_TOKEN}; nothing in its
+          # dep tree actually needs auth (no @jessepomeroy/* deps), but pnpm
+          # warns loudly if the var is unset. Pass the token so logs stay
+          # quiet.
+          NPM_TOKEN: ${{ secrets.GH_PACKAGES_TOKEN }}
+
       - run: pnpm install --frozen-lockfile
         env:
           NPM_TOKEN: ${{ secrets.GH_PACKAGES_TOKEN }}
