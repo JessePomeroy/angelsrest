@@ -18,6 +18,25 @@ permissions:
 jobs:
   ci:
     runs-on: ubuntu-latest
+    # Job-level env: every step inherits these placeholders. Both the
+    # type-check and the test suite reference `$env/static/public.*` /
+    # `process.env.*` at module-load time; without these set, modules
+    # like adminAuth.ts (which reads PUBLIC_CONVEX_URL) throw
+    # "Auth backend not configured" before any test mocks can intercept.
+    # Locally these values come from `.env.local`; CI gets the same shape
+    # via this block so tests + type-check run against identical inputs.
+    env:
+      STRIPE_SECRET_KEY: placeholder
+      STRIPE_WEBHOOK_SECRET: placeholder
+      STRIPE_PLATFORM_WEBHOOK_SECRET: placeholder
+      RESEND_API_KEY: placeholder
+      PUBLIC_SITE_URL: https://www.angelsrest.online
+      PUBLIC_STRIPE_PUBLIC_KEY: placeholder
+      PUBLIC_SANITY_PROJECT_ID: placeholder
+      PUBLIC_SANITY_DATASET: production
+      PUBLIC_CONVEX_URL: https://placeholder.convex.cloud
+      GALLERY_WORKER_URL: placeholder
+      GALLERY_ADMIN_SECRET: placeholder
     steps:
       - uses: actions/checkout@v4
 
@@ -64,18 +83,6 @@ jobs:
         run: pnpm lint
 
       - name: Type check
-        env:
-          STRIPE_SECRET_KEY: placeholder
-          STRIPE_WEBHOOK_SECRET: placeholder
-          STRIPE_PLATFORM_WEBHOOK_SECRET: placeholder
-          RESEND_API_KEY: placeholder
-          PUBLIC_SITE_URL: https://www.angelsrest.online
-          PUBLIC_STRIPE_PUBLIC_KEY: placeholder
-          PUBLIC_SANITY_PROJECT_ID: placeholder
-          PUBLIC_SANITY_DATASET: production
-          PUBLIC_CONVEX_URL: https://placeholder.convex.cloud
-          GALLERY_WORKER_URL: placeholder
-          GALLERY_ADMIN_SECRET: placeholder
         run: pnpm check
 
       # Audit H41: run the full vitest suite on every PR / push so regressions
