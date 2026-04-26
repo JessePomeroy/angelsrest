@@ -9,15 +9,22 @@ export const authComponent = createClient<DataModel>(components.betterAuth);
 
 export const createAuth = (ctx: GenericCtx<DataModel>) => {
 	const siteUrl = process.env.SITE_URL!;
+	// Option A Phase 5 (2026-04-25): under per-client Convex deployments,
+	// each deployment is single-tenant — `SITE_URL` is the only canonical
+	// origin. The previous hardcoded angelsrest entries were a multi-tenant
+	// holdover and would block sign-in on any new spoke. Derive the trusted
+	// list from `SITE_URL`: the configured value, its apex variant (in case
+	// the site canonicalizes on `www.`), and localhost for dev.
+	// Deduped via Set since `siteUrl` and the apex variant collide when
+	// SITE_URL has no `www.` prefix.
+	const apexUrl = siteUrl.replace("https://www.", "https://");
+	const trustedOrigins = Array.from(
+		new Set([siteUrl, apexUrl, "http://localhost:5173"]),
+	);
 	return betterAuth({
 		baseURL: siteUrl,
 		secret: process.env.BETTER_AUTH_SECRET!,
-		trustedOrigins: [
-			siteUrl,
-			"http://localhost:5173",
-			"https://angelsrest.online",
-			"https://www.angelsrest.online",
-		],
+		trustedOrigins,
 		database: authComponent.adapter(ctx),
 		emailAndPassword: { enabled: true },
 		socialProviders: {
