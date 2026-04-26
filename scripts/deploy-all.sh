@@ -4,12 +4,25 @@
 #
 # Deploy this Convex codebase to every per-client prod deployment, serially.
 #
+# ★ STATUS: BREAK-GLASS, not required setup. ★
+#
+# The canonical deploy path is `.github/workflows/deploy-spokes.yml`, which
+# auto-fires on every green CI run AND supports manual force-redeploys via
+# Actions → Deploy Convex spokes → "Run workflow" (workflow_dispatch). That
+# covers ~100% of normal and emergency use cases — same effect as this
+# script, runs in the cloud, no laptop or password manager needed.
+#
+# This script exists for the rare case where GitHub Actions itself is
+# unavailable (outage, account locked, network), or for one-off local
+# experimentation against prod Convex without pushing a commit. Setup is
+# DEFERRED — don't install Bitwarden CLI or create the items below until
+# you actually need this path.
+#
 # Background (Option A): each spoke site (angelsrest, reflecting-pool, …) has
 # its own Convex project. Schema and functions live here in `convex/`, and the
 # same code is deployed N times — once per client — using a different deploy
-# key for each. This script is the manual / local path; the canonical CI path
-# is `.github/workflows/deploy-spokes.yml`, which parallelises across the same
-# client list using GitHub Secrets instead of Bitwarden.
+# key for each. The CI workflow parallelises via GitHub Secrets; this script
+# serialises via Bitwarden.
 #
 # Local usage (requires Bitwarden CLI logged in + unlocked):
 #   bw login                           # one-time

@@ -36,3 +36,9 @@ Practical implications:
 - First real publish of `@jessepomeroy/crm-api` needs manual intervention
   (sync-convex + a build that emits outside the convex tree). Deferred
   to Gap 2 when a real schema change ships.
+
+## Commit style
+
+Do not add `Co-Authored-By: Claude` (or any AI assistant) trailers to
+commit messages. Authorship lives in `git log --author`; the tool used
+to write the diff is not part of the commit's identity.
