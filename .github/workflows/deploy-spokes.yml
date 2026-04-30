@@ -79,6 +79,7 @@ jobs:
       - name: Deploy Convex (${{ matrix.client.name }})
         env:
           CONVEX_DEPLOY_KEY: ${{ secrets[matrix.client.secret] }}
+        working-directory: packages/crm-api
         run: |
           if [ -z "${CONVEX_DEPLOY_KEY:-}" ]; then
             echo "Error: secret ${{ matrix.client.secret }} is empty or unset." >&2

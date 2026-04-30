@@ -13,7 +13,7 @@
 import { createClient } from "@sanity/client";
 import { ConvexHttpClient } from "convex/browser";
 import dotenv from "dotenv";
-import { api } from "../convex/_generated/api";
+import { api } from "../packages/crm-api/convex/_generated/api";
 
 dotenv.config({ path: ".env" });
 dotenv.config({ path: ".env.local", override: true });

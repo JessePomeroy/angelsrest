@@ -59,7 +59,7 @@
 		"svelte-dnd-action": "^0.9.69"
 	},
 	"lint-staged": {
-		"!(convex/_generated/**)*.{js,ts}": [
+		"!(packages/crm-api/convex/_generated/**)*.{js,ts}": [
 			"biome check --no-errors-on-unmatched"
 		],
 		"*.svelte": [

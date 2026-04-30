@@ -32,7 +32,7 @@ export default defineConfig({
 	],
 	server: {
 		fs: {
-			allow: ["convex/_generated"],
+			allow: ["packages/crm-api/convex/_generated"],
 		},
 	},
 	test: {

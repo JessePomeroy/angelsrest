@@ -5,9 +5,9 @@ name: Publish @jessepomeroy/crm-api
 # (reflecting-pool et al.) consume the package; this keeps them in sync without
 # any manual version wrangling.
 #
-# Trigger guard: we diff convex/_generated/api.d.ts against the parent commit
-# and exit early if unchanged. Bump commits only touch packages/crm-api/
-# package.json, so they don't re-trigger publish.
+# Trigger guard: we diff packages/crm-api/convex/_generated/api.d.ts against
+# the parent commit and exit early if unchanged. Bump commits only touch
+# packages/crm-api/package.json, so they don't re-trigger publish.
 
 on:
   # Auto-trigger temporarily disabled. The first real publish of
@@ -19,7 +19,7 @@ on:
   # push:
   #   branches: [main]
   #   paths:
-  #     - "convex/_generated/api.d.ts"
+  #     - "packages/crm-api/convex/_generated/api.d.ts"
 
 # Only one publish run at a time — back-to-back schema changes should serialize.
 concurrency:
@@ -44,8 +44,8 @@ jobs:
       - name: Check for api.d.ts hash change
         id: diff
         run: |
-          CURR_HASH=$(git hash-object convex/_generated/api.d.ts)
-          PREV_HASH=$(git show HEAD~1:convex/_generated/api.d.ts | git hash-object --stdin || echo "none")
+          CURR_HASH=$(git hash-object packages/crm-api/convex/_generated/api.d.ts)
+          PREV_HASH=$(git show HEAD~1:packages/crm-api/convex/_generated/api.d.ts | git hash-object --stdin || echo "none")
           echo "current=${CURR_HASH}" >> "$GITHUB_OUTPUT"
           echo "previous=${PREV_HASH}" >> "$GITHUB_OUTPUT"
           if [ "${CURR_HASH}" = "${PREV_HASH}" ]; then
@@ -83,10 +83,10 @@ jobs:
           echo "version=${NEW_VERSION}" >> "$GITHUB_OUTPUT"
           echo "Bumped to ${NEW_VERSION}"
 
-      - name: Build package (syncs convex/ + tsc)
+      - name: Build package
         if: steps.diff.outputs.changed == 'true'
         working-directory: packages/crm-api
-        run: pnpm sync-convex && pnpm build
+        run: pnpm build
 
       - name: Publish to GitHub Packages
         if: steps.diff.outputs.changed == 'true'

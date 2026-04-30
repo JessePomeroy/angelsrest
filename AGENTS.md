@@ -22,7 +22,7 @@ Rules for working on this codebase.
 
 - **Convex client helper:** `src/lib/server/convexClient.ts` — use `getConvex()` instead of instantiating ConvexHttpClient
 - **Site config:** `src/lib/config/site.ts` — `SITE_DOMAIN`, `SITE_URL`, `SITE_URL_WWW`
-- **Convex path alias:** `$convex` → `./convex/_generated` (configured in svelte.config.js)
+- **Convex path alias:** `$convex` → `./packages/crm-api/convex/_generated` (configured in svelte.config.js)
 - **Stripe webhook:** `src/routes/api/webhooks/stripe/+server.ts`
 - **Sanity client:** `src/lib/sanity/client.ts` (read), `src/lib/sanity/adminClient.ts` (write)
 - **Sanity preview client:** `src/lib/sanity/previewClient.ts` (draft-aware)
@@ -106,7 +106,7 @@ This site is the **hub** of the photographer CRM platform:
 <!-- convex-ai-start -->
 This project uses [Convex](https://convex.dev) as its backend.
 
-When working on Convex code, **always read `convex/_generated/ai/guidelines.md` first** for important guidelines on how to correctly use Convex APIs and patterns. The file contains rules that override what you may have learned about Convex from training data.
+When working on Convex code, **always read `packages/crm-api/convex/_generated/ai/guidelines.md` first** for important guidelines on how to correctly use Convex APIs and patterns. The file contains rules that override what you may have learned about Convex from training data.
 
 Convex agent skills for common tasks can be installed by running `npx convex ai-files install`.
 <!-- convex-ai-end -->
