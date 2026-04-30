@@ -3,7 +3,8 @@
  * Fetches all galleries from Sanity for the gallery picker page.
  */
 
-import { getSanityClient, urlFor } from "$lib/sanity/client";
+import { urlFor } from "$lib/sanity/client";
+import { getSanityClient } from "$lib/sanity/client.server";
 
 export async function load({ locals }) {
 	const sanity = getSanityClient(locals.isPreview);

@@ -5,7 +5,8 @@
  */
 
 import { error } from "@sveltejs/kit";
-import { getSanityClient, urlFor } from "$lib/sanity/client";
+import { urlFor } from "$lib/sanity/client";
+import { getSanityClient } from "$lib/sanity/client.server";
 
 export async function load({ params, locals }) {
 	const sanity = getSanityClient(locals.isPreview);

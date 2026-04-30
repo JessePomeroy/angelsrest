@@ -1,4 +1,4 @@
-import { getSanityClient } from "$lib/sanity/client";
+import { getSanityClient } from "$lib/sanity/client.server";
 
 export async function load({ parent, locals }) {
 	const { isAuthenticated } = await parent();

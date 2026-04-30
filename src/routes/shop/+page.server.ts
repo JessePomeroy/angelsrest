@@ -14,7 +14,7 @@
  */
 
 import type { SanityImageSource } from "@sanity/image-url";
-import { getSanityClient } from "$lib/sanity/client";
+import { getSanityClient } from "$lib/sanity/client.server";
 import { imageSet, previewUrl } from "$lib/utils/images";
 
 // Narrow shapes mirroring each GROQ projection below. Full Sanity codegen

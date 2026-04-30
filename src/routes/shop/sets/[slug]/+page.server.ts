@@ -6,7 +6,7 @@
  */
 
 import { error } from "@sveltejs/kit";
-import { getSanityClient } from "$lib/sanity/client";
+import { getSanityClient } from "$lib/sanity/client.server";
 import { imageSet, previewUrl } from "$lib/utils/images";
 
 const V2_QUERY = `

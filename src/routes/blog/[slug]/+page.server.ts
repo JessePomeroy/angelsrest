@@ -1,5 +1,5 @@
 import { error } from "@sveltejs/kit";
-import { getSanityClient } from "$lib/sanity/client";
+import { getSanityClient } from "$lib/sanity/client.server";
 
 export const load = async ({ params, locals }) => {
 	const sanity = getSanityClient(locals.isPreview);
