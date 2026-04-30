@@ -1,4 +1,4 @@
-import { getSanityClient } from "$lib/sanity/client";
+import { getSanityClient } from "$lib/sanity/client.server";
 
 export const load = async ({ locals }) => {
 	const sanity = getSanityClient(locals.isPreview);
