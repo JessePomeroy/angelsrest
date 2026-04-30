@@ -26,17 +26,21 @@ vite.config.ts.timestamp-*
 AUDIT.md
 ROTATION.md
 
-# Stray tsc emits next to convex sources. If packages/crm-api's tsconfig is
-# ever accidentally run without noEmit, tsc will dump .js/.d.ts/.d.ts.map next
-# to every convex/*.ts (because crm-api's src/ re-exports from ../../convex).
-# Those stray files confuse `npx convex dev`'s esbuild entry-point scan.
-# noEmit: true in packages/crm-api/tsconfig.json is the real fix; this block
-# is a belt that contains the blast radius if the fix is ever unwound.
-convex/*.js
-convex/*.d.ts
-convex/*.d.ts.map
-convex/helpers/*.js
-convex/helpers/*.d.ts
-convex/helpers/*.d.ts.map
-!convex/convex.config.ts
-!convex/_generated/
+# Belt-and-suspenders for stray tsc emits inside convex sources. Gap 2 Phase 1
+# moved convex/ into packages/crm-api/, so the patterns now live there. Phase 2
+# will enable emit (to dist/), so these patterns guard against accidental emit
+# *into* the convex source tree (which would confuse `npx convex dev`'s
+# esbuild entry-point scan with two outputs sharing the same path).
+packages/crm-api/convex/**/*.js
+packages/crm-api/convex/**/*.d.ts
+packages/crm-api/convex/**/*.d.ts.map
+!packages/crm-api/convex/convex.config.ts
+!packages/crm-api/convex/_generated/
+
+# Root-level guard: the canonical convex/ tree lives in packages/crm-api/ now.
+# If any tool ever runs `npx convex codegen` from the angelsrest root it will
+# emit an empty `ApiFromModules<{}>` stub into ./convex/_generated/. Ignoring
+# the path keeps that stub out of the working tree silently. The mystery
+# trigger that produced the stub during Phase 1 validation is a Track 3
+# follow-up item.
+/convex/

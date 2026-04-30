@@ -6,4 +6,4 @@
  * `import { api } from "@jessepomeroy/crm-api/api"` (or rely on the SvelteKit
  * `$convex/api` alias that maps to it).
  */
-export * from "../../../convex/_generated/api";
+export * from "../convex/_generated/api";

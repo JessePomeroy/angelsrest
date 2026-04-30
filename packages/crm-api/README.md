@@ -3,11 +3,12 @@
 Generated Convex API for the photographer CRM platform. Consumed by spoke
 sites (reflecting-pool, future clients).
 
-**Do not edit by hand** — the exposed surface is auto-generated from
-`angelsrest/convex/` via `npx convex dev`. Changes to the schema or Convex
-functions happen in `angelsrest/convex/`; this package simply re-exports the
-generated types so downstream sites get a typed handle without running
-`convex dev` themselves.
+**Do not edit `src/` by hand** — the exposed surface is auto-generated from
+`./convex/` (the package owns its own Convex source as of Gap 2 Phase 1) via
+`npx convex dev`. Changes to the schema or Convex functions happen in
+`packages/crm-api/convex/`; this package simply re-exports the generated
+types so downstream sites get a typed handle without running `convex dev`
+themselves.
 
 ## Usage
 
@@ -45,9 +46,9 @@ import type { Id } from "$convex/dataModel";
 ## Publishing
 
 The `.github/workflows/publish-crm-api.yml` workflow in the angelsrest repo
-hashes `convex/_generated/api.d.ts` on every push to `main` and auto-bumps
-the patch version + publishes when the hash changes. Manual publishes should
-not be necessary in steady state.
+hashes `packages/crm-api/convex/_generated/api.d.ts` on every push to `main`
+and (post Gap 2 Phase 3) opens a changesets-driven version PR or publishes
+when one is merged. Manual publishes should not be necessary in steady state.
 
 First publish requires the `PUBLISH_TOKEN` secret to be set on the angelsrest
 repo (write access to GitHub Packages). See the admin-dashboard repo for the

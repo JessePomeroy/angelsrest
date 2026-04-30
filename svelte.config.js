@@ -21,7 +21,7 @@ const config = {
 			maxDuration: 30,
 		}),
 		alias: {
-			$convex: "./convex/_generated",
+			$convex: "./packages/crm-api/convex/_generated",
 		},
 		experimental: {
 			// Required for src/instrumentation.server.ts to be loaded

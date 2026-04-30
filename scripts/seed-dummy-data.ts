@@ -7,8 +7,8 @@
 
 import { ConvexHttpClient } from "convex/browser";
 import dotenv from "dotenv";
-import { api } from "../convex/_generated/api";
-import type { Id } from "../convex/_generated/dataModel";
+import { api } from "../packages/crm-api/convex/_generated/api";
+import type { Id } from "../packages/crm-api/convex/_generated/dataModel";
 
 dotenv.config({ path: ".env" });
 dotenv.config({ path: ".env.local", override: true });

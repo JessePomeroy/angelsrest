@@ -19,10 +19,10 @@
 # you actually need this path.
 #
 # Background (Option A): each spoke site (angelsrest, reflecting-pool, …) has
-# its own Convex project. Schema and functions live here in `convex/`, and the
-# same code is deployed N times — once per client — using a different deploy
-# key for each. The CI workflow parallelises via GitHub Secrets; this script
-# serialises via Bitwarden.
+# its own Convex project. Schema and functions live in `packages/crm-api/convex/`
+# (canonical source-of-truth post Gap 2 Phase 1), and the same code is deployed
+# N times — once per client — using a different deploy key for each. The CI
+# workflow parallelises via GitHub Secrets; this script serialises via Bitwarden.
 #
 # Local usage (requires Bitwarden CLI logged in + unlocked):
 #   bw login                           # one-time
@@ -97,13 +97,16 @@ case "$BW_STATUS" in
     ;;
 esac
 
-# Run from the angelsrest repo root (this script's grandparent dir of itself).
+# Run from packages/crm-api/ — that's where convex/ lives after the Gap 2
+# Phase 1 relocation, and where `npx convex deploy` finds the schema +
+# functions. Matches the working-directory used by deploy-spokes.yml.
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
-cd "$REPO_ROOT"
+CRM_API_DIR="$REPO_ROOT/packages/crm-api"
+cd "$CRM_API_DIR"
 
 if [ ! -d convex ]; then
-  echo "Error: no convex/ directory at $REPO_ROOT — refusing to deploy." >&2
+  echo "Error: no convex/ directory at $CRM_API_DIR — refusing to deploy." >&2
   exit 1
 fi
 

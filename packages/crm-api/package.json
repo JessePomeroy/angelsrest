@@ -28,8 +28,7 @@
 		"convex"
 	],
 	"scripts": {
-		"build": "node -e \"console.warn('crm-api: build deferred to Gap 2 — src/*.ts re-exports from ../../../convex and cannot be tsc-compiled standalone. For link: consumers, Vite transpiles .ts on demand, so no dist/ is needed yet. Before first publish, wire up sync-convex + a tsc config that resolves the re-exports.')\"",
-		"sync-convex": "rm -rf convex && cp -r ../../convex convex"
+		"build": "node -e \"console.warn('crm-api: real build wired in Gap 2 Phase 2 (tsc \\u2192 dist/). Phase 1 only relocated convex/ into the package; consumers still resolve via link: + Vite raw-.ts transpile.')\""
 	},
 	"peerDependencies": {
 		"convex": "^1.30.0"

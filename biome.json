@@ -29,7 +29,7 @@
 	},
 	"files": {
 		"ignoreUnknown": true,
-		"includes": ["src/**", "scripts/**", "!convex/_generated"]
+		"includes": ["src/**", "scripts/**", "!packages/crm-api/convex/_generated"]
 	},
 	"overrides": [
 		{
