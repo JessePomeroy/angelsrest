@@ -37,10 +37,15 @@ packages/crm-api/convex/**/*.d.ts.map
 !packages/crm-api/convex/convex.config.ts
 !packages/crm-api/convex/_generated/
 
-# Root-level guard: the canonical convex/ tree lives in packages/crm-api/ now.
-# If any tool ever runs `npx convex codegen` from the angelsrest root it will
-# emit an empty `ApiFromModules<{}>` stub into ./convex/_generated/. Ignoring
-# the path keeps that stub out of the working tree silently. The mystery
-# trigger that produced the stub during Phase 1 validation is a Track 3
-# follow-up item.
+# Root-level guard: the canonical convex/ tree lives in packages/crm-api/.
+# Documented Convex CLI behavior: `npx convex codegen` invoked from a
+# directory without a convex/ tree will bootstrap an empty one (with
+# `ApiFromModules<{}>` for api.d.ts). Easy to trigger by accident in a
+# long shell session if cwd drifts from packages/crm-api/ back to the
+# repo root between commands. Ignoring the path keeps any accidental
+# stub out of the working tree silently. The fix is "always cd into
+# packages/crm-api/ before running npx convex anything" — see also
+# CLAUDE.md's schema-ownership note. Investigation trail:
+# `~/Documents/quilt/02_reference/projects/photographer_crm/
+# gap-2-phase-1-followups.md` Finding 2.
 /convex/
