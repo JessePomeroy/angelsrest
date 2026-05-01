@@ -71,7 +71,13 @@ jobs:
         with:
           version: pnpm changeset version
           publish: pnpm changeset publish
-          commit: "chore(crm-api): version packages [skip ci]"
+          # NB: do NOT include `[skip ci]` here. It propagates into the
+          # squash-merge commit on main and suppresses this workflow's
+          # publish run (the second half of the two-state machine), which
+          # bit us on the 1.0.0 publish — had to dispatch manually. The
+          # cost of letting CI re-run on the version-PR's bump commits is
+          # a few extra runs per release; cheaper than human ops.
+          commit: "chore(crm-api): version packages"
           title: "chore(crm-api): version packages"
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
