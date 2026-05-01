@@ -1,0 +1,19 @@
+# Belt-and-suspenders against stray tsc / convex-codegen emit artifacts
+# leaking into the published tarball. The package.json `files` field is the
+# primary whitelist; this file is the explicit exclude list for anything
+# that would otherwise slip in (npm pack respects the package's own
+# .npmignore but does NOT walk up to read the workspace-root .gitignore,
+# which is where the equivalent patterns live for git-tracking purposes).
+#
+# Strays land in convex/*.{js,d.ts} when something runs `tsc` without
+# `-p tsconfig.json --noEmit` from this directory. Convex codegen
+# legitimately writes convex/_generated/{api,server}.js + *.d.ts; those
+# stay shipped via the explicit `files` entry above.
+convex/*.js
+convex/*.d.ts
+convex/*.d.ts.map
+convex/helpers/*.js
+convex/helpers/*.d.ts
+convex/helpers/*.d.ts.map
+!convex/_generated/
+!convex/convex.config.ts
