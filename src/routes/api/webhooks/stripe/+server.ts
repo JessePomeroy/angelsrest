@@ -112,7 +112,13 @@ export async function POST({ request }) {
 							errorMessage: failureMessage,
 						});
 					} catch (err) {
-						console.error("Failed to send payment-failed email (non-fatal):", err);
+						logStructured({
+							event: "email.payment_failed.send_failed",
+							level: "error",
+							stage: "email_customer",
+							error: err,
+							meta: { paymentIntentId: paymentIntent.id, fatal: false },
+						});
 					}
 				}
 				break;
@@ -157,7 +163,11 @@ export async function POST({ request }) {
  * Sends emails, creates order in Convex, and captures Stripe fees.
  */
 async function handleCheckoutCompleted(session: Stripe.Checkout.Session) {
-	console.log("Processing completed checkout:", session.id);
+	logStructured({
+		event: "checkout.processing",
+		stage: "webhook",
+		sessionId: session.id,
+	});
 
 	const stripe = getStripe();
 	const resend = getResend();
@@ -168,7 +178,13 @@ async function handleCheckoutCompleted(session: Stripe.Checkout.Session) {
 	const customerEmail = fullSession.customer_details?.email || session.customer_email;
 
 	if (!customerEmail) {
-		console.error("No customer email found for session:", session.id);
+		logStructured({
+			event: "checkout.missing_email",
+			level: "error",
+			stage: "webhook",
+			sessionId: session.id,
+			error: new Error("No customer email on Stripe session"),
+		});
 		return;
 	}
 
@@ -190,10 +206,13 @@ async function handleCheckoutCompleted(session: Stripe.Checkout.Session) {
 	// sent. Skip sending them again to avoid spamming the customer with a
 	// duplicate receipt for every retry.
 	if (orderResult.alreadyExisted) {
-		console.log(
-			"Skipping confirmation emails — order was already processed:",
-			orderResult.orderNumber,
-		);
+		logStructured({
+			event: "checkout.email_skipped_idempotent",
+			stage: "webhook",
+			sessionId: session.id,
+			orderId: orderResult.orderNumber,
+			meta: { reason: "order_already_existed" },
+		});
 	} else {
 		try {
 			await sendCustomerConfirmation(resend, {
@@ -204,7 +223,15 @@ async function handleCheckoutCompleted(session: Stripe.Checkout.Session) {
 				orderNumber: orderResult.orderNumber,
 			});
 		} catch (err) {
-			console.error("Failed to send customer confirmation (non-fatal):", err);
+			logStructured({
+				event: "email.customer.send_failed",
+				level: "error",
+				stage: "email_customer",
+				sessionId: session.id,
+				orderId: orderResult.orderNumber,
+				error: err,
+				meta: { fatal: false },
+			});
 		}
 
 		try {
@@ -216,11 +243,24 @@ async function handleCheckoutCompleted(session: Stripe.Checkout.Session) {
 				orderNumber: orderResult.orderNumber,
 			});
 		} catch (err) {
-			console.error("Failed to send admin notification (non-fatal):", err);
+			logStructured({
+				event: "email.admin.send_failed",
+				level: "error",
+				stage: "email_admin",
+				sessionId: session.id,
+				orderId: orderResult.orderNumber,
+				error: err,
+				meta: { fatal: false },
+			});
 		}
 	}
 
-	console.log("Checkout processed successfully:", session.id);
+	logStructured({
+		event: "checkout.processed",
+		stage: "webhook",
+		sessionId: session.id,
+		orderId: orderResult.orderNumber,
+	});
 }
 
 /**
@@ -242,7 +282,13 @@ async function fetchSessionDetails(session: Stripe.Checkout.Session) {
 		shippingDetails = session.collected_information?.shipping_details;
 	} catch {
 		// For Stripe CLI test events, the session may not exist
-		console.log("Session retrieval failed (likely test event), using event data");
+		logStructured({
+			event: "session.retrieve_fallback",
+			level: "warn",
+			stage: "webhook",
+			sessionId: session.id,
+			meta: { reason: "stripe_retrieve_failed_likely_test_event" },
+		});
 		fullSession = session;
 		shippingDetails = session.collected_information?.shipping_details;
 	}
