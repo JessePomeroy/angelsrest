@@ -3,7 +3,7 @@ import { internal } from "./_generated/api";
 import type { Doc, Id } from "./_generated/dataModel";
 import type { MutationCtx } from "./_generated/server";
 import { mutation, query } from "./_generated/server";
-import { requireAuth } from "./authHelpers";
+import { requireDocumentSiteAdmin, requireSiteAdmin } from "./authHelpers";
 import { DEFAULT_LIST_LIMIT } from "./helpers/limits";
 
 /**
@@ -107,7 +107,29 @@ export const createToken = mutation({
 		expiresAt: v.optional(v.number()),
 	},
 	handler: async (ctx, args) => {
-		await requireAuth(ctx);
+		await requireSiteAdmin(ctx, args.siteUrl);
+		const client = await ctx.db.get(args.clientId);
+		if (!client || client.siteUrl !== args.siteUrl) {
+			throw new Error("Client not found");
+		}
+		let document:
+			| Doc<"invoices">
+			| Doc<"quotes">
+			| Doc<"contracts">
+			| Doc<"galleries">
+			| null = null;
+		if (args.type === "invoice") {
+			document = await ctx.db.get(args.documentId as Id<"invoices">);
+		} else if (args.type === "quote") {
+			document = await ctx.db.get(args.documentId as Id<"quotes">);
+		} else if (args.type === "contract") {
+			document = await ctx.db.get(args.documentId as Id<"contracts">);
+		} else {
+			document = await ctx.db.get(args.documentId as Id<"galleries">);
+		}
+		if (!document || document.siteUrl !== args.siteUrl) {
+			throw new Error("Document not found");
+		}
 		const token = crypto.randomUUID();
 		await ctx.db.insert("portalTokens", {
 			token,
@@ -287,12 +309,12 @@ export const signContract = mutation({
 export const markUsed = mutation({
 	args: { token: v.string() },
 	handler: async (ctx, { token }) => {
-		await requireAuth(ctx);
 		const tokenDoc = await ctx.db
 			.query("portalTokens")
 			.withIndex("by_token", (q) => q.eq("token", token))
 			.unique();
 		if (!tokenDoc) throw new Error("Token not found");
+		await requireDocumentSiteAdmin(ctx, "portalTokens", tokenDoc._id);
 		await ctx.db.patch(tokenDoc._id, { used: true });
 	},
 });
@@ -300,7 +322,7 @@ export const markUsed = mutation({
 export const listTokens = query({
 	args: { siteUrl: v.string() },
 	handler: async (ctx, { siteUrl }) => {
-		await requireAuth(ctx);
+		await requireSiteAdmin(ctx, siteUrl);
 		return await ctx.db
 			.query("portalTokens")
 			.withIndex("by_siteUrl", (q) => q.eq("siteUrl", siteUrl))

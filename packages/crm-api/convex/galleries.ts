@@ -1,7 +1,14 @@
 import { v } from "convex/values";
 import { internal } from "./_generated/api";
-import { internalMutation, mutation, query } from "./_generated/server";
-import { requireAuth } from "./authHelpers";
+import type { Id } from "./_generated/dataModel";
+import {
+	internalMutation,
+	type MutationCtx,
+	mutation,
+	type QueryCtx,
+	query,
+} from "./_generated/server";
+import { requireDocumentSiteAdmin, requireSiteAdmin } from "./authHelpers";
 import {
 	COMPACT_LIST_LIMIT,
 	DEFAULT_LIST_LIMIT,
@@ -16,6 +23,30 @@ import { patchDocument } from "./helpers/patching";
 // to delete everything in one shot.
 const REMOVE_BATCH_SIZE = 500;
 
+async function requireGalleryPortalToken(
+	ctx: QueryCtx | MutationCtx,
+	token: string,
+	galleryId: Id<"galleries">,
+) {
+	const tokenDoc = await ctx.db
+		.query("portalTokens")
+		.withIndex("by_token", (q) => q.eq("token", token))
+		.unique();
+	if (!tokenDoc || tokenDoc.type !== "gallery" || tokenDoc.documentId !== galleryId) {
+		throw new Error("Invalid gallery token");
+	}
+	if (tokenDoc.used) throw new Error("Gallery token has already been used");
+	if (tokenDoc.expiresAt && Date.now() > tokenDoc.expiresAt) {
+		throw new Error("Gallery token has expired");
+	}
+
+	const gallery = await ctx.db.get(galleryId);
+	if (!gallery || gallery.siteUrl !== tokenDoc.siteUrl || gallery.status !== "published") {
+		throw new Error("Gallery not found");
+	}
+	return gallery;
+}
+
 export const create = mutation({
 	args: {
 		siteUrl: v.string(),
@@ -28,7 +59,11 @@ export const create = mutation({
 		expiresAt: v.optional(v.number()),
 	},
 	handler: async (ctx, args) => {
-		await requireAuth(ctx);
+		await requireSiteAdmin(ctx, args.siteUrl);
+		const client = await ctx.db.get(args.clientId);
+		if (!client || client.siteUrl !== args.siteUrl) {
+			throw new Error("Client not found");
+		}
 		const existing = await ctx.db
 			.query("galleries")
 			.withIndex("by_siteUrl_and_slug", (q) =>
@@ -91,9 +126,7 @@ export const update = mutation({
 export const remove = mutation({
 	args: { id: v.id("galleries") },
 	handler: async (ctx, { id }) => {
-		await requireAuth(ctx);
-		const gallery = await ctx.db.get(id);
-		if (!gallery) throw new Error("Gallery not found");
+		const gallery = await requireDocumentSiteAdmin(ctx, "galleries", id);
 
 		// Flag the gallery so any in-flight reads see it's being removed.
 		if (gallery.status !== "archived") {
@@ -168,7 +201,7 @@ export const _removeBatch = internalMutation({
 export const get = query({
 	args: { id: v.id("galleries") },
 	handler: async (ctx, { id }) => {
-		return await ctx.db.get(id);
+		return await requireDocumentSiteAdmin(ctx, "galleries", id);
 	},
 });
 
@@ -178,6 +211,7 @@ export const getBySlug = query({
 		slug: v.string(),
 	},
 	handler: async (ctx, { siteUrl, slug }) => {
+		await requireSiteAdmin(ctx, siteUrl);
 		return await ctx.db
 			.query("galleries")
 			.withIndex("by_siteUrl_and_slug", (q) =>
@@ -190,6 +224,7 @@ export const getBySlug = query({
 export const listBySite = query({
 	args: { siteUrl: v.string() },
 	handler: async (ctx, { siteUrl }) => {
+		await requireSiteAdmin(ctx, siteUrl);
 		const galleries = await ctx.db
 			.query("galleries")
 			.withIndex("by_siteUrl", (q) => q.eq("siteUrl", siteUrl))
@@ -215,6 +250,7 @@ export const listBySite = query({
 export const listByClient = query({
 	args: { clientId: v.id("photographyClients") },
 	handler: async (ctx, { clientId }) => {
+		await requireDocumentSiteAdmin(ctx, "photographyClients", clientId);
 		return await ctx.db
 			.query("galleries")
 			.withIndex("by_client", (q) => q.eq("clientId", clientId))
@@ -245,9 +281,11 @@ export const addImage = mutation({
 		height: v.number(),
 	},
 	handler: async (ctx, args) => {
-		await requireAuth(ctx);
+		await requireSiteAdmin(ctx, args.siteUrl);
 		const gallery = await ctx.db.get(args.galleryId);
-		if (!gallery) throw new Error("Gallery not found");
+		if (!gallery || gallery.siteUrl !== args.siteUrl) {
+			throw new Error("Gallery not found");
+		}
 
 		const imageId = await ctx.db.insert("galleryImages", {
 			siteUrl: args.siteUrl,
@@ -274,8 +312,7 @@ export const addImage = mutation({
 export const removeImage = mutation({
 	args: { id: v.id("galleryImages") },
 	handler: async (ctx, { id }) => {
-		await requireAuth(ctx);
-		const image = await ctx.db.get(id);
+		const image = await requireDocumentSiteAdmin(ctx, "galleryImages", id);
 		if (!image) throw new Error("Image not found");
 
 		const gallery = await ctx.db.get(image.galleryId);
@@ -301,7 +338,19 @@ export const reorderImages = mutation({
 		),
 	},
 	handler: async (ctx, { updates }) => {
-		await requireAuth(ctx);
+		if (updates.length > 0) {
+			const firstImage = await requireDocumentSiteAdmin(
+				ctx,
+				"galleryImages",
+				updates[0].id,
+			);
+			for (const { id } of updates.slice(1)) {
+				const image = await ctx.db.get(id);
+				if (!image || image.siteUrl !== firstImage.siteUrl) {
+					throw new Error("Not found");
+				}
+			}
+		}
 		for (const { id, order } of updates) {
 			await ctx.db.patch(id, { order });
 		}
@@ -311,9 +360,15 @@ export const reorderImages = mutation({
 export const updateImage = mutation({
 	args: {
 		id: v.id("galleryImages"),
+		token: v.string(),
 		isFavorite: v.optional(v.boolean()),
 	},
-	handler: async (ctx, { id, ...fields }) => {
+	handler: async (ctx, { id, token, ...fields }) => {
+		const image = await ctx.db.get(id);
+		if (!image) throw new Error("Image not found");
+		const gallery = await requireGalleryPortalToken(ctx, token, image.galleryId);
+		if (image.siteUrl !== gallery.siteUrl) throw new Error("Image not found");
+
 		const updates: Record<string, unknown> = {};
 		for (const [key, value] of Object.entries(fields)) {
 			if (value !== undefined) updates[key] = value;
@@ -327,8 +382,9 @@ export const updateImage = mutation({
 // Image queries
 
 export const getImages = query({
-	args: { galleryId: v.id("galleries") },
-	handler: async (ctx, { galleryId }) => {
+	args: { galleryId: v.id("galleries"), token: v.string() },
+	handler: async (ctx, { galleryId, token }) => {
+		const gallery = await requireGalleryPortalToken(ctx, token, galleryId);
 		const images = await ctx.db
 			.query("galleryImages")
 			.withIndex("by_gallery", (q) => q.eq("galleryId", galleryId))
@@ -336,7 +392,9 @@ export const getImages = query({
 		// Audit H13 belt-and-suspenders: break ties on `order` with
 		// `_creationTime` so render order is stable even in the theoretical
 		// case that two rows share an `order` value.
-		return images.sort((a, b) => a.order - b.order || a._creationTime - b._creationTime);
+		return images
+			.filter((image) => image.siteUrl === gallery.siteUrl)
+			.sort((a, b) => a.order - b.order || a._creationTime - b._creationTime);
 	},
 });
 
@@ -346,6 +404,7 @@ export const logDownload = mutation({
 	args: {
 		siteUrl: v.string(),
 		galleryId: v.id("galleries"),
+		token: v.string(),
 		imageId: v.optional(v.id("galleryImages")),
 		ipHash: v.string(),
 		type: v.union(
@@ -354,16 +413,29 @@ export const logDownload = mutation({
 			v.literal("favorites"),
 		),
 	},
-	handler: async (ctx, args) => {
+	handler: async (ctx, { token, ...download }) => {
+		const gallery = await requireGalleryPortalToken(ctx, token, download.galleryId);
+		if (gallery.siteUrl !== download.siteUrl) throw new Error("Gallery not found");
+		if (download.imageId) {
+			const image = await ctx.db.get(download.imageId);
+			if (
+				!image ||
+				image.galleryId !== download.galleryId ||
+				image.siteUrl !== download.siteUrl
+			) {
+				throw new Error("Image not found");
+			}
+		}
+
 		await ctx.db.insert("galleryDownloads", {
-			...args,
+			...download,
 			downloadedAt: Date.now(),
 		});
 
-		if (args.imageId) {
-			const image = await ctx.db.get(args.imageId);
+		if (download.imageId) {
+			const image = await ctx.db.get(download.imageId);
 			if (image) {
-				await ctx.db.patch(args.imageId, {
+				await ctx.db.patch(download.imageId, {
 					downloadCount: image.downloadCount + 1,
 				});
 			}
@@ -374,6 +446,7 @@ export const logDownload = mutation({
 export const getDownloadStats = query({
 	args: { galleryId: v.id("galleries") },
 	handler: async (ctx, { galleryId }) => {
+		await requireDocumentSiteAdmin(ctx, "galleries", galleryId);
 		// Audit M23: scope via `by_siteUrl_and_galleryId` (single source of
 		// truth for tenant-filtered reads) rather than the dropped `by_gallery`.
 		const gallery = await ctx.db.get(galleryId);

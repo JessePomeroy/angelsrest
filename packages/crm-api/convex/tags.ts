@@ -1,13 +1,13 @@
 import { v } from "convex/values";
 import { internal } from "./_generated/api";
 import { mutation, query } from "./_generated/server";
-import { requireAuth } from "./authHelpers";
+import { requireDocumentSiteAdmin, requireSiteAdmin } from "./authHelpers";
 import { BULK_SCAN_LIMIT, COMPACT_LIST_LIMIT, LOOKUP_LIMIT } from "./helpers/limits";
 
 export const listTags = query({
 	args: { siteUrl: v.string() },
 	handler: async (ctx, { siteUrl }) => {
-		await requireAuth(ctx);
+		await requireSiteAdmin(ctx, siteUrl);
 		return await ctx.db
 			.query("clientTags")
 			.withIndex("by_siteUrl", (q) => q.eq("siteUrl", siteUrl))
@@ -18,7 +18,7 @@ export const listTags = query({
 export const getClientTags = query({
 	args: { clientId: v.id("photographyClients") },
 	handler: async (ctx, { clientId }) => {
-		await requireAuth(ctx);
+		await requireDocumentSiteAdmin(ctx, "photographyClients", clientId);
 		const assignments = await ctx.db
 			.query("clientTagAssignments")
 			.withIndex("by_clientId", (q) => q.eq("clientId", clientId))
@@ -39,7 +39,7 @@ export const createTag = mutation({
 		color: v.optional(v.string()),
 	},
 	handler: async (ctx, args) => {
-		await requireAuth(ctx);
+		await requireSiteAdmin(ctx, args.siteUrl);
 		return await ctx.db.insert("clientTags", args);
 	},
 });
@@ -47,7 +47,7 @@ export const createTag = mutation({
 export const deleteTag = mutation({
 	args: { tagId: v.id("clientTags") },
 	handler: async (ctx, { tagId }) => {
-		await requireAuth(ctx);
+		await requireDocumentSiteAdmin(ctx, "clientTags", tagId);
 		const assignments = await ctx.db
 			.query("clientTagAssignments")
 			.withIndex("by_tagId", (q) => q.eq("tagId", tagId))
@@ -68,7 +68,17 @@ export const assignTag = mutation({
 		tagId: v.id("clientTags"),
 	},
 	handler: async (ctx, args) => {
-		await requireAuth(ctx);
+		await requireSiteAdmin(ctx, args.siteUrl);
+		const client = await ctx.db.get(args.clientId);
+		const tag = await ctx.db.get(args.tagId);
+		if (
+			!client ||
+			client.siteUrl !== args.siteUrl ||
+			!tag ||
+			tag.siteUrl !== args.siteUrl
+		) {
+			throw new Error("Not found");
+		}
 		// Audit M22: compound point-check via `by_clientId_and_tagId`
 		// replaces a linear take(100) + find scan.
 		const alreadyAssigned = await ctx.db
@@ -81,8 +91,6 @@ export const assignTag = mutation({
 
 		const id = await ctx.db.insert("clientTagAssignments", args);
 
-		const tag = await ctx.db.get(args.tagId);
-		const client = await ctx.db.get(args.clientId);
 		if (tag && client) {
 			await ctx.runMutation(internal.activityLog.logActivity, {
 				siteUrl: args.siteUrl,
@@ -103,7 +111,17 @@ export const removeTag = mutation({
 		tagId: v.id("clientTags"),
 	},
 	handler: async (ctx, args) => {
-		await requireAuth(ctx);
+		await requireSiteAdmin(ctx, args.siteUrl);
+		const client = await ctx.db.get(args.clientId);
+		const tag = await ctx.db.get(args.tagId);
+		if (
+			!client ||
+			client.siteUrl !== args.siteUrl ||
+			!tag ||
+			tag.siteUrl !== args.siteUrl
+		) {
+			throw new Error("Not found");
+		}
 		// Audit M22: compound index lookup, same motivation as assignTag.
 		const toRemove = await ctx.db
 			.query("clientTagAssignments")
@@ -115,7 +133,6 @@ export const removeTag = mutation({
 		if (toRemove) {
 			await ctx.db.delete(toRemove._id);
 
-			const tag = await ctx.db.get(args.tagId);
 			if (tag) {
 				await ctx.runMutation(internal.activityLog.logActivity, {
 					siteUrl: args.siteUrl,

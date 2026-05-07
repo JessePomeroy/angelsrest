@@ -1,6 +1,6 @@
 import { v } from "convex/values";
 import { internalMutation, mutation, query } from "./_generated/server";
-import { requireAuth, requireWebhookCallerOrAuth } from "./authHelpers";
+import { requirePlatformAdmin, requireWebhookCallerOrAuth } from "./authHelpers";
 import { DEFAULT_LIST_LIMIT } from "./helpers/limits";
 
 export const checkTier = query({
@@ -25,7 +25,7 @@ export const checkTier = query({
 
 export const listAll = query({
 	handler: async (ctx) => {
-		await requireAuth(ctx);
+		await requirePlatformAdmin(ctx);
 		return await ctx.db.query("platformClients").order("desc").take(DEFAULT_LIST_LIMIT);
 	},
 });
@@ -41,7 +41,10 @@ export const getBySubscriptionId = query({
 		webhookSecret: v.optional(v.string()),
 	},
 	handler: async (ctx, { subscriptionId, webhookSecret }) => {
-		await requireWebhookCallerOrAuth(ctx, webhookSecret);
+		const auth = await requireWebhookCallerOrAuth(ctx, webhookSecret);
+		if (auth.via === "auth") {
+			await requirePlatformAdmin(ctx);
+		}
 		return await ctx.db
 			.query("platformClients")
 			.withIndex("by_stripeSubscriptionId", (q) =>
@@ -68,7 +71,7 @@ export const createClient = mutation({
 		notes: v.optional(v.string()),
 	},
 	handler: async (ctx, args) => {
-		await requireAuth(ctx);
+		await requirePlatformAdmin(ctx);
 		return await ctx.db.insert("platformClients", args);
 	},
 });
@@ -92,7 +95,10 @@ export const updateSubscription = mutation({
 		stripeSubscriptionId: v.optional(v.string()),
 	},
 	handler: async (ctx, args) => {
-		await requireWebhookCallerOrAuth(ctx, args.webhookSecret);
+		const auth = await requireWebhookCallerOrAuth(ctx, args.webhookSecret);
+		if (auth.via === "auth") {
+			await requirePlatformAdmin(ctx);
+		}
 		const client = await ctx.db
 			.query("platformClients")
 			.withIndex("by_siteUrl", (q) => q.eq("siteUrl", args.siteUrl))
@@ -131,7 +137,7 @@ export const updateClient = mutation({
 		notes: v.optional(v.string()),
 	},
 	handler: async (ctx, { clientId, ...updates }) => {
-		await requireAuth(ctx);
+		await requirePlatformAdmin(ctx);
 		const patch: Record<string, unknown> = {};
 		for (const [key, val] of Object.entries(updates)) {
 			if (val !== undefined) patch[key] = val;

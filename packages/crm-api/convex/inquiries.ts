@@ -1,6 +1,6 @@
 import { v } from "convex/values";
 import { mutation, query } from "./_generated/server";
-import { requireAuth } from "./authHelpers";
+import { requireDocumentSiteAdmin, requireSiteAdmin } from "./authHelpers";
 
 // Contact form — intentionally public; the public contact page posts here.
 // Abuse mitigation is layered in SvelteKit (`/api/contact` rate-limits + CAPTCHA
@@ -29,7 +29,7 @@ export const list = query({
 		limit: v.optional(v.number()),
 	},
 	handler: async (ctx, { siteUrl, status, limit }) => {
-		await requireAuth(ctx);
+		await requireSiteAdmin(ctx, siteUrl);
 		// Bounded by default — spam writes to inquiries are public, so an
 		// unbounded `.collect()` was a DoS vector. See audit H11.
 		const take = Math.min(limit ?? 200, 500);
@@ -58,7 +58,7 @@ export const list = query({
 export const countNew = query({
 	args: { siteUrl: v.string() },
 	handler: async (ctx, { siteUrl }) => {
-		await requireAuth(ctx);
+		await requireSiteAdmin(ctx, siteUrl);
 		const CAP = 99;
 		const rows = await ctx.db
 			.query("inquiries")
@@ -80,7 +80,7 @@ export const updateStatus = mutation({
 		status: v.union(v.literal("new"), v.literal("read"), v.literal("replied")),
 	},
 	handler: async (ctx, { id, status }) => {
-		await requireAuth(ctx);
+		await requireDocumentSiteAdmin(ctx, "inquiries", id);
 		await ctx.db.patch(id, { status });
 	},
 });

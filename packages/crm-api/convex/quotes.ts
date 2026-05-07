@@ -1,7 +1,10 @@
 import { v } from "convex/values";
 import { internal } from "./_generated/api";
 import { mutation, query } from "./_generated/server";
-import { requireAuth, requireSiteAdmin } from "./authHelpers";
+import {
+	requireDocumentSiteAdmin,
+	requireSiteAdmin,
+} from "./authHelpers";
 import { deleteDocument } from "./helpers/deleting";
 import { DEFAULT_LIST_LIMIT } from "./helpers/limits";
 import { markDocumentSent } from "./helpers/marking";
@@ -27,7 +30,7 @@ export const list = query({
 		status: v.optional(v.string()),
 	},
 	handler: async (ctx, { siteUrl, status }) => {
-		await requireAuth(ctx);
+		await requireSiteAdmin(ctx, siteUrl);
 		const all = await queryBySiteUrl(ctx, "quotes", siteUrl, { status });
 		return all.map((quote) => ({
 			...quote,
@@ -39,8 +42,7 @@ export const list = query({
 export const get = query({
 	args: { quoteId: v.id("quotes") },
 	handler: async (ctx, { quoteId }) => {
-		await requireAuth(ctx);
-		const quote = await ctx.db.get(quoteId);
+		const quote = await requireDocumentSiteAdmin(ctx, "quotes", quoteId);
 		if (!quote) return null;
 		const client = await ctx.db.get(quote.clientId);
 		return {
@@ -69,11 +71,14 @@ export const create = mutation({
 		notes: v.optional(v.string()),
 	},
 	handler: async (ctx, args) => {
-		await requireAuth(ctx);
+		await requireSiteAdmin(ctx, args.siteUrl);
 		const client = await ctx.db.get(args.clientId);
+		if (!client || client.siteUrl !== args.siteUrl) {
+			throw new Error("Client not found");
+		}
 		const quoteId = await ctx.db.insert("quotes", {
 			...args,
-			clientName: client?.name ?? "unknown",
+			clientName: client.name,
 			status: "draft",
 		});
 
@@ -239,7 +244,7 @@ export const remove = mutation({
 export const listPresets = query({
 	args: { siteUrl: v.string() },
 	handler: async (ctx, { siteUrl }) => {
-		await requireAuth(ctx);
+		await requireSiteAdmin(ctx, siteUrl);
 		return await ctx.db
 			.query("quotePresets")
 			.withIndex("by_siteUrl", (q) => q.eq("siteUrl", siteUrl))
@@ -262,7 +267,7 @@ export const createPreset = mutation({
 		),
 	},
 	handler: async (ctx, args) => {
-		await requireAuth(ctx);
+		await requireSiteAdmin(ctx, args.siteUrl);
 		return await ctx.db.insert("quotePresets", args);
 	},
 });
@@ -299,7 +304,7 @@ export const removePreset = mutation({
 export const getNextNumber = query({
 	args: { siteUrl: v.string() },
 	handler: async (ctx, { siteUrl }) => {
-		await requireAuth(ctx);
+		await requireSiteAdmin(ctx, siteUrl);
 		return getNextSequentialNumber(
 			ctx,
 			"quotes",

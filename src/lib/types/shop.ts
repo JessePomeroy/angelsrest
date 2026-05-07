@@ -100,13 +100,13 @@ export interface PrintSetWithImages extends PrintSet {
  */
 export interface CheckoutData {
 	productId: string;
-	title: string;
-	price: number;
-	image: string | null;
-	paper: ParsedPaper | null;
 	coupon: string | null;
 	isPrintSet?: boolean;
-	images?: string[];
+	paperSlug?: string;
+	sizeSlug?: string;
+	paperIndex?: number;
+	borderWidth?: string;
+	frame?: string;
 }
 
 /**

@@ -320,6 +320,26 @@ describe("__test__buildOrderItemsFromSession — backwards compat", () => {
 		expect(orderItems[0].quantity).toBe(2);
 	});
 
+	it("carries direct checkout frame and canvas metadata into fulfillment items", () => {
+		const session = makeSession({
+			paperSubcategoryId: "101001",
+			paperWidth: "8",
+			paperHeight: "10",
+			imageUrl: "https://cdn.sanity.io/images/abc/canvas.jpg",
+			borderWidth: "0.25",
+			frameSubcategoryId: "105001",
+			canvasSubcategoryId: "101001",
+			canvasWrapHex: "#000000",
+		});
+		const orderItems = __test__buildOrderItemsFromSession(session, []);
+		expect(orderItems[0]).toMatchObject({
+			borderWidth: 0.25,
+			frameSubcategoryId: 105001,
+			canvasSubcategoryId: 101001,
+			canvasWrapHex: "#000000",
+		});
+	});
+
 	it("still handles the legacy print set shape", () => {
 		const session = makeSession({
 			paperSubcategoryId: "103001",

@@ -1,13 +1,7 @@
-import { createGalleryPresignHandler, setServerConfig } from "@jessepomeroy/admin";
-import { adminServerConfig } from "$lib/config/admin.server";
-import { requireAuth } from "$lib/server/adminAuth";
+import { createGalleryPresignHandler } from "@jessepomeroy/admin";
+import { withAdminAuth } from "$lib/server/adminHandler";
 import type { RequestHandler } from "./$types";
-
-setServerConfig(adminServerConfig);
 
 const handler = createGalleryPresignHandler();
 
-export const POST: RequestHandler = async (event) => {
-	await requireAuth(event.cookies);
-	return handler(event);
-};
+export const POST: RequestHandler = withAdminAuth(handler);

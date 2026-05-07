@@ -2,7 +2,7 @@ import { paginationOptsValidator } from "convex/server";
 import { v } from "convex/values";
 import { internal } from "./_generated/api";
 import { mutation, query } from "./_generated/server";
-import { requireAuth } from "./authHelpers";
+import { requireDocumentSiteAdmin, requireSiteAdmin } from "./authHelpers";
 import { deleteDocument } from "./helpers/deleting";
 import { BULK_SCAN_LIMIT, LARGE_SCAN_LIMIT } from "./helpers/limits";
 import { patchDocument } from "./helpers/patching";
@@ -26,7 +26,7 @@ export const listClients = query({
 		status: v.optional(statusValidator),
 	},
 	handler: async (ctx, { siteUrl, category, status }) => {
-		await requireAuth(ctx);
+		await requireSiteAdmin(ctx, siteUrl);
 		if (category) {
 			const results = await ctx.db
 				.query("photographyClients")
@@ -59,7 +59,7 @@ export const listClientsPaginated = query({
 		category: v.optional(categoryValidator),
 	},
 	handler: async (ctx, { siteUrl, paginationOpts, category }) => {
-		await requireAuth(ctx);
+		await requireSiteAdmin(ctx, siteUrl);
 		if (category) {
 			return await ctx.db
 				.query("photographyClients")
@@ -80,8 +80,7 @@ export const listClientsPaginated = query({
 export const getClient = query({
 	args: { clientId: v.id("photographyClients") },
 	handler: async (ctx, { clientId }) => {
-		await requireAuth(ctx);
-		return await ctx.db.get(clientId);
+		return await requireDocumentSiteAdmin(ctx, "photographyClients", clientId);
 	},
 });
 
@@ -98,7 +97,7 @@ export const createClient = mutation({
 		siteUrl_client: v.optional(v.string()),
 	},
 	handler: async (ctx, args) => {
-		await requireAuth(ctx);
+		await requireSiteAdmin(ctx, args.siteUrl);
 		const clientId = await ctx.db.insert("photographyClients", {
 			...args,
 			type:
@@ -166,7 +165,7 @@ export const deleteClient = mutation({
 export const getStats = query({
 	args: { siteUrl: v.string() },
 	handler: async (ctx, { siteUrl }) => {
-		await requireAuth(ctx);
+		await requireSiteAdmin(ctx, siteUrl);
 		const all = await ctx.db
 			.query("photographyClients")
 			.withIndex("by_siteUrl", (q) => q.eq("siteUrl", siteUrl))

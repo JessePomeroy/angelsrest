@@ -152,26 +152,13 @@ function handleV2Checkout() {
 	if (!selectedVariant) return;
 	isLoading = true;
 
-	const paper = getPaper(selectedPaperSlug);
-	const size = getSize(selectedSizeSlug);
-
-	const checkoutPrice = displayPrice ?? selectedVariant.retailPrice;
 	createCheckout({
 		productId: data.product.slug,
-		title: data.product.title,
-		price: checkoutPrice,
-		image: data.product.images[0]?.original || null,
-		paper:
-			paper && size
-				? {
-						name: paper.name,
-						subcategoryId: String(paper.subcategoryId),
-						width: size.width,
-						height: size.height,
-						price: checkoutPrice,
-					}
-				: null,
 		coupon: couponCode.trim() || null,
+		paperSlug: selectedPaperSlug,
+		sizeSlug: selectedSizeSlug,
+		borderWidth: selectedBorderWidth,
+		frame: selectedFrame,
 	})
 		.then((url) => {
 			window.location.href = url;
@@ -206,6 +193,10 @@ function handleV2AddToCart() {
 		paperSubcategoryId: paper.subcategoryId,
 		paperWidth: size.width,
 		paperHeight: size.height,
+		paperSlug: selectedPaperSlug,
+		sizeSlug: selectedSizeSlug,
+		borderWidthValue: selectedBorderWidth,
+		frameValue: selectedFrame,
 		...(border && border.inches > 0 ? { borderWidth: border.inches } : {}),
 		...(frame && frame.subcategoryId > 0
 			? { frameSubcategoryId: frame.subcategoryId }
@@ -227,11 +218,8 @@ async function handleV1Checkout() {
 	try {
 		const url = await createCheckout({
 			productId: data.product.slug,
-			title: data.product.title,
-			price: selectedPaperData?.price || data.product.price,
-			image: data.product.images[0]?.original || null,
-			paper: selectedPaperData,
 			coupon: couponCode.trim() || null,
+			paperIndex: selectedPaperIndex,
 		});
 		window.location.href = url;
 	} catch (err: unknown) {
@@ -269,6 +257,7 @@ function handleV1AddToCart() {
 					),
 					paperWidth: selectedPaperData.width,
 					paperHeight: selectedPaperData.height,
+					paperIndex: selectedPaperIndex,
 				}
 			: {}),
 		quantity: 1,

@@ -1,7 +1,10 @@
 import { v } from "convex/values";
 import { internal } from "./_generated/api";
 import { mutation, query } from "./_generated/server";
-import { requireAuth, requireSiteAdmin } from "./authHelpers";
+import {
+	requireDocumentSiteAdmin,
+	requireSiteAdmin,
+} from "./authHelpers";
 import { deleteDocument } from "./helpers/deleting";
 import { DEFAULT_LIST_LIMIT } from "./helpers/limits";
 import { markDocumentSent } from "./helpers/marking";
@@ -25,7 +28,7 @@ export const list = query({
 		status: v.optional(v.string()),
 	},
 	handler: async (ctx, { siteUrl, status }) => {
-		await requireAuth(ctx);
+		await requireSiteAdmin(ctx, siteUrl);
 		const all = await queryBySiteUrl(ctx, "contracts", siteUrl, { status });
 		return all.map((contract) => ({
 			...contract,
@@ -37,8 +40,7 @@ export const list = query({
 export const get = query({
 	args: { contractId: v.id("contracts") },
 	handler: async (ctx, { contractId }) => {
-		await requireAuth(ctx);
-		const contract = await ctx.db.get(contractId);
+		const contract = await requireDocumentSiteAdmin(ctx, "contracts", contractId);
 		if (!contract) return null;
 		const client = await ctx.db.get(contract.clientId);
 		return {
@@ -63,11 +65,14 @@ export const create = mutation({
 		depositAmount: v.optional(v.number()),
 	},
 	handler: async (ctx, args) => {
-		await requireAuth(ctx);
+		await requireSiteAdmin(ctx, args.siteUrl);
 		const client = await ctx.db.get(args.clientId);
+		if (!client || client.siteUrl !== args.siteUrl) {
+			throw new Error("Client not found");
+		}
 		const contractId = await ctx.db.insert("contracts", {
 			...args,
-			clientName: client?.name ?? "unknown",
+			clientName: client.name,
 			status: "draft",
 		});
 
@@ -145,7 +150,7 @@ export const remove = mutation({
 export const listTemplates = query({
 	args: { siteUrl: v.string() },
 	handler: async (ctx, { siteUrl }) => {
-		await requireAuth(ctx);
+		await requireSiteAdmin(ctx, siteUrl);
 		return await ctx.db
 			.query("contractTemplates")
 			.withIndex("by_siteUrl", (q) => q.eq("siteUrl", siteUrl))
@@ -161,7 +166,7 @@ export const createTemplate = mutation({
 		variables: v.optional(v.array(v.string())),
 	},
 	handler: async (ctx, args) => {
-		await requireAuth(ctx);
+		await requireSiteAdmin(ctx, args.siteUrl);
 		return await ctx.db.insert("contractTemplates", args);
 	},
 });

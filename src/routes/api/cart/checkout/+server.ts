@@ -27,8 +27,10 @@
 import { error, json } from "@sveltejs/kit";
 import type Stripe from "stripe";
 import { PUBLIC_SITE_URL } from "$env/static/public";
+import { client as sanityClient } from "$lib/sanity/client";
 import { buildCartMetadata, validateCart } from "$lib/server/cartCheckoutHelpers";
 import { bindCheckoutSession } from "$lib/server/checkoutBinding";
+import { resolveCheckoutItem } from "$lib/server/checkoutCatalog";
 import { getStripe } from "$lib/server/stripeClient";
 import type { CartItem } from "$lib/shop/cart";
 
@@ -47,12 +49,46 @@ export async function POST({ request, cookies }) {
 			throw error(400, validationError);
 		}
 
+		const resolvedItems = await Promise.all(
+			items.map(async (item) => {
+				const resolved = await resolveCheckoutItem(sanityClient.fetch.bind(sanityClient), {
+					productId: item.productSlug,
+					isPrintSet: item.type === "set",
+					paperSlug: item.paperSlug,
+					sizeSlug: item.sizeSlug,
+					paperIndex: item.paperIndex,
+					borderWidth: item.borderWidthValue ?? item.borderWidth?.toString(),
+					frame: item.frameValue,
+				});
+				return {
+					...item,
+					title: resolved.title,
+					imageUrl: resolved.image ?? "",
+					imageUrls: resolved.isPrintSet ? resolved.images : undefined,
+					paperName: resolved.paper?.name,
+					paperSubcategoryId: resolved.paper?.subcategoryId,
+					paperWidth: resolved.paper?.width,
+					paperHeight: resolved.paper?.height,
+					borderWidth: resolved.paper?.borderWidth,
+					frameSubcategoryId: resolved.paper?.frameSubcategoryId,
+					canvasSubcategoryId: resolved.paper?.canvasSubcategoryId,
+					canvasWrapHex: resolved.paper?.canvasWrapHex,
+					unitPriceCents: Math.round(resolved.price * 100),
+				} satisfies CartItem;
+			}),
+		);
+
+		const resolvedValidationError = validateCart(resolvedItems);
+		if (resolvedValidationError) {
+			throw error(400, resolvedValidationError);
+		}
+
 		// Build one Stripe line item per cart entry. Stripe expects each
 		// line item with its own price_data and quantity — perfect for
-		// our shape since each cart entry has its own snapshot price.
+		// our shape after the server resolves current catalog prices.
 		// Non-print merch (no paper info) gets a simpler product name with
 		// no paper/size suffix.
-		const lineItems: Stripe.Checkout.SessionCreateParams.LineItem[] = items.map((item) => {
+		const lineItems: Stripe.Checkout.SessionCreateParams.LineItem[] = resolvedItems.map((item) => {
 			const hasPaper = typeof item.paperSubcategoryId === "number";
 			const name = hasPaper
 				? `${item.title} — ${item.paperName}, ${item.paperWidth}×${item.paperHeight}`
@@ -79,7 +115,7 @@ export async function POST({ request, cookies }) {
 			mode: "payment",
 			success_url: `${PUBLIC_SITE_URL}/checkout/success?session_id={CHECKOUT_SESSION_ID}`,
 			cancel_url: `${PUBLIC_SITE_URL}/checkout/cancel`,
-			metadata: buildCartMetadata(items),
+			metadata: buildCartMetadata(resolvedItems),
 		});
 
 		// Bind this browser to the session so /checkout/success can verify
