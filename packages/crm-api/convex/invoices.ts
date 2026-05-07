@@ -1,7 +1,7 @@
 import { v } from "convex/values";
 import { internal } from "./_generated/api";
 import { mutation, query } from "./_generated/server";
-import { requireAuth, requireWebhookCallerOrAuth } from "./authHelpers";
+import { requireSiteAdmin, requireWebhookCallerOrAuth } from "./authHelpers";
 import { deleteDocument } from "./helpers/deleting";
 import { markDocumentSent } from "./helpers/marking";
 import { getNextSequentialNumber } from "./helpers/numbering";
@@ -26,7 +26,7 @@ export const list = query({
 		status: v.optional(v.string()),
 	},
 	handler: async (ctx, { siteUrl, status }) => {
-		await requireAuth(ctx);
+		await requireSiteAdmin(ctx, siteUrl);
 		const all = await queryBySiteUrl(ctx, "invoices", siteUrl, { status });
 		return all.map((invoice) => ({
 			...invoice,
@@ -100,11 +100,14 @@ export const create = mutation({
 		parentInvoiceId: v.optional(v.id("invoices")),
 	},
 	handler: async (ctx, args) => {
-		await requireAuth(ctx);
+		await requireSiteAdmin(ctx, args.siteUrl);
 		const client = await ctx.db.get(args.clientId);
+		if (!client || client.siteUrl !== args.siteUrl) {
+			throw new Error("Client not found");
+		}
 		const invoiceId = await ctx.db.insert("invoices", {
 			...args,
-			clientName: client?.name ?? "unknown",
+			clientName: client.name,
 			status: "draft",
 		});
 
@@ -172,7 +175,10 @@ export const markPaid = mutation({
 		webhookSecret: v.optional(v.string()),
 	},
 	handler: async (ctx, { invoiceId, siteUrl, webhookSecret }) => {
-		await requireWebhookCallerOrAuth(ctx, webhookSecret);
+		const auth = await requireWebhookCallerOrAuth(ctx, webhookSecret);
+		if (auth.via === "auth") {
+			await requireSiteAdmin(ctx, siteUrl);
+		}
 		const invoice = await ctx.db.get(invoiceId);
 		if (!invoice || invoice.siteUrl !== siteUrl) {
 			throw new Error("Not found");
@@ -206,7 +212,7 @@ export const remove = mutation({
 export const getNextNumber = query({
 	args: { siteUrl: v.string() },
 	handler: async (ctx, { siteUrl }) => {
-		await requireAuth(ctx);
+		await requireSiteAdmin(ctx, siteUrl);
 		return getNextSequentialNumber(
 			ctx,
 			"invoices",

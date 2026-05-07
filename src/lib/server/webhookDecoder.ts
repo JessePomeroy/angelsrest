@@ -142,6 +142,15 @@ export function buildOrderItemsFromSession(
 	}
 	const width = widthParsed;
 	const height = heightParsed;
+	const borderParsed = Number.parseFloat(meta.borderWidth ?? "");
+	const borderWidth = Number.isFinite(borderParsed) && borderParsed > 0 ? borderParsed : undefined;
+	const frameParsed = Number.parseInt(meta.frameSubcategoryId ?? "", 10);
+	const frameSubcategoryId =
+		Number.isFinite(frameParsed) && frameParsed > 0 ? frameParsed : undefined;
+	const canvasParsed = Number.parseInt(meta.canvasSubcategoryId ?? "", 10);
+	const canvasSubcategoryId =
+		Number.isFinite(canvasParsed) && canvasParsed > 0 ? canvasParsed : undefined;
+	const canvasWrapHex = typeof meta.canvasWrapHex === "string" ? meta.canvasWrapHex : undefined;
 
 	const isPrintSet = meta.isPrintSet === "true";
 	if (isPrintSet) {
@@ -157,6 +166,10 @@ export function buildOrderItemsFromSession(
 			width,
 			height,
 			quantity: 1,
+			borderWidth,
+			frameSubcategoryId,
+			canvasSubcategoryId,
+			canvasWrapHex,
 		}));
 	}
 
@@ -169,6 +182,10 @@ export function buildOrderItemsFromSession(
 			width,
 			height,
 			quantity: lineItems[0]?.quantity ?? 1,
+			borderWidth,
+			frameSubcategoryId,
+			canvasSubcategoryId,
+			canvasWrapHex,
 		},
 	];
 }

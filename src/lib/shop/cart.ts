@@ -11,7 +11,7 @@
  *   - The reactive layer (`cart.svelte.ts`) is a thin shell over these
  *     helpers, so its bug surface is small.
  *
- * Cart shape is versioned via the storage key (`angelsrest:cart:v1`) so
+ * Cart shape is versioned via the storage key (`angelsrest:cart:v2`) so
  * we can migrate the schema later without confusing customers whose
  * browsers still hold the old shape — old keys are simply ignored, the
  * new key starts empty.
@@ -65,6 +65,16 @@ export interface CartItem {
 	canvasSubcategoryId?: number;
 	/** Canvas wrap color hex (e.g. "#000000"). Only present for canvas items. */
 	canvasWrapHex?: string;
+	/** Server checkout selector for V2 catalog materials. */
+	paperSlug?: string;
+	/** Server checkout selector for V2 catalog sizes. */
+	sizeSlug?: string;
+	/** Server checkout selector for V1 paper arrays. */
+	paperIndex?: number;
+	/** Server checkout selector for V2 border option values. */
+	borderWidthValue?: string;
+	/** Server checkout selector for V2 frame option values. */
+	frameValue?: string;
 	/** Always in [1, MAX_QUANTITY_PER_LINE]. */
 	quantity: number;
 	/**
@@ -75,14 +85,14 @@ export interface CartItem {
 	unitPriceCents: number;
 }
 
-/** Top-level cart state. Persisted under `angelsrest:cart:v1` in localStorage. */
+/** Top-level cart state. Persisted under `angelsrest:cart:v2` in localStorage. */
 export interface CartState {
 	items: CartItem[];
 	/** ISO timestamp of the last mutation. Used to expire stale carts. */
 	updatedAt: string;
 }
 
-export const STORAGE_KEY = "angelsrest:cart:v1";
+export const STORAGE_KEY = "angelsrest:cart:v2";
 export const CART_EXPIRY_DAYS = 30;
 export const MAX_QUANTITY_PER_LINE = 20;
 

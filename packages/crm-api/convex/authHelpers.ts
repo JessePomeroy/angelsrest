@@ -1,3 +1,4 @@
+import type { Id, TableNames } from "./_generated/dataModel";
 import type { MutationCtx, QueryCtx } from "./_generated/server";
 
 /**
@@ -114,4 +115,36 @@ export async function requireSiteAdmin(
 		throw new Error("Not authorized (not a site admin)");
 	}
 	return { identity, client };
+}
+
+/**
+ * Require that the authenticated user is an admin of the site that owns a
+ * document. Use this for public functions that receive only a document id and
+ * therefore cannot call `requireSiteAdmin(ctx, siteUrl)` directly without
+ * changing the external API.
+ */
+export async function requireDocumentSiteAdmin<T extends TableNames>(
+	ctx: MutationCtx | QueryCtx,
+	table: T,
+	id: Id<T>,
+) {
+	const doc = await ctx.db.get(id);
+	if (!doc) {
+		throw new Error("Not found");
+	}
+	const siteUrl = (doc as { siteUrl?: string }).siteUrl;
+	if (!siteUrl) {
+		throw new Error(`Document in ${table} is not site-scoped`);
+	}
+	await requireSiteAdmin(ctx, siteUrl);
+	return doc;
+}
+
+/**
+ * Require creator/platform-admin access. Platform-wide tables do not belong to
+ * a tenant selected by request args, so gate them through the hub site's
+ * platformClients admin list.
+ */
+export async function requirePlatformAdmin(ctx: MutationCtx | QueryCtx) {
+	return await requireSiteAdmin(ctx, "angelsrest.online");
 }

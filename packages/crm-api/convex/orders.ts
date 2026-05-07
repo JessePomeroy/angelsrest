@@ -1,7 +1,11 @@
 import { v } from "convex/values";
 import { internal } from "./_generated/api";
 import { mutation, query } from "./_generated/server";
-import { requireAuth, requireWebhookCallerOrAuth } from "./authHelpers";
+import {
+	requireDocumentSiteAdmin,
+	requireSiteAdmin,
+	requireWebhookCallerOrAuth,
+} from "./authHelpers";
 import { AGGREGATE_SCAN_LIMIT, BULK_SCAN_LIMIT } from "./helpers/limits";
 import { getNextSequentialNumber } from "./helpers/numbering";
 
@@ -21,7 +25,7 @@ export const list = query({
 		status: v.optional(orderStatusValidator),
 	},
 	handler: async (ctx, { siteUrl, status }) => {
-		await requireAuth(ctx);
+		await requireSiteAdmin(ctx, siteUrl);
 		if (status) {
 			return await ctx.db
 				.query("orders")
@@ -85,7 +89,10 @@ export const create = mutation({
 		discountAmount: v.optional(v.number()),
 	},
 	handler: async (ctx, args) => {
-		await requireWebhookCallerOrAuth(ctx, args.webhookSecret);
+		const auth = await requireWebhookCallerOrAuth(ctx, args.webhookSecret);
+		if (auth.via === "auth") {
+			await requireSiteAdmin(ctx, args.siteUrl);
+		}
 		// Don't let the secret leak into the stored document.
 		const { webhookSecret: _discard, ...rest } = args;
 		// Idempotency: if an order with this stripeSessionId already exists,
@@ -175,7 +182,10 @@ export const updateStatus = mutation({
 		stripeRefundId: v.optional(v.string()),
 	},
 	handler: async (ctx, { orderId, webhookSecret, ...updates }) => {
-		await requireWebhookCallerOrAuth(ctx, webhookSecret);
+		const auth = await requireWebhookCallerOrAuth(ctx, webhookSecret);
+		if (auth.via === "auth") {
+			await requireDocumentSiteAdmin(ctx, "orders", orderId);
+		}
 		const patch: Record<string, unknown> = {};
 		for (const [key, val] of Object.entries(updates)) {
 			if (val !== undefined) patch[key] = val;
@@ -235,7 +245,10 @@ export const getByLumaprintsOrderNumber = query({
 		webhookSecret: v.optional(v.string()),
 	},
 	handler: async (ctx, { siteUrl, lumaprintsOrderNumber, webhookSecret }) => {
-		await requireWebhookCallerOrAuth(ctx, webhookSecret);
+		const auth = await requireWebhookCallerOrAuth(ctx, webhookSecret);
+		if (auth.via === "auth") {
+			await requireSiteAdmin(ctx, siteUrl);
+		}
 		const order = await ctx.db
 			.query("orders")
 			.withIndex("by_lumaprintsOrderNumber", (q) =>
@@ -257,7 +270,7 @@ export const getByLumaprintsOrderNumber = query({
 export const getStats = query({
 	args: { siteUrl: v.string() },
 	handler: async (ctx, { siteUrl }) => {
-		await requireAuth(ctx);
+		await requireSiteAdmin(ctx, siteUrl);
 		const orders = await ctx.db
 			.query("orders")
 			.withIndex("by_siteUrl", (q) => q.eq("siteUrl", siteUrl))
@@ -337,7 +350,7 @@ export const getStats = query({
 export const getNextOrderNumber = query({
 	args: { siteUrl: v.string() },
 	handler: async (ctx, { siteUrl }) => {
-		await requireAuth(ctx);
+		await requireSiteAdmin(ctx, siteUrl);
 		return getNextSequentialNumber(
 			ctx,
 			"orders",

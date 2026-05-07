@@ -68,6 +68,7 @@ async function toggleFavorite(index: number) {
 	try {
 		await client.mutation(api.galleries.updateImage, {
 			id: image._id as Id<"galleryImages">,
+			token: data.token,
 			isFavorite: newVal,
 		});
 	} catch (err) {

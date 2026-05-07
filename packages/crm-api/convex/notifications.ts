@@ -1,6 +1,6 @@
 import { v } from "convex/values";
 import { mutation, query } from "./_generated/server";
-import { requireAuth } from "./authHelpers";
+import { requireSiteAdmin } from "./authHelpers";
 import { RECENT_ITEMS_LIMIT } from "./helpers/limits";
 
 const TRACKED_PAGES = [
@@ -24,7 +24,7 @@ type PageKey = (typeof TRACKED_PAGES)[number];
 export const getUnreadFlags = query({
 	args: { siteUrl: v.string() },
 	handler: async (ctx, { siteUrl }) => {
-		await requireAuth(ctx);
+		await requireSiteAdmin(ctx, siteUrl);
 		const userId = siteUrl;
 
 		// Get all lastSeen records for this user+site
@@ -155,7 +155,7 @@ export const markSeen = mutation({
 		page: v.string(),
 	},
 	handler: async (ctx, { siteUrl, page }) => {
-		await requireAuth(ctx);
+		await requireSiteAdmin(ctx, siteUrl);
 		const userId = siteUrl;
 		const now = Date.now();
 

@@ -1,6 +1,6 @@
 import { v } from "convex/values";
 import { mutation, query } from "./_generated/server";
-import { requireAuth } from "./authHelpers";
+import { requireDocumentSiteAdmin, requireSiteAdmin } from "./authHelpers";
 import { deleteDocument } from "./helpers/deleting";
 import { BULK_SCAN_LIMIT } from "./helpers/limits";
 import { patchDocument } from "./helpers/patching";
@@ -18,7 +18,7 @@ const categoryValidator = v.union(
 export const list = query({
 	args: { siteUrl: v.string() },
 	handler: async (ctx, { siteUrl }) => {
-		await requireAuth(ctx);
+		await requireSiteAdmin(ctx, siteUrl);
 		return await ctx.db
 			.query("emailTemplates")
 			.withIndex("by_siteUrl", (q) => q.eq("siteUrl", siteUrl))
@@ -29,8 +29,7 @@ export const list = query({
 export const get = query({
 	args: { templateId: v.id("emailTemplates") },
 	handler: async (ctx, { templateId }) => {
-		await requireAuth(ctx);
-		return await ctx.db.get(templateId);
+		return await requireDocumentSiteAdmin(ctx, "emailTemplates", templateId);
 	},
 });
 
@@ -40,7 +39,7 @@ export const getByCategory = query({
 		category: categoryValidator,
 	},
 	handler: async (ctx, { siteUrl, category }) => {
-		await requireAuth(ctx);
+		await requireSiteAdmin(ctx, siteUrl);
 		return await ctx.db
 			.query("emailTemplates")
 			.withIndex("by_siteUrl_category", (q) =>
@@ -60,7 +59,7 @@ export const create = mutation({
 		variables: v.optional(v.array(v.string())),
 	},
 	handler: async (ctx, args) => {
-		await requireAuth(ctx);
+		await requireSiteAdmin(ctx, args.siteUrl);
 		return await ctx.db.insert("emailTemplates", args);
 	},
 });

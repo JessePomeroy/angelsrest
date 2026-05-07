@@ -1,6 +1,6 @@
 import { v } from "convex/values";
 import { mutation, query } from "./_generated/server";
-import { requireAuth, requireSiteAdmin } from "./authHelpers";
+import { requireSiteAdmin } from "./authHelpers";
 import { BULK_SCAN_LIMIT, COMPACT_LIST_LIMIT, LARGE_SCAN_LIMIT } from "./helpers/limits";
 
 const DEFAULT_COLUMNS: Record<string, string[]> = {
@@ -127,7 +127,7 @@ function generateId(): string {
 export const getBoardConfig = query({
 	args: { siteUrl: v.string(), projectType: v.string() },
 	handler: async (ctx, { siteUrl, projectType }) => {
-		await requireAuth(ctx);
+		await requireSiteAdmin(ctx, siteUrl);
 		return await ctx.db
 			.query("boardConfigs")
 			.withIndex("by_siteUrl_and_projectType", (q) =>
@@ -140,7 +140,7 @@ export const getBoardConfig = query({
 export const listBoardConfigs = query({
 	args: { siteUrl: v.string() },
 	handler: async (ctx, { siteUrl }) => {
-		await requireAuth(ctx);
+		await requireSiteAdmin(ctx, siteUrl);
 		return await ctx.db
 			.query("boardConfigs")
 			.withIndex("by_siteUrl", (q) => q.eq("siteUrl", siteUrl))
@@ -153,7 +153,7 @@ export const listBoardConfigs = query({
 export const initializeBoard = mutation({
 	args: { siteUrl: v.string(), projectType: v.string() },
 	handler: async (ctx, { siteUrl, projectType }) => {
-		await requireAuth(ctx);
+		await requireSiteAdmin(ctx, siteUrl);
 		const existing = await ctx.db
 			.query("boardConfigs")
 			.withIndex("by_siteUrl_and_projectType", (q) =>

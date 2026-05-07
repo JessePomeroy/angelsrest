@@ -406,19 +406,6 @@ async function signContract() {
 </div>
 
 <style>
-	@font-face {
-		font-family: "Chillax";
-		src: url("/fonts/Chillax-Variable.woff2") format("woff2");
-		font-weight: 200 700;
-		font-display: swap;
-	}
-	@font-face {
-		font-family: "Synonym";
-		src: url("/fonts/Synonym-Variable.woff2") format("woff2");
-		font-weight: 300 700;
-		font-display: swap;
-	}
-
 	.portal {
 		min-height: 100vh;
 		background: #fafafa;

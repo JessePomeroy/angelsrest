@@ -1,7 +1,7 @@
 import { v } from "convex/values";
 import type { Id } from "./_generated/dataModel";
 import { mutation, query } from "./_generated/server";
-import { requireAuth } from "./authHelpers";
+import { requireSiteAdmin } from "./authHelpers";
 import { DEFAULT_LIST_LIMIT } from "./helpers/limits";
 
 const emailTypeValidator = v.union(
@@ -41,7 +41,7 @@ export const list = query({
 		type: v.optional(emailTypeValidator),
 	},
 	handler: async (ctx, { siteUrl, type }) => {
-		await requireAuth(ctx);
+		await requireSiteAdmin(ctx, siteUrl);
 		if (type) {
 			return await ctx.db
 				.query("emailLog")
@@ -74,7 +74,7 @@ export const create = mutation({
 		// Gated: email logging happens as a side effect of admin actions.
 		// Previously this was public, which let any caller pollute the log.
 		// Audit C6.
-		await requireAuth(ctx);
+		await requireSiteAdmin(ctx, args.siteUrl);
 		return await ctx.db.insert("emailLog", args);
 	},
 });
