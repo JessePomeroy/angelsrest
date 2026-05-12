@@ -335,7 +335,7 @@ export const setCreatorRole = internalMutation({
 /**
  * Rename the `siteUrl` on a platformClients row — used when a client's
  * domain is decided (or changed) after the row was created with a stub
- * (e.g. reflecting-pool.com → zippymiggy.com).
+ * (e.g. placeholder.example → zippymiggy.com).
  *
  * Internal-only: callable via `npx convex run platform:renameClientSiteUrl
  * '{"fromSiteUrl":"old","toSiteUrl":"new"}'`. Idempotent — errors if there's
