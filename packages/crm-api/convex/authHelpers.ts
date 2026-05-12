@@ -1,5 +1,6 @@
 import type { Id, TableNames } from "./_generated/dataModel";
 import type { MutationCtx, QueryCtx } from "./_generated/server";
+import { DEFAULT_LIST_LIMIT } from "./helpers/limits";
 
 /**
  * Require an authenticated user identity. Throws if not authenticated.
@@ -142,9 +143,45 @@ export async function requireDocumentSiteAdmin<T extends TableNames>(
 
 /**
  * Require creator/platform-admin access. Platform-wide tables do not belong to
- * a tenant selected by request args, so gate them through the hub site's
- * platformClients admin list.
+ * a tenant selected by request args, so they need a role check instead of a
+ * caller-supplied siteUrl check.
+ *
+ * Migration note: existing platformClients rows predate `role`. During rollout,
+ * if no creator row has been marked yet, fall back to the historical
+ * angelsrest.online admin check so the creator is not locked out between
+ * deployment and the one-time `platform.setCreatorRole` migration.
+ */
+export async function requireCreator(ctx: MutationCtx | QueryCtx) {
+	const identity = await requireAuth(ctx);
+	if (!identity.email) {
+		throw new Error("Not authorized (missing email in identity)");
+	}
+
+	const identityEmail = identity.email.toLowerCase();
+	const platformRows = await ctx.db.query("platformClients").take(DEFAULT_LIST_LIMIT);
+	const creatorRows = platformRows.filter((client) => client.role === "creator");
+	const memberships = platformRows.filter((client) =>
+		client.adminEmails.map((email) => email.toLowerCase()).includes(identityEmail),
+	);
+	const creatorMembership = memberships.find((client) => client.role === "creator");
+	if (creatorMembership) {
+		return { identity, client: creatorMembership };
+	}
+
+	if (creatorRows.length === 0) {
+		const legacy = memberships.find((client) => client.siteUrl === "angelsrest.online");
+		if (legacy) {
+			return { identity, client: legacy };
+		}
+	}
+
+	throw new Error("Not authorized (not a creator)");
+}
+
+/**
+ * Backward-compatible name for existing call sites. New code should call
+ * `requireCreator` directly.
  */
 export async function requirePlatformAdmin(ctx: MutationCtx | QueryCtx) {
-	return await requireSiteAdmin(ctx, "angelsrest.online");
+	return await requireCreator(ctx);
 }

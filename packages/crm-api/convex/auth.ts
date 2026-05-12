@@ -1,7 +1,7 @@
 import { createClient, type GenericCtx } from "@convex-dev/better-auth";
 import { convex } from "@convex-dev/better-auth/plugins";
 import { betterAuth } from "better-auth/minimal";
-import { components } from "./_generated/api";
+import { components, internal } from "./_generated/api";
 import type { DataModel } from "./_generated/dataModel";
 import authConfig from "./auth.config";
 
@@ -9,22 +9,10 @@ export const authComponent = createClient<DataModel>(components.betterAuth);
 
 export const createAuth = (ctx: GenericCtx<DataModel>) => {
 	const siteUrl = process.env.SITE_URL!;
-	// Option A Phase 5 (2026-04-25): under per-client Convex deployments,
-	// each deployment is single-tenant — `SITE_URL` is the only canonical
-	// origin. The previous hardcoded angelsrest entries were a multi-tenant
-	// holdover and would block sign-in on any new spoke. Derive the trusted
-	// list from `SITE_URL`: the configured value, its apex variant (in case
-	// the site canonicalizes on `www.`), and localhost for dev.
-	// Deduped via Set since `siteUrl` and the apex variant collide when
-	// SITE_URL has no `www.` prefix.
-	const apexUrl = siteUrl.replace("https://www.", "https://");
-	const trustedOrigins = Array.from(
-		new Set([siteUrl, apexUrl, "http://localhost:5173"]),
-	);
 	return betterAuth({
 		baseURL: siteUrl,
 		secret: process.env.BETTER_AUTH_SECRET!,
-		trustedOrigins,
+		trustedOrigins: () => resolveTrustedOrigins(ctx, siteUrl),
 		database: authComponent.adapter(ctx),
 		emailAndPassword: { enabled: true },
 		socialProviders: {
@@ -48,3 +36,40 @@ export const createAuth = (ctx: GenericCtx<DataModel>) => {
 		],
 	});
 };
+
+type TrustedOriginsRunner = {
+	runQuery: (
+		ref: typeof internal.platform.listTrustedOrigins,
+		args: Record<string, never>,
+	) => Promise<string[]>;
+};
+
+async function resolveTrustedOrigins(ctx: GenericCtx<DataModel>, siteUrl: string) {
+	const fallbackOrigins = getFallbackTrustedOrigins(siteUrl);
+	if (!canRunTrustedOriginsQuery(ctx)) {
+		return fallbackOrigins;
+	}
+	const tenantOrigins = await ctx.runQuery(internal.platform.listTrustedOrigins, {});
+	return Array.from(new Set([...fallbackOrigins, ...tenantOrigins]));
+}
+
+function canRunTrustedOriginsQuery(
+	ctx: GenericCtx<DataModel>,
+): ctx is GenericCtx<DataModel> & TrustedOriginsRunner {
+	return "runQuery" in ctx && typeof ctx.runQuery === "function";
+}
+
+function getFallbackTrustedOrigins(siteUrl: string) {
+	const normalized = siteUrl.replace(/\/+$/, "");
+	const apexUrl = normalized.replace("https://www.", "https://");
+	return Array.from(
+		new Set([
+			normalized,
+			apexUrl,
+			"https://angelsrest.online",
+			"https://www.angelsrest.online",
+			"http://localhost:5173",
+			"http://localhost:4173",
+		]),
+	);
+}

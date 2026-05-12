@@ -19,6 +19,7 @@ export default defineSchema({
 		stripeCustomerId: v.optional(v.string()),
 		stripeSubscriptionId: v.optional(v.string()),
 		adminEmails: v.array(v.string()),
+		role: v.optional(v.union(v.literal("creator"), v.literal("client"))),
 		notes: v.optional(v.string()),
 	})
 		.index("by_siteUrl", ["siteUrl"])
