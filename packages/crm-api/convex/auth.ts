@@ -10,7 +10,11 @@ export const authComponent = createClient<DataModel>(components.betterAuth);
 export const createAuth = (ctx: GenericCtx<DataModel>) => {
 	const siteUrl = process.env.SITE_URL!;
 	return betterAuth({
-		baseURL: siteUrl,
+		baseURL: {
+			allowedHosts: getAllowedAuthHosts(siteUrl),
+			fallback: siteUrl,
+			protocol: "https",
+		},
 		secret: process.env.BETTER_AUTH_SECRET!,
 		trustedOrigins: () => resolveTrustedOrigins(ctx, siteUrl),
 		database: authComponent.adapter(ctx),
@@ -72,4 +76,37 @@ function getFallbackTrustedOrigins(siteUrl: string) {
 			"http://localhost:4173",
 		]),
 	);
+}
+
+function getAllowedAuthHosts(siteUrl: string) {
+	const hosts = new Set<string>();
+	for (const origin of getFallbackTrustedOrigins(siteUrl)) {
+		addOriginHost(hosts, origin);
+	}
+	for (const origin of parseCsvEnv(process.env.BETTER_AUTH_TRUSTED_ORIGINS)) {
+		addOriginHost(hosts, origin);
+	}
+	for (const host of parseCsvEnv(process.env.BETTER_AUTH_ALLOWED_HOSTS)) {
+		addOriginHost(hosts, host);
+	}
+	return Array.from(hosts);
+}
+
+function addOriginHost(hosts: Set<string>, originOrHost: string) {
+	const value = originOrHost.trim().replace(/\/+$/, "");
+	if (!value) return;
+	if (value.includes("://")) {
+		hosts.add(new URL(value).host);
+		return;
+	}
+	hosts.add(value);
+}
+
+function parseCsvEnv(value: string | undefined) {
+	return value
+		? value
+				.split(",")
+				.map((item) => item.trim())
+				.filter(Boolean)
+		: [];
 }
