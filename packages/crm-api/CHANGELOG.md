@@ -1,5 +1,11 @@
 # @jessepomeroy/crm-api
 
+## 1.1.0
+
+### Minor Changes
+
+- 23eef83: Add shared-Convex tenant hardening helpers: creator-role platform authorization, trusted-origin discovery from platform clients, and platform client role metadata.
+
 ## 1.0.0
 
 ### Major Changes
