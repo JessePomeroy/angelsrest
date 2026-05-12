@@ -51,7 +51,7 @@ jobs:
 
       - run: pnpm install --frozen-lockfile
         env:
-          NPM_TOKEN: ${{ secrets.GH_PACKAGES_TOKEN }}
+          GH_PACKAGES_TOKEN: ${{ secrets.GH_PACKAGES_TOKEN }}
 
       # Audit H50: match the local `pnpm lint` command (biome check .) so CI
       # and local linting agree on scope. Previously CI scanned only src/,

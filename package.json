@@ -45,10 +45,10 @@
 		"vitest": "^4.1.5"
 	},
 	"dependencies": {
-		"@convex-dev/better-auth": "^0.11.5",
+		"@convex-dev/better-auth": "^0.12.2",
 		"@jessepomeroy/admin": "^1.1.0",
 		"@lucide/svelte": "^0.563.1",
-		"@mmailaender/convex-better-auth-svelte": "^0.7.3",
+		"@mmailaender/convex-better-auth-svelte": "^0.7.4",
 		"@mmailaender/convex-svelte": "^0.18.0",
 		"@portabletext/svelte": "^3.0.1",
 		"@sanity/client": "^7.21.0",
@@ -59,7 +59,7 @@
 		"@stripe/stripe-js": "^8.11.0",
 		"@tailwindcss/typography": "^0.5.19",
 		"@vercel/analytics": "^1.6.1",
-		"better-auth": "1.5.3",
+		"better-auth": "1.6.10",
 		"convex": "^1.36.0",
 		"isomorphic-dompurify": "^3.10.0",
 		"resend": "^6.12.2",
