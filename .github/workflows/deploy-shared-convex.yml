@@ -1,0 +1,68 @@
+name: Deploy shared Convex
+
+# Shared Convex model: packages/crm-api/convex is the single source for the
+# platform deployment used by the hub and all spoke sites. Deploy it once after
+# main's CI passes.
+#
+# Triggering: gated on a successful CI run (lint + check + tests). Prevents
+# a broken main from auto-deploying to prod. Manual override via
+# workflow_dispatch is available for force-redeploys.
+#
+# Adding a new client does not add a new Convex deployment. Add the tenant row
+# in platformClients, publish a crm-api package version if generated API types
+# changed, and deploy this shared project once.
+
+on:
+  workflow_run:
+    workflows: ["CI"]
+    types: [completed]
+    branches: [main]
+  workflow_dispatch:
+
+# Serialise deploys; back-to-back pushes shouldn't race the same prod.
+concurrency:
+  group: deploy-shared-convex
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  packages: read
+
+jobs:
+  deploy:
+    name: Deploy shared Convex
+    runs-on: ubuntu-latest
+    # Skip if CI failed. workflow_dispatch always passes the gate.
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      github.event.workflow_run.conclusion == 'success'
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          # For workflow_run events, check out the SHA that CI validated,
+          # not whatever the default branch happens to be at trigger time.
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
+
+      - uses: pnpm/action-setup@v6
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+        env:
+          GH_PACKAGES_TOKEN: ${{ secrets.GH_PACKAGES_TOKEN }}
+
+      - name: Deploy Convex
+        env:
+          CONVEX_DEPLOY_KEY: ${{ secrets.CONVEX_DEPLOY_KEY_ANGELSREST_PROD }}
+        working-directory: packages/crm-api
+        run: |
+          if [ -z "${CONVEX_DEPLOY_KEY:-}" ]; then
+            echo "Error: secret CONVEX_DEPLOY_KEY_ANGELSREST_PROD is empty or unset." >&2
+            echo "Add the shared production deploy key as a repo secret and retry." >&2
+            exit 1
+          fi
+          npx convex deploy

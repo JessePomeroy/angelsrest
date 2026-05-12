@@ -2,13 +2,13 @@
 # ============================================================================
 # deploy-all.sh
 #
-# Deploy this Convex codebase to every per-client prod deployment, serially.
+# Deploy this Convex codebase to the shared prod deployment.
 #
 # ★ STATUS: BREAK-GLASS, not required setup. ★
 #
-# The canonical deploy path is `.github/workflows/deploy-spokes.yml`, which
+# The canonical deploy path is `.github/workflows/deploy-shared-convex.yml`, which
 # auto-fires on every green CI run AND supports manual force-redeploys via
-# Actions → Deploy Convex spokes → "Run workflow" (workflow_dispatch). That
+# Actions → Deploy shared Convex → "Run workflow" (workflow_dispatch). That
 # covers ~100% of normal and emergency use cases — same effect as this
 # script, runs in the cloud, no laptop or password manager needed.
 #
@@ -18,31 +18,25 @@
 # DEFERRED — don't install Bitwarden CLI or create the items below until
 # you actually need this path.
 #
-# Background (Option A): each spoke site (angelsrest, reflecting-pool, …) has
-# its own Convex project. Schema and functions live in `packages/crm-api/convex/`
-# (canonical source-of-truth post Gap 2 Phase 1), and the same code is deployed
-# N times — once per client — using a different deploy key for each. The CI
-# workflow parallelises via GitHub Secrets; this script serialises via Bitwarden.
+# Background: all hub and spoke sites use one shared Convex deployment for
+# operational data. Schema and functions live in `packages/crm-api/convex/`.
+# Adding a client adds a tenant row, not a new Convex project.
 #
 # Local usage (requires Bitwarden CLI logged in + unlocked):
 #   bw login                           # one-time
 #   export BW_SESSION="$(bw unlock --raw)"
 #   ./scripts/deploy-all.sh
 #
-# Bitwarden item layout: each deploy key is stored as the *password* field of
-# a Bitwarden login item named `convex-deploy-key-<client>-prod`. Keep the
-# items in any folder; lookup is by name. The script accepts a session via
+# Bitwarden item layout: the shared production deploy key is stored as the
+# *password* field of a Bitwarden login item named
+# `convex-deploy-key-angelsrest-prod`. Keep the item in any folder; lookup is
+# by name. The script accepts a session via
 # either:
 #   - $BW_SESSION exported in your shell (recommended), or
 #   - prompting `bw unlock --raw` interactively if locked.
 #
-# Adding a new client:
-#   1. Append the client name to the CLIENTS array below.
-#   2. Create a Bitwarden login item named `convex-deploy-key-<client>-prod`
-#      with the deploy key in the password field.
-#   3. Add a matching client entry to `.github/workflows/deploy-spokes.yml`
-#      and create the GitHub Secret named CONVEX_DEPLOY_KEY_<UPPER_SNAKE>_PROD
-#      (e.g. CONVEX_DEPLOY_KEY_REFLECTING_POOL_PROD).
+# Adding a new client does not change this script. Create the platformClients
+# row and deploy the shared Convex project once if the schema/functions changed.
 #
 # Exit codes:
 #   0 — all deploys succeeded
@@ -52,14 +46,14 @@
 
 set -euo pipefail
 
-CLIENTS=(angelsrest reflecting-pool)
+DEPLOY_KEY_ITEM="convex-deploy-key-angelsrest-prod"
 
 # ----- Preflight -----------------------------------------------------------
 
 if ! command -v bw >/dev/null 2>&1; then
   echo "Error: Bitwarden CLI ('bw') not found." >&2
   echo "Install via 'brew install bitwarden-cli', then 'bw login'." >&2
-  echo "Or run the deploy via CI (.github/workflows/deploy-spokes.yml)." >&2
+  echo "Or run the deploy via CI (.github/workflows/deploy-shared-convex.yml)." >&2
   exit 1
 fi
 
@@ -99,7 +93,7 @@ esac
 
 # Run from packages/crm-api/ — that's where convex/ lives after the Gap 2
 # Phase 1 relocation, and where `npx convex deploy` finds the schema +
-# functions. Matches the working-directory used by deploy-spokes.yml.
+# functions. Matches the working-directory used by deploy-shared-convex.yml.
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 CRM_API_DIR="$REPO_ROOT/packages/crm-api"
@@ -110,29 +104,22 @@ if [ ! -d convex ]; then
   exit 1
 fi
 
-# Sync once up-front so the cache is warm; cheaper than once per client.
+# Sync once up-front so the cache is warm.
 bw sync >/dev/null
 
-# ----- Deploy loop ---------------------------------------------------------
+# ----- Deploy --------------------------------------------------------------
 
-echo "Deploying Convex codebase to ${#CLIENTS[@]} client(s): ${CLIENTS[*]}"
-echo ""
+echo "Deploying shared Convex codebase to prod..."
+if ! KEY="$(bw get password "$DEPLOY_KEY_ITEM" 2>/dev/null)"; then
+  echo "Error: could not read Bitwarden item '${DEPLOY_KEY_ITEM}'." >&2
+  echo "Check the item exists and the password field is populated." >&2
+  exit 1
+fi
+if [ -z "$KEY" ]; then
+  echo "Error: empty shared deploy key." >&2
+  echo "Check Bitwarden item '${DEPLOY_KEY_ITEM}' — password field is empty." >&2
+  exit 1
+fi
+CONVEX_DEPLOY_KEY="$KEY" npx convex deploy
 
-for client in "${CLIENTS[@]}"; do
-  echo "==> Deploying ${client} (prod)..."
-  ITEM_NAME="convex-deploy-key-${client}-prod"
-  if ! KEY="$(bw get password "$ITEM_NAME" 2>/dev/null)"; then
-    echo "Error: could not read Bitwarden item '${ITEM_NAME}'." >&2
-    echo "Check the item exists and the password field is populated." >&2
-    exit 1
-  fi
-  if [ -z "$KEY" ]; then
-    echo "Error: empty deploy key for ${client}." >&2
-    echo "Check Bitwarden item '${ITEM_NAME}' — password field is empty." >&2
-    exit 1
-  fi
-  CONVEX_DEPLOY_KEY="$KEY" npx convex deploy
-  echo ""
-done
-
-echo "✓ All deploys complete."
+echo "✓ Shared Convex deploy complete."

@@ -1,5 +1,5 @@
 import { v } from "convex/values";
-import { internalMutation, mutation, query } from "./_generated/server";
+import { internalMutation, internalQuery, mutation, query } from "./_generated/server";
 import { requirePlatformAdmin, requireWebhookCallerOrAuth } from "./authHelpers";
 import { DEFAULT_LIST_LIMIT } from "./helpers/limits";
 
@@ -68,11 +68,15 @@ export const createClient = mutation({
 			v.literal("none"),
 		),
 		adminEmails: v.array(v.string()),
+		role: v.optional(v.union(v.literal("creator"), v.literal("client"))),
 		notes: v.optional(v.string()),
 	},
 	handler: async (ctx, args) => {
 		await requirePlatformAdmin(ctx);
-		return await ctx.db.insert("platformClients", args);
+		return await ctx.db.insert("platformClients", {
+			...args,
+			role: args.role ?? "client",
+		});
 	},
 });
 
@@ -126,6 +130,7 @@ export const updateClient = mutation({
 		siteUrl: v.optional(v.string()),
 		sanityProjectId: v.optional(v.string()),
 		tier: v.optional(v.union(v.literal("basic"), v.literal("full"))),
+		role: v.optional(v.union(v.literal("creator"), v.literal("client"))),
 		subscriptionStatus: v.optional(
 			v.union(
 				v.literal("active"),
@@ -149,10 +154,10 @@ export const updateClient = mutation({
 });
 
 /**
- * Seed a `platformClients` row from the CLI. Used to bootstrap a new
- * per-client Convex deployment (Option A migration, Phase 1) — the public
- * `createClient` mutation gates on `requireAuth`, which no `npx convex run`
- * caller can satisfy, so CLI-driven onboarding needs an internal path.
+ * Seed a `platformClients` row from the CLI. Used to bootstrap a tenant in
+ * the shared Convex deployment — the public `createClient` mutation gates on
+ * `requireAuth`, which no `npx convex run` caller can satisfy, so CLI-driven
+ * onboarding needs an internal path.
  *
  * Idempotent by `siteUrl`: re-running on an existing row returns
  * `{ created: false, id }` without touching fields. To add an admin email
@@ -165,7 +170,7 @@ export const updateClient = mutation({
  * active from day one (e.g. reflecting-pool/Maggie).
  *
  * Usage (from the Convex codebase at `~/Documents/work/angelsrest`):
- *   CONVEX_DEPLOY_KEY=<client-prod-key> npx convex run platform:seedClient \
+ *   npx convex run platform:seedClient \
  *     '{"name":"Reflecting Pool","email":"thinkingofview@gmail.com","siteUrl":"zippymiggy.com","tier":"full","subscriptionStatus":"active","adminEmails":["thinkingofview@gmail.com"]}'
  */
 export const seedClient = internalMutation({
@@ -183,6 +188,7 @@ export const seedClient = internalMutation({
 			),
 		),
 		adminEmails: v.array(v.string()),
+		role: v.optional(v.union(v.literal("creator"), v.literal("client"))),
 		sanityProjectId: v.optional(v.string()),
 		notes: v.optional(v.string()),
 	},
@@ -198,8 +204,23 @@ export const seedClient = internalMutation({
 		const id = await ctx.db.insert("platformClients", {
 			...rest,
 			subscriptionStatus: subscriptionStatus ?? "none",
+			role: rest.role ?? "client",
 		});
 		return { created: true, id };
+	},
+});
+
+export const listTrustedOrigins = internalQuery({
+	args: {},
+	handler: async (ctx) => {
+		const clients = await ctx.db.query("platformClients").take(DEFAULT_LIST_LIMIT);
+		const origins = new Set<string>();
+		for (const client of clients) {
+			for (const origin of trustedOriginVariants(client.siteUrl)) {
+				origins.add(origin);
+			}
+		}
+		return Array.from(origins);
 	},
 });
 
@@ -283,6 +304,35 @@ export const ensureSiteAdmin = internalMutation({
 });
 
 /**
+ * One-time migration helper for the shared Convex model. Marks the creator's
+ * platformClients row so platform-wide operations can require creator role
+ * instead of relying on the historical "admin of angelsrest.online" shortcut.
+ *
+ * Usage:
+ *   npx convex run         platform:setCreatorRole '{"siteUrl":"angelsrest.online"}'
+ *   npx convex run --prod  platform:setCreatorRole '{"siteUrl":"angelsrest.online"}'
+ */
+export const setCreatorRole = internalMutation({
+	args: {
+		siteUrl: v.string(),
+	},
+	handler: async (ctx, { siteUrl }) => {
+		const row = await ctx.db
+			.query("platformClients")
+			.withIndex("by_siteUrl", (q) => q.eq("siteUrl", siteUrl))
+			.first();
+		if (!row) {
+			throw new Error(`No platformClients row with siteUrl="${siteUrl}"`);
+		}
+		if (row.role === "creator") {
+			return { changed: false, id: row._id, role: row.role };
+		}
+		await ctx.db.patch(row._id, { role: "creator" });
+		return { changed: true, id: row._id, before: row.role ?? "client" };
+	},
+});
+
+/**
  * Rename the `siteUrl` on a platformClients row — used when a client's
  * domain is decided (or changed) after the row was created with a stub
  * (e.g. reflecting-pool.com → zippymiggy.com).
@@ -319,3 +369,13 @@ export const renameClientSiteUrl = internalMutation({
 		return { id: row._id, from: fromSiteUrl, to: toSiteUrl };
 	},
 });
+
+function trustedOriginVariants(siteUrl: string) {
+	const normalized = siteUrl.trim().replace(/\/+$/, "");
+	if (!normalized) return [];
+	if (normalized.startsWith("http://") || normalized.startsWith("https://")) {
+		const apex = normalized.replace("https://www.", "https://");
+		return Array.from(new Set([normalized, apex]));
+	}
+	return [`https://${normalized}`, `https://www.${normalized}`];
+}
