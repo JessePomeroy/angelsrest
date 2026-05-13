@@ -1,0 +1,245 @@
+/// <reference types="vite/client" />
+// @vitest-environment edge-runtime
+
+import { convexTest } from "convex-test";
+import { describe, expect, test } from "vitest";
+import { api, internal } from "./_generated/api";
+import schema from "./schema";
+
+const modules = import.meta.glob("./**/*.ts");
+
+const TENANT_A = {
+	name: "Tenant A",
+	email: "admin-a@example.com",
+	siteUrl: "tenant-a.example",
+	adminEmail: "admin-a@example.com",
+};
+
+const TENANT_B = {
+	name: "Tenant B",
+	email: "admin-b@example.com",
+	siteUrl: "tenant-b.example",
+	adminEmail: "admin-b@example.com",
+};
+
+async function seedTenants() {
+	const t = convexTest(schema, modules);
+	await t.mutation(internal.platform.seedClient, {
+		name: TENANT_A.name,
+		email: TENANT_A.email,
+		siteUrl: TENANT_A.siteUrl,
+		tier: "full",
+		subscriptionStatus: "active",
+		adminEmails: [TENANT_A.adminEmail],
+		role: "client",
+	});
+	await t.mutation(internal.platform.seedClient, {
+		name: TENANT_B.name,
+		email: TENANT_B.email,
+		siteUrl: TENANT_B.siteUrl,
+		tier: "full",
+		subscriptionStatus: "active",
+		adminEmails: [TENANT_B.adminEmail],
+		role: "client",
+	});
+	return t;
+}
+
+function asAdmin(
+	t: Awaited<ReturnType<typeof seedTenants>>,
+	email: string,
+) {
+	return t.withIdentity({
+		subject: email,
+		email,
+	});
+}
+
+async function expectNotAuthorized(promise: Promise<unknown>) {
+	await expect(promise).rejects.toThrow(/Not authorized/);
+}
+
+describe("tenant isolation", () => {
+	test("siteUrl-scoped queries only allow that site's admins", async () => {
+		const t = await seedTenants();
+		await t.mutation(api.inquiries.create, {
+			siteUrl: TENANT_A.siteUrl,
+			name: "A inquiry",
+			email: "customer-a@example.com",
+			message: "Tenant A only",
+		});
+		await t.mutation(api.inquiries.create, {
+			siteUrl: TENANT_B.siteUrl,
+			name: "B inquiry",
+			email: "customer-b@example.com",
+			message: "Tenant B only",
+		});
+
+		const tenantAInquiries = await asAdmin(t, TENANT_A.adminEmail).query(
+			api.inquiries.list,
+			{ siteUrl: TENANT_A.siteUrl },
+		);
+		expect(tenantAInquiries).toHaveLength(1);
+		expect(tenantAInquiries[0]?.name).toBe("A inquiry");
+
+		await expectNotAuthorized(
+			asAdmin(t, TENANT_A.adminEmail).query(api.inquiries.list, {
+				siteUrl: TENANT_B.siteUrl,
+			}),
+		);
+	});
+
+	test("document-id reads and writes are guarded by the owning site", async () => {
+		const t = await seedTenants();
+		const tenantA = asAdmin(t, TENANT_A.adminEmail);
+		const tenantB = asAdmin(t, TENANT_B.adminEmail);
+		const clientId = await tenantA.mutation(api.crm.createClient, {
+			siteUrl: TENANT_A.siteUrl,
+			name: "Tenant A client",
+			email: "client-a@example.com",
+			category: "photography",
+			type: "portrait",
+		});
+
+		await expectNotAuthorized(
+			tenantB.query(api.crm.getClient, { clientId }),
+		);
+		await expectNotAuthorized(
+			tenantB.mutation(api.crm.updateClient, {
+				clientId,
+				siteUrl: TENANT_A.siteUrl,
+				name: "Cross-tenant overwrite",
+			}),
+		);
+
+		const afterAttempt = await tenantA.query(api.crm.getClient, { clientId });
+		expect(afterAttempt.name).toBe("Tenant A client");
+	});
+
+	test("related CRM modules keep document ownership tenant-scoped", async () => {
+		const t = await seedTenants();
+		const tenantA = asAdmin(t, TENANT_A.adminEmail);
+		const tenantB = asAdmin(t, TENANT_B.adminEmail);
+		const clientId = await tenantA.mutation(api.crm.createClient, {
+			siteUrl: TENANT_A.siteUrl,
+			name: "Tenant A related client",
+			email: "related-a@example.com",
+			category: "photography",
+			type: "portrait",
+		});
+
+		const templateId = await tenantA.mutation(api.emailTemplates.create, {
+			siteUrl: TENANT_A.siteUrl,
+			name: "Tenant A follow-up",
+			category: "follow-up",
+			subject: "hello",
+			body: "body",
+		});
+		const tagId = await tenantA.mutation(api.tags.createTag, {
+			siteUrl: TENANT_A.siteUrl,
+			name: "VIP",
+		});
+		const quoteId = await tenantA.mutation(api.quotes.create, {
+			siteUrl: TENANT_A.siteUrl,
+			quoteNumber: "Q-1",
+			clientId,
+			packages: [{ name: "Portrait", price: 100 }],
+		});
+		const galleryId = await tenantA.mutation(api.galleries.create, {
+			siteUrl: TENANT_A.siteUrl,
+			clientId,
+			name: "Tenant A gallery",
+			slug: "tenant-a-gallery",
+			downloadEnabled: true,
+			favoritesEnabled: true,
+		});
+
+		await expectNotAuthorized(
+			tenantB.query(api.emailTemplates.get, { templateId }),
+		);
+		await expectNotAuthorized(tenantB.mutation(api.tags.deleteTag, { tagId }));
+		await expectNotAuthorized(tenantB.query(api.quotes.get, { quoteId }));
+		await expectNotAuthorized(tenantB.query(api.galleries.get, { id: galleryId }));
+
+		await expectNotAuthorized(
+			tenantB.query(api.emailTemplates.list, { siteUrl: TENANT_A.siteUrl }),
+		);
+		await expectNotAuthorized(
+			tenantB.query(api.tags.listTags, { siteUrl: TENANT_A.siteUrl }),
+		);
+		await expectNotAuthorized(
+			tenantB.query(api.quotes.list, { siteUrl: TENANT_A.siteUrl }),
+		);
+		await expectNotAuthorized(
+			tenantB.query(api.galleries.listBySite, { siteUrl: TENANT_A.siteUrl }),
+		);
+	});
+
+	test("kanban mutations cannot move another tenant's cards", async () => {
+		const t = await seedTenants();
+		const tenantA = asAdmin(t, TENANT_A.adminEmail);
+		const tenantB = asAdmin(t, TENANT_B.adminEmail);
+		const clientId = await tenantA.mutation(api.crm.createClient, {
+			siteUrl: TENANT_A.siteUrl,
+			name: "Tenant A board card",
+			category: "photography",
+			type: "portrait",
+		});
+		await tenantA.mutation(api.kanban.initializeBoard, {
+			siteUrl: TENANT_A.siteUrl,
+			projectType: "portrait",
+		});
+
+		await expectNotAuthorized(
+			tenantB.mutation(api.kanban.moveCard, {
+				clientId,
+				siteUrl: TENANT_A.siteUrl,
+				targetColumnId: "any-column",
+				targetPosition: 0,
+			}),
+		);
+	});
+
+	test("creator-only platform queries are not available to client admins", async () => {
+		const t = await seedTenants();
+		await t.mutation(internal.platform.seedClient, {
+			name: "Creator",
+			email: "creator@example.com",
+			siteUrl: "angelsrest.online",
+			tier: "full",
+			subscriptionStatus: "active",
+			adminEmails: ["creator@example.com"],
+			role: "creator",
+		});
+		await asAdmin(t, TENANT_A.adminEmail).mutation(api.messages.send, {
+			siteUrl: TENANT_A.siteUrl,
+			sender: "client",
+			content: "tenant message",
+		});
+
+		await expectNotAuthorized(
+			asAdmin(t, TENANT_A.adminEmail).query(api.messages.allThreads, {}),
+		);
+
+		const threads = await asAdmin(t, "creator@example.com").query(
+			api.messages.allThreads,
+			{},
+		);
+		expect(threads).toHaveLength(1);
+		expect(threads[0]?.client.siteUrl).toBe(TENANT_A.siteUrl);
+	});
+
+	test("raw table smoke check keeps tenant fixtures independent", async () => {
+		const t = await seedTenants();
+		const counts = await t.run(async (ctx) => {
+			const rows = await ctx.db.query("platformClients").collect();
+			return rows.reduce<Record<string, number>>((acc, row) => {
+				acc[row.siteUrl] = (acc[row.siteUrl] ?? 0) + 1;
+				return acc;
+			}, {});
+		});
+
+		expect(counts[TENANT_A.siteUrl]).toBe(1);
+		expect(counts[TENANT_B.siteUrl]).toBe(1);
+	});
+});

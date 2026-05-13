@@ -36,7 +36,7 @@ export default defineConfig({
 		},
 	},
 	test: {
-		include: ["src/**/*.test.ts"],
+		include: ["src/**/*.test.ts", "packages/crm-api/convex/**/*.test.ts"],
 		environment: "node",
 		globals: true,
 		alias: {
