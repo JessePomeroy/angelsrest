@@ -50,10 +50,13 @@ jobs:
           node-version: 22
           cache: pnpm
 
-      - name: Install dependencies
-        run: pnpm install --frozen-lockfile
+      - name: Configure GitHub Packages auth
+        run: pnpm config set //npm.pkg.github.com/:_authToken "$GH_PACKAGES_TOKEN"
         env:
           GH_PACKAGES_TOKEN: ${{ secrets.GH_PACKAGES_TOKEN }}
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
 
       - name: Deploy Convex
         env:
