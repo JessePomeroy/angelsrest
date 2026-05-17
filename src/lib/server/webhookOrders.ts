@@ -10,40 +10,16 @@ import type { ConvexHttpClient } from "convex/browser";
 import type { Resend } from "resend";
 import type Stripe from "stripe";
 import { api } from "$convex/api";
-import { env } from "$env/dynamic/private";
 import { SITE_DOMAIN } from "$lib/config/site";
-import { logStructured, timed } from "$lib/server/logger";
-import { buildLumaPrintsOrder, createOrder as createLumaPrintsOrder } from "$lib/server/lumaprints";
-import { buildOrderItemsFromSession, buildRecipientFromShipping } from "$lib/server/webhookDecoder";
-import type { ShippingDetails } from "$lib/server/webhookEmails";
-import { sendFulfillmentFailureAlert } from "$lib/server/webhookEmails";
+import { logStructured } from "$lib/server/logger";
 import {
-	classifyLumaPrintsFailure,
-	formatFailureForAdmin,
-} from "$lib/server/webhookErrorClassification";
+	handlePrintFulfillmentFailure,
+	submitPrintFulfillment,
+} from "$lib/server/printFulfillment";
+import type { ShippingDetails } from "$lib/server/webhookEmails";
+import { getWebhookSecret } from "$lib/server/webhookSecret";
 
-/**
- * Tag written to Stripe refund metadata so we can distinguish automated
- * refunds from manual ones in the dashboard (audit #23 PR #3). Any time
- * the origin of an automated refund changes, bump this constant instead
- * of hunting for stringly-typed magic values in the webhook handler.
- */
-const REFUND_AUTOMATION_TAG = "audit_23_pr_3";
-
-/**
- * Shared secret between the SvelteKit webhook and Convex. Must be set in
- * both environments (Vercel `WEBHOOK_SECRET` and `npx convex env set
- * WEBHOOK_SECRET`). Audit C4/C5.
- */
-function getWebhookSecret(): string {
-	const secret = env.WEBHOOK_SECRET;
-	if (!secret) {
-		throw new Error(
-			"WEBHOOK_SECRET is not set — cannot call webhook-gated Convex mutations. Set it in Vercel and run `npx convex env set WEBHOOK_SECRET <value>`.",
-		);
-	}
-	return secret;
-}
+export { handlePermanentFulfillmentFailure } from "$lib/server/printFulfillment";
 
 /**
  * Create an order in Convex.
@@ -168,28 +144,18 @@ export async function createOrderInConvex(
 	}
 
 	try {
-		await submitToLumaPrints(convex, orderId, orderNumber, lineItems, shippingDetails, session);
+		await submitPrintFulfillment(
+			{ convex },
+			{
+				orderId,
+				orderNumber,
+				lineItems,
+				shippingDetails,
+				session,
+			},
+		);
 	} catch (err) {
-		const classification = classifyLumaPrintsFailure(err);
-		// `timed` inside submitToLumaPrints already captured the exception
-		// to Sentry — log the classification as a follow-up info event so
-		// dashboards can group "permanent vs transient" without producing
-		// a duplicate Sentry issue.
-		logStructured({
-			event: "lumaprints.classified",
-			level: "warn",
-			stage: "lumaprints_submit",
-			orderId: orderNumber,
-			meta: { classification },
-		});
-
-		if (classification === "transient") {
-			// Re-throw — Stripe retries the webhook.
-			throw err;
-		}
-
-		// Permanent failure: refund + mark order + notify admin + return 200.
-		await handlePermanentFulfillmentFailure(
+		await handlePrintFulfillmentFailure(
 			{ stripe, convex, resend },
 			{
 				orderId,
@@ -202,213 +168,4 @@ export async function createOrderInConvex(
 	}
 
 	return { orderNumber, _id: orderId, alreadyExisted };
-}
-
-/**
- * 3-signal permanent-failure fallback introduced in audit #23 PR #3.
- *
- * 1. Auto-refund via `stripe.refunds.create` with reason
- *    `requested_by_customer` and a metadata note pointing at the order.
- * 2. Mark the Convex order `fulfillment_error` with the human-readable
- *    error message and the Stripe refund ID for audit trail.
- * 3. Send an admin email with order details, error message, and a link
- *    to the order in the admin dashboard.
- *
- * All three signals are best-effort — if any one fails, we log and
- * continue so the other two still fire. The caller returns 200 to Stripe
- * unconditionally after this runs: the underlying LumaPrints failure is
- * permanent, retries won't help.
- */
-export async function handlePermanentFulfillmentFailure(
-	{
-		stripe,
-		convex,
-		resend,
-	}: {
-		stripe: Stripe;
-		convex: ConvexHttpClient;
-		resend: Resend;
-	},
-	{
-		orderId,
-		orderNumber,
-		error: fulfillmentError,
-		session,
-		customerEmail,
-	}: {
-		orderId: any;
-		orderNumber: string;
-		error: unknown;
-		session: Stripe.Checkout.Session;
-		customerEmail: string;
-	},
-) {
-	const errorSummary = formatFailureForAdmin(fulfillmentError);
-	let stripeRefundId: string | undefined;
-
-	// 1. Stripe refund
-	try {
-		const paymentIntentId =
-			typeof session.payment_intent === "string"
-				? session.payment_intent
-				: (session.payment_intent?.id ?? undefined);
-
-		if (!paymentIntentId) {
-			logStructured({
-				event: "refund.skipped",
-				level: "error",
-				stage: "stripe_refund",
-				orderId: orderNumber,
-				error: new Error("no payment_intent on session"),
-			});
-		} else {
-			const refund = await stripe.refunds.create({
-				payment_intent: paymentIntentId,
-				reason: "requested_by_customer",
-				metadata: {
-					orderNumber,
-					fulfillmentError: errorSummary.slice(0, 500),
-					automated: REFUND_AUTOMATION_TAG,
-				},
-			});
-			stripeRefundId = refund.id;
-			logStructured({
-				event: "refund.created",
-				stage: "stripe_refund",
-				orderId: orderNumber,
-				meta: { refundId: refund.id, refundStatus: refund.status },
-			});
-		}
-	} catch (refundErr) {
-		logStructured({
-			event: "refund.failed",
-			level: "error",
-			stage: "stripe_refund",
-			orderId: orderNumber,
-			error: refundErr,
-		});
-	}
-
-	// 2. Mark Convex order fulfillment_error
-	try {
-		await convex.mutation(api.orders.updateStatus, {
-			webhookSecret: getWebhookSecret(),
-			orderId,
-			status: "fulfillment_error",
-			fulfillmentError: errorSummary.slice(0, 1000),
-			stripeRefundId,
-		});
-	} catch (convexErr) {
-		logStructured({
-			event: "fulfillment_error.convex_update_failed",
-			level: "error",
-			stage: "fulfillment_failure",
-			orderId: orderNumber,
-			error: convexErr,
-		});
-	}
-
-	// 3. Admin email
-	try {
-		await sendFulfillmentFailureAlert(resend, {
-			orderNumber,
-			customerEmail,
-			errorSummary,
-			stripeRefundId,
-			total: session.amount_total ?? 0,
-		});
-	} catch (emailErr) {
-		logStructured({
-			event: "fulfillment_error.email_failed",
-			level: "error",
-			stage: "email_admin",
-			orderId: orderNumber,
-			error: emailErr,
-		});
-	}
-}
-
-/**
- * Submit order to LumaPrints for fulfillment if it contains LumaPrints products.
- *
- * Critical path (audit #1): if the LumaPrints call fails, this function
- * throws so the webhook returns 500 and Stripe retries. Order creation is
- * idempotent upstream so retries are safe.
- */
-async function submitToLumaPrints(
-	convex: ConvexHttpClient,
-	orderId: any,
-	orderNumber: string,
-	lineItems: Stripe.LineItem[],
-	shippingDetails: ShippingDetails,
-	session: Stripe.Checkout.Session,
-) {
-	const items = buildOrderItemsFromSession(session, lineItems);
-	if (items.length === 0) {
-		logStructured({
-			event: "lumaprints.skipped",
-			stage: "lumaprints_submit",
-			orderId: orderNumber,
-			meta: { reason: "no LumaPrints items in order" },
-		});
-		return;
-	}
-
-	// ─── Sharp border compositing ────────────────────────────────────
-	// Detect items with a borderWidth, run Sharp to composite a white
-	// border, upload to R2, and replace the image URL with the R2 URL.
-	const borderedItems = items
-		.map((item, index) => ({
-			index,
-			imageUrl: item.imageUrl,
-			borderWidthInches: item.borderWidth ?? 0,
-		}))
-		.filter((item) => item.borderWidthInches > 0);
-
-	if (borderedItems.length > 0) {
-		const { processBorderedPrints } = await import("$lib/server/sharpBorder");
-		const urlMap = await timed(
-			{
-				event: "sharp.bordered",
-				stage: "sharp_composite",
-				orderId: orderNumber,
-				meta: { borderedCount: borderedItems.length },
-			},
-			() => processBorderedPrints(borderedItems, orderNumber),
-		);
-		// Replace original URLs with R2 URLs for bordered items
-		for (const [index, r2Url] of urlMap) {
-			items[index].imageUrl = r2Url;
-		}
-	}
-
-	const recipient = buildRecipientFromShipping(shippingDetails);
-	const lpOrder = buildLumaPrintsOrder(orderNumber, recipient, items);
-
-	// `timed` logs an info entry with durationMs on success and an error
-	// entry (with Sentry capture) on failure, then re-throws so the caller's
-	// classify-and-fallback path runs unchanged.
-	const result = await timed(
-		{
-			event: "lumaprints.submitted",
-			stage: "lumaprints_submit",
-			orderId: orderNumber,
-			meta: { itemCount: items.length },
-		},
-		() => createLumaPrintsOrder(lpOrder),
-	);
-
-	// Update Convex order with the LumaPrints order number
-	await convex.mutation(api.orders.updateStatus, {
-		webhookSecret: getWebhookSecret(),
-		orderId,
-		lumaprintsOrderNumber: result.orderNumber,
-	});
-
-	logStructured({
-		event: "lumaprints.recorded",
-		stage: "lumaprints_submit",
-		orderId: orderNumber,
-		meta: { lumaprintsOrderNumber: result.orderNumber },
-	});
 }
