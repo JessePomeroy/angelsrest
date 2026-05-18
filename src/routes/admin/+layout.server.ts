@@ -1,4 +1,4 @@
-import type { Tier } from "@jessepomeroy/admin";
+import { getTenantAdminLayoutData, type TenantAdminLayoutData } from "@jessepomeroy/admin";
 import { requireAuthWithIdentity } from "$lib/server/adminAuth";
 
 /**
@@ -17,25 +17,24 @@ import { requireAuthWithIdentity } from "$lib/server/adminAuth";
  * flow; child +page.server.ts loaders read `isAuthenticated` and skip
  * their Convex fetches when it's false.
  */
-export async function load({
-	cookies,
-}): Promise<{ tier: Tier; isCreator: boolean; isAuthenticated: boolean }> {
-	let isAuthenticated = false;
+export async function load({ cookies }): Promise<TenantAdminLayoutData> {
+	let identity: { email: string | null } | null = null;
 	try {
-		await requireAuthWithIdentity(cookies);
-		isAuthenticated = true;
+		({ identity } = await requireAuthWithIdentity(cookies));
 	} catch {
-		// Any validation error → fall through as unauthenticated. The
-		// client-side AuthGuard renders the login form from here.
-		isAuthenticated = false;
+		return getTenantAdminLayoutData(
+			{ status: "unauthenticated" },
+			{ tier: "full", isCreator: true },
+		);
 	}
 
 	// angelsrest is the creator's site — always full tier
 	// when extracted to the admin package, client sites will query Convex:
 	//   const { tier } = await convex.query(api.platform.checkTier, { siteUrl })
-	return {
+	return getTenantAdminLayoutData({
+		status: "authorized",
+		email: identity.email,
 		tier: "full",
 		isCreator: true,
-		isAuthenticated,
-	};
+	});
 }

@@ -48,7 +48,7 @@
 	},
 	"dependencies": {
 		"@convex-dev/better-auth": "^0.12.2",
-		"@jessepomeroy/admin": "^1.1.6",
+		"@jessepomeroy/admin": "^1.1.7",
 		"@lucide/svelte": "^0.563.1",
 		"@mmailaender/convex-better-auth-svelte": "^0.7.4",
 		"@mmailaender/convex-svelte": "^0.18.0",
