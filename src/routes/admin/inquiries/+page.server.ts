@@ -7,8 +7,8 @@ import { getConvex } from "$lib/server/convexClient";
 const convex = getConvex();
 
 export async function load({ parent, cookies }): Promise<{ inquiries: InquiryUI[] }> {
-	const { isAuthenticated } = await parent();
-	if (!isAuthenticated) return { inquiries: [] };
+	const { adminSession } = await parent();
+	if (adminSession.status !== "authorized") return { inquiries: [] };
 
 	let inquiries: InquiryUI[] = [];
 	try {

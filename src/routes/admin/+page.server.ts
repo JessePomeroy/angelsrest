@@ -5,11 +5,11 @@ import { getConvex } from "$lib/server/convexClient";
 const convex = getConvex();
 
 export async function load({ parent, cookies }) {
-	const { isAuthenticated } = await parent();
+	const { adminSession } = await parent();
 	// Skip the Convex query entirely for unauthenticated requests so we
 	// don't leak the inquiry count (or burn a request on what would be a
 	// 401 anyway). AuthGuard on the client renders the login form.
-	if (!isAuthenticated) {
+	if (adminSession.status !== "authorized") {
 		return { newInquiryCount: 0 };
 	}
 	let newInquiryCount = 0;
