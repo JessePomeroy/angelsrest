@@ -1,8 +1,8 @@
 import { getSanityClient } from "$lib/sanity/client.server";
 
 export async function load({ parent, locals }) {
-	const { isAuthenticated } = await parent();
-	if (!isAuthenticated) return { galleries: [] as unknown[] };
+	const { adminSession } = await parent();
+	if (adminSession.status !== "authorized") return { galleries: [] as unknown[] };
 
 	const sanity = getSanityClient(locals.isPreview);
 	const galleries = await sanity.fetch(`
