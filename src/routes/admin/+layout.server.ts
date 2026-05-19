@@ -22,10 +22,7 @@ export async function load({ cookies }): Promise<TenantAdminLayoutData> {
 	try {
 		({ identity } = await requireAuthWithIdentity(cookies));
 	} catch {
-		return getTenantAdminLayoutData(
-			{ status: "unauthenticated" },
-			{ tier: "full", isCreator: true },
-		);
+		return getTenantAdminLayoutData({ status: "unauthenticated" });
 	}
 
 	// angelsrest is the creator's site — always full tier
