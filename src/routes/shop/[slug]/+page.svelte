@@ -16,7 +16,7 @@ import {
 	parseCanvasSlug,
 	V2_BORDER_OPTIONS,
 	V2_FRAME_OPTIONS,
-} from "$lib/shop/v2Catalog";
+} from "$lib/shop/printCatalog";
 import type { ParsedPaper } from "$lib/types/shop";
 import { createCheckout } from "$lib/utils/checkout";
 import { parsePaperOption } from "$lib/utils/images";

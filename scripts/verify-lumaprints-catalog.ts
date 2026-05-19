@@ -5,7 +5,7 @@
  * and hits the LumaPrints production shipping-pricing endpoint to determine
  * which combos are actually accepted by their API. The output is a markdown
  * availability matrix that gets transcribed into
- * `angelsrest-studio/schemaTypes/constants/lumaprintsCatalog.ts`.
+ * `angelsrest-studio/schemaTypes/shared/printCatalog.ts`.
  *
  * Re-run this whenever LumaPrints updates their available SKUs, or when
  * adding a new paper / size to the catalog.
