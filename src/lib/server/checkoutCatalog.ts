@@ -8,7 +8,7 @@ import {
 	getSize,
 	isCanvasPaper,
 	parseCanvasSlug,
-} from "$lib/shop/v2Catalog";
+} from "$lib/shop/printCatalog";
 import type { ParsedPaper } from "$lib/types/shop";
 import { imageSet, originalUrl, parsePaperOption, previewUrl } from "$lib/utils/images";
 
