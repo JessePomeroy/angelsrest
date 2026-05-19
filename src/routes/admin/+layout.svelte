@@ -2,6 +2,7 @@
 import {
 	AdminLayout,
 	AuthGuard,
+	isTenantAdminServerAuthorized,
 	setAdminConfig,
 } from "@jessepomeroy/admin";
 import { setupAuth, setupConvex } from "@mmailaender/convex-svelte";
@@ -24,8 +25,8 @@ let { data, children } = $props();
 // `~/Documents/quilt/00_inbox/2026-04-23 PR candidate — convex-better-auth-svelte pause bug.md`.
 //
 // The fix here: call the lower-level `setupAuth` primitive directly,
-// driven by `data.isAuthenticated` from `+layout.server.ts` instead of
-// the flickery session subscription. `+layout.server.ts` re-runs on
+// driven by `data.adminSession.status` from `+layout.server.ts` instead
+// of the flickery session subscription. `+layout.server.ts` re-runs on
 // every navigation and re-validates the cookie via Convex's
 // `adminAuth.whoami`, so the value stays stable across SPA nav (no
 // transient nulls). `fetchAccessToken` hits `/api/admin/token` which
@@ -40,7 +41,7 @@ let { data, children } = $props();
 setupConvex(PUBLIC_CONVEX_URL);
 setupAuth(() => ({
 	isLoading: false,
-	isAuthenticated: data.isAuthenticated,
+	isAuthenticated: isTenantAdminServerAuthorized(data.adminSession),
 	fetchAccessToken: async () => {
 		const res = await fetch("/api/admin/token");
 		if (!res.ok) return null;
