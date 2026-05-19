@@ -14,10 +14,27 @@ vi.mock("$lib/utils/images", async () => {
 });
 
 import { resolveCheckoutItem } from "$lib/server/checkoutCatalog";
+import {
+	getWholesaleCost,
+	LUMA_PAPERS,
+	LUMA_SIZES,
+	LUMA_WHOLESALE_COSTS,
+	V2_PAPERS,
+	V2_SIZES,
+} from "$lib/shop/printCatalog";
 
 type CheckoutFetcher = Parameters<typeof resolveCheckoutItem>[0];
 
 describe("resolveCheckoutItem", () => {
+	it("uses the shared print catalog contract for LumaPrints lookup data", () => {
+		expect(LUMA_PAPERS).toBe(V2_PAPERS);
+		expect(LUMA_SIZES).toBe(V2_SIZES);
+		expect(LUMA_WHOLESALE_COSTS).toHaveLength(54);
+		expect(getWholesaleCost("archival-matte", "8x10")).toBe(3.19);
+		expect(getWholesaleCost("glossy", "16x20")).toBe(12.99);
+		expect(getWholesaleCost("canvas-black-1.25", "16x20")).toBe(25.95);
+	});
+
 	it("resolves V2 product price from Sanity variant, not request price", async () => {
 		const fetcher = (async () => ({
 			title: "real print",
