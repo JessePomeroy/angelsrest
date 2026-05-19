@@ -12,10 +12,10 @@ import { requireAuthWithIdentity } from "$lib/server/adminAuth";
  *
  * We don't redirect to a login URL — there isn't a dedicated /login route
  * in this app; the AuthGuard component renders `<LoginPage>` inline when
- * it sees no session. So on validation failure, we return
- * `isAuthenticated: false`. The client-side AuthGuard handles the login
- * flow; child +page.server.ts loaders read `isAuthenticated` and skip
- * their Convex fetches when it's false.
+ * it sees no session. So on validation failure, we return an
+ * `adminSession.status` of `unauthenticated`. The client-side AuthGuard
+ * handles the login flow; child +page.server.ts loaders read the normalized
+ * session state and skip their Convex fetches when it is not authorized.
  */
 export async function load({ cookies }): Promise<TenantAdminLayoutData> {
 	let identity: { email: string | null } | null = null;
