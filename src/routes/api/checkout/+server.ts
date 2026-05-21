@@ -6,15 +6,18 @@ import { bindCheckoutSession } from "$lib/server/checkoutBinding";
 import { createDirectCheckoutSession } from "$lib/server/directCheckout";
 import { logStructured } from "$lib/server/logger";
 import { getStripe } from "$lib/server/stripeClient";
+import { resolveStripeTenantForSite } from "$lib/server/stripeTenant";
 
 export async function POST({ request, cookies }) {
 	const stripe = getStripe();
 	try {
 		const rawBody = await request.json();
+		const tenant = await resolveStripeTenantForSite(PUBLIC_SITE_URL);
 		const session = await createDirectCheckoutSession({
 			body: rawBody,
 			stripe,
 			siteUrl: PUBLIC_SITE_URL,
+			tenant,
 			fetcher: client.fetch.bind(client),
 			bindSession: (sessionId) => bindCheckoutSession(cookies, sessionId),
 		});

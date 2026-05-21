@@ -28,10 +28,15 @@ import { error, json } from "@sveltejs/kit";
 import type Stripe from "stripe";
 import { PUBLIC_SITE_URL } from "$env/static/public";
 import { client as sanityClient } from "$lib/sanity/client";
-import { buildCartMetadata, validateCart } from "$lib/server/cartCheckoutHelpers";
+import {
+	buildCartMetadata,
+	buildCartTenantCheckoutOptions,
+	validateCart,
+} from "$lib/server/cartCheckoutHelpers";
 import { bindCheckoutSession } from "$lib/server/checkoutBinding";
 import { resolveCheckoutItem } from "$lib/server/checkoutCatalog";
 import { getStripe } from "$lib/server/stripeClient";
+import { resolveStripeTenantForSite } from "$lib/server/stripeTenant";
 import type { CartItem } from "$lib/shop/cart";
 
 interface CartCheckoutRequest {
@@ -106,17 +111,27 @@ export async function POST({ request, cookies }) {
 			};
 		});
 
-		const session = await stripe.checkout.sessions.create({
-			payment_method_types: ["card"],
-			// Cart purchases are physical prints (sets and digital deferred
-			// to later PRs), so we always collect shipping for now.
-			shipping_address_collection: { allowed_countries: ["US"] },
-			line_items: lineItems,
-			mode: "payment",
-			success_url: `${PUBLIC_SITE_URL}/checkout/success?session_id={CHECKOUT_SESSION_ID}`,
-			cancel_url: `${PUBLIC_SITE_URL}/checkout/cancel`,
-			metadata: buildCartMetadata(resolvedItems),
+		const tenant = await resolveStripeTenantForSite(PUBLIC_SITE_URL);
+		const tenantCheckout = buildCartTenantCheckoutOptions({
+			items: resolvedItems,
+			tenant,
 		});
+
+		const session = await stripe.checkout.sessions.create(
+			{
+				payment_method_types: ["card"],
+				// Cart purchases are physical prints (sets and digital deferred
+				// to later PRs), so we always collect shipping for now.
+				shipping_address_collection: { allowed_countries: ["US"] },
+				line_items: lineItems,
+				mode: "payment",
+				success_url: `${PUBLIC_SITE_URL}/checkout/success?session_id={CHECKOUT_SESSION_ID}`,
+				cancel_url: `${PUBLIC_SITE_URL}/checkout/cancel`,
+				metadata: buildCartMetadata(resolvedItems),
+				...tenantCheckout.session,
+			},
+			tenantCheckout.requestOptions,
+		);
 
 		// Bind this browser to the session so /checkout/success can verify
 		// the caller is the buyer before returning customer PII (audit H30).

@@ -51,13 +51,17 @@ export async function processStripeWebhookEvent(
 		switch (event.type) {
 			case "checkout.session.completed": {
 				const session = event.data.object as Stripe.Checkout.Session;
+				const siteUrl = await resolveWebhookSiteUrl(event, adapters.convex);
 
 				if (session.metadata?.type === "invoice_payment") {
-					await markInvoicePaidFromSession(session, adapters.convex);
+					await markInvoicePaidFromSession(session, adapters.convex, siteUrl);
 					break;
 				}
 
-				await handleCheckoutCompleted(session, adapters);
+				await handleCheckoutCompleted(session, adapters, {
+					siteUrl,
+					stripeRequestOptions: getStripeRequestOptions(event),
+				});
 				break;
 			}
 
@@ -97,6 +101,7 @@ export async function processStripeWebhookEvent(
 async function markInvoicePaidFromSession(
 	session: Stripe.Checkout.Session,
 	convex: ConvexHttpClient,
+	siteUrl: string,
 ) {
 	const invoiceId = session.metadata?.invoiceId;
 	if (!invoiceId) return;
@@ -108,7 +113,7 @@ async function markInvoicePaidFromSession(
 	await convex.mutation(api.invoices.markPaid, {
 		webhookSecret,
 		invoiceId: invoiceId as Id<"invoices">,
-		siteUrl: session.metadata?.siteUrl || SITE_DOMAIN,
+		siteUrl: session.metadata?.siteUrl || siteUrl,
 	});
 	logStructured({
 		event: "invoice.marked_paid",
@@ -150,6 +155,13 @@ async function handlePaymentFailed(paymentIntent: Stripe.PaymentIntent, resend: 
 async function handleCheckoutCompleted(
 	session: Stripe.Checkout.Session,
 	adapters: OrderIntakeAdapters,
+	{
+		siteUrl,
+		stripeRequestOptions,
+	}: {
+		siteUrl: string;
+		stripeRequestOptions?: Stripe.RequestOptions;
+	},
 ) {
 	logStructured({
 		event: "checkout.processing",
@@ -160,6 +172,7 @@ async function handleCheckoutCompleted(
 	const { fullSession, lineItems, shippingDetails } = await fetchSessionDetails(
 		session,
 		adapters.stripe,
+		stripeRequestOptions,
 	);
 
 	const customerEmail = fullSession.customer_details?.email || session.customer_email;
@@ -185,6 +198,8 @@ async function handleCheckoutCompleted(
 			session: fullSession,
 			shippingDetails,
 			lineItems,
+			siteUrl,
+			stripeRequestOptions,
 		},
 	);
 
@@ -246,15 +261,23 @@ async function handleCheckoutCompleted(
 	});
 }
 
-async function fetchSessionDetails(session: Stripe.Checkout.Session, stripe: Stripe) {
+async function fetchSessionDetails(
+	session: Stripe.Checkout.Session,
+	stripe: Stripe,
+	requestOptions?: Stripe.RequestOptions,
+) {
 	let fullSession: Stripe.Checkout.Session;
 	let lineItems: Stripe.LineItem[] = [];
 	let shippingDetails: ShippingDetails;
 
 	try {
-		fullSession = await stripe.checkout.sessions.retrieve(session.id, {
-			expand: ["line_items", "customer_details"],
-		});
+		fullSession = await stripe.checkout.sessions.retrieve(
+			session.id,
+			{
+				expand: ["line_items", "customer_details"],
+			},
+			requestOptions,
+		);
 		lineItems = fullSession.line_items?.data || [];
 		shippingDetails = session.collected_information?.shipping_details;
 	} catch {
@@ -270,4 +293,28 @@ async function fetchSessionDetails(session: Stripe.Checkout.Session, stripe: Str
 	}
 
 	return { fullSession, lineItems, shippingDetails };
+}
+
+async function resolveWebhookSiteUrl(event: Stripe.Event, convex: ConvexHttpClient) {
+	const accountId = typeof event.account === "string" ? event.account : undefined;
+	if (!accountId) return SITE_DOMAIN;
+
+	const webhookSecret = env.WEBHOOK_SECRET;
+	if (!webhookSecret) {
+		throw new Error("WEBHOOK_SECRET not configured");
+	}
+
+	const client = await convex.query(api.platform.getByStripeConnectedAccountId, {
+		stripeConnectedAccountId: accountId,
+		webhookSecret,
+	});
+	if (!client) {
+		throw new Error(`No platform client found for Stripe account ${accountId}`);
+	}
+	return client.siteUrl;
+}
+
+function getStripeRequestOptions(event: Stripe.Event): Stripe.RequestOptions | undefined {
+	const accountId = typeof event.account === "string" ? event.account : undefined;
+	return accountId ? { stripeAccount: accountId } : undefined;
 }

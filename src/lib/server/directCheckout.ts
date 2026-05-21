@@ -4,6 +4,7 @@ import type { ResolvedCheckoutItem } from "$lib/server/checkoutCatalog";
 import { resolveCheckoutItem } from "$lib/server/checkoutCatalog";
 import { type CouponResult, validateAndApplyCoupon } from "$lib/server/coupon";
 import { logStructured } from "$lib/server/logger";
+import { buildTenantCheckoutOptions, type StripeTenantAccount } from "$lib/server/stripeConnect";
 
 type CheckoutFetcher = Parameters<typeof resolveCheckoutItem>[0];
 type CheckoutBody = Record<string, unknown>;
@@ -20,6 +21,7 @@ export interface CreateDirectCheckoutSessionOptions {
 	body: unknown;
 	stripe: Stripe;
 	siteUrl: string;
+	tenant?: StripeTenantAccount;
 	fetcher: CheckoutFetcher;
 	bindSession: (sessionId: string) => void;
 	resolveItem?: ResolveCheckoutItem;
@@ -91,6 +93,7 @@ export async function createDirectCheckoutSession({
 	body: rawBody,
 	stripe,
 	siteUrl,
+	tenant,
 	fetcher,
 	bindSession,
 	resolveItem = (body) => resolveCheckoutItem(fetcher, body),
@@ -127,34 +130,44 @@ export async function createDirectCheckoutSession({
 	}
 
 	const finalPrice = Math.max(0, item.price - discountAmount);
-
-	const session = await stripe.checkout.sessions.create({
-		payment_method_types: ["card"],
-		...(item.isDigital
-			? {}
-			: {
-					shipping_address_collection: {
-						allowed_countries: ["US"],
-					},
-				}),
-		line_items: [
-			{
-				price_data: {
-					currency: "usd",
-					product_data: {
-						name: item.title,
-						images: item.image ? [item.image] : [],
-					},
-					unit_amount: Math.round(finalPrice * 100),
-				},
-				quantity: 1,
-			},
-		],
-		mode: "payment",
-		success_url: `${siteUrl}/checkout/success?session_id={CHECKOUT_SESSION_ID}`,
-		cancel_url: `${siteUrl}/checkout/cancel`,
-		metadata: buildCheckoutMetadata(item, appliedCoupon, discountAmount),
+	const subtotalCents = Math.round(finalPrice * 100);
+	const tenantCheckout = buildTenantCheckoutOptions({
+		tenant: tenant ?? { siteUrl },
+		kind: item.paper ? "print" : "service",
+		subtotalCents,
 	});
+
+	const session = await stripe.checkout.sessions.create(
+		{
+			payment_method_types: ["card"],
+			...(item.isDigital
+				? {}
+				: {
+						shipping_address_collection: {
+							allowed_countries: ["US"],
+						},
+					}),
+			line_items: [
+				{
+					price_data: {
+						currency: "usd",
+						product_data: {
+							name: item.title,
+							images: item.image ? [item.image] : [],
+						},
+						unit_amount: subtotalCents,
+					},
+					quantity: 1,
+				},
+			],
+			mode: "payment",
+			success_url: `${siteUrl}/checkout/success?session_id={CHECKOUT_SESSION_ID}`,
+			cancel_url: `${siteUrl}/checkout/cancel`,
+			metadata: buildCheckoutMetadata(item, appliedCoupon, discountAmount),
+			...tenantCheckout.session,
+		},
+		tenantCheckout.requestOptions,
+	);
 
 	log({
 		event: "checkout.session_created",
@@ -164,6 +177,7 @@ export async function createDirectCheckoutSession({
 			isPrintSet: item.isPrintSet,
 			finalPrice,
 			hasCoupon: !!appliedCoupon,
+			platformFeeAmount: tenantCheckout.platformFeeAmount,
 		},
 	});
 

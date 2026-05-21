@@ -8,7 +8,10 @@ export const env = {
 	// verify sandbox routing.
 	LUMAPRINTS_USE_SANDBOX: "false",
 	STRIPE_CRM_PRICE_ID: "price_test_xxx",
+	STRIPE_WEBHOOK_SECRET: "whsec_mock",
+	STRIPE_CONNECT_WEBHOOK_SECRET: "",
 	GALLERY_ADMIN_SECRET: "test-secret",
 	BETTER_AUTH_SECRET: "test-secret",
 	WEBHOOK_SECRET: "test-webhook-secret",
+	CHECKOUT_BRIDGE_SECRET: "checkout-bridge-secret",
 };

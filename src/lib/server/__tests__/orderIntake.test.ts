@@ -24,6 +24,7 @@ vi.mock("$lib/server/webhookEmails", () => ({
 vi.mock("$convex/api", () => ({
 	api: {
 		invoices: { markPaid: "invoices.markPaid" },
+		platform: { getByStripeConnectedAccountId: "platform.getByStripeConnectedAccountId" },
 	},
 }));
 
@@ -37,11 +38,16 @@ vi.mock("$lib/config/site", () => ({
 	SITE_DOMAIN: "angelsrest.online",
 }));
 
-function makeStripeEvent(type: string, object: unknown): Stripe.Event {
+function makeStripeEvent(
+	type: string,
+	object: unknown,
+	overrides?: Partial<Stripe.Event>,
+): Stripe.Event {
 	return {
 		id: "evt_test_123",
 		type,
 		data: { object },
+		...overrides,
 	} as Stripe.Event;
 }
 
@@ -75,6 +81,7 @@ function makeCheckoutSession(
 describe("processStripeWebhookEvent", () => {
 	const convex = {
 		mutation: vi.fn(),
+		query: vi.fn(),
 	} as any;
 	const resend = {} as any;
 	const stripe = {
@@ -89,6 +96,7 @@ describe("processStripeWebhookEvent", () => {
 		vi.clearAllMocks();
 		stripe.checkout.sessions.retrieve.mockReset();
 		convex.mutation.mockReset();
+		convex.query.mockReset();
 		mockCreateOrderInConvex.mockResolvedValue({
 			orderNumber: "ORD-001",
 			alreadyExisted: false,
@@ -114,6 +122,52 @@ describe("processStripeWebhookEvent", () => {
 			expect.objectContaining({
 				session: expect.objectContaining({ id: "cs_test_123" }),
 				lineItems: [],
+				siteUrl: "angelsrest.online",
+			}),
+		);
+		expect(stripe.checkout.sessions.retrieve).toHaveBeenCalledWith(
+			"cs_test_123",
+			{ expand: ["line_items", "customer_details"] },
+			undefined,
+		);
+	});
+
+	it("routes connected-account checkout sessions to the matching tenant", async () => {
+		const session = makeCheckoutSession();
+		stripe.checkout.sessions.retrieve.mockResolvedValue({
+			...session,
+			line_items: { data: [] },
+		});
+		convex.query.mockResolvedValue({
+			siteUrl: "zippymiggy.com",
+		});
+
+		const { processStripeWebhookEvent } = await import("../orderIntake");
+		await processStripeWebhookEvent(
+			makeStripeEvent("checkout.session.completed", session, {
+				account: "acct_123",
+			}),
+			{
+				stripe,
+				resend,
+				convex,
+			},
+		);
+
+		expect(convex.query).toHaveBeenCalledWith("platform.getByStripeConnectedAccountId", {
+			stripeConnectedAccountId: "acct_123",
+			webhookSecret: "test-webhook-secret",
+		});
+		expect(stripe.checkout.sessions.retrieve).toHaveBeenCalledWith(
+			"cs_test_123",
+			{ expand: ["line_items", "customer_details"] },
+			{ stripeAccount: "acct_123" },
+		);
+		expect(mockCreateOrderInConvex).toHaveBeenCalledWith(
+			expect.objectContaining({ stripe, resend, convex }),
+			expect.objectContaining({
+				siteUrl: "zippymiggy.com",
+				stripeRequestOptions: { stripeAccount: "acct_123" },
 			}),
 		);
 	});
