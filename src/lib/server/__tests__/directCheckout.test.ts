@@ -62,8 +62,11 @@ describe("createDirectCheckoutSession", () => {
 		});
 
 		const params = create.mock.calls[0]?.[0] as Stripe.Checkout.SessionCreateParams;
+		const requestOptions = create.mock.calls[0]?.[1] as Stripe.RequestOptions | undefined;
 		expect(params.shipping_address_collection).toEqual({ allowed_countries: ["US"] });
 		expect(params.line_items?.[0]?.price_data?.unit_amount).toBe(4200);
+		expect(params.payment_intent_data).toBeUndefined();
+		expect(requestOptions).toBeUndefined();
 		expect(params.success_url).toBe(
 			"https://angelsrest.test/checkout/success?session_id={CHECKOUT_SESSION_ID}",
 		);
@@ -78,6 +81,59 @@ describe("createDirectCheckoutSession", () => {
 			originalPrice: "42",
 			discountAmount: "0",
 		});
+	});
+
+	it("adds connected-account routing and print platform fee when tenant account is present", async () => {
+		const { stripe, create } = makeStripe();
+
+		await createDirectCheckoutSession({
+			body: { productId: "print-one" },
+			stripe,
+			siteUrl: "https://zippymiggy.test",
+			tenant: {
+				siteUrl: "zippymiggy.com",
+				stripeConnectedAccountId: "acct_123",
+			},
+			fetcher,
+			bindSession: vi.fn(),
+			resolveItem: vi.fn().mockResolvedValue(makeItem({ price: 100 })),
+			log: vi.fn(),
+		});
+
+		const params = create.mock.calls[0]?.[0] as Stripe.Checkout.SessionCreateParams;
+		const requestOptions = create.mock.calls[0]?.[1] as Stripe.RequestOptions | undefined;
+		expect(params.line_items?.[0]?.price_data?.unit_amount).toBe(10_000);
+		expect(params.payment_intent_data).toEqual({ application_fee_amount: 500 });
+		expect(requestOptions).toEqual({ stripeAccount: "acct_123" });
+	});
+
+	it("does not add a platform fee for connected-account digital checkout", async () => {
+		const { stripe, create } = makeStripe();
+
+		await createDirectCheckoutSession({
+			body: { productId: "digital-one" },
+			stripe,
+			siteUrl: "https://zippymiggy.test",
+			tenant: {
+				siteUrl: "zippymiggy.com",
+				stripeConnectedAccountId: "acct_123",
+			},
+			fetcher,
+			bindSession: vi.fn(),
+			resolveItem: vi.fn().mockResolvedValue(
+				makeItem({
+					productId: "digital-one",
+					isDigital: true,
+					paper: null,
+				}),
+			),
+			log: vi.fn(),
+		});
+
+		const params = create.mock.calls[0]?.[0] as Stripe.Checkout.SessionCreateParams;
+		const requestOptions = create.mock.calls[0]?.[1] as Stripe.RequestOptions | undefined;
+		expect(params.payment_intent_data).toBeUndefined();
+		expect(requestOptions).toEqual({ stripeAccount: "acct_123" });
 	});
 
 	it("applies coupons before creating Stripe line item amounts", async () => {

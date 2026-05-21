@@ -10,7 +10,6 @@ import type { ConvexHttpClient } from "convex/browser";
 import type { Resend } from "resend";
 import type Stripe from "stripe";
 import { api } from "$convex/api";
-import { SITE_DOMAIN } from "$lib/config/site";
 import { logStructured } from "$lib/server/logger";
 import {
 	handlePrintFulfillmentFailure,
@@ -41,10 +40,14 @@ export async function createOrderInConvex(
 		session,
 		shippingDetails,
 		lineItems,
+		siteUrl,
+		stripeRequestOptions,
 	}: {
 		session: Stripe.Checkout.Session;
 		shippingDetails: ShippingDetails;
 		lineItems: Stripe.LineItem[];
+		siteUrl: string;
+		stripeRequestOptions?: Stripe.RequestOptions;
 	},
 ) {
 	// Extract payment intent ID (could be string or expanded object)
@@ -63,7 +66,7 @@ export async function createOrderInConvex(
 	// Create order in Convex (idempotent — returns existing order if session already processed)
 	const orderResult = await convex.mutation(api.orders.create, {
 		webhookSecret: getWebhookSecret(),
-		siteUrl: SITE_DOMAIN,
+		siteUrl,
 		stripeSessionId: session.id,
 		customerEmail: session.customer_details?.email || "",
 		customerName: session.customer_details?.name || shippingDetails?.name || undefined,
@@ -162,6 +165,7 @@ export async function createOrderInConvex(
 				orderNumber,
 				error: err,
 				session,
+				stripeRequestOptions,
 				customerEmail: session.customer_details?.email ?? "unknown",
 			},
 		);

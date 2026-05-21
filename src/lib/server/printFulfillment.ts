@@ -113,12 +113,14 @@ export async function handlePrintFulfillmentFailure(
 		orderNumber,
 		error,
 		session,
+		stripeRequestOptions,
 		customerEmail,
 	}: {
 		orderId: any;
 		orderNumber: string;
 		error: unknown;
 		session: Stripe.Checkout.Session;
+		stripeRequestOptions?: Stripe.RequestOptions;
 		customerEmail: string;
 	},
 ) {
@@ -141,6 +143,7 @@ export async function handlePrintFulfillmentFailure(
 		orderNumber,
 		error,
 		session,
+		stripeRequestOptions,
 		customerEmail,
 	});
 }
@@ -168,12 +171,14 @@ export async function handlePermanentFulfillmentFailure(
 		orderNumber,
 		error: fulfillmentError,
 		session,
+		stripeRequestOptions,
 		customerEmail,
 	}: {
 		orderId: any;
 		orderNumber: string;
 		error: unknown;
 		session: Stripe.Checkout.Session;
+		stripeRequestOptions?: Stripe.RequestOptions;
 		customerEmail: string;
 	},
 ) {
@@ -195,15 +200,20 @@ export async function handlePermanentFulfillmentFailure(
 				error: new Error("no payment_intent on session"),
 			});
 		} else {
-			const refund = await stripe.refunds.create({
-				payment_intent: paymentIntentId,
-				reason: "requested_by_customer",
-				metadata: {
-					orderNumber,
-					fulfillmentError: errorSummary.slice(0, 500),
-					automated: REFUND_AUTOMATION_TAG,
+			const isConnectedAccountRefund = Boolean(stripeRequestOptions?.stripeAccount);
+			const refund = await stripe.refunds.create(
+				{
+					payment_intent: paymentIntentId,
+					reason: "requested_by_customer",
+					...(isConnectedAccountRefund ? { refund_application_fee: true } : {}),
+					metadata: {
+						orderNumber,
+						fulfillmentError: errorSummary.slice(0, 500),
+						automated: REFUND_AUTOMATION_TAG,
+					},
 				},
-			});
+				stripeRequestOptions,
+			);
 			stripeRefundId = refund.id;
 			logStructured({
 				event: "refund.created",

@@ -13,6 +13,7 @@
  * (`buildOrderItemsFromSession`). Any change here MUST be matched there.
  */
 
+import { buildTenantCheckoutOptions, type StripeTenantAccount } from "$lib/server/stripeConnect";
 import type { CartItem } from "$lib/shop/cart";
 
 /** Stripe metadata per-value limit. */
@@ -25,6 +26,28 @@ const STRIPE_METADATA_VALUE_MAX = 500;
  * be rejected by `validateCart` if their encoded payload exceeds this.
  */
 export const CART_ITEM_PAYLOAD_MAX = 480;
+
+export function calculateCartPrintSubtotalCents(items: CartItem[]): number {
+	return items.reduce((total, item) => {
+		const isPrintLine = typeof item.paperSubcategoryId === "number";
+		if (!isPrintLine) return total;
+		return total + item.unitPriceCents * item.quantity;
+	}, 0);
+}
+
+export function buildCartTenantCheckoutOptions({
+	items,
+	tenant,
+}: {
+	items: CartItem[];
+	tenant: StripeTenantAccount;
+}) {
+	return buildTenantCheckoutOptions({
+		tenant,
+		kind: "print",
+		subtotalCents: calculateCartPrintSubtotalCents(items),
+	});
+}
 
 /**
  * Build the compact per-item metadata payload that the webhook will

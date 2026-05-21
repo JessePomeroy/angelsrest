@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { buildCartMetadata, validateCart } from "../server/cartCheckoutHelpers";
+import {
+	buildCartMetadata,
+	buildCartTenantCheckoutOptions,
+	calculateCartPrintSubtotalCents,
+	validateCart,
+} from "../server/cartCheckoutHelpers";
 import type { CartItem } from "../shop/cart";
 
 // Tests for the cart checkout endpoint's pure helpers — `buildCartMetadata`
@@ -256,5 +261,69 @@ describe("buildCartMetadata", () => {
 		const meta = buildCartMetadata(items);
 		// 40 cartItem_* keys + isCart + cartItemCount = 42 total
 		expect(Object.keys(meta).length).toBeLessThanOrEqual(50);
+	});
+});
+
+describe("cart Stripe Connect options", () => {
+	it("calculates print subtotal from print lines only", () => {
+		expect(
+			calculateCartPrintSubtotalCents([
+				makeItem({ unitPriceCents: 4500, quantity: 2 }),
+				makeMerchItem({ unitPriceCents: 18_900, quantity: 1 }),
+				makeSetItem({ unitPriceCents: 12_000, quantity: 1 }),
+			]),
+		).toBe(21_000);
+	});
+
+	it("keeps hub cart checkout direct with no application fee", () => {
+		const options = buildCartTenantCheckoutOptions({
+			items: [makeItem({ unitPriceCents: 4500, quantity: 2 })],
+			tenant: { siteUrl: "angelsrest.online" },
+		});
+
+		expect(options).toEqual({
+			session: {},
+			requestOptions: undefined,
+			platformFeeAmount: 0,
+		});
+	});
+
+	it("uses only print subtotal for connected-account cart application fees", () => {
+		const options = buildCartTenantCheckoutOptions({
+			items: [
+				makeItem({ unitPriceCents: 4500, quantity: 2 }),
+				makeMerchItem({ unitPriceCents: 18_900, quantity: 1 }),
+			],
+			tenant: {
+				siteUrl: "zippymiggy.com",
+				stripeConnectedAccountId: "acct_123",
+			},
+		});
+
+		expect(options).toEqual({
+			session: {
+				payment_intent_data: {
+					application_fee_amount: 450,
+				},
+			},
+			requestOptions: { stripeAccount: "acct_123" },
+			platformFeeAmount: 450,
+		});
+	});
+
+	it("routes connected merch-only carts without a platform fee", () => {
+		const options = buildCartTenantCheckoutOptions({
+			items: [makeMerchItem({ unitPriceCents: 18_900, quantity: 1 })],
+			tenant: {
+				siteUrl: "zippymiggy.com",
+				stripeConnectedAccountId: "acct_123",
+			},
+		});
+
+		expect(options).toEqual({
+			session: {},
+			requestOptions: { stripeAccount: "acct_123" },
+			platformFeeAmount: 0,
+		});
 	});
 });

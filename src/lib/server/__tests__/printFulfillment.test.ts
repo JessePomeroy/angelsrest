@@ -175,6 +175,7 @@ describe("print fulfillment", () => {
 				payment_intent: "pi_test_123",
 				reason: "requested_by_customer",
 			}),
+			undefined,
 		);
 		expect(convex.mutation).toHaveBeenCalledWith(
 			"orders.updateStatus",
@@ -192,6 +193,34 @@ describe("print fulfillment", () => {
 				customerEmail: "jane@example.com",
 				stripeRefundId: "re_test_123",
 			}),
+		);
+	});
+
+	it("refunds connected-account fulfillment failures with application fee refund enabled", async () => {
+		const { LumaPrintsError } = await import("$lib/server/lumaprints");
+		const { handlePrintFulfillmentFailure } = await import("../printFulfillment");
+
+		await handlePrintFulfillmentFailure(
+			{ stripe, convex, resend },
+			{
+				orderId: "order-123",
+				orderNumber: "ORD-001",
+				error: new LumaPrintsError("Order submission failed", {
+					statusCode: 422,
+					message: "Invalid image",
+				}),
+				session,
+				stripeRequestOptions: { stripeAccount: "acct_123" },
+				customerEmail: "jane@example.com",
+			},
+		);
+
+		expect(stripe.refunds.create).toHaveBeenCalledWith(
+			expect.objectContaining({
+				payment_intent: "pi_test_123",
+				refund_application_fee: true,
+			}),
+			{ stripeAccount: "acct_123" },
 		);
 	});
 });

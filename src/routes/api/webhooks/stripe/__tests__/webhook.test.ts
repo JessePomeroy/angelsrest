@@ -281,6 +281,7 @@ describe("Stripe webhook POST handler", () => {
 				payment_intent: "pi_test_123",
 				reason: "requested_by_customer",
 			}),
+			undefined,
 		);
 
 		// Convex order was marked fulfillment_error with the refund ID

@@ -54,6 +54,54 @@ export const getBySubscriptionId = query({
 	},
 });
 
+/**
+ * Resolve the Stripe Connect account for a tenant checkout. This is safe for
+ * customer checkout routes to call without admin auth: the connected-account
+ * id is routing metadata, not a secret, and Stripe still requires the server
+ * secret key to create sessions.
+ */
+export const getStripeAccountForSite = query({
+	args: {
+		siteUrl: v.string(),
+	},
+	handler: async (ctx, { siteUrl }) => {
+		const client = await ctx.db
+			.query("platformClients")
+			.withIndex("by_siteUrl", (q) => q.eq("siteUrl", siteUrl))
+			.first();
+		if (!client) return null;
+		return {
+			siteUrl: client.siteUrl,
+			name: client.name,
+			stripeConnectedAccountId: client.stripeConnectedAccountId,
+		};
+	},
+});
+
+/**
+ * Resolve a tenant from a Stripe Connect event account id. Called by the
+ * platform Stripe webhook after signature verification, with the shared
+ * webhook secret passed through to Convex.
+ */
+export const getByStripeConnectedAccountId = query({
+	args: {
+		stripeConnectedAccountId: v.string(),
+		webhookSecret: v.optional(v.string()),
+	},
+	handler: async (ctx, { stripeConnectedAccountId, webhookSecret }) => {
+		const auth = await requireWebhookCallerOrAuth(ctx, webhookSecret);
+		if (auth.via === "auth") {
+			await requirePlatformAdmin(ctx);
+		}
+		return await ctx.db
+			.query("platformClients")
+			.withIndex("by_stripeConnectedAccountId", (q) =>
+				q.eq("stripeConnectedAccountId", stripeConnectedAccountId),
+			)
+			.first();
+	},
+});
+
 export const createClient = mutation({
 	args: {
 		name: v.string(),
@@ -69,6 +117,7 @@ export const createClient = mutation({
 		),
 		adminEmails: v.array(v.string()),
 		role: v.optional(v.union(v.literal("creator"), v.literal("client"))),
+		stripeConnectedAccountId: v.optional(v.string()),
 		notes: v.optional(v.string()),
 	},
 	handler: async (ctx, args) => {
@@ -139,6 +188,7 @@ export const updateClient = mutation({
 				v.literal("none"),
 			),
 		),
+		stripeConnectedAccountId: v.optional(v.string()),
 		notes: v.optional(v.string()),
 	},
 	handler: async (ctx, { clientId, ...updates }) => {
@@ -150,6 +200,43 @@ export const updateClient = mutation({
 		if (Object.keys(patch).length > 0) {
 			await ctx.db.patch(clientId, patch);
 		}
+	},
+});
+
+/**
+ * Creator-only write path used by the hub Stripe Connect onboarding routes.
+ * The browser never needs to call this directly, but keeping it a public
+ * mutation lets authenticated server routes use the caller's Better Auth
+ * token instead of requiring Convex internal mutation credentials.
+ */
+export const updateStripeConnectedAccount = mutation({
+	args: {
+		siteUrl: v.string(),
+		stripeConnectedAccountId: v.optional(v.string()),
+	},
+	handler: async (ctx, { siteUrl, stripeConnectedAccountId }) => {
+		await requirePlatformAdmin(ctx);
+		const row = await ctx.db
+			.query("platformClients")
+			.withIndex("by_siteUrl", (q) => q.eq("siteUrl", siteUrl))
+			.first();
+		if (!row) {
+			throw new Error(`No platformClients row with siteUrl="${siteUrl}"`);
+		}
+		if (row.stripeConnectedAccountId === stripeConnectedAccountId) {
+			return {
+				changed: false,
+				id: row._id,
+				stripeConnectedAccountId: row.stripeConnectedAccountId,
+			};
+		}
+		await ctx.db.patch(row._id, { stripeConnectedAccountId });
+		return {
+			changed: true,
+			id: row._id,
+			before: row.stripeConnectedAccountId,
+			after: stripeConnectedAccountId,
+		};
 	},
 });
 
@@ -189,6 +276,7 @@ export const seedClient = internalMutation({
 		),
 		adminEmails: v.array(v.string()),
 		role: v.optional(v.union(v.literal("creator"), v.literal("client"))),
+		stripeConnectedAccountId: v.optional(v.string()),
 		sanityProjectId: v.optional(v.string()),
 		notes: v.optional(v.string()),
 	},
@@ -221,6 +309,41 @@ export const listTrustedOrigins = internalQuery({
 			}
 		}
 		return Array.from(origins);
+	},
+});
+
+/**
+ * Store or clear a tenant's Stripe Connect Express account id. Internal-only:
+ * it is called by onboarding/callback server flows or the Convex CLI, not
+ * directly from a client dashboard.
+ */
+export const setStripeConnectedAccount = internalMutation({
+	args: {
+		siteUrl: v.string(),
+		stripeConnectedAccountId: v.optional(v.string()),
+	},
+	handler: async (ctx, { siteUrl, stripeConnectedAccountId }) => {
+		const row = await ctx.db
+			.query("platformClients")
+			.withIndex("by_siteUrl", (q) => q.eq("siteUrl", siteUrl))
+			.first();
+		if (!row) {
+			throw new Error(`No platformClients row with siteUrl="${siteUrl}"`);
+		}
+		if (row.stripeConnectedAccountId === stripeConnectedAccountId) {
+			return {
+				changed: false,
+				id: row._id,
+				stripeConnectedAccountId: row.stripeConnectedAccountId,
+			};
+		}
+		await ctx.db.patch(row._id, { stripeConnectedAccountId });
+		return {
+			changed: true,
+			id: row._id,
+			before: row.stripeConnectedAccountId,
+			after: stripeConnectedAccountId,
+		};
 	},
 });
 

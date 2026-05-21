@@ -18,13 +18,15 @@ export default defineSchema({
 		),
 		stripeCustomerId: v.optional(v.string()),
 		stripeSubscriptionId: v.optional(v.string()),
+		stripeConnectedAccountId: v.optional(v.string()),
 		adminEmails: v.array(v.string()),
 		role: v.optional(v.union(v.literal("creator"), v.literal("client"))),
 		notes: v.optional(v.string()),
 	})
 		.index("by_siteUrl", ["siteUrl"])
 		.index("by_email", ["email"])
-		.index("by_stripeSubscriptionId", ["stripeSubscriptionId"]),
+		.index("by_stripeSubscriptionId", ["stripeSubscriptionId"])
+		.index("by_stripeConnectedAccountId", ["stripeConnectedAccountId"]),
 
 	// Print orders (from Stripe checkout on any client site)
 	orders: defineTable({

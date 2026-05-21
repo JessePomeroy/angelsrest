@@ -15,7 +15,7 @@
  */
 
 import { json } from "@sveltejs/kit";
-import { STRIPE_WEBHOOK_SECRET } from "$env/static/private";
+import { env } from "$env/dynamic/private";
 import { getConvex } from "$lib/server/convexClient";
 import { processStripeWebhookEvent } from "$lib/server/orderIntake";
 import { getResend } from "$lib/server/resendClient";
@@ -30,9 +30,19 @@ const convex = getConvex();
 export async function POST({ request }) {
 	const stripe = getStripe();
 	const resend = getResend();
-	const event = await verifyStripeWebhook(request, stripe, STRIPE_WEBHOOK_SECRET);
+	const event = await verifyStripeWebhook(request, stripe, getCommerceWebhookSecret());
 	await processStripeWebhookEvent(event, { stripe, resend, convex });
 	return json({ received: true });
+}
+
+function getCommerceWebhookSecret() {
+	const secret = env.STRIPE_CONNECT_WEBHOOK_SECRET || env.STRIPE_WEBHOOK_SECRET;
+	if (!secret) {
+		throw new Error(
+			"Stripe commerce webhook secret is not set. Configure STRIPE_CONNECT_WEBHOOK_SECRET or STRIPE_WEBHOOK_SECRET.",
+		);
+	}
+	return secret;
 }
 
 /**
