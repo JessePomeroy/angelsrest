@@ -5,7 +5,7 @@ settings:
   excludeLinksFromLockfile: false
 
 overrides:
-  uuid@<14.0.0: ^14.0.0
+  uuid@<11.1.1: 11.1.1
   cookie@<0.7.0: ^0.7.0
   postcss@<8.5.10: ^8.5.10
 
@@ -3822,8 +3822,12 @@ packages:
   util-deprecate@1.0.2:
     resolution: {integrity: sha512-EPD5q1uXyFxJpCrLnCc1nHnq3gOa6DZBocAIiI2TaSCA7VCJ1UJDMagCzIkXNsUYfD1daK//LTEQ8xiIbrHtcw==}
 
-  uuid@14.0.0:
-    resolution: {integrity: sha512-Qo+uWgilfSmAhXCMav1uYFynlQO7fMFiMVZsQqZRMIXp0O7rR7qjkj+cPvBHLgBqi960QCoo/PH2/6ZtVqKvrg==}
+  uuid@11.1.1:
+    resolution: {integrity: sha512-vIYxrBCC/N/K+Js3qSN88go7kIfNPssr/hHCesKCQNAjmgvYS2oqr69kIufEG+O4+PfezOH4EbIeHCfFov8ZgQ==}
+    hasBin: true
+
+  uuid@13.0.2:
+    resolution: {integrity: sha512-vzi9uRZ926x4XV73S/4qQaTwPXM2JBj6/6lI/byHH1jOpCzb0zDbfytgA9LcN/hzb2l7WQSQnxITOVx5un/wGw==}
     hasBin: true
 
   valibot@1.3.1:
@@ -5278,7 +5282,7 @@ snapshots:
   '@sanity/comlink@4.0.1':
     dependencies:
       rxjs: 7.8.2
-      uuid: 14.0.0
+      uuid: 13.0.2
       xstate: 5.31.0
 
   '@sanity/diff-match-patch@3.2.0': {}
@@ -5371,7 +5375,7 @@ snapshots:
   '@sanity/uuid@3.0.2':
     dependencies:
       '@types/uuid': 8.3.4
-      uuid: 14.0.0
+      uuid: 11.1.1
 
   '@sanity/visual-editing-csm@3.0.7(@sanity/client@7.22.0)(@sanity/types@5.23.0(@types/react@19.2.14))(typescript@5.9.3)':
     dependencies:
@@ -7518,7 +7522,7 @@ snapshots:
   svix@1.90.0:
     dependencies:
       standardwebhooks: 1.0.0
-      uuid: 14.0.0
+      uuid: 11.1.1
 
   symbol-tree@3.2.4:
     optional: true
@@ -7638,7 +7642,9 @@ snapshots:
 
   util-deprecate@1.0.2: {}
 
-  uuid@14.0.0: {}
+  uuid@11.1.1: {}
+
+  uuid@13.0.2: {}
 
   valibot@1.3.1(typescript@5.9.3):
     optionalDependencies:
