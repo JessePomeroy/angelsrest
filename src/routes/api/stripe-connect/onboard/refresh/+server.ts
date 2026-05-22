@@ -5,8 +5,8 @@ import { env as publicEnv } from "$env/dynamic/public";
 import { requireAuth } from "$lib/server/adminAuth";
 import { getStripe } from "$lib/server/stripeClient";
 import {
+	normalizeStripeConnectError,
 	refreshStripeConnectOnboardingSession,
-	StripeConnectOnboardingError,
 } from "$lib/server/stripeConnectOnboarding";
 
 export async function GET({ url, cookies }) {
@@ -25,8 +25,9 @@ export async function GET({ url, cookies }) {
 
 		throw redirect(303, result.url);
 	} catch (err) {
-		if (err instanceof StripeConnectOnboardingError) {
-			throw error(err.status, err.message);
+		const connectError = normalizeStripeConnectError(err);
+		if (connectError) {
+			throw error(connectError.status, connectError.message);
 		}
 		throw err;
 	}

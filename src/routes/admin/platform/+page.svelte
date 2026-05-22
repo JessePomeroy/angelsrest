@@ -45,7 +45,7 @@ async function startStripeOnboarding() {
 		});
 
 		if (!response.ok) {
-			const message = await response.text();
+			const message = await readErrorMessage(response);
 			throw new Error(message || "Failed to start Stripe onboarding.");
 		}
 
@@ -57,9 +57,18 @@ async function startStripeOnboarding() {
 		window.location.href = result.url;
 	} catch (error) {
 		console.error(error);
-		addToast("Failed to start Stripe onboarding.");
+		addToast(error instanceof Error ? error.message : "Failed to start Stripe onboarding.");
 		onboardingSiteUrl = null;
 	}
+}
+
+async function readErrorMessage(response: Response) {
+	const contentType = response.headers.get("content-type") ?? "";
+	if (contentType.includes("application/json")) {
+		const body = (await response.json().catch(() => null)) as { message?: unknown } | null;
+		return typeof body?.message === "string" ? body.message : "";
+	}
+	return response.text().catch(() => "");
 }
 </script>
 

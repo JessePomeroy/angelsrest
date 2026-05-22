@@ -2,6 +2,7 @@ import type Stripe from "stripe";
 import { describe, expect, it, vi } from "vitest";
 import {
 	createStripeConnectOnboardingSession,
+	normalizeStripeConnectError,
 	normalizeStripeConnectSiteUrl,
 	refreshStripeConnectOnboardingSession,
 	StripeConnectOnboardingError,
@@ -29,6 +30,18 @@ const client = {
 describe("Stripe Connect onboarding", () => {
 	it("normalizes URL-ish site values to bare domains", () => {
 		expect(normalizeStripeConnectSiteUrl("https://www.zippymiggy.com/")).toBe("zippymiggy.com");
+	});
+
+	it("maps Stripe Connect setup failures to an operator-actionable error", () => {
+		const err = new Error(
+			"You can only create new accounts if you've signed up for Connect, which you can do at https://dashboard.stripe.com/connect.",
+		);
+
+		expect(normalizeStripeConnectError(err)).toMatchObject({
+			status: 400,
+			message:
+				"Stripe Connect is not enabled for this Stripe account. Finish Connect setup in the Angels Rest Stripe dashboard, then try again.",
+		});
 	});
 
 	it("creates an Express account, stores it, and returns an onboarding link", async () => {
