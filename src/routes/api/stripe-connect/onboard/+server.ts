@@ -1,4 +1,4 @@
-import { error, json } from "@sveltejs/kit";
+import { json } from "@sveltejs/kit";
 import { ConvexHttpClient } from "convex/browser";
 import { api } from "$convex/api";
 import { env as publicEnv } from "$env/dynamic/public";
@@ -6,7 +6,7 @@ import { requireAuth } from "$lib/server/adminAuth";
 import { getStripe } from "$lib/server/stripeClient";
 import {
 	createStripeConnectOnboardingSession,
-	StripeConnectOnboardingError,
+	normalizeStripeConnectError,
 } from "$lib/server/stripeConnectOnboarding";
 
 interface OnboardRequest {
@@ -32,8 +32,9 @@ export async function POST({ request, cookies }) {
 
 		return json(result);
 	} catch (err) {
-		if (err instanceof StripeConnectOnboardingError) {
-			throw error(err.status, err.message);
+		const connectError = normalizeStripeConnectError(err);
+		if (connectError) {
+			return json({ message: connectError.message }, { status: connectError.status });
 		}
 		throw err;
 	}

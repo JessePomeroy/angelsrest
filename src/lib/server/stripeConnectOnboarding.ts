@@ -24,6 +24,30 @@ export class StripeConnectOnboardingError extends Error {
 	}
 }
 
+export function normalizeStripeConnectError(err: unknown) {
+	if (err instanceof StripeConnectOnboardingError) return err;
+
+	const message = getErrorMessage(err);
+	if (!message) return null;
+
+	if (message.includes("signed up for Connect")) {
+		return new StripeConnectOnboardingError(
+			400,
+			"Stripe Connect is not enabled for this Stripe account. Finish Connect setup in the Angels Rest Stripe dashboard, then try again.",
+		);
+	}
+
+	const stripeError = err as { type?: unknown; statusCode?: unknown };
+	if (typeof stripeError.type === "string" && stripeError.type.startsWith("Stripe")) {
+		return new StripeConnectOnboardingError(
+			typeof stripeError.statusCode === "number" ? stripeError.statusCode : 502,
+			message,
+		);
+	}
+
+	return null;
+}
+
 export interface StripeConnectOnboardingOptions {
 	siteUrl: string | undefined;
 	platformOrigin: string;
@@ -130,6 +154,10 @@ function requireSiteUrl(value: string | undefined) {
 		throw new StripeConnectOnboardingError(400, "Missing siteUrl");
 	}
 	return siteUrl;
+}
+
+function getErrorMessage(err: unknown) {
+	return err instanceof Error && typeof err.message === "string" ? err.message : null;
 }
 
 async function createAccountLinkUrl(
