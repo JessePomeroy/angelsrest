@@ -31,8 +31,7 @@ export const adminConfig: AdminConfig = {
 	api: apiWithGalleryDelivery,
 	// Route mutations through the SvelteKit proxy at /api/admin/mutation
 	// instead of the Convex WebSocket. The browser socket is intentionally
-	// unauthenticated (see admin/+layout.svelte) to avoid the pause bug in
-	// `@mmailaender/convex-better-auth-svelte@0.7.3` + `better-auth@1.5.x`
-	// during SvelteKit client-side navigation.
+	// unauthenticated (see admin/+layout.svelte) to avoid older Better Auth
+	// Svelte WebSocket pause behavior during SvelteKit client-side navigation.
 	mutationTransport: "http",
 };

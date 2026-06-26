@@ -6,7 +6,7 @@ import {
 	LoadingState,
 	setAdminConfig,
 } from "@jessepomeroy/admin";
-import { setupAuth, setupConvex } from "@mmailaender/convex-svelte";
+import { setupAuth, setupConvex } from "convex-svelte";
 import { browser } from "$app/environment";
 import { invalidateAll } from "$app/navigation";
 import { PUBLIC_CONVEX_URL } from "$env/static/public";

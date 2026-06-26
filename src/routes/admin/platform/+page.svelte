@@ -1,6 +1,6 @@
 <script lang="ts">
 import { addToast, getAdminConfig, PlatformPage, type PlatformClient } from "@jessepomeroy/admin";
-import { useQuery } from "@mmailaender/convex-svelte";
+import { useQuery } from "convex-svelte";
 
 type StripePlatformClient = PlatformClient & {
 	stripeConnectedAccountId?: string | null;
