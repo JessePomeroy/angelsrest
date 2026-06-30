@@ -1,6 +1,7 @@
 import { error } from "@sveltejs/kit";
 import { api } from "$convex/api";
 import type { Id } from "$convex/dataModel";
+import { galleryFileLabel, isBrowserPreviewableGalleryFile } from "$lib/galleryDelivery/fileTypes";
 import { getConvex } from "$lib/server/convexClient";
 import { getGalleryWorkerUrl } from "$lib/server/galleryWorkerUrl";
 
@@ -54,6 +55,8 @@ export async function load({ params }) {
 			thumbUrl: `${workerUrl}/image/${img.r2Key.replace("/original/", "/thumb/")}`,
 			previewUrl: `${workerUrl}/image/${img.r2Key.replace("/original/", "/preview/")}`,
 			downloadUrl: `${workerUrl}/download/${img.r2Key}?token=${token}`,
+			canPreview: isBrowserPreviewableGalleryFile(img.filename),
+			fileLabel: galleryFileLabel(img.filename),
 		})),
 		client: result.client,
 		workerUrl,

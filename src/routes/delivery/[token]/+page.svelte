@@ -180,7 +180,13 @@ let favoriteCount = $derived(
 		{#each images as image, i (image._id)}
 			<div class="grid-cell">
 				<button class="image-btn" onclick={() => openLightbox(i)} aria-label={"View photo " + (i + 1) + " of " + images.length}>
-					<img src={image.thumbUrl} alt={"Photo " + (i + 1) + ": " + image.filename} loading="lazy" />
+					{#if image.canPreview}
+						<img src={image.thumbUrl} alt={"Photo " + (i + 1) + ": " + image.filename} loading="lazy" />
+					{:else}
+						<span class="file-tile" aria-label={image.filename}>
+							<span>{image.fileLabel}</span>
+						</span>
+					{/if}
 				</button>
 				{#if data.gallery.favoritesEnabled}
 					<button
@@ -212,7 +218,13 @@ let favoriteCount = $derived(
 		onkeydown={handleKeydown}
 	>
 		<div class="lightbox-content">
-			<img src={images[lightboxIndex].previewUrl} alt={images[lightboxIndex].filename} />
+			{#if images[lightboxIndex].canPreview}
+				<img src={images[lightboxIndex].previewUrl} alt={images[lightboxIndex].filename} />
+			{:else}
+				<div class="lightbox-file">
+					<span>{images[lightboxIndex].fileLabel}</span>
+				</div>
+			{/if}
 			<div class="lightbox-controls">
 				<span class="lightbox-counter" aria-live="polite">{lightboxIndex + 1} / {images.length}</span>
 				<span class="lightbox-filename">{images[lightboxIndex].filename}</span>
@@ -323,6 +335,27 @@ let favoriteCount = $derived(
 		transition: transform 0.2s;
 	}
 
+	.file-tile {
+		width: 100%;
+		height: 100%;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		background: rgba(255, 255, 255, 0.08);
+		color: currentColor;
+	}
+
+	.file-tile span,
+	.lightbox-file span {
+		padding: 6px 12px;
+		border: 1px solid currentColor;
+		border-radius: 4px;
+		text-transform: uppercase;
+		font-size: 0.8rem;
+		letter-spacing: 0.08em;
+		opacity: 0.72;
+	}
+
 	.image-btn:hover img {
 		transform: scale(1.03);
 	}
@@ -376,6 +409,17 @@ let favoriteCount = $derived(
 		max-height: 75vh;
 		object-fit: contain;
 		border-radius: 4px;
+	}
+
+	.lightbox-file {
+		width: min(520px, 80vw);
+		aspect-ratio: 4 / 3;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		border-radius: 4px;
+		background: rgba(255, 255, 255, 0.08);
+		color: rgba(255, 255, 255, 0.8);
 	}
 
 	.lightbox-controls {
