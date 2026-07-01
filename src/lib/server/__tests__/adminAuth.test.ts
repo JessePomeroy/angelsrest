@@ -19,6 +19,10 @@ vi.mock("$convex/api", () => ({
 	api: { adminAuth: { whoami: "adminAuth.whoami" } },
 }));
 
+vi.mock("$env/dynamic/public", () => ({
+	env: { PUBLIC_CONVEX_URL: "https://convex.test" },
+}));
+
 // Mock @sveltejs/kit error() to throw like it does at runtime
 vi.mock("@sveltejs/kit", () => ({
 	error: (status: number, message: string) => {
@@ -26,6 +30,7 @@ vi.mock("@sveltejs/kit", () => ({
 		err.status = status;
 		throw err;
 	},
+	json: (data: unknown, init?: ResponseInit) => Response.json(data, init),
 }));
 
 describe("requireAuth", () => {
