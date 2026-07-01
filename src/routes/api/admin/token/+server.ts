@@ -1,5 +1,4 @@
-import { getToken } from "@mmailaender/convex-better-auth-svelte/sveltekit";
-import { json, type RequestHandler } from "@sveltejs/kit";
+import { adminTokenHandler } from "$lib/server/adminAuth";
 
 /**
  * Expose the Better Auth JWT to the browser so the Convex WebSocket can
@@ -28,10 +27,4 @@ import { json, type RequestHandler } from "@sveltejs/kit";
  * `fetchAccessToken` callback in `+layout.svelte` should translate that
  * to `null` so the Convex client enters unauthenticated mode cleanly.
  */
-export const GET: RequestHandler = async ({ cookies }) => {
-	const token = getToken(cookies);
-	if (!token) {
-		return json({ error: "Unauthorized" }, { status: 401 });
-	}
-	return json({ token });
-};
+export const GET = adminTokenHandler;

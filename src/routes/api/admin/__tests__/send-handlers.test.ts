@@ -16,25 +16,54 @@ const mockInvoiceHandler = vi.fn();
 const mockQuoteHandler = vi.fn();
 const mockContractHandler = vi.fn();
 const mockSetServerConfig = vi.fn();
+const mockGetToken = vi.fn();
+const mockConvexQuery = vi.fn();
+const mockConvexSetAuth = vi.fn();
+
+function throwStatus(status: number, message: string): never {
+	const err = new Error(message) as Error & { status: number };
+	err.status = status;
+	throw err;
+}
 
 vi.mock("@jessepomeroy/admin/server", () => ({
 	setServerConfig: mockSetServerConfig,
 	createInvoiceSendHandler: () => mockInvoiceHandler,
 	createQuoteSendHandler: () => mockQuoteHandler,
 	createContractSendHandler: () => mockContractHandler,
+	createAdminAuthValidator: (options: {
+		getToken: (cookies: import("@sveltejs/kit").Cookies) => string | null | undefined;
+		whoami: unknown;
+	}) => {
+		async function requireAuthWithIdentity(cookies: import("@sveltejs/kit").Cookies) {
+			const token = options.getToken(cookies);
+			if (!token) throwStatus(401, "Unauthorized");
+			const identity = await mockConvexQuery(options.whoami, {});
+			if (!identity) throwStatus(401, "Unauthorized");
+			mockConvexSetAuth(token);
+			return { token, identity };
+		}
+		return {
+			requireAuth: async (cookies: import("@sveltejs/kit").Cookies) => {
+				const { token } = await requireAuthWithIdentity(cookies);
+				return token;
+			},
+			requireAuthWithIdentity,
+			verifyRequest: async () => true,
+			getTokenFromRequest: async () => null,
+		};
+	},
+	createAdminTokenHandler: () => vi.fn(),
 }));
 
 vi.mock("$lib/config/admin.server", () => ({
 	adminServerConfig: { stub: true },
 }));
 
-const mockGetToken = vi.fn();
 vi.mock("@mmailaender/convex-better-auth-svelte/sveltekit", () => ({
 	getToken: mockGetToken,
 }));
 
-const mockConvexQuery = vi.fn();
-const mockConvexSetAuth = vi.fn();
 vi.mock("convex/browser", () => ({
 	ConvexHttpClient: class MockConvexHttpClient {
 		setAuth = mockConvexSetAuth;
