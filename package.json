@@ -29,8 +29,8 @@
 		"@skeletonlabs/skeleton": "^4.15.2",
 		"@skeletonlabs/skeleton-svelte": "^4.15.2",
 		"@sveltejs/adapter-auto": "^7.0.1",
-		"@sveltejs/adapter-vercel": "^6.3.3",
-		"@sveltejs/kit": "^2.57.1",
+		"@sveltejs/adapter-vercel": "^6.3.4",
+		"@sveltejs/kit": "^2.68.0",
 		"@sveltejs/vite-plugin-svelte": "^6.2.4",
 		"@tailwindcss/vite": "^4.2.4",
 		"@types/node": "^25.6.0",
@@ -38,16 +38,16 @@
 		"dotenv": "^17.4.2",
 		"husky": "^9.1.7",
 		"lint-staged": "^16.4.0",
-		"svelte": "^5.55.4",
+		"svelte": "^5.56.4",
 		"svelte-check": "^4.4.6",
 		"tailwindcss": "^4.2.4",
-		"tsx": "^4.21.0",
+		"tsx": "^4.22.4",
 		"typescript": "^5.9.3",
-		"vite": "^7.3.2",
-		"vitest": "^4.1.5"
+		"vite": "^7.3.5",
+		"vitest": "^4.1.9"
 	},
 	"dependencies": {
-		"@convex-dev/better-auth": "^0.12.2",
+		"@convex-dev/better-auth": "^0.12.5",
 		"@jessepomeroy/admin": "^2.0.13",
 		"@lucide/svelte": "^0.563.1",
 		"@mmailaender/convex-better-auth-svelte": "^0.8.0",
@@ -57,12 +57,12 @@
 		"@sanity/image-url": "^2.1.1",
 		"@sanity/preview-url-secret": "^4.0.5",
 		"@sanity/visual-editing": "^5.3.4",
-		"@sentry/sveltekit": "^10.50.0",
+		"@sentry/sveltekit": "^10.62.0",
 		"@stripe/stripe-js": "^8.11.0",
 		"@tailwindcss/typography": "^0.5.19",
 		"@vercel/analytics": "^1.6.1",
-		"better-auth": "1.6.10",
-		"convex": "^1.36.0",
+		"better-auth": "1.6.23",
+		"convex": "^1.42.1",
 		"convex-svelte": "^0.14.0",
 		"react": "^19.2.7",
 		"react-dom": "^19.2.7",
@@ -83,7 +83,13 @@
 		"overrides": {
 			"uuid@<11.1.1": "11.1.1",
 			"cookie@<0.7.0": "^0.7.0",
-			"postcss@<8.5.10": "^8.5.10"
+			"postcss@<8.5.10": "^8.5.10",
+			"brace-expansion": "5.0.6",
+			"js-yaml@<3.15.0": "3.15.0",
+			"js-yaml@>=4.0.0 <=4.1.1": "4.2.0",
+			"tar": "7.5.16",
+			"undici": "7.28.0",
+			"vite>esbuild": "0.28.1"
 		}
 	}
 }
