@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 /**
  * These routes are thin wrappers around handler factories from
- * @jessepomeroy/admin. The angelsrest-side responsibility is:
+ * @jessepomeroy/admin/server. The angelsrest-side responsibility is:
  *   1. Call requireAuth() before delegating.
  *   2. Delegate to the package handler and return its response.
  *
@@ -17,7 +17,7 @@ const mockQuoteHandler = vi.fn();
 const mockContractHandler = vi.fn();
 const mockSetServerConfig = vi.fn();
 
-vi.mock("@jessepomeroy/admin", () => ({
+vi.mock("@jessepomeroy/admin/server", () => ({
 	setServerConfig: mockSetServerConfig,
 	createInvoiceSendHandler: () => mockInvoiceHandler,
 	createQuoteSendHandler: () => mockQuoteHandler,

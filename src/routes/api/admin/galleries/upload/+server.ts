@@ -1,4 +1,4 @@
-import { createGalleryUploadHandler } from "@jessepomeroy/admin";
+import { createGalleryUploadHandler } from "@jessepomeroy/admin/server";
 import type { RequestHandler } from "./$types";
 import "$lib/server/adminHandler";
 
