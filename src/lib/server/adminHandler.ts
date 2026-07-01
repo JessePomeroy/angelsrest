@@ -1,4 +1,4 @@
-import { setServerConfig } from "@jessepomeroy/admin";
+import { setServerConfig } from "@jessepomeroy/admin/server";
 import type { Cookies } from "@sveltejs/kit";
 import { adminServerConfig } from "$lib/config/admin.server";
 import { requireAuth } from "$lib/server/adminAuth";

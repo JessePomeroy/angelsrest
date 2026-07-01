@@ -1,4 +1,4 @@
-import { createGalleryProcessHandler } from "@jessepomeroy/admin";
+import { createGalleryProcessHandler } from "@jessepomeroy/admin/server";
 import type { RequestHandler } from "./$types";
 import "$lib/server/adminHandler";
 

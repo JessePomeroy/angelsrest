@@ -1,5 +1,4 @@
-import type { AdminServerConfig } from "@jessepomeroy/admin";
-import { cookiesFromRequest } from "@jessepomeroy/admin/server";
+import { type AdminServerConfig, cookiesFromRequest } from "@jessepomeroy/admin/server";
 import { getToken } from "@mmailaender/convex-better-auth-svelte/sveltekit";
 import { env as privateEnv } from "$env/dynamic/private";
 import { env as publicEnv } from "$env/dynamic/public";

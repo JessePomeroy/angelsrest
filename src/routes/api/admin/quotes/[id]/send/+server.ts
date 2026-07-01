@@ -1,4 +1,4 @@
-import { createQuoteSendHandler } from "@jessepomeroy/admin";
+import { createQuoteSendHandler } from "@jessepomeroy/admin/server";
 import { withAdminAuth } from "$lib/server/adminHandler";
 import type { RequestHandler } from "./$types";
 
