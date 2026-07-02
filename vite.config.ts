@@ -21,6 +21,12 @@ export default defineConfig({
 		// and dashboards are unreadable. Uploads are enabled only when the
 		// required Sentry env vars exist, so local builds stay quiet.
 		sentrySvelteKit({
+			// This site uses Sentry for error capture only right now
+			// (`tracesSampleRate: 0`). Leaving auto-instrumentation on injects
+			// @sentry/sveltekit runtime imports into every server load and makes
+			// Vercel trace Sentry's build-time plugin code into the serverless
+			// bundle. Re-enable only when we intentionally turn tracing on.
+			autoInstrument: false,
 			autoUploadSourceMaps: canUploadSentrySourceMaps,
 			sourceMapsUploadOptions: canUploadSentrySourceMaps
 				? {
