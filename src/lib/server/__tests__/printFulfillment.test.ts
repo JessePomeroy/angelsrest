@@ -132,6 +132,27 @@ describe("print fulfillment", () => {
 		});
 	});
 
+	it("skips LumaPrints and recipient validation when there are no print items", async () => {
+		const { submitPrintFulfillment } = await import("../printFulfillment");
+		mockBuildOrderItemsFromSession.mockReturnValue([]);
+
+		await submitPrintFulfillment(
+			{ convex },
+			{
+				orderId: "order-123",
+				orderNumber: "ORD-001",
+				lineItems: [],
+				shippingDetails: null as any,
+				session,
+			},
+		);
+
+		expect(mockBuildRecipientFromShipping).not.toHaveBeenCalled();
+		expect(mockBuildLumaPrintsOrder).not.toHaveBeenCalled();
+		expect(mockCreateLumaPrintsOrder).not.toHaveBeenCalled();
+		expect(convex.mutation).not.toHaveBeenCalled();
+	});
+
 	it("rethrows transient fulfillment failures so Stripe retries", async () => {
 		const { handlePrintFulfillmentFailure } = await import("../printFulfillment");
 		const error = new Error("network dropped");
@@ -150,6 +171,37 @@ describe("print fulfillment", () => {
 		).rejects.toBe(error);
 		expect(stripe.refunds.create).not.toHaveBeenCalled();
 		expect(convex.mutation).not.toHaveBeenCalled();
+	});
+
+	it("refunds local fulfillment validation failures instead of retrying", async () => {
+		const { FulfillmentValidationError } = await import("../fulfillmentValidationError");
+		const { handlePrintFulfillmentFailure } = await import("../printFulfillment");
+
+		await handlePrintFulfillmentFailure(
+			{ stripe, convex, resend },
+			{
+				orderId: "order-123",
+				orderNumber: "ORD-001",
+				error: new FulfillmentValidationError("recipient.zipCode is required"),
+				session,
+				customerEmail: "jane@example.com",
+			},
+		);
+
+		expect(stripe.refunds.create).toHaveBeenCalledWith(
+			expect.objectContaining({
+				payment_intent: "pi_test_123",
+				reason: "requested_by_customer",
+			}),
+			undefined,
+		);
+		expect(convex.mutation).toHaveBeenCalledWith(
+			"orders.updateStatus",
+			expect.objectContaining({
+				status: "fulfillment_error",
+				fulfillmentError: expect.stringContaining("recipient.zipCode is required"),
+			}),
+		);
 	});
 
 	it("refunds, marks fulfillment_error, and alerts admin for permanent failures", async () => {

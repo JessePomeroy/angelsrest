@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { FulfillmentValidationError } from "../server/fulfillmentValidationError";
 import { LumaPrintsError } from "../server/lumaprints";
 import {
 	classifyLumaPrintsFailure,
@@ -74,6 +75,11 @@ describe("classifyLumaPrintsFailure", () => {
 	});
 
 	describe("network / node errors", () => {
+		it("classifies local fulfillment validation errors as permanent", () => {
+			const err = new FulfillmentValidationError("recipient.zipCode is required");
+			expect(classifyLumaPrintsFailure(err)).toBe("permanent");
+		});
+
 		it("classifies AbortError as transient", () => {
 			const err = new Error("aborted");
 			err.name = "AbortError";

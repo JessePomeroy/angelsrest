@@ -64,6 +64,7 @@ export async function createOrderInConvex(
 	);
 	const { _id: orderId, orderNumber, alreadyExisted } = orderResult;
 	const existingLumaprintsOrderNumber = orderResult.lumaprintsOrderNumber;
+	const existingStatus = orderResult.status;
 	const existingStripeFees = orderResult.stripeFees;
 
 	logStructured({
@@ -115,6 +116,18 @@ export async function createOrderInConvex(
 			meta: {
 				reason: "already submitted on prior webhook attempt",
 				lumaprintsOrderNumber: existingLumaprintsOrderNumber,
+			},
+		});
+		return { orderNumber, _id: orderId, alreadyExisted };
+	}
+
+	if (alreadyExisted && existingStatus === "fulfillment_error") {
+		logStructured({
+			event: "lumaprints.skipped",
+			stage: "lumaprints_submit",
+			orderId: orderNumber,
+			meta: {
+				reason: "already marked fulfillment_error on prior webhook attempt",
 			},
 		});
 		return { orderNumber, _id: orderId, alreadyExisted };

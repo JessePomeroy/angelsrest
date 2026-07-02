@@ -378,6 +378,38 @@ describe("Stripe webhook POST handler", () => {
 		);
 	});
 
+	it("does not retry fulfillment or refund for duplicate events after fulfillment_error", async () => {
+		mockConvexMutation.mockResolvedValueOnce({
+			_id: "order-123",
+			orderNumber: "ORD-001",
+			alreadyExisted: true,
+			status: "fulfillment_error",
+		});
+
+		const req = {
+			request: new Request("http://localhost/api/webhooks/stripe", {
+				method: "POST",
+				headers: { "stripe-signature": "valid-sig" },
+				body: "{}",
+			}),
+		};
+
+		const response = await POST(req);
+		expect(response.status).toBe(200);
+
+		expect(mockCreateLumaOrder).not.toHaveBeenCalled();
+		expect(mockRefundsCreate).not.toHaveBeenCalled();
+		expect(mockConvexMutation).not.toHaveBeenCalledWith(
+			"orders.updateStatus",
+			expect.objectContaining({ status: "fulfillment_error" }),
+		);
+		expect(mockSendEmail).not.toHaveBeenCalledWith(
+			expect.objectContaining({
+				subject: expect.stringContaining("Fulfillment error"),
+			}),
+		);
+	});
+
 	it("marks invoice as paid for invoice_payment metadata", async () => {
 		const session = makeCheckoutSession({
 			metadata: {
