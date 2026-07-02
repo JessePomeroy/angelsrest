@@ -6,23 +6,15 @@
  */
 
 import type Stripe from "stripe";
+import {
+	CART_METADATA_KEYS,
+	decodeCartItemPayload,
+	type LumaPrintsCartItemPayload,
+} from "$lib/server/cartMetadataCodec";
 import type { OrderItem, Recipient } from "$lib/shop/types";
 import type { ShippingDetails } from "./webhookEmails";
 
 type StripeMetadata = Record<string, unknown>;
-
-type CartItemPayload = {
-	u?: string;
-	s?: number;
-	w?: number;
-	h?: number;
-	q?: number;
-	i?: string[];
-	b?: number;
-	f?: number;
-	c?: number;
-	cw?: string;
-};
 
 type PrintOptions = Pick<
 	OrderItem,
@@ -64,7 +56,7 @@ export function buildOrderItemsFromSession(
 	const meta = (session.metadata ?? {}) as StripeMetadata;
 
 	// ─── Path 1: Cart (multi-item, per-line paper/size) ───────────────────
-	if (meta.isCart === "true") {
+	if (meta[CART_METADATA_KEYS.isCart] === "true") {
 		return buildCartOrderItems(meta);
 	}
 
@@ -81,12 +73,12 @@ export function buildOrderItemsFromSession(
 }
 
 function buildCartOrderItems(meta: StripeMetadata): OrderItem[] {
-	const count = Number.parseInt(String(meta.cartItemCount ?? "0"), 10);
+	const count = Number.parseInt(String(meta[CART_METADATA_KEYS.itemCount] ?? "0"), 10);
 	if (!Number.isFinite(count) || count <= 0) return [];
 
 	const items: OrderItem[] = [];
 	for (let i = 0; i < count; i++) {
-		const parsed = parseCartItemPayload(meta[`cartItem_${i}`]);
+		const parsed = decodeCartItemPayload(meta[CART_METADATA_KEYS.item(i)]);
 		if (!parsed) continue;
 
 		if (Array.isArray(parsed.i) && parsed.i.length > 0) {
@@ -102,38 +94,7 @@ function buildCartOrderItems(meta: StripeMetadata): OrderItem[] {
 	return items;
 }
 
-function parseCartItemPayload(
-	raw: unknown,
-): (Required<Pick<CartItemPayload, "u" | "s" | "w" | "h" | "q">> & CartItemPayload) | null {
-	if (typeof raw !== "string" || !raw) return null;
-	try {
-		// Compact representation from buildCartMetadata. Field semantics:
-		//  - `u` always present: cover image (cart UI thumbnail)
-		//  - `q` always present: cart line quantity
-		//  - `s/w/h` for LumaPrints prints; absent → self-fulfilled merch,
-		//    skip the line entirely
-		//  - `i` for print sets: array of image URLs to expand into one
-		//    OrderItem per image, multiplied through by `q`
-		const parsed = JSON.parse(raw) as CartItemPayload;
-		const hasRequiredCartFields = typeof parsed.u === "string" && typeof parsed.q === "number";
-		const hasPaper =
-			typeof parsed.s === "number" && typeof parsed.w === "number" && typeof parsed.h === "number";
-		if (!hasRequiredCartFields || !hasPaper) {
-			// Self-fulfilled merch — skip LumaPrints submission entirely.
-			return null;
-		}
-		return parsed as Required<Pick<CartItemPayload, "u" | "s" | "w" | "h" | "q">> & CartItemPayload;
-	} catch {
-		// Skip malformed entries — partial fulfillment is better than
-		// throwing the entire order on the floor for one bad row.
-		return null;
-	}
-}
-
-function buildCartOrderItem(
-	parsed: Required<Pick<CartItemPayload, "s" | "w" | "h" | "q">> & CartItemPayload,
-	imageUrl: string,
-): OrderItem {
+function buildCartOrderItem(parsed: LumaPrintsCartItemPayload, imageUrl: string): OrderItem {
 	return {
 		imageUrl,
 		paperSubcategoryId: parsed.s,
