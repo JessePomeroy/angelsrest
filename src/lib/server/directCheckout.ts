@@ -4,6 +4,10 @@ import type { ResolvedCheckoutItem } from "$lib/server/checkoutCatalog";
 import { resolveCheckoutItem } from "$lib/server/checkoutCatalog";
 import { type CouponResult, validateAndApplyCoupon } from "$lib/server/coupon";
 import { logStructured } from "$lib/server/logger";
+import {
+	buildCheckoutLineItem,
+	createPaymentCheckoutSession,
+} from "$lib/server/stripeCheckoutSession";
 import { buildTenantCheckoutOptions, type StripeTenantAccount } from "$lib/server/stripeConnect";
 
 type CheckoutFetcher = Parameters<typeof resolveCheckoutItem>[0];
@@ -137,42 +141,26 @@ export async function createDirectCheckoutSession({
 		subtotalCents,
 	});
 
-	const session = await stripe.checkout.sessions.create(
-		{
-			payment_method_types: ["card"],
-			...(item.isDigital
-				? {}
-				: {
-						shipping_address_collection: {
-							allowed_countries: ["US"],
-						},
-					}),
-			line_items: [
-				{
-					price_data: {
-						currency: "usd",
-						product_data: {
-							name: item.title,
-							images: item.image ? [item.image] : [],
-						},
-						unit_amount: subtotalCents,
-					},
-					quantity: 1,
-				},
-			],
-			mode: "payment",
-			success_url: `${siteUrl}/checkout/success?session_id={CHECKOUT_SESSION_ID}`,
-			cancel_url: `${siteUrl}/checkout/cancel`,
-			metadata: buildCheckoutMetadata(item, appliedCoupon, discountAmount),
-			...tenantCheckout.session,
-		},
-		tenantCheckout.requestOptions,
-	);
+	const session = await createPaymentCheckoutSession({
+		stripe,
+		shippingAllowedCountries: item.isDigital ? undefined : ["US"],
+		lineItems: [
+			buildCheckoutLineItem({
+				name: item.title,
+				imageUrl: item.image ?? undefined,
+				unitAmountCents: subtotalCents,
+			}),
+		],
+		successUrl: `${siteUrl}/checkout/success?session_id={CHECKOUT_SESSION_ID}`,
+		cancelUrl: `${siteUrl}/checkout/cancel`,
+		metadata: buildCheckoutMetadata(item, appliedCoupon, discountAmount),
+		tenantCheckout,
+	});
 
 	log({
 		event: "checkout.session_created",
 		meta: {
-			sessionId: session.id,
+			sessionId: session.sessionId,
 			productId: item.productId,
 			isPrintSet: item.isPrintSet,
 			finalPrice,
@@ -181,7 +169,7 @@ export async function createDirectCheckoutSession({
 		},
 	});
 
-	bindSession(session.id);
+	bindSession(session.sessionId);
 
-	return { sessionId: session.id, url: session.url };
+	return session;
 }
