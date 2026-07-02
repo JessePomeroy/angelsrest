@@ -133,6 +133,30 @@ async function signContract() {
 		actionLoading = false;
 	}
 }
+
+async function payInvoice() {
+	actionLoading = true;
+	actionResult = null;
+	try {
+		const res = await fetch("/api/invoice/checkout", {
+			method: "POST",
+			headers: { "Content-Type": "application/json" },
+			body: JSON.stringify({ token: data.token }),
+		});
+		const result = await res.json().catch(() => ({}));
+		if (res.ok && typeof result.url === "string") {
+			window.location.href = result.url;
+			return;
+		}
+		actionResult = "error";
+		actionMessage = result.message || "something went wrong. please try again.";
+	} catch {
+		actionResult = "error";
+		actionMessage = "something went wrong. please try again.";
+	} finally {
+		actionLoading = false;
+	}
+}
 </script>
 
 <SEO title="{data.type === 'invoice' ? 'Invoice' : data.type === 'quote' ? 'Quote' : 'Contract'} from {data.businessName}" description="View your {data.type}" />
@@ -314,8 +338,8 @@ async function signContract() {
 				</div>
 			{:else if doc.status === "sent" || doc.status === "overdue"}
 				<div class="doc-actions">
-					<button class="btn-primary" disabled>
-						Pay Now (coming soon)
+					<button class="btn-primary" onclick={payInvoice} disabled={actionLoading}>
+						{actionLoading ? "..." : "Pay Now"}
 					</button>
 				</div>
 			{/if}

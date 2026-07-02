@@ -21,6 +21,7 @@ export interface CreatePaymentCheckoutSessionOptions {
 	metadata: Stripe.MetadataParam;
 	shippingAllowedCountries?: AllowedCountry[];
 	tenantCheckout?: TenantStripeCheckoutOptions;
+	idempotencyKey?: string;
 }
 
 export interface PaymentCheckoutSessionResult {
@@ -61,7 +62,16 @@ export async function createPaymentCheckoutSession({
 	metadata,
 	shippingAllowedCountries,
 	tenantCheckout,
+	idempotencyKey,
 }: CreatePaymentCheckoutSessionOptions): Promise<PaymentCheckoutSessionResult> {
+	const requestOptions =
+		tenantCheckout?.requestOptions || idempotencyKey
+			? {
+					...tenantCheckout?.requestOptions,
+					...(idempotencyKey ? { idempotencyKey } : {}),
+				}
+			: undefined;
+
 	const session = await stripe.checkout.sessions.create(
 		{
 			payment_method_types: ["card"],
@@ -79,7 +89,7 @@ export async function createPaymentCheckoutSession({
 			metadata,
 			...(tenantCheckout?.session ?? {}),
 		},
-		tenantCheckout?.requestOptions,
+		requestOptions,
 	);
 
 	return { sessionId: session.id, url: session.url };

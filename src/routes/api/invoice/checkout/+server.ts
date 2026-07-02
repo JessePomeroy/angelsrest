@@ -1,33 +1,60 @@
+import { createHash } from "node:crypto";
 import { error, json } from "@sveltejs/kit";
-import { api } from "$convex/api";
+import type { Doc } from "$convex/dataModel";
 import { PUBLIC_SITE_URL } from "$env/static/public";
-import { SITE_DOMAIN } from "$lib/config/site";
 import { getConvex } from "$lib/server/convexClient";
+import { validatePortalToken } from "$lib/server/portalToken";
 import {
 	buildCheckoutLineItem,
 	createPaymentCheckoutSession,
 } from "$lib/server/stripeCheckoutSession";
 import { getStripe } from "$lib/server/stripeClient";
+import { buildTenantCheckoutOptions } from "$lib/server/stripeConnect";
+import { resolveStripeTenantForSite } from "$lib/server/stripeTenant";
 
 const convex = getConvex();
+
+interface InvoiceCheckoutIdempotencyInput {
+	siteUrl: string;
+	invoiceId: string;
+	lineItemsCents: { description: string; quantity: number; unitPriceCents: number }[];
+	taxPercent: number;
+	taxCents: number;
+}
+
+function buildInvoiceCheckoutIdempotencyKey({
+	siteUrl,
+	invoiceId,
+	lineItemsCents,
+	taxPercent,
+	taxCents,
+}: InvoiceCheckoutIdempotencyInput): string {
+	const fingerprint = createHash("sha256")
+		.update(JSON.stringify({ lineItemsCents, taxPercent, taxCents }))
+		.digest("hex")
+		.slice(0, 24);
+	return `invoice-checkout:${siteUrl}:${invoiceId}:${fingerprint}`;
+}
 
 export async function POST({ request }) {
 	const stripe = getStripe();
 	try {
-		const { invoiceId } = await request.json();
+		const { token } = await request.json();
 
-		if (!invoiceId) {
-			throw error(400, "Missing required field: invoiceId");
+		if (!token) {
+			throw error(400, "Missing required field: token");
 		}
 
-		const invoice = await convex.query(api.invoices.get, { invoiceId });
-
-		if (!invoice) {
-			throw error(404, "Invoice not found");
-		}
+		const portal = await validatePortalToken(convex, token, "invoice");
+		const invoice = portal.document as Doc<"invoices">;
+		const invoiceId = portal.token.documentId;
+		const siteUrl = portal.token.siteUrl;
 
 		if (invoice.status === "paid") {
 			throw error(400, "Invoice has already been paid");
+		}
+		if (invoice.status !== "sent" && invoice.status !== "overdue") {
+			throw error(400, "Invoice is not payable");
 		}
 
 		// Audit H8: compute in integer cents from the start so cents-
@@ -53,6 +80,14 @@ export async function POST({ request }) {
 			throw error(400, "Invalid invoice tax percentage");
 		}
 		const taxCents = taxPercent > 0 ? Math.round((subtotalCents * taxPercent) / 100) : 0;
+		const tenant = await resolveStripeTenantForSite(siteUrl, {
+			requirePlatformClient: true,
+		});
+		const tenantCheckout = buildTenantCheckoutOptions({
+			tenant,
+			kind: "service",
+			subtotalCents: subtotalCents + taxCents,
+		});
 
 		const lineItems = lineItemsCents.map(
 			(item: { description: string; quantity: number; unitPriceCents: number }) =>
@@ -81,8 +116,16 @@ export async function POST({ request }) {
 			metadata: {
 				type: "invoice_payment",
 				invoiceId,
-				siteUrl: SITE_DOMAIN,
+				siteUrl,
 			},
+			tenantCheckout,
+			idempotencyKey: buildInvoiceCheckoutIdempotencyKey({
+				siteUrl,
+				invoiceId,
+				lineItemsCents,
+				taxPercent,
+				taxCents,
+			}),
 		});
 
 		return json({ url: session.url });

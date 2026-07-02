@@ -35,21 +35,12 @@ export const list = query({
 	},
 });
 
-/**
- * @audit C7 — This is currently public (no auth) because the invoice payment
- * flow at `/api/invoice/checkout` passes a raw `invoiceId`. Anyone who
- * knows or guesses an invoiceId can read the invoice contents (client
- * email, line items, amounts).
- *
- * TODO: convert `/api/invoice/checkout` to use a portal token (like the
- * accept/decline/sign flow already does), then make this query require
- * auth. Once done, remove this comment.
- */
 export const get = query({
 	args: { invoiceId: v.id("invoices") },
 	handler: async (ctx, { invoiceId }) => {
 		const invoice = await ctx.db.get(invoiceId);
 		if (!invoice) return null;
+		await requireSiteAdmin(ctx, invoice.siteUrl);
 		const client = await ctx.db.get(invoice.clientId);
 		return {
 			...invoice,
