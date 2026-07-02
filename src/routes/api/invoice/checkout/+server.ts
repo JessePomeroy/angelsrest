@@ -1,7 +1,6 @@
 import { error, json } from "@sveltejs/kit";
 import type { Doc } from "$convex/dataModel";
 import { PUBLIC_SITE_URL } from "$env/static/public";
-import { SITE_DOMAIN } from "$lib/config/site";
 import { getConvex } from "$lib/server/convexClient";
 import { validatePortalToken } from "$lib/server/portalToken";
 import {
@@ -9,6 +8,8 @@ import {
 	createPaymentCheckoutSession,
 } from "$lib/server/stripeCheckoutSession";
 import { getStripe } from "$lib/server/stripeClient";
+import { buildTenantCheckoutOptions } from "$lib/server/stripeConnect";
+import { resolveStripeTenantForSite } from "$lib/server/stripeTenant";
 
 const convex = getConvex();
 
@@ -24,6 +25,7 @@ export async function POST({ request }) {
 		const portal = await validatePortalToken(convex, token, "invoice");
 		const invoice = portal.document as Doc<"invoices">;
 		const invoiceId = portal.token.documentId;
+		const siteUrl = portal.token.siteUrl;
 
 		if (invoice.status === "paid") {
 			throw error(400, "Invoice has already been paid");
@@ -52,6 +54,14 @@ export async function POST({ request }) {
 			throw error(400, "Invalid invoice tax percentage");
 		}
 		const taxCents = taxPercent > 0 ? Math.round((subtotalCents * taxPercent) / 100) : 0;
+		const tenant = await resolveStripeTenantForSite(siteUrl, {
+			requirePlatformClient: true,
+		});
+		const tenantCheckout = buildTenantCheckoutOptions({
+			tenant,
+			kind: "service",
+			subtotalCents: subtotalCents + taxCents,
+		});
 
 		const lineItems = lineItemsCents.map(
 			(item: { description: string; quantity: number; unitPriceCents: number }) =>
@@ -80,8 +90,10 @@ export async function POST({ request }) {
 			metadata: {
 				type: "invoice_payment",
 				invoiceId,
-				siteUrl: SITE_DOMAIN,
+				siteUrl,
 			},
+			tenantCheckout,
+			idempotencyKey: `invoice-checkout:${siteUrl}:${invoiceId}:${token}`,
 		});
 
 		return json({ url: session.url });

@@ -75,6 +75,7 @@ describe("createPaymentCheckoutSession", () => {
 			successUrl: "https://example.com/success?session_id={CHECKOUT_SESSION_ID}",
 			cancelUrl: "https://example.com/cancel",
 			metadata: { productSlug: "archival-print" },
+			idempotencyKey: "checkout:archival-print:123",
 			tenantCheckout: {
 				session: {
 					payment_intent_data: { application_fee_amount: 210 },
@@ -108,7 +109,10 @@ describe("createPaymentCheckoutSession", () => {
 				metadata: { productSlug: "archival-print" },
 				payment_intent_data: { application_fee_amount: 210 },
 			},
-			{ stripeAccount: "acct_123" },
+			{
+				stripeAccount: "acct_123",
+				idempotencyKey: "checkout:archival-print:123",
+			},
 		);
 	});
 });

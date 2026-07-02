@@ -4,6 +4,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const mocks = vi.hoisted(() => ({
 	convexQuery: vi.fn(),
 	stripeSessionCreate: vi.fn(),
+	resolveStripeTenantForSite: vi.fn(),
 }));
 
 vi.mock("$lib/server/convexClient", () => ({
@@ -14,6 +15,10 @@ vi.mock("$lib/server/stripeClient", () => ({
 	getStripe: () => ({
 		checkout: { sessions: { create: mocks.stripeSessionCreate } },
 	}),
+}));
+
+vi.mock("$lib/server/stripeTenant", () => ({
+	resolveStripeTenantForSite: mocks.resolveStripeTenantForSite,
 }));
 
 vi.mock("$convex/api", () => ({
@@ -53,6 +58,7 @@ describe("invoice checkout route", () => {
 			token: {
 				type: "invoice",
 				documentId: "invoice-123",
+				siteUrl: "angelsrest.online",
 			},
 			document: {
 				_id: "invoice-123",
@@ -63,6 +69,9 @@ describe("invoice checkout route", () => {
 					{ description: "Print credit", quantity: 1, unitPrice: 4.255 },
 				],
 			},
+		});
+		mocks.resolveStripeTenantForSite.mockResolvedValue({
+			siteUrl: "angelsrest.online",
 		});
 	});
 
@@ -80,7 +89,12 @@ describe("invoice checkout route", () => {
 			| Stripe.RequestOptions
 			| undefined;
 
-		expect(requestOptions).toBeUndefined();
+		expect(requestOptions).toEqual({
+			idempotencyKey: "invoice-checkout:angelsrest.online:invoice-123:portal-token-123",
+		});
+		expect(mocks.resolveStripeTenantForSite).toHaveBeenCalledWith("angelsrest.online", {
+			requirePlatformClient: true,
+		});
 		expect(params.mode).toBe("payment");
 		expect(params.payment_method_types).toEqual(["card"]);
 		expect(params.shipping_address_collection).toBeUndefined();
@@ -93,6 +107,7 @@ describe("invoice checkout route", () => {
 			invoiceId: "invoice-123",
 			siteUrl: "angelsrest.online",
 		});
+		expect(params.payment_intent_data).toBeUndefined();
 		expect(params.line_items).toEqual([
 			expect.objectContaining({
 				quantity: 2,
@@ -124,6 +139,7 @@ describe("invoice checkout route", () => {
 			token: {
 				type: "invoice",
 				documentId: "invoice-123",
+				siteUrl: "angelsrest.online",
 			},
 			document: {
 				status: "paid",
@@ -143,6 +159,7 @@ describe("invoice checkout route", () => {
 			token: {
 				type: "invoice",
 				documentId: "invoice-123",
+				siteUrl: "angelsrest.online",
 			},
 			document: {
 				_id: "invoice-123",
@@ -199,6 +216,7 @@ describe("invoice checkout route", () => {
 			token: {
 				type: "invoice",
 				documentId: "invoice-123",
+				siteUrl: "angelsrest.online",
 			},
 			document: {
 				status: "sent",
@@ -219,6 +237,7 @@ describe("invoice checkout route", () => {
 			token: {
 				type: "quote",
 				documentId: "quote-123",
+				siteUrl: "angelsrest.online",
 			},
 			document: {
 				status: "sent",
@@ -230,5 +249,46 @@ describe("invoice checkout route", () => {
 			status: 400,
 		});
 		expect(mocks.stripeSessionCreate).not.toHaveBeenCalled();
+	});
+
+	it("routes tenant invoices through the token site and connected Stripe account", async () => {
+		mocks.convexQuery.mockResolvedValueOnce({
+			expired: false,
+			token: {
+				type: "invoice",
+				documentId: "invoice-tenant-123",
+				siteUrl: "zippymiggy.com",
+			},
+			document: {
+				_id: "invoice-tenant-123",
+				status: "sent",
+				taxPercent: 0,
+				items: [{ description: "Session balance", quantity: 1, unitPrice: 100 }],
+			},
+		});
+		mocks.resolveStripeTenantForSite.mockResolvedValueOnce({
+			siteUrl: "zippymiggy.com",
+			stripeConnectedAccountId: "acct_123",
+		});
+
+		await POST(makeRequest({ token: "tenant-token" }) as any);
+
+		const params = mocks.stripeSessionCreate.mock
+			.calls[0]?.[0] as Stripe.Checkout.SessionCreateParams;
+		const requestOptions = mocks.stripeSessionCreate.mock.calls[0]?.[1] as Stripe.RequestOptions;
+
+		expect(mocks.resolveStripeTenantForSite).toHaveBeenCalledWith("zippymiggy.com", {
+			requirePlatformClient: true,
+		});
+		expect(params.metadata).toEqual({
+			type: "invoice_payment",
+			invoiceId: "invoice-tenant-123",
+			siteUrl: "zippymiggy.com",
+		});
+		expect(params.payment_intent_data).toBeUndefined();
+		expect(requestOptions).toEqual({
+			stripeAccount: "acct_123",
+			idempotencyKey: "invoice-checkout:zippymiggy.com:invoice-tenant-123:tenant-token",
+		});
 	});
 });

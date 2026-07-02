@@ -1,11 +1,7 @@
 import { v } from "convex/values";
 import { internal } from "./_generated/api";
 import { mutation, query } from "./_generated/server";
-import {
-	requireDocumentSiteAdmin,
-	requireSiteAdmin,
-	requireWebhookCallerOrAuth,
-} from "./authHelpers";
+import { requireSiteAdmin, requireWebhookCallerOrAuth } from "./authHelpers";
 import { deleteDocument } from "./helpers/deleting";
 import { markDocumentSent } from "./helpers/marking";
 import { getNextSequentialNumber } from "./helpers/numbering";
@@ -42,8 +38,9 @@ export const list = query({
 export const get = query({
 	args: { invoiceId: v.id("invoices") },
 	handler: async (ctx, { invoiceId }) => {
-		const invoice = await requireDocumentSiteAdmin(ctx, "invoices", invoiceId);
+		const invoice = await ctx.db.get(invoiceId);
 		if (!invoice) return null;
+		await requireSiteAdmin(ctx, invoice.siteUrl);
 		const client = await ctx.db.get(invoice.clientId);
 		return {
 			...invoice,
