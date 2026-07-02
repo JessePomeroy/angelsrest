@@ -40,6 +40,7 @@ vi.mock("$lib/config/site", () => ({
 }));
 
 import { __test__buildOrderItemsFromSession } from "../../routes/api/webhooks/stripe/+server";
+import { FulfillmentValidationError } from "../server/fulfillmentValidationError";
 
 function makeItem(overrides: Partial<CartItem> = {}): CartItem {
 	return {
@@ -352,6 +353,19 @@ describe("__test__buildOrderItemsFromSession — backwards compat", () => {
 		expect(orderItems).toHaveLength(3);
 		expect(orderItems[0].imageUrl).toBe("a.jpg");
 		expect(orderItems[2].imageUrl).toBe("c.jpg");
+	});
+
+	it("throws a permanent validation error for malformed legacy print dimensions", () => {
+		const session = makeSession({
+			paperSubcategoryId: "103001",
+			paperWidth: "",
+			paperHeight: "12",
+			imageUrl: "https://cdn.sanity.io/images/abc/legacy.jpg",
+		});
+
+		expect(() => __test__buildOrderItemsFromSession(session, [])).toThrow(
+			FulfillmentValidationError,
+		);
 	});
 
 	it("returns an empty array for malformed legacy print set imageUrls", () => {

@@ -11,6 +11,7 @@ import {
 	decodeCartItemPayload,
 	type LumaPrintsCartItemPayload,
 } from "$lib/server/cartMetadataCodec";
+import { FulfillmentValidationError } from "$lib/server/fulfillmentValidationError";
 import type { OrderItem, Recipient } from "$lib/shop/types";
 import type { ShippingDetails } from "./webhookEmails";
 
@@ -122,12 +123,12 @@ function buildTopLevelPrintOptions(meta: StripeMetadata): PrintOptions | null {
 	const width = positiveInteger(meta.paperWidth);
 	const height = positiveInteger(meta.paperHeight);
 	if (!width) {
-		throw new Error(
+		throw new FulfillmentValidationError(
 			`Malformed paper dimensions in Stripe session metadata: paperWidth=${JSON.stringify(meta.paperWidth)}`,
 		);
 	}
 	if (!height) {
-		throw new Error(
+		throw new FulfillmentValidationError(
 			`Malformed paper dimensions in Stripe session metadata: paperHeight=${JSON.stringify(meta.paperHeight)}`,
 		);
 	}
@@ -188,15 +189,24 @@ function positiveNumber(raw: unknown): number | undefined {
 
 /** Build a LumaPrints recipient from Stripe shipping details. */
 export function buildRecipientFromShipping(shippingDetails: ShippingDetails): Recipient {
-	const nameParts = (shippingDetails?.name || "").split(" ");
+	const name = requiredString(shippingDetails?.name, "recipient.name");
+	const address = shippingDetails?.address;
+	const nameParts = name.split(/\s+/);
 	return {
 		firstName: nameParts[0] || "",
 		lastName: nameParts.slice(1).join(" ") || "",
-		address1: shippingDetails?.address?.line1 || "",
-		address2: shippingDetails?.address?.line2 || "",
-		city: shippingDetails?.address?.city || "",
-		state: shippingDetails?.address?.state || "",
-		zip: shippingDetails?.address?.postal_code || "",
-		country: shippingDetails?.address?.country || "US",
+		address1: requiredString(address?.line1, "recipient.addressLine1"),
+		address2: address?.line2?.trim() || "",
+		city: requiredString(address?.city, "recipient.city"),
+		state: requiredString(address?.state, "recipient.state"),
+		zip: requiredString(address?.postal_code, "recipient.zipCode"),
+		country: requiredString(address?.country, "recipient.country"),
 	};
+}
+
+function requiredString(value: unknown, fieldName: string): string {
+	if (typeof value !== "string" || value.trim().length === 0) {
+		throw new FulfillmentValidationError(`${fieldName} is required for LumaPrints fulfillment`);
+	}
+	return value.trim();
 }
