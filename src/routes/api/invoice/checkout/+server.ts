@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { error, json } from "@sveltejs/kit";
 import type { Doc } from "$convex/dataModel";
 import { PUBLIC_SITE_URL } from "$env/static/public";
@@ -12,6 +13,28 @@ import { buildTenantCheckoutOptions } from "$lib/server/stripeConnect";
 import { resolveStripeTenantForSite } from "$lib/server/stripeTenant";
 
 const convex = getConvex();
+
+interface InvoiceCheckoutIdempotencyInput {
+	siteUrl: string;
+	invoiceId: string;
+	lineItemsCents: { description: string; quantity: number; unitPriceCents: number }[];
+	taxPercent: number;
+	taxCents: number;
+}
+
+function buildInvoiceCheckoutIdempotencyKey({
+	siteUrl,
+	invoiceId,
+	lineItemsCents,
+	taxPercent,
+	taxCents,
+}: InvoiceCheckoutIdempotencyInput): string {
+	const fingerprint = createHash("sha256")
+		.update(JSON.stringify({ lineItemsCents, taxPercent, taxCents }))
+		.digest("hex")
+		.slice(0, 24);
+	return `invoice-checkout:${siteUrl}:${invoiceId}:${fingerprint}`;
+}
 
 export async function POST({ request }) {
 	const stripe = getStripe();
@@ -93,7 +116,13 @@ export async function POST({ request }) {
 				siteUrl,
 			},
 			tenantCheckout,
-			idempotencyKey: `invoice-checkout:${siteUrl}:${invoiceId}:${token}`,
+			idempotencyKey: buildInvoiceCheckoutIdempotencyKey({
+				siteUrl,
+				invoiceId,
+				lineItemsCents,
+				taxPercent,
+				taxCents,
+			}),
 		});
 
 		return json({ url: session.url });

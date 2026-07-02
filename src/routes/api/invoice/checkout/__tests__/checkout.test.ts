@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import type Stripe from "stripe";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -46,6 +47,26 @@ function makeRequest(body: unknown) {
 	};
 }
 
+function expectedIdempotencyKey({
+	siteUrl,
+	invoiceId,
+	lineItemsCents,
+	taxPercent,
+	taxCents,
+}: {
+	siteUrl: string;
+	invoiceId: string;
+	lineItemsCents: { description: string; quantity: number; unitPriceCents: number }[];
+	taxPercent: number;
+	taxCents: number;
+}) {
+	const fingerprint = createHash("sha256")
+		.update(JSON.stringify({ lineItemsCents, taxPercent, taxCents }))
+		.digest("hex")
+		.slice(0, 24);
+	return `invoice-checkout:${siteUrl}:${invoiceId}:${fingerprint}`;
+}
+
 describe("invoice checkout route", () => {
 	beforeEach(() => {
 		vi.clearAllMocks();
@@ -89,9 +110,20 @@ describe("invoice checkout route", () => {
 			| Stripe.RequestOptions
 			| undefined;
 
-		expect(requestOptions).toEqual({
-			idempotencyKey: "invoice-checkout:angelsrest.online:invoice-123:portal-token-123",
-		});
+		const idempotencyKey = requestOptions?.idempotencyKey;
+		expect(idempotencyKey).toBe(
+			expectedIdempotencyKey({
+				siteUrl: "angelsrest.online",
+				invoiceId: "invoice-123",
+				lineItemsCents: [
+					{ description: "Design work", quantity: 2, unitPriceCents: 1250 },
+					{ description: "Print credit", quantity: 1, unitPriceCents: 426 },
+				],
+				taxPercent: 10,
+				taxCents: 293,
+			}),
+		);
+		expect(idempotencyKey).not.toContain("portal-token-123");
 		expect(mocks.resolveStripeTenantForSite).toHaveBeenCalledWith("angelsrest.online", {
 			requirePlatformClient: true,
 		});
@@ -288,7 +320,25 @@ describe("invoice checkout route", () => {
 		expect(params.payment_intent_data).toBeUndefined();
 		expect(requestOptions).toEqual({
 			stripeAccount: "acct_123",
-			idempotencyKey: "invoice-checkout:zippymiggy.com:invoice-tenant-123:tenant-token",
+			idempotencyKey: expectedIdempotencyKey({
+				siteUrl: "zippymiggy.com",
+				invoiceId: "invoice-tenant-123",
+				lineItemsCents: [{ description: "Session balance", quantity: 1, unitPriceCents: 10000 }],
+				taxPercent: 0,
+				taxCents: 0,
+			}),
 		});
+	});
+
+	it("uses the same idempotency key for different tokens on the same invoice contents", async () => {
+		await POST(makeRequest({ token: "first-token" }) as any);
+		await POST(makeRequest({ token: "second-token" }) as any);
+
+		const firstOptions = mocks.stripeSessionCreate.mock.calls[0]?.[1] as Stripe.RequestOptions;
+		const secondOptions = mocks.stripeSessionCreate.mock.calls[1]?.[1] as Stripe.RequestOptions;
+
+		expect(firstOptions.idempotencyKey).toBe(secondOptions.idempotencyKey);
+		expect(firstOptions.idempotencyKey).not.toContain("first-token");
+		expect(secondOptions.idempotencyKey).not.toContain("second-token");
 	});
 });
