@@ -1,9 +1,12 @@
 import { error, json } from "@sveltejs/kit";
-import type Stripe from "stripe";
 import { api } from "$convex/api";
 import { PUBLIC_SITE_URL } from "$env/static/public";
 import { SITE_DOMAIN } from "$lib/config/site";
 import { getConvex } from "$lib/server/convexClient";
+import {
+	buildCheckoutLineItem,
+	createPaymentCheckoutSession,
+} from "$lib/server/stripeCheckoutSession";
 import { getStripe } from "$lib/server/stripeClient";
 
 const convex = getConvex();
@@ -51,40 +54,30 @@ export async function POST({ request }) {
 		}
 		const taxCents = taxPercent > 0 ? Math.round((subtotalCents * taxPercent) / 100) : 0;
 
-		// Build Stripe line items from invoice items
-		const lineItems: Stripe.Checkout.SessionCreateParams.LineItem[] = lineItemsCents.map(
-			(item: { description: string; quantity: number; unitPriceCents: number }) => ({
-				price_data: {
-					currency: "usd",
-					product_data: {
-						name: item.description,
-					},
-					unit_amount: item.unitPriceCents,
-				},
-				quantity: item.quantity,
-			}),
+		const lineItems = lineItemsCents.map(
+			(item: { description: string; quantity: number; unitPriceCents: number }) =>
+				buildCheckoutLineItem({
+					name: item.description,
+					unitAmountCents: item.unitPriceCents,
+					quantity: item.quantity,
+				}),
 		);
 
 		// Add tax as a separate line item if applicable
 		if (taxCents > 0) {
-			lineItems.push({
-				price_data: {
-					currency: "usd",
-					product_data: {
-						name: `Tax (${taxPercent}%)`,
-					},
-					unit_amount: taxCents,
-				},
-				quantity: 1,
-			});
+			lineItems.push(
+				buildCheckoutLineItem({
+					name: `Tax (${taxPercent}%)`,
+					unitAmountCents: taxCents,
+				}),
+			);
 		}
 
-		const session = await stripe.checkout.sessions.create({
-			payment_method_types: ["card"],
-			line_items: lineItems,
-			mode: "payment",
-			success_url: `${PUBLIC_SITE_URL}/invoice/payment-success?session_id={CHECKOUT_SESSION_ID}`,
-			cancel_url: `${PUBLIC_SITE_URL}/invoice/payment-canceled`,
+		const session = await createPaymentCheckoutSession({
+			stripe,
+			lineItems,
+			successUrl: `${PUBLIC_SITE_URL}/invoice/payment-success?session_id={CHECKOUT_SESSION_ID}`,
+			cancelUrl: `${PUBLIC_SITE_URL}/invoice/payment-canceled`,
 			metadata: {
 				type: "invoice_payment",
 				invoiceId,
