@@ -1,6 +1,8 @@
 import { createHash } from "node:crypto";
 import { error, json } from "@sveltejs/kit";
-import type { Doc } from "$convex/dataModel";
+import { api } from "$convex/api";
+import type { Doc, Id } from "$convex/dataModel";
+import { env } from "$env/dynamic/private";
 import { PUBLIC_SITE_URL } from "$env/static/public";
 import { getConvex } from "$lib/server/convexClient";
 import { validatePortalToken } from "$lib/server/portalToken";
@@ -127,6 +129,22 @@ export async function POST({ request }) {
 				taxCents,
 			}),
 		});
+
+		if (env.WEBHOOK_SECRET) {
+			try {
+				await convex.mutation(api.invoices.recordCheckoutStarted, {
+					webhookSecret: env.WEBHOOK_SECRET,
+					invoiceId: invoiceId as Id<"invoices">,
+					siteUrl,
+					stripeCheckoutSessionId: session.sessionId,
+				});
+			} catch (recordErr) {
+				console.error(
+					"Invoice checkout session recording failed:",
+					recordErr instanceof Error ? recordErr.message : recordErr,
+				);
+			}
+		}
 
 		return json({ url: session.url });
 	} catch (err: unknown) {

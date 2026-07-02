@@ -437,6 +437,7 @@ describe("Stripe webhook POST handler", () => {
 			expect.objectContaining({
 				invoiceId: "inv-123",
 				siteUrl: "angelsrest.online",
+				stripeCheckoutSessionId: session.id,
 			}),
 		);
 	});

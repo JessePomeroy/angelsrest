@@ -114,6 +114,7 @@ async function markInvoicePaidFromSession(
 		webhookSecret,
 		invoiceId: invoiceId as Id<"invoices">,
 		siteUrl: session.metadata?.siteUrl || siteUrl,
+		stripeCheckoutSessionId: session.id,
 	});
 	logStructured({
 		event: "invoice.marked_paid",

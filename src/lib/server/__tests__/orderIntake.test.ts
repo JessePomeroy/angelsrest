@@ -192,6 +192,7 @@ describe("processStripeWebhookEvent", () => {
 			webhookSecret: "test-webhook-secret",
 			invoiceId: "invoice-123",
 			siteUrl: "https://client.example",
+			stripeCheckoutSessionId: "cs_test_123",
 		});
 		expect(mockCreateOrderInConvex).not.toHaveBeenCalled();
 	});

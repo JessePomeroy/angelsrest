@@ -172,6 +172,12 @@ export default defineSchema({
 		dueDate: v.optional(v.string()),
 		sentAt: v.optional(v.number()),
 		paidAt: v.optional(v.number()),
+		stripeCheckoutSessionId: v.optional(v.string()),
+		stripeCheckoutStatus: v.optional(
+			v.union(v.literal("open"), v.literal("paid"), v.literal("expired"), v.literal("failed")),
+		),
+		stripeCheckoutStartedAt: v.optional(v.number()),
+		stripeCheckoutUpdatedAt: v.optional(v.number()),
 		// Recurring config
 		recurring: v.optional(
 			v.object({

@@ -151,6 +151,35 @@ export const markSent = mutation({
 	},
 });
 
+export const recordCheckoutStarted = mutation({
+	args: {
+		invoiceId: v.id("invoices"),
+		siteUrl: v.string(),
+		stripeCheckoutSessionId: v.string(),
+		webhookSecret: v.string(),
+	},
+	handler: async (ctx, { invoiceId, siteUrl, stripeCheckoutSessionId, webhookSecret }) => {
+		await requireWebhookCallerOrAuth(ctx, webhookSecret, { allowAuth: false });
+		const invoice = await ctx.db.get(invoiceId);
+		if (!invoice || invoice.siteUrl !== siteUrl) {
+			throw new Error("Not found");
+		}
+		if (invoice.status === "paid") {
+			return;
+		}
+		if (invoice.status !== "sent" && invoice.status !== "overdue") {
+			throw new Error("Invoice is not payable");
+		}
+		const now = Date.now();
+		await ctx.db.patch(invoiceId, {
+			stripeCheckoutSessionId,
+			stripeCheckoutStatus: "open",
+			stripeCheckoutStartedAt: invoice.stripeCheckoutStartedAt ?? now,
+			stripeCheckoutUpdatedAt: now,
+		});
+	},
+});
+
 /**
  * Mark an invoice paid. Called by:
  *   - The Stripe webhook on `checkout.session.completed` (passes
@@ -164,8 +193,9 @@ export const markPaid = mutation({
 		invoiceId: v.id("invoices"),
 		siteUrl: v.string(),
 		webhookSecret: v.optional(v.string()),
+		stripeCheckoutSessionId: v.optional(v.string()),
 	},
-	handler: async (ctx, { invoiceId, siteUrl, webhookSecret }) => {
+	handler: async (ctx, { invoiceId, siteUrl, webhookSecret, stripeCheckoutSessionId }) => {
 		const auth = await requireWebhookCallerOrAuth(ctx, webhookSecret);
 		if (auth.via === "auth") {
 			await requireSiteAdmin(ctx, siteUrl);
@@ -178,9 +208,13 @@ export const markPaid = mutation({
 			// Idempotent — retry-safe on Stripe webhook replays.
 			return;
 		}
+		const now = Date.now();
 		await ctx.db.patch(invoiceId, {
 			status: "paid",
-			paidAt: Date.now(),
+			paidAt: now,
+			...(stripeCheckoutSessionId ? { stripeCheckoutSessionId } : {}),
+			stripeCheckoutStatus: "paid",
+			stripeCheckoutUpdatedAt: now,
 		});
 
 		await ctx.runMutation(internal.activityLog.logActivity, {

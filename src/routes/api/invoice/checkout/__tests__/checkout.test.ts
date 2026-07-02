@@ -4,12 +4,13 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
 	convexQuery: vi.fn(),
+	convexMutation: vi.fn(),
 	stripeSessionCreate: vi.fn(),
 	resolveStripeTenantForSite: vi.fn(),
 }));
 
 vi.mock("$lib/server/convexClient", () => ({
-	getConvex: () => ({ query: mocks.convexQuery }),
+	getConvex: () => ({ query: mocks.convexQuery, mutation: mocks.convexMutation }),
 }));
 
 vi.mock("$lib/server/stripeClient", () => ({
@@ -24,8 +25,13 @@ vi.mock("$lib/server/stripeTenant", () => ({
 
 vi.mock("$convex/api", () => ({
 	api: {
+		invoices: { recordCheckoutStarted: "invoices.recordCheckoutStarted" },
 		portal: { getByToken: "portal.getByToken" },
 	},
+}));
+
+vi.mock("$env/dynamic/private", () => ({
+	env: { WEBHOOK_SECRET: "test-webhook-secret" },
 }));
 
 vi.mock("$env/static/public", () => ({
@@ -138,6 +144,12 @@ describe("invoice checkout route", () => {
 			type: "invoice_payment",
 			invoiceId: "invoice-123",
 			siteUrl: "angelsrest.online",
+		});
+		expect(mocks.convexMutation).toHaveBeenCalledWith("invoices.recordCheckoutStarted", {
+			webhookSecret: "test-webhook-secret",
+			invoiceId: "invoice-123",
+			siteUrl: "angelsrest.online",
+			stripeCheckoutSessionId: "cs_invoice_123",
 		});
 		expect(params.payment_intent_data).toBeUndefined();
 		expect(params.line_items).toEqual([
