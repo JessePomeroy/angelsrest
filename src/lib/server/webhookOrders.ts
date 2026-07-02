@@ -16,6 +16,7 @@ import {
 	submitPrintFulfillment,
 } from "$lib/server/printFulfillment";
 import type { ShippingDetails } from "$lib/server/webhookEmails";
+import { buildConvexOrderCreatePayload } from "$lib/server/webhookOrderPayload";
 import { getWebhookSecret } from "$lib/server/webhookSecret";
 
 export { handlePermanentFulfillmentFailure } from "$lib/server/printFulfillment";
@@ -50,44 +51,17 @@ export async function createOrderInConvex(
 		stripeRequestOptions?: Stripe.RequestOptions;
 	},
 ) {
-	// Extract payment intent ID (could be string or expanded object)
-	const rawPaymentIntent = session.payment_intent;
-	const stripePaymentIntentId =
-		typeof rawPaymentIntent === "string" ? rawPaymentIntent : rawPaymentIntent?.id;
-
-	const items = lineItems.map((item) => ({
-		productName: item.description || "Unknown Product",
-		quantity: item.quantity || 1,
-		price: item.amount_total || item.price?.unit_amount || 0,
-	}));
-
-	const isDigital = session.metadata?.isDigital === "true";
-
 	// Create order in Convex (idempotent — returns existing order if session already processed)
-	const orderResult = await convex.mutation(api.orders.create, {
-		webhookSecret: getWebhookSecret(),
-		siteUrl,
-		stripeSessionId: session.id,
-		customerEmail: session.customer_details?.email || "",
-		customerName: session.customer_details?.name || shippingDetails?.name || undefined,
-		stripePaymentIntentId: stripePaymentIntentId || undefined,
-		shippingAddress: shippingDetails?.address
-			? {
-					line1: shippingDetails.address.line1 || "",
-					line2: shippingDetails.address.line2 || undefined,
-					city: shippingDetails.address.city || "",
-					state: shippingDetails.address.state || "",
-					postalCode: shippingDetails.address.postal_code || "",
-					country: shippingDetails.address.country || "",
-				}
-			: undefined,
-		items,
-		total: session.amount_total || 0,
-		subtotal: session.amount_subtotal || undefined,
-		fulfillmentType: isDigital ? "digital" : "self",
-		paperName: session.metadata?.paperName || undefined,
-		paperSubcategoryId: session.metadata?.paperSubcategoryId || undefined,
-	});
+	const orderResult = await convex.mutation(
+		api.orders.create,
+		buildConvexOrderCreatePayload({
+			session,
+			shippingDetails,
+			lineItems,
+			siteUrl,
+			webhookSecret: getWebhookSecret(),
+		}),
+	);
 	const { _id: orderId, orderNumber, alreadyExisted } = orderResult;
 	const existingLumaprintsOrderNumber = orderResult.lumaprintsOrderNumber;
 	const existingStripeFees = orderResult.stripeFees;
