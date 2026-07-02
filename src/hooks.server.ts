@@ -2,16 +2,15 @@
  * SvelteKit Server Hooks
  *
  * Composes:
- * - Sentry request handler (audit #50a — error capture, no perf tracing)
- * - Security headers + Sanity preview detection (existing)
+ * - Security headers + Sanity preview detection
+ * - Server error capture through @sentry/node (audit #50a — no perf tracing)
  *
- * The Sentry init itself lives in `instrumentation.server.ts` per
- * SvelteKit 2.31+ pattern. This file only wires the request/error hooks.
+ * The Sentry init itself lives in `instrumentation.server.ts` per SvelteKit
+ * 2.31+ pattern. This file only captures unexpected server errors.
  */
 
-import * as Sentry from "@sentry/sveltekit";
-import type { Handle } from "@sveltejs/kit";
-import { sequence } from "@sveltejs/kit/hooks";
+import { captureException, flush, withIsolationScope } from "@sentry/node";
+import type { Handle, HandleServerError } from "@sveltejs/kit";
 
 function addSecurityHeaders(response: Response): Response {
 	const cloned = new Response(response.body, response);
@@ -58,6 +57,35 @@ const appHandle: Handle = async ({ event, resolve }) => {
 	return addSecurityHeaders(response);
 };
 
-export const handle = sequence(Sentry.sentryHandle(), appHandle);
+export const handle: Handle = (input) =>
+	withIsolationScope((scope) => {
+		scope.setTag("route", input.event.route.id ?? input.event.url.pathname);
+		scope.setTag("method", input.event.request.method);
+		return appHandle(input);
+	});
 
-export const handleError = Sentry.handleErrorWithSentry();
+function isExpectedClientError(input: Parameters<HandleServerError>[0]): boolean {
+	if (input.status >= 400 && input.status < 500) return true;
+
+	const hasNoRouteId = !input.event.route?.id;
+	const stack = input.error instanceof Error ? input.error.stack : "";
+	return hasNoRouteId && Boolean(stack?.startsWith("Error: Not found:"));
+}
+
+export const handleError: HandleServerError = async (input) => {
+	if (!isExpectedClientError(input)) {
+		captureException(input.error, {
+			mechanism: {
+				type: "auto.function.sveltekit.handle_error",
+				handled: false,
+			},
+		});
+		await flush(2000);
+	}
+
+	if (input.error instanceof Error) {
+		console.error(input.error.stack);
+	} else {
+		console.error(input.error);
+	}
+};

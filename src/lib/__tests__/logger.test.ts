@@ -1,10 +1,10 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-// Mock @sentry/sveltekit before importing the logger so the logger picks
+// Mock @sentry/node before importing the logger so the logger picks
 // up the mocked module. vi.mock is hoisted statically — see
 // `feedback_vitest_mock_hoisting.md` for why we don't re-apply this in
 // beforeEach.
-vi.mock("@sentry/sveltekit", () => {
+vi.mock("@sentry/node", () => {
 	const captureException = vi.fn();
 	const addBreadcrumb = vi.fn();
 	const setTag = vi.fn();
@@ -22,7 +22,7 @@ vi.mock("@sentry/sveltekit", () => {
 	};
 });
 
-import * as Sentry from "@sentry/sveltekit";
+import * as Sentry from "@sentry/node";
 import { logStructured, timed } from "../server/logger";
 
 type SentryMockBag = {

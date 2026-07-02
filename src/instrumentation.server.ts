@@ -16,12 +16,12 @@
  * project. No code change needed.
  */
 
-import * as Sentry from "@sentry/sveltekit";
+import { init } from "@sentry/node";
 import { env } from "$env/dynamic/public";
 
 // Use dynamic public env so a missing PUBLIC_SENTRY_DSN doesn't fail the
 // build — Sentry no-ops when dsn is undefined/empty.
-Sentry.init({
+init({
 	dsn: env.PUBLIC_SENTRY_DSN,
 	// Tag every event with which site it came from. Lets a single Sentry
 	// project serve multiple deployments (angelsrest, reflecting-pool,
