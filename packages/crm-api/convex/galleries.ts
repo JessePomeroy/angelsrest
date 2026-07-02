@@ -1,4 +1,5 @@
 import { v } from "convex/values";
+import { paginationOptsValidator } from "convex/server";
 import { internal } from "./_generated/api";
 import type { Id } from "./_generated/dataModel";
 import {
@@ -116,12 +117,12 @@ export const update = mutation({
  * Marks the gallery `archived` up front so callers see the deletion is
  * in progress, then the final batch deletes the gallery document itself.
  *
- * This mutation is metadata-only. Callers that own R2 files must delete
- * the corresponding Worker objects before calling `remove`; the shared
- * admin gallery modal does that via `/api/admin/galleries/bulk-delete`.
- * Keeping Worker credentials out of Convex avoids adding Node actions and
- * deployment-level `GALLERY_WORKER_URL` / `GALLERY_ADMIN_SECRET` secrets
- * solely for a UI-initiated cleanup path.
+ * This mutation is metadata-only. Admin callers that own R2 files must
+ * first load this gallery's keys through the tenant-scoped
+ * `listImageStorageKeys` query and delete the corresponding Worker objects.
+ * The shared admin gallery modal does that before calling `remove`; the
+ * Worker cleanup route is an authenticated transport to R2, not the tenant
+ * ownership boundary.
  */
 export const remove = mutation({
 	args: { id: v.id("galleries") },
@@ -382,9 +383,11 @@ export const updateImage = mutation({
 // Image queries
 
 export const getImages = query({
-	args: { galleryId: v.id("galleries"), token: v.string() },
+	args: { galleryId: v.id("galleries"), token: v.optional(v.string()) },
 	handler: async (ctx, { galleryId, token }) => {
-		const gallery = await requireGalleryPortalToken(ctx, token, galleryId);
+		const gallery = token
+			? await requireGalleryPortalToken(ctx, token, galleryId)
+			: await requireDocumentSiteAdmin(ctx, "galleries", galleryId);
 		const images = await ctx.db
 			.query("galleryImages")
 			.withIndex("by_gallery", (q) => q.eq("galleryId", galleryId))
@@ -395,6 +398,28 @@ export const getImages = query({
 		return images
 			.filter((image) => image.siteUrl === gallery.siteUrl)
 			.sort((a, b) => a.order - b.order || a._creationTime - b._creationTime);
+	},
+});
+
+export const listImageStorageKeys = query({
+	args: {
+		galleryId: v.id("galleries"),
+		paginationOpts: paginationOptsValidator,
+	},
+	handler: async (ctx, { galleryId, paginationOpts }) => {
+		const gallery = await requireDocumentSiteAdmin(ctx, "galleries", galleryId);
+		const page = await ctx.db
+			.query("galleryImages")
+			.withIndex("by_gallery", (q) => q.eq("galleryId", galleryId))
+			.paginate(paginationOpts);
+
+		return {
+			keys: page.page
+				.filter((image) => image.siteUrl === gallery.siteUrl)
+				.map((image) => image.r2Key),
+			isDone: page.isDone,
+			continueCursor: page.continueCursor,
+		};
 	},
 });
 

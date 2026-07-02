@@ -175,6 +175,74 @@ describe("tenant isolation", () => {
 		);
 	});
 
+	test("gallery image admin reads and cleanup keys are tenant-scoped and paginated", async () => {
+		const t = await seedTenants();
+		const tenantA = asAdmin(t, TENANT_A.adminEmail);
+		const tenantB = asAdmin(t, TENANT_B.adminEmail);
+		const clientId = await tenantA.mutation(api.crm.createClient, {
+			siteUrl: TENANT_A.siteUrl,
+			name: "Tenant A gallery client",
+			email: "gallery-client-a@example.com",
+			category: "photography",
+			type: "portrait",
+		});
+		const galleryId = await tenantA.mutation(api.galleries.create, {
+			siteUrl: TENANT_A.siteUrl,
+			clientId,
+			name: "Tenant A cleanup gallery",
+			slug: "tenant-a-cleanup-gallery",
+			downloadEnabled: true,
+			favoritesEnabled: true,
+		});
+		for (const filename of ["one.jpg", "two.jpg", "three.jpg"]) {
+			await tenantA.mutation(api.galleries.addImage, {
+				siteUrl: TENANT_A.siteUrl,
+				galleryId,
+				r2Key: `${TENANT_A.siteUrl}/${galleryId}/original/${filename}`,
+				filename,
+				sizeBytes: 100,
+				width: 120,
+				height: 80,
+			});
+		}
+
+		const adminImages = await tenantA.query(api.galleries.getImages, { galleryId });
+		expect(adminImages.map((image) => image.filename)).toEqual([
+			"one.jpg",
+			"two.jpg",
+			"three.jpg",
+		]);
+
+		await expectNotAuthorized(
+			tenantB.query(api.galleries.getImages, { galleryId }),
+		);
+		await expectNotAuthorized(
+			tenantB.query(api.galleries.listImageStorageKeys, {
+				galleryId,
+				paginationOpts: { numItems: 2, cursor: null },
+			}),
+		);
+
+		const firstPage = await tenantA.query(api.galleries.listImageStorageKeys, {
+			galleryId,
+			paginationOpts: { numItems: 2, cursor: null },
+		});
+		expect(firstPage.keys).toEqual([
+			`${TENANT_A.siteUrl}/${galleryId}/original/one.jpg`,
+			`${TENANT_A.siteUrl}/${galleryId}/original/two.jpg`,
+		]);
+		expect(firstPage.isDone).toBe(false);
+
+		const secondPage = await tenantA.query(api.galleries.listImageStorageKeys, {
+			galleryId,
+			paginationOpts: { numItems: 2, cursor: firstPage.continueCursor },
+		});
+		expect(secondPage.keys).toEqual([
+			`${TENANT_A.siteUrl}/${galleryId}/original/three.jpg`,
+		]);
+		expect(secondPage.isDone).toBe(true);
+	});
+
 	test("kanban mutations cannot move another tenant's cards", async () => {
 		const t = await seedTenants();
 		const tenantA = asAdmin(t, TENANT_A.adminEmail);
