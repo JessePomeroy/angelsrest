@@ -9,6 +9,32 @@ import type Stripe from "stripe";
 import type { OrderItem, Recipient } from "$lib/shop/types";
 import type { ShippingDetails } from "./webhookEmails";
 
+type StripeMetadata = Record<string, unknown>;
+
+type CartItemPayload = {
+	u?: string;
+	s?: number;
+	w?: number;
+	h?: number;
+	q?: number;
+	i?: string[];
+	b?: number;
+	f?: number;
+	c?: number;
+	cw?: string;
+};
+
+type PrintOptions = Pick<
+	OrderItem,
+	| "paperSubcategoryId"
+	| "width"
+	| "height"
+	| "borderWidth"
+	| "frameSubcategoryId"
+	| "canvasSubcategoryId"
+	| "canvasWrapHex"
+>;
+
 /**
  * Build the list of LumaPrints order items from Stripe checkout metadata.
  *
@@ -35,91 +61,95 @@ export function buildOrderItemsFromSession(
 	session: Stripe.Checkout.Session,
 	lineItems: Stripe.LineItem[],
 ): OrderItem[] {
-	const meta = (session.metadata ?? {}) as Record<string, any>;
+	const meta = (session.metadata ?? {}) as StripeMetadata;
 
 	// ─── Path 1: Cart (multi-item, per-line paper/size) ───────────────────
 	if (meta.isCart === "true") {
-		const count = Number.parseInt(meta.cartItemCount ?? "0", 10);
-		if (!Number.isFinite(count) || count <= 0) return [];
-
-		const items: OrderItem[] = [];
-		for (let i = 0; i < count; i++) {
-			const raw = meta[`cartItem_${i}`];
-			if (typeof raw !== "string" || !raw) continue;
-			try {
-				// Compact representation from buildCartMetadata. Field semantics:
-				//  - `u` always present: cover image (cart UI thumbnail)
-				//  - `q` always present: cart line quantity
-				//  - `s/w/h` for LumaPrints prints; absent → self-fulfilled merch,
-				//    skip the line entirely
-				//  - `i` for print sets: array of image URLs to expand into one
-				//    OrderItem per image, multiplied through by `q`
-				const parsed = JSON.parse(raw) as {
-					u?: string;
-					s?: number;
-					w?: number;
-					h?: number;
-					q?: number;
-					i?: string[];
-					b?: number;
-					f?: number;
-					c?: number;
-					cw?: string;
-				};
-				if (typeof parsed.u !== "string" || typeof parsed.q !== "number") {
-					continue;
-				}
-				const hasPaper =
-					typeof parsed.s === "number" &&
-					typeof parsed.w === "number" &&
-					typeof parsed.h === "number";
-				if (!hasPaper) {
-					// Self-fulfilled merch — skip LumaPrints submission entirely.
-					continue;
-				}
-				const border = typeof parsed.b === "number" && parsed.b > 0 ? parsed.b : undefined;
-				const frame = typeof parsed.f === "number" && parsed.f > 0 ? parsed.f : undefined;
-				const canvas = typeof parsed.c === "number" && parsed.c > 0 ? parsed.c : undefined;
-				const canvasWrapHex = typeof parsed.cw === "string" ? parsed.cw : undefined;
-				if (Array.isArray(parsed.i) && parsed.i.length > 0) {
-					for (const url of parsed.i) {
-						if (typeof url !== "string" || !url) continue;
-						items.push({
-							imageUrl: url,
-							paperSubcategoryId: parsed.s as number,
-							width: parsed.w as number,
-							height: parsed.h as number,
-							quantity: parsed.q,
-							borderWidth: border,
-							frameSubcategoryId: frame,
-							canvasSubcategoryId: canvas,
-							canvasWrapHex,
-						});
-					}
-					continue;
-				}
-				items.push({
-					imageUrl: parsed.u,
-					paperSubcategoryId: parsed.s as number,
-					width: parsed.w as number,
-					height: parsed.h as number,
-					quantity: parsed.q,
-					borderWidth: border,
-					frameSubcategoryId: frame,
-					canvasSubcategoryId: canvas,
-					canvasWrapHex,
-				});
-			} catch {
-				// Skip malformed entries — partial fulfillment is better than
-				// throwing the entire order on the floor for one bad row.
-			}
-		}
-		return items;
+		return buildCartOrderItems(meta);
 	}
 
 	// ─── Existing paths use top-level paperSubcategoryId ──────────────────
-	const paperSubcategoryId = Number.parseInt(meta.paperSubcategoryId ?? "", 10);
-	if (!paperSubcategoryId) return [];
+	const printOptions = buildTopLevelPrintOptions(meta);
+	if (!printOptions) return [];
+
+	const isPrintSet = meta.isPrintSet === "true";
+	if (isPrintSet) {
+		return buildPrintSetOrderItems(meta, printOptions);
+	}
+
+	return buildSinglePrintOrderItems(meta, lineItems, printOptions);
+}
+
+function buildCartOrderItems(meta: StripeMetadata): OrderItem[] {
+	const count = Number.parseInt(String(meta.cartItemCount ?? "0"), 10);
+	if (!Number.isFinite(count) || count <= 0) return [];
+
+	const items: OrderItem[] = [];
+	for (let i = 0; i < count; i++) {
+		const parsed = parseCartItemPayload(meta[`cartItem_${i}`]);
+		if (!parsed) continue;
+
+		if (Array.isArray(parsed.i) && parsed.i.length > 0) {
+			for (const url of parsed.i) {
+				if (typeof url !== "string" || !url) continue;
+				items.push(buildCartOrderItem(parsed, url));
+			}
+			continue;
+		}
+
+		items.push(buildCartOrderItem(parsed, parsed.u));
+	}
+	return items;
+}
+
+function parseCartItemPayload(
+	raw: unknown,
+): (Required<Pick<CartItemPayload, "u" | "s" | "w" | "h" | "q">> & CartItemPayload) | null {
+	if (typeof raw !== "string" || !raw) return null;
+	try {
+		// Compact representation from buildCartMetadata. Field semantics:
+		//  - `u` always present: cover image (cart UI thumbnail)
+		//  - `q` always present: cart line quantity
+		//  - `s/w/h` for LumaPrints prints; absent → self-fulfilled merch,
+		//    skip the line entirely
+		//  - `i` for print sets: array of image URLs to expand into one
+		//    OrderItem per image, multiplied through by `q`
+		const parsed = JSON.parse(raw) as CartItemPayload;
+		const hasRequiredCartFields = typeof parsed.u === "string" && typeof parsed.q === "number";
+		const hasPaper =
+			typeof parsed.s === "number" && typeof parsed.w === "number" && typeof parsed.h === "number";
+		if (!hasRequiredCartFields || !hasPaper) {
+			// Self-fulfilled merch — skip LumaPrints submission entirely.
+			return null;
+		}
+		return parsed as Required<Pick<CartItemPayload, "u" | "s" | "w" | "h" | "q">> & CartItemPayload;
+	} catch {
+		// Skip malformed entries — partial fulfillment is better than
+		// throwing the entire order on the floor for one bad row.
+		return null;
+	}
+}
+
+function buildCartOrderItem(
+	parsed: Required<Pick<CartItemPayload, "s" | "w" | "h" | "q">> & CartItemPayload,
+	imageUrl: string,
+): OrderItem {
+	return {
+		imageUrl,
+		paperSubcategoryId: parsed.s,
+		width: parsed.w,
+		height: parsed.h,
+		quantity: parsed.q,
+		borderWidth: typeof parsed.b === "number" ? positiveNumber(parsed.b) : undefined,
+		frameSubcategoryId: typeof parsed.f === "number" ? positiveInteger(parsed.f) : undefined,
+		canvasSubcategoryId: typeof parsed.c === "number" ? positiveInteger(parsed.c) : undefined,
+		canvasWrapHex: typeof parsed.cw === "string" ? parsed.cw : undefined,
+	};
+}
+
+function buildTopLevelPrintOptions(meta: StripeMetadata): PrintOptions | null {
+	const paperSubcategoryId = positiveInteger(meta.paperSubcategoryId);
+	if (!paperSubcategoryId) return null;
 
 	// Audit H37: throw instead of silently defaulting to 8×10. The
 	// classify-and-refund path (audit #23 PR #3) will surface this to
@@ -128,66 +158,71 @@ export function buildOrderItemsFromSession(
 	// (i.e. we're committed to a LumaPrints submission) — the
 	// no-paperSubcategoryId early return above still handles the
 	// digital/invoice/merch cases.
-	const widthParsed = Number.parseInt(meta.paperWidth ?? "", 10);
-	const heightParsed = Number.parseInt(meta.paperHeight ?? "", 10);
-	if (!Number.isFinite(widthParsed) || widthParsed <= 0) {
+	const width = positiveInteger(meta.paperWidth);
+	const height = positiveInteger(meta.paperHeight);
+	if (!width) {
 		throw new Error(
 			`Malformed paper dimensions in Stripe session metadata: paperWidth=${JSON.stringify(meta.paperWidth)}`,
 		);
 	}
-	if (!Number.isFinite(heightParsed) || heightParsed <= 0) {
+	if (!height) {
 		throw new Error(
 			`Malformed paper dimensions in Stripe session metadata: paperHeight=${JSON.stringify(meta.paperHeight)}`,
 		);
 	}
-	const width = widthParsed;
-	const height = heightParsed;
-	const borderParsed = Number.parseFloat(meta.borderWidth ?? "");
-	const borderWidth = Number.isFinite(borderParsed) && borderParsed > 0 ? borderParsed : undefined;
-	const frameParsed = Number.parseInt(meta.frameSubcategoryId ?? "", 10);
-	const frameSubcategoryId =
-		Number.isFinite(frameParsed) && frameParsed > 0 ? frameParsed : undefined;
-	const canvasParsed = Number.parseInt(meta.canvasSubcategoryId ?? "", 10);
-	const canvasSubcategoryId =
-		Number.isFinite(canvasParsed) && canvasParsed > 0 ? canvasParsed : undefined;
-	const canvasWrapHex = typeof meta.canvasWrapHex === "string" ? meta.canvasWrapHex : undefined;
 
-	const isPrintSet = meta.isPrintSet === "true";
-	if (isPrintSet) {
-		let imageUrls: string[] = [];
-		try {
-			imageUrls = JSON.parse(meta.imageUrls ?? "[]");
-		} catch {
-			imageUrls = [];
-		}
-		return imageUrls.map((imageUrl) => ({
-			imageUrl,
-			paperSubcategoryId,
-			width,
-			height,
-			quantity: 1,
-			borderWidth,
-			frameSubcategoryId,
-			canvasSubcategoryId,
-			canvasWrapHex,
-		}));
+	return {
+		paperSubcategoryId,
+		width,
+		height,
+		borderWidth: positiveNumber(meta.borderWidth),
+		frameSubcategoryId: positiveInteger(meta.frameSubcategoryId),
+		canvasSubcategoryId: positiveInteger(meta.canvasSubcategoryId),
+		canvasWrapHex: typeof meta.canvasWrapHex === "string" ? meta.canvasWrapHex : undefined,
+	};
+}
+
+function buildPrintSetOrderItems(meta: StripeMetadata, printOptions: PrintOptions): OrderItem[] {
+	return parseImageUrls(meta.imageUrls).map((imageUrl) => ({
+		imageUrl,
+		...printOptions,
+		quantity: 1,
+	}));
+}
+
+function parseImageUrls(raw: unknown): string[] {
+	try {
+		const parsed = JSON.parse(typeof raw === "string" ? raw : "[]");
+		return Array.isArray(parsed) ? parsed.filter((imageUrl) => typeof imageUrl === "string") : [];
+	} catch {
+		return [];
 	}
+}
 
-	const imageUrl = meta.imageUrl ?? "";
+function buildSinglePrintOrderItems(
+	meta: StripeMetadata,
+	lineItems: Stripe.LineItem[],
+	printOptions: PrintOptions,
+): OrderItem[] {
+	const imageUrl = typeof meta.imageUrl === "string" ? meta.imageUrl : "";
 	if (!imageUrl) return [];
 	return [
 		{
 			imageUrl,
-			paperSubcategoryId,
-			width,
-			height,
+			...printOptions,
 			quantity: lineItems[0]?.quantity ?? 1,
-			borderWidth,
-			frameSubcategoryId,
-			canvasSubcategoryId,
-			canvasWrapHex,
 		},
 	];
+}
+
+function positiveInteger(raw: unknown): number | undefined {
+	const parsed = Number.parseInt(String(raw ?? ""), 10);
+	return Number.isFinite(parsed) && parsed > 0 ? parsed : undefined;
+}
+
+function positiveNumber(raw: unknown): number | undefined {
+	const parsed = Number.parseFloat(String(raw ?? ""));
+	return Number.isFinite(parsed) && parsed > 0 ? parsed : undefined;
 }
 
 /** Build a LumaPrints recipient from Stripe shipping details. */

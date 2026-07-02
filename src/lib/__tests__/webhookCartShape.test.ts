@@ -354,6 +354,17 @@ describe("__test__buildOrderItemsFromSession — backwards compat", () => {
 		expect(orderItems[2].imageUrl).toBe("c.jpg");
 	});
 
+	it("returns an empty array for malformed legacy print set imageUrls", () => {
+		const session = makeSession({
+			paperSubcategoryId: "103001",
+			paperWidth: "8",
+			paperHeight: "12",
+			isPrintSet: "true",
+			imageUrls: JSON.stringify({ imageUrl: "not-an-array.jpg" }),
+		});
+		expect(__test__buildOrderItemsFromSession(session, [])).toEqual([]);
+	});
+
 	it("returns empty array for orders with no LumaPrints metadata", () => {
 		const session = makeSession({});
 		expect(__test__buildOrderItemsFromSession(session, [])).toEqual([]);
