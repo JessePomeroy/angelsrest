@@ -1,7 +1,11 @@
 import { v } from "convex/values";
 import { internal } from "./_generated/api";
 import { mutation, query } from "./_generated/server";
-import { requireSiteAdmin, requireWebhookCallerOrAuth } from "./authHelpers";
+import {
+	requireDocumentSiteAdmin,
+	requireSiteAdmin,
+	requireWebhookCallerOrAuth,
+} from "./authHelpers";
 import { deleteDocument } from "./helpers/deleting";
 import { markDocumentSent } from "./helpers/marking";
 import { getNextSequentialNumber } from "./helpers/numbering";
@@ -35,20 +39,10 @@ export const list = query({
 	},
 });
 
-/**
- * @audit C7 — This is currently public (no auth) because the invoice payment
- * flow at `/api/invoice/checkout` passes a raw `invoiceId`. Anyone who
- * knows or guesses an invoiceId can read the invoice contents (client
- * email, line items, amounts).
- *
- * TODO: convert `/api/invoice/checkout` to use a portal token (like the
- * accept/decline/sign flow already does), then make this query require
- * auth. Once done, remove this comment.
- */
 export const get = query({
 	args: { invoiceId: v.id("invoices") },
 	handler: async (ctx, { invoiceId }) => {
-		const invoice = await ctx.db.get(invoiceId);
+		const invoice = await requireDocumentSiteAdmin(ctx, "invoices", invoiceId);
 		if (!invoice) return null;
 		const client = await ctx.db.get(invoice.clientId);
 		return {

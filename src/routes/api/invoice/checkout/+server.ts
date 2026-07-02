@@ -1,8 +1,9 @@
 import { error, json } from "@sveltejs/kit";
-import { api } from "$convex/api";
+import type { Doc } from "$convex/dataModel";
 import { PUBLIC_SITE_URL } from "$env/static/public";
 import { SITE_DOMAIN } from "$lib/config/site";
 import { getConvex } from "$lib/server/convexClient";
+import { validatePortalToken } from "$lib/server/portalToken";
 import {
 	buildCheckoutLineItem,
 	createPaymentCheckoutSession,
@@ -14,17 +15,15 @@ const convex = getConvex();
 export async function POST({ request }) {
 	const stripe = getStripe();
 	try {
-		const { invoiceId } = await request.json();
+		const { token } = await request.json();
 
-		if (!invoiceId) {
-			throw error(400, "Missing required field: invoiceId");
+		if (!token) {
+			throw error(400, "Missing required field: token");
 		}
 
-		const invoice = await convex.query(api.invoices.get, { invoiceId });
-
-		if (!invoice) {
-			throw error(404, "Invoice not found");
-		}
+		const portal = await validatePortalToken(convex, token, "invoice");
+		const invoice = portal.document as Doc<"invoices">;
+		const invoiceId = portal.token.documentId;
 
 		if (invoice.status === "paid") {
 			throw error(400, "Invoice has already been paid");
