@@ -13,19 +13,18 @@
  * (`buildOrderItemsFromSession`). Any change here MUST be matched there.
  */
 
+import {
+	CART_ITEM_PAYLOAD_MAX,
+	CART_METADATA_KEYS,
+	encodeCartItemPayload,
+} from "$lib/server/cartMetadataCodec";
 import { buildTenantCheckoutOptions, type StripeTenantAccount } from "$lib/server/stripeConnect";
 import type { CartItem } from "$lib/shop/cart";
 
+export { CART_ITEM_PAYLOAD_MAX } from "$lib/server/cartMetadataCodec";
+
 /** Stripe metadata per-value limit. */
 const STRIPE_METADATA_VALUE_MAX = 500;
-
-/**
- * Safety margin for the cart item value size — leaves room for any future
- * fields without bumping us against Stripe's hard 500-char per-value cap.
- * Sets that pack many full-resolution image URLs into the `i` array will
- * be rejected by `validateCart` if their encoded payload exceeds this.
- */
-export const CART_ITEM_PAYLOAD_MAX = 480;
 
 export function calculateCartPrintSubtotalCents(items: CartItem[]): number {
 	return items.reduce((total, item) => {
@@ -77,35 +76,11 @@ export function buildCartTenantCheckoutOptions({
  */
 export function buildCartMetadata(items: CartItem[]): Record<string, string> {
 	const meta: Record<string, string> = {
-		isCart: "true",
-		cartItemCount: String(items.length),
+		[CART_METADATA_KEYS.isCart]: "true",
+		[CART_METADATA_KEYS.itemCount]: String(items.length),
 	};
 	items.forEach((item, i) => {
-		const payload: Record<string, unknown> = {
-			u: item.imageUrl,
-			q: item.quantity,
-		};
-		if (typeof item.paperSubcategoryId === "number") {
-			payload.s = item.paperSubcategoryId;
-			payload.w = item.paperWidth;
-			payload.h = item.paperHeight;
-		}
-		if (typeof item.borderWidth === "number" && item.borderWidth > 0) {
-			payload.b = item.borderWidth;
-		}
-		if (typeof item.frameSubcategoryId === "number" && item.frameSubcategoryId > 0) {
-			payload.f = item.frameSubcategoryId;
-		}
-		if (typeof item.canvasSubcategoryId === "number" && item.canvasSubcategoryId > 0) {
-			payload.c = item.canvasSubcategoryId;
-			if (item.canvasWrapHex) {
-				payload.cw = item.canvasWrapHex;
-			}
-		}
-		if (item.type === "set" && item.imageUrls && item.imageUrls.length > 0) {
-			payload.i = item.imageUrls;
-		}
-		meta[`cartItem_${i}`] = JSON.stringify(payload);
+		meta[CART_METADATA_KEYS.item(i)] = JSON.stringify(encodeCartItemPayload(item));
 	});
 	return meta;
 }
