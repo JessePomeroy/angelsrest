@@ -53,6 +53,9 @@ export async function POST({ request }) {
 		if (invoice.status === "paid") {
 			throw error(400, "Invoice has already been paid");
 		}
+		if (invoice.status !== "sent" && invoice.status !== "overdue") {
+			throw error(400, "Invoice is not payable");
+		}
 
 		// Audit H8: compute in integer cents from the start so cents-
 		// rounding errors don't compound across line items. The Convex

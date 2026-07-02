@@ -185,6 +185,27 @@ describe("invoice checkout route", () => {
 		expect(mocks.stripeSessionCreate).not.toHaveBeenCalled();
 	});
 
+	it("rejects non-payable invoice statuses before creating a Stripe session", async () => {
+		mocks.convexQuery.mockResolvedValueOnce({
+			expired: false,
+			token: {
+				type: "invoice",
+				documentId: "invoice-123",
+				siteUrl: "angelsrest.online",
+			},
+			document: {
+				status: "draft",
+				items: [{ description: "Design work", quantity: 1, unitPrice: 10 }],
+			},
+		});
+
+		await expect(POST(makeRequest({ token: "portal-token-123" }) as any)).rejects.toMatchObject({
+			status: 400,
+		});
+		expect(mocks.resolveStripeTenantForSite).not.toHaveBeenCalled();
+		expect(mocks.stripeSessionCreate).not.toHaveBeenCalled();
+	});
+
 	it("omits the tax line when invoice tax is zero", async () => {
 		mocks.convexQuery.mockResolvedValueOnce({
 			expired: false,
