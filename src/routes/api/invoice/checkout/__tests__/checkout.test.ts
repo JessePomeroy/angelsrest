@@ -4,12 +4,13 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
 	convexQuery: vi.fn(),
+	convexMutation: vi.fn(),
 	stripeSessionCreate: vi.fn(),
 	resolveStripeTenantForSite: vi.fn(),
 }));
 
 vi.mock("$lib/server/convexClient", () => ({
-	getConvex: () => ({ query: mocks.convexQuery }),
+	getConvex: () => ({ query: mocks.convexQuery, mutation: mocks.convexMutation }),
 }));
 
 vi.mock("$lib/server/stripeClient", () => ({
@@ -24,8 +25,13 @@ vi.mock("$lib/server/stripeTenant", () => ({
 
 vi.mock("$convex/api", () => ({
 	api: {
+		invoices: { recordCheckoutStarted: "invoices.recordCheckoutStarted" },
 		portal: { getByToken: "portal.getByToken" },
 	},
+}));
+
+vi.mock("$env/dynamic/private", () => ({
+	env: { WEBHOOK_SECRET: "test-webhook-secret" },
 }));
 
 vi.mock("$env/static/public", () => ({
@@ -65,6 +71,21 @@ function expectedIdempotencyKey({
 		.digest("hex")
 		.slice(0, 24);
 	return `invoice-checkout:${siteUrl}:${invoiceId}:${fingerprint}`;
+}
+
+function expectedFingerprint({
+	lineItemsCents,
+	taxPercent,
+	taxCents,
+}: {
+	lineItemsCents: { description: string; quantity: number; unitPriceCents: number }[];
+	taxPercent: number;
+	taxCents: number;
+}) {
+	return createHash("sha256")
+		.update(JSON.stringify({ lineItemsCents, taxPercent, taxCents }))
+		.digest("hex")
+		.slice(0, 24);
 }
 
 describe("invoice checkout route", () => {
@@ -109,6 +130,14 @@ describe("invoice checkout route", () => {
 		const requestOptions = mocks.stripeSessionCreate.mock.calls[0]?.[1] as
 			| Stripe.RequestOptions
 			| undefined;
+		const checkoutFingerprint = expectedFingerprint({
+			lineItemsCents: [
+				{ description: "Design work", quantity: 2, unitPriceCents: 1250 },
+				{ description: "Print credit", quantity: 1, unitPriceCents: 426 },
+			],
+			taxPercent: 10,
+			taxCents: 293,
+		});
 
 		const idempotencyKey = requestOptions?.idempotencyKey;
 		expect(idempotencyKey).toBe(
@@ -138,6 +167,14 @@ describe("invoice checkout route", () => {
 			type: "invoice_payment",
 			invoiceId: "invoice-123",
 			siteUrl: "angelsrest.online",
+			checkoutFingerprint,
+		});
+		expect(mocks.convexMutation).toHaveBeenCalledWith("invoices.recordCheckoutStarted", {
+			webhookSecret: "test-webhook-secret",
+			invoiceId: "invoice-123",
+			siteUrl: "angelsrest.online",
+			stripeCheckoutSessionId: "cs_invoice_123",
+			stripeCheckoutFingerprint: checkoutFingerprint,
 		});
 		expect(params.payment_intent_data).toBeUndefined();
 		expect(params.line_items).toEqual([
@@ -204,6 +241,15 @@ describe("invoice checkout route", () => {
 		});
 		expect(mocks.resolveStripeTenantForSite).not.toHaveBeenCalled();
 		expect(mocks.stripeSessionCreate).not.toHaveBeenCalled();
+	});
+
+	it("fails checkout when the open session cannot be recorded", async () => {
+		mocks.convexMutation.mockRejectedValueOnce(new Error("record failed"));
+
+		await expect(POST(makeRequest({ token: "portal-token-123" }) as any)).rejects.toMatchObject({
+			status: 500,
+		});
+		expect(mocks.stripeSessionCreate).toHaveBeenCalledTimes(1);
 	});
 
 	it("omits the tax line when invoice tax is zero", async () => {
@@ -337,6 +383,11 @@ describe("invoice checkout route", () => {
 			type: "invoice_payment",
 			invoiceId: "invoice-tenant-123",
 			siteUrl: "zippymiggy.com",
+			checkoutFingerprint: expectedFingerprint({
+				lineItemsCents: [{ description: "Session balance", quantity: 1, unitPriceCents: 10000 }],
+				taxPercent: 0,
+				taxCents: 0,
+			}),
 		});
 		expect(params.payment_intent_data).toBeUndefined();
 		expect(requestOptions).toEqual({

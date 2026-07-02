@@ -178,6 +178,7 @@ describe("processStripeWebhookEvent", () => {
 				type: "invoice_payment",
 				invoiceId: "invoice-123",
 				siteUrl: "https://client.example",
+				checkoutFingerprint: "checkout-fingerprint-123",
 			},
 		});
 
@@ -192,6 +193,8 @@ describe("processStripeWebhookEvent", () => {
 			webhookSecret: "test-webhook-secret",
 			invoiceId: "invoice-123",
 			siteUrl: "https://client.example",
+			stripeCheckoutSessionId: "cs_test_123",
+			stripeCheckoutFingerprint: "checkout-fingerprint-123",
 		});
 		expect(mockCreateOrderInConvex).not.toHaveBeenCalled();
 	});

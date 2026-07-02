@@ -416,6 +416,7 @@ describe("Stripe webhook POST handler", () => {
 				type: "invoice_payment",
 				invoiceId: "inv-123",
 				siteUrl: "angelsrest.online",
+				checkoutFingerprint: "checkout-fingerprint-123",
 			},
 		});
 		const event = makeStripeEvent("checkout.session.completed", session);
@@ -437,6 +438,8 @@ describe("Stripe webhook POST handler", () => {
 			expect.objectContaining({
 				invoiceId: "inv-123",
 				siteUrl: "angelsrest.online",
+				stripeCheckoutSessionId: session.id,
+				stripeCheckoutFingerprint: "checkout-fingerprint-123",
 			}),
 		);
 	});
