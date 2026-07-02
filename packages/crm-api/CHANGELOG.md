@@ -1,5 +1,13 @@
 # @jessepomeroy/crm-api
 
+## 1.2.0
+
+### Minor Changes
+
+- Add `galleries.listImageStorageKeys`, a tenant-scoped paginated query for
+  gallery storage cleanup flows. This lets spoke admin dashboards delete all
+  R2 objects for large galleries before removing Convex metadata.
+
 ## 1.1.0
 
 ### Minor Changes
