@@ -35,6 +35,10 @@ import {
 } from "$lib/server/cartCheckoutHelpers";
 import { bindCheckoutSession } from "$lib/server/checkoutBinding";
 import { resolveCheckoutItem } from "$lib/server/checkoutCatalog";
+import {
+	buildCheckoutLineItem,
+	createPaymentCheckoutSession,
+} from "$lib/server/stripeCheckoutSession";
 import { getStripe } from "$lib/server/stripeClient";
 import { resolveStripeTenantForSite } from "$lib/server/stripeTenant";
 import type { CartItem } from "$lib/shop/cart";
@@ -98,17 +102,12 @@ export async function POST({ request, cookies }) {
 			const name = hasPaper
 				? `${item.title} — ${item.paperName}, ${item.paperWidth}×${item.paperHeight}`
 				: item.title;
-			return {
-				price_data: {
-					currency: "usd",
-					product_data: {
-						name,
-						images: item.imageUrl ? [item.imageUrl] : [],
-					},
-					unit_amount: item.unitPriceCents,
-				},
+			return buildCheckoutLineItem({
+				name,
+				imageUrl: item.imageUrl,
+				unitAmountCents: item.unitPriceCents,
 				quantity: item.quantity,
-			};
+			});
 		});
 
 		const tenant = await resolveStripeTenantForSite(PUBLIC_SITE_URL);
@@ -117,27 +116,23 @@ export async function POST({ request, cookies }) {
 			tenant,
 		});
 
-		const session = await stripe.checkout.sessions.create(
-			{
-				payment_method_types: ["card"],
-				// Cart purchases are physical prints (sets and digital deferred
-				// to later PRs), so we always collect shipping for now.
-				shipping_address_collection: { allowed_countries: ["US"] },
-				line_items: lineItems,
-				mode: "payment",
-				success_url: `${PUBLIC_SITE_URL}/checkout/success?session_id={CHECKOUT_SESSION_ID}`,
-				cancel_url: `${PUBLIC_SITE_URL}/checkout/cancel`,
-				metadata: buildCartMetadata(resolvedItems),
-				...tenantCheckout.session,
-			},
-			tenantCheckout.requestOptions,
-		);
+		const session = await createPaymentCheckoutSession({
+			stripe,
+			// Cart purchases are physical prints (sets and digital deferred
+			// to later PRs), so we always collect shipping for now.
+			shippingAllowedCountries: ["US"],
+			lineItems,
+			successUrl: `${PUBLIC_SITE_URL}/checkout/success?session_id={CHECKOUT_SESSION_ID}`,
+			cancelUrl: `${PUBLIC_SITE_URL}/checkout/cancel`,
+			metadata: buildCartMetadata(resolvedItems),
+			tenantCheckout,
+		});
 
 		// Bind this browser to the session so /checkout/success can verify
 		// the caller is the buyer before returning customer PII (audit H30).
-		bindCheckoutSession(cookies, session.id);
+		bindCheckoutSession(cookies, session.sessionId);
 
-		return json({ sessionId: session.id, url: session.url });
+		return json(session);
 	} catch (err: unknown) {
 		// Re-throw SvelteKit-shaped errors so the 4xx status survives
 		if (err && typeof err === "object" && "status" in err) throw err;
