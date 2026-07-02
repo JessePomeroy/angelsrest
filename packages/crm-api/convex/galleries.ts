@@ -116,12 +116,12 @@ export const update = mutation({
  * Marks the gallery `archived` up front so callers see the deletion is
  * in progress, then the final batch deletes the gallery document itself.
  *
- * R2 file deletion is still TODO — the gallery worker owns the R2
- * namespace and wants an authenticated HTTP call per r2Key. That needs
- * an `"use node"` action + GALLERY_WORKER_URL + GALLERY_ADMIN_SECRET on
- * the Convex deployment to work. For now the r2Keys leak; admin can
- * bulk-delete them via the worker's own admin tool until we wire the
- * action up.
+ * This mutation is metadata-only. Callers that own R2 files must delete
+ * the corresponding Worker objects before calling `remove`; the shared
+ * admin gallery modal does that via `/api/admin/galleries/bulk-delete`.
+ * Keeping Worker credentials out of Convex avoids adding Node actions and
+ * deployment-level `GALLERY_WORKER_URL` / `GALLERY_ADMIN_SECRET` secrets
+ * solely for a UI-initiated cleanup path.
  */
 export const remove = mutation({
 	args: { id: v.id("galleries") },
