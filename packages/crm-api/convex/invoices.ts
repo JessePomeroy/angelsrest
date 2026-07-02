@@ -169,7 +169,7 @@ export const recordCheckoutStarted = mutation({
 			throw new Error("Not found");
 		}
 		if (invoice.status === "paid") {
-			return;
+			throw new Error("Invoice has already been paid");
 		}
 		if (invoice.status !== "sent" && invoice.status !== "overdue") {
 			throw new Error("Invoice is not payable");
@@ -213,10 +213,6 @@ export const markPaid = mutation({
 		if (!invoice || invoice.siteUrl !== siteUrl) {
 			throw new Error("Not found");
 		}
-		if (invoice.status === "paid") {
-			// Idempotent — retry-safe on Stripe webhook replays.
-			return;
-		}
 		if (stripeCheckoutSessionId) {
 			if (invoice.stripeCheckoutSessionId !== stripeCheckoutSessionId) {
 				throw new Error("Invoice checkout session mismatch");
@@ -227,6 +223,10 @@ export const markPaid = mutation({
 			) {
 				throw new Error("Invoice checkout fingerprint mismatch");
 			}
+		}
+		if (invoice.status === "paid") {
+			// Idempotent — retry-safe on Stripe webhook replays.
+			return;
 		}
 		const now = Date.now();
 		await ctx.db.patch(invoiceId, {
