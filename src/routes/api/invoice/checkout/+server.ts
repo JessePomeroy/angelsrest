@@ -31,11 +31,23 @@ function buildInvoiceCheckoutIdempotencyKey({
 	taxPercent,
 	taxCents,
 }: InvoiceCheckoutIdempotencyInput): string {
-	const fingerprint = createHash("sha256")
+	const fingerprint = buildInvoiceCheckoutFingerprint({
+		lineItemsCents,
+		taxPercent,
+		taxCents,
+	});
+	return `invoice-checkout:${siteUrl}:${invoiceId}:${fingerprint}`;
+}
+
+function buildInvoiceCheckoutFingerprint({
+	lineItemsCents,
+	taxPercent,
+	taxCents,
+}: Pick<InvoiceCheckoutIdempotencyInput, "lineItemsCents" | "taxPercent" | "taxCents">): string {
+	return createHash("sha256")
 		.update(JSON.stringify({ lineItemsCents, taxPercent, taxCents }))
 		.digest("hex")
 		.slice(0, 24);
-	return `invoice-checkout:${siteUrl}:${invoiceId}:${fingerprint}`;
 }
 
 export async function POST({ request }) {
@@ -82,6 +94,11 @@ export async function POST({ request }) {
 			throw error(400, "Invalid invoice tax percentage");
 		}
 		const taxCents = taxPercent > 0 ? Math.round((subtotalCents * taxPercent) / 100) : 0;
+		const checkoutFingerprint = buildInvoiceCheckoutFingerprint({
+			lineItemsCents,
+			taxPercent,
+			taxCents,
+		});
 		const tenant = await resolveStripeTenantForSite(siteUrl, {
 			requirePlatformClient: true,
 		});
@@ -119,6 +136,7 @@ export async function POST({ request }) {
 				type: "invoice_payment",
 				invoiceId,
 				siteUrl,
+				checkoutFingerprint,
 			},
 			tenantCheckout,
 			idempotencyKey: buildInvoiceCheckoutIdempotencyKey({
@@ -130,21 +148,16 @@ export async function POST({ request }) {
 			}),
 		});
 
-		if (env.WEBHOOK_SECRET) {
-			try {
-				await convex.mutation(api.invoices.recordCheckoutStarted, {
-					webhookSecret: env.WEBHOOK_SECRET,
-					invoiceId: invoiceId as Id<"invoices">,
-					siteUrl,
-					stripeCheckoutSessionId: session.sessionId,
-				});
-			} catch (recordErr) {
-				console.error(
-					"Invoice checkout session recording failed:",
-					recordErr instanceof Error ? recordErr.message : recordErr,
-				);
-			}
+		if (!env.WEBHOOK_SECRET) {
+			throw new Error("WEBHOOK_SECRET not configured");
 		}
+		await convex.mutation(api.invoices.recordCheckoutStarted, {
+			webhookSecret: env.WEBHOOK_SECRET,
+			invoiceId: invoiceId as Id<"invoices">,
+			siteUrl,
+			stripeCheckoutSessionId: session.sessionId,
+			stripeCheckoutFingerprint: checkoutFingerprint,
+		});
 
 		return json({ url: session.url });
 	} catch (err: unknown) {

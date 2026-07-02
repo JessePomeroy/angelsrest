@@ -156,9 +156,13 @@ export const recordCheckoutStarted = mutation({
 		invoiceId: v.id("invoices"),
 		siteUrl: v.string(),
 		stripeCheckoutSessionId: v.string(),
+		stripeCheckoutFingerprint: v.string(),
 		webhookSecret: v.string(),
 	},
-	handler: async (ctx, { invoiceId, siteUrl, stripeCheckoutSessionId, webhookSecret }) => {
+	handler: async (
+		ctx,
+		{ invoiceId, siteUrl, stripeCheckoutSessionId, stripeCheckoutFingerprint, webhookSecret },
+	) => {
 		await requireWebhookCallerOrAuth(ctx, webhookSecret, { allowAuth: false });
 		const invoice = await ctx.db.get(invoiceId);
 		if (!invoice || invoice.siteUrl !== siteUrl) {
@@ -173,6 +177,7 @@ export const recordCheckoutStarted = mutation({
 		const now = Date.now();
 		await ctx.db.patch(invoiceId, {
 			stripeCheckoutSessionId,
+			stripeCheckoutFingerprint,
 			stripeCheckoutStatus: "open",
 			stripeCheckoutStartedAt: invoice.stripeCheckoutStartedAt ?? now,
 			stripeCheckoutUpdatedAt: now,
@@ -194,8 +199,12 @@ export const markPaid = mutation({
 		siteUrl: v.string(),
 		webhookSecret: v.optional(v.string()),
 		stripeCheckoutSessionId: v.optional(v.string()),
+		stripeCheckoutFingerprint: v.optional(v.string()),
 	},
-	handler: async (ctx, { invoiceId, siteUrl, webhookSecret, stripeCheckoutSessionId }) => {
+	handler: async (
+		ctx,
+		{ invoiceId, siteUrl, webhookSecret, stripeCheckoutSessionId, stripeCheckoutFingerprint },
+	) => {
 		const auth = await requireWebhookCallerOrAuth(ctx, webhookSecret);
 		if (auth.via === "auth") {
 			await requireSiteAdmin(ctx, siteUrl);
@@ -208,13 +217,29 @@ export const markPaid = mutation({
 			// Idempotent — retry-safe on Stripe webhook replays.
 			return;
 		}
+		if (stripeCheckoutSessionId) {
+			if (invoice.stripeCheckoutSessionId !== stripeCheckoutSessionId) {
+				throw new Error("Invoice checkout session mismatch");
+			}
+			if (
+				stripeCheckoutFingerprint &&
+				invoice.stripeCheckoutFingerprint !== stripeCheckoutFingerprint
+			) {
+				throw new Error("Invoice checkout fingerprint mismatch");
+			}
+		}
 		const now = Date.now();
 		await ctx.db.patch(invoiceId, {
 			status: "paid",
 			paidAt: now,
-			...(stripeCheckoutSessionId ? { stripeCheckoutSessionId } : {}),
-			stripeCheckoutStatus: "paid",
-			stripeCheckoutUpdatedAt: now,
+			...(stripeCheckoutSessionId
+				? {
+						stripeCheckoutSessionId,
+						...(stripeCheckoutFingerprint ? { stripeCheckoutFingerprint } : {}),
+						stripeCheckoutStatus: "paid" as const,
+						stripeCheckoutUpdatedAt: now,
+					}
+				: {}),
 		});
 
 		await ctx.runMutation(internal.activityLog.logActivity, {

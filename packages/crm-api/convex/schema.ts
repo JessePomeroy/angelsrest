@@ -173,6 +173,7 @@ export default defineSchema({
 		sentAt: v.optional(v.number()),
 		paidAt: v.optional(v.number()),
 		stripeCheckoutSessionId: v.optional(v.string()),
+		stripeCheckoutFingerprint: v.optional(v.string()),
 		stripeCheckoutStatus: v.optional(
 			v.union(v.literal("open"), v.literal("paid"), v.literal("expired"), v.literal("failed")),
 		),
