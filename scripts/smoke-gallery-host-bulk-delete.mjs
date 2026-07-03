@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
 const CONFIRM_VALUE = "delete-disposable-gallery-smoke-objects";
-const SIGNAL_CLEANUP_TIMEOUT_MS = 10_000;
+const CLEANUP_TIMEOUT_MS = 10_000;
 const SIGNAL_IN_FLIGHT_SETTLE_TIMEOUT_MS = 5_000;
 
 const hostUrlEnv = process.env.GALLERY_HOST_URL;
@@ -147,15 +147,15 @@ async function deleteThroughHostRoute() {
 	return body;
 }
 
-async function cleanupWithWorker() {
+async function cleanupWithWorker(options = {}) {
 	if (seededKeys.size === 0 || deleted) return;
-	if (cleanupPromise) return cleanupPromise;
-	cleanupPromise = cleanupSeededKeys();
-	try {
-		await cleanupPromise;
-	} finally {
-		cleanupPromise = null;
+	if (!cleanupPromise) {
+		cleanupPromise = cleanupSeededKeys().finally(() => {
+			cleanupPromise = null;
+		});
 	}
+	if (!options.timeoutMs) return cleanupPromise;
+	return withTimeout(cleanupPromise, options.timeoutMs, options.label);
 }
 
 async function cleanupSeededKeys() {
@@ -226,11 +226,10 @@ function installSignalCleanup() {
 					);
 				})
 				.then(() =>
-					withTimeout(
-						cleanupWithWorker(),
-						SIGNAL_CLEANUP_TIMEOUT_MS,
-						"signal-triggered smoke cleanup",
-					),
+					cleanupWithWorker({
+						timeoutMs: CLEANUP_TIMEOUT_MS,
+						label: "signal-triggered smoke cleanup",
+					}),
 				)
 				.catch((cleanupError) => {
 					cleanupFailed = true;
@@ -264,7 +263,10 @@ try {
 	await assertImageAvailable("GET control after host delete", controlKey);
 	for (const key of expectedDeletedKeys) seededKeys.delete(key);
 
-	await cleanupWithWorker();
+	await cleanupWithWorker({
+		timeoutMs: CLEANUP_TIMEOUT_MS,
+		label: "post-delete smoke cleanup",
+	});
 	deleted = true;
 
 	console.log(
@@ -289,7 +291,10 @@ try {
 } catch (error) {
 	console.error(error instanceof Error ? error.message : error);
 	try {
-		await cleanupWithWorker();
+		await cleanupWithWorker({
+			timeoutMs: CLEANUP_TIMEOUT_MS,
+			label: "error-path smoke cleanup",
+		});
 	} catch (cleanupError) {
 		console.error(
 			`Cleanup failed: ${
