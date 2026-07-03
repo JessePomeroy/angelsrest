@@ -1,8 +1,13 @@
 <script lang="ts">
+import { onMount } from "svelte";
 import { setupConvex, useConvexClient } from "convex-svelte";
 import { api } from "$convex/api";
 import type { Id } from "$convex/dataModel";
 import { PUBLIC_CONVEX_URL } from "$env/static/public";
+import {
+	canChooseGalleryDownloadDirectory,
+	saveGalleryImagesToDirectory,
+} from "$lib/galleryDelivery/downloadDestination";
 import {
 	createGalleryDownloadPlan,
 	type GalleryDownloadImage,
@@ -31,6 +36,9 @@ let images = $derived(
 let lightboxIndex = $state(-1);
 let lightboxOpen = $derived(lightboxIndex >= 0);
 let downloading = $state(false);
+let folderDownloadsSupported = $state(false);
+let chooseDownloadFolder = $state(false);
+let folderDownloadStatus = $state<string | null>(null);
 let selectedImageIds = $state(new Set<string>());
 let galleryView = $state<"grid" | "list">("grid");
 let selectedImages = $derived(images.filter((img) => selectedImageIds.has(img._id)));
@@ -40,6 +48,10 @@ let allImagesSelected = $derived(
 );
 let lightboxEl = $state<HTMLDivElement | null>(null);
 let previouslyFocused: HTMLElement | null = null;
+
+onMount(() => {
+	folderDownloadsSupported = canChooseGalleryDownloadDirectory(window);
+});
 
 function openLightbox(index: number) {
 	previouslyFocused = document.activeElement as HTMLElement;
@@ -132,6 +144,25 @@ function submitZipDownload(plan: Extract<GalleryDownloadPlan, { type: "zip" }>) 
 	});
 }
 
+async function saveImagesToFolder(targetImages: GalleryDownloadImage[]) {
+	folderDownloadStatus = "choose a folder to save this download.";
+	await saveGalleryImagesToDirectory({
+		images: targetImages,
+		window,
+		onProgress(progress) {
+			folderDownloadStatus = `saving ${progress.completed}/${progress.total} — ${progress.filename}`;
+		},
+	});
+	folderDownloadStatus = `saved ${targetImages.length} file${targetImages.length === 1 ? "" : "s"}.`;
+	window.setTimeout(() => {
+		folderDownloadStatus = null;
+	}, 5000);
+}
+
+function isPickerAbort(error: unknown) {
+	return error instanceof DOMException && error.name === "AbortError";
+}
+
 async function downloadImages(
 	targetImages: GalleryDownloadImage[],
 	emptyMessage: string,
@@ -152,13 +183,22 @@ async function downloadImages(
 
 	downloading = true;
 	try {
-		if (plan.type === "single") {
+		if (chooseDownloadFolder || (plan.type === "tooLarge" && folderDownloadsSupported)) {
+			await saveImagesToFolder(targetImages);
+		} else if (plan.type === "tooLarge") {
+			toasts.show("This download is too large for a ZIP. Use a browser that supports folder downloads.", {
+				type: "error",
+			});
+		} else if (plan.type === "single") {
 			triggerDownload(plan.image);
 		} else {
 			submitZipDownload(plan);
 		}
-	} catch {
-		toasts.show("Download failed. Please try again.", { type: "error" });
+	} catch (error) {
+		folderDownloadStatus = null;
+		if (!isPickerAbort(error)) {
+			toasts.show("Download failed. Please try again.", { type: "error" });
+		}
 	} finally {
 		window.setTimeout(() => {
 			downloading = false;
@@ -226,7 +266,20 @@ let favoriteCount = $derived(
 				>
 					{allImagesSelected ? "clear selection" : "select all"}
 				</button>
+				<label class="folder-download-toggle" aria-disabled={!folderDownloadsSupported}>
+					<input
+						type="checkbox"
+						bind:checked={chooseDownloadFolder}
+						disabled={!folderDownloadsSupported || downloading}
+					/>
+					<span>choose folder</span>
+				</label>
 			</div>
+			{#if folderDownloadStatus}
+				<p class="download-status" role="status">{folderDownloadStatus}</p>
+			{:else if !folderDownloadsSupported}
+				<p class="download-status subtle">folder downloads require a Chromium browser.</p>
+			{/if}
 		{/if}
 		<div class="view-toggle" aria-label="Gallery view">
 			<button
@@ -442,6 +495,37 @@ let favoriteCount = $derived(
 	.download-btn:disabled { opacity: 0.4; cursor: wait; }
 	.download-btn.secondary { opacity: 0.6; }
 	.download-btn.tertiary { opacity: 0.5; }
+
+	.folder-download-toggle {
+		display: inline-flex;
+		align-items: center;
+		gap: 7px;
+		padding: 8px 0;
+		font-size: 0.78rem;
+		opacity: 0.62;
+		cursor: pointer;
+	}
+
+	.folder-download-toggle[aria-disabled="true"] {
+		cursor: not-allowed;
+		opacity: 0.35;
+	}
+
+	.folder-download-toggle input {
+		width: 14px;
+		height: 14px;
+		accent-color: #8da0ff;
+	}
+
+	.download-status {
+		margin: 10px 0 0;
+		font-size: 0.78rem;
+		opacity: 0.58;
+	}
+
+	.download-status.subtle {
+		opacity: 0.42;
+	}
 
 	.view-toggle {
 		display: inline-flex;

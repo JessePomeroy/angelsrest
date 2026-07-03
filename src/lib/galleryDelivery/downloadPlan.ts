@@ -4,11 +4,15 @@ export type GalleryDownloadImage = {
 	downloadUrl: string | null;
 	filename: string;
 	r2Key: string;
+	sizeBytes?: number;
 };
+
+export const DEFAULT_MAX_ON_DEMAND_ZIP_BYTES = 1024 * 1024 * 1024;
 
 export type GalleryDownloadPlan =
 	| { type: "empty"; message: string }
 	| { type: "single"; image: GalleryDownloadImage }
+	| { type: "tooLarge"; totalBytes: number; maxBytes: number }
 	| {
 			type: "zip";
 			action: string;
@@ -27,12 +31,14 @@ export function createGalleryDownloadPlan({
 	galleryName,
 	token,
 	workerUrl,
+	maxZipBytes = DEFAULT_MAX_ON_DEMAND_ZIP_BYTES,
 }: {
 	images: GalleryDownloadImage[];
 	emptyMessage: string;
 	galleryName: string;
 	token: string;
 	workerUrl: string;
+	maxZipBytes?: number;
 }): GalleryDownloadPlan {
 	if (images.length === 0) {
 		return { type: "empty", message: emptyMessage };
@@ -40,6 +46,11 @@ export function createGalleryDownloadPlan({
 
 	if (images.length === 1) {
 		return { type: "single", image: images[0] };
+	}
+
+	const totalBytes = images.reduce((sum, image) => sum + (image.sizeBytes ?? 0), 0);
+	if (totalBytes > maxZipBytes) {
+		return { type: "tooLarge", totalBytes, maxBytes: maxZipBytes };
 	}
 
 	return {

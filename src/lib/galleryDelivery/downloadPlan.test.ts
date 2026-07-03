@@ -62,6 +62,22 @@ describe("createGalleryDownloadPlan", () => {
 			},
 		});
 	});
+
+	it("returns tooLarge for multi-file ZIP requests above the configured byte cap", () => {
+		expect(
+			createGalleryDownloadPlan({
+				images: [
+					{ ...images[0], sizeBytes: 800 },
+					{ ...images[1], sizeBytes: 500 },
+				],
+				emptyMessage: "unused",
+				galleryName: "client gallery",
+				token: "token-123",
+				workerUrl: "https://gallery-worker.example.com/",
+				maxZipBytes: 1024,
+			}),
+		).toEqual({ type: "tooLarge", totalBytes: 1300, maxBytes: 1024 });
+	});
 });
 
 class FakeElement {
