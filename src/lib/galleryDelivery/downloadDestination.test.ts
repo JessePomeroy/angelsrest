@@ -21,6 +21,14 @@ const images: GalleryDownloadImage[] = [
 function createDirectoryPickerWindow(
 	fetchResponse = new Response("file bytes"),
 	existingFiles = new Set<string>(),
+	hooks: {
+		onWrite?: (write: {
+			filename: string;
+			data: unknown[];
+			closed: boolean;
+			aborted: boolean;
+		}) => void;
+	} = {},
 ) {
 	const writes: Array<{ filename: string; data: unknown[]; closed: boolean; aborted: boolean }> =
 		[];
@@ -35,6 +43,7 @@ function createDirectoryPickerWindow(
 				createWritable: vi.fn(async () => ({
 					write: vi.fn(async (data: unknown) => {
 						writeRecord.data.push(data);
+						hooks.onWrite?.(writeRecord);
 					}),
 					close: vi.fn(async () => {
 						writeRecord.closed = true;
@@ -77,6 +86,66 @@ describe("gallery folder downloads", () => {
 			total: 2,
 			filename: "dscf_0001-2.jpg",
 		});
+	});
+
+	it("passes an abort signal to direct file fetches", async () => {
+		const controller = new AbortController();
+		const { win } = createDirectoryPickerWindow(new Response(new Blob(["file bytes"])));
+
+		await saveGalleryImagesToDirectory({
+			images: [images[0]],
+			window: win,
+			signal: controller.signal,
+		});
+
+		expect(win.fetch).toHaveBeenCalledWith(images[0].downloadUrl, {
+			signal: controller.signal,
+		});
+	});
+
+	it("does not start fetching files when already canceled", async () => {
+		const controller = new AbortController();
+		controller.abort();
+		const { win } = createDirectoryPickerWindow(new Response(new Blob(["file bytes"])));
+
+		await expect(
+			saveGalleryImagesToDirectory({
+				images: [images[0]],
+				window: win,
+				signal: controller.signal,
+			}),
+		).rejects.toThrow();
+
+		expect(win.fetch).not.toHaveBeenCalled();
+	});
+
+	it("aborts the active file and stops before the next image when canceled mid-save", async () => {
+		const controller = new AbortController();
+		const progress = vi.fn();
+		const { win, writes } = createDirectoryPickerWindow(
+			new Response(new Blob(["file bytes"])),
+			new Set(),
+			{
+				onWrite() {
+					controller.abort();
+				},
+			},
+		);
+
+		await expect(
+			saveGalleryImagesToDirectory({
+				images,
+				window: win,
+				onProgress: progress,
+				signal: controller.signal,
+			}),
+		).rejects.toThrow();
+
+		expect(writes).toHaveLength(1);
+		expect(writes[0].closed).toBe(false);
+		expect(writes[0].aborted).toBe(true);
+		expect(progress).not.toHaveBeenCalled();
+		expect(win.fetch).toHaveBeenCalledTimes(1);
 	});
 
 	it("does not overwrite existing files in the chosen folder", async () => {
