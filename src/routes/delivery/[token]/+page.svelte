@@ -7,6 +7,7 @@ import {
 	createGalleryDownloadPlan,
 	type GalleryDownloadImage,
 	type GalleryDownloadPlan,
+	submitGalleryZipDownloadForm,
 } from "$lib/galleryDelivery/downloadPlan";
 import { toasts } from "$lib/stores/toast.svelte";
 import { trapFocus } from "$lib/utils/focusTrap";
@@ -124,24 +125,11 @@ function triggerDownload(image: { downloadUrl: string | null; filename: string }
 }
 
 function submitZipDownload(plan: Extract<GalleryDownloadPlan, { type: "zip" }>) {
-	const form = document.createElement("form");
-	form.method = "POST";
-	form.action = plan.action;
-	form.hidden = true;
-
-	for (const [name, value] of Object.entries(plan.fields)) {
-		const input = document.createElement("input");
-		input.type = "hidden";
-		input.name = name;
-		input.value = value;
-		form.appendChild(input);
-	}
-
-	document.body.appendChild(form);
-	form.submit();
-	window.setTimeout(() => {
-		form.remove();
-	}, 60_000);
+	submitGalleryZipDownloadForm({
+		plan,
+		document,
+		setTimeout: window.setTimeout,
+	});
 }
 
 async function downloadImages(
