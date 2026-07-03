@@ -32,6 +32,49 @@ export function canChooseGalleryDownloadDirectory(win: Window & typeof globalThi
 	return typeof (win as DirectoryPickerWindow).showDirectoryPicker === "function";
 }
 
+function galleryDownloadAbortError() {
+	return new DOMException("Gallery download canceled.", "AbortError");
+}
+
+function throwIfAborted(signal?: AbortSignal) {
+	if (signal?.aborted) {
+		throw signal.reason ?? galleryDownloadAbortError();
+	}
+}
+
+function abortReason(signal?: AbortSignal) {
+	return signal?.reason ?? galleryDownloadAbortError();
+}
+
+async function raceWithAbort<T>(
+	operation: Promise<T>,
+	signal: AbortSignal | undefined,
+	onAbort?: () => Promise<void> | void,
+) {
+	if (!signal) return operation;
+	throwIfAborted(signal);
+
+	let abortHandler: (() => void) | undefined;
+	const abort = new Promise<never>((_, reject) => {
+		abortHandler = () => {
+			void Promise.resolve(onAbort?.())
+				.catch(() => {
+					// The abort reason is more useful to callers than a best-effort cleanup failure.
+				})
+				.then(() => {
+					reject(abortReason(signal));
+				});
+		};
+		signal.addEventListener("abort", abortHandler, { once: true });
+	});
+
+	try {
+		return await Promise.race([operation, abort]);
+	} finally {
+		if (abortHandler) signal.removeEventListener("abort", abortHandler);
+	}
+}
+
 function safeFilename(filename: string) {
 	return filename.replace(/[\\/:*?"<>|]/g, "_").trim() || "download";
 }
@@ -78,51 +121,98 @@ export async function saveGalleryImagesToDirectory({
 	images,
 	window,
 	onProgress,
+	signal,
 }: {
 	images: GalleryDownloadImage[];
 	window: Window & typeof globalThis;
 	onProgress?: (progress: GalleryFolderDownloadProgress) => void;
+	signal?: AbortSignal;
 }) {
 	const directoryPicker = (window as DirectoryPickerWindow).showDirectoryPicker;
 	if (!directoryPicker) {
 		throw new Error("Folder downloads are not supported in this browser.");
 	}
 
+	throwIfAborted(signal);
 	const directory = await directoryPicker();
 	const seenNames = new Set<string>();
 
 	for (const [index, image] of images.entries()) {
+		throwIfAborted(signal);
 		if (!image.downloadUrl) {
 			throw new Error(`Downloads are disabled for ${image.filename}.`);
 		}
 
 		const filename = await uniqueFilename(directory, image.filename, seenNames);
-		const response = await window.fetch(image.downloadUrl);
+		throwIfAborted(signal);
+		const response = await window.fetch(image.downloadUrl, { signal });
 		if (!response.ok) {
 			throw new Error(`Failed to download ${image.filename}.`);
 		}
 
 		const file = await directory.getFileHandle(filename, { create: true });
 		const writable = await file.createWritable();
+		let writableClosed = false;
+		let writableAborted = false;
+		const abortWritable = async (reason: unknown = abortReason(signal)) => {
+			if (writableClosed || writableAborted) return;
+			writableAborted = true;
+			await writable.abort?.(reason);
+		};
 
 		try {
 			if (response.body) {
 				const reader = response.body.getReader();
-				while (true) {
-					const { value, done } = await reader.read();
-					if (done) break;
-					if (value) await writable.write(value);
+				const abortReader = async () => {
+					await Promise.allSettled([
+						reader.cancel(abortReason(signal)),
+						abortWritable(abortReason(signal)),
+					]);
+				};
+				try {
+					while (true) {
+						throwIfAborted(signal);
+						const { value, done } = await raceWithAbort(reader.read(), signal, abortReader);
+						if (done) break;
+						throwIfAborted(signal);
+						if (value)
+							await raceWithAbort(writable.write(value), signal, () => {
+								return abortWritable(abortReason(signal));
+							});
+					}
+				} finally {
+					reader.releaseLock();
 				}
-				await writable.close();
+				throwIfAborted(signal);
+				await raceWithAbort(writable.close(), signal, () => {
+					return abortWritable(abortReason(signal));
+				});
+				writableClosed = true;
 			} else {
-				await writable.write(await response.blob());
-				await writable.close();
+				throwIfAborted(signal);
+				await raceWithAbort(writable.write(await response.blob()), signal, () => {
+					return abortWritable(abortReason(signal));
+				});
+				throwIfAborted(signal);
+				await raceWithAbort(writable.close(), signal, () => {
+					return abortWritable(abortReason(signal));
+				});
+				writableClosed = true;
 			}
 		} catch (error) {
-			await writable.abort?.(error);
+			if (signal?.aborted) {
+				await abortWritable(abortReason(signal)).catch(() => {
+					// Best-effort cleanup; surface the cancellation reason to the UI.
+				});
+				throw abortReason(signal);
+			}
+			await abortWritable(error).catch(() => {
+				// Best-effort cleanup; surface the original write/download failure.
+			});
 			throw error;
 		}
 
+		throwIfAborted(signal);
 		onProgress?.({
 			completed: index + 1,
 			total: images.length,
