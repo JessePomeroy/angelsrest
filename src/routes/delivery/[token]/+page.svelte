@@ -27,6 +27,7 @@ let lightboxIndex = $state(-1);
 let lightboxOpen = $derived(lightboxIndex >= 0);
 let downloading = $state(false);
 let selectedImageIds = $state(new Set<string>());
+let galleryView = $state<"grid" | "list">("grid");
 let selectedImages = $derived(images.filter((img) => selectedImageIds.has(img._id)));
 let selectedCount = $derived(selectedImages.length);
 let allImagesSelected = $derived(
@@ -233,48 +234,115 @@ let favoriteCount = $derived(
 				</button>
 			</div>
 		{/if}
+		<div class="view-toggle" aria-label="Gallery view">
+			<button
+				type="button"
+				class:active={galleryView === "grid"}
+				aria-pressed={galleryView === "grid"}
+				onclick={() => {
+					galleryView = "grid";
+				}}
+			>
+				grid
+			</button>
+			<button
+				type="button"
+				class:active={galleryView === "list"}
+				aria-pressed={galleryView === "list"}
+				onclick={() => {
+					galleryView = "list";
+				}}
+			>
+				list
+			</button>
+		</div>
 	</header>
 
-	<div class="image-grid">
-		{#each images as image, i (image._id)}
-			<div class="grid-cell">
-				<button class="image-btn" onclick={() => openLightbox(i)} aria-label={"View photo " + (i + 1) + " of " + images.length}>
-					{#if image.canPreview}
-						<img src={image.thumbUrl} alt={"Photo " + (i + 1) + ": " + image.filename} loading="lazy" />
-					{:else}
-						<span class="file-tile" aria-label={image.filename}>
-							<span>{image.fileLabel}</span>
-						</span>
-					{/if}
-				</button>
-				{#if data.gallery.favoritesEnabled}
-					<button
-						class="fav-btn"
-						class:is-fav={image.isFavorite}
-						onclick={() => toggleFavorite(i)}
-						aria-label={image.isFavorite ? "Remove from favorites" : "Add to favorites"}
-					>
-						{image.isFavorite ? "♥" : "♡"}
+	{#if galleryView === "grid"}
+		<div class="image-grid">
+			{#each images as image, i (image._id)}
+				<div class="grid-cell">
+					<button class="image-btn" onclick={() => openLightbox(i)} aria-label={"View photo " + (i + 1) + " of " + images.length}>
+						{#if image.canPreview}
+							<img src={image.thumbUrl} alt={"Photo " + (i + 1) + ": " + image.filename} loading="lazy" />
+						{:else}
+							<span class="file-tile" aria-label={image.filename}>
+								<span>{image.fileLabel}</span>
+							</span>
+						{/if}
 					</button>
-				{/if}
-				{#if data.gallery.downloadEnabled}
-					<label
-						class="select-photo"
-						class:selected={selectedImageIds.has(image._id)}
-						aria-label={"Select " + image.filename}
-					>
-						<input
-							type="checkbox"
-							checked={selectedImageIds.has(image._id)}
-							onchange={() => toggleImageSelection(image._id)}
-						/>
-						<span aria-hidden="true"></span>
-					</label>
-				{/if}
-				<p class="image-filename">{image.filename}</p>
-			</div>
-		{/each}
-	</div>
+					{#if data.gallery.favoritesEnabled}
+						<button
+							class="fav-btn"
+							class:is-fav={image.isFavorite}
+							onclick={() => toggleFavorite(i)}
+							aria-label={image.isFavorite ? "Remove from favorites" : "Add to favorites"}
+						>
+							{image.isFavorite ? "♥" : "♡"}
+						</button>
+					{/if}
+					{#if data.gallery.downloadEnabled}
+						<label
+							class="select-photo"
+							class:selected={selectedImageIds.has(image._id)}
+							aria-label={"Select " + image.filename}
+						>
+							<input
+								type="checkbox"
+								checked={selectedImageIds.has(image._id)}
+								onchange={() => toggleImageSelection(image._id)}
+							/>
+							<span aria-hidden="true"></span>
+						</label>
+					{/if}
+					<p class="image-filename">{image.filename}</p>
+				</div>
+			{/each}
+		</div>
+	{:else}
+		<div class="image-list">
+			{#each images as image, i (image._id)}
+				<div class="list-row">
+					<button class="list-thumb" type="button" onclick={() => openLightbox(i)} aria-label={"View " + image.filename}>
+						{#if image.canPreview}
+							<img src={image.thumbUrl} alt="" loading="lazy" />
+						{:else}
+							<span class="file-tile" aria-label={image.filename}>
+								<span>{image.fileLabel}</span>
+							</span>
+						{/if}
+					</button>
+					<button class="list-info" type="button" onclick={() => openLightbox(i)}>
+						<span class="list-filename">{image.filename}</span>
+						<span class="list-meta">{image.fileLabel}</span>
+					</button>
+					<div class="list-actions">
+						{#if data.gallery.favoritesEnabled}
+							<button
+								type="button"
+								class="list-fav"
+								class:is-fav={image.isFavorite}
+								onclick={() => toggleFavorite(i)}
+								aria-label={image.isFavorite ? "Remove from favorites" : "Add to favorites"}
+							>
+								{image.isFavorite ? "♥" : "♡"}
+							</button>
+						{/if}
+						{#if data.gallery.downloadEnabled}
+							<label class="list-select" aria-label={"Select " + image.filename}>
+								<input
+									type="checkbox"
+									checked={selectedImageIds.has(image._id)}
+									onchange={() => toggleImageSelection(image._id)}
+								/>
+								<span>select</span>
+							</label>
+						{/if}
+					</div>
+				</div>
+			{/each}
+		</div>
+	{/if}
 </div>
 
 {#if lightboxOpen}
@@ -380,6 +448,31 @@ let favoriteCount = $derived(
 	.download-btn:disabled { opacity: 0.4; cursor: wait; }
 	.download-btn.secondary { opacity: 0.6; }
 	.download-btn.tertiary { opacity: 0.5; }
+
+	.view-toggle {
+		display: inline-flex;
+		gap: 4px;
+		margin-top: 12px;
+		border: 1px solid rgba(255, 255, 255, 0.16);
+		border-radius: 6px;
+		padding: 4px;
+	}
+
+	.view-toggle button {
+		border: none;
+		background: transparent;
+		color: rgba(255, 255, 255, 0.55);
+		font: inherit;
+		font-size: 0.78rem;
+		padding: 5px 12px;
+		border-radius: 4px;
+		cursor: pointer;
+	}
+
+	.view-toggle button.active {
+		background: rgba(255, 255, 255, 0.12);
+		color: rgba(255, 255, 255, 0.92);
+	}
 
 	.image-grid {
 		display: grid;
@@ -513,6 +606,97 @@ let favoriteCount = $derived(
 		box-shadow: inset 0 0 0 3px rgba(0, 0, 0, 0.35);
 	}
 
+	.image-list {
+		display: flex;
+		flex-direction: column;
+		border-top: 1px solid rgba(255, 255, 255, 0.1);
+	}
+
+	.list-row {
+		display: grid;
+		grid-template-columns: 64px minmax(0, 1fr) auto;
+		gap: 14px;
+		align-items: center;
+		padding: 10px 0;
+		border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+	}
+
+	.list-thumb {
+		width: 64px;
+		aspect-ratio: 1;
+		border: none;
+		border-radius: 4px;
+		padding: 0;
+		overflow: hidden;
+		background: rgba(255, 255, 255, 0.08);
+		cursor: pointer;
+	}
+
+	.list-thumb img {
+		width: 100%;
+		height: 100%;
+		object-fit: cover;
+		display: block;
+	}
+
+	.list-info {
+		min-width: 0;
+		border: none;
+		background: transparent;
+		color: inherit;
+		font: inherit;
+		text-align: left;
+		cursor: pointer;
+	}
+
+	.list-filename,
+	.list-meta {
+		display: block;
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
+	}
+
+	.list-filename {
+		color: rgba(255, 255, 255, 0.84);
+	}
+
+	.list-meta {
+		margin-top: 3px;
+		color: rgba(255, 255, 255, 0.42);
+		font-size: 0.72rem;
+		text-transform: uppercase;
+		letter-spacing: 0.08em;
+	}
+
+	.list-actions {
+		display: flex;
+		align-items: center;
+		gap: 12px;
+	}
+
+	.list-fav {
+		border: none;
+		background: transparent;
+		color: rgba(255, 255, 255, 0.48);
+		font: inherit;
+		font-size: 1rem;
+		cursor: pointer;
+	}
+
+	.list-fav.is-fav {
+		color: #e74c3c;
+	}
+
+	.list-select {
+		display: flex;
+		align-items: center;
+		gap: 7px;
+		color: rgba(255, 255, 255, 0.58);
+		font-size: 0.78rem;
+		cursor: pointer;
+	}
+
 	/* Lightbox */
 	.lightbox {
 		position: fixed;
@@ -623,5 +807,8 @@ let favoriteCount = $derived(
 		.lb-nav { font-size: 2rem; padding: 10px; }
 		.download-bar { flex-direction: column; }
 		.select-photo { opacity: 1; }
+		.list-row { grid-template-columns: 52px minmax(0, 1fr); }
+		.list-thumb { width: 52px; }
+		.list-actions { grid-column: 2; justify-content: space-between; }
 	}
 </style>

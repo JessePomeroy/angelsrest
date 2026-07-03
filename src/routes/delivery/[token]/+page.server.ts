@@ -1,8 +1,8 @@
 import { error } from "@sveltejs/kit";
 import { api } from "$convex/api";
 import type { Id } from "$convex/dataModel";
+import { resolveGalleryDisplayImages } from "$lib/galleryDelivery/displayImages";
 import { galleryOriginalDownloadUrl } from "$lib/galleryDelivery/downloadUrls";
-import { galleryFileLabel, isBrowserPreviewableGalleryFile } from "$lib/galleryDelivery/fileTypes";
 import { getConvex } from "$lib/server/convexClient";
 import { getGalleryWorkerUrl } from "$lib/server/galleryWorkerUrl";
 
@@ -51,16 +51,15 @@ export async function load({ params }) {
 	return {
 		token,
 		gallery,
-		images: images.map((img) => ({
-			...img,
-			thumbUrl: `${workerUrl}/image/${img.r2Key.replace("/original/", "/thumb/")}`,
-			previewUrl: `${workerUrl}/image/${img.r2Key.replace("/original/", "/preview/")}`,
-			downloadUrl: gallery.downloadEnabled
-				? galleryOriginalDownloadUrl(workerUrl, img.r2Key, token)
-				: null,
-			canPreview: isBrowserPreviewableGalleryFile(img.filename),
-			fileLabel: galleryFileLabel(img.filename),
-		})),
+		images: resolveGalleryDisplayImages(
+			images.map((img) => ({
+				...img,
+				downloadUrl: gallery.downloadEnabled
+					? galleryOriginalDownloadUrl(workerUrl, img.r2Key, token)
+					: null,
+			})),
+			workerUrl,
+		),
 		client: result.client,
 		workerUrl,
 	};
