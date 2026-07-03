@@ -1,6 +1,8 @@
 #!/usr/bin/env node
 
 const CONFIRM_VALUE = "delete-disposable-gallery-smoke-objects";
+const SIGNAL_CLEANUP_TIMEOUT_MS = 10_000;
+const SIGNAL_IN_FLIGHT_SETTLE_TIMEOUT_MS = 5_000;
 
 const hostUrlEnv = process.env.GALLERY_HOST_URL;
 const workerUrlEnv = process.env.GALLERY_WORKER_URL;
@@ -53,7 +55,12 @@ const expectedDeletedKeys = [originalKey, previewKey, thumbKey];
 const workerAuthHeaders = { Authorization: `Bearer ${adminSecret}` };
 
 const seededKeys = new Set();
+const activeRequests = new Set();
+const activeControllers = new Set();
 let deleted = false;
+let cleanupPromise = null;
+let signalCleanupStarted = false;
+let interrupted = false;
 
 function imageUrl(key) {
 	return `${workerUrl}/image/${encodeURIComponent(key)}?smoke=${Date.now()}`;
@@ -68,13 +75,24 @@ async function assertStatus(label, response, expectedStatus) {
 }
 
 async function putImageKey(label, key) {
-	const response = await fetch(`${workerUrl}/upload/put?key=${encodeURIComponent(key)}`, {
+	seededKeys.add(key);
+	const controller = new AbortController();
+	activeControllers.add(controller);
+	const request = fetch(`${workerUrl}/upload/put?key=${encodeURIComponent(key)}`, {
 		method: "PUT",
 		headers: { ...workerAuthHeaders, "Content-Type": "image/jpeg" },
 		body: new Uint8Array([255, 216, 255, 217]),
+		signal: controller.signal,
 	});
-	await assertStatus(label, response, 200);
-	seededKeys.add(key);
+	activeRequests.add(request);
+	try {
+		const response = await request;
+		await assertStatus(label, response, 200);
+		if (interrupted) throw new Error(`${label}: interrupted`);
+	} finally {
+		activeRequests.delete(request);
+		activeControllers.delete(controller);
+	}
 }
 
 async function seedGalleryObjects() {
@@ -131,6 +149,16 @@ async function deleteThroughHostRoute() {
 
 async function cleanupWithWorker() {
 	if (seededKeys.size === 0 || deleted) return;
+	if (cleanupPromise) return cleanupPromise;
+	cleanupPromise = cleanupSeededKeys();
+	try {
+		await cleanupPromise;
+	} finally {
+		cleanupPromise = null;
+	}
+}
+
+async function cleanupSeededKeys() {
 	const cleanupKeys = Array.from(seededKeys);
 	const response = await fetch(`${workerUrl}/admin/bulk-delete`, {
 		method: "POST",
@@ -146,6 +174,80 @@ async function cleanupWithWorker() {
 		seededKeys.delete(key);
 	}
 }
+
+async function waitForActiveRequestsToSettle() {
+	await Promise.allSettled(Array.from(activeRequests));
+}
+
+function abortActiveRequests() {
+	for (const controller of activeControllers) {
+		controller.abort();
+	}
+}
+
+async function withTimeout(promise, timeoutMs, label) {
+	let timeout;
+	const timeoutPromise = new Promise((_, reject) => {
+		timeout = setTimeout(() => {
+			reject(new Error(`${label} timed out after ${timeoutMs}ms`));
+		}, timeoutMs);
+		timeout.unref?.();
+	});
+	try {
+		return await Promise.race([promise, timeoutPromise]);
+	} finally {
+		clearTimeout(timeout);
+	}
+}
+
+function installSignalCleanup() {
+	for (const signal of ["SIGINT", "SIGTERM"]) {
+		process.on(signal, () => {
+			if (signalCleanupStarted) {
+				console.error(`${signal} received while cleanup is already running. Exiting now.`);
+				process.exit(1);
+			}
+			signalCleanupStarted = true;
+			interrupted = true;
+			console.error(`${signal} received. Cleaning up seeded smoke objects before exit.`);
+			let cleanupFailed = false;
+			withTimeout(
+				waitForActiveRequestsToSettle(),
+				SIGNAL_IN_FLIGHT_SETTLE_TIMEOUT_MS,
+				"signal-triggered in-flight request settlement",
+			)
+				.catch((settleError) => {
+					cleanupFailed = true;
+					abortActiveRequests();
+					console.error(
+						`In-flight request settlement failed: ${
+							settleError instanceof Error ? settleError.message : String(settleError)
+						}`,
+					);
+				})
+				.then(() =>
+					withTimeout(
+						cleanupWithWorker(),
+						SIGNAL_CLEANUP_TIMEOUT_MS,
+						"signal-triggered smoke cleanup",
+					),
+				)
+				.catch((cleanupError) => {
+					cleanupFailed = true;
+					console.error(
+						`Cleanup failed: ${
+							cleanupError instanceof Error ? cleanupError.message : String(cleanupError)
+						}`,
+					);
+				})
+				.finally(() => {
+					process.exit(cleanupFailed ? 1 : signal === "SIGINT" ? 130 : 143);
+				});
+		});
+	}
+}
+
+installSignalCleanup();
 
 try {
 	await seedGalleryObjects();
