@@ -119,16 +119,9 @@ function triggerDownload(image: { downloadUrl: string | null; filename: string }
 }
 
 function submitZipDownload(targetImages: Array<{ r2Key: string }>, galleryName: string) {
-	const iframeName = `gallery-download-${crypto.randomUUID()}`;
-	const iframe = document.createElement("iframe");
-	iframe.name = iframeName;
-	iframe.hidden = true;
-	document.body.appendChild(iframe);
-
 	const form = document.createElement("form");
 	form.method = "POST";
 	form.action = galleryZipDownloadUrl(data.workerUrl);
-	form.target = iframeName;
 	form.hidden = true;
 
 	const fields = {
@@ -149,7 +142,6 @@ function submitZipDownload(targetImages: Array<{ r2Key: string }>, galleryName: 
 	form.submit();
 	window.setTimeout(() => {
 		form.remove();
-		iframe.remove();
 	}, 60_000);
 }
 
@@ -279,6 +271,7 @@ let favoriteCount = $derived(
 						<span aria-hidden="true"></span>
 					</label>
 				{/if}
+				<p class="image-filename">{image.filename}</p>
 			</div>
 		{/each}
 	</div>
@@ -396,19 +389,19 @@ let favoriteCount = $derived(
 
 	.grid-cell {
 		position: relative;
-		aspect-ratio: 1;
-		overflow: hidden;
 		border-radius: 4px;
 	}
 
 	.image-btn {
 		display: block;
 		width: 100%;
-		height: 100%;
+		aspect-ratio: 1;
 		padding: 0;
 		border: none;
 		background: none;
 		cursor: pointer;
+		overflow: hidden;
+		border-radius: 4px;
 	}
 
 	.image-btn img {
@@ -426,6 +419,16 @@ let favoriteCount = $derived(
 		justify-content: center;
 		background: rgba(255, 255, 255, 0.08);
 		color: currentColor;
+	}
+
+	.image-filename {
+		margin: 0.45rem 0 0;
+		font-size: 0.72rem;
+		line-height: 1.3;
+		color: rgba(255, 255, 255, 0.52);
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
 	}
 
 	.file-tile span,
