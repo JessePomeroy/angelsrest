@@ -19,7 +19,8 @@
 		"format": "biome format --write .",
 		"test": "vitest run",
 		"test:watch": "vitest",
-		"test:e2e": "playwright test"
+		"test:e2e": "playwright test",
+		"smoke:gallery-host-bulk-delete": "node scripts/smoke-gallery-host-bulk-delete.mjs"
 	},
 	"devDependencies": {
 		"@babel/preset-typescript": "^7.29.7",
@@ -49,7 +50,7 @@
 	},
 	"dependencies": {
 		"@convex-dev/better-auth": "^0.12.5",
-		"@jessepomeroy/admin": "^2.3.5",
+		"@jessepomeroy/admin": "^2.3.6",
 		"@jessepomeroy/print-catalog": "workspace:^",
 		"@lucide/svelte": "^0.563.1",
 		"@mmailaender/convex-better-auth-svelte": "^0.8.0",
