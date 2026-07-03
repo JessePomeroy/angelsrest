@@ -19,6 +19,8 @@ export type GalleryDownloadPlan =
 			};
 	  };
 
+export type GalleryZipDownloadPlan = Extract<GalleryDownloadPlan, { type: "zip" }>;
+
 export function createGalleryDownloadPlan({
 	images,
 	emptyMessage,
@@ -49,4 +51,35 @@ export function createGalleryDownloadPlan({
 			imageKeys: JSON.stringify(images.map((img) => img.r2Key)),
 		},
 	};
+}
+
+export function submitGalleryZipDownloadForm({
+	plan,
+	document,
+	setTimeout,
+	cleanupDelayMs = 60_000,
+}: {
+	plan: GalleryZipDownloadPlan;
+	document: Document;
+	setTimeout: (callback: () => void, delay: number) => unknown;
+	cleanupDelayMs?: number;
+}) {
+	const form = document.createElement("form");
+	form.method = "POST";
+	form.action = plan.action;
+	form.hidden = true;
+
+	for (const [name, value] of Object.entries(plan.fields)) {
+		const input = document.createElement("input");
+		input.type = "hidden";
+		input.name = name;
+		input.value = value;
+		form.appendChild(input);
+	}
+
+	document.body.appendChild(form);
+	form.submit();
+	setTimeout(() => {
+		form.remove();
+	}, cleanupDelayMs);
 }
