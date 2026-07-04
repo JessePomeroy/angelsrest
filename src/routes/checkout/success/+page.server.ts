@@ -12,8 +12,9 @@
  * "thank you" state with no PII.
  */
 
+import { fail, redirect } from "@sveltejs/kit";
 import type Stripe from "stripe";
-import { isCheckoutSessionOwner } from "$lib/server/checkoutBinding";
+import { bindCheckoutSession, isCheckoutSessionOwner } from "$lib/server/checkoutBinding";
 import { getStripe } from "$lib/server/stripeClient";
 
 export async function load({ url, cookies }) {
@@ -38,6 +39,10 @@ export async function load({ url, cookies }) {
 
 	const cookieOwner = isCheckoutSessionOwner(cookies, sessionId);
 
+	if (cookieOwner && emailParam) {
+		throw redirect(303, `/checkout/success?session_id=${encodeURIComponent(sessionId)}`);
+	}
+
 	// Fetch the session early if the cookie didn't match; we need the
 	// customer email to verify the email-match path. (When the cookie
 	// matches we already know the caller is the buyer, so the fetch is
@@ -57,10 +62,15 @@ export async function load({ url, cookies }) {
 
 	if (!cookieOwner) {
 		const sessionEmail = session.customer_details?.email?.toLowerCase();
+		if (emailParam && sessionEmail && emailParam === sessionEmail) {
+			bindCheckoutSession(cookies, sessionId);
+			throw redirect(303, `/checkout/success?session_id=${encodeURIComponent(sessionId)}`);
+		}
 		if (!emailParam || !sessionEmail || emailParam !== sessionEmail) {
 			return {
 				orderDetails: null,
 				unverified: true,
+				sessionId,
 			};
 		}
 	}
@@ -106,3 +116,42 @@ export async function load({ url, cookies }) {
 		orderDetails,
 	};
 }
+
+export const actions = {
+	verify: async ({ request, cookies }) => {
+		const formData = await request.formData();
+		const sessionId = String(formData.get("session_id") ?? "");
+		const email = String(formData.get("email") ?? "")
+			.trim()
+			.toLowerCase();
+
+		if (!sessionId || !email) {
+			return fail(400, {
+				verifyError: "enter the email used at checkout.",
+				sessionId,
+			});
+		}
+
+		let session: Stripe.Checkout.Session;
+		try {
+			session = await getStripe().checkout.sessions.retrieve(sessionId);
+		} catch (err) {
+			console.error("Error verifying checkout session:", err);
+			return fail(400, {
+				verifyError: "we couldn't verify that order.",
+				sessionId,
+			});
+		}
+
+		const sessionEmail = session.customer_details?.email?.toLowerCase();
+		if (!sessionEmail || sessionEmail !== email) {
+			return fail(403, {
+				verifyError: "that email doesn't match this order.",
+				sessionId,
+			});
+		}
+
+		bindCheckoutSession(cookies, sessionId);
+		throw redirect(303, `/checkout/success?session_id=${encodeURIComponent(sessionId)}`);
+	},
+};
