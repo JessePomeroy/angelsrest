@@ -1,3 +1,4 @@
+import { DEFAULT_MAX_ON_DEMAND_ZIP_BYTES } from "./downloadPolicy";
 import { galleryZipDownloadUrl } from "./downloadUrls";
 
 export type GalleryDownloadImage = {
@@ -6,8 +7,6 @@ export type GalleryDownloadImage = {
 	r2Key: string;
 	sizeBytes?: number;
 };
-
-export const DEFAULT_MAX_ON_DEMAND_ZIP_BYTES = 1024 * 1024 * 1024;
 
 export type GalleryDownloadPlan =
 	| { type: "empty"; message: string }
