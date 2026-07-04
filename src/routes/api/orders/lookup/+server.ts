@@ -6,10 +6,10 @@ import { getConvex } from "$lib/server/convexClient";
 const convex = getConvex();
 
 /**
- * Shared lookup logic for both GET (legacy) and POST (preferred).
+ * Shared POST lookup logic.
  *
- * Audit H34: centralize the verification + convex query so both
- * handlers apply identical input validation and error responses.
+ * Audit H34: keep email out of URLs so buyer PII does not land in
+ * browser history, referrers, or access logs.
  */
 async function lookupOrder(email: unknown, orderNumber: unknown) {
 	// Audit H34: reject obviously malformed input before hitting the
@@ -42,16 +42,8 @@ async function lookupOrder(email: unknown, orderNumber: unknown) {
 	}
 }
 
-/**
- * @deprecated Audit H34: email in the query string lands in access logs.
- * Prefer POST with a JSON body. This handler is kept for backward
- * compatibility with any already-deployed links but delegates to the
- * shared lookup function.
- */
-export async function GET({ url }) {
-	const email = url.searchParams.get("email");
-	const orderNumber = url.searchParams.get("order");
-	return lookupOrder(email, orderNumber);
+export function fallback() {
+	return json({ error: "Use POST to look up orders" }, { status: 405, headers: { Allow: "POST" } });
 }
 
 export async function POST({ request }) {
