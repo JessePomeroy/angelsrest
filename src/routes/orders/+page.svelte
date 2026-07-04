@@ -3,7 +3,7 @@ import { page } from "$app/state";
 import { toasts } from "$lib/stores/toast.svelte";
 import { formatCents, formatDate } from "$lib/utils/format";
 
-let email = $state(page.url.searchParams.get("email") || "");
+let email = $state("");
 let orderNumber = $state(page.url.searchParams.get("order") || "");
 let loading = $state(false);
 let error = $state("");
