@@ -111,7 +111,7 @@ SHIPPING ADDRESS
 ${formatShippingAddress(shippingDetails)}
 
 TRACK YOUR ORDER
-View your order status anytime: https://angelsrest.online/orders?email=${encodeURIComponent(customerEmail)}&order=${orderNumber}
+View your order status anytime: https://angelsrest.online/orders${orderNumber ? `?order=${encodeURIComponent(orderNumber)}` : ""}
 
 WHAT'S NEXT?
 • Your order will be processed within 1-2 business days
