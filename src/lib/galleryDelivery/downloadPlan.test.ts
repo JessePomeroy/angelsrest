@@ -4,6 +4,7 @@ import {
 	type GalleryDownloadImage,
 	submitGalleryZipDownloadForm,
 } from "./downloadPlan";
+import { DEFAULT_MAX_ON_DEMAND_ZIP_BYTES } from "./downloadPolicy";
 
 const images: GalleryDownloadImage[] = [
 	{
@@ -77,6 +78,37 @@ describe("createGalleryDownloadPlan", () => {
 				maxZipBytes: 1024,
 			}),
 		).toEqual({ type: "tooLarge", totalBytes: 1300, maxBytes: 1024 });
+	});
+
+	it("uses the extracted default ZIP cap boundary", () => {
+		const atLimit = createGalleryDownloadPlan({
+			images: [
+				{ ...images[0], sizeBytes: DEFAULT_MAX_ON_DEMAND_ZIP_BYTES - 1 },
+				{ ...images[1], sizeBytes: 1 },
+			],
+			emptyMessage: "unused",
+			galleryName: "client gallery",
+			token: "token-123",
+			workerUrl: "https://gallery-worker.example.com/",
+		});
+		expect(atLimit.type).toBe("zip");
+
+		expect(
+			createGalleryDownloadPlan({
+				images: [
+					{ ...images[0], sizeBytes: DEFAULT_MAX_ON_DEMAND_ZIP_BYTES },
+					{ ...images[1], sizeBytes: 1 },
+				],
+				emptyMessage: "unused",
+				galleryName: "client gallery",
+				token: "token-123",
+				workerUrl: "https://gallery-worker.example.com/",
+			}),
+		).toEqual({
+			type: "tooLarge",
+			totalBytes: DEFAULT_MAX_ON_DEMAND_ZIP_BYTES + 1,
+			maxBytes: DEFAULT_MAX_ON_DEMAND_ZIP_BYTES,
+		});
 	});
 });
 
