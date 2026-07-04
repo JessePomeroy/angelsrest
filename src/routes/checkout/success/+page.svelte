@@ -11,9 +11,10 @@
 <script lang="ts">
 import SEO from "$lib/components/SEO.svelte";
 import { formatCents } from "$lib/utils/format";
+import type { PageData } from "./$types";
 
 // Get order details from server loader
-let { data } = $props();
+let { data, form }: { data: PageData; form?: { verifyError?: string } } = $props();
 </script>
 
 <!--
@@ -63,6 +64,35 @@ let { data } = $props();
         To see your order, look it up with your email and order number at
         <a href="/orders" class="underline">/orders</a>.
       </p>
+      {#if data.sessionId}
+        <form
+          method="POST"
+          action="?/verify&session_id={encodeURIComponent(data.sessionId)}"
+          class="mt-5 space-y-3"
+        >
+          <input type="hidden" name="session_id" value={data.sessionId} />
+          <label class="block text-left text-sm text-surface-600-300-token" for="order-email">
+            email used at checkout
+          </label>
+          <input
+            id="order-email"
+            name="email"
+            type="email"
+            autocomplete="email"
+            required
+            class="w-full rounded-md border border-surface-300-600-token bg-transparent px-3 py-2 text-sm"
+          />
+          {#if form?.verifyError}
+            <p class="text-sm text-red-500" role="alert">{form.verifyError}</p>
+          {/if}
+          <button
+            type="submit"
+            class="w-full rounded-md bg-primary-500 px-4 py-2 text-sm font-medium text-white"
+          >
+            verify order
+          </button>
+        </form>
+      {/if}
     </div>
   {:else if data.orderDetails}
     <div class="bg-surface-100-800-token rounded-lg p-6 mb-8">
@@ -100,15 +130,14 @@ let { data } = $props();
       <!-- Digital Download -->
       {#if data.orderDetails.isDigital}
         <!--
-          Audit H36: the download URL carries `&email=<buyer>` so it
-          keeps working from a different browser or after the binding
-          cookie expires. The /api/download endpoint accepts either the
-          cookie (immediate path) or the email match (email-link path).
+          Audit H36: downloads use the httpOnly checkout proof. Shared
+          confirmation links verify the buyer email by POSTing the form
+          above and redirecting back to this clean session URL.
         -->
         <div class="mt-6 p-4 bg-green-500/10 border border-green-500/20 rounded-lg">
           <h3 class="text-lg font-medium mb-2">your download is ready</h3>
           <a
-            href="/api/download?session_id={data.orderDetails.sessionId}&slug={data.orderDetails.productSlug}{data.orderDetails.customerEmail ? `&email=${encodeURIComponent(data.orderDetails.customerEmail)}` : ''}"
+            href="/api/download?session_id={data.orderDetails.sessionId}&slug={data.orderDetails.productSlug}"
             class="btn variant-filled-primary px-8 py-3 w-full text-center"
           >
             download now
@@ -145,7 +174,7 @@ let { data } = $props();
       <h3 class="font-medium mb-2">what's included</h3>
       <ul class="text-sm text-surface-600-300-token space-y-1">
         <li>- check your email for the order confirmation</li>
-        <li>- your download link above will always work</li>
+        <li>- use your confirmation email to re-verify downloads later</li>
         <li>- questions? email hello@angelsrest.online</li>
       </ul>
     </div>
@@ -171,4 +200,3 @@ let { data } = $props();
     </a>
   </div>
 </div>
-

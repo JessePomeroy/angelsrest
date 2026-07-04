@@ -102,9 +102,9 @@ export async function sendCustomerConfirmation(
 	const digitalSection = isDigital
 		? `
 DOWNLOAD YOUR PURCHASE
-https://www.angelsrest.online/checkout/success?session_id=${session.id}&email=${encodeURIComponent(customerEmail)}
+https://www.angelsrest.online/checkout/success?session_id=${session.id}
 
-Your download link will remain active. Visit the link above anytime to re-download. The email in the URL must match the address this order was purchased with.
+Your download link will remain active. If you open it from a new browser, enter the email address used at checkout to verify the order.
 `
 		: `
 SHIPPING ADDRESS
