@@ -60,5 +60,21 @@ describe("gallery download policy", () => {
 				}),
 			),
 		).toBeNull();
+		expect(
+			parseGalleryZipLimitHeaders(
+				new Headers({
+					"X-Gallery-Zip-Total-Bytes": String(Number.MAX_SAFE_INTEGER + 1),
+					"X-Gallery-Zip-Limit-Bytes": "1073741824",
+				}),
+			),
+		).toBeNull();
+		expect(
+			parseGalleryZipLimitHeaders(
+				new Headers({
+					"X-Gallery-Zip-Total-Bytes": " 2147483648 ",
+					"X-Gallery-Zip-Limit-Bytes": "1073741824",
+				}),
+			),
+		).toEqual({ totalBytes: 2147483648, maxBytes: 1073741824 });
 	});
 });
