@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import type { GalleryDownloadPlan } from "./downloadPlan";
 import {
+	cancelPreparedZipDownload,
 	PreparedZipDownloadError,
 	prepareGalleryZipDownload,
 	triggerPreparedZipArchiveDownload,
@@ -57,6 +58,29 @@ describe("prepared ZIP download client", () => {
 		});
 	});
 
+	it("posts cancellation to the prepared ZIP Worker cancel route", async () => {
+		const fetch = vi.fn(async () =>
+			Response.json({
+				...readyStatus(),
+				status: "canceled",
+				archiveDownloadPath: undefined,
+			}),
+		);
+
+		const response = await cancelPreparedZipDownload({
+			fetch,
+			requestId: "request/with spaces",
+			token: "token/with?chars",
+			workerUrl: "https://gallery-worker.example.com/",
+		});
+
+		expect(response).toMatchObject({ status: "canceled", requestId: "request-123" });
+		expect(fetch).toHaveBeenCalledWith(
+			"https://gallery-worker.example.com/download/zip/prepare/request%2Fwith%20spaces/cancel?token=token%2Fwith%3Fchars",
+			{ method: "POST", signal: undefined },
+		);
+	});
+
 	it("polls until the prepared ZIP archive is ready", async () => {
 		const fetch = vi.fn(async () => Response.json(readyStatus()));
 		const scheduled: Array<() => void> = [];
@@ -109,6 +133,23 @@ describe("prepared ZIP download client", () => {
 				workerUrl: "https://gallery-worker.example.com",
 			}),
 		).rejects.toThrow(new PreparedZipDownloadError("source changed"));
+	});
+
+	it("treats canceled prepared ZIP status as user cancellation", async () => {
+		await expect(
+			waitForPreparedZipArchive({
+				clearTimeout: vi.fn(),
+				fetch: vi.fn(),
+				initialStatus: {
+					...readyStatus(),
+					status: "canceled",
+					archiveDownloadPath: undefined,
+				},
+				setTimeout: vi.fn(),
+				token: "token",
+				workerUrl: "https://gallery-worker.example.com",
+			}),
+		).rejects.toMatchObject({ name: "AbortError" });
 	});
 
 	it("aborts while waiting for the next prepared ZIP status poll", async () => {

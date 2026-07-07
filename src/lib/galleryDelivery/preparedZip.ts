@@ -1,7 +1,11 @@
 import type { GalleryDownloadPlan } from "./downloadPlan";
-import { galleryPreparedZipArchiveUrl, galleryPreparedZipStatusUrl } from "./downloadUrls";
+import {
+	galleryPreparedZipArchiveUrl,
+	galleryPreparedZipCancelUrl,
+	galleryPreparedZipStatusUrl,
+} from "./downloadUrls";
 
-export type PreparedZipStatus = "queued" | "building" | "ready" | "failed" | "expired";
+export type PreparedZipStatus = "queued" | "building" | "ready" | "failed" | "canceled" | "expired";
 
 export type PreparedZipStatusResponse = {
 	status: PreparedZipStatus;
@@ -46,6 +50,26 @@ export async function prepareGalleryZipDownload({
 	return readPreparedZipStatusResponse(response);
 }
 
+export async function cancelPreparedZipDownload({
+	fetch,
+	requestId,
+	signal,
+	token,
+	workerUrl,
+}: {
+	fetch: FetchLike;
+	requestId: string;
+	signal?: AbortSignal;
+	token: string;
+	workerUrl: string;
+}) {
+	const response = await fetch(galleryPreparedZipCancelUrl(workerUrl, requestId, token), {
+		method: "POST",
+		signal,
+	});
+	return readPreparedZipStatusResponse(response);
+}
+
 export async function waitForPreparedZipArchive({
 	clearTimeout,
 	fetch,
@@ -76,6 +100,9 @@ export async function waitForPreparedZipArchive({
 				throw new PreparedZipDownloadError("Prepared ZIP is ready but missing its archive path.");
 			}
 			return galleryPreparedZipArchiveUrl(workerUrl, status.archiveDownloadPath, token);
+		}
+		if (status.status === "canceled") {
+			throw new DOMException("Download canceled.", "AbortError");
 		}
 		if (status.status === "failed" || status.status === "expired") {
 			throw new PreparedZipDownloadError(status.error ?? `Prepared ZIP ${status.status}.`);
@@ -163,6 +190,7 @@ function isPreparedZipStatus(value: unknown): value is PreparedZipStatus {
 		value === "building" ||
 		value === "ready" ||
 		value === "failed" ||
+		value === "canceled" ||
 		value === "expired"
 	);
 }
