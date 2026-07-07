@@ -77,7 +77,19 @@ describe("createGalleryDownloadPlan", () => {
 				workerUrl: "https://gallery-worker.example.com/",
 				maxZipBytes: 1024,
 			}),
-		).toEqual({ type: "tooLarge", totalBytes: 1300, maxBytes: 1024 });
+		).toEqual({
+			type: "tooLarge",
+			totalBytes: 1300,
+			maxBytes: 1024,
+			prepare: {
+				action: "https://gallery-worker.example.com/download/zip/prepare",
+				body: {
+					token: "token-123",
+					galleryName: "client gallery",
+					imageKeys: images.map((img) => img.r2Key),
+				},
+			},
+		});
 	});
 
 	it("uses the extracted default ZIP cap boundary", () => {
@@ -108,6 +120,14 @@ describe("createGalleryDownloadPlan", () => {
 			type: "tooLarge",
 			totalBytes: DEFAULT_MAX_ON_DEMAND_ZIP_BYTES + 1,
 			maxBytes: DEFAULT_MAX_ON_DEMAND_ZIP_BYTES,
+			prepare: {
+				action: "https://gallery-worker.example.com/download/zip/prepare",
+				body: {
+					token: "token-123",
+					galleryName: "client gallery",
+					imageKeys: images.map((img) => img.r2Key),
+				},
+			},
 		});
 	});
 });
