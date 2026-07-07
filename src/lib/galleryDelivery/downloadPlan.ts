@@ -1,5 +1,5 @@
 import { DEFAULT_MAX_ON_DEMAND_ZIP_BYTES } from "./downloadPolicy";
-import { galleryZipDownloadUrl } from "./downloadUrls";
+import { galleryPrepareZipDownloadUrl, galleryZipDownloadUrl } from "./downloadUrls";
 
 export type GalleryDownloadImage = {
 	downloadUrl: string | null;
@@ -11,7 +11,19 @@ export type GalleryDownloadImage = {
 export type GalleryDownloadPlan =
 	| { type: "empty"; message: string }
 	| { type: "single"; image: GalleryDownloadImage }
-	| { type: "tooLarge"; totalBytes: number; maxBytes: number }
+	| {
+			type: "tooLarge";
+			totalBytes: number;
+			maxBytes: number;
+			prepare: {
+				action: string;
+				body: {
+					token: string;
+					galleryName: string;
+					imageKeys: string[];
+				};
+			};
+	  }
 	| {
 			type: "zip";
 			action: string;
@@ -49,7 +61,19 @@ export function createGalleryDownloadPlan({
 
 	const totalBytes = images.reduce((sum, image) => sum + (image.sizeBytes ?? 0), 0);
 	if (totalBytes > maxZipBytes) {
-		return { type: "tooLarge", totalBytes, maxBytes: maxZipBytes };
+		return {
+			type: "tooLarge",
+			totalBytes,
+			maxBytes: maxZipBytes,
+			prepare: {
+				action: galleryPrepareZipDownloadUrl(workerUrl),
+				body: {
+					token,
+					galleryName,
+					imageKeys: images.map((img) => img.r2Key),
+				},
+			},
+		};
 	}
 
 	return {

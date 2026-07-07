@@ -14,7 +14,7 @@ describe("gallery download route decisions", () => {
 		).toBe("folder");
 	});
 
-	it("uses browser ZIP for oversized multi-file downloads when file save is available", () => {
+	it("uses prepared ZIP artifacts for oversized multi-file downloads", () => {
 		expect(
 			chooseGalleryDownloadRoute({
 				chooseLocation: false,
@@ -23,7 +23,7 @@ describe("gallery download route decisions", () => {
 				targetCount: 592,
 				zipFileDownloadsSupported: true,
 			}),
-		).toBe("browserZip");
+		).toBe("preparedZip");
 	});
 
 	it("uses browser ZIP for chosen-location multi-file downloads when only file save is available", () => {
@@ -50,7 +50,7 @@ describe("gallery download route decisions", () => {
 		).toBe("default");
 	});
 
-	it("reports unsupported oversized downloads when no chosen-location primitive is available", () => {
+	it("uses prepared ZIP artifacts for oversized downloads even without browser save primitives", () => {
 		expect(
 			chooseGalleryDownloadRoute({
 				chooseLocation: false,
@@ -59,6 +59,6 @@ describe("gallery download route decisions", () => {
 				targetCount: 592,
 				zipFileDownloadsSupported: false,
 			}),
-		).toBe("unsupportedTooLarge");
+		).toBe("preparedZip");
 	});
 });
