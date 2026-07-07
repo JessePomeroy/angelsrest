@@ -14,6 +14,10 @@ export function galleryPreparedZipStatusUrl(workerUrl: string, requestId: string
 	return `${workerUrl.replace(/\/$/, "")}/download/zip/prepare/${encodeURIComponent(requestId)}?token=${encodeURIComponent(token)}`;
 }
 
+export function galleryPreparedZipCancelUrl(workerUrl: string, requestId: string, token: string) {
+	return `${workerUrl.replace(/\/$/, "")}/download/zip/prepare/${encodeURIComponent(requestId)}/cancel?token=${encodeURIComponent(token)}`;
+}
+
 export function galleryPreparedZipArchiveUrl(
 	workerUrl: string,
 	archiveDownloadPath: string,

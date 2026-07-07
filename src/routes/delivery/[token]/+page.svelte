@@ -20,6 +20,7 @@ import {
 } from "$lib/galleryDelivery/downloadPlan";
 import { chooseGalleryDownloadRoute } from "$lib/galleryDelivery/downloadRoute";
 import {
+	cancelPreparedZipDownload,
 	prepareGalleryZipDownload,
 	triggerPreparedZipArchiveDownload,
 	waitForPreparedZipArchive,
@@ -52,6 +53,8 @@ let zipFileDownloadsSupported = $state(false);
 let chooseDownloadFolder = $state(false);
 let folderDownloadStatus = $state<string | null>(null);
 let folderDownloadAbortController = $state<AbortController | null>(null);
+let preparedZipCancelRequestId = $state<string | null>(null);
+let preparedZipCancelingRequestId = $state<string | null>(null);
 let folderDownloadStatusToken = 0;
 let selectedImageIds = $state(new Set<string>());
 let galleryView = $state<"grid" | "list">("grid");
@@ -244,7 +247,7 @@ async function savePreparedZip(
 	galleryName: string,
 ) {
 	const controller = new AbortController();
-	folderDownloadAbortController = controller;
+	let requestId: string | null = null;
 	setFolderDownloadStatus("preparing ZIP...");
 	try {
 		const initialStatus = await prepareGalleryZipDownload({
@@ -252,6 +255,9 @@ async function savePreparedZip(
 			plan,
 			signal: controller.signal,
 		});
+		requestId = initialStatus.requestId;
+		preparedZipCancelRequestId = requestId;
+		folderDownloadAbortController = controller;
 		const archiveUrl = await waitForPreparedZipArchive({
 			clearTimeout: window.clearTimeout,
 			fetch: window.fetch.bind(window),
@@ -264,6 +270,9 @@ async function savePreparedZip(
 			token: data.token,
 			workerUrl: data.workerUrl,
 		});
+		if (controller.signal.aborted) {
+			throw controller.signal.reason ?? new DOMException("Download canceled.", "AbortError");
+		}
 		triggerPreparedZipArchiveDownload({
 			document,
 			filename: `${galleryName}.zip`,
@@ -275,6 +284,9 @@ async function savePreparedZip(
 		if (folderDownloadAbortController === controller) {
 			folderDownloadAbortController = null;
 		}
+		if (requestId && preparedZipCancelRequestId === requestId) {
+			preparedZipCancelRequestId = null;
+		}
 	}
 }
 
@@ -284,6 +296,28 @@ function isPickerAbort(error: unknown) {
 
 function cancelFolderDownload() {
 	setFolderDownloadStatus("canceling download...");
+	const requestId = preparedZipCancelRequestId;
+	if (requestId) {
+		preparedZipCancelingRequestId = requestId;
+		void cancelPreparedZipDownload({
+				fetch: window.fetch.bind(window),
+				requestId,
+				token: data.token,
+			workerUrl: data.workerUrl,
+			})
+			.catch((error) => {
+				console.warn("prepared ZIP cancellation failed", error);
+				const statusToken = setFolderDownloadStatus(
+					"download stopped locally. server cancel failed.",
+				);
+				clearFolderDownloadStatusLater(statusToken, 5000);
+			})
+			.finally(() => {
+				if (preparedZipCancelingRequestId === requestId) {
+					preparedZipCancelingRequestId = null;
+				}
+			});
+	}
 	folderDownloadAbortController?.abort(new DOMException("Download canceled.", "AbortError"));
 }
 
@@ -410,8 +444,17 @@ let favoriteCount = $derived(
 					<span>choose location</span>
 				</label>
 				{#if folderDownloadInProgress}
-					<button class="download-btn danger" type="button" onclick={cancelFolderDownload}>
-						cancel download
+					<button
+						class="download-btn danger"
+						type="button"
+						onclick={cancelFolderDownload}
+						disabled={preparedZipCancelRequestId !== null &&
+							preparedZipCancelingRequestId === preparedZipCancelRequestId}
+					>
+						{preparedZipCancelRequestId !== null &&
+						preparedZipCancelingRequestId === preparedZipCancelRequestId
+							? "canceling..."
+							: "cancel download"}
 					</button>
 				{/if}
 			</div>
