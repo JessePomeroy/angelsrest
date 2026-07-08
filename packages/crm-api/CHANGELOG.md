@@ -1,5 +1,11 @@
 # @jessepomeroy/crm-api
 
+## 1.3.1
+
+### Patch Changes
+
+- c07bb54: Reject duplicate LumaPrints order numbers in the legacy order lookup query instead of returning the first match.
+
 ## 1.3.0
 
 ### Minor Changes
