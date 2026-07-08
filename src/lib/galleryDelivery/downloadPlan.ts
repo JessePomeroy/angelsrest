@@ -13,7 +13,7 @@ export type GalleryDownloadPlan =
 	| { type: "single"; image: GalleryDownloadImage }
 	| {
 			type: "tooLarge";
-			totalBytes: number;
+			totalBytes: number | null;
 			maxBytes: number;
 			prepare: {
 				action: string;
@@ -64,9 +64,23 @@ export function createGalleryDownloadPlan({
 	}
 
 	const hasUnknownSize = images.some((image) => !isKnownSizeBytes(image.sizeBytes));
-	const totalBytes = hasUnknownSize
-		? maxZipBytes + 1
-		: images.reduce((sum, image) => sum + image.sizeBytes, 0);
+	if (hasUnknownSize) {
+		return {
+			type: "tooLarge",
+			totalBytes: null,
+			maxBytes: maxZipBytes,
+			prepare: {
+				action: galleryPrepareZipDownloadUrl(workerUrl),
+				body: {
+					token,
+					galleryName,
+					imageKeys: images.map((img) => img.r2Key),
+				},
+			},
+		};
+	}
+
+	const totalBytes = images.reduce((sum, image) => sum + image.sizeBytes, 0);
 	if (totalBytes > maxZipBytes) {
 		return {
 			type: "tooLarge",
