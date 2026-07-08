@@ -7,6 +7,7 @@ const mocks = vi.hoisted(() => ({
 	convexMutation: vi.fn(),
 	stripeSessionCreate: vi.fn(),
 	resolveStripeTenantForSite: vi.fn(),
+	env: { WEBHOOK_SECRET: "test-webhook-secret" as string | undefined },
 }));
 
 vi.mock("$lib/server/convexClient", () => ({
@@ -31,7 +32,7 @@ vi.mock("$convex/api", () => ({
 }));
 
 vi.mock("$env/dynamic/private", () => ({
-	env: { WEBHOOK_SECRET: "test-webhook-secret" },
+	env: mocks.env,
 }));
 
 vi.mock("$env/static/public", () => ({
@@ -91,6 +92,7 @@ function expectedFingerprint({
 describe("invoice checkout route", () => {
 	beforeEach(() => {
 		vi.clearAllMocks();
+		mocks.env.WEBHOOK_SECRET = "test-webhook-secret";
 		mocks.stripeSessionCreate.mockResolvedValue({
 			id: "cs_invoice_123",
 			url: "https://stripe.test/invoice",
@@ -248,8 +250,25 @@ describe("invoice checkout route", () => {
 
 		await expect(POST(makeRequest({ token: "portal-token-123" }) as any)).rejects.toMatchObject({
 			status: 500,
+			body: {
+				message: "payment is temporarily unavailable. please contact the business.",
+			},
 		});
 		expect(mocks.stripeSessionCreate).toHaveBeenCalledTimes(1);
+	});
+
+	it("rejects missing webhook auth before creating a Stripe session", async () => {
+		mocks.env.WEBHOOK_SECRET = undefined;
+
+		await expect(POST(makeRequest({ token: "portal-token-123" }) as any)).rejects.toMatchObject({
+			status: 500,
+			body: {
+				message: "payment is temporarily unavailable. please contact the business.",
+			},
+		});
+		expect(mocks.resolveStripeTenantForSite).not.toHaveBeenCalled();
+		expect(mocks.stripeSessionCreate).not.toHaveBeenCalled();
+		expect(mocks.convexMutation).not.toHaveBeenCalled();
 	});
 
 	it("omits the tax line when invoice tax is zero", async () => {

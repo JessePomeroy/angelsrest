@@ -2,7 +2,6 @@ import { createHash } from "node:crypto";
 import { error, json } from "@sveltejs/kit";
 import { api } from "$convex/api";
 import type { Doc, Id } from "$convex/dataModel";
-import { env } from "$env/dynamic/private";
 import { PUBLIC_SITE_URL } from "$env/static/public";
 import { getConvex } from "$lib/server/convexClient";
 import { validatePortalToken } from "$lib/server/portalToken";
@@ -13,6 +12,7 @@ import {
 import { getStripe } from "$lib/server/stripeClient";
 import { buildTenantCheckoutOptions } from "$lib/server/stripeConnect";
 import { resolveStripeTenantForSite } from "$lib/server/stripeTenant";
+import { getWebhookSecret } from "$lib/server/webhookSecret";
 
 const convex = getConvex();
 
@@ -99,6 +99,7 @@ export async function POST({ request }) {
 			taxPercent,
 			taxCents,
 		});
+		const webhookSecret = getWebhookSecret();
 		const tenant = await resolveStripeTenantForSite(siteUrl, {
 			requirePlatformClient: true,
 		});
@@ -148,11 +149,8 @@ export async function POST({ request }) {
 			}),
 		});
 
-		if (!env.WEBHOOK_SECRET) {
-			throw new Error("WEBHOOK_SECRET not configured");
-		}
 		await convex.mutation(api.invoices.recordCheckoutStarted, {
-			webhookSecret: env.WEBHOOK_SECRET,
+			webhookSecret,
 			invoiceId: invoiceId as Id<"invoices">,
 			siteUrl,
 			stripeCheckoutSessionId: session.sessionId,
@@ -164,8 +162,10 @@ export async function POST({ request }) {
 		if (err && typeof err === "object" && "status" in err) {
 			throw err;
 		}
-		const message = err instanceof Error ? err.message : "Failed to create checkout session";
-		console.error("Invoice checkout error:", message);
-		throw error(500, message);
+		console.error(
+			"Invoice checkout error:",
+			err instanceof Error ? err.message : "Failed to create checkout session",
+		);
+		throw error(500, "payment is temporarily unavailable. please contact the business.");
 	}
 }
