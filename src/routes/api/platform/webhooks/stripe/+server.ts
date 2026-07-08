@@ -20,6 +20,14 @@ function getWebhookSecret(): string {
 	return secret;
 }
 
+function stripeExpandableId(
+	value: string | { id?: string } | null | undefined,
+): string | undefined {
+	if (typeof value === "string") return value;
+	if (value && typeof value.id === "string") return value.id;
+	return undefined;
+}
+
 export async function POST({ request }) {
 	const stripe = getStripe();
 	const event = await verifyStripeWebhook(
@@ -56,8 +64,8 @@ export async function POST({ request }) {
 				sessionId: session.id,
 				meta: {
 					siteUrl: session.metadata.siteUrl,
-					stripeCustomerId: session.customer,
-					stripeSubscriptionId: session.subscription,
+					stripeCustomerId: stripeExpandableId(session.customer),
+					stripeSubscriptionId: stripeExpandableId(session.subscription),
 				},
 			});
 			break;
@@ -123,7 +131,7 @@ export async function POST({ request }) {
 				event: "platform_subscription.payment_failed",
 				level: "warn",
 				stage: "webhook",
-				meta: { stripeCustomerId: invoice.customer },
+				meta: { stripeCustomerId: stripeExpandableId(invoice.customer) },
 			});
 			break;
 		}

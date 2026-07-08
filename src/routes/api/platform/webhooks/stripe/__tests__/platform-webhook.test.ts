@@ -104,6 +104,67 @@ describe("platform Stripe webhook", () => {
 		});
 	});
 
+	it("normalizes expanded checkout customers before structured logging", async () => {
+		mockVerifyStripeWebhook.mockResolvedValue(
+			makeEvent("checkout.session.completed", {
+				id: "cs_platform_123",
+				customer: {
+					id: "cus_platform_123",
+					email: "owner@example.com",
+				},
+				subscription: {
+					id: "sub_platform_123",
+					status: "active",
+				},
+				metadata: {
+					type: "platform_subscription",
+					siteUrl: "client.example",
+				},
+			}),
+		);
+
+		const response = await POST(makeRequest());
+
+		expect(response.status).toBe(200);
+		expect(mockLogStructured).toHaveBeenCalledWith({
+			event: "platform_subscription.activated",
+			stage: "webhook",
+			sessionId: "cs_platform_123",
+			meta: {
+				siteUrl: "client.example",
+				stripeCustomerId: "cus_platform_123",
+				stripeSubscriptionId: "sub_platform_123",
+			},
+		});
+	});
+
+	it("logs subscription cancellations with the structured logger", async () => {
+		mockVerifyStripeWebhook.mockResolvedValue(
+			makeEvent("customer.subscription.deleted", {
+				id: "sub_platform_123",
+			}),
+		);
+		mockConvexQuery.mockResolvedValue({ siteUrl: "client.example" });
+
+		const response = await POST(makeRequest());
+
+		expect(response.status).toBe(200);
+		expect(mockConvexMutation).toHaveBeenCalledWith("platform.updateSubscription", {
+			webhookSecret: "test-webhook-secret",
+			siteUrl: "client.example",
+			tier: "basic",
+			subscriptionStatus: "canceled",
+		});
+		expect(mockLogStructured).toHaveBeenCalledWith({
+			event: "platform_subscription.canceled",
+			stage: "webhook",
+			meta: {
+				siteUrl: "client.example",
+				stripeSubscriptionId: "sub_platform_123",
+			},
+		});
+	});
+
 	it("logs subscription updates with the structured logger", async () => {
 		mockVerifyStripeWebhook.mockResolvedValue(
 			makeEvent("customer.subscription.updated", {
@@ -148,6 +209,27 @@ describe("platform Stripe webhook", () => {
 
 		expect(response.status).toBe(200);
 		expect(mockConvexMutation).not.toHaveBeenCalled();
+		expect(mockLogStructured).toHaveBeenCalledWith({
+			event: "platform_subscription.payment_failed",
+			level: "warn",
+			stage: "webhook",
+			meta: { stripeCustomerId: "cus_platform_123" },
+		});
+	});
+
+	it("normalizes expanded invoice customers before failed-payment logging", async () => {
+		mockVerifyStripeWebhook.mockResolvedValue(
+			makeEvent("invoice.payment_failed", {
+				customer: {
+					id: "cus_platform_123",
+					email: "owner@example.com",
+				},
+			}),
+		);
+
+		const response = await POST(makeRequest());
+
+		expect(response.status).toBe(200);
 		expect(mockLogStructured).toHaveBeenCalledWith({
 			event: "platform_subscription.payment_failed",
 			level: "warn",
