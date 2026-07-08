@@ -10,11 +10,13 @@ const images: GalleryDownloadImage[] = [
 		downloadUrl: "https://gallery-worker.example.com/download/a?token=t",
 		filename: "dscf/0001.jpg",
 		r2Key: "angelsrest.online/gallery/original/dscf0001.jpg",
+		sizeBytes: 1000,
 	},
 	{
 		downloadUrl: "https://gallery-worker.example.com/download/b?token=t",
 		filename: "dscf/0001.jpg",
 		r2Key: "angelsrest.online/gallery/original/dscf0001-copy.jpg",
+		sizeBytes: 1000,
 	},
 ];
 
