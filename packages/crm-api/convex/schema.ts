@@ -68,7 +68,19 @@ export default defineSchema({
 		paperSubcategoryId: v.optional(v.string()),
 		trackingNumber: v.optional(v.string()),
 		trackingUrl: v.optional(v.string()),
+		// Legacy claim marker for the one-time shipment email side effect.
+		// New delivery observability lives in `shipmentEmailDeliveryStatus`.
 		shipmentEmailSentAt: v.optional(v.number()),
+		shipmentEmailDeliveryStatus: v.optional(
+			v.union(
+				v.literal("pending"),
+				v.literal("sent"),
+				v.literal("failed"),
+				v.literal("skipped"),
+			),
+		),
+		shipmentEmailDeliveryAttemptedAt: v.optional(v.number()),
+		shipmentEmailDeliveryError: v.optional(v.string()),
 		status: v.union(
 			v.literal("new"),
 			v.literal("printing"),
