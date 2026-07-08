@@ -96,9 +96,10 @@ async function putImageKey(label, key) {
 }
 
 async function seedGalleryObjects() {
+	// The Worker only accepts direct PUTs for originals. Preview/thumb image
+	// routes fall back to the original object, then bulk-delete expands the
+	// original key to all variants.
 	await putImageKey("PUT original through Worker", originalKey);
-	await putImageKey("PUT preview through Worker", previewKey);
-	await putImageKey("PUT thumb through Worker", thumbKey);
 	await putImageKey("PUT control through Worker", controlKey);
 }
 

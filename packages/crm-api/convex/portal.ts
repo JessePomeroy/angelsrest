@@ -1,7 +1,7 @@
 import { v } from "convex/values";
 import { internal } from "./_generated/api";
 import type { Doc, Id } from "./_generated/dataModel";
-import type { MutationCtx } from "./_generated/server";
+import type { MutationCtx, QueryCtx } from "./_generated/server";
 import { mutation, query } from "./_generated/server";
 import { requireDocumentSiteAdmin, requireSiteAdmin } from "./authHelpers";
 import { DEFAULT_LIST_LIMIT } from "./helpers/limits";
@@ -50,6 +50,21 @@ function typedDocumentId<T extends PortalTokenType>(
 	doc: PortalTokenDoc & { type: T },
 ): PortalDocumentIdFor<T> {
 	return doc.documentId as PortalDocumentIdFor<T>;
+}
+
+function normalizePortalDocumentId<T extends PortalTokenType>(
+	ctx: QueryCtx,
+	doc: PortalTokenDoc & { type: T },
+): PortalDocumentIdFor<T> | null {
+	const table =
+		doc.type === "invoice"
+			? "invoices"
+			: doc.type === "quote"
+				? "quotes"
+				: doc.type === "contract"
+					? "contracts"
+					: "galleries";
+	return ctx.db.normalizeId(table, doc.documentId) as PortalDocumentIdFor<T> | null;
 }
 
 /**
@@ -171,13 +186,21 @@ export const getByToken = query({
 		let document: Doc<"invoices" | "quotes" | "contracts" | "galleries"> | null =
 			null;
 		if (tokenDoc.type === "invoice") {
-			document = await ctx.db.get(typedDocumentId(tokenDoc));
+			const documentId = normalizePortalDocumentId(ctx, tokenDoc);
+			if (!documentId) return null;
+			document = await ctx.db.get(documentId);
 		} else if (tokenDoc.type === "quote") {
-			document = await ctx.db.get(typedDocumentId(tokenDoc));
+			const documentId = normalizePortalDocumentId(ctx, tokenDoc);
+			if (!documentId) return null;
+			document = await ctx.db.get(documentId);
 		} else if (tokenDoc.type === "contract") {
-			document = await ctx.db.get(typedDocumentId(tokenDoc));
+			const documentId = normalizePortalDocumentId(ctx, tokenDoc);
+			if (!documentId) return null;
+			document = await ctx.db.get(documentId);
 		} else if (tokenDoc.type === "gallery") {
-			document = await ctx.db.get(typedDocumentId(tokenDoc));
+			const documentId = normalizePortalDocumentId(ctx, tokenDoc);
+			if (!documentId) return null;
+			document = await ctx.db.get(documentId);
 		}
 
 		if (!document) return null;
