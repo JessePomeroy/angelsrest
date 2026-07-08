@@ -1,5 +1,11 @@
 # @jessepomeroy/crm-api
 
+## 1.3.2
+
+### Patch Changes
+
+- 2df47b6: Add shipment email delivery-state recording for LumaPrints webhook consumers.
+
 ## 1.3.1
 
 ### Patch Changes
