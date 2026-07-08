@@ -109,7 +109,7 @@ describe("createGalleryDownloadPlan", () => {
 
 		expect(plan).toEqual({
 			type: "tooLarge",
-			totalBytes: 1025,
+			totalBytes: null,
 			maxBytes: 1024,
 			prepare: {
 				action: "https://gallery-worker.example.com/download/zip/prepare",
@@ -134,7 +134,7 @@ describe("createGalleryDownloadPlan", () => {
 
 		expect(plan.type).toBe("tooLarge");
 		if (plan.type !== "tooLarge") return;
-		expect(plan.totalBytes).toBe(1025);
+		expect(plan.totalBytes).toBeNull();
 		expect(plan.prepare.body.imageKeys).toEqual(images.map((img) => img.r2Key));
 	});
 
