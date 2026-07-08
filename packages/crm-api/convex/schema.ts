@@ -68,6 +68,7 @@ export default defineSchema({
 		paperSubcategoryId: v.optional(v.string()),
 		trackingNumber: v.optional(v.string()),
 		trackingUrl: v.optional(v.string()),
+		shipmentEmailSentAt: v.optional(v.number()),
 		status: v.union(
 			v.literal("new"),
 			v.literal("printing"),

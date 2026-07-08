@@ -19,6 +19,10 @@ const orderStatusValidator = v.union(
 	v.literal("fulfillment_error"),
 );
 
+function canClaimShipmentEmail(status: string) {
+	return status === "new" || status === "printing" || status === "ready";
+}
+
 export const list = query({
 	args: {
 		siteUrl: v.string(),
@@ -193,6 +197,70 @@ export const updateStatus = mutation({
 		if (Object.keys(patch).length > 0) {
 			await ctx.db.patch(orderId, patch);
 		}
+	},
+});
+
+/**
+ * Atomically claim the one-time customer shipment email for a LumaPrints
+ * shipment webhook.
+ *
+ * This intentionally combines lookup, tracking/status patch, and email-claim
+ * into a single Convex transaction. Spokes can then send the email only when
+ * `claimed` is true, avoiding duplicate emails from concurrent webhook
+ * deliveries without pushing the actual Resend side effect into Convex.
+ */
+export const claimShipmentEmailNotification = mutation({
+	args: {
+		siteUrl: v.string(),
+		lumaprintsOrderNumber: v.string(),
+		webhookSecret: v.optional(v.string()),
+		trackingNumber: v.optional(v.string()),
+		trackingUrl: v.optional(v.string()),
+	},
+	handler: async (
+		ctx,
+		{ siteUrl, lumaprintsOrderNumber, webhookSecret, trackingNumber, trackingUrl },
+	) => {
+		const auth = await requireWebhookCallerOrAuth(ctx, webhookSecret);
+		if (auth.via === "auth") {
+			await requireSiteAdmin(ctx, siteUrl);
+		}
+
+		const matchingOrders = await ctx.db
+			.query("orders")
+			.withIndex("by_lumaprintsOrderNumber", (q) =>
+				q.eq("siteUrl", siteUrl).eq("lumaprintsOrderNumber", lumaprintsOrderNumber),
+			)
+			.take(2);
+		if (matchingOrders.length > 1) {
+			throw new Error("Duplicate LumaPrints order number");
+		}
+		const order = matchingOrders[0];
+		if (!order) return null;
+
+		const patch: Record<string, unknown> = {};
+		if (canClaimShipmentEmail(order.status)) patch.status = "shipped";
+		if (trackingNumber !== undefined) patch.trackingNumber = trackingNumber;
+		if (trackingUrl !== undefined) patch.trackingUrl = trackingUrl;
+
+		const shouldClaim =
+			order.shipmentEmailSentAt === undefined && canClaimShipmentEmail(order.status);
+		if (shouldClaim) {
+			patch.shipmentEmailSentAt = Date.now();
+		}
+
+		if (Object.keys(patch).length > 0) {
+			await ctx.db.patch(order._id, patch);
+		}
+
+		return {
+			claimed: shouldClaim,
+			order: {
+				_id: order._id,
+				orderNumber: order.orderNumber,
+				customerEmail: order.customerEmail,
+			},
+		};
 	},
 });
 
