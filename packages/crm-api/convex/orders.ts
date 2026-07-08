@@ -317,12 +317,16 @@ export const getByLumaprintsOrderNumber = query({
 		if (auth.via === "auth") {
 			await requireSiteAdmin(ctx, siteUrl);
 		}
-		const order = await ctx.db
+		const matchingOrders = await ctx.db
 			.query("orders")
 			.withIndex("by_lumaprintsOrderNumber", (q) =>
 				q.eq("siteUrl", siteUrl).eq("lumaprintsOrderNumber", lumaprintsOrderNumber),
 			)
-			.first();
+			.take(2);
+		if (matchingOrders.length > 1) {
+			throw new Error("Duplicate LumaPrints order number");
+		}
+		const order = matchingOrders[0];
 		if (!order) return null;
 		return {
 			_id: order._id,

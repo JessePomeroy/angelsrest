@@ -186,3 +186,49 @@ describe("order shipment email claim", () => {
 		).rejects.toThrow("Not authorized");
 	});
 });
+
+describe("legacy LumaPrints order lookup", () => {
+	test("returns matching order data for a unique LumaPrints order number", async () => {
+		const { t } = await seedLumaPrintsOrder();
+
+		const order = await t.query(api.orders.getByLumaprintsOrderNumber, {
+			siteUrl: SITE_URL,
+			webhookSecret: WEBHOOK_SECRET,
+			lumaprintsOrderNumber: "LP-123",
+		});
+
+		expect(order).toMatchObject({
+			orderNumber: "ORD-001",
+			status: "printing",
+			customerEmail: "customer@example.com",
+		});
+	});
+
+	test("rejects duplicate LumaPrints order numbers instead of first-matching", async () => {
+		const { t } = await seedLumaPrintsOrder();
+		const duplicate = await t.mutation(api.orders.create, {
+			siteUrl: SITE_URL,
+			webhookSecret: WEBHOOK_SECRET,
+			stripeSessionId: "cs_test_lookup_duplicate",
+			customerEmail: "other@example.com",
+			customerName: "Other Customer",
+			items: [{ productName: "Test print", quantity: 1, price: 42 }],
+			total: 42,
+			fulfillmentType: "lumaprints",
+		});
+		await t.mutation(api.orders.updateStatus, {
+			orderId: duplicate._id,
+			webhookSecret: WEBHOOK_SECRET,
+			status: "printing",
+			lumaprintsOrderNumber: "LP-123",
+		});
+
+		await expect(
+			t.query(api.orders.getByLumaprintsOrderNumber, {
+				siteUrl: SITE_URL,
+				webhookSecret: WEBHOOK_SECRET,
+				lumaprintsOrderNumber: "LP-123",
+			}),
+		).rejects.toThrow("Duplicate LumaPrints order number");
+	});
+});
