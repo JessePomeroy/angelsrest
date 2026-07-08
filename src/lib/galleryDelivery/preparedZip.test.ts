@@ -2,8 +2,11 @@ import { describe, expect, it, vi } from "vitest";
 import type { GalleryDownloadPlan } from "./downloadPlan";
 import {
 	cancelPreparedZipDownload,
+	choosePreparedZipArchiveFile,
 	PreparedZipDownloadError,
 	prepareGalleryZipDownload,
+	savePreparedZipArchiveResponseToFile,
+	savePreparedZipArchiveToFile,
 	triggerPreparedZipArchiveDownload,
 	waitForPreparedZipArchive,
 } from "./preparedZip";
@@ -35,6 +38,42 @@ function readyStatus() {
 		processedBytes: 1300,
 		archiveDownloadPath: "/download/zip/prepare/request-123/archive",
 	};
+}
+
+function textFromWrites(writes: unknown[]) {
+	return writes
+		.map((write) => {
+			if (write instanceof ArrayBuffer) return new TextDecoder().decode(write);
+			if (write instanceof Uint8Array) return new TextDecoder().decode(write);
+			if (write instanceof Blob) return "";
+			return String(write);
+		})
+		.join("");
+}
+
+function createSaveFilePickerWindow(
+	response = new Response("zip-bytes", {
+		headers: { "content-length": "9" },
+	}),
+) {
+	const writes: unknown[] = [];
+	const writable = {
+		write: vi.fn(async (chunk: unknown) => {
+			writes.push(chunk);
+		}),
+		close: vi.fn(async () => {}),
+		abort: vi.fn(async () => {}),
+	};
+	const file = {
+		createWritable: vi.fn(async () => writable),
+	};
+	const showSaveFilePicker = vi.fn(async () => file);
+	const win = {
+		fetch: vi.fn(async () => response),
+		showSaveFilePicker,
+	} as unknown as Window & typeof globalThis;
+
+	return { file, showSaveFilePicker, win, writable, writes };
 }
 
 describe("prepared ZIP download client", () => {
@@ -250,5 +289,77 @@ describe("prepared ZIP download client", () => {
 		expect(document.body.appendChild).toHaveBeenCalledWith(anchor);
 		expect(anchor.click).toHaveBeenCalled();
 		expect(anchor.remove).toHaveBeenCalled();
+	});
+
+	it("streams a ready prepared ZIP archive into a user-chosen file", async () => {
+		const { showSaveFilePicker, win, writable, writes } = createSaveFilePickerWindow();
+		const progress: Array<{ savedBytes: number; totalBytes?: number; filename: string }> = [];
+
+		const archiveFile = await choosePreparedZipArchiveFile({
+			filename: "client/gallery",
+			window: win,
+		});
+		await savePreparedZipArchiveResponseToFile({
+			archiveFile,
+			onProgress: (next) => progress.push(next),
+			url: "https://gallery-worker.example.com/download/zip/prepare/request-123/archive?token=t",
+			window: win,
+		});
+
+		expect(showSaveFilePicker).toHaveBeenCalledWith({
+			suggestedName: "client_gallery.zip",
+			types: [{ description: "ZIP archive", accept: { "application/zip": [".zip"] } }],
+		});
+		expect(win.fetch).toHaveBeenCalledWith(
+			"https://gallery-worker.example.com/download/zip/prepare/request-123/archive?token=t",
+			{ signal: undefined },
+		);
+		expect(textFromWrites(writes)).toBe("zip-bytes");
+		expect(writable.close).toHaveBeenCalledTimes(1);
+		expect(writable.abort).not.toHaveBeenCalled();
+		expect(progress.at(-1)).toEqual({
+			savedBytes: 9,
+			totalBytes: 9,
+			filename: "client_gallery.zip",
+		});
+	});
+
+	it("keeps the direct prepared ZIP save wrapper for simple callers", async () => {
+		const { win, writable, writes } = createSaveFilePickerWindow();
+
+		await savePreparedZipArchiveToFile({
+			filename: "client.zip",
+			url: "https://gallery-worker.example.com/archive.zip",
+			window: win,
+		});
+
+		expect(textFromWrites(writes)).toBe("zip-bytes");
+		expect(writable.close).toHaveBeenCalledTimes(1);
+	});
+
+	it("aborts the chosen file when prepared ZIP saving is canceled mid-write", async () => {
+		const controller = new AbortController();
+		const abortError = new DOMException("Download canceled.", "AbortError");
+		const { win, writable } = createSaveFilePickerWindow();
+		const archiveFile = await choosePreparedZipArchiveFile({
+			filename: "client.zip",
+			window: win,
+		});
+		writable.write.mockImplementationOnce(async () => {
+			controller.abort(abortError);
+			await Promise.resolve();
+		});
+
+		await expect(
+			savePreparedZipArchiveResponseToFile({
+				archiveFile,
+				signal: controller.signal,
+				url: "https://gallery-worker.example.com/archive.zip",
+				window: win,
+			}),
+		).rejects.toBe(abortError);
+
+		expect(writable.abort).toHaveBeenCalledWith(abortError);
+		expect(writable.close).not.toHaveBeenCalled();
 	});
 });

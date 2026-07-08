@@ -22,6 +22,38 @@ export type PreparedZipProgress = PreparedZipStatusResponse;
 
 type FetchLike = typeof fetch;
 
+type SaveFilePickerWindow = Window &
+	typeof globalThis & {
+		showSaveFilePicker?: (options?: {
+			suggestedName?: string;
+			types?: Array<{
+				description: string;
+				accept: Record<string, string[]>;
+			}>;
+		}) => Promise<PreparedZipArchiveFileHandle>;
+	};
+
+export type PreparedZipArchiveFileHandle = {
+	createWritable: () => Promise<FileSystemWritableFileStreamLike>;
+};
+
+export type FileSystemWritableFileStreamLike = {
+	write: (data: Blob | BufferSource | string) => Promise<void>;
+	close: () => Promise<void>;
+	abort?: (reason?: unknown) => Promise<void>;
+};
+
+export type PreparedZipArchiveFile = {
+	file: PreparedZipArchiveFileHandle;
+	filename: string;
+};
+
+export type PreparedZipArchiveSaveProgress = {
+	savedBytes: number;
+	totalBytes?: number;
+	filename: string;
+};
+
 export class PreparedZipDownloadError extends Error {
 	constructor(
 		message: string,
@@ -134,6 +166,140 @@ export function triggerPreparedZipArchiveDownload({
 	a.remove();
 }
 
+export async function choosePreparedZipArchiveFile({
+	filename,
+	window,
+}: {
+	filename: string;
+	window: Window & typeof globalThis;
+}): Promise<PreparedZipArchiveFile> {
+	const saveFilePicker = (window as SaveFilePickerWindow).showSaveFilePicker;
+	if (!saveFilePicker) {
+		throw new Error("ZIP file downloads are not supported in this browser.");
+	}
+
+	const safeFilename = preparedZipArchiveFilename(filename);
+	const file = await saveFilePicker({
+		suggestedName: safeFilename,
+		types: [
+			{
+				description: "ZIP archive",
+				accept: { "application/zip": [".zip"] },
+			},
+		],
+	});
+	return { file, filename: safeFilename };
+}
+
+export async function savePreparedZipArchiveToFile({
+	filename,
+	onProgress,
+	signal,
+	url,
+	window,
+}: {
+	filename: string;
+	onProgress?: (progress: PreparedZipArchiveSaveProgress) => void;
+	signal?: AbortSignal;
+	url: string;
+	window: Window & typeof globalThis;
+}) {
+	const archiveFile = await choosePreparedZipArchiveFile({ filename, window });
+	return savePreparedZipArchiveResponseToFile({
+		archiveFile,
+		onProgress,
+		signal,
+		url,
+		window,
+	});
+}
+
+export async function savePreparedZipArchiveResponseToFile({
+	archiveFile,
+	onProgress,
+	signal,
+	url,
+	window,
+}: {
+	archiveFile: PreparedZipArchiveFile;
+	onProgress?: (progress: PreparedZipArchiveSaveProgress) => void;
+	signal?: AbortSignal;
+	url: string;
+	window: Window & typeof globalThis;
+}) {
+	throwIfAborted(signal);
+
+	const response = await raceWithAbort(window.fetch(url, { signal }), signal);
+	if (!response.ok) {
+		throw new PreparedZipDownloadError("Prepared ZIP archive download failed.", response.status);
+	}
+
+	const writable = await archiveFile.file.createWritable();
+	let writableClosed = false;
+	let writableAborted = false;
+	const abortWritable = async (reason: unknown = abortReason(signal)) => {
+		if (writableClosed || writableAborted) return;
+		writableAborted = true;
+		await writable.abort?.(reason);
+	};
+
+	const totalBytes = parseContentLength(response.headers.get("content-length"));
+	let savedBytes = 0;
+
+	try {
+		if (response.body) {
+			const reader = response.body.getReader();
+			const abortReader = async () => {
+				await Promise.allSettled([
+					reader.cancel(abortReason(signal)),
+					abortWritable(abortReason(signal)),
+				]);
+			};
+			try {
+				while (true) {
+					throwIfAborted(signal);
+					const { value, done } = await raceWithAbort(reader.read(), signal, abortReader);
+					if (done) break;
+					throwIfAborted(signal);
+					if (!value) continue;
+					await raceWithAbort(writable.write(writableChunk(value)), signal, () => {
+						return abortWritable(abortReason(signal));
+					});
+					savedBytes += value.byteLength;
+					onProgress?.({ savedBytes, totalBytes, filename: archiveFile.filename });
+				}
+			} finally {
+				reader.releaseLock();
+			}
+		} else {
+			throwIfAborted(signal);
+			const blob = await response.blob();
+			await raceWithAbort(writable.write(blob), signal, () => {
+				return abortWritable(abortReason(signal));
+			});
+			savedBytes = blob.size;
+			onProgress?.({ savedBytes, totalBytes, filename: archiveFile.filename });
+		}
+
+		throwIfAborted(signal);
+		await raceWithAbort(writable.close(), signal, () => {
+			return abortWritable(abortReason(signal));
+		});
+		writableClosed = true;
+	} catch (error) {
+		if (signal?.aborted) {
+			await abortWritable(abortReason(signal)).catch(() => {
+				// Best-effort cleanup; surface the cancellation reason to the UI.
+			});
+			throw abortReason(signal);
+		}
+		await abortWritable(error).catch(() => {
+			// Best-effort cleanup; surface the original download/write failure.
+		});
+		throw error;
+	}
+}
+
 async function readPreparedZipStatusResponse(
 	response: Response,
 ): Promise<PreparedZipStatusResponse> {
@@ -193,6 +359,75 @@ function isPreparedZipStatus(value: unknown): value is PreparedZipStatus {
 		value === "canceled" ||
 		value === "expired"
 	);
+}
+
+function preparedZipArchiveFilename(filename: string) {
+	const safeName = filename
+		.replace(/[\\/:*?"<>|]/g, "_")
+		.split("")
+		.map((char) => (char.charCodeAt(0) < 32 ? "_" : char))
+		.join("")
+		.trim();
+	const base = safeName || "gallery.zip";
+	return base.toLowerCase().endsWith(".zip") ? base : `${base}.zip`;
+}
+
+function parseContentLength(value: string | null) {
+	if (!value) return undefined;
+	const bytes = Number(value);
+	if (!Number.isSafeInteger(bytes) || bytes < 0) return undefined;
+	return bytes;
+}
+
+function writableChunk(chunk: Uint8Array) {
+	return chunk.buffer instanceof ArrayBuffer &&
+		chunk.byteOffset === 0 &&
+		chunk.byteLength === chunk.buffer.byteLength
+		? chunk.buffer
+		: chunk.slice().buffer;
+}
+
+function galleryDownloadAbortError() {
+	return new DOMException("Gallery ZIP download canceled.", "AbortError");
+}
+
+function abortReason(signal?: AbortSignal) {
+	return signal?.reason ?? galleryDownloadAbortError();
+}
+
+function throwIfAborted(signal?: AbortSignal) {
+	if (signal?.aborted) {
+		throw abortReason(signal);
+	}
+}
+
+async function raceWithAbort<T>(
+	operation: Promise<T>,
+	signal: AbortSignal | undefined,
+	onAbort?: () => Promise<void> | void,
+) {
+	if (!signal) return operation;
+	throwIfAborted(signal);
+
+	let abortHandler: (() => void) | undefined;
+	const abort = new Promise<never>((_, reject) => {
+		abortHandler = () => {
+			void Promise.resolve(onAbort?.())
+				.catch(() => {
+					// Surface the user cancellation instead of a best-effort cleanup failure.
+				})
+				.then(() => {
+					reject(abortReason(signal));
+				});
+		};
+		signal.addEventListener("abort", abortHandler, { once: true });
+	});
+
+	try {
+		return await Promise.race([operation, abort]);
+	} finally {
+		if (abortHandler) signal.removeEventListener("abort", abortHandler);
+	}
 }
 
 function abortableDelay({
