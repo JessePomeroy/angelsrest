@@ -109,8 +109,8 @@ describe("invoice checkout route", () => {
 				status: "sent",
 				taxPercent: 10,
 				items: [
-					{ description: "Design work", quantity: 2, unitPrice: 12.5 },
-					{ description: "Print credit", quantity: 1, unitPrice: 4.255 },
+					{ description: "Design work", quantity: 2, unitPrice: 1250 },
+					{ description: "Print credit", quantity: 1, unitPrice: 426 },
 				],
 			},
 		});
@@ -283,7 +283,7 @@ describe("invoice checkout route", () => {
 				_id: "invoice-123",
 				status: "sent",
 				taxPercent: 0,
-				items: [{ description: "Design work", quantity: 1, unitPrice: 12.5 }],
+				items: [{ description: "Design work", quantity: 1, unitPrice: 1250 }],
 			},
 		});
 
@@ -381,7 +381,7 @@ describe("invoice checkout route", () => {
 				_id: "invoice-tenant-123",
 				status: "sent",
 				taxPercent: 0,
-				items: [{ description: "Session balance", quantity: 1, unitPrice: 100 }],
+				items: [{ description: "Session balance", quantity: 1, unitPrice: 10000 }],
 			},
 		});
 		mocks.resolveStripeTenantForSite.mockResolvedValueOnce({
@@ -419,6 +419,63 @@ describe("invoice checkout route", () => {
 				taxCents: 0,
 			}),
 		});
+	});
+
+	it("does not inflate stored cent amounts before sending them to Stripe", async () => {
+		mocks.convexQuery.mockResolvedValueOnce({
+			expired: false,
+			token: {
+				type: "invoice",
+				documentId: "invoice-123",
+				siteUrl: "angelsrest.online",
+			},
+			document: {
+				_id: "invoice-123",
+				status: "sent",
+				taxPercent: 0,
+				items: [{ description: "Smoke invoice", quantity: 1, unitPrice: 50 }],
+			},
+		});
+
+		await POST(makeRequest({ token: "portal-token-123" }) as any);
+
+		const params = mocks.stripeSessionCreate.mock
+			.calls[0]?.[0] as Stripe.Checkout.SessionCreateParams;
+		expect(params.line_items?.[0]).toEqual(
+			expect.objectContaining({
+				quantity: 1,
+				price_data: expect.objectContaining({
+					unit_amount: 50,
+					product_data: expect.objectContaining({ name: "Smoke invoice" }),
+				}),
+			}),
+		);
+	});
+
+	it("rejects invoice totals below Stripe's USD minimum before creating checkout", async () => {
+		mocks.convexQuery.mockResolvedValueOnce({
+			expired: false,
+			token: {
+				type: "invoice",
+				documentId: "invoice-123",
+				siteUrl: "angelsrest.online",
+			},
+			document: {
+				_id: "invoice-123",
+				status: "sent",
+				taxPercent: 0,
+				items: [{ description: "One cent test", quantity: 1, unitPrice: 1 }],
+			},
+		});
+
+		await expect(POST(makeRequest({ token: "portal-token-123" }) as any)).rejects.toMatchObject({
+			status: 400,
+			body: {
+				message: "Invoice total must be at least $0.50 to pay online.",
+			},
+		});
+		expect(mocks.resolveStripeTenantForSite).not.toHaveBeenCalled();
+		expect(mocks.stripeSessionCreate).not.toHaveBeenCalled();
 	});
 
 	it("uses the same idempotency key for different tokens on the same invoice contents", async () => {

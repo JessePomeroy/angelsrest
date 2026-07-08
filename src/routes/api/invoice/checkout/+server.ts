@@ -15,6 +15,7 @@ import { resolveStripeTenantForSite } from "$lib/server/stripeTenant";
 import { getWebhookSecret } from "$lib/server/webhookSecret";
 
 const convex = getConvex();
+const MIN_USD_CHARGE_CENTS = 50;
 
 interface InvoiceCheckoutIdempotencyInput {
 	siteUrl: string;
@@ -71,18 +72,31 @@ export async function POST({ request }) {
 			throw error(400, "Invoice is not payable");
 		}
 
-		// Audit H8: compute in integer cents from the start so cents-
-		// rounding errors don't compound across line items. The Convex
-		// `invoices.items[].unitPrice` schema stores these as dollars
-		// (floats); we round each line's unit price into cents once,
-		// then everything downstream (subtotal, tax, Stripe line_item
-		// unit_amount) stays integer.
+		// Invoice amounts are stored in cents in Convex/admin (`unitPrice: 100`
+		// means $1.00). Stripe also expects `unit_amount` in cents, so do not
+		// multiply again here.
 		const lineItemsCents = invoice.items.map(
-			(item: { description: string; quantity: number; unitPrice: number }) => ({
-				description: item.description,
-				quantity: item.quantity,
-				unitPriceCents: Math.round(item.unitPrice * 100),
-			}),
+			(item: { description: string; quantity: number; unitPrice: number }) => {
+				if (
+					!Number.isFinite(item.quantity) ||
+					item.quantity <= 0 ||
+					!Number.isInteger(item.quantity)
+				) {
+					throw error(400, "Invalid invoice line item quantity");
+				}
+				if (
+					!Number.isFinite(item.unitPrice) ||
+					item.unitPrice < 0 ||
+					!Number.isInteger(item.unitPrice)
+				) {
+					throw error(400, "Invalid invoice line item price");
+				}
+				return {
+					description: item.description,
+					quantity: item.quantity,
+					unitPriceCents: item.unitPrice,
+				};
+			},
 		);
 		const subtotalCents = lineItemsCents.reduce(
 			(sum: number, item: { quantity: number; unitPriceCents: number }) =>
@@ -94,6 +108,10 @@ export async function POST({ request }) {
 			throw error(400, "Invalid invoice tax percentage");
 		}
 		const taxCents = taxPercent > 0 ? Math.round((subtotalCents * taxPercent) / 100) : 0;
+		const totalCents = subtotalCents + taxCents;
+		if (totalCents < MIN_USD_CHARGE_CENTS) {
+			throw error(400, "Invoice total must be at least $0.50 to pay online.");
+		}
 		const checkoutFingerprint = buildInvoiceCheckoutFingerprint({
 			lineItemsCents,
 			taxPercent,
@@ -106,7 +124,7 @@ export async function POST({ request }) {
 		const tenantCheckout = buildTenantCheckoutOptions({
 			tenant,
 			kind: "service",
-			subtotalCents: subtotalCents + taxCents,
+			subtotalCents: totalCents,
 		});
 
 		const lineItems = lineItemsCents.map(
