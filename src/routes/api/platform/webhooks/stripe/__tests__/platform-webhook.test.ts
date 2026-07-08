@@ -126,6 +126,14 @@ describe("platform Stripe webhook", () => {
 		const response = await POST(makeRequest());
 
 		expect(response.status).toBe(200);
+		expect(mockConvexMutation).toHaveBeenCalledWith("platform.updateSubscription", {
+			webhookSecret: "test-webhook-secret",
+			siteUrl: "client.example",
+			tier: "full",
+			subscriptionStatus: "active",
+			stripeCustomerId: "cus_platform_123",
+			stripeSubscriptionId: "sub_platform_123",
+		});
 		expect(mockLogStructured).toHaveBeenCalledWith({
 			event: "platform_subscription.activated",
 			stage: "webhook",

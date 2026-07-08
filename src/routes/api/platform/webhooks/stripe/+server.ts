@@ -55,8 +55,8 @@ export async function POST({ request }) {
 				siteUrl: session.metadata.siteUrl,
 				tier: "full",
 				subscriptionStatus: "active",
-				stripeCustomerId: session.customer as string,
-				stripeSubscriptionId: session.subscription as string,
+				stripeCustomerId: stripeExpandableId(session.customer),
+				stripeSubscriptionId: stripeExpandableId(session.subscription),
 			});
 			logStructured({
 				event: "platform_subscription.activated",
