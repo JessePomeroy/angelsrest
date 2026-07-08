@@ -54,6 +54,18 @@ export type PreparedZipArchiveSaveProgress = {
 	filename: string;
 };
 
+export type PreparedZipDownloadStep =
+	| "chooseArchiveFile"
+	| "preparing"
+	| "savedToFile"
+	| "browserDownloadStarted";
+
+export type PreparedZipDownloadResult = {
+	controller: AbortController;
+	mode: "browser" | "file";
+	requestId: string;
+};
+
 export class PreparedZipDownloadError extends Error {
 	constructor(
 		message: string,
@@ -80,6 +92,103 @@ export async function prepareGalleryZipDownload({
 		signal,
 	});
 	return readPreparedZipStatusResponse(response);
+}
+
+export async function runPreparedZipDownload({
+	controller = new AbortController(),
+	document,
+	galleryName,
+	onController,
+	onProgress,
+	onRequestId,
+	onSaveProgress,
+	onStep,
+	plan,
+	saveToFile,
+	token,
+	window,
+	workerUrl,
+}: {
+	controller?: AbortController;
+	document: Document;
+	galleryName: string;
+	onController?: (controller: AbortController) => void;
+	onProgress?: (status: PreparedZipProgress) => void;
+	onRequestId?: (requestId: string) => void;
+	onSaveProgress?: (progress: PreparedZipArchiveSaveProgress) => void;
+	onStep?: (step: PreparedZipDownloadStep) => void;
+	plan: Extract<GalleryDownloadPlan, { type: "tooLarge" }>;
+	saveToFile: boolean;
+	token: string;
+	window: Window & typeof globalThis;
+	workerUrl: string;
+}): Promise<PreparedZipDownloadResult> {
+	const archiveFilename = `${galleryName}.zip`;
+	onController?.(controller);
+
+	const archiveFile = saveToFile
+		? await choosePreparedZipArchiveFileWithStep({
+				filename: archiveFilename,
+				onStep,
+				window,
+			})
+		: null;
+	throwIfAborted(controller.signal);
+
+	onStep?.("preparing");
+	const initialStatus = await prepareGalleryZipDownload({
+		fetch: window.fetch.bind(window),
+		plan,
+		signal: controller.signal,
+	});
+	onRequestId?.(initialStatus.requestId);
+
+	const archiveUrl = await waitForPreparedZipArchive({
+		clearTimeout: window.clearTimeout,
+		fetch: window.fetch.bind(window),
+		initialStatus,
+		onStatus: onProgress,
+		setTimeout: window.setTimeout,
+		signal: controller.signal,
+		token,
+		workerUrl,
+	});
+	if (controller.signal.aborted) {
+		throw controller.signal.reason ?? new DOMException("Download canceled.", "AbortError");
+	}
+
+	if (archiveFile) {
+		await savePreparedZipArchiveResponseToFile({
+			archiveFile,
+			onProgress: onSaveProgress,
+			signal: controller.signal,
+			url: archiveUrl,
+			window,
+		});
+		onStep?.("savedToFile");
+		return { controller, mode: "file", requestId: initialStatus.requestId };
+	}
+
+	triggerPreparedZipArchiveDownload({
+		document,
+		filename: archiveFilename,
+		url: archiveUrl,
+	});
+	onStep?.("browserDownloadStarted");
+	return { controller, mode: "browser", requestId: initialStatus.requestId };
+}
+
+async function choosePreparedZipArchiveFileWithStep({
+	filename,
+	onStep,
+	window,
+}: {
+	filename: string;
+	onStep?: (step: PreparedZipDownloadStep) => void;
+	window: Window & typeof globalThis;
+}) {
+	onStep?.("chooseArchiveFile");
+	return choosePreparedZipArchiveFile({ filename, window });
 }
 
 export async function cancelPreparedZipDownload({

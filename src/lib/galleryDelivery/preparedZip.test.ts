@@ -5,6 +5,7 @@ import {
 	choosePreparedZipArchiveFile,
 	PreparedZipDownloadError,
 	prepareGalleryZipDownload,
+	runPreparedZipDownload,
 	savePreparedZipArchiveResponseToFile,
 	savePreparedZipArchiveToFile,
 	triggerPreparedZipArchiveDownload,
@@ -74,6 +75,22 @@ function createSaveFilePickerWindow(
 	} as unknown as Window & typeof globalThis;
 
 	return { file, showSaveFilePicker, win, writable, writes };
+}
+
+function createDownloadDocument() {
+	const anchor = {
+		click: vi.fn(),
+		remove: vi.fn(),
+		href: "",
+		download: "",
+		rel: "",
+	};
+	const document = {
+		body: { appendChild: vi.fn() },
+		createElement: vi.fn(() => anchor),
+	} as unknown as Document;
+
+	return { anchor, document };
 }
 
 describe("prepared ZIP download client", () => {
@@ -361,5 +378,84 @@ describe("prepared ZIP download client", () => {
 
 		expect(writable.abort).toHaveBeenCalledWith(abortError);
 		expect(writable.close).not.toHaveBeenCalled();
+	});
+
+	it("chooses a prepared ZIP destination before starting Worker prepare", async () => {
+		const events: string[] = [];
+		const { document } = createDownloadDocument();
+		const { showSaveFilePicker, win, writable, writes } = createSaveFilePickerWindow();
+		win.fetch = vi.fn(async (input: RequestInfo | URL) => {
+			events.push(`fetch:${String(input)}`);
+			if (String(input) === plan.prepare.action) return Response.json(readyStatus());
+			return new Response("zip-bytes", { headers: { "content-length": "9" } });
+		}) as typeof fetch;
+		(showSaveFilePicker as ReturnType<typeof vi.fn>).mockImplementation(async () => {
+			events.push("picker");
+			return { createWritable: vi.fn(async () => writable) };
+		});
+
+		const result = await runPreparedZipDownload({
+			document,
+			galleryName: "client gallery",
+			onController: () => events.push("controller"),
+			onRequestId: (requestId) => events.push(`request:${requestId}`),
+			onStep: (step) => events.push(`step:${step}`),
+			plan,
+			saveToFile: true,
+			token: "token/with?chars",
+			window: win,
+			workerUrl: "https://gallery-worker.example.com/",
+		});
+
+		expect(result).toMatchObject({ mode: "file", requestId: "request-123" });
+		expect(events.slice(0, 4)).toEqual([
+			"controller",
+			"step:chooseArchiveFile",
+			"picker",
+			"step:preparing",
+		]);
+		expect(events.indexOf("picker")).toBeLessThan(events.indexOf(`fetch:${plan.prepare.action}`));
+		expect(textFromWrites(writes)).toBe("zip-bytes");
+	});
+
+	it("exposes local abort while prepared ZIP prepare is in flight", async () => {
+		const { document } = createDownloadDocument();
+		const abortError = new DOMException("Download canceled.", "AbortError");
+		const controllers: AbortController[] = [];
+		const fetch = vi.fn(
+			(_input: RequestInfo | URL, init?: RequestInit) =>
+				new Promise<Response>((_, reject) => {
+					init?.signal?.addEventListener("abort", () => reject(init.signal?.reason), {
+						once: true,
+					});
+				}),
+		);
+		const win = {
+			clearTimeout: vi.fn(),
+			fetch,
+			setTimeout: vi.fn(),
+		} as unknown as Window & typeof globalThis;
+
+		const promise = runPreparedZipDownload({
+			document,
+			galleryName: "client gallery",
+			onController: (controller) => controllers.push(controller),
+			plan,
+			saveToFile: false,
+			token: "token/with?chars",
+			window: win,
+			workerUrl: "https://gallery-worker.example.com/",
+		});
+
+		expect(controllers).toHaveLength(1);
+		expect(fetch).toHaveBeenCalledWith(plan.prepare.action, {
+			method: "POST",
+			headers: { "Content-Type": "application/json" },
+			body: JSON.stringify(plan.prepare.body),
+			signal: controllers[0].signal,
+		});
+
+		controllers[0].abort(abortError);
+		await expect(promise).rejects.toBe(abortError);
 	});
 });
