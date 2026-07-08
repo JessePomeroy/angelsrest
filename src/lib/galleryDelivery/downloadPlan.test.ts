@@ -11,11 +11,13 @@ const images: GalleryDownloadImage[] = [
 		downloadUrl: "https://gallery-worker.example.com/download/a?token=t",
 		filename: "dscf0001.jpg",
 		r2Key: "angelsrest.online/gallery/original/dscf0001.jpg",
+		sizeBytes: 1000,
 	},
 	{
 		downloadUrl: "https://gallery-worker.example.com/download/b?token=t",
 		filename: "dscf0002.raf",
 		r2Key: "angelsrest.online/gallery/original/dscf0002.raf",
+		sizeBytes: 1400,
 	},
 ];
 
@@ -90,6 +92,50 @@ describe("createGalleryDownloadPlan", () => {
 				},
 			},
 		});
+	});
+
+	it("uses prepared ZIP when multi-file size metadata is missing", () => {
+		const plan = createGalleryDownloadPlan({
+			images: [
+				images[0],
+				{ ...images[1], sizeBytes: undefined },
+			] as unknown as GalleryDownloadImage[],
+			emptyMessage: "unused",
+			galleryName: "client gallery",
+			token: "token-123",
+			workerUrl: "https://gallery-worker.example.com/",
+			maxZipBytes: 1024,
+		});
+
+		expect(plan).toEqual({
+			type: "tooLarge",
+			totalBytes: 1025,
+			maxBytes: 1024,
+			prepare: {
+				action: "https://gallery-worker.example.com/download/zip/prepare",
+				body: {
+					token: "token-123",
+					galleryName: "client gallery",
+					imageKeys: images.map((img) => img.r2Key),
+				},
+			},
+		});
+	});
+
+	it("uses prepared ZIP when multi-file size metadata is invalid", () => {
+		const plan = createGalleryDownloadPlan({
+			images: [images[0], { ...images[1], sizeBytes: Number.NaN }],
+			emptyMessage: "unused",
+			galleryName: "client gallery",
+			token: "token-123",
+			workerUrl: "https://gallery-worker.example.com/",
+			maxZipBytes: 1024,
+		});
+
+		expect(plan.type).toBe("tooLarge");
+		if (plan.type !== "tooLarge") return;
+		expect(plan.totalBytes).toBe(1025);
+		expect(plan.prepare.body.imageKeys).toEqual(images.map((img) => img.r2Key));
 	});
 
 	it("uses the extracted default ZIP cap boundary", () => {

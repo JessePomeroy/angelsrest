@@ -5,7 +5,7 @@ export type GalleryDownloadImage = {
 	downloadUrl: string | null;
 	filename: string;
 	r2Key: string;
-	sizeBytes?: number;
+	sizeBytes: number;
 };
 
 export type GalleryDownloadPlan =
@@ -36,6 +36,10 @@ export type GalleryDownloadPlan =
 
 export type GalleryZipDownloadPlan = Extract<GalleryDownloadPlan, { type: "zip" }>;
 
+function isKnownSizeBytes(sizeBytes: number) {
+	return Number.isFinite(sizeBytes) && sizeBytes >= 0;
+}
+
 export function createGalleryDownloadPlan({
 	images,
 	emptyMessage,
@@ -59,7 +63,10 @@ export function createGalleryDownloadPlan({
 		return { type: "single", image: images[0] };
 	}
 
-	const totalBytes = images.reduce((sum, image) => sum + (image.sizeBytes ?? 0), 0);
+	const hasUnknownSize = images.some((image) => !isKnownSizeBytes(image.sizeBytes));
+	const totalBytes = hasUnknownSize
+		? maxZipBytes + 1
+		: images.reduce((sum, image) => sum + image.sizeBytes, 0);
 	if (totalBytes > maxZipBytes) {
 		return {
 			type: "tooLarge",
