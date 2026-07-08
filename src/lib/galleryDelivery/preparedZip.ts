@@ -30,17 +30,22 @@ type SaveFilePickerWindow = Window &
 				description: string;
 				accept: Record<string, string[]>;
 			}>;
-		}) => Promise<FileSystemFileHandleLike>;
+		}) => Promise<PreparedZipArchiveFileHandle>;
 	};
 
-type FileSystemFileHandleLike = {
+export type PreparedZipArchiveFileHandle = {
 	createWritable: () => Promise<FileSystemWritableFileStreamLike>;
 };
 
-type FileSystemWritableFileStreamLike = {
+export type FileSystemWritableFileStreamLike = {
 	write: (data: Blob | BufferSource | string) => Promise<void>;
 	close: () => Promise<void>;
 	abort?: (reason?: unknown) => Promise<void>;
+};
+
+export type PreparedZipArchiveFile = {
+	file: PreparedZipArchiveFileHandle;
+	filename: string;
 };
 
 export type PreparedZipArchiveSaveProgress = {
@@ -161,6 +166,31 @@ export function triggerPreparedZipArchiveDownload({
 	a.remove();
 }
 
+export async function choosePreparedZipArchiveFile({
+	filename,
+	window,
+}: {
+	filename: string;
+	window: Window & typeof globalThis;
+}): Promise<PreparedZipArchiveFile> {
+	const saveFilePicker = (window as SaveFilePickerWindow).showSaveFilePicker;
+	if (!saveFilePicker) {
+		throw new Error("ZIP file downloads are not supported in this browser.");
+	}
+
+	const safeFilename = preparedZipArchiveFilename(filename);
+	const file = await saveFilePicker({
+		suggestedName: safeFilename,
+		types: [
+			{
+				description: "ZIP archive",
+				accept: { "application/zip": [".zip"] },
+			},
+		],
+	});
+	return { file, filename: safeFilename };
+}
+
 export async function savePreparedZipArchiveToFile({
 	filename,
 	onProgress,
@@ -174,22 +204,29 @@ export async function savePreparedZipArchiveToFile({
 	url: string;
 	window: Window & typeof globalThis;
 }) {
-	const saveFilePicker = (window as SaveFilePickerWindow).showSaveFilePicker;
-	if (!saveFilePicker) {
-		throw new Error("ZIP file downloads are not supported in this browser.");
-	}
-
-	throwIfAborted(signal);
-	const safeFilename = preparedZipArchiveFilename(filename);
-	const file = await saveFilePicker({
-		suggestedName: safeFilename,
-		types: [
-			{
-				description: "ZIP archive",
-				accept: { "application/zip": [".zip"] },
-			},
-		],
+	const archiveFile = await choosePreparedZipArchiveFile({ filename, window });
+	return savePreparedZipArchiveResponseToFile({
+		archiveFile,
+		onProgress,
+		signal,
+		url,
+		window,
 	});
+}
+
+export async function savePreparedZipArchiveResponseToFile({
+	archiveFile,
+	onProgress,
+	signal,
+	url,
+	window,
+}: {
+	archiveFile: PreparedZipArchiveFile;
+	onProgress?: (progress: PreparedZipArchiveSaveProgress) => void;
+	signal?: AbortSignal;
+	url: string;
+	window: Window & typeof globalThis;
+}) {
 	throwIfAborted(signal);
 
 	const response = await raceWithAbort(window.fetch(url, { signal }), signal);
@@ -197,7 +234,7 @@ export async function savePreparedZipArchiveToFile({
 		throw new PreparedZipDownloadError("Prepared ZIP archive download failed.", response.status);
 	}
 
-	const writable = await file.createWritable();
+	const writable = await archiveFile.file.createWritable();
 	let writableClosed = false;
 	let writableAborted = false;
 	const abortWritable = async (reason: unknown = abortReason(signal)) => {
@@ -229,7 +266,7 @@ export async function savePreparedZipArchiveToFile({
 						return abortWritable(abortReason(signal));
 					});
 					savedBytes += value.byteLength;
-					onProgress?.({ savedBytes, totalBytes, filename: safeFilename });
+					onProgress?.({ savedBytes, totalBytes, filename: archiveFile.filename });
 				}
 			} finally {
 				reader.releaseLock();
@@ -241,7 +278,7 @@ export async function savePreparedZipArchiveToFile({
 				return abortWritable(abortReason(signal));
 			});
 			savedBytes = blob.size;
-			onProgress?.({ savedBytes, totalBytes, filename: safeFilename });
+			onProgress?.({ savedBytes, totalBytes, filename: archiveFile.filename });
 		}
 
 		throwIfAborted(signal);

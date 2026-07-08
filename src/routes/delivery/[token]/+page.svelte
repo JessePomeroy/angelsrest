@@ -21,8 +21,9 @@ import {
 import { chooseGalleryDownloadRoute } from "$lib/galleryDelivery/downloadRoute";
 import {
 	cancelPreparedZipDownload,
+	choosePreparedZipArchiveFile,
 	prepareGalleryZipDownload,
-	savePreparedZipArchiveToFile,
+	savePreparedZipArchiveResponseToFile,
 	triggerPreparedZipArchiveDownload,
 	waitForPreparedZipArchive,
 	type PreparedZipProgress,
@@ -270,8 +271,17 @@ async function savePreparedZip(
 ) {
 	const controller = new AbortController();
 	let requestId: string | null = null;
-	setFolderDownloadStatus("preparing ZIP...");
+	const archiveFilename = `${galleryName}.zip`;
+	const shouldChooseArchiveFile = chooseDownloadFolder && zipFileDownloadsSupported;
+	setFolderDownloadStatus(shouldChooseArchiveFile ? "choose where to save this ZIP." : "preparing ZIP...");
 	try {
+		const archiveFile = shouldChooseArchiveFile
+			? await choosePreparedZipArchiveFile({
+					filename: archiveFilename,
+					window,
+				})
+			: null;
+		setFolderDownloadStatus("preparing ZIP...");
 		const initialStatus = await prepareGalleryZipDownload({
 			fetch: window.fetch.bind(window),
 			plan,
@@ -295,11 +305,9 @@ async function savePreparedZip(
 		if (controller.signal.aborted) {
 			throw controller.signal.reason ?? new DOMException("Download canceled.", "AbortError");
 		}
-		const archiveFilename = `${galleryName}.zip`;
-		if (chooseDownloadFolder && zipFileDownloadsSupported) {
-			setFolderDownloadStatus("choose where to save this ZIP.");
-			await savePreparedZipArchiveToFile({
-				filename: archiveFilename,
+		if (archiveFile) {
+			await savePreparedZipArchiveResponseToFile({
+				archiveFile,
 				onProgress(progress) {
 					setFolderDownloadStatus(preparedZipSaveProgressMessage(progress));
 				},
@@ -315,7 +323,7 @@ async function savePreparedZip(
 			});
 		}
 		const statusToken = setFolderDownloadStatus(
-			chooseDownloadFolder && zipFileDownloadsSupported ? "ZIP saved." : "ZIP download started.",
+			shouldChooseArchiveFile ? "ZIP saved." : "ZIP download started.",
 		);
 		clearFolderDownloadStatusLater(statusToken, 5000);
 	} finally {

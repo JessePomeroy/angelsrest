@@ -2,8 +2,10 @@ import { describe, expect, it, vi } from "vitest";
 import type { GalleryDownloadPlan } from "./downloadPlan";
 import {
 	cancelPreparedZipDownload,
+	choosePreparedZipArchiveFile,
 	PreparedZipDownloadError,
 	prepareGalleryZipDownload,
+	savePreparedZipArchiveResponseToFile,
 	savePreparedZipArchiveToFile,
 	triggerPreparedZipArchiveDownload,
 	waitForPreparedZipArchive,
@@ -293,8 +295,12 @@ describe("prepared ZIP download client", () => {
 		const { showSaveFilePicker, win, writable, writes } = createSaveFilePickerWindow();
 		const progress: Array<{ savedBytes: number; totalBytes?: number; filename: string }> = [];
 
-		await savePreparedZipArchiveToFile({
+		const archiveFile = await choosePreparedZipArchiveFile({
 			filename: "client/gallery",
+			window: win,
+		});
+		await savePreparedZipArchiveResponseToFile({
+			archiveFile,
 			onProgress: (next) => progress.push(next),
 			url: "https://gallery-worker.example.com/download/zip/prepare/request-123/archive?token=t",
 			window: win,
@@ -318,18 +324,35 @@ describe("prepared ZIP download client", () => {
 		});
 	});
 
+	it("keeps the direct prepared ZIP save wrapper for simple callers", async () => {
+		const { win, writable, writes } = createSaveFilePickerWindow();
+
+		await savePreparedZipArchiveToFile({
+			filename: "client.zip",
+			url: "https://gallery-worker.example.com/archive.zip",
+			window: win,
+		});
+
+		expect(textFromWrites(writes)).toBe("zip-bytes");
+		expect(writable.close).toHaveBeenCalledTimes(1);
+	});
+
 	it("aborts the chosen file when prepared ZIP saving is canceled mid-write", async () => {
 		const controller = new AbortController();
 		const abortError = new DOMException("Download canceled.", "AbortError");
 		const { win, writable } = createSaveFilePickerWindow();
+		const archiveFile = await choosePreparedZipArchiveFile({
+			filename: "client.zip",
+			window: win,
+		});
 		writable.write.mockImplementationOnce(async () => {
 			controller.abort(abortError);
 			await Promise.resolve();
 		});
 
 		await expect(
-			savePreparedZipArchiveToFile({
-				filename: "client.zip",
+			savePreparedZipArchiveResponseToFile({
+				archiveFile,
 				signal: controller.signal,
 				url: "https://gallery-worker.example.com/archive.zip",
 				window: win,
