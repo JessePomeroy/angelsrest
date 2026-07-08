@@ -10,7 +10,9 @@ export default defineConfig({
 	},
 	webServer: {
 		command: "pnpm dev --host 127.0.0.1",
-		url: "http://127.0.0.1:5173",
+		// Probe an API route so CI placeholder Sanity config does not block
+		// readiness through the site-wide layout data fetch.
+		url: "http://127.0.0.1:5173/api/download",
 		reuseExistingServer: !process.env.CI,
 		timeout: 120_000,
 	},

@@ -3,8 +3,6 @@ import { api } from "$convex/api";
 import { SITE_DOMAIN } from "$lib/config/site";
 import { getConvex } from "$lib/server/convexClient";
 
-const convex = getConvex();
-
 /**
  * Shared POST lookup logic.
  *
@@ -25,7 +23,7 @@ async function lookupOrder(email: unknown, orderNumber: unknown) {
 	}
 
 	try {
-		const order = await convex.query(api.orders.lookup, {
+		const order = await getConvex().query(api.orders.lookup, {
 			siteUrl: SITE_DOMAIN,
 			email,
 			orderNumber,

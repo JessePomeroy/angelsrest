@@ -71,3 +71,6 @@ jobs:
         run: |
           pnpm test
           pnpm --filter @jessepomeroy/print-catalog test
+
+      - name: Public server method dispatch smoke
+        run: pnpm test:e2e tests/e2e/orders-lookup-api.spec.ts
