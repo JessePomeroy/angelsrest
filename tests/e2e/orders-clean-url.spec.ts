@@ -15,3 +15,13 @@ test("orders page strips duplicated legacy email query params in the browser", a
 	await expect(page.getByLabel("Order Number")).toHaveValue("ORD-002");
 	await expect(page.getByLabel("Email")).toHaveValue("");
 });
+
+test("orders page preserves non-sensitive query params while stripping legacy email params", async ({
+	page
+}) => {
+	await page.goto("/orders?source=receipt&email=buyer%40example.com&order=ORD-003&view=print");
+
+	await expect(page).toHaveURL("/orders?source=receipt&order=ORD-003&view=print");
+	await expect(page.getByLabel("Order Number")).toHaveValue("ORD-003");
+	await expect(page.getByLabel("Email")).toHaveValue("");
+});
