@@ -273,6 +273,7 @@ async function savePreparedZip(
 	let requestId: string | null = null;
 	const archiveFilename = `${galleryName}.zip`;
 	const shouldChooseArchiveFile = chooseDownloadFolder && zipFileDownloadsSupported;
+	folderDownloadAbortController = controller;
 	setFolderDownloadStatus(shouldChooseArchiveFile ? "choose where to save this ZIP." : "preparing ZIP...");
 	try {
 		const archiveFile = shouldChooseArchiveFile
