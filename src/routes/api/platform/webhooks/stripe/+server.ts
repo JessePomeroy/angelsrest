@@ -4,6 +4,7 @@ import { api } from "$convex/api";
 import { env } from "$env/dynamic/private";
 import { STRIPE_PLATFORM_WEBHOOK_SECRET } from "$env/static/private";
 import { getConvex } from "$lib/server/convexClient";
+import { logStructured } from "$lib/server/logger";
 import { getStripe } from "$lib/server/stripeClient";
 import { verifyStripeWebhook } from "$lib/server/stripeWebhook";
 
@@ -28,7 +29,11 @@ export async function POST({ request }) {
 		"Platform webhook",
 	);
 
-	console.log(`Platform webhook received: ${event.type}`);
+	logStructured({
+		event: "platform_webhook.received",
+		stage: "webhook",
+		meta: { eventType: event.type },
+	});
 
 	const webhookSecret = getWebhookSecret();
 
@@ -45,7 +50,16 @@ export async function POST({ request }) {
 				stripeCustomerId: session.customer as string,
 				stripeSubscriptionId: session.subscription as string,
 			});
-			console.log("Subscription activated for:", session.metadata.siteUrl);
+			logStructured({
+				event: "platform_subscription.activated",
+				stage: "webhook",
+				sessionId: session.id,
+				meta: {
+					siteUrl: session.metadata.siteUrl,
+					stripeCustomerId: session.customer,
+					stripeSubscriptionId: session.subscription,
+				},
+			});
 			break;
 		}
 
@@ -63,7 +77,14 @@ export async function POST({ request }) {
 					tier: "basic",
 					subscriptionStatus: "canceled",
 				});
-				console.log("Subscription canceled for:", client.siteUrl);
+				logStructured({
+					event: "platform_subscription.canceled",
+					stage: "webhook",
+					meta: {
+						siteUrl: client.siteUrl,
+						stripeSubscriptionId: subscription.id,
+					},
+				});
 			}
 			break;
 		}
@@ -83,14 +104,27 @@ export async function POST({ request }) {
 					tier: isActive ? "full" : "basic",
 					subscriptionStatus: subscription.status as "active" | "canceled" | "past_due" | "none",
 				});
-				console.log("Subscription updated for:", client.siteUrl, "→", subscription.status);
+				logStructured({
+					event: "platform_subscription.updated",
+					stage: "webhook",
+					meta: {
+						siteUrl: client.siteUrl,
+						stripeSubscriptionId: subscription.id,
+						subscriptionStatus: subscription.status,
+					},
+				});
 			}
 			break;
 		}
 
 		case "invoice.payment_failed": {
 			const invoice = event.data.object as Stripe.Invoice;
-			console.log("Subscription payment failed for customer:", invoice.customer);
+			logStructured({
+				event: "platform_subscription.payment_failed",
+				level: "warn",
+				stage: "webhook",
+				meta: { stripeCustomerId: invoice.customer },
+			});
 			break;
 		}
 	}
