@@ -53,8 +53,9 @@ name when an unqualified `gallery` would obscure the owner.
 ## Admin architecture
 
 1. Better Auth establishes the browser session.
-2. `src/routes/admin/+layout.server.ts` validates the session before child
-   server loads return sensitive data.
+2. `src/routes/admin/+layout.server.ts` validates the session and checks the
+   authenticated email against the host site's stored `adminEmails` membership
+   before child server loads return sensitive data.
 3. `src/routes/admin/+layout.svelte` authenticates the Convex WebSocket through
    `setupAuth`, driven by the server-validated layout state.
 4. Queries use the authenticated WebSocket.
@@ -62,8 +63,8 @@ name when an unqualified `gallery` would obscure the owner.
    fresh authenticated `ConvexHttpClient` for the request.
 6. Convex functions enforce site or creator membership through
    `requireSiteAdmin`, `requireDocumentSiteAdmin`, or `requireCreator`.
-7. Gallery-worker/R2 handlers are a separate authorization boundary and must
-   enforce the membership required for their side effect.
+7. Shared server handlers, including gallery-worker/R2 operations, call the
+   host's per-request site-admin verifier before performing side effects.
 
 The manual WebSocket setup exists because an older Better Auth adapter could
 pause auth during SvelteKit navigation. Treat transport changes as auth changes

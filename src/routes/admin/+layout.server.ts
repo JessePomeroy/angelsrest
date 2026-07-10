@@ -1,5 +1,6 @@
 import { getTenantAdminLayoutData, type TenantAdminLayoutData } from "@jessepomeroy/admin";
 import { requireAuthWithIdentity } from "$lib/server/adminAuth";
+import { getSiteAdminAccess } from "$lib/server/siteAdminAuthorization";
 
 /**
  * Server-side auth gate for /admin/**. Browser-side `<AuthGuard>` controls
@@ -14,20 +15,29 @@ import { requireAuthWithIdentity } from "$lib/server/adminAuth";
  * session state and skip their Convex fetches when it is not authorized.
  */
 export async function load({ cookies }): Promise<TenantAdminLayoutData> {
-	let identity: { email: string | null } | null = null;
+	let session: Awaited<ReturnType<typeof requireAuthWithIdentity>>;
 	try {
-		({ identity } = await requireAuthWithIdentity(cookies));
+		session = await requireAuthWithIdentity(cookies);
 	} catch {
 		return getTenantAdminLayoutData({ status: "unauthenticated" });
 	}
 
-	// angelsrest is the creator's site — always full tier
-	// when extracted to the admin package, client sites will query Convex:
-	//   const { tier } = await convex.query(api.platform.checkTier, { siteUrl })
+	if (!session.identity.email) {
+		return getTenantAdminLayoutData({ status: "unauthenticated" });
+	}
+
+	const access = await getSiteAdminAccess(session.token, session.identity.email);
+	if (!access?.authorized) {
+		return getTenantAdminLayoutData({
+			status: "unauthorized",
+			email: session.identity.email,
+		});
+	}
+
 	return getTenantAdminLayoutData({
 		status: "authorized",
-		email: identity.email,
-		tier: "full",
+		email: session.identity.email,
+		tier: access.tier,
 		isCreator: true,
 	});
 }
