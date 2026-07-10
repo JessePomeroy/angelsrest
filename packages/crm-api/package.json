@@ -33,6 +33,9 @@
 	"peerDependencies": {
 		"convex": "^1.30.0"
 	},
+	"dependencies": {
+		"stripe": "^20.4.1"
+	},
 	"devDependencies": {
 		"convex": "^1.42.1",
 		"typescript": "^5.9.3"
