@@ -1,8 +1,6 @@
 import { api } from "$convex/api";
 import { SITE_DOMAIN } from "$lib/config/site";
-import { getConvex } from "$lib/server/convexClient";
-
-const convex = getConvex();
+import { createAuthenticatedConvexClient } from "$lib/server/convexClient";
 
 export async function load({ parent, cookies }) {
 	const { adminSession } = await parent();
@@ -20,7 +18,8 @@ export async function load({ parent, cookies }) {
 		// and the query throws — caught below, but spammy in logs.
 		const { getToken } = await import("@mmailaender/convex-better-auth-svelte/sveltekit");
 		const token = getToken(cookies);
-		if (token) convex.setAuth(token);
+		if (!token) throw new Error("Missing admin session token");
+		const convex = createAuthenticatedConvexClient(token);
 		newInquiryCount = await convex.query(api.inquiries.countNew, {
 			siteUrl: SITE_DOMAIN,
 		});

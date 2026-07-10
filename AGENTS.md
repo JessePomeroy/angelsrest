@@ -91,6 +91,8 @@ Admin mutations use HTTP:
 - `AdminConfig.mutationTransport` is `"http"`.
 - The shared package forwards each mutation through a fresh authenticated
   `ConvexHttpClient`, avoiding shared `setAuth` state between requests.
+- Authenticated server loaders use `createAuthenticatedConvexClient(token)`;
+  never call `setAuth` on the cached `getConvex()` client.
 - Queries continue over the authenticated browser WebSocket.
 
 New admin server handlers must authorize the required creator/site membership;
