@@ -1,5 +1,12 @@
 # @jessepomeroy/crm-api
 
+## 1.3.3
+
+### Patch Changes
+
+- 15a5817: Expose durable print-fulfillment recovery state so webhook hosts can resume idempotent Stripe refunds without repeating LumaPrints submission.
+- a675488: Declare the Stripe runtime dependency required by the shipped Convex fee-capture action so clean downstream installations type-check and deploy without relying on a host dependency.
+
 ## 1.3.2
 
 ### Patch Changes
