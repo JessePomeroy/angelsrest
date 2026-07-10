@@ -1,112 +1,149 @@
-# AGENTS.md - angelsrest
+# AGENTS.md — angelsrest
 
-Rules for working on this codebase.
+Canonical rules for working in this repository.
 
-## Project Context
+## Project context
 
-- **Stack:** SvelteKit 5 (runes) + Tailwind CSS v4 + Sanity CMS + Convex + Stripe + LumaPrints + Resend
-- **Frontend:** `~/Documents/work/angelsrest` → https://angelsrest.online
-- **Studio:** `~/Documents/work/angelsrest-studio` → https://angelsrest.sanity.studio
-- **CRM Spec:** `~/Documents/quilt/02_reference/projects/photographer_crm/implementation-spec.md`
-- **User Guide:** `~/Documents/quilt/02_reference/projects/photographer_crm/crm-user-guide.md`
+- **Stack:** SvelteKit 5 (runes), Tailwind CSS v4, Sanity, Convex, Stripe,
+  LumaPrints, Resend, and Cloudflare R2
+- **Frontend and platform hub:** `~/Documents/work/angelsrest` →
+  <https://angelsrest.online>
+- **Sanity Studio:** `~/Documents/work/angelsrest-studio` →
+  <https://angelsrest.sanity.studio>
+- **Current architecture:** `docs/ARCHITECTURE.md`
+- **CRM spec:**
+  `~/Documents/quilt/02_reference/projects/photographer_crm/implementation-spec.md`
+- **User guide:**
+  `~/Documents/quilt/02_reference/projects/photographer_crm/crm-user-guide.md`
 
-## Tech Constraints
+## Technical constraints
 
-- SvelteKit 5 with Svelte 5 runes (`$props()`, `$state()`, `$derived()`, `$effect()`)
-- Tailwind CSS v4, Tailwind-first. Do NOT use Skeleton component classes (`.btn`, `.card`, `.input`, etc.) — use plain Tailwind utilities. The only thing we borrow from Skeleton is its surface color scale, which is exposed as CSS custom properties (`--color-surface-50` … `--color-surface-900`). Reference those via `var(--color-surface-X)` in scoped `<style>` blocks or through Tailwind's arbitrary-property syntax.
-- Use `$env/dynamic/private` for env vars in hooks, not `$env/static/private`
-- Biome linter enforced via husky — run checks before reporting done
-- Admin pages use scoped `<style>` blocks with `--admin-*` CSS custom properties, NOT Tailwind
+- Use Svelte 5 runes (`$props()`, `$state()`, `$derived()`, `$effect()`).
+- Use Tailwind CSS v4 utilities. Do not use Skeleton component classes such as
+  `.btn`, `.card`, or `.input`. The retained Skeleton surface color variables
+  (`--color-surface-50` through `--color-surface-900`) may be referenced from
+  scoped styles or Tailwind arbitrary values.
+- Admin pages use scoped styles and `--admin-*` variables, not Tailwind.
+- Server secrets use `$env/dynamic/private`. Never import private env modules
+  from browser-reachable code.
+- Do not hand-edit generated Convex files.
+- Biome and Svelte checks are enforced. Run relevant checks before reporting a
+  change complete.
 
-## Key Files
+## System boundaries
 
-- **Convex client helper:** `src/lib/server/convexClient.ts` — use `getConvex()` instead of instantiating ConvexHttpClient
-- **Site config:** `src/lib/config/site.ts` — `SITE_DOMAIN`, `SITE_URL`, `SITE_URL_WWW`
-- **Convex path alias:** `$convex` → `./packages/crm-api/convex/_generated` (configured in svelte.config.js)
-- **Stripe webhook:** `src/routes/api/webhooks/stripe/+server.ts`
-- **Sanity client:** `src/lib/sanity/client.ts` (read), `src/lib/sanity/adminClient.ts` (write)
-- **Sanity preview client:** `src/lib/sanity/previewClient.ts` (draft-aware)
-- **LumaPrints client:** `src/lib/lumaprints/client.ts`
-- **Server hooks:** `src/hooks.server.ts` (admin auth + preview mode)
+- **Sanity owns editorial content:** public portfolio galleries, products,
+  collections, blog, about, site settings, and contact-page copy.
+- **Convex owns operations:** orders, inquiries, CRM clients, invoices, quotes,
+  contracts, email templates, platform clients/messages, and private delivery
+  galleries.
+- **SvelteKit owns transport and composition:** SSR/load functions, public and
+  admin HTTP routes, webhook verification, and external-client composition.
+- **External systems:** Stripe, LumaPrints, Resend, Sanity, Convex, and the
+  gallery worker are network boundaries. Make their failure and retry behavior
+  explicit; avoid speculative interfaces around pure in-process code.
 
-## Data Layer
+There are two gallery domains:
 
-- **Sanity:** Content only — galleries, products, collections, about, blog, inquiries, siteSettings, contactPage
-- **Convex:** Operations — orders, CRM clients, invoices, quotes, contracts, email templates, platform clients, messages
+- **Portfolio galleries** are public Sanity content under `/gallery` and the
+  admin portfolio tab.
+- **Delivery galleries** are private Convex records and R2 objects under
+  `/delivery/[token]` and the admin delivery tab.
 
-## Admin Dashboard
+Use these full names in new code and documentation when the distinction matters.
 
-All admin pages at `/admin/*` protected by HTTP Basic Auth.
+## Key files
 
-| Page | Route | Data Source |
-|------|-------|-------------|
-| Dashboard | `/admin` | Convex orders |
-| Orders | `/admin/orders` | Convex orders |
-| Inquiries | `/admin/inquiries` | Sanity inquiries |
-| Galleries | `/admin/galleries` | Sanity galleries |
-| Clients (CRM) | `/admin/crm` | Convex photographyClients |
-| Invoicing | `/admin/invoicing` | Convex invoices |
-| Quotes | `/admin/quotes` | Convex quotes + quotePresets |
-| Contracts | `/admin/contracts` | Convex contracts + contractTemplates |
-| Email Templates | `/admin/emails` | Convex emailTemplates |
-| Messages | `/admin/messages` | Convex platformMessages |
-| Platform Clients | `/admin/platform` | Convex platformClients |
+- Convex client helper: `src/lib/server/convexClient.ts`
+- Convex schema/functions: `packages/crm-api/convex/`
+- Site config: `src/lib/config/site.ts`
+- Sanity published client: `src/lib/sanity/client.ts`
+- Sanity preview client: `src/lib/sanity/client.server.ts`
+- Commerce webhook: `src/routes/api/webhooks/stripe/+server.ts`
+- Webhook orchestration: `src/lib/server/orderIntake.ts`
+- Print fulfillment: `src/lib/server/printFulfillment.ts`
+- LumaPrints client/payload builder: `src/lib/server/lumaprints.ts`
+- Admin host config: `src/lib/config/admin.ts` and `admin.server.ts`
+- Server hooks: `src/hooks.server.ts` (security headers, preview state, errors)
 
-## Admin Mutation Transport
+The `$convex` alias points to
+`packages/crm-api/convex/_generated` through `svelte.config.js`.
 
-Admin mutations go through **HTTP**, not the Convex WebSocket. Critical context before editing anything admin-related:
+## Admin authentication and transport
 
-- **Browser Convex WebSocket auth is wired manually with official `convex-svelte`.** `src/routes/admin/+layout.svelte` calls `setupConvex(PUBLIC_CONVEX_URL)` and then `setupAuth(...)` from server-validated layout state. This sidesteps the old `createSvelteAuthClient` session-pause trap during SvelteKit `goto()` navigation while still allowing authenticated admin queries.
-- **Admin mutations route through `src/routes/api/admin/mutation/+server.ts`.** This is a universal proxy: accepts `POST { name, args }`, validates the Better Auth cookie via `requireAuth(cookies)`, and forwards on a **fresh** `ConvexHttpClient` (per-request instance — NOT the `getConvex()` singleton — to avoid `setAuth` races between concurrent requests).
-- **The routing is driven by `AdminConfig.mutationTransport: "http"`** set in `src/lib/config/admin.ts`. The `@jessepomeroy/admin` package's `useAdminClient()` is a Proxy-wrapped `ConvexClient` that intercepts `.mutation()` and POSTs to `/api/admin/mutation` when transport is `"http"`. Queries pass through untouched.
-- **Do NOT re-add auth to the browser WebSocket** (via `createSvelteAuthClient` or similar) without reading `~/Documents/quilt/00_inbox/2026-04-23 PR candidate — convex-better-auth-svelte pause bug.md`. The pause bug is a known trap.
-- If you add a new admin mutation that requires auth, you do **not** need a new `+server.ts` — the universal proxy handles any `api.<module>.<fn>` by name. Just call it like any other: `await client.mutation(api.foo.bar, args)`.
+All `/admin/*` pages use Better Auth. `src/routes/admin/+layout.server.ts`
+validates the session before child loaders fetch sensitive data, and the shared
+`AuthGuard` handles login/session UI.
 
-## Admin Design System
+The browser Convex WebSocket is authenticated manually in
+`src/routes/admin/+layout.svelte` with `setupConvex` and `setupAuth`. This avoids
+the historical `createSvelteAuthClient` session-pause race during SvelteKit
+navigation. Do not replace the manual setup without explicitly reproducing and
+testing navigation/session behavior.
 
-- Fonts: "Chillax" for headings, "Synonym" for body
-- All text lowercase
-- No card-style bordered boxes — use whitespace and typography
-- Status indicators: small colored dots + text, not bordered pill badges
-- Tables: subtle borders, generous padding, no card wrapper
-- Modals: backdrop-filter: blur(8px) with rgba(0,0,0,0.4) overlay
-- CSS custom properties defined in `+layout.svelte`: `--admin-bg`, `--admin-surface`, `--admin-heading`, `--admin-text`, `--admin-text-muted`, `--admin-text-subtle`, `--admin-border`, `--admin-border-strong`, `--admin-accent`, `--status-*`
+Admin mutations use HTTP:
 
-## Preview / Visual Editing
+- `src/routes/api/admin/mutation/+server.ts` validates the Better Auth cookie.
+- `AdminConfig.mutationTransport` is `"http"`.
+- The shared package forwards each mutation through a fresh authenticated
+  `ConvexHttpClient`, avoiding shared `setAuth` state between requests.
+- Queries continue over the authenticated browser WebSocket.
 
-- **Enable:** `GET /api/draft/enable` — validates Sanity preview secret, sets cookie
-- **Disable:** `GET /api/draft/disable` — clears cookie
-- **Env var:** `SANITY_PREVIEW_TOKEN` (Viewer role token from Sanity)
+New admin server handlers must authorize the required creator/site membership;
+token validity alone is authentication, not authorization.
 
-## Running Checks
+| Admin area | Primary source |
+|---|---|
+| Dashboard, orders | Convex orders |
+| Inquiries | Convex inquiries |
+| Galleries: portfolio tab | Sanity galleries |
+| Galleries: delivery tab | Convex galleries + gallery worker/R2 |
+| CRM, board | Convex photography clients/kanban |
+| Invoices, quotes, contracts | Convex |
+| Email templates, messages, platform | Convex |
+
+## Preview and visual editing
+
+- Enable: `GET /api/draft/enable` validates the Sanity preview secret and sets
+  the preview cookie.
+- Disable: `GET /api/draft/disable` clears it.
+- `SANITY_PREVIEW_TOKEN` must be a viewer token that can read drafts.
+- Keep preview-token access in `.server.ts` modules.
+
+## Checks
 
 ```bash
-cd ~/Documents/work/angelsrest
-pnpm biome check --write src/
-npx svelte-check
-pnpm build
+pnpm lint
+pnpm check
+pnpm test
+pnpm --filter @jessepomeroy/print-catalog check
+pnpm --filter @jessepomeroy/print-catalog test
+pnpm --filter @jessepomeroy/crm-api exec tsc -p tsconfig.json --noEmit
 ```
 
-## Branching
+Use `pnpm build` when production bundling is relevant. Do not run Biome with
+`--write` during an audit or other read-only task.
 
-- Create a branch: `git checkout -b feature/name`
-- Commit and push
-- Tell Jesse to review
-- Don't push to main without permission
+## Git workflow
 
-## Platform Context
+- Work on a focused branch unless the user specifies another workflow.
+- Do not push to `main` without explicit permission.
+- Do not add AI-assistant co-author trailers.
+- Preserve unrelated user changes in a dirty worktree.
 
-This site is the **hub** of the photographer CRM platform:
-- **angelsrest** = personal site + platform management server
-- **angelsrest-studio** = Sanity CMS (content only)
-- **Convex** = operational backend (orders, CRM, messages, tiers)
-- **admin-dashboard** = shared admin package (to be extracted when stable)
-- **reflecting-pool** = first client template
+## Platform context
+
+- **angelsrest** is the public site and platform hub.
+- **angelsrest-studio** owns Sanity schemas/editorial workflows.
+- **packages/crm-api** owns the shared Convex schema/functions and publishable
+  generated API surface.
+- **@jessepomeroy/admin** is an installed shared admin package.
+- **reflecting-pool** is a spoke/client site that consumes the shared platform.
 
 <!-- convex-ai-start -->
-This project uses [Convex](https://convex.dev) as its backend.
+This project uses [Convex](https://convex.dev) as its operational backend.
 
-When working on Convex code, **always read `packages/crm-api/convex/_generated/ai/guidelines.md` first** for important guidelines on how to correctly use Convex APIs and patterns. The file contains rules that override what you may have learned about Convex from training data.
-
-Convex agent skills for common tasks can be installed by running `npx convex ai-files install`.
+Before inspecting or editing Convex code, read
+`packages/crm-api/convex/_generated/ai/guidelines.md` completely. Its rules
+override assumptions learned elsewhere.
 <!-- convex-ai-end -->

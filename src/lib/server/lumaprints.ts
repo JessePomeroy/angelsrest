@@ -106,9 +106,9 @@ export async function getShipping(orderNumber: string): Promise<LumaPrintsShipme
  * `{ valid: false, message, recommendedWidth, recommendedHeight, expectedAspectRatio }`
  * when the image will be rejected (low resolution, wrong aspect ratio, etc.).
  *
- * Throws `LumaPrintsError` for network/server errors; these are transient
- * and should NOT block checkout (degrade gracefully — return { valid: true }
- * from the callsite if the API is down so checkout stays usable).
+ * Throws `LumaPrintsError` for network/server errors. The current checkout
+ * route converts this to `{ valid: false, degraded: true }` so unverified
+ * images do not proceed to payment.
  */
 export async function checkImageConfig(input: {
 	imageUrl: string;
@@ -159,9 +159,8 @@ export interface LumaPrintsShippingMethod {
  * Returns all available shipping methods with their costs in USD.
  *
  * Called at checkout to show the customer real-time shipping costs before
- * they pay. If the call fails (network issue, LumaPrints 5xx), the caller
- * should fall back to a flat-rate shipping configured elsewhere — the
- * checkout flow must never be blocked on LumaPrints availability.
+ * payment. If the upstream call fails, the route returns HTTP 503 and asks the
+ * customer to retry rather than inventing a fallback price.
  *
  * Items use LumaPrints subcategoryIds and physical dimensions in inches.
  * Options arrays (e.g. `[39]` for No Bleed) match the ones used in
@@ -225,8 +224,8 @@ export async function getShippingPrice(input: {
  *   `?max=8000&q=100` for maximum print quality. The default Sanity CDN
  *   URL serves a ~q80 compressed version that's noticeably below print
  *   quality, and the previous behavior here (just stripping params via
- *   cleanImageUrl) inherited that compression. See lumaprintsUrls.ts and
- *   memory `project_print_quality_q100` for the full decision context.
+ *   cleanImageUrl) inherited that compression. See lumaprintsUrls.ts for
+ *   the shared URL rule.
  * - ALWAYS uses option 39 (No Bleed) — never option 36, which triggers
  *   aspect-ratio validation errors. See LUMAPRINTS.md "Known Issues".
  */

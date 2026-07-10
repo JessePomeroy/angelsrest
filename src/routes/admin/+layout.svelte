@@ -79,10 +79,8 @@ $effect(() => {
 // `authClient.useSession()` and feeds its output to `setupAuth`. On
 // SvelteKit client-side nav, that subscription emits a transient
 // `{data: null}` which the adapter races against a fixed 150ms timer;
-// when `better-auth@1.5.3` re-settles past that window, the adapter
-// calls `clearAuth()` and the WebSocket stays paused until a full
-// reload. See
-// `~/Documents/quilt/00_inbox/2026-04-23 PR candidate — convex-better-auth-svelte pause bug.md`.
+// if the session re-settles past that window, the adapter calls
+// `clearAuth()` and the WebSocket stays paused until a full reload.
 //
 // The fix here: call the lower-level `setupAuth` primitive directly,
 // driven by `data.adminSession.status` from `+layout.server.ts` instead

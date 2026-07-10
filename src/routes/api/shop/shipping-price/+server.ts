@@ -1,17 +1,14 @@
 /**
  * Checkout-time shipping price endpoint.
  *
- * Called by the shop configurator (PR #4) after the customer enters a
- * shipping address. Calls LumaPrints' `/pricing/shipping` endpoint to
+ * Called by the shop configurator after the customer enters a shipping
+ * address. Calls LumaPrints' `/pricing/shipping` endpoint to
  * get real-time shipping method options + costs for the specific basket
  * and destination, then returns them to the frontend.
  *
  * Returns `{ shippingMethods: [{ carrier, method, cost }, ...] }` when
- * LumaPrints responds. If LumaPrints is down or errors, returns a
- * graceful fallback so checkout isn't blocked — frontend can offer a
- * single flat-rate shipping option instead.
- *
- * Added in audit #23 PR #3.
+ * LumaPrints responds. If the upstream quote is unavailable, returns HTTP 503
+ * so the frontend can show an honest retry state instead of inventing a price.
  */
 
 import { error, json } from "@sveltejs/kit";
@@ -85,10 +82,8 @@ export const POST: RequestHandler = async ({ request }) => {
 		});
 		return json(result);
 	} catch (err) {
-		// Audit H38: do not silently fall back to $8.95 — that swallows the
-		// pricing delta and the customer gets charged whatever Stripe quotes
-		// without a real upstream estimate. Surface a 503 so the UI can show
-		// an honest "couldn't quote" state and let the customer retry.
+		// Do not silently fall back to a flat rate: that hides the pricing delta.
+		// Surface a 503 so the customer can retry an honest upstream quote.
 		logStructured({
 			event: "shipping_price.upstream_failed",
 			stage: "lumaprints_shipping",
