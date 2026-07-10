@@ -11,6 +11,10 @@ import type { Resend } from "resend";
 import type Stripe from "stripe";
 import { api } from "$convex/api";
 import type { Id } from "$convex/dataModel";
+import {
+	ANGELS_REST_COMMERCE_PROFILE,
+	type CommerceNotificationProfile,
+} from "$lib/server/commerceTenant";
 import { logStructured } from "$lib/server/logger";
 import {
 	handlePermanentFulfillmentFailure,
@@ -57,12 +61,14 @@ export async function createOrderInConvex(
 		lineItems,
 		siteUrl,
 		stripeRequestOptions,
+		notificationProfile = ANGELS_REST_COMMERCE_PROFILE,
 	}: {
 		session: Stripe.Checkout.Session;
 		shippingDetails: ShippingDetails;
 		lineItems: Stripe.LineItem[];
 		siteUrl: string;
 		stripeRequestOptions?: Stripe.RequestOptions;
+		notificationProfile?: CommerceNotificationProfile;
 	},
 ): Promise<CreatedOrderResult> {
 	// Create order in Convex (idempotent — returns existing order if session already processed)
@@ -195,6 +201,7 @@ export async function createOrderInConvex(
 				session,
 				stripeRequestOptions,
 				customerEmail: session.customer_details?.email ?? "unknown",
+				notificationProfile,
 			},
 		);
 		return {
@@ -228,6 +235,7 @@ export async function createOrderInConvex(
 				session,
 				stripeRequestOptions,
 				customerEmail: session.customer_details?.email ?? "unknown",
+				notificationProfile,
 			},
 		);
 	}
