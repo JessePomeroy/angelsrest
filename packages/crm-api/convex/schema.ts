@@ -88,16 +88,22 @@ export default defineSchema({
 			v.literal("shipped"),
 			v.literal("delivered"),
 			v.literal("refunded"),
-				// Permanent fulfillment failure. `fulfillmentError` records the
-				// upstream problem; `stripeRefundId` is present only when a refund
-				// was successfully created. Do not infer refund/email delivery from
-				// this status alone.
-				v.literal("fulfillment_error"),
-			),
-			// Human-readable error from the failed LumaPrints submission.
-			fulfillmentError: v.optional(v.string()),
-			// Stripe refund ID when automated refund creation succeeded.
-			stripeRefundId: v.optional(v.string()),
+			// Permanent fulfillment failure. `fulfillmentError` records the
+			// upstream problem; `stripeRefundId` is present only when a refund
+			// was successfully created. Do not infer refund/email delivery from
+			// this status alone.
+			v.literal("fulfillment_error"),
+		),
+		// Human-readable error from the failed LumaPrints submission.
+		fulfillmentError: v.optional(v.string()),
+		// Stripe refund ID when automated refund creation succeeded.
+		stripeRefundId: v.optional(v.string()),
+		// Durable checkpoint for retry-safe permanent fulfillment recovery.
+		// `refund_pending` is written before Stripe is called; `refunded` is
+		// written only after the refund ID is durable on this order.
+		fulfillmentRecoveryStatus: v.optional(
+			v.union(v.literal("refund_pending"), v.literal("refunded")),
+		),
 		notes: v.optional(v.string()),
 	})
 		.index("by_siteUrl", ["siteUrl"])

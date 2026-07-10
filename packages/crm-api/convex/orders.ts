@@ -25,6 +25,11 @@ const shipmentEmailDeliveryStatusValidator = v.union(
 	v.literal("skipped"),
 );
 
+const fulfillmentRecoveryStatusValidator = v.union(
+	v.literal("refund_pending"),
+	v.literal("refunded"),
+);
+
 function canClaimShipmentEmail(status: string) {
 	return status === "new" || status === "printing" || status === "ready";
 }
@@ -133,6 +138,9 @@ export const create = mutation({
 				lumaprintsOrderNumber: existing.lumaprintsOrderNumber,
 				status: existing.status,
 				stripeFees: existing.stripeFees,
+				fulfillmentError: existing.fulfillmentError,
+				stripeRefundId: existing.stripeRefundId,
+				fulfillmentRecoveryStatus: existing.fulfillmentRecoveryStatus,
 			};
 		}
 
@@ -173,6 +181,9 @@ export const create = mutation({
 			lumaprintsOrderNumber: undefined,
 			status: "new" as const,
 			stripeFees: undefined,
+			fulfillmentError: undefined,
+			stripeRefundId: undefined,
+			fulfillmentRecoveryStatus: undefined,
 		};
 	},
 });
@@ -198,6 +209,7 @@ export const updateStatus = mutation({
 		stripePaymentIntentId: v.optional(v.string()),
 		fulfillmentError: v.optional(v.string()),
 		stripeRefundId: v.optional(v.string()),
+		fulfillmentRecoveryStatus: v.optional(fulfillmentRecoveryStatusValidator),
 	},
 	handler: async (ctx, { orderId, webhookSecret, ...updates }) => {
 		const auth = await requireWebhookCallerOrAuth(ctx, webhookSecret);

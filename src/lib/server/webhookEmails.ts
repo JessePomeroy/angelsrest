@@ -149,6 +149,37 @@ https://angelsrest.online
 	});
 }
 
+/** Notify a customer only after a permanent fulfillment failure is durably refunded. */
+export async function sendCustomerFulfillmentFailure(
+	resend: Resend,
+	{
+		customerEmail,
+		orderNumber,
+		stripeRefundId,
+		total,
+	}: {
+		customerEmail: string;
+		orderNumber: string;
+		stripeRefundId: string;
+		total: number;
+	},
+) {
+	await resend.emails.send({
+		from: "Angel's Rest <orders@angelsrest.online>",
+		to: [customerEmail],
+		subject: `Order ${orderNumber} could not be fulfilled — refund issued`,
+		text: `
+We could not submit order ${orderNumber} for printing, so we issued a full refund of ${formatCents(total)} to the original payment method.
+
+Stripe refund ID: ${stripeRefundId}
+
+The refund has been created successfully. Your bank determines when the credit appears on your statement.
+
+We are sorry we could not complete this order. Reply to this email if you need any help.
+		`.trim(),
+	});
+}
+
 /** Send order notification email to admin */
 export async function sendAdminNotification(
 	resend: Resend,
@@ -249,14 +280,12 @@ export async function sendFulfillmentFailureAlert(
 		orderNumber: string;
 		customerEmail: string;
 		errorSummary: string;
-		stripeRefundId: string | undefined;
+		stripeRefundId: string;
 		total: number;
 	},
 ) {
 	const adminEmail = env.NOTIFICATION_EMAIL || ADMIN_EMAIL;
-	const refundLine = stripeRefundId
-		? `✅ Customer auto-refunded via Stripe (refund ID: ${stripeRefundId})`
-		: "⚠️ Refund FAILED — manual intervention required";
+	const refundLine = `Customer auto-refunded via Stripe (refund ID: ${stripeRefundId})`;
 
 	await resend.emails.send({
 		from: "Angel's Rest Alerts <orders@angelsrest.online>",
@@ -274,7 +303,7 @@ Error details:
 ${errorSummary}
 
 The order has been marked fulfillment_error in the admin dashboard.
-No action required unless the refund failed above.
+The refund ID and terminal recovery state are stored on the order.
 
 Admin dashboard: https://${SITE_DOMAIN}/admin/orders
 `.trim(),
