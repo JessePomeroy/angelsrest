@@ -36,6 +36,7 @@ vi.mock("$convex/api", () => ({
 }));
 
 vi.mock("$lib/config/site", () => ({
+	ADMIN_EMAIL: "admin@example.com",
 	SITE_DOMAIN: "angelsrest.online",
 }));
 

@@ -50,4 +50,31 @@ describe("webhook customer emails", () => {
 		expect(payload.text).not.toContain("buyer@example.com");
 		expect(payload.text).not.toContain("buyer%40example.com");
 	});
+
+	it("uses the resolved tenant identity for connected-account customer copy", async () => {
+		const mockResend = resend();
+
+		await sendCustomerConfirmation(mockResend as any, {
+			session: baseSession,
+			customerEmail: "buyer@example.com",
+			shippingDetails,
+			lineItems: [],
+			orderNumber: "ORD-002",
+			notificationProfile: {
+				siteName: "Reflecting Pool",
+				siteUrl: "zippymiggy.com",
+				adminEmail: "maggie@example.com",
+			},
+		});
+
+		const payload = mockResend.emails.send.mock.calls[0]?.[0] as
+			| { from: string; text: string }
+			| undefined;
+		if (!payload) throw new Error("expected tenant confirmation email payload");
+		expect(payload.from).toBe("Reflecting Pool via Angel's Rest <orders@angelsrest.online>");
+		expect(payload.text).toContain(
+			"View your order status anytime: https://zippymiggy.com/orders?order=ORD-002",
+		);
+		expect(payload.text).toContain("Thank you for supporting Reflecting Pool!");
+	});
 });

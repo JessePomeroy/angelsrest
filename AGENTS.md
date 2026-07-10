@@ -39,6 +39,10 @@ Canonical rules for working in this repository.
   galleries.
 - **SvelteKit owns transport and composition:** SSR/load functions, public and
   admin HTTP routes, webhook verification, and external-client composition.
+- **The hub owns commerce webhooks:** this repository's commerce webhook is the
+  single order-intake owner for Angels Rest and Stripe Connect client sites.
+  Client spokes may request Checkout sessions through the signed bridge, but
+  must not run a second `checkout.session.completed` order/fulfillment path.
 - **External systems:** Stripe, LumaPrints, Resend, Sanity, Convex, and the
   gallery worker are network boundaries. Make their failure and retry behavior
   explicit; avoid speculative interfaces around pure in-process code.

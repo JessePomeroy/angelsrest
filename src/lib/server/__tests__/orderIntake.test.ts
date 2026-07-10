@@ -220,7 +220,12 @@ describe("processStripeWebhookEvent", () => {
 			...session,
 			line_items: { data: [makeLineItem()] },
 		});
-		convex.query.mockResolvedValue({ siteUrl: "zippymiggy.com" });
+		convex.query.mockResolvedValue({
+			siteUrl: "zippymiggy.com",
+			name: "Reflecting Pool",
+			email: "owner@example.com",
+			adminEmails: ["maggie@example.com"],
+		});
 
 		const { processStripeWebhookEvent } = await import("../orderIntake");
 		await processStripeWebhookEvent(
@@ -237,6 +242,39 @@ describe("processStripeWebhookEvent", () => {
 			{ expand: ["line_items", "customer_details"] },
 			{ stripeAccount: "acct_123" },
 		);
+		expect(convex.mutation).toHaveBeenCalledWith(
+			"orders.create",
+			expect.objectContaining({
+				siteUrl: "zippymiggy.com",
+				stripeSessionId: "cs_test_123",
+			}),
+		);
+		expect(mockSendCustomerConfirmation).toHaveBeenCalledWith(
+			resend,
+			expect.objectContaining({
+				notificationProfile: {
+					siteName: "Reflecting Pool",
+					siteUrl: "zippymiggy.com",
+					adminEmail: "maggie@example.com",
+				},
+			}),
+		);
+	});
+
+	it("fails closed when a connected-account event has no registered tenant", async () => {
+		const session = makeCheckoutSession();
+		convex.query.mockResolvedValue(null);
+
+		const { processStripeWebhookEvent } = await import("../orderIntake");
+		await expect(
+			processStripeWebhookEvent(
+				makeStripeEvent("checkout.session.completed", session, { account: "acct_unknown" }),
+				adapters(),
+			),
+		).rejects.toMatchObject({ status: 500 });
+
+		expect(createLumaPrintsOrder).not.toHaveBeenCalled();
+		expect(convex.mutation).not.toHaveBeenCalledWith("orders.create", expect.anything());
 	});
 
 	it("routes invoice payment sessions to invoice settlement only", async () => {
@@ -309,6 +347,11 @@ describe("processStripeWebhookEvent", () => {
 			orderNumber: "ORD-001",
 			stripeRefundId: "re_test_123",
 			total: 3500,
+			notificationProfile: {
+				siteName: "Angel's Rest",
+				siteUrl: "angelsrest.online",
+				adminEmail: "admin@example.com",
+			},
 		});
 		expect(mockSendCustomerConfirmation).not.toHaveBeenCalled();
 		expect(mockSendAdminNotification).not.toHaveBeenCalled();
@@ -435,6 +478,11 @@ describe("processStripeWebhookEvent", () => {
 		expect(mockSendPaymentFailedEmail).toHaveBeenCalledWith(resend, {
 			customerEmail: "jane@example.com",
 			errorMessage: "card declined",
+			notificationProfile: {
+				siteName: "Angel's Rest",
+				siteUrl: "angelsrest.online",
+				adminEmail: "admin@example.com",
+			},
 		});
 	});
 });

@@ -1,7 +1,9 @@
 /**
  * Stripe Webhook Handler
  *
- * Receives webhook events from Stripe when purchases happen.
+ * Authoritative commerce webhook for Angels Rest and Stripe Connect tenants.
+ * Client spokes create Checkout through the signed hub bridge and do not run a
+ * second checkout.session.completed order-intake path.
  *
  * Flow for a successful purchase:
  * 1. Verify Stripe's signature against the raw request body.

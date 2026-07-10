@@ -73,15 +73,26 @@ and test full client-side navigation, expiry, logout, and concurrent requests.
 
 ### Shop checkout
 
-1. The server resolves current product/catalog data; browser-supplied prices are
-   not authoritative.
-2. Stripe Checkout is created for the platform or resolved connected account.
-3. `/api/webhooks/stripe` verifies the raw signed body.
-4. `orderIntake.ts` resolves the event kind and tenant.
-5. `webhookOrders.ts` creates or reuses the Convex order and schedules fee
+1. The selling site resolves current product/catalog data; browser-supplied
+   prices are not authoritative.
+2. Angels Rest creates its own Checkout directly. Client spokes call the signed
+   `/api/tenant-checkout/print` bridge using their stored bare-domain tenant key.
+3. The hub resolves that tenant's connected Stripe account and creates Checkout
+   on the connected account.
+4. Stripe sends platform and connected-account commerce events to this
+   repository's `/api/webhooks/stripe`; client spokes do not own a parallel
+   `checkout.session.completed` processor.
+5. The webhook verifies the raw signed body, and `orderIntake.ts` resolves
+   `event.account` back to the stored tenant.
+6. `webhookOrders.ts` creates or reuses the Convex order and schedules fee
    capture outside the webhook hot path.
-6. Eligible items go through `printFulfillment.ts` and LumaPrints.
-7. Notifications are sent through Resend.
+7. Eligible items go through `printFulfillment.ts` and LumaPrints.
+8. Notifications are sent through Resend.
+
+This is a runtime ownership boundary, not merely shared code: one Stripe event
+must have exactly one order-intake owner. Future Stripe Connect clients add
+tenant configuration and use the bridge; they do not copy the webhook
+coordinator into their repositories.
 
 ### Invoice checkout
 

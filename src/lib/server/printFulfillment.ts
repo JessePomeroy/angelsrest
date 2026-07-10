@@ -3,6 +3,10 @@ import type { Resend } from "resend";
 import type Stripe from "stripe";
 import { api } from "$convex/api";
 import type { Id } from "$convex/dataModel";
+import {
+	ANGELS_REST_COMMERCE_PROFILE,
+	type CommerceNotificationProfile,
+} from "$lib/server/commerceTenant";
 import { logStructured, timed } from "$lib/server/logger";
 import { buildLumaPrintsOrder } from "$lib/server/lumaprints";
 import { buildOrderItemsFromSession, buildRecipientFromShipping } from "$lib/server/webhookDecoder";
@@ -135,6 +139,7 @@ export async function handlePrintFulfillmentFailure(
 		session,
 		stripeRequestOptions,
 		customerEmail,
+		notificationProfile = ANGELS_REST_COMMERCE_PROFILE,
 	}: {
 		orderId: Id<"orders">;
 		orderNumber: string;
@@ -142,6 +147,7 @@ export async function handlePrintFulfillmentFailure(
 		session: Stripe.Checkout.Session;
 		stripeRequestOptions?: Stripe.RequestOptions;
 		customerEmail: string;
+		notificationProfile?: CommerceNotificationProfile;
 	},
 ) {
 	const classification = classifyLumaPrintsFailure(error);
@@ -165,6 +171,7 @@ export async function handlePrintFulfillmentFailure(
 		session,
 		stripeRequestOptions,
 		customerEmail,
+		notificationProfile,
 	});
 }
 
@@ -193,6 +200,7 @@ export async function handlePermanentFulfillmentFailure(
 		session,
 		stripeRequestOptions,
 		customerEmail,
+		notificationProfile = ANGELS_REST_COMMERCE_PROFILE,
 	}: {
 		orderId: Id<"orders">;
 		orderNumber: string;
@@ -200,6 +208,7 @@ export async function handlePermanentFulfillmentFailure(
 		session: Stripe.Checkout.Session;
 		stripeRequestOptions?: Stripe.RequestOptions;
 		customerEmail: string;
+		notificationProfile?: CommerceNotificationProfile;
 	},
 ) {
 	const errorSummary = formatFailureForAdmin(fulfillmentError);
@@ -262,6 +271,7 @@ export async function handlePermanentFulfillmentFailure(
 			errorSummary,
 			stripeRefundId,
 			total: session.amount_total ?? 0,
+			notificationProfile,
 		});
 	} catch (emailErr) {
 		logStructured({
