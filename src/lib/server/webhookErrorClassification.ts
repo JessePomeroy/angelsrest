@@ -15,6 +15,7 @@
  * and at best recovers from a flaky API.
  */
 
+import { FulfillmentValidationError } from "./fulfillmentValidationError";
 import { LumaPrintsError } from "./lumaprints";
 
 export type FailureClassification = "permanent" | "transient";
@@ -25,6 +26,10 @@ export type FailureClassification = "permanent" | "transient";
  * `Error` instances, and unknown thrown values.
  */
 export function classifyLumaPrintsFailure(err: unknown): FailureClassification {
+	if (err instanceof FulfillmentValidationError) {
+		return "permanent";
+	}
+
 	if (err instanceof LumaPrintsError) {
 		return classifyLumaPrintsErrorDetails(err.details);
 	}

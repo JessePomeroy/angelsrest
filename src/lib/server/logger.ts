@@ -28,7 +28,7 @@
  *   error-vs-info routing — change them once, every call site updates.
  */
 
-import * as Sentry from "@sentry/sveltekit";
+import { addBreadcrumb, captureException, withScope } from "@sentry/node";
 
 export type LogLevel = "info" | "warn" | "error";
 
@@ -109,7 +109,7 @@ export function logStructured(entry: StructuredLogEntry): void {
 
 	// Sentry routing
 	if (level === "error" && entry.error !== undefined) {
-		Sentry.withScope((scope) => {
+		withScope((scope) => {
 			if (entry.stage) scope.setTag("stage", entry.stage);
 			if (entry.orderId) scope.setTag("orderId", entry.orderId);
 			if (entry.sessionId) scope.setTag("sessionId", entry.sessionId);
@@ -118,12 +118,12 @@ export function logStructured(entry: StructuredLogEntry): void {
 			}
 			if (entry.meta) scope.setContext("meta", entry.meta);
 			scope.setExtra("event", entry.event);
-			Sentry.captureException(entry.error);
+			captureException(entry.error);
 		});
 	} else {
 		// Successful step → breadcrumb so it shows up in the trail of any
 		// later error fired in the same request
-		Sentry.addBreadcrumb({
+		addBreadcrumb({
 			category: entry.stage ?? "app",
 			message: entry.event,
 			level: level === "warn" ? "warning" : "info",

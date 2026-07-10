@@ -68,6 +68,19 @@ export default defineSchema({
 		paperSubcategoryId: v.optional(v.string()),
 		trackingNumber: v.optional(v.string()),
 		trackingUrl: v.optional(v.string()),
+		// Legacy claim marker for the one-time shipment email side effect.
+		// New delivery observability lives in `shipmentEmailDeliveryStatus`.
+		shipmentEmailSentAt: v.optional(v.number()),
+		shipmentEmailDeliveryStatus: v.optional(
+			v.union(
+				v.literal("pending"),
+				v.literal("sent"),
+				v.literal("failed"),
+				v.literal("skipped"),
+			),
+		),
+		shipmentEmailDeliveryAttemptedAt: v.optional(v.number()),
+		shipmentEmailDeliveryError: v.optional(v.string()),
 		status: v.union(
 			v.literal("new"),
 			v.literal("printing"),
@@ -75,18 +88,22 @@ export default defineSchema({
 			v.literal("shipped"),
 			v.literal("delivered"),
 			v.literal("refunded"),
-			// audit #23 PR #3: permanent fulfillment failure. The customer has
-			// been auto-refunded via Stripe, the admin has been emailed, and
-			// the Stripe webhook returned 200 (no retry). Admin reviews the
-			// `fulfillmentError` field to understand what went wrong.
+			// Permanent fulfillment failure. `fulfillmentError` records the
+			// upstream problem; `stripeRefundId` is present only when a refund
+			// was successfully created. Do not infer refund/email delivery from
+			// this status alone.
 			v.literal("fulfillment_error"),
 		),
-		// audit #23 PR #3: set alongside status=fulfillment_error. The human-
-		// readable error message from the failed LumaPrints submission.
+		// Human-readable error from the failed LumaPrints submission.
 		fulfillmentError: v.optional(v.string()),
-		// audit #23 PR #3: the Stripe refund ID created automatically when the
-		// order transitioned to fulfillment_error.
+		// Stripe refund ID when automated refund creation succeeded.
 		stripeRefundId: v.optional(v.string()),
+		// Durable checkpoint for retry-safe permanent fulfillment recovery.
+		// `refund_pending` is written before Stripe is called; `refunded` is
+		// written only after the refund ID is durable on this order.
+		fulfillmentRecoveryStatus: v.optional(
+			v.union(v.literal("refund_pending"), v.literal("refunded")),
+		),
 		notes: v.optional(v.string()),
 	})
 		.index("by_siteUrl", ["siteUrl"])
@@ -172,6 +189,13 @@ export default defineSchema({
 		dueDate: v.optional(v.string()),
 		sentAt: v.optional(v.number()),
 		paidAt: v.optional(v.number()),
+		stripeCheckoutSessionId: v.optional(v.string()),
+		stripeCheckoutFingerprint: v.optional(v.string()),
+		stripeCheckoutStatus: v.optional(
+			v.union(v.literal("open"), v.literal("paid"), v.literal("expired"), v.literal("failed")),
+		),
+		stripeCheckoutStartedAt: v.optional(v.number()),
+		stripeCheckoutUpdatedAt: v.optional(v.number()),
 		// Recurring config
 		recurring: v.optional(
 			v.object({

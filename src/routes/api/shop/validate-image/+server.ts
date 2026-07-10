@@ -1,8 +1,8 @@
 /**
  * Checkout-time image validation endpoint.
  *
- * Called by the shop configurator (PR #4) when a customer picks a
- * paper + size combination for a photo. Calls LumaPrints'
+ * Called by the shop configurator when a customer picks a paper + size
+ * combination for a photo. Calls LumaPrints'
  * `checkImageConfig` endpoint to verify the image will print cleanly
  * at that size and subcategory.
  *
@@ -12,11 +12,8 @@
  *
  * If LumaPrints' validation API is down, we fail closed and return
  * `{ valid: false, reason: "could not verify", degraded: true }` so
- * the UI surfaces a real error instead of silently letting an
- * unverified image reach the webhook — audit H39 reversed the
- * previous fail-open behavior.
- *
- * Added in audit #23 PR #3. Updated by audit H39.
+ * the UI surfaces a real error instead of silently letting an unverified image
+ * reach the webhook.
  */
 
 import { error, json } from "@sveltejs/kit";
@@ -68,8 +65,8 @@ export const POST: RequestHandler = async ({ request }) => {
 		});
 		return json(result);
 	} catch (err) {
-		// Audit H39: fail closed, not open. Returning `{ valid: true }`
-		// on error hid validation outages and let unprintable images
+		// Fail closed, not open. Returning `{ valid: true }` on error would hide
+		// validation outages and let unprintable images
 		// reach the webhook, where a refund-after-the-fact is the only
 		// recourse. Instead surface a "could not verify" result so the
 		// checkout path can show a real error to the customer.

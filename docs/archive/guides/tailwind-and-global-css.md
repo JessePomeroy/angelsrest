@@ -1,4 +1,8 @@
-# Tailwind & Global CSS Guide
+# Archived: Tailwind and global CSS guide
+
+> Historical educational material that predates the current Tailwind-first
+> rules. Do not copy its Skeleton component-class examples into production.
+> Current styling constraints live in the repository `AGENTS.md`.
 
 This guide explains how Tailwind CSS and global styles work together in the Angel's Rest project.
 

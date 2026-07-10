@@ -13,15 +13,10 @@
  * exported helper would have to live behind an underscore prefix —
  * extracting them to a normal module is cleaner.
  *
- * Coupon support is intentionally OUT OF SCOPE for v1 of the cart
- * checkout. The legacy single-product flow has per-product coupon
- * validation that doesn't translate cleanly to multi-item carts. We'll
- * add cart-level coupons in a follow-up once the basic flow is in
- * production.
- *
- * Print sets in the cart are also OUT OF SCOPE for PR C — `validateCart`
- * explicitly rejects them. PR E will rework the print set flow to
- * convert sets into cart line items.
+ * Cart-level coupons are not supported. The legacy single-product flow has
+ * per-product coupon validation that does not translate directly to a mixed
+ * cart. Print sets are supported when their encoded metadata fits Stripe's
+ * per-value limit; `validateCart` enforces that boundary.
  */
 
 import { error, json } from "@sveltejs/kit";
@@ -35,6 +30,10 @@ import {
 } from "$lib/server/cartCheckoutHelpers";
 import { bindCheckoutSession } from "$lib/server/checkoutBinding";
 import { resolveCheckoutItem } from "$lib/server/checkoutCatalog";
+import {
+	buildCheckoutLineItem,
+	createPaymentCheckoutSession,
+} from "$lib/server/stripeCheckoutSession";
 import { getStripe } from "$lib/server/stripeClient";
 import { resolveStripeTenantForSite } from "$lib/server/stripeTenant";
 import type { CartItem } from "$lib/shop/cart";
@@ -98,17 +97,12 @@ export async function POST({ request, cookies }) {
 			const name = hasPaper
 				? `${item.title} — ${item.paperName}, ${item.paperWidth}×${item.paperHeight}`
 				: item.title;
-			return {
-				price_data: {
-					currency: "usd",
-					product_data: {
-						name,
-						images: item.imageUrl ? [item.imageUrl] : [],
-					},
-					unit_amount: item.unitPriceCents,
-				},
+			return buildCheckoutLineItem({
+				name,
+				imageUrl: item.imageUrl,
+				unitAmountCents: item.unitPriceCents,
 				quantity: item.quantity,
-			};
+			});
 		});
 
 		const tenant = await resolveStripeTenantForSite(PUBLIC_SITE_URL);
@@ -117,27 +111,22 @@ export async function POST({ request, cookies }) {
 			tenant,
 		});
 
-		const session = await stripe.checkout.sessions.create(
-			{
-				payment_method_types: ["card"],
-				// Cart purchases are physical prints (sets and digital deferred
-				// to later PRs), so we always collect shipping for now.
-				shipping_address_collection: { allowed_countries: ["US"] },
-				line_items: lineItems,
-				mode: "payment",
-				success_url: `${PUBLIC_SITE_URL}/checkout/success?session_id={CHECKOUT_SESSION_ID}`,
-				cancel_url: `${PUBLIC_SITE_URL}/checkout/cancel`,
-				metadata: buildCartMetadata(resolvedItems),
-				...tenantCheckout.session,
-			},
-			tenantCheckout.requestOptions,
-		);
+		const session = await createPaymentCheckoutSession({
+			stripe,
+			// Supported cart items are physical, so checkout always collects shipping.
+			shippingAllowedCountries: ["US"],
+			lineItems,
+			successUrl: `${PUBLIC_SITE_URL}/checkout/success?session_id={CHECKOUT_SESSION_ID}`,
+			cancelUrl: `${PUBLIC_SITE_URL}/checkout/cancel`,
+			metadata: buildCartMetadata(resolvedItems),
+			tenantCheckout,
+		});
 
 		// Bind this browser to the session so /checkout/success can verify
 		// the caller is the buyer before returning customer PII (audit H30).
-		bindCheckoutSession(cookies, session.id);
+		bindCheckoutSession(cookies, session.sessionId);
 
-		return json({ sessionId: session.id, url: session.url });
+		return json(session);
 	} catch (err: unknown) {
 		// Re-throw SvelteKit-shaped errors so the 4xx status survives
 		if (err && typeof err === "object" && "status" in err) throw err;

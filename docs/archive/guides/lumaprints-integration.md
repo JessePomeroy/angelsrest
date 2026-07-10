@@ -1,4 +1,8 @@
-# LumaPrints Integration - Success Logs
+# Archived: LumaPrints integration success logs
+
+> Historical production log notes from the former Sanity-backed order flow.
+> They are retained only as incident history. See [`../../../LUMAPRINTS.md`](../../../LUMAPRINTS.md)
+> for the current integration.
 
 ## Working Checkout Flow
 

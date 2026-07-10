@@ -2,8 +2,13 @@ import type { ConvexHttpClient } from "convex/browser";
 import type { Resend } from "resend";
 import type Stripe from "stripe";
 import { api } from "$convex/api";
+import type { Id } from "$convex/dataModel";
+import {
+	ANGELS_REST_COMMERCE_PROFILE,
+	type CommerceNotificationProfile,
+} from "$lib/server/commerceTenant";
 import { logStructured, timed } from "$lib/server/logger";
-import { buildLumaPrintsOrder, createOrder as createLumaPrintsOrder } from "$lib/server/lumaprints";
+import { buildLumaPrintsOrder } from "$lib/server/lumaprints";
 import { buildOrderItemsFromSession, buildRecipientFromShipping } from "$lib/server/webhookDecoder";
 import type { ShippingDetails } from "$lib/server/webhookEmails";
 import { sendFulfillmentFailureAlert } from "$lib/server/webhookEmails";
@@ -12,24 +17,38 @@ import {
 	formatFailureForAdmin,
 } from "$lib/server/webhookErrorClassification";
 import { getWebhookSecret } from "$lib/server/webhookSecret";
+import type { LumaPrintsOrder, LumaPrintsOrderResponse } from "$lib/shop/types";
 
 /**
  * Tag written to Stripe refund metadata so automated refunds are distinct from
  * manual refunds in the dashboard. Bump this if the automation changes.
  */
-const REFUND_AUTOMATION_TAG = "audit_23_pr_3";
+const REFUND_AUTOMATION_TAG = "fulfillment_recovery_v1";
+
+export type SubmitLumaPrintsOrder = (order: LumaPrintsOrder) => Promise<LumaPrintsOrderResponse>;
+
+export type PrintFulfillmentOutcome =
+	| { kind: "fulfilled"; lumaprintsOrderNumber: string }
+	| { kind: "no_print_items" }
+	| {
+			kind: "permanent_failure_refunded";
+			stripeRefundId: string;
+			errorSummary: string;
+	  };
 
 export interface PrintFulfillmentAdapters {
 	convex: ConvexHttpClient;
+	createLumaPrintsOrder: SubmitLumaPrintsOrder;
 }
 
-export interface PermanentFulfillmentFailureAdapters extends PrintFulfillmentAdapters {
+export interface PermanentFulfillmentFailureAdapters {
+	convex: ConvexHttpClient;
 	stripe: Stripe;
 	resend: Resend;
 }
 
 export async function submitPrintFulfillment(
-	{ convex }: PrintFulfillmentAdapters,
+	{ convex, createLumaPrintsOrder }: PrintFulfillmentAdapters,
 	{
 		orderId,
 		orderNumber,
@@ -37,7 +56,7 @@ export async function submitPrintFulfillment(
 		shippingDetails,
 		session,
 	}: {
-		orderId: any;
+		orderId: Id<"orders">;
 		orderNumber: string;
 		lineItems: Stripe.LineItem[];
 		shippingDetails: ShippingDetails;
@@ -52,7 +71,7 @@ export async function submitPrintFulfillment(
 			orderId: orderNumber,
 			meta: { reason: "no LumaPrints items in order" },
 		});
-		return;
+		return { kind: "no_print_items" } satisfies PrintFulfillmentOutcome;
 	}
 
 	const borderedItems = items
@@ -104,6 +123,11 @@ export async function submitPrintFulfillment(
 		orderId: orderNumber,
 		meta: { lumaprintsOrderNumber: result.orderNumber },
 	});
+
+	return {
+		kind: "fulfilled",
+		lumaprintsOrderNumber: result.orderNumber,
+	} satisfies PrintFulfillmentOutcome;
 }
 
 export async function handlePrintFulfillmentFailure(
@@ -115,13 +139,15 @@ export async function handlePrintFulfillmentFailure(
 		session,
 		stripeRequestOptions,
 		customerEmail,
+		notificationProfile = ANGELS_REST_COMMERCE_PROFILE,
 	}: {
-		orderId: any;
+		orderId: Id<"orders">;
 		orderNumber: string;
 		error: unknown;
 		session: Stripe.Checkout.Session;
 		stripeRequestOptions?: Stripe.RequestOptions;
 		customerEmail: string;
+		notificationProfile?: CommerceNotificationProfile;
 	},
 ) {
 	const classification = classifyLumaPrintsFailure(error);
@@ -138,23 +164,24 @@ export async function handlePrintFulfillmentFailure(
 		throw error;
 	}
 
-	await handlePermanentFulfillmentFailure(adapters, {
+	return handlePermanentFulfillmentFailure(adapters, {
 		orderId,
 		orderNumber,
 		error,
 		session,
 		stripeRequestOptions,
 		customerEmail,
+		notificationProfile,
 	});
 }
 
 /**
  * Permanent-failure fallback for LumaPrints submission.
  *
- * Best-effort side effects:
- * 1. Auto-refund via Stripe.
- * 2. Mark the order `fulfillment_error` in Convex.
- * 3. Notify the admin with order and failure context.
+ * The recovery checkpoint is durable before Stripe is called. The refund uses
+ * a deterministic idempotency key, and the terminal outcome is returned only
+ * after Convex stores both the refund ID and the terminal recovery state.
+ * Admin email remains best effort after those durable effects.
  */
 export async function handlePermanentFulfillmentFailure(
 	{
@@ -173,82 +200,69 @@ export async function handlePermanentFulfillmentFailure(
 		session,
 		stripeRequestOptions,
 		customerEmail,
+		notificationProfile = ANGELS_REST_COMMERCE_PROFILE,
 	}: {
-		orderId: any;
+		orderId: Id<"orders">;
 		orderNumber: string;
 		error: unknown;
 		session: Stripe.Checkout.Session;
 		stripeRequestOptions?: Stripe.RequestOptions;
 		customerEmail: string;
+		notificationProfile?: CommerceNotificationProfile;
 	},
 ) {
 	const errorSummary = formatFailureForAdmin(fulfillmentError);
-	let stripeRefundId: string | undefined;
+	const truncatedError = errorSummary.slice(0, 1000);
 
-	try {
-		const paymentIntentId =
-			typeof session.payment_intent === "string"
-				? session.payment_intent
-				: (session.payment_intent?.id ?? undefined);
+	await convex.mutation(api.orders.updateStatus, {
+		webhookSecret: getWebhookSecret(),
+		orderId,
+		status: "fulfillment_error",
+		fulfillmentError: truncatedError,
+		fulfillmentRecoveryStatus: "refund_pending",
+	});
 
-		if (!paymentIntentId) {
-			logStructured({
-				event: "refund.skipped",
-				level: "error",
-				stage: "stripe_refund",
-				orderId: orderNumber,
-				error: new Error("no payment_intent on session"),
-			});
-		} else {
-			const isConnectedAccountRefund = Boolean(stripeRequestOptions?.stripeAccount);
-			const refund = await stripe.refunds.create(
-				{
-					payment_intent: paymentIntentId,
-					reason: "requested_by_customer",
-					...(isConnectedAccountRefund ? { refund_application_fee: true } : {}),
-					metadata: {
-						orderNumber,
-						fulfillmentError: errorSummary.slice(0, 500),
-						automated: REFUND_AUTOMATION_TAG,
-					},
-				},
-				stripeRequestOptions,
-			);
-			stripeRefundId = refund.id;
-			logStructured({
-				event: "refund.created",
-				stage: "stripe_refund",
-				orderId: orderNumber,
-				meta: { refundId: refund.id, refundStatus: refund.status },
-			});
-		}
-	} catch (refundErr) {
-		logStructured({
-			event: "refund.failed",
-			level: "error",
-			stage: "stripe_refund",
-			orderId: orderNumber,
-			error: refundErr,
-		});
+	const paymentIntentId =
+		typeof session.payment_intent === "string"
+			? session.payment_intent
+			: (session.payment_intent?.id ?? undefined);
+	if (!paymentIntentId) {
+		throw new Error(`Cannot refund order ${orderNumber}: Stripe session has no payment_intent`);
 	}
 
-	try {
-		await convex.mutation(api.orders.updateStatus, {
-			webhookSecret: getWebhookSecret(),
-			orderId,
-			status: "fulfillment_error",
-			fulfillmentError: errorSummary.slice(0, 1000),
-			stripeRefundId,
-		});
-	} catch (convexErr) {
-		logStructured({
-			event: "fulfillment_error.convex_update_failed",
-			level: "error",
-			stage: "fulfillment_failure",
-			orderId: orderNumber,
-			error: convexErr,
-		});
-	}
+	const isConnectedAccountRefund = Boolean(stripeRequestOptions?.stripeAccount);
+	const refund = await stripe.refunds.create(
+		{
+			payment_intent: paymentIntentId,
+			reason: "requested_by_customer",
+			...(isConnectedAccountRefund ? { refund_application_fee: true } : {}),
+			metadata: {
+				orderNumber,
+				fulfillmentError: errorSummary.slice(0, 500),
+				automated: REFUND_AUTOMATION_TAG,
+			},
+		},
+		{
+			...(stripeRequestOptions ?? {}),
+			idempotencyKey: `fulfillment-refund:${session.id}`,
+		},
+	);
+	const stripeRefundId = refund.id;
+	logStructured({
+		event: "refund.created",
+		stage: "stripe_refund",
+		orderId: orderNumber,
+		meta: { refundId: refund.id, refundStatus: refund.status },
+	});
+
+	await convex.mutation(api.orders.updateStatus, {
+		webhookSecret: getWebhookSecret(),
+		orderId,
+		status: "fulfillment_error",
+		fulfillmentError: truncatedError,
+		stripeRefundId,
+		fulfillmentRecoveryStatus: "refunded",
+	});
 
 	try {
 		await sendFulfillmentFailureAlert(resend, {
@@ -257,6 +271,7 @@ export async function handlePermanentFulfillmentFailure(
 			errorSummary,
 			stripeRefundId,
 			total: session.amount_total ?? 0,
+			notificationProfile,
 		});
 	} catch (emailErr) {
 		logStructured({
@@ -267,4 +282,10 @@ export async function handlePermanentFulfillmentFailure(
 			error: emailErr,
 		});
 	}
+
+	return {
+		kind: "permanent_failure_refunded",
+		stripeRefundId,
+		errorSummary,
+	} satisfies PrintFulfillmentOutcome;
 }

@@ -5,12 +5,17 @@ import type Stripe from "stripe";
 import { api } from "$convex/api";
 import type { Id } from "$convex/dataModel";
 import { env } from "$env/dynamic/private";
-import { SITE_DOMAIN } from "$lib/config/site";
+import {
+	type CommerceNotificationProfile,
+	resolveCommerceTenant,
+} from "$lib/server/commerceTenant";
 import { logStructured } from "$lib/server/logger";
+import type { SubmitLumaPrintsOrder } from "$lib/server/printFulfillment";
 import type { ShippingDetails } from "$lib/server/webhookEmails";
 import {
 	sendAdminNotification,
 	sendCustomerConfirmation,
+	sendCustomerFulfillmentFailure,
 	sendFailureAlert,
 	sendPaymentFailedEmail,
 } from "$lib/server/webhookEmails";
@@ -20,6 +25,7 @@ export interface OrderIntakeAdapters {
 	stripe: Stripe;
 	resend: Resend;
 	convex: ConvexHttpClient;
+	createLumaPrintsOrder: SubmitLumaPrintsOrder;
 }
 
 /**
@@ -51,22 +57,28 @@ export async function processStripeWebhookEvent(
 		switch (event.type) {
 			case "checkout.session.completed": {
 				const session = event.data.object as Stripe.Checkout.Session;
-				const siteUrl = await resolveWebhookSiteUrl(event, adapters.convex);
+				const tenant = await resolveCommerceTenant(event, adapters.convex);
 
 				if (session.metadata?.type === "invoice_payment") {
-					await markInvoicePaidFromSession(session, adapters.convex, siteUrl);
+					await markInvoicePaidFromSession(session, adapters.convex, tenant.siteUrl);
 					break;
 				}
 
 				await handleCheckoutCompleted(session, adapters, {
-					siteUrl,
-					stripeRequestOptions: getStripeRequestOptions(event),
+					siteUrl: tenant.siteUrl,
+					notificationProfile: tenant.notificationProfile,
+					stripeRequestOptions: tenant.stripeRequestOptions,
 				});
 				break;
 			}
 
 			case "payment_intent.payment_failed": {
-				await handlePaymentFailed(event.data.object as Stripe.PaymentIntent, adapters.resend);
+				const tenant = await resolveCommerceTenant(event, adapters.convex);
+				await handlePaymentFailed(
+					event.data.object as Stripe.PaymentIntent,
+					adapters.resend,
+					tenant.notificationProfile,
+				);
 				break;
 			}
 
@@ -114,6 +126,8 @@ async function markInvoicePaidFromSession(
 		webhookSecret,
 		invoiceId: invoiceId as Id<"invoices">,
 		siteUrl: session.metadata?.siteUrl || siteUrl,
+		stripeCheckoutSessionId: session.id,
+		stripeCheckoutFingerprint: session.metadata?.checkoutFingerprint,
 	});
 	logStructured({
 		event: "invoice.marked_paid",
@@ -122,7 +136,11 @@ async function markInvoicePaidFromSession(
 	});
 }
 
-async function handlePaymentFailed(paymentIntent: Stripe.PaymentIntent, resend: Resend) {
+async function handlePaymentFailed(
+	paymentIntent: Stripe.PaymentIntent,
+	resend: Resend,
+	notificationProfile: CommerceNotificationProfile,
+) {
 	const failureMessage =
 		paymentIntent.last_payment_error?.message || "Your payment method was declined.";
 	logStructured({
@@ -140,6 +158,7 @@ async function handlePaymentFailed(paymentIntent: Stripe.PaymentIntent, resend: 
 		await sendPaymentFailedEmail(resend, {
 			customerEmail: paymentIntent.receipt_email,
 			errorMessage: failureMessage,
+			notificationProfile,
 		});
 	} catch (err) {
 		logStructured({
@@ -158,9 +177,11 @@ async function handleCheckoutCompleted(
 	{
 		siteUrl,
 		stripeRequestOptions,
+		notificationProfile,
 	}: {
 		siteUrl: string;
 		stripeRequestOptions?: Stripe.RequestOptions;
+		notificationProfile: CommerceNotificationProfile;
 	},
 ) {
 	logStructured({
@@ -193,6 +214,7 @@ async function handleCheckoutCompleted(
 			stripe: adapters.stripe,
 			convex: adapters.convex,
 			resend: adapters.resend,
+			createLumaPrintsOrder: adapters.createLumaPrintsOrder,
 		},
 		{
 			session: fullSession,
@@ -200,10 +222,11 @@ async function handleCheckoutCompleted(
 			lineItems,
 			siteUrl,
 			stripeRequestOptions,
+			notificationProfile,
 		},
 	);
 
-	if (orderResult.alreadyExisted) {
+	if (orderResult.notification === "none") {
 		logStructured({
 			event: "checkout.email_skipped_idempotent",
 			stage: "webhook",
@@ -211,7 +234,30 @@ async function handleCheckoutCompleted(
 			orderId: orderResult.orderNumber,
 			meta: { reason: "order_already_existed" },
 		});
-	} else {
+	} else if (
+		orderResult.notification === "failure" &&
+		orderResult.fulfillment.kind === "permanent_failure_refunded"
+	) {
+		try {
+			await sendCustomerFulfillmentFailure(adapters.resend, {
+				customerEmail,
+				orderNumber: orderResult.orderNumber,
+				stripeRefundId: orderResult.fulfillment.stripeRefundId,
+				total: fullSession.amount_total ?? 0,
+				notificationProfile,
+			});
+		} catch (err) {
+			logStructured({
+				event: "email.customer_refund.send_failed",
+				level: "error",
+				stage: "email_customer",
+				sessionId: session.id,
+				orderId: orderResult.orderNumber,
+				error: err,
+				meta: { fatal: false },
+			});
+		}
+	} else if (orderResult.notification === "success") {
 		try {
 			await sendCustomerConfirmation(adapters.resend, {
 				session: fullSession,
@@ -219,6 +265,7 @@ async function handleCheckoutCompleted(
 				shippingDetails,
 				lineItems,
 				orderNumber: orderResult.orderNumber,
+				notificationProfile,
 			});
 		} catch (err) {
 			logStructured({
@@ -239,6 +286,7 @@ async function handleCheckoutCompleted(
 				shippingDetails,
 				lineItems,
 				orderNumber: orderResult.orderNumber,
+				notificationProfile,
 			});
 		} catch (err) {
 			logStructured({
@@ -251,6 +299,8 @@ async function handleCheckoutCompleted(
 				meta: { fatal: false },
 			});
 		}
+	} else {
+		throw new Error(`Unexpected fulfillment notification outcome for ${orderResult.orderNumber}`);
 	}
 
 	logStructured({
@@ -293,28 +343,4 @@ async function fetchSessionDetails(
 	}
 
 	return { fullSession, lineItems, shippingDetails };
-}
-
-async function resolveWebhookSiteUrl(event: Stripe.Event, convex: ConvexHttpClient) {
-	const accountId = typeof event.account === "string" ? event.account : undefined;
-	if (!accountId) return SITE_DOMAIN;
-
-	const webhookSecret = env.WEBHOOK_SECRET;
-	if (!webhookSecret) {
-		throw new Error("WEBHOOK_SECRET not configured");
-	}
-
-	const client = await convex.query(api.platform.getByStripeConnectedAccountId, {
-		stripeConnectedAccountId: accountId,
-		webhookSecret,
-	});
-	if (!client) {
-		throw new Error(`No platform client found for Stripe account ${accountId}`);
-	}
-	return client.siteUrl;
-}
-
-function getStripeRequestOptions(event: Stripe.Event): Stripe.RequestOptions | undefined {
-	const accountId = typeof event.account === "string" ? event.account : undefined;
-	return accountId ? { stripeAccount: accountId } : undefined;
 }

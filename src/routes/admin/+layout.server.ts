@@ -1,14 +1,11 @@
 import { getTenantAdminLayoutData, type TenantAdminLayoutData } from "@jessepomeroy/admin";
 import { requireAuthWithIdentity } from "$lib/server/adminAuth";
+import { getSiteAdminAccess } from "$lib/server/siteAdminAuthorization";
 
 /**
- * Server-side auth gate for /admin/** (audit H4). The admin layout relied
- * entirely on the client-side `<AuthGuard>` before, which meant
- * `+layout.server.ts` handed out `tier` / `isCreator` / (in the page
- * loader) `newInquiryCount` to any unauthenticated caller that hit
- * `/admin`. Validating the session here kills that surface: the server
- * refuses to load admin data unless Convex confirms the Better Auth
- * session is intact.
+ * Server-side auth gate for /admin/**. Browser-side `<AuthGuard>` controls
+ * rendering, while this loader independently validates the Better Auth
+ * session before it reads or returns admin data.
  *
  * We don't redirect to a login URL — there isn't a dedicated /login route
  * in this app; the AuthGuard component renders `<LoginPage>` inline when
@@ -18,20 +15,29 @@ import { requireAuthWithIdentity } from "$lib/server/adminAuth";
  * session state and skip their Convex fetches when it is not authorized.
  */
 export async function load({ cookies }): Promise<TenantAdminLayoutData> {
-	let identity: { email: string | null } | null = null;
+	let session: Awaited<ReturnType<typeof requireAuthWithIdentity>>;
 	try {
-		({ identity } = await requireAuthWithIdentity(cookies));
+		session = await requireAuthWithIdentity(cookies);
 	} catch {
 		return getTenantAdminLayoutData({ status: "unauthenticated" });
 	}
 
-	// angelsrest is the creator's site — always full tier
-	// when extracted to the admin package, client sites will query Convex:
-	//   const { tier } = await convex.query(api.platform.checkTier, { siteUrl })
+	if (!session.identity.email) {
+		return getTenantAdminLayoutData({ status: "unauthenticated" });
+	}
+
+	const access = await getSiteAdminAccess(session.token, session.identity.email);
+	if (!access?.authorized) {
+		return getTenantAdminLayoutData({
+			status: "unauthorized",
+			email: session.identity.email,
+		});
+	}
+
 	return getTenantAdminLayoutData({
 		status: "authorized",
-		email: identity.email,
-		tier: "full",
+		email: session.identity.email,
+		tier: access.tier,
 		isCreator: true,
 	});
 }

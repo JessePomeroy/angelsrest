@@ -1,6 +1,10 @@
 import { createHmac, timingSafeEqual } from "node:crypto";
 import type Stripe from "stripe";
 import { env } from "$env/dynamic/private";
+import {
+	buildCheckoutLineItem,
+	createPaymentCheckoutSession,
+} from "$lib/server/stripeCheckoutSession";
 import { buildTenantCheckoutOptions, type StripeTenantAccount } from "$lib/server/stripeConnect";
 
 const SIGNATURE_HEADER = "x-checkout-bridge-signature";
@@ -69,37 +73,25 @@ export async function createTenantPrintCheckoutSession({
 		subtotalCents: body.amountCents,
 	});
 
-	const session = await stripe.checkout.sessions.create(
-		{
-			payment_method_types: ["card"],
-			shipping_address_collection: {
-				allowed_countries: ["US", "CA"],
-			},
-			line_items: [
-				{
-					price_data: {
-						currency: "usd",
-						product_data: {
-							name: body.productName,
-							description: body.productDescription,
-							images: body.imageUrl ? [body.imageUrl] : [],
-						},
-						unit_amount: body.amountCents,
-					},
-					quantity: 1,
-				},
-			],
-			mode: "payment",
-			success_url: body.successUrl,
-			cancel_url: body.cancelUrl,
-			metadata: body.metadata,
-			...tenantCheckout.session,
-		},
-		tenantCheckout.requestOptions,
-	);
+	const session = await createPaymentCheckoutSession({
+		stripe,
+		shippingAllowedCountries: ["US", "CA"],
+		lineItems: [
+			buildCheckoutLineItem({
+				name: body.productName,
+				description: body.productDescription,
+				imageUrl: body.imageUrl,
+				unitAmountCents: body.amountCents,
+			}),
+		],
+		successUrl: body.successUrl,
+		cancelUrl: body.cancelUrl,
+		metadata: body.metadata,
+		tenantCheckout,
+	});
 
 	return {
-		sessionId: session.id,
+		sessionId: session.sessionId,
 		url: session.url,
 		platformFeeAmount: tenantCheckout.platformFeeAmount,
 	};

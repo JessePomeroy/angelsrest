@@ -1,14 +1,17 @@
 /**
  * Stripe Webhook Handler
  *
- * Receives webhook events from Stripe when purchases happen.
+ * Authoritative commerce webhook for Angels Rest and Stripe Connect tenants.
+ * Client spokes create Checkout through the signed hub bridge and do not run a
+ * second checkout.session.completed order-intake path.
  *
  * Flow for a successful purchase:
- * 1. Customer completes checkout → Stripe fires checkout.session.completed
- * 2. We send confirmation emails (customer + admin)
- * 3. We create an order in Convex for tracking
- * 4. If LumaPrints products → submit to LumaPrints for fulfillment
- * 5. We fetch actual Stripe fees (with a short delay for availability)
+ * 1. Verify Stripe's signature against the raw request body.
+ * 2. Resolve the platform/connected-account tenant and checkout kind.
+ * 3. Create or reuse the idempotent Convex order.
+ * 4. Schedule Stripe fee capture outside the webhook hot path.
+ * 5. Submit eligible print items to LumaPrints.
+ * 6. Send the applicable customer/admin notifications.
  *
  * Webhook URL: https://www.angelsrest.online/api/webhooks/stripe
  * Events handled: checkout.session.completed, payment_intent.payment_failed
@@ -17,6 +20,7 @@
 import { json } from "@sveltejs/kit";
 import { env } from "$env/dynamic/private";
 import { getConvex } from "$lib/server/convexClient";
+import { createOrder as createLumaPrintsOrder } from "$lib/server/lumaprints";
 import { processStripeWebhookEvent } from "$lib/server/orderIntake";
 import { getResend } from "$lib/server/resendClient";
 import { getStripe } from "$lib/server/stripeClient";
@@ -31,7 +35,7 @@ export async function POST({ request }) {
 	const stripe = getStripe();
 	const resend = getResend();
 	const event = await verifyStripeWebhook(request, stripe, getCommerceWebhookSecret());
-	await processStripeWebhookEvent(event, { stripe, resend, convex });
+	await processStripeWebhookEvent(event, { stripe, resend, convex, createLumaPrintsOrder });
 	return json({ received: true });
 }
 
@@ -48,7 +52,7 @@ function getCommerceWebhookSecret() {
 /**
  * Exported for tests only — the production code path goes through
  * `buildOrderItemsFromSession` in webhookDecoder.ts. Re-exporting this
- * lets the cart PR C tests exercise the parser without spinning up the
+ * lets cart-shape tests exercise the parser without spinning up the
  * full webhook harness.
  */
 export const __test__buildOrderItemsFromSession = buildOrderItemsFromSession;

@@ -1,8 +1,30 @@
 <script lang="ts">
-import { setupConvex, useConvexClient } from "@mmailaender/convex-svelte";
+import { onMount } from "svelte";
+import { setupConvex, useConvexClient } from "convex-svelte";
 import { api } from "$convex/api";
 import type { Id } from "$convex/dataModel";
 import { PUBLIC_CONVEX_URL } from "$env/static/public";
+import {
+	canSaveGalleryZipFile,
+	saveGalleryImagesAsZipFile,
+} from "$lib/galleryDelivery/downloadArchive";
+import {
+	canChooseGalleryDownloadDirectory,
+	saveGalleryImagesToDirectory,
+} from "$lib/galleryDelivery/downloadDestination";
+import {
+	createGalleryDownloadPlan,
+	type GalleryDownloadImage,
+	type GalleryDownloadPlan,
+	submitGalleryZipDownloadForm,
+} from "$lib/galleryDelivery/downloadPlan";
+import { chooseGalleryDownloadRoute } from "$lib/galleryDelivery/downloadRoute";
+import {
+	cancelPreparedZipDownload,
+	runPreparedZipDownload,
+	type PreparedZipDownloadStep,
+	type PreparedZipProgress,
+} from "$lib/galleryDelivery/preparedZip";
 import { toasts } from "$lib/stores/toast.svelte";
 import { trapFocus } from "$lib/utils/focusTrap";
 
@@ -25,8 +47,32 @@ let images = $derived(
 let lightboxIndex = $state(-1);
 let lightboxOpen = $derived(lightboxIndex >= 0);
 let downloading = $state(false);
+let folderDownloadsSupported = $state(false);
+let zipFileDownloadsSupported = $state(false);
+let chooseDownloadFolder = $state(false);
+let folderDownloadStatus = $state<string | null>(null);
+let folderDownloadAbortController = $state<AbortController | null>(null);
+let preparedZipCancelRequestId = $state<string | null>(null);
+let preparedZipCancelingRequestId = $state<string | null>(null);
+let folderDownloadStatusToken = 0;
+let selectedImageIds = $state(new Set<string>());
+let galleryView = $state<"grid" | "list">("grid");
+let selectedImages = $derived(images.filter((img) => selectedImageIds.has(img._id)));
+let selectedCount = $derived(selectedImages.length);
+let allImagesSelected = $derived(
+	images.length > 0 && selectedCount === images.length,
+);
+let folderDownloadInProgress = $derived(folderDownloadAbortController !== null);
+let chosenLocationDownloadsSupported = $derived(
+	folderDownloadsSupported || zipFileDownloadsSupported,
+);
 let lightboxEl = $state<HTMLDivElement | null>(null);
 let previouslyFocused: HTMLElement | null = null;
+
+onMount(() => {
+	folderDownloadsSupported = canChooseGalleryDownloadDirectory(window);
+	zipFileDownloadsSupported = canSaveGalleryZipFile(window);
+});
 
 function openLightbox(index: number) {
 	previouslyFocused = document.activeElement as HTMLElement;
@@ -78,68 +124,297 @@ async function toggleFavorite(index: number) {
 	}
 }
 
-async function downloadAll() {
-	downloading = true;
-	try {
-		const keys = images.map((img) => img.r2Key);
-		const res = await fetch(`${data.workerUrl}/download/zip`, {
-			method: "POST",
-			headers: { "Content-Type": "application/json" },
-			body: JSON.stringify({
-				token: data.token,
-				imageKeys: keys,
-				galleryName: data.gallery.name,
-			}),
-		});
-		if (!res.ok) throw new Error("Download failed");
+function toggleImageSelection(imageId: string) {
+	const next = new Set(selectedImageIds);
+	if (next.has(imageId)) {
+		next.delete(imageId);
+	} else {
+		next.add(imageId);
+	}
+	selectedImageIds = next;
+}
 
-		const blob = await res.blob();
-		const url = URL.createObjectURL(blob);
-		const a = document.createElement("a");
-		a.href = url;
-		a.download = `${data.gallery.name.replace(/[^a-zA-Z0-9._-]/g, "_")}.zip`;
-		a.click();
-		URL.revokeObjectURL(url);
-	} catch {
-		toasts.show("Download failed. Please try again.", { type: "error" });
+function selectAllImages() {
+	selectedImageIds = new Set(images.map((img) => img._id));
+}
+
+function clearSelection() {
+	selectedImageIds = new Set();
+}
+
+function triggerDownload(image: { downloadUrl: string | null; filename: string }) {
+	if (!image.downloadUrl) {
+		toasts.show("Downloads are disabled for this gallery.", { type: "error" });
+		return;
+	}
+
+	const a = document.createElement("a");
+	a.href = image.downloadUrl;
+	a.download = image.filename;
+	a.rel = "noopener";
+	document.body.appendChild(a);
+	a.click();
+	a.remove();
+}
+
+function submitZipDownload(plan: Extract<GalleryDownloadPlan, { type: "zip" }>) {
+	submitGalleryZipDownloadForm({
+		plan,
+		document,
+		setTimeout: window.setTimeout,
+	});
+}
+
+function setFolderDownloadStatus(message: string | null) {
+	folderDownloadStatus = message;
+	folderDownloadStatusToken += 1;
+	return folderDownloadStatusToken;
+}
+
+function clearFolderDownloadStatusLater(token: number, delayMs: number) {
+	window.setTimeout(() => {
+		if (folderDownloadStatusToken === token) {
+			setFolderDownloadStatus(null);
+		}
+	}, delayMs);
+}
+
+async function saveImagesToFolder(targetImages: GalleryDownloadImage[]) {
+	const controller = new AbortController();
+	folderDownloadAbortController = controller;
+	setFolderDownloadStatus("choose a folder to save this download.");
+	try {
+		await saveGalleryImagesToDirectory({
+			images: targetImages,
+			window,
+			signal: controller.signal,
+			onProgress(progress) {
+				setFolderDownloadStatus(
+					`saving ${progress.completed}/${progress.total} — ${progress.filename}`,
+				);
+			},
+		});
+		const statusToken = setFolderDownloadStatus(
+			`saved ${targetImages.length} file${targetImages.length === 1 ? "" : "s"}.`,
+		);
+		clearFolderDownloadStatusLater(statusToken, 5000);
 	} finally {
-		downloading = false;
+		if (folderDownloadAbortController === controller) {
+			folderDownloadAbortController = null;
+		}
 	}
 }
 
-async function downloadFavorites() {
-	const favKeys = images
-		.filter((img) => img.isFavorite)
-		.map((img) => img.r2Key);
-	if (favKeys.length === 0) {
-		toasts.show("No favorites selected yet.", { type: "info" });
+async function saveImagesToZip(targetImages: GalleryDownloadImage[], galleryName: string) {
+	const controller = new AbortController();
+	folderDownloadAbortController = controller;
+	setFolderDownloadStatus("choose where to save this ZIP.");
+	try {
+		await saveGalleryImagesAsZipFile({
+			images: targetImages,
+			galleryName,
+			window,
+			signal: controller.signal,
+			onProgress(progress) {
+				setFolderDownloadStatus(
+					`zipping ${progress.completed}/${progress.total} — ${progress.filename}`,
+				);
+			},
+		});
+		const statusToken = setFolderDownloadStatus(
+			`saved ${targetImages.length} file${targetImages.length === 1 ? "" : "s"} as ZIP.`,
+		);
+		clearFolderDownloadStatusLater(statusToken, 5000);
+	} finally {
+		if (folderDownloadAbortController === controller) {
+			folderDownloadAbortController = null;
+		}
+	}
+}
+
+function preparedZipStatusMessage(status: PreparedZipProgress) {
+	if (status.status === "queued") return "queued ZIP build...";
+	if (status.status === "building") {
+		return `building ZIP ${status.processedBytes > 0 ? `${status.processedBytes} bytes processed` : `${status.imageCount} files`}`;
+	}
+	if (status.status === "ready") return "ZIP ready. starting download...";
+	return "preparing ZIP...";
+}
+
+function formatDownloadBytes(bytes: number) {
+	if (bytes >= 1024 * 1024 * 1024) return `${(bytes / 1024 / 1024 / 1024).toFixed(1)} GB`;
+	if (bytes >= 1024 * 1024) return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
+	if (bytes >= 1024) return `${(bytes / 1024).toFixed(0)} KB`;
+	return `${bytes} B`;
+}
+
+function preparedZipSaveProgressMessage({
+	filename,
+	savedBytes,
+	totalBytes,
+}: {
+	filename: string;
+	savedBytes: number;
+	totalBytes?: number;
+}) {
+	return totalBytes
+		? `saving ${filename} — ${formatDownloadBytes(savedBytes)} / ${formatDownloadBytes(totalBytes)}`
+		: `saving ${filename} — ${formatDownloadBytes(savedBytes)}`;
+}
+
+function preparedZipStepMessage(step: PreparedZipDownloadStep) {
+	if (step === "chooseArchiveFile") return "choose where to save this ZIP.";
+	if (step === "preparing") return "preparing ZIP...";
+	if (step === "savedToFile") return "ZIP saved.";
+	return "ZIP download started.";
+}
+
+async function savePreparedZip(
+	plan: Extract<GalleryDownloadPlan, { type: "tooLarge" }>,
+	galleryName: string,
+) {
+	let requestId: string | null = null;
+	let activeController: AbortController | null = null;
+	try {
+		const result = await runPreparedZipDownload({
+			document,
+			galleryName,
+			onController(controller) {
+				activeController = controller;
+				folderDownloadAbortController = controller;
+			},
+			onProgress(status) {
+				setFolderDownloadStatus(preparedZipStatusMessage(status));
+			},
+			onRequestId(nextRequestId) {
+				requestId = nextRequestId;
+				preparedZipCancelRequestId = nextRequestId;
+			},
+			onSaveProgress(progress) {
+				setFolderDownloadStatus(preparedZipSaveProgressMessage(progress));
+			},
+			onStep(step) {
+				setFolderDownloadStatus(preparedZipStepMessage(step));
+			},
+			plan,
+			saveToFile: chooseDownloadFolder && zipFileDownloadsSupported,
+			token: data.token,
+			window,
+			workerUrl: data.workerUrl,
+		});
+		const statusToken = setFolderDownloadStatus(
+			preparedZipStepMessage(result.mode === "file" ? "savedToFile" : "browserDownloadStarted"),
+		);
+		clearFolderDownloadStatusLater(statusToken, 5000);
+	} finally {
+		if (activeController && folderDownloadAbortController === activeController) {
+			folderDownloadAbortController = null;
+		}
+		if (requestId && preparedZipCancelRequestId === requestId) {
+			preparedZipCancelRequestId = null;
+		}
+	}
+}
+
+function isPickerAbort(error: unknown) {
+	return error instanceof DOMException && error.name === "AbortError";
+}
+
+function cancelFolderDownload() {
+	setFolderDownloadStatus("canceling download...");
+	const requestId = preparedZipCancelRequestId;
+	if (requestId) {
+		preparedZipCancelingRequestId = requestId;
+		void cancelPreparedZipDownload({
+				fetch: window.fetch.bind(window),
+				requestId,
+				token: data.token,
+			workerUrl: data.workerUrl,
+			})
+			.catch((error) => {
+				console.warn("prepared ZIP cancellation failed", error);
+				const statusToken = setFolderDownloadStatus(
+					"download stopped locally. server cancel failed.",
+				);
+				clearFolderDownloadStatusLater(statusToken, 5000);
+			})
+			.finally(() => {
+				if (preparedZipCancelingRequestId === requestId) {
+					preparedZipCancelingRequestId = null;
+				}
+			});
+	}
+	folderDownloadAbortController?.abort(new DOMException("Download canceled.", "AbortError"));
+}
+
+async function downloadImages(
+	targetImages: GalleryDownloadImage[],
+	emptyMessage: string,
+	galleryName = data.gallery.name,
+) {
+	const plan = createGalleryDownloadPlan({
+		images: targetImages,
+		emptyMessage,
+		galleryName,
+		token: data.token,
+		workerUrl: data.workerUrl,
+	});
+
+	if (plan.type === "empty") {
+		toasts.show(plan.message, { type: "info" });
 		return;
 	}
+
 	downloading = true;
 	try {
-		const res = await fetch(`${data.workerUrl}/download/zip`, {
-			method: "POST",
-			headers: { "Content-Type": "application/json" },
-			body: JSON.stringify({
-				token: data.token,
-				imageKeys: favKeys,
-				galleryName: `${data.gallery.name}-favorites`,
-			}),
+		const route = chooseGalleryDownloadRoute({
+			chooseLocation: chooseDownloadFolder,
+			folderDownloadsSupported,
+			planType: plan.type,
+			targetCount: targetImages.length,
+			zipFileDownloadsSupported,
 		});
-		if (!res.ok) throw new Error("Download failed");
 
-		const blob = await res.blob();
-		const url = URL.createObjectURL(blob);
-		const a = document.createElement("a");
-		a.href = url;
-		a.download = `${data.gallery.name.replace(/[^a-zA-Z0-9._-]/g, "_")}-favorites.zip`;
-		a.click();
-		URL.revokeObjectURL(url);
-	} catch {
-		toasts.show("Download failed. Please try again.", { type: "error" });
+		if (route === "folder") {
+			await saveImagesToFolder(targetImages);
+		} else if (route === "browserZip") {
+			await saveImagesToZip(targetImages, galleryName);
+		} else if (route === "preparedZip" && plan.type === "tooLarge") {
+			await savePreparedZip(plan, galleryName);
+		} else if (plan.type === "single") {
+			triggerDownload(plan.image);
+		} else if (plan.type === "zip") {
+			submitZipDownload(plan);
+		}
+	} catch (error) {
+		if (isPickerAbort(error)) {
+			const statusToken = setFolderDownloadStatus("download canceled.");
+			clearFolderDownloadStatusLater(statusToken, 3000);
+		} else {
+			setFolderDownloadStatus(null);
+			toasts.show("Download failed. Please try again.", { type: "error" });
+		}
 	} finally {
-		downloading = false;
+		window.setTimeout(() => {
+			downloading = false;
+		}, 1500);
 	}
+}
+
+function downloadAll() {
+	return downloadImages(images, "No photos are available to download yet.");
+}
+
+function downloadSelected() {
+	return downloadImages(selectedImages, "No photos selected yet.");
+}
+
+function downloadFavorites() {
+	return downloadImages(
+		images.filter((img) => img.isFavorite),
+		"No favorites selected yet.",
+		`${data.gallery.name}-favorites`,
+	);
 }
 
 let favoriteCount = $derived(
@@ -165,36 +440,165 @@ let favoriteCount = $derived(
 		{#if data.gallery.downloadEnabled}
 			<div class="download-bar">
 				<button class="download-btn" onclick={downloadAll} disabled={downloading}>
-					{downloading ? "preparing..." : "download all"}
+					{folderDownloadInProgress ? "saving..." : downloading ? "starting..." : "download all"}
+				</button>
+				<button
+					class="download-btn secondary"
+					onclick={downloadSelected}
+					disabled={downloading || selectedCount === 0}
+				>
+					download selected ({selectedCount})
 				</button>
 				{#if data.gallery.favoritesEnabled && favoriteCount > 0}
 					<button class="download-btn secondary" onclick={downloadFavorites} disabled={downloading}>
 						download favorites ({favoriteCount})
 					</button>
 				{/if}
-			</div>
-		{/if}
-	</header>
-
-	<div class="image-grid">
-		{#each images as image, i (image._id)}
-			<div class="grid-cell">
-				<button class="image-btn" onclick={() => openLightbox(i)} aria-label={"View photo " + (i + 1) + " of " + images.length}>
-					<img src={image.thumbUrl} alt={"Photo " + (i + 1) + ": " + image.filename} loading="lazy" />
+				<button
+					class="download-btn tertiary"
+					onclick={allImagesSelected ? clearSelection : selectAllImages}
+					disabled={downloading || images.length === 0}
+				>
+					{allImagesSelected ? "clear selection" : "select all"}
 				</button>
-				{#if data.gallery.favoritesEnabled}
+				<label class="folder-download-toggle" aria-disabled={!chosenLocationDownloadsSupported}>
+					<input
+						type="checkbox"
+						bind:checked={chooseDownloadFolder}
+						disabled={!chosenLocationDownloadsSupported || downloading}
+					/>
+					<span>choose location</span>
+				</label>
+				{#if folderDownloadInProgress}
 					<button
-						class="fav-btn"
-						class:is-fav={image.isFavorite}
-						onclick={() => toggleFavorite(i)}
-						aria-label={image.isFavorite ? "Remove from favorites" : "Add to favorites"}
+						class="download-btn danger"
+						type="button"
+						onclick={cancelFolderDownload}
+						disabled={preparedZipCancelRequestId !== null &&
+							preparedZipCancelingRequestId === preparedZipCancelRequestId}
 					>
-						{image.isFavorite ? "♥" : "♡"}
+						{preparedZipCancelRequestId !== null &&
+						preparedZipCancelingRequestId === preparedZipCancelRequestId
+							? "canceling..."
+							: "cancel download"}
 					</button>
 				{/if}
 			</div>
-		{/each}
-	</div>
+			{#if folderDownloadStatus}
+				<p class="download-status" role="status">{folderDownloadStatus}</p>
+			{:else if !chosenLocationDownloadsSupported}
+				<p class="download-status subtle">chosen-location downloads require a Chromium browser.</p>
+			{/if}
+		{/if}
+		<div class="view-toggle" aria-label="Gallery view">
+			<button
+				type="button"
+				class:active={galleryView === "grid"}
+				aria-pressed={galleryView === "grid"}
+				onclick={() => {
+					galleryView = "grid";
+				}}
+			>
+				grid
+			</button>
+			<button
+				type="button"
+				class:active={galleryView === "list"}
+				aria-pressed={galleryView === "list"}
+				onclick={() => {
+					galleryView = "list";
+				}}
+			>
+				list
+			</button>
+		</div>
+	</header>
+
+	{#if galleryView === "grid"}
+		<div class="image-grid">
+			{#each images as image, i (image._id)}
+				<div class="grid-cell">
+					<button class="image-btn" onclick={() => openLightbox(i)} aria-label={"View photo " + (i + 1) + " of " + images.length}>
+						{#if image.canPreview}
+							<img src={image.thumbUrl} alt={"Photo " + (i + 1) + ": " + image.filename} loading="lazy" />
+						{:else}
+							<span class="file-tile" aria-label={image.filename}>
+								<span>{image.fileLabel}</span>
+							</span>
+						{/if}
+					</button>
+					{#if data.gallery.favoritesEnabled}
+						<button
+							class="fav-btn"
+							class:is-fav={image.isFavorite}
+							onclick={() => toggleFavorite(i)}
+							aria-label={image.isFavorite ? "Remove from favorites" : "Add to favorites"}
+						>
+							{image.isFavorite ? "♥" : "♡"}
+						</button>
+					{/if}
+					{#if data.gallery.downloadEnabled}
+						<label
+							class="select-photo"
+							class:selected={selectedImageIds.has(image._id)}
+							aria-label={"Select " + image.filename}
+						>
+							<input
+								type="checkbox"
+								checked={selectedImageIds.has(image._id)}
+								onchange={() => toggleImageSelection(image._id)}
+							/>
+							<span aria-hidden="true"></span>
+						</label>
+					{/if}
+					<p class="image-filename">{image.filename}</p>
+				</div>
+			{/each}
+		</div>
+	{:else}
+		<div class="image-list">
+			{#each images as image, i (image._id)}
+				<div class="list-row">
+					<button class="list-thumb" type="button" onclick={() => openLightbox(i)} aria-label={"View " + image.filename}>
+						{#if image.canPreview}
+							<img src={image.thumbUrl} alt="" loading="lazy" />
+						{:else}
+							<span class="file-tile" aria-label={image.filename}>
+								<span>{image.fileLabel}</span>
+							</span>
+						{/if}
+					</button>
+					<button class="list-info" type="button" onclick={() => openLightbox(i)}>
+						<span class="list-filename">{image.filename}</span>
+						<span class="list-meta">{image.fileLabel}</span>
+					</button>
+					<div class="list-actions">
+						{#if data.gallery.favoritesEnabled}
+							<button
+								type="button"
+								class="list-fav"
+								class:is-fav={image.isFavorite}
+								onclick={() => toggleFavorite(i)}
+								aria-label={image.isFavorite ? "Remove from favorites" : "Add to favorites"}
+							>
+								{image.isFavorite ? "♥" : "♡"}
+							</button>
+						{/if}
+						{#if data.gallery.downloadEnabled}
+							<label class="list-select" aria-label={"Select " + image.filename}>
+								<input
+									type="checkbox"
+									checked={selectedImageIds.has(image._id)}
+									onchange={() => toggleImageSelection(image._id)}
+								/>
+								<span>select</span>
+							</label>
+						{/if}
+					</div>
+				</div>
+			{/each}
+		</div>
+	{/if}
 </div>
 
 {#if lightboxOpen}
@@ -212,7 +616,13 @@ let favoriteCount = $derived(
 		onkeydown={handleKeydown}
 	>
 		<div class="lightbox-content">
-			<img src={images[lightboxIndex].previewUrl} alt={images[lightboxIndex].filename} />
+			{#if images[lightboxIndex].canPreview}
+				<img src={images[lightboxIndex].previewUrl} alt={images[lightboxIndex].filename} />
+			{:else}
+				<div class="lightbox-file">
+					<span>{images[lightboxIndex].fileLabel}</span>
+				</div>
+			{/if}
 			<div class="lightbox-controls">
 				<span class="lightbox-counter" aria-live="polite">{lightboxIndex + 1} / {images.length}</span>
 				<span class="lightbox-filename">{images[lightboxIndex].filename}</span>
@@ -275,6 +685,7 @@ let favoriteCount = $derived(
 
 	.download-bar {
 		display: flex;
+		flex-wrap: wrap;
 		gap: 10px;
 	}
 
@@ -292,6 +703,67 @@ let favoriteCount = $derived(
 	.download-btn:hover { opacity: 0.7; }
 	.download-btn:disabled { opacity: 0.4; cursor: wait; }
 	.download-btn.secondary { opacity: 0.6; }
+	.download-btn.tertiary { opacity: 0.5; }
+	.download-btn.danger {
+		color: #ff7777;
+		opacity: 0.82;
+	}
+
+	.folder-download-toggle {
+		display: inline-flex;
+		align-items: center;
+		gap: 7px;
+		padding: 8px 0;
+		font-size: 0.78rem;
+		opacity: 0.62;
+		cursor: pointer;
+	}
+
+	.folder-download-toggle[aria-disabled="true"] {
+		cursor: not-allowed;
+		opacity: 0.35;
+	}
+
+	.folder-download-toggle input {
+		width: 14px;
+		height: 14px;
+		accent-color: #8da0ff;
+	}
+
+	.download-status {
+		margin: 10px 0 0;
+		font-size: 0.78rem;
+		opacity: 0.58;
+	}
+
+	.download-status.subtle {
+		opacity: 0.42;
+	}
+
+	.view-toggle {
+		display: inline-flex;
+		gap: 4px;
+		margin-top: 12px;
+		border: 1px solid rgba(255, 255, 255, 0.16);
+		border-radius: 6px;
+		padding: 4px;
+	}
+
+	.view-toggle button {
+		border: none;
+		background: transparent;
+		color: rgba(255, 255, 255, 0.55);
+		font: inherit;
+		font-size: 0.78rem;
+		padding: 5px 12px;
+		border-radius: 4px;
+		cursor: pointer;
+	}
+
+	.view-toggle button.active {
+		background: rgba(255, 255, 255, 0.12);
+		color: rgba(255, 255, 255, 0.92);
+	}
 
 	.image-grid {
 		display: grid;
@@ -301,19 +773,19 @@ let favoriteCount = $derived(
 
 	.grid-cell {
 		position: relative;
-		aspect-ratio: 1;
-		overflow: hidden;
 		border-radius: 4px;
 	}
 
 	.image-btn {
 		display: block;
 		width: 100%;
-		height: 100%;
+		aspect-ratio: 1;
 		padding: 0;
 		border: none;
 		background: none;
 		cursor: pointer;
+		overflow: hidden;
+		border-radius: 4px;
 	}
 
 	.image-btn img {
@@ -321,6 +793,37 @@ let favoriteCount = $derived(
 		height: 100%;
 		object-fit: cover;
 		transition: transform 0.2s;
+	}
+
+	.file-tile {
+		width: 100%;
+		height: 100%;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		background: rgba(255, 255, 255, 0.08);
+		color: currentColor;
+	}
+
+	.image-filename {
+		margin: 0.45rem 0 0;
+		font-size: 0.72rem;
+		line-height: 1.3;
+		color: rgba(255, 255, 255, 0.52);
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
+	}
+
+	.file-tile span,
+	.lightbox-file span {
+		padding: 6px 12px;
+		border: 1px solid currentColor;
+		border-radius: 4px;
+		text-transform: uppercase;
+		font-size: 0.8rem;
+		letter-spacing: 0.08em;
+		opacity: 0.72;
 	}
 
 	.image-btn:hover img {
@@ -351,6 +854,140 @@ let favoriteCount = $derived(
 	.fav-btn:focus { opacity: 1; }
 	.fav-btn.is-fav { opacity: 1; color: #e74c3c; background: rgba(0, 0, 0, 0.5); }
 
+	.select-photo {
+		position: absolute;
+		top: 8px;
+		left: 8px;
+		width: 32px;
+		height: 32px;
+		border-radius: 50%;
+		background: rgba(0, 0, 0, 0.4);
+		cursor: pointer;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		opacity: 0;
+		transition: opacity 0.15s;
+	}
+
+	.grid-cell:hover .select-photo,
+	.grid-cell:focus-within .select-photo,
+	.select-photo.selected {
+		opacity: 1;
+	}
+
+	.select-photo input {
+		position: absolute;
+		opacity: 0;
+		pointer-events: none;
+	}
+
+	.select-photo span {
+		width: 16px;
+		height: 16px;
+		border: 1px solid rgba(255, 255, 255, 0.75);
+		border-radius: 3px;
+		background: rgba(255, 255, 255, 0.1);
+		box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.12);
+	}
+
+	.select-photo.selected span {
+		border-color: #8da0ff;
+		background: #8da0ff;
+		box-shadow: inset 0 0 0 3px rgba(0, 0, 0, 0.35);
+	}
+
+	.image-list {
+		display: flex;
+		flex-direction: column;
+		border-top: 1px solid rgba(255, 255, 255, 0.1);
+	}
+
+	.list-row {
+		display: grid;
+		grid-template-columns: 64px minmax(0, 1fr) auto;
+		gap: 14px;
+		align-items: center;
+		padding: 10px 0;
+		border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+	}
+
+	.list-thumb {
+		width: 64px;
+		aspect-ratio: 1;
+		border: none;
+		border-radius: 4px;
+		padding: 0;
+		overflow: hidden;
+		background: rgba(255, 255, 255, 0.08);
+		cursor: pointer;
+	}
+
+	.list-thumb img {
+		width: 100%;
+		height: 100%;
+		object-fit: cover;
+		display: block;
+	}
+
+	.list-info {
+		min-width: 0;
+		border: none;
+		background: transparent;
+		color: inherit;
+		font: inherit;
+		text-align: left;
+		cursor: pointer;
+	}
+
+	.list-filename,
+	.list-meta {
+		display: block;
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
+	}
+
+	.list-filename {
+		color: rgba(255, 255, 255, 0.84);
+	}
+
+	.list-meta {
+		margin-top: 3px;
+		color: rgba(255, 255, 255, 0.42);
+		font-size: 0.72rem;
+		text-transform: uppercase;
+		letter-spacing: 0.08em;
+	}
+
+	.list-actions {
+		display: flex;
+		align-items: center;
+		gap: 12px;
+	}
+
+	.list-fav {
+		border: none;
+		background: transparent;
+		color: rgba(255, 255, 255, 0.48);
+		font: inherit;
+		font-size: 1rem;
+		cursor: pointer;
+	}
+
+	.list-fav.is-fav {
+		color: #e74c3c;
+	}
+
+	.list-select {
+		display: flex;
+		align-items: center;
+		gap: 7px;
+		color: rgba(255, 255, 255, 0.58);
+		font-size: 0.78rem;
+		cursor: pointer;
+	}
+
 	/* Lightbox */
 	.lightbox {
 		position: fixed;
@@ -376,6 +1013,17 @@ let favoriteCount = $derived(
 		max-height: 75vh;
 		object-fit: contain;
 		border-radius: 4px;
+	}
+
+	.lightbox-file {
+		width: min(520px, 80vw);
+		aspect-ratio: 4 / 3;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		border-radius: 4px;
+		background: rgba(255, 255, 255, 0.08);
+		color: rgba(255, 255, 255, 0.8);
 	}
 
 	.lightbox-controls {
@@ -449,5 +1097,9 @@ let favoriteCount = $derived(
 		.lightbox { padding: 16px; }
 		.lb-nav { font-size: 2rem; padding: 10px; }
 		.download-bar { flex-direction: column; }
+		.select-photo { opacity: 1; }
+		.list-row { grid-template-columns: 52px minmax(0, 1fr); }
+		.list-thumb { width: 52px; }
+		.list-actions { grid-column: 2; justify-content: space-between; }
 	}
 </style>

@@ -21,7 +21,6 @@
 </svelte:head>
 
 <script lang="ts">
-import { enableVisualEditing } from "@sanity/visual-editing";
 import { injectAnalytics } from "@vercel/analytics/sveltekit";
 import type { Snippet } from "svelte";
 import { onMount } from "svelte";
@@ -72,9 +71,16 @@ $effect(() => {
 onMount(() => {
 	// Enable Sanity Visual Editing overlay when in preview mode
 	if (data.isPreview) {
-		const disable = enableVisualEditing();
+		let mounted = true;
+		let disableVisualEditing: (() => void) | undefined;
+
+		import("@sanity/visual-editing").then(({ enableVisualEditing }) => {
+			if (mounted) disableVisualEditing = enableVisualEditing();
+		});
+
 		return () => {
-			disable();
+			mounted = false;
+			disableVisualEditing?.();
 			timeTheme.destroy();
 		};
 	}
@@ -176,4 +182,3 @@ onMount(() => {
   top: 8px;
 }
 </style>
-

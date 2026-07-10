@@ -19,6 +19,29 @@ const orderStatusValidator = v.union(
 	v.literal("fulfillment_error"),
 );
 
+const shipmentEmailDeliveryStatusValidator = v.union(
+	v.literal("sent"),
+	v.literal("failed"),
+	v.literal("skipped"),
+);
+
+const fulfillmentRecoveryStatusValidator = v.union(
+	v.literal("refund_pending"),
+	v.literal("refunded"),
+);
+
+function canClaimShipmentEmail(status: string) {
+	return status === "new" || status === "printing" || status === "ready";
+}
+
+function truncateDeliveryError(error: string) {
+	return error.length > 1000 ? `${error.slice(0, 997)}...` : error;
+}
+
+function normalizeDeliveryError(error: string | undefined) {
+	return truncateDeliveryError(error || "Shipment email delivery failed without error detail");
+}
+
 export const list = query({
 	args: {
 		siteUrl: v.string(),
@@ -115,6 +138,9 @@ export const create = mutation({
 				lumaprintsOrderNumber: existing.lumaprintsOrderNumber,
 				status: existing.status,
 				stripeFees: existing.stripeFees,
+				fulfillmentError: existing.fulfillmentError,
+				stripeRefundId: existing.stripeRefundId,
+				fulfillmentRecoveryStatus: existing.fulfillmentRecoveryStatus,
 			};
 		}
 
@@ -155,6 +181,9 @@ export const create = mutation({
 			lumaprintsOrderNumber: undefined,
 			status: "new" as const,
 			stripeFees: undefined,
+			fulfillmentError: undefined,
+			stripeRefundId: undefined,
+			fulfillmentRecoveryStatus: undefined,
 		};
 	},
 });
@@ -180,6 +209,7 @@ export const updateStatus = mutation({
 		stripePaymentIntentId: v.optional(v.string()),
 		fulfillmentError: v.optional(v.string()),
 		stripeRefundId: v.optional(v.string()),
+		fulfillmentRecoveryStatus: v.optional(fulfillmentRecoveryStatusValidator),
 	},
 	handler: async (ctx, { orderId, webhookSecret, ...updates }) => {
 		const auth = await requireWebhookCallerOrAuth(ctx, webhookSecret);
@@ -193,6 +223,125 @@ export const updateStatus = mutation({
 		if (Object.keys(patch).length > 0) {
 			await ctx.db.patch(orderId, patch);
 		}
+	},
+});
+
+/**
+ * Atomically claim the one-time customer shipment email for a LumaPrints
+ * shipment webhook.
+ *
+ * This intentionally combines lookup, tracking/status patch, and email-claim
+ * into a single Convex transaction. Spokes can then send the email only when
+ * `claimed` is true, avoiding duplicate emails from concurrent webhook
+ * deliveries without pushing the actual Resend side effect into Convex.
+ */
+export const claimShipmentEmailNotification = mutation({
+	args: {
+		siteUrl: v.string(),
+		lumaprintsOrderNumber: v.string(),
+		webhookSecret: v.optional(v.string()),
+		trackingNumber: v.optional(v.string()),
+		trackingUrl: v.optional(v.string()),
+	},
+	handler: async (
+		ctx,
+		{ siteUrl, lumaprintsOrderNumber, webhookSecret, trackingNumber, trackingUrl },
+	) => {
+		const auth = await requireWebhookCallerOrAuth(ctx, webhookSecret);
+		if (auth.via === "auth") {
+			await requireSiteAdmin(ctx, siteUrl);
+		}
+
+		const matchingOrders = await ctx.db
+			.query("orders")
+			.withIndex("by_lumaprintsOrderNumber", (q) =>
+				q.eq("siteUrl", siteUrl).eq("lumaprintsOrderNumber", lumaprintsOrderNumber),
+			)
+			.take(2);
+		if (matchingOrders.length > 1) {
+			throw new Error("Duplicate LumaPrints order number");
+		}
+		const order = matchingOrders[0];
+		if (!order) return null;
+
+		const patch: Record<string, unknown> = {};
+		if (canClaimShipmentEmail(order.status)) patch.status = "shipped";
+		if (trackingNumber !== undefined) patch.trackingNumber = trackingNumber;
+		if (trackingUrl !== undefined) patch.trackingUrl = trackingUrl;
+
+		const shouldClaim =
+			order.shipmentEmailSentAt === undefined && canClaimShipmentEmail(order.status);
+		if (shouldClaim) {
+			patch.shipmentEmailSentAt = Date.now();
+			patch.shipmentEmailDeliveryStatus = "pending";
+		}
+
+		if (Object.keys(patch).length > 0) {
+			await ctx.db.patch(order._id, patch);
+		}
+
+		return {
+			claimed: shouldClaim,
+			order: {
+				_id: order._id,
+				orderNumber: order.orderNumber,
+				customerEmail: order.customerEmail,
+			},
+		};
+	},
+});
+
+/**
+ * Record the result of the customer shipment email side effect after a
+ * spoke attempts delivery. This is intentionally separate from the atomic
+ * claim mutation because Convex cannot wrap the external Resend call in the
+ * same transaction.
+ */
+export const recordShipmentEmailDelivery = mutation({
+	args: {
+		siteUrl: v.string(),
+		lumaprintsOrderNumber: v.string(),
+		webhookSecret: v.optional(v.string()),
+		status: shipmentEmailDeliveryStatusValidator,
+		error: v.optional(v.string()),
+	},
+	handler: async (ctx, { siteUrl, lumaprintsOrderNumber, webhookSecret, status, error }) => {
+		const auth = await requireWebhookCallerOrAuth(ctx, webhookSecret);
+		if (auth.via === "auth") {
+			await requireSiteAdmin(ctx, siteUrl);
+		}
+
+		const matchingOrders = await ctx.db
+			.query("orders")
+			.withIndex("by_lumaprintsOrderNumber", (q) =>
+				q.eq("siteUrl", siteUrl).eq("lumaprintsOrderNumber", lumaprintsOrderNumber),
+			)
+			.take(2);
+		if (matchingOrders.length > 1) {
+			throw new Error("Duplicate LumaPrints order number");
+		}
+		const order = matchingOrders[0];
+		if (!order) return null;
+
+		const patch: Record<string, unknown> = {
+			shipmentEmailDeliveryStatus: status,
+			shipmentEmailDeliveryAttemptedAt: Date.now(),
+		};
+		if (status === "failed") {
+			patch.shipmentEmailDeliveryError = normalizeDeliveryError(error);
+		} else {
+			patch.shipmentEmailDeliveryError = undefined;
+		}
+
+		await ctx.db.patch(order._id, patch);
+
+		return {
+			recorded: true,
+			order: {
+				_id: order._id,
+				orderNumber: order.orderNumber,
+			},
+		};
 	},
 });
 
@@ -249,12 +398,16 @@ export const getByLumaprintsOrderNumber = query({
 		if (auth.via === "auth") {
 			await requireSiteAdmin(ctx, siteUrl);
 		}
-		const order = await ctx.db
+		const matchingOrders = await ctx.db
 			.query("orders")
 			.withIndex("by_lumaprintsOrderNumber", (q) =>
 				q.eq("siteUrl", siteUrl).eq("lumaprintsOrderNumber", lumaprintsOrderNumber),
 			)
-			.first();
+			.take(2);
+		if (matchingOrders.length > 1) {
+			throw new Error("Duplicate LumaPrints order number");
+		}
+		const order = matchingOrders[0];
 		if (!order) return null;
 		return {
 			_id: order._id,

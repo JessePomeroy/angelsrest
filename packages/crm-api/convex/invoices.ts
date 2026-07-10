@@ -35,21 +35,12 @@ export const list = query({
 	},
 });
 
-/**
- * @audit C7 — This is currently public (no auth) because the invoice payment
- * flow at `/api/invoice/checkout` passes a raw `invoiceId`. Anyone who
- * knows or guesses an invoiceId can read the invoice contents (client
- * email, line items, amounts).
- *
- * TODO: convert `/api/invoice/checkout` to use a portal token (like the
- * accept/decline/sign flow already does), then make this query require
- * auth. Once done, remove this comment.
- */
 export const get = query({
 	args: { invoiceId: v.id("invoices") },
 	handler: async (ctx, { invoiceId }) => {
 		const invoice = await ctx.db.get(invoiceId);
 		if (!invoice) return null;
+		await requireSiteAdmin(ctx, invoice.siteUrl);
 		const client = await ctx.db.get(invoice.clientId);
 		return {
 			...invoice,
@@ -160,6 +151,40 @@ export const markSent = mutation({
 	},
 });
 
+export const recordCheckoutStarted = mutation({
+	args: {
+		invoiceId: v.id("invoices"),
+		siteUrl: v.string(),
+		stripeCheckoutSessionId: v.string(),
+		stripeCheckoutFingerprint: v.string(),
+		webhookSecret: v.string(),
+	},
+	handler: async (
+		ctx,
+		{ invoiceId, siteUrl, stripeCheckoutSessionId, stripeCheckoutFingerprint, webhookSecret },
+	) => {
+		await requireWebhookCallerOrAuth(ctx, webhookSecret, { allowAuth: false });
+		const invoice = await ctx.db.get(invoiceId);
+		if (!invoice || invoice.siteUrl !== siteUrl) {
+			throw new Error("Not found");
+		}
+		if (invoice.status === "paid") {
+			throw new Error("Invoice has already been paid");
+		}
+		if (invoice.status !== "sent" && invoice.status !== "overdue") {
+			throw new Error("Invoice is not payable");
+		}
+		const now = Date.now();
+		await ctx.db.patch(invoiceId, {
+			stripeCheckoutSessionId,
+			stripeCheckoutFingerprint,
+			stripeCheckoutStatus: "open",
+			stripeCheckoutStartedAt: invoice.stripeCheckoutStartedAt ?? now,
+			stripeCheckoutUpdatedAt: now,
+		});
+	},
+});
+
 /**
  * Mark an invoice paid. Called by:
  *   - The Stripe webhook on `checkout.session.completed` (passes
@@ -173,8 +198,13 @@ export const markPaid = mutation({
 		invoiceId: v.id("invoices"),
 		siteUrl: v.string(),
 		webhookSecret: v.optional(v.string()),
+		stripeCheckoutSessionId: v.optional(v.string()),
+		stripeCheckoutFingerprint: v.optional(v.string()),
 	},
-	handler: async (ctx, { invoiceId, siteUrl, webhookSecret }) => {
+	handler: async (
+		ctx,
+		{ invoiceId, siteUrl, webhookSecret, stripeCheckoutSessionId, stripeCheckoutFingerprint },
+	) => {
 		const auth = await requireWebhookCallerOrAuth(ctx, webhookSecret);
 		if (auth.via === "auth") {
 			await requireSiteAdmin(ctx, siteUrl);
@@ -183,13 +213,33 @@ export const markPaid = mutation({
 		if (!invoice || invoice.siteUrl !== siteUrl) {
 			throw new Error("Not found");
 		}
+		if (stripeCheckoutSessionId) {
+			if (invoice.stripeCheckoutSessionId !== stripeCheckoutSessionId) {
+				throw new Error("Invoice checkout session mismatch");
+			}
+			if (
+				stripeCheckoutFingerprint &&
+				invoice.stripeCheckoutFingerprint !== stripeCheckoutFingerprint
+			) {
+				throw new Error("Invoice checkout fingerprint mismatch");
+			}
+		}
 		if (invoice.status === "paid") {
 			// Idempotent — retry-safe on Stripe webhook replays.
 			return;
 		}
+		const now = Date.now();
 		await ctx.db.patch(invoiceId, {
 			status: "paid",
-			paidAt: Date.now(),
+			paidAt: now,
+			...(stripeCheckoutSessionId
+				? {
+						stripeCheckoutSessionId,
+						...(stripeCheckoutFingerprint ? { stripeCheckoutFingerprint } : {}),
+						stripeCheckoutStatus: "paid" as const,
+						stripeCheckoutUpdatedAt: now,
+					}
+				: {}),
 		});
 
 		await ctx.runMutation(internal.activityLog.logActivity, {

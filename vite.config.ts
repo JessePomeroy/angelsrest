@@ -9,27 +9,54 @@ import { defineConfig } from "vitest/config";
 // `path.resolve(".")` here would silently change behavior depending on
 // where vite/vitest was invoked from.
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const canUploadSentrySourceMaps = Boolean(
+	process.env.SENTRY_AUTH_TOKEN && process.env.SENTRY_ORG && process.env.SENTRY_PROJECT,
+);
 
 export default defineConfig({
 	plugins: [
 		tailwindcss(),
 		// Audit H46: wire the Sentry plugin so source maps are uploaded at
 		// build time. Without this Sentry ingests the minified stack frames
-		// and dashboards are unreadable. The plugin no-ops when
-		// SENTRY_AUTH_TOKEN isn't set (dev builds, CI without Sentry
-		// secrets), so it's safe to leave enabled everywhere.
+		// and dashboards are unreadable. Uploads are enabled only when the
+		// required Sentry env vars exist, so local builds stay quiet.
 		sentrySvelteKit({
-			sourceMapsUploadOptions: {
-				org: process.env.SENTRY_ORG,
-				project: process.env.SENTRY_PROJECT,
-				authToken: process.env.SENTRY_AUTH_TOKEN,
-				// Silence the "SENTRY_AUTH_TOKEN not provided" warning in dev;
-				// when the token is missing the upload is a no-op anyway.
-				telemetry: false,
-			},
+			// This site uses Sentry for error capture only right now
+			// (`tracesSampleRate: 0`). Leaving auto-instrumentation on injects
+			// @sentry/sveltekit runtime imports into every server load and makes
+			// Vercel trace Sentry's build-time plugin code into the serverless
+			// bundle. Re-enable only when we intentionally turn tracing on.
+			autoInstrument: false,
+			autoUploadSourceMaps: canUploadSentrySourceMaps,
+			sourceMapsUploadOptions: canUploadSentrySourceMaps
+				? {
+						org: process.env.SENTRY_ORG,
+						project: process.env.SENTRY_PROJECT,
+						authToken: process.env.SENTRY_AUTH_TOKEN,
+						telemetry: false,
+					}
+				: undefined,
 		}),
 		sveltekit(),
 	],
+	build: {
+		// Sanity visual editing is preview-only but still emitted as a large
+		// dynamic chunk. Keep the warning useful for genuinely oversized chunks.
+		chunkSizeWarningLimit: 900,
+		rollupOptions: {
+			onLog(level, log, handler) {
+				if (
+					level === "warn" &&
+					typeof log.message === "string" &&
+					log.message.includes("Module level directives cause errors when bundled") &&
+					log.message.includes("framer-motion")
+				) {
+					return;
+				}
+				handler(level, log);
+			},
+		},
+	},
 	server: {
 		fs: {
 			allow: ["packages/crm-api/convex/_generated"],

@@ -5,7 +5,7 @@ node_modules
 .vercel
 .netlify
 .wrangler
-/.svelte-kit
+.svelte-kit
 /build
 
 # OS
@@ -22,30 +22,19 @@ vite.config.js.timestamp-*
 vite.config.ts.timestamp-*
 .claude/worktrees/
 
-# Audit / rotation working docs — do not commit
+# Local audit/rotation working docs may contain sensitive provider details.
 AUDIT.md
 ROTATION.md
 
-# Belt-and-suspenders for stray tsc emits inside convex sources. Gap 2 Phase 1
-# moved convex/ into packages/crm-api/, so the patterns now live there. Phase 2
-# will enable emit (to dist/), so these patterns guard against accidental emit
-# *into* the convex source tree (which would confuse `npx convex dev`'s
-# esbuild entry-point scan with two outputs sharing the same path).
+# Guard against accidental TypeScript output inside Convex source. The package
+# is type-check-only; emitted siblings confuse Convex's entry-point scan.
 packages/crm-api/convex/**/*.js
 packages/crm-api/convex/**/*.d.ts
 packages/crm-api/convex/**/*.d.ts.map
 !packages/crm-api/convex/convex.config.ts
 !packages/crm-api/convex/_generated/
 
-# Root-level guard: the canonical convex/ tree lives in packages/crm-api/.
-# Documented Convex CLI behavior: `npx convex codegen` invoked from a
-# directory without a convex/ tree will bootstrap an empty one (with
-# `ApiFromModules<{}>` for api.d.ts). Easy to trigger by accident in a
-# long shell session if cwd drifts from packages/crm-api/ back to the
-# repo root between commands. Ignoring the path keeps any accidental
-# stub out of the working tree silently. The fix is "always cd into
-# packages/crm-api/ before running npx convex anything" — see also
-# CLAUDE.md's schema-ownership note. Investigation trail:
-# `~/Documents/quilt/02_reference/projects/photographer_crm/
-# gap-2-phase-1-followups.md` Finding 2.
+# The canonical Convex tree lives in packages/crm-api/. Running Convex commands
+# from the repository root can bootstrap an empty root-level tree, so ignore it
+# and always run those commands from packages/crm-api/.
 /convex/

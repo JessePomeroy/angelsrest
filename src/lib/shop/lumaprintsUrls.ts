@@ -10,9 +10,8 @@
  * resolution).
  *
  * Why these specific values:
- * - `q=100` — maximum quality Sanity's image CDN will serve. Below
- *   this is implicitly lossy. See `~/Documents/quilt/02_reference/sanity-cdn-quality.md`
- *   for the full explanation of how Sanity re-encodes uploaded assets.
+ * - `q=100` — maximum quality requested from Sanity's image CDN. Lower
+ *   values introduce additional lossy compression before printing.
  * - `max=8000` — caps the image's longest edge at 8000 pixels. Still
  *   300 DPI for prints up to 26.67 inches and 200 DPI for prints up
  *   to 40 inches — print-quality for every LumaPrints product. Bounds
@@ -23,10 +22,8 @@
  *
  * **Use cases (call this function):**
  * - Inside `buildLumaPrintsOrder()` for every order item URL going to
- *   LumaPrints (current non-bordered prints + future Sharp-composited
- *   bordered prints).
- * - Inside the future Sharp processing pipeline (audit #24 PR #6) when
- *   fetching source images for compositing.
+ *   LumaPrints.
+ * - In image-compositing paths that fetch source images for print.
  *
  * **DO NOT call this function for:**
  * - Gallery display URLs on the public site (way too much data for web)
@@ -34,8 +31,6 @@
  *   with `?w=` and `?fm=webp` instead)
  * - Anything customer-facing on the web — only print-pipeline submissions
  *
- * Decision history: `~/Documents/quilt/03_creating/angelsrest/lumaprints-expansion-2026-04-10.md`
- * + memory `project_print_quality_q100`.
  */
 
 const PRINT_QUALITY_PARAMS = "max=8000&q=100";

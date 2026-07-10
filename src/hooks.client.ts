@@ -6,10 +6,10 @@
  * is empty.
  */
 
-import * as Sentry from "@sentry/sveltekit";
+import { handleErrorWithSentry, init } from "@sentry/sveltekit";
 import { env } from "$env/dynamic/public";
 
-Sentry.init({
+init({
 	dsn: env.PUBLIC_SENTRY_DSN,
 	initialScope: {
 		tags: { site: "angelsrest" },
@@ -18,7 +18,7 @@ Sentry.init({
 	sendDefaultPii: false,
 });
 
-const sentryHandleError = Sentry.handleErrorWithSentry();
+const sentryHandleError = handleErrorWithSentry();
 
 export const handleError: typeof sentryHandleError = (
 	input: Parameters<typeof sentryHandleError>[0],
