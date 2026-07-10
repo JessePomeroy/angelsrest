@@ -281,7 +281,7 @@ describe("Stripe webhook POST handler", () => {
 				payment_intent: "pi_test_123",
 				reason: "requested_by_customer",
 			}),
-			undefined,
+			{ idempotencyKey: "fulfillment-refund:cs_test_123" },
 		);
 
 		// Convex order was marked fulfillment_error with the refund ID
@@ -338,7 +338,7 @@ describe("Stripe webhook POST handler", () => {
 		);
 	});
 
-	it("still returns 200 when Stripe refund call itself fails during permanent-failure path", async () => {
+	it("returns 500 and leaves a durable recovery checkpoint when the refund call fails", async () => {
 		// Permanent LumaPrints error...
 		const { LumaPrintsError } = await import("$lib/server/lumaprints");
 		mockCreateLumaOrder.mockRejectedValue(
@@ -358,27 +358,24 @@ describe("Stripe webhook POST handler", () => {
 			}),
 		};
 
-		const response = await POST(req);
-		// Still 200 — the underlying LumaPrints issue is permanent, and the
-		// admin email will notify us that the refund also failed so we can
-		// refund manually.
-		expect(response.status).toBe(200);
+		await expect(POST(req)).rejects.toMatchObject({ status: 500 });
 
-		// Convex still updated (with stripeRefundId undefined)
+		// Stripe can retry safely: Convex records the recovery checkpoint before
+		// the external refund call, and the refund itself has a stable key.
 		expect(mockConvexMutation).toHaveBeenCalledWith(
 			"orders.updateStatus",
-			expect.objectContaining({ status: "fulfillment_error" }),
-		);
-
-		// Admin still emailed — with an explicit "refund FAILED" indicator
-		expect(mockSendEmail).toHaveBeenCalledWith(
 			expect.objectContaining({
-				text: expect.stringContaining("Refund FAILED"),
+				status: "fulfillment_error",
+				fulfillmentRecoveryStatus: "refund_pending",
 			}),
+		);
+		expect(mockRefundsCreate).toHaveBeenCalledWith(
+			expect.objectContaining({ payment_intent: "pi_test_123" }),
+			{ idempotencyKey: "fulfillment-refund:cs_test_123" },
 		);
 	});
 
-	it("does not retry fulfillment or refund for duplicate events after fulfillment_error", async () => {
+	it("resumes refund recovery without repeating fulfillment for a legacy error record", async () => {
 		mockConvexMutation.mockResolvedValueOnce({
 			_id: "order-123",
 			orderNumber: "ORD-001",
@@ -398,14 +395,20 @@ describe("Stripe webhook POST handler", () => {
 		expect(response.status).toBe(200);
 
 		expect(mockCreateLumaOrder).not.toHaveBeenCalled();
-		expect(mockRefundsCreate).not.toHaveBeenCalled();
-		expect(mockConvexMutation).not.toHaveBeenCalledWith(
-			"orders.updateStatus",
-			expect.objectContaining({ status: "fulfillment_error" }),
+		expect(mockRefundsCreate).toHaveBeenCalledWith(
+			expect.objectContaining({ payment_intent: "pi_test_123" }),
+			{ idempotencyKey: "fulfillment-refund:cs_test_123" },
 		);
-		expect(mockSendEmail).not.toHaveBeenCalledWith(
+		expect(mockConvexMutation).toHaveBeenCalledWith(
+			"orders.updateStatus",
 			expect.objectContaining({
-				subject: expect.stringContaining("Fulfillment error"),
+				stripeRefundId: "re_test_refund_123",
+				fulfillmentRecoveryStatus: "refunded",
+			}),
+		);
+		expect(mockSendEmail).toHaveBeenCalledWith(
+			expect.objectContaining({
+				subject: expect.stringContaining("refund issued"),
 			}),
 		);
 	});

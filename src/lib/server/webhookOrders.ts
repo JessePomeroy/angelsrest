@@ -10,16 +10,28 @@ import type { ConvexHttpClient } from "convex/browser";
 import type { Resend } from "resend";
 import type Stripe from "stripe";
 import { api } from "$convex/api";
+import type { Id } from "$convex/dataModel";
 import { logStructured } from "$lib/server/logger";
 import {
+	handlePermanentFulfillmentFailure,
 	handlePrintFulfillmentFailure,
+	type PrintFulfillmentOutcome,
+	type SubmitLumaPrintsOrder,
 	submitPrintFulfillment,
 } from "$lib/server/printFulfillment";
 import type { ShippingDetails } from "$lib/server/webhookEmails";
 import { buildConvexOrderCreatePayload } from "$lib/server/webhookOrderPayload";
 import { getWebhookSecret } from "$lib/server/webhookSecret";
 
-export { handlePermanentFulfillmentFailure } from "$lib/server/printFulfillment";
+export { handlePermanentFulfillmentFailure };
+
+export interface CreatedOrderResult {
+	orderNumber: string;
+	_id: Id<"orders">;
+	alreadyExisted: boolean;
+	fulfillment: PrintFulfillmentOutcome;
+	notification: "success" | "failure" | "none";
+}
 
 /**
  * Create an order in Convex.
@@ -32,10 +44,12 @@ export async function createOrderInConvex(
 		stripe,
 		convex,
 		resend,
+		createLumaPrintsOrder,
 	}: {
 		stripe: Stripe;
 		convex: ConvexHttpClient;
 		resend: Resend;
+		createLumaPrintsOrder: SubmitLumaPrintsOrder;
 	},
 	{
 		session,
@@ -50,7 +64,7 @@ export async function createOrderInConvex(
 		siteUrl: string;
 		stripeRequestOptions?: Stripe.RequestOptions;
 	},
-) {
+): Promise<CreatedOrderResult> {
 	// Create order in Convex (idempotent — returns existing order if session already processed)
 	const orderResult = await convex.mutation(
 		api.orders.create,
@@ -66,6 +80,9 @@ export async function createOrderInConvex(
 	const existingLumaprintsOrderNumber = orderResult.lumaprintsOrderNumber;
 	const existingStatus = orderResult.status;
 	const existingStripeFees = orderResult.stripeFees;
+	const existingFulfillmentError = orderResult.fulfillmentError;
+	const existingStripeRefundId = orderResult.stripeRefundId;
+	const existingRecoveryStatus = orderResult.fulfillmentRecoveryStatus;
 
 	logStructured({
 		event: alreadyExisted ? "order.rehydrated" : "order.created",
@@ -115,24 +132,84 @@ export async function createOrderInConvex(
 				lumaprintsOrderNumber: existingLumaprintsOrderNumber,
 			},
 		});
-		return { orderNumber, _id: orderId, alreadyExisted };
+		return {
+			orderNumber,
+			_id: orderId,
+			alreadyExisted,
+			fulfillment: {
+				kind: "fulfilled",
+				lumaprintsOrderNumber: existingLumaprintsOrderNumber,
+			},
+			notification: "none",
+		};
 	}
 
-	if (alreadyExisted && existingStatus === "fulfillment_error") {
+	if (alreadyExisted && existingRecoveryStatus === "refunded" && !existingStripeRefundId) {
+		throw new Error(`Order ${orderNumber} is marked refunded without a Stripe refund ID`);
+	}
+
+	if (
+		alreadyExisted &&
+		existingStripeRefundId &&
+		(existingRecoveryStatus === "refunded" || existingStatus === "fulfillment_error")
+	) {
 		logStructured({
 			event: "lumaprints.skipped",
 			stage: "lumaprints_submit",
 			orderId: orderNumber,
 			meta: {
-				reason: "already marked fulfillment_error on prior webhook attempt",
+				reason: "permanent failure was already refunded",
+				stripeRefundId: existingStripeRefundId,
 			},
 		});
-		return { orderNumber, _id: orderId, alreadyExisted };
+		return {
+			orderNumber,
+			_id: orderId,
+			alreadyExisted,
+			fulfillment: {
+				kind: "permanent_failure_refunded",
+				stripeRefundId: existingStripeRefundId,
+				errorSummary: existingFulfillmentError ?? "Permanent fulfillment failure",
+			},
+			notification: "none",
+		};
 	}
 
+	if (
+		alreadyExisted &&
+		(existingRecoveryStatus === "refund_pending" || existingStatus === "fulfillment_error")
+	) {
+		logStructured({
+			event: "refund.recovery_resumed",
+			level: "warn",
+			stage: "stripe_refund",
+			orderId: orderNumber,
+			meta: { recoveryStatus: existingRecoveryStatus ?? "legacy_fulfillment_error" },
+		});
+		const fulfillment = await handlePermanentFulfillmentFailure(
+			{ stripe, convex, resend },
+			{
+				orderId,
+				orderNumber,
+				error: new Error(existingFulfillmentError ?? "Permanent fulfillment failure"),
+				session,
+				stripeRequestOptions,
+				customerEmail: session.customer_details?.email ?? "unknown",
+			},
+		);
+		return {
+			orderNumber,
+			_id: orderId,
+			alreadyExisted,
+			fulfillment,
+			notification: "failure",
+		};
+	}
+
+	let fulfillment: PrintFulfillmentOutcome;
 	try {
-		await submitPrintFulfillment(
-			{ convex },
+		fulfillment = await submitPrintFulfillment(
+			{ convex, createLumaPrintsOrder },
 			{
 				orderId,
 				orderNumber,
@@ -142,7 +219,7 @@ export async function createOrderInConvex(
 			},
 		);
 	} catch (err) {
-		await handlePrintFulfillmentFailure(
+		fulfillment = await handlePrintFulfillmentFailure(
 			{ stripe, convex, resend },
 			{
 				orderId,
@@ -155,5 +232,11 @@ export async function createOrderInConvex(
 		);
 	}
 
-	return { orderNumber, _id: orderId, alreadyExisted };
+	return {
+		orderNumber,
+		_id: orderId,
+		alreadyExisted,
+		fulfillment,
+		notification: fulfillment.kind === "permanent_failure_refunded" ? "failure" : "success",
+	};
 }

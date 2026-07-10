@@ -7,10 +7,12 @@ import type { Id } from "$convex/dataModel";
 import { env } from "$env/dynamic/private";
 import { SITE_DOMAIN } from "$lib/config/site";
 import { logStructured } from "$lib/server/logger";
+import type { SubmitLumaPrintsOrder } from "$lib/server/printFulfillment";
 import type { ShippingDetails } from "$lib/server/webhookEmails";
 import {
 	sendAdminNotification,
 	sendCustomerConfirmation,
+	sendCustomerFulfillmentFailure,
 	sendFailureAlert,
 	sendPaymentFailedEmail,
 } from "$lib/server/webhookEmails";
@@ -20,6 +22,7 @@ export interface OrderIntakeAdapters {
 	stripe: Stripe;
 	resend: Resend;
 	convex: ConvexHttpClient;
+	createLumaPrintsOrder: SubmitLumaPrintsOrder;
 }
 
 /**
@@ -195,6 +198,7 @@ async function handleCheckoutCompleted(
 			stripe: adapters.stripe,
 			convex: adapters.convex,
 			resend: adapters.resend,
+			createLumaPrintsOrder: adapters.createLumaPrintsOrder,
 		},
 		{
 			session: fullSession,
@@ -205,7 +209,7 @@ async function handleCheckoutCompleted(
 		},
 	);
 
-	if (orderResult.alreadyExisted) {
+	if (orderResult.notification === "none") {
 		logStructured({
 			event: "checkout.email_skipped_idempotent",
 			stage: "webhook",
@@ -213,7 +217,29 @@ async function handleCheckoutCompleted(
 			orderId: orderResult.orderNumber,
 			meta: { reason: "order_already_existed" },
 		});
-	} else {
+	} else if (
+		orderResult.notification === "failure" &&
+		orderResult.fulfillment.kind === "permanent_failure_refunded"
+	) {
+		try {
+			await sendCustomerFulfillmentFailure(adapters.resend, {
+				customerEmail,
+				orderNumber: orderResult.orderNumber,
+				stripeRefundId: orderResult.fulfillment.stripeRefundId,
+				total: fullSession.amount_total ?? 0,
+			});
+		} catch (err) {
+			logStructured({
+				event: "email.customer_refund.send_failed",
+				level: "error",
+				stage: "email_customer",
+				sessionId: session.id,
+				orderId: orderResult.orderNumber,
+				error: err,
+				meta: { fatal: false },
+			});
+		}
+	} else if (orderResult.notification === "success") {
 		try {
 			await sendCustomerConfirmation(adapters.resend, {
 				session: fullSession,
@@ -253,6 +279,8 @@ async function handleCheckoutCompleted(
 				meta: { fatal: false },
 			});
 		}
+	} else {
+		throw new Error(`Unexpected fulfillment notification outcome for ${orderResult.orderNumber}`);
 	}
 
 	logStructured({
