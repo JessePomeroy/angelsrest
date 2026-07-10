@@ -76,8 +76,8 @@ The `$convex` alias points to
 ## Admin authentication and transport
 
 All `/admin/*` pages use Better Auth. `src/routes/admin/+layout.server.ts`
-validates the session before child loaders fetch sensitive data, and the shared
-`AuthGuard` handles login/session UI.
+validates the session **and stored site membership** before child loaders fetch
+sensitive data, and the shared `AuthGuard` handles login/session UI.
 
 The browser Convex WebSocket is authenticated manually in
 `src/routes/admin/+layout.svelte` with `setupConvex` and `setupAuth`. This avoids
@@ -94,7 +94,9 @@ Admin mutations use HTTP:
 - Queries continue over the authenticated browser WebSocket.
 
 New admin server handlers must authorize the required creator/site membership;
-token validity alone is authentication, not authorization.
+token validity alone is authentication, not authorization. Use the host's
+per-request site-admin verifier for shared HTTP handlers; do not restore an
+identity-only `verifyAdmin` callback.
 
 | Admin area | Primary source |
 |---|---|
