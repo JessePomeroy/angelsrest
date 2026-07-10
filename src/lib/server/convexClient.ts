@@ -9,3 +9,14 @@ export function getConvex(): ConvexHttpClient {
 	}
 	return _client;
 }
+
+/**
+ * Create an authenticated client for exactly one server request.
+ * `setAuth` mutates the client, so authenticated callers must never use the
+ * process-wide unauthenticated singleton above.
+ */
+export function createAuthenticatedConvexClient(token: string): ConvexHttpClient {
+	const client = new ConvexHttpClient(publicEnv.PUBLIC_CONVEX_URL || "");
+	client.setAuth(token);
+	return client;
+}

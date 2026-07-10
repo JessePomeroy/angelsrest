@@ -66,6 +66,11 @@ name when an unqualified `gallery` would obscure the owner.
 7. Shared server handlers, including gallery-worker/R2 operations, call the
    host's per-request site-admin verifier before performing side effects.
 
+Authenticated server reads also create a fresh client through
+`createAuthenticatedConvexClient`. The cached `getConvex()` client is reserved
+for unauthenticated or server-secret call paths and must never receive
+request-specific auth through `setAuth`.
+
 The manual WebSocket setup exists because an older Better Auth adapter could
 pause auth during SvelteKit navigation. Treat transport changes as auth changes
 and test full client-side navigation, expiry, logout, and concurrent requests.
