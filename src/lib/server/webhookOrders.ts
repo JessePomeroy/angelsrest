@@ -1,9 +1,9 @@
 /**
  * Order creation and management for the Stripe webhook.
  *
- * Handles Convex order creation, Stripe fee capture, and the
- * permanent-failure refund path. Each function receives its external
- * dependencies (Stripe, Convex, Resend instances) as parameters.
+ * Handles idempotent Convex order creation, print fulfillment, and the
+ * permanent-failure refund path. Stripe fee capture is scheduled by the Convex
+ * order mutation rather than performed on the webhook request.
  */
 
 import type { ConvexHttpClient } from "convex/browser";
@@ -24,8 +24,8 @@ export { handlePermanentFulfillmentFailure } from "$lib/server/printFulfillment"
 /**
  * Create an order in Convex.
  *
- * After creating the order, waits 3 seconds then fetches actual Stripe fees
- * from the balance_transaction (which isn't available immediately at checkout time).
+ * Convex schedules Stripe fee capture after creation because the
+ * balance_transaction is not always available when checkout completes.
  */
 export async function createOrderInConvex(
 	{
@@ -94,16 +94,13 @@ export async function createOrderInConvex(
 	// `lumaprintsOrderNumber`. We short-circuit here to prevent double-submission
 	// which would otherwise produce two physical prints for one charge.
 	//
-	// Audit #23 PR #3 expanded the error handling here into a 3-signal fallback:
-	// - **Transient errors** (network, LumaPrints 5xx, unknown) → re-throw so
-	//   the webhook returns 500 and Stripe retries with backoff. Order creation
-	//   is idempotent via `by_stripeSessionId`, so retries are safe. This is
-	//   audit #1's original behavior, preserved for transient failures.
-	// - **Permanent errors** (4xx from LumaPrints, invalid payload, rejected
-	//   image, validation failure) → take the refund path: auto-refund the
-	//   customer via Stripe, mark the order `fulfillment_error` in Convex,
-	//   email the admin with full error context, and return 200 so Stripe
-	//   doesn't retry (the underlying problem is permanent).
+	// Failure handling has two branches:
+	// - **Transient errors** (network, LumaPrints 5xx, unknown) are rethrown so
+	//   Stripe retries. Convex order creation is idempotent by checkout session.
+	// - **Permanent errors** (LumaPrints 4xx and local validation failures) enter
+	//   the refund/failure-state/admin-alert path. These side effects are recorded
+	//   independently; `fulfillment_error` must not be treated as proof that the
+	//   refund or email succeeded without their corresponding delivery fields.
 	//
 	// Classification lives in `webhookErrorClassification.ts` and is
 	// conservative: unknown errors default to transient so we don't refund

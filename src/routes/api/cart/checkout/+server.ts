@@ -13,15 +13,10 @@
  * exported helper would have to live behind an underscore prefix —
  * extracting them to a normal module is cleaner.
  *
- * Coupon support is intentionally OUT OF SCOPE for v1 of the cart
- * checkout. The legacy single-product flow has per-product coupon
- * validation that doesn't translate cleanly to multi-item carts. We'll
- * add cart-level coupons in a follow-up once the basic flow is in
- * production.
- *
- * Print sets in the cart are also OUT OF SCOPE for PR C — `validateCart`
- * explicitly rejects them. PR E will rework the print set flow to
- * convert sets into cart line items.
+ * Cart-level coupons are not supported. The legacy single-product flow has
+ * per-product coupon validation that does not translate directly to a mixed
+ * cart. Print sets are supported when their encoded metadata fits Stripe's
+ * per-value limit; `validateCart` enforces that boundary.
  */
 
 import { error, json } from "@sveltejs/kit";
@@ -118,8 +113,7 @@ export async function POST({ request, cookies }) {
 
 		const session = await createPaymentCheckoutSession({
 			stripe,
-			// Cart purchases are physical prints (sets and digital deferred
-			// to later PRs), so we always collect shipping for now.
+			// Supported cart items are physical, so checkout always collects shipping.
 			shippingAllowedCountries: ["US"],
 			lineItems,
 			successUrl: `${PUBLIC_SITE_URL}/checkout/success?session_id={CHECKOUT_SESSION_ID}`,

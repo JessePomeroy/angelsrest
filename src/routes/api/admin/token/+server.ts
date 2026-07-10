@@ -6,14 +6,9 @@ import { adminTokenHandler } from "$lib/server/adminAuth";
  * `setupAuth()` calls `fetchAccessToken` whenever the Convex client needs
  * a token, and that callback fetches this endpoint.
  *
- * Why this exists: admin `useQuery()` calls (kanban, crm, quotes, etc.)
- * call `requireAuth(ctx)` on the Convex side. Before this endpoint, the
- * browser WebSocket was unauthenticated (sidestepping the
- * `createSvelteAuthClient` pause bug), so those queries all returned
- * "Not authenticated" and every admin list rendered empty. Providing
- * the token directly to `setupAuth` — instead of subscribing through
- * `authClient.useSession()` — gets authed queries back without
- * re-introducing the pause.
+ * Admin `useQuery()` calls require Convex auth. Providing the token directly to
+ * `setupAuth` avoids the historical navigation pause caused by subscribing
+ * through `createSvelteAuthClient` while keeping queries authenticated.
  *
  * Why it's safe to hand the JWT to the browser: Convex auth is
  * token-based. To authenticate a WebSocket, the token has to be in JS

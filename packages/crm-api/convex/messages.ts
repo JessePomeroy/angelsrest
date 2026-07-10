@@ -57,10 +57,10 @@ export const markRead = mutation({
  * dropped out of the admin inbox — tenants whose latest message happened
  * to be outside the 5000-row window disappeared.
  *
- * Now we drive the query from platformClients (the authoritative set
- * of threads) and fetch each client's latest + unread-count using
- * their own indexed queries. Cost is O(clients) index lookups, not
- * O(messages). No silent truncation.
+ * Now we drive the query from platformClients and fetch each client's latest +
+ * unread-count through indexed queries. Cost is O(clients) lookups rather than
+ * O(messages). The client scan is still bounded by `BULK_SCAN_LIMIT`; add
+ * pagination before platform-client count can exceed that bound.
  */
 export const allThreads = query({
 	handler: async (ctx) => {

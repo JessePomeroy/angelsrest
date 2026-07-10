@@ -1,14 +1,11 @@
 # @jessepomeroy/crm-api
 
-Generated Convex API for the photographer CRM platform. Consumed by spoke
-sites (reflecting-pool, future clients).
+Shared Convex API for the photographer CRM platform. It owns the schema and
+functions used by Angels Rest and spoke sites such as reflecting-pool.
 
-**Do not edit `src/` by hand** — the exposed surface is auto-generated from
-`./convex/` (the package owns its own Convex source as of Gap 2 Phase 1) via
-`npx convex dev`. Changes to the schema or Convex functions happen in
-`packages/crm-api/convex/`; this package simply re-exports the generated
-types so downstream sites get a typed handle without running `convex dev`
-themselves.
+**Do not edit `src/` by hand.** It is a small re-export layer over
+`./convex/_generated/`. Schema and function changes belong in `./convex/` and
+generated files are refreshed by running `npx convex dev` from this package.
 
 ## Usage
 
@@ -18,7 +15,7 @@ Install from GitHub Packages (requires `GH_PACKAGES_TOKEN` in `.npmrc`):
 pnpm add @jessepomeroy/crm-api
 ```
 
-For local monorepo-style development, link it instead:
+For local development across sibling repositories, link it instead:
 
 ```jsonc
 // spoke-site/package.json
@@ -45,11 +42,18 @@ import type { Id } from "$convex/dataModel";
 
 ## Publishing
 
-The `.github/workflows/publish-crm-api.yml` workflow in the angelsrest repo
-hashes `packages/crm-api/convex/_generated/api.d.ts` on every push to `main`
-and (post Gap 2 Phase 3) opens a changesets-driven version PR or publishes
-when one is merged. Manual publishes should not be necessary in steady state.
+Public schema/function changes require a Changeset committed with the code:
 
-First publish requires the `PUBLISH_TOKEN` secret to be set on the angelsrest
-repo (write access to GitHub Packages). See the admin-dashboard repo for the
-same pattern.
+```bash
+pnpm changeset add
+```
+
+`.github/workflows/publish-crm-api.yml` runs the Changesets two-state flow. If
+pending Changesets exist, it opens or updates the package-version PR. After that
+PR is merged, the next main-branch run publishes the new version to GitHub
+Packages. Manual version bumps and generated-file hash checks are not part of
+the current release process.
+
+The package intentionally ships TypeScript source to its known Vite/SvelteKit
+consumers. `tsconfig.json` is type-check-only; do not introduce a `dist` build
+without a concrete non-TypeScript-transpiling consumer.

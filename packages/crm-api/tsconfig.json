@@ -8,11 +8,9 @@
 		"skipLibCheck": true,
 		"forceConsistentCasingInFileNames": true,
 		"resolveJsonModule": true,
-		// Type-check-only config. The real build pipeline (Phase 2) lives in
-		// tsconfig.build.json, which sets noEmit:false + outDir + rootDir to
-		// emit into dist/. After the Gap 2 Phase 1 relocation, src/*.ts
-		// re-exports from ../convex/_generated/* (within-package), so the
-		// historical "noEmit trap" no longer applies.
+		// This package intentionally ships TypeScript source to known
+		// Vite/SvelteKit consumers. Keep this config type-check-only; there is no
+		// tsconfig.build.json or dist emission step.
 		"noEmit": true
 	},
 	"include": ["src/**/*", "convex/**/*"],

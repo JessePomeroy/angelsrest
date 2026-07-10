@@ -1,4 +1,7 @@
-# Theme Switching Guide
+# Archived: Theme switching guide
+
+> Historical educational material. It describes the earlier Skeleton theme
+> implementation and is not current repository guidance.
 
 This guide explains how the light/dark theme switching works in the Angel's Rest website.
 

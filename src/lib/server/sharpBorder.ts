@@ -8,12 +8,12 @@
  * image and submitting the order. The composited image is uploaded to R2
  * and the R2 URL replaces the original in the LumaPrints payload.
  *
- * Performance budget (from SHARP_SPIKE_RESULTS.md):
+ * Observed performance budget for representative high-resolution inputs:
  * - Single image: ~1.6-1.9s warm, ~2.5-3s cold
  * - 5-image set (sequential Sharp, parallel downloads): ~8-9s total
  * - Memory: ~366 MB for 5 high-res images, well within Vercel's 1024 MB
  *
- * Image quality: q=100 source + q=100 output, per project_print_quality_q100.
+ * Image quality: q=100 source + q=100 output.
  */
 
 import sharp from "sharp";

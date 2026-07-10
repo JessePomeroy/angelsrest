@@ -1,4 +1,11 @@
-# Learning Plan & Roadmap
+# Archived learning plan and roadmap
+
+> Historical document. This plan records the original 2025–2026 learning and
+> build sequence. It describes superseded architecture including Sanity-backed
+> orders, HTTP Basic Auth, Skeleton component classes, and synchronous Stripe
+> fee capture. Do not use it as implementation guidance. See
+> [`../ARCHITECTURE.md`](../ARCHITECTURE.md) and the repository `AGENTS.md` for
+> the current system.
 
 A phased plan for building out angelsrest.online, ordered to progressively re-learn web dev skills.
 

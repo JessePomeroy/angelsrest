@@ -1,4 +1,8 @@
-# Stripe Webhooks Guide
+# Archived: Stripe webhooks guide
+
+> Historical educational material. The current webhook is Convex-backed and
+> supports Stripe Connect, invoice settlement, and LumaPrints orchestration.
+> See [`../../ARCHITECTURE.md`](../../ARCHITECTURE.md) for the live boundaries.
 
 A complete guide to understanding and implementing Stripe webhooks for automated email notifications when customers complete purchases.
 

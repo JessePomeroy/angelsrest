@@ -1,124 +1,71 @@
 # Angel's Rest
 
-A personal portfolio and creative studio website for Jesse Pomeroy — photographer, visual artist, florist, and web developer.
+Angel's Rest is Jesse Pomeroy's portfolio, shop, and the hub application for a
+multi-tenant photographer CRM platform. The production site is
+[angelsrest.online](https://angelsrest.online).
 
-**🎓 Educational Resource:** This project includes comprehensive documentation showing how to build a modern web application from scratch. See the [Complete App Roadmap](guides/complete-app-roadmap.md) for a full tutorial covering SvelteKit, Stripe e-commerce, email automation, and production deployment.
+## System overview
 
-**Live:** [angelsrest.online](https://angelsrest.online) ✨
+- **SvelteKit 5** renders the public site, admin host, and HTTP integrations.
+- **Sanity** owns editorial content: portfolio galleries, products,
+  collections, blog, about, and site copy.
+- **Convex** owns operational data: orders, inquiries, CRM clients, invoices,
+  quotes, contracts, messages, platform tenants, and private delivery galleries.
+- **Stripe** handles shop, invoice, and platform payments, including connected
+  tenant accounts.
+- **LumaPrints** fulfills eligible print orders.
+- **Resend** sends transactional email.
+- **Cloudflare R2**, behind the gallery worker, stores private delivery assets.
 
-## What It Is
+See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for boundary and request-flow
+details.
 
-Angel's Rest showcases Jesse's multidisciplinary creative work through a thoughtfully designed digital experience. The site combines photography portfolio, art gallery, blog, and e-commerce in one cohesive platform.
+## Workspace packages
 
-## ✨ Special Features
+| Package | Responsibility |
+|---|---|
+| `@jessepomeroy/crm-api` | Convex schema/functions plus generated API and data-model exports shared with spoke sites |
+| `@jessepomeroy/print-catalog` | Print materials, sizes, LumaPrints identifiers, and pricing helpers shared with the site and Studio |
+| `@jessepomeroy/admin` | Installed shared admin UI and server-handler package |
 
-### 🕐 Time-Aware Theming
-The site subtly shifts its color palette based on your local time of day:
-- **Dawn** (5-8am): Soft pink and coral warmth
-- **Morning** (8am-12pm): Bright, clear yellows  
-- **Afternoon** (12-5pm): Warm amber baseline
-- **Golden Hour** (5-8pm): Rich orange and honey tones
-- **Evening** (8-10pm): Deep purple and violet
-- **Night** (10pm-5am): Cool indigo and blue
+## Local development
 
-The effect is subtle — like natural lighting shifting throughout the day.
-
-### 🎨 ASCII Art Portrait
-On the about page, hover over Jesse's portrait to watch it transform into animated ASCII art:
-- Starts with scrambled random characters
-- Gradually "settles" into the final portrait over 2 seconds
-- Rendered to canvas for pixel-perfect alignment with the original image
-- No layout shift or zoom — just pure magic
-
-### 📱 Thoughtful UX
-- **Mobile-first design** with bottom navigation that feels native
-- **Instant theme switching** between light and dark modes
-- **Smooth animations** and micro-interactions throughout
-- **Typography-focused** with all-lowercase aesthetic
-
-## Tech Highlights
-
-**Frontend:** SvelteKit 5 (with runes), TypeScript, Tailwind CSS v4  
-**Design:** Skeleton UI with Hamlindigo theme  
-**Content:** Sanity CMS with real-time editing  
-**Commerce:** Stripe checkout + automated email notifications via webhooks  
-**Deployment:** Vercel with automatic deployments
-
-## Content Areas
-
-- **Gallery** — Photography portfolio with category filtering and lightbox modal
-- **Shop** — Print sales with live Stripe checkout 
-- **Blog** — Flexible blog with 5 template types for different content needs
-- **About** — Bio, contact form, and that ASCII portrait trick
-
-### 📝 Flexible Blog Templates
-
-The blog supports multiple post types, each rendering with a unique visual layout:
-
-| Post Type | Description | Template Fields |
-|-----------|-------------|-----------------|
-| **Standard** | Simple blog layout (default) | None |
-| **Case Study** | Brief → Approach → Result structure | brief, approach, result |
-| **Behind the Scenes** | Narrative, full-width images, serif font | None |
-| **Technical** | Gear grid, monospace font | gearUsed array |
-| **Client Story** | Wedding/event stories with hero header | brief, approach, result |
-
-**Schema location:** `angelsrest-studio/schemaTypes/post.ts`  
-**Template components:** `src/lib/components/templates/`  
-**Rendering logic:** `src/routes/blog/[slug]/+page.svelte`
-
-**To add a new template:**
-1. Create component in `src/lib/components/templates/`
-2. Import and add case in `+page.svelte`
-3. Add entry to Sanity schema options
-4. (Optional) Add template-specific fields with `hidden` property
-
-## Creative Code
-
-This project explores the intersection of art and web development:
-- **Time as a design element** — the site feels alive and responsive to the natural rhythm of the day
-- **Canvas manipulation** — generating and animating ASCII art in real-time  
-- **Subtle interactions** — effects that enhance without overwhelming
-- **Performance-conscious creativity** — all animations are GPU-accelerated and lightweight
-
-## Local Development
+Requirements are Node 22+ and the pnpm version declared in `package.json`.
 
 ```bash
-# Clone and install
-git clone [repo-url]
-cd angelsrest
 pnpm install
-
-# Set up environment
-cp .env.example .env
-# Add your Sanity project ID, Stripe keys, etc.
-
-# Run dev server
-pnpm dev
-
-# Run Sanity Studio (separate terminal)
-cd angelsrest-studio
+cp .env.example .env.local
 pnpm dev
 ```
 
-## Technical Guides
+Use test-mode Stripe credentials and `LUMAPRINTS_USE_SANDBOX=true` locally.
+Convex development commands run from `packages/crm-api/`; its local deployment
+configuration lives in `packages/crm-api/.env.local`.
 
-**📂 `/guides/`** — Detailed technical documentation:
+## Checks
 
-### 🎯 **[Complete App Roadmap](guides/complete-app-roadmap.md)**
-**The ultimate guide** — A comprehensive 48,000+ word roadmap taking you from zero to a production web application. Covers everything from initial setup to advanced business operations, organized into 7 progressive phases. Perfect for learning full-stack development systematically.
+```bash
+pnpm lint
+pnpm check
+pnpm test
+pnpm --filter @jessepomeroy/print-catalog check
+pnpm --filter @jessepomeroy/print-catalog test
+pnpm --filter @jessepomeroy/crm-api exec tsc -p tsconfig.json --noEmit
+```
 
-### 📚 **Specialized Guides**
-- **[Stripe Webhooks](guides/stripe-webhooks.md)** — Complete setup guide for automated email notifications
-- **[Theme Switching](guides/theme-switching.md)** — How the time-aware theming system works  
-- **[Tailwind & CSS](guides/tailwind-and-global-css.md)** — Custom CSS architecture and Tailwind v4 setup
+CI runs the same lint, type-check, and test layers plus the orders lookup smoke
+test. Use `pnpm build` when a change needs a production-build verification.
 
-## About Jesse
+## Documentation
 
-Multidisciplinary artist based in Michigan, working across photography, printmaking, floral design, and web development. Currently exploring how these creative practices intersect and inform each other.
+- [AGENTS.md](AGENTS.md) — canonical repository rules and implementation constraints
+- [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) — current ownership, dependency, auth, and transport boundaries
+- [LUMAPRINTS.md](LUMAPRINTS.md) — current print-fulfillment integration
+- [packages/crm-api/README.md](packages/crm-api/README.md) — shared Convex package and release workflow
+- [docs/archive/README.md](docs/archive/README.md) — historical documents retained for context only
 
-**Contact:** Through the site's contact form or [Instagram](https://instagram.com/username)
+The Sanity Studio is a separate repository at `~/Documents/work/angelsrest-studio`.
 
----
-
-*Built with curiosity and attention to detail. All code is educational — feel free to learn from it.*
+The wider platform also includes `reflecting-pool`, `reflecting-pool-studio`,
+`sanity-studio-template`, `admin-dashboard`, and `gallery-worker`; ownership and
+dependency direction are documented in `docs/ARCHITECTURE.md`.

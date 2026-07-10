@@ -2,9 +2,10 @@ import { v } from "convex/values";
 import { mutation, query } from "./_generated/server";
 import { requireDocumentSiteAdmin, requireSiteAdmin } from "./authHelpers";
 
-// Contact form — intentionally public; the public contact page posts here.
-// Abuse mitigation is layered in SvelteKit (`/api/contact` rate-limits + CAPTCHA
-// in practice). Do NOT add requireAuth here.
+// Contact form ingress. This mutation is directly public because the contact
+// page has no authenticated user. `/api/contact` validates lengths/email before
+// calling it, but direct Convex callers bypass that route; abuse controls must
+// protect this public boundary rather than being assumed at the SvelteKit layer.
 export const create = mutation({
 	args: {
 		siteUrl: v.string(),

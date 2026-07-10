@@ -29,9 +29,9 @@ export const adminConfig: AdminConfig = {
 	sanityStudioUrl: "https://angelsrest.sanity.studio",
 	galleryWorkerUrl: "https://gallery-worker.thinkingofview.workers.dev",
 	api: apiWithGalleryDelivery,
-	// Route mutations through the SvelteKit proxy at /api/admin/mutation
-	// instead of the Convex WebSocket. The browser socket is intentionally
-	// unauthenticated (see admin/+layout.svelte) to avoid older Better Auth
-	// Svelte WebSocket pause behavior during SvelteKit client-side navigation.
+	// Route mutations through the SvelteKit proxy at /api/admin/mutation.
+	// Queries use the manually authenticated browser WebSocket; the HTTP path
+	// gives each mutation a fresh authenticated ConvexHttpClient and avoids the
+	// older Better Auth adapter's navigation-pause behavior.
 	mutationTransport: "http",
 };

@@ -1,21 +1,4 @@
-/* ============================================
-   Global Styles - Angel's Rest (Educational Version)
-   ============================================
-   
-   This file demonstrates modern CSS architecture principles:
-   1. CSS imports and cascade order
-   2. CSS custom properties and design tokens
-   3. Responsive design patterns
-   4. Dark mode implementation
-   5. Performance optimization techniques
-   
-   Key Learning Areas:
-   - Tailwind v4 configuration
-   - Skeleton UI framework integration
-   - Custom CSS gradient backgrounds
-   - Global text transformation
-   - Cross-browser compatibility
-   ============================================ */
+/* Global Tailwind, retained Skeleton primitives/tokens, and site theme layers. */
 
 @import "tailwindcss";
 @plugin "@tailwindcss/typography";

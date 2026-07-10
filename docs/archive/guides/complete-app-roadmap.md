@@ -1,4 +1,8 @@
-# Complete App Roadmap: Zero to Production
+# Archived: Complete App Roadmap: Zero to Production
+
+> Historical educational material based on the original application. It uses
+> superseded dependencies and data flows and is not current repository guidance.
+> See [`../../ARCHITECTURE.md`](../../ARCHITECTURE.md) for the live system.
 
 **A comprehensive guide to building a modern web application from concept to production**
 

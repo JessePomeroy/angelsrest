@@ -1,4 +1,8 @@
-# Our Agentic Workflow
+# Archived agentic workflow (2026-03)
+
+> Historical cross-project workflow notes. Repository-specific instructions now
+> live exclusively in `AGENTS.md`; current architecture lives in
+> [`../ARCHITECTURE.md`](../ARCHITECTURE.md).
 
 Inspired by Stripe's Minions architecture. This doc captures what we learned and how we apply it to our projects.
 

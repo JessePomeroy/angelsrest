@@ -23,21 +23,14 @@ type NumberField = {
  * @param prefix - Prefix for the number (e.g. "ORD-")
  * @returns Next number string (e.g. "ORD-042")
  *
- * Audit H15 note on concurrency: this helper is called from inside Convex
- * mutations (orders.create, invoices.create, quotes.create). Convex runs
- * mutations as serializable transactions via OCC — if two concurrent
- * mutations both read "latest = ORD-005" and both try to write ORD-006,
- * the second commit detects its read set has been invalidated by the
- * first and retries automatically with a fresh snapshot. So the theoretical
- * double-issue race doesn't actually fire as long as the caller lives in
- * a Convex mutation context. Direct `ctx.runQuery` calls from outside a
- * mutation (e.g. a UI preview of the next number) can read stale values,
- * but those are display-only and not persisted — so they can't create the
- * duplicate.
- *
- * A stricter defense would require a `counters` table with a single row
- * per (siteUrl, docType) that each creating mutation atomically patches;
- * deferred because the current OCC behavior is correct. See audit H15.
+ * Concurrency depends on the caller. `orders.create` invokes this helper inside
+ * the mutation that persists the number, so Convex OCC retries conflicting
+ * reads. Invoice and quote flows currently expose separate `getNextNumber`
+ * queries and accept caller-supplied numbers in their create mutations; those
+ * callers can race because preview and persistence are different transactions.
+ * This helper does not itself provide uniqueness. A flow that requires an
+ * authoritative number must generate/persist it in one mutation or atomically
+ * update a per-site/type counter.
  */
 export async function getNextSequentialNumber<T extends NumberedTable>(
 	ctx: QueryCtx,

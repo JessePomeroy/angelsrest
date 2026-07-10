@@ -1,6 +1,5 @@
 /**
- * Cart checkout pure helpers (cart PR C of the cart stack, extended in PR
- * D for non-print merch and PR E for print sets).
+ * Pure validation, tenant-fee, and metadata helpers for cart checkout.
  *
  * Lives in its own module rather than inside `routes/api/cart/checkout/+server.ts`
  * because SvelteKit's `+server.ts` files only allow specific named exports
@@ -9,8 +8,7 @@
  * importing from a normal module while the endpoint stays a thin shell.
  *
  * The metadata contract encoded by `buildCartMetadata` is paired with
- * the cart-shape decoder in `routes/api/webhooks/stripe/+server.ts`
- * (`buildOrderItemsFromSession`). Any change here MUST be matched there.
+ * `src/lib/server/webhookDecoder.ts`. Any change here must be matched there.
  */
 
 import {
