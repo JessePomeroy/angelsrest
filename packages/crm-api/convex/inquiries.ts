@@ -6,13 +6,12 @@ import {
 	requireWebhookCallerOrAuth,
 } from "./authHelpers";
 
-// Compatibility phase for moving contact ingress behind `/api/contact`.
-// New hosts provide the shared secret and are authenticated here. The missing
-// secret path remains temporarily accepted until every host caller is deployed;
-// the next iteration makes this argument required and removes that path.
+// Contact form ingress. The unauthenticated browser submits to the host's
+// `/api/contact` route, which applies Turnstile and payload validation before
+// calling this mutation with the shared server-only webhook secret.
 export const create = mutation({
 	args: {
-		webhookSecret: v.optional(v.string()),
+		webhookSecret: v.string(),
 		siteUrl: v.string(),
 		name: v.string(),
 		email: v.string(),
@@ -21,9 +20,7 @@ export const create = mutation({
 		message: v.string(),
 	},
 	handler: async (ctx, { webhookSecret, ...args }) => {
-		if (webhookSecret !== undefined) {
-			await requireWebhookCallerOrAuth(ctx, webhookSecret, { allowAuth: false });
-		}
+		await requireWebhookCallerOrAuth(ctx, webhookSecret, { allowAuth: false });
 		return await ctx.db.insert("inquiries", {
 			...args,
 			status: "new",

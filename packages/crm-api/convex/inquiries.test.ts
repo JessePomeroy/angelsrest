@@ -17,7 +17,7 @@ afterEach(() => {
 	delete process.env.WEBHOOK_SECRET;
 });
 
-describe("inquiry ingress compatibility", () => {
+describe("inquiry creation boundary", () => {
 	test("accepts and strips the shared server webhook secret", async () => {
 		const t = convexTest(schema, modules);
 
@@ -34,20 +34,21 @@ describe("inquiry ingress compatibility", () => {
 		expect(inquiry).not.toHaveProperty("webhookSecret");
 	});
 
-	test("temporarily accepts the legacy caller while hosts deploy", async () => {
+	test("rejects direct callers that omit the shared secret", async () => {
 		const t = convexTest(schema, modules);
+		const argsWithoutSecret = {
+			siteUrl: "tenant.example",
+			name: "Direct Caller",
+			email: "direct@example.com",
+			message: "Bypass attempt",
+		};
 
 		await expect(
-			t.mutation(api.inquiries.create, {
-				siteUrl: "tenant.example",
-				name: "Legacy Caller",
-				email: "legacy@example.com",
-				message: "Compatibility window",
-			}),
-		).resolves.toEqual(expect.any(String));
+			t.mutation(api.inquiries.create, argsWithoutSecret as never),
+		).rejects.toThrow("Missing required field `webhookSecret`");
 	});
 
-	test("rejects callers that provide the wrong secret", async () => {
+	test("rejects direct callers with the wrong secret", async () => {
 		const t = convexTest(schema, modules);
 
 		await expect(
