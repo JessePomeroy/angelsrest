@@ -1,5 +1,11 @@
 # @jessepomeroy/crm-api
 
+## 1.4.0
+
+### Minor Changes
+
+- 45c37f9: Expose order-stat scan limits and truncation state so consumers can distinguish partial totals from complete all-time metrics.
+
 ## 1.3.7
 
 ### Patch Changes
