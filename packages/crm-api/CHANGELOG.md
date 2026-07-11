@@ -1,5 +1,11 @@
 # @jessepomeroy/crm-api
 
+## 1.3.7
+
+### Patch Changes
+
+- 7d9c037: Allocate quote numbers authoritatively inside quote creation and share one per-site document-number boundary with invoices.
+
 ## 1.3.6
 
 ### Patch Changes
