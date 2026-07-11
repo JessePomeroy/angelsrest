@@ -1,6 +1,7 @@
 import type Stripe from "stripe";
 
 export const PLATFORM_PRINT_FEE_RATE = 0.05;
+export const COMMERCE_TENANT_METADATA_KEY = "commerceTenantSiteUrl";
 
 export interface StripeTenantAccount {
 	siteUrl: string;
@@ -18,6 +19,7 @@ export interface TenantCheckoutOptions {
 
 export interface TenantStripeCheckoutOptions {
 	session: Pick<Stripe.Checkout.SessionCreateParams, "payment_intent_data">;
+	metadata: Stripe.MetadataParam;
 	requestOptions?: Stripe.RequestOptions;
 	platformFeeAmount: number;
 }
@@ -44,14 +46,21 @@ export function buildTenantCheckoutOptions({
 	subtotalCents,
 }: TenantCheckoutOptions): TenantStripeCheckoutOptions {
 	const connectedAccountId = normalizeConnectedAccountId(tenant.stripeConnectedAccountId);
+	const tenantSiteUrl = normalizeCommerceTenantSiteUrl(tenant.siteUrl);
+	if (!tenantSiteUrl) throw new Error("Invalid commerce tenant siteUrl");
+	const metadata = { [COMMERCE_TENANT_METADATA_KEY]: tenantSiteUrl };
 	const platformFeeAmount = connectedAccountId
 		? calculatePlatformFeeAmount({ kind, subtotalCents })
 		: 0;
 
 	return {
-		session: platformFeeAmount
-			? { payment_intent_data: { application_fee_amount: platformFeeAmount } }
-			: {},
+		session: {
+			payment_intent_data: {
+				...(platformFeeAmount ? { application_fee_amount: platformFeeAmount } : {}),
+				metadata,
+			},
+		},
+		metadata,
 		requestOptions: connectedAccountId ? { stripeAccount: connectedAccountId } : undefined,
 		platformFeeAmount,
 	};
@@ -68,4 +77,18 @@ export function buildTenantRefundOptions(tenant: StripeTenantAccount): TenantRef
 function normalizeConnectedAccountId(value: string | null | undefined) {
 	const trimmed = value?.trim();
 	return trimmed ? trimmed : null;
+}
+
+export function normalizeCommerceTenantSiteUrl(value: string) {
+	const trimmed = value.trim();
+	if (!trimmed) return "";
+	try {
+		const url = new URL(trimmed.includes("://") ? trimmed : `https://${trimmed}`);
+		return url.hostname.toLowerCase().replace(/^www\./, "");
+	} catch {
+		return trimmed
+			.toLowerCase()
+			.replace(/^www\./, "")
+			.replace(/\/+$/, "");
+	}
 }

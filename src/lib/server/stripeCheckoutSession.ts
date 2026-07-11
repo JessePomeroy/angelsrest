@@ -86,7 +86,10 @@ export async function createPaymentCheckoutSession({
 			mode: "payment",
 			success_url: successUrl,
 			cancel_url: cancelUrl,
-			metadata,
+			metadata: {
+				...metadata,
+				...(tenantCheckout?.metadata ?? {}),
+			},
 			...(tenantCheckout?.session ?? {}),
 		},
 		requestOptions,

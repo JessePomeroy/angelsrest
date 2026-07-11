@@ -31,7 +31,10 @@ vi.mock("$convex/api", () => ({
 			create: "orders.create",
 			updateStatus: "orders.updateStatus",
 		},
-		platform: { getByStripeConnectedAccountId: "platform.getByStripeConnectedAccountId" },
+		platform: {
+			getByStripeConnectedAccountId: "platform.getByStripeConnectedAccountId",
+			getCommerceProfileForSite: "platform.getCommerceProfileForSite",
+		},
 	},
 }));
 
@@ -257,6 +260,57 @@ describe("processStripeWebhookEvent", () => {
 					siteUrl: "zippymiggy.com",
 					adminEmail: "maggie@example.com",
 				},
+			}),
+		);
+	});
+
+	it("routes a platform-account tenant session to that tenant's notifications", async () => {
+		const session = makeCheckoutSession({
+			metadata: {
+				...makeCheckoutSession().metadata,
+				commerceTenantSiteUrl: "zippymiggy.com",
+			},
+		});
+		stripe.checkout.sessions.retrieve.mockResolvedValue({
+			...session,
+			line_items: { data: [makeLineItem()] },
+		});
+		convex.query.mockResolvedValue({
+			siteName: "Reflecting Pool",
+			siteUrl: "zippymiggy.com",
+			adminEmail: "maggie@example.com",
+		});
+
+		const { processStripeWebhookEvent } = await import("../orderIntake");
+		await processStripeWebhookEvent(
+			makeStripeEvent("checkout.session.completed", session),
+			adapters(),
+		);
+
+		expect(convex.query).toHaveBeenCalledWith("platform.getCommerceProfileForSite", {
+			siteUrl: "zippymiggy.com",
+			webhookSecret: "test-webhook-secret",
+		});
+		expect(convex.mutation).toHaveBeenCalledWith(
+			"orders.create",
+			expect.objectContaining({ siteUrl: "zippymiggy.com" }),
+		);
+		expect(mockSendCustomerConfirmation).toHaveBeenCalledWith(
+			resend,
+			expect.objectContaining({
+				notificationProfile: {
+					siteName: "Reflecting Pool",
+					siteUrl: "zippymiggy.com",
+					adminEmail: "maggie@example.com",
+				},
+			}),
+		);
+		expect(mockSendAdminNotification).toHaveBeenCalledWith(
+			resend,
+			expect.objectContaining({
+				notificationProfile: expect.objectContaining({
+					adminEmail: "maggie@example.com",
+				}),
 			}),
 		);
 	});

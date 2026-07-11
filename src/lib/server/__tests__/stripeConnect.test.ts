@@ -24,7 +24,12 @@ describe("Stripe Connect tenant helpers", () => {
 		});
 
 		expect(options).toEqual({
-			session: {},
+			session: {
+				payment_intent_data: {
+					metadata: { commerceTenantSiteUrl: "angelsrest.online" },
+				},
+			},
+			metadata: { commerceTenantSiteUrl: "angelsrest.online" },
 			requestOptions: undefined,
 			platformFeeAmount: 0,
 		});
@@ -44,8 +49,10 @@ describe("Stripe Connect tenant helpers", () => {
 			session: {
 				payment_intent_data: {
 					application_fee_amount: 500,
+					metadata: { commerceTenantSiteUrl: "zippymiggy.com" },
 				},
 			},
+			metadata: { commerceTenantSiteUrl: "zippymiggy.com" },
 			requestOptions: { stripeAccount: "acct_123" },
 			platformFeeAmount: 500,
 		});
@@ -62,7 +69,12 @@ describe("Stripe Connect tenant helpers", () => {
 		});
 
 		expect(options).toEqual({
-			session: {},
+			session: {
+				payment_intent_data: {
+					metadata: { commerceTenantSiteUrl: "zippymiggy.com" },
+				},
+			},
+			metadata: { commerceTenantSiteUrl: "zippymiggy.com" },
 			requestOptions: { stripeAccount: "acct_123" },
 			platformFeeAmount: 0,
 		});

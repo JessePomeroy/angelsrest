@@ -43,6 +43,10 @@ Canonical rules for working in this repository.
   single order-intake owner for Angels Rest and Stripe Connect client sites.
   Client spokes may request Checkout sessions through the signed bridge, but
   must not run a second `checkout.session.completed` order/fulfillment path.
+  Checkout creation stamps the server-resolved tenant key into reserved Session
+  and PaymentIntent metadata. Webhooks use `event.account` when present and that
+  marker for platform-account tenant checkouts; never trust a browser-supplied
+  tenant name, origin, sender, or notification recipient.
 - **External systems:** Stripe, LumaPrints, Resend, Sanity, Convex, and the
   gallery worker are network boundaries. Make their failure and retry behavior
   explicit; avoid speculative interfaces around pure in-process code.
