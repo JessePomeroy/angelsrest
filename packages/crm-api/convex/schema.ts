@@ -220,7 +220,16 @@ export default defineSchema({
 	})
 		.index("by_siteUrl", ["siteUrl"])
 		.index("by_client", ["clientId"])
-		.index("by_siteUrl_status", ["siteUrl", "status"]),
+		.index("by_siteUrl_status", ["siteUrl", "status"])
+		.index("by_siteUrl_and_invoiceNumber", ["siteUrl", "invoiceNumber"]),
+
+	// Authoritative allocation state for numbered documents. Invoice creation
+	// uses this now; quote allocation will migrate in its own bounded slice.
+	documentNumberCounters: defineTable({
+		siteUrl: v.string(),
+		documentType: v.union(v.literal("invoice"), v.literal("quote")),
+		lastNumber: v.number(),
+	}).index("by_siteUrl_and_documentType", ["siteUrl", "documentType"]),
 
 	// Quotes — Full tier only
 	quotes: defineTable({

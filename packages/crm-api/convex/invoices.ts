@@ -3,8 +3,11 @@ import { internal } from "./_generated/api";
 import { mutation, query } from "./_generated/server";
 import { requireSiteAdmin, requireWebhookCallerOrAuth } from "./authHelpers";
 import { deleteDocument } from "./helpers/deleting";
+import {
+	allocateNextInvoiceNumber,
+	previewNextInvoiceNumber,
+} from "./helpers/invoiceNumbering";
 import { markDocumentSent } from "./helpers/marking";
-import { getNextSequentialNumber } from "./helpers/numbering";
 import { patchDocument } from "./helpers/patching";
 import { queryBySiteUrl } from "./helpers/querying";
 
@@ -53,7 +56,9 @@ export const get = query({
 export const create = mutation({
 	args: {
 		siteUrl: v.string(),
-		invoiceNumber: v.string(),
+		// Compatibility-only preview from older admin clients. The mutation
+		// allocates the authoritative value below.
+		invoiceNumber: v.optional(v.string()),
 		clientId: v.id("photographyClients"),
 		invoiceType: v.union(
 			v.literal("one-time"),
@@ -96,8 +101,10 @@ export const create = mutation({
 		if (!client || client.siteUrl !== args.siteUrl) {
 			throw new Error("Client not found");
 		}
+		const invoiceNumber = await allocateNextInvoiceNumber(ctx, args.siteUrl);
 		const invoiceId = await ctx.db.insert("invoices", {
 			...args,
+			invoiceNumber,
 			clientName: client.name,
 			status: "draft",
 		});
@@ -106,7 +113,7 @@ export const create = mutation({
 			siteUrl: args.siteUrl,
 			clientId: args.clientId,
 			action: "invoice_created",
-			description: `invoice ${args.invoiceNumber} created`,
+			description: `invoice ${invoiceNumber} created`,
 			metadata: JSON.stringify({ docType: "invoice", docId: invoiceId }),
 		});
 
@@ -263,12 +270,6 @@ export const getNextNumber = query({
 	args: { siteUrl: v.string() },
 	handler: async (ctx, { siteUrl }) => {
 		await requireSiteAdmin(ctx, siteUrl);
-		return getNextSequentialNumber(
-			ctx,
-			"invoices",
-			siteUrl,
-			"invoiceNumber",
-			"INV-",
-		);
+		return previewNextInvoiceNumber(ctx, siteUrl);
 	},
 });

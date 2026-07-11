@@ -6,6 +6,7 @@ import {
 	requireSiteAdmin,
 } from "./authHelpers";
 import { deleteDocument } from "./helpers/deleting";
+import { allocateNextInvoiceNumber } from "./helpers/invoiceNumbering";
 import { DEFAULT_LIST_LIMIT } from "./helpers/limits";
 import { markDocumentSent } from "./helpers/marking";
 import { getNextSequentialNumber } from "./helpers/numbering";
@@ -160,7 +161,9 @@ export const convertToInvoice = mutation({
 	args: {
 		quoteId: v.id("quotes"),
 		siteUrl: v.string(),
-		invoiceNumber: v.string(),
+		// Compatibility-only preview from older admin clients. Invoice numbers
+		// are allocated authoritatively in this mutation.
+		invoiceNumber: v.optional(v.string()),
 		invoiceType: v.union(
 			v.literal("one-time"),
 			v.literal("recurring"),
@@ -173,7 +176,7 @@ export const convertToInvoice = mutation({
 	},
 	handler: async (
 		ctx,
-		{ quoteId, siteUrl, invoiceNumber, invoiceType, dueDate, notes },
+		{ quoteId, siteUrl, invoiceType, dueDate, notes },
 	) => {
 		await requireSiteAdmin(ctx, siteUrl);
 		const quote = await ctx.db.get(quoteId);
@@ -189,6 +192,7 @@ export const convertToInvoice = mutation({
 
 		// Create the invoice
 		const client = await ctx.db.get(quote.clientId);
+		const invoiceNumber = await allocateNextInvoiceNumber(ctx, quote.siteUrl);
 		const invoiceId = await ctx.db.insert("invoices", {
 			siteUrl: quote.siteUrl,
 			invoiceNumber,
