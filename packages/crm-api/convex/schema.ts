@@ -261,7 +261,8 @@ export default defineSchema({
 	})
 		.index("by_siteUrl", ["siteUrl"])
 		.index("by_client", ["clientId"])
-		.index("by_siteUrl_status", ["siteUrl", "status"]),
+		.index("by_siteUrl_status", ["siteUrl", "status"])
+		.index("by_siteUrl_and_quoteNumber", ["siteUrl", "quoteNumber"]),
 
 	// Quote presets — saved package configurations for quick loading
 	quotePresets: defineTable({
