@@ -1,5 +1,11 @@
 # @jessepomeroy/crm-api
 
+## 1.3.4
+
+### Patch Changes
+
+- 7206096: Require the shared server webhook secret for inquiry creation so public clients cannot bypass the host's contact-form validation and abuse controls.
+
 ## 1.3.3
 
 ### Patch Changes
