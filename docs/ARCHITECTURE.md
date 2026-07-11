@@ -50,6 +50,22 @@ name when an unqualified `gallery` would obscure the owner.
   error capture. Admin authentication lives in the admin layout and auth routes,
   not in the global hook.
 
+### Public inquiry boundary
+
+1. The contact form renders the shared Cloudflare Turnstile widget and submits
+   its short-lived response token with the form payload.
+2. `/api/contact` validates the payload and sends the token plus client IP to
+   the managed siteverify Worker before any email or Convex side effect.
+3. A successful route call forwards the server-only `WEBHOOK_SECRET` to
+   `inquiries.create`. A short deployment-compatibility window permits older
+   callers to omit it; the final Convex rollout removes that legacy path.
+4. The public widget key and Worker URL live in `src/lib/config/turnstile.ts`.
+   The widget secret exists only as the Worker's `TURNSTILE_SECRET_KEY` binding.
+
+Future client contact forms may share the managed Worker, but their production
+hostnames must first be added to the widget. Browser-only verification is not a
+security boundary; keep verification inside the host route.
+
 ## Admin architecture
 
 1. Better Auth establishes the browser session.
