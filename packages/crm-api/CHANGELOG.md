@@ -1,5 +1,11 @@
 # @jessepomeroy/crm-api
 
+## 1.3.5
+
+### Patch Changes
+
+- b376759: Add a webhook-authenticated commerce notification profile lookup for platform-account tenant events.
+
 ## 1.3.4
 
 ### Patch Changes
