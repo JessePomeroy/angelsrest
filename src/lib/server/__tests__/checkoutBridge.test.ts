@@ -82,10 +82,14 @@ describe("checkout bridge", () => {
 		expect(params.success_url).toBe(
 			"https://zippymiggy.com/shop/success?session_id={CHECKOUT_SESSION_ID}",
 		);
-		expect(params.payment_intent_data).toEqual({ application_fee_amount: 500 });
+		expect(params.payment_intent_data).toEqual({
+			application_fee_amount: 500,
+			metadata: { commerceTenantSiteUrl: "zippymiggy.com" },
+		});
 		expect(params.metadata).toMatchObject({
 			productSlug: "digital-headshot",
 			paperSubcategoryId: "103001",
+			commerceTenantSiteUrl: "zippymiggy.com",
 		});
 		expect(requestOptions).toEqual({ stripeAccount: "acct_123" });
 	});

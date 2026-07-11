@@ -65,12 +65,15 @@ describe("createDirectCheckoutSession", () => {
 		const requestOptions = create.mock.calls[0]?.[1] as Stripe.RequestOptions | undefined;
 		expect(params.shipping_address_collection).toEqual({ allowed_countries: ["US"] });
 		expect(params.line_items?.[0]?.price_data?.unit_amount).toBe(4200);
-		expect(params.payment_intent_data).toBeUndefined();
+		expect(params.payment_intent_data).toEqual({
+			metadata: { commerceTenantSiteUrl: "angelsrest.test" },
+		});
 		expect(requestOptions).toBeUndefined();
 		expect(params.success_url).toBe(
 			"https://angelsrest.test/checkout/success?session_id={CHECKOUT_SESSION_ID}",
 		);
 		expect(params.metadata).toMatchObject({
+			commerceTenantSiteUrl: "angelsrest.test",
 			productId: "print-one",
 			productSlug: "print-one",
 			isDigital: "false",
@@ -103,7 +106,13 @@ describe("createDirectCheckoutSession", () => {
 		const params = create.mock.calls[0]?.[0] as Stripe.Checkout.SessionCreateParams;
 		const requestOptions = create.mock.calls[0]?.[1] as Stripe.RequestOptions | undefined;
 		expect(params.line_items?.[0]?.price_data?.unit_amount).toBe(10_000);
-		expect(params.payment_intent_data).toEqual({ application_fee_amount: 500 });
+		expect(params.payment_intent_data).toEqual({
+			application_fee_amount: 500,
+			metadata: { commerceTenantSiteUrl: "zippymiggy.com" },
+		});
+		expect(params.metadata).toMatchObject({
+			commerceTenantSiteUrl: "zippymiggy.com",
+		});
 		expect(requestOptions).toEqual({ stripeAccount: "acct_123" });
 	});
 
@@ -132,7 +141,9 @@ describe("createDirectCheckoutSession", () => {
 
 		const params = create.mock.calls[0]?.[0] as Stripe.Checkout.SessionCreateParams;
 		const requestOptions = create.mock.calls[0]?.[1] as Stripe.RequestOptions | undefined;
-		expect(params.payment_intent_data).toBeUndefined();
+		expect(params.payment_intent_data).toEqual({
+			metadata: { commerceTenantSiteUrl: "zippymiggy.com" },
+		});
 		expect(requestOptions).toEqual({ stripeAccount: "acct_123" });
 	});
 

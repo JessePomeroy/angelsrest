@@ -282,7 +282,12 @@ describe("cart Stripe Connect options", () => {
 		});
 
 		expect(options).toEqual({
-			session: {},
+			session: {
+				payment_intent_data: {
+					metadata: { commerceTenantSiteUrl: "angelsrest.online" },
+				},
+			},
+			metadata: { commerceTenantSiteUrl: "angelsrest.online" },
 			requestOptions: undefined,
 			platformFeeAmount: 0,
 		});
@@ -304,8 +309,10 @@ describe("cart Stripe Connect options", () => {
 			session: {
 				payment_intent_data: {
 					application_fee_amount: 450,
+					metadata: { commerceTenantSiteUrl: "zippymiggy.com" },
 				},
 			},
+			metadata: { commerceTenantSiteUrl: "zippymiggy.com" },
 			requestOptions: { stripeAccount: "acct_123" },
 			platformFeeAmount: 450,
 		});
@@ -321,7 +328,12 @@ describe("cart Stripe Connect options", () => {
 		});
 
 		expect(options).toEqual({
-			session: {},
+			session: {
+				payment_intent_data: {
+					metadata: { commerceTenantSiteUrl: "zippymiggy.com" },
+				},
+			},
+			metadata: { commerceTenantSiteUrl: "zippymiggy.com" },
 			requestOptions: { stripeAccount: "acct_123" },
 			platformFeeAmount: 0,
 		});

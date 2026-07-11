@@ -78,8 +78,12 @@ describe("createPaymentCheckoutSession", () => {
 			idempotencyKey: "checkout:archival-print:123",
 			tenantCheckout: {
 				session: {
-					payment_intent_data: { application_fee_amount: 210 },
+					payment_intent_data: {
+						application_fee_amount: 210,
+						metadata: { commerceTenantSiteUrl: "zippymiggy.com" },
+					},
 				},
+				metadata: { commerceTenantSiteUrl: "zippymiggy.com" },
 				requestOptions: { stripeAccount: "acct_123" },
 				platformFeeAmount: 210,
 			},
@@ -106,8 +110,14 @@ describe("createPaymentCheckoutSession", () => {
 				mode: "payment",
 				success_url: "https://example.com/success?session_id={CHECKOUT_SESSION_ID}",
 				cancel_url: "https://example.com/cancel",
-				metadata: { productSlug: "archival-print" },
-				payment_intent_data: { application_fee_amount: 210 },
+				metadata: {
+					productSlug: "archival-print",
+					commerceTenantSiteUrl: "zippymiggy.com",
+				},
+				payment_intent_data: {
+					application_fee_amount: 210,
+					metadata: { commerceTenantSiteUrl: "zippymiggy.com" },
+				},
 			},
 			{
 				stripeAccount: "acct_123",

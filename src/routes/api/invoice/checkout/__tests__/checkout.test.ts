@@ -170,6 +170,7 @@ describe("invoice checkout route", () => {
 			invoiceId: "invoice-123",
 			siteUrl: "angelsrest.online",
 			checkoutFingerprint,
+			commerceTenantSiteUrl: "angelsrest.online",
 		});
 		expect(mocks.convexMutation).toHaveBeenCalledWith("invoices.recordCheckoutStarted", {
 			webhookSecret: "test-webhook-secret",
@@ -178,7 +179,9 @@ describe("invoice checkout route", () => {
 			stripeCheckoutSessionId: "cs_invoice_123",
 			stripeCheckoutFingerprint: checkoutFingerprint,
 		});
-		expect(params.payment_intent_data).toBeUndefined();
+		expect(params.payment_intent_data).toEqual({
+			metadata: { commerceTenantSiteUrl: "angelsrest.online" },
+		});
 		expect(params.line_items).toEqual([
 			expect.objectContaining({
 				quantity: 2,
@@ -402,13 +405,16 @@ describe("invoice checkout route", () => {
 			type: "invoice_payment",
 			invoiceId: "invoice-tenant-123",
 			siteUrl: "zippymiggy.com",
+			commerceTenantSiteUrl: "zippymiggy.com",
 			checkoutFingerprint: expectedFingerprint({
 				lineItemsCents: [{ description: "Session balance", quantity: 1, unitPriceCents: 10000 }],
 				taxPercent: 0,
 				taxCents: 0,
 			}),
 		});
-		expect(params.payment_intent_data).toBeUndefined();
+		expect(params.payment_intent_data).toEqual({
+			metadata: { commerceTenantSiteUrl: "zippymiggy.com" },
+		});
 		expect(requestOptions).toEqual({
 			stripeAccount: "acct_123",
 			idempotencyKey: expectedIdempotencyKey({
