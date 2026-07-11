@@ -1,5 +1,11 @@
 # @jessepomeroy/crm-api
 
+## 1.5.0
+
+### Minor Changes
+
+- c447b31: Add cursor-paginated message history and platform conversation queries.
+
 ## 1.4.0
 
 ### Minor Changes
