@@ -12,6 +12,9 @@ Current guidance lives in:
 
 Archived material includes:
 
+- `AUDIT-2026-04.md` — historical April 2026 audit and remediation checklist;
+  many findings were subsequently superseded and its status boxes are not a
+  current architecture assessment
 - `PLAN-legacy.md` — original phased learning/build plan
 - `AGENTIC_WORKFLOW-2026-03.md` — historical cross-project agent workflow
 - `guides/` — original educational guides and integration notes
