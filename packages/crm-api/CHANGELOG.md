@@ -1,5 +1,11 @@
 # @jessepomeroy/crm-api
 
+## 1.3.6
+
+### Patch Changes
+
+- a448d89: Allocate invoice numbers authoritatively inside invoice-creation mutations, including quote conversion, with per-site counters that bootstrap from existing invoices.
+
 ## 1.3.5
 
 ### Patch Changes
