@@ -1,6 +1,6 @@
 {
 	"name": "@jessepomeroy/print-catalog",
-	"version": "0.2.0",
+	"version": "0.3.0",
 	"description": "Shared LumaPrints print catalog, pricing, and margin helpers for photographer CRM sites and Studios.",
 	"type": "module",
 	"types": "./src/index.ts",
