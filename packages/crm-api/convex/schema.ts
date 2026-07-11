@@ -223,8 +223,7 @@ export default defineSchema({
 		.index("by_siteUrl_status", ["siteUrl", "status"])
 		.index("by_siteUrl_and_invoiceNumber", ["siteUrl", "invoiceNumber"]),
 
-	// Authoritative allocation state for numbered documents. Invoice creation
-	// uses this now; quote allocation will migrate in its own bounded slice.
+	// Authoritative allocation state for invoice and quote numbers.
 	documentNumberCounters: defineTable({
 		siteUrl: v.string(),
 		documentType: v.union(v.literal("invoice"), v.literal("quote")),
