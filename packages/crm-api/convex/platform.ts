@@ -102,6 +102,36 @@ export const getByStripeConnectedAccountId = query({
 	},
 });
 
+/**
+ * Resolve the minimal notification identity for a server-verified commerce
+ * event whose tenant is carried in Stripe metadata rather than `event.account`.
+ * Admin recipients stay behind the shared webhook/auth boundary.
+ */
+export const getCommerceProfileForSite = query({
+	args: {
+		siteUrl: v.string(),
+		webhookSecret: v.optional(v.string()),
+	},
+	handler: async (ctx, { siteUrl, webhookSecret }) => {
+		const auth = await requireWebhookCallerOrAuth(ctx, webhookSecret);
+		if (auth.via === "auth") {
+			await requirePlatformAdmin(ctx);
+		}
+
+		const client = await ctx.db
+			.query("platformClients")
+			.withIndex("by_siteUrl", (q) => q.eq("siteUrl", siteUrl))
+			.unique();
+		if (!client) return null;
+
+		return {
+			siteName: client.name || client.siteUrl,
+			siteUrl: client.siteUrl,
+			adminEmail: client.adminEmails[0] || client.email,
+		};
+	},
+});
+
 export const createClient = mutation({
 	args: {
 		name: v.string(),
