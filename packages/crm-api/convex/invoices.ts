@@ -6,7 +6,7 @@ import { deleteDocument } from "./helpers/deleting";
 import {
 	allocateNextInvoiceNumber,
 	previewNextInvoiceNumber,
-} from "./helpers/invoiceNumbering";
+} from "./helpers/documentNumbering";
 import { markDocumentSent } from "./helpers/marking";
 import { patchDocument } from "./helpers/patching";
 import { queryBySiteUrl } from "./helpers/querying";

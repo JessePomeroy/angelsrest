@@ -7,7 +7,7 @@ import {
 	requireWebhookCallerOrAuth,
 } from "./authHelpers";
 import { AGGREGATE_SCAN_LIMIT, BULK_SCAN_LIMIT } from "./helpers/limits";
-import { getNextSequentialNumber } from "./helpers/numbering";
+import { getNextOrderNumber as generateNextOrderNumber } from "./helpers/numbering";
 
 const orderStatusValidator = v.union(
 	v.literal("new"),
@@ -147,13 +147,7 @@ export const create = mutation({
 		// Use provided order number or generate one atomically
 		const orderNumber =
 			args.orderNumber ||
-			(await getNextSequentialNumber(
-				ctx,
-				"orders",
-				args.siteUrl,
-				"orderNumber",
-				"ORD-",
-			));
+			(await generateNextOrderNumber(ctx, args.siteUrl));
 
 		const _id = await ctx.db.insert("orders", {
 			...rest,
@@ -504,12 +498,6 @@ export const getNextOrderNumber = query({
 	args: { siteUrl: v.string() },
 	handler: async (ctx, { siteUrl }) => {
 		await requireSiteAdmin(ctx, siteUrl);
-		return getNextSequentialNumber(
-			ctx,
-			"orders",
-			siteUrl,
-			"orderNumber",
-			"ORD-",
-		);
+		return generateNextOrderNumber(ctx, siteUrl);
 	},
 });

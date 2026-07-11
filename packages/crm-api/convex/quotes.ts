@@ -6,10 +6,13 @@ import {
 	requireSiteAdmin,
 } from "./authHelpers";
 import { deleteDocument } from "./helpers/deleting";
-import { allocateNextInvoiceNumber } from "./helpers/invoiceNumbering";
+import {
+	allocateNextInvoiceNumber,
+	allocateNextQuoteNumber,
+	previewNextQuoteNumber,
+} from "./helpers/documentNumbering";
 import { DEFAULT_LIST_LIMIT } from "./helpers/limits";
 import { markDocumentSent } from "./helpers/marking";
-import { getNextSequentialNumber } from "./helpers/numbering";
 import { patchDocument } from "./helpers/patching";
 import { queryBySiteUrl } from "./helpers/querying";
 import { categoryValidator } from "./helpers/validators";
@@ -57,7 +60,9 @@ export const get = query({
 export const create = mutation({
 	args: {
 		siteUrl: v.string(),
-		quoteNumber: v.string(),
+		// Compatibility-only preview from older admin clients. The mutation
+		// allocates the authoritative value below.
+		quoteNumber: v.optional(v.string()),
 		clientId: v.id("photographyClients"),
 		category: v.optional(categoryValidator),
 		packages: v.array(
@@ -77,8 +82,10 @@ export const create = mutation({
 		if (!client || client.siteUrl !== args.siteUrl) {
 			throw new Error("Client not found");
 		}
+		const quoteNumber = await allocateNextQuoteNumber(ctx, args.siteUrl);
 		const quoteId = await ctx.db.insert("quotes", {
 			...args,
+			quoteNumber,
 			clientName: client.name,
 			status: "draft",
 		});
@@ -87,7 +94,7 @@ export const create = mutation({
 			siteUrl: args.siteUrl,
 			clientId: args.clientId,
 			action: "quote_created",
-			description: `quote ${args.quoteNumber} created`,
+			description: `quote ${quoteNumber} created`,
 			metadata: JSON.stringify({ docType: "quote", docId: quoteId }),
 		});
 
@@ -309,12 +316,6 @@ export const getNextNumber = query({
 	args: { siteUrl: v.string() },
 	handler: async (ctx, { siteUrl }) => {
 		await requireSiteAdmin(ctx, siteUrl);
-		return getNextSequentialNumber(
-			ctx,
-			"quotes",
-			siteUrl,
-			"quoteNumber",
-			"QT-",
-		);
+		return previewNextQuoteNumber(ctx, siteUrl);
 	},
 });
