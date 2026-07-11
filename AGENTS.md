@@ -100,6 +100,11 @@ token validity alone is authentication, not authorization. Use the host's
 per-request site-admin verifier for shared HTTP handlers; do not restore an
 identity-only `verifyAdmin` callback.
 
+Public inquiry writes must enter through `/api/contact`. That route validates
+Turnstile through the managed siteverify Worker and supplies the server-only
+`WEBHOOK_SECRET` to Convex. Do not make `inquiries.create` directly writable by
+the browser or move Turnstile verification into browser-only code.
+
 | Admin area | Primary source |
 |---|---|
 | Dashboard, orders | Convex orders |

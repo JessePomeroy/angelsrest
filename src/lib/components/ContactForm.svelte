@@ -3,6 +3,7 @@
  * contact form extracted out of the about page during refactor
  */
 import { isDark } from "$lib/stores/theme";
+import { TURNSTILE_SITE_KEY } from "$lib/config/turnstile";
 
 let { hideHeader = false }: { hideHeader?: boolean } = $props();
 
@@ -29,12 +30,27 @@ $effect(() => {
 
 let status = $state("idle"); // 'idle' | 'sending' | 'success' | 'error'
 
+type TurnstileWindow = Window & {
+	turnstile?: { reset: (widget?: HTMLElement) => void };
+};
+
+function resetTurnstile(form: HTMLFormElement) {
+	const widget = form.querySelector<HTMLElement>(".cf-turnstile") ?? undefined;
+	(window as TurnstileWindow).turnstile?.reset(widget);
+}
+
 async function handleSubmit(e: SubmitEvent) {
 	e.preventDefault();
 	status = "sending";
 
-	const form = e.target as HTMLFormElement;
-	const data = Object.fromEntries(new FormData(form));
+	const form = e.currentTarget as HTMLFormElement;
+	const formData = new FormData(form);
+	const turnstileToken = formData.get("cf-turnstile-response");
+	if (typeof turnstileToken !== "string" || turnstileToken.length === 0) {
+		status = "error";
+		return;
+	}
+	const data = Object.fromEntries(formData);
 
 	try {
 		const res = await fetch("/api/contact", {
@@ -46,14 +62,21 @@ async function handleSubmit(e: SubmitEvent) {
 		if (res.ok) {
 			status = "success";
 			form.reset();
+			resetTurnstile(form);
 		} else {
 			status = "error";
+			resetTurnstile(form);
 		}
 	} catch {
 		status = "error";
+		resetTurnstile(form);
 	}
 }
 </script>
+
+<svelte:head>
+	<script src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script>
+</svelte:head>
 
 <!-- Contact Form -->
 <div>
@@ -112,6 +135,12 @@ async function handleSubmit(e: SubmitEvent) {
                 class="bg-white/5 border border-white/10 text-sm rounded-lg px-3 py-2.5 shadow-sm placeholder:text-surface-400/70 focus:outline-none focus:border-surface-400 focus:ring-2 focus:ring-white/10 transition-all w-full resize-y"
             ></textarea>
         </div>
+		<div
+			class="cf-turnstile"
+			data-sitekey={TURNSTILE_SITE_KEY}
+			data-theme="auto"
+			data-action="turnstile-spin-v1"
+		></div>
         <button
             type="submit"
             class="mt-2 mb-6 px-4 py-3 text-sm font-medium lowercase tracking-wide bg-white/5 dark:bg-white/5 border border-gray-300 dark:border-white/10 rounded-lg hover:bg-gray-100 dark:hover:bg-white/10 transition-all cursor-pointer"

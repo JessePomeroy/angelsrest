@@ -1,13 +1,17 @@
 import { v } from "convex/values";
 import { mutation, query } from "./_generated/server";
-import { requireDocumentSiteAdmin, requireSiteAdmin } from "./authHelpers";
+import {
+	requireDocumentSiteAdmin,
+	requireSiteAdmin,
+	requireWebhookCallerOrAuth,
+} from "./authHelpers";
 
-// Contact form ingress. This mutation is directly public because the contact
-// page has no authenticated user. `/api/contact` validates lengths/email before
-// calling it, but direct Convex callers bypass that route; abuse controls must
-// protect this public boundary rather than being assumed at the SvelteKit layer.
+// Contact form ingress. The unauthenticated browser submits to the host's
+// `/api/contact` route, which applies Turnstile and payload validation before
+// calling this mutation with the shared server-only webhook secret.
 export const create = mutation({
 	args: {
+		webhookSecret: v.string(),
 		siteUrl: v.string(),
 		name: v.string(),
 		email: v.string(),
@@ -15,7 +19,8 @@ export const create = mutation({
 		subject: v.optional(v.string()),
 		message: v.string(),
 	},
-	handler: async (ctx, args) => {
+	handler: async (ctx, { webhookSecret, ...args }) => {
+		await requireWebhookCallerOrAuth(ctx, webhookSecret, { allowAuth: false });
 		return await ctx.db.insert("inquiries", {
 			...args,
 			status: "new",
