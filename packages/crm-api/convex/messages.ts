@@ -1,3 +1,4 @@
+import { paginationOptsValidator } from "convex/server";
 import { v } from "convex/values";
 import { mutation, query } from "./_generated/server";
 import { requirePlatformAdmin, requireSiteAdmin } from "./authHelpers";
@@ -12,6 +13,29 @@ export const list = query({
 			.withIndex("by_siteUrl", (q) => q.eq("siteUrl", siteUrl))
 			.order("asc")
 			.take(BULK_SCAN_LIMIT);
+	},
+});
+
+/**
+ * Return one page of a site's messages, newest first.
+ *
+ * Consumers should append each page to their loaded results, then reverse the
+ * accumulated list when rendering a chronological conversation. Starting from
+ * the newest message means the initial page always contains the active end of
+ * the thread instead of the oldest rows returned by the legacy capped query.
+ */
+export const listPaginated = query({
+	args: {
+		siteUrl: v.string(),
+		paginationOpts: paginationOptsValidator,
+	},
+	handler: async (ctx, { siteUrl, paginationOpts }) => {
+		await requireSiteAdmin(ctx, siteUrl);
+		return await ctx.db
+			.query("platformMessages")
+			.withIndex("by_siteUrl", (q) => q.eq("siteUrl", siteUrl))
+			.order("desc")
+			.paginate(paginationOpts);
 	},
 });
 
@@ -95,5 +119,51 @@ export const allThreads = query({
 
 		// Only return threads that have at least one message.
 		return threads.filter((t) => t.latestMessage !== null);
+	},
+});
+
+/**
+ * Cursor-paginated replacement for `allThreads`.
+ *
+ * The cursor advances over platform clients, so the amount of work in one
+ * query is bounded by the requested page size. Clients without messages are
+ * omitted from the returned page while the original pagination cursor and
+ * completion state are preserved.
+ */
+export const allThreadsPaginated = query({
+	args: { paginationOpts: paginationOptsValidator },
+	handler: async (ctx, { paginationOpts }) => {
+		await requirePlatformAdmin(ctx);
+
+		const clientsPage = await ctx.db
+			.query("platformClients")
+			.order("desc")
+			.paginate(paginationOpts);
+
+		const threads = await Promise.all(
+			clientsPage.page.map(async (client) => {
+				const latestMessage = await ctx.db
+					.query("platformMessages")
+					.withIndex("by_siteUrl", (q) => q.eq("siteUrl", client.siteUrl))
+					.order("desc")
+					.first();
+
+				const unreadRows = await ctx.db
+					.query("platformMessages")
+					.withIndex("by_siteUrl_unread", (q) =>
+						q.eq("siteUrl", client.siteUrl).eq("read", false),
+					)
+					.take(BULK_SCAN_LIMIT);
+
+				const unreadCount = unreadRows.filter((m) => m.sender === "client").length;
+
+				return { client, latestMessage, unreadCount };
+			}),
+		);
+
+		return {
+			...clientsPage,
+			page: threads.filter((thread) => thread.latestMessage !== null),
+		};
 	},
 });

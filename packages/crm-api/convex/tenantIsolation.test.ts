@@ -308,6 +308,92 @@ describe("tenant isolation", () => {
 		expect(threads[0]?.client.siteUrl).toBe(TENANT_A.siteUrl);
 	});
 
+	test("message pages start at the active end and remain tenant-scoped", async () => {
+		const t = await seedTenants();
+		const tenantA = asAdmin(t, TENANT_A.adminEmail);
+		const tenantB = asAdmin(t, TENANT_B.adminEmail);
+
+		for (const content of ["first", "second", "third"]) {
+			await tenantA.mutation(api.messages.send, {
+				siteUrl: TENANT_A.siteUrl,
+				sender: "client",
+				content,
+			});
+		}
+
+		const firstPage = await tenantA.query(api.messages.listPaginated, {
+			siteUrl: TENANT_A.siteUrl,
+			paginationOpts: { numItems: 2, cursor: null },
+		});
+		expect(firstPage.page.map((message) => message.content)).toEqual([
+			"third",
+			"second",
+		]);
+		expect(firstPage.isDone).toBe(false);
+
+		const secondPage = await tenantA.query(api.messages.listPaginated, {
+			siteUrl: TENANT_A.siteUrl,
+			paginationOpts: { numItems: 2, cursor: firstPage.continueCursor },
+		});
+		expect(secondPage.page.map((message) => message.content)).toEqual(["first"]);
+		expect(secondPage.isDone).toBe(true);
+
+		await expectNotAuthorized(
+			tenantB.query(api.messages.listPaginated, {
+				siteUrl: TENANT_A.siteUrl,
+				paginationOpts: { numItems: 2, cursor: null },
+			}),
+		);
+	});
+
+	test("creator message threads paginate across clients", async () => {
+		const t = await seedTenants();
+		await t.mutation(internal.platform.seedClient, {
+			name: "Creator",
+			email: "creator@example.com",
+			siteUrl: "angelsrest.online",
+			tier: "full",
+			subscriptionStatus: "active",
+			adminEmails: ["creator@example.com"],
+			role: "creator",
+		});
+		for (const tenant of [TENANT_A, TENANT_B]) {
+			await asAdmin(t, tenant.adminEmail).mutation(api.messages.send, {
+				siteUrl: tenant.siteUrl,
+				sender: "client",
+				content: `${tenant.name} message`,
+			});
+		}
+
+		await expectNotAuthorized(
+			asAdmin(t, TENANT_A.adminEmail).query(api.messages.allThreadsPaginated, {
+				paginationOpts: { numItems: 1, cursor: null },
+			}),
+		);
+
+		const creator = asAdmin(t, "creator@example.com");
+		let cursor: string | null = null;
+		const siteUrls: string[] = [];
+		let isDone = false;
+		while (!isDone) {
+			const page: {
+				page: Array<{ client: { siteUrl: string } }>;
+				continueCursor: string;
+				isDone: boolean;
+			} = await creator.query(api.messages.allThreadsPaginated, {
+				paginationOpts: { numItems: 1, cursor },
+			});
+			siteUrls.push(...page.page.map((thread) => thread.client.siteUrl));
+			cursor = page.continueCursor;
+			isDone = page.isDone;
+		}
+
+		expect(siteUrls.sort()).toEqual([
+			TENANT_A.siteUrl,
+			TENANT_B.siteUrl,
+		]);
+	});
+
 	test("raw table smoke check keeps tenant fixtures independent", async () => {
 		const t = await seedTenants();
 		const counts = await t.run(async (ctx) => {
