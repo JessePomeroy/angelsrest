@@ -104,8 +104,7 @@ Public inquiry writes must enter through `/api/contact`. That route validates
 Turnstile through the managed siteverify Worker and supplies the server-only
 `WEBHOOK_SECRET` to Convex. Do not make `inquiries.create` directly writable by
 the browser or move Turnstile verification into browser-only code. The temporary
-missing-secret compatibility path exists only for the staged rollout and must be
-removed after every host is live.
+missing-secret compatibility path used for the staged rollout has been removed.
 
 | Admin area | Primary source |
 |---|---|

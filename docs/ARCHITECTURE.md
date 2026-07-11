@@ -57,8 +57,7 @@ name when an unqualified `gallery` would obscure the owner.
 2. `/api/contact` validates the payload and sends the token plus client IP to
    the managed siteverify Worker before any email or Convex side effect.
 3. A successful route call forwards the server-only `WEBHOOK_SECRET` to
-   `inquiries.create`. A short deployment-compatibility window permits older
-   callers to omit it; the final Convex rollout removes that legacy path.
+   `inquiries.create`; direct public Convex callers are rejected.
 4. The public widget key and Worker URL live in `src/lib/config/turnstile.ts`.
    The widget secret exists only as the Worker's `TURNSTILE_SECRET_KEY` binding.
 
