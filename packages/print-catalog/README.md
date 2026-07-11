@@ -7,4 +7,5 @@ This package is intentionally in-process: it has no runtime dependencies and no 
 ## Exports
 
 - `@jessepomeroy/print-catalog`: papers, sizes, borders, frames, canvas options, LumaPrints IDs, wholesale lookup helpers, and Sanity dropdown helpers.
+- `@jessepomeroy/print-catalog/configurator`: client-safe variant option lists, finish normalization, display pricing, and fulfillment metadata. Checkout must still validate the selection server-side.
 - `@jessepomeroy/print-catalog/pricing`: Stripe/platform fee math and margin summary helpers for Studio custom fields.
