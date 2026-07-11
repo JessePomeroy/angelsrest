@@ -35,5 +35,5 @@ export const LARGE_SCAN_LIMIT = 1000;
 /** Per-gallery image cap — one gallery's worst-case image count. */
 export const GALLERY_IMAGE_LIMIT = 2000;
 
-/** Site-wide aggregation scans — stats, revenue rollups. */
+/** Site-wide aggregation scans — stats/revenue rollups with explicit truncation metadata. */
 export const AGGREGATE_SCAN_LIMIT = 5000;

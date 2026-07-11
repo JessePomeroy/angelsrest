@@ -8,6 +8,7 @@ import {
 } from "./authHelpers";
 import { AGGREGATE_SCAN_LIMIT, BULK_SCAN_LIMIT } from "./helpers/limits";
 import { getNextOrderNumber as generateNextOrderNumber } from "./helpers/numbering";
+import { resolveBoundedOrderStatsScan } from "./helpers/orderStats";
 
 const orderStatusValidator = v.union(
 	v.literal("new"),
@@ -418,11 +419,15 @@ export const getStats = query({
 	args: { siteUrl: v.string() },
 	handler: async (ctx, { siteUrl }) => {
 		await requireSiteAdmin(ctx, siteUrl);
-		const orders = await ctx.db
+		const rowsWithSentinel = await ctx.db
 			.query("orders")
 			.withIndex("by_siteUrl", (q) => q.eq("siteUrl", siteUrl))
 			.order("desc")
-			.take(AGGREGATE_SCAN_LIMIT);
+			.take(AGGREGATE_SCAN_LIMIT + 1);
+		const { orders, isTruncated } = resolveBoundedOrderStatsScan(
+			rowsWithSentinel,
+			AGGREGATE_SCAN_LIMIT,
+		);
 
 		const now = new Date();
 		const todayStart = new Date(
@@ -485,8 +490,12 @@ export const getStats = query({
 				todayRevenue,
 				weekRevenue,
 				monthRevenue,
+				// Legacy field names are preserved for compatible clients. Consumers
+				// must use isTruncated before presenting these values as complete.
 				allTimeRevenue,
 				totalOrders: orders.length,
+				isTruncated,
+				scanLimit: AGGREGATE_SCAN_LIMIT,
 			},
 			dailyRevenue,
 			recentOrders,
