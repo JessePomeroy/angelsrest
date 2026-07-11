@@ -12,11 +12,16 @@
 		"./pricing": {
 			"types": "./src/pricing.ts",
 			"default": "./src/pricing.ts"
+		},
+		"./configurator": {
+			"types": "./src/configurator.ts",
+			"default": "./src/configurator.ts"
 		}
 	},
 	"files": [
 		"src/index.ts",
-		"src/pricing.ts"
+		"src/pricing.ts",
+		"src/configurator.ts"
 	],
 	"scripts": {
 		"check": "tsc -p tsconfig.json --noEmit",

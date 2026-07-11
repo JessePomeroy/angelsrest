@@ -12,17 +12,19 @@ import { cart } from "$lib/shop/cart.svelte";
 import { cartUI } from "$lib/shop/cartUI.svelte";
 import { toasts } from "$lib/stores/toast.svelte";
 import {
-	FRAMED_BORDER_INCHES,
-	getBorder,
 	getFrame,
-	getFrameWholesaleCost,
 	getPaper,
 	getSize,
 	isCanvasPaper,
-	parseCanvasSlug,
 	V2_BORDER_OPTIONS,
 	V2_FRAME_OPTIONS,
 } from "$lib/shop/printCatalog";
+import {
+	getAvailablePrintPapers,
+	getAvailablePrintSizes,
+	normalizePrintFinishSelection,
+	resolvePrintConfiguration,
+} from "$lib/shop/printConfigurator";
 import type { ParsedPaper, ProductImage } from "$lib/types/shop";
 import { createCheckout } from "$lib/utils/checkout";
 import { parsePaperOption } from "$lib/utils/images";
@@ -40,29 +42,24 @@ let selectedFrame = $state("none");
 
 const isCanvasSelected = $derived(isCanvasPaper(selectedPaperSlug));
 
-// Idempotent guards — see audit H23 + shop/[slug]/+page.svelte for the
-// full explanation.
+// Keep the form controls synchronized with the shared finish invariants.
 $effect(() => {
-	if (isCanvasSelected) {
-		if (selectedBorderWidth !== "none") selectedBorderWidth = "none";
-		if (selectedFrame !== "none") selectedFrame = "none";
-	} else if (selectedFrame !== "none") {
-		const framedWidth = String(FRAMED_BORDER_INCHES);
-		if (selectedBorderWidth !== framedWidth) {
-			selectedBorderWidth = framedWidth;
-		}
+	const normalized = normalizePrintFinishSelection({
+		paperSlug: selectedPaperSlug,
+		borderWidthValue: selectedBorderWidth,
+		frameValue: selectedFrame,
+	});
+	if (selectedBorderWidth !== normalized.borderWidthValue) {
+		selectedBorderWidth = normalized.borderWidthValue;
+	}
+	if (selectedFrame !== normalized.frameValue) {
+		selectedFrame = normalized.frameValue;
 	}
 });
 
 const v2Papers = $derived.by(() => {
 	if (data.setType !== "v2") return [];
-	const slugs = Array.from(
-		new Set<string>(data.printSet.variants.map((v: any) => v.paper)),
-	);
-	return slugs.map((slug) => {
-		const meta = getPaper(slug);
-		return { slug, name: meta?.name ?? slug };
-	});
+	return getAvailablePrintPapers(data.printSet.variants);
 });
 
 $effect(() => {
@@ -73,17 +70,7 @@ $effect(() => {
 
 const v2Sizes = $derived.by(() => {
 	if (data.setType !== "v2" || !selectedPaperSlug) return [];
-	const slugs = Array.from(
-		new Set<string>(
-			data.printSet.variants
-				.filter((v: any) => v.paper === selectedPaperSlug)
-				.map((v: any) => v.size),
-		),
-	);
-	return slugs.map((slug) => {
-		const meta = getSize(slug);
-		return { slug, label: meta?.label ?? slug };
-	});
+	return getAvailablePrintSizes(data.printSet.variants, selectedPaperSlug);
 });
 
 $effect(() => {
@@ -92,29 +79,23 @@ $effect(() => {
 	}
 });
 
-const selectedVariant = $derived.by(() => {
+const selectedConfiguration = $derived.by(() => {
 	if (data.setType !== "v2") return null;
-	return (
-		data.printSet.variants.find(
-			(v: any) => v.paper === selectedPaperSlug && v.size === selectedSizeSlug,
-		) ?? null
-	);
-});
-
-// Frame surcharge for sets
-const frameSurcharge = $derived.by(() => {
-	if (data.setType !== "v2" || selectedFrame === "none") return 0;
-	const wholesale = getFrameWholesaleCost(selectedFrame, selectedSizeSlug);
-	if (!wholesale) return 0;
-	const multiplier = data.printSet.frameMarkupMultiplier ?? 2;
-	return Math.round(wholesale * multiplier * 100) / 100;
+	return resolvePrintConfiguration({
+		variants: data.printSet.variants,
+		paperSlug: selectedPaperSlug,
+		sizeSlug: selectedSizeSlug,
+		borderWidthValue: selectedBorderWidth,
+		frameValue: selectedFrame,
+		bordersEnabled: data.printSet.bordersEnabled,
+		framedEnabled: data.printSet.framedEnabled,
+		frameMarkupMultiplier: data.printSet.frameMarkupMultiplier,
+	});
 });
 
 const displaySetPrice = $derived.by(() => {
 	if (data.setType !== "v2") return null;
-	const base = selectedVariant?.retailPrice ?? null;
-	if (base === null) return null;
-	return Math.round((base + frameSurcharge) * 100) / 100;
+	return selectedConfiguration?.displayPrice ?? null;
 });
 
 // ─── V1 state ───────────────────────────────────────────────
@@ -130,17 +111,17 @@ const selectedPaperData: ParsedPaper | null = $derived.by(() => {
 
 // ─── V2 handlers ────────────────────────────────────────────
 function handleV2Checkout() {
-	if (!selectedVariant) return;
+	if (!selectedConfiguration) return;
 	isLoading = true;
 
 	createCheckout({
 		productId: data.printSet.slug,
 		coupon: couponCode.trim() || null,
 		isPrintSet: true,
-		paperSlug: selectedPaperSlug,
-		sizeSlug: selectedSizeSlug,
-		borderWidth: selectedBorderWidth,
-		frame: selectedFrame,
+		paperSlug: selectedConfiguration.paperSlug,
+		sizeSlug: selectedConfiguration.sizeSlug,
+		borderWidth: selectedConfiguration.borderWidthValue,
+		frame: selectedConfiguration.frameValue,
 	})
 		.then((url) => {
 			window.location.href = url;
@@ -155,46 +136,41 @@ function handleV2Checkout() {
 }
 
 function handleV2AddToCart() {
-	if (!selectedVariant) return;
-	const paper = getPaper(selectedPaperSlug);
-	const size = getSize(selectedSizeSlug);
-	if (!paper || !size) return;
+	if (!selectedConfiguration) return;
 
 	const originalUrls = (data.images as ProductImage[]).map(
 		(img) => img.original,
 	);
 	if (originalUrls.length === 0) return;
 
-	const border = getBorder(selectedBorderWidth);
-	const frame = getFrame(selectedFrame);
-	const canvasInfo = isCanvasSelected
-		? parseCanvasSlug(selectedPaperSlug)
-		: null;
 	cart.add({
 		productSlug: data.printSet.slug,
 		type: "set",
 		title: data.printSet.title,
 		imageUrl: data.printSet.previewImage || originalUrls[0],
 		imageUrls: originalUrls,
-		paperName: paper.name,
-		paperSubcategoryId: paper.subcategoryId,
-		paperWidth: size.width,
-		paperHeight: size.height,
-		paperSlug: selectedPaperSlug,
-		sizeSlug: selectedSizeSlug,
-		borderWidthValue: selectedBorderWidth,
-		frameValue: selectedFrame,
-		...(border && border.inches > 0 ? { borderWidth: border.inches } : {}),
-		...(frame && frame.subcategoryId > 0
-			? { frameSubcategoryId: frame.subcategoryId }
+		paperName: selectedConfiguration.paper.name,
+		paperSubcategoryId: selectedConfiguration.paperSubcategoryId,
+		paperWidth: selectedConfiguration.size.width,
+		paperHeight: selectedConfiguration.size.height,
+		paperSlug: selectedConfiguration.paperSlug,
+		sizeSlug: selectedConfiguration.sizeSlug,
+		borderWidthValue: selectedConfiguration.borderWidthValue,
+		frameValue: selectedConfiguration.frameValue,
+		...(selectedConfiguration.borderWidth
+			? { borderWidth: selectedConfiguration.borderWidth }
 			: {}),
-		...(canvasInfo
-			? { canvasSubcategoryId: canvasInfo.subcategoryId, canvasWrapHex: canvasInfo.wrapHex }
+		...(selectedConfiguration.frameSubcategoryId
+			? { frameSubcategoryId: selectedConfiguration.frameSubcategoryId }
+			: {}),
+		...(selectedConfiguration.canvas
+			? {
+					canvasSubcategoryId: selectedConfiguration.canvas.subcategoryId,
+					canvasWrapHex: selectedConfiguration.canvas.wrapHex,
+				}
 			: {}),
 		quantity: 1,
-		unitPriceCents: Math.round(
-			(displaySetPrice ?? selectedVariant.retailPrice) * 100,
-		),
+		unitPriceCents: Math.round(selectedConfiguration.displayPrice * 100),
 	});
 	cartUI.open();
 }
@@ -318,7 +294,7 @@ function handleV1AddToCart() {
 				<!-- Desktop: inline price + buttons -->
 				<div class="hidden md:flex items-baseline justify-between gap-4 py-2">
 					<div class="text-3xl font-semibold text-surface-900-50-token">
-						{#if selectedVariant}
+						{#if selectedConfiguration}
 							${displaySetPrice}
 							<span class="text-base font-normal text-surface-600-300-token">
 								{getPaper(selectedPaperSlug)?.name} · {getSize(selectedSizeSlug)?.label}{selectedBorderWidth !== 'none' ? ` · ${selectedBorderWidth}" border` : ''}{selectedFrame !== 'none' ? ` · ${getFrame(selectedFrame)?.label} frame` : ''}
@@ -328,7 +304,7 @@ function handleV1AddToCart() {
 						{/if}
 					</div>
 					<div class="flex gap-2 shrink-0">
-						{#if data.printSet.inStock && selectedVariant}
+						{#if data.printSet.inStock && selectedConfiguration}
 							<button class="btn btn-sm variant-soft-surface" onclick={handleV2AddToCart}>
 								add to cart
 							</button>
@@ -424,7 +400,7 @@ function handleV1AddToCart() {
 					{#snippet children(isStuck)}
 						<div class="flex flex-wrap items-center justify-between gap-x-4 gap-y-1">
 							<div class="flex items-center gap-1.5">
-								{#if selectedVariant}
+								{#if selectedConfiguration}
 									<span class="text-xl font-semibold">${displaySetPrice}</span>
 									<span class="text-xs {isStuck ? 'text-surface-300' : 'text-surface-600-300-token'}">
 										{getPaper(selectedPaperSlug)?.name} · {getSize(selectedSizeSlug)?.label}{selectedBorderWidth !== 'none' ? ` · ${selectedBorderWidth}" border` : ''}{selectedFrame !== 'none' ? ` · ${getFrame(selectedFrame)?.label} frame` : ''}
@@ -434,7 +410,7 @@ function handleV1AddToCart() {
 								{/if}
 							</div>
 							<div class="flex gap-1.5">
-								{#if data.printSet.inStock && selectedVariant}
+								{#if data.printSet.inStock && selectedConfiguration}
 									<button class="btn btn-sm text-xs px-2 variant-soft-surface" onclick={handleV2AddToCart}>
 										add to cart
 									</button>
