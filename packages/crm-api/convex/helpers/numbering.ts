@@ -25,12 +25,9 @@ type NumberField = {
  *
  * Concurrency depends on the caller. `orders.create` invokes this helper inside
  * the mutation that persists the number, so Convex OCC retries conflicting
- * reads. Invoice and quote flows currently expose separate `getNextNumber`
- * queries and accept caller-supplied numbers in their create mutations; those
- * callers can race because preview and persistence are different transactions.
- * This helper does not itself provide uniqueness. A flow that requires an
- * authoritative number must generate/persist it in one mutation or atomically
- * update a per-site/type counter.
+ * reads. Quotes still accept caller-supplied numbers and will migrate in their
+ * own slice. Invoice creation uses a per-site counter in invoiceNumbering.ts.
+ * This helper does not itself provide uniqueness.
  */
 export async function getNextSequentialNumber<T extends NumberedTable>(
 	ctx: QueryCtx,
