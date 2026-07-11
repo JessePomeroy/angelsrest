@@ -2,20 +2,11 @@
 // @vitest-environment edge-runtime
 
 import { convexTest } from "convex-test";
-import { afterEach, beforeEach, describe, expect, test } from "vitest";
+import { describe, expect, test } from "vitest";
 import { api, internal } from "./_generated/api";
 import schema from "./schema";
 
 const modules = import.meta.glob("./**/*.ts");
-const WEBHOOK_SECRET = "test-webhook-secret";
-
-beforeEach(() => {
-	process.env.WEBHOOK_SECRET = WEBHOOK_SECRET;
-});
-
-afterEach(() => {
-	delete process.env.WEBHOOK_SECRET;
-});
 
 const TENANT_A = {
 	name: "Tenant A",
@@ -72,14 +63,12 @@ describe("tenant isolation", () => {
 	test("siteUrl-scoped queries only allow that site's admins", async () => {
 		const t = await seedTenants();
 		await t.mutation(api.inquiries.create, {
-			webhookSecret: WEBHOOK_SECRET,
 			siteUrl: TENANT_A.siteUrl,
 			name: "A inquiry",
 			email: "customer-a@example.com",
 			message: "Tenant A only",
 		});
 		await t.mutation(api.inquiries.create, {
-			webhookSecret: WEBHOOK_SECRET,
 			siteUrl: TENANT_B.siteUrl,
 			name: "B inquiry",
 			email: "customer-b@example.com",

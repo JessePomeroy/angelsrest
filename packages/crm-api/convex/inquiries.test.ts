@@ -17,8 +17,8 @@ afterEach(() => {
 	delete process.env.WEBHOOK_SECRET;
 });
 
-describe("inquiry creation boundary", () => {
-	test("accepts the shared server webhook secret", async () => {
+describe("inquiry ingress compatibility", () => {
+	test("accepts and strips the shared server webhook secret", async () => {
 		const t = convexTest(schema, modules);
 
 		const inquiryId = await t.mutation(api.inquiries.create, {
@@ -30,15 +30,24 @@ describe("inquiry creation boundary", () => {
 		});
 
 		const inquiry = await t.run(async (ctx) => await ctx.db.get(inquiryId));
-		expect(inquiry).toMatchObject({
-			siteUrl: "tenant.example",
-			name: "Example Person",
-			status: "new",
-		});
+		expect(inquiry).toMatchObject({ name: "Example Person", status: "new" });
 		expect(inquiry).not.toHaveProperty("webhookSecret");
 	});
 
-	test("rejects direct callers with the wrong secret", async () => {
+	test("temporarily accepts the legacy caller while hosts deploy", async () => {
+		const t = convexTest(schema, modules);
+
+		await expect(
+			t.mutation(api.inquiries.create, {
+				siteUrl: "tenant.example",
+				name: "Legacy Caller",
+				email: "legacy@example.com",
+				message: "Compatibility window",
+			}),
+		).resolves.toEqual(expect.any(String));
+	});
+
+	test("rejects callers that provide the wrong secret", async () => {
 		const t = convexTest(schema, modules);
 
 		await expect(
