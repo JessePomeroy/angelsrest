@@ -20,6 +20,13 @@ import {
 } from "$lib/galleryDelivery/downloadPlan";
 import { chooseGalleryDownloadRoute } from "$lib/galleryDelivery/downloadRoute";
 import {
+	applyGalleryFavoriteOverrides,
+	beginGalleryFavoriteMutation,
+	completeGalleryFavoriteMutation,
+	createGalleryFavoriteState,
+	rollbackGalleryFavoriteMutation,
+} from "$lib/galleryDelivery/favoriteState";
+import {
 	cancelPreparedZipDownload,
 	runPreparedZipDownload,
 	type PreparedZipDownloadStep,
@@ -33,17 +40,10 @@ let { data } = $props();
 setupConvex(PUBLIC_CONVEX_URL);
 const client = useConvexClient();
 
-// The server is the source of truth for images. We overlay optimistic
-// favorite toggles via a per-image override map so that (a) navigations
-// naturally flow through without clobbering user intent, and (b) the
-// read path stays derived from props instead of stale-captured state.
-let favoriteOverrides = $state(new Map<string, boolean>());
-let images = $derived(
-	data.images.map((img) => ({
-		...img,
-		isFavorite: favoriteOverrides.get(img._id) ?? img.isFavorite,
-	})),
-);
+// The server remains the source of truth; the pure state helper owns
+// per-image optimistic updates and concurrency-safe rollback.
+let favoriteState = $state(createGalleryFavoriteState());
+let images = $derived(applyGalleryFavoriteOverrides(data.images, favoriteState));
 let lightboxIndex = $state(-1);
 let lightboxOpen = $derived(lightboxIndex >= 0);
 let downloading = $state(false);
@@ -99,27 +99,30 @@ function handleKeydown(e: KeyboardEvent) {
 async function toggleFavorite(index: number) {
 	if (!data.gallery.favoritesEnabled) return;
 	const image = images[index];
-	const newVal = !image.isFavorite;
-
-	// Snapshot for rollback on failure (audit H32). We capture the whole
-	// map rather than the single key so that if parallel writes mutated
-	// other keys mid-flight, we don't accidentally clobber them on rollback.
-	const previousOverrides = favoriteOverrides;
-
-	// Optimistic override — derived images will pick this up on next read
-	const next = new Map(favoriteOverrides);
-	next.set(image._id, newVal);
-	favoriteOverrides = next;
+	const started = beginGalleryFavoriteMutation(
+		favoriteState,
+		image._id,
+		image.isFavorite,
+	);
+	if (!started) return;
+	favoriteState = started.state;
 
 	try {
 		await client.mutation(api.galleries.updateImage, {
 			id: image._id as Id<"galleryImages">,
 			token: data.token,
-			isFavorite: newVal,
+			isFavorite: started.mutation.nextValue,
 		});
+		favoriteState = completeGalleryFavoriteMutation(
+			favoriteState,
+			started.mutation,
+		);
 	} catch (err) {
 		console.error("favorite toggle failed", err);
-		favoriteOverrides = previousOverrides;
+		favoriteState = rollbackGalleryFavoriteMutation(
+			favoriteState,
+			started.mutation,
+		);
 		toasts.show("Couldn't update favorite. Please try again.", { type: "error" });
 	}
 }
@@ -532,6 +535,7 @@ let favoriteCount = $derived(
 							class="fav-btn"
 							class:is-fav={image.isFavorite}
 							onclick={() => toggleFavorite(i)}
+							disabled={favoriteState.pendingImageIds.has(image._id)}
 							aria-label={image.isFavorite ? "Remove from favorites" : "Add to favorites"}
 						>
 							{image.isFavorite ? "♥" : "♡"}
@@ -579,6 +583,7 @@ let favoriteCount = $derived(
 								class="list-fav"
 								class:is-fav={image.isFavorite}
 								onclick={() => toggleFavorite(i)}
+								disabled={favoriteState.pendingImageIds.has(image._id)}
 								aria-label={image.isFavorite ? "Remove from favorites" : "Add to favorites"}
 							>
 								{image.isFavorite ? "♥" : "♡"}
@@ -632,6 +637,7 @@ let favoriteCount = $derived(
 							class="lb-btn" aria-label={images[lightboxIndex].isFavorite ? "Remove from favorites" : "Add to favorites"}
 							class:is-fav={images[lightboxIndex].isFavorite}
 							onclick={() => toggleFavorite(lightboxIndex)}
+							disabled={favoriteState.pendingImageIds.has(images[lightboxIndex]._id)}
 						>
 							{images[lightboxIndex].isFavorite ? "♥ favorited" : "♡ favorite"}
 						</button>
