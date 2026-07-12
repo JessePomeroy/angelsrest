@@ -1,5 +1,11 @@
 # @jessepomeroy/crm-api
 
+## 1.5.1
+
+### Patch Changes
+
+- 468c2a5: Disclose truncated unread counts and drain mark-read operations in bounded batches.
+
 ## 1.5.0
 
 ### Minor Changes
