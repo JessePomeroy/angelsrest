@@ -1,5 +1,11 @@
 # @jessepomeroy/crm-api
 
+## 1.6.0
+
+### Minor Changes
+
+- 1cb077c: Add optional gallery password protection with server-side scrypt verifiers, short-lived access grants, throttled verification, and grant enforcement across gallery reads, favorites, previews, and downloads.
+
 ## 1.5.1
 
 ### Patch Changes
