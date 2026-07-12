@@ -57,9 +57,29 @@ export class LumaPrintsError extends Error {
 	}
 }
 
+const LUMAPRINTS_REQUEST_TIMEOUT_MS = 15_000;
+
+async function fetchLumaPrints(path: string, init: RequestInit = {}): Promise<Response> {
+	try {
+		return await fetch(`${BASE_URL}${path}`, {
+			...init,
+			signal: AbortSignal.timeout(LUMAPRINTS_REQUEST_TIMEOUT_MS),
+		});
+	} catch (error) {
+		const cause = error instanceof Error ? error.name : typeof error;
+		const kind = cause === "TimeoutError" || cause === "AbortError" ? "timeout" : "network";
+		throw new LumaPrintsError(
+			kind === "timeout"
+				? `LumaPrints request timed out after ${LUMAPRINTS_REQUEST_TIMEOUT_MS}ms`
+				: "LumaPrints network request failed",
+			{ kind, timeoutMs: LUMAPRINTS_REQUEST_TIMEOUT_MS, cause },
+		);
+	}
+}
+
 /** Submit an order to LumaPrints */
 export async function createOrder(order: LumaPrintsOrder): Promise<LumaPrintsOrderResponse> {
-	const res = await fetch(`${BASE_URL}/api/v1/orders`, {
+	const res = await fetchLumaPrints("/api/v1/orders", {
 		method: "POST",
 		headers: getHeaders(),
 		body: JSON.stringify(order),
@@ -77,7 +97,7 @@ export async function createOrder(order: LumaPrintsOrder): Promise<LumaPrintsOrd
 export async function getOrder(
 	orderNumber: string,
 ): Promise<{ orderNumber: string; status: string }> {
-	const res = await fetch(`${BASE_URL}/api/v1/orders/${orderNumber}`, {
+	const res = await fetchLumaPrints(`/api/v1/orders/${orderNumber}`, {
 		headers: getHeaders(),
 	});
 	if (!res.ok) {
@@ -88,7 +108,7 @@ export async function getOrder(
 
 /** Get shipment tracking for an order */
 export async function getShipping(orderNumber: string): Promise<LumaPrintsShipment[]> {
-	const res = await fetch(`${BASE_URL}/api/v1/orders/${orderNumber}/shipments`, {
+	const res = await fetchLumaPrints(`/api/v1/orders/${orderNumber}/shipments`, {
 		headers: getHeaders(),
 	});
 	if (!res.ok) {
@@ -122,7 +142,7 @@ export async function checkImageConfig(input: {
 	recommendedHeight?: number;
 	expectedAspectRatio?: number;
 }> {
-	const res = await fetch(`${BASE_URL}/api/v1/images/checkImageConfig`, {
+	const res = await fetchLumaPrints("/api/v1/images/checkImageConfig", {
 		method: "POST",
 		headers: getHeaders(),
 		body: JSON.stringify({
@@ -178,7 +198,7 @@ export async function getShippingPrice(input: {
 }): Promise<{
 	shippingMethods: LumaPrintsShippingMethod[];
 }> {
-	const res = await fetch(`${BASE_URL}/api/v1/pricing/shipping`, {
+	const res = await fetchLumaPrints("/api/v1/pricing/shipping", {
 		method: "POST",
 		headers: getHeaders(),
 		body: JSON.stringify({

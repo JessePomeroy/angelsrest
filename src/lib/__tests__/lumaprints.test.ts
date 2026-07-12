@@ -5,9 +5,12 @@ import {
 	checkImageConfig,
 	cleanImageUrl,
 	createOrder,
+	getOrder,
+	getShipping,
 	getShippingPrice,
 	LumaPrintsError,
 } from "../server/lumaprints";
+import { classifyLumaPrintsFailure } from "../server/webhookErrorClassification";
 
 // Ported from reflecting-pool per audit #22. Guards the pure functions
 // (cleanImageUrl, buildLumaPrintsOrder) and the LumaPrints API error
@@ -186,6 +189,69 @@ describe("LumaPrintsError", () => {
 
 	it("is an instance of Error", () => {
 		expect(new LumaPrintsError("test")).toBeInstanceOf(Error);
+	});
+});
+
+describe("LumaPrints request deadlines", () => {
+	beforeEach(() => {
+		vi.unstubAllGlobals();
+	});
+
+	it("applies an active deadline signal to every LumaPrints request", async () => {
+		const fetchMock = vi.fn().mockResolvedValue({
+			ok: true,
+			json: vi.fn().mockResolvedValue({ shippingMethods: [] }),
+		});
+		vi.stubGlobal("fetch", fetchMock);
+
+		await createOrder(buildLumaPrintsOrder("deadline-order", mockRecipient, mockItems));
+		await getOrder("LP-123");
+		await getShipping("LP-123");
+		await checkImageConfig({
+			imageUrl: "https://cdn.sanity.io/images/proj/dataset/photo.jpg",
+			subcategoryId: 103001,
+			width: 8,
+			height: 10,
+		});
+		await getShippingPrice({
+			items: [{ subcategoryId: 103001, width: 8, height: 10, quantity: 1 }],
+			recipient: mockRecipient,
+		});
+
+		expect(fetchMock).toHaveBeenCalledTimes(5);
+		for (const [, init] of fetchMock.mock.calls) {
+			expect(init.signal).toBeInstanceOf(AbortSignal);
+			expect((init.signal as AbortSignal).aborted).toBe(false);
+		}
+	});
+
+	it("surfaces timeout failures as retryable LumaPrints errors", async () => {
+		const timeoutError = new Error("request timed out");
+		timeoutError.name = "TimeoutError";
+		vi.stubGlobal("fetch", vi.fn().mockRejectedValue(timeoutError));
+
+		const thrown = await createOrder(
+			buildLumaPrintsOrder("timeout-order", mockRecipient, mockItems),
+		).catch((error: unknown) => error);
+
+		expect(thrown).toMatchObject({
+			name: "LumaPrintsError",
+			message: "LumaPrints request timed out after 15000ms",
+			details: { kind: "timeout", timeoutMs: 15_000, cause: "TimeoutError" },
+		});
+		expect(classifyLumaPrintsFailure(thrown)).toBe("transient");
+	});
+
+	it("distinguishes other network failures from timeouts", async () => {
+		vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new TypeError("connection reset")));
+
+		await expect(
+			createOrder(buildLumaPrintsOrder("network-order", mockRecipient, mockItems)),
+		).rejects.toMatchObject({
+			name: "LumaPrintsError",
+			message: "LumaPrints network request failed",
+			details: { kind: "network", timeoutMs: 15_000, cause: "TypeError" },
+		});
 	});
 });
 
