@@ -1,6 +1,6 @@
 {
 	"name": "@jessepomeroy/gallery-delivery",
-	"version": "0.0.0",
+	"version": "0.1.0",
 	"description": "Shared browser delivery, download, and optimistic favorite behavior for photographer CRM gallery hosts.",
 	"type": "module",
 	"types": "./src/index.ts",
