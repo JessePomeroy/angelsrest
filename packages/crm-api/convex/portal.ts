@@ -4,6 +4,7 @@ import type { Doc, Id } from "./_generated/dataModel";
 import type { MutationCtx, QueryCtx } from "./_generated/server";
 import { mutation, query } from "./_generated/server";
 import { requireDocumentSiteAdmin, requireSiteAdmin } from "./authHelpers";
+import { hasValidGalleryAccessGrant } from "./galleryAccess";
 import { DEFAULT_LIST_LIMIT } from "./helpers/limits";
 
 /**
@@ -166,8 +167,8 @@ export const createToken = mutation({
  *   - cross-tenant drift where token.siteUrl != document.siteUrl
  */
 export const getByToken = query({
-	args: { token: v.string() },
-	handler: async (ctx, { token }) => {
+	args: { token: v.string(), accessGrant: v.optional(v.string()) },
+	handler: async (ctx, { token, accessGrant }) => {
 		const tokenDoc = await ctx.db
 			.query("portalTokens")
 			.withIndex("by_token", (q) => q.eq("token", token))
@@ -207,12 +208,24 @@ export const getByToken = query({
 
 		// Defense in depth: refuse to return a cross-tenant pairing.
 		if (document.siteUrl !== tokenDoc.siteUrl) return null;
+		if (tokenDoc.type === "gallery") {
+			const gallery = document as Doc<"galleries">;
+			const access = await hasValidGalleryAccessGrant(ctx, tokenDoc, gallery, accessGrant);
+			return {
+				expired: false as const,
+				token: tokenDoc,
+				document: { ...gallery, passwordProtected: access.passwordProtected },
+				client: client ? { name: client.name, email: client.email } : null,
+				requiresPassword: access.passwordProtected && !access.valid,
+			};
+		}
 
 		return {
 			expired: false as const,
 			token: tokenDoc,
 			document,
 			client: client ? { name: client.name, email: client.email } : null,
+			requiresPassword: false as const,
 		};
 	},
 });
