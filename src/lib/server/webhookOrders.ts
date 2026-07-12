@@ -80,6 +80,7 @@ export async function createOrderInConvex(
 			lineItems,
 			siteUrl,
 			webhookSecret: getWebhookSecret(),
+			stripeRequestOptions,
 		}),
 	);
 	const { _id: orderId, orderNumber, alreadyExisted } = orderResult;

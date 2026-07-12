@@ -9,6 +9,7 @@ import {
 import { AGGREGATE_SCAN_LIMIT, BULK_SCAN_LIMIT } from "./helpers/limits";
 import { getNextOrderNumber as generateNextOrderNumber } from "./helpers/numbering";
 import { resolveBoundedOrderStatsScan } from "./helpers/orderStats";
+import { FEE_CAPTURE_INITIAL_DELAY_MS } from "./helpers/stripeFeeCapture";
 
 const orderStatusValidator = v.union(
 	v.literal("new"),
@@ -82,6 +83,7 @@ export const create = mutation({
 		customerEmail: v.string(),
 		customerName: v.optional(v.string()),
 		stripePaymentIntentId: v.optional(v.string()),
+		stripeConnectedAccountId: v.optional(v.string()),
 		shippingAddress: v.optional(
 			v.object({
 				line1: v.string(),
@@ -139,6 +141,12 @@ export const create = mutation({
 				lumaprintsOrderNumber: existing.lumaprintsOrderNumber,
 				status: existing.status,
 				stripeFees: existing.stripeFees,
+				stripeConnectedAccountId: existing.stripeConnectedAccountId,
+				stripeFeeCaptureStatus: existing.stripeFeeCaptureStatus,
+				stripeFeeCaptureAttempts: existing.stripeFeeCaptureAttempts,
+				stripeFeeCaptureLastAttemptAt: existing.stripeFeeCaptureLastAttemptAt,
+				stripeFeeCaptureNextAttemptAt: existing.stripeFeeCaptureNextAttemptAt,
+				stripeFeeCaptureError: existing.stripeFeeCaptureError,
 				fulfillmentError: existing.fulfillmentError,
 				stripeRefundId: existing.stripeRefundId,
 				fulfillmentRecoveryStatus: existing.fulfillmentRecoveryStatus,
@@ -150,10 +158,16 @@ export const create = mutation({
 			args.orderNumber ||
 			(await generateNextOrderNumber(ctx, args.siteUrl));
 
+		const feeCaptureScheduledAt = rest.stripePaymentIntentId
+			? Date.now() + FEE_CAPTURE_INITIAL_DELAY_MS
+			: undefined;
 		const _id = await ctx.db.insert("orders", {
 			...rest,
 			orderNumber,
 			status: "new",
+			stripeFeeCaptureStatus: rest.stripePaymentIntentId ? "pending" : undefined,
+			stripeFeeCaptureAttempts: rest.stripePaymentIntentId ? 0 : undefined,
+			stripeFeeCaptureNextAttemptAt: feeCaptureScheduledAt,
 		});
 
 		// Schedule Stripe fee capture off the webhook hot path (audit H5).
@@ -163,7 +177,7 @@ export const create = mutation({
 		// the fee still isn't available — see convex/stripeFees.ts.
 		if (rest.stripePaymentIntentId) {
 			await ctx.scheduler.runAfter(
-				15_000,
+				FEE_CAPTURE_INITIAL_DELAY_MS,
 				internal.stripeFees.captureFeesForOrder,
 				{ orderId: _id },
 			);
@@ -176,6 +190,11 @@ export const create = mutation({
 			lumaprintsOrderNumber: undefined,
 			status: "new" as const,
 			stripeFees: undefined,
+			stripeFeeCaptureStatus: rest.stripePaymentIntentId ? ("pending" as const) : undefined,
+			stripeFeeCaptureAttempts: rest.stripePaymentIntentId ? 0 : undefined,
+			stripeFeeCaptureLastAttemptAt: undefined,
+			stripeFeeCaptureNextAttemptAt: feeCaptureScheduledAt,
+			stripeFeeCaptureError: undefined,
 			fulfillmentError: undefined,
 			stripeRefundId: undefined,
 			fulfillmentRecoveryStatus: undefined,
