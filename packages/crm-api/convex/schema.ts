@@ -1,5 +1,6 @@
 import { defineSchema, defineTable } from "convex/server";
 import { v } from "convex/values";
+import { stripeFeeCaptureErrorValidator } from "./helpers/stripeFeeCapture";
 import { categoryValidator } from "./helpers/validators";
 
 export default defineSchema({
@@ -34,6 +35,9 @@ export default defineSchema({
 		orderNumber: v.string(),
 		stripeSessionId: v.string(),
 		stripePaymentIntentId: v.optional(v.string()),
+		// Connected-account context needed by delayed Stripe reads after the
+		// webhook request that originally resolved tenant routing has ended.
+		stripeConnectedAccountId: v.optional(v.string()),
 		customerEmail: v.string(),
 		customerName: v.optional(v.string()),
 		shippingAddress: v.optional(
@@ -56,6 +60,17 @@ export default defineSchema({
 		subtotal: v.optional(v.number()),
 		total: v.number(),
 		stripeFees: v.optional(v.number()),
+		// Durable lifecycle for the asynchronous Stripe balance-transaction read.
+		// Optional for compatibility with orders created before fee capture was
+		// checkpointed explicitly.
+		stripeFeeCaptureStatus: v.optional(
+			v.union(v.literal("pending"), v.literal("captured"), v.literal("failed")),
+		),
+		stripeFeeCaptureAttempts: v.optional(v.number()),
+		stripeFeeCaptureLastAttemptAt: v.optional(v.number()),
+		stripeFeeCaptureNextAttemptAt: v.optional(v.number()),
+		// Safe machine-readable code, never a raw Stripe response.
+		stripeFeeCaptureError: v.optional(stripeFeeCaptureErrorValidator),
 		couponCode: v.optional(v.string()),
 		discountAmount: v.optional(v.number()),
 		fulfillmentType: v.union(

@@ -8,6 +8,7 @@ export type ConvexOrderCreatePayload = {
 	customerEmail: string;
 	customerName?: string;
 	stripePaymentIntentId?: string;
+	stripeConnectedAccountId?: string;
 	shippingAddress?: {
 		line1: string;
 		line2?: string;
@@ -34,12 +35,14 @@ export function buildConvexOrderCreatePayload({
 	lineItems,
 	siteUrl,
 	webhookSecret,
+	stripeRequestOptions,
 }: {
 	session: Stripe.Checkout.Session;
 	shippingDetails: ShippingDetails;
 	lineItems: Stripe.LineItem[];
 	siteUrl: string;
 	webhookSecret: string;
+	stripeRequestOptions?: Stripe.RequestOptions;
 }): ConvexOrderCreatePayload {
 	const rawPaymentIntent = session.payment_intent;
 	const stripePaymentIntentId =
@@ -53,6 +56,9 @@ export function buildConvexOrderCreatePayload({
 		customerEmail: session.customer_details?.email || "",
 		customerName: session.customer_details?.name || shippingDetails?.name || undefined,
 		stripePaymentIntentId: stripePaymentIntentId || undefined,
+		...(stripeRequestOptions?.stripeAccount
+			? { stripeConnectedAccountId: stripeRequestOptions.stripeAccount }
+			: {}),
 		shippingAddress: shippingDetails?.address
 			? {
 					line1: shippingDetails.address.line1 || "",

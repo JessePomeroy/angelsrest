@@ -107,6 +107,19 @@ describe("buildConvexOrderCreatePayload", () => {
 		expect(payload.shippingAddress).toBeUndefined();
 	});
 
+	it("persists connected-account routing for delayed Stripe fee reads", () => {
+		const payload = buildConvexOrderCreatePayload({
+			session: makeSession(),
+			shippingDetails: null,
+			lineItems: [],
+			siteUrl: "client.example",
+			webhookSecret: "secret",
+			stripeRequestOptions: { stripeAccount: "acct_connected_123" },
+		});
+
+		expect(payload.stripeConnectedAccountId).toBe("acct_connected_123");
+	});
+
 	it("falls back for missing customer, line item, and amount details", () => {
 		const payload = buildConvexOrderCreatePayload({
 			session: makeSession({

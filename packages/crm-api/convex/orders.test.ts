@@ -39,6 +39,52 @@ async function seedLumaPrintsOrder() {
 	return { t, orderId: created._id };
 }
 
+describe("order Stripe fee capture initialization", () => {
+	test("creates a pending checkpoint before scheduling fee capture", async () => {
+		const t = convexTest(schema, modules);
+		const created = await t.mutation(api.orders.create, {
+			siteUrl: SITE_URL,
+			webhookSecret: WEBHOOK_SECRET,
+			stripeSessionId: "cs_fee_checkpoint",
+			stripePaymentIntentId: "pi_fee_checkpoint",
+			customerEmail: "customer@example.com",
+			items: [{ productName: "Digital file", quantity: 1, price: 1000 }],
+			total: 1000,
+			fulfillmentType: "digital",
+		});
+
+		const order = await t.run(async (ctx) => ctx.db.get(created._id));
+		expect(created).toMatchObject({
+			stripeFeeCaptureStatus: "pending",
+			stripeFeeCaptureAttempts: 0,
+			stripeFeeCaptureNextAttemptAt: expect.any(Number),
+		});
+		expect(order).toMatchObject({
+			stripeFeeCaptureStatus: "pending",
+			stripeFeeCaptureAttempts: 0,
+			stripeFeeCaptureNextAttemptAt: expect.any(Number),
+		});
+	});
+
+	test("does not invent fee-capture state without a payment intent", async () => {
+		const t = convexTest(schema, modules);
+		const created = await t.mutation(api.orders.create, {
+			siteUrl: SITE_URL,
+			webhookSecret: WEBHOOK_SECRET,
+			stripeSessionId: "cs_without_payment_intent",
+			customerEmail: "customer@example.com",
+			items: [{ productName: "Manual order", quantity: 1, price: 1000 }],
+			total: 1000,
+			fulfillmentType: "self",
+		});
+
+		const order = await t.run(async (ctx) => ctx.db.get(created._id));
+		expect(order?.stripeFeeCaptureStatus).toBeUndefined();
+		expect(order?.stripeFeeCaptureAttempts).toBeUndefined();
+		expect(order?.stripeFeeCaptureNextAttemptAt).toBeUndefined();
+	});
+});
+
 describe("order shipment email claim", () => {
 	test("claims shipment email exactly once while updating shipment tracking", async () => {
 		const { t, orderId } = await seedLumaPrintsOrder();
