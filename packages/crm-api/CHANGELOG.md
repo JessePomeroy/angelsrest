@@ -1,5 +1,11 @@
 # @jessepomeroy/crm-api
 
+## 1.7.0
+
+### Minor Changes
+
+- 5a46272: Add durable pending, captured, and failed checkpoints for asynchronous Stripe fee capture, including delayed connected-account routing.
+
 ## 1.6.0
 
 ### Minor Changes
