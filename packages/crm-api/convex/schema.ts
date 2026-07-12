@@ -344,7 +344,8 @@ export default defineSchema({
 		read: v.boolean(),
 	})
 		.index("by_siteUrl", ["siteUrl"])
-		.index("by_siteUrl_unread", ["siteUrl", "read"]),
+		.index("by_siteUrl_unread", ["siteUrl", "read"])
+		.index("by_siteUrl_sender_unread", ["siteUrl", "sender", "read"]),
 
 	// Kanban board configurations — Full tier only
 	boardConfigs: defineTable({

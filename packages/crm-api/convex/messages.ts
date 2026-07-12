@@ -1,8 +1,44 @@
 import { paginationOptsValidator } from "convex/server";
 import { v } from "convex/values";
-import { mutation, query } from "./_generated/server";
+import { internal } from "./_generated/api";
+import {
+	internalMutation,
+	type MutationCtx,
+	mutation,
+	query,
+	type QueryCtx,
+} from "./_generated/server";
 import { requirePlatformAdmin, requireSiteAdmin } from "./authHelpers";
 import { BULK_SCAN_LIMIT } from "./helpers/limits";
+
+async function getUnreadSummary(ctx: QueryCtx, siteUrl: string) {
+	const unreadRows = await ctx.db
+		.query("platformMessages")
+		.withIndex("by_siteUrl_sender_unread", (q) =>
+			q.eq("siteUrl", siteUrl).eq("sender", "client").eq("read", false),
+		)
+		.take(BULK_SCAN_LIMIT + 1);
+
+	return {
+		unreadCount: Math.min(unreadRows.length, BULK_SCAN_LIMIT),
+		unreadCountIsTruncated: unreadRows.length > BULK_SCAN_LIMIT,
+	};
+}
+
+async function markReadBatch(ctx: MutationCtx, siteUrl: string) {
+	const unread = await ctx.db
+		.query("platformMessages")
+		.withIndex("by_siteUrl_unread", (q) =>
+			q.eq("siteUrl", siteUrl).eq("read", false),
+		)
+		.take(BULK_SCAN_LIMIT);
+
+	for (const message of unread) {
+		await ctx.db.patch(message._id, { read: true });
+	}
+
+	return unread.length === BULK_SCAN_LIMIT;
+}
 
 export const list = query({
 	args: { siteUrl: v.string() },
@@ -58,15 +94,24 @@ export const markRead = mutation({
 	args: { siteUrl: v.string() },
 	handler: async (ctx, { siteUrl }) => {
 		await requireSiteAdmin(ctx, siteUrl);
-		const unread = await ctx.db
-			.query("platformMessages")
-			.withIndex("by_siteUrl_unread", (q) =>
-				q.eq("siteUrl", siteUrl).eq("read", false),
-			)
-			.take(BULK_SCAN_LIMIT);
+		const hasMore = await markReadBatch(ctx, siteUrl);
+		if (hasMore) {
+			await ctx.scheduler.runAfter(0, internal.messages._markReadBatch, {
+				siteUrl,
+			});
+		}
+	},
+});
 
-		for (const msg of unread) {
-			await ctx.db.patch(msg._id, { read: true });
+/** Continue a tenant-authorized mark-read operation in bounded transactions. */
+export const _markReadBatch = internalMutation({
+	args: { siteUrl: v.string() },
+	handler: async (ctx, { siteUrl }) => {
+		const hasMore = await markReadBatch(ctx, siteUrl);
+		if (hasMore) {
+			await ctx.scheduler.runAfter(0, internal.messages._markReadBatch, {
+				siteUrl,
+			});
 		}
 	},
 });
@@ -101,19 +146,9 @@ export const allThreads = query({
 					.order("desc")
 					.first();
 
-				// Unread client→creator messages. `.collect()` here is bounded
-				// per-client by the fact that markRead clears this set, so it
-				// grows only between reads. Cap defensively at 500.
-				const unreadRows = await ctx.db
-					.query("platformMessages")
-					.withIndex("by_siteUrl_unread", (q) =>
-						q.eq("siteUrl", client.siteUrl).eq("read", false),
-					)
-					.take(BULK_SCAN_LIMIT);
+				const unreadSummary = await getUnreadSummary(ctx, client.siteUrl);
 
-				const unreadCount = unreadRows.filter((m) => m.sender === "client").length;
-
-				return { client, latestMessage, unreadCount };
+				return { client, latestMessage, ...unreadSummary };
 			}),
 		);
 
@@ -148,16 +183,9 @@ export const allThreadsPaginated = query({
 					.order("desc")
 					.first();
 
-				const unreadRows = await ctx.db
-					.query("platformMessages")
-					.withIndex("by_siteUrl_unread", (q) =>
-						q.eq("siteUrl", client.siteUrl).eq("read", false),
-					)
-					.take(BULK_SCAN_LIMIT);
+				const unreadSummary = await getUnreadSummary(ctx, client.siteUrl);
 
-				const unreadCount = unreadRows.filter((m) => m.sender === "client").length;
-
-				return { client, latestMessage, unreadCount };
+				return { client, latestMessage, ...unreadSummary };
 			}),
 		);
 
