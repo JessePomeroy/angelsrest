@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { resolveGalleryDisplayImages } from "./displayImages";
 
 const workerUrl = "https://gallery-worker.example.com/";
+const access = { token: "gallery-token", accessGrant: "server-grant" };
 
 describe("resolveGalleryDisplayImages", () => {
 	it("uses browser-previewable images as their own thumbnail and preview source", () => {
@@ -13,15 +14,16 @@ describe("resolveGalleryDisplayImages", () => {
 				},
 			],
 			workerUrl,
+			access,
 		);
 
 		expect(image.canPreview).toBe(true);
 		expect(image.previewSource).toBe("self");
 		expect(image.thumbUrl).toBe(
-			"https://gallery-worker.example.com/image/angelsrest.online%2Fgalleries%2Ftest%2Fthumb%2Fdscf1443.jpg",
+			"https://gallery-worker.example.com/image/angelsrest.online%2Fgalleries%2Ftest%2Fthumb%2Fdscf1443.jpg?token=gallery-token&accessGrant=server-grant",
 		);
 		expect(image.previewUrl).toBe(
-			"https://gallery-worker.example.com/image/angelsrest.online%2Fgalleries%2Ftest%2Fpreview%2Fdscf1443.jpg",
+			"https://gallery-worker.example.com/image/angelsrest.online%2Fgalleries%2Ftest%2Fpreview%2Fdscf1443.jpg?token=gallery-token&accessGrant=server-grant",
 		);
 	});
 
@@ -38,6 +40,7 @@ describe("resolveGalleryDisplayImages", () => {
 				},
 			],
 			workerUrl,
+			access,
 		);
 
 		const raw = images[1];
@@ -46,10 +49,10 @@ describe("resolveGalleryDisplayImages", () => {
 		expect(raw.fileLabel).toBe("raf");
 		expect(raw.previewSource).toBe("sidecar");
 		expect(raw.thumbUrl).toBe(
-			"https://gallery-worker.example.com/image/angelsrest.online%2Fgalleries%2Ftest%2Fthumb%2Fdscf1443.jpg",
+			"https://gallery-worker.example.com/image/angelsrest.online%2Fgalleries%2Ftest%2Fthumb%2Fdscf1443.jpg?token=gallery-token&accessGrant=server-grant",
 		);
 		expect(raw.previewUrl).toBe(
-			"https://gallery-worker.example.com/image/angelsrest.online%2Fgalleries%2Ftest%2Fpreview%2Fdscf1443.jpg",
+			"https://gallery-worker.example.com/image/angelsrest.online%2Fgalleries%2Ftest%2Fpreview%2Fdscf1443.jpg?token=gallery-token&accessGrant=server-grant",
 		);
 	});
 
@@ -62,10 +65,11 @@ describe("resolveGalleryDisplayImages", () => {
 				},
 			],
 			workerUrl,
+			access,
 		);
 
 		expect(image.thumbUrl).toBe(
-			"https://gallery-worker.example.com/image/angelsrest.online%2Fgalleries%2Ftest%2Fthumb%2Fdscf%2001%3F%23.jpg",
+			"https://gallery-worker.example.com/image/angelsrest.online%2Fgalleries%2Ftest%2Fthumb%2Fdscf%2001%3F%23.jpg?token=gallery-token&accessGrant=server-grant",
 		);
 	});
 
@@ -78,6 +82,7 @@ describe("resolveGalleryDisplayImages", () => {
 				},
 			],
 			workerUrl,
+			access,
 		);
 
 		expect(raw.canPreview).toBe(false);

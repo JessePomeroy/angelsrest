@@ -106,6 +106,7 @@ export async function runPreparedZipDownload({
 	plan,
 	saveToFile,
 	token,
+	accessGrant,
 	window,
 	workerUrl,
 }: {
@@ -120,6 +121,7 @@ export async function runPreparedZipDownload({
 	plan: Extract<GalleryDownloadPlan, { type: "tooLarge" }>;
 	saveToFile: boolean;
 	token: string;
+	accessGrant?: string;
 	window: Window & typeof globalThis;
 	workerUrl: string;
 }): Promise<PreparedZipDownloadResult> {
@@ -151,6 +153,7 @@ export async function runPreparedZipDownload({
 		setTimeout: window.setTimeout,
 		signal: controller.signal,
 		token,
+		accessGrant,
 		workerUrl,
 	});
 	if (controller.signal.aborted) {
@@ -196,18 +199,23 @@ export async function cancelPreparedZipDownload({
 	requestId,
 	signal,
 	token,
+	accessGrant,
 	workerUrl,
 }: {
 	fetch: FetchLike;
 	requestId: string;
 	signal?: AbortSignal;
 	token: string;
+	accessGrant?: string;
 	workerUrl: string;
 }) {
-	const response = await fetch(galleryPreparedZipCancelUrl(workerUrl, requestId, token), {
-		method: "POST",
-		signal,
-	});
+	const response = await fetch(
+		galleryPreparedZipCancelUrl(workerUrl, requestId, token, accessGrant),
+		{
+			method: "POST",
+			signal,
+		},
+	);
 	return readPreparedZipStatusResponse(response);
 }
 
@@ -220,6 +228,7 @@ export async function waitForPreparedZipArchive({
 	setTimeout,
 	signal,
 	token,
+	accessGrant,
 	workerUrl,
 }: {
 	clearTimeout: (id: ReturnType<typeof globalThis.setTimeout>) => void;
@@ -230,6 +239,7 @@ export async function waitForPreparedZipArchive({
 	setTimeout: (callback: () => void, delay: number) => ReturnType<typeof globalThis.setTimeout>;
 	signal?: AbortSignal;
 	token: string;
+	accessGrant?: string;
 	workerUrl: string;
 }) {
 	let status = initialStatus;
@@ -240,7 +250,12 @@ export async function waitForPreparedZipArchive({
 			if (!status.archiveDownloadPath) {
 				throw new PreparedZipDownloadError("Prepared ZIP is ready but missing its archive path.");
 			}
-			return galleryPreparedZipArchiveUrl(workerUrl, status.archiveDownloadPath, token);
+			return galleryPreparedZipArchiveUrl(
+				workerUrl,
+				status.archiveDownloadPath,
+				token,
+				accessGrant,
+			);
 		}
 		if (status.status === "canceled") {
 			throw new DOMException("Download canceled.", "AbortError");
@@ -250,9 +265,12 @@ export async function waitForPreparedZipArchive({
 		}
 
 		await abortableDelay({ clearTimeout, delayMs: pollIntervalMs, setTimeout, signal });
-		const response = await fetch(galleryPreparedZipStatusUrl(workerUrl, status.requestId, token), {
-			signal,
-		});
+		const response = await fetch(
+			galleryPreparedZipStatusUrl(workerUrl, status.requestId, token, accessGrant),
+			{
+				signal,
+			},
+		);
 		status = await readPreparedZipStatusResponse(response);
 	}
 }
