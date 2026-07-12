@@ -2,7 +2,7 @@
 // @vitest-environment edge-runtime
 
 import { convexTest } from "convex-test";
-import { afterEach, beforeEach, describe, expect, test } from "vitest";
+import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { api, internal } from "./_generated/api";
 import schema from "./schema";
 
@@ -392,6 +392,62 @@ describe("tenant isolation", () => {
 			TENANT_A.siteUrl,
 			TENANT_B.siteUrl,
 		]);
+	});
+
+	test("unread summaries disclose their cap and mark-read drains every batch", async () => {
+		vi.useFakeTimers();
+		try {
+			const t = await seedTenants();
+			await t.mutation(internal.platform.seedClient, {
+				name: "Creator",
+				email: "creator@example.com",
+				siteUrl: "angelsrest.online",
+				tier: "full",
+				subscriptionStatus: "active",
+				adminEmails: ["creator@example.com"],
+				role: "creator",
+			});
+
+			for (let offset = 0; offset < 502; offset += 251) {
+				await t.run(async (ctx) => {
+					for (let index = offset; index < offset + 251; index += 1) {
+						await ctx.db.insert("platformMessages", {
+							siteUrl: TENANT_A.siteUrl,
+							sender: "client",
+							content: `message ${index}`,
+							read: false,
+						});
+					}
+				});
+			}
+
+			const firstPage = await asAdmin(t, "creator@example.com").query(
+				api.messages.allThreadsPaginated,
+				{ paginationOpts: { numItems: 10, cursor: null } },
+			);
+			const tenantThread = firstPage.page.find(
+				(thread) => thread.client.siteUrl === TENANT_A.siteUrl,
+			);
+			expect(tenantThread?.unreadCount).toBe(500);
+			expect(tenantThread?.unreadCountIsTruncated).toBe(true);
+
+			await asAdmin(t, TENANT_A.adminEmail).mutation(api.messages.markRead, {
+				siteUrl: TENANT_A.siteUrl,
+			});
+			await t.finishAllScheduledFunctions(vi.runAllTimers);
+
+			const remainingUnread = await t.run(async (ctx) =>
+				ctx.db
+					.query("platformMessages")
+					.withIndex("by_siteUrl_unread", (q) =>
+						q.eq("siteUrl", TENANT_A.siteUrl).eq("read", false),
+					)
+					.collect(),
+			);
+			expect(remainingUnread).toHaveLength(0);
+		} finally {
+			vi.useRealTimers();
+		}
 	});
 
 	test("raw table smoke check keeps tenant fixtures independent", async () => {
