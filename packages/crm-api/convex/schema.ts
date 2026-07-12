@@ -447,7 +447,6 @@ export default defineSchema({
 		coverImageKey: v.optional(v.string()),
 		imageCount: v.number(),
 		totalSizeBytes: v.number(),
-		password: v.optional(v.string()),
 		expiresAt: v.optional(v.number()),
 		downloadEnabled: v.boolean(),
 		favoritesEnabled: v.boolean(),
@@ -456,6 +455,50 @@ export default defineSchema({
 		.index("by_siteUrl_status", ["siteUrl", "status"])
 		.index("by_siteUrl_and_slug", ["siteUrl", "slug"])
 		.index("by_client", ["clientId"]),
+
+	// Gallery password verifiers are deliberately separate from public gallery
+	// documents so portal reads can never serialize password material.
+	galleryPasswordVerifiers: defineTable({
+		galleryId: v.id("galleries"),
+		siteUrl: v.string(),
+		algorithm: v.literal("scrypt"),
+		salt: v.string(),
+		hash: v.string(),
+		cost: v.number(),
+		blockSize: v.number(),
+		parallelization: v.number(),
+		keyLength: v.number(),
+		version: v.string(),
+		updatedAt: v.number(),
+	})
+		.index("by_gallery", ["galleryId"])
+		.index("by_siteUrl", ["siteUrl"]),
+
+	// Short-lived bearer grants issued only after a server-side password check.
+	// The verifier version binds grants to the current password, making password
+	// changes revoke every existing grant without a fan-out delete.
+	galleryAccessGrants: defineTable({
+		grant: v.string(),
+		galleryId: v.id("galleries"),
+		portalTokenId: v.id("portalTokens"),
+		siteUrl: v.string(),
+		verifierVersion: v.string(),
+		expiresAt: v.number(),
+	})
+		.index("by_grant", ["grant"])
+		.index("by_gallery", ["galleryId"])
+		.index("by_expiresAt", ["expiresAt"]),
+
+	// Token-scoped throttling prevents online password guessing. A successful
+	// verification clears the row; lockouts expire automatically by timestamp.
+	galleryPasswordAttempts: defineTable({
+		portalTokenId: v.id("portalTokens"),
+		failures: v.number(),
+		windowStartedAt: v.number(),
+		lockedUntil: v.optional(v.number()),
+	})
+		.index("by_portalToken", ["portalTokenId"])
+		.index("by_lockedUntil", ["lockedUntil"]),
 
 	// Gallery images — individual photos in a delivery gallery
 	galleryImages: defineTable({

@@ -17,6 +17,7 @@ import {
 	LARGE_SCAN_LIMIT,
 } from "./helpers/limits";
 import { patchDocument } from "./helpers/patching";
+import { requireGalleryAccessGrant } from "./galleryAccess";
 
 // Audit H14: cap per-batch DB deletes so the mutation transaction never
 // runs into Convex's operation-count ceiling. Galleries with >2000 photos
@@ -28,6 +29,7 @@ async function requireGalleryPortalToken(
 	ctx: QueryCtx | MutationCtx,
 	token: string,
 	galleryId: Id<"galleries">,
+	accessGrant?: string,
 ) {
 	const tokenDoc = await ctx.db
 		.query("portalTokens")
@@ -45,7 +47,19 @@ async function requireGalleryPortalToken(
 	if (!gallery || gallery.siteUrl !== tokenDoc.siteUrl || gallery.status !== "published") {
 		throw new Error("Gallery not found");
 	}
+	await requireGalleryAccessGrant(ctx, tokenDoc, gallery, accessGrant);
 	return gallery;
+}
+
+async function withPasswordProtection<T extends { _id: Id<"galleries"> }>(
+	ctx: QueryCtx,
+	gallery: T,
+) {
+	const verifier = await ctx.db
+		.query("galleryPasswordVerifiers")
+		.withIndex("by_gallery", (q) => q.eq("galleryId", gallery._id))
+		.unique();
+	return { ...gallery, passwordProtected: verifier !== null };
 }
 
 export const create = mutation({
@@ -56,10 +70,14 @@ export const create = mutation({
 		slug: v.string(),
 		downloadEnabled: v.boolean(),
 		favoritesEnabled: v.boolean(),
+		// Rollout bridge for admin versions before 2.3.16. Never persisted.
 		password: v.optional(v.string()),
 		expiresAt: v.optional(v.number()),
 	},
-	handler: async (ctx, args) => {
+	handler: async (ctx, { password, ...args }) => {
+		if (password) {
+			throw new Error("Update the admin app to enable hashed gallery passwords");
+		}
 		await requireSiteAdmin(ctx, args.siteUrl);
 		const client = await ctx.db.get(args.clientId);
 		if (!client || client.siteUrl !== args.siteUrl) {
@@ -97,18 +115,23 @@ export const update = mutation({
 			),
 		),
 		coverImageKey: v.optional(v.string()),
+		// Rollout bridge for admin versions before 2.3.16. Never persisted.
 		password: v.optional(v.string()),
 		expiresAt: v.optional(v.number()),
 		downloadEnabled: v.optional(v.boolean()),
 		favoritesEnabled: v.optional(v.boolean()),
 	},
-	handler: async (ctx, { id, siteUrl, ...fields }) => {
+	handler: async (ctx, { id, siteUrl, password, ...fields }) => {
+		if (password) {
+			throw new Error("Update the admin app to enable hashed gallery passwords");
+		}
 		await patchDocument(ctx, id, siteUrl, fields);
 	},
 });
 
 /**
- * Start the deletion of a gallery. Deletes one batch of images + downloads
+ * Start the deletion of a gallery. Deletes one batch of images, downloads,
+ * and password-access records
  * inline and, if more rows remain, schedules `_removeBatch` to continue.
  * Audit H14 — the old mutation deleted up to 2000 docs in a single
  * transaction, which hits Convex's operation-count ceiling for large
@@ -139,8 +162,8 @@ export const remove = mutation({
 });
 
 /**
- * Delete one batch of gallery rows. Reschedules itself until both
- * `galleryImages` and `galleryDownloads` are empty for this gallery,
+ * Delete one batch of gallery rows. Reschedules itself until images,
+ * downloads, and access grants are empty for this gallery,
  * then deletes the gallery document and stops.
  */
 export const _removeBatch = internalMutation({
@@ -159,7 +182,7 @@ export const _removeBatch = internalMutation({
 			await ctx.db.delete(image._id);
 		}
 
-		const remainingBudget = REMOVE_BATCH_SIZE - images.length;
+		let remainingBudget = REMOVE_BATCH_SIZE - images.length;
 		if (remainingBudget > 0 && siteUrl) {
 			const downloads = await ctx.db
 				.query("galleryDownloads")
@@ -170,9 +193,21 @@ export const _removeBatch = internalMutation({
 			for (const dl of downloads) {
 				await ctx.db.delete(dl._id);
 			}
+			remainingBudget -= downloads.length;
+
+			const grants = remainingBudget > 0
+				? await ctx.db
+					.query("galleryAccessGrants")
+					.withIndex("by_gallery", (q) => q.eq("galleryId", id))
+					.take(remainingBudget)
+				: [];
+			for (const grant of grants) {
+				await ctx.db.delete(grant._id);
+			}
+			remainingBudget -= grants.length;
 
 			// If we had budget left AND everything's clean, drop the gallery.
-			if (downloads.length < remainingBudget) {
+			if (remainingBudget > 0) {
 				const stillHasImages = await ctx.db
 					.query("galleryImages")
 					.withIndex("by_gallery", (q) => q.eq("galleryId", id))
@@ -183,7 +218,16 @@ export const _removeBatch = internalMutation({
 						q.eq("siteUrl", siteUrl).eq("galleryId", id),
 					)
 					.first();
-				if (!stillHasImages && !stillHasDownloads) {
+				const stillHasGrants = await ctx.db
+					.query("galleryAccessGrants")
+					.withIndex("by_gallery", (q) => q.eq("galleryId", id))
+					.first();
+				if (!stillHasImages && !stillHasDownloads && !stillHasGrants) {
+					const verifier = await ctx.db
+						.query("galleryPasswordVerifiers")
+						.withIndex("by_gallery", (q) => q.eq("galleryId", id))
+						.unique();
+					if (verifier) await ctx.db.delete(verifier._id);
 					await ctx.db.delete(id);
 					return;
 				}
@@ -202,7 +246,8 @@ export const _removeBatch = internalMutation({
 export const get = query({
 	args: { id: v.id("galleries") },
 	handler: async (ctx, { id }) => {
-		return await requireDocumentSiteAdmin(ctx, "galleries", id);
+		const gallery = await requireDocumentSiteAdmin(ctx, "galleries", id);
+		return await withPasswordProtection(ctx, gallery);
 	},
 });
 
@@ -213,12 +258,13 @@ export const getBySlug = query({
 	},
 	handler: async (ctx, { siteUrl, slug }) => {
 		await requireSiteAdmin(ctx, siteUrl);
-		return await ctx.db
+		const gallery = await ctx.db
 			.query("galleries")
 			.withIndex("by_siteUrl_and_slug", (q) =>
 				q.eq("siteUrl", siteUrl).eq("slug", slug),
 			)
 			.unique();
+		return gallery ? await withPasswordProtection(ctx, gallery) : null;
 	},
 });
 
@@ -240,9 +286,19 @@ export const listBySite = query({
 		for (const client of clients) {
 			if (client) clientMap.set(client._id, client);
 		}
-		const withClients = galleries.map((gallery) => ({
+		const protection = await Promise.all(
+			galleries.map(async (gallery) => {
+				const verifier = await ctx.db
+					.query("galleryPasswordVerifiers")
+					.withIndex("by_gallery", (q) => q.eq("galleryId", gallery._id))
+					.unique();
+				return verifier !== null;
+			}),
+		);
+		const withClients = galleries.map((gallery, index) => ({
 			...gallery,
 			clientName: clientMap.get(gallery.clientId)?.name ?? "Unknown",
+			passwordProtected: protection[index],
 		}));
 		return withClients;
 	},
@@ -252,11 +308,12 @@ export const listByClient = query({
 	args: { clientId: v.id("photographyClients") },
 	handler: async (ctx, { clientId }) => {
 		await requireDocumentSiteAdmin(ctx, "photographyClients", clientId);
-		return await ctx.db
+		const galleries = await ctx.db
 			.query("galleries")
 			.withIndex("by_client", (q) => q.eq("clientId", clientId))
 			.order("desc")
 			.take(COMPACT_LIST_LIMIT);
+		return await Promise.all(galleries.map((gallery) => withPasswordProtection(ctx, gallery)));
 	},
 });
 
@@ -362,12 +419,13 @@ export const updateImage = mutation({
 	args: {
 		id: v.id("galleryImages"),
 		token: v.string(),
+		accessGrant: v.optional(v.string()),
 		isFavorite: v.optional(v.boolean()),
 	},
-	handler: async (ctx, { id, token, ...fields }) => {
+	handler: async (ctx, { id, token, accessGrant, ...fields }) => {
 		const image = await ctx.db.get(id);
 		if (!image) throw new Error("Image not found");
-		const gallery = await requireGalleryPortalToken(ctx, token, image.galleryId);
+		const gallery = await requireGalleryPortalToken(ctx, token, image.galleryId, accessGrant);
 		if (image.siteUrl !== gallery.siteUrl) throw new Error("Image not found");
 
 		const updates: Record<string, unknown> = {};
@@ -383,10 +441,14 @@ export const updateImage = mutation({
 // Image queries
 
 export const getImages = query({
-	args: { galleryId: v.id("galleries"), token: v.optional(v.string()) },
-	handler: async (ctx, { galleryId, token }) => {
+	args: {
+		galleryId: v.id("galleries"),
+		token: v.optional(v.string()),
+		accessGrant: v.optional(v.string()),
+	},
+	handler: async (ctx, { galleryId, token, accessGrant }) => {
 		const gallery = token
-			? await requireGalleryPortalToken(ctx, token, galleryId)
+			? await requireGalleryPortalToken(ctx, token, galleryId, accessGrant)
 			: await requireDocumentSiteAdmin(ctx, "galleries", galleryId);
 		const images = await ctx.db
 			.query("galleryImages")
@@ -430,6 +492,7 @@ export const logDownload = mutation({
 		siteUrl: v.string(),
 		galleryId: v.id("galleries"),
 		token: v.string(),
+		accessGrant: v.optional(v.string()),
 		imageId: v.optional(v.id("galleryImages")),
 		ipHash: v.string(),
 		type: v.union(
@@ -438,8 +501,8 @@ export const logDownload = mutation({
 			v.literal("favorites"),
 		),
 	},
-	handler: async (ctx, { token, ...download }) => {
-		const gallery = await requireGalleryPortalToken(ctx, token, download.galleryId);
+	handler: async (ctx, { token, accessGrant, ...download }) => {
+		const gallery = await requireGalleryPortalToken(ctx, token, download.galleryId, accessGrant);
 		if (gallery.siteUrl !== download.siteUrl) throw new Error("Gallery not found");
 		if (download.imageId) {
 			const image = await ctx.db.get(download.imageId);
