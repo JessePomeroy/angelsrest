@@ -7,31 +7,31 @@ import { PUBLIC_CONVEX_URL } from "$env/static/public";
 import {
 	canSaveGalleryZipFile,
 	saveGalleryImagesAsZipFile,
-} from "$lib/galleryDelivery/downloadArchive";
+} from "@jessepomeroy/gallery-delivery/download-archive";
 import {
 	canChooseGalleryDownloadDirectory,
 	saveGalleryImagesToDirectory,
-} from "$lib/galleryDelivery/downloadDestination";
+} from "@jessepomeroy/gallery-delivery/download-destination";
 import {
 	createGalleryDownloadPlan,
 	type GalleryDownloadImage,
 	type GalleryDownloadPlan,
 	submitGalleryZipDownloadForm,
-} from "$lib/galleryDelivery/downloadPlan";
-import { chooseGalleryDownloadRoute } from "$lib/galleryDelivery/downloadRoute";
+} from "@jessepomeroy/gallery-delivery/download-plan";
+import { chooseGalleryDownloadRoute } from "@jessepomeroy/gallery-delivery/download-route";
 import {
 	applyGalleryFavoriteOverrides,
 	beginGalleryFavoriteMutation,
 	completeGalleryFavoriteMutation,
 	createGalleryFavoriteState,
 	rollbackGalleryFavoriteMutation,
-} from "$lib/galleryDelivery/favoriteState";
+} from "@jessepomeroy/gallery-delivery/favorite-state";
 import {
 	cancelPreparedZipDownload,
 	runPreparedZipDownload,
 	type PreparedZipDownloadStep,
 	type PreparedZipProgress,
-} from "$lib/galleryDelivery/preparedZip";
+} from "@jessepomeroy/gallery-delivery/prepared-zip";
 import { toasts } from "$lib/stores/toast.svelte";
 import { trapFocus } from "$lib/utils/focusTrap";
 

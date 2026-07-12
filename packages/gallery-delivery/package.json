@@ -1,0 +1,83 @@
+{
+	"name": "@jessepomeroy/gallery-delivery",
+	"version": "0.0.0",
+	"description": "Shared browser delivery, download, and optimistic favorite behavior for photographer CRM gallery hosts.",
+	"type": "module",
+	"types": "./src/index.ts",
+	"exports": {
+		".": {
+			"types": "./src/index.ts",
+			"default": "./src/index.ts"
+		},
+		"./display-images": {
+			"types": "./src/displayImages.ts",
+			"default": "./src/displayImages.ts"
+		},
+		"./download-archive": {
+			"types": "./src/downloadArchive.ts",
+			"default": "./src/downloadArchive.ts"
+		},
+		"./download-destination": {
+			"types": "./src/downloadDestination.ts",
+			"default": "./src/downloadDestination.ts"
+		},
+		"./download-plan": {
+			"types": "./src/downloadPlan.ts",
+			"default": "./src/downloadPlan.ts"
+		},
+		"./download-policy": {
+			"types": "./src/downloadPolicy.ts",
+			"default": "./src/downloadPolicy.ts"
+		},
+		"./download-route": {
+			"types": "./src/downloadRoute.ts",
+			"default": "./src/downloadRoute.ts"
+		},
+		"./download-urls": {
+			"types": "./src/downloadUrls.ts",
+			"default": "./src/downloadUrls.ts"
+		},
+		"./favorite-state": {
+			"types": "./src/favoriteState.ts",
+			"default": "./src/favoriteState.ts"
+		},
+		"./file-types": {
+			"types": "./src/fileTypes.ts",
+			"default": "./src/fileTypes.ts"
+		},
+		"./prepared-zip": {
+			"types": "./src/preparedZip.ts",
+			"default": "./src/preparedZip.ts"
+		}
+	},
+	"files": [
+		"src/index.ts",
+		"src/displayImages.ts",
+		"src/downloadArchive.ts",
+		"src/downloadDestination.ts",
+		"src/downloadPlan.ts",
+		"src/downloadPolicy.ts",
+		"src/downloadRoute.ts",
+		"src/downloadUrls.ts",
+		"src/favoriteState.ts",
+		"src/fileTypes.ts",
+		"src/preparedZip.ts"
+	],
+	"scripts": {
+		"check": "tsc -p tsconfig.json --noEmit",
+		"test": "vitest run",
+		"prepublishOnly": "pnpm check && pnpm test"
+	},
+	"devDependencies": {
+		"typescript": "^5.9.3",
+		"vitest": "^4.1.9"
+	},
+	"publishConfig": {
+		"registry": "https://npm.pkg.github.com"
+	},
+	"repository": {
+		"type": "git",
+		"url": "https://github.com/jessepomeroy/angelsrest.git",
+		"directory": "packages/gallery-delivery"
+	}
+}

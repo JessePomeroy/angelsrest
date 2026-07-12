@@ -1,9 +1,9 @@
+import { resolveGalleryDisplayImages } from "@jessepomeroy/gallery-delivery/display-images";
+import { galleryOriginalDownloadUrl } from "@jessepomeroy/gallery-delivery/download-urls";
 import { error, fail, redirect } from "@sveltejs/kit";
 import { dev } from "$app/environment";
 import { api } from "$convex/api";
 import type { Id } from "$convex/dataModel";
-import { resolveGalleryDisplayImages } from "$lib/galleryDelivery/displayImages";
-import { galleryOriginalDownloadUrl } from "$lib/galleryDelivery/downloadUrls";
 import { getConvex } from "$lib/server/convexClient";
 import { getGalleryWorkerUrl } from "$lib/server/galleryWorkerUrl";
 import type { Actions } from "./$types";
