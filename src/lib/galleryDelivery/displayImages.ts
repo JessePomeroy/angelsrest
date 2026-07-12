@@ -15,10 +15,17 @@ export type GalleryDisplayImage<T extends GalleryDisplayInput> = T & {
 	previewSource: GalleryPreviewSource;
 };
 
-function galleryImageUrl(workerUrl: string, r2Key: string, derivative: "thumb" | "preview") {
+function galleryImageUrl(
+	workerUrl: string,
+	r2Key: string,
+	derivative: "thumb" | "preview",
+	access: { token: string; accessGrant?: string },
+) {
 	const normalizedWorkerUrl = workerUrl.replace(/\/+$/, "");
 	const derivativeKey = r2Key.replace("/original/", `/${derivative}/`);
-	return `${normalizedWorkerUrl}/image/${encodeURIComponent(derivativeKey)}`;
+	const params = new URLSearchParams({ token: access.token });
+	if (access.accessGrant) params.set("accessGrant", access.accessGrant);
+	return `${normalizedWorkerUrl}/image/${encodeURIComponent(derivativeKey)}?${params}`;
 }
 
 function pairKeyForImage(image: GalleryDisplayInput) {
@@ -35,6 +42,7 @@ function pairKeyForImage(image: GalleryDisplayInput) {
 export function resolveGalleryDisplayImages<T extends GalleryDisplayInput>(
 	images: T[],
 	workerUrl: string,
+	access: { token: string; accessGrant?: string },
 ): Array<GalleryDisplayImage<T>> {
 	const sidecarsByPairKey = new Map<string, T>();
 
@@ -58,8 +66,8 @@ export function resolveGalleryDisplayImages<T extends GalleryDisplayInput>(
 
 		return {
 			...image,
-			thumbUrl: galleryImageUrl(workerUrl, previewKey, "thumb"),
-			previewUrl: galleryImageUrl(workerUrl, previewKey, "preview"),
+			thumbUrl: galleryImageUrl(workerUrl, previewKey, "thumb", access),
+			previewUrl: galleryImageUrl(workerUrl, previewKey, "preview", access),
 			canPreview: previewSource !== "none",
 			fileLabel: galleryFileLabel(image.filename),
 			previewSource,

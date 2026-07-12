@@ -35,7 +35,7 @@ import {
 import { toasts } from "$lib/stores/toast.svelte";
 import { trapFocus } from "$lib/utils/focusTrap";
 
-let { data } = $props();
+let { data, form } = $props();
 
 setupConvex(PUBLIC_CONVEX_URL);
 const client = useConvexClient();
@@ -111,6 +111,7 @@ async function toggleFavorite(index: number) {
 		await client.mutation(api.galleries.updateImage, {
 			id: image._id as Id<"galleryImages">,
 			token: data.token,
+			accessGrant: data.accessGrant || undefined,
 			isFavorite: started.mutation.nextValue,
 		});
 		favoriteState = completeGalleryFavoriteMutation(
@@ -280,6 +281,7 @@ async function savePreparedZip(
 	let activeController: AbortController | null = null;
 	try {
 		const result = await runPreparedZipDownload({
+			accessGrant: data.accessGrant || undefined,
 			document,
 			galleryName,
 			onController(controller) {
@@ -329,11 +331,12 @@ function cancelFolderDownload() {
 	if (requestId) {
 		preparedZipCancelingRequestId = requestId;
 		void cancelPreparedZipDownload({
-				fetch: window.fetch.bind(window),
-				requestId,
-				token: data.token,
+			accessGrant: data.accessGrant || undefined,
+			fetch: window.fetch.bind(window),
+			requestId,
+			token: data.token,
 			workerUrl: data.workerUrl,
-			})
+		})
 			.catch((error) => {
 				console.warn("prepared ZIP cancellation failed", error);
 				const statusToken = setFolderDownloadStatus(
@@ -356,6 +359,7 @@ async function downloadImages(
 	galleryName = data.gallery.name,
 ) {
 	const plan = createGalleryDownloadPlan({
+		accessGrant: data.accessGrant || undefined,
 		images: targetImages,
 		emptyMessage,
 		galleryName,
@@ -431,6 +435,18 @@ let favoriteCount = $derived(
 
 <svelte:window onkeydown={handleKeydown} />
 
+{#if data.requiresPassword}
+	<section class="password-gate" aria-labelledby="gallery-password-title">
+		<h1 id="gallery-password-title">{data.gallery.name}</h1>
+		<p>This gallery is password protected.</p>
+		<form method="POST" action="?/unlock">
+			<label for="gallery-password">gallery password</label>
+			<input id="gallery-password" name="password" type="password" autocomplete="current-password" required />
+			{#if form?.message}<p class="password-error" role="alert">{form.message}</p>{/if}
+			<button type="submit">open gallery</button>
+		</form>
+	</section>
+{:else}
 <div class="gallery-page">
 	<header class="gallery-header">
 		<h1>{data.gallery.name}</h1>
@@ -659,8 +675,28 @@ let favoriteCount = $derived(
 		<button class="lb-close" aria-label="Close lightbox" onclick={closeLightbox}>✕</button>
 	</div>
 {/if}
+{/if}
 
 <style>
+	.password-gate {
+		max-width: 420px;
+		margin: 12vh auto 0;
+		padding: 32px 24px;
+		font-family: "Synonym", system-ui, sans-serif;
+	}
+	.password-gate form { display: flex; flex-direction: column; gap: 10px; margin-top: 24px; }
+	.password-gate label { font-size: 0.82rem; opacity: 0.7; }
+	.password-gate input, .password-gate button {
+		padding: 10px 12px;
+		border: 1px solid currentColor;
+		border-radius: 6px;
+		background: transparent;
+		color: inherit;
+		font: inherit;
+	}
+	.password-gate button { cursor: pointer; }
+	.password-error { margin: 0; color: #ff8d8d; font-size: 0.82rem; }
+
 	.gallery-page {
 		max-width: 1200px;
 		margin: 0 auto;

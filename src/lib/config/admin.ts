@@ -16,10 +16,21 @@ import { api } from "$convex/api";
 // real `api` Proxy and the alias is the only override.
 const apiWithGalleryDelivery = new Proxy(api, {
 	get(target, prop, receiver) {
-		if (prop === "galleryDelivery") return target.galleries;
+		if (prop === "galleryDelivery") {
+			return new Proxy(target.galleries, {
+				get(galleries, galleryProp, galleryReceiver) {
+					if (galleryProp === "setPassword") return target.galleryPassword.setPassword;
+					return Reflect.get(galleries, galleryProp, galleryReceiver);
+				},
+			});
+		}
 		return Reflect.get(target, prop, receiver);
 	},
-}) as typeof api & { galleryDelivery: typeof api.galleries };
+}) as typeof api & {
+	galleryDelivery: typeof api.galleries & {
+		setPassword: typeof api.galleryPassword.setPassword;
+	};
+};
 
 export const adminConfig: AdminConfig = {
 	siteUrl: "angelsrest.online",

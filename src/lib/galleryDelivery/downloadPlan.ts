@@ -19,6 +19,7 @@ export type GalleryDownloadPlan =
 				action: string;
 				body: {
 					token: string;
+					accessGrant?: string;
 					galleryName: string;
 					imageKeys: string[];
 				};
@@ -29,6 +30,7 @@ export type GalleryDownloadPlan =
 			action: string;
 			fields: {
 				token: string;
+				accessGrant?: string;
 				galleryName: string;
 				imageKeys: string;
 			};
@@ -45,6 +47,7 @@ export function createGalleryDownloadPlan({
 	emptyMessage,
 	galleryName,
 	token,
+	accessGrant,
 	workerUrl,
 	maxZipBytes = DEFAULT_MAX_ON_DEMAND_ZIP_BYTES,
 }: {
@@ -52,6 +55,7 @@ export function createGalleryDownloadPlan({
 	emptyMessage: string;
 	galleryName: string;
 	token: string;
+	accessGrant?: string;
 	workerUrl: string;
 	maxZipBytes?: number;
 }): GalleryDownloadPlan {
@@ -73,6 +77,7 @@ export function createGalleryDownloadPlan({
 				action: galleryPrepareZipDownloadUrl(workerUrl),
 				body: {
 					token,
+					...(accessGrant ? { accessGrant } : {}),
 					galleryName,
 					imageKeys: images.map((img) => img.r2Key),
 				},
@@ -90,6 +95,7 @@ export function createGalleryDownloadPlan({
 				action: galleryPrepareZipDownloadUrl(workerUrl),
 				body: {
 					token,
+					...(accessGrant ? { accessGrant } : {}),
 					galleryName,
 					imageKeys: images.map((img) => img.r2Key),
 				},
@@ -102,6 +108,7 @@ export function createGalleryDownloadPlan({
 		action: galleryZipDownloadUrl(workerUrl),
 		fields: {
 			token,
+			...(accessGrant ? { accessGrant } : {}),
 			galleryName,
 			imageKeys: JSON.stringify(images.map((img) => img.r2Key)),
 		},
