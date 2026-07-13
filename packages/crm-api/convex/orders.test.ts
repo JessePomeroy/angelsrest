@@ -86,6 +86,53 @@ describe("order Stripe fee capture initialization", () => {
 });
 
 describe("order shipment email claim", () => {
+	test("lets the hub claim a globally unique LumaPrints order without caller-supplied tenant scope", async () => {
+		const { t, orderId } = await seedLumaPrintsOrder();
+
+		const claim = await t.mutation(api.orders.claimShipmentEmailNotificationByOrderNumber, {
+			webhookSecret: WEBHOOK_SECRET,
+			lumaprintsOrderNumber: "LP-123",
+			trackingNumber: "GLOBAL-TRACKING",
+		});
+
+		expect(claim).toMatchObject({
+			claimed: true,
+			order: {
+				siteUrl: SITE_URL,
+				orderNumber: "ORD-001",
+				customerEmail: "customer@example.com",
+			},
+		});
+		const order = await t.run(async (ctx) => ctx.db.get(orderId));
+		expect(order).toMatchObject({ status: "shipped", trackingNumber: "GLOBAL-TRACKING" });
+	});
+
+	test("rejects ambiguous global LumaPrints order numbers across tenants", async () => {
+		const { t } = await seedLumaPrintsOrder();
+		const duplicate = await t.mutation(api.orders.create, {
+			siteUrl: "tenant-b.example",
+			webhookSecret: WEBHOOK_SECRET,
+			stripeSessionId: "cs_other_tenant",
+			customerEmail: "other@example.com",
+			items: [{ productName: "Other print", quantity: 1, price: 42 }],
+			total: 42,
+			fulfillmentType: "lumaprints",
+		});
+		await t.mutation(api.orders.updateStatus, {
+			orderId: duplicate._id,
+			webhookSecret: WEBHOOK_SECRET,
+			status: "printing",
+			lumaprintsOrderNumber: "LP-123",
+		});
+
+		await expect(
+			t.mutation(api.orders.claimShipmentEmailNotificationByOrderNumber, {
+				webhookSecret: WEBHOOK_SECRET,
+				lumaprintsOrderNumber: "LP-123",
+			}),
+		).rejects.toThrow("Duplicate LumaPrints order number across tenants");
+	});
+
 	test("claims shipment email exactly once while updating shipment tracking", async () => {
 		const { t, orderId } = await seedLumaPrintsOrder();
 
@@ -235,6 +282,23 @@ describe("order shipment email claim", () => {
 });
 
 describe("order shipment email delivery recording", () => {
+	test("lets the hub record delivery by globally unique LumaPrints order number", async () => {
+		const { t, orderId } = await seedLumaPrintsOrder();
+
+		const result = await t.mutation(api.orders.recordShipmentEmailDeliveryByOrderNumber, {
+			webhookSecret: WEBHOOK_SECRET,
+			lumaprintsOrderNumber: "LP-123",
+			status: "sent",
+		});
+
+		expect(result).toMatchObject({
+			recorded: true,
+			order: { siteUrl: SITE_URL, orderNumber: "ORD-001" },
+		});
+		const order = await t.run(async (ctx) => ctx.db.get(orderId));
+		expect(order?.shipmentEmailDeliveryStatus).toBe("sent");
+	});
+
 	test("records successful shipment email delivery after a claim", async () => {
 		const { t, orderId } = await seedLumaPrintsOrder();
 		await t.mutation(api.orders.claimShipmentEmailNotification, {

@@ -1,8 +1,11 @@
 import { describe, expect, it, vi } from "vitest";
-import { sendCustomerConfirmation } from "$lib/server/webhookEmails";
+import {
+	sendCustomerConfirmation,
+	sendCustomerShipmentNotification,
+} from "$lib/server/webhookEmails";
 
 function resend() {
-	const send = vi.fn(async (_payload: { text: string }) => ({ id: "email-123" }));
+	const send = vi.fn(async (_payload: { from: string; text: string }) => ({ id: "email-123" }));
 	return {
 		emails: {
 			send,
@@ -76,5 +79,42 @@ describe("webhook customer emails", () => {
 			"View your order status anytime: https://zippymiggy.com/orders?order=ORD-002",
 		);
 		expect(payload.text).toContain("Thank you for supporting Reflecting Pool!");
+	});
+
+	it("uses the resolved tenant identity for shipment copy", async () => {
+		const mockResend = resend();
+
+		await sendCustomerShipmentNotification(mockResend as any, {
+			customerEmail: "buyer@example.com",
+			orderNumber: "ORD-003",
+			trackingNumber: "TRACK-123",
+			carrier: "FedEx",
+			notificationProfile: {
+				siteName: "Reflecting Pool",
+				siteUrl: "zippymiggy.com",
+				adminEmail: "maggie@example.com",
+			},
+		});
+
+		const payload = mockResend.emails.send.mock.calls[0]?.[0];
+		if (!payload) throw new Error("expected tenant shipment email payload");
+		expect(payload.from).toBe("Reflecting Pool via Angel's Rest <orders@angelsrest.online>");
+		expect(payload.text).toContain("Tracking (FedEx): TRACK-123");
+		expect(payload.text).toContain("https://zippymiggy.com/orders");
+	});
+
+	it("surfaces Resend API errors so delivery is checkpointed as failed", async () => {
+		const mockResend = {
+			emails: {
+				send: vi.fn().mockResolvedValue({ error: { message: "Domain is not verified" } }),
+			},
+		};
+
+		await expect(
+			sendCustomerShipmentNotification(mockResend as any, {
+				customerEmail: "buyer@example.com",
+				orderNumber: "ORD-004",
+			}),
+		).rejects.toThrow("Domain is not verified");
 	});
 });

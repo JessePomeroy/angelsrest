@@ -126,6 +126,9 @@ export default defineSchema({
 		.index("by_stripeSessionId", ["stripeSessionId"])
 		.index("by_orderNumber", ["siteUrl", "orderNumber"])
 		.index("by_customerEmail", ["siteUrl", "customerEmail"])
+		// Hub-owned shipment webhook lookup. LumaPrints order numbers are
+		// provider-global; the mutation rejects duplicates rather than guessing.
+		.index("by_lumaprintsOrderNumber_global", ["lumaprintsOrderNumber"])
 		// Webhook lookup: LumaPrints' shipment.created webhook arrives with
 		// only the LumaPrints order number (no Convex _id). Scoped by siteUrl
 		// so spokes can't read each other's orders.
