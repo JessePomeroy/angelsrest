@@ -1,5 +1,11 @@
 # @jessepomeroy/crm-api
 
+## 2.0.0
+
+### Major Changes
+
+- 69023db: Remove the deprecated unauthenticated `orders.lookup` query. Customer order lookup must use the hub broker and the dedicated server-authorized `orders.lookupForCustomer` query.
+
 ## 1.9.0
 
 ### Minor Changes
