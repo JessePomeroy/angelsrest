@@ -121,6 +121,15 @@ must have exactly one order-intake owner. Future Stripe Connect clients add
 tenant configuration and use the bridge; they do not copy the webhook
 coordinator into their repositories.
 
+### LumaPrints shipment webhook
+
+`/api/webhooks/lumaprints` is the single shipment-intake owner for hub and spoke
+orders. It verifies the provider's configured Basic credentials, accepts the
+documented top-level shipping payload, and resolves the provider-global
+LumaPrints order number to exactly one stored tenant before updating tracking or
+sending branded email. Client spokes do not receive the broad Convex webhook
+secret or run a second shipment processor.
+
 ### Invoice checkout
 
 `/api/invoice/checkout` creates payment sessions for token-authorized invoice

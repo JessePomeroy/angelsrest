@@ -1,6 +1,7 @@
 import { v } from "convex/values";
 import { internal } from "./_generated/api";
-import { mutation, query } from "./_generated/server";
+import type { Doc } from "./_generated/dataModel";
+import { type MutationCtx, mutation, query } from "./_generated/server";
 import {
 	requireDocumentSiteAdmin,
 	requireSiteAdmin,
@@ -34,6 +35,69 @@ const fulfillmentRecoveryStatusValidator = v.union(
 
 function canClaimShipmentEmail(status: string) {
 	return status === "new" || status === "printing" || status === "ready";
+}
+
+async function findGlobalLumaPrintsOrder(ctx: MutationCtx, lumaprintsOrderNumber: string) {
+	const matchingOrders = await ctx.db
+		.query("orders")
+		.withIndex("by_lumaprintsOrderNumber_global", (q) =>
+			q.eq("lumaprintsOrderNumber", lumaprintsOrderNumber),
+		)
+		.take(2);
+	if (matchingOrders.length > 1) {
+		throw new Error("Duplicate LumaPrints order number across tenants");
+	}
+	return matchingOrders[0] ?? null;
+}
+
+async function claimShipmentEmailForOrder(
+	ctx: MutationCtx,
+	order: Doc<"orders">,
+	trackingNumber?: string,
+	trackingUrl?: string,
+) {
+	const patch: Record<string, unknown> = {};
+	if (canClaimShipmentEmail(order.status)) patch.status = "shipped";
+	if (trackingNumber !== undefined) patch.trackingNumber = trackingNumber;
+	if (trackingUrl !== undefined) patch.trackingUrl = trackingUrl;
+
+	const shouldClaim =
+		order.shipmentEmailSentAt === undefined && canClaimShipmentEmail(order.status);
+	if (shouldClaim) {
+		patch.shipmentEmailSentAt = Date.now();
+		patch.shipmentEmailDeliveryStatus = "pending";
+	}
+
+	if (Object.keys(patch).length > 0) await ctx.db.patch(order._id, patch);
+	return {
+		claimed: shouldClaim,
+		order: {
+			_id: order._id,
+			siteUrl: order.siteUrl,
+			orderNumber: order.orderNumber,
+			customerEmail: order.customerEmail,
+		},
+	};
+}
+
+async function recordShipmentEmailForOrder(
+	ctx: MutationCtx,
+	order: Doc<"orders">,
+	status: "sent" | "failed" | "skipped",
+	error?: string,
+) {
+	const patch: Record<string, unknown> = {
+		shipmentEmailDeliveryStatus: status,
+		shipmentEmailDeliveryAttemptedAt: Date.now(),
+	};
+	if (status === "failed") patch.shipmentEmailDeliveryError = normalizeDeliveryError(error);
+	else patch.shipmentEmailDeliveryError = undefined;
+
+	await ctx.db.patch(order._id, patch);
+	return {
+		recorded: true,
+		order: { _id: order._id, siteUrl: order.siteUrl, orderNumber: order.orderNumber },
+	};
 }
 
 function truncateDeliveryError(error: string) {
@@ -278,30 +342,24 @@ export const claimShipmentEmailNotification = mutation({
 		const order = matchingOrders[0];
 		if (!order) return null;
 
-		const patch: Record<string, unknown> = {};
-		if (canClaimShipmentEmail(order.status)) patch.status = "shipped";
-		if (trackingNumber !== undefined) patch.trackingNumber = trackingNumber;
-		if (trackingUrl !== undefined) patch.trackingUrl = trackingUrl;
+		return await claimShipmentEmailForOrder(ctx, order, trackingNumber, trackingUrl);
+	},
+});
 
-		const shouldClaim =
-			order.shipmentEmailSentAt === undefined && canClaimShipmentEmail(order.status);
-		if (shouldClaim) {
-			patch.shipmentEmailSentAt = Date.now();
-			patch.shipmentEmailDeliveryStatus = "pending";
-		}
-
-		if (Object.keys(patch).length > 0) {
-			await ctx.db.patch(order._id, patch);
-		}
-
-		return {
-			claimed: shouldClaim,
-			order: {
-				_id: order._id,
-				orderNumber: order.orderNumber,
-				customerEmail: order.customerEmail,
-			},
-		};
+/** Hub-only shipment claim using LumaPrints' provider-global order number. */
+export const claimShipmentEmailNotificationByOrderNumber = mutation({
+	args: {
+		lumaprintsOrderNumber: v.string(),
+		webhookSecret: v.string(),
+		trackingNumber: v.optional(v.string()),
+		trackingUrl: v.optional(v.string()),
+	},
+	handler: async (ctx, { lumaprintsOrderNumber, webhookSecret, trackingNumber, trackingUrl }) => {
+		await requireWebhookCallerOrAuth(ctx, webhookSecret, { allowAuth: false });
+		const order = await findGlobalLumaPrintsOrder(ctx, lumaprintsOrderNumber);
+		return order
+			? await claimShipmentEmailForOrder(ctx, order, trackingNumber, trackingUrl)
+			: null;
 	},
 });
 
@@ -337,25 +395,22 @@ export const recordShipmentEmailDelivery = mutation({
 		const order = matchingOrders[0];
 		if (!order) return null;
 
-		const patch: Record<string, unknown> = {
-			shipmentEmailDeliveryStatus: status,
-			shipmentEmailDeliveryAttemptedAt: Date.now(),
-		};
-		if (status === "failed") {
-			patch.shipmentEmailDeliveryError = normalizeDeliveryError(error);
-		} else {
-			patch.shipmentEmailDeliveryError = undefined;
-		}
+		return await recordShipmentEmailForOrder(ctx, order, status, error);
+	},
+});
 
-		await ctx.db.patch(order._id, patch);
-
-		return {
-			recorded: true,
-			order: {
-				_id: order._id,
-				orderNumber: order.orderNumber,
-			},
-		};
+/** Hub-only delivery checkpoint keyed by LumaPrints' provider-global number. */
+export const recordShipmentEmailDeliveryByOrderNumber = mutation({
+	args: {
+		lumaprintsOrderNumber: v.string(),
+		webhookSecret: v.string(),
+		status: shipmentEmailDeliveryStatusValidator,
+		error: v.optional(v.string()),
+	},
+	handler: async (ctx, { lumaprintsOrderNumber, webhookSecret, status, error }) => {
+		await requireWebhookCallerOrAuth(ctx, webhookSecret, { allowAuth: false });
+		const order = await findGlobalLumaPrintsOrder(ctx, lumaprintsOrderNumber);
+		return order ? await recordShipmentEmailForOrder(ctx, order, status, error) : null;
 	},
 });
 

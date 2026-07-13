@@ -36,6 +36,35 @@ function commerceSender(profile: CommerceNotificationProfile, suffix = "") {
 	return `${displayName}${suffix} via Angel's Rest <orders@angelsrest.online>`;
 }
 
+/** Notify a customer after the hub atomically claims a LumaPrints shipment. */
+export async function sendCustomerShipmentNotification(
+	resend: Resend,
+	{
+		customerEmail,
+		orderNumber,
+		trackingNumber,
+		carrier,
+		notificationProfile = ANGELS_REST_COMMERCE_PROFILE,
+	}: {
+		customerEmail: string;
+		orderNumber: string;
+		trackingNumber?: string;
+		carrier?: string;
+		notificationProfile?: CommerceNotificationProfile;
+	},
+) {
+	const tracking = trackingNumber
+		? `Tracking${carrier ? ` (${carrier})` : ""}: ${trackingNumber}`
+		: "Tracking details should update soon.";
+	const result = await resend.emails.send({
+		from: commerceSender(notificationProfile),
+		to: [customerEmail],
+		subject: `Order ${orderNumber} has shipped - ${notificationProfile.siteName}`,
+		text: `Your ${notificationProfile.siteName} order ${orderNumber} has shipped.\n\n${tracking}\n\nView order status: ${commerceOrigin(notificationProfile)}/orders`,
+	});
+	if (result.error) throw new Error(result.error.message || "Shipment email delivery failed");
+}
+
 /** Format shipping address for emails */
 export function formatShippingAddress(shippingDetails: ShippingDetails): string {
 	if (!shippingDetails?.address) return "No shipping address";
