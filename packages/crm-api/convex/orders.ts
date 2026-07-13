@@ -448,19 +448,6 @@ async function lookupCustomerOrder(
 	};
 }
 
-/**
- * @deprecated Temporary rollout bridge. Public customer flows must use
- * `lookupForCustomer`, which requires the hub-only order lookup capability.
- */
-export const lookup = query({
-	args: {
-		siteUrl: v.string(),
-		email: v.string(),
-		orderNumber: v.string(),
-	},
-	handler: lookupCustomerOrder,
-});
-
 /** Hub-only customer order lookup. Never distribute its capability to a spoke. */
 export const lookupForCustomer = query({
 	args: {
