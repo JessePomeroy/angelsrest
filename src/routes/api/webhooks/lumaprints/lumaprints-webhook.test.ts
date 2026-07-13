@@ -4,6 +4,7 @@ const mocks = vi.hoisted(() => ({
 	env: {
 		LUMAPRINTS_WEBHOOK_USERNAME: "lumaprints" as string | undefined,
 		LUMAPRINTS_WEBHOOK_PASSWORD: "provider-password" as string | undefined,
+		LUMAPRINTS_WEBHOOK_PASSWORD_PREVIOUS: undefined as string | undefined,
 		WEBHOOK_SECRET: "convex-secret" as string | undefined,
 	},
 	mutation: vi.fn(),
@@ -60,6 +61,7 @@ describe("hub LumaPrints webhook", () => {
 		vi.clearAllMocks();
 		mocks.env.LUMAPRINTS_WEBHOOK_USERNAME = "lumaprints";
 		mocks.env.LUMAPRINTS_WEBHOOK_PASSWORD = "provider-password";
+		mocks.env.LUMAPRINTS_WEBHOOK_PASSWORD_PREVIOUS = undefined;
 		mocks.env.WEBHOOK_SECRET = "convex-secret";
 		mocks.mutation.mockImplementation((reference) => {
 			if (reference === "orders.claimGlobal") {
@@ -94,6 +96,14 @@ describe("hub LumaPrints webhook", () => {
 		const response = await POST({ request: request() });
 		expect(response.status).toBe(503);
 		expect(mocks.mutation).not.toHaveBeenCalled();
+	});
+
+	it("accepts the previous password during a configured rotation window", async () => {
+		mocks.env.LUMAPRINTS_WEBHOOK_PASSWORD = "new-provider-password";
+		mocks.env.LUMAPRINTS_WEBHOOK_PASSWORD_PREVIOUS = "provider-password";
+		const response = await POST({ request: request() });
+		expect(response.status).toBe(200);
+		expect(mocks.mutation).toHaveBeenCalled();
 	});
 
 	it("claims by provider-global number and sends with the resolved tenant identity", async () => {

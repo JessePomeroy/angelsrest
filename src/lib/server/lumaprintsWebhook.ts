@@ -44,6 +44,7 @@ export function verifyLumaPrintsBasicAuthorization(
 	header: string | null,
 	username: string,
 	password: string,
+	previousPassword?: string,
 ) {
 	if (!username || !password || !header?.startsWith("Basic ")) return false;
 	let decoded: string;
@@ -54,10 +55,14 @@ export function verifyLumaPrintsBasicAuthorization(
 	}
 	const separator = decoded.indexOf(":");
 	if (separator < 0) return false;
-	return (
-		secureEqual(decoded.slice(0, separator), username) &&
-		secureEqual(decoded.slice(separator + 1), password)
-	);
+	const providedUsername = decoded.slice(0, separator);
+	const providedPassword = decoded.slice(separator + 1);
+	const usernameMatches = secureEqual(providedUsername, username);
+	const currentPasswordMatches = secureEqual(providedPassword, password);
+	const previousPasswordMatches = previousPassword
+		? secureEqual(providedPassword, previousPassword)
+		: false;
+	return usernameMatches && (currentPasswordMatches || previousPasswordMatches);
 }
 
 export function parseLumaPrintsShippingPayload(rawBody: string): LumaPrintsShipment {

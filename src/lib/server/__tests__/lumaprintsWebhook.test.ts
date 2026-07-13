@@ -13,6 +13,21 @@ describe("LumaPrints webhook boundary", () => {
 		expect(verifyLumaPrintsBasicAuthorization(null, "lumaprints", "secret:part")).toBe(false);
 	});
 
+	it("accepts a previous password only during an explicit rotation window", () => {
+		const previousHeader = `Basic ${Buffer.from("lumaprints:previous-secret").toString("base64")}`;
+		expect(
+			verifyLumaPrintsBasicAuthorization(
+				previousHeader,
+				"lumaprints",
+				"current-secret",
+				"previous-secret",
+			),
+		).toBe(true);
+		expect(verifyLumaPrintsBasicAuthorization(previousHeader, "lumaprints", "current-secret")).toBe(
+			false,
+		);
+	});
+
 	it("parses the documented top-level shipping payload", () => {
 		expect(
 			parseLumaPrintsShippingPayload(
