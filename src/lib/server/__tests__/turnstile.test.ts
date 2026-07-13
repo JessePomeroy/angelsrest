@@ -13,6 +13,16 @@ describe("verifyTurnstileToken", () => {
 		expect(fetchImpl).not.toHaveBeenCalled();
 	});
 
+	it("rejects an oversized token without calling the Worker", async () => {
+		const fetchImpl = vi.fn();
+
+		await expect(verifyTurnstileToken({ token: "x".repeat(2_049), fetchImpl })).resolves.toEqual({
+			success: false,
+			reason: "rejected",
+		});
+		expect(fetchImpl).not.toHaveBeenCalled();
+	});
+
 	it("accepts only an explicit successful Worker response", async () => {
 		const fetchImpl = vi.fn().mockResolvedValue(
 			new Response(JSON.stringify({ success: true }), {

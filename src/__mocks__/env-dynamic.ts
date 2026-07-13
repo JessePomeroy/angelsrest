@@ -13,4 +13,5 @@ export const env = {
 	GALLERY_ADMIN_SECRET: "test-secret",
 	BETTER_AUTH_SECRET: "test-secret",
 	WEBHOOK_SECRET: "test-webhook-secret",
+	ORDER_LOOKUP_SECRET: "test-order-lookup-secret",
 };

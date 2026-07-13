@@ -1,5 +1,7 @@
 import { TURNSTILE_VERIFY_URL } from "$lib/config/turnstile";
 
+const MAX_TURNSTILE_TOKEN_LENGTH = 2_048;
+
 export type TurnstileVerification =
 	| { success: true }
 	| { success: false; reason: "missing" | "rejected" | "unavailable" };
@@ -15,15 +17,20 @@ export async function verifyTurnstileToken({
 	remoteIp,
 	fetchImpl = fetch,
 }: VerifyTurnstileOptions): Promise<TurnstileVerification> {
-	if (typeof token !== "string" || token.trim().length === 0) {
+	if (typeof token !== "string") {
 		return { success: false, reason: "missing" };
+	}
+	const normalizedToken = token.trim();
+	if (normalizedToken.length === 0) return { success: false, reason: "missing" };
+	if (normalizedToken.length > MAX_TURNSTILE_TOKEN_LENGTH) {
+		return { success: false, reason: "rejected" };
 	}
 
 	try {
 		const response = await fetchImpl(TURNSTILE_VERIFY_URL, {
 			method: "POST",
 			headers: { "Content-Type": "application/json" },
-			body: JSON.stringify({ token, remoteip: remoteIp }),
+			body: JSON.stringify({ token: normalizedToken, remoteip: remoteIp }),
 			signal: AbortSignal.timeout(5_000),
 		});
 

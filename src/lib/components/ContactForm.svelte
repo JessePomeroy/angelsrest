@@ -2,6 +2,8 @@
 /** ContactForm.svelte
  * contact form extracted out of the about page during refactor
  */
+import { onMount } from "svelte";
+import { loadTurnstile, type TurnstileApi } from "$lib/client/turnstile";
 import { isDark } from "$lib/stores/theme";
 import { TURNSTILE_SITE_KEY } from "$lib/config/turnstile";
 
@@ -29,27 +31,71 @@ $effect(() => {
 });
 
 let status = $state("idle"); // 'idle' | 'sending' | 'success' | 'error'
+let verificationError = $state("");
+let verificationReady = $state(false);
+let turnstileApi: TurnstileApi | undefined;
+let turnstileWidgetId: string | undefined;
 
-type TurnstileWindow = Window & {
-	turnstile?: { reset: (widget?: HTMLElement) => void };
-};
+onMount(() => {
+	let disposed = false;
+	void loadTurnstile()
+		.then((api) => {
+			if (disposed) return;
+			turnstileApi = api;
+			turnstileWidgetId = api.render("#contact-turnstile", {
+				sitekey: TURNSTILE_SITE_KEY,
+				theme: "auto",
+				action: "turnstile-spin-v1",
+				callback: () => {
+					verificationReady = true;
+					verificationError = "";
+				},
+				"error-callback": () => {
+					verificationReady = false;
+					verificationError = "Verification could not load. Please try again.";
+					return false;
+				},
+				"expired-callback": () => {
+					verificationError = "Verification expired. Please complete it again.";
+					resetTurnstile();
+				},
+			});
+		})
+		.catch((error) => {
+			console.error("contact Turnstile failed to load", error);
+			if (!disposed) {
+				verificationReady = false;
+				verificationError = "Verification could not load. Please refresh and try again.";
+			}
+		});
 
-function resetTurnstile(form: HTMLFormElement) {
-	const widget = form.querySelector<HTMLElement>(".cf-turnstile") ?? undefined;
-	(window as TurnstileWindow).turnstile?.reset(widget);
+	return () => {
+		disposed = true;
+		verificationReady = false;
+		if (turnstileApi && turnstileWidgetId) turnstileApi.remove(turnstileWidgetId);
+		turnstileWidgetId = undefined;
+		turnstileApi = undefined;
+	};
+});
+
+function resetTurnstile() {
+	verificationReady = false;
+	if (turnstileApi && turnstileWidgetId) turnstileApi.reset(turnstileWidgetId);
 }
 
 async function handleSubmit(e: SubmitEvent) {
 	e.preventDefault();
-	status = "sending";
+	if (status === "sending") return;
 
 	const form = e.currentTarget as HTMLFormElement;
 	const formData = new FormData(form);
 	const turnstileToken = formData.get("cf-turnstile-response");
 	if (typeof turnstileToken !== "string" || turnstileToken.length === 0) {
-		status = "error";
+		verificationError = "Please complete the verification challenge.";
 		return;
 	}
+	status = "sending";
+	verificationError = "";
 	const data = Object.fromEntries(formData);
 
 	try {
@@ -62,21 +108,17 @@ async function handleSubmit(e: SubmitEvent) {
 		if (res.ok) {
 			status = "success";
 			form.reset();
-			resetTurnstile(form);
+			resetTurnstile();
 		} else {
 			status = "error";
-			resetTurnstile(form);
+			resetTurnstile();
 		}
 	} catch {
 		status = "error";
-		resetTurnstile(form);
+		resetTurnstile();
 	}
 }
 </script>
-
-<svelte:head>
-	<script src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script>
-</svelte:head>
 
 <!-- Contact Form -->
 <div>
@@ -135,22 +177,20 @@ async function handleSubmit(e: SubmitEvent) {
                 class="bg-white/5 border border-white/10 text-sm rounded-lg px-3 py-2.5 shadow-sm placeholder:text-surface-400/70 focus:outline-none focus:border-surface-400 focus:ring-2 focus:ring-white/10 transition-all w-full resize-y"
             ></textarea>
         </div>
-		<div
-			class="cf-turnstile"
-			data-sitekey={TURNSTILE_SITE_KEY}
-			data-theme="auto"
-			data-action="turnstile-spin-v1"
-		></div>
+		<div id="contact-turnstile"></div>
         <button
             type="submit"
             class="mt-2 mb-6 px-4 py-3 text-sm font-medium lowercase tracking-wide bg-white/5 dark:bg-white/5 border border-gray-300 dark:border-white/10 rounded-lg hover:bg-gray-100 dark:hover:bg-white/10 transition-all cursor-pointer"
             style="color: var(--form-text-color);"
-            disabled={status === "sending"}
+            disabled={status === "sending" || !verificationReady}
         >
             {status === "sending" ? "sending..." : "send message"}
         </button>
 
         <div aria-live="polite">
+            {#if verificationError}
+                <p class="text-red-400">{verificationError}</p>
+            {/if}
             {#if status === "success"}
                 <p class="text-green-400">message sent !</p>
             {/if}

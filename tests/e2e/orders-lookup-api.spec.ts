@@ -11,3 +11,13 @@ test("orders lookup rejects email-bearing GET requests on the public server surf
 	expect(response.headers()["allow"]).toBe("POST");
 	await expect(response.json()).resolves.toEqual({ error: "Use POST to look up orders" });
 });
+
+test("orders lookup rejects POST requests without abuse verification", async ({ request }) => {
+	const response = await request.post("/api/orders/lookup", {
+		data: { email: "buyer@example.com", orderNumber: "ORD-001" },
+	});
+
+	expect(response.status()).toBe(403);
+	expect(response.headers()["cache-control"]).toBe("no-store");
+	await expect(response.json()).resolves.toEqual({ error: "Verification failed" });
+});
