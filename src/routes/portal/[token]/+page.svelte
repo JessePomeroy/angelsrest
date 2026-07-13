@@ -1,17 +1,18 @@
 <script lang="ts">
 import { invalidateAll } from "$app/navigation";
 import SEO from "$lib/components/SEO.svelte";
-import { formatCents, formatDate, formatTimestamp } from "$lib/utils/format";
 import type { PageData } from "./$types";
-import { getInvoiceSubtotal, getInvoiceTotal, getQuoteTotal } from "./portalPageData";
+import ContractDocument from "./ContractDocument.svelte";
+import InvoiceDocument from "./InvoiceDocument.svelte";
+import QuoteDocument from "./QuoteDocument.svelte";
 
 let { data }: { data: PageData } = $props();
 
 // Keep only the transient fields changed by portal actions. The authoritative,
 // discriminated document remains the load-function prop and is never mutated.
-let optimisticStatus = $state<PageData["document"]["status"] | null>(null);
+let optimisticQuoteStatus = $state<"accepted" | "declined" | null>(null);
+let optimisticContractStatus = $state<"signed" | null>(null);
 let optimisticSignedAt = $state<number | null>(null);
-const documentStatus = $derived(optimisticStatus ?? data.document.status);
 
 // Clear the override whenever the load function produces a new document
 // (e.g. after `invalidateAll()` runs). Without this, stale optimistic fields
@@ -19,16 +20,14 @@ const documentStatus = $derived(optimisticStatus ?? data.document.status);
 $effect(() => {
 	// Read data.document to register the dependency, then reset override.
 	data.document;
-	optimisticStatus = null;
+	optimisticQuoteStatus = null;
+	optimisticContractStatus = null;
 	optimisticSignedAt = null;
 });
 
 let actionLoading = $state(false);
 let actionResult = $state<"success" | "error" | null>(null);
 let actionMessage = $state("");
-
-// Contract signing
-let signerName = $state("");
 
 async function acceptQuote() {
 	actionLoading = true;
@@ -40,7 +39,7 @@ async function acceptQuote() {
 		if (res.ok) {
 			actionResult = "success";
 			actionMessage = "quote accepted! we'll be in touch.";
-			optimisticStatus = "accepted";
+			optimisticQuoteStatus = "accepted";
 			// Refresh load data so navigation reflects the new state; the
 			// $effect will clear the optimistic override once fresh data arrives.
 			await invalidateAll();
@@ -66,7 +65,7 @@ async function declineQuote() {
 		if (res.ok) {
 			actionResult = "success";
 			actionMessage = "quote declined.";
-			optimisticStatus = "declined";
+			optimisticQuoteStatus = "declined";
 			await invalidateAll();
 		} else {
 			actionResult = "error";
@@ -80,7 +79,7 @@ async function declineQuote() {
 	}
 }
 
-async function signContract() {
+async function signContract(signerName: string) {
 	if (!signerName.trim()) return;
 	actionLoading = true;
 	actionResult = null;
@@ -93,7 +92,7 @@ async function signContract() {
 		if (res.ok) {
 			actionResult = "success";
 			actionMessage = "contract signed successfully!";
-			optimisticStatus = "signed";
+			optimisticContractStatus = "signed";
 			optimisticSignedAt = Date.now();
 			await invalidateAll();
 		} else {
@@ -150,252 +149,33 @@ async function payInvoice() {
 
 	<main class="portal-card">
 		{#if data.type === "quote"}
-			{@const doc = data.document}
-			<div class="doc-header">
-				<div class="doc-type">Quote</div>
-				<h1 class="doc-number">{doc.quoteNumber}</h1>
-				<div class="doc-meta">
-					{#if data.client}
-						<div class="meta-row">
-							<span class="meta-label">Prepared for</span>
-							<span class="meta-value">{data.client.name}</span>
-						</div>
-					{/if}
-					<div class="meta-row">
-						<span class="meta-label">Date</span>
-						<span class="meta-value">{formatTimestamp(doc._creationTime)}</span>
-					</div>
-					{#if doc.validUntil}
-						<div class="meta-row">
-							<span class="meta-label">Valid until</span>
-							<span class="meta-value">{formatDate(doc.validUntil)}</span>
-						</div>
-					{/if}
-					<div class="meta-row">
-						<span class="meta-label">Status</span>
-						<span class="meta-value status-badge status-{documentStatus}">{documentStatus}</span>
-					</div>
-				</div>
-			</div>
-
-			<div class="doc-body">
-				{#each doc.packages as pkg, i (pkg.name ?? i)}
-					<div class="package-card">
-						<div class="package-header">
-							<h3 class="package-name">{pkg.name}</h3>
-							<span class="package-price">{formatCents(pkg.price)}</span>
-						</div>
-						{#if pkg.description}
-							<p class="package-desc">{pkg.description}</p>
-						{/if}
-						{#if pkg.included?.length}
-							<ul class="package-included">
-								{#each pkg.included as item (item)}
-									<li>{item}</li>
-								{/each}
-							</ul>
-						{/if}
-					</div>
-				{/each}
-
-				<div class="total-row">
-					<span class="total-label">Total</span>
-					<span class="total-amount">{formatCents(getQuoteTotal(doc.packages))}</span>
-				</div>
-
-				{#if doc.notes}
-					<div class="notes-section">
-						<h4 class="notes-heading">Notes</h4>
-						<p class="notes-text">{doc.notes}</p>
-					</div>
-				{/if}
-			</div>
-
-			{#if documentStatus === "sent" && !data.used}
-				<div class="doc-actions">
-					<button class="btn-secondary" onclick={declineQuote} disabled={actionLoading}>
-						{actionLoading ? "..." : "Decline Quote"}
-					</button>
-					<button class="btn-primary" onclick={acceptQuote} disabled={actionLoading}>
-						{actionLoading ? "..." : "Accept Quote"}
-					</button>
-				</div>
-			{:else if documentStatus === "accepted"}
-				<div class="status-message success-message">
-					This quote has been accepted.
-				</div>
-			{:else if documentStatus === "declined"}
-				<div class="status-message">
-					This quote has been declined.
-				</div>
-			{/if}
-
+			<QuoteDocument
+				document={data.document}
+				client={data.client}
+				used={data.used}
+				status={optimisticQuoteStatus ?? data.document.status}
+				loading={actionLoading}
+				onAccept={acceptQuote}
+				onDecline={declineQuote}
+			/>
 		{:else if data.type === "invoice"}
-			{@const doc = data.document}
-			<div class="doc-header">
-				<div class="doc-type">Invoice</div>
-				<h1 class="doc-number">{doc.invoiceNumber}</h1>
-				<div class="doc-meta">
-					{#if data.client}
-						<div class="meta-row">
-							<span class="meta-label">Bill to</span>
-							<span class="meta-value">{data.client.name}</span>
-						</div>
-					{/if}
-					<div class="meta-row">
-						<span class="meta-label">Date</span>
-						<span class="meta-value">{formatTimestamp(doc._creationTime)}</span>
-					</div>
-					{#if doc.dueDate}
-						<div class="meta-row">
-							<span class="meta-label">Due date</span>
-							<span class="meta-value">{formatDate(doc.dueDate)}</span>
-						</div>
-					{/if}
-					<div class="meta-row">
-						<span class="meta-label">Status</span>
-						<span class="meta-value status-badge status-{documentStatus}">{documentStatus}</span>
-					</div>
-				</div>
-			</div>
-
-			<div class="doc-body">
-				<table class="line-items">
-					<thead>
-						<tr>
-							<th scope="col" class="th-desc">Description</th>
-							<th scope="col" class="th-qty">Qty</th>
-							<th scope="col" class="th-price">Unit Price</th>
-							<th scope="col" class="th-total">Total</th>
-						</tr>
-					</thead>
-					<tbody>
-						{#each doc.items as item, i (i)}
-							<tr>
-								<td>{item.description}</td>
-								<td class="td-center">{item.quantity}</td>
-								<td class="td-right">{formatCents(item.unitPrice)}</td>
-								<td class="td-right">{formatCents(item.quantity * item.unitPrice)}</td>
-							</tr>
-						{/each}
-					</tbody>
-				</table>
-
-				<div class="invoice-totals">
-					<div class="subtotal-row">
-						<span>Subtotal</span>
-						<span>{formatCents(getInvoiceSubtotal(doc.items))}</span>
-					</div>
-					{#if doc.taxPercent}
-						<div class="subtotal-row">
-							<span>Tax ({doc.taxPercent}%)</span>
-							<span>{formatCents(getInvoiceSubtotal(doc.items) * (doc.taxPercent / 100))}</span>
-						</div>
-					{/if}
-					<div class="total-row">
-						<span class="total-label">Total</span>
-						<span class="total-amount">{formatCents(getInvoiceTotal(doc.items, doc.taxPercent))}</span>
-					</div>
-				</div>
-
-				{#if doc.notes}
-					<div class="notes-section">
-						<h4 class="notes-heading">Notes</h4>
-						<p class="notes-text">{doc.notes}</p>
-					</div>
-				{/if}
-			</div>
-
-			{#if documentStatus === "paid"}
-				<div class="status-message success-message">
-					This invoice has been paid. Thank you!
-				</div>
-			{:else if documentStatus === "sent" || documentStatus === "overdue"}
-				<div class="doc-actions">
-					<button class="btn-primary" onclick={payInvoice} disabled={actionLoading}>
-						{actionLoading ? "..." : "Pay Now"}
-					</button>
-				</div>
-			{/if}
-
+			<InvoiceDocument
+				document={data.document}
+				client={data.client}
+				status={data.document.status}
+				loading={actionLoading}
+				onPay={payInvoice}
+			/>
 		{:else if data.type === "contract"}
-			{@const doc = data.document}
-			{@const signedAt = optimisticSignedAt ?? doc.signedAt}
-			<div class="doc-header">
-				<div class="doc-type">Contract</div>
-				<h1 class="doc-number">{doc.title}</h1>
-				<div class="doc-meta">
-					{#if data.client}
-						<div class="meta-row">
-							<span class="meta-label">Prepared for</span>
-							<span class="meta-value">{data.client.name}</span>
-						</div>
-					{/if}
-					<div class="meta-row">
-						<span class="meta-label">Date</span>
-						<span class="meta-value">{formatTimestamp(doc._creationTime)}</span>
-					</div>
-					{#if doc.eventDate}
-						<div class="meta-row">
-							<span class="meta-label">Event date</span>
-							<span class="meta-value">{formatDate(doc.eventDate)}</span>
-						</div>
-					{/if}
-					{#if doc.eventLocation}
-						<div class="meta-row">
-							<span class="meta-label">Location</span>
-							<span class="meta-value">{doc.eventLocation}</span>
-						</div>
-					{/if}
-					<div class="meta-row">
-						<span class="meta-label">Status</span>
-						<span class="meta-value status-badge status-{documentStatus}">{documentStatus}</span>
-					</div>
-				</div>
-			</div>
-
-			<div class="doc-body">
-				<div class="contract-body">{doc.body}</div>
-
-				{#if doc.totalPrice || doc.depositAmount}
-					<div class="pricing-section">
-						{#if doc.totalPrice}
-							<div class="pricing-row">
-								<span>Total Price</span>
-								<span>{formatCents(doc.totalPrice)}</span>
-							</div>
-						{/if}
-						{#if doc.depositAmount}
-							<div class="pricing-row">
-								<span>Deposit Required</span>
-								<span>{formatCents(doc.depositAmount)}</span>
-							</div>
-						{/if}
-					</div>
-				{/if}
-			</div>
-
-			{#if documentStatus === "sent" && !data.used}
-				<div class="signature-section">
-					<h3 class="sig-heading">Sign this contract</h3>
-					<div class="sig-field">
-						<label for="signer-name">Your full name</label>
-						<input
-							id="signer-name"
-							type="text"
-							bind:value={signerName}
-							placeholder="Enter your full name"
-						/>
-					</div>
-					<button class="btn-primary" onclick={signContract} disabled={actionLoading || !signerName.trim()}>
-						{actionLoading ? "Signing..." : "Sign Contract"}
-					</button>
-				</div>
-			{:else if documentStatus === "signed"}
-				<div class="status-message success-message">
-					This contract was signed{#if signedAt} on {formatTimestamp(signedAt)}{/if}.
-				</div>
-			{/if}
+			<ContractDocument
+				document={data.document}
+				client={data.client}
+				used={data.used}
+				status={optimisticContractStatus ?? data.document.status}
+				signedAt={optimisticSignedAt ?? data.document.signedAt}
+				loading={actionLoading}
+				onSign={signContract}
+			/>
 		{/if}
 	</main>
 
@@ -454,12 +234,12 @@ async function payInvoice() {
 		overflow: hidden;
 	}
 
-	.doc-header {
+	.portal :global(.doc-header) {
 		padding: 32px 36px;
 		border-bottom: 1px solid #f0f0f0;
 	}
 
-	.doc-type {
+	.portal :global(.doc-type) {
 		font-size: 0.8rem;
 		font-weight: 600;
 		text-transform: uppercase;
@@ -468,7 +248,7 @@ async function payInvoice() {
 		margin-bottom: 4px;
 	}
 
-	.doc-number {
+	.portal :global(.doc-number) {
 		font-family: "Chillax", system-ui, sans-serif;
 		font-size: 1.5rem;
 		font-weight: 600;
@@ -476,30 +256,30 @@ async function payInvoice() {
 		color: #1a1a1a;
 	}
 
-	.doc-meta {
+	.portal :global(.doc-meta) {
 		display: grid;
 		gap: 10px;
 	}
 
-	.meta-row {
+	.portal :global(.meta-row) {
 		display: flex;
 		gap: 12px;
 		align-items: baseline;
 	}
 
-	.meta-label {
+	.portal :global(.meta-label) {
 		font-size: 0.825rem;
 		color: #6b7280;
 		min-width: 100px;
 	}
 
-	.meta-value {
+	.portal :global(.meta-value) {
 		font-size: 0.925rem;
 		color: #1a1a1a;
 		font-weight: 450;
 	}
 
-	.status-badge {
+	.portal :global(.status-badge) {
 		display: inline-block;
 		padding: 2px 10px;
 		border-radius: 99px;
@@ -507,51 +287,51 @@ async function payInvoice() {
 		font-weight: 500;
 	}
 
-	.status-draft {
+	.portal :global(.status-draft) {
 		background: #f3f4f6;
 		color: #6b7280;
 	}
 
-	.status-sent {
+	.portal :global(.status-sent) {
 		background: #fef3c7;
 		color: #92400e;
 	}
 
-	.status-accepted,
-	.status-signed,
-	.status-paid {
+	.portal :global(.status-accepted),
+	.portal :global(.status-signed),
+	.portal :global(.status-paid) {
 		background: #d1fae5;
 		color: #065f46;
 	}
 
-	.status-declined,
-	.status-expired,
-	.status-overdue,
-	.status-canceled {
+	.portal :global(.status-declined),
+	.portal :global(.status-expired),
+	.portal :global(.status-overdue),
+	.portal :global(.status-canceled) {
 		background: #fee2e2;
 		color: #991b1b;
 	}
 
-	.doc-body {
+	.portal :global(.doc-body) {
 		padding: 28px 36px;
 	}
 
 	/* Quote packages */
-	.package-card {
+	.portal :global(.package-card) {
 		border: 1px solid #e5e7eb;
 		border-radius: 8px;
 		padding: 20px;
 		margin-bottom: 16px;
 	}
 
-	.package-header {
+	.portal :global(.package-header) {
 		display: flex;
 		justify-content: space-between;
 		align-items: center;
 		margin-bottom: 8px;
 	}
 
-	.package-name {
+	.portal :global(.package-name) {
 		font-family: "Chillax", system-ui, sans-serif;
 		font-size: 1.05rem;
 		font-weight: 500;
@@ -559,33 +339,33 @@ async function payInvoice() {
 		color: #1a1a1a;
 	}
 
-	.package-price {
+	.portal :global(.package-price) {
 		font-size: 1.1rem;
 		font-weight: 600;
 		color: #4f46e5;
 	}
 
-	.package-desc {
+	.portal :global(.package-desc) {
 		font-size: 0.9rem;
 		color: #6b7280;
 		margin: 0 0 12px;
 		line-height: 1.5;
 	}
 
-	.package-included {
+	.portal :global(.package-included) {
 		list-style: none;
 		padding: 0;
 		margin: 0;
 	}
 
-	.package-included li {
+	.portal :global(.package-included li) {
 		font-size: 0.875rem;
 		color: #374151;
 		padding: 4px 0 4px 20px;
 		position: relative;
 	}
 
-	.package-included li::before {
+	.portal :global(.package-included li::before) {
 		content: "\2713";
 		position: absolute;
 		left: 0;
@@ -594,13 +374,13 @@ async function payInvoice() {
 	}
 
 	/* Invoice line items */
-	.line-items {
+	.portal :global(.line-items) {
 		width: 100%;
 		border-collapse: collapse;
 		margin-bottom: 20px;
 	}
 
-	.line-items th {
+	.portal :global(.line-items th) {
 		text-align: left;
 		font-size: 0.8rem;
 		font-weight: 600;
@@ -611,32 +391,32 @@ async function payInvoice() {
 		border-bottom: 2px solid #e5e7eb;
 	}
 
-	.th-qty,
-	.th-price,
-	.th-total {
+	.portal :global(.th-qty),
+	.portal :global(.th-price),
+	.portal :global(.th-total) {
 		text-align: right;
 	}
 
-	.line-items td {
+	.portal :global(.line-items td) {
 		padding: 12px;
 		font-size: 0.925rem;
 		border-bottom: 1px solid #f3f4f6;
 	}
 
-	.td-center {
+	.portal :global(.td-center) {
 		text-align: center;
 	}
 
-	.td-right {
+	.portal :global(.td-right) {
 		text-align: right;
 	}
 
-	.invoice-totals {
+	.portal :global(.invoice-totals) {
 		border-top: 1px solid #e5e7eb;
 		padding-top: 16px;
 	}
 
-	.subtotal-row {
+	.portal :global(.subtotal-row) {
 		display: flex;
 		justify-content: space-between;
 		padding: 6px 12px;
@@ -644,7 +424,7 @@ async function payInvoice() {
 		color: #6b7280;
 	}
 
-	.total-row {
+	.portal :global(.total-row) {
 		display: flex;
 		justify-content: space-between;
 		padding: 12px;
@@ -652,51 +432,51 @@ async function payInvoice() {
 		border-top: 1px solid #e5e7eb;
 	}
 
-	.total-label {
+	.portal :global(.total-label) {
 		font-family: "Chillax", system-ui, sans-serif;
 		font-weight: 600;
 		font-size: 1.05rem;
 	}
 
-	.total-amount {
+	.portal :global(.total-amount) {
 		font-weight: 700;
 		font-size: 1.15rem;
 		color: #1a1a1a;
 	}
 
 	/* Contract body */
-	.contract-body {
+	.portal :global(.contract-body) {
 		font-size: 0.925rem;
 		line-height: 1.7;
 		color: #374151;
 		white-space: pre-wrap;
 	}
 
-	.pricing-section {
+	.portal :global(.pricing-section) {
 		margin-top: 24px;
 		padding-top: 16px;
 		border-top: 1px solid #e5e7eb;
 	}
 
-	.pricing-row {
+	.portal :global(.pricing-row) {
 		display: flex;
 		justify-content: space-between;
 		padding: 8px 0;
 		font-size: 0.95rem;
 	}
 
-	.pricing-row span:last-child {
+	.portal :global(.pricing-row span:last-child) {
 		font-weight: 600;
 	}
 
 	/* Notes */
-	.notes-section {
+	.portal :global(.notes-section) {
 		margin-top: 24px;
 		padding-top: 16px;
 		border-top: 1px solid #f0f0f0;
 	}
 
-	.notes-heading {
+	.portal :global(.notes-heading) {
 		font-family: "Chillax", system-ui, sans-serif;
 		font-size: 0.9rem;
 		font-weight: 500;
@@ -704,7 +484,7 @@ async function payInvoice() {
 		margin: 0 0 8px;
 	}
 
-	.notes-text {
+	.portal :global(.notes-text) {
 		font-size: 0.9rem;
 		color: #6b7280;
 		line-height: 1.5;
@@ -712,7 +492,7 @@ async function payInvoice() {
 	}
 
 	/* Actions */
-	.doc-actions {
+	.portal :global(.doc-actions) {
 		padding: 24px 36px;
 		border-top: 1px solid #f0f0f0;
 		display: flex;
@@ -720,7 +500,7 @@ async function payInvoice() {
 		justify-content: flex-end;
 	}
 
-	.btn-primary {
+	.portal :global(.btn-primary) {
 		background: #4f46e5;
 		color: #fff;
 		border: none;
@@ -733,16 +513,16 @@ async function payInvoice() {
 		transition: background 0.15s;
 	}
 
-	.btn-primary:hover:not(:disabled) {
+	.portal :global(.btn-primary:hover:not(:disabled)) {
 		background: #4338ca;
 	}
 
-	.btn-primary:disabled {
+	.portal :global(.btn-primary:disabled) {
 		opacity: 0.6;
 		cursor: not-allowed;
 	}
 
-	.btn-secondary {
+	.portal :global(.btn-secondary) {
 		background: #fff;
 		color: #374151;
 		border: 1px solid #d1d5db;
@@ -755,23 +535,23 @@ async function payInvoice() {
 		transition: border-color 0.15s;
 	}
 
-	.btn-secondary:hover:not(:disabled) {
+	.portal :global(.btn-secondary:hover:not(:disabled)) {
 		border-color: #9ca3af;
 	}
 
-	.btn-secondary:disabled {
+	.portal :global(.btn-secondary:disabled) {
 		opacity: 0.6;
 		cursor: not-allowed;
 	}
 
 	/* Signature */
-	.signature-section {
+	.portal :global(.signature-section) {
 		padding: 28px 36px;
 		border-top: 1px solid #f0f0f0;
 		background: #fafafa;
 	}
 
-	.sig-heading {
+	.portal :global(.sig-heading) {
 		font-family: "Chillax", system-ui, sans-serif;
 		font-size: 1rem;
 		font-weight: 500;
@@ -779,18 +559,18 @@ async function payInvoice() {
 		color: #1a1a1a;
 	}
 
-	.sig-field {
+	.portal :global(.sig-field) {
 		margin-bottom: 16px;
 	}
 
-	.sig-field label {
+	.portal :global(.sig-field label) {
 		display: block;
 		font-size: 0.825rem;
 		color: #6b7280;
 		margin-bottom: 6px;
 	}
 
-	.sig-field input {
+	.portal :global(.sig-field input) {
 		width: 100%;
 		padding: 10px 14px;
 		border: 1px solid #d1d5db;
@@ -801,14 +581,14 @@ async function payInvoice() {
 		box-sizing: border-box;
 	}
 
-	.sig-field input:focus {
+	.portal :global(.sig-field input:focus) {
 		outline: none;
 		border-color: #4f46e5;
 		box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.1);
 	}
 
 	/* Status messages */
-	.status-message {
+	.portal :global(.status-message) {
 		padding: 20px 36px;
 		border-top: 1px solid #f0f0f0;
 		text-align: center;
@@ -816,7 +596,7 @@ async function payInvoice() {
 		color: #6b7280;
 	}
 
-	.success-message {
+	.portal :global(.success-message) {
 		color: #065f46;
 		background: #ecfdf5;
 	}
@@ -836,33 +616,33 @@ async function payInvoice() {
 			border-radius: 10px;
 		}
 
-		.doc-header,
-		.doc-body,
-		.doc-actions,
-		.signature-section {
+		.portal :global(.doc-header),
+		.portal :global(.doc-body),
+		.portal :global(.doc-actions),
+		.portal :global(.signature-section) {
 			padding-left: 20px;
 			padding-right: 20px;
 		}
 
-		.doc-number {
+		.portal :global(.doc-number) {
 			font-size: 1.25rem;
 		}
 
-		.meta-row {
+		.portal :global(.meta-row) {
 			flex-direction: column;
 			gap: 2px;
 		}
 
-		.meta-label {
+		.portal :global(.meta-label) {
 			min-width: 0;
 		}
 
-		.doc-actions {
+		.portal :global(.doc-actions) {
 			flex-direction: column;
 		}
 
-		.line-items th,
-		.line-items td {
+		.portal :global(.line-items th),
+		.portal :global(.line-items td) {
 			padding: 8px 6px;
 			font-size: 0.85rem;
 		}
