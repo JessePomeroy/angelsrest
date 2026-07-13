@@ -5,7 +5,7 @@ import {
 } from "$lib/server/webhookEmails";
 
 function resend() {
-	const send = vi.fn(async (_payload: { text: string }) => ({ id: "email-123" }));
+	const send = vi.fn(async (_payload: { from: string; text: string }) => ({ id: "email-123" }));
 	return {
 		emails: {
 			send,
