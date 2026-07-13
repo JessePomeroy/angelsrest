@@ -75,6 +75,7 @@ Use these full names in new code and documentation when the distinction matters.
 - Webhook orchestration: `src/lib/server/orderIntake.ts`
 - Print fulfillment: `src/lib/server/printFulfillment.ts`
 - LumaPrints client/payload builder: `src/lib/server/lumaprints.ts`
+- Tenant checkout authentication registry: `src/lib/server/checkoutBridgeConfig.ts`
 - Admin host config: `src/lib/config/admin.ts` and `admin.server.ts`
 - Server hooks: `src/hooks.server.ts` (security headers, preview state, errors)
 

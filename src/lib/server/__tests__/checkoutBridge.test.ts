@@ -66,7 +66,8 @@ describe("checkout bridge", () => {
 				siteUrl: "zippymiggy.com",
 				stripeConnectedAccountId: "acct_123",
 			},
-			secret: SECRET,
+			secrets: [SECRET],
+			allowedRedirectOrigins: ["https://zippymiggy.com"],
 			now: NOW,
 		});
 
@@ -103,7 +104,8 @@ describe("checkout bridge", () => {
 				headers: new Headers(),
 				stripe,
 				tenant: { siteUrl: "zippymiggy.com" },
-				secret: SECRET,
+				secrets: [SECRET],
+				allowedRedirectOrigins: ["https://zippymiggy.com"],
 				now: NOW,
 			}),
 		).rejects.toMatchObject(new CheckoutBridgeError(401, "Missing checkout bridge signature"));
@@ -120,7 +122,8 @@ describe("checkout bridge", () => {
 				headers: makeHeaders(bodyText, oldTimestamp),
 				stripe,
 				tenant: { siteUrl: "zippymiggy.com" },
-				secret: SECRET,
+				secrets: [SECRET],
+				allowedRedirectOrigins: ["https://zippymiggy.com"],
 				now: NOW,
 			}),
 		).rejects.toMatchObject(new CheckoutBridgeError(401, "Expired checkout bridge signature"));
@@ -137,7 +140,8 @@ describe("checkout bridge", () => {
 				headers: makeHeaders(signedBody),
 				stripe,
 				tenant: { siteUrl: "zippymiggy.com" },
-				secret: SECRET,
+				secrets: [SECRET],
+				allowedRedirectOrigins: ["https://zippymiggy.com"],
 				now: NOW,
 			}),
 		).rejects.toMatchObject(new CheckoutBridgeError(401, "Invalid checkout bridge signature"));
@@ -153,9 +157,83 @@ describe("checkout bridge", () => {
 				headers: makeHeaders(bodyText),
 				stripe,
 				tenant: { siteUrl: "zippymiggy.com" },
-				secret: SECRET,
+				secrets: [SECRET],
+				allowedRedirectOrigins: ["https://zippymiggy.com"],
 				now: NOW,
 			}),
 		).rejects.toMatchObject(new CheckoutBridgeError(400, "Tenant siteUrl mismatch"));
+	});
+
+	it("accepts either bounded tenant secret during rotation", async () => {
+		const bodyText = makeBody();
+		const { stripe } = makeStripe();
+
+		await expect(
+			createTenantPrintCheckoutSession({
+				bodyText,
+				headers: makeHeaders(bodyText),
+				stripe,
+				tenant: { siteUrl: "zippymiggy.com" },
+				secrets: ["new-tenant-secret".repeat(2), SECRET],
+				allowedRedirectOrigins: ["https://zippymiggy.com"],
+				now: NOW,
+			}),
+		).resolves.toMatchObject({ sessionId: "cs_test_123" });
+	});
+
+	it("allows an explicit public redirect origin that differs from the tenant key", async () => {
+		const publicOrigin = "https://reflecting-pool.vercel.app";
+		const bodyText = makeBody({
+			successUrl: `${publicOrigin}/shop/success?session_id={CHECKOUT_SESSION_ID}`,
+			cancelUrl: `${publicOrigin}/shop/cancelled`,
+		});
+		const { stripe } = makeStripe();
+
+		await expect(
+			createTenantPrintCheckoutSession({
+				bodyText,
+				headers: makeHeaders(bodyText),
+				stripe,
+				tenant: { siteUrl: "zippymiggy.com" },
+				secrets: [SECRET],
+				allowedRedirectOrigins: [publicOrigin],
+				now: NOW,
+			}),
+		).resolves.toMatchObject({ sessionId: "cs_test_123" });
+	});
+
+	it("rejects a signature that belongs to another tenant", async () => {
+		const bodyText = makeBody();
+		const { stripe } = makeStripe();
+
+		await expect(
+			createTenantPrintCheckoutSession({
+				bodyText,
+				headers: makeHeaders(bodyText),
+				stripe,
+				tenant: { siteUrl: "zippymiggy.com" },
+				secrets: ["other-tenant-secret".repeat(2)],
+				allowedRedirectOrigins: ["https://zippymiggy.com"],
+				now: NOW,
+			}),
+		).rejects.toMatchObject(new CheckoutBridgeError(401, "Invalid checkout bridge signature"));
+	});
+
+	it.each(["successUrl", "cancelUrl"])("rejects an unlisted %s origin", async (field) => {
+		const bodyText = makeBody({ [field]: "https://attacker.example/checkout" });
+		const { stripe, create } = makeStripe();
+
+		await expect(
+			createTenantPrintCheckoutSession({
+				bodyText,
+				headers: makeHeaders(bodyText),
+				stripe,
+				tenant: { siteUrl: "zippymiggy.com" },
+				secrets: [SECRET],
+				allowedRedirectOrigins: ["https://zippymiggy.com"],
+				now: NOW,
+			}),
+		).rejects.toMatchObject(new CheckoutBridgeError(400, `Disallowed ${field} origin`));
+		expect(create).not.toHaveBeenCalled();
 	});
 });

@@ -1,6 +1,5 @@
 import { createHmac, timingSafeEqual } from "node:crypto";
 import type Stripe from "stripe";
-import { env } from "$env/dynamic/private";
 import {
 	buildCheckoutLineItem,
 	createPaymentCheckoutSession,
@@ -37,7 +36,8 @@ export interface TenantPrintCheckoutOptions {
 	headers: Headers;
 	stripe: Stripe;
 	tenant: StripeTenantAccount;
-	secret?: string;
+	secrets: readonly string[];
+	allowedRedirectOrigins: readonly string[];
 	now?: number;
 }
 
@@ -52,13 +52,14 @@ export async function createTenantPrintCheckoutSession({
 	headers,
 	stripe,
 	tenant,
-	secret = getCheckoutBridgeSecret(),
+	secrets,
+	allowedRedirectOrigins,
 	now = Date.now(),
 }: TenantPrintCheckoutOptions): Promise<TenantPrintCheckoutResult> {
 	verifyCheckoutBridgeSignature({
 		bodyText,
 		headers,
-		secret,
+		secrets,
 		now,
 	});
 
@@ -66,6 +67,8 @@ export async function createTenantPrintCheckoutSession({
 	if (body.siteUrl !== tenant.siteUrl) {
 		throw new CheckoutBridgeError(400, "Tenant siteUrl mismatch");
 	}
+	validateRedirectUrl(body.successUrl, "successUrl", allowedRedirectOrigins);
+	validateRedirectUrl(body.cancelUrl, "cancelUrl", allowedRedirectOrigins);
 
 	const tenantCheckout = buildTenantCheckoutOptions({
 		tenant,
@@ -112,12 +115,12 @@ export function signCheckoutBridgeBody({
 function verifyCheckoutBridgeSignature({
 	bodyText,
 	headers,
-	secret,
+	secrets,
 	now,
 }: {
 	bodyText: string;
 	headers: Headers;
-	secret: string;
+	secrets: readonly string[];
 	now: number;
 }) {
 	const timestampRaw = headers.get(TIMESTAMP_HEADER);
@@ -136,9 +139,37 @@ function verifyCheckoutBridgeSignature({
 		throw new CheckoutBridgeError(401, "Expired checkout bridge signature");
 	}
 
-	const expected = signCheckoutBridgeBody({ bodyText, secret, timestamp });
-	if (!safeEqualHex(signature, expected)) {
+	if (secrets.length === 0) {
+		throw new CheckoutBridgeError(500, "Checkout bridge tenant secrets are not configured");
+	}
+	const expectedSignatures = secrets.map((secret) =>
+		signCheckoutBridgeBody({ bodyText, secret, timestamp }),
+	);
+	const signatureMatches = expectedSignatures.reduce(
+		(matched, expected) => safeEqualHex(signature, expected) || matched,
+		false,
+	);
+	if (!signatureMatches) {
 		throw new CheckoutBridgeError(401, "Invalid checkout bridge signature");
+	}
+}
+
+function validateRedirectUrl(
+	value: string,
+	field: "successUrl" | "cancelUrl",
+	allowedOrigins: readonly string[],
+) {
+	if (allowedOrigins.length === 0) {
+		throw new CheckoutBridgeError(500, "Checkout redirect origins are not configured");
+	}
+	let url: URL;
+	try {
+		url = new URL(value);
+	} catch {
+		throw new CheckoutBridgeError(400, `Invalid ${field}`);
+	}
+	if (url.username || url.password || !allowedOrigins.includes(url.origin)) {
+		throw new CheckoutBridgeError(400, `Disallowed ${field} origin`);
 	}
 }
 
@@ -211,12 +242,4 @@ function safeEqualHex(actual: string, expected: string): boolean {
 	const expectedBuffer = Buffer.from(expected, "hex");
 	if (actualBuffer.length !== expectedBuffer.length) return false;
 	return timingSafeEqual(actualBuffer, expectedBuffer);
-}
-
-function getCheckoutBridgeSecret(): string {
-	const secret = env.CHECKOUT_BRIDGE_SECRET;
-	if (!secret) {
-		throw new CheckoutBridgeError(500, "CHECKOUT_BRIDGE_SECRET is not configured");
-	}
-	return secret;
 }

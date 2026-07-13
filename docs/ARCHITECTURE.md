@@ -98,20 +98,27 @@ and test full client-side navigation, expiry, logout, and concurrent requests.
    prices are not authoritative.
 2. Angels Rest creates its own Checkout directly. Client spokes call the signed
    `/api/tenant-checkout/print` bridge using their stored bare-domain tenant key.
-3. The hub resolves the tenant, stamps its bare-domain key into reserved Session
-   and PaymentIntent metadata, and creates Checkout on the connected account or
-   the platform account during an explicitly supported pre-handoff phase.
-4. Stripe sends platform and connected-account commerce events to this
+3. The hub resolves the canonical stored tenant before selecting its
+   `CHECKOUT_BRIDGE_TENANTS` entry. Each tenant has independent signing secrets
+   and explicit success/cancel redirect origins; two secrets are allowed only
+   during bounded rotation. A spoke credential cannot authorize another tenant.
+   During migration, the global fallback is additionally bound to the single
+   exact tenant named by `CHECKOUT_BRIDGE_LEGACY_SITE_URL`.
+4. After signature and redirect validation, the hub stamps the tenant's
+   bare-domain key into reserved Session and PaymentIntent metadata, then creates
+   Checkout on the connected account or the platform account during an
+   explicitly supported pre-handoff phase.
+5. Stripe sends platform and connected-account commerce events to this
    repository's `/api/webhooks/stripe`; client spokes do not own a parallel
    `checkout.session.completed` processor.
-5. The webhook verifies the raw signed body. `orderIntake.ts` resolves
+6. The webhook verifies the raw signed body. `orderIntake.ts` resolves
    `event.account` back to the stored tenant when present; platform-account
    events use the server-owned metadata key and a webhook-secret-protected
    Convex profile lookup. Conflicting or unknown tenant identities fail closed.
-6. `webhookOrders.ts` creates or reuses the Convex order and schedules fee
+7. `webhookOrders.ts` creates or reuses the Convex order and schedules fee
    capture outside the webhook hot path.
-7. Eligible items go through `printFulfillment.ts` and LumaPrints.
-8. Notifications are sent through Resend with the resolved tenant's name,
+8. Eligible items go through `printFulfillment.ts` and LumaPrints.
+9. Notifications are sent through Resend with the resolved tenant's name,
    public origin, and admin recipient. The shared `orders@angelsrest.online`
    mailbox remains the transport sender until per-tenant verified sending
    domains are deliberately onboarded.
