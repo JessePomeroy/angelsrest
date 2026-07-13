@@ -1,5 +1,8 @@
 <script lang="ts">
 import { page } from "$app/state";
+import { onMount } from "svelte";
+import { loadTurnstile, type TurnstileApi } from "$lib/client/turnstile";
+import { TURNSTILE_SITE_KEY } from "$lib/config/turnstile";
 import { toasts } from "$lib/stores/toast.svelte";
 import { formatCents, formatDate } from "$lib/utils/format";
 
@@ -7,11 +10,68 @@ let email = $state("");
 let orderNumber = $state(page.url.searchParams.get("order") || "");
 let loading = $state(false);
 let error = $state("");
+let verificationError = $state("");
+let verificationReady = $state(false);
 let order: any = $state(null);
+let turnstileApi: TurnstileApi | undefined;
+let turnstileWidgetId: string | undefined;
 
-async function lookupOrder() {
+onMount(() => {
+	let disposed = false;
+	void loadTurnstile()
+		.then((api) => {
+			if (disposed) return;
+			turnstileApi = api;
+			turnstileWidgetId = api.render("#order-lookup-turnstile", {
+				sitekey: TURNSTILE_SITE_KEY,
+				theme: "dark",
+				action: "turnstile-spin-v1",
+				callback: () => {
+					verificationReady = true;
+					verificationError = "";
+				},
+				"error-callback": () => {
+					verificationReady = false;
+					verificationError = "Verification could not load. Please try again.";
+					return false;
+				},
+				"expired-callback": () => {
+					verificationError = "Verification expired. Please complete it again.";
+					resetTurnstile();
+				},
+			});
+		})
+		.catch((loadError) => {
+			console.error("orders Turnstile failed to load", loadError);
+			if (!disposed) {
+				verificationReady = false;
+				verificationError = "Verification could not load. Please refresh and try again.";
+			}
+		});
+
+	return () => {
+		disposed = true;
+		verificationReady = false;
+		if (turnstileApi && turnstileWidgetId) turnstileApi.remove(turnstileWidgetId);
+		turnstileWidgetId = undefined;
+		turnstileApi = undefined;
+	};
+});
+
+function resetTurnstile() {
+	verificationReady = false;
+	if (turnstileApi && turnstileWidgetId) turnstileApi.reset(turnstileWidgetId);
+}
+
+async function lookupOrder(form: HTMLFormElement) {
+	if (loading) return;
 	if (!email || !orderNumber) {
 		error = "Please enter both email and order number";
+		return;
+	}
+	const turnstileToken = new FormData(form).get("cf-turnstile-response");
+	if (typeof turnstileToken !== "string" || turnstileToken.length === 0) {
+		error = "Please complete the verification challenge";
 		return;
 	}
 
@@ -24,7 +84,11 @@ async function lookupOrder() {
 		const response = await fetch("/api/orders/lookup", {
 			method: "POST",
 			headers: { "Content-Type": "application/json" },
-			body: JSON.stringify({ email, orderNumber }),
+			body: JSON.stringify({
+				email,
+				orderNumber,
+				"cf-turnstile-response": turnstileToken,
+			}),
 		});
 		const data = await response.json();
 
@@ -39,7 +103,13 @@ async function lookupOrder() {
 		toasts.show("Failed to look up order. Please try again.", { type: "error" });
 	} finally {
 		loading = false;
+		resetTurnstile();
 	}
+}
+
+function handleSubmit(event: SubmitEvent) {
+	event.preventDefault();
+	void lookupOrder(event.currentTarget as HTMLFormElement);
 }
 
 const statusLabels: Record<string, string> = {
@@ -72,7 +142,7 @@ const statusColors: Record<string, string> = {
 		<h1 class="text-xl font-bold mt-4 mb-1">Track Your Order</h1>
 		<p class="text-gray-400 text-sm mb-4">Enter your order details to check the status</p>
 
-		<form class="rounded-lg p-4 space-y-3" onsubmit={(e) => { e.preventDefault(); lookupOrder(); }}>
+		<form class="rounded-lg p-4 space-y-3" onsubmit={handleSubmit}>
 			<div>
 				<label for="email" class="block text-xs text-gray-400 mb-1">Email</label>
 				<input
@@ -81,6 +151,7 @@ const statusColors: Record<string, string> = {
 					bind:value={email}
 					placeholder="you@example.com"
 					class="w-full px-3 py-2 bg-gray-900 border border-gray-700 rounded text-sm"
+					required
 				/>
 			</div>
 
@@ -92,19 +163,25 @@ const statusColors: Record<string, string> = {
 					bind:value={orderNumber}
 					placeholder="ORD-001"
 					class="w-full px-3 py-2 bg-gray-900 border border-gray-700 rounded text-sm"
+					required
 				/>
 			</div>
 
-			<button
-				type="submit"
-				disabled={loading}
+				<div id="order-lookup-turnstile"></div>
+
+				<button
+					type="submit"
+					disabled={loading || !verificationReady}
 				class="w-full py-2 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-600 rounded text-sm font-medium"
 			>
 				{loading ? 'Looking up...' : 'Track Order'}
 			</button>
 
-			<div aria-live="polite">
-				{#if error}
+				<div aria-live="polite">
+					{#if verificationError}
+						<p class="text-red-400 text-sm text-center">{verificationError}</p>
+					{/if}
+					{#if error}
 					<p class="text-red-400 text-sm text-center">{error}</p>
 				{/if}
 			</div>
