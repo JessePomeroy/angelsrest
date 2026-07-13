@@ -74,5 +74,8 @@ jobs:
           pnpm --filter @jessepomeroy/gallery-delivery test
           pnpm --filter @jessepomeroy/print-catalog test
 
+      - name: Retired platform checkout handler stays absent
+        run: test ! -f src/routes/api/platform/create-checkout/+server.ts
+
       - name: Public server method dispatch smoke
         run: pnpm test:e2e tests/e2e/orders-lookup-api.spec.ts

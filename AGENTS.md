@@ -121,6 +121,12 @@ verification. Never distribute this capability or the broader `WEBHOOK_SECRET`
 to a client spoke or browser, and do not add an unauthenticated Convex lookup
 path.
 
+CRM subscription and tier onboarding is operator-controlled. The platform
+Stripe webhook reconciles provider events for existing subscriptions; it is not
+authority for a browser to choose tenant identity, billing email, or redirects.
+Do not add a public self-service subscription checkout without a designed,
+tenant-authenticated cross-origin billing boundary.
+
 | Admin area | Primary source |
 |---|---|
 | Dashboard, orders | Convex orders |
