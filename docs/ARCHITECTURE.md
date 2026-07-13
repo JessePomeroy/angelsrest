@@ -152,7 +152,11 @@ exposed.
 ### Platform subscriptions
 
 `/api/platform/webhooks/stripe` is separate from the commerce webhook. It owns
-CRM subscription state rather than shop orders or invoice settlement.
+CRM subscription state rather than shop orders or invoice settlement. CRM tier
+onboarding is operator-controlled; no public self-service subscription-session
+creator is exposed. A future self-service flow would require a
+tenant-authenticated billing bridge that derives tenant, billing identity, and
+redirect authority server-side.
 
 ## Convex organization
 
