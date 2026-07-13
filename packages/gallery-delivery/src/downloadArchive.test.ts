@@ -80,6 +80,11 @@ function concatBytes(chunks: unknown[]) {
 	return output;
 }
 
+async function sha256Hex(bytes: Uint8Array) {
+	const digest = await crypto.subtle.digest("SHA-256", bytes.slice().buffer);
+	return [...new Uint8Array(digest)].map((byte) => byte.toString(16).padStart(2, "0")).join("");
+}
+
 function createSaveFilePickerWindow({
 	onWrite,
 }: {
@@ -109,6 +114,21 @@ function createSaveFilePickerWindow({
 }
 
 describe("browser gallery ZIP downloads", () => {
+	it("matches the cross-runtime stored ZIP64 binary fixture", async () => {
+		const { win, writeRecord } = createSaveFilePickerWindow();
+		win.fetch = vi.fn(async () => new Response("image bytes"));
+
+		await saveGalleryImagesAsZipFile({
+			images: [{ ...images[0], filename: "photo.jpg" }],
+			galleryName: "fixture",
+			window: win,
+		});
+
+		const archive = concatBytes(writeRecord.data);
+		expect(archive.byteLength).toBe(255);
+		expect(await sha256Hex(archive)).toBe("fb1a296f636059c23cd55ec414129391407566dc0f0531b4ae31a7d25245348a");
+	});
+
 	it("detects whether the browser can save a ZIP file", () => {
 		const supported = { showSaveFilePicker: vi.fn() } as unknown as Window & typeof globalThis;
 		const unsupported = {} as Window & typeof globalThis;
