@@ -143,12 +143,11 @@ Convex. Amounts are integer cents across the Stripe boundary.
 
 ### Customer order lookup
 
-The hub is the public lookup broker. The new Convex path exposes a bounded
-customer view through a query protected by the dedicated hub-only
-`ORDER_LOOKUP_SECRET`; this capability is separate from the broader webhook
-bearer and is never distributed to a client spoke or browser. The prior
-unauthenticated query exists only during the staged rollout and must be removed
-after the hub switches to the authorized path.
+The hub is the public lookup broker. Convex exposes a bounded customer view only
+through a query protected by the dedicated hub-only `ORDER_LOOKUP_SECRET`; this
+capability is separate from the broader webhook bearer and is never distributed
+to a client spoke or browser. No unauthenticated Convex customer-order lookup is
+exposed.
 
 ### Platform subscriptions
 
