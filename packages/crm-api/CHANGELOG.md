@@ -1,5 +1,11 @@
 # @jessepomeroy/crm-api
 
+## 1.8.0
+
+### Minor Changes
+
+- af836dc: Add hub-owned, provider-global LumaPrints shipment claim and delivery checkpoint functions.
+
 ## 1.7.0
 
 ### Minor Changes
