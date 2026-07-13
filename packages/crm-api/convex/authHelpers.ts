@@ -68,6 +68,19 @@ export async function requireWebhookCallerOrAuth(
 	throw new Error("Not authorized");
 }
 
+/** Require the dedicated hub-only capability used for customer order lookup. */
+export function requireOrderLookupCaller(providedSecret: string | undefined) {
+	const expected = process.env.ORDER_LOOKUP_SECRET;
+	if (!expected) {
+		throw new Error(
+			"Order lookup authorization is not configured on this deployment (ORDER_LOOKUP_SECRET env var missing).",
+		);
+	}
+	if (!providedSecret || !constantTimeEquals(providedSecret, expected)) {
+		throw new Error("Not authorized (order lookup secret mismatch)");
+	}
+}
+
 /**
  * Constant-time string comparison to avoid leaking secret length / prefix
  * via timing. Cheap; the strings involved are small.

@@ -1,9 +1,10 @@
 import { v } from "convex/values";
 import { internal } from "./_generated/api";
 import type { Doc } from "./_generated/dataModel";
-import { type MutationCtx, mutation, query } from "./_generated/server";
+import { type MutationCtx, mutation, query, type QueryCtx } from "./_generated/server";
 import {
 	requireDocumentSiteAdmin,
+	requireOrderLookupCaller,
 	requireSiteAdmin,
 	requireWebhookCallerOrAuth,
 } from "./authHelpers";
@@ -414,32 +415,63 @@ export const recordShipmentEmailDeliveryByOrderNumber = mutation({
 	},
 });
 
+async function lookupCustomerOrder(
+	ctx: QueryCtx,
+	{
+		siteUrl,
+		email,
+		orderNumber,
+	}: { siteUrl: string; email: string; orderNumber: string },
+) {
+	const matchingOrders = await ctx.db
+		.query("orders")
+		.withIndex("by_orderNumber", (q) =>
+			q.eq("siteUrl", siteUrl).eq("orderNumber", orderNumber),
+		)
+		.take(2);
+	if (matchingOrders.length > 1) {
+		throw new Error("Duplicate order number for tenant");
+	}
+
+	const order = matchingOrders[0];
+	if (!order || order.customerEmail.toLowerCase() !== email.toLowerCase()) {
+		return null;
+	}
+
+	return {
+		orderNumber: order.orderNumber,
+		status: order.status,
+		items: order.items,
+		total: order.total,
+		trackingNumber: order.trackingNumber,
+		trackingUrl: order.trackingUrl,
+	};
+}
+
+/**
+ * @deprecated Temporary rollout bridge. Public customer flows must use
+ * `lookupForCustomer`, which requires the hub-only order lookup capability.
+ */
 export const lookup = query({
 	args: {
 		siteUrl: v.string(),
 		email: v.string(),
 		orderNumber: v.string(),
 	},
-	handler: async (ctx, { siteUrl, email, orderNumber }) => {
-		const order = await ctx.db
-			.query("orders")
-			.withIndex("by_orderNumber", (q) =>
-				q.eq("siteUrl", siteUrl).eq("orderNumber", orderNumber),
-			)
-			.first();
+	handler: lookupCustomerOrder,
+});
 
-		if (!order || order.customerEmail.toLowerCase() !== email.toLowerCase()) {
-			return null;
-		}
-
-		return {
-			orderNumber: order.orderNumber,
-			status: order.status,
-			items: order.items,
-			total: order.total,
-			trackingNumber: order.trackingNumber,
-			trackingUrl: order.trackingUrl,
-		};
+/** Hub-only customer order lookup. Never distribute its capability to a spoke. */
+export const lookupForCustomer = query({
+	args: {
+		siteUrl: v.string(),
+		email: v.string(),
+		orderNumber: v.string(),
+		lookupSecret: v.string(),
+	},
+	handler: async (ctx, { siteUrl, email, orderNumber, lookupSecret }) => {
+		requireOrderLookupCaller(lookupSecret);
+		return await lookupCustomerOrder(ctx, { siteUrl, email, orderNumber });
 	},
 });
 

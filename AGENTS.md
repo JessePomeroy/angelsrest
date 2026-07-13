@@ -115,6 +115,11 @@ Turnstile through the managed siteverify Worker and supplies the server-only
 the browser or move Turnstile verification into browser-only code. The temporary
 missing-secret compatibility path used for the staged rollout has been removed.
 
+The staged customer-order lookup boundary uses a dedicated server-only
+`ORDER_LOOKUP_SECRET`. The hub broker must supply it only after abuse
+verification. Never distribute this capability or the broader `WEBHOOK_SECRET`
+to a client spoke or browser; remove the legacy public query after cutover.
+
 | Admin area | Primary source |
 |---|---|
 | Dashboard, orders | Convex orders |
