@@ -1,5 +1,11 @@
 # @jessepomeroy/crm-api
 
+## 1.9.0
+
+### Minor Changes
+
+- c8d9446: Add a dedicated server-authorized customer order lookup query with duplicate-order fail-closed behavior.
+
 ## 1.8.0
 
 ### Minor Changes
