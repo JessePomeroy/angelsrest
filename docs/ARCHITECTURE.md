@@ -102,8 +102,6 @@ and test full client-side navigation, expiry, logout, and concurrent requests.
    `CHECKOUT_BRIDGE_TENANTS` entry. Each tenant has independent signing secrets
    and explicit success/cancel redirect origins; two secrets are allowed only
    during bounded rotation. A spoke credential cannot authorize another tenant.
-   During migration, the global fallback is additionally bound to the single
-   exact tenant named by `CHECKOUT_BRIDGE_LEGACY_SITE_URL`.
 4. After signature and redirect validation, the hub stamps the tenant's
    bare-domain key into reserved Session and PaymentIntent metadata, then creates
    Checkout on the connected account or the platform account during an

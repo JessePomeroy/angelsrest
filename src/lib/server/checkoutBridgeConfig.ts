@@ -14,35 +14,15 @@ export interface CheckoutBridgeTenantConfig {
 
 type CheckoutBridgeTenantRegistry = Record<string, CheckoutBridgeTenantConfig>;
 
-/**
- * Resolve authority only after Convex has returned the canonical stored tenant
- * key. During migration the legacy global secret is appended only for the one
- * explicitly named legacy tenant, so it cannot authorize another client.
- */
+/** Resolve authority only after Convex has returned the canonical stored tenant key. */
 export function getCheckoutBridgeTenantConfig(
 	siteUrl: string,
 	rawRegistry = env.CHECKOUT_BRIDGE_TENANTS,
-	legacySecret = env.CHECKOUT_BRIDGE_SECRET,
-	legacySiteUrl = env.CHECKOUT_BRIDGE_LEGACY_SITE_URL,
 ): CheckoutBridgeTenantConfig | null {
 	const registry = parseCheckoutBridgeTenantRegistry(rawRegistry);
 	const tenant = registry[siteUrl];
 	if (!tenant) return null;
-	if (legacySecret && !legacySiteUrl) {
-		throw new Error("CHECKOUT_BRIDGE_LEGACY_SITE_URL is required during legacy migration");
-	}
-	const tenantLegacySecret = legacySiteUrl === siteUrl ? legacySecret : undefined;
-	if (
-		tenantLegacySecret &&
-		!tenant.secrets.includes(tenantLegacySecret) &&
-		tenant.secrets.length >= 2
-	) {
-		throw new Error(`Checkout bridge rotation has too many active secrets for ${siteUrl}`);
-	}
-	const secrets = tenantLegacySecret
-		? [...new Set([...tenant.secrets, tenantLegacySecret])]
-		: [...tenant.secrets];
-	return { secrets, redirectOrigins: [...tenant.redirectOrigins] };
+	return { secrets: [...tenant.secrets], redirectOrigins: [...tenant.redirectOrigins] };
 }
 
 export function parseCheckoutBridgeTenantRegistry(rawRegistry: string | undefined) {
