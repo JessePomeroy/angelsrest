@@ -2,27 +2,25 @@
 import { invalidateAll } from "$app/navigation";
 import SEO from "$lib/components/SEO.svelte";
 import { formatCents, formatDate, formatTimestamp } from "$lib/utils/format";
+import type { PageData } from "./$types";
+import { getInvoiceSubtotal, getInvoiceTotal, getQuoteTotal } from "./portalPageData";
 
-let { data }: { data: any } = $props();
+let { data }: { data: PageData } = $props();
 
-// Local copy of the document so we can reflect optimistic state changes after
-// accept/decline/sign without mutating the load-function prop (a Svelte 5
-// anti-pattern — the prop is not reactively owned by this component and the
-// mutation breaks on refresh/invalidation).
-//
-// We track `data.document` reactively in a $derived; the local $state only
-// holds optimistic overrides. `document` reads from the override when present
-// and falls back to the fresh prop value.
-let optimisticDocument = $state<any>(null);
-const document = $derived(optimisticDocument ?? data.document);
+// Keep only the transient fields changed by portal actions. The authoritative,
+// discriminated document remains the load-function prop and is never mutated.
+let optimisticStatus = $state<PageData["document"]["status"] | null>(null);
+let optimisticSignedAt = $state<number | null>(null);
+const documentStatus = $derived(optimisticStatus ?? data.document.status);
 
 // Clear the override whenever the load function produces a new document
-// (e.g. after `invalidateAll()` runs). Without this, a stale optimistic copy
+// (e.g. after `invalidateAll()` runs). Without this, stale optimistic fields
 // would keep overriding authoritative server state.
 $effect(() => {
 	// Read data.document to register the dependency, then reset override.
 	data.document;
-	optimisticDocument = null;
+	optimisticStatus = null;
+	optimisticSignedAt = null;
 });
 
 let actionLoading = $state(false);
@@ -31,27 +29,6 @@ let actionMessage = $state("");
 
 // Contract signing
 let signerName = $state("");
-
-function getQuoteTotal(packages: { price: number }[]): number {
-	return packages.reduce((sum, pkg) => sum + pkg.price, 0);
-}
-
-function getInvoiceSubtotal(
-	items: { quantity: number; unitPrice: number }[],
-): number {
-	return items.reduce((sum, item) => sum + item.quantity * item.unitPrice, 0);
-}
-
-function getInvoiceTotal(
-	items: { quantity: number; unitPrice: number }[],
-	taxPercent?: number,
-): number {
-	const subtotal = getInvoiceSubtotal(items);
-	if (taxPercent) {
-		return subtotal + subtotal * (taxPercent / 100);
-	}
-	return subtotal;
-}
 
 async function acceptQuote() {
 	actionLoading = true;
@@ -63,7 +40,7 @@ async function acceptQuote() {
 		if (res.ok) {
 			actionResult = "success";
 			actionMessage = "quote accepted! we'll be in touch.";
-			optimisticDocument = { ...data.document, status: "accepted" };
+			optimisticStatus = "accepted";
 			// Refresh load data so navigation reflects the new state; the
 			// $effect will clear the optimistic override once fresh data arrives.
 			await invalidateAll();
@@ -89,7 +66,7 @@ async function declineQuote() {
 		if (res.ok) {
 			actionResult = "success";
 			actionMessage = "quote declined.";
-			optimisticDocument = { ...data.document, status: "declined" };
+			optimisticStatus = "declined";
 			await invalidateAll();
 		} else {
 			actionResult = "error";
@@ -116,11 +93,8 @@ async function signContract() {
 		if (res.ok) {
 			actionResult = "success";
 			actionMessage = "contract signed successfully!";
-			optimisticDocument = {
-				...data.document,
-				status: "signed",
-				signedAt: Date.now(),
-			};
+			optimisticStatus = "signed";
+			optimisticSignedAt = Date.now();
 			await invalidateAll();
 		} else {
 			actionResult = "error";
@@ -176,7 +150,7 @@ async function payInvoice() {
 
 	<main class="portal-card">
 		{#if data.type === "quote"}
-			{@const doc = document}
+			{@const doc = data.document}
 			<div class="doc-header">
 				<div class="doc-type">Quote</div>
 				<h1 class="doc-number">{doc.quoteNumber}</h1>
@@ -199,7 +173,7 @@ async function payInvoice() {
 					{/if}
 					<div class="meta-row">
 						<span class="meta-label">Status</span>
-						<span class="meta-value status-badge status-{doc.status}">{doc.status}</span>
+						<span class="meta-value status-badge status-{documentStatus}">{documentStatus}</span>
 					</div>
 				</div>
 			</div>
@@ -237,7 +211,7 @@ async function payInvoice() {
 				{/if}
 			</div>
 
-			{#if doc.status === "sent" && !data.used}
+			{#if documentStatus === "sent" && !data.used}
 				<div class="doc-actions">
 					<button class="btn-secondary" onclick={declineQuote} disabled={actionLoading}>
 						{actionLoading ? "..." : "Decline Quote"}
@@ -246,18 +220,18 @@ async function payInvoice() {
 						{actionLoading ? "..." : "Accept Quote"}
 					</button>
 				</div>
-			{:else if doc.status === "accepted"}
+			{:else if documentStatus === "accepted"}
 				<div class="status-message success-message">
 					This quote has been accepted.
 				</div>
-			{:else if doc.status === "declined"}
+			{:else if documentStatus === "declined"}
 				<div class="status-message">
 					This quote has been declined.
 				</div>
 			{/if}
 
 		{:else if data.type === "invoice"}
-			{@const doc = document}
+			{@const doc = data.document}
 			<div class="doc-header">
 				<div class="doc-type">Invoice</div>
 				<h1 class="doc-number">{doc.invoiceNumber}</h1>
@@ -280,7 +254,7 @@ async function payInvoice() {
 					{/if}
 					<div class="meta-row">
 						<span class="meta-label">Status</span>
-						<span class="meta-value status-badge status-{doc.status}">{doc.status}</span>
+						<span class="meta-value status-badge status-{documentStatus}">{documentStatus}</span>
 					</div>
 				</div>
 			</div>
@@ -332,11 +306,11 @@ async function payInvoice() {
 				{/if}
 			</div>
 
-			{#if doc.status === "paid"}
+			{#if documentStatus === "paid"}
 				<div class="status-message success-message">
 					This invoice has been paid. Thank you!
 				</div>
-			{:else if doc.status === "sent" || doc.status === "overdue"}
+			{:else if documentStatus === "sent" || documentStatus === "overdue"}
 				<div class="doc-actions">
 					<button class="btn-primary" onclick={payInvoice} disabled={actionLoading}>
 						{actionLoading ? "..." : "Pay Now"}
@@ -345,7 +319,8 @@ async function payInvoice() {
 			{/if}
 
 		{:else if data.type === "contract"}
-			{@const doc = document}
+			{@const doc = data.document}
+			{@const signedAt = optimisticSignedAt ?? doc.signedAt}
 			<div class="doc-header">
 				<div class="doc-type">Contract</div>
 				<h1 class="doc-number">{doc.title}</h1>
@@ -374,7 +349,7 @@ async function payInvoice() {
 					{/if}
 					<div class="meta-row">
 						<span class="meta-label">Status</span>
-						<span class="meta-value status-badge status-{doc.status}">{doc.status}</span>
+						<span class="meta-value status-badge status-{documentStatus}">{documentStatus}</span>
 					</div>
 				</div>
 			</div>
@@ -400,7 +375,7 @@ async function payInvoice() {
 				{/if}
 			</div>
 
-			{#if doc.status === "sent" && !data.used}
+			{#if documentStatus === "sent" && !data.used}
 				<div class="signature-section">
 					<h3 class="sig-heading">Sign this contract</h3>
 					<div class="sig-field">
@@ -416,9 +391,9 @@ async function payInvoice() {
 						{actionLoading ? "Signing..." : "Sign Contract"}
 					</button>
 				</div>
-			{:else if doc.status === "signed"}
+			{:else if documentStatus === "signed"}
 				<div class="status-message success-message">
-					This contract was signed on {formatTimestamp(doc.signedAt)}.
+					This contract was signed{#if signedAt} on {formatTimestamp(signedAt)}{/if}.
 				</div>
 			{/if}
 		{/if}

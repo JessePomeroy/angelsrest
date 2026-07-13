@@ -1,10 +1,12 @@
 import { error } from "@sveltejs/kit";
 import { api } from "$convex/api";
 import { getConvex } from "$lib/server/convexClient";
+import type { PageServerLoad } from "./$types";
+import { createPortalPageData } from "./portalPageData.server";
 
 const convex = getConvex();
 
-export async function load({ params }) {
+export const load = (async ({ params }) => {
 	const { token } = params;
 
 	const result = await convex.query(api.portal.getByToken, { token });
@@ -35,13 +37,9 @@ export async function load({ params }) {
 		// Fallback to siteUrl
 	}
 
-	return {
-		token,
-		type: result.token.type,
-		document: result.document,
-		client: result.client,
-		used: result.token.used,
-		businessName,
-		siteUrl: result.token.siteUrl,
-	};
-}
+	if (result.token.type === "gallery") {
+		throw error(404, "Gallery links must be opened through the delivery gallery.");
+	}
+
+	return createPortalPageData(token, businessName, result);
+}) satisfies PageServerLoad;
