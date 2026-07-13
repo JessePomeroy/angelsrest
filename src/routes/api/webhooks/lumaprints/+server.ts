@@ -18,13 +18,19 @@ import { sendCustomerShipmentNotification } from "$lib/server/webhookEmails";
 export async function POST({ request }: { request: Request }) {
 	const username = env.LUMAPRINTS_WEBHOOK_USERNAME;
 	const password = env.LUMAPRINTS_WEBHOOK_PASSWORD;
+	const previousPassword = env.LUMAPRINTS_WEBHOOK_PASSWORD_PREVIOUS;
 	const webhookSecret = env.WEBHOOK_SECRET;
 	if (!username || !password || !webhookSecret) {
 		console.error("[lumaprints webhook] server authentication is not configured");
 		return json({ error: "Webhook unavailable" }, { status: 503 });
 	}
 	if (
-		!verifyLumaPrintsBasicAuthorization(request.headers.get("authorization"), username, password)
+		!verifyLumaPrintsBasicAuthorization(
+			request.headers.get("authorization"),
+			username,
+			password,
+			previousPassword,
+		)
 	) {
 		return json(
 			{ error: "Unauthorized" },
