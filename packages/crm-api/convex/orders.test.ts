@@ -8,14 +8,17 @@ import schema from "./schema";
 
 const modules = import.meta.glob("./**/*.ts");
 const WEBHOOK_SECRET = "test-webhook-secret";
+const ORDER_LOOKUP_SECRET = "test-order-lookup-secret";
 const SITE_URL = "tenant-a.example";
 
 beforeEach(() => {
 	process.env.WEBHOOK_SECRET = WEBHOOK_SECRET;
+	process.env.ORDER_LOOKUP_SECRET = ORDER_LOOKUP_SECRET;
 });
 
 afterEach(() => {
 	delete process.env.WEBHOOK_SECRET;
+	delete process.env.ORDER_LOOKUP_SECRET;
 });
 
 async function seedLumaPrintsOrder() {
@@ -38,6 +41,112 @@ async function seedLumaPrintsOrder() {
 	});
 	return { t, orderId: created._id };
 }
+
+describe("authorized customer order lookup", () => {
+	test("returns the bounded customer view only with the dedicated capability", async () => {
+		const t = convexTest(schema, modules);
+		const order = {
+			orderNumber: "ORD-001",
+			customerEmail: "Buyer@Example.com",
+			customerName: "Private Buyer Name",
+			shippingAddress: {
+				line1: "123 Private Street",
+				city: "Detroit",
+				state: "MI",
+				postalCode: "48201",
+				country: "US",
+			},
+			items: [{ productName: "Test print", quantity: 1, price: 4200 }],
+			total: 4200,
+			fulfillmentType: "lumaprints" as const,
+		};
+		await t.mutation(api.orders.create, {
+			siteUrl: SITE_URL,
+			webhookSecret: WEBHOOK_SECRET,
+			stripeSessionId: "cs_customer_lookup",
+			...order,
+		});
+		await t.mutation(api.orders.create, {
+			siteUrl: "tenant-b.example",
+			webhookSecret: WEBHOOK_SECRET,
+			stripeSessionId: "cs_other_tenant_same_order_number",
+			...order,
+		});
+
+		const result = await t.query(api.orders.lookupForCustomer, {
+			siteUrl: SITE_URL,
+			email: "buyer@example.com",
+			orderNumber: "ORD-001",
+			lookupSecret: ORDER_LOOKUP_SECRET,
+		});
+		expect(result).toEqual({
+			orderNumber: "ORD-001",
+			status: "new",
+			items: [{ productName: "Test print", quantity: 1, price: 4200 }],
+			total: 4200,
+			trackingNumber: undefined,
+			trackingUrl: undefined,
+		});
+		await expect(
+			t.query(api.orders.lookupForCustomer, {
+				siteUrl: SITE_URL,
+				email: "someone-else@example.com",
+				orderNumber: "ORD-001",
+				lookupSecret: ORDER_LOOKUP_SECRET,
+			}),
+		).resolves.toBeNull();
+	});
+
+	test("rejects missing, wrong, and unconfigured capabilities", async () => {
+		const t = convexTest(schema, modules);
+		const args = {
+			siteUrl: SITE_URL,
+			email: "buyer@example.com",
+			orderNumber: "ORD-001",
+		};
+
+		await expect(
+			t.query(api.orders.lookupForCustomer, {
+				...args,
+				lookupSecret: "wrong-secret",
+			}),
+		).rejects.toThrow("Not authorized");
+		await expect(t.query(api.orders.lookupForCustomer, args as never)).rejects.toThrow();
+
+		delete process.env.ORDER_LOOKUP_SECRET;
+		await expect(
+			t.query(api.orders.lookupForCustomer, {
+				...args,
+				lookupSecret: ORDER_LOOKUP_SECRET,
+			}),
+		).rejects.toThrow("not configured");
+	});
+
+	test("fails closed when a tenant has a duplicate order number", async () => {
+		const t = convexTest(schema, modules);
+		for (const stripeSessionId of ["cs_lookup_duplicate_1", "cs_lookup_duplicate_2"]) {
+			await t.mutation(api.orders.create, {
+				siteUrl: SITE_URL,
+				webhookSecret: WEBHOOK_SECRET,
+				stripeSessionId,
+				orderNumber: "ORD-DUPLICATE",
+				customerEmail: "buyer@example.com",
+				items: [{ productName: "Test print", quantity: 1, price: 4200 }],
+				total: 4200,
+				fulfillmentType: "lumaprints",
+			});
+		}
+
+		await expect(
+			t.query(api.orders.lookupForCustomer, {
+				siteUrl: SITE_URL,
+				email: "buyer@example.com",
+				orderNumber: "ORD-DUPLICATE",
+				lookupSecret: ORDER_LOOKUP_SECRET,
+			}),
+		).rejects.toThrow("Duplicate order number for tenant");
+	});
+});
 
 describe("order Stripe fee capture initialization", () => {
 	test("creates a pending checkpoint before scheduling fee capture", async () => {

@@ -141,6 +141,15 @@ secret or run a second shipment processor.
 flows. Invoice settlement is dispatched by the commerce webhook and recorded in
 Convex. Amounts are integer cents across the Stripe boundary.
 
+### Customer order lookup
+
+The hub is the public lookup broker. The new Convex path exposes a bounded
+customer view through a query protected by the dedicated hub-only
+`ORDER_LOOKUP_SECRET`; this capability is separate from the broader webhook
+bearer and is never distributed to a client spoke or browser. The prior
+unauthenticated query exists only during the staged rollout and must be removed
+after the hub switches to the authorized path.
+
 ### Platform subscriptions
 
 `/api/platform/webhooks/stripe` is separate from the commerce webhook. It owns
