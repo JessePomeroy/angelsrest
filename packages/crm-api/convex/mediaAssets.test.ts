@@ -192,6 +192,8 @@ describe("tenant-scoped CMS media assets", () => {
 				galleryId,
 				schemaVersion: 1,
 				slug: "portfolio",
+				placementCount: 1,
+				checksum: "test-revision",
 				source: "admin",
 				createdAt: now,
 				createdBy: "test",
@@ -201,6 +203,7 @@ describe("tenant-scoped CMS media assets", () => {
 				galleryId,
 				revisionId,
 				assetId: created.id as Id<"mediaAssets">,
+				placementKey: "test-placement",
 				order: 0,
 				decorative: false,
 			});
