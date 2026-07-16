@@ -1,5 +1,11 @@
 # @jessepomeroy/crm-api
 
+## 2.7.0
+
+### Minor Changes
+
+- 9b7f0f3: Add the typed Homepage Quote content slot and reusable tenant-scoped editorial revision store.
+
 ## 2.6.0
 
 ### Minor Changes
