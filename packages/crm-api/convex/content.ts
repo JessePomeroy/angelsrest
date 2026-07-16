@@ -74,6 +74,24 @@ function projectAdminRevision(revision: Doc<"contentRevisions"> | null) {
 	};
 }
 
+async function getPublishedSiteSettingsState(
+	ctx: QueryCtx,
+	siteUrl: string,
+) {
+	const document = await getSiteSettingsDocument(ctx, siteUrl);
+	if (!document?.publishedRevisionId) return null;
+	const revision = await getRevision(ctx, document.publishedRevisionId);
+	if (!revision) {
+		throw new Error("Published content revision not found");
+	}
+	assertRevisionBelongsToDocument(revision, document);
+	return {
+		revisionId: revision._id,
+		publishedAt: document.publishedAt ?? revision.createdAt,
+		payload: toPublishedSiteSettings(revision.payload),
+	};
+}
+
 /** Authenticated editor state; never callable across tenant membership. */
 export const getSiteSettingsEditorState = query({
 	args: { siteUrl: v.string() },
@@ -103,14 +121,16 @@ export const getSiteSettingsEditorState = query({
 export const getPublishedSiteSettings = query({
 	args: { siteUrl: v.string() },
 	handler: async (ctx, { siteUrl }) => {
-		const document = await getSiteSettingsDocument(ctx, siteUrl);
-		if (!document?.publishedRevisionId) return null;
-		const revision = await getRevision(ctx, document.publishedRevisionId);
-		if (!revision) {
-			throw new Error("Published content revision not found");
-		}
-		assertRevisionBelongsToDocument(revision, document);
-		return toPublishedSiteSettings(revision.payload);
+		const state = await getPublishedSiteSettingsState(ctx, siteUrl);
+		return state?.payload ?? null;
+	},
+});
+
+/** Public-safe read with opaque revision metadata for provider observability. */
+export const getPublishedSiteSettingsWithRevision = query({
+	args: { siteUrl: v.string() },
+	handler: async (ctx, { siteUrl }) => {
+		return await getPublishedSiteSettingsState(ctx, siteUrl);
 	},
 });
 

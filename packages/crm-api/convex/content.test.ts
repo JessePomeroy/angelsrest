@@ -118,6 +118,11 @@ describe("typed site settings CMS foundation", () => {
 				siteUrl: SITE_A.siteUrl,
 			}),
 		).toBeNull();
+		expect(
+			await t.query(api.content.getPublishedSiteSettingsWithRevision, {
+				siteUrl: SITE_A.siteUrl,
+			}),
+		).toBeNull();
 
 		await admin.mutation(api.content.publishSiteSettings, {
 			siteUrl: SITE_A.siteUrl,
@@ -134,6 +139,17 @@ describe("typed site settings CMS foundation", () => {
 		});
 		expect(publicValue).not.toHaveProperty("createdBy");
 		expect(publicValue).not.toHaveProperty("revisionId");
+
+		const publicState = await t.query(api.content.getPublishedSiteSettingsWithRevision, {
+			siteUrl: SITE_A.siteUrl,
+		});
+		expect(publicState).toEqual({
+			revisionId: draft.revisionId,
+			publishedAt: expect.any(Number),
+			payload: COMPLETE_SETTINGS,
+		});
+		expect(publicState).not.toHaveProperty("createdBy");
+		expect(publicState).not.toHaveProperty("updatedBy");
 	});
 
 	test("rejects partial or invalid publication while preserving the live revision", async () => {
