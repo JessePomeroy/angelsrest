@@ -150,6 +150,41 @@ describe("tenant-scoped CMS media assets", () => {
 		})).rejects.toThrow(/cannot exceed 100/);
 	});
 
+	test("projects only editor-safe fields and batch-reads placed assets within one tenant", async () => {
+		const t = await setup();
+		const adminA = asAdmin(t, SITE_A.email);
+		const createdA = await adminA.mutation(api.mediaAssets.registerReadyWebAsset, {
+			siteUrl: SITE_A.siteUrl,
+			asset: readyAsset(),
+		});
+		const createdB = await asAdmin(t, SITE_B.email).mutation(api.mediaAssets.registerReadyWebAsset, {
+			siteUrl: SITE_B.siteUrl,
+			asset: readyAsset(SITE_B.siteUrl),
+		});
+		const listed = await adminA.query(api.mediaAssets.listForEditor, {
+			siteUrl: SITE_A.siteUrl,
+			paginationOpts: { numItems: 10, cursor: null },
+		});
+		expect(listed.page).toHaveLength(1);
+		expect(listed.page[0]).toMatchObject({
+			_id: createdA.id,
+			originalFilename: "portfolio.jpg",
+			status: "ready",
+		});
+		expect(JSON.stringify(listed.page[0])).not.toContain("master.webp");
+		expect(JSON.stringify(listed.page[0])).not.toContain("createdBy");
+
+		const placed = await adminA.query(api.mediaAssets.getManyForEditor, {
+			siteUrl: SITE_A.siteUrl,
+			ids: [createdA.id],
+		});
+		expect(placed.map((asset) => asset._id)).toEqual([createdA.id]);
+		await expect(adminA.query(api.mediaAssets.getManyForEditor, {
+			siteUrl: SITE_A.siteUrl,
+			ids: [createdB.id],
+		})).rejects.toThrow(/not found/);
+	});
+
 	test("keeps deletion retryable and completes only after the explicit cleanup phase", async () => {
 		const t = await setup();
 		const admin = asAdmin(t, SITE_A.email);

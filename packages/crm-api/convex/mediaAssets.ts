@@ -9,6 +9,27 @@ import {
 } from "./helpers/mediaValidators";
 
 const MEDIA_LIBRARY_PAGE_MAX = 100;
+const MEDIA_BATCH_MAX = 500;
+
+function projectEditorAsset(asset: {
+	_id: string;
+	assetId: string;
+	originalFilename: string;
+	status: "ready" | "deleting";
+	source: ReadyWebAsset["source"];
+	derivatives: ReadyWebAsset["derivatives"];
+	createdAt: number;
+}) {
+	return {
+		_id: asset._id,
+		assetId: asset.assetId,
+		originalFilename: asset.originalFilename,
+		status: asset.status,
+		source: asset.source,
+		derivatives: asset.derivatives,
+		createdAt: asset.createdAt,
+	};
+}
 
 function projectAssetRegistration(asset: ReadyWebAsset) {
 	return {
@@ -125,6 +146,47 @@ export const listBySite = query({
 			.withIndex("by_siteUrl_and_createdAt", (q) => q.eq("siteUrl", client.siteUrl))
 			.order("desc")
 			.paginate(paginationOpts);
+	},
+});
+
+export const listForEditor = query({
+	args: {
+		siteUrl: v.string(),
+		paginationOpts: paginationOptsValidator,
+	},
+	handler: async (ctx, { siteUrl, paginationOpts }) => {
+		const { client } = await requireSiteAdmin(ctx, siteUrl);
+		if (
+			!Number.isSafeInteger(paginationOpts.numItems)
+			|| paginationOpts.numItems < 1
+			|| paginationOpts.numItems > MEDIA_LIBRARY_PAGE_MAX
+		) throw new Error(`Media library pages cannot exceed ${MEDIA_LIBRARY_PAGE_MAX} items`);
+		const result = await ctx.db
+			.query("mediaAssets")
+			.withIndex("by_siteUrl_and_createdAt", (q) => q.eq("siteUrl", client.siteUrl))
+			.order("desc")
+			.paginate(paginationOpts);
+		return { ...result, page: result.page.map(projectEditorAsset) };
+	},
+});
+
+export const getManyForEditor = query({
+	args: {
+		siteUrl: v.string(),
+		ids: v.array(v.id("mediaAssets")),
+	},
+	handler: async (ctx, { siteUrl, ids }) => {
+		const { client } = await requireSiteAdmin(ctx, siteUrl);
+		if (ids.length > MEDIA_BATCH_MAX || new Set(ids).size !== ids.length) {
+			throw new Error(`Media batches must contain at most ${MEDIA_BATCH_MAX} unique assets`);
+		}
+		const assets = await Promise.all(ids.map((id) => ctx.db.get(id)));
+		return assets.map((asset) => {
+			if (!asset || asset.siteUrl !== client.siteUrl) {
+				throw new Error("Media asset not found");
+			}
+			return projectEditorAsset(asset);
+		});
 	},
 });
 
