@@ -223,6 +223,16 @@ describe("tenant-scoped portfolio gallery revisions", () => {
 		expect(serialized).not.toContain("master.webp");
 		expect(serialized).not.toContain("originalFilename");
 		expect(serialized).not.toContain("createdBy");
+		const portfolio = await adminA.query(
+			api.portfolioGalleries.listPublishedWithPlacements,
+			{ siteUrl: SITE_A.siteUrl },
+		);
+		expect(portfolio).toEqual([published]);
+		expect(
+			await adminA.query(api.portfolioGalleries.listPublishedWithPlacements, {
+				siteUrl: SITE_B.siteUrl,
+			}),
+		).toEqual([]);
 	});
 
 	test("keeps the published revision live until a newer accessible draft is published", async () => {
@@ -256,6 +266,44 @@ describe("tenant-scoped portfolio gallery revisions", () => {
 		expect(published?.title).toBe("Published title");
 	});
 
+	test("bounds the aggregate public projection before another gallery can publish", async () => {
+		const { t, adminA, assetA, assetB } = await setup();
+		const first = await adminA.mutation(api.portfolioGalleries.saveDraft, {
+			siteUrl: SITE_A.siteUrl,
+			draft: {
+				title: "First",
+				slug: "first",
+				placements: [placement("first", assetA.id, { altText: "First image" })],
+			},
+		});
+		await adminA.mutation(api.portfolioGalleries.publish, {
+			galleryId: first.galleryId,
+			draftRevisionId: first.revisionId,
+		});
+		const second = await adminA.mutation(api.portfolioGalleries.saveDraft, {
+			siteUrl: SITE_A.siteUrl,
+			draft: {
+				title: "Second",
+				slug: "second",
+				placements: [placement("second", assetB.id, { altText: "Second image" })],
+			},
+		});
+		await t.run(async (ctx) => {
+			await ctx.db.patch(first.revisionId, { placementCount: 500 });
+		});
+		await expect(adminA.mutation(api.portfolioGalleries.publish, {
+			galleryId: second.galleryId,
+			draftRevisionId: second.revisionId,
+		})).rejects.toThrow(/cannot exceed 500 images/);
+
+		await t.run(async (ctx) => {
+			await ctx.db.patch(first.revisionId, { placementCount: 501 });
+		});
+		await expect(adminA.query(api.portfolioGalleries.listPublishedWithPlacements, {
+			siteUrl: SITE_A.siteUrl,
+		})).rejects.toThrow(/image limit exceeded/);
+	});
+
 	test("locks a published slug until redirect history is implemented", async () => {
 		const { adminA, assetA } = await setup();
 		const draft = await adminA.mutation(api.portfolioGalleries.saveDraft, {
@@ -283,14 +331,30 @@ describe("tenant-scoped portfolio gallery revisions", () => {
 	});
 
 	test("requires and preserves one deliberate whole-site gallery order", async () => {
-		const { adminA } = await setup();
+		const { adminA, assetA, assetB } = await setup();
 		const first = await adminA.mutation(api.portfolioGalleries.saveDraft, {
 			siteUrl: SITE_A.siteUrl,
-			draft: { title: "First", slug: "first", placements: [] },
+			draft: {
+				title: "First",
+				slug: "first",
+				placements: [placement("first", assetA.id, { altText: "First image" })],
+			},
 		});
 		const second = await adminA.mutation(api.portfolioGalleries.saveDraft, {
 			siteUrl: SITE_A.siteUrl,
-			draft: { title: "Second", slug: "second", placements: [] },
+			draft: {
+				title: "Second",
+				slug: "second",
+				placements: [placement("second", assetB.id, { altText: "Second image" })],
+			},
+		});
+		await adminA.mutation(api.portfolioGalleries.publish, {
+			galleryId: first.galleryId,
+			draftRevisionId: first.revisionId,
+		});
+		await adminA.mutation(api.portfolioGalleries.publish, {
+			galleryId: second.galleryId,
+			draftRevisionId: second.revisionId,
 		});
 		await expect(adminA.mutation(api.portfolioGalleries.reorder, {
 			siteUrl: SITE_A.siteUrl,
@@ -304,6 +368,14 @@ describe("tenant-scoped portfolio gallery revisions", () => {
 			siteUrl: SITE_A.siteUrl,
 		});
 		expect(galleries.map((gallery) => gallery.galleryId)).toEqual([
+			second.galleryId,
+			first.galleryId,
+		]);
+		const published = await adminA.query(
+			api.portfolioGalleries.listPublishedWithPlacements,
+			{ siteUrl: SITE_A.siteUrl },
+		);
+		expect(published.map((gallery) => gallery.galleryId)).toEqual([
 			second.galleryId,
 			first.galleryId,
 		]);
