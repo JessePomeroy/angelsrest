@@ -11,8 +11,14 @@ export async function requireReadyAboutAssets(
 	ctx: AboutPageCtx,
 	siteUrl: string,
 	portraits: AboutPortraitPlacement[],
+	seoImageAssetId?: Id<"mediaAssets">,
 ) {
-	const ids = [...new Set(portraits.map((portrait) => portrait.assetId))];
+	const ids = [
+		...new Set([
+			...portraits.map((portrait) => portrait.assetId),
+			...(seoImageAssetId ? [seoImageAssetId] : []),
+		]),
+	];
 	const assets = await Promise.all(ids.map((id) => ctx.db.get(id)));
 	const assetMap = new Map<Id<"mediaAssets">, Doc<"mediaAssets">>();
 	for (const [index, asset] of assets.entries()) {
@@ -33,28 +39,38 @@ export async function projectPublishedAboutPage(
 		payload: PublishedAboutPage;
 	},
 ) {
-	const assets = await requireReadyAboutAssets(ctx, siteUrl, state.payload.portraits);
+	const assets = await requireReadyAboutAssets(
+		ctx,
+		siteUrl,
+		state.payload.portraits,
+		state.payload.seoImageAssetId,
+	);
+	const projectAsset = (assetId: Id<"mediaAssets">) => {
+		const asset = assets.get(assetId);
+		if (!asset) throw new Error("Published About asset not found");
+		return {
+			assetId: asset.assetId,
+			source: {
+				width: asset.source.width,
+				height: asset.source.height,
+			},
+			derivatives: asset.derivatives,
+		};
+	};
+	const { seoImageAssetId, ...content } = state.payload;
 	return {
 		...state,
 		payload: {
-			...state.payload,
+			...content,
+			seoImage: seoImageAssetId ? projectAsset(seoImageAssetId) : undefined,
 			portraits: state.payload.portraits.map((portrait, order) => {
-				const asset = assets.get(portrait.assetId);
-				if (!asset) throw new Error("Published About portrait asset not found");
 				return {
 					key: portrait.key,
 					order,
 					altText: portrait.altText,
 					decorative: portrait.decorative,
 					focalPoint: portrait.focalPoint ?? null,
-					asset: {
-						assetId: asset.assetId,
-						source: {
-							width: asset.source.width,
-							height: asset.source.height,
-						},
-						derivatives: asset.derivatives,
-					},
+					asset: projectAsset(portrait.assetId),
 				};
 			}),
 		},

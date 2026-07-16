@@ -106,6 +106,7 @@ function completeAbout(assetId: Id<"mediaAssets">) {
 			{ key: "practice", label: "practice", value: "photography · direction · music" },
 		],
 		seoDescription: "Margaret Helena is a Chicago-based photographer and artist.",
+		seoImageAssetId: assetId,
 	};
 }
 
@@ -297,6 +298,7 @@ describe("typed About-page content", () => {
 						asset: { assetId: ASSET_C },
 					},
 				],
+				seoImage: { assetId: ASSET_A },
 			},
 		});
 		const serialized = JSON.stringify(published);

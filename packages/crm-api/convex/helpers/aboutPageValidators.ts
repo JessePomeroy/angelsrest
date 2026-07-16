@@ -37,6 +37,7 @@ export const aboutPageDraftPayloadValidator = v.object({
 	sections: v.optional(v.array(aboutSectionValidator)),
 	highlights: v.optional(v.array(aboutHighlightValidator)),
 	seoDescription: v.optional(v.string()),
+	seoImageAssetId: v.optional(v.id("mediaAssets")),
 });
 
 export type AboutPageDraftPayload = Infer<typeof aboutPageDraftPayloadValidator>;
@@ -52,6 +53,7 @@ export type PublishedAboutPage = {
 	sections: Array<{ key: string; title: string; items: string[] }>;
 	highlights: Array<{ key: string; label: string; value: string }>;
 	seoDescription: string;
+	seoImageAssetId?: AboutPortraitPlacement["assetId"];
 };
 
 export const ABOUT_PORTRAIT_MAX = 10;
@@ -85,6 +87,7 @@ const ALLOWED_KEYS = new Set([
 	"sections",
 	"highlights",
 	"seoDescription",
+	"seoImageAssetId",
 ]);
 
 function assertMaximum(value: string | undefined, maximum: number, field: string) {
@@ -257,6 +260,7 @@ export function toPublishedAboutPage(payload: AboutPageDraftPayload): PublishedA
 			"SEO description",
 			LIMITS.seoDescription,
 		),
+		seoImageAssetId: payload.seoImageAssetId,
 	};
 }
 
@@ -286,6 +290,7 @@ export function serializeAboutPagePayload(payload: AboutPageDraftPayload) {
 			value: highlight.value ?? null,
 		})),
 		seoDescription: payload.seoDescription ?? null,
+		seoImageAssetId: payload.seoImageAssetId ?? null,
 	});
 }
 
@@ -293,5 +298,8 @@ export function aboutPageReferencesAsset(
 	payload: AboutPageDraftPayload,
 	assetId: string,
 ) {
-	return (payload.portraits ?? []).some((portrait) => portrait.assetId === assetId);
+	return (
+		payload.seoImageAssetId === assetId
+		|| (payload.portraits ?? []).some((portrait) => portrait.assetId === assetId)
+	);
 }

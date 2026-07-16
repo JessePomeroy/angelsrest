@@ -314,7 +314,12 @@ export const saveAboutPageDraft = mutation({
 	handler: async (ctx, args) => {
 		validateAboutPageDraft(args.payload);
 		const { client } = await requireSiteAdmin(ctx, args.siteUrl);
-		await requireReadyAboutAssets(ctx, client.siteUrl, args.payload.portraits ?? []);
+		await requireReadyAboutAssets(
+			ctx,
+			client.siteUrl,
+			args.payload.portraits ?? [],
+			args.payload.seoImageAssetId,
+		);
 		return await saveContentDraft(ctx, {
 			...args,
 			kind: ABOUT_PAGE_KIND,
@@ -334,7 +339,12 @@ export const publishAboutPage = mutation({
 		if (!revision) throw new Error("About draft revision not found");
 		const payload = asAboutPagePayload(revision.payload);
 		const published = toPublishedAboutPage(payload);
-		await requireReadyAboutAssets(ctx, client.siteUrl, published.portraits);
+		await requireReadyAboutAssets(
+			ctx,
+			client.siteUrl,
+			published.portraits,
+			published.seoImageAssetId,
+		);
 		return await publishContentDraft(
 			ctx,
 			{ ...args, kind: ABOUT_PAGE_KIND },
