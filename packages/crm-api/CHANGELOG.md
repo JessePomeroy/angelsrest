@@ -1,5 +1,11 @@
 # @jessepomeroy/crm-api
 
+## 2.6.0
+
+### Minor Changes
+
+- 48740fa: Add a bounded, snapshot-consistent public portfolio projection with ordered placements and public-only media derivatives.
+
 ## 2.5.0
 
 ### Minor Changes
