@@ -5,6 +5,13 @@ import {
 	contentRevisionSourceValidator,
 	siteSettingsDraftPayloadValidator,
 } from "./helpers/contentValidators";
+import {
+	mediaAssetStatusValidator,
+	mediaFocalPointValidator,
+	webAssetDerivativesValidator,
+	webAssetMasterValidator,
+	webAssetSourceValidator,
+} from "./helpers/mediaValidators";
 import { stripeFeeCaptureErrorValidator } from "./helpers/stripeFeeCapture";
 import { categoryValidator } from "./helpers/validators";
 
@@ -64,6 +71,90 @@ export default defineSchema({
 	})
 		.index("by_documentId_and_createdAt", ["documentId", "createdAt"])
 		.index("by_siteUrl_and_kind_and_createdAt", ["siteUrl", "kind", "createdAt"]),
+
+	// Public CMS media identity. Private R2 masters and public derivative keys
+	// belong to one tenant; the original staging upload is not retained here.
+	mediaAssets: defineTable({
+		siteUrl: v.string(),
+		assetId: v.string(),
+		intent: v.literal("web"),
+		status: mediaAssetStatusValidator,
+		originalFilename: v.string(),
+		source: webAssetSourceValidator,
+		master: webAssetMasterValidator,
+		derivatives: webAssetDerivativesValidator,
+		createdAt: v.number(),
+		createdBy: v.string(),
+		updatedAt: v.number(),
+		updatedBy: v.string(),
+		deletionRequestedAt: v.optional(v.number()),
+		deletionRequestedBy: v.optional(v.string()),
+	})
+		.index("by_siteUrl_and_assetId", ["siteUrl", "assetId"])
+		.index("by_siteUrl_and_status", ["siteUrl", "status"])
+		.index("by_siteUrl_and_createdAt", ["siteUrl", "createdAt"])
+		.searchIndex("search_originalFilename", {
+			searchField: "originalFilename",
+			filterFields: ["siteUrl", "status"],
+		}),
+
+	// Portfolio galleries and their revisions are distinct from private client
+	// delivery galleries. CMS-2.4b adds their behavior; these relations exist
+	// now so media deletion can enforce placement usage atomically.
+	portfolioGalleries: defineTable({
+		siteUrl: v.string(),
+		slug: v.string(),
+		portfolioOrder: v.number(),
+		isPublished: v.boolean(),
+		draftRevisionId: v.optional(v.id("portfolioGalleryRevisions")),
+		publishedRevisionId: v.optional(v.id("portfolioGalleryRevisions")),
+		createdAt: v.number(),
+		createdBy: v.string(),
+		updatedAt: v.number(),
+		updatedBy: v.string(),
+		publishedAt: v.optional(v.number()),
+		publishedBy: v.optional(v.string()),
+	})
+		.index("by_siteUrl_and_slug", ["siteUrl", "slug"])
+		.index("by_siteUrl_and_portfolioOrder", ["siteUrl", "portfolioOrder"])
+		.index("by_siteUrl_and_isPublished_and_portfolioOrder", [
+			"siteUrl",
+			"isPublished",
+			"portfolioOrder",
+		]),
+
+	portfolioGalleryRevisions: defineTable({
+		siteUrl: v.string(),
+		galleryId: v.id("portfolioGalleries"),
+		schemaVersion: v.literal(1),
+		title: v.optional(v.string()),
+		description: v.optional(v.string()),
+		slug: v.string(),
+		source: v.union(
+			v.literal("admin"),
+			v.literal("sanityImport"),
+			v.literal("restore"),
+		),
+		createdAt: v.number(),
+		createdBy: v.string(),
+	})
+		.index("by_galleryId_and_createdAt", ["galleryId", "createdAt"])
+		.index("by_siteUrl_and_galleryId", ["siteUrl", "galleryId"]),
+
+	portfolioPlacements: defineTable({
+		siteUrl: v.string(),
+		galleryId: v.id("portfolioGalleries"),
+		revisionId: v.id("portfolioGalleryRevisions"),
+		assetId: v.id("mediaAssets"),
+		order: v.number(),
+		altText: v.optional(v.string()),
+		decorative: v.boolean(),
+		caption: v.optional(v.string()),
+		focalPoint: v.optional(mediaFocalPointValidator),
+	})
+		.index("by_revisionId_and_order", ["revisionId", "order"])
+		.index("by_siteUrl_and_assetId", ["siteUrl", "assetId"])
+		.index("by_galleryId_and_revisionId", ["galleryId", "revisionId"]),
 
 	// Print orders (from Stripe checkout on any client site)
 	orders: defineTable({
