@@ -1,5 +1,11 @@
 # @jessepomeroy/crm-api
 
+## 2.9.0
+
+### Minor Changes
+
+- f1badd5: Add a tenant-isolated About page revision boundary with ordered, accessible portrait references and a public-safe responsive media projection.
+
 ## 2.8.0
 
 ### Minor Changes
