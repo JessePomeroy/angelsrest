@@ -1,5 +1,12 @@
 # @jessepomeroy/crm-api
 
+## 2.4.0
+
+### Minor Changes
+
+- b32769e: Add tenant-scoped portfolio gallery drafts, immutable ordered placements,
+  accessibility-gated publication, and public-safe portfolio reads.
+
 ## 2.3.0
 
 ### Minor Changes
