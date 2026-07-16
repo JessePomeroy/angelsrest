@@ -2,8 +2,8 @@ import { defineSchema, defineTable } from "convex/server";
 import { v } from "convex/values";
 import {
 	contentKindValidator,
+	contentRevisionPayloadValidator,
 	contentRevisionSourceValidator,
-	siteSettingsDraftPayloadValidator,
 } from "./helpers/contentValidators";
 import {
 	mediaAssetStatusValidator,
@@ -41,8 +41,8 @@ export default defineSchema({
 		.index("by_stripeSubscriptionId", ["stripeSubscriptionId"])
 		.index("by_stripeConnectedAccountId", ["stripeConnectedAccountId"]),
 
-	// Provider-neutral editorial identity. CMS-1 deliberately supports only the
-	// siteSettings singleton; later content kinds extend the validated union.
+	// Provider-neutral editorial identity. Each content kind is a tenant singleton
+	// with an explicit validated payload contract.
 	contentDocuments: defineTable({
 		siteUrl: v.string(),
 		kind: contentKindValidator,
@@ -63,7 +63,7 @@ export default defineSchema({
 		documentId: v.id("contentDocuments"),
 		kind: contentKindValidator,
 		schemaVersion: v.literal(1),
-		payload: siteSettingsDraftPayloadValidator,
+		payload: contentRevisionPayloadValidator,
 		source: contentRevisionSourceValidator,
 		checksum: v.string(),
 		createdAt: v.number(),
