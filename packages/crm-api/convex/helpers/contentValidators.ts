@@ -1,9 +1,20 @@
 import type { Infer } from "convex/values";
 import { v } from "convex/values";
+import { contactPageDraftPayloadValidator } from "./contactPageValidators";
+
+export {
+	type ContactPageDraftPayload,
+	contactPageDraftPayloadValidator,
+	type PublishedContactPage,
+	serializeContactPagePayload,
+	toPublishedContactPage,
+	validateContactPageDraft,
+} from "./contactPageValidators";
 
 export const contentKindValidator = v.union(
 	v.literal("siteSettings"),
 	v.literal("homepageQuote"),
+	v.literal("contactPage"),
 );
 
 export type ContentKind = Infer<typeof contentKindValidator>;
@@ -40,6 +51,7 @@ export const homepageQuoteDraftPayloadValidator = v.object({
 export const contentRevisionPayloadValidator = v.union(
 	siteSettingsDraftPayloadValidator,
 	homepageQuoteDraftPayloadValidator,
+	contactPageDraftPayloadValidator,
 );
 
 export type ContentRevisionPayload = Infer<
