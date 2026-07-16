@@ -3,6 +3,7 @@ import type { MutationCtx, QueryCtx } from "../_generated/server";
 import {
 	PORTFOLIO_PLACEMENT_MAX,
 	type PortfolioGalleryDraft,
+	toPublishedPortfolioGallery,
 } from "./portfolioValidators";
 
 type PortfolioCtx = QueryCtx | MutationCtx;
@@ -129,4 +130,46 @@ export async function loadEditorRevision(
 		revision,
 		await getPortfolioPlacements(ctx, revision._id),
 	);
+}
+
+export async function loadPublicPortfolioGallery(
+	ctx: QueryCtx,
+	gallery: Doc<"portfolioGalleries">,
+	revision: Doc<"portfolioGalleryRevisions">,
+) {
+	assertRevisionOwnership(revision, gallery);
+	const placements = await getPortfolioPlacements(ctx, revision._id);
+	const draft = portfolioDraftFromRevision(revision, placements);
+	const published = toPublishedPortfolioGallery(draft);
+	const assets = await requireReadyPortfolioAssets(ctx, gallery.siteUrl, draft.placements);
+
+	return {
+		galleryId: gallery._id,
+		revisionId: revision._id,
+		title: published.title,
+		description: published.description,
+		slug: published.slug,
+		portfolioOrder: gallery.portfolioOrder,
+		publishedAt: gallery.publishedAt ?? revision.createdAt,
+		placements: published.placements.map((placement, order) => {
+			const asset = assets.get(placement.assetId);
+			if (!asset) throw new Error("Published portfolio asset not found");
+			return {
+				key: placement.key,
+				order,
+				altText: placement.altText,
+				decorative: placement.decorative,
+				caption: placement.caption,
+				focalPoint: placement.focalPoint ?? null,
+				asset: {
+					assetId: asset.assetId,
+					source: {
+						width: asset.source.width,
+						height: asset.source.height,
+					},
+					derivatives: asset.derivatives,
+				},
+			};
+		}),
+	};
 }

@@ -12,9 +12,11 @@ import {
 	portfolioDraftFromRevision,
 	requireReadyPortfolioAssets,
 	toEditorRevision,
+	loadPublicPortfolioGallery,
 } from "./helpers/portfolioData";
 import {
 	PORTFOLIO_GALLERY_MAX,
+	PORTFOLIO_PUBLIC_PLACEMENT_MAX,
 	portfolioGalleryDraftValidator,
 	serializePortfolioGalleryDraft,
 	toPublishedPortfolioGallery,
@@ -142,6 +144,30 @@ export const publish = mutation({
 		const draft = portfolioDraftFromRevision(revision, placements);
 		toPublishedPortfolioGallery(draft);
 		await requireReadyPortfolioAssets(ctx, gallery.siteUrl, draft.placements);
+		const publishedGalleries = await ctx.db
+			.query("portfolioGalleries")
+			.withIndex("by_siteUrl_and_isPublished_and_portfolioOrder", (q) =>
+				q.eq("siteUrl", gallery.siteUrl).eq("isPublished", true),
+			)
+			.take(PORTFOLIO_GALLERY_MAX);
+		const otherPublishedGalleries = publishedGalleries.filter(
+			(publishedGallery) => publishedGallery._id !== gallery._id,
+		);
+		const publishedRevisions = await Promise.all(
+			otherPublishedGalleries.map((publishedGallery) =>
+				getPortfolioRevision(ctx, publishedGallery.publishedRevisionId)
+			),
+		);
+		const publishedPlacementCount = publishedRevisions.reduce((total, publishedRevision, index) => {
+			if (!publishedRevision) throw new Error("Published portfolio revision not found");
+			assertRevisionOwnership(publishedRevision, otherPublishedGalleries[index]);
+			return total + publishedRevision.placementCount;
+		}, revision.placementCount);
+		if (publishedPlacementCount > PORTFOLIO_PUBLIC_PLACEMENT_MAX) {
+			throw new Error(
+				`A published portfolio cannot exceed ${PORTFOLIO_PUBLIC_PLACEMENT_MAX} images`,
+			);
+		}
 		if (gallery.publishedRevisionId === revision._id) {
 			return { galleryId: gallery._id, revisionId: revision._id };
 		}
@@ -272,6 +298,34 @@ export const listPublished = query({
 	},
 });
 
+export const listPublishedWithPlacements = query({
+	args: { siteUrl: v.string() },
+	handler: async (ctx, { siteUrl }) => {
+		const galleries = await ctx.db
+			.query("portfolioGalleries")
+			.withIndex("by_siteUrl_and_isPublished_and_portfolioOrder", (q) =>
+				q.eq("siteUrl", siteUrl).eq("isPublished", true),
+			)
+			.take(PORTFOLIO_GALLERY_MAX);
+		const revisions = await Promise.all(
+			galleries.map((gallery) => getPortfolioRevision(ctx, gallery.publishedRevisionId)),
+		);
+		const placementCount = revisions.reduce((total, revision, index) => {
+			if (!revision) throw new Error("Published portfolio revision not found");
+			assertRevisionOwnership(revision, galleries[index]);
+			return total + revision.placementCount;
+		}, 0);
+		if (placementCount > PORTFOLIO_PUBLIC_PLACEMENT_MAX) {
+			throw new Error("Published portfolio image limit exceeded");
+		}
+		return await Promise.all(galleries.map(async (gallery, index) => {
+			const revision = revisions[index];
+			if (!revision) throw new Error("Published portfolio revision not found");
+			return await loadPublicPortfolioGallery(ctx, gallery, revision);
+		}));
+	},
+});
+
 export const getPublishedBySlug = query({
 	args: { siteUrl: v.string(), slug: v.string() },
 	handler: async (ctx, { siteUrl, slug }) => {
@@ -282,40 +336,6 @@ export const getPublishedBySlug = query({
 		if (!gallery?.isPublished || !gallery.publishedRevisionId) return null;
 		const revision = await getPortfolioRevision(ctx, gallery.publishedRevisionId);
 		if (!revision) throw new Error("Published portfolio revision not found");
-		assertRevisionOwnership(revision, gallery);
-		const placements = await getPortfolioPlacements(ctx, revision._id);
-		const draft = portfolioDraftFromRevision(revision, placements);
-		const published = toPublishedPortfolioGallery(draft);
-		const assets = await requireReadyPortfolioAssets(ctx, siteUrl, draft.placements);
-
-		return {
-			galleryId: gallery._id,
-			revisionId: revision._id,
-			title: published.title,
-			description: published.description,
-			slug: published.slug,
-			portfolioOrder: gallery.portfolioOrder,
-			publishedAt: gallery.publishedAt ?? revision.createdAt,
-			placements: published.placements.map((placement, order) => {
-				const asset = assets.get(placement.assetId);
-				if (!asset) throw new Error("Published portfolio asset not found");
-				return {
-					key: placement.key,
-					order,
-					altText: placement.altText,
-					decorative: placement.decorative,
-					caption: placement.caption,
-					focalPoint: placement.focalPoint ?? null,
-					asset: {
-						assetId: asset.assetId,
-						source: {
-							width: asset.source.width,
-							height: asset.source.height,
-						},
-						derivatives: asset.derivatives,
-					},
-				};
-			}),
-		};
+		return await loadPublicPortfolioGallery(ctx, gallery, revision);
 	},
 });

@@ -22,6 +22,7 @@ export type PortfolioPlacementDraft = Infer<typeof portfolioPlacementDraftValida
 
 export const PORTFOLIO_GALLERY_MAX = 100;
 export const PORTFOLIO_PLACEMENT_MAX = 500;
+export const PORTFOLIO_PUBLIC_PLACEMENT_MAX = 500;
 
 const LIMITS = {
 	title: 120,
