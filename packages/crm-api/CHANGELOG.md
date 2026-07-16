@@ -1,5 +1,12 @@
 # @jessepomeroy/crm-api
 
+## 2.1.0
+
+### Minor Changes
+
+- 103f7f1: Add a typed, tenant-scoped Site settings CMS foundation with immutable drafts,
+  atomic publication, public-safe reads, and conflict protection.
+
 ## 2.0.0
 
 ### Major Changes
