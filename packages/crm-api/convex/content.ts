@@ -8,21 +8,27 @@ import {
 	saveContentDraft,
 } from "./helpers/contentStore";
 import {
+	type ContactPageDraftPayload,
+	contactPageDraftPayloadValidator,
 	type ContentRevisionPayload,
 	type HomepageQuoteDraftPayload,
 	homepageQuoteDraftPayloadValidator,
 	serializeHomepageQuotePayload,
+	serializeContactPagePayload,
 	serializeSiteSettingsPayload,
 	type SiteSettingsDraftPayload,
 	siteSettingsDraftPayloadValidator,
 	toPublishedHomepageQuote,
+	toPublishedContactPage,
 	toPublishedSiteSettings,
 	validateHomepageQuoteDraft,
+	validateContactPageDraft,
 	validateSiteSettingsDraft,
 } from "./helpers/contentValidators";
 
 const SITE_SETTINGS_KIND = "siteSettings" as const;
 const HOMEPAGE_QUOTE_KIND = "homepageQuote" as const;
+const CONTACT_PAGE_KIND = "contactPage" as const;
 
 function asSiteSettingsPayload(
 	payload: ContentRevisionPayload,
@@ -37,6 +43,14 @@ function asHomepageQuotePayload(
 ): HomepageQuoteDraftPayload {
 	const narrowed = payload as HomepageQuoteDraftPayload;
 	validateHomepageQuoteDraft(narrowed);
+	return narrowed;
+}
+
+function asContactPagePayload(
+	payload: ContentRevisionPayload,
+): ContactPageDraftPayload {
+	const narrowed = payload as ContactPageDraftPayload;
+	validateContactPageDraft(narrowed);
 	return narrowed;
 }
 
@@ -180,4 +194,67 @@ export const discardHomepageQuoteDraft = mutation({
 	},
 	handler: async (ctx, args) =>
 		await discardContentDraft(ctx, { ...args, kind: HOMEPAGE_QUOTE_KIND }),
+});
+
+/** Authenticated state for client-managed Contact & Booking content. */
+export const getContactPageEditorState = query({
+	args: { siteUrl: v.string() },
+	handler: async (ctx, { siteUrl }) =>
+		await getContentEditorState(
+			ctx,
+			siteUrl,
+			CONTACT_PAGE_KIND,
+			asContactPagePayload,
+		),
+});
+
+/** Public-safe Contact & Booking content with opaque provider metadata. */
+export const getPublishedContactPageWithRevision = query({
+	args: { siteUrl: v.string() },
+	handler: async (ctx, { siteUrl }) =>
+		await getPublishedContentState(
+			ctx,
+			siteUrl,
+			CONTACT_PAGE_KIND,
+			(payload) => toPublishedContactPage(asContactPagePayload(payload)),
+		),
+});
+
+/** Save client-managed content only; operational form configuration is absent. */
+export const saveContactPageDraft = mutation({
+	args: {
+		siteUrl: v.string(),
+		expectedDraftRevisionId: v.optional(v.id("contentRevisions")),
+		payload: contactPageDraftPayloadValidator,
+	},
+	handler: async (ctx, args) => {
+		validateContactPageDraft(args.payload);
+		return await saveContentDraft(ctx, {
+			...args,
+			kind: CONTACT_PAGE_KIND,
+			serializedPayload: serializeContactPagePayload(args.payload),
+		});
+	},
+});
+
+export const publishContactPage = mutation({
+	args: {
+		siteUrl: v.string(),
+		draftRevisionId: v.id("contentRevisions"),
+	},
+	handler: async (ctx, args) =>
+		await publishContentDraft(
+			ctx,
+			{ ...args, kind: CONTACT_PAGE_KIND },
+			(payload) => toPublishedContactPage(asContactPagePayload(payload)),
+		),
+});
+
+export const discardContactPageDraft = mutation({
+	args: {
+		siteUrl: v.string(),
+		draftRevisionId: v.id("contentRevisions"),
+	},
+	handler: async (ctx, args) =>
+		await discardContentDraft(ctx, { ...args, kind: CONTACT_PAGE_KIND }),
 });
