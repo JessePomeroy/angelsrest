@@ -1,5 +1,11 @@
 # @jessepomeroy/crm-api
 
+## 2.2.0
+
+### Minor Changes
+
+- 225aeea: Expose the opaque published Site settings revision ID and publication time alongside the public-safe payload for provider telemetry and rollback diagnosis.
+
 ## 2.1.0
 
 ### Minor Changes
