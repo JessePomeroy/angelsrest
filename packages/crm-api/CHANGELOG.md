@@ -1,5 +1,11 @@
 # @jessepomeroy/crm-api
 
+## 2.8.0
+
+### Minor Changes
+
+- 8302705: Add the tenant-scoped Contact & Booking revision and publication boundary.
+
 ## 2.7.0
 
 ### Minor Changes
