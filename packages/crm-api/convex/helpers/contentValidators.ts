@@ -1,7 +1,12 @@
 import type { Infer } from "convex/values";
 import { v } from "convex/values";
 
-export const contentKindValidator = v.literal("siteSettings");
+export const contentKindValidator = v.union(
+	v.literal("siteSettings"),
+	v.literal("homepageQuote"),
+);
+
+export type ContentKind = Infer<typeof contentKindValidator>;
 
 export const contentRevisionSourceValidator = v.union(
 	v.literal("admin"),
@@ -27,8 +32,26 @@ export const siteSettingsDraftPayloadValidator = v.object({
 	seoDescription: v.optional(v.string()),
 });
 
+export const homepageQuoteDraftPayloadValidator = v.object({
+	text: v.optional(v.string()),
+	attribution: v.optional(v.string()),
+});
+
+export const contentRevisionPayloadValidator = v.union(
+	siteSettingsDraftPayloadValidator,
+	homepageQuoteDraftPayloadValidator,
+);
+
+export type ContentRevisionPayload = Infer<
+	typeof contentRevisionPayloadValidator
+>;
+
 export type SiteSettingsDraftPayload = Infer<
 	typeof siteSettingsDraftPayloadValidator
+>;
+
+export type HomepageQuoteDraftPayload = Infer<
+	typeof homepageQuoteDraftPayloadValidator
 >;
 
 export type PublishedSiteSettings = {
@@ -37,6 +60,11 @@ export type PublishedSiteSettings = {
 	tagline: string;
 	socialLinks: Array<{ platform: string; url: string }>;
 	seoDescription: string;
+};
+
+export type PublishedHomepageQuote = {
+	text: string;
+	attribution: string;
 };
 
 const LIMITS = {
@@ -49,6 +77,23 @@ const LIMITS = {
 	socialUrl: 2_048,
 } as const;
 
+const HOMEPAGE_QUOTE_LIMITS = {
+	text: 2_000,
+	attribution: 160,
+} as const;
+
+function assertOnlyKeys(
+	payload: object,
+	allowed: ReadonlySet<string>,
+	kind: string,
+) {
+	for (const key of Object.keys(payload)) {
+		if (!allowed.has(key)) {
+			throw new Error(`${kind} payload contains an unsupported field`);
+		}
+	}
+}
+
 function assertMaximum(value: string | undefined, maximum: number, field: string) {
 	if (value !== undefined && value.length > maximum) {
 		throw new Error(`${field} must be ${maximum} characters or fewer`);
@@ -57,6 +102,11 @@ function assertMaximum(value: string | undefined, maximum: number, field: string
 
 /** Bound draft storage while retaining incomplete and semantically invalid input. */
 export function validateSiteSettingsDraft(payload: SiteSettingsDraftPayload) {
+	assertOnlyKeys(
+		payload,
+		new Set(["artistName", "siteTitle", "tagline", "socialLinks", "seoDescription"]),
+		"Site settings",
+	);
 	assertMaximum(payload.artistName, LIMITS.artistName, "Artist name");
 	assertMaximum(payload.siteTitle, LIMITS.siteTitle, "Site title");
 	assertMaximum(payload.tagline, LIMITS.tagline, "Tagline");
@@ -70,6 +120,23 @@ export function validateSiteSettingsDraft(payload: SiteSettingsDraftPayload) {
 		assertMaximum(link.platform, LIMITS.socialPlatform, "Social platform");
 		assertMaximum(link.url, LIMITS.socialUrl, "Social URL");
 	}
+}
+
+/** Bound a site-specific Homepage Quote draft without requiring completeness. */
+export function validateHomepageQuoteDraft(
+	payload: HomepageQuoteDraftPayload,
+) {
+	assertOnlyKeys(
+		payload,
+		new Set(["text", "attribution"]),
+		"Homepage quote",
+	);
+	assertMaximum(payload.text, HOMEPAGE_QUOTE_LIMITS.text, "Quote text");
+	assertMaximum(
+		payload.attribution,
+		HOMEPAGE_QUOTE_LIMITS.attribution,
+		"Quote attribution",
+	);
 }
 
 function requireText(
@@ -126,6 +193,21 @@ export function toPublishedSiteSettings(
 	};
 }
 
+/** Return the complete public quote; layout and presentation remain host-owned. */
+export function toPublishedHomepageQuote(
+	payload: HomepageQuoteDraftPayload,
+): PublishedHomepageQuote {
+	validateHomepageQuoteDraft(payload);
+	return {
+		text: requireText(payload.text, "Quote text", HOMEPAGE_QUOTE_LIMITS.text),
+		attribution: requireText(
+			payload.attribution,
+			"Quote attribution",
+			HOMEPAGE_QUOTE_LIMITS.attribution,
+		),
+	};
+}
+
 /** Stable serialization for revision identity and later migration parity checks. */
 export function serializeSiteSettingsPayload(payload: SiteSettingsDraftPayload) {
 	return JSON.stringify({
@@ -137,5 +219,14 @@ export function serializeSiteSettingsPayload(payload: SiteSettingsDraftPayload) 
 			url: link.url,
 		})),
 		seoDescription: payload.seoDescription ?? null,
+	});
+}
+
+export function serializeHomepageQuotePayload(
+	payload: HomepageQuoteDraftPayload,
+) {
+	return JSON.stringify({
+		text: payload.text ?? null,
+		attribution: payload.attribution ?? null,
 	});
 }
