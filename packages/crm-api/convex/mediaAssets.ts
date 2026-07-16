@@ -1,7 +1,12 @@
 import { paginationOptsValidator } from "convex/server";
 import { v } from "convex/values";
-import { mutation, query } from "./_generated/server";
+import type { Doc } from "./_generated/dataModel";
+import { type MutationCtx, mutation, query } from "./_generated/server";
 import { requireDocumentSiteAdmin, requireSiteAdmin } from "./authHelpers";
+import {
+	aboutPageReferencesAsset,
+	type AboutPageDraftPayload,
+} from "./helpers/contentValidators";
 import {
 	readyWebAssetValidator,
 	validateReadyWebAsset,
@@ -82,6 +87,46 @@ function cleanupManifest(asset: {
 			asset.derivatives.display2560.key,
 		],
 	};
+}
+
+async function requireAssetUnused(
+	ctx: MutationCtx,
+	asset: Doc<"mediaAssets">,
+) {
+	const portfolioUsage = await ctx.db
+		.query("portfolioPlacements")
+		.withIndex("by_siteUrl_and_assetId", (q) =>
+			q.eq("siteUrl", asset.siteUrl).eq("assetId", asset._id),
+		)
+		.first();
+	if (portfolioUsage) throw new Error("Media asset is in use by portfolio content");
+
+	const aboutDocument = await ctx.db
+		.query("contentDocuments")
+		.withIndex("by_siteUrl_and_kind", (q) =>
+			q.eq("siteUrl", asset.siteUrl).eq("kind", "aboutPage"),
+		)
+		.unique();
+	if (!aboutDocument) return;
+	const revisionIds = [
+		aboutDocument.draftRevisionId,
+		aboutDocument.publishedRevisionId,
+	].filter((id): id is NonNullable<typeof id> => id !== undefined);
+	const revisions = await Promise.all(
+		[...new Set(revisionIds)].map((revisionId) => ctx.db.get(revisionId)),
+	);
+	for (const revision of revisions) {
+		if (
+			revision
+			&& revision.documentId === aboutDocument._id
+			&& revision.siteUrl === asset.siteUrl
+			&& revision.kind === "aboutPage"
+			&& aboutPageReferencesAsset(
+				revision.payload as AboutPageDraftPayload,
+				asset._id,
+			)
+		) throw new Error("Media asset is in use by About content");
+	}
 }
 
 export const registerReadyWebAsset = mutation({
@@ -194,13 +239,7 @@ export const requestDeletion = mutation({
 	args: { id: v.id("mediaAssets") },
 	handler: async (ctx, { id }) => {
 		const asset = await requireDocumentSiteAdmin(ctx, "mediaAssets", id);
-		const usage = await ctx.db
-			.query("portfolioPlacements")
-			.withIndex("by_siteUrl_and_assetId", (q) =>
-				q.eq("siteUrl", asset.siteUrl).eq("assetId", id),
-			)
-			.first();
-		if (usage) throw new Error("Media asset is in use by portfolio content");
+		await requireAssetUnused(ctx, asset);
 		if (asset.status === "deleting") {
 			return { status: asset.status, ...cleanupManifest(asset) };
 		}
@@ -226,13 +265,7 @@ export const completeDeletion = mutation({
 		if (asset.status !== "deleting") {
 			throw new Error("Media asset deletion has not been requested");
 		}
-		const usage = await ctx.db
-			.query("portfolioPlacements")
-			.withIndex("by_siteUrl_and_assetId", (q) =>
-				q.eq("siteUrl", asset.siteUrl).eq("assetId", id),
-			)
-			.first();
-		if (usage) throw new Error("Media asset is in use by portfolio content");
+		await requireAssetUnused(ctx, asset);
 		await ctx.db.delete(id);
 		return { deleted: true };
 	},

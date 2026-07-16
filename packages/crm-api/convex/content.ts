@@ -1,5 +1,10 @@
 import { v } from "convex/values";
 import { mutation, query } from "./_generated/server";
+import { requireSiteAdmin } from "./authHelpers";
+import {
+	projectPublishedAboutPage,
+	requireReadyAboutAssets,
+} from "./helpers/aboutPageData";
 import {
 	discardContentDraft,
 	getContentEditorState,
@@ -8,20 +13,25 @@ import {
 	saveContentDraft,
 } from "./helpers/contentStore";
 import {
+	type AboutPageDraftPayload,
+	aboutPageDraftPayloadValidator,
 	type ContactPageDraftPayload,
 	contactPageDraftPayloadValidator,
 	type ContentRevisionPayload,
 	type HomepageQuoteDraftPayload,
 	homepageQuoteDraftPayloadValidator,
 	serializeHomepageQuotePayload,
+	serializeAboutPagePayload,
 	serializeContactPagePayload,
 	serializeSiteSettingsPayload,
 	type SiteSettingsDraftPayload,
 	siteSettingsDraftPayloadValidator,
 	toPublishedHomepageQuote,
+	toPublishedAboutPage,
 	toPublishedContactPage,
 	toPublishedSiteSettings,
 	validateHomepageQuoteDraft,
+	validateAboutPageDraft,
 	validateContactPageDraft,
 	validateSiteSettingsDraft,
 } from "./helpers/contentValidators";
@@ -29,6 +39,7 @@ import {
 const SITE_SETTINGS_KIND = "siteSettings" as const;
 const HOMEPAGE_QUOTE_KIND = "homepageQuote" as const;
 const CONTACT_PAGE_KIND = "contactPage" as const;
+const ABOUT_PAGE_KIND = "aboutPage" as const;
 
 function asSiteSettingsPayload(
 	payload: ContentRevisionPayload,
@@ -51,6 +62,14 @@ function asContactPagePayload(
 ): ContactPageDraftPayload {
 	const narrowed = payload as ContactPageDraftPayload;
 	validateContactPageDraft(narrowed);
+	return narrowed;
+}
+
+function asAboutPagePayload(
+	payload: ContentRevisionPayload,
+): AboutPageDraftPayload {
+	const narrowed = payload as AboutPageDraftPayload;
+	validateAboutPageDraft(narrowed);
 	return narrowed;
 }
 
@@ -257,4 +276,78 @@ export const discardContactPageDraft = mutation({
 	},
 	handler: async (ctx, args) =>
 		await discardContentDraft(ctx, { ...args, kind: CONTACT_PAGE_KIND }),
+});
+
+/** Authenticated state for a site's designed About-page content. */
+export const getAboutPageEditorState = query({
+	args: { siteUrl: v.string() },
+	handler: async (ctx, { siteUrl }) =>
+		await getContentEditorState(
+			ctx,
+			siteUrl,
+			ABOUT_PAGE_KIND,
+			asAboutPagePayload,
+		),
+});
+
+/** Public-safe About content with ready web derivatives only. */
+export const getPublishedAboutPageWithRevision = query({
+	args: { siteUrl: v.string() },
+	handler: async (ctx, { siteUrl }) => {
+		const state = await getPublishedContentState(
+			ctx,
+			siteUrl,
+			ABOUT_PAGE_KIND,
+			(payload) => toPublishedAboutPage(asAboutPagePayload(payload)),
+		);
+		return state ? await projectPublishedAboutPage(ctx, siteUrl, state) : null;
+	},
+});
+
+/** Save incomplete copy while requiring every portrait reference to be tenant-owned. */
+export const saveAboutPageDraft = mutation({
+	args: {
+		siteUrl: v.string(),
+		expectedDraftRevisionId: v.optional(v.id("contentRevisions")),
+		payload: aboutPageDraftPayloadValidator,
+	},
+	handler: async (ctx, args) => {
+		validateAboutPageDraft(args.payload);
+		const { client } = await requireSiteAdmin(ctx, args.siteUrl);
+		await requireReadyAboutAssets(ctx, client.siteUrl, args.payload.portraits ?? []);
+		return await saveContentDraft(ctx, {
+			...args,
+			kind: ABOUT_PAGE_KIND,
+			serializedPayload: serializeAboutPagePayload(args.payload),
+		});
+	},
+});
+
+export const publishAboutPage = mutation({
+	args: {
+		siteUrl: v.string(),
+		draftRevisionId: v.id("contentRevisions"),
+	},
+	handler: async (ctx, args) => {
+		const { client } = await requireSiteAdmin(ctx, args.siteUrl);
+		const revision = await ctx.db.get(args.draftRevisionId);
+		if (!revision) throw new Error("About draft revision not found");
+		const payload = asAboutPagePayload(revision.payload);
+		const published = toPublishedAboutPage(payload);
+		await requireReadyAboutAssets(ctx, client.siteUrl, published.portraits);
+		return await publishContentDraft(
+			ctx,
+			{ ...args, kind: ABOUT_PAGE_KIND },
+			(candidate) => toPublishedAboutPage(asAboutPagePayload(candidate)),
+		);
+	},
+});
+
+export const discardAboutPageDraft = mutation({
+	args: {
+		siteUrl: v.string(),
+		draftRevisionId: v.id("contentRevisions"),
+	},
+	handler: async (ctx, args) =>
+		await discardContentDraft(ctx, { ...args, kind: ABOUT_PAGE_KIND }),
 });
