@@ -114,6 +114,12 @@ describe("typed Homepage Quote content slot", () => {
 	test("allows incomplete drafts but publishes only a complete bounded quote", async () => {
 		const t = await setup();
 		const admin = asAdmin(t, SITE_A.adminEmail);
+		await expect(
+			admin.mutation(api.content.saveHomepageQuoteDraft, {
+				siteUrl: SITE_A.siteUrl,
+				payload: { text: "x".repeat(2_001) },
+			}),
+		).rejects.toThrow(/2000 characters or fewer/i);
 		const incomplete = await admin.mutation(
 			api.content.saveHomepageQuoteDraft,
 			{
