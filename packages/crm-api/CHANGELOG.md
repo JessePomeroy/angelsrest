@@ -1,5 +1,12 @@
 # @jessepomeroy/crm-api
 
+## 2.3.0
+
+### Minor Changes
+
+- bf0b8e2: Add tenant-scoped CMS media assets with canonical Worker-key validation,
+  paginated library reads, and a retryable usage-aware deletion lifecycle.
+
 ## 2.2.0
 
 ### Minor Changes
