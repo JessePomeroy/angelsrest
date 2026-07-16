@@ -72,6 +72,26 @@ describe("typed site settings CMS foundation", () => {
 		expect(stored.revisions[0]?._id).toBe(first.revisionId);
 	});
 
+	test("treats an identical autosave retry as idempotent", async () => {
+		const t = await setup();
+		const admin = asAdmin(t, SITE_A.adminEmail);
+		const first = await admin.mutation(api.content.saveSiteSettingsDraft, {
+			siteUrl: SITE_A.siteUrl,
+			payload: COMPLETE_SETTINGS,
+		});
+		const retry = await admin.mutation(api.content.saveSiteSettingsDraft, {
+			siteUrl: SITE_A.siteUrl,
+			expectedDraftRevisionId: first.revisionId,
+			payload: COMPLETE_SETTINGS,
+		});
+
+		expect(retry).toEqual(first);
+		const revisions = await t.run(async (ctx) =>
+			ctx.db.query("contentRevisions").take(2),
+		);
+		expect(revisions).toHaveLength(1);
+	});
+
 	test("requires authentication and stored site membership for editor reads and writes", async () => {
 		const t = await setup();
 		await expect(

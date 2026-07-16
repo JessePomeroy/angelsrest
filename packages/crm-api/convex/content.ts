@@ -126,10 +126,20 @@ export const saveSiteSettingsDraft = mutation({
 		validateSiteSettingsDraft(args.payload);
 		const now = Date.now();
 		const actor = identity.tokenIdentifier;
+		const checksum = await checksumPayload(
+			serializeSiteSettingsPayload(args.payload),
+		);
 		let document = await getSiteSettingsDocument(ctx, client.siteUrl);
 
 		if (document) {
 			assertExpectedDraft(document, args.expectedDraftRevisionId);
+			const currentDraft = await getRevision(ctx, document.draftRevisionId);
+			if (currentDraft) {
+				assertRevisionBelongsToDocument(currentDraft, document);
+				if (currentDraft.checksum === checksum) {
+					return { documentId: document._id, revisionId: currentDraft._id };
+				}
+			}
 		} else {
 			if (args.expectedDraftRevisionId !== undefined) {
 				throw new Error("Draft conflict: the content document does not exist");
@@ -146,9 +156,6 @@ export const saveSiteSettingsDraft = mutation({
 			if (!document) throw new Error("Content document creation failed");
 		}
 
-		const checksum = await checksumPayload(
-			serializeSiteSettingsPayload(args.payload),
-		);
 		const revisionId = await ctx.db.insert("contentRevisions", {
 			siteUrl: client.siteUrl,
 			documentId: document._id,
