@@ -1,5 +1,12 @@
 # @jessepomeroy/crm-api
 
+## 2.5.0
+
+### Minor Changes
+
+- e5e02ef: Add bounded editor-safe media library projections and tenant-scoped batch reads
+  for portfolio placements.
+
 ## 2.4.0
 
 ### Minor Changes
