@@ -130,6 +130,8 @@ export default defineSchema({
 		title: v.optional(v.string()),
 		description: v.optional(v.string()),
 		slug: v.string(),
+		placementCount: v.number(),
+		checksum: v.string(),
 		source: v.union(
 			v.literal("admin"),
 			v.literal("sanityImport"),
@@ -146,6 +148,7 @@ export default defineSchema({
 		galleryId: v.id("portfolioGalleries"),
 		revisionId: v.id("portfolioGalleryRevisions"),
 		assetId: v.id("mediaAssets"),
+		placementKey: v.string(),
 		order: v.number(),
 		altText: v.optional(v.string()),
 		decorative: v.boolean(),
