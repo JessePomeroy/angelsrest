@@ -1,5 +1,10 @@
 import { defineSchema, defineTable } from "convex/server";
 import { v } from "convex/values";
+import {
+	contentKindValidator,
+	contentRevisionSourceValidator,
+	siteSettingsDraftPayloadValidator,
+} from "./helpers/contentValidators";
 import { stripeFeeCaptureErrorValidator } from "./helpers/stripeFeeCapture";
 import { categoryValidator } from "./helpers/validators";
 
@@ -28,6 +33,37 @@ export default defineSchema({
 		.index("by_email", ["email"])
 		.index("by_stripeSubscriptionId", ["stripeSubscriptionId"])
 		.index("by_stripeConnectedAccountId", ["stripeConnectedAccountId"]),
+
+	// Provider-neutral editorial identity. CMS-1 deliberately supports only the
+	// siteSettings singleton; later content kinds extend the validated union.
+	contentDocuments: defineTable({
+		siteUrl: v.string(),
+		kind: contentKindValidator,
+		draftRevisionId: v.optional(v.id("contentRevisions")),
+		publishedRevisionId: v.optional(v.id("contentRevisions")),
+		createdAt: v.number(),
+		createdBy: v.string(),
+		updatedAt: v.number(),
+		updatedBy: v.string(),
+		publishedAt: v.optional(v.number()),
+		publishedBy: v.optional(v.string()),
+	}).index("by_siteUrl_and_kind", ["siteUrl", "kind"]),
+
+	// Immutable revisions keep drafts and published values auditable. The
+	// payload union remains explicit rather than accepting arbitrary content.
+	contentRevisions: defineTable({
+		siteUrl: v.string(),
+		documentId: v.id("contentDocuments"),
+		kind: contentKindValidator,
+		schemaVersion: v.literal(1),
+		payload: siteSettingsDraftPayloadValidator,
+		source: contentRevisionSourceValidator,
+		checksum: v.string(),
+		createdAt: v.number(),
+		createdBy: v.string(),
+	})
+		.index("by_documentId_and_createdAt", ["documentId", "createdAt"])
+		.index("by_siteUrl_and_kind_and_createdAt", ["siteUrl", "kind", "createdAt"]),
 
 	// Print orders (from Stripe checkout on any client site)
 	orders: defineTable({
