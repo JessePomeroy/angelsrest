@@ -1,5 +1,11 @@
 # @jessepomeroy/crm-api
 
+## 2.11.0
+
+### Minor Changes
+
+- 71b510c: Add tenant-scoped Author and Category documents with immutable drafts, publication, public-safe reads, and active portrait deletion protection.
+
 ## 2.10.1
 
 ### Patch Changes
