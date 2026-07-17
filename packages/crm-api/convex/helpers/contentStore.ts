@@ -2,8 +2,8 @@ import type { Doc, Id } from "../_generated/dataModel";
 import type { MutationCtx, QueryCtx } from "../_generated/server";
 import { requireSiteAdmin } from "../authHelpers";
 import type {
-	ContentKind,
 	ContentRevisionPayload,
+	SingletonContentKind,
 } from "./contentValidators";
 
 type ContentContext = QueryCtx | MutationCtx;
@@ -11,7 +11,7 @@ type ContentContext = QueryCtx | MutationCtx;
 export async function getContentDocument(
 	ctx: ContentContext,
 	siteUrl: string,
-	kind: ContentKind,
+	kind: SingletonContentKind,
 ) {
 	return await ctx.db
 		.query("contentDocuments")
@@ -77,7 +77,7 @@ function projectAdminRevision<T>(
 export async function getContentEditorState<T>(
 	ctx: QueryCtx,
 	siteUrl: string,
-	kind: ContentKind,
+	kind: SingletonContentKind,
 	projectPayload: (payload: ContentRevisionPayload) => T,
 ) {
 	await requireSiteAdmin(ctx, siteUrl);
@@ -103,7 +103,7 @@ export async function getContentEditorState<T>(
 export async function getPublishedContentState<T>(
 	ctx: QueryCtx,
 	siteUrl: string,
-	kind: ContentKind,
+	kind: SingletonContentKind,
 	projectPayload: (payload: ContentRevisionPayload) => T,
 ) {
 	const document = await getContentDocument(ctx, siteUrl, kind);
@@ -122,7 +122,7 @@ export async function saveContentDraft(
 	ctx: MutationCtx,
 	args: {
 		siteUrl: string;
-		kind: ContentKind;
+		kind: SingletonContentKind;
 		expectedDraftRevisionId?: Id<"contentRevisions">;
 		payload: ContentRevisionPayload;
 		serializedPayload: string;
@@ -182,7 +182,7 @@ export async function publishContentDraft<T>(
 	ctx: MutationCtx,
 	args: {
 		siteUrl: string;
-		kind: ContentKind;
+		kind: SingletonContentKind;
 		draftRevisionId: Id<"contentRevisions">;
 	},
 	projectPayload: (payload: ContentRevisionPayload) => T,
@@ -212,7 +212,7 @@ export async function discardContentDraft(
 	ctx: MutationCtx,
 	args: {
 		siteUrl: string;
-		kind: ContentKind;
+		kind: SingletonContentKind;
 		draftRevisionId: Id<"contentRevisions">;
 	},
 ) {
