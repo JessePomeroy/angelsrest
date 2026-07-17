@@ -1,5 +1,11 @@
 # @jessepomeroy/crm-api
 
+## 2.10.1
+
+### Patch Changes
+
+- 3eda417: Remove the retired decorative-image and per-page sharing-image fields from the strict CMS contracts after production data migration.
+
 ## 2.10.0
 
 ### Minor Changes
