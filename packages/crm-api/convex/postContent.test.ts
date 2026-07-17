@@ -733,7 +733,7 @@ describe("tenant-scoped Post content graphs", () => {
 		}
 	});
 
-	test("treats invalid and missing slugs as absent and reserves immutable published slugs", async () => {
+	test("treats invalid and missing slugs as absent while keeping published slugs authoritative", async () => {
 		const { t, adminA } = await setup();
 		const author = await createAuthor(
 			adminA,
@@ -766,17 +766,20 @@ describe("tenant-scoped Post content graphs", () => {
 				"second-slug",
 				completePost(author.documentId, { slug: "reserved-slug" }),
 			),
-			/slug .* already exists/i,
+			/slug .* reserved/i,
 		);
 		await publishPost(adminA, first.documentId, first.revisionId);
-		await expectError(
-			savePost(
-				adminA,
-				first.documentId,
-				completePost(author.documentId, { slug: "changed-slug" }),
-			),
-			/redirect support/i,
+		const changed = await savePost(
+			adminA,
+			first.documentId,
+			completePost(author.documentId, { slug: "changed-slug" }),
 		);
+		const editor = await adminA.query(api.postContent.getEditorState, {
+			documentId: first.documentId,
+		});
+		expect(editor.slug).toBe("reserved-slug");
+		expect(editor.draft?.draft.slug).toBe("changed-slug");
+		expect(changed.revisionId).toBe(editor.draft?.revisionId);
 	});
 
 	test("makes exact publish retries harmless without overwriting a newer draft", async () => {

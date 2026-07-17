@@ -31,6 +31,7 @@ import type * as helpers_blogContentStore from "../helpers/blogContentStore.js";
 import type * as helpers_blogContentValidationSupport from "../helpers/blogContentValidationSupport.js";
 import type * as helpers_blogContentValidators from "../helpers/blogContentValidators.js";
 import type * as helpers_contactPageValidators from "../helpers/contactPageValidators.js";
+import type * as helpers_contentSlugHistory from "../helpers/contentSlugHistory.js";
 import type * as helpers_contentStore from "../helpers/contentStore.js";
 import type * as helpers_contentValidators from "../helpers/contentValidators.js";
 import type * as helpers_deleting from "../helpers/deleting.js";
@@ -108,6 +109,7 @@ declare const fullApi: ApiFromModules<{
   "helpers/blogContentValidationSupport": typeof helpers_blogContentValidationSupport;
   "helpers/blogContentValidators": typeof helpers_blogContentValidators;
   "helpers/contactPageValidators": typeof helpers_contactPageValidators;
+  "helpers/contentSlugHistory": typeof helpers_contentSlugHistory;
   "helpers/contentStore": typeof helpers_contentStore;
   "helpers/contentValidators": typeof helpers_contentValidators;
   "helpers/deleting": typeof helpers_deleting;

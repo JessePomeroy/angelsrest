@@ -4,6 +4,7 @@ import {
 	contentKindValidator,
 	contentRevisionPayloadValidator,
 	contentRevisionSourceValidator,
+	contentSlugKindValidator,
 } from "./helpers/contentValidators";
 import {
 	mediaAssetStatusValidator,
@@ -116,6 +117,20 @@ export default defineSchema({
 		])
 		.index("by_siteUrl_and_kind_and_slug", ["siteUrl", "kind", "slug"])
 		.index("by_siteUrl_and_kind_and_rank", ["siteUrl", "kind", "rank"]),
+
+	// Every former published slug remains reserved to its original document.
+	// Public hosts resolve these rows directly to the document's current slug,
+	// so repeated URL changes never create redirect chains.
+	contentSlugHistory: defineTable({
+		siteUrl: v.string(),
+		kind: contentSlugKindValidator,
+		slug: v.string(),
+		documentId: v.id("contentDocuments"),
+		createdAt: v.number(),
+		createdBy: v.string(),
+	})
+		.index("by_siteUrl_and_kind_and_slug", ["siteUrl", "kind", "slug"])
+		.index("by_documentId_and_createdAt", ["documentId", "createdAt"]),
 
 	// Immutable revisions keep drafts and published values auditable. The
 	// payload union remains explicit rather than accepting arbitrary content.

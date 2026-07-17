@@ -5,6 +5,7 @@ import {
 	getPublishedPostBySlug,
 	listPostEditorDocuments,
 	listPublishedPosts,
+	resolvePublishedPostSlug,
 } from "./helpers/postContentQueries";
 import {
 	createPostDraft,
@@ -13,6 +14,7 @@ import {
 	savePostDraft,
 } from "./helpers/postContentStore";
 import { postDraftValidator } from "./helpers/postContentValidators";
+import { publishedSlugChangeValidator } from "./helpers/contentValidators";
 
 /** Create one idempotently keyed Post draft for a verified tenant. */
 export const createDraft = mutation({
@@ -39,6 +41,7 @@ export const publish = mutation({
 	args: {
 		documentId: v.id("contentDocuments"),
 		draftRevisionId: v.id("contentRevisions"),
+		publishedSlugChange: v.optional(publishedSlugChangeValidator),
 	},
 	handler: async (ctx, args) => await publishPostDraft(ctx, args),
 });
@@ -70,6 +73,12 @@ export const listForEditor = query({
 export const getPublishedBySlug = query({
 	args: { siteUrl: v.string(), slug: v.string() },
 	handler: async (ctx, args) => await getPublishedPostBySlug(ctx, args),
+});
+
+/** Public-safe current-or-retained slug resolution without loading the Post body graph. */
+export const resolvePublishedSlug = query({
+	args: { siteUrl: v.string(), slug: v.string() },
+	handler: async (ctx, args) => await resolvePublishedPostSlug(ctx, args),
 });
 
 /** Newest published Post summaries, explicitly bounded for public routes. */

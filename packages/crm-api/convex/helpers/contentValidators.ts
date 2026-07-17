@@ -93,6 +93,21 @@ export const contentKindValidator = v.union(
 
 export type ContentKind = Infer<typeof contentKindValidator>;
 
+export const contentSlugKindValidator = v.union(
+	v.literal("author"),
+	v.literal("category"),
+	v.literal("post"),
+);
+
+export type ContentSlugKind = Infer<typeof contentSlugKindValidator>;
+
+export const publishedSlugChangeValidator = v.object({
+	fromSlug: v.string(),
+	toSlug: v.string(),
+});
+
+export type PublishedSlugChange = Infer<typeof publishedSlugChangeValidator>;
+
 export const contentRevisionSourceValidator = v.union(
 	v.literal("admin"),
 	v.literal("sanityImport"),
