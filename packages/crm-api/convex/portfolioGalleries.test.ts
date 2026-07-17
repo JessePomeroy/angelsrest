@@ -83,7 +83,7 @@ function placement(
 		key,
 		assetId: assetId as Id<"mediaAssets">,
 		altText: options.altText,
-		decorative: options.decorative ?? false,
+		...(options.decorative === undefined ? {} : { decorative: options.decorative }),
 		caption: `${key} caption`,
 		focalPoint: { x: 0.5, y: 0.4 },
 	};
@@ -168,6 +168,7 @@ describe("tenant-scoped portfolio gallery revisions", () => {
 			.filter((item) => item.revisionId === second.revisionId)
 			.sort((a, b) => a.order - b.order);
 		expect(secondPlacements.map((item) => item.placementKey)).toEqual(["two", "one"]);
+		expect(secondPlacements.every((item) => !("decorative" in item))).toBe(true);
 	});
 
 	test("keeps drafts private and requires accessibility review before publication", async () => {

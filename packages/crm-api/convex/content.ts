@@ -28,9 +28,11 @@ import {
 	modelingPageDraftPayloadValidator,
 	serializeHomepageQuotePayload,
 	serializeAboutPagePayload,
+	sanitizeAboutPagePayload,
 	serializeContactPagePayload,
 	serializeSiteSettingsPayload,
 	serializeModelingPagePayload,
+	sanitizeModelingPagePayload,
 	type SiteSettingsDraftPayload,
 	siteSettingsDraftPayloadValidator,
 	toPublishedHomepageQuote,
@@ -330,18 +332,19 @@ export const saveAboutPageDraft = mutation({
 		payload: aboutPageDraftPayloadValidator,
 	},
 	handler: async (ctx, args) => {
-		validateAboutPageDraft(args.payload);
+		const payload = sanitizeAboutPagePayload(args.payload);
+		validateAboutPageDraft(payload);
 		const { client } = await requireSiteAdmin(ctx, args.siteUrl);
 		await requireReadyAboutAssets(
 			ctx,
 			client.siteUrl,
-			args.payload.portraits ?? [],
-			args.payload.seoImageAssetId,
+			payload.portraits ?? [],
 		);
 		return await saveContentDraft(ctx, {
 			...args,
+			payload,
 			kind: ABOUT_PAGE_KIND,
-			serializedPayload: serializeAboutPagePayload(args.payload),
+			serializedPayload: serializeAboutPagePayload(payload),
 		});
 	},
 });
@@ -361,7 +364,6 @@ export const publishAboutPage = mutation({
 			ctx,
 			client.siteUrl,
 			published.portraits,
-			published.seoImageAssetId,
 		);
 		return await publishContentDraft(
 			ctx,
@@ -416,18 +418,19 @@ export const saveModelingPageDraft = mutation({
 		payload: modelingPageDraftPayloadValidator,
 	},
 	handler: async (ctx, args) => {
-		validateModelingPageDraft(args.payload);
+		const payload = sanitizeModelingPagePayload(args.payload);
+		validateModelingPageDraft(payload);
 		const { client } = await requireSiteAdmin(ctx, args.siteUrl);
 		await requireReadyModelingAssets(
 			ctx,
 			client.siteUrl,
-			args.payload.galleries ?? [],
-			args.payload.seoImageAssetId,
+			payload.galleries ?? [],
 		);
 		return await saveContentDraft(ctx, {
 			...args,
+			payload,
 			kind: MODELING_PAGE_KIND,
-			serializedPayload: serializeModelingPagePayload(args.payload),
+			serializedPayload: serializeModelingPagePayload(payload),
 		});
 	},
 });
@@ -447,7 +450,6 @@ export const publishModelingPage = mutation({
 			ctx,
 			client.siteUrl,
 			published.galleries,
-			published.seoImageAssetId,
 		);
 		return await publishContentDraft(
 			ctx,

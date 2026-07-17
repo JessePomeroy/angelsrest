@@ -11,14 +11,8 @@ export async function requireReadyAboutAssets(
 	ctx: AboutPageCtx,
 	siteUrl: string,
 	portraits: AboutPortraitPlacement[],
-	seoImageAssetId?: Id<"mediaAssets">,
 ) {
-	const ids = [
-		...new Set([
-			...portraits.map((portrait) => portrait.assetId),
-			...(seoImageAssetId ? [seoImageAssetId] : []),
-		]),
-	];
+	const ids = [...new Set(portraits.map((portrait) => portrait.assetId))];
 	const assets = await Promise.all(ids.map((id) => ctx.db.get(id)));
 	const assetMap = new Map<Id<"mediaAssets">, Doc<"mediaAssets">>();
 	for (const [index, asset] of assets.entries()) {
@@ -43,7 +37,6 @@ export async function projectPublishedAboutPage(
 		ctx,
 		siteUrl,
 		state.payload.portraits,
-		state.payload.seoImageAssetId,
 	);
 	const projectAsset = (assetId: Id<"mediaAssets">) => {
 		const asset = assets.get(assetId);
@@ -57,18 +50,15 @@ export async function projectPublishedAboutPage(
 			derivatives: asset.derivatives,
 		};
 	};
-	const { seoImageAssetId, ...content } = state.payload;
 	return {
 		...state,
 		payload: {
-			...content,
-			seoImage: seoImageAssetId ? projectAsset(seoImageAssetId) : undefined,
+			...state.payload,
 			portraits: state.payload.portraits.map((portrait, order) => {
 				return {
 					key: portrait.key,
 					order,
 					altText: portrait.altText,
-					decorative: portrait.decorative,
 					asset: projectAsset(portrait.assetId),
 				};
 			}),

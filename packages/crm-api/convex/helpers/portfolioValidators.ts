@@ -5,7 +5,8 @@ export const portfolioPlacementDraftValidator = v.object({
 	key: v.string(),
 	assetId: v.id("mediaAssets"),
 	altText: v.optional(v.string()),
-	decorative: v.boolean(),
+	// Transitional only for existing revisions and deployed editor clients.
+	decorative: v.optional(v.boolean()),
 	caption: v.optional(v.string()),
 	focalPoint: v.optional(v.object({ x: v.number(), y: v.number() })),
 });
@@ -97,16 +98,15 @@ export function toPublishedPortfolioGallery(draft: PortfolioGalleryDraft) {
 		slug: draft.slug,
 		placements: draft.placements.map((placement, index) => {
 			const altText = placement.altText?.trim() ?? "";
-			if (placement.decorative && altText) {
-				throw new Error(`Placement ${index + 1} cannot have alt text when marked decorative`);
-			}
 			if (!placement.decorative && !altText) {
-				throw new Error(`Placement ${index + 1} needs alt text or must be marked decorative`);
+				throw new Error(`Placement ${index + 1} needs alt text before publishing`);
 			}
 			return {
-				...placement,
-				altText,
+				key: placement.key,
+				assetId: placement.assetId,
+				altText: placement.decorative ? "" : altText,
 				caption: placement.caption?.trim() || null,
+				focalPoint: placement.focalPoint,
 			};
 		}),
 	};
@@ -121,7 +121,6 @@ export function serializePortfolioGalleryDraft(draft: PortfolioGalleryDraft) {
 			key: placement.key,
 			assetId: placement.assetId,
 			altText: placement.altText ?? null,
-			decorative: placement.decorative,
 			caption: placement.caption ?? null,
 			focalPoint: placement.focalPoint ?? null,
 		})),

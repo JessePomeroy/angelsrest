@@ -69,7 +69,6 @@ export function portfolioDraftFromRevision(
 			key: placement.placementKey,
 			assetId: placement.assetId,
 			altText: placement.altText,
-			decorative: placement.decorative,
 			caption: placement.caption,
 			focalPoint: placement.focalPoint,
 		})),
@@ -111,7 +110,6 @@ export function toEditorRevision(
 			assetId: placement.assetId,
 			order: placement.order,
 			altText: placement.altText ?? null,
-			decorative: placement.decorative,
 			caption: placement.caption ?? null,
 			focalPoint: placement.focalPoint ?? null,
 		})),
@@ -158,7 +156,6 @@ export async function loadPublicPortfolioGallery(
 				key: placement.key,
 				order,
 				altText: placement.altText,
-				decorative: placement.decorative,
 				caption: placement.caption,
 				focalPoint: placement.focalPoint ?? null,
 				asset: {
