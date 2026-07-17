@@ -119,6 +119,29 @@ describe("retired CMS image metadata migrations", () => {
 		expect(await t.run(async (ctx) =>
 			ctx.db.get(ids.aboutRevisionId)
 		)).toHaveProperty("payload.portraits.0.decorative", true);
+
+		expect(await t.mutation(
+			internal.cmsMigrations.backfillRetiredContentImageAltText,
+			{
+				cursor: null,
+				assetId: ids.assetId,
+				altText: "Bouquet of blush roses and eucalyptus leaves",
+			},
+		)).toMatchObject({ isDone: true, changed: 1 });
+		const backfilled = await t.run(async (ctx) => ctx.db.get(ids.aboutRevisionId));
+		expect(backfilled).toHaveProperty(
+			"payload.portraits.0.altText",
+			"Bouquet of blush roses and eucalyptus leaves",
+		);
+		expect(backfilled).not.toHaveProperty("payload.portraits.0.decorative");
+		expect(await t.mutation(
+			internal.cmsMigrations.backfillRetiredContentImageAltText,
+			{
+				cursor: null,
+				assetId: ids.assetId,
+				altText: "Bouquet of blush roses and eucalyptus leaves",
+			},
+		)).toMatchObject({ isDone: true, changed: 0 });
 	});
 
 	test("strips legacy Portfolio flags and recalculates the revision checksum", async () => {
