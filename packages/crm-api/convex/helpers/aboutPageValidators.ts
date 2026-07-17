@@ -1,13 +1,11 @@
 import type { Infer } from "convex/values";
 import { v } from "convex/values";
-import { mediaFocalPointValidator } from "./mediaValidators";
 
 export const aboutPortraitPlacementValidator = v.object({
 	key: v.string(),
 	assetId: v.id("mediaAssets"),
 	altText: v.optional(v.string()),
 	decorative: v.boolean(),
-	focalPoint: v.optional(mediaFocalPointValidator),
 });
 
 export const aboutSectionValidator = v.object({
@@ -103,18 +101,6 @@ function assertUniqueKeys(items: Array<{ key: string }>, field: string) {
 	}
 }
 
-function validateFocalPoint(point: { x: number; y: number } | undefined) {
-	if (!point) return;
-	if (
-		!Number.isFinite(point.x)
-		|| !Number.isFinite(point.y)
-		|| point.x < 0
-		|| point.x > 1
-		|| point.y < 0
-		|| point.y > 1
-	) throw new Error("Portrait focal points must be between zero and one");
-}
-
 /** Bound autosaved drafts without requiring publishable completeness. */
 export function validateAboutPageDraft(payload: AboutPageDraftPayload) {
 	for (const key of Object.keys(payload)) {
@@ -141,7 +127,6 @@ export function validateAboutPageDraft(payload: AboutPageDraftPayload) {
 	for (const portrait of portraits) {
 		assertMaximum(portrait.key, LIMITS.placementKey, "Portrait placement key");
 		assertMaximum(portrait.altText, LIMITS.altText, "Portrait alt text");
-		validateFocalPoint(portrait.focalPoint);
 	}
 
 	const sections = payload.sections ?? [];
@@ -277,7 +262,6 @@ export function serializeAboutPagePayload(payload: AboutPageDraftPayload) {
 			assetId: portrait.assetId,
 			altText: portrait.altText ?? null,
 			decorative: portrait.decorative,
-			focalPoint: portrait.focalPoint ?? null,
 		})),
 		sections: (payload.sections ?? []).map((section) => ({
 			key: section.key,
