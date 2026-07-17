@@ -69,7 +69,6 @@ export async function projectPublishedAboutPage(
 					order,
 					altText: portrait.altText,
 					decorative: portrait.decorative,
-					focalPoint: portrait.focalPoint ?? null,
 					asset: projectAsset(portrait.assetId),
 				};
 			}),

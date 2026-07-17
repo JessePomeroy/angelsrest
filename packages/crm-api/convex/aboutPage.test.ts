@@ -83,7 +83,6 @@ function portrait(
 		assetId,
 		altText: options.altText,
 		decorative: options.decorative ?? false,
-		focalPoint: { x: 0.5, y: 0.4 },
 	};
 }
 
@@ -302,6 +301,7 @@ describe("typed About-page content", () => {
 			},
 		});
 		const serialized = JSON.stringify(published);
+		expect(serialized).not.toContain("focalPoint");
 		expect(serialized).not.toContain("originalFilename");
 		expect(serialized).not.toContain("master.webp");
 		expect(serialized).not.toContain(assetA.id);
