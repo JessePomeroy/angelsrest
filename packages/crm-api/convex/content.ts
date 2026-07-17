@@ -28,11 +28,9 @@ import {
 	modelingPageDraftPayloadValidator,
 	serializeHomepageQuotePayload,
 	serializeAboutPagePayload,
-	sanitizeAboutPagePayload,
 	serializeContactPagePayload,
 	serializeSiteSettingsPayload,
 	serializeModelingPagePayload,
-	sanitizeModelingPagePayload,
 	type SiteSettingsDraftPayload,
 	siteSettingsDraftPayloadValidator,
 	toPublishedHomepageQuote,
@@ -332,7 +330,7 @@ export const saveAboutPageDraft = mutation({
 		payload: aboutPageDraftPayloadValidator,
 	},
 	handler: async (ctx, args) => {
-		const payload = sanitizeAboutPagePayload(args.payload);
+		const payload = args.payload;
 		validateAboutPageDraft(payload);
 		const { client } = await requireSiteAdmin(ctx, args.siteUrl);
 		await requireReadyAboutAssets(
@@ -418,7 +416,7 @@ export const saveModelingPageDraft = mutation({
 		payload: modelingPageDraftPayloadValidator,
 	},
 	handler: async (ctx, args) => {
-		const payload = sanitizeModelingPagePayload(args.payload);
+		const payload = args.payload;
 		validateModelingPageDraft(payload);
 		const { client } = await requireSiteAdmin(ctx, args.siteUrl);
 		await requireReadyModelingAssets(

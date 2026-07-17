@@ -240,7 +240,6 @@ describe("tenant-scoped CMS media assets", () => {
 				assetId: created.id as Id<"mediaAssets">,
 				placementKey: "test-placement",
 				order: 0,
-				decorative: false,
 			});
 		});
 

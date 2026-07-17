@@ -5,8 +5,6 @@ export const portfolioPlacementDraftValidator = v.object({
 	key: v.string(),
 	assetId: v.id("mediaAssets"),
 	altText: v.optional(v.string()),
-	// Transitional only for existing revisions and deployed editor clients.
-	decorative: v.optional(v.boolean()),
 	caption: v.optional(v.string()),
 	focalPoint: v.optional(v.object({ x: v.number(), y: v.number() })),
 });
@@ -98,13 +96,13 @@ export function toPublishedPortfolioGallery(draft: PortfolioGalleryDraft) {
 		slug: draft.slug,
 		placements: draft.placements.map((placement, index) => {
 			const altText = placement.altText?.trim() ?? "";
-			if (!placement.decorative && !altText) {
+			if (!altText) {
 				throw new Error(`Placement ${index + 1} needs alt text before publishing`);
 			}
 			return {
 				key: placement.key,
 				assetId: placement.assetId,
-				altText: placement.decorative ? "" : altText,
+				altText,
 				caption: placement.caption?.trim() || null,
 				focalPoint: placement.focalPoint,
 			};

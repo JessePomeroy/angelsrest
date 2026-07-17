@@ -5,9 +5,6 @@ export const modelingImagePlacementValidator = v.object({
 	key: v.string(),
 	assetId: v.id("mediaAssets"),
 	altText: v.optional(v.string()),
-	// Transitional only: deployed editors and historical revisions may still
-	// send this field. New saves strip it before persistence.
-	decorative: v.optional(v.boolean()),
 });
 
 export const modelingGalleryDraftValidator = v.object({
@@ -29,7 +26,6 @@ export const modelingPageDraftPayloadValidator = v.object({
 	intro: v.optional(v.string()),
 	galleries: v.optional(v.array(modelingGalleryDraftValidator)),
 	seoDescription: v.optional(v.string()),
-	seoImageAssetId: v.optional(v.id("mediaAssets")),
 });
 
 export type ModelingPageDraftPayload = Infer<
@@ -83,7 +79,6 @@ const ALLOWED_KEYS = new Set([
 	"intro",
 	"galleries",
 	"seoDescription",
-	"seoImageAssetId",
 ]);
 
 function assertMaximum(value: string | undefined, maximum: number, field: string) {
@@ -209,13 +204,12 @@ export function toPublishedModelingPage(
 				);
 			}
 			const normalizedImages = images.map((image, imageIndex) => {
-				const legacyDecorative = image.decorative === true;
 				const altText = optionalText(
 					image.altText,
 					`Category ${galleryIndex + 1} image ${imageIndex + 1} alt text`,
 					LIMITS.altText,
 				);
-				if (!legacyDecorative && !altText) {
+				if (!altText) {
 					throw new Error(
 						`Category ${galleryIndex + 1} image ${imageIndex + 1} needs alt text before publishing`,
 					);
@@ -227,9 +221,7 @@ export function toPublishedModelingPage(
 						LIMITS.imageKey,
 					),
 					assetId: image.assetId,
-					// Preserve existing decorative publications as an empty alt attribute;
-					// new drafts cannot create this state because saves strip the legacy flag.
-					altText: legacyDecorative ? "" : (altText ?? ""),
+					altText,
 				};
 			});
 			return [{
@@ -273,30 +265,6 @@ export function toPublishedModelingPage(
 			"SEO description",
 			LIMITS.seoDescription,
 		),
-	};
-}
-
-/** Remove retired per-image choices from newly persisted drafts. */
-export function sanitizeModelingPagePayload(
-	payload: ModelingPageDraftPayload,
-): ModelingPageDraftPayload {
-	const { seoImageAssetId: _seoImageAssetId, ...content } = payload;
-	return {
-		...content,
-		...(payload.galleries === undefined
-			? {}
-			: {
-				galleries: payload.galleries.map((gallery) => ({
-					...gallery,
-					...(gallery.images === undefined
-						? {}
-						: {
-							images: gallery.images.map(
-								({ decorative: _decorative, ...image }) => image,
-							),
-						}),
-				})),
-			}),
 	};
 }
 

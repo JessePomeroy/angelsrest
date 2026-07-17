@@ -12,7 +12,6 @@ import type * as activityLog from "../activityLog.js";
 import type * as adminAuth from "../adminAuth.js";
 import type * as auth from "../auth.js";
 import type * as authHelpers from "../authHelpers.js";
-import type * as cmsMigrations from "../cmsMigrations.js";
 import type * as content from "../content.js";
 import type * as contracts from "../contracts.js";
 import type * as crm from "../crm.js";
@@ -70,7 +69,6 @@ declare const fullApi: ApiFromModules<{
   adminAuth: typeof adminAuth;
   auth: typeof auth;
   authHelpers: typeof authHelpers;
-  cmsMigrations: typeof cmsMigrations;
   content: typeof content;
   contracts: typeof contracts;
   crm: typeof crm;
