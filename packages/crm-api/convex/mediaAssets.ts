@@ -6,6 +6,8 @@ import { requireDocumentSiteAdmin, requireSiteAdmin } from "./authHelpers";
 import {
 	aboutPageReferencesAsset,
 	type AboutPageDraftPayload,
+	modelingPageReferencesAsset,
+	type ModelingPageDraftPayload,
 } from "./helpers/contentValidators";
 import {
 	readyWebAssetValidator,
@@ -107,25 +109,54 @@ async function requireAssetUnused(
 			q.eq("siteUrl", asset.siteUrl).eq("kind", "aboutPage"),
 		)
 		.unique();
-	if (!aboutDocument) return;
-	const revisionIds = [
-		aboutDocument.draftRevisionId,
-		aboutDocument.publishedRevisionId,
-	].filter((id): id is NonNullable<typeof id> => id !== undefined);
-	const revisions = await Promise.all(
-		[...new Set(revisionIds)].map((revisionId) => ctx.db.get(revisionId)),
-	);
-	for (const revision of revisions) {
-		if (
-			revision
-			&& revision.documentId === aboutDocument._id
-			&& revision.siteUrl === asset.siteUrl
-			&& revision.kind === "aboutPage"
-			&& aboutPageReferencesAsset(
-				revision.payload as AboutPageDraftPayload,
-				asset._id,
-			)
-		) throw new Error("Media asset is in use by About content");
+	if (aboutDocument) {
+		const revisionIds = [
+			aboutDocument.draftRevisionId,
+			aboutDocument.publishedRevisionId,
+		].filter((id): id is NonNullable<typeof id> => id !== undefined);
+		const revisions = await Promise.all(
+			[...new Set(revisionIds)].map((revisionId) => ctx.db.get(revisionId)),
+		);
+		for (const revision of revisions) {
+			if (
+				revision
+				&& revision.documentId === aboutDocument._id
+				&& revision.siteUrl === asset.siteUrl
+				&& revision.kind === "aboutPage"
+				&& aboutPageReferencesAsset(
+					revision.payload as AboutPageDraftPayload,
+					asset._id,
+				)
+			) throw new Error("Media asset is in use by About content");
+		}
+	}
+
+	const modelingDocument = await ctx.db
+		.query("contentDocuments")
+		.withIndex("by_siteUrl_and_kind", (q) =>
+			q.eq("siteUrl", asset.siteUrl).eq("kind", "modelingPage"),
+		)
+		.unique();
+	if (modelingDocument) {
+		const revisionIds = [
+			modelingDocument.draftRevisionId,
+			modelingDocument.publishedRevisionId,
+		].filter((id): id is NonNullable<typeof id> => id !== undefined);
+		const revisions = await Promise.all(
+			[...new Set(revisionIds)].map((revisionId) => ctx.db.get(revisionId)),
+		);
+		for (const revision of revisions) {
+			if (
+				revision
+				&& revision.documentId === modelingDocument._id
+				&& revision.siteUrl === asset.siteUrl
+				&& revision.kind === "modelingPage"
+				&& modelingPageReferencesAsset(
+					revision.payload as ModelingPageDraftPayload,
+					asset._id,
+				)
+			) throw new Error("Media asset is in use by Modeling content");
+		}
 	}
 }
 
