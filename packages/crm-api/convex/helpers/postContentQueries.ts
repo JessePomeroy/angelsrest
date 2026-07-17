@@ -16,6 +16,7 @@ import {
 	requireCanonicalPostSlug,
 	toPublishedPostHeader,
 } from "./postContentValidators";
+import { getContentSlugHistoryOwner } from "./contentSlugHistory";
 
 // A detail page may resolve up to twenty supporting records. Keeping the
 // first public index page to twelve protects the function's read budget until
@@ -126,6 +127,60 @@ export async function getPublishedPostBySlug(
 		document,
 		publishedRevisionId,
 	);
+}
+
+async function requirePublishedPostSlug(
+	ctx: QueryCtx,
+	document: ReturnType<typeof assertPostDocument>,
+) {
+	if (!document.publishedRevisionId || !document.slug) return null;
+	const revision = await ctx.db.get(document.publishedRevisionId);
+	if (!revision) throw new Error("Published Post revision not found");
+	assertPostRevisionOwnership(revision, document);
+	const published = toPublishedPostHeader(asPostRevisionPayload(revision.payload));
+	if (published.slug !== document.slug) throw new Error("Published Post slug mismatch");
+	return published.slug;
+}
+
+/** Resolve a current public slug or one retained historical hop without loading its body graph. */
+export async function resolvePublishedPostSlug(
+	ctx: QueryCtx,
+	args: { siteUrl: string; slug: string },
+) {
+	let slug: string;
+	try {
+		slug = requireCanonicalPostSlug(args.slug);
+	} catch {
+		return null;
+	}
+	const current = await ctx.db
+		.query("contentDocuments")
+		.withIndex("by_siteUrl_and_kind_and_slug", (q) =>
+			q.eq("siteUrl", args.siteUrl).eq("kind", "post").eq("slug", slug),
+		)
+		.unique();
+	if (current) {
+		const document = assertPostDocument(current);
+		const currentSlug = await requirePublishedPostSlug(ctx, document);
+		return currentSlug
+			? { status: "current" as const, kind: "post" as const, slug: currentSlug }
+			: null;
+	}
+	const retained = await getContentSlugHistoryOwner(ctx, {
+		siteUrl: args.siteUrl,
+		kind: "post",
+		slug,
+	});
+	if (!retained) return null;
+	const stored = await ctx.db.get(retained.documentId);
+	if (!stored || stored.siteUrl !== args.siteUrl) {
+		throw new Error("Retained Post slug ownership mismatch");
+	}
+	const document = assertPostDocument(stored);
+	const currentSlug = await requirePublishedPostSlug(ctx, document);
+	if (!currentSlug) return null;
+	if (currentSlug === slug) throw new Error("Retained Post slug points to itself");
+	return { status: "redirect" as const, kind: "post" as const, slug: currentSlug };
 }
 
 export async function listPublishedPosts(

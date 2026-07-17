@@ -3,6 +3,7 @@ import type { MutationCtx } from "../_generated/server";
 import { requireDocumentSiteAdmin, requireSiteAdmin } from "../authHelpers";
 import {
 	assertExpectedPostDraft,
+	asPostRevisionPayload,
 	assertPostDocument,
 	assertPostRevisionOwnership,
 	checksumPostDraft,
@@ -18,8 +19,16 @@ import {
 	postRevisionPayloadFromDraft,
 	requireCanonicalPostSlug,
 	toPublishedPostDraft,
+	toPublishedPostHeader,
 	type PostDraft,
 } from "./postContentValidators";
+import {
+	requireContentSlugAvailable,
+	requirePublishedSlugChangeIntent,
+	requireValidPublishedSlugChangeRetry,
+	retainPreviousPublishedSlug,
+} from "./contentSlugHistory";
+import type { PublishedSlugChange } from "./contentValidators";
 
 function canonicalDraftSlug(draft: PostDraft) {
 	if (draft.slug === undefined || !draft.slug.trim()) return undefined;
@@ -44,24 +53,6 @@ async function getDocumentByKey(
 				.eq("documentKey", documentKey),
 		)
 		.unique();
-}
-
-async function requireSlugAvailable(
-	ctx: MutationCtx,
-	siteUrl: string,
-	slug: string | undefined,
-	documentId?: Id<"contentDocuments">,
-) {
-	if (!slug) return;
-	const owner = await ctx.db
-		.query("contentDocuments")
-		.withIndex("by_siteUrl_and_kind_and_slug", (q) =>
-			q.eq("siteUrl", siteUrl).eq("kind", "post").eq("slug", slug),
-		)
-		.unique();
-	if (owner && owner._id !== documentId) {
-		throw new Error(`Post slug "${slug}" already exists`);
-	}
 }
 
 async function insertPostRevision(
@@ -195,6 +186,18 @@ async function requireExactCurrentRevision(
 	return loaded;
 }
 
+async function requireCurrentPublishedPostSlug(
+	ctx: MutationCtx,
+	document: Doc<"contentDocuments">,
+) {
+	if (!document.publishedRevisionId) return;
+	const revision = await ctx.db.get(document.publishedRevisionId);
+	if (!revision) throw new Error("Published Post revision not found");
+	assertPostRevisionOwnership(revision, document);
+	const published = toPublishedPostHeader(asPostRevisionPayload(revision.payload));
+	if (published.slug !== document.slug) throw new Error("Published Post slug mismatch");
+}
+
 export async function createPostDraft(
 	ctx: MutationCtx,
 	args: { siteUrl: string; documentKey: string; draft: PostDraft },
@@ -223,7 +226,11 @@ export async function createPostDraft(
 		);
 	}
 	const slug = canonicalDraftSlug(draft);
-	await requireSlugAvailable(ctx, client.siteUrl, slug);
+	await requireContentSlugAvailable(ctx, {
+		siteUrl: client.siteUrl,
+		kind: "post",
+		slug,
+	});
 	await requirePostDraftRelations(ctx, client.siteUrl, draft, false);
 
 	const now = Date.now();
@@ -285,10 +292,12 @@ export async function savePostDraft(
 	assertExpectedPostDraft(document, args.expectedDraftRevisionId);
 
 	const slug = canonicalDraftSlug(draft);
-	if (document.publishedRevisionId && slug !== document.slug) {
-		throw new Error("Published Post slugs require redirect support to change");
-	}
-	await requireSlugAvailable(ctx, document.siteUrl, slug, document._id);
+	await requireContentSlugAvailable(ctx, {
+		siteUrl: document.siteUrl,
+		kind: "post",
+		slug,
+		documentId: document._id,
+	});
 	await requirePostDraftRelations(ctx, document.siteUrl, draft, false);
 	const identity = await ctx.auth.getUserIdentity();
 	if (!identity) throw new Error("Not authenticated");
@@ -303,7 +312,7 @@ export async function savePostDraft(
 		now,
 	);
 	await ctx.db.patch(document._id, {
-		slug,
+		...(document.publishedRevisionId ? {} : { slug }),
 		draftRevisionId: revisionId,
 		updatedAt: now,
 		updatedBy: identity.tokenIdentifier,
@@ -313,7 +322,11 @@ export async function savePostDraft(
 
 export async function publishPostDraft(
 	ctx: MutationCtx,
-	args: { documentId: Id<"contentDocuments">; draftRevisionId: Id<"contentRevisions"> },
+	args: {
+		documentId: Id<"contentDocuments">;
+		draftRevisionId: Id<"contentRevisions">;
+		publishedSlugChange?: PublishedSlugChange;
+	},
 ) {
 	const stored = await requireDocumentSiteAdmin(
 		ctx,
@@ -329,6 +342,17 @@ export async function publishPostDraft(
 		if (!retry) throw new Error("Published Post revision not found");
 		const published = toPublishedPostDraft(retry.draft);
 		if (published.slug !== document.slug) throw new Error("Published Post slug mismatch");
+		await requireValidPublishedSlugChangeRetry(ctx, {
+			document,
+			kind: "post",
+			intent: args.publishedSlugChange,
+		});
+		await requireContentSlugAvailable(ctx, {
+			siteUrl: document.siteUrl,
+			kind: "post",
+			slug: published.slug,
+			documentId: document._id,
+		});
 		await requirePostDraftRelations(ctx, document.siteUrl, published, true);
 		return { documentId: document._id, revisionId: retry.revision._id };
 	}
@@ -336,14 +360,29 @@ export async function publishPostDraft(
 	const loaded = await loadPostRevision(ctx, document, args.draftRevisionId);
 	if (!loaded) throw new Error("Post draft revision not found");
 	const published = toPublishedPostDraft(loaded.draft);
-	if (document.publishedRevisionId && published.slug !== document.slug) {
-		throw new Error("Published Post slugs require redirect support to change");
-	}
-	await requireSlugAvailable(ctx, document.siteUrl, published.slug, document._id);
+	await requireCurrentPublishedPostSlug(ctx, document);
+	requirePublishedSlugChangeIntent({
+		document,
+		nextSlug: published.slug,
+		intent: args.publishedSlugChange,
+	});
+	await requireContentSlugAvailable(ctx, {
+		siteUrl: document.siteUrl,
+		kind: "post",
+		slug: published.slug,
+		documentId: document._id,
+	});
 	await requirePostDraftRelations(ctx, document.siteUrl, published, true);
 	const identity = await ctx.auth.getUserIdentity();
 	if (!identity) throw new Error("Not authenticated");
 	const now = Date.now();
+	await retainPreviousPublishedSlug(ctx, {
+		document,
+		kind: "post",
+		nextSlug: published.slug,
+		actor: identity.tokenIdentifier,
+		now,
+	});
 	await ctx.db.patch(document._id, {
 		slug: published.slug,
 		publishedRevisionId: loaded.revision._id,

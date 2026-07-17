@@ -13,6 +13,8 @@ import {
 	projectPublishedBlogContent,
 	toEditorBlogRevision,
 } from "./blogContentData";
+import { getContentSlugHistoryOwner } from "./contentSlugHistory";
+import { toPublishedBlogSupportingContent } from "./blogContentValidators";
 
 export async function getBlogEditorState(
 	ctx: QueryCtx,
@@ -109,6 +111,71 @@ export async function getPublishedBlogBySlug(
 		publishedAt: validatedDocument.publishedAt ?? loaded.revision.createdAt,
 		payload: await projectPublishedBlogContent(ctx, validatedDocument, loaded),
 	};
+}
+
+async function requirePublishedBlogSlug(
+	ctx: QueryCtx,
+	document: ReturnType<typeof assertBlogDocument>,
+) {
+	if (!document.publishedRevisionId || !document.slug) return null;
+	const loaded = await loadBlogRevision(
+		ctx,
+		document,
+		document.publishedRevisionId,
+	);
+	if (!loaded) throw new Error("Published Blog supporting revision not found");
+	const published = toPublishedBlogSupportingContent(loaded.draft);
+	if (published.slug !== document.slug) {
+		throw new Error("Published Blog supporting slug mismatch");
+	}
+	return published.slug;
+}
+
+/** Resolve a current public slug or one retained historical hop without exposing content. */
+export async function resolvePublishedBlogSlug(
+	ctx: QueryCtx,
+	args: { siteUrl: string; kind: BlogSupportingKind; slug: string },
+) {
+	let slug: string;
+	try {
+		slug = requireCanonicalBlogSlug(
+			args.slug,
+			args.kind === "author" ? "Author slug" : "Category slug",
+			args.kind === "author"
+				? BLOG_CONTENT_LIMITS.authorSlug
+				: BLOG_CONTENT_LIMITS.categorySlug,
+		);
+	} catch {
+		return null;
+	}
+	const current = await ctx.db
+		.query("contentDocuments")
+		.withIndex("by_siteUrl_and_kind_and_slug", (q) =>
+			q.eq("siteUrl", args.siteUrl).eq("kind", args.kind).eq("slug", slug),
+		)
+		.unique();
+	if (current) {
+		const document = assertBlogDocument(current, args.kind);
+		const currentSlug = await requirePublishedBlogSlug(ctx, document);
+		return currentSlug
+			? { status: "current" as const, kind: args.kind, slug: currentSlug }
+			: null;
+	}
+	const retained = await getContentSlugHistoryOwner(ctx, {
+		siteUrl: args.siteUrl,
+		kind: args.kind,
+		slug,
+	});
+	if (!retained) return null;
+	const stored = await ctx.db.get(retained.documentId);
+	if (!stored || stored.siteUrl !== args.siteUrl) {
+		throw new Error("Retained Blog slug ownership mismatch");
+	}
+	const document = assertBlogDocument(stored, args.kind);
+	const currentSlug = await requirePublishedBlogSlug(ctx, document);
+	if (!currentSlug) return null;
+	if (currentSlug === slug) throw new Error("Retained Blog slug points to itself");
+	return { status: "redirect" as const, kind: args.kind, slug: currentSlug };
 }
 
 export async function listPublishedBlogDocuments(

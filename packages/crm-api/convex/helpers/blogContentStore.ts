@@ -20,6 +20,13 @@ import {
 	requireReadyAuthorPortrait,
 	validateBlogDocumentKey,
 } from "./blogContentData";
+import {
+	requireContentSlugAvailable,
+	requirePublishedSlugChangeIntent,
+	requireValidPublishedSlugChangeRetry,
+	retainPreviousPublishedSlug,
+} from "./contentSlugHistory";
+import type { PublishedSlugChange } from "./contentValidators";
 
 function canonicalDraftSlug(draft: BlogSupportingDraft) {
 	if (draft.slug === undefined || !draft.slug.trim()) return undefined;
@@ -50,25 +57,6 @@ async function getDocumentByKey(
 		.unique();
 }
 
-async function requireSlugAvailable(
-	ctx: MutationCtx,
-	siteUrl: string,
-	kind: BlogSupportingKind,
-	slug: string | undefined,
-	documentId?: Id<"contentDocuments">,
-) {
-	if (!slug) return;
-	const owner = await ctx.db
-		.query("contentDocuments")
-		.withIndex("by_siteUrl_and_kind_and_slug", (q) =>
-			q.eq("siteUrl", siteUrl).eq("kind", kind).eq("slug", slug),
-		)
-		.unique();
-	if (owner && owner._id !== documentId) {
-		throw new Error(`${kind === "author" ? "Author" : "Category"} slug "${slug}" already exists`);
-	}
-}
-
 async function insertRevision(
 	ctx: MutationCtx,
 	document: Doc<"contentDocuments">,
@@ -88,6 +76,23 @@ async function insertRevision(
 		createdAt: now,
 		createdBy: actor,
 	});
+}
+
+async function requireCurrentPublishedBlogSlug(
+	ctx: MutationCtx,
+	document: Doc<"contentDocuments">,
+) {
+	if (!document.publishedRevisionId) return;
+	const loaded = await loadBlogRevision(
+		ctx,
+		document,
+		document.publishedRevisionId,
+	);
+	if (!loaded) throw new Error("Published Blog supporting revision not found");
+	const published = toPublishedBlogSupportingContent(loaded.draft);
+	if (published.slug !== document.slug) {
+		throw new Error("Published Blog supporting slug mismatch");
+	}
 }
 
 export async function createBlogDraft(
@@ -124,7 +129,11 @@ export async function createBlogDraft(
 		);
 	}
 	const slug = canonicalDraftSlug(args.draft);
-	await requireSlugAvailable(ctx, client.siteUrl, args.draft.kind, slug);
+	await requireContentSlugAvailable(ctx, {
+		siteUrl: client.siteUrl,
+		kind: args.draft.kind,
+		slug,
+	});
 	await requireReadyAuthorPortrait(ctx, client.siteUrl, args.draft);
 
 	const now = Date.now();
@@ -180,16 +189,12 @@ export async function saveBlogDraft(
 	assertExpectedBlogDraft(document, args.expectedDraftRevisionId);
 
 	const slug = canonicalDraftSlug(args.draft);
-	if (document.publishedRevisionId && slug !== document.slug) {
-		throw new Error("Published Blog supporting slugs require redirect support to change");
-	}
-	await requireSlugAvailable(
-		ctx,
-		document.siteUrl,
-		document.kind,
+	await requireContentSlugAvailable(ctx, {
+		siteUrl: document.siteUrl,
+		kind: document.kind,
 		slug,
-		document._id,
-	);
+		documentId: document._id,
+	});
 	await requireReadyAuthorPortrait(ctx, document.siteUrl, args.draft);
 
 	const identity = await ctx.auth.getUserIdentity();
@@ -204,7 +209,7 @@ export async function saveBlogDraft(
 		now,
 	);
 	await ctx.db.patch(document._id, {
-		slug,
+		...(document.publishedRevisionId ? {} : { slug }),
 		draftRevisionId: revisionId,
 		updatedAt: now,
 		updatedBy: identity.tokenIdentifier,
@@ -217,6 +222,7 @@ export async function publishBlogDraft(
 	args: {
 		documentId: Id<"contentDocuments">;
 		draftRevisionId: Id<"contentRevisions">;
+		publishedSlugChange?: PublishedSlugChange;
 	},
 ) {
 	const stored = await requireDocumentSiteAdmin(
@@ -241,6 +247,17 @@ export async function publishBlogDraft(
 		if (published.slug !== document.slug) {
 			throw new Error("Published Blog supporting slug mismatch");
 		}
+		await requireValidPublishedSlugChangeRetry(ctx, {
+			document,
+			kind: document.kind,
+			intent: args.publishedSlugChange,
+		});
+		await requireContentSlugAvailable(ctx, {
+			siteUrl: document.siteUrl,
+			kind: document.kind,
+			slug: published.slug,
+			documentId: document._id,
+		});
 		await requireReadyAuthorPortrait(
 			ctx,
 			document.siteUrl,
@@ -252,21 +269,30 @@ export async function publishBlogDraft(
 	const loaded = await loadBlogRevision(ctx, document, args.draftRevisionId);
 	if (!loaded) throw new Error("Blog draft revision not found");
 	const published = toPublishedBlogSupportingContent(loaded.draft);
-	if (document.publishedRevisionId && published.slug !== document.slug) {
-		throw new Error("Published Blog supporting slugs require redirect support to change");
-	}
-	await requireSlugAvailable(
-		ctx,
-		document.siteUrl,
-		document.kind,
-		published.slug,
-		document._id,
-	);
+	await requireCurrentPublishedBlogSlug(ctx, document);
+	requirePublishedSlugChangeIntent({
+		document,
+		nextSlug: published.slug,
+		intent: args.publishedSlugChange,
+	});
+	await requireContentSlugAvailable(ctx, {
+		siteUrl: document.siteUrl,
+		kind: document.kind,
+		slug: published.slug,
+		documentId: document._id,
+	});
 	await requireReadyAuthorPortrait(ctx, document.siteUrl, loaded.draft);
 
 	const identity = await ctx.auth.getUserIdentity();
 	if (!identity) throw new Error("Not authenticated");
 	const now = Date.now();
+	await retainPreviousPublishedSlug(ctx, {
+		document,
+		kind: document.kind,
+		nextSlug: published.slug,
+		actor: identity.tokenIdentifier,
+		now,
+	});
 	await ctx.db.patch(document._id, {
 		slug: published.slug,
 		publishedRevisionId: loaded.revision._id,

@@ -206,7 +206,7 @@ describe("tenant-scoped Blog supporting content", () => {
 		);
 		await expectError(
 			create(adminA, SITE_A.siteUrl, "different-key", author("Duplicate Slug", "shared-slug")),
-			/slug .* already exists/i,
+			/slug .* reserved/i,
 		);
 		expect(authors[0]?.documentId).toBe(first.documentId);
 	});
@@ -310,10 +310,6 @@ describe("tenant-scoped Blog supporting content", () => {
 
 		const newer = await save(adminA, created.documentId, category("New Stories", "stories"));
 		await expectError(publish(adminA, created.documentId, created.revisionId), /conflict/i);
-		await expectError(
-			save(adminA, created.documentId, category("New Stories", "renamed-stories"), newer.revisionId),
-			/redirect support/i,
-		);
 		expect(
 			(await adminA.query(api.blogContent.getEditorState, {
 				documentId: created.documentId,
@@ -526,6 +522,13 @@ describe("tenant-scoped Blog supporting content", () => {
 		});
 		await expect(
 			t.query(api.blogContent.getPublishedBySlug, {
+				siteUrl: SITE_A.siteUrl,
+				kind: "category",
+				slug: "different",
+			}),
+		).rejects.toThrow(/slug mismatch/i);
+		await expect(
+			t.query(api.blogContent.resolvePublishedSlug, {
 				siteUrl: SITE_A.siteUrl,
 				kind: "category",
 				slug: "different",

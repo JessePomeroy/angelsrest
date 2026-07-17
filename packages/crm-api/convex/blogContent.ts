@@ -5,6 +5,7 @@ import {
 	getPublishedBlogBySlug,
 	listBlogEditorDocuments,
 	listPublishedBlogDocuments,
+	resolvePublishedBlogSlug,
 } from "./helpers/blogContentQueries";
 import {
 	createBlogDraft,
@@ -16,6 +17,7 @@ import {
 	blogSupportingDraftValidator,
 	blogSupportingKindValidator,
 } from "./helpers/blogContentValidators";
+import { publishedSlugChangeValidator } from "./helpers/contentValidators";
 
 /** Create one idempotently keyed Author or Category draft for a verified site. */
 export const createDraft = mutation({
@@ -42,6 +44,7 @@ export const publish = mutation({
 	args: {
 		documentId: v.id("contentDocuments"),
 		draftRevisionId: v.id("contentRevisions"),
+		publishedSlugChange: v.optional(publishedSlugChangeValidator),
 	},
 	handler: async (ctx, args) => await publishBlogDraft(ctx, args),
 });
@@ -80,6 +83,16 @@ export const getPublishedBySlug = query({
 		slug: v.string(),
 	},
 	handler: async (ctx, args) => await getPublishedBlogBySlug(ctx, args),
+});
+
+/** Public-safe current-or-retained slug resolution for host-owned HTTP routing. */
+export const resolvePublishedSlug = query({
+	args: {
+		siteUrl: v.string(),
+		kind: blogSupportingKindValidator,
+		slug: v.string(),
+	},
+	handler: async (ctx, args) => await resolvePublishedBlogSlug(ctx, args),
 });
 
 /** Bounded public supporting-content projection in server-assigned rank order. */
