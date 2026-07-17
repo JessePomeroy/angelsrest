@@ -20,6 +20,7 @@ import {
 import { serializePortfolioGalleryDraft } from "./helpers/portfolioValidators";
 
 const MIGRATION_PAGE_SIZE = 100;
+const ALT_TEXT_MAX_LENGTH = 500;
 
 async function checksumPayload(serialized: string) {
 	const digest = await crypto.subtle.digest(
@@ -60,6 +61,92 @@ function modelingPayloadNeedsAccessibilityReview(payload: ModelingPageDraftPaylo
 		)
 	);
 }
+
+/**
+ * Backfill a factual description for one legacy decorative asset, then strip
+ * the retired metadata from each affected revision. This is deliberately
+ * asset-scoped so a migration cannot assign one description to unrelated
+ * images. Call repeatedly with continueCursor until isDone is true.
+ */
+export const backfillRetiredContentImageAltText = internalMutation({
+	args: {
+		cursor: v.union(v.string(), v.null()),
+		assetId: v.id("mediaAssets"),
+		altText: v.string(),
+	},
+	handler: async (ctx, { cursor, assetId, altText }) => {
+		const normalizedAltText = altText.trim();
+		if (!normalizedAltText) throw new Error("Migration alt text is required");
+		if (normalizedAltText.length > ALT_TEXT_MAX_LENGTH) {
+			throw new Error(`Migration alt text must be ${ALT_TEXT_MAX_LENGTH} characters or fewer`);
+		}
+
+		const page = await ctx.db.query("contentRevisions").paginate({
+			cursor,
+			numItems: MIGRATION_PAGE_SIZE,
+		});
+		const changedRevisionIds: Id<"contentRevisions">[] = [];
+
+		for (const revision of page.page) {
+			if (revision.kind === "aboutPage") {
+				const payload = revision.payload as AboutPageDraftPayload;
+				let changed = false;
+				const withAltText: AboutPageDraftPayload = {
+					...payload,
+					portraits: payload.portraits?.map((portrait) => {
+						if (
+							portrait.assetId !== assetId
+							|| portrait.decorative !== true
+							|| portrait.altText?.trim()
+						) return portrait;
+						changed = true;
+						return { ...portrait, altText: normalizedAltText };
+					}),
+				};
+				if (!changed) continue;
+				const sanitized = sanitizeAboutPagePayload(withAltText);
+				await ctx.db.patch(revision._id, {
+					payload: sanitized,
+					checksum: await checksumPayload(serializeAboutPagePayload(sanitized)),
+				});
+				changedRevisionIds.push(revision._id);
+			} else if (revision.kind === "modelingPage") {
+				const payload = revision.payload as ModelingPageDraftPayload;
+				let changed = false;
+				const withAltText: ModelingPageDraftPayload = {
+					...payload,
+					galleries: payload.galleries?.map((gallery) => ({
+						...gallery,
+						images: gallery.images?.map((image) => {
+							if (
+								image.assetId !== assetId
+								|| image.decorative !== true
+								|| image.altText?.trim()
+							) return image;
+							changed = true;
+							return { ...image, altText: normalizedAltText };
+						}),
+					})),
+				};
+				if (!changed) continue;
+				const sanitized = sanitizeModelingPagePayload(withAltText);
+				await ctx.db.patch(revision._id, {
+					payload: sanitized,
+					checksum: await checksumPayload(serializeModelingPagePayload(sanitized)),
+				});
+				changedRevisionIds.push(revision._id);
+			}
+		}
+
+		return {
+			continueCursor: page.continueCursor,
+			isDone: page.isDone,
+			scanned: page.page.length,
+			changed: changedRevisionIds.length,
+			changedRevisionIds,
+		};
+	},
+});
 
 /**
  * Bounded, resumable cleanup for retired CMS image metadata in content
