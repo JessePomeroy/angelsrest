@@ -1,5 +1,11 @@
 # @jessepomeroy/crm-api
 
+## 2.10.0
+
+### Minor Changes
+
+- 50fc142: Add the tenant-scoped Modeling page revision, media, publication, and public projection contract.
+
 ## 2.9.1
 
 ### Patch Changes
