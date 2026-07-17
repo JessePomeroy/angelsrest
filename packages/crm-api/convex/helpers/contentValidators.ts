@@ -4,6 +4,7 @@ import { aboutPageDraftPayloadValidator } from "./aboutPageValidators";
 import { blogContentRevisionPayloadValidator } from "./blogContentValidators";
 import { contactPageDraftPayloadValidator } from "./contactPageValidators";
 import { modelingPageDraftPayloadValidator } from "./modelingPageValidators";
+import { postRevisionPayloadValidator } from "./postContentValidators";
 
 export {
 	ABOUT_PORTRAIT_MAX,
@@ -62,6 +63,12 @@ export {
 	validateBlogSupportingDraft,
 	validateCategoryDraft,
 } from "./blogContentValidators";
+export {
+	postFormatValidator,
+	postPresentationValidator,
+	type PostRevisionPayload,
+	postRevisionPayloadValidator,
+} from "./postContentValidators";
 
 export const singletonContentKindValidator = v.union(
 	v.literal("siteSettings"),
@@ -81,6 +88,7 @@ export const contentKindValidator = v.union(
 	v.literal("modelingPage"),
 	v.literal("author"),
 	v.literal("category"),
+	v.literal("post"),
 );
 
 export type ContentKind = Infer<typeof contentKindValidator>;
@@ -121,6 +129,7 @@ export const contentRevisionPayloadValidator = v.union(
 	aboutPageDraftPayloadValidator,
 	modelingPageDraftPayloadValidator,
 	blogContentRevisionPayloadValidator,
+	postRevisionPayloadValidator,
 );
 
 export type ContentRevisionPayload = Infer<

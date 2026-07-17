@@ -15,6 +15,7 @@ import {
 	readyWebAssetValidator,
 	validateReadyWebAsset,
 } from "./helpers/mediaValidators";
+import { POST_CONTENT_LIMITS } from "./helpers/postContentValidators";
 
 const MEDIA_LIBRARY_PAGE_MAX = 100;
 const MEDIA_BATCH_MAX = 500;
@@ -96,6 +97,39 @@ async function requireAssetUnused(
 	ctx: MutationCtx,
 	asset: Doc<"mediaAssets">,
 ) {
+	const postDocuments = await ctx.db
+		.query("contentDocuments")
+		.withIndex("by_siteUrl_and_kind_and_rank", (q) =>
+			q.eq("siteUrl", asset.siteUrl).eq("kind", "post"),
+		)
+		.take(POST_CONTENT_LIMITS.documents + 1);
+	if (postDocuments.length > POST_CONTENT_LIMITS.documents) {
+		throw new Error("Media asset Post usage cannot be verified safely");
+	}
+	const activeRevisionIds = [
+		...new Set(
+			postDocuments.flatMap((document) =>
+				[document.draftRevisionId, document.publishedRevisionId].filter(
+					(revisionId): revisionId is NonNullable<typeof revisionId> =>
+						revisionId !== undefined,
+				),
+			),
+		),
+	];
+	const activePostUsages = await Promise.all(
+		activeRevisionIds.map(async (revisionId) =>
+			await ctx.db
+				.query("contentMediaPlacements")
+				.withIndex("by_revisionId_and_assetId", (q) =>
+					q.eq("revisionId", revisionId).eq("assetId", asset._id),
+				)
+				.first(),
+		),
+	);
+	if (activePostUsages.some((usage) => usage !== null)) {
+		throw new Error("Media asset is in use by Post content");
+	}
+
 	const portfolioUsage = await ctx.db
 		.query("portfolioPlacements")
 		.withIndex("by_siteUrl_and_assetId", (q) =>
