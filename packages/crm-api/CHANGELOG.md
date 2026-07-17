@@ -1,5 +1,11 @@
 # @jessepomeroy/crm-api
 
+## 2.12.0
+
+### Minor Changes
+
+- f4ee466: Add tenant-scoped Post revision graphs with ordered rich-text blocks, media and technical-item placements, dynamic supporting-content references, SEO overrides, publication validation, and integrity-checked public reads.
+
 ## 2.11.0
 
 ### Minor Changes
