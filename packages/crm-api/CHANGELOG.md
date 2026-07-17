@@ -1,5 +1,11 @@
 # @jessepomeroy/crm-api
 
+## 2.9.1
+
+### Patch Changes
+
+- 317d2e6: Remove the retired About portrait focal-point field from draft validation, stable serialization, and public projections.
+
 ## 2.9.0
 
 ### Minor Changes
