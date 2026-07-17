@@ -2,7 +2,6 @@ import type { Infer } from "convex/values";
 import { v } from "convex/values";
 import { aboutPageDraftPayloadValidator } from "./aboutPageValidators";
 import { contactPageDraftPayloadValidator } from "./contactPageValidators";
-import { legacyAboutPageDraftPayloadValidator } from "./legacyAboutFocalValidator";
 
 export {
 	ABOUT_PORTRAIT_MAX,
@@ -67,7 +66,6 @@ export const contentRevisionPayloadValidator = v.union(
 	homepageQuoteDraftPayloadValidator,
 	contactPageDraftPayloadValidator,
 	aboutPageDraftPayloadValidator,
-	legacyAboutPageDraftPayloadValidator,
 );
 
 export type ContentRevisionPayload = Infer<
