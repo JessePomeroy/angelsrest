@@ -1,6 +1,7 @@
 import type { Infer } from "convex/values";
 import { v } from "convex/values";
 import { aboutPageDraftPayloadValidator } from "./aboutPageValidators";
+import { blogContentRevisionPayloadValidator } from "./blogContentValidators";
 import { contactPageDraftPayloadValidator } from "./contactPageValidators";
 import { modelingPageDraftPayloadValidator } from "./modelingPageValidators";
 
@@ -35,6 +36,42 @@ export {
 	toPublishedModelingPage,
 	validateModelingPageDraft,
 } from "./modelingPageValidators";
+export {
+	BLOG_CONTENT_LIMITS,
+	type AuthorDraft,
+	type AuthorPortraitDraft,
+	authorDraftValidator,
+	authorSlugCandidate,
+	blogContentChecksumInput,
+	type BlogSupportingDraft,
+	type BlogSupportingKind,
+	blogSupportingDraftValidator,
+	blogSupportingKindValidator,
+	type CategoryDraft,
+	categoryDraftValidator,
+	categorySlugCandidate,
+	type PublishedAuthor,
+	type PublishedBlogSupportingContent,
+	type PublishedCategory,
+	requireCanonicalBlogSlug,
+	serializeBlogSupportingDraft,
+	toPublishedAuthor,
+	toPublishedBlogSupportingContent,
+	toPublishedCategory,
+	validateAuthorDraft,
+	validateBlogSupportingDraft,
+	validateCategoryDraft,
+} from "./blogContentValidators";
+
+export const singletonContentKindValidator = v.union(
+	v.literal("siteSettings"),
+	v.literal("homepageQuote"),
+	v.literal("contactPage"),
+	v.literal("aboutPage"),
+	v.literal("modelingPage"),
+);
+
+export type SingletonContentKind = Infer<typeof singletonContentKindValidator>;
 
 export const contentKindValidator = v.union(
 	v.literal("siteSettings"),
@@ -42,6 +79,8 @@ export const contentKindValidator = v.union(
 	v.literal("contactPage"),
 	v.literal("aboutPage"),
 	v.literal("modelingPage"),
+	v.literal("author"),
+	v.literal("category"),
 );
 
 export type ContentKind = Infer<typeof contentKindValidator>;
@@ -81,6 +120,7 @@ export const contentRevisionPayloadValidator = v.union(
 	contactPageDraftPayloadValidator,
 	aboutPageDraftPayloadValidator,
 	modelingPageDraftPayloadValidator,
+	blogContentRevisionPayloadValidator,
 );
 
 export type ContentRevisionPayload = Infer<

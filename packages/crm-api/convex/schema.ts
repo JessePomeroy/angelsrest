@@ -41,11 +41,15 @@ export default defineSchema({
 		.index("by_stripeSubscriptionId", ["stripeSubscriptionId"])
 		.index("by_stripeConnectedAccountId", ["stripeConnectedAccountId"]),
 
-	// Provider-neutral editorial identity. Each content kind is a tenant singleton
-	// with an explicit validated payload contract.
+	// Provider-neutral editorial identity. Legacy page kinds remain tenant
+	// singletons; supporting Blog records use a stable document key plus a
+	// tenant/kind-scoped mutable slug and server-assigned rank.
 	contentDocuments: defineTable({
 		siteUrl: v.string(),
 		kind: contentKindValidator,
+		documentKey: v.optional(v.string()),
+		slug: v.optional(v.string()),
+		rank: v.optional(v.number()),
 		draftRevisionId: v.optional(v.id("contentRevisions")),
 		publishedRevisionId: v.optional(v.id("contentRevisions")),
 		createdAt: v.number(),
@@ -54,7 +58,15 @@ export default defineSchema({
 		updatedBy: v.string(),
 		publishedAt: v.optional(v.number()),
 		publishedBy: v.optional(v.string()),
-	}).index("by_siteUrl_and_kind", ["siteUrl", "kind"]),
+	})
+		.index("by_siteUrl_and_kind", ["siteUrl", "kind"])
+		.index("by_siteUrl_and_kind_and_documentKey", [
+			"siteUrl",
+			"kind",
+			"documentKey",
+		])
+		.index("by_siteUrl_and_kind_and_slug", ["siteUrl", "kind", "slug"])
+		.index("by_siteUrl_and_kind_and_rank", ["siteUrl", "kind", "rank"]),
 
 	// Immutable revisions keep drafts and published values auditable. The
 	// payload union remains explicit rather than accepting arbitrary content.

@@ -3,16 +3,17 @@ import { v } from "convex/values";
 import type { Doc } from "./_generated/dataModel";
 import { type MutationCtx, mutation, query } from "./_generated/server";
 import { requireDocumentSiteAdmin, requireSiteAdmin } from "./authHelpers";
+import { requireBlogAssetUnused } from "./helpers/blogContentData";
 import {
-	aboutPageReferencesAsset,
 	type AboutPageDraftPayload,
-	modelingPageReferencesAsset,
+	aboutPageReferencesAsset,
 	type ModelingPageDraftPayload,
+	modelingPageReferencesAsset,
 } from "./helpers/contentValidators";
 import {
+	type ReadyWebAsset,
 	readyWebAssetValidator,
 	validateReadyWebAsset,
-	type ReadyWebAsset,
 } from "./helpers/mediaValidators";
 
 const MEDIA_LIBRARY_PAGE_MAX = 100;
@@ -158,6 +159,8 @@ async function requireAssetUnused(
 			) throw new Error("Media asset is in use by Modeling content");
 		}
 	}
+
+	await requireBlogAssetUnused(ctx, asset);
 }
 
 export const registerReadyWebAsset = mutation({
