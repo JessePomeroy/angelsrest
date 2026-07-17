@@ -1,5 +1,11 @@
 # @jessepomeroy/crm-api
 
+## 2.13.0
+
+### Minor Changes
+
+- e9fad60: Retain published Author, Category, and Post slug history, require explicit old/new acknowledgement when publishing a URL change, and expose public-safe current-or-redirect slug resolvers for host-owned routing.
+
 ## 2.12.0
 
 ### Minor Changes
