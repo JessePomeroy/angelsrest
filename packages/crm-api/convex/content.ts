@@ -6,6 +6,10 @@ import {
 	requireReadyAboutAssets,
 } from "./helpers/aboutPageData";
 import {
+	projectPublishedModelingPage,
+	requireReadyModelingAssets,
+} from "./helpers/modelingPageData";
+import {
 	discardContentDraft,
 	getContentEditorState,
 	getPublishedContentState,
@@ -20,26 +24,32 @@ import {
 	type ContentRevisionPayload,
 	type HomepageQuoteDraftPayload,
 	homepageQuoteDraftPayloadValidator,
+	type ModelingPageDraftPayload,
+	modelingPageDraftPayloadValidator,
 	serializeHomepageQuotePayload,
 	serializeAboutPagePayload,
 	serializeContactPagePayload,
 	serializeSiteSettingsPayload,
+	serializeModelingPagePayload,
 	type SiteSettingsDraftPayload,
 	siteSettingsDraftPayloadValidator,
 	toPublishedHomepageQuote,
 	toPublishedAboutPage,
 	toPublishedContactPage,
 	toPublishedSiteSettings,
+	toPublishedModelingPage,
 	validateHomepageQuoteDraft,
 	validateAboutPageDraft,
 	validateContactPageDraft,
 	validateSiteSettingsDraft,
+	validateModelingPageDraft,
 } from "./helpers/contentValidators";
 
 const SITE_SETTINGS_KIND = "siteSettings" as const;
 const HOMEPAGE_QUOTE_KIND = "homepageQuote" as const;
 const CONTACT_PAGE_KIND = "contactPage" as const;
 const ABOUT_PAGE_KIND = "aboutPage" as const;
+const MODELING_PAGE_KIND = "modelingPage" as const;
 
 function asSiteSettingsPayload(
 	payload: ContentRevisionPayload,
@@ -70,6 +80,14 @@ function asAboutPagePayload(
 ): AboutPageDraftPayload {
 	const narrowed = payload as AboutPageDraftPayload;
 	validateAboutPageDraft(narrowed);
+	return narrowed;
+}
+
+function asModelingPagePayload(
+	payload: ContentRevisionPayload,
+): ModelingPageDraftPayload {
+	const narrowed = payload as ModelingPageDraftPayload;
+	validateModelingPageDraft(narrowed);
 	return narrowed;
 }
 
@@ -360,4 +378,91 @@ export const discardAboutPageDraft = mutation({
 	},
 	handler: async (ctx, args) =>
 		await discardContentDraft(ctx, { ...args, kind: ABOUT_PAGE_KIND }),
+});
+
+/** Authenticated state for the site's ordered Modeling categories. */
+export const getModelingPageEditorState = query({
+	args: { siteUrl: v.string() },
+	handler: async (ctx, { siteUrl }) =>
+		await getContentEditorState(
+			ctx,
+			siteUrl,
+			MODELING_PAGE_KIND,
+			asModelingPagePayload,
+		),
+});
+
+/** Public-safe Modeling content with ready responsive derivatives only. */
+export const getPublishedModelingPageWithRevision = query({
+	args: { siteUrl: v.string() },
+	handler: async (ctx, { siteUrl }) => {
+		const state = await getPublishedContentState(
+			ctx,
+			siteUrl,
+			MODELING_PAGE_KIND,
+			(payload) => toPublishedModelingPage(asModelingPagePayload(payload)),
+		);
+		return state
+			? await projectPublishedModelingPage(ctx, siteUrl, state)
+			: null;
+	},
+});
+
+/** Save bounded, incomplete Modeling drafts with tenant-owned media only. */
+export const saveModelingPageDraft = mutation({
+	args: {
+		siteUrl: v.string(),
+		expectedDraftRevisionId: v.optional(v.id("contentRevisions")),
+		payload: modelingPageDraftPayloadValidator,
+	},
+	handler: async (ctx, args) => {
+		validateModelingPageDraft(args.payload);
+		const { client } = await requireSiteAdmin(ctx, args.siteUrl);
+		await requireReadyModelingAssets(
+			ctx,
+			client.siteUrl,
+			args.payload.galleries ?? [],
+			args.payload.seoImageAssetId,
+		);
+		return await saveContentDraft(ctx, {
+			...args,
+			kind: MODELING_PAGE_KIND,
+			serializedPayload: serializeModelingPagePayload(args.payload),
+		});
+	},
+});
+
+export const publishModelingPage = mutation({
+	args: {
+		siteUrl: v.string(),
+		draftRevisionId: v.id("contentRevisions"),
+	},
+	handler: async (ctx, args) => {
+		const { client } = await requireSiteAdmin(ctx, args.siteUrl);
+		const revision = await ctx.db.get(args.draftRevisionId);
+		if (!revision) throw new Error("Modeling draft revision not found");
+		const payload = asModelingPagePayload(revision.payload);
+		const published = toPublishedModelingPage(payload);
+		await requireReadyModelingAssets(
+			ctx,
+			client.siteUrl,
+			published.galleries,
+			published.seoImageAssetId,
+		);
+		return await publishContentDraft(
+			ctx,
+			{ ...args, kind: MODELING_PAGE_KIND },
+			(candidate) =>
+				toPublishedModelingPage(asModelingPagePayload(candidate)),
+		);
+	},
+});
+
+export const discardModelingPageDraft = mutation({
+	args: {
+		siteUrl: v.string(),
+		draftRevisionId: v.id("contentRevisions"),
+	},
+	handler: async (ctx, args) =>
+		await discardContentDraft(ctx, { ...args, kind: MODELING_PAGE_KIND }),
 });
