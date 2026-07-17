@@ -82,7 +82,7 @@ function image(
 		key: options.key ?? "image-primary",
 		assetId,
 		altText: options.altText,
-		decorative: options.decorative ?? false,
+		...(options.decorative === undefined ? {} : { decorative: options.decorative }),
 	};
 }
 
@@ -101,7 +101,6 @@ function completeModeling(assetId: Id<"mediaAssets">) {
 			},
 		],
 		seoDescription: "Modeling, acting, and portrait work by Margaret Helena.",
-		seoImageAssetId: assetId,
 	};
 }
 
@@ -214,11 +213,34 @@ describe("typed Modeling-page content", () => {
 				siteUrl: SITE_A.siteUrl,
 				draftRevisionId: missingAlt.revisionId,
 			}),
-		).rejects.toThrow(/alt text or a Decorative designation/i);
+		).rejects.toThrow(/needs alt text before publishing/i);
+		const legacy = await adminA.mutation(api.content.saveModelingPageDraft, {
+			siteUrl: SITE_A.siteUrl,
+			expectedDraftRevisionId: missingAlt.revisionId,
+			payload: {
+				...completeModeling(assetA.id),
+				seoImageAssetId: assetA.id,
+				galleries: [{
+					...completeModeling(assetA.id).galleries[0],
+					images: [image(assetA.id, {
+						altText: "Margaret in an editorial portrait",
+						decorative: false,
+					})],
+				}],
+			},
+		});
+		const legacyEditor = await adminA.query(
+			api.content.getModelingPageEditorState,
+			{ siteUrl: SITE_A.siteUrl },
+		);
+		expect(legacyEditor?.draft?.payload).not.toHaveProperty("seoImageAssetId");
+		expect(legacyEditor?.draft?.payload.galleries?.[0].images?.[0]).not.toHaveProperty(
+			"decorative",
+		);
 
 		const publishable = await adminA.mutation(api.content.saveModelingPageDraft, {
 			siteUrl: SITE_A.siteUrl,
-			expectedDraftRevisionId: missingAlt.revisionId,
+			expectedDraftRevisionId: legacy.revisionId,
 			payload: {
 				...completeModeling(assetA.id),
 				galleries: [
@@ -298,10 +320,11 @@ describe("typed Modeling-page content", () => {
 						{ order: 1, asset: { assetId: ASSET_A } },
 					],
 				}],
-				seoImage: { assetId: ASSET_A },
 			},
 		});
 		const serialized = JSON.stringify(published);
+		expect(serialized).not.toContain("decorative");
+		expect(serialized).not.toContain("seoImage");
 		expect(serialized).not.toContain("unfinished");
 		expect(serialized).not.toContain("originalFilename");
 		expect(serialized).not.toContain("master.webp");

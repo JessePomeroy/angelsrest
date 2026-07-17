@@ -12,6 +12,7 @@ export {
 	type AboutPortraitPlacement,
 	type PublishedAboutPage,
 	serializeAboutPagePayload,
+	sanitizeAboutPagePayload,
 	toPublishedAboutPage,
 	validateAboutPageDraft,
 } from "./aboutPageValidators";
@@ -32,6 +33,7 @@ export {
 	type ModelingPageDraftPayload,
 	type PublishedModelingPage,
 	serializeModelingPagePayload,
+	sanitizeModelingPagePayload,
 	toPublishedModelingPage,
 	validateModelingPageDraft,
 } from "./modelingPageValidators";

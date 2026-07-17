@@ -5,7 +5,9 @@ export const aboutPortraitPlacementValidator = v.object({
 	key: v.string(),
 	assetId: v.id("mediaAssets"),
 	altText: v.optional(v.string()),
-	decorative: v.boolean(),
+	// Transitional only: deployed editors and historical revisions may still
+	// send this field. New saves strip it before persistence.
+	decorative: v.optional(v.boolean()),
 });
 
 export const aboutSectionValidator = v.object({
@@ -47,11 +49,14 @@ export type PublishedAboutPage = {
 	role?: string;
 	introduction?: string;
 	biography?: string;
-	portraits: AboutPortraitPlacement[];
+	portraits: Array<{
+		key: string;
+		assetId: AboutPortraitPlacement["assetId"];
+		altText: string;
+	}>;
 	sections: Array<{ key: string; title: string; items: string[] }>;
 	highlights: Array<{ key: string; label: string; value: string }>;
 	seoDescription: string;
-	seoImageAssetId?: AboutPortraitPlacement["assetId"];
 };
 
 export const ABOUT_PORTRAIT_MAX = 10;
@@ -181,20 +186,21 @@ export function toPublishedAboutPage(payload: AboutPageDraftPayload): PublishedA
 		throw new Error("At least one portrait is required before publishing");
 	}
 	const normalizedPortraits = portraits.map((portrait, index) => {
-		const decorative = portrait.decorative === true;
+		const legacyDecorative = portrait.decorative === true;
 		const altText = optionalText(
 			portrait.altText,
 			`Portrait ${index + 1} alt text`,
 			LIMITS.altText,
 		);
-		if (!decorative && !altText) {
-			throw new Error(`Portrait ${index + 1} needs alt text or a Decorative designation`);
+		if (!legacyDecorative && !altText) {
+			throw new Error(`Portrait ${index + 1} needs alt text before publishing`);
 		}
 		return {
-			...portrait,
 			key: requireText(portrait.key, `Portrait ${index + 1} key`, LIMITS.placementKey),
-			altText: decorative ? undefined : altText,
-			decorative,
+			assetId: portrait.assetId,
+			// Preserve existing decorative publications as an empty alt attribute;
+			// new drafts cannot create this state because saves strip the legacy flag.
+			altText: legacyDecorative ? "" : (altText ?? ""),
 		};
 	});
 	const sections = (payload.sections ?? []).map((section, index) => ({
@@ -245,7 +251,23 @@ export function toPublishedAboutPage(payload: AboutPageDraftPayload): PublishedA
 			"SEO description",
 			LIMITS.seoDescription,
 		),
-		seoImageAssetId: payload.seoImageAssetId,
+	};
+}
+
+/** Remove retired per-image choices from newly persisted drafts. */
+export function sanitizeAboutPagePayload(
+	payload: AboutPageDraftPayload,
+): AboutPageDraftPayload {
+	const { seoImageAssetId: _seoImageAssetId, ...content } = payload;
+	return {
+		...content,
+		...(payload.portraits === undefined
+			? {}
+			: {
+				portraits: payload.portraits.map(
+					({ decorative: _decorative, ...portrait }) => portrait,
+				),
+			}),
 	};
 }
 
@@ -261,7 +283,6 @@ export function serializeAboutPagePayload(payload: AboutPageDraftPayload) {
 			key: portrait.key,
 			assetId: portrait.assetId,
 			altText: portrait.altText ?? null,
-			decorative: portrait.decorative,
 		})),
 		sections: (payload.sections ?? []).map((section) => ({
 			key: section.key,
@@ -274,7 +295,6 @@ export function serializeAboutPagePayload(payload: AboutPageDraftPayload) {
 			value: highlight.value ?? null,
 		})),
 		seoDescription: payload.seoDescription ?? null,
-		seoImageAssetId: payload.seoImageAssetId ?? null,
 	});
 }
 
@@ -282,8 +302,5 @@ export function aboutPageReferencesAsset(
 	payload: AboutPageDraftPayload,
 	assetId: string,
 ) {
-	return (
-		payload.seoImageAssetId === assetId
-		|| (payload.portraits ?? []).some((portrait) => portrait.assetId === assetId)
-	);
+	return (payload.portraits ?? []).some((portrait) => portrait.assetId === assetId);
 }

@@ -151,7 +151,8 @@ export default defineSchema({
 		placementKey: v.string(),
 		order: v.number(),
 		altText: v.optional(v.string()),
-		decorative: v.boolean(),
+		// Transitional until historical placement rows are migrated.
+		decorative: v.optional(v.boolean()),
 		caption: v.optional(v.string()),
 		focalPoint: v.optional(mediaFocalPointValidator),
 	})

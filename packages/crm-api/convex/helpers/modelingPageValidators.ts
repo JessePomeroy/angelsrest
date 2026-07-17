@@ -5,7 +5,9 @@ export const modelingImagePlacementValidator = v.object({
 	key: v.string(),
 	assetId: v.id("mediaAssets"),
 	altText: v.optional(v.string()),
-	decorative: v.boolean(),
+	// Transitional only: deployed editors and historical revisions may still
+	// send this field. New saves strip it before persistence.
+	decorative: v.optional(v.boolean()),
 });
 
 export const modelingGalleryDraftValidator = v.object({
@@ -45,7 +47,11 @@ export type PublishedModelingGallery = {
 	title: string;
 	slug: string;
 	description?: string;
-	images: ModelingImagePlacement[];
+	images: Array<{
+		key: string;
+		assetId: ModelingImagePlacement["assetId"];
+		altText: string;
+	}>;
 };
 
 export type PublishedModelingPage = {
@@ -53,7 +59,6 @@ export type PublishedModelingPage = {
 	intro?: string;
 	galleries: PublishedModelingGallery[];
 	seoDescription: string;
-	seoImageAssetId?: ModelingImagePlacement["assetId"];
 };
 
 export const MODELING_GALLERY_MAX = 12;
@@ -204,26 +209,27 @@ export function toPublishedModelingPage(
 				);
 			}
 			const normalizedImages = images.map((image, imageIndex) => {
-				const decorative = image.decorative === true;
+				const legacyDecorative = image.decorative === true;
 				const altText = optionalText(
 					image.altText,
 					`Category ${galleryIndex + 1} image ${imageIndex + 1} alt text`,
 					LIMITS.altText,
 				);
-				if (!decorative && !altText) {
+				if (!legacyDecorative && !altText) {
 					throw new Error(
-						`Category ${galleryIndex + 1} image ${imageIndex + 1} needs alt text or a Decorative designation`,
+						`Category ${galleryIndex + 1} image ${imageIndex + 1} needs alt text before publishing`,
 					);
 				}
 				return {
-					...image,
 					key: requireText(
 						image.key,
 						`Category ${galleryIndex + 1} image ${imageIndex + 1} key`,
 						LIMITS.imageKey,
 					),
-					altText: decorative ? undefined : altText,
-					decorative,
+					assetId: image.assetId,
+					// Preserve existing decorative publications as an empty alt attribute;
+					// new drafts cannot create this state because saves strip the legacy flag.
+					altText: legacyDecorative ? "" : (altText ?? ""),
 				};
 			});
 			return [{
@@ -267,7 +273,30 @@ export function toPublishedModelingPage(
 			"SEO description",
 			LIMITS.seoDescription,
 		),
-		seoImageAssetId: payload.seoImageAssetId,
+	};
+}
+
+/** Remove retired per-image choices from newly persisted drafts. */
+export function sanitizeModelingPagePayload(
+	payload: ModelingPageDraftPayload,
+): ModelingPageDraftPayload {
+	const { seoImageAssetId: _seoImageAssetId, ...content } = payload;
+	return {
+		...content,
+		...(payload.galleries === undefined
+			? {}
+			: {
+				galleries: payload.galleries.map((gallery) => ({
+					...gallery,
+					...(gallery.images === undefined
+						? {}
+						: {
+							images: gallery.images.map(
+								({ decorative: _decorative, ...image }) => image,
+							),
+						}),
+				})),
+			}),
 	};
 }
 
@@ -286,11 +315,9 @@ export function serializeModelingPagePayload(payload: ModelingPageDraftPayload) 
 				key: image.key,
 				assetId: image.assetId,
 				altText: image.altText ?? null,
-				decorative: image.decorative,
 			})),
 		})),
 		seoDescription: payload.seoDescription ?? null,
-		seoImageAssetId: payload.seoImageAssetId ?? null,
 	});
 }
 
@@ -299,8 +326,7 @@ export function modelingPageReferencesAsset(
 	assetId: string,
 ) {
 	return (
-		payload.seoImageAssetId === assetId
-		|| (payload.galleries ?? []).some((gallery) =>
+		(payload.galleries ?? []).some((gallery) =>
 			(gallery.images ?? []).some((image) => image.assetId === assetId)
 		)
 	);

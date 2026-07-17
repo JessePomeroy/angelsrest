@@ -114,7 +114,6 @@ export const saveDraft = mutation({
 				placementKey: placement.key,
 				order,
 				altText: placement.altText,
-				decorative: placement.decorative,
 				caption: placement.caption,
 				focalPoint: placement.focalPoint,
 			});

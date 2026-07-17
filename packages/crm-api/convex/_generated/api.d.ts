@@ -12,6 +12,7 @@ import type * as activityLog from "../activityLog.js";
 import type * as adminAuth from "../adminAuth.js";
 import type * as auth from "../auth.js";
 import type * as authHelpers from "../authHelpers.js";
+import type * as cmsMigrations from "../cmsMigrations.js";
 import type * as content from "../content.js";
 import type * as contracts from "../contracts.js";
 import type * as crm from "../crm.js";
@@ -32,6 +33,8 @@ import type * as helpers_documentNumbering from "../helpers/documentNumbering.js
 import type * as helpers_limits from "../helpers/limits.js";
 import type * as helpers_marking from "../helpers/marking.js";
 import type * as helpers_mediaValidators from "../helpers/mediaValidators.js";
+import type * as helpers_modelingPageData from "../helpers/modelingPageData.js";
+import type * as helpers_modelingPageValidators from "../helpers/modelingPageValidators.js";
 import type * as helpers_numbering from "../helpers/numbering.js";
 import type * as helpers_orderStats from "../helpers/orderStats.js";
 import type * as helpers_patching from "../helpers/patching.js";
@@ -67,6 +70,7 @@ declare const fullApi: ApiFromModules<{
   adminAuth: typeof adminAuth;
   auth: typeof auth;
   authHelpers: typeof authHelpers;
+  cmsMigrations: typeof cmsMigrations;
   content: typeof content;
   contracts: typeof contracts;
   crm: typeof crm;
@@ -87,6 +91,8 @@ declare const fullApi: ApiFromModules<{
   "helpers/limits": typeof helpers_limits;
   "helpers/marking": typeof helpers_marking;
   "helpers/mediaValidators": typeof helpers_mediaValidators;
+  "helpers/modelingPageData": typeof helpers_modelingPageData;
+  "helpers/modelingPageValidators": typeof helpers_modelingPageValidators;
   "helpers/numbering": typeof helpers_numbering;
   "helpers/orderStats": typeof helpers_orderStats;
   "helpers/patching": typeof helpers_patching;

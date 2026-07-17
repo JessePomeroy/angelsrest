@@ -82,7 +82,7 @@ function portrait(
 		key: options.key ?? "portrait-primary",
 		assetId,
 		altText: options.altText,
-		decorative: options.decorative ?? false,
+		...(options.decorative === undefined ? {} : { decorative: options.decorative }),
 	};
 }
 
@@ -105,7 +105,6 @@ function completeAbout(assetId: Id<"mediaAssets">) {
 			{ key: "practice", label: "practice", value: "photography · direction · music" },
 		],
 		seoDescription: "Margaret Helena is a Chicago-based photographer and artist.",
-		seoImageAssetId: assetId,
 	};
 }
 
@@ -206,22 +205,28 @@ describe("typed About-page content", () => {
 				siteUrl: SITE_A.siteUrl,
 				draftRevisionId: missingAlt.revisionId,
 			}),
-		).rejects.toThrow(/alt text or a Decorative designation/i);
+		).rejects.toThrow(/needs alt text before publishing/i);
 
-		const decorative = await adminA.mutation(api.content.saveAboutPageDraft, {
+		const legacyDecorative = await adminA.mutation(api.content.saveAboutPageDraft, {
 			siteUrl: SITE_A.siteUrl,
 			expectedDraftRevisionId: missingAlt.revisionId,
 			payload: {
 				...completeAbout(assetA.id),
 				portraits: [portrait(assetA.id, { decorative: true })],
+				seoImageAssetId: assetA.id,
 			},
 		});
 		await expect(
 			adminA.mutation(api.content.publishAboutPage, {
 				siteUrl: SITE_A.siteUrl,
-				draftRevisionId: decorative.revisionId,
+				draftRevisionId: legacyDecorative.revisionId,
 			}),
-		).resolves.toMatchObject({ publishedRevisionId: decorative.revisionId });
+		).rejects.toThrow(/needs alt text before publishing/i);
+		const editor = await adminA.query(api.content.getAboutPageEditorState, {
+			siteUrl: SITE_A.siteUrl,
+		});
+		expect(editor?.draft?.payload).not.toHaveProperty("seoImageAssetId");
+		expect(editor?.draft?.payload.portraits?.[0]).not.toHaveProperty("decorative");
 	});
 
 	test("rejects cross-tenant portraits and protects active About references from deletion", async () => {
@@ -297,10 +302,11 @@ describe("typed About-page content", () => {
 						asset: { assetId: ASSET_C },
 					},
 				],
-				seoImage: { assetId: ASSET_A },
 			},
 		});
 		const serialized = JSON.stringify(published);
+		expect(serialized).not.toContain("decorative");
+		expect(serialized).not.toContain("seoImage");
 		expect(serialized).not.toContain("focalPoint");
 		expect(serialized).not.toContain("originalFilename");
 		expect(serialized).not.toContain("master.webp");
