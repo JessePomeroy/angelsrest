@@ -26,6 +26,13 @@ import {
 	requireValidPublishedSlugChangeRetry,
 	retainPreviousPublishedSlug,
 } from "./contentSlugHistory";
+import {
+	archiveContentDocument,
+	requireActiveContentDocument,
+	requireNoActivePostReferences,
+	restoreContentDocument,
+	unpublishContentDocument,
+} from "./contentLifecycle";
 import type { PublishedSlugChange } from "./contentValidators";
 
 function canonicalDraftSlug(draft: BlogSupportingDraft) {
@@ -180,6 +187,7 @@ export async function saveBlogDraft(
 		args.documentId,
 	);
 	const document = assertBlogDocument(stored, args.draft.kind);
+	requireActiveContentDocument(document, "Blog supporting document");
 	validateBlogSupportingDraft(args.draft);
 	const checksum = await checksumBlogDraft(blogContentChecksumInput(args.draft));
 	const currentDraft = await loadBlogRevision(ctx, document, document.draftRevisionId);
@@ -231,6 +239,7 @@ export async function publishBlogDraft(
 		args.documentId,
 	);
 	const document = assertBlogDocument(stored);
+	requireActiveContentDocument(document, "Blog supporting document");
 	if (
 		document.publishedRevisionId === args.draftRevisionId
 		&& document.draftRevisionId === undefined
@@ -318,6 +327,7 @@ export async function discardBlogDraft(
 		args.documentId,
 	);
 	const document = assertBlogDocument(stored);
+	requireActiveContentDocument(document, "Blog supporting document");
 	if (!document.draftRevisionId) {
 		const discarded = await loadBlogRevision(ctx, document, args.draftRevisionId);
 		if (!discarded) throw new Error("Blog draft revision not found");
@@ -333,4 +343,51 @@ export async function discardBlogDraft(
 		updatedBy: identity.tokenIdentifier,
 	});
 	return null;
+}
+
+export async function unpublishBlogDocument(
+	ctx: MutationCtx,
+	documentId: Id<"contentDocuments">,
+) {
+	const stored = await requireDocumentSiteAdmin(
+		ctx,
+		"contentDocuments",
+		documentId,
+	);
+	const document = assertBlogDocument(stored);
+	await requireNoActivePostReferences(ctx, document, {
+		publishedOnly: true,
+		label: "Blog supporting document",
+	});
+	return await unpublishContentDocument(ctx, document, "Blog supporting document");
+}
+
+export async function archiveBlogDocument(
+	ctx: MutationCtx,
+	documentId: Id<"contentDocuments">,
+) {
+	const stored = await requireDocumentSiteAdmin(
+		ctx,
+		"contentDocuments",
+		documentId,
+	);
+	const document = assertBlogDocument(stored);
+	await requireNoActivePostReferences(ctx, document, {
+		publishedOnly: false,
+		label: "Blog supporting document",
+	});
+	return await archiveContentDocument(ctx, document);
+}
+
+export async function restoreBlogDocument(
+	ctx: MutationCtx,
+	documentId: Id<"contentDocuments">,
+) {
+	const stored = await requireDocumentSiteAdmin(
+		ctx,
+		"contentDocuments",
+		documentId,
+	);
+	const document = assertBlogDocument(stored);
+	return await restoreContentDocument(ctx, document);
 }

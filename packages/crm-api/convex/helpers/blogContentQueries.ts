@@ -14,6 +14,7 @@ import {
 	toEditorBlogRevision,
 } from "./blogContentData";
 import { getContentSlugHistoryOwner } from "./contentSlugHistory";
+import { isContentDocumentArchived } from "./contentLifecycle";
 import { toPublishedBlogSupportingContent } from "./blogContentValidators";
 
 export async function getBlogEditorState(
@@ -40,6 +41,7 @@ export async function getBlogEditorState(
 		published: toEditorBlogRevision(published),
 		updatedAt: document.updatedAt,
 		publishedAt: document.publishedAt ?? null,
+		archivedAt: document.archivedAt ?? null,
 	};
 }
 
@@ -51,7 +53,7 @@ export async function listBlogEditorDocuments(
 	const { client } = await requireSiteAdmin(ctx, siteUrl);
 	const documents = await listBlogDocuments(ctx, client.siteUrl, kind);
 	return await Promise.all(
-		documents.map(async (document) => {
+		documents.filter((document) => !isContentDocumentArchived(document)).map(async (document) => {
 			const [draft, published] = await Promise.all([
 				loadBlogRevision(ctx, document, document.draftRevisionId),
 				loadBlogRevision(ctx, document, document.publishedRevisionId),
@@ -71,6 +73,7 @@ export async function listBlogEditorDocuments(
 				draftRevisionId: draft?.revision._id ?? null,
 				publishedRevisionId: published?.revision._id ?? null,
 				updatedAt: document.updatedAt,
+				archivedAt: document.archivedAt ?? null,
 			};
 		}),
 	);
@@ -98,7 +101,7 @@ export async function getPublishedBlogBySlug(
 			q.eq("siteUrl", args.siteUrl).eq("kind", args.kind).eq("slug", slug),
 		)
 		.unique();
-	if (!document?.publishedRevisionId) return null;
+	if (!document?.publishedRevisionId || isContentDocumentArchived(document)) return null;
 	const validatedDocument = assertBlogDocument(document, args.kind);
 	const loaded = await loadBlogRevision(
 		ctx,
@@ -156,6 +159,7 @@ export async function resolvePublishedBlogSlug(
 		.unique();
 	if (current) {
 		const document = assertBlogDocument(current, args.kind);
+		if (isContentDocumentArchived(document)) return null;
 		const currentSlug = await requirePublishedBlogSlug(ctx, document);
 		return currentSlug
 			? { status: "current" as const, kind: args.kind, slug: currentSlug }
@@ -172,6 +176,7 @@ export async function resolvePublishedBlogSlug(
 		throw new Error("Retained Blog slug ownership mismatch");
 	}
 	const document = assertBlogDocument(stored, args.kind);
+	if (isContentDocumentArchived(document)) return null;
 	const currentSlug = await requirePublishedBlogSlug(ctx, document);
 	if (!currentSlug) return null;
 	if (currentSlug === slug) throw new Error("Retained Blog slug points to itself");
@@ -186,7 +191,11 @@ export async function listPublishedBlogDocuments(
 	const documents = await listBlogDocuments(ctx, siteUrl, kind);
 	return await Promise.all(
 		documents
-			.filter((document) => document.publishedRevisionId !== undefined)
+			.filter(
+				(document) =>
+					document.publishedRevisionId !== undefined
+					&& !isContentDocumentArchived(document),
+			)
 			.map(async (document) => {
 				const loaded = await loadBlogRevision(
 					ctx,

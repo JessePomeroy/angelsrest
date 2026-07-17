@@ -28,6 +28,12 @@ import {
 	requireValidPublishedSlugChangeRetry,
 	retainPreviousPublishedSlug,
 } from "./contentSlugHistory";
+import {
+	archiveContentDocument,
+	requireActiveContentDocument,
+	restoreContentDocument,
+	unpublishContentDocument,
+} from "./contentLifecycle";
 import type { PublishedSlugChange } from "./contentValidators";
 
 function canonicalDraftSlug(draft: PostDraft) {
@@ -279,6 +285,7 @@ export async function savePostDraft(
 		args.documentId,
 	);
 	const document = assertPostDocument(stored);
+	requireActiveContentDocument(document, "Post document");
 	const draft = normalizePostDraftIds(ctx, args.draft);
 	const checksum = await checksumPostDraft(draft);
 	const summaryChecksum = await checksumPostSummary(draft);
@@ -334,6 +341,7 @@ export async function publishPostDraft(
 		args.documentId,
 	);
 	const document = assertPostDocument(stored);
+	requireActiveContentDocument(document, "Post document");
 	if (
 		document.publishedRevisionId === args.draftRevisionId
 		&& document.draftRevisionId === undefined
@@ -405,6 +413,7 @@ export async function discardPostDraft(
 		args.documentId,
 	);
 	const document = assertPostDocument(stored);
+	requireActiveContentDocument(document, "Post document");
 	if (!document.draftRevisionId) {
 		const discarded = await loadPostRevision(ctx, document, args.draftRevisionId);
 		if (!discarded) throw new Error("Post draft revision not found");
@@ -420,4 +429,43 @@ export async function discardPostDraft(
 		updatedBy: identity.tokenIdentifier,
 	});
 	return null;
+}
+
+export async function unpublishPostDocument(
+	ctx: MutationCtx,
+	documentId: Id<"contentDocuments">,
+) {
+	const stored = await requireDocumentSiteAdmin(
+		ctx,
+		"contentDocuments",
+		documentId,
+	);
+	const document = assertPostDocument(stored);
+	return await unpublishContentDocument(ctx, document, "Post document");
+}
+
+export async function archivePostDocument(
+	ctx: MutationCtx,
+	documentId: Id<"contentDocuments">,
+) {
+	const stored = await requireDocumentSiteAdmin(
+		ctx,
+		"contentDocuments",
+		documentId,
+	);
+	const document = assertPostDocument(stored);
+	return await archiveContentDocument(ctx, document);
+}
+
+export async function restorePostDocument(
+	ctx: MutationCtx,
+	documentId: Id<"contentDocuments">,
+) {
+	const stored = await requireDocumentSiteAdmin(
+		ctx,
+		"contentDocuments",
+		documentId,
+	);
+	const document = assertPostDocument(stored);
+	return await restoreContentDocument(ctx, document);
 }
