@@ -76,13 +76,12 @@ async function setup() {
 
 function portrait(
 	assetId: Id<"mediaAssets">,
-	options: { key?: string; altText?: string; decorative?: boolean } = {},
+	options: { key?: string; altText?: string } = {},
 ) {
 	return {
 		key: options.key ?? "portrait-primary",
 		assetId,
 		altText: options.altText,
-		...(options.decorative === undefined ? {} : { decorative: options.decorative }),
 	};
 }
 
@@ -176,7 +175,7 @@ describe("typed About-page content", () => {
 				siteUrl: SITE_A.siteUrl,
 				payload: {
 					portraits: Array.from({ length: 11 }, (_, index) =>
-						portrait(assetA.id, { key: `portrait-${index}`, decorative: true }),
+						portrait(assetA.id, { key: `portrait-${index}` }),
 					),
 				},
 			}),
@@ -206,27 +205,6 @@ describe("typed About-page content", () => {
 				draftRevisionId: missingAlt.revisionId,
 			}),
 		).rejects.toThrow(/needs alt text before publishing/i);
-
-		const legacyDecorative = await adminA.mutation(api.content.saveAboutPageDraft, {
-			siteUrl: SITE_A.siteUrl,
-			expectedDraftRevisionId: missingAlt.revisionId,
-			payload: {
-				...completeAbout(assetA.id),
-				portraits: [portrait(assetA.id, { decorative: true })],
-				seoImageAssetId: assetA.id,
-			},
-		});
-		await expect(
-			adminA.mutation(api.content.publishAboutPage, {
-				siteUrl: SITE_A.siteUrl,
-				draftRevisionId: legacyDecorative.revisionId,
-			}),
-		).rejects.toThrow(/needs alt text before publishing/i);
-		const editor = await adminA.query(api.content.getAboutPageEditorState, {
-			siteUrl: SITE_A.siteUrl,
-		});
-		expect(editor?.draft?.payload).not.toHaveProperty("seoImageAssetId");
-		expect(editor?.draft?.payload.portraits?.[0]).not.toHaveProperty("decorative");
 	});
 
 	test("rejects cross-tenant portraits and protects active About references from deletion", async () => {
@@ -305,7 +283,6 @@ describe("typed About-page content", () => {
 			},
 		});
 		const serialized = JSON.stringify(published);
-		expect(serialized).not.toContain("decorative");
 		expect(serialized).not.toContain("seoImage");
 		expect(serialized).not.toContain("focalPoint");
 		expect(serialized).not.toContain("originalFilename");

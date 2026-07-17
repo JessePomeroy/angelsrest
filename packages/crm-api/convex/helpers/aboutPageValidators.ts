@@ -5,9 +5,6 @@ export const aboutPortraitPlacementValidator = v.object({
 	key: v.string(),
 	assetId: v.id("mediaAssets"),
 	altText: v.optional(v.string()),
-	// Transitional only: deployed editors and historical revisions may still
-	// send this field. New saves strip it before persistence.
-	decorative: v.optional(v.boolean()),
 });
 
 export const aboutSectionValidator = v.object({
@@ -37,7 +34,6 @@ export const aboutPageDraftPayloadValidator = v.object({
 	sections: v.optional(v.array(aboutSectionValidator)),
 	highlights: v.optional(v.array(aboutHighlightValidator)),
 	seoDescription: v.optional(v.string()),
-	seoImageAssetId: v.optional(v.id("mediaAssets")),
 });
 
 export type AboutPageDraftPayload = Infer<typeof aboutPageDraftPayloadValidator>;
@@ -90,7 +86,6 @@ const ALLOWED_KEYS = new Set([
 	"sections",
 	"highlights",
 	"seoDescription",
-	"seoImageAssetId",
 ]);
 
 function assertMaximum(value: string | undefined, maximum: number, field: string) {
@@ -186,21 +181,18 @@ export function toPublishedAboutPage(payload: AboutPageDraftPayload): PublishedA
 		throw new Error("At least one portrait is required before publishing");
 	}
 	const normalizedPortraits = portraits.map((portrait, index) => {
-		const legacyDecorative = portrait.decorative === true;
 		const altText = optionalText(
 			portrait.altText,
 			`Portrait ${index + 1} alt text`,
 			LIMITS.altText,
 		);
-		if (!legacyDecorative && !altText) {
+		if (!altText) {
 			throw new Error(`Portrait ${index + 1} needs alt text before publishing`);
 		}
 		return {
 			key: requireText(portrait.key, `Portrait ${index + 1} key`, LIMITS.placementKey),
 			assetId: portrait.assetId,
-			// Preserve existing decorative publications as an empty alt attribute;
-			// new drafts cannot create this state because saves strip the legacy flag.
-			altText: legacyDecorative ? "" : (altText ?? ""),
+			altText,
 		};
 	});
 	const sections = (payload.sections ?? []).map((section, index) => ({
@@ -251,23 +243,6 @@ export function toPublishedAboutPage(payload: AboutPageDraftPayload): PublishedA
 			"SEO description",
 			LIMITS.seoDescription,
 		),
-	};
-}
-
-/** Remove retired per-image choices from newly persisted drafts. */
-export function sanitizeAboutPagePayload(
-	payload: AboutPageDraftPayload,
-): AboutPageDraftPayload {
-	const { seoImageAssetId: _seoImageAssetId, ...content } = payload;
-	return {
-		...content,
-		...(payload.portraits === undefined
-			? {}
-			: {
-				portraits: payload.portraits.map(
-					({ decorative: _decorative, ...portrait }) => portrait,
-				),
-			}),
 	};
 }
 
