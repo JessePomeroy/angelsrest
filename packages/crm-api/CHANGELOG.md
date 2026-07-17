@@ -1,5 +1,11 @@
 # @jessepomeroy/crm-api
 
+## 2.14.0
+
+### Minor Changes
+
+- aec4a29: Add recoverable Blog and Post content lifecycle mutations for unpublish, archive, and restore, hide archived documents from editor/public lists, and block supporting-content lifecycle changes while active Post revisions reference them.
+
 ## 2.13.0
 
 ### Minor Changes
