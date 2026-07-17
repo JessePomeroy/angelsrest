@@ -8,10 +8,13 @@ import {
 	resolvePublishedPostSlug,
 } from "./helpers/postContentQueries";
 import {
+	archivePostDocument,
 	createPostDraft,
 	discardPostDraft,
 	publishPostDraft,
+	restorePostDocument,
 	savePostDraft,
+	unpublishPostDocument,
 } from "./helpers/postContentStore";
 import { postDraftValidator } from "./helpers/postContentValidators";
 import { publishedSlugChangeValidator } from "./helpers/contentValidators";
@@ -53,6 +56,25 @@ export const discardDraft = mutation({
 		draftRevisionId: v.id("contentRevisions"),
 	},
 	handler: async (ctx, args) => await discardPostDraft(ctx, args),
+});
+
+/** Remove a Post from public reads while preserving history. */
+export const unpublish = mutation({
+	args: { documentId: v.id("contentDocuments") },
+	handler: async (ctx, args) =>
+		await unpublishPostDocument(ctx, args.documentId),
+});
+
+/** Hide a recoverable Post from editor and public lists. */
+export const archive = mutation({
+	args: { documentId: v.id("contentDocuments") },
+	handler: async (ctx, args) => await archivePostDocument(ctx, args.documentId),
+});
+
+/** Restore a previously archived Post and its revision pointers. */
+export const restore = mutation({
+	args: { documentId: v.id("contentDocuments") },
+	handler: async (ctx, args) => await restorePostDocument(ctx, args.documentId),
 });
 
 /** Authenticated full graph state for one tenant-owned Post. */

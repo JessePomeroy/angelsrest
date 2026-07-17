@@ -108,6 +108,8 @@ export default defineSchema({
 		updatedBy: v.string(),
 		publishedAt: v.optional(v.number()),
 		publishedBy: v.optional(v.string()),
+		archivedAt: v.optional(v.number()),
+		archivedBy: v.optional(v.string()),
 	})
 		.index("by_siteUrl_and_kind", ["siteUrl", "kind"])
 		.index("by_siteUrl_and_kind_and_documentKey", [
@@ -221,6 +223,11 @@ export default defineSchema({
 			"order",
 		])
 		.index("by_siteUrl_and_toDocumentId", ["siteUrl", "toDocumentId"])
+		.index("by_siteUrl_and_toDocumentId_and_fromRevisionId", [
+			"siteUrl",
+			"toDocumentId",
+			"fromRevisionId",
+		])
 		.index("by_fromDocumentId_and_fromRevisionId", [
 			"fromDocumentId",
 			"fromRevisionId",

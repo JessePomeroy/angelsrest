@@ -17,6 +17,7 @@ import {
 	toPublishedPostHeader,
 } from "./postContentValidators";
 import { getContentSlugHistoryOwner } from "./contentSlugHistory";
+import { isContentDocumentArchived } from "./contentLifecycle";
 
 // A detail page may resolve up to twenty supporting records. Keeping the
 // first public index page to twelve protects the function's read budget until
@@ -60,6 +61,7 @@ export async function getPostEditorState(
 		published: toEditorRevision(published),
 		updatedAt: document.updatedAt,
 		publishedAt: document.publishedAt ?? null,
+		archivedAt: document.archivedAt ?? null,
 	};
 }
 
@@ -84,7 +86,9 @@ async function getRevisionHeader(
 
 export async function listPostEditorDocuments(ctx: QueryCtx, siteUrl: string) {
 	const { client } = await requireSiteAdmin(ctx, siteUrl);
-	const documents = await listPostDocuments(ctx, client.siteUrl);
+	const documents = (await listPostDocuments(ctx, client.siteUrl)).filter(
+		(document) => !isContentDocumentArchived(document),
+	);
 	return await Promise.all(
 		documents.map(async (document) => ({
 			documentId: document._id,
@@ -99,6 +103,7 @@ export async function listPostEditorDocuments(ctx: QueryCtx, siteUrl: string) {
 				document.publishedRevisionId,
 			),
 			updatedAt: document.updatedAt,
+			archivedAt: document.archivedAt ?? null,
 		})),
 	);
 }
@@ -119,7 +124,7 @@ export async function getPublishedPostBySlug(
 			q.eq("siteUrl", args.siteUrl).eq("kind", "post").eq("slug", slug),
 		)
 		.unique();
-	if (!stored?.publishedRevisionId) return null;
+	if (!stored?.publishedRevisionId || isContentDocumentArchived(stored)) return null;
 	const publishedRevisionId = stored.publishedRevisionId;
 	const document = assertPostDocument(stored);
 	return await projectPublishedPostDetail(
@@ -161,6 +166,7 @@ export async function resolvePublishedPostSlug(
 		.unique();
 	if (current) {
 		const document = assertPostDocument(current);
+		if (isContentDocumentArchived(document)) return null;
 		const currentSlug = await requirePublishedPostSlug(ctx, document);
 		return currentSlug
 			? { status: "current" as const, kind: "post" as const, slug: currentSlug }
@@ -177,6 +183,7 @@ export async function resolvePublishedPostSlug(
 		throw new Error("Retained Post slug ownership mismatch");
 	}
 	const document = assertPostDocument(stored);
+	if (isContentDocumentArchived(document)) return null;
 	const currentSlug = await requirePublishedPostSlug(ctx, document);
 	if (!currentSlug) return null;
 	if (currentSlug === slug) throw new Error("Retained Post slug points to itself");
@@ -194,7 +201,9 @@ export async function listPublishedPosts(
 		);
 	}
 	const documents = (await listPostDocuments(ctx, siteUrl)).filter(
-		(document) => document.publishedRevisionId !== undefined,
+		(document) =>
+			document.publishedRevisionId !== undefined
+			&& !isContentDocumentArchived(document),
 	);
 	const revisions = await Promise.all(
 		documents.map(async (document) => {

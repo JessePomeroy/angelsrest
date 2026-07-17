@@ -8,10 +8,13 @@ import {
 	resolvePublishedBlogSlug,
 } from "./helpers/blogContentQueries";
 import {
+	archiveBlogDocument,
 	createBlogDraft,
 	discardBlogDraft,
 	publishBlogDraft,
+	restoreBlogDocument,
 	saveBlogDraft,
+	unpublishBlogDocument,
 } from "./helpers/blogContentStore";
 import {
 	blogSupportingDraftValidator,
@@ -56,6 +59,25 @@ export const discardDraft = mutation({
 		draftRevisionId: v.id("contentRevisions"),
 	},
 	handler: async (ctx, args) => await discardBlogDraft(ctx, args),
+});
+
+/** Remove a supporting document from public reads while preserving history. */
+export const unpublish = mutation({
+	args: { documentId: v.id("contentDocuments") },
+	handler: async (ctx, args) =>
+		await unpublishBlogDocument(ctx, args.documentId),
+});
+
+/** Hide a recoverable supporting document from editor and public lists. */
+export const archive = mutation({
+	args: { documentId: v.id("contentDocuments") },
+	handler: async (ctx, args) => await archiveBlogDocument(ctx, args.documentId),
+});
+
+/** Restore a previously archived supporting document and its revision pointers. */
+export const restore = mutation({
+	args: { documentId: v.id("contentDocuments") },
+	handler: async (ctx, args) => await restoreBlogDocument(ctx, args.documentId),
 });
 
 /** Authenticated Author/Category editor state derived from document ownership. */
