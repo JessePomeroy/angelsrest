@@ -12,8 +12,57 @@ import {
 	webAssetMasterValidator,
 	webAssetSourceValidator,
 } from "./helpers/mediaValidators";
+import {
+	richTextListItemValidator,
+	richTextSpanValidator,
+} from "./helpers/richTextContract";
 import { stripeFeeCaptureErrorValidator } from "./helpers/stripeFeeCapture";
 import { categoryValidator } from "./helpers/validators";
+
+const contentBlockValueValidator = v.union(
+	v.object({
+		type: v.literal("paragraph"),
+		key: v.string(),
+		children: v.array(richTextSpanValidator),
+	}),
+	v.object({
+		type: v.literal("heading"),
+		key: v.string(),
+		level: v.union(v.literal(2), v.literal(3), v.literal(4)),
+		children: v.array(richTextSpanValidator),
+	}),
+	v.object({
+		type: v.literal("quote"),
+		key: v.string(),
+		children: v.array(richTextSpanValidator),
+	}),
+	v.object({
+		type: v.literal("list"),
+		key: v.string(),
+		style: v.union(v.literal("bullet"), v.literal("number")),
+		items: v.array(richTextListItemValidator),
+	}),
+	v.object({
+		type: v.literal("image"),
+		key: v.string(),
+		placementKey: v.string(),
+	}),
+);
+
+const contentMediaRoleValidator = v.union(
+	v.literal("main"),
+	v.literal("body"),
+);
+
+const contentReferenceFieldValidator = v.union(
+	v.literal("author"),
+	v.literal("category"),
+);
+
+const contentPostTechnicalFieldValidator = v.union(
+	v.literal("equipment"),
+	v.literal("material"),
+);
 
 export default defineSchema({
 	// Photographers you've built sites for
@@ -83,6 +132,84 @@ export default defineSchema({
 	})
 		.index("by_documentId_and_createdAt", ["documentId", "createdAt"])
 		.index("by_siteUrl_and_kind_and_createdAt", ["siteUrl", "kind", "createdAt"]),
+
+	// Ordered Post body rows keep rich text queryable without placing an
+	// unbounded document inside the revision payload. Image blocks contain only
+	// a placement key; the corresponding media row owns asset metadata.
+	contentBlocks: defineTable({
+		siteUrl: v.string(),
+		documentId: v.id("contentDocuments"),
+		revisionId: v.id("contentRevisions"),
+		blockKey: v.string(),
+		order: v.number(),
+		block: contentBlockValueValidator,
+	})
+		.index("by_revisionId_and_order", ["revisionId", "order"])
+		.index("by_documentId_and_revisionId", ["documentId", "revisionId"]),
+
+	// A placement is the sole owner of a Post image's asset, alt text, and
+	// caption. Main and body images share one ordered revision-owned relation.
+	contentMediaPlacements: defineTable({
+		siteUrl: v.string(),
+		documentId: v.id("contentDocuments"),
+		revisionId: v.id("contentRevisions"),
+		assetId: v.id("mediaAssets"),
+		placementKey: v.string(),
+		role: contentMediaRoleValidator,
+		order: v.number(),
+		altText: v.optional(v.string()),
+		caption: v.optional(v.string()),
+	})
+		.index("by_revisionId_and_role_and_order", ["revisionId", "role", "order"])
+		.index("by_revisionId_and_assetId", ["revisionId", "assetId"])
+		.index("by_siteUrl_and_assetId", ["siteUrl", "assetId"])
+		.index("by_documentId_and_revisionId", ["documentId", "revisionId"]),
+
+	// Equipment and material lists are ordered Post graph rows rather than
+	// embedded revision payloads. This keeps list reads bounded even when every
+	// Technical Note uses the maximum authored detail.
+	contentPostTechnicalItems: defineTable({
+		siteUrl: v.string(),
+		documentId: v.id("contentDocuments"),
+		revisionId: v.id("contentRevisions"),
+		field: contentPostTechnicalFieldValidator,
+		itemKey: v.string(),
+		order: v.number(),
+		label: v.optional(v.string()),
+		details: v.optional(v.string()),
+	})
+		.index("by_revisionId_and_field_and_order", [
+			"revisionId",
+			"field",
+			"order",
+		])
+		.index("by_documentId_and_revisionId", [
+			"documentId",
+			"revisionId",
+		]),
+
+	// Post references resolve through the target document's current published
+	// revision. Keeping the target identity dynamic allows an Author or Category
+	// correction to flow through without republishing every referring Post.
+	contentReferences: defineTable({
+		siteUrl: v.string(),
+		fromDocumentId: v.id("contentDocuments"),
+		fromRevisionId: v.id("contentRevisions"),
+		toDocumentId: v.id("contentDocuments"),
+		field: contentReferenceFieldValidator,
+		referenceKey: v.string(),
+		order: v.number(),
+	})
+		.index("by_fromRevisionId_and_field_and_order", [
+			"fromRevisionId",
+			"field",
+			"order",
+		])
+		.index("by_siteUrl_and_toDocumentId", ["siteUrl", "toDocumentId"])
+		.index("by_fromDocumentId_and_fromRevisionId", [
+			"fromDocumentId",
+			"fromRevisionId",
+		]),
 
 	// Public CMS media identity. Private R2 masters and public derivative keys
 	// belong to one tenant; the original staging upload is not retained here.
