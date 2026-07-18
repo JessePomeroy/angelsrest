@@ -93,9 +93,15 @@ security boundary; keep verification inside the host route.
 3. `/api/admin/media/process` verifies the same admin again, asks the Worker to
    finalize and create the fixed WebP derivative set, then registers the ready
    asset through an authenticated Convex mutation.
-4. Private sources remain in the CMS private bucket. Public pages receive only
+4. `/api/admin/media/delete` accepts only the Convex media document ID. The
+   shared server saga asks Convex for the exact tenant-bound deletion manifest,
+   removes those objects through the Worker, then completes the retained Convex
+   tombstone through the site's server-only `.convex.site` boundary. Worker or
+   completion failures remain retryable; no storage key or tenant authority is
+   accepted from the browser.
+5. Private sources remain in the CMS private bucket. Public pages receive only
    immutable derivatives from `https://media.angelsrest.online`.
-5. This boundary is separate from private client-gallery delivery and does not
+6. This boundary is separate from private client-gallery delivery and does not
    switch any public content type away from its Sanity fallback by itself.
 
 Authenticated server reads also create a fresh client through

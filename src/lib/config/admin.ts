@@ -19,6 +19,7 @@ const portfolioEditorApi = new Proxy(api.portfolioGalleries, {
 		if (prop === "listMediaAssets") return api.mediaAssets.listForEditor;
 		if (prop === "getPlacedMediaAssets") return api.mediaAssets.getManyForEditor;
 		if (prop === "registerReadyWebAsset") return api.mediaAssets.registerReadyWebAsset;
+		if (prop === "requestDeletion") return api.mediaAssets.requestDeletion;
 		return Reflect.get(portfolio, prop, receiver);
 	},
 });
