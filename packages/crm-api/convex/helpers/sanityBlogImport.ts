@@ -1,6 +1,9 @@
 import type { RichTextDocument, RichTextIssue } from "./richTextContract";
 import { convertPortableText } from "./portableTextAdapter";
-import { richTextToPlainText } from "./richTextValidation";
+import {
+	inspectRichTextDocument,
+	richTextToPlainText,
+} from "./richTextValidation";
 import {
 	authorSlugCandidate,
 	categorySlugCandidate,
@@ -22,8 +25,11 @@ export type SanityImportIssue = {
 		| "generated-category-slug"
 		| "generated-summary"
 		| "invalid-reference"
+		| "missing-exported-reference"
+		| "missing-image-alt"
 		| "missing-required-field"
-		| "portable-text";
+		| "portable-text"
+		| "slug-collision";
 	path: string;
 	message: string;
 	severity: "error" | "warning";
@@ -118,6 +124,7 @@ export type SanityBlogImportCategory = {
 export type SanityBlogImportPost = {
 	sourceId: string;
 	documentKey: string;
+	bodySourceAssetRefs: string[];
 	draft: Omit<PostDraft, "authorDocumentId" | "categories" | "mainImage"> & {
 		authorDocumentKey?: string;
 		categories: Array<{ key: string; documentKey: string }>;
@@ -137,6 +144,28 @@ export type SanityBlogImportManifest = {
 	authors: SanityBlogImportAuthor[];
 	categories: SanityBlogImportCategory[];
 	posts: SanityBlogImportPost[];
+	issues: SanityImportIssue[];
+};
+
+export type SanityBlogImportDryRunStatus =
+	| "ready"
+	| "ready-with-warnings"
+	| "blocked";
+
+export type SanityBlogImportDryRunReport = {
+	version: 1;
+	status: SanityBlogImportDryRunStatus;
+	counts: {
+		authors: number;
+		categories: number;
+		posts: number;
+		requiredSourceAssets: number;
+		errors: number;
+		warnings: number;
+	};
+	requiredSourceAssetRefs: string[];
+	blockingIssues: SanityImportIssue[];
+	warningIssues: SanityImportIssue[];
 	issues: SanityImportIssue[];
 };
 
@@ -191,6 +220,22 @@ function sourceReference(value: SanityReference | undefined) {
 function imageSourceRef(value: SanityImage | undefined) {
 	const ref = sourceReference(value?.asset);
 	return ref?.startsWith("image-") ? ref : undefined;
+}
+
+function bodySourceAssetRefs(value: unknown) {
+	if (!Array.isArray(value)) return [];
+	const refs = new Set<string>();
+	for (const node of value) {
+		if (
+			typeof node !== "object"
+			|| node === null
+			|| !("_type" in node)
+			|| node._type !== "image"
+		) continue;
+		const ref = imageSourceRef(node as SanityImage);
+		if (ref) refs.add(ref);
+	}
+	return Array.from(refs).sort();
 }
 
 function timestamp(value: unknown) {
@@ -387,6 +432,7 @@ function convertPost(
 	return {
 		sourceId,
 		documentKey: documentKey("post", sourceId),
+		bodySourceAssetRefs: bodySourceAssetRefs(source.body),
 		draft: {
 			kind: "post",
 			...(title ? { title } : {}),
@@ -461,4 +507,163 @@ export function createSanityBlogImportManifest(
 		...posts.flatMap((post) => post.issues),
 	];
 	return { version: 1, authors, categories, posts, issues };
+}
+
+function requiredSourceAssetRefs(manifest: SanityBlogImportManifest) {
+	const refs = new Set<string>();
+	for (const author of manifest.authors) {
+		if (author.draft.portrait?.sourceAssetRef) {
+			refs.add(author.draft.portrait.sourceAssetRef);
+		}
+	}
+	for (const post of manifest.posts) {
+		if (post.draft.mainImage?.sourceAssetRef) {
+			refs.add(post.draft.mainImage.sourceAssetRef);
+		}
+		for (const bodyRef of post.bodySourceAssetRefs) {
+			refs.add(bodyRef);
+		}
+	}
+	return Array.from(refs).sort();
+}
+
+function missingExportedReferenceIssues(
+	manifest: SanityBlogImportManifest,
+): SanityImportIssue[] {
+	const authorKeys = new Set(manifest.authors.map((author) => author.documentKey));
+	const categoryKeys = new Set(
+		manifest.categories.map((category) => category.documentKey),
+	);
+	const issues: SanityImportIssue[] = [];
+	for (const [postIndex, post] of manifest.posts.entries()) {
+		if (
+			post.draft.authorDocumentKey
+			&& !authorKeys.has(post.draft.authorDocumentKey)
+		) {
+			issues.push(
+				issue(
+					"missing-exported-reference",
+					`$.posts[${postIndex}].draft.authorDocumentKey`,
+					`Post author "${post.draft.authorDocumentKey}" is not present in this export`,
+				),
+			);
+		}
+		for (const [categoryIndex, category] of post.draft.categories.entries()) {
+			if (!categoryKeys.has(category.documentKey)) {
+				issues.push(
+					issue(
+						"missing-exported-reference",
+						`$.posts[${postIndex}].draft.categories[${categoryIndex}].documentKey`,
+						`Post category "${category.documentKey}" is not present in this export`,
+					),
+				);
+			}
+		}
+	}
+	return issues;
+}
+
+function slugCollisionIssues(
+	kind: "authors" | "categories" | "posts",
+	items: Array<{ draft: { slug?: string } }>,
+): SanityImportIssue[] {
+	const seen = new Map<string, number>();
+	const issues: SanityImportIssue[] = [];
+	for (const [index, item] of items.entries()) {
+		const slug = item.draft.slug;
+		if (!slug) continue;
+		const firstIndex = seen.get(slug);
+		if (firstIndex !== undefined) {
+			issues.push(
+				issue(
+					"slug-collision",
+					`$.${kind}[${index}].draft.slug`,
+					`${kind} slug "${slug}" also appears at $.${kind}[${firstIndex}].draft.slug`,
+				),
+			);
+			continue;
+		}
+		seen.set(slug, index);
+	}
+	return issues;
+}
+
+function missingPublishImageAltIssues(
+	manifest: SanityBlogImportManifest,
+): SanityImportIssue[] {
+	const issues: SanityImportIssue[] = [];
+	for (const [authorIndex, author] of manifest.authors.entries()) {
+		if (author.draft.portrait && !author.draft.portrait.altText?.trim()) {
+			issues.push(
+				issue(
+					"missing-image-alt",
+					`$.authors[${authorIndex}].draft.portrait.altText`,
+					"Author portrait needs factual alt text before import publication",
+				),
+			);
+		}
+	}
+	for (const [postIndex, post] of manifest.posts.entries()) {
+		if (post.draft.mainImage && !post.draft.mainImage.altText?.trim()) {
+			issues.push(
+				issue(
+					"missing-image-alt",
+					`$.posts[${postIndex}].draft.mainImage.altText`,
+					"Post main image needs factual alt text before import publication",
+				),
+			);
+		}
+		const body = inspectRichTextDocument(post.draft.body, "publish");
+		issues.push(
+			...body.issues
+				.filter((bodyIssue) => bodyIssue.severity === "error")
+				.map((bodyIssue) =>
+					issue(
+						bodyIssue.code === "missing-image-alt"
+							? "missing-image-alt"
+							: "portable-text",
+						`$.posts[${postIndex}].draft.body${bodyIssue.path.slice(1)}`,
+						bodyIssue.message,
+					),
+				),
+		);
+	}
+	return issues;
+}
+
+export function createSanityBlogImportDryRunReport(
+	manifest: SanityBlogImportManifest,
+): SanityBlogImportDryRunReport {
+	const dryRunIssues = [
+		...missingExportedReferenceIssues(manifest),
+		...slugCollisionIssues("authors", manifest.authors),
+		...slugCollisionIssues("categories", manifest.categories),
+		...slugCollisionIssues("posts", manifest.posts),
+		...missingPublishImageAltIssues(manifest),
+	];
+	const issues = [...manifest.issues, ...dryRunIssues];
+	const blockingIssues = issues.filter((reportIssue) => reportIssue.severity === "error");
+	const warningIssues = issues.filter((reportIssue) => reportIssue.severity === "warning");
+	const sourceAssetRefs = requiredSourceAssetRefs(manifest);
+	const status: SanityBlogImportDryRunStatus = blockingIssues.length > 0
+		? "blocked"
+		: warningIssues.length > 0
+			? "ready-with-warnings"
+			: "ready";
+	return {
+		version: 1,
+		status,
+		counts: {
+			authors: manifest.authors.length,
+			categories: manifest.categories.length,
+			posts: manifest.posts.length,
+			requiredSourceAssets: sourceAssetRefs.length,
+			errors: blockingIssues.length,
+			warnings: warningIssues.length,
+		},
+		requiredSourceAssetRefs: sourceAssetRefs,
+		blockingIssues,
+		warningIssues,
+		issues,
+	};
 }
