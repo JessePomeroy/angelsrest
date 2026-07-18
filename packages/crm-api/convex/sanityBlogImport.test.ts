@@ -1,5 +1,6 @@
 import { describe, expect, test } from "vitest";
 import {
+	createSanityBlogImportDryRunReport,
 	createSanityBlogImportManifest,
 	type SanityBlogImportSource,
 } from "./helpers/sanityBlogImport";
@@ -131,6 +132,7 @@ describe("Sanity Blog import manifest", () => {
 		expect(manifest.posts[0]).toMatchObject({
 			sourceId: "post-process",
 			documentKey: "sanity.post.post-process",
+			bodySourceAssetRefs: [BODY_IMAGE],
 			draft: {
 				kind: "post",
 				title: "A Process Note",
@@ -229,6 +231,124 @@ describe("Sanity Blog import manifest", () => {
 				code: "portable-text",
 				message: expect.stringContaining("has no target media mapping"),
 			}),
+		);
+	});
+
+	test("summarizes a dry-run manifest that is ready with human-review warnings", () => {
+		const source = sourceFixture();
+		source.posts[0].mainImage = {
+			_key: "main-image",
+			asset: { _type: "reference", _ref: "image-main-1600x1200-jpg" },
+			alt: "A camera on a studio table.",
+		};
+		const manifest = createSanityBlogImportManifest(source, {
+			imageAssetIds: { [BODY_IMAGE]: TARGET_BODY_IMAGE },
+		});
+
+		const report = createSanityBlogImportDryRunReport(manifest);
+
+		expect(report).toMatchObject({
+			version: 1,
+			status: "ready-with-warnings",
+			counts: {
+				authors: 1,
+				categories: 1,
+				posts: 1,
+				requiredSourceAssets: 3,
+				errors: 0,
+				warnings: 2,
+			},
+			requiredSourceAssetRefs: [
+				"image-author-600x600-jpg",
+				BODY_IMAGE,
+				"image-main-1600x1200-jpg",
+			],
+		});
+		expect(report.warningIssues.map((issue) => issue.code)).toEqual([
+			"generated-category-slug",
+			"generated-summary",
+		]);
+	});
+
+	test("blocks dry-run import when exported references or generated slugs are unsafe", () => {
+		const source = sourceFixture();
+		source.authors.push({
+			...source.authors[0],
+			_id: "author-duplicate-slug",
+		});
+		source.categories.push({
+			_id: "category-missing-from-post",
+			_type: "category" as const,
+			title: "Process Notes",
+		});
+		source.posts[0].author = { _type: "reference", _ref: "author-not-exported" };
+		source.posts[0].categories = [
+			{ _type: "reference", _ref: "category-not-exported" },
+		];
+
+		const report = createSanityBlogImportDryRunReport(
+			createSanityBlogImportManifest(source, {
+				imageAssetIds: { [BODY_IMAGE]: TARGET_BODY_IMAGE },
+			}),
+		);
+
+		expect(report.status).toBe("blocked");
+		expect(report.blockingIssues).toEqual(
+			expect.arrayContaining([
+				expect.objectContaining({
+					code: "missing-exported-reference",
+					path: "$.posts[0].draft.authorDocumentKey",
+				}),
+				expect.objectContaining({
+					code: "missing-exported-reference",
+					path: "$.posts[0].draft.categories[0].documentKey",
+				}),
+				expect.objectContaining({
+					code: "slug-collision",
+					path: "$.authors[1].draft.slug",
+				}),
+				expect.objectContaining({
+					code: "slug-collision",
+					path: "$.categories[1].draft.slug",
+				}),
+			]),
+		);
+	});
+
+	test("blocks dry-run publication when imported images lack required alt text", () => {
+		const source = sourceFixture();
+		delete source.authors[0].image?.alt;
+		source.posts[0].mainImage = {
+			_key: "main-image",
+			asset: { _type: "reference", _ref: "image-main-1600x1200-jpg" },
+		};
+		const body = bodyFixture();
+		const bodyImage = body[1];
+		if ("alt" in bodyImage) delete bodyImage.alt;
+		source.posts[0].body = body;
+
+		const report = createSanityBlogImportDryRunReport(
+			createSanityBlogImportManifest(source, {
+				imageAssetIds: { [BODY_IMAGE]: TARGET_BODY_IMAGE },
+			}),
+		);
+
+		expect(report.status).toBe("blocked");
+		expect(report.blockingIssues).toEqual(
+			expect.arrayContaining([
+				expect.objectContaining({
+					code: "missing-image-alt",
+					path: "$.authors[0].draft.portrait.altText",
+				}),
+				expect.objectContaining({
+					code: "missing-image-alt",
+					path: "$.posts[0].draft.mainImage.altText",
+				}),
+				expect.objectContaining({
+					code: "missing-image-alt",
+					path: "$.posts[0].draft.body.blocks[1].altText",
+				}),
+			]),
 		);
 	});
 });
