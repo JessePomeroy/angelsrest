@@ -24,12 +24,16 @@ const apiWithGalleryDelivery = new Proxy(api, {
 				},
 			});
 		}
+		if (prop === "blogContent") return target.blogContent;
+		if (prop === "postContent") return target.postContent;
 		return Reflect.get(target, prop, receiver);
 	},
 }) as typeof api & {
 	galleryDelivery: typeof api.galleries & {
 		setPassword: typeof api.galleryPassword.setPassword;
 	};
+	blogContent: typeof api.blogContent;
+	postContent: typeof api.postContent;
 };
 
 export const adminConfig: AdminConfig = {
@@ -40,6 +44,9 @@ export const adminConfig: AdminConfig = {
 	sanityStudioUrl: "https://angelsrest.sanity.studio",
 	galleryWorkerUrl: "https://gallery-worker.thinkingofview.workers.dev",
 	api: apiWithGalleryDelivery,
+	editor: {
+		blog: {},
+	},
 	// Route mutations through the SvelteKit proxy at /api/admin/mutation.
 	// Queries use the manually authenticated browser WebSocket; the HTTP path
 	// gives each mutation a fresh authenticated ConvexHttpClient and avoids the
