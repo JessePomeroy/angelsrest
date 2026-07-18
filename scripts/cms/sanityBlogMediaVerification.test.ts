@@ -19,12 +19,15 @@ const MEDIA_ID_A = "nh744cpb0en9t6nx89xpjdn8ts8arc2m";
 const MEDIA_ID_B = "jh744cpb0en9t6nx89xpjdn8ts8arc2n";
 const WORKER_ID_A = "7e11be6a-7e30-4317-aad5-08f4c00333b4";
 const WORKER_ID_B = "8e11be6a-7e30-4317-aad5-08f4c00333b5";
+const SOURCE_SHA_A = "a".repeat(64);
+const SOURCE_SHA_B = "b".repeat(64);
 
 function receiptFile(
 	receipts: SanityBlogMediaTransferReceipts["receipts"] = {
 		[ASSET_A]: {
 			mediaAssetId: MEDIA_ID_A,
 			workerAssetId: WORKER_ID_A,
+			sourceSha256: SOURCE_SHA_A,
 			source: {
 				contentType: "image/jpeg",
 				sizeBytes: 123_456,
@@ -35,7 +38,7 @@ function receiptFile(
 	},
 ): SanityBlogMediaTransferReceipts {
 	return {
-		schemaVersion: 1,
+		schemaVersion: 2,
 		siteUrl: "angelsrest.online",
 		sanity: { projectId: "n7rvza4g", dataset: "production" },
 		receipts,
@@ -145,6 +148,34 @@ describe("Sanity Blog media target verification", () => {
 			parseSanityBlogMediaTransferReceipts({ ...receiptFile(), unexpected: true }),
 		).toThrow(/unexpected or missing fields/);
 		expect(() =>
+			parseSanityBlogMediaTransferReceipts({ ...receiptFile(), schemaVersion: 1 }),
+		).toThrow(/Unsupported transfer receipt schemaVersion/);
+		for (const sourceSha256 of ["a".repeat(63), "A".repeat(64), "g".repeat(64)]) {
+			expect(() =>
+				parseSanityBlogMediaTransferReceipts({
+					...receiptFile(),
+					receipts: {
+						[ASSET_A]: {
+							...receiptFile().receipts[ASSET_A],
+							sourceSha256,
+						},
+					},
+				}),
+			).toThrow(/invalid lowercase source SHA-256/);
+		}
+		expect(() =>
+			parseSanityBlogMediaTransferReceipts({
+				...receiptFile(),
+				receipts: {
+					[ASSET_A]: {
+						mediaAssetId: MEDIA_ID_A,
+						workerAssetId: WORKER_ID_A,
+						source: sourceA(),
+					},
+				},
+			}),
+		).toThrow(/unexpected or missing fields/);
+		expect(() =>
 			parseSanityBlogMediaTransferReceipts({
 				...receiptFile(),
 				receipts: {
@@ -152,6 +183,7 @@ describe("Sanity Blog media target verification", () => {
 					[ASSET_B]: {
 						mediaAssetId: MEDIA_ID_A,
 						workerAssetId: WORKER_ID_B,
+						sourceSha256: SOURCE_SHA_B,
 						source: {
 							contentType: "image/png",
 							sizeBytes: 456,
@@ -337,11 +369,13 @@ describe("Sanity Blog media target verification", () => {
 			[ASSET_A]: {
 				mediaAssetId: MEDIA_ID_A,
 				workerAssetId: WORKER_ID_A,
+				sourceSha256: SOURCE_SHA_A,
 				source: sourceA(),
 			},
 			[ASSET_B]: {
 				mediaAssetId: MEDIA_ID_B,
 				workerAssetId: WORKER_ID_B,
+				sourceSha256: SOURCE_SHA_B,
 				source: {
 					contentType: "image/png",
 					sizeBytes: 123,
