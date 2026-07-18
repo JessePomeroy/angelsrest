@@ -959,7 +959,10 @@ describe("tenant-scoped Post content graphs", () => {
 			}),
 		);
 		await expectError(
-			adminA.mutation(api.mediaAssets.requestDeletion, { id: assetA.id }),
+			adminA.mutation(api.mediaAssets.requestDeletion, {
+				siteUrl: SITE_A.siteUrl,
+				id: assetA.id,
+			}),
 			/in use by Post content/i,
 		);
 		await adminA.mutation(api.postContent.discardDraft, {
@@ -967,7 +970,10 @@ describe("tenant-scoped Post content graphs", () => {
 			draftRevisionId: draftOnly.revisionId,
 		});
 		await expect(
-			adminA.mutation(api.mediaAssets.requestDeletion, { id: assetA.id }),
+			adminA.mutation(api.mediaAssets.requestDeletion, {
+				siteUrl: SITE_A.siteUrl,
+				id: assetA.id,
+			}),
 		).resolves.toMatchObject({ status: "deleting" });
 
 		const published = await createPost(
@@ -985,7 +991,10 @@ describe("tenant-scoped Post content graphs", () => {
 		);
 		await publishPost(adminA, published.documentId, published.revisionId);
 		await expectError(
-			adminA.mutation(api.mediaAssets.requestDeletion, { id: assetC.id }),
+			adminA.mutation(api.mediaAssets.requestDeletion, {
+				siteUrl: SITE_A.siteUrl,
+				id: assetC.id,
+			}),
 			/in use by Post content/i,
 		);
 	});
@@ -1310,7 +1319,10 @@ describe("tenant-scoped Post content graphs", () => {
 			draftRevisionId: current.revisionId,
 		});
 		await expect(
-			adminA.mutation(api.mediaAssets.requestDeletion, { id: assetA.id }),
+			adminA.mutation(api.mediaAssets.requestDeletion, {
+				siteUrl: SITE_A.siteUrl,
+				id: assetA.id,
+			}),
 		).resolves.toMatchObject({ status: "deleting" });
 	});
 });

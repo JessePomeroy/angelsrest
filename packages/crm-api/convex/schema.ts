@@ -259,6 +259,22 @@ export default defineSchema({
 			filterFields: ["siteUrl", "status"],
 		}),
 
+	// A completed storage deletion permanently reserves the Worker's asset UUID.
+	// Keeping this small record outside the active media library prevents a
+	// delayed registration from recreating metadata for tombstoned R2 objects.
+	mediaAssetDeletionTombstones: defineTable({
+		siteUrl: v.string(),
+		assetId: v.string(),
+		mediaAssetId: v.string(),
+		privateKeys: v.array(v.string()),
+		publicKeys: v.array(v.string()),
+		deletedAt: v.number(),
+		deletionRequestedAt: v.optional(v.number()),
+		deletionRequestedBy: v.optional(v.string()),
+	})
+		.index("by_siteUrl_and_assetId", ["siteUrl", "assetId"])
+		.index("by_siteUrl_and_mediaAssetId", ["siteUrl", "mediaAssetId"]),
+
 	// Portfolio galleries and their revisions are distinct from private client
 	// delivery galleries. CMS-2.4b adds their behavior; these relations exist
 	// now so media deletion can enforce placement usage atomically.

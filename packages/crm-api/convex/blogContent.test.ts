@@ -421,7 +421,10 @@ describe("tenant-scoped Blog supporting content", () => {
 			author("Discarded", "discarded", assetA.id),
 		);
 		await expectError(
-			adminA.mutation(api.mediaAssets.requestDeletion, { id: assetA.id }),
+			adminA.mutation(api.mediaAssets.requestDeletion, {
+				siteUrl: SITE_A.siteUrl,
+				id: assetA.id,
+			}),
 			/in use by Author content/i,
 		);
 		await adminA.mutation(api.blogContent.discardDraft, {
@@ -429,9 +432,16 @@ describe("tenant-scoped Blog supporting content", () => {
 			draftRevisionId: draft.revisionId,
 		});
 		expect(
-			await adminA.mutation(api.mediaAssets.requestDeletion, { id: assetA.id }),
+			await adminA.mutation(api.mediaAssets.requestDeletion, {
+				siteUrl: SITE_A.siteUrl,
+				id: assetA.id,
+			}),
 		).toMatchObject({ status: "deleting" });
-		await adminA.mutation(api.mediaAssets.completeDeletion, { id: assetA.id });
+		await t.mutation(internal.mediaAssets.completeDeletion, {
+			siteUrl: SITE_A.siteUrl,
+			id: assetA.id,
+			assetId: ASSET_A,
+		});
 		await expectError(
 			create(adminA, SITE_A.siteUrl, "author-deleted-portrait", author("Deleted Portrait", "deleted-portrait", assetA.id)),
 			/ready media asset from the same site/i,
@@ -455,7 +465,10 @@ describe("tenant-scoped Blog supporting content", () => {
 		});
 		await publish(adminA, publishable.documentId, publishable.revisionId);
 		await expectError(
-			adminA.mutation(api.mediaAssets.requestDeletion, { id: assetC.id }),
+			adminA.mutation(api.mediaAssets.requestDeletion, {
+				siteUrl: SITE_A.siteUrl,
+				id: assetC.id,
+			}),
 			/in use by Author content/i,
 		);
 	});
