@@ -31,7 +31,7 @@ The Cookie file must be a regular, owner-owned mode-`0600` file containing one r
 
 The runner:
 
-- validates the exact Sanity origin, project, dataset, published reference, bytes, SHA-1, reviewed SHA-256, MIME, size, decoded format, and dimensions before upload;
+- validates the exact Sanity origin, project, dataset, published reference, canonical CDN bytes, reviewed SHA-256, MIME, size, decoded format, and dimensions before upload; Sanity's embedded asset ID continues to identify its uploaded original and is not incorrectly treated as a digest of the public CDN byte representation;
 - processes the two assets strictly serially and stops at the first failure;
 - checkpoints the source digest and one Worker identity before PUT, then reconciles every ambiguous PUT or process result against that same private key without requesting a replacement capability;
 - uses one exclusive local lock and compare-and-swap journal digests to prevent concurrent or out-of-band commits;

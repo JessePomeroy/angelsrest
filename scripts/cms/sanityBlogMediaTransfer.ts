@@ -209,9 +209,9 @@ function sourceRefParts(sourceAssetRef: string) {
 	if (!match) {
 		throw new SanityBlogMediaTransferError("invalid-source", "Source reference is not canonical");
 	}
-	const [, sha1, width, height, extension] = match;
+	const [, assetId, width, height, extension] = match;
 	return {
-		sha1,
+		assetId,
 		width: Number(width),
 		height: Number(height),
 		extension: extension as "jpg" | "png" | "webp",
@@ -223,8 +223,8 @@ function sourceRefParts(sourceAssetRef: string) {
 }
 
 export function deterministicSanitySourceFilename(sourceAssetRef: string) {
-	const { sha1, width, height, extension } = sourceRefParts(sourceAssetRef);
-	return `${sha1}-${width}x${height}.${extension}`;
+	const { assetId, width, height, extension } = sourceRefParts(sourceAssetRef);
+	return `${assetId}-${width}x${height}.${extension}`;
 }
 
 export function parseSanityBlogMediaTransferOptions(
@@ -356,9 +356,17 @@ export function validateSanityImageSourceAgainstExpectation({
 	expected: BlogMediaSource & { sourceSha256: string };
 }) {
 	const parts = sourceRefParts(sourceAssetRef);
-	const sha1 = createHash("sha1").update(bytes).digest("hex");
 	const sourceSha256 = createHash("sha256").update(bytes).digest("hex");
-	if (sha1 !== parts.sha1) throw new Error("Sanity source bytes do not match their content hash");
+	if (
+		expected.contentType !== parts.contentType ||
+		expected.width !== parts.width ||
+		expected.height !== parts.height
+	) {
+		throw new Error("Reviewed Sanity source expectation does not match its asset reference");
+	}
+	// The asset ID identifies Sanity's uploaded original, while its public CDN may
+	// serve a different byte representation. The exact allowlisted reference and
+	// reviewed SHA-256 deliberately protect those two boundaries independently.
 	if (sourceSha256 !== expected.sourceSha256) {
 		throw new Error("Sanity source SHA-256 differs from the reviewed CMS-4.4j batch");
 	}
