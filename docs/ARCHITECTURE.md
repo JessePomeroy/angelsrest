@@ -11,7 +11,7 @@ SvelteKit routes and UI
   ├── Convex generated API (operational reads and writes)
   ├── @jessepomeroy/admin (shared admin UI and host adapters)
   ├── @jessepomeroy/print-catalog (pure shared print domain)
-  └── server integrations (Stripe, LumaPrints, Resend, gallery worker)
+  └── server integrations (Stripe, LumaPrints, Resend, gallery workers)
 
 packages/crm-api
   └── Convex schema, functions, and generated public API
@@ -27,7 +27,9 @@ modules or private environment variables.
 
 | Domain | Owner | Entry points |
 |---|---|---|
-| Portfolio galleries, products, collections, blog, about, settings, contact copy | Sanity | `src/lib/sanity/client.ts`, `client.server.ts`, public load functions |
+| Published editorial content during migration | Sanity fallback | `src/lib/sanity/client.ts`, `client.server.ts`, public load functions |
+| Embedded Editor drafts, revisions, and media registry | Convex | `packages/crm-api/convex/*Content.ts`, `mediaAssets.ts` |
+| Editor media sources and public WebP derivatives | Cloudflare R2 | CMS media worker via `/api/admin/media/*` |
 | Orders and fulfillment state | Convex | `packages/crm-api/convex/orders.ts` |
 | Inquiries | Convex | `packages/crm-api/convex/inquiries.ts`, `/api/contact` |
 | CRM, board, invoices, quotes, contracts | Convex | matching Convex modules |
@@ -80,6 +82,21 @@ security boundary; keep verification inside the host route.
    `requireSiteAdmin`, `requireDocumentSiteAdmin`, or `requireCreator`.
 7. Shared server handlers, including gallery-worker/R2 operations, call the
    host's per-request site-admin verifier before performing side effects.
+
+### Editor media boundary
+
+1. The authenticated browser asks `/api/admin/media/capability` for one bounded
+   upload capability; the host verifies site-admin membership and authenticates
+   to the CMS media Worker with the `angelsrest.online` tenant credential.
+2. The browser sends the exact image directly to the capability-bound Worker
+   URL. The tenant credential remains server-only.
+3. `/api/admin/media/process` verifies the same admin again, asks the Worker to
+   finalize and create the fixed WebP derivative set, then registers the ready
+   asset through an authenticated Convex mutation.
+4. Private sources remain in the CMS private bucket. Public pages receive only
+   immutable derivatives from `https://media.angelsrest.online`.
+5. This boundary is separate from private client-gallery delivery and does not
+   switch any public content type away from its Sanity fallback by itself.
 
 Authenticated server reads also create a fresh client through
 `createAuthenticatedConvexClient`. The cached `getConvex()` client is reserved
@@ -212,7 +229,7 @@ the same workflow into multiple root files.
 | `reflecting-pool-studio` | Maggie's Sanity instance | Downstream of Studio template |
 | `sanity-studio-template` | Shared Studio schemas, desk, components, and actions | Upstream for client Studios |
 | `admin-dashboard` | Source for `@jessepomeroy/admin` client/server package | Upstream for host admin UI/adapters |
-| `gallery-worker` | Shared Cloudflare Worker, R2, and prepared ZIP boundary | Called through host/admin adapters |
+| `gallery-worker` | Separate gallery-delivery and CMS-media Workers with distinct R2 boundaries | Called through host/admin adapters |
 
 Cross-repository contract changes land in the owning upstream first, then flow
 to each affected consumer with repository-specific checks.

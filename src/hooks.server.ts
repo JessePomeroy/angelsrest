@@ -11,6 +11,7 @@
 
 import { captureException, flush, withIsolationScope } from "@sentry/node";
 import type { Handle, HandleServerError } from "@sveltejs/kit";
+import { contentSecurityPolicy } from "$lib/config/securityPolicy";
 
 function addSecurityHeaders(response: Response): Response {
 	const cloned = new Response(response.body, response);
@@ -37,7 +38,7 @@ function addSecurityHeaders(response: Response): Response {
 		//   was written to prevent).
 		// - Cloudflare's Turnstile reference requires challenges.cloudflare.com
 		//   in both script-src and frame-src for the managed widget.
-		"default-src 'self'; script-src 'self' 'unsafe-inline' https://va.vercel-scripts.com https://challenges.cloudflare.com; style-src 'self' 'unsafe-inline' https://api.fontshare.com; img-src 'self' https://cdn.sanity.io https://gallery-worker.thinkingofview.workers.dev data: blob:; font-src 'self' https://api.fontshare.com https://cdn.fontshare.com; connect-src 'self' wss://*.convex.cloud https://*.convex.cloud https://*.sanity.io https://*.sentry.io https://va.vercel-scripts.com https://gallery-worker.thinkingofview.workers.dev; frame-src https://challenges.cloudflare.com; frame-ancestors 'none'",
+		contentSecurityPolicy,
 	);
 	return cloned;
 }

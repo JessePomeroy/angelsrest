@@ -1,4 +1,4 @@
-import type { AdminConfig } from "@jessepomeroy/admin";
+import type { AdminAPI, AdminConfig } from "@jessepomeroy/admin";
 import { api } from "$convex/api";
 
 // Map Convex's `galleries` namespace to the package's `galleryDelivery` key —
@@ -14,8 +14,18 @@ import { api } from "$convex/api";
 //
 // Use a Proxy wrapper instead so unknown property reads fall through to the
 // real `api` Proxy and the alias is the only override.
-const apiWithGalleryDelivery = new Proxy(api, {
+const portfolioEditorApi = new Proxy(api.portfolioGalleries, {
+	get(portfolio, prop, receiver) {
+		if (prop === "listMediaAssets") return api.mediaAssets.listForEditor;
+		if (prop === "getPlacedMediaAssets") return api.mediaAssets.getManyForEditor;
+		if (prop === "registerReadyWebAsset") return api.mediaAssets.registerReadyWebAsset;
+		return Reflect.get(portfolio, prop, receiver);
+	},
+});
+
+const apiWithAliases = new Proxy(api, {
 	get(target, prop, receiver) {
+		if (prop === "portfolioEditor") return portfolioEditorApi;
 		if (prop === "galleryDelivery") {
 			return new Proxy(target.galleries, {
 				get(galleries, galleryProp, galleryReceiver) {
@@ -28,13 +38,7 @@ const apiWithGalleryDelivery = new Proxy(api, {
 		if (prop === "postContent") return target.postContent;
 		return Reflect.get(target, prop, receiver);
 	},
-}) as typeof api & {
-	galleryDelivery: typeof api.galleries & {
-		setPassword: typeof api.galleryPassword.setPassword;
-	};
-	blogContent: typeof api.blogContent;
-	postContent: typeof api.postContent;
-};
+}) as unknown as AdminAPI;
 
 export const adminConfig: AdminConfig = {
 	siteUrl: "angelsrest.online",
@@ -43,7 +47,7 @@ export const adminConfig: AdminConfig = {
 	isCreator: true,
 	sanityStudioUrl: "https://angelsrest.sanity.studio",
 	galleryWorkerUrl: "https://gallery-worker.thinkingofview.workers.dev",
-	api: apiWithGalleryDelivery,
+	api: apiWithAliases,
 	editor: {
 		blog: {},
 	},
