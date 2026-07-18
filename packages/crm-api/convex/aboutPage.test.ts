@@ -221,14 +221,20 @@ describe("typed About-page content", () => {
 			payload: completeAbout(assetA.id),
 		});
 		await expect(
-			adminA.mutation(api.mediaAssets.requestDeletion, { id: assetA.id }),
+			adminA.mutation(api.mediaAssets.requestDeletion, {
+				siteUrl: SITE_A.siteUrl,
+				id: assetA.id,
+			}),
 		).rejects.toThrow(/in use by About content/i);
 		await adminA.mutation(api.content.publishAboutPage, {
 			siteUrl: SITE_A.siteUrl,
 			draftRevisionId: draft.revisionId,
 		});
 		await expect(
-			adminA.mutation(api.mediaAssets.requestDeletion, { id: assetA.id }),
+			adminA.mutation(api.mediaAssets.requestDeletion, {
+				siteUrl: SITE_A.siteUrl,
+				id: assetA.id,
+			}),
 		).rejects.toThrow(/in use by About content/i);
 	});
 

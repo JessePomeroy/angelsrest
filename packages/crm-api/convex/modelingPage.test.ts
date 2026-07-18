@@ -245,14 +245,20 @@ describe("typed Modeling-page content", () => {
 			payload: completeModeling(assetA.id),
 		});
 		await expect(
-			adminA.mutation(api.mediaAssets.requestDeletion, { id: assetA.id }),
+			adminA.mutation(api.mediaAssets.requestDeletion, {
+				siteUrl: SITE_A.siteUrl,
+				id: assetA.id,
+			}),
 		).rejects.toThrow(/in use by Modeling content/i);
 		await adminA.mutation(api.content.publishModelingPage, {
 			siteUrl: SITE_A.siteUrl,
 			draftRevisionId: draft.revisionId,
 		});
 		await expect(
-			adminA.mutation(api.mediaAssets.requestDeletion, { id: assetA.id }),
+			adminA.mutation(api.mediaAssets.requestDeletion, {
+				siteUrl: SITE_A.siteUrl,
+				id: assetA.id,
+			}),
 		).rejects.toThrow(/in use by Modeling content/i);
 	});
 

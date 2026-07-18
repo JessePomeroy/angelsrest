@@ -11,6 +11,12 @@ const modules = import.meta.glob("./**/*.ts");
 const SITE_A = { siteUrl: "site-a.example", email: "admin-a@example.com" };
 const SITE_B = { siteUrl: "site-b.example", email: "admin-b@example.com" };
 const ASSET_ID = "123e4567-e89b-42d3-a456-426614174000";
+const COMPLETION_SECRET_A = "cms-media-completion-secret-a-0123456789abcdef";
+const COMPLETION_SECRET_B = "cms-media-completion-secret-b-0123456789abcdef";
+const COMPLETION_REGISTRY = JSON.stringify({
+	[SITE_A.siteUrl]: [COMPLETION_SECRET_A],
+	[SITE_B.siteUrl]: [COMPLETION_SECRET_B],
+});
 
 function readyAsset(siteUrl = SITE_A.siteUrl) {
 	const prefix = `sites/${siteUrl}/web/${ASSET_ID}/`;
@@ -58,6 +64,33 @@ async function setup() {
 
 function asAdmin(t: Awaited<ReturnType<typeof setup>>, email: string) {
 	return t.withIdentity({ subject: email, email });
+}
+
+function restoreEnvironment(name: string, previous: string | undefined) {
+	if (previous === undefined) delete process.env[name];
+	else process.env[name] = previous;
+}
+
+async function withCompletionEnvironment<T>(
+	action: () => Promise<T>,
+	completionRegistry = COMPLETION_REGISTRY,
+) {
+	const previousSiteUrl = process.env.SITE_URL;
+	const previousAuthSecret = process.env.BETTER_AUTH_SECRET;
+	const previousCompletionSecrets = process.env.CMS_MEDIA_DELETION_COMPLETION_SECRETS;
+	process.env.SITE_URL = `https://${SITE_A.siteUrl}`;
+	process.env.BETTER_AUTH_SECRET = "test-better-auth-secret-0123456789";
+	process.env.CMS_MEDIA_DELETION_COMPLETION_SECRETS = completionRegistry;
+	try {
+		return await action();
+	} finally {
+		restoreEnvironment("SITE_URL", previousSiteUrl);
+		restoreEnvironment("BETTER_AUTH_SECRET", previousAuthSecret);
+		restoreEnvironment(
+			"CMS_MEDIA_DELETION_COMPLETION_SECRETS",
+			previousCompletionSecrets,
+		);
+	}
 }
 
 describe("tenant-scoped CMS media assets", () => {
@@ -192,15 +225,158 @@ describe("tenant-scoped CMS media assets", () => {
 			siteUrl: SITE_A.siteUrl,
 			asset: readyAsset(),
 		});
-		const requested = await admin.mutation(api.mediaAssets.requestDeletion, { id: created.id });
-		const retry = await admin.mutation(api.mediaAssets.requestDeletion, { id: created.id });
+		const requested = await admin.mutation(api.mediaAssets.requestDeletion, {
+			siteUrl: SITE_A.siteUrl,
+			id: created.id,
+		});
+		const retry = await admin.mutation(api.mediaAssets.requestDeletion, {
+			siteUrl: SITE_A.siteUrl,
+			id: created.id,
+		});
 		expect(retry).toEqual(requested);
+		expect(requested).toMatchObject({ siteUrl: SITE_A.siteUrl, assetId: ASSET_ID });
 		expect(requested.privateKeys).toEqual([readyAsset().master.key]);
 		expect(requested.publicKeys).toHaveLength(5);
 		expect((await admin.query(api.mediaAssets.get, { id: created.id })).status).toBe("deleting");
 
-		await admin.mutation(api.mediaAssets.completeDeletion, { id: created.id });
+		await withCompletionEnvironment(async () => {
+			const unauthorized = await t.fetch("/cms-media/complete-deletion", {
+				method: "POST",
+				headers: { "Content-Type": "application/json" },
+				body: JSON.stringify({
+					siteUrl: SITE_A.siteUrl,
+					id: created.id,
+					assetId: ASSET_ID,
+				}),
+			});
+			expect(unauthorized.status).toBe(401);
+			expect((await admin.query(api.mediaAssets.get, { id: created.id })).status).toBe("deleting");
+
+			const completed = await t.fetch("/cms-media/complete-deletion", {
+				method: "POST",
+				headers: {
+					Authorization: `Bearer ${COMPLETION_SECRET_A}`,
+					"Content-Type": "application/json",
+				},
+				body: JSON.stringify({
+					siteUrl: SITE_A.siteUrl,
+					id: created.id,
+					assetId: ASSET_ID,
+				}),
+			});
+			expect(completed.status).toBe(200);
+			expect(await completed.json()).toEqual({ deleted: true, id: created.id });
+
+			const retry = await t.fetch("/cms-media/complete-deletion", {
+				method: "POST",
+				headers: {
+					Authorization: `Bearer ${COMPLETION_SECRET_A}`,
+					"Content-Type": "application/json",
+				},
+				body: JSON.stringify({
+					siteUrl: SITE_A.siteUrl,
+					id: created.id,
+					assetId: ASSET_ID,
+				}),
+			});
+			expect(retry.status).toBe(200);
+			expect(await retry.json()).toEqual({ deleted: true, id: created.id });
+		});
 		await expect(admin.query(api.mediaAssets.get, { id: created.id })).rejects.toThrow(/Not found/);
+		await expect(admin.mutation(api.mediaAssets.requestDeletion, {
+			siteUrl: SITE_A.siteUrl,
+			id: created.id,
+		})).resolves.toMatchObject({
+			status: "deleted",
+			siteUrl: SITE_A.siteUrl,
+			assetId: ASSET_ID,
+		});
+		await expect(admin.mutation(api.mediaAssets.registerReadyWebAsset, {
+			siteUrl: SITE_A.siteUrl,
+			asset: readyAsset(),
+		})).rejects.toThrow(/permanently deleted/i);
+	});
+
+	test("binds a deletion request to the host-supplied tenant before changing status", async () => {
+		const t = await setup();
+		const adminA = asAdmin(t, SITE_A.email);
+		const adminB = asAdmin(t, SITE_B.email);
+		const createdB = await adminB.mutation(api.mediaAssets.registerReadyWebAsset, {
+			siteUrl: SITE_B.siteUrl,
+			asset: readyAsset(SITE_B.siteUrl),
+		});
+		await expect(adminA.mutation(api.mediaAssets.requestDeletion, {
+			siteUrl: SITE_A.siteUrl,
+			id: createdB.id,
+		})).rejects.toThrow(/not found/i);
+		expect((await adminB.query(api.mediaAssets.get, { id: createdB.id })).status).toBe("ready");
+	});
+
+	test("binds each completion credential to exactly one tenant", async () => {
+		const t = await setup();
+		const adminB = asAdmin(t, SITE_B.email);
+		const createdB = await adminB.mutation(api.mediaAssets.registerReadyWebAsset, {
+			siteUrl: SITE_B.siteUrl,
+			asset: readyAsset(SITE_B.siteUrl),
+		});
+		await adminB.mutation(api.mediaAssets.requestDeletion, {
+			siteUrl: SITE_B.siteUrl,
+			id: createdB.id,
+		});
+		await withCompletionEnvironment(async () => {
+			const foreignCredential = await t.fetch("/cms-media/complete-deletion", {
+				method: "POST",
+				headers: {
+					Authorization: `Bearer ${COMPLETION_SECRET_A}`,
+					"Content-Type": "application/json",
+				},
+				body: JSON.stringify({
+					siteUrl: SITE_B.siteUrl,
+					id: createdB.id,
+					assetId: ASSET_ID,
+				}),
+			});
+			expect(foreignCredential.status).toBe(401);
+			expect((await adminB.query(api.mediaAssets.get, { id: createdB.id })).status)
+				.toBe("deleting");
+
+			const ownCredential = await t.fetch("/cms-media/complete-deletion", {
+				method: "POST",
+				headers: {
+					Authorization: `Bearer ${COMPLETION_SECRET_B}`,
+					"Content-Type": "application/json",
+				},
+				body: JSON.stringify({
+					siteUrl: SITE_B.siteUrl,
+					id: createdB.id,
+					assetId: ASSET_ID,
+				}),
+			});
+			expect(ownCredential.status).toBe(200);
+		});
+	});
+
+	test("fails closed when a completion credential is assigned to multiple tenants", async () => {
+		const t = await setup();
+		const duplicatedRegistry = JSON.stringify({
+			[SITE_A.siteUrl]: [COMPLETION_SECRET_A],
+			[SITE_B.siteUrl]: [COMPLETION_SECRET_A],
+		});
+		await withCompletionEnvironment(async () => {
+			const response = await t.fetch("/cms-media/complete-deletion", {
+				method: "POST",
+				headers: {
+					Authorization: `Bearer ${COMPLETION_SECRET_A}`,
+					"Content-Type": "application/json",
+				},
+				body: JSON.stringify({
+					siteUrl: SITE_A.siteUrl,
+					id: "not-a-convex-id",
+					assetId: ASSET_ID,
+				}),
+			});
+			expect(response.status).toBe(503);
+		}, duplicatedRegistry);
 	});
 
 	test("blocks deletion while any portfolio placement references the asset", async () => {
@@ -244,6 +420,7 @@ describe("tenant-scoped CMS media assets", () => {
 		});
 
 		await expect(admin.mutation(api.mediaAssets.requestDeletion, {
+			siteUrl: SITE_A.siteUrl,
 			id: created.id,
 		})).rejects.toThrow(/in use by portfolio content/);
 	});

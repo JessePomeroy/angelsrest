@@ -1,7 +1,12 @@
 import { paginationOptsValidator } from "convex/server";
 import { v } from "convex/values";
 import type { Doc } from "./_generated/dataModel";
-import { type MutationCtx, mutation, query } from "./_generated/server";
+import {
+	internalMutation,
+	type MutationCtx,
+	mutation,
+	query,
+} from "./_generated/server";
 import { requireDocumentSiteAdmin, requireSiteAdmin } from "./authHelpers";
 import { requireBlogAssetUnused } from "./helpers/blogContentData";
 import {
@@ -211,6 +216,15 @@ export const registerReadyWebAsset = mutation({
 				q.eq("siteUrl", client.siteUrl).eq("assetId", asset.assetId),
 			)
 			.unique();
+		const deletionTombstone = await ctx.db
+			.query("mediaAssetDeletionTombstones")
+			.withIndex("by_siteUrl_and_assetId", (q) =>
+				q.eq("siteUrl", client.siteUrl).eq("assetId", asset.assetId),
+			)
+			.unique();
+		if (deletionTombstone) {
+			throw new Error("Media asset was permanently deleted");
+		}
 		if (existing) {
 			if (
 				JSON.stringify(storedRegistration(existing))
@@ -304,16 +318,39 @@ export const getManyForEditor = query({
 });
 
 export const requestDeletion = mutation({
-	args: { id: v.id("mediaAssets") },
-	handler: async (ctx, { id }) => {
-		const asset = await requireDocumentSiteAdmin(ctx, "mediaAssets", id);
+	args: { siteUrl: v.string(), id: v.id("mediaAssets") },
+	handler: async (ctx, { siteUrl, id }) => {
+		const { identity, client } = await requireSiteAdmin(ctx, siteUrl);
+		const asset = await ctx.db.get(id);
+		if (!asset) {
+			const completed = await ctx.db
+				.query("mediaAssetDeletionTombstones")
+				.withIndex("by_siteUrl_and_mediaAssetId", (q) =>
+					q.eq("siteUrl", client.siteUrl).eq("mediaAssetId", id),
+				)
+				.unique();
+			if (!completed) throw new Error("Media asset not found");
+			return {
+				status: "deleted" as const,
+				siteUrl: completed.siteUrl,
+				assetId: completed.assetId,
+				privateKeys: completed.privateKeys,
+				publicKeys: completed.publicKeys,
+			};
+		}
+		if (asset.siteUrl !== client.siteUrl) {
+			throw new Error("Media asset not found");
+		}
 		await requireAssetUnused(ctx, asset);
 		if (asset.status === "deleting") {
-			return { status: asset.status, ...cleanupManifest(asset) };
+			return {
+				status: asset.status,
+				siteUrl: asset.siteUrl,
+				assetId: asset.assetId,
+				...cleanupManifest(asset),
+			};
 		}
 
-		const identity = await ctx.auth.getUserIdentity();
-		if (!identity) throw new Error("Not authenticated");
 		const now = Date.now();
 		await ctx.db.patch(id, {
 			status: "deleting",
@@ -322,19 +359,53 @@ export const requestDeletion = mutation({
 			updatedAt: now,
 			updatedBy: identity.tokenIdentifier,
 		});
-		return { status: "deleting" as const, ...cleanupManifest(asset) };
+		return {
+			status: "deleting" as const,
+			siteUrl: asset.siteUrl,
+			assetId: asset.assetId,
+			...cleanupManifest(asset),
+		};
 	},
 });
 
-export const completeDeletion = mutation({
-	args: { id: v.id("mediaAssets") },
-	handler: async (ctx, { id }) => {
-		const asset = await requireDocumentSiteAdmin(ctx, "mediaAssets", id);
+export const completeDeletion = internalMutation({
+	args: {
+		siteUrl: v.string(),
+		id: v.id("mediaAssets"),
+		assetId: v.string(),
+	},
+	handler: async (ctx, { siteUrl, id, assetId }) => {
+		const completed = await ctx.db
+			.query("mediaAssetDeletionTombstones")
+			.withIndex("by_siteUrl_and_assetId", (q) =>
+				q.eq("siteUrl", siteUrl).eq("assetId", assetId),
+			)
+			.unique();
+		if (completed) {
+			if (completed.mediaAssetId !== id) {
+				throw new Error("Media asset deletion identity conflict");
+			}
+			return { deleted: true, alreadyDeleted: true };
+		}
+		const asset = await ctx.db.get(id);
+		if (!asset || asset.siteUrl !== siteUrl || asset.assetId !== assetId) {
+			throw new Error("Media asset not found");
+		}
 		if (asset.status !== "deleting") {
 			throw new Error("Media asset deletion has not been requested");
 		}
 		await requireAssetUnused(ctx, asset);
+		const manifest = cleanupManifest(asset);
+		await ctx.db.insert("mediaAssetDeletionTombstones", {
+			siteUrl: asset.siteUrl,
+			assetId: asset.assetId,
+			mediaAssetId: asset._id,
+			...manifest,
+			deletedAt: Date.now(),
+			deletionRequestedAt: asset.deletionRequestedAt,
+			deletionRequestedBy: asset.deletionRequestedBy,
+		});
 		await ctx.db.delete(id);
-		return { deleted: true };
+		return { deleted: true, alreadyDeleted: false };
 	},
 });
