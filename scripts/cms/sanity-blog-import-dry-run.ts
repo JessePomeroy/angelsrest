@@ -14,6 +14,40 @@ type CliOptions = {
 	imageAssetMappingPath?: string;
 };
 
+type SanityReference = {
+	_ref?: unknown;
+};
+
+type SanityImageLike = {
+	_key?: unknown;
+	asset?: SanityReference;
+	alt?: unknown;
+};
+
+type AssetUsage = {
+	sourceAssetRef: string;
+	mapped: boolean;
+	targetAssetId?: string;
+	placements: Array<{
+		kind: "author" | "post";
+		role: "portrait" | "mainImage" | "bodyImage";
+		sourceId: string;
+		documentKey: string;
+		slug: string | null;
+		path: string;
+	}>;
+};
+
+type AltTextRemediation = {
+	kind: "author" | "post";
+	role: "portrait" | "mainImage" | "bodyImage";
+	sourceId: string;
+	documentKey: string;
+	slug: string | null;
+	sourceAssetRef?: string;
+	path: string;
+};
+
 function stripInlineComment(value: string) {
 	const hashIndex = value.search(/\s#/);
 	return (hashIndex === -1 ? value : value.slice(0, hashIndex)).trim();
@@ -78,6 +112,54 @@ async function readImageAssetIds(path: string | undefined) {
 				typeof entry[0] === "string" && typeof entry[1] === "string",
 		),
 	);
+}
+
+function text(value: unknown) {
+	return typeof value === "string" ? value.trim() : undefined;
+}
+
+function sourceReference(value: SanityReference | undefined) {
+	const ref = text(value?._ref);
+	return ref?.replace(/^drafts\./, "");
+}
+
+function imageSourceRef(value: SanityImageLike | undefined) {
+	const ref = sourceReference(value?.asset);
+	return ref?.startsWith("image-") ? ref : undefined;
+}
+
+function bodyImageEntries(body: unknown) {
+	if (!Array.isArray(body)) return [];
+	return body
+		.map((node, index) => {
+			if (typeof node !== "object" || node === null || !("_type" in node) || node._type !== "image")
+				return null;
+			return {
+				index,
+				image: node as SanityImageLike,
+			};
+		})
+		.filter((entry): entry is { index: number; image: SanityImageLike } => entry !== null);
+}
+
+function addAssetUsage(
+	usages: Map<string, AssetUsage>,
+	imageAssetIds: Record<string, string>,
+	sourceAssetRef: string,
+	placement: AssetUsage["placements"][number],
+) {
+	const existing = usages.get(sourceAssetRef);
+	if (existing) {
+		existing.placements.push(placement);
+		return;
+	}
+	const targetAssetId = imageAssetIds[sourceAssetRef];
+	usages.set(sourceAssetRef, {
+		sourceAssetRef,
+		mapped: Boolean(targetAssetId),
+		...(targetAssetId ? { targetAssetId } : {}),
+		placements: [placement],
+	});
 }
 
 function sourceQuery() {
@@ -156,6 +238,95 @@ function sanitizedDocumentSummary(manifest: ReturnType<typeof createSanityBlogIm
 	};
 }
 
+function remediationPlan(
+	source: SanityBlogImportSource,
+	manifest: ReturnType<typeof createSanityBlogImportManifest>,
+	imageAssetIds: Record<string, string>,
+) {
+	const assetUsages = new Map<string, AssetUsage>();
+	const altText: AltTextRemediation[] = [];
+	const authors = new Map(manifest.authors.map((author) => [author.sourceId, author]));
+	const posts = new Map(manifest.posts.map((post) => [post.sourceId, post]));
+
+	for (const [authorIndex, authorSource] of source.authors.entries()) {
+		const sourceId = authorSource._id.replace(/^drafts\./, "");
+		const author = authors.get(sourceId);
+		if (!author) continue;
+		const sourceAssetRef = imageSourceRef(authorSource.image);
+		if (!sourceAssetRef) continue;
+		const placement = {
+			kind: "author" as const,
+			role: "portrait" as const,
+			sourceId,
+			documentKey: author.documentKey,
+			slug: author.draft.slug ?? null,
+			path: `$.authors[${authorIndex}].image`,
+		};
+		addAssetUsage(assetUsages, imageAssetIds, sourceAssetRef, placement);
+		if (!text(authorSource.image?.alt)) {
+			altText.push({ ...placement, sourceAssetRef });
+		}
+	}
+
+	for (const [postIndex, postSource] of source.posts.entries()) {
+		const sourceId = postSource._id.replace(/^drafts\./, "");
+		const post = posts.get(sourceId);
+		if (!post) continue;
+		const mainImageRef = imageSourceRef(postSource.mainImage);
+		if (mainImageRef) {
+			const placement = {
+				kind: "post" as const,
+				role: "mainImage" as const,
+				sourceId,
+				documentKey: post.documentKey,
+				slug: post.draft.slug ?? null,
+				path: `$.posts[${postIndex}].mainImage`,
+			};
+			addAssetUsage(assetUsages, imageAssetIds, mainImageRef, placement);
+			if (!text(postSource.mainImage?.alt)) {
+				altText.push({ ...placement, sourceAssetRef: mainImageRef });
+			}
+		}
+		for (const { index: bodyIndex, image } of bodyImageEntries(postSource.body)) {
+			const bodyImageRef = imageSourceRef(image);
+			const placement = {
+				kind: "post" as const,
+				role: "bodyImage" as const,
+				sourceId,
+				documentKey: post.documentKey,
+				slug: post.draft.slug ?? null,
+				path: `$.posts[${postIndex}].body[${bodyIndex}]`,
+			};
+			if (bodyImageRef) {
+				addAssetUsage(assetUsages, imageAssetIds, bodyImageRef, placement);
+			}
+			if (!text(image.alt)) {
+				altText.push({
+					...placement,
+					...(bodyImageRef ? { sourceAssetRef: bodyImageRef } : {}),
+				});
+			}
+		}
+	}
+
+	const assetMappings = Array.from(assetUsages.values())
+		.map((usage) => ({
+			...usage,
+			placements: usage.placements.sort((a, b) => a.path.localeCompare(b.path)),
+		}))
+		.sort((a, b) => a.sourceAssetRef.localeCompare(b.sourceAssetRef));
+
+	return {
+		assetMappings,
+		altText: altText.sort((a, b) => a.path.localeCompare(b.path)),
+		counts: {
+			assetMappings: assetMappings.length,
+			unmappedAssets: assetMappings.filter((usage) => !usage.mapped).length,
+			altText: altText.length,
+		},
+	};
+}
+
 async function main() {
 	const options = cliOptions(process.argv.slice(2));
 	const envFile = await readEnvFile(resolve(".env.local"));
@@ -185,6 +356,7 @@ async function main() {
 		},
 		report,
 		documents: sanitizedDocumentSummary(manifest),
+		remediation: remediationPlan(source, manifest, imageAssetIds),
 	};
 	await mkdir(dirname(outputPath), { recursive: true });
 	await writeFile(outputPath, `${JSON.stringify(output, null, 2)}\n`);
