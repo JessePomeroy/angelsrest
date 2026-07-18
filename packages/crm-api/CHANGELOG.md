@@ -1,5 +1,12 @@
 # @jessepomeroy/crm-api
 
+## 2.15.0
+
+### Minor Changes
+
+- 5186e63: Add tenant-bound CMS media deletion completion with per-site server credentials,
+  idempotent durable tombstones, and delayed-registration protection.
+
 ## 2.14.0
 
 ### Minor Changes
