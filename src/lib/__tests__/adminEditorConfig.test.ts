@@ -7,6 +7,7 @@ const { apiMock, galleriesApi, mediaApi, portfolioApi } = vi.hoisted(() => {
 		listForEditor: "mediaAssets.listForEditor",
 		getManyForEditor: "mediaAssets.getManyForEditor",
 		registerReadyWebAsset: "mediaAssets.registerReadyWebAsset",
+		requestDeletion: "mediaAssets.requestDeletion",
 	};
 	const portfolioApi = {
 		listForEditor: "portfolioGalleries.listForEditor",
@@ -44,5 +45,6 @@ describe("admin API aliases", () => {
 		expect(portfolioEditor?.listMediaAssets).toBe(mediaApi.listForEditor);
 		expect(portfolioEditor?.getPlacedMediaAssets).toBe(mediaApi.getManyForEditor);
 		expect(portfolioEditor?.registerReadyWebAsset).toBe(mediaApi.registerReadyWebAsset);
+		expect(portfolioEditor?.requestDeletion).toBe(mediaApi.requestDeletion);
 	});
 });
