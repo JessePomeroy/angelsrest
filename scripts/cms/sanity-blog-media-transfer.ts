@@ -8,9 +8,10 @@ import { createClient } from "@sanity/client";
 import sharp from "sharp";
 import { sanityImageSourceUrl } from "./sanityBlogImportPrep";
 import {
-	CMS_4_4J_PRODUCTION_CONFIRMATION,
-	CMS_4_4J_SOURCE_ASSET_REFS,
-	type Cms44jSourceAssetRef,
+	CMS_BLOG_MEDIA_BATCH_ID,
+	CMS_BLOG_MEDIA_PRODUCTION_CONFIRMATION,
+	CMS_BLOG_MEDIA_SOURCE_ASSET_REFS,
+	type CmsBlogMediaSourceAssetRef,
 	createCandidateSanityBlogMediaJournals,
 	createInitialSanityBlogMediaTransferCheckpoint,
 	createSanityBlogMediaTransferPlan,
@@ -177,7 +178,7 @@ async function readBoundedResponseBody(response: Response) {
 	return bytes;
 }
 
-async function downloadAndValidateSource(sourceAssetRef: Cms44jSourceAssetRef) {
+async function downloadAndValidateSource(sourceAssetRef: CmsBlogMediaSourceAssetRef) {
 	const { projectId, dataset } = ANGELS_REST_BLOG_MEDIA_EXPECTATIONS;
 	const sourceUrl = sanityImageSourceUrl(projectId, dataset, sourceAssetRef);
 	if (!sourceUrl) throw new Error("Sanity source URL could not be constructed");
@@ -295,7 +296,9 @@ async function readCheckpoint() {
 		);
 	} catch (error) {
 		if ((error as NodeJS.ErrnoException).code === "ENOENT") return null;
-		throw new Error("Existing CMS-4.4j checkpoint is invalid; operator review is required");
+		throw new Error(
+			"Existing Blog media checkpoint is invalid or belongs to another batch; operator review is required",
+		);
 	}
 }
 
@@ -304,16 +307,18 @@ async function acquireLock() {
 	try {
 		handle = await open(LOCK_PATH, "wx", 0o600);
 	} catch {
-		throw new Error("CMS-4.4j transfer lock already exists; do not remove it without review");
+		throw new Error(
+			`${CMS_BLOG_MEDIA_BATCH_ID} transfer lock already exists; do not remove it without review`,
+		);
 	}
 	try {
 		await handle.writeFile(
 			serializeJson({
-				migration: "CMS-4.4j",
+				migration: CMS_BLOG_MEDIA_BATCH_ID,
 				siteUrl: ANGELS_REST_BLOG_MEDIA_EXPECTATIONS.siteUrl,
 				pid: process.pid,
 				startedAt: new Date().toISOString(),
-				sourceAssetRefs: CMS_4_4J_SOURCE_ASSET_REFS,
+				sourceAssetRefs: CMS_BLOG_MEDIA_SOURCE_ASSET_REFS,
 			}),
 			"utf8",
 		);
@@ -329,7 +334,7 @@ async function acquireLock() {
 				releaseStats.ino !== acquiredStats.ino
 			) {
 				throw new Error(
-					"CMS-4.4j transfer lock changed during execution; operator review is required",
+					`${CMS_BLOG_MEDIA_BATCH_ID} transfer lock changed during execution; operator review is required`,
 				);
 			}
 			await rm(LOCK_PATH);
@@ -378,7 +383,7 @@ async function writeCandidateFiles(
 async function runVerifier(
 	imageAssetMapPath: string,
 	transferReceiptsPath: string,
-	sourceAssetRef: Cms44jSourceAssetRef,
+	sourceAssetRef: CmsBlogMediaSourceAssetRef,
 ) {
 	try {
 		await execFileAsync(
@@ -434,7 +439,7 @@ function registeredFromCheckpoint(
 
 function withoutCurrentReceipt(
 	receiptFile: SanityBlogMediaTransferReceipts,
-	sourceAssetRef: Cms44jSourceAssetRef,
+	sourceAssetRef: CmsBlogMediaSourceAssetRef,
 ) {
 	return parseSanityBlogMediaTransferReceipts({
 		...receiptFile,
@@ -446,7 +451,7 @@ function withoutCurrentReceipt(
 
 function baselineAndCandidate(
 	journals: VersionedJournals,
-	sourceAssetRef: Cms44jSourceAssetRef,
+	sourceAssetRef: CmsBlogMediaSourceAssetRef,
 	asset: SanityBlogMediaTransferAssetCheckpoint,
 ) {
 	const baselineJournal = parseSanityBlogImageAssetJournal({
@@ -494,7 +499,7 @@ async function reconcileAndCommitAsset({
 	publishedSourceAssetRefs,
 }: {
 	checkpoint: SanityBlogMediaTransferCheckpoint;
-	sourceAssetRef: Cms44jSourceAssetRef;
+	sourceAssetRef: CmsBlogMediaSourceAssetRef;
 	publishedSourceAssetRefs: readonly string[];
 }) {
 	let current = checkpoint;
@@ -596,7 +601,7 @@ async function reconcileAndCommitAsset({
 	if (asset.phase === "journals-committed") {
 		await runVerifier(IMAGE_ASSET_MAP_PATH, TRANSFER_RECEIPTS_PATH, sourceAssetRef);
 		asset = { ...asset, phase: "complete" };
-		const nextAssetIndex = CMS_4_4J_SOURCE_ASSET_REFS.indexOf(sourceAssetRef) + 1;
+		const nextAssetIndex = CMS_BLOG_MEDIA_SOURCE_ASSET_REFS.indexOf(sourceAssetRef) + 1;
 		current = replaceCheckpointAsset(current, sourceAssetRef, asset, { nextAssetIndex });
 		await writeCheckpoint(current);
 	}
@@ -614,14 +619,16 @@ async function runPlanOnly() {
 		publishedSourceAssetRefs,
 		allowExistingMappings: true,
 	});
-	console.log("CMS-4.4j plan-only: no Cookie read and no files or provider state changed.");
+	console.log(
+		`${CMS_BLOG_MEDIA_BATCH_ID} plan-only: no Cookie read and no files or provider state changed.`,
+	);
 	for (const item of plan) {
 		console.log(
 			`${item.status}: ${item.sourceAssetRef} (${item.source.sizeBytes} bytes, SHA-256 ${item.source.sourceSha256})`,
 		);
 	}
 	console.log(
-		`Production execution requires --execute, two --source-ref flags, --cookie-file, and --confirm "${CMS_4_4J_PRODUCTION_CONFIRMATION}".`,
+		`Production execution requires --execute, two --source-ref flags, --cookie-file, and --confirm "${CMS_BLOG_MEDIA_PRODUCTION_CONFIRMATION}".`,
 	);
 }
 
@@ -703,19 +710,21 @@ async function runExecution(
 			console.log(`${sourceAssetRef}: registry-verified and journaled`);
 		}
 
-		if (checkpoint.nextAssetIndex !== CMS_4_4J_SOURCE_ASSET_REFS.length) {
-			throw new Error("CMS-4.4j checkpoint did not complete the fixed batch");
+		if (checkpoint.nextAssetIndex !== CMS_BLOG_MEDIA_SOURCE_ASSET_REFS.length) {
+			throw new Error(`${CMS_BLOG_MEDIA_BATCH_ID} checkpoint did not complete the fixed batch`);
 		}
 		await rm(CHECKPOINT_PATH, { force: true });
 		await syncDirectory(MIGRATION_DIRECTORY);
 		completed = true;
 		console.log(
-			"CMS-4.4j fixed two-asset batch completed and passed the production registry gate.",
+			`${CMS_BLOG_MEDIA_BATCH_ID} fixed two-asset batch completed and passed the production registry gate.`,
 		);
 	} finally {
 		await releaseLock();
 		if (!completed) {
-			console.error("CMS-4.4j stopped safely; any existing durable checkpoint was preserved.");
+			console.error(
+				`${CMS_BLOG_MEDIA_BATCH_ID} stopped safely; any existing durable checkpoint was preserved.`,
+			);
 		}
 	}
 }
@@ -733,7 +742,7 @@ void main().catch((error) => {
 	const message =
 		error instanceof SanityBlogMediaTransferError || error instanceof Error
 			? error.message
-			: "CMS-4.4j transfer failed";
+			: `${CMS_BLOG_MEDIA_BATCH_ID} transfer failed`;
 	console.error(message);
 	process.exitCode = 1;
 });

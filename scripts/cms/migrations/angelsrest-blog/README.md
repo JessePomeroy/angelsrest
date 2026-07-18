@@ -8,7 +8,7 @@ This directory is the versioned migration journal for the published Sanity Blog 
 - Factual alt text remains a separate guided review requirement; a media mapping does not satisfy it.
 - `sanity-blog-media-transfer-receipts.json` uses schema v2 to record the source facts, runner-observed source SHA-256, and both identities observed during each completed transfer. It contains no upload capability, storage key, session cookie, or secret.
 
-## Bounded CMS-4.4j transfer
+## Bounded CMS-4.4k transfer
 
 Preview the fixed two-asset batch without reading an admin Cookie or changing files or provider state:
 
@@ -21,10 +21,10 @@ Production execution is deliberately restricted to the two reviewed published so
 ```sh
 pnpm cms:blog-media-transfer -- \
   --execute \
-  --source-ref image-35e637d5107bdbcc18a316d85b4eee2115222360-2880x1492-png \
-  --source-ref image-89fe1f49fe9aeea136b85a5133f94534ff791ce3-1568x1366-png \
+  --source-ref image-d4ee0889a5b82e47027dc57c39604a9320896875-2624x1876-png \
+  --source-ref image-12b028c5acab8e557ef9736cc9def77ecc33f706-600x600-jpg \
   --cookie-file /absolute/path/to/owner-only-cookie.txt \
-  --confirm "transfer CMS-4.4j two-asset batch to www.angelsrest.online"
+  --confirm "transfer CMS-4.4k two-asset batch to www.angelsrest.online"
 ```
 
 The Cookie file must be a regular, owner-owned mode-`0600` file containing one raw Cookie header value with no `Cookie:` prefix. The Cookie is sent only to the fixed Angels Rest admin host. The short-lived upload token is sent only to the validated media Worker PUT URL; neither credential is logged or persisted.
@@ -39,7 +39,7 @@ The runner:
 - recovers forward from a crash after either journal rename and re-runs the full verifier before marking an asset complete; and
 - removes its machine-local checkpoint only after both assets pass final verification.
 
-An expired admin session leaves the checkpoint in place: replace the contents of the same secure Cookie file and rerun the exact command. A missing same-key upload or an unfamiliar partial journal state stops for operator review. Do not delete or edit the checkpoint or lock to force progress.
+An expired admin session leaves the checkpoint in place: replace the contents of the same secure Cookie file and rerun the exact command. The checkpoint and lock paths are intentionally shared between bounded batches, while their contents bind to the active batch ID and ordered source references. A checkpoint from another released batch fails closed; resume it only with that batch's exact released runner and command. A missing same-key upload or an unfamiliar partial journal state stops for operator review. Do not delete or edit the checkpoint or lock to force progress.
 
 This command uploads only the reviewed copies and updates these versioned migration journals. It does not mutate Sanity, import Blog documents, change the public content provider, delete source data, or remove the Sanity fallback.
 

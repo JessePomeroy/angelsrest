@@ -21,33 +21,33 @@ const MAX_CAPABILITY_LIFETIME_MS = 16 * 60 * 1000;
 const ACTIVE_OPERATION_MESSAGE = "CMS media asset operation is already in progress";
 const MAX_PROCESS_ATTEMPTS = 3;
 
-export const CMS_4_4J_PRODUCTION_ORIGIN = "https://www.angelsrest.online";
-export const CMS_4_4J_PRODUCTION_CONFIRMATION =
-	"transfer CMS-4.4j two-asset batch to www.angelsrest.online";
-export const CMS_4_4J_SOURCE_ASSET_REFS = [
-	"image-35e637d5107bdbcc18a316d85b4eee2115222360-2880x1492-png",
-	"image-89fe1f49fe9aeea136b85a5133f94534ff791ce3-1568x1366-png",
+export const CMS_BLOG_MEDIA_BATCH_ID = "CMS-4.4k" as const;
+export const CMS_BLOG_MEDIA_PRODUCTION_ORIGIN = "https://www.angelsrest.online";
+export const CMS_BLOG_MEDIA_PRODUCTION_CONFIRMATION = `transfer ${CMS_BLOG_MEDIA_BATCH_ID} two-asset batch to www.angelsrest.online`;
+export const CMS_BLOG_MEDIA_SOURCE_ASSET_REFS = [
+	"image-d4ee0889a5b82e47027dc57c39604a9320896875-2624x1876-png",
+	"image-12b028c5acab8e557ef9736cc9def77ecc33f706-600x600-jpg",
 ] as const;
 
-export type Cms44jSourceAssetRef = (typeof CMS_4_4J_SOURCE_ASSET_REFS)[number];
+export type CmsBlogMediaSourceAssetRef = (typeof CMS_BLOG_MEDIA_SOURCE_ASSET_REFS)[number];
 
-export const CMS_4_4J_SOURCE_EXPECTATIONS: Record<
-	Cms44jSourceAssetRef,
+export const CMS_BLOG_MEDIA_SOURCE_EXPECTATIONS: Record<
+	CmsBlogMediaSourceAssetRef,
 	BlogMediaSource & { sourceSha256: string }
 > = {
-	"image-35e637d5107bdbcc18a316d85b4eee2115222360-2880x1492-png": {
+	"image-d4ee0889a5b82e47027dc57c39604a9320896875-2624x1876-png": {
 		contentType: "image/png",
-		sizeBytes: 2_908_219,
-		width: 2880,
-		height: 1492,
-		sourceSha256: "49ac3f982f5273b0e5685c8b606c2ba248ab60c9e52ec06beb96c879a3da6ffd",
+		sizeBytes: 1_760_970,
+		width: 2624,
+		height: 1876,
+		sourceSha256: "6efa62af18bad456200e5d0057775a581aa47840b5094b02e947e0e9e01d2888",
 	},
-	"image-89fe1f49fe9aeea136b85a5133f94534ff791ce3-1568x1366-png": {
-		contentType: "image/png",
-		sizeBytes: 2_844_631,
-		width: 1568,
-		height: 1366,
-		sourceSha256: "fa1fe35fe63cb5843e67f791356f2eef633fe29c4e2338ef247bf937706985aa",
+	"image-12b028c5acab8e557ef9736cc9def77ecc33f706-600x600-jpg": {
+		contentType: "image/jpeg",
+		sizeBytes: 66_734,
+		width: 600,
+		height: 600,
+		sourceSha256: "84eb6d26a16ad4635d85c87e55ef8353c87100449266f48231b37d95838fa39b",
 	},
 };
 
@@ -56,11 +56,11 @@ export type SanityBlogMediaTransferOptions =
 	| {
 			mode: "execute";
 			cookieFile: string;
-			sourceAssetRefs: readonly Cms44jSourceAssetRef[];
+			sourceAssetRefs: readonly CmsBlogMediaSourceAssetRef[];
 	  };
 
 export type SanityBlogMediaTransferPlanItem = {
-	sourceAssetRef: Cms44jSourceAssetRef;
+	sourceAssetRef: CmsBlogMediaSourceAssetRef;
 	status: "pending" | "already-mapped";
 	source: BlogMediaSource & { sourceSha256: string };
 };
@@ -100,12 +100,12 @@ export type SanityBlogMediaTransferAssetCheckpoint = {
 
 export type SanityBlogMediaTransferCheckpoint = {
 	schemaVersion: 1;
-	migration: "CMS-4.4j";
+	migration: typeof CMS_BLOG_MEDIA_BATCH_ID;
 	siteUrl: "angelsrest.online";
-	sourceAssetRefs: readonly Cms44jSourceAssetRef[];
+	sourceAssetRefs: readonly CmsBlogMediaSourceAssetRef[];
 	journalDigests: { imageAssetMap: string; transferReceipts: string };
 	nextAssetIndex: number;
-	assets: Partial<Record<Cms44jSourceAssetRef, SanityBlogMediaTransferAssetCheckpoint>>;
+	assets: Partial<Record<CmsBlogMediaSourceAssetRef, SanityBlogMediaTransferAssetCheckpoint>>;
 };
 
 export type TransferProgressStage =
@@ -200,8 +200,8 @@ function sha256Bytes(bytes: Uint8Array) {
 	return createHash("sha256").update(bytes).digest("hex");
 }
 
-function isCms44jSourceRef(value: string): value is Cms44jSourceAssetRef {
-	return (CMS_4_4J_SOURCE_ASSET_REFS as readonly string[]).includes(value);
+function isCmsBlogMediaSourceRef(value: string): value is CmsBlogMediaSourceAssetRef {
+	return (CMS_BLOG_MEDIA_SOURCE_ASSET_REFS as readonly string[]).includes(value);
 }
 
 function sourceRefParts(sourceAssetRef: string) {
@@ -265,25 +265,25 @@ export function parseSanityBlogMediaTransferOptions(
 		}
 		return { mode: "plan" };
 	}
-	if (confirmation !== CMS_4_4J_PRODUCTION_CONFIRMATION) {
-		throw new Error(`--confirm must exactly equal "${CMS_4_4J_PRODUCTION_CONFIRMATION}"`);
+	if (confirmation !== CMS_BLOG_MEDIA_PRODUCTION_CONFIRMATION) {
+		throw new Error(`--confirm must exactly equal "${CMS_BLOG_MEDIA_PRODUCTION_CONFIRMATION}"`);
 	}
 	if (!cookieFile || cookieFile !== cookieFile.trim()) {
 		throw new Error("--cookie-file requires one trimmed path");
 	}
-	if (sourceAssetRefs.length !== CMS_4_4J_SOURCE_ASSET_REFS.length) {
+	if (sourceAssetRefs.length !== CMS_BLOG_MEDIA_SOURCE_ASSET_REFS.length) {
 		throw new Error("Execution requires exactly two explicit --source-ref values");
 	}
 	if (new Set(sourceAssetRefs).size !== sourceAssetRefs.length) {
 		throw new Error("Execution source references must be unique");
 	}
-	if (sourceAssetRefs.some((ref) => !isCms44jSourceRef(ref))) {
-		throw new Error("Execution is restricted to the fixed CMS-4.4j source batch");
+	if (sourceAssetRefs.some((ref) => !isCmsBlogMediaSourceRef(ref))) {
+		throw new Error("Execution is restricted to the active reviewed source batch");
 	}
 	return {
 		mode: "execute",
 		cookieFile,
-		sourceAssetRefs: CMS_4_4J_SOURCE_ASSET_REFS,
+		sourceAssetRefs: CMS_BLOG_MEDIA_SOURCE_ASSET_REFS,
 	};
 }
 
@@ -307,9 +307,9 @@ export function createSanityBlogMediaTransferPlan({
 	) {
 		throw new Error("Published Sanity source set and media journal have drifted");
 	}
-	return CMS_4_4J_SOURCE_ASSET_REFS.map((sourceAssetRef) => {
+	return CMS_BLOG_MEDIA_SOURCE_ASSET_REFS.map((sourceAssetRef) => {
 		if (!published.has(sourceAssetRef)) {
-			throw new Error("The fixed CMS-4.4j source batch is not fully published");
+			throw new Error("The active reviewed source batch is not fully published");
 		}
 		const mediaAssetId = journal[sourceAssetRef] ?? "";
 		const receipt = receiptFile.receipts[sourceAssetRef];
@@ -325,17 +325,17 @@ export function createSanityBlogMediaTransferPlan({
 		return {
 			sourceAssetRef,
 			status: mediaAssetId ? "already-mapped" : "pending",
-			source: CMS_4_4J_SOURCE_EXPECTATIONS[sourceAssetRef],
+			source: CMS_BLOG_MEDIA_SOURCE_EXPECTATIONS[sourceAssetRef],
 		};
 	});
 }
 
 export function validateSanityBlogMediaSource(
-	sourceAssetRef: Cms44jSourceAssetRef,
+	sourceAssetRef: CmsBlogMediaSourceAssetRef,
 	bytes: Uint8Array,
 	decoded: { format?: string; width?: number; height?: number },
 ) {
-	const expected = CMS_4_4J_SOURCE_EXPECTATIONS[sourceAssetRef];
+	const expected = CMS_BLOG_MEDIA_SOURCE_EXPECTATIONS[sourceAssetRef];
 	return validateSanityImageSourceAgainstExpectation({
 		sourceAssetRef,
 		bytes,
@@ -368,10 +368,10 @@ export function validateSanityImageSourceAgainstExpectation({
 	// serve a different byte representation. The exact allowlisted reference and
 	// reviewed SHA-256 deliberately protect those two boundaries independently.
 	if (sourceSha256 !== expected.sourceSha256) {
-		throw new Error("Sanity source SHA-256 differs from the reviewed CMS-4.4j batch");
+		throw new Error("Sanity source SHA-256 differs from the active reviewed batch");
 	}
 	if (bytes.byteLength !== expected.sizeBytes) {
-		throw new Error("Sanity source byte count differs from the reviewed CMS-4.4j batch");
+		throw new Error("Sanity source byte count differs from the active reviewed batch");
 	}
 	const expectedFormat = parts.extension === "jpg" ? "jpeg" : parts.extension;
 	if (
@@ -400,7 +400,7 @@ export function privateObjectKeyForAsset(workerAssetId: string, extension: "jpg"
 
 export function parseCmsMediaCapability(
 	value: unknown,
-	{ sourceAssetRef, nowMs }: { sourceAssetRef: Cms44jSourceAssetRef; nowMs: number },
+	{ sourceAssetRef, nowMs }: { sourceAssetRef: CmsBlogMediaSourceAssetRef; nowMs: number },
 ): CmsMediaCapability {
 	const capability = objectValue(value, "CMS media capability");
 	exactKeys(
@@ -498,7 +498,7 @@ export function parseCmsMediaProcessResult(
 		workerAssetId,
 		source,
 	}: {
-		sourceAssetRef: Cms44jSourceAssetRef;
+		sourceAssetRef: CmsBlogMediaSourceAssetRef;
 		workerAssetId: string;
 		source: BlogMediaSource;
 	},
@@ -553,7 +553,7 @@ const CHECKPOINT_PHASES: readonly SanityBlogMediaTransferAssetPhase[] = [
 
 function parseCheckpointAsset(
 	value: unknown,
-	sourceAssetRef: Cms44jSourceAssetRef,
+	sourceAssetRef: CmsBlogMediaSourceAssetRef,
 ): SanityBlogMediaTransferAssetCheckpoint {
 	const asset = objectValue(value, `checkpoint.assets.${sourceAssetRef}`);
 	const phase = asset.phase;
@@ -600,7 +600,7 @@ function parseCheckpointAsset(
 export function parseSanityBlogMediaTransferCheckpoint(
 	value: unknown,
 ): SanityBlogMediaTransferCheckpoint {
-	const root = objectValue(value, "CMS-4.4j checkpoint");
+	const root = objectValue(value, `${CMS_BLOG_MEDIA_BATCH_ID} checkpoint`);
 	exactKeys(
 		root,
 		[
@@ -612,19 +612,19 @@ export function parseSanityBlogMediaTransferCheckpoint(
 			"nextAssetIndex",
 			"assets",
 		],
-		"CMS-4.4j checkpoint",
+		`${CMS_BLOG_MEDIA_BATCH_ID} checkpoint`,
 	);
 	if (
 		root.schemaVersion !== 1 ||
-		root.migration !== "CMS-4.4j" ||
+		root.migration !== CMS_BLOG_MEDIA_BATCH_ID ||
 		root.siteUrl !== ANGELS_REST_BLOG_MEDIA_EXPECTATIONS.siteUrl
 	) {
 		throw new Error("Checkpoint identity is invalid");
 	}
 	if (
 		!Array.isArray(root.sourceAssetRefs) ||
-		root.sourceAssetRefs.length !== CMS_4_4J_SOURCE_ASSET_REFS.length ||
-		root.sourceAssetRefs.some((ref, index) => ref !== CMS_4_4J_SOURCE_ASSET_REFS[index])
+		root.sourceAssetRefs.length !== CMS_BLOG_MEDIA_SOURCE_ASSET_REFS.length ||
+		root.sourceAssetRefs.some((ref, index) => ref !== CMS_BLOG_MEDIA_SOURCE_ASSET_REFS[index])
 	) {
 		throw new Error("Checkpoint source batch is invalid");
 	}
@@ -639,21 +639,22 @@ export function parseSanityBlogMediaTransferCheckpoint(
 		typeof root.nextAssetIndex !== "number" ||
 		!Number.isSafeInteger(root.nextAssetIndex) ||
 		root.nextAssetIndex < 0 ||
-		root.nextAssetIndex > CMS_4_4J_SOURCE_ASSET_REFS.length
+		root.nextAssetIndex > CMS_BLOG_MEDIA_SOURCE_ASSET_REFS.length
 	) {
 		throw new Error("Checkpoint next asset index is invalid");
 	}
 	const rawAssets = objectValue(root.assets, "checkpoint assets");
 	const assets: SanityBlogMediaTransferCheckpoint["assets"] = {};
 	for (const [sourceAssetRef, asset] of Object.entries(rawAssets)) {
-		if (!isCms44jSourceRef(sourceAssetRef)) throw new Error("Checkpoint contains a foreign source");
+		if (!isCmsBlogMediaSourceRef(sourceAssetRef))
+			throw new Error("Checkpoint contains a foreign source");
 		assets[sourceAssetRef] = parseCheckpointAsset(asset, sourceAssetRef);
 	}
 	return {
 		schemaVersion: 1,
-		migration: "CMS-4.4j",
+		migration: CMS_BLOG_MEDIA_BATCH_ID,
 		siteUrl: ANGELS_REST_BLOG_MEDIA_EXPECTATIONS.siteUrl,
-		sourceAssetRefs: CMS_4_4J_SOURCE_ASSET_REFS,
+		sourceAssetRefs: CMS_BLOG_MEDIA_SOURCE_ASSET_REFS,
 		journalDigests: { imageAssetMap, transferReceipts },
 		nextAssetIndex: root.nextAssetIndex,
 		assets,
@@ -666,9 +667,9 @@ export function createInitialSanityBlogMediaTransferCheckpoint(journalDigests: {
 }): SanityBlogMediaTransferCheckpoint {
 	return parseSanityBlogMediaTransferCheckpoint({
 		schemaVersion: 1,
-		migration: "CMS-4.4j",
+		migration: CMS_BLOG_MEDIA_BATCH_ID,
 		siteUrl: ANGELS_REST_BLOG_MEDIA_EXPECTATIONS.siteUrl,
-		sourceAssetRefs: CMS_4_4J_SOURCE_ASSET_REFS,
+		sourceAssetRefs: CMS_BLOG_MEDIA_SOURCE_ASSET_REFS,
 		journalDigests,
 		nextAssetIndex: 0,
 		assets: {},
@@ -677,7 +678,7 @@ export function createInitialSanityBlogMediaTransferCheckpoint(journalDigests: {
 
 export function replaceCheckpointAsset(
 	checkpoint: SanityBlogMediaTransferCheckpoint,
-	sourceAssetRef: Cms44jSourceAssetRef,
+	sourceAssetRef: CmsBlogMediaSourceAssetRef,
 	asset: SanityBlogMediaTransferAssetCheckpoint,
 	updates: Partial<
 		Pick<SanityBlogMediaTransferCheckpoint, "journalDigests" | "nextAssetIndex">
@@ -692,11 +693,11 @@ export function replaceCheckpointAsset(
 
 export function createCmsMediaCapabilityRequest(
 	adminCookie: string,
-	sourceAssetRef: Cms44jSourceAssetRef,
+	sourceAssetRef: CmsBlogMediaSourceAssetRef,
 	source: BlogMediaSource,
 ) {
 	return {
-		url: `${CMS_4_4J_PRODUCTION_ORIGIN}${CMS_MEDIA_CAPABILITY_PATH}`,
+		url: `${CMS_BLOG_MEDIA_PRODUCTION_ORIGIN}${CMS_MEDIA_CAPABILITY_PATH}`,
 		init: {
 			method: "POST",
 			redirect: "error" as const,
@@ -732,7 +733,7 @@ export function createCmsMediaUploadRequest(
 
 export function createCmsMediaProcessRequest(adminCookie: string, privateObjectKey: string) {
 	return {
-		url: `${CMS_4_4J_PRODUCTION_ORIGIN}${CMS_MEDIA_PROCESS_PATH}`,
+		url: `${CMS_BLOG_MEDIA_PRODUCTION_ORIGIN}${CMS_MEDIA_PROCESS_PATH}`,
 		init: {
 			method: "POST",
 			redirect: "error" as const,
@@ -766,7 +767,7 @@ async function processSameAsset({
 	fetcher: typeof fetch;
 	adminCookie: string;
 	privateObjectKey: string;
-	sourceAssetRef: Cms44jSourceAssetRef;
+	sourceAssetRef: CmsBlogMediaSourceAssetRef;
 	workerAssetId: string;
 	source: BlogMediaSource;
 	sleep: (milliseconds: number) => Promise<void>;
@@ -851,7 +852,7 @@ export async function transferSanityBlogMediaAsset({
 	onProgress = () => undefined,
 }: {
 	checkpoint: SanityBlogMediaTransferCheckpoint;
-	sourceAssetRef: Cms44jSourceAssetRef;
+	sourceAssetRef: CmsBlogMediaSourceAssetRef;
 	validatedSource: { sourceSha256: string; source: BlogMediaSource };
 	sourceBytes: Uint8Array;
 	adminCookie: string;
@@ -860,7 +861,7 @@ export async function transferSanityBlogMediaAsset({
 	now?: () => number;
 	sleep?: (milliseconds: number) => Promise<void>;
 	onProgress?: (event: {
-		sourceAssetRef: Cms44jSourceAssetRef;
+		sourceAssetRef: CmsBlogMediaSourceAssetRef;
 		stage: TransferProgressStage;
 	}) => void;
 }) {
@@ -1092,7 +1093,7 @@ export function validateCompletedSanityBlogMediaAsset({
 	requireGlobalDigestMatch,
 }: {
 	checkpoint: SanityBlogMediaTransferCheckpoint;
-	sourceAssetRef: Cms44jSourceAssetRef;
+	sourceAssetRef: CmsBlogMediaSourceAssetRef;
 	journalMediaAssetId: string | undefined;
 	receipt: SanityBlogMediaTransferReceipt | undefined;
 	actualJournalDigests: SanityBlogMediaTransferCheckpoint["journalDigests"];
@@ -1135,7 +1136,7 @@ export function createCandidateSanityBlogMediaJournals({
 }: {
 	journal: Readonly<Record<string, string>>;
 	receiptFile: SanityBlogMediaTransferReceipts;
-	sourceAssetRef: Cms44jSourceAssetRef;
+	sourceAssetRef: CmsBlogMediaSourceAssetRef;
 	registered: RegisteredCmsMediaAsset;
 	sourceSha256: string;
 }) {

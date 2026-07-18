@@ -1,10 +1,11 @@
 import { createHash } from "node:crypto";
 import { describe, expect, test, vi } from "vitest";
 import {
-	CMS_4_4J_PRODUCTION_CONFIRMATION,
-	CMS_4_4J_PRODUCTION_ORIGIN,
-	CMS_4_4J_SOURCE_ASSET_REFS,
-	CMS_4_4J_SOURCE_EXPECTATIONS,
+	CMS_BLOG_MEDIA_BATCH_ID,
+	CMS_BLOG_MEDIA_PRODUCTION_CONFIRMATION,
+	CMS_BLOG_MEDIA_PRODUCTION_ORIGIN,
+	CMS_BLOG_MEDIA_SOURCE_ASSET_REFS,
+	CMS_BLOG_MEDIA_SOURCE_EXPECTATIONS,
 	createCandidateSanityBlogMediaJournals,
 	createCmsMediaCapabilityRequest,
 	createCmsMediaProcessRequest,
@@ -27,8 +28,12 @@ import type {
 	SanityBlogMediaTransferReceipts,
 } from "./sanityBlogMediaVerification";
 
-const SOURCE_REF = CMS_4_4J_SOURCE_ASSET_REFS[0];
-const SECOND_SOURCE_REF = CMS_4_4J_SOURCE_ASSET_REFS[1];
+const SOURCE_REF = CMS_BLOG_MEDIA_SOURCE_ASSET_REFS[0];
+const SECOND_SOURCE_REF = CMS_BLOG_MEDIA_SOURCE_ASSET_REFS[1];
+const COMPLETED_SOURCE_REF = "image-35e637d5107bdbcc18a316d85b4eee2115222360-2880x1492-png";
+const COMPLETED_SECOND_SOURCE_REF = "image-89fe1f49fe9aeea136b85a5133f94534ff791ce3-1568x1366-png";
+const COMPLETED_MEDIA_ID = "nh71hrsmf1vnc8k62v2f6wrkp18asxer";
+const COMPLETED_SECOND_MEDIA_ID = "nh70e0p9sjh4ftffvm2g0z6dg58ar0ee";
 const WORKER_ID = "7e11be6a-7e30-4317-aad5-08f4c00333b4";
 const MEDIA_ID = "nh744cpb0en9t6nx89xpjdn8ts8arc2m";
 const COOKIE = "better-auth.session_token=test-cookie";
@@ -43,10 +48,10 @@ const SOURCE: BlogMediaSource = {
 	height: 2,
 };
 const JOURNAL_SOURCE: BlogMediaSource = {
-	contentType: CMS_4_4J_SOURCE_EXPECTATIONS[SOURCE_REF].contentType,
-	sizeBytes: CMS_4_4J_SOURCE_EXPECTATIONS[SOURCE_REF].sizeBytes,
-	width: CMS_4_4J_SOURCE_EXPECTATIONS[SOURCE_REF].width,
-	height: CMS_4_4J_SOURCE_EXPECTATIONS[SOURCE_REF].height,
+	contentType: CMS_BLOG_MEDIA_SOURCE_EXPECTATIONS[SOURCE_REF].contentType,
+	sizeBytes: CMS_BLOG_MEDIA_SOURCE_EXPECTATIONS[SOURCE_REF].sizeBytes,
+	width: CMS_BLOG_MEDIA_SOURCE_EXPECTATIONS[SOURCE_REF].width,
+	height: CMS_BLOG_MEDIA_SOURCE_EXPECTATIONS[SOURCE_REF].height,
 };
 
 function blankReceipts(): SanityBlogMediaTransferReceipts {
@@ -137,8 +142,23 @@ function successFetcher({
 	}) as unknown as typeof fetch;
 }
 
-describe("CMS-4.4j Blog media transfer policy", () => {
+describe("active Blog media transfer batch policy", () => {
 	test("defaults to plan-only and requires the exact bounded production confirmation", () => {
+		expect(CMS_BLOG_MEDIA_SOURCE_ASSET_REFS).toHaveLength(2);
+		expect(new Set(CMS_BLOG_MEDIA_SOURCE_ASSET_REFS).size).toBe(2);
+		expect(initialCheckpoint().migration).toBe(CMS_BLOG_MEDIA_BATCH_ID);
+		expect(() =>
+			parseSanityBlogMediaTransferCheckpoint({
+				...initialCheckpoint(),
+				migration: "CMS-4.4j",
+			}),
+		).toThrow(/identity/);
+		expect(() =>
+			parseSanityBlogMediaTransferCheckpoint({
+				...initialCheckpoint(),
+				sourceAssetRefs: [...CMS_BLOG_MEDIA_SOURCE_ASSET_REFS].reverse(),
+			}),
+		).toThrow(/source batch/);
 		expect(parseSanityBlogMediaTransferOptions([])).toEqual({ mode: "plan" });
 		expect(() => parseSanityBlogMediaTransferOptions(["--host", "https://example.com"])).toThrow(
 			/Unsupported argument/,
@@ -163,7 +183,7 @@ describe("CMS-4.4j Blog media transfer policy", () => {
 			parseSanityBlogMediaTransferOptions([
 				"--execute",
 				"--confirm",
-				CMS_4_4J_PRODUCTION_CONFIRMATION,
+				CMS_BLOG_MEDIA_PRODUCTION_CONFIRMATION,
 				"--cookie-file",
 				"/tmp/cookie",
 				"--source-ref",
@@ -174,8 +194,55 @@ describe("CMS-4.4j Blog media transfer policy", () => {
 		).toEqual({
 			mode: "execute",
 			cookieFile: "/tmp/cookie",
-			sourceAssetRefs: CMS_4_4J_SOURCE_ASSET_REFS,
+			sourceAssetRefs: CMS_BLOG_MEDIA_SOURCE_ASSET_REFS,
 		});
+	});
+
+	test("selects only the active pair when the preceding batch is mapped and receipted", () => {
+		const journal = {
+			...blankJournal(),
+			[COMPLETED_SOURCE_REF]: COMPLETED_MEDIA_ID,
+			[COMPLETED_SECOND_SOURCE_REF]: COMPLETED_SECOND_MEDIA_ID,
+		};
+		const receiptFile: SanityBlogMediaTransferReceipts = {
+			...blankReceipts(),
+			receipts: {
+				[COMPLETED_SOURCE_REF]: {
+					mediaAssetId: COMPLETED_MEDIA_ID,
+					workerAssetId: "fb751126-d9a3-41a1-806d-9529f08a9449",
+					sourceSha256: "49ac3f982f5273b0e5685c8b606c2ba248ab60c9e52ec06beb96c879a3da6ffd",
+					source: {
+						contentType: "image/png",
+						sizeBytes: 2_908_219,
+						width: 2880,
+						height: 1492,
+					},
+				},
+				[COMPLETED_SECOND_SOURCE_REF]: {
+					mediaAssetId: COMPLETED_SECOND_MEDIA_ID,
+					workerAssetId: "5b6faf53-8494-4b3a-b32a-fdb84648bc4a",
+					sourceSha256: "fa1fe35fe63cb5843e67f791356f2eef633fe29c4e2338ef247bf937706985aa",
+					source: {
+						contentType: "image/png",
+						sizeBytes: 2_844_631,
+						width: 1568,
+						height: 1366,
+					},
+				},
+			},
+		};
+
+		expect(
+			createSanityBlogMediaTransferPlan({
+				journal,
+				receiptFile,
+				publishedSourceAssetRefs: Object.keys(journal),
+				allowExistingMappings: false,
+			}).map(({ sourceAssetRef, status }) => ({ sourceAssetRef, status })),
+		).toEqual([
+			{ sourceAssetRef: SOURCE_REF, status: "pending" },
+			{ sourceAssetRef: SECOND_SOURCE_REF, status: "pending" },
+		]);
 	});
 
 	test("builds only the reviewed two-asset plan and rejects mapped execution", () => {
@@ -183,7 +250,7 @@ describe("CMS-4.4j Blog media transfer policy", () => {
 			createSanityBlogMediaTransferPlan({
 				journal: blankJournal(),
 				receiptFile: blankReceipts(),
-				publishedSourceAssetRefs: CMS_4_4J_SOURCE_ASSET_REFS,
+				publishedSourceAssetRefs: CMS_BLOG_MEDIA_SOURCE_ASSET_REFS,
 				allowExistingMappings: false,
 			}).map(({ sourceAssetRef, status }) => ({ sourceAssetRef, status })),
 		).toEqual([
@@ -204,7 +271,7 @@ describe("CMS-4.4j Blog media transfer policy", () => {
 						},
 					},
 				},
-				publishedSourceAssetRefs: CMS_4_4J_SOURCE_ASSET_REFS,
+				publishedSourceAssetRefs: CMS_BLOG_MEDIA_SOURCE_ASSET_REFS,
 				allowExistingMappings: false,
 			}),
 		).toThrow(/already mapped/);
@@ -299,7 +366,7 @@ describe("CMS-4.4j Blog media transfer policy", () => {
 		const authorizeHeaders = new Headers(authorize.init.headers);
 		const uploadHeaders = new Headers(upload.init.headers);
 		const processHeaders = new Headers(process.init.headers);
-		expect(authorize.url).toBe(`${CMS_4_4J_PRODUCTION_ORIGIN}/api/admin/media/capability`);
+		expect(authorize.url).toBe(`${CMS_BLOG_MEDIA_PRODUCTION_ORIGIN}/api/admin/media/capability`);
 		expect(authorizeHeaders.get("Cookie")).toBe(COOKIE);
 		expect(authorizeHeaders.has("X-CMS-Media-Upload-Token")).toBe(false);
 		expect(uploadHeaders.get("X-CMS-Media-Upload-Token")).toBe(UPLOAD_TOKEN);
@@ -410,7 +477,7 @@ describe("CMS-4.4j Blog media transfer policy", () => {
 		});
 		expect(fetcher).toHaveBeenCalledTimes(1);
 		expect(String(fetcher.mock.calls[0]?.[0])).toBe(
-			`${CMS_4_4J_PRODUCTION_ORIGIN}/api/admin/media/process`,
+			`${CMS_BLOG_MEDIA_PRODUCTION_ORIGIN}/api/admin/media/process`,
 		);
 		expect((fetcher.mock.calls[0]?.[1] as RequestInit).body).toBe(
 			JSON.stringify({ privateObjectKey: privateObjectKeyForAsset(WORKER_ID, "png") }),
@@ -563,7 +630,7 @@ describe("CMS-4.4j Blog media transfer policy", () => {
 			SOURCE_REF,
 			{
 				phase: "complete",
-				sourceSha256: CMS_4_4J_SOURCE_EXPECTATIONS[SOURCE_REF].sourceSha256,
+				sourceSha256: CMS_BLOG_MEDIA_SOURCE_EXPECTATIONS[SOURCE_REF].sourceSha256,
 				source: JOURNAL_SOURCE,
 				workerAssetId: WORKER_ID,
 				sourceExtension: "png",
@@ -574,7 +641,7 @@ describe("CMS-4.4j Blog media transfer policy", () => {
 		const receipt = {
 			mediaAssetId: MEDIA_ID,
 			workerAssetId: WORKER_ID,
-			sourceSha256: CMS_4_4J_SOURCE_EXPECTATIONS[SOURCE_REF].sourceSha256,
+			sourceSha256: CMS_BLOG_MEDIA_SOURCE_EXPECTATIONS[SOURCE_REF].sourceSha256,
 			source: JOURNAL_SOURCE,
 		};
 		const laterAssetPartialDigests = {
@@ -609,7 +676,7 @@ describe("CMS-4.4j Blog media transfer policy", () => {
 			receiptFile: blankReceipts(),
 			sourceAssetRef: SOURCE_REF,
 			registered: { mediaAssetId: MEDIA_ID, workerAssetId: WORKER_ID, source: JOURNAL_SOURCE },
-			sourceSha256: CMS_4_4J_SOURCE_EXPECTATIONS[SOURCE_REF].sourceSha256,
+			sourceSha256: CMS_BLOG_MEDIA_SOURCE_EXPECTATIONS[SOURCE_REF].sourceSha256,
 		});
 		expect(candidate.journal[SOURCE_REF]).toBe(MEDIA_ID);
 		expect(candidate.receiptFile).toMatchObject({
@@ -618,7 +685,7 @@ describe("CMS-4.4j Blog media transfer policy", () => {
 				[SOURCE_REF]: {
 					mediaAssetId: MEDIA_ID,
 					workerAssetId: WORKER_ID,
-					sourceSha256: CMS_4_4J_SOURCE_EXPECTATIONS[SOURCE_REF].sourceSha256,
+					sourceSha256: CMS_BLOG_MEDIA_SOURCE_EXPECTATIONS[SOURCE_REF].sourceSha256,
 				},
 			},
 		});
