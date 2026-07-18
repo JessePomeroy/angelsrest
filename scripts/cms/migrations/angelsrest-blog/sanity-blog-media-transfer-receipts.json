@@ -1,0 +1,20 @@
+{
+	"schemaVersion": 1,
+	"siteUrl": "angelsrest.online",
+	"sanity": {
+		"projectId": "n7rvza4g",
+		"dataset": "production"
+	},
+	"receipts": {
+		"image-0195cc0d5d7254cec5fb85b98ae21a3788812c12-495x600-jpg": {
+			"mediaAssetId": "nh744cpb0en9t6nx89xpjdn8ts8arc2m",
+			"workerAssetId": "7e11be6a-7e30-4317-aad5-08f4c00333b4",
+			"source": {
+				"contentType": "image/jpeg",
+				"sizeBytes": 23093,
+				"width": 495,
+				"height": 600
+			}
+		}
+	}
+}

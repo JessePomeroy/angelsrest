@@ -11,6 +11,7 @@ const modules = import.meta.glob("./**/*.ts");
 const SITE_A = { siteUrl: "site-a.example", email: "admin-a@example.com" };
 const SITE_B = { siteUrl: "site-b.example", email: "admin-b@example.com" };
 const ASSET_ID = "123e4567-e89b-42d3-a456-426614174000";
+const ASSET_ID_B = "223e4567-e89b-42d3-a456-426614174000";
 const COMPLETION_SECRET_A = "cms-media-completion-secret-a-0123456789abcdef";
 const COMPLETION_SECRET_B = "cms-media-completion-secret-b-0123456789abcdef";
 const COMPLETION_REGISTRY = JSON.stringify({
@@ -18,10 +19,10 @@ const COMPLETION_REGISTRY = JSON.stringify({
 	[SITE_B.siteUrl]: [COMPLETION_SECRET_B],
 });
 
-function readyAsset(siteUrl = SITE_A.siteUrl) {
-	const prefix = `sites/${siteUrl}/web/${ASSET_ID}/`;
+function readyAsset(siteUrl = SITE_A.siteUrl, assetId = ASSET_ID) {
+	const prefix = `sites/${siteUrl}/web/${assetId}/`;
 	return {
-		assetId: ASSET_ID,
+		assetId,
 		originalFilename: "portfolio.jpg",
 		source: {
 			contentType: "image/jpeg" as const,
@@ -216,6 +217,155 @@ describe("tenant-scoped CMS media assets", () => {
 			siteUrl: SITE_A.siteUrl,
 			ids: [createdB.id],
 		})).rejects.toThrow(/not found/);
+	});
+
+	test("projects operator-safe import target identities without exposing storage keys", async () => {
+		const t = await setup();
+		const admin = asAdmin(t, SITE_A.email);
+		const ready = await admin.mutation(api.mediaAssets.registerReadyWebAsset, {
+			siteUrl: SITE_A.siteUrl,
+			asset: readyAsset(),
+		});
+		const deleting = await admin.mutation(api.mediaAssets.registerReadyWebAsset, {
+			siteUrl: SITE_A.siteUrl,
+			asset: readyAsset(SITE_A.siteUrl, ASSET_ID_B),
+		});
+		await admin.mutation(api.mediaAssets.requestDeletion, {
+			siteUrl: SITE_A.siteUrl,
+			id: deleting.id,
+		});
+
+		const projected = await t.query(internal.mediaAssets.verifyImportTargets, {
+			expectedSiteUrl: SITE_A.siteUrl,
+			ids: [ready.id, deleting.id],
+		});
+		expect(projected).toMatchObject([
+			{
+				mediaAssetId: ready.id,
+				workerAssetId: ASSET_ID,
+				siteUrl: SITE_A.siteUrl,
+				intent: "web",
+				status: "ready",
+				source: {
+					contentType: "image/jpeg",
+					sizeBytes: 1_000_000,
+					width: 3000,
+					height: 2000,
+				},
+				masterIdentityMatches: true,
+				derivatives: {
+					thumb: {
+						identityMatches: true,
+						contentType: "image/webp",
+						width: 320,
+						height: 213,
+					},
+				},
+			},
+			{
+				mediaAssetId: deleting.id,
+				workerAssetId: ASSET_ID_B,
+				status: "deleting",
+			},
+		]);
+		expect(projected[0]).not.toHaveProperty("master");
+		expect(Object.keys(projected[0]?.derivatives ?? {})).toEqual([
+			"card",
+			"display1280",
+			"display2048",
+			"display2560",
+			"thumb",
+		]);
+		expect(projected[0]?.derivatives.thumb).not.toHaveProperty("key");
+		const serialized = JSON.stringify(projected);
+		expect(serialized).not.toContain("master.webp");
+		expect(serialized).not.toContain("display-1280.webp");
+		expect(serialized).not.toContain("sites/");
+
+		await t.run(async (ctx) => {
+			const asset = await ctx.db.get(ready.id);
+			if (!asset) throw new Error("Expected test media asset");
+			await ctx.db.patch(ready.id, {
+				master: { ...asset.master, key: "private/unexpected-master.webp" },
+				derivatives: {
+					...asset.derivatives,
+					card: {
+						...asset.derivatives.card,
+						key: "public/unexpected-card.webp",
+					},
+				},
+			});
+		});
+		const mismatched = await t.query(internal.mediaAssets.verifyImportTargets, {
+			expectedSiteUrl: SITE_A.siteUrl,
+			ids: [ready.id],
+		});
+		expect(mismatched[0]?.masterIdentityMatches).toBe(false);
+		expect(mismatched[0]?.derivatives.card.identityMatches).toBe(false);
+		expect(mismatched[0]?.derivatives.thumb.identityMatches).toBe(true);
+		expect(JSON.stringify(mismatched)).not.toContain("unexpected");
+	});
+
+	test("fails import target verification closed for invalid, missing, or foreign assets", async () => {
+		const t = await setup();
+		const adminA = asAdmin(t, SITE_A.email);
+		const createdA = await adminA.mutation(api.mediaAssets.registerReadyWebAsset, {
+			siteUrl: SITE_A.siteUrl,
+			asset: readyAsset(),
+		});
+		const createdB = await asAdmin(t, SITE_B.email).mutation(
+			api.mediaAssets.registerReadyWebAsset,
+			{
+				siteUrl: SITE_B.siteUrl,
+				asset: readyAsset(SITE_B.siteUrl),
+			},
+		);
+
+		await expect(t.query(internal.mediaAssets.verifyImportTargets, {
+			expectedSiteUrl: "",
+			ids: [createdA.id],
+		})).rejects.toThrow(/site URL is invalid/);
+		await expect(t.query(internal.mediaAssets.verifyImportTargets, {
+			expectedSiteUrl: SITE_A.siteUrl,
+			ids: [createdA.id, createdA.id],
+		})).rejects.toThrow(/requires unique assets/);
+		await expect(t.query(internal.mediaAssets.verifyImportTargets, {
+			expectedSiteUrl: SITE_A.siteUrl,
+			ids: [createdB.id],
+		})).rejects.toThrow(/does not belong to expected site/);
+
+		await t.run(async (ctx) => await ctx.db.delete(createdA.id));
+		await expect(t.query(internal.mediaAssets.verifyImportTargets, {
+			expectedSiteUrl: SITE_A.siteUrl,
+			ids: [createdA.id],
+		})).rejects.toThrow(/not found/);
+		await expect(t.query(internal.mediaAssets.verifyImportTargets, {
+			expectedSiteUrl: SITE_A.siteUrl,
+			ids: ["not-a-convex-id" as Id<"mediaAssets">],
+		})).rejects.toThrow();
+	});
+
+	test("caps import target verification at the migration asset count", async () => {
+		const t = await setup();
+		const admin = asAdmin(t, SITE_A.email);
+		const ids: Id<"mediaAssets">[] = [];
+		for (let index = 0; index < 22; index += 1) {
+			const workerAssetId = `00000000-0000-4000-8000-${index.toString(16).padStart(12, "0")}`;
+			const created = await admin.mutation(api.mediaAssets.registerReadyWebAsset, {
+				siteUrl: SITE_A.siteUrl,
+				asset: readyAsset(SITE_A.siteUrl, workerAssetId),
+			});
+			ids.push(created.id);
+		}
+
+		await expect(t.query(internal.mediaAssets.verifyImportTargets, {
+			expectedSiteUrl: SITE_A.siteUrl,
+			ids,
+		})).rejects.toThrow(/cannot exceed 21 assets/);
+		await expect(t.query(internal.mediaAssets.verifyImportTargets, {
+			expectedSiteUrl: SITE_A.siteUrl,
+			ids: ids.slice(0, 21),
+		})).resolves.toHaveLength(21);
 	});
 
 	test("keeps deletion retryable and completes only after the explicit cleanup phase", async () => {

@@ -20,6 +20,7 @@
 		"test": "vitest run",
 		"test:watch": "vitest",
 		"cms:blog-import-dry-run": "tsx scripts/cms/sanity-blog-import-dry-run.ts",
+		"cms:blog-media-verify": "tsx scripts/cms/sanity-blog-media-verify.ts",
 		"test:e2e": "node scripts/run-playwright.mjs",
 		"smoke:gallery-host-bulk-delete": "node scripts/smoke-gallery-host-bulk-delete.mjs"
 	},
