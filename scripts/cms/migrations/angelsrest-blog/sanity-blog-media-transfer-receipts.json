@@ -16,6 +16,28 @@
 				"width": 495,
 				"height": 600
 			}
+		},
+		"image-35e637d5107bdbcc18a316d85b4eee2115222360-2880x1492-png": {
+			"mediaAssetId": "nh71hrsmf1vnc8k62v2f6wrkp18asxer",
+			"workerAssetId": "fb751126-d9a3-41a1-806d-9529f08a9449",
+			"sourceSha256": "49ac3f982f5273b0e5685c8b606c2ba248ab60c9e52ec06beb96c879a3da6ffd",
+			"source": {
+				"contentType": "image/png",
+				"sizeBytes": 2908219,
+				"width": 2880,
+				"height": 1492
+			}
+		},
+		"image-89fe1f49fe9aeea136b85a5133f94534ff791ce3-1568x1366-png": {
+			"mediaAssetId": "nh70e0p9sjh4ftffvm2g0z6dg58ar0ee",
+			"workerAssetId": "5b6faf53-8494-4b3a-b32a-fdb84648bc4a",
+			"sourceSha256": "fa1fe35fe63cb5843e67f791356f2eef633fe29c4e2338ef247bf937706985aa",
+			"source": {
+				"contentType": "image/png",
+				"sizeBytes": 2844631,
+				"width": 1568,
+				"height": 1366
+			}
 		}
 	}
 }
