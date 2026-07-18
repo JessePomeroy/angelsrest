@@ -210,11 +210,12 @@ describe("CMS-4.4j Blog media transfer policy", () => {
 		).toThrow(/already mapped/);
 	});
 
-	test("validates source content hashes, decoded format, dimensions, size, and SHA-256", () => {
+	test("validates canonical CDN bytes independently from the Sanity asset ID", () => {
 		const bytes = new Uint8Array([9, 8, 7]);
-		const sha1 = createHash("sha1").update(bytes).digest("hex");
 		const sourceSha256 = createHash("sha256").update(bytes).digest("hex");
-		const sourceAssetRef = `image-${sha1}-1x1-png`;
+		const sourceAssetId = "a".repeat(40);
+		const sourceAssetRef = `image-${sourceAssetId}-1x1-png`;
+		expect(createHash("sha1").update(bytes).digest("hex")).not.toBe(sourceAssetId);
 		expect(
 			validateSanityImageSourceAgainstExpectation({
 				sourceAssetRef,
@@ -229,6 +230,20 @@ describe("CMS-4.4j Blog media transfer policy", () => {
 				},
 			}),
 		).toMatchObject({ sourceAssetRef, sourceSha256 });
+		expect(() =>
+			validateSanityImageSourceAgainstExpectation({
+				sourceAssetRef,
+				bytes,
+				decoded: { format: "png", width: 1, height: 1 },
+				expected: {
+					contentType: "image/png",
+					sizeBytes: bytes.byteLength,
+					width: 1,
+					height: 1,
+					sourceSha256: "b".repeat(64),
+				},
+			}),
+		).toThrow(/SHA-256/);
 		expect(() =>
 			validateSanityImageSourceAgainstExpectation({
 				sourceAssetRef,
