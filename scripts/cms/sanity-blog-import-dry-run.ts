@@ -1,51 +1,25 @@
-import { mkdir, readFile, writeFile } from "node:fs/promises";
-import { dirname, resolve } from "node:path";
+import { access, mkdir, readFile, writeFile } from "node:fs/promises";
+import { dirname, join, resolve } from "node:path";
 import { createClient } from "@sanity/client";
 import {
 	createSanityBlogImportDryRunReport,
 	createSanityBlogImportManifest,
 	type SanityBlogImportSource,
 } from "../../packages/crm-api/convex/helpers/sanityBlogImport";
+import {
+	createSanityBlogImportPrepArtifacts,
+	createSanityBlogImportRemediation,
+	parseSanityBlogImageAssetMap,
+	SANITY_BLOG_IMAGE_ASSET_MAP_FILENAME,
+	SANITY_BLOG_REVIEW_CHECKLIST_FILENAME,
+} from "./sanityBlogImportPrep";
 
 const DEFAULT_OUTPUT_PATH = "/tmp/angelsrest-sanity-blog-import-report.json";
 
 type CliOptions = {
 	outputPath: string;
 	imageAssetMappingPath?: string;
-};
-
-type SanityReference = {
-	_ref?: unknown;
-};
-
-type SanityImageLike = {
-	_key?: unknown;
-	asset?: SanityReference;
-	alt?: unknown;
-};
-
-type AssetUsage = {
-	sourceAssetRef: string;
-	mapped: boolean;
-	targetAssetId?: string;
-	placements: Array<{
-		kind: "author" | "post";
-		role: "portrait" | "mainImage" | "bodyImage";
-		sourceId: string;
-		documentKey: string;
-		slug: string | null;
-		path: string;
-	}>;
-};
-
-type AltTextRemediation = {
-	kind: "author" | "post";
-	role: "portrait" | "mainImage" | "bodyImage";
-	sourceId: string;
-	documentKey: string;
-	slug: string | null;
-	sourceAssetRef?: string;
-	path: string;
+	prepDirectory?: string;
 };
 
 function stripInlineComment(value: string) {
@@ -80,6 +54,7 @@ function cliOptions(args: string[]): CliOptions {
 	const options: CliOptions = { outputPath: DEFAULT_OUTPUT_PATH };
 	for (let index = 0; index < args.length; index += 1) {
 		const arg = args[index];
+		if (arg === "--") continue;
 		if (arg === "--output") {
 			options.outputPath = args[index + 1] ?? "";
 			index += 1;
@@ -90,76 +65,25 @@ function cliOptions(args: string[]): CliOptions {
 			index += 1;
 			continue;
 		}
+		if (arg === "--prep-directory") {
+			options.prepDirectory = args[index + 1] ?? "";
+			index += 1;
+			continue;
+		}
 		throw new Error(`Unsupported argument: ${arg}`);
 	}
 	if (!options.outputPath) throw new Error("--output requires a path");
 	if (options.imageAssetMappingPath === "") {
 		throw new Error("--image-asset-map requires a path");
 	}
+	if (options.prepDirectory === "") throw new Error("--prep-directory requires a path");
 	return options;
 }
 
 async function readImageAssetIds(path: string | undefined) {
 	if (!path) return {};
 	const contents = await readFile(resolve(path), "utf8");
-	const parsed = JSON.parse(contents) as unknown;
-	if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
-		throw new Error("--image-asset-map must point at a JSON object");
-	}
-	return Object.fromEntries(
-		Object.entries(parsed).filter(
-			(entry): entry is [string, string] =>
-				typeof entry[0] === "string" && typeof entry[1] === "string",
-		),
-	);
-}
-
-function text(value: unknown) {
-	return typeof value === "string" ? value.trim() : undefined;
-}
-
-function sourceReference(value: SanityReference | undefined) {
-	const ref = text(value?._ref);
-	return ref?.replace(/^drafts\./, "");
-}
-
-function imageSourceRef(value: SanityImageLike | undefined) {
-	const ref = sourceReference(value?.asset);
-	return ref?.startsWith("image-") ? ref : undefined;
-}
-
-function bodyImageEntries(body: unknown) {
-	if (!Array.isArray(body)) return [];
-	return body
-		.map((node, index) => {
-			if (typeof node !== "object" || node === null || !("_type" in node) || node._type !== "image")
-				return null;
-			return {
-				index,
-				image: node as SanityImageLike,
-			};
-		})
-		.filter((entry): entry is { index: number; image: SanityImageLike } => entry !== null);
-}
-
-function addAssetUsage(
-	usages: Map<string, AssetUsage>,
-	imageAssetIds: Record<string, string>,
-	sourceAssetRef: string,
-	placement: AssetUsage["placements"][number],
-) {
-	const existing = usages.get(sourceAssetRef);
-	if (existing) {
-		existing.placements.push(placement);
-		return;
-	}
-	const targetAssetId = imageAssetIds[sourceAssetRef];
-	usages.set(sourceAssetRef, {
-		sourceAssetRef,
-		mapped: Boolean(targetAssetId),
-		...(targetAssetId ? { targetAssetId } : {}),
-		placements: [placement],
-	});
+	return parseSanityBlogImageAssetMap(JSON.parse(contents) as unknown);
 }
 
 function sourceQuery() {
@@ -238,97 +162,60 @@ function sanitizedDocumentSummary(manifest: ReturnType<typeof createSanityBlogIm
 	};
 }
 
-function remediationPlan(
-	source: SanityBlogImportSource,
-	manifest: ReturnType<typeof createSanityBlogImportManifest>,
-	imageAssetIds: Record<string, string>,
-) {
-	const assetUsages = new Map<string, AssetUsage>();
-	const altText: AltTextRemediation[] = [];
-	const authors = new Map(manifest.authors.map((author) => [author.sourceId, author]));
-	const posts = new Map(manifest.posts.map((post) => [post.sourceId, post]));
+type PrepOutputPaths = {
+	directory: string;
+	imageAssetMap: string;
+	reviewChecklist: string;
+};
 
-	for (const [authorIndex, authorSource] of source.authors.entries()) {
-		const sourceId = authorSource._id.replace(/^drafts\./, "");
-		const author = authors.get(sourceId);
-		if (!author) continue;
-		const sourceAssetRef = imageSourceRef(authorSource.image);
-		if (!sourceAssetRef) continue;
-		const placement = {
-			kind: "author" as const,
-			role: "portrait" as const,
-			sourceId,
-			documentKey: author.documentKey,
-			slug: author.draft.slug ?? null,
-			path: `$.authors[${authorIndex}].image`,
-		};
-		addAssetUsage(assetUsages, imageAssetIds, sourceAssetRef, placement);
-		if (!text(authorSource.image?.alt)) {
-			altText.push({ ...placement, sourceAssetRef });
-		}
-	}
-
-	for (const [postIndex, postSource] of source.posts.entries()) {
-		const sourceId = postSource._id.replace(/^drafts\./, "");
-		const post = posts.get(sourceId);
-		if (!post) continue;
-		const mainImageRef = imageSourceRef(postSource.mainImage);
-		if (mainImageRef) {
-			const placement = {
-				kind: "post" as const,
-				role: "mainImage" as const,
-				sourceId,
-				documentKey: post.documentKey,
-				slug: post.draft.slug ?? null,
-				path: `$.posts[${postIndex}].mainImage`,
-			};
-			addAssetUsage(assetUsages, imageAssetIds, mainImageRef, placement);
-			if (!text(postSource.mainImage?.alt)) {
-				altText.push({ ...placement, sourceAssetRef: mainImageRef });
-			}
-		}
-		for (const { index: bodyIndex, image } of bodyImageEntries(postSource.body)) {
-			const bodyImageRef = imageSourceRef(image);
-			const placement = {
-				kind: "post" as const,
-				role: "bodyImage" as const,
-				sourceId,
-				documentKey: post.documentKey,
-				slug: post.draft.slug ?? null,
-				path: `$.posts[${postIndex}].body[${bodyIndex}]`,
-			};
-			if (bodyImageRef) {
-				addAssetUsage(assetUsages, imageAssetIds, bodyImageRef, placement);
-			}
-			if (!text(image.alt)) {
-				altText.push({
-					...placement,
-					...(bodyImageRef ? { sourceAssetRef: bodyImageRef } : {}),
-				});
-			}
-		}
-	}
-
-	const assetMappings = Array.from(assetUsages.values())
-		.map((usage) => ({
-			...usage,
-			placements: usage.placements.sort((a, b) => a.path.localeCompare(b.path)),
-		}))
-		.sort((a, b) => a.sourceAssetRef.localeCompare(b.sourceAssetRef));
-
+function prepOutputPaths(directory: string): PrepOutputPaths {
+	const resolvedDirectory = resolve(directory);
 	return {
-		assetMappings,
-		altText: altText.sort((a, b) => a.path.localeCompare(b.path)),
-		counts: {
-			assetMappings: assetMappings.length,
-			unmappedAssets: assetMappings.filter((usage) => !usage.mapped).length,
-			altText: altText.length,
-		},
+		directory: resolvedDirectory,
+		imageAssetMap: join(resolvedDirectory, SANITY_BLOG_IMAGE_ASSET_MAP_FILENAME),
+		reviewChecklist: join(resolvedDirectory, SANITY_BLOG_REVIEW_CHECKLIST_FILENAME),
 	};
+}
+
+async function assertPathDoesNotExist(path: string) {
+	try {
+		await access(path);
+	} catch (error) {
+		if (typeof error === "object" && error !== null && "code" in error && error.code === "ENOENT") {
+			return;
+		}
+		throw error;
+	}
+	throw new Error(`Refusing to overwrite existing import-preparation file: ${path}`);
+}
+
+async function validatePrepOutputPaths(
+	paths: PrepOutputPaths,
+	outputPath: string,
+	imageAssetMappingPath: string | undefined,
+) {
+	const reservedInputs = new Set([
+		outputPath,
+		...(imageAssetMappingPath ? [resolve(imageAssetMappingPath)] : []),
+	]);
+	for (const path of [paths.imageAssetMap, paths.reviewChecklist]) {
+		if (reservedInputs.has(path)) {
+			throw new Error(`Import-preparation output collides with an input or report path: ${path}`);
+		}
+	}
+	await Promise.all([
+		assertPathDoesNotExist(paths.imageAssetMap),
+		assertPathDoesNotExist(paths.reviewChecklist),
+	]);
 }
 
 async function main() {
 	const options = cliOptions(process.argv.slice(2));
+	const outputPath = resolve(options.outputPath);
+	const prepPaths = options.prepDirectory ? prepOutputPaths(options.prepDirectory) : undefined;
+	if (prepPaths) {
+		await validatePrepOutputPaths(prepPaths, outputPath, options.imageAssetMappingPath);
+	}
 	const envFile = await readEnvFile(resolve(".env.local"));
 	const projectId = process.env.PUBLIC_SANITY_PROJECT_ID ?? envFile.PUBLIC_SANITY_PROJECT_ID;
 	const dataset =
@@ -346,7 +233,7 @@ async function main() {
 	const source = await client.fetch<SanityBlogImportSource>(sourceQuery());
 	const manifest = createSanityBlogImportManifest(source, { imageAssetIds });
 	const report = createSanityBlogImportDryRunReport(manifest);
-	const outputPath = resolve(options.outputPath);
+	const remediation = createSanityBlogImportRemediation(source, manifest, imageAssetIds);
 	const output = {
 		generatedAt: new Date().toISOString(),
 		source: {
@@ -356,13 +243,26 @@ async function main() {
 		},
 		report,
 		documents: sanitizedDocumentSummary(manifest),
-		remediation: remediationPlan(source, manifest, imageAssetIds),
+		remediation,
 	};
 	await mkdir(dirname(outputPath), { recursive: true });
 	await writeFile(outputPath, `${JSON.stringify(output, null, 2)}\n`);
 	console.log(
 		`Wrote Sanity Blog import dry-run report to ${outputPath}: ${report.status} (${report.counts.errors} errors, ${report.counts.warnings} warnings)`,
 	);
+	if (prepPaths) {
+		const prep = createSanityBlogImportPrepArtifacts({ projectId, dataset, remediation });
+		await mkdir(prepPaths.directory, { recursive: true });
+		await Promise.all([
+			writeFile(prepPaths.imageAssetMap, `${JSON.stringify(prep.imageAssetMap, null, 2)}\n`, {
+				flag: "wx",
+			}),
+			writeFile(prepPaths.reviewChecklist, prep.checklistMarkdown, { flag: "wx" }),
+		]);
+		console.log(
+			`Wrote import-preparation files to ${prepPaths.directory}: ${prep.counts.assets} source images, ${prep.counts.missingMappingValues} without supplied mappings, ${prep.counts.altText} alt-text review items`,
+		);
+	}
 }
 
 main().catch((error) => {
