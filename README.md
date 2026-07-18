@@ -14,7 +14,9 @@ fulfillment, email, and private gallery delivery.
 | Area | Current owner |
 |---|---|
 | Public pages and HTTP composition | SvelteKit 5 |
-| Editorial content and portfolio galleries | Sanity |
+| Published editorial content during CMS migration | Sanity fallback |
+| Embedded Editor drafts, revisions, and media registry | Convex |
+| Public Editor image derivatives and private sources | Cloudflare R2 through the CMS media worker |
 | CRM, orders, inquiries, documents, and tenant records | Convex |
 | Admin sessions and site membership | Better Auth + Convex |
 | Shop, invoice, and platform payments | Stripe |
@@ -23,10 +25,10 @@ fulfillment, email, and private gallery delivery.
 | Private delivery-gallery files | Cloudflare R2 through the gallery worker |
 | Error and performance telemetry | Sentry |
 
-Sanity remains the production editorial source today. A replacement CMS
-embedded in the existing admin dashboard is being planned, but that migration
-has not started and the current Sanity boundary must remain intact until an
-explicit cutover.
+Sanity remains the production editorial fallback while the replacement CMS is
+being implemented inside the existing admin dashboard. The migration is staged
+by content type; the Sanity boundary remains intact until the Editor is accepted,
+restore paths are proven, and an explicit cutover is approved.
 
 See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the authoritative system
 map, ownership rules, and request flows.
@@ -42,7 +44,7 @@ brand, content, administrators, and public origin.
 |---|---|
 | `angelsrest` | Angel's Rest public site, platform hub, Convex backend, and shared domain packages |
 | `admin-dashboard` | Source for the shared `@jessepomeroy/admin` UI and server adapters |
-| `gallery-worker` | Cloudflare Worker and R2 boundary for private gallery assets and prepared downloads |
+| `gallery-worker` | Separate Cloudflare Worker deployments for private gallery delivery and public-site Editor media |
 | `reflecting-pool` | Client spoke and tenant admin host; currently in pre-handoff production testing |
 | `sanity-studio-template` | Shared Sanity schemas, desk structure, components, and actions |
 | `angelsrest-studio` | Current Angel's Rest Sanity Studio |
@@ -67,6 +69,8 @@ published from the separate `admin-dashboard` repository.
 
 - Portfolio galleries are public editorial content currently stored in Sanity.
 - Delivery galleries are private Convex records backed by protected R2 objects.
+- Editor media uses a separate tenant-authenticated Worker, private source
+  bucket, immutable public derivative bucket, and Convex asset registry.
 - Browser code never receives server secrets or broad service credentials.
 - Every admin route requires both a valid session and stored site membership.
 - Admin queries use an authenticated Convex WebSocket; mutations use the
@@ -93,7 +97,7 @@ pnpm dev
 ```
 
 The example environment file groups the required application, Convex, auth,
-Sanity, Stripe, Resend, LumaPrints, gallery-worker, Turnstile, and observability
+Sanity, Stripe, Resend, LumaPrints, gallery workers, Turnstile, and observability
 configuration. Keep real credentials in local or provider-managed secret
 stores; never commit them.
 

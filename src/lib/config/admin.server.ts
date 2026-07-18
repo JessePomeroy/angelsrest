@@ -10,6 +10,8 @@ export const adminServerConfig: AdminServerConfig = {
 	...adminConfig,
 	galleryWorkerUrl: getGalleryWorkerUrl(),
 	galleryAdminSecret: privateEnv.GALLERY_ADMIN_SECRET ?? "",
+	cmsMediaWorkerUrl: "https://cms-media-worker.thinkingofview.workers.dev",
+	cmsMediaTenantSecret: privateEnv.CMS_MEDIA_WORKER_SECRET ?? "",
 	convexUrl: publicEnv.PUBLIC_CONVEX_URL ?? "",
 	resendApiKey: privateEnv.RESEND_API_KEY ?? "",
 	verifyAdmin: verifySiteAdminRequest,
