@@ -1,6 +1,7 @@
 const SANITY_IMAGE_REF_PATTERN = /^image-([0-9a-f]{40})-([1-9]\d*)x([1-9]\d*)-(jpg|png|webp)$/;
 const CONVEX_ID_PATTERN = /^[a-z0-9]{20,64}$/;
 const UUID_V4_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
+const SHA256_PATTERN = /^[0-9a-f]{64}$/;
 const MAX_SOURCE_BYTES = 20_000_000;
 
 export const SANITY_BLOG_MEDIA_TRANSFER_RECEIPTS_FILENAME =
@@ -33,11 +34,12 @@ export type BlogMediaSource = {
 export type SanityBlogMediaTransferReceipt = {
 	mediaAssetId: string;
 	workerAssetId: string;
+	sourceSha256: string;
 	source: BlogMediaSource;
 };
 
 export type SanityBlogMediaTransferReceipts = {
-	schemaVersion: 1;
+	schemaVersion: 2;
 	siteUrl: string;
 	sanity: { projectId: string; dataset: string };
 	receipts: Record<string, SanityBlogMediaTransferReceipt>;
@@ -238,7 +240,7 @@ export function parseSanityBlogMediaTransferReceipts(
 ): SanityBlogMediaTransferReceipts {
 	const root = objectValue(value, "Sanity Blog media transfer receipts");
 	requireExactKeys(root, ["schemaVersion", "siteUrl", "sanity", "receipts"], "receipts root");
-	if (root.schemaVersion !== 1) throw new Error("Unsupported transfer receipt schemaVersion");
+	if (root.schemaVersion !== 2) throw new Error("Unsupported transfer receipt schemaVersion");
 	const sanity = objectValue(root.sanity, "receipts.sanity");
 	requireExactKeys(sanity, ["projectId", "dataset"], "receipts.sanity");
 	const receiptValues = objectValue(root.receipts, "receipts.receipts");
@@ -253,13 +255,17 @@ export function parseSanityBlogMediaTransferReceipts(
 		const receipt = objectValue(rawReceipt, `receipt ${sourceAssetRef}`);
 		requireExactKeys(
 			receipt,
-			["mediaAssetId", "workerAssetId", "source"],
+			["mediaAssetId", "workerAssetId", "sourceSha256", "source"],
 			`receipt ${sourceAssetRef}`,
 		);
 		const mediaAssetId = stringValue(receipt.mediaAssetId, "receipt.mediaAssetId");
 		if (!CONVEX_ID_PATTERN.test(mediaAssetId)) throw new Error("Receipt has invalid Convex ID");
 		const workerAssetId = stringValue(receipt.workerAssetId, "receipt.workerAssetId");
 		if (!UUID_V4_PATTERN.test(workerAssetId)) throw new Error("Receipt has invalid Worker UUID v4");
+		const sourceSha256 = stringValue(receipt.sourceSha256, "receipt.sourceSha256");
+		if (!SHA256_PATTERN.test(sourceSha256)) {
+			throw new Error("Receipt has invalid lowercase source SHA-256");
+		}
 		if (mediaAssetIds.has(mediaAssetId)) throw new Error("Transfer receipts duplicate a Convex ID");
 		if (workerAssetIds.has(workerAssetId))
 			throw new Error("Transfer receipts duplicate a Worker UUID");
@@ -272,11 +278,11 @@ export function parseSanityBlogMediaTransferReceipts(
 			source.height !== sourceRef.height
 		)
 			throw new Error(`Receipt source metadata does not match ${sourceAssetRef}`);
-		receipts[sourceAssetRef] = { mediaAssetId, workerAssetId, source };
+		receipts[sourceAssetRef] = { mediaAssetId, workerAssetId, sourceSha256, source };
 	}
 
 	return {
-		schemaVersion: 1,
+		schemaVersion: 2,
 		siteUrl: stringValue(root.siteUrl, "receipts.siteUrl"),
 		sanity: {
 			projectId: stringValue(sanity.projectId, "receipts.sanity.projectId"),

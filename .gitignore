@@ -38,3 +38,9 @@ packages/crm-api/convex/**/*.d.ts.map
 # from the repository root can bootstrap an empty root-level tree, so ignore it
 # and always run those commands from packages/crm-api/.
 /convex/
+
+# Durable, machine-local state for the bounded Sanity Blog media transfer.
+/scripts/cms/migrations/angelsrest-blog/.sanity-blog-media-transfer-checkpoint.json
+/scripts/cms/migrations/angelsrest-blog/.sanity-blog-media-transfer.lock
+/scripts/cms/migrations/angelsrest-blog/.sanity-blog-*.candidate-*.json
+/scripts/cms/migrations/angelsrest-blog/.sanity-blog-*.tmp-*

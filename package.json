@@ -21,6 +21,7 @@
 		"test:watch": "vitest",
 		"cms:blog-import-dry-run": "tsx scripts/cms/sanity-blog-import-dry-run.ts",
 		"cms:blog-media-verify": "tsx scripts/cms/sanity-blog-media-verify.ts",
+		"cms:blog-media-transfer": "tsx scripts/cms/sanity-blog-media-transfer.ts",
 		"test:e2e": "node scripts/run-playwright.mjs",
 		"smoke:gallery-host-bulk-delete": "node scripts/smoke-gallery-host-bulk-delete.mjs"
 	},
@@ -52,7 +53,7 @@
 	},
 	"dependencies": {
 		"@convex-dev/better-auth": "^0.12.5",
-		"@jessepomeroy/admin": "^3.21.0",
+		"@jessepomeroy/admin": "^3.21.1",
 		"@jessepomeroy/gallery-delivery": "workspace:^",
 		"@jessepomeroy/print-catalog": "workspace:^",
 		"@lucide/svelte": "^0.563.1",
