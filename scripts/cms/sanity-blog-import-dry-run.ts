@@ -247,8 +247,10 @@ async function main() {
 	};
 	await mkdir(dirname(outputPath), { recursive: true });
 	await writeFile(outputPath, `${JSON.stringify(output, null, 2)}\n`);
+	const draftImportSummary = `draft import ${report.draftImport.status} (${report.draftImport.counts.errors} errors, ${report.draftImport.counts.warnings} warnings)`;
+	const publicationSummary = `publication ${report.publication.status} (${report.publication.counts.errors} errors, ${report.publication.counts.warnings} warnings)`;
 	console.log(
-		`Wrote Sanity Blog import dry-run report to ${outputPath}: ${report.status} (${report.counts.errors} errors, ${report.counts.warnings} warnings)`,
+		`Wrote Sanity Blog import dry-run report to ${outputPath}: ${draftImportSummary}; ${publicationSummary}`,
 	);
 	if (prepPaths) {
 		const prep = createSanityBlogImportPrepArtifacts({ projectId, dataset, remediation });

@@ -1,4 +1,4 @@
-# Angels Rest Blog media mapping
+# Angels Rest Blog migration journal
 
 This directory is the versioned migration journal for the published Sanity Blog image set.
 
@@ -7,6 +7,17 @@ This directory is the versioned migration journal for the published Sanity Blog 
 - Blank values have not been transferred or verified.
 - Factual alt text remains a separate guided review requirement; a media mapping does not satisfy it.
 - `sanity-blog-media-transfer-receipts.json` uses schema v2 to record the source facts, runner-observed source SHA-256, and both identities observed during each completed transfer. It contains no upload capability, storage key, session cookie, or secret.
+
+## CMS-4.4o readiness gates
+
+The import dry run reports two deliberately separate decisions:
+
+- `draftImport` answers whether the current published Sanity snapshot can be converted into deterministic, unpublished Convex drafts. Missing image alt text remains visible as guided attention but does not block this gate because the draft contracts allow incomplete accessibility metadata.
+- `publication` applies the stricter public-content contract. Every image placement needs factual alt text before the imported drafts can publish.
+
+An optional Sanity author biography that is absent, projected as `null`, or stored as an empty array is normalized to no biography. Other malformed roots remain blocking; the importer never wraps strings or objects into invented Portable Text.
+
+CMS-4.4o is read-only. It does not create Convex content, publish drafts, mutate Sanity or media, or change the public Blog provider. A later reviewed iteration performs the bounded unpublished draft import only after this gate passes.
 
 ## Bounded CMS-4.4n transfer
 
