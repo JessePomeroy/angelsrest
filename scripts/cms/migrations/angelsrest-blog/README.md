@@ -8,23 +8,26 @@ This directory is the versioned migration journal for the published Sanity Blog 
 - Factual alt text remains a separate guided review requirement; a media mapping does not satisfy it.
 - `sanity-blog-media-transfer-receipts.json` uses schema v2 to record the source facts, runner-observed source SHA-256, and both identities observed during each completed transfer. It contains no upload capability, storage key, session cookie, or secret.
 
-## Bounded CMS-4.4k transfer
+## Bounded CMS-4.4l transfer
 
-Preview the fixed two-asset batch without reading an admin Cookie or changing files or provider state:
+Preview the fixed five-asset batch without reading an admin Cookie or changing files or provider state:
 
 ```sh
 pnpm cms:blog-media-transfer
 ```
 
-Production execution is deliberately restricted to the two reviewed published source references:
+Production execution is deliberately restricted to the five reviewed published source references from one post body:
 
 ```sh
 pnpm cms:blog-media-transfer -- \
   --execute \
-  --source-ref image-d4ee0889a5b82e47027dc57c39604a9320896875-2624x1876-png \
-  --source-ref image-12b028c5acab8e557ef9736cc9def77ecc33f706-600x600-jpg \
+  --source-ref image-db60afd87e022cd5d4fa54f5c4a3fe97ceb57cd6-2624x1876-png \
+  --source-ref image-4cc2102493e41f18ed7f2727a88b80b5007741a2-2624x1876-png \
+  --source-ref image-09a2b170c772750958a7f5b224a19be7f748e12c-2624x1876-png \
+  --source-ref image-bfe45aa66ae0403bb2ff0940c1f7b7421cc27628-2624x1876-png \
+  --source-ref image-efdb9b1e4b4f95723596ace8d0f2b4f6be06fe62-2400x1654-png \
   --cookie-file /absolute/path/to/owner-only-cookie.txt \
-  --confirm "transfer CMS-4.4k two-asset batch to www.angelsrest.online"
+  --confirm "transfer CMS-4.4l 5-asset batch to www.angelsrest.online"
 ```
 
 The Cookie file must be a regular, owner-owned mode-`0600` file containing one raw Cookie header value with no `Cookie:` prefix. The Cookie is sent only to the fixed Angels Rest admin host. The short-lived upload token is sent only to the validated media Worker PUT URL; neither credential is logged or persisted.
@@ -32,12 +35,12 @@ The Cookie file must be a regular, owner-owned mode-`0600` file containing one r
 The runner:
 
 - validates the exact Sanity origin, project, dataset, published reference, canonical CDN bytes, reviewed SHA-256, MIME, size, decoded format, and dimensions before upload; Sanity's embedded asset ID continues to identify its uploaded original and is not incorrectly treated as a digest of the public CDN byte representation;
-- processes the two assets strictly serially and stops at the first failure;
+- processes the five assets strictly serially and stops at the first failure;
 - checkpoints the source digest and one Worker identity before PUT, then reconciles every ambiguous PUT or process result against that same private key without requesting a replacement capability;
 - uses one exclusive local lock and compare-and-swap journal digests to prevent concurrent or out-of-band commits;
 - verifies the candidate mapping through the production registry gate before committing the receipt first and mapping second;
 - recovers forward from a crash after either journal rename and re-runs the full verifier before marking an asset complete; and
-- removes its machine-local checkpoint only after both assets pass final verification.
+- removes its machine-local checkpoint only after all five assets pass final verification.
 
 An expired admin session leaves the checkpoint in place: replace the contents of the same secure Cookie file and rerun the exact command. The checkpoint and lock paths are intentionally shared between bounded batches, while their contents bind to the active batch ID and ordered source references. A checkpoint from another released batch fails closed; resume it only with that batch's exact released runner and command. A missing same-key upload or an unfamiliar partial journal state stops for operator review. Do not delete or edit the checkpoint or lock to force progress.
 
