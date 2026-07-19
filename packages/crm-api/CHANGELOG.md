@@ -1,5 +1,12 @@
 # @jessepomeroy/crm-api
 
+## 2.17.0
+
+### Minor Changes
+
+- 5e87061: Add a provider-neutral, tenant-scoped single-print catalog foundation with
+  authenticated immutable drafts, integer-cent variants, and conflict protection.
+
 ## 2.16.0
 
 ### Minor Changes
