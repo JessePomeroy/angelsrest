@@ -167,6 +167,112 @@ describe("Sanity Blog import manifest", () => {
 		);
 	});
 
+	test.each([undefined, null, []])(
+		"treats optional author bio value %j as absent",
+		(bio) => {
+			const source = sourceFixture();
+			source.authors[0].bio = bio;
+
+			const author = createSanityBlogImportManifest(source).authors[0];
+
+			expect(author.draft.bio).toBeUndefined();
+			expect(author.issues).toEqual([]);
+		},
+	);
+
+	test.each([
+		"Biography text outside Portable Text",
+		{ blocks: [] },
+		{
+			_type: "block",
+			_key: "single-block",
+			children: [],
+			markDefs: [],
+			style: "normal",
+		},
+	])("rejects malformed author bio root %j without coercing it", (bio) => {
+		const source = sourceFixture();
+		source.authors[0].bio = bio;
+
+		const author = createSanityBlogImportManifest(source).authors[0];
+
+		expect(author.draft.bio).toBeUndefined();
+		expect(author.issues).toContainEqual({
+			code: "portable-text",
+			path: "$.authors[0].bio$",
+			message: "Expected Portable Text blocks",
+			severity: "error",
+		});
+	});
+
+	test("blocks draft import when a converted biography violates the Author contract", () => {
+		const source = sourceFixture();
+		source.authors[0].bio = [
+			{
+				_type: "image",
+				_key: "bio-image",
+				asset: { _type: "reference", _ref: BODY_IMAGE },
+				alt: "A portrait used inside the biography.",
+			},
+		];
+
+		const report = createSanityBlogImportDryRunReport(
+			createSanityBlogImportManifest(source, {
+				imageAssetIds: { [BODY_IMAGE]: TARGET_BODY_IMAGE },
+			}),
+		);
+
+		expect(report.draftImport.status).toBe("blocked");
+		expect(report.draftImport.blockingIssues).toContainEqual(
+			expect.objectContaining({
+				code: "portable-text",
+				path: "$.authors[0].bio",
+				message: "Author biography cannot contain image blocks",
+			}),
+		);
+		expect(
+			report.publication.blockingIssues.filter((reportIssue) =>
+				reportIssue.path.includes(".bio"),
+			),
+		).toHaveLength(1);
+	});
+
+	test("applies the Author publication contract without blocking an incomplete draft", () => {
+		const source = sourceFixture();
+		source.authors[0].bio = [
+			{
+				_type: "block",
+				_key: "empty-bio",
+				style: "normal",
+				markDefs: [],
+				children: [
+					{
+						_type: "span",
+						_key: "empty-bio-text",
+						text: "   ",
+						marks: [],
+					},
+				],
+			},
+		];
+
+		const report = createSanityBlogImportDryRunReport(
+			createSanityBlogImportManifest(source, {
+				imageAssetIds: { [BODY_IMAGE]: TARGET_BODY_IMAGE },
+			}),
+		);
+
+		expect(report.draftImport.status).toBe("ready-with-warnings");
+		expect(report.publication.status).toBe("blocked");
+		expect(report.publication.blockingIssues).toContainEqual(
+			expect.objectContaining({
+				code: "portable-text",
+				path: "$.authors[0].draft.bio",
+				message: expect.stringContaining("needs substantive content"),
+			}),
+		);
+	});
+
 	test.each([
 		["standard", "essay", "standard"],
 		["behindTheScenes", "essay", "behindTheScenes"],
@@ -248,15 +354,20 @@ describe("Sanity Blog import manifest", () => {
 		const report = createSanityBlogImportDryRunReport(manifest);
 
 		expect(report).toMatchObject({
-			version: 1,
-			status: "ready-with-warnings",
+			version: 2,
 			counts: {
 				authors: 1,
 				categories: 1,
 				posts: 1,
 				requiredSourceAssets: 3,
-				errors: 0,
-				warnings: 2,
+			},
+			draftImport: {
+				status: "ready-with-warnings",
+				counts: { errors: 0, warnings: 2 },
+			},
+			publication: {
+				status: "ready-with-warnings",
+				counts: { errors: 0, warnings: 2 },
 			},
 			requiredSourceAssetRefs: [
 				"image-author-600x600-jpg",
@@ -264,7 +375,7 @@ describe("Sanity Blog import manifest", () => {
 				"image-main-1600x1200-jpg",
 			],
 		});
-		expect(report.warningIssues.map((issue) => issue.code)).toEqual([
+		expect(report.draftImport.warningIssues.map((issue) => issue.code)).toEqual([
 			"generated-category-slug",
 			"generated-summary",
 		]);
@@ -292,8 +403,8 @@ describe("Sanity Blog import manifest", () => {
 			}),
 		);
 
-		expect(report.status).toBe("blocked");
-		expect(report.blockingIssues).toEqual(
+		expect(report.draftImport.status).toBe("blocked");
+		expect(report.draftImport.blockingIssues).toEqual(
 			expect.arrayContaining([
 				expect.objectContaining({
 					code: "missing-exported-reference",
@@ -333,8 +444,29 @@ describe("Sanity Blog import manifest", () => {
 			}),
 		);
 
-		expect(report.status).toBe("blocked");
-		expect(report.blockingIssues).toEqual(
+		expect(report.draftImport.status).toBe("ready-with-warnings");
+		expect(report.publication.status).toBe("blocked");
+		const draftMissingAlt = report.draftImport.warningIssues.filter(
+			(reportIssue) => reportIssue.code === "missing-image-alt",
+		);
+		expect(draftMissingAlt).toHaveLength(3);
+		expect(draftMissingAlt.map((reportIssue) => reportIssue.path)).toEqual(
+			expect.arrayContaining([
+				"$.authors[0].draft.portrait.altText",
+				"$.posts[0].draft.mainImage.altText",
+				"$.posts[0].body$.blocks[1].altText",
+			]),
+		);
+		expect(report.publication.warningIssues).not.toContainEqual(
+			expect.objectContaining({ code: "missing-image-alt" }),
+		);
+		expect(report.publication.counts).toEqual({ errors: 3, warnings: 2 });
+		expect(
+			report.publication.blockingIssues.filter(
+				(reportIssue) => reportIssue.code === "missing-image-alt",
+			),
+		).toHaveLength(3);
+		expect(report.publication.blockingIssues).toEqual(
 			expect.arrayContaining([
 				expect.objectContaining({
 					code: "missing-image-alt",

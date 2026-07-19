@@ -10,6 +10,7 @@ import {
 	type AuthorDraft,
 	type CategoryDraft,
 } from "./blogContentValidators";
+import { inspectTextOnlyBio } from "./blogContentValidationSupport";
 import {
 	POST_CONTENT_LIMITS,
 	postSlugCandidate,
@@ -152,21 +153,28 @@ export type SanityBlogImportDryRunStatus =
 	| "ready-with-warnings"
 	| "blocked";
 
-export type SanityBlogImportDryRunReport = {
-	version: 1;
+export type SanityBlogImportReadiness = {
 	status: SanityBlogImportDryRunStatus;
+	counts: {
+		errors: number;
+		warnings: number;
+	};
+	blockingIssues: SanityImportIssue[];
+	warningIssues: SanityImportIssue[];
+	issues: SanityImportIssue[];
+};
+
+export type SanityBlogImportDryRunReport = {
+	version: 2;
 	counts: {
 		authors: number;
 		categories: number;
 		posts: number;
 		requiredSourceAssets: number;
-		errors: number;
-		warnings: number;
 	};
 	requiredSourceAssetRefs: string[];
-	blockingIssues: SanityImportIssue[];
-	warningIssues: SanityImportIssue[];
-	issues: SanityImportIssue[];
+	draftImport: SanityBlogImportReadiness;
+	publication: SanityBlogImportReadiness;
 };
 
 export type SanityBlogImportOptions = {
@@ -189,11 +197,32 @@ function portableIssues(
 	issues: readonly RichTextIssue[],
 ): SanityImportIssue[] {
 	return issues.map((portableIssue) => ({
-		code: "portable-text" as const,
+		code: portableIssue.code === "missing-image-alt"
+			? "missing-image-alt"
+			: "portable-text",
 		path: `${path}${portableIssue.path}`,
 		message: portableIssue.message,
 		severity: portableIssue.severity,
 	}));
+}
+
+function authorBioContractIssues(
+	path: string,
+	bio: RichTextDocument,
+	mode: "draft" | "publish",
+): SanityImportIssue[] {
+	try {
+		inspectTextOnlyBio(bio, mode);
+		return [];
+	} catch (error) {
+		return [
+			issue(
+				"portable-text",
+				path,
+				error instanceof Error ? error.message : "Author biography is invalid",
+			),
+		];
+	}
 }
 
 function cleanSourceId(value: string) {
@@ -299,13 +328,17 @@ function convertAuthor(
 	const path = `$.authors[${index}]`;
 	const sourceId = cleanSourceId(source._id);
 	const issues: SanityImportIssue[] = [];
-	const convertedBio = source.bio === undefined
+	const convertedBio = source.bio === undefined || source.bio === null
+		|| (Array.isArray(source.bio) && source.bio.length === 0)
 		? { document: undefined, issues: [] as RichTextIssue[] }
 		: convertPortableText(source.bio, {
 			imageAssetIds: options.imageAssetIds ?? {},
 			mode: "draft",
 		});
 	issues.push(...portableIssues(`${path}.bio`, convertedBio.issues));
+	if (convertedBio.document) {
+		issues.push(...authorBioContractIssues(`${path}.bio`, convertedBio.document, "draft"));
+	}
 	const name = text(source.name);
 	if (!name) {
 		issues.push(issue("missing-required-field", `${path}.name`, "Author name is required"));
@@ -588,11 +621,28 @@ function slugCollisionIssues(
 	return issues;
 }
 
-function missingPublishImageAltIssues(
+function publicationContractIssues(
 	manifest: SanityBlogImportManifest,
 ): SanityImportIssue[] {
 	const issues: SanityImportIssue[] = [];
 	for (const [authorIndex, author] of manifest.authors.entries()) {
+		const sourceBioPath = `$.authors[${authorIndex}].bio`;
+		if (
+			author.draft.bio
+			&& !author.issues.some(
+				(authorIssue) =>
+					authorIssue.severity === "error"
+					&& authorIssue.path.startsWith(sourceBioPath),
+			)
+		) {
+			issues.push(
+				...authorBioContractIssues(
+					`$.authors[${authorIndex}].draft.bio`,
+					author.draft.bio,
+					"publish",
+				),
+			);
+		}
 		if (author.draft.portrait && !author.draft.portrait.altText?.trim()) {
 			issues.push(
 				issue(
@@ -631,39 +681,82 @@ function missingPublishImageAltIssues(
 	return issues;
 }
 
+function missingDraftImageAltIssues(
+	manifest: SanityBlogImportManifest,
+): SanityImportIssue[] {
+	const issues: SanityImportIssue[] = [];
+	for (const [authorIndex, author] of manifest.authors.entries()) {
+		if (author.draft.portrait && !author.draft.portrait.altText?.trim()) {
+			issues.push(
+				issue(
+					"missing-image-alt",
+					`$.authors[${authorIndex}].draft.portrait.altText`,
+					"Author portrait needs factual alt text before publication",
+					"warning",
+				),
+			);
+		}
+	}
+	for (const [postIndex, post] of manifest.posts.entries()) {
+		if (post.draft.mainImage && !post.draft.mainImage.altText?.trim()) {
+			issues.push(
+				issue(
+					"missing-image-alt",
+					`$.posts[${postIndex}].draft.mainImage.altText`,
+					"Post main image needs factual alt text before publication",
+					"warning",
+				),
+			);
+		}
+	}
+	return issues;
+}
+
 export function createSanityBlogImportDryRunReport(
 	manifest: SanityBlogImportManifest,
 ): SanityBlogImportDryRunReport {
-	const dryRunIssues = [
+	const draftImportIssues = [
+		...manifest.issues,
 		...missingExportedReferenceIssues(manifest),
 		...slugCollisionIssues("authors", manifest.authors),
 		...slugCollisionIssues("categories", manifest.categories),
 		...slugCollisionIssues("posts", manifest.posts),
-		...missingPublishImageAltIssues(manifest),
+		...missingDraftImageAltIssues(manifest),
 	];
-	const issues = [...manifest.issues, ...dryRunIssues];
-	const blockingIssues = issues.filter((reportIssue) => reportIssue.severity === "error");
-	const warningIssues = issues.filter((reportIssue) => reportIssue.severity === "warning");
+	const publicationIssues = [
+		...draftImportIssues.filter(
+			(importIssue) =>
+				importIssue.severity === "error" || importIssue.code !== "missing-image-alt",
+		),
+		...publicationContractIssues(manifest),
+	];
+	const readiness = (issues: SanityImportIssue[]): SanityBlogImportReadiness => {
+		const blockingIssues = issues.filter((reportIssue) => reportIssue.severity === "error");
+		const warningIssues = issues.filter((reportIssue) => reportIssue.severity === "warning");
+		const status: SanityBlogImportDryRunStatus = blockingIssues.length > 0
+			? "blocked"
+			: warningIssues.length > 0
+				? "ready-with-warnings"
+				: "ready";
+		return {
+			status,
+			counts: { errors: blockingIssues.length, warnings: warningIssues.length },
+			blockingIssues,
+			warningIssues,
+			issues,
+		};
+	};
 	const sourceAssetRefs = requiredSourceAssetRefs(manifest);
-	const status: SanityBlogImportDryRunStatus = blockingIssues.length > 0
-		? "blocked"
-		: warningIssues.length > 0
-			? "ready-with-warnings"
-			: "ready";
 	return {
-		version: 1,
-		status,
+		version: 2,
 		counts: {
 			authors: manifest.authors.length,
 			categories: manifest.categories.length,
 			posts: manifest.posts.length,
 			requiredSourceAssets: sourceAssetRefs.length,
-			errors: blockingIssues.length,
-			warnings: warningIssues.length,
 		},
 		requiredSourceAssetRefs: sourceAssetRefs,
-		blockingIssues,
-		warningIssues,
-		issues,
+		draftImport: readiness(draftImportIssues),
+		publication: readiness(publicationIssues),
 	};
 }
