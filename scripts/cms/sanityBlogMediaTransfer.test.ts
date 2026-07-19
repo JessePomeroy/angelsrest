@@ -30,10 +30,55 @@ import type {
 
 const SOURCE_REF = CMS_BLOG_MEDIA_SOURCE_ASSET_REFS[0];
 const SECOND_SOURCE_REF = CMS_BLOG_MEDIA_SOURCE_ASSET_REFS[1];
-const COMPLETED_SOURCE_REF = "image-d4ee0889a5b82e47027dc57c39604a9320896875-2624x1876-png";
-const COMPLETED_SECOND_SOURCE_REF = "image-12b028c5acab8e557ef9736cc9def77ecc33f706-600x600-jpg";
-const COMPLETED_MEDIA_ID = "nh75erfw9q3evy3pft71mpf4bd8asnkv";
-const COMPLETED_SECOND_MEDIA_ID = "nh77zx9121shkmexjvaa2pswj98ar2cg";
+const COMPLETED_PREVIOUS_BATCH = [
+	[
+		"image-db60afd87e022cd5d4fa54f5c4a3fe97ceb57cd6-2624x1876-png",
+		{
+			mediaAssetId: "nh7465v8hrr69zxcmesn2vv7198at3ar",
+			workerAssetId: "035ff965-e981-4e5a-9c18-77063973260d",
+			sourceSha256: "d8387375df9a40cf7cf144e46175f9f928f40767b06d4ecda29426ff0e14b08f",
+			source: { contentType: "image/png", sizeBytes: 516_659, width: 2624, height: 1876 },
+		},
+	],
+	[
+		"image-4cc2102493e41f18ed7f2727a88b80b5007741a2-2624x1876-png",
+		{
+			mediaAssetId: "nh78t9bnxkmjyg2qane1r2sxtd8av8f8",
+			workerAssetId: "3c131d4c-a8da-4f57-88ac-0d9fe0f90f28",
+			sourceSha256: "7b35198251e392b180b2e3e2a88fd92381eb1affc016b562a2c7c6756fff7879",
+			source: { contentType: "image/png", sizeBytes: 619_435, width: 2624, height: 1876 },
+		},
+	],
+	[
+		"image-09a2b170c772750958a7f5b224a19be7f748e12c-2624x1876-png",
+		{
+			mediaAssetId: "nh764kjk6wvwcv18tkc47gbsnh8av5rq",
+			workerAssetId: "cf6e8162-a988-476d-b23f-50cb678272f9",
+			sourceSha256: "36627a3e7af7aec59a2e26e58ae9ca41cb31b8449c235566ce11d84797262d07",
+			source: { contentType: "image/png", sizeBytes: 1_408_551, width: 2624, height: 1876 },
+		},
+	],
+	[
+		"image-bfe45aa66ae0403bb2ff0940c1f7b7421cc27628-2624x1876-png",
+		{
+			mediaAssetId: "nh753qjrs276k00r2adcjkjgps8av7g4",
+			workerAssetId: "672e2192-5ac3-4614-b58e-88535623b0e1",
+			sourceSha256: "212ebaf2c307dc079018aa1ab348e35556f8e01b9be50f29187a41261a43d876",
+			source: { contentType: "image/png", sizeBytes: 1_446_326, width: 2624, height: 1876 },
+		},
+	],
+	[
+		"image-efdb9b1e4b4f95723596ace8d0f2b4f6be06fe62-2400x1654-png",
+		{
+			mediaAssetId: "nh7fqyqh8azkdzcmwzerw495eh8av8d9",
+			workerAssetId: "18208e39-0cd3-45f4-b89c-d3c7dee014e8",
+			sourceSha256: "96b938e7440b7a684289466abaea39b1c6c63b07ba2b315ee483e8d7705497a7",
+			source: { contentType: "image/png", sizeBytes: 1_004_790, width: 2400, height: 1654 },
+		},
+	],
+] as const satisfies ReadonlyArray<
+	readonly [string, SanityBlogMediaTransferReceipts["receipts"][string]]
+>;
 const WORKER_ID = "7e11be6a-7e30-4317-aad5-08f4c00333b4";
 const MEDIA_ID = "nh744cpb0en9t6nx89xpjdn8ts8arc2m";
 const COOKIE = "better-auth.session_token=test-cookie";
@@ -42,7 +87,7 @@ const NOW = Date.UTC(2026, 6, 18, 12, 0, 0);
 const SOURCE_BYTES = new Uint8Array([1, 2, 3, 4]);
 const SOURCE_SHA256 = createHash("sha256").update(SOURCE_BYTES).digest("hex");
 const SOURCE: BlogMediaSource = {
-	contentType: "image/png",
+	contentType: "image/jpeg",
 	sizeBytes: SOURCE_BYTES.byteLength,
 	width: 2,
 	height: 2,
@@ -94,7 +139,7 @@ function initialCheckpoint() {
 }
 
 function capabilityValue() {
-	const privateObjectKey = privateObjectKeyForAsset(WORKER_ID, "png");
+	const privateObjectKey = privateObjectKeyForAsset(WORKER_ID, "jpg");
 	return {
 		assetId: WORKER_ID,
 		privateObjectKey,
@@ -163,13 +208,13 @@ function successFetcher({
 
 describe("active Blog media transfer batch policy", () => {
 	test("defaults to plan-only and requires the exact bounded production confirmation", () => {
-		expect(CMS_BLOG_MEDIA_SOURCE_ASSET_REFS).toHaveLength(5);
-		expect(new Set(CMS_BLOG_MEDIA_SOURCE_ASSET_REFS).size).toBe(5);
+		expect(CMS_BLOG_MEDIA_SOURCE_ASSET_REFS).toHaveLength(10);
+		expect(new Set(CMS_BLOG_MEDIA_SOURCE_ASSET_REFS).size).toBe(10);
 		expect(initialCheckpoint().migration).toBe(CMS_BLOG_MEDIA_BATCH_ID);
 		expect(() =>
 			parseSanityBlogMediaTransferCheckpoint({
 				...initialCheckpoint(),
-				migration: "CMS-4.4k",
+				migration: "CMS-4.4l",
 			}),
 		).toThrow(/identity/);
 		expect(() =>
@@ -192,7 +237,7 @@ describe("active Blog media transfer batch policy", () => {
 			parseSanityBlogMediaTransferOptions(
 				executeArgs({ sourceAssetRefs: [SOURCE_REF, SECOND_SOURCE_REF] }),
 			),
-		).toThrow(/exactly 5/);
+		).toThrow(/exactly 10/);
 		expect(parseSanityBlogMediaTransferOptions(executeArgs())).toEqual({
 			mode: "execute",
 			cookieFile: "/tmp/cookie",
@@ -200,38 +245,19 @@ describe("active Blog media transfer batch policy", () => {
 		});
 	});
 
-	test("selects only the active five-image document batch when the preceding batch is mapped and receipted", () => {
+	test("selects only the active ten-image document batch when the preceding batch is mapped and receipted", () => {
 		const journal = {
 			...blankJournal(),
-			[COMPLETED_SOURCE_REF]: COMPLETED_MEDIA_ID,
-			[COMPLETED_SECOND_SOURCE_REF]: COMPLETED_SECOND_MEDIA_ID,
+			...Object.fromEntries(
+				COMPLETED_PREVIOUS_BATCH.map(([sourceAssetRef, receipt]) => [
+					sourceAssetRef,
+					receipt.mediaAssetId,
+				]),
+			),
 		};
 		const receiptFile: SanityBlogMediaTransferReceipts = {
 			...blankReceipts(),
-			receipts: {
-				[COMPLETED_SOURCE_REF]: {
-					mediaAssetId: COMPLETED_MEDIA_ID,
-					workerAssetId: "363ab547-fc7e-4ec6-888e-abdb864dae47",
-					sourceSha256: "6efa62af18bad456200e5d0057775a581aa47840b5094b02e947e0e9e01d2888",
-					source: {
-						contentType: "image/png",
-						sizeBytes: 1_760_970,
-						width: 2624,
-						height: 1876,
-					},
-				},
-				[COMPLETED_SECOND_SOURCE_REF]: {
-					mediaAssetId: COMPLETED_SECOND_MEDIA_ID,
-					workerAssetId: "65486f64-f057-4260-819a-be8354d6b351",
-					sourceSha256: "84eb6d26a16ad4635d85c87e55ef8353c87100449266f48231b37d95838fa39b",
-					source: {
-						contentType: "image/jpeg",
-						sizeBytes: 66_734,
-						width: 600,
-						height: 600,
-					},
-				},
-			},
+			receipts: Object.fromEntries(COMPLETED_PREVIOUS_BATCH),
 		};
 
 		expect(
@@ -249,7 +275,7 @@ describe("active Blog media transfer batch policy", () => {
 		);
 	});
 
-	test("builds only the reviewed five-asset plan and rejects mapped execution", () => {
+	test("builds only the reviewed ten-asset plan and rejects mapped execution", () => {
 		expect(
 			createSanityBlogMediaTransferPlan({
 				journal: blankJournal(),
@@ -468,7 +494,7 @@ describe("active Blog media transfer batch policy", () => {
 			sourceSha256: SOURCE_SHA256,
 			source: SOURCE,
 			workerAssetId: WORKER_ID,
-			sourceExtension: "png",
+			sourceExtension: "jpg",
 		});
 		const fetcher = successFetcher();
 		await transferSanityBlogMediaAsset({
@@ -486,7 +512,7 @@ describe("active Blog media transfer batch policy", () => {
 			`${CMS_BLOG_MEDIA_PRODUCTION_ORIGIN}/api/admin/media/process`,
 		);
 		expect((fetcher.mock.calls[0]?.[1] as RequestInit).body).toBe(
-			JSON.stringify({ privateObjectKey: privateObjectKeyForAsset(WORKER_ID, "png") }),
+			JSON.stringify({ privateObjectKey: privateObjectKeyForAsset(WORKER_ID, "jpg") }),
 		);
 	});
 
@@ -519,7 +545,7 @@ describe("active Blog media transfer batch policy", () => {
 			sourceSha256: SOURCE_SHA256,
 			source: SOURCE,
 			workerAssetId: WORKER_ID,
-			sourceExtension: "png",
+			sourceExtension: "jpg",
 		});
 		const fetcher = successFetcher({
 			process: async () => new Response("Unauthorized", { status: 401 }),
@@ -545,7 +571,7 @@ describe("active Blog media transfer batch policy", () => {
 			sourceSha256: SOURCE_SHA256,
 			source: SOURCE,
 			workerAssetId: WORKER_ID,
-			sourceExtension: "png",
+			sourceExtension: "jpg",
 		});
 		const fetcher = successFetcher({
 			process: async () => new Response("Uploaded object not found", { status: 404 }),
@@ -639,7 +665,7 @@ describe("active Blog media transfer batch policy", () => {
 				sourceSha256: CMS_BLOG_MEDIA_SOURCE_EXPECTATIONS[SOURCE_REF].sourceSha256,
 				source: JOURNAL_SOURCE,
 				workerAssetId: WORKER_ID,
-				sourceExtension: "png",
+				sourceExtension: "jpg",
 				mediaAssetId: MEDIA_ID,
 			},
 			{ nextAssetIndex: 1 },
