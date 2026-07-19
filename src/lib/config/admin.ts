@@ -73,6 +73,9 @@ export const adminConfig: AdminConfig = {
 		blog: {
 			mediaBaseUrl: "https://media.angelsrest.online",
 		},
+		products: {
+			enabledKinds: ["print"],
+		},
 		portfolio: {
 			mediaBaseUrl: "https://media.angelsrest.online",
 			uploadEndpoint: "/api/admin/media",
