@@ -93,16 +93,6 @@ const V2_SET_QUERY = `
   }
 `;
 
-const V1_SET_QUERY = `
-  *[_type == "printSet" && slug.current == $slug][0]{
-    title,
-    previewImage,
-    images,
-    price,
-    availablePapers
-  }
-`;
-
 function requireSlug(value: unknown): string {
 	if (typeof value !== "string" || !value.trim()) {
 		throw apiError(400, ApiErrorCode.MISSING_FIELD, "Missing required field: productId");
@@ -304,22 +294,7 @@ export async function resolveCheckoutItem(
 			};
 		}
 
-		const v1Set = await fetcher<any>(V1_SET_QUERY, { slug: productId });
-		if (!v1Set) {
-			throw apiError(404, ApiErrorCode.NOT_FOUND, "Print set not found");
-		}
-		const resolved = resolveV1Paper(v1Set.availablePapers, normalizePrice(v1Set.price), selection);
-		return {
-			productId,
-			title: v1Set.title,
-			price: resolved.price,
-			productCategory: "print-set",
-			isDigital: false,
-			isPrintSet: true,
-			image: previewUrl(v1Set.previewImage),
-			images: imageUrlsFromSet(v1Set.images),
-			paper: resolved.paper,
-		};
+		throw apiError(404, ApiErrorCode.NOT_FOUND, "Print set not found");
 	}
 
 	const v2Product = await fetcher<any>(V2_PRODUCT_QUERY, { slug: productId });

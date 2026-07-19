@@ -43,15 +43,15 @@ export async function load({ params, locals }) {
 		{ slug: params.slug },
 	);
 
-	// Fetch print sets in this collection
+	// Fetch V2 print sets in this collection
 	const printSets = await sanity.fetch(
-		`*[_type == "printSet" && references(*[_type == "printCollection" && slug.current == $slug]._id) && inStock == true] 
-		| order(orderRank, title asc) {
+		`*[_type == "lumaPrintSetV2" && references(*[_type == "printCollection" && slug.current == $slug]._id) && inStock == true]
+		| order(featured desc, title asc) {
 			title,
 			"slug": slug.current,
 			images[0..1],
 			previewImage,
-			price
+			"price": variants[enabled == true] | order(retailPrice asc) [0].retailPrice
 		}`,
 		{ slug: params.slug },
 	);

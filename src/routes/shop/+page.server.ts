@@ -6,7 +6,6 @@
  * 2. V1 products (product) — postcards, tapestries, digital, merchandise
  * 3. Print collections — hierarchical groups
  * 4. V2 print sets (lumaPrintSetV2) — curated bundles
- * 5. V1 print sets (printSet) — legacy bundles not yet migrated
  *
  * V2 and V1 products are merged into a single list for display. The page
  * component doesn't need to distinguish between them — URLs work the same
@@ -137,32 +136,9 @@ export async function load({ locals }) {
 		price: s.startingPrice,
 	}));
 
-	// V1 print sets (legacy — will be migrated to V2)
-	const v1Sets = await sanity.fetch<PrintSetRow[]>(`
-		*[_type == "printSet" && !defined(parent) && inStock == true]
-		| order(featured desc, orderRank, title asc) {
-			title,
-			"slug": slug.current,
-			images[0..1],
-			previewImage,
-			price,
-			description
-		}
-	`);
-
-	const v1SetsWithImages = v1Sets.map((s) => ({
-		...s,
-		preview1: s.images?.[0] ? imageSet(s.images[0])?.thumb : undefined,
-		preview2: s.images?.[1] ? imageSet(s.images[1])?.thumb : undefined,
-		previewImage: previewUrl(s.previewImage),
-	}));
-
-	// Merge V2 + V1 print sets
-	const printSets = [...v2SetsWithImages, ...v1SetsWithImages];
-
 	return {
 		products,
 		collections: collectionsWithImages,
-		printSets,
+		printSets: v2SetsWithImages,
 	};
 }
