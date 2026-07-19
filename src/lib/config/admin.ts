@@ -16,6 +16,10 @@ import { api } from "$convex/api";
 // real `api` Proxy and the alias is the only override.
 const portfolioEditorApi = new Proxy(api.portfolioGalleries, {
 	get(portfolio, prop, receiver) {
+		// Angel's Rest is staging Portfolio content privately while the public
+		// gallery remains Sanity-owned. Omitting this capability keeps the shared
+		// editor in draft-only mode without weakening the underlying Convex API.
+		if (prop === "publish") return undefined;
 		if (prop === "listMediaAssets") return api.mediaAssets.listForEditor;
 		if (prop === "getPlacedMediaAssets") return api.mediaAssets.getManyForEditor;
 		if (prop === "registerReadyWebAsset") return api.mediaAssets.registerReadyWebAsset;
@@ -52,6 +56,10 @@ export const adminConfig: AdminConfig = {
 	editor: {
 		blog: {
 			mediaBaseUrl: "https://media.angelsrest.online",
+		},
+		portfolio: {
+			mediaBaseUrl: "https://media.angelsrest.online",
+			uploadEndpoint: "/api/admin/media",
 		},
 	},
 	// Route mutations through the SvelteKit proxy at /api/admin/mutation.
