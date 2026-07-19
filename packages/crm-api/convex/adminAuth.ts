@@ -51,7 +51,7 @@ export const checkAdminAccess = query({
 		const client = await ctx.db
 			.query("platformClients")
 			.withIndex("by_siteUrl", (q) => q.eq("siteUrl", siteUrl))
-			.first();
+			.unique();
 
 		if (!client) return { authorized: false, tier: "basic" as const };
 

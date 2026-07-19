@@ -13,6 +13,7 @@ import type * as adminAuth from "../adminAuth.js";
 import type * as auth from "../auth.js";
 import type * as authHelpers from "../authHelpers.js";
 import type * as blogContent from "../blogContent.js";
+import type * as catalogProducts from "../catalogProducts.js";
 import type * as content from "../content.js";
 import type * as contracts from "../contracts.js";
 import type * as crm from "../crm.js";
@@ -30,6 +31,9 @@ import type * as helpers_blogContentQueries from "../helpers/blogContentQueries.
 import type * as helpers_blogContentStore from "../helpers/blogContentStore.js";
 import type * as helpers_blogContentValidationSupport from "../helpers/blogContentValidationSupport.js";
 import type * as helpers_blogContentValidators from "../helpers/blogContentValidators.js";
+import type * as helpers_catalogProductData from "../helpers/catalogProductData.js";
+import type * as helpers_catalogProductStore from "../helpers/catalogProductStore.js";
+import type * as helpers_catalogProductValidators from "../helpers/catalogProductValidators.js";
 import type * as helpers_contactPageValidators from "../helpers/contactPageValidators.js";
 import type * as helpers_contentLifecycle from "../helpers/contentLifecycle.js";
 import type * as helpers_contentSlugHistory from "../helpers/contentSlugHistory.js";
@@ -96,6 +100,7 @@ declare const fullApi: ApiFromModules<{
   auth: typeof auth;
   authHelpers: typeof authHelpers;
   blogContent: typeof blogContent;
+  catalogProducts: typeof catalogProducts;
   content: typeof content;
   contracts: typeof contracts;
   crm: typeof crm;
@@ -113,6 +118,9 @@ declare const fullApi: ApiFromModules<{
   "helpers/blogContentStore": typeof helpers_blogContentStore;
   "helpers/blogContentValidationSupport": typeof helpers_blogContentValidationSupport;
   "helpers/blogContentValidators": typeof helpers_blogContentValidators;
+  "helpers/catalogProductData": typeof helpers_catalogProductData;
+  "helpers/catalogProductStore": typeof helpers_catalogProductStore;
+  "helpers/catalogProductValidators": typeof helpers_catalogProductValidators;
   "helpers/contactPageValidators": typeof helpers_contactPageValidators;
   "helpers/contentLifecycle": typeof helpers_contentLifecycle;
   "helpers/contentSlugHistory": typeof helpers_contentSlugHistory;

@@ -87,3 +87,80 @@ describe("commerce notification profile lookup", () => {
 		).resolves.toBeNull();
 	});
 });
+
+async function setupPlatformAdmin() {
+	const t = convexTest(schema, modules);
+	const email = "creator@example.com";
+	await t.run(async (ctx) => {
+		await ctx.db.insert("platformClients", {
+			name: "Angel's Rest",
+			email,
+			siteUrl: "angelsrest.online",
+			tier: "full",
+			subscriptionStatus: "active",
+			adminEmails: [email],
+			role: "creator",
+		});
+	});
+	return { t, admin: t.withIdentity({ subject: email, email }) };
+}
+
+function clientInput(siteUrl: string, name = siteUrl) {
+	return {
+		name,
+		email: `owner@${siteUrl}`,
+		siteUrl,
+		tier: "full" as const,
+		subscriptionStatus: "active" as const,
+		adminEmails: [`owner@${siteUrl}`],
+		role: "client" as const,
+	};
+}
+
+describe("platform tenant site identity", () => {
+	test("rejects duplicate create and colliding update without changing either row", async () => {
+		const { t, admin } = await setupPlatformAdmin();
+		const firstId = await admin.mutation(
+			api.platform.createClient,
+			clientInput("first.example"),
+		);
+		await expect(
+			admin.mutation(api.platform.createClient, clientInput("first.example", "Duplicate")),
+		).rejects.toThrow(/already owns siteUrl/i);
+
+		const secondId = await admin.mutation(
+			api.platform.createClient,
+			clientInput("second.example"),
+		);
+		await expect(
+			admin.mutation(api.platform.updateClient, {
+				clientId: secondId,
+				siteUrl: "first.example",
+			}),
+		).rejects.toThrow(/already owns siteUrl/i);
+
+		const stored = await t.run(async (ctx) => ({
+			first: await ctx.db.get(firstId),
+			second: await ctx.db.get(secondId),
+		}));
+		expect(stored.first?.siteUrl).toBe("first.example");
+		expect(stored.second?.siteUrl).toBe("second.example");
+	});
+
+	test("allows only one of two concurrent creates for the same site identity", async () => {
+		const { t, admin } = await setupPlatformAdmin();
+		const attempts = await Promise.allSettled([
+			admin.mutation(api.platform.createClient, clientInput("concurrent.example", "A")),
+			admin.mutation(api.platform.createClient, clientInput("concurrent.example", "B")),
+		]);
+		expect(attempts.filter(({ status }) => status === "fulfilled")).toHaveLength(1);
+		expect(attempts.filter(({ status }) => status === "rejected")).toHaveLength(1);
+		const rows = await t.run(async (ctx) =>
+			await ctx.db
+				.query("platformClients")
+				.withIndex("by_siteUrl", (q) => q.eq("siteUrl", "concurrent.example"))
+				.collect(),
+		);
+		expect(rows).toHaveLength(1);
+	});
+});

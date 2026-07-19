@@ -1,7 +1,23 @@
 import { v } from "convex/values";
+import type { Id } from "./_generated/dataModel";
+import type { MutationCtx } from "./_generated/server";
 import { internalMutation, internalQuery, mutation, query } from "./_generated/server";
 import { requirePlatformAdmin, requireWebhookCallerOrAuth } from "./authHelpers";
 import { DEFAULT_LIST_LIMIT } from "./helpers/limits";
+
+async function assertSiteUrlAvailable(
+	ctx: MutationCtx,
+	siteUrl: string,
+	clientId?: Id<"platformClients">,
+) {
+	const owner = await ctx.db
+		.query("platformClients")
+		.withIndex("by_siteUrl", (q) => q.eq("siteUrl", siteUrl))
+		.unique();
+	if (owner && owner._id !== clientId) {
+		throw new Error(`A platform client already owns siteUrl="${siteUrl}"`);
+	}
+}
 
 export const checkTier = query({
 	args: { siteUrl: v.string() },
@@ -9,7 +25,7 @@ export const checkTier = query({
 		const client = await ctx.db
 			.query("platformClients")
 			.withIndex("by_siteUrl", (q) => q.eq("siteUrl", siteUrl))
-			.first();
+			.unique();
 
 		if (!client) {
 			return { tier: "basic" as const, subscriptionStatus: "none" as const };
@@ -68,7 +84,7 @@ export const getStripeAccountForSite = query({
 		const client = await ctx.db
 			.query("platformClients")
 			.withIndex("by_siteUrl", (q) => q.eq("siteUrl", siteUrl))
-			.first();
+			.unique();
 		if (!client) return null;
 		return {
 			siteUrl: client.siteUrl,
@@ -152,6 +168,7 @@ export const createClient = mutation({
 	},
 	handler: async (ctx, args) => {
 		await requirePlatformAdmin(ctx);
+		await assertSiteUrlAvailable(ctx, args.siteUrl);
 		return await ctx.db.insert("platformClients", {
 			...args,
 			role: args.role ?? "client",
@@ -185,7 +202,7 @@ export const updateSubscription = mutation({
 		const client = await ctx.db
 			.query("platformClients")
 			.withIndex("by_siteUrl", (q) => q.eq("siteUrl", args.siteUrl))
-			.first();
+			.unique();
 
 		if (!client) return;
 
@@ -223,6 +240,9 @@ export const updateClient = mutation({
 	},
 	handler: async (ctx, { clientId, ...updates }) => {
 		await requirePlatformAdmin(ctx);
+		if (updates.siteUrl !== undefined) {
+			await assertSiteUrlAvailable(ctx, updates.siteUrl, clientId);
+		}
 		const patch: Record<string, unknown> = {};
 		for (const [key, val] of Object.entries(updates)) {
 			if (val !== undefined) patch[key] = val;
@@ -249,7 +269,7 @@ export const updateStripeConnectedAccount = mutation({
 		const row = await ctx.db
 			.query("platformClients")
 			.withIndex("by_siteUrl", (q) => q.eq("siteUrl", siteUrl))
-			.first();
+			.unique();
 		if (!row) {
 			throw new Error(`No platformClients row with siteUrl="${siteUrl}"`);
 		}
@@ -314,7 +334,7 @@ export const seedClient = internalMutation({
 		const existing = await ctx.db
 			.query("platformClients")
 			.withIndex("by_siteUrl", (q) => q.eq("siteUrl", args.siteUrl))
-			.first();
+			.unique();
 		if (existing) {
 			return { created: false, id: existing._id };
 		}
@@ -356,7 +376,7 @@ export const setStripeConnectedAccount = internalMutation({
 		const row = await ctx.db
 			.query("platformClients")
 			.withIndex("by_siteUrl", (q) => q.eq("siteUrl", siteUrl))
-			.first();
+			.unique();
 		if (!row) {
 			throw new Error(`No platformClients row with siteUrl="${siteUrl}"`);
 		}
@@ -419,7 +439,7 @@ export const ensureSiteAdmin = internalMutation({
 			row = await ctx.db
 				.query("platformClients")
 				.withIndex("by_siteUrl", (q) => q.eq("siteUrl", candidate))
-				.first();
+				.unique();
 			if (row) break;
 		}
 		if (!row) {
@@ -473,7 +493,7 @@ export const setCreatorRole = internalMutation({
 		const row = await ctx.db
 			.query("platformClients")
 			.withIndex("by_siteUrl", (q) => q.eq("siteUrl", siteUrl))
-			.first();
+			.unique();
 		if (!row) {
 			throw new Error(`No platformClients row with siteUrl="${siteUrl}"`);
 		}
@@ -505,14 +525,14 @@ export const renameClientSiteUrl = internalMutation({
 		const row = await ctx.db
 			.query("platformClients")
 			.withIndex("by_siteUrl", (q) => q.eq("siteUrl", fromSiteUrl))
-			.first();
+			.unique();
 		if (!row) {
 			throw new Error(`No platformClients row with siteUrl="${fromSiteUrl}"`);
 		}
 		const collision = await ctx.db
 			.query("platformClients")
 			.withIndex("by_siteUrl", (q) => q.eq("siteUrl", toSiteUrl))
-			.first();
+			.unique();
 		if (collision) {
 			throw new Error(
 				`A platformClients row already exists at siteUrl="${toSiteUrl}" (id=${collision._id}). Delete one before renaming.`,

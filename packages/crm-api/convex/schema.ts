@@ -7,6 +7,13 @@ import {
 	contentSlugKindValidator,
 } from "./helpers/contentValidators";
 import {
+	catalogFulfillmentModeValidator,
+	catalogProductKindValidator,
+	catalogRevisionSourceValidator,
+	catalogSaleAvailabilityValidator,
+	catalogVariantStatusValidator,
+} from "./helpers/catalogProductValidators";
+import {
 	mediaAssetStatusValidator,
 	mediaFocalPointValidator,
 	webAssetDerivativesValidator,
@@ -334,6 +341,75 @@ export default defineSchema({
 		.index("by_revisionId_and_order", ["revisionId", "order"])
 		.index("by_siteUrl_and_assetId", ["siteUrl", "assetId"])
 		.index("by_galleryId_and_revisionId", ["galleryId", "revisionId"]),
+
+	// Provider-neutral commerce identity. CMS-5.2 exposes only authenticated
+	// private drafts; publication remains unreachable until a revision can own
+	// and validate a ready, tenant-scoped private print source atomically.
+	catalogProducts: defineTable({
+		siteUrl: v.string(),
+		productKey: v.string(),
+		productKind: catalogProductKindValidator,
+		slug: v.optional(v.string()),
+		draftRevisionId: v.optional(v.id("catalogProductRevisions")),
+		publishedRevisionId: v.optional(v.id("catalogProductRevisions")),
+		createdAt: v.number(),
+		createdBy: v.string(),
+		updatedAt: v.number(),
+		updatedBy: v.string(),
+		publishedAt: v.optional(v.number()),
+		publishedBy: v.optional(v.string()),
+	})
+		.index("by_siteUrl_and_productKey", ["siteUrl", "productKey"])
+		.index("by_siteUrl_and_slug", ["siteUrl", "slug"])
+		.index("by_siteUrl_and_productKind_and_createdAt", [
+			"siteUrl",
+			"productKind",
+			"createdAt",
+		]),
+
+	// Revisions are immutable commercial snapshots. Product kind and fulfillment
+	// mode are separate: a provider adapter may later map production-partner work
+	// to LumaPrints without making that provider part of catalog identity.
+	catalogProductRevisions: defineTable({
+		siteUrl: v.string(),
+		productId: v.id("catalogProducts"),
+		productKind: catalogProductKindValidator,
+		schemaVersion: v.literal(1),
+		title: v.optional(v.string()),
+		slug: v.optional(v.string()),
+		description: v.optional(v.string()),
+		currency: v.literal("usd"),
+		fulfillmentMode: catalogFulfillmentModeValidator,
+		saleAvailability: catalogSaleAvailabilityValidator,
+		borderOptionsEnabled: v.boolean(),
+		frameOptionsEnabled: v.boolean(),
+		// 10,000 means a 1.0× wholesale frame price; 20,000 means 2.0×.
+		framePriceMultiplierBasisPoints: v.number(),
+		variantCount: v.number(),
+		checksum: v.string(),
+		source: catalogRevisionSourceValidator,
+		createdAt: v.number(),
+		createdBy: v.string(),
+	})
+		.index("by_productId_and_createdAt", ["productId", "createdAt"])
+		.index("by_siteUrl_and_productId", ["siteUrl", "productId"]),
+
+	// Variant rows belong to exactly one immutable revision. Stable opaque keys
+	// and provider-neutral option keys replace array indexes and provider IDs.
+	catalogProductVariants: defineTable({
+		siteUrl: v.string(),
+		productId: v.id("catalogProducts"),
+		revisionId: v.id("catalogProductRevisions"),
+		variantKey: v.string(),
+		order: v.number(),
+		materialOptionKey: v.optional(v.string()),
+		sizeOptionKey: v.optional(v.string()),
+		retailPriceCents: v.optional(v.number()),
+		status: catalogVariantStatusValidator,
+	})
+		.index("by_revisionId_and_order", ["revisionId", "order"])
+		.index("by_revisionId_and_variantKey", ["revisionId", "variantKey"])
+		.index("by_productId_and_revisionId", ["productId", "revisionId"]),
 
 	// Print orders (from Stripe checkout on any client site)
 	orders: defineTable({
