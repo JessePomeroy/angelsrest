@@ -2,6 +2,7 @@ import { existsSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { describe, expect, it, vi } from "vitest";
 import { load as loadSiteSettings } from "../../routes/admin/editor/+page.server";
+import { load as loadProduct } from "../../routes/admin/editor/products/[productId]/+page";
 
 const projectRoot = resolve(import.meta.dirname, "../../..");
 
@@ -100,6 +101,16 @@ describe("admin Editor route boundaries", () => {
 		expect(existsSync(resolve(projectRoot, "src/routes/contact"))).toBe(false);
 	});
 
+	it("mounts the private product-draft workspace and preserves its opaque route identity", () => {
+		expect(routeSource("src/routes/admin/editor/products/+page.svelte")).toContain("ProductsPage");
+		expect(routeSource("src/routes/admin/editor/products/[productId]/+page.svelte")).toContain(
+			"ProductPage",
+		);
+		expect(loadProduct({ params: { productId: "opaque-product-id" } } as never)).toEqual({
+			productId: "opaque-product-id",
+		});
+	});
+
 	it("leaves public site settings and Portfolio reads on the reversible Sanity boundary", () => {
 		const rootLayout = routeSource("src/routes/+layout.server.ts");
 		expect(rootLayout).toContain('from "$lib/sanity/client.server"');
@@ -123,5 +134,18 @@ describe("admin Editor route boundaries", () => {
 		expect(aboutServer).toContain('*[_type == "contactPage"][0]');
 		expect(aboutServer).not.toContain("$convex");
 		expect(aboutServer).not.toContain("getPublishedContactPageWithRevision");
+	});
+
+	it("leaves public product and print-set reads on the reversible Sanity boundary", () => {
+		for (const path of [
+			"src/routes/shop/+page.server.ts",
+			"src/routes/shop/[slug]/+page.server.ts",
+			"src/routes/shop/sets/[slug]/+page.server.ts",
+		]) {
+			const source = routeSource(path);
+			expect(source).toContain('from "$lib/sanity/client.server"');
+			expect(source).not.toContain("$convex");
+			expect(source).not.toContain("catalogProducts");
+		}
 	});
 });

@@ -1,7 +1,14 @@
 import { describe, expect, it, vi } from "vitest";
 import { adminConfig } from "$lib/config/admin";
 
-const { apiMock, contentApi, galleriesApi, mediaApi, portfolioApi } = vi.hoisted(() => {
+const { apiMock, catalogApi, contentApi, galleriesApi, mediaApi, portfolioApi } = vi.hoisted(() => {
+	const catalogApi = {
+		listForEditor: "catalogProducts.listForEditor",
+		getEditorState: "catalogProducts.getEditorState",
+		createDraft: "catalogProducts.createDraft",
+		saveDraft: "catalogProducts.saveDraft",
+		discardDraft: "catalogProducts.discardDraft",
+	};
 	const contentApi = {
 		getSiteSettingsEditorState: "content.getSiteSettingsEditorState",
 		saveSiteSettingsDraft: "content.saveSiteSettingsDraft",
@@ -28,11 +35,13 @@ const { apiMock, contentApi, galleriesApi, mediaApi, portfolioApi } = vi.hoisted
 		reorder: "portfolioGalleries.reorder",
 	};
 	return {
+		catalogApi,
 		contentApi,
 		galleriesApi,
 		mediaApi,
 		portfolioApi,
 		apiMock: {
+			catalogProducts: catalogApi,
 			content: contentApi,
 			galleries: galleriesApi,
 			galleryPassword: { setPassword: "galleryPassword.setPassword" },
@@ -51,6 +60,8 @@ describe("admin API aliases", () => {
 	it("adds the CMS media registry without disturbing existing host aliases", () => {
 		expect(adminConfig.api.blogContent).toBe(apiMock.blogContent);
 		expect(adminConfig.api.postContent).toBe(apiMock.postContent);
+		expect(adminConfig.api.catalogProducts).toBe(catalogApi);
+		expect(adminConfig.api.catalogProducts).not.toHaveProperty("publish");
 		expect(adminConfig.api.mediaAssets?.getManyForEditor).toBe(mediaApi.getManyForEditor);
 		expect(adminConfig.api.galleryDelivery?.listBySite).toBe(galleriesApi.listBySite);
 		expect(adminConfig.api.galleryDelivery?.setPassword).toBe(apiMock.galleryPassword.setPassword);
@@ -89,6 +100,7 @@ describe("admin API aliases", () => {
 		expect(portfolioEditor?.registerReadyWebAsset).toBe(mediaApi.registerReadyWebAsset);
 		expect(portfolioEditor?.requestDeletion).toBe(mediaApi.requestDeletion);
 		expect(adminConfig.editor?.blog?.mediaBaseUrl).toBe("https://media.angelsrest.online");
+		expect(adminConfig.editor?.products).toEqual({ enabledKinds: ["print"] });
 		expect(adminConfig.editor?.siteSettings).toEqual({});
 		expect(adminConfig.editor?.contactPage).toEqual({
 			initialPayload: {
