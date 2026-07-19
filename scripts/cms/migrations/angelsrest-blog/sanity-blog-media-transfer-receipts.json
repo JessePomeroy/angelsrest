@@ -17,6 +17,17 @@
 				"height": 600
 			}
 		},
+		"image-09a2b170c772750958a7f5b224a19be7f748e12c-2624x1876-png": {
+			"mediaAssetId": "nh764kjk6wvwcv18tkc47gbsnh8av5rq",
+			"workerAssetId": "cf6e8162-a988-476d-b23f-50cb678272f9",
+			"sourceSha256": "36627a3e7af7aec59a2e26e58ae9ca41cb31b8449c235566ce11d84797262d07",
+			"source": {
+				"contentType": "image/png",
+				"sizeBytes": 1408551,
+				"width": 2624,
+				"height": 1876
+			}
+		},
 		"image-12b028c5acab8e557ef9736cc9def77ecc33f706-600x600-jpg": {
 			"mediaAssetId": "nh77zx9121shkmexjvaa2pswj98ar2cg",
 			"workerAssetId": "65486f64-f057-4260-819a-be8354d6b351",
@@ -39,6 +50,17 @@
 				"height": 1492
 			}
 		},
+		"image-4cc2102493e41f18ed7f2727a88b80b5007741a2-2624x1876-png": {
+			"mediaAssetId": "nh78t9bnxkmjyg2qane1r2sxtd8av8f8",
+			"workerAssetId": "3c131d4c-a8da-4f57-88ac-0d9fe0f90f28",
+			"sourceSha256": "7b35198251e392b180b2e3e2a88fd92381eb1affc016b562a2c7c6756fff7879",
+			"source": {
+				"contentType": "image/png",
+				"sizeBytes": 619435,
+				"width": 2624,
+				"height": 1876
+			}
+		},
 		"image-89fe1f49fe9aeea136b85a5133f94534ff791ce3-1568x1366-png": {
 			"mediaAssetId": "nh70e0p9sjh4ftffvm2g0z6dg58ar0ee",
 			"workerAssetId": "5b6faf53-8494-4b3a-b32a-fdb84648bc4a",
@@ -50,6 +72,17 @@
 				"height": 1366
 			}
 		},
+		"image-bfe45aa66ae0403bb2ff0940c1f7b7421cc27628-2624x1876-png": {
+			"mediaAssetId": "nh753qjrs276k00r2adcjkjgps8av7g4",
+			"workerAssetId": "672e2192-5ac3-4614-b58e-88535623b0e1",
+			"sourceSha256": "212ebaf2c307dc079018aa1ab348e35556f8e01b9be50f29187a41261a43d876",
+			"source": {
+				"contentType": "image/png",
+				"sizeBytes": 1446326,
+				"width": 2624,
+				"height": 1876
+			}
+		},
 		"image-d4ee0889a5b82e47027dc57c39604a9320896875-2624x1876-png": {
 			"mediaAssetId": "nh75erfw9q3evy3pft71mpf4bd8asnkv",
 			"workerAssetId": "363ab547-fc7e-4ec6-888e-abdb864dae47",
@@ -59,6 +92,28 @@
 				"sizeBytes": 1760970,
 				"width": 2624,
 				"height": 1876
+			}
+		},
+		"image-db60afd87e022cd5d4fa54f5c4a3fe97ceb57cd6-2624x1876-png": {
+			"mediaAssetId": "nh7465v8hrr69zxcmesn2vv7198at3ar",
+			"workerAssetId": "035ff965-e981-4e5a-9c18-77063973260d",
+			"sourceSha256": "d8387375df9a40cf7cf144e46175f9f928f40767b06d4ecda29426ff0e14b08f",
+			"source": {
+				"contentType": "image/png",
+				"sizeBytes": 516659,
+				"width": 2624,
+				"height": 1876
+			}
+		},
+		"image-efdb9b1e4b4f95723596ace8d0f2b4f6be06fe62-2400x1654-png": {
+			"mediaAssetId": "nh7fqyqh8azkdzcmwzerw495eh8av8d9",
+			"workerAssetId": "18208e39-0cd3-45f4-b89c-d3c7dee014e8",
+			"sourceSha256": "96b938e7440b7a684289466abaea39b1c6c63b07ba2b315ee483e8d7705497a7",
+			"source": {
+				"contentType": "image/png",
+				"sizeBytes": 1004790,
+				"width": 2400,
+				"height": 1654
 			}
 		}
 	}
