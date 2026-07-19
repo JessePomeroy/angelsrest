@@ -12,6 +12,9 @@ const { apiMock, galleriesApi, mediaApi, portfolioApi } = vi.hoisted(() => {
 	const portfolioApi = {
 		listForEditor: "portfolioGalleries.listForEditor",
 		getEditorState: "portfolioGalleries.getEditorState",
+		saveDraft: "portfolioGalleries.saveDraft",
+		publish: "portfolioGalleries.publish",
+		reorder: "portfolioGalleries.reorder",
 	};
 	return {
 		galleriesApi,
@@ -43,10 +46,17 @@ describe("admin API aliases", () => {
 		const portfolioEditor = adminConfig.api.portfolioEditor;
 		expect(portfolioEditor?.listForEditor).toBe(portfolioApi.listForEditor);
 		expect(portfolioEditor?.getEditorState).toBe(portfolioApi.getEditorState);
+		expect(portfolioEditor?.saveDraft).toBe(portfolioApi.saveDraft);
+		expect(portfolioEditor?.publish).toBeUndefined();
+		expect(portfolioEditor?.reorder).toBe(portfolioApi.reorder);
 		expect(portfolioEditor?.listMediaAssets).toBe(mediaApi.listForEditor);
 		expect(portfolioEditor?.getPlacedMediaAssets).toBe(mediaApi.getManyForEditor);
 		expect(portfolioEditor?.registerReadyWebAsset).toBe(mediaApi.registerReadyWebAsset);
 		expect(portfolioEditor?.requestDeletion).toBe(mediaApi.requestDeletion);
 		expect(adminConfig.editor?.blog?.mediaBaseUrl).toBe("https://media.angelsrest.online");
+		expect(adminConfig.editor?.portfolio).toEqual({
+			mediaBaseUrl: "https://media.angelsrest.online",
+			uploadEndpoint: "/api/admin/media",
+		});
 	});
 });

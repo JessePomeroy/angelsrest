@@ -1,8 +1,8 @@
 <script lang="ts">
-import { ClientGalleriesPage } from "@jessepomeroy/admin";
+import { PortfolioGalleryPage } from "@jessepomeroy/admin";
 import type { PageData } from "./$types";
 
 let { data }: { data: PageData } = $props();
 </script>
 
-<ClientGalleriesPage adminSession={data.adminSession} />
+<PortfolioGalleryPage galleryId={data.galleryId} />
