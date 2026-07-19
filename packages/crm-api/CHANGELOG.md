@@ -1,5 +1,11 @@
 # @jessepomeroy/crm-api
 
+## 2.18.0
+
+### Minor Changes
+
+- e1717d3: Add a bounded tenant catalog summary query for private single-print authoring.
+
 ## 2.17.0
 
 ### Minor Changes
