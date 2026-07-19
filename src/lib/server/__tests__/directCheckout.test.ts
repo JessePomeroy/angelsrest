@@ -116,6 +116,36 @@ describe("createDirectCheckoutSession", () => {
 		expect(requestOptions).toEqual({ stripeAccount: "acct_123" });
 	});
 
+	it("preserves V2 print-set fulfillment metadata", async () => {
+		const { stripe, create } = makeStripe();
+		const images = ["https://cdn.example/set-a.jpg", "https://cdn.example/set-b.jpg"];
+
+		await createDirectCheckoutSession({
+			body: { productId: "current-set", isPrintSet: true },
+			stripe,
+			siteUrl: "https://angelsrest.test",
+			fetcher,
+			bindSession: vi.fn(),
+			resolveItem: vi.fn().mockResolvedValue(
+				makeItem({
+					productId: "current-set",
+					productCategory: "print-set",
+					isPrintSet: true,
+					image: "https://cdn.example/set-preview.jpg",
+					images,
+				}),
+			),
+			log: vi.fn(),
+		});
+
+		const params = create.mock.calls[0]?.[0] as Stripe.Checkout.SessionCreateParams;
+		expect(params.metadata).toMatchObject({
+			isPrintSet: "true",
+			imageUrls: JSON.stringify(images),
+			imageUrl: "",
+		});
+	});
+
 	it("does not add a platform fee for connected-account digital checkout", async () => {
 		const { stripe, create } = makeStripe();
 

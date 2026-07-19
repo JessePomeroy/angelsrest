@@ -127,28 +127,40 @@ describe("resolveCheckoutItem", () => {
 		});
 	});
 
-	it("resolves print set images server-side", async () => {
-		let queryCount = 0;
-		const fetcher = (async () => {
-			queryCount += 1;
-			if (queryCount === 1) return null;
-			return {
-				title: "legacy set",
-				previewImage: null,
-				images: ["img-a", "img-b"],
-				price: 70,
-				availablePapers: ["Archival Matte 8x10|103001|8|10"],
-			};
-		}) as CheckoutFetcher;
+	it("resolves V2 print set price and images server-side", async () => {
+		const fetcher = (async () => ({
+			title: "current set",
+			previewImage: null,
+			images: ["img-a", "img-b"],
+			variants: [{ paper: "archival-matte", size: "8x10", retailPrice: 70 }],
+			bordersEnabled: true,
+			framedEnabled: false,
+			inStock: true,
+		})) as CheckoutFetcher;
 
 		const item = await resolveCheckoutItem(fetcher, {
-			productId: "legacy-set",
+			productId: "current-set",
 			isPrintSet: true,
-			paperIndex: 0,
+			paperSlug: "archival-matte",
+			sizeSlug: "8x10",
 		});
 
 		expect(item.isPrintSet).toBe(true);
 		expect(item.price).toBe(70);
 		expect(item.images).toHaveLength(2);
+	});
+
+	it("returns a 404 after one V2 query when a print set is missing", async () => {
+		const fetcher = vi.fn().mockResolvedValue(null) as CheckoutFetcher;
+
+		await expect(
+			resolveCheckoutItem(fetcher, {
+				productId: "missing-set",
+				isPrintSet: true,
+				paperSlug: "archival-matte",
+				sizeSlug: "8x10",
+			}),
+		).rejects.toMatchObject({ status: 404 });
+		expect(fetcher).toHaveBeenCalledOnce();
 	});
 });
