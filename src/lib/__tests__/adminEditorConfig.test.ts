@@ -35,6 +35,7 @@ describe("admin API aliases", () => {
 	it("adds the CMS media registry without disturbing existing host aliases", () => {
 		expect(adminConfig.api.blogContent).toBe(apiMock.blogContent);
 		expect(adminConfig.api.postContent).toBe(apiMock.postContent);
+		expect(adminConfig.api.mediaAssets?.getManyForEditor).toBe(mediaApi.getManyForEditor);
 		expect(adminConfig.api.galleryDelivery?.listBySite).toBe(galleriesApi.listBySite);
 		expect(adminConfig.api.galleryDelivery?.setPassword).toBe(apiMock.galleryPassword.setPassword);
 		expect(adminConfig.api.crm).toBe(apiMock.crm);
@@ -46,5 +47,6 @@ describe("admin API aliases", () => {
 		expect(portfolioEditor?.getPlacedMediaAssets).toBe(mediaApi.getManyForEditor);
 		expect(portfolioEditor?.registerReadyWebAsset).toBe(mediaApi.registerReadyWebAsset);
 		expect(portfolioEditor?.requestDeletion).toBe(mediaApi.requestDeletion);
+		expect(adminConfig.editor?.blog?.mediaBaseUrl).toBe("https://media.angelsrest.online");
 	});
 });
