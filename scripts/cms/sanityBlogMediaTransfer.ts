@@ -21,19 +21,10 @@ const MAX_CAPABILITY_LIFETIME_MS = 16 * 60 * 1000;
 const ACTIVE_OPERATION_MESSAGE = "CMS media asset operation is already in progress";
 const MAX_PROCESS_ATTEMPTS = 3;
 
-export const CMS_BLOG_MEDIA_BATCH_ID = "CMS-4.4m" as const;
+export const CMS_BLOG_MEDIA_BATCH_ID = "CMS-4.4n" as const;
 export const CMS_BLOG_MEDIA_PRODUCTION_ORIGIN = "https://www.angelsrest.online";
 export const CMS_BLOG_MEDIA_SOURCE_ASSET_REFS = [
-	"image-5f1512614d2c4c605f19729a67b7ed8c583bc615-970x982-jpg",
-	"image-dcdf529f090e6c38354c9f10584cd1ea897c3927-961x982-jpg",
-	"image-d74c6ebb3e7cc5b295e63d2677a5b705dd6c279e-1265x982-jpg",
-	"image-e2cffdeac93f452e8a6e60b6fe1d7e55255ef1eb-772x1024-jpg",
-	"image-fac235d6f5243c7889bbb8523956829c86a36d0e-992x1024-jpg",
-	"image-4e8305a2f2b2f0eee7a2ddd04beeb2a37b5a633f-550x553-png",
-	"image-2a260c1e56c70829d3ef9312fd4852786db586b9-964x982-jpg",
-	"image-fbfb0b1031d0c9976c2fcb17212ca2dd5cd7adbc-947x982-jpg",
-	"image-21cb525348f10f8a627a4b347ef4ba9a2a9b668b-964x982-jpg",
-	"image-5e63b0248178528caaa470ff31d3aec5a21d7f5e-640x640-jpg",
+	"image-b97c89c82073b12c5b97b03ea3e1bdbd76d41e71-1832x3968-jpg",
 ] as const;
 export const CMS_BLOG_MEDIA_PRODUCTION_CONFIRMATION = `transfer ${CMS_BLOG_MEDIA_BATCH_ID} ${CMS_BLOG_MEDIA_SOURCE_ASSET_REFS.length}-asset batch to www.angelsrest.online`;
 
@@ -43,75 +34,12 @@ export const CMS_BLOG_MEDIA_SOURCE_EXPECTATIONS: Record<
 	CmsBlogMediaSourceAssetRef,
 	BlogMediaSource & { sourceSha256: string }
 > = {
-	"image-5f1512614d2c4c605f19729a67b7ed8c583bc615-970x982-jpg": {
+	"image-b97c89c82073b12c5b97b03ea3e1bdbd76d41e71-1832x3968-jpg": {
 		contentType: "image/jpeg",
-		sizeBytes: 136_330,
-		width: 970,
-		height: 982,
-		sourceSha256: "cb558b4708faefae7f13efbe17af96313e92beb39f176b7f2e2a595b475440a2",
-	},
-	"image-dcdf529f090e6c38354c9f10584cd1ea897c3927-961x982-jpg": {
-		contentType: "image/jpeg",
-		sizeBytes: 63_591,
-		width: 961,
-		height: 982,
-		sourceSha256: "aebaf4e6b1f9ac0274b64e28c56e15df1e3e3d87559fe07222a730f110b17955",
-	},
-	"image-d74c6ebb3e7cc5b295e63d2677a5b705dd6c279e-1265x982-jpg": {
-		contentType: "image/jpeg",
-		sizeBytes: 75_743,
-		width: 1265,
-		height: 982,
-		sourceSha256: "a28679ddaeeb7c24c72feeef6fb09c13adb0e29149fad2b625bef96bc23e5ab9",
-	},
-	"image-e2cffdeac93f452e8a6e60b6fe1d7e55255ef1eb-772x1024-jpg": {
-		contentType: "image/jpeg",
-		sizeBytes: 76_010,
-		width: 772,
-		height: 1024,
-		sourceSha256: "544faddc4a05c2204d133ee0b932092cc43f8d35d48db6d9913edec80ec84c47",
-	},
-	"image-fac235d6f5243c7889bbb8523956829c86a36d0e-992x1024-jpg": {
-		contentType: "image/jpeg",
-		sizeBytes: 50_854,
-		width: 992,
-		height: 1024,
-		sourceSha256: "3d60289fcda3278ae916918f98c1b6f709d6b928414b8423348ccd72c7917b3b",
-	},
-	"image-4e8305a2f2b2f0eee7a2ddd04beeb2a37b5a633f-550x553-png": {
-		contentType: "image/png",
-		sizeBytes: 398_447,
-		width: 550,
-		height: 553,
-		sourceSha256: "e6166bc510feebd1f66e4603d79690b7ce2f71c458d51c0f381e0c60f153aa08",
-	},
-	"image-2a260c1e56c70829d3ef9312fd4852786db586b9-964x982-jpg": {
-		contentType: "image/jpeg",
-		sizeBytes: 52_740,
-		width: 964,
-		height: 982,
-		sourceSha256: "a3ea3eb9f298023ffd140376aba28275e9fb380828e389e8c6909c9e57e493f4",
-	},
-	"image-fbfb0b1031d0c9976c2fcb17212ca2dd5cd7adbc-947x982-jpg": {
-		contentType: "image/jpeg",
-		sizeBytes: 49_571,
-		width: 947,
-		height: 982,
-		sourceSha256: "d56fe1b5be42ff76ef0f388ccc8ecba740ac677cf22172ea2fd9b997cf57602b",
-	},
-	"image-21cb525348f10f8a627a4b347ef4ba9a2a9b668b-964x982-jpg": {
-		contentType: "image/jpeg",
-		sizeBytes: 37_466,
-		width: 964,
-		height: 982,
-		sourceSha256: "58267ed7041e929a54d67e38d0d38aec788c91de0367c023445101e56bf0a215",
-	},
-	"image-5e63b0248178528caaa470ff31d3aec5a21d7f5e-640x640-jpg": {
-		contentType: "image/jpeg",
-		sizeBytes: 32_075,
-		width: 640,
-		height: 640,
-		sourceSha256: "2065037a78e2462c342e4fd6c1f759d131a30b19845df7f80c714892a5d9256b",
+		sizeBytes: 630_351,
+		width: 1832,
+		height: 3968,
+		sourceSha256: "52fe0b91b2b90c52990e7365c475028155ec7138670179598e81e035535c9843",
 	},
 };
 

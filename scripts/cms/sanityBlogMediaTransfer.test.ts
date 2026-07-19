@@ -29,51 +29,95 @@ import type {
 } from "./sanityBlogMediaVerification";
 
 const SOURCE_REF = CMS_BLOG_MEDIA_SOURCE_ASSET_REFS[0];
-const SECOND_SOURCE_REF = CMS_BLOG_MEDIA_SOURCE_ASSET_REFS[1];
 const COMPLETED_PREVIOUS_BATCH = [
 	[
-		"image-db60afd87e022cd5d4fa54f5c4a3fe97ceb57cd6-2624x1876-png",
+		"image-5f1512614d2c4c605f19729a67b7ed8c583bc615-970x982-jpg",
 		{
-			mediaAssetId: "nh7465v8hrr69zxcmesn2vv7198at3ar",
-			workerAssetId: "035ff965-e981-4e5a-9c18-77063973260d",
-			sourceSha256: "d8387375df9a40cf7cf144e46175f9f928f40767b06d4ecda29426ff0e14b08f",
-			source: { contentType: "image/png", sizeBytes: 516_659, width: 2624, height: 1876 },
+			mediaAssetId: "nh70v6s6hartjy3xb5jka70y2s8avra1",
+			workerAssetId: "6e5e98d0-bc00-4be3-9057-cd6f8b4a8fac",
+			sourceSha256: "cb558b4708faefae7f13efbe17af96313e92beb39f176b7f2e2a595b475440a2",
+			source: { contentType: "image/jpeg", sizeBytes: 136_330, width: 970, height: 982 },
 		},
 	],
 	[
-		"image-4cc2102493e41f18ed7f2727a88b80b5007741a2-2624x1876-png",
+		"image-dcdf529f090e6c38354c9f10584cd1ea897c3927-961x982-jpg",
 		{
-			mediaAssetId: "nh78t9bnxkmjyg2qane1r2sxtd8av8f8",
-			workerAssetId: "3c131d4c-a8da-4f57-88ac-0d9fe0f90f28",
-			sourceSha256: "7b35198251e392b180b2e3e2a88fd92381eb1affc016b562a2c7c6756fff7879",
-			source: { contentType: "image/png", sizeBytes: 619_435, width: 2624, height: 1876 },
+			mediaAssetId: "nh78fezrb2zjwb3h08ya198yz98avbnj",
+			workerAssetId: "13fc59df-c975-4608-a699-9ff6f318ec0e",
+			sourceSha256: "aebaf4e6b1f9ac0274b64e28c56e15df1e3e3d87559fe07222a730f110b17955",
+			source: { contentType: "image/jpeg", sizeBytes: 63_591, width: 961, height: 982 },
 		},
 	],
 	[
-		"image-09a2b170c772750958a7f5b224a19be7f748e12c-2624x1876-png",
+		"image-d74c6ebb3e7cc5b295e63d2677a5b705dd6c279e-1265x982-jpg",
 		{
-			mediaAssetId: "nh764kjk6wvwcv18tkc47gbsnh8av5rq",
-			workerAssetId: "cf6e8162-a988-476d-b23f-50cb678272f9",
-			sourceSha256: "36627a3e7af7aec59a2e26e58ae9ca41cb31b8449c235566ce11d84797262d07",
-			source: { contentType: "image/png", sizeBytes: 1_408_551, width: 2624, height: 1876 },
+			mediaAssetId: "nh7bpp5bew309kcz9es89enn698avh1q",
+			workerAssetId: "e107d2f2-c07d-473a-9949-41227553b75b",
+			sourceSha256: "a28679ddaeeb7c24c72feeef6fb09c13adb0e29149fad2b625bef96bc23e5ab9",
+			source: { contentType: "image/jpeg", sizeBytes: 75_743, width: 1265, height: 982 },
 		},
 	],
 	[
-		"image-bfe45aa66ae0403bb2ff0940c1f7b7421cc27628-2624x1876-png",
+		"image-e2cffdeac93f452e8a6e60b6fe1d7e55255ef1eb-772x1024-jpg",
 		{
-			mediaAssetId: "nh753qjrs276k00r2adcjkjgps8av7g4",
-			workerAssetId: "672e2192-5ac3-4614-b58e-88535623b0e1",
-			sourceSha256: "212ebaf2c307dc079018aa1ab348e35556f8e01b9be50f29187a41261a43d876",
-			source: { contentType: "image/png", sizeBytes: 1_446_326, width: 2624, height: 1876 },
+			mediaAssetId: "nh77g6997wnn50gsqttqm5acnn8at0ys",
+			workerAssetId: "e30a5de9-22c8-4d50-8315-c5a88e527d33",
+			sourceSha256: "544faddc4a05c2204d133ee0b932092cc43f8d35d48db6d9913edec80ec84c47",
+			source: { contentType: "image/jpeg", sizeBytes: 76_010, width: 772, height: 1024 },
 		},
 	],
 	[
-		"image-efdb9b1e4b4f95723596ace8d0f2b4f6be06fe62-2400x1654-png",
+		"image-fac235d6f5243c7889bbb8523956829c86a36d0e-992x1024-jpg",
 		{
-			mediaAssetId: "nh7fqyqh8azkdzcmwzerw495eh8av8d9",
-			workerAssetId: "18208e39-0cd3-45f4-b89c-d3c7dee014e8",
-			sourceSha256: "96b938e7440b7a684289466abaea39b1c6c63b07ba2b315ee483e8d7705497a7",
-			source: { contentType: "image/png", sizeBytes: 1_004_790, width: 2400, height: 1654 },
+			mediaAssetId: "nh79xc8y5009z52y7fc5a6zgs18atp66",
+			workerAssetId: "d156a07a-65a5-4bfa-a301-5497b0794426",
+			sourceSha256: "3d60289fcda3278ae916918f98c1b6f709d6b928414b8423348ccd72c7917b3b",
+			source: { contentType: "image/jpeg", sizeBytes: 50_854, width: 992, height: 1024 },
+		},
+	],
+	[
+		"image-4e8305a2f2b2f0eee7a2ddd04beeb2a37b5a633f-550x553-png",
+		{
+			mediaAssetId: "nh77e94f3ec4a65r93wpkxg2fn8at251",
+			workerAssetId: "c2c0f532-47df-4bff-947a-c319cec4ad73",
+			sourceSha256: "e6166bc510feebd1f66e4603d79690b7ce2f71c458d51c0f381e0c60f153aa08",
+			source: { contentType: "image/png", sizeBytes: 398_447, width: 550, height: 553 },
+		},
+	],
+	[
+		"image-2a260c1e56c70829d3ef9312fd4852786db586b9-964x982-jpg",
+		{
+			mediaAssetId: "nh74fk5p68d4cdakeda0setam98atn4d",
+			workerAssetId: "fa542fab-3c72-40be-96a6-951527374f5a",
+			sourceSha256: "a3ea3eb9f298023ffd140376aba28275e9fb380828e389e8c6909c9e57e493f4",
+			source: { contentType: "image/jpeg", sizeBytes: 52_740, width: 964, height: 982 },
+		},
+	],
+	[
+		"image-fbfb0b1031d0c9976c2fcb17212ca2dd5cd7adbc-947x982-jpg",
+		{
+			mediaAssetId: "nh7agznqrhxe1mqtpg8zkkqj3n8atpek",
+			workerAssetId: "cda81cd8-cd8b-4bc9-a724-7789e7368fa1",
+			sourceSha256: "d56fe1b5be42ff76ef0f388ccc8ecba740ac677cf22172ea2fd9b997cf57602b",
+			source: { contentType: "image/jpeg", sizeBytes: 49_571, width: 947, height: 982 },
+		},
+	],
+	[
+		"image-21cb525348f10f8a627a4b347ef4ba9a2a9b668b-964x982-jpg",
+		{
+			mediaAssetId: "nh707zgfgrvkyz5kht5qj5txrh8avz7q",
+			workerAssetId: "22e157d8-38a9-4917-905f-8c8fbbadbdde",
+			sourceSha256: "58267ed7041e929a54d67e38d0d38aec788c91de0367c023445101e56bf0a215",
+			source: { contentType: "image/jpeg", sizeBytes: 37_466, width: 964, height: 982 },
+		},
+	],
+	[
+		"image-5e63b0248178528caaa470ff31d3aec5a21d7f5e-640x640-jpg",
+		{
+			mediaAssetId: "nh70z9fqs9g4avbnea1c1qh5vx8av2fd",
+			workerAssetId: "9e71e608-1c8b-4ae0-8619-fe79181833f1",
+			sourceSha256: "2065037a78e2462c342e4fd6c1f759d131a30b19845df7f80c714892a5d9256b",
+			source: { contentType: "image/jpeg", sizeBytes: 32_075, width: 640, height: 640 },
 		},
 	],
 ] as const satisfies ReadonlyArray<
@@ -208,19 +252,19 @@ function successFetcher({
 
 describe("active Blog media transfer batch policy", () => {
 	test("defaults to plan-only and requires the exact bounded production confirmation", () => {
-		expect(CMS_BLOG_MEDIA_SOURCE_ASSET_REFS).toHaveLength(10);
-		expect(new Set(CMS_BLOG_MEDIA_SOURCE_ASSET_REFS).size).toBe(10);
+		expect(CMS_BLOG_MEDIA_SOURCE_ASSET_REFS).toHaveLength(1);
+		expect(new Set(CMS_BLOG_MEDIA_SOURCE_ASSET_REFS).size).toBe(1);
 		expect(initialCheckpoint().migration).toBe(CMS_BLOG_MEDIA_BATCH_ID);
 		expect(() =>
 			parseSanityBlogMediaTransferCheckpoint({
 				...initialCheckpoint(),
-				migration: "CMS-4.4l",
+				migration: "CMS-4.4m",
 			}),
 		).toThrow(/identity/);
 		expect(() =>
 			parseSanityBlogMediaTransferCheckpoint({
 				...initialCheckpoint(),
-				sourceAssetRefs: [...CMS_BLOG_MEDIA_SOURCE_ASSET_REFS].reverse(),
+				sourceAssetRefs: [],
 			}),
 		).toThrow(/source batch/);
 		expect(parseSanityBlogMediaTransferOptions([])).toEqual({ mode: "plan" });
@@ -233,11 +277,9 @@ describe("active Blog media transfer batch policy", () => {
 		expect(() =>
 			parseSanityBlogMediaTransferOptions(executeArgs({ confirmation: "wrong" })),
 		).toThrow(/must exactly equal/);
-		expect(() =>
-			parseSanityBlogMediaTransferOptions(
-				executeArgs({ sourceAssetRefs: [SOURCE_REF, SECOND_SOURCE_REF] }),
-			),
-		).toThrow(/exactly 10/);
+		expect(() => parseSanityBlogMediaTransferOptions(executeArgs({ sourceAssetRefs: [] }))).toThrow(
+			/exactly 1/,
+		);
 		expect(parseSanityBlogMediaTransferOptions(executeArgs())).toEqual({
 			mode: "execute",
 			cookieFile: "/tmp/cookie",
@@ -245,7 +287,7 @@ describe("active Blog media transfer batch policy", () => {
 		});
 	});
 
-	test("selects only the active ten-image document batch when the preceding batch is mapped and receipted", () => {
+	test("selects only the active author portrait when the preceding batch is mapped and receipted", () => {
 		const journal = {
 			...blankJournal(),
 			...Object.fromEntries(
@@ -275,7 +317,7 @@ describe("active Blog media transfer batch policy", () => {
 		);
 	});
 
-	test("builds only the reviewed ten-asset plan and rejects mapped execution", () => {
+	test("builds only the reviewed one-asset plan and rejects mapped execution", () => {
 		expect(
 			createSanityBlogMediaTransferPlan({
 				journal: blankJournal(),
