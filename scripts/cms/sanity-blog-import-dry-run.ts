@@ -13,6 +13,7 @@ import {
 	SANITY_BLOG_IMAGE_ASSET_MAP_FILENAME,
 	SANITY_BLOG_REVIEW_CHECKLIST_FILENAME,
 } from "./sanityBlogImportPrep";
+import { fetchPublishedSanityBlogSource, readSanityBlogSourceConfig } from "./sanityBlogSource";
 
 const DEFAULT_OUTPUT_PATH = "/tmp/angelsrest-sanity-blog-import-report.json";
 
@@ -21,34 +22,6 @@ type CliOptions = {
 	imageAssetMappingPath?: string;
 	prepDirectory?: string;
 };
-
-function stripInlineComment(value: string) {
-	const hashIndex = value.search(/\s#/);
-	return (hashIndex === -1 ? value : value.slice(0, hashIndex)).trim();
-}
-
-async function readEnvFile(path: string) {
-	try {
-		const contents = await readFile(path, "utf8");
-		return Object.fromEntries(
-			contents
-				.split(/\r?\n/)
-				.map((line) => line.trim())
-				.filter((line) => line && !line.startsWith("#") && line.includes("="))
-				.map((line) => {
-					const equalsIndex = line.indexOf("=");
-					const key = line.slice(0, equalsIndex).trim();
-					const rawValue = stripInlineComment(line.slice(equalsIndex + 1).trim());
-					const value = rawValue.replace(/^['"]|['"]$/g, "");
-					return [key, value];
-				}),
-		);
-	} catch (error) {
-		if (typeof error === "object" && error !== null && "code" in error && error.code === "ENOENT")
-			return {};
-		throw error;
-	}
-}
 
 function cliOptions(args: string[]): CliOptions {
 	const options: CliOptions = { outputPath: DEFAULT_OUTPUT_PATH };
@@ -84,51 +57,6 @@ async function readImageAssetIds(path: string | undefined) {
 	if (!path) return {};
 	const contents = await readFile(resolve(path), "utf8");
 	return parseSanityBlogImageAssetMap(JSON.parse(contents) as unknown);
-}
-
-function sourceQuery() {
-	return `{
-		"authors": *[_type == "author"] | order(_id asc) {
-			_id,
-			_type,
-			name,
-			slug,
-			image {
-				_key,
-				asset,
-				alt,
-				caption
-			},
-			bio
-		},
-		"categories": *[_type == "category"] | order(_id asc) {
-			_id,
-			_type,
-			title,
-			description
-		},
-		"posts": *[_type == "post"] | order(_id asc) {
-			_id,
-			_type,
-			title,
-			postType,
-			slug,
-			author,
-			mainImage {
-				_key,
-				asset,
-				alt,
-				caption
-			},
-			categories,
-			publishedAt,
-			brief,
-			approach,
-			result,
-			gearUsed,
-			body
-		}
-	}`;
 }
 
 function sanitizedDocumentSummary(manifest: ReturnType<typeof createSanityBlogImportManifest>) {
@@ -216,13 +144,7 @@ async function main() {
 	if (prepPaths) {
 		await validatePrepOutputPaths(prepPaths, outputPath, options.imageAssetMappingPath);
 	}
-	const envFile = await readEnvFile(resolve(".env.local"));
-	const projectId = process.env.PUBLIC_SANITY_PROJECT_ID ?? envFile.PUBLIC_SANITY_PROJECT_ID;
-	const dataset =
-		process.env.PUBLIC_SANITY_DATASET ?? envFile.PUBLIC_SANITY_DATASET ?? "production";
-	if (!projectId) {
-		throw new Error("PUBLIC_SANITY_PROJECT_ID is required");
-	}
+	const { projectId, dataset } = await readSanityBlogSourceConfig(process.cwd());
 	const imageAssetIds = await readImageAssetIds(options.imageAssetMappingPath);
 	const client = createClient({
 		projectId,
@@ -230,7 +152,7 @@ async function main() {
 		apiVersion: "2024-01-01",
 		useCdn: false,
 	});
-	const source = await client.fetch<SanityBlogImportSource>(sourceQuery());
+	const source: SanityBlogImportSource = await fetchPublishedSanityBlogSource(client);
 	const manifest = createSanityBlogImportManifest(source, { imageAssetIds });
 	const report = createSanityBlogImportDryRunReport(manifest);
 	const remediation = createSanityBlogImportRemediation(source, manifest, imageAssetIds);

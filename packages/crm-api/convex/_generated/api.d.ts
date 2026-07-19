@@ -62,6 +62,8 @@ import type * as helpers_richTextNodeValidation from "../helpers/richTextNodeVal
 import type * as helpers_richTextValidation from "../helpers/richTextValidation.js";
 import type * as helpers_richTextValidationSupport from "../helpers/richTextValidationSupport.js";
 import type * as helpers_sanityBlogImport from "../helpers/sanityBlogImport.js";
+import type * as helpers_sanityBlogImportPlan from "../helpers/sanityBlogImportPlan.js";
+import type * as helpers_sanityBlogImportStore from "../helpers/sanityBlogImportStore.js";
 import type * as helpers_serverSecrets from "../helpers/serverSecrets.js";
 import type * as helpers_stripeFeeCapture from "../helpers/stripeFeeCapture.js";
 import type * as helpers_validators from "../helpers/validators.js";
@@ -143,6 +145,8 @@ declare const fullApi: ApiFromModules<{
   "helpers/richTextValidation": typeof helpers_richTextValidation;
   "helpers/richTextValidationSupport": typeof helpers_richTextValidationSupport;
   "helpers/sanityBlogImport": typeof helpers_sanityBlogImport;
+  "helpers/sanityBlogImportPlan": typeof helpers_sanityBlogImportPlan;
+  "helpers/sanityBlogImportStore": typeof helpers_sanityBlogImportStore;
   "helpers/serverSecrets": typeof helpers_serverSecrets;
   "helpers/stripeFeeCapture": typeof helpers_stripeFeeCapture;
   "helpers/validators": typeof helpers_validators;

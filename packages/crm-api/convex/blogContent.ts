@@ -1,5 +1,5 @@
 import { v } from "convex/values";
-import { mutation, query } from "./_generated/server";
+import { internalMutation, mutation, query } from "./_generated/server";
 import {
 	getBlogEditorState,
 	getPublishedBlogBySlug,
@@ -21,6 +21,28 @@ import {
 	blogSupportingKindValidator,
 } from "./helpers/blogContentValidators";
 import { publishedSlugChangeValidator } from "./helpers/contentValidators";
+import {
+	ANGELS_REST_SANITY_BLOG_IMPORT_RELEASE,
+	sanityBlogImportPlanValidator,
+} from "./helpers/sanityBlogImportPlan";
+import { importReleasedSanityBlogDrafts } from "./helpers/sanityBlogImportStore";
+
+/**
+ * Operator-only fixed-batch Sanity migration. The CLI/deploy-key boundary and
+ * pinned release digest keep browsers and changed source plans out.
+ */
+export const importSanityBlogDrafts = internalMutation({
+	args: {
+		plan: sanityBlogImportPlanValidator,
+		digest: v.string(),
+	},
+	handler: async (ctx, { plan, digest }) =>
+		await importReleasedSanityBlogDrafts(ctx, {
+			plan,
+			digest,
+			contract: ANGELS_REST_SANITY_BLOG_IMPORT_RELEASE,
+		}),
+});
 
 /** Create one idempotently keyed Author or Category draft for a verified site. */
 export const createDraft = mutation({

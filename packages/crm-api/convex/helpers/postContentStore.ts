@@ -36,6 +36,12 @@ import {
 } from "./contentLifecycle";
 import type { PublishedSlugChange } from "./contentValidators";
 
+export type PostDraftWriter = {
+	actor: string;
+	source: "admin" | "sanityImport";
+	now: number;
+};
+
 function canonicalDraftSlug(draft: PostDraft) {
 	if (draft.slug === undefined || !draft.slug.trim()) return undefined;
 	try {
@@ -67,8 +73,7 @@ async function insertPostRevision(
 	draft: PostDraft,
 	checksum: string,
 	summaryChecksum: string,
-	actor: string,
-	now: number,
+	writer: PostDraftWriter,
 ) {
 	const payload = postRevisionPayloadFromDraft(draft, summaryChecksum);
 	const revisionId = await ctx.db.insert("contentRevisions", {
@@ -77,10 +82,10 @@ async function insertPostRevision(
 		kind: "post",
 		schemaVersion: 1,
 		payload,
-		source: "admin",
+		source: writer.source,
 		checksum,
-		createdAt: now,
-		createdBy: actor,
+		createdAt: writer.now,
+		createdBy: writer.actor,
 	});
 
 	let bodyMediaOrder = 0;
@@ -181,12 +186,18 @@ async function requireExactCurrentRevision(
 	document: Doc<"contentDocuments">,
 	revisionId: Id<"contentRevisions"> | undefined,
 	checksum: string,
+	source?: PostDraftWriter["source"],
 ) {
 	if (!revisionId) return null;
 	const revision = await ctx.db.get(revisionId);
 	if (!revision) throw new Error("Post revision not found");
 	assertPostRevisionOwnership(revision, document);
-	if (revision.checksum !== checksum) return null;
+	if (
+		revision.checksum !== checksum ||
+		(source !== undefined && revision.source !== source)
+	) {
+		return null;
+	}
 	const loaded = await loadPostRevision(ctx, document, revisionId);
 	if (!loaded) throw new Error("Post revision not found");
 	return loaded;
@@ -204,16 +215,20 @@ async function requireCurrentPublishedPostSlug(
 	if (published.slug !== document.slug) throw new Error("Published Post slug mismatch");
 }
 
-export async function createPostDraft(
+export async function createPostDraftForSite(
 	ctx: MutationCtx,
-	args: { siteUrl: string; documentKey: string; draft: PostDraft },
+	args: {
+		siteUrl: string;
+		documentKey: string;
+		draft: PostDraft;
+		writer: PostDraftWriter;
+	},
 ) {
-	const { identity, client } = await requireSiteAdmin(ctx, args.siteUrl);
 	validatePostDocumentKey(args.documentKey);
 	const draft = normalizePostDraftIds(ctx, args.draft);
 	const checksum = await checksumPostDraft(draft);
 	const summaryChecksum = await checksumPostSummary(draft);
-	const existing = await getDocumentByKey(ctx, client.siteUrl, args.documentKey);
+	const existing = await getDocumentByKey(ctx, args.siteUrl, args.documentKey);
 	if (existing) {
 		const document = assertPostDocument(existing);
 		const current = await requireExactCurrentRevision(
@@ -221,11 +236,18 @@ export async function createPostDraft(
 			document,
 			document.draftRevisionId,
 			checksum,
+			args.writer.source,
 		);
-		if (current) return { documentId: document._id, revisionId: current.revision._id };
+		if (current) {
+			return {
+				documentId: document._id,
+				revisionId: current.revision._id,
+				created: false,
+			};
+		}
 		throw new Error("Post document key already exists");
 	}
-	const documents = await listPostDocuments(ctx, client.siteUrl);
+	const documents = await listPostDocuments(ctx, args.siteUrl);
 	if (documents.length >= POST_CONTENT_LIMITS.documents) {
 		throw new Error(
 			`A site cannot exceed ${POST_CONTENT_LIMITS.documents} Post documents`,
@@ -233,16 +255,15 @@ export async function createPostDraft(
 	}
 	const slug = canonicalDraftSlug(draft);
 	await requireContentSlugAvailable(ctx, {
-		siteUrl: client.siteUrl,
+		siteUrl: args.siteUrl,
 		kind: "post",
 		slug,
 	});
-	await requirePostDraftRelations(ctx, client.siteUrl, draft, false);
+	await requirePostDraftRelations(ctx, args.siteUrl, draft, false);
 
-	const now = Date.now();
-	const actor = identity.tokenIdentifier;
+	const { actor, now } = args.writer;
 	const documentId = await ctx.db.insert("contentDocuments", {
-		siteUrl: client.siteUrl,
+		siteUrl: args.siteUrl,
 		kind: "post",
 		documentKey: args.documentKey,
 		slug,
@@ -264,10 +285,27 @@ export async function createPostDraft(
 		draft,
 		checksum,
 		summaryChecksum,
-		actor,
-		now,
+		args.writer,
 	);
 	await ctx.db.patch(documentId, { draftRevisionId: revisionId });
+	return { documentId, revisionId, created: true };
+}
+
+export async function createPostDraft(
+	ctx: MutationCtx,
+	args: { siteUrl: string; documentKey: string; draft: PostDraft },
+) {
+	const { identity, client } = await requireSiteAdmin(ctx, args.siteUrl);
+	const { documentId, revisionId } = await createPostDraftForSite(ctx, {
+		siteUrl: client.siteUrl,
+		documentKey: args.documentKey,
+		draft: args.draft,
+		writer: {
+			actor: identity.tokenIdentifier,
+			source: "admin",
+			now: Date.now(),
+		},
+	});
 	return { documentId, revisionId };
 }
 
@@ -315,8 +353,11 @@ export async function savePostDraft(
 		draft,
 		checksum,
 		summaryChecksum,
-		identity.tokenIdentifier,
-		now,
+		{
+			actor: identity.tokenIdentifier,
+			source: "admin",
+			now,
+		},
 	);
 	await ctx.db.patch(document._id, {
 		...(document.publishedRevisionId ? {} : { slug }),
