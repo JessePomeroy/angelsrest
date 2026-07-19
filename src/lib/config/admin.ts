@@ -28,8 +28,19 @@ const portfolioEditorApi = new Proxy(api.portfolioGalleries, {
 	},
 });
 
+const siteEditorApi = new Proxy(api.content, {
+	get(content, prop, receiver) {
+		// Angel's Rest keeps public site settings in Sanity during this staged
+		// adoption. The shared editor may save private Convex drafts, but it must
+		// not expose publishing until the public read boundary is connected.
+		if (prop === "publishSiteSettings") return undefined;
+		return Reflect.get(content, prop, receiver);
+	},
+});
+
 const apiWithAliases = new Proxy(api, {
 	get(target, prop, receiver) {
+		if (prop === "siteEditor") return siteEditorApi;
 		if (prop === "portfolioEditor") return portfolioEditorApi;
 		if (prop === "galleryDelivery") {
 			return new Proxy(target.galleries, {
@@ -54,6 +65,7 @@ export const adminConfig: AdminConfig = {
 	galleryWorkerUrl: "https://gallery-worker.thinkingofview.workers.dev",
 	api: apiWithAliases,
 	editor: {
+		siteSettings: {},
 		blog: {
 			mediaBaseUrl: "https://media.angelsrest.online",
 		},
