@@ -8,6 +8,10 @@ const { apiMock, contentApi, galleriesApi, mediaApi, portfolioApi } = vi.hoisted
 		publishSiteSettings: "content.publishSiteSettings",
 		discardSiteSettingsDraft: "content.discardSiteSettingsDraft",
 		getHomepageQuoteEditorState: "content.getHomepageQuoteEditorState",
+		getContactPageEditorState: "content.getContactPageEditorState",
+		saveContactPageDraft: "content.saveContactPageDraft",
+		publishContactPage: "content.publishContactPage",
+		discardContactPageDraft: "content.discardContactPageDraft",
 	};
 	const galleriesApi = { listBySite: "galleries.listBySite" };
 	const mediaApi = {
@@ -65,6 +69,14 @@ describe("admin API aliases", () => {
 		expect(adminConfig.api.siteEditor?.getHomepageQuoteEditorState).toBe(
 			contentApi.getHomepageQuoteEditorState,
 		);
+		expect(adminConfig.api.siteEditor?.getContactPageEditorState).toBe(
+			contentApi.getContactPageEditorState,
+		);
+		expect(adminConfig.api.siteEditor?.saveContactPageDraft).toBe(contentApi.saveContactPageDraft);
+		expect(adminConfig.api.siteEditor?.publishContactPage).toBeUndefined();
+		expect(adminConfig.api.siteEditor?.discardContactPageDraft).toBe(
+			contentApi.discardContactPageDraft,
+		);
 
 		const portfolioEditor = adminConfig.api.portfolioEditor;
 		expect(portfolioEditor?.listForEditor).toBe(portfolioApi.listForEditor);
@@ -78,6 +90,24 @@ describe("admin API aliases", () => {
 		expect(portfolioEditor?.requestDeletion).toBe(mediaApi.requestDeletion);
 		expect(adminConfig.editor?.blog?.mediaBaseUrl).toBe("https://media.angelsrest.online");
 		expect(adminConfig.editor?.siteSettings).toEqual({});
+		expect(adminConfig.editor?.contactPage).toEqual({
+			initialPayload: {
+				heading: "Get in Touch",
+				intro:
+					"I'd love to hear from you. Whether you're looking to book a photo session, pick up some prints, or want to chat about a web project, drop me a line below. I build custom websites for photographers and creatives, so if you're looking for something like that too, let's talk. I'll get back to you as soon as I can.",
+				email: "hello@angelsrest.online",
+				confirmationMessage: "message sent !",
+				bookingEnabled: true,
+				bookingUrl: "https://cal.com/jesse-s1wmio/photosession",
+				bookingLabel: "book a time",
+				bookingIntro: "want to book a session or schedule a call?",
+				inquiryChoices: [],
+			},
+		});
+		expect(adminConfig.editor?.contactPage).not.toHaveProperty("previewEndpoint");
+		expect(adminConfig.editor?.contactPage?.initialPayload).not.toHaveProperty("phone");
+		expect(adminConfig.editor?.contactPage?.initialPayload).not.toHaveProperty("availability");
+		expect(adminConfig.editor?.contactPage?.initialPayload).not.toHaveProperty("responseTime");
 		expect(adminConfig.editor?.portfolio).toEqual({
 			mediaBaseUrl: "https://media.angelsrest.online",
 			uploadEndpoint: "/api/admin/media",

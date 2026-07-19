@@ -92,6 +92,14 @@ describe("admin Editor route boundaries", () => {
 		);
 	});
 
+	it("mounts the staged Contact draft workspace without adding a public Contact route", () => {
+		expect(routeSource("src/routes/admin/editor/pages/+page.svelte")).toContain("EditorPagesPage");
+		expect(routeSource("src/routes/admin/editor/pages/contact/+page.svelte")).toContain(
+			"ContactPage",
+		);
+		expect(existsSync(resolve(projectRoot, "src/routes/contact"))).toBe(false);
+	});
+
 	it("leaves public site settings and Portfolio reads on the reversible Sanity boundary", () => {
 		const rootLayout = routeSource("src/routes/+layout.server.ts");
 		expect(rootLayout).toContain('from "$lib/sanity/client.server"');
@@ -107,5 +115,13 @@ describe("admin Editor route boundaries", () => {
 			expect(source).not.toContain("$convex");
 			expect(source).not.toContain("portfolioGalleries");
 		}
+	});
+
+	it("leaves the public Contact read Sanity-only inside the About route", () => {
+		const aboutServer = routeSource("src/routes/about/+page.server.ts");
+		expect(aboutServer).toContain('from "$lib/sanity/client.server"');
+		expect(aboutServer).toContain('*[_type == "contactPage"][0]');
+		expect(aboutServer).not.toContain("$convex");
+		expect(aboutServer).not.toContain("getPublishedContactPageWithRevision");
 	});
 });
