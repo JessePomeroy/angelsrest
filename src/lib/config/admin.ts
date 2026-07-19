@@ -1,5 +1,6 @@
 import type { AdminAPI, AdminConfig } from "@jessepomeroy/admin";
 import { api } from "$convex/api";
+import { contactPageSeed } from "$lib/content/contactPageSeed";
 
 // Map Convex's `galleries` namespace to the package's `galleryDelivery` key —
 // the admin package renamed this to match the feature flag name; Convex module
@@ -30,10 +31,10 @@ const portfolioEditorApi = new Proxy(api.portfolioGalleries, {
 
 const siteEditorApi = new Proxy(api.content, {
 	get(content, prop, receiver) {
-		// Angel's Rest keeps public site settings in Sanity during this staged
-		// adoption. The shared editor may save private Convex drafts, but it must
-		// not expose publishing until the public read boundary is connected.
-		if (prop === "publishSiteSettings") return undefined;
+		// Angel's Rest keeps public site settings and Contact copy in Sanity during
+		// this staged adoption. The shared editor may save private Convex drafts,
+		// but it must not expose publishing until each public read boundary is connected.
+		if (prop === "publishSiteSettings" || prop === "publishContactPage") return undefined;
 		return Reflect.get(content, prop, receiver);
 	},
 });
@@ -66,6 +67,9 @@ export const adminConfig: AdminConfig = {
 	api: apiWithAliases,
 	editor: {
 		siteSettings: {},
+		contactPage: {
+			initialPayload: contactPageSeed,
+		},
 		blog: {
 			mediaBaseUrl: "https://media.angelsrest.online",
 		},
