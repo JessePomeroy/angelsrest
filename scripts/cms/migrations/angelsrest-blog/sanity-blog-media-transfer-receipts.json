@@ -17,6 +17,17 @@
 				"height": 600
 			}
 		},
+		"image-12b028c5acab8e557ef9736cc9def77ecc33f706-600x600-jpg": {
+			"mediaAssetId": "nh77zx9121shkmexjvaa2pswj98ar2cg",
+			"workerAssetId": "65486f64-f057-4260-819a-be8354d6b351",
+			"sourceSha256": "84eb6d26a16ad4635d85c87e55ef8353c87100449266f48231b37d95838fa39b",
+			"source": {
+				"contentType": "image/jpeg",
+				"sizeBytes": 66734,
+				"width": 600,
+				"height": 600
+			}
+		},
 		"image-35e637d5107bdbcc18a316d85b4eee2115222360-2880x1492-png": {
 			"mediaAssetId": "nh71hrsmf1vnc8k62v2f6wrkp18asxer",
 			"workerAssetId": "fb751126-d9a3-41a1-806d-9529f08a9449",
@@ -37,6 +48,17 @@
 				"sizeBytes": 2844631,
 				"width": 1568,
 				"height": 1366
+			}
+		},
+		"image-d4ee0889a5b82e47027dc57c39604a9320896875-2624x1876-png": {
+			"mediaAssetId": "nh75erfw9q3evy3pft71mpf4bd8asnkv",
+			"workerAssetId": "363ab547-fc7e-4ec6-888e-abdb864dae47",
+			"sourceSha256": "6efa62af18bad456200e5d0057775a581aa47840b5094b02e947e0e9e01d2888",
+			"source": {
+				"contentType": "image/png",
+				"sizeBytes": 1760970,
+				"width": 2624,
+				"height": 1876
 			}
 		}
 	}
