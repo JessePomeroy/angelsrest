@@ -1,5 +1,13 @@
 # @jessepomeroy/crm-api
 
+## 2.16.0
+
+### Minor Changes
+
+- aaa09d7: Add the operator-only, fixed-batch Sanity Blog draft import with pinned source
+  digest, atomic graph creation, explicit migration provenance, and zero-write
+  identical replay verification.
+
 ## 2.15.0
 
 ### Minor Changes
