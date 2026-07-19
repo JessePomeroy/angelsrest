@@ -1,7 +1,14 @@
 import { describe, expect, it, vi } from "vitest";
 import { adminConfig } from "$lib/config/admin";
 
-const { apiMock, galleriesApi, mediaApi, portfolioApi } = vi.hoisted(() => {
+const { apiMock, contentApi, galleriesApi, mediaApi, portfolioApi } = vi.hoisted(() => {
+	const contentApi = {
+		getSiteSettingsEditorState: "content.getSiteSettingsEditorState",
+		saveSiteSettingsDraft: "content.saveSiteSettingsDraft",
+		publishSiteSettings: "content.publishSiteSettings",
+		discardSiteSettingsDraft: "content.discardSiteSettingsDraft",
+		getHomepageQuoteEditorState: "content.getHomepageQuoteEditorState",
+	};
 	const galleriesApi = { listBySite: "galleries.listBySite" };
 	const mediaApi = {
 		listForEditor: "mediaAssets.listForEditor",
@@ -17,10 +24,12 @@ const { apiMock, galleriesApi, mediaApi, portfolioApi } = vi.hoisted(() => {
 		reorder: "portfolioGalleries.reorder",
 	};
 	return {
+		contentApi,
 		galleriesApi,
 		mediaApi,
 		portfolioApi,
 		apiMock: {
+			content: contentApi,
 			galleries: galleriesApi,
 			galleryPassword: { setPassword: "galleryPassword.setPassword" },
 			blogContent: { listForEditor: "blogContent.listForEditor" },
@@ -42,6 +51,20 @@ describe("admin API aliases", () => {
 		expect(adminConfig.api.galleryDelivery?.listBySite).toBe(galleriesApi.listBySite);
 		expect(adminConfig.api.galleryDelivery?.setPassword).toBe(apiMock.galleryPassword.setPassword);
 		expect(adminConfig.api.crm).toBe(apiMock.crm);
+		expect(adminConfig.api.siteEditor).not.toBe(contentApi);
+		expect(adminConfig.api.siteEditor?.getSiteSettingsEditorState).toBe(
+			contentApi.getSiteSettingsEditorState,
+		);
+		expect(adminConfig.api.siteEditor?.saveSiteSettingsDraft).toBe(
+			contentApi.saveSiteSettingsDraft,
+		);
+		expect(adminConfig.api.siteEditor?.publishSiteSettings).toBeUndefined();
+		expect(adminConfig.api.siteEditor?.discardSiteSettingsDraft).toBe(
+			contentApi.discardSiteSettingsDraft,
+		);
+		expect(adminConfig.api.siteEditor?.getHomepageQuoteEditorState).toBe(
+			contentApi.getHomepageQuoteEditorState,
+		);
 
 		const portfolioEditor = adminConfig.api.portfolioEditor;
 		expect(portfolioEditor?.listForEditor).toBe(portfolioApi.listForEditor);
@@ -54,6 +77,7 @@ describe("admin API aliases", () => {
 		expect(portfolioEditor?.registerReadyWebAsset).toBe(mediaApi.registerReadyWebAsset);
 		expect(portfolioEditor?.requestDeletion).toBe(mediaApi.requestDeletion);
 		expect(adminConfig.editor?.blog?.mediaBaseUrl).toBe("https://media.angelsrest.online");
+		expect(adminConfig.editor?.siteSettings).toEqual({});
 		expect(adminConfig.editor?.portfolio).toEqual({
 			mediaBaseUrl: "https://media.angelsrest.online",
 			uploadEndpoint: "/api/admin/media",
