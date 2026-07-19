@@ -35,6 +35,12 @@ import {
 } from "./contentLifecycle";
 import type { PublishedSlugChange } from "./contentValidators";
 
+export type BlogDraftWriter = {
+	actor: string;
+	source: "admin" | "sanityImport";
+	now: number;
+};
+
 function canonicalDraftSlug(draft: BlogSupportingDraft) {
 	if (draft.slug === undefined || !draft.slug.trim()) return undefined;
 	try {
@@ -69,8 +75,7 @@ async function insertRevision(
 	document: Doc<"contentDocuments">,
 	draft: BlogSupportingDraft,
 	checksum: string,
-	actor: string,
-	now: number,
+	writer: BlogDraftWriter,
 ) {
 	return await ctx.db.insert("contentRevisions", {
 		siteUrl: document.siteUrl,
@@ -78,10 +83,10 @@ async function insertRevision(
 		kind: draft.kind,
 		schemaVersion: 1,
 		payload: draft,
-		source: "admin",
+		source: writer.source,
 		checksum,
-		createdAt: now,
-		createdBy: actor,
+		createdAt: writer.now,
+		createdBy: writer.actor,
 	});
 }
 
@@ -102,34 +107,41 @@ async function requireCurrentPublishedBlogSlug(
 	}
 }
 
-export async function createBlogDraft(
+export async function createBlogDraftForSite(
 	ctx: MutationCtx,
 	args: {
 		siteUrl: string;
 		documentKey: string;
 		draft: BlogSupportingDraft;
+		writer: BlogDraftWriter;
 	},
 ) {
-	const { identity, client } = await requireSiteAdmin(ctx, args.siteUrl);
 	validateBlogDocumentKey(args.documentKey);
 	validateBlogSupportingDraft(args.draft);
 	const checksum = await checksumBlogDraft(blogContentChecksumInput(args.draft));
 	const existing = await getDocumentByKey(
 		ctx,
-		client.siteUrl,
+		args.siteUrl,
 		args.draft.kind,
 		args.documentKey,
 	);
 	if (existing) {
 		const document = assertBlogDocument(existing, args.draft.kind);
 		const currentDraft = await loadBlogRevision(ctx, document, document.draftRevisionId);
-		if (currentDraft?.revision.checksum === checksum) {
-			return { documentId: document._id, revisionId: currentDraft.revision._id };
+		if (
+			currentDraft?.revision.checksum === checksum &&
+			currentDraft.revision.source === args.writer.source
+		) {
+			return {
+				documentId: document._id,
+				revisionId: currentDraft.revision._id,
+				created: false,
+			};
 		}
 		throw new Error("Blog document key already exists");
 	}
 
-	const documents = await listBlogDocuments(ctx, client.siteUrl, args.draft.kind);
+	const documents = await listBlogDocuments(ctx, args.siteUrl, args.draft.kind);
 	if (documents.length >= BLOG_SUPPORTING_DOCUMENT_MAX) {
 		throw new Error(
 			`A site cannot exceed ${BLOG_SUPPORTING_DOCUMENT_MAX} ${args.draft.kind} documents`,
@@ -137,16 +149,15 @@ export async function createBlogDraft(
 	}
 	const slug = canonicalDraftSlug(args.draft);
 	await requireContentSlugAvailable(ctx, {
-		siteUrl: client.siteUrl,
+		siteUrl: args.siteUrl,
 		kind: args.draft.kind,
 		slug,
 	});
-	await requireReadyAuthorPortrait(ctx, client.siteUrl, args.draft);
+	await requireReadyAuthorPortrait(ctx, args.siteUrl, args.draft);
 
-	const now = Date.now();
-	const actor = identity.tokenIdentifier;
+	const { actor, now } = args.writer;
 	const documentId = await ctx.db.insert("contentDocuments", {
-		siteUrl: client.siteUrl,
+		siteUrl: args.siteUrl,
 		kind: args.draft.kind,
 		documentKey: args.documentKey,
 		slug,
@@ -166,10 +177,31 @@ export async function createBlogDraft(
 		document,
 		args.draft,
 		checksum,
-		actor,
-		now,
+		args.writer,
 	);
 	await ctx.db.patch(documentId, { draftRevisionId: revisionId });
+	return { documentId, revisionId, created: true };
+}
+
+export async function createBlogDraft(
+	ctx: MutationCtx,
+	args: {
+		siteUrl: string;
+		documentKey: string;
+		draft: BlogSupportingDraft;
+	},
+) {
+	const { identity, client } = await requireSiteAdmin(ctx, args.siteUrl);
+	const { documentId, revisionId } = await createBlogDraftForSite(ctx, {
+		siteUrl: client.siteUrl,
+		documentKey: args.documentKey,
+		draft: args.draft,
+		writer: {
+			actor: identity.tokenIdentifier,
+			source: "admin",
+			now: Date.now(),
+		},
+	});
 	return { documentId, revisionId };
 }
 
@@ -213,8 +245,11 @@ export async function saveBlogDraft(
 		document,
 		args.draft,
 		checksum,
-		identity.tokenIdentifier,
-		now,
+		{
+			actor: identity.tokenIdentifier,
+			source: "admin",
+			now,
+		},
 	);
 	await ctx.db.patch(document._id, {
 		...(document.publishedRevisionId ? {} : { slug }),

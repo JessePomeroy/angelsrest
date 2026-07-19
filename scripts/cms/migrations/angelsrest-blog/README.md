@@ -17,7 +17,33 @@ The import dry run reports two deliberately separate decisions:
 
 An optional Sanity author biography that is absent, projected as `null`, or stored as an empty array is normalized to no biography. Other malformed roots remain blocking; the importer never wraps strings or objects into invented Portable Text.
 
-CMS-4.4o is read-only. It does not create Convex content, publish drafts, mutate Sanity or media, or change the public Blog provider. A later reviewed iteration performs the bounded unpublished draft import only after this gate passes.
+CMS-4.4o is read-only. It does not create Convex content, publish drafts, mutate Sanity or media, or change the public Blog provider. CMS-4.4p performs the bounded unpublished draft import only after this gate passes.
+
+## Atomic CMS-4.4p draft import
+
+Build and validate the fixed execution plan without writing Convex or changing any provider:
+
+```sh
+pnpm cms:blog-import
+```
+
+Plan mode fetches the published Sanity perspective and rebuilds the exact reviewed batch: one Author, one Category, four Posts, and 21 media mappings for `angelsrest.online`. It validates the source project and dataset, document keys, canonical slugs, relations, media use, mapping cardinality, and the checked-in SHA-256 plan digest. Any source or mapping drift fails closed. The sanitized mode-`0600` report is written to `/tmp/angelsrest-sanity-blog-import-execution.json`.
+
+After the implementation is merged and its production Convex functions are deployed, execute the fixed unpublished batch with the exact confirmation phrase:
+
+```sh
+pnpm cms:blog-import -- \
+  --execute \
+  --confirm "import CMS-4.4p unpublished Angels Rest Blog drafts"
+```
+
+Execution uses the repository's production-only Convex CLI selection safeguards and calls one internal mutation. That mutation preflights the fixed tenant and every mapped media record before writing. Convex commits the six-document graph in one transaction, so an error rolls back the whole batch. Every revision is marked `sanityImport`; every document remains unpublished. The runner checkpoints the first successful result in the secure report, immediately executes the identical plan a second time, and accepts only a zero-write `identical-replay` with unchanged document and revision identities. If the first call succeeds but replay confirmation fails, the report remains explicit as `replay-unconfirmed`; rerunning the exact command safely resumes through the same replay boundary.
+
+The mutation rejects a partial import, an existing edited, published, archived, foreign-source, or otherwise conflicting target document, missing or unready tenant media, unresolved relations, changed ranks, extra revisions, digest drift, or source drift. It deliberately ignores unrelated documents outside the six released document keys.
+
+Rollback is the implementation PR boundary. Imported records are publicly inert because they are unpublished and the public Blog continues to read Sanity. Do not delete the imported graph ad hoc; any data removal requires a separate reviewed rollback operation constrained to the exact never-published, never-admin-edited `sanityImport` batch and its pinned digest.
+
+CMS-4.4p does not publish content, invent alt text, change the public Blog provider, mutate or delete Sanity, delete media, remove the fallback, migrate products or public galleries, or begin Editor visual refinement.
 
 ## Bounded CMS-4.4n transfer
 
