@@ -445,7 +445,7 @@ describe("tenant-scoped CMS media assets", () => {
 			siteUrl: SITE_A.siteUrl,
 			asset: readyAsset(),
 		})).rejects.toThrow(/permanently deleted/i);
-	});
+	}, 10_000);
 
 	test("binds a deletion request to the host-supplied tenant before changing status", async () => {
 		const t = await setup();

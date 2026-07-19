@@ -105,13 +105,41 @@ export function canonicalCatalogSlug(slug: string | undefined) {
 	return slug || undefined;
 }
 
+export function validateCatalogProductSlug(slug: string | undefined) {
+	assertMaximum(slug, CATALOG_PRODUCT_LIMITS.slug, "Product slug");
+	if (slug !== undefined && !SLUG_PATTERN.test(slug)) {
+		throw new Error("Product slug must contain only lowercase letters, numbers, and single hyphens");
+	}
+}
+
+export function validateCatalogRevisionSummary(summary: {
+	title?: string;
+	slug?: string;
+	variantCount: number;
+	createdAt: number;
+}) {
+	assertMaximum(summary.title, CATALOG_PRODUCT_LIMITS.title, "Product title");
+	validateCatalogProductSlug(summary.slug);
+	if (
+		!Number.isSafeInteger(summary.variantCount)
+		|| summary.variantCount < 0
+		|| summary.variantCount > CATALOG_PRODUCT_LIMITS.variantsPerRevision
+	) {
+		throw new Error("Catalog revision variant count must be a bounded non-negative integer");
+	}
+	validateCatalogTimestamp(summary.createdAt, "Catalog revision created timestamp");
+}
+
+export function validateCatalogTimestamp(value: number, field: string) {
+	if (!Number.isSafeInteger(value) || value < 0) {
+		throw new Error(`${field} must be a non-negative safe integer`);
+	}
+}
+
 export function validateCatalogProductDraft(draft: CatalogProductDraft) {
 	assertMaximum(draft.title, CATALOG_PRODUCT_LIMITS.title, "Product title");
 	assertMaximum(draft.description, CATALOG_PRODUCT_LIMITS.description, "Product description");
-	assertMaximum(draft.slug, CATALOG_PRODUCT_LIMITS.slug, "Product slug");
-	if (draft.slug !== undefined && !SLUG_PATTERN.test(draft.slug)) {
-		throw new Error("Product slug must contain only lowercase letters, numbers, and single hyphens");
-	}
+	validateCatalogProductSlug(draft.slug);
 	if (draft.fulfillmentMode === "digital_delivery") {
 		throw new Error("A print cannot use digital delivery fulfillment");
 	}

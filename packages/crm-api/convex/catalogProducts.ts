@@ -5,6 +5,7 @@ import {
 	createCatalogProductDraft,
 	discardCatalogProductDraft,
 	getCatalogProductEditorState,
+	listCatalogProductsForEditor,
 	saveCatalogProductDraft,
 } from "./helpers/catalogProductStore";
 
@@ -37,9 +38,16 @@ export const discardDraft = mutation({
 	handler: async (ctx, args) => await discardCatalogProductDraft(ctx, args),
 });
 
-/** Authenticated editor-only read. CMS-5.2 intentionally exports no public read. */
+/** Authenticated editor-only detail read; no storefront/public-safe read exists. */
 export const getEditorState = query({
 	args: { productId: v.id("catalogProducts") },
 	handler: async (ctx, { productId }) =>
 		await getCatalogProductEditorState(ctx, productId),
+});
+
+/** Bounded single-print headers for one authenticated tenant Editor. */
+export const listForEditor = query({
+	args: { siteUrl: v.string() },
+	handler: async (ctx, { siteUrl }) =>
+		await listCatalogProductsForEditor(ctx, siteUrl),
 });
