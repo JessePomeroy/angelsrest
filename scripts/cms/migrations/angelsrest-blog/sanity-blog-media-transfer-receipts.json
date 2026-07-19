@@ -127,6 +127,17 @@
 				"height": 1366
 			}
 		},
+		"image-b97c89c82073b12c5b97b03ea3e1bdbd76d41e71-1832x3968-jpg": {
+			"mediaAssetId": "nh7ae4kwgr1hqr85prav7m9vtx8at5z6",
+			"workerAssetId": "3d92a112-74a4-4f19-a2b0-bf3be13ac429",
+			"sourceSha256": "52fe0b91b2b90c52990e7365c475028155ec7138670179598e81e035535c9843",
+			"source": {
+				"contentType": "image/jpeg",
+				"sizeBytes": 630351,
+				"width": 1832,
+				"height": 3968
+			}
+		},
 		"image-bfe45aa66ae0403bb2ff0940c1f7b7421cc27628-2624x1876-png": {
 			"mediaAssetId": "nh753qjrs276k00r2adcjkjgps8av7g4",
 			"workerAssetId": "672e2192-5ac3-4614-b58e-88535623b0e1",
