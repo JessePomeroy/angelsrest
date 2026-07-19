@@ -21,13 +21,16 @@ const MAX_CAPABILITY_LIFETIME_MS = 16 * 60 * 1000;
 const ACTIVE_OPERATION_MESSAGE = "CMS media asset operation is already in progress";
 const MAX_PROCESS_ATTEMPTS = 3;
 
-export const CMS_BLOG_MEDIA_BATCH_ID = "CMS-4.4k" as const;
+export const CMS_BLOG_MEDIA_BATCH_ID = "CMS-4.4l" as const;
 export const CMS_BLOG_MEDIA_PRODUCTION_ORIGIN = "https://www.angelsrest.online";
-export const CMS_BLOG_MEDIA_PRODUCTION_CONFIRMATION = `transfer ${CMS_BLOG_MEDIA_BATCH_ID} two-asset batch to www.angelsrest.online`;
 export const CMS_BLOG_MEDIA_SOURCE_ASSET_REFS = [
-	"image-d4ee0889a5b82e47027dc57c39604a9320896875-2624x1876-png",
-	"image-12b028c5acab8e557ef9736cc9def77ecc33f706-600x600-jpg",
+	"image-db60afd87e022cd5d4fa54f5c4a3fe97ceb57cd6-2624x1876-png",
+	"image-4cc2102493e41f18ed7f2727a88b80b5007741a2-2624x1876-png",
+	"image-09a2b170c772750958a7f5b224a19be7f748e12c-2624x1876-png",
+	"image-bfe45aa66ae0403bb2ff0940c1f7b7421cc27628-2624x1876-png",
+	"image-efdb9b1e4b4f95723596ace8d0f2b4f6be06fe62-2400x1654-png",
 ] as const;
+export const CMS_BLOG_MEDIA_PRODUCTION_CONFIRMATION = `transfer ${CMS_BLOG_MEDIA_BATCH_ID} ${CMS_BLOG_MEDIA_SOURCE_ASSET_REFS.length}-asset batch to www.angelsrest.online`;
 
 export type CmsBlogMediaSourceAssetRef = (typeof CMS_BLOG_MEDIA_SOURCE_ASSET_REFS)[number];
 
@@ -35,19 +38,40 @@ export const CMS_BLOG_MEDIA_SOURCE_EXPECTATIONS: Record<
 	CmsBlogMediaSourceAssetRef,
 	BlogMediaSource & { sourceSha256: string }
 > = {
-	"image-d4ee0889a5b82e47027dc57c39604a9320896875-2624x1876-png": {
+	"image-db60afd87e022cd5d4fa54f5c4a3fe97ceb57cd6-2624x1876-png": {
 		contentType: "image/png",
-		sizeBytes: 1_760_970,
+		sizeBytes: 516_659,
 		width: 2624,
 		height: 1876,
-		sourceSha256: "6efa62af18bad456200e5d0057775a581aa47840b5094b02e947e0e9e01d2888",
+		sourceSha256: "d8387375df9a40cf7cf144e46175f9f928f40767b06d4ecda29426ff0e14b08f",
 	},
-	"image-12b028c5acab8e557ef9736cc9def77ecc33f706-600x600-jpg": {
-		contentType: "image/jpeg",
-		sizeBytes: 66_734,
-		width: 600,
-		height: 600,
-		sourceSha256: "84eb6d26a16ad4635d85c87e55ef8353c87100449266f48231b37d95838fa39b",
+	"image-4cc2102493e41f18ed7f2727a88b80b5007741a2-2624x1876-png": {
+		contentType: "image/png",
+		sizeBytes: 619_435,
+		width: 2624,
+		height: 1876,
+		sourceSha256: "7b35198251e392b180b2e3e2a88fd92381eb1affc016b562a2c7c6756fff7879",
+	},
+	"image-09a2b170c772750958a7f5b224a19be7f748e12c-2624x1876-png": {
+		contentType: "image/png",
+		sizeBytes: 1_408_551,
+		width: 2624,
+		height: 1876,
+		sourceSha256: "36627a3e7af7aec59a2e26e58ae9ca41cb31b8449c235566ce11d84797262d07",
+	},
+	"image-bfe45aa66ae0403bb2ff0940c1f7b7421cc27628-2624x1876-png": {
+		contentType: "image/png",
+		sizeBytes: 1_446_326,
+		width: 2624,
+		height: 1876,
+		sourceSha256: "212ebaf2c307dc079018aa1ab348e35556f8e01b9be50f29187a41261a43d876",
+	},
+	"image-efdb9b1e4b4f95723596ace8d0f2b4f6be06fe62-2400x1654-png": {
+		contentType: "image/png",
+		sizeBytes: 1_004_790,
+		width: 2400,
+		height: 1654,
+		sourceSha256: "96b938e7440b7a684289466abaea39b1c6c63b07ba2b315ee483e8d7705497a7",
 	},
 };
 
@@ -272,7 +296,9 @@ export function parseSanityBlogMediaTransferOptions(
 		throw new Error("--cookie-file requires one trimmed path");
 	}
 	if (sourceAssetRefs.length !== CMS_BLOG_MEDIA_SOURCE_ASSET_REFS.length) {
-		throw new Error("Execution requires exactly two explicit --source-ref values");
+		throw new Error(
+			`Execution requires exactly ${CMS_BLOG_MEDIA_SOURCE_ASSET_REFS.length} explicit --source-ref values`,
+		);
 	}
 	if (new Set(sourceAssetRefs).size !== sourceAssetRefs.length) {
 		throw new Error("Execution source references must be unique");

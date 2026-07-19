@@ -628,7 +628,7 @@ async function runPlanOnly() {
 		);
 	}
 	console.log(
-		`Production execution requires --execute, two --source-ref flags, --cookie-file, and --confirm "${CMS_BLOG_MEDIA_PRODUCTION_CONFIRMATION}".`,
+		`Production execution requires --execute, ${CMS_BLOG_MEDIA_SOURCE_ASSET_REFS.length} --source-ref flags, --cookie-file, and --confirm "${CMS_BLOG_MEDIA_PRODUCTION_CONFIRMATION}".`,
 	);
 }
 
@@ -717,7 +717,7 @@ async function runExecution(
 		await syncDirectory(MIGRATION_DIRECTORY);
 		completed = true;
 		console.log(
-			`${CMS_BLOG_MEDIA_BATCH_ID} fixed two-asset batch completed and passed the production registry gate.`,
+			`${CMS_BLOG_MEDIA_BATCH_ID} fixed ${CMS_BLOG_MEDIA_SOURCE_ASSET_REFS.length}-asset batch completed and passed the production registry gate.`,
 		);
 	} finally {
 		await releaseLock();
