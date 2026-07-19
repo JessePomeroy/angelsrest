@@ -117,7 +117,7 @@ export async function requireSiteAdmin(
 	const client = await ctx.db
 		.query("platformClients")
 		.withIndex("by_siteUrl", (q) => q.eq("siteUrl", siteUrl))
-		.first();
+		.unique();
 	if (!client) {
 		throw new Error("Not authorized (site not found)");
 	}
@@ -142,6 +142,9 @@ export async function requireDocumentSiteAdmin<T extends TableNames>(
 	table: T,
 	id: Id<T>,
 ) {
+	// Authenticate before the lookup so callers cannot distinguish an existing
+	// document id from a missing one without first presenting a valid identity.
+	await requireAuth(ctx);
 	const doc = await ctx.db.get(id);
 	if (!doc) {
 		throw new Error("Not found");
