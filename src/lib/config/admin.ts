@@ -50,7 +50,9 @@ export const adminConfig: AdminConfig = {
 	galleryWorkerUrl: "https://gallery-worker.thinkingofview.workers.dev",
 	api: apiWithAliases,
 	editor: {
-		blog: {},
+		blog: {
+			mediaBaseUrl: "https://media.angelsrest.online",
+		},
 	},
 	// Route mutations through the SvelteKit proxy at /api/admin/mutation.
 	// Queries use the manually authenticated browser WebSocket; the HTTP path
