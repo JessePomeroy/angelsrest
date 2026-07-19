@@ -5,6 +5,7 @@ import {
 	type CatalogProductDraft,
 	serializeCatalogProductDraft,
 	validateCatalogProductDraft,
+	validateCatalogRevisionSummary,
 } from "./catalogProductValidators";
 
 type CatalogContext = QueryCtx | MutationCtx;
@@ -56,6 +57,22 @@ export async function getCatalogRevision(
 	revisionId: Id<"catalogProductRevisions"> | undefined,
 ) {
 	return revisionId ? await ctx.db.get(revisionId) : null;
+}
+
+export async function loadCatalogRevisionSummary(
+	ctx: CatalogContext,
+	product: CatalogProduct,
+	revisionId: Id<"catalogProductRevisions"> | undefined,
+) {
+	if (!revisionId) return null;
+	const revision = await getCatalogRevision(ctx, revisionId);
+	if (!revision) throw new Error("Catalog revision not found");
+	assertCatalogRevisionOwnership(revision, product);
+	validateCatalogRevisionSummary(revision);
+	if (revision.slug !== product.slug) {
+		throw new Error("Catalog product slug ownership mismatch");
+	}
+	return revision;
 }
 
 async function getCatalogVariants(
@@ -204,5 +221,18 @@ export function projectCatalogEditorRevision(
 			retailPriceCents: variant.retailPriceCents ?? null,
 			status: variant.status,
 		})),
+	};
+}
+
+export function projectCatalogEditorRevisionSummary(
+	revision: CatalogRevision | null,
+) {
+	if (!revision) return null;
+	return {
+		revisionId: revision._id,
+		title: revision.title ?? null,
+		saleAvailability: revision.saleAvailability,
+		variantCount: revision.variantCount,
+		createdAt: revision.createdAt,
 	};
 }

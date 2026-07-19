@@ -890,6 +890,7 @@ describe("tenant-scoped catalog product drafts", () => {
 			"createDraft",
 			"discardDraft",
 			"getEditorState",
+			"listForEditor",
 			"saveDraft",
 		]);
 
