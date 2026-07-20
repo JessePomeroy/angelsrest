@@ -1,5 +1,7 @@
 import { CATALOG_PRODUCT_LIMITS } from "./catalogProductValidators";
+import { PRIVATE_CATALOG_ASSET_LIMITS } from "./catalogPrivateAssetValidators";
 import type {
+	SanityCatalogAssetSource,
 	SanityCatalogDocumentSource,
 	SanityCatalogImageSource,
 	SanityCatalogImportIssue,
@@ -12,6 +14,7 @@ const FILE_REF_PATTERN = /^file-[A-Za-z0-9]+-[A-Za-z0-9.]+$/;
 const PRODUCT_KEY_PATTERN = /^[A-Za-z0-9]+(?:[._:-][A-Za-z0-9]+)*$/;
 const OPTION_KEY_PATTERN = /^[a-z0-9]+(?:[._:-][a-z0-9]+)*$/;
 const SLUG_PATTERN = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
+const MACHINE_CONTROL_CHARACTER_PATTERN = /[\u0000-\u001f\u007f]/;
 const MAX_PRICE_CENTS = 100_000_000;
 
 export function compareOrdinal(left: string, right: string) {
@@ -29,6 +32,13 @@ export function issue(
 
 export function text(value: unknown) {
 	return typeof value === "string" && value.trim() ? value.trim() : undefined;
+}
+
+export function exactMachineText(value: unknown) {
+	return typeof value === "string" && value.length > 0 && value === value.trim()
+		&& !MACHINE_CONTROL_CHARACTER_PATTERN.test(value)
+		? value
+		: undefined;
 }
 
 export function cleanSourceId(value: string) {
@@ -202,7 +212,44 @@ export function multiplierBasisPoints(
 }
 
 export function isValidFileReference(value: string) {
-	return FILE_REF_PATTERN.test(value);
+	return value.length <= PRIVATE_CATALOG_ASSET_LIMITS.sourceId
+		&& FILE_REF_PATTERN.test(value);
+}
+
+export function exactAssetProvenance(
+	asset: SanityCatalogAssetSource | null | undefined,
+	options: {
+		reference: string;
+		path: string;
+		invalidReferenceCode: "invalid-image-reference" | "invalid-file-reference";
+		label: string;
+	},
+	issues: SanityCatalogImportIssue[],
+) {
+	const sourceAssetId = exactMachineText(asset?._id);
+	if (sourceAssetId !== options.reference) {
+		issues.push(
+			issue(
+				options.invalidReferenceCode,
+				`${options.path}._id`,
+				`${options.label} metadata must resolve the exact referenced Sanity asset`,
+			),
+		);
+	}
+	const sourceAssetRevision = exactMachineText(asset?._rev);
+	const validRevision = sourceAssetRevision !== undefined
+		&& sourceAssetRevision.length <= PRIVATE_CATALOG_ASSET_LIMITS.sourceRevision;
+	if (!validRevision) {
+		issues.push(
+			issue(
+				"invalid-source-metadata",
+				`${options.path}._rev`,
+				`${options.label} must preserve its own bounded Sanity asset revision`,
+			),
+		);
+	}
+	if (sourceAssetId !== options.reference || !validRevision) return undefined;
+	return { sourceAssetId, sourceAssetRevision };
 }
 
 export function imagePlacement(
@@ -219,8 +266,12 @@ export function imagePlacement(
 	issues: SanityCatalogImportIssue[],
 ) {
 	if (!image) return undefined;
-	const sourceAssetRef = text(image.assetRef);
-	if (!sourceAssetRef || !IMAGE_REF_PATTERN.test(sourceAssetRef)) {
+	const sourceAssetRef = exactMachineText(image.assetRef);
+	if (
+		!sourceAssetRef
+		|| sourceAssetRef.length > PRIVATE_CATALOG_ASSET_LIMITS.sourceId
+		|| !IMAGE_REF_PATTERN.test(sourceAssetRef)
+	) {
 		issues.push(
 			issue(
 				"invalid-image-reference",
@@ -230,6 +281,16 @@ export function imagePlacement(
 		);
 		return undefined;
 	}
+	const provenance = exactAssetProvenance(
+		image.assetSource,
+		{
+			reference: sourceAssetRef,
+			path: `${options.path}.assetSource`,
+			invalidReferenceCode: "invalid-image-reference",
+			label: "Image",
+		},
+		issues,
+	);
 	const sourceKey = text(image._key);
 	if (options.requireSourceKey && !sourceKey) {
 		issues.push(
@@ -251,11 +312,13 @@ export function imagePlacement(
 			),
 		);
 	}
+	if (!provenance) return undefined;
 	return {
 		key: sourceKey ?? options.fallbackKey,
 		role: options.role,
 		order: options.order,
 		sourceAssetRef,
+		...provenance,
 		...(altText ? { altText } : {}),
 		printSource: options.printSource,
 	} satisfies SanityCatalogImportMediaPlacement;

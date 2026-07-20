@@ -53,6 +53,8 @@ function sanitizedProducts(manifest: SanityCatalogImportManifest) {
 			role: placement.role,
 			order: placement.order,
 			sourceAssetRef: placement.sourceAssetRef,
+			sourceAssetId: placement.sourceAssetId,
+			sourceAssetRevision: placement.sourceAssetRevision,
 			hasAltText: Boolean(placement.altText),
 			printSource: placement.printSource,
 		})),
@@ -62,6 +64,7 @@ function sanitizedProducts(manifest: SanityCatalogImportManifest) {
 			? {
 					sourceFileRef: product.digitalFile.sourceFileRef,
 					sourceAssetId: product.digitalFile.sourceAssetId,
+					sourceAssetRevision: product.digitalFile.sourceAssetRevision,
 					originalFilename: product.digitalFile.originalFilename,
 					mimeType: product.digitalFile.mimeType,
 					sizeBytes: product.digitalFile.sizeBytes,

@@ -13,6 +13,10 @@ import {
 export const CREATED_AT = "2026-01-01T00:00:00.000Z";
 export const UPDATED_AT = "2026-07-19T12:00:00.000Z";
 
+function assetSource(id: string) {
+	return { _id: id, _rev: `asset-revision-${id}` };
+}
+
 function metadata(id: string, type: string) {
 	return {
 		_id: id,
@@ -24,7 +28,12 @@ function metadata(id: string, type: string) {
 }
 
 export function image(key: string, ref: string) {
-	return { _key: key, assetRef: ref, alt: `Description for ${key}.` };
+	return {
+		_key: key,
+		assetRef: ref,
+		assetSource: assetSource(ref),
+		alt: `Description for ${key}.`,
+	};
 }
 
 export function sourceFixture(): SanityCatalogImportSource {
@@ -34,7 +43,11 @@ export function sourceFixture(): SanityCatalogImportSource {
 			title: "One Print",
 			slug: "one-print",
 			description: "A print description.",
-			image: { assetRef: "image-a-1200x800-jpg", alt: "A quiet landscape." },
+			image: {
+				assetRef: "image-a-1200x800-jpg",
+				assetSource: assetSource("image-a-1200x800-jpg"),
+				alt: "A quiet landscape.",
+			},
 			variants: [{
 				_key: "print-variant",
 				paper: "archival-matte",
@@ -54,6 +67,7 @@ export function sourceFixture(): SanityCatalogImportSource {
 			slug: "two-print-set",
 			previewImage: {
 				assetRef: "image-b-1200x800-jpg",
+				assetSource: assetSource("image-b-1200x800-jpg"),
 				alt: "The set cover.",
 			},
 			images: [
@@ -96,6 +110,7 @@ export function sourceFixture(): SanityCatalogImportSource {
 				digitalFileRef: "file-a-zip",
 				digitalFileAsset: {
 					_id: "file-a-zip",
+					_rev: "asset-revision-file-a-zip",
 					originalFilename: "theme-kit.zip",
 					mimeType: "application/zip",
 					size: 15_064,

@@ -15,6 +15,8 @@ import {
 	booleanDefault,
 	cents,
 	cleanSourceId,
+	exactAssetProvenance,
+	exactMachineText,
 	imagePlacement,
 	isValidFileReference,
 	issue,
@@ -406,7 +408,8 @@ export function convertGeneral(
 	if (socialShare) media.push(socialShare);
 	validatePlacementKeys(media, `${sourcePath}.media`, issues);
 	const sourceCollectionId = text(source.collectionRef);
-	const digitalFileRef = text(source.digitalFileRef);
+	const providedDigitalFileRef = text(source.digitalFileRef);
+	const digitalFileRef = exactMachineText(source.digitalFileRef);
 	let digitalFile: SanityCatalogImportProduct["digitalFile"];
 	if (kind === "digital_download") {
 		if (!digitalFileRef || !isValidFileReference(digitalFileRef)) {
@@ -418,19 +421,19 @@ export function convertGeneral(
 				),
 			);
 		} else {
-			const sourceAssetId = text(source.digitalFileAsset?._id);
+			const provenance = exactAssetProvenance(
+				source.digitalFileAsset,
+				{
+					reference: digitalFileRef,
+					path: `${sourcePath}.digitalFileAsset`,
+					invalidReferenceCode: "invalid-file-reference",
+					label: "Digital file",
+				},
+				issues,
+			);
 			const originalFilename = text(source.digitalFileAsset?.originalFilename);
 			const mimeType = text(source.digitalFileAsset?.mimeType);
 			const sizeBytes = source.digitalFileAsset?.size;
-			if (sourceAssetId !== digitalFileRef) {
-				issues.push(
-					issue(
-						"invalid-file-reference",
-						`${sourcePath}.digitalFileAsset._id`,
-						"Digital file metadata must resolve the exact referenced Sanity asset",
-					),
-				);
-			}
 			if (!originalFilename) {
 				issues.push(
 					issue(
@@ -459,7 +462,7 @@ export function convertGeneral(
 				);
 			}
 			if (
-				sourceAssetId === digitalFileRef
+				provenance
 				&& originalFilename
 				&& mimeType
 				&& Number.isSafeInteger(sizeBytes)
@@ -467,7 +470,7 @@ export function convertGeneral(
 			) {
 				digitalFile = {
 					sourceFileRef: digitalFileRef,
-					sourceAssetId,
+					...provenance,
 					originalFilename,
 					mimeType,
 					sizeBytes: sizeBytes as number,
@@ -477,7 +480,7 @@ export function convertGeneral(
 				};
 			}
 		}
-	} else if (digitalFileRef) {
+	} else if (providedDigitalFileRef) {
 		issues.push(
 			issue(
 				"invalid-file-reference",
