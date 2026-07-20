@@ -4,6 +4,12 @@ const SECRETS_PER_TENANT_LIMIT = 2;
 const SECRET_MIN_LENGTH = 32;
 const SECRET_MAX_LENGTH = 512;
 
+export function isServerSecretCandidate(value: string) {
+	return value.length >= SECRET_MIN_LENGTH
+		&& value.length <= SECRET_MAX_LENGTH
+		&& value === value.trim();
+}
+
 export function isTenantSiteSegment(value: unknown): value is string {
 	return typeof value === "string"
 		&& value.length > 0
@@ -52,9 +58,7 @@ export function parseTenantSecretRegistry(
 			|| secrets.length > SECRETS_PER_TENANT_LIMIT
 			|| secrets.some((secret) => (
 				typeof secret !== "string"
-					|| secret.length < SECRET_MIN_LENGTH
-					|| secret.length > SECRET_MAX_LENGTH
-					|| secret !== secret.trim()
+					|| !isServerSecretCandidate(secret)
 			))
 			|| new Set(secrets).size !== secrets.length
 		) return null;
@@ -71,10 +75,30 @@ export async function tenantSecretMatches(
 	siteUrl: string,
 	supplied: string,
 ) {
-	if (supplied.length < SECRET_MIN_LENGTH || supplied.length > SECRET_MAX_LENGTH) return false;
+	if (!isServerSecretCandidate(supplied)) return false;
 	let matches = false;
 	for (const expected of registry.get(siteUrl) ?? []) {
 		if (await constantTimeSecretEquals(supplied, expected)) matches = true;
 	}
 	return matches;
+}
+
+/**
+ * Purpose-scoped server credentials must not silently collapse into one broad
+ * capability. Each parsed registry already rejects reuse across its tenants;
+ * this closes reuse across independent producer roles as well.
+ */
+export function tenantSecretRegistriesAreDisjoint(
+	...registries: readonly ReadonlyMap<string, readonly string[]>[]
+) {
+	const seen = new Set<string>();
+	for (const registry of registries) {
+		for (const secrets of registry.values()) {
+			for (const secret of secrets) {
+				if (seen.has(secret)) return false;
+				seen.add(secret);
+			}
+		}
+	}
+	return true;
 }

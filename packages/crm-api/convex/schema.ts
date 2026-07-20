@@ -22,6 +22,9 @@ import {
 	privatePrintSourceAssetValidator,
 } from "./helpers/catalogPrivateAssetValidators";
 import {
+	catalogPrivateAssetReceiptCoordinationValidator,
+} from "./helpers/catalogPrivateAssetReceiptContract";
+import {
 	mediaAssetStatusValidator,
 	mediaFocalPointValidator,
 	webAssetDerivativesValidator,
@@ -520,6 +523,13 @@ export default defineSchema({
 	catalogDigitalFileAssets: defineTable(paidDigitalFileAssetValidator)
 		.index("by_siteUrl_and_assetKey", ["siteUrl", "assetKey"])
 		.index("by_siteUrl_and_sha256", ["siteUrl", "sha256"]),
+
+	// Storage and content inspection use separate tenant credentials. The first
+	// complete receipt set remains non-authoritative here; only a matching second
+	// set atomically creates the terminal verified private-asset rows above.
+	catalogPrivateAssetReceiptCoordinations: defineTable(
+		catalogPrivateAssetReceiptCoordinationValidator,
+	).index("by_siteUrl_and_receiptSetId", ["siteUrl", "receiptSetId"]),
 
 	catalogProductPrintSources: defineTable({
 		siteUrl: v.string(),

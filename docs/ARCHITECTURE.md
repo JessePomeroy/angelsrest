@@ -30,6 +30,7 @@ modules or private environment variables.
 | Published editorial content during migration | Sanity fallback | `src/lib/sanity/client.ts`, `client.server.ts`, public load functions |
 | Embedded Editor drafts, revisions, and media registry | Convex | `packages/crm-api/convex/*Content.ts`, `mediaAssets.ts` |
 | Editor media sources and public WebP derivatives | Cloudflare R2 | CMS media worker via `/api/admin/media/*` |
+| Private catalog print masters and paid files | Cloudflare R2 bytes; Convex registry and coordination | purpose-separated receipt ingresses in `convex/http.ts`, internal `catalogPrivateAssets.ts` mutations |
 | Orders and fulfillment state | Convex | `packages/crm-api/convex/orders.ts` |
 | Inquiries | Convex | `packages/crm-api/convex/inquiries.ts`, `/api/contact` |
 | CRM, board, invoices, quotes, contracts | Convex | matching Convex modules |
@@ -103,6 +104,21 @@ security boundary; keep verification inside the host route.
    immutable derivatives from `https://media.angelsrest.online`.
 6. This boundary is separate from private client-gallery delivery and does not
    switch any public content type away from its Sanity fallback by itself.
+
+### Private catalog asset registration
+
+1. Storage and independent content inspection use separate tenant-scoped
+   credentials at two Convex HTTP receipt ingresses. Reuse across either role or
+   tenant makes the complete boundary unavailable rather than broadening access.
+2. Either complete receipt set alone creates only a non-authoritative
+   coordination record. Matching canonical asset evidence from the other role
+   creates the bounded target set and marks it verified in one Convex transaction.
+3. No public or authenticated-admin mutation can create these verified rows.
+   Responses expose only the status and source-key-to-Convex-ID mapping; storage
+   keys, hashes, provenance, capabilities, and private URLs remain server-only.
+4. The registration gate is provider-neutral and reusable, while each migration
+   must still prove its exact manifest completeness. Sanity remains authoritative
+   until that migration's unpublished import, parity, rollback, and cutover gates pass.
 
 Authenticated server reads also create a fresh client through
 `createAuthenticatedConvexClient`. The cached `getConvex()` client is reserved
