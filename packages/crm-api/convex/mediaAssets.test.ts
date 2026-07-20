@@ -136,9 +136,39 @@ describe("tenant-scoped CMS media assets", () => {
 			siteUrl: SITE_A.siteUrl,
 			asset: {
 				...readyAsset(),
+				source: { ...readyAsset().source, width: 4657, height: 3105 },
+				master: { ...readyAsset().master, width: 4096, height: 2730 },
 				derivatives: {
-					...readyAsset().derivatives,
-					thumb: { ...readyAsset().derivatives.thumb, height: 214 },
+					thumb: { ...readyAsset().derivatives.thumb, width: 320, height: 213 },
+					card: { ...readyAsset().derivatives.card, width: 768, height: 512 },
+					display1280: { ...readyAsset().derivatives.display1280, width: 1280, height: 853 },
+					display2048: { ...readyAsset().derivatives.display2048, width: 2048, height: 1365 },
+					display2560: { ...readyAsset().derivatives.display2560, width: 2560, height: 1707 },
+				},
+			},
+		})).resolves.toMatchObject({ status: "ready" });
+		await expect(admin.mutation(api.mediaAssets.registerReadyWebAsset, {
+			siteUrl: SITE_A.siteUrl,
+			asset: {
+				...readyAsset(SITE_A.siteUrl, "323e4567-e89b-42d3-a456-426614174000"),
+				source: { ...readyAsset().source, width: 4657, height: 3105 },
+				master: {
+					...readyAsset(SITE_A.siteUrl, "323e4567-e89b-42d3-a456-426614174000").master,
+					width: 4096,
+					height: 2729,
+				},
+			},
+		})).rejects.toThrow(/Private master dimensions/);
+		await expect(admin.mutation(api.mediaAssets.registerReadyWebAsset, {
+			siteUrl: SITE_A.siteUrl,
+			asset: {
+				...readyAsset(SITE_A.siteUrl, "423e4567-e89b-42d3-a456-426614174000"),
+				derivatives: {
+					...readyAsset(SITE_A.siteUrl, "423e4567-e89b-42d3-a456-426614174000").derivatives,
+					thumb: {
+						...readyAsset(SITE_A.siteUrl, "423e4567-e89b-42d3-a456-426614174000").derivatives.thumb,
+						height: 214,
+					},
 				},
 			},
 		})).rejects.toThrow(/thumb dimensions/);
