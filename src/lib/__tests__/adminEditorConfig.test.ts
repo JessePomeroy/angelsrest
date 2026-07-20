@@ -1,58 +1,68 @@
 import { describe, expect, it, vi } from "vitest";
 import { adminConfig } from "$lib/config/admin";
 
-const { apiMock, catalogApi, contentApi, galleriesApi, mediaApi, portfolioApi } = vi.hoisted(() => {
-	const catalogApi = {
-		listForEditor: "catalogProducts.listForEditor",
-		getEditorState: "catalogProducts.getEditorState",
-		createDraft: "catalogProducts.createDraft",
-		saveDraft: "catalogProducts.saveDraft",
-		discardDraft: "catalogProducts.discardDraft",
-	};
-	const contentApi = {
-		getSiteSettingsEditorState: "content.getSiteSettingsEditorState",
-		saveSiteSettingsDraft: "content.saveSiteSettingsDraft",
-		publishSiteSettings: "content.publishSiteSettings",
-		discardSiteSettingsDraft: "content.discardSiteSettingsDraft",
-		getHomepageQuoteEditorState: "content.getHomepageQuoteEditorState",
-		getContactPageEditorState: "content.getContactPageEditorState",
-		saveContactPageDraft: "content.saveContactPageDraft",
-		publishContactPage: "content.publishContactPage",
-		discardContactPageDraft: "content.discardContactPageDraft",
-	};
-	const galleriesApi = { listBySite: "galleries.listBySite" };
-	const mediaApi = {
-		listForEditor: "mediaAssets.listForEditor",
-		getManyForEditor: "mediaAssets.getManyForEditor",
-		registerReadyWebAsset: "mediaAssets.registerReadyWebAsset",
-		requestDeletion: "mediaAssets.requestDeletion",
-	};
-	const portfolioApi = {
-		listForEditor: "portfolioGalleries.listForEditor",
-		getEditorState: "portfolioGalleries.getEditorState",
-		saveDraft: "portfolioGalleries.saveDraft",
-		publish: "portfolioGalleries.publish",
-		reorder: "portfolioGalleries.reorder",
-	};
-	return {
-		catalogApi,
-		contentApi,
-		galleriesApi,
-		mediaApi,
-		portfolioApi,
-		apiMock: {
-			catalogProducts: catalogApi,
-			content: contentApi,
-			galleries: galleriesApi,
-			galleryPassword: { setPassword: "galleryPassword.setPassword" },
-			blogContent: { listForEditor: "blogContent.listForEditor" },
-			postContent: { listForEditor: "postContent.listForEditor" },
-			portfolioGalleries: portfolioApi,
-			mediaAssets: mediaApi,
-			crm: { getStats: "crm.getStats" },
-		},
-	};
-});
+const { apiMock, catalogApi, catalogGraphApi, contentApi, galleriesApi, mediaApi, portfolioApi } =
+	vi.hoisted(() => {
+		const catalogApi = {
+			listForEditor: "catalogProducts.listForEditor",
+			getEditorState: "catalogProducts.getEditorState",
+			createDraft: "catalogProducts.createDraft",
+			saveDraft: "catalogProducts.saveDraft",
+			discardDraft: "catalogProducts.discardDraft",
+		};
+		const catalogGraphApi = {
+			listForEditor: "catalogProductGraphs.listForEditor",
+			getEditorState: "catalogProductGraphs.getEditorState",
+			createDraft: "catalogProductGraphs.createDraft",
+			saveDraft: "catalogProductGraphs.saveDraft",
+			discardDraft: "catalogProductGraphs.discardDraft",
+		};
+		const contentApi = {
+			getSiteSettingsEditorState: "content.getSiteSettingsEditorState",
+			saveSiteSettingsDraft: "content.saveSiteSettingsDraft",
+			publishSiteSettings: "content.publishSiteSettings",
+			discardSiteSettingsDraft: "content.discardSiteSettingsDraft",
+			getHomepageQuoteEditorState: "content.getHomepageQuoteEditorState",
+			getContactPageEditorState: "content.getContactPageEditorState",
+			saveContactPageDraft: "content.saveContactPageDraft",
+			publishContactPage: "content.publishContactPage",
+			discardContactPageDraft: "content.discardContactPageDraft",
+		};
+		const galleriesApi = { listBySite: "galleries.listBySite" };
+		const mediaApi = {
+			listForEditor: "mediaAssets.listForEditor",
+			getManyForEditor: "mediaAssets.getManyForEditor",
+			registerReadyWebAsset: "mediaAssets.registerReadyWebAsset",
+			requestDeletion: "mediaAssets.requestDeletion",
+		};
+		const portfolioApi = {
+			listForEditor: "portfolioGalleries.listForEditor",
+			getEditorState: "portfolioGalleries.getEditorState",
+			saveDraft: "portfolioGalleries.saveDraft",
+			publish: "portfolioGalleries.publish",
+			reorder: "portfolioGalleries.reorder",
+		};
+		return {
+			catalogApi,
+			catalogGraphApi,
+			contentApi,
+			galleriesApi,
+			mediaApi,
+			portfolioApi,
+			apiMock: {
+				catalogProducts: catalogApi,
+				catalogProductGraphs: catalogGraphApi,
+				content: contentApi,
+				galleries: galleriesApi,
+				galleryPassword: { setPassword: "galleryPassword.setPassword" },
+				blogContent: { listForEditor: "blogContent.listForEditor" },
+				postContent: { listForEditor: "postContent.listForEditor" },
+				portfolioGalleries: portfolioApi,
+				mediaAssets: mediaApi,
+				crm: { getStats: "crm.getStats" },
+			},
+		};
+	});
 
 vi.mock("$convex/api", () => ({ api: apiMock }));
 
@@ -62,6 +72,8 @@ describe("admin API aliases", () => {
 		expect(adminConfig.api.postContent).toBe(apiMock.postContent);
 		expect(adminConfig.api.catalogProducts).toBe(catalogApi);
 		expect(adminConfig.api.catalogProducts).not.toHaveProperty("publish");
+		expect(adminConfig.api.catalogProductGraphs).toBe(catalogGraphApi);
+		expect(adminConfig.api.catalogProductGraphs).not.toHaveProperty("publish");
 		expect(adminConfig.api.mediaAssets?.getManyForEditor).toBe(mediaApi.getManyForEditor);
 		expect(adminConfig.api.galleryDelivery?.listBySite).toBe(galleriesApi.listBySite);
 		expect(adminConfig.api.galleryDelivery?.setPassword).toBe(apiMock.galleryPassword.setPassword);
@@ -100,7 +112,16 @@ describe("admin API aliases", () => {
 		expect(portfolioEditor?.registerReadyWebAsset).toBe(mediaApi.registerReadyWebAsset);
 		expect(portfolioEditor?.requestDeletion).toBe(mediaApi.requestDeletion);
 		expect(adminConfig.editor?.blog?.mediaBaseUrl).toBe("https://media.angelsrest.online");
-		expect(adminConfig.editor?.products).toEqual({ enabledKinds: ["print"] });
+		expect(adminConfig.editor?.products).toEqual({
+			enabledKinds: [
+				"print",
+				"print_set",
+				"postcard",
+				"merchandise",
+				"tapestry",
+				"digital_download",
+			],
+		});
 		expect(adminConfig.editor?.siteSettings).toEqual({});
 		expect(adminConfig.editor?.contactPage).toEqual({
 			initialPayload: {
