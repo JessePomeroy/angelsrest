@@ -1,5 +1,11 @@
 # @jessepomeroy/crm-api
 
+## 2.19.4
+
+### Patch Changes
+
+- acf17f1: Add purpose-separated, tenant-authenticated receipt coordination for atomic private catalog asset registration.
+
 ## 2.19.3
 
 ### Patch Changes
