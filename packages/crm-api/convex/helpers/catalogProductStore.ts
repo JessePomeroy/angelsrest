@@ -90,8 +90,11 @@ export async function createCatalogProductDraft(
 	await requireAvailableSlug(ctx, client.siteUrl, slug);
 	const products = await ctx.db
 		.query("catalogProducts")
-		.withIndex("by_siteUrl_and_productKind_and_createdAt", (q) =>
-			q.eq("siteUrl", client.siteUrl).eq("productKind", "print"),
+		.withIndex("by_siteUrl_and_graphVersion_and_productKind_and_createdAt", (q) =>
+			q
+				.eq("siteUrl", client.siteUrl)
+				.eq("graphVersion", undefined)
+				.eq("productKind", "print"),
 		)
 		.take(CATALOG_PRODUCT_LIMITS.productsPerKind + 1);
 	if (products.length >= CATALOG_PRODUCT_LIMITS.productsPerKind) {
@@ -240,8 +243,11 @@ export async function listCatalogProductsForEditor(
 	const { client } = await requireSiteAdmin(ctx, siteUrl);
 	const products = await ctx.db
 		.query("catalogProducts")
-		.withIndex("by_siteUrl_and_productKind_and_createdAt", (q) =>
-			q.eq("siteUrl", client.siteUrl).eq("productKind", "print"),
+		.withIndex("by_siteUrl_and_graphVersion_and_productKind_and_createdAt", (q) =>
+			q
+				.eq("siteUrl", client.siteUrl)
+				.eq("graphVersion", undefined)
+				.eq("productKind", "print"),
 		)
 		.order("desc")
 		.take(CATALOG_PRODUCT_LIMITS.productsPerKind + 1);

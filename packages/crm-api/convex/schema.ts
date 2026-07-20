@@ -14,6 +14,14 @@ import {
 	catalogVariantStatusValidator,
 } from "./helpers/catalogProductValidators";
 import {
+	catalogGraphV2PrintOptionsValidator,
+	catalogGraphV2WebMediaRoleValidator,
+} from "./helpers/catalogProductGraphValidators";
+import {
+	paidDigitalFileAssetValidator,
+	privatePrintSourceAssetValidator,
+} from "./helpers/catalogPrivateAssetValidators";
+import {
 	mediaAssetStatusValidator,
 	mediaFocalPointValidator,
 	webAssetDerivativesValidator,
@@ -70,6 +78,90 @@ const contentReferenceFieldValidator = v.union(
 const contentPostTechnicalFieldValidator = v.union(
 	v.literal("equipment"),
 	v.literal("material"),
+);
+
+const catalogProductRevisionV1Validator = v.object({
+	siteUrl: v.string(),
+	productId: v.id("catalogProducts"),
+	productKind: catalogProductKindValidator,
+	schemaVersion: v.literal(1),
+	title: v.optional(v.string()),
+	slug: v.optional(v.string()),
+	description: v.optional(v.string()),
+	currency: v.literal("usd"),
+	fulfillmentMode: catalogFulfillmentModeValidator,
+	saleAvailability: catalogSaleAvailabilityValidator,
+	borderOptionsEnabled: v.boolean(),
+	frameOptionsEnabled: v.boolean(),
+	framePriceMultiplierBasisPoints: v.number(),
+	variantCount: v.number(),
+	checksum: v.string(),
+	source: catalogRevisionSourceValidator,
+	createdAt: v.number(),
+	createdBy: v.string(),
+});
+
+const catalogProductRevisionV2CommonFields = {
+	siteUrl: v.string(),
+	productId: v.id("catalogProducts"),
+	schemaVersion: v.literal(2),
+	title: v.optional(v.string()),
+	slug: v.optional(v.string()),
+	description: v.optional(v.string()),
+	seoDescription: v.optional(v.string()),
+	currency: v.literal("usd"),
+	saleAvailability: catalogSaleAvailabilityValidator,
+	variantCount: v.number(),
+	webMediaCount: v.number(),
+	printSourceCount: v.number(),
+	setMemberCount: v.number(),
+	digitalFileCount: v.number(),
+	shopPlacementCount: v.number(),
+	checksum: v.string(),
+	source: catalogRevisionSourceValidator,
+	createdAt: v.number(),
+	createdBy: v.string(),
+};
+
+const catalogProductRevisionV2Validator = v.union(
+	v.object({
+		...catalogProductRevisionV2CommonFields,
+		productKind: v.literal("print"),
+		fulfillmentMode: v.union(
+			v.literal("production_partner"),
+			v.literal("merchant_fulfilled"),
+		),
+		printOptions: catalogGraphV2PrintOptionsValidator,
+	}),
+	v.object({
+		...catalogProductRevisionV2CommonFields,
+		productKind: v.literal("print_set"),
+		fulfillmentMode: v.union(
+			v.literal("production_partner"),
+			v.literal("merchant_fulfilled"),
+		),
+		printOptions: catalogGraphV2PrintOptionsValidator,
+	}),
+	v.object({
+		...catalogProductRevisionV2CommonFields,
+		productKind: v.literal("postcard"),
+		fulfillmentMode: v.literal("merchant_fulfilled"),
+	}),
+	v.object({
+		...catalogProductRevisionV2CommonFields,
+		productKind: v.literal("tapestry"),
+		fulfillmentMode: v.literal("merchant_fulfilled"),
+	}),
+	v.object({
+		...catalogProductRevisionV2CommonFields,
+		productKind: v.literal("digital_download"),
+		fulfillmentMode: v.literal("digital_delivery"),
+	}),
+	v.object({
+		...catalogProductRevisionV2CommonFields,
+		productKind: v.literal("merchandise"),
+		fulfillmentMode: v.literal("merchant_fulfilled"),
+	}),
 );
 
 export default defineSchema({
@@ -349,6 +441,8 @@ export default defineSchema({
 		siteUrl: v.string(),
 		productKey: v.string(),
 		productKind: catalogProductKindValidator,
+		// Absent is the exact V1 identity contract. V2 writers always set 2.
+		graphVersion: v.optional(v.literal(2)),
 		slug: v.optional(v.string()),
 		draftRevisionId: v.optional(v.id("catalogProductRevisions")),
 		publishedRevisionId: v.optional(v.id("catalogProductRevisions")),
@@ -365,32 +459,21 @@ export default defineSchema({
 			"siteUrl",
 			"productKind",
 			"createdAt",
+		])
+		.index("by_siteUrl_and_graphVersion_and_productKind_and_createdAt", [
+			"siteUrl",
+			"graphVersion",
+			"productKind",
+			"createdAt",
 		]),
 
 	// Revisions are immutable commercial snapshots. Product kind and fulfillment
 	// mode are separate: a provider adapter may later map production-partner work
 	// to LumaPrints without making that provider part of catalog identity.
-	catalogProductRevisions: defineTable({
-		siteUrl: v.string(),
-		productId: v.id("catalogProducts"),
-		productKind: catalogProductKindValidator,
-		schemaVersion: v.literal(1),
-		title: v.optional(v.string()),
-		slug: v.optional(v.string()),
-		description: v.optional(v.string()),
-		currency: v.literal("usd"),
-		fulfillmentMode: catalogFulfillmentModeValidator,
-		saleAvailability: catalogSaleAvailabilityValidator,
-		borderOptionsEnabled: v.boolean(),
-		frameOptionsEnabled: v.boolean(),
-		// 10,000 means a 1.0× wholesale frame price; 20,000 means 2.0×.
-		framePriceMultiplierBasisPoints: v.number(),
-		variantCount: v.number(),
-		checksum: v.string(),
-		source: catalogRevisionSourceValidator,
-		createdAt: v.number(),
-		createdBy: v.string(),
-	})
+	catalogProductRevisions: defineTable(v.union(
+		catalogProductRevisionV1Validator,
+		catalogProductRevisionV2Validator,
+	))
 		.index("by_productId_and_createdAt", ["productId", "createdAt"])
 		.index("by_siteUrl_and_productId", ["siteUrl", "productId"]),
 
@@ -409,6 +492,81 @@ export default defineSchema({
 	})
 		.index("by_revisionId_and_order", ["revisionId", "order"])
 		.index("by_revisionId_and_variantKey", ["revisionId", "variantKey"])
+		.index("by_productId_and_revisionId", ["productId", "revisionId"]),
+
+	// Public-display media remains in the existing web asset registry. These
+	// immutable rows cannot point at print masters or paid files by construction.
+	catalogProductMediaPlacements: defineTable({
+		siteUrl: v.string(),
+		productId: v.id("catalogProducts"),
+		revisionId: v.id("catalogProductRevisions"),
+		assetId: v.id("mediaAssets"),
+		placementKey: v.string(),
+		role: catalogGraphV2WebMediaRoleValidator,
+		order: v.number(),
+		altText: v.optional(v.string()),
+	})
+		.index("by_revisionId_and_role_and_order", ["revisionId", "role", "order"])
+		.index("by_revisionId_and_placementKey", ["revisionId", "placementKey"])
+		.index("by_productId_and_revisionId", ["productId", "revisionId"])
+		.index("by_siteUrl_and_assetId", ["siteUrl", "assetId"]),
+
+	// Full-resolution print masters and paid files use separate registries and
+	// private namespaces. No public URL or download capability is stored here.
+	catalogPrintSourceAssets: defineTable(privatePrintSourceAssetValidator)
+		.index("by_siteUrl_and_assetKey", ["siteUrl", "assetKey"])
+		.index("by_siteUrl_and_sha256", ["siteUrl", "sha256"]),
+
+	catalogDigitalFileAssets: defineTable(paidDigitalFileAssetValidator)
+		.index("by_siteUrl_and_assetKey", ["siteUrl", "assetKey"])
+		.index("by_siteUrl_and_sha256", ["siteUrl", "sha256"]),
+
+	catalogProductPrintSources: defineTable({
+		siteUrl: v.string(),
+		productId: v.id("catalogProducts"),
+		revisionId: v.id("catalogProductRevisions"),
+		assetId: v.id("catalogPrintSourceAssets"),
+		relationKey: v.string(),
+		order: v.number(),
+	})
+		.index("by_revisionId_and_order", ["revisionId", "order"])
+		.index("by_revisionId_and_relationKey", ["revisionId", "relationKey"])
+		.index("by_productId_and_revisionId", ["productId", "revisionId"])
+		.index("by_siteUrl_and_assetId", ["siteUrl", "assetId"]),
+
+	catalogProductSetMembers: defineTable({
+		siteUrl: v.string(),
+		productId: v.id("catalogProducts"),
+		revisionId: v.id("catalogProductRevisions"),
+		memberKey: v.string(),
+		order: v.number(),
+		mediaPlacementKey: v.string(),
+		printSourceKey: v.string(),
+	})
+		.index("by_revisionId_and_order", ["revisionId", "order"])
+		.index("by_revisionId_and_memberKey", ["revisionId", "memberKey"])
+		.index("by_productId_and_revisionId", ["productId", "revisionId"]),
+
+	catalogProductDigitalFiles: defineTable({
+		siteUrl: v.string(),
+		productId: v.id("catalogProducts"),
+		revisionId: v.id("catalogProductRevisions"),
+		assetId: v.id("catalogDigitalFileAssets"),
+		relationKey: v.string(),
+		version: v.optional(v.string()),
+	})
+		.index("by_revisionId", ["revisionId"])
+		.index("by_productId_and_revisionId", ["productId", "revisionId"])
+		.index("by_siteUrl_and_assetId", ["siteUrl", "assetId"]),
+
+	catalogProductShopPlacements: defineTable({
+		siteUrl: v.string(),
+		productId: v.id("catalogProducts"),
+		revisionId: v.id("catalogProductRevisions"),
+		featured: v.boolean(),
+		orderRank: v.optional(v.string()),
+	})
+		.index("by_revisionId", ["revisionId"])
 		.index("by_productId_and_revisionId", ["productId", "revisionId"]),
 
 	// Print orders (from Stripe checkout on any client site)
