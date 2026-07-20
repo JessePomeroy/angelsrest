@@ -47,4 +47,41 @@ The registration boundary accepts only complete, canonically ordered receipt set
 
 This gate is reusable for later bounded Editor transfers, but it does not weaken the migration's complete-content rule: the Angels Rest transfer producer must submit the manifest's exact 11-print-master and one-paid-ZIP set under one content-addressed receipt-set ID. That ID is derived from the schema version, tenant, and every canonical asset fact; Convex independently recomputes it. A missing, extra, reordered, or drifted producer request therefore cannot claim the reviewed full-set identity. Producer adapters, live credentials, source fetching, content inspection, upload execution, and the 12-asset acceptance run remain later iterations.
 
+## Complete private-asset transfer runner
+
+The operator runner re-fetches the complete published Sanity catalog and requires the reviewed 33-product baseline plus the exact 11-print-master/one-paid-ZIP set. Its default mode is a read-only plan: it reads no operator secret file and downloads, uploads, registers, or publishes nothing.
+
+```sh
+pnpm cms:catalog-private-assets-transfer
+```
+
+Execution requires the existing Angels Rest CMS Worker tenant credential plus a different inspection-only Convex receipt credential. Supply the Worker value through the `CMS_MEDIA_WORKER_SECRET` process environment (for example, Vercel's environment runner) or an owner-only `0600` file. Supply the inspection value only through an owner-only `0600` file. The Worker alone holds the third, storage-only receipt credential. Never put any of these values in this repository or a shell argument.
+
+```sh
+vercel env run --environment production -- pnpm cms:catalog-private-assets-transfer -- \
+  --execute \
+  --confirm "transfer all 12 private catalog assets for angelsrest.online" \
+  --inspection-secret-file /tmp/angelsrest-catalog-inspection-secret.txt
+```
+
+If Vercel environment injection is unavailable, add `--worker-secret-file /tmp/angelsrest-cms-worker-secret.txt` instead.
+
+The runner downloads and decodes all 11 source images, inspects the paid ZIP, hashes the exact bytes, and validates the full candidate set before uploading. Immutable Worker keys make a partially completed upload safe to resume by re-running the same command. After all 12 objects finalize, the Worker submits the complete storage receipt and the runner independently submits the matching inspection receipt directly to Convex. Success requires verified target IDs plus exact storage and inspection replay. The sanitized completion report is written with mode `0600` to `/tmp/angelsrest-private-catalog-transfer-report.json`; it contains no source URL, byte payload, credential, capability, or storage proof.
+
+This command creates only verified private asset registry rows. It does not import the 33-product graph, switch the public Shop provider, alter checkout or delivery, publish content, mutate Sanity, or remove the Sanity fallback.
+
 Sanity remains the public Shop, checkout, coupon, and download authority throughout this preparation and unpublished-import sequence. Public cutover, authoritative checkout, transactional coupon migration, publication, provider-lifecycle changes, and Editor visual refinement are explicit non-goals of this gate.
+
+## 2026-07-20 completion
+
+The complete private-asset transfer gate is complete. See
+`2026-07-20-private-asset-transfer.md` for the versioned journal.
+
+- 12 private catalog assets were verified: 11 print-source masters and one paid
+  digital ZIP.
+- Receipt set:
+  `catalog-private-assets-v1:e8d573e1558301bfb52fc108baf227d6d74e4e7fbbc0228d2829ded3d32ac63b`
+- Storage and inspection receipts both replayed stably.
+- The temporary Worker-only transfer secret was removed after success.
+- Sanity remains the public catalog authority until the later unpublished
+  product-graph import and explicit public cutover.
