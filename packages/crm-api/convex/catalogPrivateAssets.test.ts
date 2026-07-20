@@ -4,9 +4,13 @@
 import { convexTest } from "convex-test";
 import { describe, expect, test } from "vitest";
 import type { CatalogPrivateAssetFacts } from "./helpers/catalogPrivateAssetReceiptContract";
-import { privateCatalogRegistrationTarget } from "./helpers/catalogPrivateAssetReceiptValidation";
+import {
+	createCatalogPrivateAssetReceiptSetId,
+	privateCatalogRegistrationTarget,
+} from "./helpers/catalogPrivateAssetReceiptValidation";
 import schema from "./schema";
 import {
+	DEFAULT_RECEIPT_SET_ID,
 	INSPECTION_PATH,
 	INSPECTION_SECRET_A,
 	STORAGE_PATH,
@@ -25,6 +29,35 @@ import {
 const modules = import.meta.glob("./**/*.ts");
 
 describe("private catalog dual-receipt registration", () => {
+	test("binds the deterministic receipt identity to exact canonical asset membership", async () => {
+		const defaultFacts = [printFacts(), paidFacts()];
+		expect(await createCatalogPrivateAssetReceiptSetId(SITE_A, defaultFacts))
+			.toBe(DEFAULT_RECEIPT_SET_ID);
+		expect(await createCatalogPrivateAssetReceiptSetId(SITE_A, [...defaultFacts].reverse()))
+			.toBe(DEFAULT_RECEIPT_SET_ID);
+
+		const t = convexTest(schema, modules);
+		const extraPrint = printFacts(
+			`image-${"c".repeat(40)}-6000x4000-jpg`,
+			"c".repeat(64),
+		);
+		await withReceiptEnvironment(async () => {
+			for (const facts of [
+				[defaultFacts[0]!],
+				[defaultFacts[0]!, extraPrint, defaultFacts[1]!],
+			]) {
+				const response = await postReceipt(
+					t,
+					STORAGE_PATH,
+					STORAGE_SECRET_A,
+					storageSet(facts, DEFAULT_RECEIPT_SET_ID),
+				);
+				expect(response.status).toBe(409);
+			}
+		});
+		expect((await storedState(t)).coordinations).toHaveLength(0);
+	});
+
 	test("keeps the first complete receipt set pending and atomically registers the matching set", async () => {
 		const t = convexTest(schema, modules);
 		await withReceiptEnvironment(async () => {
@@ -155,12 +188,13 @@ describe("private catalog dual-receipt registration", () => {
 			return facts;
 		});
 		const completeSet: CatalogPrivateAssetFacts[] = [...prints, paidFacts()];
+		const receiptSetId = await createCatalogPrivateAssetReceiptSetId(SITE_A, completeSet);
 		await withReceiptEnvironment(async () => {
 			const first = await postReceipt(
 				t,
 				STORAGE_PATH,
 				STORAGE_SECRET_A,
-				storageSet(completeSet),
+				storageSet(completeSet, receiptSetId),
 			);
 			expect(await first.json()).toEqual({
 				status: "pending_inspection",
@@ -171,7 +205,7 @@ describe("private catalog dual-receipt registration", () => {
 				t,
 				INSPECTION_PATH,
 				INSPECTION_SECRET_A,
-				inspectionSet(completeSet),
+				inspectionSet(completeSet, receiptSetId),
 			);
 			const result = await second.json() as { status: string; targets: unknown[] };
 			expect(result.status).toBe("verified");
@@ -263,18 +297,20 @@ describe("private catalog dual-receipt registration", () => {
 			sourceId: second.assetKey,
 			sourceRevision: "print-source-revision-2",
 		};
+		const facts = [first, second];
+		const receiptSetId = await createCatalogPrivateAssetReceiptSetId(SITE_A, facts);
 		await withReceiptEnvironment(async () => {
 			expect((await postReceipt(
 				t,
 				STORAGE_PATH,
 				STORAGE_SECRET_A,
-				storageSet([first, second]),
+				storageSet(facts, receiptSetId),
 			)).status).toBe(200);
 			expect((await postReceipt(
 				t,
 				INSPECTION_PATH,
 				INSPECTION_SECRET_A,
-				inspectionSet([first, second]),
+				inspectionSet(facts, receiptSetId),
 			)).status).toBe(200);
 			const state = await storedState(t);
 			expect(state.printSources).toHaveLength(2);

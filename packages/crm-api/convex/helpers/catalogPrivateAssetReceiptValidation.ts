@@ -15,6 +15,7 @@ import { CATALOG_PRIVATE_ASSET_RECEIPT_SET_VERSION } from "./catalogPrivateAsset
 const RECEIPT_SET_MAX_ASSETS = 32;
 const RECEIPT_SET_ID_MAX_LENGTH = 160;
 const RECEIPT_SET_ID_PATTERN = /^[A-Za-z0-9]+(?:[._:-][A-Za-z0-9]+)*$/;
+export const CATALOG_PRIVATE_ASSET_RECEIPT_SET_ID_PREFIX = "catalog-private-assets-v1";
 const ETAG_MAX_LENGTH = 256;
 const ZIP_ENTRY_MAX = 10_000;
 const ZIP_COMPRESSION_RATIO_MAX = 1_000;
@@ -67,15 +68,24 @@ function canonicalFacts(facts: CatalogPrivateAssetFacts) {
 	};
 }
 
+function canonicalAssetSetIdentity(
+	receiptSet: Pick<CatalogPrivateStorageReceiptSet, "schemaVersion" | "siteUrl">,
+	facts: readonly CatalogPrivateAssetFacts[],
+) {
+	return {
+		schemaVersion: receiptSet.schemaVersion,
+		siteUrl: receiptSet.siteUrl,
+		assets: [...facts].sort(compareFacts).map(canonicalFacts),
+	};
+}
+
 function canonicalReceiptSetIdentity(
 	receiptSet: Pick<CatalogPrivateStorageReceiptSet, "schemaVersion" | "receiptSetId" | "siteUrl">,
 	facts: readonly CatalogPrivateAssetFacts[],
 ) {
 	return {
-		schemaVersion: receiptSet.schemaVersion,
+		...canonicalAssetSetIdentity(receiptSet, facts),
 		receiptSetId: receiptSet.receiptSetId,
-		siteUrl: receiptSet.siteUrl,
-		assets: facts.map(canonicalFacts),
 	};
 }
 
@@ -122,6 +132,30 @@ async function sha256(value: string) {
 	return [...new Uint8Array(bytes)]
 		.map((byte) => byte.toString(16).padStart(2, "0"))
 		.join("");
+}
+
+async function assetSetIdentity(
+	receiptSet: Pick<CatalogPrivateStorageReceiptSet, "schemaVersion" | "siteUrl">,
+	facts: readonly CatalogPrivateAssetFacts[],
+) {
+	const canonical = JSON.stringify(canonicalAssetSetIdentity(receiptSet, facts));
+	const checksum = await sha256(`catalog-private-asset-set:v1:${canonical}`);
+	return {
+		canonical,
+		checksum,
+		receiptSetId: `${CATALOG_PRIVATE_ASSET_RECEIPT_SET_ID_PREFIX}:${checksum}`,
+	};
+}
+
+export async function createCatalogPrivateAssetReceiptSetId(
+	siteUrl: string,
+	facts: readonly CatalogPrivateAssetFacts[],
+) {
+	// Content addressing prevents a partial or drifted batch from claiming a reviewed set's ID.
+	return (await assetSetIdentity({
+		schemaVersion: CATALOG_PRIVATE_ASSET_RECEIPT_SET_VERSION,
+		siteUrl,
+	}, facts)).receiptSetId;
 }
 
 function requireReceiptSetIdentity(
@@ -265,13 +299,16 @@ export async function validateCatalogPrivateStorageReceiptSet(
 		requireCanonicalIsoTimestamp(receipt.uploadedAt);
 		requireBoundedEtag(receipt.etag);
 	}
-	const assetSetCanonical = canonicalReceiptSetIdentity(receiptSet, facts);
+	const assetSet = await assetSetIdentity(receiptSet, facts);
+	if (receiptSet.receiptSetId !== assetSet.receiptSetId) {
+		throw new Error("Private catalog receipt-set identity does not match its asset set");
+	}
 	const roleCanonical = canonicalStorageReceiptSet(receiptSet);
 	return {
 		facts,
-		assetSetChecksum: await sha256(`catalog-private-asset-set:v1:${JSON.stringify(assetSetCanonical)}`),
+		assetSetChecksum: assetSet.checksum,
 		roleChecksum: await sha256(`catalog-private-storage-receipt:v1:${JSON.stringify(roleCanonical)}`),
-		assetCanonical: JSON.stringify(assetSetCanonical),
+		assetCanonical: assetSet.canonical,
 		canonical: JSON.stringify(roleCanonical),
 	};
 }
@@ -291,13 +328,16 @@ export async function validateCatalogPrivateInspectionReceiptSet(
 			throw new Error("Private print sources require decoded image inspection");
 		}
 	}
-	const assetSetCanonical = canonicalReceiptSetIdentity(receiptSet, facts);
+	const assetSet = await assetSetIdentity(receiptSet, facts);
+	if (receiptSet.receiptSetId !== assetSet.receiptSetId) {
+		throw new Error("Private catalog receipt-set identity does not match its asset set");
+	}
 	const roleCanonical = canonicalInspectionReceiptSet(receiptSet);
 	return {
 		facts,
-		assetSetChecksum: await sha256(`catalog-private-asset-set:v1:${JSON.stringify(assetSetCanonical)}`),
+		assetSetChecksum: assetSet.checksum,
 		roleChecksum: await sha256(`catalog-private-inspection-receipt:v1:${JSON.stringify(roleCanonical)}`),
-		assetCanonical: JSON.stringify(assetSetCanonical),
+		assetCanonical: assetSet.canonical,
 		canonical: JSON.stringify(roleCanonical),
 	};
 }
