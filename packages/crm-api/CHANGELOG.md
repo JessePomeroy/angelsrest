@@ -1,5 +1,11 @@
 # @jessepomeroy/crm-api
 
+## 2.19.0
+
+### Minor Changes
+
+- 626cc13: Add a dormant tenant-scoped V2 catalog graph with typed web media, private print-source, paid-file, print-set, and shop-placement boundaries while preserving the V1 single-print API.
+
 ## 2.18.1
 
 ### Patch Changes
