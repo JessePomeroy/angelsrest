@@ -24,6 +24,7 @@
 		"cms:blog-media-verify": "tsx scripts/cms/sanity-blog-media-verify.ts",
 		"cms:blog-media-transfer": "tsx scripts/cms/sanity-blog-media-transfer.ts",
 		"cms:catalog-import-dry-run": "tsx scripts/cms/sanity-catalog-import-dry-run.ts",
+		"cms:catalog-graph-plan": "tsx scripts/cms/sanity-catalog-graph-plan.ts",
 		"cms:catalog-display-media-transfer": "tsx scripts/cms/sanity-catalog-display-media-transfer.ts",
 		"cms:catalog-private-assets-transfer": "tsx scripts/cms/sanity-catalog-private-assets-transfer.ts",
 		"test:e2e": "node scripts/run-playwright.mjs",

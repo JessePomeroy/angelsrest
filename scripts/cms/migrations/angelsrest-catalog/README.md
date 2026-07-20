@@ -109,6 +109,36 @@ into one coordinated unpublished 33-product import. Sanity remains the public
 catalog authority until that later import, preview/parity work, and explicit
 provider cutover complete.
 
+## Catalog graph-plan assembly
+
+The graph-plan command is the read-only bridge between the completed asset
+transfers and the later unpublished catalog import. It re-reads the published
+Sanity catalog, requires the reviewed 33-product baseline, reads the committed
+display-media and private-asset target maps, and proves that one deterministic
+V2 product graph can be assembled for the full catalog.
+
+```sh
+pnpm cms:catalog-graph-plan
+```
+
+The command writes the complete local import plan to
+`/tmp/angelsrest-sanity-catalog-graph-plan.json` with mode `0600`. It performs
+no Convex writes, creates no product drafts, switches no provider, publishes no
+content, mutates no Sanity document, and reads no admin browser cookie. The
+full plan includes current catalog copy because it is the next import payload;
+keep it local and do not commit it.
+
+The committed target maps are not credentials. They are the stable Convex asset
+IDs already created and journaled by the transfer slices:
+
+- `sanity-catalog-image-asset-map.json` — 33 web/display `mediaAssets`
+- `sanity-catalog-private-asset-map.json` — 11 print-source assets and one
+  paid digital file asset
+
+The next execution slice must import the exact checked graph plan as one
+unpublished unit, then immediately replay it and accept only zero writes with
+unchanged product/revision identities.
+
 ## 2026-07-20 completion
 
 The complete private-asset transfer gate is complete. See
