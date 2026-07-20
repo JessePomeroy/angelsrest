@@ -11,6 +11,7 @@ import {
 type CatalogContext = QueryCtx | MutationCtx;
 type CatalogProduct = Doc<"catalogProducts">;
 type CatalogRevision = Doc<"catalogProductRevisions">;
+type CatalogRevisionV1 = Extract<CatalogRevision, { schemaVersion: 1 }>;
 
 export async function checksumCatalogProductDraft(draft: CatalogProductDraft) {
 	const digest = await crypto.subtle.digest(
@@ -23,7 +24,7 @@ export async function checksumCatalogProductDraft(draft: CatalogProductDraft) {
 }
 
 export function requireSinglePrintProduct(product: CatalogProduct) {
-	if (product.productKind !== "print") {
+	if (product.productKind !== "print" || product.graphVersion !== undefined) {
 		throw new Error("Catalog product is not a single print");
 	}
 	return product;
@@ -32,7 +33,7 @@ export function requireSinglePrintProduct(product: CatalogProduct) {
 export function assertCatalogRevisionOwnership(
 	revision: CatalogRevision,
 	product: CatalogProduct,
-) {
+): asserts revision is CatalogRevisionV1 {
 	if (
 		revision.productId !== product._id
 		|| revision.siteUrl !== product.siteUrl
@@ -90,7 +91,7 @@ async function getCatalogVariants(
 }
 
 function draftFromRevision(
-	revision: CatalogRevision,
+	revision: CatalogRevisionV1,
 	variants: Doc<"catalogProductVariants">[],
 ): CatalogProductDraft {
 	return {
@@ -225,7 +226,7 @@ export function projectCatalogEditorRevision(
 }
 
 export function projectCatalogEditorRevisionSummary(
-	revision: CatalogRevision | null,
+	revision: CatalogRevisionV1 | null,
 ) {
 	if (!revision) return null;
 	return {
