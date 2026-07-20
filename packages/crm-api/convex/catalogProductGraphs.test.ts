@@ -5,7 +5,13 @@ import { describe, expect, test } from "vitest";
 import { api } from "./_generated/api";
 import * as catalogProductGraphsModule from "./catalogProductGraphs";
 import * as catalogProductsModule from "./catalogProducts";
+import { checksumCatalogProductGraphV2Draft } from "./helpers/catalogProductGraphChecksum";
 import type { CatalogProductKind } from "./helpers/catalogProductValidators";
+import {
+	checksumSanityCatalogV2GraphPlan,
+	type SanityCatalogV2GraphPlan,
+	type SanityCatalogV2GraphPlanPayload,
+} from "./helpers/sanityCatalogGraphPlan";
 import {
 	SITE_A,
 	SITE_B,
@@ -20,6 +26,84 @@ import {
 } from "../test/catalogProductGraphFixtures";
 
 const modules = import.meta.glob("./**/*.ts");
+const IMPORT_CREATED_AT = "2026-01-01T00:00:00.000Z";
+const IMPORT_UPDATED_AT = "2026-07-20T00:00:00.000Z";
+
+async function plannedProduct(
+	sourceId: string,
+	sourceType: SanityCatalogV2GraphPlan["products"][number]["sourceType"],
+	draft: SanityCatalogV2GraphPlan["products"][number]["draft"],
+	sourceRelations: SanityCatalogV2GraphPlan["products"][number]["sourceRelations"],
+): Promise<SanityCatalogV2GraphPlan["products"][number]> {
+	return {
+		sourceId,
+		sourceRevision: `revision-${sourceId}`,
+		sourceCreatedAt: IMPORT_CREATED_AT,
+		sourceUpdatedAt: IMPORT_UPDATED_AT,
+		sourceType,
+		productKey: `sanity.catalog.${sourceId}`,
+		sourceRelations,
+		draft,
+		graphChecksum: await checksumCatalogProductGraphV2Draft(draft),
+	};
+}
+
+async function sanityImportPlan(fixture: Awaited<ReturnType<typeof setup>>) {
+	const printDraft = {
+		...graphDraft("print", fixture, "import-print"),
+		webMedia: [{
+			key: "primary",
+			order: 0,
+			role: "primary" as const,
+			assetId: fixture.webA,
+			altText: "Imported print",
+		}],
+		printSources: [{ key: "primary", order: 0, assetId: fixture.printA }],
+	};
+	const digitalDraft = {
+		...graphDraft("digital_download", fixture, "import-download"),
+		webMedia: [{
+			key: "gallery",
+			order: 0,
+			role: "gallery" as const,
+			assetId: fixture.webA2,
+			altText: "Imported download",
+		}],
+		paidFile: { key: "download", assetId: fixture.paidA, version: "v1" },
+	};
+	const products = [
+		await plannedProduct("digital-a", "product", digitalDraft, {
+			webMedia: [{ key: "gallery", sourceAssetRef: "image-b-1200x800-jpg" }],
+			printSources: [],
+			paidFile: { sourceFileRef: "file-a-zip" },
+		}),
+		await plannedProduct("print-a", "lumaProductV2", printDraft, {
+			webMedia: [{ key: "primary", sourceAssetRef: "image-a-1200x800-jpg" }],
+			printSources: [{ key: "primary", sourceAssetRef: "image-a-1200x800-jpg" }],
+		}),
+	].sort((left, right) => left.productKey.localeCompare(right.productKey));
+	const payload: SanityCatalogV2GraphPlanPayload = {
+		version: 1,
+		graphVersion: 2,
+		sourceManifestVersion: 1,
+		assetMappings: {
+			webMedia: [
+				{ sourceAssetRef: "image-a-1200x800-jpg", mediaAssetId: fixture.webA },
+				{ sourceAssetRef: "image-b-1200x800-jpg", mediaAssetId: fixture.webA2 },
+			],
+			printSources: [{
+				sourceAssetRef: "image-a-1200x800-jpg",
+				printSourceAssetId: fixture.printA,
+			}],
+			paidFiles: [{ sourceFileRef: "file-a-zip", digitalFileAssetId: fixture.paidA }],
+		},
+		products,
+	};
+	return {
+		...payload,
+		graphPlanChecksum: await checksumSanityCatalogV2GraphPlan(payload),
+	};
+}
 
 describe("dormant private catalog product graph V2", () => {
 	test("round-trips every product kind and lists only the requested kind", async () => {
@@ -193,6 +277,7 @@ describe("dormant private catalog product graph V2", () => {
 			"createDraft",
 			"discardDraft",
 			"getEditorState",
+			"importSanityDrafts",
 			"listForEditor",
 			"saveDraft",
 		]);
@@ -289,6 +374,88 @@ describe("dormant private catalog product graph V2", () => {
 			"v2-owned-key",
 			crossTenant,
 		)).toMatchObject({ productId: expect.any(String) });
+	});
+
+	test("imports a complete Sanity graph as unpublished drafts and replays without writes", async () => {
+		const fixture = await setup(modules);
+		const plan = await sanityImportPlan(fixture);
+		const imported = await fixture.adminA.mutation(
+			api.catalogProductGraphs.importSanityDrafts,
+			{ siteUrl: SITE_A.siteUrl, plan },
+		);
+		expect(imported).toMatchObject({
+			status: "imported",
+			graphPlanChecksum: plan.graphPlanChecksum,
+			productCount: 2,
+		});
+		expect(imported.products.map(({ productKey }) => productKey)).toEqual([
+			"sanity.catalog.digital-a",
+			"sanity.catalog.print-a",
+		]);
+		const afterImport = await storedCounts(fixture);
+		expect(afterImport).toMatchObject({
+			products: 2,
+			revisions: 2,
+			shopPlacements: 2,
+		});
+		const replayed = await fixture.adminA.mutation(
+			api.catalogProductGraphs.importSanityDrafts,
+			{ siteUrl: SITE_A.siteUrl, plan },
+		);
+		expect(replayed).toEqual({
+			...imported,
+			status: "replayed",
+		});
+		expect(await storedCounts(fixture)).toEqual(afterImport);
+		for (const product of imported.products) {
+			const editor = await fixture.adminA.query(api.catalogProductGraphs.getEditorState, {
+				productId: product.productId,
+			});
+			expect(editor).toMatchObject({
+				productKey: product.productKey,
+				draft: { revisionId: product.revisionId },
+				published: null,
+				publishedAt: null,
+			});
+		}
+	});
+
+	test("rejects partial or admin-created catalog state instead of topping it up", async () => {
+		const fixture = await setup(modules);
+		const plan = await sanityImportPlan(fixture);
+		const plannedPrint = plan.products.find((product) =>
+			product.productKey === "sanity.catalog.print-a"
+		);
+		if (!plannedPrint) throw new Error("Fixture plan lost its print product");
+		await createGraph(
+			fixture.adminA,
+			SITE_A.siteUrl,
+			plannedPrint.productKey,
+			plannedPrint.draft,
+		);
+		const afterManualCreate = await storedCounts(fixture);
+		await expect(fixture.adminA.mutation(api.catalogProductGraphs.importSanityDrafts, {
+			siteUrl: SITE_A.siteUrl,
+			plan,
+		})).rejects.toThrow(/Partial Sanity catalog import state/);
+		expect(await storedCounts(fixture)).toEqual(afterManualCreate);
+
+		const secondFixture = await setup(modules);
+		const secondPlan = await sanityImportPlan(secondFixture);
+		for (const product of secondPlan.products) {
+			await createGraph(
+				secondFixture.adminA,
+				SITE_A.siteUrl,
+				product.productKey,
+				product.draft,
+			);
+		}
+		const afterAdminCreates = await storedCounts(secondFixture);
+		await expect(secondFixture.adminA.mutation(api.catalogProductGraphs.importSanityDrafts, {
+			siteUrl: SITE_A.siteUrl,
+			plan: secondPlan,
+		})).rejects.toThrow(/not created by Sanity import/);
+		expect(await storedCounts(secondFixture)).toEqual(afterAdminCreates);
 	});
 
 });
