@@ -13,6 +13,10 @@ describe("Sanity catalog source projection", () => {
 		expect(query).toContain('*[_type == "coupon"]');
 		expect(query).toContain('"digitalFileRef": digitalFile.asset._ref');
 		expect(query).toContain('"digitalFileAsset": digitalFile.asset->{');
+		expect(
+			query.match(/"assetRef": asset\._ref,\s*"assetSource": asset->\{ _id, _rev \}/g),
+		).toHaveLength(5);
+		expect(query).toMatch(/"digitalFileAsset": digitalFile\.asset->\{\s*_id,\s*_rev,/);
 		expect(query).toContain("originalFilename");
 		expect(query).toContain("mimeType");
 		expect(query).toContain("size");

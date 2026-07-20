@@ -15,6 +15,7 @@ export function sanityCatalogSourceQuery() {
 			image {
 				_key,
 				"assetRef": asset._ref,
+				"assetSource": asset->{ _id, _rev },
 				alt
 			},
 			description,
@@ -42,12 +43,14 @@ export function sanityCatalogSourceQuery() {
 			previewImage {
 				_key,
 				"assetRef": asset._ref,
+				"assetSource": asset->{ _id, _rev },
 				alt
 			},
 			description,
 			images[] {
 				_key,
 				"assetRef": asset._ref,
+				"assetSource": asset->{ _id, _rev },
 				alt
 			},
 			"parentRef": parent._ref,
@@ -76,6 +79,7 @@ export function sanityCatalogSourceQuery() {
 			images[] {
 				_key,
 				"assetRef": asset._ref,
+				"assetSource": asset->{ _id, _rev },
 				alt
 			},
 			description,
@@ -85,6 +89,7 @@ export function sanityCatalogSourceQuery() {
 			"digitalFileRef": digitalFile.asset._ref,
 			"digitalFileAsset": digitalFile.asset->{
 				_id,
+				_rev,
 				originalFilename,
 				mimeType,
 				size
@@ -98,6 +103,7 @@ export function sanityCatalogSourceQuery() {
 				ogImage {
 					_key,
 					"assetRef": asset._ref,
+					"assetSource": asset->{ _id, _rev },
 					alt
 				}
 			}

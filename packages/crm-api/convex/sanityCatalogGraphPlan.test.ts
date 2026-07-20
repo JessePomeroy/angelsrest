@@ -41,6 +41,9 @@ describe("Sanity catalog V2 graph plan", () => {
 		expect(plan.products.every(({ graphChecksum }) => /^[a-f0-9]{64}$/.test(graphChecksum)))
 			.toBe(true);
 		expect(plan.graphPlanChecksum).toMatch(/^[a-f0-9]{64}$/);
+		// This pure candidate maps already-created targets. Asset revisions remain in the
+		// source manifest until the later transfer/receipt plan can bind them to verified bytes.
+		expect(JSON.stringify(plan)).not.toContain("sourceAssetRevision");
 
 		const print = plan.products.find(({ draft }) => draft.productKind === "print");
 		expect(print).toMatchObject({

@@ -13,6 +13,10 @@ const SET_SECOND_IMAGE = "image-c-1200x800-jpg";
 const TAPESTRY_IMAGE = "image-d-1200x800-jpg";
 const DIGITAL_IMAGE = "image-e-1200x800-png";
 
+function assetSource(id: string) {
+	return { _id: id, _rev: `asset-revision-${id}` };
+}
+
 function metadata(id: string, type: string) {
 	return {
 		_id: id,
@@ -31,7 +35,11 @@ function sourceFixture(): SanityCatalogImportSource {
 				title: "One Print",
 				slug: "one-print",
 				description: "A print description.",
-				image: { assetRef: PRINT_IMAGE, alt: "A quiet landscape." },
+				image: {
+					assetRef: PRINT_IMAGE,
+					assetSource: assetSource(PRINT_IMAGE),
+					alt: "A quiet landscape.",
+				},
 				variants: [
 					{
 						_key: "print-variant",
@@ -53,12 +61,22 @@ function sourceFixture(): SanityCatalogImportSource {
 				...metadata("set-a", "lumaPrintSetV2"),
 				title: "Two Print Set",
 				slug: "two-print-set",
-				previewImage: { assetRef: SET_COVER, alt: "The two-print set cover." },
+				previewImage: {
+					assetRef: SET_COVER,
+					assetSource: assetSource(SET_COVER),
+					alt: "The two-print set cover.",
+				},
 				images: [
-					{ _key: "member-one", assetRef: PRINT_IMAGE, alt: "The first print." },
+					{
+						_key: "member-one",
+						assetRef: PRINT_IMAGE,
+						assetSource: assetSource(PRINT_IMAGE),
+						alt: "The first print.",
+					},
 					{
 						_key: "member-two",
 						assetRef: SET_SECOND_IMAGE,
+						assetSource: assetSource(SET_SECOND_IMAGE),
 						alt: "The second print.",
 					},
 				],
@@ -85,7 +103,12 @@ function sourceFixture(): SanityCatalogImportSource {
 				slug: "woven-piece",
 				description: "A woven wall piece.",
 				images: [
-					{ _key: "tapestry-image", assetRef: TAPESTRY_IMAGE, alt: "A woven wall piece." },
+					{
+						_key: "tapestry-image",
+						assetRef: TAPESTRY_IMAGE,
+						assetSource: assetSource(TAPESTRY_IMAGE),
+						alt: "A woven wall piece.",
+					},
 				],
 				price: 189,
 				category: "tapestries",
@@ -99,13 +122,19 @@ function sourceFixture(): SanityCatalogImportSource {
 				slug: "theme-kit",
 				description: "A downloadable theme kit.",
 				images: [
-					{ _key: "digital-image", assetRef: DIGITAL_IMAGE, alt: "Theme kit preview." },
+					{
+						_key: "digital-image",
+						assetRef: DIGITAL_IMAGE,
+						assetSource: assetSource(DIGITAL_IMAGE),
+						alt: "Theme kit preview.",
+					},
 				],
 				price: 15,
 				category: "digital",
 				digitalFileRef: "file-a-zip",
 				digitalFileAsset: {
 					_id: "file-a-zip",
+					_rev: "asset-revision-file-a-zip",
 					originalFilename: "theme-kit.zip",
 					mimeType: "application/zip",
 					size: 15_064,
@@ -160,10 +189,13 @@ describe("Sanity catalog import adapter", () => {
 					role: "primary",
 					order: 0,
 					sourceAssetRef: PRINT_IMAGE,
+					sourceAssetId: PRINT_IMAGE,
+					sourceAssetRevision: `asset-revision-${PRINT_IMAGE}`,
 					printSource: true,
 				},
 			],
 		});
+		expect(print?.sourceRevision).not.toBe(print?.media[0]?.sourceAssetRevision);
 
 		const set = manifest.products.find((product) => product.kind === "print_set");
 		expect(set?.media.map(({ key, role, order, printSource }) => ({
@@ -211,6 +243,7 @@ describe("Sanity catalog import adapter", () => {
 			digitalFile: {
 				sourceFileRef: "file-a-zip",
 				sourceAssetId: "file-a-zip",
+				sourceAssetRevision: "asset-revision-file-a-zip",
 				originalFilename: "theme-kit.zip",
 				mimeType: "application/zip",
 				sizeBytes: 15_064,
@@ -244,6 +277,225 @@ describe("Sanity catalog import adapter", () => {
 			publicationRemediation: { status: "ready", counts: { errors: 0, warnings: 0 } },
 			requiredSourceFileRefs: ["file-a-zip"],
 		});
+	});
+
+	test.each([
+		[
+			"a whitespace-padded asset reference",
+			(source: SanityCatalogImportSource) => {
+				if (source.prints[0].image) source.prints[0].image.assetRef = ` ${PRINT_IMAGE} `;
+			},
+			"invalid-image-reference",
+			"$.prints[0].image.assetRef",
+		],
+		[
+			"a mismatched dereferenced ID",
+			(source: SanityCatalogImportSource) => {
+				if (source.prints[0].image?.assetSource) {
+					source.prints[0].image.assetSource._id = "image-other-1200x800-jpg";
+				}
+			},
+			"invalid-image-reference",
+			"$.prints[0].image.assetSource._id",
+		],
+		[
+			"a null dereference",
+			(source: SanityCatalogImportSource) => {
+				if (source.prints[0].image) source.prints[0].image.assetSource = null;
+			},
+			"invalid-image-reference",
+			"$.prints[0].image.assetSource._id",
+		],
+		[
+			"a missing asset revision",
+			(source: SanityCatalogImportSource) => {
+				if (source.prints[0].image?.assetSource) {
+					delete source.prints[0].image.assetSource._rev;
+				}
+			},
+			"invalid-source-metadata",
+			"$.prints[0].image.assetSource._rev",
+		],
+		[
+			"a blank asset revision",
+			(source: SanityCatalogImportSource) => {
+				if (source.prints[0].image?.assetSource) source.prints[0].image.assetSource._rev = "";
+			},
+			"invalid-source-metadata",
+			"$.prints[0].image.assetSource._rev",
+		],
+		[
+			"a whitespace-padded asset revision",
+			(source: SanityCatalogImportSource) => {
+				if (source.prints[0].image?.assetSource) {
+					source.prints[0].image.assetSource._rev = " asset-revision ";
+				}
+			},
+			"invalid-source-metadata",
+			"$.prints[0].image.assetSource._rev",
+		],
+		[
+			"an overlong asset revision",
+			(source: SanityCatalogImportSource) => {
+				if (source.prints[0].image?.assetSource) {
+					source.prints[0].image.assetSource._rev = "r".repeat(257);
+				}
+			},
+			"invalid-source-metadata",
+			"$.prints[0].image.assetSource._rev",
+		],
+		[
+			"an asset revision containing a control character",
+			(source: SanityCatalogImportSource) => {
+				if (source.prints[0].image?.assetSource) {
+					source.prints[0].image.assetSource._rev = "asset\u0000revision";
+				}
+			},
+			"invalid-source-metadata",
+			"$.prints[0].image.assetSource._rev",
+		],
+		[
+			"a paid-file ID mismatch",
+			(source: SanityCatalogImportSource) => {
+				if (source.general[1].digitalFileAsset) {
+					source.general[1].digitalFileAsset._id = "file-other-zip";
+				}
+			},
+			"invalid-file-reference",
+			"$.general[0].digitalFileAsset._id",
+		],
+		[
+			"a missing paid-file asset revision",
+			(source: SanityCatalogImportSource) => {
+				if (source.general[1].digitalFileAsset) {
+					delete source.general[1].digitalFileAsset._rev;
+				}
+			},
+			"invalid-source-metadata",
+			"$.general[0].digitalFileAsset._rev",
+		],
+	] as const)("blocks %s instead of inferring provenance from the product", (_label, mutate, code, path) => {
+		const source = sourceFixture();
+		mutate(source);
+
+		const report = createSanityCatalogImportDryRunReport(
+			createSanityCatalogImportManifest(source),
+		);
+
+		expect(report.draftImport.status).toBe("blocked");
+		expect(report.draftImport.blockingIssues).toContainEqual(
+			expect.objectContaining({ code, path }),
+		);
+	});
+
+	test("accepts identical shared-asset provenance and blocks conflicting repeated revisions", () => {
+		const valid = createSanityCatalogImportManifest(sourceFixture());
+		const shared = valid.products.flatMap((product) => product.media)
+			.filter((placement) => placement.sourceAssetRef === PRINT_IMAGE);
+		expect(shared).toHaveLength(2);
+		expect(new Set(shared.map((placement) => placement.sourceAssetRevision))).toEqual(
+			new Set([`asset-revision-${PRINT_IMAGE}`]),
+		);
+
+		const conflicting = sourceFixture();
+		const repeated = conflicting.sets[0].images?.[0]?.assetSource;
+		if (repeated) repeated._rev = "conflicting-asset-revision";
+		const report = createSanityCatalogImportDryRunReport(
+			createSanityCatalogImportManifest(conflicting),
+		);
+
+		expect(report.draftImport.status).toBe("blocked");
+		expect(report.draftImport.blockingIssues).toContainEqual(
+			expect.objectContaining({
+				code: "invalid-source-metadata",
+				path: "$.sets[0].images[0].assetSource",
+			}),
+		);
+	});
+
+	test("preserves singleton and SEO asset provenance without requiring placement keys", () => {
+		const source = sourceFixture();
+		source.general[0].seo = {
+			ogImage: {
+				assetRef: SET_COVER,
+				assetSource: assetSource(SET_COVER),
+			},
+		};
+
+		const manifest = createSanityCatalogImportManifest(source);
+		const print = manifest.products.find((product) => product.kind === "print");
+		const social = manifest.products.find((product) => product.kind === "tapestry")?.media
+			.find((placement) => placement.role === "social_share");
+
+		expect(print?.media[0]).toMatchObject({
+			key: "primary",
+			sourceAssetId: PRINT_IMAGE,
+			sourceAssetRevision: `asset-revision-${PRINT_IMAGE}`,
+		});
+		expect(social).toMatchObject({
+			key: "social-share",
+			sourceAssetId: SET_COVER,
+			sourceAssetRevision: `asset-revision-${SET_COVER}`,
+		});
+	});
+
+	test("keeps the paid-file asset revision separate from its product-authored version", () => {
+		const manifest = createSanityCatalogImportManifest(sourceFixture());
+		const digital = manifest.products.find((product) => product.kind === "digital_download");
+
+		expect(digital?.digitalFile).toMatchObject({
+			sourceFileRef: "file-a-zip",
+			sourceAssetId: "file-a-zip",
+			sourceAssetRevision: "asset-revision-file-a-zip",
+			version: "1.0.0",
+		});
+		expect(digital?.digitalFile?.sourceAssetRevision).not.toBe(
+			digital?.digitalFile?.version,
+		);
+	});
+
+	test("blocks conflicting provenance when multiple products reference the same paid file", () => {
+		const source = sourceFixture();
+		const original = source.general[1];
+		if (!original.digitalFileAsset) throw new Error("Digital fixture is missing its file asset");
+		source.general.push({
+			...structuredClone(original),
+			...metadata("digital-b", "product"),
+			title: "Second Theme Kit",
+			slug: "second-theme-kit",
+			digitalFileAsset: {
+				...original.digitalFileAsset,
+				_rev: "conflicting-paid-file-revision",
+			},
+		});
+
+		const report = createSanityCatalogImportDryRunReport(
+			createSanityCatalogImportManifest(source),
+		);
+
+		expect(report.draftImport.status).toBe("blocked");
+		expect(report.draftImport.blockingIssues).toContainEqual(
+			expect.objectContaining({
+				code: "invalid-source-metadata",
+				path: "$.general[1].digitalFileAsset",
+			}),
+		);
+	});
+
+	test("still blocks a non-digital product carrying a padded paid-file reference", () => {
+		const source = sourceFixture();
+		source.general[0].digitalFileRef = " file-unexpected-zip ";
+		const report = createSanityCatalogImportDryRunReport(
+			createSanityCatalogImportManifest(source),
+		);
+
+		expect(report.draftImport.status).toBe("blocked");
+		expect(report.draftImport.blockingIssues).toContainEqual(
+			expect.objectContaining({
+				code: "invalid-file-reference",
+				path: "$.general[1].digitalFileRef",
+			}),
+		);
 	});
 
 	test("records storefront-compatible defaults and keeps missing alt text as a draft warning", () => {
@@ -434,6 +686,7 @@ describe("Sanity catalog import adapter", () => {
 					{
 						_key: "postcard-image",
 						assetRef: "image-f-1200x800-jpg",
+						assetSource: assetSource("image-f-1200x800-jpg"),
 						alt: "A postcard.",
 					},
 				],
@@ -450,6 +703,7 @@ describe("Sanity catalog import adapter", () => {
 					{
 						_key: "merchandise-image",
 						assetRef: "image-g-1200x800-jpg",
+						assetSource: assetSource("image-g-1200x800-jpg"),
 						alt: "A merchandise item.",
 					},
 				],

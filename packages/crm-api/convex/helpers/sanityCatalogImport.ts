@@ -21,6 +21,7 @@ import {
 } from "./sanityCatalogImportSupport";
 
 export type {
+	SanityCatalogAssetSource,
 	SanityCatalogCollectionSource,
 	SanityCatalogCouponSource,
 	SanityCatalogGeneralProductSource,
@@ -38,6 +39,61 @@ export type {
 	SanityCatalogPrintSource,
 	SanityCatalogVariantSource,
 } from "./sanityCatalogImportContract";
+
+function mediaSourcePath(
+	product: SanityCatalogImportManifest["products"][number],
+	placement: SanityCatalogImportManifest["products"][number]["media"][number],
+) {
+	if (placement.role === "primary") return `${product.sourcePath}.image.assetSource`;
+	if (placement.role === "cover") return `${product.sourcePath}.previewImage.assetSource`;
+	if (placement.role === "social_share") return `${product.sourcePath}.seo.ogImage.assetSource`;
+	return `${product.sourcePath}.images[${placement.order}].assetSource`;
+}
+
+function validateRepeatedAssetProvenance(products: SanityCatalogImportManifest["products"]) {
+	const seen = new Map<string, { sourceAssetId: string; sourceAssetRevision: string }>();
+	for (const product of products) {
+		const assets = [
+			...product.media.map((placement) => ({
+				path: mediaSourcePath(product, placement),
+				sourceAssetRef: placement.sourceAssetRef,
+				sourceAssetId: placement.sourceAssetId,
+				sourceAssetRevision: placement.sourceAssetRevision,
+			})),
+			...(product.digitalFile
+				? [{
+						path: `${product.sourcePath}.digitalFileAsset`,
+						sourceAssetRef: product.digitalFile.sourceFileRef,
+						sourceAssetId: product.digitalFile.sourceAssetId,
+						sourceAssetRevision: product.digitalFile.sourceAssetRevision,
+					}]
+				: []),
+		];
+		for (const asset of assets) {
+			const previous = seen.get(asset.sourceAssetRef);
+			if (
+				previous
+				&& (
+					previous.sourceAssetId !== asset.sourceAssetId
+					|| previous.sourceAssetRevision !== asset.sourceAssetRevision
+				)
+			) {
+				product.issues.push(
+					issue(
+						"invalid-source-metadata",
+						asset.path,
+						"Repeated Sanity asset references must preserve one exact asset identity and revision",
+					),
+				);
+				continue;
+			}
+			seen.set(asset.sourceAssetRef, {
+				sourceAssetId: asset.sourceAssetId,
+				sourceAssetRevision: asset.sourceAssetRevision,
+			});
+		}
+	}
+}
 
 export function createSanityCatalogImportManifest(
 	source: SanityCatalogImportSource,
@@ -99,8 +155,9 @@ export function createSanityCatalogImportManifest(
 				),
 			);
 		}
-		product.issues = sortedIssues(product.issues);
 	}
+	validateRepeatedAssetProvenance(products);
+	for (const product of products) product.issues = sortedIssues(product.issues);
 
 	const manifestIssues = products.flatMap((product) => product.issues);
 	if (collections.length > 0) {

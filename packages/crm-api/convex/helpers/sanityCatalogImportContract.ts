@@ -37,9 +37,15 @@ export type SanityCatalogDocumentSource = {
 	_updatedAt?: unknown;
 };
 
+export type SanityCatalogAssetSource = {
+	_id?: unknown;
+	_rev?: unknown;
+};
+
 export type SanityCatalogImageSource = {
 	_key?: unknown;
 	assetRef?: unknown;
+	assetSource?: SanityCatalogAssetSource | null;
 	alt?: unknown;
 };
 
@@ -84,12 +90,11 @@ export type SanityCatalogGeneralProductSource = SanityCatalogProductBaseSource &
 	category?: unknown;
 	collectionRef?: unknown;
 	digitalFileRef?: unknown;
-	digitalFileAsset?: {
-		_id?: unknown;
+	digitalFileAsset?: (SanityCatalogAssetSource & {
 		originalFilename?: unknown;
 		mimeType?: unknown;
 		size?: unknown;
-	};
+	}) | null;
 	digitalFileVersion?: unknown;
 	availablePapers?: unknown;
 	seo?: {
@@ -132,6 +137,8 @@ export type SanityCatalogImportMediaPlacement = {
 	role: "primary" | "cover" | "gallery" | "set_member" | "social_share";
 	order: number;
 	sourceAssetRef: string;
+	sourceAssetId: string;
+	sourceAssetRevision: string;
 	altText?: string;
 	printSource: boolean;
 };
@@ -171,6 +178,7 @@ export type SanityCatalogImportProduct = {
 	digitalFile?: {
 		sourceFileRef: string;
 		sourceAssetId: string;
+		sourceAssetRevision: string;
 		originalFilename: string;
 		mimeType: string;
 		sizeBytes: number;
