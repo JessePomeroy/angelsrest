@@ -1,5 +1,11 @@
 # @jessepomeroy/crm-api
 
+## 2.19.1
+
+### Patch Changes
+
+- 1d8a1c8: Flatten the catalog revision table's V1/V2 document union so Convex can evaluate and deploy the dormant V2 schema, with a regression check for unsupported nested top-level table unions.
+
 ## 2.19.0
 
 ### Minor Changes
