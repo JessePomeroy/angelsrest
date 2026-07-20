@@ -35,4 +35,12 @@ CMS-5.3b's engineering can land as small reviewed pull requests, but those revie
 
 Raw Sanity recovery exports, complete source snapshots, direct asset URLs, transfer credentials, local checkpoints, and `/tmp` reports are machine-local migration evidence and must not be committed here. Their later storage and verification boundary must be designed before the import executes.
 
+## Private-asset receipt candidates
+
+`sanityCatalogPrivateAssetReceipts.ts` is a pure, non-authorizing bridge between the ready source manifest and the later transfer boundary. It derives the exact deduplicated private set from the manifest—currently 11 print masters and one paid ZIP—then requires one matching injected byte stream per source. Asset identity and revision always come from the manifest. Canonical image MIME, dimensions, and deterministic filename come from the Sanity image reference; paid-file MIME, filename, byte count, and version come from its manifest record.
+
+Before reading any one-shot stream, the helper validates the complete evidence set, the fixed `angelsrest.online` tenant, operator-supplied audit timestamp and actor label, trusted decoder attestations, canonical image/file references, repeated-reference consistency, and every static target field through the production private-asset validators. It then hashes each non-empty chunk incrementally, counts bytes without buffering the file, checks the paid ZIP count against the manifest, builds the exact tenant-scoped candidate object key, and runs the production validator again over the measured record.
+
+The sorted result and its checksum are candidates only. They are not proof of upload, storage, registration, ownership, authorization, or release. The helper performs no fetch, filesystem, environment, Worker, Convex, Sanity, R2, network, or content write. It serializes no source bytes, URL, capability, grant, secret, or target Convex ID. A later operator-gated transfer must attest the decoder observations, re-hash and upload the same immutable bytes, verify actual private registration, and bind those identities into the release plan before any import can proceed.
+
 Sanity remains the public Shop, checkout, coupon, and download authority throughout this preparation and unpublished-import sequence. Public cutover, authoritative checkout, transactional coupon migration, publication, provider-lifecycle changes, and Editor visual refinement are explicit non-goals of this gate.
