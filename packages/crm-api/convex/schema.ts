@@ -123,7 +123,7 @@ const catalogProductRevisionV2CommonFields = {
 	createdBy: v.string(),
 };
 
-const catalogProductRevisionV2Validator = v.union(
+const catalogProductRevisionV2Validators = [
 	v.object({
 		...catalogProductRevisionV2CommonFields,
 		productKind: v.literal("print"),
@@ -162,7 +162,7 @@ const catalogProductRevisionV2Validator = v.union(
 		productKind: v.literal("merchandise"),
 		fulfillmentMode: v.literal("merchant_fulfilled"),
 	}),
-);
+] as const;
 
 export default defineSchema({
 	// Photographers you've built sites for
@@ -472,7 +472,7 @@ export default defineSchema({
 	// to LumaPrints without making that provider part of catalog identity.
 	catalogProductRevisions: defineTable(v.union(
 		catalogProductRevisionV1Validator,
-		catalogProductRevisionV2Validator,
+		...catalogProductRevisionV2Validators,
 	))
 		.index("by_productId_and_createdAt", ["productId", "createdAt"])
 		.index("by_siteUrl_and_productId", ["siteUrl", "productId"]),
