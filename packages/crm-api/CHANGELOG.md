@@ -1,5 +1,11 @@
 # @jessepomeroy/crm-api
 
+## 2.19.5
+
+### Patch Changes
+
+- 0bc655d: Bind private catalog receipt identities to the tenant and complete canonical asset set.
+
 ## 2.19.4
 
 ### Patch Changes
