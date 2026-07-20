@@ -1,5 +1,12 @@
 # @jessepomeroy/crm-api
 
+## 2.18.1
+
+### Patch Changes
+
+- 613d0ba: Add a deterministic, read-only adapter and readiness contract for the complete
+  Angels Rest Sanity catalog migration.
+
 ## 2.18.0
 
 ### Minor Changes
