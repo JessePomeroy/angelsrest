@@ -74,7 +74,14 @@ export const adminConfig: AdminConfig = {
 			mediaBaseUrl: "https://media.angelsrest.online",
 		},
 		products: {
-			enabledKinds: ["print"],
+			enabledKinds: [
+				"print",
+				"print_set",
+				"postcard",
+				"merchandise",
+				"tapestry",
+				"digital_download",
+			],
 		},
 		portfolio: {
 			mediaBaseUrl: "https://media.angelsrest.online",
