@@ -21,6 +21,7 @@ export type SanityCatalogImportIssue = {
 		| "missing-image-alt"
 		| "missing-required-field"
 		| "unsupported-category"
+		| "unsupported-source-field"
 		| "unsupported-source-document"
 		| "unexpected-source-type";
 	path: string;

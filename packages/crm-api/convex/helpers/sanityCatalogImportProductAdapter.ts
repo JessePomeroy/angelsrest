@@ -342,6 +342,19 @@ export function convertGeneral(
 			),
 		);
 	}
+	if (
+		source.availablePapers !== undefined
+		&& source.availablePapers !== null
+		&& (!Array.isArray(source.availablePapers) || source.availablePapers.length > 0)
+	) {
+		issues.push(
+			issue(
+				"unsupported-source-field",
+				`${sourcePath}.availablePapers`,
+				"Available papers are not mapped to the local catalog and require an explicit migration decision",
+			),
+		);
+	}
 	const retailPriceCents = cents(source.price, `${sourcePath}.price`, issues);
 	const variants: SanityCatalogImportVariant[] = [
 		{

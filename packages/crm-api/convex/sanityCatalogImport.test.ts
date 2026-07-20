@@ -378,6 +378,34 @@ describe("Sanity catalog import adapter", () => {
 		);
 	});
 
+	test("fails closed when an unmapped available-papers field carries source data", () => {
+		const source = sourceFixture();
+		source.general[0].availablePapers = ["archival-matte"];
+
+		const report = createSanityCatalogImportDryRunReport(
+			createSanityCatalogImportManifest(source),
+		);
+
+		expect(report.draftImport.status).toBe("blocked");
+		expect(report.draftImport.blockingIssues).toContainEqual(
+			expect.objectContaining({
+				code: "unsupported-source-field",
+				path: "$.general[1].availablePapers",
+			}),
+		);
+
+		const emptyFieldSource = sourceFixture();
+		emptyFieldSource.general[0].availablePapers = [];
+		const emptyFieldReport = createSanityCatalogImportDryRunReport(
+			createSanityCatalogImportManifest(emptyFieldSource),
+		);
+		expect(emptyFieldReport.draftImport.blockingIssues).not.toEqual(
+			expect.arrayContaining([
+				expect.objectContaining({ code: "unsupported-source-field" }),
+			]),
+		);
+	});
+
 	test("uses ordinal source ordering and preserves missing enabled as disabled", () => {
 		const source = sourceFixture();
 		delete source.prints[0].variants?.[0].enabled;
