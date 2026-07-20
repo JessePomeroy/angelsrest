@@ -1,0 +1,23 @@
+{
+	"schemaVersion": 1,
+	"siteUrl": "angelsrest.online",
+	"receiptSetId": "catalog-private-assets-v1:e8d573e1558301bfb52fc108baf227d6d74e4e7fbbc0228d2829ded3d32ac63b",
+	"targets": {
+		"printSources": {
+			"image-1382b9d3b95996a2d7f612c7d1943f1c63dcb695-2160x1440-jpg": "q970hm4246ek96y29w5hrsjkvh8axepc",
+			"image-1d015361e8e290c86f182a5bbce9fce7fc05638d-5152x7728-jpg": "q975n90kd5v4f5yz8navjn2wgd8awefb",
+			"image-2e51660cae40d0ee2add0ff0c394f1a3367a73b3-4657x3105-jpg": "q9753cev6yk0g5fvq0shzfwtdd8ax9pc",
+			"image-3dd99847dfcbd4a40aa28c9781785f3d397d674b-4647x3098-jpg": "q97cw906wca9jm4cr2keyfvqq18awbas",
+			"image-4eb6f607de53cc329dafa75645ce38b96459d010-6935x4623-png": "q97em2xrgehs2gg4jmeajgmj9n8awazy",
+			"image-72dc0a859a243cfe81ca72a19478c5f24e265558-3106x4659-jpg": "q97306qn1gkqb57npznkma9bq98awr40",
+			"image-7e6898c93b77d12e5116f9a0e380f1cd6ada1f9a-3936x2624-jpg": "q973v7amz5c2w1psdrdks2nfz58ax2dn",
+			"image-b0a6508aee892051083d6712e082969e0fc87def-4628x3085-jpg": "q972cqegh8jkemxbann71hegad8awn2z",
+			"image-b613547bfa4de6969a565c5345fef909cab6818d-6935x4623-jpg": "q9703eb8g26p50w4qxzgt06y0s8axkc4",
+			"image-ca3e7eee636426b3bb1fa5f5537795cad9fdfa73-2160x1440-jpg": "q974gmhkh4fwpjzy3fzty3pr998ax20n",
+			"image-e99ab36cab090eb18cf258460069f73de2b22ce2-4664x3109-jpg": "q976dtrph6fzshnrr0r8rygt4x8awhhh"
+		},
+		"paidFiles": {
+			"file-69ddd31ce4d9f51c978074210560e7249fe7e42f-zip": "q57679yxvbbbkz74563mvg34gn8axprw"
+		}
+	}
+}
