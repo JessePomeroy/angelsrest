@@ -26,12 +26,24 @@ import {
 	validateCatalogProductSlug,
 	validateCatalogTimestamp,
 } from "./catalogProductValidators";
+import {
+	assertSanityCatalogV2GraphPlan,
+	type SanityCatalogV2GraphPlan,
+} from "./sanityCatalogGraphPlan";
 
 type CatalogContext = QueryCtx | MutationCtx;
 type CatalogProduct = Doc<"catalogProducts">;
 type CatalogGraphV2Product = CatalogProduct & { graphVersion: 2 };
 type CatalogRevisionState = { createdAt: number } | null;
 const CATALOG_GRAPH_LIST_PROOF_BATCH = 50;
+const SANITY_CATALOG_IMPORT_KINDS = [
+	"print",
+	"print_set",
+	"postcard",
+	"tapestry",
+	"digital_download",
+	"merchandise",
+] as const satisfies readonly CatalogProductKind[];
 
 async function mapCatalogGraphListInBatches<T, Result>(
 	values: T[],
@@ -59,6 +71,26 @@ async function getProductByKey(
 			query.eq("siteUrl", siteUrl).eq("productKey", productKey),
 		)
 		.unique();
+}
+
+async function listExistingCatalogGraphV2Products(ctx: CatalogContext, siteUrl: string) {
+	const products = [] as CatalogGraphV2Product[];
+	for (const productKind of SANITY_CATALOG_IMPORT_KINDS) {
+		const rows = await ctx.db
+			.query("catalogProducts")
+			.withIndex("by_siteUrl_and_graphVersion_and_productKind_and_createdAt", (query) =>
+				query
+					.eq("siteUrl", siteUrl)
+					.eq("graphVersion", 2)
+					.eq("productKind", productKind),
+			)
+			.take(CATALOG_PRODUCT_LIMITS.productsPerKind + 1);
+		if (rows.length > CATALOG_PRODUCT_LIMITS.productsPerKind) {
+			throw new Error(`Catalog ${productKind} product limit exceeded`);
+		}
+		products.push(...rows.map(requireCatalogProductGraphV2Product));
+	}
+	return products;
 }
 
 async function requireAvailableSlug(
@@ -296,6 +328,134 @@ export async function createCatalogProductGraphV2Draft(
 	}
 	await ctx.db.patch(product._id, { draftRevisionId: inserted.revisionId });
 	return { productId: product._id, revisionId: inserted.revisionId };
+}
+
+async function verifySanityImportedCatalogProduct(
+	ctx: MutationCtx,
+	product: CatalogGraphV2Product,
+	planned: SanityCatalogV2GraphPlan["products"][number],
+) {
+	if (product.productKind !== planned.draft.productKind) {
+		throw new Error(`Catalog product key "${planned.productKey}" already exists`);
+	}
+	if (product.publishedRevisionId !== undefined) {
+		throw new Error("Sanity catalog import can only replay unpublished products");
+	}
+	const draft = await loadCatalogProductGraphV2Revision(ctx, product, product.draftRevisionId);
+	if (!draft) throw new Error("Sanity catalog imported product has no draft revision");
+	if (draft.revision.source !== "sanityImport") {
+		throw new Error("Existing catalog draft was not created by Sanity import");
+	}
+	if (draft.revision.checksum !== planned.graphChecksum) {
+		throw new Error("Existing Sanity catalog draft does not match the graph plan");
+	}
+	return {
+		productKey: planned.productKey,
+		productId: product._id,
+		revisionId: draft.revision._id,
+		graphChecksum: planned.graphChecksum,
+	};
+}
+
+/** Import one complete Sanity catalog V2 graph as unpublished private drafts. */
+export async function importSanityCatalogGraphV2Drafts(
+	ctx: MutationCtx,
+	args: {
+		siteUrl: string;
+		plan: SanityCatalogV2GraphPlan;
+	},
+) {
+	const { identity, client } = await requireSiteAdmin(ctx, args.siteUrl);
+	const plan = await assertSanityCatalogV2GraphPlan(args.plan);
+	const plannedProducts = [...plan.products].sort((left, right) =>
+		left.productKey.localeCompare(right.productKey)
+	);
+	if (plannedProducts.length === 0) throw new Error("Sanity catalog import plan is empty");
+
+	const existingProducts = await listExistingCatalogGraphV2Products(ctx, client.siteUrl);
+	const existingByKey = new Map(existingProducts.map((product) => [product.productKey, product]));
+	const planKeys = new Set(plannedProducts.map((product) => product.productKey));
+	const unexpectedExisting = existingProducts.filter((product) => !planKeys.has(product.productKey));
+	if (unexpectedExisting.length > 0) {
+		throw new Error("Sanity catalog import requires an empty or exact-replay V2 catalog");
+	}
+	const existingPlanned = plannedProducts.filter((product) =>
+		existingByKey.has(product.productKey)
+	);
+	if (existingPlanned.length > 0 && existingPlanned.length !== plannedProducts.length) {
+		throw new Error("Partial Sanity catalog import state is not replayable");
+	}
+	if (existingPlanned.length === plannedProducts.length) {
+		const products = [];
+		for (const planned of plannedProducts) {
+			const product = existingByKey.get(planned.productKey);
+			if (!product) throw new Error("Sanity catalog replay lost a planned product");
+			products.push(await verifySanityImportedCatalogProduct(ctx, product, planned));
+		}
+		return {
+			status: "replayed" as const,
+			graphPlanChecksum: plan.graphPlanChecksum,
+			productCount: products.length,
+			products,
+		};
+	}
+
+	const now = Date.now();
+	validateCatalogTimestamp(now, "Sanity catalog import timestamp");
+	const actor = identity.tokenIdentifier;
+	const products = [];
+	for (const planned of plannedProducts) {
+		validateCatalogProductKey(planned.productKey);
+		validateCatalogProductGraphV2Draft(planned.draft);
+		const draft = await normalizeCatalogProductGraphV2DraftAssets(
+			ctx,
+			client.siteUrl,
+			planned.draft,
+		);
+		const checksum = await checksumCatalogProductGraphV2Draft(draft);
+		if (checksum !== planned.graphChecksum) {
+			throw new Error(`Sanity catalog graph checksum changed for ${planned.productKey}`);
+		}
+		const slug = canonicalCatalogSlug(draft.slug);
+		await requireAvailableSlug(ctx, client.siteUrl, slug);
+		const productId = await ctx.db.insert("catalogProducts", {
+			siteUrl: client.siteUrl,
+			productKey: planned.productKey,
+			productKind: draft.productKind,
+			graphVersion: 2,
+			slug,
+			createdAt: now,
+			createdBy: actor,
+			updatedAt: now,
+			updatedBy: actor,
+		});
+		const productValue = await ctx.db.get(productId);
+		if (!productValue) throw new Error("Sanity catalog product creation failed");
+		const product = requireCatalogProductGraphV2Product(productValue);
+		const inserted = await insertCatalogProductGraphV2Revision(ctx, {
+			product,
+			draft,
+			source: "sanityImport",
+			createdAt: now,
+			createdBy: actor,
+		});
+		if (inserted.checksum !== planned.graphChecksum) {
+			throw new Error(`Sanity catalog inserted checksum changed for ${planned.productKey}`);
+		}
+		await ctx.db.patch(product._id, { draftRevisionId: inserted.revisionId });
+		products.push({
+			productKey: planned.productKey,
+			productId: product._id,
+			revisionId: inserted.revisionId,
+			graphChecksum: planned.graphChecksum,
+		});
+	}
+	return {
+		status: "imported" as const,
+		graphPlanChecksum: plan.graphPlanChecksum,
+		productCount: products.length,
+		products,
+	};
 }
 
 /** Save a replacement V2 draft while retaining every historical graph. */

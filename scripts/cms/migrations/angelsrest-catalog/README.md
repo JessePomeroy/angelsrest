@@ -139,6 +139,37 @@ The next execution slice must import the exact checked graph plan as one
 unpublished unit, then immediately replay it and accept only zero writes with
 unchanged product/revision identities.
 
+## Unpublished catalog import runner
+
+After `pnpm cms:catalog-graph-plan` produces the local graph-plan report, the
+import runner can send that exact plan through the existing authenticated admin
+mutation proxy:
+
+```sh
+pnpm cms:catalog-import
+```
+
+Default mode performs no network write. It reads and validates the local graph
+plan, then prints the exact execution command. Execution requires a fresh admin
+cookie because the Convex mutation remains behind the same site-admin boundary
+as the protected Editor, but it is one short request rather than a long
+per-asset transfer loop:
+
+```sh
+pnpm cms:catalog-import -- \
+  --execute \
+  --confirm "import CMS-5.3d unpublished catalog drafts to angelsrest.online" \
+  --cookie-file /tmp/angelsrest-admin-cookie.txt
+```
+
+The mutation rejects partial catalog state instead of topping it up. If none of
+the planned V2 products exist, it creates the complete graph as unpublished
+drafts in one transaction. If all planned products already exist, it accepts
+only an exact `sanityImport` replay with unchanged draft checksums and returns
+zero writes. A successful import still does not publish products, switch public
+Shop reads, create checkout authority, mutate Sanity, or remove the Sanity
+fallback.
+
 ## 2026-07-20 completion
 
 The complete private-asset transfer gate is complete. See
