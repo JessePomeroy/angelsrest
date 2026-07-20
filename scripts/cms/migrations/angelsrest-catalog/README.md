@@ -72,6 +72,43 @@ This command creates only verified private asset registry rows. It does not impo
 
 Sanity remains the public Shop, checkout, coupon, and download authority throughout this preparation and unpublished-import sequence. Public cutover, authoritative checkout, transactional coupon migration, publication, provider-lifecycle changes, and Editor visual refinement are explicit non-goals of this gate.
 
+## Catalog display-media transfer runner
+
+The product graph also needs normal web-facing CMS `mediaAssets` for public
+display images. These are separate from the private print-source masters and
+paid ZIP handled by the private-asset transfer above.
+
+Plan mode re-reads the published Sanity catalog, requires the reviewed
+33-product baseline, and verifies the current catalog display-media journals
+against production Convex/media storage. It does not upload or register media.
+
+```sh
+pnpm cms:catalog-display-media-transfer
+```
+
+Execution uses the same authenticated admin HTTP media boundary as the Blog
+media transfer. It downloads each current published Sanity image, decodes it,
+uploads it through the CMS media Worker, lets the host create responsive WebP
+derivatives, and persists two versioned journals:
+
+- `sanity-catalog-image-asset-map.json`
+- `sanity-catalog-display-media-transfer-receipts.json`
+
+The exact confirmation phrase is:
+
+```sh
+pnpm cms:catalog-display-media-transfer -- \
+  --execute \
+  --confirm "transfer CMS-5.3c 33 catalog display images to www.angelsrest.online" \
+  --cookie-file /tmp/angelsrest-admin-cookie.txt
+```
+
+After the display-media journals verify all 33 source images, the following
+slice can bind those `mediaAssets` plus the already verified private target IDs
+into one coordinated unpublished 33-product import. Sanity remains the public
+catalog authority until that later import, preview/parity work, and explicit
+provider cutover complete.
+
 ## 2026-07-20 completion
 
 The complete private-asset transfer gate is complete. See
