@@ -75,6 +75,9 @@ import type * as helpers_richTextValidationSupport from "../helpers/richTextVali
 import type * as helpers_sanityBlogImport from "../helpers/sanityBlogImport.js";
 import type * as helpers_sanityBlogImportPlan from "../helpers/sanityBlogImportPlan.js";
 import type * as helpers_sanityBlogImportStore from "../helpers/sanityBlogImportStore.js";
+import type * as helpers_sanityCatalogGraphPlan from "../helpers/sanityCatalogGraphPlan.js";
+import type * as helpers_sanityCatalogGraphPlanContract from "../helpers/sanityCatalogGraphPlanContract.js";
+import type * as helpers_sanityCatalogGraphPlanIntegrity from "../helpers/sanityCatalogGraphPlanIntegrity.js";
 import type * as helpers_sanityCatalogImport from "../helpers/sanityCatalogImport.js";
 import type * as helpers_sanityCatalogImportContract from "../helpers/sanityCatalogImportContract.js";
 import type * as helpers_sanityCatalogImportProductAdapter from "../helpers/sanityCatalogImportProductAdapter.js";
@@ -173,6 +176,9 @@ declare const fullApi: ApiFromModules<{
   "helpers/sanityBlogImport": typeof helpers_sanityBlogImport;
   "helpers/sanityBlogImportPlan": typeof helpers_sanityBlogImportPlan;
   "helpers/sanityBlogImportStore": typeof helpers_sanityBlogImportStore;
+  "helpers/sanityCatalogGraphPlan": typeof helpers_sanityCatalogGraphPlan;
+  "helpers/sanityCatalogGraphPlanContract": typeof helpers_sanityCatalogGraphPlanContract;
+  "helpers/sanityCatalogGraphPlanIntegrity": typeof helpers_sanityCatalogGraphPlanIntegrity;
   "helpers/sanityCatalogImport": typeof helpers_sanityCatalogImport;
   "helpers/sanityCatalogImportContract": typeof helpers_sanityCatalogImportContract;
   "helpers/sanityCatalogImportProductAdapter": typeof helpers_sanityCatalogImportProductAdapter;
