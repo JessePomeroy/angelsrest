@@ -13,6 +13,8 @@ export const INSPECTION_SECRET_A = "catalog-inspection-secret-a-0123456789abcdef
 const INSPECTION_SECRET_B = "catalog-inspection-secret-b-0123456789abcdef";
 export const STORAGE_PATH = "/cms-media/catalog-private-assets/storage-receipt";
 export const INSPECTION_PATH = "/cms-media/catalog-private-assets/inspection-receipt";
+export const DEFAULT_RECEIPT_SET_ID =
+	"catalog-private-assets-v1:df78d059f07865559876bf34204bd8f59dcaf385bdf6735193f5549f32107b2c";
 
 export function printFacts(
 	assetKey = "image-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa-6000x4000-jpg",
@@ -60,10 +62,11 @@ export function paidFacts(): Extract<
 
 export function storageSet(
 	facts: CatalogPrivateAssetFacts[] = [printFacts(), paidFacts()],
+	receiptSetId = DEFAULT_RECEIPT_SET_ID,
 ): CatalogPrivateStorageReceiptSet {
 	return {
 		schemaVersion: 1,
-		receiptSetId: "sanity-catalog-private-assets-v1",
+		receiptSetId,
 		siteUrl: SITE_A,
 		receipts: facts.map((item, index) => ({
 			facts: item,
@@ -75,10 +78,11 @@ export function storageSet(
 
 export function inspectionSet(
 	facts: CatalogPrivateAssetFacts[] = [printFacts(), paidFacts()],
+	receiptSetId = DEFAULT_RECEIPT_SET_ID,
 ): CatalogPrivateInspectionReceiptSet {
 	return {
 		schemaVersion: 1,
-		receiptSetId: "sanity-catalog-private-assets-v1",
+		receiptSetId,
 		siteUrl: SITE_A,
 		receipts: facts.map((item) => item.kind === "print_source"
 			? { facts: item, inspection: { method: "decoded_image_v1" as const } }
