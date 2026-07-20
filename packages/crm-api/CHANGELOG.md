@@ -1,5 +1,11 @@
 # @jessepomeroy/crm-api
 
+## 2.19.3
+
+### Patch Changes
+
+- 282c402: Preserve and validate each Sanity catalog asset's own identity and revision in migration manifests.
+
 ## 2.19.2
 
 ### Patch Changes
