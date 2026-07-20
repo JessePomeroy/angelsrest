@@ -1,6 +1,6 @@
 {
 	"name": "@jessepomeroy/crm-api",
-	"version": "2.19.4",
+	"version": "2.19.5",
 	"description": "Generated Convex API types for the photographer CRM platform. Consumed by spoke sites (reflecting-pool, future clients).",
 	"type": "module",
 	"types": "./src/index.ts",
