@@ -84,6 +84,13 @@ function scaledDimensions(width: number, height: number, maxWidth: number) {
 	};
 }
 
+function dimensionsMatchWithinImagePipelineRounding(
+	actual: { width: number; height: number },
+	expected: { width: number; height: number },
+) {
+	return actual.width === expected.width && Math.abs(actual.height - expected.height) <= 1;
+}
+
 export function validateReadyWebAsset(siteUrl: string, asset: ReadyWebAsset) {
 	if (!ASSET_ID_PATTERN.test(asset.assetId)) {
 		throw new Error("Media asset ID must be a canonical UUID v4");
@@ -116,8 +123,7 @@ export function validateReadyWebAsset(siteUrl: string, asset: ReadyWebAsset) {
 		NORMALIZED_MASTER_MAX_WIDTH,
 	);
 	if (
-		asset.master.width !== masterDimensions.width
-		|| asset.master.height !== masterDimensions.height
+		!dimensionsMatchWithinImagePipelineRounding(asset.master, masterDimensions)
 	) throw new Error("Private master dimensions do not match the source");
 
 	for (const [name, spec] of Object.entries(DERIVATIVE_SPECS) as Array<
