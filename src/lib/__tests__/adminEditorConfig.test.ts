@@ -74,7 +74,9 @@ describe("admin API aliases", () => {
 		expect(adminConfig.api.catalogProducts).not.toHaveProperty("publish");
 		expect(adminConfig.api.catalogProductGraphs).toBe(catalogGraphApi);
 		expect(adminConfig.api.catalogProductGraphs).not.toHaveProperty("publish");
+		expect(adminConfig.api.mediaAssets?.listForEditor).toBe(mediaApi.listForEditor);
 		expect(adminConfig.api.mediaAssets?.getManyForEditor).toBe(mediaApi.getManyForEditor);
+		expect(adminConfig.api.mediaAssets?.registerReadyWebAsset).toBe(mediaApi.registerReadyWebAsset);
 		expect(adminConfig.api.galleryDelivery?.listBySite).toBe(galleriesApi.listBySite);
 		expect(adminConfig.api.galleryDelivery?.setPassword).toBe(apiMock.galleryPassword.setPassword);
 		expect(adminConfig.api.crm).toBe(apiMock.crm);
@@ -121,6 +123,8 @@ describe("admin API aliases", () => {
 				"tapestry",
 				"digital_download",
 			],
+			mediaBaseUrl: "https://media.angelsrest.online",
+			uploadEndpoint: "/api/admin/media",
 		});
 		expect(adminConfig.editor?.siteSettings).toEqual({});
 		expect(adminConfig.editor?.contactPage).toEqual({
