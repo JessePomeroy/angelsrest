@@ -15,6 +15,11 @@ import {
 	requireCatalogProductGraphV2Product,
 } from "./catalogProductGraphData";
 import {
+	requireVerifiedPaidFileAssetById,
+	requireVerifiedPrintSourceAsset,
+} from "./catalogProductGraphAssets";
+import {
+	type CatalogGraphV2PrivateAssetReplacement,
 	type CatalogProductGraphV2Draft,
 	validateCatalogProductGraphV2Draft,
 } from "./catalogProductGraphValidators";
@@ -650,6 +655,86 @@ export async function saveCatalogProductGraphV2Draft(
 		updatedBy: identity.tokenIdentifier,
 	});
 	return { productId: product._id, revisionId: inserted.revisionId };
+}
+
+/** Replace one existing private relation without accepting a whole draft from the client. */
+export async function replaceCatalogProductGraphV2DraftPrivateAsset(
+	ctx: MutationCtx,
+	args: {
+		productId: Id<"catalogProducts">;
+		expectedDraftRevisionId: Id<"catalogProductRevisions">;
+		relation: CatalogGraphV2PrivateAssetReplacement;
+	},
+) {
+	const { doc, client } = await requireDocumentSiteAdminWithClient(
+		ctx,
+		"catalogProducts",
+		args.productId,
+	);
+	const product = requireCatalogProductGraphV2Product(doc);
+	requireCatalogProductKindEnabled(client, product.productKind);
+	const active = await loadCatalogProductGraphV2Revision(
+		ctx,
+		product,
+		product.draftRevisionId,
+	);
+	if (!active) throw new Error("Catalog private-asset replacement requires an active draft");
+
+	let draft: CatalogProductGraphV2Draft;
+	if (args.relation.kind === "print_source") {
+		if (active.draft.productKind !== "print" && active.draft.productKind !== "print_set") {
+			throw new Error("Catalog print-source relations require a print-family product");
+		}
+		const matches = active.draft.printSources.filter(
+			(source) => source.key === args.relation.relationKey,
+		);
+		if (matches.length !== 1) {
+			assertExpectedCatalogGraphV2Draft(product, args.expectedDraftRevisionId);
+			throw new Error("Catalog print-source relation key must resolve exactly once");
+		}
+		const target = await requireVerifiedPrintSourceAsset(
+			ctx,
+			product.siteUrl,
+			args.relation.assetId,
+		);
+		draft = {
+			...active.draft,
+			printSources: active.draft.printSources.map((source) =>
+				source.key === args.relation.relationKey
+					? { ...source, assetId: target._id }
+					: source
+			),
+		};
+	} else {
+		if (active.draft.productKind !== "digital_download") {
+			throw new Error("Catalog paid-file relations require a digital-download product");
+		}
+		if (active.draft.paidFile?.key !== args.relation.relationKey) {
+			assertExpectedCatalogGraphV2Draft(product, args.expectedDraftRevisionId);
+			throw new Error("Catalog paid-file relation key must resolve exactly once");
+		}
+		const target = await requireVerifiedPaidFileAssetById(
+			ctx,
+			product.siteUrl,
+			args.relation.assetId,
+		);
+		draft = {
+			...active.draft,
+			paidFile: {
+				key: active.draft.paidFile.key,
+				assetId: target._id,
+				...(target.version === undefined
+					? {}
+					: { version: target.version }),
+			},
+		};
+	}
+
+	return await saveCatalogProductGraphV2Draft(ctx, {
+		productId: product._id,
+		expectedDraftRevisionId: args.expectedDraftRevisionId,
+		draft,
+	});
 }
 
 /** Clear only the active pointer; immutable V2 product history is retained. */

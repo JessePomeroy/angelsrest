@@ -166,6 +166,18 @@ describe("dormant private catalog product graph V2", () => {
 			{ ...digitalDraft, title: "Blocked download edit" },
 			created.revisionId,
 		)).rejects.toThrow(/catalog digital_download products are not enabled/i);
+		await expect(fixture.adminA.mutation(
+			api.catalogProductGraphs.replaceDraftPrivateAsset,
+			{
+				productId: created.productId,
+				expectedDraftRevisionId: created.revisionId,
+				relation: {
+					kind: "paid_digital_file",
+					relationKey: "download",
+					assetId: fixture.paidA2,
+				},
+			},
+		)).rejects.toThrow(/catalog digital_download products are not enabled/i);
 		await expect(fixture.adminA.mutation(api.catalogProductGraphs.discardDraft, {
 			productId: created.productId,
 			draftRevisionId: created.revisionId,
@@ -285,6 +297,23 @@ describe("dormant private catalog product graph V2", () => {
 		})).rejects.toThrow(/not authorized/i);
 		await expect(saveGraph(fixture.adminB, created.productId, draft, created.revisionId))
 			.rejects.toThrow(/not authorized/i);
+		const replacement = {
+			productId: created.productId,
+			expectedDraftRevisionId: created.revisionId,
+			relation: {
+				kind: "print_source" as const,
+				relationKey: "master",
+				assetId: fixture.printA2,
+			},
+		};
+		await expect(fixture.t.mutation(
+			api.catalogProductGraphs.replaceDraftPrivateAsset,
+			replacement,
+		)).rejects.toThrow(/not authenticated/i);
+		await expect(fixture.adminB.mutation(
+			api.catalogProductGraphs.replaceDraftPrivateAsset,
+			replacement,
+		)).rejects.toThrow(/not authorized/i);
 		await expect(fixture.adminB.mutation(api.catalogProductGraphs.discardDraft, {
 			productId: created.productId,
 			draftRevisionId: created.revisionId,
@@ -323,6 +352,271 @@ describe("dormant private catalog product graph V2", () => {
 			created.revisionId,
 		)).toEqual(saved);
 		expect(await storedCounts(fixture)).toEqual(afterSave);
+	});
+
+	test("replaces the single private source on a print draft", async () => {
+		const fixture = await setup(modules);
+		const initial = graphDraft("print", fixture, "replace-print-source");
+		const created = await createGraph(
+			fixture.adminA,
+			SITE_A.siteUrl,
+			"replace-print-source",
+			initial,
+		);
+		const replaced = await fixture.adminA.mutation(
+			api.catalogProductGraphs.replaceDraftPrivateAsset,
+			{
+				productId: created.productId,
+				expectedDraftRevisionId: created.revisionId,
+				relation: {
+					kind: "print_source",
+					relationKey: "master",
+					assetId: fixture.printA2,
+				},
+			},
+		);
+		const editor = await fixture.adminA.query(api.catalogProductGraphs.getEditorState, {
+			productId: created.productId,
+		});
+		expect(editor.draft).toMatchObject({
+			revisionId: replaced.revisionId,
+			draft: {
+				...initial,
+				printSources: [{ key: "master", order: 0, assetId: fixture.printA2 }],
+			},
+			printSourceAssets: [{
+				relationKey: "master",
+				asset: expect.objectContaining({ assetId: fixture.printA2, status: "verified" }),
+			}],
+		});
+	});
+
+	test("replaces one keyed print-set source while preserving the complete immutable graph", async () => {
+		const fixture = await setup(modules);
+		const initial = graphDraft("print_set", fixture, "replace-set-source");
+		const created = await createGraph(
+			fixture.adminA,
+			SITE_A.siteUrl,
+			"replace-set-source",
+			initial,
+		);
+		const historical = await graphRows(fixture, created.revisionId);
+		await fixture.t.run(async (ctx) => {
+			const product = await ctx.db.get(created.productId);
+			if (!product) throw new Error("Missing catalog product fixture");
+			await ctx.db.patch(product._id, {
+				publishedRevisionId: created.revisionId,
+				publishedAt: product.updatedAt,
+				publishedBy: "fixture",
+			});
+		});
+		const args = {
+			productId: created.productId,
+			expectedDraftRevisionId: created.revisionId,
+			relation: {
+				kind: "print_source" as const,
+				relationKey: "member-1-source",
+				assetId: fixture.printA3,
+			},
+		};
+		const replaced = await fixture.adminA.mutation(
+			api.catalogProductGraphs.replaceDraftPrivateAsset,
+			args,
+		);
+		expect(replaced.revisionId).not.toBe(created.revisionId);
+		expect(await graphRows(fixture, created.revisionId)).toEqual(historical);
+		const editor = await fixture.adminA.query(api.catalogProductGraphs.getEditorState, {
+			productId: created.productId,
+		});
+		expect(editor.draft?.draft).toEqual({
+			...initial,
+			printSources: initial.printSources.map((source) =>
+				source.key === "member-1-source"
+					? { ...source, assetId: fixture.printA3 }
+					: source
+			),
+		});
+		expect(editor.published?.revisionId).toBe(created.revisionId);
+		expect(editor.draft?.printSourceAssets).toEqual([
+			expect.objectContaining({
+				relationKey: "member-1-source",
+				asset: expect.objectContaining({ assetId: fixture.printA3, status: "verified" }),
+			}),
+			expect.objectContaining({
+				relationKey: "member-2-source",
+				asset: expect.objectContaining({ assetId: fixture.printA2, status: "verified" }),
+			}),
+		]);
+		const safe = JSON.stringify(editor);
+		expect(safe).not.toMatch(/privateObjectKey|sha256|provenance|verifiedBy|createdBy/);
+
+		const counts = await storedCounts(fixture);
+		expect(await fixture.adminA.mutation(
+			api.catalogProductGraphs.replaceDraftPrivateAsset,
+			args,
+		)).toEqual(replaced);
+		expect(await storedCounts(fixture)).toEqual(counts);
+	});
+
+	test("derives a replacement paid-file version from the verified target", async () => {
+		const fixture = await setup(modules);
+		const initial = graphDraft("digital_download", fixture, "replace-paid-file");
+		const created = await createGraph(
+			fixture.adminA,
+			SITE_A.siteUrl,
+			"replace-paid-file",
+			initial,
+		);
+		const historical = await graphRows(fixture, created.revisionId);
+		const replaced = await fixture.adminA.mutation(
+			api.catalogProductGraphs.replaceDraftPrivateAsset,
+			{
+				productId: created.productId,
+				expectedDraftRevisionId: created.revisionId,
+				relation: {
+					kind: "paid_digital_file",
+					relationKey: "download",
+					assetId: fixture.paidA2,
+				},
+			},
+		);
+		expect(await graphRows(fixture, created.revisionId)).toEqual(historical);
+		const editor = await fixture.adminA.query(api.catalogProductGraphs.getEditorState, {
+			productId: created.productId,
+		});
+		expect(editor.draft?.draft).toEqual({
+			...initial,
+			paidFile: { key: "download", assetId: fixture.paidA2, version: "v2" },
+		});
+		expect(editor.draft?.paidFileAsset).toEqual(expect.objectContaining({
+			relationKey: "download",
+			asset: expect.objectContaining({
+				assetId: fixture.paidA2,
+				status: "verified",
+				version: "v2",
+			}),
+		}));
+		await expect(fixture.adminA.mutation(
+			api.catalogProductGraphs.replaceDraftPrivateAsset,
+			{
+				productId: created.productId,
+				expectedDraftRevisionId: created.revisionId,
+				relation: {
+					kind: "paid_digital_file",
+					relationKey: "download",
+					assetId: fixture.paidA,
+				},
+			},
+		)).rejects.toThrow(/conflict/i);
+		expect((await fixture.adminA.query(api.catalogProductGraphs.getEditorState, {
+			productId: created.productId,
+		})).draft?.revisionId).toBe(replaced.revisionId);
+	});
+
+	test("rejects incompatible, missing, and foreign private relation replacements", async () => {
+		const fixture = await setup(modules);
+		const print = await createGraph(
+			fixture.adminA,
+			SITE_A.siteUrl,
+			"replace-boundary-print",
+			graphDraft("print", fixture, "replace-boundary-print"),
+		);
+		const download = await createGraph(
+			fixture.adminA,
+			SITE_A.siteUrl,
+			"replace-boundary-download",
+			graphDraft("digital_download", fixture, "replace-boundary-download"),
+		);
+		const counts = await storedCounts(fixture);
+		await expect(fixture.adminA.mutation(
+			api.catalogProductGraphs.replaceDraftPrivateAsset,
+			{
+				productId: print.productId,
+				expectedDraftRevisionId: print.revisionId,
+				relation: {
+					kind: "print_source",
+					relationKey: "missing",
+					assetId: fixture.printA2,
+				},
+			},
+		)).rejects.toThrow(/relation key must resolve exactly once/i);
+		await expect(fixture.adminA.mutation(
+			api.catalogProductGraphs.replaceDraftPrivateAsset,
+			{
+				productId: print.productId,
+				expectedDraftRevisionId: print.revisionId,
+				relation: {
+					kind: "paid_digital_file",
+					relationKey: "download",
+					assetId: fixture.paidA2,
+				},
+			},
+		)).rejects.toThrow(/digital-download product/i);
+		await expect(fixture.adminA.mutation(
+			api.catalogProductGraphs.replaceDraftPrivateAsset,
+			{
+				productId: download.productId,
+				expectedDraftRevisionId: download.revisionId,
+				relation: {
+					kind: "print_source",
+					relationKey: "master",
+					assetId: fixture.printA2,
+				},
+			},
+		)).rejects.toThrow(/print-family product/i);
+		await expect(fixture.adminA.mutation(
+			api.catalogProductGraphs.replaceDraftPrivateAsset,
+			{
+				productId: print.productId,
+				expectedDraftRevisionId: print.revisionId,
+				relation: {
+					kind: "print_source",
+					relationKey: "master",
+					assetId: fixture.printB,
+				},
+			},
+		)).rejects.toThrow(/verified private asset owned by the same site/i);
+		await expect(fixture.adminA.mutation(
+			api.catalogProductGraphs.replaceDraftPrivateAsset,
+			{
+				productId: download.productId,
+				expectedDraftRevisionId: download.revisionId,
+				relation: {
+					kind: "paid_digital_file",
+					relationKey: "download",
+					assetId: fixture.paidB,
+				},
+			},
+		)).rejects.toThrow(/verified private asset owned by the same site/i);
+		await expect(fixture.adminA.mutation(
+			api.catalogProductGraphs.replaceDraftPrivateAsset,
+			{
+				productId: download.productId,
+				expectedDraftRevisionId: download.revisionId,
+				relation: {
+					kind: "paid_digital_file",
+					relationKey: "download",
+					assetId: fixture.printA as never,
+				},
+			},
+		)).rejects.toThrow();
+		await fixture.adminA.mutation(api.catalogProductGraphs.discardDraft, {
+			productId: print.productId,
+			draftRevisionId: print.revisionId,
+		});
+		await expect(fixture.adminA.mutation(
+			api.catalogProductGraphs.replaceDraftPrivateAsset,
+			{
+				productId: print.productId,
+				expectedDraftRevisionId: print.revisionId,
+				relation: {
+					kind: "print_source",
+					relationKey: "master",
+					assetId: fixture.printA2,
+				},
+			},
+		)).rejects.toThrow(/requires an active draft/i);
+		expect(await storedCounts(fixture)).toEqual(counts);
 	});
 
 	test("keeps old graphs immutable and rejects an optimistic write from a stale pointer", async () => {
@@ -502,6 +796,7 @@ describe("dormant private catalog product graph V2", () => {
 			"getRetirementEligibility",
 			"importSanityDrafts",
 			"listForEditor",
+			"replaceDraftPrivateAsset",
 			"saveDraft",
 		]);
 		const v1 = await fixture.adminA.mutation(api.catalogProducts.createDraft, {
@@ -521,6 +816,18 @@ describe("dormant private catalog product graph V2", () => {
 		await expect(fixture.adminA.query(api.catalogProductGraphs.getEditorState, {
 			productId: v1.productId,
 		})).rejects.toThrow(/not a v2 graph product/i);
+		await expect(fixture.adminA.mutation(
+			api.catalogProductGraphs.replaceDraftPrivateAsset,
+			{
+				productId: v1.productId,
+				expectedDraftRevisionId: v1.revisionId,
+				relation: {
+					kind: "print_source",
+					relationKey: "master",
+					assetId: fixture.printA2,
+				},
+			},
+		)).rejects.toThrow(/not a v2 graph product/i);
 		expect((await fixture.adminA.query(api.catalogProducts.listForEditor, {
 			siteUrl: SITE_A.siteUrl,
 		})).map(({ productId }) => productId)).toEqual([v1.productId]);
