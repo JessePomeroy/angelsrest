@@ -1,5 +1,11 @@
 # @jessepomeroy/crm-api
 
+## 2.21.2
+
+### Patch Changes
+
+- d22c4a8: Expose a read-only catalog graph retirement eligibility query that proves retained rows and cleanup candidates without deleting catalog assets.
+
 ## 2.21.1
 
 ### Patch Changes
