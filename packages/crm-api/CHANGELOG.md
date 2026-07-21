@@ -1,5 +1,11 @@
 # @jessepomeroy/crm-api
 
+## 2.23.0
+
+### Minor Changes
+
+- e414c13: Add an authenticated, revision-aware query for bounded, editor-safe private catalog asset candidates without exposing storage identity or capabilities.
+
 ## 2.22.0
 
 ### Minor Changes
