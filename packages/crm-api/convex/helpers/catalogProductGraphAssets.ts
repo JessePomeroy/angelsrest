@@ -93,7 +93,7 @@ async function requireReadyWebMediaAsset(
 	return asset;
 }
 
-async function requireVerifiedPrintSourceAsset(
+export async function requireVerifiedPrintSourceAsset(
 	ctx: CatalogGraphContext,
 	siteUrl: string,
 	assetId: string,
@@ -110,11 +110,10 @@ async function requireVerifiedPrintSourceAsset(
 	return asset;
 }
 
-async function requireVerifiedPaidFileAsset(
+export async function requireVerifiedPaidFileAssetById(
 	ctx: CatalogGraphContext,
 	siteUrl: string,
 	assetId: string,
-	version: string | undefined,
 ) {
 	const normalizedId = ctx.db.normalizeId("catalogDigitalFileAssets", assetId);
 	if (!normalizedId) throw new Error("Catalog paid-file asset ID is invalid");
@@ -125,6 +124,16 @@ async function requireVerifiedPaidFileAsset(
 		);
 	}
 	validatePaidDigitalFileAsset(paidDigitalFileValue(asset));
+	return asset;
+}
+
+async function requireVerifiedPaidFileAsset(
+	ctx: CatalogGraphContext,
+	siteUrl: string,
+	assetId: string,
+	version: string | undefined,
+) {
+	const asset = await requireVerifiedPaidFileAssetById(ctx, siteUrl, assetId);
 	if ((asset.version ?? null) !== (version ?? null)) {
 		throw new Error("Catalog paid-file relation version does not match its asset");
 	}

@@ -89,7 +89,12 @@ export function printSourceAsset(siteUrl: string, assetKey: string, index: numbe
 	};
 }
 
-function paidFileAsset(siteUrl: string, assetKey: string, index: number) {
+function paidFileAsset(
+	siteUrl: string,
+	assetKey: string,
+	index: number,
+	version = "v1",
+) {
 	return {
 		siteUrl,
 		assetKey,
@@ -99,7 +104,7 @@ function paidFileAsset(siteUrl: string, assetKey: string, index: number) {
 		mimeType: "application/zip" as const,
 		sizeBytes: 10_000_000,
 		sha256: ((index + 8) % 16).toString(16).repeat(64),
-		version: "v1",
+		version,
 		provenance: {
 			provider: "editor_upload" as const,
 			sourceId: `paid-file-${assetKey}`,
@@ -157,17 +162,25 @@ export async function setup(modules: Record<string, () => Promise<unknown>>) {
 			"catalogPrintSourceAssets",
 			printSourceAsset(SITE_A.siteUrl, "print-a-2", 2),
 		),
+		printA3: await ctx.db.insert(
+			"catalogPrintSourceAssets",
+			printSourceAsset(SITE_A.siteUrl, "print-a-3", 3),
+		),
 		printB: await ctx.db.insert(
 			"catalogPrintSourceAssets",
-			printSourceAsset(SITE_B.siteUrl, "print-b", 3),
+			printSourceAsset(SITE_B.siteUrl, "print-b", 4),
 		),
 		paidA: await ctx.db.insert(
 			"catalogDigitalFileAssets",
 			paidFileAsset(SITE_A.siteUrl, "paid-a", 1),
 		),
+		paidA2: await ctx.db.insert(
+			"catalogDigitalFileAssets",
+			paidFileAsset(SITE_A.siteUrl, "paid-a-2", 2, "v2"),
+		),
 		paidB: await ctx.db.insert(
 			"catalogDigitalFileAssets",
-			paidFileAsset(SITE_B.siteUrl, "paid-b", 2),
+			paidFileAsset(SITE_B.siteUrl, "paid-b", 3),
 		),
 	}));
 	return {

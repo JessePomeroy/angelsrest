@@ -58,6 +58,19 @@ const catalogGraphV2PaidFileValidator = v.object({
 	version: v.optional(v.string()),
 });
 
+export const catalogGraphV2PrivateAssetReplacementValidator = v.union(
+	v.object({
+		kind: v.literal("print_source"),
+		relationKey: v.string(),
+		assetId: v.id("catalogPrintSourceAssets"),
+	}),
+	v.object({
+		kind: v.literal("paid_digital_file"),
+		relationKey: v.string(),
+		assetId: v.id("catalogDigitalFileAssets"),
+	}),
+);
+
 const commonGraphFields = {
 	schemaVersion: v.literal(2),
 	title: v.optional(v.string()),
@@ -118,6 +131,9 @@ export const catalogProductGraphV2DraftValidator = v.union(
 
 export type CatalogProductGraphV2Draft = Infer<typeof catalogProductGraphV2DraftValidator>;
 export type CatalogGraphV2Variant = Infer<typeof catalogGraphV2VariantValidator>;
+export type CatalogGraphV2PrivateAssetReplacement = Infer<
+	typeof catalogGraphV2PrivateAssetReplacementValidator
+>;
 
 export const CATALOG_PRODUCT_GRAPH_V2_LIMITS = {
 	...CATALOG_PRODUCT_LIMITS,

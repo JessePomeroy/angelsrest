@@ -7,9 +7,13 @@ import {
 	getCatalogProductGraphV2RetirementEligibility,
 	importSanityCatalogGraphV2Drafts,
 	listCatalogProductGraphsV2ForEditor,
+	replaceCatalogProductGraphV2DraftPrivateAsset,
 	saveCatalogProductGraphV2Draft,
 } from "./helpers/catalogProductGraphStore";
-import { catalogProductGraphV2DraftValidator } from "./helpers/catalogProductGraphValidators";
+import {
+	catalogGraphV2PrivateAssetReplacementValidator,
+	catalogProductGraphV2DraftValidator,
+} from "./helpers/catalogProductGraphValidators";
 import { catalogProductKindValidator } from "./helpers/catalogProductValidators";
 import { sanityCatalogV2GraphPlanValidator } from "./helpers/sanityCatalogGraphPlan";
 
@@ -40,6 +44,17 @@ export const saveDraft = mutation({
 		draft: catalogProductGraphV2DraftValidator,
 	},
 	handler: async (ctx, args) => await saveCatalogProductGraphV2Draft(ctx, args),
+});
+
+/** Switch one existing private draft relation to an already verified tenant asset. */
+export const replaceDraftPrivateAsset = mutation({
+	args: {
+		productId: v.id("catalogProducts"),
+		expectedDraftRevisionId: v.id("catalogProductRevisions"),
+		relation: catalogGraphV2PrivateAssetReplacementValidator,
+	},
+	handler: async (ctx, args) =>
+		await replaceCatalogProductGraphV2DraftPrivateAsset(ctx, args),
 });
 
 /** Clear the active draft pointer while retaining immutable V2 history. */
