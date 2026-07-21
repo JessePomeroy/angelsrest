@@ -51,6 +51,7 @@ async function setup() {
 			subscriptionStatus: "active",
 			adminEmails: [site.email],
 			role: "client",
+			catalogProductKinds: ["print"],
 		});
 	}
 	return {
@@ -147,6 +148,65 @@ async function expectNoPublishedPointer(
 }
 
 describe("tenant-scoped catalog product drafts", () => {
+	test("requires the stored tenant product-kind policy for every operation", async () => {
+		const { t, adminA } = await setup();
+		const created = await create(adminA, SITE_A.siteUrl, "policy-print", draft());
+		await t.mutation(internal.platform.setCatalogProductKinds, {
+			siteUrl: SITE_A.siteUrl,
+			catalogProductKinds: [],
+		});
+
+		await expectError(
+			create(adminA, SITE_A.siteUrl, "policy-blocked-create", draft({
+				slug: "policy-blocked-create",
+			})),
+			/catalog print products are not enabled/i,
+		);
+		await expectError(
+			adminA.query(api.catalogProducts.listForEditor, { siteUrl: SITE_A.siteUrl }),
+			/catalog print products are not enabled/i,
+		);
+		await expectError(
+			adminA.query(api.catalogProducts.getEditorState, { productId: created.productId }),
+			/catalog print products are not enabled/i,
+		);
+		await expectError(
+			save(adminA, created.productId, draft({ title: "Blocked" }), created.revisionId),
+			/catalog print products are not enabled/i,
+		);
+		await expectError(
+			discard(adminA, created.productId, created.revisionId),
+			/catalog print products are not enabled/i,
+		);
+		await t.mutation(internal.platform.setCatalogProductKinds, {
+			siteUrl: SITE_A.siteUrl,
+			catalogProductKinds: ["print"],
+		});
+		expect(await adminA.query(api.catalogProducts.getEditorState, {
+			productId: created.productId,
+		})).toMatchObject({ productId: created.productId, productKind: "print" });
+	});
+
+	test("fails closed when the tenant product-kind policy is missing", async () => {
+		const t = convexTest(schema, modules);
+		await t.run(async (ctx) => {
+			await ctx.db.insert("platformClients", {
+				name: SITE_A.siteUrl,
+				email: SITE_A.email,
+				siteUrl: SITE_A.siteUrl,
+				tier: "full",
+				subscriptionStatus: "active",
+				adminEmails: [SITE_A.email],
+				role: "client",
+			});
+		});
+		const adminA = t.withIdentity({ subject: SITE_A.email, email: SITE_A.email });
+		await expectError(
+			create(adminA, SITE_A.siteUrl, "missing-policy", draft()),
+			/catalog product policy is not configured/i,
+		);
+	});
+
 	test("requires authentication and tenant membership for every operation", async () => {
 		const { t, adminA, adminB } = await setup();
 		await expectError(

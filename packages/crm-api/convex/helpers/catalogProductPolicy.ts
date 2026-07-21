@@ -1,4 +1,5 @@
 import { v } from "convex/values";
+import type { Doc } from "../_generated/dataModel";
 import {
 	type CatalogProductKind,
 	catalogProductKindValidator,
@@ -40,4 +41,17 @@ export function normalizeCatalogProductKinds(
 	return CATALOG_PRODUCT_KIND_ORDER.filter((productKind) =>
 		requested.has(productKind)
 	);
+}
+
+export function requireCatalogProductKindEnabled(
+	client: Doc<"platformClients">,
+	productKind: CatalogProductKind,
+) {
+	const enabledKinds = client.catalogProductKinds;
+	if (!enabledKinds) {
+		throw new Error("Catalog product policy is not configured for this site");
+	}
+	if (!enabledKinds.includes(productKind)) {
+		throw new Error(`Catalog ${productKind} products are not enabled for this site`);
+	}
 }

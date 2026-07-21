@@ -2,7 +2,7 @@ import type { Doc, Id } from "../_generated/dataModel";
 import type { MutationCtx, QueryCtx } from "../_generated/server";
 import {
 	requireAuth,
-	requireDocumentSiteAdmin,
+	requireDocumentSiteAdminWithClient,
 	requireSiteAdmin,
 } from "../authHelpers";
 import {
@@ -26,6 +26,7 @@ import {
 	validateCatalogProductSlug,
 	validateCatalogTimestamp,
 } from "./catalogProductValidators";
+import { requireCatalogProductKindEnabled } from "./catalogProductPolicy";
 import {
 	assertSanityCatalogV2GraphPlan,
 	type SanityCatalogV2GraphPlan,
@@ -260,6 +261,7 @@ export async function createCatalogProductGraphV2Draft(
 		client.siteUrl,
 		args.draft,
 	);
+	requireCatalogProductKindEnabled(client, draft.productKind);
 	const checksum = await checksumCatalogProductGraphV2Draft(draft);
 	const existing = await getProductByKey(ctx, client.siteUrl, args.productKey);
 	if (existing) {
@@ -371,6 +373,9 @@ export async function importSanityCatalogGraphV2Drafts(
 		left.productKey.localeCompare(right.productKey)
 	);
 	if (plannedProducts.length === 0) throw new Error("Sanity catalog import plan is empty");
+	for (const planned of plannedProducts) {
+		requireCatalogProductKindEnabled(client, planned.draft.productKind);
+	}
 
 	const existingProducts = await listExistingCatalogGraphV2Products(ctx, client.siteUrl);
 	const existingByKey = new Map(existingProducts.map((product) => [product.productKey, product]));
@@ -467,9 +472,13 @@ export async function saveCatalogProductGraphV2Draft(
 		draft: CatalogProductGraphV2Draft;
 	},
 ) {
-	const product = requireCatalogProductGraphV2Product(
-		await requireDocumentSiteAdmin(ctx, "catalogProducts", args.productId),
+	const { doc, client } = await requireDocumentSiteAdminWithClient(
+		ctx,
+		"catalogProducts",
+		args.productId,
 	);
+	const product = requireCatalogProductGraphV2Product(doc);
+	requireCatalogProductKindEnabled(client, product.productKind);
 	validateCatalogProductGraphV2Draft(args.draft);
 	if (product.productKind !== args.draft.productKind) {
 		throw new Error("Catalog V2 draft product kind does not match its product");
@@ -532,9 +541,13 @@ export async function discardCatalogProductGraphV2Draft(
 		draftRevisionId: Id<"catalogProductRevisions">;
 	},
 ) {
-	const product = requireCatalogProductGraphV2Product(
-		await requireDocumentSiteAdmin(ctx, "catalogProducts", args.productId),
+	const { doc, client } = await requireDocumentSiteAdminWithClient(
+		ctx,
+		"catalogProducts",
+		args.productId,
 	);
+	const product = requireCatalogProductGraphV2Product(doc);
+	requireCatalogProductKindEnabled(client, product.productKind);
 	await loadCatalogGraphV2RevisionSummaries(ctx, product);
 	if (product.draftRevisionId === args.draftRevisionId) {
 		await loadCatalogProductGraphV2Revision(ctx, product, args.draftRevisionId);
@@ -568,9 +581,13 @@ export async function getCatalogProductGraphV2EditorState(
 	ctx: QueryCtx,
 	productId: Id<"catalogProducts">,
 ) {
-	const product = requireCatalogProductGraphV2Product(
-		await requireDocumentSiteAdmin(ctx, "catalogProducts", productId),
+	const { doc, client } = await requireDocumentSiteAdminWithClient(
+		ctx,
+		"catalogProducts",
+		productId,
 	);
+	const product = requireCatalogProductGraphV2Product(doc);
+	requireCatalogProductKindEnabled(client, product.productKind);
 	const [draft, published] = await Promise.all([
 		loadCatalogProductGraphV2Revision(ctx, product, product.draftRevisionId),
 		loadCatalogProductGraphV2Revision(ctx, product, product.publishedRevisionId),
@@ -601,6 +618,7 @@ export async function listCatalogProductGraphsV2ForEditor(
 	productKind: CatalogProductKind,
 ) {
 	const { client } = await requireSiteAdmin(ctx, siteUrl);
+	requireCatalogProductKindEnabled(client, productKind);
 	const products = await ctx.db
 		.query("catalogProducts")
 		.withIndex("by_siteUrl_and_graphVersion_and_productKind_and_createdAt", (query) =>
