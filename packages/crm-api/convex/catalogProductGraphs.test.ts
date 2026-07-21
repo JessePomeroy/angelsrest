@@ -105,6 +105,33 @@ async function sanityImportPlan(fixture: Awaited<ReturnType<typeof setup>>) {
 	};
 }
 
+async function sanityImportPlanWithDuplicateSlug(
+	plan: SanityCatalogV2GraphPlan,
+) {
+	const products = await Promise.all(plan.products.map(async (product) => {
+		const draft = {
+			...product.draft,
+			slug: "duplicate-import-slug",
+		};
+		return {
+			...product,
+			draft,
+			graphChecksum: await checksumCatalogProductGraphV2Draft(draft),
+		};
+	}));
+	const payload: SanityCatalogV2GraphPlanPayload = {
+		version: plan.version,
+		graphVersion: plan.graphVersion,
+		sourceManifestVersion: plan.sourceManifestVersion,
+		assetMappings: plan.assetMappings,
+		products,
+	};
+	return {
+		...payload,
+		graphPlanChecksum: await checksumSanityCatalogV2GraphPlan(payload),
+	};
+}
+
 describe("dormant private catalog product graph V2", () => {
 	test("requires the stored tenant product-kind policy for V2 boundaries", async () => {
 		const fixture = await setup(modules);
@@ -497,6 +524,29 @@ describe("dormant private catalog product graph V2", () => {
 				publishedAt: null,
 			});
 		}
+	});
+
+	test("rolls back a mid-import write failure without partial catalog rows", async () => {
+		const fixture = await setup(modules);
+		const plan = await sanityImportPlanWithDuplicateSlug(
+			await sanityImportPlan(fixture),
+		);
+		const beforeImport = await storedCounts(fixture);
+
+		await expect(fixture.adminA.mutation(api.catalogProductGraphs.importSanityDrafts, {
+			siteUrl: SITE_A.siteUrl,
+			plan,
+		})).rejects.toThrow(/slug.*already exists/i);
+
+		expect(await storedCounts(fixture)).toEqual(beforeImport);
+		expect(await fixture.adminA.query(api.catalogProductGraphs.listForEditor, {
+			siteUrl: SITE_A.siteUrl,
+			productKind: "digital_download",
+		})).toEqual([]);
+		expect(await fixture.adminA.query(api.catalogProductGraphs.listForEditor, {
+			siteUrl: SITE_A.siteUrl,
+			productKind: "print",
+		})).toEqual([]);
 	});
 
 	test("rejects partial or admin-created catalog state instead of topping it up", async () => {
