@@ -58,15 +58,28 @@ const catalogGraphV2PaidFileValidator = v.object({
 	version: v.optional(v.string()),
 });
 
+const catalogGraphV2PrintSourceRelationFields = {
+	kind: v.literal("print_source"),
+	relationKey: v.string(),
+};
+
+const catalogGraphV2PaidFileRelationFields = {
+	kind: v.literal("paid_digital_file"),
+	relationKey: v.string(),
+};
+
+export const catalogGraphV2PrivateAssetRelationValidator = v.union(
+	v.object(catalogGraphV2PrintSourceRelationFields),
+	v.object(catalogGraphV2PaidFileRelationFields),
+);
+
 export const catalogGraphV2PrivateAssetReplacementValidator = v.union(
 	v.object({
-		kind: v.literal("print_source"),
-		relationKey: v.string(),
+		...catalogGraphV2PrintSourceRelationFields,
 		assetId: v.id("catalogPrintSourceAssets"),
 	}),
 	v.object({
-		kind: v.literal("paid_digital_file"),
-		relationKey: v.string(),
+		...catalogGraphV2PaidFileRelationFields,
 		assetId: v.id("catalogDigitalFileAssets"),
 	}),
 );
@@ -131,6 +144,9 @@ export const catalogProductGraphV2DraftValidator = v.union(
 
 export type CatalogProductGraphV2Draft = Infer<typeof catalogProductGraphV2DraftValidator>;
 export type CatalogGraphV2Variant = Infer<typeof catalogGraphV2VariantValidator>;
+export type CatalogGraphV2PrivateAssetRelation = Infer<
+	typeof catalogGraphV2PrivateAssetRelationValidator
+>;
 export type CatalogGraphV2PrivateAssetReplacement = Infer<
 	typeof catalogGraphV2PrivateAssetReplacementValidator
 >;

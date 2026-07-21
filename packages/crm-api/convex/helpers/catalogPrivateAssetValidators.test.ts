@@ -1,4 +1,5 @@
 import { describe, expect, test } from "vitest";
+import type { Id } from "../_generated/dataModel";
 import {
 	PRIVATE_CATALOG_ASSET_LIMITS,
 	type PaidDigitalFileAsset,
@@ -250,7 +251,7 @@ describe("Editor-safe private catalog asset projections", () => {
 	test("projects useful print metadata without private location or provenance", () => {
 		const projected = toEditorSafePrivatePrintSourceAsset({
 			...printSource(),
-			_id: "print-source-convex-id",
+			_id: "print-source-convex-id" as Id<"catalogPrintSourceAssets">,
 		});
 		expect(projected).toEqual({
 			kind: "print_source",
@@ -281,7 +282,7 @@ describe("Editor-safe private catalog asset projections", () => {
 	test("projects useful paid-file metadata without a download location or grant", () => {
 		const projected = toEditorSafePaidDigitalFileAsset({
 			...paidFile(),
-			_id: "paid-file-convex-id",
+			_id: "paid-file-convex-id" as Id<"catalogDigitalFileAssets">,
 		});
 		expect(projected).toEqual({
 			kind: "paid_digital_file",

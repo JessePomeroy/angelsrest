@@ -1,9 +1,13 @@
+import type { PaginationOptions } from "convex/server";
 import type { Doc, Id } from "../_generated/dataModel";
 import type { MutationCtx, QueryCtx } from "../_generated/server";
 import {
 	canonicalizeCatalogProductGraphV2Draft,
 } from "./catalogProductGraphChecksum";
-import type { CatalogProductGraphV2Draft } from "./catalogProductGraphValidators";
+import type {
+	CatalogGraphV2PrivateAssetRelation,
+	CatalogProductGraphV2Draft,
+} from "./catalogProductGraphValidators";
 import {
 	type PaidDigitalFileAsset,
 	type PrivatePrintSourceAsset,
@@ -17,6 +21,57 @@ import { validateReadyWebAsset } from "./mediaValidators";
 type CatalogGraphContext = QueryCtx | MutationCtx;
 type CatalogRevision = Doc<"catalogProductRevisions">;
 type CatalogRevisionV2 = Extract<CatalogRevision, { schemaVersion: 2 }>;
+
+export const CATALOG_PRIVATE_ASSET_CANDIDATE_PAGE_MAX = 50;
+const CATALOG_PRIVATE_ASSET_CANDIDATE_BYTES_MAX = 512_000;
+
+/**
+ * List only editor-safe metadata for verified private assets owned by the
+ * server-derived tenant. Client pagination hints cannot raise the read limits.
+ */
+export async function listCatalogPrivateAssetCandidates(
+	ctx: QueryCtx,
+	siteUrl: string,
+	relation: CatalogGraphV2PrivateAssetRelation,
+	paginationOpts: PaginationOptions,
+) {
+	if (
+		!Number.isSafeInteger(paginationOpts.numItems)
+		|| paginationOpts.numItems < 1
+		|| paginationOpts.numItems > CATALOG_PRIVATE_ASSET_CANDIDATE_PAGE_MAX
+	) {
+		throw new Error(
+			`Catalog private-asset candidate pages cannot exceed ${CATALOG_PRIVATE_ASSET_CANDIDATE_PAGE_MAX} items`,
+		);
+	}
+	const boundedPaginationOpts: PaginationOptions = {
+		...paginationOpts,
+		maximumRowsRead: CATALOG_PRIVATE_ASSET_CANDIDATE_PAGE_MAX,
+		maximumBytesRead: CATALOG_PRIVATE_ASSET_CANDIDATE_BYTES_MAX,
+	};
+
+	if (relation.kind === "print_source") {
+		const result = await ctx.db
+			.query("catalogPrintSourceAssets")
+			.withIndex("by_siteUrl_and_createdAt", (query) => query.eq("siteUrl", siteUrl))
+			.order("desc")
+			.paginate(boundedPaginationOpts);
+		return {
+			...result,
+			page: result.page.map(toEditorSafePrivatePrintSourceAsset),
+		};
+	}
+
+	const result = await ctx.db
+		.query("catalogDigitalFileAssets")
+		.withIndex("by_siteUrl_and_createdAt", (query) => query.eq("siteUrl", siteUrl))
+		.order("desc")
+		.paginate(boundedPaginationOpts);
+	return {
+		...result,
+		page: result.page.map(toEditorSafePaidDigitalFileAsset),
+	};
+}
 
 function readyWebAssetValue(asset: Doc<"mediaAssets">) {
 	return {

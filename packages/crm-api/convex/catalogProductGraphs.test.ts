@@ -795,6 +795,7 @@ describe("dormant private catalog product graph V2", () => {
 			"getEditorState",
 			"getRetirementEligibility",
 			"importSanityDrafts",
+			"listDraftPrivateAssetCandidates",
 			"listForEditor",
 			"replaceDraftPrivateAsset",
 			"saveDraft",
