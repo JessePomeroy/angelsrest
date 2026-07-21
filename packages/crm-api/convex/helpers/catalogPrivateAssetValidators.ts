@@ -1,5 +1,6 @@
 import type { Infer } from "convex/values";
 import { v } from "convex/values";
+import type { Id } from "../_generated/dataModel";
 
 export const privateCatalogAssetStatusValidator = v.literal("verified");
 
@@ -291,7 +292,7 @@ export function validatePaidDigitalFileAsset(asset: PaidDigitalFileAsset) {
 
 export type EditorSafePrivatePrintSourceAsset = {
 	kind: "print_source";
-	assetId: string;
+	assetId: Id<"catalogPrintSourceAssets">;
 	status: "verified";
 	originalFilename: string;
 	mimeType: "image/jpeg" | "image/png";
@@ -303,7 +304,7 @@ export type EditorSafePrivatePrintSourceAsset = {
 
 export type EditorSafePaidDigitalFileAsset = {
 	kind: "paid_digital_file";
-	assetId: string;
+	assetId: Id<"catalogDigitalFileAssets">;
 	status: "verified";
 	originalFilename: string;
 	mimeType: "application/zip";
@@ -314,7 +315,7 @@ export type EditorSafePaidDigitalFileAsset = {
 
 /** Metadata only: this projection cannot locate, upload, or grant the object. */
 export function toEditorSafePrivatePrintSourceAsset(
-	asset: PrivatePrintSourceAsset & { _id: string },
+	asset: PrivatePrintSourceAsset & { _id: Id<"catalogPrintSourceAssets"> },
 ): EditorSafePrivatePrintSourceAsset {
 	const contract: PrivatePrintSourceAsset = {
 		siteUrl: asset.siteUrl,
@@ -349,7 +350,7 @@ export function toEditorSafePrivatePrintSourceAsset(
 
 /** Metadata only: this projection cannot locate, upload, or grant the object. */
 export function toEditorSafePaidDigitalFileAsset(
-	asset: PaidDigitalFileAsset & { _id: string },
+	asset: PaidDigitalFileAsset & { _id: Id<"catalogDigitalFileAssets"> },
 ): EditorSafePaidDigitalFileAsset {
 	const contract: PaidDigitalFileAsset = {
 		siteUrl: asset.siteUrl,

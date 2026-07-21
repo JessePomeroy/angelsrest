@@ -520,11 +520,13 @@ export default defineSchema({
 	// private namespaces. No public URL or download capability is stored here.
 	catalogPrintSourceAssets: defineTable(privatePrintSourceAssetValidator)
 		.index("by_siteUrl_and_assetKey", ["siteUrl", "assetKey"])
-		.index("by_siteUrl_and_sha256", ["siteUrl", "sha256"]),
+		.index("by_siteUrl_and_sha256", ["siteUrl", "sha256"])
+		.index("by_siteUrl_and_createdAt", ["siteUrl", "createdAt"]),
 
 	catalogDigitalFileAssets: defineTable(paidDigitalFileAssetValidator)
 		.index("by_siteUrl_and_assetKey", ["siteUrl", "assetKey"])
-		.index("by_siteUrl_and_sha256", ["siteUrl", "sha256"]),
+		.index("by_siteUrl_and_sha256", ["siteUrl", "sha256"])
+		.index("by_siteUrl_and_createdAt", ["siteUrl", "createdAt"]),
 
 	// Storage and content inspection use separate tenant credentials. The first
 	// complete receipt set remains non-authoritative here; only a matching second

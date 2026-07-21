@@ -1,3 +1,4 @@
+import { paginationOptsValidator } from "convex/server";
 import { v } from "convex/values";
 import { mutation, query } from "./_generated/server";
 import {
@@ -6,11 +7,13 @@ import {
 	getCatalogProductGraphV2EditorState,
 	getCatalogProductGraphV2RetirementEligibility,
 	importSanityCatalogGraphV2Drafts,
+	listCatalogProductGraphV2DraftPrivateAssetCandidates,
 	listCatalogProductGraphsV2ForEditor,
 	replaceCatalogProductGraphV2DraftPrivateAsset,
 	saveCatalogProductGraphV2Draft,
 } from "./helpers/catalogProductGraphStore";
 import {
+	catalogGraphV2PrivateAssetRelationValidator,
 	catalogGraphV2PrivateAssetReplacementValidator,
 	catalogProductGraphV2DraftValidator,
 } from "./helpers/catalogProductGraphValidators";
@@ -55,6 +58,18 @@ export const replaceDraftPrivateAsset = mutation({
 	},
 	handler: async (ctx, args) =>
 		await replaceCatalogProductGraphV2DraftPrivateAsset(ctx, args),
+});
+
+/** List verified tenant assets compatible with one proven active draft relation. */
+export const listDraftPrivateAssetCandidates = query({
+	args: {
+		productId: v.id("catalogProducts"),
+		expectedDraftRevisionId: v.id("catalogProductRevisions"),
+		relation: catalogGraphV2PrivateAssetRelationValidator,
+		paginationOpts: paginationOptsValidator,
+	},
+	handler: async (ctx, args) =>
+		await listCatalogProductGraphV2DraftPrivateAssetCandidates(ctx, args),
 });
 
 /** Clear the active draft pointer while retaining immutable V2 history. */
