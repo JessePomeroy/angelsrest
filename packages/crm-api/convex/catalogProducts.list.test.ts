@@ -44,6 +44,7 @@ async function setup() {
 			subscriptionStatus: "active",
 			adminEmails: [site.email],
 			role: "client",
+			catalogProductKinds: ["print"],
 		});
 	}
 	return {

@@ -2,7 +2,7 @@
 // @vitest-environment edge-runtime
 
 import { describe, expect, test } from "vitest";
-import { api } from "./_generated/api";
+import { api, internal } from "./_generated/api";
 import * as catalogProductGraphsModule from "./catalogProductGraphs";
 import * as catalogProductsModule from "./catalogProducts";
 import { checksumCatalogProductGraphV2Draft } from "./helpers/catalogProductGraphChecksum";
@@ -106,6 +106,85 @@ async function sanityImportPlan(fixture: Awaited<ReturnType<typeof setup>>) {
 }
 
 describe("dormant private catalog product graph V2", () => {
+	test("requires the stored tenant product-kind policy for V2 boundaries", async () => {
+		const fixture = await setup(modules);
+		const digitalDraft = graphDraft("digital_download", fixture, "policy-download");
+		const created = await createGraph(
+			fixture.adminA,
+			SITE_A.siteUrl,
+			"policy-download",
+			digitalDraft,
+		);
+		await fixture.t.mutation(internal.platform.setCatalogProductKinds, {
+			siteUrl: SITE_A.siteUrl,
+			catalogProductKinds: ["print"],
+		});
+
+		await expect(createGraph(
+			fixture.adminA,
+			SITE_A.siteUrl,
+			"policy-tapestry",
+			graphDraft("tapestry", fixture, "policy-tapestry"),
+		)).rejects.toThrow(/catalog tapestry products are not enabled/i);
+		await expect(fixture.adminA.query(api.catalogProductGraphs.listForEditor, {
+			siteUrl: SITE_A.siteUrl,
+			productKind: "digital_download",
+		})).rejects.toThrow(/catalog digital_download products are not enabled/i);
+		await expect(fixture.adminA.query(api.catalogProductGraphs.getEditorState, {
+			productId: created.productId,
+		})).rejects.toThrow(/catalog digital_download products are not enabled/i);
+		await expect(saveGraph(
+			fixture.adminA,
+			created.productId,
+			{ ...digitalDraft, title: "Blocked download edit" },
+			created.revisionId,
+		)).rejects.toThrow(/catalog digital_download products are not enabled/i);
+		await expect(fixture.adminA.mutation(api.catalogProductGraphs.discardDraft, {
+			productId: created.productId,
+			draftRevisionId: created.revisionId,
+		})).rejects.toThrow(/catalog digital_download products are not enabled/i);
+
+		const beforeImport = await storedCounts(fixture);
+		await expect(fixture.adminA.mutation(api.catalogProductGraphs.importSanityDrafts, {
+			siteUrl: SITE_A.siteUrl,
+			plan: await sanityImportPlan(fixture),
+		})).rejects.toThrow(/catalog digital_download products are not enabled/i);
+		expect(await storedCounts(fixture)).toEqual(beforeImport);
+
+		await fixture.t.mutation(internal.platform.setCatalogProductKinds, {
+			siteUrl: SITE_A.siteUrl,
+			catalogProductKinds: [
+				"print",
+				"print_set",
+				"postcard",
+				"tapestry",
+				"digital_download",
+				"merchandise",
+			],
+		});
+		expect(await fixture.adminA.query(api.catalogProductGraphs.getEditorState, {
+			productId: created.productId,
+		})).toMatchObject({ productId: created.productId, productKind: "digital_download" });
+	});
+
+	test("fails closed when the tenant product-kind policy is missing", async () => {
+		const fixture = await setup(modules);
+		await fixture.t.run(async (ctx) => {
+			const row = await ctx.db
+				.query("platformClients")
+				.withIndex("by_siteUrl", (query) => query.eq("siteUrl", SITE_A.siteUrl))
+				.unique();
+			if (!row) throw new Error("Missing platform fixture");
+			await ctx.db.patch(row._id, { catalogProductKinds: undefined });
+		});
+		await expect(createGraph(
+			fixture.adminA,
+			SITE_A.siteUrl,
+			"missing-policy",
+			graphDraft("print", fixture, "missing-policy"),
+		)).rejects.toThrow(/catalog product policy is not configured/i);
+	});
+
 	test("round-trips every product kind and lists only the requested kind", async () => {
 		const fixture = await setup(modules);
 		const kinds: CatalogProductKind[] = [

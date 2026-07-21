@@ -1,6 +1,9 @@
 import type { Doc, Id } from "../_generated/dataModel";
 import type { MutationCtx, QueryCtx } from "../_generated/server";
-import { requireDocumentSiteAdmin, requireSiteAdmin } from "../authHelpers";
+import {
+	requireDocumentSiteAdminWithClient,
+	requireSiteAdmin,
+} from "../authHelpers";
 import {
 	assertCatalogRevisionOwnership,
 	assertExpectedCatalogDraft,
@@ -13,6 +16,7 @@ import {
 	projectCatalogEditorRevisionSummary,
 	requireSinglePrintProduct,
 } from "./catalogProductData";
+import { requireCatalogProductKindEnabled } from "./catalogProductPolicy";
 import {
 	CATALOG_PRODUCT_LIMITS,
 	type CatalogProductDraft,
@@ -72,6 +76,7 @@ export async function createCatalogProductDraft(
 	},
 ) {
 	const { identity, client } = await requireSiteAdmin(ctx, args.siteUrl);
+	requireCatalogProductKindEnabled(client, "print");
 	validateCatalogProductKey(args.productKey);
 	validateCatalogProductDraft(args.draft);
 	const checksum = await checksumCatalogProductDraft(args.draft);
@@ -137,9 +142,13 @@ export async function saveCatalogProductDraft(
 		draft: CatalogProductDraft;
 	},
 ) {
-	const product = requireSinglePrintProduct(
-		await requireDocumentSiteAdmin(ctx, "catalogProducts", args.productId),
+	const { doc, client } = await requireDocumentSiteAdminWithClient(
+		ctx,
+		"catalogProducts",
+		args.productId,
 	);
+	const product = requireSinglePrintProduct(doc);
+	requireCatalogProductKindEnabled(client, product.productKind);
 	validateCatalogProductDraft(args.draft);
 	const checksum = await checksumCatalogProductDraft(args.draft);
 	const active = await loadCatalogRevisionGraph(ctx, product, product.draftRevisionId);
@@ -181,9 +190,13 @@ export async function discardCatalogProductDraft(
 		draftRevisionId: Id<"catalogProductRevisions">;
 	},
 ) {
-	const product = requireSinglePrintProduct(
-		await requireDocumentSiteAdmin(ctx, "catalogProducts", args.productId),
+	const { doc, client } = await requireDocumentSiteAdminWithClient(
+		ctx,
+		"catalogProducts",
+		args.productId,
 	);
+	const product = requireSinglePrintProduct(doc);
+	requireCatalogProductKindEnabled(client, product.productKind);
 	if (product.draftRevisionId === args.draftRevisionId) {
 		await loadCatalogRevisionGraph(ctx, product, args.draftRevisionId);
 		const identity = await ctx.auth.getUserIdentity();
@@ -210,9 +223,13 @@ export async function getCatalogProductEditorState(
 	ctx: QueryCtx,
 	productId: Id<"catalogProducts">,
 ) {
-	const product = requireSinglePrintProduct(
-		await requireDocumentSiteAdmin(ctx, "catalogProducts", productId),
+	const { doc, client } = await requireDocumentSiteAdminWithClient(
+		ctx,
+		"catalogProducts",
+		productId,
 	);
+	const product = requireSinglePrintProduct(doc);
+	requireCatalogProductKindEnabled(client, product.productKind);
 	const [draft, published] = await Promise.all([
 		loadCatalogRevisionGraph(ctx, product, product.draftRevisionId),
 		loadCatalogRevisionGraph(ctx, product, product.publishedRevisionId),
@@ -241,6 +258,7 @@ export async function listCatalogProductsForEditor(
 	siteUrl: string,
 ) {
 	const { client } = await requireSiteAdmin(ctx, siteUrl);
+	requireCatalogProductKindEnabled(client, "print");
 	const products = await ctx.db
 		.query("catalogProducts")
 		.withIndex("by_siteUrl_and_graphVersion_and_productKind_and_createdAt", (q) =>

@@ -122,6 +122,14 @@ export async function setup(modules: Record<string, () => Promise<unknown>>) {
 			subscriptionStatus: "active",
 			adminEmails: [site.email],
 			role: "client",
+			catalogProductKinds: [
+				"print",
+				"print_set",
+				"postcard",
+				"tapestry",
+				"digital_download",
+				"merchandise",
+			],
 		});
 	}
 	const adminA = t.withIdentity({ subject: SITE_A.email, email: SITE_A.email });

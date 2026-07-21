@@ -1,4 +1,4 @@
-import type { Id, TableNames } from "./_generated/dataModel";
+import type { Doc, Id, TableNames } from "./_generated/dataModel";
 import type { MutationCtx, QueryCtx } from "./_generated/server";
 import { DEFAULT_LIST_LIMIT } from "./helpers/limits";
 
@@ -142,9 +142,26 @@ export async function requireDocumentSiteAdmin<T extends TableNames>(
 	table: T,
 	id: Id<T>,
 ) {
+	const { doc } = await requireDocumentSiteAdminWithClient(ctx, table, id);
+	return doc;
+}
+
+/**
+ * Require that the authenticated user is an admin of the site that owns a
+ * document, returning the tenant row for follow-up server-owned policy checks.
+ */
+export async function requireDocumentSiteAdminWithClient<T extends TableNames>(
+	ctx: MutationCtx | QueryCtx,
+	table: T,
+	id: Id<T>,
+): Promise<{
+	doc: Doc<T>;
+	identity: Awaited<ReturnType<typeof requireAuth>>;
+	client: Doc<"platformClients">;
+}> {
 	// Authenticate before the lookup so callers cannot distinguish an existing
 	// document id from a missing one without first presenting a valid identity.
-	await requireAuth(ctx);
+	const identity = await requireAuth(ctx);
 	const doc = await ctx.db.get(id);
 	if (!doc) {
 		throw new Error("Not found");
@@ -153,8 +170,8 @@ export async function requireDocumentSiteAdmin<T extends TableNames>(
 	if (!siteUrl) {
 		throw new Error(`Document in ${table} is not site-scoped`);
 	}
-	await requireSiteAdmin(ctx, siteUrl);
-	return doc;
+	const { client } = await requireSiteAdmin(ctx, siteUrl);
+	return { doc, identity, client };
 }
 
 /**
