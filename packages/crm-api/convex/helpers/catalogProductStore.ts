@@ -67,6 +67,26 @@ function requireActiveDraftSlugIntegrity(
 	}
 }
 
+async function proveTenantWideCatalogIdentity(
+	ctx: CatalogContext,
+	product: Doc<"catalogProducts">,
+) {
+	const [keyOwner, slugOwner] = await Promise.all([
+		getProductByKey(ctx, product.siteUrl, product.productKey),
+		product.slug
+			? ctx.db
+				.query("catalogProducts")
+				.withIndex("by_siteUrl_and_slug", (query) =>
+					query.eq("siteUrl", product.siteUrl).eq("slug", product.slug),
+				)
+				.unique()
+			: Promise.resolve(null),
+	]);
+	if (keyOwner?._id !== product._id || (product.slug && slugOwner?._id !== product._id)) {
+		throw new Error("Catalog product identity ownership mismatch");
+	}
+}
+
 export async function createCatalogProductDraft(
 	ctx: MutationCtx,
 	args: {
@@ -286,6 +306,9 @@ export async function listCatalogProductsForEditor(
 			slugs.add(product.slug);
 		}
 	}
+	await Promise.all(products.map(async (product) =>
+		await proveTenantWideCatalogIdentity(ctx, product)
+	));
 
 	return await Promise.all(products.map(async (storedProduct) => {
 		const product = requireSinglePrintProduct(storedProduct);
