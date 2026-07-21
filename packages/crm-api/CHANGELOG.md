@@ -1,5 +1,11 @@
 # @jessepomeroy/crm-api
 
+## 2.20.0
+
+### Minor Changes
+
+- b6ef441: Add a validated server-owned catalog product-kind capability policy and an idempotent operator backfill path for platform tenants.
+
 ## 2.19.5
 
 ### Patch Changes
