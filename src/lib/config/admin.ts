@@ -82,6 +82,8 @@ export const adminConfig: AdminConfig = {
 				"tapestry",
 				"digital_download",
 			],
+			mediaBaseUrl: "https://media.angelsrest.online",
+			uploadEndpoint: "/api/admin/media",
 		},
 		portfolio: {
 			mediaBaseUrl: "https://media.angelsrest.online",
