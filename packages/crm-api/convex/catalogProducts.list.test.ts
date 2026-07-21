@@ -239,6 +239,56 @@ describe("catalogProducts.listForEditor", () => {
 		);
 	});
 
+	test("proves V1 list key and slug ownership across catalog graph generations", async () => {
+		const keyFixture = await setup();
+		await create(
+			keyFixture.adminA,
+			SITE_A.siteUrl,
+			"v1-owned-key",
+			draft("V1 owned key", "v1-owned-key"),
+		);
+		await keyFixture.t.run(async (ctx) => {
+			await ctx.db.insert("catalogProducts", {
+				siteUrl: SITE_A.siteUrl,
+				productKey: "v1-owned-key",
+				productKind: "tapestry",
+				graphVersion: 2,
+				slug: "different-v2-slug",
+				createdAt: 1,
+				createdBy: "fixture",
+				updatedAt: 1,
+				updatedBy: "fixture",
+			});
+		});
+		await expect(list(keyFixture.adminA, SITE_A.siteUrl)).rejects.toThrow(
+			/unique|duplicate|identity ownership|more than one/i,
+		);
+
+		const slugFixture = await setup();
+		await create(
+			slugFixture.adminA,
+			SITE_A.siteUrl,
+			"v1-owned-slug",
+			draft("V1 owned slug", "v1-owned-slug"),
+		);
+		await slugFixture.t.run(async (ctx) => {
+			await ctx.db.insert("catalogProducts", {
+				siteUrl: SITE_A.siteUrl,
+				productKey: "v2-corrupt-slug-owner",
+				productKind: "tapestry",
+				graphVersion: 2,
+				slug: "v1-owned-slug",
+				createdAt: 1,
+				createdBy: "fixture",
+				updatedAt: 1,
+				updatedBy: "fixture",
+			});
+		});
+		await expect(list(slugFixture.adminA, SITE_A.siteUrl)).rejects.toThrow(
+			/unique|duplicate|identity ownership|more than one/i,
+		);
+	});
+
 	test("fails closed on missing or cross-owned revision pointers", async () => {
 		const { t, adminA, adminB } = await setup();
 		const owner = await create(
