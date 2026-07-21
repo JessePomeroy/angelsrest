@@ -37,6 +37,8 @@ type CatalogProduct = Doc<"catalogProducts">;
 type CatalogGraphV2Product = CatalogProduct & { graphVersion: 2 };
 type CatalogRevisionState = { createdAt: number } | null;
 const CATALOG_GRAPH_LIST_PROOF_BATCH = 50;
+const CATALOG_GRAPH_RETIREMENT_REVISION_SCAN_LIMIT = 100;
+const CATALOG_GRAPH_ASSET_REFERENCE_SCAN_LIMIT = 100;
 const SANITY_CATALOG_IMPORT_KINDS = [
 	"print",
 	"print_set",
@@ -201,6 +203,123 @@ async function loadCatalogGraphV2RevisionSummaries(
 	]);
 	assertCatalogGraphV2ProductLifecycle(product, draft, published);
 	return { draft, published };
+}
+
+function uniqueRevisionIds(product: CatalogGraphV2Product) {
+	return [
+		...new Set(
+			[product.draftRevisionId, product.publishedRevisionId].filter(
+				(revisionId): revisionId is Id<"catalogProductRevisions"> =>
+					revisionId !== undefined,
+			),
+		),
+	];
+}
+
+async function isActiveCatalogGraphRevisionReference(
+	ctx: QueryCtx,
+	siteUrl: string,
+	productId: Id<"catalogProducts">,
+	revisionId: Id<"catalogProductRevisions">,
+) {
+	const productValue = await ctx.db.get(productId);
+	if (!productValue || productValue.siteUrl !== siteUrl) return false;
+	const product = requireCatalogProductGraphV2Product(productValue);
+	return product.draftRevisionId === revisionId || product.publishedRevisionId === revisionId;
+}
+
+async function projectCatalogGraphAssetEligibility(
+	ctx: QueryCtx,
+	args: {
+		siteUrl: string;
+		assetId: Id<"mediaAssets"> | Id<"catalogPrintSourceAssets"> | Id<"catalogDigitalFileAssets">;
+		assetKind: "webMedia" | "printSource" | "digitalFile";
+		referenceTable:
+			| "catalogProductMediaPlacements"
+			| "catalogProductPrintSources"
+			| "catalogProductDigitalFiles";
+	},
+) {
+	const references = await ctx.db
+		.query(args.referenceTable)
+		.withIndex("by_siteUrl_and_assetId", (query) =>
+			query.eq("siteUrl", args.siteUrl).eq("assetId", args.assetId),
+		)
+		.take(CATALOG_GRAPH_ASSET_REFERENCE_SCAN_LIMIT + 1);
+	if (references.length > CATALOG_GRAPH_ASSET_REFERENCE_SCAN_LIMIT) {
+		throw new Error("Catalog asset reference usage cannot be verified safely");
+	}
+	let activeReferenceCount = 0;
+	for (const reference of references) {
+		if (await isActiveCatalogGraphRevisionReference(
+			ctx,
+			args.siteUrl,
+			reference.productId,
+			reference.revisionId,
+		)) {
+			activeReferenceCount += 1;
+		}
+	}
+	return {
+		assetId: args.assetId,
+		assetKind: args.assetKind,
+		referenceCount: references.length,
+		activeReferenceCount,
+		retainedReferenceCount: references.length - activeReferenceCount,
+		eligibleForExternalCleanup: activeReferenceCount === 0,
+		externalObjectsWillBeDeleted: false,
+	};
+}
+
+async function listCatalogGraphMediaRowsForRevisions(
+	ctx: QueryCtx,
+	productId: Id<"catalogProducts">,
+	revisionIds: readonly Id<"catalogProductRevisions">[],
+) {
+	const rows = [];
+	for (const revisionId of revisionIds) {
+		rows.push(...await ctx.db
+			.query("catalogProductMediaPlacements")
+			.withIndex("by_productId_and_revisionId", (query) =>
+				query.eq("productId", productId).eq("revisionId", revisionId),
+			)
+			.take(CATALOG_PRODUCT_LIMITS.variantsPerRevision + 1));
+	}
+	return rows;
+}
+
+async function listCatalogGraphPrintSourceRowsForRevisions(
+	ctx: QueryCtx,
+	productId: Id<"catalogProducts">,
+	revisionIds: readonly Id<"catalogProductRevisions">[],
+) {
+	const rows = [];
+	for (const revisionId of revisionIds) {
+		rows.push(...await ctx.db
+			.query("catalogProductPrintSources")
+			.withIndex("by_productId_and_revisionId", (query) =>
+				query.eq("productId", productId).eq("revisionId", revisionId),
+			)
+			.take(CATALOG_PRODUCT_LIMITS.variantsPerRevision + 1));
+	}
+	return rows;
+}
+
+async function listCatalogGraphDigitalFileRowsForRevisions(
+	ctx: QueryCtx,
+	productId: Id<"catalogProducts">,
+	revisionIds: readonly Id<"catalogProductRevisions">[],
+) {
+	const rows = [];
+	for (const revisionId of revisionIds) {
+		rows.push(...await ctx.db
+			.query("catalogProductDigitalFiles")
+			.withIndex("by_productId_and_revisionId", (query) =>
+				query.eq("productId", productId).eq("revisionId", revisionId),
+			)
+			.take(CATALOG_PRODUCT_LIMITS.variantsPerRevision + 1));
+	}
+	return rows;
 }
 
 function assertExpectedCatalogGraphV2Draft(
@@ -608,6 +727,92 @@ export async function getCatalogProductGraphV2EditorState(
 		createdAt: product.createdAt,
 		updatedAt: product.updatedAt,
 		publishedAt: product.publishedAt ?? null,
+	};
+}
+
+/** Read-only retirement proof for immutable graph rows and referenced assets. */
+export async function getCatalogProductGraphV2RetirementEligibility(
+	ctx: QueryCtx,
+	productId: Id<"catalogProducts">,
+) {
+	const { doc, client } = await requireDocumentSiteAdminWithClient(
+		ctx,
+		"catalogProducts",
+		productId,
+	);
+	const product = requireCatalogProductGraphV2Product(doc);
+	requireCatalogProductKindEnabled(client, product.productKind);
+	const revisions = await ctx.db
+		.query("catalogProductRevisions")
+		.withIndex("by_siteUrl_and_productId", (query) =>
+			query.eq("siteUrl", product.siteUrl).eq("productId", product._id),
+		)
+		.take(CATALOG_GRAPH_RETIREMENT_REVISION_SCAN_LIMIT + 1);
+	if (revisions.length > CATALOG_GRAPH_RETIREMENT_REVISION_SCAN_LIMIT) {
+		throw new Error("Catalog graph revision history cannot be verified safely");
+	}
+	const activeRevisionIds = uniqueRevisionIds(product);
+	const activeRevisionIdSet = new Set(activeRevisionIds);
+	const retainedRevisionIds = revisions
+		.map((revision) => revision._id)
+		.filter((revisionId) => !activeRevisionIdSet.has(revisionId));
+	const referencedRevisionIds = revisions.map((revision) => revision._id);
+	const [webRows, printRows, digitalRows] = await Promise.all([
+		listCatalogGraphMediaRowsForRevisions(
+			ctx,
+			product._id,
+			referencedRevisionIds,
+		),
+		listCatalogGraphPrintSourceRowsForRevisions(
+			ctx,
+			product._id,
+			referencedRevisionIds,
+		),
+		listCatalogGraphDigitalFileRowsForRevisions(
+			ctx,
+			product._id,
+			referencedRevisionIds,
+		),
+	]);
+	const webAssetIds = [...new Set(webRows.map((row) => row.assetId))];
+	const printSourceAssetIds = [...new Set(printRows.map((row) => row.assetId))];
+	const digitalFileAssetIds = [...new Set(digitalRows.map((row) => row.assetId))];
+
+	return {
+		productId: product._id,
+		productKey: product.productKey,
+		productKind: product.productKind,
+		graphVersion: 2 as const,
+		retired: activeRevisionIds.length === 0,
+		activeRevisionIds,
+		retainedRevisionIds,
+		revisionCount: revisions.length,
+		databaseRowsWillBeDeleted: false,
+		externalObjectsWillBeDeleted: false,
+		webMedia: await Promise.all(webAssetIds.map(async (assetId) =>
+			await projectCatalogGraphAssetEligibility(ctx, {
+				siteUrl: product.siteUrl,
+				assetId,
+				assetKind: "webMedia",
+				referenceTable: "catalogProductMediaPlacements",
+			})
+		)),
+		printSources: await Promise.all(printSourceAssetIds.map(async (assetId) =>
+			await projectCatalogGraphAssetEligibility(ctx, {
+				siteUrl: product.siteUrl,
+				assetId,
+				assetKind: "printSource",
+				referenceTable: "catalogProductPrintSources",
+			})
+		)),
+		digitalFiles: await Promise.all(digitalFileAssetIds.map(async (assetId) =>
+			await projectCatalogGraphAssetEligibility(ctx, {
+				siteUrl: product.siteUrl,
+				assetId,
+				assetKind: "digitalFile",
+				referenceTable: "catalogProductDigitalFiles",
+			})
+		)),
 	};
 }
 

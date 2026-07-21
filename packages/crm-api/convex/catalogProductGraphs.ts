@@ -4,6 +4,7 @@ import {
 	createCatalogProductGraphV2Draft,
 	discardCatalogProductGraphV2Draft,
 	getCatalogProductGraphV2EditorState,
+	getCatalogProductGraphV2RetirementEligibility,
 	importSanityCatalogGraphV2Drafts,
 	listCatalogProductGraphsV2ForEditor,
 	saveCatalogProductGraphV2Draft,
@@ -55,6 +56,13 @@ export const getEditorState = query({
 	args: { productId: v.id("catalogProducts") },
 	handler: async (ctx, { productId }) =>
 		await getCatalogProductGraphV2EditorState(ctx, productId),
+});
+
+/** Read-only retirement and external cleanup eligibility proof; deletes nothing. */
+export const getRetirementEligibility = query({
+	args: { productId: v.id("catalogProducts") },
+	handler: async (ctx, { productId }) =>
+		await getCatalogProductGraphV2RetirementEligibility(ctx, productId),
 });
 
 /** Bounded private headers for one authenticated tenant and product kind. */
