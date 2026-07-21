@@ -1,5 +1,11 @@
 # @jessepomeroy/crm-api
 
+## 2.22.0
+
+### Minor Changes
+
+- dc4ca2a: Add an authenticated, optimistic-concurrency mutation that replaces one existing private catalog draft relation with an already verified tenant asset while retaining immutable revision history.
+
 ## 2.21.2
 
 ### Patch Changes
