@@ -44,6 +44,7 @@ import type * as helpers_catalogProductGraphChecksum from "../helpers/catalogPro
 import type * as helpers_catalogProductGraphData from "../helpers/catalogProductGraphData.js";
 import type * as helpers_catalogProductGraphStore from "../helpers/catalogProductGraphStore.js";
 import type * as helpers_catalogProductGraphValidators from "../helpers/catalogProductGraphValidators.js";
+import type * as helpers_catalogProductPolicy from "../helpers/catalogProductPolicy.js";
 import type * as helpers_catalogProductStore from "../helpers/catalogProductStore.js";
 import type * as helpers_catalogProductValidators from "../helpers/catalogProductValidators.js";
 import type * as helpers_contactPageValidators from "../helpers/contactPageValidators.js";
@@ -150,6 +151,7 @@ declare const fullApi: ApiFromModules<{
   "helpers/catalogProductGraphData": typeof helpers_catalogProductGraphData;
   "helpers/catalogProductGraphStore": typeof helpers_catalogProductGraphStore;
   "helpers/catalogProductGraphValidators": typeof helpers_catalogProductGraphValidators;
+  "helpers/catalogProductPolicy": typeof helpers_catalogProductPolicy;
   "helpers/catalogProductStore": typeof helpers_catalogProductStore;
   "helpers/catalogProductValidators": typeof helpers_catalogProductValidators;
   "helpers/contactPageValidators": typeof helpers_contactPageValidators;

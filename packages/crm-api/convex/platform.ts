@@ -3,6 +3,10 @@ import type { Id } from "./_generated/dataModel";
 import type { MutationCtx } from "./_generated/server";
 import { internalMutation, internalQuery, mutation, query } from "./_generated/server";
 import { requirePlatformAdmin, requireWebhookCallerOrAuth } from "./authHelpers";
+import {
+	catalogProductKindsValidator,
+	normalizeCatalogProductKinds,
+} from "./helpers/catalogProductPolicy";
 import { DEFAULT_LIST_LIMIT } from "./helpers/limits";
 
 async function assertSiteUrlAvailable(
@@ -164,14 +168,19 @@ export const createClient = mutation({
 		adminEmails: v.array(v.string()),
 		role: v.optional(v.union(v.literal("creator"), v.literal("client"))),
 		stripeConnectedAccountId: v.optional(v.string()),
+		catalogProductKinds: v.optional(catalogProductKindsValidator),
 		notes: v.optional(v.string()),
 	},
 	handler: async (ctx, args) => {
 		await requirePlatformAdmin(ctx);
 		await assertSiteUrlAvailable(ctx, args.siteUrl);
+		const { catalogProductKinds, ...client } = args;
 		return await ctx.db.insert("platformClients", {
-			...args,
+			...client,
 			role: args.role ?? "client",
+			catalogProductKinds: normalizeCatalogProductKinds(
+				catalogProductKinds ?? [],
+			),
 		});
 	},
 });
@@ -236,9 +245,10 @@ export const updateClient = mutation({
 			),
 		),
 		stripeConnectedAccountId: v.optional(v.string()),
+		catalogProductKinds: v.optional(catalogProductKindsValidator),
 		notes: v.optional(v.string()),
 	},
-	handler: async (ctx, { clientId, ...updates }) => {
+	handler: async (ctx, { clientId, catalogProductKinds, ...updates }) => {
 		await requirePlatformAdmin(ctx);
 		if (updates.siteUrl !== undefined) {
 			await assertSiteUrlAvailable(ctx, updates.siteUrl, clientId);
@@ -246,6 +256,9 @@ export const updateClient = mutation({
 		const patch: Record<string, unknown> = {};
 		for (const [key, val] of Object.entries(updates)) {
 			if (val !== undefined) patch[key] = val;
+		}
+		if (catalogProductKinds !== undefined) {
+			patch.catalogProductKinds = normalizeCatalogProductKinds(catalogProductKinds);
 		}
 		if (Object.keys(patch).length > 0) {
 			await ctx.db.patch(clientId, patch);
@@ -328,6 +341,7 @@ export const seedClient = internalMutation({
 		role: v.optional(v.union(v.literal("creator"), v.literal("client"))),
 		stripeConnectedAccountId: v.optional(v.string()),
 		sanityProjectId: v.optional(v.string()),
+		catalogProductKinds: v.optional(catalogProductKindsValidator),
 		notes: v.optional(v.string()),
 	},
 	handler: async (ctx, args) => {
@@ -338,13 +352,63 @@ export const seedClient = internalMutation({
 		if (existing) {
 			return { created: false, id: existing._id };
 		}
-		const { subscriptionStatus, ...rest } = args;
+		const { subscriptionStatus, catalogProductKinds, ...rest } = args;
 		const id = await ctx.db.insert("platformClients", {
 			...rest,
 			subscriptionStatus: subscriptionStatus ?? "none",
 			role: rest.role ?? "client",
+			catalogProductKinds: normalizeCatalogProductKinds(
+				catalogProductKinds ?? [],
+			),
 		});
 		return { created: true, id };
+	},
+});
+
+/**
+ * Store one tenant's server-owned catalog capability policy. Internal-only so
+ * site administrators cannot grant themselves additional product kinds.
+ *
+ * Usage:
+ *   npx convex run --prod platform:setCatalogProductKinds \
+ *     '{"siteUrl":"zippymiggy.com","catalogProductKinds":["print","print_set","postcard"]}'
+ */
+export const setCatalogProductKinds = internalMutation({
+	args: {
+		siteUrl: v.string(),
+		catalogProductKinds: catalogProductKindsValidator,
+	},
+	handler: async (ctx, { siteUrl, catalogProductKinds }) => {
+		const row = await ctx.db
+			.query("platformClients")
+			.withIndex("by_siteUrl", (q) => q.eq("siteUrl", siteUrl))
+			.unique();
+		if (!row) {
+			throw new Error(`No platformClients row with siteUrl="${siteUrl}"`);
+		}
+		const normalized = normalizeCatalogProductKinds(catalogProductKinds);
+		if (
+			row.catalogProductKinds !== undefined
+			&& row.catalogProductKinds.length === normalized.length
+			&& row.catalogProductKinds.every(
+				(productKind, index) => productKind === normalized[index],
+			)
+		) {
+			return {
+				changed: false,
+				id: row._id,
+				siteUrl: row.siteUrl,
+				catalogProductKinds: row.catalogProductKinds,
+			};
+		}
+		await ctx.db.patch(row._id, { catalogProductKinds: normalized });
+		return {
+			changed: true,
+			id: row._id,
+			siteUrl: row.siteUrl,
+			before: row.catalogProductKinds ?? null,
+			catalogProductKinds: normalized,
+		};
 	},
 });
 
