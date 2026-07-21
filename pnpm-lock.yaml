@@ -23,8 +23,8 @@ importers:
         specifier: ^0.12.5
         version: 0.12.5(@standard-schema/spec@1.1.0)(better-auth@1.6.23(@opentelemetry/api@1.9.1)(@sveltejs/kit@2.68.0(@opentelemetry/api@1.9.1)(@sveltejs/vite-plugin-svelte@6.2.4(svelte@5.56.4)(vite@7.3.5(@types/node@25.6.0)(jiti@2.6.1)(lightningcss@1.32.0)(tsx@4.22.4)(yaml@2.8.3)))(svelte@5.56.4)(typescript@5.9.3)(vite@7.3.5(@types/node@25.6.0)(jiti@2.6.1)(lightningcss@1.32.0)(tsx@4.22.4)(yaml@2.8.3)))(react-dom@19.2.7(react@19.2.7))(react@19.2.7)(svelte@5.56.4)(vitest@4.1.9(@edge-runtime/vm@5.0.0)(@opentelemetry/api@1.9.1)(@types/node@25.6.0)(jsdom@29.1.1(@noble/hashes@2.2.0))(vite@7.3.5(@types/node@25.6.0)(jiti@2.6.1)(lightningcss@1.32.0)(tsx@4.22.4)(yaml@2.8.3))))(convex@1.42.1(react@19.2.7))(react@19.2.7)(typescript@5.9.3)
       '@jessepomeroy/admin':
-        specifier: ^3.28.0
-        version: 3.28.0(@sveltejs/kit@2.68.0(@opentelemetry/api@1.9.1)(@sveltejs/vite-plugin-svelte@6.2.4(svelte@5.56.4)(vite@7.3.5(@types/node@25.6.0)(jiti@2.6.1)(lightningcss@1.32.0)(tsx@4.22.4)(yaml@2.8.3)))(svelte@5.56.4)(typescript@5.9.3)(vite@7.3.5(@types/node@25.6.0)(jiti@2.6.1)(lightningcss@1.32.0)(tsx@4.22.4)(yaml@2.8.3)))(convex-svelte@0.14.0(@sveltejs/kit@2.68.0(@opentelemetry/api@1.9.1)(@sveltejs/vite-plugin-svelte@6.2.4(svelte@5.56.4)(vite@7.3.5(@types/node@25.6.0)(jiti@2.6.1)(lightningcss@1.32.0)(tsx@4.22.4)(yaml@2.8.3)))(svelte@5.56.4)(typescript@5.9.3)(vite@7.3.5(@types/node@25.6.0)(jiti@2.6.1)(lightningcss@1.32.0)(tsx@4.22.4)(yaml@2.8.3)))(convex@1.42.1(react@19.2.7))(svelte@5.56.4)(zod@4.4.3))(convex@1.42.1(react@19.2.7))(resend@6.12.2(@react-email/render@2.0.9(react-dom@19.2.7(react@19.2.7))(react@19.2.7)))(svelte-dnd-action@0.9.69(svelte@5.56.4))(svelte@5.56.4)
+        specifier: ^3.28.1
+        version: 3.28.1(@sveltejs/kit@2.68.0(@opentelemetry/api@1.9.1)(@sveltejs/vite-plugin-svelte@6.2.4(svelte@5.56.4)(vite@7.3.5(@types/node@25.6.0)(jiti@2.6.1)(lightningcss@1.32.0)(tsx@4.22.4)(yaml@2.8.3)))(svelte@5.56.4)(typescript@5.9.3)(vite@7.3.5(@types/node@25.6.0)(jiti@2.6.1)(lightningcss@1.32.0)(tsx@4.22.4)(yaml@2.8.3)))(convex-svelte@0.14.0(@sveltejs/kit@2.68.0(@opentelemetry/api@1.9.1)(@sveltejs/vite-plugin-svelte@6.2.4(svelte@5.56.4)(vite@7.3.5(@types/node@25.6.0)(jiti@2.6.1)(lightningcss@1.32.0)(tsx@4.22.4)(yaml@2.8.3)))(svelte@5.56.4)(typescript@5.9.3)(vite@7.3.5(@types/node@25.6.0)(jiti@2.6.1)(lightningcss@1.32.0)(tsx@4.22.4)(yaml@2.8.3)))(convex@1.42.1(react@19.2.7))(svelte@5.56.4)(zod@4.4.3))(convex@1.42.1(react@19.2.7))(resend@6.12.2(@react-email/render@2.0.9(react-dom@19.2.7(react@19.2.7))(react@19.2.7)))(svelte-dnd-action@0.9.69(svelte@5.56.4))(svelte@5.56.4)
       '@jessepomeroy/gallery-delivery':
         specifier: workspace:^
         version: link:packages/gallery-delivery
@@ -1126,8 +1126,8 @@ packages:
     resolution: {integrity: sha512-wgm9Ehl2jpeqP3zw/7mo3kRHFp5MEDhqAdwy1fTGkHAwnkGOVsgpvQhL8B5n1qlb01jV3n/bI0ZfZp5lWA1k4w==}
     engines: {node: '>=18.0.0'}
 
-  '@jessepomeroy/admin@3.28.0':
-    resolution: {integrity: sha512-yYO/FLeE7JDRHoL1ooGTdCTPcZ9OtAel3otimAHlsg9NShag3AUCz4/c9ZFjk8FXUtI/3Gxa5XkOu8KU9H6iog==, tarball: https://npm.pkg.github.com/download/@jessepomeroy/admin/3.28.0/3bc6f4941156cefba225cb929a9106bd620e6924}
+  '@jessepomeroy/admin@3.28.1':
+    resolution: {integrity: sha512-Y0bxqy5HBvmOeX7/jTottORYzU36654sMNPJ//V5ISJSLb2MZrRsI4aQ0vPVL8pviMmrClfXwTg2hyZcP548vA==, tarball: https://npm.pkg.github.com/download/@jessepomeroy/admin/3.28.1/1779f7d7cafd7bfa5914971e57b6d7a1444cfc90}
     engines: {node: 24.x, pnpm: '>=10.34.5'}
     peerDependencies:
       '@sveltejs/kit': ^2.0.0
@@ -4685,7 +4685,7 @@ snapshots:
     dependencies:
       minipass: 7.1.3
 
-  '@jessepomeroy/admin@3.28.0(@sveltejs/kit@2.68.0(@opentelemetry/api@1.9.1)(@sveltejs/vite-plugin-svelte@6.2.4(svelte@5.56.4)(vite@7.3.5(@types/node@25.6.0)(jiti@2.6.1)(lightningcss@1.32.0)(tsx@4.22.4)(yaml@2.8.3)))(svelte@5.56.4)(typescript@5.9.3)(vite@7.3.5(@types/node@25.6.0)(jiti@2.6.1)(lightningcss@1.32.0)(tsx@4.22.4)(yaml@2.8.3)))(convex-svelte@0.14.0(@sveltejs/kit@2.68.0(@opentelemetry/api@1.9.1)(@sveltejs/vite-plugin-svelte@6.2.4(svelte@5.56.4)(vite@7.3.5(@types/node@25.6.0)(jiti@2.6.1)(lightningcss@1.32.0)(tsx@4.22.4)(yaml@2.8.3)))(svelte@5.56.4)(typescript@5.9.3)(vite@7.3.5(@types/node@25.6.0)(jiti@2.6.1)(lightningcss@1.32.0)(tsx@4.22.4)(yaml@2.8.3)))(convex@1.42.1(react@19.2.7))(svelte@5.56.4)(zod@4.4.3))(convex@1.42.1(react@19.2.7))(resend@6.12.2(@react-email/render@2.0.9(react-dom@19.2.7(react@19.2.7))(react@19.2.7)))(svelte-dnd-action@0.9.69(svelte@5.56.4))(svelte@5.56.4)':
+  '@jessepomeroy/admin@3.28.1(@sveltejs/kit@2.68.0(@opentelemetry/api@1.9.1)(@sveltejs/vite-plugin-svelte@6.2.4(svelte@5.56.4)(vite@7.3.5(@types/node@25.6.0)(jiti@2.6.1)(lightningcss@1.32.0)(tsx@4.22.4)(yaml@2.8.3)))(svelte@5.56.4)(typescript@5.9.3)(vite@7.3.5(@types/node@25.6.0)(jiti@2.6.1)(lightningcss@1.32.0)(tsx@4.22.4)(yaml@2.8.3)))(convex-svelte@0.14.0(@sveltejs/kit@2.68.0(@opentelemetry/api@1.9.1)(@sveltejs/vite-plugin-svelte@6.2.4(svelte@5.56.4)(vite@7.3.5(@types/node@25.6.0)(jiti@2.6.1)(lightningcss@1.32.0)(tsx@4.22.4)(yaml@2.8.3)))(svelte@5.56.4)(typescript@5.9.3)(vite@7.3.5(@types/node@25.6.0)(jiti@2.6.1)(lightningcss@1.32.0)(tsx@4.22.4)(yaml@2.8.3)))(convex@1.42.1(react@19.2.7))(svelte@5.56.4)(zod@4.4.3))(convex@1.42.1(react@19.2.7))(resend@6.12.2(@react-email/render@2.0.9(react-dom@19.2.7(react@19.2.7))(react@19.2.7)))(svelte-dnd-action@0.9.69(svelte@5.56.4))(svelte@5.56.4)':
     dependencies:
       '@sveltejs/kit': 2.68.0(@opentelemetry/api@1.9.1)(@sveltejs/vite-plugin-svelte@6.2.4(svelte@5.56.4)(vite@7.3.5(@types/node@25.6.0)(jiti@2.6.1)(lightningcss@1.32.0)(tsx@4.22.4)(yaml@2.8.3)))(svelte@5.56.4)(typescript@5.9.3)(vite@7.3.5(@types/node@25.6.0)(jiti@2.6.1)(lightningcss@1.32.0)(tsx@4.22.4)(yaml@2.8.3))
       convex: 1.42.1(react@19.2.7)
