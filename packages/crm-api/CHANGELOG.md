@@ -1,5 +1,11 @@
 # @jessepomeroy/crm-api
 
+## 2.21.1
+
+### Patch Changes
+
+- ecead9c: Fail closed when V1 catalog list rows no longer own their tenant-wide product key or slug indexes.
+
 ## 2.21.0
 
 ### Minor Changes
