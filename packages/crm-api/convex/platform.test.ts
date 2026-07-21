@@ -3,7 +3,7 @@
 
 import { convexTest } from "convex-test";
 import { afterEach, beforeEach, describe, expect, test } from "vitest";
-import { api } from "./_generated/api";
+import { api, internal } from "./_generated/api";
 import schema from "./schema";
 
 const modules = import.meta.glob("./**/*.ts");
@@ -162,5 +162,107 @@ describe("platform tenant site identity", () => {
 				.collect(),
 		);
 		expect(rows).toHaveLength(1);
+	});
+});
+
+describe("platform catalog product capability policy", () => {
+	test("stores canonical policies through creator-only create and update paths", async () => {
+		const { t, admin } = await setupPlatformAdmin();
+		const clientId = await admin.mutation(api.platform.createClient, {
+			...clientInput("catalog.example"),
+			catalogProductKinds: ["postcard", "print"],
+		});
+		await expect(t.run(async (ctx) => await ctx.db.get(clientId))).resolves
+			.toMatchObject({ catalogProductKinds: ["print", "postcard"] });
+
+		await admin.mutation(api.platform.updateClient, {
+			clientId,
+			catalogProductKinds: ["merchandise", "print_set"],
+		});
+		await expect(t.run(async (ctx) => await ctx.db.get(clientId))).resolves
+			.toMatchObject({ catalogProductKinds: ["print_set", "merchandise"] });
+
+		await expect(admin.mutation(api.platform.updateClient, {
+			clientId,
+			catalogProductKinds: ["print", "print"],
+		})).rejects.toThrow(/duplicate catalog product kind/i);
+
+		const clientAdmin = t.withIdentity({
+			subject: "owner@catalog.example",
+			email: "owner@catalog.example",
+		});
+		await expect(clientAdmin.mutation(api.platform.updateClient, {
+			clientId,
+			catalogProductKinds: ["print"],
+		})).rejects.toThrow(/not authorized/i);
+	});
+
+	test("defaults new tenants to deny-all without rewriting unmigrated rows", async () => {
+		const { t, admin } = await setupPlatformAdmin();
+		const clientId = await admin.mutation(
+			api.platform.createClient,
+			clientInput("deny-all.example"),
+		);
+		const stored = await t.run(async (ctx) => ({
+			creator: await ctx.db
+				.query("platformClients")
+				.withIndex("by_siteUrl", (query) =>
+					query.eq("siteUrl", "angelsrest.online")
+				)
+				.unique(),
+			client: await ctx.db.get(clientId),
+		}));
+		expect(stored.creator?.catalogProductKinds).toBeUndefined();
+		expect(stored.client?.catalogProductKinds).toEqual([]);
+	});
+
+	test("backfills one tenant idempotently through the internal operator path", async () => {
+		const { t } = await setupPlatformAdmin();
+		const first = await t.mutation(internal.platform.setCatalogProductKinds, {
+			siteUrl: "angelsrest.online",
+			catalogProductKinds: ["postcard", "print", "print_set"],
+		});
+		expect(first).toMatchObject({
+			changed: true,
+			siteUrl: "angelsrest.online",
+			before: null,
+			catalogProductKinds: ["print", "print_set", "postcard"],
+		});
+
+		await expect(t.mutation(internal.platform.setCatalogProductKinds, {
+			siteUrl: "angelsrest.online",
+			catalogProductKinds: ["print_set", "postcard", "print"],
+		})).resolves.toMatchObject({
+			changed: false,
+			catalogProductKinds: ["print", "print_set", "postcard"],
+		});
+		await expect(t.mutation(internal.platform.setCatalogProductKinds, {
+			siteUrl: "missing.example",
+			catalogProductKinds: [],
+		})).rejects.toThrow(/no platformClients row/i);
+	});
+
+	test("stores a deny-all or explicit canonical policy when seeding new tenants", async () => {
+		const t = convexTest(schema, modules);
+		const explicit = await t.mutation(internal.platform.seedClient, {
+			...clientInput("seeded.example"),
+			catalogProductKinds: ["postcard", "print"],
+		});
+		const denyAll = await t.mutation(internal.platform.seedClient, {
+			...clientInput("seeded-deny-all.example"),
+		});
+		const stored = await t.run(async (ctx) => ({
+			explicit: await ctx.db.get(explicit.id),
+			denyAll: await ctx.db.get(denyAll.id),
+		}));
+		expect(stored.explicit?.catalogProductKinds).toEqual(["print", "postcard"]);
+		expect(stored.denyAll?.catalogProductKinds).toEqual([]);
+
+		await expect(t.mutation(internal.platform.seedClient, {
+			...clientInput("seeded.example"),
+			catalogProductKinds: ["merchandise"],
+		})).resolves.toMatchObject({ created: false, id: explicit.id });
+		await expect(t.run(async (ctx) => await ctx.db.get(explicit.id))).resolves
+			.toMatchObject({ catalogProductKinds: ["print", "postcard"] });
 	});
 });

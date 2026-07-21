@@ -17,6 +17,7 @@ import {
 	catalogGraphV2PrintOptionsValidator,
 	catalogGraphV2WebMediaRoleValidator,
 } from "./helpers/catalogProductGraphValidators";
+import { catalogProductKindsValidator } from "./helpers/catalogProductPolicy";
 import {
 	paidDigitalFileAssetValidator,
 	privatePrintSourceAssetValidator,
@@ -186,6 +187,7 @@ export default defineSchema({
 		stripeConnectedAccountId: v.optional(v.string()),
 		adminEmails: v.array(v.string()),
 		role: v.optional(v.union(v.literal("creator"), v.literal("client"))),
+		catalogProductKinds: v.optional(catalogProductKindsValidator),
 		notes: v.optional(v.string()),
 	})
 		.index("by_siteUrl", ["siteUrl"])
