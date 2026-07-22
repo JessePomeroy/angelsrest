@@ -76,10 +76,29 @@ export function storageSet(
 	};
 }
 
+export function storageSetV2(
+	receiptSetId: string,
+	facts: CatalogPrivateAssetFacts[] = [printFacts()],
+): Extract<CatalogPrivateStorageReceiptSet, { schemaVersion: 2 }> {
+	return {
+		schemaVersion: 2,
+		receiptSetId,
+		siteUrl: SITE_A,
+		receipts: facts.map((item, index) => ({
+			facts: item,
+			uploadedAt: `2026-07-21T08:19:${String(26 + index).padStart(2, "0")}.000Z`,
+			etag: `r2-v2-etag-${index}`,
+		})) as Extract<
+			CatalogPrivateStorageReceiptSet,
+			{ schemaVersion: 2 }
+		>["receipts"],
+	};
+}
+
 export function inspectionSet(
 	facts: CatalogPrivateAssetFacts[] = [printFacts(), paidFacts()],
 	receiptSetId = DEFAULT_RECEIPT_SET_ID,
-): CatalogPrivateInspectionReceiptSet {
+): Extract<CatalogPrivateInspectionReceiptSet, { schemaVersion: 1 }> {
 	return {
 		schemaVersion: 1,
 		receiptSetId,
@@ -97,7 +116,54 @@ export function inspectionSet(
 						unsafePathCount: 0,
 						duplicatePathCount: 0,
 					},
-				}) as CatalogPrivateInspectionReceiptSet["receipts"],
+				}) as Extract<
+					CatalogPrivateInspectionReceiptSet,
+					{ schemaVersion: 1 }
+				>["receipts"],
+	};
+}
+
+export function inspectionSetV2(
+	receiptSetId: string,
+	facts: CatalogPrivateAssetFacts[] = [printFacts()],
+): Extract<CatalogPrivateInspectionReceiptSet, { schemaVersion: 2 }> {
+	return {
+		schemaVersion: 2,
+		receiptSetId,
+		siteUrl: SITE_A,
+		receipts: facts.map((item) => item.kind === "print_source"
+			? {
+					facts: item,
+					inspection: {
+						method: "sharp_libvips_full_raster_v1" as const,
+						decodedFormat: item.mimeType === "image/jpeg" ? "jpeg" as const : "png" as const,
+						decodedWidthPixels: item.widthPixels,
+						decodedHeightPixels: item.heightPixels,
+						decodedChannels: 3 as const,
+						decodedPageCount: 1 as const,
+						decodedDepth: "uchar" as const,
+						decodedPixelCount: item.widthPixels * item.heightPixels,
+						decodedByteCount: item.widthPixels * item.heightPixels * 3,
+						rasterSha256: "c".repeat(64),
+						sharpVersion: "0.34.5",
+						libvipsVersion: "8.17.3",
+					},
+				}
+			: {
+					facts: item,
+					inspection: {
+						method: "safe_zip_v1" as const,
+						entryCount: 6,
+						totalUncompressedBytes: 48_000,
+						maximumEntryCompressionRatio: 4.5,
+						encryptedEntryCount: 0,
+						unsafePathCount: 0,
+						duplicatePathCount: 0,
+					},
+				}) as Extract<
+					CatalogPrivateInspectionReceiptSet,
+					{ schemaVersion: 2 }
+				>["receipts"],
 	};
 }
 

@@ -80,7 +80,8 @@ async function completeRegistration(
 		validateCatalogPrivateInspectionReceiptSet(inspectionReceiptSet),
 	]);
 	if (
-		storage.assetSetChecksum !== inspection.assetSetChecksum
+		storageReceiptSet.schemaVersion !== inspectionReceiptSet.schemaVersion
+		|| storage.assetSetChecksum !== inspection.assetSetChecksum
 		|| storage.assetCanonical !== inspection.assetCanonical
 		|| storage.assetSetChecksum !== coordination.assetSetChecksum
 		|| storageReceiptSet.siteUrl !== inspectionReceiptSet.siteUrl
@@ -110,13 +111,29 @@ async function completeRegistration(
 		storageReceivedAt,
 		inspectionReceivedAt,
 		verifiedAt: now,
-		storageReceiptSet,
-		inspectionReceiptSet,
 		targets,
 		createdAt: coordination.createdAt,
 		updatedAt: now,
 	};
-	await ctx.db.replace("catalogPrivateAssetReceiptCoordinations", coordination._id, completed);
+	if (storageReceiptSet.schemaVersion === 1) {
+		if (inspectionReceiptSet.schemaVersion !== 1) {
+			throw new Error("Private catalog receipt schema versions do not match");
+		}
+		await ctx.db.replace("catalogPrivateAssetReceiptCoordinations", coordination._id, {
+			...completed,
+			storageReceiptSet,
+			inspectionReceiptSet,
+		});
+	} else {
+		if (inspectionReceiptSet.schemaVersion !== 2) {
+			throw new Error("Private catalog receipt schema versions do not match");
+		}
+		await ctx.db.replace("catalogPrivateAssetReceiptCoordinations", coordination._id, {
+			...completed,
+			storageReceiptSet,
+			inspectionReceiptSet,
+		});
+	}
 	return { status: "verified", replayed: false, targets };
 }
 
@@ -129,22 +146,34 @@ export async function recordCatalogPrivateStorageReceiptSet(
 	const coordination = await getCoordination(ctx, receiptSet.siteUrl, receiptSet.receiptSetId);
 	if (!coordination) {
 		await requireNoPrivateCatalogTargetRows(ctx, receiptSet.siteUrl, checked.facts);
-		await ctx.db.insert("catalogPrivateAssetReceiptCoordinations", {
+		const pending = {
 			siteUrl: receiptSet.siteUrl,
 			receiptSetId: receiptSet.receiptSetId,
 			assetSetChecksum: checked.assetSetChecksum,
-			status: "pending_inspection",
+			status: "pending_inspection" as const,
 			storageReceiptChecksum: checked.roleChecksum,
 			storageReceivedAt: now,
-			storageReceiptSet: receiptSet,
 			createdAt: now,
 			updatedAt: now,
-		});
+		};
+		if (receiptSet.schemaVersion === 1) {
+			await ctx.db.insert("catalogPrivateAssetReceiptCoordinations", {
+				...pending,
+				storageReceiptSet: receiptSet,
+			});
+		} else {
+			await ctx.db.insert("catalogPrivateAssetReceiptCoordinations", {
+				...pending,
+				storageReceiptSet: receiptSet,
+			});
+		}
 		return pendingResult("pending_inspection", false, checked.facts.length);
 	}
 	if (coordination.status === "verified") {
 		if (
-			coordination.storageReceiptChecksum !== checked.roleChecksum
+			coordination.storageReceiptSet.schemaVersion !== receiptSet.schemaVersion
+			|| coordination.inspectionReceiptSet.schemaVersion !== receiptSet.schemaVersion
+			|| coordination.storageReceiptChecksum !== checked.roleChecksum
 			|| !sameCatalogPrivateStorageReceiptSet(coordination.storageReceiptSet, receiptSet)
 		) throw new Error("Private catalog storage receipt replay has drifted");
 		return await verifiedResult(ctx, coordination, true);
@@ -179,22 +208,34 @@ export async function recordCatalogPrivateInspectionReceiptSet(
 	const coordination = await getCoordination(ctx, receiptSet.siteUrl, receiptSet.receiptSetId);
 	if (!coordination) {
 		await requireNoPrivateCatalogTargetRows(ctx, receiptSet.siteUrl, checked.facts);
-		await ctx.db.insert("catalogPrivateAssetReceiptCoordinations", {
+		const pending = {
 			siteUrl: receiptSet.siteUrl,
 			receiptSetId: receiptSet.receiptSetId,
 			assetSetChecksum: checked.assetSetChecksum,
-			status: "pending_storage",
+			status: "pending_storage" as const,
 			inspectionReceiptChecksum: checked.roleChecksum,
 			inspectionReceivedAt: now,
-			inspectionReceiptSet: receiptSet,
 			createdAt: now,
 			updatedAt: now,
-		});
+		};
+		if (receiptSet.schemaVersion === 1) {
+			await ctx.db.insert("catalogPrivateAssetReceiptCoordinations", {
+				...pending,
+				inspectionReceiptSet: receiptSet,
+			});
+		} else {
+			await ctx.db.insert("catalogPrivateAssetReceiptCoordinations", {
+				...pending,
+				inspectionReceiptSet: receiptSet,
+			});
+		}
 		return pendingResult("pending_storage", false, checked.facts.length);
 	}
 	if (coordination.status === "verified") {
 		if (
-			coordination.inspectionReceiptChecksum !== checked.roleChecksum
+			coordination.inspectionReceiptSet.schemaVersion !== receiptSet.schemaVersion
+			|| coordination.storageReceiptSet.schemaVersion !== receiptSet.schemaVersion
+			|| coordination.inspectionReceiptChecksum !== checked.roleChecksum
 			|| !sameCatalogPrivateInspectionReceiptSet(coordination.inspectionReceiptSet, receiptSet)
 		) throw new Error("Private catalog inspection receipt replay has drifted");
 		return await verifiedResult(ctx, coordination, true);

@@ -7,6 +7,10 @@ import {
 } from "./catalogPrivateAssetValidators";
 
 export const CATALOG_PRIVATE_ASSET_RECEIPT_SET_VERSION = 1 as const;
+export const CATALOG_PRIVATE_ASSET_RECEIPT_SET_V2_VERSION = 2 as const;
+export type CatalogPrivateAssetReceiptSetVersion =
+	| typeof CATALOG_PRIVATE_ASSET_RECEIPT_SET_VERSION
+	| typeof CATALOG_PRIVATE_ASSET_RECEIPT_SET_V2_VERSION;
 
 const privatePrintSourceFactsValidator = v.object({
 	kind: v.literal("print_source"),
@@ -50,17 +54,47 @@ const paidStorageReceiptValidator = v.object({
 	etag: v.string(),
 });
 
-export const catalogPrivateStorageReceiptSetValidator = v.object({
-	schemaVersion: v.literal(CATALOG_PRIVATE_ASSET_RECEIPT_SET_VERSION),
+const storageReceiptSetFields = {
 	receiptSetId: v.string(),
 	siteUrl: v.string(),
 	receipts: v.array(v.union(printStorageReceiptValidator, paidStorageReceiptValidator)),
+};
+
+const catalogPrivateStorageReceiptSetV1Validator = v.object({
+	schemaVersion: v.literal(CATALOG_PRIVATE_ASSET_RECEIPT_SET_VERSION),
+	...storageReceiptSetFields,
 });
 
-const printInspectionReceiptValidator = v.object({
+const catalogPrivateStorageReceiptSetV2Validator = v.object({
+	schemaVersion: v.literal(CATALOG_PRIVATE_ASSET_RECEIPT_SET_V2_VERSION),
+	...storageReceiptSetFields,
+});
+
+export const catalogPrivateStorageReceiptSetValidator = v.union(
+	catalogPrivateStorageReceiptSetV1Validator,
+	catalogPrivateStorageReceiptSetV2Validator,
+);
+
+const printInspectionReceiptV1Validator = v.object({
+	facts: privatePrintSourceFactsValidator,
+	inspection: v.object({ method: v.literal("decoded_image_v1") }),
+});
+
+const printInspectionReceiptV2Validator = v.object({
 	facts: privatePrintSourceFactsValidator,
 	inspection: v.object({
-		method: v.literal("decoded_image_v1"),
+		method: v.literal("sharp_libvips_full_raster_v1"),
+		decodedFormat: v.union(v.literal("jpeg"), v.literal("png")),
+		decodedWidthPixels: v.number(),
+		decodedHeightPixels: v.number(),
+		decodedChannels: v.union(v.literal(1), v.literal(2), v.literal(3), v.literal(4)),
+		decodedPageCount: v.literal(1),
+		decodedDepth: v.literal("uchar"),
+		decodedPixelCount: v.number(),
+		decodedByteCount: v.number(),
+		rasterSha256: v.string(),
+		sharpVersion: v.string(),
+		libvipsVersion: v.string(),
 	}),
 });
 
@@ -77,12 +111,33 @@ const paidInspectionReceiptValidator = v.object({
 	}),
 });
 
-export const catalogPrivateInspectionReceiptSetValidator = v.object({
-	schemaVersion: v.literal(CATALOG_PRIVATE_ASSET_RECEIPT_SET_VERSION),
+const inspectionReceiptSetIdentityFields = {
 	receiptSetId: v.string(),
 	siteUrl: v.string(),
-	receipts: v.array(v.union(printInspectionReceiptValidator, paidInspectionReceiptValidator)),
+};
+
+const catalogPrivateInspectionReceiptSetV1Validator = v.object({
+	schemaVersion: v.literal(CATALOG_PRIVATE_ASSET_RECEIPT_SET_VERSION),
+	...inspectionReceiptSetIdentityFields,
+	receipts: v.array(v.union(
+		printInspectionReceiptV1Validator,
+		paidInspectionReceiptValidator,
+	)),
 });
+
+const catalogPrivateInspectionReceiptSetV2Validator = v.object({
+	schemaVersion: v.literal(CATALOG_PRIVATE_ASSET_RECEIPT_SET_V2_VERSION),
+	...inspectionReceiptSetIdentityFields,
+	receipts: v.array(v.union(
+		printInspectionReceiptV2Validator,
+		paidInspectionReceiptValidator,
+	)),
+});
+
+export const catalogPrivateInspectionReceiptSetValidator = v.union(
+	catalogPrivateInspectionReceiptSetV1Validator,
+	catalogPrivateInspectionReceiptSetV2Validator,
+);
 
 export const catalogPrivateAssetTargetMappingValidator = v.union(
 	v.object({
@@ -111,14 +166,28 @@ export const catalogPrivateAssetReceiptCoordinationValidator = v.union(
 		status: v.literal("pending_inspection"),
 		storageReceiptChecksum: v.string(),
 		storageReceivedAt: v.number(),
-		storageReceiptSet: catalogPrivateStorageReceiptSetValidator,
+		storageReceiptSet: catalogPrivateStorageReceiptSetV1Validator,
+	}),
+	v.object({
+		...coordinationIdentityFields,
+		status: v.literal("pending_inspection"),
+		storageReceiptChecksum: v.string(),
+		storageReceivedAt: v.number(),
+		storageReceiptSet: catalogPrivateStorageReceiptSetV2Validator,
 	}),
 	v.object({
 		...coordinationIdentityFields,
 		status: v.literal("pending_storage"),
 		inspectionReceiptChecksum: v.string(),
 		inspectionReceivedAt: v.number(),
-		inspectionReceiptSet: catalogPrivateInspectionReceiptSetValidator,
+		inspectionReceiptSet: catalogPrivateInspectionReceiptSetV1Validator,
+	}),
+	v.object({
+		...coordinationIdentityFields,
+		status: v.literal("pending_storage"),
+		inspectionReceiptChecksum: v.string(),
+		inspectionReceivedAt: v.number(),
+		inspectionReceiptSet: catalogPrivateInspectionReceiptSetV2Validator,
 	}),
 	v.object({
 		...coordinationIdentityFields,
@@ -128,8 +197,20 @@ export const catalogPrivateAssetReceiptCoordinationValidator = v.union(
 		storageReceivedAt: v.number(),
 		inspectionReceivedAt: v.number(),
 		verifiedAt: v.number(),
-		storageReceiptSet: catalogPrivateStorageReceiptSetValidator,
-		inspectionReceiptSet: catalogPrivateInspectionReceiptSetValidator,
+		storageReceiptSet: catalogPrivateStorageReceiptSetV1Validator,
+		inspectionReceiptSet: catalogPrivateInspectionReceiptSetV1Validator,
+		targets: v.array(catalogPrivateAssetTargetMappingValidator),
+	}),
+	v.object({
+		...coordinationIdentityFields,
+		status: v.literal("verified"),
+		storageReceiptChecksum: v.string(),
+		inspectionReceiptChecksum: v.string(),
+		storageReceivedAt: v.number(),
+		inspectionReceivedAt: v.number(),
+		verifiedAt: v.number(),
+		storageReceiptSet: catalogPrivateStorageReceiptSetV2Validator,
+		inspectionReceiptSet: catalogPrivateInspectionReceiptSetV2Validator,
 		targets: v.array(catalogPrivateAssetTargetMappingValidator),
 	}),
 );

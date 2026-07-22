@@ -7,7 +7,10 @@ import type {
 	CatalogPrivateInspectionReceiptSet,
 	CatalogPrivateStorageReceiptSet,
 } from "./helpers/catalogPrivateAssetReceiptContract";
-import { CATALOG_PRIVATE_ASSET_RECEIPT_SET_VERSION } from "./helpers/catalogPrivateAssetReceiptContract";
+import {
+	CATALOG_PRIVATE_ASSET_RECEIPT_SET_V2_VERSION,
+	CATALOG_PRIVATE_ASSET_RECEIPT_SET_VERSION,
+} from "./helpers/catalogPrivateAssetReceiptContract";
 import {
 	isServerSecretCandidate,
 	isTenantSiteSegment,
@@ -100,7 +103,10 @@ function catalogReceiptRegistries() {
 
 function isReceiptSetEnvelope(body: Record<string, unknown>) {
 	return Object.keys(body).length === 4
-		&& body.schemaVersion === CATALOG_PRIVATE_ASSET_RECEIPT_SET_VERSION
+		&& (
+			body.schemaVersion === CATALOG_PRIVATE_ASSET_RECEIPT_SET_VERSION
+			|| body.schemaVersion === CATALOG_PRIVATE_ASSET_RECEIPT_SET_V2_VERSION
+		)
 		&& typeof body.receiptSetId === "string"
 		&& isTenantSiteSegment(body.siteUrl)
 		&& Array.isArray(body.receipts);
