@@ -1,3 +1,4 @@
+import { v } from "convex/values";
 import { internalMutation } from "./_generated/server";
 import {
 	catalogPrivateInspectionReceiptSetValidator,
@@ -7,6 +8,16 @@ import {
 	recordCatalogPrivateInspectionReceiptSet,
 	recordCatalogPrivateStorageReceiptSet,
 } from "./helpers/catalogPrivateAssetRegistry";
+import {
+	backfillPrivateCatalogTargetAuthorities,
+} from "./helpers/catalogPrivateAssetRegistryTargets";
+
+/** Bounded operator backfill for one exact terminal V1 receipt set. */
+export const backfillTargetAuthorities = internalMutation({
+	args: { siteUrl: v.string(), receiptSetId: v.string() },
+	handler: async (ctx, { siteUrl, receiptSetId }) =>
+		await backfillPrivateCatalogTargetAuthorities(ctx, siteUrl, receiptSetId),
+});
 
 /** Server-to-server storage evidence only; not part of the public/admin API. */
 export const recordStorageReceiptSet = internalMutation({

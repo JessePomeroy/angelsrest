@@ -152,6 +152,107 @@ export const catalogPrivateAssetTargetMappingValidator = v.union(
 	}),
 );
 
+export const catalogPrivateAssetTargetAuthorityValidator = v.union(
+	v.object({
+		siteUrl: v.string(),
+		kind: v.literal("print_source"),
+		assetKey: v.string(),
+		assetId: v.id("catalogPrintSourceAssets"),
+		originCoordinationId: v.id("catalogPrivateAssetReceiptCoordinations"),
+		originReceiptSetId: v.string(),
+		originSchemaVersion: v.union(v.literal(1), v.literal(2)),
+		indexedAt: v.number(),
+	}),
+	v.object({
+		siteUrl: v.string(),
+		kind: v.literal("paid_digital_file"),
+		assetKey: v.string(),
+		assetId: v.id("catalogDigitalFileAssets"),
+		originCoordinationId: v.id("catalogPrivateAssetReceiptCoordinations"),
+		originReceiptSetId: v.string(),
+		originSchemaVersion: v.union(v.literal(1), v.literal(2)),
+		indexedAt: v.number(),
+	}),
+);
+
+const targetPlanValidator = v.union(
+	v.object({
+		kind: v.literal("print_source"),
+		assetKey: v.string(),
+		resolution: v.literal("create"),
+	}),
+	v.object({
+		kind: v.literal("paid_digital_file"),
+		assetKey: v.string(),
+		resolution: v.literal("create"),
+	}),
+	v.object({
+		kind: v.literal("print_source"),
+		assetKey: v.string(),
+		assetId: v.id("catalogPrintSourceAssets"),
+		resolution: v.literal("reuse_v1"),
+		authorityId: v.id("catalogPrivateAssetTargetAuthorities"),
+		originCoordinationId: v.id("catalogPrivateAssetReceiptCoordinations"),
+		originReceiptSetId: v.string(),
+	}),
+	v.object({
+		kind: v.literal("paid_digital_file"),
+		assetKey: v.string(),
+		assetId: v.id("catalogDigitalFileAssets"),
+		resolution: v.literal("reuse_v1"),
+		authorityId: v.id("catalogPrivateAssetTargetAuthorities"),
+		originCoordinationId: v.id("catalogPrivateAssetReceiptCoordinations"),
+		originReceiptSetId: v.string(),
+	}),
+);
+
+const targetBindingValidator = v.union(
+	v.object({
+		kind: v.literal("print_source"),
+		assetKey: v.string(),
+		assetId: v.id("catalogPrintSourceAssets"),
+		resolution: v.literal("created"),
+		authorityId: v.id("catalogPrivateAssetTargetAuthorities"),
+	}),
+	v.object({
+		kind: v.literal("paid_digital_file"),
+		assetKey: v.string(),
+		assetId: v.id("catalogDigitalFileAssets"),
+		resolution: v.literal("created"),
+		authorityId: v.id("catalogPrivateAssetTargetAuthorities"),
+	}),
+	v.object({
+		kind: v.literal("print_source"),
+		assetKey: v.string(),
+		assetId: v.id("catalogPrintSourceAssets"),
+		resolution: v.literal("reused_v1"),
+		authorityId: v.id("catalogPrivateAssetTargetAuthorities"),
+		originCoordinationId: v.id("catalogPrivateAssetReceiptCoordinations"),
+		originReceiptSetId: v.string(),
+	}),
+	v.object({
+		kind: v.literal("paid_digital_file"),
+		assetKey: v.string(),
+		assetId: v.id("catalogDigitalFileAssets"),
+		resolution: v.literal("reused_v1"),
+		authorityId: v.id("catalogPrivateAssetTargetAuthorities"),
+		originCoordinationId: v.id("catalogPrivateAssetReceiptCoordinations"),
+		originReceiptSetId: v.string(),
+	}),
+);
+
+// These stay optional for pre-feature V2 rows, but cannot be removed after use.
+// See the stable-target V2 forward-recovery contract in the catalog migration README.
+const v2TargetResolutionFields = {
+	targetResolutionVersion: v.optional(v.literal(1)),
+	targetPlan: v.optional(v.array(targetPlanValidator)),
+};
+
+const v2TargetBindingFields = {
+	targetResolutionVersion: v.optional(v.literal(1)),
+	targetBindings: v.optional(v.array(targetBindingValidator)),
+};
+
 const coordinationIdentityFields = {
 	siteUrl: v.string(),
 	receiptSetId: v.string(),
@@ -174,6 +275,7 @@ export const catalogPrivateAssetReceiptCoordinationValidator = v.union(
 		storageReceiptChecksum: v.string(),
 		storageReceivedAt: v.number(),
 		storageReceiptSet: catalogPrivateStorageReceiptSetV2Validator,
+		...v2TargetResolutionFields,
 	}),
 	v.object({
 		...coordinationIdentityFields,
@@ -188,6 +290,7 @@ export const catalogPrivateAssetReceiptCoordinationValidator = v.union(
 		inspectionReceiptChecksum: v.string(),
 		inspectionReceivedAt: v.number(),
 		inspectionReceiptSet: catalogPrivateInspectionReceiptSetV2Validator,
+		...v2TargetResolutionFields,
 	}),
 	v.object({
 		...coordinationIdentityFields,
@@ -212,6 +315,7 @@ export const catalogPrivateAssetReceiptCoordinationValidator = v.union(
 		storageReceiptSet: catalogPrivateStorageReceiptSetV2Validator,
 		inspectionReceiptSet: catalogPrivateInspectionReceiptSetV2Validator,
 		targets: v.array(catalogPrivateAssetTargetMappingValidator),
+		...v2TargetBindingFields,
 	}),
 );
 
@@ -225,3 +329,8 @@ export type CatalogPrivateInspectionReceiptSet = Infer<
 export type CatalogPrivateAssetTargetMapping = Infer<
 	typeof catalogPrivateAssetTargetMappingValidator
 >;
+export type CatalogPrivateAssetTargetAuthority = Infer<
+	typeof catalogPrivateAssetTargetAuthorityValidator
+>;
+export type CatalogPrivateAssetTargetPlan = Infer<typeof targetPlanValidator>;
+export type CatalogPrivateAssetTargetBinding = Infer<typeof targetBindingValidator>;
