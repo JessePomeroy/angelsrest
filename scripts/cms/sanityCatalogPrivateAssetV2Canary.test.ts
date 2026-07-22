@@ -1,24 +1,36 @@
-import { chmod, mkdtemp, readFile, rm, symlink, writeFile } from "node:fs/promises";
+import { chmod, mkdtemp, readFile, rm, stat, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, test, vi } from "vitest";
 import journal from "./migrations/angelsrest-catalog/sanity-catalog-private-asset-map.json";
 import {
+	clearV2CanaryArtifactsForExecution,
+	clearV2CanaryFailureArtifactAfterSuccess,
 	clearV2CanaryReportForExecution,
+	createV2CanaryFailureArtifact,
 	executeV2CanaryStateMachine,
 	loadV2CanarySelection,
+	parseV2CanaryBackfillResult,
 	parseV2CanaryOptions,
 	postV2CanaryWorkerReceipt,
 	readV2CanaryConvexSelectorFile,
 	readV2CanarySecretFile,
+	resetV2CanaryArtifactDirectory,
+	runV2CanaryCatalogStateValidation,
+	runV2CanaryCatalogTransport,
 	runV2CanaryConvexFunction,
 	V2_CANARY_CONFIRMATION,
 	V2_CANARY_CONVEX_SELECTOR,
 	V2_CANARY_CONVEX_SITE_ORIGIN,
 	V2_CANARY_DECODER_POLICY,
+	V2_CANARY_FAILURE_ARTIFACT_PATH,
+	V2_CANARY_FAILURES,
 	V2_CANARY_INSPECTION_PATH,
+	V2_CANARY_PHASES,
 	V2_CANARY_STORAGE_PATH,
+	type V2CanaryPhase,
 	v2CanaryConvexChildEnvironment,
+	writeV2CanaryFailureArtifact,
 } from "./sanityCatalogPrivateAssetV2Canary";
 
 const temporaryDirectories: string[] = [];
@@ -128,6 +140,22 @@ afterEach(async () => {
 
 describe("catalog private asset V2 canary runner", () => {
 	test("keeps plan mode free of execution inputs and fixes the exact confirmation", () => {
+		expect(V2_CANARY_PHASES).toEqual([
+			"preflight",
+			"backfill",
+			"storage_resume",
+			"storage_replay",
+			"inspection",
+			"final_replay",
+		]);
+		expect(V2_CANARY_FAILURES).toEqual([
+			"transport",
+			"worker_4xx",
+			"worker_5xx",
+			"invalid_attestation",
+			"state_drift",
+			"operator",
+		]);
 		expect(parseV2CanaryOptions([])).toEqual({ execute: false });
 		expect(() => parseV2CanaryOptions(["--tenant-secret-file", "/tmp/secret"])).toThrow(
 			/require --execute/,
@@ -206,6 +234,129 @@ describe("catalog private asset V2 canary runner", () => {
 		await expect(readFile(reportPath, "utf8")).resolves.toContain("verified");
 		await clearV2CanaryReportForExecution(["--execute", "--invalid"], reportPath);
 		await expect(readFile(reportPath, "utf8")).rejects.toMatchObject({ code: "ENOENT" });
+	});
+
+	test("atomically creates and updates the bounded failure artifact with exact mode 0600", async () => {
+		const directory = await mkdtemp(join(tmpdir(), "v2-canary-failure-test-"));
+		temporaryDirectories.push(directory);
+		const failurePath = join(directory, "failure.json");
+		const timestamp = "2026-07-21T12:34:56.000Z";
+		const forbiddenValues = [
+			V2_CANARY_CONVEX_SELECTOR,
+			"sites/angelsrest.online/catalog/private/object",
+			receiptSetId,
+			"https://worker.example.test/private",
+			"a".repeat(64),
+			"q970hm4246ek96y29w5hrsjkvh8axepc",
+			"credential-secret-value",
+			"raw upstream response text",
+			"full-raster evidence",
+			"angelsrest.online",
+			"acct_forbidden",
+		];
+		const first = createV2CanaryFailureArtifact(
+			new Error(forbiddenValues.join(" ")),
+			"preflight",
+			timestamp,
+		);
+		await writeV2CanaryFailureArtifact(failurePath, first);
+		expect((await stat(failurePath)).mode & 0o777).toBe(0o600);
+		const firstContents = await readFile(failurePath, "utf8");
+		expect(JSON.parse(firstContents)).toEqual({
+			schemaVersion: 1,
+			phase: "preflight",
+			failure: "operator",
+			timestamp,
+		});
+		for (const forbidden of forbiddenValues) expect(firstContents).not.toContain(forbidden);
+		expect(Buffer.byteLength(firstContents)).toBeLessThanOrEqual(512);
+
+		await chmod(failurePath, 0o644);
+		await writeV2CanaryFailureArtifact(failurePath, {
+			schemaVersion: 1,
+			phase: "inspection",
+			failure: "worker_5xx",
+			httpStatus: 503,
+			timestamp: "2026-07-21T12:35:00.000Z",
+		});
+		expect((await stat(failurePath)).mode & 0o777).toBe(0o600);
+		const updated = await readFile(failurePath, "utf8");
+		expect(JSON.parse(updated)).toEqual({
+			schemaVersion: 1,
+			phase: "inspection",
+			failure: "worker_5xx",
+			httpStatus: 503,
+			timestamp: "2026-07-21T12:35:00.000Z",
+		});
+		await expect(
+			writeV2CanaryFailureArtifact(failurePath, {
+				...first,
+				credential: "must-not-write",
+			} as Parameters<typeof writeV2CanaryFailureArtifact>[1]),
+		).rejects.toThrow(/artifact is invalid/);
+		await expect(
+			writeV2CanaryFailureArtifact(failurePath, {
+				...first,
+				httpStatus: 600,
+			}),
+		).rejects.toThrow(/artifact is invalid/);
+		await expect(readFile(failurePath, "utf8")).resolves.toBe(updated);
+		expect(V2_CANARY_FAILURE_ARTIFACT_PATH).toMatch(/\/failure\.json$/);
+	});
+
+	test("rejects a destination symlink and deterministic write failures without touching its target", async () => {
+		const directory = await mkdtemp(join(tmpdir(), "v2-canary-destination-test-"));
+		temporaryDirectories.push(directory);
+		const targetPath = join(directory, "target.json");
+		const failurePath = join(directory, "failure.json");
+		await writeFile(targetPath, "forensic-target", { mode: 0o600 });
+		await symlink(targetPath, failurePath);
+		const artifact = createV2CanaryFailureArtifact(new Error("raw"), "preflight");
+		await expect(writeV2CanaryFailureArtifact(failurePath, artifact)).rejects.toThrow(/unsafe/);
+		await expect(readFile(targetPath, "utf8")).resolves.toBe("forensic-target");
+		await expect(
+			writeV2CanaryFailureArtifact(join(directory, "missing", "failure.json"), artifact),
+		).rejects.toThrow(/directory is unavailable/);
+	});
+
+	test("uses a fresh owner-only directory and cleans forensic state on success and start", async () => {
+		const root = await mkdtemp(join(tmpdir(), "v2-canary-private-parent-test-"));
+		temporaryDirectories.push(root);
+		const directory = join(root, "artifacts");
+		const failurePath = join(directory, "failure.json");
+		await resetV2CanaryArtifactDirectory(directory);
+		expect((await stat(directory)).mode & 0o777).toBe(0o700);
+		await writeV2CanaryFailureArtifact(
+			failurePath,
+			createV2CanaryFailureArtifact(new Error("raw"), "inspection"),
+		);
+		await expect(readFile(failurePath, "utf8")).resolves.toContain('"phase": "inspection"');
+		await clearV2CanaryFailureArtifactAfterSuccess(failurePath);
+		await expect(readFile(failurePath, "utf8")).rejects.toMatchObject({ code: "ENOENT" });
+		await writeV2CanaryFailureArtifact(
+			failurePath,
+			createV2CanaryFailureArtifact(new Error("raw"), "inspection"),
+		);
+		await resetV2CanaryArtifactDirectory(directory);
+		expect((await stat(directory)).mode & 0o777).toBe(0o700);
+		await expect(readFile(failurePath, "utf8")).rejects.toMatchObject({ code: "ENOENT" });
+	});
+
+	test("removes both success and failure artifacts only at execution start", async () => {
+		const directory = await mkdtemp(join(tmpdir(), "v2-canary-artifacts-test-"));
+		temporaryDirectories.push(directory);
+		const successPath = join(directory, "success.json");
+		const failurePath = join(directory, "failure.json");
+		await Promise.all([
+			writeFile(successPath, "success", { mode: 0o600 }),
+			writeFile(failurePath, "failure", { mode: 0o600 }),
+		]);
+		await clearV2CanaryArtifactsForExecution([], [successPath, failurePath]);
+		await expect(readFile(successPath, "utf8")).resolves.toBe("success");
+		await expect(readFile(failurePath, "utf8")).resolves.toBe("failure");
+		await clearV2CanaryArtifactsForExecution(["--execute"], [successPath, failurePath]);
+		await expect(readFile(successPath, "utf8")).rejects.toMatchObject({ code: "ENOENT" });
+		await expect(readFile(failurePath, "utf8")).rejects.toMatchObject({ code: "ENOENT" });
 	});
 
 	test("strips inherited Convex and unrelated credential variables from the child", () => {
@@ -368,6 +519,130 @@ describe("catalog private asset V2 canary runner", () => {
 		}
 	});
 
+	test("classifies catalog network as transport and malformed fixed state as state drift", async () => {
+		const timestamp = "2026-07-21T12:59:00.000Z";
+		const networkFailure = await runV2CanaryCatalogTransport(async () => {
+			throw new Error("raw catalog network response");
+		}).catch((error: unknown) => error);
+		expect(createV2CanaryFailureArtifact(networkFailure, "preflight", timestamp)).toEqual({
+			schemaVersion: 1,
+			phase: "preflight",
+			failure: "transport",
+			timestamp,
+		});
+
+		for (const malformed of [
+			async () => JSON.parse("malformed journal"),
+			async () => {
+				throw new Error("malformed catalog");
+			},
+			async () => {
+				throw new Error("baseline drift");
+			},
+		]) {
+			const failure = await runV2CanaryCatalogStateValidation(malformed).catch(
+				(error: unknown) => error,
+			);
+			expect(createV2CanaryFailureArtifact(failure, "preflight", timestamp).failure).toBe(
+				"state_drift",
+			);
+		}
+		const malformedBackfill = await Promise.resolve()
+			.then(() => parseV2CanaryBackfillResult({ replayed: "yes", targetCount: 12 }))
+			.catch((error: unknown) => error);
+		expect(createV2CanaryFailureArtifact(malformedBackfill, "backfill", timestamp).failure).toBe(
+			"state_drift",
+		);
+
+		let phase: V2CanaryPhase = "preflight";
+		const stateMachineFailure = await executeV2CanaryStateMachine({
+			preManifest: "manifest",
+			tenantSecret: "t".repeat(32),
+			inspectionSecret: "i".repeat(32),
+			privateObjectKeys: ["one", "two", "three"],
+			onPhase: (nextPhase) => {
+				phase = nextPhase;
+			},
+			dependencies: {
+				snapshot: async () => snapshot("absent"),
+				backfill: async () =>
+					({ replayed: "malformed", targetCount: 12 }) as unknown as {
+						replayed: boolean;
+						targetCount: 12;
+					},
+				postWorker: vi.fn(),
+				readPublishedManifest: async () => "manifest",
+			},
+		}).catch((error: unknown) => error);
+		expect(createV2CanaryFailureArtifact(stateMachineFailure, phase, timestamp)).toMatchObject({
+			phase: "backfill",
+			failure: "state_drift",
+		});
+	});
+
+	test("classifies transport, malformed 2xx, redirects, and bounded Worker failures without raw values", async () => {
+		const timestamp = "2026-07-21T13:00:00.000Z";
+		const classify = async (fetcher: typeof fetch) => {
+			let failure: unknown;
+			try {
+				await postV2CanaryWorkerReceipt({
+					path: V2_CANARY_INSPECTION_PATH,
+					secret: "s".repeat(32),
+					privateObjectKeys: ["one", "two", "three"],
+					expectedReceiptSetId: receiptSetId,
+					fetcher,
+				});
+			} catch (error) {
+				failure = error;
+			}
+			return createV2CanaryFailureArtifact(failure, "inspection", timestamp);
+		};
+		const rawForbidden = `${V2_CANARY_CONVEX_SELECTOR} sites/private ${receiptSetId} credential`;
+		const cases = [
+			{
+				fetcher: vi.fn(async () => {
+					throw new Error(rawForbidden);
+				}) as typeof fetch,
+				expected: { failure: "transport" },
+			},
+			{
+				fetcher: vi.fn(
+					async () =>
+						new Response(rawForbidden, {
+							headers: { "Content-Type": "application/json" },
+						}),
+				) as typeof fetch,
+				expected: { failure: "invalid_attestation" },
+			},
+			{
+				fetcher: vi.fn(async () => Response.json({ raw: rawForbidden })) as typeof fetch,
+				expected: { failure: "invalid_attestation" },
+			},
+			{
+				fetcher: vi.fn(async () => new Response(rawForbidden, { status: 307 })) as typeof fetch,
+				expected: { failure: "transport", httpStatus: 307 },
+			},
+			{
+				fetcher: vi.fn(async () => new Response(rawForbidden, { status: 429 })) as typeof fetch,
+				expected: { failure: "worker_4xx", httpStatus: 429 },
+			},
+			{
+				fetcher: vi.fn(async () => new Response(rawForbidden, { status: 503 })) as typeof fetch,
+				expected: { failure: "worker_5xx", httpStatus: 503 },
+			},
+		] as const;
+		for (const item of cases) {
+			const artifact = await classify(item.fetcher);
+			expect(artifact).toEqual({
+				schemaVersion: 1,
+				phase: "inspection",
+				...item.expected,
+				timestamp,
+			});
+			expect(JSON.stringify(artifact)).not.toContain(rawForbidden);
+		}
+	});
+
 	test("executes the strict first-run delta and proves every replay byte-identical", async () => {
 		const absent = snapshot("absent");
 		const pending = snapshot("pending_inspection", "2");
@@ -417,10 +692,100 @@ describe("catalog private asset V2 canary runner", () => {
 			expect(sanitized).not.toContain(forbidden);
 	});
 
-	test("stops before inspection when storage does not change the pinned deployment", async () => {
-		const unchanged = snapshot("absent");
-		const snapshots = [unchanged, unchanged, unchanged, unchanged];
-		const postWorker = vi.fn(async () => response("pending_inspection", false));
+	test("resumes pending state in exact call order and marks inspection before attempting it", async () => {
+		const pending = snapshot("pending_inspection", "2");
+		const verified = snapshot("verified", "3");
+		const snapshots = [pending, pending, pending, pending, pending, verified, verified, verified];
+		const workerResults = [
+			response("pending_inspection", true, "storage"),
+			response("pending_inspection", true, "storage"),
+			response("verified", false, "inspection"),
+			response("verified", true, "storage"),
+			response("verified", true, "inspection"),
+		];
+		const phases: string[] = [];
+		const postWorker = vi.fn(async () => shiftRequired(workerResults));
+		await executeV2CanaryStateMachine({
+			preManifest: "manifest",
+			tenantSecret: "t".repeat(32),
+			inspectionSecret: "i".repeat(32),
+			privateObjectKeys: ["one", "two", "three"],
+			onPhase: (phase) => phases.push(phase),
+			dependencies: {
+				snapshot: async () => shiftRequired(snapshots),
+				backfill: async () => ({ replayed: true, targetCount: 12 }),
+				postWorker,
+				readPublishedManifest: async () => "manifest",
+			},
+		});
+		expect(phases).toEqual([
+			"preflight",
+			"backfill",
+			"storage_resume",
+			"storage_replay",
+			"inspection",
+			"final_replay",
+		]);
+		expect(postWorker.mock.calls.map(([path]) => path)).toEqual([
+			V2_CANARY_STORAGE_PATH,
+			V2_CANARY_STORAGE_PATH,
+			V2_CANARY_INSPECTION_PATH,
+			V2_CANARY_STORAGE_PATH,
+			V2_CANARY_INSPECTION_PATH,
+		]);
+		expect(postWorker.mock.calls.map(([, secret]) => secret)).toEqual([
+			"t".repeat(32),
+			"t".repeat(32),
+			"i".repeat(32),
+			"t".repeat(32),
+			"i".repeat(32),
+		]);
+	});
+
+	test.each([
+		{ initialStatus: "pending_inspection", replayStatus: "verified" },
+		{ initialStatus: "verified", replayStatus: "pending_inspection" },
+	] as const)("rejects a $initialStatus storage replay response that disagrees with observed server status", async ({
+		initialStatus,
+		replayStatus,
+	}) => {
+		const observed = snapshot(initialStatus, initialStatus === "verified" ? "3" : "2");
+		const snapshots = [observed, observed, observed, observed, observed];
+		const workerResults = [
+			response(initialStatus, true, "storage"),
+			response(replayStatus, true, "storage"),
+		];
+		const postWorker = vi.fn(async () => shiftRequired(workerResults));
+		const failure = await executeV2CanaryStateMachine({
+			preManifest: "manifest",
+			tenantSecret: "t".repeat(32),
+			inspectionSecret: "i".repeat(32),
+			privateObjectKeys: ["one", "two", "three"],
+			dependencies: {
+				snapshot: async () => shiftRequired(snapshots),
+				backfill: async () => ({ replayed: true, targetCount: 12 }),
+				postWorker,
+				readPublishedManifest: async () => "manifest",
+			},
+		}).catch((error: unknown) => error);
+		expect(createV2CanaryFailureArtifact(failure, "storage_replay")).toMatchObject({
+			failure: "state_drift",
+			phase: "storage_replay",
+		});
+		expect(postWorker).toHaveBeenCalledTimes(2);
+	});
+
+	test("resumes an ambiguous inspection commit from verified-at-start state without another write", async () => {
+		const verified = snapshot("verified", "3");
+		const snapshots = Array.from({ length: 8 }, () => verified);
+		const workerResults = [
+			response("verified", true, "storage"),
+			response("verified", true, "storage"),
+			response("verified", true, "inspection"),
+			response("verified", true, "storage"),
+			response("verified", true, "inspection"),
+		];
+		const postWorker = vi.fn(async () => shiftRequired(workerResults));
 		await expect(
 			executeV2CanaryStateMachine({
 				preManifest: "manifest",
@@ -434,7 +799,77 @@ describe("catalog private asset V2 canary runner", () => {
 					readPublishedManifest: async () => "manifest",
 				},
 			}),
-		).rejects.toThrow(/First storage receipt/);
+		).resolves.toMatchObject({ status: "verified", checks: { byteIdenticalReplays: true } });
+		expect(postWorker.mock.calls.map(([path]) => path)).toEqual([
+			V2_CANARY_STORAGE_PATH,
+			V2_CANARY_STORAGE_PATH,
+			V2_CANARY_INSPECTION_PATH,
+			V2_CANARY_STORAGE_PATH,
+			V2_CANARY_INSPECTION_PATH,
+		]);
+	});
+
+	test("records inspection phase before an attempted pending-resume inspection fails", async () => {
+		const pending = snapshot("pending_inspection", "2");
+		const snapshots = [pending, pending, pending, pending, pending];
+		let phase: V2CanaryPhase = "preflight";
+		const postWorker = vi.fn(async (path: string) => {
+			if (path === V2_CANARY_INSPECTION_PATH) throw new Error("secret raw inspection failure");
+			return response("pending_inspection", true, "storage");
+		});
+		let failure: unknown;
+		try {
+			await executeV2CanaryStateMachine({
+				preManifest: "manifest",
+				tenantSecret: "t".repeat(32),
+				inspectionSecret: "i".repeat(32),
+				privateObjectKeys: ["one", "two", "three"],
+				onPhase: (nextPhase) => {
+					phase = nextPhase;
+				},
+				dependencies: {
+					snapshot: async () => shiftRequired(snapshots),
+					backfill: async () => ({ replayed: true, targetCount: 12 }),
+					postWorker,
+					readPublishedManifest: async () => "manifest",
+				},
+			});
+		} catch (error) {
+			failure = error;
+		}
+		expect(postWorker.mock.calls.map(([path]) => path)).toEqual([
+			V2_CANARY_STORAGE_PATH,
+			V2_CANARY_STORAGE_PATH,
+			V2_CANARY_INSPECTION_PATH,
+		]);
+		expect(createV2CanaryFailureArtifact(failure, phase)).toMatchObject({
+			phase: "inspection",
+			failure: "transport",
+		});
+	});
+
+	test("stops before inspection when storage does not change the pinned deployment", async () => {
+		const unchanged = snapshot("absent");
+		const snapshots = [unchanged, unchanged, unchanged, unchanged];
+		const postWorker = vi.fn(async () => response("pending_inspection", false));
+		const failure = await executeV2CanaryStateMachine({
+			preManifest: "manifest",
+			tenantSecret: "t".repeat(32),
+			inspectionSecret: "i".repeat(32),
+			privateObjectKeys: ["one", "two", "three"],
+			dependencies: {
+				snapshot: async () => shiftRequired(snapshots),
+				backfill: async () => ({ replayed: true, targetCount: 12 }),
+				postWorker,
+				readPublishedManifest: async () => "manifest",
+			},
+		}).catch((error: unknown) => error);
+		expect(failure).toBeInstanceOf(Error);
+		expect((failure as Error).message).toMatch(/First storage receipt/);
+		expect(createV2CanaryFailureArtifact(failure, "storage_resume")).toMatchObject({
+			phase: "storage_resume",
+			failure: "state_drift",
+		});
 		expect(postWorker).toHaveBeenCalledOnce();
 		expect(postWorker).toHaveBeenCalledWith(
 			V2_CANARY_STORAGE_PATH,
@@ -462,7 +897,7 @@ describe("catalog private asset V2 canary runner", () => {
 					readPublishedManifest: async () => "manifest",
 				},
 			}),
-		).rejects.toThrow(/injected retryable failure/);
+		).rejects.toThrow(/did not complete/);
 		expect(postWorker).toHaveBeenCalledOnce();
 	});
 });
