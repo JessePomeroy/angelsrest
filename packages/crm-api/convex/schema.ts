@@ -498,7 +498,8 @@ export default defineSchema({
 	})
 		.index("by_revisionId_and_order", ["revisionId", "order"])
 		.index("by_revisionId_and_variantKey", ["revisionId", "variantKey"])
-		.index("by_productId_and_revisionId", ["productId", "revisionId"]),
+		.index("by_productId_and_revisionId", ["productId", "revisionId"])
+		.index("by_siteUrl", ["siteUrl"]),
 
 	// Public-display media remains in the existing web asset registry. These
 	// immutable rows cannot point at print masters or paid files by construction.
@@ -574,7 +575,8 @@ export default defineSchema({
 	})
 		.index("by_revisionId_and_order", ["revisionId", "order"])
 		.index("by_revisionId_and_memberKey", ["revisionId", "memberKey"])
-		.index("by_productId_and_revisionId", ["productId", "revisionId"]),
+		.index("by_productId_and_revisionId", ["productId", "revisionId"])
+		.index("by_siteUrl", ["siteUrl"]),
 
 	catalogProductDigitalFiles: defineTable({
 		siteUrl: v.string(),
@@ -596,7 +598,8 @@ export default defineSchema({
 		orderRank: v.optional(v.string()),
 	})
 		.index("by_revisionId", ["revisionId"])
-		.index("by_productId_and_revisionId", ["productId", "revisionId"]),
+		.index("by_productId_and_revisionId", ["productId", "revisionId"])
+		.index("by_siteUrl", ["siteUrl"]),
 
 	// Print orders (from Stripe checkout on any client site)
 	orders: defineTable({
