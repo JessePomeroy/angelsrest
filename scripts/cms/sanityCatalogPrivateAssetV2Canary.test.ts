@@ -14,6 +14,8 @@ import {
 	runV2CanaryConvexFunction,
 	V2_CANARY_CONFIRMATION,
 	V2_CANARY_CONVEX_SELECTOR,
+	V2_CANARY_CONVEX_SITE_ORIGIN,
+	V2_CANARY_DECODER_POLICY,
 	V2_CANARY_INSPECTION_PATH,
 	V2_CANARY_STORAGE_PATH,
 	v2CanaryConvexChildEnvironment,
@@ -89,12 +91,25 @@ function snapshot(status: "absent" | "pending_inspection" | "verified", coordina
 	};
 }
 
-function response(status: "pending_inspection" | "verified", replayed: boolean) {
+function response(
+	status: "pending_inspection" | "verified",
+	replayed: boolean,
+	role: "storage" | "inspection" = "storage",
+) {
 	return {
 		status,
 		replayed,
 		assetCount: 3 as const,
 		receiptSetId,
+		attestation: {
+			schemaVersion: 2 as const,
+			role,
+			derivedReceiptSetId: receiptSetId,
+			convexDeployment: V2_CANARY_CONVEX_SELECTOR,
+			convexSiteOrigin: V2_CANARY_CONVEX_SITE_ORIGIN,
+			decoderPolicy: V2_CANARY_DECODER_POLICY,
+			decoderPolicyState: role === "storage" ? ("required" as const) : ("matched" as const),
+		},
 	};
 }
 
@@ -211,17 +226,35 @@ describe("catalog private asset V2 canary runner", () => {
 		});
 	});
 
-	test("posts explicit schema 2 only to the two Worker receipt routes", async () => {
+	test("posts the exact schema-2 expectation and requires exact route attestations", async () => {
 		for (const path of [V2_CANARY_STORAGE_PATH, V2_CANARY_INSPECTION_PATH] as const) {
+			const role = path === V2_CANARY_STORAGE_PATH ? "storage" : "inspection";
 			const fetcher = vi.fn(async (_input: string | URL | Request, init?: RequestInit) => {
 				expect(JSON.parse(String(init?.body))).toEqual({
 					schemaVersion: 2,
 					siteUrl: "angelsrest.online",
 					privateObjectKeys: ["one", "two", "three"],
+					expectation: {
+						receiptSetId,
+						convexDeployment: "prod:loyal-swan-967",
+						convexSiteOrigin: "https://loyal-swan-967.convex.site",
+						decoderPolicy: {
+							printSource: {
+								method: "sharp_libvips_full_raster_v1",
+								sharpVersion: "0.35.3",
+								libvipsVersion: "8.18.3",
+							},
+							paidDigitalFile: { method: "safe_zip_v1" },
+						},
+					},
 				});
 				expect(init?.redirect).toBe("error");
 				return Response.json(
-					response(path === V2_CANARY_STORAGE_PATH ? "pending_inspection" : "verified", false),
+					response(
+						path === V2_CANARY_STORAGE_PATH ? "pending_inspection" : "verified",
+						false,
+						role,
+					),
 				);
 			});
 			await expect(
@@ -246,16 +279,81 @@ describe("catalog private asset V2 canary runner", () => {
 					| "catalogPrivateAssets:backfillTargetAuthorities",
 			}),
 		).rejects.toThrow(/not allowlisted/);
+		const valid = response("pending_inspection", false);
+		const oldUnattestedResponse = {
+			status: "pending_inspection",
+			replayed: false,
+			assetCount: 3,
+			receiptSetId,
+		};
 		for (const responseValue of [
 			new Response("{}", { headers: { "Content-Type": "text/plain" } }),
 			new Response("{}", {
 				headers: { "Content-Type": "application/json", "Content-Length": "70000" },
 			}),
 			new Response("redirect", { status: 307, headers: { Location: "https://example.test" } }),
-			Response.json({ ...response("pending_inspection", false), unexpected: "field" }),
+			Response.json(oldUnattestedResponse),
+			Response.json({ ...valid, unexpected: "field" }),
 			Response.json({
-				...response("pending_inspection", false),
+				...valid,
 				receiptSetId: `catalog-private-assets-v2:${"b".repeat(64)}`,
+			}),
+			Response.json({
+				...valid,
+				attestation: {
+					...valid.attestation,
+					derivedReceiptSetId: `catalog-private-assets-v2:${"b".repeat(64)}`,
+				},
+			}),
+			Response.json({
+				...valid,
+				attestation: { ...valid.attestation, role: "inspection" },
+			}),
+			Response.json({
+				...valid,
+				attestation: { ...valid.attestation, convexDeployment: "prod:wrong" },
+			}),
+			Response.json({
+				...valid,
+				attestation: { ...valid.attestation, convexSiteOrigin: "https://wrong.convex.site" },
+			}),
+			Response.json({
+				...valid,
+				attestation: {
+					...valid.attestation,
+					decoderPolicy: {
+						...valid.attestation.decoderPolicy,
+						printSource: {
+							...valid.attestation.decoderPolicy.printSource,
+							method: "wrong",
+						},
+					},
+				},
+			}),
+			...(["sharpVersion", "libvipsVersion"] as const).map((field) =>
+				Response.json({
+					...valid,
+					attestation: {
+						...valid.attestation,
+						decoderPolicy: {
+							...valid.attestation.decoderPolicy,
+							printSource: {
+								...valid.attestation.decoderPolicy.printSource,
+								[field]: "wrong",
+							},
+						},
+					},
+				}),
+			),
+			Response.json({
+				...valid,
+				attestation: {
+					...valid.attestation,
+					decoderPolicy: {
+						...valid.attestation.decoderPolicy,
+						paidDigitalFile: { method: "wrong" },
+					},
+				},
 			}),
 		]) {
 			await expect(
@@ -276,11 +374,11 @@ describe("catalog private asset V2 canary runner", () => {
 		const verified = snapshot("verified", "3");
 		const snapshots = [absent, absent, absent, pending, pending, verified, verified, verified];
 		const workerResults = [
-			response("pending_inspection", false),
-			response("pending_inspection", true),
-			response("verified", false),
-			response("verified", true),
-			response("verified", true),
+			response("pending_inspection", false, "storage"),
+			response("pending_inspection", true, "storage"),
+			response("verified", false, "inspection"),
+			response("verified", true, "storage"),
+			response("verified", true, "inspection"),
 		];
 		const postWorker = vi.fn(async () => shiftRequired(workerResults));
 		const result = await executeV2CanaryStateMachine({
