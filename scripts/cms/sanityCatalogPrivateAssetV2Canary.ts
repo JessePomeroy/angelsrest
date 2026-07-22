@@ -1,8 +1,9 @@
 import { execFile } from "node:child_process";
+import { randomUUID } from "node:crypto";
 import { constants } from "node:fs";
-import { mkdtemp, open, rm, writeFile } from "node:fs/promises";
+import { lstat, mkdir, mkdtemp, open, rename, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join, resolve } from "node:path";
+import { basename, dirname, join, resolve } from "node:path";
 import { promisify } from "node:util";
 
 const execFileAsync = promisify(execFile);
@@ -26,12 +27,224 @@ export const V2_CANARY_DECODER_POLICY = {
 	paidDigitalFile: { method: "safe_zip_v1" },
 } as const;
 export const V2_CANARY_LABELS = ["JPEG", "oversized PNG", "paid ZIP"] as const;
+const V2_CANARY_OWNER_ID = typeof process.getuid === "function" ? process.getuid() : "owner";
+export const V2_CANARY_ARTIFACT_DIRECTORY = join(
+	tmpdir(),
+	`angelsrest-private-catalog-v2-canary-${V2_CANARY_OWNER_ID}`,
+);
+export const V2_CANARY_REPORT_PATH = join(V2_CANARY_ARTIFACT_DIRECTORY, "report.json");
+export const V2_CANARY_FAILURE_ARTIFACT_PATH = join(V2_CANARY_ARTIFACT_DIRECTORY, "failure.json");
+export const V2_CANARY_FAILURE_STDERR =
+	"V2 canary failed; a sanitized recovery artifact was preserved.";
+export const V2_CANARY_ARTIFACT_WRITE_FAILURE_STDERR =
+	"V2 canary failed; the sanitized recovery artifact could not be written.";
 
 const EXPECTED_PNG = { sizeBytes: 55_009_177, widthPixels: 6_935, heightPixels: 4_623 };
 const RESPONSE_MAX_BYTES = 64 * 1024;
 const CONVEX_OUTPUT_MAX_BYTES = 256 * 1024;
 const SECRET_MIN_BYTES = 32;
 const SECRET_MAX_BYTES = 512;
+const FAILURE_ARTIFACT_MAX_BYTES = 512;
+
+export const V2_CANARY_PHASES = [
+	"preflight",
+	"backfill",
+	"storage_resume",
+	"storage_replay",
+	"inspection",
+	"final_replay",
+] as const;
+export const V2_CANARY_FAILURES = [
+	"transport",
+	"worker_4xx",
+	"worker_5xx",
+	"invalid_attestation",
+	"state_drift",
+	"operator",
+] as const;
+
+export type V2CanaryPhase = (typeof V2_CANARY_PHASES)[number];
+export type V2CanaryFailure = (typeof V2_CANARY_FAILURES)[number];
+export type V2CanaryFailureArtifact = {
+	schemaVersion: 1;
+	phase: V2CanaryPhase;
+	failure: V2CanaryFailure;
+	httpStatus?: number;
+	timestamp: string;
+};
+
+class V2CanaryFailureError extends Error {
+	constructor(
+		message: string,
+		readonly failure: V2CanaryFailure,
+		readonly httpStatus?: number,
+	) {
+		super(message);
+		this.name = "V2CanaryFailureError";
+	}
+}
+
+function canaryFailure(
+	failure: V2CanaryFailure,
+	message: string,
+	httpStatus?: number,
+): V2CanaryFailureError {
+	return new V2CanaryFailureError(message, failure, httpStatus);
+}
+
+function stateDrift(message: string): V2CanaryFailureError {
+	return canaryFailure("state_drift", message);
+}
+
+export async function runV2CanaryCatalogTransport<T>(operation: () => Promise<T>) {
+	try {
+		return await operation();
+	} catch (error) {
+		if (error instanceof V2CanaryFailureError) throw error;
+		throw canaryFailure("transport", "Published catalog request did not complete");
+	}
+}
+
+export async function runV2CanaryCatalogStateValidation<T>(operation: () => T | Promise<T>) {
+	try {
+		return await operation();
+	} catch (error) {
+		if (error instanceof V2CanaryFailureError) throw error;
+		throw stateDrift("Published catalog state is malformed or has drifted");
+	}
+}
+
+function boundedHttpStatus(value: unknown): number | undefined {
+	return typeof value === "number" && Number.isInteger(value) && value >= 100 && value <= 599
+		? value
+		: undefined;
+}
+
+export function createV2CanaryFailureArtifact(
+	error: unknown,
+	phase: V2CanaryPhase,
+	timestamp = new Date().toISOString(),
+): V2CanaryFailureArtifact {
+	const classified = error instanceof V2CanaryFailureError ? error : undefined;
+	const httpStatus = boundedHttpStatus(classified?.httpStatus);
+	return {
+		schemaVersion: 1,
+		phase,
+		failure: classified?.failure ?? "operator",
+		...(httpStatus === undefined ? {} : { httpStatus }),
+		timestamp,
+	};
+}
+
+function assertV2CanaryFailureArtifact(value: V2CanaryFailureArtifact) {
+	const keys = Object.keys(value).sort();
+	const expectedKeys = [
+		"failure",
+		...(value.httpStatus === undefined ? [] : ["httpStatus"]),
+		"phase",
+		"schemaVersion",
+		"timestamp",
+	].sort();
+	if (
+		keys.length !== expectedKeys.length ||
+		!keys.every((key, index) => key === expectedKeys[index]) ||
+		value.schemaVersion !== 1 ||
+		!V2_CANARY_PHASES.includes(value.phase) ||
+		!V2_CANARY_FAILURES.includes(value.failure) ||
+		(value.httpStatus !== undefined && boundedHttpStatus(value.httpStatus) === undefined) ||
+		new Date(value.timestamp).toISOString() !== value.timestamp
+	) {
+		throw new Error("V2 canary failure artifact is invalid");
+	}
+}
+
+async function assertPrivateArtifactDirectory(directory: string) {
+	let handle: Awaited<ReturnType<typeof open>>;
+	try {
+		handle = await open(
+			directory,
+			constants.O_RDONLY | constants.O_DIRECTORY | constants.O_NOFOLLOW,
+		);
+	} catch {
+		throw new Error("V2 canary artifact directory is unavailable");
+	}
+	try {
+		const metadata = await handle.stat();
+		if (!metadata.isDirectory() || (metadata.mode & 0o777) !== 0o700) {
+			throw new Error("V2 canary artifact directory is not private");
+		}
+		if (typeof process.getuid === "function" && metadata.uid !== process.getuid()) {
+			throw new Error("V2 canary artifact directory has the wrong owner");
+		}
+	} finally {
+		await handle.close();
+	}
+}
+
+export async function prepareV2CanaryArtifactDirectory(directory = V2_CANARY_ARTIFACT_DIRECTORY) {
+	try {
+		await mkdir(directory, { mode: 0o700 });
+	} catch (error) {
+		if (!(error instanceof Error && "code" in error && error.code === "EEXIST")) throw error;
+	}
+	await assertPrivateArtifactDirectory(directory);
+}
+
+export async function resetV2CanaryArtifactDirectory(directory = V2_CANARY_ARTIFACT_DIRECTORY) {
+	try {
+		await lstat(directory);
+		await assertPrivateArtifactDirectory(directory);
+		await rm(directory, { recursive: true });
+	} catch (error) {
+		if (!(error instanceof Error && "code" in error && error.code === "ENOENT")) throw error;
+	}
+	await mkdir(directory, { mode: 0o700 });
+	await assertPrivateArtifactDirectory(directory);
+}
+
+export async function writeV2CanaryFailureArtifact(
+	artifactPath: string,
+	artifact: V2CanaryFailureArtifact,
+) {
+	assertV2CanaryFailureArtifact(artifact);
+	await assertPrivateArtifactDirectory(dirname(artifactPath));
+	try {
+		const destination = await lstat(artifactPath);
+		if (!destination.isFile() || destination.isSymbolicLink()) {
+			throw new Error("V2 canary failure artifact destination is unsafe");
+		}
+		if (typeof process.getuid === "function" && destination.uid !== process.getuid()) {
+			throw new Error("V2 canary failure artifact destination has the wrong owner");
+		}
+	} catch (error) {
+		if (!(error instanceof Error && "code" in error && error.code === "ENOENT")) throw error;
+	}
+	const contents = `${JSON.stringify(artifact, null, 2)}\n`;
+	if (Buffer.byteLength(contents) > FAILURE_ARTIFACT_MAX_BYTES) {
+		throw new Error("V2 canary failure artifact exceeds its bound");
+	}
+	const temporaryPath = join(
+		dirname(artifactPath),
+		`.${basename(artifactPath)}.${process.pid}.${randomUUID()}.tmp`,
+	);
+	let file: Awaited<ReturnType<typeof open>> | undefined;
+	try {
+		file = await open(
+			temporaryPath,
+			constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL | constants.O_NOFOLLOW,
+			0o600,
+		);
+		await file.chmod(0o600);
+		await file.writeFile(contents, "utf8");
+		await file.sync();
+		await file.close();
+		file = undefined;
+		await rename(temporaryPath, artifactPath);
+	} finally {
+		await file?.close().catch(() => undefined);
+		await rm(temporaryPath, { force: true }).catch(() => undefined);
+	}
+}
 
 const SNAPSHOT_COUNT_KEYS = [
 	"receiptCoordinations",
@@ -86,8 +299,23 @@ const PINNED = [
 	},
 ] as const;
 
+export async function clearV2CanaryArtifactsForExecution(
+	args: readonly string[],
+	artifactPaths: readonly string[],
+) {
+	if (args.includes("--execute")) {
+		await Promise.all(artifactPaths.map((path) => rm(path, { force: true })));
+	}
+}
+
 export async function clearV2CanaryReportForExecution(args: readonly string[], reportPath: string) {
-	if (args.includes("--execute")) await rm(reportPath, { force: true });
+	await clearV2CanaryArtifactsForExecution(args, [reportPath]);
+}
+
+export async function clearV2CanaryFailureArtifactAfterSuccess(
+	artifactPath = V2_CANARY_FAILURE_ARTIFACT_PATH,
+) {
+	await rm(artifactPath, { force: true });
 }
 
 export type V2CanaryOptions = {
@@ -149,8 +377,10 @@ type WorkerResult = {
 type BackfillResult = { replayed: boolean; targetCount: 12 };
 
 export type V2CanaryExecutionDependencies = {
-	snapshot: () => Promise<CanarySnapshot>;
-	backfill: () => Promise<BackfillResult>;
+	/** Untrusted Convex output; parsed and narrowed inside the state machine. */
+	snapshot: () => Promise<unknown>;
+	/** Untrusted Convex output; parsed and narrowed inside the state machine. */
+	backfill: () => Promise<unknown>;
 	postWorker: (
 		path: typeof V2_CANARY_STORAGE_PATH | typeof V2_CANARY_INSPECTION_PATH,
 		secret: string,
@@ -340,17 +570,17 @@ export function loadV2CanarySelection(
 ) {
 	const journal = objectValue(journalValue, "Private target journal");
 	if (!exactKeys(journal, ["schemaVersion", "siteUrl", "receiptSetId", "targets"])) {
-		throw new Error("Private target journal shape has drifted");
+		throw stateDrift("Private target journal shape has drifted");
 	}
 	if (
 		journal.schemaVersion !== 1 ||
 		journal.siteUrl !== V2_CANARY_SITE_URL ||
 		journal.receiptSetId !== V2_CANARY_V1_RECEIPT_SET_ID
 	)
-		throw new Error("Private target journal identity has drifted");
+		throw stateDrift("Private target journal identity has drifted");
 	const targets = objectValue(journal.targets, "Private target journal targets");
 	if (!exactKeys(targets, ["printSources", "paidFiles"])) {
-		throw new Error("Private target journal target groups have drifted");
+		throw stateDrift("Private target journal target groups have drifted");
 	}
 	const prints = objectValue(targets.printSources, "Private print target journal");
 	const paid = objectValue(targets.paidFiles, "Private paid target journal");
@@ -368,14 +598,14 @@ export function loadV2CanarySelection(
 		!publishedPrintRefs.every((key) => typeof prints[key] === "string") ||
 		!publishedPaidRefs.every((key) => typeof paid[key] === "string")
 	)
-		throw new Error("Published private target set differs from the checked journal");
+		throw stateDrift("Published private target set differs from the checked journal");
 	for (const expected of PINNED) {
 		const actual =
 			expected.kind === "print_source" ? prints[expected.assetKey] : paid[expected.assetKey];
-		if (actual !== expected.targetId) throw new Error("A pinned V2 canary target has drifted");
+		if (actual !== expected.targetId) throw stateDrift("A pinned V2 canary target has drifted");
 	}
 	if (new Set(PINNED.map((item) => item.targetId)).size !== 3) {
-		throw new Error("Pinned V2 canary targets are not unique");
+		throw stateDrift("Pinned V2 canary targets are not unique");
 	}
 	return PINNED.map((item) => ({
 		label: item.label,
@@ -394,19 +624,33 @@ export function assertV2CanaryPngMetadata(value: unknown) {
 		metadata.widthPixels !== EXPECTED_PNG.widthPixels ||
 		metadata.heightPixels !== EXPECTED_PNG.heightPixels
 	)
-		throw new Error("Published oversized PNG metadata has drifted");
+		throw stateDrift("Published oversized PNG metadata has drifted");
+}
+
+export function parseV2CanaryBackfillResult(value: unknown): BackfillResult {
+	if (
+		!value ||
+		typeof value !== "object" ||
+		Array.isArray(value) ||
+		Object.keys(value).sort().join(",") !== "replayed,targetCount" ||
+		typeof (value as { replayed?: unknown }).replayed !== "boolean" ||
+		(value as { targetCount?: unknown }).targetCount !== 12
+	) {
+		throw stateDrift("Convex authority backfill returned malformed output");
+	}
+	return value as BackfillResult;
 }
 
 async function readBoundedJson(response: Response) {
 	const contentType = response.headers.get("Content-Type")?.split(";", 1)[0]?.trim().toLowerCase();
 	if (contentType !== "application/json" || !response.body) {
 		await response.body?.cancel().catch(() => undefined);
-		throw new Error("Worker returned a malformed response");
+		throw canaryFailure("invalid_attestation", "Worker returned a malformed response");
 	}
 	const declared = response.headers.get("Content-Length");
 	if (declared && (!/^\d+$/.test(declared) || Number(declared) > RESPONSE_MAX_BYTES)) {
 		await response.body.cancel().catch(() => undefined);
-		throw new Error("Worker returned an oversized response");
+		throw canaryFailure("invalid_attestation", "Worker returned an oversized response");
 	}
 	const reader = response.body.getReader();
 	const chunks: Uint8Array[] = [];
@@ -418,7 +662,7 @@ async function readBoundedJson(response: Response) {
 			length += chunk.value.byteLength;
 			if (length > RESPONSE_MAX_BYTES) {
 				await reader.cancel().catch(() => undefined);
-				throw new Error("Worker returned an oversized response");
+				throw canaryFailure("invalid_attestation", "Worker returned an oversized response");
 			}
 			chunks.push(chunk.value);
 		}
@@ -434,11 +678,11 @@ async function readBoundedJson(response: Response) {
 	try {
 		return JSON.parse(new TextDecoder().decode(bytes)) as unknown;
 	} catch {
-		throw new Error("Worker returned malformed JSON");
+		throw canaryFailure("invalid_attestation", "Worker returned malformed JSON");
 	}
 }
 
-function parseWorkerResult(
+function parseWorkerResultValue(
 	value: unknown,
 	path: typeof V2_CANARY_STORAGE_PATH | typeof V2_CANARY_INSPECTION_PATH,
 	expectedReceiptSetId: string,
@@ -482,8 +726,21 @@ function parseWorkerResult(
 		paidDigitalFile.method !== V2_CANARY_DECODER_POLICY.paidDigitalFile.method ||
 		attestation.decoderPolicyState !== expectedPolicyState
 	)
-		throw new Error("Worker returned an invalid receipt attestation");
+		throw canaryFailure("invalid_attestation", "Worker returned an invalid receipt attestation");
 	return result as WorkerResult;
+}
+
+function parseWorkerResult(
+	value: unknown,
+	path: typeof V2_CANARY_STORAGE_PATH | typeof V2_CANARY_INSPECTION_PATH,
+	expectedReceiptSetId: string,
+) {
+	try {
+		return parseWorkerResultValue(value, path, expectedReceiptSetId);
+	} catch (error) {
+		if (error instanceof V2CanaryFailureError) throw error;
+		throw canaryFailure("invalid_attestation", "Worker returned an invalid receipt attestation");
+	}
 }
 
 export async function postV2CanaryWorkerReceipt({
@@ -500,7 +757,7 @@ export async function postV2CanaryWorkerReceipt({
 	fetcher?: typeof fetch;
 }) {
 	if (path !== V2_CANARY_STORAGE_PATH && path !== V2_CANARY_INSPECTION_PATH) {
-		throw new Error("Worker route is not allowlisted");
+		throw canaryFailure("operator", "Worker route is not allowlisted");
 	}
 	if (
 		privateObjectKeys.length !== 3 ||
@@ -511,7 +768,7 @@ export async function postV2CanaryWorkerReceipt({
 		secret !== secret.trim() ||
 		/[\r\n]/.test(secret)
 	)
-		throw new Error("Worker canary request is invalid");
+		throw canaryFailure("operator", "Worker canary request is invalid");
 	let response: Response;
 	try {
 		response = await fetcher(`${V2_CANARY_WORKER_ORIGIN}${path}`, {
@@ -532,16 +789,38 @@ export async function postV2CanaryWorkerReceipt({
 			signal: AbortSignal.timeout(path === V2_CANARY_INSPECTION_PATH ? 300_000 : 30_000),
 		});
 	} catch {
-		throw new Error("Worker request did not complete; rerun resumes from server state");
+		throw canaryFailure(
+			"transport",
+			"Worker request did not complete; rerun resumes from server state",
+		);
 	}
 	if (response.redirected || !response.ok) {
 		await response.body?.cancel().catch(() => undefined);
-		throw new Error("Worker request was rejected; rerun resumes from server state");
+		const httpStatus = boundedHttpStatus(response.status);
+		const failure =
+			response.status >= 400 && response.status <= 499
+				? "worker_4xx"
+				: response.status >= 500 && response.status <= 599
+					? "worker_5xx"
+					: "transport";
+		throw canaryFailure(
+			failure,
+			"Worker request was rejected; rerun resumes from server state",
+			httpStatus,
+		);
 	}
-	return parseWorkerResult(await readBoundedJson(response), path, expectedReceiptSetId);
+	try {
+		return parseWorkerResult(await readBoundedJson(response), path, expectedReceiptSetId);
+	} catch (error) {
+		if (error instanceof V2CanaryFailureError) throw error;
+		throw canaryFailure(
+			"transport",
+			"Worker response did not complete; rerun resumes from server state",
+		);
+	}
 }
 
-function parseSnapshot(value: unknown): CanarySnapshot {
+function parseSnapshotValue(value: unknown): CanarySnapshot {
 	const snapshot = objectValue(value, "Convex snapshot");
 	const canary = objectValue(snapshot.canary, "Convex canary projection");
 	const oversizedPng = objectValue(canary.oversizedPng, "Convex PNG projection");
@@ -595,6 +874,15 @@ function parseSnapshot(value: unknown): CanarySnapshot {
 		throw new Error("Unverified Convex snapshot contains evidence");
 	}
 	return snapshot as unknown as CanarySnapshot;
+}
+
+function parseSnapshot(value: unknown) {
+	try {
+		return parseSnapshotValue(value);
+	} catch (error) {
+		if (error instanceof V2CanaryFailureError) throw error;
+		throw stateDrift("Convex snapshot is malformed");
+	}
 }
 
 export async function runV2CanaryConvexFunction({
@@ -656,17 +944,18 @@ export async function runV2CanaryConvexFunction({
 	try {
 		return JSON.parse(stdout) as unknown;
 	} catch {
-		throw new Error("Bounded Convex operator command returned malformed output");
+		throw stateDrift("Bounded Convex operator command returned malformed output");
 	}
 }
 
-function snapshotBytes(snapshot: CanarySnapshot) {
-	return JSON.stringify(snapshot);
+function snapshotBytes(value: unknown) {
+	return JSON.stringify(value);
 }
 
 function requireSameSnapshot(left: CanarySnapshot, right: CanarySnapshot, label: string) {
-	if (snapshotBytes(left) !== snapshotBytes(right))
-		throw new Error(`${label} changed the snapshot`);
+	if (snapshotBytes(left) !== snapshotBytes(right)) {
+		throw stateDrift(`${label} changed the snapshot`);
+	}
 }
 
 function requireOnlyDigestChanged(
@@ -677,16 +966,16 @@ function requireOnlyDigestChanged(
 	label: string,
 ) {
 	if (snapshotBytes(before.canary) !== snapshotBytes(after.canary)) {
-		throw new Error(`${label} changed canary identity`);
+		throw stateDrift(`${label} changed canary identity`);
 	}
 	for (const key of new Set([...Object.keys(before.counts), ...Object.keys(after.counts)])) {
 		if (!allowedCounts.includes(key) && before.counts[key] !== after.counts[key]) {
-			throw new Error(`${label} changed an unapproved table count`);
+			throw stateDrift(`${label} changed an unapproved table count`);
 		}
 	}
 	for (const key of new Set([...Object.keys(before.digests), ...Object.keys(after.digests)])) {
 		if (!allowedDigests.includes(key) && before.digests[key] !== after.digests[key]) {
-			throw new Error(`${label} changed an unapproved state domain`);
+			throw stateDrift(`${label} changed an unapproved state domain`);
 		}
 	}
 }
@@ -698,7 +987,16 @@ function requireBaseline(snapshot: CanarySnapshot) {
 		snapshot.counts.paidTargets !== 1 ||
 		snapshot.counts.publicationPointers !== 0
 	)
-		throw new Error("Convex pre-canary baseline is not the reviewed 11+1 unpublished state");
+		throw stateDrift("Convex pre-canary baseline is not the reviewed 11+1 unpublished state");
+}
+
+async function runV2CanaryTransportBoundary<T>(operation: () => Promise<T>) {
+	try {
+		return await operation();
+	} catch (error) {
+		if (error instanceof V2CanaryFailureError) throw error;
+		throw canaryFailure("transport", "V2 canary operation did not complete");
+	}
 }
 
 export async function executeV2CanaryStateMachine({
@@ -707,26 +1005,43 @@ export async function executeV2CanaryStateMachine({
 	inspectionSecret,
 	privateObjectKeys,
 	preManifest,
+	onPhase = () => undefined,
 }: {
 	dependencies: V2CanaryExecutionDependencies;
 	tenantSecret: string;
 	inspectionSecret: string;
 	privateObjectKeys: readonly string[];
 	preManifest: string;
+	onPhase?: (phase: V2CanaryPhase) => void;
 }) {
-	const initial = parseSnapshot(await dependencies.snapshot());
+	const snapshot = async () =>
+		parseSnapshot(await runV2CanaryTransportBoundary(dependencies.snapshot));
+	const backfill = async () =>
+		parseV2CanaryBackfillResult(await runV2CanaryTransportBoundary(dependencies.backfill));
+	let canaryReceiptSetId = "";
+	const postWorker = async (
+		path: typeof V2_CANARY_STORAGE_PATH | typeof V2_CANARY_INSPECTION_PATH,
+		secret: string,
+	) =>
+		await runV2CanaryTransportBoundary(async () =>
+			dependencies.postWorker(path, secret, privateObjectKeys, canaryReceiptSetId),
+		);
+
+	onPhase("preflight");
+	const initial = await snapshot();
 	if (initial.counts.authorities !== 0 && initial.counts.authorities !== 12) {
-		throw new Error("Authority state is partial; no mutation was attempted");
+		throw stateDrift("Authority state is partial; no mutation was attempted");
 	}
-	const firstBackfill = await dependencies.backfill();
-	const afterBackfill = parseSnapshot(await dependencies.snapshot());
+	onPhase("backfill");
+	const firstBackfill = await backfill();
+	const afterBackfill = await snapshot();
 	if (initial.counts.authorities === 0) {
 		if (
 			firstBackfill.replayed ||
 			firstBackfill.targetCount !== 12 ||
 			afterBackfill.counts.authorities !== 12
 		) {
-			throw new Error("Authority backfill did not create the exact verified V1 authority set");
+			throw stateDrift("Authority backfill did not create the exact verified V1 authority set");
 		}
 		requireOnlyDigestChanged(
 			initial,
@@ -737,41 +1052,39 @@ export async function executeV2CanaryStateMachine({
 		);
 	} else {
 		if (!firstBackfill.replayed || firstBackfill.targetCount !== 12) {
-			throw new Error("Authority backfill replay was not zero-write");
+			throw stateDrift("Authority backfill replay was not zero-write");
 		}
 		requireSameSnapshot(initial, afterBackfill, "Authority backfill replay");
 	}
-	const secondBackfill = await dependencies.backfill();
-	const preCanary = parseSnapshot(await dependencies.snapshot());
+	const secondBackfill = await backfill();
+	const preCanary = await snapshot();
 	if (!secondBackfill.replayed || secondBackfill.targetCount !== 12) {
-		throw new Error("Second authority backfill was not the exact zero-write replay");
+		throw stateDrift("Second authority backfill was not the exact zero-write replay");
 	}
 	requireSameSnapshot(afterBackfill, preCanary, "Second authority backfill");
 	requireBaseline(preCanary);
-	if (preCanary.canary.receiptSetId.length === 0)
-		throw new Error("Canary receipt identity is missing");
+	if (preCanary.canary.receiptSetId.length === 0) {
+		throw stateDrift("Canary receipt identity is missing");
+	}
+	canaryReceiptSetId = preCanary.canary.receiptSetId;
 
+	onPhase("storage_resume");
 	const storage = parseWorkerResult(
-		await dependencies.postWorker(
-			V2_CANARY_STORAGE_PATH,
-			tenantSecret,
-			privateObjectKeys,
-			preCanary.canary.receiptSetId,
-		),
+		await postWorker(V2_CANARY_STORAGE_PATH, tenantSecret),
 		V2_CANARY_STORAGE_PATH,
 		preCanary.canary.receiptSetId,
 	);
 	if (storage.receiptSetId !== preCanary.canary.receiptSetId) {
-		throw new Error("Worker storage receipt identity differs from the internal canary");
+		throw stateDrift("Worker storage receipt identity differs from the internal canary");
 	}
-	const afterStorage = parseSnapshot(await dependencies.snapshot());
+	const afterStorage = await snapshot();
 	if (preCanary.v2.status === "absent") {
 		if (
 			storage.status !== "pending_inspection" ||
 			storage.replayed ||
 			afterStorage.v2.status !== "pending_inspection"
 		) {
-			throw new Error(
+			throw stateDrift(
 				"First storage receipt did not create only the expected pending coordination",
 			);
 		}
@@ -784,34 +1097,30 @@ export async function executeV2CanaryStateMachine({
 		);
 	} else {
 		if (!storage.replayed || storage.status !== preCanary.v2.status) {
-			throw new Error("Storage resume did not exactly replay server state");
+			throw stateDrift("Storage resume did not exactly replay server state");
 		}
 		requireSameSnapshot(preCanary, afterStorage, "Storage resume");
 	}
 
+	onPhase("storage_replay");
 	const storageReplay = parseWorkerResult(
-		await dependencies.postWorker(
-			V2_CANARY_STORAGE_PATH,
-			tenantSecret,
-			privateObjectKeys,
-			preCanary.canary.receiptSetId,
-		),
+		await postWorker(V2_CANARY_STORAGE_PATH, tenantSecret),
 		V2_CANARY_STORAGE_PATH,
 		preCanary.canary.receiptSetId,
 	);
-	const afterStorageReplay = parseSnapshot(await dependencies.snapshot());
-	if (!storageReplay.replayed || storageReplay.receiptSetId !== preCanary.canary.receiptSetId) {
-		throw new Error("Pending storage replay was not exact");
+	const afterStorageReplay = await snapshot();
+	if (
+		!storageReplay.replayed ||
+		storageReplay.receiptSetId !== preCanary.canary.receiptSetId ||
+		storageReplay.status !== afterStorage.v2.status
+	) {
+		throw stateDrift("Storage replay did not match observed server status");
 	}
 	requireSameSnapshot(afterStorage, afterStorageReplay, "Pending storage replay");
 
+	onPhase("inspection");
 	const inspection = parseWorkerResult(
-		await dependencies.postWorker(
-			V2_CANARY_INSPECTION_PATH,
-			inspectionSecret,
-			privateObjectKeys,
-			preCanary.canary.receiptSetId,
-		),
+		await postWorker(V2_CANARY_INSPECTION_PATH, inspectionSecret),
 		V2_CANARY_INSPECTION_PATH,
 		preCanary.canary.receiptSetId,
 	);
@@ -819,12 +1128,12 @@ export async function executeV2CanaryStateMachine({
 		inspection.receiptSetId !== preCanary.canary.receiptSetId ||
 		inspection.status !== "verified"
 	) {
-		throw new Error("Worker inspection did not verify the internal canary identity");
+		throw stateDrift("Worker inspection did not verify the internal canary identity");
 	}
-	const afterInspection = parseSnapshot(await dependencies.snapshot());
+	const afterInspection = await snapshot();
 	if (afterStorageReplay.v2.status === "pending_inspection") {
 		if (inspection.replayed || afterInspection.v2.status !== "verified") {
-			throw new Error("Inspection did not atomically complete the pending canary");
+			throw stateDrift("Inspection did not atomically complete the pending canary");
 		}
 		requireOnlyDigestChanged(
 			afterStorageReplay,
@@ -834,47 +1143,39 @@ export async function executeV2CanaryStateMachine({
 			"Inspection completion",
 		);
 	} else {
-		if (!inspection.replayed) throw new Error("Inspection resume was not an exact replay");
+		if (!inspection.replayed) throw stateDrift("Inspection resume was not an exact replay");
 		requireSameSnapshot(afterStorageReplay, afterInspection, "Inspection resume");
 	}
 	requireBaseline(afterInspection);
-	if (!afterInspection.v2.evidence?.fullRaster || !afterInspection.v2.evidence.safeZip) {
-		throw new Error("Verified canary lacks accepted full-raster or safe-ZIP evidence");
+	const acceptedEvidence = afterInspection.v2.evidence;
+	if (!acceptedEvidence?.fullRaster || !acceptedEvidence.safeZip) {
+		throw stateDrift("Verified canary lacks accepted full-raster or safe-ZIP evidence");
 	}
 
+	onPhase("final_replay");
 	const finalStorage = parseWorkerResult(
-		await dependencies.postWorker(
-			V2_CANARY_STORAGE_PATH,
-			tenantSecret,
-			privateObjectKeys,
-			preCanary.canary.receiptSetId,
-		),
+		await postWorker(V2_CANARY_STORAGE_PATH, tenantSecret),
 		V2_CANARY_STORAGE_PATH,
 		preCanary.canary.receiptSetId,
 	);
-	const afterFinalStorage = parseSnapshot(await dependencies.snapshot());
+	const afterFinalStorage = await snapshot();
 	if (finalStorage.status !== "verified" || !finalStorage.replayed) {
-		throw new Error("Verified storage replay failed");
+		throw stateDrift("Verified storage replay failed");
 	}
 	requireSameSnapshot(afterInspection, afterFinalStorage, "Verified storage replay");
 
 	const finalInspection = parseWorkerResult(
-		await dependencies.postWorker(
-			V2_CANARY_INSPECTION_PATH,
-			inspectionSecret,
-			privateObjectKeys,
-			preCanary.canary.receiptSetId,
-		),
+		await postWorker(V2_CANARY_INSPECTION_PATH, inspectionSecret),
 		V2_CANARY_INSPECTION_PATH,
 		preCanary.canary.receiptSetId,
 	);
-	const final = parseSnapshot(await dependencies.snapshot());
+	const final = await snapshot();
 	if (finalInspection.status !== "verified" || !finalInspection.replayed) {
-		throw new Error("Verified inspection replay failed");
+		throw stateDrift("Verified inspection replay failed");
 	}
 	requireSameSnapshot(afterFinalStorage, final, "Verified inspection replay");
-	if ((await dependencies.readPublishedManifest()) !== preManifest) {
-		throw new Error("Published Sanity manifest drifted during the canary; no report was written");
+	if ((await runV2CanaryTransportBoundary(dependencies.readPublishedManifest)) !== preManifest) {
+		throw stateDrift("Published Sanity manifest drifted during the canary; no report was written");
 	}
 	return {
 		schemaVersion: 2 as const,
@@ -892,8 +1193,8 @@ export async function executeV2CanaryStateMachine({
 			publicationPointerCount: final.counts.publicationPointers,
 			fullRaster: true,
 			safeZip: true,
-			sharpVersion: final.v2.evidence.sharpVersion,
-			libvipsVersion: final.v2.evidence.libvipsVersion,
+			sharpVersion: acceptedEvidence.sharpVersion,
+			libvipsVersion: acceptedEvidence.libvipsVersion,
 			byteIdenticalReplays: true,
 			sanityManifestUnchanged: true,
 		},
