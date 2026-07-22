@@ -16,6 +16,15 @@ export const V2_CANARY_INSPECTION_PATH = "/v1/catalog-assets/receipts/inspection
 export const V2_CANARY_V1_RECEIPT_SET_ID =
 	"catalog-private-assets-v1:e8d573e1558301bfb52fc108baf227d6d74e4e7fbbc0228d2829ded3d32ac63b";
 export const V2_CANARY_CONVEX_SELECTOR = "prod:loyal-swan-967";
+export const V2_CANARY_CONVEX_SITE_ORIGIN = "https://loyal-swan-967.convex.site";
+export const V2_CANARY_DECODER_POLICY = {
+	printSource: {
+		method: "sharp_libvips_full_raster_v1",
+		sharpVersion: "0.35.3",
+		libvipsVersion: "8.18.3",
+	},
+	paidDigitalFile: { method: "safe_zip_v1" },
+} as const;
 export const V2_CANARY_LABELS = ["JPEG", "oversized PNG", "paid ZIP"] as const;
 
 const EXPECTED_PNG = { sizeBytes: 55_009_177, widthPixels: 6_935, heightPixels: 4_623 };
@@ -119,11 +128,22 @@ type CanarySnapshot = {
 	digests: Record<string, string>;
 };
 
+type WorkerRole = "storage" | "inspection";
+
 type WorkerResult = {
 	status: "pending_inspection" | "verified";
 	replayed: boolean;
 	assetCount: 3;
 	receiptSetId: string;
+	attestation: {
+		schemaVersion: 2;
+		role: WorkerRole;
+		derivedReceiptSetId: string;
+		convexDeployment: typeof V2_CANARY_CONVEX_SELECTOR;
+		convexSiteOrigin: typeof V2_CANARY_CONVEX_SITE_ORIGIN;
+		decoderPolicy: typeof V2_CANARY_DECODER_POLICY;
+		decoderPolicyState: "required" | "matched";
+	};
 };
 
 type BackfillResult = { replayed: boolean; targetCount: 12 };
@@ -418,17 +438,51 @@ async function readBoundedJson(response: Response) {
 	}
 }
 
-function parseWorkerResult(value: unknown): WorkerResult {
+function parseWorkerResult(
+	value: unknown,
+	path: typeof V2_CANARY_STORAGE_PATH | typeof V2_CANARY_INSPECTION_PATH,
+	expectedReceiptSetId: string,
+): WorkerResult {
 	const result = objectValue(value, "Worker result");
+	const attestation = objectValue(result.attestation, "Worker attestation");
+	const decoderPolicy = objectValue(attestation.decoderPolicy, "Worker decoder policy");
+	const printSource = objectValue(decoderPolicy.printSource, "Worker print-source policy");
+	const paidDigitalFile = objectValue(
+		decoderPolicy.paidDigitalFile,
+		"Worker paid-digital-file policy",
+	);
+	const expectedRole: WorkerRole = path === V2_CANARY_STORAGE_PATH ? "storage" : "inspection";
+	const expectedPolicyState = expectedRole === "storage" ? "required" : "matched";
 	if (
-		!exactKeys(result, ["status", "replayed", "assetCount", "receiptSetId"]) ||
+		!exactKeys(result, ["status", "replayed", "assetCount", "receiptSetId", "attestation"]) ||
+		!exactKeys(attestation, [
+			"schemaVersion",
+			"role",
+			"derivedReceiptSetId",
+			"convexDeployment",
+			"convexSiteOrigin",
+			"decoderPolicy",
+			"decoderPolicyState",
+		]) ||
+		!exactKeys(decoderPolicy, ["printSource", "paidDigitalFile"]) ||
+		!exactKeys(printSource, ["method", "sharpVersion", "libvipsVersion"]) ||
+		!exactKeys(paidDigitalFile, ["method"]) ||
 		(result.status !== "pending_inspection" && result.status !== "verified") ||
 		typeof result.replayed !== "boolean" ||
 		result.assetCount !== 3 ||
-		typeof result.receiptSetId !== "string" ||
-		!/^catalog-private-assets-v2:[a-f0-9]{64}$/.test(result.receiptSetId)
+		result.receiptSetId !== expectedReceiptSetId ||
+		attestation.schemaVersion !== 2 ||
+		attestation.role !== expectedRole ||
+		attestation.derivedReceiptSetId !== expectedReceiptSetId ||
+		attestation.convexDeployment !== V2_CANARY_CONVEX_SELECTOR ||
+		attestation.convexSiteOrigin !== V2_CANARY_CONVEX_SITE_ORIGIN ||
+		printSource.method !== V2_CANARY_DECODER_POLICY.printSource.method ||
+		printSource.sharpVersion !== V2_CANARY_DECODER_POLICY.printSource.sharpVersion ||
+		printSource.libvipsVersion !== V2_CANARY_DECODER_POLICY.printSource.libvipsVersion ||
+		paidDigitalFile.method !== V2_CANARY_DECODER_POLICY.paidDigitalFile.method ||
+		attestation.decoderPolicyState !== expectedPolicyState
 	)
-		throw new Error("Worker returned an invalid receipt result");
+		throw new Error("Worker returned an invalid receipt attestation");
 	return result as WorkerResult;
 }
 
@@ -467,6 +521,12 @@ export async function postV2CanaryWorkerReceipt({
 				schemaVersion: 2,
 				siteUrl: V2_CANARY_SITE_URL,
 				privateObjectKeys,
+				expectation: {
+					receiptSetId: expectedReceiptSetId,
+					convexDeployment: V2_CANARY_CONVEX_SELECTOR,
+					convexSiteOrigin: V2_CANARY_CONVEX_SITE_ORIGIN,
+					decoderPolicy: V2_CANARY_DECODER_POLICY,
+				},
 			}),
 			redirect: "error",
 			signal: AbortSignal.timeout(path === V2_CANARY_INSPECTION_PATH ? 300_000 : 30_000),
@@ -478,11 +538,7 @@ export async function postV2CanaryWorkerReceipt({
 		await response.body?.cancel().catch(() => undefined);
 		throw new Error("Worker request was rejected; rerun resumes from server state");
 	}
-	const result = parseWorkerResult(await readBoundedJson(response));
-	if (result.receiptSetId !== expectedReceiptSetId) {
-		throw new Error("Worker did not bind the receipt to the expected canary identity");
-	}
-	return result;
+	return parseWorkerResult(await readBoundedJson(response), path, expectedReceiptSetId);
 }
 
 function parseSnapshot(value: unknown): CanarySnapshot {
@@ -695,10 +751,14 @@ export async function executeV2CanaryStateMachine({
 	if (preCanary.canary.receiptSetId.length === 0)
 		throw new Error("Canary receipt identity is missing");
 
-	const storage = await dependencies.postWorker(
+	const storage = parseWorkerResult(
+		await dependencies.postWorker(
+			V2_CANARY_STORAGE_PATH,
+			tenantSecret,
+			privateObjectKeys,
+			preCanary.canary.receiptSetId,
+		),
 		V2_CANARY_STORAGE_PATH,
-		tenantSecret,
-		privateObjectKeys,
 		preCanary.canary.receiptSetId,
 	);
 	if (storage.receiptSetId !== preCanary.canary.receiptSetId) {
@@ -729,10 +789,14 @@ export async function executeV2CanaryStateMachine({
 		requireSameSnapshot(preCanary, afterStorage, "Storage resume");
 	}
 
-	const storageReplay = await dependencies.postWorker(
+	const storageReplay = parseWorkerResult(
+		await dependencies.postWorker(
+			V2_CANARY_STORAGE_PATH,
+			tenantSecret,
+			privateObjectKeys,
+			preCanary.canary.receiptSetId,
+		),
 		V2_CANARY_STORAGE_PATH,
-		tenantSecret,
-		privateObjectKeys,
 		preCanary.canary.receiptSetId,
 	);
 	const afterStorageReplay = parseSnapshot(await dependencies.snapshot());
@@ -741,10 +805,14 @@ export async function executeV2CanaryStateMachine({
 	}
 	requireSameSnapshot(afterStorage, afterStorageReplay, "Pending storage replay");
 
-	const inspection = await dependencies.postWorker(
+	const inspection = parseWorkerResult(
+		await dependencies.postWorker(
+			V2_CANARY_INSPECTION_PATH,
+			inspectionSecret,
+			privateObjectKeys,
+			preCanary.canary.receiptSetId,
+		),
 		V2_CANARY_INSPECTION_PATH,
-		inspectionSecret,
-		privateObjectKeys,
 		preCanary.canary.receiptSetId,
 	);
 	if (
@@ -774,10 +842,14 @@ export async function executeV2CanaryStateMachine({
 		throw new Error("Verified canary lacks accepted full-raster or safe-ZIP evidence");
 	}
 
-	const finalStorage = await dependencies.postWorker(
+	const finalStorage = parseWorkerResult(
+		await dependencies.postWorker(
+			V2_CANARY_STORAGE_PATH,
+			tenantSecret,
+			privateObjectKeys,
+			preCanary.canary.receiptSetId,
+		),
 		V2_CANARY_STORAGE_PATH,
-		tenantSecret,
-		privateObjectKeys,
 		preCanary.canary.receiptSetId,
 	);
 	const afterFinalStorage = parseSnapshot(await dependencies.snapshot());
@@ -786,10 +858,14 @@ export async function executeV2CanaryStateMachine({
 	}
 	requireSameSnapshot(afterInspection, afterFinalStorage, "Verified storage replay");
 
-	const finalInspection = await dependencies.postWorker(
+	const finalInspection = parseWorkerResult(
+		await dependencies.postWorker(
+			V2_CANARY_INSPECTION_PATH,
+			inspectionSecret,
+			privateObjectKeys,
+			preCanary.canary.receiptSetId,
+		),
 		V2_CANARY_INSPECTION_PATH,
-		inspectionSecret,
-		privateObjectKeys,
 		preCanary.canary.receiptSetId,
 	);
 	const final = parseSnapshot(await dependencies.snapshot());
