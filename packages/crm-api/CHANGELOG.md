@@ -1,5 +1,11 @@
 # @jessepomeroy/crm-api
 
+## 2.24.0
+
+### Minor Changes
+
+- 5d22037: Add an opt-in V2 private catalog receipt contract for complete Sharp/libvips raster evidence while preserving V1 receipt identities and safe ZIP inspection compatibility.
+
 ## 2.23.0
 
 ### Minor Changes
