@@ -7,16 +7,25 @@ import {
 } from "./catalogPrivateAssetValidators";
 import type {
 	CatalogPrivateAssetFacts,
+	CatalogPrivateAssetReceiptSetVersion,
 	CatalogPrivateInspectionReceiptSet,
 	CatalogPrivateStorageReceiptSet,
 } from "./catalogPrivateAssetReceiptContract";
-import { CATALOG_PRIVATE_ASSET_RECEIPT_SET_VERSION } from "./catalogPrivateAssetReceiptContract";
+import {
+	CATALOG_PRIVATE_ASSET_RECEIPT_SET_V2_VERSION,
+	CATALOG_PRIVATE_ASSET_RECEIPT_SET_VERSION,
+} from "./catalogPrivateAssetReceiptContract";
 
 const RECEIPT_SET_MAX_ASSETS = 32;
 const RECEIPT_SET_ID_MAX_LENGTH = 160;
 const RECEIPT_SET_ID_PATTERN = /^[A-Za-z0-9]+(?:[._:-][A-Za-z0-9]+)*$/;
 export const CATALOG_PRIVATE_ASSET_RECEIPT_SET_ID_PREFIX = "catalog-private-assets-v1";
+export const CATALOG_PRIVATE_ASSET_RECEIPT_SET_V2_ID_PREFIX = "catalog-private-assets-v2";
 const ETAG_MAX_LENGTH = 256;
+const DECODER_VERSION_MAX_LENGTH = 64;
+const DECODER_VERSION_PATTERN = /^[0-9]+\.[0-9]+\.[0-9]+(?:[-+][0-9A-Za-z.-]+)?$/;
+const SHA256_PATTERN = /^[a-f0-9]{64}$/;
+const FULL_RASTER_PIXEL_MAX = 100_000_000;
 const ZIP_ENTRY_MAX = 10_000;
 const ZIP_COMPRESSION_RATIO_MAX = 1_000;
 const CONTROL_CHARACTER_PATTERN = /[\u0000-\u001f\u007f]/;
@@ -113,16 +122,31 @@ function canonicalInspectionReceiptSet(receiptSet: CatalogPrivateInspectionRecei
 			facts: canonicalFacts(receipt.facts),
 			inspection: receipt.inspection.method === "decoded_image_v1"
 				? { method: receipt.inspection.method }
-				: {
-						method: receipt.inspection.method,
-						entryCount: receipt.inspection.entryCount,
-						totalUncompressedBytes: receipt.inspection.totalUncompressedBytes,
-						maximumEntryCompressionRatio:
-							receipt.inspection.maximumEntryCompressionRatio,
-						encryptedEntryCount: receipt.inspection.encryptedEntryCount,
-						unsafePathCount: receipt.inspection.unsafePathCount,
-						duplicatePathCount: receipt.inspection.duplicatePathCount,
-					},
+				: receipt.inspection.method === "sharp_libvips_full_raster_v1"
+					? {
+							method: receipt.inspection.method,
+							decodedFormat: receipt.inspection.decodedFormat,
+							decodedWidthPixels: receipt.inspection.decodedWidthPixels,
+							decodedHeightPixels: receipt.inspection.decodedHeightPixels,
+							decodedChannels: receipt.inspection.decodedChannels,
+							decodedPageCount: receipt.inspection.decodedPageCount,
+							decodedDepth: receipt.inspection.decodedDepth,
+							decodedPixelCount: receipt.inspection.decodedPixelCount,
+							decodedByteCount: receipt.inspection.decodedByteCount,
+							rasterSha256: receipt.inspection.rasterSha256,
+							sharpVersion: receipt.inspection.sharpVersion,
+							libvipsVersion: receipt.inspection.libvipsVersion,
+						}
+					: {
+							method: receipt.inspection.method,
+							entryCount: receipt.inspection.entryCount,
+							totalUncompressedBytes: receipt.inspection.totalUncompressedBytes,
+							maximumEntryCompressionRatio:
+								receipt.inspection.maximumEntryCompressionRatio,
+							encryptedEntryCount: receipt.inspection.encryptedEntryCount,
+							unsafePathCount: receipt.inspection.unsafePathCount,
+							duplicatePathCount: receipt.inspection.duplicatePathCount,
+						},
 		})),
 	};
 }
@@ -138,24 +162,27 @@ async function assetSetIdentity(
 	receiptSet: Pick<CatalogPrivateStorageReceiptSet, "schemaVersion" | "siteUrl">,
 	facts: readonly CatalogPrivateAssetFacts[],
 ) {
+	const version = receiptSet.schemaVersion;
 	const canonical = JSON.stringify(canonicalAssetSetIdentity(receiptSet, facts));
-	const checksum = await sha256(`catalog-private-asset-set:v1:${canonical}`);
+	const checksum = await sha256(`catalog-private-asset-set:v${version}:${canonical}`);
+	const prefix = version === CATALOG_PRIVATE_ASSET_RECEIPT_SET_VERSION
+		? CATALOG_PRIVATE_ASSET_RECEIPT_SET_ID_PREFIX
+		: CATALOG_PRIVATE_ASSET_RECEIPT_SET_V2_ID_PREFIX;
 	return {
 		canonical,
 		checksum,
-		receiptSetId: `${CATALOG_PRIVATE_ASSET_RECEIPT_SET_ID_PREFIX}:${checksum}`,
+		receiptSetId: `${prefix}:${checksum}`,
 	};
 }
 
 export async function createCatalogPrivateAssetReceiptSetId(
 	siteUrl: string,
 	facts: readonly CatalogPrivateAssetFacts[],
+	schemaVersion: CatalogPrivateAssetReceiptSetVersion =
+		CATALOG_PRIVATE_ASSET_RECEIPT_SET_VERSION,
 ) {
 	// Content addressing prevents a partial or drifted batch from claiming a reviewed set's ID.
-	return (await assetSetIdentity({
-		schemaVersion: CATALOG_PRIVATE_ASSET_RECEIPT_SET_VERSION,
-		siteUrl,
-	}, facts)).receiptSetId;
+	return (await assetSetIdentity({ schemaVersion, siteUrl }, facts)).receiptSetId;
 }
 
 function requireReceiptSetIdentity(
@@ -165,7 +192,8 @@ function requireReceiptSetIdentity(
 	>,
 ) {
 	if (
-		receiptSet.schemaVersion !== CATALOG_PRIVATE_ASSET_RECEIPT_SET_VERSION
+		(receiptSet.schemaVersion !== CATALOG_PRIVATE_ASSET_RECEIPT_SET_VERSION
+			&& receiptSet.schemaVersion !== CATALOG_PRIVATE_ASSET_RECEIPT_SET_V2_VERSION)
 		|| receiptSet.receiptSetId.length > RECEIPT_SET_ID_MAX_LENGTH
 		|| !RECEIPT_SET_ID_PATTERN.test(receiptSet.receiptSetId)
 	) throw new Error("Private catalog receipt-set identity is invalid");
@@ -307,7 +335,9 @@ export async function validateCatalogPrivateStorageReceiptSet(
 	return {
 		facts,
 		assetSetChecksum: assetSet.checksum,
-		roleChecksum: await sha256(`catalog-private-storage-receipt:v1:${JSON.stringify(roleCanonical)}`),
+		roleChecksum: await sha256(
+			`catalog-private-storage-receipt:v${receiptSet.schemaVersion}:${JSON.stringify(roleCanonical)}`,
+		),
 		assetCanonical: assetSet.canonical,
 		canonical: JSON.stringify(roleCanonical),
 	};
@@ -324,8 +354,52 @@ export async function validateCatalogPrivateInspectionReceiptSet(
 				throw new Error("Paid digital files require the safe ZIP inspection policy");
 			}
 			requireSafeZipInspection(receipt.inspection);
-		} else if (receipt.inspection.method !== "decoded_image_v1") {
-			throw new Error("Private print sources require decoded image inspection");
+			continue;
+		}
+		if (receiptSet.schemaVersion === CATALOG_PRIVATE_ASSET_RECEIPT_SET_VERSION) {
+			if (receipt.inspection.method !== "decoded_image_v1") {
+				throw new Error("V1 private print sources require decoded image inspection");
+			}
+			continue;
+		}
+		if (receipt.inspection.method !== "sharp_libvips_full_raster_v1") {
+			throw new Error("V2 print sources require Sharp/libvips full-raster inspection");
+		}
+		const expectedFormat = receipt.facts.mimeType === "image/jpeg" ? "jpeg" : "png";
+		const expectedPixels = receipt.facts.widthPixels * receipt.facts.heightPixels;
+		requirePositiveSafeInteger(expectedPixels, FULL_RASTER_PIXEL_MAX, "Declared pixel count");
+		const expectedBytes = expectedPixels * receipt.inspection.decodedChannels;
+		if (
+			receipt.inspection.decodedFormat !== expectedFormat
+			|| receipt.inspection.decodedWidthPixels !== receipt.facts.widthPixels
+			|| receipt.inspection.decodedHeightPixels !== receipt.facts.heightPixels
+		) throw new Error("Full-raster decode metadata does not match the declared image");
+		requirePositiveSafeInteger(
+			receipt.inspection.decodedPixelCount,
+			FULL_RASTER_PIXEL_MAX,
+			"Decoded pixel count",
+		);
+		requirePositiveSafeInteger(
+			receipt.inspection.decodedByteCount,
+			FULL_RASTER_PIXEL_MAX * 4,
+			"Decoded byte count",
+		);
+		if (
+			receipt.inspection.decodedPixelCount !== expectedPixels
+			|| receipt.inspection.decodedByteCount !== expectedBytes
+		) throw new Error("Full-raster inspection did not decode every declared pixel byte");
+		if (!SHA256_PATTERN.test(receipt.inspection.rasterSha256)) {
+			throw new Error("Full-raster checksum is invalid");
+		}
+		for (const version of [
+			receipt.inspection.sharpVersion,
+			receipt.inspection.libvipsVersion,
+		]) {
+			if (
+				version.length > DECODER_VERSION_MAX_LENGTH
+				|| version !== version.trim()
+				|| !DECODER_VERSION_PATTERN.test(version)
+			) throw new Error("Full-raster decoder version is invalid");
 		}
 	}
 	const assetSet = await assetSetIdentity(receiptSet, facts);
@@ -336,7 +410,9 @@ export async function validateCatalogPrivateInspectionReceiptSet(
 	return {
 		facts,
 		assetSetChecksum: assetSet.checksum,
-		roleChecksum: await sha256(`catalog-private-inspection-receipt:v1:${JSON.stringify(roleCanonical)}`),
+		roleChecksum: await sha256(
+			`catalog-private-inspection-receipt:v${receiptSet.schemaVersion}:${JSON.stringify(roleCanonical)}`,
+		),
 		assetCanonical: assetSet.canonical,
 		canonical: JSON.stringify(roleCanonical),
 	};

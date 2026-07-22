@@ -195,7 +195,9 @@ export async function requireVerifiedPrivateCatalogTargets(
 		validateCatalogPrivateInspectionReceiptSet(coordination.inspectionReceiptSet),
 	]);
 	if (
-		storage.assetSetChecksum !== coordination.assetSetChecksum
+		coordination.storageReceiptSet.schemaVersion
+			!== coordination.inspectionReceiptSet.schemaVersion
+		|| storage.assetSetChecksum !== coordination.assetSetChecksum
 		|| storage.roleChecksum !== coordination.storageReceiptChecksum
 		|| inspection.assetSetChecksum !== coordination.assetSetChecksum
 		|| inspection.roleChecksum !== coordination.inspectionReceiptChecksum
