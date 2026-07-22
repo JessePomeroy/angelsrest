@@ -215,6 +215,7 @@ export async function postReceipt(
 export async function storedState(t: ReturnType<typeof convexTest>) {
 	return await t.run(async (ctx) => ({
 		coordinations: await ctx.db.query("catalogPrivateAssetReceiptCoordinations").take(40),
+		authorities: await ctx.db.query("catalogPrivateAssetTargetAuthorities").take(40),
 		printSources: await ctx.db.query("catalogPrintSourceAssets").take(40),
 		paidFiles: await ctx.db.query("catalogDigitalFileAssets").take(40),
 	}));

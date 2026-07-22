@@ -24,6 +24,7 @@ import {
 } from "./helpers/catalogPrivateAssetValidators";
 import {
 	catalogPrivateAssetReceiptCoordinationValidator,
+	catalogPrivateAssetTargetAuthorityValidator,
 } from "./helpers/catalogPrivateAssetReceiptContract";
 import {
 	mediaAssetStatusValidator,
@@ -530,10 +531,24 @@ export default defineSchema({
 
 	// Storage and content inspection use separate tenant credentials. The first
 	// complete receipt set remains non-authoritative here; only a matching second
-	// set atomically creates the terminal verified private-asset rows above.
+	// set atomically creates fresh targets or records a verified V2 re-attestation.
 	catalogPrivateAssetReceiptCoordinations: defineTable(
 		catalogPrivateAssetReceiptCoordinationValidator,
 	).index("by_siteUrl_and_receiptSetId", ["siteUrl", "receiptSetId"]),
+
+	// Immutable reverse authority for the coordination that originally created
+	// each private target. indexedAt is index materialization time, not provenance.
+	catalogPrivateAssetTargetAuthorities: defineTable(
+		catalogPrivateAssetTargetAuthorityValidator,
+	)
+		.index("by_siteUrl_and_kind_and_assetKey", ["siteUrl", "kind", "assetKey"])
+		.index("by_siteUrl_and_kind_and_assetId", ["siteUrl", "kind", "assetId"])
+		.index("by_kind_and_assetId", ["kind", "assetId"])
+		.index("by_originCoordinationId_and_kind_and_assetKey", [
+			"originCoordinationId",
+			"kind",
+			"assetKey",
+		]),
 
 	catalogProductPrintSources: defineTable({
 		siteUrl: v.string(),

@@ -13,9 +13,12 @@ import {
 } from "./catalogPrivateAssetReceiptValidation";
 import {
 	insertPrivateCatalogTargetRows,
+	materializePrivateCatalogV2Targets,
 	requireNoPrivateCatalogTargetRows,
 	requirePendingPrivateCatalogCoordination,
+	requireStoredV2TargetPlan,
 	requireVerifiedPrivateCatalogTargets,
+	resolvePrivateCatalogV2TargetPlan,
 } from "./catalogPrivateAssetRegistryTargets";
 
 type Coordination = Doc<"catalogPrivateAssetReceiptCoordinations">;
@@ -93,14 +96,6 @@ async function completeRegistration(
 		|| (coordination.status === "pending_storage"
 			&& coordination.inspectionReceiptChecksum !== inspection.roleChecksum)
 	) throw new Error("Private catalog storage and inspection evidence do not match");
-	await requireNoPrivateCatalogTargetRows(ctx, coordination.siteUrl, storage.facts);
-	const targets = await insertPrivateCatalogTargetRows(
-		ctx,
-		coordination.siteUrl,
-		storage.facts,
-		storageReceivedAt,
-		now,
-	);
 	const completed = {
 		siteUrl: coordination.siteUrl,
 		receiptSetId: coordination.receiptSetId,
@@ -111,7 +106,6 @@ async function completeRegistration(
 		storageReceivedAt,
 		inspectionReceivedAt,
 		verifiedAt: now,
-		targets,
 		createdAt: coordination.createdAt,
 		updatedAt: now,
 	};
@@ -119,21 +113,47 @@ async function completeRegistration(
 		if (inspectionReceiptSet.schemaVersion !== 1) {
 			throw new Error("Private catalog receipt schema versions do not match");
 		}
+		await requireNoPrivateCatalogTargetRows(ctx, coordination.siteUrl, storage.facts);
+		const targets = await insertPrivateCatalogTargetRows(
+			ctx,
+			coordination,
+			storage.facts,
+			storageReceivedAt,
+			now,
+		);
 		await ctx.db.replace("catalogPrivateAssetReceiptCoordinations", coordination._id, {
 			...completed,
 			storageReceiptSet,
 			inspectionReceiptSet,
+			targets,
 		});
-	} else {
-		if (inspectionReceiptSet.schemaVersion !== 2) {
-			throw new Error("Private catalog receipt schema versions do not match");
-		}
-		await ctx.db.replace("catalogPrivateAssetReceiptCoordinations", coordination._id, {
-			...completed,
-			storageReceiptSet,
-			inspectionReceiptSet,
-		});
+		return { status: "verified", replayed: false, targets };
 	}
+	if (inspectionReceiptSet.schemaVersion !== 2) {
+		throw new Error("Private catalog receipt schema versions do not match");
+	}
+	const recomputedPlan = await resolvePrivateCatalogV2TargetPlan(
+		ctx,
+		coordination.siteUrl,
+		storage.facts,
+	);
+	const targetPlan = requireStoredV2TargetPlan(coordination, recomputedPlan);
+	const { targets, targetBindings } = await materializePrivateCatalogV2Targets(
+		ctx,
+		coordination,
+		storage.facts,
+		targetPlan,
+		storageReceivedAt,
+		now,
+	);
+	await ctx.db.replace("catalogPrivateAssetReceiptCoordinations", coordination._id, {
+		...completed,
+		storageReceiptSet,
+		inspectionReceiptSet,
+		targets,
+		targetResolutionVersion: 1,
+		targetBindings,
+	});
 	return { status: "verified", replayed: false, targets };
 }
 
@@ -145,7 +165,6 @@ export async function recordCatalogPrivateStorageReceiptSet(
 	const now = Date.now();
 	const coordination = await getCoordination(ctx, receiptSet.siteUrl, receiptSet.receiptSetId);
 	if (!coordination) {
-		await requireNoPrivateCatalogTargetRows(ctx, receiptSet.siteUrl, checked.facts);
 		const pending = {
 			siteUrl: receiptSet.siteUrl,
 			receiptSetId: receiptSet.receiptSetId,
@@ -157,14 +176,22 @@ export async function recordCatalogPrivateStorageReceiptSet(
 			updatedAt: now,
 		};
 		if (receiptSet.schemaVersion === 1) {
+			await requireNoPrivateCatalogTargetRows(ctx, receiptSet.siteUrl, checked.facts);
 			await ctx.db.insert("catalogPrivateAssetReceiptCoordinations", {
 				...pending,
 				storageReceiptSet: receiptSet,
 			});
 		} else {
+			const targetPlan = await resolvePrivateCatalogV2TargetPlan(
+				ctx,
+				receiptSet.siteUrl,
+				checked.facts,
+			);
 			await ctx.db.insert("catalogPrivateAssetReceiptCoordinations", {
 				...pending,
 				storageReceiptSet: receiptSet,
+				targetResolutionVersion: 1,
+				targetPlan,
 			});
 		}
 		return pendingResult("pending_inspection", false, checked.facts.length);
@@ -185,7 +212,16 @@ export async function recordCatalogPrivateStorageReceiptSet(
 			|| coordination.storageReceiptChecksum !== checked.roleChecksum
 			|| !sameCatalogPrivateStorageReceiptSet(coordination.storageReceiptSet, receiptSet)
 		) throw new Error("Private catalog storage receipt replay has drifted");
-		await requireNoPrivateCatalogTargetRows(ctx, receiptSet.siteUrl, checked.facts);
+		if (receiptSet.schemaVersion === 1) {
+			await requireNoPrivateCatalogTargetRows(ctx, receiptSet.siteUrl, checked.facts);
+		} else {
+			const recomputedPlan = await resolvePrivateCatalogV2TargetPlan(
+				ctx,
+				receiptSet.siteUrl,
+				checked.facts,
+			);
+			requireStoredV2TargetPlan(coordination, recomputedPlan);
+		}
 		return pendingResult(coordination.status, true, checked.facts.length);
 	}
 	return await completeRegistration(
@@ -207,7 +243,6 @@ export async function recordCatalogPrivateInspectionReceiptSet(
 	const now = Date.now();
 	const coordination = await getCoordination(ctx, receiptSet.siteUrl, receiptSet.receiptSetId);
 	if (!coordination) {
-		await requireNoPrivateCatalogTargetRows(ctx, receiptSet.siteUrl, checked.facts);
 		const pending = {
 			siteUrl: receiptSet.siteUrl,
 			receiptSetId: receiptSet.receiptSetId,
@@ -219,14 +254,22 @@ export async function recordCatalogPrivateInspectionReceiptSet(
 			updatedAt: now,
 		};
 		if (receiptSet.schemaVersion === 1) {
+			await requireNoPrivateCatalogTargetRows(ctx, receiptSet.siteUrl, checked.facts);
 			await ctx.db.insert("catalogPrivateAssetReceiptCoordinations", {
 				...pending,
 				inspectionReceiptSet: receiptSet,
 			});
 		} else {
+			const targetPlan = await resolvePrivateCatalogV2TargetPlan(
+				ctx,
+				receiptSet.siteUrl,
+				checked.facts,
+			);
 			await ctx.db.insert("catalogPrivateAssetReceiptCoordinations", {
 				...pending,
 				inspectionReceiptSet: receiptSet,
+				targetResolutionVersion: 1,
+				targetPlan,
 			});
 		}
 		return pendingResult("pending_storage", false, checked.facts.length);
@@ -247,7 +290,16 @@ export async function recordCatalogPrivateInspectionReceiptSet(
 			|| coordination.inspectionReceiptChecksum !== checked.roleChecksum
 			|| !sameCatalogPrivateInspectionReceiptSet(coordination.inspectionReceiptSet, receiptSet)
 		) throw new Error("Private catalog inspection receipt replay has drifted");
-		await requireNoPrivateCatalogTargetRows(ctx, receiptSet.siteUrl, checked.facts);
+		if (receiptSet.schemaVersion === 1) {
+			await requireNoPrivateCatalogTargetRows(ctx, receiptSet.siteUrl, checked.facts);
+		} else {
+			const recomputedPlan = await resolvePrivateCatalogV2TargetPlan(
+				ctx,
+				receiptSet.siteUrl,
+				checked.facts,
+			);
+			requireStoredV2TargetPlan(coordination, recomputedPlan);
+		}
 		return pendingResult(coordination.status, true, checked.facts.length);
 	}
 	return await completeRegistration(

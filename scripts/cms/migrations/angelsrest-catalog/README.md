@@ -45,6 +45,19 @@ The sorted result and its checksum are candidates only. They are not proof of up
 
 The registration boundary accepts only complete, canonically ordered receipt sets through two purpose-separated Convex HTTP ingresses. A tenant-scoped storage credential may record the Worker's immutable R2 evidence, while a different tenant-scoped inspection credential may record independently decoded JPEG/PNG or safety-checked ZIP evidence. Either role alone creates only a non-authoritative coordination row. Matching complete sets create all verified private target rows atomically; exact replays return the same target IDs, while role, tenant, key, hash, byte-count, MIME, dimension/version, provenance, or proof drift is rejected without partial target writes. The two Convex registries must be disjoint across roles and tenants, and no public or admin mutation can manufacture either receipt.
 
+### Stable-target V2 forward recovery
+
+A V2 re-attestation can bind a new receipt coordination to immutable targets created by a verified V1 coordination. The reused target's audit timestamps truthfully remain those of its V1 creator, so the pre-stable-target Convex functions cannot validate that V2 coordination. Likewise, the authority table plus pending target plans and verified target bindings are absent from the earlier schema. The last literal schema rollback boundary is therefore **before the first authority row or coordination with `targetResolutionVersion: 1` is written**; the last pre-feature function rollback boundary is before the first such V2 coordination.
+
+After that marker exists, recovery is forward-only:
+
+1. Stop new receipt producers if an incident requires containment; do not delete, patch, or recreate receipt coordinations, authority rows, or private targets.
+2. Keep the widened coordination schema, authority table/indexes, and the compatibility readers in `catalogPrivateAssetRegistryTargets.ts` deployed. Do not deploy `@jessepomeroy/crm-api` code from before stable-target V2 to the shared Convex deployment. Frontend or producer callers that do not own this state may be rolled back independently.
+3. Ship a corrective Convex deployment based on this compatibility version. It must retain exact pending-plan replay/completion and verified binding/lineage replay for every existing V2 coordination, even if it temporarily rejects creation of new re-attestations.
+4. Retire these fields or readers only through a separate reviewed migration that proves there are no affected pending records and defines replacement replay semantics for every verified reused target. Until then they remain permanent read compatibility.
+
+Do not attempt recovery by rewriting target timestamps, cloning or rebinding targets, mutating R2 objects, or changing Sanity/product relations/publication/provider state. Sanity remains the public catalog authority.
+
 This gate is reusable for later bounded Editor transfers, but it does not weaken the migration's complete-content rule: the Angels Rest transfer producer must submit the manifest's exact 11-print-master and one-paid-ZIP set under one content-addressed receipt-set ID. That ID is derived from the schema version, tenant, and every canonical asset fact; Convex independently recomputes it. A missing, extra, reordered, or drifted producer request therefore cannot claim the reviewed full-set identity. Producer adapters, live credentials, source fetching, content inspection, upload execution, and the 12-asset acceptance run remain later iterations.
 
 ## Complete private-asset transfer runner
