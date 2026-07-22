@@ -1,5 +1,11 @@
 # @jessepomeroy/crm-api
 
+## 2.25.1
+
+### Patch Changes
+
+- edc09db: Add the bounded internal snapshot and pre-mutation identity/decoder-policy guards used to verify the three-object private catalog schema-2 acceptance canary.
+
 ## 2.25.0
 
 ### Minor Changes
