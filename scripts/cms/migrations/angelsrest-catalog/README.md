@@ -83,6 +83,27 @@ The runner downloads and decodes all 11 source images, inspects the paid ZIP, ha
 
 This command creates only verified private asset registry rows. It does not import the 33-product graph, switch the public Shop provider, alter checkout or delivery, publish content, mutate Sanity, or remove the Sanity fallback.
 
+## Acceptance-specific schema-2 canary runner
+
+The historical transfer command above remains V1-only. The separate acceptance runner selects only the reviewed JPEG, oversized PNG, and paid ZIP from the committed V1 journal. Plan mode re-reads the published 33-product Sanity baseline and records no report, reads no credential file, invokes no Convex function, and calls no Worker route:
+
+```sh
+pnpm cms:catalog-private-assets-v2-canary
+```
+
+Execution is intentionally explicit and resumable from exact server-side pending or verified state:
+
+```sh
+pnpm cms:catalog-private-assets-v2-canary -- \
+  --execute \
+  --confirm "re-attest the recorded JPEG oversized PNG and paid ZIP with schema 2" \
+  --tenant-secret-file /private/runtime/storage-caller.secret \
+  --inspection-secret-file /private/runtime/inspection-caller.secret \
+  --convex-env-file /private/runtime/convex-selector.env
+```
+
+All three files must be different regular, owner-controlled mode-`0600` files. Each file is opened once with no-follow semantics, then validated and read through that descriptor. The selector file may contain only `CONVEX_DEPLOYMENT=prod:loyal-swan-967`; it is not a deploy key. After validation, the runner writes that compiled-in exact selector to a fresh private temporary directory for each Convex child; this prevents the CLI from reopening the operator file or loading repository `.env` credentials, and it avoids the broader project-default `--prod` selector. The runner uses an existing non-interactive Convex operator login for only the bounded snapshot query and exact V1 authority backfill. It never performs OAuth, accepts object or target identities from the CLI, submits local inspection evidence, retries a failed network/Container operation automatically, or accesses R2 directly. Both Worker calls use the deployed receipt-route contract and explicitly request schema 2. The runner requires the Worker-computed receipt ID to match the internal canary identity, then observes the exact expected state transition on the pinned Convex deployment before it permits the independently authenticated inspection call. Convex independently rejects a different Angels Rest V2 identity or decoder version before recording evidence. Execution removes any prior report before parsing or performing the run; a successful mode-`0600` replacement records its completion time, receipt identity, pinned deployment, labels, counts, decoder versions, and pass/fail checks.
+
 Sanity remains the public Shop, checkout, coupon, and download authority throughout this preparation and unpublished-import sequence. Public cutover, authoritative checkout, transactional coupon migration, publication, provider-lifecycle changes, and Editor visual refinement are explicit non-goals of this gate.
 
 ## Catalog display-media transfer runner

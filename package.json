@@ -28,6 +28,7 @@
 		"cms:catalog-import": "tsx scripts/cms/sanity-catalog-import.ts",
 		"cms:catalog-display-media-transfer": "tsx scripts/cms/sanity-catalog-display-media-transfer.ts",
 		"cms:catalog-private-assets-transfer": "tsx scripts/cms/sanity-catalog-private-assets-transfer.ts",
+		"cms:catalog-private-assets-v2-canary": "tsx scripts/cms/sanity-catalog-private-assets-v2-canary.ts",
 		"test:e2e": "node scripts/run-playwright.mjs",
 		"smoke:gallery-host-bulk-delete": "node scripts/smoke-gallery-host-bulk-delete.mjs"
 	},
