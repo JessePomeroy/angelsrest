@@ -1,5 +1,11 @@
 # @jessepomeroy/crm-api
 
+## 2.25.0
+
+### Minor Changes
+
+- 32d07c6: Add immutable target authority indexing and stable-ID V2 private catalog re-attestation over verified V1 targets.
+
 ## 2.24.0
 
 ### Minor Changes
