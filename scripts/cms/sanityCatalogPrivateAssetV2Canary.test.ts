@@ -95,7 +95,6 @@ function response(status: "pending_inspection" | "verified", replayed: boolean) 
 		replayed,
 		assetCount: 3 as const,
 		receiptSetId,
-		convexDeployment: V2_CANARY_CONVEX_SELECTOR,
 	};
 }
 
@@ -219,8 +218,6 @@ describe("catalog private asset V2 canary runner", () => {
 					schemaVersion: 2,
 					siteUrl: "angelsrest.online",
 					privateObjectKeys: ["one", "two", "three"],
-					expectedReceiptSetId: receiptSetId,
-					expectedConvexDeployment: V2_CANARY_CONVEX_SELECTOR,
 				});
 				expect(init?.redirect).toBe("error");
 				return Response.json(
@@ -255,7 +252,7 @@ describe("catalog private asset V2 canary runner", () => {
 				headers: { "Content-Type": "application/json", "Content-Length": "70000" },
 			}),
 			new Response("redirect", { status: 307, headers: { Location: "https://example.test" } }),
-			Response.json({ ...response("pending_inspection", false), convexDeployment: "prod:wrong" }),
+			Response.json({ ...response("pending_inspection", false), unexpected: "field" }),
 			Response.json({
 				...response("pending_inspection", false),
 				receiptSetId: `catalog-private-assets-v2:${"b".repeat(64)}`,
@@ -320,6 +317,33 @@ describe("catalog private asset V2 canary runner", () => {
 		const sanitized = JSON.stringify(result);
 		for (const forbidden of ["image-", "file-", "sites/", "q970", "q97e", "q576", "sha256", "http"])
 			expect(sanitized).not.toContain(forbidden);
+	});
+
+	test("stops before inspection when storage does not change the pinned deployment", async () => {
+		const unchanged = snapshot("absent");
+		const snapshots = [unchanged, unchanged, unchanged, unchanged];
+		const postWorker = vi.fn(async () => response("pending_inspection", false));
+		await expect(
+			executeV2CanaryStateMachine({
+				preManifest: "manifest",
+				tenantSecret: "t".repeat(32),
+				inspectionSecret: "i".repeat(32),
+				privateObjectKeys: ["one", "two", "three"],
+				dependencies: {
+					snapshot: async () => shiftRequired(snapshots),
+					backfill: async () => ({ replayed: true, targetCount: 12 }),
+					postWorker,
+					readPublishedManifest: async () => "manifest",
+				},
+			}),
+		).rejects.toThrow(/First storage receipt/);
+		expect(postWorker).toHaveBeenCalledOnce();
+		expect(postWorker).toHaveBeenCalledWith(
+			V2_CANARY_STORAGE_PATH,
+			"t".repeat(32),
+			["one", "two", "three"],
+			receiptSetId,
+		);
 	});
 
 	test("stops after one injected network failure and relies on safe server-side resume", async () => {

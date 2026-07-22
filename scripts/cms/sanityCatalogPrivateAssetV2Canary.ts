@@ -124,7 +124,6 @@ type WorkerResult = {
 	replayed: boolean;
 	assetCount: 3;
 	receiptSetId: string;
-	convexDeployment: typeof V2_CANARY_CONVEX_SELECTOR;
 };
 
 type BackfillResult = { replayed: boolean; targetCount: 12 };
@@ -422,13 +421,12 @@ async function readBoundedJson(response: Response) {
 function parseWorkerResult(value: unknown): WorkerResult {
 	const result = objectValue(value, "Worker result");
 	if (
-		!exactKeys(result, ["status", "replayed", "assetCount", "receiptSetId", "convexDeployment"]) ||
+		!exactKeys(result, ["status", "replayed", "assetCount", "receiptSetId"]) ||
 		(result.status !== "pending_inspection" && result.status !== "verified") ||
 		typeof result.replayed !== "boolean" ||
 		result.assetCount !== 3 ||
 		typeof result.receiptSetId !== "string" ||
-		!/^catalog-private-assets-v2:[a-f0-9]{64}$/.test(result.receiptSetId) ||
-		result.convexDeployment !== V2_CANARY_CONVEX_SELECTOR
+		!/^catalog-private-assets-v2:[a-f0-9]{64}$/.test(result.receiptSetId)
 	)
 		throw new Error("Worker returned an invalid receipt result");
 	return result as WorkerResult;
@@ -469,11 +467,9 @@ export async function postV2CanaryWorkerReceipt({
 				schemaVersion: 2,
 				siteUrl: V2_CANARY_SITE_URL,
 				privateObjectKeys,
-				expectedReceiptSetId,
-				expectedConvexDeployment: V2_CANARY_CONVEX_SELECTOR,
 			}),
 			redirect: "error",
-			signal: AbortSignal.timeout(path === V2_CANARY_INSPECTION_PATH ? 150_000 : 30_000),
+			signal: AbortSignal.timeout(path === V2_CANARY_INSPECTION_PATH ? 300_000 : 30_000),
 		});
 	} catch {
 		throw new Error("Worker request did not complete; rerun resumes from server state");
