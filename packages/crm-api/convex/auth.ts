@@ -1,9 +1,11 @@
 import { createClient, type GenericCtx } from "@convex-dev/better-auth";
 import { convex } from "@convex-dev/better-auth/plugins";
+import { APIError, createAuthMiddleware } from "better-auth/api";
 import { betterAuth } from "better-auth/minimal";
 import { components, internal } from "./_generated/api";
 import type { DataModel } from "./_generated/dataModel";
 import authConfig from "./auth.config";
+import { purposeScopedServerRolesAreDisjoint } from "./helpers/serverSecrets";
 
 export const authComponent = createClient<DataModel>(components.betterAuth);
 
@@ -18,6 +20,15 @@ export const createAuth = (ctx: GenericCtx<DataModel>) => {
 		secret: process.env.BETTER_AUTH_SECRET!,
 		trustedOrigins: () => resolveTrustedOrigins(ctx, siteUrl),
 		database: authComponent.adapter(ctx),
+		hooks: {
+			before: createAuthMiddleware(async () => {
+				if (!purposeScopedServerRolesAreDisjoint()) {
+					throw new APIError("FORBIDDEN", {
+						message: "Authentication authority is unavailable",
+					});
+				}
+			}),
+		},
 		emailAndPassword: { enabled: true },
 		socialProviders: {
 			google: {

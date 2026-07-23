@@ -32,6 +32,7 @@ import {
 	getFeeCaptureRetryDelayMs,
 	type StripeFeeCaptureError,
 } from "./helpers/stripeFeeCapture";
+import { purposeScopedServerRolesAreDisjoint } from "./helpers/serverSecrets";
 
 /**
  * Capture Stripe fees for a single order. Idempotent: short-circuits if
@@ -52,6 +53,30 @@ export const captureFeesForOrder = internalAction({
 			attempt,
 		});
 		if (!started) return;
+		const recordRecoverableFailure = async (error: StripeFeeCaptureError) => {
+			const retryDelayMs = getFeeCaptureRetryDelayMs(attempt);
+			if (retryDelayMs !== null) {
+				await ctx.runMutation(internal.stripeFeesStore.recordRetry, {
+					orderId,
+					attempt,
+					error,
+				});
+				return;
+			}
+			await ctx.runMutation(internal.stripeFeesStore.recordFailure, {
+				orderId,
+				attempt,
+				error,
+			});
+		};
+		if (!purposeScopedServerRolesAreDisjoint()) {
+			console.error(
+				"[stripeFees] purpose-scoped authority configuration overlaps; Stripe fee capture deferred for order",
+				order.orderNumber,
+			);
+			await recordRecoverableFailure("authority_configuration_invalid");
+			return;
+		}
 		if (!order.stripePaymentIntentId) {
 			await ctx.runMutation(internal.stripeFeesStore.recordFailure, {
 				orderId,
@@ -111,27 +136,6 @@ export const captureFeesForOrder = internalAction({
 				err,
 			);
 		}
-		const retryDelayMs = getFeeCaptureRetryDelayMs(attempt);
-		if (retryDelayMs !== null) {
-			const nextAttemptAt = Date.now() + retryDelayMs;
-			const retryRecorded = await ctx.runMutation(internal.stripeFeesStore.recordRetry, {
-				orderId,
-				attempt,
-				error: failureCode,
-				nextAttemptAt,
-			});
-			if (!retryRecorded) return;
-			await ctx.scheduler.runAfter(
-				retryDelayMs,
-				internal.stripeFees.captureFeesForOrder,
-				{ orderId, attempt: attempt + 1 },
-			);
-			return;
-		}
-		await ctx.runMutation(internal.stripeFeesStore.recordFailure, {
-			orderId,
-			attempt,
-			error: failureCode,
-		});
+		await recordRecoverableFailure(failureCode);
 	},
 });

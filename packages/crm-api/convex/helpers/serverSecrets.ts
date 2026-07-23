@@ -70,6 +70,96 @@ export function parseTenantSecretRegistry(
 	return registry;
 }
 
+export function parseOptionalTenantSecretRegistry(raw: string | undefined) {
+	return raw === undefined
+		? new Map<string, readonly string[]>()
+		: parseTenantSecretRegistry(raw);
+}
+
+const AUTHORITY_BEARING_SCALAR_ENV_NAMES = [
+	"BETTER_AUTH_SECRET",
+	"AUTH_GOOGLE_SECRET",
+	"STRIPE_SECRET_KEY",
+	"WEBHOOK_SECRET",
+	"ORDER_LOOKUP_SECRET",
+] as const;
+
+/**
+ * Parse every authority-bearing Convex runtime role together so one reused
+ * credential disables every affected entry point, including legacy routes.
+ * Registries are optional here; each caller separately requires its own role.
+ */
+export function purposeScopedServerRoleConfiguration() {
+	const registries = {
+		host: parseOptionalTenantSecretRegistry(
+			process.env.CATALOG_PRIVATE_ASSET_EDITOR_HOST_JOURNAL_SECRETS,
+		),
+		inspector: parseOptionalTenantSecretRegistry(
+			process.env.CATALOG_PRIVATE_ASSET_EDITOR_INSPECTION_CLAIM_SECRETS,
+		),
+		workerControl: parseOptionalTenantSecretRegistry(
+			process.env.CATALOG_PRIVATE_EDITOR_UPLOAD_CONTROL_SECRETS,
+		),
+		storageReceipt: parseOptionalTenantSecretRegistry(
+			process.env.CATALOG_PRIVATE_ASSET_STORAGE_RECEIPT_SECRETS,
+		),
+		inspectionReceipt: parseOptionalTenantSecretRegistry(
+			process.env.CATALOG_PRIVATE_ASSET_INSPECTION_RECEIPT_SECRETS,
+		),
+		deletion: parseOptionalTenantSecretRegistry(
+			process.env.CMS_MEDIA_DELETION_COMPLETION_SECRETS,
+		),
+	};
+	const parsed = Object.values(registries);
+	if (parsed.some((registry) => registry === null)) return null;
+	const configured = parsed as ReadonlyMap<string, readonly string[]>[];
+	if (!tenantSecretRegistriesAreDisjoint(...configured)) return null;
+	const registrySecrets = new Set(configured.flatMap((registry) => [...registry.values()].flat()));
+	const scalarSecrets = AUTHORITY_BEARING_SCALAR_ENV_NAMES
+		.map((name) => process.env[name])
+		.filter((secret): secret is string => secret !== undefined);
+	if (
+		new Set(scalarSecrets).size !== scalarSecrets.length
+		|| scalarSecrets.some((secret) => registrySecrets.has(secret))
+	) return null;
+	return registries as { [Role in keyof typeof registries]: ReadonlyMap<string, readonly string[]> };
+}
+
+export function purposeScopedServerRolesAreDisjoint() {
+	return purposeScopedServerRoleConfiguration() !== null;
+}
+
+export async function tenantForSecretFixed(
+	registry: ReadonlyMap<string, readonly string[]>,
+	supplied: string,
+) {
+	const valid = isServerSecretCandidate(supplied);
+	const candidates: Array<{ siteUrl: string | null; configured: boolean; value: string }> = [];
+	for (const [siteUrl, secrets] of registry) {
+		candidates.push({ siteUrl, configured: true, value: secrets[0] ?? "" });
+		candidates.push({ siteUrl, configured: secrets.length > 1, value: secrets[1] ?? "" });
+	}
+	while (candidates.length < TENANT_LIMIT * SECRETS_PER_TENANT_LIMIT) {
+		candidates.push({ siteUrl: null, configured: false, value: "" });
+	}
+	const suppliedDigest = await digest(valid ? supplied : "");
+	const candidateDigests = await Promise.all(candidates.map(({ value }) => digest(value)));
+	const matches = new Set<string>();
+	for (let candidateIndex = 0; candidateIndex < candidates.length; candidateIndex += 1) {
+		const candidate = candidates[candidateIndex];
+		const candidateDigest = candidateDigests[candidateIndex];
+		if (!candidate || !candidateDigest) continue;
+		let difference = 0;
+		for (let byteIndex = 0; byteIndex < suppliedDigest.byteLength; byteIndex += 1) {
+			difference |= suppliedDigest[byteIndex] ^ candidateDigest[byteIndex];
+		}
+		if (candidate.configured && candidate.siteUrl && difference === 0) {
+			matches.add(candidate.siteUrl);
+		}
+	}
+	return valid && matches.size === 1 ? [...matches][0]! : null;
+}
+
 export async function tenantSecretMatches(
 	registry: ReadonlyMap<string, readonly string[]>,
 	siteUrl: string,
