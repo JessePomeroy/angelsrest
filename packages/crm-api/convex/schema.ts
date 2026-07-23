@@ -661,6 +661,21 @@ export default defineSchema({
 			"kind",
 			"state",
 			"nextAttemptAt",
+		])
+		// Stale reconciliation is tenant-scoped so one inspector cannot consume a
+		// different tenant's one-shot terminal outcome.
+		.index("by_siteUrl_and_kind_and_state_and_leaseExpiresAt", [
+			"siteUrl",
+			"kind",
+			"state",
+			"leaseExpiresAt",
+		])
+		// The CMS inspector Container is globally single-capacity. Claims read this
+		// exact active range so cross-tenant lease mutations enter its OCC conflict set.
+		.index("by_kind_and_state_and_leaseExpiresAt", [
+			"kind",
+			"state",
+			"leaseExpiresAt",
 		]),
 
 	// Immutable reverse authority for the coordination that originally created

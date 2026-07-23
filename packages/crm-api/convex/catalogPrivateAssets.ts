@@ -1145,10 +1145,132 @@ export const claimEditorStorage = internalMutation({
 	},
 });
 
+const STALE_INSPECTION_LEASE_RECONCILE_LIMIT = 16;
+
+async function reconcileExpiredInspectionLease(
+	ctx: MutationCtx,
+	effect: Doc<"catalogPrivateAssetEditorEffects">,
+	now: number,
+) {
+	const [operation, capability] = await Promise.all([
+		ctx.db
+			.query("catalogPrivateAssetEditorOperations")
+			.withIndex("by_siteUrl_and_operationId", (q) =>
+				q.eq("siteUrl", effect.siteUrl).eq("operationId", effect.operationId),
+			)
+			.unique(),
+		ctx.db
+			.query("catalogPrivateAssetEditorCapabilities")
+			.withIndex("by_siteUrl_and_operationId_and_purpose", (q) =>
+				q.eq("siteUrl", effect.siteUrl)
+					.eq("operationId", effect.operationId)
+					.eq("purpose", "inspection"),
+			)
+			.unique(),
+	]);
+	const currentGeneration = operation?.journalVersion === 1
+		&& operation.generation === effect.generation;
+	if (operation && currentGeneration && operation.lifecycle === "verified") {
+		// Receipt authority wins even on attempt 8. Retain the lease fence so a
+		// success ACK already in flight can still commit through reconciledSuccess.
+		await ctx.db.patch(effect._id, {
+			state: "acknowledged",
+			lastOutcome: "reconciled",
+			updatedAt: now,
+			acknowledgedAt: now,
+		});
+		return null;
+	}
+	if (effect.attempts >= CATALOG_EDITOR_MAX_ATTEMPTS) {
+		await ctx.db.patch(effect._id, {
+			state: "failed",
+			lastOutcome: "attempts_exhausted",
+			leaseDigest: undefined,
+			leaseExpiresAt: undefined,
+			updatedAt: now,
+		});
+		return { claimId: effect._id, status: "attempts_exhausted" as const };
+	}
+	if (
+		!operation
+		|| !currentGeneration
+		|| operation.lifecycle !== "storage_recorded"
+		|| !capability
+		|| capability.generation !== effect.generation
+		|| capability.value === undefined
+		|| capability.expiresAt - now
+			< CATALOG_EDITOR_INSPECTION_LEASE_MS + CATALOG_EDITOR_CLAIM_EXPIRY_SKEW_MS
+	) {
+		await ctx.db.patch(effect._id, {
+			state: "failed",
+			lastOutcome: "expired",
+			leaseDigest: undefined,
+			leaseExpiresAt: undefined,
+			updatedAt: now,
+		});
+		if (operation && currentGeneration && operation.lifecycle !== "verified") {
+			await ctx.db.patch(operation._id, { lifecycle: "expired", updatedAt: now });
+		}
+		return { claimId: effect._id, status: "capability_expired" as const };
+	}
+	await ctx.db.patch(effect._id, {
+		state: "queued",
+		nextAttemptAt: now,
+		leaseDigest: undefined,
+		leaseExpiresAt: undefined,
+		updatedAt: now,
+	});
+	return null;
+}
+
 export const claimEditorInspection = internalMutation({
 	args: { siteUrl: v.string(), leaseDigest: v.string() },
 	handler: async (ctx, args) => {
 		const now = Date.now();
+		// Missing optional index fields sort before numbers, so this tenant-scoped
+		// upper range includes both expired leases and legacy rows without expiry.
+		const staleLeases = await ctx.db
+			.query("catalogPrivateAssetEditorEffects")
+			.withIndex("by_siteUrl_and_kind_and_state_and_leaseExpiresAt", (q) =>
+				q.eq("siteUrl", args.siteUrl)
+					.eq("kind", "inspection_dispatch")
+					.eq("state", "leased")
+					.lte("leaseExpiresAt", now),
+			)
+			.take(STALE_INSPECTION_LEASE_RECONCILE_LIMIT);
+		for (const staleLease of staleLeases) {
+			const terminal = await reconcileExpiredInspectionLease(ctx, staleLease, now);
+			// Stop after one terminal transition so every terminal result is returned
+			// exactly once instead of being consumed behind another claim response.
+			if (terminal) return terminal;
+		}
+
+		const malformedLease = await ctx.db
+			.query("catalogPrivateAssetEditorEffects")
+			.withIndex("by_kind_and_state_and_leaseExpiresAt", (q) =>
+				q.eq("kind", "inspection_dispatch")
+					.eq("state", "leased")
+					.eq("leaseExpiresAt", undefined),
+			)
+			.take(1);
+		if (malformedLease.length > 0) return { status: "rate_limited" as const };
+
+		// This deployed-Convex empty-range read is the global single-flight gate.
+		// Serializable OCC records the index range dependency: a concurrent
+		// cross-tenant queued -> leased patch enters the range, invalidates this
+		// snapshot, and retries one claimant. convex-test serializes top-level
+		// mutations, so tests can cover range membership and final invariants but
+		// cannot manufacture overlapping snapshots.
+		const activeLease = await ctx.db
+			.query("catalogPrivateAssetEditorEffects")
+			.withIndex("by_kind_and_state_and_leaseExpiresAt", (q) =>
+				q.eq("kind", "inspection_dispatch")
+					.eq("state", "leased")
+					.gt("leaseExpiresAt", now),
+			)
+			.take(1);
+		if (activeLease.length > 0) return { status: "rate_limited" as const };
+
 		const queued = await ctx.db
 			.query("catalogPrivateAssetEditorEffects")
 			.withIndex("by_siteUrl_and_kind_and_state_and_nextAttemptAt", (q) =>
@@ -1158,17 +1280,8 @@ export const claimEditorInspection = internalMutation({
 					.lte("nextAttemptAt", now),
 			)
 			.take(1);
-		const expired = await ctx.db
-			.query("catalogPrivateAssetEditorEffects")
-			.withIndex("by_siteUrl_and_kind_and_state_and_nextAttemptAt", (q) =>
-				q.eq("siteUrl", args.siteUrl)
-					.eq("kind", "inspection_dispatch")
-					.eq("state", "leased")
-					.lte("nextAttemptAt", now),
-			)
-			.take(1);
-		const effect = [...queued, ...expired].sort((a, b) => a.nextAttemptAt - b.nextAttemptAt)[0];
-		if (!effect) throw catalogEditorJournalError("rate_limited");
+		const effect = queued[0];
+		if (!effect) return { status: "rate_limited" as const };
 		const claimed = await claimEffect(ctx, effect, "inspection", args.leaseDigest, now);
 		if ("status" in claimed) return { claimId: effect._id, ...claimed };
 		return {

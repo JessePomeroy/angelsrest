@@ -319,10 +319,83 @@ async function receiptsFor(operationId: string) {
 
 async function journalState(t: ReturnType<typeof convexTest>) {
 	return await t.run(async (ctx) => ({
-		operations: await ctx.db.query("catalogPrivateAssetEditorOperations").take(20),
-		capabilities: await ctx.db.query("catalogPrivateAssetEditorCapabilities").take(40),
-		effects: await ctx.db.query("catalogPrivateAssetEditorEffects").take(40),
+		operations: await ctx.db.query("catalogPrivateAssetEditorOperations").take(50),
+		capabilities: await ctx.db.query("catalogPrivateAssetEditorCapabilities").take(100),
+		effects: await ctx.db.query("catalogPrivateAssetEditorEffects").take(100),
 	}));
+}
+
+type InspectionJobSeed = {
+	siteUrl: string;
+	key: string;
+	state?: "queued" | "leased";
+	attempts?: number;
+	generation?: number;
+	operationGeneration?: number;
+	operationLifecycle?: "storage_recorded" | "verified";
+	capabilityGeneration?: number;
+	capabilityExpiresAt?: number;
+	leaseExpiresAt?: number;
+	omitLeaseExpiresAt?: boolean;
+};
+
+async function seedInspectionJob(
+	t: ReturnType<typeof convexTest>,
+	seed: InspectionJobSeed,
+) {
+	const now = Date.now();
+	const generation = seed.generation ?? 1;
+	const state = seed.state ?? "queued";
+	const operationId = seed.key.repeat(40);
+	return await t.run(async (ctx) => {
+		const operationIdRow = await ctx.db.insert("catalogPrivateAssetEditorOperations", {
+			siteUrl: seed.siteUrl,
+			operationId,
+			sourceId: `source-${seed.key}`,
+			kind: "print_source",
+			assetKey: `asset-${seed.key}`,
+			privateObjectKey: `private/${seed.key}`,
+			createdAt: now,
+			journalVersion: 1,
+			lifecycle: seed.operationLifecycle ?? "storage_recorded",
+			generation: seed.operationGeneration ?? generation,
+			updatedAt: now,
+		});
+		const capabilityId = await ctx.db.insert("catalogPrivateAssetEditorCapabilities", {
+			siteUrl: seed.siteUrl,
+			operationId,
+			purpose: "inspection",
+			value: token(seed.key),
+			digest: seed.key.repeat(64),
+			issuedAt: now,
+			expiresAt: seed.capabilityExpiresAt ?? now + 60 * 60 * 1000,
+			purgeAt: now + 2 * 60 * 60 * 1000,
+			generation: seed.capabilityGeneration ?? generation,
+			createdAt: now,
+			updatedAt: now,
+		});
+		const leaseExpiresAt = seed.omitLeaseExpiresAt
+			? undefined
+			: seed.leaseExpiresAt ?? now - 1;
+		const effectId = await ctx.db.insert("catalogPrivateAssetEditorEffects", {
+			siteUrl: seed.siteUrl,
+			operationId,
+			kind: "inspection_dispatch",
+			generation,
+			state,
+			attempts: seed.attempts ?? 0,
+			nextAttemptAt: state === "leased" ? leaseExpiresAt ?? now : now,
+			...(state === "leased"
+				? {
+					leaseDigest: seed.key.repeat(64),
+					...(leaseExpiresAt === undefined ? {} : { leaseExpiresAt }),
+				}
+				: {}),
+			createdAt: now,
+			updatedAt: now,
+		});
+		return { operationIdRow, capabilityId, effectId, operationId };
+	});
 }
 
 describe("Gallery Worker prepare attestation locked vectors", () => {
@@ -1108,5 +1181,527 @@ describe("catalog editor durable journal HTTP roles", () => {
 		expect(tombstone).toMatchObject({ purpose: "upload", digest: upload.digest, generation: 1 });
 		expect(tombstone?.value).toBeUndefined();
 		expect((await post(t, UPLOAD_PATH, HOST_SECRET, { uploadHandle: HANDLE_A })).status).toBe(410);
+	});
+});
+
+describe("catalog editor inspection global single-flight", () => {
+	test("serializes Promise-submitted two-tenant claims to one lease", async () => {
+		const t = convexTest(schema, modules);
+		// convex-test locks top-level transactions, so Promise.all does not create
+		// parallel snapshots. This covers the invariant after its serialized calls;
+		// deployed Convex supplies the serializable index-range retry.
+		await seedInspectionJob(t, { siteUrl: SITE, key: "a" });
+		await seedInspectionJob(t, { siteUrl: OTHER_SITE, key: "b" });
+
+		const responses = await Promise.all([
+			post(t, INSPECTION_CLAIM_PATH, INSPECTOR_SECRET, {}),
+			post(t, INSPECTION_CLAIM_PATH, OTHER_INSPECTOR_SECRET, {}),
+		]);
+		expect(responses.map(({ status }) => status).sort()).toEqual([200, 429]);
+		const winner = responses.find(({ status }) => status === 200);
+		if (!winner) throw new Error("missing single-flight winner");
+		expect(await winner.json()).toMatchObject({
+			claimId: expect.any(String),
+			inspectionContinuation: expect.stringContaining("cms-editor-upload-v1."),
+			lease: expect.stringMatching(/^[0-9a-f]{40}$/),
+		});
+		const state = await journalState(t);
+		expect(state.effects.filter(({ state }) => state === "leased")).toHaveLength(1);
+		expect(state.effects.reduce((attempts, effect) => attempts + effect.attempts, 0)).toBe(1);
+		expect(state.effects.find(({ state }) => state === "queued")).toMatchObject({ attempts: 0 });
+	});
+
+	test("serializes many Promise-submitted claims without charging losing attempts", async () => {
+		const t = convexTest(schema, modules);
+		for (const [index, key] of [..."cdefgh"].entries()) {
+			await seedInspectionJob(t, {
+				siteUrl: index % 2 === 0 ? SITE : OTHER_SITE,
+				key,
+			});
+		}
+		const responses = await Promise.all(Array.from({ length: 12 }, async (_, index) =>
+			await post(
+				t,
+				INSPECTION_CLAIM_PATH,
+				index % 2 === 0 ? INSPECTOR_SECRET : OTHER_INSPECTOR_SECRET,
+				{},
+			)
+		));
+		expect(responses.filter(({ status }) => status === 200)).toHaveLength(1);
+		expect(responses.filter(({ status }) => status === 429)).toHaveLength(11);
+		const effects = (await journalState(t)).effects;
+		expect(effects.filter(({ state }) => state === "leased")).toHaveLength(1);
+		expect(effects.filter(({ attempts }) => attempts === 1)).toHaveLength(1);
+		expect(effects.filter(({ attempts }) => attempts === 0)).toHaveLength(5);
+	});
+
+	test("moves a lease mutation through the exact active and stale index ranges", async () => {
+		vi.useFakeTimers();
+		vi.setSystemTime(new Date("2026-02-01T00:00:00.000Z"));
+		const t = convexTest(schema, modules);
+		const job = await seedInspectionJob(t, { siteUrl: SITE, key: "w" });
+		const membership = await t.run(async (ctx) => {
+			const activeIds = async () => (await ctx.db
+				.query("catalogPrivateAssetEditorEffects")
+				.withIndex("by_kind_and_state_and_leaseExpiresAt", (q) =>
+					q.eq("kind", "inspection_dispatch")
+						.eq("state", "leased")
+						.gt("leaseExpiresAt", Date.now()),
+				)
+				.take(10)).map(({ _id }) => _id);
+			const staleIds = async () => (await ctx.db
+				.query("catalogPrivateAssetEditorEffects")
+				.withIndex("by_siteUrl_and_kind_and_state_and_leaseExpiresAt", (q) =>
+					q.eq("siteUrl", SITE)
+						.eq("kind", "inspection_dispatch")
+						.eq("state", "leased")
+						.lte("leaseExpiresAt", Date.now()),
+				)
+				.take(10)).map(({ _id }) => _id);
+			const before = await activeIds();
+			await ctx.db.patch(job.effectId, {
+				state: "leased",
+				leaseDigest: "w".repeat(64),
+				leaseExpiresAt: Date.now() + CATALOG_EDITOR_INSPECTION_LEASE_MS,
+			});
+			const active = await activeIds();
+			await ctx.db.patch(job.effectId, { leaseExpiresAt: Date.now() });
+			return { before, active, after: await activeIds(), stale: await staleIds() };
+		});
+		expect(membership).toEqual({
+			before: [],
+			active: [job.effectId],
+			after: [],
+			stale: [job.effectId],
+		});
+	});
+
+	test("leaves foreign terminal leases for exact one-shot owner outcomes", async () => {
+		vi.useFakeTimers();
+		vi.setSystemTime(new Date("2026-02-01T00:00:00.000Z"));
+		const t = convexTest(schema, modules);
+		const exhausted = await seedInspectionJob(t, {
+			siteUrl: SITE,
+			key: "x",
+			state: "leased",
+			attempts: 8,
+			leaseExpiresAt: Date.now(),
+		});
+		const expired = await seedInspectionJob(t, {
+			siteUrl: SITE,
+			key: "y",
+			state: "leased",
+			attempts: 1,
+			capabilityExpiresAt: Date.now(),
+			leaseExpiresAt: Date.now(),
+		});
+		const foreignDue = await seedInspectionJob(t, { siteUrl: OTHER_SITE, key: "z" });
+
+		const foreignClaim = await post(t, INSPECTION_CLAIM_PATH, OTHER_INSPECTOR_SECRET, {});
+		expect(foreignClaim.status).toBe(200);
+		const foreignClaimBody = await foreignClaim.json() as { claimId: string; lease: string };
+		expect(foreignClaimBody).toMatchObject({ claimId: foreignDue.effectId });
+		let state = await journalState(t);
+		const untouchedExhausted = state.effects.find(({ _id }) => _id === exhausted.effectId);
+		const untouchedExpired = state.effects.find(({ _id }) => _id === expired.effectId);
+		expect(untouchedExhausted).toMatchObject({ state: "leased", attempts: 8 });
+		expect(untouchedExhausted?.lastOutcome).toBeUndefined();
+		expect(untouchedExpired).toMatchObject({ state: "leased", attempts: 1 });
+		expect(untouchedExpired?.lastOutcome).toBeUndefined();
+
+		expect((await post(t, INSPECTION_ACK_PATH, OTHER_INSPECTOR_SECRET, {
+			claimId: foreignClaimBody.claimId,
+			lease: foreignClaimBody.lease,
+			outcome: "success",
+		})).status).toBe(200);
+		const terminalBodies = [];
+		for (let index = 0; index < 2; index += 1) {
+			const response = await post(t, INSPECTION_CLAIM_PATH, INSPECTOR_SECRET, {});
+			expect(response.status).toBe(200);
+			terminalBodies.push(await response.json());
+		}
+		expect(terminalBodies).toEqual([
+			{ claimId: exhausted.effectId, status: "attempts_exhausted" },
+			{ claimId: expired.effectId, status: "capability_expired" },
+		]);
+		expect((await post(t, INSPECTION_CLAIM_PATH, INSPECTOR_SECRET, {})).status).toBe(429);
+		state = await journalState(t);
+		expect(state.effects.find(({ _id }) => _id === exhausted.effectId)).toMatchObject({
+			state: "failed",
+			lastOutcome: "attempts_exhausted",
+		});
+		expect(state.effects.find(({ _id }) => _id === expired.effectId)).toMatchObject({
+			state: "failed",
+			lastOutcome: "expired",
+		});
+	});
+
+	test("indexes legacy absent expiry and fails closed until its owner repairs it", async () => {
+		vi.useFakeTimers();
+		vi.setSystemTime(new Date("2026-02-01T00:00:00.000Z"));
+		const t = convexTest(schema, modules);
+		const malformed = await seedInspectionJob(t, {
+			siteUrl: OTHER_SITE,
+			key: "A",
+			state: "leased",
+			attempts: 1,
+			omitLeaseExpiresAt: true,
+		});
+		const terminalMalformed = await seedInspectionJob(t, {
+			siteUrl: OTHER_SITE,
+			key: "D",
+			state: "leased",
+			attempts: 8,
+			omitLeaseExpiresAt: true,
+		});
+		const due = await seedInspectionJob(t, { siteUrl: SITE, key: "B" });
+		const indexed = await t.run(async (ctx) => ({
+			global: await ctx.db
+				.query("catalogPrivateAssetEditorEffects")
+				.withIndex("by_kind_and_state_and_leaseExpiresAt", (q) =>
+					q.eq("kind", "inspection_dispatch")
+						.eq("state", "leased")
+						.eq("leaseExpiresAt", undefined),
+				)
+				.take(10),
+			tenantStale: await ctx.db
+				.query("catalogPrivateAssetEditorEffects")
+				.withIndex("by_siteUrl_and_kind_and_state_and_leaseExpiresAt", (q) =>
+					q.eq("siteUrl", OTHER_SITE)
+						.eq("kind", "inspection_dispatch")
+						.eq("state", "leased")
+						.lte("leaseExpiresAt", Date.now()),
+				)
+				.take(10),
+		}));
+		expect(indexed.global.map(({ _id }) => _id)).toEqual([
+			malformed.effectId,
+			terminalMalformed.effectId,
+		]);
+		expect(indexed.tenantStale.map(({ _id }) => _id)).toEqual([
+			malformed.effectId,
+			terminalMalformed.effectId,
+		]);
+
+		expect((await post(t, INSPECTION_CLAIM_PATH, INSPECTOR_SECRET, {})).status).toBe(429);
+		let state = await journalState(t);
+		expect(state.effects.find(({ _id }) => _id === due.effectId)).toMatchObject({
+			state: "queued",
+			attempts: 0,
+		});
+		expect(state.effects.find(({ _id }) => _id === malformed.effectId)?.leaseExpiresAt)
+			.toBeUndefined();
+
+		const terminalized = await post(t, INSPECTION_CLAIM_PATH, OTHER_INSPECTOR_SECRET, {});
+		expect(terminalized.status).toBe(200);
+		expect(await terminalized.json()).toEqual({
+			claimId: terminalMalformed.effectId,
+			status: "attempts_exhausted",
+		});
+		const repaired = await post(t, INSPECTION_CLAIM_PATH, OTHER_INSPECTOR_SECRET, {});
+		expect(repaired.status).toBe(200);
+		expect(await repaired.json()).toMatchObject({ claimId: malformed.effectId });
+		state = await journalState(t);
+		expect(state.effects.find(({ _id }) => _id === malformed.effectId)).toMatchObject({
+			state: "leased",
+			attempts: 2,
+			leaseExpiresAt: Date.now() + CATALOG_EDITOR_INSPECTION_LEASE_MS,
+		});
+	});
+
+	test("foreign expired leases neither block fresh work nor get reconciled", async () => {
+		vi.useFakeTimers();
+		vi.setSystemTime(new Date("2026-02-01T00:00:00.000Z"));
+		const t = convexTest(schema, modules);
+		const stale = await seedInspectionJob(t, {
+			siteUrl: SITE,
+			key: "i",
+			state: "leased",
+			attempts: 1,
+			leaseExpiresAt: Date.now(),
+		});
+		const other = await seedInspectionJob(t, { siteUrl: OTHER_SITE, key: "j" });
+
+		const otherResponse = await post(t, INSPECTION_CLAIM_PATH, OTHER_INSPECTOR_SECRET, {});
+		expect(otherResponse.status).toBe(200);
+		const otherClaim = await otherResponse.json() as { claimId: string; lease: string };
+		expect(otherClaim.claimId).toBe(other.effectId);
+		let state = await journalState(t);
+		expect(state.effects.find(({ _id }) => _id === stale.effectId)).toMatchObject({
+			state: "leased",
+			attempts: 1,
+			leaseDigest: "i".repeat(64),
+			leaseExpiresAt: Date.now(),
+		});
+
+		expect((await post(t, INSPECTION_ACK_PATH, OTHER_INSPECTOR_SECRET, {
+			claimId: otherClaim.claimId,
+			lease: otherClaim.lease,
+			outcome: "success",
+		})).status).toBe(200);
+		const recoveredResponse = await post(t, INSPECTION_CLAIM_PATH, INSPECTOR_SECRET, {});
+		expect(recoveredResponse.status).toBe(200);
+		expect(await recoveredResponse.json()).toMatchObject({ claimId: stale.effectId });
+		state = await journalState(t);
+		expect(state.effects.find(({ _id }) => _id === stale.effectId)).toMatchObject({
+			state: "leased",
+			attempts: 2,
+		});
+	});
+
+	test("globally blocks on a current lease without consuming a different tenant job", async () => {
+		vi.useFakeTimers();
+		vi.setSystemTime(new Date("2026-02-01T00:00:00.000Z"));
+		const t = convexTest(schema, modules);
+		const active = await seedInspectionJob(t, {
+			siteUrl: SITE,
+			key: "k",
+			state: "leased",
+			attempts: 1,
+			leaseExpiresAt: Date.now() + CATALOG_EDITOR_INSPECTION_LEASE_MS,
+		});
+		const queued = await seedInspectionJob(t, { siteUrl: OTHER_SITE, key: "l" });
+		const response = await post(t, INSPECTION_CLAIM_PATH, OTHER_INSPECTOR_SECRET, {});
+		expect(response.status).toBe(429);
+		expect(await response.text()).toBe("Work is not currently claimable");
+		const state = await journalState(t);
+		expect(state.effects.find(({ _id }) => _id === active.effectId)).toMatchObject({
+			state: "leased",
+			attempts: 1,
+		});
+		expect(state.effects.find(({ _id }) => _id === queued.effectId)).toMatchObject({
+			state: "queued",
+			attempts: 0,
+		});
+	});
+
+	test("reconciles stale generation and capability failures without touching newer authority", async () => {
+		vi.useFakeTimers();
+		vi.setSystemTime(new Date("2026-02-01T00:00:00.000Z"));
+		const t = convexTest(schema, modules);
+		const generationMismatch = await seedInspectionJob(t, {
+			siteUrl: SITE,
+			key: "m",
+			state: "leased",
+			attempts: 1,
+			operationGeneration: 2,
+			leaseExpiresAt: Date.now(),
+		});
+		const expiredCapability = await seedInspectionJob(t, {
+			siteUrl: SITE,
+			key: "n",
+			state: "leased",
+			attempts: 1,
+			capabilityExpiresAt: Date.now()
+				+ CATALOG_EDITOR_INSPECTION_LEASE_MS
+				+ CATALOG_EDITOR_CLAIM_EXPIRY_SKEW_MS
+				- 1,
+			leaseExpiresAt: Date.now(),
+		});
+		const due = await seedInspectionJob(t, { siteUrl: SITE, key: "o" });
+
+		const firstTerminal = await post(t, INSPECTION_CLAIM_PATH, INSPECTOR_SECRET, {});
+		expect(firstTerminal.status).toBe(200);
+		expect(await firstTerminal.json()).toEqual({
+			claimId: generationMismatch.effectId,
+			status: "capability_expired",
+		});
+		const secondTerminal = await post(t, INSPECTION_CLAIM_PATH, INSPECTOR_SECRET, {});
+		expect(secondTerminal.status).toBe(200);
+		expect(await secondTerminal.json()).toEqual({
+			claimId: expiredCapability.effectId,
+			status: "capability_expired",
+		});
+		const response = await post(t, INSPECTION_CLAIM_PATH, INSPECTOR_SECRET, {});
+		expect(response.status).toBe(200);
+		expect(await response.json()).toMatchObject({ claimId: due.effectId });
+		const state = await journalState(t);
+		expect(state.effects.find(({ _id }) => _id === generationMismatch.effectId)).toMatchObject({
+			state: "failed",
+			lastOutcome: "expired",
+			attempts: 1,
+		});
+		expect(state.operations.find(({ _id }) => _id === generationMismatch.operationIdRow))
+			.toMatchObject({ lifecycle: "storage_recorded", generation: 2 });
+		expect(state.effects.find(({ _id }) => _id === expiredCapability.effectId)).toMatchObject({
+			state: "failed",
+			lastOutcome: "expired",
+			attempts: 1,
+		});
+		expect(state.operations.find(({ _id }) => _id === expiredCapability.operationIdRow))
+			.toMatchObject({ lifecycle: "expired", generation: 1 });
+	});
+
+	test("verified receipt authority reconciles attempt 8 and accepts its late success ACK", async () => {
+		vi.useFakeTimers();
+		vi.setSystemTime(new Date("2026-02-01T00:00:00.000Z"));
+		const t = convexTest(schema, modules);
+		const verified = await seedInspectionJob(t, {
+			siteUrl: SITE,
+			key: "C",
+			attempts: 7,
+		});
+		const claimResponse = await post(t, INSPECTION_CLAIM_PATH, INSPECTOR_SECRET, {});
+		expect(claimResponse.status).toBe(200);
+		const claim = await claimResponse.json() as {
+			claimId: string;
+			lease: string;
+			leaseExpiresAt: string;
+		};
+		expect(claim.claimId).toBe(verified.effectId);
+		await t.run(async (ctx) => {
+			await ctx.db.patch(verified.operationIdRow, { lifecycle: "verified" });
+		});
+		vi.setSystemTime(new Date(claim.leaseExpiresAt));
+
+		expect((await post(t, INSPECTION_CLAIM_PATH, INSPECTOR_SECRET, {})).status).toBe(429);
+		let effect = (await journalState(t)).effects.find(({ _id }) => _id === verified.effectId);
+		expect(effect).toMatchObject({
+			state: "acknowledged",
+			attempts: 8,
+			lastOutcome: "reconciled",
+			leaseExpiresAt: Date.parse(claim.leaseExpiresAt),
+		});
+		expect(effect?.leaseDigest).toBeDefined();
+
+		const lateAck = {
+			claimId: claim.claimId,
+			lease: claim.lease,
+			outcome: "success",
+		};
+		expect(await (await post(t, INSPECTION_ACK_PATH, INSPECTOR_SECRET, lateAck)).json())
+			.toEqual({ status: "acknowledged" });
+		expect(await (await post(t, INSPECTION_ACK_PATH, INSPECTOR_SECRET, lateAck)).json())
+			.toEqual({ status: "acknowledged" });
+		effect = (await journalState(t)).effects.find(({ _id }) => _id === verified.effectId);
+		expect(effect).toMatchObject({
+			state: "acknowledged",
+			attempts: 8,
+			lastOutcome: "success",
+		});
+	});
+
+	test("commits stale attempt exhaustion as an exact one-shot terminal response", async () => {
+		vi.useFakeTimers();
+		vi.setSystemTime(new Date("2026-02-01T00:00:00.000Z"));
+		const t = convexTest(schema, modules);
+		const exhausted = await seedInspectionJob(t, {
+			siteUrl: SITE,
+			key: "p",
+			state: "leased",
+			attempts: 8,
+			leaseExpiresAt: Date.now(),
+		});
+		const response = await post(t, INSPECTION_CLAIM_PATH, INSPECTOR_SECRET, {});
+		expect(response.status).toBe(200);
+		expect(await response.json()).toEqual({
+			claimId: exhausted.effectId,
+			status: "attempts_exhausted",
+		});
+		expect((await journalState(t)).effects.find(({ _id }) => _id === exhausted.effectId))
+			.toMatchObject({ state: "failed", attempts: 8, lastOutcome: "attempts_exhausted" });
+		expect((await post(t, INSPECTION_CLAIM_PATH, INSPECTOR_SECRET, {})).status).toBe(429);
+	});
+
+	test("does not spend the reconciliation bound on another tenant's stale rows", async () => {
+		vi.useFakeTimers();
+		vi.setSystemTime(new Date("2026-02-01T00:00:00.000Z"));
+		const t = convexTest(schema, modules);
+		const stale = [];
+		for (const key of [..."abcdefghijklmnopqr"]) {
+			stale.push(await seedInspectionJob(t, {
+				siteUrl: OTHER_SITE,
+				key,
+				state: "leased",
+				attempts: 1,
+				leaseExpiresAt: Date.now(),
+			}));
+		}
+		const due = await seedInspectionJob(t, { siteUrl: SITE, key: "s" });
+		const response = await post(t, INSPECTION_CLAIM_PATH, INSPECTOR_SECRET, {});
+		expect(response.status).toBe(200);
+		expect(await response.json()).toMatchObject({ claimId: due.effectId });
+		const effects = (await journalState(t)).effects;
+		const staleEffects = stale.map(({ effectId }) =>
+			effects.find(({ _id }) => _id === effectId)
+		);
+		expect(staleEffects.filter((effect) => effect?.state === "queued")).toHaveLength(0);
+		expect(staleEffects.filter((effect) => effect?.state === "leased")).toHaveLength(18);
+		expect(staleEffects.every((effect) => effect?.attempts === 1)).toBe(true);
+	});
+
+	test("releases the gate on retry ACK, replays ACKs, and fences them after the next claim", async () => {
+		vi.useFakeTimers();
+		vi.setSystemTime(new Date("2026-02-01T00:00:00.000Z"));
+		const t = convexTest(schema, modules);
+		await seedInspectionJob(t, { siteUrl: SITE, key: "t" });
+		await seedInspectionJob(t, { siteUrl: OTHER_SITE, key: "u" });
+		const firstResponse = await post(t, INSPECTION_CLAIM_PATH, INSPECTOR_SECRET, {});
+		const firstClaim = await firstResponse.json() as { claimId: string; lease: string };
+		const retryAck = {
+			claimId: firstClaim.claimId,
+			lease: firstClaim.lease,
+			outcome: "retryable",
+		};
+		const firstAck = await post(t, INSPECTION_ACK_PATH, INSPECTOR_SECRET, retryAck);
+		const firstAckBody = await firstAck.json() as { status: string; retryAt: string };
+		expect(firstAckBody).toMatchObject({ status: "retry_scheduled" });
+		expect(await (await post(t, INSPECTION_ACK_PATH, INSPECTOR_SECRET, retryAck)).json())
+			.toEqual(firstAckBody);
+
+		const otherResponse = await post(t, INSPECTION_CLAIM_PATH, OTHER_INSPECTOR_SECRET, {});
+		expect(otherResponse.status).toBe(200);
+		const otherClaim = await otherResponse.json() as { claimId: string; lease: string };
+		const successAck = {
+			claimId: otherClaim.claimId,
+			lease: otherClaim.lease,
+			outcome: "success",
+		};
+		expect(await (await post(
+			t,
+			INSPECTION_ACK_PATH,
+			OTHER_INSPECTOR_SECRET,
+			successAck,
+		)).json()).toEqual({ status: "acknowledged" });
+		expect(await (await post(
+			t,
+			INSPECTION_ACK_PATH,
+			OTHER_INSPECTOR_SECRET,
+			successAck,
+		)).json()).toEqual({ status: "acknowledged" });
+
+		vi.setSystemTime(new Date(firstAckBody.retryAt));
+		const retryResponse = await post(t, INSPECTION_CLAIM_PATH, INSPECTOR_SECRET, {});
+		expect(retryResponse.status).toBe(200);
+		expect((await retryResponse.json() as { claimId: string }).claimId).toBe(firstClaim.claimId);
+		expect((await post(t, INSPECTION_ACK_PATH, INSPECTOR_SECRET, retryAck)).status).toBe(409);
+		const effect = (await journalState(t)).effects.find(({ _id }) => _id === firstClaim.claimId);
+		expect(effect).toMatchObject({ state: "leased", attempts: 2 });
+	});
+
+	test("does not apply the inspection gate to storage claims", async () => {
+		vi.useFakeTimers();
+		vi.setSystemTime(new Date("2026-02-01T00:00:00.000Z"));
+		const t = convexTest(schema, modules);
+		await seedClients(t);
+		const active = await seedInspectionJob(t, {
+			siteUrl: OTHER_SITE,
+			key: "v",
+			state: "leased",
+			attempts: 1,
+			leaseExpiresAt: Date.now() + CATALOG_EDITOR_INSPECTION_LEASE_MS,
+		});
+		await begin(t);
+		expect((await post(t, INSPECTION_CLAIM_PATH, INSPECTOR_SECRET, {})).status).toBe(429);
+		const storageResponse = await post(
+			t,
+			STORAGE_CLAIM_PATH,
+			HOST_SECRET,
+			{ uploadHandle: HANDLE_A },
+		);
+		expect(storageResponse.status).toBe(200);
+		expect(await storageResponse.json()).toHaveProperty("storageContinuation", token("b"));
+		expect((await journalState(t)).effects.find(({ _id }) => _id === active.effectId))
+			.toMatchObject({ state: "leased", attempts: 1 });
 	});
 });
