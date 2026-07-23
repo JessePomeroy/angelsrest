@@ -33,6 +33,8 @@ import type * as helpers_blogContentQueries from "../helpers/blogContentQueries.
 import type * as helpers_blogContentStore from "../helpers/blogContentStore.js";
 import type * as helpers_blogContentValidationSupport from "../helpers/blogContentValidationSupport.js";
 import type * as helpers_blogContentValidators from "../helpers/blogContentValidators.js";
+import type * as helpers_catalogPrivateAssetCanarySnapshot from "../helpers/catalogPrivateAssetCanarySnapshot.js";
+import type * as helpers_catalogPrivateAssetEditorErrors from "../helpers/catalogPrivateAssetEditorErrors.js";
 import type * as helpers_catalogPrivateAssetReceiptContract from "../helpers/catalogPrivateAssetReceiptContract.js";
 import type * as helpers_catalogPrivateAssetReceiptValidation from "../helpers/catalogPrivateAssetReceiptValidation.js";
 import type * as helpers_catalogPrivateAssetRegistry from "../helpers/catalogPrivateAssetRegistry.js";
@@ -140,6 +142,8 @@ declare const fullApi: ApiFromModules<{
   "helpers/blogContentStore": typeof helpers_blogContentStore;
   "helpers/blogContentValidationSupport": typeof helpers_blogContentValidationSupport;
   "helpers/blogContentValidators": typeof helpers_blogContentValidators;
+  "helpers/catalogPrivateAssetCanarySnapshot": typeof helpers_catalogPrivateAssetCanarySnapshot;
+  "helpers/catalogPrivateAssetEditorErrors": typeof helpers_catalogPrivateAssetEditorErrors;
   "helpers/catalogPrivateAssetReceiptContract": typeof helpers_catalogPrivateAssetReceiptContract;
   "helpers/catalogPrivateAssetReceiptValidation": typeof helpers_catalogPrivateAssetReceiptValidation;
   "helpers/catalogPrivateAssetRegistry": typeof helpers_catalogPrivateAssetRegistry;

@@ -15,6 +15,10 @@ import {
 	CATALOG_PRIVATE_ASSET_RECEIPT_SET_V2_VERSION,
 	CATALOG_PRIVATE_ASSET_RECEIPT_SET_VERSION,
 } from "./catalogPrivateAssetReceiptContract";
+import {
+	catalogPrivateAssetValidationError,
+	catalogPrivateEditorReceiptError,
+} from "./catalogPrivateAssetEditorErrors";
 
 const RECEIPT_SET_MAX_ASSETS = 32;
 const RECEIPT_SET_ID_MAX_LENGTH = 160;
@@ -29,6 +33,16 @@ const FULL_RASTER_PIXEL_MAX = 100_000_000;
 const ZIP_ENTRY_MAX = 10_000;
 const ZIP_COMPRESSION_RATIO_MAX = 1_000;
 const CONTROL_CHARACTER_PATTERN = /[\u0000-\u001f\u007f]/;
+export const CATALOG_PRIVATE_EDITOR_OPERATION_ID_PATTERN = /^[a-f0-9]{40}$/;
+const CATALOG_PRIVATE_EDITOR_SOURCE_PREFIX = "editor-upload:";
+const CATALOG_PRIVATE_EDITOR_ASSET_KEY_PREFIX = "editor-upload-";
+
+/** Portable direct-upload and independently inspected source ceiling. */
+export const CATALOG_PRIVATE_EDITOR_UPLOAD_MAX_SIZE_BYTES = 100_000_000;
+export const CATALOG_PRIVATE_EDITOR_UPLOAD_SHARP_VERSION = "0.35.3";
+export const CATALOG_PRIVATE_EDITOR_UPLOAD_LIBVIPS_VERSION = "8.18.3";
+export const CATALOG_PRIVATE_EDITOR_ZIP_MAX_UNCOMPRESSED_BYTES = 64 * 1024 * 1024;
+export const CATALOG_PRIVATE_EDITOR_ZIP_MAX_COMPRESSION_RATIO = 100;
 
 type RegistrationAudit = {
 	createdAt: number;
@@ -196,14 +210,16 @@ function requireReceiptSetIdentity(
 			&& receiptSet.schemaVersion !== CATALOG_PRIVATE_ASSET_RECEIPT_SET_V2_VERSION)
 		|| receiptSet.receiptSetId.length > RECEIPT_SET_ID_MAX_LENGTH
 		|| !RECEIPT_SET_ID_PATTERN.test(receiptSet.receiptSetId)
-	) throw new Error("Private catalog receipt-set identity is invalid");
+	) throw catalogPrivateAssetValidationError("Private catalog receipt-set identity is invalid");
 }
 
 function requireCanonicalIsoTimestamp(value: string) {
-	if (value.length > 32) throw new Error("Private catalog upload timestamp is invalid");
+	if (value.length > 32) {
+		throw catalogPrivateAssetValidationError("Private catalog upload timestamp is invalid");
+	}
 	const parsed = new Date(value);
 	if (!Number.isFinite(parsed.valueOf()) || parsed.toISOString() !== value) {
-		throw new Error("Private catalog upload timestamp is invalid");
+		throw catalogPrivateAssetValidationError("Private catalog upload timestamp is invalid");
 	}
 }
 
@@ -213,7 +229,7 @@ function requireBoundedEtag(value: string) {
 		|| value.length > ETAG_MAX_LENGTH
 		|| value !== value.trim()
 		|| CONTROL_CHARACTER_PATTERN.test(value)
-	) throw new Error("Private catalog storage ETag is invalid");
+	) throw catalogPrivateAssetValidationError("Private catalog storage ETag is invalid");
 }
 
 function requireReceiptFacts(
@@ -221,15 +237,21 @@ function requireReceiptFacts(
 	receipts: readonly { facts: CatalogPrivateAssetFacts }[],
 ) {
 	if (receipts.length === 0 || receipts.length > RECEIPT_SET_MAX_ASSETS) {
-		throw new Error(`Private catalog receipt sets require 1-${RECEIPT_SET_MAX_ASSETS} assets`);
+		throw catalogPrivateAssetValidationError(
+			`Private catalog receipt sets require 1-${RECEIPT_SET_MAX_ASSETS} assets`,
+		);
 	}
 	const facts = receipts.map((receipt) => receipt.facts);
 	const assetKeys = new Set<string>();
 	for (let index = 0; index < facts.length; index += 1) {
 		const current = facts[index];
-		if (!current) throw new Error("Private catalog receipt set is incomplete");
+		if (!current) {
+			throw catalogPrivateAssetValidationError("Private catalog receipt set is incomplete");
+		}
 		if (assetKeys.has(current.assetKey)) {
-			throw new Error("Private catalog receipt-set asset keys must be unique across kinds");
+			throw catalogPrivateAssetValidationError(
+				"Private catalog receipt-set asset keys must be unique across kinds",
+			);
 		}
 		assetKeys.add(current.assetKey);
 		privateCatalogRegistrationTarget(siteUrl, current, {
@@ -240,7 +262,9 @@ function requireReceiptFacts(
 		});
 		const previous = facts[index - 1];
 		if (previous && compareFacts(previous, current) >= 0) {
-			throw new Error("Private catalog receipts must be unique and canonically ordered");
+			throw catalogPrivateAssetValidationError(
+				"Private catalog receipts must be unique and canonically ordered",
+			);
 		}
 	}
 	return facts;
@@ -248,7 +272,7 @@ function requireReceiptFacts(
 
 function requirePositiveSafeInteger(value: number, maximum: number, field: string) {
 	if (!Number.isSafeInteger(value) || value <= 0 || value > maximum) {
-		throw new Error(`${field} must be a bounded positive safe integer`);
+		throw catalogPrivateAssetValidationError(`${field} must be a bounded positive safe integer`);
 	}
 }
 
@@ -268,13 +292,19 @@ function requireSafeZipInspection(
 		!Number.isFinite(inspection.maximumEntryCompressionRatio)
 		|| inspection.maximumEntryCompressionRatio < 1
 		|| inspection.maximumEntryCompressionRatio > ZIP_COMPRESSION_RATIO_MAX
-	) throw new Error("ZIP compression ratio is outside the safe inspection policy");
+	) {
+		throw catalogPrivateAssetValidationError(
+			"ZIP compression ratio is outside the safe inspection policy",
+		);
+	}
 	for (const count of [
 		inspection.encryptedEntryCount,
 		inspection.unsafePathCount,
 		inspection.duplicatePathCount,
 	]) {
-		if (count !== 0) throw new Error("ZIP inspection contains an unsafe entry");
+		if (count !== 0) {
+			throw catalogPrivateAssetValidationError("ZIP inspection contains an unsafe entry");
+		}
 	}
 }
 
@@ -306,7 +336,11 @@ export function privateCatalogRegistrationTarget(
 		if (
 			(asset.mimeType === "image/jpeg" && !/\.jpe?g$/i.test(asset.originalFilename))
 			|| (asset.mimeType === "image/png" && !/\.png$/i.test(asset.originalFilename))
-		) throw new Error("Private print-source filename does not match its MIME type");
+		) {
+			throw catalogPrivateAssetValidationError(
+				"Private print-source filename does not match its MIME type",
+			);
+		}
 		return { kind: facts.kind, asset };
 	}
 	const asset: PaidDigitalFileAsset = {
@@ -329,7 +363,9 @@ export async function validateCatalogPrivateStorageReceiptSet(
 	}
 	const assetSet = await assetSetIdentity(receiptSet, facts);
 	if (receiptSet.receiptSetId !== assetSet.receiptSetId) {
-		throw new Error("Private catalog receipt-set identity does not match its asset set");
+		throw catalogPrivateAssetValidationError(
+			"Private catalog receipt-set identity does not match its asset set",
+		);
 	}
 	const roleCanonical = canonicalStorageReceiptSet(receiptSet);
 	return {
@@ -351,19 +387,25 @@ export async function validateCatalogPrivateInspectionReceiptSet(
 	for (const receipt of receiptSet.receipts) {
 		if (receipt.facts.kind === "paid_digital_file") {
 			if (receipt.inspection.method !== "safe_zip_v1") {
-				throw new Error("Paid digital files require the safe ZIP inspection policy");
+				throw catalogPrivateAssetValidationError(
+					"Paid digital files require the safe ZIP inspection policy",
+				);
 			}
 			requireSafeZipInspection(receipt.inspection);
 			continue;
 		}
 		if (receiptSet.schemaVersion === CATALOG_PRIVATE_ASSET_RECEIPT_SET_VERSION) {
 			if (receipt.inspection.method !== "decoded_image_v1") {
-				throw new Error("V1 private print sources require decoded image inspection");
+				throw catalogPrivateAssetValidationError(
+					"V1 private print sources require decoded image inspection",
+				);
 			}
 			continue;
 		}
 		if (receipt.inspection.method !== "sharp_libvips_full_raster_v1") {
-			throw new Error("V2 print sources require Sharp/libvips full-raster inspection");
+			throw catalogPrivateAssetValidationError(
+				"V2 print sources require Sharp/libvips full-raster inspection",
+			);
 		}
 		const expectedFormat = receipt.facts.mimeType === "image/jpeg" ? "jpeg" : "png";
 		const expectedPixels = receipt.facts.widthPixels * receipt.facts.heightPixels;
@@ -373,7 +415,11 @@ export async function validateCatalogPrivateInspectionReceiptSet(
 			receipt.inspection.decodedFormat !== expectedFormat
 			|| receipt.inspection.decodedWidthPixels !== receipt.facts.widthPixels
 			|| receipt.inspection.decodedHeightPixels !== receipt.facts.heightPixels
-		) throw new Error("Full-raster decode metadata does not match the declared image");
+		) {
+			throw catalogPrivateAssetValidationError(
+				"Full-raster decode metadata does not match the declared image",
+			);
+		}
 		requirePositiveSafeInteger(
 			receipt.inspection.decodedPixelCount,
 			FULL_RASTER_PIXEL_MAX,
@@ -387,9 +433,13 @@ export async function validateCatalogPrivateInspectionReceiptSet(
 		if (
 			receipt.inspection.decodedPixelCount !== expectedPixels
 			|| receipt.inspection.decodedByteCount !== expectedBytes
-		) throw new Error("Full-raster inspection did not decode every declared pixel byte");
+		) {
+			throw catalogPrivateAssetValidationError(
+				"Full-raster inspection did not decode every declared pixel byte",
+			);
+		}
 		if (!SHA256_PATTERN.test(receipt.inspection.rasterSha256)) {
-			throw new Error("Full-raster checksum is invalid");
+			throw catalogPrivateAssetValidationError("Full-raster checksum is invalid");
 		}
 		for (const version of [
 			receipt.inspection.sharpVersion,
@@ -399,12 +449,14 @@ export async function validateCatalogPrivateInspectionReceiptSet(
 				version.length > DECODER_VERSION_MAX_LENGTH
 				|| version !== version.trim()
 				|| !DECODER_VERSION_PATTERN.test(version)
-			) throw new Error("Full-raster decoder version is invalid");
+			) throw catalogPrivateAssetValidationError("Full-raster decoder version is invalid");
 		}
 	}
 	const assetSet = await assetSetIdentity(receiptSet, facts);
 	if (receiptSet.receiptSetId !== assetSet.receiptSetId) {
-		throw new Error("Private catalog receipt-set identity does not match its asset set");
+		throw catalogPrivateAssetValidationError(
+			"Private catalog receipt-set identity does not match its asset set",
+		);
 	}
 	const roleCanonical = canonicalInspectionReceiptSet(receiptSet);
 	return {
@@ -416,6 +468,296 @@ export async function validateCatalogPrivateInspectionReceiptSet(
 		assetCanonical: assetSet.canonical,
 		canonical: JSON.stringify(roleCanonical),
 	};
+}
+
+const EDITOR_RECEIPT_SET_KEYS = new Set(["schemaVersion", "receiptSetId", "siteUrl", "receipts"]);
+const EDITOR_STORAGE_RECEIPT_KEYS = new Set(["facts", "uploadedAt", "etag"]);
+const EDITOR_INSPECTION_RECEIPT_KEYS = new Set(["facts", "inspection"]);
+const EDITOR_COMMON_FACT_KEYS = [
+	"kind",
+	"assetKey",
+	"privateObjectKey",
+	"originalFilename",
+	"mimeType",
+	"sizeBytes",
+	"sha256",
+	"provenance",
+] as const;
+const EDITOR_PRINT_FACT_KEYS = new Set([...EDITOR_COMMON_FACT_KEYS, "widthPixels", "heightPixels"]);
+const EDITOR_PAID_FACT_KEYS = new Set([...EDITOR_COMMON_FACT_KEYS, "version"]);
+const EDITOR_PRINT_INSPECTION_KEYS = new Set([
+	"method",
+	"decodedFormat",
+	"decodedWidthPixels",
+	"decodedHeightPixels",
+	"decodedChannels",
+	"decodedPageCount",
+	"decodedDepth",
+	"decodedPixelCount",
+	"decodedByteCount",
+	"rasterSha256",
+	"sharpVersion",
+	"libvipsVersion",
+]);
+const EDITOR_PAID_INSPECTION_KEYS = new Set([
+	"method",
+	"entryCount",
+	"totalUncompressedBytes",
+	"maximumEntryCompressionRatio",
+	"encryptedEntryCount",
+	"unsafePathCount",
+	"duplicatePathCount",
+]);
+const EDITOR_PROVENANCE_KEYS = new Set(["provider", "sourceId"]);
+
+type EditorStorageReceiptSet = Extract<
+	CatalogPrivateStorageReceiptSet,
+	{ schemaVersion: typeof CATALOG_PRIVATE_ASSET_RECEIPT_SET_V2_VERSION }
+>;
+type EditorInspectionReceiptSet = Extract<
+	CatalogPrivateInspectionReceiptSet,
+	{ schemaVersion: typeof CATALOG_PRIVATE_ASSET_RECEIPT_SET_V2_VERSION }
+>;
+
+/**
+ * Detects the reserved schema-2 editor namespace without reclassifying retained
+ * V1, Sanity, or noncanonical historical editor provenance.
+ */
+export function claimsCatalogPrivateEditorOperation(
+	receiptSet: CatalogPrivateStorageReceiptSet | CatalogPrivateInspectionReceiptSet,
+) {
+	return (
+		receiptSet.schemaVersion === CATALOG_PRIVATE_ASSET_RECEIPT_SET_V2_VERSION &&
+		receiptSet.receipts.some(
+			({ facts }) =>
+				facts.provenance.provider === "editor_upload" &&
+				(facts.provenance.sourceId.startsWith(CATALOG_PRIVATE_EDITOR_SOURCE_PREFIX) ||
+					facts.assetKey.startsWith(CATALOG_PRIVATE_EDITOR_ASSET_KEY_PREFIX)),
+		)
+	);
+}
+
+function editorShapeError(): never {
+	throw catalogPrivateEditorReceiptError("validation");
+}
+
+function requireEditorObject(
+	value: unknown,
+	allowed: ReadonlySet<string>,
+): asserts value is Record<string, unknown> {
+	if (value === null || typeof value !== "object" || Array.isArray(value)) editorShapeError();
+	for (const key of Object.keys(value)) {
+		if (!allowed.has(key)) editorShapeError();
+	}
+}
+
+function requireEditorString(value: unknown): asserts value is string {
+	if (typeof value !== "string") editorShapeError();
+}
+
+function requireEditorNumber(value: unknown): asserts value is number {
+	if (typeof value !== "number") editorShapeError();
+}
+
+function requireEditorFactsShape(value: unknown): asserts value is CatalogPrivateAssetFacts {
+	requireEditorObject(
+		value,
+		value !== null &&
+			typeof value === "object" &&
+			!Array.isArray(value) &&
+			"kind" in value &&
+			value.kind === "print_source"
+			? EDITOR_PRINT_FACT_KEYS
+			: EDITOR_PAID_FACT_KEYS,
+	);
+	if (value.kind !== "print_source" && value.kind !== "paid_digital_file") editorShapeError();
+	for (const field of ["assetKey", "privateObjectKey", "originalFilename", "sha256"] as const)
+		requireEditorString(value[field]);
+	requireEditorNumber(value.sizeBytes);
+	requireEditorObject(value.provenance, EDITOR_PROVENANCE_KEYS);
+	if (value.provenance.provider !== "editor_upload") editorShapeError();
+	requireEditorString(value.provenance.sourceId);
+	if (value.kind === "print_source") {
+		if (value.mimeType !== "image/jpeg" && value.mimeType !== "image/png") editorShapeError();
+		requireEditorNumber(value.widthPixels);
+		requireEditorNumber(value.heightPixels);
+		return;
+	}
+	if (value.mimeType !== "application/zip") editorShapeError();
+	if ("version" in value) requireEditorString(value.version);
+}
+
+function requireEditorReceiptSetShape(value: unknown): asserts value is Record<string, unknown> & {
+	schemaVersion: 2;
+	receiptSetId: string;
+	siteUrl: string;
+	receipts: unknown[];
+} {
+	requireEditorObject(value, EDITOR_RECEIPT_SET_KEYS);
+	if (value.schemaVersion !== CATALOG_PRIVATE_ASSET_RECEIPT_SET_V2_VERSION) editorShapeError();
+	requireEditorString(value.receiptSetId);
+	requireEditorString(value.siteUrl);
+	if (!Array.isArray(value.receipts) || value.receipts.length !== 1) editorShapeError();
+}
+
+function requireEditorStorageReceiptSetShape(
+	value: unknown,
+): asserts value is EditorStorageReceiptSet {
+	requireEditorReceiptSetShape(value);
+	const receipt = value.receipts[0];
+	requireEditorObject(receipt, EDITOR_STORAGE_RECEIPT_KEYS);
+	requireEditorFactsShape(receipt.facts);
+	requireEditorString(receipt.uploadedAt);
+	requireEditorString(receipt.etag);
+}
+
+function requireEditorInspectionReceiptSetShape(
+	value: unknown,
+): asserts value is EditorInspectionReceiptSet {
+	requireEditorReceiptSetShape(value);
+	const receipt = value.receipts[0];
+	requireEditorObject(receipt, EDITOR_INSPECTION_RECEIPT_KEYS);
+	requireEditorFactsShape(receipt.facts);
+	if (receipt.facts.kind === "print_source") {
+		requireEditorObject(receipt.inspection, EDITOR_PRINT_INSPECTION_KEYS);
+		if (
+			receipt.inspection.method !== "sharp_libvips_full_raster_v1" ||
+			(receipt.inspection.decodedFormat !== "jpeg" && receipt.inspection.decodedFormat !== "png") ||
+			(receipt.inspection.decodedChannels !== 1 &&
+				receipt.inspection.decodedChannels !== 2 &&
+				receipt.inspection.decodedChannels !== 3 &&
+				receipt.inspection.decodedChannels !== 4) ||
+			receipt.inspection.decodedPageCount !== 1 ||
+			receipt.inspection.decodedDepth !== "uchar"
+		)
+			editorShapeError();
+		for (const field of [
+			"decodedWidthPixels",
+			"decodedHeightPixels",
+			"decodedPixelCount",
+			"decodedByteCount",
+		] as const)
+			requireEditorNumber(receipt.inspection[field]);
+		for (const field of ["rasterSha256", "sharpVersion", "libvipsVersion"] as const) {
+			requireEditorString(receipt.inspection[field]);
+		}
+		return;
+	}
+	requireEditorObject(receipt.inspection, EDITOR_PAID_INSPECTION_KEYS);
+	if (receipt.inspection.method !== "safe_zip_v1") editorShapeError();
+	for (const field of [
+		"entryCount",
+		"totalUncompressedBytes",
+		"maximumEntryCompressionRatio",
+		"encryptedEntryCount",
+		"unsafePathCount",
+		"duplicatePathCount",
+	] as const)
+		requireEditorNumber(receipt.inspection[field]);
+}
+
+export type CatalogPrivateEditorOperationIdentity = {
+	operationId: string;
+	sourceId: string;
+	kind: CatalogPrivateAssetFacts["kind"];
+	assetKey: string;
+	privateObjectKey: string;
+};
+
+function requireCatalogPrivateEditorUploadFacts(
+	receiptSet: CatalogPrivateStorageReceiptSet | CatalogPrivateInspectionReceiptSet,
+	facts: readonly CatalogPrivateAssetFacts[],
+): CatalogPrivateEditorOperationIdentity {
+	if (
+		receiptSet.schemaVersion !== CATALOG_PRIVATE_ASSET_RECEIPT_SET_V2_VERSION ||
+		receiptSet.receipts.length !== 1 ||
+		facts.length !== 1
+	) {
+		throw catalogPrivateAssetValidationError(
+			"Private catalog editor receipts require exactly one schema-2 asset",
+		);
+	}
+	const factsItem = facts[0];
+	if (!factsItem || factsItem.provenance.provider !== "editor_upload") {
+		throw catalogPrivateAssetValidationError(
+			"Private catalog editor receipts require editor-upload provenance",
+		);
+	}
+	const operationId = factsItem.provenance.sourceId.startsWith(CATALOG_PRIVATE_EDITOR_SOURCE_PREFIX)
+		? factsItem.provenance.sourceId.slice(CATALOG_PRIVATE_EDITOR_SOURCE_PREFIX.length)
+		: "";
+	if (!CATALOG_PRIVATE_EDITOR_OPERATION_ID_PATTERN.test(operationId)) {
+		throw catalogPrivateAssetValidationError(
+			"Private catalog editor source identity is not canonical",
+		);
+	}
+	const sourceId = `${CATALOG_PRIVATE_EDITOR_SOURCE_PREFIX}${operationId}`;
+	const assetKey = `${CATALOG_PRIVATE_EDITOR_ASSET_KEY_PREFIX}${operationId}`;
+	if (factsItem.provenance.sourceId !== sourceId || factsItem.assetKey !== assetKey) {
+		throw catalogPrivateAssetValidationError(
+			"Private catalog editor operation identity has drifted",
+		);
+	}
+	if (factsItem.sizeBytes > CATALOG_PRIVATE_EDITOR_UPLOAD_MAX_SIZE_BYTES) {
+		throw catalogPrivateAssetValidationError(
+			"Private catalog editor source exceeds the direct-upload limit",
+		);
+	}
+	return {
+		operationId,
+		sourceId,
+		kind: factsItem.kind,
+		assetKey,
+		privateObjectKey: factsItem.privateObjectKey,
+	};
+}
+
+/** Additive exact-one editor admission; the generic historical validator is unchanged. */
+export async function validateCatalogPrivateEditorStorageReceiptSet(receiptSet: unknown) {
+	requireEditorStorageReceiptSetShape(receiptSet);
+	const checked = await validateCatalogPrivateStorageReceiptSet(receiptSet);
+	return {
+		...checked,
+		receiptSet,
+		operation: requireCatalogPrivateEditorUploadFacts(receiptSet, checked.facts),
+	};
+}
+
+/** Additive exact-one editor admission with the production schema-2 decoder policy pinned. */
+export async function validateCatalogPrivateEditorInspectionReceiptSet(receiptSet: unknown) {
+	requireEditorInspectionReceiptSetShape(receiptSet);
+	const checked = await validateCatalogPrivateInspectionReceiptSet(receiptSet);
+	const operation = requireCatalogPrivateEditorUploadFacts(receiptSet, checked.facts);
+	const facts = checked.facts[0];
+	const receipt = receiptSet.receipts[0];
+	if (!facts || !receipt || receipt.facts.kind !== facts.kind) {
+		throw catalogPrivateAssetValidationError(
+			"Private catalog editor inspection receipt is incomplete",
+		);
+	}
+	if (
+		facts.kind === "print_source" &&
+		(receipt.inspection.method !== "sharp_libvips_full_raster_v1" ||
+			receipt.inspection.sharpVersion !== CATALOG_PRIVATE_EDITOR_UPLOAD_SHARP_VERSION ||
+			receipt.inspection.libvipsVersion !== CATALOG_PRIVATE_EDITOR_UPLOAD_LIBVIPS_VERSION)
+	) {
+		throw catalogPrivateAssetValidationError(
+			"Private catalog editor decoder policy is unsupported",
+		);
+	}
+	if (
+		facts.kind === "paid_digital_file" &&
+		receipt.inspection.method === "safe_zip_v1" &&
+		(receipt.inspection.totalUncompressedBytes >
+			CATALOG_PRIVATE_EDITOR_ZIP_MAX_UNCOMPRESSED_BYTES ||
+			receipt.inspection.maximumEntryCompressionRatio >
+				CATALOG_PRIVATE_EDITOR_ZIP_MAX_COMPRESSION_RATIO)
+	) {
+		throw catalogPrivateAssetValidationError(
+			"Private catalog editor ZIP inspection exceeds the safe policy",
+		);
+	}
+	return { ...checked, receiptSet, operation };
 }
 
 export function sameCatalogPrivateStorageReceiptSet(

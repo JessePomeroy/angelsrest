@@ -1,5 +1,5 @@
 import type { Doc, Id } from "../_generated/dataModel";
-import type { MutationCtx } from "../_generated/server";
+import type { MutationCtx, QueryCtx } from "../_generated/server";
 import type {
 	CatalogPrivateAssetFacts,
 	CatalogPrivateAssetTargetBinding,
@@ -25,6 +25,7 @@ type Coordination = Doc<"catalogPrivateAssetReceiptCoordinations">;
 type VerifiedCoordination = Extract<Coordination, { status: "verified" }>;
 type PendingCoordination = Exclude<Coordination, { status: "verified" }>;
 type Authority = Doc<"catalogPrivateAssetTargetAuthorities">;
+type PrivateCatalogReadCtx = Pick<QueryCtx, "db">;
 
 function isSafeTimestamp(value: number) {
 	return Number.isSafeInteger(value) && value >= 0;
@@ -166,7 +167,7 @@ function sameImmutableFacts(left: CatalogPrivateAssetFacts, right: CatalogPrivat
 }
 
 async function authorityByKey(
-	ctx: MutationCtx,
+	ctx: PrivateCatalogReadCtx,
 	siteUrl: string,
 	kind: CatalogPrivateAssetFacts["kind"],
 	assetKey: string,
@@ -179,7 +180,7 @@ async function authorityByKey(
 }
 
 async function authorityByAssetId(
-	ctx: MutationCtx,
+	ctx: PrivateCatalogReadCtx,
 	siteUrl: string,
 	kind: CatalogPrivateAssetFacts["kind"],
 	assetId: Id<"catalogPrintSourceAssets"> | Id<"catalogDigitalFileAssets">,
@@ -229,7 +230,7 @@ function requireAuthorityFields(
 }
 
 async function requireIndexedAuthority(
-	ctx: MutationCtx,
+	ctx: PrivateCatalogReadCtx,
 	authorityId: Id<"catalogPrivateAssetTargetAuthorities">,
 	expected: Parameters<typeof requireAuthorityFields>[1],
 ) {
@@ -245,7 +246,7 @@ async function requireIndexedAuthority(
 	return authority;
 }
 
-async function printTargetByKey(ctx: MutationCtx, siteUrl: string, assetKey: string) {
+async function printTargetByKey(ctx: PrivateCatalogReadCtx, siteUrl: string, assetKey: string) {
 	return await ctx.db.query("catalogPrintSourceAssets")
 		.withIndex("by_siteUrl_and_assetKey", (q) =>
 			q.eq("siteUrl", siteUrl).eq("assetKey", assetKey)
@@ -253,7 +254,7 @@ async function printTargetByKey(ctx: MutationCtx, siteUrl: string, assetKey: str
 		.unique();
 }
 
-async function paidTargetByKey(ctx: MutationCtx, siteUrl: string, assetKey: string) {
+async function paidTargetByKey(ctx: PrivateCatalogReadCtx, siteUrl: string, assetKey: string) {
 	return await ctx.db.query("catalogDigitalFileAssets")
 		.withIndex("by_siteUrl_and_assetKey", (q) =>
 			q.eq("siteUrl", siteUrl).eq("assetKey", assetKey)
@@ -262,7 +263,7 @@ async function paidTargetByKey(ctx: MutationCtx, siteUrl: string, assetKey: stri
 }
 
 async function requireNoOppositeKindTargetState(
-	ctx: MutationCtx,
+	ctx: PrivateCatalogReadCtx,
 	siteUrl: string,
 	kind: CatalogPrivateAssetFacts["kind"],
 	assetKey: string,
@@ -282,7 +283,7 @@ async function requireNoOppositeKindTargetState(
 }
 
 export async function requireNoPrivateCatalogTargetRows(
-	ctx: MutationCtx,
+	ctx: PrivateCatalogReadCtx,
 	siteUrl: string,
 	facts: readonly CatalogPrivateAssetFacts[],
 ) {
@@ -374,7 +375,7 @@ export async function insertPrivateCatalogTargetRows(
 }
 
 async function requireClassicTarget(
-	ctx: MutationCtx,
+	ctx: PrivateCatalogReadCtx,
 	coordination: VerifiedCoordination,
 	facts: CatalogPrivateAssetFacts,
 	mapping: CatalogPrivateAssetTargetMapping,
@@ -458,7 +459,7 @@ type ValidatedV1Origin = {
 };
 
 async function requireV1Origin(
-	ctx: MutationCtx,
+	ctx: PrivateCatalogReadCtx,
 	authority: Authority,
 	incomingSiteUrl: string,
 	incomingFacts: CatalogPrivateAssetFacts,
@@ -508,7 +509,7 @@ async function requireV1Origin(
 }
 
 export async function resolvePrivateCatalogV2TargetPlan(
-	ctx: MutationCtx,
+	ctx: PrivateCatalogReadCtx,
 	siteUrl: string,
 	facts: readonly CatalogPrivateAssetFacts[],
 ) {
@@ -703,7 +704,7 @@ export async function materializePrivateCatalogV2Targets(
 }
 
 async function requireNewV2Targets(
-	ctx: MutationCtx,
+	ctx: PrivateCatalogReadCtx,
 	coordination: Extract<VerifiedCoordination, { storageReceiptSet: { schemaVersion: 2 } }>,
 	facts: readonly CatalogPrivateAssetFacts[],
 ) {
@@ -767,7 +768,7 @@ async function requireNewV2Targets(
 }
 
 export async function requireVerifiedPrivateCatalogTargets(
-	ctx: MutationCtx,
+	ctx: PrivateCatalogReadCtx,
 	coordination: VerifiedCoordination,
 ) {
 	const facts = await requireVerifiedCoordinationEvidence(coordination);

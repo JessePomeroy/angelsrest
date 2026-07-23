@@ -6,13 +6,17 @@ import type {
 } from "../convex/helpers/catalogPrivateAssetReceiptContract";
 
 export const SITE_A = "site-a.example";
-const SITE_B = "site-b.example";
+export const SITE_B = "site-b.example";
 export const STORAGE_SECRET_A = "catalog-storage-secret-a-0123456789abcdef";
 export const STORAGE_SECRET_B = "catalog-storage-secret-b-0123456789abcdef";
 export const INSPECTION_SECRET_A = "catalog-inspection-secret-a-0123456789abcdef";
 const INSPECTION_SECRET_B = "catalog-inspection-secret-b-0123456789abcdef";
 export const STORAGE_PATH = "/cms-media/catalog-private-assets/storage-receipt";
 export const INSPECTION_PATH = "/cms-media/catalog-private-assets/inspection-receipt";
+export const EDITOR_STORAGE_PATH =
+	"/cms-media/catalog-private-assets/editor-upload/storage-receipt";
+export const EDITOR_INSPECTION_PATH =
+	"/cms-media/catalog-private-assets/editor-upload/inspection-receipt";
 export const DEFAULT_RECEIPT_SET_ID =
 	"catalog-private-assets-v1:df78d059f07865559876bf34204bd8f59dcaf385bdf6735193f5549f32107b2c";
 
@@ -56,6 +60,49 @@ export function paidFacts(): Extract<
 			provider: "sanity",
 			sourceId: assetKey,
 			sourceRevision: "paid-file-revision-1",
+		},
+	};
+}
+
+export function editorPrintFacts(
+	siteUrl = SITE_A,
+	operationId = "c".repeat(40),
+): Extract<CatalogPrivateAssetFacts, { kind: "print_source" }> {
+	const assetKey = `editor-upload-${operationId}`;
+	return {
+		kind: "print_source",
+		assetKey,
+		privateObjectKey: `sites/${siteUrl}/catalog/print-sources/${assetKey}/original`,
+		originalFilename: `editor-print-${operationId}.jpg`,
+		mimeType: "image/jpeg",
+		sizeBytes: 8_000_000,
+		widthPixels: 6000,
+		heightPixels: 4000,
+		sha256: "c".repeat(64),
+		provenance: {
+			provider: "editor_upload",
+			sourceId: `editor-upload:${operationId}`,
+		},
+	};
+}
+
+export function editorPaidFacts(
+	siteUrl = SITE_A,
+	operationId = "d".repeat(40),
+): Extract<CatalogPrivateAssetFacts, { kind: "paid_digital_file" }> {
+	const assetKey = `editor-upload-${operationId}`;
+	return {
+		kind: "paid_digital_file",
+		assetKey,
+		privateObjectKey: `sites/${siteUrl}/catalog/paid-digital-files/${assetKey}/original`,
+		originalFilename: `editor-paid-${operationId}.zip`,
+		mimeType: "application/zip",
+		sizeBytes: 15_064,
+		sha256: "d".repeat(64),
+		version: "2.0.0",
+		provenance: {
+			provider: "editor_upload",
+			sourceId: `editor-upload:${operationId}`,
 		},
 	};
 }
@@ -167,6 +214,35 @@ export function inspectionSetV2(
 	};
 }
 
+export function editorStorageSetV2(
+	receiptSetId: string,
+	facts: CatalogPrivateAssetFacts = editorPrintFacts(),
+) {
+	return {
+		...storageSetV2(receiptSetId, [facts]),
+		siteUrl: facts.privateObjectKey.split("/", 2)[1] ?? SITE_A,
+	};
+}
+
+export function editorInspectionSetV2(
+	receiptSetId: string,
+	facts: CatalogPrivateAssetFacts = editorPrintFacts(),
+) {
+	const receiptSet = {
+		...inspectionSetV2(receiptSetId, [facts]),
+		siteUrl: facts.privateObjectKey.split("/", 2)[1] ?? SITE_A,
+	};
+	const receipt = receiptSet.receipts[0];
+	if (receipt?.facts.kind === "print_source") {
+		if (receipt.inspection.method !== "sharp_libvips_full_raster_v1") {
+			throw new Error("Editor print inspection fixture drift");
+		}
+		receipt.inspection.sharpVersion = "0.35.3";
+		receipt.inspection.libvipsVersion = "8.18.3";
+	}
+	return receiptSet;
+}
+
 function restoreEnvironment(name: string, previous: string | undefined) {
 	if (previous === undefined) delete process.env[name];
 	else process.env[name] = previous;
@@ -214,6 +290,7 @@ export async function postReceipt(
 
 export async function storedState(t: ReturnType<typeof convexTest>) {
 	return await t.run(async (ctx) => ({
+		operations: await ctx.db.query("catalogPrivateAssetEditorOperations").take(40),
 		coordinations: await ctx.db.query("catalogPrivateAssetReceiptCoordinations").take(40),
 		authorities: await ctx.db.query("catalogPrivateAssetTargetAuthorities").take(40),
 		printSources: await ctx.db.query("catalogPrintSourceAssets").take(40),
