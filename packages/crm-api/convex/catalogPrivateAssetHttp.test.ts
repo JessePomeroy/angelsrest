@@ -5,6 +5,8 @@ import { convexTest } from "convex-test";
 import { describe, expect, test } from "vitest";
 import schema from "./schema";
 import {
+	EDITOR_INSPECTION_PATH,
+	EDITOR_STORAGE_PATH,
 	INSPECTION_PATH,
 	INSPECTION_SECRET_A,
 	STORAGE_PATH,
@@ -17,6 +19,8 @@ const modules = import.meta.glob("./**/*.ts");
 const roles = [
 	{ role: "storage", path: STORAGE_PATH, secret: STORAGE_SECRET_A },
 	{ role: "inspection", path: INSPECTION_PATH, secret: INSPECTION_SECRET_A },
+	{ role: "editor storage", path: EDITOR_STORAGE_PATH, secret: STORAGE_SECRET_A },
+	{ role: "editor inspection", path: EDITOR_INSPECTION_PATH, secret: INSPECTION_SECRET_A },
 ] as const;
 
 describe("private catalog receipt HTTP limits", () => {
@@ -57,6 +61,12 @@ describe("private catalog receipt HTTP limits", () => {
 			expect(canceled).toBe(true);
 			expect(chunkCount).toBeLessThan(8);
 		});
-		expect((await storedState(t)).coordinations).toHaveLength(0);
+		expect(await storedState(t)).toEqual({
+			operations: [],
+			coordinations: [],
+			authorities: [],
+			printSources: [],
+			paidFiles: [],
+		});
 	});
 });

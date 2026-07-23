@@ -1,6 +1,7 @@
 import type { Infer } from "convex/values";
 import { v } from "convex/values";
 import type { Id } from "../_generated/dataModel";
+import { catalogPrivateAssetValidationError } from "./catalogPrivateAssetEditorErrors";
 
 export const privateCatalogAssetStatusValidator = v.literal("verified");
 
@@ -112,7 +113,9 @@ const EDITOR_UPLOAD_PROVENANCE_KEYS = new Set(["provider", "sourceId"]);
 
 function assertOnlyKeys(value: object, allowed: ReadonlySet<string>, field: string) {
 	for (const key of Object.keys(value)) {
-		if (!allowed.has(key)) throw new Error(`${field} contains unsupported field ${key}`);
+		if (!allowed.has(key)) {
+			throw catalogPrivateAssetValidationError(`${field} contains unsupported field ${key}`);
+		}
 	}
 }
 
@@ -123,25 +126,29 @@ function requireBoundedText(value: string, maximum: number, field: string) {
 		value !== value.trim() ||
 		CONTROL_CHARACTER_PATTERN.test(value)
 	) {
-		throw new Error(`${field} must be non-empty, trimmed, bounded text`);
+		throw catalogPrivateAssetValidationError(`${field} must be non-empty, trimmed, bounded text`);
 	}
 }
 
 function requirePositiveSafeInteger(value: number, maximum: number, field: string) {
 	if (!Number.isSafeInteger(value) || value <= 0 || value > maximum) {
-		throw new Error(`${field} must be a bounded positive safe integer`);
+		throw catalogPrivateAssetValidationError(`${field} must be a bounded positive safe integer`);
 	}
 }
 
 function requireTimestamp(value: number, field: string) {
 	if (!Number.isSafeInteger(value) || value < 0) {
-		throw new Error(`${field} must be a non-negative safe-integer timestamp`);
+		throw catalogPrivateAssetValidationError(
+			`${field} must be a non-negative safe-integer timestamp`,
+		);
 	}
 }
 
 function validateSiteUrl(siteUrl: string) {
 	if (!SITE_URL_PATTERN.test(siteUrl)) {
-		throw new Error("Site URL must be a canonical lowercase hostname without a scheme or path");
+		throw catalogPrivateAssetValidationError(
+			"Site URL must be a canonical lowercase hostname without a scheme or path",
+		);
 	}
 }
 
@@ -150,7 +157,9 @@ function validateAssetKey(assetKey: string) {
 		assetKey.length > PRIVATE_CATALOG_ASSET_LIMITS.assetKey ||
 		!ASSET_KEY_PATTERN.test(assetKey)
 	) {
-		throw new Error("Private catalog asset key must be an opaque stable identifier");
+		throw catalogPrivateAssetValidationError(
+			"Private catalog asset key must be an opaque stable identifier",
+		);
 	}
 }
 
@@ -161,13 +170,15 @@ function validateOriginalFilename(originalFilename: string) {
 		"Original filename",
 	);
 	if (originalFilename.includes("/") || originalFilename.includes("\\")) {
-		throw new Error("Original filename cannot contain a path");
+		throw catalogPrivateAssetValidationError("Original filename cannot contain a path");
 	}
 }
 
 function validateProvenance(provenance: PrivateCatalogAssetProvenance) {
 	if (provenance.provider !== "sanity" && provenance.provider !== "editor_upload") {
-		throw new Error("Private catalog asset provenance provider is unsupported");
+		throw catalogPrivateAssetValidationError(
+			"Private catalog asset provenance provider is unsupported",
+		);
 	}
 	assertOnlyKeys(
 		provenance,
@@ -218,15 +229,19 @@ function validateCommonPrivateCatalogAsset(
 		asset.privateObjectKey.length > PRIVATE_CATALOG_ASSET_LIMITS.privateObjectKey ||
 		asset.privateObjectKey !== expectedPrivateObjectKey(boundary, asset.siteUrl, asset.assetKey)
 	) {
-		throw new Error(`Private object key must remain inside the tenant ${boundary} boundary`);
+		throw catalogPrivateAssetValidationError(
+			`Private object key must remain inside the tenant ${boundary} boundary`,
+		);
 	}
 	if (asset.status !== "verified") {
-		throw new Error("Private catalog asset status must be verified");
+		throw catalogPrivateAssetValidationError("Private catalog asset status must be verified");
 	}
 	validateOriginalFilename(asset.originalFilename);
 	requirePositiveSafeInteger(asset.sizeBytes, maximumSizeBytes, "Asset byte size");
 	if (!SHA_256_PATTERN.test(asset.sha256)) {
-		throw new Error("Asset SHA-256 must be a canonical lowercase hexadecimal digest");
+		throw catalogPrivateAssetValidationError(
+			"Asset SHA-256 must be a canonical lowercase hexadecimal digest",
+		);
 	}
 	validateProvenance(asset.provenance);
 	requireTimestamp(asset.createdAt, "Asset created timestamp");
@@ -242,7 +257,7 @@ function validateCommonPrivateCatalogAsset(
 		"Asset verifier identity",
 	);
 	if (asset.verifiedAt < asset.createdAt) {
-		throw new Error("Asset verification cannot predate asset creation");
+		throw catalogPrivateAssetValidationError("Asset verification cannot predate asset creation");
 	}
 }
 
@@ -254,7 +269,7 @@ export function validatePrivatePrintSourceAsset(asset: PrivatePrintSourceAsset) 
 		PRIVATE_CATALOG_ASSET_LIMITS.printSourceSizeBytes,
 	);
 	if (asset.mimeType !== "image/jpeg" && asset.mimeType !== "image/png") {
-		throw new Error("Private print source must be a JPEG or PNG image");
+		throw catalogPrivateAssetValidationError("Private print source must be a JPEG or PNG image");
 	}
 	requirePositiveSafeInteger(
 		asset.widthPixels,
@@ -276,10 +291,12 @@ export function validatePaidDigitalFileAsset(asset: PaidDigitalFileAsset) {
 		PRIVATE_CATALOG_ASSET_LIMITS.paidDigitalFileSizeBytes,
 	);
 	if (asset.mimeType !== "application/zip") {
-		throw new Error("Paid digital file must use an explicitly supported safe MIME type");
+		throw catalogPrivateAssetValidationError(
+			"Paid digital file must use an explicitly supported safe MIME type",
+		);
 	}
 	if (!asset.originalFilename.toLowerCase().endsWith(".zip")) {
-		throw new Error("Paid ZIP filename must use the .zip extension");
+		throw catalogPrivateAssetValidationError("Paid ZIP filename must use the .zip extension");
 	}
 	if (asset.version !== undefined) {
 		requireBoundedText(

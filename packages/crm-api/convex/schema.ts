@@ -537,6 +537,21 @@ export default defineSchema({
 		catalogPrivateAssetReceiptCoordinationValidator,
 	).index("by_siteUrl_and_receiptSetId", ["siteUrl", "receiptSetId"]),
 
+	// First-role reservation for one canonical editor operation. This prevents a
+	// changed content-addressed receipt set from forking an operation while its
+	// original storage/inspection pair is still pending.
+	catalogPrivateAssetEditorOperations: defineTable({
+		siteUrl: v.string(),
+		operationId: v.string(),
+		sourceId: v.string(),
+		receiptSetId: v.string(),
+		assetSetChecksum: v.string(),
+		kind: v.union(v.literal("print_source"), v.literal("paid_digital_file")),
+		assetKey: v.string(),
+		privateObjectKey: v.string(),
+		createdAt: v.number(),
+	}).index("by_siteUrl_and_operationId", ["siteUrl", "operationId"]),
+
 	// Immutable reverse authority for the coordination that originally created
 	// each private target. indexedAt is index materialization time, not provenance.
 	catalogPrivateAssetTargetAuthorities: defineTable(
