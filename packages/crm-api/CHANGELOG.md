@@ -1,5 +1,13 @@
 # @jessepomeroy/crm-api
 
+## 2.26.0
+
+### Minor Changes
+
+- d1b31f4: Add canonical exact-one editor upload operation binding across dedicated and retained historical
+  receipt ingress, policy-derived private asset resolution, corrected paid ZIP inspection limits, and
+  rollback-safe HTTP error classification.
+
 ## 2.25.1
 
 ### Patch Changes
