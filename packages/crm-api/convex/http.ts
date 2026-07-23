@@ -639,6 +639,9 @@ const claimCatalogEditorInspection = journalHandler("inspector", CATALOG_EDITOR_
 		siteUrl,
 		leaseDigest,
 	});
+	if ("status" in result && result.status === "rate_limited") {
+		return privateResponse("Work is not currently claimable", 429);
+	}
 	return privateResponse("inspectionContinuation" in result ? { ...result, lease } : result, 200);
 });
 
