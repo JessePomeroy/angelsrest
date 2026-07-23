@@ -544,13 +544,124 @@ export default defineSchema({
 		siteUrl: v.string(),
 		operationId: v.string(),
 		sourceId: v.string(),
-		receiptSetId: v.string(),
-		assetSetChecksum: v.string(),
+		receiptSetId: v.optional(v.string()),
+		assetSetChecksum: v.optional(v.string()),
 		kind: v.union(v.literal("print_source"), v.literal("paid_digital_file")),
 		assetKey: v.string(),
 		privateObjectKey: v.string(),
 		createdAt: v.number(),
-	}).index("by_siteUrl_and_operationId", ["siteUrl", "operationId"]),
+		// Optional only for receipt-first rows created before journal-v1. Journal
+		// reservations set every field and never repurpose this operation identity.
+		journalVersion: v.optional(v.literal(1)),
+		uploadHandleHash: v.optional(v.string()),
+		productKind: v.optional(catalogProductKindValidator),
+		uploadOrigin: v.optional(v.string()),
+		originalFilename: v.optional(v.string()),
+		contentType: v.optional(v.string()),
+		sizeBytes: v.optional(v.number()),
+		sha256: v.optional(v.string()),
+		widthPixels: v.optional(v.number()),
+		heightPixels: v.optional(v.number()),
+		version: v.optional(v.string()),
+		canonicalDeclaration: v.optional(v.string()),
+		declarationHash: v.optional(v.string()),
+		lifecycle: v.optional(v.union(
+			v.literal("reserved"),
+			v.literal("prepared"),
+			v.literal("storage_recorded"),
+			v.literal("verified"),
+			v.literal("expired"),
+		)),
+		generation: v.optional(v.number()),
+		updatedAt: v.optional(v.number()),
+		prepareCommittedAt: v.optional(v.number()),
+		storageReceivedAt: v.optional(v.number()),
+		inspectionReceivedAt: v.optional(v.number()),
+	})
+		.index("by_siteUrl_and_operationId", ["siteUrl", "operationId"])
+		.index("by_siteUrl_and_uploadHandleHash", ["siteUrl", "uploadHandleHash"]),
+
+	// One row per purpose and generation. Raw opaque values are purged after
+	// expiry while their digest and generation remain as a durable tombstone.
+	catalogPrivateAssetEditorCapabilities: defineTable({
+		siteUrl: v.string(),
+		operationId: v.string(),
+		purpose: v.union(v.literal("upload"), v.literal("storage"), v.literal("inspection")),
+		value: v.optional(v.string()),
+		digest: v.string(),
+		// Additive migration field: old purpose-domain tombstones remain valid,
+		// while all new commits receive one purpose-independent identity.
+		rawFingerprint: v.optional(v.string()),
+		issuedAt: v.number(),
+		expiresAt: v.number(),
+		purgeAt: v.number(),
+		generation: v.number(),
+		createdAt: v.number(),
+		updatedAt: v.number(),
+		purgedAt: v.optional(v.number()),
+	})
+		.index("by_siteUrl_and_operationId_and_purpose", [
+			"siteUrl",
+			"operationId",
+			"purpose",
+		])
+		.index("by_purpose_and_digest", ["purpose", "digest"])
+		.index("by_rawFingerprint", ["rawFingerprint"]),
+
+	// Bounded outbox state. Each effect is a separate row; attempts and lease
+	// fencing are scalars rather than append-only arrays.
+	catalogPrivateAssetEditorEffects: defineTable({
+		siteUrl: v.string(),
+		operationId: v.string(),
+		kind: v.union(
+			v.literal("prepare"),
+			v.literal("storage"),
+			v.literal("inspection_dispatch"),
+		),
+		generation: v.number(),
+		state: v.union(
+			v.literal("queued"),
+			v.literal("leased"),
+			v.literal("acknowledged"),
+			v.literal("failed"),
+		),
+		attempts: v.number(),
+		nextAttemptAt: v.number(),
+		leaseDigest: v.optional(v.string()),
+		leaseExpiresAt: v.optional(v.number()),
+		lastOutcome: v.optional(v.union(
+			v.literal("success"),
+			v.literal("retryable"),
+			v.literal("rejected"),
+			v.literal("reconciled"),
+			v.literal("expired"),
+			v.literal("attempts_exhausted"),
+		)),
+		// The most recently committed ACK remains replayable until a new claim
+		// fences it. This closes lost-response ambiguity without accepting stale ACKs.
+		lastAckLeaseDigest: v.optional(v.string()),
+		lastAckOutcome: v.optional(v.union(
+			v.literal("success"),
+			v.literal("retryable"),
+			v.literal("rejected"),
+		)),
+		lastAckStatus: v.optional(v.union(
+			v.literal("acknowledged"),
+			v.literal("retry_scheduled"),
+			v.literal("attempts_exhausted"),
+			v.literal("rejected"),
+		)),
+		lastAckRetryAt: v.optional(v.number()),
+		createdAt: v.number(),
+		updatedAt: v.number(),
+		acknowledgedAt: v.optional(v.number()),
+	}).index("by_siteUrl_and_operationId_and_kind", ["siteUrl", "operationId", "kind"])
+		.index("by_siteUrl_and_kind_and_state_and_nextAttemptAt", [
+			"siteUrl",
+			"kind",
+			"state",
+			"nextAttemptAt",
+		]),
 
 	// Immutable reverse authority for the coordination that originally created
 	// each private target. indexedAt is index materialization time, not provenance.

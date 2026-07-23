@@ -1,6 +1,7 @@
 import type { Doc, Id, TableNames } from "./_generated/dataModel";
 import type { MutationCtx, QueryCtx } from "./_generated/server";
 import { DEFAULT_LIST_LIMIT } from "./helpers/limits";
+import { purposeScopedServerRolesAreDisjoint } from "./helpers/serverSecrets";
 
 /**
  * Require an authenticated user identity. Throws if not authenticated.
@@ -48,6 +49,9 @@ export async function requireWebhookCallerOrAuth(
 ) {
 	const expected = process.env.WEBHOOK_SECRET;
 	if (providedSecret) {
+		if (!purposeScopedServerRolesAreDisjoint()) {
+			throw new Error("Purpose-scoped server role credentials overlap");
+		}
 		if (!expected) {
 			throw new Error(
 				"Webhook authorization is not configured on this deployment (WEBHOOK_SECRET env var missing). Run `npx convex env set WEBHOOK_SECRET <value>`.",
@@ -71,6 +75,9 @@ export async function requireWebhookCallerOrAuth(
 /** Require the dedicated hub-only capability used for customer order lookup. */
 export function requireOrderLookupCaller(providedSecret: string | undefined) {
 	const expected = process.env.ORDER_LOOKUP_SECRET;
+	if (!purposeScopedServerRolesAreDisjoint()) {
+		throw new Error("Purpose-scoped server role credentials overlap");
+	}
 	if (!expected) {
 		throw new Error(
 			"Order lookup authorization is not configured on this deployment (ORDER_LOOKUP_SECRET env var missing).",

@@ -2,11 +2,22 @@
 // @vitest-environment edge-runtime
 
 import { convexTest } from "convex-test";
-import { describe, expect, test } from "vitest";
+import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { internal } from "./_generated/api";
+import { FEE_CAPTURE_RETRY_DELAY_MS } from "./helpers/stripeFeeCapture";
 import schema from "./schema";
+import { recordFeeCaptureRetry } from "./stripeFeesStore";
 
 const modules = import.meta.glob("./**/*.ts");
+
+beforeEach(() => {
+	vi.useFakeTimers();
+	vi.setSystemTime(new Date("2026-01-01T00:00:00.000Z"));
+});
+
+afterEach(() => {
+	vi.useRealTimers();
+});
 
 async function seedOrder() {
 	const t = convexTest(schema, modules);
@@ -56,14 +67,13 @@ describe("Stripe fee capture checkpoints", () => {
 
 	test("records retry visibility without making the attempt terminal", async () => {
 		const { t, orderId } = await seedOrder();
-		const nextAttemptAt = Date.now() + 60_000;
+		const nextAttemptAt = Date.now() + FEE_CAPTURE_RETRY_DELAY_MS;
 		await t.mutation(internal.stripeFeesStore.beginAttempt, { orderId, attempt: 1 });
 
 		await t.mutation(internal.stripeFeesStore.recordRetry, {
 			orderId,
 			attempt: 1,
 			error: "stripe_api_error",
-			nextAttemptAt,
 		});
 
 		const order = await t.run(async (ctx) => ctx.db.get(orderId));
@@ -75,13 +85,26 @@ describe("Stripe fee capture checkpoints", () => {
 		});
 	});
 
+	test("rolls the checkpoint back when scheduler dispatch fails", async () => {
+		const { t, orderId } = await seedOrder();
+		await t.mutation(internal.stripeFeesStore.beginAttempt, { orderId, attempt: 1 });
+		const before = await t.run(async (ctx) => ctx.db.get(orderId));
+
+		await expect(t.mutation(async (ctx) => await recordFeeCaptureRetry(
+			ctx,
+			{ orderId, attempt: 1, error: "stripe_api_error" },
+			Number.POSITIVE_INFINITY,
+		))).rejects.toThrow(/finite number/i);
+
+		expect(await t.run(async (ctx) => ctx.db.get(orderId))).toEqual(before);
+	});
+
 	test("records captured fees and clears retry metadata", async () => {
 		const { t, orderId } = await seedOrder();
 		await t.mutation(internal.stripeFeesStore.recordRetry, {
 			orderId,
 			attempt: 1,
 			error: "balance_transaction_not_ready",
-			nextAttemptAt: Date.now() + 60_000,
 		});
 
 		await t.mutation(internal.stripeFeesStore.setFees, {

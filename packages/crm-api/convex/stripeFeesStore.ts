@@ -7,8 +7,15 @@
  */
 
 import { v } from "convex/values";
+import { internal } from "./_generated/api";
+import type { Id } from "./_generated/dataModel";
+import type { MutationCtx } from "./_generated/server";
 import { internalMutation, internalQuery } from "./_generated/server";
-import { stripeFeeCaptureErrorValidator } from "./helpers/stripeFeeCapture";
+import {
+	getFeeCaptureRetryDelayMs,
+	stripeFeeCaptureErrorValidator,
+	type StripeFeeCaptureError,
+} from "./helpers/stripeFeeCapture";
 
 /**
  * Return the fields the fee-capture action needs. Null if the order was
@@ -58,29 +65,54 @@ export const beginAttempt = internalMutation({
 	},
 });
 
+type FeeCaptureRetry = {
+	orderId: Id<"orders">;
+	attempt: number;
+	error: StripeFeeCaptureError;
+};
+
+/**
+ * Record retry visibility and dispatch its successor in one mutation
+ * transaction. If scheduling throws, Convex rolls back the order patch too.
+ */
+export async function recordFeeCaptureRetry(
+	ctx: Pick<MutationCtx, "db" | "scheduler">,
+	{ orderId, attempt, error }: FeeCaptureRetry,
+	retryDelayMs: number,
+) {
+	const order = await ctx.db.get(orderId);
+	if (!order) return false;
+	if (
+		order.stripeFeeCaptureStatus === "captured" ||
+		order.stripeFeeCaptureStatus === "failed"
+	) {
+		return false;
+	}
+	const nextAttemptAt = Date.now() + retryDelayMs;
+	await ctx.db.patch(orderId, {
+		stripeFeeCaptureStatus: "pending",
+		stripeFeeCaptureAttempts: Math.max(order.stripeFeeCaptureAttempts ?? 0, attempt),
+		stripeFeeCaptureNextAttemptAt: nextAttemptAt,
+		stripeFeeCaptureError: error,
+	});
+	await ctx.scheduler.runAfter(
+		retryDelayMs,
+		internal.stripeFees.captureFeesForOrder,
+		{ orderId, attempt: attempt + 1 },
+	);
+	return true;
+}
+
 export const recordRetry = internalMutation({
 	args: {
 		orderId: v.id("orders"),
 		attempt: v.number(),
 		error: stripeFeeCaptureErrorValidator,
-		nextAttemptAt: v.number(),
 	},
-	handler: async (ctx, { orderId, attempt, error, nextAttemptAt }) => {
-		const order = await ctx.db.get(orderId);
-		if (!order) return false;
-		if (
-			order.stripeFeeCaptureStatus === "captured" ||
-			order.stripeFeeCaptureStatus === "failed"
-		) {
-			return false;
-		}
-		await ctx.db.patch(orderId, {
-			stripeFeeCaptureStatus: "pending",
-			stripeFeeCaptureAttempts: Math.max(order.stripeFeeCaptureAttempts ?? 0, attempt),
-			stripeFeeCaptureNextAttemptAt: nextAttemptAt,
-			stripeFeeCaptureError: error,
-		});
-		return true;
+	handler: async (ctx, args) => {
+		const retryDelayMs = getFeeCaptureRetryDelayMs(args.attempt);
+		if (retryDelayMs === null) return false;
+		return await recordFeeCaptureRetry(ctx, args, retryDelayMs);
 	},
 });
 
