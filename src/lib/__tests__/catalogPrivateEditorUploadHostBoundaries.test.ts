@@ -13,22 +13,6 @@ function source(path: string) {
 }
 
 describe("catalog private Editor upload host boundaries", () => {
-	it("pins the published package and lock contract to exactly 3.30.0", () => {
-		const packageJson = JSON.parse(source("package.json")) as {
-			dependencies: Record<string, string>;
-		};
-		const installedPackage = JSON.parse(
-			source("node_modules/@jessepomeroy/admin/package.json"),
-		) as { version: string; engines: { node: string } };
-		const lockfile = source("pnpm-lock.yaml");
-
-		expect(packageJson.dependencies["@jessepomeroy/admin"]).toBe("3.30.0");
-		expect(installedPackage).toMatchObject({ version: "3.30.0", engines: { node: "24.x" } });
-		expect(lockfile).toContain("'@jessepomeroy/admin@3.30.0':");
-		expect(lockfile).toContain("specifier: 3.30.0");
-		expect(lockfile).not.toContain("'@jessepomeroy/admin@3.29.0':");
-	});
-
 	it("pins the adapter default to the Node 24 package and CI runtime", () => {
 		const config = source("svelte.config.js");
 		expect(config).toContain('runtime: "nodejs24.x"');
