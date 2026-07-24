@@ -1,5 +1,11 @@
 # @jessepomeroy/crm-api
 
+## 2.28.0
+
+### Minor Changes
+
+- 5758d24: Add a temporary, CLI-only internal CMS acceptance observer with a hard-pinned bounded aggregate and an identifier-free completed-asset proof.
+
 ## 2.27.1
 
 ### Patch Changes
