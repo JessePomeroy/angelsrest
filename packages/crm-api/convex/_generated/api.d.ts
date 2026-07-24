@@ -13,6 +13,7 @@ import type * as adminAuth from "../adminAuth.js";
 import type * as auth from "../auth.js";
 import type * as authHelpers from "../authHelpers.js";
 import type * as blogContent from "../blogContent.js";
+import type * as catalogAcceptanceObserver from "../catalogAcceptanceObserver.js";
 import type * as catalogPrivateAssets from "../catalogPrivateAssets.js";
 import type * as catalogProductGraphs from "../catalogProductGraphs.js";
 import type * as catalogProducts from "../catalogProducts.js";
@@ -35,6 +36,7 @@ import type * as helpers_blogContentValidationSupport from "../helpers/blogConte
 import type * as helpers_blogContentValidators from "../helpers/blogContentValidators.js";
 import type * as helpers_catalogPrivateAssetCanarySnapshot from "../helpers/catalogPrivateAssetCanarySnapshot.js";
 import type * as helpers_catalogPrivateAssetEditorErrors from "../helpers/catalogPrivateAssetEditorErrors.js";
+import type * as helpers_catalogPrivateAssetEditorJournal from "../helpers/catalogPrivateAssetEditorJournal.js";
 import type * as helpers_catalogPrivateAssetReceiptContract from "../helpers/catalogPrivateAssetReceiptContract.js";
 import type * as helpers_catalogPrivateAssetReceiptValidation from "../helpers/catalogPrivateAssetReceiptValidation.js";
 import type * as helpers_catalogPrivateAssetRegistry from "../helpers/catalogPrivateAssetRegistry.js";
@@ -122,6 +124,7 @@ declare const fullApi: ApiFromModules<{
   auth: typeof auth;
   authHelpers: typeof authHelpers;
   blogContent: typeof blogContent;
+  catalogAcceptanceObserver: typeof catalogAcceptanceObserver;
   catalogPrivateAssets: typeof catalogPrivateAssets;
   catalogProductGraphs: typeof catalogProductGraphs;
   catalogProducts: typeof catalogProducts;
@@ -144,6 +147,7 @@ declare const fullApi: ApiFromModules<{
   "helpers/blogContentValidators": typeof helpers_blogContentValidators;
   "helpers/catalogPrivateAssetCanarySnapshot": typeof helpers_catalogPrivateAssetCanarySnapshot;
   "helpers/catalogPrivateAssetEditorErrors": typeof helpers_catalogPrivateAssetEditorErrors;
+  "helpers/catalogPrivateAssetEditorJournal": typeof helpers_catalogPrivateAssetEditorJournal;
   "helpers/catalogPrivateAssetReceiptContract": typeof helpers_catalogPrivateAssetReceiptContract;
   "helpers/catalogPrivateAssetReceiptValidation": typeof helpers_catalogPrivateAssetReceiptValidation;
   "helpers/catalogPrivateAssetRegistry": typeof helpers_catalogPrivateAssetRegistry;
