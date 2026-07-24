@@ -14,6 +14,13 @@ export const adminServerConfig: AdminServerConfig = {
 	cmsMediaTenantSecret: privateEnv.CMS_MEDIA_WORKER_SECRET ?? "",
 	cmsMediaConvexSiteUrl: publicEnv.PUBLIC_CONVEX_SITE_URL ?? "",
 	cmsMediaDeletionCompletionSecret: privateEnv.CMS_MEDIA_DELETION_COMPLETION_SECRET ?? "",
+	catalogPrivateEditorUpload: {
+		convexJournalOrigin: "https://loyal-swan-967.convex.site",
+		hostJournalSecret: privateEnv.CATALOG_PRIVATE_EDITOR_UPLOAD_HOST_JOURNAL_SECRET ?? "",
+		workerOrigin: "https://cms-media-worker.thinkingofview.workers.dev",
+		storageCallerSecret: privateEnv.CATALOG_PRIVATE_EDITOR_UPLOAD_STORAGE_CALLER_SECRET ?? "",
+		browserOrigin: "https://www.angelsrest.online",
+	},
 	convexUrl: publicEnv.PUBLIC_CONVEX_URL ?? "",
 	resendApiKey: privateEnv.RESEND_API_KEY ?? "",
 	verifyAdmin: verifySiteAdminRequest,
