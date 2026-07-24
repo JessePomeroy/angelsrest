@@ -33,6 +33,77 @@ import { api } from "@jessepomeroy/crm-api/api";
 import type { Id, Doc } from "@jessepomeroy/crm-api/dataModel";
 ```
 
+## CMS-5.5e.2c.5 temporary acceptance observer
+
+This temporary interface has exactly two CLI-only `internalQuery` functions.
+It is hard-pinned in code to `angelsrest.online`; it is not exported through
+`api`, does not accept tenant/range/page arguments, and has no HTTP or browser
+route.
+
+```bash
+pnpm exec convex run catalogAcceptanceObserver:observeAggregate --prod
+pnpm exec convex run catalogAcceptanceObserver:observeCompletedAsset \
+  '{"assetId":"<completed browser-safe print/digital target ID>"}' --prod
+```
+
+These commands run already-deployed code under Convex administrator authority.
+Never add `--push` to an observation command.
+
+`observeAggregate({})` returns only a fixed aggregate projection: counts and
+high-water values for the editor operation/capability/effect journal,
+coordination, authority, and private target tables; the eight catalog graph
+tables and publication pointers; and coarse stored order/fulfillment,
+fee-capture, recovery, LumaPrints-submission, tracking, and shipment-email
+checkpoints. Each of its 16 indexed reads has one fixed sentinel. The acceptance
+ceilings total 1,324 rows plus 16 sentinels, so at most 1,340 documents are read.
+Any overflow or platform read-limit failure produces one generic failure, never
+a partial count.
+
+Exact scalable counts are impossible with the current schema without forbidden
+write-maintained counters. Therefore this aggregate is deliberately temporary
+and fail-closed:
+
+1. Quiesce the acceptance window and capture two byte-equal aggregate baselines.
+2. Do not increase any bound during that window.
+3. Authorize only the separately reviewed completion effect.
+4. Capture two byte-equal post observations.
+5. Require operations `+1`, capabilities `+3`, effects `+3`, coordinations `+1`,
+   authorities `+1`, and exactly one of print or digital targets `+1`.
+6. Require the complete catalog, publication-pointer, and commerce projections
+   to remain byte-equal. Exact replay must leave the complete projection equal.
+
+Aggregate equality proves only this approved count/high-water/checkpoint
+projection; it does not prove arbitrary private-field or provider-side byte
+equality.
+
+`observeCompletedAsset({ assetId })` performs only direct or indexed,
+constant-work joins. It derives the operation internally and returns the fixed
+`verified_unattached` booleans only after proving a verified generation-1
+journal with a canonical upload-handle hash and ordered audit timestamps,
+exactly three purpose-separated capabilities and ordered terminal effects, one
+schema-2 exact-one coordination/authority/created target, agreement across all
+receipt-set identities and authority indexes, tenant closure, safe
+attempts/outcomes, verified registry state, and zero same-tenant product
+relations. It never echoes the ID or private facts. Unknown, foreign, corrupt,
+duplicate, or attached state gets one identifier-free failure.
+
+External evidence stays separate:
+
+- **Gallery Worker:** coordinator/dispatcher execution, global single-capacity
+  behavior, cron health, and Container inspection state.
+- **R2:** current object existence, immutable bytes, ETag, bucket state, and
+  deletion absence.
+- **Sanity:** the authoritative published editorial/catalog manifest, captured
+  through a separate read-only plan/export.
+- **Vercel:** deployed host commit, route configuration/duration, aliases, and
+  rollback by disabling issuer/completion routes.
+- **Stripe, LumaPrints, and other providers:** provider-side state. The observer
+  covers only their coarse checkpoints stored in Convex.
+
+After evidence capture, remove both observer functions, regenerate the API, and
+remove these instructions. The observer adds no schema, index, secret, write,
+scheduler, fetch, or logging behavior.
+
 Or, if the spoke site wires up a SvelteKit alias `$convex → @jessepomeroy/crm-api`:
 
 ```ts
