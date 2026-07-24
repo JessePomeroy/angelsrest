@@ -63,6 +63,7 @@ const RECOVERY_STATES = ["refund_pending", "refunded"] as const;
 const SHIPMENT_EMAIL_STATES = ["pending", "sent", "failed", "skipped"] as const;
 const CAPABILITY_PURPOSES = ["upload", "storage", "inspection"] as const;
 const EFFECT_KINDS = ["prepare", "storage", "inspection_dispatch"] as const;
+const SHA256_PATTERN = /^[a-f0-9]{64}$/;
 
 type TimedRow = { _creationTime: number };
 
@@ -469,6 +470,9 @@ function effectsAreValid(
 			|| !isSafeTimestamp(row.createdAt)
 			|| !isSafeTimestamp(row.updatedAt)
 			|| !isSafeTimestamp(row.acknowledgedAt)
+			|| row.createdAt > row.updatedAt
+			|| row.createdAt > row.acknowledgedAt
+			|| row.acknowledgedAt > row.updatedAt
 		) return false;
 		if (row.kind === "prepare") {
 			if (
@@ -547,9 +551,26 @@ async function pointProjection(
 			};
 
 	const { target, authority } = resolved;
+	if (!target || !authority) throw new Error(POINT_ERROR);
+	const [globalAuthority, keyAuthority] = await Promise.all([
+		ctx.db.query("catalogPrivateAssetTargetAuthorities")
+			.withIndex("by_kind_and_assetId", (q) =>
+				q.eq("kind", resolved.kind).eq("assetId", resolved.assetId)
+			)
+			.unique(),
+		ctx.db.query("catalogPrivateAssetTargetAuthorities")
+			.withIndex("by_siteUrl_and_kind_and_assetKey", (q) =>
+				q.eq("siteUrl", SITE_URL)
+					.eq("kind", resolved.kind)
+					.eq("assetKey", target.assetKey)
+			)
+			.unique(),
+	]);
 	if (
-		!target
-		|| !authority
+		!globalAuthority
+		|| !keyAuthority
+		|| globalAuthority._id !== authority._id
+		|| keyAuthority._id !== authority._id
 		|| resolved.attached
 		|| target.siteUrl !== SITE_URL
 		|| authority.siteUrl !== SITE_URL
@@ -566,6 +587,8 @@ async function pointProjection(
 		|| coordination.siteUrl !== SITE_URL
 		|| coordination.status !== "verified"
 		|| coordination.receiptSetId !== authority.originReceiptSetId
+		|| coordination.receiptSetId !== coordination.storageReceiptSet.receiptSetId
+		|| coordination.receiptSetId !== coordination.inspectionReceiptSet.receiptSetId
 		|| coordination.storageReceiptSet.siteUrl !== SITE_URL
 		|| coordination.inspectionReceiptSet.siteUrl !== SITE_URL
 		|| coordination.storageReceiptSet.schemaVersion !== 2
@@ -658,6 +681,8 @@ async function pointProjection(
 		|| operation.privateObjectKey !== target.privateObjectKey
 		|| operation.uploadOrigin !== CATALOG_EDITOR_UPLOAD_ORIGIN
 		|| operation.uploadHandleHash === undefined
+		|| !SHA256_PATTERN.test(operation.uploadHandleHash)
+		|| operation.updatedAt === undefined
 		|| operation.prepareCommittedAt === undefined
 		|| operation.storageReceivedAt === undefined
 		|| operation.inspectionReceivedAt === undefined
@@ -668,6 +693,11 @@ async function pointProjection(
 			operation.storageReceivedAt,
 			operation.inspectionReceivedAt,
 		].every(isSafeTimestamp)
+		|| operation.createdAt > operation.prepareCommittedAt
+		|| operation.prepareCommittedAt > operation.storageReceivedAt
+		|| operation.prepareCommittedAt > operation.inspectionReceivedAt
+		|| operation.storageReceivedAt > operation.updatedAt
+		|| operation.inspectionReceivedAt > operation.updatedAt
 		|| descriptor.originalFilename !== storageFacts.originalFilename
 		|| descriptor.contentType !== storageFacts.mimeType
 		|| descriptor.sizeBytes !== storageFacts.sizeBytes

@@ -753,6 +753,49 @@ describe("CMS-5.5e.2c.5 internal acceptance observer", () => {
 		},
 	);
 
+	test("rejects coupled outer receipt-set drift from both embedded receipt sets", async () => {
+		const fixture = await seedCompletedAsset("print_source");
+		const driftedReceiptSetId = "catalog-private-assets-v2:" + "f".repeat(64);
+		await fixture.t.run(async (ctx) => {
+			await Promise.all([
+				ctx.db.patch(fixture.coordination._id, { receiptSetId: driftedReceiptSetId }),
+				ctx.db.patch(fixture.authority._id, { originReceiptSetId: driftedReceiptSetId }),
+				ctx.db.patch(fixture.operation._id, { receiptSetId: driftedReceiptSetId }),
+			]);
+		});
+		await expect(fixture.t.query(observeCompletedAsset, { assetId: fixture.assetId }))
+			.rejects.toThrow(POINT_ERROR);
+	});
+
+	test.each(["global asset id", "tenant asset key"] as const)(
+		"rejects a conflicting authority in the %s index",
+		async (index) => {
+			const fixture = await seedCompletedAsset("print_source");
+			await fixture.t.run(async (ctx) => {
+				const conflictingAssetId = index === "global asset id"
+					? fixture.assetId
+					: await ctx.db.insert(
+						"catalogPrintSourceAssets",
+						privatePrintAsset(SITE, 77_777),
+					);
+				await ctx.db.insert("catalogPrivateAssetTargetAuthorities", {
+					siteUrl: index === "global asset id" ? FOREIGN_SITE : SITE,
+					kind: "print_source",
+					assetKey: index === "tenant asset key"
+						? fixture.authority.assetKey
+						: "foreign-authority-key",
+					assetId: conflictingAssetId as Id<"catalogPrintSourceAssets">,
+					originCoordinationId: fixture.coordination._id,
+					originReceiptSetId: fixture.coordination.receiptSetId,
+					originSchemaVersion: 2,
+					indexedAt: fixture.authority.indexedAt,
+				});
+			});
+			await expect(fixture.t.query(observeCompletedAsset, { assetId: fixture.assetId }))
+				.rejects.toThrow(POINT_ERROR);
+		},
+	);
+
 	test("point work is unaffected by unrelated tenant and journal growth", async () => {
 		const fixture = await seedCompletedAsset("print_source");
 		await fixture.t.run(async (ctx) => {
@@ -830,6 +873,9 @@ describe("CMS-5.5e.2c.5 internal acceptance observer", () => {
 		"nonterminal effect",
 		"failed effect outcome",
 		"unsafe attempts",
+		"malformed upload hash",
+		"operation timestamp inversion",
+		"effect timestamp inversion",
 		"corrupt descriptor",
 		"attached",
 	] as const)("sanitizes the %s adversary", async (corruption) => {
@@ -895,6 +941,14 @@ describe("CMS-5.5e.2c.5 internal acceptance observer", () => {
 				await ctx.db.patch(fixture.operation._id, { generation: 2 });
 				return;
 			}
+			if (corruption === "malformed upload hash") {
+				await ctx.db.patch(fixture.operation._id, { uploadHandleHash: "not-a-hash" });
+				return;
+			}
+			if (corruption === "operation timestamp inversion") {
+				await ctx.db.patch(fixture.operation._id, { updatedAt: 0 });
+				return;
+			}
 			const capabilities = await ctx.db.query("catalogPrivateAssetEditorCapabilities")
 				.withIndex("by_siteUrl_and_operationId_and_purpose", (q) =>
 					q.eq("siteUrl", SITE).eq("operationId", fixture.operationId)
@@ -921,6 +975,10 @@ describe("CMS-5.5e.2c.5 internal acceptance observer", () => {
 				)
 				.take(4);
 			const storageEffect = effects.find((effect) => effect.kind === "storage")!;
+			if (corruption === "effect timestamp inversion") {
+				await ctx.db.patch(storageEffect._id, { updatedAt: 0, acknowledgedAt: 0 });
+				return;
+			}
 			if (corruption === "missing effect") {
 				await ctx.db.delete(storageEffect._id);
 				return;

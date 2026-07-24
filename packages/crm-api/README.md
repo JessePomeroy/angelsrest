@@ -79,8 +79,10 @@ equality.
 `observeCompletedAsset({ assetId })` performs only direct or indexed,
 constant-work joins. It derives the operation internally and returns the fixed
 `verified_unattached` booleans only after proving a verified generation-1
-journal, exactly three purpose-separated capabilities and terminal effects, one
-schema-2 exact-one coordination/authority/created target, tenant closure, safe
+journal with a canonical upload-handle hash and ordered audit timestamps,
+exactly three purpose-separated capabilities and ordered terminal effects, one
+schema-2 exact-one coordination/authority/created target, agreement across all
+receipt-set identities and authority indexes, tenant closure, safe
 attempts/outcomes, verified registry state, and zero same-tenant product
 relations. It never echoes the ID or private facts. Unknown, foreign, corrupt,
 duplicate, or attached state gets one identifier-free failure.
