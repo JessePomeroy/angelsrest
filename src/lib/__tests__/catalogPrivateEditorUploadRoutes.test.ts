@@ -103,11 +103,12 @@ describe("catalog private Editor upload routes", () => {
 
 	it.each(
 		routeVectors,
-	)("delegates $name authorization to the real shared handler and existing stored-membership verifier", async ({
+	)("delegates $name authorization to the real shared handler and existing stored-membership verifier for the matching deployment", async ({
 		post,
 		path,
 		body,
 	}) => {
+		expect(adminServerConfig.catalogPrivateEditorUpload).toBeDefined();
 		const response = await post({ request: sameOriginRequest(path, body) } as never);
 
 		expect(response.status).toBe(401);
@@ -156,6 +157,29 @@ describe("catalog private Editor upload routes", () => {
 			await expect(response.json()).resolves.toEqual({ status: "service_unavailable" });
 		}
 
+		expect(verifySiteAdminRequest).not.toHaveBeenCalled();
+		expect(fetch).not.toHaveBeenCalled();
+	});
+
+	it.each(
+		routeVectors,
+	)("fails $name through the package configuration gate before reading the request", async ({
+		post,
+	}) => {
+		const bodyRead = vi.fn();
+		const request = {
+			get body() {
+				bodyRead();
+				throw new Error("request body must not be read");
+			},
+		} as unknown as Request;
+		setServerConfig({ ...adminServerConfig, catalogPrivateEditorUpload: undefined });
+
+		const response = await post({ request } as never);
+
+		expect(response.status).toBe(503);
+		await expect(response.json()).resolves.toEqual({ status: "service_unavailable" });
+		expect(bodyRead).not.toHaveBeenCalled();
 		expect(verifySiteAdminRequest).not.toHaveBeenCalled();
 		expect(fetch).not.toHaveBeenCalled();
 	});
