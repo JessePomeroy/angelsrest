@@ -29,6 +29,24 @@ describe("shop catalog route boundaries", () => {
 		expect(detailPage).not.toContain("selectedPaperIndex");
 	});
 
+	it("keeps every public Shop loader on Sanity without exposing Convex publication reads", () => {
+		const shopLoaders = [
+			"src/routes/shop/+page.server.ts",
+			"src/routes/shop/[slug]/+page.server.ts",
+			"src/routes/shop/sets/[slug]/+page.server.ts",
+			"src/routes/shop/prints/[slug]/+page.server.ts",
+		];
+
+		for (const path of shopLoaders) {
+			const file = source(path);
+			expect(file).toContain('from "$lib/sanity/client.server"');
+			expect(file).not.toContain("$convex");
+			expect(file).not.toContain("catalogProductGraphs");
+			expect(file).not.toContain("listPublished");
+			expect(file).not.toContain("getPublishedBySlug");
+		}
+	});
+
 	it("retains historical set-shaped webhook decoding for delayed or replayed payments", () => {
 		const decoder = source("src/lib/server/webhookDecoder.ts");
 		expect(decoder).toContain("isPrintSet");

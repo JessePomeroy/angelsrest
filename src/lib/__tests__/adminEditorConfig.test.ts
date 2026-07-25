@@ -10,7 +10,7 @@ const { apiMock, catalogApi, catalogGraphApi, contentApi, galleriesApi, mediaApi
 			saveDraft: "catalogProducts.saveDraft",
 			discardDraft: "catalogProducts.discardDraft",
 		};
-		const catalogGraphApi = {
+		const catalogGraphRefs = {
 			listForEditor: "catalogProductGraphs.listForEditor",
 			getEditorState: "catalogProductGraphs.getEditorState",
 			createDraft: "catalogProductGraphs.createDraft",
@@ -18,7 +18,19 @@ const { apiMock, catalogApi, catalogGraphApi, contentApi, galleriesApi, mediaApi
 			discardDraft: "catalogProductGraphs.discardDraft",
 			listDraftPrivateAssetCandidates: "catalogProductGraphs.listDraftPrivateAssetCandidates",
 			replaceDraftPrivateAsset: "catalogProductGraphs.replaceDraftPrivateAsset",
+			publishDraft: "catalogProductGraphs.publishDraft",
+			unpublish: "catalogProductGraphs.unpublish",
+			listPublished: "catalogProductGraphs.listPublished",
+			getPublishedBySlug: "catalogProductGraphs.getPublishedBySlug",
 		};
+		const catalogGraphApi = new Proxy({} as typeof catalogGraphRefs, {
+			get(_target, prop) {
+				if (typeof prop !== "string") return undefined;
+				return (
+					catalogGraphRefs[prop as keyof typeof catalogGraphRefs] ?? `catalogProductGraphs.${prop}`
+				);
+			},
+		});
 		const contentApi = {
 			getSiteSettingsEditorState: "content.getSiteSettingsEditorState",
 			saveSiteSettingsDraft: "content.saveSiteSettingsDraft",
@@ -74,14 +86,28 @@ describe("admin API aliases", () => {
 		expect(adminConfig.api.postContent).toBe(apiMock.postContent);
 		expect(adminConfig.api.catalogProducts).toBe(catalogApi);
 		expect(adminConfig.api.catalogProducts).not.toHaveProperty("publish");
-		expect(adminConfig.api.catalogProductGraphs).toBe(catalogGraphApi);
-		expect(adminConfig.api.catalogProductGraphs?.listDraftPrivateAssetCandidates).toBe(
-			catalogGraphApi.listDraftPrivateAssetCandidates,
-		);
-		expect(adminConfig.api.catalogProductGraphs?.replaceDraftPrivateAsset).toBe(
-			catalogGraphApi.replaceDraftPrivateAsset,
-		);
-		expect(adminConfig.api.catalogProductGraphs).not.toHaveProperty("publish");
+		const productGraphApi = adminConfig.api.catalogProductGraphs;
+		expect(productGraphApi).not.toBe(catalogGraphApi);
+		expect(Object.getPrototypeOf(productGraphApi)).toBe(Object.prototype);
+		expect(productGraphApi).toEqual({
+			listForEditor: catalogGraphApi.listForEditor,
+			getEditorState: catalogGraphApi.getEditorState,
+			createDraft: catalogGraphApi.createDraft,
+			saveDraft: catalogGraphApi.saveDraft,
+			discardDraft: catalogGraphApi.discardDraft,
+			listDraftPrivateAssetCandidates: catalogGraphApi.listDraftPrivateAssetCandidates,
+			replaceDraftPrivateAsset: catalogGraphApi.replaceDraftPrivateAsset,
+			publishDraft: catalogGraphApi.publishDraft,
+			unpublish: catalogGraphApi.unpublish,
+		});
+		expect(Object.keys(catalogGraphApi)).toEqual([]);
+		expect(Reflect.get(catalogGraphApi, "unknownCapability")).toBeTruthy();
+		expect(Reflect.get(productGraphApi ?? {}, "unknownCapability")).toBeUndefined();
+		expect(Reflect.get(productGraphApi ?? {}, "listPublished")).toBeUndefined();
+		expect(Reflect.get(productGraphApi ?? {}, "getPublishedBySlug")).toBeUndefined();
+		expect(Object.hasOwn(productGraphApi ?? {}, "publishDraft")).toBe(true);
+		expect(Object.hasOwn(productGraphApi ?? {}, "unpublish")).toBe(true);
+		expect(productGraphApi).not.toHaveProperty("publish");
 		expect(adminConfig.api.mediaAssets?.listForEditor).toBe(mediaApi.listForEditor);
 		expect(adminConfig.api.mediaAssets?.getManyForEditor).toBe(mediaApi.getManyForEditor);
 		expect(adminConfig.api.mediaAssets?.registerReadyWebAsset).toBe(mediaApi.registerReadyWebAsset);
@@ -123,6 +149,7 @@ describe("admin API aliases", () => {
 		expect(portfolioEditor?.requestDeletion).toBe(mediaApi.requestDeletion);
 		expect(adminConfig.editor?.blog?.mediaBaseUrl).toBe("https://media.angelsrest.online");
 		expect(adminConfig.editor?.products).toEqual({
+			publicationEnabled: true,
 			privateAssetReplacementEnabled: true,
 			privateAssetUpload: {
 				prepareEndpoint: "/api/admin/catalog-private-assets/editor-uploads/prepare",
@@ -162,5 +189,6 @@ describe("admin API aliases", () => {
 			mediaBaseUrl: "https://media.angelsrest.online",
 			uploadEndpoint: "/api/admin/media",
 		});
+		expect(adminConfig.mutationTransport).toBe("http");
 	});
 });

@@ -39,10 +39,26 @@ const siteEditorApi = new Proxy(api.content, {
 	},
 });
 
+// Keep the protected Product Editor capability plain and closed. Convex namespace
+// proxies return truthy refs for arbitrary property reads, so publication must be
+// limited to these concrete host-generated refs rather than inferred dynamically.
+const catalogProductGraphsApi = {
+	listForEditor: api.catalogProductGraphs.listForEditor,
+	getEditorState: api.catalogProductGraphs.getEditorState,
+	createDraft: api.catalogProductGraphs.createDraft,
+	saveDraft: api.catalogProductGraphs.saveDraft,
+	discardDraft: api.catalogProductGraphs.discardDraft,
+	listDraftPrivateAssetCandidates: api.catalogProductGraphs.listDraftPrivateAssetCandidates,
+	replaceDraftPrivateAsset: api.catalogProductGraphs.replaceDraftPrivateAsset,
+	publishDraft: api.catalogProductGraphs.publishDraft,
+	unpublish: api.catalogProductGraphs.unpublish,
+};
+
 const apiWithAliases = new Proxy(api, {
 	get(target, prop, receiver) {
 		if (prop === "siteEditor") return siteEditorApi;
 		if (prop === "portfolioEditor") return portfolioEditorApi;
+		if (prop === "catalogProductGraphs") return catalogProductGraphsApi;
 		if (prop === "galleryDelivery") {
 			return new Proxy(target.galleries, {
 				get(galleries, galleryProp, galleryReceiver) {
@@ -74,6 +90,7 @@ export const adminConfig: AdminConfig = {
 			mediaBaseUrl: "https://media.angelsrest.online",
 		},
 		products: {
+			publicationEnabled: true,
 			privateAssetReplacementEnabled: true,
 			privateAssetUpload: {
 				prepareEndpoint: "/api/admin/catalog-private-assets/editor-uploads/prepare",
