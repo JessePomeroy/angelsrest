@@ -34,6 +34,7 @@
 		"convex": "^1.30.0"
 	},
 	"dependencies": {
+		"@jessepomeroy/print-catalog": "workspace:^",
 		"stripe": "^20.4.1"
 	},
 	"devDependencies": {
