@@ -13,6 +13,7 @@ import {
 	loadCatalogProductGraphV2RevisionSummary,
 	normalizeCatalogProductGraphV2DraftAssets,
 	projectCatalogProductGraphV2ForEditor,
+	projectCatalogProductGraphV2Public,
 	requireCatalogProductGraphV2Product,
 } from "./catalogProductGraphData";
 import {
@@ -38,7 +39,10 @@ import {
 	validateCatalogProductSlug,
 	validateCatalogTimestamp,
 } from "./catalogProductValidators";
-import { requireCatalogProductKindEnabled } from "./catalogProductPolicy";
+import {
+	loadCatalogProductKinds,
+	requireCatalogProductKindEnabled,
+} from "./catalogProductPolicy";
 import {
 	assertSanityCatalogV2GraphPlan,
 	type SanityCatalogV2GraphPlan,
@@ -151,21 +155,8 @@ function assertCatalogGraphV2ProductLifecycle(
 	draft: CatalogRevisionState,
 	published: CatalogRevisionState,
 ) {
-	validateCatalogProductKey(product.productKey);
-	validateCatalogProductSlug(product.slug);
-	validateCatalogTimestamp(product.createdAt, "Catalog product created timestamp");
-	validateCatalogTimestamp(product.updatedAt, "Catalog product updated timestamp");
-	if (product.updatedAt < product.createdAt) {
-		throw new Error("Catalog product updated timestamp cannot precede created timestamp");
-	}
-
+	assertCatalogPublicationHeader(product);
 	const hasPublishedRevision = product.publishedRevisionId !== undefined;
-	if (
-		hasPublishedRevision !== (product.publishedAt !== undefined)
-		|| hasPublishedRevision !== (product.publishedBy !== undefined)
-	) {
-		throw new Error("Catalog product publication fields must move together");
-	}
 	if (hasPublishedRevision !== (published !== null)) {
 		throw new Error("Catalog published revision pointer is inconsistent");
 	}
@@ -885,6 +876,254 @@ export async function discardCatalogProductGraphV2Draft(
 		return { productId: product._id, draftRevisionId: null };
 	}
 	throw new Error("Catalog draft conflict: reload before discarding");
+}
+
+type CatalogPublicationCas = {
+	productId: Id<"catalogProducts">;
+	expectedDraftRevisionId: Id<"catalogProductRevisions"> | null;
+	expectedPublishedRevisionId: Id<"catalogProductRevisions"> | null;
+	expectedUpdatedAt: number;
+};
+
+const CATALOG_PUBLIC_PRODUCT_CAP = 40;
+const CATALOG_PUBLIC_PER_KIND_SCAN_CAP = 40;
+const CATALOG_PUBLICATION_CONFLICT = "Catalog publication conflict: reload before retrying";
+const CATALOG_PUBLIC_UNAVAILABLE = "Catalog public reads are unavailable";
+
+function publicationConflict(): never {
+	throw new Error(CATALOG_PUBLICATION_CONFLICT);
+}
+
+function validatePublicationCas(args: CatalogPublicationCas) {
+	if (!Number.isSafeInteger(args.expectedUpdatedAt) || args.expectedUpdatedAt < 0) {
+		publicationConflict();
+	}
+}
+
+function hasExactPublicationCas(product: CatalogGraphV2Product, args: CatalogPublicationCas) {
+	return product.draftRevisionId === (args.expectedDraftRevisionId ?? undefined)
+		&& product.publishedRevisionId === (args.expectedPublishedRevisionId ?? undefined)
+		&& product.updatedAt === args.expectedUpdatedAt;
+}
+
+function nextPublicationTimestamp(product: CatalogGraphV2Product) {
+	const timestamp = Math.max(Date.now(), product.updatedAt + 1);
+	try {
+		validateCatalogTimestamp(timestamp, "Catalog publication timestamp");
+	} catch {
+		publicationConflict();
+	}
+	if (timestamp <= product.updatedAt) publicationConflict();
+	return timestamp;
+}
+
+function assertCatalogPublicationHeader(product: CatalogGraphV2Product) {
+	validateCatalogProductKey(product.productKey);
+	validateCatalogProductSlug(product.slug);
+	validateCatalogTimestamp(product.createdAt, "Catalog product created timestamp");
+	validateCatalogTimestamp(product.updatedAt, "Catalog product updated timestamp");
+	if (product.updatedAt < product.createdAt) {
+		throw new Error("Catalog product updated timestamp cannot precede created timestamp");
+	}
+	const published = product.publishedRevisionId !== undefined;
+	if (
+		published !== (product.publishedAt !== undefined)
+		|| published !== (product.publishedBy !== undefined)
+	) throw new Error("Catalog product publication fields must move together");
+}
+
+async function requireCatalogPublicationAuthorization(
+	ctx: MutationCtx,
+	productId: Id<"catalogProducts">,
+) {
+	const authorized = await requireDocumentSiteAdminWithClient(
+		ctx,
+		"catalogProducts",
+		productId,
+	);
+	const product = requireCatalogProductGraphV2Product(authorized.doc);
+	requireCatalogProductKindEnabled(authorized.client, product.productKind);
+	return { product, actor: authorized.identity.tokenIdentifier };
+}
+
+async function projectPublishedCatalogProduct(
+	ctx: QueryCtx | MutationCtx,
+	product: CatalogGraphV2Product,
+) {
+	await proveTenantWideCatalogIdentity(ctx, product);
+	const [draft, published] = await Promise.all([
+		loadCatalogProductGraphV2RevisionSummary(ctx, product, product.draftRevisionId),
+		loadCatalogProductGraphV2Revision(ctx, product, product.publishedRevisionId),
+	]);
+	assertCatalogGraphV2ProductLifecycle(
+		product,
+		draft,
+		published?.revision ?? null,
+	);
+	if (!published) throw new Error("Catalog published revision not found");
+	return projectCatalogProductGraphV2Public(published);
+}
+
+export async function publishCatalogProductGraphV2Draft(
+	ctx: MutationCtx,
+	args: CatalogPublicationCas,
+) {
+	const { product, actor } = await requireCatalogPublicationAuthorization(
+		ctx,
+		args.productId,
+	);
+	validatePublicationCas(args);
+	if (!args.expectedDraftRevisionId || !hasExactPublicationCas(product, args)) {
+		publicationConflict();
+	}
+	const [draft, priorPublished] = await Promise.all([
+		loadCatalogProductGraphV2Revision(ctx, product, args.expectedDraftRevisionId),
+		loadCatalogProductGraphV2RevisionSummary(
+			ctx,
+			product,
+			args.expectedPublishedRevisionId ?? undefined,
+		),
+	]);
+	assertCatalogGraphV2ProductLifecycle(product, draft?.revision ?? null, priorPublished);
+	if (!draft) publicationConflict();
+	projectCatalogProductGraphV2Public(draft);
+	await proveTenantWideCatalogIdentity(ctx, product);
+	const timestamp = nextPublicationTimestamp(product);
+	await ctx.db.patch(product._id, {
+		publishedRevisionId: draft.revision._id,
+		publishedAt: timestamp,
+		publishedBy: actor,
+		updatedAt: timestamp,
+		updatedBy: actor,
+	});
+	return {
+		productId: product._id,
+		draftRevisionId: draft.revision._id,
+		publishedRevisionId: draft.revision._id,
+		updatedAt: timestamp,
+		publishedAt: timestamp,
+	};
+}
+
+export async function unpublishCatalogProductGraphV2(
+	ctx: MutationCtx,
+	args: CatalogPublicationCas,
+) {
+	const { product, actor } = await requireCatalogPublicationAuthorization(
+		ctx,
+		args.productId,
+	);
+	validatePublicationCas(args);
+	if (!args.expectedPublishedRevisionId || !hasExactPublicationCas(product, args)) {
+		publicationConflict();
+	}
+	await loadCatalogGraphV2RevisionSummaries(ctx, product);
+	const timestamp = nextPublicationTimestamp(product);
+	await ctx.db.patch(product._id, {
+		publishedRevisionId: undefined,
+		publishedAt: undefined,
+		publishedBy: undefined,
+		updatedAt: timestamp,
+		updatedBy: actor,
+	});
+	return {
+		productId: product._id,
+		draftRevisionId: args.expectedDraftRevisionId,
+		publishedRevisionId: null,
+		updatedAt: timestamp,
+		publishedAt: null,
+	};
+}
+
+async function loadPublicCatalogProductKinds(ctx: QueryCtx, siteUrl: string) {
+	try {
+		return await loadCatalogProductKinds(ctx, siteUrl);
+	} catch {
+		throw new Error(CATALOG_PUBLIC_UNAVAILABLE);
+	}
+}
+
+function ordinalCompare(left: string, right: string) {
+	return left < right ? -1 : left > right ? 1 : 0;
+}
+
+function comparePublishedCatalogProducts(
+	left: Awaited<ReturnType<typeof projectPublishedCatalogProduct>>,
+	right: Awaited<ReturnType<typeof projectPublishedCatalogProduct>>,
+) {
+	if (left.shopPlacement.featured !== right.shopPlacement.featured) {
+		return left.shopPlacement.featured ? -1 : 1;
+	}
+	const leftRank = left.shopPlacement.orderRank;
+	const rightRank = right.shopPlacement.orderRank;
+	if ((leftRank === null) !== (rightRank === null)) return leftRank === null ? 1 : -1;
+	const rankOrder = leftRank !== null && rightRank !== null
+		? ordinalCompare(leftRank, rightRank)
+		: 0;
+	return rankOrder
+		|| ordinalCompare(left.slug, right.slug)
+		|| ordinalCompare(left.productId, right.productId);
+}
+
+export async function listPublishedCatalogProductGraphsV2(
+	ctx: QueryCtx,
+	siteUrl: string,
+) {
+	const enabledKinds = await loadPublicCatalogProductKinds(ctx, siteUrl);
+	const published: CatalogGraphV2Product[] = [];
+	for (const productKind of enabledKinds) {
+		const rows = await ctx.db
+			.query("catalogProducts")
+			.withIndex(
+				"by_siteUrl_and_graphVersion_and_productKind_and_createdAt",
+				(query) => query
+					.eq("siteUrl", siteUrl)
+					.eq("graphVersion", 2)
+					.eq("productKind", productKind),
+			)
+			.take(CATALOG_PUBLIC_PER_KIND_SCAN_CAP + 1);
+		if (rows.length > CATALOG_PUBLIC_PER_KIND_SCAN_CAP) {
+			throw new Error(`Catalog public ${productKind} scan limit exceeded`);
+		}
+		for (const value of rows) {
+			const product = requireCatalogProductGraphV2Product(value);
+			if (product.productKind !== productKind) {
+				throw new Error("Catalog public product kind index mismatch");
+			}
+			assertCatalogPublicationHeader(product);
+			if (product.publishedRevisionId) published.push(product);
+		}
+	}
+	if (published.length > CATALOG_PUBLIC_PRODUCT_CAP) {
+		throw new Error("Catalog public product limit exceeded");
+	}
+	const projected = [];
+	for (const product of published) {
+		projected.push(await projectPublishedCatalogProduct(ctx, product));
+	}
+	return projected.sort(comparePublishedCatalogProducts);
+}
+
+export async function getPublishedCatalogProductGraphV2BySlug(
+	ctx: QueryCtx,
+	args: { siteUrl: string; slug: string },
+) {
+	const enabledKinds = await loadPublicCatalogProductKinds(ctx, args.siteUrl);
+	const value = await ctx.db
+		.query("catalogProducts")
+		.withIndex("by_siteUrl_and_slug", (query) =>
+			query.eq("siteUrl", args.siteUrl).eq("slug", args.slug)
+		)
+		.unique();
+	if (
+		!value
+		|| value.graphVersion !== 2
+		|| !enabledKinds.includes(value.productKind)
+	) return null;
+	const product = requireCatalogProductGraphV2Product(value);
+	assertCatalogPublicationHeader(product);
+	if (!product.publishedRevisionId) return null;
+	return await projectPublishedCatalogProduct(ctx, product);
 }
 
 /** Authenticated Editor-only detail read with no storage keys or capabilities. */

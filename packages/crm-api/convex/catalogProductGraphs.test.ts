@@ -793,12 +793,16 @@ describe("dormant private catalog product graph V2", () => {
 			"createDraft",
 			"discardDraft",
 			"getEditorState",
+			"getPublishedBySlug",
 			"getRetirementEligibility",
 			"importSanityDrafts",
 			"listDraftPrivateAssetCandidates",
 			"listForEditor",
+			"listPublished",
+			"publishDraft",
 			"replaceDraftPrivateAsset",
 			"saveDraft",
+			"unpublish",
 		]);
 		const v1 = await fixture.adminA.mutation(api.catalogProducts.createDraft, {
 			siteUrl: SITE_A.siteUrl,

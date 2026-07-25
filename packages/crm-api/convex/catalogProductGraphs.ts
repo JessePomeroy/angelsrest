@@ -6,16 +6,23 @@ import {
 	discardCatalogProductGraphV2Draft,
 	getCatalogProductGraphV2EditorState,
 	getCatalogProductGraphV2RetirementEligibility,
+	getPublishedCatalogProductGraphV2BySlug,
 	importSanityCatalogGraphV2Drafts,
 	listCatalogProductGraphV2DraftPrivateAssetCandidates,
 	listCatalogProductGraphsV2ForEditor,
+	listPublishedCatalogProductGraphsV2,
+	publishCatalogProductGraphV2Draft,
 	replaceCatalogProductGraphV2DraftPrivateAsset,
 	saveCatalogProductGraphV2Draft,
+	unpublishCatalogProductGraphV2,
 } from "./helpers/catalogProductGraphStore";
 import {
 	catalogGraphV2PrivateAssetRelationValidator,
 	catalogGraphV2PrivateAssetReplacementValidator,
 	catalogProductGraphV2DraftValidator,
+	catalogProductGraphV2PublicValidator,
+	catalogProductPublicationResultValidator,
+	catalogProductPublicationRevisionValidator,
 } from "./helpers/catalogProductGraphValidators";
 import { catalogProductKindValidator } from "./helpers/catalogProductValidators";
 import { sanityCatalogV2GraphPlanValidator } from "./helpers/sanityCatalogGraphPlan";
@@ -81,7 +88,44 @@ export const discardDraft = mutation({
 	handler: async (ctx, args) => await discardCatalogProductGraphV2Draft(ctx, args),
 });
 
-/** Authenticated Editor-only detail read; no storefront read exists here. */
+const publicationCasArgs = {
+	productId: v.id("catalogProducts"),
+	expectedDraftRevisionId: catalogProductPublicationRevisionValidator,
+	expectedPublishedRevisionId: catalogProductPublicationRevisionValidator,
+	expectedUpdatedAt: v.number(),
+};
+
+/** Publish the exact active complete draft; stale or duplicate submissions conflict. */
+export const publishDraft = mutation({
+	args: publicationCasArgs,
+	returns: catalogProductPublicationResultValidator,
+	handler: async (ctx, args) => await publishCatalogProductGraphV2Draft(ctx, args),
+});
+
+/** Clear the exact publication pointer; stale or duplicate submissions conflict. */
+export const unpublish = mutation({
+	args: publicationCasArgs,
+	returns: catalogProductPublicationResultValidator,
+	handler: async (ctx, args) => await unpublishCatalogProductGraphV2(ctx, args),
+});
+
+/** Unauthenticated, fixed-cap projection of the current published catalog. */
+export const listPublished = query({
+	args: { siteUrl: v.string() },
+	returns: v.array(catalogProductGraphV2PublicValidator),
+	handler: async (ctx, { siteUrl }) =>
+		await listPublishedCatalogProductGraphsV2(ctx, siteUrl),
+});
+
+/** Unauthenticated exact-slug projection of one current published product. */
+export const getPublishedBySlug = query({
+	args: { siteUrl: v.string(), slug: v.string() },
+	returns: v.union(catalogProductGraphV2PublicValidator, v.null()),
+	handler: async (ctx, args) =>
+		await getPublishedCatalogProductGraphV2BySlug(ctx, args),
+});
+
+/** Authenticated Editor-only detail read; public reads are separately bounded. */
 export const getEditorState = query({
 	args: { productId: v.id("catalogProducts") },
 	handler: async (ctx, { productId }) =>

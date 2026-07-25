@@ -1,5 +1,6 @@
 import { v } from "convex/values";
 import type { Doc } from "../_generated/dataModel";
+import type { QueryCtx } from "../_generated/server";
 import {
 	type CatalogProductKind,
 	catalogProductKindValidator,
@@ -43,15 +44,30 @@ export function normalizeCatalogProductKinds(
 	);
 }
 
-export function requireCatalogProductKindEnabled(
+export function requireCatalogProductKinds(
 	client: Doc<"platformClients">,
-	productKind: CatalogProductKind,
 ) {
 	const enabledKinds = client.catalogProductKinds;
 	if (!enabledKinds) {
 		throw new Error("Catalog product policy is not configured for this site");
 	}
-	if (!enabledKinds.includes(productKind)) {
+	return normalizeCatalogProductKinds(enabledKinds);
+}
+
+export async function loadCatalogProductKinds(ctx: QueryCtx, siteUrl: string) {
+	const client = await ctx.db
+		.query("platformClients")
+		.withIndex("by_siteUrl", (query) => query.eq("siteUrl", siteUrl))
+		.unique();
+	if (!client) throw new Error("Catalog product policy site does not exist");
+	return requireCatalogProductKinds(client);
+}
+
+export function requireCatalogProductKindEnabled(
+	client: Doc<"platformClients">,
+	productKind: CatalogProductKind,
+) {
+	if (!requireCatalogProductKinds(client).includes(productKind)) {
 		throw new Error(`Catalog ${productKind} products are not enabled for this site`);
 	}
 }
