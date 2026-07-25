@@ -1,6 +1,9 @@
 import { defineSchema, defineTable } from "convex/server";
 import { v } from "convex/values";
-import { checkoutSnapshotValidator } from "./helpers/checkoutSnapshot";
+import {
+	checkoutSnapshotValidator,
+	reservedCheckoutSnapshotValidator,
+} from "./helpers/checkoutSnapshot";
 import {
 	contentKindValidator,
 	contentRevisionPayloadValidator,
@@ -742,6 +745,29 @@ export default defineSchema({
 		.index("by_revisionId", ["revisionId"])
 		.index("by_productId_and_revisionId", ["productId", "revisionId"])
 		.index("by_siteUrl", ["siteUrl"]),
+
+	// Short-lived, tenant-authenticated handoff from checkout creation to the paid webhook.
+	checkoutSnapshotReservations: defineTable({
+		state: v.union(v.literal("reserved"), v.literal("bound")),
+		siteUrl: v.string(),
+		handleHash: v.string(),
+		snapshotDigest: v.string(),
+		snapshot: reservedCheckoutSnapshotValidator,
+		accountScope: v.string(),
+		stripeConnectedAccountId: v.optional(v.string()),
+		stripeSessionId: v.optional(v.string()),
+		stripeExpiresAt: v.optional(v.number()),
+		unboundPurgeAt: v.number(),
+		boundReconcileAt: v.optional(v.number()),
+		createdAt: v.number(),
+		updatedAt: v.number(),
+		boundAt: v.optional(v.number()),
+		reconciliationAttempt: v.optional(v.number()),
+		reconciliationNextAt: v.optional(v.number()),
+		reconciliationAlertedAt: v.optional(v.number()),
+	})
+		.index("by_siteUrl_and_handleHash", ["siteUrl", "handleHash"])
+		.index("by_accountScope_and_stripeSessionId", ["accountScope", "stripeSessionId"]),
 
 	// Print orders (from Stripe checkout on any client site)
 	orders: defineTable({

@@ -109,6 +109,9 @@ export function purposeScopedServerRoleConfiguration() {
 		deletion: parseOptionalTenantSecretRegistry(
 			process.env.CMS_MEDIA_DELETION_COMPLETION_SECRETS,
 		),
+		checkoutSnapshotReservation: parseOptionalTenantSecretRegistry(
+			process.env.CHECKOUT_SNAPSHOT_RESERVATION_SECRETS,
+		),
 	};
 	const parsed = Object.values(registries);
 	if (parsed.some((registry) => registry === null)) return null;
