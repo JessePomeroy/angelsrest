@@ -124,6 +124,10 @@ describe("admin API aliases", () => {
 		expect(adminConfig.editor?.blog?.mediaBaseUrl).toBe("https://media.angelsrest.online");
 		expect(adminConfig.editor?.products).toEqual({
 			privateAssetReplacementEnabled: true,
+			privateAssetUpload: {
+				prepareEndpoint: "/api/admin/catalog-private-assets/editor-uploads/prepare",
+				completeEndpoint: "/api/admin/catalog-private-assets/editor-uploads/complete",
+			},
 			enabledKinds: [
 				"print",
 				"print_set",
