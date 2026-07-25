@@ -1,5 +1,11 @@
 # @jessepomeroy/crm-api
 
+## 2.28.1
+
+### Patch Changes
+
+- 69a21f6: Remove the temporary internal catalog acceptance observer after finalized evidence capture.
+
 ## 2.28.0
 
 ### Minor Changes
