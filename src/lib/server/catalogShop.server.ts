@@ -18,7 +18,7 @@ type CatalogReader = {
 	getPublishedBySlug(slug: string, signal: AbortSignal): Promise<PublishedProduct>;
 };
 
-type SemanticProduct = { slug: string; value: object };
+type SemanticProduct = { slug: string; value: { kind: string } };
 type ComparisonOutcome = {
 	reason?: ClosedReason;
 	primaryCount: number | null;
@@ -26,7 +26,16 @@ type ComparisonOutcome = {
 };
 
 const MEDIA_ROLES = new Set(["primary", "cover", "gallery", "set_member", "social_share"]);
-const KINDS = new Set("print print_set postcard tapestry digital_download merchandise".split(" "));
+const COMPLETE_CATALOG_PRODUCT_COUNT = 33;
+const COMPLETE_CATALOG_KIND_COUNTS: Record<string, number> = {
+	print: 11,
+	print_set: 2,
+	postcard: 0,
+	tapestry: 19,
+	digital_download: 1,
+	merchandise: 0,
+};
+const KINDS = new Set(Object.keys(COMPLETE_CATALOG_KIND_COUNTS));
 
 const SANITY_COMPARISON_QUERY = `*[_type in ["lumaProductV2", "lumaPrintSetV2", "product"]]{_type,"slug":slug.current,category,orderRank,inStock,featured,price,variants[]{paper,size,retailPrice,enabled},bordersEnabled,framedEnabled,frameMarkupMultiplier,availablePapers,image{"source":asset->metadata.dimensions{width,height}},previewImage{"source":asset->metadata.dimensions{width,height}},images[]{"source":asset->metadata.dimensions{width,height}},seo{ogImage{"source":asset->metadata.dimensions{width,height}}}}`;
 
@@ -296,9 +305,20 @@ function sortedUnique(products: SemanticProduct[]) {
 	return products;
 }
 
+function assertCompleteCatalog(products: SemanticProduct[]) {
+	if (products.length !== COMPLETE_CATALOG_PRODUCT_COUNT) throw new NormalizationError();
+	for (const [kind, expected] of Object.entries(COMPLETE_CATALOG_KIND_COUNTS)) {
+		if (products.filter((product) => product.value.kind === kind).length !== expected) {
+			throw new NormalizationError();
+		}
+	}
+}
+
 export function compareCatalogSemantics(primary: unknown, secondary: unknown): ComparisonOutcome {
 	const left = normalizeSanityCatalog(primary);
 	const right = normalizeConvexCatalog(secondary);
+	assertCompleteCatalog(left);
+	assertCompleteCatalog(right);
 	const matched =
 		left.length === right.length &&
 		left.every((product, index) => {
@@ -356,13 +376,20 @@ export function createCatalogShopProvider(
 	const deadlineMs = dependencies.deadlineMs ?? 750;
 
 	async function compare(signal: AbortSignal): Promise<ComparisonOutcome> {
-		let primary: unknown;
-		let secondary: unknown;
+		const [primaryResult, secondaryResult] = await Promise.allSettled([
+			Promise.resolve().then(() => fetchSanityCatalog(signal)),
+			Promise.resolve().then(() => reader().listPublished(signal)),
+		]);
+		const primary = primaryResult.status === "fulfilled" ? primaryResult.value : undefined;
+		const secondary = secondaryResult.status === "fulfilled" ? secondaryResult.value : undefined;
+		if (primaryResult.status === "rejected" || secondaryResult.status === "rejected") {
+			return {
+				reason: "secondary_error",
+				primaryCount: Array.isArray(primary) ? primary.length : null,
+				secondaryCount: Array.isArray(secondary) ? secondary.length : null,
+			};
+		}
 		try {
-			[primary, secondary] = await Promise.all([
-				fetchSanityCatalog(signal),
-				reader().listPublished(signal),
-			]);
 			return compareCatalogSemantics(primary, secondary);
 		} catch (error) {
 			return {

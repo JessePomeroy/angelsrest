@@ -111,6 +111,69 @@ function fakeReader(list: Promise<unknown>, detail: Promise<unknown> = Promise.r
 	};
 }
 
+function completeCatalog() {
+	const sanity: unknown[] = [];
+	const convex: unknown[] = [];
+	const source = { source: { width: 3000, height: 2000 } };
+	for (let index = 0; index < 11; index += 1) {
+		const slug = index === 0 ? "archival-print" : `print-${index}`;
+		sanity.push({ ...sanityProduct(), slug });
+		convex.push({ ...convexProduct(), slug });
+	}
+	for (let index = 0; index < 2; index += 1) {
+		const productSlug = `set-${index}`;
+		sanity.push({
+			...sanityProduct(),
+			_type: "lumaPrintSetV2",
+			slug: productSlug,
+			previewImage: source,
+			images: [source],
+		});
+		const product = convexProduct();
+		product.productKind = "print_set";
+		product.slug = productSlug;
+		product.media = [
+			{ ...first(product.media), role: "cover" },
+			{ ...first(product.media), role: "set_member" },
+		];
+		convex.push(product);
+	}
+	for (const [category, kind, count] of [
+		["tapestries", "tapestry", 19],
+		["digital", "digital_download", 1],
+	] as const) {
+		for (let index = 0; index < count; index += 1) {
+			const productSlug = `${kind}-${index}`;
+			sanity.push({
+				_type: "product",
+				slug: productSlug,
+				category,
+				price: 10,
+				availablePapers: [],
+				images: [source],
+			});
+			const product = convexProduct() as unknown as Record<string, unknown>;
+			Object.assign(product, {
+				productKind: kind,
+				slug: productSlug,
+				variants: [
+					{
+						order: 0,
+						materialOption: null,
+						sizeOption: null,
+						retailPriceCents: 1000,
+					},
+				],
+				shopPlacement: { featured: false, orderRank: null },
+				media: [{ role: "gallery", order: 0, asset: source }],
+			});
+			delete product.printOptions;
+			convex.push(product);
+		}
+	}
+	return { sanity, convex };
+}
+
 afterEach(() => {
 	vi.useRealTimers();
 });
@@ -165,20 +228,15 @@ describe("catalog provider mode", () => {
 });
 
 describe("catalog semantic comparison", () => {
-	it("matches by ordinal slug with fixed-key semantics rather than object key order", () => {
-		expect(compareCatalogSemantics([sanityProduct()], [convexProduct()])).toEqual({
-			primaryCount: 1,
-			secondaryCount: 1,
+	it("matches the complete reviewed baseline by ordinal slug and fixed-key semantics", () => {
+		const { sanity, convex } = completeCatalog();
+		expect(compareCatalogSemantics(sanity, convex)).toEqual({
+			primaryCount: 33,
+			secondaryCount: 33,
 		});
 	});
 
 	it.each([
-		[
-			"kind",
-			(value: ReturnType<typeof convexProduct>) => {
-				value.productKind = "print_set";
-			},
-		],
 		[
 			"availability",
 			(value: ReturnType<typeof convexProduct>) => {
@@ -240,66 +298,43 @@ describe("catalog semantic comparison", () => {
 			},
 		],
 	] as const)("detects a %s perturbation", (_name, mutate) => {
-		const convex = convexProduct();
-		mutate(convex);
-		const outcome = compareCatalogSemantics([sanityProduct()], [convex]);
-		expect(outcome).toEqual({ reason: "mismatch", primaryCount: 1, secondaryCount: 1 });
+		const catalog = completeCatalog();
+		mutate(first(catalog.convex) as ReturnType<typeof convexProduct>);
+		const outcome = compareCatalogSemantics(catalog.sanity, catalog.convex);
+		expect(outcome).toEqual({ reason: "mismatch", primaryCount: 33, secondaryCount: 33 });
 	});
 
-	it("uses the import-authority mappings for sets and all four supported V1 categories", () => {
-		const dimensions = { source: { width: 3000, height: 2000 } };
-		const mappings = [
-			["postcards", "postcard"],
-			["tapestries", "tapestry"],
-			["digital", "digital_download"],
-			["merchandise", "merchandise"],
-		] as const;
-		const sanity = mappings.map(([category]) => ({
-			_type: "product",
-			slug: category,
-			category,
-			price: 10,
-			availablePapers: [],
-			images: [dimensions],
-		}));
-		const convex = mappings.map(([category, kind]) => {
-			const value = convexProduct() as unknown as Record<string, unknown>;
-			value.productKind = kind;
-			value.slug = category;
-			value.variants = [
-				{
-					order: 0,
-					materialOption: null,
-					sizeOption: null,
-					retailPriceCents: 1000,
-				},
-			];
-			value.shopPlacement = { featured: false, orderRank: null };
-			value.media = [{ role: "gallery", order: 0, asset: dimensions }];
-			delete value.printOptions;
-			return value;
-		});
-		expect(compareCatalogSemantics(sanity, convex).reason).toBeUndefined();
+	it.each([
+		[[], []],
+		[[sanityProduct()], [convexProduct()]],
+	])("rejects empty and partial catalogs instead of reporting a clean match", (sanity, convex) => {
+		expect(() => compareCatalogSemantics(sanity, convex)).toThrow();
+	});
 
-		const set = {
-			...sanityProduct(),
-			_type: "lumaPrintSetV2",
-			slug: "set",
-			previewImage: dimensions,
-			images: [dimensions],
-		};
-		const convexSet = convexProduct();
-		convexSet.productKind = "print_set";
-		convexSet.slug = "set";
-		convexSet.media = [
-			{ ...first(convexSet.media), role: "cover" },
-			{ ...first(convexSet.media), role: "set_member", order: 0 },
-		];
-		expect(compareCatalogSemantics([set], [convexSet]).reason).toBeUndefined();
+	it("rejects overflow catalogs", () => {
+		const catalog = completeCatalog();
+		catalog.sanity.push({ ...sanityProduct(), slug: "overflow" });
+		catalog.convex.push({ ...convexProduct(), slug: "overflow" });
+		expect(() => compareCatalogSemantics(catalog.sanity, catalog.convex)).toThrow();
+	});
+
+	it("rejects a wrong kind distribution even when both catalogs have 33 matching products", () => {
+		const catalog = completeCatalog();
+		const sanity = catalog.sanity.find(
+			(value) => (value as { category?: string }).category === "tapestries",
+		) as { category: string };
+		const convex = catalog.convex.find(
+			(value) => (value as { productKind?: string }).productKind === "tapestry",
+		) as { productKind: string };
+		sanity.category = "digital";
+		convex.productKind = "digital_download";
+		expect(() => compareCatalogSemantics(catalog.sanity, catalog.convex)).toThrow();
 	});
 
 	it("ignores forbidden copy, alt, URL, IDs, cost, provider, and raw fields", () => {
-		const convex = convexProduct() as ReturnType<typeof convexProduct> & Record<string, unknown>;
+		const catalog = completeCatalog();
+		const convex = first(catalog.convex) as ReturnType<typeof convexProduct> &
+			Record<string, unknown>;
 		Object.assign(convex, {
 			title: "Hostile title",
 			description: "Hostile copy",
@@ -312,7 +347,7 @@ describe("catalog semantic comparison", () => {
 			url: "https://hostile.test/private",
 			key: "hostile-id",
 		});
-		expect(compareCatalogSemantics([sanityProduct()], [convex]).reason).toBeUndefined();
+		expect(compareCatalogSemantics(catalog.sanity, catalog.convex).reason).toBeUndefined();
 	});
 
 	it.each([
@@ -332,16 +367,16 @@ describe("catalog semantic comparison", () => {
 	});
 
 	it("defaults missing stock to available, includes unavailable products, and keeps only enabled variants", () => {
-		const available = sanityProduct();
+		const catalog = completeCatalog();
+		const available = first(catalog.sanity) as ReturnType<typeof sanityProduct>;
 		delete (available as Partial<typeof available>).inStock;
-		const unavailable = { ...sanityProduct(), slug: "unavailable", inStock: false };
-		const first = convexProduct();
-		const second = structuredClone(first);
-		second.slug = "unavailable";
-		second.saleAvailability = "unavailable";
-		expect(compareCatalogSemantics([unavailable, available], [second, first])).toEqual({
-			primaryCount: 2,
-			secondaryCount: 2,
+		const unavailable = catalog.sanity[1] as ReturnType<typeof sanityProduct>;
+		unavailable.inStock = false;
+		const secondary = catalog.convex[1] as ReturnType<typeof convexProduct>;
+		secondary.saleAvailability = "unavailable";
+		expect(compareCatalogSemantics(catalog.sanity, catalog.convex)).toEqual({
+			primaryCount: 33,
+			secondaryCount: 33,
 		});
 	});
 });
@@ -349,12 +384,13 @@ describe("catalog semantic comparison", () => {
 describe("Shop index shadow", () => {
 	it("starts the exact Sanity primary and one complete comparison concurrently and emits no match log", async () => {
 		const output = { exact: "Sanity route result" };
+		const catalog = completeCatalog();
 		const primary = deferred<unknown>();
 		const secondary = deferred<unknown>();
 		const sanity = fakeSanity(primary.promise);
 		const reader = fakeReader(secondary.promise);
 		const createReader = vi.fn(() => reader);
-		const fetchSanityCatalog = vi.fn(async () => [sanityProduct()]);
+		const fetchSanityCatalog = vi.fn(async () => catalog.sanity);
 		const log = vi.fn();
 		const provider = createCatalogShopProvider({
 			sanity: sanity as never,
@@ -365,11 +401,12 @@ describe("Shop index shadow", () => {
 		});
 
 		const load = provider.loadIndex(false);
+		await Promise.resolve();
 		expect(sanity.loadIndex).toHaveBeenCalledWith(false);
 		expect(fetchSanityCatalog).toHaveBeenCalledOnce();
 		expect(createReader).toHaveBeenCalledOnce();
 		expect(reader.listPublished).toHaveBeenCalledOnce();
-		secondary.resolve([convexProduct()]);
+		secondary.resolve(catalog.convex);
 		primary.resolve(output);
 		await expect(load).resolves.toBe(output);
 		expect(log).not.toHaveBeenCalled();
@@ -377,15 +414,16 @@ describe("Shop index shadow", () => {
 
 	it("returns Sanity on mismatch and emits one closed whitelisted warning", async () => {
 		const output = { exact: "Sanity" };
-		const convex = convexProduct();
+		const catalog = completeCatalog();
+		const convex = first(catalog.convex) as ReturnType<typeof convexProduct>;
 		first(convex.variants).retailPriceCents += 1;
 		const log = vi.fn();
 		const now = vi.fn().mockReturnValueOnce(0).mockReturnValue(10_000);
 		const provider = createCatalogShopProvider({
 			sanity: fakeSanity(Promise.resolve(output)) as never,
 			mode: () => "shadow",
-			fetchSanityCatalog: async () => [sanityProduct()],
-			createReader: (() => fakeReader(Promise.resolve([convex]))) as never,
+			fetchSanityCatalog: async () => catalog.sanity,
+			createReader: (() => fakeReader(Promise.resolve(catalog.convex))) as never,
 			log,
 			now,
 		});
@@ -400,8 +438,8 @@ describe("Shop index shadow", () => {
 				state: "closed",
 				site: "angelsrest.online",
 				reason: "mismatch",
-				primaryCount: 1,
-				secondaryCount: 1,
+				primaryCount: 33,
+				secondaryCount: 33,
 			},
 		});
 	});
@@ -424,6 +462,30 @@ describe("Shop index shadow", () => {
 		const evidence = JSON.stringify(log.mock.calls[0]);
 		expect(evidence).toContain(reason);
 		expect(evidence).not.toMatch(/token secret|private-id|stack|hostile|slug/i);
+	});
+
+	it.each([
+		["empty", [], []],
+		["partial", [sanityProduct()], [convexProduct()]],
+	] as const)("reports an %s catalog as normalization_error", async (_name, sanity, convex) => {
+		const log = vi.fn();
+		const provider = createCatalogShopProvider({
+			sanity: fakeSanity() as never,
+			mode: () => "shadow",
+			fetchSanityCatalog: async () => sanity,
+			createReader: (() => fakeReader(Promise.resolve(convex))) as never,
+			log,
+		});
+
+		await provider.loadIndex(false);
+		expect(log).toHaveBeenCalledOnce();
+		expect(log.mock.calls[0]?.[0]).toMatchObject({
+			meta: {
+				reason: "normalization_error",
+				primaryCount: sanity.length,
+				secondaryCount: convex.length,
+			},
+		});
 	});
 
 	it("bounds and aborts the secondary, consumes late rejection, and logs only once", async () => {
@@ -460,6 +522,87 @@ describe("Shop index shadow", () => {
 		await Promise.resolve();
 		await Promise.resolve();
 		expect(log).toHaveBeenCalledOnce();
+	});
+
+	it.each([
+		"Sanity",
+		"Convex",
+	] as const)("keeps the deadline active when %s rejects while its peer hangs", async (rejectedBranch) => {
+		vi.useFakeTimers();
+		const late = deferred<unknown>();
+		let signal: AbortSignal | undefined;
+		const reader = fakeReader(Promise.resolve([]));
+		reader.listPublished.mockImplementation((value) => {
+			if (rejectedBranch === "Convex") return Promise.reject(new Error("closed"));
+			signal = value;
+			return late.promise;
+		});
+		const fetchSanityCatalog = vi.fn((value: AbortSignal) => {
+			if (rejectedBranch === "Sanity") return Promise.reject(new Error("closed"));
+			signal = value;
+			return late.promise;
+		});
+		const log = vi.fn();
+		const provider = createCatalogShopProvider({
+			sanity: fakeSanity() as never,
+			mode: () => "shadow",
+			fetchSanityCatalog,
+			createReader: (() => reader) as never,
+			deadlineMs: 25,
+			log,
+		});
+
+		const load = provider.loadIndex(false);
+		let completed = false;
+		void load.then(() => {
+			completed = true;
+		});
+		await vi.advanceTimersByTimeAsync(24);
+		expect(completed).toBe(false);
+		await vi.advanceTimersByTimeAsync(1);
+		await expect(load).resolves.toEqual({ route: "sanity" });
+		expect(signal?.aborted).toBe(true);
+		expect(log.mock.calls[0]?.[0]).toMatchObject({ meta: { reason: "timeout" } });
+		late.reject(new Error("consumed late rejection"));
+		await Promise.resolve();
+	});
+
+	it.each([
+		"construction",
+		"query",
+	] as const)("bounds and consumes a synchronous reader %s failure with a hanging peer", async (failurePoint) => {
+		vi.useFakeTimers();
+		const late = deferred<unknown>();
+		let signal: AbortSignal | undefined;
+		const createReader = () => {
+			if (failurePoint === "construction") throw new Error("closed");
+			return {
+				listPublished: () => {
+					throw new Error("closed");
+				},
+				getPublishedBySlug: vi.fn(),
+			};
+		};
+		const log = vi.fn();
+		const provider = createCatalogShopProvider({
+			sanity: fakeSanity() as never,
+			mode: () => "shadow",
+			fetchSanityCatalog: (value) => {
+				signal = value;
+				return late.promise;
+			},
+			createReader: createReader as never,
+			deadlineMs: 25,
+			log,
+		});
+
+		const load = provider.loadIndex(false);
+		await vi.advanceTimersByTimeAsync(25);
+		await expect(load).resolves.toEqual({ route: "sanity" });
+		expect(signal?.aborted).toBe(true);
+		expect(log.mock.calls[0]?.[0]).toMatchObject({ meta: { reason: "timeout" } });
+		late.reject(new Error("consumed late rejection"));
+		await Promise.resolve();
 	});
 
 	it("preserves primary rejection and aborts the comparison without warning", async () => {
