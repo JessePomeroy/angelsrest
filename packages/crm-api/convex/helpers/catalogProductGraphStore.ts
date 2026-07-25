@@ -912,30 +912,14 @@ function validatePublicationLifecycleInput(args: CatalogPublicationCas) {
 		|| !Number.isSafeInteger(args.lifecycleAt)
 		|| args.lifecycleAt <= 0
 		|| args.lifecycleAt <= args.expectedUpdatedAt
+		|| args.lifecycleAt > Date.now()
 	) publicationConflict();
 }
 
 function requireFreshPublicationLifecycle(args: CatalogPublicationCas) {
-	if (Math.abs(Date.now() - args.lifecycleAt) > CATALOG_PUBLICATION_CLOCK_WINDOW_MS) {
+	if (Date.now() - args.lifecycleAt > CATALOG_PUBLICATION_CLOCK_WINDOW_MS) {
 		publicationConflict();
 	}
-}
-
-function publicationMutationMarker(
-	operation: "publish" | "unpublish",
-	actor: string,
-	args: CatalogPublicationCas,
-) {
-	// Private updatedBy metadata distinguishes exact retries without new schema.
-	return JSON.stringify([
-		"catalog-publication-v1",
-		operation,
-		actor,
-		args.expectedDraftRevisionId,
-		args.expectedPublishedRevisionId,
-		args.expectedUpdatedAt,
-		args.lifecycleAt,
-	]);
 }
 
 function hasExactPublicationCas(product: CatalogGraphV2Product, args: CatalogPublicationCas) {
@@ -1000,13 +984,12 @@ export async function publishCatalogProductGraphV2Draft(
 		args.productId,
 	);
 	validatePublicationLifecycleInput(args);
-	const marker = publicationMutationMarker("publish", actor, args);
 	if (
 		args.expectedDraftRevisionId
 		&& product.draftRevisionId === args.expectedDraftRevisionId
 		&& product.publishedRevisionId === args.expectedDraftRevisionId
 		&& product.updatedAt === args.lifecycleAt
-		&& product.updatedBy === marker
+		&& product.updatedBy === actor
 		&& product.publishedAt === args.lifecycleAt
 		&& product.publishedBy === actor
 	) {
@@ -1034,7 +1017,7 @@ export async function publishCatalogProductGraphV2Draft(
 		publishedAt: args.lifecycleAt,
 		publishedBy: actor,
 		updatedAt: args.lifecycleAt,
-		updatedBy: marker,
+		updatedBy: actor,
 	});
 	return {
 		productId: product._id,
@@ -1054,13 +1037,12 @@ export async function unpublishCatalogProductGraphV2(
 		args.productId,
 	);
 	validatePublicationLifecycleInput(args);
-	const marker = publicationMutationMarker("unpublish", actor, args);
 	if (
 		args.expectedPublishedRevisionId
 		&& product.draftRevisionId === (args.expectedDraftRevisionId ?? undefined)
 		&& product.publishedRevisionId === undefined
 		&& product.updatedAt === args.lifecycleAt
-		&& product.updatedBy === marker
+		&& product.updatedBy === actor
 		&& product.publishedAt === undefined
 		&& product.publishedBy === undefined
 	) {
@@ -1081,7 +1063,7 @@ export async function unpublishCatalogProductGraphV2(
 		publishedAt: undefined,
 		publishedBy: undefined,
 		updatedAt: args.lifecycleAt,
-		updatedBy: marker,
+		updatedBy: actor,
 	});
 	return {
 		productId: product._id,

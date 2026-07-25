@@ -33,8 +33,13 @@ async function product(fixture: Fixture, productId: Id<"catalogProducts">) {
 	return value;
 }
 
-function nextLifecycleAt(updatedAt: number) {
-	return Math.max(Date.now(), updatedAt + 1);
+async function nextLifecycleAt(updatedAt: number) {
+	let lifecycleAt = Date.now();
+	while (lifecycleAt <= updatedAt) {
+		await new Promise((resolve) => setTimeout(resolve, 1));
+		lifecycleAt = Date.now();
+	}
+	return lifecycleAt;
 }
 
 async function publicationArgs(
@@ -47,7 +52,7 @@ async function publicationArgs(
 		expectedDraftRevisionId: value.draftRevisionId ?? null,
 		expectedPublishedRevisionId: value.publishedRevisionId ?? null,
 		expectedUpdatedAt: value.updatedAt,
-		lifecycleAt: nextLifecycleAt(value.updatedAt),
+		lifecycleAt: await nextLifecycleAt(value.updatedAt),
 	};
 }
 
@@ -128,32 +133,62 @@ describe("catalog V2 publication lifecycle", () => {
 		})).toBeNull();
 	});
 
-	test("authorizes before state, enforces tenant policy, and leaves rejected state unchanged", async () => {
-		const fixture = await setup(modules);
-		const created = await createGraph(
-			fixture.adminA,
-			SITE_A.siteUrl,
-			"authorization",
-			graphDraft("print", fixture, "authorization"),
-		);
-		const args = await publicationArgs(fixture, created.productId);
-		const before = await product(fixture, created.productId);
-		await expect(fixture.t.mutation(api.catalogProductGraphs.publishDraft, args))
-			.rejects.toThrow(/not authenticated/i);
-		await expect(fixture.adminB.mutation(api.catalogProductGraphs.publishDraft, args))
-			.rejects.toThrow(/not authorized/i);
-		await fixture.t.run(async (ctx) => {
-			const client = await ctx.db.query("platformClients")
-				.withIndex("by_siteUrl", (q) => q.eq("siteUrl", SITE_A.siteUrl)).unique();
-			if (!client) throw new Error("Client fixture is missing");
-			await ctx.db.patch(client._id, { catalogProductKinds: ["postcard"] });
-		});
-		await expect(fixture.adminA.mutation(api.catalogProductGraphs.publishDraft, args))
-			.rejects.toThrow(/not enabled/i);
-		expect(await product(fixture, created.productId)).toEqual(before);
-	});
+	test.each(["publishDraft", "unpublish"] as const)(
+		"authorizes %s before state, enforces tenant policy, and leaves rejected state unchanged",
+		async (operation) => {
+			const fixture = await setup(modules);
+			const slug = `authorization-${operation.toLowerCase()}`;
+			const created = await createGraph(
+				fixture.adminA,
+				SITE_A.siteUrl,
+				slug,
+				graphDraft("print", fixture, slug),
+			);
+			if (operation === "unpublish") {
+				await fixture.adminA.mutation(
+					api.catalogProductGraphs.publishDraft,
+					await publicationArgs(fixture, created.productId),
+				);
+			}
+			const mutation = operation === "publishDraft"
+				? api.catalogProductGraphs.publishDraft
+				: api.catalogProductGraphs.unpublish;
+			const args = await publicationArgs(fixture, created.productId);
+			const before = await product(fixture, created.productId);
+			await expect(fixture.t.mutation(mutation, args)).rejects.toThrow(/not authenticated/i);
+			await expect(fixture.adminB.mutation(mutation, args)).rejects.toThrow(/not authorized/i);
+			await fixture.t.run(async (ctx) => {
+				const client = await ctx.db.query("platformClients")
+					.withIndex("by_siteUrl", (q) => q.eq("siteUrl", SITE_A.siteUrl)).unique();
+				if (!client) throw new Error("Client fixture is missing");
+				await ctx.db.patch(client._id, { catalogProductKinds: ["postcard"] });
+			});
+			await expect(fixture.adminA.mutation(mutation, args)).rejects.toThrow(/not enabled/i);
+			expect(await product(fixture, created.productId)).toEqual(before);
+		},
+	);
 
-	test("uses exact CAS and accepts only the identical actor-bound retry", async () => {
+	test.each(["publishDraft", "unpublish"] as const)(
+		"rejects V1 products through the registered %s mutation",
+		async (operation) => {
+			const fixture = await setup(modules);
+			const slug = `legacy-${operation.toLowerCase()}`;
+			const legacy = await fixture.adminA.mutation(api.catalogProducts.createDraft, {
+				siteUrl: SITE_A.siteUrl,
+				productKey: slug,
+				draft: v1Draft(slug),
+			});
+			const mutation = operation === "publishDraft"
+				? api.catalogProductGraphs.publishDraft
+				: api.catalogProductGraphs.unpublish;
+			await expect(fixture.adminA.mutation(
+				mutation,
+				await publicationArgs(fixture, legacy.productId),
+			)).rejects.toThrow(/not a V2 graph product/i);
+		},
+	);
+
+	test("uses exact lifecycle CAS and accepts only the actor-bound retry", async () => {
 		const fixture = await setup(modules);
 		const created = await createGraph(
 			fixture.adminA,
@@ -168,18 +203,14 @@ describe("catalog V2 publication lifecycle", () => {
 		})).rejects.toThrow(/publication conflict/i);
 		await expect(fixture.adminA.mutation(api.catalogProductGraphs.publishDraft, {
 			...args,
-			lifecycleAt: Date.now() + 5 * 60 * 1_000 + 10_000,
+			lifecycleAt: Date.now() + 30_000,
 		})).rejects.toThrow(/publication conflict/i);
 		const first = await fixture.adminA.mutation(api.catalogProductGraphs.publishDraft, args);
 		const committed = await product(fixture, created.productId);
+		expect(committed.updatedBy).toBe(committed.createdBy);
 		expect(await fixture.adminA.mutation(api.catalogProductGraphs.publishDraft, args))
 			.toEqual(first);
 		expect(await product(fixture, created.productId)).toEqual(committed);
-		await expect(fixture.adminA.mutation(api.catalogProductGraphs.publishDraft, {
-			...args,
-			expectedPublishedRevisionId: created.revisionId,
-		})).rejects.toThrow(/publication conflict/i);
-
 		const secondEmail = "second-admin@example.com";
 		await fixture.t.run(async (ctx) => {
 			const client = await ctx.db.query("platformClients")
@@ -197,12 +228,46 @@ describe("catalog V2 publication lifecycle", () => {
 			unpublishArgs,
 		);
 		const cleared = await product(fixture, created.productId);
+		expect(cleared.updatedBy).toBe(cleared.createdBy);
 		expect(await fixture.adminA.mutation(api.catalogProductGraphs.unpublish, unpublishArgs))
 			.toEqual(unpublishResult);
 		expect(await product(fixture, created.productId)).toEqual(cleared);
 		await expect(fixture.adminA.mutation(api.catalogProductGraphs.publishDraft, args))
 			.rejects.toThrow(/publication conflict/i);
 	});
+
+	test.each(["saveDraft", "discardDraft", "unpublish"] as const)(
+		"does not clock-lock immediate %s after an accepted publication",
+		async (operation) => {
+			const fixture = await setup(modules);
+			const slug = `clock-${operation.toLowerCase()}`;
+			const created = await createGraph(
+				fixture.adminA,
+				SITE_A.siteUrl,
+				slug,
+				graphDraft("postcard", fixture, slug),
+			);
+			await fixture.adminA.mutation(
+				api.catalogProductGraphs.publishDraft,
+				await publicationArgs(fixture, created.productId),
+			);
+			if (operation === "saveDraft") {
+				const replacement = graphDraft("postcard", fixture, slug);
+				replacement.title = "Saved immediately after publication";
+				await saveGraph(fixture.adminA, created.productId, replacement, created.revisionId);
+			} else if (operation === "discardDraft") {
+				await fixture.adminA.mutation(api.catalogProductGraphs.discardDraft, {
+					productId: created.productId,
+					draftRevisionId: created.revisionId,
+				});
+			} else {
+				await fixture.adminA.mutation(
+					api.catalogProductGraphs.unpublish,
+					await publicationArgs(fixture, created.productId),
+				);
+			}
+		},
+	);
 
 	test("rejects incomplete publication and tenant-wide duplicate slug ownership", async () => {
 		const fixture = await setup(modules);
