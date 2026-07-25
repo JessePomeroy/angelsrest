@@ -25,7 +25,6 @@ import { processStripeWebhookEvent } from "$lib/server/orderIntake";
 import { getResend } from "$lib/server/resendClient";
 import { getStripe } from "$lib/server/stripeClient";
 import { verifyStripeWebhook } from "$lib/server/stripeWebhook";
-import { buildOrderItemsFromSession } from "$lib/server/webhookDecoder";
 
 const convex = getConvex();
 
@@ -48,11 +47,3 @@ function getCommerceWebhookSecret() {
 	}
 	return secret;
 }
-
-/**
- * Exported for tests only — the production code path goes through
- * `buildOrderItemsFromSession` in webhookDecoder.ts. Re-exporting this
- * lets cart-shape tests exercise the parser without spinning up the
- * full webhook harness.
- */
-export const __test__buildOrderItemsFromSession = buildOrderItemsFromSession;

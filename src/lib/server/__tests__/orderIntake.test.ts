@@ -112,6 +112,40 @@ function makeLineItem(): Stripe.LineItem {
 	} as Stripe.LineItem;
 }
 
+function snapshotMetadata(productKey: string) {
+	return {
+		checkoutSnapshotVersion: "1",
+		catalogProvider: "convex",
+		checkoutSnapshotItemCount: "1",
+		checkoutSnapshotItem_0: JSON.stringify([
+			0,
+			productKey,
+			"revision",
+			"print",
+			"variant",
+			null,
+			null,
+			null,
+			null,
+		]),
+	};
+}
+
+function snapshot(productKey: string) {
+	return {
+		schemaVersion: 1 as const,
+		catalogProvider: "sanity" as const,
+		items: [
+			{
+				productKey,
+				revisionId: "stored-revision",
+				productKind: "print" as const,
+				variantKey: "stored-variant",
+			},
+		],
+	};
+}
+
 function makeOrderResult(overrides: Record<string, unknown> = {}) {
 	return {
 		_id: "order-123" as Id<"orders">,
@@ -331,10 +365,11 @@ describe("processStripeWebhookEvent", () => {
 		expect(convex.mutation).not.toHaveBeenCalledWith("orders.create", expect.anything());
 	});
 
-	it("routes invoice payment sessions to invoice settlement only", async () => {
+	it("routes invoice payment sessions without decoding snapshot markers", async () => {
 		const session = makeCheckoutSession({
 			metadata: {
 				type: "invoice_payment",
+				checkoutSnapshotVersion: "invalid",
 				invoiceId: "invoice-123",
 				siteUrl: "https://client.example",
 				checkoutFingerprint: "checkout-fingerprint-123",
@@ -354,7 +389,63 @@ describe("processStripeWebhookEvent", () => {
 			stripeCheckoutSessionId: "cs_test_123",
 			stripeCheckoutFingerprint: "checkout-fingerprint-123",
 		});
+		expect(stripe.checkout.sessions.retrieve).not.toHaveBeenCalled();
 		expect(createLumaPrintsOrder).not.toHaveBeenCalled();
+		expect(convex.mutation).not.toHaveBeenCalledWith("orders.create", expect.anything());
+	});
+
+	it("fails a marked protocol error before order, provider, refund, or permanent notifications", async () => {
+		const session = makeCheckoutSession({
+			metadata: {
+				...makeCheckoutSession().metadata,
+				checkoutSnapshotVersion: "2",
+			},
+		});
+		stripe.checkout.sessions.retrieve.mockResolvedValue({
+			...session,
+			line_items: { data: [makeLineItem()] },
+		});
+
+		const { processStripeWebhookEvent } = await import("../orderIntake");
+		await expect(
+			processStripeWebhookEvent(makeStripeEvent("checkout.session.completed", session), adapters()),
+		).rejects.toMatchObject({ status: 500 });
+
+		expect(convex.mutation).not.toHaveBeenCalledWith("orders.create", expect.anything());
+		expect(createLumaPrintsOrder).not.toHaveBeenCalled();
+		expect(stripe.refunds.create).not.toHaveBeenCalled();
+		expect(mockSendFulfillmentFailureAlert).not.toHaveBeenCalled();
+		expect(mockSendCustomerFulfillmentFailure).not.toHaveBeenCalled();
+	});
+
+	it("accepts a changed retry candidate while the returned first-write snapshot stays authoritative", async () => {
+		const session = makeCheckoutSession({
+			metadata: { ...makeCheckoutSession().metadata, ...snapshotMetadata("retry-candidate") },
+		});
+		stripe.checkout.sessions.retrieve.mockResolvedValue({
+			...session,
+			line_items: { data: [makeLineItem()] },
+		});
+		orderCreateResults = [
+			makeOrderResult({
+				alreadyExisted: true,
+				checkoutSnapshot: snapshot("stored-first-write"),
+			}),
+		];
+
+		const { processStripeWebhookEvent } = await import("../orderIntake");
+		await processStripeWebhookEvent(
+			makeStripeEvent("checkout.session.completed", session),
+			adapters(),
+		);
+
+		expect(convex.mutation).toHaveBeenCalledWith(
+			"orders.create",
+			expect.objectContaining({
+				checkoutSnapshot: expect.objectContaining({ catalogProvider: "convex" }),
+			}),
+		);
+		expect(createLumaPrintsOrder).toHaveBeenCalledTimes(1);
 	});
 
 	it("keeps transient LumaPrints failures retryable and sends no order confirmation", async () => {

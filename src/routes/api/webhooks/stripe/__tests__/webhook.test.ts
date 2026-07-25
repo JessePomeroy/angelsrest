@@ -19,15 +19,11 @@ vi.mock("$lib/config/site", () => ({
 }));
 
 const mockConstructEvent = vi.fn();
-const mockRefundsCreate = vi.fn();
-vi.mock("stripe", () => {
-	return {
-		default: class MockStripe {
-			webhooks = { constructEvent: mockConstructEvent };
-			refunds = { create: mockRefundsCreate };
-		},
-	};
-});
+vi.mock("stripe", () => ({
+	default: class MockStripe {
+		webhooks = { constructEvent: mockConstructEvent };
+	},
+}));
 
 const mockSendEmail = vi.fn();
 vi.mock("resend", () => ({
@@ -130,12 +126,6 @@ describe("Stripe webhook POST handler", () => {
 
 		// Default: LumaPrints createOrder succeeds
 		mockCreateLumaOrder.mockResolvedValue({ orderNumber: "LP-12345" });
-
-		// Default: Stripe refunds succeed
-		mockRefundsCreate.mockResolvedValue({
-			id: "re_test_refund_123",
-			status: "succeeded",
-		});
 
 		// Dynamic import to pick up mocks
 		vi.resetModules();
@@ -249,169 +239,6 @@ describe("Stripe webhook POST handler", () => {
 		expect(response.status).toBe(200);
 		const data = await response.json();
 		expect(data.received).toBe(true);
-	});
-
-	// ─── audit #23 PR #3: permanent-failure fallback ─────────────────────────
-
-	it("refunds + marks fulfillment_error + emails admin on permanent LumaPrints failure", async () => {
-		// LumaPrints rejects the order with a 4xx-style validation error.
-		// classifyLumaPrintsFailure should categorize this as permanent.
-		const { LumaPrintsError } = await import("$lib/server/lumaprints");
-		mockCreateLumaOrder.mockRejectedValue(
-			new LumaPrintsError("Order submission failed", {
-				statusCode: 400,
-				message: "Invalid subcategoryId for orderItems[0]",
-			}),
-		);
-
-		const req = {
-			request: new Request("http://localhost/api/webhooks/stripe", {
-				method: "POST",
-				headers: { "stripe-signature": "valid-sig" },
-				body: "{}",
-			}),
-		};
-
-		const response = await POST(req);
-		// Returns 200 — we don't want Stripe to retry a permanent failure
-		expect(response.status).toBe(200);
-
-		// Stripe refund was created against the session's payment_intent
-		expect(mockRefundsCreate).toHaveBeenCalledWith(
-			expect.objectContaining({
-				payment_intent: "pi_test_123",
-				reason: "requested_by_customer",
-			}),
-			{ idempotencyKey: "fulfillment-refund:cs_test_123" },
-		);
-
-		// Convex order was marked fulfillment_error with the refund ID
-		expect(mockConvexMutation).toHaveBeenCalledWith(
-			"orders.updateStatus",
-			expect.objectContaining({
-				status: "fulfillment_error",
-				stripeRefundId: "re_test_refund_123",
-				fulfillmentError: expect.stringContaining("Invalid subcategoryId"),
-			}),
-		);
-
-		// Admin alert email was sent
-		expect(mockSendEmail).toHaveBeenCalledWith(
-			expect.objectContaining({
-				subject: expect.stringContaining("Fulfillment error"),
-				text: expect.stringContaining("Invalid subcategoryId"),
-			}),
-		);
-	});
-
-	it("re-throws transient LumaPrints failures so Stripe retries", async () => {
-		// A LumaPrints 5xx error is transient — classifier returns "transient".
-		const { LumaPrintsError } = await import("$lib/server/lumaprints");
-		mockCreateLumaOrder.mockRejectedValue(
-			new LumaPrintsError("Order submission failed", {
-				statusCode: 503,
-				message: "Service temporarily unavailable",
-			}),
-		);
-
-		const req = {
-			request: new Request("http://localhost/api/webhooks/stripe", {
-				method: "POST",
-				headers: { "stripe-signature": "valid-sig" },
-				body: "{}",
-			}),
-		};
-
-		try {
-			await POST(req);
-			expect.fail("should have thrown 500 so Stripe retries");
-		} catch (err: any) {
-			expect(err.status).toBe(500);
-		}
-
-		// Did NOT refund — transient errors should let Stripe retry
-		expect(mockRefundsCreate).not.toHaveBeenCalled();
-
-		// Did NOT mark fulfillment_error — status stays in its previous state
-		expect(mockConvexMutation).not.toHaveBeenCalledWith(
-			"orders.updateStatus",
-			expect.objectContaining({ status: "fulfillment_error" }),
-		);
-	});
-
-	it("returns 500 and leaves a durable recovery checkpoint when the refund call fails", async () => {
-		// Permanent LumaPrints error...
-		const { LumaPrintsError } = await import("$lib/server/lumaprints");
-		mockCreateLumaOrder.mockRejectedValue(
-			new LumaPrintsError("Order submission failed", {
-				statusCode: 422,
-				message: "Unprocessable payload",
-			}),
-		);
-		// ...and the Stripe refund API is ALSO down.
-		mockRefundsCreate.mockRejectedValue(new Error("Stripe API timeout"));
-
-		const req = {
-			request: new Request("http://localhost/api/webhooks/stripe", {
-				method: "POST",
-				headers: { "stripe-signature": "valid-sig" },
-				body: "{}",
-			}),
-		};
-
-		await expect(POST(req)).rejects.toMatchObject({ status: 500 });
-
-		// Stripe can retry safely: Convex records the recovery checkpoint before
-		// the external refund call, and the refund itself has a stable key.
-		expect(mockConvexMutation).toHaveBeenCalledWith(
-			"orders.updateStatus",
-			expect.objectContaining({
-				status: "fulfillment_error",
-				fulfillmentRecoveryStatus: "refund_pending",
-			}),
-		);
-		expect(mockRefundsCreate).toHaveBeenCalledWith(
-			expect.objectContaining({ payment_intent: "pi_test_123" }),
-			{ idempotencyKey: "fulfillment-refund:cs_test_123" },
-		);
-	});
-
-	it("resumes refund recovery without repeating fulfillment for a legacy error record", async () => {
-		mockConvexMutation.mockResolvedValueOnce({
-			_id: "order-123",
-			orderNumber: "ORD-001",
-			alreadyExisted: true,
-			status: "fulfillment_error",
-		});
-
-		const req = {
-			request: new Request("http://localhost/api/webhooks/stripe", {
-				method: "POST",
-				headers: { "stripe-signature": "valid-sig" },
-				body: "{}",
-			}),
-		};
-
-		const response = await POST(req);
-		expect(response.status).toBe(200);
-
-		expect(mockCreateLumaOrder).not.toHaveBeenCalled();
-		expect(mockRefundsCreate).toHaveBeenCalledWith(
-			expect.objectContaining({ payment_intent: "pi_test_123" }),
-			{ idempotencyKey: "fulfillment-refund:cs_test_123" },
-		);
-		expect(mockConvexMutation).toHaveBeenCalledWith(
-			"orders.updateStatus",
-			expect.objectContaining({
-				stripeRefundId: "re_test_refund_123",
-				fulfillmentRecoveryStatus: "refunded",
-			}),
-		);
-		expect(mockSendEmail).toHaveBeenCalledWith(
-			expect.objectContaining({
-				subject: expect.stringContaining("refund issued"),
-			}),
-		);
 	});
 
 	it("marks invoice as paid for invoice_payment metadata", async () => {

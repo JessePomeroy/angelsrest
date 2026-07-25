@@ -67,6 +67,7 @@ describe("buildConvexOrderCreatePayload", () => {
 			customerEmail: "jane@example.com",
 			customerName: "Jane Doe",
 			stripePaymentIntentId: "pi_test_123",
+			checkoutSnapshot: undefined,
 			shippingAddress: {
 				line1: "123 Main St",
 				line2: undefined,
@@ -88,6 +89,36 @@ describe("buildConvexOrderCreatePayload", () => {
 			paperName: "Archival Matte",
 			paperSubcategoryId: "103001",
 		});
+	});
+
+	it("keeps paid names, quantities, and amounts under Stripe authority", () => {
+		const payload = buildConvexOrderCreatePayload({
+			session: makeSession({
+				metadata: {
+					checkoutSnapshotVersion: "1",
+					catalogProvider: "sanity",
+					checkoutSnapshotItemCount: "1",
+					checkoutSnapshotItem_0: JSON.stringify([
+						0,
+						"product",
+						"revision",
+						"print",
+						"variant",
+						null,
+						null,
+						null,
+						null,
+					]),
+				},
+			}),
+			shippingDetails: null,
+			lineItems: [makeLineItem({ description: "Stripe name", quantity: 3, amount_total: 7300 })],
+			siteUrl: "angelsrest.online",
+			webhookSecret: "secret",
+		});
+
+		expect(payload.items).toEqual([{ productName: "Stripe name", quantity: 3, price: 7300 }]);
+		expect(payload.checkoutSnapshot?.items[0]).not.toHaveProperty("price");
 	});
 
 	it("handles expanded payment intents and digital orders", () => {

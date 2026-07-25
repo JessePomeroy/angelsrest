@@ -1,4 +1,5 @@
 import type Stripe from "stripe";
+import { type CheckoutSnapshotV1, decodeCheckoutSnapshot } from "$lib/server/checkoutSnapshotCodec";
 import type { ShippingDetails } from "$lib/server/webhookEmails";
 
 export type ConvexOrderCreatePayload = {
@@ -9,6 +10,7 @@ export type ConvexOrderCreatePayload = {
 	customerName?: string;
 	stripePaymentIntentId?: string;
 	stripeConnectedAccountId?: string;
+	checkoutSnapshot?: CheckoutSnapshotV1;
 	shippingAddress?: {
 		line1: string;
 		line2?: string;
@@ -59,6 +61,7 @@ export function buildConvexOrderCreatePayload({
 		...(stripeRequestOptions?.stripeAccount
 			? { stripeConnectedAccountId: stripeRequestOptions.stripeAccount }
 			: {}),
+		checkoutSnapshot: decodeCheckoutSnapshot(session.metadata, lineItems),
 		shippingAddress: shippingDetails?.address
 			? {
 					line1: shippingDetails.address.line1 || "",

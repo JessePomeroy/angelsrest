@@ -11,6 +11,7 @@ import type { Resend } from "resend";
 import type Stripe from "stripe";
 import { api } from "$convex/api";
 import type { Id } from "$convex/dataModel";
+import { assertCheckoutSnapshotV1 } from "$lib/server/checkoutSnapshotCodec";
 import {
 	ANGELS_REST_COMMERCE_PROFILE,
 	type CommerceNotificationProfile,
@@ -90,6 +91,9 @@ export async function createOrderInConvex(
 	const existingFulfillmentError = orderResult.fulfillmentError;
 	const existingStripeRefundId = orderResult.stripeRefundId;
 	const existingRecoveryStatus = orderResult.fulfillmentRecoveryStatus;
+
+	// The returned first write, including legacy absence, is authoritative.
+	assertCheckoutSnapshotV1(orderResult.checkoutSnapshot);
 
 	logStructured({
 		event: alreadyExisted ? "order.rehydrated" : "order.created",

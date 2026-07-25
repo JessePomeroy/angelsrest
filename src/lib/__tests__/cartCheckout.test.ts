@@ -13,7 +13,7 @@ import type { CartItem } from "../shop/cart";
 //
 // Splitting the validation + encoding into pure functions and testing them
 // in isolation gives us tight coverage of the metadata contract that has
-// to stay in lockstep with the webhook's `__test__buildOrderItemsFromSession`
+// to stay in lockstep with the webhook's `buildOrderItemsFromSession`
 // — see webhookCartShape.test.ts for the round-trip test.
 
 function makeItem(overrides: Partial<CartItem> = {}): CartItem {
