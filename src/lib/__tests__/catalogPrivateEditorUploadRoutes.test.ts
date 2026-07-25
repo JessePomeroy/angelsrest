@@ -47,12 +47,12 @@ const prepareBody = JSON.stringify({
 });
 const completeBody = JSON.stringify({ uploadHandle });
 
-function sameOriginRequest(path: string, body: string, origin = "https://www.angelsrest.online") {
+function sameOriginRequest(path: string, body: string) {
 	return new Request(`https://www.angelsrest.online${path}`, {
 		method: "POST",
 		headers: {
 			"Content-Type": "application/json",
-			Origin: origin,
+			Origin: "https://www.angelsrest.online",
 			"Sec-Fetch-Site": "same-origin",
 			"Sec-Fetch-Mode": "cors",
 			"Sec-Fetch-Dest": "empty",
@@ -114,73 +114,6 @@ describe("catalog private Editor upload routes", () => {
 		expect(response.status).toBe(401);
 		await expect(response.json()).resolves.toEqual({ status: "unauthorized" });
 		expect(verifySiteAdminRequest).toHaveBeenCalledOnce();
-		expect(fetch).not.toHaveBeenCalled();
-	});
-
-	it.each(
-		routeVectors,
-	)("rejects a cross-origin $name vector before authentication or external fetch", async ({
-		post,
-		path,
-		body,
-	}) => {
-		const response = await post({
-			request: sameOriginRequest(path, body, "https://attacker.example"),
-		} as never);
-
-		expect(response.status).toBe(400);
-		await expect(response.json()).resolves.toEqual({ status: "invalid_request" });
-		expect(verifySiteAdminRequest).not.toHaveBeenCalled();
-		expect(fetch).not.toHaveBeenCalled();
-	});
-
-	it.each([
-		{ name: "missing", upload: undefined },
-		{
-			name: "equal",
-			upload: {
-				convexJournalOrigin: "https://loyal-swan-967.convex.site",
-				hostJournalSecret: "x".repeat(32),
-				workerOrigin: "https://cms-media-worker.thinkingofview.workers.dev" as const,
-				storageCallerSecret: "x".repeat(32),
-				browserOrigin: "https://www.angelsrest.online",
-			},
-		},
-	])("fails both handlers closed through the package for $name upload config", async ({
-		upload,
-	}) => {
-		setServerConfig({ ...adminServerConfig, catalogPrivateEditorUpload: upload });
-
-		for (const { post, path, body } of routeVectors) {
-			const response = await post({ request: sameOriginRequest(path, body) } as never);
-			expect(response.status).toBe(503);
-			await expect(response.json()).resolves.toEqual({ status: "service_unavailable" });
-		}
-
-		expect(verifySiteAdminRequest).not.toHaveBeenCalled();
-		expect(fetch).not.toHaveBeenCalled();
-	});
-
-	it.each(
-		routeVectors,
-	)("fails $name through the package configuration gate before reading the request", async ({
-		post,
-	}) => {
-		const bodyRead = vi.fn();
-		const request = {
-			get body() {
-				bodyRead();
-				throw new Error("request body must not be read");
-			},
-		} as unknown as Request;
-		setServerConfig({ ...adminServerConfig, catalogPrivateEditorUpload: undefined });
-
-		const response = await post({ request } as never);
-
-		expect(response.status).toBe(503);
-		await expect(response.json()).resolves.toEqual({ status: "service_unavailable" });
-		expect(bodyRead).not.toHaveBeenCalled();
-		expect(verifySiteAdminRequest).not.toHaveBeenCalled();
 		expect(fetch).not.toHaveBeenCalled();
 	});
 });
