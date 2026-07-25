@@ -25,6 +25,7 @@
 	"files": [
 		"src/",
 		"convex/**/*.ts",
+		"!convex/**/*.test.ts",
 		"convex/_generated/"
 	],
 	"scripts": {
