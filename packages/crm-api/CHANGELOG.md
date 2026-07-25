@@ -1,5 +1,11 @@
 # @jessepomeroy/crm-api
 
+## 2.30.0
+
+### Minor Changes
+
+- 93e0d07: Add the optional immutable provider-neutral checkout snapshot contract to orders, preserving the first stored snapshot across session retries without changing legacy order or customer lookup shapes.
+
 ## 2.29.0
 
 ### Minor Changes
