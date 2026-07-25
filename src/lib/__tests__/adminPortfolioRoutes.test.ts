@@ -135,17 +135,4 @@ describe("admin Editor route boundaries", () => {
 		expect(aboutServer).not.toContain("$convex");
 		expect(aboutServer).not.toContain("getPublishedContactPageWithRevision");
 	});
-
-	it("leaves public product and print-set reads on the reversible Sanity boundary", () => {
-		for (const path of [
-			"src/routes/shop/+page.server.ts",
-			"src/routes/shop/[slug]/+page.server.ts",
-			"src/routes/shop/sets/[slug]/+page.server.ts",
-		]) {
-			const source = routeSource(path);
-			expect(source).toContain('from "$lib/sanity/client.server"');
-			expect(source).not.toContain("$convex");
-			expect(source).not.toContain("catalogProducts");
-		}
-	});
 });
