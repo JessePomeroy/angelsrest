@@ -1,5 +1,11 @@
 # @jessepomeroy/crm-api
 
+## 2.31.0
+
+### Minor Changes
+
+- 1086df1: Add the default-off durable checkout snapshot reservation, paid-safe reconciliation, and session-first webhook routing foundation.
+
 ## 2.30.0
 
 ### Minor Changes
