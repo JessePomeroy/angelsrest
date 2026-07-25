@@ -4,6 +4,11 @@ import { catalogProductKindValidator } from "./catalogProductValidators";
 const nullableKey = v.union(v.string(), v.null());
 const encoder = new TextEncoder();
 const UUID_V4 = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
+const STRIPE_CONNECTED_ACCOUNT_ID = /^acct_[A-Za-z0-9]{16,64}$/;
+const STRIPE_CHECKOUT_SESSION_ID = /^cs_(?:test|live)_[A-Za-z0-9]{16,120}$/;
+export const STRIPE_SESSION_MIN_LIFETIME_SECONDS = 30 * 60;
+export const STRIPE_SESSION_MAX_LIFETIME_SECONDS = 24 * 60 * 60;
+export const STRIPE_CLOCK_SKEW_SECONDS = 5 * 60;
 const PRODUCT_KINDS = new Set([
 	"print", "print_set", "postcard", "tapestry", "digital_download", "merchandise",
 ]);
@@ -90,26 +95,44 @@ export function parseReservedCheckoutSnapshot(value: unknown): ReservedCheckoutS
 	return encoder.encode(JSON.stringify(snapshot)).byteLength <= 64 * 1024 ? snapshot : null;
 }
 
+export function isStripeConnectedAccountId(value: unknown): value is string {
+	return typeof value === "string" && STRIPE_CONNECTED_ACCOUNT_ID.test(value);
+}
+
+export function isStripeCheckoutSessionId(value: unknown): value is string {
+	return typeof value === "string" && STRIPE_CHECKOUT_SESSION_ID.test(value);
+}
+
+export function isBoundedStripeExpiration(
+	value: unknown,
+	nowSeconds = Math.floor(Date.now() / 1000),
+) {
+	if (!Number.isSafeInteger(value) || !Number.isSafeInteger(nowSeconds)) return false;
+	const expiresAt = Number(value);
+	return expiresAt >= nowSeconds + STRIPE_SESSION_MIN_LIFETIME_SECONDS - STRIPE_CLOCK_SKEW_SECONDS
+		&& expiresAt <= nowSeconds + STRIPE_SESSION_MAX_LIFETIME_SECONDS + STRIPE_CLOCK_SKEW_SECONDS
+		&& Number.isSafeInteger(expiresAt * 1000);
+}
+
 export function parseReservationRequest(value: unknown) {
 	if (!exactRecord(value, ["version", "site", "attempt", "account", "snapshot"])) return null;
 	const site = siteString(value.site);
-	const account = value.account === null ? null : boundedString(value.account);
+	const account = value.account === null ? null : value.account;
 	const snapshot = parseReservedCheckoutSnapshot(value.snapshot);
 	return value.version === 1 && site && UUID_V4.test(String(value.attempt)) && snapshot
-		&& (value.account === null || account)
+		&& (account === null || isStripeConnectedAccountId(account))
 		? { site, attempt: value.attempt as string, account, snapshot } : null;
 }
 
 export function parseReservationBindRequest(value: unknown) {
 	if (!exactRecord(value, ["version", "site", "handle", "account", "session", "stripeExpiresAt"])) return null;
 	const site = siteString(value.site);
-	const account = value.account === null ? null : boundedString(value.account);
-	const session = boundedString(value.session);
-	return value.version === 1 && site && UUID_V4.test(String(value.handle)) && session
-		&& (value.account === null || account) && Number.isSafeInteger(value.stripeExpiresAt)
-		&& Number(value.stripeExpiresAt) > 0
-		&& Number(value.stripeExpiresAt) <= Math.floor(Number.MAX_SAFE_INTEGER / 1000)
-		? { site, handle: value.handle as string, account, session,
+	const account = value.account === null ? null : value.account;
+	return value.version === 1 && site && UUID_V4.test(String(value.handle))
+		&& (account === null || isStripeConnectedAccountId(account))
+		&& isStripeCheckoutSessionId(value.session)
+		&& isBoundedStripeExpiration(value.stripeExpiresAt)
+		? { site, handle: value.handle as string, account, session: value.session,
 			stripeExpiresAt: value.stripeExpiresAt as number } : null;
 }
 

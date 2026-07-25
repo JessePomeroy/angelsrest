@@ -43,6 +43,7 @@ import {
 	reservationSnapshotDigest,
 } from "./helpers/checkoutSnapshot";
 import {
+	checkoutSnapshotReservationRoleConfiguration,
 	isServerSecretCandidate,
 	isTenantSiteSegment,
 	purposeScopedServerRoleConfiguration,
@@ -680,7 +681,7 @@ async function authenticateSnapshotRequest(request: Request) {
 	const authorization = request.headers.get("Authorization");
 	const supplied = authorization?.startsWith("Bearer ") ? authorization.slice(7) : "";
 	if (!supplied || authorization !== `Bearer ${supplied}`) return null;
-	const roles = purposeScopedServerRoleConfiguration();
+	const roles = await checkoutSnapshotReservationRoleConfiguration();
 	return roles ? tenantForSecretFixed(roles.checkoutSnapshotReservation, supplied) : null;
 }
 
@@ -699,6 +700,8 @@ const reserveCheckoutSnapshot = httpAction(async (ctx, request) => {
 		siteUrl, handleHash, snapshotDigest, snapshot: parsed.snapshot,
 		stripeConnectedAccountId: parsed.account ?? undefined,
 	});
+	if (result.outcome === "invalid") return privateResponse({ error: "invalid_request" }, 400);
+	if (result.outcome === "routing_mismatch") return privateResponse({ error: "not_authorized" }, 403);
 	if (result.outcome === "conflict") return privateResponse({ error: "conflict" }, 409);
 	return privateResponse({ version: 2, handle, replayed: result.outcome === "replayed" }, 200);
 });
@@ -715,6 +718,8 @@ const bindCheckoutSnapshot = httpAction(async (ctx, request) => {
 		stripeConnectedAccountId: parsed.account ?? undefined,
 		stripeSessionId: parsed.session, stripeExpiresAt: parsed.stripeExpiresAt,
 	});
+	if (result.outcome === "invalid") return privateResponse({ error: "invalid_request" }, 400);
+	if (result.outcome === "routing_mismatch") return privateResponse({ error: "not_authorized" }, 403);
 	if (result.outcome === "not_found") return privateResponse({ error: "not_found" }, 404);
 	if (result.outcome === "conflict") return privateResponse({ error: "conflict" }, 409);
 	return privateResponse({ bound: true, replayed: result.outcome === "replayed" }, 200);

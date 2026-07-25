@@ -764,6 +764,7 @@ export default defineSchema({
 		boundAt: v.optional(v.number()),
 		reconciliationAttempt: v.optional(v.number()),
 		reconciliationNextAt: v.optional(v.number()),
+		reconciliationProviderVerifiedAt: v.optional(v.number()),
 		reconciliationAlertedAt: v.optional(v.number()),
 	})
 		.index("by_siteUrl_and_handleHash", ["siteUrl", "handleHash"])

@@ -17,6 +17,9 @@ import {
 } from "./authHelpers";
 import {
 	checkoutSnapshotValidator,
+	isBoundedStripeExpiration,
+	isStripeCheckoutSessionId,
+	isStripeConnectedAccountId,
 	parseReservationCandidate,
 	reservedCheckoutSnapshotValidator,
 	reservationHandleHash,
@@ -127,12 +130,38 @@ export const UNBOUND_RETENTION_MS = 25 * 60 * 60 * 1000;
 export const PAID_SAFE_DELAY_MS = 35 * 24 * 60 * 60 * 1000;
 const RESERVATION_RETRY_DELAYS_MS = [60 * 60 * 1000, 6 * 60 * 60 * 1000, 24 * 60 * 60 * 1000] as const;
 
+async function canonicalSiteForConnectedAccount(ctx: QueryCtx, account: string) {
+	const client = await ctx.db.query("platformClients")
+		.withIndex("by_stripeConnectedAccountId", (q) => q.eq("stripeConnectedAccountId", account))
+		.unique();
+	return client?.siteUrl ?? null;
+}
+
+async function connectedAccountMatchesSite(
+	ctx: QueryCtx,
+	siteUrl: string,
+	account: string | undefined,
+) {
+	return account === undefined || await canonicalSiteForConnectedAccount(ctx, account) === siteUrl;
+}
+
+function routingConflict(): never {
+	throw new Error("Checkout routing facts conflict");
+}
+
 export const reserveCheckoutSnapshot = internalMutation({
 	args: {
 		siteUrl: v.string(), handleHash: v.string(), snapshotDigest: v.string(),
 		snapshot: reservedCheckoutSnapshotValidator, stripeConnectedAccountId: v.optional(v.string()),
 	},
 	handler: async (ctx, args) => {
+		if (
+			args.stripeConnectedAccountId !== undefined
+			&& !isStripeConnectedAccountId(args.stripeConnectedAccountId)
+		) return { outcome: "invalid" as const };
+		if (!await connectedAccountMatchesSite(ctx, args.siteUrl, args.stripeConnectedAccountId)) {
+			return { outcome: "routing_mismatch" as const };
+		}
 		const existing = await ctx.db.query("checkoutSnapshotReservations")
 			.withIndex("by_siteUrl_and_handleHash", (q) => q.eq("siteUrl", args.siteUrl).eq("handleHash", args.handleHash)).unique();
 		const accountScope = stripeAccountScope(args.stripeConnectedAccountId);
@@ -164,6 +193,15 @@ export const bindCheckoutSnapshot = internalMutation({
 		stripeSessionId: v.string(), stripeExpiresAt: v.number(),
 	},
 	handler: async (ctx, args) => {
+		if (
+			(args.stripeConnectedAccountId !== undefined
+				&& !isStripeConnectedAccountId(args.stripeConnectedAccountId))
+			|| !isStripeCheckoutSessionId(args.stripeSessionId)
+			|| !isBoundedStripeExpiration(args.stripeExpiresAt)
+		) return { outcome: "invalid" as const };
+		if (!await connectedAccountMatchesSite(ctx, args.siteUrl, args.stripeConnectedAccountId)) {
+			return { outcome: "routing_mismatch" as const };
+		}
 		const row = await ctx.db.query("checkoutSnapshotReservations")
 			.withIndex("by_siteUrl_and_handleHash", (q) => q.eq("siteUrl", args.siteUrl).eq("handleHash", args.handleHash)).unique();
 		if (!row) return { outcome: "not_found" as const };
@@ -181,6 +219,7 @@ export const bindCheckoutSnapshot = internalMutation({
 		if (row.accountScope !== accountScope) return { outcome: "conflict" as const };
 		const boundAt = Date.now();
 		const boundReconcileAt = args.stripeExpiresAt * 1000 + PAID_SAFE_DELAY_MS;
+		if (!Number.isSafeInteger(boundReconcileAt)) return { outcome: "invalid" as const };
 		await ctx.db.patch(row._id, {
 			state: "bound", stripeSessionId: args.stripeSessionId,
 			stripeExpiresAt: args.stripeExpiresAt, boundAt, boundReconcileAt, updatedAt: boundAt,
@@ -251,21 +290,36 @@ export const deleteExpiredUnpaidCheckoutSnapshot = internalMutation({
 });
 
 export const retainCheckoutSnapshot = internalMutation({
-	args: { reservationId: v.id("checkoutSnapshotReservations"), boundAt: v.number(), attempt: v.number(), paid: v.boolean() },
+	args: {
+		reservationId: v.id("checkoutSnapshotReservations"), boundAt: v.number(),
+		attempt: v.number(), paid: v.boolean(), providerSessionVerified: v.boolean(),
+	},
 	handler: async (ctx, args) => {
 		const row = await fencedBoundRow(ctx, args.reservationId, args.boundAt, args.attempt);
 		if (!row) return { alert: false };
+		const verifiedAt = args.providerSessionVerified
+			? row.reconciliationProviderVerifiedAt ?? Date.now()
+			: row.reconciliationProviderVerifiedAt;
 		const delay = args.paid ? undefined : RESERVATION_RETRY_DELAYS_MS[args.attempt];
 		if (delay !== undefined) {
 			const nextAt = Date.now() + delay;
-			await ctx.db.patch(row._id, { reconciliationAttempt: args.attempt + 1, reconciliationNextAt: nextAt });
+			await ctx.db.patch(row._id, {
+				reconciliationAttempt: args.attempt + 1, reconciliationNextAt: nextAt,
+				reconciliationProviderVerifiedAt: verifiedAt,
+			});
 			await ctx.scheduler.runAt(nextAt, internal.stripeFees.reconcileCheckoutSnapshotReservation,
 				{ reservationId: row._id, boundAt: args.boundAt, attempt: args.attempt + 1 });
 			return { alert: false };
 		}
+		if (verifiedAt === undefined) {
+			await ctx.db.delete(row._id);
+			return { alert: false };
+		}
 		if (row.reconciliationAlertedAt !== undefined) return { alert: false };
-		await ctx.db.patch(row._id, { reconciliationAttempt: args.attempt, reconciliationNextAt: undefined,
-			reconciliationAlertedAt: Date.now() });
+		await ctx.db.patch(row._id, {
+			reconciliationAttempt: args.attempt, reconciliationNextAt: undefined,
+			reconciliationProviderVerifiedAt: verifiedAt, reconciliationAlertedAt: Date.now(),
+		});
 		return { alert: true };
 	},
 });
@@ -363,6 +417,24 @@ export const create = mutation({
 			)
 			.unique();
 		if (existing) {
+			if (existing.siteUrl !== args.siteUrl) routingConflict();
+			if (existing.stripeConnectedAccountId !== undefined) {
+				if (
+					args.stripeConnectedAccountId !== existing.stripeConnectedAccountId
+					|| !await connectedAccountMatchesSite(
+						ctx, existing.siteUrl, existing.stripeConnectedAccountId,
+					)
+				) routingConflict();
+			} else if (
+				args.stripeConnectedAccountId !== undefined
+				&& !await connectedAccountMatchesSite(
+					ctx, existing.siteUrl, args.stripeConnectedAccountId,
+				)
+			) {
+				// Legacy orders without a stored account may still replay when the
+				// signed event account canonically belongs to the stored tenant.
+				routingConflict();
+			}
 			return {
 				_id: existing._id,
 				orderNumber: existing.orderNumber,
@@ -446,21 +518,62 @@ export const resolveCheckoutRouting = query({
 	args: {
 		stripeSessionId: v.string(),
 		stripeConnectedAccountId: v.optional(v.string()),
+		stripeTenantMetadataSiteUrl: v.optional(v.string()),
 		webhookSecret: v.string(),
 	},
 	handler: async (ctx, args) => {
 		await requireWebhookCallerOrAuth(ctx, args.webhookSecret, { allowAuth: false });
 		const order = await ctx.db.query("orders")
 			.withIndex("by_stripeSessionId", (q) => q.eq("stripeSessionId", args.stripeSessionId)).unique();
-		if (order) return { source: "order" as const, siteUrl: order.siteUrl,
-			stripeConnectedAccountId: order.stripeConnectedAccountId };
+		if (order) {
+			if (order.stripeConnectedAccountId !== undefined) {
+				if (
+					args.stripeConnectedAccountId !== order.stripeConnectedAccountId
+					|| !await connectedAccountMatchesSite(
+						ctx, order.siteUrl, order.stripeConnectedAccountId,
+					)
+				) routingConflict();
+			} else if (
+				args.stripeConnectedAccountId !== undefined
+				&& !await connectedAccountMatchesSite(
+					ctx, order.siteUrl, args.stripeConnectedAccountId,
+				)
+			) {
+				// Explicit legacy fallback: old connected-account orders may not
+				// carry the stored account, but the signed event account must still
+				// resolve canonically to the order tenant.
+				routingConflict();
+			}
+			if (
+				args.stripeTenantMetadataSiteUrl !== undefined
+				&& args.stripeTenantMetadataSiteUrl !== order.siteUrl
+			) routingConflict();
+			return { source: "order" as const, siteUrl: order.siteUrl,
+				stripeConnectedAccountId: order.stripeConnectedAccountId };
+		}
 		const reservation = await ctx.db.query("checkoutSnapshotReservations")
 			.withIndex("by_accountScope_and_stripeSessionId", (q) => q
 				.eq("accountScope", stripeAccountScope(args.stripeConnectedAccountId))
 				.eq("stripeSessionId", args.stripeSessionId)).unique();
-		return reservation?.state === "bound" ? { source: "reservation" as const,
-			siteUrl: reservation.siteUrl,
-			stripeConnectedAccountId: reservation.stripeConnectedAccountId } : null;
+		if (!reservation || reservation.state !== "bound") return null;
+		if (args.stripeConnectedAccountId !== undefined) {
+			if (
+				reservation.stripeConnectedAccountId !== args.stripeConnectedAccountId
+				|| !await connectedAccountMatchesSite(
+					ctx, reservation.siteUrl, args.stripeConnectedAccountId,
+				)
+			) routingConflict();
+		} else if (args.stripeTenantMetadataSiteUrl !== reservation.siteUrl) {
+			// Platform-account sessions are tenant-routable only through the
+			// marker stamped by the trusted Checkout creation response path.
+			routingConflict();
+		}
+		if (
+			args.stripeTenantMetadataSiteUrl !== undefined
+			&& args.stripeTenantMetadataSiteUrl !== reservation.siteUrl
+		) routingConflict();
+		return { source: "reservation" as const, siteUrl: reservation.siteUrl,
+			stripeConnectedAccountId: reservation.stripeConnectedAccountId };
 	},
 });
 

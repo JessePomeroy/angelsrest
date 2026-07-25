@@ -5,10 +5,12 @@ import { convexTest } from "convex-test";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { api, internal } from "./_generated/api";
 import {
+	parseReservationBindRequest,
 	parseReservedCheckoutSnapshot,
 	reservationHandleHash,
 	reservationSnapshotDigest,
 } from "./helpers/checkoutSnapshot";
+import { serverSecretFingerprint } from "./helpers/serverSecrets";
 import schema from "./schema";
 
 const modules = import.meta.glob("./**/*.ts");
@@ -18,12 +20,17 @@ const CURRENT = "reservation-current-authority-0123456789abcdef";
 const PREVIOUS = "reservation-previous-authority-0123456789abcdef";
 const TENANT_B = "reservation-tenant-b-authority-0123456789abcdef";
 const WEBHOOK = "reservation-webhook-authority-0123456789abcdef";
+const BRIDGE = "checkout-bridge-authority-0123456789abcdef";
+const ACCOUNT_A = "acct_1234567890TenantA";
+const ACCOUNT_B = "acct_1234567890TenantB";
+const SESSION = "cs_test_1234567890abcdefghijklmnop";
+const BOUND_SESSION = "cs_test_1234567890abcdefghijklmnox";
 const RESERVE_PATH = "/commerce/checkout-snapshots/reserve";
 const BIND_PATH = "/commerce/checkout-snapshots/bind";
 const envNames = [
 	"CHECKOUT_SNAPSHOT_RESERVATION_SECRETS", "WEBHOOK_SECRET", "BETTER_AUTH_SECRET", "SITE_URL",
 	"AUTH_GOOGLE_SECRET", "STRIPE_SECRET_KEY", "ORDER_LOOKUP_SECRET",
-	"CATALOG_PRIVATE_ASSET_STORAGE_RECEIPT_SECRETS",
+	"CATALOG_PRIVATE_ASSET_STORAGE_RECEIPT_SECRETS", "CHECKOUT_ROLE_CREDENTIAL_FINGERPRINTS",
 ] as const;
 const previousEnv = new Map<string, string | undefined>();
 
@@ -37,7 +44,7 @@ const snapshot = {
 	}],
 };
 
-beforeEach(() => {
+beforeEach(async () => {
 	vi.useFakeTimers();
 	vi.setSystemTime(new Date("2026-01-01T00:00:00.000Z"));
 	for (const name of envNames) {
@@ -48,6 +55,12 @@ beforeEach(() => {
 		[SITE_A]: [CURRENT, PREVIOUS], [SITE_B]: [TENANT_B],
 	});
 	process.env.WEBHOOK_SECRET = WEBHOOK;
+	process.env.CHECKOUT_ROLE_CREDENTIAL_FINGERPRINTS = JSON.stringify({
+		checkoutBridge: [await serverSecretFingerprint(BRIDGE)],
+		checkoutSnapshotReservation: await Promise.all(
+			[CURRENT, PREVIOUS, TENANT_B].map(serverSecretFingerprint),
+		),
+	});
 	process.env.BETTER_AUTH_SECRET = "reservation-auth-authority-0123456789abcdef";
 	process.env.SITE_URL = "https://www.angelsrest.online";
 });
@@ -80,14 +93,14 @@ async function reserve(t: ReturnType<typeof convexTest>, body = reserveBody(), s
 
 async function bind(t: ReturnType<typeof convexTest>, handle: string, overrides: Record<string, unknown> = {}) {
 	const req = request(BIND_PATH, CURRENT, {
-		version: 1, site: SITE_A, handle, account: null, session: "cs_paid_1",
+		version: 1, site: SITE_A, handle, account: null, session: SESSION,
 		stripeExpiresAt: Math.floor(Date.now() / 1000) + 3600, ...overrides,
 	});
 	const response = await t.fetch(req.path, req.init);
 	return { response, json: await response.json() as { bound?: boolean; replayed?: boolean; error?: string } };
 }
 
-function orderArgs(session = "cs_paid_1") {
+function orderArgs(session = SESSION) {
 	return {
 		siteUrl: SITE_A, webhookSecret: WEBHOOK, stripeSessionId: session,
 		customerEmail: "buyer@example.com",
@@ -98,6 +111,18 @@ function orderArgs(session = "cs_paid_1") {
 
 async function rows(t: ReturnType<typeof convexTest>) {
 	return t.run((ctx) => ctx.db.query("checkoutSnapshotReservations").take(20));
+}
+
+async function seedPlatformClients(t: ReturnType<typeof convexTest>) {
+	await t.run(async (ctx) => {
+		for (const [siteUrl, account] of [[SITE_A, ACCOUNT_A], [SITE_B, ACCOUNT_B]] as const) {
+			await ctx.db.insert("platformClients", {
+				name: siteUrl, email: `owner@${siteUrl}`, siteUrl, tier: "full",
+				subscriptionStatus: "active", stripeConnectedAccountId: account,
+				adminEmails: [`owner@${siteUrl}`],
+			});
+		}
+	});
 }
 
 describe("checkout snapshot reservation input and authentication", () => {
@@ -111,6 +136,27 @@ describe("checkout snapshot reservation input and authentication", () => {
 		expect(parseReservedCheckoutSnapshot({ ...snapshot, items: [{ ...snapshot.items[0], productName: "paid" }] })).toBeNull();
 	});
 
+	test("accepts only provider account/session forms and a bounded Stripe expiry", () => {
+		const valid = {
+			version: 1, site: SITE_A, handle: "123e4567-e89b-42d3-a456-426614174000",
+			account: ACCOUNT_A, session: SESSION,
+			stripeExpiresAt: Math.floor(Date.now() / 1000) + 3600,
+		};
+		expect(parseReservationBindRequest(valid)).toEqual({
+			site: valid.site, handle: valid.handle, account: valid.account,
+			session: valid.session, stripeExpiresAt: valid.stripeExpiresAt,
+		});
+		expect(parseReservationBindRequest({ ...valid, account: "acct_wrong" })).toBeNull();
+		expect(parseReservationBindRequest({ ...valid, session: "cs_fake_1" })).toBeNull();
+		expect(parseReservationBindRequest({ ...valid, stripeExpiresAt: 9_007_199_254_740 })).toBeNull();
+		expect(parseReservationBindRequest({
+			...valid, stripeExpiresAt: Math.floor(Date.now() / 1000) + 24 * 60 * 60 + 301,
+		})).toBeNull();
+		expect(parseReservationBindRequest({
+			...valid, stripeExpiresAt: Math.floor(Date.now() / 1000) + 30 * 60 - 301,
+		})).toBeNull();
+	});
+
 	test("accepts current and previous tenant credentials but rejects wrong, reused, or cross-tenant authority", async () => {
 		const t = convexTest(schema, modules);
 		expect((await reserve(t, reserveBody(), CURRENT)).response.status).toBe(200);
@@ -122,6 +168,16 @@ describe("checkout snapshot reservation input and authentication", () => {
 		process.env.WEBHOOK_SECRET = WEBHOOK;
 		process.env.CATALOG_PRIVATE_ASSET_STORAGE_RECEIPT_SECRETS = JSON.stringify({ [SITE_A]: [CURRENT] });
 		expect((await reserve(t, reserveBody("123e4567-e89b-42d3-a456-426614174005"))).response.status).toBe(401);
+		delete process.env.CATALOG_PRIVATE_ASSET_STORAGE_RECEIPT_SECRETS;
+		delete process.env.CHECKOUT_ROLE_CREDENTIAL_FINGERPRINTS;
+		expect((await reserve(t, reserveBody("123e4567-e89b-42d3-a456-426614174006"))).response.status).toBe(401);
+		process.env.CHECKOUT_ROLE_CREDENTIAL_FINGERPRINTS = JSON.stringify({
+			checkoutBridge: [await serverSecretFingerprint(CURRENT)],
+			checkoutSnapshotReservation: await Promise.all(
+				[CURRENT, PREVIOUS, TENANT_B].map(serverSecretFingerprint),
+			),
+		});
+		expect((await reserve(t, reserveBody("123e4567-e89b-42d3-a456-426614174007"))).response.status).toBe(401);
 	});
 
 	test("enforces exact transport and body bounds without writes", async () => {
@@ -164,10 +220,36 @@ describe("reservation, binding, and order transfer", () => {
 		const bound = await bind(t, first.json.handle!);
 		expect(bound.json).toEqual({ bound: true, replayed: false });
 		expect((await bind(t, first.json.handle!)).json).toEqual({ bound: true, replayed: true });
-		expect((await bind(t, first.json.handle!, { stripeExpiresAt: 1 })).response.status).toBe(409);
+		expect((await bind(t, first.json.handle!, { stripeExpiresAt: 1 })).response.status).toBe(400);
 
 		const second = await reserve(t, reserveBody("123e4567-e89b-42d3-a456-426614174006"));
 		expect((await bind(t, second.json.handle!)).response.status).toBe(409);
+	});
+
+	test("fences connected-account reserve and bind to the canonical platform tenant", async () => {
+		const t = convexTest(schema, modules);
+		await seedPlatformClients(t);
+		expect((await reserve(t, reserveBody(undefined, { account: ACCOUNT_B }))).response.status)
+			.toBe(403);
+		const reserved = await reserve(
+			t, reserveBody("123e4567-e89b-42d3-a456-426614174010", { account: ACCOUNT_A }),
+		);
+		expect(reserved.response.status).toBe(200);
+		expect((await bind(t, reserved.json.handle!, { account: ACCOUNT_B })).response.status)
+			.toBe(403);
+		expect((await bind(t, reserved.json.handle!, { account: ACCOUNT_A })).response.status)
+			.toBe(200);
+	});
+
+	test("rejects fake binding facts without defeating unbound cleanup", async () => {
+		const t = convexTest(schema, modules);
+		const reserved = await reserve(t);
+		expect((await bind(t, reserved.json.handle!, { session: "not_a_stripe_session" })).response.status)
+			.toBe(400);
+		expect((await rows(t))[0]?.state).toBe("reserved");
+		vi.advanceTimersByTime(25 * 60 * 60 * 1000);
+		await t.finishInProgressScheduledFunctions();
+		expect(await rows(t)).toEqual([]);
 	});
 
 	test("copies and deletes atomically; concurrent replay and malformed existing candidates are safe", async () => {
@@ -197,7 +279,7 @@ describe("reservation, binding, and order transfer", () => {
 			checkoutSnapshotReservation: { version: 2, handle: first.json.handle },
 		})).rejects.toThrow("does not match paid session");
 		await expect(t.mutation(api.orders.create, {
-			...orderArgs(), stripeConnectedAccountId: "acct_wrong",
+			...orderArgs(), stripeConnectedAccountId: ACCOUNT_B,
 			checkoutSnapshotReservation: { version: 2, handle: first.json.handle },
 		})).rejects.toThrow("does not match paid session");
 		expect(await rows(t)).toHaveLength(1);
@@ -208,19 +290,52 @@ describe("reservation, binding, and order transfer", () => {
 		const first = await reserve(t);
 		await bind(t, first.json.handle!);
 		const reservationRoute = await t.query(api.orders.resolveCheckoutRouting, {
-			stripeSessionId: "cs_paid_1", webhookSecret: WEBHOOK,
+			stripeSessionId: SESSION, stripeTenantMetadataSiteUrl: SITE_A, webhookSecret: WEBHOOK,
 		});
 		expect(reservationRoute).toEqual({
 			source: "reservation", siteUrl: SITE_A, stripeConnectedAccountId: undefined,
 		});
 		expect(JSON.stringify(reservationRoute)).not.toMatch(/snapshot|handle|digest/i);
 		await expect(t.query(api.orders.resolveCheckoutRouting, {
-			stripeSessionId: "cs_paid_1", webhookSecret: "wrong",
+			stripeSessionId: SESSION, stripeTenantMetadataSiteUrl: SITE_B, webhookSecret: WEBHOOK,
+		})).rejects.toThrow("routing facts conflict");
+		await expect(t.query(api.orders.resolveCheckoutRouting, {
+			stripeSessionId: SESSION, stripeTenantMetadataSiteUrl: SITE_A, webhookSecret: "wrong",
 		})).rejects.toThrow("Not authorized");
 		await t.mutation(api.orders.create, orderArgs());
 		expect(await t.query(api.orders.resolveCheckoutRouting, {
-			stripeSessionId: "cs_paid_1", webhookSecret: WEBHOOK,
+			stripeSessionId: SESSION, stripeTenantMetadataSiteUrl: SITE_A, webhookSecret: WEBHOOK,
 		})).toEqual({ source: "order", siteUrl: SITE_A, stripeConnectedAccountId: undefined });
+	});
+
+	test("rejects contradictory existing-order accounts with a canonical legacy fallback", async () => {
+		const t = convexTest(schema, modules);
+		await seedPlatformClients(t);
+		await t.mutation(api.orders.create, {
+			...orderArgs(), stripeConnectedAccountId: ACCOUNT_A,
+		});
+		await expect(t.query(api.orders.resolveCheckoutRouting, {
+			stripeSessionId: SESSION, stripeConnectedAccountId: ACCOUNT_B,
+			stripeTenantMetadataSiteUrl: SITE_A, webhookSecret: WEBHOOK,
+		})).rejects.toThrow("routing facts conflict");
+		await expect(t.mutation(api.orders.create, {
+			...orderArgs(), stripeConnectedAccountId: ACCOUNT_B,
+		})).rejects.toThrow("routing facts conflict");
+
+		const legacySession = "cs_live_1234567890abcdefghijklmnop";
+		await t.run((ctx) => ctx.db.insert("orders", {
+			siteUrl: SITE_A, orderNumber: "LEGACY-1", stripeSessionId: legacySession,
+			customerEmail: "buyer@example.com", items: [], total: 0,
+			fulfillmentType: "digital", status: "new",
+		}));
+		expect(await t.query(api.orders.resolveCheckoutRouting, {
+			stripeSessionId: legacySession, stripeConnectedAccountId: ACCOUNT_A,
+			webhookSecret: WEBHOOK,
+		})).toMatchObject({ source: "order", siteUrl: SITE_A });
+		await expect(t.query(api.orders.resolveCheckoutRouting, {
+			stripeSessionId: legacySession, stripeConnectedAccountId: ACCOUNT_B,
+			webhookSecret: WEBHOOK,
+		})).rejects.toThrow("routing facts conflict");
 	});
 });
 
@@ -229,7 +344,7 @@ describe("reservation cleanup fences", () => {
 		const t = convexTest(schema, modules);
 		const unbound = await reserve(t);
 		const bound = await reserve(t, reserveBody("123e4567-e89b-42d3-a456-426614174007"));
-		await bind(t, bound.json.handle!, { session: "cs_paid_bound" });
+		await bind(t, bound.json.handle!, { session: BOUND_SESSION });
 		vi.advanceTimersByTime(25 * 60 * 60 * 1000);
 		await t.finishInProgressScheduledFunctions();
 		const remaining = await rows(t);

@@ -156,6 +156,7 @@ export const reconcileCheckoutSnapshotReservation = internalAction({
 		if (!row) return;
 		let paid = false;
 		let expiredUnpaid = false;
+		let providerSessionVerified = false;
 		const stripeKey = process.env.STRIPE_SECRET_KEY;
 		if (stripeKey && purposeScopedServerRolesAreDisjoint()) {
 			try {
@@ -163,6 +164,7 @@ export const reconcileCheckoutSnapshotReservation = internalAction({
 					row.stripeSessionId, {}, row.stripeConnectedAccountId
 						? { stripeAccount: row.stripeConnectedAccountId } : undefined,
 				);
+				providerSessionVerified = true;
 				paid = session.payment_status === "paid" || session.payment_status === "no_payment_required";
 				expiredUnpaid = session.status === "expired" && session.payment_status === "unpaid";
 			} catch {
@@ -177,7 +179,10 @@ export const reconcileCheckoutSnapshotReservation = internalAction({
 		}
 		const retained: { alert: boolean } = await ctx.runMutation(
 			internal.orders.retainCheckoutSnapshot,
-			{ reservationId: args.reservationId, boundAt: args.boundAt, attempt: args.attempt, paid },
+			{
+				reservationId: args.reservationId, boundAt: args.boundAt, attempt: args.attempt,
+				paid, providerSessionVerified,
+			},
 		);
 		if (retained.alert) {
 			console.error(paid

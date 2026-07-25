@@ -112,7 +112,7 @@ async function seedBoundReservation() {
 	});
 	await t.mutation(internal.orders.bindCheckoutSnapshot, {
 		siteUrl: "tenant.example", handleHash: "1".repeat(64),
-		stripeSessionId: "cs_reservation", stripeExpiresAt: Math.floor(Date.now() / 1000) + 3600,
+		stripeSessionId: "cs_test_1234567890reservation", stripeExpiresAt: Math.floor(Date.now() / 1000) + 3600,
 	});
 	const row = (await t.run((ctx) => ctx.db.query("checkoutSnapshotReservations").take(1)))[0]!;
 	await t.run((ctx) => ctx.db.patch(row._id, { reconciliationNextAt: Date.now() }));
@@ -188,23 +188,44 @@ describe("bound checkout snapshot paid-safe reconciliation", () => {
 		const retained = await t.run((ctx) => ctx.db.get(row._id));
 		expect(retained?.reconciliationAlertedAt).toBe(Date.now());
 		expect(console.error).toHaveBeenCalledWith("checkout_snapshot_reservation.paid_without_order");
-		expect(JSON.stringify(vi.mocked(console.error).mock.calls)).not.toContain("cs_reservation");
+		expect(JSON.stringify(vi.mocked(console.error).mock.calls)).not.toContain("cs_test_1234567890reservation");
 		await t.action(internal.stripeFees.reconcileCheckoutSnapshotReservation, {
 			reservationId: row._id, boundAt: row.boundAt!, attempt: 0,
 		});
 		expect(retrieveCheckoutSession).toHaveBeenCalledTimes(1);
 	});
 
-	test("retains uncertainty through 1h, 6h, and 24h retries before one alert", async () => {
+	test("discards an unverified provider identity after the bounded retry ladder", async () => {
 		const { t, row } = await seedBoundReservation();
 		retrieveCheckoutSession.mockRejectedValue(new Error("provider unavailable"));
 		await t.action(internal.stripeFees.reconcileCheckoutSnapshotReservation, {
 			reservationId: row._id, boundAt: row.boundAt!, attempt: 0,
 		});
 		await t.finishAllScheduledFunctions(vi.runAllTimers);
+		expect(await t.run((ctx) => ctx.db.get(row._id))).toBeNull();
+		expect(console.error).not.toHaveBeenCalledWith(
+			"checkout_snapshot_reservation.reconciliation_uncertain",
+		);
+	});
+
+	test("retains uncertainty indefinitely only after Stripe verifies the session identity", async () => {
+		const { t, row } = await seedBoundReservation();
+		retrieveCheckoutSession
+			.mockResolvedValueOnce({ status: "open", payment_status: "unpaid" })
+			.mockRejectedValue(new Error("provider unavailable"));
+		await t.action(internal.stripeFees.reconcileCheckoutSnapshotReservation, {
+			reservationId: row._id, boundAt: row.boundAt!, attempt: 0,
+		});
+		await t.finishAllScheduledFunctions(vi.runAllTimers);
 		const retained = await t.run((ctx) => ctx.db.get(row._id));
-		expect(retained).toMatchObject({ reconciliationAttempt: 3, reconciliationAlertedAt: Date.now() });
-		expect(console.error).toHaveBeenCalledWith("checkout_snapshot_reservation.reconciliation_uncertain");
+		expect(retained).toMatchObject({
+			reconciliationAttempt: 3,
+			reconciliationProviderVerifiedAt: expect.any(Number),
+			reconciliationAlertedAt: Date.now(),
+		});
+		expect(console.error).toHaveBeenCalledWith(
+			"checkout_snapshot_reservation.reconciliation_uncertain",
+		);
 		expect(JSON.stringify(vi.mocked(console.error).mock.calls)).not.toContain("provider unavailable");
 	});
 });
