@@ -40,7 +40,7 @@ import {
 	validateCatalogTimestamp,
 } from "./catalogProductValidators";
 import {
-	CATALOG_PRODUCT_KIND_ORDER,
+	loadCatalogProductKinds,
 	requireCatalogProductKindEnabled,
 } from "./catalogProductPolicy";
 import {
@@ -883,41 +883,19 @@ type CatalogPublicationCas = {
 	expectedDraftRevisionId: Id<"catalogProductRevisions"> | null;
 	expectedPublishedRevisionId: Id<"catalogProductRevisions"> | null;
 	expectedUpdatedAt: number;
-	lifecycleAt: number;
 };
 
 const CATALOG_PUBLIC_PRODUCT_CAP = 40;
 const CATALOG_PUBLIC_PER_KIND_SCAN_CAP = 40;
-const CATALOG_PUBLICATION_CLOCK_WINDOW_MS = 5 * 60 * 1_000;
 const CATALOG_PUBLICATION_CONFLICT = "Catalog publication conflict: reload before retrying";
-
-function publicationResult(product: CatalogGraphV2Product) {
-	return {
-		productId: product._id,
-		draftRevisionId: product.draftRevisionId ?? null,
-		publishedRevisionId: product.publishedRevisionId ?? null,
-		updatedAt: product.updatedAt,
-		publishedAt: product.publishedAt ?? null,
-	};
-}
+const CATALOG_PUBLIC_UNAVAILABLE = "Catalog public reads are unavailable";
 
 function publicationConflict(): never {
 	throw new Error(CATALOG_PUBLICATION_CONFLICT);
 }
 
-function validatePublicationLifecycleInput(args: CatalogPublicationCas) {
-	if (
-		!Number.isSafeInteger(args.expectedUpdatedAt)
-		|| args.expectedUpdatedAt < 0
-		|| !Number.isSafeInteger(args.lifecycleAt)
-		|| args.lifecycleAt <= 0
-		|| args.lifecycleAt <= args.expectedUpdatedAt
-		|| args.lifecycleAt > Date.now()
-	) publicationConflict();
-}
-
-function requireFreshPublicationLifecycle(args: CatalogPublicationCas) {
-	if (Date.now() - args.lifecycleAt > CATALOG_PUBLICATION_CLOCK_WINDOW_MS) {
+function validatePublicationCas(args: CatalogPublicationCas) {
+	if (!Number.isSafeInteger(args.expectedUpdatedAt) || args.expectedUpdatedAt < 0) {
 		publicationConflict();
 	}
 }
@@ -926,6 +904,17 @@ function hasExactPublicationCas(product: CatalogGraphV2Product, args: CatalogPub
 	return product.draftRevisionId === (args.expectedDraftRevisionId ?? undefined)
 		&& product.publishedRevisionId === (args.expectedPublishedRevisionId ?? undefined)
 		&& product.updatedAt === args.expectedUpdatedAt;
+}
+
+function nextPublicationTimestamp(product: CatalogGraphV2Product) {
+	const timestamp = Math.max(Date.now(), product.updatedAt + 1);
+	try {
+		validateCatalogTimestamp(timestamp, "Catalog publication timestamp");
+	} catch {
+		publicationConflict();
+	}
+	if (timestamp <= product.updatedAt) publicationConflict();
+	return timestamp;
 }
 
 function assertCatalogPublicationHeader(product: CatalogGraphV2Product) {
@@ -983,23 +972,10 @@ export async function publishCatalogProductGraphV2Draft(
 		ctx,
 		args.productId,
 	);
-	validatePublicationLifecycleInput(args);
-	if (
-		args.expectedDraftRevisionId
-		&& product.draftRevisionId === args.expectedDraftRevisionId
-		&& product.publishedRevisionId === args.expectedDraftRevisionId
-		&& product.updatedAt === args.lifecycleAt
-		&& product.updatedBy === actor
-		&& product.publishedAt === args.lifecycleAt
-		&& product.publishedBy === actor
-	) {
-		await projectPublishedCatalogProduct(ctx, product);
-		return publicationResult(product);
-	}
+	validatePublicationCas(args);
 	if (!args.expectedDraftRevisionId || !hasExactPublicationCas(product, args)) {
 		publicationConflict();
 	}
-	requireFreshPublicationLifecycle(args);
 	const [draft, priorPublished] = await Promise.all([
 		loadCatalogProductGraphV2Revision(ctx, product, args.expectedDraftRevisionId),
 		loadCatalogProductGraphV2RevisionSummary(
@@ -1012,19 +988,20 @@ export async function publishCatalogProductGraphV2Draft(
 	if (!draft) publicationConflict();
 	projectCatalogProductGraphV2Public(draft);
 	await proveTenantWideCatalogIdentity(ctx, product);
+	const timestamp = nextPublicationTimestamp(product);
 	await ctx.db.patch(product._id, {
 		publishedRevisionId: draft.revision._id,
-		publishedAt: args.lifecycleAt,
+		publishedAt: timestamp,
 		publishedBy: actor,
-		updatedAt: args.lifecycleAt,
+		updatedAt: timestamp,
 		updatedBy: actor,
 	});
 	return {
 		productId: product._id,
 		draftRevisionId: draft.revision._id,
 		publishedRevisionId: draft.revision._id,
-		updatedAt: args.lifecycleAt,
-		publishedAt: args.lifecycleAt,
+		updatedAt: timestamp,
+		publishedAt: timestamp,
 	};
 }
 
@@ -1036,42 +1013,34 @@ export async function unpublishCatalogProductGraphV2(
 		ctx,
 		args.productId,
 	);
-	validatePublicationLifecycleInput(args);
-	if (
-		args.expectedPublishedRevisionId
-		&& product.draftRevisionId === (args.expectedDraftRevisionId ?? undefined)
-		&& product.publishedRevisionId === undefined
-		&& product.updatedAt === args.lifecycleAt
-		&& product.updatedBy === actor
-		&& product.publishedAt === undefined
-		&& product.publishedBy === undefined
-	) {
-		await loadCatalogProductGraphV2RevisionSummary(
-			ctx,
-			product,
-			args.expectedPublishedRevisionId,
-		);
-		return publicationResult(product);
-	}
+	validatePublicationCas(args);
 	if (!args.expectedPublishedRevisionId || !hasExactPublicationCas(product, args)) {
 		publicationConflict();
 	}
-	requireFreshPublicationLifecycle(args);
 	await loadCatalogGraphV2RevisionSummaries(ctx, product);
+	const timestamp = nextPublicationTimestamp(product);
 	await ctx.db.patch(product._id, {
 		publishedRevisionId: undefined,
 		publishedAt: undefined,
 		publishedBy: undefined,
-		updatedAt: args.lifecycleAt,
+		updatedAt: timestamp,
 		updatedBy: actor,
 	});
 	return {
 		productId: product._id,
 		draftRevisionId: args.expectedDraftRevisionId,
 		publishedRevisionId: null,
-		updatedAt: args.lifecycleAt,
+		updatedAt: timestamp,
 		publishedAt: null,
 	};
+}
+
+async function loadPublicCatalogProductKinds(ctx: QueryCtx, siteUrl: string) {
+	try {
+		return await loadCatalogProductKinds(ctx, siteUrl);
+	} catch {
+		throw new Error(CATALOG_PUBLIC_UNAVAILABLE);
+	}
 }
 
 function ordinalCompare(left: string, right: string) {
@@ -1100,8 +1069,9 @@ export async function listPublishedCatalogProductGraphsV2(
 	ctx: QueryCtx,
 	siteUrl: string,
 ) {
+	const enabledKinds = await loadPublicCatalogProductKinds(ctx, siteUrl);
 	const published: CatalogGraphV2Product[] = [];
-	for (const productKind of CATALOG_PRODUCT_KIND_ORDER) {
+	for (const productKind of enabledKinds) {
 		const rows = await ctx.db
 			.query("catalogProducts")
 			.withIndex(
@@ -1138,13 +1108,18 @@ export async function getPublishedCatalogProductGraphV2BySlug(
 	ctx: QueryCtx,
 	args: { siteUrl: string; slug: string },
 ) {
+	const enabledKinds = await loadPublicCatalogProductKinds(ctx, args.siteUrl);
 	const value = await ctx.db
 		.query("catalogProducts")
 		.withIndex("by_siteUrl_and_slug", (query) =>
 			query.eq("siteUrl", args.siteUrl).eq("slug", args.slug)
 		)
 		.unique();
-	if (!value || value.graphVersion !== 2) return null;
+	if (
+		!value
+		|| value.graphVersion !== 2
+		|| !enabledKinds.includes(value.productKind)
+	) return null;
 	const product = requireCatalogProductGraphV2Product(value);
 	assertCatalogPublicationHeader(product);
 	if (!product.publishedRevisionId) return null;

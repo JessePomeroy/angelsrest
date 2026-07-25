@@ -93,17 +93,16 @@ const publicationCasArgs = {
 	expectedDraftRevisionId: catalogProductPublicationRevisionValidator,
 	expectedPublishedRevisionId: catalogProductPublicationRevisionValidator,
 	expectedUpdatedAt: v.number(),
-	lifecycleAt: v.number(),
 };
 
-/** Publish only the exact active complete draft; exact retries do not write. */
+/** Publish the exact active complete draft; stale or duplicate submissions conflict. */
 export const publishDraft = mutation({
 	args: publicationCasArgs,
 	returns: catalogProductPublicationResultValidator,
 	handler: async (ctx, args) => await publishCatalogProductGraphV2Draft(ctx, args),
 });
 
-/** Clear only the exact publication pointer; exact retries do not write. */
+/** Clear the exact publication pointer; stale or duplicate submissions conflict. */
 export const unpublish = mutation({
 	args: publicationCasArgs,
 	returns: catalogProductPublicationResultValidator,
