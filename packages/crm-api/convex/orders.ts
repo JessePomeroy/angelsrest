@@ -8,6 +8,7 @@ import {
 	requireSiteAdmin,
 	requireWebhookCallerOrAuth,
 } from "./authHelpers";
+import { checkoutSnapshotValidator } from "./helpers/checkoutSnapshot";
 import { AGGREGATE_SCAN_LIMIT, BULK_SCAN_LIMIT } from "./helpers/limits";
 import { getNextOrderNumber as generateNextOrderNumber } from "./helpers/numbering";
 import { resolveBoundedOrderStatsScan } from "./helpers/orderStats";
@@ -149,6 +150,7 @@ export const create = mutation({
 		customerName: v.optional(v.string()),
 		stripePaymentIntentId: v.optional(v.string()),
 		stripeConnectedAccountId: v.optional(v.string()),
+		checkoutSnapshot: v.optional(checkoutSnapshotValidator),
 		shippingAddress: v.optional(
 			v.object({
 				line1: v.string(),
@@ -215,6 +217,7 @@ export const create = mutation({
 				fulfillmentError: existing.fulfillmentError,
 				stripeRefundId: existing.stripeRefundId,
 				fulfillmentRecoveryStatus: existing.fulfillmentRecoveryStatus,
+				checkoutSnapshot: existing.checkoutSnapshot,
 			};
 		}
 
@@ -263,6 +266,7 @@ export const create = mutation({
 			fulfillmentError: undefined,
 			stripeRefundId: undefined,
 			fulfillmentRecoveryStatus: undefined,
+			checkoutSnapshot: rest.checkoutSnapshot,
 		};
 	},
 });

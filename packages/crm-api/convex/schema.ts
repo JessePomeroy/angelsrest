@@ -1,5 +1,6 @@
 import { defineSchema, defineTable } from "convex/server";
 import { v } from "convex/values";
+import { checkoutSnapshotValidator } from "./helpers/checkoutSnapshot";
 import {
 	contentKindValidator,
 	contentRevisionPayloadValidator,
@@ -751,6 +752,7 @@ export default defineSchema({
 		// Connected-account context needed by delayed Stripe reads after the
 		// webhook request that originally resolved tenant routing has ended.
 		stripeConnectedAccountId: v.optional(v.string()),
+		checkoutSnapshot: v.optional(checkoutSnapshotValidator),
 		customerEmail: v.string(),
 		customerName: v.optional(v.string()),
 		shippingAddress: v.optional(
