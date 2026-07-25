@@ -1,7 +1,10 @@
 import type { Infer } from "convex/values";
 import { v } from "convex/values";
 import { PRIVATE_CATALOG_ASSET_LIMITS } from "./catalogPrivateAssetValidators";
-import { CATALOG_PRODUCT_LIMITS } from "./catalogProductValidators";
+import {
+	CATALOG_PRODUCT_LIMITS,
+	catalogProductKindValidator,
+} from "./catalogProductValidators";
 
 const catalogGraphV2VariantValidator = v.object({
 	key: v.string(),
@@ -141,6 +144,76 @@ export const catalogProductGraphV2DraftValidator = v.union(
 		productKind: v.literal("merchandise"),
 	}),
 );
+
+export const catalogProductPublicationRevisionValidator = v.union(
+	v.id("catalogProductRevisions"),
+	v.null(),
+);
+
+export const catalogProductPublicationResultValidator = v.object({
+	productId: v.id("catalogProducts"),
+	draftRevisionId: catalogProductPublicationRevisionValidator,
+	publishedRevisionId: catalogProductPublicationRevisionValidator,
+	updatedAt: v.number(),
+	publishedAt: v.union(v.number(), v.null()),
+});
+
+const catalogPublicOptionFields = {
+	slug: v.string(),
+	label: v.string(),
+};
+const catalogPublicOptionValidator = v.object(catalogPublicOptionFields);
+const catalogPublicDerivativeValidator = v.object({
+	contentType: v.literal("image/webp"),
+	width: v.number(),
+	height: v.number(),
+});
+
+export const catalogProductGraphV2PublicValidator = v.object({
+	schemaVersion: v.literal(2),
+	productId: v.id("catalogProducts"),
+	revisionId: v.id("catalogProductRevisions"),
+	productKind: catalogProductKindValidator,
+	title: v.string(),
+	slug: v.string(),
+	description: v.union(v.string(), v.null()),
+	seoDescription: v.union(v.string(), v.null()),
+	currency: v.literal("usd"),
+	saleAvailability: v.union(v.literal("available"), v.literal("unavailable")),
+	variants: v.array(v.object({
+		key: v.string(),
+		order: v.number(),
+		materialOption: v.union(catalogPublicOptionValidator, v.null()),
+		sizeOption: v.union(v.object({
+			...catalogPublicOptionFields,
+			widthInches: v.number(),
+			heightInches: v.number(),
+		}), v.null()),
+		retailPriceCents: v.number(),
+	})),
+	shopPlacement: v.object({
+		featured: v.boolean(),
+		orderRank: v.union(v.string(), v.null()),
+	}),
+	printOptions: v.optional(catalogGraphV2PrintOptionsValidator),
+	media: v.array(v.object({
+		key: v.string(),
+		role: catalogGraphV2WebMediaRoleValidator,
+		order: v.number(),
+		altText: v.union(v.string(), v.null()),
+		asset: v.object({
+			assetId: v.string(),
+			source: v.object({ width: v.number(), height: v.number() }),
+			derivatives: v.object({
+				thumb: catalogPublicDerivativeValidator,
+				card: catalogPublicDerivativeValidator,
+				display1280: catalogPublicDerivativeValidator,
+				display2048: catalogPublicDerivativeValidator,
+				display2560: catalogPublicDerivativeValidator,
+			}),
+		}),
+	})),
+});
 
 export type CatalogProductGraphV2Draft = Infer<typeof catalogProductGraphV2DraftValidator>;
 export type CatalogGraphV2Variant = Infer<typeof catalogGraphV2VariantValidator>;
