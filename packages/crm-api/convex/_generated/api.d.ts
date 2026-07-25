@@ -13,7 +13,6 @@ import type * as adminAuth from "../adminAuth.js";
 import type * as auth from "../auth.js";
 import type * as authHelpers from "../authHelpers.js";
 import type * as blogContent from "../blogContent.js";
-import type * as catalogAcceptanceObserver from "../catalogAcceptanceObserver.js";
 import type * as catalogPrivateAssets from "../catalogPrivateAssets.js";
 import type * as catalogProductGraphs from "../catalogProductGraphs.js";
 import type * as catalogProducts from "../catalogProducts.js";
@@ -124,7 +123,6 @@ declare const fullApi: ApiFromModules<{
   auth: typeof auth;
   authHelpers: typeof authHelpers;
   blogContent: typeof blogContent;
-  catalogAcceptanceObserver: typeof catalogAcceptanceObserver;
   catalogPrivateAssets: typeof catalogPrivateAssets;
   catalogProductGraphs: typeof catalogProductGraphs;
   catalogProducts: typeof catalogProducts;
