@@ -1,47 +1,9 @@
 import type Stripe from "stripe";
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it } from "vitest";
 import { buildCartMetadata } from "../server/cartCheckoutHelpers";
-import type { CartItem } from "../shop/cart";
-
-// The webhook handler imports a bunch of server-only modules. Mock them
-// at the boundary so we can import `__test__buildOrderItemsFromSession`
-// without spinning up Stripe / Resend / Convex.
-//
-// vi.mock is statically hoisted — see `feedback_vitest_mock_hoisting`
-// memory for why we don't re-apply this in beforeEach.
-vi.mock("stripe", () => ({
-	default: class MockStripe {
-		webhooks = { constructEvent: vi.fn() };
-		refunds = { create: vi.fn() };
-		checkout = { sessions: { retrieve: vi.fn() } };
-		paymentIntents = { retrieve: vi.fn() };
-	},
-}));
-
-vi.mock("resend", () => ({
-	Resend: class MockResend {
-		emails = { send: vi.fn() };
-	},
-}));
-
-vi.mock("$lib/server/convexClient", () => ({
-	getConvex: () => ({ mutation: vi.fn(), query: vi.fn() }),
-}));
-
-vi.mock("$convex/api", () => ({
-	api: {
-		orders: { create: "orders.create", updateStatus: "orders.updateStatus" },
-		invoices: { markPaid: "invoices.markPaid" },
-	},
-}));
-
-vi.mock("$lib/config/site", () => ({
-	ADMIN_EMAIL: "admin@example.com",
-	SITE_DOMAIN: "angelsrest.online",
-}));
-
-import { __test__buildOrderItemsFromSession } from "../../routes/api/webhooks/stripe/+server";
 import { FulfillmentValidationError } from "../server/fulfillmentValidationError";
+import { buildOrderItemsFromSession as __test__buildOrderItemsFromSession } from "../server/webhookDecoder";
+import type { CartItem } from "../shop/cart";
 
 function makeItem(overrides: Partial<CartItem> = {}): CartItem {
 	return {
@@ -290,6 +252,21 @@ describe("__test__buildOrderItemsFromSession — cart shape (PR C)", () => {
 		expect(orderItems[0].imageUrl).toBe("https://cdn.sanity.io/images/abc/print.jpg");
 		expect(orderItems[1].imageUrl).toBe("https://cdn.sanity.io/images/abc/tide-1.jpg");
 		expect(orderItems[3].imageUrl).toBe("https://cdn.sanity.io/images/abc/tide-3.jpg");
+	});
+
+	it("keeps cart precedence over stale direct-set metadata", () => {
+		const session = makeSession({
+			...buildCartMetadata([makeItem({ imageUrl: "cart.jpg" })]),
+			isPrintSet: "true",
+			imageUrl: "single.jpg",
+			imageUrls: JSON.stringify(["set-a.jpg", "set-b.jpg"]),
+			paperSubcategoryId: "999999",
+			paperWidth: "99",
+			paperHeight: "99",
+		});
+		expect(__test__buildOrderItemsFromSession(session, []).map(({ imageUrl }) => imageUrl)).toEqual(
+			["cart.jpg"],
+		);
 	});
 
 	it("ignores top-level paperSubcategoryId when isCart is set", () => {

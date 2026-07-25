@@ -1,4 +1,8 @@
 import type Stripe from "stripe";
+import type {
+	CheckoutSnapshotInput,
+	CheckoutSnapshotV1,
+} from "$lib/server/checkoutSnapshotConsumer";
 import type { ShippingDetails } from "$lib/server/webhookEmails";
 
 export type ConvexOrderCreatePayload = {
@@ -9,6 +13,8 @@ export type ConvexOrderCreatePayload = {
 	customerName?: string;
 	stripePaymentIntentId?: string;
 	stripeConnectedAccountId?: string;
+	checkoutSnapshot?: CheckoutSnapshotV1;
+	checkoutSnapshotReservation?: { version: 2; handle: string };
 	shippingAddress?: {
 		line1: string;
 		line2?: string;
@@ -36,6 +42,7 @@ export function buildConvexOrderCreatePayload({
 	siteUrl,
 	webhookSecret,
 	stripeRequestOptions,
+	checkoutSnapshotInput = { protocol: "legacy" },
 }: {
 	session: Stripe.Checkout.Session;
 	shippingDetails: ShippingDetails;
@@ -43,6 +50,7 @@ export function buildConvexOrderCreatePayload({
 	siteUrl: string;
 	webhookSecret: string;
 	stripeRequestOptions?: Stripe.RequestOptions;
+	checkoutSnapshotInput?: CheckoutSnapshotInput;
 }): ConvexOrderCreatePayload {
 	const rawPaymentIntent = session.payment_intent;
 	const stripePaymentIntentId =
@@ -59,6 +67,11 @@ export function buildConvexOrderCreatePayload({
 		...(stripeRequestOptions?.stripeAccount
 			? { stripeConnectedAccountId: stripeRequestOptions.stripeAccount }
 			: {}),
+		...(checkoutSnapshotInput.protocol === "inline-v1"
+			? { checkoutSnapshot: checkoutSnapshotInput.snapshot }
+			: checkoutSnapshotInput.protocol === "handle-v2"
+				? { checkoutSnapshotReservation: checkoutSnapshotInput.reservation }
+				: {}),
 		shippingAddress: shippingDetails?.address
 			? {
 					line1: shippingDetails.address.line1 || "",

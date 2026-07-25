@@ -1,22 +1,3 @@
-/**
- * Stripe Webhook Handler
- *
- * Authoritative commerce webhook for Angels Rest and Stripe Connect tenants.
- * Client spokes create Checkout through the signed hub bridge and do not run a
- * second checkout.session.completed order-intake path.
- *
- * Flow for a successful purchase:
- * 1. Verify Stripe's signature against the raw request body.
- * 2. Resolve the platform/connected-account tenant and checkout kind.
- * 3. Create or reuse the idempotent Convex order.
- * 4. Schedule Stripe fee capture outside the webhook hot path.
- * 5. Submit eligible print items to LumaPrints.
- * 6. Send the applicable customer/admin notifications.
- *
- * Webhook URL: https://www.angelsrest.online/api/webhooks/stripe
- * Events handled: checkout.session.completed, payment_intent.payment_failed
- */
-
 import { json } from "@sveltejs/kit";
 import { env } from "$env/dynamic/private";
 import { getConvex } from "$lib/server/convexClient";
@@ -25,11 +6,8 @@ import { processStripeWebhookEvent } from "$lib/server/orderIntake";
 import { getResend } from "$lib/server/resendClient";
 import { getStripe } from "$lib/server/stripeClient";
 import { verifyStripeWebhook } from "$lib/server/stripeWebhook";
-import { buildOrderItemsFromSession } from "$lib/server/webhookDecoder";
 
 const convex = getConvex();
-
-// ─── Webhook Entry Point ─────────────────────────────────────────────────────
 
 export async function POST({ request }) {
 	const stripe = getStripe();
@@ -48,11 +26,3 @@ function getCommerceWebhookSecret() {
 	}
 	return secret;
 }
-
-/**
- * Exported for tests only — the production code path goes through
- * `buildOrderItemsFromSession` in webhookDecoder.ts. Re-exporting this
- * lets cart-shape tests exercise the parser without spinning up the
- * full webhook harness.
- */
-export const __test__buildOrderItemsFromSession = buildOrderItemsFromSession;

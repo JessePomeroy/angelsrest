@@ -90,6 +90,55 @@ describe("buildConvexOrderCreatePayload", () => {
 		});
 	});
 
+	it("passes one discriminated snapshot input while Stripe keeps paid-field authority", () => {
+		const snapshot = {
+			schemaVersion: 1 as const,
+			catalogProvider: "convex" as const,
+			items: [
+				{
+					productKey: "product",
+					revisionId: "revision",
+					productKind: "print" as const,
+					variantKey: null,
+					materialOptionKey: null,
+					sizeOptionKey: null,
+					borderOptionKey: null,
+					frameOptionKey: null,
+				},
+			],
+		};
+		const payload = buildConvexOrderCreatePayload({
+			session: makeSession(),
+			shippingDetails: null,
+			lineItems: [makeLineItem({ description: "Stripe name", quantity: 3, amount_total: 7300 })],
+			siteUrl: "angelsrest.online",
+			webhookSecret: "secret",
+			checkoutSnapshotInput: { protocol: "inline-v1", snapshot },
+		});
+		expect(payload.items).toEqual([{ productName: "Stripe name", quantity: 3, price: 7300 }]);
+		expect(payload.checkoutSnapshot).toEqual(snapshot);
+		expect(payload).not.toHaveProperty("checkoutSnapshotReservation");
+	});
+
+	it("maps handle-v2 only to the reservation candidate seam", () => {
+		const payload = buildConvexOrderCreatePayload({
+			session: makeSession(),
+			shippingDetails: null,
+			lineItems: [makeLineItem()],
+			siteUrl: "angelsrest.online",
+			webhookSecret: "secret",
+			checkoutSnapshotInput: {
+				protocol: "handle-v2",
+				reservation: { version: 2, handle: "123e4567-e89b-42d3-a456-426614174000" },
+			},
+		});
+		expect(payload.checkoutSnapshotReservation).toEqual({
+			version: 2,
+			handle: "123e4567-e89b-42d3-a456-426614174000",
+		});
+		expect(payload).not.toHaveProperty("checkoutSnapshot");
+	});
+
 	it("handles expanded payment intents and digital orders", () => {
 		const payload = buildConvexOrderCreatePayload({
 			session: makeSession({

@@ -6,6 +6,12 @@ import { api } from "$convex/api";
 import type { Id } from "$convex/dataModel";
 import { env } from "$env/dynamic/private";
 import {
+	CheckoutSnapshotProtocolError,
+	inspectCheckoutSnapshotMetadata,
+	readCheckoutTenantMarker,
+	selectCheckoutSnapshotInput,
+} from "$lib/server/checkoutSnapshotConsumer";
+import {
 	type CommerceNotificationProfile,
 	resolveCommerceTenant,
 } from "$lib/server/commerceTenant";
@@ -20,6 +26,7 @@ import {
 	sendPaymentFailedEmail,
 } from "$lib/server/webhookEmails";
 import { createOrderInConvex } from "$lib/server/webhookOrders";
+import { getWebhookSecret } from "$lib/server/webhookSecret";
 
 export interface OrderIntakeAdapters {
 	stripe: Stripe;
@@ -28,14 +35,6 @@ export interface OrderIntakeAdapters {
 	createLumaPrintsOrder: SubmitLumaPrintsOrder;
 }
 
-/**
- * Process a verified Stripe webhook event.
- *
- * The SvelteKit route owns HTTP concerns: raw body, signature verification,
- * and response serialization. This module owns the order-intake behavior:
- * event dispatch, invoice-vs-print routing, order creation, fulfillment,
- * email sequencing, and retry/failure semantics.
- */
 export async function processStripeWebhookEvent(
 	event: Stripe.Event,
 	adapters: OrderIntakeAdapters,
@@ -57,17 +56,41 @@ export async function processStripeWebhookEvent(
 		switch (event.type) {
 			case "checkout.session.completed": {
 				const session = event.data.object as Stripe.Checkout.Session;
-				const tenant = await resolveCommerceTenant(event, adapters.convex);
-
+				const enabled = env.CHECKOUT_SNAPSHOT_MODE === "handle-v2";
 				if (session.metadata?.type === "invoice_payment") {
+					const tenant = await resolveCommerceTenant(event, adapters.convex);
 					await markInvoicePaidFromSession(session, adapters.convex, tenant.siteUrl);
 					break;
 				}
 
+				let routing = null;
+				if (enabled) {
+					const stripeAccount =
+						typeof event.account === "string" ? event.account.trim() : undefined;
+					const metadataSiteUrl = readCheckoutTenantMarker(session.metadata);
+					try {
+						routing = await adapters.convex.query(api.orders.resolveCheckoutRouting, {
+							stripeSessionId: session.id,
+							...(stripeAccount ? { stripeConnectedAccountId: stripeAccount } : {}),
+							...(metadataSiteUrl ? { stripeTenantMetadataSiteUrl: metadataSiteUrl } : {}),
+							webhookSecret: getWebhookSecret(),
+						});
+					} catch (cause) {
+						throw new CheckoutSnapshotProtocolError("Checkout routing failed", { cause });
+					}
+				}
+				const tenantPromise = resolveCommerceTenant(event, adapters.convex, routing?.siteUrl);
+				const tenant = enabled
+					? await tenantPromise.catch((cause) => {
+							throw new CheckoutSnapshotProtocolError("Checkout tenant routing failed", { cause });
+						})
+					: await tenantPromise;
 				await handleCheckoutCompleted(session, adapters, {
 					siteUrl: tenant.siteUrl,
 					notificationProfile: tenant.notificationProfile,
 					stripeRequestOptions: tenant.stripeRequestOptions,
+					routingSource: routing?.source ?? null,
+					completeLineItems: enabled,
 				});
 				break;
 			}
@@ -105,7 +128,9 @@ export async function processStripeWebhookEvent(
 			error: err,
 			meta: { stripeEventType: event.type },
 		});
-		await sendFailureAlert(adapters.resend, event.type, sessionId ?? "unknown", errorMessage);
+		if (!(err instanceof CheckoutSnapshotProtocolError)) {
+			await sendFailureAlert(adapters.resend, event.type, sessionId ?? "unknown", errorMessage);
+		}
 		throw error(500, "Webhook processing failed");
 	}
 }
@@ -178,10 +203,14 @@ async function handleCheckoutCompleted(
 		siteUrl,
 		stripeRequestOptions,
 		notificationProfile,
+		routingSource = null,
+		completeLineItems = false,
 	}: {
 		siteUrl: string;
 		stripeRequestOptions?: Stripe.RequestOptions;
 		notificationProfile: CommerceNotificationProfile;
+		routingSource?: "order" | "reservation" | null;
+		completeLineItems?: boolean;
 	},
 ) {
 	logStructured({
@@ -194,7 +223,16 @@ async function handleCheckoutCompleted(
 		session,
 		adapters.stripe,
 		stripeRequestOptions,
+		completeLineItems,
 	);
+	const checkoutSnapshotInput = completeLineItems
+		? selectCheckoutSnapshotInput(
+				routingSource,
+				routingSource === "order"
+					? undefined
+					: inspectCheckoutSnapshotMetadata(session.metadata, lineItems.length),
+			)
+		: ({ protocol: "legacy" } as const);
 
 	const customerEmail = fullSession.customer_details?.email || session.customer_email;
 
@@ -223,6 +261,7 @@ async function handleCheckoutCompleted(
 			siteUrl,
 			stripeRequestOptions,
 			notificationProfile,
+			checkoutSnapshotInput,
 		},
 	);
 
@@ -315,7 +354,29 @@ async function fetchSessionDetails(
 	session: Stripe.Checkout.Session,
 	stripe: Stripe,
 	requestOptions?: Stripe.RequestOptions,
+	completeLineItems = false,
 ) {
+	if (completeLineItems) {
+		const fullSession = await stripe.checkout.sessions.retrieve(
+			session.id,
+			{ expand: ["customer_details"] },
+			requestOptions,
+		);
+		const page = await stripe.checkout.sessions.listLineItems(
+			session.id,
+			{ limit: 41 },
+			requestOptions,
+		);
+		if (page.data.length > 40 || page.has_more) {
+			throw new CheckoutSnapshotProtocolError("Checkout has more than 40 line items");
+		}
+		return {
+			fullSession,
+			lineItems: page.data,
+			shippingDetails: session.collected_information?.shipping_details,
+		};
+	}
+
 	let fullSession: Stripe.Checkout.Session;
 	let lineItems: Stripe.LineItem[] = [];
 	let shippingDetails: ShippingDetails;

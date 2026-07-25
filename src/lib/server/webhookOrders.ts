@@ -1,16 +1,12 @@
-/**
- * Order creation and management for the Stripe webhook.
- *
- * Handles idempotent Convex order creation, print fulfillment, and the
- * permanent-failure refund path. Stripe fee capture is scheduled by the Convex
- * order mutation rather than performed on the webhook request.
- */
-
 import type { ConvexHttpClient } from "convex/browser";
 import type { Resend } from "resend";
 import type Stripe from "stripe";
 import { api } from "$convex/api";
 import type { Id } from "$convex/dataModel";
+import {
+	type CheckoutSnapshotInput,
+	CheckoutSnapshotProtocolError,
+} from "$lib/server/checkoutSnapshotConsumer";
 import {
 	ANGELS_REST_COMMERCE_PROFILE,
 	type CommerceNotificationProfile,
@@ -27,8 +23,6 @@ import type { ShippingDetails } from "$lib/server/webhookEmails";
 import { buildConvexOrderCreatePayload } from "$lib/server/webhookOrderPayload";
 import { getWebhookSecret } from "$lib/server/webhookSecret";
 
-export { handlePermanentFulfillmentFailure };
-
 export interface CreatedOrderResult {
 	orderNumber: string;
 	_id: Id<"orders">;
@@ -37,12 +31,6 @@ export interface CreatedOrderResult {
 	notification: "success" | "failure" | "none";
 }
 
-/**
- * Create an order in Convex.
- *
- * Convex schedules Stripe fee capture after creation because the
- * balance_transaction is not always available when checkout completes.
- */
 export async function createOrderInConvex(
 	{
 		stripe,
@@ -62,6 +50,7 @@ export async function createOrderInConvex(
 		siteUrl,
 		stripeRequestOptions,
 		notificationProfile = ANGELS_REST_COMMERCE_PROFILE,
+		checkoutSnapshotInput = { protocol: "legacy" },
 	}: {
 		session: Stripe.Checkout.Session;
 		shippingDetails: ShippingDetails;
@@ -69,20 +58,24 @@ export async function createOrderInConvex(
 		siteUrl: string;
 		stripeRequestOptions?: Stripe.RequestOptions;
 		notificationProfile?: CommerceNotificationProfile;
+		checkoutSnapshotInput?: CheckoutSnapshotInput;
 	},
 ): Promise<CreatedOrderResult> {
-	// Create order in Convex (idempotent — returns existing order if session already processed)
-	const orderResult = await convex.mutation(
-		api.orders.create,
-		buildConvexOrderCreatePayload({
-			session,
-			shippingDetails,
-			lineItems,
-			siteUrl,
-			webhookSecret: getWebhookSecret(),
-			stripeRequestOptions,
-		}),
-	);
+	const payload = buildConvexOrderCreatePayload({
+		session,
+		shippingDetails,
+		lineItems,
+		siteUrl,
+		webhookSecret: getWebhookSecret(),
+		stripeRequestOptions,
+		checkoutSnapshotInput,
+	});
+	const orderResult = await convex.mutation(api.orders.create, payload).catch((cause) => {
+		if (checkoutSnapshotInput.protocol === "handle-v2") {
+			throw new CheckoutSnapshotProtocolError("Bound checkout snapshot transfer failed", { cause });
+		}
+		throw cause;
+	});
 	const { _id: orderId, orderNumber, alreadyExisted } = orderResult;
 	const existingLumaprintsOrderNumber = orderResult.lumaprintsOrderNumber;
 	const existingStatus = orderResult.status;
@@ -98,10 +91,6 @@ export async function createOrderInConvex(
 		meta: { alreadyExisted },
 	});
 
-	// Fee capture runs off the hot path (audit H5): `orders.create` schedules
-	// `stripeFees.captureFeesForOrder` to run 15s after the order is created,
-	// so the webhook doesn't block on Stripe's balance_transaction becoming
-	// available. See convex/stripeFees.ts for the action + retry policy.
 	if (existingStripeFees !== undefined) {
 		logStructured({
 			event: "stripe_fees.skipped",
@@ -111,24 +100,6 @@ export async function createOrderInConvex(
 		});
 	}
 
-	// Critical: LumaPrints submission.
-	//
-	// Idempotency guard (audit C13): if a prior webhook retry already submitted
-	// this order to LumaPrints, `orders.create` returns the persisted
-	// `lumaprintsOrderNumber`. We short-circuit here to prevent double-submission
-	// which would otherwise produce two physical prints for one charge.
-	//
-	// Failure handling has two branches:
-	// - **Transient errors** (network, LumaPrints 5xx, unknown) are rethrown so
-	//   Stripe retries. Convex order creation is idempotent by checkout session.
-	// - **Permanent errors** (LumaPrints 4xx and local validation failures) enter
-	//   the refund/failure-state/admin-alert path. These side effects are recorded
-	//   independently; `fulfillment_error` must not be treated as proof that the
-	//   refund or email succeeded without their corresponding delivery fields.
-	//
-	// Classification lives in `webhookErrorClassification.ts` and is
-	// conservative: unknown errors default to transient so we don't refund
-	// customers based on our own bugs.
 	if (existingLumaprintsOrderNumber) {
 		logStructured({
 			event: "lumaprints.skipped",

@@ -9,6 +9,11 @@ const mockSendCustomerFulfillmentFailure = vi.fn();
 const mockSendFailureAlert = vi.fn();
 const mockSendFulfillmentFailureAlert = vi.fn();
 const mockSendPaymentFailedEmail = vi.fn();
+const mockPrivateEnv = vi.hoisted(() => ({
+	LUMAPRINTS_STORE_ID: "123",
+	WEBHOOK_SECRET: "test-webhook-secret",
+	CHECKOUT_SNAPSHOT_MODE: undefined as string | undefined,
+}));
 
 vi.mock("$lib/server/logger", () => ({
 	logStructured: mockLogStructured,
@@ -29,6 +34,7 @@ vi.mock("$convex/api", () => ({
 		invoices: { markPaid: "invoices.markPaid" },
 		orders: {
 			create: "orders.create",
+			resolveCheckoutRouting: "orders.resolveCheckoutRouting",
 			updateStatus: "orders.updateStatus",
 		},
 		platform: {
@@ -38,12 +44,7 @@ vi.mock("$convex/api", () => ({
 	},
 }));
 
-vi.mock("$env/dynamic/private", () => ({
-	env: {
-		LUMAPRINTS_STORE_ID: "123",
-		WEBHOOK_SECRET: "test-webhook-secret",
-	},
-}));
+vi.mock("$env/dynamic/private", () => ({ env: mockPrivateEnv }));
 
 vi.mock("$lib/config/site", () => ({
 	ADMIN_EMAIL: "admin@example.com",
@@ -103,13 +104,24 @@ function makeCheckoutSession(
 	} as unknown as Stripe.Checkout.Session;
 }
 
-function makeLineItem(): Stripe.LineItem {
+function makeLineItem(ordinal = 0): Stripe.LineItem {
 	return {
-		id: "li_test_123",
-		amount_total: 3500,
-		description: "Spring Meadow print",
+		id: `li_test_${ordinal}`,
+		amount_total: 3500 + ordinal,
+		description: `Spring Meadow print ${ordinal}`,
 		quantity: 1,
 	} as Stripe.LineItem;
+}
+
+const snapshotHandle = "123e4567-e89b-42d3-a456-426614174000";
+function handleMetadata(overrides: Record<string, string> = {}) {
+	return {
+		...makeCheckoutSession().metadata,
+		checkoutSnapshotVersion: "2",
+		checkoutSnapshotHandle: snapshotHandle,
+		commerceTenantSiteUrl: "angelsrest.online",
+		...overrides,
+	};
 }
 
 function makeOrderResult(overrides: Record<string, unknown> = {}) {
@@ -140,6 +152,7 @@ describe("processStripeWebhookEvent", () => {
 		checkout: {
 			sessions: {
 				retrieve: vi.fn(),
+				listLineItems: vi.fn(),
 			},
 		},
 		refunds: {
@@ -165,7 +178,9 @@ describe("processStripeWebhookEvent", () => {
 			return undefined;
 		});
 		convex.query.mockReset();
+		mockPrivateEnv.CHECKOUT_SNAPSHOT_MODE = undefined;
 		stripe.checkout.sessions.retrieve.mockReset();
+		stripe.checkout.sessions.listLineItems.mockReset();
 		stripe.refunds.create.mockResolvedValue({ id: "re_test_123", status: "succeeded" });
 		createLumaPrintsOrder.mockResolvedValue({ orderNumber: "LP-123" });
 	});
@@ -357,8 +372,260 @@ describe("processStripeWebhookEvent", () => {
 		expect(createLumaPrintsOrder).not.toHaveBeenCalled();
 	});
 
-	it("keeps transient LumaPrints failures retryable and sends no order confirmation", async () => {
+	it.each([
+		undefined,
+		"",
+		"handle-v1",
+		"HANDLE-V2",
+	])("keeps current routing and makes no session-first call when mode is %s", async (mode) => {
+		mockPrivateEnv.CHECKOUT_SNAPSHOT_MODE = mode;
+		const session = makeCheckoutSession({ metadata: {} });
+		stripe.checkout.sessions.retrieve.mockResolvedValue({
+			...session,
+			line_items: { data: [] },
+		});
+		const { processStripeWebhookEvent } = await import("../orderIntake");
+		await processStripeWebhookEvent(
+			makeStripeEvent("checkout.session.completed", session),
+			adapters(),
+		);
+		expect(convex.query).not.toHaveBeenCalledWith(
+			"orders.resolveCheckoutRouting",
+			expect.anything(),
+		);
+		expect(stripe.checkout.sessions.listLineItems).not.toHaveBeenCalled();
+	});
+
+	it.each([
+		["removed", {}],
+		["malformed", { checkoutSnapshotVersion: "broken", checkoutSnapshotHandle: "bad" }],
+	] as const)("resumes an existing order with %s snapshot metadata", async (_label, metadata) => {
+		mockPrivateEnv.CHECKOUT_SNAPSHOT_MODE = "handle-v2";
+		const session = makeCheckoutSession({ metadata });
+		stripe.checkout.sessions.retrieve.mockResolvedValue(session);
+		stripe.checkout.sessions.listLineItems.mockResolvedValue({
+			data: [makeLineItem()],
+			has_more: false,
+		});
+		convex.query.mockResolvedValue({
+			source: "order",
+			siteUrl: "angelsrest.online",
+			stripeConnectedAccountId: undefined,
+		});
+		orderCreateResults = [
+			makeOrderResult({
+				alreadyExisted: true,
+				lumaprintsOrderNumber: "LP-STORED",
+				checkoutSnapshot: {
+					schemaVersion: 1,
+					catalogProvider: "convex",
+					items: [],
+				},
+			}),
+		];
+
+		const { processStripeWebhookEvent } = await import("../orderIntake");
+		await processStripeWebhookEvent(
+			makeStripeEvent("checkout.session.completed", session),
+			adapters(),
+		);
+
+		const calls = convex.mutation.mock.calls as Array<[string, Record<string, unknown>]>;
+		const payload = calls.find(([reference]) => reference === "orders.create")?.[1];
+		expect(payload).not.toHaveProperty("checkoutSnapshot");
+		expect(payload).not.toHaveProperty("checkoutSnapshotReservation");
+		expect(createLumaPrintsOrder).not.toHaveBeenCalled();
+		expect(mockSendCustomerConfirmation).not.toHaveBeenCalled();
+		expect(mockSendAdminNotification).not.toHaveBeenCalled();
+	});
+
+	it("transfers a bound handle on first delivery with complete connected-account line items", async () => {
+		mockPrivateEnv.CHECKOUT_SNAPSHOT_MODE = "handle-v2";
+		const account = "acct_1234567890TenantA";
+		const session = makeCheckoutSession({
+			metadata: handleMetadata({ commerceTenantSiteUrl: "zippymiggy.com" }),
+		});
+		const lineItems = Array.from({ length: 40 }, (_, ordinal) => makeLineItem(ordinal));
+		stripe.checkout.sessions.retrieve.mockResolvedValue(session);
+		stripe.checkout.sessions.listLineItems.mockResolvedValue({
+			data: lineItems,
+			has_more: false,
+		});
+		convex.query
+			.mockResolvedValueOnce({
+				source: "reservation",
+				siteUrl: "zippymiggy.com",
+				stripeConnectedAccountId: account,
+			})
+			.mockResolvedValueOnce({
+				siteName: "Reflecting Pool",
+				siteUrl: "zippymiggy.com",
+				adminEmail: "owner@example.com",
+			});
+
+		const { processStripeWebhookEvent } = await import("../orderIntake");
+		await processStripeWebhookEvent(
+			makeStripeEvent("checkout.session.completed", session, { account }),
+			adapters(),
+		);
+
+		expect(stripe.checkout.sessions.retrieve).toHaveBeenCalledWith(
+			session.id,
+			{ expand: ["customer_details"] },
+			{ stripeAccount: account },
+		);
+		expect(stripe.checkout.sessions.listLineItems).toHaveBeenCalledWith(
+			session.id,
+			{ limit: 41 },
+			{ stripeAccount: account },
+		);
+		expect(convex.mutation).toHaveBeenCalledWith(
+			"orders.create",
+			expect.objectContaining({
+				stripeConnectedAccountId: account,
+				checkoutSnapshotReservation: { version: 2, handle: snapshotHandle },
+				items: lineItems.map((item) => ({
+					productName: item.description,
+					quantity: item.quantity,
+					price: item.amount_total,
+				})),
+			}),
+		);
+	});
+
+	it("rejects the 41st line-item sentinel before every order or terminal effect", async () => {
+		mockPrivateEnv.CHECKOUT_SNAPSHOT_MODE = "handle-v2";
+		const session = makeCheckoutSession({ metadata: handleMetadata() });
+		stripe.checkout.sessions.retrieve.mockResolvedValue(session);
+		stripe.checkout.sessions.listLineItems.mockResolvedValue({
+			data: Array.from({ length: 41 }, (_, ordinal) => makeLineItem(ordinal)),
+			has_more: false,
+		});
+		convex.query.mockResolvedValue({
+			source: "reservation",
+			siteUrl: "angelsrest.online",
+			stripeConnectedAccountId: undefined,
+		});
+
+		const { processStripeWebhookEvent } = await import("../orderIntake");
+		await expect(
+			processStripeWebhookEvent(makeStripeEvent("checkout.session.completed", session), adapters()),
+		).rejects.toMatchObject({ status: 500 });
+
+		expect(convex.mutation).not.toHaveBeenCalledWith("orders.create", expect.anything());
+		expect(createLumaPrintsOrder).not.toHaveBeenCalled();
+		expect(stripe.refunds.create).not.toHaveBeenCalled();
+		expect(mockSendFailureAlert).not.toHaveBeenCalled();
+		expect(mockSendCustomerFulfillmentFailure).not.toHaveBeenCalled();
+		expect(mockSendCustomerConfirmation).not.toHaveBeenCalled();
+		expect(mockSendAdminNotification).not.toHaveBeenCalled();
+	});
+
+	it.each([
+		["account", { account: " acct_1234567890TenantB " }, handleMetadata()],
+		["tenant", {}, handleMetadata({ commerceTenantSiteUrl: "other.example" })],
+	] as const)("fails a %s routing mismatch before side effects", async (_label, eventOverrides, metadata) => {
+		mockPrivateEnv.CHECKOUT_SNAPSHOT_MODE = "handle-v2";
+		const session = makeCheckoutSession({ metadata });
+		convex.query.mockRejectedValue(new Error("Checkout routing facts conflict"));
+		const { processStripeWebhookEvent } = await import("../orderIntake");
+		await expect(
+			processStripeWebhookEvent(
+				makeStripeEvent("checkout.session.completed", session, eventOverrides),
+				adapters(),
+			),
+		).rejects.toMatchObject({ status: 500 });
+		if (_label === "account") {
+			expect(convex.query).toHaveBeenCalledWith(
+				"orders.resolveCheckoutRouting",
+				expect.objectContaining({ stripeConnectedAccountId: "acct_1234567890TenantB" }),
+			);
+		}
+		expect(convex.mutation).not.toHaveBeenCalled();
+		expect(stripe.checkout.sessions.listLineItems).not.toHaveBeenCalled();
+		expect(createLumaPrintsOrder).not.toHaveBeenCalled();
+		expect(stripe.refunds.create).not.toHaveBeenCalled();
+		expect(mockSendFailureAlert).not.toHaveBeenCalled();
+	});
+
+	it("fails routing and marked count mismatches without provider, refund, or notification", async () => {
+		mockPrivateEnv.CHECKOUT_SNAPSHOT_MODE = "handle-v2";
+		const session = makeCheckoutSession({
+			metadata: {
+				checkoutSnapshotVersion: "1",
+				catalogProvider: "convex",
+				checkoutSnapshotItemCount: "2",
+				checkoutSnapshotItem_0: JSON.stringify([
+					0,
+					"p",
+					"r",
+					"print",
+					null,
+					null,
+					null,
+					null,
+					null,
+				]),
+				checkoutSnapshotItem_1: JSON.stringify([
+					1,
+					"p2",
+					"r2",
+					"print",
+					null,
+					null,
+					null,
+					null,
+					null,
+				]),
+			},
+		});
+		stripe.checkout.sessions.retrieve.mockResolvedValue(session);
+		stripe.checkout.sessions.listLineItems.mockResolvedValue({
+			data: [makeLineItem()],
+			has_more: false,
+		});
+		convex.query.mockResolvedValue(null);
+		const { processStripeWebhookEvent } = await import("../orderIntake");
+		await expect(
+			processStripeWebhookEvent(makeStripeEvent("checkout.session.completed", session), adapters()),
+		).rejects.toMatchObject({ status: 500 });
+		expect(convex.mutation).not.toHaveBeenCalledWith("orders.create", expect.anything());
+		expect(createLumaPrintsOrder).not.toHaveBeenCalled();
+		expect(stripe.refunds.create).not.toHaveBeenCalled();
+		expect(mockSendFailureAlert).not.toHaveBeenCalled();
+		expect(mockSendCustomerConfirmation).not.toHaveBeenCalled();
+	});
+
+	it("keeps enabled invoice settlement on the historical bypass", async () => {
+		mockPrivateEnv.CHECKOUT_SNAPSHOT_MODE = "handle-v2";
+		const session = makeCheckoutSession({
+			metadata: {
+				type: "invoice_payment",
+				checkoutSnapshotVersion: "broken",
+				invoiceId: "invoice-123",
+				siteUrl: "angelsrest.online",
+			},
+		});
+		const { processStripeWebhookEvent } = await import("../orderIntake");
+		await processStripeWebhookEvent(
+			makeStripeEvent("checkout.session.completed", session),
+			adapters(),
+		);
+		expect(convex.query).not.toHaveBeenCalledWith(
+			"orders.resolveCheckoutRouting",
+			expect.anything(),
+		);
+		expect(stripe.checkout.sessions.retrieve).not.toHaveBeenCalled();
+		expect(stripe.checkout.sessions.listLineItems).not.toHaveBeenCalled();
+		expect(convex.mutation).toHaveBeenCalledWith(
+			"invoices.markPaid",
+			expect.objectContaining({ invoiceId: "invoice-123" }),
+		);
+	});
+
+	it("keeps provider unavailability after order creation retryable", async () => {
 		const session = makeCheckoutSession();
+		orderCreateResults = [makeOrderResult({ alreadyExisted: true })];
 		stripe.checkout.sessions.retrieve.mockResolvedValue({
 			...session,
 			line_items: { data: [makeLineItem()] },
