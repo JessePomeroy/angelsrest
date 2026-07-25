@@ -1,4 +1,4 @@
-import { sanityShop } from "$lib/server/sanityShop.server";
+import { catalogShop } from "$lib/server/catalogShop.server";
 import type { PageServerLoad } from "./$types";
 
-export const load: PageServerLoad = ({ locals }) => sanityShop.loadIndex(locals.isPreview);
+export const load: PageServerLoad = ({ locals }) => catalogShop.loadIndex(locals.isPreview);
