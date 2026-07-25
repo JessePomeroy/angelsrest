@@ -36,6 +36,14 @@ import {
 	verifyCatalogEditorPrepareAttestation,
 } from "./helpers/catalogPrivateAssetEditorJournal";
 import {
+	parseReservationBindRequest,
+	parseReservationRequest,
+	reservationHandle,
+	reservationHandleHash,
+	reservationSnapshotDigest,
+} from "./helpers/checkoutSnapshot";
+import {
+	checkoutSnapshotReservationRoleConfiguration,
 	isServerSecretCandidate,
 	isTenantSiteSegment,
 	purposeScopedServerRoleConfiguration,
@@ -46,6 +54,9 @@ import {
 const http = httpRouter();
 const textEncoder = new TextEncoder();
 
+const SNAPSHOT_RESERVE_PATH = "/commerce/checkout-snapshots/reserve";
+const SNAPSHOT_BIND_PATH = "/commerce/checkout-snapshots/bind";
+const MAX_SNAPSHOT_BODY_BYTES = 96 * 1024;
 const CMS_MEDIA_COMPLETION_PATH = "/cms-media/complete-deletion";
 const MAX_COMPLETION_BODY_BYTES = 4096;
 const CATALOG_STORAGE_RECEIPT_PATH = "/cms-media/catalog-private-assets/storage-receipt";
@@ -99,7 +110,7 @@ async function readJsonObject(request: Request, maximumBytes: number) {
 	}
 	if (!request.body) return null;
 	const reader = request.body.getReader();
-	const decoder = new TextDecoder();
+	const decoder = new TextDecoder("utf-8", { fatal: true });
 	let byteLength = 0;
 	let text = "";
 	try {
@@ -665,7 +676,58 @@ const ackCatalogEditorInspection = journalHandler("inspector", CATALOG_EDITOR_JO
 	return privateResponse(result, 200);
 });
 
+async function authenticateSnapshotRequest(request: Request) {
+	if (new URL(request.url).search || request.headers.get("Content-Type") !== "application/json") return null;
+	const authorization = request.headers.get("Authorization");
+	const supplied = authorization?.startsWith("Bearer ") ? authorization.slice(7) : "";
+	if (!supplied || authorization !== `Bearer ${supplied}`) return null;
+	const roles = await checkoutSnapshotReservationRoleConfiguration();
+	return roles ? tenantForSecretFixed(roles.checkoutSnapshotReservation, supplied) : null;
+}
+
+const reserveCheckoutSnapshot = httpAction(async (ctx, request) => {
+	const siteUrl = await authenticateSnapshotRequest(request);
+	if (!siteUrl) return privateResponse({ error: "not_authorized" }, 401);
+	const parsed = parseReservationRequest(await readJsonObject(request, MAX_SNAPSHOT_BODY_BYTES));
+	if (!parsed || parsed.site !== siteUrl || !isTenantSiteSegment(parsed.site)) {
+		return privateResponse({ error: "invalid_request" }, 400);
+	}
+	const handle = await reservationHandle(siteUrl, parsed.attempt);
+	const [handleHash, snapshotDigest] = await Promise.all([
+		reservationHandleHash(siteUrl, handle), reservationSnapshotDigest(parsed.snapshot),
+	]);
+	const result = await ctx.runMutation(internal.orders.reserveCheckoutSnapshot, {
+		siteUrl, handleHash, snapshotDigest, snapshot: parsed.snapshot,
+		stripeConnectedAccountId: parsed.account ?? undefined,
+	});
+	if (result.outcome === "invalid") return privateResponse({ error: "invalid_request" }, 400);
+	if (result.outcome === "routing_mismatch") return privateResponse({ error: "not_authorized" }, 403);
+	if (result.outcome === "conflict") return privateResponse({ error: "conflict" }, 409);
+	return privateResponse({ version: 2, handle, replayed: result.outcome === "replayed" }, 200);
+});
+
+const bindCheckoutSnapshot = httpAction(async (ctx, request) => {
+	const siteUrl = await authenticateSnapshotRequest(request);
+	if (!siteUrl) return privateResponse({ error: "not_authorized" }, 401);
+	const parsed = parseReservationBindRequest(await readJsonObject(request, MAX_SNAPSHOT_BODY_BYTES));
+	if (!parsed || parsed.site !== siteUrl || !isTenantSiteSegment(parsed.site)) {
+		return privateResponse({ error: "invalid_request" }, 400);
+	}
+	const result = await ctx.runMutation(internal.orders.bindCheckoutSnapshot, {
+		siteUrl, handleHash: await reservationHandleHash(siteUrl, parsed.handle),
+		stripeConnectedAccountId: parsed.account ?? undefined,
+		stripeSessionId: parsed.session, stripeExpiresAt: parsed.stripeExpiresAt,
+	});
+	if (result.outcome === "invalid") return privateResponse({ error: "invalid_request" }, 400);
+	if (result.outcome === "routing_mismatch") return privateResponse({ error: "not_authorized" }, 403);
+	if (result.outcome === "not_found") return privateResponse({ error: "not_found" }, 404);
+	if (result.outcome === "conflict") return privateResponse({ error: "conflict" }, 409);
+	return privateResponse({ bound: true, replayed: result.outcome === "replayed" }, 200);
+});
+
 authComponent.registerRoutes(http, createAuth);
+http.route({ path: SNAPSHOT_RESERVE_PATH, method: "POST", handler: reserveCheckoutSnapshot });
+http.route({ path: SNAPSHOT_BIND_PATH, method: "POST", handler: bindCheckoutSnapshot });
 http.route({
 	path: CMS_MEDIA_COMPLETION_PATH,
 	method: "POST",

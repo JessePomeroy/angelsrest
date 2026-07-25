@@ -1,14 +1,30 @@
 import { v } from "convex/values";
 import { internal } from "./_generated/api";
-import type { Doc } from "./_generated/dataModel";
-import { type MutationCtx, mutation, query, type QueryCtx } from "./_generated/server";
+import type { Doc, Id } from "./_generated/dataModel";
+import {
+	internalMutation,
+	internalQuery,
+	type MutationCtx,
+	mutation,
+	query,
+	type QueryCtx,
+} from "./_generated/server";
 import {
 	requireDocumentSiteAdmin,
 	requireOrderLookupCaller,
 	requireSiteAdmin,
 	requireWebhookCallerOrAuth,
 } from "./authHelpers";
-import { checkoutSnapshotValidator } from "./helpers/checkoutSnapshot";
+import {
+	checkoutSnapshotValidator,
+	isBoundedStripeExpiration,
+	isStripeCheckoutSessionId,
+	isStripeConnectedAccountId,
+	parseReservationCandidate,
+	reservedCheckoutSnapshotValidator,
+	reservationHandleHash,
+	stripeAccountScope,
+} from "./helpers/checkoutSnapshot";
 import { AGGREGATE_SCAN_LIMIT, BULK_SCAN_LIMIT } from "./helpers/limits";
 import { getNextOrderNumber as generateNextOrderNumber } from "./helpers/numbering";
 import { resolveBoundedOrderStatsScan } from "./helpers/orderStats";
@@ -110,6 +126,204 @@ function normalizeDeliveryError(error: string | undefined) {
 	return truncateDeliveryError(error || "Shipment email delivery failed without error detail");
 }
 
+export const UNBOUND_RETENTION_MS = 25 * 60 * 60 * 1000;
+export const PAID_SAFE_DELAY_MS = 35 * 24 * 60 * 60 * 1000;
+const RESERVATION_RETRY_DELAYS_MS = [60 * 60 * 1000, 6 * 60 * 60 * 1000, 24 * 60 * 60 * 1000] as const;
+
+async function canonicalSiteForConnectedAccount(ctx: QueryCtx, account: string) {
+	const client = await ctx.db.query("platformClients")
+		.withIndex("by_stripeConnectedAccountId", (q) => q.eq("stripeConnectedAccountId", account))
+		.unique();
+	return client?.siteUrl ?? null;
+}
+
+async function connectedAccountMatchesSite(
+	ctx: QueryCtx,
+	siteUrl: string,
+	account: string | undefined,
+) {
+	return account === undefined || await canonicalSiteForConnectedAccount(ctx, account) === siteUrl;
+}
+
+function routingConflict(): never {
+	throw new Error("Checkout routing facts conflict");
+}
+
+export const reserveCheckoutSnapshot = internalMutation({
+	args: {
+		siteUrl: v.string(), handleHash: v.string(), snapshotDigest: v.string(),
+		snapshot: reservedCheckoutSnapshotValidator, stripeConnectedAccountId: v.optional(v.string()),
+	},
+	handler: async (ctx, args) => {
+		if (
+			args.stripeConnectedAccountId !== undefined
+			&& !isStripeConnectedAccountId(args.stripeConnectedAccountId)
+		) return { outcome: "invalid" as const };
+		if (!await connectedAccountMatchesSite(ctx, args.siteUrl, args.stripeConnectedAccountId)) {
+			return { outcome: "routing_mismatch" as const };
+		}
+		const existing = await ctx.db.query("checkoutSnapshotReservations")
+			.withIndex("by_siteUrl_and_handleHash", (q) => q.eq("siteUrl", args.siteUrl).eq("handleHash", args.handleHash)).unique();
+		const accountScope = stripeAccountScope(args.stripeConnectedAccountId);
+		if (existing) {
+			const replayed = existing.snapshotDigest === args.snapshotDigest
+				&& JSON.stringify(existing.snapshot) === JSON.stringify(args.snapshot)
+				&& existing.accountScope === accountScope
+				&& existing.stripeConnectedAccountId === args.stripeConnectedAccountId;
+			return { outcome: replayed ? "replayed" as const : "conflict" as const };
+		}
+		const createdAt = Date.now();
+		const unboundPurgeAt = createdAt + UNBOUND_RETENTION_MS;
+		const reservationId = await ctx.db.insert("checkoutSnapshotReservations", {
+			state: "reserved", siteUrl: args.siteUrl, handleHash: args.handleHash,
+			snapshotDigest: args.snapshotDigest, snapshot: args.snapshot, accountScope,
+			stripeConnectedAccountId: args.stripeConnectedAccountId,
+			unboundPurgeAt, createdAt, updatedAt: createdAt,
+		});
+		await ctx.scheduler.runAt(unboundPurgeAt, internal.orders.purgeUnboundCheckoutSnapshot, {
+			reservationId, createdAt, unboundPurgeAt,
+		});
+		return { outcome: "created" as const };
+	},
+});
+
+export const bindCheckoutSnapshot = internalMutation({
+	args: {
+		siteUrl: v.string(), handleHash: v.string(), stripeConnectedAccountId: v.optional(v.string()),
+		stripeSessionId: v.string(), stripeExpiresAt: v.number(),
+	},
+	handler: async (ctx, args) => {
+		if (
+			(args.stripeConnectedAccountId !== undefined
+				&& !isStripeConnectedAccountId(args.stripeConnectedAccountId))
+			|| !isStripeCheckoutSessionId(args.stripeSessionId)
+			|| !isBoundedStripeExpiration(args.stripeExpiresAt)
+		) return { outcome: "invalid" as const };
+		if (!await connectedAccountMatchesSite(ctx, args.siteUrl, args.stripeConnectedAccountId)) {
+			return { outcome: "routing_mismatch" as const };
+		}
+		const row = await ctx.db.query("checkoutSnapshotReservations")
+			.withIndex("by_siteUrl_and_handleHash", (q) => q.eq("siteUrl", args.siteUrl).eq("handleHash", args.handleHash)).unique();
+		if (!row) return { outcome: "not_found" as const };
+		const accountScope = stripeAccountScope(args.stripeConnectedAccountId);
+		const sessionOwner = await ctx.db.query("checkoutSnapshotReservations")
+			.withIndex("by_accountScope_and_stripeSessionId", (q) => q.eq("accountScope", accountScope)
+				.eq("stripeSessionId", args.stripeSessionId)).unique();
+		if (sessionOwner && sessionOwner._id !== row._id) return { outcome: "conflict" as const };
+		if (row.state === "bound") {
+			const replayed = row.accountScope === accountScope
+				&& row.stripeConnectedAccountId === args.stripeConnectedAccountId
+				&& row.stripeSessionId === args.stripeSessionId && row.stripeExpiresAt === args.stripeExpiresAt;
+			return { outcome: replayed ? "replayed" as const : "conflict" as const };
+		}
+		if (row.accountScope !== accountScope) return { outcome: "conflict" as const };
+		const boundAt = Date.now();
+		const boundReconcileAt = args.stripeExpiresAt * 1000 + PAID_SAFE_DELAY_MS;
+		if (!Number.isSafeInteger(boundReconcileAt)) return { outcome: "invalid" as const };
+		await ctx.db.patch(row._id, {
+			state: "bound", stripeSessionId: args.stripeSessionId,
+			stripeExpiresAt: args.stripeExpiresAt, boundAt, boundReconcileAt, updatedAt: boundAt,
+			reconciliationAttempt: 0, reconciliationNextAt: boundReconcileAt,
+		});
+		await ctx.scheduler.runAt(boundReconcileAt, internal.stripeFees.reconcileCheckoutSnapshotReservation,
+			{ reservationId: row._id, boundAt, attempt: 0 });
+		return { outcome: "bound" as const };
+	},
+});
+
+export const purgeUnboundCheckoutSnapshot = internalMutation({
+	args: { reservationId: v.id("checkoutSnapshotReservations"), createdAt: v.number(), unboundPurgeAt: v.number() },
+	handler: async (ctx, args) => {
+		const row = await ctx.db.get(args.reservationId);
+		if (!row || row.state !== "reserved" || row.createdAt !== args.createdAt
+			|| row.unboundPurgeAt !== args.unboundPurgeAt || Date.now() < args.unboundPurgeAt) return false;
+		await ctx.db.delete(row._id);
+		return true;
+	},
+});
+
+async function consumeReservation(
+	ctx: MutationCtx, siteUrl: string, stripeSessionId: string,
+	stripeConnectedAccountId: string | undefined, itemCount: number, candidate: unknown,
+) {
+	const handle = parseReservationCandidate(candidate);
+	if (!handle) throw new Error("Invalid checkout snapshot reservation");
+	const handleHash = await reservationHandleHash(siteUrl, handle);
+	const row = await ctx.db.query("checkoutSnapshotReservations")
+		.withIndex("by_siteUrl_and_handleHash", (q) => q.eq("siteUrl", siteUrl).eq("handleHash", handleHash)).unique();
+	if (!row || row.state !== "bound" || row.accountScope !== stripeAccountScope(stripeConnectedAccountId)
+		|| row.stripeSessionId !== stripeSessionId || row.snapshot.items.length !== itemCount) {
+		throw new Error("Checkout snapshot reservation does not match paid session");
+	}
+	await ctx.db.delete(row._id);
+	return row.snapshot;
+}
+
+export const getCheckoutSnapshotForReconciliation = internalQuery({
+	args: { reservationId: v.id("checkoutSnapshotReservations"), boundAt: v.number(), attempt: v.number() },
+	handler: async (ctx, args) => {
+		const row = await ctx.db.get(args.reservationId);
+		return row?.state === "bound" && row.boundAt === args.boundAt
+			&& row.reconciliationAttempt === args.attempt && row.reconciliationAlertedAt === undefined
+			&& row.reconciliationNextAt !== undefined && Date.now() >= row.reconciliationNextAt ? {
+				stripeSessionId: row.stripeSessionId!, stripeConnectedAccountId: row.stripeConnectedAccountId,
+			} : null;
+	},
+});
+
+async function fencedBoundRow(
+	ctx: MutationCtx, reservationId: Id<"checkoutSnapshotReservations">, boundAt: number, attempt: number,
+) {
+	const row = await ctx.db.get(reservationId);
+	return row?.state === "bound" && row.boundAt === boundAt
+		&& row.reconciliationAttempt === attempt && row.reconciliationAlertedAt === undefined ? row : null;
+}
+
+export const deleteExpiredUnpaidCheckoutSnapshot = internalMutation({
+	args: { reservationId: v.id("checkoutSnapshotReservations"), boundAt: v.number(), attempt: v.number() },
+	handler: async (ctx, args) => {
+		const row = await fencedBoundRow(ctx, args.reservationId, args.boundAt, args.attempt);
+		if (!row) return false;
+		await ctx.db.delete(row._id);
+		return true;
+	},
+});
+
+export const retainCheckoutSnapshot = internalMutation({
+	args: {
+		reservationId: v.id("checkoutSnapshotReservations"), boundAt: v.number(),
+		attempt: v.number(), paid: v.boolean(), providerSessionVerified: v.boolean(),
+	},
+	handler: async (ctx, args) => {
+		const row = await fencedBoundRow(ctx, args.reservationId, args.boundAt, args.attempt);
+		if (!row) return { alert: false };
+		const verifiedAt = args.providerSessionVerified
+			? row.reconciliationProviderVerifiedAt ?? Date.now()
+			: row.reconciliationProviderVerifiedAt;
+		const delay = args.paid ? undefined : RESERVATION_RETRY_DELAYS_MS[args.attempt];
+		if (delay !== undefined) {
+			const nextAt = Date.now() + delay;
+			await ctx.db.patch(row._id, {
+				reconciliationAttempt: args.attempt + 1, reconciliationNextAt: nextAt,
+				reconciliationProviderVerifiedAt: verifiedAt,
+			});
+			await ctx.scheduler.runAt(nextAt, internal.stripeFees.reconcileCheckoutSnapshotReservation,
+				{ reservationId: row._id, boundAt: args.boundAt, attempt: args.attempt + 1 });
+			return { alert: false };
+		}
+		if (verifiedAt === undefined) {
+			await ctx.db.delete(row._id);
+			return { alert: false };
+		}
+		if (row.reconciliationAlertedAt !== undefined) return { alert: false };
+		await ctx.db.patch(row._id, {
+			reconciliationAttempt: args.attempt, reconciliationNextAt: undefined,
+			reconciliationProviderVerifiedAt: verifiedAt, reconciliationAlertedAt: Date.now(),
+		});
+		return { alert: true };
+	},
+});
+
 export const list = query({
 	args: {
 		siteUrl: v.string(),
@@ -151,6 +365,8 @@ export const create = mutation({
 		stripePaymentIntentId: v.optional(v.string()),
 		stripeConnectedAccountId: v.optional(v.string()),
 		checkoutSnapshot: v.optional(checkoutSnapshotValidator),
+		// Unknown by design: an existing paid order must win before a malformed V2 candidate is interpreted.
+		checkoutSnapshotReservation: v.optional(v.any()),
 		shippingAddress: v.optional(
 			v.object({
 				line1: v.string(),
@@ -186,8 +402,8 @@ export const create = mutation({
 		if (auth.via === "auth") {
 			await requireSiteAdmin(ctx, args.siteUrl);
 		}
-		// Don't let the secret leak into the stored document.
-		const { webhookSecret: _discard, ...rest } = args;
+		// Don't let either capability leak into the stored document.
+		const { webhookSecret: _discard, checkoutSnapshotReservation, ...rest } = args;
 		// Idempotency: if an order with this stripeSessionId already exists,
 		// return it along with fulfillment state so the caller can skip
 		// already-completed side effects (LumaPrints submission, fee capture,
@@ -201,6 +417,24 @@ export const create = mutation({
 			)
 			.unique();
 		if (existing) {
+			if (existing.siteUrl !== args.siteUrl) routingConflict();
+			if (existing.stripeConnectedAccountId !== undefined) {
+				if (
+					args.stripeConnectedAccountId !== existing.stripeConnectedAccountId
+					|| !await connectedAccountMatchesSite(
+						ctx, existing.siteUrl, existing.stripeConnectedAccountId,
+					)
+				) routingConflict();
+			} else if (
+				args.stripeConnectedAccountId !== undefined
+				&& !await connectedAccountMatchesSite(
+					ctx, existing.siteUrl, args.stripeConnectedAccountId,
+				)
+			) {
+				// Legacy orders without a stored account may still replay when the
+				// signed event account canonically belongs to the stored tenant.
+				routingConflict();
+			}
 			return {
 				_id: existing._id,
 				orderNumber: existing.orderNumber,
@@ -221,20 +455,28 @@ export const create = mutation({
 			};
 		}
 
-		// Use provided order number or generate one atomically
-		const orderNumber =
-			args.orderNumber ||
-			(await generateNextOrderNumber(ctx, args.siteUrl));
+		let orderInput = rest;
+		if (checkoutSnapshotReservation !== undefined) {
+			if (rest.checkoutSnapshot !== undefined) throw new Error("Checkout snapshot input is ambiguous");
+			const checkoutSnapshot = await consumeReservation(
+				ctx, args.siteUrl, args.stripeSessionId, args.stripeConnectedAccountId,
+				args.items.length, checkoutSnapshotReservation as unknown,
+			);
+			orderInput = { ...rest, checkoutSnapshot };
+		}
 
-		const feeCaptureScheduledAt = rest.stripePaymentIntentId
+		// Use provided order number or generate one atomically
+		const orderNumber = args.orderNumber || (await generateNextOrderNumber(ctx, args.siteUrl));
+
+		const feeCaptureScheduledAt = orderInput.stripePaymentIntentId
 			? Date.now() + FEE_CAPTURE_INITIAL_DELAY_MS
 			: undefined;
 		const _id = await ctx.db.insert("orders", {
-			...rest,
+			...orderInput,
 			orderNumber,
 			status: "new",
-			stripeFeeCaptureStatus: rest.stripePaymentIntentId ? "pending" : undefined,
-			stripeFeeCaptureAttempts: rest.stripePaymentIntentId ? 0 : undefined,
+			stripeFeeCaptureStatus: orderInput.stripePaymentIntentId ? "pending" : undefined,
+			stripeFeeCaptureAttempts: orderInput.stripePaymentIntentId ? 0 : undefined,
 			stripeFeeCaptureNextAttemptAt: feeCaptureScheduledAt,
 		});
 
@@ -243,7 +485,7 @@ export const create = mutation({
 		// checkout.session.completed fires, so we wait 15s then fetch.
 		// The action is idempotent and reschedules itself up to 3 times if
 		// the fee still isn't available — see convex/stripeFees.ts.
-		if (rest.stripePaymentIntentId) {
+		if (orderInput.stripePaymentIntentId) {
 			await ctx.scheduler.runAfter(
 				FEE_CAPTURE_INITIAL_DELAY_MS,
 				internal.stripeFees.captureFeesForOrder,
@@ -258,16 +500,80 @@ export const create = mutation({
 			lumaprintsOrderNumber: undefined,
 			status: "new" as const,
 			stripeFees: undefined,
-			stripeFeeCaptureStatus: rest.stripePaymentIntentId ? ("pending" as const) : undefined,
-			stripeFeeCaptureAttempts: rest.stripePaymentIntentId ? 0 : undefined,
+			stripeFeeCaptureStatus: orderInput.stripePaymentIntentId ? ("pending" as const) : undefined,
+			stripeFeeCaptureAttempts: orderInput.stripePaymentIntentId ? 0 : undefined,
 			stripeFeeCaptureLastAttemptAt: undefined,
 			stripeFeeCaptureNextAttemptAt: feeCaptureScheduledAt,
 			stripeFeeCaptureError: undefined,
 			fulfillmentError: undefined,
 			stripeRefundId: undefined,
 			fulfillmentRecoveryStatus: undefined,
-			checkoutSnapshot: rest.checkoutSnapshot,
+			checkoutSnapshot: orderInput.checkoutSnapshot,
 		};
+	},
+});
+
+/** Webhook-only, session-first routing. No snapshot, digest, or handle crosses this projection. */
+export const resolveCheckoutRouting = query({
+	args: {
+		stripeSessionId: v.string(),
+		stripeConnectedAccountId: v.optional(v.string()),
+		stripeTenantMetadataSiteUrl: v.optional(v.string()),
+		webhookSecret: v.string(),
+	},
+	handler: async (ctx, args) => {
+		await requireWebhookCallerOrAuth(ctx, args.webhookSecret, { allowAuth: false });
+		const order = await ctx.db.query("orders")
+			.withIndex("by_stripeSessionId", (q) => q.eq("stripeSessionId", args.stripeSessionId)).unique();
+		if (order) {
+			if (order.stripeConnectedAccountId !== undefined) {
+				if (
+					args.stripeConnectedAccountId !== order.stripeConnectedAccountId
+					|| !await connectedAccountMatchesSite(
+						ctx, order.siteUrl, order.stripeConnectedAccountId,
+					)
+				) routingConflict();
+			} else if (
+				args.stripeConnectedAccountId !== undefined
+				&& !await connectedAccountMatchesSite(
+					ctx, order.siteUrl, args.stripeConnectedAccountId,
+				)
+			) {
+				// Explicit legacy fallback: old connected-account orders may not
+				// carry the stored account, but the signed event account must still
+				// resolve canonically to the order tenant.
+				routingConflict();
+			}
+			if (
+				args.stripeTenantMetadataSiteUrl !== undefined
+				&& args.stripeTenantMetadataSiteUrl !== order.siteUrl
+			) routingConflict();
+			return { source: "order" as const, siteUrl: order.siteUrl,
+				stripeConnectedAccountId: order.stripeConnectedAccountId };
+		}
+		const reservation = await ctx.db.query("checkoutSnapshotReservations")
+			.withIndex("by_accountScope_and_stripeSessionId", (q) => q
+				.eq("accountScope", stripeAccountScope(args.stripeConnectedAccountId))
+				.eq("stripeSessionId", args.stripeSessionId)).unique();
+		if (!reservation || reservation.state !== "bound") return null;
+		if (args.stripeConnectedAccountId !== undefined) {
+			if (
+				reservation.stripeConnectedAccountId !== args.stripeConnectedAccountId
+				|| !await connectedAccountMatchesSite(
+					ctx, reservation.siteUrl, args.stripeConnectedAccountId,
+				)
+			) routingConflict();
+		} else if (args.stripeTenantMetadataSiteUrl !== reservation.siteUrl) {
+			// Platform-account sessions are tenant-routable only through the
+			// marker stamped by the trusted Checkout creation response path.
+			routingConflict();
+		}
+		if (
+			args.stripeTenantMetadataSiteUrl !== undefined
+			&& args.stripeTenantMetadataSiteUrl !== reservation.siteUrl
+		) routingConflict();
+		return { source: "reservation" as const, siteUrl: reservation.siteUrl,
+			stripeConnectedAccountId: reservation.stripeConnectedAccountId };
 	},
 });
 

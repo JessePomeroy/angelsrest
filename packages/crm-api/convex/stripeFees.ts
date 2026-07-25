@@ -139,3 +139,55 @@ export const captureFeesForOrder = internalAction({
 		await recordRecoverableFailure(failureCode);
 	},
 });
+
+/** Paid-safe, identity-fenced cleanup for one bound checkout snapshot reservation. */
+export const reconcileCheckoutSnapshotReservation = internalAction({
+	args: {
+		reservationId: v.id("checkoutSnapshotReservations"),
+		boundAt: v.number(),
+		attempt: v.number(),
+	},
+	handler: async (ctx, args) => {
+		if (!Number.isInteger(args.attempt) || args.attempt < 0 || args.attempt > 3) return;
+		const row: { stripeSessionId: string; stripeConnectedAccountId?: string } | null =
+			await ctx.runQuery(internal.orders.getCheckoutSnapshotForReconciliation, {
+				reservationId: args.reservationId, boundAt: args.boundAt, attempt: args.attempt,
+			});
+		if (!row) return;
+		let paid = false;
+		let expiredUnpaid = false;
+		let providerSessionVerified = false;
+		const stripeKey = process.env.STRIPE_SECRET_KEY;
+		if (stripeKey && purposeScopedServerRolesAreDisjoint()) {
+			try {
+				const session = await new Stripe(stripeKey).checkout.sessions.retrieve(
+					row.stripeSessionId, {}, row.stripeConnectedAccountId
+						? { stripeAccount: row.stripeConnectedAccountId } : undefined,
+				);
+				providerSessionVerified = true;
+				paid = session.payment_status === "paid" || session.payment_status === "no_payment_required";
+				expiredUnpaid = session.status === "expired" && session.payment_status === "unpaid";
+			} catch {
+				// Provider uncertainty retains the row and follows the bounded retry ladder below.
+			}
+		}
+		if (expiredUnpaid) {
+			await ctx.runMutation(internal.orders.deleteExpiredUnpaidCheckoutSnapshot, {
+				reservationId: args.reservationId, boundAt: args.boundAt, attempt: args.attempt,
+			});
+			return;
+		}
+		const retained: { alert: boolean } = await ctx.runMutation(
+			internal.orders.retainCheckoutSnapshot,
+			{
+				reservationId: args.reservationId, boundAt: args.boundAt, attempt: args.attempt,
+				paid, providerSessionVerified,
+			},
+		);
+		if (retained.alert) {
+			console.error(paid
+				? "checkout_snapshot_reservation.paid_without_order"
+				: "checkout_snapshot_reservation.reconciliation_uncertain");
+		}
+	},
+});

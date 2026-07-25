@@ -1,10 +1,22 @@
 import { describe, expect, it } from "vitest";
 import {
+	checkoutCredentialFingerprint,
 	getCheckoutBridgeTenantConfig,
 	parseCheckoutBridgeTenantRegistry,
 } from "../checkoutBridgeConfig";
 
 const PRIMARY_SECRET = "p".repeat(32);
+const RESERVATION_SECRET = "r".repeat(32);
+
+function fingerprintManifest(
+	bridgeSecrets = [PRIMARY_SECRET],
+	reservationSecrets = [RESERVATION_SECRET],
+) {
+	return JSON.stringify({
+		checkoutBridge: bridgeSecrets.map(checkoutCredentialFingerprint),
+		checkoutSnapshotReservation: reservationSecrets.map(checkoutCredentialFingerprint),
+	});
+}
 
 function registry(
 	overrides: Record<string, unknown> = {},
@@ -47,6 +59,26 @@ describe("checkout bridge tenant registry", () => {
 		expect(getCheckoutBridgeTenantConfig("zippymiggy.com", twoTenantRegistry)?.secrets).toEqual([
 			PRIMARY_SECRET,
 		]);
+	});
+
+	it("fails both checkout roles closed for overlapping or incomplete fingerprints", () => {
+		expect(() =>
+			getCheckoutBridgeTenantConfig(
+				"zippymiggy.com",
+				registry(),
+				fingerprintManifest([PRIMARY_SECRET], [PRIMARY_SECRET]),
+			),
+		).toThrow("overlap");
+		expect(() =>
+			getCheckoutBridgeTenantConfig(
+				"zippymiggy.com",
+				registry(),
+				fingerprintManifest(["different".repeat(4)]),
+			),
+		).toThrow("do not match");
+		expect(
+			getCheckoutBridgeTenantConfig("zippymiggy.com", registry(), fingerprintManifest()),
+		).toMatchObject({ secrets: [PRIMARY_SECRET] });
 	});
 
 	it("fails closed for missing, malformed, or empty registries", () => {

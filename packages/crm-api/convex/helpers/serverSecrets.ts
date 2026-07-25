@@ -3,6 +3,13 @@ const TENANT_LIMIT = 100;
 const SECRETS_PER_TENANT_LIMIT = 2;
 const SECRET_MIN_LENGTH = 32;
 const SECRET_MAX_LENGTH = 512;
+const CREDENTIAL_FINGERPRINT = /^[0-9a-f]{64}$/;
+const CHECKOUT_ROLE_NAMES = ["checkoutBridge", "checkoutSnapshotReservation"] as const;
+
+interface CheckoutRoleCredentialFingerprints {
+	checkoutBridge: readonly string[];
+	checkoutSnapshotReservation: readonly string[];
+}
 
 export function isServerSecretCandidate(value: string) {
 	return value.length >= SECRET_MIN_LENGTH
@@ -23,6 +30,10 @@ export function isTenantSiteSegment(value: unknown): value is string {
 
 async function digest(value: string) {
 	return new Uint8Array(await crypto.subtle.digest("SHA-256", encoder.encode(value)));
+}
+
+function hex(bytes: Uint8Array) {
+	return [...bytes].map((byte) => byte.toString(16).padStart(2, "0")).join("");
 }
 
 export async function constantTimeSecretEquals(left: string, right: string) {
@@ -109,6 +120,9 @@ export function purposeScopedServerRoleConfiguration() {
 		deletion: parseOptionalTenantSecretRegistry(
 			process.env.CMS_MEDIA_DELETION_COMPLETION_SECRETS,
 		),
+		checkoutSnapshotReservation: parseOptionalTenantSecretRegistry(
+			process.env.CHECKOUT_SNAPSHOT_RESERVATION_SECRETS,
+		),
 	};
 	const parsed = Object.values(registries);
 	if (parsed.some((registry) => registry === null)) return null;
@@ -127,6 +141,70 @@ export function purposeScopedServerRoleConfiguration() {
 
 export function purposeScopedServerRolesAreDisjoint() {
 	return purposeScopedServerRoleConfiguration() !== null;
+}
+
+export function parseCheckoutRoleCredentialFingerprints(
+	raw: string | undefined,
+): CheckoutRoleCredentialFingerprints | null {
+	if (!raw) return null;
+	let parsed: unknown;
+	try {
+		parsed = JSON.parse(raw);
+	} catch {
+		return null;
+	}
+	if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return null;
+	const record = parsed as Record<string, unknown>;
+	if (
+		Object.keys(record).length !== CHECKOUT_ROLE_NAMES.length
+		|| !CHECKOUT_ROLE_NAMES.every((role) => Object.hasOwn(record, role))
+	) return null;
+	const checkoutBridge = record.checkoutBridge;
+	const checkoutSnapshotReservation = record.checkoutSnapshotReservation;
+	if (
+		!Array.isArray(checkoutBridge)
+		|| !Array.isArray(checkoutSnapshotReservation)
+		|| checkoutBridge.length === 0
+		|| checkoutSnapshotReservation.length === 0
+		|| checkoutBridge.length > TENANT_LIMIT * SECRETS_PER_TENANT_LIMIT
+		|| checkoutSnapshotReservation.length > TENANT_LIMIT * SECRETS_PER_TENANT_LIMIT
+		|| [...checkoutBridge, ...checkoutSnapshotReservation].some(
+			(fingerprint) => typeof fingerprint !== "string" || !CREDENTIAL_FINGERPRINT.test(fingerprint),
+		)
+		|| new Set(checkoutBridge).size !== checkoutBridge.length
+		|| new Set(checkoutSnapshotReservation).size !== checkoutSnapshotReservation.length
+		|| checkoutBridge.some((fingerprint) => checkoutSnapshotReservation.includes(fingerprint))
+	) return null;
+	return { checkoutBridge, checkoutSnapshotReservation } as CheckoutRoleCredentialFingerprints;
+}
+
+export async function serverSecretFingerprint(secret: string) {
+	return hex(await digest(secret));
+}
+
+/**
+ * Enable the Convex reservation role only when the shared purpose-tagged
+ * fingerprint manifest exactly covers its local credentials and proves they
+ * are disjoint from checkout-bridge credentials. No raw registry crosses the
+ * SvelteKit/Convex runtime boundary.
+ */
+export async function checkoutSnapshotReservationRoleConfiguration() {
+	const roles = purposeScopedServerRoleConfiguration();
+	if (!roles || roles.checkoutSnapshotReservation.size === 0) return null;
+	const manifest = parseCheckoutRoleCredentialFingerprints(
+		process.env.CHECKOUT_ROLE_CREDENTIAL_FINGERPRINTS,
+	);
+	if (!manifest) return null;
+	const localFingerprints = await Promise.all(
+		[...roles.checkoutSnapshotReservation.values()].flat().map(serverSecretFingerprint),
+	);
+	if (
+		localFingerprints.length !== manifest.checkoutSnapshotReservation.length
+		|| localFingerprints.some(
+			(fingerprint) => !manifest.checkoutSnapshotReservation.includes(fingerprint),
+		)
+	) return null;
+	return roles;
 }
 
 export async function tenantForSecretFixed(
