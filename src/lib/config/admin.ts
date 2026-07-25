@@ -74,6 +74,7 @@ export const adminConfig: AdminConfig = {
 			mediaBaseUrl: "https://media.angelsrest.online",
 		},
 		products: {
+			privateAssetReplacementEnabled: true,
 			enabledKinds: [
 				"print",
 				"print_set",
