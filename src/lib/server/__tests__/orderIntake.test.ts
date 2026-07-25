@@ -103,31 +103,37 @@ function makeCheckoutSession(
 	} as unknown as Stripe.Checkout.Session;
 }
 
-function makeLineItem(): Stripe.LineItem {
+function makeLineItem(ordinal = 0): Stripe.LineItem {
 	return {
-		id: "li_test_123",
-		amount_total: 3500,
-		description: "Spring Meadow print",
+		id: `li_test_${ordinal}`,
+		amount_total: 3500 + ordinal,
+		description: `Print ${ordinal}`,
 		quantity: 1,
 	} as Stripe.LineItem;
 }
 
-function snapshotMetadata(productKey: string) {
+function snapshotMetadata(productKeys: string | string[]) {
+	const keys = Array.isArray(productKeys) ? productKeys : [productKeys];
 	return {
 		checkoutSnapshotVersion: "1",
 		catalogProvider: "convex",
-		checkoutSnapshotItemCount: "1",
-		checkoutSnapshotItem_0: JSON.stringify([
-			0,
-			productKey,
-			"revision",
-			"print",
-			"variant",
-			null,
-			null,
-			null,
-			null,
-		]),
+		checkoutSnapshotItemCount: String(keys.length),
+		...Object.fromEntries(
+			keys.map((productKey, ordinal) => [
+				`checkoutSnapshotItem_${ordinal}`,
+				JSON.stringify([
+					ordinal,
+					productKey,
+					"revision",
+					"print",
+					"variant",
+					null,
+					null,
+					null,
+					null,
+				]),
+			]),
+		),
 	};
 }
 
@@ -174,6 +180,7 @@ describe("processStripeWebhookEvent", () => {
 		checkout: {
 			sessions: {
 				retrieve: vi.fn(),
+				listLineItems: vi.fn(),
 			},
 		},
 		refunds: {
@@ -200,6 +207,9 @@ describe("processStripeWebhookEvent", () => {
 		});
 		convex.query.mockReset();
 		stripe.checkout.sessions.retrieve.mockReset();
+		stripe.checkout.sessions.listLineItems.mockReset().mockReturnValue({
+			autoPagingToArray: vi.fn().mockResolvedValue([makeLineItem()]),
+		});
 		stripe.refunds.create.mockResolvedValue({ id: "re_test_123", status: "succeeded" });
 		createLumaPrintsOrder.mockResolvedValue({ orderNumber: "LP-123" });
 	});
@@ -279,6 +289,7 @@ describe("processStripeWebhookEvent", () => {
 			{ expand: ["line_items", "customer_details"] },
 			{ stripeAccount: "acct_123" },
 		);
+		expect(stripe.checkout.sessions.listLineItems).not.toHaveBeenCalled();
 		expect(convex.mutation).toHaveBeenCalledWith(
 			"orders.create",
 			expect.objectContaining({
@@ -296,6 +307,47 @@ describe("processStripeWebhookEvent", () => {
 				},
 			}),
 		);
+	});
+
+	it("pages all 40 marked line items in order with connected-account options", async () => {
+		const productKeys = Array.from({ length: 40 }, (_, ordinal) => `product-${ordinal}`);
+		const lineItems = productKeys.map((_, ordinal) => makeLineItem(ordinal));
+		const session = makeCheckoutSession({
+			metadata: { ...makeCheckoutSession().metadata, ...snapshotMetadata(productKeys) },
+		});
+		stripe.checkout.sessions.retrieve.mockResolvedValue({
+			...session,
+			line_items: { data: lineItems.slice(0, 10), has_more: true },
+		});
+		const pages = [lineItems.slice(0, 25), lineItems.slice(25)];
+		const autoPagingToArray = vi.fn().mockResolvedValue(pages.flat());
+		stripe.checkout.sessions.listLineItems.mockReset().mockReturnValue({ autoPagingToArray });
+		convex.query.mockResolvedValue({
+			siteUrl: "zippymiggy.com",
+			name: "Reflecting Pool",
+			email: "owner@example.com",
+			adminEmails: ["maggie@example.com"],
+		});
+
+		const { processStripeWebhookEvent } = await import("../orderIntake");
+		await processStripeWebhookEvent(
+			makeStripeEvent("checkout.session.completed", session, { account: "acct_123" }),
+			adapters(),
+		);
+
+		expect(stripe.checkout.sessions.listLineItems).toHaveBeenCalledWith(
+			"cs_test_123",
+			{ limit: 100 },
+			{ stripeAccount: "acct_123" },
+		);
+		expect(autoPagingToArray).toHaveBeenCalledWith({ limit: 40 });
+		const createPayload = convex.mutation.mock.calls.find(
+			([reference]: [string]) => reference === "orders.create",
+		)?.[1];
+		expect(
+			createPayload.items.map(({ productName }: { productName: string }) => productName),
+		).toEqual(lineItems.map((item) => item.description));
+		expect(createPayload.checkoutSnapshot.items).toHaveLength(40);
 	});
 
 	it("routes a platform-account tenant session to that tenant's notifications", async () => {

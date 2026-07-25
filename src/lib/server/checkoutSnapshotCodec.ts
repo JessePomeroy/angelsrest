@@ -98,22 +98,16 @@ export function assertCheckoutSnapshotV1(value: unknown): asserts value is Check
 	}
 }
 
-function validStoredItem(value: unknown) {
-	return (
-		plainObject(value) &&
-		nonempty(value.productKey) &&
-		nonempty(value.revisionId) &&
-		productKinds.has(value.productKind) &&
-		nullableKey(value.variantKey)
-	);
-}
+const validStoredItem = (value: unknown) =>
+	plainObject(value) &&
+	[value.productKey, value.revisionId].every(nonempty) &&
+	productKinds.has(value.productKind) &&
+	nullableKey(value.variantKey);
 
 function nonempty(value: unknown): value is string {
 	return typeof value === "string" && value.length > 0;
 }
-function nullableKey(value: unknown) {
-	return value === null || nonempty(value);
-}
+const nullableKey = (value: unknown) => value === null || nonempty(value);
 function plainObject(value: unknown): value is Record<string, unknown> {
 	return typeof value === "object" && value !== null && !Array.isArray(value);
 }

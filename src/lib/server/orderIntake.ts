@@ -342,5 +342,11 @@ async function fetchSessionDetails(
 		shippingDetails = session.collected_information?.shipping_details;
 	}
 
+	if (fullSession.metadata?.checkoutSnapshotVersion === "1") {
+		lineItems = await stripe.checkout.sessions
+			.listLineItems(fullSession.id, { limit: 100 }, requestOptions)
+			.autoPagingToArray({ limit: 40 });
+	}
+
 	return { fullSession, lineItems, shippingDetails };
 }
