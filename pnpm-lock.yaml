@@ -176,6 +176,9 @@ importers:
 
   packages/crm-api:
     dependencies:
+      '@jessepomeroy/print-catalog':
+        specifier: workspace:^
+        version: link:../print-catalog
       stripe:
         specifier: ^20.4.1
         version: 20.4.1(@types/node@25.6.0)

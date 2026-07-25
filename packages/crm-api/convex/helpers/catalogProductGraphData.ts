@@ -1,7 +1,9 @@
+import { getPaper, getSize, getWholesaleCost } from "@jessepomeroy/print-catalog";
 import type { Doc, Id } from "../_generated/dataModel";
 import type { MutationCtx, QueryCtx } from "../_generated/server";
 import {
 	prepareCatalogProductGraphV2Draft,
+	projectCatalogProductPublicWebAsset,
 } from "./catalogProductGraphAssets";
 import {
 	CATALOG_PRODUCT_GRAPH_V2_WEB_MEDIA_ROLES as WEB_MEDIA_ROLES,
@@ -14,6 +16,7 @@ import {
 	validateCatalogProductGraphV2Draft,
 } from "./catalogProductGraphValidators";
 import {
+	validateCatalogProductKey,
 	validateCatalogProductSlug,
 	validateCatalogTimestamp,
 } from "./catalogProductValidators";
@@ -529,7 +532,7 @@ export async function loadCatalogProductGraphV2RevisionSummary(
 
 /**
  * Load and prove one immutable V2 graph. The returned stored asset documents
- * are internal-only; callers must use the Editor projection before returning.
+ * are internal-only; callers must use an explicit safe projection before returning.
  */
 export async function loadCatalogProductGraphV2Revision(
 	ctx: CatalogGraphContext,
@@ -609,6 +612,7 @@ export async function loadCatalogProductGraphV2Revision(
 		throw new Error("Catalog V2 revision checksum mismatch");
 	}
 	return {
+		productKey: product.productKey,
 		revision,
 		variants: rows.variants,
 		webMediaPlacements: rows.webMedia,
@@ -635,5 +639,142 @@ export function projectCatalogProductGraphV2RevisionSummary(
 		variantCount: revision.variantCount,
 		webMediaCount: revision.webMediaCount,
 		createdAt: revision.createdAt,
+	};
+}
+
+type LoadedCatalogProductGraphV2 = NonNullable<
+	Awaited<ReturnType<typeof loadCatalogProductGraphV2Revision>>
+>;
+
+type CatalogPublicVariantSource = LoadedCatalogProductGraphV2["draft"]["variants"][number];
+
+function resolvePublicPrintOptions(variant: CatalogPublicVariantSource) {
+	if (!variant.materialOptionKey || !variant.sizeOptionKey) {
+		throw new Error("Every enabled print variant needs a material and size before publishing");
+	}
+	const material = getPaper(variant.materialOptionKey);
+	const size = getSize(variant.sizeOptionKey);
+	if (!material || !size || getWholesaleCost(material.slug, size.slug) === null) {
+		throw new Error("Every enabled print variant needs a supported material and size pair");
+	}
+	return {
+		materialOption: { slug: material.slug, label: material.name },
+		sizeOption: {
+			slug: size.slug,
+			label: size.label,
+			widthInches: size.width,
+			heightInches: size.height,
+		},
+	};
+}
+
+/** Publication policy layered on the already-proven immutable V2 graph. */
+export function validateCatalogProductGraphV2Publication(graph: LoadedCatalogProductGraphV2) {
+	const { draft } = graph;
+	validateCatalogProductKey(graph.productKey);
+	if (!draft.title) throw new Error("Product title is required before publishing");
+	if (!draft.slug) throw new Error("Product slug is required before publishing");
+
+	const enabledVariants = draft.variants.filter(({ status }) => status === "enabled");
+	if (draft.saleAvailability === "available" && enabledVariants.length === 0) {
+		throw new Error("An available product needs an enabled variant before publishing");
+	}
+	for (const variant of enabledVariants) {
+		if (variant.retailPriceCents === undefined) {
+			throw new Error("Every enabled variant needs a retail price before publishing");
+		}
+		if (draft.productKind === "print" || draft.productKind === "print_set") {
+			resolvePublicPrintOptions(variant);
+		}
+	}
+
+	if (draft.saleAvailability === "available") {
+		if (draft.productKind === "print" && graph.printSourceAssets.length !== 1) {
+			throw new Error("A print needs one verified print source before publishing");
+		}
+		if (draft.productKind === "print_set" && draft.setMembers.length === 0) {
+			throw new Error("A non-empty print set is required before publishing");
+		}
+		if (draft.productKind === "digital_download" && !graph.paidFileAsset) {
+			throw new Error("A digital download needs a verified paid file before publishing");
+		}
+	}
+
+	const requiredRole = draft.productKind === "print"
+		? "primary"
+		: draft.productKind === "print_set"
+		? "cover"
+		: "gallery";
+	if (!draft.webMedia.some(({ role }) => role === requiredRole)) {
+		throw new Error(`Catalog ${draft.productKind} needs required display media before publishing`);
+	}
+	if (draft.webMedia.some(({ role, altText }) => role !== "social_share" && !altText)) {
+		throw new Error("Catalog display media needs alternative text before publishing");
+	}
+	return graph;
+}
+
+/** Deterministic browser-safe commerce and display facts for all supported kinds. */
+export function projectCatalogProductGraphV2Public(graphValue: LoadedCatalogProductGraphV2) {
+	const graph = validateCatalogProductGraphV2Publication(graphValue);
+	const { draft, revision } = graph;
+	if (!draft.title || !draft.slug) {
+		throw new Error("Catalog publication copy validation mismatch");
+	}
+	const isPrint = draft.productKind === "print" || draft.productKind === "print_set";
+	const assets = new Map(
+		graph.webMediaAssets.map(({ placementKey, asset }) => [placementKey, asset]),
+	);
+	return {
+		schemaVersion: 2 as const,
+		productId: revision.productId,
+		revisionId: revision._id,
+		productKind: draft.productKind,
+		title: draft.title,
+		slug: draft.slug,
+		description: draft.description ?? null,
+		seoDescription: draft.seoDescription ?? null,
+		currency: "usd" as const,
+		saleAvailability: draft.saleAvailability,
+		variants: draft.variants
+			.filter(({ status }) => status === "enabled")
+			.map((variant) => {
+				if (variant.retailPriceCents === undefined) {
+					throw new Error("Catalog publication price validation mismatch");
+				}
+				return {
+					key: variant.key,
+					order: variant.order,
+					...(isPrint
+						? resolvePublicPrintOptions(variant)
+						: { materialOption: null, sizeOption: null }),
+					retailPriceCents: variant.retailPriceCents,
+				};
+			}),
+		shopPlacement: {
+			featured: draft.shopPlacement.featured,
+			orderRank: draft.shopPlacement.orderRank ?? null,
+		},
+		...(isPrint
+			? {
+				printOptions: {
+					borderOptionsEnabled: draft.printOptions.borderOptionsEnabled,
+					frameOptionsEnabled: draft.printOptions.frameOptionsEnabled,
+					framePriceMultiplierBasisPoints:
+						draft.printOptions.framePriceMultiplierBasisPoints,
+				},
+			}
+			: {}),
+		media: draft.webMedia.map((placement) => {
+			const asset = assets.get(placement.key);
+			if (!asset) throw new Error("Catalog public media asset is missing");
+			return {
+				key: placement.key,
+				role: placement.role,
+				order: placement.order,
+				altText: placement.altText ?? null,
+				asset: projectCatalogProductPublicWebAsset(asset),
+			};
+		}),
 	};
 }

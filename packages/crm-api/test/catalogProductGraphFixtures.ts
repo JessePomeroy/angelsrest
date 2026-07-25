@@ -249,7 +249,7 @@ export function graphDraft<Kind extends CatalogProductKind>(
 			variants: [{
 				key: "matte-small",
 				order: 0,
-				materialOptionKey: "matte",
+				materialOptionKey: "archival-matte",
 				sizeOptionKey: "8x10",
 				retailPriceCents: 4_200,
 				status: "enabled",
@@ -274,7 +274,7 @@ export function graphDraft<Kind extends CatalogProductKind>(
 			variants: [{
 				key: "set-matte-small",
 				order: 0,
-				materialOptionKey: "matte",
+				materialOptionKey: "archival-matte",
 				sizeOptionKey: "8x10",
 				retailPriceCents: 8_000,
 				status: "enabled",

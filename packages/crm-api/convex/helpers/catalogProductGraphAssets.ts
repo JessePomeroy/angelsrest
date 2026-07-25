@@ -296,12 +296,31 @@ export async function normalizeCatalogProductGraphV2DraftAssets(
 	return (await prepareCatalogProductGraphV2Draft(ctx, siteUrl, draft)).draft;
 }
 
-function projectEditorWebAsset(asset: Doc<"mediaAssets">) {
+function projectWebAssetDerivatives(asset: Doc<"mediaAssets">) {
 	const derivative = (name: keyof Doc<"mediaAssets">["derivatives"]) => ({
 		contentType: asset.derivatives[name].contentType,
 		width: asset.derivatives[name].width,
 		height: asset.derivatives[name].height,
 	});
+	return {
+		thumb: derivative("thumb"),
+		card: derivative("card"),
+		display1280: derivative("display1280"),
+		display2048: derivative("display2048"),
+		display2560: derivative("display2560"),
+	};
+}
+
+/** Public media identity and display facts, without filenames or object keys. */
+export function projectCatalogProductPublicWebAsset(asset: Doc<"mediaAssets">) {
+	return {
+		assetId: asset.assetId,
+		source: { width: asset.source.width, height: asset.source.height },
+		derivatives: projectWebAssetDerivatives(asset),
+	};
+}
+
+function projectEditorWebAsset(asset: Doc<"mediaAssets">) {
 	return {
 		mediaAssetId: asset._id,
 		originalFilename: asset.originalFilename,
@@ -312,13 +331,7 @@ function projectEditorWebAsset(asset: Doc<"mediaAssets">) {
 			width: asset.source.width,
 			height: asset.source.height,
 		},
-		derivatives: {
-			thumb: derivative("thumb"),
-			card: derivative("card"),
-			display1280: derivative("display1280"),
-			display2048: derivative("display2048"),
-			display2560: derivative("display2560"),
-		},
+		derivatives: projectWebAssetDerivatives(asset),
 		createdAt: asset.createdAt,
 	};
 }
