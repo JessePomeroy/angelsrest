@@ -16,6 +16,8 @@ const { apiMock, catalogApi, catalogGraphApi, contentApi, galleriesApi, mediaApi
 			createDraft: "catalogProductGraphs.createDraft",
 			saveDraft: "catalogProductGraphs.saveDraft",
 			discardDraft: "catalogProductGraphs.discardDraft",
+			listDraftPrivateAssetCandidates: "catalogProductGraphs.listDraftPrivateAssetCandidates",
+			replaceDraftPrivateAsset: "catalogProductGraphs.replaceDraftPrivateAsset",
 		};
 		const contentApi = {
 			getSiteSettingsEditorState: "content.getSiteSettingsEditorState",
@@ -73,6 +75,12 @@ describe("admin API aliases", () => {
 		expect(adminConfig.api.catalogProducts).toBe(catalogApi);
 		expect(adminConfig.api.catalogProducts).not.toHaveProperty("publish");
 		expect(adminConfig.api.catalogProductGraphs).toBe(catalogGraphApi);
+		expect(adminConfig.api.catalogProductGraphs?.listDraftPrivateAssetCandidates).toBe(
+			catalogGraphApi.listDraftPrivateAssetCandidates,
+		);
+		expect(adminConfig.api.catalogProductGraphs?.replaceDraftPrivateAsset).toBe(
+			catalogGraphApi.replaceDraftPrivateAsset,
+		);
 		expect(adminConfig.api.catalogProductGraphs).not.toHaveProperty("publish");
 		expect(adminConfig.api.mediaAssets?.listForEditor).toBe(mediaApi.listForEditor);
 		expect(adminConfig.api.mediaAssets?.getManyForEditor).toBe(mediaApi.getManyForEditor);
@@ -115,6 +123,7 @@ describe("admin API aliases", () => {
 		expect(portfolioEditor?.requestDeletion).toBe(mediaApi.requestDeletion);
 		expect(adminConfig.editor?.blog?.mediaBaseUrl).toBe("https://media.angelsrest.online");
 		expect(adminConfig.editor?.products).toEqual({
+			privateAssetReplacementEnabled: true,
 			enabledKinds: [
 				"print",
 				"print_set",
