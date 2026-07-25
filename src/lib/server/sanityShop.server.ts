@@ -39,8 +39,6 @@ type PrintSetRow = {
 	previewImage: SanityImageSource;
 	description?: string;
 	startingPrice?: number;
-	price?: number;
-	featured?: boolean;
 };
 
 type V2ProductRow = {
