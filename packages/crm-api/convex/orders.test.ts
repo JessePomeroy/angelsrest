@@ -21,6 +21,41 @@ afterEach(() => {
 	delete process.env.ORDER_LOOKUP_SECRET;
 });
 
+const checkoutSnapshot = {
+	schemaVersion: 1 as const,
+	catalogProvider: "sanity" as const,
+	items: [
+		{
+			productKey: "sanity.catalog.print-one",
+			revisionId: "immutable-revision-1",
+			productKind: "print" as const,
+			variantKey: "matte-8x10",
+			materialOptionKey: "archival-matte",
+			sizeOptionKey: "8x10",
+			borderOptionKey: null,
+			frameOptionKey: "none",
+		},
+		{
+			productKey: "sanity.catalog.download-one",
+			revisionId: "immutable-revision-2",
+			productKind: "digital_download" as const,
+			variantKey: null,
+		},
+	],
+};
+
+function orderArgs(stripeSessionId: string) {
+	return {
+		siteUrl: SITE_URL,
+		webhookSecret: WEBHOOK_SECRET,
+		stripeSessionId,
+		customerEmail: "buyer@example.com",
+		items: [{ productName: "Paid name", quantity: 2, price: 4200 }],
+		total: 8400,
+		fulfillmentType: "lumaprints" as const,
+	};
+}
+
 async function seedLumaPrintsOrder() {
 	const t = convexTest(schema, modules);
 	const created = await t.mutation(api.orders.create, {
@@ -42,6 +77,60 @@ async function seedLumaPrintsOrder() {
 	return { t, orderId: created._id };
 }
 
+describe("durable checkout snapshot", () => {
+	test("keeps legacy rows absent and never backfills them on retry", async () => {
+		const t = convexTest(schema, modules);
+		const created = await t.mutation(api.orders.create, orderArgs("cs_legacy"));
+		const before = await t.run((ctx) => ctx.db.get(created._id));
+		expect(created.checkoutSnapshot).toBeUndefined();
+		expect(before?.checkoutSnapshot).toBeUndefined();
+		const retry = await t.mutation(api.orders.create, {
+			...orderArgs("cs_legacy"),
+			checkoutSnapshot,
+		});
+		expect(retry.checkoutSnapshot).toBeUndefined();
+		expect(await t.run((ctx) => ctx.db.get(created._id))).toEqual(before);
+	});
+
+	test("persists the ordered snapshot exactly once across changed and absent retries", async () => {
+		const t = convexTest(schema, modules);
+		const created = await t.mutation(api.orders.create, {
+			...orderArgs("cs_snapshot"),
+			checkoutSnapshot,
+		});
+		const stored = await t.run((ctx) => ctx.db.get(created._id));
+		expect(created.checkoutSnapshot).toEqual(checkoutSnapshot);
+		expect(stored?.checkoutSnapshot).toEqual(checkoutSnapshot);
+
+		const changed = {
+			...checkoutSnapshot,
+			catalogProvider: "convex" as const,
+			items: [...checkoutSnapshot.items].reverse(),
+		};
+		for (const candidate of [changed, undefined]) {
+			const retry = await t.mutation(api.orders.create, {
+				...orderArgs("cs_snapshot"),
+				checkoutSnapshot: candidate,
+			});
+			expect(retry.checkoutSnapshot).toEqual(checkoutSnapshot);
+			expect(await t.run((ctx) => ctx.db.get(created._id))).toEqual(stored);
+		}
+	});
+
+	test.each([
+		["version", { ...checkoutSnapshot, schemaVersion: 2 }],
+		["provider", { ...checkoutSnapshot, catalogProvider: "shadow" }],
+		["kind", { ...checkoutSnapshot, items: [{ ...checkoutSnapshot.items[0], productKind: "book" }] }],
+		["paid field", { ...checkoutSnapshot, items: [{ ...checkoutSnapshot.items[0], amount: 4200 }] }],
+	])("rejects an invalid external %s shape", async (_label, candidate) => {
+		const t = convexTest(schema, modules);
+		await expect(t.mutation(api.orders.create, {
+			...orderArgs(`cs_invalid_${_label}`),
+			checkoutSnapshot: candidate,
+		} as never)).rejects.toThrow();
+	});
+});
+
 describe("authorized customer order lookup", () => {
 	test("returns the bounded customer view only with the dedicated capability", async () => {
 		const t = convexTest(schema, modules);
@@ -59,6 +148,7 @@ describe("authorized customer order lookup", () => {
 			items: [{ productName: "Test print", quantity: 1, price: 4200 }],
 			total: 4200,
 			fulfillmentType: "lumaprints" as const,
+			checkoutSnapshot,
 		};
 		await t.mutation(api.orders.create, {
 			siteUrl: SITE_URL,
