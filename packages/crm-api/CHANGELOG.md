@@ -1,5 +1,11 @@
 # @jessepomeroy/crm-api
 
+## 2.28.2
+
+### Patch Changes
+
+- 8545d76: Add dormant pure catalog publication completeness validation and a public-safe V2 projection.
+
 ## 2.28.1
 
 ### Patch Changes
