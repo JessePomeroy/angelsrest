@@ -6,12 +6,13 @@ import type {
 } from "$lib/server/checkoutCatalog";
 import {
 	parseCheckoutCatalogProvider,
-	resolveCheckoutCommerce,
+	resolveCheckoutCommerce as resolveCommerce,
 } from "$lib/server/checkoutCommerce";
 
 type Item = CheckoutSnapshotItem;
 type Kind = Item["productKind"];
 type Additions = Record<string, unknown>;
+const primaryRole: Partial<Record<Kind, string>> = { print: "primary", print_set: "cover" };
 const assetId = "123e4567-e89b-42d3-a456-426614174000";
 const derivative = { contentType: "image/webp", width: 1280, height: 853 };
 const media = (role: string, order = 0) => ({
@@ -22,13 +23,9 @@ const media = (role: string, order = 0) => ({
 	asset: {
 		assetId,
 		source: { width: 3000, height: 2000 },
-		derivatives: {
-			thumb: derivative,
-			card: derivative,
-			display1280: derivative,
-			display2048: derivative,
-			display2560: derivative,
-		},
+		derivatives: Object.fromEntries(
+			"thumb card display1280 display2048 display2560".split(" ").map((key) => [key, derivative]),
+		),
 	},
 });
 const printFinish = {
@@ -78,12 +75,7 @@ function selection(kind: Kind, material = "archival-matte"): CheckoutSelection {
 	};
 }
 function response(item: Item, overrides: Additions = {}, slug = `${item.productKind}-one`) {
-	const role =
-		item.productKind === "print"
-			? "primary"
-			: item.productKind === "print_set"
-				? "cover"
-				: "gallery";
+	const role = primaryRole[item.productKind] ?? "gallery";
 	return {
 		version: 1,
 		purpose: "checkout",
@@ -159,6 +151,16 @@ function convexDependencies(kind: Kind, additions = {}) {
 		...additions,
 	};
 }
+const resolveOne = (
+	dependencies: NonNullable<Parameters<typeof resolveCommerce>[2]>,
+	selected = selection("print"),
+) => resolveCommerce(fetcher, [selected], dependencies);
+function canvasAuthority(canvas: unknown = realCanvas) {
+	return convexDependencies("print", {
+		query: vi.fn().mockResolvedValue(canvasProduct),
+		resolve: vi.fn((item: Item) => Promise.resolve(canvasResponse(item, canvas))),
+	});
+}
 
 describe("checkout commerce provider", () => {
 	it("strictly defaults every non-allowlisted provider to Sanity without constructing secondary work", async () => {
@@ -172,7 +174,7 @@ describe("checkout commerce provider", () => {
 		const resolve = vi.fn();
 		const primary = sanityItem();
 		await expect(
-			resolveCheckoutCommerce(fetcher, [selection("print")], {
+			resolveOne({
 				provider: () => "invalid",
 				resolveSanity: vi.fn().mockResolvedValue(primary),
 				query,
@@ -191,7 +193,7 @@ describe("checkout commerce provider", () => {
 		"merchandise",
 	] as const)("maps authenticated authority for direct %s checkout and stores convex", async (kind) => {
 		const dependencies = convexDependencies(kind);
-		const result = await resolveCheckoutCommerce(fetcher, [selection(kind)], dependencies);
+		const result = await resolveOne(dependencies, selection(kind));
 		expect(result.provider).toBe("convex");
 		expect(result.items[0]).toMatchObject({
 			title: `Trusted ${kind}`,
@@ -213,11 +215,7 @@ describe("checkout commerce provider", () => {
 	});
 	it("preserves null option identity and rejects selector, current tuple, echo, and result forgery", async () => {
 		const nullOptions = convexDependencies("print");
-		await resolveCheckoutCommerce(
-			fetcher,
-			[{ ...selection("print"), borderWidth: null, frame: null }],
-			nullOptions,
-		);
+		await resolveOne(nullOptions, { ...selection("print"), borderWidth: null, frame: null });
 		expect(vi.mocked(nullOptions.resolve).mock.calls[0]?.[0]).toMatchObject({
 			borderOptionKey: null,
 			frameOptionKey: null,
@@ -240,12 +238,12 @@ describe("checkout commerce provider", () => {
 					Promise.resolve(candidate.mutate ? candidate.mutate(item) : response(item)),
 				),
 			});
-			await expect(
-				resolveCheckoutCommerce(fetcher, [candidate.select ?? selection("print")], dependencies),
-			).rejects.toThrow("Checkout catalog resolution failed");
+			await expect(resolveOne(dependencies, candidate.select)).rejects.toThrow(
+				"Checkout catalog resolution failed",
+			);
 		}
 	});
-	it("validates the real canvas resolver shape for checkout and clean shadow mapping", async () => {
+	it("accepts null and the real five-field canvas shape with clean shadow mapping", async () => {
 		const paper = {
 			name: 'Canvas White — 1.25" stretch',
 			subcategoryId: 101002,
@@ -254,28 +252,29 @@ describe("checkout commerce provider", () => {
 			canvasSubcategoryId: 101002,
 			canvasWrapHex: "#FFFFFF",
 		};
-		const resolve = vi.fn((item: Item) => Promise.resolve(canvasResponse(item)));
-		const checkout = await resolveCheckoutCommerce(fetcher, [canvasSelection], {
-			provider: () => "convex",
-			query: vi.fn().mockResolvedValue(canvasProduct),
-			resolve,
-		});
-		expect(checkout.items[0]?.legacyFulfillment.paper).toEqual(paper);
-		expect(checkout.items[0]?.legacyFulfillment.paper).not.toHaveProperty("color");
-		expect(checkout.items[0]?.legacyFulfillment.paper).not.toHaveProperty("wrapOptionId");
+		await expect(resolveOne(canvasAuthority(null), canvasSelection)).resolves.toBeDefined();
+		const authority = canvasAuthority();
+		const result = await resolveOne(authority, canvasSelection);
+		const resolve = authority.resolve;
+		expect(result.items[0]?.legacyFulfillment.paper).toEqual(paper);
+		expect(result.items[0]?.legacyFulfillment.paper).not.toHaveProperty("color");
+		expect(result.items[0]?.legacyFulfillment.paper).not.toHaveProperty("wrapOptionId");
 
 		const primary = {
 			...sanityItem(),
 			legacyFulfillment: { ...sanityItem().legacyFulfillment, paper },
 		};
 		const log = vi.fn();
-		await resolveCheckoutCommerce(fetcher, [canvasSelection], {
-			provider: () => "shadow",
-			resolveSanity: vi.fn().mockResolvedValue(primary),
-			query: vi.fn().mockResolvedValue(canvasProduct),
-			resolve,
-			log,
-		});
+		await resolveOne(
+			{
+				provider: () => "shadow",
+				resolveSanity: vi.fn().mockResolvedValue(primary),
+				query: vi.fn().mockResolvedValue(canvasProduct),
+				resolve,
+				log,
+			},
+			canvasSelection,
+		);
 		expect(log).not.toHaveBeenCalled();
 	});
 
@@ -293,35 +292,28 @@ describe("checkout commerce provider", () => {
 		["wrap hex type", { ...realCanvas, wrapHex: 0 }],
 		["wrap hex bound", { ...realCanvas, wrapHex: "#".repeat(21) }],
 	])("rejects malformed canvas %s", async (_case, canvas) => {
-		await expect(
-			resolveCheckoutCommerce(fetcher, [canvasSelection], {
-				provider: () => "convex",
-				query: vi.fn().mockResolvedValue(canvasProduct),
-				resolve: vi.fn((item: Item) => Promise.resolve(canvasResponse(item, canvas))),
-			}),
-		).rejects.toThrow("Checkout catalog resolution failed");
+		await expect(resolveOne(canvasAuthority(canvas), canvasSelection)).rejects.toThrow(
+			"Checkout catalog resolution failed",
+		);
 	});
 
 	it("accepts 50 media and 20 set members while rejecting a 21st member", async () => {
-		const checkout = (kind: Kind, entries: ReturnType<typeof media>[]) =>
-			resolveCheckoutCommerce(
-				fetcher,
-				[selection(kind)],
+		const resolveWithMedia = (kind: Kind, entries: ReturnType<typeof media>[]) =>
+			resolveOne(
 				convexDependencies(kind, {
 					resolve: vi.fn((item: CheckoutSnapshotItem) =>
 						Promise.resolve(response(item, { media: entries })),
 					),
 				}),
+				selection(kind),
 			);
 		const members = Array.from({ length: 20 }, (_, index) => media("set_member", index));
-		const set = await checkout("print_set", [media("cover"), ...members]);
+		const set = await resolveWithMedia("print_set", [media("cover"), ...members]);
 		expect(set.items[0]?.legacyFulfillment.imageUrls).toHaveLength(20);
-		await checkout(
-			"merchandise",
-			Array.from({ length: 50 }, (_, index) => media("gallery", index)),
-		);
+		const gallery = Array.from({ length: 50 }, (_, index) => media("gallery", index));
+		await resolveWithMedia("merchandise", gallery);
 		await expect(
-			checkout("print_set", [media("cover"), ...members, media("set_member", 20)]),
+			resolveWithMedia("print_set", [media("cover"), ...members, media("set_member", 20)]),
 		).rejects.toThrow("Checkout catalog resolution failed");
 	});
 	it("fails unavailable and missing resolver authentication without a Sanity fallback", async () => {
@@ -330,12 +322,10 @@ describe("checkout commerce provider", () => {
 			resolve: vi.fn().mockRejectedValue(new Error("authoritative unavailable")),
 			resolveSanity: sanity,
 		});
-		await expect(
-			resolveCheckoutCommerce(fetcher, [selection("print")], unavailable),
-		).rejects.toThrow();
+		await expect(resolveOne(unavailable)).rejects.toThrow();
 		expect(sanity).not.toHaveBeenCalled();
 		await expect(
-			resolveCheckoutCommerce(fetcher, [selection("print")], {
+			resolveOne({
 				provider: () => "convex",
 				query: vi.fn().mockResolvedValue(product("print")),
 				resolveSanity: sanity,
@@ -359,47 +349,32 @@ describe("checkout commerce shadow", () => {
 
 	it("emits nothing on a clean match and always returns/stores Sanity", async () => {
 		const dependencies = shadow();
-		await expect(
-			resolveCheckoutCommerce(fetcher, [selection("print")], dependencies),
-		).resolves.toMatchObject({
+		await expect(resolveOne(dependencies)).resolves.toMatchObject({
 			provider: "sanity",
 			items: [{ publicImage: "https://sanity.test/public.jpg" }],
 		});
 		expect(dependencies.log).not.toHaveBeenCalled();
 	});
-	it("warns once when digital and merchant fulfillment differ without leaking evidence", async () => {
-		const log = vi.fn();
-		await resolveCheckoutCommerce(
-			fetcher,
-			[selection("digital_download")],
-			shadow({
+	it.each([
+		[
+			"mismatch",
+			{
 				resolveSanity: vi.fn().mockResolvedValue(sanityItem("digital_download")),
 				query: vi.fn().mockResolvedValue(product("merchandise", "digital_download-one")),
 				resolve: vi.fn((item: CheckoutSnapshotItem) =>
 					Promise.resolve(response(item, {}, "digital_download-one")),
 				),
-				log,
-			}),
-		);
-		expect(log).toHaveBeenCalledOnce();
-		expect(log.mock.calls[0]?.[0]).toMatchObject({
-			meta: { reason: "mismatch", primaryCount: 1, secondaryCount: 1 },
-		});
-		expect(JSON.stringify(log.mock.calls)).not.toMatch(/digital|product-|revision-|https:/);
-	});
-
-	it.each([
-		[
-			"mismatch",
-			(item: CheckoutSnapshotItem) =>
-				response(item, { commerce: { currency: "usd", amountCents: 4201, finish: printFinish } }),
+			},
 		],
-		["secondary_error", () => Promise.reject(new Error("private raw secret id url"))],
-	] as const)("closes %s with one redacted warning and leaves primary unchanged", async (reason, resolver) => {
+		[
+			"secondary_error",
+			{ resolve: vi.fn().mockRejectedValue(new Error("private raw secret id url")) },
+		],
+	] as const)("closes %s with one redacted warning and leaves primary unchanged", async (reason, additions) => {
 		const log = vi.fn();
 		const clock = vi.spyOn(Date, "now").mockReturnValueOnce(0).mockReturnValue(20);
-		const dependencies = shadow({ resolve: vi.fn(resolver), log });
-		const result = await resolveCheckoutCommerce(fetcher, [selection("print")], dependencies);
+		const selected = selection(reason === "mismatch" ? "digital_download" : "print");
+		const result = await resolveOne(shadow({ ...additions, log }), selected);
 		clock.mockRestore();
 		expect(result.items[0]?.unitPriceCents).toBe(4200);
 		expect(log).toHaveBeenCalledOnce();
@@ -409,13 +384,13 @@ describe("checkout commerce shadow", () => {
 			durationMs: 20,
 			meta: { reason, primaryCount: 1, secondaryCount: reason === "mismatch" ? 1 : null },
 		});
-		expect(JSON.stringify(log.mock.calls)).not.toMatch(/secret|product-|revision-|https:/);
+		expect(JSON.stringify(log.mock.calls)).not.toMatch(/digital|secret|product-|revision-|https:/);
 	});
 
-	it("aborts remaining whole-cart work when one secondary query fails", async () => {
+	it("aborts remaining partial-cart work when one secondary query fails", async () => {
 		const signals: AbortSignal[] = [];
 		const log = vi.fn();
-		await resolveCheckoutCommerce(
+		await resolveCommerce(
 			fetcher,
 			[selection("print"), { ...selection("print"), productId: "print-two" }],
 			shadow({
@@ -442,19 +417,13 @@ describe("checkout commerce shadow", () => {
 				...selection("print"),
 				productId: `print-${index}`,
 			}));
-			const primary = selections.map((_, index) => ({
-				...sanityItem(),
-				productId: `print-${index}`,
-			}));
-			const promise = resolveCheckoutCommerce(
+			const promise = resolveCommerce(
 				fetcher,
 				selections,
 				shadow({
-					resolveSanity: vi.fn((_selection: CheckoutSelection) => {
-						const item = primary.shift();
-						if (!item) throw new Error("Missing ordered primary fixture");
-						return Promise.resolve(item);
-					}),
+					resolveSanity: vi.fn(({ productId }: CheckoutSelection) =>
+						Promise.resolve({ ...sanityItem(), productId }),
+					),
 					query: vi.fn((_slug: string, signal: AbortSignal) => {
 						signals.push(signal);
 						return new Promise(() => {});

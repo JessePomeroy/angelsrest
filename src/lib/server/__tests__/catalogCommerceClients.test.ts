@@ -30,6 +30,14 @@ const snapshotItem = {
 	borderOptionKey: null,
 	frameOptionKey: null,
 };
+const checkoutResponse = {
+	version: 1,
+	purpose: "checkout",
+	item: snapshotItem,
+	identity: {},
+	commerce: {},
+	media: [],
+};
 
 function paidResponse(purpose: "paid_fulfillment" | "paid_download") {
 	return {
@@ -95,18 +103,7 @@ describe("fixed-purpose catalog clients", () => {
 				: body.itemIndex === 1
 					? "paid_download"
 					: "paid_fulfillment";
-			return json(
-				purpose === "checkout"
-					? {
-							version: 1,
-							purpose,
-							item: snapshotItem,
-							identity: {},
-							commerce: {},
-							media: [],
-						}
-					: paidResponse(purpose),
-			);
+			return json(purpose === "checkout" ? checkoutResponse : paidResponse(purpose));
 		});
 		const config = { origin, bearer: token, fetch };
 		await resolveCatalogCheckout(snapshotItem, config);
@@ -128,16 +125,9 @@ describe("fixed-purpose catalog clients", () => {
 
 	it("composes a caller abort with the fixed five-second checkout bound without retry", async () => {
 		const controller = new AbortController();
-		const fetch = vi.fn(async (_url: URL | RequestInfo, _init?: RequestInit) => {
-			return json({
-				version: 1,
-				purpose: "checkout",
-				item: snapshotItem,
-				identity: {},
-				commerce: {},
-				media: [],
-			});
-		});
+		const fetch = vi.fn(async (_url: URL | RequestInfo, _init?: RequestInit) =>
+			json(checkoutResponse),
+		);
 		await resolveCatalogCheckout(snapshotItem, {
 			origin,
 			bearer: token,
