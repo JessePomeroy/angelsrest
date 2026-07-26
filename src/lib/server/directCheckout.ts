@@ -176,6 +176,7 @@ export async function createDirectCheckoutSession({
 			attemptStartedAt: body.attemptStartedAt,
 			site: String(tenantCheckout.metadata.commerceTenantSiteUrl),
 			account: tenant?.stripeConnectedAccountId?.trim() || null,
+			catalogProvider: "sanity",
 			snapshotItems: [item.snapshot],
 			stripe,
 			lineItems,

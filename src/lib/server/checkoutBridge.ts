@@ -1,5 +1,8 @@
 import { createHmac, timingSafeEqual } from "node:crypto";
 import type Stripe from "stripe";
+import type { CheckoutSnapshotItem } from "$lib/server/checkoutCatalog";
+import type { CheckoutSnapshotReservationClient } from "$lib/server/checkoutSnapshotReservationClient";
+import { createHandleCheckoutSession, validateCheckoutAttempt } from "$lib/server/handleCheckout";
 import {
 	buildCheckoutLineItem,
 	createPaymentCheckoutSession,
@@ -9,6 +12,30 @@ import { buildTenantCheckoutOptions, type StripeTenantAccount } from "$lib/serve
 const SIGNATURE_HEADER = "x-checkout-bridge-signature";
 const TIMESTAMP_HEADER = "x-checkout-bridge-timestamp";
 const SIGNATURE_TOLERANCE_MS = 5 * 60 * 1000;
+const KIND = /^(?:print|print_set|postcard|tapestry|digital_download|merchandise)$/;
+const ITEM_KEYS = [
+	"productKey",
+	"revisionId",
+	"productKind",
+	"variantKey",
+	"materialOptionKey",
+	"sizeOptionKey",
+	"borderOptionKey",
+	"frameOptionKey",
+] as const;
+const HANDLE_KEYS = [
+	"siteUrl",
+	"amountCents",
+	"productName",
+	"productDescription",
+	"imageUrl",
+	"metadata",
+	"successUrl",
+	"cancelUrl",
+	"attempt",
+	"attemptStartedAt",
+	"checkoutSnapshot",
+] as const;
 
 export class CheckoutBridgeError extends Error {
 	status: number;
@@ -29,6 +56,9 @@ export interface TenantPrintCheckoutRequest {
 	metadata: Record<string, string>;
 	successUrl: string;
 	cancelUrl: string;
+	attempt?: string;
+	attemptStartedAt?: number;
+	checkoutSnapshot?: ReturnType<typeof parseSinglePrintSnapshot>;
 }
 
 export interface TenantPrintCheckoutOptions {
@@ -38,6 +68,9 @@ export interface TenantPrintCheckoutOptions {
 	tenant: StripeTenantAccount;
 	secrets: readonly string[];
 	allowedRedirectOrigins: readonly string[];
+	snapshotMode?: "handle-v2";
+	reservationClient?: CheckoutSnapshotReservationClient;
+	abuseGate?: () => void | Promise<void>;
 	now?: number;
 }
 
@@ -54,6 +87,9 @@ export async function createTenantPrintCheckoutSession({
 	tenant,
 	secrets,
 	allowedRedirectOrigins,
+	snapshotMode,
+	reservationClient,
+	abuseGate,
 	now = Date.now(),
 }: TenantPrintCheckoutOptions): Promise<TenantPrintCheckoutResult> {
 	verifyCheckoutBridgeSignature({
@@ -63,10 +99,16 @@ export async function createTenantPrintCheckoutSession({
 		now,
 	});
 
-	const body = parseTenantPrintCheckoutRequest(bodyText);
+	const body =
+		snapshotMode === "handle-v2"
+			? parseHandleTenantPrintCheckoutRequest(bodyText, now)
+			: parseTenantPrintCheckoutRequest(bodyText);
 	if (body.siteUrl !== tenant.siteUrl) {
 		throw new CheckoutBridgeError(400, "Tenant siteUrl mismatch");
 	}
+	const account = tenant.stripeConnectedAccountId?.trim() || null;
+	if (snapshotMode === "handle-v2" && account && !/^acct_[A-Za-z0-9]{16,64}$/.test(account))
+		throw new CheckoutBridgeError(500, "Invalid checkout tenant account");
 	validateRedirectUrl(body.successUrl, "successUrl", allowedRedirectOrigins);
 	validateRedirectUrl(body.cancelUrl, "cancelUrl", allowedRedirectOrigins);
 
@@ -75,23 +117,46 @@ export async function createTenantPrintCheckoutSession({
 		kind: "print",
 		subtotalCents: body.amountCents,
 	});
-
-	const session = await createPaymentCheckoutSession({
-		stripe,
-		shippingAllowedCountries: ["US", "CA"],
-		lineItems: [
-			buildCheckoutLineItem({
-				name: body.productName,
-				description: body.productDescription,
-				imageUrl: body.imageUrl,
-				unitAmountCents: body.amountCents,
-			}),
-		],
-		successUrl: body.successUrl,
-		cancelUrl: body.cancelUrl,
-		metadata: body.metadata,
-		tenantCheckout,
-	});
+	const lineItems = [
+		buildCheckoutLineItem({
+			name: body.productName,
+			description: body.productDescription,
+			imageUrl: body.imageUrl,
+			unitAmountCents: body.amountCents,
+		}),
+	];
+	let session;
+	if (snapshotMode === "handle-v2" && body.checkoutSnapshot) {
+		session = await createHandleCheckoutSession({
+			attempt: body.attempt,
+			attemptStartedAt: body.attemptStartedAt,
+			site: body.siteUrl,
+			account,
+			catalogProvider: body.checkoutSnapshot.catalogProvider,
+			snapshotItems: body.checkoutSnapshot.items,
+			stripe,
+			lineItems,
+			successUrl: body.successUrl,
+			cancelUrl: body.cancelUrl,
+			allowedRedirectOrigins,
+			shippingAllowedCountries: ["US", "CA"],
+			tenantCheckout,
+			bindSession: () => {},
+			reservationClient,
+			abuseGate,
+			now,
+		});
+	} else {
+		session = await createPaymentCheckoutSession({
+			stripe,
+			shippingAllowedCountries: ["US", "CA"],
+			lineItems,
+			successUrl: body.successUrl,
+			cancelUrl: body.cancelUrl,
+			metadata: body.metadata,
+			tenantCheckout,
+		});
+	}
 
 	return {
 		sessionId: session.sessionId,
@@ -112,7 +177,7 @@ export function signCheckoutBridgeBody({
 	return createHmac("sha256", secret).update(`${timestamp}.${bodyText}`).digest("hex");
 }
 
-function verifyCheckoutBridgeSignature({
+export function verifyCheckoutBridgeSignature({
 	bodyText,
 	headers,
 	secrets,
@@ -171,6 +236,95 @@ function validateRedirectUrl(
 	if (url.username || url.password || !allowedOrigins.includes(url.origin)) {
 		throw new CheckoutBridgeError(400, `Disallowed ${field} origin`);
 	}
+}
+
+function parseHandleTenantPrintCheckoutRequest(
+	bodyText: string,
+	now: number,
+): TenantPrintCheckoutRequest {
+	if (Buffer.byteLength(bodyText, "utf8") > 64 * 1024) {
+		throw new CheckoutBridgeError(400, "Checkout request is too large");
+	}
+	let value: unknown;
+	try {
+		value = JSON.parse(bodyText);
+	} catch {
+		throw new CheckoutBridgeError(400, "Invalid JSON body");
+	}
+	if (!exactRecord(value, HANDLE_KEYS))
+		throw new CheckoutBridgeError(400, "Invalid checkout request");
+	try {
+		validateCheckoutAttempt(value.attempt, value.attemptStartedAt, now);
+	} catch {
+		throw new CheckoutBridgeError(409, "Checkout attempt rejected");
+	}
+	const checkoutSnapshot = parseSinglePrintSnapshot(value.checkoutSnapshot);
+	const body = parseTenantPrintCheckoutRequest(bodyText);
+	if (
+		body.amountCents > 99_999_999 ||
+		!boundedString(body.productName, 500) ||
+		!boundedString(body.productDescription, 500) ||
+		!boundedString(body.imageUrl, 2_048)
+	) {
+		throw new CheckoutBridgeError(400, "Invalid checkout request");
+	}
+	return {
+		...body,
+		attempt: value.attempt as string,
+		attemptStartedAt: value.attemptStartedAt as number,
+		checkoutSnapshot,
+	};
+}
+
+function parseSinglePrintSnapshot(value: unknown) {
+	if (!exactRecord(value, ["schemaVersion", "catalogProvider", "items"])) invalidSnapshot();
+	if (
+		value.schemaVersion !== 1 ||
+		(value.catalogProvider !== "sanity" && value.catalogProvider !== "convex") ||
+		!Array.isArray(value.items) ||
+		value.items.length !== 1
+	)
+		invalidSnapshot();
+	const item = value.items[0];
+	if (!exactRecord(item, ITEM_KEYS) || !KIND.test(String(item.productKind))) invalidSnapshot();
+	for (const key of ITEM_KEYS) {
+		if (key === "productKind") continue;
+		const field = item[key];
+		const required = key === "productKey" || key === "revisionId";
+		if (
+			(required && !boundedString(field, 128)) ||
+			(!required && field !== null && !boundedString(field, 128))
+		)
+			invalidSnapshot();
+	}
+	return {
+		schemaVersion: 1 as const,
+		catalogProvider: value.catalogProvider as "sanity" | "convex",
+		items: [item as unknown as CheckoutSnapshotItem] as [CheckoutSnapshotItem],
+	};
+}
+
+function invalidSnapshot(): never {
+	throw new CheckoutBridgeError(400, "Invalid checkout snapshot");
+}
+
+function boundedString(value: unknown, max: number): value is string {
+	return (
+		typeof value === "string" &&
+		value.length > 0 &&
+		value === value.trim() &&
+		Buffer.byteLength(value, "utf8") <= max
+	);
+}
+
+function exactRecord(value: unknown, keys: readonly string[]): value is Record<string, unknown> {
+	return (
+		!!value &&
+		typeof value === "object" &&
+		!Array.isArray(value) &&
+		Object.keys(value).length === keys.length &&
+		keys.every((key) => Object.hasOwn(value, key))
+	);
 }
 
 function parseTenantPrintCheckoutRequest(bodyText: string): TenantPrintCheckoutRequest {

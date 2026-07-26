@@ -45,6 +45,7 @@ function harness(overrides: Record<string, unknown> = {}) {
 		attemptStartedAt: NOW,
 		site: "angelsrest.test",
 		account: null,
+		catalogProvider: "sanity",
 		snapshotItems: [ITEM],
 		stripe: { checkout: { sessions: { create } } } as unknown as Stripe,
 		lineItems: [

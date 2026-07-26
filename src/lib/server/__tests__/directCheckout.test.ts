@@ -135,6 +135,7 @@ describe("createDirectCheckoutSession", () => {
 		});
 		expect(reservationClient.reserve).toHaveBeenCalledWith(
 			expect.objectContaining({
+				catalogProvider: "sanity",
 				items: [makeItem().snapshot],
 			}),
 		);

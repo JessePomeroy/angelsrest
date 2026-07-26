@@ -135,6 +135,7 @@ export async function POST({ request, cookies }) {
 				attemptStartedAt: body.attemptStartedAt,
 				site: String(tenantCheckout.metadata.commerceTenantSiteUrl),
 				account: tenant.stripeConnectedAccountId?.trim() || null,
+				catalogProvider: "sanity",
 				snapshotItems: snapshots,
 				stripe,
 				lineItems,
