@@ -1,5 +1,11 @@
 # @jessepomeroy/crm-api
 
+## 2.33.0
+
+### Minor Changes
+
+- f40d3c2: Add paid-download authority plus durable, replay-safe print fulfillment claims.
+
 ## 2.32.0
 
 ### Minor Changes
