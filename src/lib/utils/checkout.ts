@@ -1,13 +1,6 @@
-/**
- * Checkout Utility
- *
- * Shared checkout logic used by both the product detail page
- * and the print set detail page. Handles the API call to create
- * a Stripe checkout session and returns the redirect URL.
- *
- * UI concerns (loading state, redirects, error display) stay
- * in the page components. This function just does the fetch.
- */
+import { CheckoutAttemptTracker, checkoutTenantIntent } from "$lib/utils/checkoutAttempt";
+
+const attemptTracker = new CheckoutAttemptTracker();
 
 export interface CheckoutParams {
 	productId: string;
@@ -20,10 +13,6 @@ export interface CheckoutParams {
 	frame?: string;
 }
 
-/**
- * Create a Stripe checkout session and return the redirect URL.
- * Throws on error so the calling component can handle it.
- */
 export async function createCheckout(params: CheckoutParams): Promise<string> {
 	const checkoutData = {
 		productId: params.productId,
@@ -36,10 +25,11 @@ export async function createCheckout(params: CheckoutParams): Promise<string> {
 		frame: params.frame,
 	};
 
+	const attempt = attemptTracker.forIntent({ tenant: checkoutTenantIntent(), ...checkoutData });
 	const response = await fetch("/api/checkout", {
 		method: "POST",
 		headers: { "Content-Type": "application/json" },
-		body: JSON.stringify(checkoutData),
+		body: JSON.stringify({ ...checkoutData, ...attempt }),
 	});
 
 	const result = await response.json();
@@ -48,5 +38,6 @@ export async function createCheckout(params: CheckoutParams): Promise<string> {
 		throw new Error(result.error || "checkout failed");
 	}
 
+	attemptTracker.confirm(attempt.attempt);
 	return result.url;
 }

@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
 	checkoutCredentialFingerprint,
 	getCheckoutBridgeTenantConfig,
+	getCheckoutSnapshotReservationCredential,
 	parseCheckoutBridgeTenantRegistry,
 } from "../checkoutBridgeConfig";
 
@@ -33,6 +34,47 @@ function registry(
 }
 
 describe("checkout bridge tenant registry", () => {
+	it("selects only the current approved tenant reservation credential", () => {
+		const previous = "o".repeat(32);
+		const reservationRegistry = JSON.stringify({
+			"angelsrest.test": [RESERVATION_SECRET, previous],
+		});
+		const manifest = fingerprintManifest([PRIMARY_SECRET], [RESERVATION_SECRET, previous]);
+		expect(
+			getCheckoutSnapshotReservationCredential("angelsrest.test", reservationRegistry, manifest),
+		).toBe(RESERVATION_SECRET);
+		expect(() =>
+			getCheckoutSnapshotReservationCredential("other.test", reservationRegistry, manifest),
+		).toThrow("unavailable");
+	});
+
+	it("fails reservation authority closed for absent, incomplete, duplicate, or overlapping roles", () => {
+		const valid = JSON.stringify({ "angelsrest.test": [RESERVATION_SECRET] });
+		expect(() =>
+			getCheckoutSnapshotReservationCredential("angelsrest.test", undefined, undefined),
+		).toThrow("unavailable");
+		expect(() =>
+			getCheckoutSnapshotReservationCredential(
+				"angelsrest.test",
+				valid,
+				fingerprintManifest([PRIMARY_SECRET], ["different".repeat(4)]),
+			),
+		).toThrow("unavailable");
+		expect(() =>
+			getCheckoutSnapshotReservationCredential(
+				"angelsrest.test",
+				JSON.stringify({ a: [RESERVATION_SECRET], b: [RESERVATION_SECRET] }),
+				fingerprintManifest(),
+			),
+		).toThrow("unavailable");
+		expect(() =>
+			getCheckoutSnapshotReservationCredential(
+				"angelsrest.test",
+				valid,
+				fingerprintManifest([RESERVATION_SECRET], [RESERVATION_SECRET]),
+			),
+		).toThrow("overlap");
+	});
 	it("resolves only the configured tenant authority", () => {
 		expect(getCheckoutBridgeTenantConfig("zippymiggy.com", registry())).toEqual({
 			secrets: [PRIMARY_SECRET],

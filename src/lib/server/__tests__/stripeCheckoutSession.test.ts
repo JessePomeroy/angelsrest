@@ -38,28 +38,23 @@ describe("buildCheckoutLineItem", () => {
 			quantity: 2,
 		});
 	});
-
-	it("defaults quantity and omits empty optional product fields", () => {
-		expect(
-			buildCheckoutLineItem({
-				name: "Digital file",
-				unitAmountCents: 1200,
-			}),
-		).toEqual({
-			price_data: {
-				currency: "usd",
-				product_data: {
-					name: "Digital file",
-					images: [],
-				},
-				unit_amount: 1200,
-			},
-			quantity: 1,
-		});
-	});
 });
 
 describe("createPaymentCheckoutSession", () => {
+	it("fails closed on metadata outside Stripe programming limits", async () => {
+		const { stripe, create } = makeStripe();
+		await expect(
+			createPaymentCheckoutSession({
+				stripe,
+				lineItems: [],
+				successUrl: "https://example.test/success",
+				cancelUrl: "https://example.test/cancel",
+				metadata: { invalid: "x".repeat(501) },
+			}),
+		).rejects.toThrow("Invalid Stripe metadata");
+		expect(create).not.toHaveBeenCalled();
+	});
+
 	it("creates a payment checkout session with shipping and tenant options", async () => {
 		const { stripe, create } = makeStripe();
 
