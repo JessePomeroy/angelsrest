@@ -2,7 +2,11 @@ import { createHmac, timingSafeEqual } from "node:crypto";
 import type Stripe from "stripe";
 import type { CheckoutSnapshotItem } from "$lib/server/checkoutCatalog";
 import type { CheckoutSnapshotReservationClient } from "$lib/server/checkoutSnapshotReservationClient";
-import { createHandleCheckoutSession, validateCheckoutAttempt } from "$lib/server/handleCheckout";
+import {
+	checkoutSnapshotMode,
+	createHandleCheckoutSession,
+	validateCheckoutAttempt,
+} from "$lib/server/handleCheckout";
 import {
 	buildCheckoutLineItem,
 	createPaymentCheckoutSession,
@@ -69,6 +73,7 @@ export interface TenantPrintCheckoutOptions {
 	secrets: readonly string[];
 	allowedRedirectOrigins: readonly string[];
 	snapshotMode?: "handle-v2";
+	globalSnapshotMode?: string;
 	reservationClient?: CheckoutSnapshotReservationClient;
 	abuseGate?: () => void | Promise<void>;
 	now?: number;
@@ -88,6 +93,7 @@ export async function createTenantPrintCheckoutSession({
 	secrets,
 	allowedRedirectOrigins,
 	snapshotMode,
+	globalSnapshotMode,
 	reservationClient,
 	abuseGate,
 	now = Date.now(),
@@ -99,15 +105,19 @@ export async function createTenantPrintCheckoutSession({
 		now,
 	});
 
+	const mode =
+		snapshotMode === "handle-v2" && checkoutSnapshotMode(globalSnapshotMode) === "handle-v2"
+			? "handle-v2"
+			: "legacy";
 	const body =
-		snapshotMode === "handle-v2"
+		mode === "handle-v2"
 			? parseHandleTenantPrintCheckoutRequest(bodyText, now)
 			: parseTenantPrintCheckoutRequest(bodyText);
 	if (body.siteUrl !== tenant.siteUrl) {
 		throw new CheckoutBridgeError(400, "Tenant siteUrl mismatch");
 	}
 	const account = tenant.stripeConnectedAccountId?.trim() || null;
-	if (snapshotMode === "handle-v2" && account && !/^acct_[A-Za-z0-9]{16,64}$/.test(account))
+	if (mode === "handle-v2" && account && !/^acct_[A-Za-z0-9]{16,64}$/.test(account))
 		throw new CheckoutBridgeError(500, "Invalid checkout tenant account");
 	validateRedirectUrl(body.successUrl, "successUrl", allowedRedirectOrigins);
 	validateRedirectUrl(body.cancelUrl, "cancelUrl", allowedRedirectOrigins);
@@ -126,7 +136,7 @@ export async function createTenantPrintCheckoutSession({
 		}),
 	];
 	let session;
-	if (snapshotMode === "handle-v2" && body.checkoutSnapshot) {
+	if (mode === "handle-v2" && body.checkoutSnapshot) {
 		session = await createHandleCheckoutSession({
 			attempt: body.attempt,
 			attemptStartedAt: body.attemptStartedAt,
