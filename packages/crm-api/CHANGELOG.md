@@ -1,5 +1,11 @@
 # @jessepomeroy/crm-api
 
+## 2.32.0
+
+### Minor Changes
+
+- 7018ad4: Add the authenticated exact-revision catalog commerce resolver contract.
+
 ## 2.31.0
 
 ### Minor Changes
