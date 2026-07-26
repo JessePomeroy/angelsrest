@@ -159,7 +159,7 @@ function authority(value: unknown, requested: CheckoutSnapshotItem, slug: string
 			canvasWrapHex: canvas ? string(canvas.wrapHex, 20) : undefined,
 		};
 	} else if (commerce.finish !== null) invalid();
-	if (!Array.isArray(root.media) || root.media.length < 1 || root.media.length > 20) invalid();
+	if (!Array.isArray(root.media) || root.media.length < 1 || root.media.length > 50) invalid();
 	const media = root.media.map(publicMedia);
 	const primaryRole =
 		item.productKind === "print"
@@ -170,6 +170,7 @@ function authority(value: unknown, requested: CheckoutSnapshotItem, slug: string
 	const publicImage = media.find(({ role }) => role === primaryRole)?.url;
 	if (!publicImage) invalid();
 	const setImages = media.filter(({ role }) => role === "set_member").map(({ url }) => url);
+	if (setImages.length > 20) invalid();
 	return {
 		productId: slug,
 		title: string(identity.title),
@@ -220,6 +221,8 @@ function semantics(item: ResolvedCheckoutItem, available = true) {
 	return JSON.stringify([
 		available,
 		item.unitPriceCents,
+		fulfillment.isDigital,
+		fulfillment.isPrintSet,
 		fulfillment.paper,
 		Boolean(item.publicImage),
 		fulfillment.isPrintSet ? fulfillment.imageUrls.length : 0,
@@ -258,7 +261,10 @@ export async function resolveCheckoutCommerce(
 				resolve({ reason: "timeout" });
 			}, 750);
 		}),
-	]).finally(() => clearTimeout(timer));
+	]).finally(() => {
+		controller.abort();
+		clearTimeout(timer);
+	});
 	let primary: ResolvedCheckoutItem[];
 	try {
 		primary = await sanity();

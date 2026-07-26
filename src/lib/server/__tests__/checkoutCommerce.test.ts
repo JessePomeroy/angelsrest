@@ -9,12 +9,15 @@ import {
 	resolveCheckoutCommerce,
 } from "$lib/server/checkoutCommerce";
 
+type Item = CheckoutSnapshotItem;
+type Kind = Item["productKind"];
+type Additions = Record<string, unknown>;
 const assetId = "123e4567-e89b-42d3-a456-426614174000";
 const derivative = { contentType: "image/webp", width: 1280, height: 853 };
-const media = (role: string) => ({
-	key: `${role}-media`,
+const media = (role: string, order = 0) => ({
+	key: `${role}-${order}-media`,
 	role,
-	order: 0,
+	order,
 	altText: "Public image",
 	asset: {
 		assetId,
@@ -40,7 +43,7 @@ const printFinish = {
 	canvas: null,
 };
 
-function product(kind: CheckoutSnapshotItem["productKind"], slug = `${kind}-one`) {
+function product(kind: Kind, slug = `${kind}-one`) {
 	const isPrint = kind === "print" || kind === "print_set";
 	return {
 		schemaVersion: 2,
@@ -58,7 +61,7 @@ function product(kind: CheckoutSnapshotItem["productKind"], slug = `${kind}-one`
 		],
 	};
 }
-function selection(kind: CheckoutSnapshotItem["productKind"]): CheckoutSelection {
+function selection(kind: Kind): CheckoutSelection {
 	const isPrint = kind === "print" || kind === "print_set";
 	return {
 		productId: `${kind}-one`,
@@ -67,7 +70,7 @@ function selection(kind: CheckoutSnapshotItem["productKind"]): CheckoutSelection
 		sizeSlug: isPrint ? "8x10" : undefined,
 	};
 }
-function response(item: CheckoutSnapshotItem, overrides: Record<string, unknown> = {}) {
+function response(item: Item, overrides: Additions = {}, slug = `${item.productKind}-one`) {
 	const role =
 		item.productKind === "print"
 			? "primary"
@@ -83,7 +86,7 @@ function response(item: CheckoutSnapshotItem, overrides: Record<string, unknown>
 			revisionId: item.revisionId,
 			productKind: item.productKind,
 			title: `Trusted ${item.productKind}`,
-			slug: `${item.productKind}-one`,
+			slug,
 			variantKey: item.variantKey,
 		},
 		commerce: {
@@ -102,7 +105,7 @@ function response(item: CheckoutSnapshotItem, overrides: Record<string, unknown>
 		...overrides,
 	};
 }
-function sanityItem(kind: CheckoutSnapshotItem["productKind"] = "print"): ResolvedCheckoutItem {
+function sanityItem(kind: Kind = "print"): ResolvedCheckoutItem {
 	const isPrint = kind === "print" || kind === "print_set";
 	return {
 		productId: `${kind}-one`,
@@ -123,8 +126,7 @@ function sanityItem(kind: CheckoutSnapshotItem["productKind"] = "print"): Resolv
 	};
 }
 const fetcher = vi.fn();
-
-function convexDependencies(kind: CheckoutSnapshotItem["productKind"], additions = {}) {
+function convexDependencies(kind: Kind, additions = {}) {
 	return {
 		provider: () => "convex",
 		query: vi.fn().mockResolvedValue(product(kind)),
@@ -155,7 +157,6 @@ describe("checkout commerce provider", () => {
 		expect(query).not.toHaveBeenCalled();
 		expect(resolve).not.toHaveBeenCalled();
 	});
-
 	it.each([
 		"print",
 		"print_set",
@@ -185,7 +186,6 @@ describe("checkout commerce provider", () => {
 		});
 		expect(result.items[0]?.snapshot).toEqual(requested);
 	});
-
 	it("preserves null option identity and rejects selector, current tuple, echo, and result forgery", async () => {
 		const nullOptions = convexDependencies("print");
 		await resolveCheckoutCommerce(
@@ -197,7 +197,6 @@ describe("checkout commerce provider", () => {
 			borderOptionKey: null,
 			frameOptionKey: null,
 		});
-
 		const cases: Array<{
 			select?: CheckoutSelection;
 			query?: unknown;
@@ -221,7 +220,28 @@ describe("checkout commerce provider", () => {
 			).rejects.toThrow("Checkout catalog resolution failed");
 		}
 	});
-
+	it("accepts 50 media and 20 set members while rejecting a 21st member", async () => {
+		const checkout = (kind: Kind, entries: ReturnType<typeof media>[]) =>
+			resolveCheckoutCommerce(
+				fetcher,
+				[selection(kind)],
+				convexDependencies(kind, {
+					resolve: vi.fn((item: CheckoutSnapshotItem) =>
+						Promise.resolve(response(item, { media: entries })),
+					),
+				}),
+			);
+		const members = Array.from({ length: 20 }, (_, index) => media("set_member", index));
+		const set = await checkout("print_set", [media("cover"), ...members]);
+		expect(set.items[0]?.legacyFulfillment.imageUrls).toHaveLength(20);
+		await checkout(
+			"merchandise",
+			Array.from({ length: 50 }, (_, index) => media("gallery", index)),
+		);
+		await expect(
+			checkout("print_set", [media("cover"), ...members, media("set_member", 20)]),
+		).rejects.toThrow("Checkout catalog resolution failed");
+	});
 	it("fails unavailable and missing resolver authentication without a Sanity fallback", async () => {
 		const sanity = vi.fn();
 		const unavailable = convexDependencies("print", {
@@ -244,7 +264,7 @@ describe("checkout commerce provider", () => {
 });
 
 describe("checkout commerce shadow", () => {
-	function shadow(additions: Record<string, unknown> = {}) {
+	function shadow(additions: Additions = {}) {
 		return {
 			provider: () => "shadow",
 			resolveSanity: vi.fn().mockResolvedValue(sanityItem()),
@@ -264,6 +284,26 @@ describe("checkout commerce shadow", () => {
 			items: [{ publicImage: "https://sanity.test/public.jpg" }],
 		});
 		expect(dependencies.log).not.toHaveBeenCalled();
+	});
+	it("warns once when digital and merchant fulfillment differ without leaking evidence", async () => {
+		const log = vi.fn();
+		await resolveCheckoutCommerce(
+			fetcher,
+			[selection("digital_download")],
+			shadow({
+				resolveSanity: vi.fn().mockResolvedValue(sanityItem("digital_download")),
+				query: vi.fn().mockResolvedValue(product("merchandise", "digital_download-one")),
+				resolve: vi.fn((item: CheckoutSnapshotItem) =>
+					Promise.resolve(response(item, {}, "digital_download-one")),
+				),
+				log,
+			}),
+		);
+		expect(log).toHaveBeenCalledOnce();
+		expect(log.mock.calls[0]?.[0]).toMatchObject({
+			meta: { reason: "mismatch", primaryCount: 1, secondaryCount: 1 },
+		});
+		expect(JSON.stringify(log.mock.calls)).not.toMatch(/digital|product-|revision-|https:/);
 	});
 
 	it.each([
@@ -288,6 +328,27 @@ describe("checkout commerce shadow", () => {
 			meta: { reason, primaryCount: 1, secondaryCount: reason === "mismatch" ? 1 : null },
 		});
 		expect(JSON.stringify(log.mock.calls)).not.toMatch(/secret|product-|revision-|https:/);
+	});
+
+	it("aborts remaining whole-cart work when one secondary query fails", async () => {
+		const signals: AbortSignal[] = [];
+		const log = vi.fn();
+		await resolveCheckoutCommerce(
+			fetcher,
+			[selection("print"), { ...selection("print"), productId: "print-two" }],
+			shadow({
+				query: vi.fn((slug: string, signal: AbortSignal) => {
+					signals.push(signal);
+					return slug === "print-one"
+						? Promise.reject(new Error("private secondary failure"))
+						: new Promise(() => {});
+				}),
+				log,
+			}),
+		);
+		expect(signals).toHaveLength(2);
+		expect(signals.every(({ aborted }) => aborted)).toBe(true);
+		expect(log).toHaveBeenCalledOnce();
 	});
 
 	it("uses one whole-cart deadline, aborts all secondary work, and returns ordered Sanity items", async () => {
