@@ -270,6 +270,25 @@ describe("reservation, binding, and order transfer", () => {
 		expect(existing._id).toBe(created._id);
 	});
 
+	test("derives digital fulfillment from the consumed durable snapshot on first write and retry", async () => {
+		const t = convexTest(schema, modules);
+		const digitalSnapshot = {
+			...snapshot,
+			items: [{ ...snapshot.items[0], productKind: "digital_download" as const }],
+		};
+		const reserved = await reserve(t, reserveBody(undefined, { snapshot: digitalSnapshot }));
+		await bind(t, reserved.json.handle!);
+		const candidate = { version: 2, handle: reserved.json.handle };
+		const created = await t.mutation(api.orders.create, {
+			...orderArgs(), fulfillmentType: "self", checkoutSnapshotReservation: candidate,
+		});
+		const replayed = await t.mutation(api.orders.create, {
+			...orderArgs(), fulfillmentType: "self", checkoutSnapshotReservation: { malformed: true },
+		});
+		expect(replayed._id).toBe(created._id);
+		expect((await t.run((ctx) => ctx.db.get(created._id)))?.fulfillmentType).toBe("digital");
+	});
+
 	test("retains a reservation when session, tenant, account, or count does not match", async () => {
 		const t = convexTest(schema, modules);
 		const first = await reserve(t);

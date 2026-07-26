@@ -16,6 +16,10 @@ import {
 	requireWebhookCallerOrAuth,
 } from "./authHelpers";
 import {
+	catalogCommerceRequestValidator,
+	resolveCatalogCommerce,
+} from "./helpers/catalogCommerce";
+import {
 	checkoutSnapshotValidator,
 	isBoundedStripeExpiration,
 	isStripeCheckoutSessionId,
@@ -259,6 +263,13 @@ async function consumeReservation(
 	return row.snapshot;
 }
 
+/** Private catalog commerce authority; reachable only through the authenticated HTTP route. */
+export const catalogCommerce = internalQuery({
+	args: { siteUrl: v.string(), request: catalogCommerceRequestValidator },
+	handler: async (ctx, { siteUrl, request }) =>
+		await resolveCatalogCommerce(ctx, siteUrl, request),
+});
+
 export const getCheckoutSnapshotForReconciliation = internalQuery({
 	args: { reservationId: v.id("checkoutSnapshotReservations"), boundAt: v.number(), attempt: v.number() },
 	handler: async (ctx, args) => {
@@ -462,7 +473,13 @@ export const create = mutation({
 				ctx, args.siteUrl, args.stripeSessionId, args.stripeConnectedAccountId,
 				args.items.length, checkoutSnapshotReservation as unknown,
 			);
-			orderInput = { ...rest, checkoutSnapshot };
+			orderInput = {
+				...rest,
+				checkoutSnapshot,
+				fulfillmentType: checkoutSnapshot.items.every(
+					({ productKind }) => productKind === "digital_download",
+				) ? "digital" : rest.fulfillmentType,
+			};
 		}
 
 		// Use provided order number or generate one atomically

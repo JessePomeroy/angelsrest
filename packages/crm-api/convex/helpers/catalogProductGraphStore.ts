@@ -11,6 +11,7 @@ import {
 	insertCatalogProductGraphV2Revision,
 	loadCatalogProductGraphV2Revision,
 	loadCatalogProductGraphV2RevisionSummary,
+	loadCurrentPublishedCatalogProductGraphV2Revision,
 	normalizeCatalogProductGraphV2DraftAssets,
 	projectCatalogProductGraphV2ForEditor,
 	projectCatalogProductGraphV2Public,
@@ -953,7 +954,7 @@ async function projectPublishedCatalogProduct(
 	await proveTenantWideCatalogIdentity(ctx, product);
 	const [draft, published] = await Promise.all([
 		loadCatalogProductGraphV2RevisionSummary(ctx, product, product.draftRevisionId),
-		loadCatalogProductGraphV2Revision(ctx, product, product.publishedRevisionId),
+		loadCurrentPublishedCatalogProductGraphV2Revision(ctx, product),
 	]);
 	assertCatalogGraphV2ProductLifecycle(
 		product,

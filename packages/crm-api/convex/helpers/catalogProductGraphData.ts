@@ -90,9 +90,6 @@ function assertCatalogProductGraphV2RevisionSummary(
 	assertCatalogProductGraphV2RevisionOwnership(revision, product);
 	assertOptionalRevisionTitle(revision.title);
 	validateCatalogProductSlug(revision.slug);
-	if (revision.slug !== product.slug) {
-		throw new Error("Catalog V2 revision slug ownership mismatch");
-	}
 	validateCatalogTimestamp(revision.createdAt, "Catalog V2 revision created timestamp");
 	assertBoundedRevisionCount(
 		revision.variantCount,
@@ -625,6 +622,23 @@ export async function loadCatalogProductGraphV2Revision(
 		paidFileAsset: prepared.paidFileAsset,
 		draft: prepared.draft,
 	};
+}
+
+/** Current-public reads additionally require the mutable slug and publication pointer. */
+export async function loadCurrentPublishedCatalogProductGraphV2Revision(
+	ctx: CatalogGraphContext,
+	productValue: CatalogProduct,
+) {
+	const product = requireCatalogProductGraphV2Product(productValue);
+	const graph = await loadCatalogProductGraphV2Revision(
+		ctx,
+		product,
+		product.publishedRevisionId,
+	);
+	if (!graph || graph.revision.slug !== product.slug) {
+		throw new Error("Catalog current publication identity mismatch");
+	}
+	return graph;
 }
 
 export function projectCatalogProductGraphV2RevisionSummary(

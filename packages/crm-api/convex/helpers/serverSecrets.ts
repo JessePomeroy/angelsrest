@@ -143,6 +143,32 @@ export function purposeScopedServerRolesAreDisjoint() {
 	return purposeScopedServerRoleConfiguration() !== null;
 }
 
+/** Optional commerce authority is isolated without changing existing role availability. */
+export async function catalogCommerceResolverRoleConfiguration() {
+	const commerce = parseOptionalTenantSecretRegistry(
+		process.env.CATALOG_COMMERCE_RESOLVER_SECRETS,
+	);
+	const roles = purposeScopedServerRoleConfiguration();
+	const checkoutManifest = parseCheckoutRoleCredentialFingerprints(
+		process.env.CHECKOUT_ROLE_CREDENTIAL_FINGERPRINTS,
+	);
+	if (!commerce || commerce.size === 0 || !roles || !checkoutManifest) return null;
+	const existing = Object.values(roles);
+	if (!tenantSecretRegistriesAreDisjoint(commerce, ...existing)) return null;
+	const commerceSecrets = [...commerce.values()].flat();
+	if (AUTHORITY_BEARING_SCALAR_ENV_NAMES.some((name) => {
+		const secret = process.env[name];
+		return secret !== undefined && commerceSecrets.includes(secret);
+	})) return null;
+	const checkoutFingerprints = new Set([
+		...checkoutManifest.checkoutBridge,
+		...checkoutManifest.checkoutSnapshotReservation,
+	]);
+	if ((await Promise.all(commerceSecrets.map(serverSecretFingerprint)))
+		.some((fingerprint) => checkoutFingerprints.has(fingerprint))) return null;
+	return commerce;
+}
+
 export function parseCheckoutRoleCredentialFingerprints(
 	raw: string | undefined,
 ): CheckoutRoleCredentialFingerprints | null {
