@@ -14,7 +14,12 @@ const FILE_KEYS = "kind relationKey key mime bytes hash filename version".split(
 const token68 = /^[A-Za-z0-9._~+/-]{32,512}$/;
 const sha256 = /^[a-f0-9]{64}$/;
 
-type Config = { origin?: string; bearer?: string; fetch?: typeof globalThis.fetch };
+type Config = {
+	origin?: string;
+	bearer?: string;
+	fetch?: typeof globalThis.fetch;
+	signal?: AbortSignal;
+};
 type Descriptor = { key: string; hash: string; bytes: number; mime: string };
 type Finish = {
 	paper: { subcategoryId: number };
@@ -110,7 +115,9 @@ async function post(config: Config, purpose: keyof typeof PATHS, body: unknown) 
 			method: "POST",
 			headers: { Authorization: `Bearer ${config.bearer}`, "Content-Type": "application/json" },
 			body: encoded,
-			signal: AbortSignal.timeout(5_000),
+			signal: config.signal
+				? AbortSignal.any([config.signal, AbortSignal.timeout(5_000)])
+				: AbortSignal.timeout(5_000),
 		});
 	} catch {
 		throw new CatalogBoundaryError("unavailable");
@@ -180,8 +187,13 @@ async function resolve(purpose: CommercePurpose, input: object, config = configu
 	if (!object(value) || value.version !== 1 || value.purpose !== purpose) throw rejected();
 	return value;
 }
-export async function resolveCatalogCheckout(item: CheckoutSnapshotItem, config?: Config) {
-	const value = await resolve("checkout", { item }, config);
+export async function resolveCatalogCheckout(
+	item: CheckoutSnapshotItem,
+	config?: Config | AbortSignal,
+) {
+	const selected =
+		config instanceof AbortSignal ? { ...configured("checkout"), signal: config } : config;
+	const value = await resolve("checkout", { item }, selected);
 	if (!exact(value, "version purpose item identity commerce media".split(" "))) throw rejected();
 	return value;
 }

@@ -126,6 +126,30 @@ describe("fixed-purpose catalog clients", () => {
 		}
 	});
 
+	it("composes a caller abort with the fixed five-second checkout bound without retry", async () => {
+		const controller = new AbortController();
+		const fetch = vi.fn(async (_url: URL | RequestInfo, _init?: RequestInit) => {
+			return json({
+				version: 1,
+				purpose: "checkout",
+				item: snapshotItem,
+				identity: {},
+				commerce: {},
+				media: [],
+			});
+		});
+		await resolveCatalogCheckout(snapshotItem, {
+			origin,
+			bearer: token,
+			fetch,
+			signal: controller.signal,
+		});
+		const requestSignal = fetch.mock.calls[0]?.[1]?.signal;
+		controller.abort();
+		expect(requestSignal?.aborted).toBe(true);
+		expect(fetch).toHaveBeenCalledOnce();
+	});
+
 	it("issues exact descriptors on disjoint Worker routes and returns opaque URLs unchanged", async () => {
 		const capability = "https://opaque.example/a_b-C?sealed=1";
 		const fetch = vi.fn(async (_url: URL | RequestInfo, _init?: RequestInit) =>

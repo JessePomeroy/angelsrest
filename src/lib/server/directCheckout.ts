@@ -3,6 +3,7 @@ import { env } from "$env/dynamic/private";
 import { ApiErrorCode, apiError } from "$lib/server/apiError";
 import type { ResolvedCheckoutItem } from "$lib/server/checkoutCatalog";
 import { resolveCheckoutItem } from "$lib/server/checkoutCatalog";
+import { resolveCheckoutCommerce } from "$lib/server/checkoutCommerce";
 import type { CheckoutSnapshotReservationClient } from "$lib/server/checkoutSnapshotReservationClient";
 import {
 	checkoutSnapshotMode,
@@ -29,6 +30,7 @@ export interface CreateDirectCheckoutSessionOptions {
 	fetcher: CheckoutFetcher;
 	bindSession: (sessionId: string) => void;
 	resolveItem?: ResolveCheckoutItem;
+	resolveCommerce?: typeof resolveCheckoutCommerce;
 	log?: CheckoutLogger;
 	snapshotMode?: string;
 	reservationClient?: CheckoutSnapshotReservationClient;
@@ -108,6 +110,7 @@ export async function createDirectCheckoutSession({
 	fetcher,
 	bindSession,
 	resolveItem,
+	resolveCommerce = resolveCheckoutCommerce,
 	log = logStructured,
 	snapshotMode = env.CHECKOUT_SNAPSHOT_MODE,
 	reservationClient,
@@ -129,9 +132,15 @@ export async function createDirectCheckoutSession({
 		throw apiError(400, ApiErrorCode.MISSING_FIELD, "Missing required field: productId");
 	}
 
-	const item = resolveItem
-		? await resolveItem(body)
-		: await resolveCheckoutItem(fetcher, body, mode === "handle-v2");
+	const commerce =
+		mode === "handle-v2"
+			? await resolveCommerce(fetcher, [body], {
+					resolveSanity: resolveItem ? () => resolveItem(body) : undefined,
+				})
+			: null;
+	const item =
+		commerce?.items[0] ??
+		(resolveItem ? await resolveItem(body) : await resolveCheckoutItem(fetcher, body));
 	const finalPrice = item.unitPriceCents / 100;
 	const subtotalCents = item.unitPriceCents;
 	const fulfillment = item.legacyFulfillment;
@@ -156,7 +165,7 @@ export async function createDirectCheckoutSession({
 			attemptStartedAt: body.attemptStartedAt,
 			site: String(tenantCheckout.metadata.commerceTenantSiteUrl),
 			account: tenant?.stripeConnectedAccountId?.trim() || null,
-			catalogProvider: "sanity",
+			catalogProvider: commerce?.provider ?? "sanity",
 			snapshotItems: [item.snapshot],
 			stripe,
 			lineItems,

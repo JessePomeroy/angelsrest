@@ -60,6 +60,7 @@ describe("createDirectCheckoutSession", () => {
 		const bindSession = vi.fn();
 		const resolveItem = vi.fn().mockResolvedValue(makeItem());
 		const reservationClient = { reserve: vi.fn(), bind: vi.fn() };
+		const resolveCommerce = vi.fn();
 
 		const result = await createDirectCheckoutSession({
 			body: {
@@ -73,6 +74,7 @@ describe("createDirectCheckoutSession", () => {
 			fetcher,
 			bindSession,
 			resolveItem,
+			resolveCommerce,
 			log: vi.fn(),
 			snapshotMode: "invalid-mode",
 			reservationClient,
@@ -80,6 +82,7 @@ describe("createDirectCheckoutSession", () => {
 
 		expect(result).toEqual({ sessionId: "cs_test_123", url: "https://stripe.test/pay" });
 		expect(reservationClient.reserve).not.toHaveBeenCalled();
+		expect(resolveCommerce).not.toHaveBeenCalled();
 		expect(bindSession).toHaveBeenCalledWith("cs_test_123");
 		expect(resolveItem).toHaveBeenCalledWith({
 			productId: "print-one",
@@ -122,6 +125,7 @@ describe("createDirectCheckoutSession", () => {
 		};
 		const bindSession = vi.fn();
 		const now = Date.parse("2026-01-01T00:00:00Z");
+		const resolveItem = vi.fn();
 		await createDirectCheckoutSession({
 			body: {
 				productId: "print-one",
@@ -133,15 +137,17 @@ describe("createDirectCheckoutSession", () => {
 			siteUrl: "https://angelsrest.test",
 			fetcher,
 			bindSession,
-			resolveItem: vi.fn().mockResolvedValue(makeItem()),
+			resolveItem,
+			resolveCommerce: vi.fn().mockResolvedValue({ provider: "convex", items: [makeItem()] }),
 			log: vi.fn(),
 			snapshotMode: "handle-v2",
 			reservationClient,
 			now,
 		});
+		expect(resolveItem).not.toHaveBeenCalled();
 		expect(reservationClient.reserve).toHaveBeenCalledWith(
 			expect.objectContaining({
-				catalogProvider: "sanity",
+				catalogProvider: "convex",
 				items: [makeItem().snapshot],
 			}),
 		);
@@ -153,6 +159,32 @@ describe("createDirectCheckoutSession", () => {
 			checkoutSnapshotHandle: "223e4567-e89b-42d3-a456-426614174000",
 			commerceTenantSiteUrl: "angelsrest.test",
 		});
+	});
+
+	it("fails catalog authority before reservation or Stripe", async () => {
+		const { stripe, create } = makeStripe();
+		const reservationClient = { reserve: vi.fn(), bind: vi.fn() };
+		const bindSession = vi.fn();
+		await expect(
+			createDirectCheckoutSession({
+				body: {
+					productId: "print-one",
+					attempt: "123e4567-e89b-42d3-a456-426614174000",
+					attemptStartedAt: Date.now(),
+				},
+				stripe,
+				siteUrl: "https://angelsrest.test",
+				fetcher,
+				bindSession,
+				resolveCommerce: vi.fn().mockRejectedValue(new Error("catalog closed")),
+				log: vi.fn(),
+				snapshotMode: "handle-v2",
+				reservationClient,
+			}),
+		).rejects.toThrow("catalog closed");
+		expect(reservationClient.reserve).not.toHaveBeenCalled();
+		expect(create).not.toHaveBeenCalled();
+		expect(bindSession).not.toHaveBeenCalled();
 	});
 
 	it.each([

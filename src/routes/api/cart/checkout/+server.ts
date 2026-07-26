@@ -12,6 +12,7 @@ import {
 } from "$lib/server/cartCheckoutHelpers";
 import { bindCheckoutSession } from "$lib/server/checkoutBinding";
 import { resolveCheckoutItem } from "$lib/server/checkoutCatalog";
+import { resolveCheckoutCommerce } from "$lib/server/checkoutCommerce";
 import { isCheckoutSnapshotReservationConflict } from "$lib/server/checkoutSnapshotReservationClient";
 import {
 	checkoutSnapshotMode,
@@ -48,23 +49,28 @@ export async function POST({ request, cookies }) {
 		}
 
 		const sourceItems = handleIntents ?? items;
+		const selection = (item: (typeof sourceItems)[number]) => ({
+			productId: item.productSlug,
+			isPrintSet: item.type === "set",
+			paperSlug: item.paperSlug,
+			sizeSlug: item.sizeSlug,
+			paperIndex: item.paperIndex,
+			borderWidth:
+				item.borderWidthValue ?? ("borderWidth" in item ? item.borderWidth?.toString() : undefined),
+			frame: item.frameValue,
+		});
+		const commerce =
+			mode === "handle-v2"
+				? await resolveCheckoutCommerce(
+						sanityClient.fetch.bind(sanityClient),
+						sourceItems.map(selection),
+					)
+				: null;
 		const resolved = await Promise.all(
-			sourceItems.map(async (item) => {
-				const catalogItem = await resolveCheckoutItem(
-					sanityClient.fetch.bind(sanityClient),
-					{
-						productId: item.productSlug,
-						isPrintSet: item.type === "set",
-						paperSlug: item.paperSlug,
-						sizeSlug: item.sizeSlug,
-						paperIndex: item.paperIndex,
-						borderWidth:
-							item.borderWidthValue ??
-							("borderWidth" in item ? item.borderWidth?.toString() : undefined),
-						frame: item.frameValue,
-					},
-					mode === "handle-v2",
-				);
+			sourceItems.map(async (item, index) => {
+				const catalogItem =
+					commerce?.items[index] ??
+					(await resolveCheckoutItem(sanityClient.fetch.bind(sanityClient), selection(item)));
 				const fulfillment = catalogItem.legacyFulfillment;
 				const base: CartItem =
 					mode === "handle-v2"
@@ -135,7 +141,7 @@ export async function POST({ request, cookies }) {
 				attemptStartedAt: body.attemptStartedAt,
 				site: String(tenantCheckout.metadata.commerceTenantSiteUrl),
 				account: tenant.stripeConnectedAccountId?.trim() || null,
-				catalogProvider: "sanity",
+				catalogProvider: commerce?.provider ?? "sanity",
 				snapshotItems: snapshots,
 				stripe,
 				lineItems,
