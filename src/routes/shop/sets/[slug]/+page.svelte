@@ -28,7 +28,6 @@ import { createCheckout } from "$lib/utils/checkout";
 
 let { data } = $props();
 
-let couponCode = $state("");
 let isLoading = $state(false);
 
 // ─── Configurator state ─────────────────────────────────────
@@ -99,7 +98,7 @@ function handleCheckout() {
 
 	createCheckout({
 		productId: data.printSet.slug,
-		coupon: couponCode.trim() || null,
+		coupon: null,
 		isPrintSet: true,
 		paperSlug: selectedConfiguration.paperSlug,
 		sizeSlug: selectedConfiguration.sizeSlug,
@@ -308,20 +307,6 @@ function handleAddToCart() {
 						</select>
 					</div>
 				{/if}
-			</div>
-
-			<!-- Coupon -->
-			<div>
-				<label for="set-promo" class="block text-sm text-surface-600-300-token mb-1">
-					promo code
-				</label>
-				<input
-					id="set-promo"
-					type="text"
-					bind:value={couponCode}
-					placeholder="enter code"
-					class="w-full px-3 py-2 bg-surface-500/10 border border-surface-500/20 rounded-md text-sm lowercase"
-				/>
 			</div>
 
 			<p class="text-xs text-surface-500">

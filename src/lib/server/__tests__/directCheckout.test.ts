@@ -51,14 +51,23 @@ function makeItem(overrides: Partial<ResolvedCheckoutItem> = {}): ResolvedChecko
 }
 
 describe("createDirectCheckoutSession", () => {
-	it("creates a physical checkout session with server-resolved metadata", async () => {
+	it.each([
+		["absent", {}],
+		["null", { coupon: null }],
+		["empty", { coupon: "" }],
+	])("creates a physical checkout with %s no-coupon input", async (_label, coupon) => {
 		const { stripe, create } = makeStripe();
 		const bindSession = vi.fn();
 		const resolveItem = vi.fn().mockResolvedValue(makeItem());
 		const reservationClient = { reserve: vi.fn(), bind: vi.fn() };
 
 		const result = await createDirectCheckoutSession({
-			body: { productId: "print-one", paperSlug: "archival-matte", sizeSlug: "8x10" },
+			body: {
+				productId: "print-one",
+				paperSlug: "archival-matte",
+				sizeSlug: "8x10",
+				...coupon,
+			},
 			stripe,
 			siteUrl: "https://angelsrest.test",
 			fetcher,
@@ -76,6 +85,7 @@ describe("createDirectCheckoutSession", () => {
 			productId: "print-one",
 			paperSlug: "archival-matte",
 			sizeSlug: "8x10",
+			...coupon,
 		});
 
 		const params = create.mock.calls[0]?.[0] as Stripe.Checkout.SessionCreateParams;
@@ -98,27 +108,24 @@ describe("createDirectCheckoutSession", () => {
 			paperSubcategoryId: "103001",
 			borderWidth: "0.25",
 			frameSubcategoryId: "105001",
+			couponCode: "",
 			originalPrice: "42",
 			discountAmount: "0",
 		});
 	});
 
-	it("preserves coupons but emits only handle metadata in handle mode", async () => {
+	it("preserves reservation and handle metadata for no-coupon checkout", async () => {
 		const { stripe, create } = makeStripe();
 		const reservationClient = {
 			reserve: vi.fn().mockResolvedValue({ handle: "223e4567-e89b-42d3-a456-426614174000" }),
 			bind: vi.fn(),
 		};
 		const bindSession = vi.fn();
-		const validateCoupon = vi.fn().mockResolvedValue({
-			discountAmount: 7.5,
-			appliedCoupon: "SUMMER",
-		});
 		const now = Date.parse("2026-01-01T00:00:00Z");
 		await createDirectCheckoutSession({
 			body: {
 				productId: "print-one",
-				coupon: "summer",
+				coupon: null,
 				attempt: "123e4567-e89b-42d3-a456-426614174000",
 				attemptStartedAt: now,
 			},
@@ -127,7 +134,6 @@ describe("createDirectCheckoutSession", () => {
 			fetcher,
 			bindSession,
 			resolveItem: vi.fn().mockResolvedValue(makeItem()),
-			validateCoupon,
 			log: vi.fn(),
 			snapshotMode: "handle-v2",
 			reservationClient,
@@ -141,12 +147,50 @@ describe("createDirectCheckoutSession", () => {
 		);
 		expect(reservationClient.bind).toHaveBeenCalledBefore(bindSession);
 		const params = create.mock.calls[0]?.[0] as Stripe.Checkout.SessionCreateParams;
-		expect(params.line_items?.[0]?.price_data?.unit_amount).toBe(3450);
+		expect(params.line_items?.[0]?.price_data?.unit_amount).toBe(4200);
 		expect(params.metadata).toEqual({
 			checkoutSnapshotVersion: "2",
 			checkoutSnapshotHandle: "223e4567-e89b-42d3-a456-426614174000",
 			commerceTenantSiteUrl: "angelsrest.test",
 		});
+	});
+
+	it.each([
+		"legacy",
+		"handle-v2",
+	])("rejects every coupon shape before effects in %s mode", async (snapshotMode) => {
+		for (const coupon of ["SUMMER", " ", {}, 42, [], ["SUMMER"], true]) {
+			const { stripe, create } = makeStripe();
+			const resolveItem = vi.fn();
+			const sanityFetch = vi.fn();
+			const reservationClient = { reserve: vi.fn(), bind: vi.fn() };
+			const bindSession = vi.fn();
+			const log = vi.fn();
+
+			await expect(
+				createDirectCheckoutSession({
+					body: { productId: "print-one", coupon },
+					stripe,
+					siteUrl: "https://angelsrest.test",
+					fetcher: sanityFetch,
+					bindSession,
+					resolveItem,
+					log,
+					snapshotMode,
+					reservationClient,
+				}),
+			).rejects.toMatchObject({
+				status: 400,
+				body: { code: "INVALID_COUPON", message: "Coupons are not accepted" },
+			});
+			expect(resolveItem).not.toHaveBeenCalled();
+			expect(sanityFetch).not.toHaveBeenCalled();
+			expect(reservationClient.reserve).not.toHaveBeenCalled();
+			expect(reservationClient.bind).not.toHaveBeenCalled();
+			expect(create).not.toHaveBeenCalled();
+			expect(bindSession).not.toHaveBeenCalled();
+			expect(log).not.toHaveBeenCalled();
+		}
 	});
 
 	it("rejects requests without a product id before resolving or creating Stripe sessions", async () => {

@@ -4,7 +4,6 @@ import { ApiErrorCode, apiError } from "$lib/server/apiError";
 import type { ResolvedCheckoutItem } from "$lib/server/checkoutCatalog";
 import { resolveCheckoutItem } from "$lib/server/checkoutCatalog";
 import type { CheckoutSnapshotReservationClient } from "$lib/server/checkoutSnapshotReservationClient";
-import { type CouponResult, validateAndApplyCoupon } from "$lib/server/coupon";
 import {
 	checkoutSnapshotMode,
 	createHandleCheckoutSession,
@@ -20,12 +19,6 @@ import { buildTenantCheckoutOptions, type StripeTenantAccount } from "$lib/serve
 type CheckoutFetcher = Parameters<typeof resolveCheckoutItem>[0];
 type CheckoutBody = Record<string, unknown>;
 type ResolveCheckoutItem = (body: CheckoutBody) => Promise<ResolvedCheckoutItem>;
-type ValidateCoupon = (
-	couponCode: string,
-	productSlug: string,
-	productCategory: string | undefined,
-	price: number,
-) => Promise<CouponResult>;
 type CheckoutLogger = typeof logStructured;
 
 export interface CreateDirectCheckoutSessionOptions {
@@ -36,7 +29,6 @@ export interface CreateDirectCheckoutSessionOptions {
 	fetcher: CheckoutFetcher;
 	bindSession: (sessionId: string) => void;
 	resolveItem?: ResolveCheckoutItem;
-	validateCoupon?: ValidateCoupon;
 	log?: CheckoutLogger;
 	snapshotMode?: string;
 	reservationClient?: CheckoutSnapshotReservationClient;
@@ -53,6 +45,13 @@ function normalizeCheckoutBody(rawBody: unknown): CheckoutBody {
 	return rawBody && typeof rawBody === "object" && !Array.isArray(rawBody)
 		? (rawBody as CheckoutBody)
 		: {};
+}
+
+export function rejectCouponAttempt(rawBody: unknown) {
+	const body = normalizeCheckoutBody(rawBody);
+	if (Object.hasOwn(body, "coupon") && body.coupon !== null && body.coupon !== "") {
+		throw apiError(400, ApiErrorCode.INVALID_COUPON, "Coupons are not accepted");
+	}
 }
 
 function logRequestShape(body: CheckoutBody, log: CheckoutLogger) {
@@ -78,11 +77,7 @@ function logRequestShape(body: CheckoutBody, log: CheckoutLogger) {
 	});
 }
 
-function buildCheckoutMetadata(
-	item: ResolvedCheckoutItem,
-	appliedCoupon: string | null,
-	discountAmount: number,
-): Stripe.MetadataParam {
+function buildCheckoutMetadata(item: ResolvedCheckoutItem): Stripe.MetadataParam {
 	const fulfillment = item.legacyFulfillment;
 	return {
 		productId: item.productId,
@@ -99,9 +94,9 @@ function buildCheckoutMetadata(
 		frameSubcategoryId: fulfillment.paper?.frameSubcategoryId?.toString() || "",
 		canvasSubcategoryId: fulfillment.paper?.canvasSubcategoryId?.toString() || "",
 		canvasWrapHex: fulfillment.paper?.canvasWrapHex || "",
-		couponCode: appliedCoupon || "",
+		couponCode: "",
 		originalPrice: (item.unitPriceCents / 100).toString(),
-		discountAmount: discountAmount.toString(),
+		discountAmount: "0",
 	};
 }
 
@@ -113,12 +108,12 @@ export async function createDirectCheckoutSession({
 	fetcher,
 	bindSession,
 	resolveItem,
-	validateCoupon = validateAndApplyCoupon,
 	log = logStructured,
 	snapshotMode = env.CHECKOUT_SNAPSHOT_MODE,
 	reservationClient,
 	now = Date.now(),
 }: CreateDirectCheckoutSessionOptions): Promise<DirectCheckoutSessionResult> {
+	rejectCouponAttempt(rawBody);
 	const body = normalizeCheckoutBody(rawBody);
 	const mode = checkoutSnapshotMode(snapshotMode);
 	if (mode === "handle-v2") validateCheckoutAttempt(body.attempt, body.attemptStartedAt, now);
@@ -137,23 +132,8 @@ export async function createDirectCheckoutSession({
 	const item = resolveItem
 		? await resolveItem(body)
 		: await resolveCheckoutItem(fetcher, body, mode === "handle-v2");
-	const coupon = typeof body.coupon === "string" ? body.coupon : null;
-
-	let discountAmount = 0;
-	let appliedCoupon: string | null = null;
-	if (coupon) {
-		const result = await validateCoupon(
-			coupon,
-			item.productId,
-			item.productCategory ?? undefined,
-			item.unitPriceCents / 100,
-		);
-		discountAmount = result.discountAmount;
-		appliedCoupon = result.appliedCoupon;
-	}
-
-	const finalPrice = Math.max(0, item.unitPriceCents / 100 - discountAmount);
-	const subtotalCents = Math.round(finalPrice * 100);
+	const finalPrice = item.unitPriceCents / 100;
+	const subtotalCents = item.unitPriceCents;
 	const fulfillment = item.legacyFulfillment;
 	const tenantCheckout = buildTenantCheckoutOptions({
 		tenant: tenant ?? { siteUrl },
@@ -196,7 +176,7 @@ export async function createDirectCheckoutSession({
 		lineItems,
 		successUrl,
 		cancelUrl,
-		metadata: buildCheckoutMetadata(item, appliedCoupon, discountAmount),
+		metadata: buildCheckoutMetadata(item),
 		tenantCheckout,
 	});
 
@@ -207,7 +187,7 @@ export async function createDirectCheckoutSession({
 			productId: item.productId,
 			isPrintSet: fulfillment.isPrintSet,
 			finalPrice,
-			hasCoupon: !!appliedCoupon,
+			hasCoupon: false,
 			platformFeeAmount: tenantCheckout.platformFeeAmount,
 		},
 	});

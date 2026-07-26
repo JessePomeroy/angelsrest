@@ -25,7 +25,6 @@ type ProductKind =
 
 export interface CheckoutSelection {
 	readonly productId?: unknown;
-	readonly coupon?: unknown;
 	readonly isPrintSet?: unknown;
 	readonly paperSlug?: unknown;
 	readonly sizeSlug?: unknown;
