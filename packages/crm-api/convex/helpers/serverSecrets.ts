@@ -143,19 +143,28 @@ export function purposeScopedServerRolesAreDisjoint() {
 	return purposeScopedServerRoleConfiguration() !== null;
 }
 
-/** Optional commerce authority is isolated without changing existing role availability. */
+/** Purpose-fixed commerce authorities are isolated without changing existing role availability. */
 export async function catalogCommerceResolverRoleConfiguration() {
-	const commerce = parseOptionalTenantSecretRegistry(
-		process.env.CATALOG_COMMERCE_RESOLVER_SECRETS,
-	);
+	const commerce = {
+		checkout: parseOptionalTenantSecretRegistry(
+			process.env.CATALOG_COMMERCE_CHECKOUT_RESOLVER_SECRETS,
+		),
+		paid_fulfillment: parseOptionalTenantSecretRegistry(
+			process.env.CATALOG_COMMERCE_PAID_FULFILLMENT_RESOLVER_SECRETS,
+		),
+		paid_download: parseOptionalTenantSecretRegistry(
+			process.env.CATALOG_COMMERCE_PAID_DOWNLOAD_RESOLVER_SECRETS,
+		),
+	};
+	const parsed = Object.values(commerce);
 	const roles = purposeScopedServerRoleConfiguration();
 	const checkoutManifest = parseCheckoutRoleCredentialFingerprints(
 		process.env.CHECKOUT_ROLE_CREDENTIAL_FINGERPRINTS,
 	);
-	if (!commerce || commerce.size === 0 || !roles || !checkoutManifest) return null;
-	const existing = Object.values(roles);
-	if (!tenantSecretRegistriesAreDisjoint(commerce, ...existing)) return null;
-	const commerceSecrets = [...commerce.values()].flat();
+	if (parsed.some((registry) => registry === null) || !roles || !checkoutManifest) return null;
+	const commerceRegistries = parsed as ReadonlyMap<string, readonly string[]>[];
+	if (!tenantSecretRegistriesAreDisjoint(...commerceRegistries, ...Object.values(roles))) return null;
+	const commerceSecrets = commerceRegistries.flatMap((registry) => [...registry.values()].flat());
 	if (AUTHORITY_BEARING_SCALAR_ENV_NAMES.some((name) => {
 		const secret = process.env[name];
 		return secret !== undefined && commerceSecrets.includes(secret);
@@ -166,7 +175,7 @@ export async function catalogCommerceResolverRoleConfiguration() {
 	]);
 	if ((await Promise.all(commerceSecrets.map(serverSecretFingerprint)))
 		.some((fingerprint) => checkoutFingerprints.has(fingerprint))) return null;
-	return commerce;
+	return commerce as { [Role in keyof typeof commerce]: ReadonlyMap<string, readonly string[]> };
 }
 
 export function parseCheckoutRoleCredentialFingerprints(

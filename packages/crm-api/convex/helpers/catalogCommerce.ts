@@ -50,26 +50,30 @@ export const catalogCommerceRequestValidator = v.union(
 	}),
 );
 export type CatalogCommerceRequest = Infer<typeof catalogCommerceRequestValidator>;
+export type CatalogCommercePurpose = CatalogCommerceRequest["purpose"];
 
 function exactKeys(value: Record<string, unknown>, keys: readonly string[]) {
 	const actual = Object.keys(value);
 	return actual.length === keys.length && actual.every((key) => keys.includes(key));
 }
 
-/** Parse the exact versioned HTTP union before a Convex function is invoked. */
-export function parseCatalogCommerceRequest(value: unknown): CatalogCommerceRequest | null {
+/** Parse an exact HTTP body and add the purpose selected by its authenticated route. */
+export function parseCatalogCommerceRequest(
+	value: unknown,
+	purpose: CatalogCommercePurpose,
+): CatalogCommerceRequest | null {
 	if (!value || typeof value !== "object" || Array.isArray(value)) return null;
 	const body = value as Record<string, unknown>;
 	if (body.version !== 1) return null;
-	if (body.purpose === "checkout" && exactKeys(body, ["version", "purpose", "item"])) {
+	if (purpose === "checkout" && exactKeys(body, ["version", "item"])) {
 		const snapshot = parseReservedCheckoutSnapshot({
 			schemaVersion: 1, catalogProvider: "convex", items: [body.item],
 		});
-		return snapshot ? { version: 1, purpose: "checkout", item: snapshot.items[0]! } : null;
+		return snapshot ? { version: 1, purpose, item: snapshot.items[0]! } : null;
 	}
 	if (
-		(body.purpose === "paid_fulfillment" || body.purpose === "paid_download")
-		&& exactKeys(body, ["version", "purpose", "stripeSessionId", "itemIndex"])
+		purpose !== "checkout"
+		&& exactKeys(body, ["version", "stripeSessionId", "itemIndex"])
 		&& isStripeCheckoutSessionId(body.stripeSessionId)
 		&& Number.isSafeInteger(body.itemIndex)
 		&& Number(body.itemIndex) >= 0
@@ -77,7 +81,7 @@ export function parseCatalogCommerceRequest(value: unknown): CatalogCommerceRequ
 	) {
 		return {
 			version: 1,
-			purpose: body.purpose,
+			purpose,
 			stripeSessionId: body.stripeSessionId,
 			itemIndex: Number(body.itemIndex),
 		};

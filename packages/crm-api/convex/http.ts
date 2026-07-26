@@ -35,6 +35,7 @@ import {
 	parseCatalogEditorWorkerPrepareResponse,
 	verifyCatalogEditorPrepareAttestation,
 } from "./helpers/catalogPrivateAssetEditorJournal";
+import type { CatalogCommercePurpose } from "./helpers/catalogCommerce";
 import { parseCatalogCommerceRequest } from "./helpers/catalogCommerce";
 import {
 	parseReservationBindRequest,
@@ -56,7 +57,11 @@ import {
 const http = httpRouter();
 const textEncoder = new TextEncoder();
 
-const CATALOG_COMMERCE_PATH = "/commerce/catalog/resolve";
+const CATALOG_COMMERCE_PATHS = {
+	checkout: "/commerce/catalog/checkout/resolve",
+	paid_fulfillment: "/commerce/catalog/paid-fulfillment/resolve",
+	paid_download: "/commerce/catalog/paid-download/resolve",
+} as const satisfies Record<CatalogCommercePurpose, string>;
 const MAX_CATALOG_COMMERCE_BODY_BYTES = 4096;
 const SNAPSHOT_RESERVE_PATH = "/commerce/checkout-snapshots/reserve";
 const SNAPSHOT_BIND_PATH = "/commerce/checkout-snapshots/bind";
@@ -689,31 +694,34 @@ async function authenticateSnapshotRequest(request: Request) {
 	return roles ? tenantForSecretFixed(roles.checkoutSnapshotReservation, supplied) : null;
 }
 
-const resolveCatalogCommerce = httpAction(async (ctx, request) => {
-	const registry = await catalogCommerceResolverRoleConfiguration();
-	if (!registry) return privateResponse({ error: "unavailable" }, 503);
-	const siteUrl = await tenantForSecretFixed(registry, bearerToken(request));
-	if (!siteUrl) return privateResponse({ error: "not_authorized" }, 401);
-	const url = new URL(request.url);
-	if (
-		url.pathname !== CATALOG_COMMERCE_PATH
-		|| url.search !== ""
-		|| request.headers.get("Content-Type") !== "application/json"
-	) return privateResponse({ error: "invalid_request" }, 400);
-	const parsed = parseCatalogCommerceRequest(
-		await readJsonObject(request, MAX_CATALOG_COMMERCE_BODY_BYTES),
-	);
-	if (!parsed) return privateResponse({ error: "invalid_request" }, 400);
-	try {
-		const result = await ctx.runQuery(internal.orders.catalogCommerce, {
-			siteUrl,
-			request: parsed,
-		});
-		return privateResponse(result, 200);
-	} catch {
-		return privateResponse({ error: "not_found" }, 404);
-	}
-});
+function catalogCommerceHandler(purpose: CatalogCommercePurpose, path: string) {
+	return httpAction(async (ctx, request) => {
+		const roles = await catalogCommerceResolverRoleConfiguration();
+		const registry = roles?.[purpose];
+		if (!registry?.size) return privateResponse({ error: "unavailable" }, 503);
+		const siteUrl = await tenantForSecretFixed(registry, bearerToken(request));
+		if (!siteUrl) return privateResponse({ error: "not_authorized" }, 401);
+		const url = new URL(request.url);
+		if (
+			url.pathname !== path
+			|| url.search !== ""
+			|| request.headers.get("Content-Type") !== "application/json"
+		) return privateResponse({ error: "invalid_request" }, 400);
+		const parsed = parseCatalogCommerceRequest(
+			await readJsonObject(request, MAX_CATALOG_COMMERCE_BODY_BYTES), purpose,
+		);
+		if (!parsed) return privateResponse({ error: "invalid_request" }, 400);
+		try {
+			const result = await ctx.runQuery(internal.orders.catalogCommerce, {
+				siteUrl,
+				request: parsed,
+			});
+			return privateResponse(result, 200);
+		} catch {
+			return privateResponse({ error: "not_found" }, 404);
+		}
+	});
+}
 
 const reserveCheckoutSnapshot = httpAction(async (ctx, request) => {
 	const siteUrl = await authenticateSnapshotRequest(request);
@@ -756,7 +764,11 @@ const bindCheckoutSnapshot = httpAction(async (ctx, request) => {
 });
 
 authComponent.registerRoutes(http, createAuth);
-http.route({ path: CATALOG_COMMERCE_PATH, method: "POST", handler: resolveCatalogCommerce });
+for (const [purpose, path] of Object.entries(CATALOG_COMMERCE_PATHS)) {
+	http.route({
+		path, method: "POST", handler: catalogCommerceHandler(purpose as CatalogCommercePurpose, path),
+	});
+}
 http.route({ path: SNAPSHOT_RESERVE_PATH, method: "POST", handler: reserveCheckoutSnapshot });
 http.route({ path: SNAPSHOT_BIND_PATH, method: "POST", handler: bindCheckoutSnapshot });
 http.route({

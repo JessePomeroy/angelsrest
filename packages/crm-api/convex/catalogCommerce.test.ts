@@ -14,17 +14,22 @@ import { api, internal } from "./_generated/api";
 import type { Id } from "./_generated/dataModel";
 import type { CatalogCommerceRequest } from "./helpers/catalogCommerce";
 import { parseCatalogCommerceRequest } from "./helpers/catalogCommerce";
-import {
-	purposeScopedServerRolesAreDisjoint,
-	serverSecretFingerprint,
-} from "./helpers/serverSecrets";
+import { serverSecretFingerprint } from "./helpers/serverSecrets";
 
 const modules = import.meta.glob("./**/*.ts");
-const PATH = "/commerce/catalog/resolve";
-const SECRET = "catalog-commerce-resolver-secret-0123456789abcdef";
+const PATHS = {
+	checkout: "/commerce/catalog/checkout/resolve",
+	paid_fulfillment: "/commerce/catalog/paid-fulfillment/resolve",
+	paid_download: "/commerce/catalog/paid-download/resolve",
+} as const;
+const SECRET = "catalog-commerce-checkout-secret-0123456789abcdef";
+const FULFILLMENT_SECRET = "catalog-commerce-fulfillment-secret-0123456789abcdef";
+const DOWNLOAD_SECRET = "catalog-commerce-download-secret-0123456789abcdef";
 const SESSION = "cs_test_1234567890catalogcommerce";
 const AUTHORITY_ENV = [
-	"CATALOG_COMMERCE_RESOLVER_SECRETS",
+	"CATALOG_COMMERCE_CHECKOUT_RESOLVER_SECRETS",
+	"CATALOG_COMMERCE_PAID_FULFILLMENT_RESOLVER_SECRETS",
+	"CATALOG_COMMERCE_PAID_DOWNLOAD_RESOLVER_SECRETS",
 	"CHECKOUT_ROLE_CREDENTIAL_FINGERPRINTS",
 	"CATALOG_PRIVATE_ASSET_EDITOR_HOST_JOURNAL_SECRETS",
 	"CATALOG_PRIVATE_ASSET_EDITOR_INSPECTION_CLAIM_SECRETS",
@@ -47,8 +52,14 @@ beforeEach(() => {
 		priorEnv.set(name, process.env[name]);
 		delete process.env[name];
 	}
-	process.env.CATALOG_COMMERCE_RESOLVER_SECRETS = JSON.stringify({
+	process.env.CATALOG_COMMERCE_CHECKOUT_RESOLVER_SECRETS = JSON.stringify({
 		[SITE_A.siteUrl]: [SECRET],
+	});
+	process.env.CATALOG_COMMERCE_PAID_FULFILLMENT_RESOLVER_SECRETS = JSON.stringify({
+		[SITE_A.siteUrl]: [FULFILLMENT_SECRET],
+	});
+	process.env.CATALOG_COMMERCE_PAID_DOWNLOAD_RESOLVER_SECRETS = JSON.stringify({
+		[SITE_A.siteUrl]: [DOWNLOAD_SECRET],
 	});
 	process.env.CHECKOUT_ROLE_CREDENTIAL_FINGERPRINTS = JSON.stringify({
 		checkoutBridge: ["a".repeat(64)],
@@ -362,47 +373,73 @@ describe("paid catalog commerce", () => {
 });
 
 describe("catalog commerce HTTP contract", () => {
-	test("parses only the exact bounded request union", () => {
-		const valid = paid("paid_download");
-		expect(parseCatalogCommerceRequest(valid)).toEqual(valid);
-		expect(parseCatalogCommerceRequest({ ...valid, item: {} })).toBeNull();
-		expect(parseCatalogCommerceRequest({ ...valid, itemIndex: -1 })).toBeNull();
-		expect(parseCatalogCommerceRequest({ ...valid, itemIndex: 40 })).toBeNull();
-		expect(parseCatalogCommerceRequest({ ...valid, stripeSessionId: "candidate" })).toBeNull();
-		expect(parseCatalogCommerceRequest({ ...valid, version: 2 })).toBeNull();
+	test("parses only the exact body for the server-selected purpose", () => {
+		const valid = { version: 1, stripeSessionId: SESSION, itemIndex: 0 } as const;
+		expect(parseCatalogCommerceRequest(valid, "paid_download")).toEqual(paid("paid_download"));
+		expect(parseCatalogCommerceRequest(valid, "paid_fulfillment")).toEqual(paid("paid_fulfillment"));
+		expect(parseCatalogCommerceRequest({ ...valid, purpose: "paid_download" }, "paid_download")).toBeNull();
+		expect(parseCatalogCommerceRequest({ ...valid, itemIndex: -1 }, "paid_download")).toBeNull();
+		expect(parseCatalogCommerceRequest({ ...valid, itemIndex: 40 }, "paid_download")).toBeNull();
+		expect(parseCatalogCommerceRequest({ ...valid, stripeSessionId: "candidate" }, "paid_download"))
+			.toBeNull();
+		expect(parseCatalogCommerceRequest({ ...valid, version: 2 }, "paid_download")).toBeNull();
 	});
 
-	test("is exact POST JSON, bearer-derived, bounded, no-store, generic, and default closed", async () => {
+	test("is purpose-fixed, exact, bounded, no-store, generic, and default closed", async () => {
 		const fixture = await setup(modules);
 		const created = await createGraph(
 			fixture.adminA, SITE_A.siteUrl, "http-print", graphDraft("print", fixture, "http-print"),
 		);
 		await publish(fixture, created);
-		const request = checkout(item(created, "print"));
-		const body = JSON.stringify(request);
-		const send = (secret = SECRET, contentType = "application/json", path = PATH, requestBody = body) =>
-			fixture.t.fetch(path, {
-				method: "POST",
-				headers: { Authorization: `Bearer ${secret}`, "Content-Type": contentType },
-				body: requestBody,
-			});
+		const checkoutBody = JSON.stringify({ version: 1, item: item(created, "print") });
+		const paidBody = JSON.stringify({ version: 1, stripeSessionId: SESSION, itemIndex: 0 });
+		const send = (path: string = PATHS.checkout, secret = SECRET, body = checkoutBody,
+			contentType = "application/json") => fixture.t.fetch(path, {
+			method: "POST",
+			headers: { Authorization: `Bearer ${secret}`, "Content-Type": contentType },
+			body,
+		});
 		const before = await fixture.t.run((ctx) => ctx.db.query("orders").take(1));
-		expect((await fixture.t.fetch(PATH, { method: "GET" })).status).toBe(404);
+		expect((await fixture.t.fetch(PATHS.checkout, { method: "GET" })).status).toBe(404);
 		const ok = await send();
 		expect(ok.status).toBe(200);
 		expect(ok.headers.get("Cache-Control")).toBe("no-store");
 		expect((await ok.json()).descriptor).toBeUndefined();
-		expect((await send("wrong-secret-authority-0123456789abcdef")).status).toBe(401);
-		expect((await send(SECRET, "application/json; charset=utf-8")).status).toBe(400);
-		expect((await send(SECRET, "application/json", `${PATH}?candidate=1`)).status).toBe(400);
-		expect((await send(SECRET, "application/json", PATH, JSON.stringify({ padding: "x".repeat(4096) }))).status)
+		expect((await send(PATHS.checkout, "wrong-secret-authority-0123456789abcdef")).status).toBe(401);
+		expect((await send(PATHS.checkout, SECRET, checkoutBody, "application/json; charset=utf-8")).status)
 			.toBe(400);
-		delete process.env.CATALOG_COMMERCE_RESOLVER_SECRETS;
+		expect((await send(`${PATHS.checkout}?candidate=1`)).status).toBe(400);
+		expect((await send(PATHS.checkout, SECRET, JSON.stringify({ padding: "x".repeat(4096) }))).status)
+			.toBe(400);
+
+		expect((await send(PATHS.paid_fulfillment, FULFILLMENT_SECRET, paidBody)).status).toBe(404);
+		expect((await send(PATHS.paid_download, DOWNLOAD_SECRET, paidBody)).status).toBe(404);
+		expect((await send(PATHS.paid_fulfillment, SECRET, paidBody)).status).toBe(401);
+		expect((await send(PATHS.paid_download, FULFILLMENT_SECRET, paidBody)).status).toBe(401);
+		expect((await send(PATHS.checkout, DOWNLOAD_SECRET)).status).toBe(401);
+		expect((await send(PATHS.checkout, SECRET, JSON.stringify({
+			version: 1, purpose: "paid_download", item: item(created, "print"),
+		}))).status).toBe(400);
+
+		delete process.env.CATALOG_COMMERCE_CHECKOUT_RESOLVER_SECRETS;
 		expect((await send()).status).toBe(503);
-		process.env.CATALOG_COMMERCE_RESOLVER_SECRETS = "malformed";
+		process.env.CATALOG_COMMERCE_CHECKOUT_RESOLVER_SECRETS = JSON.stringify({ [SITE_A.siteUrl]: [SECRET] });
+		delete process.env.CATALOG_COMMERCE_PAID_FULFILLMENT_RESOLVER_SECRETS;
+		expect((await send(PATHS.paid_fulfillment, FULFILLMENT_SECRET, paidBody)).status).toBe(503);
+		process.env.CATALOG_COMMERCE_PAID_FULFILLMENT_RESOLVER_SECRETS = JSON.stringify({
+			[SITE_A.siteUrl]: [FULFILLMENT_SECRET],
+		});
+		delete process.env.CATALOG_COMMERCE_PAID_DOWNLOAD_RESOLVER_SECRETS;
+		expect((await send(PATHS.paid_download, DOWNLOAD_SECRET, paidBody)).status).toBe(503);
+		process.env.CATALOG_COMMERCE_PAID_DOWNLOAD_RESOLVER_SECRETS = "malformed";
 		expect((await send()).status).toBe(503);
-		expect(purposeScopedServerRolesAreDisjoint()).toBe(true);
-		process.env.CATALOG_COMMERCE_RESOLVER_SECRETS = JSON.stringify({ [SITE_A.siteUrl]: [SECRET] });
+		process.env.CATALOG_COMMERCE_PAID_DOWNLOAD_RESOLVER_SECRETS = JSON.stringify({
+			[SITE_A.siteUrl]: [SECRET],
+		});
+		expect((await send()).status).toBe(503);
+		process.env.CATALOG_COMMERCE_PAID_DOWNLOAD_RESOLVER_SECRETS = JSON.stringify({
+			[SITE_A.siteUrl]: [DOWNLOAD_SECRET],
+		});
 		process.env.WEBHOOK_SECRET = SECRET;
 		expect((await send()).status).toBe(503);
 		delete process.env.WEBHOOK_SECRET;
