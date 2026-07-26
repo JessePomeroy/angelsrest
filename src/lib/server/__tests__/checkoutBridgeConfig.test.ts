@@ -1,7 +1,8 @@
 import { describe, expect, it } from "vitest";
 import {
 	checkoutCredentialFingerprint,
-	getCheckoutBridgeTenantConfig,
+	getCheckoutBridgeTenantConfig as getBridgeConfig,
+	getCheckoutSnapshotReservationCredential as getReservationCredential,
 	parseCheckoutBridgeTenantRegistry,
 } from "../checkoutBridgeConfig";
 
@@ -18,6 +19,8 @@ function fingerprintManifest(
 	});
 }
 
+const reservationRegistry = JSON.stringify({ "angelsrest.test": [RESERVATION_SECRET] });
+
 function registry(
 	overrides: Record<string, unknown> = {},
 	additionalTenants: Record<string, unknown> = {},
@@ -32,7 +35,66 @@ function registry(
 	});
 }
 
+function getCheckoutSnapshotReservationCredential(
+	site: string,
+	reservation = reservationRegistry,
+	manifest = fingerprintManifest(),
+	bridge = registry(),
+) {
+	return getReservationCredential(site, reservation, manifest, bridge);
+}
+
+function getCheckoutBridgeTenantConfig(
+	site: string,
+	bridge = registry(),
+	manifest = fingerprintManifest(),
+	reservation = reservationRegistry,
+) {
+	return getBridgeConfig(site, bridge, manifest, reservation);
+}
+
 describe("checkout bridge tenant registry", () => {
+	it("selects only the current approved tenant reservation credential", () => {
+		const previous = "o".repeat(32);
+		const reservationRegistry = JSON.stringify({
+			"angelsrest.test": [RESERVATION_SECRET, previous],
+		});
+		const manifest = fingerprintManifest([PRIMARY_SECRET], [RESERVATION_SECRET, previous]);
+		expect(
+			getCheckoutSnapshotReservationCredential("angelsrest.test", reservationRegistry, manifest),
+		).toBe(RESERVATION_SECRET);
+		expect(() =>
+			getCheckoutSnapshotReservationCredential("other.test", reservationRegistry, manifest),
+		).toThrow("unavailable");
+	});
+
+	it("fails reservation authority closed for absent, incomplete, duplicate, or overlapping roles", () => {
+		const valid = JSON.stringify({ "angelsrest.test": [RESERVATION_SECRET] });
+		expect(() =>
+			getReservationCredential("angelsrest.test", undefined, undefined, registry()),
+		).toThrow("unavailable");
+		expect(() =>
+			getCheckoutSnapshotReservationCredential(
+				"angelsrest.test",
+				valid,
+				fingerprintManifest([PRIMARY_SECRET], ["different".repeat(4)]),
+			),
+		).toThrow("unavailable");
+		expect(() =>
+			getCheckoutSnapshotReservationCredential(
+				"angelsrest.test",
+				JSON.stringify({ a: [RESERVATION_SECRET], b: [RESERVATION_SECRET] }),
+				fingerprintManifest(),
+			),
+		).toThrow("unavailable");
+		expect(() =>
+			getCheckoutSnapshotReservationCredential(
+				"angelsrest.test",
+				valid,
+				fingerprintManifest([RESERVATION_SECRET], [RESERVATION_SECRET]),
+			),
+		).toThrow("unavailable");
+	});
 	it("resolves only the configured tenant authority", () => {
 		expect(getCheckoutBridgeTenantConfig("zippymiggy.com", registry())).toEqual({
 			secrets: [PRIMARY_SECRET],
@@ -52,16 +114,37 @@ describe("checkout bridge tenant registry", () => {
 				},
 			},
 		);
-		expect(getCheckoutBridgeTenantConfig("future-client.com", twoTenantRegistry)).toEqual({
+		expect(
+			getCheckoutBridgeTenantConfig(
+				"future-client.com",
+				twoTenantRegistry,
+				fingerprintManifest([PRIMARY_SECRET, futureSecret]),
+			),
+		).toEqual({
 			secrets: [futureSecret],
 			redirectOrigins: ["https://future-client.com"],
 		});
-		expect(getCheckoutBridgeTenantConfig("zippymiggy.com", twoTenantRegistry)?.secrets).toEqual([
-			PRIMARY_SECRET,
-		]);
+		expect(
+			getCheckoutBridgeTenantConfig(
+				"zippymiggy.com",
+				twoTenantRegistry,
+				fingerprintManifest([PRIMARY_SECRET, futureSecret]),
+			)?.secrets,
+		).toEqual([PRIMARY_SECRET]);
 	});
 
-	it("fails both checkout roles closed for overlapping or incomplete fingerprints", () => {
+	it("fails both checkout roles closed for missing, extra, overlap, or misassignment", () => {
+		expect(() =>
+			getBridgeConfig("zippymiggy.com", registry(), undefined, reservationRegistry),
+		).toThrow();
+		expect(() =>
+			getReservationCredential(
+				"angelsrest.test",
+				reservationRegistry,
+				fingerprintManifest(),
+				undefined,
+			),
+		).toThrow("unavailable");
 		expect(() =>
 			getCheckoutBridgeTenantConfig(
 				"zippymiggy.com",
@@ -74,6 +157,20 @@ describe("checkout bridge tenant registry", () => {
 				"zippymiggy.com",
 				registry(),
 				fingerprintManifest(["different".repeat(4)]),
+			),
+		).toThrow("do not match");
+		expect(() =>
+			getCheckoutBridgeTenantConfig(
+				"zippymiggy.com",
+				registry(),
+				fingerprintManifest([RESERVATION_SECRET], [PRIMARY_SECRET]),
+			),
+		).toThrow("do not match");
+		expect(() =>
+			getCheckoutBridgeTenantConfig(
+				"zippymiggy.com",
+				registry(),
+				fingerprintManifest([PRIMARY_SECRET, "x".repeat(32)]),
 			),
 		).toThrow("do not match");
 		expect(

@@ -3,6 +3,7 @@ import {
 	buildCartMetadata,
 	buildCartTenantCheckoutOptions,
 	calculateCartPrintSubtotalCents,
+	parseHandleCartIntent,
 	validateCart,
 } from "../server/cartCheckoutHelpers";
 import type { CartItem } from "../shop/cart";
@@ -77,6 +78,38 @@ function makeSetItem(overrides: Partial<CartItem> = {}): CartItem {
 		...overrides,
 	};
 }
+
+describe("handle cart intent", () => {
+	it("whitelists selectors and quantity while dropping browser snapshot fields", () => {
+		expect(
+			parseHandleCartIntent([
+				makeItem({
+					title: "forged",
+					imageUrl: "https://attacker.test/forged.jpg",
+					unitPriceCents: 1,
+					paperSlug: "archival-matte",
+					sizeSlug: "8x10",
+				}),
+			]),
+		).toEqual([
+			{
+				productSlug: "shore-no-1",
+				type: "print",
+				quantity: 1,
+				paperSlug: "archival-matte",
+				sizeSlug: "8x10",
+			},
+		]);
+	});
+
+	it("supports 1–40 lines independent of legacy metadata size", () => {
+		const nearLimitSets = Array.from({ length: 40 }, (_, index) =>
+			makeSetItem({ id: String(index), imageUrls: Array(20).fill(`https://cdn.test/${index}`) }),
+		);
+		expect(parseHandleCartIntent(nearLimitSets)).toHaveLength(40);
+		expect(parseHandleCartIntent([...nearLimitSets, makeItem()])).toBeNull();
+	});
+});
 
 describe("validateCart", () => {
 	it("accepts a single valid print item", () => {

@@ -1,27 +1,24 @@
-/**
- * Pure validation, tenant-fee, and metadata helpers for cart checkout.
- *
- * Lives in its own module rather than inside `routes/api/cart/checkout/+server.ts`
- * because SvelteKit's `+server.ts` files only allow specific named exports
- * (HTTP method handlers + underscore-prefixed names). Putting the pure
- * validation and metadata-encoding helpers here keeps the test file
- * importing from a normal module while the endpoint stays a thin shell.
- *
- * The metadata contract encoded by `buildCartMetadata` is paired with
- * `src/lib/server/webhookDecoder.ts`. Any change here must be matched there.
- */
-
 import {
 	CART_ITEM_PAYLOAD_MAX,
 	CART_METADATA_KEYS,
 	encodeCartItemPayload,
 } from "$lib/server/cartMetadataCodec";
 import { buildTenantCheckoutOptions, type StripeTenantAccount } from "$lib/server/stripeConnect";
-import type { CartItem } from "$lib/shop/cart";
+import { type CartItem, MAX_QUANTITY_PER_LINE } from "$lib/shop/cart";
+
+export interface HandleCartIntent {
+	productSlug: string;
+	type: "print" | "set";
+	quantity: number;
+	paperSlug?: string;
+	sizeSlug?: string;
+	paperIndex?: number;
+	borderWidthValue?: string;
+	frameValue?: string;
+}
 
 export { CART_ITEM_PAYLOAD_MAX } from "$lib/server/cartMetadataCodec";
 
-/** Stripe metadata per-value limit. */
 const STRIPE_METADATA_VALUE_MAX = 500;
 
 export function calculateCartPrintSubtotalCents(items: CartItem[]): number {
@@ -46,32 +43,6 @@ export function buildCartTenantCheckoutOptions({
 	});
 }
 
-/**
- * Build the compact per-item metadata payload that the webhook will
- * decode. Stripe metadata constraints relevant here:
- *
- *  - 50 keys max per metadata object
- *  - 500 char max per value
- *  - Each key string ≤ 40 chars
- *
- * To stay under those limits with realistic Sanity CDN URLs (~90 chars),
- * each cart item gets its own metadata key `cartItem_{n}` containing a
- * compact JSON object with abbreviated keys:
- *
- *   { u: imageUrl, q: quantity, s?: subcategoryId, w?: width, h?: height, i?: imageUrls[] }
- *
- * Field semantics:
- *  - `u` is the cover image used by the cart UI thumbnail
- *  - `q` is the cart line quantity (multiplied through to LumaPrints)
- *  - `s/w/h` are present for LumaPrints prints, omitted for self-fulfilled
- *    merch (tapestries etc.) — the webhook decoder uses the absence of `s`
- *    as the signal to skip LumaPrints submission for that line
- *  - `i` is present for print sets — the full array of image URLs to
- *    submit to LumaPrints, with one OrderItem per image at quantity `q`
- *
- * Reserving ~10 keys for non-cart metadata leaves ~40 cart-item slots —
- * enforced by the 40-item cap in `validateCart`.
- */
 export function buildCartMetadata(items: CartItem[]): Record<string, string> {
 	const meta: Record<string, string> = {
 		[CART_METADATA_KEYS.isCart]: "true",
@@ -83,32 +54,46 @@ export function buildCartMetadata(items: CartItem[]): Record<string, string> {
 	return meta;
 }
 
-/**
- * Validate the incoming cart payload. Returns an error message string
- * on validation failure, or null when the cart is shippable.
- *
- * Runs at the trust boundary, so it has to defend against shapes that
- * the TS types claim can't happen — clients can send anything.
- *
- * Paper fields are validated only when present. Non-print merch
- * (tapestries etc.) is identified by the absence of `paperSubcategoryId`
- * and skips the paper-shape checks. Print items must still provide a
- * complete and consistent paper config or they're rejected.
- *
- * Print sets (`type: "set"`) require a non-empty `imageUrls` array. The
- * encoded metadata payload size is checked against Stripe's 500-char
- * per-value cap because sets with many full-resolution image URLs can
- * blow past it — for those, the only supported path right now is the
- * legacy single-set Buy Now flow, which encodes the same data into
- * top-level metadata keys instead of one cart-item value.
- */
+export function parseHandleCartIntent(items: unknown): HandleCartIntent[] | null {
+	if (!Array.isArray(items) || items.length < 1 || items.length > 40) return null;
+	const parsed: HandleCartIntent[] = [];
+	for (const value of items) {
+		if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+		const item = value as Record<string, unknown>;
+		if (
+			typeof item.productSlug !== "string" ||
+			!item.productSlug.trim() ||
+			(item.type !== "print" && item.type !== "set") ||
+			!Number.isInteger(item.quantity) ||
+			Number(item.quantity) < 1 ||
+			Number(item.quantity) > MAX_QUANTITY_PER_LINE
+		)
+			return null;
+		const intent: HandleCartIntent = {
+			productSlug: item.productSlug.trim(),
+			type: item.type,
+			quantity: Number(item.quantity),
+		};
+		for (const key of ["paperSlug", "sizeSlug", "borderWidthValue", "frameValue"] as const) {
+			const candidate = item[key];
+			if (candidate !== undefined) {
+				if (typeof candidate !== "string" || !candidate) return null;
+				intent[key] = candidate;
+			}
+		}
+		if (item.paperIndex !== undefined) {
+			if (!Number.isInteger(item.paperIndex) || Number(item.paperIndex) < 0) return null;
+			intent.paperIndex = Number(item.paperIndex);
+		}
+		parsed.push(intent);
+	}
+	return parsed;
+}
+
 export function validateCart(items: unknown): string | null {
 	if (!Array.isArray(items)) return "items must be an array";
 	if (items.length === 0) return "cart is empty";
-	if (items.length > 40) {
-		// Stripe metadata limit guard — see `buildCartMetadata` comment.
-		return "cart is too large (max 40 items per checkout)";
-	}
+	if (items.length > 40) return "cart is too large (max 40 items per checkout)";
 	for (const item of items as CartItem[]) {
 		if (!item || typeof item !== "object") return "invalid cart item";
 		if (item.type !== "print" && item.type !== "set") {
@@ -127,8 +112,6 @@ export function validateCart(items: unknown): string | null {
 				}
 			}
 		}
-		// Paper fields are optional, but if any are present they must ALL
-		// be present and well-formed — partial paper config is a bug.
 		const hasPaperSubcategory = typeof item.paperSubcategoryId === "number";
 		const hasPaperWidth = typeof item.paperWidth === "number";
 		const hasPaperHeight = typeof item.paperHeight === "number";
@@ -158,10 +141,6 @@ export function validateCart(items: unknown): string | null {
 			return "cart item unitPriceCents must be a non-negative integer";
 		}
 	}
-	// After per-item validation, size-check the encoded metadata payload.
-	// Sets with many full-resolution image URLs can blow past Stripe's
-	// 500-char per-value cap — reject early with a clear message instead
-	// of letting the Stripe API reject the whole checkout call later.
 	const meta = buildCartMetadata(items as CartItem[]);
 	for (const [key, value] of Object.entries(meta)) {
 		if (key.startsWith("cartItem_") && value.length > CART_ITEM_PAYLOAD_MAX) {

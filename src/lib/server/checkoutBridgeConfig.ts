@@ -21,28 +21,60 @@ export interface CheckoutBridgeTenantConfig {
 }
 
 type CheckoutBridgeTenantRegistry = Record<string, CheckoutBridgeTenantConfig>;
+type CheckoutSnapshotReservationRegistry = Record<string, readonly string[]>;
 
-/** Resolve authority only after Convex has returned the canonical stored tenant key. */
+export function getCheckoutSnapshotReservationCredential(
+	siteUrl: string,
+	rawRegistry = env.CHECKOUT_SNAPSHOT_RESERVATION_SECRETS,
+	rawFingerprints = env.CHECKOUT_ROLE_CREDENTIAL_FINGERPRINTS,
+	rawBridgeRegistry = env.CHECKOUT_BRIDGE_TENANTS,
+): string {
+	try {
+		const { reservation } = validateCheckoutRoles(rawBridgeRegistry, rawRegistry, rawFingerprints);
+		const current = reservation[siteUrl]?.[0];
+		if (current) return current;
+	} catch {}
+	throw new Error("Checkout reservation credentials are unavailable");
+}
+
 export function getCheckoutBridgeTenantConfig(
 	siteUrl: string,
 	rawRegistry = env.CHECKOUT_BRIDGE_TENANTS,
 	rawFingerprints = env.CHECKOUT_ROLE_CREDENTIAL_FINGERPRINTS,
+	rawReservationRegistry = env.CHECKOUT_SNAPSHOT_RESERVATION_SECRETS,
 ): CheckoutBridgeTenantConfig | null {
-	const registry = parseCheckoutBridgeTenantRegistry(rawRegistry);
-	if (rawFingerprints !== undefined) {
-		const manifest = parseCheckoutRoleCredentialFingerprints(rawFingerprints);
-		const localFingerprints = Object.values(registry)
-			.flatMap(({ secrets }) => secrets)
-			.map(checkoutCredentialFingerprint);
-		if (
-			localFingerprints.length !== manifest.checkoutBridge.length ||
-			localFingerprints.some((fingerprint) => !manifest.checkoutBridge.includes(fingerprint))
-		)
-			throw new Error("Checkout role credential fingerprints do not match configuration");
-	}
+	const { bridge: registry } = validateCheckoutRoles(
+		rawRegistry,
+		rawReservationRegistry,
+		rawFingerprints,
+	);
 	const tenant = registry[siteUrl];
 	if (!tenant) return null;
 	return { secrets: [...tenant.secrets], redirectOrigins: [...tenant.redirectOrigins] };
+}
+
+function validateCheckoutRoles(
+	rawBridge: string | undefined,
+	rawReservation: string | undefined,
+	rawManifest: string | undefined,
+) {
+	if (!rawManifest) throw new Error("Checkout role credential fingerprints are unavailable");
+	const bridge = parseCheckoutBridgeTenantRegistry(rawBridge);
+	const reservation = parseCheckoutSnapshotReservationRegistry(rawReservation);
+	const manifest = parseCheckoutRoleCredentialFingerprints(rawManifest);
+	const actual = {
+		checkoutBridge: Object.values(bridge).flatMap(({ secrets }) => secrets),
+		checkoutSnapshotReservation: Object.values(reservation).flat(),
+	};
+	for (const role of CHECKOUT_ROLE_NAMES) {
+		const local = actual[role].map(checkoutCredentialFingerprint);
+		if (
+			local.length !== manifest[role].length ||
+			local.some((value) => !manifest[role].includes(value))
+		)
+			throw new Error("Checkout role credential fingerprints do not match configuration");
+	}
+	return { bridge, reservation };
 }
 
 export function parseCheckoutRoleCredentialFingerprints(
@@ -75,6 +107,49 @@ export function parseCheckoutRoleCredentialFingerprints(
 
 export function checkoutCredentialFingerprint(secret: string) {
 	return createHash("sha256").update(secret).digest("hex");
+}
+
+export function parseCheckoutSnapshotReservationRegistry(rawRegistry: string | undefined) {
+	if (!rawRegistry || Buffer.byteLength(rawRegistry, "utf8") > MAX_REGISTRY_BYTES) {
+		throw new Error("Checkout reservation credentials are unavailable");
+	}
+	let parsed: unknown;
+	try {
+		parsed = JSON.parse(rawRegistry);
+	} catch {
+		throw new Error("Checkout reservation credentials are unavailable");
+	}
+	if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+		throw new Error("Checkout reservation credentials are unavailable");
+	}
+	const entries = Object.entries(parsed);
+	if (entries.length === 0 || entries.length > MAX_TENANTS) {
+		throw new Error("Checkout reservation credentials are unavailable");
+	}
+	const registry = Object.create(null) as CheckoutSnapshotReservationRegistry;
+	const seen = new Set<string>();
+	for (const [siteUrl, value] of entries) {
+		if (!siteUrl || siteUrl !== siteUrl.trim() || siteUrl.length > 253 || !Array.isArray(value)) {
+			throw new Error("Checkout reservation credentials are unavailable");
+		}
+		const secrets = value as unknown[];
+		if (
+			secrets.length === 0 ||
+			secrets.length > MAX_SECRETS_PER_TENANT ||
+			secrets.some(
+				(secret) =>
+					typeof secret !== "string" ||
+					secret !== secret.trim() ||
+					secret.length < MIN_SECRET_LENGTH ||
+					secret.length > MAX_SECRET_LENGTH ||
+					seen.has(secret),
+			)
+		)
+			throw new Error("Checkout reservation credentials are unavailable");
+		for (const secret of secrets as string[]) seen.add(secret);
+		registry[siteUrl] = secrets as string[];
+	}
+	return registry;
 }
 
 export function parseCheckoutBridgeTenantRegistry(rawRegistry: string | undefined) {

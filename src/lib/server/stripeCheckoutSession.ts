@@ -22,11 +22,13 @@ export interface CreatePaymentCheckoutSessionOptions {
 	shippingAllowedCountries?: AllowedCountry[];
 	tenantCheckout?: TenantStripeCheckoutOptions;
 	idempotencyKey?: string;
+	expiresAt?: number;
 }
 
 export interface PaymentCheckoutSessionResult {
 	sessionId: string;
 	url: string | null;
+	expiresAt?: number;
 }
 
 export function buildCheckoutLineItem({
@@ -63,7 +65,13 @@ export async function createPaymentCheckoutSession({
 	shippingAllowedCountries,
 	tenantCheckout,
 	idempotencyKey,
+	expiresAt,
 }: CreatePaymentCheckoutSessionOptions): Promise<PaymentCheckoutSessionResult> {
+	const finalMetadata = {
+		...metadata,
+		...(tenantCheckout?.metadata ?? {}),
+	};
+	validateStripeMetadata(finalMetadata);
 	const requestOptions =
 		tenantCheckout?.requestOptions || idempotencyKey
 			? {
@@ -86,14 +94,33 @@ export async function createPaymentCheckoutSession({
 			mode: "payment",
 			success_url: successUrl,
 			cancel_url: cancelUrl,
-			metadata: {
-				...metadata,
-				...(tenantCheckout?.metadata ?? {}),
-			},
+			metadata: finalMetadata,
+			...(expiresAt === undefined ? {} : { expires_at: expiresAt }),
 			...(tenantCheckout?.session ?? {}),
 		},
 		requestOptions,
 	);
 
-	return { sessionId: session.id, url: session.url };
+	return {
+		sessionId: session.id,
+		url: session.url,
+		...(expiresAt === undefined ? {} : { expiresAt }),
+	};
+}
+
+function validateStripeMetadata(metadata: Stripe.MetadataParam) {
+	const entries = Object.entries(metadata);
+	if (
+		entries.length > 50 ||
+		entries.some(
+			([key, value]) =>
+				!key ||
+				key.length > 40 ||
+				key.includes("[") ||
+				key.includes("]") ||
+				typeof value !== "string" ||
+				value.length > 500,
+		)
+	)
+		throw new Error("Invalid Stripe metadata");
 }

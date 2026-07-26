@@ -1,35 +1,23 @@
-/**
- * Cart Checkout API Endpoint (cart PR C of the cart stack).
- *
- * Counterpart to /api/checkout for multi-item shopping cart purchases.
- * Accepts an array of CartItem and creates ONE Stripe checkout session
- * with one Stripe line item per cart entry, then writes a webhook-friendly
- * metadata payload that the existing webhook handler decodes.
- *
- * The pure validation + metadata-encoding logic lives in
- * `$lib/server/cartCheckoutHelpers` so the unit tests can import them
- * directly. SvelteKit `+server.ts` files only allow specific named
- * exports (HTTP method handlers + underscore-prefixed names), so any
- * exported helper would have to live behind an underscore prefix —
- * extracting them to a normal module is cleaner.
- *
- * Cart-level coupons are not supported. The legacy single-product flow has
- * per-product coupon validation that does not translate directly to a mixed
- * cart. Print sets are supported when their encoded metadata fits Stripe's
- * per-value limit; `validateCart` enforces that boundary.
- */
-
 import { error, json } from "@sveltejs/kit";
 import type Stripe from "stripe";
+import { env } from "$env/dynamic/private";
 import { PUBLIC_SITE_URL } from "$env/static/public";
 import { client as sanityClient } from "$lib/sanity/client";
+import { ApiErrorCode, apiError } from "$lib/server/apiError";
 import {
 	buildCartMetadata,
 	buildCartTenantCheckoutOptions,
+	parseHandleCartIntent,
 	validateCart,
 } from "$lib/server/cartCheckoutHelpers";
 import { bindCheckoutSession } from "$lib/server/checkoutBinding";
 import { resolveCheckoutItem } from "$lib/server/checkoutCatalog";
+import { isCheckoutSnapshotReservationConflict } from "$lib/server/checkoutSnapshotReservationClient";
+import {
+	checkoutSnapshotMode,
+	createHandleCheckoutSession,
+	validateCheckoutAttemptRequest,
+} from "$lib/server/handleCheckout";
 import {
 	buildCheckoutLineItem,
 	createPaymentCheckoutSession,
@@ -40,58 +28,82 @@ import type { CartItem } from "$lib/shop/cart";
 
 interface CartCheckoutRequest {
 	items: CartItem[];
+	attempt?: unknown;
+	attemptStartedAt?: unknown;
 }
 
 export async function POST({ request, cookies }) {
 	const stripe = getStripe();
+	const mode = checkoutSnapshotMode(env.CHECKOUT_SNAPSHOT_MODE);
 	try {
 		const body = (await request.json()) as CartCheckoutRequest;
 		const { items } = body;
-
-		const validationError = validateCart(items);
-		if (validationError) {
-			throw error(400, validationError);
+		const handleIntents = mode === "handle-v2" ? parseHandleCartIntent(items) : null;
+		if (mode === "handle-v2") {
+			validateCheckoutAttemptRequest(body.attempt, body.attemptStartedAt);
+			if (!handleIntents) throw error(400, "invalid cart checkout intent");
+		} else {
+			const validationError = validateCart(items);
+			if (validationError) throw error(400, validationError);
 		}
 
-		const resolvedItems = await Promise.all(
-			items.map(async (item) => {
-				const resolved = await resolveCheckoutItem(sanityClient.fetch.bind(sanityClient), {
-					productId: item.productSlug,
-					isPrintSet: item.type === "set",
-					paperSlug: item.paperSlug,
-					sizeSlug: item.sizeSlug,
-					paperIndex: item.paperIndex,
-					borderWidth: item.borderWidthValue ?? item.borderWidth?.toString(),
-					frame: item.frameValue,
-				});
+		const sourceItems = handleIntents ?? items;
+		const resolved = await Promise.all(
+			sourceItems.map(async (item) => {
+				const catalogItem = await resolveCheckoutItem(
+					sanityClient.fetch.bind(sanityClient),
+					{
+						productId: item.productSlug,
+						isPrintSet: item.type === "set",
+						paperSlug: item.paperSlug,
+						sizeSlug: item.sizeSlug,
+						paperIndex: item.paperIndex,
+						borderWidth:
+							item.borderWidthValue ??
+							("borderWidth" in item ? item.borderWidth?.toString() : undefined),
+						frame: item.frameValue,
+					},
+					mode === "handle-v2",
+				);
+				const fulfillment = catalogItem.legacyFulfillment;
+				const base: CartItem =
+					mode === "handle-v2"
+						? {
+								id: "server-resolved",
+								productSlug: catalogItem.productId,
+								type: fulfillment.isPrintSet ? "set" : "print",
+								quantity: item.quantity,
+								title: catalogItem.title,
+								imageUrl: fulfillment.imageUrl ?? "",
+								unitPriceCents: catalogItem.unitPriceCents,
+							}
+						: (item as CartItem);
 				return {
-					...item,
-					title: resolved.title,
-					imageUrl: resolved.image ?? "",
-					imageUrls: resolved.isPrintSet ? resolved.images : undefined,
-					paperName: resolved.paper?.name,
-					paperSubcategoryId: resolved.paper?.subcategoryId,
-					paperWidth: resolved.paper?.width,
-					paperHeight: resolved.paper?.height,
-					borderWidth: resolved.paper?.borderWidth,
-					frameSubcategoryId: resolved.paper?.frameSubcategoryId,
-					canvasSubcategoryId: resolved.paper?.canvasSubcategoryId,
-					canvasWrapHex: resolved.paper?.canvasWrapHex,
-					unitPriceCents: Math.round(resolved.price * 100),
-				} satisfies CartItem;
+					catalogItem,
+					cartItem: {
+						...base,
+						title: catalogItem.title,
+						imageUrl: fulfillment.imageUrl ?? "",
+						imageUrls: fulfillment.isPrintSet ? [...fulfillment.imageUrls] : undefined,
+						paperName: fulfillment.paper?.name,
+						paperSubcategoryId: fulfillment.paper?.subcategoryId,
+						paperWidth: fulfillment.paper?.width,
+						paperHeight: fulfillment.paper?.height,
+						borderWidth: fulfillment.paper?.borderWidth,
+						frameSubcategoryId: fulfillment.paper?.frameSubcategoryId,
+						canvasSubcategoryId: fulfillment.paper?.canvasSubcategoryId,
+						canvasWrapHex: fulfillment.paper?.canvasWrapHex,
+						unitPriceCents: catalogItem.unitPriceCents,
+					} satisfies CartItem,
+				};
 			}),
 		);
-
-		const resolvedValidationError = validateCart(resolvedItems);
-		if (resolvedValidationError) {
-			throw error(400, resolvedValidationError);
+		const resolvedItems = resolved.map(({ cartItem }) => cartItem);
+		if (mode === "legacy") {
+			const resolvedValidationError = validateCart(resolvedItems);
+			if (resolvedValidationError) throw error(400, resolvedValidationError);
 		}
 
-		// Build one Stripe line item per cart entry. Stripe expects each
-		// line item with its own price_data and quantity — perfect for
-		// our shape after the server resolves current catalog prices.
-		// Non-print merch (no paper info) gets a simpler product name with
-		// no paper/size suffix.
 		const lineItems: Stripe.Checkout.SessionCreateParams.LineItem[] = resolvedItems.map((item) => {
 			const hasPaper = typeof item.paperSubcategoryId === "number";
 			const name = hasPaper
@@ -111,25 +123,50 @@ export async function POST({ request, cookies }) {
 			tenant,
 		});
 
+		const successUrl = `${PUBLIC_SITE_URL}/checkout/success?session_id={CHECKOUT_SESSION_ID}`;
+		const cancelUrl = `${PUBLIC_SITE_URL}/checkout/cancel`;
+		if (mode === "handle-v2") {
+			const snapshots = resolved.map(({ catalogItem }) => {
+				if (!catalogItem.snapshot) throw new Error("Checkout snapshot identity is unavailable");
+				return catalogItem.snapshot;
+			});
+			const session = await createHandleCheckoutSession({
+				attempt: body.attempt,
+				attemptStartedAt: body.attemptStartedAt,
+				site: String(tenantCheckout.metadata.commerceTenantSiteUrl),
+				account: tenant.stripeConnectedAccountId?.trim() || null,
+				snapshotItems: snapshots,
+				stripe,
+				lineItems,
+				successUrl,
+				cancelUrl,
+				shippingAllowedCountries: ["US"],
+				tenantCheckout,
+				bindSession: (sessionId) => bindCheckoutSession(cookies, sessionId),
+			});
+			return json(session);
+		}
 		const session = await createPaymentCheckoutSession({
 			stripe,
-			// Supported cart items are physical, so checkout always collects shipping.
 			shippingAllowedCountries: ["US"],
 			lineItems,
-			successUrl: `${PUBLIC_SITE_URL}/checkout/success?session_id={CHECKOUT_SESSION_ID}`,
-			cancelUrl: `${PUBLIC_SITE_URL}/checkout/cancel`,
+			successUrl,
+			cancelUrl,
 			metadata: buildCartMetadata(resolvedItems),
 			tenantCheckout,
 		});
-
-		// Bind this browser to the session so /checkout/success can verify
-		// the caller is the buyer before returning customer PII (audit H30).
 		bindCheckoutSession(cookies, session.sessionId);
-
 		return json(session);
 	} catch (err: unknown) {
-		// Re-throw SvelteKit-shaped errors so the 4xx status survives
-		if (err && typeof err === "object" && "status" in err) throw err;
+		if (isCheckoutSnapshotReservationConflict(err)) {
+			throw apiError(409, ApiErrorCode.CHECKOUT_ATTEMPT_REJECTED, "Checkout attempt rejected");
+		}
+		if (err && typeof err === "object" && "status" in err && (mode === "legacy" || "body" in err))
+			throw err;
+		if (mode === "handle-v2") {
+			console.error("Cart checkout failed");
+			throw error(500, "Checkout failed. Please try again.");
+		}
 		const message = err instanceof Error ? err.message : "unknown error";
 		console.error("Cart checkout error:", message);
 		throw error(500, message || "Failed to create cart checkout session");
