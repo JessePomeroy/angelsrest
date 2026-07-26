@@ -134,6 +134,30 @@ describe("Sanity Shop adapter", () => {
 		});
 	});
 
+	it("loads only top-level collection cards for the mixed Convex index", async () => {
+		const { client, fetch } = fakeSanity([
+			{
+				title: "Collection",
+				slug: "collection",
+				previewImage: image("collection", "Collection alt"),
+			},
+		]);
+
+		await expect(createSanityShopAdapter(() => client).loadCollectionIndex(false)).resolves.toEqual(
+			[
+				{
+					title: "Collection",
+					slug: "collection",
+					previewImage: "preview:collection",
+					alt: "Collection alt",
+				},
+			],
+		);
+		expect(fetch).toHaveBeenCalledOnce();
+		expect(fetch.mock.calls[0]?.[0]).toContain('_type == "printCollection" && !defined(parent)');
+		expect(fetch.mock.calls[0]?.[0]).not.toMatch(/lumaProductV2|lumaPrintSetV2|_type == "product"/);
+	});
+
 	it("projects V2 detail transforms and nullish defaults without hiding unavailable items", async () => {
 		const { client, fetch } = fakeSanity(
 			v2Product({

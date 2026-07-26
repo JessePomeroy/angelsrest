@@ -119,6 +119,11 @@ const displayPrice = $derived.by(() => {
 	}
 	return selectedPaperData?.price ?? data.product.price ?? null;
 });
+const displayPriceLabel = $derived(
+	typeof displayPrice === "number" && Number.isFinite(displayPrice)
+		? `$${displayPrice}`
+		: "Out of stock",
+);
 
 // ─── V2 checkout/cart handlers ──────────────────────────────
 function handleV2Checkout() {
@@ -444,7 +449,7 @@ function handleV1AddToCart() {
 				<!-- Desktop: inline price + buttons -->
 				<div class="hidden md:flex items-baseline justify-between gap-4 py-2">
 					<div class="text-3xl font-semibold text-surface-900-50-token">
-						${displayPrice}
+						{displayPriceLabel}
 					</div>
 					<div class="flex gap-2">
 						{#if canAddToCartV1}
@@ -497,7 +502,7 @@ function handleV1AddToCart() {
 					{#snippet children(isStuck)}
 						<div class="flex items-center justify-between gap-2">
 							<div class="flex items-center gap-1.5 min-w-0">
-								<span class="text-xl font-semibold shrink-0">${displayPrice}</span>
+								<span class="text-xl font-semibold shrink-0">{displayPriceLabel}</span>
 								{#if data.product.category}
 									<span class="text-xs truncate {isStuck ? 'text-surface-300' : 'text-surface-600-300-token'}">
 										{data.product.category}

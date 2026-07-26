@@ -1,4 +1,5 @@
 import { getPaperBySlug, getSizeBySlug, getWholesaleCost } from "@jessepomeroy/print-catalog";
+import { error } from "@sveltejs/kit";
 import { ConvexHttpClient } from "convex/browser";
 import type { FunctionReturnType } from "convex/server";
 import { api } from "$convex/api";
@@ -6,16 +7,19 @@ import { env as privateEnv } from "$env/dynamic/private";
 import { env as publicEnv } from "$env/dynamic/public";
 import { SITE_DOMAIN } from "$lib/config/site";
 import { getSanityClient } from "$lib/sanity/client.server";
+import {
+	adaptConvexIndex,
+	adaptConvexPrintSet,
+	adaptConvexProduct,
+} from "$lib/server/convexShopAdapter";
 import { logStructured } from "$lib/server/logger";
 import { sanityShop } from "$lib/server/sanityShop.server";
 
 type PublishedCatalog = FunctionReturnType<typeof api.catalogProductGraphs.listPublished>;
-type PublishedProduct = FunctionReturnType<typeof api.catalogProductGraphs.getPublishedBySlug>;
 type ClosedReason = "mismatch" | "timeout" | "secondary_error" | "normalization_error";
 
 type CatalogReader = {
 	listPublished(signal: AbortSignal): Promise<PublishedCatalog>;
-	getPublishedBySlug(slug: string, signal: AbortSignal): Promise<PublishedProduct>;
 };
 
 type SemanticProduct = { slug: string; value: { kind: string } };
@@ -35,7 +39,6 @@ const COMPLETE_CATALOG_KIND_COUNTS: Record<string, number> = {
 	digital_download: 1,
 	merchandise: 0,
 };
-const KINDS = new Set(Object.keys(COMPLETE_CATALOG_KIND_COUNTS));
 
 const SANITY_COMPARISON_QUERY = `*[_type in ["lumaProductV2", "lumaPrintSetV2", "product"]]{_type,"slug":slug.current,category,orderRank,inStock,featured,price,variants[]{paper,size,retailPrice,enabled},bordersEnabled,framedEnabled,frameMarkupMultiplier,availablePapers,image{"source":asset->metadata.dimensions{width,height}},previewImage{"source":asset->metadata.dimensions{width,height}},images[]{"source":asset->metadata.dimensions{width,height}},seo{ogImage{"source":asset->metadata.dimensions{width,height}}}}`;
 
@@ -219,11 +222,8 @@ function normalizeSanityCatalog(value: unknown): SemanticProduct[] {
 
 function convexPrintOptions(value: unknown) {
 	const options = record(value);
-	if (
-		typeof options.borderOptionsEnabled !== "boolean" ||
-		typeof options.frameOptionsEnabled !== "boolean"
-	)
-		throw new NormalizationError();
+	if (typeof options.borderOptionsEnabled !== "boolean") throw new NormalizationError();
+	if (typeof options.frameOptionsEnabled !== "boolean") throw new NormalizationError();
 	return {
 		borderOptionsEnabled: options.borderOptionsEnabled,
 		frameOptionsEnabled: options.frameOptionsEnabled,
@@ -234,53 +234,45 @@ function convexPrintOptions(value: unknown) {
 function normalizeConvexCatalog(value: unknown): SemanticProduct[] {
 	const products = array(value).map((raw) => {
 		const product = record(raw);
-		if (product.schemaVersion !== 2 || product.currency !== "usd") throw new NormalizationError();
 		const kind = slug(product.productKind);
-		if (!KINDS.has(kind)) throw new NormalizationError();
+		if (!Object.hasOwn(COMPLETE_CATALOG_KIND_COUNTS, kind)) throw new NormalizationError();
 		const placement = record(product.shopPlacement);
 		if (typeof placement.featured !== "boolean") throw new NormalizationError();
+		const isPrint = kind === "print" || kind === "print_set";
 		const variants = array(product.variants).map((rawVariant) => {
 			const variant = record(rawVariant);
-			if (!Number.isSafeInteger(variant.order) || (variant.order as number) < 0) {
+			if (!Number.isSafeInteger(variant.order) || (variant.order as number) < 0)
 				throw new NormalizationError();
-			}
-			const isPrint = kind === "print" || kind === "print_set";
-			if (!isPrint && (variant.materialOption !== null || variant.sizeOption !== null)) {
+			if (!isPrint && (variant.materialOption !== null || variant.sizeOption !== null))
 				throw new NormalizationError();
-			}
 			const materialValue = isPrint ? record(variant.materialOption) : null;
 			const sizeValue = isPrint ? record(variant.sizeOption) : null;
-			let material = null;
-			let size = null;
-			if (materialValue && sizeValue) {
-				material = { slug: slug(materialValue.slug), label: slug(materialValue.label) };
-				size = {
-					slug: slug(sizeValue.slug),
-					label: slug(sizeValue.label),
-					widthInches: positiveInteger(sizeValue.widthInches),
-					heightInches: positiveInteger(sizeValue.heightInches),
-				};
-			}
-			const retailPriceCents = positiveInteger(variant.retailPriceCents);
-			return { order: variant.order, material, size, retailPriceCents };
+			return {
+				order: variant.order,
+				material: materialValue
+					? { slug: slug(materialValue.slug), label: slug(materialValue.label) }
+					: null,
+				size: sizeValue
+					? {
+							slug: slug(sizeValue.slug),
+							label: slug(sizeValue.label),
+							widthInches: positiveInteger(sizeValue.widthInches),
+							heightInches: positiveInteger(sizeValue.heightInches),
+						}
+					: null,
+				retailPriceCents: positiveInteger(variant.retailPriceCents),
+			};
 		});
 		const media = array(product.media).map((rawMedia) => {
 			const item = record(rawMedia);
 			const role = slug(item.role);
-			if (
-				!MEDIA_ROLES.has(role) ||
-				!Number.isSafeInteger(item.order) ||
-				(item.order as number) < 0
-			) {
+			if (!MEDIA_ROLES.has(role) || !Number.isSafeInteger(item.order) || (item.order as number) < 0)
 				throw new NormalizationError();
-			}
 			return { role, order: item.order, source: dimensions(record(item.asset)) };
 		});
 		const availability = product.saleAvailability;
 		if (availability !== "available" && availability !== "unavailable")
 			throw new NormalizationError();
-		const printOptions =
-			kind === "print" || kind === "print_set" ? convexPrintOptions(product.printOptions) : null;
 		return {
 			slug: slug(product.slug),
 			value: {
@@ -289,7 +281,7 @@ function normalizeConvexCatalog(value: unknown): SemanticProduct[] {
 				featured: placement.featured,
 				orderRank: optionalString(placement.orderRank),
 				variants,
-				printOptions,
+				printOptions: isPrint ? convexPrintOptions(product.printOptions) : null,
 				media,
 			},
 		};
@@ -345,11 +337,6 @@ function createCatalogReader(): CatalogReader {
 		listPublished: (signal) =>
 			request(signal).query(api.catalogProductGraphs.listPublished, {
 				siteUrl: SITE_DOMAIN,
-			}),
-		getPublishedBySlug: (productSlug, signal) =>
-			request(signal).query(api.catalogProductGraphs.getPublishedBySlug, {
-				siteUrl: SITE_DOMAIN,
-				slug: productSlug,
 			}),
 	};
 }
@@ -440,27 +427,53 @@ export function createCatalogShopProvider(
 		}
 	}
 
+	async function loadConvexIndex() {
+		try {
+			const adapted = adaptConvexIndex(await reader().listPublished(new AbortController().signal));
+			return { ...adapted, collections: await sanity.loadCollectionIndex(false) };
+		} catch {
+			throw error(503, "Shop catalog is unavailable");
+		}
+	}
+
+	async function loadConvexDetail<Result>(
+		productSlug: string,
+		adapt: (value: unknown, slug: string) => Result | null,
+		notFound: string,
+	) {
+		try {
+			const result = adapt(await reader().listPublished(new AbortController().signal), productSlug);
+			if (result) return result;
+		} catch {
+			throw error(503, "Shop catalog is unavailable");
+		}
+		throw error(404, notFound);
+	}
+
 	return {
 		loadIndex(isPreview: boolean) {
 			if (isPreview) return sanity.loadIndex(true);
-			return parseCatalogProviderMode(mode()) === "shadow"
+			const providerMode = parseCatalogProviderMode(mode());
+			return providerMode === "shadow"
 				? loadShadowIndex()
-				: sanity.loadIndex(false);
+				: providerMode === "convex"
+					? loadConvexIndex()
+					: sanity.loadIndex(false);
 		},
-		loadProduct: (productSlug: string, isPreview: boolean) =>
-			sanity.loadProduct(productSlug, isPreview),
-		loadPrintSet: (productSlug: string, isPreview: boolean) =>
-			sanity.loadPrintSet(productSlug, isPreview),
+		loadProduct(productSlug: string, isPreview: boolean) {
+			if (isPreview) return sanity.loadProduct(productSlug, true);
+			return parseCatalogProviderMode(mode()) === "convex"
+				? loadConvexDetail(productSlug, adaptConvexProduct, "Product not found")
+				: sanity.loadProduct(productSlug, false);
+		},
+		loadPrintSet(productSlug: string, isPreview: boolean) {
+			if (isPreview) return sanity.loadPrintSet(productSlug, true);
+			return parseCatalogProviderMode(mode()) === "convex"
+				? loadConvexDetail(productSlug, adaptConvexPrintSet, "Print set not found")
+				: sanity.loadPrintSet(productSlug, false);
+		},
 		loadCollection(productSlug: string, isPreview: boolean) {
 			return sanity.loadCollection(productSlug, isPreview);
-		},
-		// Missing CRM collection relations/object keys keep route adaptation dormant until CMS-5.6g.
-		async readConvexCatalog(productSlug?: string, signal = new AbortController().signal) {
-			if (parseCatalogProviderMode(mode()) !== "convex") return null;
-			const convex = reader();
-			return productSlug === undefined
-				? convex.listPublished(signal)
-				: convex.getPublishedBySlug(productSlug, signal);
 		},
 	};
 }

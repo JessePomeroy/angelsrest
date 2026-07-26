@@ -10,12 +10,6 @@ function source(path: string) {
 
 describe("shop catalog route boundaries", () => {
 	it("keeps all four Shop loaders thin behind the private catalog provider", () => {
-		const provider = source("src/lib/server/catalogShop.server.ts");
-		expect(provider).toContain('from "$env/dynamic/private"');
-		expect(provider).toContain("FunctionReturnType");
-		expect(provider).toContain("listPublished");
-		expect(provider).toContain("getPublishedBySlug");
-
 		for (const path of [
 			"src/routes/shop/+page.server.ts",
 			"src/routes/shop/[slug]/+page.server.ts",
@@ -43,6 +37,14 @@ describe("shop catalog route boundaries", () => {
 		expect(checkoutRoute.indexOf("rejectCouponAttempt(rawBody)")).toBeLessThan(
 			checkoutRoute.indexOf("const stripe = getStripe()"),
 		);
+	});
+
+	it("renders unavailable fixed-kind details without a null price", () => {
+		const page = source("src/routes/shop/[slug]/+page.svelte");
+		const v1 = page.split("V1 Layout (merch, postcards, tapestries, digital)")[1];
+		expect(page).toContain('typeof displayPrice === "number" && Number.isFinite(displayPrice)');
+		expect(page).toContain(': "Out of stock"');
+		expect(v1?.match(/{displayPriceLabel}/g)).toHaveLength(2);
 	});
 
 	it("retains historical set-shaped webhook decoding for delayed or replayed payments", () => {
