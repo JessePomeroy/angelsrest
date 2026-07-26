@@ -627,6 +627,20 @@ export async function loadCatalogProductGraphV2Revision(
 	};
 }
 
+/** Load a paid snapshot revision after a later re-slug; all ordinary loaders stay strict-current. */
+export async function loadPaidHistoricalCatalogProductGraphV2Revision(
+	ctx: CatalogGraphContext,
+	productValue: CatalogProduct,
+	revisionId: Id<"catalogProductRevisions"> | undefined,
+) {
+	if (!revisionId) return null;
+	const product = requireCatalogProductGraphV2Product(productValue);
+	const revision = await ctx.db.get(revisionId);
+	if (!revision) throw new Error("Catalog V2 revision not found");
+	assertCatalogProductGraphV2RevisionOwnership(revision, product);
+	return await loadCatalogProductGraphV2Revision(ctx, { ...product, slug: revision.slug }, revisionId);
+}
+
 export function projectCatalogProductGraphV2RevisionSummary(
 	revision: CatalogRevisionV2 | null,
 ) {

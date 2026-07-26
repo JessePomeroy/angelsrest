@@ -1173,6 +1173,7 @@ export async function getCatalogProductGraphV2RetirementEligibility(
 	);
 	const product = requireCatalogProductGraphV2Product(doc);
 	requireCatalogProductKindEnabled(client, product.productKind);
+	await loadCatalogGraphV2RevisionSummaries(ctx, product);
 	const revisions = await ctx.db
 		.query("catalogProductRevisions")
 		.withIndex("by_siteUrl_and_productId", (query) =>
