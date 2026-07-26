@@ -1,4 +1,5 @@
 import { error, json } from "@sveltejs/kit";
+import { env } from "$env/dynamic/private";
 import {
 	CheckoutBridgeError,
 	createTenantPrintCheckoutSession,
@@ -26,6 +27,7 @@ export async function POST({ request }) {
 			secrets: bridgeConfig.secrets,
 			allowedRedirectOrigins: bridgeConfig.redirectOrigins,
 			snapshotMode: bridgeConfig.snapshotMode,
+			globalSnapshotMode: env.CHECKOUT_SNAPSHOT_MODE,
 		});
 
 		return json(session);

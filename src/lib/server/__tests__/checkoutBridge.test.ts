@@ -110,6 +110,7 @@ function handleOptions(
 		secrets: [SECRET],
 		allowedRedirectOrigins: ["https://zippymiggy.com"],
 		snapshotMode: "handle-v2",
+		globalSnapshotMode: "handle-v2",
 		reservationClient,
 		now: NOW,
 		...overrides,
@@ -117,7 +118,7 @@ function handleOptions(
 }
 
 describe("checkout bridge", () => {
-	it("creates a connected-account print checkout with the platform fee", async () => {
+	it("keeps default legacy results and Stripe parameters", async () => {
 		const bodyText = makeBody();
 		const { stripe, create } = makeStripe();
 
@@ -279,7 +280,7 @@ describe("checkout bridge", () => {
 		expect(create).not.toHaveBeenCalled();
 	});
 
-	it("keeps absent-mode legacy bytes and behavior without inspecting handle fields", async () => {
+	it("keeps default legacy bytes and behavior without inspecting handle fields", async () => {
 		const bodyText = makeBody({ attempt: "bad", checkoutSnapshot: { extra: "ignored" } });
 		const reservationClient = makeReservation();
 		const { stripe, create } = makeStripe();
@@ -304,7 +305,41 @@ describe("checkout bridge", () => {
 		expect(reservationClient.reserve).not.toHaveBeenCalled();
 	});
 
-	it("runs a convex handle checkout against only the configured redirect origins", async () => {
+	it.each([
+		["absent", undefined],
+		["empty", ""],
+		["invalid", "HANDLE-V2"],
+	] as const)("keeps a tenant handle gate in legacy when global mode is %s", async (_label, mode) => {
+		const bodyText = makeHandleBody();
+		const reservationClient = makeReservation();
+		const { stripe, create } = makeStripe();
+		await expect(
+			createTenantPrintCheckoutSession(
+				handleOptions(bodyText, stripe, reservationClient, { globalSnapshotMode: mode }),
+			),
+		).resolves.toMatchObject({ sessionId: "cs_test_123" });
+		expect(create.mock.calls[0]?.[0]).toMatchObject({
+			metadata: expect.objectContaining({ productSlug: "digital-headshot" }),
+		});
+		expect(reservationClient.reserve).not.toHaveBeenCalled();
+	});
+
+	it("keeps a global handle gate in legacy when the tenant gate is absent", async () => {
+		const bodyText = makeHandleBody();
+		const reservationClient = makeReservation();
+		const { stripe, create } = makeStripe();
+		await expect(
+			createTenantPrintCheckoutSession(
+				handleOptions(bodyText, stripe, reservationClient, { snapshotMode: undefined }),
+			),
+		).resolves.toMatchObject({ sessionId: "cs_test_123" });
+		expect(create.mock.calls[0]?.[0]).toMatchObject({
+			metadata: expect.objectContaining({ productSlug: "digital-headshot" }),
+		});
+		expect(reservationClient.reserve).not.toHaveBeenCalled();
+	});
+
+	it("uses handle mode only when both global and tenant gates are exact", async () => {
 		const publicOrigin = "https://reflecting-pool.vercel.app";
 		const bodyText = makeHandleBody({
 			successUrl: `${publicOrigin}/shop/success?session_id={CHECKOUT_SESSION_ID}`,
