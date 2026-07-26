@@ -27,43 +27,54 @@ export function getCheckoutSnapshotReservationCredential(
 	siteUrl: string,
 	rawRegistry = env.CHECKOUT_SNAPSHOT_RESERVATION_SECRETS,
 	rawFingerprints = env.CHECKOUT_ROLE_CREDENTIAL_FINGERPRINTS,
+	rawBridgeRegistry = env.CHECKOUT_BRIDGE_TENANTS,
 ): string {
-	const registry = parseCheckoutSnapshotReservationRegistry(rawRegistry);
-	if (!rawFingerprints) throw new Error("Checkout reservation credentials are unavailable");
-	const manifest = parseCheckoutRoleCredentialFingerprints(rawFingerprints);
-	const localFingerprints = Object.values(registry).flat().map(checkoutCredentialFingerprint);
-	if (
-		localFingerprints.length !== manifest.checkoutSnapshotReservation.length ||
-		localFingerprints.some(
-			(fingerprint) => !manifest.checkoutSnapshotReservation.includes(fingerprint),
-		)
-	)
-		throw new Error("Checkout reservation credentials are unavailable");
-	const current = registry[siteUrl]?.[0];
-	if (!current) throw new Error("Checkout reservation credentials are unavailable");
-	return current;
+	try {
+		const { reservation } = validateCheckoutRoles(rawBridgeRegistry, rawRegistry, rawFingerprints);
+		const current = reservation[siteUrl]?.[0];
+		if (current) return current;
+	} catch {}
+	throw new Error("Checkout reservation credentials are unavailable");
 }
 
 export function getCheckoutBridgeTenantConfig(
 	siteUrl: string,
 	rawRegistry = env.CHECKOUT_BRIDGE_TENANTS,
 	rawFingerprints = env.CHECKOUT_ROLE_CREDENTIAL_FINGERPRINTS,
+	rawReservationRegistry = env.CHECKOUT_SNAPSHOT_RESERVATION_SECRETS,
 ): CheckoutBridgeTenantConfig | null {
-	const registry = parseCheckoutBridgeTenantRegistry(rawRegistry);
-	if (rawFingerprints !== undefined) {
-		const manifest = parseCheckoutRoleCredentialFingerprints(rawFingerprints);
-		const localFingerprints = Object.values(registry)
-			.flatMap(({ secrets }) => secrets)
-			.map(checkoutCredentialFingerprint);
-		if (
-			localFingerprints.length !== manifest.checkoutBridge.length ||
-			localFingerprints.some((fingerprint) => !manifest.checkoutBridge.includes(fingerprint))
-		)
-			throw new Error("Checkout role credential fingerprints do not match configuration");
-	}
+	const { bridge: registry } = validateCheckoutRoles(
+		rawRegistry,
+		rawReservationRegistry,
+		rawFingerprints,
+	);
 	const tenant = registry[siteUrl];
 	if (!tenant) return null;
 	return { secrets: [...tenant.secrets], redirectOrigins: [...tenant.redirectOrigins] };
+}
+
+function validateCheckoutRoles(
+	rawBridge: string | undefined,
+	rawReservation: string | undefined,
+	rawManifest: string | undefined,
+) {
+	if (!rawManifest) throw new Error("Checkout role credential fingerprints are unavailable");
+	const bridge = parseCheckoutBridgeTenantRegistry(rawBridge);
+	const reservation = parseCheckoutSnapshotReservationRegistry(rawReservation);
+	const manifest = parseCheckoutRoleCredentialFingerprints(rawManifest);
+	const actual = {
+		checkoutBridge: Object.values(bridge).flatMap(({ secrets }) => secrets),
+		checkoutSnapshotReservation: Object.values(reservation).flat(),
+	};
+	for (const role of CHECKOUT_ROLE_NAMES) {
+		const local = actual[role].map(checkoutCredentialFingerprint);
+		if (
+			local.length !== manifest[role].length ||
+			local.some((value) => !manifest[role].includes(value))
+		)
+			throw new Error("Checkout role credential fingerprints do not match configuration");
+	}
+	return { bridge, reservation };
 }
 
 export function parseCheckoutRoleCredentialFingerprints(

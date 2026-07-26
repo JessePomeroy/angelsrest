@@ -13,15 +13,22 @@ vi.mock("$lib/utils/images", async () => {
 	};
 });
 
-import { resolveCheckoutItem } from "$lib/server/checkoutCatalog";
+import { resolveCheckoutItem as resolveCheckoutItemByMode } from "$lib/server/checkoutCatalog";
 
-type CheckoutFetcher = Parameters<typeof resolveCheckoutItem>[0];
+const resolveCheckoutItem = (
+	fetcher: Parameters<typeof resolveCheckoutItemByMode>[0],
+	selection: Parameters<typeof resolveCheckoutItemByMode>[1],
+) => resolveCheckoutItemByMode(fetcher, selection, true);
+
+type CheckoutFetcher = Parameters<typeof resolveCheckoutItemByMode>[0];
 
 describe("resolveCheckoutItem", () => {
-	it("resolves V2 product price from Sanity variant, not request price", async () => {
+	it("resolves V2 product price from Sanity variant in exactly one query", async () => {
 		let query = "";
+		let queryCount = 0;
 		const fetcher = (async (candidate: string) => {
 			query = candidate;
+			queryCount += 1;
 			return {
 				_id: "published-print",
 				_rev: "print-rev",
@@ -46,6 +53,7 @@ describe("resolveCheckoutItem", () => {
 			title: "fake title",
 		} as unknown as Parameters<typeof resolveCheckoutItem>[1]);
 
+		expect(queryCount).toBe(1);
 		expect(item.title).toBe("real print");
 		expect(item.unitPriceCents).toBe(4200);
 		expect(query).toMatch(/_id[\s\S]*_rev[\s\S]*_key/);
@@ -135,7 +143,7 @@ describe("resolveCheckoutItem", () => {
 		expect(fetcher).toHaveBeenCalledOnce();
 	});
 
-	it("falls back from V2 to V1 only on null and never on an upstream error", async () => {
+	it("uses one V2 query, then V1 only on null, and never performs an identity read", async () => {
 		const v1 = {
 			_id: "general-product",
 			_rev: "general-rev",
@@ -151,6 +159,7 @@ describe("resolveCheckoutItem", () => {
 		});
 		expect(fallback).toHaveBeenCalledTimes(2);
 		expect(String(fallback.mock.calls[1]?.[0])).toMatch(/availablePapers[\s\S]*_key/);
+		expect(fallback.mock.calls.map(([query]) => String(query)).join("\n")).not.toMatch(/_type in/);
 		const failed = vi.fn().mockRejectedValue(new Error("sanity unavailable"));
 		await expect(resolveCheckoutItem(failed, { productId: "tapestry" })).rejects.toThrow(
 			"sanity unavailable",
@@ -179,7 +188,7 @@ describe("resolveCheckoutItem", () => {
 					inStock: undefined,
 				});
 			const item = await resolveCheckoutItem(fetcher, { productId: kind });
-			expect(item.snapshot.productKind).toBe(kind);
+			expect(item.snapshot?.productKind).toBe(kind);
 		}
 		const unsupported = vi.fn().mockResolvedValueOnce(null).mockResolvedValueOnce({
 			_id: "unsupported",
@@ -192,6 +201,60 @@ describe("resolveCheckoutItem", () => {
 		await expect(
 			resolveCheckoutItem(unsupported, { productId: "unsupported" }),
 		).rejects.toMatchObject({ status: 400 });
+	});
+
+	it("keeps primitive availablePapers with a null deployed snapshot variant key", async () => {
+		const fetcher = vi
+			.fn()
+			.mockResolvedValueOnce(null)
+			.mockResolvedValueOnce({
+				_id: "primitive-paper-product",
+				_rev: "primitive-paper-revision",
+				title: "Primitive paper",
+				price: 20,
+				category: "prints",
+				images: [],
+				availablePapers: ["Glossy 8x10|103007|8|10"],
+			});
+		const item = await resolveCheckoutItem(fetcher, {
+			productId: "primitive-paper",
+			paperIndex: 0,
+		});
+		expect(item.snapshot?.variantKey).toBeNull();
+		expect(fetcher).toHaveBeenCalledTimes(2);
+	});
+
+	it("keeps default projections byte-exact and preserves the V2-to-V1 query count", async () => {
+		const fetcher = vi
+			.fn()
+			.mockResolvedValueOnce(null)
+			.mockResolvedValueOnce({
+				title: "Primitive paper",
+				price: 20,
+				category: "prints",
+				images: [],
+				availablePapers: ["Glossy 8x10|103007|8|10"],
+			});
+		await resolveCheckoutItemByMode(fetcher, { productId: "primitive-paper", paperIndex: 0 });
+		expect(fetcher.mock.calls.map(([query]) => String(query))).toEqual([
+			`\n  *[_type == "lumaProductV2" && slug.current == $slug][0]{\n    title,\n    image,\n    variants[enabled == true]{paper, size, retailPrice},\n    bordersEnabled,\n    framedEnabled,\n    frameMarkupMultiplier,\n    inStock\n  }\n`,
+			`\n  *[_type == "product" && slug.current == $slug][0]{\n    title,\n    price,\n    category,\n    inStock,\n    images[],\n    availablePapers[]{\n      name,\n      price,\n      subcategoryId,\n      width,\n      height\n    }\n  }\n`,
+		]);
+
+		const setFetcher = vi.fn().mockResolvedValue({
+			title: "Set",
+			variants: [{ paper: "archival-matte", size: "8x10", retailPrice: 20 }],
+		});
+		await resolveCheckoutItemByMode(setFetcher, {
+			productId: "set",
+			isPrintSet: true,
+			paperSlug: "archival-matte",
+			sizeSlug: "8x10",
+		});
+		expect(setFetcher).toHaveBeenCalledOnce();
+		expect(String(setFetcher.mock.calls[0]?.[0])).toBe(
+			`\n  *[_type == "lumaPrintSetV2" && slug.current == $slug][0]{\n    title,\n    previewImage,\n    images,\n    variants[enabled == true]{paper, size, retailPrice},\n    bordersEnabled,\n    framedEnabled,\n    frameMarkupMultiplier,\n    inStock\n  }\n`,
+		);
 	});
 
 	it("preserves legacy paper matching while capturing the selected Sanity key", async () => {

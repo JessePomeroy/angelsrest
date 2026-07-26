@@ -112,7 +112,7 @@ export async function createDirectCheckoutSession({
 	tenant,
 	fetcher,
 	bindSession,
-	resolveItem = (body) => resolveCheckoutItem(fetcher, body),
+	resolveItem,
 	validateCoupon = validateAndApplyCoupon,
 	log = logStructured,
 	snapshotMode = env.CHECKOUT_SNAPSHOT_MODE,
@@ -134,7 +134,9 @@ export async function createDirectCheckoutSession({
 		throw apiError(400, ApiErrorCode.MISSING_FIELD, "Missing required field: productId");
 	}
 
-	const item = await resolveItem(body);
+	const item = resolveItem
+		? await resolveItem(body)
+		: await resolveCheckoutItem(fetcher, body, mode === "handle-v2");
 	const coupon = typeof body.coupon === "string" ? body.coupon : null;
 
 	let discountAmount = 0;
@@ -168,6 +170,7 @@ export async function createDirectCheckoutSession({
 	const successUrl = `${siteUrl}/checkout/success?session_id={CHECKOUT_SESSION_ID}`;
 	const cancelUrl = `${siteUrl}/checkout/cancel`;
 	if (mode === "handle-v2") {
+		if (!item.snapshot) throw new Error("Checkout snapshot identity is unavailable");
 		return await createHandleCheckoutSession({
 			attempt: body.attempt,
 			attemptStartedAt: body.attemptStartedAt,

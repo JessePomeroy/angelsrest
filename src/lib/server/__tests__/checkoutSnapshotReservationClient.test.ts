@@ -1,5 +1,8 @@
 import { describe, expect, it, vi } from "vitest";
-import { createCheckoutSnapshotReservationClient } from "$lib/server/checkoutSnapshotReservationClient";
+import {
+	createCheckoutSnapshotReservationClient,
+	isCheckoutSnapshotReservationConflict,
+} from "$lib/server/checkoutSnapshotReservationClient";
 
 const ATTEMPT = "123e4567-e89b-42d3-a456-426614174000";
 const HANDLE = "223e4567-e89b-42d3-a456-426614174000";
@@ -64,6 +67,63 @@ describe("checkout snapshot reservation client", () => {
 		expect(fetcher.mock.calls[1]?.[0]).toBe(
 			"https://tenant.convex.site/commerce/checkout-snapshots/bind",
 		);
+	});
+
+	it("aborts stalled streams and stops chunked responses above 2 KiB", async () => {
+		const stalled = vi.fn<typeof fetch>((_input, init) =>
+			Promise.resolve(
+				new Response(
+					new ReadableStream<Uint8Array>({
+						start(controller) {
+							controller.enqueue(new Uint8Array(1));
+							init?.signal?.addEventListener("abort", () => controller.error(new Error(SECRET)));
+						},
+					}),
+				),
+			),
+		);
+		const input = {
+			site: "angelsrest.test",
+			attempt: ATTEMPT,
+			account: null,
+			items: [snapshotItem],
+		};
+		await expect(
+			createCheckoutSnapshotReservationClient({
+				baseUrl: "https://tenant.convex.site",
+				fetcher: stalled,
+				credential: () => SECRET,
+				timeoutMs: 5,
+			}).reserve(input),
+		).rejects.toThrow("Checkout reservation is unavailable");
+
+		const oversized = new ReadableStream<Uint8Array>({
+			start(controller) {
+				controller.enqueue(new Uint8Array(1_500));
+				controller.enqueue(new Uint8Array(600));
+				controller.close();
+			},
+		});
+		await expect(
+			createCheckoutSnapshotReservationClient({
+				baseUrl: "https://tenant.convex.site",
+				fetcher: vi.fn<typeof fetch>().mockResolvedValue(new Response(oversized)),
+				credential: () => SECRET,
+			}).reserve(input),
+		).rejects.toThrow("Checkout reservation is unavailable");
+	});
+
+	it("classifies only a bounded returned conflict as definitive", async () => {
+		const client = createCheckoutSnapshotReservationClient({
+			baseUrl: "https://tenant.convex.site",
+			fetcher: vi.fn<typeof fetch>().mockResolvedValue(new Response("{}", { status: 409 })),
+			credential: () => SECRET,
+		});
+		const error = await client
+			.reserve({ site: "angelsrest.test", attempt: ATTEMPT, account: null, items: [snapshotItem] })
+			.catch((value: unknown) => value);
+		expect(isCheckoutSnapshotReservationConflict(error)).toBe(true);
+		expect(String(error)).not.toContain(SECRET);
 	});
 
 	it("redacts credentials, handles, snapshots, IDs, URLs, and response bodies", async () => {

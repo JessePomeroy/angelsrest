@@ -4,8 +4,9 @@ import { PUBLIC_SITE_URL } from "$env/static/public";
 import { client } from "$lib/sanity/client";
 import { ApiErrorCode, apiError } from "$lib/server/apiError";
 import { bindCheckoutSession } from "$lib/server/checkoutBinding";
+import { isCheckoutSnapshotReservationConflict } from "$lib/server/checkoutSnapshotReservationClient";
 import { createDirectCheckoutSession } from "$lib/server/directCheckout";
-import { checkoutSnapshotMode, validateCheckoutAttempt } from "$lib/server/handleCheckout";
+import { checkoutSnapshotMode, validateCheckoutAttemptRequest } from "$lib/server/handleCheckout";
 import { logStructured } from "$lib/server/logger";
 import { getStripe } from "$lib/server/stripeClient";
 import { resolveStripeTenantForSite } from "$lib/server/stripeTenant";
@@ -16,7 +17,7 @@ export async function POST({ request, cookies }) {
 	try {
 		const rawBody = await request.json();
 		if (mode === "handle-v2") {
-			validateCheckoutAttempt(rawBody?.attempt, rawBody?.attemptStartedAt);
+			validateCheckoutAttemptRequest(rawBody?.attempt, rawBody?.attemptStartedAt);
 		}
 		const tenant = await resolveStripeTenantForSite(PUBLIC_SITE_URL);
 		const session = await createDirectCheckoutSession({
@@ -30,6 +31,9 @@ export async function POST({ request, cookies }) {
 
 		return json(session);
 	} catch (err: unknown) {
+		if (isCheckoutSnapshotReservationConflict(err)) {
+			throw apiError(409, ApiErrorCode.CHECKOUT_ATTEMPT_REJECTED, "Checkout attempt rejected");
+		}
 		if (err && typeof err === "object" && "status" in err && (mode === "legacy" || "body" in err))
 			throw err;
 		if (mode === "handle-v2") {

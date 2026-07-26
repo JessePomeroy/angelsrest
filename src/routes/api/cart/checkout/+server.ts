@@ -3,6 +3,7 @@ import type Stripe from "stripe";
 import { env } from "$env/dynamic/private";
 import { PUBLIC_SITE_URL } from "$env/static/public";
 import { client as sanityClient } from "$lib/sanity/client";
+import { ApiErrorCode, apiError } from "$lib/server/apiError";
 import {
 	buildCartMetadata,
 	buildCartTenantCheckoutOptions,
@@ -11,10 +12,11 @@ import {
 } from "$lib/server/cartCheckoutHelpers";
 import { bindCheckoutSession } from "$lib/server/checkoutBinding";
 import { resolveCheckoutItem } from "$lib/server/checkoutCatalog";
+import { isCheckoutSnapshotReservationConflict } from "$lib/server/checkoutSnapshotReservationClient";
 import {
 	checkoutSnapshotMode,
 	createHandleCheckoutSession,
-	validateCheckoutAttempt,
+	validateCheckoutAttemptRequest,
 } from "$lib/server/handleCheckout";
 import {
 	buildCheckoutLineItem,
@@ -38,7 +40,7 @@ export async function POST({ request, cookies }) {
 		const { items } = body;
 		const handleIntents = mode === "handle-v2" ? parseHandleCartIntent(items) : null;
 		if (mode === "handle-v2") {
-			validateCheckoutAttempt(body.attempt, body.attemptStartedAt);
+			validateCheckoutAttemptRequest(body.attempt, body.attemptStartedAt);
 			if (!handleIntents) throw error(400, "invalid cart checkout intent");
 		} else {
 			const validationError = validateCart(items);
@@ -48,17 +50,21 @@ export async function POST({ request, cookies }) {
 		const sourceItems = handleIntents ?? items;
 		const resolved = await Promise.all(
 			sourceItems.map(async (item) => {
-				const catalogItem = await resolveCheckoutItem(sanityClient.fetch.bind(sanityClient), {
-					productId: item.productSlug,
-					isPrintSet: item.type === "set",
-					paperSlug: item.paperSlug,
-					sizeSlug: item.sizeSlug,
-					paperIndex: item.paperIndex,
-					borderWidth:
-						item.borderWidthValue ??
-						("borderWidth" in item ? item.borderWidth?.toString() : undefined),
-					frame: item.frameValue,
-				});
+				const catalogItem = await resolveCheckoutItem(
+					sanityClient.fetch.bind(sanityClient),
+					{
+						productId: item.productSlug,
+						isPrintSet: item.type === "set",
+						paperSlug: item.paperSlug,
+						sizeSlug: item.sizeSlug,
+						paperIndex: item.paperIndex,
+						borderWidth:
+							item.borderWidthValue ??
+							("borderWidth" in item ? item.borderWidth?.toString() : undefined),
+						frame: item.frameValue,
+					},
+					mode === "handle-v2",
+				);
 				const fulfillment = catalogItem.legacyFulfillment;
 				const base: CartItem =
 					mode === "handle-v2"
@@ -120,12 +126,16 @@ export async function POST({ request, cookies }) {
 		const successUrl = `${PUBLIC_SITE_URL}/checkout/success?session_id={CHECKOUT_SESSION_ID}`;
 		const cancelUrl = `${PUBLIC_SITE_URL}/checkout/cancel`;
 		if (mode === "handle-v2") {
+			const snapshots = resolved.map(({ catalogItem }) => {
+				if (!catalogItem.snapshot) throw new Error("Checkout snapshot identity is unavailable");
+				return catalogItem.snapshot;
+			});
 			const session = await createHandleCheckoutSession({
 				attempt: body.attempt,
 				attemptStartedAt: body.attemptStartedAt,
 				site: String(tenantCheckout.metadata.commerceTenantSiteUrl),
 				account: tenant.stripeConnectedAccountId?.trim() || null,
-				snapshotItems: resolved.map(({ catalogItem }) => catalogItem.snapshot),
+				snapshotItems: snapshots,
 				stripe,
 				lineItems,
 				successUrl,
@@ -148,6 +158,9 @@ export async function POST({ request, cookies }) {
 		bindCheckoutSession(cookies, session.sessionId);
 		return json(session);
 	} catch (err: unknown) {
+		if (isCheckoutSnapshotReservationConflict(err)) {
+			throw apiError(409, ApiErrorCode.CHECKOUT_ATTEMPT_REJECTED, "Checkout attempt rejected");
+		}
 		if (err && typeof err === "object" && "status" in err && (mode === "legacy" || "body" in err))
 			throw err;
 		if (mode === "handle-v2") {

@@ -1,5 +1,6 @@
-import { createHash } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import type Stripe from "stripe";
+import { ApiErrorCode, apiError } from "$lib/server/apiError";
 import type { CheckoutSnapshotItem } from "$lib/server/checkoutCatalog";
 import type { CheckoutSnapshotReservationClient } from "$lib/server/checkoutSnapshotReservationClient";
 import { createCheckoutSnapshotReservationClient } from "$lib/server/checkoutSnapshotReservationClient";
@@ -40,6 +41,25 @@ export interface CreateHandleCheckoutOptions {
 
 export function checkoutSnapshotMode(value: string | undefined) {
 	return value === HANDLE_CHECKOUT_MODE ? HANDLE_CHECKOUT_MODE : "legacy";
+}
+
+export function validateCheckoutAttemptRequest(
+	attempt: unknown,
+	attemptStartedAt: unknown,
+	now = Date.now(),
+	createAttempt = randomUUID,
+) {
+	if (attempt === undefined && attemptStartedAt === undefined) {
+		throw apiError(428, ApiErrorCode.CHECKOUT_ATTEMPT_REQUIRED, "Checkout attempt required", {
+			attempt: createAttempt(),
+			attemptStartedAt: now,
+		});
+	}
+	try {
+		return validateCheckoutAttempt(attempt, attemptStartedAt, now);
+	} catch {
+		throw apiError(409, ApiErrorCode.CHECKOUT_ATTEMPT_REJECTED, "Checkout attempt rejected");
+	}
 }
 
 export function validateCheckoutAttempt(

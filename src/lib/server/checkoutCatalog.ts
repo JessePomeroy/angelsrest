@@ -71,17 +71,15 @@ export interface ResolvedCheckoutItem {
 	readonly unitPriceCents: number;
 	readonly productCategory: string | null;
 	readonly publicImage: string | null;
-	readonly snapshot: CheckoutSnapshotItem;
+	readonly snapshot: CheckoutSnapshotItem | null;
 	readonly legacyFulfillment: LegacyCheckoutFulfillment;
 }
 
 const V2_PRODUCT_QUERY = `
   *[_type == "lumaProductV2" && slug.current == $slug][0]{
-    _id,
-    _rev,
     title,
     image,
-    variants[enabled == true]{_key, paper, size, retailPrice},
+    variants[enabled == true]{paper, size, retailPrice},
     bordersEnabled,
     framedEnabled,
     frameMarkupMultiplier,
@@ -91,15 +89,12 @@ const V2_PRODUCT_QUERY = `
 
 const V1_PRODUCT_QUERY = `
   *[_type == "product" && slug.current == $slug][0]{
-    _id,
-    _rev,
     title,
     price,
     category,
     inStock,
     images[],
     availablePapers[]{
-      _key,
       name,
       price,
       subcategoryId,
@@ -111,18 +106,29 @@ const V1_PRODUCT_QUERY = `
 
 const V2_SET_QUERY = `
   *[_type == "lumaPrintSetV2" && slug.current == $slug][0]{
-    _id,
-    _rev,
     title,
     previewImage,
     images,
-    variants[enabled == true]{_key, paper, size, retailPrice},
+    variants[enabled == true]{paper, size, retailPrice},
     bordersEnabled,
     framedEnabled,
     frameMarkupMultiplier,
     inStock
   }
 `;
+
+function snapshotQuery(query: string, keyedProjection: string) {
+	return query
+		.replace("    title,", "    _id,\n    _rev,\n    title,")
+		.replace(keyedProjection, keyedProjection.replace("{", "{_key, "));
+}
+
+const SNAPSHOT_V2_PRODUCT_QUERY = snapshotQuery(
+	V2_PRODUCT_QUERY,
+	"variants[enabled == true]{paper",
+);
+const SNAPSHOT_V1_PRODUCT_QUERY = snapshotQuery(V1_PRODUCT_QUERY, "availablePapers[]{\n      name");
+const SNAPSHOT_V2_SET_QUERY = snapshotQuery(V2_SET_QUERY, "variants[enabled == true]{paper");
 
 function requireSlug(value: unknown) {
 	if (typeof value !== "string" || !value.trim()) {
@@ -226,7 +232,7 @@ function resolveV1Paper(
 	}
 	return {
 		unitPriceCents,
-		variantKey: requireIdentity(option?.key, "paper identity"),
+		variantKey: option?.key ? requireIdentity(option.key, "paper identity") : null,
 		paper: {
 			name: parsed.name,
 			subcategoryId: Number.parseInt(parsed.subcategoryId, 10),
@@ -244,6 +250,7 @@ function resolveV2PaperAndPrice(
 		frameMarkupMultiplier?: number;
 	},
 	selection: CheckoutSelection,
+	captureSnapshot: boolean,
 ) {
 	const paperSlug = typeof selection.paperSlug === "string" ? selection.paperSlug : "";
 	const sizeSlug = typeof selection.sizeSlug === "string" ? selection.sizeSlug : "";
@@ -287,7 +294,7 @@ function resolveV2PaperAndPrice(
 		frame.subcategoryId > 0 ? FRAMED_BORDER_INCHES : border.inches > 0 ? border.inches : undefined;
 	return {
 		unitPriceCents: basePriceCents + frameSurchargeCents,
-		variantKey: requireIdentity(variant._key, "variant identity"),
+		variantKey: captureSnapshot ? requireIdentity(variant._key, "variant identity") : null,
 		materialOptionKey: paperSlug,
 		sizeOptionKey: sizeSlug,
 		borderOptionKey: borderValue,
@@ -352,25 +359,27 @@ function snapshotIdentity(
 export async function resolveCheckoutItem(
 	fetcher: SanityFetcher,
 	selection: CheckoutSelection,
+	captureSnapshot = false,
 ): Promise<ResolvedCheckoutItem> {
 	const productId = requireSlug(selection.productId);
 	if (selection.isPrintSet === true) {
-		const product = await fetcher<Record<string, unknown> | null>(V2_SET_QUERY, {
-			slug: productId,
-		});
+		const product = await fetcher<Record<string, unknown> | null>(
+			captureSnapshot ? SNAPSHOT_V2_SET_QUERY : V2_SET_QUERY,
+			{ slug: productId },
+		);
 		if (!product) throw apiError(404, ApiErrorCode.NOT_FOUND, "Print set not found");
 		if (product.inStock === false) {
 			throw apiError(400, ApiErrorCode.INVALID_INPUT, "This print set is out of stock");
 		}
-		const resolved = resolveV2PaperAndPrice(product, selection);
+		const resolved = resolveV2PaperAndPrice(product, selection, captureSnapshot);
 		const publicImage = previewUrl(product.previewImage as SanityImageSource);
 		return {
 			productId,
-			title: requireTitle(product.title),
+			title: captureSnapshot ? requireTitle(product.title) : (product.title as string),
 			unitPriceCents: resolved.unitPriceCents,
 			productCategory: "print-set",
 			publicImage,
-			snapshot: snapshotIdentity(product, "print_set", resolved),
+			snapshot: captureSnapshot ? snapshotIdentity(product, "print_set", resolved) : null,
 			legacyFulfillment: {
 				isDigital: false,
 				isPrintSet: true,
@@ -381,22 +390,23 @@ export async function resolveCheckoutItem(
 		};
 	}
 
-	const v2Product = await fetcher<Record<string, unknown> | null>(V2_PRODUCT_QUERY, {
-		slug: productId,
-	});
+	const v2Product = await fetcher<Record<string, unknown> | null>(
+		captureSnapshot ? SNAPSHOT_V2_PRODUCT_QUERY : V2_PRODUCT_QUERY,
+		{ slug: productId },
+	);
 	if (v2Product !== null) {
 		if (v2Product.inStock === false) {
 			throw apiError(400, ApiErrorCode.INVALID_INPUT, "This print is out of stock");
 		}
-		const resolved = resolveV2PaperAndPrice(v2Product, selection);
+		const resolved = resolveV2PaperAndPrice(v2Product, selection, captureSnapshot);
 		const publicImage = originalUrl(v2Product.image as SanityImageSource);
 		return {
 			productId,
-			title: requireTitle(v2Product.title),
+			title: captureSnapshot ? requireTitle(v2Product.title) : (v2Product.title as string),
 			unitPriceCents: resolved.unitPriceCents,
 			productCategory: "print",
 			publicImage,
-			snapshot: snapshotIdentity(v2Product, "print", resolved),
+			snapshot: captureSnapshot ? snapshotIdentity(v2Product, "print", resolved) : null,
 			legacyFulfillment: {
 				isDigital: false,
 				isPrintSet: false,
@@ -407,15 +417,16 @@ export async function resolveCheckoutItem(
 		};
 	}
 
-	const product = await fetcher<Record<string, unknown> | null>(V1_PRODUCT_QUERY, {
-		slug: productId,
-	});
+	const product = await fetcher<Record<string, unknown> | null>(
+		captureSnapshot ? SNAPSHOT_V1_PRODUCT_QUERY : V1_PRODUCT_QUERY,
+		{ slug: productId },
+	);
 	if (!product) throw apiError(404, ApiErrorCode.NOT_FOUND, "Product not found");
 	if (product.inStock === false) {
 		throw apiError(400, ApiErrorCode.INVALID_INPUT, "This product is out of stock");
 	}
 	const category = typeof product.category === "string" ? product.category : null;
-	const kind = generalProductKind(category);
+	const kind = captureSnapshot ? generalProductKind(category) : null;
 	const resolved = resolveV1Paper(
 		Array.isArray(product.availablePapers) ? product.availablePapers : undefined,
 		priceCents(product.price),
@@ -425,13 +436,16 @@ export async function resolveCheckoutItem(
 	const publicImage = originalUrl(firstImage as SanityImageSource);
 	return {
 		productId,
-		title: requireTitle(product.title),
+		title: captureSnapshot ? requireTitle(product.title) : (product.title as string),
 		unitPriceCents: resolved.unitPriceCents,
 		productCategory: category,
 		publicImage,
-		snapshot: snapshotIdentity(product, kind, { variantKey: resolved.variantKey }),
+		snapshot:
+			captureSnapshot && kind
+				? snapshotIdentity(product, kind, { variantKey: resolved.variantKey })
+				: null,
 		legacyFulfillment: {
-			isDigital: kind === "digital_download",
+			isDigital: captureSnapshot ? kind === "digital_download" : category === "digital",
 			isPrintSet: false,
 			imageUrl: publicImage,
 			imageUrls: [],

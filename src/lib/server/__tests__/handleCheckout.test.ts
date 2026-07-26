@@ -5,6 +5,7 @@ import {
 	type CreateHandleCheckoutOptions,
 	createHandleCheckoutSession,
 	validateCheckoutAttempt,
+	validateCheckoutAttemptRequest,
 } from "$lib/server/handleCheckout";
 import { buildCheckoutLineItem } from "$lib/server/stripeCheckoutSession";
 import { buildTenantCheckoutOptions } from "$lib/server/stripeConnect";
@@ -139,6 +140,27 @@ describe("handle checkout orchestration", () => {
 		});
 		await expect(createHandleCheckoutSession(test.options)).rejects.toThrow("unavailable");
 		expect(test.bindSession).not.toHaveBeenCalled();
+	});
+
+	it("returns a fresh bounded pre-effect challenge and rejects stale attempts", () => {
+		expect(() =>
+			validateCheckoutAttemptRequest(undefined, undefined, NOW, () => ATTEMPT),
+		).toThrowError(
+			expect.objectContaining({
+				status: 428,
+				body: {
+					code: "CHECKOUT_ATTEMPT_REQUIRED",
+					message: "Checkout attempt required",
+					details: { attempt: ATTEMPT, attemptStartedAt: NOW },
+				},
+			}),
+		);
+		expect(() => validateCheckoutAttemptRequest(ATTEMPT, NOW - 86_100_000, NOW)).toThrowError(
+			expect.objectContaining({
+				status: 409,
+				body: expect.objectContaining({ code: "CHECKOUT_ATTEMPT_REJECTED" }),
+			}),
+		);
 	});
 
 	it("fails malformed attempts and redirects before reservation", async () => {

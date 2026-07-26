@@ -1,5 +1,10 @@
 import type { CartItem } from "$lib/shop/cart";
-import { CheckoutAttemptTracker, checkoutTenantIntent } from "$lib/utils/checkoutAttempt";
+import {
+	CheckoutAttemptTracker,
+	checkoutError,
+	checkoutTenantIntent,
+	postCheckoutWithChallenge,
+} from "$lib/utils/checkoutAttempt";
 
 const attemptTracker = new CheckoutAttemptTracker();
 
@@ -14,19 +19,12 @@ export async function createCartCheckout(items: CartItem[]): Promise<string> {
 		borderWidthValue: item.borderWidthValue,
 		frameValue: item.frameValue,
 	}));
-	const attempt = attemptTracker.forIntent({ tenant: checkoutTenantIntent(), items: intent });
-	const response = await fetch("/api/cart/checkout", {
-		method: "POST",
-		headers: { "Content-Type": "application/json" },
-		body: JSON.stringify({ items, ...attempt }),
-	});
-
-	const result = await response.json();
-
-	if (!result.url) {
-		throw new Error(result.error || result.message || "checkout failed");
-	}
-
-	attemptTracker.confirm(attempt.attempt);
+	const result = await postCheckoutWithChallenge(
+		"/api/cart/checkout",
+		{ items },
+		{ tenant: checkoutTenantIntent(), items: intent },
+		attemptTracker,
+	);
+	if (typeof result.url !== "string") throw new Error(checkoutError(result, "checkout failed"));
 	return result.url;
 }

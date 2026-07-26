@@ -6,6 +6,7 @@ const RESERVE_PATH = "/commerce/checkout-snapshots/reserve";
 const BIND_PATH = "/commerce/checkout-snapshots/bind";
 const REQUEST_MAX_BYTES = 64 * 1024;
 const RESPONSE_MAX_BYTES = 2 * 1024;
+const REQUEST_TIMEOUT_MS = 5_000;
 const UUID_V4 = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
 const encoder = new TextEncoder();
 
@@ -29,41 +30,37 @@ export function createCheckoutSnapshotReservationClient({
 	baseUrl = publicEnv.PUBLIC_CONVEX_SITE_URL,
 	fetcher = fetch,
 	credential = getCheckoutSnapshotReservationCredential,
+	timeoutMs = REQUEST_TIMEOUT_MS,
 }: {
 	baseUrl?: string;
 	fetcher?: typeof fetch;
 	credential?: (site: string) => string;
+	timeoutMs?: number;
 } = {}): CheckoutSnapshotReservationClient {
 	const origin = reservationOrigin(baseUrl);
 
 	async function post(path: string, site: string, body: unknown) {
 		const serialized = JSON.stringify(body);
 		if (encoder.encode(serialized).byteLength > REQUEST_MAX_BYTES) throw unavailable();
-		let response: Response;
 		try {
-			response = await fetcher(`${origin}${path}`, {
+			const response = await fetcher(`${origin}${path}`, {
 				method: "POST",
 				headers: {
 					Authorization: `Bearer ${credential(site)}`,
 					"Content-Type": "application/json",
 				},
 				body: serialized,
+				signal: AbortSignal.timeout(timeoutMs),
 			});
-		} catch {
-			throw unavailable();
-		}
-		const declaredLength = Number(response.headers.get("Content-Length"));
-		if (Number.isFinite(declaredLength) && declaredLength > RESPONSE_MAX_BYTES) throw unavailable();
-		let text: string;
-		try {
-			text = await response.text();
-		} catch {
-			throw unavailable();
-		}
-		if (!response.ok || encoder.encode(text).byteLength > RESPONSE_MAX_BYTES) throw unavailable();
-		try {
+			const declaredLength = Number(response.headers.get("Content-Length"));
+			if (Number.isFinite(declaredLength) && declaredLength > RESPONSE_MAX_BYTES)
+				throw unavailable();
+			const text = await readBoundedResponse(response);
+			if (response.status === 409) throw new ReservationConflict();
+			if (!response.ok) throw unavailable();
 			return JSON.parse(text) as unknown;
-		} catch {
+		} catch (error) {
+			if (error instanceof ReservationConflict) throw error;
 			throw unavailable();
 		}
 	}
@@ -121,6 +118,29 @@ function reservationOrigin(value: string | undefined) {
 	} catch {
 		throw unavailable();
 	}
+}
+
+async function readBoundedResponse(response: Response) {
+	const reader = response.body?.getReader();
+	if (!reader) return "";
+	const bytes = new Uint8Array(RESPONSE_MAX_BYTES);
+	let size = 0;
+	while (true) {
+		const { done, value } = await reader.read();
+		if (done) return new TextDecoder().decode(bytes.subarray(0, size));
+		if (size + value.byteLength > RESPONSE_MAX_BYTES) {
+			await reader.cancel();
+			throw unavailable();
+		}
+		bytes.set(value, size);
+		size += value.byteLength;
+	}
+}
+
+class ReservationConflict extends Error {}
+
+export function isCheckoutSnapshotReservationConflict(error: unknown) {
+	return error instanceof ReservationConflict;
 }
 
 function exactRecord(value: unknown, keys: readonly string[]): value is Record<string, unknown> {
