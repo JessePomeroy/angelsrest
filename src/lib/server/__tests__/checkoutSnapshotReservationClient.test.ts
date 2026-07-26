@@ -41,6 +41,7 @@ describe("checkout snapshot reservation client", () => {
 				site: "angelsrest.test",
 				attempt: ATTEMPT,
 				account: null,
+				catalogProvider: "sanity",
 				items: [snapshotItem],
 			}),
 		).resolves.toEqual({ handle: HANDLE });
@@ -86,6 +87,7 @@ describe("checkout snapshot reservation client", () => {
 			site: "angelsrest.test",
 			attempt: ATTEMPT,
 			account: null,
+			catalogProvider: "sanity" as const,
 			items: [snapshotItem],
 		};
 		await expect(
@@ -120,7 +122,13 @@ describe("checkout snapshot reservation client", () => {
 			credential: () => SECRET,
 		});
 		const error = await client
-			.reserve({ site: "angelsrest.test", attempt: ATTEMPT, account: null, items: [snapshotItem] })
+			.reserve({
+				site: "angelsrest.test",
+				attempt: ATTEMPT,
+				account: null,
+				catalogProvider: "sanity",
+				items: [snapshotItem],
+			})
 			.catch((value: unknown) => value);
 		expect(isCheckoutSnapshotReservationConflict(error)).toBe(true);
 		expect(String(error)).not.toContain(SECRET);
@@ -142,6 +150,7 @@ describe("checkout snapshot reservation client", () => {
 					site: "angelsrest.test",
 					attempt: ATTEMPT,
 					account: null,
+					catalogProvider: "sanity",
 					items: [snapshotItem],
 				})
 				.catch((value: unknown) => value);

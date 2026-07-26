@@ -1,6 +1,7 @@
 import { error, json } from "@sveltejs/kit";
 import { CheckoutBridgeError, createTenantPrintCheckoutSession } from "$lib/server/checkoutBridge";
 import { getCheckoutBridgeTenantConfig } from "$lib/server/checkoutBridgeConfig";
+import { isCheckoutSnapshotReservationConflict } from "$lib/server/checkoutSnapshotReservationClient";
 import { getStripe } from "$lib/server/stripeClient";
 import { resolveStripeTenantForSite } from "$lib/server/stripeTenant";
 
@@ -24,6 +25,7 @@ export async function POST({ request }) {
 			tenant,
 			secrets: bridgeConfig.secrets,
 			allowedRedirectOrigins: bridgeConfig.redirectOrigins,
+			snapshotMode: bridgeConfig.snapshotMode,
 		});
 
 		return json(session);
@@ -31,6 +33,7 @@ export async function POST({ request }) {
 		if (err instanceof CheckoutBridgeError) {
 			throw error(err.status, err.message);
 		}
+		if (isCheckoutSnapshotReservationConflict(err)) throw error(409, "Checkout attempt rejected");
 		throw err;
 	}
 }

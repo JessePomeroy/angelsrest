@@ -15,6 +15,7 @@ export interface CheckoutSnapshotReservationClient {
 		site: string;
 		attempt: string;
 		account: string | null;
+		catalogProvider: "sanity" | "convex";
 		items: readonly CheckoutSnapshotItem[];
 	}): Promise<{ handle: string }>;
 	bind(input: {
@@ -66,13 +67,13 @@ export function createCheckoutSnapshotReservationClient({
 	}
 
 	return {
-		async reserve({ site, attempt, account, items }) {
+		async reserve({ site, attempt, account, catalogProvider, items }) {
 			const response = await post(RESERVE_PATH, site, {
 				version: 1,
 				site,
 				attempt,
 				account,
-				snapshot: { schemaVersion: 1, catalogProvider: "sanity", items },
+				snapshot: { schemaVersion: 1, catalogProvider, items },
 			});
 			if (!exactRecord(response, ["version", "handle", "replayed"])) throw unavailable();
 			if (

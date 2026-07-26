@@ -101,6 +101,9 @@ describe("checkout bridge tenant registry", () => {
 			redirectOrigins: ["https://reflecting-pool.vercel.app", "https://margarethelena.com"],
 		});
 		expect(getCheckoutBridgeTenantConfig("future-client.com", registry())).toBeNull();
+		expect(
+			getCheckoutBridgeTenantConfig("zippymiggy.com", registry({ snapshotMode: "handle-v2" })),
+		).toMatchObject({ snapshotMode: "handle-v2" });
 	});
 
 	it("keeps configured tenant secrets isolated", () => {
@@ -182,6 +185,9 @@ describe("checkout bridge tenant registry", () => {
 		expect(() => parseCheckoutBridgeTenantRegistry(undefined)).toThrow("not configured");
 		expect(() => parseCheckoutBridgeTenantRegistry("not-json")).toThrow("invalid JSON");
 		expect(() => parseCheckoutBridgeTenantRegistry("{}")).toThrow("tenant count");
+		expect(() => parseCheckoutBridgeTenantRegistry(registry({ snapshotMode: "legacy" }))).toThrow(
+			"snapshot mode",
+		);
 	});
 
 	it("requires bounded secrets and explicit HTTPS origins", () => {

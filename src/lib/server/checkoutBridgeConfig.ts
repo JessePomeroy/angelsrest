@@ -18,6 +18,7 @@ interface CheckoutRoleCredentialFingerprints {
 export interface CheckoutBridgeTenantConfig {
 	secrets: string[];
 	redirectOrigins: string[];
+	snapshotMode?: "handle-v2";
 }
 
 type CheckoutBridgeTenantRegistry = Record<string, CheckoutBridgeTenantConfig>;
@@ -50,7 +51,11 @@ export function getCheckoutBridgeTenantConfig(
 	);
 	const tenant = registry[siteUrl];
 	if (!tenant) return null;
-	return { secrets: [...tenant.secrets], redirectOrigins: [...tenant.redirectOrigins] };
+	return {
+		secrets: [...tenant.secrets],
+		redirectOrigins: [...tenant.redirectOrigins],
+		...(tenant.snapshotMode ? { snapshotMode: tenant.snapshotMode } : {}),
+	};
 }
 
 function validateCheckoutRoles(
@@ -182,9 +187,12 @@ export function parseCheckoutBridgeTenantRegistry(rawRegistry: string | undefine
 			throw new Error(`Invalid checkout bridge configuration for ${siteUrl}`);
 		}
 		const record = value as Record<string, unknown>;
+		if (record.snapshotMode !== undefined && record.snapshotMode !== "handle-v2")
+			throw new Error(`Invalid checkout snapshot mode for ${siteUrl}`);
 		registry[siteUrl] = {
 			secrets: parseSecrets(record.secrets, siteUrl),
 			redirectOrigins: parseRedirectOrigins(record.redirectOrigins, siteUrl),
+			...(record.snapshotMode === "handle-v2" ? { snapshotMode: record.snapshotMode } : {}),
 		};
 	}
 	return registry;

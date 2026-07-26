@@ -24,11 +24,13 @@ export interface CreateHandleCheckoutOptions {
 	attemptStartedAt: unknown;
 	site: string;
 	account: string | null;
+	catalogProvider: "sanity" | "convex";
 	snapshotItems: readonly CheckoutSnapshotItem[];
 	stripe: Stripe;
 	lineItems: Stripe.Checkout.SessionCreateParams.LineItem[];
 	successUrl: string;
 	cancelUrl: string;
+	allowedRedirectOrigins?: readonly string[];
 	shippingAllowedCountries?: NonNullable<
 		Stripe.Checkout.SessionCreateParams["shipping_address_collection"]
 	>["allowed_countries"];
@@ -67,15 +69,15 @@ export function validateCheckoutAttempt(
 	attemptStartedAt: unknown,
 	now = Date.now(),
 ) {
-	if (!UUID_V4.test(String(attempt))) throw invalid();
-	const startedAt = Number(attemptStartedAt);
+	if (typeof attempt !== "string" || !UUID_V4.test(attempt)) throw invalid();
+	const startedAt = typeof attemptStartedAt === "number" ? attemptStartedAt : Number.NaN;
 	if (!Number.isSafeInteger(startedAt) || startedAt > now + CLOCK_SKEW_MS) throw invalid();
 	const expiresAt = Math.floor(startedAt / 1000) + SESSION_LIFETIME_SECONDS;
 	const nowSeconds = Math.floor(now / 1000);
 	if (expiresAt < nowSeconds + 30 * 60 - 5 * 60 || expiresAt > nowSeconds + 24 * 60 * 60 + 5 * 60) {
 		throw invalid();
 	}
-	return { attempt: String(attempt), expiresAt };
+	return { attempt, expiresAt };
 }
 
 export async function createHandleCheckoutSession({
@@ -83,11 +85,13 @@ export async function createHandleCheckoutSession({
 	attemptStartedAt,
 	site,
 	account,
+	catalogProvider,
 	snapshotItems,
 	stripe,
 	lineItems,
 	successUrl,
 	cancelUrl,
+	allowedRedirectOrigins,
 	shippingAllowedCountries,
 	tenantCheckout,
 	bindSession,
@@ -99,14 +103,15 @@ export async function createHandleCheckoutSession({
 	if (!site || site !== site.trim() || site.length > 253 || site.includes("/")) throw invalid();
 	if (account !== null && !ACCOUNT_ID.test(account)) throw invalid();
 	if (
+		(catalogProvider !== "sanity" && catalogProvider !== "convex") ||
 		snapshotItems.length < 1 ||
 		snapshotItems.length > 40 ||
 		lineItems.length !== snapshotItems.length
 	)
 		throw invalid();
 	const { expiresAt } = validatedAttempt;
-	validateRedirect(successUrl, site);
-	validateRedirect(cancelUrl, site);
+	validateRedirect(successUrl, site, allowedRedirectOrigins);
+	validateRedirect(cancelUrl, site, allowedRedirectOrigins);
 	if (
 		Object.keys(tenantCheckout.metadata).length !== 1 ||
 		tenantCheckout.metadata[COMMERCE_TENANT_METADATA_KEY] !== site
@@ -118,6 +123,7 @@ export async function createHandleCheckoutSession({
 		site,
 		attempt: validatedAttempt.attempt,
 		account,
+		catalogProvider,
 		items: snapshotItems,
 	});
 	const session = await createPaymentCheckoutSession({
@@ -145,16 +151,22 @@ export async function createHandleCheckoutSession({
 	return { ...session, expiresAt };
 }
 
-function validateRedirect(value: string, site: string) {
+function validateRedirect(
+	value: string,
+	site: string,
+	allowedOrigins: readonly string[] | undefined,
+) {
 	try {
 		const url = new URL(value);
-		if (
+		if (url.username || url.password) throw invalid();
+		if (allowedOrigins) {
+			if (allowedOrigins.length === 0 || !allowedOrigins.includes(url.origin)) throw invalid();
+		} else if (
 			url.protocol !== "https:" ||
-			url.username ||
-			url.password ||
 			url.hostname.toLowerCase().replace(/^www\./, "") !== site
-		)
+		) {
 			throw invalid();
+		}
 	} catch {
 		throw invalid();
 	}
