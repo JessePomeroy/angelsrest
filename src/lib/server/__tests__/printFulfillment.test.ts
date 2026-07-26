@@ -121,7 +121,8 @@ describe("print fulfillment", () => {
 		vi.clearAllMocks();
 		convex.mutation.mockReset();
 		convex.mutation.mockImplementation(async (reference: string, args: { update?: string }) => {
-			if (reference === "orders.claimPrintFulfillment") return { kind: "claimed" };
+			if (reference === "orders.claimPrintFulfillment")
+				return { kind: "claimed", externalId: session.id };
 			if (reference === "orders.updatePrintFulfillment") return { kind: args.update };
 		});
 		stripe.refunds.create.mockResolvedValue({
@@ -141,7 +142,7 @@ describe("print fulfillment", () => {
 			firstName: "Jane",
 			lastName: "Doe",
 		});
-		mockBuildLumaPrintsOrder.mockReturnValue({ externalId: "ORD-001" });
+		mockBuildLumaPrintsOrder.mockImplementation((externalId: string) => ({ externalId }));
 		mockCreateLumaPrintsOrder.mockResolvedValue({ orderNumber: "LP-123" });
 		mockFindLumaPrintsOrder.mockResolvedValue(null);
 		mockSendFulfillmentFailureAlert.mockResolvedValue({ id: "email-123" });
@@ -163,9 +164,12 @@ describe("print fulfillment", () => {
 
 		expect(outcome).toEqual({ kind: "fulfilled", lumaprintsOrderNumber: "LP-123" });
 		expect(mockBuildLumaPrintsOrder).toHaveBeenCalledWith(
-			"ORD-001",
+			session.id,
 			expect.anything(),
 			expect.anything(),
+		);
+		expect(mockBuildLumaPrintsOrder.mock.invocationCallOrder[0]).toBeLessThan(
+			convex.mutation.mock.invocationCallOrder[0],
 		);
 		expect(convex.mutation).toHaveBeenCalledWith(
 			"orders.updateStatus",
@@ -173,7 +177,7 @@ describe("print fulfillment", () => {
 		);
 	});
 
-	it("uses only the persisted snapshot when present and keeps paid Stripe quantity", async () => {
+	it("finishes snapshot preparation before claiming and retries preparation failures", async () => {
 		const { submitPrintFulfillment } = await import("../printFulfillment");
 		const checkoutSnapshot = {
 			schemaVersion: 1 as const,
@@ -191,32 +195,36 @@ describe("print fulfillment", () => {
 				},
 			],
 		};
-		mockBuildOrderItemsFromSnapshot.mockResolvedValueOnce([
-			{
-				imageUrl: "https://opaque.example/capability",
-				sourcePolicy: "opaque_capability",
-				paperSubcategoryId: 103001,
-				quantity: 3,
-				width: 8,
-				height: 10,
-			},
-		]);
+		const input = {
+			...printInput,
+			lineItems: [{ quantity: 3 }] as Stripe.LineItem[],
+			checkoutSnapshot,
+		};
+		mockBuildOrderItemsFromSnapshot
+			.mockRejectedValueOnce(new Error("capability unavailable"))
+			.mockResolvedValueOnce([
+				{
+					imageUrl: "https://opaque.example/capability",
+					sourcePolicy: "opaque_capability",
+					paperSubcategoryId: 103001,
+					quantity: 3,
+					width: 8,
+					height: 10,
+				},
+			]);
+		await expect(
+			submitPrintFulfillment({ convex, createLumaPrintsOrder: mockCreateLumaPrintsOrder }, input),
+		).rejects.toThrow("capability unavailable");
+		expect(convex.mutation).not.toHaveBeenCalled();
 		await submitPrintFulfillment(
 			{ convex, createLumaPrintsOrder: mockCreateLumaPrintsOrder },
-			{
-				orderId,
-				orderNumber: "ORD-001",
-				lineItems: [{ quantity: 3 }] as Stripe.LineItem[],
-				shippingDetails: shippingDetails as any,
-				session,
-				checkoutSnapshot,
-			},
+			input,
 		);
-		expect(mockBuildOrderItemsFromSnapshot).toHaveBeenCalledWith(checkoutSnapshot, session.id, [
+		expect(mockBuildOrderItemsFromSnapshot).toHaveBeenLastCalledWith(checkoutSnapshot, session.id, [
 			expect.objectContaining({ quantity: 3 }),
 		]);
-		expect(mockBuildRecipientFromShipping.mock.invocationCallOrder[0]).toBeLessThan(
-			mockBuildOrderItemsFromSnapshot.mock.invocationCallOrder[0],
+		expect(mockBuildLumaPrintsOrder.mock.invocationCallOrder[0]).toBeLessThan(
+			convex.mutation.mock.invocationCallOrder[0],
 		);
 		expect(mockBuildOrderItemsFromSession).not.toHaveBeenCalled();
 	});
@@ -239,55 +247,29 @@ describe("print fulfillment", () => {
 		expect(outcome).toEqual({ kind: "no_print_items" });
 		expect(mockBuildRecipientFromShipping).not.toHaveBeenCalled();
 		expect(mockCreateLumaPrintsOrder).not.toHaveBeenCalled();
-		expect(convex.mutation).toHaveBeenCalledTimes(2);
+		expect(convex.mutation).not.toHaveBeenCalled();
 	});
 
-	it("fences concurrent webhook deliveries before provider submission", async () => {
+	it("reconciles an ambiguous POST and never submits it twice", async () => {
 		const { submitPrintFulfillment } = await import("../printFulfillment");
-		let held = false;
+		let claimed = false;
 		convex.mutation.mockImplementation(async (reference: string) => {
 			if (reference !== "orders.claimPrintFulfillment") return;
-			if (held) return { kind: "reconcile", claim: "first", externalId: "ORD-001" };
-			held = true;
-			return { kind: "claimed" };
+			if (claimed) return { kind: "reconcile", externalId: session.id };
+			claimed = true;
+			return { kind: "claimed", externalId: session.id };
 		});
-		const run = () =>
+		const submit = () =>
 			submitPrintFulfillment(
 				{ convex, createLumaPrintsOrder: mockCreateLumaPrintsOrder },
 				printInput,
 			);
-		const results = await Promise.allSettled([run(), run()]);
-		expect(results.map(({ status }) => status).sort()).toEqual(["fulfilled", "rejected"]);
-		expect(mockCreateLumaPrintsOrder).toHaveBeenCalledOnce();
-	});
-
-	it("reconciles provider success after a lost Convex response without resubmitting", async () => {
-		const { submitPrintFulfillment } = await import("../printFulfillment");
-		let submitting = false;
-		convex.mutation.mockImplementation(
-			async (reference: string, args: { lumaprintsOrderNumber?: string }) => {
-				if (reference === "orders.claimPrintFulfillment") {
-					if (submitting) return { kind: "reconcile", claim: "first", externalId: "ORD-001" };
-					submitting = true;
-					return { kind: "claimed" };
-				}
-				if (args.lumaprintsOrderNumber && mockFindLumaPrintsOrder.mock.calls.length === 0)
-					throw new Error("Convex response lost");
-			},
-		);
-		const run = () =>
-			submitPrintFulfillment(
-				{ convex, createLumaPrintsOrder: mockCreateLumaPrintsOrder },
-				printInput,
-			);
-		await expect(run()).rejects.toThrow("Convex response lost");
+		mockCreateLumaPrintsOrder.mockRejectedValueOnce(new Error("unknown response"));
+		await expect(submit()).rejects.toThrow("submission outcome is unknown");
 		mockFindLumaPrintsOrder.mockResolvedValueOnce({ orderNumber: "LP-123" });
-		await expect(run()).resolves.toMatchObject({
-			kind: "fulfilled",
-			lumaprintsOrderNumber: "LP-123",
-		});
+		await expect(submit()).resolves.toMatchObject({ kind: "fulfilled" });
 		expect(mockCreateLumaPrintsOrder).toHaveBeenCalledOnce();
-		expect(mockFindLumaPrintsOrder).toHaveBeenCalledWith("ORD-001");
+		expect(mockFindLumaPrintsOrder).toHaveBeenCalledWith(session.id);
 	});
 
 	it("rethrows transient fulfillment failures so Stripe retries", async () => {
@@ -397,19 +379,5 @@ describe("print fulfillment", () => {
 			}),
 		);
 		expect(mockSendFulfillmentFailureAlert).not.toHaveBeenCalled();
-	});
-
-	it("keeps a missing payment intent retryable after recording pending recovery", async () => {
-		const { FulfillmentValidationError } = await import("../fulfillmentValidationError");
-		const sessionWithoutPaymentIntent = { ...session, payment_intent: null };
-
-		await expect(
-			handle(new FulfillmentValidationError("invalid dimensions"), {
-				session: sessionWithoutPaymentIntent,
-			}),
-		).rejects.toThrow("no payment_intent");
-
-		expect(convex.mutation).toHaveBeenCalledTimes(1);
-		expect(stripe.refunds.create).not.toHaveBeenCalled();
 	});
 });

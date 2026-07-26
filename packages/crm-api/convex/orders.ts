@@ -626,25 +626,20 @@ export const resolveCheckoutRouting = query({
 });
 
 export const claimPrintFulfillment = mutation({
-	args: {
-		orderId: v.id("orders"), webhookSecret: v.string(), claim: v.string(), externalId: v.string(),
-	},
+	args: { orderId: v.id("orders"), webhookSecret: v.string() },
 	handler: async (ctx, args) => {
 		await requireWebhookCallerOrAuth(ctx, args.webhookSecret, { allowAuth: false });
 		const order = await ctx.db.get(args.orderId);
 		if (!order) throw new Error("Order not found");
-		if (order.lumaprintsOrderNumber) return { kind: "fulfilled" as const, orderNumber: order.lumaprintsOrderNumber };
-		if (order.stripeRefundId) return { kind: "refunded" as const, stripeRefundId: order.stripeRefundId };
+		if (order.lumaprintsOrderNumber)
+			return { kind: "fulfilled" as const, orderNumber: order.lumaprintsOrderNumber };
+		if (order.status === "refunded" || order.stripeRefundId)
+			return { kind: "refunded" as const, stripeRefundId: order.stripeRefundId };
 		if (order.fulfillmentRecoveryStatus) return { kind: "busy" as const };
-		if (order.printFulfillmentNoItems) return { kind: "no_print_items" as const };
-		if (order.printFulfillmentClaim) return {
-			kind: "reconcile" as const, claim: order.printFulfillmentClaim,
-			externalId: order.printFulfillmentExternalId ?? args.externalId,
-		};
-		await ctx.db.patch(args.orderId, {
-			printFulfillmentClaim: args.claim, printFulfillmentExternalId: args.externalId,
-		});
-		return { kind: "claimed" as const };
+		if (order.printFulfillmentClaim)
+			return { kind: "reconcile" as const, externalId: order.stripeSessionId };
+		await ctx.db.patch(args.orderId, { printFulfillmentClaim: true });
+		return { kind: "claimed" as const, externalId: order.stripeSessionId };
 	},
 });
 
@@ -670,14 +665,10 @@ export const updateStatus = mutation({
 		fulfillmentError: v.optional(v.string()),
 		stripeRefundId: v.optional(v.string()),
 		fulfillmentRecoveryStatus: v.optional(fulfillmentRecoveryStatusValidator),
-		printFulfillmentNoItems: v.optional(v.boolean()),
-		releasePrintFulfillmentClaim: v.optional(v.boolean()),
 	},
-	handler: async (ctx, { orderId, webhookSecret, releasePrintFulfillmentClaim, ...updates }) => {
+	handler: async (ctx, { orderId, webhookSecret, ...updates }) => {
 		const auth = await requireWebhookCallerOrAuth(ctx, webhookSecret);
 		if (auth.via === "auth") await requireDocumentSiteAdmin(ctx, "orders", orderId);
-		if (auth.via === "auth" && (releasePrintFulfillmentClaim || updates.printFulfillmentNoItems))
-			throw new Error("Webhook authorization required");
 		const refundUpdate = updates.stripeRefundId || updates.fulfillmentRecoveryStatus
 			|| updates.status === "refunded";
 		const current = refundUpdate ? await ctx.db.get(orderId) : null;
@@ -690,9 +681,7 @@ export const updateStatus = mutation({
 		}
 		const patch: Record<string, unknown> = {};
 		for (const [key, val] of Object.entries(updates)) if (val !== undefined) patch[key] = val;
-		if (releasePrintFulfillmentClaim || updates.printFulfillmentNoItems
-			|| updates.lumaprintsOrderNumber) patch.printFulfillmentClaim = undefined;
-		if (releasePrintFulfillmentClaim) patch.printFulfillmentExternalId = undefined;
+		if (updates.lumaprintsOrderNumber) patch.printFulfillmentClaim = undefined;
 		if (Object.keys(patch).length > 0) {
 			await ctx.db.patch(orderId, patch);
 		}

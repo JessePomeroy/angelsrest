@@ -86,6 +86,17 @@ export async function GET({ url, cookies }) {
 			)
 				throw error(404, "Download not found");
 			const location = await issuePaidFile(resolution.descriptor);
+			const race = await convex.query(api.orders.resolvePaidDownloadOrder, {
+				stripeSessionId: sessionId,
+				webhookSecret: getWebhookSecret(),
+			});
+			if (
+				!race ||
+				race.refunded ||
+				JSON.stringify(race.checkoutSnapshot) !== JSON.stringify(snapshot) ||
+				JSON.stringify(race.checkoutSnapshot?.items[itemIndex]) !== JSON.stringify(item)
+			)
+				throw error(409, "Download is not ready");
 			return new Response(null, {
 				status: 303,
 				headers: {

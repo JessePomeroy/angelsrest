@@ -148,6 +148,7 @@ function makeOrderResult(overrides: Record<string, unknown> = {}) {
 describe("processStripeWebhookEvent", () => {
 	let orderCreateResults: Array<ReturnType<typeof makeOrderResult>>;
 	let updateStatusResults: Array<undefined | Error>;
+	let claimedExternalId: string | undefined;
 	const convex = {
 		mutation: vi.fn(),
 		query: vi.fn(),
@@ -170,21 +171,26 @@ describe("processStripeWebhookEvent", () => {
 		vi.clearAllMocks();
 		orderCreateResults = [makeOrderResult()];
 		updateStatusResults = [];
-		convex.mutation.mockImplementation(async (reference: string, args: { update?: string }) => {
-			if (reference === "orders.create") {
-				const result = orderCreateResults.shift();
-				if (!result) throw new Error("Missing configured orders.create result");
-				return result;
-			}
-			if (reference === "orders.claimPrintFulfillment") return { kind: "claimed" };
-			if (reference === "orders.updatePrintFulfillment") return { kind: args.update };
-			if (reference === "orders.updateStatus") {
-				const result = updateStatusResults.shift();
-				if (result instanceof Error) throw result;
+		claimedExternalId = undefined;
+		convex.mutation.mockImplementation(
+			async (reference: string, args: { update?: string; stripeSessionId?: string }) => {
+				if (reference === "orders.create") {
+					claimedExternalId = args.stripeSessionId;
+					const result = orderCreateResults.shift();
+					if (!result) throw new Error("Missing configured orders.create result");
+					return result;
+				}
+				if (reference === "orders.claimPrintFulfillment")
+					return { kind: "claimed", externalId: claimedExternalId };
+				if (reference === "orders.updatePrintFulfillment") return { kind: args.update };
+				if (reference === "orders.updateStatus") {
+					const result = updateStatusResults.shift();
+					if (result instanceof Error) throw result;
+					return undefined;
+				}
 				return undefined;
-			}
-			return undefined;
-		});
+			},
+		);
 		convex.query.mockReset();
 		mockPrivateEnv.CHECKOUT_SNAPSHOT_MODE = undefined;
 		stripe.checkout.sessions.retrieve.mockReset();
@@ -652,17 +658,13 @@ describe("processStripeWebhookEvent", () => {
 
 	it("sends refund copy instead of normal confirmation after a permanent failure", async () => {
 		const session = makeCheckoutSession();
+		const shippingDetails = session.collected_information?.shipping_details;
+		if (!shippingDetails) throw new Error("Missing shipping fixture");
+		shippingDetails.name = "";
 		stripe.checkout.sessions.retrieve.mockResolvedValue({
 			...session,
 			line_items: { data: [makeLineItem()] },
 		});
-		const { LumaPrintsError } = await import("../lumaprints");
-		createLumaPrintsOrder.mockRejectedValue(
-			new LumaPrintsError("Order rejected", {
-				statusCode: 422,
-				message: "Invalid image",
-			}),
-		);
 
 		const { processStripeWebhookEvent } = await import("../orderIntake");
 		await processStripeWebhookEvent(
@@ -716,8 +718,11 @@ describe("processStripeWebhookEvent", () => {
 		expect(mockSendCustomerConfirmation).not.toHaveBeenCalled();
 	});
 
-	it("recovers a post-refund state-write failure without a second fulfillment submission", async () => {
+	it("recovers a pre-submit refund state-write failure without provider submission", async () => {
 		const session = makeCheckoutSession();
+		const shippingDetails = session.collected_information?.shipping_details;
+		if (!shippingDetails) throw new Error("Missing shipping fixture");
+		shippingDetails.name = "";
 		stripe.checkout.sessions.retrieve.mockResolvedValue({
 			...session,
 			line_items: { data: [makeLineItem()] },
@@ -737,14 +742,6 @@ describe("processStripeWebhookEvent", () => {
 			undefined,
 			undefined,
 		];
-		const { LumaPrintsError } = await import("../lumaprints");
-		createLumaPrintsOrder.mockRejectedValueOnce(
-			new LumaPrintsError("Order rejected", {
-				statusCode: 422,
-				message: "Invalid image",
-			}),
-		);
-
 		const { processStripeWebhookEvent } = await import("../orderIntake");
 		await expect(
 			processStripeWebhookEvent(makeStripeEvent("checkout.session.completed", session), adapters()),
@@ -754,7 +751,7 @@ describe("processStripeWebhookEvent", () => {
 			adapters(),
 		);
 
-		expect(createLumaPrintsOrder).toHaveBeenCalledTimes(1);
+		expect(createLumaPrintsOrder).not.toHaveBeenCalled();
 		expect(stripe.refunds.create).toHaveBeenCalledTimes(2);
 		expect(stripe.refunds.create.mock.calls[0][1]).toEqual(stripe.refunds.create.mock.calls[1][1]);
 		expect(mockSendCustomerFulfillmentFailure).toHaveBeenCalledTimes(1);

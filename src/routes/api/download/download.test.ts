@@ -105,6 +105,7 @@ describe("paid download", () => {
 	it("uses the exact snapshot ordinal, paid resolver, and issuer for Convex only", async () => {
 		const { GET } = await import("./+server");
 		const response = await GET(event("session_id=cs_test_paid&slug=ignored&item=0"));
+		expect(mocks.query).toHaveBeenCalledTimes(2);
 		expect(mocks.query).toHaveBeenCalledWith("orders.resolvePaidDownloadOrder", {
 			stripeSessionId: "cs_test_paid",
 			webhookSecret: "webhook-secret",
@@ -130,6 +131,22 @@ describe("paid download", () => {
 			status: 400,
 		});
 		expect(mocks.paidFile).not.toHaveBeenCalled();
+	});
+
+	it("discards an issued Convex grant when refund or immutable item changes", async () => {
+		const { GET } = await import("./+server");
+		for (const race of [
+			{ checkoutSnapshot: snapshot, refunded: true },
+			{
+				checkoutSnapshot: { ...snapshot, items: [{ ...digital, revisionId: "changed" }] },
+				refunded: false,
+			},
+		]) {
+			mocks.query
+				.mockResolvedValueOnce({ checkoutSnapshot: snapshot, refunded: false })
+				.mockResolvedValueOnce(race);
+			await expect(GET(event())).rejects.toMatchObject({ status: 409 });
+		}
 	});
 
 	it("exact-resolves Sanity without caller slug and closes a refund race", async () => {

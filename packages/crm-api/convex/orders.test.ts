@@ -132,20 +132,35 @@ describe("durable checkout snapshot", () => {
 });
 
 describe("print fulfillment fence", () => {
-	test("atomically grants one concurrent delivery and exposes the durable claim", async () => {
+	test("derives tenant-safe IDs and fences claims and refund races", async () => {
 		const t = convexTest(schema, modules);
-		const order = await t.mutation(api.orders.create, orderArgs("cs_fulfillment_fence"));
-		const claim = (token: string) => t.mutation(api.orders.claimPrintFulfillment, {
-			orderId: order._id, webhookSecret: WEBHOOK_SECRET, claim: token,
-			externalId: "cs_fulfillment_fence",
+		const first = await t.mutation(api.orders.create, {
+			...orderArgs("cs_test_tenantAglobal1234"), orderNumber: "ORD-SAME",
 		});
-		const results = await Promise.all([claim("delivery-a"), claim("delivery-b")]);
+		const second = await t.mutation(api.orders.create, {
+			...orderArgs("cs_test_tenantBglobal1234"), siteUrl: "tenant-b.example", orderNumber: "ORD-SAME",
+		});
+		const claim = (orderId: typeof first._id) => t.mutation(api.orders.claimPrintFulfillment, {
+			orderId, webhookSecret: WEBHOOK_SECRET,
+		});
+		const results = await Promise.all([claim(first._id), claim(first._id)]);
 		expect(results.map(({ kind }) => kind).sort()).toEqual(["claimed", "reconcile"]);
-		const stored = await t.run((ctx) => ctx.db.get(order._id));
-		expect(stored).toMatchObject({ printFulfillmentExternalId: "cs_fulfillment_fence" });
+		expect(results.every((result) => result.externalId === "cs_test_tenantAglobal1234")).toBe(true);
+		await expect(claim(second._id)).resolves.toMatchObject({
+			kind: "claimed", externalId: "cs_test_tenantBglobal1234",
+		});
 		await expect(t.mutation(api.orders.updateStatus, {
-			orderId: order._id, webhookSecret: WEBHOOK_SECRET, status: "refunded",
+			orderId: first._id, webhookSecret: WEBHOOK_SECRET, status: "refunded",
 		})).rejects.toThrow("submission is in progress");
+
+		const order = await t.mutation(api.orders.create, orderArgs("cs_test_adminrefund1234"));
+		await t.mutation(api.orders.updateStatus, {
+			orderId: order._id, webhookSecret: WEBHOOK_SECRET, status: "refunded",
+		});
+		await expect(t.mutation(api.orders.claimPrintFulfillment, {
+			orderId: order._id, webhookSecret: WEBHOOK_SECRET,
+		})).resolves.toEqual({ kind: "refunded", stripeRefundId: undefined });
+		expect((await t.run((ctx) => ctx.db.get(order._id)))?.printFulfillmentClaim).toBeUndefined();
 	});
 });
 
