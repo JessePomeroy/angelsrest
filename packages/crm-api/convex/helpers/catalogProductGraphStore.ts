@@ -11,7 +11,6 @@ import {
 	insertCatalogProductGraphV2Revision,
 	loadCatalogProductGraphV2Revision,
 	loadCatalogProductGraphV2RevisionSummary,
-	loadCurrentPublishedCatalogProductGraphV2Revision,
 	normalizeCatalogProductGraphV2DraftAssets,
 	projectCatalogProductGraphV2ForEditor,
 	projectCatalogProductGraphV2Public,
@@ -954,7 +953,7 @@ async function projectPublishedCatalogProduct(
 	await proveTenantWideCatalogIdentity(ctx, product);
 	const [draft, published] = await Promise.all([
 		loadCatalogProductGraphV2RevisionSummary(ctx, product, product.draftRevisionId),
-		loadCurrentPublishedCatalogProductGraphV2Revision(ctx, product),
+		loadCatalogProductGraphV2Revision(ctx, product, product.publishedRevisionId),
 	]);
 	assertCatalogGraphV2ProductLifecycle(
 		product,
@@ -1174,6 +1173,7 @@ export async function getCatalogProductGraphV2RetirementEligibility(
 	);
 	const product = requireCatalogProductGraphV2Product(doc);
 	requireCatalogProductKindEnabled(client, product.productKind);
+	await loadCatalogGraphV2RevisionSummaries(ctx, product);
 	const revisions = await ctx.db
 		.query("catalogProductRevisions")
 		.withIndex("by_siteUrl_and_productId", (query) =>

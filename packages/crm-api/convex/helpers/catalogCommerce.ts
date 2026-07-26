@@ -14,7 +14,7 @@ import type { Doc } from "../_generated/dataModel";
 import type { QueryCtx } from "../_generated/server";
 import {
 	loadCatalogProductGraphV2Revision,
-	loadCurrentPublishedCatalogProductGraphV2Revision,
+	loadPaidHistoricalCatalogProductGraphV2Revision,
 	projectCatalogProductGraphV2Public,
 	requireCatalogProductGraphV2Product,
 } from "./catalogProductGraphData";
@@ -227,13 +227,16 @@ function baseResponse(graph: LoadedGraph, item: SnapshotItem) {
 	};
 }
 
-async function loadExactGraph(ctx: QueryCtx, siteUrl: string, item: SnapshotItem) {
+async function loadExactGraph(ctx: QueryCtx, siteUrl: string, item: SnapshotItem,
+	mode: "strict-current" | "paid-historical" = "strict-current") {
 	const { productId, revisionId } = requireProductAndRevisionIds(ctx, item);
 	const value = await ctx.db.get(productId);
 	if (!value || value.siteUrl !== siteUrl) throw new Error("Catalog commerce product not found");
 	const product = requireCatalogProductGraphV2Product(value);
 	if (product.productKind !== item.productKind) throw new Error("Catalog commerce kind mismatch");
-	const graph = await loadCatalogProductGraphV2Revision(ctx, product, revisionId);
+	const graph = await (mode === "paid-historical"
+		? loadPaidHistoricalCatalogProductGraphV2Revision
+		: loadCatalogProductGraphV2Revision)(ctx, product, revisionId);
 	if (!graph) throw new Error("Catalog commerce revision not found");
 	return { product, graph };
 }
@@ -257,7 +260,6 @@ export async function resolveCatalogCommerce(
 			|| graph.draft.saleAvailability !== "available") {
 			throw new Error("Catalog commerce product is unavailable");
 		}
-		await loadCurrentPublishedCatalogProductGraphV2Revision(ctx, product);
 		return { purpose: "checkout" as const, ...baseResponse(graph, request.item) };
 	}
 
@@ -277,7 +279,7 @@ export async function resolveCatalogCommerce(
 		borderOptionKey: storedItem.borderOptionKey ?? null,
 		frameOptionKey: storedItem.frameOptionKey ?? null,
 	};
-	const { product, graph } = await loadExactGraph(ctx, siteUrl, item);
+	const { product, graph } = await loadExactGraph(ctx, siteUrl, item, "paid-historical");
 	if (isRefunded(order)) throw new Error("Paid catalog commerce order was refunded");
 	if (request.purpose === "paid_download") {
 		if (item.productKind !== "digital_download") {

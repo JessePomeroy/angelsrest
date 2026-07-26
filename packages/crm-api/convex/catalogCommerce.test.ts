@@ -9,6 +9,7 @@ import {
 	SITE_A,
 	SITE_B,
 	setup,
+	storedCounts,
 } from "../test/catalogProductGraphFixtures";
 import { api, internal } from "./_generated/api";
 import type { Id } from "./_generated/dataModel";
@@ -310,6 +311,88 @@ describe("paid catalog commerce", () => {
 		await expect(resolve(fixture, paid("paid_download"))).rejects.toThrow();
 	});
 
+	test("keeps historical replay isolated from corrupt active revision slugs", async () => {
+		const fixture = await setup(modules);
+		const created = await createGraph(
+			fixture.adminA, SITE_A.siteUrl, "integrity-old",
+			graphDraft("print", fixture, "integrity-old"),
+		);
+		await publish(fixture, created);
+		await seedOrder(fixture, item(created, "print"));
+		let value = await product(fixture, created.productId);
+		await fixture.adminA.mutation(api.catalogProductGraphs.unpublish, {
+			productId: created.productId,
+			expectedDraftRevisionId: value.draftRevisionId ?? null,
+			expectedPublishedRevisionId: value.publishedRevisionId ?? null,
+			expectedUpdatedAt: value.updatedAt,
+		});
+		const middle = await saveGraph(
+			fixture.adminA, created.productId,
+			graphDraft("print", fixture, "integrity-middle"), created.revisionId,
+		);
+		await saveGraph(
+			fixture.adminA, created.productId,
+			graphDraft("print", fixture, "integrity-current"), middle.revisionId,
+		);
+		value = await product(fixture, created.productId);
+		await fixture.t.run((ctx) => ctx.db.patch(created.productId, {
+			draftRevisionId: created.revisionId,
+			publishedRevisionId: middle.revisionId,
+			publishedAt: value.updatedAt,
+			publishedBy: "fixture",
+		}));
+		const corrupt = await product(fixture, created.productId);
+		const beforeCounts = await storedCounts(fixture);
+		const mismatch = /revision slug ownership mismatch/i;
+		const reads = [
+			() => fixture.adminA.query(api.catalogProductGraphs.getEditorState, {
+				productId: created.productId,
+			}),
+			() => fixture.adminA.query(api.catalogProductGraphs.listForEditor, {
+				siteUrl: SITE_A.siteUrl, productKind: "print",
+			}),
+			() => fixture.t.query(api.catalogProductGraphs.getPublishedBySlug, {
+				siteUrl: SITE_A.siteUrl, slug: "integrity-current",
+			}),
+			() => fixture.adminA.query(api.catalogProductGraphs.getRetirementEligibility, {
+				productId: created.productId,
+			}),
+			() => fixture.adminA.query(api.catalogProductGraphs.listDraftPrivateAssetCandidates, {
+				productId: created.productId, expectedDraftRevisionId: created.revisionId,
+				relation: { kind: "print_source", relationKey: "master" },
+				paginationOpts: { numItems: 1, cursor: null },
+			}),
+		];
+		for (const read of reads) await expect(read()).rejects.toThrow(mismatch);
+		await expect(resolve(fixture, checkout(item(
+			{ ...created, revisionId: middle.revisionId }, "print",
+		)))).rejects.toThrow(mismatch);
+		const cas = {
+			productId: created.productId,
+			expectedDraftRevisionId: created.revisionId,
+			expectedPublishedRevisionId: middle.revisionId,
+			expectedUpdatedAt: corrupt.updatedAt,
+		};
+		const mutations = [
+			() => saveGraph(fixture.adminA, created.productId,
+				graphDraft("print", fixture, "integrity-current"), created.revisionId),
+			() => fixture.adminA.mutation(api.catalogProductGraphs.publishDraft, cas),
+			() => fixture.adminA.mutation(api.catalogProductGraphs.unpublish, cas),
+			() => fixture.adminA.mutation(api.catalogProductGraphs.replaceDraftPrivateAsset, {
+				productId: created.productId, expectedDraftRevisionId: created.revisionId,
+				relation: { kind: "print_source", relationKey: "master", assetId: fixture.printA2 },
+			}),
+			() => fixture.adminA.mutation(api.catalogProductGraphs.discardDraft, {
+				productId: created.productId, draftRevisionId: created.revisionId,
+			}),
+		];
+		for (const mutation of mutations) await expect(mutation()).rejects.toThrow(mismatch);
+		expect(await product(fixture, created.productId)).toEqual(corrupt);
+		expect(await storedCounts(fixture)).toEqual(beforeCounts);
+		expect((await resolve(fixture, paid("paid_fulfillment"))).identity.revisionId)
+			.toBe(created.revisionId);
+	});
+
 	test("replays the immutable paid revision after unpublish, re-slug, and current-policy changes", async () => {
 		const fixture = await setup(modules);
 		const created = await createGraph(
@@ -366,7 +449,7 @@ describe("paid catalog commerce", () => {
 		});
 		await expect(fixture.t.query(api.catalogProductGraphs.getPublishedBySlug, {
 			siteUrl: SITE_A.siteUrl, slug: "new-current-slug",
-		})).rejects.toThrow(/publication identity mismatch/i);
+		})).rejects.toThrow(/revision slug ownership mismatch/i);
 		expect((await resolve(fixture, paid("paid_fulfillment"))).identity.revisionId)
 			.toBe(created.revisionId);
 	});
