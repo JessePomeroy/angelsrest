@@ -177,7 +177,7 @@ export function signCheckoutBridgeBody({
 	return createHmac("sha256", secret).update(`${timestamp}.${bodyText}`).digest("hex");
 }
 
-function verifyCheckoutBridgeSignature({
+export function verifyCheckoutBridgeSignature({
 	bodyText,
 	headers,
 	secrets,

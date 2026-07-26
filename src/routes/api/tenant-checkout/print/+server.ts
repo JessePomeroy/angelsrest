@@ -1,5 +1,9 @@
 import { error, json } from "@sveltejs/kit";
-import { CheckoutBridgeError, createTenantPrintCheckoutSession } from "$lib/server/checkoutBridge";
+import {
+	CheckoutBridgeError,
+	createTenantPrintCheckoutSession,
+	verifyCheckoutBridgeSignature,
+} from "$lib/server/checkoutBridge";
 import { getCheckoutBridgeTenantConfig } from "$lib/server/checkoutBridgeConfig";
 import { isCheckoutSnapshotReservationConflict } from "$lib/server/checkoutSnapshotReservationClient";
 import { getStripe } from "$lib/server/stripeClient";
@@ -9,14 +13,10 @@ export async function POST({ request }) {
 	const bodyText = await request.text();
 
 	try {
-		const siteUrl = readSiteUrl(bodyText);
+		const { siteUrl, bridgeConfig } = authorizeBridgeRequest(bodyText, request.headers);
 		const tenant = await resolveStripeTenantForSite(siteUrl, {
 			requirePlatformClient: true,
 		});
-		const bridgeConfig = getCheckoutBridgeTenantConfig(tenant.siteUrl);
-		if (!bridgeConfig) {
-			throw new CheckoutBridgeError(403, "Checkout bridge tenant is not configured");
-		}
 
 		const session = await createTenantPrintCheckoutSession({
 			bodyText,
@@ -38,6 +38,23 @@ export async function POST({ request }) {
 	}
 }
 
+function authorizeBridgeRequest(bodyText: string, headers: Headers) {
+	try {
+		const siteUrl = readSiteUrl(bodyText);
+		const bridgeConfig = getCheckoutBridgeTenantConfig(siteUrl);
+		if (!bridgeConfig) throw new Error("Unknown checkout bridge tenant");
+		verifyCheckoutBridgeSignature({
+			bodyText,
+			headers,
+			secrets: bridgeConfig.secrets,
+			now: Date.now(),
+		});
+		return { siteUrl, bridgeConfig };
+	} catch {
+		throw new CheckoutBridgeError(401, "Unauthorized checkout bridge request");
+	}
+}
+
 function readSiteUrl(bodyText: string): string {
 	try {
 		const parsed = JSON.parse(bodyText) as { siteUrl?: unknown };
@@ -45,7 +62,7 @@ function readSiteUrl(bodyText: string): string {
 			return parsed.siteUrl;
 		}
 	} catch {
-		// Let the shared bridge validator produce the final request error.
+		// Authentication returns the same response for malformed and unknown tenants.
 	}
 	return "";
 }
