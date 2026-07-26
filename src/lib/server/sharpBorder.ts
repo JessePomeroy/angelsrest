@@ -21,6 +21,19 @@ import { prepareSanityUrlForPrint } from "$lib/shop/lumaprintsUrls";
 import type { PrintSourcePolicy } from "$lib/shop/types";
 
 const DPI = 300;
+const STRIPE_CHECKOUT_SESSION_ID = /^cs_(?:test|live)_[A-Za-z0-9]{16,120}$/;
+
+function borderedPrintKey(stripeSessionId: string, itemIndex: number) {
+	if (
+		!STRIPE_CHECKOUT_SESSION_ID.test(stripeSessionId) ||
+		!Number.isSafeInteger(itemIndex) ||
+		itemIndex < 0 ||
+		itemIndex >= 40
+	) {
+		throw new Error("Invalid bordered print storage identity");
+	}
+	return `prints/bordered/${stripeSessionId}/${itemIndex}.jpg`;
+}
 
 /**
  * Fetch an image from Sanity CDN at print quality (?max=8000&q=100),
@@ -60,9 +73,10 @@ export async function composeBorderedPrint(
  */
 export async function uploadBorderedPrintToR2(
 	buffer: Buffer,
-	orderId: string,
+	stripeSessionId: string,
 	itemIndex: number,
 ): Promise<string> {
+	const key = borderedPrintKey(stripeSessionId, itemIndex);
 	const workerUrl = process.env.GALLERY_WORKER_URL;
 	const workerToken = process.env.GALLERY_WORKER_TOKEN;
 	if (!workerUrl || !workerToken) {
@@ -70,8 +84,6 @@ export async function uploadBorderedPrintToR2(
 			"GALLERY_WORKER_URL and GALLERY_WORKER_TOKEN must be set for bordered print uploads",
 		);
 	}
-
-	const key = `prints/bordered/${orderId}/${itemIndex}.jpg`;
 	const uploadUrl = `${workerUrl}/upload/put?key=${encodeURIComponent(key)}`;
 
 	const response = await fetch(uploadUrl, {
@@ -107,7 +119,7 @@ export interface BorderedItem {
  */
 export async function processBorderedPrints(
 	items: BorderedItem[],
-	orderId: string,
+	stripeSessionId: string,
 ): Promise<Map<number, string>> {
 	if (items.length === 0) return new Map();
 
@@ -125,7 +137,7 @@ export async function processBorderedPrints(
 	// Parallel R2 uploads
 	const uploads = await Promise.all(
 		composites.map(async ({ index, buffer }) => {
-			const url = await uploadBorderedPrintToR2(buffer, orderId, index);
+			const url = await uploadBorderedPrintToR2(buffer, stripeSessionId, index);
 			return { index, url };
 		}),
 	);

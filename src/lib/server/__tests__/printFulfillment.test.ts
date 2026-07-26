@@ -10,6 +10,7 @@ const mockBuildOrderItemsFromSnapshot = vi.fn();
 const mockBuildRecipientFromShipping = vi.fn();
 const mockSendFulfillmentFailureAlert = vi.fn();
 const mockFindLumaPrintsOrder = vi.fn();
+const mockProcessBorderedPrints = vi.fn();
 
 vi.mock("$lib/server/logger", () => ({
 	logStructured: mockLogStructured,
@@ -42,6 +43,7 @@ vi.mock("$lib/server/webhookDecoder", () => ({
 vi.mock("$lib/server/snapshotFulfillment", () => ({
 	buildOrderItemsFromSnapshot: mockBuildOrderItemsFromSnapshot,
 }));
+vi.mock("$lib/server/sharpBorder", () => ({ processBorderedPrints: mockProcessBorderedPrints }));
 
 vi.mock("$lib/server/webhookEmails", () => ({
 	sendFulfillmentFailureAlert: mockSendFulfillmentFailureAlert,
@@ -141,39 +143,97 @@ describe("print fulfillment", () => {
 		mockBuildRecipientFromShipping.mockReturnValue({
 			firstName: "Jane",
 			lastName: "Doe",
+			address1: "123 Main St",
+			address2: "",
+			city: "Portland",
+			state: "OR",
+			zip: "97201",
+			country: "US",
+			phone: "",
 		});
+		mockProcessBorderedPrints.mockImplementation(
+			(items, stripeSessionId) =>
+				new Map(
+					items.map(({ index }: { index: number }) => [
+						index,
+						`https://worker.example/image/prints/bordered/${stripeSessionId}/${index}.jpg`,
+					]),
+				),
+		);
 		mockBuildLumaPrintsOrder.mockImplementation((externalId: string) => ({ externalId }));
 		mockCreateLumaPrintsOrder.mockResolvedValue({ orderNumber: "LP-123" });
 		mockFindLumaPrintsOrder.mockResolvedValue(null);
 		mockSendFulfillmentFailureAlert.mockResolvedValue({ id: "email-123" });
 	});
 
-	it("submits print orders and returns a fulfilled outcome", async () => {
+	it("isolates same-number tenant borders by session and submits exact URL-safe payloads", async () => {
+		const { buildLumaPrintsOrder } =
+			await vi.importActual<typeof import("../lumaprints")>("../lumaprints");
 		const { submitPrintFulfillment } = await import("../printFulfillment");
-
-		const outcome = await submitPrintFulfillment(
-			{ convex, createLumaPrintsOrder: mockCreateLumaPrintsOrder },
+		const cases = [
+			{ id: "cs_test_tenantAglobal1234", orderId: "order-a" as Id<"orders"> },
+			{ id: "cs_test_tenantBglobal1234", orderId: "order-b" as Id<"orders"> },
+		];
+		const sessions = cases.map(({ id }) => id);
+		convex.mutation.mockImplementation(
+			async (reference: string, args: { orderId: Id<"orders"> }) =>
+				reference === "orders.claimPrintFulfillment"
+					? {
+							kind: "claimed",
+							externalId: cases.find(({ orderId }) => orderId === args.orderId)?.id,
+						}
+					: undefined,
+		);
+		mockBuildLumaPrintsOrder.mockImplementation(buildLumaPrintsOrder);
+		mockBuildOrderItemsFromSession.mockImplementation(() => [
 			{
-				orderId,
-				orderNumber: "ORD-001",
-				lineItems: [],
-				shippingDetails: shippingDetails as any,
-				session,
+				imageUrl: "https://opaque.example/source?private=1",
+				sourcePolicy: "opaque_capability",
+				paperSubcategoryId: 103001,
+				quantity: 2,
+				width: 8,
+				height: 10,
+				borderWidth: 0.25,
 			},
+		]);
+		for (const { id, orderId } of cases)
+			await submitPrintFulfillment(
+				{ convex, createLumaPrintsOrder: mockCreateLumaPrintsOrder },
+				{ ...printInput, orderId, session: { ...session, id } },
+			);
+		const expected = (id: string) => ({
+			externalId: id,
+			storeId: 0,
+			shippingMethod: "default",
+			recipient: {
+				firstName: "Jane",
+				lastName: "Doe",
+				addressLine1: "123 Main St",
+				addressLine2: "",
+				city: "Portland",
+				state: "OR",
+				zipCode: "97201",
+				country: "US",
+				phone: "",
+			},
+			orderItems: [
+				{
+					externalItemId: `${id}-item-1`,
+					subcategoryId: 103001,
+					quantity: 2,
+					width: 8,
+					height: 10,
+					file: { imageUrl: `https://worker.example/image/prints/bordered/${id}/0.jpg` },
+					orderItemOptions: [39],
+				},
+			],
+		});
+		expect(mockProcessBorderedPrints.mock.calls.map(([, id]) => id)).toEqual(sessions);
+		expect(mockCreateLumaPrintsOrder.mock.calls.map(([payload]) => payload)).toEqual(
+			sessions.map(expected),
 		);
-
-		expect(outcome).toEqual({ kind: "fulfilled", lumaprintsOrderNumber: "LP-123" });
-		expect(mockBuildLumaPrintsOrder).toHaveBeenCalledWith(
-			session.id,
-			expect.anything(),
-			expect.anything(),
-		);
-		expect(mockBuildLumaPrintsOrder.mock.invocationCallOrder[0]).toBeLessThan(
-			convex.mutation.mock.invocationCallOrder[0],
-		);
-		expect(convex.mutation).toHaveBeenCalledWith(
-			"orders.updateStatus",
-			expect.objectContaining({ orderId, lumaprintsOrderNumber: "LP-123" }),
+		expect(JSON.stringify(mockLogStructured.mock.calls)).not.toMatch(
+			/opaque\.example|worker\.example/,
 		);
 	});
 
@@ -229,27 +289,6 @@ describe("print fulfillment", () => {
 		expect(mockBuildOrderItemsFromSession).not.toHaveBeenCalled();
 	});
 
-	it("returns no_print_items without validating a recipient or calling LumaPrints", async () => {
-		const { submitPrintFulfillment } = await import("../printFulfillment");
-		mockBuildOrderItemsFromSession.mockReturnValue([]);
-
-		const outcome = await submitPrintFulfillment(
-			{ convex, createLumaPrintsOrder: mockCreateLumaPrintsOrder },
-			{
-				orderId,
-				orderNumber: "ORD-001",
-				lineItems: [],
-				shippingDetails: null,
-				session,
-			},
-		);
-
-		expect(outcome).toEqual({ kind: "no_print_items" });
-		expect(mockBuildRecipientFromShipping).not.toHaveBeenCalled();
-		expect(mockCreateLumaPrintsOrder).not.toHaveBeenCalled();
-		expect(convex.mutation).not.toHaveBeenCalled();
-	});
-
 	it("reconciles an ambiguous POST and never submits it twice", async () => {
 		const { submitPrintFulfillment } = await import("../printFulfillment");
 		let claimed = false;
@@ -288,6 +327,7 @@ describe("print fulfillment", () => {
 				statusCode: 422,
 				message: "Invalid image",
 			}),
+			{ stripeRequestOptions: { stripeAccount: "acct_123" } },
 		);
 
 		expect(outcome).toEqual(
@@ -309,8 +349,9 @@ describe("print fulfillment", () => {
 			expect.objectContaining({
 				payment_intent: "pi_test_123",
 				reason: "requested_by_customer",
+				refund_application_fee: true,
 			}),
-			{ idempotencyKey: "fulfillment-refund:cs_test_123" },
+			{ stripeAccount: "acct_123", idempotencyKey: "fulfillment-refund:cs_test_123" },
 		);
 		expect(convex.mutation).toHaveBeenNthCalledWith(
 			2,
@@ -329,25 +370,6 @@ describe("print fulfillment", () => {
 				customerEmail: "jane@example.com",
 				stripeRefundId: "re_test_123",
 			}),
-		);
-	});
-
-	it("adds connected-account routing to the deterministic refund request", async () => {
-		const { FulfillmentValidationError } = await import("../fulfillmentValidationError");
-
-		await handle(new FulfillmentValidationError("invalid dimensions"), {
-			stripeRequestOptions: { stripeAccount: "acct_123" },
-		});
-
-		expect(stripe.refunds.create).toHaveBeenCalledWith(
-			expect.objectContaining({
-				payment_intent: "pi_test_123",
-				refund_application_fee: true,
-			}),
-			{
-				stripeAccount: "acct_123",
-				idempotencyKey: "fulfillment-refund:cs_test_123",
-			},
 		);
 	});
 

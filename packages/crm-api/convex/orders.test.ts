@@ -132,35 +132,55 @@ describe("durable checkout snapshot", () => {
 });
 
 describe("print fulfillment fence", () => {
-	test("derives tenant-safe IDs and fences claims and refund races", async () => {
+	test("uses global session IDs and makes claim/recovery CAS mutually exclusive", async () => {
 		const t = convexTest(schema, modules);
-		const first = await t.mutation(api.orders.create, {
-			...orderArgs("cs_test_tenantAglobal1234"), orderNumber: "ORD-SAME",
+		const create = (session: string, siteUrl = SITE_URL) => t.mutation(api.orders.create, {
+			...orderArgs(session), siteUrl, orderNumber: "ORD-SAME",
 		});
-		const second = await t.mutation(api.orders.create, {
-			...orderArgs("cs_test_tenantBglobal1234"), siteUrl: "tenant-b.example", orderNumber: "ORD-SAME",
-		});
+		const first = await create("cs_test_tenantAglobal1234");
+		const second = await create("cs_test_tenantBglobal1234", "tenant-b.example");
 		const claim = (orderId: typeof first._id) => t.mutation(api.orders.claimPrintFulfillment, {
 			orderId, webhookSecret: WEBHOOK_SECRET,
 		});
-		const results = await Promise.all([claim(first._id), claim(first._id)]);
-		expect(results.map(({ kind }) => kind).sort()).toEqual(["claimed", "reconcile"]);
-		expect(results.every((result) => result.externalId === "cs_test_tenantAglobal1234")).toBe(true);
+		const duplicate = await Promise.all([claim(first._id), claim(first._id)]);
+		expect(duplicate.map(({ kind }) => kind).sort()).toEqual(["claimed", "reconcile"]);
+		expect(duplicate.every((result) => result.externalId === "cs_test_tenantAglobal1234")).toBe(true);
 		await expect(claim(second._id)).resolves.toMatchObject({
 			kind: "claimed", externalId: "cs_test_tenantBglobal1234",
 		});
-		await expect(t.mutation(api.orders.updateStatus, {
-			orderId: first._id, webhookSecret: WEBHOOK_SECRET, status: "refunded",
+		for (const transition of [
+			{ status: "refunded" }, { stripeRefundId: "re_test" },
+			{ fulfillmentRecoveryStatus: "refund_pending" },
+			{ fulfillmentRecoveryStatus: "refunded" },
+		] as const) await expect(t.mutation(api.orders.updateStatus, {
+			orderId: first._id, webhookSecret: WEBHOOK_SECRET, ...transition,
 		})).rejects.toThrow("submission is in progress");
 
-		const order = await t.mutation(api.orders.create, orderArgs("cs_test_adminrefund1234"));
+		const recovered = await create("cs_test_recoveryfirst1234");
 		await t.mutation(api.orders.updateStatus, {
-			orderId: order._id, webhookSecret: WEBHOOK_SECRET, status: "refunded",
+			orderId: recovered._id, webhookSecret: WEBHOOK_SECRET,
+			status: "fulfillment_error", fulfillmentRecoveryStatus: "refund_pending",
 		});
-		await expect(t.mutation(api.orders.claimPrintFulfillment, {
-			orderId: order._id, webhookSecret: WEBHOOK_SECRET,
-		})).resolves.toEqual({ kind: "refunded", stripeRefundId: undefined });
-		expect((await t.run((ctx) => ctx.db.get(order._id)))?.printFulfillmentClaim).toBeUndefined();
+		await expect(claim(recovered._id)).resolves.toEqual({ kind: "busy" });
+
+		const raced = await create("cs_test_concurrentcas1234");
+		const [claimResult, recoveryResult] = await Promise.allSettled([
+			claim(raced._id),
+			t.mutation(api.orders.updateStatus, {
+				orderId: raced._id, webhookSecret: WEBHOOK_SECRET,
+				status: "fulfillment_error", fulfillmentRecoveryStatus: "refund_pending",
+			}),
+		]);
+		const stored = await t.run((ctx) => ctx.db.get(raced._id));
+		if (recoveryResult.status === "fulfilled") {
+			expect(claimResult).toMatchObject({ status: "fulfilled", value: { kind: "busy" } });
+			expect(stored).toMatchObject({ fulfillmentRecoveryStatus: "refund_pending" });
+			expect(stored?.printFulfillmentClaim).toBeUndefined();
+		} else {
+			expect(claimResult).toMatchObject({ status: "fulfilled", value: { kind: "claimed" } });
+			expect(stored?.printFulfillmentClaim).toBe(true);
+			expect(stored?.fulfillmentRecoveryStatus).toBeUndefined();
+		}
 	});
 });
 

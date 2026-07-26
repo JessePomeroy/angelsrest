@@ -669,14 +669,10 @@ export const updateStatus = mutation({
 	handler: async (ctx, { orderId, webhookSecret, ...updates }) => {
 		const auth = await requireWebhookCallerOrAuth(ctx, webhookSecret);
 		if (auth.via === "auth") await requireDocumentSiteAdmin(ctx, "orders", orderId);
-		const refundUpdate = updates.stripeRefundId || updates.fulfillmentRecoveryStatus
-			|| updates.status === "refunded";
+		const refundUpdate = updates.stripeRefundId !== undefined
+			|| updates.fulfillmentRecoveryStatus !== undefined || updates.status === "refunded";
 		const current = refundUpdate ? await ctx.db.get(orderId) : null;
-		if (refundUpdate && current?.printFulfillmentClaim && !current.lumaprintsOrderNumber
-			&& !(updates.status === "fulfillment_error" && updates.fulfillmentError
-				&& (updates.fulfillmentRecoveryStatus === "refund_pending"
-					|| (updates.fulfillmentRecoveryStatus === "refunded"
-						&& current.fulfillmentRecoveryStatus === "refund_pending")))) {
+		if (refundUpdate && current?.printFulfillmentClaim && !current.lumaprintsOrderNumber) {
 			throw new Error("Print fulfillment submission is in progress");
 		}
 		const patch: Record<string, unknown> = {};

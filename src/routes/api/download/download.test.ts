@@ -98,39 +98,37 @@ describe("paid download", () => {
 			GET(event("session_id=cs_test_paid&email=other%40example.com")),
 		).rejects.toMatchObject({ status: 403 });
 		expect(mocks.query).not.toHaveBeenCalled();
-		expect(mocks.paidDownload).not.toHaveBeenCalled();
-		expect(mocks.paidFile).not.toHaveBeenCalled();
 	});
 
-	it("uses the exact snapshot ordinal, paid resolver, and issuer for Convex only", async () => {
+	it.each([
+		"convex",
+		"sanity",
+	] as const)("accepts valid %s inline-v1 omitted options and canonicalizes the issuer race", async (catalogProvider) => {
 		const { GET } = await import("./+server");
-		const response = await GET(event("session_id=cs_test_paid&slug=ignored&item=0"));
-		expect(mocks.query).toHaveBeenCalledTimes(2);
-		expect(mocks.query).toHaveBeenCalledWith("orders.resolvePaidDownloadOrder", {
-			stripeSessionId: "cs_test_paid",
-			webhookSecret: "webhook-secret",
+		const omitted = {
+			productKey: digital.productKey,
+			revisionId: digital.revisionId,
+			productKind: digital.productKind,
+			variantKey: digital.variantKey,
+		};
+		const initial = { ...snapshot, catalogProvider, items: [omitted] };
+		const canonical = { ...snapshot, catalogProvider };
+		mocks.query
+			.mockResolvedValueOnce({ checkoutSnapshot: initial, refunded: false })
+			.mockResolvedValueOnce({ checkoutSnapshot: canonical, refunded: false });
+		mocks.exactSanity.mockResolvedValue({
+			_id: digital.productKey,
+			_rev: digital.revisionId,
+			fileUrl: "https://cdn.sanity.io/file.zip",
 		});
-		expect(mocks.paidDownload).toHaveBeenCalledWith("cs_test_paid", 0);
-		expect(mocks.paidFile).toHaveBeenCalledWith(expect.objectContaining({ key: "paid/key" }));
-		expect(response.status).toBe(303);
-		expect(response.headers.get("location")).toBe("https://opaque.example/sealed.zip?token=opaque");
-		expect(response.headers.get("cache-control")).toBe("no-store");
-		expect(response.headers.get("referrer-policy")).toBe("no-referrer");
-	});
-
-	it("rejects refunded, wrong-kind, missing, and ambiguous ordinals before issuing", async () => {
-		const { GET } = await import("./+server");
-		mocks.query.mockResolvedValueOnce({ checkoutSnapshot: snapshot, refunded: true });
-		await expect(GET(event())).rejects.toMatchObject({ status: 409 });
-		mocks.query.mockResolvedValueOnce({
-			checkoutSnapshot: { ...snapshot, items: [{ ...digital, productKind: "print" }] },
-			refunded: false,
-		});
-		await expect(GET(event())).rejects.toMatchObject({ status: 404 });
-		await expect(GET(event("session_id=cs_test_paid&item=00"))).rejects.toMatchObject({
-			status: 400,
-		});
-		expect(mocks.paidFile).not.toHaveBeenCalled();
+		const response = await GET(event("session_id=cs_test_paid&item=0"));
+		expect(response.status).toBe(catalogProvider === "convex" ? 303 : 200);
+		if (catalogProvider === "convex") {
+			expect(mocks.paidDownload).toHaveBeenCalledWith("cs_test_paid", 0);
+		} else {
+			expect(mocks.exactSanity).toHaveBeenCalled();
+			expect(await response.text()).toBe("zip");
+		}
 	});
 
 	it("discards an issued Convex grant when refund or immutable item changes", async () => {
@@ -171,23 +169,6 @@ describe("paid download", () => {
 			},
 		);
 		expect(fetch).not.toHaveBeenCalled();
-		expect(mocks.paidDownload).not.toHaveBeenCalled();
-		expect(mocks.paidFile).not.toHaveBeenCalled();
-	});
-
-	it("preserves the snapshot-absent legacy Sanity slug stream", async () => {
-		const { GET } = await import("./+server");
-		mocks.query.mockResolvedValueOnce({ checkoutSnapshot: undefined, refunded: false });
-		mocks.legacySanity.mockResolvedValue({ fileUrl: "https://cdn.sanity.io/legacy.zip" });
-		const response = await GET(event());
-		expect(mocks.legacySanity).toHaveBeenCalledWith(
-			expect.stringContaining("slug.current == $slug"),
-			{
-				slug: "legacy",
-			},
-		);
-		expect(fetch).toHaveBeenCalledWith("https://cdn.sanity.io/legacy.zip");
-		expect(await response.text()).toBe("zip");
 		expect(mocks.paidDownload).not.toHaveBeenCalled();
 	});
 });

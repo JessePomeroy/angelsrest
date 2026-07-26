@@ -99,7 +99,7 @@ export async function submitPrintFulfillment(
 				orderId: orderNumber,
 				meta: { borderedCount: borderedItems.length },
 			},
-			() => processBorderedPrints(borderedItems, orderNumber),
+			() => processBorderedPrints(borderedItems, session.id),
 		);
 		for (const [index, r2Url] of urlMap) {
 			items[index].imageUrl = r2Url;

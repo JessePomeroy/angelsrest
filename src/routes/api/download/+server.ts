@@ -17,6 +17,23 @@ const LEGACY_PAID_FILE_QUERY = `*[_type == "product" && slug.current == $slug][0
 			title
 		}`;
 
+function canonicalSnapshot<T extends { items: readonly object[] }>(snapshot: T) {
+	return {
+		...snapshot,
+		items: snapshot.items.map((item) => {
+			const options = item as Record<string, unknown>;
+			return {
+				...item,
+				materialOptionKey:
+					options.materialOptionKey === undefined ? null : options.materialOptionKey,
+				sizeOptionKey: options.sizeOptionKey === undefined ? null : options.sizeOptionKey,
+				borderOptionKey: options.borderOptionKey === undefined ? null : options.borderOptionKey,
+				frameOptionKey: options.frameOptionKey === undefined ? null : options.frameOptionKey,
+			};
+		}),
+	};
+}
+
 function ordinal(value: string | null) {
 	const parsed = value === null ? 0 : Number(value);
 	if (
@@ -72,7 +89,9 @@ export async function GET({ url, cookies }) {
 		webhookSecret: getWebhookSecret(),
 	});
 	if (!authority || authority.refunded) throw error(409, "Download is not ready");
-	const snapshot = authority.checkoutSnapshot;
+	const snapshot = authority.checkoutSnapshot
+		? canonicalSnapshot(authority.checkoutSnapshot)
+		: undefined;
 
 	if (snapshot) {
 		const item = snapshot.items[itemIndex];
@@ -93,10 +112,11 @@ export async function GET({ url, cookies }) {
 			if (
 				!race ||
 				race.refunded ||
-				JSON.stringify(race.checkoutSnapshot) !== JSON.stringify(snapshot) ||
-				JSON.stringify(race.checkoutSnapshot?.items[itemIndex]) !== JSON.stringify(item)
-			)
+				!race.checkoutSnapshot ||
+				JSON.stringify(canonicalSnapshot(race.checkoutSnapshot)) !== JSON.stringify(snapshot)
+			) {
 				throw error(409, "Download is not ready");
+			}
 			return new Response(null, {
 				status: 303,
 				headers: {
@@ -129,7 +149,8 @@ export async function GET({ url, cookies }) {
 		if (
 			!race ||
 			race.refunded ||
-			JSON.stringify(race.checkoutSnapshot) !== JSON.stringify(snapshot)
+			!race.checkoutSnapshot ||
+			JSON.stringify(canonicalSnapshot(race.checkoutSnapshot)) !== JSON.stringify(snapshot)
 		) {
 			throw error(409, "Download is not ready");
 		}

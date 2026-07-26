@@ -33,16 +33,33 @@ describe("sharp border source policy", () => {
 		]);
 	});
 
-	it("redacts source URLs and raw Worker response bodies from failures", async () => {
+	it("keys cross-tenant same-number outputs by exact session and redacts failures", async () => {
 		const { composeBorderedPrint, uploadBorderedPrintToR2 } = await import("../sharpBorder");
+		process.env.GALLERY_WORKER_URL = "https://worker.example";
+		process.env.GALLERY_WORKER_TOKEN = "worker-secret";
+		const firstSession = "cs_test_tenantAglobal1234";
+		const sessions = [firstSession, "cs_live_tenantBglobal1234"];
+		const urls = await Promise.all(
+			sessions.map((id) => uploadBorderedPrintToR2(Buffer.from("image"), id, 0)),
+		);
+		expect(urls).toEqual(
+			sessions.map((id) => `https://worker.example/image/prints/bordered/${id}/0.jpg`),
+		);
+		expect(vi.mocked(fetch).mock.calls.map(([url]) => url)).toEqual(
+			sessions.map(
+				(id) => `https://worker.example/upload/put?key=prints%2Fbordered%2F${id}%2F0.jpg`,
+			),
+		);
+		await expect(uploadBorderedPrintToR2(Buffer.from("image"), "ORD-SAME", 0)).rejects.toThrow(
+			"Invalid bordered print storage identity",
+		);
+
 		vi.mocked(fetch).mockResolvedValueOnce(new Response("secret body", { status: 404 }));
 		await expect(
 			composeBorderedPrint("https://opaque.example/?secret=1", 0.25, "opaque_capability"),
 		).rejects.toThrow("Border source rejected (404)");
-		process.env.GALLERY_WORKER_URL = "https://worker.example";
-		process.env.GALLERY_WORKER_TOKEN = "worker-secret";
 		vi.mocked(fetch).mockResolvedValueOnce(new Response("raw private response", { status: 500 }));
-		await expect(uploadBorderedPrintToR2(Buffer.from("image"), "order", 0)).rejects.toThrow(
+		await expect(uploadBorderedPrintToR2(Buffer.from("image"), firstSession, 0)).rejects.toThrow(
 			"Border output rejected (500)",
 		);
 	});
