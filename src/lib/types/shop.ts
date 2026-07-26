@@ -94,30 +94,3 @@ export interface PrintSet {
 export interface PrintSetWithImages extends PrintSet {
 	images: ProductImage[];
 }
-
-/**
- * Checkout data sent to API
- */
-export interface CheckoutData {
-	productId: string;
-	coupon: string | null;
-	isPrintSet?: boolean;
-	paperSlug?: string;
-	sizeSlug?: string;
-	paperIndex?: number;
-	borderWidth?: string;
-	frame?: string;
-}
-
-/**
- * Coupon validation result
- */
-export interface CouponValidation {
-	code: string;
-	discountType: "percent" | "fixed";
-	discountValue: number;
-	allowedCategories: string[];
-	allowedProductSlugs: string[];
-	maxUses: number | null;
-	currentUses: number;
-}

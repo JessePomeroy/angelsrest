@@ -28,7 +28,6 @@ let { data } = $props();
 let modalOpen = $state(false);
 let selectedIndex = $state(0);
 let isLoading = $state(false);
-let couponCode = $state("");
 
 // ─── V2 state ───────────────────────────────────────────────
 let selectedPaperSlug = $state("");
@@ -128,7 +127,7 @@ function handleV2Checkout() {
 
 	createCheckout({
 		productId: data.product.slug,
-		coupon: couponCode.trim() || null,
+		coupon: null,
 		paperSlug: selectedConfiguration.paperSlug,
 		sizeSlug: selectedConfiguration.sizeSlug,
 		borderWidth: selectedConfiguration.borderWidthValue,
@@ -186,7 +185,7 @@ async function handleV1Checkout() {
 	try {
 		const url = await createCheckout({
 			productId: data.product.slug,
-			coupon: couponCode.trim() || null,
+			coupon: null,
 			paperIndex: selectedPaperIndex,
 		});
 		window.location.href = url;
@@ -403,20 +402,6 @@ function handleV1AddToCart() {
 					{/if}
 				</div>
 
-				<!-- Coupon -->
-				<div>
-					<label for="promo-code" class="block text-sm text-surface-600-300-token mb-1">
-						promo code
-					</label>
-					<input
-						id="promo-code"
-						type="text"
-						bind:value={couponCode}
-						placeholder="enter code"
-						class="w-full px-3 py-2 bg-surface-500/10 border border-surface-500/20 rounded-md text-sm lowercase"
-					/>
-				</div>
-
 				<p class="text-xs text-surface-500">
 					Secure checkout powered by Stripe
 				</p>
@@ -483,20 +468,6 @@ function handleV1AddToCart() {
 							{/if}
 						</button>
 					</div>
-				</div>
-
-				<!-- Coupon -->
-				<div>
-					<label for="promo-code" class="block text-sm text-surface-600-300-token mb-1">
-						promo code
-					</label>
-					<input
-						id="promo-code"
-						type="text"
-						bind:value={couponCode}
-						placeholder="enter code"
-						class="w-full px-3 py-2 bg-surface-500/10 border border-surface-500/20 rounded-md text-sm lowercase"
-					/>
 				</div>
 
 				{#if data.product.category !== "digital" && data.product.availablePapers?.length > 0}

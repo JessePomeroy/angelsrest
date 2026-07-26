@@ -10,9 +10,8 @@
  * the bottom of the file. Components import `cartUI` and call `cartUI.open()`
  * / `cartUI.close()` / `cartUI.toggle()` and read `cartUI.isOpen`.
  *
- * The store is intentionally minimal — adding more flags here (e.g., a
- * "just-added" pulse, a coupon-input visibility flag) is fine, but keep it
- * UI-only. Anything that needs to live across reloads belongs in
+ * The store is intentionally minimal — keep additional transient flags UI-only.
+ * Anything that needs to live across reloads belongs in
  * `cart.svelte.ts` instead.
  */
 

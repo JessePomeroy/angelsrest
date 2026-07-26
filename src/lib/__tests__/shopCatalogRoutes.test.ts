@@ -30,6 +30,21 @@ describe("shop catalog route boundaries", () => {
 		expect(source("src/lib/server/checkoutCatalog.ts")).toContain("lumaPrintSetV2");
 	});
 
+	it("has no coupon state or promo input in either product checkout UI", () => {
+		for (const path of [
+			"src/routes/shop/[slug]/+page.svelte",
+			"src/routes/shop/sets/[slug]/+page.svelte",
+		]) {
+			const page = source(path);
+			expect(page).not.toMatch(/couponCode|promo code|promo-code|set-promo/);
+			expect(page).toContain("coupon: null");
+		}
+		const checkoutRoute = source("src/routes/api/checkout/+server.ts");
+		expect(checkoutRoute.indexOf("rejectCouponAttempt(rawBody)")).toBeLessThan(
+			checkoutRoute.indexOf("const stripe = getStripe()"),
+		);
+	});
+
 	it("retains historical set-shaped webhook decoding for delayed or replayed payments", () => {
 		const decoder = source("src/lib/server/webhookDecoder.ts");
 		expect(decoder).toContain("isPrintSet");

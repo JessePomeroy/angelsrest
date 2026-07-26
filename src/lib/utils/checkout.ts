@@ -9,7 +9,7 @@ const attemptTracker = new CheckoutAttemptTracker();
 
 export interface CheckoutParams {
 	productId: string;
-	coupon: string | null;
+	coupon: null;
 	isPrintSet?: boolean;
 	paperSlug?: string;
 	sizeSlug?: string;
