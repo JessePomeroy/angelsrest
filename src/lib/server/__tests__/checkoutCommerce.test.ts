@@ -104,6 +104,10 @@ function response(item: Item, overrides: Additions = {}, slug = `${item.productK
 		...overrides,
 	};
 }
+async function unitPriceMismatchResponse(item: Item) {
+	const resolved = response(item);
+	return { ...resolved, commerce: { ...resolved.commerce, amountCents: 4201 } };
+}
 function sanityItem(kind: Kind = "print"): ResolvedCheckoutItem {
 	const isPrint = kind === "print" || kind === "print_set";
 	return {
@@ -366,6 +370,7 @@ describe("checkout commerce shadow", () => {
 				),
 			},
 		],
+		["mismatch", { resolve: vi.fn(unitPriceMismatchResponse) }],
 		[
 			"secondary_error",
 			{ resolve: vi.fn().mockRejectedValue(new Error("private raw secret id url")) },
@@ -373,7 +378,7 @@ describe("checkout commerce shadow", () => {
 	] as const)("closes %s with one redacted warning and leaves primary unchanged", async (reason, additions) => {
 		const log = vi.fn();
 		const clock = vi.spyOn(Date, "now").mockReturnValueOnce(0).mockReturnValue(20);
-		const selected = selection(reason === "mismatch" ? "digital_download" : "print");
+		const selected = selection("resolveSanity" in additions ? "digital_download" : "print");
 		const result = await resolveOne(shadow({ ...additions, log }), selected);
 		clock.mockRestore();
 		expect(result.items[0]?.unitPriceCents).toBe(4200);
@@ -386,7 +391,6 @@ describe("checkout commerce shadow", () => {
 		});
 		expect(JSON.stringify(log.mock.calls)).not.toMatch(/digital|secret|product-|revision-|https:/);
 	});
-
 	it("aborts remaining partial-cart work when one secondary query fails", async () => {
 		const signals: AbortSignal[] = [];
 		const log = vi.fn();
@@ -407,7 +411,6 @@ describe("checkout commerce shadow", () => {
 		expect(signals.every(({ aborted }) => aborted)).toBe(true);
 		expect(log).toHaveBeenCalledOnce();
 	});
-
 	it("uses one whole-cart deadline, aborts all secondary work, and returns ordered Sanity items", async () => {
 		vi.useFakeTimers();
 		try {
