@@ -39,6 +39,14 @@ describe("shop catalog route boundaries", () => {
 		);
 	});
 
+	it("renders unavailable fixed-kind details without a null price", () => {
+		const page = source("src/routes/shop/[slug]/+page.svelte");
+		const v1 = page.split("V1 Layout (merch, postcards, tapestries, digital)")[1];
+		expect(page).toContain('typeof displayPrice === "number" && Number.isFinite(displayPrice)');
+		expect(page).toContain(': "Out of stock"');
+		expect(v1?.match(/{displayPriceLabel}/g)).toHaveLength(2);
+	});
+
 	it("retains historical set-shaped webhook decoding for delayed or replayed payments", () => {
 		const decoder = source("src/lib/server/webhookDecoder.ts");
 		expect(decoder).toContain("isPrintSet");

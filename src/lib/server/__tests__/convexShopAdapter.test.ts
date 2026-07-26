@@ -27,6 +27,12 @@ function first<T>(values: T[]) {
 	return value;
 }
 
+function at(value: unknown, path: PropertyKey[]) {
+	let target = value;
+	for (const key of path) target = (target as Record<PropertyKey, unknown>)[key];
+	return target as Record<PropertyKey, unknown>;
+}
+
 function uuid(value: string) {
 	let hash = 0;
 	for (const character of value) hash = (hash * 31 + character.charCodeAt(0)) >>> 0;
@@ -116,11 +122,8 @@ function fakeSanity() {
 	};
 }
 
-function reader(list: unknown = completeCatalog(), detail: unknown = projection("print")) {
-	return {
-		listPublished: vi.fn(async () => list),
-		getPublishedBySlug: vi.fn(async () => detail),
-	};
+function reader(list: unknown = completeCatalog()) {
+	return { listPublished: vi.fn(async () => list) };
 }
 
 describe("Convex Shop page-shape adapter", () => {
@@ -145,23 +148,17 @@ describe("Convex Shop page-shape adapter", () => {
 		});
 	});
 
-	it("sorts deterministically by featured, rank, title, and slug", () => {
+	it("preserves the authoritative public list order without a title tie-breaker", () => {
 		const catalog = completeCatalog();
-		for (const product of catalog) product.shopPlacement.orderRank = "zzz";
-		const [firstProduct, second, third] = catalog;
-		if (!firstProduct || !second || !third) throw new Error("Fixture is incomplete");
-		firstProduct.shopPlacement = { featured: false, orderRank: null };
-		second.shopPlacement = { featured: true, orderRank: null };
-		third.shopPlacement = { featured: false, orderRank: "000" };
-		const fourth = catalog[3];
-		const fifth = catalog[4];
-		if (!fourth || !fifth) throw new Error("Fixture is incomplete");
-		fourth.title = "A title";
-		fifth.title = "B title";
-		const slugs = adaptConvexIndex(catalog).products.map(({ slug }) => slug);
-		expect(slugs.slice(0, 2)).toEqual(["print-1", "print-2"]);
-		expect(slugs.indexOf("print-3")).toBeLessThan(slugs.indexOf("print-0"));
-		expect(slugs.indexOf("print-3")).toBeLessThan(slugs.indexOf("print-4"));
+		const [firstProduct, second] = catalog;
+		if (!firstProduct || !second) throw new Error("Fixture is incomplete");
+		firstProduct.title = "Z title";
+		second.title = "A title";
+		expect(
+			adaptConvexIndex(catalog)
+				.products.slice(0, 2)
+				.map(({ slug }) => slug),
+		).toEqual(["print-0", "print-1"]);
 	});
 
 	it("maps print, all fixed kinds, and print-set details without IDs or private facts", () => {
@@ -185,9 +182,17 @@ describe("Convex Shop page-shape adapter", () => {
 			["digital_download", "digital"],
 			["merchandise", "merchandise"],
 		] as const) {
-			expect(adaptConvexProduct(projection(kind))).toMatchObject({
+			const available = adaptConvexProduct(projection(kind));
+			expect(available).toMatchObject({
 				productType: "v1",
 				product: { category, availablePapers: [], inStock: true },
+			});
+			const unavailable = projection(kind);
+			unavailable.saleAvailability = "unavailable";
+			unavailable.variants = [];
+			expect(adaptConvexProduct(unavailable)).toMatchObject({
+				productType: "v1",
+				product: { inStock: false, price: undefined },
 			});
 		}
 		const set = adaptConvexPrintSet(projection("print_set"));
@@ -300,6 +305,29 @@ describe("Convex Shop page-shape adapter", () => {
 		mutate(value);
 		expect(() => adaptConvexProduct(value)).toThrow(ConvexShopProjectionError);
 	});
+
+	it("requires plain records with exact own keys at every projection level", () => {
+		for (const path of [
+			[],
+			["shopPlacement"],
+			["variants", 0],
+			["variants", 0, "materialOption"],
+			["variants", 0, "sizeOption"],
+			["printOptions"],
+			["media", 0],
+			["media", 0, "asset"],
+			["media", 0, "asset", "source"],
+			["media", 0, "asset", "derivatives"],
+			["media", 0, "asset", "derivatives", "card"],
+		] satisfies PropertyKey[][]) {
+			const value = structuredClone(projection("print"));
+			at(value, path).privateExtra = "closed";
+			expect(() => adaptConvexProduct(value)).toThrow(ConvexShopProjectionError);
+		}
+		expect(() => adaptConvexProduct(Object.create(projection("print")))).toThrow(
+			ConvexShopProjectionError,
+		);
+	});
 });
 
 describe("explicit Convex provider dispatch", () => {
@@ -318,9 +346,9 @@ describe("explicit Convex provider dispatch", () => {
 		expect(sanity.loadIndex).not.toHaveBeenCalled();
 	});
 
-	it("maps detail reads and leaves collection detail entirely on Sanity", async () => {
+	it("selects detail reads from a complete list and leaves collection detail on Sanity", async () => {
 		const sanity = fakeSanity();
-		const catalogReader = reader(completeCatalog(), projection("print"));
+		const catalogReader = reader();
 		const provider = createCatalogShopProvider({
 			sanity: sanity as never,
 			mode: () => "convex",
@@ -329,7 +357,6 @@ describe("explicit Convex provider dispatch", () => {
 		await expect(provider.loadProduct("print-0", false)).resolves.toMatchObject({
 			productType: "v2",
 		});
-		catalogReader.getPublishedBySlug.mockResolvedValueOnce(projection("print_set") as never);
 		await expect(provider.loadPrintSet("print-set-0", false)).resolves.toHaveProperty("printSet");
 		await expect(provider.loadCollection("collection", false)).resolves.toEqual({
 			source: "sanity-collection",
@@ -338,8 +365,8 @@ describe("explicit Convex provider dispatch", () => {
 		expect(sanity.loadPrintSet).not.toHaveBeenCalled();
 	});
 
-	it("returns bounded 404s for unknown and wrong-kind routes", async () => {
-		const catalogReader = reader([], null);
+	it("returns 404s only after a complete list omits the requested route kind", async () => {
+		const catalogReader = reader();
 		const provider = createCatalogShopProvider({
 			sanity: fakeSanity() as never,
 			mode: () => "convex",
@@ -349,10 +376,8 @@ describe("explicit Convex provider dispatch", () => {
 			status: 404,
 			body: { message: "Product not found" },
 		});
-		catalogReader.getPublishedBySlug.mockResolvedValueOnce(projection("print_set") as never);
-		await expect(provider.loadProduct("wrong", false)).rejects.toMatchObject({ status: 404 });
-		catalogReader.getPublishedBySlug.mockResolvedValueOnce(projection("print") as never);
-		await expect(provider.loadPrintSet("wrong", false)).rejects.toMatchObject({
+		await expect(provider.loadProduct("print-set-0", false)).rejects.toMatchObject({ status: 404 });
+		await expect(provider.loadPrintSet("print-0", false)).rejects.toMatchObject({
 			status: 404,
 			body: { message: "Print set not found" },
 		});
@@ -375,13 +400,12 @@ describe("explicit Convex provider dispatch", () => {
 			});
 			expect(sanity.loadIndex).not.toHaveBeenCalled();
 		}
-		const mismatched = projection("print");
 		const provider = createCatalogShopProvider({
 			sanity: fakeSanity() as never,
 			mode: () => "convex",
-			createReader: () => reader([], mismatched) as never,
+			createReader: () => reader([projection("print")]) as never,
 		});
-		await expect(provider.loadProduct("broken", false)).rejects.toMatchObject({ status: 503 });
+		await expect(provider.loadProduct("print-0", false)).rejects.toMatchObject({ status: 503 });
 	});
 
 	it("fails a dedicated Sanity collection-index error closed", async () => {

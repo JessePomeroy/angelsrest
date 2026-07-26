@@ -113,11 +113,8 @@ function fakeSanity(index: Promise<unknown> = Promise.resolve({ route: "sanity" 
 	};
 }
 
-function fakeReader(list: Promise<unknown>, detail: Promise<unknown> = Promise.resolve(null)) {
-	return {
-		listPublished: vi.fn((_signal: AbortSignal) => list),
-		getPublishedBySlug: vi.fn((_slug: string, _signal: AbortSignal) => detail),
-	};
+function fakeReader(list: Promise<unknown>) {
+	return { listPublished: vi.fn((_signal: AbortSignal) => list) };
 }
 
 function completeCatalog() {
@@ -362,22 +359,30 @@ describe("catalog semantic comparison", () => {
 		expect(() => compareCatalogSemantics(catalog.sanity, catalog.convex)).toThrow();
 	});
 
-	it("ignores forbidden copy, alt, URL, IDs, cost, provider, and raw fields", () => {
+	it("does not traverse excluded copy, alt, IDs, derivatives, URLs, or private extras", () => {
 		const catalog = completeCatalog();
 		const convex = first(catalog.convex) as ReturnType<typeof convexProduct> &
 			Record<string, unknown>;
-		Object.assign(convex, {
-			title: "Hostile title",
-			description: "Hostile copy",
-			provider: "hostile-provider",
-			cost: 999,
-			raw: { token: "secret" },
-		});
-		Object.assign(first(convex.media), {
-			altText: "Hostile alt",
-			url: "https://hostile.test/private",
-			key: "hostile-id",
-		});
+		const placement = first(convex.media);
+		Object.assign(convex, { provider: "hostile", cost: 999, raw: { token: "secret" } });
+		Object.assign(placement, { url: "https://hostile.test/private", privateExtra: true });
+		for (const [target, key] of [
+			[convex, "productId"],
+			[convex, "revisionId"],
+			[convex, "title"],
+			[convex, "description"],
+			[placement, "key"],
+			[placement, "altText"],
+			[placement.asset, "assetId"],
+			[placement.asset, "derivatives"],
+		] as const) {
+			Object.defineProperty(target, key, {
+				configurable: true,
+				get: () => {
+					throw new Error(`excluded ${key} was observed`);
+				},
+			});
+		}
 		expect(compareCatalogSemantics(catalog.sanity, catalog.convex).reason).toBeUndefined();
 	});
 
@@ -611,7 +616,6 @@ describe("Shop index shadow", () => {
 				listPublished: () => {
 					throw new Error("closed");
 				},
-				getPublishedBySlug: vi.fn(),
 			};
 		};
 		const log = vi.fn();

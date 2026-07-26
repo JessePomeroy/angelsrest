@@ -11,19 +11,15 @@ import {
 	adaptConvexIndex,
 	adaptConvexPrintSet,
 	adaptConvexProduct,
-	ConvexShopProjectionError,
-	normalizeConvexCatalogSemantics,
 } from "$lib/server/convexShopAdapter";
 import { logStructured } from "$lib/server/logger";
 import { sanityShop } from "$lib/server/sanityShop.server";
 
 type PublishedCatalog = FunctionReturnType<typeof api.catalogProductGraphs.listPublished>;
-type PublishedProduct = FunctionReturnType<typeof api.catalogProductGraphs.getPublishedBySlug>;
 type ClosedReason = "mismatch" | "timeout" | "secondary_error" | "normalization_error";
 
 type CatalogReader = {
 	listPublished(signal: AbortSignal): Promise<PublishedCatalog>;
-	getPublishedBySlug(slug: string, signal: AbortSignal): Promise<PublishedProduct>;
 };
 
 type SemanticProduct = { slug: string; value: { kind: string } };
@@ -33,6 +29,7 @@ type ComparisonOutcome = {
 	secondaryCount: number | null;
 };
 
+const MEDIA_ROLES = new Set(["primary", "cover", "gallery", "set_member", "social_share"]);
 const COMPLETE_CATALOG_PRODUCT_COUNT = 33;
 const COMPLETE_CATALOG_KIND_COUNTS: Record<string, number> = {
 	print: 11,
@@ -223,6 +220,75 @@ function normalizeSanityCatalog(value: unknown): SemanticProduct[] {
 	return sortedUnique(products);
 }
 
+function convexPrintOptions(value: unknown) {
+	const options = record(value);
+	if (typeof options.borderOptionsEnabled !== "boolean") throw new NormalizationError();
+	if (typeof options.frameOptionsEnabled !== "boolean") throw new NormalizationError();
+	return {
+		borderOptionsEnabled: options.borderOptionsEnabled,
+		frameOptionsEnabled: options.frameOptionsEnabled,
+		framePriceMultiplierBasisPoints: positiveInteger(options.framePriceMultiplierBasisPoints),
+	};
+}
+
+function normalizeConvexCatalog(value: unknown): SemanticProduct[] {
+	const products = array(value).map((raw) => {
+		const product = record(raw);
+		const kind = slug(product.productKind);
+		if (!Object.hasOwn(COMPLETE_CATALOG_KIND_COUNTS, kind)) throw new NormalizationError();
+		const placement = record(product.shopPlacement);
+		if (typeof placement.featured !== "boolean") throw new NormalizationError();
+		const isPrint = kind === "print" || kind === "print_set";
+		const variants = array(product.variants).map((rawVariant) => {
+			const variant = record(rawVariant);
+			if (!Number.isSafeInteger(variant.order) || (variant.order as number) < 0)
+				throw new NormalizationError();
+			if (!isPrint && (variant.materialOption !== null || variant.sizeOption !== null))
+				throw new NormalizationError();
+			const materialValue = isPrint ? record(variant.materialOption) : null;
+			const sizeValue = isPrint ? record(variant.sizeOption) : null;
+			return {
+				order: variant.order,
+				material: materialValue
+					? { slug: slug(materialValue.slug), label: slug(materialValue.label) }
+					: null,
+				size: sizeValue
+					? {
+							slug: slug(sizeValue.slug),
+							label: slug(sizeValue.label),
+							widthInches: positiveInteger(sizeValue.widthInches),
+							heightInches: positiveInteger(sizeValue.heightInches),
+						}
+					: null,
+				retailPriceCents: positiveInteger(variant.retailPriceCents),
+			};
+		});
+		const media = array(product.media).map((rawMedia) => {
+			const item = record(rawMedia);
+			const role = slug(item.role);
+			if (!MEDIA_ROLES.has(role) || !Number.isSafeInteger(item.order) || (item.order as number) < 0)
+				throw new NormalizationError();
+			return { role, order: item.order, source: dimensions(record(item.asset)) };
+		});
+		const availability = product.saleAvailability;
+		if (availability !== "available" && availability !== "unavailable")
+			throw new NormalizationError();
+		return {
+			slug: slug(product.slug),
+			value: {
+				kind,
+				availability,
+				featured: placement.featured,
+				orderRank: optionalString(placement.orderRank),
+				variants,
+				printOptions: isPrint ? convexPrintOptions(product.printOptions) : null,
+				media,
+			},
+		};
+	});
+	return sortedUnique(products);
+}
+
 function sortedUnique(products: SemanticProduct[]) {
 	products.sort((left, right) => (left.slug < right.slug ? -1 : left.slug > right.slug ? 1 : 0));
 	if (products.some((product, index) => index > 0 && product.slug === products[index - 1]?.slug)) {
@@ -242,7 +308,7 @@ function assertCompleteCatalog(products: SemanticProduct[]) {
 
 export function compareCatalogSemantics(primary: unknown, secondary: unknown): ComparisonOutcome {
 	const left = normalizeSanityCatalog(primary);
-	const right = normalizeConvexCatalogSemantics(secondary);
+	const right = normalizeConvexCatalog(secondary);
 	assertCompleteCatalog(left);
 	assertCompleteCatalog(right);
 	const matched =
@@ -271,11 +337,6 @@ function createCatalogReader(): CatalogReader {
 		listPublished: (signal) =>
 			request(signal).query(api.catalogProductGraphs.listPublished, {
 				siteUrl: SITE_DOMAIN,
-			}),
-		getPublishedBySlug: (productSlug, signal) =>
-			request(signal).query(api.catalogProductGraphs.getPublishedBySlug, {
-				siteUrl: SITE_DOMAIN,
-				slug: productSlug,
 			}),
 	};
 }
@@ -319,10 +380,7 @@ export function createCatalogShopProvider(
 			return compareCatalogSemantics(primary, secondary);
 		} catch (error) {
 			return {
-				reason:
-					error instanceof NormalizationError || error instanceof ConvexShopProjectionError
-						? "normalization_error"
-						: "secondary_error",
+				reason: error instanceof NormalizationError ? "normalization_error" : "secondary_error",
 				primaryCount: Array.isArray(primary) ? primary.length : null,
 				secondaryCount: Array.isArray(secondary) ? secondary.length : null,
 			};
@@ -380,18 +438,12 @@ export function createCatalogShopProvider(
 
 	async function loadConvexDetail<Result>(
 		productSlug: string,
-		adapt: (value: unknown) => Result | null,
-		resultSlug: (result: Result) => string,
+		adapt: (value: unknown, slug: string) => Result | null,
 		notFound: string,
 	) {
 		try {
-			const result = adapt(
-				await reader().getPublishedBySlug(productSlug, new AbortController().signal),
-			);
-			if (result) {
-				if (resultSlug(result) !== productSlug) throw new Error("Unexpected catalog slug");
-				return result;
-			}
+			const result = adapt(await reader().listPublished(new AbortController().signal), productSlug);
+			if (result) return result;
 		} catch {
 			throw error(503, "Shop catalog is unavailable");
 		}
@@ -411,23 +463,13 @@ export function createCatalogShopProvider(
 		loadProduct(productSlug: string, isPreview: boolean) {
 			if (isPreview) return sanity.loadProduct(productSlug, true);
 			return parseCatalogProviderMode(mode()) === "convex"
-				? loadConvexDetail(
-						productSlug,
-						adaptConvexProduct,
-						(result) => result.product.slug,
-						"Product not found",
-					)
+				? loadConvexDetail(productSlug, adaptConvexProduct, "Product not found")
 				: sanity.loadProduct(productSlug, false);
 		},
 		loadPrintSet(productSlug: string, isPreview: boolean) {
 			if (isPreview) return sanity.loadPrintSet(productSlug, true);
 			return parseCatalogProviderMode(mode()) === "convex"
-				? loadConvexDetail(
-						productSlug,
-						adaptConvexPrintSet,
-						(result) => result.printSet.slug,
-						"Print set not found",
-					)
+				? loadConvexDetail(productSlug, adaptConvexPrintSet, "Print set not found")
 				: sanity.loadPrintSet(productSlug, false);
 		},
 		loadCollection(productSlug: string, isPreview: boolean) {
