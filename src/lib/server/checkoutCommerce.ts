@@ -14,6 +14,8 @@ import { logStructured } from "$lib/server/logger";
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
 const KINDS = new Set("print print_set postcard tapestry digital_download merchandise".split(" "));
+const PRIMARY_ROLES = { print: "primary", print_set: "cover" } as const;
+const CANVAS_KEYS = "color thickness subcategoryId wrapOptionId wrapHex";
 type Dependencies = {
 	provider?: () => unknown;
 	query?: (slug: string, signal: AbortSignal) => Promise<unknown>;
@@ -104,15 +106,14 @@ function publicMedia(value: unknown) {
 		url: `https://media.angelsrest.online/sites/${SITE_DOMAIN}/web/${assetId}/display-1280.webp`,
 	};
 }
-function authority(value: unknown, requested: CheckoutSnapshotItem, slug: string) {
+function authority(value: unknown, item: CheckoutSnapshotItem, slug: string) {
 	const root = required(value, "version purpose item identity commerce media");
 	if (root.version !== 1 || root.purpose !== "checkout") invalid();
 	const echoed = required(
 		root.item,
 		"productKey revisionId productKind variantKey materialOptionKey sizeOptionKey borderOptionKey frameOptionKey",
 	);
-	if (Object.entries(requested).some(([key, part]) => echoed[key] !== part)) invalid();
-	const item = requested;
+	if (Object.entries(item).some(([key, part]) => echoed[key] !== part)) invalid();
 	const identity = required(
 		root.identity,
 		"productId revisionId productKind title slug variantKey",
@@ -145,9 +146,14 @@ function authority(value: unknown, requested: CheckoutSnapshotItem, slug: string
 		const size = required(finish.size, "label width height");
 		const border = required(finish.border, "inches");
 		const frame = required(finish.frame, "subcategoryId");
-		const canvas = finish.canvas === null ? null : required(finish.canvas, "subcategoryId wrapHex");
+		const canvas = finish.canvas === null ? null : required(finish.canvas, CANVAS_KEYS);
 		if (typeof border.inches !== "number" || !Number.isFinite(border.inches) || border.inches < 0)
 			invalid();
+		if (canvas) {
+			if (canvas.color !== "black" && canvas.color !== "white") invalid();
+			string(canvas.thickness, 20);
+			integer(canvas.wrapOptionId, 1);
+		}
 		paper = {
 			name: string(material.name, 120),
 			subcategoryId: integer(material.subcategoryId, 1),
@@ -162,11 +168,9 @@ function authority(value: unknown, requested: CheckoutSnapshotItem, slug: string
 	if (!Array.isArray(root.media) || root.media.length < 1 || root.media.length > 50) invalid();
 	const media = root.media.map(publicMedia);
 	const primaryRole =
-		item.productKind === "print"
-			? "primary"
-			: item.productKind === "print_set"
-				? "cover"
-				: "gallery";
+		item.productKind === "print" || item.productKind === "print_set"
+			? PRIMARY_ROLES[item.productKind]
+			: "gallery";
 	const publicImage = media.find(({ role }) => role === primaryRole)?.url;
 	if (!publicImage) invalid();
 	const setImages = media.filter(({ role }) => role === "set_member").map(({ url }) => url);
@@ -209,17 +213,13 @@ async function secondary(
 	return Promise.all(
 		selections.map(async (selection) => {
 			const found = discover(await query(string(selection.productId, 200), signal), selection);
-			return {
-				available: true,
-				item: authority(await resolve(found.item, signal), found.item, found.slug),
-			};
+			return authority(await resolve(found.item, signal), found.item, found.slug);
 		}),
 	);
 }
-function semantics(item: ResolvedCheckoutItem, available = true) {
+function semantics(item: ResolvedCheckoutItem) {
 	const fulfillment = item.legacyFulfillment;
 	return JSON.stringify([
-		available,
 		item.unitPriceCents,
 		fulfillment.isDigital,
 		fulfillment.isPrintSet,
@@ -236,17 +236,14 @@ export async function resolveCheckoutCommerce(
 	const provider = parseCheckoutCatalogProvider(
 		(dependencies.provider ?? (() => privateEnv.CHECKOUT_CATALOG_PROVIDER))(),
 	);
-	const sanity = () =>
-		Promise.all(
-			selections.map(
-				(selection) =>
-					dependencies.resolveSanity?.(selection) ?? resolveCheckoutItem(fetcher, selection, true),
-			),
-		);
+	const resolveSanity =
+		dependencies.resolveSanity ??
+		((selection: CheckoutSelection) => resolveCheckoutItem(fetcher, selection, true));
+	const sanity = () => Promise.all(selections.map(resolveSanity));
 	if (provider === "sanity") return { provider, items: await sanity() };
 	if (provider === "convex") {
 		const items = await secondary(selections, AbortSignal.timeout(5_000), dependencies);
-		return { provider, items: items.map(({ item }) => item) };
+		return { provider, items };
 	}
 	const started = Date.now();
 	const controller = new AbortController();
@@ -278,8 +275,7 @@ export async function resolveCheckoutCommerce(
 		"items" in outcome &&
 		(outcome.items.length !== primary.length ||
 			outcome.items.some(
-				(item, index) =>
-					!primary[index] || semantics(item.item, item.available) !== semantics(primary[index]),
+				(item, index) => !primary[index] || semantics(item) !== semantics(primary[index]),
 			));
 	const reason = "reason" in outcome ? outcome.reason : mismatch ? "mismatch" : null;
 	if (reason)

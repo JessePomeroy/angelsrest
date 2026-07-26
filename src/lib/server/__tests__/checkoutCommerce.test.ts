@@ -42,8 +42,15 @@ const printFinish = {
 	frame: { subcategoryId: 0 },
 	canvas: null,
 };
+const realCanvas = {
+	color: "white",
+	thickness: "1.25",
+	subcategoryId: 101002,
+	wrapOptionId: 3,
+	wrapHex: "#FFFFFF",
+};
 
-function product(kind: Kind, slug = `${kind}-one`) {
+function product(kind: Kind, slug = `${kind}-one`, material = "archival-matte") {
 	const isPrint = kind === "print" || kind === "print_set";
 	return {
 		schemaVersion: 2,
@@ -55,18 +62,18 @@ function product(kind: Kind, slug = `${kind}-one`) {
 		variants: [
 			{
 				key: `variant-${kind}`,
-				materialOption: isPrint ? { slug: "archival-matte", label: "Matte" } : null,
+				materialOption: isPrint ? { slug: material, label: "Material" } : null,
 				sizeOption: isPrint ? { slug: "8x10", label: "8 × 10" } : null,
 			},
 		],
 	};
 }
-function selection(kind: Kind): CheckoutSelection {
+function selection(kind: Kind, material = "archival-matte"): CheckoutSelection {
 	const isPrint = kind === "print" || kind === "print_set";
 	return {
 		productId: `${kind}-one`,
 		isPrintSet: kind === "print_set",
-		paperSlug: isPrint ? "archival-matte" : undefined,
+		paperSlug: isPrint ? material : undefined,
 		sizeSlug: isPrint ? "8x10" : undefined,
 	};
 }
@@ -125,6 +132,24 @@ function sanityItem(kind: Kind = "print"): ResolvedCheckoutItem {
 		},
 	};
 }
+function canvasResponse(item: Item, canvas: unknown = realCanvas) {
+	return response(item, {
+		commerce: {
+			currency: "usd",
+			amountCents: 4200,
+			finish: {
+				...printFinish,
+				materialKey: "canvas-white-1.25",
+				borderKey: item.borderOptionKey,
+				frameKey: item.frameOptionKey,
+				paper: { name: 'Canvas White — 1.25" stretch', subcategoryId: 101002 },
+				canvas,
+			},
+		},
+	});
+}
+const canvasSelection = selection("print", "canvas-white-1.25");
+const canvasProduct = product("print", "print-one", "canvas-white-1.25");
 const fetcher = vi.fn();
 function convexDependencies(kind: Kind, additions = {}) {
 	return {
@@ -220,6 +245,63 @@ describe("checkout commerce provider", () => {
 			).rejects.toThrow("Checkout catalog resolution failed");
 		}
 	});
+	it("validates the real canvas resolver shape for checkout and clean shadow mapping", async () => {
+		const paper = {
+			name: 'Canvas White — 1.25" stretch',
+			subcategoryId: 101002,
+			width: 8,
+			height: 10,
+			canvasSubcategoryId: 101002,
+			canvasWrapHex: "#FFFFFF",
+		};
+		const resolve = vi.fn((item: Item) => Promise.resolve(canvasResponse(item)));
+		const checkout = await resolveCheckoutCommerce(fetcher, [canvasSelection], {
+			provider: () => "convex",
+			query: vi.fn().mockResolvedValue(canvasProduct),
+			resolve,
+		});
+		expect(checkout.items[0]?.legacyFulfillment.paper).toEqual(paper);
+		expect(checkout.items[0]?.legacyFulfillment.paper).not.toHaveProperty("color");
+		expect(checkout.items[0]?.legacyFulfillment.paper).not.toHaveProperty("wrapOptionId");
+
+		const primary = {
+			...sanityItem(),
+			legacyFulfillment: { ...sanityItem().legacyFulfillment, paper },
+		};
+		const log = vi.fn();
+		await resolveCheckoutCommerce(fetcher, [canvasSelection], {
+			provider: () => "shadow",
+			resolveSanity: vi.fn().mockResolvedValue(primary),
+			query: vi.fn().mockResolvedValue(canvasProduct),
+			resolve,
+			log,
+		});
+		expect(log).not.toHaveBeenCalled();
+	});
+
+	it.each([
+		["extra", { ...realCanvas, candidate: true }],
+		["missing", { color: "white", thickness: "1.25", subcategoryId: 101002, wrapOptionId: 3 }],
+		["color type", { ...realCanvas, color: 1 }],
+		["color value", { ...realCanvas, color: "blue" }],
+		["thickness type", { ...realCanvas, thickness: 1.25 }],
+		["thickness bound", { ...realCanvas, thickness: "" }],
+		["subcategory type", { ...realCanvas, subcategoryId: "101002" }],
+		["subcategory bound", { ...realCanvas, subcategoryId: 0 }],
+		["wrap option type", { ...realCanvas, wrapOptionId: "3" }],
+		["wrap option bound", { ...realCanvas, wrapOptionId: 0 }],
+		["wrap hex type", { ...realCanvas, wrapHex: 0 }],
+		["wrap hex bound", { ...realCanvas, wrapHex: "#".repeat(21) }],
+	])("rejects malformed canvas %s", async (_case, canvas) => {
+		await expect(
+			resolveCheckoutCommerce(fetcher, [canvasSelection], {
+				provider: () => "convex",
+				query: vi.fn().mockResolvedValue(canvasProduct),
+				resolve: vi.fn((item: Item) => Promise.resolve(canvasResponse(item, canvas))),
+			}),
+		).rejects.toThrow("Checkout catalog resolution failed");
+	});
+
 	it("accepts 50 media and 20 set members while rejecting a 21st member", async () => {
 		const checkout = (kind: Kind, entries: ReturnType<typeof media>[]) =>
 			resolveCheckoutCommerce(
