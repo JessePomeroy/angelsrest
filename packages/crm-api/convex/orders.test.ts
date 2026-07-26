@@ -131,6 +131,59 @@ describe("durable checkout snapshot", () => {
 	});
 });
 
+describe("print fulfillment fence", () => {
+	test("uses global session IDs and makes claim/recovery CAS mutually exclusive", async () => {
+		const t = convexTest(schema, modules);
+		const create = (session: string, siteUrl = SITE_URL) => t.mutation(api.orders.create, {
+			...orderArgs(session), siteUrl, orderNumber: "ORD-SAME",
+		});
+		const first = await create("cs_test_tenantAglobal1234");
+		const second = await create("cs_test_tenantBglobal1234", "tenant-b.example");
+		const claim = (orderId: typeof first._id) => t.mutation(api.orders.claimPrintFulfillment, {
+			orderId, webhookSecret: WEBHOOK_SECRET,
+		});
+		const duplicate = await Promise.all([claim(first._id), claim(first._id)]);
+		expect(duplicate.map(({ kind }) => kind).sort()).toEqual(["claimed", "reconcile"]);
+		expect(duplicate.every((result) => result.externalId === "cs_test_tenantAglobal1234")).toBe(true);
+		await expect(claim(second._id)).resolves.toMatchObject({
+			kind: "claimed", externalId: "cs_test_tenantBglobal1234",
+		});
+		for (const transition of [
+			{ status: "refunded" }, { stripeRefundId: "re_test" },
+			{ fulfillmentRecoveryStatus: "refund_pending" },
+			{ fulfillmentRecoveryStatus: "refunded" },
+		] as const) await expect(t.mutation(api.orders.updateStatus, {
+			orderId: first._id, webhookSecret: WEBHOOK_SECRET, ...transition,
+		})).rejects.toThrow("submission is in progress");
+
+		const recovered = await create("cs_test_recoveryfirst1234");
+		await t.mutation(api.orders.updateStatus, {
+			orderId: recovered._id, webhookSecret: WEBHOOK_SECRET,
+			status: "fulfillment_error", fulfillmentRecoveryStatus: "refund_pending",
+		});
+		await expect(claim(recovered._id)).resolves.toEqual({ kind: "busy" });
+
+		const raced = await create("cs_test_concurrentcas1234");
+		const [claimResult, recoveryResult] = await Promise.allSettled([
+			claim(raced._id),
+			t.mutation(api.orders.updateStatus, {
+				orderId: raced._id, webhookSecret: WEBHOOK_SECRET,
+				status: "fulfillment_error", fulfillmentRecoveryStatus: "refund_pending",
+			}),
+		]);
+		const stored = await t.run((ctx) => ctx.db.get(raced._id));
+		if (recoveryResult.status === "fulfilled") {
+			expect(claimResult).toMatchObject({ status: "fulfilled", value: { kind: "busy" } });
+			expect(stored).toMatchObject({ fulfillmentRecoveryStatus: "refund_pending" });
+			expect(stored?.printFulfillmentClaim).toBeUndefined();
+		} else {
+			expect(claimResult).toMatchObject({ status: "fulfilled", value: { kind: "claimed" } });
+			expect(stored?.printFulfillmentClaim).toBe(true);
+			expect(stored?.fulfillmentRecoveryStatus).toBeUndefined();
+		}
+	});
+});
+
 describe("authorized customer order lookup", () => {
 	test("returns the bounded customer view only with the dedicated capability", async () => {
 		const t = convexTest(schema, modules);

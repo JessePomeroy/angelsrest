@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { CatalogBoundaryError } from "../server/catalogCommerceClients";
 import { FulfillmentValidationError } from "../server/fulfillmentValidationError";
 import { LumaPrintsError } from "../server/lumaprints";
 import {
@@ -6,140 +7,75 @@ import {
 	formatFailureForAdmin,
 } from "../server/webhookErrorClassification";
 
-// Audit #23 PR #3 — error classification for the webhook's permanent
-// vs transient fallback path.
-
-describe("classifyLumaPrintsFailure", () => {
-	describe("LumaPrintsError", () => {
-		it("classifies 4xx status codes as permanent", () => {
-			const err = new LumaPrintsError("bad request", { statusCode: 400 });
-			expect(classifyLumaPrintsFailure(err)).toBe("permanent");
-		});
-
-		it("classifies 401 as permanent", () => {
-			const err = new LumaPrintsError("unauthorized", { statusCode: 401 });
-			expect(classifyLumaPrintsFailure(err)).toBe("permanent");
-		});
-
-		it("classifies 422 as permanent", () => {
-			const err = new LumaPrintsError("unprocessable", {
-				statusCode: 422,
-			});
-			expect(classifyLumaPrintsFailure(err)).toBe("permanent");
-		});
-
-		it("classifies 5xx status codes as transient", () => {
-			const err = new LumaPrintsError("server error", { statusCode: 500 });
-			expect(classifyLumaPrintsFailure(err)).toBe("transient");
-		});
-
-		it("classifies 503 as transient", () => {
-			const err = new LumaPrintsError("service unavailable", {
-				statusCode: 503,
-			});
-			expect(classifyLumaPrintsFailure(err)).toBe("transient");
-		});
-
-		it("classifies validation-error message patterns as permanent even without status code", () => {
-			const permanentMessages = [
-				"Invalid subcategoryId for orderItems[0]",
-				"width must be a positive number",
-				"aspect ratio out of range",
-				"resolution too low for print size",
-				"subcategory 103099 not supported",
-			];
-			for (const message of permanentMessages) {
-				const err = new LumaPrintsError("validation error", { message });
-				expect(classifyLumaPrintsFailure(err)).toBe("permanent");
-			}
-		});
-
-		it("classifies array-form validation messages as permanent", () => {
-			const err = new LumaPrintsError("validation error", {
-				message: ["orderItems.0.width must be a positive number", "recipient.zipCode is required"],
-			});
-			expect(classifyLumaPrintsFailure(err)).toBe("permanent");
-		});
-
-		it("defaults unknown LumaPrints errors to transient", () => {
-			const err = new LumaPrintsError("mystery error", {
-				message: "something weird happened",
-			});
-			expect(classifyLumaPrintsFailure(err)).toBe("transient");
-		});
-
-		it("handles LumaPrintsError with no details object", () => {
-			const err = new LumaPrintsError("plain error");
-			expect(classifyLumaPrintsFailure(err)).toBe("transient");
-		});
+describe("fulfillment error classification", () => {
+	it.each([
+		[400, "permanent"],
+		[401, "permanent"],
+		[422, "permanent"],
+		[500, "transient"],
+		[503, "transient"],
+	] as const)("classifies provider status %s as %s", (statusCode, expected) => {
+		expect(classifyLumaPrintsFailure(new LumaPrintsError("provider", { statusCode }))).toBe(
+			expected,
+		);
 	});
 
-	describe("network / node errors", () => {
-		it("classifies local fulfillment validation errors as permanent", () => {
-			const err = new FulfillmentValidationError("recipient.zipCode is required");
-			expect(classifyLumaPrintsFailure(err)).toBe("permanent");
-		});
-
-		it("classifies AbortError as transient", () => {
-			const err = new Error("aborted");
-			err.name = "AbortError";
-			expect(classifyLumaPrintsFailure(err)).toBe("transient");
-		});
-
-		it("classifies TypeError (fetch network failures) as transient", () => {
-			const err = new TypeError("fetch failed");
-			expect(classifyLumaPrintsFailure(err)).toBe("transient");
-		});
-
-		it("classifies TimeoutError as transient", () => {
-			const err = new Error("timed out");
-			err.name = "TimeoutError";
-			expect(classifyLumaPrintsFailure(err)).toBe("transient");
-		});
-
-		it("defaults generic Error instances to transient", () => {
-			expect(classifyLumaPrintsFailure(new Error("mystery"))).toBe("transient");
-		});
-
-		it("handles non-Error thrown values as transient", () => {
-			expect(classifyLumaPrintsFailure("string thrown")).toBe("transient");
-			expect(classifyLumaPrintsFailure(42)).toBe("transient");
-			expect(classifyLumaPrintsFailure(null)).toBe("transient");
-			expect(classifyLumaPrintsFailure(undefined)).toBe("transient");
-		});
-	});
-});
-
-describe("formatFailureForAdmin", () => {
-	it("includes LumaPrintsError details", () => {
-		const err = new LumaPrintsError("Order submission failed", {
-			statusCode: 400,
-			message: "Invalid subcategoryId",
-		});
-		const formatted = formatFailureForAdmin(err);
-		expect(formatted).toContain("Order submission failed");
-		expect(formatted).toContain("Invalid subcategoryId");
-		expect(formatted).toContain("400");
+	it("recognizes only provider-specific validation messages", () => {
+		for (const message of [
+			"Invalid subcategoryId for orderItems[0]",
+			"width must be a positive number",
+			"aspect ratio out of range",
+			"resolution too low for print size",
+			["orderItems.0.width must be positive", "recipient.zipCode is required"],
+		]) {
+			expect(classifyLumaPrintsFailure(new LumaPrintsError("validation", { message }))).toBe(
+				"permanent",
+			);
+		}
+		expect(
+			classifyLumaPrintsFailure(
+				new LumaPrintsError("unknown", { message: "something weird happened" }),
+			),
+		).toBe("transient");
 	});
 
-	it("handles LumaPrintsError with no details", () => {
-		const err = new LumaPrintsError("plain error");
-		expect(formatFailureForAdmin(err)).toBe("plain error");
+	it.each([
+		["rejected", "permanent"],
+		["unavailable", "transient"],
+		["refunded", "refunded"],
+	] as const)("preserves the redacted catalog %s outcome", (kind, expected) => {
+		expect(classifyLumaPrintsFailure(new CatalogBoundaryError(kind))).toBe(expected);
 	});
 
-	it("formats generic Error with name and message", () => {
-		const err = new TypeError("fetch failed");
-		expect(formatFailureForAdmin(err)).toBe("TypeError: fetch failed");
+	it("keeps local validation permanent and unknown/network failures transient", () => {
+		expect(classifyLumaPrintsFailure(new FulfillmentValidationError("invalid"))).toBe("permanent");
+		const failures: unknown[] = [
+			new Error("unknown"),
+			new TypeError("fetch failed"),
+			"thrown",
+			42,
+			null,
+		];
+		for (const failure of failures) expect(classifyLumaPrintsFailure(failure)).toBe("transient");
 	});
 
-	it("stringifies non-Error values", () => {
-		expect(formatFailureForAdmin("boom")).toBe("boom");
-		expect(formatFailureForAdmin(42)).toBe("42");
-	});
-
-	it("truncates very long error messages", () => {
-		const longString = "x".repeat(1000);
-		const formatted = formatFailureForAdmin(longString);
-		expect(formatted.length).toBeLessThanOrEqual(500);
+	it("returns only bounded summaries without provider bodies or source URLs", () => {
+		const secret = "https://opaque.example/private?token=secret";
+		const summaries = [
+			formatFailureForAdmin(new LumaPrintsError("raw", { statusCode: 400, message: secret })),
+			formatFailureForAdmin(new LumaPrintsError(secret)),
+			formatFailureForAdmin(new CatalogBoundaryError("rejected")),
+			formatFailureForAdmin(new TypeError(secret)),
+		];
+		expect(summaries).toEqual([
+			"Print provider rejected fulfillment",
+			"Print provider temporarily unavailable",
+			"Fulfillment validation rejected",
+			"Print fulfillment unavailable",
+		]);
+		for (const value of summaries) {
+			expect(value).not.toContain("opaque.example");
+			expect(value.length).toBeLessThan(64);
+		}
 	});
 });

@@ -122,14 +122,20 @@ export async function createOrderInConvex(
 		};
 	}
 
-	if (alreadyExisted && existingRecoveryStatus === "refunded" && !existingStripeRefundId) {
+	if (
+		alreadyExisted &&
+		(existingRecoveryStatus === "refunded" || existingStatus === "refunded") &&
+		!existingStripeRefundId
+	) {
 		throw new Error(`Order ${orderNumber} is marked refunded without a Stripe refund ID`);
 	}
 
 	if (
 		alreadyExisted &&
 		existingStripeRefundId &&
-		(existingRecoveryStatus === "refunded" || existingStatus === "fulfillment_error")
+		(existingRecoveryStatus === "refunded" ||
+			existingStatus === "fulfillment_error" ||
+			existingStatus === "refunded")
 	) {
 		logStructured({
 			event: "lumaprints.skipped",
@@ -195,6 +201,18 @@ export async function createOrderInConvex(
 				lineItems,
 				shippingDetails,
 				session,
+				checkoutSnapshot: orderResult.checkoutSnapshot
+					? {
+							...orderResult.checkoutSnapshot,
+							items: orderResult.checkoutSnapshot.items.map((item) => ({
+								...item,
+								materialOptionKey: item.materialOptionKey ?? null,
+								sizeOptionKey: item.sizeOptionKey ?? null,
+								borderOptionKey: item.borderOptionKey ?? null,
+								frameOptionKey: item.frameOptionKey ?? null,
+							})),
+						}
+					: undefined,
 			},
 		);
 	} catch (err) {

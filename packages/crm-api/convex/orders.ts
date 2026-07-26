@@ -17,6 +17,7 @@ import {
 } from "./authHelpers";
 import {
 	catalogCommerceRequestValidator,
+	catalogCommerceResolutionErrorKind,
 	resolveCatalogCommerce,
 } from "./helpers/catalogCommerce";
 import {
@@ -268,6 +269,18 @@ export const catalogCommerce = internalQuery({
 	args: { siteUrl: v.string(), request: catalogCommerceRequestValidator },
 	handler: async (ctx, { siteUrl, request }) =>
 		await resolveCatalogCommerce(ctx, siteUrl, request),
+});
+export const catalogCommerceHttp = internalQuery({
+	args: { siteUrl: v.string(), request: catalogCommerceRequestValidator },
+	handler: async (ctx, { siteUrl, request }) => {
+		try {
+			return { outcome: "resolved" as const, value: await resolveCatalogCommerce(ctx, siteUrl, request) };
+		} catch (error) {
+			const outcome = catalogCommerceResolutionErrorKind(error);
+			if (!outcome) throw error;
+			return { outcome };
+		}
+	},
 });
 
 export const getCheckoutSnapshotForReconciliation = internalQuery({
@@ -530,6 +543,24 @@ export const create = mutation({
 	},
 });
 
+/** Server-only paid-download authority, called only after Stripe buyer authorization. */
+export const resolvePaidDownloadOrder = query({
+	args: { stripeSessionId: v.string(), webhookSecret: v.string() },
+	handler: async (ctx, args) => {
+		await requireWebhookCallerOrAuth(ctx, args.webhookSecret, { allowAuth: false });
+		if (!isStripeCheckoutSessionId(args.stripeSessionId)) return null;
+		const order = await ctx.db.query("orders")
+			.withIndex("by_stripeSessionId", (q) => q.eq("stripeSessionId", args.stripeSessionId)).unique();
+		if (!order) return null;
+		return {
+			checkoutSnapshot: order.checkoutSnapshot,
+			refunded: order.status === "refunded" || order.stripeRefundId !== undefined
+				|| order.fulfillmentRecoveryStatus === "refund_pending"
+				|| order.fulfillmentRecoveryStatus === "refunded",
+		};
+	},
+});
+
 /** Webhook-only, session-first routing. No snapshot, digest, or handle crosses this projection. */
 export const resolveCheckoutRouting = query({
 	args: {
@@ -594,6 +625,24 @@ export const resolveCheckoutRouting = query({
 	},
 });
 
+export const claimPrintFulfillment = mutation({
+	args: { orderId: v.id("orders"), webhookSecret: v.string() },
+	handler: async (ctx, args) => {
+		await requireWebhookCallerOrAuth(ctx, args.webhookSecret, { allowAuth: false });
+		const order = await ctx.db.get(args.orderId);
+		if (!order) throw new Error("Order not found");
+		if (order.lumaprintsOrderNumber)
+			return { kind: "fulfilled" as const, orderNumber: order.lumaprintsOrderNumber };
+		if (order.status === "refunded" || order.stripeRefundId)
+			return { kind: "refunded" as const, stripeRefundId: order.stripeRefundId };
+		if (order.fulfillmentRecoveryStatus) return { kind: "busy" as const };
+		if (order.printFulfillmentClaim)
+			return { kind: "reconcile" as const, externalId: order.stripeSessionId };
+		await ctx.db.patch(args.orderId, { printFulfillmentClaim: true });
+		return { kind: "claimed" as const, externalId: order.stripeSessionId };
+	},
+});
+
 /**
  * Update an order. Called by the webhook (fee capture, LumaPrints number,
  * refund fields — with `webhookSecret`) and by the admin UI (tracking /
@@ -619,13 +668,16 @@ export const updateStatus = mutation({
 	},
 	handler: async (ctx, { orderId, webhookSecret, ...updates }) => {
 		const auth = await requireWebhookCallerOrAuth(ctx, webhookSecret);
-		if (auth.via === "auth") {
-			await requireDocumentSiteAdmin(ctx, "orders", orderId);
+		if (auth.via === "auth") await requireDocumentSiteAdmin(ctx, "orders", orderId);
+		const refundUpdate = updates.stripeRefundId !== undefined
+			|| updates.fulfillmentRecoveryStatus !== undefined || updates.status === "refunded";
+		const current = refundUpdate ? await ctx.db.get(orderId) : null;
+		if (refundUpdate && current?.printFulfillmentClaim && !current.lumaprintsOrderNumber) {
+			throw new Error("Print fulfillment submission is in progress");
 		}
 		const patch: Record<string, unknown> = {};
-		for (const [key, val] of Object.entries(updates)) {
-			if (val !== undefined) patch[key] = val;
-		}
+		for (const [key, val] of Object.entries(updates)) if (val !== undefined) patch[key] = val;
+		if (updates.lumaprintsOrderNumber) patch.printFulfillmentClaim = undefined;
 		if (Object.keys(patch).length > 0) {
 			await ctx.db.patch(orderId, patch);
 		}

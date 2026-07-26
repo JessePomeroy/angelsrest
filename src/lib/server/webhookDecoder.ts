@@ -12,6 +12,7 @@ import {
 	type LumaPrintsCartItemPayload,
 } from "$lib/server/cartMetadataCodec";
 import { FulfillmentValidationError } from "$lib/server/fulfillmentValidationError";
+import { isSanityPrintSource } from "$lib/shop/lumaprintsUrls";
 import type { OrderItem, Recipient } from "$lib/shop/types";
 import type { ShippingDetails } from "./webhookEmails";
 
@@ -98,6 +99,7 @@ function buildCartOrderItems(meta: StripeMetadata): OrderItem[] {
 function buildCartOrderItem(parsed: LumaPrintsCartItemPayload, imageUrl: string): OrderItem {
 	return {
 		imageUrl,
+		sourcePolicy: isSanityPrintSource(imageUrl) ? "sanity_cdn" : "byte_exact",
 		paperSubcategoryId: parsed.s,
 		width: parsed.w,
 		height: parsed.h,
@@ -147,6 +149,7 @@ function buildTopLevelPrintOptions(meta: StripeMetadata): PrintOptions | null {
 function buildPrintSetOrderItems(meta: StripeMetadata, printOptions: PrintOptions): OrderItem[] {
 	return parseImageUrls(meta.imageUrls).map((imageUrl) => ({
 		imageUrl,
+		sourcePolicy: isSanityPrintSource(imageUrl) ? "sanity_cdn" : "byte_exact",
 		...printOptions,
 		quantity: 1,
 	}));
@@ -171,6 +174,7 @@ function buildSinglePrintOrderItems(
 	return [
 		{
 			imageUrl,
+			sourcePolicy: isSanityPrintSource(imageUrl) ? "sanity_cdn" : "byte_exact",
 			...printOptions,
 			quantity: lineItems[0]?.quantity ?? 1,
 		},

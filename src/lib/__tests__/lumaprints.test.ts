@@ -31,6 +31,7 @@ const mockRecipient: Recipient = {
 const mockItems: OrderItem[] = [
 	{
 		imageUrl: "https://cdn.sanity.io/images/proj/dataset/photo.jpg?w=1200&fm=webp&q=80",
+		sourcePolicy: "sanity_cdn",
 		paperSubcategoryId: 103001,
 		width: 8,
 		height: 12,
@@ -125,6 +126,16 @@ describe("buildLumaPrintsOrder", () => {
 		}
 	});
 
+	it("preserves opaque capabilities and bordered R2 outputs byte-exact", () => {
+		const opaque = "https://opaque.example/source.jpg?sealed=a_b-C";
+		const bordered = "https://worker.example/image/bordered.jpg?version=1";
+		const order = buildLumaPrintsOrder("exact-urls", mockRecipient, [
+			{ ...mockItems[0], imageUrl: opaque, sourcePolicy: "opaque_capability" },
+			{ ...mockItems[0], imageUrl: bordered, sourcePolicy: "bordered_r2" },
+		]);
+		expect(order.orderItems.map(({ file }) => file.imageUrl)).toEqual([opaque, bordered]);
+	});
+
 	it("generates correct externalItemId for each item", () => {
 		const multiItems: OrderItem[] = [
 			{ ...mockItems[0], imageUrl: "https://cdn.example.com/a.jpg" },
@@ -148,6 +159,7 @@ describe("buildLumaPrintsOrder", () => {
 		const printSetItems: OrderItem[] = [
 			{
 				imageUrl: "https://cdn.sanity.io/images/a.jpg?w=1200",
+				sourcePolicy: "sanity_cdn",
 				paperSubcategoryId: 103001,
 				width: 4,
 				height: 6,
@@ -155,6 +167,7 @@ describe("buildLumaPrintsOrder", () => {
 			},
 			{
 				imageUrl: "https://cdn.sanity.io/images/b.jpg?w=1200",
+				sourcePolicy: "sanity_cdn",
 				paperSubcategoryId: 103001,
 				width: 4,
 				height: 6,
@@ -162,6 +175,7 @@ describe("buildLumaPrintsOrder", () => {
 			},
 			{
 				imageUrl: "https://cdn.sanity.io/images/c.jpg?w=1200",
+				sourcePolicy: "sanity_cdn",
 				paperSubcategoryId: 103001,
 				width: 4,
 				height: 6,

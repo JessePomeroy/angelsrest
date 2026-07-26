@@ -39,10 +39,9 @@ const PRINT_QUALITY_PARAMS = "max=8000&q=100";
  * Strip any existing query params from a Sanity CDN URL and append the
  * print quality params (`?max=8000&q=100`).
  *
- * Pure function — no network, no env, no side effects. Safe to call
- * with any URL string. Non-Sanity URLs are passed through with the
- * same transformation (params stripped + print quality params added),
- * which is harmless because LumaPrints will just receive the URL as-is.
+ * Pure function — no network, no env, no side effects. Only exact HTTPS
+ * `cdn.sanity.io` image sources are transformed. Every other URL is returned
+ * byte-for-byte so opaque capabilities and bordered R2 outputs are preserved.
  *
  * Examples:
  *   prepareSanityUrlForPrint("https://cdn.sanity.io/.../photo.jpg")
@@ -54,8 +53,17 @@ const PRINT_QUALITY_PARAMS = "max=8000&q=100";
  *   prepareSanityUrlForPrint("https://cdn.sanity.io/.../photo.jpg?max=8000&q=100")
  *     → "https://cdn.sanity.io/.../photo.jpg?max=8000&q=100"  (idempotent)
  */
+export function isSanityPrintSource(url: string) {
+	try {
+		const parsed = new URL(url);
+		return parsed.protocol === "https:" && parsed.hostname === "cdn.sanity.io";
+	} catch {
+		return false;
+	}
+}
+
 export function prepareSanityUrlForPrint(url: string): string {
-	// Strip any existing query params and fragment so we have a clean base.
+	if (!isSanityPrintSource(url)) return url;
 	const base = url.split("?")[0].split("#")[0];
 	return `${base}?${PRINT_QUALITY_PARAMS}`;
 }

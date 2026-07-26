@@ -16,9 +16,11 @@ Stripe checkout.session.completed
   → packages/crm-api/convex/orders.ts (fulfillment state)
 ```
 
-The Stripe checkout session ID is the order idempotency key in Convex. A stored
-LumaPrints order number prevents duplicate physical submissions on webhook
-retries.
+The immutable Stripe checkout session ID is both the Convex idempotency key and
+LumaPrints `externalId`; its documented local shape (`cs_test_`/`cs_live_` plus
+ASCII alphanumerics) fits the provider string contract and is global across
+platform tenants. A single durable claim marker fences provider submission.
+After a claim, retries only reconcile that exact persisted session ID.
 
 ## Ownership
 

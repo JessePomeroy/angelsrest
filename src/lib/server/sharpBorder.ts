@@ -18,8 +18,22 @@
 
 import sharp from "sharp";
 import { prepareSanityUrlForPrint } from "$lib/shop/lumaprintsUrls";
+import type { PrintSourcePolicy } from "$lib/shop/types";
 
 const DPI = 300;
+const STRIPE_CHECKOUT_SESSION_ID = /^cs_(?:test|live)_[A-Za-z0-9]{16,120}$/;
+
+function borderedPrintKey(stripeSessionId: string, itemIndex: number) {
+	if (
+		!STRIPE_CHECKOUT_SESSION_ID.test(stripeSessionId) ||
+		!Number.isSafeInteger(itemIndex) ||
+		itemIndex < 0 ||
+		itemIndex >= 40
+	) {
+		throw new Error("Invalid bordered print storage identity");
+	}
+	return `prints/bordered/${stripeSessionId}/${itemIndex}.jpg`;
+}
 
 /**
  * Fetch an image from Sanity CDN at print quality (?max=8000&q=100),
@@ -28,11 +42,12 @@ const DPI = 300;
 export async function composeBorderedPrint(
 	imageUrl: string,
 	borderWidthInches: number,
+	sourcePolicy: PrintSourcePolicy = "byte_exact",
 ): Promise<Buffer> {
-	const printUrl = prepareSanityUrlForPrint(imageUrl);
+	const printUrl = sourcePolicy === "sanity_cdn" ? prepareSanityUrlForPrint(imageUrl) : imageUrl;
 	const response = await fetch(printUrl);
 	if (!response.ok) {
-		throw new Error(`Failed to fetch image for border compositing: ${response.status} ${printUrl}`);
+		throw new Error(`Border source rejected (${response.status})`);
 	}
 	const sourceBuffer = Buffer.from(await response.arrayBuffer());
 
@@ -58,9 +73,10 @@ export async function composeBorderedPrint(
  */
 export async function uploadBorderedPrintToR2(
 	buffer: Buffer,
-	orderId: string,
+	stripeSessionId: string,
 	itemIndex: number,
 ): Promise<string> {
+	const key = borderedPrintKey(stripeSessionId, itemIndex);
 	const workerUrl = process.env.GALLERY_WORKER_URL;
 	const workerToken = process.env.GALLERY_WORKER_TOKEN;
 	if (!workerUrl || !workerToken) {
@@ -68,8 +84,6 @@ export async function uploadBorderedPrintToR2(
 			"GALLERY_WORKER_URL and GALLERY_WORKER_TOKEN must be set for bordered print uploads",
 		);
 	}
-
-	const key = `prints/bordered/${orderId}/${itemIndex}.jpg`;
 	const uploadUrl = `${workerUrl}/upload/put?key=${encodeURIComponent(key)}`;
 
 	const response = await fetch(uploadUrl, {
@@ -82,8 +96,7 @@ export async function uploadBorderedPrintToR2(
 	});
 
 	if (!response.ok) {
-		const text = await response.text();
-		throw new Error(`R2 upload failed for bordered print: ${response.status} ${text}`);
+		throw new Error(`Border output rejected (${response.status})`);
 	}
 
 	// Return the public URL for the uploaded image
@@ -94,6 +107,7 @@ export interface BorderedItem {
 	index: number;
 	imageUrl: string;
 	borderWidthInches: number;
+	sourcePolicy: PrintSourcePolicy;
 }
 
 /**
@@ -105,21 +119,25 @@ export interface BorderedItem {
  */
 export async function processBorderedPrints(
 	items: BorderedItem[],
-	orderId: string,
+	stripeSessionId: string,
 ): Promise<Map<number, string>> {
 	if (items.length === 0) return new Map();
 
 	// Sequential Sharp compositing (memory pressure — each op can use 100+ MB)
 	const composites: { index: number; buffer: Buffer }[] = [];
 	for (const item of items) {
-		const buffer = await composeBorderedPrint(item.imageUrl, item.borderWidthInches);
+		const buffer = await composeBorderedPrint(
+			item.imageUrl,
+			item.borderWidthInches,
+			item.sourcePolicy,
+		);
 		composites.push({ index: item.index, buffer });
 	}
 
 	// Parallel R2 uploads
 	const uploads = await Promise.all(
 		composites.map(async ({ index, buffer }) => {
-			const url = await uploadBorderedPrintToR2(buffer, orderId, index);
+			const url = await uploadBorderedPrintToR2(buffer, stripeSessionId, index);
 			return { index, url };
 		}),
 	);

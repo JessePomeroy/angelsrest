@@ -821,6 +821,7 @@ export default defineSchema({
 			v.literal("digital"),
 		),
 		lumaprintsOrderNumber: v.optional(v.string()),
+		printFulfillmentClaim: v.optional(v.boolean()),
 		paperName: v.optional(v.string()),
 		paperSubcategoryId: v.optional(v.string()),
 		trackingNumber: v.optional(v.string()),
