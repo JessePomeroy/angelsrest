@@ -26,13 +26,13 @@ export const ANGELS_REST_COMMERCE_PROFILE: CommerceNotificationProfile = {
 	adminEmail: ADMIN_EMAIL,
 };
 
-/** Resolve the tenant account and non-secret notification identity for one Stripe event. */
 export async function resolveCommerceTenant(
 	event: Stripe.Event,
 	convex: ConvexHttpClient,
+	routedSiteUrl?: string,
 ): Promise<ResolvedCommerceTenant> {
 	const accountId = typeof event.account === "string" ? event.account : undefined;
-	const metadataSiteUrl = readMetadataSiteUrl(event);
+	const metadataSiteUrl = routedSiteUrl ?? readMetadataSiteUrl(event);
 	if (!accountId && !metadataSiteUrl) {
 		return {
 			siteUrl: SITE_DOMAIN,

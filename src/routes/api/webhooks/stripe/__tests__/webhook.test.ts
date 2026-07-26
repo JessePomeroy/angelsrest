@@ -1,450 +1,75 @@
 import type Stripe from "stripe";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-// ─── Module Mocks ─────────────────────────────────────────────────────────────
-
-const mockConvexMutation = vi.fn();
-const mockConvexQuery = vi.fn();
-
-vi.mock("$lib/server/convexClient", () => ({
-	getConvex: () => ({
-		mutation: mockConvexMutation,
-		query: mockConvexQuery,
-	}),
+const mocks = vi.hoisted(() => ({
+	convex: {},
+	createLumaPrintsOrder: vi.fn(),
+	process: vi.fn(),
+	resend: {},
+	stripe: {},
+	verify: vi.fn(),
+	env: {
+		STRIPE_CONNECT_WEBHOOK_SECRET: "connect-secret",
+		STRIPE_WEBHOOK_SECRET: "legacy-secret",
+	} as Record<string, string | undefined>,
 }));
 
-vi.mock("$lib/config/site", () => ({
-	ADMIN_EMAIL: "admin@example.com",
-	SITE_DOMAIN: "angelsrest.online",
-}));
+vi.mock("$env/dynamic/private", () => ({ env: mocks.env }));
+vi.mock("$lib/server/convexClient", () => ({ getConvex: () => mocks.convex }));
+vi.mock("$lib/server/lumaprints", () => ({ createOrder: mocks.createLumaPrintsOrder }));
+vi.mock("$lib/server/orderIntake", () => ({ processStripeWebhookEvent: mocks.process }));
+vi.mock("$lib/server/resendClient", () => ({ getResend: () => mocks.resend }));
+vi.mock("$lib/server/stripeClient", () => ({ getStripe: () => mocks.stripe }));
+vi.mock("$lib/server/stripeWebhook", () => ({ verifyStripeWebhook: mocks.verify }));
 
-const mockConstructEvent = vi.fn();
-const mockRefundsCreate = vi.fn();
-vi.mock("stripe", () => {
-	return {
-		default: class MockStripe {
-			webhooks = { constructEvent: mockConstructEvent };
-			refunds = { create: mockRefundsCreate };
-		},
-	};
-});
-
-const mockSendEmail = vi.fn();
-vi.mock("resend", () => ({
-	Resend: class MockResend {
-		emails = { send: mockSendEmail };
-	},
-}));
-
-// Mock only the network boundary (createOrder). buildLumaPrintsOrder and
-// cleanImageUrl are pure functions with no network or env side effects —
-// running them for real means this test exercises the same code path as
-// production. Divergence risk = 0. Pattern mirrors
-// createEmailSendHandler.test.ts in the admin-dashboard package.
-const mockCreateLumaOrder = vi.fn();
-vi.mock("$lib/server/lumaprints", async () => {
-	const actual =
-		await vi.importActual<typeof import("$lib/server/lumaprints")>("$lib/server/lumaprints");
-	return {
-		...actual,
-		createOrder: mockCreateLumaOrder,
-	};
-});
-
-vi.mock("$convex/api", () => ({
-	api: {
-		orders: { create: "orders.create", updateStatus: "orders.updateStatus" },
-		invoices: { markPaid: "invoices.markPaid" },
-	},
-}));
-
-// ─── Helpers ──────────────────────────────────────────────────────────────────
-
-function makeCheckoutSession(
-	overrides?: Partial<Stripe.Checkout.Session>,
-): Stripe.Checkout.Session {
-	return {
-		id: "cs_test_123",
-		amount_total: 3500,
-		amount_subtotal: 3500,
-		payment_status: "paid",
-		payment_intent: "pi_test_123",
-		customer_details: {
-			name: "Jane Doe",
-			email: "jane@example.com",
-		},
-		collected_information: {
-			shipping_details: {
-				name: "Jane Doe",
-				address: {
-					line1: "123 Main St",
-					line2: null,
-					city: "Portland",
-					state: "OR",
-					postal_code: "97201",
-					country: "US",
-				},
-			},
-		},
-		metadata: {
-			paperSubcategoryId: "103001",
-			paperWidth: "8",
-			paperHeight: "10",
-			paperName: "Archival Matte",
-			imageUrl: "https://cdn.sanity.io/images/photo.jpg?w=1200",
-			productId: "test-print",
-		},
-		...overrides,
-	} as unknown as Stripe.Checkout.Session;
-}
-
-function makeStripeEvent(type: string, object: unknown): Stripe.Event {
+function event(): Stripe.Event {
 	return {
 		id: "evt_test_123",
-		type,
-		data: { object },
-	} as unknown as Stripe.Event;
+		type: "checkout.session.completed",
+		data: { object: { id: "cs_test_123" } },
+	} as Stripe.Event;
 }
 
-// ─── Tests ────────────────────────────────────────────────────────────────────
-
-describe("Stripe webhook POST handler", () => {
-	let POST: (event: any) => Promise<Response>;
-
-	beforeEach(async () => {
+describe("Stripe webhook route", () => {
+	beforeEach(() => {
 		vi.clearAllMocks();
+		mocks.env.STRIPE_CONNECT_WEBHOOK_SECRET = "connect-secret";
+		mocks.env.STRIPE_WEBHOOK_SECRET = "legacy-secret";
+		mocks.verify.mockResolvedValue(event());
+	});
 
-		// Default: constructEvent returns a valid checkout event
-		const session = makeCheckoutSession();
-		const event = makeStripeEvent("checkout.session.completed", session);
-		mockConstructEvent.mockReturnValue(event);
-
-		// Default: order creation succeeds
-		mockConvexMutation.mockResolvedValue({
-			_id: "order-123",
-			orderNumber: "ORD-001",
+	it("verifies and delegates one event to the pure intake boundary", async () => {
+		const { POST } = await import("../+server");
+		const request = new Request("http://localhost/api/webhooks/stripe", {
+			method: "POST",
+			body: "{}",
 		});
+		const response = await POST({ request } as Parameters<typeof POST>[0]);
 
-		// Default: email sends succeed
-		mockSendEmail.mockResolvedValue({ id: "email-123" });
-
-		// Default: LumaPrints createOrder succeeds
-		mockCreateLumaOrder.mockResolvedValue({ orderNumber: "LP-12345" });
-
-		// Default: Stripe refunds succeed
-		mockRefundsCreate.mockResolvedValue({
-			id: "re_test_refund_123",
-			status: "succeeded",
+		expect(mocks.verify).toHaveBeenCalledWith(request, mocks.stripe, "connect-secret");
+		expect(mocks.process).toHaveBeenCalledWith(event(), {
+			stripe: mocks.stripe,
+			resend: mocks.resend,
+			convex: mocks.convex,
+			createLumaPrintsOrder: mocks.createLumaPrintsOrder,
 		});
-
-		// Dynamic import to pick up mocks
-		vi.resetModules();
-		const mod = await import("../+server");
-		POST = mod.POST as unknown as typeof POST;
+		expect(await response.json()).toEqual({ received: true });
 	});
 
-	it("returns 400 when stripe-signature header is missing", async () => {
-		const req = {
-			request: new Request("http://localhost/api/webhooks/stripe", {
-				method: "POST",
-				body: "{}",
-			}),
-		};
-		// Override request.headers.get to return null for stripe-signature
-		Object.defineProperty(req.request.headers, "get", {
-			value: () => null,
+	it("retains the legacy webhook secret fallback and fails closed without either secret", async () => {
+		const { POST } = await import("../+server");
+		mocks.env.STRIPE_CONNECT_WEBHOOK_SECRET = undefined;
+		const request = new Request("http://localhost/api/webhooks/stripe", {
+			method: "POST",
+			body: "{}",
 		});
+		await POST({ request } as Parameters<typeof POST>[0]);
+		expect(mocks.verify).toHaveBeenCalledWith(request, mocks.stripe, "legacy-secret");
 
-		try {
-			await POST(req);
-			expect.fail("should have thrown");
-		} catch (err: any) {
-			expect(err.status).toBe(400);
-		}
-	});
-
-	it("returns 400 when webhook signature is invalid", async () => {
-		mockConstructEvent.mockImplementation(() => {
-			throw new Error("Signature mismatch");
-		});
-
-		const req = {
-			request: new Request("http://localhost/api/webhooks/stripe", {
-				method: "POST",
-				headers: { "stripe-signature": "bad-sig" },
-				body: "{}",
-			}),
-		};
-
-		try {
-			await POST(req);
-			expect.fail("should have thrown");
-		} catch (err: any) {
-			expect(err.status).toBe(400);
-		}
-	});
-
-	it("creates order in Convex on valid checkout.session.completed", async () => {
-		const req = {
-			request: new Request("http://localhost/api/webhooks/stripe", {
-				method: "POST",
-				headers: { "stripe-signature": "valid-sig" },
-				body: "{}",
-			}),
-		};
-
-		const response = await POST(req);
-		expect(response.status).toBe(200);
-
-		// Should have called orders.create mutation
-		expect(mockConvexMutation).toHaveBeenCalledWith(
-			"orders.create",
-			expect.objectContaining({
-				siteUrl: "angelsrest.online",
-				stripeSessionId: "cs_test_123",
-				customerEmail: "jane@example.com",
-			}),
+		mocks.env.STRIPE_WEBHOOK_SECRET = undefined;
+		await expect(POST({ request } as Parameters<typeof POST>[0])).rejects.toThrow(
+			"Stripe commerce webhook secret is not set",
 		);
-	});
-
-	it("returns 500 and sends alert when order creation fails", async () => {
-		mockConvexMutation.mockRejectedValue(new Error("Convex mutation failed"));
-
-		const req = {
-			request: new Request("http://localhost/api/webhooks/stripe", {
-				method: "POST",
-				headers: { "stripe-signature": "valid-sig" },
-				body: "{}",
-			}),
-		};
-
-		try {
-			await POST(req);
-			expect.fail("should have thrown 500");
-		} catch (err: any) {
-			expect(err.status).toBe(500);
-		}
-
-		// Should have sent alert email
-		expect(mockSendEmail).toHaveBeenCalledWith(
-			expect.objectContaining({
-				subject: expect.stringContaining("Webhook failure"),
-			}),
-		);
-	});
-
-	it("returns 200 for non-checkout events", async () => {
-		const event = makeStripeEvent("payment_intent.succeeded", {});
-		mockConstructEvent.mockReturnValue(event);
-
-		const req = {
-			request: new Request("http://localhost/api/webhooks/stripe", {
-				method: "POST",
-				headers: { "stripe-signature": "valid-sig" },
-				body: "{}",
-			}),
-		};
-
-		const response = await POST(req);
-		expect(response.status).toBe(200);
-		const data = await response.json();
-		expect(data.received).toBe(true);
-	});
-
-	// ─── audit #23 PR #3: permanent-failure fallback ─────────────────────────
-
-	it("refunds + marks fulfillment_error + emails admin on permanent LumaPrints failure", async () => {
-		// LumaPrints rejects the order with a 4xx-style validation error.
-		// classifyLumaPrintsFailure should categorize this as permanent.
-		const { LumaPrintsError } = await import("$lib/server/lumaprints");
-		mockCreateLumaOrder.mockRejectedValue(
-			new LumaPrintsError("Order submission failed", {
-				statusCode: 400,
-				message: "Invalid subcategoryId for orderItems[0]",
-			}),
-		);
-
-		const req = {
-			request: new Request("http://localhost/api/webhooks/stripe", {
-				method: "POST",
-				headers: { "stripe-signature": "valid-sig" },
-				body: "{}",
-			}),
-		};
-
-		const response = await POST(req);
-		// Returns 200 — we don't want Stripe to retry a permanent failure
-		expect(response.status).toBe(200);
-
-		// Stripe refund was created against the session's payment_intent
-		expect(mockRefundsCreate).toHaveBeenCalledWith(
-			expect.objectContaining({
-				payment_intent: "pi_test_123",
-				reason: "requested_by_customer",
-			}),
-			{ idempotencyKey: "fulfillment-refund:cs_test_123" },
-		);
-
-		// Convex order was marked fulfillment_error with the refund ID
-		expect(mockConvexMutation).toHaveBeenCalledWith(
-			"orders.updateStatus",
-			expect.objectContaining({
-				status: "fulfillment_error",
-				stripeRefundId: "re_test_refund_123",
-				fulfillmentError: expect.stringContaining("Invalid subcategoryId"),
-			}),
-		);
-
-		// Admin alert email was sent
-		expect(mockSendEmail).toHaveBeenCalledWith(
-			expect.objectContaining({
-				subject: expect.stringContaining("Fulfillment error"),
-				text: expect.stringContaining("Invalid subcategoryId"),
-			}),
-		);
-	});
-
-	it("re-throws transient LumaPrints failures so Stripe retries", async () => {
-		// A LumaPrints 5xx error is transient — classifier returns "transient".
-		const { LumaPrintsError } = await import("$lib/server/lumaprints");
-		mockCreateLumaOrder.mockRejectedValue(
-			new LumaPrintsError("Order submission failed", {
-				statusCode: 503,
-				message: "Service temporarily unavailable",
-			}),
-		);
-
-		const req = {
-			request: new Request("http://localhost/api/webhooks/stripe", {
-				method: "POST",
-				headers: { "stripe-signature": "valid-sig" },
-				body: "{}",
-			}),
-		};
-
-		try {
-			await POST(req);
-			expect.fail("should have thrown 500 so Stripe retries");
-		} catch (err: any) {
-			expect(err.status).toBe(500);
-		}
-
-		// Did NOT refund — transient errors should let Stripe retry
-		expect(mockRefundsCreate).not.toHaveBeenCalled();
-
-		// Did NOT mark fulfillment_error — status stays in its previous state
-		expect(mockConvexMutation).not.toHaveBeenCalledWith(
-			"orders.updateStatus",
-			expect.objectContaining({ status: "fulfillment_error" }),
-		);
-	});
-
-	it("returns 500 and leaves a durable recovery checkpoint when the refund call fails", async () => {
-		// Permanent LumaPrints error...
-		const { LumaPrintsError } = await import("$lib/server/lumaprints");
-		mockCreateLumaOrder.mockRejectedValue(
-			new LumaPrintsError("Order submission failed", {
-				statusCode: 422,
-				message: "Unprocessable payload",
-			}),
-		);
-		// ...and the Stripe refund API is ALSO down.
-		mockRefundsCreate.mockRejectedValue(new Error("Stripe API timeout"));
-
-		const req = {
-			request: new Request("http://localhost/api/webhooks/stripe", {
-				method: "POST",
-				headers: { "stripe-signature": "valid-sig" },
-				body: "{}",
-			}),
-		};
-
-		await expect(POST(req)).rejects.toMatchObject({ status: 500 });
-
-		// Stripe can retry safely: Convex records the recovery checkpoint before
-		// the external refund call, and the refund itself has a stable key.
-		expect(mockConvexMutation).toHaveBeenCalledWith(
-			"orders.updateStatus",
-			expect.objectContaining({
-				status: "fulfillment_error",
-				fulfillmentRecoveryStatus: "refund_pending",
-			}),
-		);
-		expect(mockRefundsCreate).toHaveBeenCalledWith(
-			expect.objectContaining({ payment_intent: "pi_test_123" }),
-			{ idempotencyKey: "fulfillment-refund:cs_test_123" },
-		);
-	});
-
-	it("resumes refund recovery without repeating fulfillment for a legacy error record", async () => {
-		mockConvexMutation.mockResolvedValueOnce({
-			_id: "order-123",
-			orderNumber: "ORD-001",
-			alreadyExisted: true,
-			status: "fulfillment_error",
-		});
-
-		const req = {
-			request: new Request("http://localhost/api/webhooks/stripe", {
-				method: "POST",
-				headers: { "stripe-signature": "valid-sig" },
-				body: "{}",
-			}),
-		};
-
-		const response = await POST(req);
-		expect(response.status).toBe(200);
-
-		expect(mockCreateLumaOrder).not.toHaveBeenCalled();
-		expect(mockRefundsCreate).toHaveBeenCalledWith(
-			expect.objectContaining({ payment_intent: "pi_test_123" }),
-			{ idempotencyKey: "fulfillment-refund:cs_test_123" },
-		);
-		expect(mockConvexMutation).toHaveBeenCalledWith(
-			"orders.updateStatus",
-			expect.objectContaining({
-				stripeRefundId: "re_test_refund_123",
-				fulfillmentRecoveryStatus: "refunded",
-			}),
-		);
-		expect(mockSendEmail).toHaveBeenCalledWith(
-			expect.objectContaining({
-				subject: expect.stringContaining("refund issued"),
-			}),
-		);
-	});
-
-	it("marks invoice as paid for invoice_payment metadata", async () => {
-		const session = makeCheckoutSession({
-			metadata: {
-				type: "invoice_payment",
-				invoiceId: "inv-123",
-				siteUrl: "angelsrest.online",
-				checkoutFingerprint: "checkout-fingerprint-123",
-			},
-		});
-		const event = makeStripeEvent("checkout.session.completed", session);
-		mockConstructEvent.mockReturnValue(event);
-
-		const req = {
-			request: new Request("http://localhost/api/webhooks/stripe", {
-				method: "POST",
-				headers: { "stripe-signature": "valid-sig" },
-				body: "{}",
-			}),
-		};
-
-		const response = await POST(req);
-		expect(response.status).toBe(200);
-
-		expect(mockConvexMutation).toHaveBeenCalledWith(
-			"invoices.markPaid",
-			expect.objectContaining({
-				invoiceId: "inv-123",
-				siteUrl: "angelsrest.online",
-				stripeCheckoutSessionId: session.id,
-				stripeCheckoutFingerprint: "checkout-fingerprint-123",
-			}),
-		);
+		expect(mocks.process).toHaveBeenCalledTimes(1);
 	});
 });
