@@ -293,6 +293,14 @@ describe("paid catalog commerce", () => {
 			graphDraft("digital_download", fixture, "paid-guard-download"),
 		);
 		await seedOrder(fixture, item(digital, "digital_download"));
+		process.env.WEBHOOK_SECRET = SECRET;
+		const authority = await fixture.t.query(api.orders.resolvePaidDownloadOrder, {
+			stripeSessionId: SESSION, webhookSecret: SECRET,
+		});
+		expect(authority).toMatchObject({ refunded: false, checkoutSnapshot: { catalogProvider: "convex" } });
+		await expect(fixture.t.query(api.orders.resolvePaidDownloadOrder, {
+			stripeSessionId: SESSION, webhookSecret: FULFILLMENT_SECRET,
+		})).rejects.toThrow();
 		expect((await resolve(fixture, paid("paid_download"))).identity.productId).toBe(digital.productId);
 		await fixture.t.run((ctx) => ctx.db.patch(fixture.paidA, { sha256: "invalid" }));
 		await expect(resolve(fixture, paid("paid_download"))).rejects.toThrow();
@@ -309,6 +317,9 @@ describe("paid catalog commerce", () => {
 			await ctx.db.patch(order._id, { status: "refunded" });
 		});
 		await expect(resolve(fixture, paid("paid_download"))).rejects.toThrow();
+		expect(await fixture.t.query(api.orders.resolvePaidDownloadOrder, {
+			stripeSessionId: SESSION, webhookSecret: SECRET,
+		})).toMatchObject({ refunded: true });
 	});
 
 	test("keeps historical replay isolated from corrupt active revision slugs", async () => {

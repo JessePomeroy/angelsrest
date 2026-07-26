@@ -56,10 +56,12 @@ describe("prepareSanityUrlForPrint", () => {
 		expect(result).toContain("5012x7518");
 	});
 
-	it("works on non-Sanity URLs by passing through with the same transformation", () => {
-		// Non-Sanity URLs are not the intended use case, but the function
-		// should still produce a sensible result rather than throwing.
-		const url = "https://example.com/photo.jpg?token=abc";
-		expect(prepareSanityUrlForPrint(url)).toBe("https://example.com/photo.jpg?max=8000&q=100");
+	it("preserves every non-Sanity URL byte-exact", () => {
+		const values = [
+			"https://example.com/photo.jpg?token=opaque#fragment",
+			"https://cdn.sanity.io.evil.test/photo.jpg?token=opaque",
+			"http://cdn.sanity.io/photo.jpg?token=opaque",
+		];
+		for (const value of values) expect(prepareSanityUrlForPrint(value)).toBe(value);
 	});
 });

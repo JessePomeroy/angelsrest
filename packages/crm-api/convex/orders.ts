@@ -530,6 +530,24 @@ export const create = mutation({
 	},
 });
 
+/** Server-only paid-download authority, called only after Stripe buyer authorization. */
+export const resolvePaidDownloadOrder = query({
+	args: { stripeSessionId: v.string(), webhookSecret: v.string() },
+	handler: async (ctx, args) => {
+		await requireWebhookCallerOrAuth(ctx, args.webhookSecret, { allowAuth: false });
+		if (!isStripeCheckoutSessionId(args.stripeSessionId)) return null;
+		const order = await ctx.db.query("orders")
+			.withIndex("by_stripeSessionId", (q) => q.eq("stripeSessionId", args.stripeSessionId)).unique();
+		if (!order) return null;
+		return {
+			checkoutSnapshot: order.checkoutSnapshot,
+			refunded: order.status === "refunded" || order.stripeRefundId !== undefined
+				|| order.fulfillmentRecoveryStatus === "refund_pending"
+				|| order.fulfillmentRecoveryStatus === "refunded",
+		};
+	},
+});
+
 /** Webhook-only, session-first routing. No snapshot, digest, or handle crosses this projection. */
 export const resolveCheckoutRouting = query({
 	args: {

@@ -111,35 +111,23 @@ describe("classifyLumaPrintsFailure", () => {
 });
 
 describe("formatFailureForAdmin", () => {
-	it("includes LumaPrintsError details", () => {
-		const err = new LumaPrintsError("Order submission failed", {
-			statusCode: 400,
-			message: "Invalid subcategoryId",
-		});
-		const formatted = formatFailureForAdmin(err);
-		expect(formatted).toContain("Order submission failed");
-		expect(formatted).toContain("Invalid subcategoryId");
-		expect(formatted).toContain("400");
-	});
-
-	it("handles LumaPrintsError with no details", () => {
-		const err = new LumaPrintsError("plain error");
-		expect(formatFailureForAdmin(err)).toBe("plain error");
-	});
-
-	it("formats generic Error with name and message", () => {
-		const err = new TypeError("fetch failed");
-		expect(formatFailureForAdmin(err)).toBe("TypeError: fetch failed");
-	});
-
-	it("stringifies non-Error values", () => {
-		expect(formatFailureForAdmin("boom")).toBe("boom");
-		expect(formatFailureForAdmin(42)).toBe("42");
-	});
-
-	it("truncates very long error messages", () => {
-		const longString = "x".repeat(1000);
-		const formatted = formatFailureForAdmin(longString);
-		expect(formatted.length).toBeLessThanOrEqual(500);
+	it("returns only bounded classifications without provider bodies or source URLs", () => {
+		const secretSource = "https://opaque.example/private?token=secret";
+		const permanent = formatFailureForAdmin(
+			new LumaPrintsError("raw response", {
+				statusCode: 400,
+				message: secretSource,
+			}),
+		);
+		const transient = formatFailureForAdmin(new LumaPrintsError(secretSource));
+		const unknown = formatFailureForAdmin(new TypeError(secretSource));
+		expect(permanent).toBe("Print provider rejected fulfillment");
+		expect(transient).toBe("Print provider temporarily unavailable");
+		expect(unknown).toBe("Print fulfillment unavailable");
+		for (const value of [permanent, transient, unknown]) {
+			expect(value).not.toContain("opaque.example");
+			expect(value).not.toContain("secret");
+			expect(value.length).toBeLessThan(64);
+		}
 	});
 });

@@ -61,6 +61,7 @@ describe("__test__buildOrderItemsFromSession — cart shape (PR C)", () => {
 		expect(orderItems).toHaveLength(1);
 		expect(orderItems[0]).toEqual({
 			imageUrl: "https://cdn.sanity.io/images/abc/shore-no-1.jpg",
+			sourcePolicy: "sanity_cdn",
 			paperSubcategoryId: 103001,
 			width: 8,
 			height: 12,

@@ -126,18 +126,14 @@ function extractMessageString(obj: Record<string, unknown>): string | null {
 	return null;
 }
 
-/**
- * Format a human-readable summary of the error for admin notification
- * emails and error logs. Never includes raw payload to avoid leaking PII.
- */
+/** Durable/email-safe bounded classification. Raw provider bodies, source URLs,
+ * and arbitrary thrown messages never cross this boundary. */
 export function formatFailureForAdmin(err: unknown): string {
+	if (err instanceof FulfillmentValidationError) return "Fulfillment validation rejected";
 	if (err instanceof LumaPrintsError) {
-		const message = err.message;
-		const detailsStr = err.details ? `\nDetails: ${JSON.stringify(err.details).slice(0, 500)}` : "";
-		return `${message}${detailsStr}`;
+		return classifyLumaPrintsFailure(err) === "permanent"
+			? "Print provider rejected fulfillment"
+			: "Print provider temporarily unavailable";
 	}
-	if (err instanceof Error) {
-		return `${err.name}: ${err.message}`;
-	}
-	return String(err).slice(0, 500);
+	return "Print fulfillment unavailable";
 }

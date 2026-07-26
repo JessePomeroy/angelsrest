@@ -89,10 +89,7 @@ export const POST: RequestHandler = async ({ request }) => {
 			stage: "lumaprints_shipping",
 			level: "error",
 			error: err,
-			meta: {
-				kind: err instanceof LumaPrintsError ? "lumaprints" : "unknown",
-				details: err instanceof LumaPrintsError ? err.details : undefined,
-			},
+			meta: { kind: err instanceof LumaPrintsError ? "lumaprints" : "unknown" },
 		});
 		throw error(503, "Shipping price unavailable; please try again in a minute.");
 	}

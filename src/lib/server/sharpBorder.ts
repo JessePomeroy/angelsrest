@@ -18,6 +18,7 @@
 
 import sharp from "sharp";
 import { prepareSanityUrlForPrint } from "$lib/shop/lumaprintsUrls";
+import type { PrintSourcePolicy } from "$lib/shop/types";
 
 const DPI = 300;
 
@@ -28,11 +29,12 @@ const DPI = 300;
 export async function composeBorderedPrint(
 	imageUrl: string,
 	borderWidthInches: number,
+	sourcePolicy: PrintSourcePolicy = "byte_exact",
 ): Promise<Buffer> {
-	const printUrl = prepareSanityUrlForPrint(imageUrl);
+	const printUrl = sourcePolicy === "sanity_cdn" ? prepareSanityUrlForPrint(imageUrl) : imageUrl;
 	const response = await fetch(printUrl);
 	if (!response.ok) {
-		throw new Error(`Failed to fetch image for border compositing: ${response.status} ${printUrl}`);
+		throw new Error(`Border source rejected (${response.status})`);
 	}
 	const sourceBuffer = Buffer.from(await response.arrayBuffer());
 
@@ -82,8 +84,7 @@ export async function uploadBorderedPrintToR2(
 	});
 
 	if (!response.ok) {
-		const text = await response.text();
-		throw new Error(`R2 upload failed for bordered print: ${response.status} ${text}`);
+		throw new Error(`Border output rejected (${response.status})`);
 	}
 
 	// Return the public URL for the uploaded image
@@ -94,6 +95,7 @@ export interface BorderedItem {
 	index: number;
 	imageUrl: string;
 	borderWidthInches: number;
+	sourcePolicy: PrintSourcePolicy;
 }
 
 /**
@@ -112,7 +114,11 @@ export async function processBorderedPrints(
 	// Sequential Sharp compositing (memory pressure — each op can use 100+ MB)
 	const composites: { index: number; buffer: Buffer }[] = [];
 	for (const item of items) {
-		const buffer = await composeBorderedPrint(item.imageUrl, item.borderWidthInches);
+		const buffer = await composeBorderedPrint(
+			item.imageUrl,
+			item.borderWidthInches,
+			item.sourcePolicy,
+		);
 		composites.push({ index: item.index, buffer });
 	}
 

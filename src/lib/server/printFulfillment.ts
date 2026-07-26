@@ -3,6 +3,7 @@ import type { Resend } from "resend";
 import type Stripe from "stripe";
 import { api } from "$convex/api";
 import type { Id } from "$convex/dataModel";
+import type { CheckoutSnapshotV1 } from "$lib/server/checkoutSnapshotConsumer";
 import {
 	ANGELS_REST_COMMERCE_PROFILE,
 	type CommerceNotificationProfile,
@@ -55,15 +56,26 @@ export async function submitPrintFulfillment(
 		lineItems,
 		shippingDetails,
 		session,
+		checkoutSnapshot,
 	}: {
 		orderId: Id<"orders">;
 		orderNumber: string;
 		lineItems: Stripe.LineItem[];
 		shippingDetails: ShippingDetails;
 		session: Stripe.Checkout.Session;
+		checkoutSnapshot?: CheckoutSnapshotV1;
 	},
 ) {
-	const items = buildOrderItemsFromSession(session, lineItems);
+	let recipient = checkoutSnapshot?.items.some(
+		({ productKind }) => productKind === "print" || productKind === "print_set",
+	)
+		? buildRecipientFromShipping(shippingDetails)
+		: undefined;
+	const items = checkoutSnapshot
+		? await import("$lib/server/snapshotFulfillment").then(({ buildOrderItemsFromSnapshot }) =>
+				buildOrderItemsFromSnapshot(checkoutSnapshot, session.id, lineItems),
+			)
+		: buildOrderItemsFromSession(session, lineItems);
 	if (items.length === 0) {
 		logStructured({
 			event: "lumaprints.skipped",
@@ -79,6 +91,7 @@ export async function submitPrintFulfillment(
 			index,
 			imageUrl: item.imageUrl,
 			borderWidthInches: item.borderWidth ?? 0,
+			sourcePolicy: item.sourcePolicy ?? ("byte_exact" as const),
 		}))
 		.filter((item) => item.borderWidthInches > 0);
 
@@ -95,21 +108,20 @@ export async function submitPrintFulfillment(
 		);
 		for (const [index, r2Url] of urlMap) {
 			items[index].imageUrl = r2Url;
+			items[index].sourcePolicy = "bordered_r2";
 		}
 	}
 
-	const recipient = buildRecipientFromShipping(shippingDetails);
+	recipient ??= buildRecipientFromShipping(shippingDetails);
 	const lpOrder = buildLumaPrintsOrder(orderNumber, recipient, items);
 
-	const result = await timed(
-		{
-			event: "lumaprints.submitted",
-			stage: "lumaprints_submit",
-			orderId: orderNumber,
-			meta: { itemCount: items.length },
-		},
-		() => createLumaPrintsOrder(lpOrder),
-	);
+	const result = await createLumaPrintsOrder(lpOrder);
+	logStructured({
+		event: "lumaprints.submitted",
+		stage: "lumaprints_submit",
+		orderId: orderNumber,
+		meta: { itemCount: items.length },
+	});
 
 	await convex.mutation(api.orders.updateStatus, {
 		webhookSecret: getWebhookSecret(),
@@ -161,7 +173,7 @@ export async function handlePrintFulfillmentFailure(
 	});
 
 	if (classification === "transient") {
-		throw error;
+		throw new Error("Print provider temporarily unavailable");
 	}
 
 	return handlePermanentFulfillmentFailure(adapters, {

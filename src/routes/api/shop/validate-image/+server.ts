@@ -71,11 +71,7 @@ export const POST: RequestHandler = async ({ request }) => {
 		// recourse. Instead surface a "could not verify" result so the
 		// checkout path can show a real error to the customer.
 		if (err instanceof LumaPrintsError) {
-			console.warn(
-				"LumaPrints checkImageConfig failed, returning valid=false:",
-				err.message,
-				err.details,
-			);
+			console.warn("LumaPrints checkImageConfig failed, returning valid=false");
 			return json({
 				valid: false,
 				reason: "could not verify",

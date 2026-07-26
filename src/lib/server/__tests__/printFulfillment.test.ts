@@ -6,6 +6,7 @@ const mockLogStructured = vi.fn();
 const mockCreateLumaPrintsOrder = vi.fn();
 const mockBuildLumaPrintsOrder = vi.fn();
 const mockBuildOrderItemsFromSession = vi.fn();
+const mockBuildOrderItemsFromSnapshot = vi.fn();
 const mockBuildRecipientFromShipping = vi.fn();
 const mockSendFulfillmentFailureAlert = vi.fn();
 
@@ -35,6 +36,9 @@ vi.mock("$lib/server/lumaprints", () => {
 vi.mock("$lib/server/webhookDecoder", () => ({
 	buildOrderItemsFromSession: mockBuildOrderItemsFromSession,
 	buildRecipientFromShipping: mockBuildRecipientFromShipping,
+}));
+vi.mock("$lib/server/snapshotFulfillment", () => ({
+	buildOrderItemsFromSnapshot: mockBuildOrderItemsFromSnapshot,
 }));
 
 vi.mock("$lib/server/webhookEmails", () => ({
@@ -128,6 +132,54 @@ describe("print fulfillment", () => {
 		});
 	});
 
+	it("uses only the persisted snapshot when present and keeps paid Stripe quantity", async () => {
+		const { submitPrintFulfillment } = await import("../printFulfillment");
+		const checkoutSnapshot = {
+			schemaVersion: 1 as const,
+			catalogProvider: "convex" as const,
+			items: [
+				{
+					productKey: "product",
+					revisionId: "revision",
+					productKind: "print" as const,
+					variantKey: "variant",
+					materialOptionKey: "paper",
+					sizeOptionKey: "size",
+					borderOptionKey: null,
+					frameOptionKey: null,
+				},
+			],
+		};
+		mockBuildOrderItemsFromSnapshot.mockResolvedValueOnce([
+			{
+				imageUrl: "https://opaque.example/capability",
+				sourcePolicy: "opaque_capability",
+				paperSubcategoryId: 103001,
+				quantity: 3,
+				width: 8,
+				height: 10,
+			},
+		]);
+		await submitPrintFulfillment(
+			{ convex, createLumaPrintsOrder: mockCreateLumaPrintsOrder },
+			{
+				orderId,
+				orderNumber: "ORD-001",
+				lineItems: [{ quantity: 3 }] as Stripe.LineItem[],
+				shippingDetails: shippingDetails as any,
+				session,
+				checkoutSnapshot,
+			},
+		);
+		expect(mockBuildOrderItemsFromSnapshot).toHaveBeenCalledWith(checkoutSnapshot, session.id, [
+			expect.objectContaining({ quantity: 3 }),
+		]);
+		expect(mockBuildRecipientFromShipping.mock.invocationCallOrder[0]).toBeLessThan(
+			mockBuildOrderItemsFromSnapshot.mock.invocationCallOrder[0],
+		);
+		expect(mockBuildOrderItemsFromSession).not.toHaveBeenCalled();
+	});
+
 	it("returns no_print_items without validating a recipient or calling LumaPrints", async () => {
 		const { submitPrintFulfillment } = await import("../printFulfillment");
 		mockBuildOrderItemsFromSession.mockReturnValue([]);
@@ -164,7 +216,7 @@ describe("print fulfillment", () => {
 					customerEmail: "jane@example.com",
 				},
 			),
-		).rejects.toBe(error);
+		).rejects.toThrow("Print provider temporarily unavailable");
 		expect(stripe.refunds.create).not.toHaveBeenCalled();
 		expect(convex.mutation).not.toHaveBeenCalled();
 	});

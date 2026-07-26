@@ -278,10 +278,10 @@ export function buildLumaPrintsOrder(
 				: isFramed
 					? (item.frameSubcategoryId as number)
 					: item.paperSubcategoryId;
-			// For bordered prints that were Sharp-composited, the imageUrl is
-			// already an R2 URL — don't run it through prepareSanityUrlForPrint.
-			const isBordered = typeof item.borderWidth === "number" && item.borderWidth > 0;
-			const imageUrl = isBordered ? item.imageUrl : prepareSanityUrlForPrint(item.imageUrl);
+			const imageUrl =
+				item.sourcePolicy === "sanity_cdn"
+					? prepareSanityUrlForPrint(item.imageUrl)
+					: item.imageUrl;
 			const options: number[] = [];
 			let solidColorHexCode: string | undefined;
 			if (isCanvas) {

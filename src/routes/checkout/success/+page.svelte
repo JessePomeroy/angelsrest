@@ -137,7 +137,7 @@ let { data, form }: { data: PageData; form?: { verifyError?: string } } = $props
         <div class="mt-6 p-4 bg-green-500/10 border border-green-500/20 rounded-lg">
           <h3 class="text-lg font-medium mb-2">your download is ready</h3>
           <a
-            href="/api/download?session_id={data.orderDetails.sessionId}&slug={data.orderDetails.productSlug}"
+            href="/api/download?session_id={data.orderDetails.sessionId}&slug={data.orderDetails.productSlug}&item=0"
             class="btn variant-filled-primary px-8 py-3 w-full text-center"
           >
             download now

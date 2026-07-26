@@ -9,6 +9,7 @@ const mockSendCustomerFulfillmentFailure = vi.fn();
 const mockSendFailureAlert = vi.fn();
 const mockSendFulfillmentFailureAlert = vi.fn();
 const mockSendPaymentFailedEmail = vi.fn();
+const mockBuildOrderItemsFromSnapshot = vi.fn();
 const mockPrivateEnv = vi.hoisted(() => ({
 	LUMAPRINTS_STORE_ID: "123",
 	WEBHOOK_SECRET: "test-webhook-secret",
@@ -45,6 +46,9 @@ vi.mock("$convex/api", () => ({
 }));
 
 vi.mock("$env/dynamic/private", () => ({ env: mockPrivateEnv }));
+vi.mock("$lib/server/snapshotFulfillment", () => ({
+	buildOrderItemsFromSnapshot: mockBuildOrderItemsFromSnapshot,
+}));
 
 vi.mock("$lib/config/site", () => ({
 	ADMIN_EMAIL: "admin@example.com",
@@ -435,6 +439,7 @@ describe("processStripeWebhookEvent", () => {
 		expect(payload).not.toHaveProperty("checkoutSnapshot");
 		expect(payload).not.toHaveProperty("checkoutSnapshotReservation");
 		expect(createLumaPrintsOrder).not.toHaveBeenCalled();
+		expect(mockBuildOrderItemsFromSnapshot).not.toHaveBeenCalled();
 		expect(mockSendCustomerConfirmation).not.toHaveBeenCalled();
 		expect(mockSendAdminNotification).not.toHaveBeenCalled();
 	});
@@ -763,7 +768,7 @@ describe("processStripeWebhookEvent", () => {
 		orderCreateResults = [
 			makeOrderResult({
 				alreadyExisted: true,
-				status: "fulfillment_error",
+				status: "refunded",
 				fulfillmentError: "Invalid image",
 				stripeRefundId: "re_test_123",
 				fulfillmentRecoveryStatus: "refunded",
