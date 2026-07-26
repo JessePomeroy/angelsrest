@@ -168,6 +168,16 @@ const V1_PRODUCT_QUERY = `
   }
 `;
 
+const COLLECTION_INDEX_QUERY = `
+	*[_type == "printCollection" && !defined(parent)]
+	| order(orderRank, title asc) {
+		title,
+		"slug": slug.current,
+		previewImage,
+		description
+	}
+`;
+
 const PRINT_SET_QUERY = `
   *[_type == "lumaPrintSetV2" && slug.current == $slug][0]{
     title,
@@ -185,6 +195,15 @@ const PRINT_SET_QUERY = `
     }
   }
 `;
+
+async function loadCollectionIndex(sanity: SanityShopClient) {
+	const collections = await sanity.fetch<CollectionRow[]>(COLLECTION_INDEX_QUERY);
+	return collections.map((collection) => ({
+		...collection,
+		alt: collection.previewImage?.alt || "",
+		previewImage: previewUrl(collection.previewImage),
+	}));
+}
 
 export function createSanityShopAdapter(selectClient: SanityClientSelector = getSanityClient) {
 	return {
@@ -235,21 +254,7 @@ export function createSanityShopAdapter(selectClient: SanityClientSelector = get
 				(a, b) => (b.featured ? 1 : 0) - (a.featured ? 1 : 0),
 			);
 
-			const collections = await sanity.fetch<CollectionRow[]>(`
-				*[_type == "printCollection" && !defined(parent)]
-				| order(orderRank, title asc) {
-					title,
-					"slug": slug.current,
-					previewImage,
-					description
-				}
-			`);
-
-			const collectionsWithImages = collections.map((c) => ({
-				...c,
-				alt: c.previewImage?.alt || "",
-				previewImage: previewUrl(c.previewImage),
-			}));
+			const collectionsWithImages = await loadCollectionIndex(sanity);
 
 			const v2Sets = await sanity.fetch<PrintSetRow[]>(`
 				*[_type == "lumaPrintSetV2" && inStock == true]
@@ -276,6 +281,10 @@ export function createSanityShopAdapter(selectClient: SanityClientSelector = get
 				collections: collectionsWithImages,
 				printSets: v2SetsWithImages,
 			};
+		},
+
+		loadCollectionIndex(isPreview: boolean) {
+			return loadCollectionIndex(selectClient(isPreview));
 		},
 
 		async loadProduct(slug: string, isPreview: boolean) {

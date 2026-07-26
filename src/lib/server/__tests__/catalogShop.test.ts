@@ -49,6 +49,18 @@ const sanityProduct = () => ({
 	image: { source: { width: 3000, height: 2000 } },
 });
 
+const convexAsset = () => ({
+	assetId: "10000000-0000-4000-8000-000000000001",
+	source: { height: 2000, width: 3000 },
+	derivatives: {
+		thumb: { contentType: "image/webp", width: 320, height: 213 },
+		card: { contentType: "image/webp", width: 768, height: 512 },
+		display1280: { contentType: "image/webp", width: 1280, height: 853 },
+		display2048: { contentType: "image/webp", width: 2048, height: 1365 },
+		display2560: { contentType: "image/webp", width: 2560, height: 1707 },
+	},
+});
+
 const convexProduct = () => ({
 	schemaVersion: 2 as const,
 	productId: "product-private-looking",
@@ -86,11 +98,7 @@ const convexProduct = () => ({
 			role: "primary" as "primary" | "cover" | "gallery" | "set_member",
 			order: 0,
 			altText: "Ignored alt",
-			asset: {
-				assetId: "ignored-asset-id",
-				source: { height: 2000, width: 3000 },
-				derivatives: { display1280: { url: "https://ignored.test/image" } },
-			},
+			asset: convexAsset(),
 		},
 	],
 });
@@ -98,6 +106,7 @@ const convexProduct = () => ({
 function fakeSanity(index: Promise<unknown> = Promise.resolve({ route: "sanity" })) {
 	return {
 		loadIndex: vi.fn(() => index),
+		loadCollectionIndex: vi.fn(async () => [{ slug: "sanity-collection" }]),
 		loadProduct: vi.fn(async (slug: string, preview: boolean) => ({ slug, preview })),
 		loadPrintSet: vi.fn(async (slug: string, preview: boolean) => ({ slug, preview })),
 		loadCollection: vi.fn(async (slug: string, preview: boolean) => ({ slug, preview })),
@@ -133,8 +142,8 @@ function completeCatalog() {
 		product.productKind = "print_set";
 		product.slug = productSlug;
 		product.media = [
-			{ ...first(product.media), role: "cover" },
-			{ ...first(product.media), role: "set_member" },
+			{ ...first(product.media), key: "cover", role: "cover" },
+			{ ...first(product.media), key: "member", role: "set_member" },
 		];
 		convex.push(product);
 	}
@@ -143,7 +152,7 @@ function completeCatalog() {
 		["digital", "digital_download", 1],
 	] as const) {
 		for (let index = 0; index < count; index += 1) {
-			const productSlug = `${kind}-${index}`;
+			const productSlug = `${kind.replace("_", "-")}-${index}`;
 			sanity.push({
 				_type: "product",
 				slug: productSlug,
@@ -158,6 +167,7 @@ function completeCatalog() {
 				slug: productSlug,
 				variants: [
 					{
+						key: "default",
 						order: 0,
 						materialOption: null,
 						sizeOption: null,
@@ -165,7 +175,15 @@ function completeCatalog() {
 					},
 				],
 				shopPlacement: { featured: false, orderRank: null },
-				media: [{ role: "gallery", order: 0, asset: source }],
+				media: [
+					{
+						key: "gallery",
+						role: "gallery",
+						order: 0,
+						altText: "Gallery alt",
+						asset: convexAsset(),
+					},
+				],
 			});
 			delete product.printOptions;
 			convex.push(product);
@@ -219,8 +237,12 @@ describe("catalog provider mode", () => {
 
 		await provider.loadIndex(true);
 		await provider.loadProduct("preview", true);
+		await provider.loadPrintSet("preview-set", true);
+		await provider.loadCollection("preview-collection", true);
 		expect(sanity.loadIndex).toHaveBeenCalledWith(true);
 		expect(sanity.loadProduct).toHaveBeenCalledWith("preview", true);
+		expect(sanity.loadPrintSet).toHaveBeenCalledWith("preview-set", true);
+		expect(sanity.loadCollection).toHaveBeenCalledWith("preview-collection", true);
 		expect(mode).not.toHaveBeenCalled();
 		expect(createReader).not.toHaveBeenCalled();
 		expect(timer).not.toHaveBeenCalled();
@@ -264,13 +286,18 @@ describe("catalog semantic comparison", () => {
 		[
 			"material",
 			(value: ReturnType<typeof convexProduct>) => {
-				first(value.variants).materialOption.slug = "glossy";
+				first(value.variants).materialOption = { slug: "glossy", label: "Glossy" };
 			},
 		],
 		[
-			"size dimensions",
+			"size selector",
 			(value: ReturnType<typeof convexProduct>) => {
-				first(value.variants).sizeOption.widthInches = 9;
+				first(value.variants).sizeOption = {
+					slug: "11x14",
+					label: "11×14",
+					widthInches: 11,
+					heightInches: 14,
+				};
 			},
 		],
 		[
@@ -282,19 +309,23 @@ describe("catalog semantic comparison", () => {
 		[
 			"media role",
 			(value: ReturnType<typeof convexProduct>) => {
-				first(value.media).role = "gallery";
+				value.media.push({ ...first(value.media), key: "gallery", role: "gallery" });
 			},
 		],
 		[
 			"media order",
 			(value: ReturnType<typeof convexProduct>) => {
-				first(value.media).order = 1;
+				value.media.push({ ...first(value.media), key: "second-primary", order: 1 });
 			},
 		],
 		[
 			"source dimensions",
 			(value: ReturnType<typeof convexProduct>) => {
-				first(value.media).asset.source.width += 1;
+				const asset = first(value.media).asset;
+				asset.source.height = 3000;
+				for (const derivative of Object.values(asset.derivatives)) {
+					derivative.height = derivative.width;
+				}
 			},
 		],
 	] as const)("detects a %s perturbation", (_name, mutate) => {
@@ -631,8 +662,8 @@ describe("Shop index shadow", () => {
 	});
 });
 
-describe("dormant Convex seam and Sanity-only routes", () => {
-	it("keeps shadow details and all collection reads on exact Sanity without comparisons", async () => {
+describe("provider route ownership", () => {
+	it("keeps shadow details and every collection read on exact Sanity", async () => {
 		const sanity = fakeSanity();
 		const createReader = vi.fn();
 		const fetchSanityCatalog = vi.fn();
@@ -643,57 +674,27 @@ describe("dormant Convex seam and Sanity-only routes", () => {
 			fetchSanityCatalog,
 		});
 
-		await expect(provider.loadProduct("product", false)).resolves.toEqual({
-			slug: "product",
-			preview: false,
-		});
-		await expect(provider.loadPrintSet("set", false)).resolves.toEqual({
-			slug: "set",
-			preview: false,
-		});
-		await expect(provider.loadCollection("collection", false)).resolves.toEqual({
-			slug: "collection",
-			preview: false,
-		});
-		expect(createReader).not.toHaveBeenCalled();
-		expect(fetchSanityCatalog).not.toHaveBeenCalled();
-	});
-
-	it("uses only CRM 2.29 public list/detail reads at the dormant convex seam", async () => {
-		const list = [convexProduct()];
-		const reader = fakeReader(Promise.resolve(list), Promise.resolve(null));
-		const sanity = fakeSanity();
-		const provider = createCatalogShopProvider({
-			sanity: sanity as never,
-			mode: () => "convex",
-			createReader: (() => reader) as never,
-		});
-
-		await expect(provider.readConvexCatalog()).resolves.toBe(list);
-		await expect(provider.readConvexCatalog("missing")).resolves.toBeNull();
-		expect(reader.listPublished).toHaveBeenCalledOnce();
-		expect(reader.getPublishedBySlug).toHaveBeenCalledWith("missing", expect.any(AbortSignal));
-		expect(sanity.loadIndex).not.toHaveBeenCalled();
-
-		const failure = new Error("public read unavailable");
-		reader.getPublishedBySlug.mockRejectedValueOnce(failure);
-		await expect(provider.readConvexCatalog("broken")).rejects.toBe(failure);
-	});
-
-	it("keeps dormant mode routes on Sanity because CRM has no collection or media-key contract", async () => {
-		const output = { exact: "Sanity index" };
-		const sanity = fakeSanity(Promise.resolve(output));
-		const createReader = vi.fn();
-		const provider = createCatalogShopProvider({
-			sanity: sanity as never,
-			mode: () => "convex",
-			createReader,
-		});
-
-		await expect(provider.loadIndex(false)).resolves.toBe(output);
 		await provider.loadProduct("product", false);
 		await provider.loadPrintSet("set", false);
 		await provider.loadCollection("collection", false);
 		expect(createReader).not.toHaveBeenCalled();
+		expect(fetchSanityCatalog).not.toHaveBeenCalled();
+		expect(sanity.loadCollection).toHaveBeenCalledWith("collection", false);
+	});
+
+	it("keeps absent, malformed, and explicit Sanity detail modes off Convex", async () => {
+		for (const value of [undefined, "", "invalid", "sanity"]) {
+			const sanity = fakeSanity();
+			const createReader = vi.fn();
+			const provider = createCatalogShopProvider({
+				sanity: sanity as never,
+				mode: () => value,
+				createReader,
+			});
+			await provider.loadIndex(false);
+			await provider.loadProduct("product", false);
+			await provider.loadPrintSet("set", false);
+			expect(createReader).not.toHaveBeenCalled();
+		}
 	});
 });

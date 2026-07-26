@@ -10,12 +10,6 @@ function source(path: string) {
 
 describe("shop catalog route boundaries", () => {
 	it("keeps all four Shop loaders thin behind the private catalog provider", () => {
-		const provider = source("src/lib/server/catalogShop.server.ts");
-		expect(provider).toContain('from "$env/dynamic/private"');
-		expect(provider).toContain("FunctionReturnType");
-		expect(provider).toContain("listPublished");
-		expect(provider).toContain("getPublishedBySlug");
-
 		for (const path of [
 			"src/routes/shop/+page.server.ts",
 			"src/routes/shop/[slug]/+page.server.ts",
