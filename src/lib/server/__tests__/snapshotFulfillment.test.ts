@@ -104,6 +104,25 @@ describe("snapshot fulfillment authority", () => {
 		]);
 	});
 
+	it.each([
+		undefined,
+		null,
+		0,
+		-1,
+		1.5,
+		Number.NaN,
+	])("rejects non-exact paid quantity %s before resolving", async (quantity) => {
+		const { buildOrderItemsFromSnapshot } = await import("../snapshotFulfillment");
+		await expect(
+			buildOrderItemsFromSnapshot(
+				{ schemaVersion: 1, catalogProvider: "convex", items: [print] },
+				"cs_test_paid",
+				[{ quantity }] as Stripe.LineItem[],
+			),
+		).rejects.toThrow("quantity");
+		expect(mocks.paidFulfillment).not.toHaveBeenCalled();
+	});
+
 	it("finishes every resolver guard before minting any capability", async () => {
 		mocks.paidFulfillment
 			.mockResolvedValueOnce({
@@ -122,7 +141,7 @@ describe("snapshot fulfillment authority", () => {
 					items: [print, { ...print, productKey: "two" }],
 				},
 				"cs_test_paid",
-				[],
+				[{ quantity: 1 }, { quantity: 1 }] as Stripe.LineItem[],
 			),
 		).rejects.toThrow("refunded race");
 		expect(mocks.printSource).not.toHaveBeenCalled();
@@ -187,7 +206,7 @@ describe("snapshot fulfillment authority", () => {
 					items: [sanityPrint],
 				},
 				"cs_test_paid",
-				[],
+				[{ quantity: 1 }] as Stripe.LineItem[],
 			),
 		).rejects.toThrow("unavailable");
 	});

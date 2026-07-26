@@ -131,6 +131,24 @@ describe("durable checkout snapshot", () => {
 	});
 });
 
+describe("print fulfillment fence", () => {
+	test("atomically grants one concurrent delivery and exposes the durable claim", async () => {
+		const t = convexTest(schema, modules);
+		const order = await t.mutation(api.orders.create, orderArgs("cs_fulfillment_fence"));
+		const claim = (token: string) => t.mutation(api.orders.claimPrintFulfillment, {
+			orderId: order._id, webhookSecret: WEBHOOK_SECRET, claim: token,
+			externalId: "cs_fulfillment_fence",
+		});
+		const results = await Promise.all([claim("delivery-a"), claim("delivery-b")]);
+		expect(results.map(({ kind }) => kind).sort()).toEqual(["claimed", "reconcile"]);
+		const stored = await t.run((ctx) => ctx.db.get(order._id));
+		expect(stored).toMatchObject({ printFulfillmentExternalId: "cs_fulfillment_fence" });
+		await expect(t.mutation(api.orders.updateStatus, {
+			orderId: order._id, webhookSecret: WEBHOOK_SECRET, status: "refunded",
+		})).rejects.toThrow("submission is in progress");
+	});
+});
+
 describe("authorized customer order lookup", () => {
 	test("returns the bounded customer view only with the dedicated capability", async () => {
 		const t = convexTest(schema, modules);

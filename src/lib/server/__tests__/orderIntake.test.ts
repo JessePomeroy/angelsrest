@@ -34,8 +34,10 @@ vi.mock("$convex/api", () => ({
 	api: {
 		invoices: { markPaid: "invoices.markPaid" },
 		orders: {
+			claimPrintFulfillment: "orders.claimPrintFulfillment",
 			create: "orders.create",
 			resolveCheckoutRouting: "orders.resolveCheckoutRouting",
+			updatePrintFulfillment: "orders.updatePrintFulfillment",
 			updateStatus: "orders.updateStatus",
 		},
 		platform: {
@@ -168,12 +170,14 @@ describe("processStripeWebhookEvent", () => {
 		vi.clearAllMocks();
 		orderCreateResults = [makeOrderResult()];
 		updateStatusResults = [];
-		convex.mutation.mockImplementation(async (reference: string) => {
+		convex.mutation.mockImplementation(async (reference: string, args: { update?: string }) => {
 			if (reference === "orders.create") {
 				const result = orderCreateResults.shift();
 				if (!result) throw new Error("Missing configured orders.create result");
 				return result;
 			}
+			if (reference === "orders.claimPrintFulfillment") return { kind: "claimed" };
+			if (reference === "orders.updatePrintFulfillment") return { kind: args.update };
 			if (reference === "orders.updateStatus") {
 				const result = updateStatusResults.shift();
 				if (result instanceof Error) throw result;
@@ -212,9 +216,7 @@ describe("processStripeWebhookEvent", () => {
 		expect(mockSendCustomerFulfillmentFailure).not.toHaveBeenCalled();
 		expect(convex.mutation).toHaveBeenCalledWith(
 			"orders.updateStatus",
-			expect.objectContaining({
-				lumaprintsOrderNumber: "LP-123",
-			}),
+			expect.objectContaining({ lumaprintsOrderNumber: "LP-123" }),
 		);
 	});
 

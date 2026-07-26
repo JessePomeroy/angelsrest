@@ -1,16 +1,4 @@
-// LumaPrints API client — server-only.
-// See LUMAPRINTS.md for full spec and known issues.
-//
-// Ported from reflecting-pool's cleaner implementation per audit #22, with
-// two upgrades over both the original angelsrest client and reflecting-pool:
-//   - Uses $env/dynamic/private (not static) to match angelsrest's existing
-//     env access pattern and test mocking setup.
-//   - Sandbox switch is driven by an explicit LUMAPRINTS_USE_SANDBOX env var
-//     instead of NODE_ENV or import.meta.env.DEV. Those build-mode flags are
-//     both true only for `pnpm dev` and leave Vercel preview deployments
-//     pointing at production LumaPrints — a silent footgun for any PR that
-//     touches checkout. An explicit var lets each Vercel target (local,
-//     preview, production) be configured independently.
+// Server-only LumaPrints client; see LUMAPRINTS.md for integration constraints.
 
 import { env } from "$env/dynamic/private";
 import { prepareSanityUrlForPrint } from "$lib/shop/lumaprintsUrls";
@@ -93,6 +81,33 @@ export async function createOrder(order: LumaPrintsOrder): Promise<LumaPrintsOrd
 	return res.json();
 }
 
+/** Reconcile an uncertain submit by its stable external ID. */
+export async function findOrderByExternalId(
+	externalId: string,
+): Promise<LumaPrintsOrderResponse | null> {
+	const query = new URLSearchParams({ externalId, limit: "100" });
+	const res = await fetchLumaPrints(`/api/v1/orders?${query}`, { headers: getHeaders() });
+	if (!res.ok) throw new LumaPrintsError("Order reconciliation failed", { statusCode: res.status });
+	const body = (await res.json()) as unknown;
+	const rows = Array.isArray(body)
+		? body
+		: body && typeof body === "object"
+			? ([(body as { orders?: unknown }).orders, (body as { data?: unknown }).data].find(
+					(value): value is unknown[] => Array.isArray(value),
+				) ?? null)
+			: null;
+	if (!rows) throw new LumaPrintsError("Order reconciliation response was malformed");
+	const matches = rows.filter(
+		(value): value is LumaPrintsOrderResponse & { externalId: string } =>
+			Boolean(value) &&
+			typeof value === "object" &&
+			(value as { externalId?: unknown }).externalId === externalId &&
+			typeof (value as { orderNumber?: unknown }).orderNumber === "string",
+	);
+	if (matches.length > 1) throw new LumaPrintsError("Order reconciliation was ambiguous");
+	return matches[0] ?? null;
+}
+
 /** Get order status from LumaPrints */
 export async function getOrder(
 	orderNumber: string,
@@ -117,19 +132,7 @@ export async function getShipping(orderNumber: string): Promise<LumaPrintsShipme
 	return res.json();
 }
 
-/**
- * Pre-validate an image against a subcategory + desired print dimensions.
- * Called at checkout time to catch images that can't print cleanly BEFORE
- * the customer pays, instead of failing mid-webhook after payment.
- *
- * LumaPrints returns `{ valid: true }` when the image is suitable, or
- * `{ valid: false, message, recommendedWidth, recommendedHeight, expectedAspectRatio }`
- * when the image will be rejected (low resolution, wrong aspect ratio, etc.).
- *
- * Throws `LumaPrintsError` for network/server errors. The current checkout
- * route converts this to `{ valid: false, degraded: true }` so unverified
- * images do not proceed to payment.
- */
+/** Pre-validates a print image at checkout; provider failures remain typed. */
 export async function checkImageConfig(input: {
 	imageUrl: string;
 	subcategoryId: number;
@@ -163,29 +166,14 @@ export async function checkImageConfig(input: {
 	return res.json();
 }
 
-/**
- * Shipping method returned by LumaPrints' pricing endpoint. Multiple methods
- * are returned per quote (USPS ground/priority/express, FedEx ground/2-day/
- * overnight, etc.); the frontend picks one or shows all.
- */
+/** Shipping method returned by the provider pricing endpoint. */
 export interface LumaPrintsShippingMethod {
 	carrier: string;
 	method: string;
 	cost: number;
 }
 
-/**
- * Get shipping price estimates for a given basket + destination.
- * Returns all available shipping methods with their costs in USD.
- *
- * Called at checkout to show the customer real-time shipping costs before
- * payment. If the upstream call fails, the route returns HTTP 503 and asks the
- * customer to retry rather than inventing a fallback price.
- *
- * Items use LumaPrints subcategoryIds and physical dimensions in inches.
- * Options arrays (e.g. `[39]` for No Bleed) match the ones used in
- * `buildLumaPrintsOrder()`.
- */
+/** Returns provider shipping prices; callers fail closed rather than inventing a fallback. */
 export async function getShippingPrice(input: {
 	items: Array<{
 		subcategoryId: number;
@@ -235,20 +223,8 @@ export async function getShippingPrice(input: {
 	return res.json();
 }
 
-/**
- * Build a LumaPrints order payload from our domain types.
- * Pure function — no network, no side effects. Testable in isolation.
- *
- * CRITICAL constraints:
- * - prepareSanityUrlForPrint() strips existing query params and appends
- *   `?max=8000&q=100` for maximum print quality. The default Sanity CDN
- *   URL serves a ~q80 compressed version that's noticeably below print
- *   quality, and the previous behavior here (just stripping params via
- *   cleanImageUrl) inherited that compression. See lumaprintsUrls.ts for
- *   the shared URL rule.
- * - ALWAYS uses option 39 (No Bleed) — never option 36, which triggers
- *   aspect-ratio validation errors. See LUMAPRINTS.md "Known Issues".
- */
+/** Pure payload builder. Sanity sources retain print-quality transforms;
+ * paper prints always use no-bleed option 39. See LUMAPRINTS.md. */
 export function buildLumaPrintsOrder(
 	externalId: string,
 	recipient: Recipient,

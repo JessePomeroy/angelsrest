@@ -508,6 +508,12 @@ describe("catalog commerce HTTP contract", () => {
 
 		expect((await send(PATHS.paid_fulfillment, FULFILLMENT_SECRET, paidBody)).status).toBe(404);
 		expect((await send(PATHS.paid_download, DOWNLOAD_SECRET, paidBody)).status).toBe(404);
+		await seedOrder(fixture, item(created, "print"), SESSION, "refunded");
+		expect((await send(PATHS.paid_fulfillment, FULFILLMENT_SECRET, paidBody)).status).toBe(409);
+		await fixture.t.run(async (ctx) => {
+			const order = await ctx.db.query("orders").withIndex("by_stripeSessionId", (q) => q.eq("stripeSessionId", SESSION)).unique();
+			if (order) await ctx.db.delete(order._id);
+		});
 		expect((await send(PATHS.paid_fulfillment, SECRET, paidBody)).status).toBe(401);
 		expect((await send(PATHS.paid_download, FULFILLMENT_SECRET, paidBody)).status).toBe(401);
 		expect((await send(PATHS.checkout, DOWNLOAD_SECRET)).status).toBe(401);

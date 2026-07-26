@@ -34,7 +34,7 @@ export type PaidFulfillmentResolution = {
 };
 
 export class CatalogBoundaryError extends Error {
-	constructor(readonly kind: "unavailable" | "rejected") {
+	constructor(readonly kind: "unavailable" | "rejected" | "refunded") {
 		super(`Catalog boundary ${kind}`);
 	}
 }
@@ -116,7 +116,9 @@ async function post(config: Config, purpose: keyof typeof PATHS, body: unknown) 
 		throw new CatalogBoundaryError("unavailable");
 	}
 	if (!response.ok)
-		throw new CatalogBoundaryError(response.status === 503 ? "unavailable" : "rejected");
+		throw new CatalogBoundaryError(
+			response.status === 503 ? "unavailable" : response.status === 409 ? "refunded" : "rejected",
+		);
 	return readJson(response);
 }
 

@@ -7,6 +7,7 @@ import {
 } from "$lib/server/catalogCommerceClients";
 import { type CheckoutSnapshotItem, resolveCheckoutItem } from "$lib/server/checkoutCatalog";
 import type { CheckoutSnapshotV1 } from "$lib/server/checkoutSnapshotConsumer";
+import { FulfillmentValidationError } from "$lib/server/fulfillmentValidationError";
 import type { OrderItem } from "$lib/shop/types";
 
 const exactSanity = client.withConfig({ useCdn: false, perspective: "published" });
@@ -26,7 +27,9 @@ type ExactProduct = Record<string, unknown> & {
 
 function quantity(lineItems: Stripe.LineItem[], ordinal: number) {
 	const value = lineItems[ordinal]?.quantity;
-	return Number.isSafeInteger(value) && Number(value) > 0 ? Number(value) : 1;
+	if (!Number.isSafeInteger(value) || Number(value) <= 0)
+		throw new FulfillmentValidationError("Paid line-item quantity is invalid");
+	return Number(value);
 }
 function sameItem(left: unknown, right: CheckoutSnapshotItem) {
 	return JSON.stringify(left) === JSON.stringify(right);
@@ -38,7 +41,7 @@ async function sanityItems(item: CheckoutSnapshotItem, paidQuantity: number) {
 		rev: item.revisionId,
 	});
 	if (!product || product._id !== item.productKey || product._rev !== item.revisionId) {
-		throw new Error("Snapshot fulfillment unavailable");
+		throw new FulfillmentValidationError("Exact product revision is unavailable");
 	}
 	const expectedType =
 		item.productKind === "print_set"
@@ -51,7 +54,7 @@ async function sanityItems(item: CheckoutSnapshotItem, paidQuantity: number) {
 			? expectedType.includes(product._type)
 			: expectedType === product._type)
 	) {
-		throw new Error("Snapshot fulfillment unavailable");
+		throw new FulfillmentValidationError("Exact product kind does not match");
 	}
 	const fetcher = async <T>(query: string) => {
 		const matches = query.includes("lumaPrintSetV2")
@@ -72,17 +75,19 @@ async function sanityItems(item: CheckoutSnapshotItem, paidQuantity: number) {
 			frame: item.frameOptionKey,
 		},
 		true,
-	);
+	).catch(() => {
+		throw new FulfillmentValidationError("Exact product selection is invalid");
+	});
 	const paper = resolved.legacyFulfillment.paper;
 	if (!resolved.snapshot || !sameItem(resolved.snapshot, item) || !paper) {
-		throw new Error("Snapshot fulfillment unavailable");
+		throw new FulfillmentValidationError("Exact product selection does not match");
 	}
 	const candidates = resolved.legacyFulfillment.isPrintSet
 		? resolved.legacyFulfillment.imageUrls
 		: [resolved.legacyFulfillment.imageUrl];
 	const sourceUrls = candidates.filter((url): url is string => Boolean(url));
 	if (sourceUrls.length < 1 || sourceUrls.length !== candidates.length) {
-		throw new Error("Snapshot fulfillment unavailable");
+		throw new FulfillmentValidationError("Exact product sources are unavailable");
 	}
 	return sourceUrls.map((imageUrl) => ({
 		imageUrl,
@@ -123,8 +128,9 @@ export async function buildOrderItemsFromSnapshot(
 	lineItems: Stripe.LineItem[],
 ): Promise<OrderItem[]> {
 	const printable = snapshot.items
-		.map((item, ordinal) => ({ item, ordinal, paidQuantity: quantity(lineItems, ordinal) }))
-		.filter(({ item }) => item.productKind === "print" || item.productKind === "print_set");
+		.map((item, ordinal) => ({ item, ordinal }))
+		.filter(({ item }) => item.productKind === "print" || item.productKind === "print_set")
+		.map(({ item, ordinal }) => ({ item, ordinal, paidQuantity: quantity(lineItems, ordinal) }));
 	if (snapshot.catalogProvider === "sanity") {
 		const items: OrderItem[] = [];
 		for (const { item, paidQuantity } of printable)
@@ -134,13 +140,14 @@ export async function buildOrderItemsFromSnapshot(
 	const resolved: Array<{ value: PaidFulfillmentResolution; paidQuantity: number }> = [];
 	for (const { item, ordinal, paidQuantity } of printable) {
 		const value = await resolvePaidFulfillment(stripeSessionId, ordinal);
-		if (!validResolution(value, item)) throw new Error("Snapshot fulfillment unavailable");
+		if (!validResolution(value, item))
+			throw new FulfillmentValidationError("Paid fulfillment resolution does not match");
 		resolved.push({ value, paidQuantity });
 	}
 	const items: OrderItem[] = [];
 	for (const { value, paidQuantity } of resolved) {
 		if (value.descriptor.kind !== "print_sources" || !value.commerce.finish)
-			throw new Error("Snapshot fulfillment unavailable");
+			throw new FulfillmentValidationError("Paid fulfillment descriptor is invalid");
 		const finish = value.commerce.finish;
 		for (const source of value.descriptor.sources) {
 			items.push({

@@ -35,8 +35,10 @@ import {
 	parseCatalogEditorWorkerPrepareResponse,
 	verifyCatalogEditorPrepareAttestation,
 } from "./helpers/catalogPrivateAssetEditorJournal";
-import type { CatalogCommercePurpose } from "./helpers/catalogCommerce";
-import { parseCatalogCommerceRequest } from "./helpers/catalogCommerce";
+import {
+	type CatalogCommercePurpose,
+	parseCatalogCommerceRequest,
+} from "./helpers/catalogCommerce";
 import {
 	parseReservationBindRequest,
 	parseReservationRequest,
@@ -712,13 +714,14 @@ function catalogCommerceHandler(purpose: CatalogCommercePurpose, path: string) {
 		);
 		if (!parsed) return privateResponse({ error: "invalid_request" }, 400);
 		try {
-			const result = await ctx.runQuery(internal.orders.catalogCommerce, {
+			const result = await ctx.runQuery(internal.orders.catalogCommerceHttp, {
 				siteUrl,
 				request: parsed,
 			});
-			return privateResponse(result, 200);
+			if (result.outcome === "resolved") return privateResponse(result.value, 200);
+			return privateResponse({ error: result.outcome }, result.outcome === "refunded" ? 409 : 404);
 		} catch {
-			return privateResponse({ error: "not_found" }, 404);
+			return privateResponse({ error: "unavailable" }, 503);
 		}
 	});
 }

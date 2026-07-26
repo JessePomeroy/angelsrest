@@ -17,6 +17,7 @@ import {
 } from "./authHelpers";
 import {
 	catalogCommerceRequestValidator,
+	catalogCommerceResolutionErrorKind,
 	resolveCatalogCommerce,
 } from "./helpers/catalogCommerce";
 import {
@@ -268,6 +269,18 @@ export const catalogCommerce = internalQuery({
 	args: { siteUrl: v.string(), request: catalogCommerceRequestValidator },
 	handler: async (ctx, { siteUrl, request }) =>
 		await resolveCatalogCommerce(ctx, siteUrl, request),
+});
+export const catalogCommerceHttp = internalQuery({
+	args: { siteUrl: v.string(), request: catalogCommerceRequestValidator },
+	handler: async (ctx, { siteUrl, request }) => {
+		try {
+			return { outcome: "resolved" as const, value: await resolveCatalogCommerce(ctx, siteUrl, request) };
+		} catch (error) {
+			const outcome = catalogCommerceResolutionErrorKind(error);
+			if (!outcome) throw error;
+			return { outcome };
+		}
+	},
 });
 
 export const getCheckoutSnapshotForReconciliation = internalQuery({
@@ -612,6 +625,29 @@ export const resolveCheckoutRouting = query({
 	},
 });
 
+export const claimPrintFulfillment = mutation({
+	args: {
+		orderId: v.id("orders"), webhookSecret: v.string(), claim: v.string(), externalId: v.string(),
+	},
+	handler: async (ctx, args) => {
+		await requireWebhookCallerOrAuth(ctx, args.webhookSecret, { allowAuth: false });
+		const order = await ctx.db.get(args.orderId);
+		if (!order) throw new Error("Order not found");
+		if (order.lumaprintsOrderNumber) return { kind: "fulfilled" as const, orderNumber: order.lumaprintsOrderNumber };
+		if (order.stripeRefundId) return { kind: "refunded" as const, stripeRefundId: order.stripeRefundId };
+		if (order.fulfillmentRecoveryStatus) return { kind: "busy" as const };
+		if (order.printFulfillmentNoItems) return { kind: "no_print_items" as const };
+		if (order.printFulfillmentClaim) return {
+			kind: "reconcile" as const, claim: order.printFulfillmentClaim,
+			externalId: order.printFulfillmentExternalId ?? args.externalId,
+		};
+		await ctx.db.patch(args.orderId, {
+			printFulfillmentClaim: args.claim, printFulfillmentExternalId: args.externalId,
+		});
+		return { kind: "claimed" as const };
+	},
+});
+
 /**
  * Update an order. Called by the webhook (fee capture, LumaPrints number,
  * refund fields — with `webhookSecret`) and by the admin UI (tracking /
@@ -634,16 +670,29 @@ export const updateStatus = mutation({
 		fulfillmentError: v.optional(v.string()),
 		stripeRefundId: v.optional(v.string()),
 		fulfillmentRecoveryStatus: v.optional(fulfillmentRecoveryStatusValidator),
+		printFulfillmentNoItems: v.optional(v.boolean()),
+		releasePrintFulfillmentClaim: v.optional(v.boolean()),
 	},
-	handler: async (ctx, { orderId, webhookSecret, ...updates }) => {
+	handler: async (ctx, { orderId, webhookSecret, releasePrintFulfillmentClaim, ...updates }) => {
 		const auth = await requireWebhookCallerOrAuth(ctx, webhookSecret);
-		if (auth.via === "auth") {
-			await requireDocumentSiteAdmin(ctx, "orders", orderId);
+		if (auth.via === "auth") await requireDocumentSiteAdmin(ctx, "orders", orderId);
+		if (auth.via === "auth" && (releasePrintFulfillmentClaim || updates.printFulfillmentNoItems))
+			throw new Error("Webhook authorization required");
+		const refundUpdate = updates.stripeRefundId || updates.fulfillmentRecoveryStatus
+			|| updates.status === "refunded";
+		const current = refundUpdate ? await ctx.db.get(orderId) : null;
+		if (refundUpdate && current?.printFulfillmentClaim && !current.lumaprintsOrderNumber
+			&& !(updates.status === "fulfillment_error" && updates.fulfillmentError
+				&& (updates.fulfillmentRecoveryStatus === "refund_pending"
+					|| (updates.fulfillmentRecoveryStatus === "refunded"
+						&& current.fulfillmentRecoveryStatus === "refund_pending")))) {
+			throw new Error("Print fulfillment submission is in progress");
 		}
 		const patch: Record<string, unknown> = {};
-		for (const [key, val] of Object.entries(updates)) {
-			if (val !== undefined) patch[key] = val;
-		}
+		for (const [key, val] of Object.entries(updates)) if (val !== undefined) patch[key] = val;
+		if (releasePrintFulfillmentClaim || updates.printFulfillmentNoItems
+			|| updates.lumaprintsOrderNumber) patch.printFulfillmentClaim = undefined;
+		if (releasePrintFulfillmentClaim) patch.printFulfillmentExternalId = undefined;
 		if (Object.keys(patch).length > 0) {
 			await ctx.db.patch(orderId, patch);
 		}

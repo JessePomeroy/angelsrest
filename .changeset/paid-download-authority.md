@@ -2,4 +2,4 @@
 "@jessepomeroy/crm-api": minor
 ---
 
-Add the server-authorized paid-download order snapshot projection.
+Add paid-download authority plus durable, replay-safe print fulfillment claims.

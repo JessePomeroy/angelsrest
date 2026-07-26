@@ -52,6 +52,18 @@ export const catalogCommerceRequestValidator = v.union(
 export type CatalogCommerceRequest = Infer<typeof catalogCommerceRequestValidator>;
 export type CatalogCommercePurpose = CatalogCommerceRequest["purpose"];
 
+const resolutionError = (kind: "rejected" | "refunded") =>
+	new Error(`Catalog commerce resolution ${kind}`);
+const rejected = () => resolutionError("rejected");
+export function catalogCommerceResolutionErrorKind(error: unknown) {
+	const message = String(error);
+	return message.includes("Catalog commerce resolution refunded")
+		? ("refunded" as const)
+		: message.includes("Catalog commerce resolution rejected")
+			? ("rejected" as const)
+			: null;
+}
+
 function exactKeys(value: Record<string, unknown>, keys: readonly string[]) {
 	const actual = Object.keys(value);
 	return actual.length === keys.length && actual.every((key) => keys.includes(key));
@@ -95,7 +107,7 @@ type LoadedGraph = NonNullable<Awaited<ReturnType<typeof loadCatalogProductGraph
 function requireProductAndRevisionIds(ctx: QueryCtx, item: SnapshotItem) {
 	const productId = ctx.db.normalizeId("catalogProducts", item.productKey);
 	const revisionId = ctx.db.normalizeId("catalogProductRevisions", item.revisionId);
-	if (!productId || !revisionId) throw new Error("Catalog commerce identity is invalid");
+	if (!productId || !revisionId) throw rejected();
 	return { productId, revisionId };
 }
 
@@ -108,15 +120,15 @@ function selectedVariant(graph: LoadedGraph, item: SnapshotItem) {
 		|| variant.retailPriceCents === undefined
 		|| (variant.materialOptionKey ?? null) !== item.materialOptionKey
 		|| (variant.sizeOptionKey ?? null) !== item.sizeOptionKey
-	) throw new Error("Catalog commerce variant is unavailable");
+	) throw rejected();
 	return variant as typeof variant & { retailPriceCents: number };
 }
 
 function catalogMoneyCents(value: number) {
 	const match = String(value).match(/^(\d+)(?:\.(\d{1,2}))?$/);
-	if (!match) throw new Error("Print catalog money is not exact cents");
+	if (!match) throw rejected();
 	const cents = Number(match[1]) * 100 + Number((match[2] ?? "").padEnd(2, "0"));
-	if (!Number.isSafeInteger(cents)) throw new Error("Print catalog money is out of range");
+	if (!Number.isSafeInteger(cents)) throw rejected();
 	return cents;
 }
 
@@ -124,7 +136,7 @@ function resolvePrintCommerce(graph: LoadedGraph, item: SnapshotItem, retailPric
 	if (graph.draft.productKind !== "print" && graph.draft.productKind !== "print_set") {
 		if (item.materialOptionKey !== null || item.sizeOptionKey !== null
 			|| item.borderOptionKey !== null || item.frameOptionKey !== null) {
-			throw new Error("Non-print commerce selectors must be null");
+			throw rejected();
 		}
 		return { amountCents: retailPriceCents, finish: null };
 	}
@@ -137,7 +149,7 @@ function resolvePrintCommerce(graph: LoadedGraph, item: SnapshotItem, retailPric
 	const border = getBorder(borderKey);
 	const frame = getFrame(frameKey);
 	if (!paper || !size || !border || !frame || getWholesaleCost(paper.slug, size.slug) === null) {
-		throw new Error("Catalog commerce print selectors are unsupported");
+		throw rejected();
 	}
 	const canvas = isCanvasPaper(paper.slug) ? parseCanvasSlug(paper.slug) : null;
 	if (
@@ -145,17 +157,17 @@ function resolvePrintCommerce(graph: LoadedGraph, item: SnapshotItem, retailPric
 		|| (!graph.draft.printOptions.borderOptionsEnabled && border.inches !== 0)
 		|| (!graph.draft.printOptions.frameOptionsEnabled && frame.subcategoryId !== 0)
 		|| (frame.subcategoryId !== 0 && border.inches !== FRAMED_BORDER_INCHES)
-	) throw new Error("Catalog commerce finish is unavailable");
+	) throw rejected();
 	let frameSurchargeCents = 0;
 	if (frame.subcategoryId !== 0) {
 		const frameCost = getFrameWholesaleCost(frame.value, size.slug);
-		if (frameCost === null) throw new Error("Catalog commerce frame is unsupported");
+		if (frameCost === null) throw rejected();
 		const numerator = BigInt(catalogMoneyCents(frameCost))
 			* BigInt(graph.draft.printOptions.framePriceMultiplierBasisPoints);
 		frameSurchargeCents = Number((numerator + 5_000n) / 10_000n);
 	}
 	const amountCents = retailPriceCents + frameSurchargeCents;
-	if (!Number.isSafeInteger(amountCents)) throw new Error("Catalog commerce price is invalid");
+	if (!Number.isSafeInteger(amountCents)) throw rejected();
 	return {
 		amountCents,
 		finish: {
@@ -192,7 +204,7 @@ function privateDescriptor(graph: LoadedGraph) {
 	}
 	if (graph.draft.productKind === "digital_download") {
 		const file = graph.paidFileAsset;
-		if (!file) throw new Error("Catalog paid file is unavailable");
+		if (!file) throw rejected();
 		return {
 			kind: "paid_zip" as const,
 			relationKey: file.relationKey,
@@ -231,13 +243,13 @@ async function loadExactGraph(ctx: QueryCtx, siteUrl: string, item: SnapshotItem
 	mode: "strict-current" | "paid-historical" = "strict-current") {
 	const { productId, revisionId } = requireProductAndRevisionIds(ctx, item);
 	const value = await ctx.db.get(productId);
-	if (!value || value.siteUrl !== siteUrl) throw new Error("Catalog commerce product not found");
+	if (!value || value.siteUrl !== siteUrl) throw rejected();
 	const product = requireCatalogProductGraphV2Product(value);
-	if (product.productKind !== item.productKind) throw new Error("Catalog commerce kind mismatch");
+	if (product.productKind !== item.productKind) throw rejected();
 	const graph = await (mode === "paid-historical"
 		? loadPaidHistoricalCatalogProductGraphV2Revision
 		: loadCatalogProductGraphV2Revision)(ctx, product, revisionId);
-	if (!graph) throw new Error("Catalog commerce revision not found");
+	if (!graph) throw rejected();
 	return { product, graph };
 }
 
@@ -258,7 +270,7 @@ export async function resolveCatalogCommerce(
 		if (!enabledKinds.includes(product.productKind)
 			|| product.publishedRevisionId !== graph.revision._id
 			|| graph.draft.saleAvailability !== "available") {
-			throw new Error("Catalog commerce product is unavailable");
+			throw rejected();
 		}
 		return { purpose: "checkout" as const, ...baseResponse(graph, request.item) };
 	}
@@ -268,10 +280,11 @@ export async function resolveCatalogCommerce(
 		.unique();
 	const snapshot = order?.checkoutSnapshot;
 	if (!order || order.siteUrl !== siteUrl || !snapshot || snapshot.catalogProvider !== "convex") {
-		throw new Error("Paid catalog commerce order not found");
+		throw rejected();
 	}
+	if (isRefunded(order)) throw resolutionError("refunded");
 	const storedItem = snapshot.items[request.itemIndex];
-	if (!storedItem) throw new Error("Paid catalog commerce item not found");
+	if (!storedItem) throw rejected();
 	const item: SnapshotItem = {
 		...storedItem,
 		materialOptionKey: storedItem.materialOptionKey ?? null,
@@ -280,13 +293,12 @@ export async function resolveCatalogCommerce(
 		frameOptionKey: storedItem.frameOptionKey ?? null,
 	};
 	const { product, graph } = await loadExactGraph(ctx, siteUrl, item, "paid-historical");
-	if (isRefunded(order)) throw new Error("Paid catalog commerce order was refunded");
 	if (request.purpose === "paid_download") {
 		if (item.productKind !== "digital_download") {
-			throw new Error("Paid download is unavailable");
+			throw rejected();
 		}
 	} else if (item.productKind === "digital_download") {
-		throw new Error("Paid fulfillment kind is unavailable");
+		throw rejected();
 	}
 	const enabledKinds: string[] = await loadCatalogProductKinds(ctx, siteUrl).catch(() => []);
 	const response = baseResponse(graph, item);

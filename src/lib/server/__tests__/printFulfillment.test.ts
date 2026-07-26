@@ -9,6 +9,7 @@ const mockBuildOrderItemsFromSession = vi.fn();
 const mockBuildOrderItemsFromSnapshot = vi.fn();
 const mockBuildRecipientFromShipping = vi.fn();
 const mockSendFulfillmentFailureAlert = vi.fn();
+const mockFindLumaPrintsOrder = vi.fn();
 
 vi.mock("$lib/server/logger", () => ({
 	logStructured: mockLogStructured,
@@ -30,6 +31,7 @@ vi.mock("$lib/server/lumaprints", () => {
 		LumaPrintsError,
 		buildLumaPrintsOrder: mockBuildLumaPrintsOrder,
 		createOrder: mockCreateLumaPrintsOrder,
+		findOrderByExternalId: mockFindLumaPrintsOrder,
 	};
 });
 
@@ -47,7 +49,11 @@ vi.mock("$lib/server/webhookEmails", () => ({
 
 vi.mock("$convex/api", () => ({
 	api: {
-		orders: { updateStatus: "orders.updateStatus" },
+		orders: {
+			claimPrintFulfillment: "orders.claimPrintFulfillment",
+			updatePrintFulfillment: "orders.updatePrintFulfillment",
+			updateStatus: "orders.updateStatus",
+		},
 	},
 }));
 
@@ -83,10 +89,41 @@ describe("print fulfillment", () => {
 			country: "US",
 		},
 	};
+	const printInput = {
+		orderId,
+		orderNumber: "ORD-001",
+		lineItems: [],
+		shippingDetails: shippingDetails as never,
+		session,
+	};
+	async function handle(
+		error: unknown,
+		overrides: {
+			session?: Stripe.Checkout.Session;
+			stripeRequestOptions?: Stripe.RequestOptions;
+		} = {},
+	) {
+		const { handlePrintFulfillmentFailure } = await import("../printFulfillment");
+		return handlePrintFulfillmentFailure(
+			{ stripe, convex, resend },
+			{
+				orderId,
+				orderNumber: "ORD-001",
+				error,
+				session,
+				customerEmail: "jane@example.com",
+				...overrides,
+			},
+		);
+	}
 
 	beforeEach(() => {
 		vi.clearAllMocks();
 		convex.mutation.mockReset();
+		convex.mutation.mockImplementation(async (reference: string, args: { update?: string }) => {
+			if (reference === "orders.claimPrintFulfillment") return { kind: "claimed" };
+			if (reference === "orders.updatePrintFulfillment") return { kind: args.update };
+		});
 		stripe.refunds.create.mockResolvedValue({
 			id: "re_test_123",
 			status: "succeeded",
@@ -106,6 +143,7 @@ describe("print fulfillment", () => {
 		});
 		mockBuildLumaPrintsOrder.mockReturnValue({ externalId: "ORD-001" });
 		mockCreateLumaPrintsOrder.mockResolvedValue({ orderNumber: "LP-123" });
+		mockFindLumaPrintsOrder.mockResolvedValue(null);
 		mockSendFulfillmentFailureAlert.mockResolvedValue({ id: "email-123" });
 	});
 
@@ -124,12 +162,15 @@ describe("print fulfillment", () => {
 		);
 
 		expect(outcome).toEqual({ kind: "fulfilled", lumaprintsOrderNumber: "LP-123" });
-		expect(mockCreateLumaPrintsOrder).toHaveBeenCalledWith({ externalId: "ORD-001" });
-		expect(convex.mutation).toHaveBeenCalledWith("orders.updateStatus", {
-			webhookSecret: "test-webhook-secret",
-			orderId,
-			lumaprintsOrderNumber: "LP-123",
-		});
+		expect(mockBuildLumaPrintsOrder).toHaveBeenCalledWith(
+			"ORD-001",
+			expect.anything(),
+			expect.anything(),
+		);
+		expect(convex.mutation).toHaveBeenCalledWith(
+			"orders.updateStatus",
+			expect.objectContaining({ orderId, lumaprintsOrderNumber: "LP-123" }),
+		);
 	});
 
 	it("uses only the persisted snapshot when present and keeps paid Stripe quantity", async () => {
@@ -198,45 +239,73 @@ describe("print fulfillment", () => {
 		expect(outcome).toEqual({ kind: "no_print_items" });
 		expect(mockBuildRecipientFromShipping).not.toHaveBeenCalled();
 		expect(mockCreateLumaPrintsOrder).not.toHaveBeenCalled();
-		expect(convex.mutation).not.toHaveBeenCalled();
+		expect(convex.mutation).toHaveBeenCalledTimes(2);
+	});
+
+	it("fences concurrent webhook deliveries before provider submission", async () => {
+		const { submitPrintFulfillment } = await import("../printFulfillment");
+		let held = false;
+		convex.mutation.mockImplementation(async (reference: string) => {
+			if (reference !== "orders.claimPrintFulfillment") return;
+			if (held) return { kind: "reconcile", claim: "first", externalId: "ORD-001" };
+			held = true;
+			return { kind: "claimed" };
+		});
+		const run = () =>
+			submitPrintFulfillment(
+				{ convex, createLumaPrintsOrder: mockCreateLumaPrintsOrder },
+				printInput,
+			);
+		const results = await Promise.allSettled([run(), run()]);
+		expect(results.map(({ status }) => status).sort()).toEqual(["fulfilled", "rejected"]);
+		expect(mockCreateLumaPrintsOrder).toHaveBeenCalledOnce();
+	});
+
+	it("reconciles provider success after a lost Convex response without resubmitting", async () => {
+		const { submitPrintFulfillment } = await import("../printFulfillment");
+		let submitting = false;
+		convex.mutation.mockImplementation(
+			async (reference: string, args: { lumaprintsOrderNumber?: string }) => {
+				if (reference === "orders.claimPrintFulfillment") {
+					if (submitting) return { kind: "reconcile", claim: "first", externalId: "ORD-001" };
+					submitting = true;
+					return { kind: "claimed" };
+				}
+				if (args.lumaprintsOrderNumber && mockFindLumaPrintsOrder.mock.calls.length === 0)
+					throw new Error("Convex response lost");
+			},
+		);
+		const run = () =>
+			submitPrintFulfillment(
+				{ convex, createLumaPrintsOrder: mockCreateLumaPrintsOrder },
+				printInput,
+			);
+		await expect(run()).rejects.toThrow("Convex response lost");
+		mockFindLumaPrintsOrder.mockResolvedValueOnce({ orderNumber: "LP-123" });
+		await expect(run()).resolves.toMatchObject({
+			kind: "fulfilled",
+			lumaprintsOrderNumber: "LP-123",
+		});
+		expect(mockCreateLumaPrintsOrder).toHaveBeenCalledOnce();
+		expect(mockFindLumaPrintsOrder).toHaveBeenCalledWith("ORD-001");
 	});
 
 	it("rethrows transient fulfillment failures so Stripe retries", async () => {
-		const { handlePrintFulfillmentFailure } = await import("../printFulfillment");
-		const error = new Error("network dropped");
-
-		await expect(
-			handlePrintFulfillmentFailure(
-				{ stripe, convex, resend },
-				{
-					orderId,
-					orderNumber: "ORD-001",
-					error,
-					session,
-					customerEmail: "jane@example.com",
-				},
-			),
-		).rejects.toThrow("Print provider temporarily unavailable");
+		await expect(handle(new Error("network dropped"))).rejects.toThrow(
+			"Print provider temporarily unavailable",
+		);
 		expect(stripe.refunds.create).not.toHaveBeenCalled();
 		expect(convex.mutation).not.toHaveBeenCalled();
 	});
 
 	it("checkpoints, refunds, stores terminal recovery, and returns the terminal outcome", async () => {
 		const { LumaPrintsError } = await import("$lib/server/lumaprints");
-		const { handlePrintFulfillmentFailure } = await import("../printFulfillment");
 
-		const outcome = await handlePrintFulfillmentFailure(
-			{ stripe, convex, resend },
-			{
-				orderId,
-				orderNumber: "ORD-001",
-				error: new LumaPrintsError("Order submission failed", {
-					statusCode: 422,
-					message: "Invalid image",
-				}),
-				session,
-				customerEmail: "jane@example.com",
-			},
+		const outcome = await handle(
+			new LumaPrintsError("Order submission failed", {
+				statusCode: 422,
+				message: "Invalid image",
+			}),
 		);
 
 		expect(outcome).toEqual(
@@ -283,19 +352,10 @@ describe("print fulfillment", () => {
 
 	it("adds connected-account routing to the deterministic refund request", async () => {
 		const { FulfillmentValidationError } = await import("../fulfillmentValidationError");
-		const { handlePrintFulfillmentFailure } = await import("../printFulfillment");
 
-		await handlePrintFulfillmentFailure(
-			{ stripe, convex, resend },
-			{
-				orderId,
-				orderNumber: "ORD-001",
-				error: new FulfillmentValidationError("invalid dimensions"),
-				session,
-				stripeRequestOptions: { stripeAccount: "acct_123" },
-				customerEmail: "jane@example.com",
-			},
-		);
+		await handle(new FulfillmentValidationError("invalid dimensions"), {
+			stripeRequestOptions: { stripeAccount: "acct_123" },
+		});
 
 		expect(stripe.refunds.create).toHaveBeenCalledWith(
 			expect.objectContaining({
@@ -311,21 +371,11 @@ describe("print fulfillment", () => {
 
 	it("does not call Stripe when the pending checkpoint cannot be stored", async () => {
 		const { FulfillmentValidationError } = await import("../fulfillmentValidationError");
-		const { handlePrintFulfillmentFailure } = await import("../printFulfillment");
 		convex.mutation.mockRejectedValueOnce(new Error("convex unavailable"));
 
-		await expect(
-			handlePrintFulfillmentFailure(
-				{ stripe, convex, resend },
-				{
-					orderId,
-					orderNumber: "ORD-001",
-					error: new FulfillmentValidationError("invalid dimensions"),
-					session,
-					customerEmail: "jane@example.com",
-				},
-			),
-		).rejects.toThrow("convex unavailable");
+		await expect(handle(new FulfillmentValidationError("invalid dimensions"))).rejects.toThrow(
+			"convex unavailable",
+		);
 
 		expect(stripe.refunds.create).not.toHaveBeenCalled();
 		expect(mockSendFulfillmentFailureAlert).not.toHaveBeenCalled();
@@ -333,21 +383,11 @@ describe("print fulfillment", () => {
 
 	it("throws after a durable checkpoint when Stripe refund creation fails", async () => {
 		const { FulfillmentValidationError } = await import("../fulfillmentValidationError");
-		const { handlePrintFulfillmentFailure } = await import("../printFulfillment");
 		stripe.refunds.create.mockRejectedValueOnce(new Error("Stripe unavailable"));
 
-		await expect(
-			handlePrintFulfillmentFailure(
-				{ stripe, convex, resend },
-				{
-					orderId,
-					orderNumber: "ORD-001",
-					error: new FulfillmentValidationError("invalid dimensions"),
-					session,
-					customerEmail: "jane@example.com",
-				},
-			),
-		).rejects.toThrow("Stripe unavailable");
+		await expect(handle(new FulfillmentValidationError("invalid dimensions"))).rejects.toThrow(
+			"Stripe unavailable",
+		);
 
 		expect(convex.mutation).toHaveBeenCalledTimes(1);
 		expect(convex.mutation).toHaveBeenCalledWith(
@@ -361,20 +401,12 @@ describe("print fulfillment", () => {
 
 	it("keeps a missing payment intent retryable after recording pending recovery", async () => {
 		const { FulfillmentValidationError } = await import("../fulfillmentValidationError");
-		const { handlePrintFulfillmentFailure } = await import("../printFulfillment");
 		const sessionWithoutPaymentIntent = { ...session, payment_intent: null };
 
 		await expect(
-			handlePrintFulfillmentFailure(
-				{ stripe, convex, resend },
-				{
-					orderId,
-					orderNumber: "ORD-001",
-					error: new FulfillmentValidationError("invalid dimensions"),
-					session: sessionWithoutPaymentIntent,
-					customerEmail: "jane@example.com",
-				},
-			),
+			handle(new FulfillmentValidationError("invalid dimensions"), {
+				session: sessionWithoutPaymentIntent,
+			}),
 		).rejects.toThrow("no payment_intent");
 
 		expect(convex.mutation).toHaveBeenCalledTimes(1);
