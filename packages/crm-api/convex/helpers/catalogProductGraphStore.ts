@@ -1097,10 +1097,9 @@ export async function listPublishedCatalogProductGraphsV2(
 	if (published.length > CATALOG_PUBLIC_PRODUCT_CAP) {
 		throw new Error("Catalog public product limit exceeded");
 	}
-	const projected = [];
-	for (const product of published) {
-		projected.push(await projectPublishedCatalogProduct(ctx, product));
-	}
+	const projected = await Promise.all(
+		published.map((product) => projectPublishedCatalogProduct(ctx, product)),
+	);
 	return projected.sort(comparePublishedCatalogProducts);
 }
 
