@@ -1,5 +1,11 @@
 # @jessepomeroy/crm-api
 
+## 2.33.1
+
+### Patch Changes
+
+- 5d43c88: Reduce public catalog list latency by loading each bounded product projection in parallel.
+
 ## 2.33.0
 
 ### Minor Changes
