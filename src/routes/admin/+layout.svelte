@@ -6,7 +6,7 @@ import {
 	LoadingState,
 	setAdminConfig,
 } from "@jessepomeroy/admin";
-import { setupAuth, setupConvex } from "convex-svelte";
+import { closeConvex, setupAuth, setupConvex } from "convex-svelte";
 import { untrack } from "svelte";
 import { browser } from "$app/environment";
 import { invalidateAll } from "$app/navigation";
@@ -16,16 +16,13 @@ import {
 	shouldHoldAdminShellForServerSession,
 	shouldRefreshAdminServerSession,
 } from "$lib/adminServerSessionRecovery";
+import { reloadAdminRoot } from "$lib/adminFullPageReload";
 import { adminConfig } from "$lib/config/admin";
 
 let { data, children } = $props();
 
-type ExplicitSignOutState = "inactive" | "awaiting-session-clear" | "session-cleared";
-
 let clientSessionPending = $state(Boolean(authClient));
 let clientSessionEmail = $state<string | null>(null);
-let explicitSignOutState = $state<ExplicitSignOutState>("inactive");
-let convexAuthGeneration = 0;
 let serverSessionRefreshAttempted = $state(false);
 let serverSessionRefreshInFlight = $state(false);
 
@@ -34,13 +31,6 @@ if (authClient) {
 	sessionStore.subscribe((val) => {
 		clientSessionEmail = val?.data?.user?.email ?? null;
 		clientSessionPending = val?.isPending ?? false;
-
-		if (clientSessionPending) return;
-		if (explicitSignOutState === "awaiting-session-clear" && !clientSessionEmail) {
-			explicitSignOutState = "session-cleared";
-		} else if (explicitSignOutState === "session-cleared" && clientSessionEmail) {
-			explicitSignOutState = "inactive";
-		}
 	});
 }
 
@@ -61,21 +51,14 @@ const signOut: typeof authClient.signOut = async (...args) => {
 	const result = await authClient.signOut(...args);
 	if (!signOutSucceeded(result)) return result;
 
-	convexAuthGeneration += 1;
+	// `clearAuth()` cannot send Authenticate(None) while Convex 1.42 pauses
+	// its socket for a token fetch. Closing the app-scoped client is the
+	// definitive boundary: it stops auth work and awaits socket termination.
+	await closeConvex();
 
-	// ConvexClient exposes its BaseConvexClient as the public `client` accessor.
-	// Clear it first so the active socket sends Authenticate(None) synchronously.
-	convexClient.client.clearAuth();
-	explicitSignOutState = "awaiting-session-clear";
-
-	// Stop setupAuth's authentication manager after the protocol revocation.
-	// This cancels an active token fetch or scheduled refresh without letting its
-	// cleanup replace Authenticate(None) with a stale User token.
-	convexClient.setAuth(async () => null, () => undefined);
-
-	// Reload only after the socket is revoked and the provider is suppressed.
-	// Neither follow-up can change the successful Better Auth result.
-	await invalidateAll().catch(() => undefined);
+	// Use browser navigation, not SvelteKit invalidation. The new document
+	// revalidates the cookie and creates a fresh singleton for a later login.
+	reloadAdminRoot();
 	return result;
 };
 
@@ -147,37 +130,25 @@ $effect(() => {
 // reads the HttpOnly Better Auth cookie server-side and returns the
 // JWT for the Convex client.
 //
-// A successful signOut through the configured admin client is the only
-// client-session event that overrides this server state. It suppresses the
-// provider before invalidateAll reloads the server session; transient null
-// session emissions do not affect Convex auth.
+// Transient null client-session emissions do not affect Convex auth. A
+// successful explicit sign-out closes this app-scoped client and reloads the
+// document instead of trying to change auth on the existing connection.
 //
 // With this wiring, authed `useQuery(...)` calls (kanban, crm,
 // quotes, etc.) work over the reactive WebSocket again. Mutations
 // continue through the `/api/admin/mutation` HTTP proxy — the
 // duplication is intentional belt-and-suspenders, and keeps the
 // mutation path cookie-only for defence-in-depth.
-const convexClient = setupConvex(PUBLIC_CONVEX_URL);
+setupConvex(PUBLIC_CONVEX_URL);
 setupAuth(
 	() => ({
 		isLoading: serverSessionRefreshInFlight,
-		isAuthenticated:
-			serverSessionAuthorized && explicitSignOutState === "inactive",
+		isAuthenticated: serverSessionAuthorized,
 		fetchAccessToken: async () => {
-			const authGeneration = convexAuthGeneration;
-			if (explicitSignOutState !== "inactive") return null;
-
 			const res = await fetch("/api/admin/token");
 			if (!res.ok) return null;
 
 			const { token } = await res.json();
-			if (
-				authGeneration !== convexAuthGeneration ||
-				explicitSignOutState !== "inactive"
-			) {
-				return null;
-			}
-
 			return (token as string | null | undefined) ?? null;
 		},
 	}),
