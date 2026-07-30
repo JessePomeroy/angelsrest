@@ -7,7 +7,7 @@ import {
 	setAdminConfig,
 } from "@jessepomeroy/admin";
 import { setupAuth, setupConvex } from "convex-svelte";
-import { untrack } from "svelte";
+import { tick, untrack } from "svelte";
 import { browser } from "$app/environment";
 import { invalidateAll } from "$app/navigation";
 import { PUBLIC_CONVEX_URL } from "$env/static/public";
@@ -20,8 +20,11 @@ import { adminConfig } from "$lib/config/admin";
 
 let { data, children } = $props();
 
+type ExplicitSignOutState = "inactive" | "awaiting-session-clear" | "session-cleared";
+
 let clientSessionPending = $state(Boolean(authClient));
 let clientSessionEmail = $state<string | null>(null);
+let explicitSignOutState = $state<ExplicitSignOutState>("inactive");
 let serverSessionRefreshAttempted = $state(false);
 let serverSessionRefreshInFlight = $state(false);
 
@@ -30,8 +33,51 @@ if (authClient) {
 	sessionStore.subscribe((val) => {
 		clientSessionEmail = val?.data?.user?.email ?? null;
 		clientSessionPending = val?.isPending ?? false;
+
+		if (clientSessionPending) return;
+		if (explicitSignOutState === "awaiting-session-clear" && !clientSessionEmail) {
+			explicitSignOutState = "session-cleared";
+		} else if (explicitSignOutState === "session-cleared" && clientSessionEmail) {
+			explicitSignOutState = "inactive";
+		}
 	});
 }
+
+function signOutSucceeded(result: unknown) {
+	if (!result || typeof result !== "object") return true;
+	if ("error" in result && result.error !== null) return false;
+
+	const payload = "data" in result ? result.data : result;
+	return (
+		!payload ||
+		typeof payload !== "object" ||
+		!("success" in payload) ||
+		payload.success === true
+	);
+}
+
+const signOut: typeof authClient.signOut = async (...args) => {
+	const result = await authClient.signOut(...args);
+	if (!signOutSucceeded(result)) return result;
+
+	explicitSignOutState = "awaiting-session-clear";
+
+	// Let setupAuth revoke the WebSocket before a server-session reload can
+	// create more protected subscriptions. Neither follow-up can change the
+	// successful Better Auth result into a rejected sign-out.
+	await tick().catch(() => undefined);
+	await invalidateAll().catch(() => undefined);
+	return result;
+};
+
+// Better Auth exposes a Proxy-backed client. Proxy only signOut so all other
+// methods, plugin fields, call signatures, and lazy initialization stay intact.
+const adminAuthClient = new Proxy(authClient, {
+	get(target, property, receiver) {
+		if (property === "signOut") return signOut;
+		return Reflect.get(target, property, receiver);
+	},
+});
 
 let serverSessionAuthorized = $derived(
 	isTenantAdminServerAuthorized(data.adminSession),
@@ -92,6 +138,11 @@ $effect(() => {
 // reads the HttpOnly Better Auth cookie server-side and returns the
 // JWT for the Convex client.
 //
+// A successful signOut through the configured admin client is the only
+// client-session event that overrides this server state. It suppresses the
+// provider before invalidateAll reloads the server session; transient null
+// session emissions do not affect Convex auth.
+//
 // With this wiring, authed `useQuery(...)` calls (kanban, crm,
 // quotes, etc.) work over the reactive WebSocket again. Mutations
 // continue through the `/api/admin/mutation` HTTP proxy — the
@@ -101,7 +152,8 @@ setupConvex(PUBLIC_CONVEX_URL);
 setupAuth(
 	() => ({
 		isLoading: serverSessionRefreshInFlight,
-		isAuthenticated: serverSessionAuthorized,
+		isAuthenticated:
+			serverSessionAuthorized && explicitSignOutState === "inactive",
 		fetchAccessToken: async () => {
 			const res = await fetch("/api/admin/token");
 			if (!res.ok) return null;
@@ -114,7 +166,7 @@ setupAuth(
 
 setAdminConfig({
 	...adminConfig,
-	authClient,
+	authClient: adminAuthClient,
 });
 </script>
 
