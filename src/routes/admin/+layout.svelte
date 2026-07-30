@@ -7,7 +7,7 @@ import {
 	setAdminConfig,
 } from "@jessepomeroy/admin";
 import { setupAuth, setupConvex } from "convex-svelte";
-import { tick, untrack } from "svelte";
+import { untrack } from "svelte";
 import { browser } from "$app/environment";
 import { invalidateAll } from "$app/navigation";
 import { PUBLIC_CONVEX_URL } from "$env/static/public";
@@ -25,6 +25,7 @@ type ExplicitSignOutState = "inactive" | "awaiting-session-clear" | "session-cle
 let clientSessionPending = $state(Boolean(authClient));
 let clientSessionEmail = $state<string | null>(null);
 let explicitSignOutState = $state<ExplicitSignOutState>("inactive");
+let convexAuthGeneration = 0;
 let serverSessionRefreshAttempted = $state(false);
 let serverSessionRefreshInFlight = $state(false);
 
@@ -44,14 +45,14 @@ if (authClient) {
 }
 
 function signOutSucceeded(result: unknown) {
-	if (!result || typeof result !== "object") return true;
+	if (!result || typeof result !== "object") return false;
 	if ("error" in result && result.error !== null) return false;
 
 	const payload = "data" in result ? result.data : result;
 	return (
-		!payload ||
-		typeof payload !== "object" ||
-		!("success" in payload) ||
+		payload !== null &&
+		typeof payload === "object" &&
+		"success" in payload &&
 		payload.success === true
 	);
 }
@@ -60,12 +61,20 @@ const signOut: typeof authClient.signOut = async (...args) => {
 	const result = await authClient.signOut(...args);
 	if (!signOutSucceeded(result)) return result;
 
+	convexAuthGeneration += 1;
+
+	// ConvexClient exposes its BaseConvexClient as the public `client` accessor.
+	// Clear it first so the active socket sends Authenticate(None) synchronously.
+	convexClient.client.clearAuth();
 	explicitSignOutState = "awaiting-session-clear";
 
-	// Let setupAuth revoke the WebSocket before a server-session reload can
-	// create more protected subscriptions. Neither follow-up can change the
-	// successful Better Auth result into a rejected sign-out.
-	await tick().catch(() => undefined);
+	// Stop setupAuth's authentication manager after the protocol revocation.
+	// This cancels an active token fetch or scheduled refresh without letting its
+	// cleanup replace Authenticate(None) with a stale User token.
+	convexClient.setAuth(async () => null, () => undefined);
+
+	// Reload only after the socket is revoked and the provider is suppressed.
+	// Neither follow-up can change the successful Better Auth result.
 	await invalidateAll().catch(() => undefined);
 	return result;
 };
@@ -148,16 +157,27 @@ $effect(() => {
 // continue through the `/api/admin/mutation` HTTP proxy — the
 // duplication is intentional belt-and-suspenders, and keeps the
 // mutation path cookie-only for defence-in-depth.
-setupConvex(PUBLIC_CONVEX_URL);
+const convexClient = setupConvex(PUBLIC_CONVEX_URL);
 setupAuth(
 	() => ({
 		isLoading: serverSessionRefreshInFlight,
 		isAuthenticated:
 			serverSessionAuthorized && explicitSignOutState === "inactive",
 		fetchAccessToken: async () => {
+			const authGeneration = convexAuthGeneration;
+			if (explicitSignOutState !== "inactive") return null;
+
 			const res = await fetch("/api/admin/token");
 			if (!res.ok) return null;
+
 			const { token } = await res.json();
+			if (
+				authGeneration !== convexAuthGeneration ||
+				explicitSignOutState !== "inactive"
+			) {
+				return null;
+			}
+
 			return (token as string | null | undefined) ?? null;
 		},
 	}),

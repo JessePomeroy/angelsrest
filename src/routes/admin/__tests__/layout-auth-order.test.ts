@@ -180,9 +180,12 @@ function reconcileConvexAuth() {
 	if (nextAuth) {
 		getClient().setAuth(authProvider().fetchAccessToken, () => undefined);
 	} else {
-		// Model setupAuth's completed provider transition at the protocol layer.
-		const client = getClient() as unknown as { client: { clearAuth: () => void } };
-		client.client.clearAuth();
+		// Model setupAuth's public null-token cleanup. The layout owns the
+		// synchronous BaseConvexClient clear that emits Authenticate(None).
+		getClient().setAuth(
+			async () => null,
+			() => undefined,
+		);
 	}
 }
 
