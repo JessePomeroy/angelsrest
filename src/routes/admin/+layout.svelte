@@ -6,7 +6,8 @@ import {
 	LoadingState,
 	setAdminConfig,
 } from "@jessepomeroy/admin";
-import { setupAuth, setupConvex } from "convex-svelte";
+import { closeConvex, setupAuth, setupConvex } from "convex-svelte";
+import { untrack } from "svelte";
 import { browser } from "$app/environment";
 import { invalidateAll } from "$app/navigation";
 import { PUBLIC_CONVEX_URL } from "$env/static/public";
@@ -15,6 +16,7 @@ import {
 	shouldHoldAdminShellForServerSession,
 	shouldRefreshAdminServerSession,
 } from "$lib/adminServerSessionRecovery";
+import { reloadAdminRoot } from "$lib/adminFullPageReload";
 import { adminConfig } from "$lib/config/admin";
 
 let { data, children } = $props();
@@ -31,6 +33,43 @@ if (authClient) {
 		clientSessionPending = val?.isPending ?? false;
 	});
 }
+
+function signOutSucceeded(result: unknown) {
+	if (!result || typeof result !== "object") return false;
+	if ("error" in result && result.error !== null) return false;
+
+	const payload = "data" in result ? result.data : result;
+	return (
+		payload !== null &&
+		typeof payload === "object" &&
+		"success" in payload &&
+		payload.success === true
+	);
+}
+
+const signOut: typeof authClient.signOut = async (...args) => {
+	const result = await authClient.signOut(...args);
+	if (!signOutSucceeded(result)) return result;
+
+	// `clearAuth()` cannot send Authenticate(None) while Convex 1.42 pauses
+	// its socket for a token fetch. Closing the app-scoped client is the
+	// definitive boundary: it stops auth work and awaits socket termination.
+	await closeConvex();
+
+	// Use browser navigation, not SvelteKit invalidation. The new document
+	// revalidates the cookie and creates a fresh singleton for a later login.
+	reloadAdminRoot();
+	return result;
+};
+
+// Better Auth exposes a Proxy-backed client. Proxy only signOut so all other
+// methods, plugin fields, call signatures, and lazy initialization stay intact.
+const adminAuthClient = new Proxy(authClient, {
+	get(target, property, receiver) {
+		if (property === "signOut") return signOut;
+		return Reflect.get(target, property, receiver);
+	},
+});
 
 let serverSessionAuthorized = $derived(
 	isTenantAdminServerAuthorized(data.adminSession),
@@ -91,26 +130,34 @@ $effect(() => {
 // reads the HttpOnly Better Auth cookie server-side and returns the
 // JWT for the Convex client.
 //
+// Transient null client-session emissions do not affect Convex auth. A
+// successful explicit sign-out closes this app-scoped client and reloads the
+// document instead of trying to change auth on the existing connection.
+//
 // With this wiring, authed `useQuery(...)` calls (kanban, crm,
 // quotes, etc.) work over the reactive WebSocket again. Mutations
 // continue through the `/api/admin/mutation` HTTP proxy — the
 // duplication is intentional belt-and-suspenders, and keeps the
 // mutation path cookie-only for defence-in-depth.
 setupConvex(PUBLIC_CONVEX_URL);
-setupAuth(() => ({
-	isLoading: serverSessionRefreshInFlight,
-	isAuthenticated: serverSessionAuthorized,
-	fetchAccessToken: async () => {
-		const res = await fetch("/api/admin/token");
-		if (!res.ok) return null;
-		const { token } = await res.json();
-		return (token as string | null | undefined) ?? null;
-	},
-}));
+setupAuth(
+	() => ({
+		isLoading: serverSessionRefreshInFlight,
+		isAuthenticated: serverSessionAuthorized,
+		fetchAccessToken: async () => {
+			const res = await fetch("/api/admin/token");
+			if (!res.ok) return null;
+
+			const { token } = await res.json();
+			return (token as string | null | undefined) ?? null;
+		},
+	}),
+	{ initialState: { isAuthenticated: untrack(() => serverSessionAuthorized) } },
+);
 
 setAdminConfig({
 	...adminConfig,
-	authClient,
+	authClient: adminAuthClient,
 });
 </script>
 
