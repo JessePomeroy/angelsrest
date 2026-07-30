@@ -7,6 +7,7 @@ import {
 	setAdminConfig,
 } from "@jessepomeroy/admin";
 import { setupAuth, setupConvex } from "convex-svelte";
+import { untrack } from "svelte";
 import { browser } from "$app/environment";
 import { invalidateAll } from "$app/navigation";
 import { PUBLIC_CONVEX_URL } from "$env/static/public";
@@ -97,16 +98,19 @@ $effect(() => {
 // duplication is intentional belt-and-suspenders, and keeps the
 // mutation path cookie-only for defence-in-depth.
 setupConvex(PUBLIC_CONVEX_URL);
-setupAuth(() => ({
-	isLoading: serverSessionRefreshInFlight,
-	isAuthenticated: serverSessionAuthorized,
-	fetchAccessToken: async () => {
-		const res = await fetch("/api/admin/token");
-		if (!res.ok) return null;
-		const { token } = await res.json();
-		return (token as string | null | undefined) ?? null;
-	},
-}));
+setupAuth(
+	() => ({
+		isLoading: serverSessionRefreshInFlight,
+		isAuthenticated: serverSessionAuthorized,
+		fetchAccessToken: async () => {
+			const res = await fetch("/api/admin/token");
+			if (!res.ok) return null;
+			const { token } = await res.json();
+			return (token as string | null | undefined) ?? null;
+		},
+	}),
+	{ initialState: { isAuthenticated: untrack(() => serverSessionAuthorized) } },
+);
 
 setAdminConfig({
 	...adminConfig,
