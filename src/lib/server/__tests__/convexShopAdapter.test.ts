@@ -148,17 +148,63 @@ describe("Convex Shop page-shape adapter", () => {
 		});
 	});
 
-	it("preserves the authoritative public list order without a title tie-breaker", () => {
+	it("reconstructs the live Sanity featured and V2-first merge order", () => {
 		const catalog = completeCatalog();
-		const [firstProduct, second] = catalog;
-		if (!firstProduct || !second) throw new Error("Fixture is incomplete");
-		firstProduct.title = "Z title";
-		second.title = "A title";
-		expect(
-			adaptConvexIndex(catalog)
-				.products.slice(0, 2)
-				.map(({ slug }) => slug),
-		).toEqual(["print-0", "print-1"]);
+		for (const product of catalog) product.saleAvailability = "unavailable";
+		const orderedProducts = [
+			{ slug: "print-1", featured: true, title: "A featured print", orderRank: "rank-01" },
+			{ slug: "print-0", featured: true, title: "Z featured print", orderRank: "rank-00" },
+			{
+				slug: "tapestry-1",
+				featured: true,
+				title: "A featured general",
+				orderRank: "rank-00",
+			},
+			{
+				slug: "tapestry-0",
+				featured: true,
+				title: "Z featured general",
+				orderRank: "rank-00",
+			},
+			{ slug: "print-3", featured: false, title: "A regular print", orderRank: "rank-03" },
+			{ slug: "print-2", featured: false, title: "Z regular print", orderRank: "rank-02" },
+			{
+				slug: "tapestry-3",
+				featured: false,
+				title: "A rank-tied general",
+				orderRank: "rank-00",
+			},
+			{
+				slug: "tapestry-2",
+				featured: false,
+				title: "Z rank-tied general",
+				orderRank: "rank-00",
+			},
+			{
+				slug: "tapestry-5",
+				featured: false,
+				title: "A later-rank general",
+				orderRank: "rank-01",
+			},
+			{
+				slug: "tapestry-4",
+				featured: false,
+				title: "A null-rank general",
+				orderRank: null,
+			},
+		] as const;
+		for (const expected of orderedProducts) {
+			const product = catalog.find(({ slug }) => slug === expected.slug);
+			if (!product) throw new Error("Fixture is incomplete");
+			product.saleAvailability = "available";
+			product.shopPlacement.featured = expected.featured;
+			product.shopPlacement.orderRank = expected.orderRank;
+			product.title = expected.title;
+		}
+
+		const slugs = adaptConvexIndex(catalog.reverse()).products.map(({ slug }) => slug);
+
+		expect(slugs).toEqual(orderedProducts.map(({ slug }) => slug));
 	});
 
 	it("maps print, all fixed kinds, and print-set details without IDs or private facts", () => {
