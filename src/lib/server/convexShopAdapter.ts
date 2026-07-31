@@ -250,26 +250,54 @@ function completeProducts(value: unknown) {
 	return products;
 }
 
+function compareText(left: string | null | undefined, right: string | null | undefined) {
+	const a = left ?? "";
+	const b = right ?? "";
+	return a < b ? -1 : a > b ? 1 : 0;
+}
+
+function compareOrderRank(left: string | null | undefined, right: string | null | undefined) {
+	if (left == null && right == null) return 0;
+	if (left == null) return 1;
+	if (right == null) return -1;
+	return compareText(left, right);
+}
+
+function orderIndexBucket(products: Product[]) {
+	const prints = products
+		.filter((product) => product.kind === "print")
+		.sort((left, right) => compareText(left.title, right.title));
+	const general = products
+		.filter((product) => product.kind !== "print" && product.kind !== "print_set")
+		.sort((left, right) => {
+			const byRank = compareOrderRank(left.orderRank, right.orderRank);
+			return byRank || compareText(left.title, right.title);
+		});
+	return [...prints, ...general];
+}
+
 export function adaptConvexIndex(value: unknown) {
 	const available = completeProducts(value).filter((product) => product.inStock);
+	const products = [
+		...orderIndexBucket(available.filter((product) => product.featured)),
+		...orderIndexBucket(available.filter((product) => !product.featured)),
+	];
 	return {
-		products: available
-			.filter((product) => product.kind !== "print_set")
-			.map((product) => {
-				const display = role(product, product.kind === "print" ? "primary" : "gallery")[0];
-				const amount = price(product);
-				if (!display || amount === undefined) fail();
-				return {
-					title: product.title,
-					slug: product.slug,
-					preview: display.url("card"),
-					price: amount,
-					...(product.kind === "print" ? { startingPrice: amount } : {}),
-					category: category(product.kind),
-					featured: product.featured,
-					inStock: true,
-				};
-			}),
+		products: products.map((product) => {
+			const display = role(product, product.kind === "print" ? "primary" : "gallery")[0];
+			const amount = price(product);
+			if (!display || amount === undefined) fail();
+			return {
+				title: product.title,
+				slug: product.slug,
+				preview: display.url("card"),
+				price: amount,
+				...(product.kind === "print" ? { startingPrice: amount } : {}),
+				category: category(product.kind),
+				featured: product.featured,
+				inStock: true,
+			};
+		}),
 		printSets: available
 			.filter((product) => product.kind === "print_set")
 			.map((product) => {
