@@ -7,6 +7,7 @@ import type { Id } from "$convex/dataModel";
 import { env } from "$env/dynamic/private";
 import {
 	CheckoutSnapshotProtocolError,
+	hasCheckoutSnapshotMarker,
 	inspectCheckoutSnapshotMetadata,
 	readCheckoutTenantMarker,
 	selectCheckoutSnapshotInput,
@@ -56,15 +57,17 @@ export async function processStripeWebhookEvent(
 		switch (event.type) {
 			case "checkout.session.completed": {
 				const session = event.data.object as Stripe.Checkout.Session;
-				const enabled = env.CHECKOUT_SNAPSHOT_MODE === "handle-v2";
 				if (session.metadata?.type === "invoice_payment") {
 					const tenant = await resolveCommerceTenant(event, adapters.convex);
 					await markInvoicePaidFromSession(session, adapters.convex, tenant.siteUrl);
 					break;
 				}
 
+				const snapshotModeEnabled = env.CHECKOUT_SNAPSHOT_MODE === "handle-v2";
+				const snapshotMarkerPresent = hasCheckoutSnapshotMarker(session.metadata);
+				const consumesCheckoutSnapshot = snapshotModeEnabled || snapshotMarkerPresent;
 				let routing = null;
-				if (enabled) {
+				if (consumesCheckoutSnapshot) {
 					const stripeAccount =
 						typeof event.account === "string" ? event.account.trim() : undefined;
 					const metadataSiteUrl = readCheckoutTenantMarker(session.metadata);
@@ -78,9 +81,17 @@ export async function processStripeWebhookEvent(
 					} catch (cause) {
 						throw new CheckoutSnapshotProtocolError("Checkout routing failed", { cause });
 					}
+					selectCheckoutSnapshotInput(
+						routing?.source ?? null,
+						routing?.source === "order"
+							? undefined
+							: inspectCheckoutSnapshotMetadata(session.metadata),
+					);
 				}
 				const tenantPromise = resolveCommerceTenant(event, adapters.convex, routing?.siteUrl);
-				const tenant = enabled
+				const suppressTenantFailureAlert =
+					snapshotModeEnabled || (snapshotMarkerPresent && routing?.source !== "order");
+				const tenant = suppressTenantFailureAlert
 					? await tenantPromise.catch((cause) => {
 							throw new CheckoutSnapshotProtocolError("Checkout tenant routing failed", { cause });
 						})
@@ -90,7 +101,7 @@ export async function processStripeWebhookEvent(
 					notificationProfile: tenant.notificationProfile,
 					stripeRequestOptions: tenant.stripeRequestOptions,
 					routingSource: routing?.source ?? null,
-					completeLineItems: enabled,
+					completeLineItems: consumesCheckoutSnapshot,
 				});
 				break;
 			}
@@ -219,12 +230,24 @@ async function handleCheckoutCompleted(
 		sessionId: session.id,
 	});
 
-	const { fullSession, lineItems, shippingDetails } = await fetchSessionDetails(
-		session,
-		adapters.stripe,
-		stripeRequestOptions,
-		completeLineItems,
-	);
+	const markedFirstDelivery =
+		routingSource !== "order" && hasCheckoutSnapshotMarker(session.metadata);
+	let details: Awaited<ReturnType<typeof fetchSessionDetails>>;
+	try {
+		details = await fetchSessionDetails(
+			session,
+			adapters.stripe,
+			stripeRequestOptions,
+			completeLineItems,
+		);
+	} catch (cause) {
+		if (cause instanceof CheckoutSnapshotProtocolError) throw cause;
+		if (markedFirstDelivery) {
+			throw new CheckoutSnapshotProtocolError("Checkout details failed", { cause });
+		}
+		throw cause;
+	}
+	const { fullSession, lineItems, shippingDetails } = details;
 	const checkoutSnapshotInput = completeLineItems
 		? selectCheckoutSnapshotInput(
 				routingSource,

@@ -30,6 +30,16 @@ export type CheckoutSnapshotV1 = {
 };
 export class CheckoutSnapshotProtocolError extends Error {}
 
+function checkoutSnapshotMarkerKeys(metadata: Stripe.Metadata | null) {
+	return Object.keys((metadata ?? {}) as Record<string, unknown>).filter((key) =>
+		key.startsWith("checkoutSnapshot"),
+	);
+}
+
+export function hasCheckoutSnapshotMarker(metadata: Stripe.Metadata | null) {
+	return checkoutSnapshotMarkerKeys(metadata).length > 0;
+}
+
 export function readCheckoutTenantMarker(metadata: Stripe.Metadata | null) {
 	const value = (metadata as Record<string, unknown> | null)?.[COMMERCE_TENANT_METADATA_KEY];
 	return exactString(value, 253) ? value : undefined;
@@ -37,10 +47,10 @@ export function readCheckoutTenantMarker(metadata: Stripe.Metadata | null) {
 
 export function inspectCheckoutSnapshotMetadata(
 	metadata: Stripe.Metadata | null,
-	lineItemCount: number,
+	lineItemCount?: number,
 ) {
 	const meta = (metadata ?? {}) as Record<string, unknown>;
-	const marked = Object.keys(meta).filter((key) => key.startsWith("checkoutSnapshot"));
+	const marked = checkoutSnapshotMarkerKeys(metadata);
 	if (marked.length === 0) return { kind: "unmarked" } as const;
 
 	if (meta.checkoutSnapshotVersion === "2") {
@@ -67,7 +77,7 @@ export function inspectCheckoutSnapshotMetadata(
 		count < 1 ||
 		count > 40 ||
 		String(count) !== rawCount ||
-		count !== lineItemCount
+		(lineItemCount !== undefined && count !== lineItemCount)
 	)
 		return invalid();
 	const expected = new Set([
