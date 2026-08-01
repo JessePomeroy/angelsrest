@@ -516,6 +516,45 @@ describe("processStripeWebhookEvent", () => {
 			processStripeWebhookEvent(makeStripeEvent("checkout.session.completed", session), adapters()),
 		).rejects.toMatchObject({ status: 500 });
 
+		expect(stripe.checkout.sessions.retrieve).not.toHaveBeenCalled();
+		expect(stripe.checkout.sessions.listLineItems).not.toHaveBeenCalled();
+		expect(convex.mutation).not.toHaveBeenCalled();
+		expect(createLumaPrintsOrder).not.toHaveBeenCalled();
+		expect(stripe.refunds.create).not.toHaveBeenCalled();
+		expect(mockSendCustomerConfirmation).not.toHaveBeenCalled();
+		expect(mockSendAdminNotification).not.toHaveBeenCalled();
+		expect(mockSendCustomerFulfillmentFailure).not.toHaveBeenCalled();
+		expect(mockSendFailureAlert).not.toHaveBeenCalled();
+	});
+
+	it.each([
+		"retrieve",
+		"line items",
+	] as const)("keeps a marked first-delivery %s failure before notification effects", async (failurePoint) => {
+		const session = makeCheckoutSession({
+			metadata: {
+				checkoutSnapshotVersion: "2",
+				checkoutSnapshotHandle: snapshotHandle,
+				commerceTenantSiteUrl: "angelsrest.online",
+			},
+		});
+		convex.query.mockResolvedValue({
+			source: "reservation",
+			siteUrl: "angelsrest.online",
+			stripeConnectedAccountId: undefined,
+		});
+		if (failurePoint === "retrieve") {
+			stripe.checkout.sessions.retrieve.mockRejectedValue(new Error("Stripe unavailable"));
+		} else {
+			stripe.checkout.sessions.retrieve.mockResolvedValue(session);
+			stripe.checkout.sessions.listLineItems.mockRejectedValue(new Error("Stripe unavailable"));
+		}
+
+		const { processStripeWebhookEvent } = await import("../orderIntake");
+		await expect(
+			processStripeWebhookEvent(makeStripeEvent("checkout.session.completed", session), adapters()),
+		).rejects.toMatchObject({ status: 500 });
+
 		expect(convex.mutation).not.toHaveBeenCalled();
 		expect(createLumaPrintsOrder).not.toHaveBeenCalled();
 		expect(stripe.refunds.create).not.toHaveBeenCalled();

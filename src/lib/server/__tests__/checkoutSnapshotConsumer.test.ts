@@ -100,6 +100,12 @@ describe("checkout snapshot protocol inspection", () => {
 		expect(inspect(metadata as Stripe.Metadata)).toMatchObject({ kind: "invalid-marked" });
 	});
 
+	it("preflights inline structure before the paid line-item count is available", () => {
+		expect(inspectCheckoutSnapshotMetadata(inline([tuple(0)]), undefined)).toMatchObject({
+			kind: "inline-v1",
+		});
+	});
+
 	it("rejects declared/actual count mismatch", () => {
 		expect(inspect(inline([tuple(0)]), 2)).toMatchObject({ kind: "invalid-marked" });
 	});

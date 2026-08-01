@@ -47,7 +47,7 @@ export function readCheckoutTenantMarker(metadata: Stripe.Metadata | null) {
 
 export function inspectCheckoutSnapshotMetadata(
 	metadata: Stripe.Metadata | null,
-	lineItemCount: number,
+	lineItemCount?: number,
 ) {
 	const meta = (metadata ?? {}) as Record<string, unknown>;
 	const marked = checkoutSnapshotMarkerKeys(metadata);
@@ -77,7 +77,7 @@ export function inspectCheckoutSnapshotMetadata(
 		count < 1 ||
 		count > 40 ||
 		String(count) !== rawCount ||
-		count !== lineItemCount
+		(lineItemCount !== undefined && count !== lineItemCount)
 	)
 		return invalid();
 	const expected = new Set([

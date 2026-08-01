@@ -80,6 +80,12 @@ export async function processStripeWebhookEvent(
 					} catch (cause) {
 						throw new CheckoutSnapshotProtocolError("Checkout routing failed", { cause });
 					}
+					selectCheckoutSnapshotInput(
+						routing?.source ?? null,
+						routing?.source === "order"
+							? undefined
+							: inspectCheckoutSnapshotMetadata(session.metadata),
+					);
 				}
 				const tenantPromise = resolveCommerceTenant(event, adapters.convex, routing?.siteUrl);
 				const tenant = consumesCheckoutSnapshot
@@ -221,12 +227,22 @@ async function handleCheckoutCompleted(
 		sessionId: session.id,
 	});
 
-	const { fullSession, lineItems, shippingDetails } = await fetchSessionDetails(
-		session,
-		adapters.stripe,
-		stripeRequestOptions,
-		completeLineItems,
-	);
+	let details: Awaited<ReturnType<typeof fetchSessionDetails>>;
+	try {
+		details = await fetchSessionDetails(
+			session,
+			adapters.stripe,
+			stripeRequestOptions,
+			completeLineItems,
+		);
+	} catch (cause) {
+		if (cause instanceof CheckoutSnapshotProtocolError) throw cause;
+		if (completeLineItems) {
+			throw new CheckoutSnapshotProtocolError("Checkout details failed", { cause });
+		}
+		throw cause;
+	}
+	const { fullSession, lineItems, shippingDetails } = details;
 	const checkoutSnapshotInput = completeLineItems
 		? selectCheckoutSnapshotInput(
 				routingSource,
