@@ -56,6 +56,23 @@ const fulfillmentRecoveryStatusValidator = v.union(
 	v.literal("refunded"),
 );
 
+const manualRefundReconciliationResultValidator = v.union(
+	v.object({ kind: v.literal("reconciled") }),
+	v.object({ kind: v.literal("replayed") }),
+	v.object({ kind: v.literal("pending_order") }),
+	v.object({
+		kind: v.literal("rejected"),
+		reason: v.union(v.literal("identity_conflict"), v.literal("state_conflict")),
+	}),
+);
+
+const STRIPE_EVENT_ID = /^evt_[A-Za-z0-9]{8,120}$/;
+const STRIPE_REFUND_ID = /^re_[A-Za-z0-9]{8,120}$/;
+const STRIPE_PAYMENT_INTENT_ID = /^pi_[A-Za-z0-9]{8,120}$/;
+const STRIPE_CHARGE_ID = /^ch_[A-Za-z0-9]{8,120}$/;
+const CLAIM_TOKEN = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
+const PRINT_PREPARATION_LEASE_MS = 15 * 60 * 1000;
+
 function canClaimShipmentEmail(status: string) {
 	return status === "new" || status === "printing" || status === "ready";
 }
@@ -479,6 +496,26 @@ export const create = mutation({
 			};
 		}
 
+		if (
+			args.stripeConnectedAccountId !== undefined
+			&& !await connectedAccountMatchesSite(
+				ctx, args.siteUrl, args.stripeConnectedAccountId,
+			)
+		) routingConflict();
+		const refundIntent = await ctx.db.query("manualRefundIntents")
+			.withIndex("by_accountScope_and_stripeSessionId", (q) => q
+				.eq("accountScope", stripeAccountScope(args.stripeConnectedAccountId))
+				.eq("stripeSessionId", args.stripeSessionId))
+			.unique();
+		if (refundIntent && (
+			refundIntent.siteUrl !== args.siteUrl
+			|| refundIntent.stripeConnectedAccountId !== args.stripeConnectedAccountId
+			|| refundIntent.stripePaymentIntentId !== args.stripePaymentIntentId
+			|| refundIntent.amount !== args.total
+			|| refundIntent.stripeTenantMetadataSiteUrl !== undefined
+				&& refundIntent.stripeTenantMetadataSiteUrl !== args.siteUrl
+		)) routingConflict();
+
 		let orderInput = rest;
 		if (checkoutSnapshotReservation !== undefined) {
 			if (rest.checkoutSnapshot !== undefined) throw new Error("Checkout snapshot input is ambiguous");
@@ -498,24 +535,31 @@ export const create = mutation({
 		// Use provided order number or generate one atomically
 		const orderNumber = args.orderNumber || (await generateNextOrderNumber(ctx, args.siteUrl));
 
-		const feeCaptureScheduledAt = orderInput.stripePaymentIntentId
+		const isManuallyRefunded = refundIntent !== null;
+		const feeCaptureScheduledAt = !isManuallyRefunded && orderInput.stripePaymentIntentId
 			? Date.now() + FEE_CAPTURE_INITIAL_DELAY_MS
 			: undefined;
 		const _id = await ctx.db.insert("orders", {
 			...orderInput,
 			orderNumber,
-			status: "new",
-			stripeFeeCaptureStatus: orderInput.stripePaymentIntentId ? "pending" : undefined,
+			status: isManuallyRefunded ? "refunded" : "new",
+			stripeRefundId: refundIntent?.stripeRefundId,
+			stripeFeeCaptureStatus: isManuallyRefunded && orderInput.stripePaymentIntentId
+				? "canceled"
+				: feeCaptureScheduledAt !== undefined ? "pending" : undefined,
 			stripeFeeCaptureAttempts: orderInput.stripePaymentIntentId ? 0 : undefined,
 			stripeFeeCaptureNextAttemptAt: feeCaptureScheduledAt,
 		});
+		if (refundIntent) {
+			await ctx.db.patch(refundIntent._id, { orderId: _id, consumedAt: Date.now() });
+		}
 
 		// Schedule Stripe fee capture off the webhook hot path (audit H5).
 		// Stripe's balance_transaction isn't populated the instant
 		// checkout.session.completed fires, so we wait 15s then fetch.
 		// The action is idempotent and reschedules itself up to 3 times if
 		// the fee still isn't available — see convex/stripeFees.ts.
-		if (orderInput.stripePaymentIntentId) {
+		if (feeCaptureScheduledAt !== undefined) {
 			await ctx.scheduler.runAfter(
 				FEE_CAPTURE_INITIAL_DELAY_MS,
 				internal.stripeFees.captureFeesForOrder,
@@ -526,20 +570,215 @@ export const create = mutation({
 		return {
 			_id,
 			orderNumber,
-			alreadyExisted: false as const,
+			// Old webhook consumers already treat `alreadyExisted` refunded rows as
+			// terminal and suppress fulfillment and notification side effects.
+			alreadyExisted: isManuallyRefunded,
 			lumaprintsOrderNumber: undefined,
-			status: "new" as const,
+			status: isManuallyRefunded ? ("refunded" as const) : ("new" as const),
 			stripeFees: undefined,
-			stripeFeeCaptureStatus: orderInput.stripePaymentIntentId ? ("pending" as const) : undefined,
+			stripeFeeCaptureStatus: isManuallyRefunded && orderInput.stripePaymentIntentId
+				? ("canceled" as const)
+				: feeCaptureScheduledAt !== undefined ? ("pending" as const) : undefined,
 			stripeFeeCaptureAttempts: orderInput.stripePaymentIntentId ? 0 : undefined,
 			stripeFeeCaptureLastAttemptAt: undefined,
 			stripeFeeCaptureNextAttemptAt: feeCaptureScheduledAt,
 			stripeFeeCaptureError: undefined,
 			fulfillmentError: undefined,
-			stripeRefundId: undefined,
+			stripeRefundId: refundIntent?.stripeRefundId,
 			fulfillmentRecoveryStatus: undefined,
 			checkoutSnapshot: orderInput.checkoutSnapshot,
 		};
+	},
+});
+
+/**
+ * Stripe-webhook-only projection for one full, succeeded manual refund.
+ * The signed hub handler verifies provider evidence before this transaction.
+ */
+export const reconcileSucceededManualRefund = mutation({
+	args: {
+		webhookSecret: v.string(),
+		stripeEventId: v.string(),
+		stripeRefundId: v.string(),
+		stripeChargeId: v.string(),
+		stripeSessionId: v.string(),
+		stripePaymentIntentId: v.string(),
+		stripeConnectedAccountId: v.optional(v.string()),
+		stripeTenantMetadataSiteUrl: v.optional(v.string()),
+		siteUrl: v.string(),
+		refundAmount: v.number(),
+		sessionAmountTotal: v.number(),
+		refundCurrency: v.literal("usd"),
+		sessionCurrency: v.literal("usd"),
+		eventLivemode: v.boolean(),
+		sessionLivemode: v.boolean(),
+	},
+	returns: manualRefundReconciliationResultValidator,
+	handler: async (ctx, args) => {
+		await requireWebhookCallerOrAuth(ctx, args.webhookSecret, { allowAuth: false });
+		const validIdentity = STRIPE_EVENT_ID.test(args.stripeEventId)
+			&& STRIPE_REFUND_ID.test(args.stripeRefundId)
+			&& STRIPE_CHARGE_ID.test(args.stripeChargeId)
+			&& STRIPE_PAYMENT_INTENT_ID.test(args.stripePaymentIntentId)
+			&& isStripeCheckoutSessionId(args.stripeSessionId)
+			&& (args.stripeConnectedAccountId === undefined
+				|| isStripeConnectedAccountId(args.stripeConnectedAccountId))
+			&& Number.isSafeInteger(args.refundAmount)
+			&& args.refundAmount > 0
+			&& args.refundAmount === args.sessionAmountTotal
+			&& args.refundCurrency === args.sessionCurrency
+			&& args.eventLivemode === args.sessionLivemode;
+		if (!validIdentity) return { kind: "rejected" as const, reason: "identity_conflict" as const };
+		if (args.stripeConnectedAccountId !== undefined) {
+			const clients = await ctx.db.query("platformClients")
+				.withIndex("by_stripeConnectedAccountId", (q) => q
+					.eq("stripeConnectedAccountId", args.stripeConnectedAccountId))
+				.take(2);
+			if (clients.length !== 1 || clients[0].siteUrl !== args.siteUrl) {
+				return { kind: "rejected" as const, reason: "identity_conflict" as const };
+			}
+		}
+
+		const accountScope = stripeAccountScope(args.stripeConnectedAccountId);
+		const refundIntents = await ctx.db.query("manualRefundIntents")
+			.withIndex("by_stripeRefundId", (q) => q.eq("stripeRefundId", args.stripeRefundId))
+			.take(2);
+		const sessionIntents = await ctx.db.query("manualRefundIntents")
+			.withIndex("by_accountScope_and_stripeSessionId", (q) => q
+				.eq("accountScope", accountScope).eq("stripeSessionId", args.stripeSessionId))
+			.take(2);
+		if (refundIntents.length > 1 || sessionIntents.length > 1) {
+			return { kind: "rejected" as const, reason: "identity_conflict" as const };
+		}
+		const byRefund = refundIntents[0];
+		const bySession = sessionIntents[0];
+		if (byRefund && bySession && byRefund._id !== bySession._id) {
+			return { kind: "rejected" as const, reason: "identity_conflict" as const };
+		}
+		let intent: Doc<"manualRefundIntents"> | undefined = byRefund ?? bySession;
+		if (intent && (
+			intent.accountScope !== accountScope
+			|| intent.siteUrl !== args.siteUrl
+			|| intent.stripeRefundId !== args.stripeRefundId
+			|| intent.stripeChargeId !== args.stripeChargeId
+			|| intent.stripeSessionId !== args.stripeSessionId
+			|| intent.stripePaymentIntentId !== args.stripePaymentIntentId
+			|| intent.stripeConnectedAccountId !== args.stripeConnectedAccountId
+			|| intent.stripeTenantMetadataSiteUrl !== args.stripeTenantMetadataSiteUrl
+			|| intent.amount !== args.refundAmount
+			|| intent.currency !== args.refundCurrency
+			|| intent.livemode !== args.eventLivemode
+		)) return { kind: "rejected" as const, reason: "identity_conflict" as const };
+
+		const matches = await ctx.db.query("orders")
+			.withIndex("by_stripeSessionId", (q) => q.eq("stripeSessionId", args.stripeSessionId))
+			.take(2);
+		if (matches.length > 1) {
+			return { kind: "rejected" as const, reason: "identity_conflict" as const };
+		}
+		const order = matches[0];
+		if (order && (
+			order.siteUrl !== args.siteUrl
+			|| args.stripeTenantMetadataSiteUrl !== undefined
+				&& args.stripeTenantMetadataSiteUrl !== order.siteUrl
+			|| order.total !== args.refundAmount
+			|| order.stripePaymentIntentId !== undefined
+				&& order.stripePaymentIntentId !== args.stripePaymentIntentId
+		)) return { kind: "rejected" as const, reason: "identity_conflict" as const };
+
+		if (order?.stripeConnectedAccountId !== undefined) {
+			if (
+				args.stripeConnectedAccountId !== order.stripeConnectedAccountId
+				|| !await connectedAccountMatchesSite(
+					ctx, order.siteUrl, order.stripeConnectedAccountId,
+				)
+			) return { kind: "rejected" as const, reason: "identity_conflict" as const };
+		} else if (
+			order
+			&& args.stripeConnectedAccountId !== undefined
+			&& !await connectedAccountMatchesSite(ctx, order.siteUrl, args.stripeConnectedAccountId)
+		) return { kind: "rejected" as const, reason: "identity_conflict" as const };
+
+		if (!intent) {
+			const intentId = await ctx.db.insert("manualRefundIntents", {
+				accountScope,
+				siteUrl: args.siteUrl,
+				stripeEventId: args.stripeEventId,
+				stripeRefundId: args.stripeRefundId,
+				stripeChargeId: args.stripeChargeId,
+				stripeSessionId: args.stripeSessionId,
+				stripePaymentIntentId: args.stripePaymentIntentId,
+				stripeConnectedAccountId: args.stripeConnectedAccountId,
+				stripeTenantMetadataSiteUrl: args.stripeTenantMetadataSiteUrl,
+				amount: args.refundAmount,
+				currency: args.refundCurrency,
+				livemode: args.eventLivemode,
+				createdAt: Date.now(),
+			});
+			intent = await ctx.db.get(intentId) ?? undefined;
+		}
+		if (!intent) throw new Error("Manual refund intent was not stored");
+		if (!order) return { kind: "pending_order" as const };
+
+		const isManualTerminal = order.status === "refunded"
+			&& order.stripeRefundId === args.stripeRefundId
+			&& order.lumaprintsOrderNumber === undefined
+			&& !order.printFulfillmentClaim
+			&& order.printFulfillmentPhase === undefined
+			&& order.fulfillmentError === undefined
+			&& order.fulfillmentRecoveryStatus === undefined;
+		if (isManualTerminal) {
+			if (intent.orderId === undefined) {
+				await ctx.db.patch(intent._id, { orderId: order._id, consumedAt: Date.now() });
+			}
+			return { kind: "replayed" as const };
+		}
+		const canTakeOverPendingRecovery = order.status === "fulfillment_error"
+			&& order.fulfillmentRecoveryStatus === "refund_pending"
+			&& order.stripeRefundId === undefined
+			&& order.lumaprintsOrderNumber === undefined
+			&& !order.printFulfillmentClaim;
+		const isUnfulfilledNew = order.status === "new"
+			&& order.lumaprintsOrderNumber === undefined
+			&& order.stripeRefundId === undefined
+			&& order.fulfillmentError === undefined
+			&& order.fulfillmentRecoveryStatus === undefined;
+		if (!isUnfulfilledNew && !canTakeOverPendingRecovery) {
+			return { kind: "rejected" as const, reason: "state_conflict" as const };
+		}
+		if (
+			order.printFulfillmentClaim
+			&& order.printFulfillmentPhase !== "preparing"
+		) throw new Error("Print fulfillment submission is in progress");
+		const cancelsFeeCapture = order.stripePaymentIntentId !== undefined
+			&& order.stripeFees === undefined
+			&& (
+				order.stripeFeeCaptureStatus === undefined
+				|| order.stripeFeeCaptureStatus === "pending"
+			);
+
+		await ctx.db.patch(order._id, {
+			status: "refunded",
+			stripeRefundId: args.stripeRefundId,
+			fulfillmentError: undefined,
+			fulfillmentRecoveryStatus: undefined,
+			stripeFeeCaptureStatus: cancelsFeeCapture
+				? "canceled"
+				: order.stripeFeeCaptureStatus,
+			stripeFeeCaptureNextAttemptAt: cancelsFeeCapture
+				? undefined
+				: order.stripeFeeCaptureNextAttemptAt,
+			stripeFeeCaptureError: cancelsFeeCapture
+				? undefined
+				: order.stripeFeeCaptureError,
+			printFulfillmentClaim: undefined,
+			printFulfillmentClaimToken: undefined,
+			printFulfillmentPhase: undefined,
+			printFulfillmentClaimedAt: undefined,
+			printFulfillmentLeaseExpiresAt: undefined,
+		});
+		await ctx.db.patch(intent._id, { orderId: order._id, consumedAt: Date.now() });
+		return { kind: "reconciled" as const };
 	},
 });
 
@@ -625,6 +864,7 @@ export const resolveCheckoutRouting = query({
 	},
 });
 
+/** Legacy V1 claim retained for a safe Convex-first rollout. */
 export const claimPrintFulfillment = mutation({
 	args: { orderId: v.id("orders"), webhookSecret: v.string() },
 	handler: async (ctx, args) => {
@@ -633,6 +873,11 @@ export const claimPrintFulfillment = mutation({
 		if (!order) throw new Error("Order not found");
 		if (order.lumaprintsOrderNumber)
 			return { kind: "fulfilled" as const, orderNumber: order.lumaprintsOrderNumber };
+		if (
+			order.status === "refunded"
+			&& order.stripeRefundId
+			&& order.fulfillmentRecoveryStatus === undefined
+		) return { kind: "busy" as const };
 		if (order.status === "refunded" || order.stripeRefundId)
 			return { kind: "refunded" as const, stripeRefundId: order.stripeRefundId };
 		if (order.fulfillmentRecoveryStatus) return { kind: "busy" as const };
@@ -640,6 +885,152 @@ export const claimPrintFulfillment = mutation({
 			return { kind: "reconcile" as const, externalId: order.stripeSessionId };
 		await ctx.db.patch(args.orderId, { printFulfillmentClaim: true });
 		return { kind: "claimed" as const, externalId: order.stripeSessionId };
+	},
+});
+
+/** Tokenized preparation lease used by the V2 fulfillment coordinator. */
+export const claimPrintFulfillmentV2 = mutation({
+	args: {
+		orderId: v.id("orders"),
+		claimToken: v.string(),
+		webhookSecret: v.string(),
+	},
+	handler: async (ctx, args) => {
+		await requireWebhookCallerOrAuth(ctx, args.webhookSecret, { allowAuth: false });
+		if (!CLAIM_TOKEN.test(args.claimToken)) throw new Error("Invalid print claim token");
+		const order = await ctx.db.get(args.orderId);
+		if (!order) throw new Error("Order not found");
+		if (order.lumaprintsOrderNumber)
+			return { kind: "fulfilled" as const, orderNumber: order.lumaprintsOrderNumber };
+		if (
+			order.status === "refunded"
+			&& order.stripeRefundId
+			&& order.fulfillmentRecoveryStatus === undefined
+		) {
+			return { kind: "manual_refunded" as const, stripeRefundId: order.stripeRefundId };
+		}
+		if (order.stripeRefundId) {
+			return { kind: "automated_refunded" as const, stripeRefundId: order.stripeRefundId };
+		}
+		if (order.fulfillmentRecoveryStatus || order.status !== "new") {
+			return { kind: "busy" as const };
+		}
+		const now = Date.now();
+		if (order.printFulfillmentClaim) {
+			if (order.printFulfillmentPhase !== "preparing") {
+				return { kind: "reconcile" as const, externalId: order.stripeSessionId };
+			}
+			if (
+				order.printFulfillmentLeaseExpiresAt !== undefined
+				&& order.printFulfillmentLeaseExpiresAt > now
+			) return { kind: "preparing" as const };
+		}
+		const leaseExpiresAt = now + PRINT_PREPARATION_LEASE_MS;
+		await ctx.db.patch(args.orderId, {
+			printFulfillmentClaim: true,
+			printFulfillmentClaimToken: args.claimToken,
+			printFulfillmentPhase: "preparing",
+			printFulfillmentClaimedAt: now,
+			printFulfillmentLeaseExpiresAt: leaseExpiresAt,
+		});
+		return {
+			kind: "claimed" as const,
+			externalId: order.stripeSessionId,
+			leaseExpiresAt,
+		};
+	},
+});
+
+/** Release only the caller's pre-submission preparation lease. */
+export const releasePrintFulfillmentClaim = mutation({
+	args: { orderId: v.id("orders"), claimToken: v.string(), webhookSecret: v.string() },
+	returns: v.boolean(),
+	handler: async (ctx, args) => {
+		await requireWebhookCallerOrAuth(ctx, args.webhookSecret, { allowAuth: false });
+		const order = await ctx.db.get(args.orderId);
+		if (
+			!order
+			|| order.status !== "new"
+			|| !order.printFulfillmentClaim
+			|| order.printFulfillmentPhase !== "preparing"
+			|| order.printFulfillmentClaimToken !== args.claimToken
+			|| order.lumaprintsOrderNumber !== undefined
+			|| order.stripeRefundId !== undefined
+			|| order.fulfillmentRecoveryStatus !== undefined
+		) return false;
+		await ctx.db.patch(order._id, {
+			printFulfillmentClaim: undefined,
+			printFulfillmentClaimToken: undefined,
+			printFulfillmentPhase: undefined,
+			printFulfillmentClaimedAt: undefined,
+			printFulfillmentLeaseExpiresAt: undefined,
+		});
+		return true;
+	},
+});
+
+/** Atomically fence the irreversible provider POST after local preparation. */
+export const beginPrintFulfillmentSubmission = mutation({
+	args: { orderId: v.id("orders"), claimToken: v.string(), webhookSecret: v.string() },
+	handler: async (ctx, args) => {
+		await requireWebhookCallerOrAuth(ctx, args.webhookSecret, { allowAuth: false });
+		const order = await ctx.db.get(args.orderId);
+		if (!order) throw new Error("Order not found");
+		if (
+			order.status === "refunded"
+			&& order.stripeRefundId
+			&& order.fulfillmentRecoveryStatus === undefined
+		) {
+			return { kind: "manual_refunded" as const, stripeRefundId: order.stripeRefundId };
+		}
+		if (order.stripeRefundId) {
+			return { kind: "automated_refunded" as const, stripeRefundId: order.stripeRefundId };
+		}
+		if (
+			order.status !== "new"
+			|| order.printFulfillmentPhase !== "preparing"
+			|| order.printFulfillmentClaimToken !== args.claimToken
+			|| order.printFulfillmentLeaseExpiresAt === undefined
+			|| order.printFulfillmentLeaseExpiresAt <= Date.now()
+		) return { kind: "lost" as const };
+		await ctx.db.patch(order._id, {
+			printFulfillmentPhase: "submitting",
+			printFulfillmentLeaseExpiresAt: undefined,
+		});
+		return { kind: "submitting" as const, externalId: order.stripeSessionId };
+	},
+});
+
+/** Atomically select the notification outcome for an order without print submission. */
+export const claimNonPrintOrderOutcome = mutation({
+	args: { orderId: v.id("orders"), webhookSecret: v.string() },
+	returns: v.union(
+		v.object({ kind: v.literal("success") }),
+		v.object({ kind: v.literal("none") }),
+		v.object({ kind: v.literal("manual_refunded"), stripeRefundId: v.string() }),
+		v.object({ kind: v.literal("automated_refunded"), stripeRefundId: v.string() }),
+	),
+	handler: async (ctx, args) => {
+		await requireWebhookCallerOrAuth(ctx, args.webhookSecret, { allowAuth: false });
+		const order = await ctx.db.get(args.orderId);
+		if (!order) throw new Error("Order not found");
+		if (
+			order.status === "refunded"
+			&& order.stripeRefundId
+			&& order.fulfillmentRecoveryStatus === undefined
+		) return { kind: "manual_refunded" as const, stripeRefundId: order.stripeRefundId };
+		if (order.stripeRefundId) {
+			return { kind: "automated_refunded" as const, stripeRefundId: order.stripeRefundId };
+		}
+		if (
+			order.status !== "new"
+			|| order.fulfillmentRecoveryStatus !== undefined
+			|| order.lumaprintsOrderNumber !== undefined
+			|| order.printFulfillmentClaim
+			|| order.orderConfirmationClaimedAt !== undefined
+		) return { kind: "none" as const };
+		await ctx.db.patch(order._id, { orderConfirmationClaimedAt: Date.now() });
+		return { kind: "success" as const };
 	},
 });
 
@@ -668,16 +1059,54 @@ export const updateStatus = mutation({
 	},
 	handler: async (ctx, { orderId, webhookSecret, ...updates }) => {
 		const auth = await requireWebhookCallerOrAuth(ctx, webhookSecret);
-		if (auth.via === "auth") await requireDocumentSiteAdmin(ctx, "orders", orderId);
 		const refundUpdate = updates.stripeRefundId !== undefined
 			|| updates.fulfillmentRecoveryStatus !== undefined || updates.status === "refunded";
-		const current = refundUpdate ? await ctx.db.get(orderId) : null;
+		const fulfillmentUpdate = refundUpdate
+			|| updates.status !== undefined
+			|| updates.lumaprintsOrderNumber !== undefined
+			|| updates.trackingNumber !== undefined
+			|| updates.trackingUrl !== undefined
+			|| updates.stripePaymentIntentId !== undefined
+			|| updates.stripeFees !== undefined
+			|| updates.fulfillmentError !== undefined;
+		if (auth.via === "auth") {
+			await requireDocumentSiteAdmin(ctx, "orders", orderId);
+			if (refundUpdate) throw new Error("Stripe refund facts require webhook authority");
+		}
+		const current = fulfillmentUpdate ? await ctx.db.get(orderId) : null;
+		const isManualTerminal = current?.status === "refunded"
+			&& current.stripeRefundId !== undefined
+			&& current.fulfillmentRecoveryStatus === undefined;
+		if (
+			isManualTerminal
+			&& (
+				updates.status !== undefined && updates.status !== "refunded"
+				|| updates.lumaprintsOrderNumber !== undefined
+				|| updates.trackingNumber !== undefined
+				|| updates.trackingUrl !== undefined
+				|| updates.stripePaymentIntentId !== undefined
+				|| updates.stripeFees !== undefined
+				|| updates.fulfillmentError !== undefined
+				|| updates.fulfillmentRecoveryStatus !== undefined
+			)
+		) throw new Error("Refunded order fulfillment is terminal");
+		if (
+			auth.via === "auth"
+			&& current?.printFulfillmentClaim
+			&& (updates.status !== undefined || updates.lumaprintsOrderNumber !== undefined)
+		) throw new Error("Print fulfillment submission is in progress");
 		if (refundUpdate && current?.printFulfillmentClaim && !current.lumaprintsOrderNumber) {
 			throw new Error("Print fulfillment submission is in progress");
 		}
 		const patch: Record<string, unknown> = {};
 		for (const [key, val] of Object.entries(updates)) if (val !== undefined) patch[key] = val;
-		if (updates.lumaprintsOrderNumber) patch.printFulfillmentClaim = undefined;
+		if (updates.lumaprintsOrderNumber) {
+			patch.printFulfillmentClaim = undefined;
+			patch.printFulfillmentClaimToken = undefined;
+			patch.printFulfillmentPhase = undefined;
+			patch.printFulfillmentClaimedAt = undefined;
+			patch.printFulfillmentLeaseExpiresAt = undefined;
+		}
 		if (Object.keys(patch).length > 0) {
 			await ctx.db.patch(orderId, patch);
 		}

@@ -165,6 +165,26 @@ must have exactly one order-intake owner. Future Stripe Connect clients add
 tenant configuration and use the bridge; they do not copy the webhook
 coordinator into their repositories.
 
+### Manual refund reconciliation
+
+The signed commerce webhook accepts `refund.created` and `refund.updated` as
+Stripe refund authority. A full, succeeded USD refund is matched to exactly one
+paid Checkout Session in the event's platform or connected-account scope. A
+webhook-only Convex transaction then marks only an unfulfilled `new` order as
+`refunded` and stores the refund ID. If the refund arrives first, Convex keeps a
+provider-verified intent that makes later order creation terminal. Partial,
+automated, ambiguous, or conflicting evidence fails closed. This path sends no
+email and does not change checkout snapshot reservations. Manual reconciliation
+also cancels pending fee capture before another provider read can store data.
+Print fulfillment uses an expiring preparation lease and an atomic submission
+fence, so refund and provider effects cannot both start. The additive V2 claim
+API keeps the V1 claim available for a Convex-first rollout.
+
+Production rollout must deploy Convex first. Before hub activation, verify that
+the commerce event destination delivers both refund event types for platform
+and connected accounts. Automated fulfillment recovery remains a separate owner
+of its tagged refunds.
+
 ### LumaPrints shipment webhook
 
 `/api/webhooks/lumaprints` is the single shipment-intake owner for hub and spoke

@@ -52,7 +52,10 @@ vi.mock("$lib/server/webhookEmails", () => ({
 vi.mock("$convex/api", () => ({
 	api: {
 		orders: {
-			claimPrintFulfillment: "orders.claimPrintFulfillment",
+			beginPrintFulfillmentSubmission: "orders.beginPrintFulfillmentSubmission",
+			claimNonPrintOrderOutcome: "orders.claimNonPrintOrderOutcome",
+			claimPrintFulfillmentV2: "orders.claimPrintFulfillmentV2",
+			releasePrintFulfillmentClaim: "orders.releasePrintFulfillmentClaim",
 			updatePrintFulfillment: "orders.updatePrintFulfillment",
 			updateStatus: "orders.updateStatus",
 		},
@@ -123,8 +126,13 @@ describe("print fulfillment", () => {
 		vi.clearAllMocks();
 		convex.mutation.mockReset();
 		convex.mutation.mockImplementation(async (reference: string, args: { update?: string }) => {
-			if (reference === "orders.claimPrintFulfillment")
+			if (reference === "orders.claimNonPrintOrderOutcome") return { kind: "success" };
+			if (reference === "orders.claimPrintFulfillmentV2")
 				return { kind: "claimed", externalId: session.id };
+			if (reference === "orders.beginPrintFulfillmentSubmission") {
+				return { kind: "submitting", externalId: session.id };
+			}
+			if (reference === "orders.releasePrintFulfillmentClaim") return true;
 			if (reference === "orders.updatePrintFulfillment") return { kind: args.update };
 		});
 		stripe.refunds.create.mockResolvedValue({
@@ -176,13 +184,15 @@ describe("print fulfillment", () => {
 		];
 		const sessions = cases.map(({ id }) => id);
 		convex.mutation.mockImplementation(
-			async (reference: string, args: { orderId: Id<"orders"> }) =>
-				reference === "orders.claimPrintFulfillment"
-					? {
-							kind: "claimed",
-							externalId: cases.find(({ orderId }) => orderId === args.orderId)?.id,
-						}
-					: undefined,
+			async (reference: string, args: { orderId: Id<"orders"> }) => {
+				const externalId = cases.find(({ orderId }) => orderId === args.orderId)?.id;
+				if (reference === "orders.claimPrintFulfillmentV2") {
+					return { kind: "claimed", externalId };
+				}
+				if (reference === "orders.beginPrintFulfillmentSubmission") {
+					return { kind: "submitting", externalId };
+				}
+			},
 		);
 		mockBuildLumaPrintsOrder.mockImplementation(buildLumaPrintsOrder);
 		mockBuildOrderItemsFromSession.mockImplementation(() => [
@@ -237,7 +247,7 @@ describe("print fulfillment", () => {
 		);
 	});
 
-	it("finishes snapshot preparation before claiming and retries preparation failures", async () => {
+	it("claims before snapshot preparation and releases the claim when preparation fails", async () => {
 		const { submitPrintFulfillment } = await import("../printFulfillment");
 		const checkoutSnapshot = {
 			schemaVersion: 1 as const,
@@ -275,7 +285,20 @@ describe("print fulfillment", () => {
 		await expect(
 			submitPrintFulfillment({ convex, createLumaPrintsOrder: mockCreateLumaPrintsOrder }, input),
 		).rejects.toThrow("capability unavailable");
-		expect(convex.mutation).not.toHaveBeenCalled();
+		expect(convex.mutation).toHaveBeenNthCalledWith(1, "orders.claimPrintFulfillmentV2", {
+			orderId,
+			claimToken: expect.any(String),
+			webhookSecret: "test-webhook-secret",
+		});
+		expect(convex.mutation).toHaveBeenNthCalledWith(2, "orders.releasePrintFulfillmentClaim", {
+			orderId,
+			claimToken: expect.any(String),
+			webhookSecret: "test-webhook-secret",
+		});
+		expect(convex.mutation.mock.invocationCallOrder[0]).toBeLessThan(
+			mockBuildOrderItemsFromSnapshot.mock.invocationCallOrder[0],
+		);
+
 		await submitPrintFulfillment(
 			{ convex, createLumaPrintsOrder: mockCreateLumaPrintsOrder },
 			input,
@@ -283,17 +306,69 @@ describe("print fulfillment", () => {
 		expect(mockBuildOrderItemsFromSnapshot).toHaveBeenLastCalledWith(checkoutSnapshot, session.id, [
 			expect.objectContaining({ quantity: 3 }),
 		]);
-		expect(mockBuildLumaPrintsOrder.mock.invocationCallOrder[0]).toBeLessThan(
-			convex.mutation.mock.invocationCallOrder[0],
-		);
 		expect(mockBuildOrderItemsFromSession).not.toHaveBeenCalled();
+	});
+
+	it("holds the claim during bordered-image effects and releases it after preparation failure", async () => {
+		const { submitPrintFulfillment } = await import("../printFulfillment");
+		mockBuildOrderItemsFromSession.mockReturnValueOnce([
+			{
+				imageUrl: "https://opaque.example/source",
+				sourcePolicy: "opaque_capability",
+				paperSubcategoryId: 103001,
+				quantity: 1,
+				width: 8,
+				height: 10,
+				borderWidth: 0.25,
+			},
+		]);
+		mockProcessBorderedPrints.mockRejectedValueOnce(new Error("R2 unavailable"));
+
+		await expect(
+			submitPrintFulfillment(
+				{ convex, createLumaPrintsOrder: mockCreateLumaPrintsOrder },
+				printInput,
+			),
+		).rejects.toThrow("R2 unavailable");
+		expect(convex.mutation.mock.invocationCallOrder[0]).toBeLessThan(
+			mockProcessBorderedPrints.mock.invocationCallOrder[0],
+		);
+		expect(convex.mutation).toHaveBeenLastCalledWith("orders.releasePrintFulfillmentClaim", {
+			orderId,
+			claimToken: expect.any(String),
+			webhookSecret: "test-webhook-secret",
+		});
+		expect(mockCreateLumaPrintsOrder).not.toHaveBeenCalled();
+	});
+
+	it("does not submit when a manual refund cancels preparation before the provider fence", async () => {
+		const { submitPrintFulfillment } = await import("../printFulfillment");
+		convex.mutation.mockImplementation(async (reference: string) => {
+			if (reference === "orders.claimPrintFulfillmentV2") {
+				return { kind: "claimed", externalId: session.id };
+			}
+			if (reference === "orders.beginPrintFulfillmentSubmission") {
+				return { kind: "manual_refunded", stripeRefundId: "re_manual_123" };
+			}
+		});
+
+		await expect(
+			submitPrintFulfillment(
+				{ convex, createLumaPrintsOrder: mockCreateLumaPrintsOrder },
+				printInput,
+			),
+		).resolves.toEqual({ kind: "manual_refunded", stripeRefundId: "re_manual_123" });
+		expect(mockCreateLumaPrintsOrder).not.toHaveBeenCalled();
 	});
 
 	it("reconciles an ambiguous POST and never submits it twice", async () => {
 		const { submitPrintFulfillment } = await import("../printFulfillment");
 		let claimed = false;
 		convex.mutation.mockImplementation(async (reference: string) => {
-			if (reference !== "orders.claimPrintFulfillment") return;
+			if (reference === "orders.beginPrintFulfillmentSubmission") {
+				return { kind: "submitting", externalId: session.id };
+			}
+			if (reference !== "orders.claimPrintFulfillmentV2") return;
 			if (claimed) return { kind: "reconcile", externalId: session.id };
 			claimed = true;
 			return { kind: "claimed", externalId: session.id };

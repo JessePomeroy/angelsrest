@@ -123,6 +123,36 @@ describe("Stripe fee capture checkpoints", () => {
 		expect(order?.stripeFeeCaptureError).toBeUndefined();
 	});
 
+	test("keeps a manual-refund cancellation terminal across every fee transition", async () => {
+		const { t, orderId } = await seedOrder();
+		await t.mutation(internal.stripeFeesStore.beginAttempt, { orderId, attempt: 1 });
+		await t.run((ctx) => ctx.db.patch(orderId, {
+			status: "refunded",
+			stripeRefundId: "re_manual_refund",
+			stripeFeeCaptureStatus: "canceled",
+			stripeFeeCaptureNextAttemptAt: undefined,
+		}));
+
+		await expect(t.query(internal.stripeFeesStore.getOrderForFees, { orderId }))
+			.resolves.toBeNull();
+		await expect(t.mutation(internal.stripeFeesStore.beginAttempt, { orderId, attempt: 2 }))
+			.resolves.toBe(false);
+		await expect(t.mutation(internal.stripeFeesStore.recordRetry, {
+			orderId, attempt: 1, error: "stripe_api_error",
+		})).resolves.toBe(false);
+		await expect(t.mutation(internal.stripeFeesStore.setFees, {
+			orderId, stripeFees: 300, attempt: 1,
+		})).resolves.toBe(false);
+		await expect(t.mutation(internal.stripeFeesStore.recordFailure, {
+			orderId, attempt: 1, error: "stripe_api_error",
+		})).resolves.toBe(false);
+		expect(await t.run((ctx) => ctx.db.get(orderId))).toMatchObject({
+			status: "refunded",
+			stripeRefundId: "re_manual_refund",
+			stripeFeeCaptureStatus: "canceled",
+		});
+	});
+
 	test("records terminal failure and refuses to regress to pending", async () => {
 		const { t, orderId } = await seedOrder();
 		await t.mutation(internal.stripeFeesStore.recordFailure, {

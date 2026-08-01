@@ -770,6 +770,27 @@ export default defineSchema({
 		.index("by_siteUrl_and_handleHash", ["siteUrl", "handleHash"])
 		.index("by_accountScope_and_stripeSessionId", ["accountScope", "stripeSessionId"]),
 
+	// Provider-verified manual refunds that can arrive before their paid order event.
+	manualRefundIntents: defineTable({
+		accountScope: v.string(),
+		siteUrl: v.string(),
+		stripeEventId: v.string(),
+		stripeRefundId: v.string(),
+		stripeChargeId: v.string(),
+		stripeSessionId: v.string(),
+		stripePaymentIntentId: v.string(),
+		stripeConnectedAccountId: v.optional(v.string()),
+		stripeTenantMetadataSiteUrl: v.optional(v.string()),
+		amount: v.number(),
+		currency: v.literal("usd"),
+		livemode: v.boolean(),
+		createdAt: v.number(),
+		orderId: v.optional(v.id("orders")),
+		consumedAt: v.optional(v.number()),
+	})
+		.index("by_accountScope_and_stripeSessionId", ["accountScope", "stripeSessionId"])
+		.index("by_stripeRefundId", ["stripeRefundId"]),
+
 	// Print orders (from Stripe checkout on any client site)
 	orders: defineTable({
 		siteUrl: v.string(),
@@ -806,7 +827,12 @@ export default defineSchema({
 		// Optional for compatibility with orders created before fee capture was
 		// checkpointed explicitly.
 		stripeFeeCaptureStatus: v.optional(
-			v.union(v.literal("pending"), v.literal("captured"), v.literal("failed")),
+			v.union(
+				v.literal("pending"),
+				v.literal("captured"),
+				v.literal("failed"),
+				v.literal("canceled"),
+			),
 		),
 		stripeFeeCaptureAttempts: v.optional(v.number()),
 		stripeFeeCaptureLastAttemptAt: v.optional(v.number()),
@@ -821,11 +847,20 @@ export default defineSchema({
 			v.literal("digital"),
 		),
 		lumaprintsOrderNumber: v.optional(v.string()),
+		// The legacy boolean remains for safe reconciliation of pre-lease claims.
 		printFulfillmentClaim: v.optional(v.boolean()),
+		printFulfillmentClaimToken: v.optional(v.string()),
+		printFulfillmentPhase: v.optional(
+			v.union(v.literal("preparing"), v.literal("submitting")),
+		),
+		printFulfillmentClaimedAt: v.optional(v.number()),
+		printFulfillmentLeaseExpiresAt: v.optional(v.number()),
 		paperName: v.optional(v.string()),
 		paperSubcategoryId: v.optional(v.string()),
 		trackingNumber: v.optional(v.string()),
 		trackingUrl: v.optional(v.string()),
+		// Atomic success-notification fence for orders without print submission.
+		orderConfirmationClaimedAt: v.optional(v.number()),
 		// Legacy claim marker for the one-time shipment email side effect.
 		// New delivery observability lives in `shipmentEmailDeliveryStatus`.
 		shipmentEmailSentAt: v.optional(v.number()),
@@ -854,7 +889,8 @@ export default defineSchema({
 		),
 		// Human-readable error from the failed LumaPrints submission.
 		fulfillmentError: v.optional(v.string()),
-		// Stripe refund ID when automated refund creation succeeded.
+		// Stripe refund ID after provider-authoritative manual reconciliation or
+		// successful automated fulfillment recovery.
 		stripeRefundId: v.optional(v.string()),
 		// Durable checkpoint for retry-safe permanent fulfillment recovery.
 		// `refund_pending` is written before Stripe is called; `refunded` is

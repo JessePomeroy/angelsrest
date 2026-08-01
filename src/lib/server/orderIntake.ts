@@ -17,6 +17,10 @@ import {
 	resolveCommerceTenant,
 } from "$lib/server/commerceTenant";
 import { logStructured } from "$lib/server/logger";
+import {
+	ManualRefundReconciliationRetryableError,
+	reconcileSucceededManualRefund,
+} from "$lib/server/manualRefundReconciliation";
 import type { SubmitLumaPrintsOrder } from "$lib/server/printFulfillment";
 import type { ShippingDetails } from "$lib/server/webhookEmails";
 import {
@@ -116,6 +120,11 @@ export async function processStripeWebhookEvent(
 				break;
 			}
 
+			case "refund.created":
+			case "refund.updated":
+				await reconcileSucceededManualRefund(event, adapters);
+				break;
+
 			default:
 				break;
 		}
@@ -139,7 +148,10 @@ export async function processStripeWebhookEvent(
 			error: err,
 			meta: { stripeEventType: event.type },
 		});
-		if (!(err instanceof CheckoutSnapshotProtocolError)) {
+		if (
+			!(err instanceof CheckoutSnapshotProtocolError) &&
+			!(err instanceof ManualRefundReconciliationRetryableError)
+		) {
 			await sendFailureAlert(adapters.resend, event.type, sessionId ?? "unknown", errorMessage);
 		}
 		throw error(500, "Webhook processing failed");
@@ -294,7 +306,12 @@ async function handleCheckoutCompleted(
 			stage: "webhook",
 			sessionId: session.id,
 			orderId: orderResult.orderNumber,
-			meta: { reason: "order_already_existed" },
+			meta: {
+				reason:
+					orderResult.fulfillment.kind === "manual_refunded"
+						? "order_manually_refunded"
+						: "order_already_existed",
+			},
 		});
 	} else if (
 		orderResult.notification === "failure" &&

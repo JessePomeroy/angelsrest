@@ -116,14 +116,16 @@ export const captureFeesForOrder = internalAction({
 			const fees =
 				typeof balanceTxn === "object" && balanceTxn !== null ? balanceTxn.fee : undefined;
 			if (typeof fees === "number" && fees >= 0) {
-				await ctx.runMutation(internal.stripeFeesStore.setFees, {
+				const stored = await ctx.runMutation(internal.stripeFeesStore.setFees, {
 					orderId,
 					stripeFees: fees,
 					attempt,
 				});
-				console.log(
-					`[stripeFees] captured ${fees} cents for order ${order.orderNumber} on attempt ${attempt}`,
-				);
+				if (stored) {
+					console.log(
+						`[stripeFees] captured ${fees} cents for order ${order.orderNumber} on attempt ${attempt}`,
+					);
+				}
 				return;
 			}
 			console.warn(
