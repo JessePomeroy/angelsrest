@@ -1,5 +1,11 @@
 # @jessepomeroy/crm-api
 
+## 2.33.2
+
+### Patch Changes
+
+- 6fdc471: Add durable webhook-only reconciliation for full manual Stripe refunds and additive V2 fulfillment race fences.
+
 ## 2.33.1
 
 ### Patch Changes
