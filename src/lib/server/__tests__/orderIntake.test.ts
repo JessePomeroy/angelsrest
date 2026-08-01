@@ -408,6 +408,123 @@ describe("processStripeWebhookEvent", () => {
 		expect(stripe.checkout.sessions.listLineItems).not.toHaveBeenCalled();
 	});
 
+	it("consumes a marked handle and fulfills from its stored snapshot when webhook mode is absent", async () => {
+		const session = makeCheckoutSession({
+			metadata: {
+				checkoutSnapshotVersion: "2",
+				checkoutSnapshotHandle: snapshotHandle,
+				commerceTenantSiteUrl: "angelsrest.online",
+			},
+		});
+		const lineItems = [makeLineItem()];
+		const checkoutSnapshot = {
+			schemaVersion: 1 as const,
+			catalogProvider: "sanity" as const,
+			items: [
+				{
+					productKey: "sanity-product-id",
+					revisionId: "sanity-revision-id",
+					productKind: "print" as const,
+					variantKey: null,
+					materialOptionKey: "archival-matte",
+					sizeOptionKey: "4x6",
+					borderOptionKey: null,
+					frameOptionKey: null,
+				},
+			],
+		};
+		stripe.checkout.sessions.retrieve.mockResolvedValue(session);
+		stripe.checkout.sessions.listLineItems.mockResolvedValue({ data: lineItems, has_more: false });
+		convex.query.mockResolvedValue({
+			source: "reservation",
+			siteUrl: "angelsrest.online",
+			stripeConnectedAccountId: undefined,
+		});
+		orderCreateResults = [makeOrderResult({ checkoutSnapshot })];
+		mockBuildOrderItemsFromSnapshot.mockResolvedValue([
+			{
+				imageUrl: "https://cdn.sanity.io/images/print.jpg",
+				sourcePolicy: "sanity_cdn",
+				quantity: 1,
+				paperSubcategoryId: 103001,
+				width: 4,
+				height: 6,
+			},
+		]);
+
+		const { processStripeWebhookEvent } = await import("../orderIntake");
+		await processStripeWebhookEvent(
+			makeStripeEvent("checkout.session.completed", session),
+			adapters(),
+		);
+
+		expect(convex.query).toHaveBeenCalledWith("orders.resolveCheckoutRouting", {
+			stripeSessionId: session.id,
+			stripeTenantMetadataSiteUrl: "angelsrest.online",
+			webhookSecret: "test-webhook-secret",
+		});
+		expect(stripe.checkout.sessions.listLineItems).toHaveBeenCalledWith(
+			session.id,
+			{ limit: 41 },
+			undefined,
+		);
+		expect(convex.mutation).toHaveBeenCalledWith(
+			"orders.create",
+			expect.objectContaining({
+				checkoutSnapshotReservation: { version: 2, handle: snapshotHandle },
+				items: [
+					{
+						productName: lineItems[0].description,
+						quantity: lineItems[0].quantity,
+						price: lineItems[0].amount_total,
+					},
+				],
+			}),
+		);
+		expect(mockBuildOrderItemsFromSnapshot).toHaveBeenCalledWith(
+			checkoutSnapshot,
+			session.id,
+			lineItems,
+		);
+		expect(createLumaPrintsOrder).toHaveBeenCalledTimes(1);
+		expect(mockBuildOrderItemsFromSnapshot.mock.invocationCallOrder[0]).toBeLessThan(
+			createLumaPrintsOrder.mock.invocationCallOrder[0],
+		);
+	});
+
+	it.each([
+		[
+			"unknown handle",
+			{
+				checkoutSnapshotVersion: "2",
+				checkoutSnapshotHandle: snapshotHandle,
+				commerceTenantSiteUrl: "angelsrest.online",
+			},
+		],
+		["malformed marker", { checkoutSnapshotVersion: "broken", checkoutSnapshotHandle: "bad" }],
+	] as const)("fails closed for a %s when webhook mode is absent", async (_label, metadata) => {
+		const session = makeCheckoutSession({ metadata });
+		stripe.checkout.sessions.retrieve.mockResolvedValue(session);
+		stripe.checkout.sessions.listLineItems.mockResolvedValue({
+			data: [makeLineItem()],
+			has_more: false,
+		});
+		convex.query.mockResolvedValue(null);
+
+		const { processStripeWebhookEvent } = await import("../orderIntake");
+		await expect(
+			processStripeWebhookEvent(makeStripeEvent("checkout.session.completed", session), adapters()),
+		).rejects.toMatchObject({ status: 500 });
+
+		expect(convex.mutation).not.toHaveBeenCalled();
+		expect(createLumaPrintsOrder).not.toHaveBeenCalled();
+		expect(stripe.refunds.create).not.toHaveBeenCalled();
+		expect(mockSendCustomerConfirmation).not.toHaveBeenCalled();
+		expect(mockSendAdminNotification).not.toHaveBeenCalled();
+		expect(mockSendCustomerFulfillmentFailure).not.toHaveBeenCalled();
+		expect(mockSendFailureAlert).not.toHaveBeenCalled();
+	});
+
 	it.each([
 		["removed", {}],
 		["malformed", { checkoutSnapshotVersion: "broken", checkoutSnapshotHandle: "bad" }],
@@ -609,8 +726,11 @@ describe("processStripeWebhookEvent", () => {
 		expect(mockSendCustomerConfirmation).not.toHaveBeenCalled();
 	});
 
-	it("keeps enabled invoice settlement on the historical bypass", async () => {
-		mockPrivateEnv.CHECKOUT_SNAPSHOT_MODE = "handle-v2";
+	it.each([
+		undefined,
+		"handle-v2",
+	])("keeps invoice settlement on the historical bypass when mode is %s", async (mode) => {
+		mockPrivateEnv.CHECKOUT_SNAPSHOT_MODE = mode;
 		const session = makeCheckoutSession({
 			metadata: {
 				type: "invoice_payment",
@@ -630,10 +750,15 @@ describe("processStripeWebhookEvent", () => {
 		);
 		expect(stripe.checkout.sessions.retrieve).not.toHaveBeenCalled();
 		expect(stripe.checkout.sessions.listLineItems).not.toHaveBeenCalled();
+		expect(convex.mutation).toHaveBeenCalledTimes(1);
 		expect(convex.mutation).toHaveBeenCalledWith(
 			"invoices.markPaid",
 			expect.objectContaining({ invoiceId: "invoice-123" }),
 		);
+		expect(createLumaPrintsOrder).not.toHaveBeenCalled();
+		expect(stripe.refunds.create).not.toHaveBeenCalled();
+		expect(mockSendCustomerConfirmation).not.toHaveBeenCalled();
+		expect(mockSendAdminNotification).not.toHaveBeenCalled();
 	});
 
 	it("keeps provider unavailability after order creation retryable", async () => {

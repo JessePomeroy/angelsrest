@@ -7,6 +7,7 @@ import type { Id } from "$convex/dataModel";
 import { env } from "$env/dynamic/private";
 import {
 	CheckoutSnapshotProtocolError,
+	hasCheckoutSnapshotMarker,
 	inspectCheckoutSnapshotMetadata,
 	readCheckoutTenantMarker,
 	selectCheckoutSnapshotInput,
@@ -56,15 +57,16 @@ export async function processStripeWebhookEvent(
 		switch (event.type) {
 			case "checkout.session.completed": {
 				const session = event.data.object as Stripe.Checkout.Session;
-				const enabled = env.CHECKOUT_SNAPSHOT_MODE === "handle-v2";
 				if (session.metadata?.type === "invoice_payment") {
 					const tenant = await resolveCommerceTenant(event, adapters.convex);
 					await markInvoicePaidFromSession(session, adapters.convex, tenant.siteUrl);
 					break;
 				}
 
+				const consumesCheckoutSnapshot =
+					env.CHECKOUT_SNAPSHOT_MODE === "handle-v2" || hasCheckoutSnapshotMarker(session.metadata);
 				let routing = null;
-				if (enabled) {
+				if (consumesCheckoutSnapshot) {
 					const stripeAccount =
 						typeof event.account === "string" ? event.account.trim() : undefined;
 					const metadataSiteUrl = readCheckoutTenantMarker(session.metadata);
@@ -80,7 +82,7 @@ export async function processStripeWebhookEvent(
 					}
 				}
 				const tenantPromise = resolveCommerceTenant(event, adapters.convex, routing?.siteUrl);
-				const tenant = enabled
+				const tenant = consumesCheckoutSnapshot
 					? await tenantPromise.catch((cause) => {
 							throw new CheckoutSnapshotProtocolError("Checkout tenant routing failed", { cause });
 						})
@@ -90,7 +92,7 @@ export async function processStripeWebhookEvent(
 					notificationProfile: tenant.notificationProfile,
 					stripeRequestOptions: tenant.stripeRequestOptions,
 					routingSource: routing?.source ?? null,
-					completeLineItems: enabled,
+					completeLineItems: consumesCheckoutSnapshot,
 				});
 				break;
 			}

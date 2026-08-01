@@ -2,6 +2,7 @@ import type Stripe from "stripe";
 import { describe, expect, it } from "vitest";
 import {
 	CheckoutSnapshotProtocolError,
+	hasCheckoutSnapshotMarker,
 	inspectCheckoutSnapshotMetadata,
 	selectCheckoutSnapshotInput,
 } from "$lib/server/checkoutSnapshotConsumer";
@@ -54,9 +55,14 @@ describe("checkout snapshot protocol inspection", () => {
 	});
 
 	it("leaves literal historical metadata unmarked", () => {
-		expect(inspect({ isCart: "true", cartItem_0: "not-json", catalogProvider: "old" })).toEqual({
-			kind: "unmarked",
-		});
+		const metadata = { isCart: "true", cartItem_0: "not-json", catalogProvider: "old" };
+		expect(hasCheckoutSnapshotMarker(metadata)).toBe(false);
+		expect(inspect(metadata)).toEqual({ kind: "unmarked" });
+	});
+
+	it("detects malformed and future snapshot markers for fail-closed intake", () => {
+		expect(hasCheckoutSnapshotMarker({ checkoutSnapshotFuture: "value" })).toBe(true);
+		expect(hasCheckoutSnapshotMarker(null)).toBe(false);
 	});
 
 	it("accepts only the exact handle-v2 protocol fields and tenant marker", () => {
