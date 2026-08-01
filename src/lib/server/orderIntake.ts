@@ -63,8 +63,9 @@ export async function processStripeWebhookEvent(
 					break;
 				}
 
-				const consumesCheckoutSnapshot =
-					env.CHECKOUT_SNAPSHOT_MODE === "handle-v2" || hasCheckoutSnapshotMarker(session.metadata);
+				const snapshotModeEnabled = env.CHECKOUT_SNAPSHOT_MODE === "handle-v2";
+				const snapshotMarkerPresent = hasCheckoutSnapshotMarker(session.metadata);
+				const consumesCheckoutSnapshot = snapshotModeEnabled || snapshotMarkerPresent;
 				let routing = null;
 				if (consumesCheckoutSnapshot) {
 					const stripeAccount =
@@ -88,7 +89,9 @@ export async function processStripeWebhookEvent(
 					);
 				}
 				const tenantPromise = resolveCommerceTenant(event, adapters.convex, routing?.siteUrl);
-				const tenant = consumesCheckoutSnapshot
+				const suppressTenantFailureAlert =
+					snapshotModeEnabled || (snapshotMarkerPresent && routing?.source !== "order");
+				const tenant = suppressTenantFailureAlert
 					? await tenantPromise.catch((cause) => {
 							throw new CheckoutSnapshotProtocolError("Checkout tenant routing failed", { cause });
 						})

@@ -611,6 +611,49 @@ describe("processStripeWebhookEvent", () => {
 		expect(mockSendFailureAlert).toHaveBeenCalledTimes(1);
 	});
 
+	it("preserves the tenant failure alert for a marked existing order when mode is absent", async () => {
+		const session = makeCheckoutSession({
+			metadata: {
+				checkoutSnapshotVersion: "2",
+				checkoutSnapshotHandle: snapshotHandle,
+				commerceTenantSiteUrl: "zippymiggy.com",
+			},
+		});
+		convex.query
+			.mockResolvedValueOnce({
+				source: "order",
+				siteUrl: "zippymiggy.com",
+				stripeConnectedAccountId: undefined,
+			})
+			.mockRejectedValueOnce(new Error("Tenant profile unavailable"));
+
+		const { processStripeWebhookEvent } = await import("../orderIntake");
+		await expect(
+			processStripeWebhookEvent(makeStripeEvent("checkout.session.completed", session), adapters()),
+		).rejects.toMatchObject({ status: 500 });
+
+		expect(stripe.checkout.sessions.retrieve).not.toHaveBeenCalled();
+		expect(convex.mutation).not.toHaveBeenCalled();
+		expect(createLumaPrintsOrder).not.toHaveBeenCalled();
+		expect(mockSendFailureAlert).toHaveBeenCalledTimes(1);
+	});
+
+	it("keeps mode-enabled unmarked routing failures on the historical protocol alert policy", async () => {
+		mockPrivateEnv.CHECKOUT_SNAPSHOT_MODE = "handle-v2";
+		const session = makeCheckoutSession({ metadata: {} });
+		convex.query.mockRejectedValue(new Error("Checkout routing unavailable"));
+
+		const { processStripeWebhookEvent } = await import("../orderIntake");
+		await expect(
+			processStripeWebhookEvent(makeStripeEvent("checkout.session.completed", session), adapters()),
+		).rejects.toMatchObject({ status: 500 });
+
+		expect(stripe.checkout.sessions.retrieve).not.toHaveBeenCalled();
+		expect(convex.mutation).not.toHaveBeenCalled();
+		expect(createLumaPrintsOrder).not.toHaveBeenCalled();
+		expect(mockSendFailureAlert).not.toHaveBeenCalled();
+	});
+
 	it.each([
 		["removed", {}],
 		["malformed", { checkoutSnapshotVersion: "broken", checkoutSnapshotHandle: "bad" }],
