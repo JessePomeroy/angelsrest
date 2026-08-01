@@ -565,6 +565,53 @@ describe("processStripeWebhookEvent", () => {
 	});
 
 	it.each([
+		["unmarked mode-enabled", "retrieve"],
+		["unmarked mode-enabled", "line items"],
+		["marked existing-order", "retrieve"],
+		["marked existing-order", "line items"],
+	] as const)("preserves the failure alert for a %s %s failure", async (source, failurePoint) => {
+		const existingOrder = source === "marked existing-order";
+		mockPrivateEnv.CHECKOUT_SNAPSHOT_MODE = existingOrder ? undefined : "handle-v2";
+		const session = makeCheckoutSession({
+			metadata: existingOrder
+				? {
+						checkoutSnapshotVersion: "2",
+						checkoutSnapshotHandle: snapshotHandle,
+						commerceTenantSiteUrl: "angelsrest.online",
+					}
+				: {},
+		});
+		convex.query.mockResolvedValue(
+			existingOrder
+				? {
+						source: "order",
+						siteUrl: "angelsrest.online",
+						stripeConnectedAccountId: undefined,
+					}
+				: null,
+		);
+		if (failurePoint === "retrieve") {
+			stripe.checkout.sessions.retrieve.mockRejectedValue(new Error("Stripe unavailable"));
+		} else {
+			stripe.checkout.sessions.retrieve.mockResolvedValue(session);
+			stripe.checkout.sessions.listLineItems.mockRejectedValue(new Error("Stripe unavailable"));
+		}
+
+		const { processStripeWebhookEvent } = await import("../orderIntake");
+		await expect(
+			processStripeWebhookEvent(makeStripeEvent("checkout.session.completed", session), adapters()),
+		).rejects.toMatchObject({ status: 500 });
+
+		expect(convex.mutation).not.toHaveBeenCalled();
+		expect(createLumaPrintsOrder).not.toHaveBeenCalled();
+		expect(stripe.refunds.create).not.toHaveBeenCalled();
+		expect(mockSendCustomerConfirmation).not.toHaveBeenCalled();
+		expect(mockSendAdminNotification).not.toHaveBeenCalled();
+		expect(mockSendCustomerFulfillmentFailure).not.toHaveBeenCalled();
+		expect(mockSendFailureAlert).toHaveBeenCalledTimes(1);
+	});
+
+	it.each([
 		["removed", {}],
 		["malformed", { checkoutSnapshotVersion: "broken", checkoutSnapshotHandle: "bad" }],
 	] as const)("resumes an existing order with %s snapshot metadata", async (_label, metadata) => {

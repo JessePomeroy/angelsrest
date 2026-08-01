@@ -227,6 +227,8 @@ async function handleCheckoutCompleted(
 		sessionId: session.id,
 	});
 
+	const markedFirstDelivery =
+		routingSource !== "order" && hasCheckoutSnapshotMarker(session.metadata);
 	let details: Awaited<ReturnType<typeof fetchSessionDetails>>;
 	try {
 		details = await fetchSessionDetails(
@@ -237,7 +239,7 @@ async function handleCheckoutCompleted(
 		);
 	} catch (cause) {
 		if (cause instanceof CheckoutSnapshotProtocolError) throw cause;
-		if (completeLineItems) {
+		if (markedFirstDelivery) {
 			throw new CheckoutSnapshotProtocolError("Checkout details failed", { cause });
 		}
 		throw cause;
