@@ -3,7 +3,11 @@ import { api } from "$convex/api";
 import { env as privateEnv } from "$env/dynamic/private";
 import { env as publicEnv } from "$env/dynamic/public";
 import { SITE_DOMAIN } from "$lib/config/site";
-import { resolveCatalogCheckout } from "$lib/server/catalogCommerceClients";
+import {
+	CatalogBoundaryError,
+	type CatalogBoundaryPhase,
+	resolveCatalogCheckout,
+} from "$lib/server/catalogCommerceClients";
 import {
 	type CheckoutSelection,
 	type CheckoutSnapshotItem,
@@ -16,6 +20,13 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{1
 const KINDS = new Set("print print_set postcard tapestry digital_download merchandise".split(" "));
 const PRIMARY_ROLES = { print: "primary", print_set: "cover" } as const;
 const CANVAS_KEYS = "color thickness subcategoryId wrapOptionId wrapHex";
+type SecondaryPhase = CatalogBoundaryPhase | "query" | "graph" | "resolver" | "authority";
+class ShadowSecondaryError extends Error {
+	constructor(readonly phase: SecondaryPhase) {
+		super("Checkout catalog secondary failed");
+	}
+}
+
 type Dependencies = {
 	provider?: () => unknown;
 	query?: (slug: string, signal: AbortSignal) => Promise<unknown>;
@@ -197,10 +208,23 @@ function client(signal: AbortSignal) {
 		fetch: (input, init) => fetch(input, { ...init, signal }),
 	});
 }
+async function secondaryStep<T>(
+	phase: SecondaryPhase,
+	diagnose: boolean,
+	operation: () => T | Promise<T>,
+) {
+	try {
+		return await operation();
+	} catch (error) {
+		if (!diagnose) throw error;
+		throw new ShadowSecondaryError(error instanceof CatalogBoundaryError ? error.phase : phase);
+	}
+}
 async function secondary(
 	selections: readonly CheckoutSelection[],
 	signal: AbortSignal,
 	dependencies: Dependencies,
+	diagnose = false,
 ) {
 	const query =
 		dependencies.query ??
@@ -212,8 +236,14 @@ async function secondary(
 	const resolve = dependencies.resolve ?? ((item, bound) => resolveCatalogCheckout(item, bound));
 	return Promise.all(
 		selections.map(async (selection) => {
-			const found = discover(await query(string(selection.productId, 200), signal), selection);
-			return authority(await resolve(found.item, signal), found.item, found.slug);
+			const graph = await secondaryStep("query", diagnose, () =>
+				query(string(selection.productId, 200), signal),
+			);
+			const found = await secondaryStep("graph", diagnose, () => discover(graph, selection));
+			const resolved = await secondaryStep("resolver", diagnose, () => resolve(found.item, signal));
+			return secondaryStep("authority", diagnose, () =>
+				authority(resolved, found.item, found.slug),
+			);
 		}),
 	);
 }
@@ -249,9 +279,12 @@ export async function resolveCheckoutCommerce(
 	const controller = new AbortController();
 	let timer: ReturnType<typeof setTimeout> | undefined;
 	const bounded = Promise.race([
-		secondary(selections, controller.signal, dependencies)
+		secondary(selections, controller.signal, dependencies, true)
 			.then((items) => ({ items }))
-			.catch(() => ({ reason: "secondary_error" as const })),
+			.catch((error: unknown) => ({
+				reason: "secondary_error" as const,
+				secondaryPhase: error instanceof ShadowSecondaryError ? error.phase : ("resolver" as const),
+			})),
 		new Promise<{ reason: "timeout" }>((resolve) => {
 			timer = setTimeout(() => {
 				controller.abort();
@@ -287,6 +320,7 @@ export async function resolveCheckoutCommerce(
 				reason,
 				primaryCount: primary.length,
 				secondaryCount: "items" in outcome ? outcome.items.length : null,
+				...("secondaryPhase" in outcome ? { secondaryPhase: outcome.secondaryPhase } : {}),
 			},
 		});
 	return { provider: "sanity", items: primary };

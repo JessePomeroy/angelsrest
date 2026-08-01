@@ -38,12 +38,28 @@ export type PaidFulfillmentResolution = {
 		| { kind: "merchant" };
 };
 
+export type CatalogBoundaryPhase =
+	| "configuration"
+	| "fetch"
+	| "status"
+	| "content_type"
+	| "content_encoding"
+	| "declared_length"
+	| "stream"
+	| "utf8"
+	| "json"
+	| "envelope";
+
 export class CatalogBoundaryError extends Error {
-	constructor(readonly kind: "unavailable" | "rejected" | "refunded") {
+	constructor(
+		readonly kind: "unavailable" | "rejected" | "refunded",
+		readonly phase: CatalogBoundaryPhase = "configuration",
+	) {
 		super(`Catalog boundary ${kind}`);
 	}
 }
-const rejected = () => new CatalogBoundaryError("rejected");
+const rejected = (phase: CatalogBoundaryPhase = "envelope") =>
+	new CatalogBoundaryError("rejected", phase);
 function object(value: unknown): value is Record<string, unknown> {
 	return Boolean(value) && typeof value === "object" && !Array.isArray(value);
 }
@@ -74,44 +90,66 @@ function endpoint({ origin, bearer }: Config, path: string) {
 	return `${origin}${path}`;
 }
 async function readJson(response: Response) {
-	if (response.headers.get("content-type") !== "application/json") throw rejected();
+	if (response.headers.get("content-type") !== "application/json") throw rejected("content_type");
+	const contentEncoding = response.headers.get("content-encoding")?.toLowerCase() ?? null;
+	const compressed =
+		contentEncoding === "gzip" || contentEncoding === "br" || contentEncoding === "deflate";
+	if (contentEncoding !== null && contentEncoding !== "identity" && !compressed)
+		throw rejected("content_encoding");
 	const declared = response.headers.get("content-length");
 	if (declared !== null && (!/^\d+$/.test(declared) || Number(declared) > 64 * 1024)) {
-		throw rejected();
+		throw rejected("declared_length");
 	}
 	const reader = response.body?.getReader();
-	if (!reader) throw rejected();
+	if (!reader) throw rejected("stream");
 	const chunks: Uint8Array[] = [];
 	let total = 0;
-	while (true) {
-		const { done, value } = await reader.read();
-		if (done) break;
-		total += value.byteLength;
-		if (total > 64 * 1024) {
-			await reader.cancel();
-			throw rejected();
+	try {
+		while (true) {
+			const { done, value } = await reader.read();
+			if (done) break;
+			total += value.byteLength;
+			if (total > 64 * 1024) {
+				try {
+					void reader.cancel().catch(() => undefined);
+				} catch {
+					// Cancellation is best-effort cleanup. Preserve the boundary rejection.
+				}
+				throw rejected("stream");
+			}
+			chunks.push(value);
 		}
-		chunks.push(value);
+	} catch (error) {
+		if (error instanceof CatalogBoundaryError) throw error;
+		throw new CatalogBoundaryError("unavailable", "stream");
 	}
-	if (declared !== null && Number(declared) !== total) throw rejected();
+	if (!compressed && declared !== null && Number(declared) !== total)
+		throw rejected("declared_length");
 	const bytes = new Uint8Array(total);
 	let offset = 0;
 	for (const chunk of chunks) {
 		bytes.set(chunk, offset);
 		offset += chunk.byteLength;
 	}
+	let decoded: string;
 	try {
-		return JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(bytes)) as unknown;
+		decoded = new TextDecoder("utf-8", { fatal: true }).decode(bytes);
 	} catch {
-		throw rejected();
+		throw rejected("utf8");
+	}
+	try {
+		return JSON.parse(decoded) as unknown;
+	} catch {
+		throw rejected("json");
 	}
 }
 async function post(config: Config, purpose: keyof typeof PATHS, body: unknown) {
 	const encoded = JSON.stringify(body);
 	if (new TextEncoder().encode(encoded).byteLength > 4096) throw rejected();
+	const url = endpoint(config, PATHS[purpose]);
 	let response: Response;
 	try {
-		response = await (config.fetch ?? fetch)(endpoint(config, PATHS[purpose]), {
+		response = await (config.fetch ?? fetch)(url, {
 			method: "POST",
 			headers: { Authorization: `Bearer ${config.bearer}`, "Content-Type": "application/json" },
 			body: encoded,
@@ -120,11 +158,12 @@ async function post(config: Config, purpose: keyof typeof PATHS, body: unknown) 
 				: AbortSignal.timeout(5_000),
 		});
 	} catch {
-		throw new CatalogBoundaryError("unavailable");
+		throw new CatalogBoundaryError("unavailable", "fetch");
 	}
 	if (!response.ok)
 		throw new CatalogBoundaryError(
 			response.status === 503 ? "unavailable" : response.status === 409 ? "refunded" : "rejected",
+			"status",
 		);
 	return readJson(response);
 }
