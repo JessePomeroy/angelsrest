@@ -12,17 +12,19 @@ const convex = getConvex();
 export async function POST({ request }) {
 	const stripe = getStripe();
 	const resend = getResend();
-	const event = await verifyStripeWebhook(request, stripe, getCommerceWebhookSecret());
+	const event = await verifyStripeWebhook(request, stripe, getCommerceWebhookSecrets());
 	await processStripeWebhookEvent(event, { stripe, resend, convex, createLumaPrintsOrder });
 	return json({ received: true });
 }
 
-function getCommerceWebhookSecret() {
-	const secret = env.STRIPE_CONNECT_WEBHOOK_SECRET || env.STRIPE_WEBHOOK_SECRET;
-	if (!secret) {
+function getCommerceWebhookSecrets() {
+	const secrets = [env.STRIPE_CONNECT_WEBHOOK_SECRET, env.STRIPE_WEBHOOK_SECRET].filter(
+		(secret): secret is string => Boolean(secret),
+	);
+	if (secrets.length === 0) {
 		throw new Error(
 			"Stripe commerce webhook secret is not set. Configure STRIPE_CONNECT_WEBHOOK_SECRET or STRIPE_WEBHOOK_SECRET.",
 		);
 	}
-	return secret;
+	return secrets;
 }

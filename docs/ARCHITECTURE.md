@@ -147,11 +147,14 @@ and test full client-side navigation, expiry, logout, and concurrent requests.
    explicitly supported pre-handoff phase.
 5. Stripe sends platform and connected-account commerce events to this
    repository's `/api/webhooks/stripe`; client spokes do not own a parallel
-   `checkout.session.completed` processor.
-6. The webhook verifies the raw signed body. `orderIntake.ts` resolves
-   `event.account` back to the stored tenant when present; platform-account
-   events use the server-owned metadata key and a webhook-secret-protected
-   Convex profile lookup. Conflicting or unknown tenant identities fail closed.
+   `checkout.session.completed` processor. Stripe uses disjoint destinations
+   and signing secrets for `Your account` and `Connected accounts` scope.
+6. The webhook reads the raw body once and accepts either bounded commerce
+   signing secret. The matched secret authenticates transport only; it does not
+   select tenant or business authority. `orderIntake.ts` resolves `event.account`
+   back to the stored tenant when present; platform-account events use the
+   server-owned metadata key and a webhook-secret-protected Convex profile
+   lookup. Conflicting or unknown tenant identities fail closed.
 7. `webhookOrders.ts` creates or reuses the Convex order and schedules fee
    capture outside the webhook hot path.
 8. Eligible items go through `printFulfillment.ts` and LumaPrints.
@@ -180,10 +183,35 @@ Print fulfillment uses an expiring preparation lease and an atomic submission
 fence, so refund and provider effects cannot both start. The additive V2 claim
 API keeps the V1 claim available for a Convex-first rollout.
 
-Production rollout must deploy Convex first. Before hub activation, verify that
-the commerce event destination delivers both refund event types for platform
-and connected accounts. Automated fulfillment recovery remains a separate owner
-of its tagged refunds.
+Each disjoint commerce destination must use Snapshot payloads and the same
+reviewed Stripe API version. The current platform destination uses
+`2026-01-28.clover`; thin V2 notifications are unsupported. Both `Your account`
+and `Connected accounts` destinations require `checkout.session.completed`,
+`payment_intent.payment_failed`, `refund.created`, and `refund.updated` while
+that producer scope is active.
+
+Production rollout is consumer-first:
+
+1. Inventory active destinations and confirm that their account scopes do not
+   overlap. Payment-failure email is not deduplicated across destinations.
+2. Create the connected-account destination disabled, with the exact route,
+   Snapshot payloads, matching API version, and the four-event matrix.
+3. Provision its distinct signing secret without removing the platform secret.
+4. Deploy Convex, then the dual-secret hub consumer, while the existing platform
+   destination remains active. Verify the exact deployment before any producer
+   change or destination enablement.
+5. Under separate authorization, enable the connected destination and add both
+   refund events to the platform destination. Retain both secrets through
+   Stripe's retry window.
+
+A code rollback is unsafe while both destinations can deliver or retry events.
+First pause the affected checkout producers. Keep the dual-secret consumer active
+while deliveries drain. Disable the destination that the old consumer cannot
+verify, confirm that it has no pending or retryable deliveries, and preserve its
+secret. Only then deploy the old consumer with environment configuration that
+retains its one matching destination secret. Verify the retained destination
+before resuming its producer. Automated fulfillment recovery remains a separate
+owner of its tagged refunds.
 
 ### LumaPrints shipment webhook
 

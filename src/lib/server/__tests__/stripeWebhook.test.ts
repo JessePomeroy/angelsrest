@@ -1,5 +1,5 @@
 import type Stripe from "stripe";
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { verifyStripeWebhook } from "$lib/server/stripeWebhook";
 
 const mockLogStructured = vi.hoisted(() => vi.fn());
@@ -11,6 +11,10 @@ function stripeWith(constructEvent: ReturnType<typeof vi.fn>) {
 }
 
 describe("verifyStripeWebhook", () => {
+	beforeEach(() => {
+		vi.clearAllMocks();
+	});
+
 	it("returns 400 when the stripe-signature header is missing", async () => {
 		const constructEvent = vi.fn();
 		const request = new Request("https://angelsrest.test/api/webhooks/stripe", {
@@ -25,10 +29,36 @@ describe("verifyStripeWebhook", () => {
 			body: { message: "Missing stripe-signature header" },
 		});
 		expect(constructEvent).not.toHaveBeenCalled();
+		expect(mockLogStructured).not.toHaveBeenCalled();
 	});
 
-	it("returns 400 when Stripe rejects an invalid signature", async () => {
-		const constructEvent = vi.fn(() => {
+	it("accepts either destination secret after one body read", async () => {
+		const verifiedEvent = { id: "evt_refund", type: "refund.updated" } as Stripe.Event;
+		const constructEvent = vi.fn((_body, _signature, secret) => {
+			if (secret === "legacy-secret") return verifiedEvent;
+			throw new Error("Signature mismatch");
+		});
+		const request = new Request("https://angelsrest.test/api/webhooks/stripe", {
+			method: "POST",
+			headers: { "stripe-signature": "valid-sig" },
+			body: "raw-body",
+		});
+		const readBody = vi.spyOn(request, "text");
+
+		await expect(
+			verifyStripeWebhook(request, stripeWith(constructEvent), ["connect-secret", "legacy-secret"]),
+		).resolves.toBe(verifiedEvent);
+		expect(readBody).toHaveBeenCalledOnce();
+		expect(constructEvent).toHaveBeenNthCalledWith(1, "raw-body", "valid-sig", "connect-secret");
+		expect(constructEvent).toHaveBeenNthCalledWith(2, "raw-body", "valid-sig", "legacy-secret");
+		expect(mockLogStructured).not.toHaveBeenCalled();
+	});
+
+	it("tries distinct secrets once and logs sanitized failure categories", async () => {
+		const constructEvent = vi.fn((_body, _signature, secret) => {
+			if (secret === "connect-secret") {
+				throw new Error("Timestamp outside the tolerance zone");
+			}
 			throw new Error("Signature mismatch");
 		});
 		const request = new Request("https://angelsrest.test/api/webhooks/stripe", {
@@ -38,11 +68,42 @@ describe("verifyStripeWebhook", () => {
 		});
 
 		await expect(
-			verifyStripeWebhook(request, stripeWith(constructEvent), "webhook-secret"),
+			verifyStripeWebhook(
+				request,
+				stripeWith(constructEvent),
+				["connect-secret", "", "connect-secret", "legacy-secret"],
+				"Commerce webhook",
+			),
 		).rejects.toMatchObject({
 			status: 400,
-			body: { message: "Webhook Error: Signature mismatch" },
+			body: { message: "Webhook signature verification failed" },
 		});
-		expect(constructEvent).toHaveBeenCalledWith("raw-body", "bad-sig", "webhook-secret");
+		expect(constructEvent).toHaveBeenCalledTimes(2);
+		expect(mockLogStructured).toHaveBeenCalledOnce();
+		expect(mockLogStructured).toHaveBeenCalledWith({
+			event: "webhook.signature_verification_failed",
+			level: "error",
+			stage: "webhook",
+			meta: {
+				logLabel: "Commerce webhook",
+				candidateCount: 2,
+				failureCategories: ["timestamp", "signature"],
+			},
+		});
+	});
+
+	it("preserves scalar-secret verification", async () => {
+		const verifiedEvent = { id: "evt_platform" } as Stripe.Event;
+		const constructEvent = vi.fn(() => verifiedEvent);
+		const request = new Request("https://angelsrest.test/api/platform/webhooks/stripe", {
+			method: "POST",
+			headers: { "stripe-signature": "valid-sig" },
+			body: "raw-body",
+		});
+
+		await expect(
+			verifyStripeWebhook(request, stripeWith(constructEvent), "platform-secret"),
+		).resolves.toBe(verifiedEvent);
+		expect(constructEvent).toHaveBeenCalledWith("raw-body", "valid-sig", "platform-secret");
 	});
 });
