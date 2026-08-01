@@ -1,3 +1,4 @@
+import { brotliCompressSync, deflateSync, gzipSync } from "node:zlib";
 import { describe, expect, it, vi } from "vitest";
 import {
 	CatalogBoundaryError,
@@ -17,6 +18,22 @@ function json(value: unknown, status = 200) {
 		headers: {
 			"content-type": "application/json",
 			"content-length": String(Buffer.byteLength(body)),
+		},
+	});
+}
+function fetchDecodedJson(value: unknown, encoding: "br" | "deflate" | "gzip") {
+	const body = JSON.stringify(value);
+	const encoded =
+		encoding === "gzip"
+			? gzipSync(body)
+			: encoding === "br"
+				? brotliCompressSync(body)
+				: deflateSync(body);
+	return new Response(body, {
+		headers: {
+			"content-type": "application/json",
+			"content-encoding": encoding,
+			"content-length": String(encoded.byteLength),
 		},
 	});
 }
@@ -121,6 +138,133 @@ describe("fixed-purpose catalog clients", () => {
 			});
 			expect(init?.signal).toBeInstanceOf(AbortSignal);
 		}
+	});
+
+	it.each([
+		"gzip",
+		"br",
+		"deflate",
+	] as const)("accepts a Fetch-decoded %s JSON body whose content length describes encoded bytes", async (encoding) => {
+		const fetch = vi.fn(async () => fetchDecodedJson(checkoutResponse, encoding));
+		await expect(
+			resolveCatalogCheckout(snapshotItem, { origin, bearer: token, fetch }),
+		).resolves.toEqual(checkoutResponse);
+		expect(fetch).toHaveBeenCalledOnce();
+	});
+
+	it("bounds Fetch-decoded compressed bytes instead of encoded content length", async () => {
+		const fetch = vi.fn(
+			async () =>
+				new Response(JSON.stringify(checkoutResponse), {
+					headers: {
+						"content-type": "application/json",
+						"content-encoding": "gzip",
+						"content-length": String(64 * 1024 + 1),
+					},
+				}),
+		);
+		await expect(
+			resolveCatalogCheckout(snapshotItem, { origin, bearer: token, fetch }),
+		).resolves.toEqual(checkoutResponse);
+		expect(fetch).toHaveBeenCalledOnce();
+	});
+
+	it("rejects unencoded length mismatch and unknown or compound encodings without retry", async () => {
+		const body = JSON.stringify(checkoutResponse);
+		const responses = [
+			new Response(body, {
+				headers: {
+					"content-type": "application/json",
+					"content-length": String(Buffer.byteLength(body) - 1),
+				},
+			}),
+			new Response(body, {
+				headers: { "content-type": "application/json", "content-encoding": "zstd" },
+			}),
+			new Response(body, {
+				headers: { "content-type": "application/json", "content-encoding": "gzip, br" },
+			}),
+		];
+		for (const response of responses) {
+			const fetch = vi.fn(async () => response);
+			await expect(
+				resolveCatalogCheckout(snapshotItem, { origin, bearer: token, fetch }),
+			).rejects.toMatchObject({ kind: "rejected" });
+			expect(fetch).toHaveBeenCalledOnce();
+		}
+	});
+
+	it("keeps identity content-length equality without retry", async () => {
+		const body = JSON.stringify(checkoutResponse);
+		for (const [declared, expected] of [
+			[String(Buffer.byteLength(body)), "resolved"],
+			[String(Buffer.byteLength(body) - 1), "rejected"],
+		] as const) {
+			const fetch = vi.fn(
+				async () =>
+					new Response(body, {
+						headers: {
+							"content-type": "application/json",
+							"content-encoding": "identity",
+							"content-length": declared,
+						},
+					}),
+			);
+			const resolution = resolveCatalogCheckout(snapshotItem, { origin, bearer: token, fetch });
+			if (expected === "resolved") await expect(resolution).resolves.toEqual(checkoutResponse);
+			else
+				await expect(resolution).rejects.toMatchObject({
+					kind: "rejected",
+					phase: "declared_length",
+				});
+			expect(fetch).toHaveBeenCalledOnce();
+		}
+	});
+
+	it.each([
+		["rejects", () => Promise.reject(new Error("private cancellation detail"))],
+		["does not settle", () => new Promise<void>(() => {})],
+	] as const)("preserves decoded overflow rejection when stream cancellation %s", async (_case, cancel) => {
+		const fetch = vi.fn(
+			async () =>
+				new Response(
+					new ReadableStream({
+						start(controller) {
+							controller.enqueue(new Uint8Array(64 * 1024 + 1));
+						},
+						cancel,
+					}),
+					{
+						headers: {
+							"content-type": "application/json",
+							"content-encoding": "gzip",
+							"content-length": "100",
+						},
+					},
+				),
+		);
+		await expect(
+			resolveCatalogCheckout(snapshotItem, { origin, bearer: token, fetch }),
+		).rejects.toMatchObject({ kind: "rejected", phase: "stream" });
+		expect(fetch).toHaveBeenCalledOnce();
+	});
+
+	it("classifies body stream failures as unavailable without retry", async () => {
+		const fetch = vi.fn(
+			async () =>
+				new Response(
+					new ReadableStream({
+						start(controller) {
+							controller.error(new Error("private transport detail"));
+						},
+					}),
+					{ headers: { "content-type": "application/json" } },
+				),
+		);
+		await expect(
+			resolveCatalogCheckout(snapshotItem, { origin, bearer: token, fetch }),
+		).rejects.toMatchObject({ kind: "unavailable", phase: "stream" });
+		expect(fetch).toHaveBeenCalledOnce();
 	});
 
 	it("composes a caller abort with the fixed five-second checkout bound without retry", async () => {

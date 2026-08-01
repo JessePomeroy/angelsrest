@@ -1,4 +1,6 @@
+import { gzipSync } from "node:zlib";
 import { describe, expect, it, vi } from "vitest";
+import { resolveCatalogCheckout } from "$lib/server/catalogCommerceClients";
 import type {
 	CheckoutSelection,
 	CheckoutSnapshotItem,
@@ -359,6 +361,35 @@ describe("checkout commerce shadow", () => {
 		});
 		expect(dependencies.log).not.toHaveBeenCalled();
 	});
+	it("accepts a Fetch-decoded gzip resolver response without warning or retry", async () => {
+		const fetch = vi.fn(async (_url: URL | RequestInfo, init?: RequestInit) => {
+			const item = JSON.parse(String(init?.body)).item as CheckoutSnapshotItem;
+			const body = JSON.stringify(response(item));
+			return new Response(body, {
+				headers: {
+					"content-type": "application/json",
+					"content-encoding": "gzip",
+					"content-length": String(gzipSync(body).byteLength),
+				},
+			});
+		});
+		const resolve = vi.fn((item: CheckoutSnapshotItem, signal: AbortSignal) =>
+			resolveCatalogCheckout(item, {
+				origin: "https://private.example",
+				bearer: "a".repeat(32),
+				fetch,
+				signal,
+			}),
+		);
+		const dependencies = shadow({ resolve });
+		await expect(resolveOne(dependencies)).resolves.toMatchObject({
+			provider: "sanity",
+			items: [{ unitPriceCents: 4200 }],
+		});
+		expect(fetch).toHaveBeenCalledOnce();
+		expect(resolve).toHaveBeenCalledOnce();
+		expect(dependencies.log).not.toHaveBeenCalled();
+	});
 	it.each([
 		[
 			"mismatch",
@@ -387,9 +418,62 @@ describe("checkout commerce shadow", () => {
 			event: "checkout.catalog_shadow_closed",
 			level: "warn",
 			durationMs: 20,
-			meta: { reason, primaryCount: 1, secondaryCount: reason === "mismatch" ? 1 : null },
+			meta: {
+				reason,
+				primaryCount: 1,
+				secondaryCount: reason === "mismatch" ? 1 : null,
+				...(reason === "secondary_error" ? { secondaryPhase: "resolver" } : {}),
+			},
 		});
 		expect(JSON.stringify(log.mock.calls)).not.toMatch(/digital|secret|product-|revision-|https:/);
+	});
+	it.each([
+		["query", { query: vi.fn().mockRejectedValue(new Error("private query detail")) }],
+		["graph", { query: vi.fn().mockResolvedValue({ schemaVersion: 2 }) }],
+		[
+			"configuration",
+			{
+				resolve: vi.fn((item: CheckoutSnapshotItem, signal: AbortSignal) =>
+					resolveCatalogCheckout(item, { signal }),
+				),
+			},
+		],
+		[
+			"content_encoding",
+			{
+				resolve: vi.fn((item: CheckoutSnapshotItem, signal: AbortSignal) =>
+					resolveCatalogCheckout(item, {
+						origin: "https://private.example",
+						bearer: "a".repeat(32),
+						signal,
+						fetch: vi.fn(
+							async () =>
+								new Response(JSON.stringify(response(item)), {
+									headers: {
+										"content-type": "application/json",
+										"content-encoding": "zstd",
+									},
+								}),
+						),
+					}),
+				),
+			},
+		],
+		["authority", { resolve: vi.fn().mockResolvedValue({ version: 1 }) }],
+	] as const)("logs only the fixed %s secondary phase", async (secondaryPhase, additions) => {
+		const log = vi.fn();
+		await resolveOne(shadow({ ...additions, log }));
+		expect(log).toHaveBeenCalledWith(
+			expect.objectContaining({
+				meta: {
+					reason: "secondary_error",
+					primaryCount: 1,
+					secondaryCount: null,
+					secondaryPhase,
+				},
+			}),
+		);
+		expect(JSON.stringify(log.mock.calls)).not.toMatch(/private|product-|revision-|https:/);
 	});
 	it("aborts remaining partial-cart work when one secondary query fails", async () => {
 		const signals: AbortSignal[] = [];
