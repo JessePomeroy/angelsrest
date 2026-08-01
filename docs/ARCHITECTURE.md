@@ -183,14 +183,35 @@ Print fulfillment uses an expiring preparation lease and an atomic submission
 fence, so refund and provider effects cannot both start. The additive V2 claim
 API keeps the V1 claim available for a Convex-first rollout.
 
-Production rollout must deploy Convex first, then deploy the dual-secret hub
-consumer before any destination change. Keep platform and connected-account
-destination scopes disjoint because payment-failure email is not deduplicated
-across overlapping deliveries. Before hub activation, verify that both scoped
-destinations use compatible snapshot events and deliver `refund.created` and
-`refund.updated`. Retain both signing secrets through Stripe's retry window;
-disable a destination before removing its secret. Automated fulfillment recovery
-remains a separate owner of its tagged refunds.
+Each disjoint commerce destination must use Snapshot payloads and the same
+reviewed Stripe API version. The current platform destination uses
+`2026-01-28.clover`; thin V2 notifications are unsupported. Both `Your account`
+and `Connected accounts` destinations require `checkout.session.completed`,
+`payment_intent.payment_failed`, `refund.created`, and `refund.updated` while
+that producer scope is active.
+
+Production rollout is consumer-first:
+
+1. Inventory active destinations and confirm that their account scopes do not
+   overlap. Payment-failure email is not deduplicated across destinations.
+2. Create the connected-account destination disabled, with the exact route,
+   Snapshot payloads, matching API version, and the four-event matrix.
+3. Provision its distinct signing secret without removing the platform secret.
+4. Deploy Convex, then the dual-secret hub consumer, while the existing platform
+   destination remains active. Verify the exact deployment before any producer
+   change or destination enablement.
+5. Under separate authorization, enable the connected destination and add both
+   refund events to the platform destination. Retain both secrets through
+   Stripe's retry window.
+
+A code rollback is unsafe while both destinations can deliver or retry events.
+First pause the affected checkout producers. Keep the dual-secret consumer active
+while deliveries drain. Disable the destination that the old consumer cannot
+verify, confirm that it has no pending or retryable deliveries, and preserve its
+secret. Only then deploy the old consumer with environment configuration that
+retains its one matching destination secret. Verify the retained destination
+before resuming its producer. Automated fulfillment recovery remains a separate
+owner of its tagged refunds.
 
 ### LumaPrints shipment webhook
 

@@ -26,22 +26,33 @@ export async function verifyStripeWebhook(
 			),
 		),
 	];
-	let verificationError: unknown;
+	const failureCategories = new Set<string>();
 	for (const secret of candidates) {
 		try {
 			return stripe.webhooks.constructEvent(body, signature, secret);
 		} catch (err: unknown) {
-			verificationError = err;
+			failureCategories.add(classifyVerificationFailure(err));
 		}
 	}
 
-	const message = verificationError instanceof Error ? verificationError.message : "Unknown error";
 	logStructured({
 		event: "webhook.signature_verification_failed",
 		level: "error",
 		stage: "webhook",
-		error: verificationError,
-		meta: { logLabel, message },
+		meta: {
+			logLabel,
+			candidateCount: candidates.length,
+			failureCategories: [...failureCategories],
+		},
 	});
-	throw error(400, `Webhook Error: ${message}`);
+	throw error(400, "Webhook signature verification failed");
+}
+
+function classifyVerificationFailure(err: unknown) {
+	const message = err instanceof Error ? err.message.toLowerCase() : "";
+	if (message.includes("timestamp") && message.includes("tolerance")) return "timestamp";
+	if (message.includes("json") || message.includes("unexpected token")) {
+		return "malformed_payload";
+	}
+	return "signature";
 }

@@ -54,9 +54,12 @@ describe("verifyStripeWebhook", () => {
 		expect(mockLogStructured).not.toHaveBeenCalled();
 	});
 
-	it("tries each distinct nonempty secret once and logs only final failure", async () => {
+	it("tries distinct secrets once and logs sanitized failure categories", async () => {
 		const constructEvent = vi.fn((_body, _signature, secret) => {
-			throw new Error(`Signature mismatch for ${secret}`);
+			if (secret === "connect-secret") {
+				throw new Error("Timestamp outside the tolerance zone");
+			}
+			throw new Error("Signature mismatch");
 		});
 		const request = new Request("https://angelsrest.test/api/webhooks/stripe", {
 			method: "POST",
@@ -73,19 +76,20 @@ describe("verifyStripeWebhook", () => {
 			),
 		).rejects.toMatchObject({
 			status: 400,
-			body: { message: "Webhook Error: Signature mismatch for legacy-secret" },
+			body: { message: "Webhook signature verification failed" },
 		});
 		expect(constructEvent).toHaveBeenCalledTimes(2);
 		expect(mockLogStructured).toHaveBeenCalledOnce();
-		expect(mockLogStructured).toHaveBeenCalledWith(
-			expect.objectContaining({
-				event: "webhook.signature_verification_failed",
-				meta: {
-					logLabel: "Commerce webhook",
-					message: "Signature mismatch for legacy-secret",
-				},
-			}),
-		);
+		expect(mockLogStructured).toHaveBeenCalledWith({
+			event: "webhook.signature_verification_failed",
+			level: "error",
+			stage: "webhook",
+			meta: {
+				logLabel: "Commerce webhook",
+				candidateCount: 2,
+				failureCategories: ["timestamp", "signature"],
+			},
+		});
 	});
 
 	it("preserves scalar-secret verification", async () => {
