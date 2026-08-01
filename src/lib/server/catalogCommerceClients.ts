@@ -97,7 +97,10 @@ async function readJson(response: Response) {
 	if (contentEncoding !== null && contentEncoding !== "identity" && !compressed)
 		throw rejected("content_encoding");
 	const declared = response.headers.get("content-length");
-	if (declared !== null && (!/^\d+$/.test(declared) || Number(declared) > 64 * 1024)) {
+	if (
+		declared !== null &&
+		(!/^\d+$/.test(declared) || (!compressed && Number(declared) > 64 * 1024))
+	) {
 		throw rejected("declared_length");
 	}
 	const reader = response.body?.getReader();

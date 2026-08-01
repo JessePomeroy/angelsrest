@@ -152,6 +152,23 @@ describe("fixed-purpose catalog clients", () => {
 		expect(fetch).toHaveBeenCalledOnce();
 	});
 
+	it("bounds Fetch-decoded compressed bytes instead of encoded content length", async () => {
+		const fetch = vi.fn(
+			async () =>
+				new Response(JSON.stringify(checkoutResponse), {
+					headers: {
+						"content-type": "application/json",
+						"content-encoding": "gzip",
+						"content-length": String(64 * 1024 + 1),
+					},
+				}),
+		);
+		await expect(
+			resolveCatalogCheckout(snapshotItem, { origin, bearer: token, fetch }),
+		).resolves.toEqual(checkoutResponse);
+		expect(fetch).toHaveBeenCalledOnce();
+	});
+
 	it("rejects unencoded length mismatch and unknown or compound encodings without retry", async () => {
 		const body = JSON.stringify(checkoutResponse);
 		const responses = [
