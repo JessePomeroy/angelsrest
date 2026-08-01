@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import type { ConvexHttpClient } from "convex/browser";
 import type { Resend } from "resend";
 import type Stripe from "stripe";
@@ -28,6 +29,8 @@ export type SubmitLumaPrintsOrder = (order: LumaPrintsOrder) => Promise<LumaPrin
 export type PrintFulfillmentOutcome =
 	| { kind: "fulfilled"; lumaprintsOrderNumber: string }
 	| { kind: "no_print_items" }
+	| { kind: "no_print_items_replayed" }
+	| { kind: "manual_refunded"; stripeRefundId: string }
 	| {
 			kind: "permanent_failure_refunded";
 			stripeRefundId: string;
@@ -63,68 +66,60 @@ export async function submitPrintFulfillment(
 ): Promise<PrintFulfillmentOutcome> {
 	const { orderId, orderNumber, lineItems, shippingDetails, session, checkoutSnapshot } = input;
 	const webhookSecret = getWebhookSecret();
-	let recipient = checkoutSnapshot?.items.some(
-		({ productKind }) => productKind === "print" || productKind === "print_set",
-	)
-		? buildRecipientFromShipping(shippingDetails)
-		: undefined;
-	const items = checkoutSnapshot
-		? await import("$lib/server/snapshotFulfillment").then(({ buildOrderItemsFromSnapshot }) =>
-				buildOrderItemsFromSnapshot(checkoutSnapshot, session.id, lineItems),
+	const legacyItems = checkoutSnapshot ? undefined : buildOrderItemsFromSession(session, lineItems);
+	const hasPrintItems = checkoutSnapshot
+		? checkoutSnapshot.items.some(
+				({ productKind }) => productKind === "print" || productKind === "print_set",
 			)
-		: buildOrderItemsFromSession(session, lineItems);
-	if (items.length === 0) {
+		: (legacyItems?.length ?? 0) > 0;
+	if (!hasPrintItems) {
+		const outcome = await convex.mutation(api.orders.claimNonPrintOrderOutcome, {
+			orderId,
+			webhookSecret,
+		});
 		logStructured({
 			event: "lumaprints.skipped",
 			stage: "lumaprints_submit",
 			orderId: orderNumber,
-			meta: { reason: "no LumaPrints items in order" },
+			meta: { reason: "no LumaPrints items in order", outcome: outcome.kind },
 		});
-		return { kind: "no_print_items" } satisfies PrintFulfillmentOutcome;
-	}
-	const borderedItems = items
-		.map((item, index) => ({
-			index,
-			imageUrl: item.imageUrl,
-			borderWidthInches: item.borderWidth ?? 0,
-			sourcePolicy: item.sourcePolicy ?? ("byte_exact" as const),
-		}))
-		.filter((item) => item.borderWidthInches > 0);
-	if (borderedItems.length > 0) {
-		const { processBorderedPrints } = await import("$lib/server/sharpBorder");
-		const urlMap = await timed(
-			{
-				event: "sharp.bordered",
-				stage: "sharp_composite",
-				orderId: orderNumber,
-				meta: { borderedCount: borderedItems.length },
-			},
-			() => processBorderedPrints(borderedItems, session.id),
-		);
-		for (const [index, r2Url] of urlMap) {
-			items[index].imageUrl = r2Url;
-			items[index].sourcePolicy = "bordered_r2";
+		if (outcome.kind === "manual_refunded") {
+			return { kind: "manual_refunded", stripeRefundId: outcome.stripeRefundId };
 		}
+		if (outcome.kind === "automated_refunded") {
+			return {
+				kind: "permanent_failure_refunded",
+				stripeRefundId: outcome.stripeRefundId,
+				errorSummary: "Fulfillment was already refunded",
+			};
+		}
+		return outcome.kind === "success"
+			? { kind: "no_print_items" }
+			: { kind: "no_print_items_replayed" };
 	}
-	recipient ??= buildRecipientFromShipping(shippingDetails);
-	const lpOrder = buildLumaPrintsOrder(session.id, recipient, items);
 
-	const claimed = await convex.mutation(api.orders.claimPrintFulfillment, {
+	const claimToken = randomUUID();
+	const claimed = await convex.mutation(api.orders.claimPrintFulfillmentV2, {
 		orderId,
+		claimToken,
 		webhookSecret,
 	});
 	if (claimed.kind === "fulfilled")
 		return { kind: "fulfilled", lumaprintsOrderNumber: claimed.orderNumber };
-	if (claimed.kind === "refunded") {
-		if (!claimed.stripeRefundId) throw new Error("Print fulfillment was already refunded");
+	if (claimed.kind === "manual_refunded") {
+		return { kind: "manual_refunded", stripeRefundId: claimed.stripeRefundId };
+	}
+	if (claimed.kind === "automated_refunded") {
 		return {
 			kind: "permanent_failure_refunded",
 			stripeRefundId: claimed.stripeRefundId,
 			errorSummary: "Fulfillment was already refunded",
 		};
 	}
-	if (claimed.kind === "busy") throw new Error("Print fulfillment is already in progress");
-	if (claimed.externalId !== lpOrder.externalId)
+	if (claimed.kind === "busy" || claimed.kind === "preparing") {
+		throw new Error("Print fulfillment is already in progress");
+	}
+	if (claimed.externalId !== session.id)
 		throw new Error("Print fulfillment identity does not match paid order");
 	if (claimed.kind === "reconcile") {
 		const existing = await findLumaPrintsOrder(claimed.externalId);
@@ -135,6 +130,95 @@ export async function submitPrintFulfillment(
 			lumaprintsOrderNumber: existing.orderNumber,
 		});
 		return { kind: "fulfilled", lumaprintsOrderNumber: existing.orderNumber };
+	}
+
+	const releasePreparationClaim = async () => {
+		const released = await convex.mutation(api.orders.releasePrintFulfillmentClaim, {
+			orderId,
+			claimToken,
+			webhookSecret,
+		});
+		if (!released) throw new Error("Print preparation claim release is pending");
+	};
+
+	let recipient;
+	let items;
+	try {
+		recipient = checkoutSnapshot?.items.some(
+			({ productKind }) => productKind === "print" || productKind === "print_set",
+		)
+			? buildRecipientFromShipping(shippingDetails)
+			: undefined;
+		items = checkoutSnapshot
+			? await import("$lib/server/snapshotFulfillment").then(({ buildOrderItemsFromSnapshot }) =>
+					buildOrderItemsFromSnapshot(checkoutSnapshot, session.id, lineItems),
+				)
+			: (legacyItems ?? []);
+	} catch (cause) {
+		await releasePreparationClaim();
+		throw cause;
+	}
+	if (items.length === 0) {
+		await releasePreparationClaim();
+		logStructured({
+			event: "lumaprints.skipped",
+			stage: "lumaprints_submit",
+			orderId: orderNumber,
+			meta: { reason: "no LumaPrints items in order" },
+		});
+		return { kind: "no_print_items" } satisfies PrintFulfillmentOutcome;
+	}
+
+	let lpOrder: LumaPrintsOrder;
+	try {
+		const borderedItems = items
+			.map((item, index) => ({
+				index,
+				imageUrl: item.imageUrl,
+				borderWidthInches: item.borderWidth ?? 0,
+				sourcePolicy: item.sourcePolicy ?? ("byte_exact" as const),
+			}))
+			.filter((item) => item.borderWidthInches > 0);
+		if (borderedItems.length > 0) {
+			const { processBorderedPrints } = await import("$lib/server/sharpBorder");
+			const urlMap = await timed(
+				{
+					event: "sharp.bordered",
+					stage: "sharp_composite",
+					orderId: orderNumber,
+					meta: { borderedCount: borderedItems.length },
+				},
+				() => processBorderedPrints(borderedItems, session.id),
+			);
+			for (const [index, r2Url] of urlMap) {
+				items[index].imageUrl = r2Url;
+				items[index].sourcePolicy = "bordered_r2";
+			}
+		}
+		recipient ??= buildRecipientFromShipping(shippingDetails);
+		lpOrder = buildLumaPrintsOrder(session.id, recipient, items);
+	} catch (cause) {
+		await releasePreparationClaim();
+		throw cause;
+	}
+
+	const submission = await convex.mutation(api.orders.beginPrintFulfillmentSubmission, {
+		orderId,
+		claimToken,
+		webhookSecret,
+	});
+	if (submission.kind === "manual_refunded") {
+		return { kind: "manual_refunded", stripeRefundId: submission.stripeRefundId };
+	}
+	if (submission.kind === "automated_refunded") {
+		return {
+			kind: "permanent_failure_refunded",
+			stripeRefundId: submission.stripeRefundId,
+			errorSummary: "Fulfillment was already refunded",
+		};
+	}
+	if (submission.kind !== "submitting" || submission.externalId !== lpOrder.externalId) {
+		throw new Error("Print fulfillment preparation lease was lost");
 	}
 
 	let result: LumaPrintsOrderResponse;

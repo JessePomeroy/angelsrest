@@ -123,7 +123,6 @@ export async function createOrderInConvex(
 	}
 
 	if (
-		alreadyExisted &&
 		(existingRecoveryStatus === "refunded" || existingStatus === "refunded") &&
 		!existingStripeRefundId
 	) {
@@ -131,7 +130,6 @@ export async function createOrderInConvex(
 	}
 
 	if (
-		alreadyExisted &&
 		existingStripeRefundId &&
 		(existingRecoveryStatus === "refunded" ||
 			existingStatus === "fulfillment_error" ||
@@ -146,15 +144,18 @@ export async function createOrderInConvex(
 				stripeRefundId: existingStripeRefundId,
 			},
 		});
+		const manuallyRefunded = existingStatus === "refunded" && existingRecoveryStatus === undefined;
 		return {
 			orderNumber,
 			_id: orderId,
 			alreadyExisted,
-			fulfillment: {
-				kind: "permanent_failure_refunded",
-				stripeRefundId: existingStripeRefundId,
-				errorSummary: existingFulfillmentError ?? "Permanent fulfillment failure",
-			},
+			fulfillment: manuallyRefunded
+				? { kind: "manual_refunded", stripeRefundId: existingStripeRefundId }
+				: {
+						kind: "permanent_failure_refunded",
+						stripeRefundId: existingStripeRefundId,
+						errorSummary: existingFulfillmentError ?? "Permanent fulfillment failure",
+					},
 			notification: "none",
 		};
 	}
@@ -235,6 +236,11 @@ export async function createOrderInConvex(
 		_id: orderId,
 		alreadyExisted,
 		fulfillment,
-		notification: fulfillment.kind === "permanent_failure_refunded" ? "failure" : "success",
+		notification:
+			fulfillment.kind === "manual_refunded" || fulfillment.kind === "no_print_items_replayed"
+				? "none"
+				: fulfillment.kind === "permanent_failure_refunded"
+					? "failure"
+					: "success",
 	};
 }

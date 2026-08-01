@@ -34,8 +34,12 @@ vi.mock("$convex/api", () => ({
 	api: {
 		invoices: { markPaid: "invoices.markPaid" },
 		orders: {
-			claimPrintFulfillment: "orders.claimPrintFulfillment",
+			beginPrintFulfillmentSubmission: "orders.beginPrintFulfillmentSubmission",
+			claimNonPrintOrderOutcome: "orders.claimNonPrintOrderOutcome",
+			claimPrintFulfillmentV2: "orders.claimPrintFulfillmentV2",
 			create: "orders.create",
+			reconcileSucceededManualRefund: "orders.reconcileSucceededManualRefund",
+			releasePrintFulfillmentClaim: "orders.releasePrintFulfillmentClaim",
 			resolveCheckoutRouting: "orders.resolveCheckoutRouting",
 			updatePrintFulfillment: "orders.updatePrintFulfillment",
 			updateStatus: "orders.updateStatus",
@@ -149,6 +153,8 @@ describe("processStripeWebhookEvent", () => {
 	let orderCreateResults: Array<ReturnType<typeof makeOrderResult>>;
 	let updateStatusResults: Array<undefined | Error>;
 	let claimedExternalId: string | undefined;
+	let claimResultOverride: Record<string, unknown> | undefined;
+	let nonPrintOutcomeOverride: Record<string, unknown> | undefined;
 	const convex = {
 		mutation: vi.fn(),
 		query: vi.fn(),
@@ -159,6 +165,7 @@ describe("processStripeWebhookEvent", () => {
 		checkout: {
 			sessions: {
 				retrieve: vi.fn(),
+				list: vi.fn(),
 				listLineItems: vi.fn(),
 			},
 		},
@@ -172,6 +179,8 @@ describe("processStripeWebhookEvent", () => {
 		orderCreateResults = [makeOrderResult()];
 		updateStatusResults = [];
 		claimedExternalId = undefined;
+		claimResultOverride = undefined;
+		nonPrintOutcomeOverride = undefined;
 		convex.mutation.mockImplementation(
 			async (reference: string, args: { update?: string; stripeSessionId?: string }) => {
 				if (reference === "orders.create") {
@@ -180,8 +189,18 @@ describe("processStripeWebhookEvent", () => {
 					if (!result) throw new Error("Missing configured orders.create result");
 					return result;
 				}
-				if (reference === "orders.claimPrintFulfillment")
-					return { kind: "claimed", externalId: claimedExternalId };
+				if (reference === "orders.claimNonPrintOrderOutcome") {
+					return nonPrintOutcomeOverride ?? { kind: "success" };
+				}
+				if (reference === "orders.claimPrintFulfillmentV2")
+					return claimResultOverride ?? { kind: "claimed", externalId: claimedExternalId };
+				if (reference === "orders.beginPrintFulfillmentSubmission") {
+					return { kind: "submitting", externalId: claimedExternalId };
+				}
+				if (reference === "orders.reconcileSucceededManualRefund") {
+					return { kind: "reconciled" };
+				}
+				if (reference === "orders.releasePrintFulfillmentClaim") return true;
 				if (reference === "orders.updatePrintFulfillment") return { kind: args.update };
 				if (reference === "orders.updateStatus") {
 					const result = updateStatusResults.shift();
@@ -194,6 +213,7 @@ describe("processStripeWebhookEvent", () => {
 		convex.query.mockReset();
 		mockPrivateEnv.CHECKOUT_SNAPSHOT_MODE = undefined;
 		stripe.checkout.sessions.retrieve.mockReset();
+		stripe.checkout.sessions.list.mockReset();
 		stripe.checkout.sessions.listLineItems.mockReset();
 		stripe.refunds.create.mockResolvedValue({ id: "re_test_123", status: "succeeded" });
 		createLumaPrintsOrder.mockResolvedValue({ orderNumber: "LP-123" });
@@ -202,6 +222,89 @@ describe("processStripeWebhookEvent", () => {
 	function adapters() {
 		return { stripe, resend, convex, createLumaPrintsOrder };
 	}
+
+	function manualRefundEvent(overrides: Record<string, unknown> = {}) {
+		return makeStripeEvent(
+			"refund.created",
+			{
+				id: "re_1234567890abcdef",
+				amount: 1500,
+				charge: "ch_1234567890abcdef",
+				currency: "usd",
+				metadata: {},
+				payment_intent: "pi_1234567890abcdef",
+				status: "succeeded",
+				...overrides,
+			},
+			{ id: "evt_1234567890abcdef", livemode: false },
+		);
+	}
+
+	function manualRefundSession(overrides: Record<string, unknown> = {}) {
+		return {
+			id: "cs_test_1234567890abcdef",
+			amount_total: 1500,
+			currency: "usd",
+			livemode: false,
+			metadata: null,
+			mode: "payment",
+			payment_intent: "pi_1234567890abcdef",
+			payment_status: "paid",
+			status: "complete",
+			...overrides,
+		};
+	}
+
+	it("reconciles signed full manual refunds without email or fulfillment effects", async () => {
+		stripe.checkout.sessions.list.mockResolvedValue({
+			data: [manualRefundSession()],
+			has_more: false,
+		});
+		const { processStripeWebhookEvent } = await import("../orderIntake");
+		await processStripeWebhookEvent(manualRefundEvent(), adapters());
+		expect(stripe.checkout.sessions.list).toHaveBeenCalledWith({
+			payment_intent: "pi_1234567890abcdef",
+			limit: 2,
+		});
+		expect(convex.mutation).toHaveBeenCalledWith(
+			"orders.reconcileSucceededManualRefund",
+			expect.objectContaining({ stripeRefundId: "re_1234567890abcdef" }),
+		);
+		expect(createLumaPrintsOrder).not.toHaveBeenCalled();
+		expect(stripe.refunds.create).not.toHaveBeenCalled();
+		expect(mockSendAdminNotification).not.toHaveBeenCalled();
+		expect(mockSendCustomerConfirmation).not.toHaveBeenCalled();
+		expect(mockSendCustomerFulfillmentFailure).not.toHaveBeenCalled();
+		expect(mockSendFailureAlert).not.toHaveBeenCalled();
+	});
+
+	it("acknowledges unsupported refund evidence without any downstream effect", async () => {
+		const { processStripeWebhookEvent } = await import("../orderIntake");
+		await processStripeWebhookEvent(manualRefundEvent({ amount: 0 }), adapters());
+		expect(stripe.checkout.sessions.list).not.toHaveBeenCalled();
+		expect(convex.mutation).not.toHaveBeenCalled();
+		expect(mockSendFailureAlert).not.toHaveBeenCalled();
+		expect(createLumaPrintsOrder).not.toHaveBeenCalled();
+	});
+
+	it("retries provider lookup failures without sending the generic alert", async () => {
+		stripe.checkout.sessions.list.mockRejectedValue(new Error("Stripe unavailable"));
+		const { processStripeWebhookEvent } = await import("../orderIntake");
+		await expect(processStripeWebhookEvent(manualRefundEvent(), adapters())).rejects.toThrow();
+		expect(mockSendFailureAlert).not.toHaveBeenCalled();
+		expect(convex.mutation).not.toHaveBeenCalled();
+	});
+
+	it.each([
+		"refund.failed",
+		"charge.refunded",
+	])("keeps %s as a no-write event", async (eventType) => {
+		const { processStripeWebhookEvent } = await import("../orderIntake");
+		await processStripeWebhookEvent(makeStripeEvent(eventType, {}), adapters());
+		expect(stripe.checkout.sessions.list).not.toHaveBeenCalled();
+		expect(convex.mutation).not.toHaveBeenCalled();
+		expect(mockSendFailureAlert).not.toHaveBeenCalled();
+	});
 
 	it("drives a print checkout through the real fulfillment orchestration interface", async () => {
 		const session = makeCheckoutSession();
@@ -224,6 +327,96 @@ describe("processStripeWebhookEvent", () => {
 			"orders.updateStatus",
 			expect.objectContaining({ lumaprintsOrderNumber: "LP-123" }),
 		);
+	});
+
+	it("suppresses all email and fulfillment effects when a concurrent manual refund wins", async () => {
+		const session = makeCheckoutSession();
+		stripe.checkout.sessions.retrieve.mockResolvedValue({
+			...session,
+			line_items: { data: [makeLineItem()] },
+		});
+		claimResultOverride = { kind: "manual_refunded", stripeRefundId: "re_manual_123" };
+
+		const { processStripeWebhookEvent } = await import("../orderIntake");
+		await processStripeWebhookEvent(
+			makeStripeEvent("checkout.session.completed", session),
+			adapters(),
+		);
+
+		expect(createLumaPrintsOrder).not.toHaveBeenCalled();
+		expect(stripe.refunds.create).not.toHaveBeenCalled();
+		expect(mockSendCustomerConfirmation).not.toHaveBeenCalled();
+		expect(mockSendCustomerFulfillmentFailure).not.toHaveBeenCalled();
+		expect(mockSendAdminNotification).not.toHaveBeenCalled();
+		expect(mockSendFailureAlert).not.toHaveBeenCalled();
+	});
+
+	it("preserves automated recovery notification when it wins the claim race", async () => {
+		const session = makeCheckoutSession();
+		stripe.checkout.sessions.retrieve.mockResolvedValue({
+			...session,
+			line_items: { data: [makeLineItem()] },
+		});
+		claimResultOverride = { kind: "automated_refunded", stripeRefundId: "re_automated_123" };
+
+		const { processStripeWebhookEvent } = await import("../orderIntake");
+		await processStripeWebhookEvent(
+			makeStripeEvent("checkout.session.completed", session),
+			adapters(),
+		);
+
+		expect(mockSendCustomerFulfillmentFailure).toHaveBeenCalledOnce();
+		expect(mockSendCustomerConfirmation).not.toHaveBeenCalled();
+		expect(createLumaPrintsOrder).not.toHaveBeenCalled();
+	});
+
+	it("suppresses effects when a stored early-refund intent makes the new order terminal", async () => {
+		const session = makeCheckoutSession();
+		stripe.checkout.sessions.retrieve.mockResolvedValue({
+			...session,
+			line_items: { data: [makeLineItem()] },
+		});
+		orderCreateResults = [
+			makeOrderResult({
+				alreadyExisted: true,
+				status: "refunded",
+				stripeRefundId: "re_early_123",
+			}),
+		];
+
+		const { processStripeWebhookEvent } = await import("../orderIntake");
+		await processStripeWebhookEvent(
+			makeStripeEvent("checkout.session.completed", session),
+			adapters(),
+		);
+
+		expect(createLumaPrintsOrder).not.toHaveBeenCalled();
+		expect(mockSendCustomerConfirmation).not.toHaveBeenCalled();
+		expect(mockSendCustomerFulfillmentFailure).not.toHaveBeenCalled();
+		expect(mockSendAdminNotification).not.toHaveBeenCalled();
+		expect(convex.mutation).not.toHaveBeenCalledWith(
+			"orders.claimPrintFulfillmentV2",
+			expect.anything(),
+		);
+	});
+
+	it("suppresses non-print success email when concurrent refund reconciliation wins", async () => {
+		const session = makeCheckoutSession({ metadata: {} });
+		stripe.checkout.sessions.retrieve.mockResolvedValue({
+			...session,
+			line_items: { data: [] },
+		});
+		nonPrintOutcomeOverride = { kind: "manual_refunded", stripeRefundId: "re_manual_123" };
+
+		const { processStripeWebhookEvent } = await import("../orderIntake");
+		await processStripeWebhookEvent(
+			makeStripeEvent("checkout.session.completed", session),
+			adapters(),
+		);
+
+		expect(mockSendCustomerConfirmation).not.toHaveBeenCalled();
+		expect(mockSendAdminNotification).not.toHaveBeenCalled();
+		expect(createLumaPrintsOrder).not.toHaveBeenCalled();
 	});
 
 	it("returns a no-print outcome without calling the LumaPrints adapter", async () => {

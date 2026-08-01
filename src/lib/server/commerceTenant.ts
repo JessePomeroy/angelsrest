@@ -20,6 +20,9 @@ export interface ResolvedCommerceTenant {
 	stripeRequestOptions?: Stripe.RequestOptions;
 }
 
+/** A permanent conflict in signed commerce tenant identity. */
+export class CommerceTenantIdentityError extends Error {}
+
 export const ANGELS_REST_COMMERCE_PROFILE: CommerceNotificationProfile = {
 	siteName: "Angel's Rest",
 	siteUrl: SITE_DOMAIN,
@@ -54,14 +57,16 @@ export async function resolveCommerceTenant(
 			webhookSecret,
 		});
 		if (!client) {
-			throw new Error(`No platform client found for Stripe account ${accountId}`);
+			throw new CommerceTenantIdentityError(
+				`No platform client found for Stripe account ${accountId}`,
+			);
 		}
 		if (
 			metadataSiteUrl &&
 			normalizeCommerceTenantSiteUrl(metadataSiteUrl) !==
 				normalizeCommerceTenantSiteUrl(client.siteUrl)
 		) {
-			throw new Error(
+			throw new CommerceTenantIdentityError(
 				`Stripe account ${accountId} does not match commerce tenant ${metadataSiteUrl}`,
 			);
 		}
@@ -77,12 +82,14 @@ export async function resolveCommerceTenant(
 		};
 	}
 
-	if (!metadataSiteUrl) throw new Error("Commerce tenant metadata missing");
+	if (!metadataSiteUrl) throw new CommerceTenantIdentityError("Commerce tenant metadata missing");
 	const profile = await convex.query(api.platform.getCommerceProfileForSite, {
 		siteUrl: metadataSiteUrl,
 		webhookSecret,
 	});
-	if (!profile) throw new Error(`No platform client found for ${metadataSiteUrl}`);
+	if (!profile) {
+		throw new CommerceTenantIdentityError(`No platform client found for ${metadataSiteUrl}`);
+	}
 
 	return {
 		siteUrl: profile.siteUrl,

@@ -8,7 +8,7 @@
 
 import { v } from "convex/values";
 import { internal } from "./_generated/api";
-import type { Id } from "./_generated/dataModel";
+import type { Doc, Id } from "./_generated/dataModel";
 import type { MutationCtx } from "./_generated/server";
 import { internalMutation, internalQuery } from "./_generated/server";
 import {
@@ -17,15 +17,29 @@ import {
 	type StripeFeeCaptureError,
 } from "./helpers/stripeFeeCapture";
 
+function isManualRefundTerminal(order: Doc<"orders">) {
+	return order.status === "refunded"
+		&& order.stripeRefundId !== undefined
+		&& order.fulfillmentRecoveryStatus === undefined;
+}
+
+function feeCaptureClosed(order: Doc<"orders">) {
+	return isManualRefundTerminal(order)
+		|| order.stripeFees !== undefined
+		|| order.stripeFeeCaptureStatus === "captured"
+		|| order.stripeFeeCaptureStatus === "failed"
+		|| order.stripeFeeCaptureStatus === "canceled";
+}
+
 /**
- * Return the fields the fee-capture action needs. Null if the order was
- * deleted between scheduling and run.
+ * Return the fields the fee-capture action needs. Null if the order no longer
+ * exists or fee capture is terminal.
  */
 export const getOrderForFees = internalQuery({
 	args: { orderId: v.id("orders") },
 	handler: async (ctx, { orderId }) => {
 		const order = await ctx.db.get(orderId);
-		if (!order) return null;
+		if (!order || feeCaptureClosed(order)) return null;
 		return {
 			_id: order._id,
 			orderNumber: order.orderNumber,
@@ -46,14 +60,7 @@ export const beginAttempt = internalMutation({
 	args: { orderId: v.id("orders"), attempt: v.number() },
 	handler: async (ctx, { orderId, attempt }) => {
 		const order = await ctx.db.get(orderId);
-		if (!order) return false;
-		if (order.stripeFees !== undefined) return false;
-		if (
-			order.stripeFeeCaptureStatus === "captured" ||
-			order.stripeFeeCaptureStatus === "failed"
-		) {
-			return false;
-		}
+		if (!order || feeCaptureClosed(order)) return false;
 		await ctx.db.patch(orderId, {
 			stripeFeeCaptureStatus: "pending",
 			stripeFeeCaptureAttempts: Math.max(order.stripeFeeCaptureAttempts ?? 0, attempt),
@@ -81,13 +88,7 @@ export async function recordFeeCaptureRetry(
 	retryDelayMs: number,
 ) {
 	const order = await ctx.db.get(orderId);
-	if (!order) return false;
-	if (
-		order.stripeFeeCaptureStatus === "captured" ||
-		order.stripeFeeCaptureStatus === "failed"
-	) {
-		return false;
-	}
+	if (!order || feeCaptureClosed(order)) return false;
 	const nextAttemptAt = Date.now() + retryDelayMs;
 	await ctx.db.patch(orderId, {
 		stripeFeeCaptureStatus: "pending",
@@ -121,7 +122,7 @@ export const setFees = internalMutation({
 	args: { orderId: v.id("orders"), stripeFees: v.number(), attempt: v.number() },
 	handler: async (ctx, { orderId, stripeFees, attempt }) => {
 		const order = await ctx.db.get(orderId);
-		if (!order) return false;
+		if (!order || feeCaptureClosed(order)) return false;
 		await ctx.db.patch(orderId, {
 			stripeFees,
 			stripeFeeCaptureStatus: "captured",
@@ -142,10 +143,7 @@ export const recordFailure = internalMutation({
 	},
 	handler: async (ctx, { orderId, attempt, error }) => {
 		const order = await ctx.db.get(orderId);
-		if (!order) return false;
-		if (order.stripeFees !== undefined || order.stripeFeeCaptureStatus === "captured") {
-			return false;
-		}
+		if (!order || feeCaptureClosed(order)) return false;
 		await ctx.db.patch(orderId, {
 			stripeFeeCaptureStatus: "failed",
 			stripeFeeCaptureAttempts: Math.max(order.stripeFeeCaptureAttempts ?? 0, attempt),

@@ -300,7 +300,7 @@ describe("reservation, binding, and order transfer", () => {
 		await expect(t.mutation(api.orders.create, {
 			...orderArgs(), stripeConnectedAccountId: ACCOUNT_B,
 			checkoutSnapshotReservation: { version: 2, handle: first.json.handle },
-		})).rejects.toThrow("does not match paid session");
+		})).rejects.toThrow("routing facts conflict");
 		expect(await rows(t)).toHaveLength(1);
 	});
 
