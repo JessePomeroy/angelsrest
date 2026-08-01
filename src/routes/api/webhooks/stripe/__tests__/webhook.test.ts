@@ -46,7 +46,10 @@ describe("Stripe webhook route", () => {
 		});
 		const response = await POST({ request } as Parameters<typeof POST>[0]);
 
-		expect(mocks.verify).toHaveBeenCalledWith(request, mocks.stripe, "connect-secret");
+		expect(mocks.verify).toHaveBeenCalledWith(request, mocks.stripe, [
+			"connect-secret",
+			"legacy-secret",
+		]);
 		expect(mocks.process).toHaveBeenCalledWith(event(), {
 			stripe: mocks.stripe,
 			resend: mocks.resend,
@@ -56,20 +59,33 @@ describe("Stripe webhook route", () => {
 		expect(await response.json()).toEqual({ received: true });
 	});
 
-	it("retains the legacy webhook secret fallback and fails closed without either secret", async () => {
+	it("retains each single-secret deployment and fails closed without either secret", async () => {
 		const { POST } = await import("../+server");
 		mocks.env.STRIPE_CONNECT_WEBHOOK_SECRET = undefined;
-		const request = new Request("http://localhost/api/webhooks/stripe", {
+		const legacyRequest = new Request("http://localhost/api/webhooks/stripe", {
 			method: "POST",
 			body: "{}",
 		});
-		await POST({ request } as Parameters<typeof POST>[0]);
-		expect(mocks.verify).toHaveBeenCalledWith(request, mocks.stripe, "legacy-secret");
+		await POST({ request: legacyRequest } as Parameters<typeof POST>[0]);
+		expect(mocks.verify).toHaveBeenLastCalledWith(legacyRequest, mocks.stripe, ["legacy-secret"]);
 
+		mocks.env.STRIPE_CONNECT_WEBHOOK_SECRET = "connect-secret";
 		mocks.env.STRIPE_WEBHOOK_SECRET = undefined;
-		await expect(POST({ request } as Parameters<typeof POST>[0])).rejects.toThrow(
+		const connectRequest = new Request("http://localhost/api/webhooks/stripe", {
+			method: "POST",
+			body: "{}",
+		});
+		await POST({ request: connectRequest } as Parameters<typeof POST>[0]);
+		expect(mocks.verify).toHaveBeenLastCalledWith(connectRequest, mocks.stripe, ["connect-secret"]);
+
+		mocks.env.STRIPE_CONNECT_WEBHOOK_SECRET = undefined;
+		const missingRequest = new Request("http://localhost/api/webhooks/stripe", {
+			method: "POST",
+			body: "{}",
+		});
+		await expect(POST({ request: missingRequest } as Parameters<typeof POST>[0])).rejects.toThrow(
 			"Stripe commerce webhook secret is not set",
 		);
-		expect(mocks.process).toHaveBeenCalledTimes(1);
+		expect(mocks.process).toHaveBeenCalledTimes(2);
 	});
 });

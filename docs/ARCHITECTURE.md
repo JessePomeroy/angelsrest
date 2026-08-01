@@ -147,11 +147,14 @@ and test full client-side navigation, expiry, logout, and concurrent requests.
    explicitly supported pre-handoff phase.
 5. Stripe sends platform and connected-account commerce events to this
    repository's `/api/webhooks/stripe`; client spokes do not own a parallel
-   `checkout.session.completed` processor.
-6. The webhook verifies the raw signed body. `orderIntake.ts` resolves
-   `event.account` back to the stored tenant when present; platform-account
-   events use the server-owned metadata key and a webhook-secret-protected
-   Convex profile lookup. Conflicting or unknown tenant identities fail closed.
+   `checkout.session.completed` processor. Stripe uses disjoint destinations
+   and signing secrets for `Your account` and `Connected accounts` scope.
+6. The webhook reads the raw body once and accepts either bounded commerce
+   signing secret. The matched secret authenticates transport only; it does not
+   select tenant or business authority. `orderIntake.ts` resolves `event.account`
+   back to the stored tenant when present; platform-account events use the
+   server-owned metadata key and a webhook-secret-protected Convex profile
+   lookup. Conflicting or unknown tenant identities fail closed.
 7. `webhookOrders.ts` creates or reuses the Convex order and schedules fee
    capture outside the webhook hot path.
 8. Eligible items go through `printFulfillment.ts` and LumaPrints.
@@ -180,10 +183,14 @@ Print fulfillment uses an expiring preparation lease and an atomic submission
 fence, so refund and provider effects cannot both start. The additive V2 claim
 API keeps the V1 claim available for a Convex-first rollout.
 
-Production rollout must deploy Convex first. Before hub activation, verify that
-the commerce event destination delivers both refund event types for platform
-and connected accounts. Automated fulfillment recovery remains a separate owner
-of its tagged refunds.
+Production rollout must deploy Convex first, then deploy the dual-secret hub
+consumer before any destination change. Keep platform and connected-account
+destination scopes disjoint because payment-failure email is not deduplicated
+across overlapping deliveries. Before hub activation, verify that both scoped
+destinations use compatible snapshot events and deliver `refund.created` and
+`refund.updated`. Retain both signing secrets through Stripe's retry window;
+disable a destination before removing its secret. Automated fulfillment recovery
+remains a separate owner of its tagged refunds.
 
 ### LumaPrints shipment webhook
 
