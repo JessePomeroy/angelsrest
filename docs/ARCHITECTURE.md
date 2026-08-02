@@ -190,10 +190,11 @@ Stripe delivery has three logical consumers. The platform-subscription
 `/api/platform/webhooks/stripe`. The commerce `Your account` destination sends
 platform-owned commerce events to `/api/webhooks/stripe`. A future
 `Connected accounts` commerce destination will send connected-account events to
-the same commerce route. Each destination must use Snapshot payloads and the
-same reviewed Stripe API version. Gate A recorded both active destinations at
-`2026-01-28.clover`; the rollout must reconfirm that contract before deployment.
-Thin V2 notifications are unsupported.
+the same commerce route. Each destination must use Snapshot payloads and API
+`2026-01-28.clover`; thin V2 notifications are unsupported. The repository pins
+Stripe SDK `20.3.1` exactly because its generated types use that contract. Every
+Stripe client constructor also sets the version explicitly. A signed Snapshot
+event is rejected before dispatch unless its `api_version` matches.
 
 The two active `Your account` destinations both select
 `checkout.session.completed`. The platform route handles only subscription-mode
