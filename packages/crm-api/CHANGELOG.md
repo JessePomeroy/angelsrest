@@ -1,5 +1,11 @@
 # @jessepomeroy/crm-api
 
+## 2.33.3
+
+### Patch Changes
+
+- c9010c4: Pin Stripe API clients and generated types to the live Snapshot webhook contract.
+
 ## 2.33.2
 
 ### Patch Changes
