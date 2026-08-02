@@ -34,6 +34,8 @@ import {
 } from "./helpers/stripeFeeCapture";
 import { purposeScopedServerRolesAreDisjoint } from "./helpers/serverSecrets";
 
+const STRIPE_API_VERSION = "2026-01-28.clover" as const;
+
 /**
  * Capture Stripe fees for a single order. Idempotent: short-circuits if
  * fees are already set or if the PI isn't available. Reschedules itself
@@ -100,7 +102,7 @@ export const captureFeesForOrder = internalAction({
 			return;
 		}
 
-		const stripe = new Stripe(stripeKey);
+		const stripe = new Stripe(stripeKey, { apiVersion: STRIPE_API_VERSION });
 		let failureCode: StripeFeeCaptureError = "balance_transaction_not_ready";
 		try {
 			const pi = await stripe.paymentIntents.retrieve(
@@ -162,7 +164,9 @@ export const reconcileCheckoutSnapshotReservation = internalAction({
 		const stripeKey = process.env.STRIPE_SECRET_KEY;
 		if (stripeKey && purposeScopedServerRolesAreDisjoint()) {
 			try {
-				const session = await new Stripe(stripeKey).checkout.sessions.retrieve(
+				const session = await new Stripe(stripeKey, {
+					apiVersion: STRIPE_API_VERSION,
+				}).checkout.sessions.retrieve(
 					row.stripeSessionId, {}, row.stripeConnectedAccountId
 						? { stripeAccount: row.stripeConnectedAccountId } : undefined,
 				);

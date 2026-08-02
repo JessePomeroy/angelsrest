@@ -92,8 +92,8 @@ importers:
         specifier: ^0.35.3
         version: 0.35.3(@types/node@25.6.0)
       stripe:
-        specifier: ^20.4.1
-        version: 20.4.1(@types/node@25.6.0)
+        specifier: 20.3.1
+        version: 20.3.1(@types/node@25.6.0)
       supports-color:
         specifier: ^10.2.2
         version: 10.2.2
@@ -180,8 +180,8 @@ importers:
         specifier: workspace:^
         version: link:../print-catalog
       stripe:
-        specifier: ^20.4.1
-        version: 20.4.1(@types/node@25.6.0)
+        specifier: 20.3.1
+        version: 20.3.1(@types/node@25.6.0)
     devDependencies:
       convex:
         specifier: ^1.42.1
@@ -3510,8 +3510,8 @@ packages:
     resolution: {integrity: sha512-vavAMRXOgBVNF6nyEEmL3DBK19iRpDcoIwW+swQ+CbGiu7lju6t+JklA1MHweoWtadgt4ISVUsXLyDq34ddcwA==}
     engines: {node: '>=4'}
 
-  stripe@20.4.1:
-    resolution: {integrity: sha512-axCguHItc8Sxt0HC6aSkdVRPffjYPV7EQqZRb2GkIa8FzWDycE7nHJM19C6xAIynH1Qp1/BHiopSi96jGBxT0w==}
+  stripe@20.3.1:
+    resolution: {integrity: sha512-k990yOT5G5rhX3XluRPw5Y8RLdJDW4dzQ29wWT66piHrbnM2KyamJ1dKgPsw4HzGHRWjDiSSdcI2WdxQUPV3aQ==}
     engines: {node: '>=16'}
     peerDependencies:
       '@types/node': '>=16'
@@ -7149,7 +7149,7 @@ snapshots:
 
   strip-bom@3.0.0: {}
 
-  stripe@20.4.1(@types/node@25.6.0):
+  stripe@20.3.1(@types/node@25.6.0):
     optionalDependencies:
       '@types/node': 25.6.0
 

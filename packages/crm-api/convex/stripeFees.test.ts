@@ -17,8 +17,8 @@ vi.mock("stripe", () => ({
 		paymentIntents = { retrieve: retrievePaymentIntent };
 		checkout = { sessions: { retrieve: retrieveCheckoutSession } };
 
-		constructor() {
-			constructStripe();
+		constructor(key: string, options: unknown) {
+			constructStripe(key, options);
 		}
 	},
 }));
@@ -139,7 +139,10 @@ describe("scheduled Stripe fee capture authority recovery", () => {
 		vi.advanceTimersByTime(FEE_CAPTURE_RETRY_DELAY_MS);
 		await t.finishInProgressScheduledFunctions();
 
-		expect(constructStripe).toHaveBeenCalledTimes(1);
+		expect(constructStripe).toHaveBeenCalledOnce();
+		expect(constructStripe).toHaveBeenCalledWith(stripeSecret, {
+			apiVersion: "2026-01-28.clover",
+		});
 		expect(retrievePaymentIntent).toHaveBeenCalledTimes(1);
 		const repaired = await t.run(async (ctx) => ctx.db.get(orderId));
 		expect(repaired).toMatchObject({
@@ -177,6 +180,9 @@ describe("bound checkout snapshot paid-safe reconciliation", () => {
 			reservationId: row._id, boundAt: row.boundAt!, attempt: 0,
 		});
 		expect(await t.run((ctx) => ctx.db.get(row._id))).toBeNull();
+		expect(constructStripe).toHaveBeenCalledWith(stripeSecret, {
+			apiVersion: "2026-01-28.clover",
+		});
 	});
 
 	test("retains paid evidence, alerts without content, and makes stale jobs no-op", async () => {

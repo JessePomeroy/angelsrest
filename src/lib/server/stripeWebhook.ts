@@ -1,6 +1,7 @@
 import { error } from "@sveltejs/kit";
 import type Stripe from "stripe";
 import { logStructured } from "$lib/server/logger";
+import { STRIPE_API_VERSION } from "$lib/server/stripeApiVersion";
 
 /**
  * Read the raw body and signature once, then verify against one or more
@@ -48,14 +49,15 @@ export async function verifyStripeWebhookWithRole<Role extends string>(
 
 	const failureCategories = new Set<string>();
 	for (const candidate of candidates) {
+		let event: Stripe.Event;
 		try {
-			return {
-				event: stripe.webhooks.constructEvent(body, signature, candidate.secret),
-				role: candidate.role,
-			};
+			event = stripe.webhooks.constructEvent(body, signature, candidate.secret);
 		} catch (err: unknown) {
 			failureCategories.add(classifyVerificationFailure(err));
+			continue;
 		}
+		assertWebhookApiVersion(event, logLabel);
+		return { event, role: candidate.role };
 	}
 
 	logStructured({
@@ -69,6 +71,22 @@ export async function verifyStripeWebhookWithRole<Role extends string>(
 		},
 	});
 	throw error(400, "Webhook signature verification failed");
+}
+
+function assertWebhookApiVersion(event: Stripe.Event, logLabel: string) {
+	if (event.api_version === STRIPE_API_VERSION) return;
+	logStructured({
+		event: "webhook.api_version_rejected",
+		level: "error",
+		stage: "webhook",
+		meta: {
+			logLabel,
+			eventType: event.type,
+			expectedApiVersion: STRIPE_API_VERSION,
+			actualApiVersion: event.api_version ?? "missing",
+		},
+	});
+	throw error(400, "Webhook API version is unsupported");
 }
 
 function normalizeCandidates<Role extends string>(
