@@ -6,12 +6,39 @@ import { logStructured } from "$lib/server/logger";
  * Read the raw body and signature once, then verify against one or more
  * destination secrets. Callers still own event dispatch and business authority.
  */
+export interface StripeWebhookSecretCandidate<Role extends string = string> {
+	role: Role;
+	secret: string;
+}
+
+export interface VerifiedStripeWebhook<Role extends string = string> {
+	event: Stripe.Event;
+	role: Role;
+}
+
 export async function verifyStripeWebhook(
 	request: Request,
 	stripe: Stripe,
 	webhookSecrets: string | readonly string[],
 	logLabel = "Webhook",
 ): Promise<Stripe.Event> {
+	const secrets = typeof webhookSecrets === "string" ? [webhookSecrets] : webhookSecrets;
+	const { event } = await verifyStripeWebhookWithRole(
+		request,
+		stripe,
+		secrets.map((secret) => ({ role: "webhook", secret })),
+		logLabel,
+	);
+	return event;
+}
+
+export async function verifyStripeWebhookWithRole<Role extends string>(
+	request: Request,
+	stripe: Stripe,
+	webhookSecrets: readonly StripeWebhookSecretCandidate<Role>[],
+	logLabel = "Webhook",
+): Promise<VerifiedStripeWebhook<Role>> {
+	const candidates = normalizeCandidates(webhookSecrets, logLabel);
 	const body = await request.text();
 	const signature = request.headers.get("stripe-signature");
 
@@ -19,17 +46,13 @@ export async function verifyStripeWebhook(
 		throw error(400, "Missing stripe-signature header");
 	}
 
-	const candidates = [
-		...new Set(
-			(typeof webhookSecrets === "string" ? [webhookSecrets] : webhookSecrets).filter(
-				(secret) => secret.length > 0,
-			),
-		),
-	];
 	const failureCategories = new Set<string>();
-	for (const secret of candidates) {
+	for (const candidate of candidates) {
 		try {
-			return stripe.webhooks.constructEvent(body, signature, secret);
+			return {
+				event: stripe.webhooks.constructEvent(body, signature, candidate.secret),
+				role: candidate.role,
+			};
 		} catch (err: unknown) {
 			failureCategories.add(classifyVerificationFailure(err));
 		}
@@ -46,6 +69,33 @@ export async function verifyStripeWebhook(
 		},
 	});
 	throw error(400, "Webhook signature verification failed");
+}
+
+function normalizeCandidates<Role extends string>(
+	candidates: readonly StripeWebhookSecretCandidate<Role>[],
+	logLabel: string,
+) {
+	const distinct = new Map<string, StripeWebhookSecretCandidate<Role>>();
+	for (const candidate of candidates) {
+		if (!candidate.secret) continue;
+		const existing = distinct.get(candidate.secret);
+		if (existing?.role === candidate.role) continue;
+		if (existing) {
+			logStructured({
+				event: "webhook.secret_configuration_invalid",
+				level: "error",
+				stage: "webhook",
+				meta: {
+					logLabel,
+					candidateCount: candidates.length,
+					roleCount: new Set(candidates.map(({ role }) => role)).size,
+				},
+			});
+			throw error(500, "Webhook secret configuration is invalid");
+		}
+		distinct.set(candidate.secret, candidate);
+	}
+	return [...distinct.values()];
 }
 
 function classifyVerificationFailure(err: unknown) {

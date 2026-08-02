@@ -22,6 +22,7 @@ import {
 	reconcileSucceededManualRefund,
 } from "$lib/server/manualRefundReconciliation";
 import type { SubmitLumaPrintsOrder } from "$lib/server/printFulfillment";
+import { COMMERCE_TENANT_METADATA_KEY } from "$lib/server/stripeConnect";
 import type { ShippingDetails } from "$lib/server/webhookEmails";
 import {
 	sendAdminNotification,
@@ -61,6 +62,7 @@ export async function processStripeWebhookEvent(
 		switch (event.type) {
 			case "checkout.session.completed": {
 				const session = event.data.object as Stripe.Checkout.Session;
+				if (session.metadata?.type === "platform_subscription") break;
 				if (session.metadata?.type === "invoice_payment") {
 					const tenant = await resolveCommerceTenant(event, adapters.convex);
 					await markInvoicePaidFromSession(session, adapters.convex, tenant.siteUrl);
@@ -111,12 +113,10 @@ export async function processStripeWebhookEvent(
 			}
 
 			case "payment_intent.payment_failed": {
+				const paymentIntent = event.data.object as Stripe.PaymentIntent;
+				if (!hasPaymentFailureCommerceAuthority(paymentIntent)) break;
 				const tenant = await resolveCommerceTenant(event, adapters.convex);
-				await handlePaymentFailed(
-					event.data.object as Stripe.PaymentIntent,
-					adapters.resend,
-					tenant.notificationProfile,
-				);
+				await handlePaymentFailed(paymentIntent, adapters.resend, tenant.notificationProfile);
 				break;
 			}
 
@@ -182,6 +182,11 @@ async function markInvoicePaidFromSession(
 		stage: "webhook",
 		meta: { invoiceId },
 	});
+}
+
+function hasPaymentFailureCommerceAuthority(paymentIntent: Stripe.PaymentIntent) {
+	const tenantMarker = paymentIntent.metadata?.[COMMERCE_TENANT_METADATA_KEY];
+	return typeof tenantMarker === "string" && tenantMarker.trim().length > 0;
 }
 
 async function handlePaymentFailed(

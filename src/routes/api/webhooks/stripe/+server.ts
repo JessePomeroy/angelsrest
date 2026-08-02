@@ -1,30 +1,67 @@
-import { json } from "@sveltejs/kit";
+import { error, json } from "@sveltejs/kit";
+import type Stripe from "stripe";
 import { env } from "$env/dynamic/private";
 import { getConvex } from "$lib/server/convexClient";
+import { logStructured } from "$lib/server/logger";
 import { createOrder as createLumaPrintsOrder } from "$lib/server/lumaprints";
 import { processStripeWebhookEvent } from "$lib/server/orderIntake";
 import { getResend } from "$lib/server/resendClient";
 import { getStripe } from "$lib/server/stripeClient";
-import { verifyStripeWebhook } from "$lib/server/stripeWebhook";
+import {
+	type StripeWebhookSecretCandidate,
+	verifyStripeWebhookWithRole,
+} from "$lib/server/stripeWebhook";
 
 const convex = getConvex();
 
+type CommerceWebhookRole = "your-account" | "connected-accounts";
+
 export async function POST({ request }) {
 	const stripe = getStripe();
+	const { event, role } = await verifyStripeWebhookWithRole(
+		request,
+		stripe,
+		getCommerceWebhookSecrets(),
+		"Commerce webhook",
+	);
+	assertCommerceWebhookScope(event, role);
 	const resend = getResend();
-	const event = await verifyStripeWebhook(request, stripe, getCommerceWebhookSecrets());
 	await processStripeWebhookEvent(event, { stripe, resend, convex, createLumaPrintsOrder });
 	return json({ received: true });
 }
 
-function getCommerceWebhookSecrets() {
-	const secrets = [env.STRIPE_CONNECT_WEBHOOK_SECRET, env.STRIPE_WEBHOOK_SECRET].filter(
-		(secret): secret is string => Boolean(secret),
-	);
-	if (secrets.length === 0) {
+function getCommerceWebhookSecrets(): StripeWebhookSecretCandidate<CommerceWebhookRole>[] {
+	const candidates: StripeWebhookSecretCandidate<CommerceWebhookRole>[] = [];
+	if (env.STRIPE_WEBHOOK_SECRET) {
+		candidates.push({ role: "your-account", secret: env.STRIPE_WEBHOOK_SECRET });
+	}
+	if (env.STRIPE_CONNECT_WEBHOOK_SECRET) {
+		candidates.push({ role: "connected-accounts", secret: env.STRIPE_CONNECT_WEBHOOK_SECRET });
+	}
+	if (candidates.length === 0) {
 		throw new Error(
 			"Stripe commerce webhook secret is not set. Configure STRIPE_CONNECT_WEBHOOK_SECRET or STRIPE_WEBHOOK_SECRET.",
 		);
 	}
-	return secrets;
+	return candidates;
+}
+
+function assertCommerceWebhookScope(event: Stripe.Event, role: CommerceWebhookRole) {
+	const hasConnectedAccount = typeof event.account === "string" && event.account.length > 0;
+	const matchesRole =
+		(role === "connected-accounts" && hasConnectedAccount) ||
+		(role === "your-account" && !hasConnectedAccount);
+	if (matchesRole) return;
+
+	logStructured({
+		event: "webhook.commerce_scope_rejected",
+		level: "error",
+		stage: "webhook",
+		meta: {
+			eventType: event.type,
+			role,
+			hasConnectedAccount,
+		},
+	});
+	throw error(400, "Webhook account scope does not match its destination");
 }
