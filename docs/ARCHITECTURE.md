@@ -191,8 +191,9 @@ Stripe delivery has three logical consumers. The platform-subscription
 platform-owned commerce events to `/api/webhooks/stripe`. A future
 `Connected accounts` commerce destination will send connected-account events to
 the same commerce route. Each destination must use Snapshot payloads and the
-same reviewed Stripe API version; the current destinations use
-`2026-01-28.clover`, and thin V2 notifications are unsupported.
+same reviewed Stripe API version. Gate A recorded both active destinations at
+`2026-01-28.clover`; the rollout must reconfirm that contract before deployment.
+Thin V2 notifications are unsupported.
 
 The two active `Your account` destinations both select
 `checkout.session.completed`. The platform route handles only Sessions marked
@@ -213,9 +214,10 @@ Production rollout is consumer-first:
    `/api/webhooks/stripe` and `STRIPE_PLATFORM_WEBHOOK_SECRET` signs the active
    Your-account destination for `/api/platform/webhooks/stripe`. Treat
    `STRIPE_CONNECT_WEBHOOK_SECRET` only as the future connected role. Prove all
-   configured role credentials are distinct. If this cannot be proved, use a
-   separately approved rotation to establish both mappings. Deployment is
-   blocked until this gate passes.
+   configured role credentials are distinct. If either condition cannot be
+   proved, use a separately approved rotation to establish both mappings and
+   distinct credentials for every configured role. Retain only value-free
+   evidence. Deployment is blocked until this gate passes.
 3. Confirm the current commerce destination's Snapshot version and event matrix.
    It currently lacks `refund.created` and `refund.updated`; payment-failure
    email remains non-deduplicated until its separate consumer slice lands.

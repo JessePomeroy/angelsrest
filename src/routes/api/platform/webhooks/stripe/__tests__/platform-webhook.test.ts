@@ -148,29 +148,23 @@ describe("platform Stripe webhook", () => {
 		expect(mockConvexMutation).not.toHaveBeenCalled();
 	});
 
-	it("rejects a connected-account event at the platform-subscription route", async () => {
+	it.each([
+		["checkout.session.completed", { id: "cs_connected_123" }],
+		["customer.subscription.deleted", { id: "sub_connected_123" }],
+		["customer.subscription.updated", { id: "sub_connected_123", status: "active" }],
+		["invoice.payment_failed", { customer: "cus_connected_123" }],
+	])("rejects connected-account scope before platform dispatch: %s", async (type, object) => {
 		mockVerifyStripeWebhook.mockResolvedValue(
-			makeEvent(
-				"checkout.session.completed",
-				{
-					id: "cs_connected_123",
-					mode: "subscription",
-					customer: "cus_123",
-					subscription: "sub_123",
-					metadata: {
-						type: "platform_subscription",
-						siteUrl: "client.example",
-					},
-				},
-				{ account: "acct_connected" },
-			),
+			makeEvent(type, object, { account: "acct_connected" }),
 		);
 
-		const response = await POST(makeRequest());
-
-		expect(response.status).toBe(200);
+		await expect(POST(makeRequest())).rejects.toMatchObject({
+			status: 400,
+			body: { message: "Webhook account scope does not match its destination" },
+		});
 		expect(mockConvexQuery).not.toHaveBeenCalled();
 		expect(mockConvexMutation).not.toHaveBeenCalled();
+		expect(mockLogStructured).not.toHaveBeenCalled();
 	});
 
 	it("normalizes expanded checkout customers before structured logging", async () => {
