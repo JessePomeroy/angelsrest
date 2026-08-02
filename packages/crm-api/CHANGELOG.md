@@ -1,5 +1,11 @@
 # @jessepomeroy/crm-api
 
+## 2.34.0
+
+### Minor Changes
+
+- b91c6ac: Claim Stripe payment-failure customer email attempts atomically across webhook retries and overlapping destinations.
+
 ## 2.33.3
 
 ### Patch Changes
