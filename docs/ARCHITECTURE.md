@@ -196,8 +196,9 @@ same reviewed Stripe API version. Gate A recorded both active destinations at
 Thin V2 notifications are unsupported.
 
 The two active `Your account` destinations both select
-`checkout.session.completed`. The platform route handles only Sessions marked
-`platform_subscription`; the commerce route ignores that marker. Commerce
+`checkout.session.completed`. The platform route handles only subscription-mode
+Sessions marked `platform_subscription`; the commerce route handles only
+payment-mode Sessions and also ignores that marker. Commerce
 signing-secret roles must also agree with `event.account`, but signature identity
 does not select the tenant or business domain. Commerce PaymentIntent failures
 require the server-owned commerce tenant marker. Connected-account events also

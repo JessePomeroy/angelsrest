@@ -62,7 +62,7 @@ export async function processStripeWebhookEvent(
 		switch (event.type) {
 			case "checkout.session.completed": {
 				const session = event.data.object as Stripe.Checkout.Session;
-				if (session.metadata?.type === "platform_subscription") break;
+				if (session.mode !== "payment" || session.metadata?.type === "platform_subscription") break;
 				if (session.metadata?.type === "invoice_payment") {
 					const tenant = await resolveCommerceTenant(event, adapters.convex);
 					await markInvoicePaidFromSession(session, adapters.convex, tenant.siteUrl);

@@ -108,6 +108,7 @@ function makeCheckoutSession(
 			paperSizeLabel: "8×10",
 			productSlug: "spring-meadow",
 		},
+		mode: "payment",
 		payment_intent: "pi_test_123",
 		payment_status: "paid",
 		...overrides,
@@ -551,13 +552,11 @@ describe("processStripeWebhookEvent", () => {
 		expect(convex.mutation).not.toHaveBeenCalledWith("orders.create", expect.anything());
 	});
 
-	it("ignores a platform-subscription Session before all commerce effects", async () => {
-		const session = makeCheckoutSession({
-			metadata: {
-				type: "platform_subscription",
-				siteUrl: "client.example",
-			},
-		});
+	it.each([
+		["marked platform subscription", { type: "platform_subscription", siteUrl: "client.example" }],
+		["unmarked subscription", {}],
+	])("ignores a %s Session before all commerce effects", async (_label, metadata) => {
+		const session = makeCheckoutSession({ mode: "subscription", metadata });
 
 		const { processStripeWebhookEvent } = await import("../orderIntake");
 		await processStripeWebhookEvent(
