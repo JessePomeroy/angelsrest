@@ -228,6 +228,31 @@ describe("checkout bridge", () => {
 		).rejects.toMatchObject(new CheckoutBridgeError(400, "Tenant siteUrl mismatch"));
 	});
 
+	it.each([
+		"type",
+		"siteUrl",
+		"invoiceId",
+		"checkoutSnapshotVersion",
+	])("rejects caller-controlled reserved metadata key %s before Stripe", async (key) => {
+		const bodyText = makeBody({ metadata: { [key]: "platform_subscription" } });
+		const { stripe, create } = makeStripe();
+
+		await expect(
+			createTenantPrintCheckoutSession({
+				bodyText,
+				headers: makeHeaders(bodyText),
+				stripe,
+				tenant: { siteUrl: "zippymiggy.com" },
+				secrets: [SECRET],
+				allowedRedirectOrigins: ["https://zippymiggy.com"],
+				now: NOW,
+			}),
+		).rejects.toMatchObject(
+			new CheckoutBridgeError(400, "Reserved checkout metadata is not allowed"),
+		);
+		expect(create).not.toHaveBeenCalled();
+	});
+
 	it("accepts either bounded tenant secret during rotation", async () => {
 		const bodyText = makeBody();
 		const { stripe } = makeStripe();

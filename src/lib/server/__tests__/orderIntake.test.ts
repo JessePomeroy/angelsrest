@@ -108,6 +108,7 @@ function makeCheckoutSession(
 			paperSizeLabel: "8×10",
 			productSlug: "spring-meadow",
 		},
+		mode: "payment",
 		payment_intent: "pi_test_123",
 		payment_status: "paid",
 		...overrides,
@@ -549,6 +550,31 @@ describe("processStripeWebhookEvent", () => {
 
 		expect(createLumaPrintsOrder).not.toHaveBeenCalled();
 		expect(convex.mutation).not.toHaveBeenCalledWith("orders.create", expect.anything());
+	});
+
+	it.each([
+		["marked platform subscription", { type: "platform_subscription", siteUrl: "client.example" }],
+		["unmarked subscription", {}],
+	])("ignores a %s Session before all commerce effects", async (_label, metadata) => {
+		const session = makeCheckoutSession({ mode: "subscription", metadata });
+
+		const { processStripeWebhookEvent } = await import("../orderIntake");
+		await processStripeWebhookEvent(
+			makeStripeEvent("checkout.session.completed", session),
+			adapters(),
+		);
+
+		expect(stripe.checkout.sessions.retrieve).not.toHaveBeenCalled();
+		expect(stripe.checkout.sessions.listLineItems).not.toHaveBeenCalled();
+		expect(convex.query).not.toHaveBeenCalled();
+		expect(convex.mutation).not.toHaveBeenCalled();
+		expect(createLumaPrintsOrder).not.toHaveBeenCalled();
+		expect(stripe.refunds.create).not.toHaveBeenCalled();
+		expect(mockSendCustomerConfirmation).not.toHaveBeenCalled();
+		expect(mockSendAdminNotification).not.toHaveBeenCalled();
+		expect(mockSendCustomerFulfillmentFailure).not.toHaveBeenCalled();
+		expect(mockSendPaymentFailedEmail).not.toHaveBeenCalled();
+		expect(mockSendFailureAlert).not.toHaveBeenCalled();
 	});
 
 	it("routes invoice payment sessions to invoice settlement only", async () => {
@@ -1234,12 +1260,13 @@ describe("processStripeWebhookEvent", () => {
 		expect(mockSendFulfillmentFailureAlert).not.toHaveBeenCalled();
 	});
 
-	it("sends payment failure email when Stripe provides a receipt email", async () => {
+	it("sends payment failure email for a marked Your-account commerce PaymentIntent", async () => {
 		const paymentIntent = {
 			id: "pi_test_123",
 			receipt_email: "jane@example.com",
 			last_payment_error: { message: "card declined" },
-		} as Stripe.PaymentIntent;
+			metadata: { commerceTenantSiteUrl: "angelsrest.online" },
+		} as unknown as Stripe.PaymentIntent;
 
 		const { processStripeWebhookEvent } = await import("../orderIntake");
 		await processStripeWebhookEvent(
@@ -1256,5 +1283,83 @@ describe("processStripeWebhookEvent", () => {
 				adminEmail: "admin@example.com",
 			},
 		});
+	});
+
+	it("ignores an unmarked platform-account PaymentIntent failure", async () => {
+		const paymentIntent = {
+			id: "pi_platform_subscription",
+			receipt_email: "owner@example.com",
+			last_payment_error: { message: "card declined" },
+			metadata: {},
+		} as unknown as Stripe.PaymentIntent;
+
+		const { processStripeWebhookEvent } = await import("../orderIntake");
+		await processStripeWebhookEvent(
+			makeStripeEvent("payment_intent.payment_failed", paymentIntent),
+			adapters(),
+		);
+
+		expect(convex.query).not.toHaveBeenCalled();
+		expect(convex.mutation).not.toHaveBeenCalled();
+		expect(mockSendPaymentFailedEmail).not.toHaveBeenCalled();
+		expect(mockSendFailureAlert).not.toHaveBeenCalled();
+	});
+
+	it("sends a connected-account payment failure with the resolved tenant profile", async () => {
+		const paymentIntent = {
+			id: "pi_connected",
+			receipt_email: "buyer@example.com",
+			last_payment_error: { message: "card declined" },
+			metadata: { commerceTenantSiteUrl: "zippymiggy.com" },
+		} as unknown as Stripe.PaymentIntent;
+		convex.query.mockResolvedValue({
+			siteUrl: "zippymiggy.com",
+			name: "Reflecting Pool",
+			adminEmails: ["maggie@example.com"],
+		});
+
+		const { processStripeWebhookEvent } = await import("../orderIntake");
+		await processStripeWebhookEvent(
+			makeStripeEvent("payment_intent.payment_failed", paymentIntent, {
+				account: "acct_connected",
+			}),
+			adapters(),
+		);
+
+		expect(convex.query).toHaveBeenCalledWith("platform.getByStripeConnectedAccountId", {
+			stripeConnectedAccountId: "acct_connected",
+			webhookSecret: "test-webhook-secret",
+		});
+		expect(mockSendPaymentFailedEmail).toHaveBeenCalledWith(resend, {
+			customerEmail: "buyer@example.com",
+			errorMessage: "card declined",
+			notificationProfile: {
+				siteName: "Reflecting Pool",
+				siteUrl: "zippymiggy.com",
+				adminEmail: "maggie@example.com",
+			},
+		});
+	});
+
+	it("ignores an unmarked connected-account PaymentIntent failure", async () => {
+		const paymentIntent = {
+			id: "pi_unmarked_connected",
+			receipt_email: "buyer@example.com",
+			last_payment_error: { message: "card declined" },
+			metadata: {},
+		} as unknown as Stripe.PaymentIntent;
+
+		const { processStripeWebhookEvent } = await import("../orderIntake");
+		await processStripeWebhookEvent(
+			makeStripeEvent("payment_intent.payment_failed", paymentIntent, {
+				account: "acct_connected",
+			}),
+			adapters(),
+		);
+
+		expect(convex.query).not.toHaveBeenCalled();
+		expect(convex.mutation).not.toHaveBeenCalled();
+		expect(mockSendPaymentFailedEmail).not.toHaveBeenCalled();
+		expect(mockSendFailureAlert).not.toHaveBeenCalled();
 	});
 });

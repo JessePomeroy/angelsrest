@@ -11,7 +11,11 @@ import {
 	buildCheckoutLineItem,
 	createPaymentCheckoutSession,
 } from "$lib/server/stripeCheckoutSession";
-import { buildTenantCheckoutOptions, type StripeTenantAccount } from "$lib/server/stripeConnect";
+import {
+	buildTenantCheckoutOptions,
+	COMMERCE_TENANT_METADATA_KEY,
+	type StripeTenantAccount,
+} from "$lib/server/stripeConnect";
 
 const SIGNATURE_HEADER = "x-checkout-bridge-signature";
 const TIMESTAMP_HEADER = "x-checkout-bridge-timestamp";
@@ -27,6 +31,14 @@ const ITEM_KEYS = [
 	"borderOptionKey",
 	"frameOptionKey",
 ] as const;
+const RESERVED_METADATA_KEYS = new Set([
+	"catalogProvider",
+	"checkoutFingerprint",
+	COMMERCE_TENANT_METADATA_KEY,
+	"invoiceId",
+	"siteUrl",
+	"type",
+]);
 const HANDLE_KEYS = [
 	"siteUrl",
 	"amountCents",
@@ -393,6 +405,9 @@ function parseMetadata(value: unknown): Record<string, string> {
 	}
 	const metadata: Record<string, string> = {};
 	for (const [key, val] of Object.entries(value)) {
+		if (RESERVED_METADATA_KEYS.has(key) || key.startsWith("checkoutSnapshot")) {
+			throw new CheckoutBridgeError(400, "Reserved checkout metadata is not allowed");
+		}
 		if (typeof val !== "string") {
 			throw new CheckoutBridgeError(400, `Invalid metadata value for ${key}`);
 		}

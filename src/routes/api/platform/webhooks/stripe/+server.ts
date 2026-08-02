@@ -1,4 +1,4 @@
-import { json } from "@sveltejs/kit";
+import { error, json } from "@sveltejs/kit";
 import type Stripe from "stripe";
 import { api } from "$convex/api";
 import { env } from "$env/dynamic/private";
@@ -36,6 +36,9 @@ export async function POST({ request }) {
 		STRIPE_PLATFORM_WEBHOOK_SECRET,
 		"Platform webhook",
 	);
+	if (typeof event.account === "string" && event.account.length > 0) {
+		throw error(400, "Webhook account scope does not match its destination");
+	}
 
 	logStructured({
 		event: "platform_webhook.received",
@@ -49,23 +52,28 @@ export async function POST({ request }) {
 		case "checkout.session.completed": {
 			const session = event.data.object as Stripe.Checkout.Session;
 			if (session.metadata?.type !== "platform_subscription") break;
+			const siteUrl = session.metadata.siteUrl?.trim();
+			const stripeCustomerId = stripeExpandableId(session.customer);
+			const stripeSubscriptionId = stripeExpandableId(session.subscription);
+			if (session.mode !== "subscription" || !siteUrl || !stripeCustomerId || !stripeSubscriptionId)
+				break;
 
 			await convex.mutation(api.platform.updateSubscription, {
 				webhookSecret,
-				siteUrl: session.metadata.siteUrl,
+				siteUrl,
 				tier: "full",
 				subscriptionStatus: "active",
-				stripeCustomerId: stripeExpandableId(session.customer),
-				stripeSubscriptionId: stripeExpandableId(session.subscription),
+				stripeCustomerId,
+				stripeSubscriptionId,
 			});
 			logStructured({
 				event: "platform_subscription.activated",
 				stage: "webhook",
 				sessionId: session.id,
 				meta: {
-					siteUrl: session.metadata.siteUrl,
-					stripeCustomerId: stripeExpandableId(session.customer),
-					stripeSubscriptionId: stripeExpandableId(session.subscription),
+					siteUrl,
+					stripeCustomerId,
+					stripeSubscriptionId,
 				},
 			});
 			break;

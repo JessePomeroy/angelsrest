@@ -141,14 +141,16 @@ and test full client-side navigation, expiry, logout, and concurrent requests.
    `CHECKOUT_BRIDGE_TENANTS` entry. Each tenant has independent signing secrets
    and explicit success/cancel redirect origins; two secrets are allowed only
    during bounded rotation. A spoke credential cannot authorize another tenant.
-4. After signature and redirect validation, the hub stamps the tenant's
-   bare-domain key into reserved Session and PaymentIntent metadata, then creates
-   Checkout on the connected account or the platform account during an
-   explicitly supported pre-handoff phase.
-5. Stripe sends platform and connected-account commerce events to this
-   repository's `/api/webhooks/stripe`; client spokes do not own a parallel
-   `checkout.session.completed` processor. Stripe uses disjoint destinations
-   and signing secrets for `Your account` and `Connected accounts` scope.
+4. After signature and redirect validation, the hub rejects caller-supplied
+   dispatch metadata. It stamps the tenant's bare-domain key into reserved
+   Session and PaymentIntent metadata, then creates Checkout on the connected
+   account or the platform account during an explicitly supported pre-handoff
+   phase.
+5. The active `Your account` commerce destination sends platform-owned events
+   to this repository's `/api/webhooks/stripe`. A future disjoint
+   `Connected accounts` destination will send connected-account events to the
+   same route with its own signing secret. Client spokes do not own a parallel
+   `checkout.session.completed` processor.
 6. The webhook reads the raw body once and accepts either bounded commerce
    signing secret. The matched secret authenticates transport only; it does not
    select tenant or business authority. `orderIntake.ts` resolves `event.account`
@@ -183,26 +185,61 @@ Print fulfillment uses an expiring preparation lease and an atomic submission
 fence, so refund and provider effects cannot both start. The additive V2 claim
 API keeps the V1 claim available for a Convex-first rollout.
 
-Each disjoint commerce destination must use Snapshot payloads and the same
-reviewed Stripe API version. The current platform destination uses
-`2026-01-28.clover`; thin V2 notifications are unsupported. Both `Your account`
-and `Connected accounts` destinations require `checkout.session.completed`,
-`payment_intent.payment_failed`, `refund.created`, and `refund.updated` while
-that producer scope is active.
+Stripe delivery has three logical consumers. The platform-subscription
+`Your account` destination sends subscription events to
+`/api/platform/webhooks/stripe`. The commerce `Your account` destination sends
+platform-owned commerce events to `/api/webhooks/stripe`. A future
+`Connected accounts` commerce destination will send connected-account events to
+the same commerce route. Each destination must use Snapshot payloads and the
+same reviewed Stripe API version. Gate A recorded both active destinations at
+`2026-01-28.clover`; the rollout must reconfirm that contract before deployment.
+Thin V2 notifications are unsupported.
+
+The two active `Your account` destinations both select
+`checkout.session.completed`. The platform route handles only subscription-mode
+Sessions marked `platform_subscription`; the commerce route handles only
+payment-mode Sessions and also ignores that marker. Commerce
+signing-secret roles must also agree with `event.account`, but signature identity
+does not select the tenant or business domain. Commerce PaymentIntent failures
+require the server-owned commerce tenant marker. Connected-account events also
+require the connected signing-secret role and use `event.account` to resolve and
+verify the tenant.
 
 Production rollout is consumer-first:
 
-1. Inventory active destinations and confirm that their account scopes do not
-   overlap. Payment-failure email is not deduplicated across destinations.
-2. Create the connected-account destination disabled, with the exact route,
-   Snapshot payloads, matching API version, and the four-event matrix.
-3. Provision its distinct signing secret without removing the platform secret.
-4. Deploy Convex, then the dual-secret hub consumer, while the existing platform
-   destination remains active. Verify the exact deployment before any producer
-   change or destination enablement.
-5. Under separate authorization, enable the connected destination and add both
-   refund events to the platform destination. Retain both secrets through
-   Stripe's retry window.
+1. Keep the two active `Your account` destinations unchanged while the commerce
+   domain guards, API-version alignment, and payment-failure email deduplication
+   are developed and reviewed.
+2. Before deploying role enforcement, prove without retaining secret values that
+   `STRIPE_WEBHOOK_SECRET` signs the active Your-account destination for
+   `/api/webhooks/stripe` and `STRIPE_PLATFORM_WEBHOOK_SECRET` signs the active
+   Your-account destination for `/api/platform/webhooks/stripe`. Treat
+   `STRIPE_CONNECT_WEBHOOK_SECRET` only as the future connected role. Prove all
+   configured role credentials are distinct. If either condition cannot be
+   proved, use a separately approved rotation to establish both mappings and
+   distinct credentials for every configured role. Retain only value-free
+   evidence. Deployment is blocked until this gate passes.
+3. Confirm the current commerce destination's Snapshot version and event matrix.
+   It currently lacks `refund.created` and `refund.updated`; payment-failure
+   email remains non-deduplicated until its separate consumer slice lands.
+4. Under separate deployment authorization, deploy and verify the domain guards,
+   explicit API-version contract, and durable payment-failure deduplication.
+   Stop before connected-destination creation, secret staging, or event expansion
+   until all three consumer prerequisites pass.
+5. Before adding connected-account delivery, prove a non-delivering destination
+   creation path or approve a revised safe rollout. Stripe's documented API flow
+   creates an enabled destination and disables it afterward.
+6. Under separate destination-creation authorization, create the connected
+   destination in the approved non-delivering state with the exact route,
+   Snapshot format, reviewed API version, and four-event matrix. Do not enable
+   delivery.
+7. Under separate secret-staging authorization, obtain and stage the distinct
+   connected-commerce credential. Under separate deployment authorization,
+   deploy and verify the exact consumer without changing either active
+   Your-account destination.
+8. Under separate authorization, enable connected delivery and add both refund
+   events to Your-account commerce. Retain both commerce secrets through
+   Stripe's retry window. Historical event replay is not part of configuration.
 
 A code rollback is unsafe while both destinations can deliver or retry events.
 First pause the affected checkout producers. Keep the dual-secret consumer active
@@ -239,7 +276,9 @@ exposed.
 ### Platform subscriptions
 
 `/api/platform/webhooks/stripe` is separate from the commerce webhook. It owns
-CRM subscription state rather than shop orders or invoice settlement. CRM tier
+CRM subscription state rather than shop orders or invoice settlement. A
+completion activates a tier only when it is a subscription-mode Session with a
+nonempty operator-stamped site, customer, and subscription identity. CRM tier
 onboarding is operator-controlled; no public self-service subscription-session
 creator is exposed. A future self-service flow would require a
 tenant-authenticated billing bridge that derives tenant, billing identity, and

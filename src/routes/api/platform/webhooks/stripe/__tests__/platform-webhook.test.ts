@@ -34,11 +34,16 @@ vi.mock("$convex/api", () => ({
 	},
 }));
 
-function makeEvent(type: string, object: unknown): Stripe.Event {
+function makeEvent(
+	type: string,
+	object: unknown,
+	overrides: Partial<Stripe.Event> = {},
+): Stripe.Event {
 	return {
 		id: "evt_platform_123",
 		type,
 		data: { object },
+		...overrides,
 	} as unknown as Stripe.Event;
 }
 
@@ -66,6 +71,7 @@ describe("platform Stripe webhook", () => {
 		mockVerifyStripeWebhook.mockResolvedValue(
 			makeEvent("checkout.session.completed", {
 				id: "cs_platform_123",
+				mode: "subscription",
 				customer: "cus_platform_123",
 				subscription: "sub_platform_123",
 				metadata: {
@@ -104,10 +110,68 @@ describe("platform Stripe webhook", () => {
 		});
 	});
 
+	it("acknowledges commerce checkout completion without a subscription mutation", async () => {
+		mockVerifyStripeWebhook.mockResolvedValue(
+			makeEvent("checkout.session.completed", {
+				id: "cs_commerce_123",
+				metadata: { commerceTenantSiteUrl: "angelsrest.online" },
+			}),
+		);
+
+		const response = await POST(makeRequest());
+
+		expect(response.status).toBe(200);
+		expect(mockConvexQuery).not.toHaveBeenCalled();
+		expect(mockConvexMutation).not.toHaveBeenCalled();
+	});
+
+	it.each([
+		["payment mode", { mode: "payment", customer: "cus_123", subscription: "sub_123" }],
+		["missing customer", { mode: "subscription", subscription: "sub_123" }],
+		["missing subscription", { mode: "subscription", customer: "cus_123" }],
+	] as const)("rejects forged or incomplete platform subscription metadata: %s", async (_label, fields) => {
+		mockVerifyStripeWebhook.mockResolvedValue(
+			makeEvent("checkout.session.completed", {
+				id: "cs_untrusted_123",
+				...fields,
+				metadata: {
+					type: "platform_subscription",
+					siteUrl: "client.example",
+				},
+			}),
+		);
+
+		const response = await POST(makeRequest());
+
+		expect(response.status).toBe(200);
+		expect(mockConvexQuery).not.toHaveBeenCalled();
+		expect(mockConvexMutation).not.toHaveBeenCalled();
+	});
+
+	it.each([
+		["checkout.session.completed", { id: "cs_connected_123" }],
+		["customer.subscription.deleted", { id: "sub_connected_123" }],
+		["customer.subscription.updated", { id: "sub_connected_123", status: "active" }],
+		["invoice.payment_failed", { customer: "cus_connected_123" }],
+	])("rejects connected-account scope before platform dispatch: %s", async (type, object) => {
+		mockVerifyStripeWebhook.mockResolvedValue(
+			makeEvent(type, object, { account: "acct_connected" }),
+		);
+
+		await expect(POST(makeRequest())).rejects.toMatchObject({
+			status: 400,
+			body: { message: "Webhook account scope does not match its destination" },
+		});
+		expect(mockConvexQuery).not.toHaveBeenCalled();
+		expect(mockConvexMutation).not.toHaveBeenCalled();
+		expect(mockLogStructured).not.toHaveBeenCalled();
+	});
+
 	it("normalizes expanded checkout customers before structured logging", async () => {
 		mockVerifyStripeWebhook.mockResolvedValue(
 			makeEvent("checkout.session.completed", {
 				id: "cs_platform_123",
+				mode: "subscription",
 				customer: {
 					id: "cus_platform_123",
 					email: "owner@example.com",

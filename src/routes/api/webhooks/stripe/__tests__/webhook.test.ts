@@ -4,52 +4,64 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const mocks = vi.hoisted(() => ({
 	convex: {},
 	createLumaPrintsOrder: vi.fn(),
+	logStructured: vi.fn(),
 	process: vi.fn(),
 	resend: {},
 	stripe: {},
 	verify: vi.fn(),
 	env: {
 		STRIPE_CONNECT_WEBHOOK_SECRET: "connect-secret",
-		STRIPE_WEBHOOK_SECRET: "legacy-secret",
+		STRIPE_WEBHOOK_SECRET: "platform-secret",
 	} as Record<string, string | undefined>,
 }));
 
 vi.mock("$env/dynamic/private", () => ({ env: mocks.env }));
 vi.mock("$lib/server/convexClient", () => ({ getConvex: () => mocks.convex }));
+vi.mock("$lib/server/logger", () => ({ logStructured: mocks.logStructured }));
 vi.mock("$lib/server/lumaprints", () => ({ createOrder: mocks.createLumaPrintsOrder }));
 vi.mock("$lib/server/orderIntake", () => ({ processStripeWebhookEvent: mocks.process }));
 vi.mock("$lib/server/resendClient", () => ({ getResend: () => mocks.resend }));
 vi.mock("$lib/server/stripeClient", () => ({ getStripe: () => mocks.stripe }));
-vi.mock("$lib/server/stripeWebhook", () => ({ verifyStripeWebhook: mocks.verify }));
+vi.mock("$lib/server/stripeWebhook", () => ({ verifyStripeWebhookWithRole: mocks.verify }));
 
-function event(): Stripe.Event {
+function event(overrides: Partial<Stripe.Event> = {}): Stripe.Event {
 	return {
 		id: "evt_test_123",
 		type: "checkout.session.completed",
 		data: { object: { id: "cs_test_123" } },
+		...overrides,
 	} as Stripe.Event;
+}
+
+function request() {
+	return new Request("http://localhost/api/webhooks/stripe", {
+		method: "POST",
+		body: "{}",
+	});
 }
 
 describe("Stripe webhook route", () => {
 	beforeEach(() => {
 		vi.clearAllMocks();
 		mocks.env.STRIPE_CONNECT_WEBHOOK_SECRET = "connect-secret";
-		mocks.env.STRIPE_WEBHOOK_SECRET = "legacy-secret";
-		mocks.verify.mockResolvedValue(event());
+		mocks.env.STRIPE_WEBHOOK_SECRET = "platform-secret";
+		mocks.verify.mockResolvedValue({ event: event(), role: "your-account" });
 	});
 
-	it("verifies and delegates one event to the pure intake boundary", async () => {
+	it("verifies the labeled Your-account role and delegates one event", async () => {
 		const { POST } = await import("../+server");
-		const request = new Request("http://localhost/api/webhooks/stripe", {
-			method: "POST",
-			body: "{}",
-		});
-		const response = await POST({ request } as Parameters<typeof POST>[0]);
+		const webhookRequest = request();
+		const response = await POST({ request: webhookRequest } as Parameters<typeof POST>[0]);
 
-		expect(mocks.verify).toHaveBeenCalledWith(request, mocks.stripe, [
-			"connect-secret",
-			"legacy-secret",
-		]);
+		expect(mocks.verify).toHaveBeenCalledWith(
+			webhookRequest,
+			mocks.stripe,
+			[
+				{ role: "your-account", secret: "platform-secret" },
+				{ role: "connected-accounts", secret: "connect-secret" },
+			],
+			"Commerce webhook",
+		);
 		expect(mocks.process).toHaveBeenCalledWith(event(), {
 			stripe: mocks.stripe,
 			resend: mocks.resend,
@@ -59,30 +71,73 @@ describe("Stripe webhook route", () => {
 		expect(await response.json()).toEqual({ received: true });
 	});
 
-	it("retains each single-secret deployment and fails closed without either secret", async () => {
+	it("delegates a connected-account event only for the connected role", async () => {
+		const connectedEvent = event({ account: "acct_connected" });
+		mocks.verify.mockResolvedValue({ event: connectedEvent, role: "connected-accounts" });
+		const { POST } = await import("../+server");
+
+		const response = await POST({ request: request() } as Parameters<typeof POST>[0]);
+
+		expect(response.status).toBe(200);
+		expect(mocks.process).toHaveBeenCalledWith(connectedEvent, expect.anything());
+		expect(mocks.logStructured).not.toHaveBeenCalled();
+	});
+
+	it.each([
+		["Your-account secret with connected event", "your-account", "acct_connected"],
+		["connected secret with platform event", "connected-accounts", undefined],
+	] as const)("rejects %s before intake", async (_label, role, account) => {
+		const mismatchedEvent = event(account ? { account } : {});
+		mocks.verify.mockResolvedValue({ event: mismatchedEvent, role });
+		const { POST } = await import("../+server");
+
+		await expect(POST({ request: request() } as Parameters<typeof POST>[0])).rejects.toMatchObject({
+			status: 400,
+			body: { message: "Webhook account scope does not match its destination" },
+		});
+		expect(mocks.process).not.toHaveBeenCalled();
+		expect(mocks.createLumaPrintsOrder).not.toHaveBeenCalled();
+		expect(mocks.logStructured).toHaveBeenCalledWith({
+			event: "webhook.commerce_scope_rejected",
+			level: "error",
+			stage: "webhook",
+			meta: {
+				eventType: "checkout.session.completed",
+				role,
+				hasConnectedAccount: Boolean(account),
+			},
+		});
+	});
+
+	it("retains each declared single-role deployment and fails closed without either secret", async () => {
 		const { POST } = await import("../+server");
 		mocks.env.STRIPE_CONNECT_WEBHOOK_SECRET = undefined;
-		const legacyRequest = new Request("http://localhost/api/webhooks/stripe", {
-			method: "POST",
-			body: "{}",
-		});
-		await POST({ request: legacyRequest } as Parameters<typeof POST>[0]);
-		expect(mocks.verify).toHaveBeenLastCalledWith(legacyRequest, mocks.stripe, ["legacy-secret"]);
+		const platformRequest = request();
+		await POST({ request: platformRequest } as Parameters<typeof POST>[0]);
+		expect(mocks.verify).toHaveBeenLastCalledWith(
+			platformRequest,
+			mocks.stripe,
+			[{ role: "your-account", secret: "platform-secret" }],
+			"Commerce webhook",
+		);
 
 		mocks.env.STRIPE_CONNECT_WEBHOOK_SECRET = "connect-secret";
 		mocks.env.STRIPE_WEBHOOK_SECRET = undefined;
-		const connectRequest = new Request("http://localhost/api/webhooks/stripe", {
-			method: "POST",
-			body: "{}",
+		mocks.verify.mockResolvedValue({
+			event: event({ account: "acct_connected" }),
+			role: "connected-accounts",
 		});
+		const connectRequest = request();
 		await POST({ request: connectRequest } as Parameters<typeof POST>[0]);
-		expect(mocks.verify).toHaveBeenLastCalledWith(connectRequest, mocks.stripe, ["connect-secret"]);
+		expect(mocks.verify).toHaveBeenLastCalledWith(
+			connectRequest,
+			mocks.stripe,
+			[{ role: "connected-accounts", secret: "connect-secret" }],
+			"Commerce webhook",
+		);
 
 		mocks.env.STRIPE_CONNECT_WEBHOOK_SECRET = undefined;
-		const missingRequest = new Request("http://localhost/api/webhooks/stripe", {
-			method: "POST",
-			body: "{}",
-		});
+		const missingRequest = request();
 		await expect(POST({ request: missingRequest } as Parameters<typeof POST>[0])).rejects.toThrow(
 			"Stripe commerce webhook secret is not set",
 		);
