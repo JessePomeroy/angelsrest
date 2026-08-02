@@ -1113,6 +1113,38 @@ export const updateStatus = mutation({
 	},
 });
 
+/** Claim one best-effort customer payment-failure email attempt per signed event. */
+export const claimPaymentFailureEmail = mutation({
+	args: {
+		stripeEventId: v.string(),
+		stripeConnectedAccountId: v.optional(v.string()),
+		webhookSecret: v.string(),
+	},
+	handler: async (ctx, args) => {
+		await requireWebhookCallerOrAuth(ctx, args.webhookSecret, { allowAuth: false });
+		if (!STRIPE_EVENT_ID.test(args.stripeEventId)) throw new Error("Invalid Stripe event ID");
+		if (
+			args.stripeConnectedAccountId !== undefined &&
+			!isStripeConnectedAccountId(args.stripeConnectedAccountId)
+		)
+			throw new Error("Invalid Stripe connected account ID");
+		const accountScope = stripeAccountScope(args.stripeConnectedAccountId);
+		const existing = await ctx.db
+			.query("stripePaymentFailureEmailClaims")
+			.withIndex("by_accountScope_and_stripeEventId", (q) =>
+				q.eq("accountScope", accountScope).eq("stripeEventId", args.stripeEventId),
+			)
+			.unique();
+		if (existing) return false;
+		await ctx.db.insert("stripePaymentFailureEmailClaims", {
+			accountScope,
+			stripeEventId: args.stripeEventId,
+			claimedAt: Date.now(),
+		});
+		return true;
+	},
+});
+
 /**
  * Atomically claim the one-time customer shipment email for a LumaPrints
  * shipment webhook.
