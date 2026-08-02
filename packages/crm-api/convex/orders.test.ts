@@ -849,6 +849,70 @@ describe("order Stripe fee capture initialization", () => {
 	});
 });
 
+describe("payment-failure email claim", () => {
+	const claimArgs = {
+		webhookSecret: WEBHOOK_SECRET,
+		stripeEventId: "evt_1234567890failure",
+	};
+
+	test("claims each signed event and account scope once", async () => {
+		const t = convexTest(schema, modules);
+
+		await expect(t.mutation(api.orders.claimPaymentFailureEmail, claimArgs)).resolves.toBe(true);
+		await expect(t.mutation(api.orders.claimPaymentFailureEmail, claimArgs)).resolves.toBe(false);
+		await expect(
+			t.mutation(api.orders.claimPaymentFailureEmail, {
+				...claimArgs,
+				stripeConnectedAccountId: "acct_1234567890abcdef",
+			}),
+		).resolves.toBe(true);
+
+		const claims = await t.run((ctx) => ctx.db.query("stripePaymentFailureEmailClaims").collect());
+		expect(claims).toHaveLength(2);
+		expect(claims.map(({ accountScope }) => accountScope).sort()).toEqual([
+			"connected:acct_1234567890abcdef",
+			"platform",
+		]);
+		expect(claims.every(({ claimedAt }) => Number.isFinite(claimedAt))).toBe(true);
+	});
+
+	test("makes concurrent claims converge on one email attempt", async () => {
+		const t = convexTest(schema, modules);
+
+		const outcomes = await Promise.all([
+			t.mutation(api.orders.claimPaymentFailureEmail, claimArgs),
+			t.mutation(api.orders.claimPaymentFailureEmail, claimArgs),
+		]);
+
+		expect(outcomes.sort()).toEqual([false, true]);
+		const claims = await t.run((ctx) => ctx.db.query("stripePaymentFailureEmailClaims").collect());
+		expect(claims).toHaveLength(1);
+	});
+
+	test("rejects invalid provider identity and webhook authority", async () => {
+		const t = convexTest(schema, modules);
+
+		await expect(
+			t.mutation(api.orders.claimPaymentFailureEmail, {
+				...claimArgs,
+				stripeEventId: "not-an-event",
+			}),
+		).rejects.toThrow("Invalid Stripe event ID");
+		await expect(
+			t.mutation(api.orders.claimPaymentFailureEmail, {
+				...claimArgs,
+				stripeConnectedAccountId: "not-an-account",
+			}),
+		).rejects.toThrow("Invalid Stripe connected account ID");
+		await expect(
+			t.mutation(api.orders.claimPaymentFailureEmail, {
+				...claimArgs,
+				webhookSecret: "wrong-secret",
+			}),
+		).rejects.toThrow();
+	});
+});
+
 describe("order shipment email claim", () => {
 	test("lets the hub claim a globally unique LumaPrints order without caller-supplied tenant scope", async () => {
 		const { t, orderId } = await seedLumaPrintsOrder();

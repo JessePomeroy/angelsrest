@@ -913,6 +913,15 @@ export default defineSchema({
 		// so spokes can't read each other's orders.
 		.index("by_lumaprintsOrderNumber", ["siteUrl", "lumaprintsOrderNumber"]),
 
+	// One durable claim per signed Stripe event and account scope. The claim is
+	// written before the customer payment-failure email attempt, so retries and
+	// overlapping destinations cannot start that effect twice.
+	stripePaymentFailureEmailClaims: defineTable({
+		accountScope: v.string(),
+		stripeEventId: v.string(),
+		claimedAt: v.number(),
+	}).index("by_accountScope_and_stripeEventId", ["accountScope", "stripeEventId"]),
+
 	// Clients (photography clients + web dev clients)
 	photographyClients: defineTable({
 		siteUrl: v.string(),
