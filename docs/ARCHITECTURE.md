@@ -226,10 +226,15 @@ Production rollout is consumer-first:
 5. Before adding connected-account delivery, prove a non-delivering destination
    creation path or approve a revised safe rollout. Stripe's documented API flow
    creates an enabled destination and disables it afterward.
-6. Under separate authorization, stage the distinct connected-commerce secret,
-   deploy the consumer, and verify the exact deployment without changing either
-   active destination.
-7. Under separate authorization, enable connected delivery and add both refund
+6. Under separate destination-creation authorization, create the connected
+   destination in the approved non-delivering state with the exact route,
+   Snapshot format, reviewed API version, and four-event matrix. Do not enable
+   delivery.
+7. Under separate secret-staging authorization, obtain and stage the distinct
+   connected-commerce credential. Under separate deployment authorization,
+   deploy and verify the exact consumer without changing either active
+   Your-account destination.
+8. Under separate authorization, enable connected delivery and add both refund
    events to Your-account commerce. Retain both commerce secrets through
    Stripe's retry window. Historical event replay is not part of configuration.
 
