@@ -433,6 +433,27 @@ describe("provider-authoritative manual refunds", () => {
 		await expect(t.run((ctx) => ctx.db.query("manualRefundIntents").collect())).resolves.toEqual([]);
 	});
 
+	test("rejects an ineligible existing order without creating a refund intent", async () => {
+		const t = convexTest(schema, modules);
+		const admin = await createRecoveryAdmin(t);
+		const created = await t.mutation(api.orders.create, {
+			...orderArgs(ADMIN_RECOVERY.session),
+			siteUrl: ADMIN_RECOVERY.siteUrl,
+			items: [{ productName: "Historical print", quantity: 1, price: ADMIN_RECOVERY.amount }],
+			total: ADMIN_RECOVERY.amount,
+			stripePaymentIntentId: ADMIN_RECOVERY.paymentIntent,
+		});
+		await t.run((ctx) => ctx.db.patch(created._id, { status: "shipped" }));
+		await admin.mutation(api.orders.claimManualRefundRecovery, manualRefundRecoveryClaimArgs());
+
+		await expect(admin.mutation(
+			api.orders.reconcileSucceededManualRefund,
+			manualRefundRecoveryProjectionArgs(),
+		)).resolves.toEqual({ kind: "rejected", reason: "state_conflict" });
+		await expect(t.run((ctx) => ctx.db.query("manualRefundIntents").collect())).resolves.toEqual([]);
+		expect(await t.run((ctx) => ctx.db.get(created._id))).toMatchObject({ status: "shipped" });
+	});
+
 	test("records a failed one-use recovery without making it claimable again", async () => {
 		const t = convexTest(schema, modules);
 		const admin = await createRecoveryAdmin(t);
@@ -445,6 +466,10 @@ describe("provider-authoritative manual refunds", () => {
 			siteUrl: ADMIN_RECOVERY.siteUrl,
 			resultReason: "provider_evidence_rejected",
 			failureStage: "provider_evidence",
+			providerFailureObservations: {
+				observedAt: Date.now(),
+				failedChecks: ["current_refund.automated_metadata"],
+			},
 		})).resolves.toEqual({ completed: true });
 		const recovery = (await t.run((ctx) =>
 			ctx.db.query("manualRefundRecoveries").take(1)))[0];
@@ -453,6 +478,9 @@ describe("provider-authoritative manual refunds", () => {
 			resultKind: "failed",
 			resultReason: "provider_evidence_rejected",
 			failureStage: "provider_evidence",
+			providerFailureObservations: {
+				failedChecks: ["current_refund.automated_metadata"],
+			},
 		});
 		await expect(admin.mutation(api.orders.claimManualRefundRecovery, claimArgs)).resolves.toEqual({
 			claimed: false,

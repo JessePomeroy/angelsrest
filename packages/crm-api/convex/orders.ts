@@ -112,6 +112,38 @@ const MANUAL_REFUND_RECOVERY_MANIFEST = {
 	currency: "usd",
 	livemode: true,
 } as const;
+const MANUAL_REFUND_RECOVERY_FAILED_CHECKS = new Set([
+	"event.id",
+	"event.type",
+	"event.api_version",
+	"event.livemode",
+	"event.account",
+	"event.context",
+	"event.object",
+	"event_refund.id",
+	"event_refund.status",
+	"event_refund.amount",
+	"event_refund.currency",
+	"event_refund.charge",
+	"event_refund.payment_intent",
+	"event_refund.automated_metadata",
+	"current_refund.id",
+	"current_refund.status",
+	"current_refund.amount",
+	"current_refund.currency",
+	"current_refund.charge",
+	"current_refund.payment_intent",
+	"current_refund.automated_metadata",
+	"current_refund.recovery_audit_metadata",
+	"payment_intent.id",
+	"payment_intent.status",
+	"payment_intent.amount",
+	"payment_intent.amount_received",
+	"payment_intent.currency",
+	"payment_intent.livemode",
+	"payment_intent.latest_charge",
+	"session.reconciliation",
+]);
 
 function assertManualRefundRecoveryEnabled() {
 	if (
@@ -742,6 +774,10 @@ export const failManualRefundRecovery = mutation({
 		siteUrl: v.string(),
 		resultReason: v.string(),
 		failureStage: v.union(v.literal("provider_evidence"), v.literal("execution")),
+		providerFailureObservations: v.optional(v.object({
+			observedAt: v.number(),
+			failedChecks: v.array(v.string()),
+		})),
 	},
 	returns: v.object({ completed: v.boolean() }),
 	handler: async (ctx, args) => {
@@ -764,12 +800,27 @@ export const failManualRefundRecovery = mutation({
 			|| recovery.state !== "claimed"
 			|| recovery.claimedByTokenIdentifier !== identity.tokenIdentifier
 		) return { completed: false };
+		const observations = args.providerFailureObservations;
+		if (
+			observations
+			&& (
+				!Number.isSafeInteger(observations.observedAt)
+				|| observations.observedAt < recovery.claimedAt
+				|| observations.observedAt > Date.now() + 300_000
+				|| observations.failedChecks.length === 0
+				|| observations.failedChecks.length > MANUAL_REFUND_RECOVERY_FAILED_CHECKS.size
+				|| observations.failedChecks.some(
+					(check) => !MANUAL_REFUND_RECOVERY_FAILED_CHECKS.has(check),
+				)
+			)
+		) throw new Error("Invalid manual refund recovery observations");
 		await ctx.db.patch(recovery._id, {
 			state: "completed",
 			completedAt: Date.now(),
 			resultKind: "failed",
 			resultReason: args.resultReason,
 			failureStage: args.failureStage,
+			providerFailureObservations: observations,
 		});
 		return { completed: true };
 	},
@@ -958,6 +1009,26 @@ export const reconcileSucceededManualRefund = mutation({
 		if (recovery && !order) {
 			return await completeRecovery({ kind: "rejected", reason: "state_conflict" });
 		}
+		const isManualTerminal = order?.status === "refunded"
+			&& order.stripeRefundId === args.stripeRefundId
+			&& order.lumaprintsOrderNumber === undefined
+			&& !order.printFulfillmentClaim
+			&& order.printFulfillmentPhase === undefined
+			&& order.fulfillmentError === undefined
+			&& order.fulfillmentRecoveryStatus === undefined;
+		const canTakeOverPendingRecovery = order?.status === "fulfillment_error"
+			&& order.fulfillmentRecoveryStatus === "refund_pending"
+			&& order.stripeRefundId === undefined
+			&& order.lumaprintsOrderNumber === undefined
+			&& !order.printFulfillmentClaim;
+		const isUnfulfilledNew = order?.status === "new"
+			&& order.lumaprintsOrderNumber === undefined
+			&& order.stripeRefundId === undefined
+			&& order.fulfillmentError === undefined
+			&& order.fulfillmentRecoveryStatus === undefined;
+		if (recovery && !isManualTerminal && !isUnfulfilledNew && !canTakeOverPendingRecovery) {
+			return await completeRecovery({ kind: "rejected", reason: "state_conflict" });
+		}
 
 		if (!intent) {
 			const intentId = await ctx.db.insert("manualRefundIntents", {
@@ -980,29 +1051,12 @@ export const reconcileSucceededManualRefund = mutation({
 		if (!intent) throw new Error("Manual refund intent was not stored");
 		if (!order) return await completeRecovery({ kind: "pending_order" });
 
-		const isManualTerminal = order.status === "refunded"
-			&& order.stripeRefundId === args.stripeRefundId
-			&& order.lumaprintsOrderNumber === undefined
-			&& !order.printFulfillmentClaim
-			&& order.printFulfillmentPhase === undefined
-			&& order.fulfillmentError === undefined
-			&& order.fulfillmentRecoveryStatus === undefined;
 		if (isManualTerminal) {
 			if (intent.orderId === undefined) {
 				await ctx.db.patch(intent._id, { orderId: order._id, consumedAt: Date.now() });
 			}
 			return await completeRecovery({ kind: "replayed" });
 		}
-		const canTakeOverPendingRecovery = order.status === "fulfillment_error"
-			&& order.fulfillmentRecoveryStatus === "refund_pending"
-			&& order.stripeRefundId === undefined
-			&& order.lumaprintsOrderNumber === undefined
-			&& !order.printFulfillmentClaim;
-		const isUnfulfilledNew = order.status === "new"
-			&& order.lumaprintsOrderNumber === undefined
-			&& order.stripeRefundId === undefined
-			&& order.fulfillmentError === undefined
-			&& order.fulfillmentRecoveryStatus === undefined;
 		if (!isUnfulfilledNew && !canTakeOverPendingRecovery) {
 			return await completeRecovery({ kind: "rejected", reason: "state_conflict" });
 		}

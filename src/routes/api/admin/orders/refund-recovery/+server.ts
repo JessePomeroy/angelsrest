@@ -7,6 +7,7 @@ import { createAuthenticatedConvexClient } from "$lib/server/convexClient";
 import { logStructured } from "$lib/server/logger";
 import {
 	ManualRefundRecoveryEvidenceError,
+	type ManualRefundRecoveryFailureObservations,
 	recoverManualRefundFromProvider,
 } from "$lib/server/manualRefundRecovery";
 import {
@@ -92,40 +93,6 @@ export const POST: RequestHandler = async ({ request }) => {
 	const recoveryId = await readRecoveryId(request);
 	if (recoveryId !== MANUAL_REFUND_RECOVERY_ID) return response("invalid_request", 400);
 
-	const convex = createAuthenticatedConvexClient(authorization.convexToken);
-	const webhookSecret = getWebhookSecret();
-	const claim = await convex.mutation(api.orders.claimManualRefundRecovery, {
-		webhookSecret,
-		recoveryId,
-		manifestVersion: manualRefundRecoveryManifest.manifestVersion,
-		siteUrl: manualRefundRecoveryManifest.siteUrl,
-		stripeContext: manualRefundRecoveryManifest.stripeContext,
-		stripeEventId: manualRefundRecoveryManifest.stripeEventId,
-		stripeEventType: manualRefundRecoveryManifest.stripeEventType,
-		stripeEventApiVersion: manualRefundRecoveryManifest.stripeEventApiVersion,
-		stripeRefundId: manualRefundRecoveryManifest.stripeRefundId,
-		stripeChargeId: manualRefundRecoveryManifest.stripeChargeId,
-		stripePaymentIntentId: manualRefundRecoveryManifest.stripePaymentIntentId,
-		stripeSessionId: manualRefundRecoveryManifest.stripeSessionId,
-		stripeTenantMetadataSiteUrl: manualRefundRecoveryManifest.stripeTenantMetadataSiteUrl,
-		amount: manualRefundRecoveryManifest.amount,
-		currency: manualRefundRecoveryManifest.currency,
-		livemode: manualRefundRecoveryManifest.livemode,
-	});
-	if (!claim.claimed) return response("already_claimed", 409);
-	const recordFailure = async (
-		resultReason: string,
-		failureStage: "provider_evidence" | "execution",
-	) => {
-		const result = await convex.mutation(api.orders.failManualRefundRecovery, {
-			webhookSecret,
-			recoveryId,
-			siteUrl: manualRefundRecoveryManifest.siteUrl,
-			resultReason,
-			failureStage,
-		});
-		if (!result.completed) throw new Error("Manual refund recovery outcome was not recorded");
-	};
 	const indeterminate = (cause: unknown) => {
 		logStructured({
 			event: "manual_refund.admin_recovery_indeterminate",
@@ -136,12 +103,57 @@ export const POST: RequestHandler = async ({ request }) => {
 		});
 		return response("indeterminate", 503);
 	};
+	const convex = createAuthenticatedConvexClient(authorization.convexToken);
+	const webhookSecret = getWebhookSecret();
+	let claim: { claimed: boolean };
+	try {
+		claim = await convex.mutation(api.orders.claimManualRefundRecovery, {
+			webhookSecret,
+			recoveryId,
+			manifestVersion: manualRefundRecoveryManifest.manifestVersion,
+			siteUrl: manualRefundRecoveryManifest.siteUrl,
+			stripeContext: manualRefundRecoveryManifest.stripeContext,
+			stripeEventId: manualRefundRecoveryManifest.stripeEventId,
+			stripeEventType: manualRefundRecoveryManifest.stripeEventType,
+			stripeEventApiVersion: manualRefundRecoveryManifest.stripeEventApiVersion,
+			stripeRefundId: manualRefundRecoveryManifest.stripeRefundId,
+			stripeChargeId: manualRefundRecoveryManifest.stripeChargeId,
+			stripePaymentIntentId: manualRefundRecoveryManifest.stripePaymentIntentId,
+			stripeSessionId: manualRefundRecoveryManifest.stripeSessionId,
+			stripeTenantMetadataSiteUrl: manualRefundRecoveryManifest.stripeTenantMetadataSiteUrl,
+			amount: manualRefundRecoveryManifest.amount,
+			currency: manualRefundRecoveryManifest.currency,
+			livemode: manualRefundRecoveryManifest.livemode,
+		});
+	} catch (cause) {
+		return indeterminate(cause);
+	}
+	if (!claim.claimed) return response("already_claimed", 409);
+	const recordFailure = async (
+		resultReason: string,
+		failureStage: "provider_evidence" | "execution",
+		providerFailureObservations?: ManualRefundRecoveryFailureObservations,
+	) => {
+		const result = await convex.mutation(api.orders.failManualRefundRecovery, {
+			webhookSecret,
+			recoveryId,
+			siteUrl: manualRefundRecoveryManifest.siteUrl,
+			resultReason,
+			failureStage,
+			...(providerFailureObservations ? { providerFailureObservations } : {}),
+		});
+		if (!result.completed) throw new Error("Manual refund recovery outcome was not recorded");
+	};
 
 	try {
 		const result = await recoverManualRefundFromProvider({ stripe: getStripe(), convex });
 		if (result.kind === "ignored") {
 			try {
-				await recordFailure(`ignored_${result.reason}`, "provider_evidence");
+				await recordFailure(
+					`ignored_${result.reason}`,
+					"provider_evidence",
+					result.providerFailureObservations,
+				);
 			} catch (cause) {
 				return indeterminate(cause);
 			}
@@ -165,6 +177,7 @@ export const POST: RequestHandler = async ({ request }) => {
 			await recordFailure(
 				resultReason,
 				cause instanceof ManualRefundRecoveryEvidenceError ? "provider_evidence" : "execution",
+				cause instanceof ManualRefundRecoveryEvidenceError ? cause.observations : undefined,
 			);
 		} catch (auditCause) {
 			return indeterminate(auditCause);

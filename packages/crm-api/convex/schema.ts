@@ -825,6 +825,10 @@ export default defineSchema({
 			),
 			resultReason: v.optional(v.string()),
 			providerEvidence: v.optional(manualRefundRecoveryProviderEvidenceValidator),
+			providerFailureObservations: v.optional(v.object({
+				observedAt: v.number(),
+				failedChecks: v.array(v.string()),
+			})),
 			failureStage: v.optional(v.union(
 				v.literal("provider_evidence"),
 				v.literal("execution"),

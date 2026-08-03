@@ -1,9 +1,6 @@
 import type Stripe from "stripe";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import {
-	ManualRefundRecoveryEvidenceError,
-	recoverManualRefundFromProvider,
-} from "$lib/server/manualRefundRecovery";
+import { recoverManualRefundFromProvider } from "$lib/server/manualRefundRecovery";
 import { manualRefundRecoveryManifest as manifest } from "$lib/server/manualRefundRecoveryManifest";
 import { STRIPE_API_VERSION } from "$lib/server/stripeApiVersion";
 
@@ -111,27 +108,46 @@ describe("manual refund admin recovery provider evidence", () => {
 		);
 	});
 
+	it("returns bounded observations when Session reconciliation rejects the evidence", async () => {
+		reconcile.mockResolvedValue({ kind: "ignored", reason: "ambiguous_session" });
+
+		await expect(recoverManualRefundFromProvider(adapters())).resolves.toMatchObject({
+			kind: "ignored",
+			reason: "ambiguous_session",
+			providerFailureObservations: {
+				observedAt: expect.any(Number),
+				failedChecks: ["session.reconciliation"],
+			},
+		});
+	});
+
 	it.each([
-		["event account", { eventValue: event({ account: manifest.stripeContext }) }],
-		["event context", { eventValue: event({ context: "acct_wrongcontext1234" }) }],
+		["event account", { eventValue: event({ account: manifest.stripeContext }) }, "event.account"],
+		["event context", { eventValue: event({ context: "acct_wrongcontext1234" }) }, "event.context"],
 		[
 			"current automated metadata",
 			{ refundValue: refund({ metadata: { automated: "fulfillment_recovery_v1" } }) },
+			"current_refund.automated_metadata",
 		],
 		[
 			"prior recovery marker",
 			{ refundValue: refund({ metadata: { [manifest.recoveryAuditMetadataKey]: "present" } }) },
+			"current_refund.recovery_audit_metadata",
 		],
 		[
 			"PaymentIntent charge",
 			{ paymentIntentValue: paymentIntent({ latest_charge: "ch_wrongcharge123456" }) },
+			"payment_intent.latest_charge",
 		],
-	] as const)("rejects mismatched %s before reconciliation", async (_label, overrides) => {
+	] as const)("rejects mismatched %s before reconciliation", async (_label, overrides, check) => {
 		const values = adapters(overrides);
 
-		await expect(recoverManualRefundFromProvider(values)).rejects.toBeInstanceOf(
-			ManualRefundRecoveryEvidenceError,
-		);
+		await expect(recoverManualRefundFromProvider(values)).rejects.toMatchObject({
+			observations: {
+				observedAt: expect.any(Number),
+				failedChecks: expect.arrayContaining([check]),
+			},
+		});
 		expect(reconcile).not.toHaveBeenCalled();
 	});
 

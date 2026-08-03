@@ -200,8 +200,8 @@ durably claims the recovery before provider reads. It then retrieves the exact
 historical Stripe Event, current Refund, PaymentIntent, and exact Checkout
 Session and validates their Charge binding in the server-owned platform context.
 Browser input cannot provide Stripe or tenant facts. Convex records normalized
-observed provider evidence and completes a valid reconciliation in the existing
-order transaction. A missing order creates no refund intent. Failed or incomplete
+provider evidence for accepted checks and a bounded failed-check list for rejected
+checks. It completes a valid reconciliation in the existing order transaction. A missing order creates no refund intent. Failed or incomplete
 claims never become reusable. An audit-write failure returns an explicit
 indeterminate result. The route has no admin UI control and sends no email or
 fulfillment request. Deployment, gate enablement, invocation, gate removal, and

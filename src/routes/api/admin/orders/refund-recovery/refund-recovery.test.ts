@@ -169,6 +169,16 @@ describe("admin manual refund recovery route", () => {
 		expect(mocks.recover).toHaveBeenCalledOnce();
 	});
 
+	it("returns indeterminate and stops when the claim result is uncertain", async () => {
+		mocks.mutation.mockRejectedValueOnce(new Error("claim response unavailable"));
+
+		const response = await post(request());
+
+		expect(response.status).toBe(503);
+		await expect(response.json()).resolves.toEqual({ status: "indeterminate" });
+		expect(mocks.recover).not.toHaveBeenCalled();
+	});
+
 	it("stops before provider reads when the recovery was already claimed", async () => {
 		mocks.mutation.mockResolvedValue({ claimed: false });
 
@@ -179,7 +189,14 @@ describe("admin manual refund recovery route", () => {
 	});
 
 	it("durably records an ignored provider result and does not retry it", async () => {
-		mocks.recover.mockResolvedValue({ kind: "ignored", reason: "session_amount_mismatch" });
+		mocks.recover.mockResolvedValue({
+			kind: "ignored",
+			reason: "session_amount_mismatch",
+			providerFailureObservations: {
+				observedAt: 1_800_000_000_000,
+				failedChecks: ["session.reconciliation"],
+			},
+		});
 
 		const response = await post(request());
 
@@ -190,6 +207,10 @@ describe("admin manual refund recovery route", () => {
 			siteUrl: manifest.siteUrl,
 			resultReason: "ignored_session_amount_mismatch",
 			failureStage: "provider_evidence",
+			providerFailureObservations: {
+				observedAt: 1_800_000_000_000,
+				failedChecks: ["session.reconciliation"],
+			},
 		});
 	});
 
@@ -206,7 +227,12 @@ describe("admin manual refund recovery route", () => {
 	});
 
 	it("records provider evidence rejection without exposing details", async () => {
-		mocks.recover.mockRejectedValue(new ManualRefundRecoveryEvidenceError("provider details"));
+		mocks.recover.mockRejectedValue(
+			new ManualRefundRecoveryEvidenceError("provider details", {
+				observedAt: 1_800_000_000_000,
+				failedChecks: ["current_refund.status"],
+			}),
+		);
 
 		const response = await post(request());
 
@@ -218,6 +244,10 @@ describe("admin manual refund recovery route", () => {
 			siteUrl: manifest.siteUrl,
 			resultReason: "provider_evidence_rejected",
 			failureStage: "provider_evidence",
+			providerFailureObservations: {
+				observedAt: 1_800_000_000_000,
+				failedChecks: ["current_refund.status"],
+			},
 		});
 	});
 });
