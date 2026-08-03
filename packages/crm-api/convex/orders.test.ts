@@ -217,10 +217,13 @@ describe("print fulfillment fence", () => {
 });
 
 describe("provider-authoritative manual refunds", () => {
-	test("reconciles once, blocks paid access, and leaves the bound reservation unchanged", async () => {
+	test("converges concurrent refunds for the retained legacy order and preserves its reservation", async () => {
 		const t = convexTest(schema, modules);
 		const created = await t.mutation(api.orders.create, {
 			...orderArgs(MANUAL_REFUND.session),
+			items: [{ productName: "Archival Matte 4×6", quantity: 1, price: 1500 }],
+			total: 1500,
+			fulfillmentType: "self",
 			stripePaymentIntentId: MANUAL_REFUND.paymentIntent,
 		});
 		const reservationId = await t.run((ctx) =>
@@ -236,9 +239,9 @@ describe("provider-authoritative manual refunds", () => {
 						productKey: "print-one",
 						revisionId: "revision-one",
 						productKind: "print",
-						variantKey: "8x10",
-						materialOptionKey: "matte",
-						sizeOptionKey: "8x10",
+						variantKey: "4x6",
+						materialOptionKey: "archival-matte",
+						sizeOptionKey: "4x6",
 						borderOptionKey: null,
 						frameOptionKey: null,
 					}],
@@ -256,27 +259,41 @@ describe("provider-authoritative manual refunds", () => {
 			}),
 		);
 		const reservationBefore = await t.run((ctx) => ctx.db.get(reservationId));
+		const refundArgs = manualRefundArgs({ refundAmount: 1500, sessionAmountTotal: 1500 });
 
-		await expect(
-			t.mutation(api.orders.reconcileSucceededManualRefund, manualRefundArgs()),
-		).resolves.toEqual({ kind: "reconciled" });
+		const concurrent = await Promise.all([
+			t.mutation(api.orders.reconcileSucceededManualRefund, refundArgs),
+			t.mutation(api.orders.reconcileSucceededManualRefund, refundArgs),
+		]);
+		expect(concurrent.map(({ kind }) => kind).sort()).toEqual(["reconciled", "replayed"]);
+
 		const stored = await t.run((ctx) => ctx.db.get(created._id));
 		expect(stored).toMatchObject({
 			status: "refunded",
+			fulfillmentType: "self",
 			stripeRefundId: MANUAL_REFUND.refund,
 			stripeFeeCaptureStatus: "canceled",
 		});
+		expect(stored?.checkoutSnapshot).toBeUndefined();
+		expect(stored?.lumaprintsOrderNumber).toBeUndefined();
+		expect(stored?.printFulfillmentClaim).toBeUndefined();
 		expect(stored?.fulfillmentRecoveryStatus).toBeUndefined();
 		expect(await t.run((ctx) => ctx.db.get(reservationId))).toEqual(reservationBefore);
+		const intents = await t.run((ctx) => ctx.db.query("manualRefundIntents").collect());
+		expect(intents).toHaveLength(1);
+		expect(intents[0]).toMatchObject({
+			stripeEventId: MANUAL_REFUND.event,
+			stripeRefundId: MANUAL_REFUND.refund,
+			orderId: created._id,
+		});
 		await expect(
 			t.query(api.orders.resolvePaidDownloadOrder, {
 				stripeSessionId: MANUAL_REFUND.session,
 				webhookSecret: WEBHOOK_SECRET,
 			}),
 		).resolves.toMatchObject({ refunded: true });
-
 		await expect(
-			t.mutation(api.orders.reconcileSucceededManualRefund, manualRefundArgs()),
+			t.mutation(api.orders.reconcileSucceededManualRefund, refundArgs),
 		).resolves.toEqual({ kind: "replayed" });
 		await expect(t.mutation(api.orders.claimPrintFulfillment, {
 			orderId: created._id,
@@ -285,7 +302,7 @@ describe("provider-authoritative manual refunds", () => {
 		await expect(
 			t.mutation(
 				api.orders.reconcileSucceededManualRefund,
-				manualRefundArgs({ stripeRefundId: MANUAL_REFUND.otherRefund }),
+				{ ...refundArgs, stripeRefundId: MANUAL_REFUND.otherRefund },
 			),
 		).resolves.toEqual({ kind: "rejected", reason: "identity_conflict" });
 		expect(await t.run((ctx) => ctx.db.get(created._id))).toEqual(stored);

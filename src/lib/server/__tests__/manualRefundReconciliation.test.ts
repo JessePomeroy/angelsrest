@@ -124,6 +124,41 @@ describe("manual refund reconciliation", () => {
 		);
 	});
 
+	it("advances pending creation through succeeded update, resend, and concurrent delivery", async () => {
+		const pending = event("refund.created", { status: "pending" }, { id: "evt_pending1234567890" });
+		await expect(reconcileSucceededManualRefund(pending, { stripe, convex })).resolves.toEqual({
+			kind: "ignored",
+			reason: "not_succeeded",
+		});
+		expect(list).not.toHaveBeenCalled();
+		expect(mutation).not.toHaveBeenCalled();
+
+		mutation.mockReset().mockResolvedValueOnce({ kind: "reconciled" }).mockResolvedValue({
+			kind: "replayed",
+		});
+		const succeeded = event("refund.updated", {}, { id: "evt_succeeded12345678" });
+		await expect(reconcileSucceededManualRefund(succeeded, { stripe, convex })).resolves.toEqual({
+			kind: "reconciled",
+		});
+		await expect(
+			Promise.all([
+				reconcileSucceededManualRefund(succeeded, { stripe, convex }),
+				reconcileSucceededManualRefund(succeeded, { stripe, convex }),
+			]),
+		).resolves.toEqual([{ kind: "replayed" }, { kind: "replayed" }]);
+
+		expect(list).toHaveBeenCalledTimes(3);
+		expect(mutation).toHaveBeenCalledTimes(3);
+		for (const [, args] of mutation.mock.calls) {
+			expect(args).toEqual(
+				expect.objectContaining({
+					stripeEventId: "evt_succeeded12345678",
+					stripeRefundId: IDS.refund,
+				}),
+			);
+		}
+	});
+
 	it("uses connected-account scope and makes the Session tenant marker an extra fence", async () => {
 		list.mockResolvedValue(
 			sessionList([session({ metadata: { commerceTenantSiteUrl: "tenant.example" } })]),
