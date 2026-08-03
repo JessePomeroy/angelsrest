@@ -23,6 +23,7 @@ import {
 } from "$lib/server/manualRefundReconciliation";
 import type { SubmitLumaPrintsOrder } from "$lib/server/printFulfillment";
 import { COMMERCE_TENANT_METADATA_KEY } from "$lib/server/stripeConnect";
+import type { CommerceWebhookRole } from "$lib/server/stripeWebhook";
 import type { ShippingDetails } from "$lib/server/webhookEmails";
 import {
 	sendAdminNotification,
@@ -46,6 +47,7 @@ export interface OrderIntakeAdapters {
 export async function processStripeWebhookEvent(
 	event: Stripe.Event,
 	adapters: OrderIntakeAdapters,
+	verifiedDestinationRole?: CommerceWebhookRole,
 ) {
 	const webhookStart = Date.now();
 	const sessionId =
@@ -130,7 +132,7 @@ export async function processStripeWebhookEvent(
 
 			case "refund.created":
 			case "refund.updated":
-				await reconcileSucceededManualRefund(event, adapters);
+				await reconcileSucceededManualRefund(event, adapters, verifiedDestinationRole);
 				break;
 
 			default:

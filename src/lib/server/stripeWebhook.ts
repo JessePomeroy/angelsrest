@@ -7,6 +7,8 @@ import { STRIPE_API_VERSION } from "$lib/server/stripeApiVersion";
  * Read the raw body and signature once, then verify against one or more
  * destination secrets. Callers still own event dispatch and business authority.
  */
+export type CommerceWebhookRole = "your-account" | "connected-accounts";
+
 export interface StripeWebhookSecretCandidate<Role extends string = string> {
 	role: Role;
 	secret: string;

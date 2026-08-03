@@ -125,8 +125,14 @@ describe("manual refund reconciliation", () => {
 	});
 
 	it("advances pending creation through succeeded update, resend, and concurrent delivery", async () => {
-		const pending = event("refund.created", { status: "pending" }, { id: "evt_pending1234567890" });
-		await expect(reconcileSucceededManualRefund(pending, { stripe, convex })).resolves.toEqual({
+		const pending = event(
+			"refund.created",
+			{ status: "pending" },
+			{ id: "evt_pending1234567890", context: IDS.account },
+		);
+		await expect(
+			reconcileSucceededManualRefund(pending, { stripe, convex }, "your-account"),
+		).resolves.toEqual({
 			kind: "ignored",
 			reason: "not_succeeded",
 		});
@@ -136,14 +142,20 @@ describe("manual refund reconciliation", () => {
 		mutation.mockReset().mockResolvedValueOnce({ kind: "reconciled" }).mockResolvedValue({
 			kind: "replayed",
 		});
-		const succeeded = event("refund.updated", {}, { id: "evt_succeeded12345678" });
-		await expect(reconcileSucceededManualRefund(succeeded, { stripe, convex })).resolves.toEqual({
+		const succeeded = event(
+			"refund.updated",
+			{},
+			{ id: "evt_succeeded12345678", context: IDS.account },
+		);
+		await expect(
+			reconcileSucceededManualRefund(succeeded, { stripe, convex }, "your-account"),
+		).resolves.toEqual({
 			kind: "reconciled",
 		});
 		await expect(
 			Promise.all([
-				reconcileSucceededManualRefund(succeeded, { stripe, convex }),
-				reconcileSucceededManualRefund(succeeded, { stripe, convex }),
+				reconcileSucceededManualRefund(succeeded, { stripe, convex }, "your-account"),
+				reconcileSucceededManualRefund(succeeded, { stripe, convex }, "your-account"),
 			]),
 		).resolves.toEqual([{ kind: "replayed" }, { kind: "replayed" }]);
 
@@ -159,6 +171,52 @@ describe("manual refund reconciliation", () => {
 		}
 	});
 
+	it("uses a verified Your-account context only for the related platform Stripe read", async () => {
+		await reconcileSucceededManualRefund(
+			event("refund.updated", {}, { context: IDS.account }),
+			{ stripe, convex },
+			"your-account",
+		);
+
+		expect(list).toHaveBeenCalledWith(
+			{ payment_intent: IDS.paymentIntent, limit: 2 },
+			{ stripeContext: IDS.account },
+		);
+		const mutationArgs = mutation.mock.calls[0]?.[1];
+		expect(mutationArgs).toEqual(
+			expect.objectContaining({
+				stripeEventId: IDS.event,
+				stripeRefundId: IDS.refund,
+				siteUrl: "angelsrest.online",
+			}),
+		);
+		expect(mutationArgs).not.toHaveProperty("stripeConnectedAccountId");
+		expect(mutationArgs).not.toHaveProperty("stripeTenantMetadataSiteUrl");
+	});
+
+	it.each([
+		["missing verified role", undefined, { context: IDS.account }],
+		["connected role without event.account", "connected-accounts", { context: IDS.account }],
+		["Your-account role with event.account", "your-account", { account: IDS.account }],
+		["malformed Your-account context", "your-account", { context: "ctx_invalid" }],
+		[
+			"non-string connected context",
+			"connected-accounts",
+			{ account: IDS.account, context: [IDS.account] },
+		],
+	] as const)("rejects %s before Stripe or Convex effects", async (_label, role, eventPatch) => {
+		await expect(
+			reconcileSucceededManualRefund(
+				event("refund.updated", {}, eventPatch),
+				{ stripe, convex },
+				role,
+			),
+		).resolves.toEqual({ kind: "ignored", reason: "unsupported_scope" });
+		expect(list).not.toHaveBeenCalled();
+		expect(query).not.toHaveBeenCalled();
+		expect(mutation).not.toHaveBeenCalled();
+	});
+
 	it("uses connected-account scope and makes the Session tenant marker an extra fence", async () => {
 		list.mockResolvedValue(
 			sessionList([session({ metadata: { commerceTenantSiteUrl: "tenant.example" } })]),
@@ -168,10 +226,11 @@ describe("manual refund reconciliation", () => {
 			name: "Tenant",
 			adminEmails: ["admin@tenant.example"],
 		});
-		await reconcileSucceededManualRefund(event("refund.updated", {}, { account: IDS.account }), {
-			stripe,
-			convex,
-		});
+		await reconcileSucceededManualRefund(
+			event("refund.updated", {}, { account: IDS.account }),
+			{ stripe, convex },
+			"connected-accounts",
+		);
 		expect(list).toHaveBeenCalledWith(
 			{ payment_intent: IDS.paymentIntent, limit: 2 },
 			{ stripeAccount: IDS.account },
@@ -243,7 +302,6 @@ describe("manual refund reconciliation", () => {
 	});
 
 	it.each([
-		["context-only scope", {}, { context: "ctx_ambiguous" }, "unsupported_scope"],
 		["bad event ID", {}, { id: "bad" }, "invalid_event_id"],
 		["pending refund", { status: "pending" }, {}, "not_succeeded"],
 		[

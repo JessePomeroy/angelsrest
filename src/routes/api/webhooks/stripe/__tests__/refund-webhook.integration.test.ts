@@ -8,7 +8,7 @@ const mocks = vi.hoisted(() => ({
 	resend: {},
 	stripe: undefined as unknown,
 	env: {
-		STRIPE_CONNECT_WEBHOOK_SECRET: undefined,
+		STRIPE_CONNECT_WEBHOOK_SECRET: undefined as string | undefined,
 		STRIPE_WEBHOOK_SECRET: "your-account-signing-secret",
 		WEBHOOK_SECRET: "convex-webhook-authority",
 	},
@@ -26,14 +26,21 @@ const IDS = {
 	charge: "ch_charge1234567890",
 	paymentIntent: "pi_payment1234567890",
 	session: "cs_test_session1234567890",
+	context: "acct_1234567890abcdef",
 };
 
-function signedRequest(stripe: Stripe) {
+function signedRequest(
+	stripe: Stripe,
+	context: unknown = IDS.context,
+	options: { account?: string; secret?: string } = {},
+) {
 	const payload = JSON.stringify({
 		id: IDS.event,
+		account: options.account,
 		object: "event",
 		api_version: STRIPE_API_VERSION,
 		created: 1_800_000_000,
+		context,
 		data: {
 			object: {
 				id: IDS.refund,
@@ -53,7 +60,7 @@ function signedRequest(stripe: Stripe) {
 	});
 	const signature = stripe.webhooks.generateTestHeaderString({
 		payload,
-		secret: mocks.env.STRIPE_WEBHOOK_SECRET,
+		secret: options.secret ?? mocks.env.STRIPE_WEBHOOK_SECRET,
 	});
 	return new Request("https://angelsrest.test/api/webhooks/stripe", {
 		method: "POST",
@@ -65,6 +72,7 @@ function signedRequest(stripe: Stripe) {
 describe("signed refund webhook", () => {
 	beforeEach(() => {
 		vi.clearAllMocks();
+		mocks.env.STRIPE_CONNECT_WEBHOOK_SECRET = undefined;
 		const stripe = new Stripe("sk_test_non_provider_placeholder", {
 			apiVersion: STRIPE_API_VERSION,
 		});
@@ -100,18 +108,60 @@ describe("signed refund webhook", () => {
 
 		expect(response.status).toBe(200);
 		expect(await response.json()).toEqual({ received: true });
-		expect(stripe.checkout.sessions.list).toHaveBeenCalledWith({
-			payment_intent: IDS.paymentIntent,
-			limit: 2,
-		});
-		expect(mocks.convex.mutation).toHaveBeenCalledWith(
-			expect.anything(),
+		expect(stripe.checkout.sessions.list).toHaveBeenCalledWith(
+			{
+				payment_intent: IDS.paymentIntent,
+				limit: 2,
+			},
+			{ stripeContext: IDS.context },
+		);
+		expect(mocks.convex.mutation).toHaveBeenCalledOnce();
+		const mutationArgs = mocks.convex.mutation.mock.calls[0]?.[1];
+		expect(mutationArgs).toEqual(
 			expect.objectContaining({
 				stripeEventId: IDS.event,
 				stripeRefundId: IDS.refund,
 				stripeSessionId: IDS.session,
+				siteUrl: "angelsrest.online",
 			}),
 		);
+		expect(mutationArgs).not.toHaveProperty("stripeConnectedAccountId");
+		expect(mutationArgs).not.toHaveProperty("stripeTenantMetadataSiteUrl");
+		expect(mocks.createLumaPrintsOrder).not.toHaveBeenCalled();
+	});
+
+	it("rejects a signed non-string context before outbound effects", async () => {
+		const { POST } = await import("../+server");
+		const stripe = mocks.stripe as Stripe;
+
+		const response = await POST({
+			request: signedRequest(stripe, [IDS.context]),
+		} as Parameters<typeof POST>[0]);
+
+		expect(response.status).toBe(200);
+		expect(stripe.checkout.sessions.list).not.toHaveBeenCalled();
+		expect(mocks.convex.query).not.toHaveBeenCalled();
+		expect(mocks.convex.mutation).not.toHaveBeenCalled();
+		expect(mocks.createLumaPrintsOrder).not.toHaveBeenCalled();
+	});
+
+	it("rejects a signed connected refund with a non-string context", async () => {
+		const connectedSecret = "connected-account-signing-secret";
+		mocks.env.STRIPE_CONNECT_WEBHOOK_SECRET = connectedSecret;
+		const { POST } = await import("../+server");
+		const stripe = mocks.stripe as Stripe;
+
+		const response = await POST({
+			request: signedRequest(stripe, [IDS.context], {
+				account: IDS.context,
+				secret: connectedSecret,
+			}),
+		} as Parameters<typeof POST>[0]);
+
+		expect(response.status).toBe(200);
+		expect(stripe.checkout.sessions.list).not.toHaveBeenCalled();
+		expect(mocks.convex.query).not.toHaveBeenCalled();
+		expect(mocks.convex.mutation).not.toHaveBeenCalled();
 		expect(mocks.createLumaPrintsOrder).not.toHaveBeenCalled();
 	});
 });

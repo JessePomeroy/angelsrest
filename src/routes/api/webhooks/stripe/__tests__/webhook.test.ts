@@ -62,12 +62,16 @@ describe("Stripe webhook route", () => {
 			],
 			"Commerce webhook",
 		);
-		expect(mocks.process).toHaveBeenCalledWith(event(), {
-			stripe: mocks.stripe,
-			resend: mocks.resend,
-			convex: mocks.convex,
-			createLumaPrintsOrder: mocks.createLumaPrintsOrder,
-		});
+		expect(mocks.process).toHaveBeenCalledWith(
+			event(),
+			{
+				stripe: mocks.stripe,
+				resend: mocks.resend,
+				convex: mocks.convex,
+				createLumaPrintsOrder: mocks.createLumaPrintsOrder,
+			},
+			"your-account",
+		);
 		expect(await response.json()).toEqual({ received: true });
 	});
 
@@ -79,8 +83,22 @@ describe("Stripe webhook route", () => {
 		const response = await POST({ request: request() } as Parameters<typeof POST>[0]);
 
 		expect(response.status).toBe(200);
-		expect(mocks.process).toHaveBeenCalledWith(connectedEvent, expect.anything());
+		expect(mocks.process).toHaveBeenCalledWith(
+			connectedEvent,
+			expect.anything(),
+			"connected-accounts",
+		);
 		expect(mocks.logStructured).not.toHaveBeenCalled();
+	});
+
+	it("forwards the verified Your-account role for a platform context", async () => {
+		const contextEvent = event({ context: "acct_1234567890abcdef" });
+		mocks.verify.mockResolvedValue({ event: contextEvent, role: "your-account" });
+		const { POST } = await import("../+server");
+
+		await POST({ request: request() } as Parameters<typeof POST>[0]);
+
+		expect(mocks.process).toHaveBeenCalledWith(contextEvent, expect.anything(), "your-account");
 	});
 
 	it.each([
