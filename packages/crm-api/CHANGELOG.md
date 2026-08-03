@@ -1,5 +1,11 @@
 # @jessepomeroy/crm-api
 
+## 2.35.0
+
+### Minor Changes
+
+- ffd7741: Add durable one-use claims and immutable outcomes for provider-verified manual refund recovery.
+
 ## 2.34.0
 
 ### Minor Changes
