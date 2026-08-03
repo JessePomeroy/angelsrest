@@ -175,7 +175,12 @@ coordinator into their repositories.
 The signed commerce webhook accepts `refund.created` and `refund.updated` as
 Stripe refund authority. A full, succeeded USD refund is matched to exactly one
 paid Checkout Session in the event's platform or connected-account scope. A
-webhook-only Convex transaction then marks only an unfulfilled `new` order as
+Clover Your-account Snapshot can put the platform account in `event.context`
+without setting `event.account`. The verified destination role authorizes that
+value only as Stripe `stripeContext` for the related Session lookup. It never
+becomes connected-account, tenant, site, or Convex scope authority. Connected
+refunds continue to require verified `event.account` and Stripe `stripeAccount`.
+A webhook-only Convex transaction then marks only an unfulfilled `new` order as
 `refunded` and stores the refund ID. If the refund arrives first, Convex keeps a
 provider-verified intent that makes later order creation terminal. Partial,
 automated, ambiguous, or conflicting evidence fails closed. This path sends no

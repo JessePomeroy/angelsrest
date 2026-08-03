@@ -26,6 +26,7 @@ const IDS = {
 	charge: "ch_charge1234567890",
 	paymentIntent: "pi_payment1234567890",
 	session: "cs_test_session1234567890",
+	context: "acct_1234567890abcdef",
 };
 
 function signedRequest(stripe: Stripe) {
@@ -34,6 +35,7 @@ function signedRequest(stripe: Stripe) {
 		object: "event",
 		api_version: STRIPE_API_VERSION,
 		created: 1_800_000_000,
+		context: IDS.context,
 		data: {
 			object: {
 				id: IDS.refund,
@@ -100,18 +102,25 @@ describe("signed refund webhook", () => {
 
 		expect(response.status).toBe(200);
 		expect(await response.json()).toEqual({ received: true });
-		expect(stripe.checkout.sessions.list).toHaveBeenCalledWith({
-			payment_intent: IDS.paymentIntent,
-			limit: 2,
-		});
-		expect(mocks.convex.mutation).toHaveBeenCalledWith(
-			expect.anything(),
+		expect(stripe.checkout.sessions.list).toHaveBeenCalledWith(
+			{
+				payment_intent: IDS.paymentIntent,
+				limit: 2,
+			},
+			{ stripeContext: IDS.context },
+		);
+		expect(mocks.convex.mutation).toHaveBeenCalledOnce();
+		const mutationArgs = mocks.convex.mutation.mock.calls[0]?.[1];
+		expect(mutationArgs).toEqual(
 			expect.objectContaining({
 				stripeEventId: IDS.event,
 				stripeRefundId: IDS.refund,
 				stripeSessionId: IDS.session,
+				siteUrl: "angelsrest.online",
 			}),
 		);
+		expect(mutationArgs).not.toHaveProperty("stripeConnectedAccountId");
+		expect(mutationArgs).not.toHaveProperty("stripeTenantMetadataSiteUrl");
 		expect(mocks.createLumaPrintsOrder).not.toHaveBeenCalled();
 	});
 });

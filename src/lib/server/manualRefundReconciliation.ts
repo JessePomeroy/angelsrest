@@ -5,6 +5,7 @@ import { readCheckoutTenantMarker } from "$lib/server/checkoutSnapshotConsumer";
 import { CommerceTenantIdentityError, resolveCommerceTenant } from "$lib/server/commerceTenant";
 import { logStructured } from "$lib/server/logger";
 import { COMMERCE_TENANT_METADATA_KEY } from "$lib/server/stripeConnect";
+import type { CommerceWebhookRole } from "$lib/server/stripeWebhook";
 import { getWebhookSecret } from "$lib/server/webhookSecret";
 
 type ManualRefundEvent = Stripe.RefundCreatedEvent | Stripe.RefundUpdatedEvent;
@@ -72,10 +73,18 @@ function hasMetadataKey(metadata: Stripe.Metadata | null, key: string) {
 export async function reconcileSucceededManualRefund(
 	event: ManualRefundEvent,
 	adapters: { stripe: Stripe; convex: ConvexHttpClient },
+	verifiedDestinationRole?: CommerceWebhookRole,
 ): Promise<ManualRefundReconciliationResult> {
-	if (event.account === undefined && event.context !== undefined) {
-		return ignore("unsupported_scope");
-	}
+	const accountId = event.account;
+	const stripeContext = event.context;
+	const roleScopeMismatch =
+		(verifiedDestinationRole === "your-account" && accountId !== undefined) ||
+		(verifiedDestinationRole === "connected-accounts" && accountId === undefined);
+	const unsupportedContext =
+		accountId === undefined &&
+		stripeContext !== undefined &&
+		(verifiedDestinationRole !== "your-account" || !ID_PATTERNS.account.test(stripeContext));
+	if (roleScopeMismatch || unsupportedContext) return ignore("unsupported_scope");
 	if (!ID_PATTERNS.event.test(event.id)) return ignore("invalid_event_id");
 
 	const refund = event.data.object;
@@ -94,7 +103,6 @@ export async function reconcileSucceededManualRefund(
 		return ignore("invalid_payment_intent_id");
 	}
 
-	const accountId = event.account;
 	if (accountId !== undefined && !ID_PATTERNS.account.test(accountId)) {
 		return ignore("invalid_connected_account");
 	}
@@ -102,9 +110,15 @@ export async function reconcileSucceededManualRefund(
 	let sessions: Stripe.ApiList<Stripe.Checkout.Session>;
 	try {
 		const params = { payment_intent: paymentIntentId, limit: 2 } as const;
-		sessions = accountId
-			? await adapters.stripe.checkout.sessions.list(params, { stripeAccount: accountId })
-			: await adapters.stripe.checkout.sessions.list(params);
+		if (accountId) {
+			sessions = await adapters.stripe.checkout.sessions.list(params, {
+				stripeAccount: accountId,
+			});
+		} else if (stripeContext) {
+			sessions = await adapters.stripe.checkout.sessions.list(params, { stripeContext });
+		} else {
+			sessions = await adapters.stripe.checkout.sessions.list(params);
+		}
 	} catch (cause) {
 		throw new ManualRefundReconciliationRetryableError("Stripe Checkout Session lookup failed", {
 			cause,

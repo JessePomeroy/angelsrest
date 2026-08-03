@@ -8,13 +8,12 @@ import { processStripeWebhookEvent } from "$lib/server/orderIntake";
 import { getResend } from "$lib/server/resendClient";
 import { getStripe } from "$lib/server/stripeClient";
 import {
+	type CommerceWebhookRole,
 	type StripeWebhookSecretCandidate,
 	verifyStripeWebhookWithRole,
 } from "$lib/server/stripeWebhook";
 
 const convex = getConvex();
-
-type CommerceWebhookRole = "your-account" | "connected-accounts";
 
 export async function POST({ request }) {
 	const stripe = getStripe();
@@ -26,7 +25,7 @@ export async function POST({ request }) {
 	);
 	assertCommerceWebhookScope(event, role);
 	const resend = getResend();
-	await processStripeWebhookEvent(event, { stripe, resend, convex, createLumaPrintsOrder });
+	await processStripeWebhookEvent(event, { stripe, resend, convex, createLumaPrintsOrder }, role);
 	return json({ received: true });
 }
 
