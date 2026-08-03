@@ -37,23 +37,29 @@ export async function getSiteAdminAccess(token: string, email: string) {
 }
 
 /**
- * Authorize shared admin server handlers against stored tenant membership.
- * Identity validity alone is insufficient for gallery/R2 side effects.
+ * Authorize one admin request and return its token for per-request Convex authority.
+ * Identity validity alone is insufficient without stored site membership.
  */
-export async function verifySiteAdminRequest(request: Request): Promise<boolean> {
+export async function authorizeSiteAdminRequest(request: Request) {
 	try {
 		const token = await adminAuth.getTokenFromRequest(request);
-		if (!token) return false;
+		if (!token) return null;
 
 		const client = createAuthenticatedClient(token);
-		if (!client) return false;
+		if (!client) return null;
 
 		const identity = await client.query(api.adminAuth.whoami, {});
-		if (!identity?.email) return false;
+		if (!identity?.email) return null;
 
 		const access = await querySiteAdminAccess(client, identity.email);
-		return access.authorized;
+		if (!access.authorized) return null;
+		return { convexToken: token };
 	} catch {
-		return false;
+		return null;
 	}
+}
+
+/** Authorize shared admin handlers against a valid session and site membership. */
+export async function verifySiteAdminRequest(request: Request): Promise<boolean> {
+	return (await authorizeSiteAdminRequest(request)) !== null;
 }
