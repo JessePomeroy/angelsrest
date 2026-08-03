@@ -35,6 +35,7 @@ vi.mock("$convex/api", () => ({
 		invoices: { markPaid: "invoices.markPaid" },
 		orders: {
 			beginPrintFulfillmentSubmission: "orders.beginPrintFulfillmentSubmission",
+			claimPaymentFailureEmail: "orders.claimPaymentFailureEmail",
 			claimNonPrintOrderOutcome: "orders.claimNonPrintOrderOutcome",
 			claimPrintFulfillmentV2: "orders.claimPrintFulfillmentV2",
 			create: "orders.create",
@@ -67,7 +68,7 @@ function makeStripeEvent(
 	overrides?: Partial<Stripe.Event>,
 ): Stripe.Event {
 	return {
-		id: "evt_test_123",
+		id: "evt_test12345678",
 		type,
 		data: { object },
 		...overrides,
@@ -156,6 +157,7 @@ describe("processStripeWebhookEvent", () => {
 	let claimedExternalId: string | undefined;
 	let claimResultOverride: Record<string, unknown> | undefined;
 	let nonPrintOutcomeOverride: Record<string, unknown> | undefined;
+	let paymentFailureClaimResults: boolean[];
 	const convex = {
 		mutation: vi.fn(),
 		query: vi.fn(),
@@ -182,6 +184,7 @@ describe("processStripeWebhookEvent", () => {
 		claimedExternalId = undefined;
 		claimResultOverride = undefined;
 		nonPrintOutcomeOverride = undefined;
+		paymentFailureClaimResults = [true];
 		convex.mutation.mockImplementation(
 			async (reference: string, args: { update?: string; stripeSessionId?: string }) => {
 				if (reference === "orders.create") {
@@ -192,6 +195,11 @@ describe("processStripeWebhookEvent", () => {
 				}
 				if (reference === "orders.claimNonPrintOrderOutcome") {
 					return nonPrintOutcomeOverride ?? { kind: "success" };
+				}
+				if (reference === "orders.claimPaymentFailureEmail") {
+					const result = paymentFailureClaimResults.shift();
+					if (result === undefined) throw new Error("Missing payment-failure claim result");
+					return result;
 				}
 				if (reference === "orders.claimPrintFulfillmentV2")
 					return claimResultOverride ?? { kind: "claimed", externalId: claimedExternalId };
@@ -1274,6 +1282,10 @@ describe("processStripeWebhookEvent", () => {
 			adapters(),
 		);
 
+		expect(convex.mutation).toHaveBeenCalledWith("orders.claimPaymentFailureEmail", {
+			stripeEventId: "evt_test12345678",
+			webhookSecret: "test-webhook-secret",
+		});
 		expect(mockSendPaymentFailedEmail).toHaveBeenCalledWith(resend, {
 			customerEmail: "jane@example.com",
 			errorMessage: "card declined",
@@ -1283,6 +1295,99 @@ describe("processStripeWebhookEvent", () => {
 				adminEmail: "admin@example.com",
 			},
 		});
+	});
+
+	it.each([
+		"sequential",
+		"concurrent",
+	] as const)("claims a repeated payment-failure email once for %s delivery", async (delivery) => {
+		paymentFailureClaimResults = [true, false];
+		const paymentIntent = {
+			id: "pi_repeated",
+			receipt_email: "jane@example.com",
+			last_payment_error: { message: "card declined" },
+			metadata: { commerceTenantSiteUrl: "angelsrest.online" },
+		} as unknown as Stripe.PaymentIntent;
+		const event = makeStripeEvent("payment_intent.payment_failed", paymentIntent, {
+			id: "evt_repeated123456",
+		});
+		const { processStripeWebhookEvent } = await import("../orderIntake");
+
+		if (delivery === "concurrent") {
+			await Promise.all([
+				processStripeWebhookEvent(event, adapters()),
+				processStripeWebhookEvent(event, adapters()),
+			]);
+		} else {
+			await processStripeWebhookEvent(event, adapters());
+			await processStripeWebhookEvent(event, adapters());
+		}
+
+		expect(convex.mutation).toHaveBeenCalledTimes(2);
+		expect(mockSendPaymentFailedEmail).toHaveBeenCalledOnce();
+		expect(mockLogStructured).toHaveBeenCalledWith({
+			event: "email.payment_failed.duplicate_ignored",
+			stage: "email_customer",
+			meta: {
+				stripeEventId: "evt_repeated123456",
+				paymentIntentId: "pi_repeated",
+				accountScope: "platform",
+			},
+		});
+	});
+
+	it("does not reattempt an email after a claimed send failure", async () => {
+		paymentFailureClaimResults = [true, false];
+		mockSendPaymentFailedEmail.mockRejectedValueOnce(new Error("Resend unavailable"));
+		const paymentIntent = {
+			id: "pi_send_failed",
+			receipt_email: "jane@example.com",
+			last_payment_error: { message: "card declined" },
+			metadata: { commerceTenantSiteUrl: "angelsrest.online" },
+		} as unknown as Stripe.PaymentIntent;
+		const event = makeStripeEvent("payment_intent.payment_failed", paymentIntent, {
+			id: "evt_sendfailed123456",
+		});
+		const { processStripeWebhookEvent } = await import("../orderIntake");
+
+		await processStripeWebhookEvent(event, adapters());
+		await processStripeWebhookEvent(event, adapters());
+
+		expect(mockSendPaymentFailedEmail).toHaveBeenCalledOnce();
+		expect(mockLogStructured).toHaveBeenCalledWith(
+			expect.objectContaining({ event: "email.payment_failed.send_failed" }),
+		);
+		expect(mockLogStructured).toHaveBeenCalledWith(
+			expect.objectContaining({ event: "email.payment_failed.duplicate_ignored" }),
+		);
+	});
+
+	it("retries a failed durable claim without sending an email or generic alert", async () => {
+		paymentFailureClaimResults = [];
+		const paymentIntent = {
+			id: "pi_claim_unavailable",
+			receipt_email: "jane@example.com",
+			last_payment_error: { message: "card declined" },
+			metadata: { commerceTenantSiteUrl: "angelsrest.online" },
+		} as unknown as Stripe.PaymentIntent;
+		const event = makeStripeEvent("payment_intent.payment_failed", paymentIntent);
+		const { processStripeWebhookEvent } = await import("../orderIntake");
+
+		await expect(processStripeWebhookEvent(event, adapters())).rejects.toMatchObject({
+			status: 500,
+		});
+		paymentFailureClaimResults = [true];
+		await processStripeWebhookEvent(event, adapters());
+
+		expect(convex.mutation).toHaveBeenCalledTimes(2);
+		expect(mockSendPaymentFailedEmail).toHaveBeenCalledOnce();
+		expect(mockSendFailureAlert).not.toHaveBeenCalled();
+		expect(mockLogStructured).toHaveBeenCalledWith(
+			expect.objectContaining({
+				event: "email.payment_failed.claim_failed",
+				stage: "email_customer",
+			}),
+		);
 	});
 
 	it("ignores an unmarked platform-account PaymentIntent failure", async () => {
@@ -1328,6 +1433,11 @@ describe("processStripeWebhookEvent", () => {
 
 		expect(convex.query).toHaveBeenCalledWith("platform.getByStripeConnectedAccountId", {
 			stripeConnectedAccountId: "acct_connected",
+			webhookSecret: "test-webhook-secret",
+		});
+		expect(convex.mutation).toHaveBeenCalledWith("orders.claimPaymentFailureEmail", {
+			stripeConnectedAccountId: "acct_connected",
+			stripeEventId: "evt_test12345678",
 			webhookSecret: "test-webhook-secret",
 		});
 		expect(mockSendPaymentFailedEmail).toHaveBeenCalledWith(resend, {

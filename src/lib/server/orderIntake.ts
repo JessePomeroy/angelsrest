@@ -34,6 +34,8 @@ import {
 import { createOrderInConvex } from "$lib/server/webhookOrders";
 import { getWebhookSecret } from "$lib/server/webhookSecret";
 
+class PaymentFailureEmailClaimError extends Error {}
+
 export interface OrderIntakeAdapters {
 	stripe: Stripe;
 	resend: Resend;
@@ -116,7 +118,13 @@ export async function processStripeWebhookEvent(
 				const paymentIntent = event.data.object as Stripe.PaymentIntent;
 				if (!hasPaymentFailureCommerceAuthority(paymentIntent)) break;
 				const tenant = await resolveCommerceTenant(event, adapters.convex);
-				await handlePaymentFailed(paymentIntent, adapters.resend, tenant.notificationProfile);
+				await handlePaymentFailed(
+					event,
+					paymentIntent,
+					adapters.resend,
+					adapters.convex,
+					tenant.notificationProfile,
+				);
 				break;
 			}
 
@@ -150,7 +158,8 @@ export async function processStripeWebhookEvent(
 		});
 		if (
 			!(err instanceof CheckoutSnapshotProtocolError) &&
-			!(err instanceof ManualRefundReconciliationRetryableError)
+			!(err instanceof ManualRefundReconciliationRetryableError) &&
+			!(err instanceof PaymentFailureEmailClaimError)
 		) {
 			await sendFailureAlert(adapters.resend, event.type, sessionId ?? "unknown", errorMessage);
 		}
@@ -189,9 +198,15 @@ function hasPaymentFailureCommerceAuthority(paymentIntent: Stripe.PaymentIntent)
 	return typeof tenantMarker === "string" && tenantMarker.trim().length > 0;
 }
 
+function paymentFailureAccountScope(event: Stripe.Event) {
+	return event.account ? `connected:${event.account}` : "platform";
+}
+
 async function handlePaymentFailed(
+	event: Stripe.Event,
 	paymentIntent: Stripe.PaymentIntent,
 	resend: Resend,
+	convex: ConvexHttpClient,
 	notificationProfile: CommerceNotificationProfile,
 ) {
 	const failureMessage =
@@ -207,6 +222,40 @@ async function handlePaymentFailed(
 	});
 	if (!paymentIntent.receipt_email) return;
 
+	let claimed: boolean;
+	try {
+		claimed = await convex.mutation(api.orders.claimPaymentFailureEmail, {
+			webhookSecret: getWebhookSecret(),
+			stripeEventId: event.id,
+			...(event.account ? { stripeConnectedAccountId: event.account } : {}),
+		});
+	} catch (cause) {
+		logStructured({
+			event: "email.payment_failed.claim_failed",
+			level: "error",
+			stage: "email_customer",
+			error: cause,
+			meta: {
+				stripeEventId: event.id,
+				paymentIntentId: paymentIntent.id,
+				accountScope: paymentFailureAccountScope(event),
+			},
+		});
+		throw new PaymentFailureEmailClaimError("Payment-failure email claim failed", { cause });
+	}
+	if (!claimed) {
+		logStructured({
+			event: "email.payment_failed.duplicate_ignored",
+			stage: "email_customer",
+			meta: {
+				stripeEventId: event.id,
+				paymentIntentId: paymentIntent.id,
+				accountScope: paymentFailureAccountScope(event),
+			},
+		});
+		return;
+	}
+
 	try {
 		await sendPaymentFailedEmail(resend, {
 			customerEmail: paymentIntent.receipt_email,
@@ -219,7 +268,12 @@ async function handlePaymentFailed(
 			level: "error",
 			stage: "email_customer",
 			error: err,
-			meta: { paymentIntentId: paymentIntent.id, fatal: false },
+			meta: {
+				stripeEventId: event.id,
+				paymentIntentId: paymentIntent.id,
+				accountScope: paymentFailureAccountScope(event),
+				fatal: false,
+			},
 		});
 	}
 }

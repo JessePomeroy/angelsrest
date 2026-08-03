@@ -204,7 +204,11 @@ signing-secret roles must also agree with `event.account`, but signature identit
 does not select the tenant or business domain. Commerce PaymentIntent failures
 require the server-owned commerce tenant marker. Connected-account events also
 require the connected signing-secret role and use `event.account` to resolve and
-verify the tenant.
+verify the tenant. Before a customer payment-failure email attempt, Convex claims
+the signed event ID within its Stripe account scope. Retries, manual resend, and
+overlapping destinations converge on that claim. The claim is intentionally
+at-most-once for the external attempt: a process failure after the durable claim
+can lose an email, but it cannot send a duplicate.
 
 Production rollout is consumer-first:
 
@@ -221,8 +225,7 @@ Production rollout is consumer-first:
    distinct credentials for every configured role. Retain only value-free
    evidence. Deployment is blocked until this gate passes.
 3. Confirm the current commerce destination's Snapshot version and event matrix.
-   It currently lacks `refund.created` and `refund.updated`; payment-failure
-   email remains non-deduplicated until its separate consumer slice lands.
+   It currently lacks `refund.created` and `refund.updated`.
 4. Under separate deployment authorization, deploy and verify the domain guards,
    explicit API-version contract, and durable payment-failure deduplication.
    Stop before connected-destination creation, secret staging, or event expansion

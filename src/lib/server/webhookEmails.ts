@@ -293,7 +293,7 @@ export async function sendPaymentFailedEmail(
 		notificationProfile?: CommerceNotificationProfile;
 	},
 ) {
-	await resend.emails.send({
+	const result = await resend.emails.send({
 		from: commerceSender(notificationProfile),
 		to: [customerEmail],
 		subject: `Payment could not be processed - ${notificationProfile.siteName}`,
@@ -313,6 +313,8 @@ ${notificationProfile.siteName}
 ${commerceOrigin(notificationProfile)}
 `.trim(),
 	});
+	if (result.error)
+		throw new Error(result.error.message || "Payment-failure email delivery failed");
 }
 
 /**
