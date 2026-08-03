@@ -1,5 +1,9 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { getSiteAdminAccess, verifySiteAdminRequest } from "$lib/server/siteAdminAuthorization";
+import {
+	authorizeSiteAdminRequest,
+	getSiteAdminAccess,
+	verifySiteAdminRequest,
+} from "$lib/server/siteAdminAuthorization";
 
 const { mockGetTokenFromRequest, mockCreateClient, mockSetAuth, mockQuery } = vi.hoisted(() => ({
 	mockGetTokenFromRequest: vi.fn(),
@@ -71,10 +75,15 @@ describe("site admin authorization", () => {
 	it("requires both a valid identity and stored site membership", async () => {
 		mockGetTokenFromRequest.mockResolvedValue("session-token");
 		mockQuery
-			.mockResolvedValueOnce({ email: "creator@example.com", subject: "user-1" })
+			.mockResolvedValueOnce({
+				email: "creator@example.com",
+				subject: "user-1",
+			})
 			.mockResolvedValueOnce({ authorized: true, tier: "full" });
 
-		await expect(verifySiteAdminRequest(new Request("https://example.test"))).resolves.toBe(true);
+		await expect(authorizeSiteAdminRequest(new Request("https://example.test"))).resolves.toEqual({
+			convexToken: "session-token",
+		});
 		expect(mockQuery).toHaveBeenNthCalledWith(1, "adminAuth.whoami", {});
 		expect(mockQuery).toHaveBeenNthCalledWith(2, "adminAuth.checkAdminAccess", {
 			email: "creator@example.com",
@@ -85,7 +94,10 @@ describe("site admin authorization", () => {
 	it("rejects a valid identity without site membership", async () => {
 		mockGetTokenFromRequest.mockResolvedValue("session-token");
 		mockQuery
-			.mockResolvedValueOnce({ email: "other@example.com", subject: "user-2" })
+			.mockResolvedValueOnce({
+				email: "other@example.com",
+				subject: "user-2",
+			})
 			.mockResolvedValueOnce({ authorized: false, tier: "basic" });
 
 		await expect(verifySiteAdminRequest(new Request("https://example.test"))).resolves.toBe(false);

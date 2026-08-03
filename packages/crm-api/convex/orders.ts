@@ -56,6 +56,22 @@ const fulfillmentRecoveryStatusValidator = v.union(
 	v.literal("refunded"),
 );
 
+const manualRefundRecoveryProviderEvidenceValidator = v.object({
+	verifiedAt: v.number(),
+	currentRefundStatus: v.literal("succeeded"),
+	currentRefundHasAutomatedMetadata: v.literal(false),
+	currentRefundHasRecoveryAuditMetadata: v.literal(false),
+	paymentIntentStatus: v.literal("succeeded"),
+	paymentIntentAmount: v.number(),
+	paymentIntentAmountReceived: v.number(),
+	paymentIntentCurrency: v.literal("usd"),
+	paymentIntentLivemode: v.literal(true),
+	paymentIntentLatestChargeId: v.string(),
+	sessionMode: v.literal("payment"),
+	sessionStatus: v.literal("complete"),
+	sessionPaymentStatus: v.literal("paid"),
+});
+
 const manualRefundReconciliationResultValidator = v.union(
 	v.object({ kind: v.literal("reconciled") }),
 	v.object({ kind: v.literal("replayed") }),
@@ -66,10 +82,110 @@ const manualRefundReconciliationResultValidator = v.union(
 	}),
 );
 
+type ManualRefundReconciliationResult =
+	| { kind: "reconciled" }
+	| { kind: "replayed" }
+	| { kind: "pending_order" }
+	| { kind: "rejected"; reason: "identity_conflict" | "state_conflict" };
+
 const STRIPE_EVENT_ID = /^evt_[A-Za-z0-9]{8,120}$/;
 const STRIPE_REFUND_ID = /^re_[A-Za-z0-9]{8,120}$/;
 const STRIPE_PAYMENT_INTENT_ID = /^pi_[A-Za-z0-9]{8,120}$/;
 const STRIPE_CHARGE_ID = /^ch_[A-Za-z0-9]{8,120}$/;
+const MANUAL_REFUND_RECOVERY_ID = /^[a-z0-9][a-z0-9_-]{7,127}$/;
+const STRIPE_EVENT_API_VERSION = "2026-01-28.clover";
+const MANUAL_REFUND_RECOVERY_MANIFEST = {
+	recoveryId: "angelsrest-refund-event-selection-gap-v1",
+	manifestVersion: 1,
+	convexUrl: "https://loyal-swan-967.convex.cloud",
+	siteUrl: "angelsrest.online",
+	stripeContext: "acct_1SzVXnEdZA9bU4XS",
+	stripeEventId: "evt_3TzgMtEdZA9bU4XS1UakYelP",
+	stripeEventType: "refund.updated",
+	stripeEventApiVersion: STRIPE_EVENT_API_VERSION,
+	stripeRefundId: "re_3TzgMtEdZA9bU4XS18G1xdUE",
+	stripeChargeId: "ch_3TzgMtEdZA9bU4XS16dVR60J",
+	stripePaymentIntentId: "pi_3TzgMtEdZA9bU4XS1mivC9KA",
+	stripeSessionId: "cs_live_a1F5xkFjDxDIQ3Qjikpdo3Oo4OEwwM2jfpiAP589tBByIWZ5iDBLIBzlL0",
+	stripeTenantMetadataSiteUrl: "angelsrest.online",
+	amount: 1500,
+	currency: "usd",
+	livemode: true,
+} as const;
+const MANUAL_REFUND_RECOVERY_FAILED_CHECKS = new Set([
+	"event.id",
+	"event.type",
+	"event.api_version",
+	"event.livemode",
+	"event.account",
+	"event.context",
+	"event.object",
+	"event_refund.id",
+	"event_refund.status",
+	"event_refund.amount",
+	"event_refund.currency",
+	"event_refund.charge",
+	"event_refund.payment_intent",
+	"event_refund.automated_metadata",
+	"current_refund.id",
+	"current_refund.status",
+	"current_refund.amount",
+	"current_refund.currency",
+	"current_refund.charge",
+	"current_refund.payment_intent",
+	"current_refund.automated_metadata",
+	"current_refund.recovery_audit_metadata",
+	"payment_intent.id",
+	"payment_intent.status",
+	"payment_intent.amount",
+	"payment_intent.amount_received",
+	"payment_intent.currency",
+	"payment_intent.livemode",
+	"payment_intent.latest_charge",
+	"session.reconciliation",
+]);
+
+function assertManualRefundRecoveryEnabled() {
+	if (
+		process.env.STRIPE_REFUND_RECOVERY_ID !== MANUAL_REFUND_RECOVERY_MANIFEST.recoveryId
+		|| process.env.CONVEX_CLOUD_URL !== MANUAL_REFUND_RECOVERY_MANIFEST.convexUrl
+	) throw new Error("Manual refund recovery is disabled");
+}
+
+function isExactManualRefundRecoveryManifest(args: {
+	recoveryId: string;
+	manifestVersion: number;
+	siteUrl: string;
+	stripeContext: string;
+	stripeEventId: string;
+	stripeEventType: "refund.updated";
+	stripeEventApiVersion: string;
+	stripeRefundId: string;
+	stripeChargeId: string;
+	stripePaymentIntentId: string;
+	stripeSessionId: string;
+	stripeTenantMetadataSiteUrl: string;
+	amount: number;
+	currency: "usd";
+	livemode: boolean;
+}) {
+	const manifest = MANUAL_REFUND_RECOVERY_MANIFEST;
+	return args.recoveryId === manifest.recoveryId
+		&& args.manifestVersion === manifest.manifestVersion
+		&& args.siteUrl === manifest.siteUrl
+		&& args.stripeContext === manifest.stripeContext
+		&& args.stripeEventId === manifest.stripeEventId
+		&& args.stripeEventType === manifest.stripeEventType
+		&& args.stripeEventApiVersion === manifest.stripeEventApiVersion
+		&& args.stripeRefundId === manifest.stripeRefundId
+		&& args.stripeChargeId === manifest.stripeChargeId
+		&& args.stripePaymentIntentId === manifest.stripePaymentIntentId
+		&& args.stripeSessionId === manifest.stripeSessionId
+		&& args.stripeTenantMetadataSiteUrl === manifest.stripeTenantMetadataSiteUrl
+		&& args.amount === manifest.amount
+		&& args.currency === manifest.currency
+		&& args.livemode === manifest.livemode;
+}
 const CLAIM_TOKEN = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
 const PRINT_PREPARATION_LEASE_MS = 15 * 60 * 1000;
 
@@ -591,6 +707,125 @@ export const create = mutation({
 	},
 });
 
+/** Authenticated-site-admin plus webhook-secret one-use recovery claim. */
+export const claimManualRefundRecovery = mutation({
+	args: {
+		webhookSecret: v.string(),
+		recoveryId: v.string(),
+		manifestVersion: v.number(),
+		siteUrl: v.string(),
+		stripeContext: v.string(),
+		stripeEventId: v.string(),
+		stripeEventType: v.literal("refund.updated"),
+		stripeEventApiVersion: v.string(),
+		stripeRefundId: v.string(),
+		stripeChargeId: v.string(),
+		stripePaymentIntentId: v.string(),
+		stripeSessionId: v.string(),
+		stripeTenantMetadataSiteUrl: v.string(),
+		amount: v.number(),
+		currency: v.literal("usd"),
+		livemode: v.boolean(),
+	},
+	returns: v.object({ claimed: v.boolean() }),
+	handler: async (ctx, args) => {
+		assertManualRefundRecoveryEnabled();
+		await requireWebhookCallerOrAuth(ctx, args.webhookSecret, { allowAuth: false });
+		const { identity } = await requireSiteAdmin(ctx, args.siteUrl);
+		if (
+			!isExactManualRefundRecoveryManifest(args)
+			|| !MANUAL_REFUND_RECOVERY_ID.test(args.recoveryId)
+			|| args.manifestVersion !== 1
+			|| args.siteUrl.length === 0
+			|| args.siteUrl.length > 253
+			|| !isStripeConnectedAccountId(args.stripeContext)
+			|| !STRIPE_EVENT_ID.test(args.stripeEventId)
+			|| args.stripeEventApiVersion !== STRIPE_EVENT_API_VERSION
+			|| !STRIPE_REFUND_ID.test(args.stripeRefundId)
+			|| !STRIPE_CHARGE_ID.test(args.stripeChargeId)
+			|| !STRIPE_PAYMENT_INTENT_ID.test(args.stripePaymentIntentId)
+			|| !isStripeCheckoutSessionId(args.stripeSessionId)
+			|| args.stripeTenantMetadataSiteUrl !== args.siteUrl
+			|| !Number.isSafeInteger(args.amount)
+			|| args.amount <= 0
+			|| !args.livemode
+		) throw new Error("Invalid manual refund recovery claim");
+
+		const existing = await ctx.db.query("manualRefundRecoveries")
+			.withIndex("by_recoveryId", (q) => q.eq("recoveryId", args.recoveryId))
+			.unique();
+		if (existing) return { claimed: false };
+		const { webhookSecret: _discard, ...evidence } = args;
+		await ctx.db.insert("manualRefundRecoveries", {
+			...evidence,
+			state: "claimed",
+			claimedByTokenIdentifier: identity.tokenIdentifier,
+			claimedAt: Date.now(),
+		});
+		return { claimed: true };
+	},
+});
+
+/** Record a provider/evidence failure without making the one-use claim reusable. */
+export const failManualRefundRecovery = mutation({
+	args: {
+		webhookSecret: v.string(),
+		recoveryId: v.string(),
+		siteUrl: v.string(),
+		resultReason: v.string(),
+		failureStage: v.union(v.literal("provider_evidence"), v.literal("execution")),
+		providerFailureObservations: v.optional(v.object({
+			observedAt: v.number(),
+			failedChecks: v.array(v.string()),
+		})),
+	},
+	returns: v.object({ completed: v.boolean() }),
+	handler: async (ctx, args) => {
+		assertManualRefundRecoveryEnabled();
+		await requireWebhookCallerOrAuth(ctx, args.webhookSecret, { allowAuth: false });
+		const { identity } = await requireSiteAdmin(ctx, args.siteUrl);
+		if (
+			args.recoveryId !== MANUAL_REFUND_RECOVERY_MANIFEST.recoveryId
+			|| args.siteUrl !== MANUAL_REFUND_RECOVERY_MANIFEST.siteUrl
+			|| !MANUAL_REFUND_RECOVERY_ID.test(args.recoveryId)
+			|| args.resultReason.length === 0
+			|| args.resultReason.length > 160
+		) throw new Error("Invalid manual refund recovery failure");
+		const recovery = await ctx.db.query("manualRefundRecoveries")
+			.withIndex("by_recoveryId", (q) => q.eq("recoveryId", args.recoveryId))
+			.unique();
+		if (
+			!recovery
+			|| recovery.siteUrl !== args.siteUrl
+			|| recovery.state !== "claimed"
+			|| recovery.claimedByTokenIdentifier !== identity.tokenIdentifier
+		) return { completed: false };
+		const observations = args.providerFailureObservations;
+		if (
+			observations
+			&& (
+				!Number.isSafeInteger(observations.observedAt)
+				|| observations.observedAt < recovery.claimedAt
+				|| observations.observedAt > Date.now() + 300_000
+				|| observations.failedChecks.length === 0
+				|| observations.failedChecks.length > MANUAL_REFUND_RECOVERY_FAILED_CHECKS.size
+				|| observations.failedChecks.some(
+					(check) => !MANUAL_REFUND_RECOVERY_FAILED_CHECKS.has(check),
+				)
+			)
+		) throw new Error("Invalid manual refund recovery observations");
+		await ctx.db.patch(recovery._id, {
+			state: "completed",
+			completedAt: Date.now(),
+			resultKind: "failed",
+			resultReason: args.resultReason,
+			failureStage: args.failureStage,
+			providerFailureObservations: observations,
+		});
+		return { completed: true };
+	},
+});
+
 /**
  * Stripe-webhook-only projection for one full, succeeded manual refund.
  * The signed hub handler verifies provider evidence before this transaction.
@@ -598,6 +833,11 @@ export const create = mutation({
 export const reconcileSucceededManualRefund = mutation({
 	args: {
 		webhookSecret: v.string(),
+		refundRecoveryId: v.optional(v.string()),
+		refundRecoveryManifestVersion: v.optional(v.number()),
+		refundRecoveryStripeContext: v.optional(v.string()),
+		refundRecoveryEventApiVersion: v.optional(v.string()),
+		refundRecoveryProviderEvidence: v.optional(manualRefundRecoveryProviderEvidenceValidator),
 		stripeEventId: v.string(),
 		stripeRefundId: v.string(),
 		stripeChargeId: v.string(),
@@ -616,6 +856,71 @@ export const reconcileSucceededManualRefund = mutation({
 	returns: manualRefundReconciliationResultValidator,
 	handler: async (ctx, args) => {
 		await requireWebhookCallerOrAuth(ctx, args.webhookSecret, { allowAuth: false });
+		const recoveryId = args.refundRecoveryId;
+		let recoveryActorTokenIdentifier: string | undefined;
+		if (recoveryId !== undefined) {
+			assertManualRefundRecoveryEnabled();
+			const { identity } = await requireSiteAdmin(ctx, args.siteUrl);
+			recoveryActorTokenIdentifier = identity.tokenIdentifier;
+		}
+		if (
+			recoveryId === undefined
+			&& (
+				args.refundRecoveryManifestVersion !== undefined
+				|| args.refundRecoveryStripeContext !== undefined
+				|| args.refundRecoveryEventApiVersion !== undefined
+				|| args.refundRecoveryProviderEvidence !== undefined
+			)
+		) throw new Error("Manual refund recovery evidence is incomplete");
+		const recovery = recoveryId === undefined
+			? null
+			: await ctx.db.query("manualRefundRecoveries")
+				.withIndex("by_recoveryId", (q) => q.eq("recoveryId", recoveryId))
+				.unique();
+		if (
+			recoveryId !== undefined
+			&& (
+				recoveryId !== MANUAL_REFUND_RECOVERY_MANIFEST.recoveryId
+				|| !MANUAL_REFUND_RECOVERY_ID.test(recoveryId)
+				|| !recovery
+				|| recovery.state !== "claimed"
+				|| recovery.claimedByTokenIdentifier !== recoveryActorTokenIdentifier
+				|| recovery.manifestVersion !== args.refundRecoveryManifestVersion
+				|| recovery.siteUrl !== args.siteUrl
+				|| recovery.stripeContext !== args.refundRecoveryStripeContext
+				|| recovery.stripeEventId !== args.stripeEventId
+				|| recovery.stripeEventApiVersion !== args.refundRecoveryEventApiVersion
+				|| recovery.stripeRefundId !== args.stripeRefundId
+				|| recovery.stripeChargeId !== args.stripeChargeId
+				|| recovery.stripePaymentIntentId !== args.stripePaymentIntentId
+				|| recovery.stripeSessionId !== args.stripeSessionId
+				|| !args.refundRecoveryProviderEvidence
+				|| args.refundRecoveryProviderEvidence.verifiedAt < recovery.claimedAt
+				|| args.refundRecoveryProviderEvidence.verifiedAt > Date.now() + 300_000
+				|| args.refundRecoveryProviderEvidence.paymentIntentAmount !== recovery.amount
+				|| args.refundRecoveryProviderEvidence.paymentIntentAmountReceived !== recovery.amount
+				|| args.refundRecoveryProviderEvidence.paymentIntentLatestChargeId !== recovery.stripeChargeId
+				|| recovery.stripeTenantMetadataSiteUrl !== args.stripeTenantMetadataSiteUrl
+				|| recovery.amount !== args.refundAmount
+				|| recovery.currency !== args.refundCurrency
+				|| recovery.livemode !== args.eventLivemode
+				|| args.stripeConnectedAccountId !== undefined
+			)
+		) throw new Error("Manual refund recovery claim is unavailable");
+		const completeRecovery = async <Result extends ManualRefundReconciliationResult>(
+			result: Result,
+		) => {
+			if (recovery) {
+				await ctx.db.patch(recovery._id, {
+					state: "completed",
+					completedAt: Date.now(),
+					providerEvidence: args.refundRecoveryProviderEvidence,
+					resultKind: result.kind,
+					resultReason: result.kind === "rejected" ? result.reason : undefined,
+				});
+			}
+			return result;
+		};
 		const validIdentity = STRIPE_EVENT_ID.test(args.stripeEventId)
 			&& STRIPE_REFUND_ID.test(args.stripeRefundId)
 			&& STRIPE_CHARGE_ID.test(args.stripeChargeId)
@@ -628,14 +933,16 @@ export const reconcileSucceededManualRefund = mutation({
 			&& args.refundAmount === args.sessionAmountTotal
 			&& args.refundCurrency === args.sessionCurrency
 			&& args.eventLivemode === args.sessionLivemode;
-		if (!validIdentity) return { kind: "rejected" as const, reason: "identity_conflict" as const };
+		if (!validIdentity) {
+			return await completeRecovery({ kind: "rejected", reason: "identity_conflict" });
+		}
 		if (args.stripeConnectedAccountId !== undefined) {
 			const clients = await ctx.db.query("platformClients")
 				.withIndex("by_stripeConnectedAccountId", (q) => q
 					.eq("stripeConnectedAccountId", args.stripeConnectedAccountId))
 				.take(2);
 			if (clients.length !== 1 || clients[0].siteUrl !== args.siteUrl) {
-				return { kind: "rejected" as const, reason: "identity_conflict" as const };
+				return await completeRecovery({ kind: "rejected", reason: "identity_conflict" });
 			}
 		}
 
@@ -648,12 +955,12 @@ export const reconcileSucceededManualRefund = mutation({
 				.eq("accountScope", accountScope).eq("stripeSessionId", args.stripeSessionId))
 			.take(2);
 		if (refundIntents.length > 1 || sessionIntents.length > 1) {
-			return { kind: "rejected" as const, reason: "identity_conflict" as const };
+			return await completeRecovery({ kind: "rejected", reason: "identity_conflict" });
 		}
 		const byRefund = refundIntents[0];
 		const bySession = sessionIntents[0];
 		if (byRefund && bySession && byRefund._id !== bySession._id) {
-			return { kind: "rejected" as const, reason: "identity_conflict" as const };
+			return await completeRecovery({ kind: "rejected", reason: "identity_conflict" });
 		}
 		let intent: Doc<"manualRefundIntents"> | undefined = byRefund ?? bySession;
 		if (intent && (
@@ -668,13 +975,13 @@ export const reconcileSucceededManualRefund = mutation({
 			|| intent.amount !== args.refundAmount
 			|| intent.currency !== args.refundCurrency
 			|| intent.livemode !== args.eventLivemode
-		)) return { kind: "rejected" as const, reason: "identity_conflict" as const };
+		)) return await completeRecovery({ kind: "rejected", reason: "identity_conflict" });
 
 		const matches = await ctx.db.query("orders")
 			.withIndex("by_stripeSessionId", (q) => q.eq("stripeSessionId", args.stripeSessionId))
 			.take(2);
 		if (matches.length > 1) {
-			return { kind: "rejected" as const, reason: "identity_conflict" as const };
+			return await completeRecovery({ kind: "rejected", reason: "identity_conflict" });
 		}
 		const order = matches[0];
 		if (order && (
@@ -684,7 +991,7 @@ export const reconcileSucceededManualRefund = mutation({
 			|| order.total !== args.refundAmount
 			|| order.stripePaymentIntentId !== undefined
 				&& order.stripePaymentIntentId !== args.stripePaymentIntentId
-		)) return { kind: "rejected" as const, reason: "identity_conflict" as const };
+		)) return await completeRecovery({ kind: "rejected", reason: "identity_conflict" });
 
 		if (order?.stripeConnectedAccountId !== undefined) {
 			if (
@@ -692,12 +999,36 @@ export const reconcileSucceededManualRefund = mutation({
 				|| !await connectedAccountMatchesSite(
 					ctx, order.siteUrl, order.stripeConnectedAccountId,
 				)
-			) return { kind: "rejected" as const, reason: "identity_conflict" as const };
+			) return await completeRecovery({ kind: "rejected", reason: "identity_conflict" });
 		} else if (
 			order
 			&& args.stripeConnectedAccountId !== undefined
 			&& !await connectedAccountMatchesSite(ctx, order.siteUrl, args.stripeConnectedAccountId)
-		) return { kind: "rejected" as const, reason: "identity_conflict" as const };
+		) return await completeRecovery({ kind: "rejected", reason: "identity_conflict" });
+
+		if (recovery && !order) {
+			return await completeRecovery({ kind: "rejected", reason: "state_conflict" });
+		}
+		const isManualTerminal = order?.status === "refunded"
+			&& order.stripeRefundId === args.stripeRefundId
+			&& order.lumaprintsOrderNumber === undefined
+			&& !order.printFulfillmentClaim
+			&& order.printFulfillmentPhase === undefined
+			&& order.fulfillmentError === undefined
+			&& order.fulfillmentRecoveryStatus === undefined;
+		const canTakeOverPendingRecovery = order?.status === "fulfillment_error"
+			&& order.fulfillmentRecoveryStatus === "refund_pending"
+			&& order.stripeRefundId === undefined
+			&& order.lumaprintsOrderNumber === undefined
+			&& !order.printFulfillmentClaim;
+		const isUnfulfilledNew = order?.status === "new"
+			&& order.lumaprintsOrderNumber === undefined
+			&& order.stripeRefundId === undefined
+			&& order.fulfillmentError === undefined
+			&& order.fulfillmentRecoveryStatus === undefined;
+		if (recovery && !isManualTerminal && !isUnfulfilledNew && !canTakeOverPendingRecovery) {
+			return await completeRecovery({ kind: "rejected", reason: "state_conflict" });
+		}
 
 		if (!intent) {
 			const intentId = await ctx.db.insert("manualRefundIntents", {
@@ -718,33 +1049,16 @@ export const reconcileSucceededManualRefund = mutation({
 			intent = await ctx.db.get(intentId) ?? undefined;
 		}
 		if (!intent) throw new Error("Manual refund intent was not stored");
-		if (!order) return { kind: "pending_order" as const };
+		if (!order) return await completeRecovery({ kind: "pending_order" });
 
-		const isManualTerminal = order.status === "refunded"
-			&& order.stripeRefundId === args.stripeRefundId
-			&& order.lumaprintsOrderNumber === undefined
-			&& !order.printFulfillmentClaim
-			&& order.printFulfillmentPhase === undefined
-			&& order.fulfillmentError === undefined
-			&& order.fulfillmentRecoveryStatus === undefined;
 		if (isManualTerminal) {
 			if (intent.orderId === undefined) {
 				await ctx.db.patch(intent._id, { orderId: order._id, consumedAt: Date.now() });
 			}
-			return { kind: "replayed" as const };
+			return await completeRecovery({ kind: "replayed" });
 		}
-		const canTakeOverPendingRecovery = order.status === "fulfillment_error"
-			&& order.fulfillmentRecoveryStatus === "refund_pending"
-			&& order.stripeRefundId === undefined
-			&& order.lumaprintsOrderNumber === undefined
-			&& !order.printFulfillmentClaim;
-		const isUnfulfilledNew = order.status === "new"
-			&& order.lumaprintsOrderNumber === undefined
-			&& order.stripeRefundId === undefined
-			&& order.fulfillmentError === undefined
-			&& order.fulfillmentRecoveryStatus === undefined;
 		if (!isUnfulfilledNew && !canTakeOverPendingRecovery) {
-			return { kind: "rejected" as const, reason: "state_conflict" as const };
+			return await completeRecovery({ kind: "rejected", reason: "state_conflict" });
 		}
 		if (
 			order.printFulfillmentClaim
@@ -778,7 +1092,7 @@ export const reconcileSucceededManualRefund = mutation({
 			printFulfillmentLeaseExpiresAt: undefined,
 		});
 		await ctx.db.patch(intent._id, { orderId: order._id, consumedAt: Date.now() });
-		return { kind: "reconciled" as const };
+		return await completeRecovery({ kind: "reconciled" });
 	},
 });
 

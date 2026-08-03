@@ -85,6 +85,30 @@ function sessionList(data = [session()], hasMore = false) {
 	return { object: "list", url: "/v1/checkout/sessions", data, has_more: hasMore };
 }
 
+function recoveryContext(overrides: Record<string, unknown> = {}) {
+	return {
+		recoveryId: "recovery-id",
+		manifestVersion: 1,
+		stripeContext: IDS.account,
+		eventApiVersion: "2026-01-28.clover",
+		expectedSessionId: IDS.session,
+		verifiedRefund: refund(),
+		providerEvidence: {
+			verifiedAt: 1_800_000_000_000,
+			currentRefundStatus: "succeeded" as const,
+			currentRefundHasAutomatedMetadata: false as const,
+			currentRefundHasRecoveryAuditMetadata: false as const,
+			paymentIntentStatus: "succeeded" as const,
+			paymentIntentAmount: 1500,
+			paymentIntentAmountReceived: 1500,
+			paymentIntentCurrency: "usd" as const,
+			paymentIntentLivemode: true as const,
+			paymentIntentLatestChargeId: IDS.charge,
+		},
+		...overrides,
+	};
+}
+
 describe("manual refund reconciliation", () => {
 	const list = vi.fn();
 	const mutation = vi.fn();
@@ -173,9 +197,17 @@ describe("manual refund reconciliation", () => {
 
 	it("uses a verified Your-account context only for the related platform Stripe read", async () => {
 		await reconcileSucceededManualRefund(
-			event("refund.updated", {}, { context: IDS.account }),
+			event(
+				"refund.updated",
+				{},
+				{
+					context: IDS.account,
+					api_version: "2026-01-28.clover",
+				},
+			),
 			{ stripe, convex },
 			"your-account",
+			recoveryContext(),
 		);
 
 		expect(list).toHaveBeenCalledWith(
@@ -185,6 +217,10 @@ describe("manual refund reconciliation", () => {
 		const mutationArgs = mutation.mock.calls[0]?.[1];
 		expect(mutationArgs).toEqual(
 			expect.objectContaining({
+				refundRecoveryId: "recovery-id",
+				refundRecoveryManifestVersion: 1,
+				refundRecoveryStripeContext: IDS.account,
+				refundRecoveryEventApiVersion: "2026-01-28.clover",
 				stripeEventId: IDS.event,
 				stripeRefundId: IDS.refund,
 				siteUrl: "angelsrest.online",
@@ -192,6 +228,41 @@ describe("manual refund reconciliation", () => {
 		);
 		expect(mutationArgs).not.toHaveProperty("stripeConnectedAccountId");
 		expect(mutationArgs).not.toHaveProperty("stripeTenantMetadataSiteUrl");
+	});
+
+	it.each([
+		["context", { context: "acct_1234567890fedcba", api_version: "2026-01-28.clover" }],
+		["API version", { context: IDS.account, api_version: "2025-12-15.clover" }],
+	] as const)("requires the server-owned %s during admin recovery", async (_label, eventOverrides) => {
+		await expect(
+			reconcileSucceededManualRefund(
+				event("refund.updated", {}, eventOverrides),
+				{ stripe, convex },
+				"your-account",
+				recoveryContext(),
+			),
+		).resolves.toEqual({ kind: "ignored", reason: "provider_evidence_mismatch" });
+		expect(list).not.toHaveBeenCalled();
+		expect(mutation).not.toHaveBeenCalled();
+	});
+
+	it("requires the exact server-owned Session during admin recovery", async () => {
+		await expect(
+			reconcileSucceededManualRefund(
+				event(
+					"refund.updated",
+					{},
+					{
+						context: IDS.account,
+						api_version: "2026-01-28.clover",
+					},
+				),
+				{ stripe, convex },
+				"your-account",
+				recoveryContext({ expectedSessionId: "cs_test_differentsession1234" }),
+			),
+		).resolves.toEqual({ kind: "ignored", reason: "invalid_session" });
+		expect(mutation).not.toHaveBeenCalled();
 	});
 
 	it.each([

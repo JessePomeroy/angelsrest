@@ -190,6 +190,23 @@ Print fulfillment uses an expiring preparation lease and an atomic submission
 fence, so refund and provider effects cannot both start. The additive V2 claim
 API keeps the V1 claim available for a Convex-first rollout.
 
+A disabled-by-default admin recovery route exists only for the reviewed
+historical refund incident. `POST /api/admin/orders/refund-recovery` requires an
+exact same-origin request, a Better Auth session, stored site membership, the
+one server-owned recovery ID, and a matching private environment gate. Convex
+also requires the exact incident manifest, the same short-lived private gate,
+its exact built-in Production URL, and the same derived admin actor. The route
+durably claims the recovery before provider reads. It then retrieves the exact
+historical Stripe Event, current Refund, PaymentIntent, and exact Checkout
+Session and validates their Charge binding in the server-owned platform context.
+Browser input cannot provide Stripe or tenant facts. Convex records normalized
+provider evidence for accepted checks and a bounded failed-check list for rejected
+checks. It completes a valid reconciliation in the existing order transaction. A missing order creates no refund intent. Failed or incomplete
+claims never become reusable. An audit-write failure returns an explicit
+indeterminate result. The route has no admin UI control and sends no email or
+fulfillment request. Deployment, gate enablement, invocation, gate removal, and
+code cleanup are separate approvals.
+
 Stripe delivery has three logical consumers. The platform-subscription
 `Your account` destination sends subscription events to
 `/api/platform/webhooks/stripe`. The commerce `Your account` destination sends

@@ -173,6 +173,42 @@ const catalogProductRevisionV2Validators = [
 	}),
 ] as const;
 
+const manualRefundRecoveryProviderEvidenceValidator = v.object({
+	verifiedAt: v.number(),
+	currentRefundStatus: v.literal("succeeded"),
+	currentRefundHasAutomatedMetadata: v.literal(false),
+	currentRefundHasRecoveryAuditMetadata: v.literal(false),
+	paymentIntentStatus: v.literal("succeeded"),
+	paymentIntentAmount: v.number(),
+	paymentIntentAmountReceived: v.number(),
+	paymentIntentCurrency: v.literal("usd"),
+	paymentIntentLivemode: v.literal(true),
+	paymentIntentLatestChargeId: v.string(),
+	sessionMode: v.literal("payment"),
+	sessionStatus: v.literal("complete"),
+	sessionPaymentStatus: v.literal("paid"),
+});
+
+const manualRefundRecoveryEvidenceFields = {
+	recoveryId: v.string(),
+	manifestVersion: v.number(),
+	siteUrl: v.string(),
+	stripeContext: v.string(),
+	stripeEventId: v.string(),
+	stripeEventType: v.literal("refund.updated"),
+	stripeEventApiVersion: v.string(),
+	stripeRefundId: v.string(),
+	stripeChargeId: v.string(),
+	stripePaymentIntentId: v.string(),
+	stripeSessionId: v.string(),
+	stripeTenantMetadataSiteUrl: v.string(),
+	amount: v.number(),
+	currency: v.literal("usd"),
+	livemode: v.boolean(),
+	claimedByTokenIdentifier: v.string(),
+	claimedAt: v.number(),
+};
+
 export default defineSchema({
 	// Photographers you've built sites for
 	platformClients: defineTable({
@@ -770,7 +806,36 @@ export default defineSchema({
 		.index("by_siteUrl_and_handleHash", ["siteUrl", "handleHash"])
 		.index("by_accountScope_and_stripeSessionId", ["accountScope", "stripeSessionId"]),
 
-	// Provider-verified manual refunds that can arrive before their paid order event.
+	// Immutable evidence and terminal outcomes for one-use admin refund recoveries.
+	manualRefundRecoveries: defineTable(v.union(
+		v.object({
+			...manualRefundRecoveryEvidenceFields,
+			state: v.literal("claimed"),
+		}),
+		v.object({
+			...manualRefundRecoveryEvidenceFields,
+			state: v.literal("completed"),
+			completedAt: v.number(),
+			resultKind: v.union(
+				v.literal("reconciled"),
+				v.literal("replayed"),
+				v.literal("pending_order"),
+				v.literal("rejected"),
+				v.literal("failed"),
+			),
+			resultReason: v.optional(v.string()),
+			providerEvidence: v.optional(manualRefundRecoveryProviderEvidenceValidator),
+			providerFailureObservations: v.optional(v.object({
+				observedAt: v.number(),
+				failedChecks: v.array(v.string()),
+			})),
+			failureStage: v.optional(v.union(
+				v.literal("provider_evidence"),
+				v.literal("execution"),
+			)),
+		}),
+	)).index("by_recoveryId", ["recoveryId"]),
+
 	manualRefundIntents: defineTable({
 		accountScope: v.string(),
 		siteUrl: v.string(),
