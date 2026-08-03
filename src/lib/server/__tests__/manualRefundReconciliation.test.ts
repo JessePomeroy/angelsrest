@@ -85,6 +85,30 @@ function sessionList(data = [session()], hasMore = false) {
 	return { object: "list", url: "/v1/checkout/sessions", data, has_more: hasMore };
 }
 
+function recoveryContext(overrides: Record<string, unknown> = {}) {
+	return {
+		recoveryId: "recovery-id",
+		manifestVersion: 1,
+		stripeContext: IDS.account,
+		eventApiVersion: "2026-01-28.clover",
+		expectedSessionId: IDS.session,
+		verifiedRefund: refund(),
+		providerEvidence: {
+			verifiedAt: 1_800_000_000_000,
+			currentRefundStatus: "succeeded" as const,
+			currentRefundHasAutomatedMetadata: false as const,
+			currentRefundHasRecoveryAuditMetadata: false as const,
+			paymentIntentStatus: "succeeded" as const,
+			paymentIntentAmount: 1500,
+			paymentIntentAmountReceived: 1500,
+			paymentIntentCurrency: "usd" as const,
+			paymentIntentLivemode: true as const,
+			paymentIntentLatestChargeId: IDS.charge,
+		},
+		...overrides,
+	};
+}
+
 describe("manual refund reconciliation", () => {
 	const list = vi.fn();
 	const mutation = vi.fn();
@@ -183,14 +207,7 @@ describe("manual refund reconciliation", () => {
 			),
 			{ stripe, convex },
 			"your-account",
-			{
-				recoveryId: "recovery-id",
-				manifestVersion: 1,
-				stripeContext: IDS.account,
-				eventApiVersion: "2026-01-28.clover",
-				expectedSessionId: IDS.session,
-				verifiedRefund: refund(),
-			},
+			recoveryContext(),
 		);
 
 		expect(list).toHaveBeenCalledWith(
@@ -222,14 +239,7 @@ describe("manual refund reconciliation", () => {
 				event("refund.updated", {}, eventOverrides),
 				{ stripe, convex },
 				"your-account",
-				{
-					recoveryId: "recovery-id",
-					manifestVersion: 1,
-					stripeContext: IDS.account,
-					eventApiVersion: "2026-01-28.clover",
-					expectedSessionId: IDS.session,
-					verifiedRefund: refund(),
-				},
+				recoveryContext(),
 			),
 		).resolves.toEqual({ kind: "ignored", reason: "provider_evidence_mismatch" });
 		expect(list).not.toHaveBeenCalled();
@@ -249,14 +259,7 @@ describe("manual refund reconciliation", () => {
 				),
 				{ stripe, convex },
 				"your-account",
-				{
-					recoveryId: "recovery-id",
-					manifestVersion: 1,
-					stripeContext: IDS.account,
-					eventApiVersion: "2026-01-28.clover",
-					expectedSessionId: "cs_test_differentsession1234",
-					verifiedRefund: refund(),
-				},
+				recoveryContext({ expectedSessionId: "cs_test_differentsession1234" }),
 			),
 		).resolves.toEqual({ kind: "ignored", reason: "invalid_session" });
 		expect(mutation).not.toHaveBeenCalled();

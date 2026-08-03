@@ -41,6 +41,18 @@ export interface ManualRefundRecoveryContext {
 	eventApiVersion: string;
 	expectedSessionId: string;
 	verifiedRefund: Stripe.Refund;
+	providerEvidence: {
+		verifiedAt: number;
+		currentRefundStatus: "succeeded";
+		currentRefundHasAutomatedMetadata: false;
+		currentRefundHasRecoveryAuditMetadata: false;
+		paymentIntentStatus: "succeeded";
+		paymentIntentAmount: number;
+		paymentIntentAmountReceived: number;
+		paymentIntentCurrency: "usd";
+		paymentIntentLivemode: true;
+		paymentIntentLatestChargeId: string;
+	};
 }
 
 export type ManualRefundReconciliationResult =
@@ -205,6 +217,12 @@ export async function reconcileSucceededManualRefund(
 						refundRecoveryManifestVersion: recovery.manifestVersion,
 						refundRecoveryStripeContext: recovery.stripeContext,
 						refundRecoveryEventApiVersion: recovery.eventApiVersion,
+						refundRecoveryProviderEvidence: {
+							...recovery.providerEvidence,
+							sessionMode: "payment" as const,
+							sessionStatus: "complete" as const,
+							sessionPaymentStatus: "paid" as const,
+						},
 					}
 				: {}),
 			stripeEventId: event.id,

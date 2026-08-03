@@ -80,14 +80,14 @@ async function readRecoveryId(request: Request) {
 
 export const POST: RequestHandler = async ({ request }) => {
 	if (!isExpectedOrigin(request)) return response("forbidden", 403);
-	const authorization = await authorizeSiteAdminRequest(request);
-	if (!authorization) return response("unauthorized", 401);
 	if (
 		env.STRIPE_REFUND_RECOVERY_ID !== MANUAL_REFUND_RECOVERY_ID ||
 		adminConfig.siteUrl !== manualRefundRecoveryManifest.siteUrl ||
 		publicEnv.PUBLIC_CONVEX_URL !== manualRefundRecoveryManifest.expectedConvexUrl
 	)
 		return response("disabled", 404);
+	const authorization = await authorizeSiteAdminRequest(request);
+	if (!authorization) return response("unauthorized", 401);
 
 	const recoveryId = await readRecoveryId(request);
 	if (recoveryId !== MANUAL_REFUND_RECOVERY_ID) return response("invalid_request", 400);
@@ -113,17 +113,38 @@ export const POST: RequestHandler = async ({ request }) => {
 		livemode: manualRefundRecoveryManifest.livemode,
 	});
 	if (!claim.claimed) return response("already_claimed", 409);
+	const recordFailure = async (
+		resultReason: string,
+		failureStage: "provider_evidence" | "execution",
+	) => {
+		const result = await convex.mutation(api.orders.failManualRefundRecovery, {
+			webhookSecret,
+			recoveryId,
+			siteUrl: manualRefundRecoveryManifest.siteUrl,
+			resultReason,
+			failureStage,
+		});
+		if (!result.completed) throw new Error("Manual refund recovery outcome was not recorded");
+	};
+	const indeterminate = (cause: unknown) => {
+		logStructured({
+			event: "manual_refund.admin_recovery_indeterminate",
+			level: "error",
+			stage: "stripe_refund",
+			error: cause,
+			meta: { recoveryId },
+		});
+		return response("indeterminate", 503);
+	};
 
 	try {
 		const result = await recoverManualRefundFromProvider({ stripe: getStripe(), convex });
 		if (result.kind === "ignored") {
-			await convex.mutation(api.orders.failManualRefundRecovery, {
-				webhookSecret,
-				recoveryId,
-				siteUrl: manualRefundRecoveryManifest.siteUrl,
-				resultReason: `ignored_${result.reason}`,
-				failureStage: "provider_evidence",
-			});
+			try {
+				await recordFailure(`ignored_${result.reason}`, "provider_evidence");
+			} catch (cause) {
+				return indeterminate(cause);
+			}
 			return response("ignored", 409, result.reason);
 		}
 		logStructured({
@@ -140,16 +161,14 @@ export const POST: RequestHandler = async ({ request }) => {
 			cause instanceof ManualRefundRecoveryEvidenceError
 				? "provider_evidence_rejected"
 				: "execution_failed";
-		await convex
-			.mutation(api.orders.failManualRefundRecovery, {
-				webhookSecret,
-				recoveryId,
-				siteUrl: manualRefundRecoveryManifest.siteUrl,
+		try {
+			await recordFailure(
 				resultReason,
-				failureStage:
-					cause instanceof ManualRefundRecoveryEvidenceError ? "provider_evidence" : "execution",
-			})
-			.catch(() => undefined);
+				cause instanceof ManualRefundRecoveryEvidenceError ? "provider_evidence" : "execution",
+			);
+		} catch (auditCause) {
+			return indeterminate(auditCause);
+		}
 		logStructured({
 			event: "manual_refund.admin_recovery_failed",
 			level: "error",

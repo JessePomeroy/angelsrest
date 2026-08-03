@@ -88,6 +88,18 @@ export async function recoverManualRefundFromProvider(adapters: {
 			eventApiVersion: manifest.stripeEventApiVersion,
 			expectedSessionId: manifest.stripeSessionId,
 			verifiedRefund: currentRefund,
+			providerEvidence: {
+				verifiedAt: Date.now(),
+				currentRefundStatus: "succeeded",
+				currentRefundHasAutomatedMetadata: false,
+				currentRefundHasRecoveryAuditMetadata: false,
+				paymentIntentStatus: "succeeded",
+				paymentIntentAmount: paymentIntent.amount,
+				paymentIntentAmountReceived: paymentIntent.amount_received,
+				paymentIntentCurrency: "usd",
+				paymentIntentLivemode: true,
+				paymentIntentLatestChargeId: manifest.stripeChargeId,
+			},
 		},
 	);
 }

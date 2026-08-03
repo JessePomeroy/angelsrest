@@ -113,6 +113,7 @@ describe("admin manual refund recovery route", () => {
 		const response = await post(request());
 
 		expect(response.status).toBe(404);
+		expect(mocks.authorize).not.toHaveBeenCalled();
 		expect(mocks.mutation).not.toHaveBeenCalled();
 		expect(mocks.recover).not.toHaveBeenCalled();
 	});
@@ -190,6 +191,18 @@ describe("admin manual refund recovery route", () => {
 			resultReason: "ignored_session_amount_mismatch",
 			failureStage: "provider_evidence",
 		});
+	});
+
+	it("returns an explicit indeterminate result when failure auditing is unavailable", async () => {
+		mocks.recover.mockRejectedValue(new ManualRefundRecoveryEvidenceError("provider details"));
+		mocks.mutation
+			.mockResolvedValueOnce({ claimed: true })
+			.mockRejectedValueOnce(new Error("audit unavailable"));
+
+		const response = await post(request());
+
+		expect(response.status).toBe(503);
+		await expect(response.json()).resolves.toEqual({ status: "indeterminate" });
 	});
 
 	it("records provider evidence rejection without exposing details", async () => {

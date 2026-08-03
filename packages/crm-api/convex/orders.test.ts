@@ -16,11 +16,15 @@ const CLAIM_TOKEN_B = "123e4567-e89b-42d3-a456-426614174001";
 beforeEach(() => {
 	process.env.WEBHOOK_SECRET = WEBHOOK_SECRET;
 	process.env.ORDER_LOOKUP_SECRET = ORDER_LOOKUP_SECRET;
+	process.env.STRIPE_REFUND_RECOVERY_ID = MANUAL_REFUND_RECOVERY_ID;
+	process.env.CONVEX_CLOUD_URL = "https://loyal-swan-967.convex.cloud";
 });
 
 afterEach(() => {
 	delete process.env.WEBHOOK_SECRET;
 	delete process.env.ORDER_LOOKUP_SECRET;
+	delete process.env.STRIPE_REFUND_RECOVERY_ID;
+	delete process.env.CONVEX_CLOUD_URL;
 });
 
 const checkoutSnapshot = {
@@ -59,6 +63,16 @@ function orderArgs(stripeSessionId: string) {
 }
 
 const MANUAL_REFUND_RECOVERY_ID = "angelsrest-refund-event-selection-gap-v1";
+const ADMIN_RECOVERY = {
+	siteUrl: "angelsrest.online",
+	context: "acct_1SzVXnEdZA9bU4XS",
+	event: "evt_3TzgMtEdZA9bU4XS1UakYelP",
+	refund: "re_3TzgMtEdZA9bU4XS18G1xdUE",
+	charge: "ch_3TzgMtEdZA9bU4XS16dVR60J",
+	paymentIntent: "pi_3TzgMtEdZA9bU4XS1mivC9KA",
+	session: "cs_live_a1F5xkFjDxDIQ3Qjikpdo3Oo4OEwwM2jfpiAP589tBByIWZ5iDBLIBzlL0",
+	amount: 1500,
+} as const;
 
 const MANUAL_REFUND = {
 	event: "evt_1234567890abcdef",
@@ -75,17 +89,17 @@ function manualRefundRecoveryClaimArgs(overrides: Record<string, unknown> = {}) 
 		webhookSecret: WEBHOOK_SECRET,
 		recoveryId: MANUAL_REFUND_RECOVERY_ID,
 		manifestVersion: 1,
-		siteUrl: SITE_URL,
-		stripeContext: MANUAL_REFUND.account,
-		stripeEventId: MANUAL_REFUND.event,
+		siteUrl: ADMIN_RECOVERY.siteUrl,
+		stripeContext: ADMIN_RECOVERY.context,
+		stripeEventId: ADMIN_RECOVERY.event,
 		stripeEventType: "refund.updated" as const,
 		stripeEventApiVersion: "2026-01-28.clover",
-		stripeRefundId: MANUAL_REFUND.refund,
-		stripeChargeId: MANUAL_REFUND.charge,
-		stripePaymentIntentId: MANUAL_REFUND.paymentIntent,
-		stripeSessionId: MANUAL_REFUND.session,
-		stripeTenantMetadataSiteUrl: SITE_URL,
-		amount: 8400,
+		stripeRefundId: ADMIN_RECOVERY.refund,
+		stripeChargeId: ADMIN_RECOVERY.charge,
+		stripePaymentIntentId: ADMIN_RECOVERY.paymentIntent,
+		stripeSessionId: ADMIN_RECOVERY.session,
+		stripeTenantMetadataSiteUrl: ADMIN_RECOVERY.siteUrl,
+		amount: ADMIN_RECOVERY.amount,
 		currency: "usd" as const,
 		livemode: true,
 		...overrides,
@@ -98,9 +112,32 @@ function manualRefundRecoveryProjectionArgs(overrides: Record<string, unknown> =
 		sessionLivemode: true,
 		refundRecoveryId: MANUAL_REFUND_RECOVERY_ID,
 		refundRecoveryManifestVersion: 1,
-		refundRecoveryStripeContext: MANUAL_REFUND.account,
+		refundRecoveryStripeContext: ADMIN_RECOVERY.context,
 		refundRecoveryEventApiVersion: "2026-01-28.clover",
-		stripeTenantMetadataSiteUrl: SITE_URL,
+		refundRecoveryProviderEvidence: {
+			verifiedAt: Date.now(),
+			currentRefundStatus: "succeeded" as const,
+			currentRefundHasAutomatedMetadata: false as const,
+			currentRefundHasRecoveryAuditMetadata: false as const,
+			paymentIntentStatus: "succeeded" as const,
+			paymentIntentAmount: ADMIN_RECOVERY.amount,
+			paymentIntentAmountReceived: ADMIN_RECOVERY.amount,
+			paymentIntentCurrency: "usd" as const,
+			paymentIntentLivemode: true as const,
+			paymentIntentLatestChargeId: ADMIN_RECOVERY.charge,
+			sessionMode: "payment" as const,
+			sessionStatus: "complete" as const,
+			sessionPaymentStatus: "paid" as const,
+		},
+		stripeEventId: ADMIN_RECOVERY.event,
+		stripeRefundId: ADMIN_RECOVERY.refund,
+		stripeChargeId: ADMIN_RECOVERY.charge,
+		stripeSessionId: ADMIN_RECOVERY.session,
+		stripePaymentIntentId: ADMIN_RECOVERY.paymentIntent,
+		siteUrl: ADMIN_RECOVERY.siteUrl,
+		refundAmount: ADMIN_RECOVERY.amount,
+		sessionAmountTotal: ADMIN_RECOVERY.amount,
+		stripeTenantMetadataSiteUrl: ADMIN_RECOVERY.siteUrl,
 		...overrides,
 	});
 }
@@ -110,7 +147,7 @@ async function createRecoveryAdmin(t: ReturnType<typeof convexTest>) {
 	await t.run((ctx) => ctx.db.insert("platformClients", {
 		name: "Angels Rest",
 		email,
-		siteUrl: SITE_URL,
+		siteUrl: ADMIN_RECOVERY.siteUrl,
 		tier: "full",
 		subscriptionStatus: "active",
 		adminEmails: [email],
@@ -268,7 +305,7 @@ describe("print fulfillment fence", () => {
 });
 
 describe("provider-authoritative manual refunds", () => {
-	test("claims one admin recovery under concurrent site-admin and webhook authority", async () => {
+	test("claims only the exact incident under site-admin and webhook authority", async () => {
 		const t = convexTest(schema, modules);
 		const admin = await createRecoveryAdmin(t);
 		const claimArgs = manualRefundRecoveryClaimArgs();
@@ -284,14 +321,18 @@ describe("provider-authoritative manual refunds", () => {
 		expect(recoveries[0]).toMatchObject({
 			recoveryId: MANUAL_REFUND_RECOVERY_ID,
 			manifestVersion: 1,
-			siteUrl: SITE_URL,
-			stripeEventId: MANUAL_REFUND.event,
-			stripeRefundId: MANUAL_REFUND.refund,
-			stripeSessionId: MANUAL_REFUND.session,
+			siteUrl: ADMIN_RECOVERY.siteUrl,
+			stripeEventId: ADMIN_RECOVERY.event,
+			stripeRefundId: ADMIN_RECOVERY.refund,
+			stripeSessionId: ADMIN_RECOVERY.session,
 			state: "claimed",
 		});
 		expect(recoveries[0].claimedByTokenIdentifier).toContain("refund-recovery-admin@example.com");
 		await expect(t.mutation(api.orders.claimManualRefundRecovery, claimArgs)).rejects.toThrow();
+		await expect(admin.mutation(api.orders.claimManualRefundRecovery, {
+			...claimArgs,
+			amount: ADMIN_RECOVERY.amount + 1,
+		})).rejects.toThrow("Invalid manual refund recovery claim");
 		await expect(admin.mutation(api.orders.claimManualRefundRecovery, {
 			...claimArgs,
 			webhookSecret: "wrong",
@@ -302,12 +343,15 @@ describe("provider-authoritative manual refunds", () => {
 		const t = convexTest(schema, modules);
 		const admin = await createRecoveryAdmin(t);
 		const created = await t.mutation(api.orders.create, {
-			...orderArgs(MANUAL_REFUND.session),
-			stripePaymentIntentId: MANUAL_REFUND.paymentIntent,
+			...orderArgs(ADMIN_RECOVERY.session),
+			siteUrl: ADMIN_RECOVERY.siteUrl,
+			items: [{ productName: "Historical print", quantity: 1, price: ADMIN_RECOVERY.amount }],
+			total: ADMIN_RECOVERY.amount,
+			stripePaymentIntentId: ADMIN_RECOVERY.paymentIntent,
 		});
 		await admin.mutation(api.orders.claimManualRefundRecovery, manualRefundRecoveryClaimArgs());
 
-		await expect(t.mutation(
+		await expect(admin.mutation(
 			api.orders.reconcileSucceededManualRefund,
 			manualRefundRecoveryProjectionArgs(),
 		)).resolves.toEqual({ kind: "reconciled" });
@@ -316,43 +360,77 @@ describe("provider-authoritative manual refunds", () => {
 				"by_recoveryId",
 				(q) => q.eq("recoveryId", MANUAL_REFUND_RECOVERY_ID),
 			).unique()))!;
-		expect(recovery).toMatchObject({ state: "completed", resultKind: "reconciled" });
+		expect(recovery).toMatchObject({
+			state: "completed",
+			resultKind: "reconciled",
+			providerEvidence: expect.objectContaining({ paymentIntentStatus: "succeeded" }),
+		});
+		if (recovery.state !== "completed") throw new Error("Expected completed recovery");
 		expect(recovery.completedAt).toEqual(expect.any(Number));
 		expect(await t.run((ctx) => ctx.db.get(created._id))).toMatchObject({
 			status: "refunded",
-			stripeRefundId: MANUAL_REFUND.refund,
+			stripeRefundId: ADMIN_RECOVERY.refund,
 		});
-		await expect(t.mutation(
+		await expect(admin.mutation(
 			api.orders.reconcileSucceededManualRefund,
 			manualRefundRecoveryProjectionArgs(),
 		)).rejects.toThrow("claim is unavailable");
 		await expect(admin.mutation(api.orders.failManualRefundRecovery, {
 			webhookSecret: WEBHOOK_SECRET,
 			recoveryId: MANUAL_REFUND_RECOVERY_ID,
-			siteUrl: SITE_URL,
+			siteUrl: ADMIN_RECOVERY.siteUrl,
 			resultReason: "late_failure",
 			failureStage: "execution",
 		})).resolves.toEqual({ completed: false });
 	});
 
-	test("rejects reconciliation evidence that differs from the immutable recovery claim", async () => {
+	test("rejects evidence or actor changes from the immutable recovery claim", async () => {
 		const t = convexTest(schema, modules);
 		const admin = await createRecoveryAdmin(t);
 		await t.mutation(api.orders.create, {
-			...orderArgs(MANUAL_REFUND.session),
-			stripePaymentIntentId: MANUAL_REFUND.paymentIntent,
+			...orderArgs(ADMIN_RECOVERY.session),
+			siteUrl: ADMIN_RECOVERY.siteUrl,
+			items: [{ productName: "Historical print", quantity: 1, price: ADMIN_RECOVERY.amount }],
+			total: ADMIN_RECOVERY.amount,
+			stripePaymentIntentId: ADMIN_RECOVERY.paymentIntent,
 		});
 		await admin.mutation(api.orders.claimManualRefundRecovery, manualRefundRecoveryClaimArgs());
 
-		await expect(t.mutation(
+		await expect(admin.mutation(
 			api.orders.reconcileSucceededManualRefund,
 			manualRefundRecoveryProjectionArgs({
 				stripeSessionId: "cs_test_differentsession1234",
 			}),
 		)).rejects.toThrow("claim is unavailable");
+		const otherAdmin = t.withIdentity({
+			subject: "other-refund-admin@example.com",
+			email: "refund-recovery-admin@example.com",
+		});
+		await expect(otherAdmin.mutation(
+			api.orders.reconcileSucceededManualRefund,
+			manualRefundRecoveryProjectionArgs(),
+		)).rejects.toThrow("claim is unavailable");
 		const recovery = (await t.run((ctx) =>
 			ctx.db.query("manualRefundRecoveries").take(1)))[0];
 		expect(recovery).toMatchObject({ state: "claimed" });
+	});
+
+	test("fails closed without the Convex recovery gate or an existing order", async () => {
+		const t = convexTest(schema, modules);
+		const admin = await createRecoveryAdmin(t);
+		const claimArgs = manualRefundRecoveryClaimArgs();
+		delete process.env.STRIPE_REFUND_RECOVERY_ID;
+		await expect(admin.mutation(api.orders.claimManualRefundRecovery, claimArgs)).rejects.toThrow(
+			"Manual refund recovery is disabled",
+		);
+		process.env.STRIPE_REFUND_RECOVERY_ID = MANUAL_REFUND_RECOVERY_ID;
+		await admin.mutation(api.orders.claimManualRefundRecovery, claimArgs);
+
+		await expect(admin.mutation(
+			api.orders.reconcileSucceededManualRefund,
+			manualRefundRecoveryProjectionArgs(),
+		)).resolves.toEqual({ kind: "rejected", reason: "state_conflict" });
+		await expect(t.run((ctx) => ctx.db.query("manualRefundIntents").collect())).resolves.toEqual([]);
 	});
 
 	test("records a failed one-use recovery without making it claimable again", async () => {
@@ -364,7 +442,7 @@ describe("provider-authoritative manual refunds", () => {
 		await expect(admin.mutation(api.orders.failManualRefundRecovery, {
 			webhookSecret: WEBHOOK_SECRET,
 			recoveryId: MANUAL_REFUND_RECOVERY_ID,
-			siteUrl: SITE_URL,
+			siteUrl: ADMIN_RECOVERY.siteUrl,
 			resultReason: "provider_evidence_rejected",
 			failureStage: "provider_evidence",
 		})).resolves.toEqual({ completed: true });
@@ -382,7 +460,7 @@ describe("provider-authoritative manual refunds", () => {
 		await expect(admin.mutation(api.orders.failManualRefundRecovery, {
 			webhookSecret: "wrong",
 			recoveryId: MANUAL_REFUND_RECOVERY_ID,
-			siteUrl: SITE_URL,
+			siteUrl: ADMIN_RECOVERY.siteUrl,
 			resultReason: "wrong_authority",
 			failureStage: "execution",
 		})).rejects.toThrow();

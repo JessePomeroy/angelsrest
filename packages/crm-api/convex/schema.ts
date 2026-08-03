@@ -173,6 +173,22 @@ const catalogProductRevisionV2Validators = [
 	}),
 ] as const;
 
+const manualRefundRecoveryProviderEvidenceValidator = v.object({
+	verifiedAt: v.number(),
+	currentRefundStatus: v.literal("succeeded"),
+	currentRefundHasAutomatedMetadata: v.literal(false),
+	currentRefundHasRecoveryAuditMetadata: v.literal(false),
+	paymentIntentStatus: v.literal("succeeded"),
+	paymentIntentAmount: v.number(),
+	paymentIntentAmountReceived: v.number(),
+	paymentIntentCurrency: v.literal("usd"),
+	paymentIntentLivemode: v.literal(true),
+	paymentIntentLatestChargeId: v.string(),
+	sessionMode: v.literal("payment"),
+	sessionStatus: v.literal("complete"),
+	sessionPaymentStatus: v.literal("paid"),
+});
+
 const manualRefundRecoveryEvidenceFields = {
 	recoveryId: v.string(),
 	manifestVersion: v.number(),
@@ -808,6 +824,7 @@ export default defineSchema({
 				v.literal("failed"),
 			),
 			resultReason: v.optional(v.string()),
+			providerEvidence: v.optional(manualRefundRecoveryProviderEvidenceValidator),
 			failureStage: v.optional(v.union(
 				v.literal("provider_evidence"),
 				v.literal("execution"),
