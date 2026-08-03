@@ -83,7 +83,9 @@ export async function reconcileSucceededManualRefund(
 	const unsupportedContext =
 		accountId === undefined &&
 		stripeContext !== undefined &&
-		(verifiedDestinationRole !== "your-account" || !ID_PATTERNS.account.test(stripeContext));
+		(verifiedDestinationRole !== "your-account" ||
+			typeof stripeContext !== "string" ||
+			!ID_PATTERNS.account.test(stripeContext));
 	if (roleScopeMismatch || unsupportedContext) return ignore("unsupported_scope");
 	if (!ID_PATTERNS.event.test(event.id)) return ignore("invalid_event_id");
 

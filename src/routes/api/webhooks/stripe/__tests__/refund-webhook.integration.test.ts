@@ -29,13 +29,13 @@ const IDS = {
 	context: "acct_1234567890abcdef",
 };
 
-function signedRequest(stripe: Stripe) {
+function signedRequest(stripe: Stripe, context: unknown = IDS.context) {
 	const payload = JSON.stringify({
 		id: IDS.event,
 		object: "event",
 		api_version: STRIPE_API_VERSION,
 		created: 1_800_000_000,
-		context: IDS.context,
+		context,
 		data: {
 			object: {
 				id: IDS.refund,
@@ -121,6 +121,20 @@ describe("signed refund webhook", () => {
 		);
 		expect(mutationArgs).not.toHaveProperty("stripeConnectedAccountId");
 		expect(mutationArgs).not.toHaveProperty("stripeTenantMetadataSiteUrl");
+		expect(mocks.createLumaPrintsOrder).not.toHaveBeenCalled();
+	});
+
+	it("rejects a signed non-string context before outbound effects", async () => {
+		const { POST } = await import("../+server");
+		const stripe = mocks.stripe as Stripe;
+
+		const response = await POST({
+			request: signedRequest(stripe, [IDS.context]),
+		} as Parameters<typeof POST>[0]);
+
+		expect(response.status).toBe(200);
+		expect(stripe.checkout.sessions.list).not.toHaveBeenCalled();
+		expect(mocks.convex.mutation).not.toHaveBeenCalled();
 		expect(mocks.createLumaPrintsOrder).not.toHaveBeenCalled();
 	});
 });
