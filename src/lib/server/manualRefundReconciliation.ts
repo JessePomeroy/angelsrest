@@ -77,15 +77,16 @@ export async function reconcileSucceededManualRefund(
 ): Promise<ManualRefundReconciliationResult> {
 	const accountId = event.account;
 	const stripeContext = event.context;
+	if (stripeContext !== undefined && typeof stripeContext !== "string") {
+		return ignore("unsupported_scope");
+	}
 	const roleScopeMismatch =
 		(verifiedDestinationRole === "your-account" && accountId !== undefined) ||
 		(verifiedDestinationRole === "connected-accounts" && accountId === undefined);
 	const unsupportedContext =
 		accountId === undefined &&
 		stripeContext !== undefined &&
-		(verifiedDestinationRole !== "your-account" ||
-			typeof stripeContext !== "string" ||
-			!ID_PATTERNS.account.test(stripeContext));
+		(verifiedDestinationRole !== "your-account" || !ID_PATTERNS.account.test(stripeContext));
 	if (roleScopeMismatch || unsupportedContext) return ignore("unsupported_scope");
 	if (!ID_PATTERNS.event.test(event.id)) return ignore("invalid_event_id");
 

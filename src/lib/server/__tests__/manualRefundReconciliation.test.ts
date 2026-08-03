@@ -199,6 +199,11 @@ describe("manual refund reconciliation", () => {
 		["connected role without event.account", "connected-accounts", { context: IDS.account }],
 		["Your-account role with event.account", "your-account", { account: IDS.account }],
 		["malformed Your-account context", "your-account", { context: "ctx_invalid" }],
+		[
+			"non-string connected context",
+			"connected-accounts",
+			{ account: IDS.account, context: [IDS.account] },
+		],
 	] as const)("rejects %s before Stripe or Convex effects", async (_label, role, eventPatch) => {
 		await expect(
 			reconcileSucceededManualRefund(
@@ -208,6 +213,7 @@ describe("manual refund reconciliation", () => {
 			),
 		).resolves.toEqual({ kind: "ignored", reason: "unsupported_scope" });
 		expect(list).not.toHaveBeenCalled();
+		expect(query).not.toHaveBeenCalled();
 		expect(mutation).not.toHaveBeenCalled();
 	});
 

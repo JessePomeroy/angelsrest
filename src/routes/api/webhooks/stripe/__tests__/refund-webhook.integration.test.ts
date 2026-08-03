@@ -8,7 +8,7 @@ const mocks = vi.hoisted(() => ({
 	resend: {},
 	stripe: undefined as unknown,
 	env: {
-		STRIPE_CONNECT_WEBHOOK_SECRET: undefined,
+		STRIPE_CONNECT_WEBHOOK_SECRET: undefined as string | undefined,
 		STRIPE_WEBHOOK_SECRET: "your-account-signing-secret",
 		WEBHOOK_SECRET: "convex-webhook-authority",
 	},
@@ -29,9 +29,14 @@ const IDS = {
 	context: "acct_1234567890abcdef",
 };
 
-function signedRequest(stripe: Stripe, context: unknown = IDS.context) {
+function signedRequest(
+	stripe: Stripe,
+	context: unknown = IDS.context,
+	options: { account?: string; secret?: string } = {},
+) {
 	const payload = JSON.stringify({
 		id: IDS.event,
+		account: options.account,
 		object: "event",
 		api_version: STRIPE_API_VERSION,
 		created: 1_800_000_000,
@@ -55,7 +60,7 @@ function signedRequest(stripe: Stripe, context: unknown = IDS.context) {
 	});
 	const signature = stripe.webhooks.generateTestHeaderString({
 		payload,
-		secret: mocks.env.STRIPE_WEBHOOK_SECRET,
+		secret: options.secret ?? mocks.env.STRIPE_WEBHOOK_SECRET,
 	});
 	return new Request("https://angelsrest.test/api/webhooks/stripe", {
 		method: "POST",
@@ -67,6 +72,7 @@ function signedRequest(stripe: Stripe, context: unknown = IDS.context) {
 describe("signed refund webhook", () => {
 	beforeEach(() => {
 		vi.clearAllMocks();
+		mocks.env.STRIPE_CONNECT_WEBHOOK_SECRET = undefined;
 		const stripe = new Stripe("sk_test_non_provider_placeholder", {
 			apiVersion: STRIPE_API_VERSION,
 		});
@@ -134,6 +140,27 @@ describe("signed refund webhook", () => {
 
 		expect(response.status).toBe(200);
 		expect(stripe.checkout.sessions.list).not.toHaveBeenCalled();
+		expect(mocks.convex.query).not.toHaveBeenCalled();
+		expect(mocks.convex.mutation).not.toHaveBeenCalled();
+		expect(mocks.createLumaPrintsOrder).not.toHaveBeenCalled();
+	});
+
+	it("rejects a signed connected refund with a non-string context", async () => {
+		const connectedSecret = "connected-account-signing-secret";
+		mocks.env.STRIPE_CONNECT_WEBHOOK_SECRET = connectedSecret;
+		const { POST } = await import("../+server");
+		const stripe = mocks.stripe as Stripe;
+
+		const response = await POST({
+			request: signedRequest(stripe, [IDS.context], {
+				account: IDS.context,
+				secret: connectedSecret,
+			}),
+		} as Parameters<typeof POST>[0]);
+
+		expect(response.status).toBe(200);
+		expect(stripe.checkout.sessions.list).not.toHaveBeenCalled();
+		expect(mocks.convex.query).not.toHaveBeenCalled();
 		expect(mocks.convex.mutation).not.toHaveBeenCalled();
 		expect(mocks.createLumaPrintsOrder).not.toHaveBeenCalled();
 	});
