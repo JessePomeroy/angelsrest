@@ -198,6 +198,10 @@ function hasPaymentFailureCommerceAuthority(paymentIntent: Stripe.PaymentIntent)
 	return typeof tenantMarker === "string" && tenantMarker.trim().length > 0;
 }
 
+function paymentFailureAccountScope(event: Stripe.Event) {
+	return event.account ? `connected:${event.account}` : "platform";
+}
+
 async function handlePaymentFailed(
 	event: Stripe.Event,
 	paymentIntent: Stripe.PaymentIntent,
@@ -231,7 +235,11 @@ async function handlePaymentFailed(
 			level: "error",
 			stage: "email_customer",
 			error: cause,
-			meta: { paymentIntentId: paymentIntent.id },
+			meta: {
+				stripeEventId: event.id,
+				paymentIntentId: paymentIntent.id,
+				accountScope: paymentFailureAccountScope(event),
+			},
 		});
 		throw new PaymentFailureEmailClaimError("Payment-failure email claim failed", { cause });
 	}
@@ -240,8 +248,9 @@ async function handlePaymentFailed(
 			event: "email.payment_failed.duplicate_ignored",
 			stage: "email_customer",
 			meta: {
+				stripeEventId: event.id,
 				paymentIntentId: paymentIntent.id,
-				accountScope: event.account ? "connected" : "your-account",
+				accountScope: paymentFailureAccountScope(event),
 			},
 		});
 		return;
@@ -259,7 +268,12 @@ async function handlePaymentFailed(
 			level: "error",
 			stage: "email_customer",
 			error: err,
-			meta: { paymentIntentId: paymentIntent.id, fatal: false },
+			meta: {
+				stripeEventId: event.id,
+				paymentIntentId: paymentIntent.id,
+				accountScope: paymentFailureAccountScope(event),
+				fatal: false,
+			},
 		});
 	}
 }

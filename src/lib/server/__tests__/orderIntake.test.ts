@@ -1329,8 +1329,9 @@ describe("processStripeWebhookEvent", () => {
 			event: "email.payment_failed.duplicate_ignored",
 			stage: "email_customer",
 			meta: {
+				stripeEventId: "evt_repeated123456",
 				paymentIntentId: "pi_repeated",
-				accountScope: "your-account",
+				accountScope: "platform",
 			},
 		});
 	});
@@ -1369,15 +1370,17 @@ describe("processStripeWebhookEvent", () => {
 			last_payment_error: { message: "card declined" },
 			metadata: { commerceTenantSiteUrl: "angelsrest.online" },
 		} as unknown as Stripe.PaymentIntent;
+		const event = makeStripeEvent("payment_intent.payment_failed", paymentIntent);
 		const { processStripeWebhookEvent } = await import("../orderIntake");
 
-		await expect(
-			processStripeWebhookEvent(
-				makeStripeEvent("payment_intent.payment_failed", paymentIntent),
-				adapters(),
-			),
-		).rejects.toMatchObject({ status: 500 });
-		expect(mockSendPaymentFailedEmail).not.toHaveBeenCalled();
+		await expect(processStripeWebhookEvent(event, adapters())).rejects.toMatchObject({
+			status: 500,
+		});
+		paymentFailureClaimResults = [true];
+		await processStripeWebhookEvent(event, adapters());
+
+		expect(convex.mutation).toHaveBeenCalledTimes(2);
+		expect(mockSendPaymentFailedEmail).toHaveBeenCalledOnce();
 		expect(mockSendFailureAlert).not.toHaveBeenCalled();
 		expect(mockLogStructured).toHaveBeenCalledWith(
 			expect.objectContaining({

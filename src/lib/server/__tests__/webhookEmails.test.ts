@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import {
 	sendCustomerConfirmation,
 	sendCustomerShipmentNotification,
+	sendPaymentFailedEmail,
 } from "$lib/server/webhookEmails";
 
 function resend() {
@@ -103,7 +104,25 @@ describe("webhook customer emails", () => {
 		expect(payload.text).toContain("https://zippymiggy.com/orders");
 	});
 
-	it("surfaces Resend API errors so delivery is checkpointed as failed", async () => {
+	it("surfaces payment-failure Resend API errors after a durable claim", async () => {
+		const mockResend = {
+			emails: {
+				send: vi.fn().mockResolvedValue({ error: { message: "Resend unavailable" } }),
+			},
+		};
+
+		await expect(
+			sendPaymentFailedEmail(
+				mockResend as unknown as Parameters<typeof sendPaymentFailedEmail>[0],
+				{
+					customerEmail: "buyer@example.com",
+					errorMessage: "card declined",
+				},
+			),
+		).rejects.toThrow("Resend unavailable");
+	});
+
+	it("surfaces shipment Resend API errors so delivery is checkpointed as failed", async () => {
 		const mockResend = {
 			emails: {
 				send: vi.fn().mockResolvedValue({ error: { message: "Domain is not verified" } }),
