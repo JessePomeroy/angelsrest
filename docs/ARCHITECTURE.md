@@ -207,24 +207,12 @@ indeterminate result. The route has no admin UI control and sends no email or
 fulfillment request. Deployment, gate enablement, invocation, gate removal, and
 code cleanup are separate approvals.
 
-A second disabled exact-incident route closes only the historical bound checkout
-snapshot reservation after refund recovery acceptance. It accepts no order,
-reservation, Stripe, tenant, or customer facts from the browser. One Convex
-transaction rechecks the completed recovery, consumed intent, refunded
-unfulfilled order, the exact prior order-confirmation claim, and the exact
-reservation ID, lifecycle values, stored digest, and canonical content digest.
-Shipment-email evidence still rejects closeout. Convex can materialize the
-complete reservation inside this transaction, but the code does not access,
-compare, copy, log, or
-persist its capability-derived handle hash. An eight-hour deadline stops
-closeout before the generic reconciliation action can start. The transaction
-then writes a minimal non-sensitive closeout tombstone with an authorization
-class, not administrator identity, and deletes the reservation. It does not call
-Stripe or change the order, intent, recovery, fulfillment, email, or payment.
-The pending generic cleanup job becomes a no-op. A main-branch merge automatically
-deploys Vercel and deploys shared Production Convex after CI succeeds. Merge
-approval must explicitly include both Production effects. Gate enablement,
-invocation, gate removal, and temporary-route cleanup remain separate approvals.
+The accepted historical reservation closeout retains one minimal non-sensitive
+tombstone in `checkoutSnapshotReservationCloseouts`. The table remains in the
+schema as audit evidence. The temporary host route, public Convex mutation,
+private gate, and incident-only identity evidence are removed after acceptance.
+No callable closeout mechanism or reservation capability material remains in
+source.
 
 Stripe delivery has three logical consumers. The platform-subscription
 `Your account` destination sends subscription events to
