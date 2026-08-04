@@ -1,5 +1,11 @@
 # @jessepomeroy/crm-api
 
+## 2.36.1
+
+### Patch Changes
+
+- 9ee6c26: Pin the accepted historical order-confirmation claim in reservation closeout evidence while continuing to reject shipment-email state.
+
 ## 2.36.0
 
 ### Minor Changes
