@@ -1255,7 +1255,8 @@ export const closeHistoricalCheckoutSnapshotReservation = mutation({
 			|| order.printFulfillmentLeaseExpiresAt !== undefined
 			|| order.trackingNumber !== undefined
 			|| order.trackingUrl !== undefined
-			|| order.orderConfirmationClaimedAt !== undefined
+			|| order.orderConfirmationClaimedAt
+				!== historicalReservationCloseoutEvidence.orderConfirmationClaimedAt
 			|| order.shipmentEmailSentAt !== undefined
 			|| order.shipmentEmailDeliveryStatus !== undefined
 			|| order.shipmentEmailDeliveryAttemptedAt !== undefined

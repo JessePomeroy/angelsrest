@@ -11,6 +11,7 @@ const closeoutEvidence = vi.hoisted(() => ({
 	reservationId: "",
 	snapshotDigest: "",
 	canonicalSnapshotDigest: "",
+	orderConfirmationClaimedAt: 0,
 	createdAt: 0,
 	updatedAt: 0,
 	boundAt: 0,
@@ -192,10 +193,12 @@ async function seedReservationCloseout() {
 		api.orders.reconcileSucceededManualRefund,
 		manualRefundRecoveryProjectionArgs(),
 	);
+	const now = Date.now();
+	const orderConfirmationClaimedAt = now - 2000;
 	await t.run((ctx) => ctx.db.patch(order._id, {
 		stripeFeeCaptureStatus: "failed",
+		orderConfirmationClaimedAt,
 	}));
-	const now = Date.now();
 	const stripeExpiresAt = Math.floor(now / 1000) + 24 * 60 * 60;
 	const unboundPurgeAt = now + 24 * 60 * 60 * 1000;
 	const createdAt = now - 1000;
@@ -236,6 +239,7 @@ async function seedReservationCloseout() {
 		reservationId,
 		snapshotDigest: reservation.snapshotDigest,
 		canonicalSnapshotDigest: await canonicalReservationSnapshotDigest(reservation.snapshot),
+		orderConfirmationClaimedAt,
 		createdAt,
 		updatedAt: now,
 		boundAt: now,
@@ -709,6 +713,7 @@ describe("provider-authoritative manual refunds", () => {
 		"order claimed time",
 		"order claim lease",
 		"order confirmation claim",
+		"order confirmation absent",
 		"order shipment claim",
 		"order shipment status",
 		"order shipment attempted time",
@@ -748,6 +753,9 @@ describe("provider-authoritative manual refunds", () => {
 			}
 			if (kind === "order confirmation claim") {
 				await ctx.db.patch(orderId, { orderConfirmationClaimedAt: Date.now() });
+			}
+			if (kind === "order confirmation absent") {
+				await ctx.db.patch(orderId, { orderConfirmationClaimedAt: undefined });
 			}
 			if (kind === "order shipment claim") {
 				await ctx.db.patch(orderId, { shipmentEmailSentAt: Date.now() });
