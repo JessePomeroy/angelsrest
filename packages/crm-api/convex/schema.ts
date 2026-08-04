@@ -836,6 +836,20 @@ export default defineSchema({
 		}),
 	)).index("by_recoveryId", ["recoveryId"]),
 
+	// Minimal audit proof for one exact historical reservation deletion.
+	checkoutSnapshotReservationCloseouts: defineTable({
+		closeoutId: v.string(),
+		approvalReference: v.string(),
+		recoveryId: v.string(),
+		reservationId: v.id("checkoutSnapshotReservations"),
+		orderId: v.id("orders"),
+		intentId: v.id("manualRefundIntents"),
+		siteUrl: v.string(),
+		closedByTokenIdentifier: v.string(),
+		resultKind: v.literal("closed"),
+		closedAt: v.number(),
+	}).index("by_closeoutId", ["closeoutId"]),
+
 	manualRefundIntents: defineTable({
 		accountScope: v.string(),
 		siteUrl: v.string(),

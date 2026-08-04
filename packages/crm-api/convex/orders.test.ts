@@ -3,7 +3,7 @@
 
 import { convexTest } from "convex-test";
 import { afterEach, beforeEach, describe, expect, test } from "vitest";
-import { api } from "./_generated/api";
+import { api, internal } from "./_generated/api";
 import schema from "./schema";
 
 const modules = import.meta.glob("./**/*.ts");
@@ -17,6 +17,7 @@ beforeEach(() => {
 	process.env.WEBHOOK_SECRET = WEBHOOK_SECRET;
 	process.env.ORDER_LOOKUP_SECRET = ORDER_LOOKUP_SECRET;
 	process.env.STRIPE_REFUND_RECOVERY_ID = MANUAL_REFUND_RECOVERY_ID;
+	process.env.CHECKOUT_RESERVATION_CLOSEOUT_ID = RESERVATION_CLOSEOUT_ID;
 	process.env.CONVEX_CLOUD_URL = "https://loyal-swan-967.convex.cloud";
 });
 
@@ -24,6 +25,7 @@ afterEach(() => {
 	delete process.env.WEBHOOK_SECRET;
 	delete process.env.ORDER_LOOKUP_SECRET;
 	delete process.env.STRIPE_REFUND_RECOVERY_ID;
+	delete process.env.CHECKOUT_RESERVATION_CLOSEOUT_ID;
 	delete process.env.CONVEX_CLOUD_URL;
 });
 
@@ -63,6 +65,7 @@ function orderArgs(stripeSessionId: string) {
 }
 
 const MANUAL_REFUND_RECOVERY_ID = "angelsrest-refund-event-selection-gap-v1";
+const RESERVATION_CLOSEOUT_ID = "angelsrest-historical-reservation-closeout-v1";
 const ADMIN_RECOVERY = {
 	siteUrl: "angelsrest.online",
 	context: "acct_1SzVXnEdZA9bU4XS",
@@ -154,6 +157,61 @@ async function createRecoveryAdmin(t: ReturnType<typeof convexTest>) {
 		role: "client",
 	}));
 	return t.withIdentity({ subject: email, email });
+}
+
+async function seedReservationCloseout() {
+	const t = convexTest(schema, modules);
+	const admin = await createRecoveryAdmin(t);
+	const order = await t.mutation(api.orders.create, {
+		...orderArgs(ADMIN_RECOVERY.session),
+		siteUrl: ADMIN_RECOVERY.siteUrl,
+		items: [{ productName: "Historical print", quantity: 1, price: ADMIN_RECOVERY.amount }],
+		total: ADMIN_RECOVERY.amount,
+		fulfillmentType: "self",
+		stripePaymentIntentId: ADMIN_RECOVERY.paymentIntent,
+	});
+	await admin.mutation(api.orders.claimManualRefundRecovery, manualRefundRecoveryClaimArgs());
+	await admin.mutation(
+		api.orders.reconcileSucceededManualRefund,
+		manualRefundRecoveryProjectionArgs(),
+	);
+	await t.run((ctx) => ctx.db.patch(order._id, {
+		stripeFeeCaptureStatus: "failed",
+	}));
+	const now = Date.now();
+	const stripeExpiresAt = Math.floor(now / 1000) + 24 * 60 * 60;
+	const boundReconcileAt = stripeExpiresAt * 1000 + 35 * 24 * 60 * 60 * 1000;
+	const reservationId = await t.run((ctx) => ctx.db.insert("checkoutSnapshotReservations", {
+		state: "bound",
+		siteUrl: ADMIN_RECOVERY.siteUrl,
+		handleHash: "historical-handle-hash",
+		snapshotDigest: "historical-snapshot-digest",
+		snapshot: {
+			schemaVersion: 1,
+			catalogProvider: "sanity",
+			items: [{
+				productKey: "raw-nerve-1",
+				revisionId: "historical-revision",
+				productKind: "print",
+				variantKey: "4x6",
+				materialOptionKey: "archival-matte",
+				sizeOptionKey: "4x6",
+				borderOptionKey: null,
+				frameOptionKey: null,
+			}],
+		},
+		accountScope: "platform",
+		stripeSessionId: ADMIN_RECOVERY.session,
+		stripeExpiresAt,
+		unboundPurgeAt: now + 24 * 60 * 60 * 1000,
+		boundReconcileAt,
+		createdAt: now - 1000,
+		updatedAt: now,
+		boundAt: now,
+		reconciliationAttempt: 0,
+		reconciliationNextAt: boundReconcileAt,
+	}));
+	return { t, admin, orderId: order._id, reservationId, boundAt: now };
 }
 
 function manualRefundArgs(overrides: Record<string, unknown> = {}) {
@@ -492,6 +550,146 @@ describe("provider-authoritative manual refunds", () => {
 			resultReason: "wrong_authority",
 			failureStage: "execution",
 		})).rejects.toThrow();
+	});
+
+	test("atomically records closeout and deletes only the exact historical reservation", async () => {
+		const { t, admin, orderId, reservationId, boundAt } = await seedReservationCloseout();
+		const before = await t.run(async (ctx) => ({
+			order: await ctx.db.get(orderId),
+			recoveries: await ctx.db.query("manualRefundRecoveries").take(2),
+			intents: await ctx.db.query("manualRefundIntents").take(2),
+		}));
+
+		await expect(admin.mutation(api.orders.closeHistoricalCheckoutSnapshotReservation, {
+			webhookSecret: WEBHOOK_SECRET,
+			closeoutId: RESERVATION_CLOSEOUT_ID,
+		})).resolves.toEqual({ kind: "closed" });
+
+		expect(await t.run((ctx) => ctx.db.get(reservationId))).toBeNull();
+		const after = await t.run(async (ctx) => ({
+			order: await ctx.db.get(orderId),
+			recoveries: await ctx.db.query("manualRefundRecoveries").take(2),
+			intents: await ctx.db.query("manualRefundIntents").take(2),
+		}));
+		expect(after).toEqual(before);
+		const closeouts = await t.run((ctx) =>
+			ctx.db.query("checkoutSnapshotReservationCloseouts").take(2));
+		expect(closeouts).toHaveLength(1);
+		expect(closeouts[0]).toMatchObject({
+			closeoutId: RESERVATION_CLOSEOUT_ID,
+			approvalReference: "owner-approved-reservation-closeout-v1",
+			recoveryId: MANUAL_REFUND_RECOVERY_ID,
+			reservationId,
+			orderId,
+			intentId: before.intents[0]._id,
+			siteUrl: ADMIN_RECOVERY.siteUrl,
+			closedByTokenIdentifier: expect.stringContaining("refund-recovery-admin@example.com"),
+			resultKind: "closed",
+			closedAt: expect.any(Number),
+		});
+		for (const forbidden of [
+			"snapshot",
+			"handleHash",
+			"snapshotDigest",
+			"customerEmail",
+			"stripeSessionId",
+		]) expect(closeouts[0]).not.toHaveProperty(forbidden);
+		await expect(admin.mutation(api.orders.closeHistoricalCheckoutSnapshotReservation, {
+			webhookSecret: WEBHOOK_SECRET,
+			closeoutId: RESERVATION_CLOSEOUT_ID,
+		})).resolves.toEqual({ kind: "already_closed" });
+		expect(await t.run((ctx) =>
+			ctx.db.query("checkoutSnapshotReservationCloseouts").take(2))).toHaveLength(1);
+		await t.action(internal.stripeFees.reconcileCheckoutSnapshotReservation, {
+			reservationId,
+			boundAt,
+			attempt: 0,
+		});
+		expect(await t.run((ctx) =>
+			ctx.db.query("checkoutSnapshotReservationCloseouts").take(2))).toHaveLength(1);
+	});
+
+	test("converges concurrent exact closeout calls to one tombstone and one deletion", async () => {
+		const { t, admin, reservationId } = await seedReservationCloseout();
+		const results = await Promise.all([
+			admin.mutation(api.orders.closeHistoricalCheckoutSnapshotReservation, {
+				webhookSecret: WEBHOOK_SECRET,
+				closeoutId: RESERVATION_CLOSEOUT_ID,
+			}),
+			admin.mutation(api.orders.closeHistoricalCheckoutSnapshotReservation, {
+				webhookSecret: WEBHOOK_SECRET,
+				closeoutId: RESERVATION_CLOSEOUT_ID,
+			}),
+		]);
+
+		expect(results.map(({ kind }) => kind).sort()).toEqual(["already_closed", "closed"]);
+		expect(await t.run((ctx) => ctx.db.get(reservationId))).toBeNull();
+		expect(await t.run((ctx) =>
+			ctx.db.query("checkoutSnapshotReservationCloseouts").take(2))).toHaveLength(1);
+	});
+
+	test("requires the exact gate, webhook authority, current site admin, and closeout ID", async () => {
+		const { t, admin } = await seedReservationCloseout();
+		const args = { webhookSecret: WEBHOOK_SECRET, closeoutId: RESERVATION_CLOSEOUT_ID };
+		delete process.env.CHECKOUT_RESERVATION_CLOSEOUT_ID;
+		await expect(admin.mutation(
+			api.orders.closeHistoricalCheckoutSnapshotReservation,
+			args,
+		)).rejects.toThrow("disabled");
+		process.env.CHECKOUT_RESERVATION_CLOSEOUT_ID = RESERVATION_CLOSEOUT_ID;
+		process.env.CONVEX_CLOUD_URL = "https://preview.convex.cloud";
+		await expect(admin.mutation(
+			api.orders.closeHistoricalCheckoutSnapshotReservation,
+			args,
+		)).rejects.toThrow("disabled");
+		process.env.CONVEX_CLOUD_URL = "https://loyal-swan-967.convex.cloud";
+		await expect(t.mutation(
+			api.orders.closeHistoricalCheckoutSnapshotReservation,
+			args,
+		)).rejects.toThrow();
+		await expect(admin.mutation(api.orders.closeHistoricalCheckoutSnapshotReservation, {
+			...args,
+			webhookSecret: "wrong",
+		})).rejects.toThrow();
+		await expect(admin.mutation(api.orders.closeHistoricalCheckoutSnapshotReservation, {
+			...args,
+			closeoutId: "wrong-closeout-id",
+		})).rejects.toThrow("Invalid checkout reservation closeout");
+	});
+
+	test.each([
+		"order",
+		"intent",
+		"recovery",
+		"reservation",
+	] as const)("rejects changed %s evidence without writes", async (kind) => {
+		const { t, admin, orderId, reservationId } = await seedReservationCloseout();
+		await t.run(async (ctx) => {
+			if (kind === "order") await ctx.db.patch(orderId, { status: "shipped" });
+			if (kind === "intent") {
+				const intent = (await ctx.db.query("manualRefundIntents").take(1))[0];
+				await ctx.db.patch(intent._id, { consumedAt: undefined });
+			}
+			if (kind === "recovery") {
+				const recovery = (await ctx.db.query("manualRefundRecoveries").take(1))[0];
+				await ctx.db.patch(recovery._id, {
+					resultKind: "failed",
+					resultReason: "test_conflict",
+					failureStage: "execution",
+				});
+			}
+			if (kind === "reservation") {
+				await ctx.db.patch(reservationId, { reconciliationAttempt: 1 });
+			}
+		});
+
+		await expect(admin.mutation(api.orders.closeHistoricalCheckoutSnapshotReservation, {
+			webhookSecret: WEBHOOK_SECRET,
+			closeoutId: RESERVATION_CLOSEOUT_ID,
+		})).rejects.toThrow(/evidence conflicts/);
+		expect(await t.run((ctx) => ctx.db.get(reservationId))).not.toBeNull();
+		expect(await t.run((ctx) =>
+			ctx.db.query("checkoutSnapshotReservationCloseouts").take(1))).toEqual([]);
 	});
 
 	test("converges concurrent refunds for the retained legacy order and preserves its reservation", async () => {

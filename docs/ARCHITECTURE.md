@@ -207,6 +207,16 @@ indeterminate result. The route has no admin UI control and sends no email or
 fulfillment request. Deployment, gate enablement, invocation, gate removal, and
 code cleanup are separate approvals.
 
+A second disabled exact-incident route closes only the historical bound checkout
+snapshot reservation after refund recovery acceptance. It accepts no order,
+reservation, Stripe, tenant, or customer facts from the browser. One Convex
+transaction rechecks the completed recovery, consumed intent, refunded
+unfulfilled order, and unchanged platform reservation. It then writes a minimal
+non-sensitive closeout tombstone and deletes the reservation. It does not call
+Stripe or change the order, intent, recovery, fulfillment, email, or payment.
+The pending generic cleanup job becomes a no-op. Deployment, gate enablement,
+invocation, gate removal, and temporary-route cleanup are separate approvals.
+
 Stripe delivery has three logical consumers. The platform-subscription
 `Your account` destination sends subscription events to
 `/api/platform/webhooks/stripe`. The commerce `Your account` destination sends
