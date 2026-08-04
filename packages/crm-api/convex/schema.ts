@@ -845,7 +845,7 @@ export default defineSchema({
 		orderId: v.id("orders"),
 		intentId: v.id("manualRefundIntents"),
 		siteUrl: v.string(),
-		closedByTokenIdentifier: v.string(),
+		authorizationClass: v.literal("site_admin"),
 		resultKind: v.literal("closed"),
 		closedAt: v.number(),
 	}).index("by_closeoutId", ["closeoutId"]),

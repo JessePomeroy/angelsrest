@@ -2,9 +2,26 @@
 // @vitest-environment edge-runtime
 
 import { convexTest } from "convex-test";
-import { afterEach, beforeEach, describe, expect, test } from "vitest";
+import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { api, internal } from "./_generated/api";
+import { canonicalReservationSnapshotDigest } from "./helpers/checkoutSnapshot";
 import schema from "./schema";
+
+const closeoutEvidence = vi.hoisted(() => ({
+	reservationId: "",
+	snapshotDigest: "",
+	canonicalSnapshotDigest: "",
+	createdAt: 0,
+	updatedAt: 0,
+	boundAt: 0,
+	stripeExpiresAt: 0,
+	unboundPurgeAt: 0,
+	boundReconcileAt: 0,
+	closeoutDeadline: 0,
+}));
+vi.mock("./historicalReservationCloseoutEvidence", () => ({
+	historicalReservationCloseoutEvidence: closeoutEvidence,
+}));
 
 const modules = import.meta.glob("./**/*.ts");
 const WEBHOOK_SECRET = "test-webhook-secret";
@@ -180,6 +197,8 @@ async function seedReservationCloseout() {
 	}));
 	const now = Date.now();
 	const stripeExpiresAt = Math.floor(now / 1000) + 24 * 60 * 60;
+	const unboundPurgeAt = now + 24 * 60 * 60 * 1000;
+	const createdAt = now - 1000;
 	const boundReconcileAt = stripeExpiresAt * 1000 + 35 * 24 * 60 * 60 * 1000;
 	const reservationId = await t.run((ctx) => ctx.db.insert("checkoutSnapshotReservations", {
 		state: "bound",
@@ -203,14 +222,28 @@ async function seedReservationCloseout() {
 		accountScope: "platform",
 		stripeSessionId: ADMIN_RECOVERY.session,
 		stripeExpiresAt,
-		unboundPurgeAt: now + 24 * 60 * 60 * 1000,
+		unboundPurgeAt,
 		boundReconcileAt,
-		createdAt: now - 1000,
+		createdAt,
 		updatedAt: now,
 		boundAt: now,
 		reconciliationAttempt: 0,
 		reconciliationNextAt: boundReconcileAt,
 	}));
+	const reservation = await t.run((ctx) => ctx.db.get(reservationId));
+	if (!reservation) throw new Error("Expected seeded reservation");
+	Object.assign(closeoutEvidence, {
+		reservationId,
+		snapshotDigest: reservation.snapshotDigest,
+		canonicalSnapshotDigest: await canonicalReservationSnapshotDigest(reservation.snapshot),
+		createdAt,
+		updatedAt: now,
+		boundAt: now,
+		stripeExpiresAt,
+		unboundPurgeAt,
+		boundReconcileAt,
+		closeoutDeadline: boundReconcileAt - 8 * 60 * 60 * 1000,
+	});
 	return { t, admin, orderId: order._id, reservationId, boundAt: now };
 }
 
@@ -583,7 +616,7 @@ describe("provider-authoritative manual refunds", () => {
 			orderId,
 			intentId: before.intents[0]._id,
 			siteUrl: ADMIN_RECOVERY.siteUrl,
-			closedByTokenIdentifier: expect.stringContaining("refund-recovery-admin@example.com"),
+			authorizationClass: "site_admin",
 			resultKind: "closed",
 			closedAt: expect.any(Number),
 		});
@@ -592,6 +625,7 @@ describe("provider-authoritative manual refunds", () => {
 			"handleHash",
 			"snapshotDigest",
 			"customerEmail",
+			"closedByTokenIdentifier",
 			"stripeSessionId",
 		]) expect(closeouts[0]).not.toHaveProperty(forbidden);
 		await expect(admin.mutation(api.orders.closeHistoricalCheckoutSnapshotReservation, {
@@ -659,13 +693,26 @@ describe("provider-authoritative manual refunds", () => {
 
 	test.each([
 		"order",
+		"order tracking",
+		"order claim",
 		"intent",
 		"recovery",
-		"reservation",
+		"reservation identity",
+		"reservation attempt",
+		"reservation digest",
+		"reservation snapshot",
+		"reservation lifecycle",
+		"closeout deadline",
 	] as const)("rejects changed %s evidence without writes", async (kind) => {
 		const { t, admin, orderId, reservationId } = await seedReservationCloseout();
 		await t.run(async (ctx) => {
 			if (kind === "order") await ctx.db.patch(orderId, { status: "shipped" });
+			if (kind === "order tracking") {
+				await ctx.db.patch(orderId, { trackingNumber: "unexpected-tracking" });
+			}
+			if (kind === "order claim") {
+				await ctx.db.patch(orderId, { printFulfillmentClaimToken: "unexpected-claim" });
+			}
 			if (kind === "intent") {
 				const intent = (await ctx.db.query("manualRefundIntents").take(1))[0];
 				await ctx.db.patch(intent._id, { consumedAt: undefined });
@@ -678,10 +725,29 @@ describe("provider-authoritative manual refunds", () => {
 					failureStage: "execution",
 				});
 			}
-			if (kind === "reservation") {
+			if (kind === "reservation attempt") {
 				await ctx.db.patch(reservationId, { reconciliationAttempt: 1 });
 			}
+			if (kind === "reservation digest") {
+				await ctx.db.patch(reservationId, { snapshotDigest: "changed-digest" });
+			}
+			if (kind === "reservation snapshot") {
+				const reservation = await ctx.db.get(reservationId);
+				if (!reservation) throw new Error("Expected reservation");
+				await ctx.db.patch(reservationId, {
+					snapshot: {
+						...reservation.snapshot,
+						items: reservation.snapshot.items.map((item, index) =>
+							index === 0 ? { ...item, productKey: "changed-product" } : item),
+					},
+				});
+			}
+			if (kind === "reservation lifecycle") {
+				await ctx.db.patch(reservationId, { updatedAt: closeoutEvidence.updatedAt + 1 });
+			}
 		});
+		if (kind === "reservation identity") closeoutEvidence.reservationId = "wrong-reservation";
+		if (kind === "closeout deadline") closeoutEvidence.closeoutDeadline = Date.now() - 1;
 
 		await expect(admin.mutation(api.orders.closeHistoricalCheckoutSnapshotReservation, {
 			webhookSecret: WEBHOOK_SECRET,

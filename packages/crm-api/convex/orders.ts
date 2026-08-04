@@ -21,6 +21,7 @@ import {
 	resolveCatalogCommerce,
 } from "./helpers/catalogCommerce";
 import {
+	canonicalReservationSnapshotDigest,
 	checkoutSnapshotValidator,
 	isBoundedStripeExpiration,
 	isStripeCheckoutSessionId,
@@ -34,6 +35,7 @@ import { AGGREGATE_SCAN_LIMIT, BULK_SCAN_LIMIT } from "./helpers/limits";
 import { getNextOrderNumber as generateNextOrderNumber } from "./helpers/numbering";
 import { resolveBoundedOrderStatsScan } from "./helpers/orderStats";
 import { FEE_CAPTURE_INITIAL_DELAY_MS } from "./helpers/stripeFeeCapture";
+import { historicalReservationCloseoutEvidence } from "./historicalReservationCloseoutEvidence";
 
 const orderStatusValidator = v.union(
 	v.literal("new"),
@@ -1125,10 +1127,7 @@ export const closeHistoricalCheckoutSnapshotReservation = mutation({
 	handler: async (ctx, args) => {
 		assertCheckoutReservationCloseoutEnabled();
 		await requireWebhookCallerOrAuth(ctx, args.webhookSecret, { allowAuth: false });
-		const { identity } = await requireSiteAdmin(
-			ctx,
-			CHECKOUT_RESERVATION_CLOSEOUT_MANIFEST.siteUrl,
-		);
+		await requireSiteAdmin(ctx, CHECKOUT_RESERVATION_CLOSEOUT_MANIFEST.siteUrl);
 		if (args.closeoutId !== CHECKOUT_RESERVATION_CLOSEOUT_MANIFEST.closeoutId) {
 			throw new Error("Invalid checkout reservation closeout");
 		}
@@ -1142,7 +1141,9 @@ export const closeHistoricalCheckoutSnapshotReservation = mutation({
 				existing.approvalReference
 					!== CHECKOUT_RESERVATION_CLOSEOUT_MANIFEST.approvalReference
 				|| existing.recoveryId !== CHECKOUT_RESERVATION_CLOSEOUT_MANIFEST.recoveryId
+				|| existing.reservationId !== historicalReservationCloseoutEvidence.reservationId
 				|| existing.siteUrl !== CHECKOUT_RESERVATION_CLOSEOUT_MANIFEST.siteUrl
+				|| existing.authorizationClass !== "site_admin"
 				|| existing.resultKind !== "closed"
 				|| reservation !== null
 			) throw new Error("Checkout reservation closeout state conflicts");
@@ -1251,7 +1252,17 @@ export const closeHistoricalCheckoutSnapshotReservation = mutation({
 			|| order.fulfillmentError !== undefined
 			|| order.fulfillmentRecoveryStatus !== undefined
 			|| order.printFulfillmentClaim !== undefined
+			|| order.printFulfillmentClaimToken !== undefined
 			|| order.printFulfillmentPhase !== undefined
+			|| order.printFulfillmentClaimedAt !== undefined
+			|| order.printFulfillmentLeaseExpiresAt !== undefined
+			|| order.trackingNumber !== undefined
+			|| order.trackingUrl !== undefined
+			|| order.orderConfirmationClaimedAt !== undefined
+			|| order.shipmentEmailSentAt !== undefined
+			|| order.shipmentEmailDeliveryStatus !== undefined
+			|| order.shipmentEmailDeliveryAttemptedAt !== undefined
+			|| order.shipmentEmailDeliveryError !== undefined
 			|| order.stripeFees !== undefined
 			|| order.stripeFeeCaptureStatus !== "failed"
 			|| order.checkoutSnapshot !== undefined
@@ -1267,25 +1278,33 @@ export const closeHistoricalCheckoutSnapshotReservation = mutation({
 		}
 		const reservation = reservations[0];
 		const reconciliationNextAt = reservation.reconciliationNextAt;
-		const expectedReconcileAt = reservation.stripeExpiresAt === undefined
-			? undefined
-			: reservation.stripeExpiresAt * 1000 + PAID_SAFE_DELAY_MS;
+		const canonicalSnapshotDigest = await canonicalReservationSnapshotDigest(
+			reservation.snapshot,
+		);
 		if (
-			reservation.state !== "bound"
+			reservation._id !== historicalReservationCloseoutEvidence.reservationId
+			|| reservation.state !== "bound"
 			|| reservation.siteUrl !== MANUAL_REFUND_RECOVERY_MANIFEST.siteUrl
 			|| reservation.accountScope !== "platform"
 			|| reservation.stripeConnectedAccountId !== undefined
 			|| reservation.stripeSessionId !== MANUAL_REFUND_RECOVERY_MANIFEST.stripeSessionId
-			|| reservation.snapshot.items.length !== 1
-			|| reservation.snapshot.items[0]?.productKind !== "print"
-			|| reservation.boundAt === undefined
-			|| reservation.boundReconcileAt !== expectedReconcileAt
+			|| reservation.snapshotDigest !== historicalReservationCloseoutEvidence.snapshotDigest
+			|| canonicalSnapshotDigest
+				!== historicalReservationCloseoutEvidence.canonicalSnapshotDigest
+			|| reservation.createdAt !== historicalReservationCloseoutEvidence.createdAt
+			|| reservation.updatedAt !== historicalReservationCloseoutEvidence.updatedAt
+			|| reservation.boundAt !== historicalReservationCloseoutEvidence.boundAt
+			|| reservation.stripeExpiresAt
+				!== historicalReservationCloseoutEvidence.stripeExpiresAt
+			|| reservation.unboundPurgeAt !== historicalReservationCloseoutEvidence.unboundPurgeAt
+			|| reservation.boundReconcileAt
+				!== historicalReservationCloseoutEvidence.boundReconcileAt
 			|| reservation.reconciliationAttempt !== 0
 			|| reconciliationNextAt === undefined
 			|| reconciliationNextAt !== reservation.boundReconcileAt
 			|| reservation.reconciliationProviderVerifiedAt !== undefined
 			|| reservation.reconciliationAlertedAt !== undefined
-			|| Date.now() >= reconciliationNextAt
+			|| Date.now() >= historicalReservationCloseoutEvidence.closeoutDeadline
 		) throw new Error("Checkout reservation closeout reservation evidence conflicts");
 
 		await ctx.db.insert("checkoutSnapshotReservationCloseouts", {
@@ -1296,7 +1315,7 @@ export const closeHistoricalCheckoutSnapshotReservation = mutation({
 			orderId: order._id,
 			intentId: intent._id,
 			siteUrl: CHECKOUT_RESERVATION_CLOSEOUT_MANIFEST.siteUrl,
-			closedByTokenIdentifier: identity.tokenIdentifier,
+			authorizationClass: "site_admin",
 			resultKind: "closed",
 			closedAt: Date.now(),
 		});
