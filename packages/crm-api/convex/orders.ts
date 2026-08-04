@@ -1281,6 +1281,8 @@ export const closeHistoricalCheckoutSnapshotReservation = mutation({
 		const canonicalSnapshotDigest = await canonicalReservationSnapshotDigest(
 			reservation.snapshot,
 		);
+		// The immutable document ID, Session, content digests, and lifecycle pin
+		// this row. Do not read or compare its capability-derived handle hash.
 		if (
 			reservation._id !== historicalReservationCloseoutEvidence.reservationId
 			|| reservation.state !== "bound"

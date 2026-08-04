@@ -1,5 +1,7 @@
 /**
  * Convex-only identity and integrity facts for the reviewed historical row.
+ * The immutable document ID pins the row. The capability-derived handle hash is
+ * intentionally excluded: policy prohibits reading, copying, or comparing it.
  * Do not expose these values to the browser or copy reservation content here.
  */
 export const historicalReservationCloseoutEvidence = Object.freeze({

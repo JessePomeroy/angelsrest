@@ -693,8 +693,18 @@ describe("provider-authoritative manual refunds", () => {
 
 	test.each([
 		"order",
-		"order tracking",
-		"order claim",
+		"order tracking number",
+		"order tracking URL",
+		"order legacy claim",
+		"order claim token",
+		"order claim phase",
+		"order claimed time",
+		"order claim lease",
+		"order confirmation claim",
+		"order shipment claim",
+		"order shipment status",
+		"order shipment attempted time",
+		"order shipment error",
 		"intent",
 		"recovery",
 		"reservation identity",
@@ -707,11 +717,41 @@ describe("provider-authoritative manual refunds", () => {
 		const { t, admin, orderId, reservationId } = await seedReservationCloseout();
 		await t.run(async (ctx) => {
 			if (kind === "order") await ctx.db.patch(orderId, { status: "shipped" });
-			if (kind === "order tracking") {
+			if (kind === "order tracking number") {
 				await ctx.db.patch(orderId, { trackingNumber: "unexpected-tracking" });
 			}
-			if (kind === "order claim") {
+			if (kind === "order tracking URL") {
+				await ctx.db.patch(orderId, { trackingUrl: "https://tracking.example/item" });
+			}
+			if (kind === "order legacy claim") {
+				await ctx.db.patch(orderId, { printFulfillmentClaim: true });
+			}
+			if (kind === "order claim token") {
 				await ctx.db.patch(orderId, { printFulfillmentClaimToken: "unexpected-claim" });
+			}
+			if (kind === "order claim phase") {
+				await ctx.db.patch(orderId, { printFulfillmentPhase: "preparing" });
+			}
+			if (kind === "order claimed time") {
+				await ctx.db.patch(orderId, { printFulfillmentClaimedAt: Date.now() });
+			}
+			if (kind === "order claim lease") {
+				await ctx.db.patch(orderId, { printFulfillmentLeaseExpiresAt: Date.now() + 1000 });
+			}
+			if (kind === "order confirmation claim") {
+				await ctx.db.patch(orderId, { orderConfirmationClaimedAt: Date.now() });
+			}
+			if (kind === "order shipment claim") {
+				await ctx.db.patch(orderId, { shipmentEmailSentAt: Date.now() });
+			}
+			if (kind === "order shipment status") {
+				await ctx.db.patch(orderId, { shipmentEmailDeliveryStatus: "pending" });
+			}
+			if (kind === "order shipment attempted time") {
+				await ctx.db.patch(orderId, { shipmentEmailDeliveryAttemptedAt: Date.now() });
+			}
+			if (kind === "order shipment error") {
+				await ctx.db.patch(orderId, { shipmentEmailDeliveryError: "unexpected-delivery" });
 			}
 			if (kind === "intent") {
 				const intent = (await ctx.db.query("manualRefundIntents").take(1))[0];
