@@ -9,6 +9,7 @@ export const historicalReservationCloseoutEvidence = Object.freeze({
 	reservationId: "rn7esxmp3v08tw3sbyn5kp0mdh8bn8vp",
 	snapshotDigest: "46e7b8570a339eb775e894ef62b6e5e142b2f44fae793cbf51b659ebbba2052c",
 	canonicalSnapshotDigest: "b9a26953efdfd315b7abfe85eb93408d33871398b0d4d928962fa4146b4b620a",
+	orderConfirmationClaimedAt: 1_785_767_844_350,
 	createdAt: 1_785_603_876_635,
 	updatedAt: 1_785_603_877_047,
 	boundAt: 1_785_603_877_047,

@@ -211,9 +211,11 @@ A second disabled exact-incident route closes only the historical bound checkout
 snapshot reservation after refund recovery acceptance. It accepts no order,
 reservation, Stripe, tenant, or customer facts from the browser. One Convex
 transaction rechecks the completed recovery, consumed intent, refunded
-unfulfilled order, and the exact reservation ID, lifecycle values, stored digest,
-and canonical content digest. Convex can materialize the complete reservation
-inside this transaction, but the code does not access, compare, copy, log, or
+unfulfilled order, the exact prior order-confirmation claim, and the exact
+reservation ID, lifecycle values, stored digest, and canonical content digest.
+Shipment-email evidence still rejects closeout. Convex can materialize the
+complete reservation inside this transaction, but the code does not access,
+compare, copy, log, or
 persist its capability-derived handle hash. An eight-hour deadline stops
 closeout before the generic reconciliation action can start. The transaction
 then writes a minimal non-sensitive closeout tombstone with an authorization
