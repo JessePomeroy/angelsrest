@@ -1,5 +1,11 @@
 # @jessepomeroy/crm-api
 
+## 2.36.2
+
+### Patch Changes
+
+- 28a5dfa: Remove the completed historical reservation closeout mutation and its incident-only evidence while retaining the audit tombstone schema.
+
 ## 2.36.1
 
 ### Patch Changes
