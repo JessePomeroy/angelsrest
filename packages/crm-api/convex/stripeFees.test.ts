@@ -190,6 +190,19 @@ describe("bound checkout snapshot paid-safe reconciliation", () => {
 		expect(await t.run((ctx) => ctx.db.get(row._id))).not.toBeNull();
 	});
 
+	test("makes deleted-row scheduled work a provider no-op", async () => {
+		const { t, row } = await seedBoundReservation();
+		await t.run((ctx) => ctx.db.delete(row._id));
+
+		await t.action(internal.stripeFees.reconcileCheckoutSnapshotReservation, {
+			reservationId: row._id,
+			boundAt: row.boundAt!,
+			attempt: 0,
+		});
+
+		expect(retrieveCheckoutSession).not.toHaveBeenCalled();
+	});
+
 	test("deletes only after Stripe confirms expired and unpaid", async () => {
 		const { t, row } = await seedBoundReservation();
 		await t.action(internal.stripeFees.reconcileCheckoutSnapshotReservation, {

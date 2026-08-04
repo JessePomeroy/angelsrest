@@ -116,7 +116,6 @@ const MANUAL_REFUND_RECOVERY_MANIFEST = {
 } as const;
 const CHECKOUT_RESERVATION_CLOSEOUT_MANIFEST = {
 	closeoutId: "angelsrest-historical-reservation-closeout-v1",
-	approvalReference: "owner-approved-reservation-closeout-v1",
 	convexUrl: MANUAL_REFUND_RECOVERY_MANIFEST.convexUrl,
 	siteUrl: MANUAL_REFUND_RECOVERY_MANIFEST.siteUrl,
 	recoveryId: MANUAL_REFUND_RECOVERY_MANIFEST.recoveryId,
@@ -1138,9 +1137,7 @@ export const closeHistoricalCheckoutSnapshotReservation = mutation({
 		if (existing) {
 			const reservation = await ctx.db.get(existing.reservationId);
 			if (
-				existing.approvalReference
-					!== CHECKOUT_RESERVATION_CLOSEOUT_MANIFEST.approvalReference
-				|| existing.recoveryId !== CHECKOUT_RESERVATION_CLOSEOUT_MANIFEST.recoveryId
+				existing.recoveryId !== CHECKOUT_RESERVATION_CLOSEOUT_MANIFEST.recoveryId
 				|| existing.reservationId !== historicalReservationCloseoutEvidence.reservationId
 				|| existing.siteUrl !== CHECKOUT_RESERVATION_CLOSEOUT_MANIFEST.siteUrl
 				|| existing.authorizationClass !== "site_admin"
@@ -1281,8 +1278,9 @@ export const closeHistoricalCheckoutSnapshotReservation = mutation({
 		const canonicalSnapshotDigest = await canonicalReservationSnapshotDigest(
 			reservation.snapshot,
 		);
-		// The immutable document ID, Session, content digests, and lifecycle pin
-		// this row. Do not read or compare its capability-derived handle hash.
+		// Convex materializes the full document for this atomic transaction. The
+		// code must not access, compare, copy, log, or persist the capability-derived
+		// handle hash. The immutable ID and permitted evidence below pin the row.
 		if (
 			reservation._id !== historicalReservationCloseoutEvidence.reservationId
 			|| reservation.state !== "bound"
@@ -1311,7 +1309,6 @@ export const closeHistoricalCheckoutSnapshotReservation = mutation({
 
 		await ctx.db.insert("checkoutSnapshotReservationCloseouts", {
 			closeoutId: CHECKOUT_RESERVATION_CLOSEOUT_MANIFEST.closeoutId,
-			approvalReference: CHECKOUT_RESERVATION_CLOSEOUT_MANIFEST.approvalReference,
 			recoveryId: CHECKOUT_RESERVATION_CLOSEOUT_MANIFEST.recoveryId,
 			reservationId: reservation._id,
 			orderId: order._id,

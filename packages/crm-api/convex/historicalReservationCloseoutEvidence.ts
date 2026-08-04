@@ -1,8 +1,9 @@
 /**
  * Convex-only identity and integrity facts for the reviewed historical row.
- * The immutable document ID pins the row. The capability-derived handle hash is
- * intentionally excluded: policy prohibits reading, copying, or comparing it.
- * Do not expose these values to the browser or copy reservation content here.
+ * The immutable document ID pins the row. Convex can materialize the complete
+ * row inside the atomic transaction, but code must not access, compare, copy,
+ * log, or persist its capability-derived handle hash. Do not expose these
+ * values to the browser or copy reservation content here.
  */
 export const historicalReservationCloseoutEvidence = Object.freeze({
 	reservationId: "rn7esxmp3v08tw3sbyn5kp0mdh8bn8vp",

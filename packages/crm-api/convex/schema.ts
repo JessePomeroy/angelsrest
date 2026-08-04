@@ -839,7 +839,6 @@ export default defineSchema({
 	// Minimal audit proof for one exact historical reservation deletion.
 	checkoutSnapshotReservationCloseouts: defineTable({
 		closeoutId: v.string(),
-		approvalReference: v.string(),
 		recoveryId: v.string(),
 		reservationId: v.id("checkoutSnapshotReservations"),
 		orderId: v.id("orders"),

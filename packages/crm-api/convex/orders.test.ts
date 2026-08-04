@@ -610,7 +610,6 @@ describe("provider-authoritative manual refunds", () => {
 		expect(closeouts).toHaveLength(1);
 		expect(closeouts[0]).toMatchObject({
 			closeoutId: RESERVATION_CLOSEOUT_ID,
-			approvalReference: "owner-approved-reservation-closeout-v1",
 			recoveryId: MANUAL_REFUND_RECOVERY_ID,
 			reservationId,
 			orderId,
@@ -621,6 +620,7 @@ describe("provider-authoritative manual refunds", () => {
 			closedAt: expect.any(Number),
 		});
 		for (const forbidden of [
+			"approvalReference",
 			"snapshot",
 			"handleHash",
 			"snapshotDigest",
@@ -689,6 +689,14 @@ describe("provider-authoritative manual refunds", () => {
 			...args,
 			closeoutId: "wrong-closeout-id",
 		})).rejects.toThrow("Invalid checkout reservation closeout");
+		await t.run(async (ctx) => {
+			const client = (await ctx.db.query("platformClients").take(1))[0];
+			await ctx.db.patch(client._id, { adminEmails: [] });
+		});
+		await expect(admin.mutation(
+			api.orders.closeHistoricalCheckoutSnapshotReservation,
+			args,
+		)).rejects.toThrow();
 	});
 
 	test.each([
