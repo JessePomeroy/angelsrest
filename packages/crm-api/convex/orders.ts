@@ -21,7 +21,6 @@ import {
 	resolveCatalogCommerce,
 } from "./helpers/catalogCommerce";
 import {
-	canonicalReservationSnapshotDigest,
 	checkoutSnapshotValidator,
 	isBoundedStripeExpiration,
 	isStripeCheckoutSessionId,
@@ -35,7 +34,6 @@ import { AGGREGATE_SCAN_LIMIT, BULK_SCAN_LIMIT } from "./helpers/limits";
 import { getNextOrderNumber as generateNextOrderNumber } from "./helpers/numbering";
 import { resolveBoundedOrderStatsScan } from "./helpers/orderStats";
 import { FEE_CAPTURE_INITIAL_DELAY_MS } from "./helpers/stripeFeeCapture";
-import { historicalReservationCloseoutEvidence } from "./historicalReservationCloseoutEvidence";
 
 const orderStatusValidator = v.union(
 	v.literal("new"),
@@ -114,13 +112,6 @@ const MANUAL_REFUND_RECOVERY_MANIFEST = {
 	currency: "usd",
 	livemode: true,
 } as const;
-const CHECKOUT_RESERVATION_CLOSEOUT_MANIFEST = {
-	closeoutId: "angelsrest-historical-reservation-closeout-v1",
-	convexUrl: MANUAL_REFUND_RECOVERY_MANIFEST.convexUrl,
-	siteUrl: MANUAL_REFUND_RECOVERY_MANIFEST.siteUrl,
-	recoveryId: MANUAL_REFUND_RECOVERY_MANIFEST.recoveryId,
-} as const;
-
 const MANUAL_REFUND_RECOVERY_FAILED_CHECKS = new Set([
 	"event.id",
 	"event.type",
@@ -153,14 +144,6 @@ const MANUAL_REFUND_RECOVERY_FAILED_CHECKS = new Set([
 	"payment_intent.latest_charge",
 	"session.reconciliation",
 ]);
-
-function assertCheckoutReservationCloseoutEnabled() {
-	if (
-		process.env.CHECKOUT_RESERVATION_CLOSEOUT_ID
-			!== CHECKOUT_RESERVATION_CLOSEOUT_MANIFEST.closeoutId
-		|| process.env.CONVEX_CLOUD_URL !== CHECKOUT_RESERVATION_CLOSEOUT_MANIFEST.convexUrl
-	) throw new Error("Checkout reservation closeout is disabled");
-}
 
 function assertManualRefundRecoveryEnabled() {
 	if (
@@ -1110,217 +1093,6 @@ export const reconcileSucceededManualRefund = mutation({
 		});
 		await ctx.db.patch(intent._id, { orderId: order._id, consumedAt: Date.now() });
 		return await completeRecovery({ kind: "reconciled" });
-	},
-});
-
-/** Exact, one-use closeout for the accepted historical reservation incident. */
-export const closeHistoricalCheckoutSnapshotReservation = mutation({
-	args: {
-		webhookSecret: v.string(),
-		closeoutId: v.string(),
-	},
-	returns: v.union(
-		v.object({ kind: v.literal("closed") }),
-		v.object({ kind: v.literal("already_closed") }),
-	),
-	handler: async (ctx, args) => {
-		assertCheckoutReservationCloseoutEnabled();
-		await requireWebhookCallerOrAuth(ctx, args.webhookSecret, { allowAuth: false });
-		await requireSiteAdmin(ctx, CHECKOUT_RESERVATION_CLOSEOUT_MANIFEST.siteUrl);
-		if (args.closeoutId !== CHECKOUT_RESERVATION_CLOSEOUT_MANIFEST.closeoutId) {
-			throw new Error("Invalid checkout reservation closeout");
-		}
-
-		const existing = await ctx.db.query("checkoutSnapshotReservationCloseouts")
-			.withIndex("by_closeoutId", (q) => q.eq("closeoutId", args.closeoutId))
-			.unique();
-		if (existing) {
-			const reservation = await ctx.db.get(existing.reservationId);
-			if (
-				existing.recoveryId !== CHECKOUT_RESERVATION_CLOSEOUT_MANIFEST.recoveryId
-				|| existing.reservationId !== historicalReservationCloseoutEvidence.reservationId
-				|| existing.siteUrl !== CHECKOUT_RESERVATION_CLOSEOUT_MANIFEST.siteUrl
-				|| existing.authorizationClass !== "site_admin"
-				|| existing.resultKind !== "closed"
-				|| reservation !== null
-			) throw new Error("Checkout reservation closeout state conflicts");
-			return { kind: "already_closed" as const };
-		}
-
-		const recovery = await ctx.db.query("manualRefundRecoveries")
-			.withIndex("by_recoveryId", (q) => q.eq(
-				"recoveryId",
-				MANUAL_REFUND_RECOVERY_MANIFEST.recoveryId,
-			))
-			.unique();
-		const providerEvidence = recovery?.state === "completed"
-			? recovery.providerEvidence
-			: undefined;
-		if (
-			!recovery
-			|| recovery.state !== "completed"
-			|| recovery.resultKind !== "reconciled"
-			|| recovery.resultReason !== undefined
-			|| recovery.failureStage !== undefined
-			|| recovery.providerFailureObservations !== undefined
-			|| recovery.manifestVersion !== MANUAL_REFUND_RECOVERY_MANIFEST.manifestVersion
-			|| recovery.siteUrl !== MANUAL_REFUND_RECOVERY_MANIFEST.siteUrl
-			|| recovery.stripeContext !== MANUAL_REFUND_RECOVERY_MANIFEST.stripeContext
-			|| recovery.stripeEventId !== MANUAL_REFUND_RECOVERY_MANIFEST.stripeEventId
-			|| recovery.stripeEventType !== MANUAL_REFUND_RECOVERY_MANIFEST.stripeEventType
-			|| recovery.stripeEventApiVersion
-				!== MANUAL_REFUND_RECOVERY_MANIFEST.stripeEventApiVersion
-			|| recovery.stripeRefundId !== MANUAL_REFUND_RECOVERY_MANIFEST.stripeRefundId
-			|| recovery.stripeChargeId !== MANUAL_REFUND_RECOVERY_MANIFEST.stripeChargeId
-			|| recovery.stripePaymentIntentId
-				!== MANUAL_REFUND_RECOVERY_MANIFEST.stripePaymentIntentId
-			|| recovery.stripeSessionId !== MANUAL_REFUND_RECOVERY_MANIFEST.stripeSessionId
-			|| recovery.stripeTenantMetadataSiteUrl
-				!== MANUAL_REFUND_RECOVERY_MANIFEST.stripeTenantMetadataSiteUrl
-			|| recovery.amount !== MANUAL_REFUND_RECOVERY_MANIFEST.amount
-			|| recovery.currency !== MANUAL_REFUND_RECOVERY_MANIFEST.currency
-			|| recovery.livemode !== MANUAL_REFUND_RECOVERY_MANIFEST.livemode
-			|| !providerEvidence
-			|| providerEvidence.currentRefundStatus !== "succeeded"
-			|| providerEvidence.currentRefundHasAutomatedMetadata !== false
-			|| providerEvidence.currentRefundHasRecoveryAuditMetadata !== false
-			|| providerEvidence.paymentIntentStatus !== "succeeded"
-			|| providerEvidence.paymentIntentAmount !== MANUAL_REFUND_RECOVERY_MANIFEST.amount
-			|| providerEvidence.paymentIntentAmountReceived
-				!== MANUAL_REFUND_RECOVERY_MANIFEST.amount
-			|| providerEvidence.paymentIntentCurrency !== MANUAL_REFUND_RECOVERY_MANIFEST.currency
-			|| providerEvidence.paymentIntentLivemode !== true
-			|| providerEvidence.paymentIntentLatestChargeId
-				!== MANUAL_REFUND_RECOVERY_MANIFEST.stripeChargeId
-			|| providerEvidence.sessionMode !== "payment"
-			|| providerEvidence.sessionStatus !== "complete"
-			|| providerEvidence.sessionPaymentStatus !== "paid"
-		) throw new Error("Checkout reservation closeout recovery evidence conflicts");
-
-		const intents = await ctx.db.query("manualRefundIntents")
-			.withIndex("by_stripeRefundId", (q) => q.eq(
-				"stripeRefundId",
-				MANUAL_REFUND_RECOVERY_MANIFEST.stripeRefundId,
-			))
-			.take(2);
-		if (intents.length !== 1) {
-			throw new Error("Checkout reservation closeout intent evidence conflicts");
-		}
-		const intent = intents[0];
-		if (
-			intent.accountScope !== "platform"
-			|| intent.siteUrl !== MANUAL_REFUND_RECOVERY_MANIFEST.siteUrl
-			|| intent.stripeEventId !== MANUAL_REFUND_RECOVERY_MANIFEST.stripeEventId
-			|| intent.stripeRefundId !== MANUAL_REFUND_RECOVERY_MANIFEST.stripeRefundId
-			|| intent.stripeChargeId !== MANUAL_REFUND_RECOVERY_MANIFEST.stripeChargeId
-			|| intent.stripeSessionId !== MANUAL_REFUND_RECOVERY_MANIFEST.stripeSessionId
-			|| intent.stripePaymentIntentId
-				!== MANUAL_REFUND_RECOVERY_MANIFEST.stripePaymentIntentId
-			|| intent.stripeConnectedAccountId !== undefined
-			|| intent.stripeTenantMetadataSiteUrl
-				!== MANUAL_REFUND_RECOVERY_MANIFEST.stripeTenantMetadataSiteUrl
-			|| intent.amount !== MANUAL_REFUND_RECOVERY_MANIFEST.amount
-			|| intent.currency !== MANUAL_REFUND_RECOVERY_MANIFEST.currency
-			|| intent.livemode !== MANUAL_REFUND_RECOVERY_MANIFEST.livemode
-			|| intent.orderId === undefined
-			|| intent.consumedAt === undefined
-		) throw new Error("Checkout reservation closeout intent evidence conflicts");
-
-		const orders = await ctx.db.query("orders")
-			.withIndex("by_stripeSessionId", (q) => q.eq(
-				"stripeSessionId",
-				MANUAL_REFUND_RECOVERY_MANIFEST.stripeSessionId,
-			))
-			.take(2);
-		if (orders.length !== 1 || orders[0]._id !== intent.orderId) {
-			throw new Error("Checkout reservation closeout order evidence conflicts");
-		}
-		const order = orders[0];
-		if (
-			order.siteUrl !== MANUAL_REFUND_RECOVERY_MANIFEST.siteUrl
-			|| order.status !== "refunded"
-			|| order.fulfillmentType !== "self"
-			|| order.total !== MANUAL_REFUND_RECOVERY_MANIFEST.amount
-			|| order.stripePaymentIntentId
-				!== MANUAL_REFUND_RECOVERY_MANIFEST.stripePaymentIntentId
-			|| order.stripeConnectedAccountId !== undefined
-			|| order.stripeRefundId !== MANUAL_REFUND_RECOVERY_MANIFEST.stripeRefundId
-			|| order.lumaprintsOrderNumber !== undefined
-			|| order.fulfillmentError !== undefined
-			|| order.fulfillmentRecoveryStatus !== undefined
-			|| order.printFulfillmentClaim !== undefined
-			|| order.printFulfillmentClaimToken !== undefined
-			|| order.printFulfillmentPhase !== undefined
-			|| order.printFulfillmentClaimedAt !== undefined
-			|| order.printFulfillmentLeaseExpiresAt !== undefined
-			|| order.trackingNumber !== undefined
-			|| order.trackingUrl !== undefined
-			|| order.orderConfirmationClaimedAt
-				!== historicalReservationCloseoutEvidence.orderConfirmationClaimedAt
-			|| order.shipmentEmailSentAt !== undefined
-			|| order.shipmentEmailDeliveryStatus !== undefined
-			|| order.shipmentEmailDeliveryAttemptedAt !== undefined
-			|| order.shipmentEmailDeliveryError !== undefined
-			|| order.stripeFees !== undefined
-			|| order.stripeFeeCaptureStatus !== "failed"
-			|| order.checkoutSnapshot !== undefined
-		) throw new Error("Checkout reservation closeout order evidence conflicts");
-
-		const reservations = await ctx.db.query("checkoutSnapshotReservations")
-			.withIndex("by_accountScope_and_stripeSessionId", (q) => q
-				.eq("accountScope", "platform")
-				.eq("stripeSessionId", MANUAL_REFUND_RECOVERY_MANIFEST.stripeSessionId))
-			.take(2);
-		if (reservations.length !== 1) {
-			throw new Error("Checkout reservation closeout reservation evidence conflicts");
-		}
-		const reservation = reservations[0];
-		const reconciliationNextAt = reservation.reconciliationNextAt;
-		const canonicalSnapshotDigest = await canonicalReservationSnapshotDigest(
-			reservation.snapshot,
-		);
-		// Convex materializes the full document for this atomic transaction. The
-		// code must not access, compare, copy, log, or persist the capability-derived
-		// handle hash. The immutable ID and permitted evidence below pin the row.
-		if (
-			reservation._id !== historicalReservationCloseoutEvidence.reservationId
-			|| reservation.state !== "bound"
-			|| reservation.siteUrl !== MANUAL_REFUND_RECOVERY_MANIFEST.siteUrl
-			|| reservation.accountScope !== "platform"
-			|| reservation.stripeConnectedAccountId !== undefined
-			|| reservation.stripeSessionId !== MANUAL_REFUND_RECOVERY_MANIFEST.stripeSessionId
-			|| reservation.snapshotDigest !== historicalReservationCloseoutEvidence.snapshotDigest
-			|| canonicalSnapshotDigest
-				!== historicalReservationCloseoutEvidence.canonicalSnapshotDigest
-			|| reservation.createdAt !== historicalReservationCloseoutEvidence.createdAt
-			|| reservation.updatedAt !== historicalReservationCloseoutEvidence.updatedAt
-			|| reservation.boundAt !== historicalReservationCloseoutEvidence.boundAt
-			|| reservation.stripeExpiresAt
-				!== historicalReservationCloseoutEvidence.stripeExpiresAt
-			|| reservation.unboundPurgeAt !== historicalReservationCloseoutEvidence.unboundPurgeAt
-			|| reservation.boundReconcileAt
-				!== historicalReservationCloseoutEvidence.boundReconcileAt
-			|| reservation.reconciliationAttempt !== 0
-			|| reconciliationNextAt === undefined
-			|| reconciliationNextAt !== reservation.boundReconcileAt
-			|| reservation.reconciliationProviderVerifiedAt !== undefined
-			|| reservation.reconciliationAlertedAt !== undefined
-			|| Date.now() >= historicalReservationCloseoutEvidence.closeoutDeadline
-		) throw new Error("Checkout reservation closeout reservation evidence conflicts");
-
-		await ctx.db.insert("checkoutSnapshotReservationCloseouts", {
-			closeoutId: CHECKOUT_RESERVATION_CLOSEOUT_MANIFEST.closeoutId,
-			recoveryId: CHECKOUT_RESERVATION_CLOSEOUT_MANIFEST.recoveryId,
-			reservationId: reservation._id,
-			orderId: order._id,
-			intentId: intent._id,
-			siteUrl: CHECKOUT_RESERVATION_CLOSEOUT_MANIFEST.siteUrl,
-			authorizationClass: "site_admin",
-			resultKind: "closed",
-			closedAt: Date.now(),
-		});
-		await ctx.db.delete(reservation._id);
-		return { kind: "closed" as const };
 	},
 });
 
