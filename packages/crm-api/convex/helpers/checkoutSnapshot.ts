@@ -165,6 +165,22 @@ export async function reservationSnapshotDigest(snapshot: ReservedCheckoutSnapsh
 	return hex(await digest(JSON.stringify(snapshot)));
 }
 
+function canonicalJsonValue(value: unknown): unknown {
+	if (Array.isArray(value)) return value.map(canonicalJsonValue);
+	if (!value || typeof value !== "object") return value;
+	return Object.fromEntries(
+		Object.keys(value).sort().map((key) => [
+			key,
+			canonicalJsonValue((value as Record<string, unknown>)[key]),
+		]),
+	);
+}
+
+/** Stable integrity digest for reservation evidence loaded back from Convex. */
+export async function canonicalReservationSnapshotDigest(snapshot: ReservedCheckoutSnapshot) {
+	return hex(await digest(JSON.stringify(canonicalJsonValue(snapshot))));
+}
+
 export function stripeAccountScope(account: string | null | undefined) {
 	return account ? `connected:${account}` : "platform";
 }
