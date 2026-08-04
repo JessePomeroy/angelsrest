@@ -1,5 +1,11 @@
 # @jessepomeroy/crm-api
 
+## 2.36.0
+
+### Minor Changes
+
+- c4434f7: Add an exact, auditable closeout for the accepted historical checkout snapshot reservation.
+
 ## 2.35.0
 
 ### Minor Changes
