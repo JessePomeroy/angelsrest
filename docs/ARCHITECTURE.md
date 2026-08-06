@@ -208,7 +208,9 @@ resource bound, client exception, or result not observed. The bounded per-class
 tally escalates by age or total attempt count to durable operator review. That
 escalation does not claim the provider order is absent, issue another provider
 POST, or authorize a refund. A leased, non-sensitive operator alert can retry
-until its delivery is recorded. A reviewed recovery remains GET-only.
+only inside the Resend idempotency window. If its completion stays unknown past
+the bounded retry window, delivery becomes durable operator-attention state and
+no later automatic send occurs. A reviewed recovery remains GET-only.
 
 Automated fulfillment refunds persist the Stripe refund ID and provider status
 separately while the status is `pending` or `requires_action`. Only
@@ -216,13 +218,31 @@ separately while the status is `pending` or `requires_action`. Only
 refund-success notifications. Signed `refund.updated` and `refund.failed`
 events carrying the server automation marker converge `succeeded`, `failed`,
 and `canceled` states even if the checkout worker crashed after Stripe accepted
-the idempotent request. Failed/canceled refunds enter a durable operator-blocked
+the idempotent request. Print submission uncertainty or a later verified print
+order does not block this signed convergence. If no refund ID was observed, an
+expired first request or a request error enters `request_outcome_unknown`; it
+never submits another refund automatically. Active no-ID leases remain busy, and known IDs permit retrieval-only checks
+while a print fence remains. A definite print rejection writes a one-use
+pre-request marker, so the first refund lease is allowed but no later no-ID
+checkpoint can submit again. Failed/canceled refunds enter a durable operator-blocked
 state and send only an operator alert. Pending or `requires_action` refunds that
 exceed the bounded attempt/age policy enter `refund_attention` and authorize one
 leased operator-only attention alert; later signed updates may still resolve
 them to succeeded, failed, or canceled. New success, failure, and attention
 alerts use tokenized leases, stable Resend idempotency keys, and explicit sent
-markers; legacy terminal rows still suppress success/customer notices. If
+markers. Refund-attention alerts use one order-derived provider identity across
+unknown-to-known transitions. An additive claim and pre-send key marker make
+mixed-host retries fail closed if either host version could use a different
+key. Their
+first attempt time is stable. A bounded-retry marker prevents a pre-rollout
+released row with no immutable first-attempt evidence from starting a new retry
+window. The host reauthorizes the exact lease immediately before
+each send, and automatic retries stop before the provider idempotency window
+expires. A missing completion then becomes a durable delivery-uncertain state.
+Existing V2 claim unions stay exact:
+uncertain notification and reconciliation-alert rows return `unavailable` to an
+older host, while separate additive reads expose the richer state to this host. Legacy terminal rows still suppress
+success/customer notices. If
 signed authority moves a legacy row from pending to failed/canceled, it may
 authorize one new operator-only failure alert.
 
@@ -354,8 +374,15 @@ LumaPrints order number to exactly one stored tenant before updating tracking or
 sending branded email. Client spokes do not receive the broad Convex webhook
 secret or run a second shipment processor. Shipment email delivery uses a
 hub-only tokenized lease keyed by the canonical provider-global number. Resend
-uses the same stable idempotency key when a completion checkpoint crashes;
-active or failed work returns non-2xx so the provider retries. Historical
+uses the same stable idempotency key when a completion checkpoint crashes.
+The host reauthorizes the exact lease immediately before sending. Automatic
+retries stop before the provider idempotency window expires. An unconfirmed
+completion after that bound becomes durable delivery uncertainty and the V2
+claim returns baseline `completed`; this host verifies the richer state and the
+webhook acknowledges without another email send. Only a bounded-retry marker
+with an immutable first attempt permits reclaim. A pre-rollout released row
+without that evidence becomes durable uncertainty. Active or failed work inside
+the bound returns non-2xx so the provider retries. Historical
 shipped/claimed rows without explicit V2 evidence remain terminal.
 
 The published site-scoped shipment lookup, claim, and checkpoint APIs remain as

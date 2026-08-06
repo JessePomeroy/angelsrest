@@ -4,10 +4,11 @@ LumaPrints is the print-on-demand fulfillment boundary for eligible shop
 orders. Stripe owns payment, Convex owns order state, and LumaPrints owns print
 production and shipment.
 
-## Pull-request candidate flow
+## Current source flow
 
-This section describes a pull-request candidate. It is not merged, released, or
-deployed. Production remains rolled back, and new fulfillment remains closed.
+The source includes the V3 coordinator and additive compatibility state.
+Production activation remains closed. Verify the reviewed deployment state
+before any future activation.
 
 ```text
 Stripe checkout.session.completed
@@ -23,11 +24,11 @@ The immutable Stripe checkout session ID is both the Convex idempotency key and
 LumaPrints `externalId`; its documented local shape (`cs_test_`/`cs_live_` plus
 ASCII alphanumerics) fits the provider string contract and is global across
 platform tenants. A single durable claim marker fences provider submission.
-The candidate provides at-most-one provider POST per durable claim; it does not
+The coordinator provides at-most-one provider POST per durable claim; it does not
 promise exact-once delivery. After a claim, retries only reconcile that exact
 persisted session ID and do not replay the POST.
 
-The reviewed candidate adapter assumes a store-scoped order list: each GET
+The reviewed adapter assumes a store-scoped order list: each GET
 supplies the configured `storeId` and a one-based `page`, then scans the strict
 `orders`/`totalOrders`/`currentPage`/`totalPages` envelope locally for a
 case-sensitive `externalId` match. It never sends the undocumented
@@ -97,11 +98,18 @@ them in route code.
 - Malformed reconciliation responses, ambiguous results, and local client
   faults persist a bounded `reconciliation_blocked` class. Normal webhook
   retries stop GET work at that state. A leased operator alert remains
-  retryable. Recovery needs a reviewed, GET-only result and the
+  retryable only inside the email provider's idempotency window. The host
+  reauthorizes the lease immediately before a send. An unconfirmed completion
+  after that bound becomes delivery-uncertain and cannot send again. Existing
+  V2 claims return baseline `unavailable`; an additive read exposes uncertainty
+  to the current host.
+  Recovery needs a reviewed, GET-only result and the
   webhook-authoritative reconciliation mutation.
 - Classified permanent failures enter the Stripe-refund/Convex-failure-state
-  path and send an admin diagnostic. Changes to this path must preserve payment,
-  refund, order-state, and notification idempotency together.
+  path and send an admin diagnostic. If a Stripe refund request returns no
+  provable result, the request becomes `request_outcome_unknown`; automatic code
+  cannot submit it again. Changes to this path must preserve payment, refund,
+  order-state, and notification idempotency together.
 - A provider-verified manual refund can update payment state after submission
   starts. This update keeps the uncertain submission claim, so checkout retries
   cannot send a second provider order.
@@ -118,9 +126,16 @@ customer-facing policy.
 The hub route `/api/webhooks/lumaprints` is the only shipment intake owner. It
 claims a tokenized Convex lease by the canonical provider-global order number,
 then sends through Resend with a stable provider-number idempotency key. Active
-leases and send/checkpoint failures return retryable non-2xx responses. A send
-failure releases its lease and stores only a bounded failure code; an expired
-lease can be reclaimed. Historical shipped rows and legacy email markers remain
+leases and send/checkpoint failures return retryable non-2xx responses inside
+the bounded idempotency window. A send failure releases its lease and stores
+only a bounded failure code. An expired lease can be reclaimed only before that
+window closes and only when a durable bounded-retry marker retains the immutable
+first attempt. A pre-rollout released row without that evidence becomes delivery
+uncertainty instead of starting a new retry window. The host reauthorizes the
+lease immediately before sending. Later unconfirmed delivery becomes durable
+uncertainty; V2 returns baseline `completed`, and no second email is sent.
+Later shipment events can still update tracking data without clearing this
+email fence. Historical shipped rows and legacy email markers remain
 terminal unless the row has explicit V2 lease evidence. The old provider-global
 claim/checkpoint functions remain only as an inert rollout bridge for V2 rows;
 the site-scoped shipment lookup, claim, and checkpoint APIs remain deprecated

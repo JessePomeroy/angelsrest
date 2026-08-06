@@ -221,6 +221,7 @@ describe("webhook customer emails", () => {
 			stripeRefundId: "re_attention1234567890",
 			refundStatus: "requires_action",
 			attentionReason: "age_exceeded",
+			notificationIdentity: "0123456789abcdef0123456789abcdef",
 			total: 1500,
 			notificationProfile: {
 				siteName: "Test tenant",
@@ -233,7 +234,31 @@ describe("webhook customer emails", () => {
 		expect(payload?.text).toContain("No refund success was inferred");
 		expect(payload?.text).toContain("Signed Stripe refund updates may still resolve");
 		expect(mockResend.emails.send).toHaveBeenCalledWith(expect.anything(), {
-			idempotencyKey: "fulfillment-refund-attention:re_attention1234567890",
+			idempotencyKey: "fulfillment-refund-attention:order:0123456789abcdef0123456789abcdef",
+		});
+	});
+
+	it("alerts without inventing a refund ID when request outcome is unknown", async () => {
+		const mockResend = resend();
+		await sendAutomatedRefundAttentionAlert(mockResend as any, {
+			orderNumber: "ORD-009",
+			customerEmail: "buyer@example.com",
+			errorSummary: "Provider rejected fulfillment",
+			attentionReason: "request_outcome_unknown",
+			notificationIdentity: "0123456789abcdef0123456789abcdef",
+			total: 1500,
+			notificationProfile: {
+				siteName: "Test tenant",
+				siteUrl: "tenant.example",
+				adminEmail: "admin@example.com",
+			},
+		});
+
+		const payload = mockResend.emails.send.mock.calls[0]?.[0];
+		expect(payload?.text).toContain("Stripe refund ID: not observed");
+		expect(payload?.text).toContain("Do not submit another refund automatically");
+		expect(mockResend.emails.send).toHaveBeenCalledWith(expect.anything(), {
+			idempotencyKey: "fulfillment-refund-attention:order:0123456789abcdef0123456789abcdef",
 		});
 	});
 

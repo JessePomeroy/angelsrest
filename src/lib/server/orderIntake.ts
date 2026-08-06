@@ -434,68 +434,98 @@ async function handleCheckoutCompleted(
 			claimToken: orderResult.fulfillment.alertClaimToken,
 			webhookSecret: getWebhookSecret(),
 		};
-		try {
-			await sendPrintReconciliationBlockedAlert(adapters.resend, {
-				orderNumber: orderResult.orderNumber,
-				externalId: session.id,
-				reconciliationClass: orderResult.fulfillment.reconciliationClass,
-				escalationReason: orderResult.fulfillment.escalationReason,
-				notificationProfile,
-			});
-		} catch (err) {
-			logStructured({
-				event: "email.reconciliation_blocked.send_failed",
-				level: "error",
-				stage: "email_admin",
-				sessionId: session.id,
-				orderId: orderResult.orderNumber,
-				error: err,
-				meta: { fatal: true },
-			});
-			try {
-				await adapters.convex.mutation(
-					api.orders.releasePrintFulfillmentReconciliationAlert,
-					claimArgs,
-				);
-			} catch (releaseError) {
+		const sendAuthorized = await adapters.convex.mutation(
+			api.orders.authorizePrintFulfillmentReconciliationAlertSend,
+			claimArgs,
+		);
+		if (!sendAuthorized) {
+			const deliveryUncertain = await adapters.convex.mutation(
+				api.orders.isPrintFulfillmentReconciliationAlertDeliveryUncertain,
+				{
+					orderId: claimArgs.orderId,
+					externalId: claimArgs.externalId,
+					webhookSecret: claimArgs.webhookSecret,
+				},
+			);
+			if (deliveryUncertain) {
 				logStructured({
-					event: "email.reconciliation_blocked.release_failed",
+					event: "email.reconciliation_blocked.delivery_uncertain",
 					level: "error",
 					stage: "email_admin",
 					sessionId: session.id,
 					orderId: orderResult.orderNumber,
-					error: releaseError,
+					error: new Error("Print reconciliation alert delivery is uncertain"),
 				});
+			} else {
+				throw new PrintReconciliationAlertDeliveryError(
+					"Print reconciliation alert lease expired before delivery",
+				);
 			}
-			throw new PrintReconciliationAlertDeliveryError(
-				"Print reconciliation alert delivery failed",
-				{ cause: err },
-			);
 		}
-		let completed: boolean;
-		try {
-			completed = await adapters.convex.mutation(
-				api.orders.completePrintFulfillmentReconciliationAlert,
-				claimArgs,
-			);
-		} catch (completionError) {
-			logStructured({
-				event: "email.reconciliation_blocked.complete_failed",
-				level: "error",
-				stage: "email_admin",
-				sessionId: session.id,
-				orderId: orderResult.orderNumber,
-				error: completionError,
-			});
-			throw new PrintReconciliationAlertDeliveryError(
-				"Print reconciliation alert completion failed",
-				{ cause: completionError },
-			);
-		}
-		if (!completed) {
-			throw new PrintReconciliationAlertDeliveryError(
-				"Print reconciliation alert completion failed",
-			);
+		if (sendAuthorized) {
+			try {
+				await sendPrintReconciliationBlockedAlert(adapters.resend, {
+					orderNumber: orderResult.orderNumber,
+					externalId: session.id,
+					reconciliationClass: orderResult.fulfillment.reconciliationClass,
+					escalationReason: orderResult.fulfillment.escalationReason,
+					notificationProfile,
+				});
+			} catch (err) {
+				logStructured({
+					event: "email.reconciliation_blocked.send_failed",
+					level: "error",
+					stage: "email_admin",
+					sessionId: session.id,
+					orderId: orderResult.orderNumber,
+					error: err,
+					meta: { fatal: true },
+				});
+				try {
+					await adapters.convex.mutation(
+						api.orders.releasePrintFulfillmentReconciliationAlert,
+						claimArgs,
+					);
+				} catch (releaseError) {
+					logStructured({
+						event: "email.reconciliation_blocked.release_failed",
+						level: "error",
+						stage: "email_admin",
+						sessionId: session.id,
+						orderId: orderResult.orderNumber,
+						error: releaseError,
+					});
+				}
+				throw new PrintReconciliationAlertDeliveryError(
+					"Print reconciliation alert delivery failed",
+					{ cause: err },
+				);
+			}
+			let completed: boolean;
+			try {
+				completed = await adapters.convex.mutation(
+					api.orders.completePrintFulfillmentReconciliationAlert,
+					claimArgs,
+				);
+			} catch (completionError) {
+				logStructured({
+					event: "email.reconciliation_blocked.complete_failed",
+					level: "error",
+					stage: "email_admin",
+					sessionId: session.id,
+					orderId: orderResult.orderNumber,
+					error: completionError,
+				});
+				throw new PrintReconciliationAlertDeliveryError(
+					"Print reconciliation alert completion failed",
+					{ cause: completionError },
+				);
+			}
+			if (!completed) {
+				throw new PrintReconciliationAlertDeliveryError(
+					"Print reconciliation alert completion failed",
+				);
+			}
 		}
 	}
 

@@ -86,6 +86,13 @@ vi.mock("$convex/api", () => ({
 			blockPrintFulfillmentReconciliation: "orders.blockPrintFulfillmentReconciliation",
 			claimAutomatedFulfillmentRefundV2: "orders.claimAutomatedFulfillmentRefundV2",
 			claimFulfillmentFailureNotificationV2: "orders.claimFulfillmentFailureNotificationV2",
+			claimFulfillmentFailureNotificationV3: "orders.claimFulfillmentFailureNotificationV3",
+			authorizeFulfillmentFailureNotificationSendV2:
+				"orders.authorizeFulfillmentFailureNotificationSendV2",
+			isFulfillmentFailureNotificationDeliveryUncertain:
+				"orders.isFulfillmentFailureNotificationDeliveryUncertain",
+			isPrintFulfillmentReconciliationAlertDeliveryUncertain:
+				"orders.isPrintFulfillmentReconciliationAlertDeliveryUncertain",
 			claimNonPrintOrderOutcome: "orders.claimNonPrintOrderOutcome",
 			claimPrintFulfillmentV3: "orders.claimPrintFulfillmentV3",
 			claimPrintFulfillmentReconciliationAlert: "orders.claimPrintFulfillmentReconciliationAlert",
@@ -98,6 +105,10 @@ vi.mock("$convex/api", () => ({
 			rejectPrintFulfillmentSubmission: "orders.rejectPrintFulfillmentSubmission",
 			releasePrintFulfillmentClaim: "orders.releasePrintFulfillmentClaim",
 			releaseAutomatedFulfillmentRefund: "orders.releaseAutomatedFulfillmentRefund",
+			markAutomatedFulfillmentRefundRequestUncertain:
+				"orders.markAutomatedFulfillmentRefundRequestUncertain",
+			isAutomatedFulfillmentRefundRequestUncertain:
+				"orders.isAutomatedFulfillmentRefundRequestUncertain",
 			releaseFulfillmentFailureNotificationV2: "orders.releaseFulfillmentFailureNotificationV2",
 			updatePrintFulfillment: "orders.updatePrintFulfillment",
 			updateStatus: "orders.updateStatus",
@@ -194,8 +205,17 @@ describe("print fulfillment", () => {
 				return { kind: "succeeded", stripeRefundId: "re_test_123" };
 			}
 			if (reference === "orders.releaseAutomatedFulfillmentRefund") return true;
-			if (reference === "orders.claimFulfillmentFailureNotificationV2") {
+			if (reference === "orders.markAutomatedFulfillmentRefundRequestUncertain") return true;
+			if (reference === "orders.isAutomatedFulfillmentRefundRequestUncertain") return false;
+			if (
+				reference === "orders.claimFulfillmentFailureNotificationV2" ||
+				reference === "orders.claimFulfillmentFailureNotificationV3"
+			)
 				return { kind: "claimed" };
+			if (reference === "orders.authorizeFulfillmentFailureNotificationSendV2") return true;
+			if (reference === "orders.isFulfillmentFailureNotificationDeliveryUncertain") return false;
+			if (reference === "orders.isPrintFulfillmentReconciliationAlertDeliveryUncertain") {
+				return false;
 			}
 			if (reference === "orders.releaseFulfillmentFailureNotificationV2") return true;
 			if (reference === "orders.completeFulfillmentFailureNotificationV2") return true;
@@ -928,6 +948,7 @@ describe("print fulfillment", () => {
 			})
 			.mockResolvedValueOnce({ kind: "succeeded", stripeRefundId: "re_pending_123456" })
 			.mockResolvedValueOnce({ kind: "claimed" })
+			.mockResolvedValueOnce(true)
 			.mockResolvedValueOnce(true);
 		stripe.refunds.create.mockResolvedValueOnce({
 			id: "re_pending_123456",
@@ -961,30 +982,30 @@ describe("print fulfillment", () => {
 		expect(mockSendFulfillmentFailureAlert).toHaveBeenCalledOnce();
 	});
 
-	it("replays byte-identical creation after a hard crash following Stripe acceptance", async () => {
+	it("fences a hard crash after Stripe acceptance instead of creating again", async () => {
 		const { FulfillmentValidationError } = await import("../fulfillmentValidationError");
 		convex.mutation
 			.mockReset()
 			.mockResolvedValueOnce({ kind: "claimed", leaseExpiresAt: Date.now() + 60_000 })
 			.mockRejectedValueOnce(new Error("process crashed before refund checkpoint"))
-			.mockResolvedValueOnce({ kind: "claimed", leaseExpiresAt: Date.now() + 60_000 })
-			.mockResolvedValueOnce({ kind: "succeeded", stripeRefundId: "re_crash_123456" })
+			.mockResolvedValueOnce({ kind: "unavailable" })
+			.mockResolvedValueOnce(true)
 			.mockResolvedValueOnce({ kind: "claimed" })
+			.mockResolvedValueOnce(true)
 			.mockResolvedValueOnce(true);
 		stripe.refunds.create.mockResolvedValue({ id: "re_crash_123456", status: "succeeded" });
 
 		await expect(handle(new FulfillmentValidationError("invalid dimensions"))).rejects.toThrow(
 			"process crashed",
 		);
-		await expect(
-			handle(new FulfillmentValidationError("invalid dimensions")),
-		).resolves.toMatchObject({
-			kind: "permanent_failure_refunded",
-			stripeRefundId: "re_crash_123456",
+		await expect(handle(new FulfillmentValidationError("invalid dimensions"))).resolves.toEqual({
+			kind: "automated_refund_request_uncertain",
+			attentionReason: "request_outcome_unknown",
+			errorSummary: "Fulfillment validation rejected",
 		});
 
-		expect(stripe.refunds.create).toHaveBeenCalledTimes(2);
-		expect(stripe.refunds.create.mock.calls[0]).toEqual(stripe.refunds.create.mock.calls[1]);
+		expect(stripe.refunds.create).toHaveBeenCalledOnce();
+		expect(mockSendAutomatedRefundAttentionAlert).toHaveBeenCalledOnce();
 		expect(convex.mutation).not.toHaveBeenCalledWith(
 			"orders.releaseAutomatedFulfillmentRefund",
 			expect.anything(),
@@ -1005,6 +1026,7 @@ describe("print fulfillment", () => {
 				refundStatus: status,
 			})
 			.mockResolvedValueOnce({ kind: "claimed" })
+			.mockResolvedValueOnce(true)
 			.mockResolvedValueOnce(true);
 		stripe.refunds.create.mockResolvedValueOnce({ id: `re_${status}_123456`, status });
 
@@ -1033,6 +1055,7 @@ describe("print fulfillment", () => {
 				attentionReason: "attempts_exhausted",
 			})
 			.mockResolvedValueOnce({ kind: "claimed" })
+			.mockResolvedValueOnce(true)
 			.mockResolvedValueOnce(true);
 
 		await expect(handle(new FulfillmentValidationError("invalid dimensions"))).resolves.toEqual({
@@ -1044,13 +1067,18 @@ describe("print fulfillment", () => {
 		});
 		expect(stripe.refunds.create).not.toHaveBeenCalled();
 		expect(stripe.refunds.retrieve).not.toHaveBeenCalled();
-		expect(mockSendAutomatedRefundAttentionAlert).toHaveBeenCalledOnce();
+		expect(mockSendAutomatedRefundAttentionAlert).toHaveBeenCalledWith(
+			resend,
+			expect.objectContaining({
+				notificationIdentity: Buffer.from(orderId, "utf8").toString("base64url"),
+			}),
+		);
 		expect(mockSendAutomatedRefundFailureAlert).not.toHaveBeenCalled();
 		expect(mockSendFulfillmentFailureAlert).not.toHaveBeenCalled();
 		expect(mockSendCustomerFulfillmentFailure).not.toHaveBeenCalled();
 		expect(convex.mutation).toHaveBeenNthCalledWith(
 			2,
-			"orders.claimFulfillmentFailureNotificationV2",
+			"orders.claimFulfillmentFailureNotificationV3",
 			expect.objectContaining({ audience: "refund_attention" }),
 		);
 	});
@@ -1063,8 +1091,10 @@ describe("print fulfillment", () => {
 			.mockResolvedValueOnce({ kind: "succeeded", stripeRefundId: "re_email_123456" })
 			.mockResolvedValueOnce({ kind: "claimed" })
 			.mockResolvedValueOnce(true)
+			.mockResolvedValueOnce(true)
 			.mockResolvedValueOnce({ kind: "refunded", stripeRefundId: "re_email_123456" })
 			.mockResolvedValueOnce({ kind: "claimed" })
+			.mockResolvedValueOnce(true)
 			.mockResolvedValueOnce(true);
 		stripe.refunds.create.mockResolvedValueOnce({ id: "re_email_123456", status: "succeeded" });
 		mockSendFulfillmentFailureAlert
@@ -1101,9 +1131,11 @@ describe("print fulfillment", () => {
 		convex.mutation
 			.mockReset()
 			.mockResolvedValueOnce({ kind: "claimed" })
+			.mockResolvedValueOnce(true)
 			.mockRejectedValueOnce(new Error("completion response lost"))
 			.mockResolvedValueOnce({ kind: "busy", leaseExpiresAt: Date.now() + 60_000 })
 			.mockResolvedValueOnce({ kind: "claimed" })
+			.mockResolvedValueOnce(true)
 			.mockResolvedValueOnce(true);
 		mockSendFulfillmentFailureAlert.mockResolvedValue({ id: "email-accepted" });
 
@@ -1134,6 +1166,30 @@ describe("print fulfillment", () => {
 		);
 	});
 
+	it("does not resend a refund notification after delivery becomes uncertain", async () => {
+		const { sendClaimedFulfillmentFailureAdminAlert } = await import("../printFulfillment");
+		convex.mutation.mockResolvedValueOnce({ kind: "unavailable" }).mockResolvedValueOnce(true);
+
+		await expect(
+			sendClaimedFulfillmentFailureAdminAlert(
+				{ convex, resend },
+				{
+					orderId,
+					orderNumber: "ORD-001",
+					customerEmail: "jane@example.com",
+					errorSummary: "Fulfillment validation rejected",
+					stripeRefundId: "re_deliveryuncertain123456",
+					total: 3500,
+				},
+			),
+		).resolves.toBe(false);
+		expect(mockSendFulfillmentFailureAlert).not.toHaveBeenCalled();
+		expect(convex.mutation).not.toHaveBeenCalledWith(
+			"orders.completeFulfillmentFailureNotificationV2",
+			expect.anything(),
+		);
+	});
+
 	it("does not call Stripe when the pending checkpoint cannot be stored", async () => {
 		const { FulfillmentValidationError } = await import("../fulfillmentValidationError");
 		convex.mutation.mockRejectedValueOnce(new Error("convex unavailable"));
@@ -1146,25 +1202,35 @@ describe("print fulfillment", () => {
 		expect(mockSendFulfillmentFailureAlert).not.toHaveBeenCalled();
 	});
 
-	it("throws after a durable checkpoint when Stripe refund creation fails", async () => {
+	it("fences an unknown refund request outcome without submitting again", async () => {
 		const { FulfillmentValidationError } = await import("../fulfillmentValidationError");
 		stripe.refunds.create.mockRejectedValueOnce(new Error("Stripe unavailable"));
 
-		await expect(handle(new FulfillmentValidationError("invalid dimensions"))).rejects.toThrow(
-			"Stripe unavailable",
-		);
+		await expect(handle(new FulfillmentValidationError("invalid dimensions"))).resolves.toEqual({
+			kind: "automated_refund_request_uncertain",
+			attentionReason: "request_outcome_unknown",
+			errorSummary: "Fulfillment validation rejected",
+		});
+		convex.mutation
+			.mockResolvedValueOnce({ kind: "unavailable" })
+			.mockResolvedValueOnce(true)
+			.mockResolvedValueOnce({ kind: "unavailable" });
+		await expect(handle(new FulfillmentValidationError("invalid dimensions"))).resolves.toEqual({
+			kind: "automated_refund_request_uncertain",
+			attentionReason: "request_outcome_unknown",
+			errorSummary: "Fulfillment validation rejected",
+		});
 
-		expect(convex.mutation).toHaveBeenCalledTimes(2);
+		expect(stripe.refunds.create).toHaveBeenCalledOnce();
 		expect(convex.mutation).toHaveBeenCalledWith(
-			"orders.claimAutomatedFulfillmentRefundV2",
-			expect.objectContaining({
-				fulfillmentError: "Fulfillment validation rejected",
-			}),
-		);
-		expect(convex.mutation).toHaveBeenCalledWith(
-			"orders.releaseAutomatedFulfillmentRefund",
+			"orders.markAutomatedFulfillmentRefundRequestUncertain",
 			expect.objectContaining({ orderId, claimToken: expect.any(String) }),
 		);
+		expect(convex.mutation).not.toHaveBeenCalledWith(
+			"orders.releaseAutomatedFulfillmentRefund",
+			expect.anything(),
+		);
+		expect(mockSendAutomatedRefundAttentionAlert).toHaveBeenCalledOnce();
 		expect(mockSendFulfillmentFailureAlert).not.toHaveBeenCalled();
 	});
 

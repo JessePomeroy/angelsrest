@@ -504,23 +504,33 @@ export async function sendAutomatedRefundAttentionAlert(
 		stripeRefundId,
 		refundStatus,
 		attentionReason,
+		notificationIdentity,
 		total,
 		notificationProfile = ANGELS_REST_COMMERCE_PROFILE,
 	}: {
 		orderNumber: string;
 		customerEmail: string;
 		errorSummary: string;
-		stripeRefundId: string;
-		refundStatus: "pending" | "requires_action";
-		attentionReason: "attempts_exhausted" | "age_exceeded";
+		stripeRefundId?: string;
+		refundStatus?: "pending" | "requires_action";
+		attentionReason: "attempts_exhausted" | "age_exceeded" | "request_outcome_unknown";
+		notificationIdentity: string;
 		total: number;
 		notificationProfile?: CommerceNotificationProfile;
 	},
 ) {
 	const reason =
-		attentionReason === "age_exceeded"
-			? "The refund exceeded the allowed pending age."
-			: "The refund exhausted the allowed automatic status checks.";
+		attentionReason === "request_outcome_unknown"
+			? "The refund request outcome is unknown. Do not submit another refund automatically."
+			: attentionReason === "age_exceeded"
+				? "The refund exceeded the allowed pending age."
+				: "The refund exhausted the allowed automatic status checks.";
+	if (!/^[A-Za-z0-9_-]{1,180}$/.test(notificationIdentity))
+		throw new Error("Refund-attention notification identity is missing");
+	const providerDetails =
+		stripeRefundId === undefined
+			? "Stripe refund ID: not observed\nStripe refund status: unknown"
+			: `Stripe refund ID: ${stripeRefundId}\nStripe refund status: ${refundStatus}`;
 	const result = await resend.emails.send(
 		{
 			from: commerceSender(notificationProfile, " Alerts"),
@@ -531,8 +541,7 @@ export async function sendAutomatedRefundAttentionAlert(
 Order: ${orderNumber}
 Customer: ${customerEmail}
 Amount: ${formatCents(total)}
-Stripe refund ID: ${stripeRefundId}
-Stripe refund status: ${refundStatus}
+${providerDetails}
 
 ${reason}
 
@@ -544,7 +553,9 @@ Signed Stripe refund updates may still resolve this order automatically.
 Review Stripe and the admin dashboard:
 ${commerceOrigin(notificationProfile)}/admin/orders`,
 		},
-		{ idempotencyKey: `fulfillment-refund-attention:${stripeRefundId}` },
+		{
+			idempotencyKey: `fulfillment-refund-attention:order:${notificationIdentity}`,
+		},
 	);
 	if (result.error)
 		throw new Error(result.error.message || "Refund-attention alert delivery failed");

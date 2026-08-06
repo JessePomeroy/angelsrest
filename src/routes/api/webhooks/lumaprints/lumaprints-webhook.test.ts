@@ -10,6 +10,7 @@ const mocks = vi.hoisted(() => ({
 	mutation: vi.fn(),
 	query: vi.fn(),
 	sendNotification: vi.fn(),
+	logStructured: vi.fn(),
 }));
 
 vi.mock("$env/dynamic/private", () => ({ env: mocks.env }));
@@ -17,6 +18,7 @@ vi.mock("$lib/server/convexClient", () => ({
 	getConvex: () => ({ mutation: mocks.mutation, query: mocks.query }),
 }));
 vi.mock("$lib/server/resendClient", () => ({ getResend: () => ({}) }));
+vi.mock("$lib/server/logger", () => ({ logStructured: mocks.logStructured }));
 vi.mock("$lib/server/webhookEmails", () => ({
 	sendCustomerShipmentNotification: mocks.sendNotification,
 }));
@@ -32,6 +34,8 @@ vi.mock("$convex/api", () => ({
 	api: {
 		orders: {
 			claimShipmentEmailNotificationV2: "orders.claimV2",
+			authorizeShipmentEmailNotificationSendV2: "orders.authorizeV2",
+			isShipmentEmailNotificationDeliveryUncertain: "orders.isDeliveryUncertain",
 			completeShipmentEmailNotificationV2: "orders.completeV2",
 			releaseShipmentEmailNotificationV2: "orders.releaseV2",
 		},
@@ -89,6 +93,7 @@ describe("hub LumaPrints webhook", () => {
 					},
 				});
 			}
+			if (reference === "orders.isDeliveryUncertain") return Promise.resolve(false);
 			return Promise.resolve(true);
 		});
 		mocks.query.mockResolvedValue({
@@ -121,6 +126,25 @@ describe("hub LumaPrints webhook", () => {
 		expect(mocks.mutation).toHaveBeenCalled();
 	});
 
+	it("acknowledges durable delivery uncertainty without another email send", async () => {
+		mocks.mutation.mockResolvedValueOnce({ kind: "completed" }).mockResolvedValueOnce(true);
+
+		const response = await POST({ request: request() });
+		expect(response.status).toBe(200);
+		await expect(response.json()).resolves.toEqual({
+			received: true,
+			status: "delivery_uncertain",
+		});
+		expect(mocks.sendNotification).not.toHaveBeenCalled();
+		expect(mocks.query).not.toHaveBeenCalled();
+		expect(mocks.logStructured).toHaveBeenCalledWith(
+			expect.objectContaining({
+				event: "shipment.notification_delivery_uncertain",
+				level: "error",
+			}),
+		);
+	});
+
 	it("claims by provider-global number and sends with the resolved tenant identity", async () => {
 		const response = await POST({ request: request() });
 
@@ -146,7 +170,7 @@ describe("hub LumaPrints webhook", () => {
 				notificationProfile: expect.objectContaining({ siteName: "Tenant Studio" }),
 			}),
 		);
-		expect(mocks.mutation).toHaveBeenNthCalledWith(2, "orders.completeV2", {
+		expect(mocks.mutation).toHaveBeenNthCalledWith(3, "orders.completeV2", {
 			webhookSecret: "convex-secret",
 			orderId: "order-id",
 			lumaprintsOrderNumber: "123",
@@ -179,7 +203,7 @@ describe("hub LumaPrints webhook", () => {
 			received: false,
 			status: "retryable_failure",
 		});
-		expect(mocks.mutation).toHaveBeenNthCalledWith(2, "orders.releaseV2", {
+		expect(mocks.mutation).toHaveBeenNthCalledWith(3, "orders.releaseV2", {
 			webhookSecret: "convex-secret",
 			orderId: "order-id",
 			lumaprintsOrderNumber: "123",
