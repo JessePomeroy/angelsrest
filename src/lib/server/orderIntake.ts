@@ -21,21 +21,29 @@ import {
 	ManualRefundReconciliationRetryableError,
 	reconcileSucceededManualRefund,
 } from "$lib/server/manualRefundReconciliation";
-import type { SubmitLumaPrintsOrder } from "$lib/server/printFulfillment";
+import {
+	AutomatedFulfillmentRefundRetryableError,
+	AutomatedRefundNotificationRetryableError,
+	PrintReconciliationAlertRetryableError,
+	PrintReconciliationPendingError,
+	type SubmitLumaPrintsOrder,
+	sendClaimedAutomatedRefundNotification,
+} from "$lib/server/printFulfillment";
 import { COMMERCE_TENANT_METADATA_KEY } from "$lib/server/stripeConnect";
 import type { CommerceWebhookRole } from "$lib/server/stripeWebhook";
 import type { ShippingDetails } from "$lib/server/webhookEmails";
 import {
 	sendAdminNotification,
 	sendCustomerConfirmation,
-	sendCustomerFulfillmentFailure,
 	sendFailureAlert,
 	sendPaymentFailedEmail,
+	sendPrintReconciliationBlockedAlert,
 } from "$lib/server/webhookEmails";
 import { createOrderInConvex } from "$lib/server/webhookOrders";
 import { getWebhookSecret } from "$lib/server/webhookSecret";
 
 class PaymentFailureEmailClaimError extends Error {}
+class PrintReconciliationAlertDeliveryError extends Error {}
 
 export interface OrderIntakeAdapters {
 	stripe: Stripe;
@@ -132,8 +140,58 @@ export async function processStripeWebhookEvent(
 
 			case "refund.created":
 			case "refund.updated":
-				await reconcileSucceededManualRefund(event, adapters, verifiedDestinationRole);
+			case "refund.failed": {
+				const refundResult = await reconcileSucceededManualRefund(
+					event,
+					adapters,
+					verifiedDestinationRole,
+				);
+				if (refundResult.kind === "automated_succeeded") {
+					const notification = {
+						orderId: refundResult.orderId,
+						orderNumber: refundResult.orderNumber,
+						customerEmail: refundResult.customerEmail,
+						errorSummary: refundResult.errorSummary,
+						stripeRefundId: refundResult.stripeRefundId,
+						total: refundResult.total,
+						notificationProfile: refundResult.notificationProfile,
+					};
+					await sendClaimedAutomatedRefundNotification(adapters, {
+						...notification,
+						audience: "admin",
+					});
+					await sendClaimedAutomatedRefundNotification(adapters, {
+						...notification,
+						audience: "customer",
+					});
+				} else if (refundResult.kind === "automated_failed") {
+					await sendClaimedAutomatedRefundNotification(adapters, {
+						audience: "refund_failure",
+						orderId: refundResult.orderId,
+						orderNumber: refundResult.orderNumber,
+						customerEmail: refundResult.customerEmail,
+						errorSummary: refundResult.errorSummary,
+						stripeRefundId: refundResult.stripeRefundId,
+						refundStatus: refundResult.refundStatus,
+						total: refundResult.total,
+						notificationProfile: refundResult.notificationProfile,
+					});
+				} else if (refundResult.kind === "automated_attention") {
+					await sendClaimedAutomatedRefundNotification(adapters, {
+						audience: "refund_attention",
+						orderId: refundResult.orderId,
+						orderNumber: refundResult.orderNumber,
+						customerEmail: refundResult.customerEmail,
+						errorSummary: refundResult.errorSummary,
+						stripeRefundId: refundResult.stripeRefundId,
+						refundStatus: refundResult.refundStatus,
+						attentionReason: refundResult.attentionReason,
+						total: refundResult.total,
+						notificationProfile: refundResult.notificationProfile,
+					});
+				}
 				break;
+			}
 
 			default:
 				break;
@@ -161,7 +219,12 @@ export async function processStripeWebhookEvent(
 		if (
 			!(err instanceof CheckoutSnapshotProtocolError) &&
 			!(err instanceof ManualRefundReconciliationRetryableError) &&
-			!(err instanceof PaymentFailureEmailClaimError)
+			!(err instanceof PaymentFailureEmailClaimError) &&
+			!(err instanceof PrintReconciliationAlertDeliveryError) &&
+			!(err instanceof PrintReconciliationAlertRetryableError) &&
+			!(err instanceof PrintReconciliationPendingError) &&
+			!(err instanceof AutomatedFulfillmentRefundRetryableError) &&
+			!(err instanceof AutomatedRefundNotificationRetryableError)
 		) {
 			await sendFailureAlert(adapters.resend, event.type, sessionId ?? "unknown", errorMessage);
 		}
@@ -361,6 +424,81 @@ async function handleCheckoutCompleted(
 		},
 	);
 
+	if (
+		orderResult.fulfillment.kind === "reconciliation_blocked" &&
+		orderResult.fulfillment.alertClaimToken !== undefined
+	) {
+		const claimArgs = {
+			orderId: orderResult._id,
+			externalId: session.id,
+			claimToken: orderResult.fulfillment.alertClaimToken,
+			webhookSecret: getWebhookSecret(),
+		};
+		try {
+			await sendPrintReconciliationBlockedAlert(adapters.resend, {
+				orderNumber: orderResult.orderNumber,
+				externalId: session.id,
+				reconciliationClass: orderResult.fulfillment.reconciliationClass,
+				escalationReason: orderResult.fulfillment.escalationReason,
+				notificationProfile,
+			});
+		} catch (err) {
+			logStructured({
+				event: "email.reconciliation_blocked.send_failed",
+				level: "error",
+				stage: "email_admin",
+				sessionId: session.id,
+				orderId: orderResult.orderNumber,
+				error: err,
+				meta: { fatal: true },
+			});
+			try {
+				await adapters.convex.mutation(
+					api.orders.releasePrintFulfillmentReconciliationAlert,
+					claimArgs,
+				);
+			} catch (releaseError) {
+				logStructured({
+					event: "email.reconciliation_blocked.release_failed",
+					level: "error",
+					stage: "email_admin",
+					sessionId: session.id,
+					orderId: orderResult.orderNumber,
+					error: releaseError,
+				});
+			}
+			throw new PrintReconciliationAlertDeliveryError(
+				"Print reconciliation alert delivery failed",
+				{ cause: err },
+			);
+		}
+		let completed: boolean;
+		try {
+			completed = await adapters.convex.mutation(
+				api.orders.completePrintFulfillmentReconciliationAlert,
+				claimArgs,
+			);
+		} catch (completionError) {
+			logStructured({
+				event: "email.reconciliation_blocked.complete_failed",
+				level: "error",
+				stage: "email_admin",
+				sessionId: session.id,
+				orderId: orderResult.orderNumber,
+				error: completionError,
+			});
+			throw new PrintReconciliationAlertDeliveryError(
+				"Print reconciliation alert completion failed",
+				{ cause: completionError },
+			);
+		}
+		if (!completed) {
+			throw new PrintReconciliationAlertDeliveryError(
+				"Print reconciliation alert completion failed",
+			);
+		}
+	}
+
 	if (orderResult.notification === "none") {
 		logStructured({
 			event: "checkout.email_skipped_idempotent",
@@ -371,32 +509,25 @@ async function handleCheckoutCompleted(
 				reason:
 					orderResult.fulfillment.kind === "manual_refunded"
 						? "order_manually_refunded"
-						: "order_already_existed",
+						: orderResult.fulfillment.kind === "reconciliation_blocked"
+							? "print_reconciliation_blocked"
+							: "confirmation_already_claimed",
 			},
 		});
 	} else if (
 		orderResult.notification === "failure" &&
 		orderResult.fulfillment.kind === "permanent_failure_refunded"
 	) {
-		try {
-			await sendCustomerFulfillmentFailure(adapters.resend, {
-				customerEmail,
-				orderNumber: orderResult.orderNumber,
-				stripeRefundId: orderResult.fulfillment.stripeRefundId,
-				total: fullSession.amount_total ?? 0,
-				notificationProfile,
-			});
-		} catch (err) {
-			logStructured({
-				event: "email.customer_refund.send_failed",
-				level: "error",
-				stage: "email_customer",
-				sessionId: session.id,
-				orderId: orderResult.orderNumber,
-				error: err,
-				meta: { fatal: false },
-			});
-		}
+		await sendClaimedAutomatedRefundNotification(adapters, {
+			audience: "customer",
+			orderId: orderResult._id,
+			orderNumber: orderResult.orderNumber,
+			customerEmail,
+			errorSummary: orderResult.fulfillment.errorSummary,
+			stripeRefundId: orderResult.fulfillment.stripeRefundId,
+			total: fullSession.amount_total ?? 0,
+			notificationProfile,
+		});
 	} else if (orderResult.notification === "success") {
 		try {
 			await sendCustomerConfirmation(adapters.resend, {

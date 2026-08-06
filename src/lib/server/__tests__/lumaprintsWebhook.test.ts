@@ -1,7 +1,10 @@
 import { describe, expect, it, vi } from "vitest";
 import {
+	LumaPrintsWebhookPayloadError,
 	parseLumaPrintsShippingPayload,
 	processLumaPrintsShipment,
+	readLumaPrintsShippingPayload,
+	ShipmentEmailDeliveryError,
 	verifyLumaPrintsBasicAuthorization,
 } from "$lib/server/lumaprintsWebhook";
 
@@ -46,6 +49,34 @@ describe("LumaPrints webhook boundary", () => {
 		});
 	});
 
+	it("accepts the 64-digit canonical provider-number boundary", () => {
+		const orderNumber = "9".repeat(64);
+		expect(
+			parseLumaPrintsShippingPayload(JSON.stringify({ orderNumber, shipments: [{}] })),
+		).toMatchObject({ orderNumber });
+	});
+
+	it.each([
+		"",
+		"0",
+		"01",
+		"+1",
+		"1.0",
+		"1e3",
+		" 1",
+		"1 ",
+		"LP-123",
+		"1".repeat(65),
+		0,
+		-1,
+		1.5,
+		Number.MAX_SAFE_INTEGER + 1,
+	])("rejects non-canonical provider order number %j", (orderNumber) => {
+		expect(() =>
+			parseLumaPrintsShippingPayload(JSON.stringify({ orderNumber, shipments: [{}] })),
+		).toThrow("Invalid LumaPrints orderNumber");
+	});
+
 	it("rejects unrelated events, missing shipments, and oversized bodies", () => {
 		expect(() => parseLumaPrintsShippingPayload('{"event":"order.created"}')).toThrow(
 			"Unsupported LumaPrints webhook event",
@@ -55,27 +86,60 @@ describe("LumaPrints webhook boundary", () => {
 		);
 		expect(() => parseLumaPrintsShippingPayload("x".repeat(256 * 1024 + 1))).toThrow("too large");
 	});
+
+	it("bounds a chunked request stream before aggregate body allocation", async () => {
+		const canceled = vi.fn();
+		const body = new ReadableStream<Uint8Array>({
+			start(controller) {
+				controller.enqueue(new Uint8Array(200 * 1024));
+				controller.enqueue(new Uint8Array(60 * 1024 + 1));
+			},
+			cancel: canceled,
+		});
+		const request = new Request("https://example.test/webhook", {
+			method: "POST",
+			body,
+			duplex: "half",
+		} as RequestInit & { duplex: "half" });
+
+		const thrown = await readLumaPrintsShippingPayload(request).catch((error: unknown) => error);
+		expect(thrown).toBeInstanceOf(LumaPrintsWebhookPayloadError);
+		expect(thrown).toMatchObject({ status: 413, message: expect.stringContaining("too large") });
+		expect(canceled).toHaveBeenCalledOnce();
+	});
+
+	it("rejects an oversized declared length before reading the stream", async () => {
+		const request = new Request("https://example.test/webhook", {
+			method: "POST",
+			headers: { "content-length": String(256 * 1024 + 1) },
+			body: "{}",
+		});
+		await expect(readLumaPrintsShippingPayload(request)).rejects.toMatchObject({ status: 413 });
+	});
 });
 
 describe("LumaPrints shipment orchestration", () => {
 	function dependencies() {
 		return {
 			claim: vi.fn().mockResolvedValue({
-				claimed: true,
+				kind: "claimed",
+				leaseExpiresAt: Date.now() + 60_000,
 				order: {
+					_id: "order-id",
 					siteUrl: "tenant.example",
 					orderNumber: "ORD-001",
 					customerEmail: "buyer@example.com",
 				},
 			}),
-			record: vi.fn().mockResolvedValue({ recorded: true }),
+			complete: vi.fn().mockResolvedValue(true),
+			release: vi.fn().mockResolvedValue(true),
 			send: vi.fn().mockResolvedValue(undefined),
 		};
 	}
 
 	it("sends and checkpoints a newly claimed shipment", async () => {
 		const deps = dependencies();
-		const shipment = { orderNumber: "LP-1", trackingNumber: "TRACK", carrier: "UPS" };
+		const shipment = { orderNumber: "101", trackingNumber: "TRACK", carrier: "UPS" };
 
 		await expect(processLumaPrintsShipment(shipment, deps)).resolves.toEqual({
 			status: "processed",
@@ -84,47 +148,75 @@ describe("LumaPrints shipment orchestration", () => {
 		expect(deps.send).toHaveBeenCalledWith(
 			expect.objectContaining({
 				siteUrl: "tenant.example",
-				lumaprintsOrderNumber: "LP-1",
+				lumaprintsOrderNumber: "101",
 				trackingNumber: "TRACK",
 			}),
 		);
-		expect(deps.record).toHaveBeenCalledWith({
-			lumaprintsOrderNumber: "LP-1",
-			status: "sent",
-			error: undefined,
+		expect(deps.complete).toHaveBeenCalledWith({
+			orderId: "order-id",
+			lumaprintsOrderNumber: "101",
+			claimToken: expect.any(String),
+			deliveryStatus: "sent",
 		});
+		expect(deps.release).not.toHaveBeenCalled();
 	});
 
 	it("does not repeat email for an already-processed claim", async () => {
 		const deps = dependencies();
-		deps.claim.mockResolvedValue({
-			claimed: false,
-			order: {
-				siteUrl: "tenant.example",
-				orderNumber: "ORD-001",
-				customerEmail: "buyer@example.com",
-			},
-		});
+		deps.claim.mockResolvedValue({ kind: "completed" });
 
-		await expect(processLumaPrintsShipment({ orderNumber: "LP-1" }, deps)).resolves.toEqual({
+		await expect(processLumaPrintsShipment({ orderNumber: "101" }, deps)).resolves.toEqual({
 			status: "already_processed",
 		});
 		expect(deps.send).not.toHaveBeenCalled();
-		expect(deps.record).not.toHaveBeenCalled();
+		expect(deps.complete).not.toHaveBeenCalled();
+		expect(deps.release).not.toHaveBeenCalled();
 	});
 
-	it("records a bounded provider failure instead of losing the claimed outcome", async () => {
+	it("returns an active lease as retryable work without sending", async () => {
 		const deps = dependencies();
-		deps.send.mockRejectedValue(new Error("Resend unavailable"));
+		deps.claim.mockResolvedValue({ kind: "busy", leaseExpiresAt: Date.now() + 30_000 });
 
-		await expect(processLumaPrintsShipment({ orderNumber: "LP-1" }, deps)).resolves.toEqual({
+		await expect(processLumaPrintsShipment({ orderNumber: "101" }, deps)).resolves.toMatchObject({
+			status: "busy",
+			retryAfterMs: expect.any(Number),
+		});
+		expect(deps.send).not.toHaveBeenCalled();
+		expect(deps.complete).not.toHaveBeenCalled();
+		expect(deps.release).not.toHaveBeenCalled();
+	});
+
+	it("releases a failed send with only its bounded failure code", async () => {
+		const deps = dependencies();
+		deps.send.mockRejectedValue(new ShipmentEmailDeliveryError("email_delivery_failed"));
+
+		await expect(processLumaPrintsShipment({ orderNumber: "101" }, deps)).resolves.toEqual({
+			status: "retryable_failure",
+			failureCode: "email_delivery_failed",
+		});
+		expect(deps.release).toHaveBeenCalledWith({
+			orderId: "order-id",
+			lumaprintsOrderNumber: "101",
+			claimToken: expect.any(String),
+			failureCode: "email_delivery_failed",
+		});
+		expect(deps.complete).not.toHaveBeenCalled();
+	});
+
+	it("retries idempotently after a send succeeds but completion crashes", async () => {
+		const deps = dependencies();
+		deps.complete.mockRejectedValueOnce(new Error("Convex unavailable"));
+
+		await expect(processLumaPrintsShipment({ orderNumber: "101" }, deps)).rejects.toThrow(
+			"Convex unavailable",
+		);
+		expect(deps.send).toHaveBeenCalledOnce();
+		expect(deps.release).not.toHaveBeenCalled();
+
+		deps.complete.mockResolvedValueOnce(true);
+		await expect(processLumaPrintsShipment({ orderNumber: "101" }, deps)).resolves.toMatchObject({
 			status: "processed",
-			delivery: { status: "failed", error: "Resend unavailable" },
 		});
-		expect(deps.record).toHaveBeenCalledWith({
-			lumaprintsOrderNumber: "LP-1",
-			status: "failed",
-			error: "Resend unavailable",
-		});
+		expect(deps.send).toHaveBeenCalledTimes(2);
 	});
 });

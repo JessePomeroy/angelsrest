@@ -31,8 +31,9 @@ vi.mock("$lib/server/commerceTenant", () => ({
 vi.mock("$convex/api", () => ({
 	api: {
 		orders: {
-			claimShipmentEmailNotificationByOrderNumber: "orders.claimGlobal",
-			recordShipmentEmailDeliveryByOrderNumber: "orders.recordGlobal",
+			claimShipmentEmailNotificationV2: "orders.claimV2",
+			completeShipmentEmailNotificationV2: "orders.completeV2",
+			releaseShipmentEmailNotificationV2: "orders.releaseV2",
 		},
 		platform: { getCommerceProfileForSite: "platform.getCommerceProfile" },
 	},
@@ -49,11 +50,23 @@ function request(options: { authorization?: string; body?: unknown } = {}) {
 		headers: { authorization, "content-type": "application/json" },
 		body: JSON.stringify(
 			options.body ?? {
-				orderNumber: "LP-123",
+				orderNumber: "123",
 				shipments: [{ carrier: "FedEx", trackingNumber: "TRACK-1" }],
 			},
 		),
 	});
+}
+
+function streamingRequest(body: ReadableStream<Uint8Array>) {
+	return new Request("https://www.angelsrest.online/api/webhooks/lumaprints", {
+		method: "POST",
+		headers: {
+			authorization: `Basic ${Buffer.from("lumaprints:provider-password").toString("base64")}`,
+			"content-type": "application/json",
+		},
+		body,
+		duplex: "half",
+	} as RequestInit & { duplex: "half" });
 }
 
 describe("hub LumaPrints webhook", () => {
@@ -64,17 +77,19 @@ describe("hub LumaPrints webhook", () => {
 		mocks.env.LUMAPRINTS_WEBHOOK_PASSWORD_PREVIOUS = undefined;
 		mocks.env.WEBHOOK_SECRET = "convex-secret";
 		mocks.mutation.mockImplementation((reference) => {
-			if (reference === "orders.claimGlobal") {
+			if (reference === "orders.claimV2") {
 				return Promise.resolve({
-					claimed: true,
+					kind: "claimed",
+					leaseExpiresAt: Date.now() + 60_000,
 					order: {
+						_id: "order-id",
 						siteUrl: "tenant.example",
 						orderNumber: "ORD-001",
 						customerEmail: "buyer@example.com",
 					},
 				});
 			}
-			return Promise.resolve({ recorded: true });
+			return Promise.resolve(true);
 		});
 		mocks.query.mockResolvedValue({
 			siteName: "Tenant Studio",
@@ -111,9 +126,10 @@ describe("hub LumaPrints webhook", () => {
 
 		expect(response.status).toBe(200);
 		await expect(response.json()).resolves.toEqual({ received: true, status: "processed" });
-		expect(mocks.mutation).toHaveBeenNthCalledWith(1, "orders.claimGlobal", {
+		expect(mocks.mutation).toHaveBeenNthCalledWith(1, "orders.claimV2", {
 			webhookSecret: "convex-secret",
-			lumaprintsOrderNumber: "LP-123",
+			lumaprintsOrderNumber: "123",
+			claimToken: expect.any(String),
 			trackingNumber: "TRACK-1",
 		});
 		expect(mocks.query).toHaveBeenCalledWith("platform.getCommerceProfile", {
@@ -125,21 +141,140 @@ describe("hub LumaPrints webhook", () => {
 			expect.objectContaining({
 				customerEmail: "buyer@example.com",
 				orderNumber: "ORD-001",
+				lumaprintsOrderNumber: "123",
 				carrier: "FedEx",
 				notificationProfile: expect.objectContaining({ siteName: "Tenant Studio" }),
 			}),
 		);
-		expect(mocks.mutation).toHaveBeenNthCalledWith(2, "orders.recordGlobal", {
+		expect(mocks.mutation).toHaveBeenNthCalledWith(2, "orders.completeV2", {
 			webhookSecret: "convex-secret",
-			lumaprintsOrderNumber: "LP-123",
-			status: "sent",
-			error: undefined,
+			orderId: "order-id",
+			lumaprintsOrderNumber: "123",
+			claimToken: expect.any(String),
+			deliveryStatus: "sent",
 		});
+	});
+
+	it("returns retryable non-2xx while another shipment-email lease is active", async () => {
+		mocks.mutation.mockImplementation((reference) =>
+			reference === "orders.claimV2"
+				? Promise.resolve({ kind: "busy", leaseExpiresAt: Date.now() + 30_000 })
+				: Promise.resolve(true),
+		);
+
+		const response = await POST({ request: request() });
+		expect(response.status).toBe(503);
+		expect(response.headers.get("retry-after")).toBeTruthy();
+		await expect(response.json()).resolves.toEqual({ received: false, status: "busy" });
+		expect(mocks.sendNotification).not.toHaveBeenCalled();
+		expect(mocks.mutation).toHaveBeenCalledTimes(1);
+	});
+
+	it("releases send failures with a bounded code and requests provider retry", async () => {
+		mocks.sendNotification.mockRejectedValue(new Error("private Resend response"));
+
+		const response = await POST({ request: request() });
+		expect(response.status).toBe(502);
+		await expect(response.json()).resolves.toEqual({
+			received: false,
+			status: "retryable_failure",
+		});
+		expect(mocks.mutation).toHaveBeenNthCalledWith(2, "orders.releaseV2", {
+			webhookSecret: "convex-secret",
+			orderId: "order-id",
+			lumaprintsOrderNumber: "123",
+			claimToken: expect.any(String),
+			failureCode: "email_delivery_failed",
+		});
+		expect(JSON.stringify(mocks.mutation.mock.calls)).not.toContain("private Resend response");
+	});
+
+	it("releases the exact lease with a bounded code when profile resolution fails", async () => {
+		mocks.query.mockRejectedValue(new Error("private tenant profile response"));
+
+		const response = await POST({ request: request() });
+		const claimToken = mocks.mutation.mock.calls[0]?.[1]?.claimToken;
+
+		expect(response.status).toBe(502);
+		await expect(response.json()).resolves.toEqual({
+			received: false,
+			status: "retryable_failure",
+		});
+		expect(claimToken).toEqual(expect.any(String));
+		expect(mocks.mutation.mock.calls).toEqual([
+			[
+				"orders.claimV2",
+				{
+					webhookSecret: "convex-secret",
+					lumaprintsOrderNumber: "123",
+					claimToken,
+					trackingNumber: "TRACK-1",
+				},
+			],
+			[
+				"orders.releaseV2",
+				{
+					webhookSecret: "convex-secret",
+					orderId: "order-id",
+					lumaprintsOrderNumber: "123",
+					claimToken,
+					failureCode: "notification_profile_unavailable",
+				},
+			],
+		]);
+		expect(JSON.stringify(mocks.mutation.mock.calls)).not.toContain(
+			"private tenant profile response",
+		);
+		expect(mocks.sendNotification).not.toHaveBeenCalled();
+	});
+
+	it("returns non-2xx after a successful send when durable completion crashes", async () => {
+		mocks.mutation.mockImplementation((reference) => {
+			if (reference === "orders.claimV2") {
+				return Promise.resolve({
+					kind: "claimed",
+					leaseExpiresAt: Date.now() + 60_000,
+					order: {
+						_id: "order-id",
+						siteUrl: "tenant.example",
+						orderNumber: "ORD-001",
+						customerEmail: "buyer@example.com",
+					},
+				});
+			}
+			if (reference === "orders.completeV2") return Promise.reject(new Error("Convex crashed"));
+			return Promise.resolve(true);
+		});
+
+		await expect(POST({ request: request() })).rejects.toThrow("Convex crashed");
+		expect(mocks.sendNotification).toHaveBeenCalledOnce();
+		expect(mocks.mutation).not.toHaveBeenCalledWith("orders.releaseV2", expect.anything());
+	});
+
+	it("rejects a non-canonical provider order number before Convex lookup", async () => {
+		const response = await POST({
+			request: request({ body: { orderNumber: "01", shipments: [{}] } }),
+		});
+		expect(response.status).toBe(400);
+		expect(mocks.mutation).not.toHaveBeenCalled();
+	});
+
+	it("returns 413 for a chunked body that crosses the streaming byte bound", async () => {
+		const body = new ReadableStream<Uint8Array>({
+			start(controller) {
+				controller.enqueue(new Uint8Array(200 * 1024));
+				controller.enqueue(new Uint8Array(60 * 1024));
+				controller.close();
+			},
+		});
+		const response = await POST({ request: streamingRequest(body) });
+		expect(response.status).toBe(413);
+		expect(mocks.mutation).not.toHaveBeenCalled();
 	});
 
 	it("rejects the legacy nested payload instead of silently acknowledging it", async () => {
 		const response = await POST({
-			request: request({ body: { event: "shipment.created", data: { orderNumber: "LP-123" } } }),
+			request: request({ body: { event: "shipment.created", data: { orderNumber: "123" } } }),
 		});
 		expect(response.status).toBe(400);
 		expect(mocks.mutation).not.toHaveBeenCalled();

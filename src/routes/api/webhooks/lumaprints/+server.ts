@@ -8,8 +8,10 @@ import {
 } from "$lib/server/commerceTenant";
 import { getConvex } from "$lib/server/convexClient";
 import {
-	parseLumaPrintsShippingPayload,
+	LumaPrintsWebhookPayloadError,
 	processLumaPrintsShipment,
+	readLumaPrintsShippingPayload,
+	ShipmentEmailDeliveryError,
 	verifyLumaPrintsBasicAuthorization,
 } from "$lib/server/lumaprintsWebhook";
 import { getResend } from "$lib/server/resendClient";
@@ -40,37 +42,68 @@ export async function POST({ request }: { request: Request }) {
 
 	let shipment;
 	try {
-		shipment = parseLumaPrintsShippingPayload(await request.text());
+		shipment = await readLumaPrintsShippingPayload(request);
 	} catch (error) {
 		const message = error instanceof Error ? error.message : "Invalid webhook payload";
-		return json({ error: message }, { status: message.includes("too large") ? 413 : 400 });
+		return json(
+			{ error: message },
+			{ status: error instanceof LumaPrintsWebhookPayloadError ? error.status : 400 },
+		);
 	}
 
 	const convex = getConvex();
 	const result = await processLumaPrintsShipment(shipment, {
 		claim: (input) =>
-			convex.mutation(api.orders.claimShipmentEmailNotificationByOrderNumber, {
+			convex.mutation(api.orders.claimShipmentEmailNotificationV2, {
 				webhookSecret,
 				lumaprintsOrderNumber: input.orderNumber,
+				claimToken: input.claimToken,
 				trackingNumber: input.trackingNumber,
 			}),
-		record: (input) =>
-			convex.mutation(api.orders.recordShipmentEmailDeliveryByOrderNumber, {
+		complete: (input) =>
+			convex.mutation(api.orders.completeShipmentEmailNotificationV2, {
+				webhookSecret,
+				...input,
+			}),
+		release: (input) =>
+			convex.mutation(api.orders.releaseShipmentEmailNotificationV2, {
 				webhookSecret,
 				...input,
 			}),
 		send: async (input) => {
-			const notificationProfile = await resolveNotificationProfile(input.siteUrl, webhookSecret);
-			await sendCustomerShipmentNotification(getResend(), {
-				customerEmail: input.customerEmail,
-				orderNumber: input.orderNumber,
-				trackingNumber: input.trackingNumber,
-				carrier: input.carrier,
-				notificationProfile,
-			});
+			let notificationProfile: CommerceNotificationProfile;
+			try {
+				notificationProfile = await resolveNotificationProfile(input.siteUrl, webhookSecret);
+			} catch {
+				throw new ShipmentEmailDeliveryError("notification_profile_unavailable");
+			}
+			try {
+				await sendCustomerShipmentNotification(getResend(), {
+					customerEmail: input.customerEmail,
+					orderNumber: input.orderNumber,
+					lumaprintsOrderNumber: input.lumaprintsOrderNumber,
+					trackingNumber: input.trackingNumber,
+					carrier: input.carrier,
+					notificationProfile,
+				});
+			} catch {
+				throw new ShipmentEmailDeliveryError("email_delivery_failed");
+			}
 		},
 	});
 
+	if (result.status === "busy") {
+		return json(
+			{ received: false, status: result.status },
+			{
+				status: 503,
+				headers: { "Retry-After": String(Math.max(1, Math.ceil(result.retryAfterMs / 1000))) },
+			},
+		);
+	}
+	if (result.status === "retryable_failure") {
+		return json({ received: false, status: result.status }, { status: 502 });
+	}
 	return json({ received: true, status: result.status });
 }
 

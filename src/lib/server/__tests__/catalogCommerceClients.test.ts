@@ -11,6 +11,12 @@ import {
 
 const token = "a".repeat(32);
 const origin = "https://private.example";
+const sealedCapability = Buffer.alloc(64, 7).toString("base64url");
+function capability(purpose: "paid_file" | "print_source", extension?: "jpg" | "png" | "zip") {
+	const segment = purpose === "print_source" ? "print-source" : "paid-file";
+	const suffix = extension ?? (purpose === "print_source" ? "jpg" : "zip");
+	return `${origin}/v1/catalog-assets/fulfillment/${segment}/${sealedCapability}.${suffix}`;
+}
 function json(value: unknown, status = 200) {
 	const body = JSON.stringify(value);
 	return new Response(body, {
@@ -42,8 +48,8 @@ const snapshotItem = {
 	revisionId: "revision",
 	productKind: "print" as const,
 	variantKey: "variant",
-	materialOptionKey: "paper",
-	sizeOptionKey: "size",
+	materialOptionKey: "archival-matte",
+	sizeOptionKey: "8x10",
 	borderOptionKey: null,
 	frameOptionKey: null,
 };
@@ -57,24 +63,46 @@ const checkoutResponse = {
 };
 
 function paidResponse(purpose: "paid_fulfillment" | "paid_download") {
+	const item =
+		purpose === "paid_download"
+			? {
+					...snapshotItem,
+					productKind: "digital_download" as const,
+					materialOptionKey: null,
+					sizeOptionKey: null,
+				}
+			: snapshotItem;
 	return {
 		version: 1,
 		purpose,
-		item: snapshotItem,
-		identity: { productKind: purpose === "paid_download" ? "digital_download" : "print" },
+		item,
+		identity: {
+			productId: "product",
+			revisionId: "revision",
+			productKind: purpose === "paid_download" ? "digital_download" : "print",
+			title: "Product",
+			slug: "product",
+			variantKey: item.variantKey,
+		},
 		commerce: {
+			currency: "usd",
+			amountCents: 2_500,
 			finish:
 				purpose === "paid_download"
 					? null
 					: {
-							paper: { subcategoryId: 1 },
-							size: { width: 8, height: 10 },
+							materialKey: "archival-matte",
+							sizeKey: "8x10",
+							borderKey: null,
+							frameKey: null,
+							paper: { name: "Archival Matte", subcategoryId: 103001 },
+							size: { label: "8×10", width: 8, height: 10 },
 							border: { inches: 0 },
 							frame: { subcategoryId: 0 },
 							canvas: null,
 						},
 		},
-		media: [],
+		media: [{}],
 		current: {
 			kindEnabled: true,
 			publishedRevision: true,
@@ -137,6 +165,189 @@ describe("fixed-purpose catalog clients", () => {
 				"Content-Type": "application/json",
 			});
 			expect(init?.signal).toBeInstanceOf(AbortSignal);
+		}
+	});
+
+	it.each([
+		["zero", { width: 0, height: 10 }, "image/jpeg"],
+		["negative", { width: 10, height: -1 }, "image/jpeg"],
+		["fractional", { width: 10.5, height: 10 }, "image/jpeg"],
+		["oversized", { width: 100_001, height: 10 }, "image/jpeg"],
+		["wrongly typed", { width: "10", height: 10 }, "image/jpeg"],
+		["non-print MIME", { width: 10, height: 10 }, "image/webp"],
+	] as const)("rejects %s paid print-source metadata at the resolver boundary", async (_case, dimensions, mime) => {
+		const response = structuredClone(paidResponse("paid_fulfillment")) as Record<string, unknown>;
+		const descriptor = response.descriptor as { sources: Array<Record<string, unknown>> };
+		const source = descriptor.sources[0];
+		if (!source) throw new Error("Paid response fixture lost its print source");
+		source.dimensions = dimensions;
+		source.mime = mime;
+		const fetch = vi.fn(async () => json(response));
+		await expect(
+			resolvePaidFulfillment("cs_test_123456789", 0, { origin, bearer: token, fetch }),
+		).rejects.toMatchObject({ kind: "rejected", phase: "envelope" });
+		expect(fetch).toHaveBeenCalledOnce();
+	});
+
+	it.each([
+		[
+			"an extra finish field",
+			(finish: Record<string, unknown>) => {
+				finish.extra = true;
+			},
+		],
+		[
+			"an unsafe paper ID",
+			(finish: Record<string, unknown>) => {
+				(finish.paper as Record<string, unknown>).subcategoryId = Number.MAX_SAFE_INTEGER + 1;
+			},
+		],
+		[
+			"an unsupported paper ID",
+			(finish: Record<string, unknown>) => {
+				(finish.paper as Record<string, unknown>).subcategoryId = 103999;
+			},
+		],
+		[
+			"a fractional size",
+			(finish: Record<string, unknown>) => {
+				(finish.size as Record<string, unknown>).width = 8.5;
+			},
+		],
+		[
+			"a negative border",
+			(finish: Record<string, unknown>) => {
+				(finish.border as Record<string, unknown>).inches = -0.25;
+			},
+		],
+		[
+			"an unsupported border",
+			(finish: Record<string, unknown>) => {
+				(finish.border as Record<string, unknown>).inches = 0.75;
+			},
+		],
+		[
+			"an unsupported frame ID",
+			(finish: Record<string, unknown>) => {
+				(finish.frame as Record<string, unknown>).subcategoryId = 105004;
+			},
+		],
+	] as const)("rejects paid fulfillment finish metadata with %s", async (_case, mutate) => {
+		const response = structuredClone(paidResponse("paid_fulfillment")) as Record<string, unknown>;
+		const commerce = response.commerce as Record<string, unknown>;
+		mutate(commerce.finish as Record<string, unknown>);
+		const fetch = vi.fn(async () => json(response));
+		await expect(
+			resolvePaidFulfillment("cs_test_123456789", 0, { origin, bearer: token, fetch }),
+		).rejects.toMatchObject({ kind: "rejected", phase: "envelope" });
+		expect(fetch).toHaveBeenCalledOnce();
+	});
+
+	it("accepts only the catalog-supported canvas IDs, option, and strict six-digit wrap hex", async () => {
+		const response = structuredClone(paidResponse("paid_fulfillment")) as Record<string, unknown>;
+		const item = response.item as Record<string, unknown>;
+		item.materialOptionKey = "canvas-white-1.25";
+		const finish = (response.commerce as { finish: Record<string, unknown> }).finish;
+		finish.materialKey = "canvas-white-1.25";
+		finish.paper = { name: 'Canvas White — 1.25" stretch', subcategoryId: 101002 };
+		finish.canvas = {
+			color: "white",
+			thickness: "1.25",
+			subcategoryId: 101002,
+			wrapOptionId: 3,
+			wrapHex: "#FFFFFF",
+		};
+		const validFetch = vi.fn(async () => json(response));
+		await expect(
+			resolvePaidFulfillment("cs_test_123456789", 0, {
+				origin,
+				bearer: token,
+				fetch: validFetch,
+			}),
+		).resolves.toMatchObject({ commerce: { finish: { canvas: { wrapHex: "#FFFFFF" } } } });
+
+		for (const canvas of [
+			{ ...(finish.canvas as object), wrapHex: "FFFFFF" },
+			{ ...(finish.canvas as object), wrapHex: "#FFFFFG" },
+			{ ...(finish.canvas as object), wrapHex: "#FFFFFF00" },
+			{ ...(finish.canvas as object), wrapOptionId: 4 },
+			{ ...(finish.canvas as object), subcategoryId: 101004 },
+		]) {
+			const candidate = structuredClone(response) as Record<string, unknown>;
+			const candidateFinish = (candidate.commerce as { finish: Record<string, unknown> }).finish;
+			candidateFinish.canvas = canvas;
+			const fetch = vi.fn(async () => json(candidate));
+			await expect(
+				resolvePaidFulfillment("cs_test_123456789", 0, { origin, bearer: token, fetch }),
+			).rejects.toMatchObject({ kind: "rejected", phase: "envelope" });
+		}
+	});
+
+	it("enforces the 100 MB print-source and 16 MiB paid-file descriptor bounds", async () => {
+		for (const { purpose, acceptedBytes, rejectedBytes } of [
+			{
+				purpose: "paid_fulfillment" as const,
+				acceptedBytes: 100_000_000,
+				rejectedBytes: 100_000_001,
+			},
+			{
+				purpose: "paid_download" as const,
+				acceptedBytes: 16 * 1024 * 1024,
+				rejectedBytes: 16 * 1024 * 1024 + 1,
+			},
+		]) {
+			const accepted = structuredClone(paidResponse(purpose)) as Record<string, unknown>;
+			const acceptedDescriptor = accepted.descriptor as Record<string, unknown>;
+			if (purpose === "paid_fulfillment") {
+				(
+					(acceptedDescriptor.sources as Array<Record<string, unknown>>)[0] as Record<
+						string,
+						unknown
+					>
+				).bytes = acceptedBytes;
+			} else acceptedDescriptor.bytes = acceptedBytes;
+			const acceptedFetch = vi.fn(async () => json(accepted));
+			const resolveAccepted =
+				purpose === "paid_fulfillment"
+					? resolvePaidFulfillment("cs_test_123456789", 0, {
+							origin,
+							bearer: token,
+							fetch: acceptedFetch,
+						})
+					: resolvePaidDownload("cs_test_123456789", 0, {
+							origin,
+							bearer: token,
+							fetch: acceptedFetch,
+						});
+			await expect(resolveAccepted).resolves.toBeDefined();
+
+			const rejected = structuredClone(accepted) as Record<string, unknown>;
+			const rejectedDescriptor = rejected.descriptor as Record<string, unknown>;
+			if (purpose === "paid_fulfillment") {
+				(
+					(rejectedDescriptor.sources as Array<Record<string, unknown>>)[0] as Record<
+						string,
+						unknown
+					>
+				).bytes = rejectedBytes;
+			} else rejectedDescriptor.bytes = rejectedBytes;
+			const rejectedFetch = vi.fn(async () => json(rejected));
+			const resolveRejected =
+				purpose === "paid_fulfillment"
+					? resolvePaidFulfillment("cs_test_123456789", 0, {
+							origin,
+							bearer: token,
+							fetch: rejectedFetch,
+						})
+					: resolvePaidDownload("cs_test_123456789", 0, {
+							origin,
+							bearer: token,
+							fetch: rejectedFetch,
+						});
+			await expect(resolveRejected).rejects.toMatchObject({
+				kind: "rejected",
+				phase: "envelope",
+			});
 		}
 	});
 
@@ -284,19 +495,111 @@ describe("fixed-purpose catalog clients", () => {
 		expect(fetch).toHaveBeenCalledOnce();
 	});
 
+	it("treats only the exact commerce-resolver rejection 404 as permanent", async () => {
+		const fetch = vi.fn(async () => json({ error: "rejected" }, 404));
+		await expect(
+			resolveCatalogCheckout(snapshotItem, { origin, bearer: token, fetch }),
+		).rejects.toMatchObject({ kind: "rejected", phase: "status" });
+		expect(fetch).toHaveBeenCalledOnce();
+	});
+
+	it.each([
+		["already-refunded conflict", 409, "refunded"],
+		["explicit unavailability", 503, "unavailable"],
+		["missing authentication", 401, "unavailable"],
+		["rejected authentication", 403, "unavailable"],
+		["proxy authentication", 407, "unavailable"],
+		["invalid request protocol", 400, "unavailable"],
+		["unsupported media protocol", 415, "unavailable"],
+		["upgrade protocol", 426, "unavailable"],
+		["HTTP-version protocol", 505, "unavailable"],
+		["rate limit", 429, "unavailable"],
+		["unexpected client response", 418, "unavailable"],
+		["unexpected validation response", 422, "unavailable"],
+		["unexpected server response", 500, "unavailable"],
+		["unexpected gateway response", 502, "unavailable"],
+		["unexpected vendor response", 599, "unavailable"],
+	] as const)("classifies resolver %s status %i as %s", async (_case, status, kind) => {
+		const fetch = vi.fn(async () => json({}, status));
+		await expect(
+			resolveCatalogCheckout(snapshotItem, { origin, bearer: token, fetch }),
+		).rejects.toMatchObject({ kind, phase: "status" });
+		expect(fetch).toHaveBeenCalledOnce();
+	});
+
+	it("keeps a capability issuer 404 unavailable even with the resolver rejection body", async () => {
+		const fetch = vi.fn(async () => json({ error: "rejected" }, 404));
+		await expect(
+			issuePaidFile(
+				{
+					key: "private/key",
+					hash: "c".repeat(64),
+					bytes: 10,
+					mime: "application/zip",
+				},
+				{ origin, bearer: token, fetch },
+			),
+		).rejects.toMatchObject({ kind: "unavailable", phase: "status" });
+		expect(fetch).toHaveBeenCalledOnce();
+	});
+
+	it("keeps malformed, missing, hidden, and over-limit resolver 404 bodies unavailable and redacted", async () => {
+		const privateDetail = "private catalog rejection detail";
+		const responses = [
+			new Response('{"error":', {
+				status: 404,
+				headers: { "content-type": "application/json" },
+			}),
+			new Response(null, {
+				status: 404,
+				headers: { "content-type": "application/json" },
+			}),
+			json({ error: "rejected", detail: privateDetail }, 404),
+			new Response(JSON.stringify({ error: "rejected", padding: "x".repeat(64 * 1024) }), {
+				status: 404,
+				headers: { "content-type": "application/json" },
+			}),
+		];
+		for (const response of responses) {
+			const fetch = vi.fn(async () => response);
+			const outcome = await resolveCatalogCheckout(snapshotItem, {
+				origin,
+				bearer: token,
+				fetch,
+			}).then(
+				() => null,
+				(error: unknown) => error,
+			);
+			expect(outcome).toMatchObject({ kind: "unavailable", phase: "status" });
+			expect(String(outcome)).not.toContain(privateDetail);
+			expect(fetch).toHaveBeenCalledOnce();
+		}
+	});
+
 	it("issues exact descriptors on disjoint Worker routes and returns opaque URLs unchanged", async () => {
-		const capability = "https://opaque.example/a_b-C?sealed=1";
-		const fetch = vi.fn(async (_url: URL | RequestInfo, _init?: RequestInit) =>
-			json({ version: 1, url: capability, expiresAt: "2026-01-01T00:00:00.000Z" }),
+		const printCapability = capability("print_source");
+		const paidCapability = capability("paid_file");
+		const now = Date.now();
+		const fetch = vi.fn(async (url: URL | RequestInfo, _init?: RequestInit) =>
+			json({
+				version: 1,
+				url: String(url).includes("print-source") ? printCapability : paidCapability,
+				expiresAt: new Date(
+					now + (String(url).includes("print-source") ? 24 * 60 * 60 * 1000 : 5 * 60 * 1000),
+				).toISOString(),
+			}),
 		);
 		const descriptor = {
 			key: "private/key",
 			hash: "c".repeat(64),
 			bytes: 10,
-			mime: "image/jpeg",
+			mime: "image/jpeg" as const,
+			dimensions: { width: 6000, height: 4000 },
 			relationKey: "must-not-cross",
 		};
-		expect(await issuePrintSource(descriptor, { origin, bearer: token, fetch })).toBe(capability);
+		expect(await issuePrintSource(descriptor, { origin, bearer: token, fetch })).toBe(
+			printCapability,
+		);
 		expect(
 			await issuePaidFile(
 				{ ...descriptor, mime: "application/zip" },
@@ -306,7 +609,7 @@ describe("fixed-purpose catalog clients", () => {
 					fetch,
 				},
 			),
-		).toBe(capability);
+		).toBe(paidCapability);
 		expect(fetch.mock.calls.map(([url]) => url)).toEqual([
 			`${origin}/v1/catalog-assets/fulfillment/print-source/capabilities`,
 			`${origin}/v1/catalog-assets/fulfillment/paid-file/capabilities`,
@@ -318,6 +621,132 @@ describe("fixed-purpose catalog clients", () => {
 			bytes: descriptor.bytes,
 			mime: descriptor.mime,
 		});
+	});
+
+	it("validates print dimensions and MIME before requesting a capability", async () => {
+		const valid = {
+			key: "private/key",
+			hash: "c".repeat(64),
+			bytes: 10,
+			mime: "image/jpeg" as const,
+			dimensions: { width: 6000, height: 4000 },
+		};
+		const candidates = [
+			{ ...valid, dimensions: { width: 0, height: 4000 } },
+			{ ...valid, dimensions: { width: -1, height: 4000 } },
+			{ ...valid, dimensions: { width: 1.5, height: 4000 } },
+			{ ...valid, dimensions: { width: 100_001, height: 4000 } },
+			{ ...valid, dimensions: { width: 6000, height: Number.NaN } },
+			{ ...valid, dimensions: { width: 6000, height: 4000, depth: 8 } },
+			{ ...valid, mime: "image/webp" },
+		];
+		const fetch = vi.fn();
+		for (const candidate of candidates) {
+			await expect(
+				issuePrintSource(candidate as unknown as Parameters<typeof issuePrintSource>[0], {
+					origin,
+					bearer: token,
+					fetch,
+				}),
+			).rejects.toMatchObject({ kind: "rejected", phase: "envelope" });
+		}
+		expect(fetch).not.toHaveBeenCalled();
+	});
+
+	it("rejects stale, wrong-origin, wrong-purpose, noncanonical, and decorated capabilities", async () => {
+		const descriptor = {
+			key: "private/key",
+			hash: "c".repeat(64),
+			bytes: 10,
+			mime: "image/jpeg" as const,
+			dimensions: { width: 6000, height: 4000 },
+		};
+		const now = Date.now();
+		const validPrintExpiry = new Date(now + 23.5 * 60 * 60 * 1000).toISOString();
+		const candidates = [
+			{ url: capability("print_source"), expiresAt: new Date(now - 1).toISOString() },
+			{
+				url: capability("print_source"),
+				expiresAt: new Date(now + 22 * 60 * 60 * 1000).toISOString(),
+			},
+			{
+				url: capability("print_source"),
+				expiresAt: new Date(now + 24 * 60 * 60 * 1000 + 120_000).toISOString(),
+			},
+			{
+				url: capability("print_source").replace(origin, "https://other.example"),
+				expiresAt: validPrintExpiry,
+			},
+			{
+				url: capability("paid_file"),
+				expiresAt: validPrintExpiry,
+			},
+			{
+				url: capability("print_source", "png"),
+				expiresAt: validPrintExpiry,
+			},
+			{
+				url: capability("print_source").replace(sealedCapability, `${sealedCapability}=`),
+				expiresAt: validPrintExpiry,
+			},
+			{
+				url: `${capability("print_source")}?download=1`,
+				expiresAt: validPrintExpiry,
+			},
+			{
+				url: `${capability("print_source")}#fragment`,
+				expiresAt: validPrintExpiry,
+			},
+		];
+		for (const [index, candidate] of candidates.entries()) {
+			const fetch = vi.fn(async () => json({ version: 1, ...candidate }));
+			const outcome = await issuePrintSource(descriptor, { origin, bearer: token, fetch })
+				.then(() => ({ kind: "accepted" as const }))
+				.catch((error: unknown) => ({ kind: "rejected" as const, error }));
+			if (outcome.kind === "accepted") {
+				throw new Error(`Capability candidate ${index} was accepted`);
+			}
+			expect(outcome.error).toMatchObject({ kind: "rejected", phase: "envelope" });
+			expect(fetch).toHaveBeenCalledOnce();
+		}
+	});
+
+	it("accepts the 24-hour print and 15-minute paid-file lifetime contracts", async () => {
+		for (const { issue, url, lifetime } of [
+			{
+				url: capability("print_source", "png"),
+				lifetime: 24 * 60 * 60 * 1000,
+				issue: (fetch: typeof globalThis.fetch) =>
+					issuePrintSource(
+						{
+							key: "private/key",
+							hash: "c".repeat(64),
+							bytes: 10,
+							mime: "image/png",
+							dimensions: { width: 6000, height: 4000 },
+						},
+						{ origin, bearer: token, fetch },
+					),
+			},
+			{
+				url: capability("paid_file"),
+				lifetime: 15 * 60 * 1000,
+				issue: (fetch: typeof globalThis.fetch) =>
+					issuePaidFile(
+						{
+							key: "private/key",
+							hash: "c".repeat(64),
+							bytes: 10,
+							mime: "application/zip",
+						},
+						{ origin, bearer: token, fetch },
+					),
+			},
+		]) {
+			const expiresAt = new Date(Date.now() + lifetime).toISOString();
+			const fetch = vi.fn(async () => json({ version: 1, url, expiresAt }));
+			await expect(issue(fetch)).resolves.toBe(url);
+		}
 	});
 
 	it("defaults unavailable, rejects non-exact origins and bounded responses, and never retries", async () => {

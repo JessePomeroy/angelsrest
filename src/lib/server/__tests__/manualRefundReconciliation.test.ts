@@ -452,6 +452,19 @@ describe("manual refund reconciliation", () => {
 		).rejects.toBeInstanceOf(ManualRefundReconciliationRetryableError);
 	});
 
+	it("keeps a signed refund retryable while a legacy print submission is in flight", async () => {
+		mutation.mockResolvedValueOnce({
+			kind: "retryable",
+			reason: "print_submission_in_flight",
+		});
+		const reconciliation = reconcileSucceededManualRefund(event(), { stripe, convex });
+		await expect(reconciliation).rejects.toBeInstanceOf(ManualRefundReconciliationRetryableError);
+		await expect(reconciliation).rejects.toThrow(
+			"Manual refund is fenced by an in-flight legacy print submission",
+		);
+		expect(mutation).toHaveBeenCalledOnce();
+	});
+
 	it("acknowledges Convex identity and state conflicts without another effect", async () => {
 		for (const reason of ["identity_conflict", "state_conflict"] as const) {
 			mutation.mockResolvedValueOnce({ kind: "rejected", reason });

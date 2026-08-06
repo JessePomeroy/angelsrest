@@ -1,5 +1,5 @@
 import Stripe from "stripe";
-import { STRIPE_SECRET_KEY } from "$env/static/private";
+import { env } from "$env/dynamic/private";
 import { STRIPE_API_VERSION } from "$lib/server/stripeApiVersion";
 
 let _stripe: Stripe | null = null;
@@ -10,6 +10,9 @@ let _stripe: Stripe | null = null;
  * duplicate HTTP agents. Audit M3 consolidates those into one shared instance.
  */
 export function getStripe(): Stripe {
-	if (!_stripe) _stripe = new Stripe(STRIPE_SECRET_KEY, { apiVersion: STRIPE_API_VERSION });
+	if (!_stripe) {
+		if (!env.STRIPE_SECRET_KEY) throw new Error("Stripe is not configured");
+		_stripe = new Stripe(env.STRIPE_SECRET_KEY, { apiVersion: STRIPE_API_VERSION });
+	}
 	return _stripe;
 }

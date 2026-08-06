@@ -172,23 +172,84 @@ coordinator into their repositories.
 
 ### Manual refund reconciliation
 
-The signed commerce webhook accepts `refund.created` and `refund.updated` as
-Stripe refund authority. A full, succeeded USD refund is matched to exactly one
-paid Checkout Session in the event's platform or connected-account scope. A
+The signed commerce webhook accepts `refund.created`, `refund.updated`, and
+`refund.failed` as Stripe refund authority. A full, succeeded USD manual refund
+is matched to exactly one paid Checkout Session in the event's platform or
+connected-account scope. A
 Clover Your-account Snapshot can put the platform account in `event.context`
 without setting `event.account`. The verified destination role authorizes that
 value only as Stripe `stripeContext` for the related Session lookup. It never
 becomes connected-account, tenant, site, or Convex scope authority. Connected
 refunds continue to require verified `event.account` and Stripe `stripeAccount`.
-A webhook-only Convex transaction then marks only an unfulfilled `new` order as
-`refunded` and stores the refund ID. If the refund arrives first, Convex keeps a
+A webhook-only Convex transaction marks an eligible `new` order as `refunded`
+and stores the refund ID. Eligibility includes an exact provider result that
+raced ahead of the refund. If the refund arrives first, Convex keeps a
 provider-verified intent that makes later order creation terminal. Partial,
 automated, ambiguous, or conflicting evidence fails closed. This path sends no
 email and does not change checkout snapshot reservations. Manual reconciliation
 also cancels pending fee capture before another provider read can store data.
 Print fulfillment uses an expiring preparation lease and an atomic submission
-fence, so refund and provider effects cannot both start. The additive V2 claim
-API keeps the V1 claim available for a Convex-first rollout.
+fence. A verified refund that wins before the fence clears the preparation
+claim. The V3 coordinator stamps its version durably before work and is the only
+normal host contract allowed to project a verified refund after the POST fence;
+the separately gated incident recovery is the sole exception. Exact V1/V2 rows
+remain unversioned. In particular, an exact V1 claimed row whose phase is absent
+is uncertain, never evidence that submission has not started. While either a V1
+or V2 claim is in flight, Convex returns a retryable reconciliation result and
+the webhook host returns a retryable server error; it does not acknowledge and
+lose the signed refund. The refund converges only after the legacy host stores
+its provider result and Stripe retries the signed event. The V3 tokenized
+completion or a webhook-authoritative GET result can store the validated
+provider number without changing refund truth.
+
+Deterministic reconciliation faults persist a bounded blocked class. Repeated
+GET attempts durably record one bounded outcome class: transport, rate/server,
+resource bound, client exception, or result not observed. The bounded per-class
+tally escalates by age or total attempt count to durable operator review. That
+escalation does not claim the provider order is absent, issue another provider
+POST, or authorize a refund. A leased, non-sensitive operator alert can retry
+until its delivery is recorded. A reviewed recovery remains GET-only.
+
+Automated fulfillment refunds persist the Stripe refund ID and provider status
+separately while the status is `pending` or `requires_action`. Only
+`succeeded` populates the terminal order refund ID or authorizes customer/admin
+refund-success notifications. Signed `refund.updated` and `refund.failed`
+events carrying the server automation marker converge `succeeded`, `failed`,
+and `canceled` states even if the checkout worker crashed after Stripe accepted
+the idempotent request. Failed/canceled refunds enter a durable operator-blocked
+state and send only an operator alert. Pending or `requires_action` refunds that
+exceed the bounded attempt/age policy enter `refund_attention` and authorize one
+leased operator-only attention alert; later signed updates may still resolve
+them to succeeded, failed, or canceled. New success, failure, and attention
+alerts use tokenized leases, stable Resend idempotency keys, and explicit sent
+markers; legacy terminal rows still suppress success/customer notices. If
+signed authority moves a legacy row from pending to failed/canceled, it may
+authorize one new operator-only failure alert.
+
+Production deployment has a hard precondition: prove that zero V1 or V2 print
+submissions are in flight before deploying this backend. Keep new fulfillment
+closed while deploying the additive schema, V3 claim/coordinator, and
+refund/notification lease mutations, then deploy the V3 host before reopening
+fulfillment. The V2 claim return union and object shapes remain exact: a blocked
+row maps to baseline `busy`, an uncertain nonblocked row maps to baseline
+`reconcile`, and richer blocked state is V3-only. Remove the temporary
+baseline-host completion bridge only in a later reviewed release. The bridge
+accepts one exact webhook-authorized completion and rejects replays, but it
+cannot suppress a confirmation email already owned by an in-flight old host.
+It never lets an administrator write provider-global identity.
+
+After any order has V3 coordinator fields, rollback is host-only. Keep the
+additive Convex schema, indexes, V3 mutations, and compatibility functions
+deployed; do not roll Convex back to a baseline schema or function bundle that
+does not understand persisted V3 state. Before rolling the host back, close new
+fulfillment and let the V3 host drain every nonterminal V3 row. There must be no
+nonterminal V3-marked order, including one with an active or expired preparation
+lease, a released preparation lease, a `submitting`/uncertain result, blocked
+reconciliation, or an outstanding V3 retry. A fenced submission must reach an
+exact POST completion or provider-authoritative GET result; absence never
+authorizes a replay. If that drain cannot be proved, keep or restore the V3 host
+and do not resume producers on the baseline host. Only after the drain is proved
+may the host roll back, with the additive Convex deployment retained.
 
 A disabled-by-default admin recovery route exists only for the reviewed
 historical refund incident. `POST /api/admin/orders/refund-recovery` requires an
@@ -200,8 +261,9 @@ durably claims the recovery before provider reads. It then retrieves the exact
 historical Stripe Event, current Refund, PaymentIntent, and exact Checkout
 Session and validates their Charge binding in the server-owned platform context.
 Browser input cannot provide Stripe or tenant facts. Convex records normalized
-provider evidence for accepted checks and a bounded failed-check list for rejected
-checks. It completes a valid reconciliation in the existing order transaction. A missing order creates no refund intent. Failed or incomplete
+provider evidence for accepted checks and a bounded failed-check list for
+rejected checks. It completes a valid reconciliation in the existing order
+transaction. A missing order creates no refund intent. Failed or incomplete
 claims never become reusable. An audit-write failure returns an explicit
 indeterminate result. The route has no admin UI control and sends no email or
 fulfillment request. Deployment, gate enablement, invocation, gate removal, and
@@ -254,7 +316,7 @@ Production rollout is consumer-first:
    distinct credentials for every configured role. Retain only value-free
    evidence. Deployment is blocked until this gate passes.
 3. Confirm the current commerce destination's Snapshot version and event matrix.
-   It currently lacks `refund.created` and `refund.updated`.
+   It currently lacks `refund.created`, `refund.updated`, and `refund.failed`.
 4. Under separate deployment authorization, deploy and verify the domain guards,
    explicit API-version contract, and durable payment-failure deduplication.
    Stop before connected-destination creation, secret staging, or event expansion
@@ -264,14 +326,14 @@ Production rollout is consumer-first:
    creates an enabled destination and disables it afterward.
 6. Under separate destination-creation authorization, create the connected
    destination in the approved non-delivering state with the exact route,
-   Snapshot format, reviewed API version, and four-event matrix. Do not enable
+   Snapshot format, reviewed API version, and five-event matrix. Do not enable
    delivery.
 7. Under separate secret-staging authorization, obtain and stage the distinct
    connected-commerce credential. Under separate deployment authorization,
    deploy and verify the exact consumer without changing either active
    Your-account destination.
-8. Under separate authorization, enable connected delivery and add both refund
-   events to Your-account commerce. Retain both commerce secrets through
+8. Under separate authorization, enable connected delivery and add all three
+   refund events to Your-account commerce. Retain both commerce secrets through
    Stripe's retry window. Historical event replay is not part of configuration.
 
 A code rollback is unsafe while both destinations can deliver or retry events.
@@ -290,7 +352,18 @@ orders. It verifies the provider's configured Basic credentials, accepts the
 documented top-level shipping payload, and resolves the provider-global
 LumaPrints order number to exactly one stored tenant before updating tracking or
 sending branded email. Client spokes do not receive the broad Convex webhook
-secret or run a second shipment processor.
+secret or run a second shipment processor. Shipment email delivery uses a
+hub-only tokenized lease keyed by the canonical provider-global number. Resend
+uses the same stable idempotency key when a completion checkpoint crashes;
+active or failed work returns non-2xx so the provider retries. Historical
+shipped/claimed rows without explicit V2 evidence remain terminal.
+
+The published site-scoped shipment lookup, claim, and checkpoint APIs remain as
+deprecated admin-auth compatibility surfaces, along with their site-scoped
+index. They require authenticated stored site-admin membership: the broad
+webhook secret cannot authorize them, and arbitrary legacy error strings are
+never stored. Rejecting former webhook-secret-only callers is a major-version
+compatibility break.
 
 ### Invoice checkout
 
