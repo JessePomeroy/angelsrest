@@ -8,8 +8,9 @@ import {
 } from "$lib/server/commerceTenant";
 import { getConvex } from "$lib/server/convexClient";
 import {
-	parseLumaPrintsShippingPayload,
+	LumaPrintsWebhookPayloadError,
 	processLumaPrintsShipment,
+	readLumaPrintsShippingPayload,
 	verifyLumaPrintsBasicAuthorization,
 } from "$lib/server/lumaprintsWebhook";
 import { getResend } from "$lib/server/resendClient";
@@ -40,10 +41,13 @@ export async function POST({ request }: { request: Request }) {
 
 	let shipment;
 	try {
-		shipment = parseLumaPrintsShippingPayload(await request.text());
+		shipment = await readLumaPrintsShippingPayload(request);
 	} catch (error) {
 		const message = error instanceof Error ? error.message : "Invalid webhook payload";
-		return json({ error: message }, { status: message.includes("too large") ? 413 : 400 });
+		return json(
+			{ error: message },
+			{ status: error instanceof LumaPrintsWebhookPayloadError ? error.status : 400 },
+		);
 	}
 
 	const convex = getConvex();

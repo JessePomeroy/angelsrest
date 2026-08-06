@@ -1,42 +1,37 @@
 import { describe, expect, it } from "vitest";
 import { CatalogBoundaryError } from "../server/catalogCommerceClients";
 import { FulfillmentValidationError } from "../server/fulfillmentValidationError";
-import { LumaPrintsError } from "../server/lumaprints";
+import { LumaPrintsError, LumaPrintsSubmissionError } from "../server/lumaprints";
 import {
 	classifyLumaPrintsFailure,
 	formatFailureForAdmin,
 } from "../server/webhookErrorClassification";
 
 describe("fulfillment error classification", () => {
-	it.each([
-		[400, "permanent"],
-		[401, "permanent"],
-		[422, "permanent"],
-		[500, "transient"],
-		[503, "transient"],
-	] as const)("classifies provider status %s as %s", (statusCode, expected) => {
-		expect(classifyLumaPrintsFailure(new LumaPrintsError("provider", { statusCode }))).toBe(
-			expected,
-		);
-	});
-
-	it("recognizes only provider-specific validation messages", () => {
-		for (const message of [
-			"Invalid subcategoryId for orderItems[0]",
-			"width must be a positive number",
-			"aspect ratio out of range",
-			"resolution too low for print size",
-			["orderItems.0.width must be positive", "recipient.zipCode is required"],
-		]) {
-			expect(classifyLumaPrintsFailure(new LumaPrintsError("validation", { message }))).toBe(
-				"permanent",
-			);
-		}
+	it("maps the submission subclass disposition instead of generic status or message heuristics", () => {
 		expect(
 			classifyLumaPrintsFailure(
-				new LumaPrintsError("unknown", { message: "something weird happened" }),
+				new LumaPrintsSubmissionError("provider", "definitely_rejected", {
+					phase: "status",
+					statusCode: 400,
+				}),
+			),
+		).toBe("permanent");
+		expect(
+			classifyLumaPrintsFailure(
+				new LumaPrintsSubmissionError("provider", "uncertain", {
+					phase: "status",
+					statusCode: 400,
+				}),
 			),
 		).toBe("transient");
+		for (const details of [
+			{ statusCode: 400 },
+			{ statusCode: 422, message: "invalid subcategory" },
+			{ message: "bad request" },
+		]) {
+			expect(classifyLumaPrintsFailure(new LumaPrintsError("generic", details))).toBe("transient");
+		}
 	});
 
 	it.each([
@@ -62,7 +57,12 @@ describe("fulfillment error classification", () => {
 	it("returns only bounded summaries without provider bodies or source URLs", () => {
 		const secret = "https://opaque.example/private?token=secret";
 		const summaries = [
-			formatFailureForAdmin(new LumaPrintsError("raw", { statusCode: 400, message: secret })),
+			formatFailureForAdmin(
+				new LumaPrintsSubmissionError("raw", "definitely_rejected", {
+					phase: "status",
+					statusCode: 400,
+				}),
+			),
 			formatFailureForAdmin(new LumaPrintsError(secret)),
 			formatFailureForAdmin(new CatalogBoundaryError("rejected")),
 			formatFailureForAdmin(new TypeError(secret)),

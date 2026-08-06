@@ -49,11 +49,23 @@ function request(options: { authorization?: string; body?: unknown } = {}) {
 		headers: { authorization, "content-type": "application/json" },
 		body: JSON.stringify(
 			options.body ?? {
-				orderNumber: "LP-123",
+				orderNumber: "123",
 				shipments: [{ carrier: "FedEx", trackingNumber: "TRACK-1" }],
 			},
 		),
 	});
+}
+
+function streamingRequest(body: ReadableStream<Uint8Array>) {
+	return new Request("https://www.angelsrest.online/api/webhooks/lumaprints", {
+		method: "POST",
+		headers: {
+			authorization: `Basic ${Buffer.from("lumaprints:provider-password").toString("base64")}`,
+			"content-type": "application/json",
+		},
+		body,
+		duplex: "half",
+	} as RequestInit & { duplex: "half" });
 }
 
 describe("hub LumaPrints webhook", () => {
@@ -113,7 +125,7 @@ describe("hub LumaPrints webhook", () => {
 		await expect(response.json()).resolves.toEqual({ received: true, status: "processed" });
 		expect(mocks.mutation).toHaveBeenNthCalledWith(1, "orders.claimGlobal", {
 			webhookSecret: "convex-secret",
-			lumaprintsOrderNumber: "LP-123",
+			lumaprintsOrderNumber: "123",
 			trackingNumber: "TRACK-1",
 		});
 		expect(mocks.query).toHaveBeenCalledWith("platform.getCommerceProfile", {
@@ -131,15 +143,36 @@ describe("hub LumaPrints webhook", () => {
 		);
 		expect(mocks.mutation).toHaveBeenNthCalledWith(2, "orders.recordGlobal", {
 			webhookSecret: "convex-secret",
-			lumaprintsOrderNumber: "LP-123",
+			lumaprintsOrderNumber: "123",
 			status: "sent",
 			error: undefined,
 		});
 	});
 
+	it("rejects a non-canonical provider order number before Convex lookup", async () => {
+		const response = await POST({
+			request: request({ body: { orderNumber: "01", shipments: [{}] } }),
+		});
+		expect(response.status).toBe(400);
+		expect(mocks.mutation).not.toHaveBeenCalled();
+	});
+
+	it("returns 413 for a chunked body that crosses the streaming byte bound", async () => {
+		const body = new ReadableStream<Uint8Array>({
+			start(controller) {
+				controller.enqueue(new Uint8Array(200 * 1024));
+				controller.enqueue(new Uint8Array(60 * 1024));
+				controller.close();
+			},
+		});
+		const response = await POST({ request: streamingRequest(body) });
+		expect(response.status).toBe(413);
+		expect(mocks.mutation).not.toHaveBeenCalled();
+	});
+
 	it("rejects the legacy nested payload instead of silently acknowledging it", async () => {
 		const response = await POST({
-			request: request({ body: { event: "shipment.created", data: { orderNumber: "LP-123" } } }),
+			request: request({ body: { event: "shipment.created", data: { orderNumber: "123" } } }),
 		});
 		expect(response.status).toBe(400);
 		expect(mocks.mutation).not.toHaveBeenCalled();

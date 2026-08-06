@@ -13,6 +13,14 @@ const SOURCE_KEYS = "memberKey relationKey key mime bytes hash dimensions".split
 const FILE_KEYS = "kind relationKey key mime bytes hash filename version".split(" ");
 const token68 = /^[A-Za-z0-9._~+/-]{32,512}$/;
 const sha256 = /^[a-f0-9]{64}$/;
+const PRINT_SOURCE_DIMENSION_MAX = 100_000;
+const capabilityToken = /^[A-Za-z0-9_-]+$/;
+const CAPABILITY_TOKEN_MIN_BYTES = 12 + 16;
+const CAPABILITY_TOKEN_MAX_BYTES = 720;
+const CAPABILITY_FUTURE_SKEW_MS = 60_000;
+const PRINT_CAPABILITY_TTL_MS = 24 * 60 * 60 * 1000;
+const PRINT_CAPABILITY_MIN_REMAINING_MS = PRINT_CAPABILITY_TTL_MS - 60 * 60 * 1000;
+const PAID_CAPABILITY_TTL_MS = 15 * 60 * 1000;
 
 type Config = {
 	origin?: string;
@@ -21,6 +29,10 @@ type Config = {
 	signal?: AbortSignal;
 };
 type Descriptor = { key: string; hash: string; bytes: number; mime: string };
+export type PrintSourceDescriptor = Descriptor & {
+	mime: "image/jpeg" | "image/png";
+	dimensions: { width: number; height: number };
+};
 type Finish = {
 	paper: { subcategoryId: number };
 	size: { width: number; height: number };
@@ -33,7 +45,10 @@ export type PaidFulfillmentResolution = {
 	identity: { productKind: string };
 	commerce: { finish: Finish | null };
 	descriptor:
-		| { kind: "print_sources"; sources: Array<Descriptor & { memberKey: string | null }> }
+		| {
+				kind: "print_sources";
+				sources: Array<PrintSourceDescriptor & { memberKey: string | null }>;
+		  }
 		| ({ kind: "paid_zip" } & Descriptor)
 		| { kind: "merchant" };
 };
@@ -75,6 +90,23 @@ function validDescriptor(value: unknown): value is Descriptor {
 		Number.isSafeInteger(value.bytes) &&
 		Number(value.bytes) > 0 &&
 		typeof value.mime === "string"
+	);
+}
+function positiveSourceDimension(value: unknown) {
+	return (
+		Number.isSafeInteger(value) && Number(value) > 0 && Number(value) <= PRINT_SOURCE_DIMENSION_MAX
+	);
+}
+export function isPrintSourceDescriptor(value: unknown): value is PrintSourceDescriptor {
+	if (!validDescriptor(value) || (value.mime !== "image/jpeg" && value.mime !== "image/png")) {
+		return false;
+	}
+	const dimensions = (value as Descriptor & { dimensions?: unknown }).dimensions;
+	return (
+		object(dimensions) &&
+		exact(dimensions, ["width", "height"]) &&
+		positiveSourceDimension(dimensions.width) &&
+		positiveSourceDimension(dimensions.height)
 	);
 }
 
@@ -193,7 +225,7 @@ function parsePaid(value: unknown, purpose: "paid_fulfillment" | "paid_download"
 		)
 			throw rejected();
 		for (const source of descriptor.sources) {
-			if (!object(source) || !exact(source, SOURCE_KEYS) || !validDescriptor(source))
+			if (!object(source) || !exact(source, SOURCE_KEYS) || !isPrintSourceDescriptor(source))
 				throw rejected();
 		}
 	} else if (descriptor.kind === "paid_zip") {
@@ -261,8 +293,56 @@ export async function resolvePaidDownload(
 	if (value.descriptor.kind !== "paid_zip") throw rejected();
 	return value;
 }
+function canonicalCapabilityToken(token: string) {
+	if (
+		!capabilityToken.test(token) ||
+		token.length > Math.ceil((CAPABILITY_TOKEN_MAX_BYTES * 4) / 3)
+	)
+		return false;
+	let binary: string;
+	try {
+		binary = atob(
+			token.replaceAll("-", "+").replaceAll("_", "/") + "=".repeat((4 - (token.length % 4)) % 4),
+		);
+	} catch {
+		return false;
+	}
+	if (binary.length < CAPABILITY_TOKEN_MIN_BYTES || binary.length > CAPABILITY_TOKEN_MAX_BYTES)
+		return false;
+	let encoded = "";
+	for (let index = 0; index < binary.length; index += 1) {
+		encoded += String.fromCharCode(binary.charCodeAt(index));
+	}
+	return btoa(encoded).replaceAll("+", "-").replaceAll("/", "_").replace(/=+$/, "") === token;
+}
+
+function capabilityPath(purpose: IssuerPurpose, mime: string, pathname: string) {
+	const extension =
+		purpose === "print_source"
+			? mime === "image/jpeg"
+				? "jpg"
+				: mime === "image/png"
+					? "png"
+					: null
+			: mime === "application/zip"
+				? "zip"
+				: null;
+	if (!extension) return false;
+	const prefix =
+		purpose === "print_source"
+			? "/v1/catalog-assets/fulfillment/print-source/"
+			: "/v1/catalog-assets/fulfillment/paid-file/";
+	if (!pathname.startsWith(prefix) || !pathname.endsWith(`.${extension}`)) return false;
+	const token = pathname.slice(prefix.length, -(extension.length + 1));
+	return canonicalCapabilityToken(token);
+}
+
 async function issue(purpose: IssuerPurpose, value: Descriptor, config = configured(purpose)) {
-	if (!validDescriptor(value)) throw rejected();
+	if (
+		(purpose === "print_source" && !isPrintSourceDescriptor(value)) ||
+		(purpose === "paid_file" && !validDescriptor(value))
+	)
+		throw rejected();
 	const result = await post(config, purpose, {
 		version: 1,
 		key: value.key,
@@ -281,16 +361,37 @@ async function issue(purpose: IssuerPurpose, value: Descriptor, config = configu
 		new Date(result.expiresAt).toISOString() !== result.expiresAt
 	)
 		throw rejected();
+	const expiresAt = Date.parse(result.expiresAt);
+	const now = Date.now();
+	const maximumLifetime =
+		purpose === "print_source" ? PRINT_CAPABILITY_TTL_MS : PAID_CAPABILITY_TTL_MS;
+	if (
+		expiresAt <= now ||
+		(purpose === "print_source" && expiresAt - now < PRINT_CAPABILITY_MIN_REMAINING_MS) ||
+		expiresAt > now + maximumLifetime + CAPABILITY_FUTURE_SKEW_MS
+	) {
+		throw rejected();
+	}
 	try {
 		const capability = new URL(result.url);
-		if (capability.protocol !== "https:" || capability.username || capability.password)
+		if (
+			!config.origin ||
+			capability.href !== result.url ||
+			capability.origin !== config.origin ||
+			capability.protocol !== "https:" ||
+			capability.username ||
+			capability.password ||
+			capability.search ||
+			capability.hash ||
+			!capabilityPath(purpose, value.mime, capability.pathname)
+		)
 			throw rejected();
 	} catch {
 		throw rejected();
 	}
 	return result.url;
 }
-export const issuePrintSource = (value: Descriptor, config?: Config) =>
+export const issuePrintSource = (value: PrintSourceDescriptor, config?: Config) =>
 	issue("print_source", value, config);
 export const issuePaidFile = (value: Descriptor, config?: Config) =>
 	issue("paid_file", value, config);

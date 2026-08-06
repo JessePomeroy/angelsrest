@@ -11,6 +11,12 @@ import {
 
 const token = "a".repeat(32);
 const origin = "https://private.example";
+const sealedCapability = Buffer.alloc(64, 7).toString("base64url");
+function capability(purpose: "paid_file" | "print_source", extension?: "jpg" | "png" | "zip") {
+	const segment = purpose === "print_source" ? "print-source" : "paid-file";
+	const suffix = extension ?? (purpose === "print_source" ? "jpg" : "zip");
+	return `${origin}/v1/catalog-assets/fulfillment/${segment}/${sealedCapability}.${suffix}`;
+}
 function json(value: unknown, status = 200) {
 	const body = JSON.stringify(value);
 	return new Response(body, {
@@ -138,6 +144,27 @@ describe("fixed-purpose catalog clients", () => {
 			});
 			expect(init?.signal).toBeInstanceOf(AbortSignal);
 		}
+	});
+
+	it.each([
+		["zero", { width: 0, height: 10 }, "image/jpeg"],
+		["negative", { width: 10, height: -1 }, "image/jpeg"],
+		["fractional", { width: 10.5, height: 10 }, "image/jpeg"],
+		["oversized", { width: 100_001, height: 10 }, "image/jpeg"],
+		["wrongly typed", { width: "10", height: 10 }, "image/jpeg"],
+		["non-print MIME", { width: 10, height: 10 }, "image/webp"],
+	] as const)("rejects %s paid print-source metadata at the resolver boundary", async (_case, dimensions, mime) => {
+		const response = structuredClone(paidResponse("paid_fulfillment")) as Record<string, unknown>;
+		const descriptor = response.descriptor as { sources: Array<Record<string, unknown>> };
+		const source = descriptor.sources[0];
+		if (!source) throw new Error("Paid response fixture lost its print source");
+		source.dimensions = dimensions;
+		source.mime = mime;
+		const fetch = vi.fn(async () => json(response));
+		await expect(
+			resolvePaidFulfillment("cs_test_123456789", 0, { origin, bearer: token, fetch }),
+		).rejects.toMatchObject({ kind: "rejected", phase: "envelope" });
+		expect(fetch).toHaveBeenCalledOnce();
 	});
 
 	it.each([
@@ -285,18 +312,29 @@ describe("fixed-purpose catalog clients", () => {
 	});
 
 	it("issues exact descriptors on disjoint Worker routes and returns opaque URLs unchanged", async () => {
-		const capability = "https://opaque.example/a_b-C?sealed=1";
-		const fetch = vi.fn(async (_url: URL | RequestInfo, _init?: RequestInit) =>
-			json({ version: 1, url: capability, expiresAt: "2026-01-01T00:00:00.000Z" }),
+		const printCapability = capability("print_source");
+		const paidCapability = capability("paid_file");
+		const now = Date.now();
+		const fetch = vi.fn(async (url: URL | RequestInfo, _init?: RequestInit) =>
+			json({
+				version: 1,
+				url: String(url).includes("print-source") ? printCapability : paidCapability,
+				expiresAt: new Date(
+					now + (String(url).includes("print-source") ? 24 * 60 * 60 * 1000 : 5 * 60 * 1000),
+				).toISOString(),
+			}),
 		);
 		const descriptor = {
 			key: "private/key",
 			hash: "c".repeat(64),
 			bytes: 10,
-			mime: "image/jpeg",
+			mime: "image/jpeg" as const,
+			dimensions: { width: 6000, height: 4000 },
 			relationKey: "must-not-cross",
 		};
-		expect(await issuePrintSource(descriptor, { origin, bearer: token, fetch })).toBe(capability);
+		expect(await issuePrintSource(descriptor, { origin, bearer: token, fetch })).toBe(
+			printCapability,
+		);
 		expect(
 			await issuePaidFile(
 				{ ...descriptor, mime: "application/zip" },
@@ -306,7 +344,7 @@ describe("fixed-purpose catalog clients", () => {
 					fetch,
 				},
 			),
-		).toBe(capability);
+		).toBe(paidCapability);
 		expect(fetch.mock.calls.map(([url]) => url)).toEqual([
 			`${origin}/v1/catalog-assets/fulfillment/print-source/capabilities`,
 			`${origin}/v1/catalog-assets/fulfillment/paid-file/capabilities`,
@@ -318,6 +356,131 @@ describe("fixed-purpose catalog clients", () => {
 			bytes: descriptor.bytes,
 			mime: descriptor.mime,
 		});
+	});
+
+	it("validates print dimensions and MIME before requesting a capability", async () => {
+		const valid = {
+			key: "private/key",
+			hash: "c".repeat(64),
+			bytes: 10,
+			mime: "image/jpeg" as const,
+			dimensions: { width: 6000, height: 4000 },
+		};
+		const candidates = [
+			{ ...valid, dimensions: { width: 0, height: 4000 } },
+			{ ...valid, dimensions: { width: -1, height: 4000 } },
+			{ ...valid, dimensions: { width: 1.5, height: 4000 } },
+			{ ...valid, dimensions: { width: 100_001, height: 4000 } },
+			{ ...valid, dimensions: { width: 6000, height: Number.NaN } },
+			{ ...valid, dimensions: { width: 6000, height: 4000, depth: 8 } },
+			{ ...valid, mime: "image/webp" },
+		];
+		const fetch = vi.fn();
+		for (const candidate of candidates) {
+			await expect(
+				issuePrintSource(candidate as unknown as Parameters<typeof issuePrintSource>[0], {
+					origin,
+					bearer: token,
+					fetch,
+				}),
+			).rejects.toMatchObject({ kind: "rejected", phase: "envelope" });
+		}
+		expect(fetch).not.toHaveBeenCalled();
+	});
+
+	it("rejects stale, wrong-origin, wrong-purpose, noncanonical, and decorated capabilities", async () => {
+		const descriptor = {
+			key: "private/key",
+			hash: "c".repeat(64),
+			bytes: 10,
+			mime: "image/jpeg" as const,
+			dimensions: { width: 6000, height: 4000 },
+		};
+		const now = Date.now();
+		const candidates = [
+			{ url: capability("print_source"), expiresAt: new Date(now - 1).toISOString() },
+			{
+				url: capability("print_source"),
+				expiresAt: new Date(now + 22 * 60 * 60 * 1000).toISOString(),
+			},
+			{
+				url: capability("print_source"),
+				expiresAt: new Date(now + 24 * 60 * 60 * 1000 + 120_000).toISOString(),
+			},
+			{
+				url: capability("print_source").replace(origin, "https://other.example"),
+				expiresAt: new Date(now + 60_000).toISOString(),
+			},
+			{
+				url: capability("paid_file"),
+				expiresAt: new Date(now + 60_000).toISOString(),
+			},
+			{
+				url: capability("print_source", "png"),
+				expiresAt: new Date(now + 60_000).toISOString(),
+			},
+			{
+				url: capability("print_source").replace(sealedCapability, `${sealedCapability}=`),
+				expiresAt: new Date(now + 60_000).toISOString(),
+			},
+			{
+				url: `${capability("print_source")}?download=1`,
+				expiresAt: new Date(now + 60_000).toISOString(),
+			},
+			{
+				url: `${capability("print_source")}#fragment`,
+				expiresAt: new Date(now + 60_000).toISOString(),
+			},
+		];
+		for (const [index, candidate] of candidates.entries()) {
+			const fetch = vi.fn(async () => json({ version: 1, ...candidate }));
+			const outcome = await issuePrintSource(descriptor, { origin, bearer: token, fetch })
+				.then(() => ({ kind: "accepted" as const }))
+				.catch((error: unknown) => ({ kind: "rejected" as const, error }));
+			if (outcome.kind === "accepted") {
+				throw new Error(`Capability candidate ${index} was accepted`);
+			}
+			expect(outcome.error).toMatchObject({ kind: "rejected", phase: "envelope" });
+			expect(fetch).toHaveBeenCalledOnce();
+		}
+	});
+
+	it("accepts the 24-hour print and 15-minute paid-file lifetime contracts", async () => {
+		for (const { issue, url, lifetime } of [
+			{
+				url: capability("print_source", "png"),
+				lifetime: 24 * 60 * 60 * 1000,
+				issue: (fetch: typeof globalThis.fetch) =>
+					issuePrintSource(
+						{
+							key: "private/key",
+							hash: "c".repeat(64),
+							bytes: 10,
+							mime: "image/png",
+							dimensions: { width: 6000, height: 4000 },
+						},
+						{ origin, bearer: token, fetch },
+					),
+			},
+			{
+				url: capability("paid_file"),
+				lifetime: 15 * 60 * 1000,
+				issue: (fetch: typeof globalThis.fetch) =>
+					issuePaidFile(
+						{
+							key: "private/key",
+							hash: "c".repeat(64),
+							bytes: 10,
+							mime: "application/zip",
+						},
+						{ origin, bearer: token, fetch },
+					),
+			},
+		]) {
+			const expiresAt = new Date(Date.now() + lifetime).toISOString();
+			const fetch = vi.fn(async () => json({ version: 1, url, expiresAt }));
+			await expect(issue(fetch)).resolves.toBe(url);
+		}
 	});
 
 	it("defaults unavailable, rejects non-exact origins and bounded responses, and never retries", async () => {
