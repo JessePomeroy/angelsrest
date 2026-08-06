@@ -933,6 +933,9 @@ export default defineSchema({
 		),
 		printFulfillmentClaimedAt: v.optional(v.number()),
 		printFulfillmentLeaseExpiresAt: v.optional(v.number()),
+		// Written only by the V3 coordinator. Exact V1/V2 durable rows remain
+		// unversioned so refund races cannot opt an older host into V3 semantics.
+		printFulfillmentCoordinatorVersion: v.optional(v.literal(3)),
 		// The provider POST fence remains durable until an exact provider result
 		// resolves it. Contract failures block automatic retries without releasing it.
 		printFulfillmentResolution: v.optional(
@@ -951,6 +954,36 @@ export default defineSchema({
 			),
 		),
 		printFulfillmentReconciliationBlockedAt: v.optional(v.number()),
+		// Bounded V3 GET recovery tallies every inconclusive class and eventually
+		// escalates to operator review without asserting provider absence.
+		printFulfillmentReconciliationPendingFirstAt: v.optional(v.number()),
+		printFulfillmentReconciliationPendingAttempts: v.optional(v.number()),
+		printFulfillmentReconciliationLastAttemptAt: v.optional(v.number()),
+		printFulfillmentReconciliationLastAttemptClass: v.optional(
+			v.union(
+				v.literal("transport"),
+				v.literal("rate_or_server"),
+				v.literal("resource_bound"),
+				v.literal("client_exception"),
+				v.literal("result_not_observed"),
+			),
+		),
+		printFulfillmentReconciliationPendingClassCounts: v.optional(v.object({
+			transport: v.number(),
+			rate_or_server: v.number(),
+			resource_bound: v.number(),
+			client_exception: v.number(),
+			result_not_observed: v.number(),
+		})),
+		printFulfillmentReconciliationEscalationReason: v.optional(
+			v.union(
+				v.literal("transport"),
+				v.literal("rate_or_server"),
+				v.literal("resource_bound"),
+				v.literal("client_exception"),
+				v.literal("result_not_observed"),
+			),
+		),
 		// Retry-safe lease for the operator alert emitted for a deterministic
 		// reconciliation block. All fields stay optional so pre-rollout orders need
 		// no backfill; `SentAt` is the terminal no-more-sends marker.
@@ -965,9 +998,18 @@ export default defineSchema({
 		// Shared atomic success-notification fence for both non-print outcomes and
 		// durable print-provider completions.
 		orderConfirmationClaimedAt: v.optional(v.number()),
-		// Legacy claim marker for the one-time shipment email side effect.
-		// New delivery observability lives in `shipmentEmailDeliveryStatus`.
+		// Legacy terminal marker for the pre-lease shipment email side effect.
+		// A historical marker, or a historical shipped row without V2 evidence,
+		// remains terminal and is never opted into retryable delivery.
 		shipmentEmailSentAt: v.optional(v.number()),
+		// Hub-only retry-safe shipment notification protocol. Optional fields keep
+		// rollout compatible with existing orders; only `leased_v2` rows may reclaim
+		// an expired lease after status has advanced to shipped.
+		shipmentEmailNotificationProtocol: v.optional(v.literal("leased_v2")),
+		shipmentEmailNotificationClaimedAt: v.optional(v.number()),
+		shipmentEmailNotificationClaimToken: v.optional(v.string()),
+		shipmentEmailNotificationLeaseExpiresAt: v.optional(v.number()),
+		shipmentEmailNotificationCompletedAt: v.optional(v.number()),
 		shipmentEmailDeliveryStatus: v.optional(
 			v.union(
 				v.literal("pending"),
@@ -993,24 +1035,68 @@ export default defineSchema({
 		),
 		// Human-readable error from the failed LumaPrints submission.
 		fulfillmentError: v.optional(v.string()),
-		// Stripe refund ID after provider-authoritative manual reconciliation or
-		// successful automated fulfillment recovery.
+		// Stripe refund ID after provider-authoritative manual reconciliation or a
+		// succeeded automated fulfillment recovery. Pending and failed automated
+		// refunds live in the separate automated fields below.
 		stripeRefundId: v.optional(v.string()),
 		// Durable checkpoint for retry-safe permanent fulfillment recovery.
 		// `refund_pending` is written before Stripe is called; `refunded` is
 		// written only after the refund ID is durable on this order.
 		fulfillmentRecoveryStatus: v.optional(
-			v.union(v.literal("refund_pending"), v.literal("refunded")),
+			v.union(
+				v.literal("refund_pending"),
+				v.literal("refunded"),
+				v.literal("refund_failed"),
+				v.literal("refund_attention"),
+			),
+		),
+		// The provider refund identity/status is durable before success is inferred.
+		// `stripeRefundId` is populated only when this status reaches `succeeded`.
+		automatedRefundId: v.optional(v.string()),
+		automatedRefundStatus: v.optional(
+			v.union(
+				v.literal("pending"),
+				v.literal("requires_action"),
+				v.literal("succeeded"),
+				v.literal("failed"),
+				v.literal("canceled"),
+			),
+		),
+		automatedRefundAttempts: v.optional(v.number()),
+		automatedRefundFirstAttemptAt: v.optional(v.number()),
+		automatedRefundLastAttemptAt: v.optional(v.number()),
+		automatedRefundAttentionAt: v.optional(v.number()),
+		automatedRefundAttentionReason: v.optional(
+			v.union(v.literal("attempts_exhausted"), v.literal("age_exceeded")),
 		),
 		// One rollout-safe lease owns the idempotent Stripe refund request. The
 		// fields are optional so existing recovery rows require no backfill.
 		automatedRefundClaimedAt: v.optional(v.number()),
 		automatedRefundClaimToken: v.optional(v.string()),
 		automatedRefundLeaseExpiresAt: v.optional(v.number()),
-		// Separate at-most-once claims bound the admin and customer failure-email
-		// attempts after the automated refund ID is durable.
+		// Legacy pre-lease markers remain readable during rollout but are never
+		// sufficient to authorize a send under the new notification protocol.
 		fulfillmentFailureAdminNotificationClaimedAt: v.optional(v.number()),
 		fulfillmentFailureCustomerNotificationClaimedAt: v.optional(v.number()),
+		// Set only when a signed update first touches a pre-protocol terminal row.
+		// It lets status truth converge without ever opting that row into new
+		// customer/admin refund-success notifications.
+		legacyAutomatedRefundNotificationsSuppressed: v.optional(v.literal(true)),
+		fulfillmentFailureNotificationProtocol: v.optional(v.literal("leased_v1")),
+		fulfillmentFailureAdminNotificationClaimToken: v.optional(v.string()),
+		fulfillmentFailureAdminNotificationLeaseExpiresAt: v.optional(v.number()),
+		fulfillmentFailureAdminNotificationSentAt: v.optional(v.number()),
+		fulfillmentFailureCustomerNotificationClaimToken: v.optional(v.string()),
+		fulfillmentFailureCustomerNotificationLeaseExpiresAt: v.optional(v.number()),
+		fulfillmentFailureCustomerNotificationSentAt: v.optional(v.number()),
+		automatedRefundFailureNotificationClaimedAt: v.optional(v.number()),
+		automatedRefundFailureNotificationClaimToken: v.optional(v.string()),
+		automatedRefundFailureNotificationLeaseExpiresAt: v.optional(v.number()),
+		automatedRefundFailureNotificationSentAt: v.optional(v.number()),
+		automatedRefundAttentionNotificationClaimedAt: v.optional(v.number()),
+		automatedRefundAttentionNotificationClaimToken: v.optional(v.string()),
+		automatedRefundAttentionNotificationLeaseExpiresAt: v.optional(v.number()),
+		automatedRefundAttentionNotificationSentAt: v.optional(v.number()),
 		notes: v.optional(v.string()),
 	})
 		.index("by_siteUrl", ["siteUrl"])
@@ -1021,9 +1107,8 @@ export default defineSchema({
 		// Hub-owned shipment webhook lookup. LumaPrints order numbers are
 		// provider-global; the mutation rejects duplicates rather than guessing.
 		.index("by_lumaprintsOrderNumber_global", ["lumaprintsOrderNumber"])
-		// Webhook lookup: LumaPrints' shipment.created webhook arrives with
-		// only the LumaPrints order number (no Convex _id). Scoped by siteUrl
-		// so spokes can't read each other's orders.
+		// Deprecated authenticated-admin compatibility lookup. The hub webhook
+		// uses the provider-global index and never delegates its bearer secret.
 		.index("by_lumaprintsOrderNumber", ["siteUrl", "lumaprintsOrderNumber"]),
 
 	// One durable claim per signed Stripe event and account scope. The claim is

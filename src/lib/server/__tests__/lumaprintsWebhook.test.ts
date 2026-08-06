@@ -4,6 +4,7 @@ import {
 	parseLumaPrintsShippingPayload,
 	processLumaPrintsShipment,
 	readLumaPrintsShippingPayload,
+	ShipmentEmailDeliveryError,
 	verifyLumaPrintsBasicAuthorization,
 } from "$lib/server/lumaprintsWebhook";
 
@@ -121,14 +122,17 @@ describe("LumaPrints shipment orchestration", () => {
 	function dependencies() {
 		return {
 			claim: vi.fn().mockResolvedValue({
-				claimed: true,
+				kind: "claimed",
+				leaseExpiresAt: Date.now() + 60_000,
 				order: {
+					_id: "order-id",
 					siteUrl: "tenant.example",
 					orderNumber: "ORD-001",
 					customerEmail: "buyer@example.com",
 				},
 			}),
-			record: vi.fn().mockResolvedValue({ recorded: true }),
+			complete: vi.fn().mockResolvedValue(true),
+			release: vi.fn().mockResolvedValue(true),
 			send: vi.fn().mockResolvedValue(undefined),
 		};
 	}
@@ -148,43 +152,71 @@ describe("LumaPrints shipment orchestration", () => {
 				trackingNumber: "TRACK",
 			}),
 		);
-		expect(deps.record).toHaveBeenCalledWith({
+		expect(deps.complete).toHaveBeenCalledWith({
+			orderId: "order-id",
 			lumaprintsOrderNumber: "101",
-			status: "sent",
-			error: undefined,
+			claimToken: expect.any(String),
+			deliveryStatus: "sent",
 		});
+		expect(deps.release).not.toHaveBeenCalled();
 	});
 
 	it("does not repeat email for an already-processed claim", async () => {
 		const deps = dependencies();
-		deps.claim.mockResolvedValue({
-			claimed: false,
-			order: {
-				siteUrl: "tenant.example",
-				orderNumber: "ORD-001",
-				customerEmail: "buyer@example.com",
-			},
-		});
+		deps.claim.mockResolvedValue({ kind: "completed" });
 
 		await expect(processLumaPrintsShipment({ orderNumber: "101" }, deps)).resolves.toEqual({
 			status: "already_processed",
 		});
 		expect(deps.send).not.toHaveBeenCalled();
-		expect(deps.record).not.toHaveBeenCalled();
+		expect(deps.complete).not.toHaveBeenCalled();
+		expect(deps.release).not.toHaveBeenCalled();
 	});
 
-	it("records a bounded provider failure instead of losing the claimed outcome", async () => {
+	it("returns an active lease as retryable work without sending", async () => {
 		const deps = dependencies();
-		deps.send.mockRejectedValue(new Error("Resend unavailable"));
+		deps.claim.mockResolvedValue({ kind: "busy", leaseExpiresAt: Date.now() + 30_000 });
+
+		await expect(processLumaPrintsShipment({ orderNumber: "101" }, deps)).resolves.toMatchObject({
+			status: "busy",
+			retryAfterMs: expect.any(Number),
+		});
+		expect(deps.send).not.toHaveBeenCalled();
+		expect(deps.complete).not.toHaveBeenCalled();
+		expect(deps.release).not.toHaveBeenCalled();
+	});
+
+	it("releases a failed send with only its bounded failure code", async () => {
+		const deps = dependencies();
+		deps.send.mockRejectedValue(new ShipmentEmailDeliveryError("email_delivery_failed"));
 
 		await expect(processLumaPrintsShipment({ orderNumber: "101" }, deps)).resolves.toEqual({
-			status: "processed",
-			delivery: { status: "failed", error: "Resend unavailable" },
+			status: "retryable_failure",
+			failureCode: "email_delivery_failed",
 		});
-		expect(deps.record).toHaveBeenCalledWith({
+		expect(deps.release).toHaveBeenCalledWith({
+			orderId: "order-id",
 			lumaprintsOrderNumber: "101",
-			status: "failed",
-			error: "Resend unavailable",
+			claimToken: expect.any(String),
+			failureCode: "email_delivery_failed",
 		});
+		expect(deps.complete).not.toHaveBeenCalled();
+	});
+
+	it("retries idempotently after a send succeeds but completion crashes", async () => {
+		const deps = dependencies();
+		deps.complete.mockRejectedValueOnce(new Error("Convex unavailable"));
+
+		await expect(processLumaPrintsShipment({ orderNumber: "101" }, deps)).rejects.toThrow(
+			"Convex unavailable",
+		);
+		expect(deps.send).toHaveBeenCalledOnce();
+		expect(deps.release).not.toHaveBeenCalled();
+
+		deps.complete.mockResolvedValueOnce(true);
+		await expect(processLumaPrintsShipment({ orderNumber: "101" }, deps)).resolves.toMatchObject({
+			status: "processed",
+		});
+		expect(deps.send).toHaveBeenCalledTimes(2);
 	});
 });

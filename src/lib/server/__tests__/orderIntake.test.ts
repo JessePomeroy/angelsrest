@@ -4,6 +4,8 @@ import type { Id } from "$convex/dataModel";
 
 const mockLogStructured = vi.fn();
 const mockSendAdminNotification = vi.fn();
+const mockSendAutomatedRefundAttentionAlert = vi.fn();
+const mockSendAutomatedRefundFailureAlert = vi.fn();
 const mockSendCustomerConfirmation = vi.fn();
 const mockSendCustomerFulfillmentFailure = vi.fn();
 const mockSendFailureAlert = vi.fn();
@@ -24,6 +26,8 @@ vi.mock("$lib/server/logger", () => ({
 
 vi.mock("$lib/server/webhookEmails", () => ({
 	sendAdminNotification: mockSendAdminNotification,
+	sendAutomatedRefundAttentionAlert: mockSendAutomatedRefundAttentionAlert,
+	sendAutomatedRefundFailureAlert: mockSendAutomatedRefundFailureAlert,
 	sendCustomerConfirmation: mockSendCustomerConfirmation,
 	sendCustomerFulfillmentFailure: mockSendCustomerFulfillmentFailure,
 	sendFailureAlert: mockSendFailureAlert,
@@ -38,26 +42,31 @@ vi.mock("$convex/api", () => ({
 		orders: {
 			beginPrintFulfillmentSubmission: "orders.beginPrintFulfillmentSubmission",
 			blockPrintFulfillmentReconciliation: "orders.blockPrintFulfillmentReconciliation",
-			claimAutomatedFulfillmentRefund: "orders.claimAutomatedFulfillmentRefund",
-			claimFulfillmentFailureNotification: "orders.claimFulfillmentFailureNotification",
+			claimAutomatedFulfillmentRefundV2: "orders.claimAutomatedFulfillmentRefundV2",
+			claimFulfillmentFailureNotificationV2: "orders.claimFulfillmentFailureNotificationV2",
 			claimOrderConfirmation: "orders.claimOrderConfirmation",
 			claimPaymentFailureEmail: "orders.claimPaymentFailureEmail",
 			claimNonPrintOrderOutcome: "orders.claimNonPrintOrderOutcome",
-			claimPrintFulfillmentV2: "orders.claimPrintFulfillmentV2",
+			claimPrintFulfillmentV3: "orders.claimPrintFulfillmentV3",
 			claimPrintFulfillmentReconciliationAlert: "orders.claimPrintFulfillmentReconciliationAlert",
-			completeAutomatedFulfillmentRefund: "orders.completeAutomatedFulfillmentRefund",
+			completeFulfillmentFailureNotificationV2: "orders.completeFulfillmentFailureNotificationV2",
+			recordAutomatedFulfillmentRefund: "orders.recordAutomatedFulfillmentRefund",
 			completePrintFulfillmentReconciliationAlert:
 				"orders.completePrintFulfillmentReconciliationAlert",
 			completePrintFulfillmentSubmission: "orders.completePrintFulfillmentSubmission",
 			create: "orders.create",
 			reconcilePrintFulfillmentSubmission: "orders.reconcilePrintFulfillmentSubmission",
+			reconcileAutomatedFulfillmentRefund: "orders.reconcileAutomatedFulfillmentRefund",
 			reconcileSucceededManualRefund: "orders.reconcileSucceededManualRefund",
 			rejectPrintFulfillmentSubmission: "orders.rejectPrintFulfillmentSubmission",
 			releasePrintFulfillmentClaim: "orders.releasePrintFulfillmentClaim",
 			releaseAutomatedFulfillmentRefund: "orders.releaseAutomatedFulfillmentRefund",
+			releaseFulfillmentFailureNotificationV2: "orders.releaseFulfillmentFailureNotificationV2",
 			releasePrintFulfillmentReconciliationAlert:
 				"orders.releasePrintFulfillmentReconciliationAlert",
 			resolveCheckoutRouting: "orders.resolveCheckoutRouting",
+			recordPrintFulfillmentReconciliationPending:
+				"orders.recordPrintFulfillmentReconciliationPending",
 			updatePrintFulfillment: "orders.updatePrintFulfillment",
 			updateStatus: "orders.updateStatus",
 		},
@@ -184,8 +193,14 @@ describe("processStripeWebhookEvent", () => {
 		{ kind: "claimed" | "unavailable" } | { kind: "busy"; leaseExpiresAt: number }
 	>;
 	let reconciliationAlertCompletionResults: Array<boolean | Error>;
-	let fulfillmentFailureNotificationClaimResults: boolean[];
-	let automatedRefundCompletionResults: Array<{ kind: "completed" | "replayed" } | Error>;
+	let fulfillmentFailureNotificationClaimResults: Array<
+		{ kind: "claimed" | "unavailable" } | { kind: "busy"; leaseExpiresAt: number }
+	>;
+	let automatedRefundCompletionResults: Array<
+		{ kind: "succeeded"; stripeRefundId: string } | Error
+	>;
+	let automatedRefundReconciliationResult: Record<string, unknown> | undefined;
+	let manualRefundReconciliationResult: Record<string, unknown>;
 	let paymentFailureClaimResults: boolean[];
 	const convex = {
 		mutation: vi.fn(),
@@ -203,6 +218,7 @@ describe("processStripeWebhookEvent", () => {
 		},
 		refunds: {
 			create: vi.fn(),
+			retrieve: vi.fn(),
 		},
 	} as any;
 
@@ -218,8 +234,10 @@ describe("processStripeWebhookEvent", () => {
 		blockReconciliationResults = [true];
 		reconciliationAlertClaimResults = [{ kind: "claimed" }, { kind: "unavailable" }];
 		reconciliationAlertCompletionResults = [true];
-		fulfillmentFailureNotificationClaimResults = [true, true];
+		fulfillmentFailureNotificationClaimResults = [{ kind: "claimed" }, { kind: "claimed" }];
 		automatedRefundCompletionResults = [];
+		automatedRefundReconciliationResult = undefined;
+		manualRefundReconciliationResult = { kind: "reconciled" };
 		vi.unstubAllGlobals();
 		paymentFailureClaimResults = [true];
 		convex.mutation.mockImplementation(
@@ -243,7 +261,7 @@ describe("processStripeWebhookEvent", () => {
 					if (result === undefined) throw new Error("Missing payment-failure claim result");
 					return result;
 				}
-				if (reference === "orders.claimPrintFulfillmentV2")
+				if (reference === "orders.claimPrintFulfillmentV3")
 					return (
 						printClaimResults.shift() ??
 						claimResultOverride ?? { kind: "claimed", externalId: claimedExternalId }
@@ -252,25 +270,41 @@ describe("processStripeWebhookEvent", () => {
 					return { kind: "submitting", externalId: claimedExternalId };
 				}
 				if (reference === "orders.reconcileSucceededManualRefund") {
-					return { kind: "reconciled" };
+					return manualRefundReconciliationResult;
+				}
+				if (reference === "orders.reconcileAutomatedFulfillmentRefund") {
+					return (
+						automatedRefundReconciliationResult ?? {
+							kind: "pending",
+							refundStatus: "pending",
+						}
+					);
 				}
 				if (reference === "orders.releasePrintFulfillmentClaim") return true;
 				if (reference === "orders.releaseAutomatedFulfillmentRefund") return true;
 				if (reference === "orders.releasePrintFulfillmentReconciliationAlert") return true;
-				if (reference === "orders.claimAutomatedFulfillmentRefund") {
+				if (reference === "orders.claimAutomatedFulfillmentRefundV2") {
 					return { kind: "claimed", leaseExpiresAt: Date.now() + 60_000 };
 				}
-				if (reference === "orders.completeAutomatedFulfillmentRefund") {
-					const result = automatedRefundCompletionResults.shift() ?? { kind: "completed" };
+				if (reference === "orders.recordAutomatedFulfillmentRefund") {
+					const result = automatedRefundCompletionResults.shift() ?? {
+						kind: "succeeded",
+						stripeRefundId: "re_test_123",
+					};
 					if (result instanceof Error) throw result;
 					return result;
 				}
-				if (reference === "orders.claimFulfillmentFailureNotification") {
+				if (reference === "orders.claimFulfillmentFailureNotificationV2") {
 					const result = fulfillmentFailureNotificationClaimResults.shift();
 					if (result === undefined) {
 						throw new Error("Missing fulfillment-failure notification claim result");
 					}
 					return result;
+				}
+				if (reference === "orders.releaseFulfillmentFailureNotificationV2") return true;
+				if (reference === "orders.completeFulfillmentFailureNotificationV2") return true;
+				if (reference === "orders.recordPrintFulfillmentReconciliationPending") {
+					return { kind: "pending", attempts: 1 };
 				}
 				if (reference === "orders.blockPrintFulfillmentReconciliation") {
 					const result = blockReconciliationResults.shift();
@@ -335,6 +369,28 @@ describe("processStripeWebhookEvent", () => {
 		);
 	}
 
+	function automatedRefundEvent(
+		status: "pending" | "requires_action" | "succeeded" | "failed" | "canceled",
+		type: "refund.created" | "refund.updated" | "refund.failed" = "refund.updated",
+	) {
+		return makeStripeEvent(
+			type,
+			{
+				id: "re_automated1234567890",
+				amount: 1500,
+				charge: "ch_1234567890abcdef",
+				currency: "usd",
+				metadata: {
+					automated: "fulfillment_recovery_v1",
+					orderNumber: "ORD-001",
+				},
+				payment_intent: "pi_1234567890abcdef",
+				status,
+			},
+			{ id: "evt_automated1234567890", livemode: false },
+		);
+	}
+
 	function manualRefundSession(overrides: Record<string, unknown> = {}) {
 		return {
 			id: "cs_test_1234567890abcdef",
@@ -371,6 +427,117 @@ describe("processStripeWebhookEvent", () => {
 		expect(mockSendCustomerConfirmation).not.toHaveBeenCalled();
 		expect(mockSendCustomerFulfillmentFailure).not.toHaveBeenCalled();
 		expect(mockSendFailureAlert).not.toHaveBeenCalled();
+	});
+
+	it("returns a retryable host error for a signed refund fenced by a legacy submission", async () => {
+		stripe.checkout.sessions.list.mockResolvedValue({
+			data: [manualRefundSession()],
+			has_more: false,
+		});
+		manualRefundReconciliationResult = {
+			kind: "retryable",
+			reason: "print_submission_in_flight",
+		};
+		const { processStripeWebhookEvent } = await import("../orderIntake");
+		await expect(processStripeWebhookEvent(manualRefundEvent(), adapters())).rejects.toMatchObject({
+			status: 500,
+		});
+		expect(convex.mutation).toHaveBeenCalledWith(
+			"orders.reconcileSucceededManualRefund",
+			expect.anything(),
+		);
+		expect(mockSendFailureAlert).not.toHaveBeenCalled();
+		expect(createLumaPrintsOrder).not.toHaveBeenCalled();
+		expect(stripe.refunds.create).not.toHaveBeenCalled();
+	});
+
+	it("reconciles a signed automated succeeded update before sending leased success copy", async () => {
+		stripe.checkout.sessions.list.mockResolvedValue({
+			data: [manualRefundSession({ metadata: { commerceTenantSiteUrl: "angelsrest.online" } })],
+			has_more: false,
+		});
+		automatedRefundReconciliationResult = {
+			kind: "succeeded",
+			orderId: "order-123",
+			orderNumber: "ORD-001",
+			customerEmail: "buyer@example.com",
+			total: 1500,
+			errorSummary: "Provider rejected fulfillment",
+			stripeRefundId: "re_automated1234567890",
+		};
+		const { processStripeWebhookEvent } = await import("../orderIntake");
+		await processStripeWebhookEvent(automatedRefundEvent("succeeded"), adapters());
+
+		expect(convex.mutation).toHaveBeenCalledWith(
+			"orders.reconcileAutomatedFulfillmentRefund",
+			expect.objectContaining({
+				stripeRefundId: "re_automated1234567890",
+				stripeRefundStatus: "succeeded",
+				automationTag: "fulfillment_recovery_v1",
+			}),
+		);
+		expect(mockSendFulfillmentFailureAlert).toHaveBeenCalledOnce();
+		expect(mockSendCustomerFulfillmentFailure).toHaveBeenCalledOnce();
+		expect(mockSendAutomatedRefundFailureAlert).not.toHaveBeenCalled();
+	});
+
+	it.each([
+		["failed", "refund.failed"],
+		["canceled", "refund.updated"],
+	] as const)("reconciles signed automated %s evidence to operator-only alerting", async (status, eventType) => {
+		stripe.checkout.sessions.list.mockResolvedValue({
+			data: [manualRefundSession({ metadata: { commerceTenantSiteUrl: "angelsrest.online" } })],
+			has_more: false,
+		});
+		automatedRefundReconciliationResult = {
+			kind: "refund_failed",
+			orderId: "order-123",
+			orderNumber: "ORD-001",
+			customerEmail: "buyer@example.com",
+			total: 1500,
+			errorSummary: "Provider rejected fulfillment",
+			stripeRefundId: "re_automated1234567890",
+			refundStatus: status,
+		};
+		const { processStripeWebhookEvent } = await import("../orderIntake");
+		await processStripeWebhookEvent(automatedRefundEvent(status, eventType), adapters());
+
+		expect(mockSendAutomatedRefundFailureAlert).toHaveBeenCalledOnce();
+		expect(mockSendFulfillmentFailureAlert).not.toHaveBeenCalled();
+		expect(mockSendCustomerFulfillmentFailure).not.toHaveBeenCalled();
+		expect(convex.mutation).toHaveBeenCalledWith(
+			"orders.claimFulfillmentFailureNotificationV2",
+			expect.objectContaining({ audience: "refund_failure" }),
+		);
+	});
+
+	it("reconciles signed automated attention to one operator-only leased alert", async () => {
+		stripe.checkout.sessions.list.mockResolvedValue({
+			data: [manualRefundSession({ metadata: { commerceTenantSiteUrl: "angelsrest.online" } })],
+			has_more: false,
+		});
+		automatedRefundReconciliationResult = {
+			kind: "refund_attention",
+			orderId: "order-123",
+			orderNumber: "ORD-001",
+			customerEmail: "buyer@example.com",
+			total: 1500,
+			errorSummary: "Provider rejected fulfillment",
+			stripeRefundId: "re_automated1234567890",
+			refundStatus: "requires_action",
+			attentionReason: "age_exceeded",
+		};
+		const { processStripeWebhookEvent } = await import("../orderIntake");
+		await processStripeWebhookEvent(automatedRefundEvent("requires_action"), adapters());
+
+		expect(mockSendAutomatedRefundAttentionAlert).toHaveBeenCalledOnce();
+		expect(mockSendAutomatedRefundFailureAlert).not.toHaveBeenCalled();
+		expect(mockSendFulfillmentFailureAlert).not.toHaveBeenCalled();
+		expect(mockSendCustomerFulfillmentFailure).not.toHaveBeenCalled();
+		expect(convex.mutation).toHaveBeenCalledWith(
+			"orders.claimFulfillmentFailureNotificationV2",
+			expect.objectContaining({ audience: "refund_attention" }),
+		);
 	});
 
 	it("acknowledges unsupported refund evidence without any downstream effect", async () => {
@@ -448,7 +615,7 @@ describe("processStripeWebhookEvent", () => {
 			([reference]: unknown[]) => reference === "orders.rejectPrintFulfillmentSubmission",
 		);
 		const pendingCall = convex.mutation.mock.calls.find(
-			([reference]: [unknown]) => reference === "orders.claimAutomatedFulfillmentRefund",
+			([reference]: [unknown]) => reference === "orders.claimAutomatedFulfillmentRefundV2",
 		);
 		if (!rejectionCall || !pendingCall)
 			throw new Error("Expected rejection and refund checkpoints");
@@ -858,7 +1025,7 @@ describe("processStripeWebhookEvent", () => {
 		expect(mockSendCustomerFulfillmentFailure).not.toHaveBeenCalled();
 		expect(mockSendAdminNotification).not.toHaveBeenCalled();
 		expect(convex.mutation).not.toHaveBeenCalledWith(
-			"orders.claimPrintFulfillmentV2",
+			"orders.claimPrintFulfillmentV3",
 			expect.anything(),
 		);
 	});
@@ -891,7 +1058,7 @@ describe("processStripeWebhookEvent", () => {
 		expect(mockSendCustomerFulfillmentFailure).not.toHaveBeenCalled();
 		expect(mockSendAdminNotification).not.toHaveBeenCalled();
 		expect(convex.mutation).not.toHaveBeenCalledWith(
-			"orders.claimPrintFulfillmentV2",
+			"orders.claimPrintFulfillmentV3",
 			expect.anything(),
 		);
 	});
@@ -1742,7 +1909,7 @@ describe("processStripeWebhookEvent", () => {
 		];
 		automatedRefundCompletionResults = [
 			new Error("terminal write unavailable"),
-			{ kind: "completed" },
+			{ kind: "succeeded", stripeRefundId: "re_test_123" },
 		];
 		const { processStripeWebhookEvent } = await import("../orderIntake");
 		await expect(
@@ -1787,7 +1954,7 @@ describe("processStripeWebhookEvent", () => {
 				fulfillmentRecoveryStatus: "refunded",
 			}),
 		];
-		fulfillmentFailureNotificationClaimResults = [false, false];
+		fulfillmentFailureNotificationClaimResults = [{ kind: "unavailable" }, { kind: "unavailable" }];
 
 		const { processStripeWebhookEvent } = await import("../orderIntake");
 		await processStripeWebhookEvent(

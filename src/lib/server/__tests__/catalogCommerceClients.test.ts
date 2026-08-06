@@ -48,8 +48,8 @@ const snapshotItem = {
 	revisionId: "revision",
 	productKind: "print" as const,
 	variantKey: "variant",
-	materialOptionKey: "paper",
-	sizeOptionKey: "size",
+	materialOptionKey: "archival-matte",
+	sizeOptionKey: "8x10",
 	borderOptionKey: null,
 	frameOptionKey: null,
 };
@@ -63,24 +63,46 @@ const checkoutResponse = {
 };
 
 function paidResponse(purpose: "paid_fulfillment" | "paid_download") {
+	const item =
+		purpose === "paid_download"
+			? {
+					...snapshotItem,
+					productKind: "digital_download" as const,
+					materialOptionKey: null,
+					sizeOptionKey: null,
+				}
+			: snapshotItem;
 	return {
 		version: 1,
 		purpose,
-		item: snapshotItem,
-		identity: { productKind: purpose === "paid_download" ? "digital_download" : "print" },
+		item,
+		identity: {
+			productId: "product",
+			revisionId: "revision",
+			productKind: purpose === "paid_download" ? "digital_download" : "print",
+			title: "Product",
+			slug: "product",
+			variantKey: item.variantKey,
+		},
 		commerce: {
+			currency: "usd",
+			amountCents: 2_500,
 			finish:
 				purpose === "paid_download"
 					? null
 					: {
-							paper: { subcategoryId: 1 },
-							size: { width: 8, height: 10 },
+							materialKey: "archival-matte",
+							sizeKey: "8x10",
+							borderKey: null,
+							frameKey: null,
+							paper: { name: "Archival Matte", subcategoryId: 103001 },
+							size: { label: "8×10", width: 8, height: 10 },
 							border: { inches: 0 },
 							frame: { subcategoryId: 0 },
 							canvas: null,
 						},
 		},
-		media: [],
+		media: [{}],
 		current: {
 			kindEnabled: true,
 			publishedRevision: true,
@@ -165,6 +187,168 @@ describe("fixed-purpose catalog clients", () => {
 			resolvePaidFulfillment("cs_test_123456789", 0, { origin, bearer: token, fetch }),
 		).rejects.toMatchObject({ kind: "rejected", phase: "envelope" });
 		expect(fetch).toHaveBeenCalledOnce();
+	});
+
+	it.each([
+		[
+			"an extra finish field",
+			(finish: Record<string, unknown>) => {
+				finish.extra = true;
+			},
+		],
+		[
+			"an unsafe paper ID",
+			(finish: Record<string, unknown>) => {
+				(finish.paper as Record<string, unknown>).subcategoryId = Number.MAX_SAFE_INTEGER + 1;
+			},
+		],
+		[
+			"an unsupported paper ID",
+			(finish: Record<string, unknown>) => {
+				(finish.paper as Record<string, unknown>).subcategoryId = 103999;
+			},
+		],
+		[
+			"a fractional size",
+			(finish: Record<string, unknown>) => {
+				(finish.size as Record<string, unknown>).width = 8.5;
+			},
+		],
+		[
+			"a negative border",
+			(finish: Record<string, unknown>) => {
+				(finish.border as Record<string, unknown>).inches = -0.25;
+			},
+		],
+		[
+			"an unsupported border",
+			(finish: Record<string, unknown>) => {
+				(finish.border as Record<string, unknown>).inches = 0.75;
+			},
+		],
+		[
+			"an unsupported frame ID",
+			(finish: Record<string, unknown>) => {
+				(finish.frame as Record<string, unknown>).subcategoryId = 105004;
+			},
+		],
+	] as const)("rejects paid fulfillment finish metadata with %s", async (_case, mutate) => {
+		const response = structuredClone(paidResponse("paid_fulfillment")) as Record<string, unknown>;
+		const commerce = response.commerce as Record<string, unknown>;
+		mutate(commerce.finish as Record<string, unknown>);
+		const fetch = vi.fn(async () => json(response));
+		await expect(
+			resolvePaidFulfillment("cs_test_123456789", 0, { origin, bearer: token, fetch }),
+		).rejects.toMatchObject({ kind: "rejected", phase: "envelope" });
+		expect(fetch).toHaveBeenCalledOnce();
+	});
+
+	it("accepts only the catalog-supported canvas IDs, option, and strict six-digit wrap hex", async () => {
+		const response = structuredClone(paidResponse("paid_fulfillment")) as Record<string, unknown>;
+		const item = response.item as Record<string, unknown>;
+		item.materialOptionKey = "canvas-white-1.25";
+		const finish = (response.commerce as { finish: Record<string, unknown> }).finish;
+		finish.materialKey = "canvas-white-1.25";
+		finish.paper = { name: 'Canvas White — 1.25" stretch', subcategoryId: 101002 };
+		finish.canvas = {
+			color: "white",
+			thickness: "1.25",
+			subcategoryId: 101002,
+			wrapOptionId: 3,
+			wrapHex: "#FFFFFF",
+		};
+		const validFetch = vi.fn(async () => json(response));
+		await expect(
+			resolvePaidFulfillment("cs_test_123456789", 0, {
+				origin,
+				bearer: token,
+				fetch: validFetch,
+			}),
+		).resolves.toMatchObject({ commerce: { finish: { canvas: { wrapHex: "#FFFFFF" } } } });
+
+		for (const canvas of [
+			{ ...(finish.canvas as object), wrapHex: "FFFFFF" },
+			{ ...(finish.canvas as object), wrapHex: "#FFFFFG" },
+			{ ...(finish.canvas as object), wrapHex: "#FFFFFF00" },
+			{ ...(finish.canvas as object), wrapOptionId: 4 },
+			{ ...(finish.canvas as object), subcategoryId: 101004 },
+		]) {
+			const candidate = structuredClone(response) as Record<string, unknown>;
+			const candidateFinish = (candidate.commerce as { finish: Record<string, unknown> }).finish;
+			candidateFinish.canvas = canvas;
+			const fetch = vi.fn(async () => json(candidate));
+			await expect(
+				resolvePaidFulfillment("cs_test_123456789", 0, { origin, bearer: token, fetch }),
+			).rejects.toMatchObject({ kind: "rejected", phase: "envelope" });
+		}
+	});
+
+	it("enforces the 100 MB print-source and 16 MiB paid-file descriptor bounds", async () => {
+		for (const { purpose, acceptedBytes, rejectedBytes } of [
+			{
+				purpose: "paid_fulfillment" as const,
+				acceptedBytes: 100_000_000,
+				rejectedBytes: 100_000_001,
+			},
+			{
+				purpose: "paid_download" as const,
+				acceptedBytes: 16 * 1024 * 1024,
+				rejectedBytes: 16 * 1024 * 1024 + 1,
+			},
+		]) {
+			const accepted = structuredClone(paidResponse(purpose)) as Record<string, unknown>;
+			const acceptedDescriptor = accepted.descriptor as Record<string, unknown>;
+			if (purpose === "paid_fulfillment") {
+				(
+					(acceptedDescriptor.sources as Array<Record<string, unknown>>)[0] as Record<
+						string,
+						unknown
+					>
+				).bytes = acceptedBytes;
+			} else acceptedDescriptor.bytes = acceptedBytes;
+			const acceptedFetch = vi.fn(async () => json(accepted));
+			const resolveAccepted =
+				purpose === "paid_fulfillment"
+					? resolvePaidFulfillment("cs_test_123456789", 0, {
+							origin,
+							bearer: token,
+							fetch: acceptedFetch,
+						})
+					: resolvePaidDownload("cs_test_123456789", 0, {
+							origin,
+							bearer: token,
+							fetch: acceptedFetch,
+						});
+			await expect(resolveAccepted).resolves.toBeDefined();
+
+			const rejected = structuredClone(accepted) as Record<string, unknown>;
+			const rejectedDescriptor = rejected.descriptor as Record<string, unknown>;
+			if (purpose === "paid_fulfillment") {
+				(
+					(rejectedDescriptor.sources as Array<Record<string, unknown>>)[0] as Record<
+						string,
+						unknown
+					>
+				).bytes = rejectedBytes;
+			} else rejectedDescriptor.bytes = rejectedBytes;
+			const rejectedFetch = vi.fn(async () => json(rejected));
+			const resolveRejected =
+				purpose === "paid_fulfillment"
+					? resolvePaidFulfillment("cs_test_123456789", 0, {
+							origin,
+							bearer: token,
+							fetch: rejectedFetch,
+						})
+					: resolvePaidDownload("cs_test_123456789", 0, {
+							origin,
+							bearer: token,
+							fetch: rejectedFetch,
+						});
+			await expect(resolveRejected).rejects.toMatchObject({
+				kind: "rejected",
+				phase: "envelope",
+			});
+		}
 	});
 
 	it.each([
@@ -311,6 +495,87 @@ describe("fixed-purpose catalog clients", () => {
 		expect(fetch).toHaveBeenCalledOnce();
 	});
 
+	it("treats only the exact commerce-resolver rejection 404 as permanent", async () => {
+		const fetch = vi.fn(async () => json({ error: "rejected" }, 404));
+		await expect(
+			resolveCatalogCheckout(snapshotItem, { origin, bearer: token, fetch }),
+		).rejects.toMatchObject({ kind: "rejected", phase: "status" });
+		expect(fetch).toHaveBeenCalledOnce();
+	});
+
+	it.each([
+		["already-refunded conflict", 409, "refunded"],
+		["explicit unavailability", 503, "unavailable"],
+		["missing authentication", 401, "unavailable"],
+		["rejected authentication", 403, "unavailable"],
+		["proxy authentication", 407, "unavailable"],
+		["invalid request protocol", 400, "unavailable"],
+		["unsupported media protocol", 415, "unavailable"],
+		["upgrade protocol", 426, "unavailable"],
+		["HTTP-version protocol", 505, "unavailable"],
+		["rate limit", 429, "unavailable"],
+		["unexpected client response", 418, "unavailable"],
+		["unexpected validation response", 422, "unavailable"],
+		["unexpected server response", 500, "unavailable"],
+		["unexpected gateway response", 502, "unavailable"],
+		["unexpected vendor response", 599, "unavailable"],
+	] as const)("classifies resolver %s status %i as %s", async (_case, status, kind) => {
+		const fetch = vi.fn(async () => json({}, status));
+		await expect(
+			resolveCatalogCheckout(snapshotItem, { origin, bearer: token, fetch }),
+		).rejects.toMatchObject({ kind, phase: "status" });
+		expect(fetch).toHaveBeenCalledOnce();
+	});
+
+	it("keeps a capability issuer 404 unavailable even with the resolver rejection body", async () => {
+		const fetch = vi.fn(async () => json({ error: "rejected" }, 404));
+		await expect(
+			issuePaidFile(
+				{
+					key: "private/key",
+					hash: "c".repeat(64),
+					bytes: 10,
+					mime: "application/zip",
+				},
+				{ origin, bearer: token, fetch },
+			),
+		).rejects.toMatchObject({ kind: "unavailable", phase: "status" });
+		expect(fetch).toHaveBeenCalledOnce();
+	});
+
+	it("keeps malformed, missing, hidden, and over-limit resolver 404 bodies unavailable and redacted", async () => {
+		const privateDetail = "private catalog rejection detail";
+		const responses = [
+			new Response('{"error":', {
+				status: 404,
+				headers: { "content-type": "application/json" },
+			}),
+			new Response(null, {
+				status: 404,
+				headers: { "content-type": "application/json" },
+			}),
+			json({ error: "rejected", detail: privateDetail }, 404),
+			new Response(JSON.stringify({ error: "rejected", padding: "x".repeat(64 * 1024) }), {
+				status: 404,
+				headers: { "content-type": "application/json" },
+			}),
+		];
+		for (const response of responses) {
+			const fetch = vi.fn(async () => response);
+			const outcome = await resolveCatalogCheckout(snapshotItem, {
+				origin,
+				bearer: token,
+				fetch,
+			}).then(
+				() => null,
+				(error: unknown) => error,
+			);
+			expect(outcome).toMatchObject({ kind: "unavailable", phase: "status" });
+			expect(String(outcome)).not.toContain(privateDetail);
+			expect(fetch).toHaveBeenCalledOnce();
+		}
+	});
+
 	it("issues exact descriptors on disjoint Worker routes and returns opaque URLs unchanged", async () => {
 		const printCapability = capability("print_source");
 		const paidCapability = capability("paid_file");
@@ -397,6 +662,7 @@ describe("fixed-purpose catalog clients", () => {
 			dimensions: { width: 6000, height: 4000 },
 		};
 		const now = Date.now();
+		const validPrintExpiry = new Date(now + 23.5 * 60 * 60 * 1000).toISOString();
 		const candidates = [
 			{ url: capability("print_source"), expiresAt: new Date(now - 1).toISOString() },
 			{
@@ -409,27 +675,27 @@ describe("fixed-purpose catalog clients", () => {
 			},
 			{
 				url: capability("print_source").replace(origin, "https://other.example"),
-				expiresAt: new Date(now + 60_000).toISOString(),
+				expiresAt: validPrintExpiry,
 			},
 			{
 				url: capability("paid_file"),
-				expiresAt: new Date(now + 60_000).toISOString(),
+				expiresAt: validPrintExpiry,
 			},
 			{
 				url: capability("print_source", "png"),
-				expiresAt: new Date(now + 60_000).toISOString(),
+				expiresAt: validPrintExpiry,
 			},
 			{
 				url: capability("print_source").replace(sealedCapability, `${sealedCapability}=`),
-				expiresAt: new Date(now + 60_000).toISOString(),
+				expiresAt: validPrintExpiry,
 			},
 			{
 				url: `${capability("print_source")}?download=1`,
-				expiresAt: new Date(now + 60_000).toISOString(),
+				expiresAt: validPrintExpiry,
 			},
 			{
 				url: `${capability("print_source")}#fragment`,
-				expiresAt: new Date(now + 60_000).toISOString(),
+				expiresAt: validPrintExpiry,
 			},
 		];
 		for (const [index, candidate] of candidates.entries()) {

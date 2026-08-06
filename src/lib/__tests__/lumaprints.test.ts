@@ -3,21 +3,16 @@ import { env } from "$env/dynamic/private";
 import type { OrderItem, Recipient } from "$lib/shop/types";
 import {
 	buildLumaPrintsOrder,
-	checkImageConfig,
-	cleanImageUrl,
 	createOrder,
 	findOrderByExternalId,
-	getOrder,
-	getShipping,
-	getShippingPrice,
 	LumaPrintsError,
 	LumaPrintsReconciliationError,
 	LumaPrintsSubmissionError,
 } from "../server/lumaprints";
 import { classifyLumaPrintsFailure } from "../server/webhookErrorClassification";
 
-// Ported from reflecting-pool per audit #22. Guards the pure functions
-// (cleanImageUrl, buildLumaPrintsOrder) and the LumaPrints API error
+// Ported from reflecting-pool per audit #22. Guards the pure order builder
+// and the LumaPrints API error
 // handling so this stays correct as the catalog expands.
 
 const mockRecipient: Recipient = {
@@ -75,32 +70,6 @@ const mockItems: OrderItem[] = [
 		quantity: 1,
 	},
 ];
-
-describe("cleanImageUrl", () => {
-	it("strips query parameters from Sanity CDN URLs", () => {
-		const url = "https://cdn.sanity.io/images/proj/dataset/photo.jpg?w=1200&fm=webp&q=80";
-		expect(cleanImageUrl(url)).toBe("https://cdn.sanity.io/images/proj/dataset/photo.jpg");
-	});
-
-	it("handles URLs without query params unchanged", () => {
-		const url = "https://cdn.sanity.io/images/proj/dataset/photo.jpg";
-		expect(cleanImageUrl(url)).toBe(url);
-	});
-
-	it("handles URLs with hash only (no query)", () => {
-		const url = "https://example.com/photo.jpg#section";
-		expect(cleanImageUrl(url)).toBe(url);
-	});
-
-	it("strips only at the ? character", () => {
-		const url = "https://cdn.sanity.io/images/a.jpg?foo=bar";
-		expect(cleanImageUrl(url)).not.toContain("?");
-	});
-
-	it("handles empty string without throwing", () => {
-		expect(cleanImageUrl("")).toBe("");
-	});
-});
 
 describe("buildLumaPrintsOrder", () => {
 	it("creates correct top-level structure", () => {
@@ -179,9 +148,8 @@ describe("buildLumaPrintsOrder", () => {
 	});
 
 	it("transforms image URLs to print quality (max=8000&q=100) for order items", () => {
-		// Drive-by 2026-04-11: was "strips query params from image URLs"
-		// (cleanImageUrl). Now uses prepareSanityUrlForPrint which strips
-		// existing params AND appends ?max=8000&q=100 for max print quality.
+		// prepareSanityUrlForPrint strips existing params and appends
+		// ?max=8000&q=100 for maximum print quality.
 		const order = buildLumaPrintsOrder("order-6", mockRecipient, mockItems);
 		for (const item of order.orderItems) {
 			expect(item.file.imageUrl).toContain("?max=8000&q=100");
@@ -269,6 +237,28 @@ describe("LumaPrintsError", () => {
 	it("is an instance of Error", () => {
 		expect(new LumaPrintsError("test")).toBeInstanceOf(Error);
 	});
+
+	it("requires an exact bounded class for every blocked reconciliation error", () => {
+		const ReconciliationError = LumaPrintsReconciliationError as unknown as new (
+			message: string,
+			disposition: string,
+			reconciliationClass?: string,
+		) => Error;
+		expect(() => new ReconciliationError("blocked", "blocked")).toThrow("requires an exact class");
+		expect(() => new ReconciliationError("blocked", "blocked", "guessed_class")).toThrow(
+			"requires an exact class",
+		);
+		expect(() => new ReconciliationError("retry", "retryable", "client_error")).toThrow(
+			"cannot have a blocked class",
+		);
+
+		const ambiguous = new LumaPrintsReconciliationError("ambiguous", "blocked", "ambiguous_result");
+		expect(ambiguous).toMatchObject({
+			disposition: "blocked",
+			reconciliationClass: "ambiguous_result",
+			details: { kind: "blocked", reconciliationClass: "ambiguous_result" },
+		});
+	});
 });
 
 describe("LumaPrints request deadlines", () => {
@@ -276,33 +266,33 @@ describe("LumaPrints request deadlines", () => {
 		vi.unstubAllGlobals();
 	});
 
-	it("applies an active deadline signal to every LumaPrints request", async () => {
-		const fetchMock = vi.fn().mockImplementation(async (rawUrl: string) => {
-			if (rawUrl.includes("/images/checkImageConfig")) return providerJson({ valid: true });
-			if (rawUrl.includes("/pricing/shipping")) return providerJson({ shippingMethods: [] });
-			return providerJson({ message: "queued", orderNumber: 10000000001 });
-		});
+	it("applies an active deadline signal to the create-order POST", async () => {
+		const fetchMock = vi
+			.fn()
+			.mockResolvedValue(providerJson({ message: "queued", orderNumber: 10000000001 }));
 		vi.stubGlobal("fetch", fetchMock);
 
 		await createOrder(buildLumaPrintsOrder("deadline-order", mockRecipient, mockItems));
-		await getOrder("LP-123");
-		await getShipping("LP-123");
-		await checkImageConfig({
-			imageUrl: "https://cdn.sanity.io/images/proj/dataset/photo.jpg",
-			subcategoryId: 103001,
-			width: 8,
-			height: 10,
-		});
-		await getShippingPrice({
-			items: [{ subcategoryId: 103001, width: 8, height: 10, quantity: 1 }],
-			recipient: mockRecipient,
-		});
 
-		expect(fetchMock).toHaveBeenCalledTimes(5);
+		expect(fetchMock).toHaveBeenCalledOnce();
 		for (const [, init] of fetchMock.mock.calls) {
 			expect(init.signal).toBeInstanceOf(AbortSignal);
 			expect((init.signal as AbortSignal).aborted).toBe(false);
 		}
+	});
+
+	it("passes an active deadline signal to the reconciliation GET", async () => {
+		const fetchMock = vi.fn().mockResolvedValue(providerPage([]));
+		vi.stubGlobal("fetch", fetchMock);
+
+		await expect(findOrderByExternalId("cs_test_1234567890abcdef")).resolves.toBeNull();
+
+		expect(fetchMock).toHaveBeenCalledOnce();
+		const [rawUrl, init] = fetchMock.mock.calls[0];
+		expect(String(rawUrl)).toContain("/api/v1/orders?");
+		expect(init.method).toBeUndefined();
+		expect(init.signal).toBeInstanceOf(AbortSignal);
+		expect((init.signal as AbortSignal).aborted).toBe(false);
 	});
 
 	it("surfaces timeout failures as uncertain create outcomes", async () => {
@@ -841,224 +831,5 @@ describe("findOrderByExternalId", () => {
 			});
 		}
 		expect(fetchMock).not.toHaveBeenCalled();
-	});
-});
-
-// ─── audit #23 PR #3: checkImageConfig + getShippingPrice helpers ─────────
-
-describe("checkImageConfig", () => {
-	beforeEach(() => {
-		vi.unstubAllGlobals();
-	});
-
-	const input = {
-		imageUrl: "https://cdn.sanity.io/images/proj/dataset/photo.jpg",
-		subcategoryId: 103001,
-		width: 8,
-		height: 10,
-	};
-
-	it("returns a validated API response on success", async () => {
-		const mockResponse = { valid: true };
-		const fetchMock = vi.fn().mockResolvedValue(providerJson(mockResponse));
-		vi.stubGlobal("fetch", fetchMock);
-
-		await expect(checkImageConfig(input)).resolves.toEqual(mockResponse);
-	});
-
-	it("returns a valid:false response with recommendations when image is unsuitable", async () => {
-		const mockResponse = {
-			valid: false,
-			message: "Resolution too low for requested size",
-			recommendedWidth: 4,
-			recommendedHeight: 5,
-			expectedAspectRatio: 0.8,
-		};
-		vi.stubGlobal("fetch", vi.fn().mockResolvedValue(providerJson(mockResponse)));
-
-		await expect(checkImageConfig({ ...input, width: 16, height: 20 })).resolves.toEqual(
-			mockResponse,
-		);
-	});
-
-	it("strips query params from the image URL before sending to LumaPrints", async () => {
-		const fetchMock = vi.fn().mockResolvedValue(providerJson({ valid: true }));
-		vi.stubGlobal("fetch", fetchMock);
-
-		await checkImageConfig({
-			...input,
-			imageUrl: `${input.imageUrl}?w=1200&fm=webp&q=80`,
-		});
-
-		const body = JSON.parse(fetchMock.mock.calls[0][1].body as string);
-		expect(body.imageUrl).toBe(input.imageUrl);
-	});
-
-	it("redacts the provider body on non-ok responses", async () => {
-		const providerSecret = "private upstream validation detail";
-		vi.stubGlobal(
-			"fetch",
-			vi.fn().mockResolvedValue(providerJson({ message: providerSecret }, { status: 400 })),
-		);
-
-		const thrown = await checkImageConfig(input).catch((error: unknown) => error);
-		expect(thrown).toBeInstanceOf(LumaPrintsError);
-		expect(thrown).toMatchObject({
-			details: {
-				operation: "check_image_config",
-				phase: "status",
-				statusCode: 400,
-			},
-		});
-		expect(JSON.stringify(thrown)).not.toContain(providerSecret);
-	});
-
-	it("does not inspect a non-JSON failure body", async () => {
-		const providerSecret = "private non-JSON provider detail";
-		vi.stubGlobal(
-			"fetch",
-			vi.fn().mockResolvedValue(
-				new Response(providerSecret, {
-					status: 500,
-					headers: { "content-type": "text/plain" },
-				}),
-			),
-		);
-
-		const thrown = await checkImageConfig(input).catch((error: unknown) => error);
-		expect(thrown).toMatchObject({
-			details: {
-				operation: "check_image_config",
-				phase: "status",
-				statusCode: 500,
-			},
-		});
-		expect(JSON.stringify(thrown)).not.toContain(providerSecret);
-	});
-
-	it("bounds and validates successful provider responses", async () => {
-		for (const response of [
-			providerJson({ valid: "yes" }),
-			new Response("not json", { headers: { "content-type": "application/json" } }),
-			providerJson({ valid: true, padding: "x".repeat(64 * 1024) }),
-		]) {
-			vi.stubGlobal("fetch", vi.fn().mockResolvedValue(response));
-			await expect(checkImageConfig(input)).rejects.toMatchObject({
-				name: "LumaPrintsError",
-				details: { operation: "check_image_config" },
-			});
-		}
-	});
-});
-
-describe("getShippingPrice", () => {
-	beforeEach(() => {
-		vi.unstubAllGlobals();
-	});
-
-	const input = {
-		items: [{ subcategoryId: 103001, width: 8, height: 10, quantity: 1 }],
-		recipient: mockRecipient,
-	};
-
-	it("returns parsed shipping methods on success", async () => {
-		vi.stubGlobal(
-			"fetch",
-			vi.fn().mockResolvedValue(
-				providerJson({
-					message: "",
-					shippingMethods: [
-						{ carrier: "USPS", method: "usps_ground_advantage", cost: 6.31 },
-						{ carrier: "FedEx/UPS/GLS", method: "ground", cost: 13.71 },
-					],
-				}),
-			),
-		);
-
-		const result = await getShippingPrice(input);
-		expect(result.shippingMethods).toHaveLength(2);
-		expect(result.shippingMethods[0]).toEqual({
-			carrier: "USPS",
-			method: "usps_ground_advantage",
-			cost: 6.31,
-		});
-	});
-
-	it("maps our Recipient type to LumaPrints' address schema in the payload", async () => {
-		const fetchMock = vi.fn().mockResolvedValue(providerJson({ shippingMethods: [] }));
-		vi.stubGlobal("fetch", fetchMock);
-
-		await getShippingPrice({
-			...input,
-			items: [{ ...input.items[0], quantity: 2 }],
-		});
-
-		const body = JSON.parse(fetchMock.mock.calls[0][1].body as string);
-		expect(body.recipient).toEqual({
-			firstName: "Jane",
-			lastName: "Doe",
-			addressLine1: "123 Main St",
-			addressLine2: "Apt 4",
-			city: "Detroit",
-			state: "MI",
-			zipCode: "48201",
-			country: "US",
-			phone: "313-555-1234",
-		});
-		expect(body.orderItems[0]).toEqual({
-			subcategoryId: 103001,
-			quantity: 2,
-			width: 8,
-			height: 10,
-			orderItemOptions: [39],
-		});
-	});
-
-	it("respects custom orderItemOptions when provided", async () => {
-		const fetchMock = vi.fn().mockResolvedValue(providerJson({ shippingMethods: [] }));
-		vi.stubGlobal("fetch", fetchMock);
-
-		await getShippingPrice({
-			...input,
-			items: [{ ...input.items[0], orderItemOptions: [36] }],
-		});
-
-		const body = JSON.parse(fetchMock.mock.calls[0][1].body as string);
-		expect(body.orderItems[0].orderItemOptions).toEqual([36]);
-	});
-
-	it("redacts the provider body on non-ok responses", async () => {
-		const providerSecret = "private invalid address detail";
-		vi.stubGlobal(
-			"fetch",
-			vi.fn().mockResolvedValue(providerJson({ message: providerSecret }, { status: 400 })),
-		);
-
-		const thrown = await getShippingPrice(input).catch((error: unknown) => error);
-		expect(thrown).toBeInstanceOf(LumaPrintsError);
-		expect(thrown).toMatchObject({
-			details: {
-				operation: "get_shipping_price",
-				phase: "status",
-				statusCode: 400,
-			},
-		});
-		expect(JSON.stringify(thrown)).not.toContain(providerSecret);
-	});
-
-	it("bounds and validates successful provider responses", async () => {
-		for (const response of [
-			providerJson({
-				shippingMethods: [{ carrier: "USPS", method: "ground", cost: "6.31" }],
-			}),
-			new Response("not json", { headers: { "content-type": "application/json" } }),
-			providerJson({ shippingMethods: [], padding: "x".repeat(64 * 1024) }),
-		]) {
-			vi.stubGlobal("fetch", vi.fn().mockResolvedValue(response));
-			await expect(getShippingPrice(input)).rejects.toMatchObject({
-				name: "LumaPrintsError",
-				details: { operation: "get_shipping_price" },
-			});
-		}
 	});
 });

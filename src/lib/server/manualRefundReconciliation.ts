@@ -1,14 +1,25 @@
 import type { ConvexHttpClient } from "convex/browser";
 import type Stripe from "stripe";
 import { api } from "$convex/api";
+import type { Id } from "$convex/dataModel";
 import { readCheckoutTenantMarker } from "$lib/server/checkoutSnapshotConsumer";
-import { CommerceTenantIdentityError, resolveCommerceTenant } from "$lib/server/commerceTenant";
+import {
+	type CommerceNotificationProfile,
+	CommerceTenantIdentityError,
+	resolveCommerceTenant,
+} from "$lib/server/commerceTenant";
 import { logStructured } from "$lib/server/logger";
 import { COMMERCE_TENANT_METADATA_KEY } from "$lib/server/stripeConnect";
 import type { CommerceWebhookRole } from "$lib/server/stripeWebhook";
 import { getWebhookSecret } from "$lib/server/webhookSecret";
 
-type ManualRefundEvent = Stripe.RefundCreatedEvent | Stripe.RefundUpdatedEvent;
+type ManualRefundEvent =
+	| Stripe.RefundCreatedEvent
+	| Stripe.RefundUpdatedEvent
+	| Stripe.RefundFailedEvent;
+
+type AutomatedRefundStatus = "pending" | "requires_action" | "succeeded" | "failed" | "canceled";
+const REFUND_AUTOMATION_TAG = "fulfillment_recovery_v1";
 
 type IgnoredReason =
 	| "unsupported_scope"
@@ -58,7 +69,42 @@ export interface ManualRefundRecoveryContext {
 export type ManualRefundReconciliationResult =
 	| { kind: "ignored"; reason: IgnoredReason }
 	| { kind: "pending_order" | "reconciled" | "replayed" }
-	| { kind: "rejected"; reason: "identity_conflict" | "state_conflict" };
+	| { kind: "retryable"; reason: "print_submission_in_flight" }
+	| { kind: "rejected"; reason: "identity_conflict" | "state_conflict" }
+	| { kind: "automated_pending"; refundStatus: "pending" | "requires_action" }
+	| {
+			kind: "automated_succeeded";
+			orderId: Id<"orders">;
+			orderNumber: string;
+			customerEmail: string;
+			total: number;
+			errorSummary: string;
+			stripeRefundId: string;
+			notificationProfile: CommerceNotificationProfile;
+	  }
+	| {
+			kind: "automated_failed";
+			orderId: Id<"orders">;
+			orderNumber: string;
+			customerEmail: string;
+			total: number;
+			errorSummary: string;
+			stripeRefundId: string;
+			refundStatus: "failed" | "canceled";
+			notificationProfile: CommerceNotificationProfile;
+	  }
+	| {
+			kind: "automated_attention";
+			orderId: Id<"orders">;
+			orderNumber: string;
+			customerEmail: string;
+			total: number;
+			errorSummary: string;
+			stripeRefundId: string;
+			refundStatus: "pending" | "requires_action";
+			attentionReason: "attempts_exhausted" | "age_exceeded";
+			notificationProfile: CommerceNotificationProfile;
+	  };
 
 const ID_PATTERNS = {
 	event: /^evt_[A-Za-z0-9]{8,120}$/,
@@ -90,6 +136,16 @@ function objectId(value: unknown) {
 
 function hasMetadataKey(metadata: Stripe.Metadata | null, key: string) {
 	return metadata != null && Object.hasOwn(metadata, key);
+}
+
+function normalizeAutomatedRefundStatus(status: string | null): AutomatedRefundStatus | null {
+	return status === "pending" ||
+		status === "requires_action" ||
+		status === "succeeded" ||
+		status === "failed" ||
+		status === "canceled"
+		? status
+		: null;
 }
 
 export async function reconcileSucceededManualRefund(
@@ -130,8 +186,21 @@ export async function reconcileSucceededManualRefund(
 			objectId(signedRefund.payment_intent) !== objectId(refund.payment_intent))
 	)
 		return ignore("provider_evidence_mismatch");
-	if (refund.status !== "succeeded") return ignore("not_succeeded");
-	if (hasMetadataKey(refund.metadata, "automated")) return ignore("automated");
+	const automationTag = refund.metadata?.automated;
+	const isAutomated = automationTag === REFUND_AUTOMATION_TAG;
+	if (hasMetadataKey(refund.metadata, "automated") && !isAutomated) return ignore("automated");
+	if (recovery && isAutomated) return ignore("provider_evidence_mismatch");
+	const automatedOrderNumber = isAutomated ? refund.metadata?.orderNumber : undefined;
+	if (
+		isAutomated &&
+		(typeof automatedOrderNumber !== "string" ||
+			automatedOrderNumber.length === 0 ||
+			automatedOrderNumber.length > 64)
+	)
+		return ignore("automated");
+	const refundStatus = normalizeAutomatedRefundStatus(refund.status);
+	if (isAutomated && refundStatus === null) return ignore("not_succeeded");
+	if (!isAutomated && refund.status !== "succeeded") return ignore("not_succeeded");
 	if (!ID_PATTERNS.refund.test(refund.id)) return ignore("invalid_refund_id");
 	if (!Number.isSafeInteger(refund.amount) || refund.amount <= 0) {
 		return ignore("invalid_amount");
@@ -209,6 +278,57 @@ export async function reconcileSucceededManualRefund(
 
 	let result;
 	try {
+		if (isAutomated) {
+			if (automatedOrderNumber === undefined || refundStatus === null) return ignore("automated");
+			const automatedResult = await adapters.convex.mutation(
+				api.orders.reconcileAutomatedFulfillmentRefund,
+				{
+					webhookSecret: getWebhookSecret(),
+					stripeEventId: event.id,
+					stripeRefundId: refund.id,
+					stripeRefundStatus: refundStatus,
+					stripeSessionId: session.id,
+					stripePaymentIntentId: paymentIntentId,
+					...(accountId ? { stripeConnectedAccountId: accountId } : {}),
+					...(metadataSiteUrl ? { stripeTenantMetadataSiteUrl: metadataSiteUrl } : {}),
+					siteUrl: tenant.siteUrl,
+					metadataOrderNumber: automatedOrderNumber,
+					automationTag: REFUND_AUTOMATION_TAG,
+					refundAmount: refund.amount,
+					sessionAmountTotal: session.amount_total,
+					refundCurrency: "usd",
+					sessionCurrency: "usd",
+					eventLivemode: event.livemode,
+					sessionLivemode: session.livemode,
+				},
+			);
+			if (automatedResult.kind === "rejected") return automatedResult;
+			if (automatedResult.kind === "pending") {
+				return {
+					kind: "automated_pending" as const,
+					refundStatus: automatedResult.refundStatus as "pending" | "requires_action",
+				};
+			}
+			if (automatedResult.kind === "refund_failed") {
+				return {
+					...automatedResult,
+					kind: "automated_failed" as const,
+					notificationProfile: tenant.notificationProfile,
+				};
+			}
+			if (automatedResult.kind === "refund_attention") {
+				return {
+					...automatedResult,
+					kind: "automated_attention" as const,
+					notificationProfile: tenant.notificationProfile,
+				};
+			}
+			return {
+				...automatedResult,
+				kind: "automated_succeeded" as const,
+				notificationProfile: tenant.notificationProfile,
+			};
+		}
 		result = await adapters.convex.mutation(api.orders.reconcileSucceededManualRefund, {
 			webhookSecret: getWebhookSecret(),
 			...(recovery
@@ -244,6 +364,11 @@ export async function reconcileSucceededManualRefund(
 		throw new ManualRefundReconciliationRetryableError("Manual refund projection failed", {
 			cause,
 		});
+	}
+	if (result.kind === "retryable") {
+		throw new ManualRefundReconciliationRetryableError(
+			"Manual refund is fenced by an in-flight legacy print submission",
+		);
 	}
 
 	logStructured({

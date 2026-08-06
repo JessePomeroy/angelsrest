@@ -1,4 +1,5 @@
-import { createHash, timingSafeEqual } from "node:crypto";
+import { createHash, randomUUID, timingSafeEqual } from "node:crypto";
+import type { Id } from "$convex/dataModel";
 import { normalizeLumaPrintsProviderNumber } from "$lib/server/lumaprintsProviderNumber";
 
 const MAX_BODY_BYTES = 256 * 1024;
@@ -10,27 +11,47 @@ export interface LumaPrintsShipment {
 	carrier?: string;
 }
 
-interface ShipmentClaim {
-	claimed: boolean;
-	order: {
-		siteUrl: string;
-		orderNumber: string;
-		customerEmail: string;
-	};
+type ShipmentClaim =
+	| {
+			kind: "claimed";
+			leaseExpiresAt: number;
+			order: {
+				_id: Id<"orders">;
+				siteUrl: string;
+				orderNumber: string;
+				customerEmail: string;
+			};
+	  }
+	| { kind: "busy"; leaseExpiresAt: number }
+	| { kind: "completed" };
+
+export type ShipmentEmailDeliveryFailureCode =
+	| "missing_customer_email"
+	| "notification_profile_unavailable"
+	| "email_delivery_failed"
+	| "unexpected_send_failure";
+
+export class ShipmentEmailDeliveryError extends Error {
+	constructor(readonly code: ShipmentEmailDeliveryFailureCode) {
+		super("Shipment email delivery failed");
+		this.name = "ShipmentEmailDeliveryError";
+	}
 }
 
-export type ShipmentEmailDelivery =
-	| { status: "sent" }
-	| { status: "failed"; error: string }
-	| { status: "skipped"; error?: string };
-
 export interface LumaPrintsShipmentDependencies {
-	claim(input: LumaPrintsShipment): Promise<ShipmentClaim | null>;
-	record(input: {
+	claim(input: LumaPrintsShipment & { claimToken: string }): Promise<ShipmentClaim | null>;
+	complete(input: {
+		orderId: Id<"orders">;
 		lumaprintsOrderNumber: string;
-		status: ShipmentEmailDelivery["status"];
-		error?: string;
-	}): Promise<unknown>;
+		claimToken: string;
+		deliveryStatus: "sent" | "skipped";
+	}): Promise<boolean>;
+	release(input: {
+		orderId: Id<"orders">;
+		lumaprintsOrderNumber: string;
+		claimToken: string;
+		failureCode: ShipmentEmailDeliveryFailureCode;
+	}): Promise<boolean>;
 	send(input: {
 		siteUrl: string;
 		customerEmail: string;
@@ -179,35 +200,50 @@ export async function processLumaPrintsShipment(
 	shipment: LumaPrintsShipment,
 	dependencies: LumaPrintsShipmentDependencies,
 ) {
-	const claim = await dependencies.claim(shipment);
+	const claimToken = randomUUID();
+	const claim = await dependencies.claim({ ...shipment, claimToken });
 	if (!claim) return { status: "unknown_order" as const };
-	if (!claim.claimed) return { status: "already_processed" as const };
-
-	let delivery: ShipmentEmailDelivery;
-	if (!claim.order.customerEmail) {
-		delivery = { status: "skipped", error: "Order has no customer email" };
-	} else {
-		try {
-			await dependencies.send({
-				siteUrl: claim.order.siteUrl,
-				customerEmail: claim.order.customerEmail,
-				orderNumber: claim.order.orderNumber,
-				lumaprintsOrderNumber: shipment.orderNumber,
-				trackingNumber: shipment.trackingNumber,
-				carrier: shipment.carrier,
-			});
-			delivery = { status: "sent" };
-		} catch (error) {
-			delivery = { status: "failed", error: errorMessage(error) };
-		}
+	if (claim.kind === "completed") return { status: "already_processed" as const };
+	if (claim.kind === "busy") {
+		return {
+			status: "busy" as const,
+			retryAfterMs: Math.max(0, claim.leaseExpiresAt - Date.now()),
+		};
 	}
 
-	await dependencies.record({
+	const checkpoint = {
+		orderId: claim.order._id,
 		lumaprintsOrderNumber: shipment.orderNumber,
-		status: delivery.status,
-		error: "error" in delivery ? delivery.error : undefined,
-	});
-	return { status: "processed" as const, delivery };
+		claimToken,
+	};
+	if (!claim.order.customerEmail) {
+		const completed = await dependencies.complete({ ...checkpoint, deliveryStatus: "skipped" });
+		if (!completed) throw new Error("Shipment email completion claim was lost");
+		return { status: "processed" as const, delivery: { status: "skipped" as const } };
+	}
+
+	try {
+		await dependencies.send({
+			siteUrl: claim.order.siteUrl,
+			customerEmail: claim.order.customerEmail,
+			orderNumber: claim.order.orderNumber,
+			lumaprintsOrderNumber: shipment.orderNumber,
+			trackingNumber: shipment.trackingNumber,
+			carrier: shipment.carrier,
+		});
+	} catch (error) {
+		const failureCode =
+			error instanceof ShipmentEmailDeliveryError ? error.code : "unexpected_send_failure";
+		const released = await dependencies.release({ ...checkpoint, failureCode });
+		if (!released) {
+			throw new Error("Shipment email release claim was lost");
+		}
+		return { status: "retryable_failure" as const, failureCode };
+	}
+
+	const completed = await dependencies.complete({ ...checkpoint, deliveryStatus: "sent" });
+	if (!completed) throw new Error("Shipment email completion claim was lost");
+	return { status: "processed" as const, delivery: { status: "sent" as const } };
 }
 
 function secureEqual(actual: string, expected: string) {
@@ -231,9 +267,4 @@ function boundedString(
 		throw payloadError(`Invalid LumaPrints ${field}`);
 	}
 	return undefined;
-}
-
-function errorMessage(error: unknown) {
-	if (error instanceof Error && error.message) return error.message;
-	return "Shipment email delivery failed";
 }

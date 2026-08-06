@@ -6,7 +6,6 @@ import { prepareSanityUrlForPrint } from "$lib/shop/lumaprintsUrls";
 import type {
 	LumaPrintsOrder,
 	LumaPrintsOrderResponse,
-	LumaPrintsShipment,
 	OrderItem,
 	Recipient,
 } from "$lib/shop/types";
@@ -23,17 +22,6 @@ function getHeaders(): HeadersInit {
 		"Content-Type": "application/json",
 		Authorization: `Basic ${btoa(`${apiKey}:${apiSecret}`)}`,
 	};
-}
-
-/**
- * CRITICAL: Strip ALL query params from Sanity image URLs before sending
- * to LumaPrints. Query params (`?w=1200&fm=webp`) cause aspect-ratio
- * validation errors on the LumaPrints side. The raw Sanity CDN URL serves
- * JPEG by default — no format param needed. See LUMAPRINTS.md for the
- * full postmortem.
- */
-export function cleanImageUrl(url: string): string {
-	return url.split("?")[0];
 }
 
 export type LumaPrintsErrorDetails = Readonly<
@@ -89,22 +77,44 @@ export type LumaPrintsReconciliationClass =
 	| "client_error";
 
 export class LumaPrintsReconciliationError extends LumaPrintsError {
+	readonly disposition: "retryable" | "blocked";
+	readonly reconciliationClass?: LumaPrintsReconciliationClass;
+
+	constructor(message: string, disposition: "retryable");
 	constructor(
 		message: string,
-		readonly disposition: "retryable" | "blocked",
-		readonly reconciliationClass?: LumaPrintsReconciliationClass,
+		disposition: "blocked",
+		reconciliationClass: LumaPrintsReconciliationClass,
+	);
+	constructor(
+		message: string,
+		disposition: "retryable" | "blocked",
+		reconciliationClass?: LumaPrintsReconciliationClass,
 	) {
+		if (
+			disposition === "blocked" &&
+			reconciliationClass !== "provider_rejected" &&
+			reconciliationClass !== "response_contract" &&
+			reconciliationClass !== "ambiguous_result" &&
+			reconciliationClass !== "client_error"
+		) {
+			throw new TypeError("Blocked LumaPrints reconciliation requires an exact class");
+		}
+		if (disposition === "retryable" && reconciliationClass !== undefined) {
+			throw new TypeError("Retryable LumaPrints reconciliation cannot have a blocked class");
+		}
 		super(message, {
 			kind: disposition,
 			...(reconciliationClass ? { reconciliationClass } : {}),
 		});
+		this.disposition = disposition;
+		this.reconciliationClass = reconciliationClass;
 		this.name = "LumaPrintsReconciliationError";
 	}
 }
 
 const LUMAPRINTS_REQUEST_TIMEOUT_MS = 15_000;
 const LUMAPRINTS_CREATE_RESPONSE_MAX_BYTES = 32 * 1024;
-const LUMAPRINTS_DIRECT_RESPONSE_MAX_BYTES = 64 * 1024;
 const LUMAPRINTS_RECONCILIATION_RESPONSE_MAX_BYTES = 2 * 1024 * 1024;
 const LUMAPRINTS_RECONCILIATION_MAX_PAGES = 10;
 const LUMAPRINTS_RECONCILIATION_MAX_ROWS_PER_PAGE = 100;
@@ -492,246 +502,6 @@ export async function findOrderByExternalId(
 		}
 	}
 	throw reconciliationRetryable("Order reconciliation response exceeded its pagination bound");
-}
-
-/** Get order status from LumaPrints */
-export async function getOrder(
-	orderNumber: string,
-): Promise<{ orderNumber: string; status: string }> {
-	const res = await fetchLumaPrints(`/api/v1/orders/${orderNumber}`, {
-		headers: getHeaders(),
-	});
-	if (!res.ok) {
-		throw new LumaPrintsError(`Failed to get order ${orderNumber}`);
-	}
-	return res.json();
-}
-
-/** Get shipment tracking for an order */
-export async function getShipping(orderNumber: string): Promise<LumaPrintsShipment[]> {
-	const res = await fetchLumaPrints(`/api/v1/orders/${orderNumber}/shipments`, {
-		headers: getHeaders(),
-	});
-	if (!res.ok) {
-		throw new LumaPrintsError(`Failed to get shipments for ${orderNumber}`);
-	}
-	return res.json();
-}
-
-type LumaPrintsDirectOperation = "check_image_config" | "get_shipping_price";
-
-function directResponseFailure(
-	operation: LumaPrintsDirectOperation,
-	message: string,
-	phase: LumaPrintsJsonFailurePhase | "status",
-	statusCode?: number,
-) {
-	return new LumaPrintsError(message, {
-		operation,
-		phase,
-		...(statusCode === undefined ? {} : { statusCode }),
-	});
-}
-
-function cancelProviderBody(response: Response) {
-	try {
-		void response.body?.cancel().catch(() => undefined);
-	} catch {
-		// Cancellation is best-effort. Do not inspect or retain the provider body.
-	}
-}
-
-async function readDirectResponseJson(
-	response: Response,
-	operation: LumaPrintsDirectOperation,
-	failureMessage: string,
-) {
-	if (!response.ok) {
-		cancelProviderBody(response);
-		throw directResponseFailure(operation, failureMessage, "status", response.status);
-	}
-	return readBoundedJson(
-		response,
-		LUMAPRINTS_DIRECT_RESPONSE_MAX_BYTES,
-		(phase) => directResponseFailure(operation, `${failureMessage} response was malformed`, phase),
-		() => directResponseFailure(operation, `${failureMessage} response stream failed`, "stream"),
-		() =>
-			directResponseFailure(
-				operation,
-				`${failureMessage} response exceeded its size bound`,
-				"size",
-			),
-	);
-}
-
-export interface LumaPrintsImageConfigResult {
-	valid: boolean;
-	message?: string;
-	recommendedWidth?: number;
-	recommendedHeight?: number;
-	expectedAspectRatio?: number;
-}
-
-function parseImageConfigResponse(value: unknown): LumaPrintsImageConfigResult {
-	if (!object(value) || typeof value.valid !== "boolean") {
-		throw directResponseFailure(
-			"check_image_config",
-			"Image validation response was malformed",
-			"envelope",
-		);
-	}
-	if (
-		value.message !== undefined &&
-		(typeof value.message !== "string" || value.message.length > 1000)
-	) {
-		throw directResponseFailure(
-			"check_image_config",
-			"Image validation response was malformed",
-			"envelope",
-		);
-	}
-	for (const field of ["recommendedWidth", "recommendedHeight", "expectedAspectRatio"] as const) {
-		const candidate = value[field];
-		if (candidate !== undefined && (typeof candidate !== "number" || !Number.isFinite(candidate))) {
-			throw directResponseFailure(
-				"check_image_config",
-				"Image validation response was malformed",
-				"envelope",
-			);
-		}
-	}
-	return {
-		valid: value.valid,
-		...(typeof value.message === "string" ? { message: value.message } : {}),
-		...(typeof value.recommendedWidth === "number"
-			? { recommendedWidth: value.recommendedWidth }
-			: {}),
-		...(typeof value.recommendedHeight === "number"
-			? { recommendedHeight: value.recommendedHeight }
-			: {}),
-		...(typeof value.expectedAspectRatio === "number"
-			? { expectedAspectRatio: value.expectedAspectRatio }
-			: {}),
-	};
-}
-
-/** Pre-validates a print image at checkout; provider failures remain typed and body-redacted. */
-export async function checkImageConfig(input: {
-	imageUrl: string;
-	subcategoryId: number;
-	width: number;
-	height: number;
-}): Promise<LumaPrintsImageConfigResult> {
-	const res = await fetchLumaPrints("/api/v1/images/checkImageConfig", {
-		method: "POST",
-		headers: getHeaders(),
-		body: JSON.stringify({
-			imageUrl: cleanImageUrl(input.imageUrl),
-			subcategoryId: input.subcategoryId,
-			width: input.width,
-			height: input.height,
-		}),
-	});
-
-	const body = await readDirectResponseJson(
-		res,
-		"check_image_config",
-		"Image validation request failed",
-	);
-	return parseImageConfigResponse(body);
-}
-
-/** Shipping method returned by the provider pricing endpoint. */
-export interface LumaPrintsShippingMethod {
-	carrier: string;
-	method: string;
-	cost: number;
-}
-
-function parseShippingPriceResponse(value: unknown): {
-	shippingMethods: LumaPrintsShippingMethod[];
-} {
-	if (
-		!object(value) ||
-		!Array.isArray(value.shippingMethods) ||
-		value.shippingMethods.length > 50
-	) {
-		throw directResponseFailure(
-			"get_shipping_price",
-			"Shipping price response was malformed",
-			"envelope",
-		);
-	}
-	const shippingMethods = value.shippingMethods.map((method) => {
-		if (
-			!object(method) ||
-			typeof method.carrier !== "string" ||
-			method.carrier.length === 0 ||
-			method.carrier.length > 100 ||
-			typeof method.method !== "string" ||
-			method.method.length === 0 ||
-			method.method.length > 100 ||
-			typeof method.cost !== "number" ||
-			!Number.isFinite(method.cost) ||
-			method.cost < 0
-		) {
-			throw directResponseFailure(
-				"get_shipping_price",
-				"Shipping price response was malformed",
-				"envelope",
-			);
-		}
-		return { carrier: method.carrier, method: method.method, cost: method.cost };
-	});
-	return { shippingMethods };
-}
-
-/** Returns provider shipping prices; callers fail closed rather than inventing a fallback. */
-export async function getShippingPrice(input: {
-	items: Array<{
-		subcategoryId: number;
-		width: number;
-		height: number;
-		quantity: number;
-		orderItemOptions?: number[];
-	}>;
-	recipient: Recipient;
-}): Promise<{
-	shippingMethods: LumaPrintsShippingMethod[];
-}> {
-	const res = await fetchLumaPrints("/api/v1/pricing/shipping", {
-		method: "POST",
-		headers: getHeaders(),
-		body: JSON.stringify({
-			storeId: getStoreId(),
-			shippingMethod: "default",
-			recipient: {
-				firstName: input.recipient.firstName,
-				lastName: input.recipient.lastName,
-				addressLine1: input.recipient.address1,
-				addressLine2: input.recipient.address2 || "",
-				city: input.recipient.city,
-				state: input.recipient.state,
-				zipCode: input.recipient.zip,
-				country: input.recipient.country,
-				phone: input.recipient.phone || "",
-			},
-			orderItems: input.items.map((item) => ({
-				subcategoryId: item.subcategoryId,
-				quantity: item.quantity,
-				width: item.width,
-				height: item.height,
-				orderItemOptions: item.orderItemOptions ?? [39],
-			})),
-		}),
-	});
-
-	const body = await readDirectResponseJson(
-		res,
-		"get_shipping_price",
-		"Shipping price request failed",
-	);
-	return parseShippingPriceResponse(body);
 }
 
 /** Pure payload builder. Sanity sources retain print-quality transforms;

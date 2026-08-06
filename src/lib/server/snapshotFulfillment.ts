@@ -11,6 +11,7 @@ import { type CheckoutSnapshotItem, resolveCheckoutItem } from "$lib/server/chec
 import type { CheckoutSnapshotV1 } from "$lib/server/checkoutSnapshotConsumer";
 import { FulfillmentValidationError } from "$lib/server/fulfillmentValidationError";
 import type { OrderItem } from "$lib/shop/types";
+import { parsePaperOption } from "$lib/utils/images";
 
 const exactSanity = client.withConfig({ useCdn: false, perspective: "published" });
 const EXACT_PRODUCT_QUERY = `*[_id == $id && _rev == $rev][0]{
@@ -19,7 +20,7 @@ const EXACT_PRODUCT_QUERY = `*[_id == $id && _rev == $rev][0]{
   images[]{..., "sourceDimensions": asset->metadata.dimensions{width,height}},
   previewImage{..., "sourceDimensions": asset->metadata.dimensions{width,height}},
   variants[]{_key, enabled, paper, size, retailPrice},
-  availablePapers[]{_key, name, price, subcategoryId, width, height},
+  availablePapers,
   bordersEnabled, framedEnabled, frameMarkupMultiplier
 }`;
 type ExactProduct = Record<string, unknown> & {
@@ -77,6 +78,26 @@ function exactSourceImages(product: ExactProduct) {
 	return [product.image];
 }
 
+function exactLegacyPaperIndex(product: ExactProduct, item: CheckoutSnapshotItem) {
+	if (product._type !== "product") return undefined;
+	const options = product.availablePapers;
+	if (item.variantKey === null) {
+		const option = Array.isArray(options) ? options[0] : undefined;
+		if (
+			!Array.isArray(options) ||
+			options.length !== 1 ||
+			typeof option !== "string" ||
+			!parsePaperOption({ name: option })
+		) {
+			throw new FulfillmentValidationError("Exact product selection is invalid");
+		}
+		return 0;
+	}
+	if (!Array.isArray(options)) return undefined;
+	const index = options.findIndex((option) => object(option) && option._key === item.variantKey);
+	return index >= 0 ? index : undefined;
+}
+
 async function sanityItems(item: CheckoutSnapshotItem, paidQuantity: number) {
 	const product = await exactSanity.fetch<ExactProduct | null>(EXACT_PRODUCT_QUERY, {
 		id: item.productKey,
@@ -106,6 +127,7 @@ async function sanityItems(item: CheckoutSnapshotItem, paidQuantity: number) {
 				: product._type === "product";
 		return (matches ? product : null) as T;
 	};
+	const legacyPaperIndex = exactLegacyPaperIndex(product, item);
 	const resolved = await resolveCheckoutItem(
 		fetcher,
 		{
@@ -115,6 +137,7 @@ async function sanityItems(item: CheckoutSnapshotItem, paidQuantity: number) {
 			sizeSlug: item.sizeOptionKey,
 			borderWidth: item.borderOptionKey,
 			frame: item.frameOptionKey,
+			paperIndex: legacyPaperIndex,
 		},
 		true,
 	).catch(() => {
@@ -158,19 +181,14 @@ function validResolution(resolution: PaidFulfillmentResolution, item: CheckoutSn
 		sameItem(resolution.item, item) &&
 		resolution.identity.productKind === item.productKind &&
 		finish !== null &&
+		finish.materialKey === item.materialOptionKey &&
+		finish.sizeKey === item.sizeOptionKey &&
+		finish.borderKey === item.borderOptionKey &&
+		finish.frameKey === item.frameOptionKey &&
 		resolution.descriptor.kind === "print_sources" &&
 		resolution.descriptor.sources.length >= 1 &&
 		resolution.descriptor.sources.length <= 20 &&
-		resolution.descriptor.sources.every(isPrintSourceDescriptor) &&
-		[finish.paper.subcategoryId, finish.size.width, finish.size.height].every(
-			(value) => Number.isFinite(value) && value > 0,
-		) &&
-		Number.isFinite(finish.border.inches) &&
-		finish.border.inches >= 0 &&
-		Number.isFinite(finish.frame.subcategoryId) &&
-		finish.frame.subcategoryId >= 0 &&
-		(finish.canvas === null ||
-			(Number.isFinite(finish.canvas.subcategoryId) && typeof finish.canvas.wrapHex === "string"))
+		resolution.descriptor.sources.every(isPrintSourceDescriptor)
 	);
 }
 

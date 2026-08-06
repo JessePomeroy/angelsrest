@@ -23,6 +23,7 @@ vi.mock("$lib/server/catalogCommerceClients", () => ({
 			/^[a-f0-9]{64}$/.test(source.hash) &&
 			Number.isSafeInteger(source.bytes) &&
 			Number(source.bytes) > 0 &&
+			Number(source.bytes) <= 100_000_000 &&
 			(source.mime === "image/jpeg" || source.mime === "image/png") &&
 			Object.keys(dimensions).length === 2 &&
 			["width", "height"].every((key) => {
@@ -46,7 +47,16 @@ vi.mock("$lib/shop/printCatalog", () => ({
 vi.mock("$lib/utils/images", () => ({
 	imageSet: (image?: { url?: string }) => (image?.url ? { original: image.url } : null),
 	originalUrl: (image?: { url?: string }) => image?.url ?? null,
-	parsePaperOption: () => null,
+	parsePaperOption: (option?: { name?: string; price?: number }) =>
+		option?.name === "Legacy Matte" || option?.name === "Legacy Matte|103001|8|10"
+			? {
+					name: "Legacy Matte",
+					subcategoryId: "103001",
+					width: 8,
+					height: 10,
+					price: option.price ?? null,
+				}
+			: null,
 	previewUrl: (image?: { url?: string }) => image?.url ?? null,
 }));
 
@@ -61,16 +71,29 @@ const print = {
 	frameOptionKey: null,
 };
 const finish = {
-	paper: { subcategoryId: 103001 },
-	size: { width: 8, height: 10 },
+	materialKey: "paper",
+	sizeKey: "size",
+	borderKey: null,
+	frameKey: null,
+	paper: { name: "Paper", subcategoryId: 103001 },
+	size: { label: "8×10", width: 8, height: 10 },
 	border: { inches: 0 },
 	frame: { subcategoryId: 0 },
 	canvas: null,
 };
 const framedFinish = {
 	...finish,
+	borderKey: "0.25",
+	frameKey: "0.875-black",
 	border: { inches: 0.25 },
 	frame: { subcategoryId: 105001 },
+};
+const framedPrint = {
+	...print,
+	productKey: "set",
+	productKind: "print_set" as const,
+	borderOptionKey: "0.25",
+	frameOptionKey: "0.875-black",
 };
 
 beforeEach(() => {
@@ -101,7 +124,7 @@ describe("snapshot fulfillment authority", () => {
 				},
 			})
 			.mockResolvedValueOnce({
-				item: { ...print, productKey: "set", productKind: "print_set" },
+				item: framedPrint,
 				identity: { productKind: "print_set" },
 				commerce: { finish: framedFinish },
 				descriptor: {
@@ -131,7 +154,7 @@ describe("snapshot fulfillment authority", () => {
 			{
 				schemaVersion: 1,
 				catalogProvider: "convex",
-				items: [print, { ...print, productKey: "set", productKind: "print_set" }],
+				items: [print, framedPrint],
 			},
 			"cs_test_paid",
 			[{ quantity: 2 }, { quantity: 3 }] as Stripe.LineItem[],
@@ -202,6 +225,35 @@ describe("snapshot fulfillment authority", () => {
 			[{ quantity: 1 }] as Stripe.LineItem[],
 		);
 		expect(items[0]).toMatchObject({ width: 10, height: 10 });
+	});
+
+	it("rejects a resolver finish whose selectors do not echo the paid snapshot", async () => {
+		mocks.paidFulfillment.mockResolvedValue({
+			item: print,
+			identity: { productKind: "print" },
+			commerce: { finish: { ...finish, materialKey: "different-paper" } },
+			descriptor: {
+				kind: "print_sources",
+				sources: [
+					{
+						key: "selector-mismatch",
+						hash: "e".repeat(64),
+						bytes: 4,
+						mime: "image/jpeg",
+						dimensions: { width: 6000, height: 4000 },
+					},
+				],
+			},
+		});
+		const { buildOrderItemsFromSnapshot } = await import("../snapshotFulfillment");
+		await expect(
+			buildOrderItemsFromSnapshot(
+				{ schemaVersion: 1, catalogProvider: "convex", items: [print] },
+				"cs_test_paid",
+				[{ quantity: 1 }] as Stripe.LineItem[],
+			),
+		).rejects.toThrow("does not match");
+		expect(mocks.printSource).not.toHaveBeenCalled();
 	});
 
 	it("validates every later source before minting any capability", async () => {
@@ -333,6 +385,161 @@ describe("snapshot fulfillment authority", () => {
 				[{ quantity: 1 }] as Stripe.LineItem[],
 			),
 		).rejects.toThrow("unavailable");
+	});
+
+	it("fulfills an exact legacy Sanity product with source dimensions and orientation", async () => {
+		mocks.fetchSanity.mockResolvedValue({
+			_id: "legacy-product",
+			_rev: "legacy-revision",
+			_type: "product",
+			slug: "legacy-print",
+			title: "Legacy print",
+			category: "prints",
+			price: 25,
+			inStock: true,
+			images: [
+				{
+					url: "https://cdn.sanity.io/legacy-landscape.jpg",
+					sourceDimensions: { width: 6000, height: 4000 },
+				},
+			],
+			availablePapers: [
+				{
+					_key: "legacy-paper",
+					name: "Legacy Matte",
+					price: 25,
+					subcategoryId: 103001,
+					width: 8,
+					height: 10,
+				},
+			],
+		});
+		const legacyPrint = {
+			...print,
+			productKey: "legacy-product",
+			revisionId: "legacy-revision",
+			variantKey: "legacy-paper",
+			materialOptionKey: null,
+			sizeOptionKey: null,
+		};
+		const { buildOrderItemsFromSnapshot } = await import("../snapshotFulfillment");
+
+		const items = await buildOrderItemsFromSnapshot(
+			{ schemaVersion: 1, catalogProvider: "sanity", items: [legacyPrint] },
+			"cs_test_paid",
+			[{ quantity: 3 }] as Stripe.LineItem[],
+		);
+
+		expect(mocks.fetchSanity).toHaveBeenCalledWith(
+			expect.stringMatching(
+				/_id == \$id && _rev == \$rev[\s\S]*images\[\][\s\S]*"sourceDimensions": asset->metadata\.dimensions\{width,height\}/,
+			),
+			{ id: "legacy-product", rev: "legacy-revision" },
+		);
+		expect(items).toEqual([
+			{
+				imageUrl: "https://cdn.sanity.io/legacy-landscape.jpg",
+				sourcePolicy: "sanity_cdn",
+				quantity: 3,
+				paperSubcategoryId: 103001,
+				width: 10,
+				height: 8,
+			},
+		]);
+		expect(mocks.printSource).not.toHaveBeenCalled();
+	});
+
+	it("fulfills an exact single-paper primitive legacy snapshot with landscape orientation", async () => {
+		mocks.fetchSanity.mockResolvedValue({
+			_id: "legacy-product",
+			_rev: "legacy-revision",
+			_type: "product",
+			slug: "legacy-print",
+			title: "Legacy print",
+			category: "prints",
+			price: 25,
+			inStock: true,
+			images: [
+				{
+					url: "https://cdn.sanity.io/legacy-landscape.jpg",
+					sourceDimensions: { width: 6000, height: 4000 },
+				},
+			],
+			availablePapers: ["Legacy Matte|103001|8|10"],
+		});
+		const legacyPrint = {
+			...print,
+			productKey: "legacy-product",
+			revisionId: "legacy-revision",
+			variantKey: null,
+			materialOptionKey: null,
+			sizeOptionKey: null,
+		};
+		const { buildOrderItemsFromSnapshot } = await import("../snapshotFulfillment");
+
+		const items = await buildOrderItemsFromSnapshot(
+			{ schemaVersion: 1, catalogProvider: "sanity", items: [legacyPrint] },
+			"cs_test_paid",
+			[{ quantity: 3 }] as Stripe.LineItem[],
+		);
+
+		expect(items).toEqual([
+			{
+				imageUrl: "https://cdn.sanity.io/legacy-landscape.jpg",
+				sourcePolicy: "sanity_cdn",
+				quantity: 3,
+				paperSubcategoryId: 103001,
+				width: 10,
+				height: 8,
+			},
+		]);
+		expect(mocks.fetchSanity.mock.calls[0]?.[0]).toMatch(/\n {2}availablePapers,\n/);
+		expect(mocks.fetchSanity.mock.calls[0]?.[0]).not.toContain("availablePapers[]");
+		expect(mocks.paidFulfillment).not.toHaveBeenCalled();
+		expect(mocks.printSource).not.toHaveBeenCalled();
+	});
+
+	it.each([
+		["multiple primitive options", ["Legacy Matte|103001|8|10", "Legacy Matte|103001|8|10"]],
+		["an invalid primitive option", ["Malformed paper"]],
+		["a keyed object option", [{ _key: "legacy-paper", name: "Legacy Matte", price: 25 }]],
+	])("fails closed for a null-key legacy snapshot with %s", async (_case, availablePapers) => {
+		mocks.fetchSanity.mockResolvedValue({
+			_id: "legacy-product",
+			_rev: "legacy-revision",
+			_type: "product",
+			slug: "legacy-print",
+			title: "Legacy print",
+			category: "prints",
+			price: 25,
+			inStock: true,
+			images: [
+				{
+					url: "https://cdn.sanity.io/legacy-landscape.jpg",
+					sourceDimensions: { width: 6000, height: 4000 },
+				},
+			],
+			availablePapers,
+		});
+		const legacyPrint = {
+			...print,
+			productKey: "legacy-product",
+			revisionId: "legacy-revision",
+			variantKey: null,
+			materialOptionKey: null,
+			sizeOptionKey: null,
+		};
+		const { buildOrderItemsFromSnapshot } = await import("../snapshotFulfillment");
+
+		await expect(
+			buildOrderItemsFromSnapshot(
+				{ schemaVersion: 1, catalogProvider: "sanity", items: [legacyPrint] },
+				"cs_test_paid",
+				[{ quantity: 1 }] as Stripe.LineItem[],
+			),
+		).rejects.toThrow("Exact product selection is invalid");
+		expect(mocks.paidFulfillment).not.toHaveBeenCalled();
+		expect(mocks.printSource).not.toHaveBeenCalled();
 	});
 });
 

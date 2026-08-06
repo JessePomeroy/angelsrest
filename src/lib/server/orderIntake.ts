@@ -23,8 +23,11 @@ import {
 } from "$lib/server/manualRefundReconciliation";
 import {
 	AutomatedFulfillmentRefundRetryableError,
+	AutomatedRefundNotificationRetryableError,
 	PrintReconciliationAlertRetryableError,
+	PrintReconciliationPendingError,
 	type SubmitLumaPrintsOrder,
+	sendClaimedAutomatedRefundNotification,
 } from "$lib/server/printFulfillment";
 import { COMMERCE_TENANT_METADATA_KEY } from "$lib/server/stripeConnect";
 import type { CommerceWebhookRole } from "$lib/server/stripeWebhook";
@@ -32,7 +35,6 @@ import type { ShippingDetails } from "$lib/server/webhookEmails";
 import {
 	sendAdminNotification,
 	sendCustomerConfirmation,
-	sendCustomerFulfillmentFailure,
 	sendFailureAlert,
 	sendPaymentFailedEmail,
 	sendPrintReconciliationBlockedAlert,
@@ -138,8 +140,58 @@ export async function processStripeWebhookEvent(
 
 			case "refund.created":
 			case "refund.updated":
-				await reconcileSucceededManualRefund(event, adapters, verifiedDestinationRole);
+			case "refund.failed": {
+				const refundResult = await reconcileSucceededManualRefund(
+					event,
+					adapters,
+					verifiedDestinationRole,
+				);
+				if (refundResult.kind === "automated_succeeded") {
+					const notification = {
+						orderId: refundResult.orderId,
+						orderNumber: refundResult.orderNumber,
+						customerEmail: refundResult.customerEmail,
+						errorSummary: refundResult.errorSummary,
+						stripeRefundId: refundResult.stripeRefundId,
+						total: refundResult.total,
+						notificationProfile: refundResult.notificationProfile,
+					};
+					await sendClaimedAutomatedRefundNotification(adapters, {
+						...notification,
+						audience: "admin",
+					});
+					await sendClaimedAutomatedRefundNotification(adapters, {
+						...notification,
+						audience: "customer",
+					});
+				} else if (refundResult.kind === "automated_failed") {
+					await sendClaimedAutomatedRefundNotification(adapters, {
+						audience: "refund_failure",
+						orderId: refundResult.orderId,
+						orderNumber: refundResult.orderNumber,
+						customerEmail: refundResult.customerEmail,
+						errorSummary: refundResult.errorSummary,
+						stripeRefundId: refundResult.stripeRefundId,
+						refundStatus: refundResult.refundStatus,
+						total: refundResult.total,
+						notificationProfile: refundResult.notificationProfile,
+					});
+				} else if (refundResult.kind === "automated_attention") {
+					await sendClaimedAutomatedRefundNotification(adapters, {
+						audience: "refund_attention",
+						orderId: refundResult.orderId,
+						orderNumber: refundResult.orderNumber,
+						customerEmail: refundResult.customerEmail,
+						errorSummary: refundResult.errorSummary,
+						stripeRefundId: refundResult.stripeRefundId,
+						refundStatus: refundResult.refundStatus,
+						attentionReason: refundResult.attentionReason,
+						total: refundResult.total,
+						notificationProfile: refundResult.notificationProfile,
+					});
+				}
 				break;
+			}
 
 			default:
 				break;
@@ -170,7 +222,9 @@ export async function processStripeWebhookEvent(
 			!(err instanceof PaymentFailureEmailClaimError) &&
 			!(err instanceof PrintReconciliationAlertDeliveryError) &&
 			!(err instanceof PrintReconciliationAlertRetryableError) &&
-			!(err instanceof AutomatedFulfillmentRefundRetryableError)
+			!(err instanceof PrintReconciliationPendingError) &&
+			!(err instanceof AutomatedFulfillmentRefundRetryableError) &&
+			!(err instanceof AutomatedRefundNotificationRetryableError)
 		) {
 			await sendFailureAlert(adapters.resend, event.type, sessionId ?? "unknown", errorMessage);
 		}
@@ -385,6 +439,7 @@ async function handleCheckoutCompleted(
 				orderNumber: orderResult.orderNumber,
 				externalId: session.id,
 				reconciliationClass: orderResult.fulfillment.reconciliationClass,
+				escalationReason: orderResult.fulfillment.escalationReason,
 				notificationProfile,
 			});
 		} catch (err) {
@@ -463,25 +518,16 @@ async function handleCheckoutCompleted(
 		orderResult.notification === "failure" &&
 		orderResult.fulfillment.kind === "permanent_failure_refunded"
 	) {
-		try {
-			await sendCustomerFulfillmentFailure(adapters.resend, {
-				customerEmail,
-				orderNumber: orderResult.orderNumber,
-				stripeRefundId: orderResult.fulfillment.stripeRefundId,
-				total: fullSession.amount_total ?? 0,
-				notificationProfile,
-			});
-		} catch (err) {
-			logStructured({
-				event: "email.customer_refund.send_failed",
-				level: "error",
-				stage: "email_customer",
-				sessionId: session.id,
-				orderId: orderResult.orderNumber,
-				error: err,
-				meta: { fatal: false },
-			});
-		}
+		await sendClaimedAutomatedRefundNotification(adapters, {
+			audience: "customer",
+			orderId: orderResult._id,
+			orderNumber: orderResult.orderNumber,
+			customerEmail,
+			errorSummary: orderResult.fulfillment.errorSummary,
+			stripeRefundId: orderResult.fulfillment.stripeRefundId,
+			total: fullSession.amount_total ?? 0,
+			notificationProfile,
+		});
 	} else if (orderResult.notification === "success") {
 		try {
 			await sendCustomerConfirmation(adapters.resend, {

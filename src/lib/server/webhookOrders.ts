@@ -17,6 +17,7 @@ import {
 	handlePrintFulfillmentFailure,
 	type PrintFulfillmentOutcome,
 	PrintReconciliationAlertRetryableError,
+	PrintReconciliationPendingError,
 	type SubmitLumaPrintsOrder,
 	sendClaimedFulfillmentFailureAdminAlert,
 	submitPrintFulfillment,
@@ -36,17 +37,6 @@ export interface CreatedOrderResult {
 function claimOrderConfirmation(convex: ConvexHttpClient, orderId: Id<"orders">) {
 	return convex.mutation(api.orders.claimOrderConfirmation, {
 		orderId,
-		webhookSecret: getWebhookSecret(),
-	});
-}
-
-function claimCustomerFulfillmentFailureNotification(
-	convex: ConvexHttpClient,
-	orderId: Id<"orders">,
-) {
-	return convex.mutation(api.orders.claimFulfillmentFailureNotification, {
-		orderId,
-		audience: "customer",
 		webhookSecret: getWebhookSecret(),
 	});
 }
@@ -103,6 +93,8 @@ export async function createOrderInConvex(
 	const existingFulfillmentError = orderResult.fulfillmentError;
 	const existingStripeRefundId = orderResult.stripeRefundId;
 	const existingRecoveryStatus = orderResult.fulfillmentRecoveryStatus;
+	const existingAutomatedRefundId = orderResult.automatedRefundId;
+	const existingAutomatedRefundStatus = orderResult.automatedRefundStatus;
 	const existingPrintClaim = orderResult.printFulfillmentClaim;
 	const existingPrintPhase = orderResult.printFulfillmentPhase;
 	const existingPrintResolution = orderResult.printFulfillmentResolution;
@@ -208,10 +200,35 @@ export async function createOrderInConvex(
 						stripeRefundId: existingStripeRefundId,
 						errorSummary,
 					},
-			notification:
-				!manuallyRefunded && (await claimCustomerFulfillmentFailureNotification(convex, orderId))
-					? "failure"
-					: "none",
+			notification: manuallyRefunded ? "none" : "failure",
+		};
+	}
+
+	if (
+		existingRecoveryStatus === "refund_failed" &&
+		existingAutomatedRefundId &&
+		(existingAutomatedRefundStatus === "failed" || existingAutomatedRefundStatus === "canceled")
+	) {
+		const errorSummary = existingFulfillmentError ?? "Permanent fulfillment failure";
+		const fulfillment = await handlePermanentFulfillmentFailure(
+			{ stripe, convex, resend },
+			{
+				orderId,
+				orderNumber,
+				error: undefined,
+				durableFulfillmentError: errorSummary,
+				session,
+				stripeRequestOptions,
+				customerEmail: session.customer_details?.email ?? "unknown",
+				notificationProfile,
+			},
+		);
+		return {
+			orderNumber,
+			_id: orderId,
+			alreadyExisted,
+			fulfillment,
+			notification: "none",
 		};
 	}
 
@@ -244,9 +261,7 @@ export async function createOrderInConvex(
 			_id: orderId,
 			alreadyExisted,
 			fulfillment,
-			notification: (await claimCustomerFulfillmentFailureNotification(convex, orderId))
-				? "failure"
-				: "none",
+			notification: fulfillment.kind === "permanent_failure_refunded" ? "failure" : "none",
 		};
 	}
 
@@ -275,7 +290,11 @@ export async function createOrderInConvex(
 			},
 		);
 	} catch (err) {
-		if (err instanceof PrintReconciliationAlertRetryableError) throw err;
+		if (
+			err instanceof PrintReconciliationAlertRetryableError ||
+			err instanceof PrintReconciliationPendingError
+		)
+			throw err;
 		fulfillment = await handlePrintFulfillmentFailure(
 			{ stripe, convex, resend },
 			{
@@ -294,13 +313,13 @@ export async function createOrderInConvex(
 	if (
 		fulfillment.kind === "manual_refunded" ||
 		fulfillment.kind === "no_print_items_replayed" ||
-		fulfillment.kind === "reconciliation_blocked"
+		fulfillment.kind === "reconciliation_blocked" ||
+		fulfillment.kind === "automated_refund_failed" ||
+		fulfillment.kind === "automated_refund_attention"
 	) {
 		notification = "none";
 	} else if (fulfillment.kind === "permanent_failure_refunded") {
-		notification = (await claimCustomerFulfillmentFailureNotification(convex, orderId))
-			? "failure"
-			: "none";
+		notification = "failure";
 	} else if (fulfillment.kind === "no_print_items") {
 		// claimNonPrintOrderOutcome already owns the durable confirmation claim.
 		notification = "success";

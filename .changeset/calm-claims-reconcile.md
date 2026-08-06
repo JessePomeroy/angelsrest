@@ -1,5 +1,5 @@
 ---
-"@jessepomeroy/crm-api": patch
+"@jessepomeroy/crm-api": major
 ---
 
-Converge refunds with uncertain and late print-provider results, harden provider reconciliation and notification leases, and preserve exact-once submission fences.
+Add the V3 print coordinator while preserving the exact V2 contract, make the deprecated site-scoped shipment exports admin-auth-only so webhook-secret callers are rejected, converge manual and automated refund updates safely, and make recovery and hub-owned notifications lease/idempotency based.

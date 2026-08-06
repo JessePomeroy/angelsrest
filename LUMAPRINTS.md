@@ -4,11 +4,10 @@ LumaPrints is the print-on-demand fulfillment boundary for eligible shop
 orders. Stripe owns payment, Convex owns order state, and LumaPrints owns print
 production and shipment.
 
-## Local release-candidate flow
+## Pull-request candidate flow
 
-This section describes local, uncommitted source. It is not merged, released,
-or deployed. Production remains rolled back, and new fulfillment remains
-closed.
+This section describes a pull-request candidate. It is not merged, released, or
+deployed. Production remains rolled back, and new fulfillment remains closed.
 
 ```text
 Stripe checkout.session.completed
@@ -24,20 +23,21 @@ The immutable Stripe checkout session ID is both the Convex idempotency key and
 LumaPrints `externalId`; its documented local shape (`cs_test_`/`cs_live_` plus
 ASCII alphanumerics) fits the provider string contract and is global across
 platform tenants. A single durable claim marker fences provider submission.
-After a claim, retries only reconcile that exact persisted session ID. They
-never send a second provider POST.
+The candidate provides at-most-one provider POST per durable claim; it does not
+promise exact-once delivery. After a claim, retries only reconcile that exact
+persisted session ID and do not replay the POST.
 
-The reviewed local adapter assumes a store-scoped order list: each GET supplies
-the configured `storeId` and a one-based `page`, then scans the strict
+The reviewed candidate adapter assumes a store-scoped order list: each GET
+supplies the configured `storeId` and a one-based `page`, then scans the strict
 `orders`/`totalOrders`/`currentPage`/`totalPages` envelope locally for a
 case-sensitive `externalId` match. It never sends the undocumented
 `externalId` or `limit` query parameters. The scan is capped at 10 pages, 100
 rows per page, and 1,000 rows total. Duplicate rows and changing pagination are
 treated as retryable instability, as are responses that exceed the finite page,
 row, or byte resource bounds; distinct orders with the same exact identity are
-blocked as ambiguous. A stable absence or first-page list-level 404 is returned as pending because
-submitted orders can take time to appear. These rules need authoritative
-provider-contract verification before activation.
+blocked as ambiguous. A stable absence or first-page list-level 404 is returned
+as pending because submitted orders can take time to appear. These rules need
+authoritative provider-contract verification before activation.
 
 Create and reconciliation responses use byte-bounded JSON readers, strict
 envelopes, parsed JSON media-type/UTF-8 charset and content-encoding tokens, and
@@ -77,12 +77,12 @@ Do not add a second catalog table in the host app. Extend
 Keep these rules in the request builder and its tests rather than duplicating
 them in route code.
 
-## Validation, pricing, and errors
+## Submission, reconciliation, and errors
 
-- `/api/shop/validate-image` fails closed: an upstream validation outage returns
-  `{ valid: false, degraded: true }`.
-- `/api/shop/shipping-price` returns HTTP 503 when LumaPrints cannot quote the
-  basket. It does not invent a flat-rate fallback.
+- The former anonymous `/api/shop/validate-image` and
+  `/api/shop/shipping-price` provider relays are retired. Their paths remain only
+  as compatibility tombstones that return a fixed empty HTTP 410 response
+  without reading the request body or calling LumaPrints.
 - Transient submission failures are rethrown so Stripe can retry the webhook.
 - Create-order failures use an operation-specific disposition. Only the
   documented non-acceptance statuses `400`, `406`, and `429` are definitely
@@ -112,6 +112,20 @@ them in route code.
 
 The lower-level client throws `LumaPrintsError`; routes and orchestration own the
 customer-facing policy.
+
+## Shipment notifications
+
+The hub route `/api/webhooks/lumaprints` is the only shipment intake owner. It
+claims a tokenized Convex lease by the canonical provider-global order number,
+then sends through Resend with a stable provider-number idempotency key. Active
+leases and send/checkpoint failures return retryable non-2xx responses. A send
+failure releases its lease and stores only a bounded failure code; an expired
+lease can be reclaimed. Historical shipped rows and legacy email markers remain
+terminal unless the row has explicit V2 lease evidence. The old provider-global
+claim/checkpoint functions remain only as an inert rollout bridge for V2 rows;
+the site-scoped shipment lookup, claim, and checkpoint APIs remain deprecated
+admin-auth compatibility surfaces. They require authenticated stored site-admin
+membership and reject webhook-secret-only callers.
 
 ## Environment
 

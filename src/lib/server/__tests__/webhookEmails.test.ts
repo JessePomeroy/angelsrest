@@ -1,7 +1,11 @@
 import { describe, expect, it, vi } from "vitest";
 import {
+	sendAutomatedRefundAttentionAlert,
+	sendAutomatedRefundFailureAlert,
 	sendCustomerConfirmation,
+	sendCustomerFulfillmentFailure,
 	sendCustomerShipmentNotification,
+	sendFulfillmentFailureAlert,
 	sendPaymentFailedEmail,
 	sendPrintReconciliationBlockedAlert,
 } from "$lib/server/webhookEmails";
@@ -93,6 +97,7 @@ describe("webhook customer emails", () => {
 		await sendCustomerShipmentNotification(mockResend as any, {
 			customerEmail: "buyer@example.com",
 			orderNumber: "ORD-003",
+			lumaprintsOrderNumber: "100000003",
 			trackingNumber: "TRACK-123",
 			carrier: "FedEx",
 			notificationProfile: {
@@ -107,6 +112,9 @@ describe("webhook customer emails", () => {
 		expect(payload.from).toBe("Reflecting Pool via Angel's Rest <orders@angelsrest.online>");
 		expect(payload.text).toContain("Tracking (FedEx): TRACK-123");
 		expect(payload.text).toContain("https://zippymiggy.com/orders");
+		expect(mockResend.emails.send).toHaveBeenCalledWith(expect.anything(), {
+			idempotencyKey: "shipment-email:100000003",
+		});
 	});
 
 	it("bounds the one-time reconciliation-blocked operator alert to fixed safe copy", async () => {
@@ -142,6 +150,93 @@ describe("webhook customer emails", () => {
 		});
 	});
 
+	it("describes prolonged GET escalation without claiming provider absence", async () => {
+		const mockResend = resend();
+		await sendPrintReconciliationBlockedAlert(mockResend as any, {
+			orderNumber: "ORD-005",
+			externalId: "cs_test_prolongedlookup1234",
+			reconciliationClass: "client_error",
+			escalationReason: "result_not_observed",
+		});
+		const payload = mockResend.emails.send.mock.calls[0]?.[0];
+		expect(payload?.text).toContain("Repeated provider lookups remained inconclusive");
+		expect(payload?.text).toContain("does not assert that the provider order is absent");
+	});
+
+	it("uses stable refund keys and surfaces Resend API failures", async () => {
+		const failingResend = {
+			emails: {
+				send: vi.fn().mockResolvedValue({ error: { message: "Resend rejected refund copy" } }),
+			},
+		};
+		await expect(
+			sendCustomerFulfillmentFailure(failingResend as any, {
+				customerEmail: "buyer@example.com",
+				orderNumber: "ORD-006",
+				stripeRefundId: "re_emailfailure123456",
+				total: 1500,
+			}),
+		).rejects.toThrow("Resend rejected refund copy");
+		expect(failingResend.emails.send).toHaveBeenCalledWith(expect.anything(), {
+			idempotencyKey: "fulfillment-refund-customer:re_emailfailure123456",
+		});
+
+		await expect(
+			sendFulfillmentFailureAlert(failingResend as any, {
+				orderNumber: "ORD-006",
+				customerEmail: "buyer@example.com",
+				errorSummary: "Provider rejected fulfillment",
+				stripeRefundId: "re_emailfailure123456",
+				total: 1500,
+			}),
+		).rejects.toThrow("Resend rejected refund copy");
+		expect(failingResend.emails.send).toHaveBeenLastCalledWith(expect.anything(), {
+			idempotencyKey: "fulfillment-refund-admin:re_emailfailure123456",
+		});
+	});
+
+	it("uses a stable operator-only key for a failed automated refund", async () => {
+		const mockResend = resend();
+		await sendAutomatedRefundFailureAlert(mockResend as any, {
+			orderNumber: "ORD-007",
+			customerEmail: "buyer@example.com",
+			errorSummary: "Provider rejected fulfillment",
+			stripeRefundId: "re_failed1234567890",
+			refundStatus: "failed",
+			total: 1500,
+		});
+		const payload = mockResend.emails.send.mock.calls[0]?.[0];
+		expect(payload?.text).toContain("No customer refund-success email was sent");
+		expect(mockResend.emails.send).toHaveBeenCalledWith(expect.anything(), {
+			idempotencyKey: "fulfillment-refund-failed:re_failed1234567890",
+		});
+	});
+
+	it("uses a stable operator-only key without inferring success for refund attention", async () => {
+		const mockResend = resend();
+		await sendAutomatedRefundAttentionAlert(mockResend as any, {
+			orderNumber: "ORD-008",
+			customerEmail: "buyer@example.com",
+			errorSummary: "Provider rejected fulfillment",
+			stripeRefundId: "re_attention1234567890",
+			refundStatus: "requires_action",
+			attentionReason: "age_exceeded",
+			total: 1500,
+			notificationProfile: {
+				siteName: "Test tenant",
+				siteUrl: "tenant.example",
+				adminEmail: "admin@example.com",
+			},
+		});
+		const payload = mockResend.emails.send.mock.calls[0]?.[0];
+		expect(payload?.to).toEqual(["admin@example.com"]);
+		expect(payload?.text).toContain("No refund success was inferred");
+		expect(payload?.text).toContain("Signed Stripe refund updates may still resolve");
+		expect(mockResend.emails.send).toHaveBeenCalledWith(expect.anything(), {
+			idempotencyKey: "fulfillment-refund-attention:re_attention1234567890",
+		});
+	});
+
 	it("surfaces payment-failure Resend API errors after a durable claim", async () => {
 		const mockResend = {
 			emails: {
@@ -171,6 +266,7 @@ describe("webhook customer emails", () => {
 			sendCustomerShipmentNotification(mockResend as any, {
 				customerEmail: "buyer@example.com",
 				orderNumber: "ORD-004",
+				lumaprintsOrderNumber: "100000004",
 			}),
 		).rejects.toThrow("Domain is not verified");
 	});

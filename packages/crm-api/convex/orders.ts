@@ -51,10 +51,37 @@ const shipmentEmailDeliveryStatusValidator = v.union(
 	v.literal("skipped"),
 );
 
+const shipmentEmailDeliveryFailureCodeValidator = v.union(
+	v.literal("missing_customer_email"),
+	v.literal("notification_profile_unavailable"),
+	v.literal("email_delivery_failed"),
+	v.literal("unexpected_send_failure"),
+	v.literal("legacy_delivery_failed"),
+);
+
 const fulfillmentRecoveryStatusValidator = v.union(
 	v.literal("refund_pending"),
 	v.literal("refunded"),
+	v.literal("refund_failed"),
+	v.literal("refund_attention"),
 );
+
+const automatedRefundStatusValidator = v.union(
+	v.literal("pending"),
+	v.literal("requires_action"),
+	v.literal("succeeded"),
+	v.literal("failed"),
+	v.literal("canceled"),
+);
+
+type AutomatedRefundStatus =
+	| "pending"
+	| "requires_action"
+	| "succeeded"
+	| "failed"
+	| "canceled";
+
+type AutomatedRefundAttentionReason = "attempts_exhausted" | "age_exceeded";
 
 const printFulfillmentReconciliationClassValidator = v.union(
 	v.literal("provider_rejected"),
@@ -62,6 +89,21 @@ const printFulfillmentReconciliationClassValidator = v.union(
 	v.literal("ambiguous_result"),
 	v.literal("client_error"),
 );
+
+const printFulfillmentInconclusiveClassValidator = v.union(
+	v.literal("transport"),
+	v.literal("rate_or_server"),
+	v.literal("resource_bound"),
+	v.literal("client_exception"),
+	v.literal("result_not_observed"),
+);
+
+type PrintFulfillmentInconclusiveClass =
+	| "transport"
+	| "rate_or_server"
+	| "resource_bound"
+	| "client_exception"
+	| "result_not_observed";
 
 const manualRefundRecoveryProviderEvidenceValidator = v.object({
 	verifiedAt: v.number(),
@@ -84,6 +126,10 @@ const manualRefundReconciliationResultValidator = v.union(
 	v.object({ kind: v.literal("replayed") }),
 	v.object({ kind: v.literal("pending_order") }),
 	v.object({
+		kind: v.literal("retryable"),
+		reason: v.literal("print_submission_in_flight"),
+	}),
+	v.object({
 		kind: v.literal("rejected"),
 		reason: v.union(v.literal("identity_conflict"), v.literal("state_conflict")),
 	}),
@@ -93,6 +139,7 @@ type ManualRefundReconciliationResult =
 	| { kind: "reconciled" }
 	| { kind: "replayed" }
 	| { kind: "pending_order" }
+	| { kind: "retryable"; reason: "print_submission_in_flight" }
 	| { kind: "rejected"; reason: "identity_conflict" | "state_conflict" };
 
 const STRIPE_EVENT_ID = /^evt_[A-Za-z0-9]{8,120}$/;
@@ -198,6 +245,15 @@ const LUMAPRINTS_ORDER_NUMBER = /^[1-9]\d{0,63}$/;
 const PRINT_PREPARATION_LEASE_MS = 15 * 60 * 1000;
 const PRINT_RECONCILIATION_ALERT_LEASE_MS = 15 * 60 * 1000;
 const AUTOMATED_REFUND_LEASE_MS = 15 * 60 * 1000;
+const FULFILLMENT_NOTIFICATION_LEASE_MS = 15 * 60 * 1000;
+const SHIPMENT_EMAIL_NOTIFICATION_LEASE_MS = 15 * 60 * 1000;
+const PRINT_RECONCILIATION_PENDING_MAX_AGE_MS = 24 * 60 * 60 * 1000;
+const PRINT_RECONCILIATION_PENDING_MAX_ATTEMPTS = 5;
+const AUTOMATED_REFUND_PENDING_MAX_AGE_MS = 24 * 60 * 60 * 1000;
+const AUTOMATED_REFUND_PENDING_MAX_ATTEMPTS = 5;
+const REFUND_AUTOMATION_TAG = "fulfillment_recovery_v1";
+const FULFILLMENT_NOTIFICATION_PROTOCOL = "leased_v1";
+const SHIPMENT_EMAIL_NOTIFICATION_PROTOCOL = "leased_v2";
 
 function canClaimShipmentEmail(status: string) {
 	return status === "new" || status === "printing" || status === "ready";
@@ -277,6 +333,12 @@ async function attachPrintFulfillmentResult(
 		printFulfillmentResolution: "resolved",
 		printFulfillmentReconciliationClass: undefined,
 		printFulfillmentReconciliationBlockedAt: undefined,
+		printFulfillmentReconciliationPendingFirstAt: undefined,
+		printFulfillmentReconciliationPendingAttempts: undefined,
+		printFulfillmentReconciliationLastAttemptAt: undefined,
+		printFulfillmentReconciliationLastAttemptClass: undefined,
+		printFulfillmentReconciliationPendingClassCounts: undefined,
+		printFulfillmentReconciliationEscalationReason: undefined,
 		...(options.reserveOrderConfirmation && order.orderConfirmationClaimedAt === undefined
 			? { orderConfirmationClaimedAt: Date.now() }
 			: {}),
@@ -290,6 +352,17 @@ async function claimShipmentEmailForOrder(
 	trackingNumber?: string,
 	trackingUrl?: string,
 ) {
+	if (order.shipmentEmailNotificationProtocol === SHIPMENT_EMAIL_NOTIFICATION_PROTOCOL) {
+		return {
+			claimed: false,
+			order: {
+				_id: order._id,
+				siteUrl: order.siteUrl,
+				orderNumber: order.orderNumber,
+				customerEmail: order.customerEmail,
+			},
+		};
+	}
 	const patch: Record<string, unknown> = {};
 	if (canClaimShipmentEmail(order.status)) patch.status = "shipped";
 	if (trackingNumber !== undefined) patch.trackingNumber = trackingNumber;
@@ -320,11 +393,17 @@ async function recordShipmentEmailForOrder(
 	status: "sent" | "failed" | "skipped",
 	error?: string,
 ) {
+	if (order.shipmentEmailNotificationProtocol === SHIPMENT_EMAIL_NOTIFICATION_PROTOCOL) {
+		return {
+			recorded: false,
+			order: { _id: order._id, siteUrl: order.siteUrl, orderNumber: order.orderNumber },
+		};
+	}
 	const patch: Record<string, unknown> = {
 		shipmentEmailDeliveryStatus: status,
 		shipmentEmailDeliveryAttemptedAt: Date.now(),
 	};
-	if (status === "failed") patch.shipmentEmailDeliveryError = normalizeDeliveryError(error);
+	if (status === "failed") patch.shipmentEmailDeliveryError = "legacy_delivery_failed";
 	else patch.shipmentEmailDeliveryError = undefined;
 
 	await ctx.db.patch(order._id, patch);
@@ -332,14 +411,6 @@ async function recordShipmentEmailForOrder(
 		recorded: true,
 		order: { _id: order._id, siteUrl: order.siteUrl, orderNumber: order.orderNumber },
 	};
-}
-
-function truncateDeliveryError(error: string) {
-	return error.length > 1000 ? `${error.slice(0, 997)}...` : error;
-}
-
-function normalizeDeliveryError(error: string | undefined) {
-	return truncateDeliveryError(error || "Shipment email delivery failed without error detail");
 }
 
 export const UNBOUND_RETENTION_MS = 25 * 60 * 60 * 1000;
@@ -686,11 +757,17 @@ export const create = mutation({
 				fulfillmentError: existing.fulfillmentError,
 				stripeRefundId: existing.stripeRefundId,
 				fulfillmentRecoveryStatus: existing.fulfillmentRecoveryStatus,
+				automatedRefundId: existing.automatedRefundId,
+				automatedRefundStatus: existing.automatedRefundStatus,
+				fulfillmentFailureNotificationProtocol:
+					existing.fulfillmentFailureNotificationProtocol,
 				printFulfillmentClaim: existing.printFulfillmentClaim,
 				printFulfillmentPhase: existing.printFulfillmentPhase,
 				printFulfillmentResolution: existing.printFulfillmentResolution,
 				printFulfillmentReconciliationClass:
 					existing.printFulfillmentReconciliationClass,
+				printFulfillmentReconciliationEscalationReason:
+					existing.printFulfillmentReconciliationEscalationReason,
 				checkoutSnapshot: existing.checkoutSnapshot,
 			};
 		}
@@ -785,10 +862,15 @@ export const create = mutation({
 			fulfillmentError: undefined,
 			stripeRefundId: refundIntent?.stripeRefundId,
 			fulfillmentRecoveryStatus: undefined,
+			automatedRefundId: undefined,
+			automatedRefundStatus: undefined,
+			fulfillmentFailureNotificationProtocol: undefined,
+			legacyAutomatedRefundNotificationsSuppressed: undefined,
 			printFulfillmentClaim: undefined,
 			printFulfillmentPhase: undefined,
 			printFulfillmentResolution: undefined,
 			printFulfillmentReconciliationClass: undefined,
+			printFulfillmentReconciliationEscalationReason: undefined,
 			checkoutSnapshot: orderInput.checkoutSnapshot,
 		};
 	},
@@ -997,7 +1079,7 @@ export const reconcileSucceededManualRefund = mutation({
 		const completeRecovery = async <Result extends ManualRefundReconciliationResult>(
 			result: Result,
 		) => {
-			if (recovery) {
+			if (recovery && result.kind !== "retryable") {
 				await ctx.db.patch(recovery._id, {
 					state: "completed",
 					completedAt: Date.now(),
@@ -1097,6 +1179,14 @@ export const reconcileSucceededManualRefund = mutation({
 			return await completeRecovery({ kind: "rejected", reason: "state_conflict" });
 		}
 		const submissionIsUncertain = order ? hasUncertainPrintSubmission(order) : false;
+		const legacyPrintClaimIsInFlight = order?.status === "new"
+			&& order.lumaprintsOrderNumber === undefined
+			&& order.stripeRefundId === undefined
+			&& order.printFulfillmentClaim === true
+			&& order.printFulfillmentCoordinatorVersion !== 3
+			&& recovery === null;
+		const mayRefundAfterSubmissionFence = order?.printFulfillmentCoordinatorVersion === 3
+			|| recovery !== null;
 		const hasNoPrintSubmission = order !== undefined
 			&& order.lumaprintsOrderNumber === undefined
 			&& !order.printFulfillmentClaim
@@ -1118,11 +1208,17 @@ export const reconcileSucceededManualRefund = mutation({
 			&& order.lumaprintsOrderNumber === undefined
 			&& !order.printFulfillmentClaim
 			&& order.printFulfillmentResolution === undefined;
+		const hasV3PreProviderPreparation = order?.printFulfillmentCoordinatorVersion === 3
+			&& order.lumaprintsOrderNumber === undefined
+			&& order.printFulfillmentClaim === true
+			&& order.printFulfillmentPhase === "preparing"
+			&& order.printFulfillmentResolution === undefined;
 		const hasPreSubmissionPrintState = order?.lumaprintsOrderNumber === undefined
 			&& order?.printFulfillmentResolution === undefined
+			&& !order?.printFulfillmentClaim
 			&& (
 				order?.printFulfillmentPhase === undefined
-				|| order.printFulfillmentPhase === "preparing"
+					|| order.printFulfillmentPhase === "preparing"
 			);
 		const isRefundableNew = order?.status === "new"
 			&& order.stripeRefundId === undefined
@@ -1130,11 +1226,24 @@ export const reconcileSucceededManualRefund = mutation({
 			&& order.fulfillmentRecoveryStatus === undefined
 			&& (
 				hasPreSubmissionPrintState
-				|| submissionIsUncertain
+				|| hasV3PreProviderPreparation
+				|| submissionIsUncertain && mayRefundAfterSubmissionFence
 				|| hasResolvedPrintSubmission
 			);
+		if (legacyPrintClaimIsInFlight) {
+			return {
+				kind: "retryable" as const,
+				reason: "print_submission_in_flight" as const,
+			};
+		}
 		if (recovery && !isManualTerminal && !isRefundableNew && !canTakeOverPendingRecovery) {
 			return await completeRecovery({ kind: "rejected", reason: "state_conflict" });
+		}
+		if (submissionIsUncertain && !mayRefundAfterSubmissionFence) {
+			return {
+				kind: "retryable" as const,
+				reason: "print_submission_in_flight" as const,
+			};
 		}
 
 		if (!intent) {
@@ -1179,9 +1288,13 @@ export const reconcileSucceededManualRefund = mutation({
 			stripeRefundId: args.stripeRefundId,
 			fulfillmentError: undefined,
 			fulfillmentRecoveryStatus: undefined,
+			automatedRefundId: undefined,
+			automatedRefundStatus: undefined,
 			automatedRefundClaimedAt: undefined,
 			automatedRefundClaimToken: undefined,
 			automatedRefundLeaseExpiresAt: undefined,
+			fulfillmentFailureNotificationProtocol: undefined,
+			legacyAutomatedRefundNotificationsSuppressed: undefined,
 			stripeFeeCaptureStatus: cancelsFeeCapture
 				? "canceled"
 				: order.stripeFeeCaptureStatus,
@@ -1322,6 +1435,9 @@ export const claimPrintFulfillment = mutation({
 		if (order.status === "refunded" || order.stripeRefundId)
 			return { kind: "refunded" as const, stripeRefundId: order.stripeRefundId };
 		if (order.fulfillmentRecoveryStatus) return { kind: "busy" as const };
+		// A V3 stamp survives preparation-lease release. Do not let a legacy host
+		// subsequently cross the POST fence under V3 refund-race semantics.
+		if (order.printFulfillmentCoordinatorVersion === 3) return { kind: "busy" as const };
 		await ctx.db.patch(args.orderId, {
 			printFulfillmentClaim: true,
 			printFulfillmentResolution: "submission_uncertain",
@@ -1337,6 +1453,19 @@ export const claimPrintFulfillmentV2 = mutation({
 		claimToken: v.string(),
 		webhookSecret: v.string(),
 	},
+	returns: v.union(
+		v.object({ kind: v.literal("fulfilled"), orderNumber: v.string() }),
+		v.object({ kind: v.literal("reconcile"), externalId: v.string() }),
+		v.object({ kind: v.literal("manual_refunded"), stripeRefundId: v.string() }),
+		v.object({ kind: v.literal("automated_refunded"), stripeRefundId: v.string() }),
+		v.object({ kind: v.literal("busy") }),
+		v.object({ kind: v.literal("preparing") }),
+		v.object({
+			kind: v.literal("claimed"),
+			externalId: v.string(),
+			leaseExpiresAt: v.number(),
+		}),
+	),
 	handler: async (ctx, args) => {
 		await requireWebhookCallerOrAuth(ctx, args.webhookSecret, { allowAuth: false });
 		if (!CLAIM_TOKEN.test(args.claimToken)) throw new Error("Invalid print claim token");
@@ -1346,10 +1475,87 @@ export const claimPrintFulfillmentV2 = mutation({
 			return { kind: "fulfilled" as const, orderNumber: order.lumaprintsOrderNumber };
 		if (hasUncertainPrintSubmission(order)) {
 			if (order.printFulfillmentResolution === "reconciliation_blocked") {
+				return { kind: "busy" as const };
+			}
+			return { kind: "reconcile" as const, externalId: order.stripeSessionId };
+		}
+		if (
+			order.status === "refunded"
+			&& order.stripeRefundId
+			&& order.fulfillmentRecoveryStatus === undefined
+		) {
+			return { kind: "manual_refunded" as const, stripeRefundId: order.stripeRefundId };
+		}
+		if (order.stripeRefundId) {
+			return { kind: "automated_refunded" as const, stripeRefundId: order.stripeRefundId };
+		}
+		if (order.fulfillmentRecoveryStatus || order.status !== "new") {
+			return { kind: "busy" as const };
+		}
+		// Preserve the V2 return union while refusing ownership of a row that a
+		// V3 coordinator already marked durably.
+		if (order.printFulfillmentCoordinatorVersion === 3) {
+			return { kind: "busy" as const };
+		}
+		const now = Date.now();
+		if (order.printFulfillmentClaim) {
+			if (order.printFulfillmentPhase !== "preparing") {
+				return { kind: "reconcile" as const, externalId: order.stripeSessionId };
+			}
+			if (
+				order.printFulfillmentLeaseExpiresAt !== undefined
+				&& order.printFulfillmentLeaseExpiresAt > now
+			) return { kind: "preparing" as const };
+		}
+		const leaseExpiresAt = now + PRINT_PREPARATION_LEASE_MS;
+		await ctx.db.patch(args.orderId, {
+			printFulfillmentClaim: true,
+			printFulfillmentClaimToken: args.claimToken,
+			printFulfillmentPhase: "preparing",
+			printFulfillmentClaimedAt: now,
+			printFulfillmentLeaseExpiresAt: leaseExpiresAt,
+			printFulfillmentResolution: undefined,
+			printFulfillmentReconciliationClass: undefined,
+			printFulfillmentReconciliationBlockedAt: undefined,
+		});
+		return {
+			kind: "claimed" as const,
+			externalId: order.stripeSessionId,
+			leaseExpiresAt,
+		};
+	},
+});
+
+/**
+ * Versioned coordinator claim. Its return value may evolve independently while
+ * V2 remains byte-compatible for already-deployed hosts.
+ */
+export const claimPrintFulfillmentV3 = mutation({
+	args: {
+		orderId: v.id("orders"),
+		claimToken: v.string(),
+		webhookSecret: v.string(),
+	},
+	handler: async (ctx, args) => {
+		await requireWebhookCallerOrAuth(ctx, args.webhookSecret, { allowAuth: false });
+		if (!CLAIM_TOKEN.test(args.claimToken)) throw new Error("Invalid print claim token");
+		const order = await ctx.db.get(args.orderId);
+		if (!order) throw new Error("Order not found");
+		if (order.lumaprintsOrderNumber) {
+			return { kind: "fulfilled" as const, orderNumber: order.lumaprintsOrderNumber };
+		}
+		if (hasUncertainPrintSubmission(order)) {
+			if (order.printFulfillmentResolution === "reconciliation_blocked") {
 				return {
 					kind: "reconciliation_blocked" as const,
 					reconciliationClass:
 						order.printFulfillmentReconciliationClass ?? "client_error",
+					...(order.printFulfillmentReconciliationEscalationReason === undefined
+						? {}
+						: {
+								escalationReason:
+									order.printFulfillmentReconciliationEscalationReason,
+							}),
 				};
 			}
 			return { kind: "reconcile" as const, externalId: order.stripeSessionId };
@@ -1384,9 +1590,16 @@ export const claimPrintFulfillmentV2 = mutation({
 			printFulfillmentPhase: "preparing",
 			printFulfillmentClaimedAt: now,
 			printFulfillmentLeaseExpiresAt: leaseExpiresAt,
+			printFulfillmentCoordinatorVersion: 3,
 			printFulfillmentResolution: undefined,
 			printFulfillmentReconciliationClass: undefined,
 			printFulfillmentReconciliationBlockedAt: undefined,
+			printFulfillmentReconciliationPendingFirstAt: undefined,
+			printFulfillmentReconciliationPendingAttempts: undefined,
+			printFulfillmentReconciliationLastAttemptAt: undefined,
+			printFulfillmentReconciliationLastAttemptClass: undefined,
+			printFulfillmentReconciliationPendingClassCounts: undefined,
+			printFulfillmentReconciliationEscalationReason: undefined,
 		});
 		return {
 			kind: "claimed" as const,
@@ -1422,6 +1635,12 @@ export const releasePrintFulfillmentClaim = mutation({
 			printFulfillmentResolution: undefined,
 			printFulfillmentReconciliationClass: undefined,
 			printFulfillmentReconciliationBlockedAt: undefined,
+			printFulfillmentReconciliationPendingFirstAt: undefined,
+			printFulfillmentReconciliationPendingAttempts: undefined,
+			printFulfillmentReconciliationLastAttemptAt: undefined,
+			printFulfillmentReconciliationLastAttemptClass: undefined,
+			printFulfillmentReconciliationPendingClassCounts: undefined,
+			printFulfillmentReconciliationEscalationReason: undefined,
 		});
 		return true;
 	},
@@ -1602,6 +1821,91 @@ export const reconcilePrintFulfillmentSubmission = mutation({
 	},
 });
 
+/**
+ * Record one inconclusive V3 GET result. Repeated absence or resource-bound
+ * reads eventually become operator-blocked without asserting that the provider
+ * order does not exist, clearing the POST fence, or authorizing a refund.
+ */
+export const recordPrintFulfillmentReconciliationPending = mutation({
+	args: {
+		orderId: v.id("orders"),
+		externalId: v.string(),
+		reason: printFulfillmentInconclusiveClassValidator,
+		webhookSecret: v.string(),
+	},
+	returns: v.union(
+		v.object({ kind: v.literal("pending"), attempts: v.number() }),
+		v.object({
+			kind: v.literal("reconciliation_blocked"),
+			reconciliationClass: v.literal("client_error"),
+			escalationReason: v.optional(printFulfillmentInconclusiveClassValidator),
+		}),
+	),
+	handler: async (ctx, args) => {
+		await requireWebhookCallerOrAuth(ctx, args.webhookSecret, { allowAuth: false });
+		if (!isStripeCheckoutSessionId(args.externalId)) {
+			throw new Error("Invalid print reconciliation identity");
+		}
+		const order = await ctx.db.get(args.orderId);
+		if (!order || order.stripeSessionId !== args.externalId) {
+			throw new Error("Print fulfillment identity does not match order");
+		}
+		if (order.lumaprintsOrderNumber !== undefined || !hasUncertainPrintSubmission(order)) {
+			throw new Error("Print fulfillment reconciliation claim is unavailable");
+		}
+		if (order.printFulfillmentResolution === "reconciliation_blocked") {
+			return {
+				kind: "reconciliation_blocked" as const,
+				reconciliationClass: "client_error" as const,
+				...(order.printFulfillmentReconciliationEscalationReason === undefined
+					? {}
+					: {
+							escalationReason:
+								order.printFulfillmentReconciliationEscalationReason,
+						}),
+			};
+		}
+		const now = Date.now();
+		const firstAt = order.printFulfillmentReconciliationPendingFirstAt ?? now;
+		const attempts = (order.printFulfillmentReconciliationPendingAttempts ?? 0) + 1;
+		const classCounts = order.printFulfillmentReconciliationPendingClassCounts ?? {
+			transport: 0,
+			rate_or_server: 0,
+			resource_bound: 0,
+			client_exception: 0,
+			result_not_observed: 0,
+		};
+		const nextClassCounts = {
+			...classCounts,
+			[args.reason]: classCounts[args.reason] + 1,
+		};
+		const shouldBlock = attempts >= PRINT_RECONCILIATION_PENDING_MAX_ATTEMPTS
+			|| now - firstAt >= PRINT_RECONCILIATION_PENDING_MAX_AGE_MS;
+		await ctx.db.patch(order._id, {
+			printFulfillmentReconciliationPendingFirstAt: firstAt,
+			printFulfillmentReconciliationPendingAttempts: attempts,
+			printFulfillmentReconciliationLastAttemptAt: now,
+			printFulfillmentReconciliationLastAttemptClass: args.reason,
+			printFulfillmentReconciliationPendingClassCounts: nextClassCounts,
+			...(shouldBlock
+				? {
+						printFulfillmentResolution: "reconciliation_blocked" as const,
+						printFulfillmentReconciliationClass: "client_error" as const,
+						printFulfillmentReconciliationBlockedAt: now,
+						printFulfillmentReconciliationEscalationReason: args.reason,
+					}
+				: {}),
+		});
+		return shouldBlock
+			? {
+					kind: "reconciliation_blocked" as const,
+					reconciliationClass: "client_error" as const,
+					escalationReason: args.reason,
+				}
+			: { kind: "pending" as const, attempts };
+	},
+});
+
 /** Stop automatic GET retries after a deterministic reconciliation failure. */
 export const blockPrintFulfillmentReconciliation = mutation({
 	args: {
@@ -1632,6 +1936,7 @@ export const blockPrintFulfillmentReconciliation = mutation({
 			printFulfillmentResolution: "reconciliation_blocked",
 			printFulfillmentReconciliationClass: args.reconciliationClass,
 			printFulfillmentReconciliationBlockedAt: Date.now(),
+			printFulfillmentReconciliationEscalationReason: undefined,
 		});
 		return true;
 	},
@@ -1814,6 +2119,173 @@ export const claimAutomatedFulfillmentRefund = mutation({
 	},
 });
 
+/** Lease-aware refund coordinator that resumes a stored provider refund by ID. */
+export const claimAutomatedFulfillmentRefundV2 = mutation({
+	args: {
+		orderId: v.id("orders"),
+		claimToken: v.string(),
+		fulfillmentError: v.string(),
+		webhookSecret: v.string(),
+	},
+	returns: v.union(
+		v.object({
+			kind: v.literal("claimed"),
+			leaseExpiresAt: v.number(),
+			stripeRefundId: v.optional(v.string()),
+			refundStatus: v.optional(automatedRefundStatusValidator),
+		}),
+		v.object({ kind: v.literal("busy"), leaseExpiresAt: v.number() }),
+		v.object({ kind: v.literal("refunded"), stripeRefundId: v.string() }),
+		v.object({
+			kind: v.literal("refund_failed"),
+			stripeRefundId: v.string(),
+			refundStatus: v.union(v.literal("failed"), v.literal("canceled")),
+		}),
+		v.object({
+			kind: v.literal("refund_attention"),
+			stripeRefundId: v.string(),
+			refundStatus: v.union(v.literal("pending"), v.literal("requires_action")),
+			attentionReason: v.union(
+				v.literal("attempts_exhausted"),
+				v.literal("age_exceeded"),
+			),
+		}),
+		v.object({ kind: v.literal("unavailable") }),
+	),
+	handler: async (ctx, args) => {
+		await requireWebhookCallerOrAuth(ctx, args.webhookSecret, { allowAuth: false });
+		if (!CLAIM_TOKEN.test(args.claimToken)) throw new Error("Invalid refund claim token");
+		if (args.fulfillmentError.length < 1 || args.fulfillmentError.length > 1000) {
+			throw new Error("Invalid durable fulfillment error");
+		}
+		const order = await ctx.db.get(args.orderId);
+		if (!order) throw new Error("Order not found");
+		if (
+			order.status === "fulfillment_error"
+			&& order.fulfillmentRecoveryStatus === "refunded"
+			&& order.stripeRefundId !== undefined
+			&& order.automatedRefundStatus === "succeeded"
+		) return { kind: "refunded" as const, stripeRefundId: order.stripeRefundId };
+		if (
+			order.status === "fulfillment_error"
+			&& order.fulfillmentRecoveryStatus === "refund_failed"
+			&& order.automatedRefundId !== undefined
+			&& (order.automatedRefundStatus === "failed"
+				|| order.automatedRefundStatus === "canceled")
+		) {
+			return {
+				kind: "refund_failed" as const,
+				stripeRefundId: order.automatedRefundId,
+				refundStatus: order.automatedRefundStatus,
+			};
+		}
+		if (
+			order.status === "fulfillment_error"
+			&& order.fulfillmentRecoveryStatus === "refund_attention"
+			&& order.automatedRefundId !== undefined
+			&& (order.automatedRefundStatus === "pending"
+				|| order.automatedRefundStatus === "requires_action")
+			&& order.automatedRefundAttentionReason !== undefined
+		) {
+			return {
+				kind: "refund_attention" as const,
+				stripeRefundId: order.automatedRefundId,
+				refundStatus: order.automatedRefundStatus,
+				attentionReason: order.automatedRefundAttentionReason,
+			};
+		}
+		const isFreshRecovery = order.status === "new"
+			&& order.fulfillmentRecoveryStatus === undefined
+			&& order.fulfillmentError === undefined
+			&& order.stripeRefundId === undefined
+			&& order.automatedRefundId === undefined
+			&& order.lumaprintsOrderNumber === undefined
+			&& order.printFulfillmentClaim !== true
+			&& order.printFulfillmentPhase === undefined
+			&& order.printFulfillmentResolution === undefined;
+		const isPendingRecovery = order.status === "fulfillment_error"
+			&& order.fulfillmentRecoveryStatus === "refund_pending"
+			&& order.stripeRefundId === undefined
+			&& order.lumaprintsOrderNumber === undefined
+			&& order.printFulfillmentClaim !== true
+			&& order.printFulfillmentPhase === undefined
+			&& order.printFulfillmentResolution === undefined
+			&& order.fulfillmentError === args.fulfillmentError
+			&& (
+				order.automatedRefundStatus === undefined
+				|| order.automatedRefundStatus === "pending"
+				|| order.automatedRefundStatus === "requires_action"
+			);
+		if (!isFreshRecovery && !isPendingRecovery) return { kind: "unavailable" as const };
+		const now = Date.now();
+		const firstAttemptAt = order.automatedRefundFirstAttemptAt ?? now;
+		const pendingAttentionReason: AutomatedRefundAttentionReason | undefined =
+			order.automatedRefundId !== undefined
+			&& (order.automatedRefundStatus === "pending"
+				|| order.automatedRefundStatus === "requires_action")
+				? now - firstAttemptAt >= AUTOMATED_REFUND_PENDING_MAX_AGE_MS
+					? "age_exceeded"
+					: (order.automatedRefundAttempts ?? 0) >= AUTOMATED_REFUND_PENDING_MAX_ATTEMPTS
+						? "attempts_exhausted"
+						: undefined
+				: undefined;
+		if (
+			pendingAttentionReason !== undefined
+			&& order.automatedRefundId !== undefined
+			&& (order.automatedRefundStatus === "pending"
+				|| order.automatedRefundStatus === "requires_action")
+		) {
+			await ctx.db.patch(order._id, {
+				fulfillmentRecoveryStatus: "refund_attention",
+				automatedRefundAttentionAt: now,
+				automatedRefundAttentionReason: pendingAttentionReason,
+				automatedRefundClaimedAt: undefined,
+				automatedRefundClaimToken: undefined,
+				automatedRefundLeaseExpiresAt: undefined,
+				fulfillmentFailureNotificationProtocol: FULFILLMENT_NOTIFICATION_PROTOCOL,
+			});
+			return {
+				kind: "refund_attention" as const,
+				stripeRefundId: order.automatedRefundId,
+				refundStatus: order.automatedRefundStatus,
+				attentionReason: pendingAttentionReason,
+			};
+		}
+		if (
+			order.automatedRefundClaimToken !== undefined
+			&& order.automatedRefundLeaseExpiresAt !== undefined
+			&& order.automatedRefundLeaseExpiresAt > now
+		) {
+			return {
+				kind: "busy" as const,
+				leaseExpiresAt: order.automatedRefundLeaseExpiresAt,
+			};
+		}
+		const leaseExpiresAt = now + AUTOMATED_REFUND_LEASE_MS;
+		await ctx.db.patch(order._id, {
+			status: "fulfillment_error",
+			fulfillmentError: args.fulfillmentError,
+			fulfillmentRecoveryStatus: "refund_pending",
+			automatedRefundClaimedAt: now,
+			automatedRefundClaimToken: args.claimToken,
+			automatedRefundLeaseExpiresAt: leaseExpiresAt,
+			automatedRefundAttempts: (order.automatedRefundAttempts ?? 0) + 1,
+			automatedRefundFirstAttemptAt: firstAttemptAt,
+			automatedRefundLastAttemptAt: now,
+		});
+		return {
+			kind: "claimed" as const,
+			leaseExpiresAt,
+			...(order.automatedRefundId === undefined
+				? {}
+				: { stripeRefundId: order.automatedRefundId }),
+			...(order.automatedRefundStatus === undefined
+				? {}
+				: { refundStatus: order.automatedRefundStatus }),
+		};
+	},
+});
+
 /** Release only the caller's unfinished automated-refund lease. */
 export const releaseAutomatedFulfillmentRefund = mutation({
 	args: {
@@ -1857,28 +2329,266 @@ export const completeAutomatedFulfillmentRefund = mutation({
 		await requireWebhookCallerOrAuth(ctx, args.webhookSecret, { allowAuth: false });
 		if (!CLAIM_TOKEN.test(args.claimToken)) throw new Error("Invalid refund claim token");
 		if (!STRIPE_REFUND_ID.test(args.stripeRefundId)) throw new Error("Invalid Stripe refund ID");
+		throw new Error("Automated refund status requires the versioned completion protocol");
+	},
+});
+
+function automatedRefundProjection(order: Doc<"orders">, status: AutomatedRefundStatus) {
+	const common = {
+		orderId: order._id,
+		orderNumber: order.orderNumber,
+		customerEmail: order.customerEmail,
+		total: order.total,
+		errorSummary: order.fulfillmentError ?? "Permanent fulfillment failure",
+	};
+	if (status === "succeeded" && order.stripeRefundId !== undefined) {
+		return { kind: "succeeded" as const, ...common, stripeRefundId: order.stripeRefundId };
+	}
+	if (
+		(status === "failed" || status === "canceled")
+		&& order.automatedRefundId !== undefined
+	) {
+		return {
+			kind: "refund_failed" as const,
+			...common,
+			stripeRefundId: order.automatedRefundId,
+			refundStatus: status,
+		};
+	}
+	if (
+		(status === "pending" || status === "requires_action")
+		&& order.fulfillmentRecoveryStatus === "refund_attention"
+		&& order.automatedRefundId !== undefined
+		&& order.automatedRefundAttentionReason !== undefined
+	) {
+		return {
+			kind: "refund_attention" as const,
+			...common,
+			stripeRefundId: order.automatedRefundId,
+			refundStatus: status,
+			attentionReason: order.automatedRefundAttentionReason,
+		};
+	}
+	return { kind: "pending" as const, refundStatus: status };
+}
+
+async function applyAutomatedRefundStatus(
+	ctx: MutationCtx,
+	order: Doc<"orders">,
+	stripeRefundId: string,
+	refundStatus: AutomatedRefundStatus,
+) {
+	if (
+		order.status !== "fulfillment_error"
+		|| order.fulfillmentError === undefined
+		|| order.lumaprintsOrderNumber !== undefined
+		|| order.printFulfillmentClaim === true
+		|| order.printFulfillmentPhase !== undefined
+		|| order.printFulfillmentResolution !== undefined
+		|| order.stripeRefundId !== undefined && order.stripeRefundId !== stripeRefundId
+		|| order.automatedRefundId !== undefined && order.automatedRefundId !== stripeRefundId
+	) throw new Error("Automated refund claim is unavailable");
+	if (order.automatedRefundStatus === "succeeded") {
+		if (refundStatus !== "succeeded") throw new Error("Automated refund status cannot regress");
+		return automatedRefundProjection(order, "succeeded");
+	}
+	if (
+		(order.automatedRefundStatus === "failed" || order.automatedRefundStatus === "canceled")
+		&& order.automatedRefundStatus !== refundStatus
+	) throw new Error("Automated refund status cannot regress");
+
+	const suppressesLegacySuccessNotifications =
+		order.legacyAutomatedRefundNotificationsSuppressed === true
+		|| (
+			order.fulfillmentFailureNotificationProtocol === undefined
+			&& order.fulfillmentRecoveryStatus === "refunded"
+			&& order.stripeRefundId === stripeRefundId
+		);
+	const now = Date.now();
+	const pendingAttentionReason: AutomatedRefundAttentionReason | undefined =
+		refundStatus === "pending" || refundStatus === "requires_action"
+			? order.fulfillmentRecoveryStatus === "refund_attention"
+				? order.automatedRefundAttentionReason ?? "attempts_exhausted"
+				: order.automatedRefundFirstAttemptAt !== undefined
+					&& now - order.automatedRefundFirstAttemptAt >= AUTOMATED_REFUND_PENDING_MAX_AGE_MS
+					? "age_exceeded"
+					: (order.automatedRefundAttempts ?? 0) >= AUTOMATED_REFUND_PENDING_MAX_ATTEMPTS
+						? "attempts_exhausted"
+						: undefined
+			: undefined;
+	const nextStripeRefundId = refundStatus === "succeeded" ? stripeRefundId : undefined;
+	const nextRecoveryStatus = refundStatus === "succeeded"
+		? "refunded" as const
+		: refundStatus === "failed" || refundStatus === "canceled"
+			? "refund_failed" as const
+			: pendingAttentionReason !== undefined
+				? "refund_attention" as const
+				: "refund_pending" as const;
+	const authorizesNotificationProtocol = refundStatus === "failed"
+		|| refundStatus === "canceled"
+		|| pendingAttentionReason !== undefined
+		|| refundStatus === "succeeded" && !suppressesLegacySuccessNotifications;
+	await ctx.db.patch(order._id, {
+		automatedRefundId: stripeRefundId,
+		automatedRefundStatus: refundStatus,
+		stripeRefundId: nextStripeRefundId,
+		fulfillmentRecoveryStatus: nextRecoveryStatus,
+		automatedRefundClaimedAt: undefined,
+		automatedRefundClaimToken: undefined,
+		automatedRefundLeaseExpiresAt: undefined,
+		...(pendingAttentionReason === undefined
+			? {}
+			: {
+					automatedRefundAttentionAt: order.automatedRefundAttentionAt ?? now,
+					automatedRefundAttentionReason: pendingAttentionReason,
+				}),
+		...(suppressesLegacySuccessNotifications
+			? { legacyAutomatedRefundNotificationsSuppressed: true as const }
+			: {}),
+		...(authorizesNotificationProtocol
+			? { fulfillmentFailureNotificationProtocol: FULFILLMENT_NOTIFICATION_PROTOCOL }
+			: {}),
+	});
+	return automatedRefundProjection({
+		...order,
+		automatedRefundId: stripeRefundId,
+		automatedRefundStatus: refundStatus,
+		stripeRefundId: nextStripeRefundId,
+		fulfillmentRecoveryStatus: nextRecoveryStatus,
+		...(pendingAttentionReason === undefined
+			? {}
+			: {
+					automatedRefundAttentionAt: order.automatedRefundAttentionAt ?? now,
+					automatedRefundAttentionReason: pendingAttentionReason,
+				}),
+		...(suppressesLegacySuccessNotifications
+			? { legacyAutomatedRefundNotificationsSuppressed: true as const }
+			: {}),
+		...(authorizesNotificationProtocol
+			? { fulfillmentFailureNotificationProtocol: FULFILLMENT_NOTIFICATION_PROTOCOL }
+			: {}),
+	}, refundStatus);
+}
+
+/** Persist the exact provider refund status for the current lease owner. */
+export const recordAutomatedFulfillmentRefund = mutation({
+	args: {
+		orderId: v.id("orders"),
+		claimToken: v.string(),
+		stripeRefundId: v.string(),
+		stripeRefundStatus: automatedRefundStatusValidator,
+		webhookSecret: v.string(),
+	},
+	handler: async (ctx, args) => {
+		await requireWebhookCallerOrAuth(ctx, args.webhookSecret, { allowAuth: false });
+		if (!CLAIM_TOKEN.test(args.claimToken)) throw new Error("Invalid refund claim token");
+		if (!STRIPE_REFUND_ID.test(args.stripeRefundId)) throw new Error("Invalid Stripe refund ID");
 		const order = await ctx.db.get(args.orderId);
 		if (!order) throw new Error("Order not found");
 		if (
-			order.status === "fulfillment_error"
-			&& order.fulfillmentRecoveryStatus === "refunded"
-			&& order.stripeRefundId === args.stripeRefundId
-		) return { kind: "replayed" as const };
+			order.automatedRefundId === args.stripeRefundId
+			&& order.automatedRefundStatus === args.stripeRefundStatus
+			&& (
+				order.fulfillmentRecoveryStatus === "refunded"
+				|| order.fulfillmentRecoveryStatus === "refund_failed"
+				|| order.fulfillmentRecoveryStatus === "refund_attention"
+			)
+		) return automatedRefundProjection(order, args.stripeRefundStatus);
 		if (
-			order.status !== "fulfillment_error"
-			|| order.fulfillmentRecoveryStatus !== "refund_pending"
-			|| order.fulfillmentError === undefined
-			|| order.stripeRefundId !== undefined
+			order.fulfillmentRecoveryStatus !== "refund_pending"
 			|| order.automatedRefundClaimToken !== args.claimToken
 		) throw new Error("Automated refund claim is unavailable");
-		await ctx.db.patch(order._id, {
-			stripeRefundId: args.stripeRefundId,
-			fulfillmentRecoveryStatus: "refunded",
-			automatedRefundClaimedAt: undefined,
-			automatedRefundClaimToken: undefined,
-			automatedRefundLeaseExpiresAt: undefined,
-		});
-		return { kind: "completed" as const };
+		return await applyAutomatedRefundStatus(
+			ctx,
+			order,
+			args.stripeRefundId,
+			args.stripeRefundStatus,
+		);
+	},
+});
+
+/** Project a signed automated refund update independently of a host lease. */
+export const reconcileAutomatedFulfillmentRefund = mutation({
+	args: {
+		webhookSecret: v.string(),
+		stripeEventId: v.string(),
+		stripeRefundId: v.string(),
+		stripeRefundStatus: automatedRefundStatusValidator,
+		stripeSessionId: v.string(),
+		stripePaymentIntentId: v.string(),
+		stripeConnectedAccountId: v.optional(v.string()),
+		stripeTenantMetadataSiteUrl: v.optional(v.string()),
+		siteUrl: v.string(),
+		metadataOrderNumber: v.string(),
+		automationTag: v.literal("fulfillment_recovery_v1"),
+		refundAmount: v.number(),
+		sessionAmountTotal: v.number(),
+		refundCurrency: v.literal("usd"),
+		sessionCurrency: v.literal("usd"),
+		eventLivemode: v.boolean(),
+		sessionLivemode: v.boolean(),
+	},
+	handler: async (ctx, args) => {
+		await requireWebhookCallerOrAuth(ctx, args.webhookSecret, { allowAuth: false });
+		const validIdentity = STRIPE_EVENT_ID.test(args.stripeEventId)
+			&& STRIPE_REFUND_ID.test(args.stripeRefundId)
+			&& STRIPE_PAYMENT_INTENT_ID.test(args.stripePaymentIntentId)
+			&& isStripeCheckoutSessionId(args.stripeSessionId)
+			&& (args.stripeConnectedAccountId === undefined
+				|| isStripeConnectedAccountId(args.stripeConnectedAccountId))
+			&& args.automationTag === REFUND_AUTOMATION_TAG
+			&& args.metadataOrderNumber.length > 0
+			&& args.metadataOrderNumber.length <= 64
+			&& Number.isSafeInteger(args.refundAmount)
+			&& Number.isSafeInteger(args.sessionAmountTotal)
+			&& args.refundAmount > 0
+			&& args.refundAmount === args.sessionAmountTotal
+			&& args.refundCurrency === args.sessionCurrency
+			&& args.eventLivemode === args.sessionLivemode;
+		if (!validIdentity) return { kind: "rejected" as const, reason: "identity_conflict" as const };
+		if (args.stripeConnectedAccountId !== undefined) {
+			const clients = await ctx.db.query("platformClients")
+				.withIndex("by_stripeConnectedAccountId", (q) => q
+					.eq("stripeConnectedAccountId", args.stripeConnectedAccountId))
+				.take(2);
+			if (clients.length !== 1 || clients[0].siteUrl !== args.siteUrl) {
+				return { kind: "rejected" as const, reason: "identity_conflict" as const };
+			}
+		}
+		const matches = await ctx.db.query("orders")
+			.withIndex("by_stripeSessionId", (q) => q.eq("stripeSessionId", args.stripeSessionId))
+			.take(2);
+		if (matches.length !== 1) {
+			return { kind: "rejected" as const, reason: "identity_conflict" as const };
+		}
+		const order = matches[0];
+		if (
+			order.siteUrl !== args.siteUrl
+			|| order.orderNumber !== args.metadataOrderNumber
+			|| order.total !== args.refundAmount
+			|| order.stripePaymentIntentId !== args.stripePaymentIntentId
+			|| order.stripeConnectedAccountId !== undefined
+				&& order.stripeConnectedAccountId !== args.stripeConnectedAccountId
+			|| args.stripeTenantMetadataSiteUrl !== undefined
+				&& args.stripeTenantMetadataSiteUrl !== order.siteUrl
+		) return { kind: "rejected" as const, reason: "identity_conflict" as const };
+		try {
+			return await applyAutomatedRefundStatus(
+				ctx,
+				order,
+				args.stripeRefundId,
+				args.stripeRefundStatus,
+			);
+		} catch (cause) {
+			if (
+				cause instanceof Error
+				&& (
+					cause.message === "Automated refund claim is unavailable"
+					|| cause.message === "Automated refund status cannot regress"
+				)
+			) return { kind: "rejected" as const, reason: "state_conflict" as const };
+			throw cause;
+		}
 	},
 });
 
@@ -1892,18 +2602,183 @@ export const claimFulfillmentFailureNotification = mutation({
 	returns: v.boolean(),
 	handler: async (ctx, args) => {
 		await requireWebhookCallerOrAuth(ctx, args.webhookSecret, { allowAuth: false });
+		// Kept byte-compatible for rollout, but deliberately inert. Rows written by
+		// this legacy at-most-once protocol must never authorize a new send.
+		return false;
+	},
+});
+
+type RefundNotificationAudience =
+	| "admin"
+	| "customer"
+	| "refund_failure"
+	| "refund_attention";
+
+function refundNotificationFields(audience: RefundNotificationAudience) {
+	if (audience === "admin") {
+		return {
+			claimedAt: "fulfillmentFailureAdminNotificationClaimedAt" as const,
+			claimToken: "fulfillmentFailureAdminNotificationClaimToken" as const,
+			leaseExpiresAt: "fulfillmentFailureAdminNotificationLeaseExpiresAt" as const,
+			sentAt: "fulfillmentFailureAdminNotificationSentAt" as const,
+		};
+	}
+	if (audience === "customer") {
+		return {
+			claimedAt: "fulfillmentFailureCustomerNotificationClaimedAt" as const,
+			claimToken: "fulfillmentFailureCustomerNotificationClaimToken" as const,
+			leaseExpiresAt: "fulfillmentFailureCustomerNotificationLeaseExpiresAt" as const,
+			sentAt: "fulfillmentFailureCustomerNotificationSentAt" as const,
+		};
+	}
+	if (audience === "refund_failure") {
+		return {
+			claimedAt: "automatedRefundFailureNotificationClaimedAt" as const,
+			claimToken: "automatedRefundFailureNotificationClaimToken" as const,
+			leaseExpiresAt: "automatedRefundFailureNotificationLeaseExpiresAt" as const,
+			sentAt: "automatedRefundFailureNotificationSentAt" as const,
+		};
+	}
+	return {
+		claimedAt: "automatedRefundAttentionNotificationClaimedAt" as const,
+		claimToken: "automatedRefundAttentionNotificationClaimToken" as const,
+		leaseExpiresAt: "automatedRefundAttentionNotificationLeaseExpiresAt" as const,
+		sentAt: "automatedRefundAttentionNotificationSentAt" as const,
+	};
+}
+
+function canNotifyAutomatedRefund(order: Doc<"orders">, audience: RefundNotificationAudience) {
+	if (
+		order.status !== "fulfillment_error"
+		|| order.fulfillmentFailureNotificationProtocol !== FULFILLMENT_NOTIFICATION_PROTOCOL
+	) return false;
+	if (audience === "refund_failure") {
+		return order.fulfillmentRecoveryStatus === "refund_failed"
+			&& order.automatedRefundId !== undefined
+			&& (order.automatedRefundStatus === "failed"
+				|| order.automatedRefundStatus === "canceled")
+			&& order.fulfillmentFailureNotificationProtocol === FULFILLMENT_NOTIFICATION_PROTOCOL;
+	}
+	if (audience === "refund_attention") {
+		return order.fulfillmentRecoveryStatus === "refund_attention"
+			&& order.automatedRefundId !== undefined
+			&& (order.automatedRefundStatus === "pending"
+				|| order.automatedRefundStatus === "requires_action")
+			&& order.automatedRefundAttentionReason !== undefined;
+	}
+	return order.fulfillmentRecoveryStatus === "refunded"
+		&& order.stripeRefundId !== undefined
+		&& order.automatedRefundId === order.stripeRefundId
+		&& order.automatedRefundStatus === "succeeded"
+		&& order.legacyAutomatedRefundNotificationsSuppressed !== true;
+}
+
+/** Lease one retry-safe automated-refund notification. */
+export const claimFulfillmentFailureNotificationV2 = mutation({
+	args: {
+		orderId: v.id("orders"),
+			audience: v.union(
+				v.literal("admin"),
+				v.literal("customer"),
+				v.literal("refund_failure"),
+				v.literal("refund_attention"),
+		),
+		claimToken: v.string(),
+		webhookSecret: v.string(),
+	},
+	returns: v.union(
+		v.object({ kind: v.literal("claimed") }),
+		v.object({ kind: v.literal("busy"), leaseExpiresAt: v.number() }),
+		v.object({ kind: v.literal("unavailable") }),
+	),
+	handler: async (ctx, args) => {
+		await requireWebhookCallerOrAuth(ctx, args.webhookSecret, { allowAuth: false });
+		if (!CLAIM_TOKEN.test(args.claimToken)) throw new Error("Invalid notification claim token");
 		const order = await ctx.db.get(args.orderId);
+		if (!order || !canNotifyAutomatedRefund(order, args.audience)) {
+			return { kind: "unavailable" as const };
+		}
+		const fields = refundNotificationFields(args.audience);
+		if (order[fields.sentAt] !== undefined) return { kind: "unavailable" as const };
+		const now = Date.now();
+		const existingClaimToken = order[fields.claimToken];
+		const existingLeaseExpiresAt = order[fields.leaseExpiresAt];
 		if (
-			!order
-			|| order.status !== "fulfillment_error"
-			|| order.fulfillmentRecoveryStatus !== "refunded"
-			|| order.stripeRefundId === undefined
-		) return false;
-		const field = args.audience === "admin"
-			? "fulfillmentFailureAdminNotificationClaimedAt"
-			: "fulfillmentFailureCustomerNotificationClaimedAt";
-		if (order[field] !== undefined) return false;
-		await ctx.db.patch(order._id, { [field]: Date.now() });
+			existingClaimToken !== undefined
+			&& existingLeaseExpiresAt !== undefined
+			&& existingLeaseExpiresAt > now
+		) {
+			return { kind: "busy" as const, leaseExpiresAt: existingLeaseExpiresAt };
+		}
+		await ctx.db.patch(order._id, {
+			[fields.claimedAt]: now,
+			[fields.claimToken]: args.claimToken,
+			[fields.leaseExpiresAt]: now + FULFILLMENT_NOTIFICATION_LEASE_MS,
+		});
+		return { kind: "claimed" as const };
+	},
+});
+
+/** Release only the caller's unsent automated-refund notification lease. */
+export const releaseFulfillmentFailureNotificationV2 = mutation({
+	args: {
+		orderId: v.id("orders"),
+			audience: v.union(
+			v.literal("admin"),
+			v.literal("customer"),
+				v.literal("refund_failure"),
+				v.literal("refund_attention"),
+		),
+		claimToken: v.string(),
+		webhookSecret: v.string(),
+	},
+	returns: v.boolean(),
+	handler: async (ctx, args) => {
+		await requireWebhookCallerOrAuth(ctx, args.webhookSecret, { allowAuth: false });
+		if (!CLAIM_TOKEN.test(args.claimToken)) throw new Error("Invalid notification claim token");
+		const order = await ctx.db.get(args.orderId);
+		if (!order) return false;
+		const fields = refundNotificationFields(args.audience);
+		if (order[fields.sentAt] !== undefined || order[fields.claimToken] !== args.claimToken) {
+			return false;
+		}
+		await ctx.db.patch(order._id, {
+			[fields.claimedAt]: undefined,
+			[fields.claimToken]: undefined,
+			[fields.leaseExpiresAt]: undefined,
+		});
+		return true;
+	},
+});
+
+/** Mark one accepted automated-refund notification durably sent. */
+export const completeFulfillmentFailureNotificationV2 = mutation({
+	args: {
+		orderId: v.id("orders"),
+			audience: v.union(
+			v.literal("admin"),
+			v.literal("customer"),
+				v.literal("refund_failure"),
+				v.literal("refund_attention"),
+		),
+		claimToken: v.string(),
+		webhookSecret: v.string(),
+	},
+	returns: v.boolean(),
+	handler: async (ctx, args) => {
+		await requireWebhookCallerOrAuth(ctx, args.webhookSecret, { allowAuth: false });
+		if (!CLAIM_TOKEN.test(args.claimToken)) throw new Error("Invalid notification claim token");
+		const order = await ctx.db.get(args.orderId);
+		if (!order || !canNotifyAutomatedRefund(order, args.audience)) return false;
+		const fields = refundNotificationFields(args.audience);
+		if (order[fields.sentAt] !== undefined || order[fields.claimToken] !== args.claimToken) {
+			return false;
+		}
+		await ctx.db.patch(order._id, {
+			[fields.claimToken]: undefined,
+			[fields.leaseExpiresAt]: undefined,
+			[fields.sentAt]: Date.now(),
+		});
 		return true;
 	},
 });
@@ -2116,13 +2991,8 @@ export const claimPaymentFailureEmail = mutation({
 });
 
 /**
- * Atomically claim the one-time customer shipment email for a LumaPrints
- * shipment webhook.
- *
- * This intentionally combines lookup, tracking/status patch, and email-claim
- * into a single Convex transaction. Spokes can then send the email only when
- * `claimed` is true, avoiding duplicate emails from concurrent webhook
- * deliveries without pushing the actual Resend side effect into Convex.
+ * @deprecated Compatibility export for authenticated site administrators only.
+ * Hub shipment intake uses the provider-global V2 lease below.
  */
 export const claimShipmentEmailNotification = mutation({
 	args: {
@@ -2134,40 +3004,17 @@ export const claimShipmentEmailNotification = mutation({
 	},
 	handler: async (
 		ctx,
-		{ siteUrl, lumaprintsOrderNumber, webhookSecret, trackingNumber, trackingUrl },
+		{ siteUrl, lumaprintsOrderNumber, webhookSecret: _deprecatedSecret, trackingNumber, trackingUrl },
 	) => {
-		const auth = await requireWebhookCallerOrAuth(ctx, webhookSecret);
-		if (auth.via === "auth") {
-			await requireSiteAdmin(ctx, siteUrl);
-		}
-
+		await requireSiteAdmin(ctx, siteUrl);
 		const matchingOrders = await ctx.db
 			.query("orders")
 			.withIndex("by_lumaprintsOrderNumber", (q) =>
 				q.eq("siteUrl", siteUrl).eq("lumaprintsOrderNumber", lumaprintsOrderNumber),
 			)
 			.take(2);
-		if (matchingOrders.length > 1) {
-			throw new Error("Duplicate LumaPrints order number");
-		}
+		if (matchingOrders.length > 1) throw new Error("Duplicate LumaPrints order number");
 		const order = matchingOrders[0];
-		if (!order) return null;
-
-		return await claimShipmentEmailForOrder(ctx, order, trackingNumber, trackingUrl);
-	},
-});
-
-/** Hub-only shipment claim using LumaPrints' provider-global order number. */
-export const claimShipmentEmailNotificationByOrderNumber = mutation({
-	args: {
-		lumaprintsOrderNumber: v.string(),
-		webhookSecret: v.string(),
-		trackingNumber: v.optional(v.string()),
-		trackingUrl: v.optional(v.string()),
-	},
-	handler: async (ctx, { lumaprintsOrderNumber, webhookSecret, trackingNumber, trackingUrl }) => {
-		await requireWebhookCallerOrAuth(ctx, webhookSecret, { allowAuth: false });
-		const order = await findGlobalLumaPrintsOrder(ctx, lumaprintsOrderNumber);
 		return order
 			? await claimShipmentEmailForOrder(ctx, order, trackingNumber, trackingUrl)
 			: null;
@@ -2175,10 +3022,8 @@ export const claimShipmentEmailNotificationByOrderNumber = mutation({
 });
 
 /**
- * Record the result of the customer shipment email side effect after a
- * spoke attempts delivery. This is intentionally separate from the atomic
- * claim mutation because Convex cannot wrap the external Resend call in the
- * same transaction.
+ * @deprecated Compatibility export for authenticated site administrators only.
+ * Arbitrary legacy error text is accepted for call compatibility but never stored.
  */
 export const recordShipmentEmailDelivery = mutation({
 	args: {
@@ -2188,29 +3033,225 @@ export const recordShipmentEmailDelivery = mutation({
 		status: shipmentEmailDeliveryStatusValidator,
 		error: v.optional(v.string()),
 	},
-	handler: async (ctx, { siteUrl, lumaprintsOrderNumber, webhookSecret, status, error }) => {
-		const auth = await requireWebhookCallerOrAuth(ctx, webhookSecret);
-		if (auth.via === "auth") {
-			await requireSiteAdmin(ctx, siteUrl);
-		}
-
+	handler: async (
+		ctx,
+		{ siteUrl, lumaprintsOrderNumber, webhookSecret: _deprecatedSecret, status },
+	) => {
+		await requireSiteAdmin(ctx, siteUrl);
 		const matchingOrders = await ctx.db
 			.query("orders")
 			.withIndex("by_lumaprintsOrderNumber", (q) =>
 				q.eq("siteUrl", siteUrl).eq("lumaprintsOrderNumber", lumaprintsOrderNumber),
 			)
 			.take(2);
-		if (matchingOrders.length > 1) {
-			throw new Error("Duplicate LumaPrints order number");
-		}
+		if (matchingOrders.length > 1) throw new Error("Duplicate LumaPrints order number");
 		const order = matchingOrders[0];
-		if (!order) return null;
-
-		return await recordShipmentEmailForOrder(ctx, order, status, error);
+		return order ? await recordShipmentEmailForOrder(ctx, order, status) : null;
 	},
 });
 
-/** Hub-only delivery checkpoint keyed by LumaPrints' provider-global number. */
+/**
+ * Temporary hub-only V1 bridge. New callers must use the tokenized V2 lease.
+ * The bridge deliberately cannot mutate a row after V2 has touched it.
+ */
+export const claimShipmentEmailNotificationByOrderNumber = mutation({
+	args: {
+		lumaprintsOrderNumber: v.string(),
+		webhookSecret: v.string(),
+		trackingNumber: v.optional(v.string()),
+		trackingUrl: v.optional(v.string()),
+	},
+	handler: async (ctx, { lumaprintsOrderNumber, webhookSecret, trackingNumber, trackingUrl }) => {
+		await requireWebhookCallerOrAuth(ctx, webhookSecret, { allowAuth: false });
+		if (!LUMAPRINTS_ORDER_NUMBER.test(lumaprintsOrderNumber)) {
+			throw new Error("Invalid LumaPrints order number");
+		}
+		const order = await findGlobalLumaPrintsOrder(ctx, lumaprintsOrderNumber);
+		return order
+			? await claimShipmentEmailForOrder(ctx, order, trackingNumber, trackingUrl)
+			: null;
+	},
+});
+
+/**
+ * Lease the hub-owned shipment email side effect by provider-global order
+ * number. A V2 row may be reclaimed after its lease expires; historical
+ * shipped/claimed rows remain terminal because they lack V2 protocol evidence.
+ */
+export const claimShipmentEmailNotificationV2 = mutation({
+	args: {
+		lumaprintsOrderNumber: v.string(),
+		claimToken: v.string(),
+		webhookSecret: v.string(),
+		trackingNumber: v.optional(v.string()),
+		trackingUrl: v.optional(v.string()),
+	},
+	returns: v.union(
+		v.object({
+			kind: v.literal("claimed"),
+			leaseExpiresAt: v.number(),
+			order: v.object({
+				_id: v.id("orders"),
+				siteUrl: v.string(),
+				orderNumber: v.string(),
+				customerEmail: v.string(),
+			}),
+		}),
+		v.object({ kind: v.literal("busy"), leaseExpiresAt: v.number() }),
+		v.object({ kind: v.literal("completed") }),
+		v.null(),
+	),
+	handler: async (ctx, args) => {
+		await requireWebhookCallerOrAuth(ctx, args.webhookSecret, { allowAuth: false });
+		if (!LUMAPRINTS_ORDER_NUMBER.test(args.lumaprintsOrderNumber)) {
+			throw new Error("Invalid LumaPrints order number");
+		}
+		if (!CLAIM_TOKEN.test(args.claimToken)) {
+			throw new Error("Invalid shipment email claim token");
+		}
+		const order = await findGlobalLumaPrintsOrder(ctx, args.lumaprintsOrderNumber);
+		if (!order) return null;
+
+		const trackingPatch = {
+			...(args.trackingNumber === undefined ? {} : { trackingNumber: args.trackingNumber }),
+			...(args.trackingUrl === undefined ? {} : { trackingUrl: args.trackingUrl }),
+		};
+		if (order.shipmentEmailNotificationProtocol !== SHIPMENT_EMAIL_NOTIFICATION_PROTOCOL) {
+			if (
+				order.shipmentEmailSentAt !== undefined
+				|| !canClaimShipmentEmail(order.status)
+			) {
+				if (Object.keys(trackingPatch).length > 0) {
+					await ctx.db.patch(order._id, trackingPatch);
+				}
+				return { kind: "completed" as const };
+			}
+		} else {
+			if (order.shipmentEmailNotificationCompletedAt !== undefined) {
+				if (Object.keys(trackingPatch).length > 0) {
+					await ctx.db.patch(order._id, trackingPatch);
+				}
+				return { kind: "completed" as const };
+			}
+			if (order.status === "refunded" || order.status === "fulfillment_error") {
+				return { kind: "completed" as const };
+			}
+		}
+
+		const now = Date.now();
+		if (
+			order.shipmentEmailNotificationClaimToken !== undefined
+			&& order.shipmentEmailNotificationLeaseExpiresAt !== undefined
+			&& order.shipmentEmailNotificationLeaseExpiresAt > now
+		) {
+			return {
+				kind: "busy" as const,
+				leaseExpiresAt: order.shipmentEmailNotificationLeaseExpiresAt,
+			};
+		}
+		const leaseExpiresAt = now + SHIPMENT_EMAIL_NOTIFICATION_LEASE_MS;
+		await ctx.db.patch(order._id, {
+			...trackingPatch,
+			status: canClaimShipmentEmail(order.status) ? "shipped" : order.status,
+			shipmentEmailNotificationProtocol: SHIPMENT_EMAIL_NOTIFICATION_PROTOCOL,
+			shipmentEmailNotificationClaimedAt: now,
+			shipmentEmailNotificationClaimToken: args.claimToken,
+			shipmentEmailNotificationLeaseExpiresAt: leaseExpiresAt,
+			shipmentEmailDeliveryStatus: "pending",
+			shipmentEmailDeliveryError: undefined,
+		});
+		return {
+			kind: "claimed" as const,
+			leaseExpiresAt,
+			order: {
+				_id: order._id,
+				siteUrl: order.siteUrl,
+				orderNumber: order.orderNumber,
+				customerEmail: order.customerEmail,
+			},
+		};
+	},
+});
+
+/** Release only the caller's unsent V2 shipment-email lease. */
+export const releaseShipmentEmailNotificationV2 = mutation({
+	args: {
+		orderId: v.id("orders"),
+		lumaprintsOrderNumber: v.string(),
+		claimToken: v.string(),
+		failureCode: shipmentEmailDeliveryFailureCodeValidator,
+		webhookSecret: v.string(),
+	},
+	returns: v.boolean(),
+	handler: async (ctx, args) => {
+		await requireWebhookCallerOrAuth(ctx, args.webhookSecret, { allowAuth: false });
+		if (!LUMAPRINTS_ORDER_NUMBER.test(args.lumaprintsOrderNumber)) {
+			throw new Error("Invalid LumaPrints order number");
+		}
+		if (!CLAIM_TOKEN.test(args.claimToken)) {
+			throw new Error("Invalid shipment email claim token");
+		}
+		const order = await ctx.db.get(args.orderId);
+		if (
+			!order
+			|| order.lumaprintsOrderNumber !== args.lumaprintsOrderNumber
+			|| order.shipmentEmailNotificationProtocol !== SHIPMENT_EMAIL_NOTIFICATION_PROTOCOL
+			|| order.shipmentEmailNotificationCompletedAt !== undefined
+			|| order.shipmentEmailNotificationClaimToken !== args.claimToken
+		) return false;
+		await ctx.db.patch(order._id, {
+			shipmentEmailNotificationClaimedAt: undefined,
+			shipmentEmailNotificationClaimToken: undefined,
+			shipmentEmailNotificationLeaseExpiresAt: undefined,
+			shipmentEmailDeliveryStatus: "failed",
+			shipmentEmailDeliveryAttemptedAt: Date.now(),
+			shipmentEmailDeliveryError: args.failureCode,
+		});
+		return true;
+	},
+});
+
+/** Complete only the caller's successfully sent V2 shipment-email lease. */
+export const completeShipmentEmailNotificationV2 = mutation({
+	args: {
+		orderId: v.id("orders"),
+		lumaprintsOrderNumber: v.string(),
+		claimToken: v.string(),
+		deliveryStatus: v.union(v.literal("sent"), v.literal("skipped")),
+		webhookSecret: v.string(),
+	},
+	returns: v.boolean(),
+	handler: async (ctx, args) => {
+		await requireWebhookCallerOrAuth(ctx, args.webhookSecret, { allowAuth: false });
+		if (!LUMAPRINTS_ORDER_NUMBER.test(args.lumaprintsOrderNumber)) {
+			throw new Error("Invalid LumaPrints order number");
+		}
+		if (!CLAIM_TOKEN.test(args.claimToken)) {
+			throw new Error("Invalid shipment email claim token");
+		}
+		const order = await ctx.db.get(args.orderId);
+		if (
+			!order
+			|| order.lumaprintsOrderNumber !== args.lumaprintsOrderNumber
+			|| order.shipmentEmailNotificationProtocol !== SHIPMENT_EMAIL_NOTIFICATION_PROTOCOL
+			|| order.shipmentEmailNotificationCompletedAt !== undefined
+			|| order.shipmentEmailNotificationClaimToken !== args.claimToken
+		) return false;
+		const now = Date.now();
+		await ctx.db.patch(order._id, {
+			shipmentEmailNotificationClaimToken: undefined,
+			shipmentEmailNotificationLeaseExpiresAt: undefined,
+			shipmentEmailNotificationCompletedAt: now,
+			shipmentEmailSentAt: args.deliveryStatus === "sent" ? now : undefined,
+			shipmentEmailDeliveryStatus: args.deliveryStatus,
+			shipmentEmailDeliveryAttemptedAt: now,
+			shipmentEmailDeliveryError: undefined,
+		});
+		return true;
+	},
+});
+
+/** Temporary hub-only V1 checkpoint; inert for V2 rows and error-redacted. */
 export const recordShipmentEmailDeliveryByOrderNumber = mutation({
 	args: {
 		lumaprintsOrderNumber: v.string(),
@@ -2220,6 +3261,9 @@ export const recordShipmentEmailDeliveryByOrderNumber = mutation({
 	},
 	handler: async (ctx, { lumaprintsOrderNumber, webhookSecret, status, error }) => {
 		await requireWebhookCallerOrAuth(ctx, webhookSecret, { allowAuth: false });
+		if (!LUMAPRINTS_ORDER_NUMBER.test(lumaprintsOrderNumber)) {
+			throw new Error("Invalid LumaPrints order number");
+		}
 		const order = await findGlobalLumaPrintsOrder(ctx, lumaprintsOrderNumber);
 		return order ? await recordShipmentEmailForOrder(ctx, order, status, error) : null;
 	},
@@ -2272,49 +3316,34 @@ export const lookupForCustomer = query({
 	},
 });
 
-/**
- * Look up an order by the LumaPrints order number assigned at fulfillment
- * submission. Used by the LumaPrints shipment webhook which only knows the
- * LP order number, not the Convex `_id`.
- *
- * Gated by `requireWebhookCallerOrAuth` so that:
- *   - The spoke's LumaPrints webhook can call it with `WEBHOOK_SECRET`
- *   - An authenticated admin can also call it (debugging, manual reruns)
- * but the query is not publicly invokable.
- *
- * Returns `null` if no matching order exists (stale webhook, typo, etc.) —
- * the caller should log + return 200 so LumaPrints doesn't retry forever.
- */
+/** @deprecated Authenticated-admin-only site-scoped shipment lookup compatibility export. */
 export const getByLumaprintsOrderNumber = query({
 	args: {
 		siteUrl: v.string(),
 		lumaprintsOrderNumber: v.string(),
 		webhookSecret: v.optional(v.string()),
 	},
-	handler: async (ctx, { siteUrl, lumaprintsOrderNumber, webhookSecret }) => {
-		const auth = await requireWebhookCallerOrAuth(ctx, webhookSecret);
-		if (auth.via === "auth") {
-			await requireSiteAdmin(ctx, siteUrl);
-		}
+	handler: async (ctx, { siteUrl, lumaprintsOrderNumber, webhookSecret: _deprecatedSecret }) => {
+		await requireSiteAdmin(ctx, siteUrl);
+		if (!LUMAPRINTS_ORDER_NUMBER.test(lumaprintsOrderNumber)) return null;
 		const matchingOrders = await ctx.db
 			.query("orders")
 			.withIndex("by_lumaprintsOrderNumber", (q) =>
 				q.eq("siteUrl", siteUrl).eq("lumaprintsOrderNumber", lumaprintsOrderNumber),
 			)
 			.take(2);
-		if (matchingOrders.length > 1) {
-			throw new Error("Duplicate LumaPrints order number");
-		}
+		if (matchingOrders.length > 1) throw new Error("Duplicate LumaPrints order number");
 		const order = matchingOrders[0];
-		if (!order) return null;
-		return {
-			_id: order._id,
-			orderNumber: order.orderNumber,
-			status: order.status,
-			customerEmail: order.customerEmail,
-			trackingNumber: order.trackingNumber,
-			trackingUrl: order.trackingUrl,
-		};
+		return order
+			? {
+					_id: order._id,
+					orderNumber: order.orderNumber,
+					status: order.status,
+					customerEmail: order.customerEmail,
+					trackingNumber: order.trackingNumber,
+					trackingUrl: order.trackingUrl,
+				}
+			: null;
 	},
 });
 

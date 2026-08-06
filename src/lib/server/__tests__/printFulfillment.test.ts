@@ -9,6 +9,9 @@ const mockBuildOrderItemsFromSession = vi.fn();
 const mockBuildOrderItemsFromSnapshot = vi.fn();
 const mockBuildRecipientFromShipping = vi.fn();
 const mockSendFulfillmentFailureAlert = vi.fn();
+const mockSendCustomerFulfillmentFailure = vi.fn();
+const mockSendAutomatedRefundAttentionAlert = vi.fn();
+const mockSendAutomatedRefundFailureAlert = vi.fn();
 const mockFindLumaPrintsOrder = vi.fn();
 const mockProcessBorderedPrints = vi.fn();
 
@@ -70,6 +73,9 @@ vi.mock("$lib/server/snapshotFulfillment", () => ({
 vi.mock("$lib/server/sharpBorder", () => ({ processBorderedPrints: mockProcessBorderedPrints }));
 
 vi.mock("$lib/server/webhookEmails", () => ({
+	sendAutomatedRefundAttentionAlert: mockSendAutomatedRefundAttentionAlert,
+	sendAutomatedRefundFailureAlert: mockSendAutomatedRefundFailureAlert,
+	sendCustomerFulfillmentFailure: mockSendCustomerFulfillmentFailure,
 	sendFulfillmentFailureAlert: mockSendFulfillmentFailureAlert,
 }));
 
@@ -78,17 +84,21 @@ vi.mock("$convex/api", () => ({
 		orders: {
 			beginPrintFulfillmentSubmission: "orders.beginPrintFulfillmentSubmission",
 			blockPrintFulfillmentReconciliation: "orders.blockPrintFulfillmentReconciliation",
-			claimAutomatedFulfillmentRefund: "orders.claimAutomatedFulfillmentRefund",
-			claimFulfillmentFailureNotification: "orders.claimFulfillmentFailureNotification",
+			claimAutomatedFulfillmentRefundV2: "orders.claimAutomatedFulfillmentRefundV2",
+			claimFulfillmentFailureNotificationV2: "orders.claimFulfillmentFailureNotificationV2",
 			claimNonPrintOrderOutcome: "orders.claimNonPrintOrderOutcome",
-			claimPrintFulfillmentV2: "orders.claimPrintFulfillmentV2",
+			claimPrintFulfillmentV3: "orders.claimPrintFulfillmentV3",
 			claimPrintFulfillmentReconciliationAlert: "orders.claimPrintFulfillmentReconciliationAlert",
-			completeAutomatedFulfillmentRefund: "orders.completeAutomatedFulfillmentRefund",
+			completeFulfillmentFailureNotificationV2: "orders.completeFulfillmentFailureNotificationV2",
+			recordAutomatedFulfillmentRefund: "orders.recordAutomatedFulfillmentRefund",
+			recordPrintFulfillmentReconciliationPending:
+				"orders.recordPrintFulfillmentReconciliationPending",
 			completePrintFulfillmentSubmission: "orders.completePrintFulfillmentSubmission",
 			reconcilePrintFulfillmentSubmission: "orders.reconcilePrintFulfillmentSubmission",
 			rejectPrintFulfillmentSubmission: "orders.rejectPrintFulfillmentSubmission",
 			releasePrintFulfillmentClaim: "orders.releasePrintFulfillmentClaim",
 			releaseAutomatedFulfillmentRefund: "orders.releaseAutomatedFulfillmentRefund",
+			releaseFulfillmentFailureNotificationV2: "orders.releaseFulfillmentFailureNotificationV2",
 			updatePrintFulfillment: "orders.updatePrintFulfillment",
 			updateStatus: "orders.updateStatus",
 		},
@@ -109,6 +119,7 @@ describe("print fulfillment", () => {
 	const stripe = {
 		refunds: {
 			create: vi.fn(),
+			retrieve: vi.fn(),
 		},
 	} as any;
 	const resend = {} as any;
@@ -158,10 +169,12 @@ describe("print fulfillment", () => {
 
 	beforeEach(() => {
 		vi.clearAllMocks();
+		mockCreateLumaPrintsOrder.mockReset();
+		mockFindLumaPrintsOrder.mockReset();
 		convex.mutation.mockReset();
 		convex.mutation.mockImplementation(async (reference: string, args: { update?: string }) => {
 			if (reference === "orders.claimNonPrintOrderOutcome") return { kind: "success" };
-			if (reference === "orders.claimPrintFulfillmentV2")
+			if (reference === "orders.claimPrintFulfillmentV3")
 				return { kind: "claimed", externalId: session.id };
 			if (reference === "orders.beginPrintFulfillmentSubmission") {
 				return { kind: "submitting", externalId: session.id };
@@ -171,14 +184,21 @@ describe("print fulfillment", () => {
 			if (reference === "orders.claimPrintFulfillmentReconciliationAlert") {
 				return { kind: "claimed" };
 			}
-			if (reference === "orders.claimAutomatedFulfillmentRefund") {
+			if (reference === "orders.recordPrintFulfillmentReconciliationPending") {
+				return { kind: "pending", attempts: 1 };
+			}
+			if (reference === "orders.claimAutomatedFulfillmentRefundV2") {
 				return { kind: "claimed", leaseExpiresAt: Date.now() + 60_000 };
 			}
-			if (reference === "orders.completeAutomatedFulfillmentRefund") {
-				return { kind: "completed" };
+			if (reference === "orders.recordAutomatedFulfillmentRefund") {
+				return { kind: "succeeded", stripeRefundId: "re_test_123" };
 			}
 			if (reference === "orders.releaseAutomatedFulfillmentRefund") return true;
-			if (reference === "orders.claimFulfillmentFailureNotification") return true;
+			if (reference === "orders.claimFulfillmentFailureNotificationV2") {
+				return { kind: "claimed" };
+			}
+			if (reference === "orders.releaseFulfillmentFailureNotificationV2") return true;
+			if (reference === "orders.completeFulfillmentFailureNotificationV2") return true;
 			if (reference === "orders.rejectPrintFulfillmentSubmission") {
 				return { kind: "refund_pending" };
 			}
@@ -240,7 +260,7 @@ describe("print fulfillment", () => {
 		convex.mutation.mockImplementation(
 			async (reference: string, args: { orderId: Id<"orders"> }) => {
 				const externalId = cases.find(({ orderId }) => orderId === args.orderId)?.id;
-				if (reference === "orders.claimPrintFulfillmentV2") {
+				if (reference === "orders.claimPrintFulfillmentV3") {
 					return { kind: "claimed", externalId };
 				}
 				if (reference === "orders.beginPrintFulfillmentSubmission") {
@@ -342,7 +362,7 @@ describe("print fulfillment", () => {
 		await expect(
 			submitPrintFulfillment({ convex, createLumaPrintsOrder: mockCreateLumaPrintsOrder }, input),
 		).rejects.toThrow("capability unavailable");
-		expect(convex.mutation).toHaveBeenNthCalledWith(1, "orders.claimPrintFulfillmentV2", {
+		expect(convex.mutation).toHaveBeenNthCalledWith(1, "orders.claimPrintFulfillmentV3", {
 			orderId,
 			claimToken: expect.any(String),
 			webhookSecret: "test-webhook-secret",
@@ -401,7 +421,7 @@ describe("print fulfillment", () => {
 	it("does not submit when a manual refund cancels preparation before the provider fence", async () => {
 		const { submitPrintFulfillment } = await import("../printFulfillment");
 		convex.mutation.mockImplementation(async (reference: string) => {
-			if (reference === "orders.claimPrintFulfillmentV2") {
+			if (reference === "orders.claimPrintFulfillmentV3") {
 				return { kind: "claimed", externalId: session.id };
 			}
 			if (reference === "orders.beginPrintFulfillmentSubmission") {
@@ -428,7 +448,7 @@ describe("print fulfillment", () => {
 			if (reference === "orders.reconcilePrintFulfillmentSubmission") {
 				return { kind: "fulfilled" };
 			}
-			if (reference !== "orders.claimPrintFulfillmentV2") return;
+			if (reference !== "orders.claimPrintFulfillmentV3") return;
 			if (claimed) return { kind: "reconcile", externalId: session.id };
 			claimed = true;
 			return { kind: "claimed", externalId: session.id };
@@ -465,7 +485,7 @@ describe("print fulfillment", () => {
 			),
 		).rejects.toThrow("rejected");
 		const claim = convex.mutation.mock.calls.find(
-			([reference]: unknown[]) => reference === "orders.claimPrintFulfillmentV2",
+			([reference]: unknown[]) => reference === "orders.claimPrintFulfillmentV3",
 		)?.[1] as { claimToken: string } | undefined;
 		if (!claim) throw new Error("Expected a print claim");
 		expect(convex.mutation).toHaveBeenCalledWith("orders.rejectPrintFulfillmentSubmission", {
@@ -508,8 +528,11 @@ describe("print fulfillment", () => {
 		const { LumaPrintsReconciliationError } = await import("$lib/server/lumaprints");
 		const { submitPrintFulfillment } = await import("../printFulfillment");
 		convex.mutation.mockImplementation(async (reference: string) => {
-			if (reference === "orders.claimPrintFulfillmentV2") {
+			if (reference === "orders.claimPrintFulfillmentV3") {
 				return { kind: "reconcile", externalId: session.id };
+			}
+			if (reference === "orders.recordPrintFulfillmentReconciliationPending") {
+				return { kind: "pending", attempts: 1 };
 			}
 			if (reference === "orders.reconcilePrintFulfillmentSubmission") {
 				return { kind: "fulfilled" };
@@ -533,6 +556,10 @@ describe("print fulfillment", () => {
 			lumaprintsOrderNumber: "456",
 		});
 		expect(mockFindLumaPrintsOrder).toHaveBeenCalledTimes(2);
+		expect(convex.mutation).toHaveBeenCalledWith(
+			"orders.recordPrintFulfillmentReconciliationPending",
+			expect.objectContaining({ reason: "rate_or_server" }),
+		);
 		expect(mockCreateLumaPrintsOrder).not.toHaveBeenCalled();
 		expect(convex.mutation).toHaveBeenLastCalledWith("orders.reconcilePrintFulfillmentSubmission", {
 			orderId,
@@ -542,13 +569,55 @@ describe("print fulfillment", () => {
 		});
 	});
 
+	it("records every bounded inconclusive GET class before retrying", async () => {
+		const { LumaPrintsReconciliationError } = await import("$lib/server/lumaprints");
+		const { submitPrintFulfillment } = await import("../printFulfillment");
+		convex.mutation.mockImplementation(async (reference: string) => {
+			if (reference === "orders.claimPrintFulfillmentV3") {
+				return { kind: "reconcile", externalId: session.id };
+			}
+			if (reference === "orders.recordPrintFulfillmentReconciliationPending") {
+				return { kind: "pending", attempts: 1 };
+			}
+		});
+		const cases = [
+			[new LumaPrintsReconciliationError("transport connection reset", "retryable"), "transport"],
+			[new LumaPrintsReconciliationError("temporarily unavailable", "retryable"), "rate_or_server"],
+			[
+				new LumaPrintsReconciliationError("lookup exceeded its page bound", "retryable"),
+				"resource_bound",
+			],
+			[new Error("adapter threw"), "client_exception"],
+			[null, "result_not_observed"],
+		] as const;
+
+		for (const [result, reason] of cases) {
+			mockFindLumaPrintsOrder.mockReset();
+			if (result === null) mockFindLumaPrintsOrder.mockResolvedValueOnce(null);
+			else mockFindLumaPrintsOrder.mockRejectedValueOnce(result);
+			const callCount = convex.mutation.mock.calls.length;
+			await expect(
+				submitPrintFulfillment(
+					{ convex, createLumaPrintsOrder: mockCreateLumaPrintsOrder },
+					printInput,
+				),
+			).rejects.toThrow("reconciliation is pending");
+			expect(convex.mutation.mock.calls.slice(callCount)).toContainEqual([
+				"orders.recordPrintFulfillmentReconciliationPending",
+				expect.objectContaining({ reason }),
+			]);
+		}
+		expect(mockCreateLumaPrintsOrder).not.toHaveBeenCalled();
+		expect(stripe.refunds.create).not.toHaveBeenCalled();
+	});
+
 	it("durably blocks deterministic reconciliation faults and stops automatic GET retries", async () => {
 		const { LumaPrintsReconciliationError } = await import("$lib/server/lumaprints");
 		const { submitPrintFulfillment } = await import("../printFulfillment");
 		let blocked = false;
 		let alertAvailable = true;
 		convex.mutation.mockImplementation(async (reference: string) => {
-			if (reference === "orders.claimPrintFulfillmentV2") {
+			if (reference === "orders.claimPrintFulfillmentV3") {
 				return blocked
 					? { kind: "reconciliation_blocked", reconciliationClass: "response_contract" }
 					: { kind: "reconcile", externalId: session.id };
@@ -599,10 +668,78 @@ describe("print fulfillment", () => {
 		);
 	});
 
+	it("preserves ambiguous_result through orchestration and claims one alert", async () => {
+		const { LumaPrintsReconciliationError } = await import("$lib/server/lumaprints");
+		const { submitPrintFulfillment } = await import("../printFulfillment");
+		convex.mutation.mockImplementation(async (reference: string) => {
+			if (reference === "orders.claimPrintFulfillmentV3") {
+				return { kind: "reconcile", externalId: session.id };
+			}
+			if (reference === "orders.recordPrintFulfillmentReconciliationPending") {
+				return { kind: "pending", attempts: 1 };
+			}
+			if (reference === "orders.blockPrintFulfillmentReconciliation") return true;
+			if (reference === "orders.claimPrintFulfillmentReconciliationAlert") {
+				return { kind: "claimed" };
+			}
+		});
+		mockFindLumaPrintsOrder.mockRejectedValueOnce(
+			new LumaPrintsReconciliationError("ambiguous", "blocked", "ambiguous_result"),
+		);
+
+		await expect(
+			submitPrintFulfillment(
+				{ convex, createLumaPrintsOrder: mockCreateLumaPrintsOrder },
+				printInput,
+			),
+		).resolves.toEqual({
+			kind: "reconciliation_blocked",
+			reconciliationClass: "ambiguous_result",
+			alertClaimToken: expect.any(String),
+		});
+		expect(convex.mutation).toHaveBeenCalledWith(
+			"orders.blockPrintFulfillmentReconciliation",
+			expect.objectContaining({ reconciliationClass: "ambiguous_result" }),
+		);
+		expect(
+			convex.mutation.mock.calls.filter(
+				([reference]: [string]) => reference === "orders.claimPrintFulfillmentReconciliationAlert",
+			),
+		).toHaveLength(1);
+	});
+
+	it("keeps untyped reconciliation exceptions retryable instead of inventing a block class", async () => {
+		const { submitPrintFulfillment } = await import("../printFulfillment");
+		convex.mutation.mockImplementation(async (reference: string) => {
+			if (reference === "orders.claimPrintFulfillmentV3") {
+				return { kind: "reconcile", externalId: session.id };
+			}
+			if (reference === "orders.recordPrintFulfillmentReconciliationPending") {
+				return { kind: "pending", attempts: 1 };
+			}
+		});
+		mockFindLumaPrintsOrder.mockRejectedValueOnce(new Error("unexpected adapter fault"));
+
+		await expect(
+			submitPrintFulfillment(
+				{ convex, createLumaPrintsOrder: mockCreateLumaPrintsOrder },
+				printInput,
+			),
+		).rejects.toThrow("reconciliation is pending");
+		expect(convex.mutation).not.toHaveBeenCalledWith(
+			"orders.blockPrintFulfillmentReconciliation",
+			expect.anything(),
+		);
+		expect(convex.mutation).toHaveBeenCalledWith(
+			"orders.recordPrintFulfillmentReconciliationPending",
+			expect.objectContaining({ reason: "client_exception" }),
+		);
+	});
+
 	it("keeps a blocked reconciliation retryable while another alert lease is active", async () => {
 		const { submitPrintFulfillment } = await import("../printFulfillment");
 		convex.mutation.mockImplementation(async (reference: string) => {
-			if (reference === "orders.claimPrintFulfillmentV2") {
+			if (reference === "orders.claimPrintFulfillmentV3") {
 				return { kind: "reconciliation_blocked", reconciliationClass: "response_contract" };
 			}
 			if (reference === "orders.claimPrintFulfillmentReconciliationAlert") {
@@ -629,7 +766,7 @@ describe("print fulfillment", () => {
 			{ kind: "fulfilled", orderNumber: "457" },
 		];
 		convex.mutation.mockImplementation(async (reference: string) => {
-			if (reference === "orders.claimPrintFulfillmentV2") return claimResults.shift();
+			if (reference === "orders.claimPrintFulfillmentV3") return claimResults.shift();
 			if (reference === "orders.blockPrintFulfillmentReconciliation") return false;
 		});
 		mockFindLumaPrintsOrder.mockRejectedValueOnce(
@@ -656,7 +793,7 @@ describe("print fulfillment", () => {
 	it("records a fenced provider success after a manual refund commits", async () => {
 		const { submitPrintFulfillment } = await import("../printFulfillment");
 		convex.mutation.mockImplementation(async (reference: string) => {
-			if (reference === "orders.claimPrintFulfillmentV2") {
+			if (reference === "orders.claimPrintFulfillmentV3") {
 				return { kind: "claimed", externalId: session.id };
 			}
 			if (reference === "orders.beginPrintFulfillmentSubmission") {
@@ -674,7 +811,7 @@ describe("print fulfillment", () => {
 			),
 		).resolves.toEqual({ kind: "manual_refunded", stripeRefundId: "re_manual_123" });
 		const claimArgs = convex.mutation.mock.calls.find(
-			(call: unknown[]) => call[0] === "orders.claimPrintFulfillmentV2",
+			(call: unknown[]) => call[0] === "orders.claimPrintFulfillmentV3",
 		)?.[1] as { claimToken: string } | undefined;
 		if (!claimArgs) throw new Error("Expected a print fulfillment claim");
 		expect(convex.mutation).toHaveBeenCalledWith(
@@ -691,7 +828,7 @@ describe("print fulfillment", () => {
 	it("GET-reconciles a refunded uncertain submission without another POST", async () => {
 		const { submitPrintFulfillment } = await import("../printFulfillment");
 		convex.mutation.mockImplementation(async (reference: string) => {
-			if (reference === "orders.claimPrintFulfillmentV2") {
+			if (reference === "orders.claimPrintFulfillmentV3") {
 				return { kind: "reconcile", externalId: session.id };
 			}
 			if (reference === "orders.reconcilePrintFulfillmentSubmission") {
@@ -734,7 +871,7 @@ describe("print fulfillment", () => {
 		);
 		expect(convex.mutation).toHaveBeenNthCalledWith(
 			1,
-			"orders.claimAutomatedFulfillmentRefund",
+			"orders.claimAutomatedFulfillmentRefundV2",
 			expect.objectContaining({
 				orderId,
 				claimToken: expect.any(String),
@@ -756,7 +893,7 @@ describe("print fulfillment", () => {
 		);
 		expect(convex.mutation).toHaveBeenNthCalledWith(
 			2,
-			"orders.completeAutomatedFulfillmentRefund",
+			"orders.recordAutomatedFulfillmentRefund",
 			expect.objectContaining({
 				orderId,
 				stripeRefundId: "re_test_123",
@@ -764,7 +901,7 @@ describe("print fulfillment", () => {
 		);
 		expect(convex.mutation).toHaveBeenNthCalledWith(
 			3,
-			"orders.claimFulfillmentFailureNotification",
+			"orders.claimFulfillmentFailureNotificationV2",
 			expect.objectContaining({ orderId, audience: "admin" }),
 		);
 		expect(mockSendFulfillmentFailureAlert).toHaveBeenCalledWith(
@@ -774,6 +911,226 @@ describe("print fulfillment", () => {
 				customerEmail: "jane@example.com",
 				stripeRefundId: "re_test_123",
 			}),
+		);
+	});
+
+	it("persists pending and resumes by retrieving the same refund until it succeeds", async () => {
+		const { FulfillmentValidationError } = await import("../fulfillmentValidationError");
+		convex.mutation
+			.mockReset()
+			.mockResolvedValueOnce({ kind: "claimed", leaseExpiresAt: Date.now() + 60_000 })
+			.mockResolvedValueOnce({ kind: "pending", refundStatus: "pending" })
+			.mockResolvedValueOnce({
+				kind: "claimed",
+				leaseExpiresAt: Date.now() + 60_000,
+				stripeRefundId: "re_pending_123456",
+				refundStatus: "pending",
+			})
+			.mockResolvedValueOnce({ kind: "succeeded", stripeRefundId: "re_pending_123456" })
+			.mockResolvedValueOnce({ kind: "claimed" })
+			.mockResolvedValueOnce(true);
+		stripe.refunds.create.mockResolvedValueOnce({
+			id: "re_pending_123456",
+			status: "pending",
+		});
+		stripe.refunds.retrieve.mockResolvedValueOnce({
+			id: "re_pending_123456",
+			status: "succeeded",
+		});
+
+		await expect(handle(new FulfillmentValidationError("invalid dimensions"))).rejects.toThrow(
+			"refund is pending",
+		);
+		await expect(
+			handle(new FulfillmentValidationError("invalid dimensions")),
+		).resolves.toMatchObject({
+			kind: "permanent_failure_refunded",
+			stripeRefundId: "re_pending_123456",
+		});
+
+		expect(stripe.refunds.create).toHaveBeenCalledOnce();
+		expect(stripe.refunds.retrieve).toHaveBeenCalledWith("re_pending_123456", undefined);
+		const records = convex.mutation.mock.calls.filter(
+			([reference]: unknown[]) => reference === "orders.recordAutomatedFulfillmentRefund",
+		);
+		expect(
+			records.map(
+				(call: unknown[]) => (call[1] as { stripeRefundStatus: string }).stripeRefundStatus,
+			),
+		).toEqual(["pending", "succeeded"]);
+		expect(mockSendFulfillmentFailureAlert).toHaveBeenCalledOnce();
+	});
+
+	it("replays byte-identical creation after a hard crash following Stripe acceptance", async () => {
+		const { FulfillmentValidationError } = await import("../fulfillmentValidationError");
+		convex.mutation
+			.mockReset()
+			.mockResolvedValueOnce({ kind: "claimed", leaseExpiresAt: Date.now() + 60_000 })
+			.mockRejectedValueOnce(new Error("process crashed before refund checkpoint"))
+			.mockResolvedValueOnce({ kind: "claimed", leaseExpiresAt: Date.now() + 60_000 })
+			.mockResolvedValueOnce({ kind: "succeeded", stripeRefundId: "re_crash_123456" })
+			.mockResolvedValueOnce({ kind: "claimed" })
+			.mockResolvedValueOnce(true);
+		stripe.refunds.create.mockResolvedValue({ id: "re_crash_123456", status: "succeeded" });
+
+		await expect(handle(new FulfillmentValidationError("invalid dimensions"))).rejects.toThrow(
+			"process crashed",
+		);
+		await expect(
+			handle(new FulfillmentValidationError("invalid dimensions")),
+		).resolves.toMatchObject({
+			kind: "permanent_failure_refunded",
+			stripeRefundId: "re_crash_123456",
+		});
+
+		expect(stripe.refunds.create).toHaveBeenCalledTimes(2);
+		expect(stripe.refunds.create.mock.calls[0]).toEqual(stripe.refunds.create.mock.calls[1]);
+		expect(convex.mutation).not.toHaveBeenCalledWith(
+			"orders.releaseAutomatedFulfillmentRefund",
+			expect.anything(),
+		);
+	});
+
+	it.each([
+		"failed",
+		"canceled",
+	] as const)("records %s as operator-blocked and never sends refund-success copy", async (status) => {
+		const { FulfillmentValidationError } = await import("../fulfillmentValidationError");
+		convex.mutation
+			.mockReset()
+			.mockResolvedValueOnce({ kind: "claimed", leaseExpiresAt: Date.now() + 60_000 })
+			.mockResolvedValueOnce({
+				kind: "refund_failed",
+				stripeRefundId: `re_${status}_123456`,
+				refundStatus: status,
+			})
+			.mockResolvedValueOnce({ kind: "claimed" })
+			.mockResolvedValueOnce(true);
+		stripe.refunds.create.mockResolvedValueOnce({ id: `re_${status}_123456`, status });
+
+		await expect(handle(new FulfillmentValidationError("invalid dimensions"))).resolves.toEqual({
+			kind: "automated_refund_failed",
+			stripeRefundId: `re_${status}_123456`,
+			refundStatus: status,
+			errorSummary: "Fulfillment validation rejected",
+		});
+		expect(mockSendAutomatedRefundFailureAlert).toHaveBeenCalledOnce();
+		expect(mockSendFulfillmentFailureAlert).not.toHaveBeenCalled();
+		expect(mockSendCustomerFulfillmentFailure).not.toHaveBeenCalled();
+	});
+
+	it.each([
+		"pending",
+		"requires_action",
+	] as const)("returns %s attention and sends only its leased operator alert", async (status) => {
+		const { FulfillmentValidationError } = await import("../fulfillmentValidationError");
+		convex.mutation
+			.mockReset()
+			.mockResolvedValueOnce({
+				kind: "refund_attention",
+				stripeRefundId: "re_attention_123456",
+				refundStatus: status,
+				attentionReason: "attempts_exhausted",
+			})
+			.mockResolvedValueOnce({ kind: "claimed" })
+			.mockResolvedValueOnce(true);
+
+		await expect(handle(new FulfillmentValidationError("invalid dimensions"))).resolves.toEqual({
+			kind: "automated_refund_attention",
+			stripeRefundId: "re_attention_123456",
+			refundStatus: status,
+			attentionReason: "attempts_exhausted",
+			errorSummary: "Fulfillment validation rejected",
+		});
+		expect(stripe.refunds.create).not.toHaveBeenCalled();
+		expect(stripe.refunds.retrieve).not.toHaveBeenCalled();
+		expect(mockSendAutomatedRefundAttentionAlert).toHaveBeenCalledOnce();
+		expect(mockSendAutomatedRefundFailureAlert).not.toHaveBeenCalled();
+		expect(mockSendFulfillmentFailureAlert).not.toHaveBeenCalled();
+		expect(mockSendCustomerFulfillmentFailure).not.toHaveBeenCalled();
+		expect(convex.mutation).toHaveBeenNthCalledWith(
+			2,
+			"orders.claimFulfillmentFailureNotificationV2",
+			expect.objectContaining({ audience: "refund_attention" }),
+		);
+	});
+
+	it("releases a failed email lease and retries with the durable refund", async () => {
+		const { FulfillmentValidationError } = await import("../fulfillmentValidationError");
+		convex.mutation
+			.mockReset()
+			.mockResolvedValueOnce({ kind: "claimed", leaseExpiresAt: Date.now() + 60_000 })
+			.mockResolvedValueOnce({ kind: "succeeded", stripeRefundId: "re_email_123456" })
+			.mockResolvedValueOnce({ kind: "claimed" })
+			.mockResolvedValueOnce(true)
+			.mockResolvedValueOnce({ kind: "refunded", stripeRefundId: "re_email_123456" })
+			.mockResolvedValueOnce({ kind: "claimed" })
+			.mockResolvedValueOnce(true);
+		stripe.refunds.create.mockResolvedValueOnce({ id: "re_email_123456", status: "succeeded" });
+		mockSendFulfillmentFailureAlert
+			.mockRejectedValueOnce(new Error("Resend rejected the request"))
+			.mockResolvedValueOnce({ id: "email-accepted" });
+
+		await expect(handle(new FulfillmentValidationError("invalid dimensions"))).rejects.toThrow(
+			"notification delivery failed",
+		);
+		await expect(
+			handle(new FulfillmentValidationError("invalid dimensions")),
+		).resolves.toMatchObject({
+			kind: "permanent_failure_refunded",
+			stripeRefundId: "re_email_123456",
+		});
+		expect(stripe.refunds.create).toHaveBeenCalledOnce();
+		expect(mockSendFulfillmentFailureAlert).toHaveBeenCalledTimes(2);
+		expect(convex.mutation).toHaveBeenCalledWith(
+			"orders.releaseFulfillmentFailureNotificationV2",
+			expect.objectContaining({ audience: "admin", claimToken: expect.any(String) }),
+		);
+	});
+
+	it("retries a refund notification after completion crashes without releasing its lease", async () => {
+		const { sendClaimedFulfillmentFailureAdminAlert } = await import("../printFulfillment");
+		const input = {
+			orderId,
+			orderNumber: "ORD-001",
+			customerEmail: "jane@example.com",
+			errorSummary: "Fulfillment validation rejected",
+			stripeRefundId: "re_completioncrash123456",
+			total: 3500,
+		};
+		convex.mutation
+			.mockReset()
+			.mockResolvedValueOnce({ kind: "claimed" })
+			.mockRejectedValueOnce(new Error("completion response lost"))
+			.mockResolvedValueOnce({ kind: "busy", leaseExpiresAt: Date.now() + 60_000 })
+			.mockResolvedValueOnce({ kind: "claimed" })
+			.mockResolvedValueOnce(true);
+		mockSendFulfillmentFailureAlert.mockResolvedValue({ id: "email-accepted" });
+
+		await expect(
+			sendClaimedFulfillmentFailureAdminAlert({ convex, resend }, input),
+		).rejects.toThrow("completion response lost");
+		expect(convex.mutation).not.toHaveBeenCalledWith(
+			"orders.releaseFulfillmentFailureNotificationV2",
+			expect.anything(),
+		);
+		await expect(
+			sendClaimedFulfillmentFailureAdminAlert({ convex, resend }, input),
+		).rejects.toThrow("already in progress");
+		await expect(sendClaimedFulfillmentFailureAdminAlert({ convex, resend }, input)).resolves.toBe(
+			true,
+		);
+
+		expect(mockSendFulfillmentFailureAlert).toHaveBeenCalledTimes(2);
+		expect(mockSendFulfillmentFailureAlert.mock.calls[0]).toEqual(
+			mockSendFulfillmentFailureAlert.mock.calls[1],
+		);
+		const claimCalls = convex.mutation.mock.calls.filter(
+			([reference]: unknown[]) => reference === "orders.claimFulfillmentFailureNotificationV2",
+		);
+		expect(claimCalls).toHaveLength(3);
+		expect((claimCalls[0][1] as { claimToken: string }).claimToken).not.toBe(
+			(claimCalls[2][1] as { claimToken: string }).claimToken,
 		);
 	});
 
@@ -799,7 +1156,7 @@ describe("print fulfillment", () => {
 
 		expect(convex.mutation).toHaveBeenCalledTimes(2);
 		expect(convex.mutation).toHaveBeenCalledWith(
-			"orders.claimAutomatedFulfillmentRefund",
+			"orders.claimAutomatedFulfillmentRefundV2",
 			expect.objectContaining({
 				fulfillmentError: "Fulfillment validation rejected",
 			}),
