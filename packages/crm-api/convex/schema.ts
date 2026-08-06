@@ -933,11 +933,37 @@ export default defineSchema({
 		),
 		printFulfillmentClaimedAt: v.optional(v.number()),
 		printFulfillmentLeaseExpiresAt: v.optional(v.number()),
+		// The provider POST fence remains durable until an exact provider result
+		// resolves it. Contract failures block automatic retries without releasing it.
+		printFulfillmentResolution: v.optional(
+			v.union(
+				v.literal("submission_uncertain"),
+				v.literal("reconciliation_blocked"),
+				v.literal("resolved"),
+			),
+		),
+		printFulfillmentReconciliationClass: v.optional(
+			v.union(
+				v.literal("provider_rejected"),
+				v.literal("response_contract"),
+				v.literal("ambiguous_result"),
+				v.literal("client_error"),
+			),
+		),
+		printFulfillmentReconciliationBlockedAt: v.optional(v.number()),
+		// Retry-safe lease for the operator alert emitted for a deterministic
+		// reconciliation block. All fields stay optional so pre-rollout orders need
+		// no backfill; `SentAt` is the terminal no-more-sends marker.
+		printFulfillmentReconciliationAlertClaimedAt: v.optional(v.number()),
+		printFulfillmentReconciliationAlertClaimToken: v.optional(v.string()),
+		printFulfillmentReconciliationAlertLeaseExpiresAt: v.optional(v.number()),
+		printFulfillmentReconciliationAlertSentAt: v.optional(v.number()),
 		paperName: v.optional(v.string()),
 		paperSubcategoryId: v.optional(v.string()),
 		trackingNumber: v.optional(v.string()),
 		trackingUrl: v.optional(v.string()),
-		// Atomic success-notification fence for orders without print submission.
+		// Shared atomic success-notification fence for both non-print outcomes and
+		// durable print-provider completions.
 		orderConfirmationClaimedAt: v.optional(v.number()),
 		// Legacy claim marker for the one-time shipment email side effect.
 		// New delivery observability lives in `shipmentEmailDeliveryStatus`.
@@ -976,6 +1002,15 @@ export default defineSchema({
 		fulfillmentRecoveryStatus: v.optional(
 			v.union(v.literal("refund_pending"), v.literal("refunded")),
 		),
+		// One rollout-safe lease owns the idempotent Stripe refund request. The
+		// fields are optional so existing recovery rows require no backfill.
+		automatedRefundClaimedAt: v.optional(v.number()),
+		automatedRefundClaimToken: v.optional(v.string()),
+		automatedRefundLeaseExpiresAt: v.optional(v.number()),
+		// Separate at-most-once claims bound the admin and customer failure-email
+		// attempts after the automated refund ID is durable.
+		fulfillmentFailureAdminNotificationClaimedAt: v.optional(v.number()),
+		fulfillmentFailureCustomerNotificationClaimedAt: v.optional(v.number()),
 		notes: v.optional(v.string()),
 	})
 		.index("by_siteUrl", ["siteUrl"])

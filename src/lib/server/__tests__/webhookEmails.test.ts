@@ -3,10 +3,15 @@ import {
 	sendCustomerConfirmation,
 	sendCustomerShipmentNotification,
 	sendPaymentFailedEmail,
+	sendPrintReconciliationBlockedAlert,
 } from "$lib/server/webhookEmails";
 
 function resend() {
-	const send = vi.fn(async (_payload: { from: string; text: string }) => ({ id: "email-123" }));
+	const send = vi.fn(
+		async (_payload: { from: string; text: string; subject?: string; to?: string[] }) => ({
+			id: "email-123",
+		}),
+	);
 	return {
 		emails: {
 			send,
@@ -102,6 +107,39 @@ describe("webhook customer emails", () => {
 		expect(payload.from).toBe("Reflecting Pool via Angel's Rest <orders@angelsrest.online>");
 		expect(payload.text).toContain("Tracking (FedEx): TRACK-123");
 		expect(payload.text).toContain("https://zippymiggy.com/orders");
+	});
+
+	it("bounds the one-time reconciliation-blocked operator alert to fixed safe copy", async () => {
+		const mockResend = resend();
+		const unsafeOrderNumber = `ORD-001\nprivate-token-${"x".repeat(2000)}`;
+
+		await sendPrintReconciliationBlockedAlert(
+			mockResend as unknown as Parameters<typeof sendPrintReconciliationBlockedAlert>[0],
+			{
+				orderNumber: unsafeOrderNumber,
+				externalId: "cs_test_alertemail12345678",
+				reconciliationClass: "response_contract",
+				notificationProfile: {
+					siteName: "Reflecting Pool",
+					siteUrl: "zippymiggy.com",
+					adminEmail: "operator@example.com",
+				},
+			},
+		);
+
+		const payload = mockResend.emails.send.mock.calls[0]?.[0];
+		if (!payload) throw new Error("expected reconciliation-blocked alert payload");
+		expect(payload.to).toEqual(["operator@example.com"]);
+		expect(payload.subject).toBe("Print reconciliation blocked for order unknown");
+		expect(payload.text).toContain(
+			"Classification: Provider response did not match the expected contract",
+		);
+		expect(payload.text).toContain("No customer failure email or automatic refund was sent.");
+		expect(payload.text).not.toContain("private-token");
+		expect(payload.text.length).toBeLessThan(1000);
+		expect(mockResend.emails.send).toHaveBeenCalledWith(expect.anything(), {
+			idempotencyKey: "print-reconciliation-blocked:cs_test_alertemail12345678",
+		});
 	});
 
 	it("surfaces payment-failure Resend API errors after a durable claim", async () => {

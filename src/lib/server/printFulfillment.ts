@@ -10,7 +10,13 @@ import {
 	type CommerceNotificationProfile,
 } from "$lib/server/commerceTenant";
 import { logStructured, timed } from "$lib/server/logger";
-import { buildLumaPrintsOrder, findOrderByExternalId } from "$lib/server/lumaprints";
+import {
+	buildLumaPrintsOrder,
+	findOrderByExternalId,
+	type LumaPrintsReconciliationClass,
+	LumaPrintsReconciliationError,
+	LumaPrintsSubmissionError,
+} from "$lib/server/lumaprints";
 import { buildOrderItemsFromSession, buildRecipientFromShipping } from "$lib/server/webhookDecoder";
 import type { ShippingDetails } from "$lib/server/webhookEmails";
 import { sendFulfillmentFailureAlert } from "$lib/server/webhookEmails";
@@ -24,6 +30,9 @@ import type { LumaPrintsOrder, LumaPrintsOrderResponse } from "$lib/shop/types";
 /** Distinguishes automated recovery refunds from manual refunds. */
 const REFUND_AUTOMATION_TAG = "fulfillment_recovery_v1";
 
+export class PrintReconciliationAlertRetryableError extends Error {}
+export class AutomatedFulfillmentRefundRetryableError extends Error {}
+
 export type SubmitLumaPrintsOrder = (order: LumaPrintsOrder) => Promise<LumaPrintsOrderResponse>;
 
 export type PrintFulfillmentOutcome =
@@ -31,6 +40,11 @@ export type PrintFulfillmentOutcome =
 	| { kind: "no_print_items" }
 	| { kind: "no_print_items_replayed" }
 	| { kind: "manual_refunded"; stripeRefundId: string }
+	| {
+			kind: "reconciliation_blocked";
+			reconciliationClass: LumaPrintsReconciliationClass;
+			alertClaimToken?: string;
+	  }
 	| {
 			kind: "permanent_failure_refunded";
 			stripeRefundId: string;
@@ -47,6 +61,27 @@ export interface PermanentFulfillmentFailureAdapters {
 	convex: ConvexHttpClient;
 	stripe: Stripe;
 	resend: Resend;
+}
+
+async function claimReconciliationAlert(
+	convex: ConvexHttpClient,
+	orderId: Id<"orders">,
+	externalId: string,
+	webhookSecret: string,
+) {
+	const alertClaimToken = randomUUID();
+	const claim = await convex.mutation(api.orders.claimPrintFulfillmentReconciliationAlert, {
+		orderId,
+		externalId,
+		claimToken: alertClaimToken,
+		webhookSecret,
+	});
+	if (claim.kind === "busy") {
+		throw new PrintReconciliationAlertRetryableError(
+			"Print reconciliation alert delivery is already in progress",
+		);
+	}
+	return claim.kind === "claimed" ? alertClaimToken : undefined;
 }
 
 export async function submitPrintFulfillment(
@@ -116,19 +151,108 @@ export async function submitPrintFulfillment(
 			errorSummary: "Fulfillment was already refunded",
 		};
 	}
+	if (claimed.kind === "reconciliation_blocked") {
+		return {
+			kind: "reconciliation_blocked",
+			reconciliationClass: claimed.reconciliationClass,
+			alertClaimToken: await claimReconciliationAlert(convex, orderId, session.id, webhookSecret),
+		};
+	}
 	if (claimed.kind === "busy" || claimed.kind === "preparing") {
 		throw new Error("Print fulfillment is already in progress");
 	}
 	if (claimed.externalId !== session.id)
 		throw new Error("Print fulfillment identity does not match paid order");
 	if (claimed.kind === "reconcile") {
-		const existing = await findLumaPrintsOrder(claimed.externalId);
+		let existing: LumaPrintsOrderResponse | null;
+		try {
+			existing = await findLumaPrintsOrder(claimed.externalId);
+		} catch (error) {
+			if (error instanceof LumaPrintsReconciliationError && error.disposition === "retryable") {
+				throw new Error("Print provider reconciliation is pending");
+			}
+			const reconciliationClass =
+				error instanceof LumaPrintsReconciliationError
+					? (error.reconciliationClass ?? "client_error")
+					: "client_error";
+			const blocked = await convex.mutation(api.orders.blockPrintFulfillmentReconciliation, {
+				orderId,
+				externalId: claimed.externalId,
+				reconciliationClass,
+				webhookSecret,
+			});
+			if (blocked) {
+				return {
+					kind: "reconciliation_blocked",
+					reconciliationClass,
+					alertClaimToken: await claimReconciliationAlert(
+						convex,
+						orderId,
+						claimed.externalId,
+						webhookSecret,
+					),
+				};
+			}
+
+			// The block result can be stale when another delivery stores the GET
+			// result first. Re-read through the atomic claim before reporting a block.
+			const refreshed = await convex.mutation(api.orders.claimPrintFulfillmentV2, {
+				orderId,
+				claimToken,
+				webhookSecret,
+			});
+			if (refreshed.kind === "fulfilled") {
+				return { kind: "fulfilled", lumaprintsOrderNumber: refreshed.orderNumber };
+			}
+			if (refreshed.kind === "manual_refunded") {
+				return { kind: "manual_refunded", stripeRefundId: refreshed.stripeRefundId };
+			}
+			if (refreshed.kind === "automated_refunded") {
+				return {
+					kind: "permanent_failure_refunded",
+					stripeRefundId: refreshed.stripeRefundId,
+					errorSummary: "Fulfillment was already refunded",
+				};
+			}
+			if (refreshed.kind === "reconciliation_blocked") {
+				return {
+					kind: "reconciliation_blocked",
+					reconciliationClass: refreshed.reconciliationClass,
+					alertClaimToken: await claimReconciliationAlert(
+						convex,
+						orderId,
+						claimed.externalId,
+						webhookSecret,
+					),
+				};
+			}
+			if (refreshed.kind === "claimed") {
+				const released = await convex.mutation(api.orders.releasePrintFulfillmentClaim, {
+					orderId,
+					claimToken,
+					webhookSecret,
+				});
+				if (!released) throw new Error("Print preparation claim release is pending");
+			}
+			throw new Error("Print fulfillment reconciliation state changed");
+		}
 		if (!existing) throw new Error("Print provider reconciliation is pending");
-		await convex.mutation(api.orders.updateStatus, {
+		const completion = await convex.mutation(api.orders.reconcilePrintFulfillmentSubmission, {
 			orderId,
-			webhookSecret,
+			externalId: claimed.externalId,
 			lumaprintsOrderNumber: existing.orderNumber,
+			webhookSecret,
 		});
+		if (completion.kind === "manual_refunded") {
+			return { kind: "manual_refunded", stripeRefundId: completion.stripeRefundId };
+		}
+		if (completion.kind === "automated_refunded") {
+			return {
+				kind: "permanent_failure_refunded",
+				stripeRefundId: completion.stripeRefundId,
+				errorSummary: "Fulfillment was already refunded",
+			};
+		}
 		return { kind: "fulfilled", lumaprintsOrderNumber: existing.orderNumber };
 	}
 
@@ -224,7 +348,26 @@ export async function submitPrintFulfillment(
 	let result: LumaPrintsOrderResponse;
 	try {
 		result = await createLumaPrintsOrder(lpOrder);
-	} catch {
+	} catch (error) {
+		if (error instanceof LumaPrintsSubmissionError && error.disposition === "definitely_rejected") {
+			const rejection = await convex.mutation(api.orders.rejectPrintFulfillmentSubmission, {
+				orderId,
+				claimToken,
+				externalId: submission.externalId,
+				webhookSecret,
+			});
+			if (rejection.kind === "manual_refunded") {
+				return { kind: "manual_refunded", stripeRefundId: rejection.stripeRefundId };
+			}
+			if (rejection.kind === "automated_refunded") {
+				return {
+					kind: "permanent_failure_refunded",
+					stripeRefundId: rejection.stripeRefundId,
+					errorSummary: "Fulfillment was already refunded",
+				};
+			}
+			throw error;
+		}
 		throw new Error("Print provider submission outcome is unknown");
 	}
 	logStructured({
@@ -233,10 +376,12 @@ export async function submitPrintFulfillment(
 		orderId: orderNumber,
 		meta: { itemCount: items.length },
 	});
-	await convex.mutation(api.orders.updateStatus, {
+	const completion = await convex.mutation(api.orders.completePrintFulfillmentSubmission, {
 		orderId,
-		webhookSecret,
+		claimToken,
+		externalId: submission.externalId,
 		lumaprintsOrderNumber: result.orderNumber,
+		webhookSecret,
 	});
 	logStructured({
 		event: "lumaprints.recorded",
@@ -244,6 +389,16 @@ export async function submitPrintFulfillment(
 		orderId: orderNumber,
 		meta: { lumaprintsOrderNumber: result.orderNumber },
 	});
+	if (completion.kind === "manual_refunded") {
+		return { kind: "manual_refunded", stripeRefundId: completion.stripeRefundId };
+	}
+	if (completion.kind === "automated_refunded") {
+		return {
+			kind: "permanent_failure_refunded",
+			stripeRefundId: completion.stripeRefundId,
+			errorSummary: "Fulfillment was already refunded",
+		};
+	}
 	return {
 		kind: "fulfilled",
 		lumaprintsOrderNumber: result.orderNumber,
@@ -309,6 +464,7 @@ export async function handlePermanentFulfillmentFailure(
 		orderId,
 		orderNumber,
 		error: fulfillmentError,
+		durableFulfillmentError,
 		session,
 		stripeRequestOptions,
 		customerEmail,
@@ -317,22 +473,15 @@ export async function handlePermanentFulfillmentFailure(
 		orderId: Id<"orders">;
 		orderNumber: string;
 		error: unknown;
+		durableFulfillmentError?: string;
 		session: Stripe.Checkout.Session;
 		stripeRequestOptions?: Stripe.RequestOptions;
 		customerEmail: string;
 		notificationProfile?: CommerceNotificationProfile;
 	},
 ) {
-	const errorSummary = formatFailureForAdmin(fulfillmentError);
+	const errorSummary = durableFulfillmentError ?? formatFailureForAdmin(fulfillmentError);
 	const truncatedError = errorSummary.slice(0, 1000);
-
-	await convex.mutation(api.orders.updateStatus, {
-		webhookSecret: getWebhookSecret(),
-		orderId,
-		status: "fulfillment_error",
-		fulfillmentError: truncatedError,
-		fulfillmentRecoveryStatus: "refund_pending",
-	});
 
 	const paymentIntentId =
 		typeof session.payment_intent === "string"
@@ -341,24 +490,81 @@ export async function handlePermanentFulfillmentFailure(
 	if (!paymentIntentId) {
 		throw new Error(`Cannot refund order ${orderNumber}: Stripe session has no payment_intent`);
 	}
+	const webhookSecret = getWebhookSecret();
+	const refundClaimToken = randomUUID();
+	const refundClaim = await convex.mutation(api.orders.claimAutomatedFulfillmentRefund, {
+		webhookSecret,
+		orderId,
+		claimToken: refundClaimToken,
+		fulfillmentError: truncatedError,
+	});
+	if (refundClaim.kind === "busy") {
+		throw new AutomatedFulfillmentRefundRetryableError(
+			"Automated fulfillment refund is already in progress",
+		);
+	}
+	if (refundClaim.kind === "unavailable") {
+		throw new AutomatedFulfillmentRefundRetryableError(
+			"Automated fulfillment refund claim is unavailable",
+		);
+	}
+	if (refundClaim.kind === "refunded") {
+		await sendClaimedFulfillmentFailureAdminAlert(
+			{ convex, resend },
+			{
+				orderId,
+				orderNumber,
+				customerEmail,
+				errorSummary,
+				stripeRefundId: refundClaim.stripeRefundId,
+				total: session.amount_total ?? 0,
+				notificationProfile,
+			},
+		);
+		return {
+			kind: "permanent_failure_refunded",
+			stripeRefundId: refundClaim.stripeRefundId,
+			errorSummary,
+		} satisfies PrintFulfillmentOutcome;
+	}
 
 	const isConnectedAccountRefund = Boolean(stripeRequestOptions?.stripeAccount);
-	const refund = await stripe.refunds.create(
-		{
-			payment_intent: paymentIntentId,
-			reason: "requested_by_customer",
-			...(isConnectedAccountRefund ? { refund_application_fee: true } : {}),
-			metadata: {
-				orderNumber,
-				fulfillmentError: errorSummary.slice(0, 500),
-				automated: REFUND_AUTOMATION_TAG,
+	let refund: Stripe.Refund;
+	try {
+		refund = await stripe.refunds.create(
+			{
+				payment_intent: paymentIntentId,
+				reason: "requested_by_customer",
+				...(isConnectedAccountRefund ? { refund_application_fee: true } : {}),
+				metadata: {
+					orderNumber,
+					fulfillmentError: truncatedError.slice(0, 500),
+					automated: REFUND_AUTOMATION_TAG,
+				},
 			},
-		},
-		{
-			...(stripeRequestOptions ?? {}),
-			idempotencyKey: `fulfillment-refund:${session.id}`,
-		},
-	);
+			{
+				...(stripeRequestOptions ?? {}),
+				idempotencyKey: `fulfillment-refund:${session.id}`,
+			},
+		);
+	} catch (cause) {
+		try {
+			await convex.mutation(api.orders.releaseAutomatedFulfillmentRefund, {
+				webhookSecret,
+				orderId,
+				claimToken: refundClaimToken,
+			});
+		} catch (releaseError) {
+			logStructured({
+				event: "refund.claim_release_failed",
+				level: "error",
+				stage: "stripe_refund",
+				orderId: orderNumber,
+				error: releaseError,
+			});
+		}
+		throw cause;
+	}
 	const stripeRefundId = refund.id;
 	logStructured({
 		event: "refund.created",
@@ -367,22 +573,85 @@ export async function handlePermanentFulfillmentFailure(
 		meta: { refundId: refund.id, refundStatus: refund.status },
 	});
 
-	await convex.mutation(api.orders.updateStatus, {
+	try {
+		await convex.mutation(api.orders.completeAutomatedFulfillmentRefund, {
+			webhookSecret,
+			orderId,
+			claimToken: refundClaimToken,
+			stripeRefundId,
+		});
+	} catch (cause) {
+		try {
+			await convex.mutation(api.orders.releaseAutomatedFulfillmentRefund, {
+				webhookSecret,
+				orderId,
+				claimToken: refundClaimToken,
+			});
+		} catch (releaseError) {
+			logStructured({
+				event: "refund.claim_release_failed",
+				level: "error",
+				stage: "stripe_refund",
+				orderId: orderNumber,
+				error: releaseError,
+			});
+		}
+		throw cause;
+	}
+
+	await sendClaimedFulfillmentFailureAdminAlert(
+		{ convex, resend },
+		{
+			orderId,
+			orderNumber,
+			customerEmail,
+			errorSummary,
+			stripeRefundId,
+			total: session.amount_total ?? 0,
+			notificationProfile,
+		},
+	);
+
+	return {
+		kind: "permanent_failure_refunded",
+		stripeRefundId,
+		errorSummary,
+	} satisfies PrintFulfillmentOutcome;
+}
+
+export async function sendClaimedFulfillmentFailureAdminAlert(
+	{ convex, resend }: { convex: ConvexHttpClient; resend: Resend },
+	{
+		orderId,
+		orderNumber,
+		customerEmail,
+		errorSummary,
+		stripeRefundId,
+		total,
+		notificationProfile = ANGELS_REST_COMMERCE_PROFILE,
+	}: {
+		orderId: Id<"orders">;
+		orderNumber: string;
+		customerEmail: string;
+		errorSummary: string;
+		stripeRefundId: string;
+		total: number;
+		notificationProfile?: CommerceNotificationProfile;
+	},
+) {
+	const claimed = await convex.mutation(api.orders.claimFulfillmentFailureNotification, {
 		webhookSecret: getWebhookSecret(),
 		orderId,
-		status: "fulfillment_error",
-		fulfillmentError: truncatedError,
-		stripeRefundId,
-		fulfillmentRecoveryStatus: "refunded",
+		audience: "admin",
 	});
-
+	if (!claimed) return false;
 	try {
 		await sendFulfillmentFailureAlert(resend, {
 			orderNumber,
 			customerEmail,
 			errorSummary,
 			stripeRefundId,
-			total: session.amount_total ?? 0,
+			total,
 			notificationProfile,
 		});
 	} catch (emailErr) {
@@ -394,10 +663,5 @@ export async function handlePermanentFulfillmentFailure(
 			error: emailErr,
 		});
 	}
-
-	return {
-		kind: "permanent_failure_refunded",
-		stripeRefundId,
-		errorSummary,
-	} satisfies PrintFulfillmentOutcome;
+	return true;
 }

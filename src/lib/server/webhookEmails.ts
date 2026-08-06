@@ -16,6 +16,7 @@ import {
 	type CommerceNotificationProfile,
 } from "$lib/server/commerceTenant";
 import { logStructured } from "$lib/server/logger";
+import type { LumaPrintsReconciliationClass } from "$lib/server/lumaprints";
 import { formatCents } from "$lib/utils/format";
 
 /** Shipping details extracted from `session.collected_information`. */
@@ -122,6 +123,55 @@ Action required:
 			error: emailErr,
 			meta: { eventType },
 		});
+	}
+}
+
+const RECONCILIATION_CLASS_COPY: Record<LumaPrintsReconciliationClass, string> = {
+	provider_rejected: "Provider rejected the reconciliation request",
+	response_contract: "Provider response did not match the expected contract",
+	ambiguous_result: "Provider returned more than one matching result",
+	client_error: "Reconciliation request could not be completed",
+};
+
+function boundedOrderReference(orderNumber: string) {
+	if (orderNumber.length > 64) return "unknown";
+	const normalized = orderNumber.trim();
+	return /^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$/.test(normalized) ? normalized : "unknown";
+}
+
+/** Send the one-time operator alert for a durable reconciliation block. */
+export async function sendPrintReconciliationBlockedAlert(
+	resend: Resend,
+	{
+		orderNumber,
+		externalId,
+		reconciliationClass,
+		notificationProfile = ANGELS_REST_COMMERCE_PROFILE,
+	}: {
+		orderNumber: string;
+		externalId: string;
+		reconciliationClass: LumaPrintsReconciliationClass;
+		notificationProfile?: CommerceNotificationProfile;
+	},
+) {
+	const orderReference = boundedOrderReference(orderNumber);
+	const result = await resend.emails.send(
+		{
+			from: commerceSender(notificationProfile, " Alerts"),
+			to: [notificationProfile.adminEmail],
+			subject: `Print reconciliation blocked for order ${orderReference}`,
+			text: `Automatic print reconciliation stopped for order ${orderReference}.
+
+Classification: ${RECONCILIATION_CLASS_COPY[reconciliationClass]}
+
+No customer failure email or automatic refund was sent.
+The provider submission claim remains locked to prevent another provider POST.
+Review the provider and admin dashboards before you take manual action.`,
+		},
+		{ idempotencyKey: `print-reconciliation-blocked:${externalId}` },
+	);
+	if (result.error) {
+		throw new Error(result.error.message || "Reconciliation-blocked alert delivery failed");
 	}
 }
 

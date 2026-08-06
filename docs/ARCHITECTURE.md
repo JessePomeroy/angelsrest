@@ -180,15 +180,29 @@ without setting `event.account`. The verified destination role authorizes that
 value only as Stripe `stripeContext` for the related Session lookup. It never
 becomes connected-account, tenant, site, or Convex scope authority. Connected
 refunds continue to require verified `event.account` and Stripe `stripeAccount`.
-A webhook-only Convex transaction then marks only an unfulfilled `new` order as
-`refunded` and stores the refund ID. If the refund arrives first, Convex keeps a
+A webhook-only Convex transaction marks an eligible `new` order as `refunded`
+and stores the refund ID. Eligibility includes an exact provider result that
+raced ahead of the refund. If the refund arrives first, Convex keeps a
 provider-verified intent that makes later order creation terminal. Partial,
 automated, ambiguous, or conflicting evidence fails closed. This path sends no
 email and does not change checkout snapshot reservations. Manual reconciliation
 also cancels pending fee capture before another provider read can store data.
 Print fulfillment uses an expiring preparation lease and an atomic submission
-fence, so refund and provider effects cannot both start. The additive V2 claim
-API keeps the V1 claim available for a Convex-first rollout.
+fence. A verified refund that wins before the fence clears the preparation
+claim. A verified refund that arrives after the fence records payment truth but
+keeps an explicit uncertain-submission state. The exact fenced completion or a
+webhook-authoritative GET result can later store the validated provider number
+without changing refund truth. Deterministic reconciliation faults persist a
+bounded blocked class. They never issue another provider POST or authorize a
+refund. A leased, non-sensitive operator alert can retry until its delivery is
+recorded. A reviewed recovery remains GET-only.
+
+Rollout is Convex-first while new fulfillment remains closed. Deploy the
+additive schema, new mutations, and the narrow baseline-host completion bridge.
+Then deploy the new host and drain older consumers. Remove the temporary bridge
+only in a later reviewed release. The bridge accepts one exact webhook-authorized
+completion, reserves the old host's confirmation attempt, rejects replays, and
+never lets an administrator write provider-global identity.
 
 A disabled-by-default admin recovery route exists only for the reviewed
 historical refund incident. `POST /api/admin/orders/refund-recovery` requires an
