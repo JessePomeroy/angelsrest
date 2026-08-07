@@ -1491,16 +1491,67 @@ describe("provider-authoritative manual refunds", () => {
 			status: "fulfillment_error",
 			fulfillmentError: "Print provider rejected fulfillment",
 			fulfillmentRecoveryStatus: "refund_pending",
+			automatedRefundPreRequestProtocol: "print_rejection_v1",
 		});
 		expect(stored?.printFulfillmentClaim).toBeUndefined();
 		expect(stored?.printFulfillmentClaimToken).toBeUndefined();
 		expect(stored?.printFulfillmentPhase).toBeUndefined();
 		expect(stored?.printFulfillmentResolution).toBeUndefined();
+		const refundClaimArgs = (claimToken: string) => ({
+			orderId: created._id,
+			claimToken,
+			fulfillmentError: "Print provider rejected fulfillment",
+			webhookSecret: WEBHOOK_SECRET,
+		});
+		await expect(t.mutation(
+			api.orders.claimAutomatedFulfillmentRefundV2,
+			refundClaimArgs(CLAIM_TOKEN_A),
+		)).resolves.toMatchObject({ kind: "claimed" });
+		expect((await t.run((ctx) => ctx.db.get(created._id)))?.automatedRefundPreRequestProtocol)
+			.toBeUndefined();
+		await t.run((ctx) => ctx.db.patch(created._id, { automatedRefundLeaseExpiresAt: 0 }));
+		await expect(t.mutation(
+			api.orders.claimAutomatedFulfillmentRefundV2,
+			refundClaimArgs(CLAIM_TOKEN_B),
+		)).resolves.toEqual({ kind: "unavailable" });
 		await expect(t.mutation(api.orders.claimPrintFulfillmentV2, {
 			orderId: created._id,
 			claimToken: CLAIM_TOKEN_B,
 			webhookSecret: WEBHOOK_SECRET,
 		})).resolves.toEqual({ kind: "busy" });
+	});
+
+	test("lets a legacy host consume a definite-rejection refund marker only once", async () => {
+		const t = convexTest(schema, modules);
+		const created = await t.mutation(api.orders.create, {
+			...orderArgs("cs_test_legacydefiniterejection123"),
+			stripePaymentIntentId: MANUAL_REFUND.paymentIntent,
+		});
+		const fulfillmentError = "Print provider rejected fulfillment";
+		await t.run((ctx) => ctx.db.patch(created._id, {
+			status: "fulfillment_error",
+			fulfillmentError,
+			fulfillmentRecoveryStatus: "refund_pending",
+			automatedRefundPreRequestProtocol: "print_rejection_v1",
+		}));
+		const args = (claimToken: string) => ({
+			orderId: created._id,
+			claimToken,
+			fulfillmentError,
+			webhookSecret: WEBHOOK_SECRET,
+		});
+
+		await expect(t.mutation(api.orders.claimAutomatedFulfillmentRefund, args(CLAIM_TOKEN_A)))
+			.resolves.toMatchObject({ kind: "claimed" });
+		expect((await t.run((ctx) => ctx.db.get(created._id)))?.automatedRefundPreRequestProtocol)
+			.toBeUndefined();
+		await t.run((ctx) => ctx.db.patch(created._id, { automatedRefundLeaseExpiresAt: 0 }));
+		await expect(t.mutation(api.orders.claimAutomatedFulfillmentRefund, args(CLAIM_TOKEN_B)))
+			.resolves.toEqual({ kind: "unavailable" });
+		expect(await t.run((ctx) => ctx.db.get(created._id))).toMatchObject({
+			fulfillmentRecoveryStatus: "refund_attention",
+			automatedRefundAttentionReason: "request_outcome_unknown",
+		});
 	});
 
 	test("preserves manual refund truth racing a definite provider rejection", async () => {
@@ -1946,26 +1997,15 @@ describe("automated fulfillment refund claims", () => {
 			claimToken: CLAIM_TOKEN_B,
 			webhookSecret: WEBHOOK_SECRET,
 		})).resolves.toBe(false);
-		await expect(t.mutation(api.orders.releaseAutomatedFulfillmentRefund, {
-			orderId: created._id,
-			claimToken: CLAIM_TOKEN_A,
-			webhookSecret: WEBHOOK_SECRET,
-		})).resolves.toBe(true);
 		await expect(t.mutation(api.orders.claimAutomatedFulfillmentRefundV2, {
 			orderId: created._id,
 			claimToken: CLAIM_TOKEN_B,
 			fulfillmentError: "Print fulfillment unavailable",
 			webhookSecret: WEBHOOK_SECRET,
 		})).resolves.toEqual({ kind: "unavailable" });
-		await expect(t.mutation(api.orders.claimAutomatedFulfillmentRefundV2, {
-			orderId: created._id,
-			claimToken: CLAIM_TOKEN_B,
-			fulfillmentError,
-			webhookSecret: WEBHOOK_SECRET,
-		})).resolves.toMatchObject({ kind: "claimed" });
 		await expect(t.mutation(api.orders.recordAutomatedFulfillmentRefund, {
 			orderId: created._id,
-			claimToken: CLAIM_TOKEN_B,
+			claimToken: CLAIM_TOKEN_A,
 			stripeRefundId: "re_automatedrefund123456",
 			stripeRefundStatus: "pending",
 			webhookSecret: WEBHOOK_SECRET,
@@ -2043,7 +2083,562 @@ describe("automated fulfillment refund claims", () => {
 		}
 	});
 
-	test("takes over an expired hard-crash refund lease without changing request identity", async () => {
+	test("stops refund notification sends at the bounded retry deadline", async () => {
+		const t = convexTest(schema, modules);
+		const created = await t.mutation(api.orders.create, {
+			...orderArgs(MANUAL_REFUND.session),
+			stripePaymentIntentId: MANUAL_REFUND.paymentIntent,
+		});
+		const firstAttemptAt = Date.now() - 23 * 60 * 60 * 1000;
+		await t.run((ctx) => ctx.db.patch(created._id, {
+			status: "fulfillment_error",
+			fulfillmentError: "Fulfillment validation rejected",
+			fulfillmentRecoveryStatus: "refunded",
+			stripeRefundId: "re_notificationwindow123456",
+			automatedRefundId: "re_notificationwindow123456",
+			automatedRefundStatus: "succeeded",
+			fulfillmentFailureNotificationProtocol: "leased_v1",
+			fulfillmentFailureNotificationRetryProtocol: "bounded_23h_v1",
+			fulfillmentFailureAdminNotificationClaimedAt: firstAttemptAt,
+			fulfillmentFailureAdminNotificationClaimToken: CLAIM_TOKEN_A,
+			fulfillmentFailureAdminNotificationLeaseExpiresAt: 0,
+			fulfillmentFailureCustomerNotificationClaimedAt: firstAttemptAt,
+			fulfillmentFailureCustomerNotificationClaimToken: CLAIM_TOKEN_A,
+			fulfillmentFailureCustomerNotificationLeaseExpiresAt: 0,
+		}));
+		for (const audience of ["admin", "customer"] as const) {
+			await expect(t.mutation(api.orders.claimFulfillmentFailureNotificationV2, {
+				orderId: created._id,
+				audience,
+				claimToken: CLAIM_TOKEN_B,
+				webhookSecret: WEBHOOK_SECRET,
+			})).resolves.toEqual({ kind: "unavailable" });
+			await expect(t.mutation(api.orders.isFulfillmentFailureNotificationDeliveryUncertain, {
+				orderId: created._id,
+				audience,
+				webhookSecret: WEBHOOK_SECRET,
+			})).resolves.toBe(true);
+			await expect(t.mutation(api.orders.releaseFulfillmentFailureNotificationV2, {
+				orderId: created._id,
+				audience,
+				claimToken: CLAIM_TOKEN_A,
+				webhookSecret: WEBHOOK_SECRET,
+			})).resolves.toBe(false);
+			await expect(t.mutation(api.orders.completeFulfillmentFailureNotificationV2, {
+				orderId: created._id,
+				audience,
+				claimToken: CLAIM_TOKEN_A,
+				webhookSecret: WEBHOOK_SECRET,
+			})).resolves.toBe(false);
+		}
+		const stored = await t.run((ctx) => ctx.db.get(created._id));
+		expect(stored).toMatchObject({
+			fulfillmentFailureAdminNotificationDeliveryUncertainAt: expect.any(Number),
+			fulfillmentFailureCustomerNotificationDeliveryUncertainAt: expect.any(Number),
+		});
+		expect(stored?.fulfillmentFailureAdminNotificationClaimToken).toBeUndefined();
+		expect(stored?.fulfillmentFailureCustomerNotificationClaimToken).toBeUndefined();
+	});
+
+	test("fails closed for a refund notification released before bounded retries", async () => {
+		const t = convexTest(schema, modules);
+		const created = await t.mutation(api.orders.create, {
+			...orderArgs("cs_test_oldreleasednotice1234"),
+			stripePaymentIntentId: MANUAL_REFUND.paymentIntent,
+		});
+		await t.run((ctx) => ctx.db.patch(created._id, {
+			status: "fulfillment_error",
+			fulfillmentError: "Fulfillment validation rejected",
+			fulfillmentRecoveryStatus: "refunded",
+			stripeRefundId: "re_oldreleasednotice1234",
+			automatedRefundId: "re_oldreleasednotice1234",
+			automatedRefundStatus: "succeeded",
+			fulfillmentFailureNotificationProtocol: "leased_v1",
+			fulfillmentFailureNotificationRetryProtocol: undefined,
+			fulfillmentFailureAdminNotificationClaimedAt: undefined,
+			fulfillmentFailureAdminNotificationClaimToken: undefined,
+			fulfillmentFailureAdminNotificationLeaseExpiresAt: undefined,
+		}));
+
+		await expect(t.mutation(api.orders.claimFulfillmentFailureNotificationV2, {
+			orderId: created._id,
+			audience: "admin",
+			claimToken: CLAIM_TOKEN_B,
+			webhookSecret: WEBHOOK_SECRET,
+		})).resolves.toEqual({ kind: "unavailable" });
+		await expect(t.mutation(api.orders.isFulfillmentFailureNotificationDeliveryUncertain, {
+			orderId: created._id,
+			audience: "admin",
+			webhookSecret: WEBHOOK_SECRET,
+		})).resolves.toBe(true);
+	});
+
+	test("establishes the order-scoped attention key only on a new-host first send", async () => {
+		vi.useFakeTimers();
+		const now = Date.parse("2026-08-06T12:00:00Z");
+		vi.setSystemTime(now);
+		try {
+			const t = convexTest(schema, modules);
+			const created = await t.mutation(api.orders.create, {
+				...orderArgs("cs_test_attentionkeyprotocol123"),
+				stripePaymentIntentId: MANUAL_REFUND.paymentIntent,
+			});
+			await t.run((ctx) => ctx.db.patch(created._id, {
+				status: "fulfillment_error",
+				fulfillmentError: "Fulfillment validation rejected",
+				fulfillmentRecoveryStatus: "refund_attention",
+				automatedRefundId: "re_attentionkeyprotocol123",
+				automatedRefundStatus: "pending",
+				automatedRefundAttentionReason: "attempts_exhausted",
+				fulfillmentFailureNotificationProtocol: "leased_v1",
+				fulfillmentFailureNotificationRetryProtocol: "bounded_23h_v1",
+			}));
+			const args = (claimToken: string) => ({
+				orderId: created._id,
+				audience: "refund_attention" as const,
+				claimToken,
+				webhookSecret: WEBHOOK_SECRET,
+			});
+
+			await expect(t.mutation(api.orders.claimFulfillmentFailureNotificationV2, args(CLAIM_TOKEN_A)))
+				.resolves.toEqual({ kind: "claimed" });
+			await expect(t.mutation(
+				api.orders.authorizeFulfillmentFailureNotificationSendV2,
+				args(CLAIM_TOKEN_A),
+			)).resolves.toBe(true);
+			expect(await t.run((ctx) => ctx.db.get(created._id))).toMatchObject({
+				automatedRefundAttentionNotificationKeyProtocol: "order_identity_v1",
+			});
+			vi.setSystemTime(now + 16 * 60 * 1000);
+			await expect(t.mutation(
+				api.orders.claimFulfillmentFailureNotificationV2,
+				args(CLAIM_TOKEN_B),
+			)).resolves.toEqual({ kind: "unavailable" });
+			await expect(t.mutation(
+				api.orders.claimFulfillmentFailureNotificationV3,
+				args(CLAIM_TOKEN_B),
+			)).resolves.toEqual({ kind: "claimed" });
+
+			vi.setSystemTime(now);
+			const legacy = await t.mutation(api.orders.create, {
+				...orderArgs("cs_test_attentionoldhostkey123"),
+				stripePaymentIntentId: MANUAL_REFUND.paymentIntent,
+			});
+			await t.run((ctx) => ctx.db.patch(legacy._id, {
+				status: "fulfillment_error",
+				fulfillmentError: "Fulfillment validation rejected",
+				fulfillmentRecoveryStatus: "refund_attention",
+				automatedRefundId: "re_attentionoldhostkey123",
+				automatedRefundStatus: "pending",
+				automatedRefundAttentionReason: "attempts_exhausted",
+				fulfillmentFailureNotificationProtocol: "leased_v1",
+				fulfillmentFailureNotificationRetryProtocol: "bounded_23h_v1",
+			}));
+			const legacyArgs = (claimToken: string) => ({
+				orderId: legacy._id,
+				audience: "refund_attention" as const,
+				claimToken,
+				webhookSecret: WEBHOOK_SECRET,
+			});
+			await expect(t.mutation(
+				api.orders.claimFulfillmentFailureNotificationV2,
+				legacyArgs(CLAIM_TOKEN_A),
+			)).resolves.toEqual({ kind: "claimed" });
+			vi.setSystemTime(now + 16 * 60 * 1000);
+			await expect(t.mutation(
+				api.orders.claimFulfillmentFailureNotificationV2,
+				legacyArgs(CLAIM_TOKEN_B),
+			)).resolves.toEqual({ kind: "claimed" });
+			await expect(t.mutation(
+				api.orders.authorizeFulfillmentFailureNotificationSendV2,
+				legacyArgs(CLAIM_TOKEN_B),
+			)).resolves.toBe(false);
+			const stored = await t.run((ctx) => ctx.db.get(legacy._id));
+			expect(stored?.automatedRefundAttentionNotificationKeyProtocol).toBeUndefined();
+			expect(stored).toMatchObject({
+				automatedRefundAttentionNotificationDeliveryUncertainAt: expect.any(Number),
+			});
+			expect(stored?.automatedRefundAttentionNotificationClaimToken).toBeUndefined();
+		} finally {
+			vi.useRealTimers();
+		}
+	});
+
+	test("keeps an active notification lease busy across the retry deadline", async () => {
+		vi.useFakeTimers();
+		const now = Date.parse("2026-08-06T12:00:00Z");
+		vi.setSystemTime(now);
+		try {
+			const t = convexTest(schema, modules);
+			const created = await t.mutation(api.orders.create, {
+				...orderArgs(MANUAL_REFUND.session),
+				stripePaymentIntentId: MANUAL_REFUND.paymentIntent,
+			});
+			const firstAttemptAt = now - 23 * 60 * 60 * 1000 + 1;
+			await t.run((ctx) => ctx.db.patch(created._id, {
+				status: "fulfillment_error",
+				fulfillmentError: "Fulfillment validation rejected",
+				fulfillmentRecoveryStatus: "refunded",
+				stripeRefundId: "re_notificationboundary123456",
+				automatedRefundId: "re_notificationboundary123456",
+				automatedRefundStatus: "succeeded",
+				fulfillmentFailureNotificationProtocol: "leased_v1",
+				fulfillmentFailureNotificationRetryProtocol: "bounded_23h_v1",
+				fulfillmentFailureAdminNotificationClaimedAt: firstAttemptAt,
+				fulfillmentFailureAdminNotificationClaimToken: CLAIM_TOKEN_A,
+				fulfillmentFailureAdminNotificationLeaseExpiresAt: now + 60_000,
+			}));
+			vi.setSystemTime(now + 2);
+			await expect(t.mutation(api.orders.claimFulfillmentFailureNotificationV2, {
+				orderId: created._id,
+				audience: "admin",
+				claimToken: CLAIM_TOKEN_B,
+				webhookSecret: WEBHOOK_SECRET,
+			})).resolves.toMatchObject({ kind: "busy" });
+			await expect(t.mutation(api.orders.authorizeFulfillmentFailureNotificationSendV2, {
+				orderId: created._id,
+				audience: "admin",
+				claimToken: CLAIM_TOKEN_A,
+				webhookSecret: WEBHOOK_SECRET,
+			})).resolves.toBe(false);
+			await expect(t.mutation(api.orders.isFulfillmentFailureNotificationDeliveryUncertain, {
+				orderId: created._id,
+				audience: "admin",
+				webhookSecret: WEBHOOK_SECRET,
+			})).resolves.toBe(true);
+		} finally {
+			vi.useRealTimers();
+		}
+	});
+
+	test("marks an unknown refund request outcome immediately and rejects stale ownership", async () => {
+		const t = convexTest(schema, modules);
+		const created = await t.mutation(api.orders.create, {
+			...orderArgs(MANUAL_REFUND.session),
+			stripePaymentIntentId: MANUAL_REFUND.paymentIntent,
+		});
+		const fulfillmentError = "Fulfillment validation rejected";
+		await t.mutation(api.orders.claimAutomatedFulfillmentRefundV2, {
+			orderId: created._id,
+			claimToken: CLAIM_TOKEN_A,
+			fulfillmentError,
+			webhookSecret: WEBHOOK_SECRET,
+		});
+		await expect(t.mutation(api.orders.markAutomatedFulfillmentRefundRequestUncertain, {
+			orderId: created._id,
+			claimToken: CLAIM_TOKEN_B,
+			webhookSecret: WEBHOOK_SECRET,
+		})).resolves.toBe(false);
+		await expect(t.mutation(api.orders.markAutomatedFulfillmentRefundRequestUncertain, {
+			orderId: created._id,
+			claimToken: CLAIM_TOKEN_A,
+			webhookSecret: WEBHOOK_SECRET,
+		})).resolves.toBe(true);
+		await expect(t.mutation(api.orders.releaseAutomatedFulfillmentRefund, {
+			orderId: created._id,
+			claimToken: CLAIM_TOKEN_A,
+			webhookSecret: WEBHOOK_SECRET,
+		})).resolves.toBe(false);
+		await expect(t.mutation(api.orders.recordAutomatedFulfillmentRefund, {
+			orderId: created._id,
+			claimToken: CLAIM_TOKEN_A,
+			stripeRefundId: "re_stalecompletion123456",
+			stripeRefundStatus: "succeeded",
+			webhookSecret: WEBHOOK_SECRET,
+		})).rejects.toThrow("Automated refund claim is unavailable");
+		await expect(t.mutation(api.orders.claimAutomatedFulfillmentRefundV2, {
+			orderId: created._id,
+			claimToken: CLAIM_TOKEN_B,
+			fulfillmentError,
+			webhookSecret: WEBHOOK_SECRET,
+		})).resolves.toEqual({ kind: "unavailable" });
+		await expect(t.mutation(api.orders.isAutomatedFulfillmentRefundRequestUncertain, {
+			orderId: created._id,
+			webhookSecret: WEBHOOK_SECRET,
+		})).resolves.toBe(true);
+		expect(await t.run((ctx) => ctx.db.get(created._id))).toMatchObject({
+			fulfillmentRecoveryStatus: "refund_attention",
+			automatedRefundAttentionReason: "request_outcome_unknown",
+			automatedRefundAttentionAt: expect.any(Number),
+		});
+		await expect(t.mutation(
+			api.orders.reconcileAutomatedFulfillmentRefund,
+			automatedRefundReconciliationArgs(created.orderNumber, "pending"),
+		)).resolves.toEqual({ kind: "pending", refundStatus: "pending" });
+		const reconciled = await t.run((ctx) => ctx.db.get(created._id));
+		expect(reconciled).toMatchObject({
+			fulfillmentRecoveryStatus: "refund_pending",
+			automatedRefundId: "re_automated1234567890",
+			automatedRefundStatus: "pending",
+		});
+		expect(reconciled?.automatedRefundAttentionReason).toBeUndefined();
+		expect(reconciled?.automatedRefundAttentionAt).toBeUndefined();
+	});
+
+	test.each(["succeeded", "failed", "canceled"] as const)(
+		"lets a signed %s refund resolve request uncertainty",
+		async (status) => {
+			const t = convexTest(schema, modules);
+			const sessionId = `cs_test_unknownrefund${status}123`;
+			const created = await t.mutation(api.orders.create, {
+				...orderArgs(sessionId),
+				stripePaymentIntentId: MANUAL_REFUND.paymentIntent,
+			});
+			await t.run((ctx) => ctx.db.patch(created._id, {
+				status: "fulfillment_error",
+				fulfillmentError: "Fulfillment validation rejected",
+				fulfillmentRecoveryStatus: "refund_attention",
+				automatedRefundAttempts: 1,
+				automatedRefundFirstAttemptAt: Date.now(),
+				automatedRefundAttentionAt: Date.now(),
+				automatedRefundAttentionReason: "request_outcome_unknown",
+				fulfillmentFailureNotificationProtocol: "leased_v1",
+			}));
+
+			await expect(t.mutation(
+				api.orders.reconcileAutomatedFulfillmentRefund,
+				automatedRefundReconciliationArgs(created.orderNumber, status, {
+					stripeSessionId: sessionId,
+				}),
+			)).resolves.toMatchObject({
+				kind: status === "succeeded" ? "succeeded" : "refund_failed",
+			});
+			const stored = await t.run((ctx) => ctx.db.get(created._id));
+			expect(stored).toMatchObject({
+				fulfillmentRecoveryStatus: status === "succeeded" ? "refunded" : "refund_failed",
+				automatedRefundId: "re_automated1234567890",
+				automatedRefundStatus: status,
+			});
+			expect(stored?.automatedRefundAttentionReason).toBeUndefined();
+			expect(stored?.automatedRefundAttentionAt).toBeUndefined();
+		},
+	);
+
+	test.each([
+		["succeeded", "submission_uncertain"],
+		["failed", "submission_uncertain"],
+		["canceled", "submission_uncertain"],
+		["succeeded", "reconciliation_blocked"],
+		["failed", "reconciliation_blocked"],
+		["canceled", "reconciliation_blocked"],
+	] as const)(
+		"lets signed %s refund evidence preserve a %s print fence",
+		async (status, printResolution) => {
+			const t = convexTest(schema, modules);
+			const sessionId = `cs_test_unknownprint${status}${printResolution === "submission_uncertain" ? "u" : "b"}`;
+			const created = await t.mutation(api.orders.create, {
+				...orderArgs(sessionId),
+				stripePaymentIntentId: MANUAL_REFUND.paymentIntent,
+			});
+			await t.run((ctx) => ctx.db.patch(created._id, {
+				status: "fulfillment_error",
+				fulfillmentError: "Fulfillment validation rejected",
+				fulfillmentRecoveryStatus: "refund_attention",
+				automatedRefundAttentionAt: Date.now(),
+				automatedRefundAttentionReason: "request_outcome_unknown",
+				printFulfillmentClaim: true,
+				printFulfillmentClaimToken: CLAIM_TOKEN_A,
+				printFulfillmentPhase: "submitting",
+				printFulfillmentResolution: printResolution,
+				...(printResolution === "reconciliation_blocked"
+					? { printFulfillmentReconciliationClass: "response_contract" as const }
+					: {}),
+			}));
+
+			const reconcileArgs = automatedRefundReconciliationArgs(created.orderNumber, status, {
+				stripeSessionId: sessionId,
+			});
+			for (let delivery = 0; delivery < 2; delivery += 1) {
+				await expect(t.mutation(
+					api.orders.reconcileAutomatedFulfillmentRefund,
+					reconcileArgs,
+				)).resolves.toMatchObject({
+					kind: status === "succeeded" ? "succeeded" : "refund_failed",
+				});
+			}
+			const stored = await t.run((ctx) => ctx.db.get(created._id));
+			expect(stored).toMatchObject({
+				fulfillmentRecoveryStatus: status === "succeeded" ? "refunded" : "refund_failed",
+				printFulfillmentClaim: true,
+				printFulfillmentClaimToken: CLAIM_TOKEN_A,
+				printFulfillmentPhase: "submitting",
+				printFulfillmentResolution: printResolution,
+			});
+			expect(stored?.lumaprintsOrderNumber).toBeUndefined();
+			expect(stored?.orderConfirmationClaimedAt).toBeUndefined();
+		},
+	);
+
+	test("keeps terminal signed convergence available after pending evidence finds the refund ID", async () => {
+		const t = convexTest(schema, modules);
+		const sessionId = "cs_test_unknownprintpending123";
+		const created = await t.mutation(api.orders.create, {
+			...orderArgs(sessionId),
+			stripePaymentIntentId: MANUAL_REFUND.paymentIntent,
+		});
+		await t.run((ctx) => ctx.db.patch(created._id, {
+			status: "fulfillment_error",
+			fulfillmentError: "Fulfillment validation rejected",
+			fulfillmentRecoveryStatus: "refund_attention",
+			automatedRefundAttentionReason: "request_outcome_unknown",
+			printFulfillmentClaim: true,
+			printFulfillmentClaimToken: CLAIM_TOKEN_A,
+			printFulfillmentPhase: "submitting",
+			printFulfillmentResolution: "submission_uncertain",
+		}));
+		const args = (status: "pending" | "succeeded") =>
+			automatedRefundReconciliationArgs(created.orderNumber, status, {
+				stripeSessionId: sessionId,
+			});
+
+		await expect(t.mutation(api.orders.reconcileAutomatedFulfillmentRefund, args("pending")))
+			.resolves.toEqual({ kind: "pending", refundStatus: "pending" });
+		await expect(t.mutation(api.orders.reconcileAutomatedFulfillmentRefund, args("succeeded")))
+			.resolves.toMatchObject({ kind: "succeeded" });
+		expect(await t.run((ctx) => ctx.db.get(created._id))).toMatchObject({
+			fulfillmentRecoveryStatus: "refunded",
+			printFulfillmentClaim: true,
+			printFulfillmentPhase: "submitting",
+			printFulfillmentResolution: "submission_uncertain",
+		});
+	});
+
+	test.each([
+		["succeeded", "print_first", "1701"],
+		["failed", "print_first", "1702"],
+		["canceled", "print_first", "1703"],
+		["succeeded", "refund_first", "1704"],
+		["failed", "refund_first", "1705"],
+		["canceled", "refund_first", "1706"],
+	] as const)(
+		"converges signed %s refund evidence after %s print resolution",
+		async (status, sequence, lumaprintsOrderNumber) => {
+			const t = convexTest(schema, modules);
+			const sessionId = `cs_test_refundprintorder${lumaprintsOrderNumber}123`;
+			const created = await t.mutation(api.orders.create, {
+				...orderArgs(sessionId),
+				stripePaymentIntentId: MANUAL_REFUND.paymentIntent,
+			});
+			await t.run((ctx) => ctx.db.patch(created._id, {
+				status: "fulfillment_error",
+				fulfillmentError: "Fulfillment validation rejected",
+				fulfillmentRecoveryStatus: "refund_attention",
+				automatedRefundAttentionReason: "request_outcome_unknown",
+				printFulfillmentClaim: true,
+				printFulfillmentClaimToken: CLAIM_TOKEN_A,
+				printFulfillmentPhase: "submitting",
+				printFulfillmentResolution: "submission_uncertain",
+			}));
+			const args = (refundStatus: "pending" | typeof status) =>
+				automatedRefundReconciliationArgs(created.orderNumber, refundStatus, {
+					stripeSessionId: sessionId,
+				});
+
+			if (sequence === "refund_first") {
+				await expect(t.mutation(api.orders.reconcileAutomatedFulfillmentRefund, args("pending")))
+					.resolves.toEqual({ kind: "pending", refundStatus: "pending" });
+			}
+			await expect(t.mutation(api.orders.reconcilePrintFulfillmentSubmission, {
+				orderId: created._id,
+				externalId: sessionId,
+				lumaprintsOrderNumber,
+				webhookSecret: WEBHOOK_SECRET,
+			})).resolves.toEqual({ kind: "fulfilled" });
+			await expect(t.mutation(api.orders.reconcileAutomatedFulfillmentRefund, args(status)))
+				.resolves.toMatchObject({
+					kind: status === "succeeded" ? "succeeded" : "refund_failed",
+				});
+			expect(await t.run((ctx) => ctx.db.get(created._id))).toMatchObject({
+				fulfillmentRecoveryStatus: status === "succeeded" ? "refunded" : "refund_failed",
+				lumaprintsOrderNumber,
+				printFulfillmentResolution: "resolved",
+			});
+		},
+	);
+
+	test.each(["succeeded", "failed", "canceled"] as const)(
+		"resolves aged refund attention to signed %s while preserving print uncertainty",
+		async (status) => {
+			const t = convexTest(schema, modules);
+			const sessionId = `cs_test_agedunknownprint${status}123`;
+			const created = await t.mutation(api.orders.create, {
+				...orderArgs(sessionId),
+				stripePaymentIntentId: MANUAL_REFUND.paymentIntent,
+			});
+			await t.run((ctx) => ctx.db.patch(created._id, {
+				status: "fulfillment_error",
+				fulfillmentError: "Fulfillment validation rejected",
+				fulfillmentRecoveryStatus: "refund_attention",
+				automatedRefundFirstAttemptAt: Date.now() - 25 * 60 * 60 * 1000,
+				automatedRefundAttentionReason: "request_outcome_unknown",
+				printFulfillmentClaim: true,
+				printFulfillmentClaimToken: CLAIM_TOKEN_A,
+				printFulfillmentPhase: "submitting",
+				printFulfillmentResolution: "submission_uncertain",
+			}));
+			const args = (refundStatus: "pending" | typeof status) =>
+				automatedRefundReconciliationArgs(created.orderNumber, refundStatus, {
+					stripeSessionId: sessionId,
+				});
+
+			await expect(t.mutation(api.orders.reconcileAutomatedFulfillmentRefund, args("pending")))
+				.resolves.toMatchObject({ kind: "refund_attention", attentionReason: "age_exceeded" });
+			await expect(t.mutation(api.orders.reconcileAutomatedFulfillmentRefund, args(status)))
+				.resolves.toMatchObject({
+					kind: status === "succeeded" ? "succeeded" : "refund_failed",
+				});
+			expect(await t.run((ctx) => ctx.db.get(created._id))).toMatchObject({
+				fulfillmentRecoveryStatus: status === "succeeded" ? "refunded" : "refund_failed",
+				printFulfillmentClaim: true,
+				printFulfillmentPhase: "submitting",
+				printFulfillmentResolution: "submission_uncertain",
+			});
+		},
+	);
+
+	test.each([
+		["refund_failure", "failed", "refund_failed", "attempts_exhausted"],
+		["refund_attention", "pending", "refund_attention", "age_exceeded"],
+	] as const)(
+		"does not opt a released pre-rollout %s notification into bounded retries",
+		async (audience, refundStatus, recoveryStatus, attentionReason) => {
+			const t = convexTest(schema, modules);
+			const sessionId = `cs_test_oldreleased${audience}123`;
+			const created = await t.mutation(api.orders.create, {
+				...orderArgs(sessionId),
+				stripePaymentIntentId: MANUAL_REFUND.paymentIntent,
+			});
+			await t.run((ctx) => ctx.db.patch(created._id, {
+				status: "fulfillment_error",
+				fulfillmentError: "Fulfillment validation rejected",
+				fulfillmentRecoveryStatus: recoveryStatus,
+				automatedRefundId: "re_oldreleasednotice123",
+				automatedRefundStatus: refundStatus,
+				automatedRefundAttentionReason:
+					recoveryStatus === "refund_attention" ? attentionReason : undefined,
+				fulfillmentFailureNotificationProtocol: "leased_v1",
+				fulfillmentFailureNotificationRetryProtocol: undefined,
+			}));
+
+			await t.mutation(
+				api.orders.reconcileAutomatedFulfillmentRefund,
+				automatedRefundReconciliationArgs(created.orderNumber, refundStatus, {
+					stripeSessionId: sessionId,
+					stripeRefundId: "re_oldreleasednotice123",
+				}),
+			);
+			await expect(t.mutation(api.orders.claimFulfillmentFailureNotificationV2, {
+				orderId: created._id,
+				audience,
+				claimToken: CLAIM_TOKEN_A,
+				webhookSecret: WEBHOOK_SECRET,
+			})).resolves.toEqual({ kind: "unavailable" });
+			const stored = await t.run((ctx) => ctx.db.get(created._id));
+			expect(stored?.fulfillmentFailureNotificationRetryProtocol).toBeUndefined();
+		},
+	);
+
+	test("fences an expired no-ID refund lease instead of submitting again", async () => {
 		const t = convexTest(schema, modules);
 		const created = await t.mutation(api.orders.create, {
 			...orderArgs(MANUAL_REFUND.session),
@@ -2064,17 +2659,173 @@ describe("automated fulfillment refund claims", () => {
 			claimToken: CLAIM_TOKEN_B,
 			fulfillmentError,
 			webhookSecret: WEBHOOK_SECRET,
-		})).resolves.toMatchObject({ kind: "claimed" });
+		})).resolves.toEqual({ kind: "unavailable" });
+		await expect(t.mutation(api.orders.isAutomatedFulfillmentRefundRequestUncertain, {
+			orderId: created._id,
+			webhookSecret: WEBHOOK_SECRET,
+		})).resolves.toBe(true);
 		expect(await t.run((ctx) => ctx.db.get(created._id))).toMatchObject({
 			status: "fulfillment_error",
 			fulfillmentError,
-			fulfillmentRecoveryStatus: "refund_pending",
-			automatedRefundClaimToken: CLAIM_TOKEN_B,
-			automatedRefundAttempts: 2,
+			fulfillmentRecoveryStatus: "refund_attention",
+			automatedRefundAttentionReason: "request_outcome_unknown",
+			automatedRefundAttempts: 1,
 			automatedRefundFirstAttemptAt: expect.any(Number),
 		});
 		expect((await t.run((ctx) => ctx.db.get(created._id)))?.automatedRefundId)
 			.toBeUndefined();
+	});
+
+	test("fences no-ID refund leases and retrieves known refunds despite print uncertainty", async () => {
+		const t = convexTest(schema, modules);
+		const fulfillmentError = "Fulfillment validation rejected";
+		const noId = await t.mutation(api.orders.create, {
+			...orderArgs("cs_test_printrefundlease123"),
+			stripePaymentIntentId: MANUAL_REFUND.paymentIntent,
+		});
+		const claim = (orderId: typeof noId._id, claimToken: string) =>
+			t.mutation(api.orders.claimAutomatedFulfillmentRefundV2, {
+				orderId,
+				claimToken,
+				fulfillmentError,
+				webhookSecret: WEBHOOK_SECRET,
+			});
+		await expect(claim(noId._id, CLAIM_TOKEN_A)).resolves.toMatchObject({ kind: "claimed" });
+		await t.run((ctx) => ctx.db.patch(noId._id, {
+			printFulfillmentClaim: true,
+			printFulfillmentClaimToken: CLAIM_TOKEN_A,
+			printFulfillmentPhase: "submitting",
+			printFulfillmentResolution: "submission_uncertain",
+		}));
+		await expect(claim(noId._id, CLAIM_TOKEN_B)).resolves.toMatchObject({ kind: "busy" });
+		await t.run((ctx) => ctx.db.patch(noId._id, { automatedRefundLeaseExpiresAt: 0 }));
+		await expect(claim(noId._id, CLAIM_TOKEN_B)).resolves.toEqual({ kind: "unavailable" });
+		expect(await t.run((ctx) => ctx.db.get(noId._id))).toMatchObject({
+			fulfillmentRecoveryStatus: "refund_attention",
+			automatedRefundAttentionReason: "request_outcome_unknown",
+			printFulfillmentClaim: true,
+			printFulfillmentPhase: "submitting",
+			printFulfillmentResolution: "submission_uncertain",
+		});
+
+		const known = await t.mutation(api.orders.create, {
+			...orderArgs("cs_test_printrefundretrieve123"),
+			stripePaymentIntentId: MANUAL_REFUND.paymentIntent,
+		});
+		await t.run((ctx) => ctx.db.patch(known._id, {
+			status: "fulfillment_error",
+			fulfillmentError,
+			fulfillmentRecoveryStatus: "refund_pending",
+			automatedRefundId: "re_printrefundretrieve123",
+			automatedRefundStatus: "pending",
+			printFulfillmentClaim: true,
+			printFulfillmentClaimToken: CLAIM_TOKEN_A,
+			printFulfillmentPhase: "submitting",
+			printFulfillmentResolution: "submission_uncertain",
+		}));
+		await expect(claim(known._id, CLAIM_TOKEN_B)).resolves.toMatchObject({
+			kind: "claimed",
+			stripeRefundId: "re_printrefundretrieve123",
+			refundStatus: "pending",
+		});
+	});
+
+	test("turns an old-host no-ID release into durable request uncertainty", async () => {
+		const t = convexTest(schema, modules);
+		const created = await t.mutation(api.orders.create, {
+			...orderArgs("cs_test_oldhostrefundrelease123"),
+			stripePaymentIntentId: MANUAL_REFUND.paymentIntent,
+		});
+		const fulfillmentError = "Fulfillment validation rejected";
+		await t.mutation(api.orders.claimAutomatedFulfillmentRefundV2, {
+			orderId: created._id,
+			claimToken: CLAIM_TOKEN_A,
+			fulfillmentError,
+			webhookSecret: WEBHOOK_SECRET,
+		});
+		await expect(t.mutation(api.orders.releaseAutomatedFulfillmentRefund, {
+			orderId: created._id,
+			claimToken: CLAIM_TOKEN_A,
+			webhookSecret: WEBHOOK_SECRET,
+		})).resolves.toBe(true);
+		await expect(t.mutation(api.orders.claimAutomatedFulfillmentRefundV2, {
+			orderId: created._id,
+			claimToken: CLAIM_TOKEN_B,
+			fulfillmentError,
+			webhookSecret: WEBHOOK_SECRET,
+		})).resolves.toEqual({ kind: "unavailable" });
+		expect(await t.run((ctx) => ctx.db.get(created._id))).toMatchObject({
+			fulfillmentRecoveryStatus: "refund_attention",
+			automatedRefundAttentionReason: "request_outcome_unknown",
+			automatedRefundFirstAttemptAt: expect.any(Number),
+		});
+	});
+
+	test("keeps legacy claims inert for a known pending refund", async () => {
+		const t = convexTest(schema, modules);
+		const created = await t.mutation(api.orders.create, {
+			...orderArgs("cs_test_legacyknownrefund123"),
+			stripePaymentIntentId: MANUAL_REFUND.paymentIntent,
+		});
+		const fulfillmentError = "Fulfillment validation rejected";
+		await t.run((ctx) => ctx.db.patch(created._id, {
+			status: "fulfillment_error",
+			fulfillmentError,
+			fulfillmentRecoveryStatus: "refund_pending",
+			automatedRefundId: "re_legacyknownrefund123",
+			automatedRefundStatus: "pending",
+			automatedRefundClaimToken: CLAIM_TOKEN_A,
+			automatedRefundLeaseExpiresAt: 0,
+		}));
+
+		await expect(t.mutation(api.orders.claimAutomatedFulfillmentRefund, {
+			orderId: created._id,
+			claimToken: CLAIM_TOKEN_B,
+			fulfillmentError,
+			webhookSecret: WEBHOOK_SECRET,
+		})).resolves.toEqual({ kind: "unavailable" });
+		expect(await t.run((ctx) => ctx.db.get(created._id))).toMatchObject({
+			fulfillmentRecoveryStatus: "refund_pending",
+			automatedRefundId: "re_legacyknownrefund123",
+			automatedRefundStatus: "pending",
+		});
+		expect((await t.run((ctx) => ctx.db.get(created._id)))?.automatedRefundAttentionReason)
+			.toBeUndefined();
+	});
+
+	test("fences a raw baseline no-ID refund checkpoint without new attempt counters", async () => {
+		const t = convexTest(schema, modules);
+		const created = await t.mutation(api.orders.create, {
+			...orderArgs("cs_test_legacyrefundpending123"),
+			stripePaymentIntentId: MANUAL_REFUND.paymentIntent,
+		});
+		const fulfillmentError = "Fulfillment validation rejected";
+		await t.run((ctx) => ctx.db.patch(created._id, {
+			status: "fulfillment_error",
+			fulfillmentError,
+			fulfillmentRecoveryStatus: "refund_pending",
+			automatedRefundClaimedAt: undefined,
+			automatedRefundClaimToken: undefined,
+			automatedRefundLeaseExpiresAt: undefined,
+			automatedRefundAttempts: undefined,
+			automatedRefundFirstAttemptAt: undefined,
+			automatedRefundLastAttemptAt: undefined,
+		}));
+
+		await expect(t.mutation(api.orders.claimAutomatedFulfillmentRefund, {
+			orderId: created._id,
+			claimToken: CLAIM_TOKEN_A,
+			fulfillmentError,
+			webhookSecret: WEBHOOK_SECRET,
+		})).resolves.toEqual({ kind: "unavailable" });
+		await expect(t.mutation(api.orders.isAutomatedFulfillmentRefundRequestUncertain, {
+			orderId: created._id,
+			webhookSecret: WEBHOOK_SECRET,
+		})).resolves.toBe(true);
+		expect(await t.run((ctx) => ctx.db.get(created._id))).toMatchObject({
+			fulfillmentRecoveryStatus: "refund_attention",
+			automatedRefundAttentionReason: "request_outcome_unknown",
+		});
 	});
 
 	test("escalates a long-running pending refund once and accepts later signed resolution", async () => {
@@ -2178,6 +2929,48 @@ describe("automated fulfillment refund claims", () => {
 			fulfillmentRecoveryStatus: "refund_attention",
 			automatedRefundAttentionReason: "age_exceeded",
 			automatedRefundAttempts: 1,
+		});
+	});
+
+	test("keeps a known pending refund busy while its owner lease is active", async () => {
+		const t = convexTest(schema, modules);
+		const created = await t.mutation(api.orders.create, {
+			...orderArgs(MANUAL_REFUND.session),
+			stripePaymentIntentId: MANUAL_REFUND.paymentIntent,
+		});
+		const fulfillmentError = "Provider submission failed";
+		await t.mutation(api.orders.claimAutomatedFulfillmentRefundV2, {
+			orderId: created._id,
+			claimToken: CLAIM_TOKEN_A,
+			fulfillmentError,
+			webhookSecret: WEBHOOK_SECRET,
+		});
+		await t.mutation(api.orders.recordAutomatedFulfillmentRefund, {
+			orderId: created._id,
+			claimToken: CLAIM_TOKEN_A,
+			stripeRefundId: "re_activepending123456",
+			stripeRefundStatus: "pending",
+			webhookSecret: WEBHOOK_SECRET,
+		});
+		await t.mutation(api.orders.claimAutomatedFulfillmentRefundV2, {
+			orderId: created._id,
+			claimToken: CLAIM_TOKEN_B,
+			fulfillmentError,
+			webhookSecret: WEBHOOK_SECRET,
+		});
+		await t.run((ctx) => ctx.db.patch(created._id, {
+			automatedRefundFirstAttemptAt: Date.now() - 25 * 60 * 60 * 1000,
+		}));
+
+		await expect(t.mutation(api.orders.claimAutomatedFulfillmentRefundV2, {
+			orderId: created._id,
+			claimToken: CLAIM_TOKEN_A,
+			fulfillmentError,
+			webhookSecret: WEBHOOK_SECRET,
+		})).resolves.toMatchObject({ kind: "busy" });
+		expect(await t.run((ctx) => ctx.db.get(created._id))).toMatchObject({
+			fulfillmentRecoveryStatus: "refund_pending",
+			automatedRefundClaimToken: CLAIM_TOKEN_B,
 		});
 	});
 
@@ -2641,6 +3434,12 @@ describe("print reconciliation operator alert claim", () => {
 		expect(busy).toMatchObject({ kind: "busy", leaseExpiresAt: expect.any(Number) });
 		const winningToken = alerts.find(([, outcome]) => outcome.kind === "claimed")?.[0];
 		if (!winningToken) throw new Error("Expected one alert lease owner");
+		await expect(t.mutation(api.orders.authorizePrintFulfillmentReconciliationAlertSend, {
+			orderId: created._id,
+			externalId,
+			claimToken: winningToken,
+			webhookSecret: WEBHOOK_SECRET,
+		})).resolves.toBe(true);
 
 		const stored = await t.run((ctx) => ctx.db.get(created._id));
 		expect(stored).toMatchObject({
@@ -2710,6 +3509,134 @@ describe("print reconciliation operator alert claim", () => {
 		expect(await t.run((ctx) => ctx.db.get(created._id))).toMatchObject({
 			printFulfillmentReconciliationAlertSentAt: expect.any(Number),
 		});
+	});
+
+	test("does not authorize an alert after provider reconciliation resolves", async () => {
+		const t = convexTest(schema, modules);
+		const externalId = "cs_test_alertresolved123456";
+		const created = await t.mutation(api.orders.create, orderArgs(externalId));
+		await t.mutation(api.orders.claimPrintFulfillmentV2, {
+			orderId: created._id,
+			claimToken: CLAIM_TOKEN_A,
+			webhookSecret: WEBHOOK_SECRET,
+		});
+		await t.mutation(api.orders.beginPrintFulfillmentSubmission, {
+			orderId: created._id,
+			claimToken: CLAIM_TOKEN_A,
+			webhookSecret: WEBHOOK_SECRET,
+		});
+		await t.mutation(api.orders.blockPrintFulfillmentReconciliation, {
+			orderId: created._id,
+			externalId,
+			reconciliationClass: "response_contract",
+			webhookSecret: WEBHOOK_SECRET,
+		});
+		await t.mutation(api.orders.claimPrintFulfillmentReconciliationAlert, {
+			orderId: created._id,
+			externalId,
+			claimToken: CLAIM_TOKEN_B,
+			webhookSecret: WEBHOOK_SECRET,
+		});
+		await t.mutation(api.orders.completePrintFulfillmentSubmission, {
+			orderId: created._id,
+			claimToken: CLAIM_TOKEN_A,
+			externalId,
+			lumaprintsOrderNumber: "99101",
+			webhookSecret: WEBHOOK_SECRET,
+		});
+
+		await expect(t.mutation(api.orders.authorizePrintFulfillmentReconciliationAlertSend, {
+			orderId: created._id,
+			externalId,
+			claimToken: CLAIM_TOKEN_B,
+			webhookSecret: WEBHOOK_SECRET,
+		})).resolves.toBe(false);
+	});
+
+	test("stops reconciliation alert sends at the bounded retry deadline", async () => {
+		const t = convexTest(schema, modules);
+		const externalId = "cs_test_alertdedupewindow123";
+		const created = await t.mutation(api.orders.create, orderArgs(externalId));
+		await t.mutation(api.orders.claimPrintFulfillmentV2, {
+			orderId: created._id,
+			claimToken: CLAIM_TOKEN_A,
+			webhookSecret: WEBHOOK_SECRET,
+		});
+		await t.mutation(api.orders.beginPrintFulfillmentSubmission, {
+			orderId: created._id,
+			claimToken: CLAIM_TOKEN_A,
+			webhookSecret: WEBHOOK_SECRET,
+		});
+		await t.mutation(api.orders.blockPrintFulfillmentReconciliation, {
+			orderId: created._id,
+			externalId,
+			reconciliationClass: "response_contract",
+			webhookSecret: WEBHOOK_SECRET,
+		});
+		await t.mutation(api.orders.claimPrintFulfillmentReconciliationAlert, {
+			orderId: created._id,
+			externalId,
+			claimToken: CLAIM_TOKEN_A,
+			webhookSecret: WEBHOOK_SECRET,
+		});
+		const firstAttemptAt = Date.now() - 23 * 60 * 60 * 1000;
+		await t.run((ctx) => ctx.db.patch(created._id, {
+			printFulfillmentReconciliationAlertClaimedAt: firstAttemptAt,
+			printFulfillmentReconciliationAlertLeaseExpiresAt: 0,
+		}));
+		await expect(t.mutation(api.orders.claimPrintFulfillmentReconciliationAlert, {
+			orderId: created._id,
+			externalId,
+			claimToken: CLAIM_TOKEN_B,
+			webhookSecret: WEBHOOK_SECRET,
+		})).resolves.toEqual({ kind: "unavailable" });
+		await expect(t.mutation(
+			api.orders.isPrintFulfillmentReconciliationAlertDeliveryUncertain,
+			{ orderId: created._id, externalId, webhookSecret: WEBHOOK_SECRET },
+		)).resolves.toBe(true);
+		await expect(t.mutation(api.orders.releasePrintFulfillmentReconciliationAlert, {
+			orderId: created._id,
+			externalId,
+			claimToken: CLAIM_TOKEN_A,
+			webhookSecret: WEBHOOK_SECRET,
+		})).resolves.toBe(false);
+		await expect(t.mutation(api.orders.completePrintFulfillmentReconciliationAlert, {
+			orderId: created._id,
+			externalId,
+			claimToken: CLAIM_TOKEN_A,
+			webhookSecret: WEBHOOK_SECRET,
+		})).resolves.toBe(false);
+		expect(await t.run((ctx) => ctx.db.get(created._id))).toMatchObject({
+			printFulfillmentReconciliationAlertDeliveryUncertainAt: expect.any(Number),
+		});
+	});
+
+	test("fails closed for a reconciliation alert released before bounded retries", async () => {
+		const t = convexTest(schema, modules);
+		const externalId = "cs_test_oldreleasedalert12345";
+		const created = await t.mutation(api.orders.create, orderArgs(externalId));
+		await t.run((ctx) => ctx.db.patch(created._id, {
+			printFulfillmentClaim: true,
+			printFulfillmentClaimToken: CLAIM_TOKEN_A,
+			printFulfillmentPhase: "submitting",
+			printFulfillmentResolution: "reconciliation_blocked",
+			printFulfillmentReconciliationClass: "response_contract",
+			printFulfillmentReconciliationAlertRetryProtocol: undefined,
+			printFulfillmentReconciliationAlertClaimedAt: undefined,
+			printFulfillmentReconciliationAlertClaimToken: undefined,
+			printFulfillmentReconciliationAlertLeaseExpiresAt: undefined,
+		}));
+
+		await expect(t.mutation(api.orders.claimPrintFulfillmentReconciliationAlert, {
+			orderId: created._id,
+			externalId,
+			claimToken: CLAIM_TOKEN_B,
+			webhookSecret: WEBHOOK_SECRET,
+		})).resolves.toEqual({ kind: "unavailable" });
+		await expect(t.mutation(
+			api.orders.isPrintFulfillmentReconciliationAlertDeliveryUncertain,
+			{ orderId: created._id, externalId, webhookSecret: WEBHOOK_SECRET },
+		)).resolves.toBe(true);
 	});
 
 	test("rejects alert claims without a matching blocked webhook-owned fence", async () => {
@@ -3050,6 +3977,103 @@ describe("V2 order shipment email leases", () => {
 			shipmentEmailNotificationClaimToken: CLAIM_TOKEN_B,
 		});
 		expect(reclaimed?.shipmentEmailSentAt).toBeUndefined();
+		await expect(t.mutation(api.orders.authorizeShipmentEmailNotificationSendV2, {
+			orderId,
+			lumaprintsOrderNumber: "123",
+			claimToken: CLAIM_TOKEN_B,
+			webhookSecret: WEBHOOK_SECRET,
+		})).resolves.toBe(true);
+	});
+
+	test("does not authorize shipment email after the order is refunded", async () => {
+		const { t, orderId } = await seedLumaPrintsOrder();
+		await t.mutation(api.orders.claimShipmentEmailNotificationV2, claimArgs());
+		await t.run((ctx) => ctx.db.patch(orderId, { status: "refunded" }));
+
+		await expect(t.mutation(api.orders.authorizeShipmentEmailNotificationSendV2, {
+			orderId,
+			lumaprintsOrderNumber: "123",
+			claimToken: CLAIM_TOKEN_A,
+			webhookSecret: WEBHOOK_SECRET,
+		})).resolves.toBe(false);
+	});
+
+	test("stops shipment email sends at the bounded retry deadline", async () => {
+		const { t, orderId } = await seedLumaPrintsOrder();
+		await t.mutation(api.orders.claimShipmentEmailNotificationV2, claimArgs());
+		const firstAttemptAt = Date.now() - 23 * 60 * 60 * 1000;
+		await t.run((ctx) => ctx.db.patch(orderId, {
+			shipmentEmailNotificationClaimedAt: firstAttemptAt,
+			shipmentEmailNotificationLeaseExpiresAt: 0,
+		}));
+
+		await expect(
+			t.mutation(api.orders.claimShipmentEmailNotificationV2, claimArgs(CLAIM_TOKEN_B)),
+		).resolves.toEqual({ kind: "completed" });
+		await expect(t.mutation(api.orders.isShipmentEmailNotificationDeliveryUncertain, {
+			lumaprintsOrderNumber: "123",
+			webhookSecret: WEBHOOK_SECRET,
+		})).resolves.toBe(true);
+		await expect(t.mutation(api.orders.releaseShipmentEmailNotificationV2, {
+			orderId,
+			lumaprintsOrderNumber: "123",
+			claimToken: CLAIM_TOKEN_A,
+			failureCode: "email_delivery_failed",
+			webhookSecret: WEBHOOK_SECRET,
+		})).resolves.toBe(false);
+		await expect(t.mutation(api.orders.completeShipmentEmailNotificationV2, {
+			orderId,
+			lumaprintsOrderNumber: "123",
+			claimToken: CLAIM_TOKEN_A,
+			deliveryStatus: "sent",
+			webhookSecret: WEBHOOK_SECRET,
+		})).resolves.toBe(false);
+		expect(await t.run((ctx) => ctx.db.get(orderId))).toMatchObject({
+			shipmentEmailDeliveryStatus: "uncertain",
+			shipmentEmailDeliveryError: "completion_checkpoint_unconfirmed",
+			shipmentEmailDeliveryAttemptedAt: expect.any(Number),
+		});
+		await expect(
+			t.mutation(api.orders.claimShipmentEmailNotificationV2, {
+				...claimArgs(CLAIM_TOKEN_A),
+				trackingNumber: "UPDATED-TRACKING",
+				trackingUrl: "https://carrier.example/track/UPDATED-TRACKING",
+			}),
+		).resolves.toEqual({ kind: "completed" });
+		expect(await t.run((ctx) => ctx.db.get(orderId))).toMatchObject({
+			trackingNumber: "UPDATED-TRACKING",
+			trackingUrl: "https://carrier.example/track/UPDATED-TRACKING",
+			shipmentEmailDeliveryStatus: "uncertain",
+		});
+	});
+
+	test("does not restart shipment retries from mutable pre-rollout attempt times", async () => {
+		const { t, orderId } = await seedLumaPrintsOrder();
+		await t.run((ctx) => ctx.db.patch(orderId, {
+			status: "shipped",
+			shipmentEmailNotificationProtocol: "leased_v2",
+			shipmentEmailNotificationRetryProtocol: undefined,
+			shipmentEmailNotificationClaimedAt: undefined,
+			shipmentEmailNotificationClaimToken: undefined,
+			shipmentEmailNotificationLeaseExpiresAt: undefined,
+			shipmentEmailDeliveryStatus: "failed",
+			shipmentEmailDeliveryAttemptedAt: Date.now() - 22 * 60 * 60 * 1000,
+			shipmentEmailDeliveryError: "email_delivery_failed",
+		}));
+		await t.run((ctx) => ctx.db.patch(orderId, {
+			shipmentEmailDeliveryAttemptedAt: Date.now() - 60 * 60 * 1000,
+		}));
+
+		await expect(
+			t.mutation(api.orders.claimShipmentEmailNotificationV2, claimArgs(CLAIM_TOKEN_B)),
+		).resolves.toEqual({ kind: "completed" });
+		await expect(t.mutation(api.orders.isShipmentEmailNotificationDeliveryUncertain, {
+			lumaprintsOrderNumber: "123",
+			webhookSecret: WEBHOOK_SECRET,
+		})).resolves.toBe(true);
+		const stored = await t.run((ctx) => ctx.db.get(orderId));
+		expect(stored?.shipmentEmailNotificationClaimToken).toBeUndefined();
+		expect(stored?.shipmentEmailNotificationClaimedAt).toBeUndefined();
 	});
 
 	test("releases a failed send with only an enumerated code and permits a retry", async () => {

@@ -987,10 +987,12 @@ export default defineSchema({
 		// Retry-safe lease for the operator alert emitted for a deterministic
 		// reconciliation block. All fields stay optional so pre-rollout orders need
 		// no backfill; `SentAt` is the terminal no-more-sends marker.
+		printFulfillmentReconciliationAlertRetryProtocol: v.optional(v.literal("bounded_23h_v1")),
 		printFulfillmentReconciliationAlertClaimedAt: v.optional(v.number()),
 		printFulfillmentReconciliationAlertClaimToken: v.optional(v.string()),
 		printFulfillmentReconciliationAlertLeaseExpiresAt: v.optional(v.number()),
 		printFulfillmentReconciliationAlertSentAt: v.optional(v.number()),
+		printFulfillmentReconciliationAlertDeliveryUncertainAt: v.optional(v.number()),
 		paperName: v.optional(v.string()),
 		paperSubcategoryId: v.optional(v.string()),
 		trackingNumber: v.optional(v.string()),
@@ -1006,6 +1008,7 @@ export default defineSchema({
 		// rollout compatible with existing orders; only `leased_v2` rows may reclaim
 		// an expired lease after status has advanced to shipped.
 		shipmentEmailNotificationProtocol: v.optional(v.literal("leased_v2")),
+		shipmentEmailNotificationRetryProtocol: v.optional(v.literal("bounded_23h_v1")),
 		shipmentEmailNotificationClaimedAt: v.optional(v.number()),
 		shipmentEmailNotificationClaimToken: v.optional(v.string()),
 		shipmentEmailNotificationLeaseExpiresAt: v.optional(v.number()),
@@ -1016,6 +1019,7 @@ export default defineSchema({
 				v.literal("sent"),
 				v.literal("failed"),
 				v.literal("skipped"),
+				v.literal("uncertain"),
 			),
 		),
 		shipmentEmailDeliveryAttemptedAt: v.optional(v.number()),
@@ -1065,9 +1069,14 @@ export default defineSchema({
 		automatedRefundAttempts: v.optional(v.number()),
 		automatedRefundFirstAttemptAt: v.optional(v.number()),
 		automatedRefundLastAttemptAt: v.optional(v.number()),
+		automatedRefundPreRequestProtocol: v.optional(v.literal("print_rejection_v1")),
 		automatedRefundAttentionAt: v.optional(v.number()),
 		automatedRefundAttentionReason: v.optional(
-			v.union(v.literal("attempts_exhausted"), v.literal("age_exceeded")),
+			v.union(
+				v.literal("attempts_exhausted"),
+				v.literal("age_exceeded"),
+				v.literal("request_outcome_unknown"),
+			),
 		),
 		// One rollout-safe lease owns the idempotent Stripe refund request. The
 		// fields are optional so existing recovery rows require no backfill.
@@ -1083,20 +1092,28 @@ export default defineSchema({
 		// customer/admin refund-success notifications.
 		legacyAutomatedRefundNotificationsSuppressed: v.optional(v.literal(true)),
 		fulfillmentFailureNotificationProtocol: v.optional(v.literal("leased_v1")),
+		fulfillmentFailureNotificationRetryProtocol: v.optional(v.literal("bounded_23h_v1")),
+		automatedRefundAttentionNotificationKeyProtocol: v.optional(
+			v.literal("order_identity_v1"),
+		),
 		fulfillmentFailureAdminNotificationClaimToken: v.optional(v.string()),
 		fulfillmentFailureAdminNotificationLeaseExpiresAt: v.optional(v.number()),
 		fulfillmentFailureAdminNotificationSentAt: v.optional(v.number()),
+		fulfillmentFailureAdminNotificationDeliveryUncertainAt: v.optional(v.number()),
 		fulfillmentFailureCustomerNotificationClaimToken: v.optional(v.string()),
 		fulfillmentFailureCustomerNotificationLeaseExpiresAt: v.optional(v.number()),
 		fulfillmentFailureCustomerNotificationSentAt: v.optional(v.number()),
+		fulfillmentFailureCustomerNotificationDeliveryUncertainAt: v.optional(v.number()),
 		automatedRefundFailureNotificationClaimedAt: v.optional(v.number()),
 		automatedRefundFailureNotificationClaimToken: v.optional(v.string()),
 		automatedRefundFailureNotificationLeaseExpiresAt: v.optional(v.number()),
 		automatedRefundFailureNotificationSentAt: v.optional(v.number()),
+		automatedRefundFailureNotificationDeliveryUncertainAt: v.optional(v.number()),
 		automatedRefundAttentionNotificationClaimedAt: v.optional(v.number()),
 		automatedRefundAttentionNotificationClaimToken: v.optional(v.string()),
 		automatedRefundAttentionNotificationLeaseExpiresAt: v.optional(v.number()),
 		automatedRefundAttentionNotificationSentAt: v.optional(v.number()),
+		automatedRefundAttentionNotificationDeliveryUncertainAt: v.optional(v.number()),
 		notes: v.optional(v.string()),
 	})
 		.index("by_siteUrl", ["siteUrl"])

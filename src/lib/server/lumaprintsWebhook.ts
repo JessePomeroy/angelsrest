@@ -23,6 +23,7 @@ type ShipmentClaim =
 			};
 	  }
 	| { kind: "busy"; leaseExpiresAt: number }
+	| { kind: "delivery_uncertain" }
 	| { kind: "completed" };
 
 export type ShipmentEmailDeliveryFailureCode =
@@ -36,6 +37,15 @@ export class ShipmentEmailDeliveryError extends Error {
 		super("Shipment email delivery failed");
 		this.name = "ShipmentEmailDeliveryError";
 	}
+}
+
+interface ShipmentEmailInput {
+	siteUrl: string;
+	customerEmail: string;
+	orderNumber: string;
+	lumaprintsOrderNumber: string;
+	trackingNumber?: string;
+	carrier?: string;
 }
 
 export interface LumaPrintsShipmentDependencies {
@@ -52,14 +62,13 @@ export interface LumaPrintsShipmentDependencies {
 		claimToken: string;
 		failureCode: ShipmentEmailDeliveryFailureCode;
 	}): Promise<boolean>;
-	send(input: {
-		siteUrl: string;
-		customerEmail: string;
-		orderNumber: string;
+	prepare(input: ShipmentEmailInput): Promise<void>;
+	authorize(input: {
+		orderId: Id<"orders">;
 		lumaprintsOrderNumber: string;
-		trackingNumber?: string;
-		carrier?: string;
-	}): Promise<void>;
+		claimToken: string;
+	}): Promise<"authorized" | "delivery_uncertain" | "retry">;
+	send(input: ShipmentEmailInput): Promise<void>;
 }
 
 export class LumaPrintsWebhookPayloadError extends Error {
@@ -204,6 +213,9 @@ export async function processLumaPrintsShipment(
 	const claim = await dependencies.claim({ ...shipment, claimToken });
 	if (!claim) return { status: "unknown_order" as const };
 	if (claim.kind === "completed") return { status: "already_processed" as const };
+	if (claim.kind === "delivery_uncertain") {
+		return { status: "delivery_uncertain" as const };
+	}
 	if (claim.kind === "busy") {
 		return {
 			status: "busy" as const,
@@ -222,23 +234,39 @@ export async function processLumaPrintsShipment(
 		return { status: "processed" as const, delivery: { status: "skipped" as const } };
 	}
 
-	try {
-		await dependencies.send({
-			siteUrl: claim.order.siteUrl,
-			customerEmail: claim.order.customerEmail,
-			orderNumber: claim.order.orderNumber,
-			lumaprintsOrderNumber: shipment.orderNumber,
-			trackingNumber: shipment.trackingNumber,
-			carrier: shipment.carrier,
-		});
-	} catch (error) {
+	const emailInput = {
+		siteUrl: claim.order.siteUrl,
+		customerEmail: claim.order.customerEmail,
+		orderNumber: claim.order.orderNumber,
+		lumaprintsOrderNumber: shipment.orderNumber,
+		trackingNumber: shipment.trackingNumber,
+		carrier: shipment.carrier,
+	};
+	const releaseFailure = async (error: unknown) => {
 		const failureCode =
 			error instanceof ShipmentEmailDeliveryError ? error.code : "unexpected_send_failure";
 		const released = await dependencies.release({ ...checkpoint, failureCode });
-		if (!released) {
-			throw new Error("Shipment email release claim was lost");
-		}
+		if (!released) throw new Error("Shipment email release claim was lost");
 		return { status: "retryable_failure" as const, failureCode };
+	};
+	try {
+		await dependencies.prepare(emailInput);
+	} catch (error) {
+		return await releaseFailure(error);
+	}
+
+	const authorization = await dependencies.authorize(checkpoint);
+	if (authorization === "delivery_uncertain") {
+		return { status: "delivery_uncertain" as const };
+	}
+	if (authorization === "retry") {
+		return { status: "busy" as const, retryAfterMs: 0 };
+	}
+
+	try {
+		await dependencies.send(emailInput);
+	} catch (error) {
+		return await releaseFailure(error);
 	}
 
 	const completed = await dependencies.complete({ ...checkpoint, deliveryStatus: "sent" });

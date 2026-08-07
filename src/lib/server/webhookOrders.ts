@@ -315,7 +315,8 @@ export async function createOrderInConvex(
 		fulfillment.kind === "no_print_items_replayed" ||
 		fulfillment.kind === "reconciliation_blocked" ||
 		fulfillment.kind === "automated_refund_failed" ||
-		fulfillment.kind === "automated_refund_attention"
+		fulfillment.kind === "automated_refund_attention" ||
+		fulfillment.kind === "automated_refund_request_uncertain"
 	) {
 		notification = "none";
 	} else if (fulfillment.kind === "permanent_failure_refunded") {

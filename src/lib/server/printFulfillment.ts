@@ -77,6 +77,11 @@ export type PrintFulfillmentOutcome =
 			refundStatus: "pending" | "requires_action";
 			attentionReason: "attempts_exhausted" | "age_exceeded";
 			errorSummary: string;
+	  }
+	| {
+			kind: "automated_refund_request_uncertain";
+			attentionReason: "request_outcome_unknown";
+			errorSummary: string;
 	  };
 
 export interface PrintFulfillmentAdapters {
@@ -123,7 +128,23 @@ async function claimReconciliationAlert(
 			"Print reconciliation alert delivery is already in progress",
 		);
 	}
-	return claim.kind === "claimed" ? alertClaimToken : undefined;
+	if (claim.kind === "unavailable") {
+		const deliveryUncertain = await convex.mutation(
+			api.orders.isPrintFulfillmentReconciliationAlertDeliveryUncertain,
+			{ orderId, externalId, webhookSecret },
+		);
+		if (deliveryUncertain) {
+			logStructured({
+				event: "print_reconciliation.alert_delivery_uncertain",
+				level: "error",
+				stage: "email_admin",
+				sessionId: externalId,
+				error: new Error("Print reconciliation alert delivery is uncertain"),
+			});
+		}
+		return undefined;
+	}
+	return alertClaimToken;
 }
 
 function classifyInconclusiveReconciliation(error: unknown): PrintReconciliationEscalationReason {
@@ -605,12 +626,37 @@ export async function handlePermanentFulfillmentFailure(
 		claimToken: refundClaimToken,
 		fulfillmentError: truncatedError,
 	});
+	const reportRefundRequestUncertain = async () => {
+		await sendClaimedAutomatedRefundNotification(
+			{ convex, resend },
+			{
+				audience: "refund_attention",
+				orderId,
+				orderNumber,
+				customerEmail,
+				errorSummary,
+				attentionReason: "request_outcome_unknown",
+				total: session.amount_total ?? 0,
+				notificationProfile,
+			},
+		);
+		return {
+			kind: "automated_refund_request_uncertain",
+			attentionReason: "request_outcome_unknown",
+			errorSummary,
+		} satisfies PrintFulfillmentOutcome;
+	};
 	if (refundClaim.kind === "busy") {
 		throw new AutomatedFulfillmentRefundRetryableError(
 			"Automated fulfillment refund is already in progress",
 		);
 	}
 	if (refundClaim.kind === "unavailable") {
+		const requestUncertain = await convex.mutation(
+			api.orders.isAutomatedFulfillmentRefundRequestUncertain,
+			{ webhookSecret, orderId },
+		);
+		if (requestUncertain) return await reportRefundRequestUncertain();
 		throw new AutomatedFulfillmentRefundRetryableError(
 			"Automated fulfillment refund claim is unavailable",
 		);
@@ -703,22 +749,58 @@ export async function handlePermanentFulfillmentFailure(
 					},
 				);
 	} catch (cause) {
+		if (refundClaim.stripeRefundId !== undefined) {
+			try {
+				await convex.mutation(api.orders.releaseAutomatedFulfillmentRefund, {
+					webhookSecret,
+					orderId,
+					claimToken: refundClaimToken,
+				});
+			} catch (releaseError) {
+				logStructured({
+					event: "refund.claim_release_failed",
+					level: "error",
+					stage: "stripe_refund",
+					orderId: orderNumber,
+					error: releaseError,
+				});
+			}
+			throw cause;
+		}
+		let fenced = false;
 		try {
-			await convex.mutation(api.orders.releaseAutomatedFulfillmentRefund, {
+			fenced = await convex.mutation(api.orders.markAutomatedFulfillmentRefundRequestUncertain, {
 				webhookSecret,
 				orderId,
 				claimToken: refundClaimToken,
 			});
-		} catch (releaseError) {
+		} catch (fenceError) {
 			logStructured({
-				event: "refund.claim_release_failed",
+				event: "refund.request_uncertainty_fence_failed",
 				level: "error",
 				stage: "stripe_refund",
 				orderId: orderNumber,
-				error: releaseError,
+				error: fenceError,
 			});
+			throw new AutomatedFulfillmentRefundRetryableError(
+				"Automated refund request outcome could not be fenced",
+				{ cause: fenceError },
+			);
 		}
-		throw cause;
+		if (!fenced) {
+			throw new AutomatedFulfillmentRefundRetryableError(
+				"Automated refund request outcome changed before it could be fenced",
+				{ cause },
+			);
+		}
+		logStructured({
+			event: "refund.request_outcome_unknown",
+			level: "error",
+			stage: "stripe_refund",
+			orderId: orderNumber,
+			error: cause,
+		});
+		return await reportRefundRequestUncertain();
 	}
 	const stripeRefundId = refund.id;
 	const refundStatus = automatedRefundStatus(refund);
@@ -851,9 +933,9 @@ export async function sendClaimedAutomatedRefundNotification(
 		orderNumber: string;
 		customerEmail: string;
 		errorSummary: string;
-		stripeRefundId: string;
+		stripeRefundId?: string;
 		refundStatus?: "pending" | "requires_action" | "failed" | "canceled";
-		attentionReason?: "attempts_exhausted" | "age_exceeded";
+		attentionReason?: "attempts_exhausted" | "age_exceeded" | "request_outcome_unknown";
 		total: number;
 		notificationProfile?: CommerceNotificationProfile;
 	},
@@ -865,15 +947,66 @@ export async function sendClaimedAutomatedRefundNotification(
 		audience: input.audience,
 		claimToken,
 	};
-	const claim = await convex.mutation(api.orders.claimFulfillmentFailureNotificationV2, claimArgs);
-	if (claim.kind === "unavailable") return false;
+	const reportDeliveryUncertain = () => {
+		logStructured({
+			event: "refund.notification_delivery_uncertain",
+			level: "error",
+			stage: input.audience === "customer" ? "email_customer" : "email_admin",
+			orderId: input.orderNumber,
+			error: new Error("Refund notification delivery is uncertain"),
+			meta: { audience: input.audience },
+		});
+	};
+	const claim = await convex.mutation(
+		input.audience === "refund_attention"
+			? api.orders.claimFulfillmentFailureNotificationV3
+			: api.orders.claimFulfillmentFailureNotificationV2,
+		claimArgs,
+	);
+	if (claim.kind === "unavailable") {
+		const deliveryUncertain = await convex.mutation(
+			api.orders.isFulfillmentFailureNotificationDeliveryUncertain,
+			{
+				webhookSecret: claimArgs.webhookSecret,
+				orderId: claimArgs.orderId,
+				audience: claimArgs.audience,
+			},
+		);
+		if (deliveryUncertain) reportDeliveryUncertain();
+		return false;
+	}
 	if (claim.kind === "busy") {
 		throw new AutomatedRefundNotificationRetryableError(
 			"Automated refund notification delivery is already in progress",
 		);
 	}
+	const sendAuthorized = await convex.mutation(
+		api.orders.authorizeFulfillmentFailureNotificationSendV2,
+		claimArgs,
+	);
+	if (!sendAuthorized) {
+		const deliveryUncertain = await convex.mutation(
+			api.orders.isFulfillmentFailureNotificationDeliveryUncertain,
+			{
+				webhookSecret: claimArgs.webhookSecret,
+				orderId: claimArgs.orderId,
+				audience: claimArgs.audience,
+			},
+		);
+		if (deliveryUncertain) {
+			reportDeliveryUncertain();
+			return false;
+		}
+		throw new AutomatedRefundNotificationRetryableError(
+			"Automated refund notification lease expired before delivery",
+		);
+	}
+	const notificationIdentity = Buffer.from(input.orderId, "utf8").toString("base64url");
 	try {
 		if (input.audience === "customer") {
+			if (input.stripeRefundId === undefined) {
+				throw new Error("Customer refund ID is missing");
+			}
 			await sendCustomerFulfillmentFailure(resend, {
 				customerEmail: input.customerEmail,
 				orderNumber: input.orderNumber,
@@ -882,8 +1015,11 @@ export async function sendClaimedAutomatedRefundNotification(
 				notificationProfile: input.notificationProfile,
 			});
 		} else if (input.audience === "refund_failure") {
-			if (input.refundStatus !== "failed" && input.refundStatus !== "canceled") {
-				throw new Error("Automated refund failure status is missing");
+			if (
+				input.stripeRefundId === undefined ||
+				(input.refundStatus !== "failed" && input.refundStatus !== "canceled")
+			) {
+				throw new Error("Automated refund failure details are missing");
 			}
 			await sendAutomatedRefundFailureAlert(resend, {
 				orderNumber: input.orderNumber,
@@ -895,23 +1031,43 @@ export async function sendClaimedAutomatedRefundNotification(
 				notificationProfile: input.notificationProfile,
 			});
 		} else if (input.audience === "refund_attention") {
-			if (
-				(input.refundStatus !== "pending" && input.refundStatus !== "requires_action") ||
-				input.attentionReason === undefined
-			) {
-				throw new Error("Automated refund attention details are missing");
+			if (input.attentionReason === "request_outcome_unknown") {
+				if (input.stripeRefundId !== undefined || input.refundStatus !== undefined) {
+					throw new Error("Unknown refund request cannot include provider result details");
+				}
+				await sendAutomatedRefundAttentionAlert(resend, {
+					orderNumber: input.orderNumber,
+					customerEmail: input.customerEmail,
+					errorSummary: input.errorSummary,
+					attentionReason: input.attentionReason,
+					notificationIdentity,
+					total: input.total,
+					notificationProfile: input.notificationProfile,
+				});
+			} else {
+				if (
+					input.stripeRefundId === undefined ||
+					(input.refundStatus !== "pending" && input.refundStatus !== "requires_action") ||
+					(input.attentionReason !== "attempts_exhausted" &&
+						input.attentionReason !== "age_exceeded")
+				)
+					throw new Error("Automated refund attention details are missing");
+				await sendAutomatedRefundAttentionAlert(resend, {
+					orderNumber: input.orderNumber,
+					customerEmail: input.customerEmail,
+					errorSummary: input.errorSummary,
+					stripeRefundId: input.stripeRefundId,
+					refundStatus: input.refundStatus,
+					attentionReason: input.attentionReason,
+					notificationIdentity,
+					total: input.total,
+					notificationProfile: input.notificationProfile,
+				});
 			}
-			await sendAutomatedRefundAttentionAlert(resend, {
-				orderNumber: input.orderNumber,
-				customerEmail: input.customerEmail,
-				errorSummary: input.errorSummary,
-				stripeRefundId: input.stripeRefundId,
-				refundStatus: input.refundStatus,
-				attentionReason: input.attentionReason,
-				total: input.total,
-				notificationProfile: input.notificationProfile,
-			});
 		} else {
+			if (input.stripeRefundId === undefined) {
+				throw new Error("Admin refund ID is missing");
+			}
 			await sendFulfillmentFailureAlert(resend, {
 				orderNumber: input.orderNumber,
 				customerEmail: input.customerEmail,

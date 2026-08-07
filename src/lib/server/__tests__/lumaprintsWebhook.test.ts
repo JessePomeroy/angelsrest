@@ -133,6 +133,8 @@ describe("LumaPrints shipment orchestration", () => {
 			}),
 			complete: vi.fn().mockResolvedValue(true),
 			release: vi.fn().mockResolvedValue(true),
+			prepare: vi.fn().mockResolvedValue(undefined),
+			authorize: vi.fn().mockResolvedValue("authorized"),
 			send: vi.fn().mockResolvedValue(undefined),
 		};
 	}
@@ -152,6 +154,17 @@ describe("LumaPrints shipment orchestration", () => {
 				trackingNumber: "TRACK",
 			}),
 		);
+		expect(deps.authorize).toHaveBeenCalledWith({
+			orderId: "order-id",
+			lumaprintsOrderNumber: "101",
+			claimToken: expect.any(String),
+		});
+		expect(deps.prepare.mock.invocationCallOrder[0]).toBeLessThan(
+			deps.authorize.mock.invocationCallOrder[0] ?? Number.POSITIVE_INFINITY,
+		);
+		expect(deps.authorize.mock.invocationCallOrder[0]).toBeLessThan(
+			deps.send.mock.invocationCallOrder[0] ?? Number.POSITIVE_INFINITY,
+		);
 		expect(deps.complete).toHaveBeenCalledWith({
 			orderId: "order-id",
 			lumaprintsOrderNumber: "101",
@@ -167,6 +180,30 @@ describe("LumaPrints shipment orchestration", () => {
 
 		await expect(processLumaPrintsShipment({ orderNumber: "101" }, deps)).resolves.toEqual({
 			status: "already_processed",
+		});
+		expect(deps.send).not.toHaveBeenCalled();
+		expect(deps.complete).not.toHaveBeenCalled();
+		expect(deps.release).not.toHaveBeenCalled();
+	});
+
+	it("does not send after delivery becomes uncertain outside the deduplication window", async () => {
+		const deps = dependencies();
+		deps.claim.mockResolvedValue({ kind: "delivery_uncertain" });
+
+		await expect(processLumaPrintsShipment({ orderNumber: "101" }, deps)).resolves.toEqual({
+			status: "delivery_uncertain",
+		});
+		expect(deps.send).not.toHaveBeenCalled();
+		expect(deps.complete).not.toHaveBeenCalled();
+		expect(deps.release).not.toHaveBeenCalled();
+	});
+
+	it("rechecks the lease immediately before send and stops at the deadline", async () => {
+		const deps = dependencies();
+		deps.authorize.mockResolvedValue("delivery_uncertain");
+
+		await expect(processLumaPrintsShipment({ orderNumber: "101" }, deps)).resolves.toEqual({
+			status: "delivery_uncertain",
 		});
 		expect(deps.send).not.toHaveBeenCalled();
 		expect(deps.complete).not.toHaveBeenCalled();

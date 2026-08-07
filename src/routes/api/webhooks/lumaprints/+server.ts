@@ -7,6 +7,7 @@ import {
 	type CommerceNotificationProfile,
 } from "$lib/server/commerceTenant";
 import { getConvex } from "$lib/server/convexClient";
+import { logStructured } from "$lib/server/logger";
 import {
 	LumaPrintsWebhookPayloadError,
 	processLumaPrintsShipment,
@@ -52,14 +53,22 @@ export async function POST({ request }: { request: Request }) {
 	}
 
 	const convex = getConvex();
+	let notificationProfile: CommerceNotificationProfile | undefined;
 	const result = await processLumaPrintsShipment(shipment, {
-		claim: (input) =>
-			convex.mutation(api.orders.claimShipmentEmailNotificationV2, {
+		claim: async (input) => {
+			const claim = await convex.mutation(api.orders.claimShipmentEmailNotificationV2, {
 				webhookSecret,
 				lumaprintsOrderNumber: input.orderNumber,
 				claimToken: input.claimToken,
 				trackingNumber: input.trackingNumber,
-			}),
+			});
+			if (claim?.kind !== "completed") return claim;
+			const deliveryUncertain = await convex.mutation(
+				api.orders.isShipmentEmailNotificationDeliveryUncertain,
+				{ webhookSecret, lumaprintsOrderNumber: input.orderNumber },
+			);
+			return deliveryUncertain ? { kind: "delivery_uncertain" as const } : claim;
+		},
 		complete: (input) =>
 			convex.mutation(api.orders.completeShipmentEmailNotificationV2, {
 				webhookSecret,
@@ -70,11 +79,27 @@ export async function POST({ request }: { request: Request }) {
 				webhookSecret,
 				...input,
 			}),
-		send: async (input) => {
-			let notificationProfile: CommerceNotificationProfile;
+		prepare: async (input) => {
 			try {
 				notificationProfile = await resolveNotificationProfile(input.siteUrl, webhookSecret);
 			} catch {
+				throw new ShipmentEmailDeliveryError("notification_profile_unavailable");
+			}
+		},
+		authorize: async (input) => {
+			const authorized = await convex.mutation(
+				api.orders.authorizeShipmentEmailNotificationSendV2,
+				{ webhookSecret, ...input },
+			);
+			if (authorized) return "authorized" as const;
+			const deliveryUncertain = await convex.mutation(
+				api.orders.isShipmentEmailNotificationDeliveryUncertain,
+				{ webhookSecret, lumaprintsOrderNumber: input.lumaprintsOrderNumber },
+			);
+			return deliveryUncertain ? ("delivery_uncertain" as const) : ("retry" as const);
+		},
+		send: async (input) => {
+			if (!notificationProfile) {
 				throw new ShipmentEmailDeliveryError("notification_profile_unavailable");
 			}
 			try {
@@ -92,6 +117,15 @@ export async function POST({ request }: { request: Request }) {
 		},
 	});
 
+	if (result.status === "delivery_uncertain") {
+		logStructured({
+			event: "shipment.notification_delivery_uncertain",
+			level: "error",
+			stage: "email_customer",
+			orderId: shipment.orderNumber,
+			error: new Error("Shipment notification delivery is uncertain"),
+		});
+	}
 	if (result.status === "busy") {
 		return json(
 			{ received: false, status: result.status },
