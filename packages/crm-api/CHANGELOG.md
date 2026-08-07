@@ -1,5 +1,15 @@
 # @jessepomeroy/crm-api
 
+## 3.0.0
+
+### Major Changes
+
+- 9d2839b: Add the V3 print coordinator while preserving the exact V2 contract, make the deprecated site-scoped shipment exports admin-auth-only so webhook-secret callers are rejected, converge manual and automated refund updates safely, and make recovery and hub-owned notifications lease/idempotency based.
+
+### Patch Changes
+
+- df17996: Fence automated refund requests when Stripe acceptance is uncertain. Preserve existing V2 claim shapes while adding pre-send lease authorization and durable email-delivery uncertainty before the provider idempotency window expires.
+
 ## 2.36.2
 
 ### Patch Changes
