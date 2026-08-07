@@ -63,6 +63,19 @@ function orderArgs(stripeSessionId: string) {
 	};
 }
 
+function retainedOrder(orderNumber: string, stripeSessionId: string, siteUrl = SITE_URL) {
+	return {
+		siteUrl,
+		orderNumber,
+		stripeSessionId,
+		customerEmail: "buyer@example.com",
+		items: [{ productName: "Retained order", quantity: 1, price: 4200 }],
+		total: 4200,
+		fulfillmentType: "lumaprints" as const,
+		status: "new" as const,
+	};
+}
+
 const MANUAL_REFUND_RECOVERY_ID = "angelsrest-refund-event-selection-gap-v1";
 const ADMIN_RECOVERY = {
 	siteUrl: "angelsrest.online",
@@ -256,6 +269,169 @@ async function seedLumaPrintsOrder() {
 	return { t, orderId: created._id };
 }
 
+describe("order numbering", () => {
+	test("starts at ORD-001 and transitions from ORD-999 to ORD-1000", async () => {
+		const t = convexTest(schema, modules);
+		const first = await t.mutation(api.orders.create, orderArgs("cs_number_first"));
+		expect(first.orderNumber).toBe("ORD-001");
+
+		const transitionSite = "transition.example";
+		await t.run((ctx) =>
+			ctx.db.insert(
+				"orders",
+				retainedOrder("ORD-999", "cs_number_999", transitionSite),
+			),
+		);
+		const next = await t.mutation(api.orders.create, {
+			...orderArgs("cs_number_1000"),
+			siteUrl: transitionSite,
+		});
+		expect(next.orderNumber).toBe("ORD-1000");
+	});
+
+	test.each([
+		["malformed", "ORD-NaN", "Newest order number is not canonical"],
+		[
+			"maximum safe integer",
+			`ORD-${Number.MAX_SAFE_INTEGER}`,
+			"Newest order number cannot be incremented safely",
+		],
+	])("fails closed for a %s newest retained row", async (_label, orderNumber, error) => {
+		const t = convexTest(schema, modules);
+		await t.run((ctx) =>
+			ctx.db.insert("orders", retainedOrder(orderNumber, `cs_number_${_label}`)),
+		);
+
+		await expect(
+			t.mutation(api.orders.create, orderArgs(`cs_number_after_${_label}`)),
+		).rejects.toThrow(error);
+		const orders = await t.run((ctx) =>
+			ctx.db
+				.query("orders")
+				.withIndex("by_siteUrl", (q) => q.eq("siteUrl", SITE_URL))
+				.take(2),
+		);
+		expect(orders).toHaveLength(1);
+	});
+
+	test("rejects an occupied generated candidate instead of skipping it", async () => {
+		const t = convexTest(schema, modules);
+		await t.run((ctx) =>
+			ctx.db.insert("orders", retainedOrder("ORD-010", "cs_number_candidate")),
+		);
+		await t.run((ctx) =>
+			ctx.db.insert("orders", retainedOrder("ORD-009", "cs_number_newest")),
+		);
+
+		await expect(
+			t.mutation(api.orders.create, orderArgs("cs_number_collision")),
+		).rejects.toThrow("Order number already exists for tenant");
+		const orders = await t.run((ctx) =>
+			ctx.db
+				.query("orders")
+				.withIndex("by_siteUrl", (q) => q.eq("siteUrl", SITE_URL))
+				.take(3),
+		);
+		expect(orders.map(({ orderNumber }) => orderNumber).sort()).toEqual([
+			"ORD-009",
+			"ORD-010",
+		]);
+	});
+
+	test.each([
+		["empty", ""],
+		["zero", "ORD-000"],
+		["unpadded", "ORD-1"],
+		["overpadded", "ORD-0001"],
+		["not a number", "ORD-NaN"],
+		["partial suffix", "ORD-001x"],
+		["whitespace", " ORD-001 "],
+		["unsafe integer", "ORD-9007199254740992"],
+	])("rejects a %s supplied order number", async (label, orderNumber) => {
+		const t = convexTest(schema, modules);
+		await expect(
+			t.mutation(api.orders.create, {
+				...orderArgs(`cs_number_supplied_${label}`),
+				orderNumber,
+			}),
+		).rejects.toThrow("Invalid order number");
+		expect(await t.run((ctx) => ctx.db.query("orders").take(1))).toEqual([]);
+	});
+
+	test("rejects a supplied tenant duplicate but permits the same number for another tenant", async () => {
+		const t = convexTest(schema, modules);
+		const supplied = await t.mutation(api.orders.create, {
+			...orderArgs("cs_number_supplied_first"),
+			orderNumber: "ORD-005",
+		});
+		expect(supplied.orderNumber).toBe("ORD-005");
+		await expect(
+			t.mutation(api.orders.create, {
+				...orderArgs("cs_number_supplied_duplicate"),
+				orderNumber: "ORD-005",
+			}),
+		).rejects.toThrow("Order number already exists for tenant");
+		await expect(
+			t.mutation(api.orders.create, {
+				...orderArgs("cs_number_supplied_other_tenant"),
+				siteUrl: "tenant-b.example",
+				orderNumber: "ORD-005",
+			}),
+		).resolves.toMatchObject({ orderNumber: "ORD-005" });
+	});
+
+	test("allocates distinct consecutive numbers for concurrent generated creates", async () => {
+		const t = convexTest(schema, modules);
+		const created = await Promise.all([
+			t.mutation(api.orders.create, orderArgs("cs_number_concurrent_a")),
+			t.mutation(api.orders.create, orderArgs("cs_number_concurrent_b")),
+		]);
+		expect(created.map(({ orderNumber }) => orderNumber).sort()).toEqual([
+			"ORD-001",
+			"ORD-002",
+		]);
+	});
+
+	test("allows only one concurrent same-tenant supplied create", async () => {
+		const t = convexTest(schema, modules);
+		const results = await Promise.allSettled([
+			t.mutation(api.orders.create, {
+				...orderArgs("cs_number_concurrent_supplied_a"),
+				orderNumber: "ORD-005",
+			}),
+			t.mutation(api.orders.create, {
+				...orderArgs("cs_number_concurrent_supplied_b"),
+				orderNumber: "ORD-005",
+			}),
+		]);
+		const fulfilled = results.filter((result) => result.status === "fulfilled");
+		const rejected = results.filter((result) => result.status === "rejected");
+		expect(fulfilled).toHaveLength(1);
+		expect(rejected).toHaveLength(1);
+		expect(String(rejected[0]?.reason)).toContain("Order number already exists for tenant");
+		expect(await t.run((ctx) => ctx.db.query("orders").take(2))).toHaveLength(1);
+	});
+
+	test("returns a Stripe-session replay before validating a changed supplied number", async () => {
+		const t = convexTest(schema, modules);
+		const created = await t.mutation(api.orders.create, {
+			...orderArgs("cs_number_replay"),
+			orderNumber: "ORD-005",
+		});
+		await expect(
+			t.mutation(api.orders.create, {
+				...orderArgs("cs_number_replay"),
+				orderNumber: "ORD-NaN",
+			}),
+		).resolves.toMatchObject({
+			_id: created._id,
+			orderNumber: "ORD-005",
+			alreadyExisted: true,
+		});
+		expect(await t.run((ctx) => ctx.db.query("orders").take(2))).toHaveLength(1);
+	});
+});
+
 describe("durable checkout snapshot", () => {
 	test("keeps legacy rows absent and never backfills them on retry", async () => {
 		const t = convexTest(schema, modules);
@@ -313,11 +489,18 @@ describe("durable checkout snapshot", () => {
 describe("print fulfillment fence", () => {
 	test("uses global session IDs and makes claim/recovery CAS mutually exclusive", async () => {
 		const t = convexTest(schema, modules);
-		const create = (session: string, siteUrl = SITE_URL) => t.mutation(api.orders.create, {
-			...orderArgs(session), siteUrl, orderNumber: "ORD-SAME",
-		});
-		const first = await create("cs_test_tenantAglobal1234");
-		const second = await create("cs_test_tenantBglobal1234", "tenant-b.example");
+		const create = (session: string, siteUrl = SITE_URL, orderNumber?: string) =>
+			t.mutation(api.orders.create, {
+				...orderArgs(session),
+				siteUrl,
+				...(orderNumber === undefined ? {} : { orderNumber }),
+			});
+		const first = await create("cs_test_tenantAglobal1234", SITE_URL, "ORD-005");
+		const second = await create(
+			"cs_test_tenantBglobal1234",
+			"tenant-b.example",
+			"ORD-005",
+		);
 		const claim = (orderId: typeof first._id) =>
 			t.mutation(api.orders.claimPrintFulfillment, {
 				orderId, webhookSecret: WEBHOOK_SECRET,
@@ -3747,24 +3930,17 @@ describe("authorized customer order lookup", () => {
 
 	test("fails closed when a tenant has a duplicate order number", async () => {
 		const t = convexTest(schema, modules);
-		for (const stripeSessionId of ["cs_lookup_duplicate_1", "cs_lookup_duplicate_2"]) {
-			await t.mutation(api.orders.create, {
-				siteUrl: SITE_URL,
-				webhookSecret: WEBHOOK_SECRET,
-				stripeSessionId,
-				orderNumber: "ORD-DUPLICATE",
-				customerEmail: "buyer@example.com",
-				items: [{ productName: "Test print", quantity: 1, price: 4200 }],
-				total: 4200,
-				fulfillmentType: "lumaprints",
-			});
-		}
+		await t.run(async (ctx) => {
+			for (const stripeSessionId of ["cs_lookup_duplicate_1", "cs_lookup_duplicate_2"]) {
+				await ctx.db.insert("orders", retainedOrder("ORD-010", stripeSessionId));
+			}
+		});
 
 		await expect(
 			t.query(api.orders.lookupForCustomer, {
 				siteUrl: SITE_URL,
 				email: "buyer@example.com",
-				orderNumber: "ORD-DUPLICATE",
+				orderNumber: "ORD-010",
 				lookupSecret: ORDER_LOOKUP_SECRET,
 			}),
 		).rejects.toThrow("Duplicate order number for tenant");
