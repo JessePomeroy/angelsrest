@@ -1,5 +1,11 @@
 # @jessepomeroy/crm-api
 
+## 3.1.0
+
+### Minor Changes
+
+- 21d0cc7: Add the site-admin `classifyRefundTarget` query. It uses one bounded tenant scan and returns only closed target and historical-relation classes.
+
 ## 3.0.0
 
 ### Major Changes
