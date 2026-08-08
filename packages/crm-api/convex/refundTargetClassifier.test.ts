@@ -100,6 +100,25 @@ describe("orthogonal refund target classification", () => {
 		});
 	});
 
+	test("fails closed when distinct duplicate rows match every target predicate", () => {
+		expect(classifyRefundTargetRows([
+			row(),
+			row({ total: 4300 }),
+		], 10, current, historical)).toEqual({
+			source: "complete",
+			predicates: {
+				orderNumber: "multiple",
+				checkoutSession: "multiple",
+				paymentIntent: "multiple",
+				refund: "multiple",
+				refundedState: "multiple",
+				currentIdentity: "multiple",
+				completedRefund: "multiple",
+			},
+			historicalRelation: "ambiguous",
+		});
+	});
+
 	test.each([
 		["historical_only", [historicalRow()]],
 		["current_only", [row()]],
@@ -134,6 +153,8 @@ describe("orthogonal refund target classification", () => {
 
 const SITE_URL = "local-target.example";
 const ADMIN_EMAIL = "local-target-admin@example.test";
+const FOREIGN_SITE_URL = "foreign-target.example";
+const FOREIGN_ADMIN_EMAIL = "foreign-target-admin@example.test";
 const queryTarget = {
 	orderNumber: "LOCAL-TARGET-ORDER",
 	stripeSessionId: "cs_test_localtarget12345678",
@@ -167,6 +188,22 @@ async function siteAdmin(t: ReturnType<typeof convexTest>) {
 		role: "client",
 	}));
 	return t.withIdentity({ subject: ADMIN_EMAIL, email: ADMIN_EMAIL });
+}
+
+async function foreignSiteAdmin(t: ReturnType<typeof convexTest>) {
+	await t.run((ctx) => ctx.db.insert("platformClients", {
+		name: "Foreign target tenant",
+		email: FOREIGN_ADMIN_EMAIL,
+		siteUrl: FOREIGN_SITE_URL,
+		tier: "full",
+		subscriptionStatus: "active",
+		adminEmails: [FOREIGN_ADMIN_EMAIL],
+		role: "client",
+	}));
+	return t.withIdentity({
+		subject: FOREIGN_ADMIN_EMAIL,
+		email: FOREIGN_ADMIN_EMAIL,
+	});
 }
 
 describe("refund target query boundary", () => {
@@ -216,6 +253,18 @@ describe("refund target query boundary", () => {
 			siteUrl: SITE_URL,
 			target: { ...queryTarget, stripeRefundId: "invalid" },
 		})).rejects.toThrow("Invalid refund target selectors");
+	});
+
+	test("rejects an authenticated administrator from another tenant", async () => {
+		const t = convexTest(schema, modules);
+		await siteAdmin(t);
+		const foreignAdmin = await foreignSiteAdmin(t);
+		await t.run((ctx) => ctx.db.insert("orders", storedOrder()));
+
+		await expect(foreignAdmin.query(api.orders.classifyRefundTarget, {
+			siteUrl: SITE_URL,
+			target: queryTarget,
+		})).rejects.toThrow("Not authorized (not a site admin)");
 	});
 
 	test("returns only the overflow class when the tenant source has one sentinel row", async () => {
