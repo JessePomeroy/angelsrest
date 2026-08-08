@@ -5,6 +5,7 @@ import { getConvex } from "$lib/server/convexClient";
 import { logStructured } from "$lib/server/logger";
 import { createOrder as createLumaPrintsOrder } from "$lib/server/lumaprints";
 import { processStripeWebhookEvent } from "$lib/server/orderIntake";
+import { assertOrderProducersOpen, OrderProducersClosedError } from "$lib/server/orderProducerGate";
 import { getResend } from "$lib/server/resendClient";
 import { getStripe } from "$lib/server/stripeClient";
 import {
@@ -24,9 +25,30 @@ export async function POST({ request }) {
 		"Commerce webhook",
 	);
 	assertCommerceWebhookScope(event, role);
+	assertOrderProducingWebhookOpen(event);
 	const resend = getResend();
 	await processStripeWebhookEvent(event, { stripe, resend, convex, createLumaPrintsOrder }, role);
 	return json({ received: true });
+}
+
+function assertOrderProducingWebhookOpen(event: Stripe.Event) {
+	if (event.type !== "checkout.session.completed") return;
+	const session = event.data.object as Stripe.Checkout.Session;
+	if (
+		session.mode !== "payment" ||
+		session.metadata?.type === "platform_subscription" ||
+		session.metadata?.type === "invoice_payment"
+	) {
+		return;
+	}
+	try {
+		assertOrderProducersOpen();
+	} catch (cause) {
+		if (cause instanceof OrderProducersClosedError) {
+			throw error(503, "Order intake is closed");
+		}
+		throw cause;
+	}
 }
 
 function getCommerceWebhookSecrets(): StripeWebhookSecretCandidate<CommerceWebhookRole>[] {

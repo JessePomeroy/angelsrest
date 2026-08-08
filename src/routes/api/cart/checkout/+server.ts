@@ -154,6 +154,7 @@ export async function POST({ request, cookies }) {
 			return json(session);
 		}
 		const session = await createPaymentCheckoutSession({
+			purpose: "order",
 			stripe,
 			shippingAllowedCountries: ["US"],
 			lineItems,
