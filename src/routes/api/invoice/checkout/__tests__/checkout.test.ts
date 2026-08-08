@@ -7,7 +7,10 @@ const mocks = vi.hoisted(() => ({
 	convexMutation: vi.fn(),
 	stripeSessionCreate: vi.fn(),
 	resolveStripeTenantForSite: vi.fn(),
-	env: { WEBHOOK_SECRET: "test-webhook-secret" as string | undefined },
+	env: {
+		ORDER_PRODUCERS_STATE: "open" as string | undefined,
+		WEBHOOK_SECRET: "test-webhook-secret" as string | undefined,
+	},
 }));
 
 vi.mock("$lib/server/convexClient", () => ({
@@ -92,6 +95,7 @@ function expectedFingerprint({
 describe("invoice checkout route", () => {
 	beforeEach(() => {
 		vi.clearAllMocks();
+		mocks.env.ORDER_PRODUCERS_STATE = "open";
 		mocks.env.WEBHOOK_SECRET = "test-webhook-secret";
 		mocks.stripeSessionCreate.mockResolvedValue({
 			id: "cs_invoice_123",

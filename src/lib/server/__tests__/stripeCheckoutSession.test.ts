@@ -1,9 +1,16 @@
 import type Stripe from "stripe";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { env } from "$env/dynamic/private";
 import {
 	buildCheckoutLineItem,
 	createPaymentCheckoutSession,
 } from "$lib/server/stripeCheckoutSession";
+
+const runtimeEnv = env as Record<string, string | undefined>;
+
+afterEach(() => {
+	runtimeEnv.ORDER_PRODUCERS_STATE = "open";
+});
 
 function makeStripe() {
 	const create = vi.fn().mockResolvedValue({ id: "cs_test_123", url: "https://stripe.test/pay" });
@@ -41,6 +48,28 @@ describe("buildCheckoutLineItem", () => {
 });
 
 describe("createPaymentCheckoutSession", () => {
+	it.each([
+		["missing", undefined],
+		["explicit closed", "closed"],
+		["invalid", "true"],
+		["malformed", " open "],
+		["unknown", "paused"],
+	] as const)("rejects %s order-producer state before Stripe", async (_label, state) => {
+		runtimeEnv.ORDER_PRODUCERS_STATE = state;
+		const { stripe, create } = makeStripe();
+
+		await expect(
+			createPaymentCheckoutSession({
+				stripe,
+				lineItems: [],
+				successUrl: "https://example.test/success",
+				cancelUrl: "https://example.test/cancel",
+				metadata: {},
+			}),
+		).rejects.toThrow("Order producers are closed");
+		expect(create).not.toHaveBeenCalled();
+	});
+
 	it("fails closed on metadata outside Stripe programming limits", async () => {
 		const { stripe, create } = makeStripe();
 		await expect(
@@ -55,7 +84,8 @@ describe("createPaymentCheckoutSession", () => {
 		expect(create).not.toHaveBeenCalled();
 	});
 
-	it("creates a payment checkout session with shipping and tenant options", async () => {
+	it("creates a payment checkout session only for the explicit open state", async () => {
+		runtimeEnv.ORDER_PRODUCERS_STATE = "open";
 		const { stripe, create } = makeStripe();
 
 		const result = await createPaymentCheckoutSession({

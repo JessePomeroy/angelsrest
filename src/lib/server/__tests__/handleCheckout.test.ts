@@ -1,5 +1,6 @@
 import type Stripe from "stripe";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { env } from "$env/dynamic/private";
 import type { CheckoutSnapshotItem } from "$lib/server/checkoutCatalog";
 import {
 	type CreateHandleCheckoutOptions,
@@ -13,6 +14,7 @@ import { buildTenantCheckoutOptions } from "$lib/server/stripeConnect";
 const NOW = Date.parse("2026-01-01T00:00:00Z");
 const ATTEMPT = "123e4567-e89b-42d3-a456-426614174000";
 const HANDLE = "223e4567-e89b-42d3-a456-426614174000";
+const runtimeEnv = env as Record<string, string | undefined>;
 const ITEM: CheckoutSnapshotItem = {
 	productKey: "published-product",
 	revisionId: "published-revision",
@@ -23,6 +25,10 @@ const ITEM: CheckoutSnapshotItem = {
 	borderOptionKey: "none",
 	frameOptionKey: "none",
 };
+
+afterEach(() => {
+	runtimeEnv.ORDER_PRODUCERS_STATE = "open";
+});
 
 function harness(overrides: Record<string, unknown> = {}) {
 	const events: string[] = [];
@@ -75,7 +81,28 @@ function harness(overrides: Record<string, unknown> = {}) {
 }
 
 describe("handle checkout orchestration", () => {
-	it("reserves, creates trusted Stripe state, binds, then exposes cookie and URL", async () => {
+	it.each([
+		["missing", undefined],
+		["explicit closed", "closed"],
+		["invalid", "true"],
+		["malformed", " open "],
+		["unknown", "paused"],
+	] as const)("rejects %s state before reservation or payment effects", async (_label, state) => {
+		runtimeEnv.ORDER_PRODUCERS_STATE = state;
+		const test = harness();
+
+		await expect(createHandleCheckoutSession(test.options)).rejects.toThrow(
+			"Order producers are closed",
+		);
+		expect(test.events).toEqual([]);
+		expect(test.reserve).not.toHaveBeenCalled();
+		expect(test.create).not.toHaveBeenCalled();
+		expect(test.bind).not.toHaveBeenCalled();
+		expect(test.bindSession).not.toHaveBeenCalled();
+	});
+
+	it("reserves, creates trusted Stripe state, binds, then exposes cookie and URL when open", async () => {
+		runtimeEnv.ORDER_PRODUCERS_STATE = "open";
 		const first = harness();
 		const result = await createHandleCheckoutSession(first.options);
 		expect(first.events).toEqual(["gate", "reserve", "stripe", "bind", "cookie"]);

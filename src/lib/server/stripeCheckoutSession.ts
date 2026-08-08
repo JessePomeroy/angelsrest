@@ -1,4 +1,5 @@
 import type Stripe from "stripe";
+import { assertOrderProducersOpen } from "$lib/server/orderProducerGate";
 import type { TenantStripeCheckoutOptions } from "$lib/server/stripeConnect";
 
 type AllowedCountry = NonNullable<
@@ -67,6 +68,7 @@ export async function createPaymentCheckoutSession({
 	idempotencyKey,
 	expiresAt,
 }: CreatePaymentCheckoutSessionOptions): Promise<PaymentCheckoutSessionResult> {
+	assertOrderProducersOpen();
 	const finalMetadata = {
 		...metadata,
 		...(tenantCheckout?.metadata ?? {}),

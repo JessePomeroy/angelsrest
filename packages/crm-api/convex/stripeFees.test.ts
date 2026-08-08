@@ -37,6 +37,7 @@ const envNames = [
 	"CATALOG_PRIVATE_ASSET_INSPECTION_RECEIPT_SECRETS",
 	"CMS_MEDIA_DELETION_COMPLETION_SECRETS",
 	"CHECKOUT_SNAPSHOT_RESERVATION_SECRETS",
+	"ORDER_PRODUCERS_STATE",
 ] as const;
 const previousEnv = new Map<string, string | undefined>();
 const stripeSecret = "sk_test_fee-capture-authority-0123456789abcdef";
@@ -52,6 +53,7 @@ beforeEach(() => {
 	process.env.WEBHOOK_SECRET = "fee-capture-webhook-authority-0123456789abcdef";
 	process.env.ORDER_LOOKUP_SECRET = "fee-capture-lookup-authority-0123456789abcdef";
 	for (const name of envNames.slice(5)) delete process.env[name];
+	process.env.ORDER_PRODUCERS_STATE = "open";
 	constructStripe.mockReset();
 	retrievePaymentIntent.mockReset();
 	retrieveCheckoutSession.mockReset();

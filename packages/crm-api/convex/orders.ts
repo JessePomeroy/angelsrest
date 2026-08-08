@@ -32,6 +32,7 @@ import {
 } from "./helpers/checkoutSnapshot";
 import { AGGREGATE_SCAN_LIMIT, BULK_SCAN_LIMIT } from "./helpers/limits";
 import { getNextOrderNumber as generateNextOrderNumber } from "./helpers/numbering";
+import { assertOrderProducersOpen } from "./helpers/orderProducerGate";
 import { resolveBoundedOrderStatsScan } from "./helpers/orderStats";
 import { FEE_CAPTURE_INITIAL_DELAY_MS } from "./helpers/stripeFeeCapture";
 
@@ -462,6 +463,7 @@ export const reserveCheckoutSnapshot = internalMutation({
 				&& existing.stripeConnectedAccountId === args.stripeConnectedAccountId;
 			return { outcome: replayed ? "replayed" as const : "conflict" as const };
 		}
+		assertOrderProducersOpen();
 		const createdAt = Date.now();
 		const unboundPurgeAt = createdAt + UNBOUND_RETENTION_MS;
 		const reservationId = await ctx.db.insert("checkoutSnapshotReservations", {
@@ -507,6 +509,7 @@ export const bindCheckoutSnapshot = internalMutation({
 			return { outcome: replayed ? "replayed" as const : "conflict" as const };
 		}
 		if (row.accountScope !== accountScope) return { outcome: "conflict" as const };
+		assertOrderProducersOpen();
 		const boundAt = Date.now();
 		const boundReconcileAt = args.stripeExpiresAt * 1000 + PAID_SAFE_DELAY_MS;
 		if (!Number.isSafeInteger(boundReconcileAt)) return { outcome: "invalid" as const };
@@ -775,6 +778,7 @@ export const create = mutation({
 			};
 		}
 
+		assertOrderProducersOpen();
 		if (
 			args.stripeConnectedAccountId !== undefined
 			&& !await connectedAccountMatchesSite(

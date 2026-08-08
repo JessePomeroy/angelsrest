@@ -4,6 +4,7 @@ import { ApiErrorCode, apiError } from "$lib/server/apiError";
 import type { CheckoutSnapshotItem } from "$lib/server/checkoutCatalog";
 import type { CheckoutSnapshotReservationClient } from "$lib/server/checkoutSnapshotReservationClient";
 import { createCheckoutSnapshotReservationClient } from "$lib/server/checkoutSnapshotReservationClient";
+import { assertOrderProducersOpen } from "$lib/server/orderProducerGate";
 import {
 	createPaymentCheckoutSession,
 	type PaymentCheckoutSessionResult,
@@ -99,6 +100,7 @@ export async function createHandleCheckoutSession({
 	abuseGate = () => {},
 	now = Date.now(),
 }: CreateHandleCheckoutOptions): Promise<PaymentCheckoutSessionResult & { expiresAt: number }> {
+	assertOrderProducersOpen();
 	const validatedAttempt = validateCheckoutAttempt(attempt, attemptStartedAt, now);
 	if (!site || site !== site.trim() || site.length > 253 || site.includes("/")) throw invalid();
 	if (account !== null && !ACCOUNT_ID.test(account)) throw invalid();
