@@ -129,6 +129,7 @@ export async function createHandleCheckoutSession({
 		items: snapshotItems,
 	});
 	const session = await createPaymentCheckoutSession({
+		purpose: "order",
 		stripe,
 		lineItems,
 		successUrl,

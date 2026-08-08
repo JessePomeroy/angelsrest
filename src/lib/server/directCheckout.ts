@@ -180,6 +180,7 @@ export async function createDirectCheckoutSession({
 	}
 
 	const session = await createPaymentCheckoutSession({
+		purpose: "order",
 		stripe,
 		shippingAllowedCountries: fulfillment.isDigital ? undefined : ["US"],
 		lineItems,

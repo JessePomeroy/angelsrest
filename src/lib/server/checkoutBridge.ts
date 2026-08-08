@@ -170,6 +170,7 @@ export async function createTenantPrintCheckoutSession({
 		});
 	} else {
 		session = await createPaymentCheckoutSession({
+			purpose: "order",
 			stripe,
 			shippingAllowedCountries: ["US", "CA"],
 			lineItems,

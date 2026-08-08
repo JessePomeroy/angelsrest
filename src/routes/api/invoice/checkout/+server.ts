@@ -147,6 +147,7 @@ export async function POST({ request }) {
 		}
 
 		const session = await createPaymentCheckoutSession({
+			purpose: "invoice-payment",
 			stripe,
 			lineItems,
 			successUrl: `${PUBLIC_SITE_URL}/invoice/payment-success?session_id={CHECKOUT_SESSION_ID}`,

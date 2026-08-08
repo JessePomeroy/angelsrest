@@ -8,7 +8,7 @@ const mocks = vi.hoisted(() => ({
 	stripeSessionCreate: vi.fn(),
 	resolveStripeTenantForSite: vi.fn(),
 	env: {
-		ORDER_PRODUCERS_STATE: "open" as string | undefined,
+		ORDER_PRODUCERS_STATE: "closed" as string | undefined,
 		WEBHOOK_SECRET: "test-webhook-secret" as string | undefined,
 	},
 }));
@@ -95,7 +95,7 @@ function expectedFingerprint({
 describe("invoice checkout route", () => {
 	beforeEach(() => {
 		vi.clearAllMocks();
-		mocks.env.ORDER_PRODUCERS_STATE = "open";
+		mocks.env.ORDER_PRODUCERS_STATE = "closed";
 		mocks.env.WEBHOOK_SECRET = "test-webhook-secret";
 		mocks.stripeSessionCreate.mockResolvedValue({
 			id: "cs_invoice_123",
@@ -123,7 +123,8 @@ describe("invoice checkout route", () => {
 		});
 	});
 
-	it("creates a payment-mode checkout session from invoice lines and tax", async () => {
+	it("creates and records invoice checkout while order producers are closed", async () => {
+		mocks.env.ORDER_PRODUCERS_STATE = "closed";
 		const response = await POST(makeRequest({ token: "portal-token-123" }) as any);
 
 		await expect(response.json()).resolves.toEqual({ url: "https://stripe.test/invoice" });

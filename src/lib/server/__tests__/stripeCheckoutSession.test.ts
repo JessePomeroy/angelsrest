@@ -60,6 +60,7 @@ describe("createPaymentCheckoutSession", () => {
 
 		await expect(
 			createPaymentCheckoutSession({
+				purpose: "order",
 				stripe,
 				lineItems: [],
 				successUrl: "https://example.test/success",
@@ -70,10 +71,28 @@ describe("createPaymentCheckoutSession", () => {
 		expect(create).not.toHaveBeenCalled();
 	});
 
+	it("creates invoice payment checkout while order producers are closed", async () => {
+		runtimeEnv.ORDER_PRODUCERS_STATE = "closed";
+		const { stripe, create } = makeStripe();
+
+		const result = await createPaymentCheckoutSession({
+			purpose: "invoice-payment",
+			stripe,
+			lineItems: [],
+			successUrl: "https://example.test/invoice/success",
+			cancelUrl: "https://example.test/invoice/cancel",
+			metadata: { type: "invoice_payment" },
+		});
+
+		expect(result).toEqual({ sessionId: "cs_test_123", url: "https://stripe.test/pay" });
+		expect(create).toHaveBeenCalledOnce();
+	});
+
 	it("fails closed on metadata outside Stripe programming limits", async () => {
 		const { stripe, create } = makeStripe();
 		await expect(
 			createPaymentCheckoutSession({
+				purpose: "order",
 				stripe,
 				lineItems: [],
 				successUrl: "https://example.test/success",
@@ -89,6 +108,7 @@ describe("createPaymentCheckoutSession", () => {
 		const { stripe, create } = makeStripe();
 
 		const result = await createPaymentCheckoutSession({
+			purpose: "order",
 			stripe,
 			shippingAllowedCountries: ["US", "CA"],
 			lineItems: [

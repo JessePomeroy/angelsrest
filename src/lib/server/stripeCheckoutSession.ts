@@ -15,6 +15,7 @@ export interface CheckoutLineItemInput {
 }
 
 export interface CreatePaymentCheckoutSessionOptions {
+	purpose: "invoice-payment" | "order";
 	stripe: Stripe;
 	lineItems: Stripe.Checkout.SessionCreateParams.LineItem[];
 	successUrl: string;
@@ -58,6 +59,7 @@ export function buildCheckoutLineItem({
 }
 
 export async function createPaymentCheckoutSession({
+	purpose,
 	stripe,
 	lineItems,
 	successUrl,
@@ -68,7 +70,7 @@ export async function createPaymentCheckoutSession({
 	idempotencyKey,
 	expiresAt,
 }: CreatePaymentCheckoutSessionOptions): Promise<PaymentCheckoutSessionResult> {
-	assertOrderProducersOpen();
+	if (purpose !== "invoice-payment") assertOrderProducersOpen();
 	const finalMetadata = {
 		...metadata,
 		...(tenantCheckout?.metadata ?? {}),
