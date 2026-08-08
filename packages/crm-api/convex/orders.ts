@@ -31,7 +31,11 @@ import {
 	stripeAccountScope,
 } from "./helpers/checkoutSnapshot";
 import { AGGREGATE_SCAN_LIMIT, BULK_SCAN_LIMIT } from "./helpers/limits";
-import { getNextOrderNumber as generateNextOrderNumber } from "./helpers/numbering";
+import {
+	assertOrderNumberAvailable,
+	getNextOrderNumber as generateNextOrderNumber,
+	parseCanonicalOrderNumber,
+} from "./helpers/numbering";
 import { resolveBoundedOrderStatsScan } from "./helpers/orderStats";
 import {
 	classifyRefundTargetRows,
@@ -862,8 +866,16 @@ export const create = mutation({
 			};
 		}
 
-		// Use provided order number or generate one atomically
-		const orderNumber = args.orderNumber || (await generateNextOrderNumber(ctx, args.siteUrl));
+		let orderNumber: string;
+		if (args.orderNumber === undefined) {
+			orderNumber = await generateNextOrderNumber(ctx, args.siteUrl);
+		} else {
+			if (parseCanonicalOrderNumber(args.orderNumber) === null) {
+				throw new Error("Invalid order number");
+			}
+			await assertOrderNumberAvailable(ctx, args.siteUrl, args.orderNumber);
+			orderNumber = args.orderNumber;
+		}
 
 		const isManuallyRefunded = refundIntent !== null;
 		const feeCaptureScheduledAt = !isManuallyRefunded && orderInput.stripePaymentIntentId

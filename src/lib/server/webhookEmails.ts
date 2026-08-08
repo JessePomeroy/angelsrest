@@ -18,6 +18,7 @@ import {
 import { logStructured } from "$lib/server/logger";
 import type { LumaPrintsReconciliationClass } from "$lib/server/lumaprints";
 import { formatCents } from "$lib/utils/format";
+import { parseCanonicalOrderNumber } from "../../../packages/crm-api/convex/helpers/numbering";
 
 /** Shipping details extracted from `session.collected_information`. */
 export type ShippingDetails =
@@ -138,10 +139,8 @@ const RECONCILIATION_CLASS_COPY: Record<LumaPrintsReconciliationClass, string> =
 	client_error: "Reconciliation request could not be completed",
 };
 
-function boundedOrderReference(orderNumber: string) {
-	if (orderNumber.length > 64) return "unknown";
-	const normalized = orderNumber.trim();
-	return /^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$/.test(normalized) ? normalized : "unknown";
+function canonicalOrderReference(orderNumber: string) {
+	return parseCanonicalOrderNumber(orderNumber) === null ? "unknown" : orderNumber;
 }
 
 /** Send the one-time operator alert for a durable reconciliation block. */
@@ -166,7 +165,7 @@ export async function sendPrintReconciliationBlockedAlert(
 		notificationProfile?: CommerceNotificationProfile;
 	},
 ) {
-	const orderReference = boundedOrderReference(orderNumber);
+	const orderReference = canonicalOrderReference(orderNumber);
 	const escalationCopy = {
 		transport: "Repeated provider lookups failed at the transport boundary",
 		rate_or_server: "Repeated provider lookups were rate-limited or unavailable",
