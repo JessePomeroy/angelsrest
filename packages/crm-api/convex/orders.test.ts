@@ -17,6 +17,7 @@ const CLAIM_TOKEN_B = "123e4567-e89b-42d3-a456-426614174001";
 beforeEach(() => {
 	process.env.WEBHOOK_SECRET = WEBHOOK_SECRET;
 	process.env.ORDER_LOOKUP_SECRET = ORDER_LOOKUP_SECRET;
+	process.env.ORDER_PRODUCERS_STATE = "open";
 	process.env.STRIPE_REFUND_RECOVERY_ID = MANUAL_REFUND_RECOVERY_ID;
 	process.env.CONVEX_CLOUD_URL = "https://loyal-swan-967.convex.cloud";
 });
@@ -24,6 +25,7 @@ beforeEach(() => {
 afterEach(() => {
 	delete process.env.WEBHOOK_SECRET;
 	delete process.env.ORDER_LOOKUP_SECRET;
+	delete process.env.ORDER_PRODUCERS_STATE;
 	delete process.env.STRIPE_REFUND_RECOVERY_ID;
 	delete process.env.CONVEX_CLOUD_URL;
 });
@@ -429,6 +431,64 @@ describe("order numbering", () => {
 			alreadyExisted: true,
 		});
 		expect(await t.run((ctx) => ctx.db.query("orders").take(2))).toHaveLength(1);
+	});
+});
+
+function setOrderProducersState(state: string | undefined) {
+	if (state === undefined) delete process.env.ORDER_PRODUCERS_STATE;
+	else process.env.ORDER_PRODUCERS_STATE = state;
+}
+
+describe("order producer gate", () => {
+	test.each([
+		["missing", undefined],
+		["explicit closed", "closed"],
+		["invalid", "true"],
+		["malformed", " open "],
+		["unknown", "paused"],
+	] as const)("rejects a new order for %s state without a write", async (_label, state) => {
+		setOrderProducersState(state);
+		const t = convexTest(schema, modules);
+
+		await expect(
+			t.mutation(api.orders.create, orderArgs(`cs_gate_${_label.replaceAll(" ", "_")}`)),
+		).rejects.toThrow("Order producers are closed");
+		expect(await t.run((ctx) => ctx.db.query("orders").take(1))).toEqual([]);
+	});
+
+	test("creates an order only for the explicit open state", async () => {
+		process.env.ORDER_PRODUCERS_STATE = "open";
+		const t = convexTest(schema, modules);
+
+		const created = await t.mutation(api.orders.create, orderArgs("cs_gate_open"));
+
+		expect(await t.run((ctx) => ctx.db.get(created._id))).toMatchObject({
+			stripeSessionId: "cs_gate_open",
+			status: "new",
+		});
+	});
+
+	test("replays an existing row before closed-gate and supplied-number validation", async () => {
+		const t = convexTest(schema, modules);
+		const args = {
+			...orderArgs("cs_gate_replay"),
+			orderNumber: "ORD-005",
+		};
+		const created = await t.mutation(api.orders.create, args);
+		const before = await t.run((ctx) => ctx.db.get(created._id));
+		process.env.ORDER_PRODUCERS_STATE = "closed";
+
+		const replay = await t.mutation(api.orders.create, {
+			...args,
+			orderNumber: "ORD-NaN",
+		});
+
+		expect(replay).toMatchObject({
+			_id: created._id,
+			orderNumber: "ORD-005",
+			alreadyExisted: true,
+		});
+		expect(await t.run((ctx) => ctx.db.query("orders").take(2))).toEqual([before]);
 	});
 });
 

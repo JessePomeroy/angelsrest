@@ -13,4 +13,5 @@ export const env = {
 	BETTER_AUTH_SECRET: "test-secret",
 	WEBHOOK_SECRET: "test-webhook-secret",
 	ORDER_LOOKUP_SECRET: "test-order-lookup-secret",
+	ORDER_PRODUCERS_STATE: "open",
 };

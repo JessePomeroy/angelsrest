@@ -151,11 +151,13 @@ function reconciliationPage(orders: unknown[]) {
 describe("order intake with real Convex state", () => {
 	beforeEach(() => {
 		process.env.WEBHOOK_SECRET = WEBHOOK_SECRET;
+		process.env.ORDER_PRODUCERS_STATE = "open";
 		vi.clearAllMocks();
 	});
 
 	afterEach(() => {
 		delete process.env.WEBHOOK_SECRET;
+		delete process.env.ORDER_PRODUCERS_STATE;
 		vi.unstubAllGlobals();
 	});
 

@@ -29,7 +29,7 @@ const RESERVE_PATH = "/commerce/checkout-snapshots/reserve";
 const BIND_PATH = "/commerce/checkout-snapshots/bind";
 const envNames = [
 	"CHECKOUT_SNAPSHOT_RESERVATION_SECRETS", "WEBHOOK_SECRET", "BETTER_AUTH_SECRET", "SITE_URL",
-	"AUTH_GOOGLE_SECRET", "STRIPE_SECRET_KEY", "ORDER_LOOKUP_SECRET",
+	"AUTH_GOOGLE_SECRET", "STRIPE_SECRET_KEY", "ORDER_LOOKUP_SECRET", "ORDER_PRODUCERS_STATE",
 	"CATALOG_PRIVATE_ASSET_STORAGE_RECEIPT_SECRETS", "CHECKOUT_ROLE_CREDENTIAL_FINGERPRINTS",
 ] as const;
 const previousEnv = new Map<string, string | undefined>();
@@ -62,6 +62,7 @@ beforeEach(async () => {
 		),
 	});
 	process.env.BETTER_AUTH_SECRET = "reservation-auth-authority-0123456789abcdef";
+	process.env.ORDER_PRODUCERS_STATE = "open";
 	process.env.SITE_URL = "https://www.angelsrest.online";
 });
 
@@ -111,6 +112,11 @@ function orderArgs(session = SESSION) {
 
 async function rows(t: ReturnType<typeof convexTest>) {
 	return t.run((ctx) => ctx.db.query("checkoutSnapshotReservations").take(20));
+}
+
+function setOrderProducersState(state: string | undefined) {
+	if (state === undefined) delete process.env.ORDER_PRODUCERS_STATE;
+	else process.env.ORDER_PRODUCERS_STATE = state;
 }
 
 async function seedPlatformClients(t: ReturnType<typeof convexTest>) {
@@ -193,6 +199,103 @@ describe("checkout snapshot reservation input and authentication", () => {
 });
 
 describe("reservation, binding, and order transfer", () => {
+	test.each([
+		["missing", undefined],
+		["explicit closed", "closed"],
+		["invalid", "true"],
+		["malformed", " open "],
+		["unknown", "paused"],
+	] as const)("rejects a new reservation for %s state without a write", async (_label, state) => {
+		setOrderProducersState(state);
+		const t = convexTest(schema, modules);
+
+		await expect(
+			t.mutation(internal.orders.reserveCheckoutSnapshot, {
+				siteUrl: SITE_A,
+				handleHash: "1".repeat(64),
+				snapshotDigest: "2".repeat(64),
+				snapshot,
+			}),
+		).rejects.toThrow("Order producers are closed");
+		expect(await rows(t)).toEqual([]);
+	});
+
+	test("creates only in the explicit open state and replays without a closed-state write", async () => {
+		const t = convexTest(schema, modules);
+		const args = {
+			siteUrl: SITE_A,
+			handleHash: "3".repeat(64),
+			snapshotDigest: "4".repeat(64),
+			snapshot,
+		};
+		expect(await t.mutation(internal.orders.reserveCheckoutSnapshot, args)).toEqual({
+			outcome: "created",
+		});
+		const before = await rows(t);
+		process.env.ORDER_PRODUCERS_STATE = "closed";
+
+		expect(await t.mutation(internal.orders.reserveCheckoutSnapshot, args)).toEqual({
+			outcome: "replayed",
+		});
+		expect(await rows(t)).toEqual(before);
+	});
+
+	test.each([
+		["missing", undefined],
+		["explicit closed", "closed"],
+		["invalid", "true"],
+		["malformed", " open "],
+		["unknown", "paused"],
+	] as const)("rejects a new binding for %s state without a write", async (_label, state) => {
+		const t = convexTest(schema, modules);
+		const handleHash = "5".repeat(64);
+		await t.mutation(internal.orders.reserveCheckoutSnapshot, {
+			siteUrl: SITE_A,
+			handleHash,
+			snapshotDigest: "6".repeat(64),
+			snapshot,
+		});
+		const before = await rows(t);
+		setOrderProducersState(state);
+
+		await expect(
+			t.mutation(internal.orders.bindCheckoutSnapshot, {
+				siteUrl: SITE_A,
+				handleHash,
+				stripeSessionId: BOUND_SESSION,
+				stripeExpiresAt: Math.floor(Date.now() / 1000) + 3600,
+			}),
+		).rejects.toThrow("Order producers are closed");
+		expect(await rows(t)).toEqual(before);
+	});
+
+	test("binds only while explicitly open and replays the bound row read-only while closed", async () => {
+		const t = convexTest(schema, modules);
+		const handleHash = "7".repeat(64);
+		await t.mutation(internal.orders.reserveCheckoutSnapshot, {
+			siteUrl: SITE_A,
+			handleHash,
+			snapshotDigest: "8".repeat(64),
+			snapshot,
+		});
+		const bindArgs = {
+			siteUrl: SITE_A,
+			handleHash,
+			stripeSessionId: BOUND_SESSION,
+			stripeExpiresAt: Math.floor(Date.now() / 1000) + 3600,
+		};
+		expect(await t.mutation(internal.orders.bindCheckoutSnapshot, bindArgs)).toEqual({
+			outcome: "bound",
+		});
+		const before = await rows(t);
+		process.env.ORDER_PRODUCERS_STATE = "closed";
+
+		expect(await t.mutation(internal.orders.bindCheckoutSnapshot, bindArgs)).toEqual({
+			outcome: "replayed",
+		});
+		expect(await rows(t)).toEqual(before);
+	});
+
 	test("replays identically, conflicts on changed facts, and isolates handle hashes by tenant", async () => {
 		const t = convexTest(schema, modules);
 		const first = await reserve(t);
