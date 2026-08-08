@@ -33,6 +33,10 @@ import {
 import { AGGREGATE_SCAN_LIMIT, BULK_SCAN_LIMIT } from "./helpers/limits";
 import { getNextOrderNumber as generateNextOrderNumber } from "./helpers/numbering";
 import { resolveBoundedOrderStatsScan } from "./helpers/orderStats";
+import {
+	classifyRefundTargetRows,
+	refundTargetClassificationValidator,
+} from "./helpers/refundTargetClassifier";
 import { FEE_CAPTURE_INITIAL_DELAY_MS } from "./helpers/stripeFeeCapture";
 
 const orderStatusValidator = v.union(
@@ -654,6 +658,53 @@ export const list = query({
 			.withIndex("by_siteUrl", (q) => q.eq("siteUrl", siteUrl))
 			.order("desc")
 			.take(BULK_SCAN_LIMIT);
+	},
+});
+
+/**
+ * Read one bounded tenant source and return only normalized target classes.
+ * This query grants no provider, recovery, or mutation authority.
+ */
+export const classifyRefundTarget = query({
+	args: {
+		siteUrl: v.string(),
+		target: v.object({
+			orderNumber: v.string(),
+			stripeSessionId: v.string(),
+			stripePaymentIntentId: v.string(),
+			stripeRefundId: v.string(),
+		}),
+	},
+	returns: refundTargetClassificationValidator,
+	handler: async (ctx, { siteUrl, target }) => {
+		await requireSiteAdmin(ctx, siteUrl);
+		if (
+			target.orderNumber.length === 0
+			|| target.orderNumber.length > 160
+			|| !isStripeCheckoutSessionId(target.stripeSessionId)
+			|| !STRIPE_PAYMENT_INTENT_ID.test(target.stripePaymentIntentId)
+			|| !STRIPE_REFUND_ID.test(target.stripeRefundId)
+		) throw new Error("Invalid refund target selectors");
+
+		const rowsWithOverflowSentinel = await ctx.db
+			.query("orders")
+			.withIndex("by_siteUrl", (q) => q.eq("siteUrl", siteUrl))
+			.order("desc")
+			.take(BULK_SCAN_LIMIT + 1);
+		return classifyRefundTargetRows(
+			rowsWithOverflowSentinel,
+			BULK_SCAN_LIMIT,
+			target,
+			siteUrl === MANUAL_REFUND_RECOVERY_MANIFEST.siteUrl
+				? {
+						stripeSessionId: MANUAL_REFUND_RECOVERY_MANIFEST.stripeSessionId,
+						stripePaymentIntentId:
+							MANUAL_REFUND_RECOVERY_MANIFEST.stripePaymentIntentId,
+						stripeRefundId: MANUAL_REFUND_RECOVERY_MANIFEST.stripeRefundId,
+						amount: MANUAL_REFUND_RECOVERY_MANIFEST.amount,
+					}
+				: null,
+		);
 	},
 });
 
