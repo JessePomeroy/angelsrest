@@ -2,7 +2,7 @@ import type Stripe from "stripe";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
-	convex: {},
+	convex: { query: vi.fn() },
 	createLumaPrintsOrder: vi.fn(),
 	logStructured: vi.fn(),
 	process: vi.fn(),
@@ -14,6 +14,7 @@ const mocks = vi.hoisted(() => ({
 		ORDER_PRODUCERS_STATE: "open",
 		STRIPE_CONNECT_WEBHOOK_SECRET: "connect-secret",
 		STRIPE_WEBHOOK_SECRET: "platform-secret",
+		WEBHOOK_SECRET: "webhook-secret",
 	} as Record<string, string | undefined>,
 }));
 
@@ -48,6 +49,8 @@ describe("Stripe webhook route", () => {
 		mocks.env.ORDER_PRODUCERS_STATE = "open";
 		mocks.env.STRIPE_CONNECT_WEBHOOK_SECRET = "connect-secret";
 		mocks.env.STRIPE_WEBHOOK_SECRET = "platform-secret";
+		mocks.env.WEBHOOK_SECRET = "webhook-secret";
+		mocks.convex.query.mockResolvedValue(null);
 		mocks.getResend.mockReturnValue(mocks.resend);
 		mocks.verify.mockResolvedValue({ event: event(), role: "your-account" });
 	});
@@ -99,6 +102,27 @@ describe("Stripe webhook route", () => {
 			body: { message: "Order intake is closed" },
 		});
 		expect(mocks.verify).toHaveBeenCalledOnce();
+		expect(mocks.convex.query).toHaveBeenCalledOnce();
+		expect(mocks.process).not.toHaveBeenCalled();
+		expect(mocks.getResend).not.toHaveBeenCalled();
+		expect(mocks.createLumaPrintsOrder).not.toHaveBeenCalled();
+	});
+
+	it("acknowledges an existing-order replay while producers are closed", async () => {
+		mocks.env.ORDER_PRODUCERS_STATE = "closed";
+		mocks.convex.query.mockResolvedValue({ source: "order", siteUrl: "tenant.example" });
+		const verifiedEvent = event();
+		mocks.verify.mockResolvedValue({ event: verifiedEvent, role: "your-account" });
+		const { POST } = await import("../+server");
+
+		const response = await POST({ request: request() } as Parameters<typeof POST>[0]);
+
+		expect(response.status).toBe(200);
+		expect(await response.json()).toEqual({ received: true });
+		expect(mocks.convex.query).toHaveBeenCalledWith(expect.anything(), {
+			stripeSessionId: "cs_test_123",
+			webhookSecret: "webhook-secret",
+		});
 		expect(mocks.process).not.toHaveBeenCalled();
 		expect(mocks.getResend).not.toHaveBeenCalled();
 		expect(mocks.createLumaPrintsOrder).not.toHaveBeenCalled();

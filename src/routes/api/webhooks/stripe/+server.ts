@@ -1,6 +1,8 @@
 import { error, json } from "@sveltejs/kit";
 import type Stripe from "stripe";
+import { api } from "$convex/api";
 import { env } from "$env/dynamic/private";
+import { readCheckoutTenantMarker } from "$lib/server/checkoutSnapshotConsumer";
 import { getConvex } from "$lib/server/convexClient";
 import { logStructured } from "$lib/server/logger";
 import { createOrder as createLumaPrintsOrder } from "$lib/server/lumaprints";
@@ -13,6 +15,7 @@ import {
 	type StripeWebhookSecretCandidate,
 	verifyStripeWebhookWithRole,
 } from "$lib/server/stripeWebhook";
+import { getWebhookSecret } from "$lib/server/webhookSecret";
 
 const convex = getConvex();
 
@@ -25,30 +28,40 @@ export async function POST({ request }) {
 		"Commerce webhook",
 	);
 	assertCommerceWebhookScope(event, role);
-	assertOrderProducingWebhookOpen(event);
+	if (await isClosedOrderReplay(event)) return json({ received: true });
 	const resend = getResend();
 	await processStripeWebhookEvent(event, { stripe, resend, convex, createLumaPrintsOrder }, role);
 	return json({ received: true });
 }
 
-function assertOrderProducingWebhookOpen(event: Stripe.Event) {
-	if (event.type !== "checkout.session.completed") return;
+async function isClosedOrderReplay(event: Stripe.Event) {
+	if (event.type !== "checkout.session.completed") return false;
 	const session = event.data.object as Stripe.Checkout.Session;
 	if (
 		session.mode !== "payment" ||
 		session.metadata?.type === "platform_subscription" ||
 		session.metadata?.type === "invoice_payment"
 	) {
-		return;
+		return false;
 	}
 	try {
 		assertOrderProducersOpen();
+		return false;
 	} catch (cause) {
-		if (cause instanceof OrderProducersClosedError) {
-			throw error(503, "Order intake is closed");
-		}
-		throw cause;
+		if (!(cause instanceof OrderProducersClosedError)) throw cause;
 	}
+
+	const stripeConnectedAccountId =
+		typeof event.account === "string" ? event.account.trim() : undefined;
+	const stripeTenantMetadataSiteUrl = readCheckoutTenantMarker(session.metadata);
+	const routing = await convex.query(api.orders.resolveCheckoutRouting, {
+		stripeSessionId: session.id,
+		...(stripeConnectedAccountId ? { stripeConnectedAccountId } : {}),
+		...(stripeTenantMetadataSiteUrl ? { stripeTenantMetadataSiteUrl } : {}),
+		webhookSecret: getWebhookSecret(),
+	});
+	if (routing?.source === "order") return true;
+	throw error(503, "Order intake is closed");
 }
 
 function getCommerceWebhookSecrets(): StripeWebhookSecretCandidate<CommerceWebhookRole>[] {
