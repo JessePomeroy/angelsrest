@@ -80,6 +80,13 @@ const liveEffectClassificationValidator = v.union(
 	}),
 );
 
+const providerInvestigationTargetValidator = v.union(
+	v.object({ outcome: v.literal("ready"), externalId: v.string() }),
+	v.object({ outcome: v.literal("source_conflict") }),
+	v.object({ outcome: v.literal("target_conflict") }),
+	v.object({ outcome: v.literal("live_effect_conflict") }),
+);
+
 type LiveEffectClass =
 	| "refund_nonterminal"
 	| "refund_outcome_unknown"
@@ -107,6 +114,14 @@ type RetiredBinding = {
 	resetId: string;
 };
 
+function hasUnresolvedPrintSubmission(order: Doc<"orders">) {
+	return order.printFulfillmentPhase === "submitting"
+		|| order.printFulfillmentResolution === "submission_uncertain"
+		|| order.printFulfillmentResolution === "reconciliation_blocked"
+		|| order.printFulfillmentClaim === true
+			&& order.printFulfillmentResolution !== "resolved";
+}
+
 function liveEffectClasses(order: Doc<"orders">, now: number) {
 	const classes: LiveEffectClass[] = [];
 	if (
@@ -117,13 +132,7 @@ function liveEffectClasses(order: Doc<"orders">, now: number) {
 	if (order.automatedRefundAttentionReason === "request_outcome_unknown") {
 		classes.push("refund_outcome_unknown");
 	}
-	if (
-		order.printFulfillmentPhase === "submitting"
-		|| order.printFulfillmentResolution === "submission_uncertain"
-		|| order.printFulfillmentResolution === "reconciliation_blocked"
-		|| order.printFulfillmentClaim === true
-			&& order.printFulfillmentResolution !== "resolved"
-	) classes.push("print_submission_unresolved");
+	if (hasUnresolvedPrintSubmission(order)) classes.push("print_submission_unresolved");
 	if (
 		order.lumaprintsOrderNumber !== undefined
 		&& !["shipped", "delivered", "refunded"].includes(order.status)
@@ -257,6 +266,64 @@ async function tombstonesAreGloballyExclusive(
 	}
 	return true;
 }
+
+/**
+ * Select the one fixed provider-investigation identity for the trusted host.
+ *
+ * The Production-authorized operator process consumes the identity only in
+ * memory. The one-use command emits a normalized result and never prints it.
+ */
+export const providerInvestigationTarget = internalQuery({
+	args: {},
+	returns: providerInvestigationTargetValidator,
+	handler: async (ctx) => {
+		assertOrderProducersExactlyClosed();
+		if (await legacySourceExists(ctx)) return { outcome: "source_conflict" as const };
+		const [orders, receipts, tombstones] = await Promise.all([
+			ctx.db
+				.query("orders")
+				.withIndex("by_siteUrl", (q) => q.eq("siteUrl", SITE_URL))
+				.order("desc")
+				.take(ORDER_RESET_LIMIT + 1),
+			ctx.db
+				.query("orderResetReceipts")
+				.withIndex("by_resetId", (q) => q.eq("resetId", RESET_ID))
+				.take(1),
+			tombstonesForReset(ctx),
+		]);
+		if (
+			orders.length === 0
+			|| orders.length > ORDER_RESET_LIMIT
+			|| receipts.length !== 0
+			|| tombstones.length !== 0
+		) return { outcome: "source_conflict" as const };
+
+		const now = Date.now();
+		if (orders.some((order) =>
+			liveEffectClasses(order, now).some(
+				(classification) => classification !== "print_submission_unresolved",
+			)
+		)) return { outcome: "live_effect_conflict" as const };
+
+		const unresolved = orders.filter(hasUnresolvedPrintSubmission);
+		if (unresolved.length !== 1) return { outcome: "target_conflict" as const };
+		const [target] = unresolved;
+		if (
+			target.fulfillmentType !== "lumaprints"
+			|| target.printFulfillmentPhase === "preparing"
+			|| target.lumaprintsOrderNumber !== undefined
+			|| !/^cs_live_[A-Za-z0-9]{16,120}$/.test(target.stripeSessionId)
+		) return { outcome: "target_conflict" as const };
+		const globalMatches = await ctx.db
+			.query("orders")
+			.withIndex("by_stripeSessionId", (q) => q.eq("stripeSessionId", target.stripeSessionId))
+			.take(2);
+		if (globalMatches.length !== 1 || globalMatches[0]._id !== target._id) {
+			return { outcome: "target_conflict" as const };
+		}
+		return { outcome: "ready" as const, externalId: target.stripeSessionId };
+	},
+});
 
 /** Return only normalized classes for the live-effect condition that stopped the reset. */
 export const classifyLiveEffect = internalQuery({
