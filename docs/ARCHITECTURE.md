@@ -191,6 +191,26 @@ existing tombstones, a bound checkout reservation in any account scope, an
 active or recent effect lease, unresolved print submission or reconciliation,
 or a provider-owned nonterminal refund.
 
+When the owner has separately attested that every affected order is their own
+disposable test data and has accepted any residual provider charge or shipment,
+the distinct internal `orderReset.applyOwnerTestOrders` mutation may use the
+same atomic reset with one exact literal authority. That exception ignores only
+the normalized `print_submission_unresolved` class. Refund activity, a stored
+nonterminal provider order, active deadlines, recent activity, source drift,
+duplicate Sessions, reset artifacts, and bound reservations still stop the
+transaction. The strict `orderReset.apply` behavior is unchanged. Both paths
+share the same permanent Session tombstones, manifest receipt, idempotent
+`orderReset.verify` query, and global replay-conflict checks.
+
+The owner-test reset has a distinct committed one-use caller, operation ID,
+custody directory, and permanent marker. It claims the marker before final host
+configuration or any Convex call, launches the mutation at most once, and runs
+one read-only verification after an applied or already-applied response. A lost
+or malformed mutation response is commit-ambiguous: the caller never retries
+the mutation and performs only one verification read, emitting either a fixed
+verified-response-loss class or a fixed unknown-outcome class. Child output,
+errors, identifiers, counts, receipt data, and raw failures are never exposed.
+
 After a `live_effect` stop, the fixed internal `orderReset.classifyLiveEffect`
 query can classify the block only under separate read authority. It uses the
 same closed-state requirement, tenant source, and conservative bound. Its
