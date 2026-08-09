@@ -2,7 +2,7 @@
 import { convexTest } from "convex-test";
 import { afterEach, beforeEach, describe, expect, test } from "vitest";
 import { api, internal } from "./_generated/api";
-import { ORDER_RESET_LIMIT } from "./orderReset";
+import { ORDER_RESET_LIMIT, OWNER_TEST_ORDER_RESET_AUTHORITY } from "./orderReset";
 import schema from "./schema";
 
 const modules = import.meta.glob("./**/*.ts");
@@ -43,6 +43,12 @@ async function insertOrder(
 
 async function apply(t: ReturnType<typeof convexTest>) {
 	return await t.mutation(internal.orderReset.apply, {});
+}
+
+async function applyOwnerTestOrders(t: ReturnType<typeof convexTest>) {
+	return await t.mutation(internal.orderReset.applyOwnerTestOrders, {
+		authority: OWNER_TEST_ORDER_RESET_AUTHORITY,
+	});
 }
 
 describe("owner-approved full order reset", () => {
@@ -186,6 +192,9 @@ describe("owner-approved full order reset", () => {
 			await insertOrder(t, 1);
 
 			await expect(apply(t)).rejects.toThrow("Order producers must be explicitly closed");
+			await expect(applyOwnerTestOrders(t)).rejects.toThrow(
+				"Order producers must be explicitly closed",
+			);
 			await expect(t.query(internal.orderReset.verify, {})).rejects.toThrow(
 				"Order producers must be explicitly closed",
 			);
@@ -216,6 +225,20 @@ describe("owner-approved full order reset", () => {
 			expect(await t.run((ctx) => ctx.db.query("orders").take(2))).toHaveLength(1);
 		},
 	);
+
+	test("requires the exact owner test-order reset authority", async () => {
+		const t = convexTest(schema, modules);
+		await insertOrder(t, 1);
+
+		await expect(t.mutation(internal.orderReset.applyOwnerTestOrders, {} as never)).rejects
+			.toThrow();
+		await expect(t.mutation(internal.orderReset.applyOwnerTestOrders, {
+			authority: "wrong",
+		} as never)).rejects.toThrow();
+		expect(await t.run((ctx) => ctx.db.query("orders").collect())).toHaveLength(1);
+		expect(await t.run((ctx) => ctx.db.query("retiredOrderSessions").collect())).toEqual([]);
+		expect(await t.run((ctx) => ctx.db.query("orderResetReceipts").collect())).toEqual([]);
+	});
 
 	test("stops without writes when the bounded source overflows", async () => {
 		const t = convexTest(schema, modules);
@@ -285,16 +308,119 @@ describe("owner-approved full order reset", () => {
 		{ printFulfillmentPhase: "submitting" as const, printFulfillmentClaimedAt: 1 },
 		{ printFulfillmentResolution: "submission_uncertain" as const },
 		{ printFulfillmentResolution: "reconciliation_blocked" as const },
+	])("retires owner-authorized test orders with unresolved print submission state %#", async (
+		unresolvedState,
+	) => {
+		const t = convexTest(schema, modules);
+		await insertOrder(t, 1, unresolvedState);
+		await expect(apply(t)).resolves.toEqual({ outcome: "live_effect" });
+		await expect(applyOwnerTestOrders(t)).resolves.toEqual({ outcome: "applied" });
+		await expect(t.query(internal.orderReset.verify, {})).resolves.toEqual({
+			outcome: "complete",
+		});
+		expect(await t.run((ctx) => ctx.db.query("orders").collect())).toEqual([]);
+		expect(await t.run((ctx) => ctx.db.query("retiredOrderSessions").collect())).toHaveLength(1);
+	});
+
+	test("owner-test reset preserves audit, reserved checkout, and foreign tenant state", async () => {
+		const t = convexTest(schema, modules);
+		const first = await insertOrder(t, 1, {
+			printFulfillmentResolution: "submission_uncertain",
+		});
+		await insertOrder(t, 2, {
+			stripeConnectedAccountId: "acct_tenant",
+			printFulfillmentResolution: "reconciliation_blocked",
+		});
+		const foreign = await insertOrder(t, 3, { siteUrl: "other.example" });
+		const audit = await t.run((ctx) => ctx.db.insert("manualRefundIntents", {
+			accountScope: "platform",
+			siteUrl: SITE_URL,
+			stripeEventId: "evt_owner_test_audit",
+			stripeRefundId: "re_owner_test_audit",
+			stripeChargeId: "ch_owner_test_audit",
+			stripeSessionId: "cs_owner_test_audit",
+			stripePaymentIntentId: "pi_owner_test_audit",
+			amount: 0,
+			currency: "usd",
+			livemode: false,
+			createdAt: 1,
+			orderId: first,
+			consumedAt: 2,
+		}));
+		const reservation = await t.run((ctx) => ctx.db.insert("checkoutSnapshotReservations", {
+			state: "reserved",
+			siteUrl: SITE_URL,
+			handleHash: "owner-test-handle",
+			snapshotDigest: "owner-test-digest",
+			snapshot: { schemaVersion: 1, catalogProvider: "convex", items: [] },
+			accountScope: "platform",
+			stripeSessionId: "cs_reset_1",
+			unboundPurgeAt: 1,
+			createdAt: 1,
+			updatedAt: 1,
+		}));
+		const before = await t.run(async (ctx) => ({
+			audit: await ctx.db.get(audit),
+			reservation: await ctx.db.get(reservation),
+			foreign: await ctx.db.get(foreign),
+		}));
+
+		await expect(applyOwnerTestOrders(t)).resolves.toEqual({ outcome: "applied" });
+		await expect(t.query(internal.orderReset.verify, {})).resolves.toEqual({
+			outcome: "complete",
+		});
+		const after = await t.run(async (ctx) => ({
+			canonicalOrders: await ctx.db
+				.query("orders")
+				.withIndex("by_siteUrl", (q) => q.eq("siteUrl", SITE_URL))
+				.collect(),
+			tombstones: await ctx.db
+				.query("retiredOrderSessions")
+				.withIndex("by_resetId_and_stripeSessionId", (q) => q.eq("resetId", RESET_ID))
+				.collect(),
+			receipt: await ctx.db
+				.query("orderResetReceipts")
+				.withIndex("by_resetId", (q) => q.eq("resetId", RESET_ID))
+				.unique(),
+			audit: await ctx.db.get(audit),
+			reservation: await ctx.db.get(reservation),
+			foreign: await ctx.db.get(foreign),
+		}));
+		expect(after.canonicalOrders).toEqual([]);
+		expect(after.tombstones).toHaveLength(2);
+		expect(after.receipt).toMatchObject({
+			protocolVersion: 1,
+			resetId: RESET_ID,
+			siteUrl: SITE_URL,
+			retiredOrderCount: 2,
+			manifestDigest: expect.stringMatching(/^[a-f0-9]{64}$/),
+		});
+		expect(after.audit).toEqual(before.audit);
+		expect(after.reservation).toEqual(before.reservation);
+		expect(after.foreign).toEqual(before.foreign);
+		await expect(applyOwnerTestOrders(t)).resolves.toEqual({ outcome: "already_applied" });
+	});
+
+	test.each([
 		{ lumaprintsOrderNumber: "LP-unresolved", status: "printing" as const },
 		{ fulfillmentRecoveryStatus: "refund_pending" as const },
 		{ automatedRefundStatus: "pending" as const },
 		{ automatedRefundStatus: "requires_action" as const },
 		{ automatedRefundAttentionReason: "request_outcome_unknown" as const },
-	])("stops on durable unresolved provider state %#", async (unresolvedState) => {
+		{ printFulfillmentLeaseExpiresAt: Date.now() + 60_000 },
+		{ stripeFeeCaptureLastAttemptAt: Date.now() },
+	])("still stops when print uncertainty is combined with non-authorized effect %#", async (
+		unresolvedState,
+	) => {
 		const t = convexTest(schema, modules);
-		await insertOrder(t, 1, unresolvedState);
-		await expect(apply(t)).resolves.toEqual({ outcome: "live_effect" });
+		await insertOrder(t, 1, {
+			printFulfillmentResolution: "submission_uncertain",
+			...unresolvedState,
+		});
+		await expect(applyOwnerTestOrders(t)).resolves.toEqual({ outcome: "live_effect" });
 		expect(await t.run((ctx) => ctx.db.query("orders").collect())).toHaveLength(1);
+		expect(await t.run((ctx) => ctx.db.query("retiredOrderSessions").collect())).toEqual([]);
+		expect(await t.run((ctx) => ctx.db.query("orderResetReceipts").collect())).toEqual([]);
 	});
 
 	test("classifies all live-effect families with deterministic closed output", async () => {
@@ -1211,6 +1337,7 @@ describe("owner-approved full order reset", () => {
 		}));
 
 		await expect(apply(t)).resolves.toEqual({ outcome: "conflict" });
+		await expect(applyOwnerTestOrders(t)).resolves.toEqual({ outcome: "conflict" });
 		expect(await t.run((ctx) => ctx.db.query("orders").collect())).toHaveLength(1);
 	});
 

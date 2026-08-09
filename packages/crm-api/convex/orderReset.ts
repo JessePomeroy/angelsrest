@@ -1,11 +1,18 @@
 import { v } from "convex/values";
 import type { Doc, Id } from "./_generated/dataModel";
-import { internalMutation, internalQuery, type QueryCtx } from "./_generated/server";
+import {
+	internalMutation,
+	internalQuery,
+	type MutationCtx,
+	type QueryCtx,
+} from "./_generated/server";
 import { isStripeCheckoutSessionId } from "./helpers/checkoutSnapshot";
 import { assertOrderProducersExactlyClosed } from "./helpers/orderProducerGate";
 
 const RESET_PROTOCOL_VERSION = 1 as const;
 const RESET_ID = "angels_rest_full_order_reset_v1_20260809";
+export const OWNER_TEST_ORDER_RESET_AUTHORITY =
+	"owner_test_orders_disposable_residual_provider_effects_accepted_20260809" as const;
 const SITE_URL = "angelsrest.online";
 const LEGACY_SITE_URLS = [
 	"https://angelsrest.online",
@@ -252,6 +259,12 @@ function liveEffectClasses(order: Doc<"orders">, now: number) {
 		return typeof value === "number" && value > now - RECENT_EFFECT_WINDOW_MS;
 	})) classes.push("recent_activity");
 	return classes;
+}
+
+function hasBlockingOwnerTestResetEffect(order: Doc<"orders">, now: number) {
+	return liveEffectClasses(order, now).some(
+		(classification) => classification !== "print_submission_unresolved",
+	);
 }
 
 function hasLiveEffect(order: Doc<"orders">, now: number) {
@@ -661,97 +674,113 @@ export const classifyLiveEffect = internalQuery({
 	},
 });
 
-/** Atomically retain checkout replay tombstones and remove the approved tenant's old orders. */
+async function applyReset(
+	ctx: MutationCtx,
+	hasBlockingEffect: (order: Doc<"orders">, now: number) => boolean,
+) {
+	assertOrderProducersExactlyClosed();
+	if (await legacySourceExists(ctx)) return { outcome: "conflict" as const };
+
+	const orders = await ctx.db
+		.query("orders")
+		.withIndex("by_siteUrl", (q) => q.eq("siteUrl", SITE_URL))
+		.order("desc")
+		.take(ORDER_RESET_LIMIT + 1);
+	if (orders.length > ORDER_RESET_LIMIT) return { outcome: "source_overflow" as const };
+
+	const receipts = await ctx.db
+		.query("orderResetReceipts")
+		.withIndex("by_resetId", (q) => q.eq("resetId", RESET_ID))
+		.take(2);
+	if (receipts.length > 1) return { outcome: "conflict" as const };
+	const [receipt] = receipts;
+	if (receipt) {
+		const tombstones = await tombstonesForReset(ctx);
+		return receipt.protocolVersion === RESET_PROTOCOL_VERSION
+			&& receipt.siteUrl === SITE_URL
+			&& orders.length === 0
+			&& await tombstonesMatchReceipt(tombstones, receipt)
+			&& await tombstonesAreGloballyExclusive(ctx, tombstones)
+			? { outcome: "already_applied" as const }
+			: { outcome: "conflict" as const };
+	}
+	if (orders.length === 0) return { outcome: "source_empty" as const };
+	if ((await tombstonesForReset(ctx)).length !== 0) return { outcome: "conflict" as const };
+
+	const sessionIds = new Set(orders.map((order) => order.stripeSessionId));
+	if (sessionIds.size !== orders.length) return { outcome: "conflict" as const };
+
+	const now = Date.now();
+	if (orders.some((order) => hasBlockingEffect(order, now))) {
+		return { outcome: "live_effect" as const };
+	}
+
+	for (const order of orders) {
+		const [globalMatches, existingTombstones, reservations] = await Promise.all([
+			ctx.db
+				.query("orders")
+				.withIndex("by_stripeSessionId", (q) =>
+					q.eq("stripeSessionId", order.stripeSessionId),
+				)
+				.take(2),
+			ctx.db
+				.query("retiredOrderSessions")
+				.withIndex("by_stripeSessionId", (q) =>
+					q.eq("stripeSessionId", order.stripeSessionId),
+				)
+				.take(2),
+			ctx.db
+				.query("checkoutSnapshotReservations")
+				.withIndex("by_stripeSessionId", (q) =>
+					q.eq("stripeSessionId", order.stripeSessionId),
+				)
+				.take(ORDER_RESET_LIMIT + 1),
+		]);
+		if (
+			globalMatches.length !== 1
+			|| globalMatches[0]._id !== order._id
+			|| existingTombstones.length !== 0
+			|| reservations.length > ORDER_RESET_LIMIT
+			|| reservations.some((reservation) => reservation.state === "bound")
+		) return { outcome: "conflict" as const };
+	}
+
+	const bindings = orders.map(bindingFromOrder);
+	const digest = await manifestDigest(bindings);
+	for (const binding of bindings) {
+		await ctx.db.insert("retiredOrderSessions", {
+			...binding,
+			retiredAt: now,
+		});
+		await ctx.db.delete(binding.retiredOrderId);
+	}
+	await ctx.db.insert("orderResetReceipts", {
+		protocolVersion: RESET_PROTOCOL_VERSION,
+		resetId: RESET_ID,
+		siteUrl: SITE_URL,
+		retiredOrderCount: orders.length,
+		manifestDigest: digest,
+		completedAt: now,
+	});
+	return { outcome: "applied" as const };
+}
+
+/** Atomically retain checkout replay tombstones and remove safe disposable orders. */
 export const apply = internalMutation({
 	args: {},
 	returns: resetResultValidator,
-	handler: async (ctx) => {
-		assertOrderProducersExactlyClosed();
-		if (await legacySourceExists(ctx)) return { outcome: "conflict" as const };
+	handler: async (ctx) => await applyReset(ctx, hasLiveEffect),
+});
 
-		const orders = await ctx.db
-			.query("orders")
-			.withIndex("by_siteUrl", (q) => q.eq("siteUrl", SITE_URL))
-			.order("desc")
-			.take(ORDER_RESET_LIMIT + 1);
-		if (orders.length > ORDER_RESET_LIMIT) return { outcome: "source_overflow" as const };
-
-		const receipts = await ctx.db
-			.query("orderResetReceipts")
-			.withIndex("by_resetId", (q) => q.eq("resetId", RESET_ID))
-			.take(2);
-		if (receipts.length > 1) return { outcome: "conflict" as const };
-		const [receipt] = receipts;
-		if (receipt) {
-			const tombstones = await tombstonesForReset(ctx);
-			return receipt.protocolVersion === RESET_PROTOCOL_VERSION
-				&& receipt.siteUrl === SITE_URL
-				&& orders.length === 0
-				&& await tombstonesMatchReceipt(tombstones, receipt)
-				&& await tombstonesAreGloballyExclusive(ctx, tombstones)
-				? { outcome: "already_applied" as const }
-				: { outcome: "conflict" as const };
-		}
-		if (orders.length === 0) return { outcome: "source_empty" as const };
-		if ((await tombstonesForReset(ctx)).length !== 0) return { outcome: "conflict" as const };
-
-		const sessionIds = new Set(orders.map((order) => order.stripeSessionId));
-		if (sessionIds.size !== orders.length) return { outcome: "conflict" as const };
-
-		const now = Date.now();
-		if (orders.some((order) => hasLiveEffect(order, now))) {
-			return { outcome: "live_effect" as const };
-		}
-
-		for (const order of orders) {
-			const [globalMatches, existingTombstones, reservations] = await Promise.all([
-				ctx.db
-					.query("orders")
-					.withIndex("by_stripeSessionId", (q) =>
-						q.eq("stripeSessionId", order.stripeSessionId),
-					)
-					.take(2),
-				ctx.db
-					.query("retiredOrderSessions")
-					.withIndex("by_stripeSessionId", (q) =>
-						q.eq("stripeSessionId", order.stripeSessionId),
-					)
-					.take(2),
-				ctx.db
-					.query("checkoutSnapshotReservations")
-					.withIndex("by_stripeSessionId", (q) =>
-						q.eq("stripeSessionId", order.stripeSessionId),
-					)
-					.take(ORDER_RESET_LIMIT + 1),
-			]);
-			if (
-				globalMatches.length !== 1
-				|| globalMatches[0]._id !== order._id
-				|| existingTombstones.length !== 0
-				|| reservations.length > ORDER_RESET_LIMIT
-				|| reservations.some((reservation) => reservation.state === "bound")
-			) return { outcome: "conflict" as const };
-		}
-
-		const bindings = orders.map(bindingFromOrder);
-		const digest = await manifestDigest(bindings);
-		for (const binding of bindings) {
-			await ctx.db.insert("retiredOrderSessions", {
-				...binding,
-				retiredAt: now,
-			});
-			await ctx.db.delete(binding.retiredOrderId);
-		}
-		await ctx.db.insert("orderResetReceipts", {
-			protocolVersion: RESET_PROTOCOL_VERSION,
-			resetId: RESET_ID,
-			siteUrl: SITE_URL,
-			retiredOrderCount: orders.length,
-			manifestDigest: digest,
-			completedAt: now,
-		});
-		return { outcome: "applied" as const };
-	},
+/**
+ * Apply the same atomic reset after the owner accepts residual effects for
+ * their own test orders. Only unresolved print-submission uncertainty is
+ * waived; every other live-effect class remains blocking.
+ */
+export const applyOwnerTestOrders = internalMutation({
+	args: { authority: v.literal(OWNER_TEST_ORDER_RESET_AUTHORITY) },
+	returns: resetResultValidator,
+	handler: async (ctx, _args) => await applyReset(ctx, hasBlockingOwnerTestResetEffect),
 });
 
 /** Return only a closed class for post-reset verification. */
