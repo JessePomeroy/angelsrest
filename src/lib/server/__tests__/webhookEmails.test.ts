@@ -150,15 +150,36 @@ describe("webhook customer emails", () => {
 		});
 	});
 
-	it("describes prolonged GET escalation without claiming provider absence", async () => {
+	it("replaces a short malformed reconciliation order reference", async () => {
 		const mockResend = resend();
-		await sendPrintReconciliationBlockedAlert(mockResend as any, {
-			orderNumber: "ORD-005",
-			externalId: "cs_test_prolongedlookup1234",
-			reconciliationClass: "client_error",
-			escalationReason: "result_not_observed",
-		});
+		await sendPrintReconciliationBlockedAlert(
+			mockResend as unknown as Parameters<typeof sendPrintReconciliationBlockedAlert>[0],
+			{
+				orderNumber: "ORD-NaN",
+				externalId: "cs_test_malformedreference1234",
+				reconciliationClass: "client_error",
+			},
+		);
 		const payload = mockResend.emails.send.mock.calls[0]?.[0];
+		expect(payload?.subject).toBe("Print reconciliation blocked for order unknown");
+		expect(payload?.text).toContain("stopped for order unknown");
+		expect(payload?.text).not.toContain("ORD-NaN");
+	});
+
+	it("preserves a canonical order reference in prolonged GET escalation", async () => {
+		const mockResend = resend();
+		await sendPrintReconciliationBlockedAlert(
+			mockResend as unknown as Parameters<typeof sendPrintReconciliationBlockedAlert>[0],
+			{
+				orderNumber: "ORD-005",
+				externalId: "cs_test_prolongedlookup1234",
+				reconciliationClass: "client_error",
+				escalationReason: "result_not_observed",
+			},
+		);
+		const payload = mockResend.emails.send.mock.calls[0]?.[0];
+		expect(payload?.subject).toBe("Print reconciliation blocked for order ORD-005");
+		expect(payload?.text).toContain("stopped for order ORD-005");
 		expect(payload?.text).toContain("Repeated provider lookups remained inconclusive");
 		expect(payload?.text).toContain("does not assert that the provider order is absent");
 	});
