@@ -191,6 +191,13 @@ existing tombstones, a bound checkout reservation in any account scope, an
 active or recent effect lease, unresolved print submission or reconciliation,
 or a provider-owned nonterminal refund.
 
+After a `live_effect` stop, the fixed internal `orderReset.classifyLiveEffect`
+query can classify the block only under separate read authority. It uses the
+same closed-state requirement, tenant source, and conservative bound. Its
+response contains only normalized source or live-effect classes in a fixed
+order. It exposes no row, identifier, PII, amount, count, deadline, or provider
+data and causes no mutation or external request.
+
 Retired Sessions are terminal replays. Live-order and tombstone coexistence is
 a routing conflict. The webhook acknowledges a retired Session before line-item,
 order, provider, fee, or email work. `orders.create` also rejects it, and

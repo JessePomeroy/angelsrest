@@ -269,6 +269,63 @@ describe("owner-approved full order reset", () => {
 		expect(await t.run((ctx) => ctx.db.query("orders").collect())).toHaveLength(1);
 	});
 
+	test("classifies all live-effect families with deterministic closed output", async () => {
+		const t = convexTest(schema, modules);
+		const now = Date.now();
+		await insertOrder(t, 1, {
+			fulfillmentRecoveryStatus: "refund_pending",
+			automatedRefundAttentionReason: "request_outcome_unknown",
+			printFulfillmentClaim: true,
+			lumaprintsOrderNumber: "LP-unresolved",
+			status: "printing",
+			automatedRefundLeaseExpiresAt: now + 60_000,
+			stripeFeeCaptureLastAttemptAt: now,
+		});
+
+		const result = await t.query(internal.orderReset.classifyLiveEffect, {});
+		expect(result).toEqual({
+			outcome: "live_effect",
+			classes: [
+				"refund_nonterminal",
+				"refund_outcome_unknown",
+				"print_submission_unresolved",
+				"provider_order_nonterminal",
+				"active_deadline",
+				"recent_activity",
+			],
+		});
+		expect(Object.keys(result).sort()).toEqual(["classes", "outcome"]);
+	});
+
+	test("classifies empty, clear, legacy-conflict, and overflow sources without raw facts", async () => {
+		const empty = convexTest(schema, modules);
+		await expect(empty.query(internal.orderReset.classifyLiveEffect, {})).resolves.toEqual({
+			outcome: "source_empty",
+		});
+
+		const clear = convexTest(schema, modules);
+		await insertOrder(clear, 1);
+		await expect(clear.query(internal.orderReset.classifyLiveEffect, {})).resolves.toEqual({
+			outcome: "no_live_effect",
+		});
+
+		const legacy = convexTest(schema, modules);
+		await insertOrder(legacy, 1, { siteUrl: "https://angelsrest.online" });
+		await expect(legacy.query(internal.orderReset.classifyLiveEffect, {})).resolves.toEqual({
+			outcome: "legacy_source_conflict",
+		});
+
+		const overflow = convexTest(schema, modules);
+		await overflow.run(async (ctx) => {
+			for (let index = 0; index < ORDER_RESET_LIMIT + 1; index += 1) {
+				await ctx.db.insert("orders", order(index));
+			}
+		});
+		await expect(overflow.query(internal.orderReset.classifyLiveEffect, {})).resolves.toEqual({
+			outcome: "source_overflow",
+		});
+	});
+
 	test("routes and rejects retired checkout replays after a later reopen", async () => {
 		const t = convexTest(schema, modules);
 		const retiredOrderId = await insertOrder(t, 1);

@@ -60,6 +60,43 @@ const verificationResultValidator = v.union(
 	v.object({ outcome: v.literal("conflict") }),
 );
 
+const liveEffectClassValidator = v.union(
+	v.literal("refund_nonterminal"),
+	v.literal("refund_outcome_unknown"),
+	v.literal("print_submission_unresolved"),
+	v.literal("provider_order_nonterminal"),
+	v.literal("active_deadline"),
+	v.literal("recent_activity"),
+);
+
+const liveEffectClassificationValidator = v.union(
+	v.object({ outcome: v.literal("source_overflow") }),
+	v.object({ outcome: v.literal("source_empty") }),
+	v.object({ outcome: v.literal("legacy_source_conflict") }),
+	v.object({ outcome: v.literal("no_live_effect") }),
+	v.object({
+		outcome: v.literal("live_effect"),
+		classes: v.array(liveEffectClassValidator),
+	}),
+);
+
+type LiveEffectClass =
+	| "refund_nonterminal"
+	| "refund_outcome_unknown"
+	| "print_submission_unresolved"
+	| "provider_order_nonterminal"
+	| "active_deadline"
+	| "recent_activity";
+
+const liveEffectClassOrder = [
+	"refund_nonterminal",
+	"refund_outcome_unknown",
+	"print_submission_unresolved",
+	"provider_order_nonterminal",
+	"active_deadline",
+	"recent_activity",
+] as const satisfies readonly LiveEffectClass[];
+
 type RetiredBinding = {
 	protocolVersion: 1;
 	siteUrl: string;
@@ -70,28 +107,40 @@ type RetiredBinding = {
 	resetId: string;
 };
 
-function hasLiveEffect(order: Doc<"orders">, now: number) {
+function liveEffectClasses(order: Doc<"orders">, now: number) {
+	const classes: LiveEffectClass[] = [];
 	if (
 		order.fulfillmentRecoveryStatus === "refund_pending"
 		|| order.automatedRefundStatus === "pending"
 		|| order.automatedRefundStatus === "requires_action"
-		|| order.automatedRefundAttentionReason === "request_outcome_unknown"
-		|| order.printFulfillmentPhase === "submitting"
+	) classes.push("refund_nonterminal");
+	if (order.automatedRefundAttentionReason === "request_outcome_unknown") {
+		classes.push("refund_outcome_unknown");
+	}
+	if (
+		order.printFulfillmentPhase === "submitting"
 		|| order.printFulfillmentResolution === "submission_uncertain"
 		|| order.printFulfillmentResolution === "reconciliation_blocked"
 		|| order.printFulfillmentClaim === true
 			&& order.printFulfillmentResolution !== "resolved"
-		|| order.lumaprintsOrderNumber !== undefined
-			&& !["shipped", "delivered", "refunded"].includes(order.status)
-	) return true;
+	) classes.push("print_submission_unresolved");
+	if (
+		order.lumaprintsOrderNumber !== undefined
+		&& !["shipped", "delivered", "refunded"].includes(order.status)
+	) classes.push("provider_order_nonterminal");
 	if (activeDeadlineFields.some((field) => {
 		const value = order[field];
 		return typeof value === "number" && value > now;
-	})) return true;
-	return recentActivityFields.some((field) => {
+	})) classes.push("active_deadline");
+	if (recentActivityFields.some((field) => {
 		const value = order[field];
 		return typeof value === "number" && value > now - RECENT_EFFECT_WINDOW_MS;
-	});
+	})) classes.push("recent_activity");
+	return classes;
+}
+
+function hasLiveEffect(order: Doc<"orders">, now: number) {
+	return liveEffectClasses(order, now).length !== 0;
 }
 
 async function legacySourceExists(ctx: Pick<QueryCtx, "db">) {
@@ -208,6 +257,40 @@ async function tombstonesAreGloballyExclusive(
 	}
 	return true;
 }
+
+/** Return only normalized classes for the live-effect condition that stopped the reset. */
+export const classifyLiveEffect = internalQuery({
+	args: {},
+	returns: liveEffectClassificationValidator,
+	handler: async (ctx) => {
+		assertOrderProducersExactlyClosed();
+		if (await legacySourceExists(ctx)) {
+			return { outcome: "legacy_source_conflict" as const };
+		}
+		const orders = await ctx.db
+			.query("orders")
+			.withIndex("by_siteUrl", (q) => q.eq("siteUrl", SITE_URL))
+			.order("desc")
+			.take(ORDER_RESET_LIMIT + 1);
+		if (orders.length > ORDER_RESET_LIMIT) {
+			return { outcome: "source_overflow" as const };
+		}
+		if (orders.length === 0) return { outcome: "source_empty" as const };
+
+		const classes = new Set<LiveEffectClass>();
+		const now = Date.now();
+		for (const order of orders) {
+			for (const classification of liveEffectClasses(order, now)) {
+				classes.add(classification);
+			}
+		}
+		if (classes.size === 0) return { outcome: "no_live_effect" as const };
+		return {
+			outcome: "live_effect" as const,
+			classes: liveEffectClassOrder.filter((classification) => classes.has(classification)),
+		};
+	},
+});
 
 /** Atomically retain checkout replay tombstones and remove the approved tenant's old orders. */
 export const apply = internalMutation({
