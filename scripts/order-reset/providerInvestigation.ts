@@ -7,6 +7,7 @@ const MAX_PAGES = 10;
 const MAX_ROWS_PER_PAGE = 100;
 const MAX_ROWS = MAX_PAGES * MAX_ROWS_PER_PAGE;
 const MAX_RESPONSE_BYTES = 2 * 1024 * 1024;
+const MAX_TARGETS = 50;
 const REQUEST_TIMEOUT_MS = 15_000;
 const EXTERNAL_ID = /^cs_(?:test|live)_[A-Za-z0-9]{16,120}$/;
 const CONTENT_ENCODINGS = new Set(["identity", "gzip", "br", "deflate"]);
@@ -24,6 +25,21 @@ export type ProviderInvestigationResult =
 	| "provider_investigation:live_effect_conflict"
 	| "provider_investigation:configuration_error"
 	| "provider_investigation:operation_unavailable";
+
+export type ProviderMultiInvestigationTargets =
+	| { outcome: "ready"; externalIds: string[] }
+	| { outcome: "source_conflict" | "target_conflict" | "live_effect_conflict" };
+
+export type ProviderMultiInvestigationResult =
+	| "provider_multi_investigation:all_observed"
+	| "provider_multi_investigation:some_observed"
+	| "provider_multi_investigation:none_observed"
+	| "provider_multi_investigation:inconclusive"
+	| "provider_multi_investigation:source_conflict"
+	| "provider_multi_investigation:target_conflict"
+	| "provider_multi_investigation:live_effect_conflict"
+	| "provider_multi_investigation:configuration_error"
+	| "provider_multi_investigation:operation_unavailable";
 
 export async function claimProtectedOperationAttempt(
 	directory: string,
@@ -90,6 +106,14 @@ export async function claimProviderInvestigationAttempt(directory: string) {
 	);
 }
 
+export async function claimProviderMultiInvestigationAttempt(directory: string) {
+	return await claimProtectedOperationAttempt(
+		directory,
+		"production-provider-multi-investigation-attempted",
+		"provider_multi_investigation_attempted\n",
+	);
+}
+
 export function parseProviderInvestigationTarget(value: string): ProviderInvestigationTarget {
 	let parsed: unknown;
 	try {
@@ -105,6 +129,41 @@ export function parseProviderInvestigationTarget(value: string): ProviderInvesti
 		/^cs_live_[A-Za-z0-9]{16,120}$/.test(parsed.externalId)
 	)
 		return { outcome: "ready", externalId: parsed.externalId };
+	if (
+		(parsed.outcome === "source_conflict" ||
+			parsed.outcome === "target_conflict" ||
+			parsed.outcome === "live_effect_conflict") &&
+		Object.keys(parsed).length === 1
+	)
+		return { outcome: parsed.outcome };
+	throw new Error("invalid");
+}
+
+export function parseProviderMultiInvestigationTargets(
+	value: string,
+): ProviderMultiInvestigationTargets {
+	let parsed: unknown;
+	try {
+		parsed = JSON.parse(value) as unknown;
+	} catch {
+		throw new Error("invalid");
+	}
+	if (!object(parsed)) throw new Error("invalid");
+	if (
+		parsed.outcome === "ready" &&
+		Object.keys(parsed).length === 2 &&
+		Array.isArray(parsed.externalIds) &&
+		parsed.externalIds.length >= 2 &&
+		parsed.externalIds.length <= MAX_TARGETS &&
+		parsed.externalIds.every(
+			(externalId) =>
+				typeof externalId === "string" && /^cs_live_[A-Za-z0-9]{16,120}$/.test(externalId),
+		) &&
+		parsed.externalIds.every(
+			(externalId, index) => index === 0 || parsed.externalIds[index - 1] < externalId,
+		)
+	)
+		return { outcome: "ready", externalIds: [...parsed.externalIds] };
 	if (
 		(parsed.outcome === "source_conflict" ||
 			parsed.outcome === "target_conflict" ||
@@ -265,16 +324,23 @@ function parsePage(value: unknown, storeId: number): ProviderPage {
 	};
 }
 
-export async function observeProviderMatch(
-	externalId: string,
+export async function observeProviderMatches(
+	externalIds: readonly string[],
 	configuration: ProviderConfiguration,
 	fetcher: typeof fetch = fetch,
-): Promise<"observed" | "not_observed" | "inconclusive"> {
-	if (!EXTERNAL_ID.test(externalId)) return "inconclusive";
+): Promise<"all_observed" | "some_observed" | "none_observed" | "inconclusive"> {
+	if (
+		externalIds.length === 0 ||
+		externalIds.length > MAX_TARGETS ||
+		externalIds.some((externalId) => !EXTERNAL_ID.test(externalId)) ||
+		new Set(externalIds).size !== externalIds.length
+	)
+		return "inconclusive";
+	const targets = new Set(externalIds);
 	let expectedTotalOrders: number | null = null;
 	let expectedTotalPages: number | null = null;
 	let rowsRead = 0;
-	let match: string | null = null;
+	const matchedExternalIds = new Set<string>();
 	const seenOrderNumbers = new Set<string>();
 
 	try {
@@ -303,7 +369,7 @@ export async function observeProviderMatch(
 			}
 			if (response.status === 404 && page === 1) {
 				await discardBody(response);
-				return "not_observed";
+				return "none_observed";
 			}
 			if (!response.ok) {
 				await discardBody(response);
@@ -329,25 +395,37 @@ export async function observeProviderMatch(
 				parsed.totalPages !== expectedTotalPages
 			)
 				return "inconclusive";
-			if (parsed.totalOrders === 0) return "not_observed";
+			if (parsed.totalOrders === 0) return "none_observed";
 			if (page < parsed.totalPages && parsed.orders.length === 0) return "inconclusive";
 			rowsRead += parsed.orders.length;
 			if (rowsRead > parsed.totalOrders || rowsRead > MAX_ROWS) return "inconclusive";
 			for (const row of parsed.orders) {
 				if (seenOrderNumbers.has(row.orderNumber)) return "inconclusive";
 				seenOrderNumbers.add(row.orderNumber);
-				if (row.externalId !== externalId) continue;
-				if (match !== null) return "inconclusive";
-				match = row.orderNumber;
+				if (!targets.has(row.externalId)) continue;
+				if (matchedExternalIds.has(row.externalId)) return "inconclusive";
+				matchedExternalIds.add(row.externalId);
 			}
 			if (page === parsed.totalPages) {
 				if (rowsRead !== parsed.totalOrders) return "inconclusive";
-				return match === null ? "not_observed" : "observed";
+				if (matchedExternalIds.size === 0) return "none_observed";
+				return matchedExternalIds.size === targets.size ? "all_observed" : "some_observed";
 			}
 		}
 	} catch {
 		return "inconclusive";
 	}
+	return "inconclusive";
+}
+
+export async function observeProviderMatch(
+	externalId: string,
+	configuration: ProviderConfiguration,
+	fetcher: typeof fetch = fetch,
+): Promise<"observed" | "not_observed" | "inconclusive"> {
+	const result = await observeProviderMatches([externalId], configuration, fetcher);
+	if (result === "all_observed") return "observed";
+	if (result === "none_observed") return "not_observed";
 	return "inconclusive";
 }
 
@@ -380,4 +458,38 @@ export async function runProviderInvestigation(dependencies: {
 	if (observation === "observed") return "provider_investigation:match_observed";
 	if (observation === "not_observed") return "provider_investigation:match_not_observed";
 	return "provider_investigation:inconclusive";
+}
+
+export async function runProviderMultiInvestigation(dependencies: {
+	getTargets: () => Promise<ProviderMultiInvestigationTargets>;
+	observeMatches: (
+		externalIds: readonly string[],
+	) => Promise<"all_observed" | "some_observed" | "none_observed" | "inconclusive">;
+}): Promise<ProviderMultiInvestigationResult> {
+	let targets: ProviderMultiInvestigationTargets;
+	try {
+		targets = await dependencies.getTargets();
+	} catch {
+		return "provider_multi_investigation:configuration_error";
+	}
+	if (targets.outcome !== "ready") return `provider_multi_investigation:${targets.outcome}`;
+	let observation: "all_observed" | "some_observed" | "none_observed" | "inconclusive";
+	try {
+		observation = await dependencies.observeMatches(targets.externalIds);
+	} catch {
+		observation = "inconclusive";
+	}
+	let confirmed: ProviderMultiInvestigationTargets;
+	try {
+		confirmed = await dependencies.getTargets();
+	} catch {
+		return "provider_multi_investigation:target_conflict";
+	}
+	if (
+		confirmed.outcome !== "ready" ||
+		confirmed.externalIds.length !== targets.externalIds.length ||
+		confirmed.externalIds.some((externalId, index) => externalId !== targets.externalIds[index])
+	)
+		return "provider_multi_investigation:target_conflict";
+	return `provider_multi_investigation:${observation}`;
 }

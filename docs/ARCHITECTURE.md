@@ -224,6 +224,21 @@ caller first requires the host producer state to be explicitly closed, pins the
 Production Convex deployment, and consumes a separate protected local marker
 before the internal read.
 
+When that classifier returns `unresolved_multiple`, a separately approved
+multi-target investigation can use the internal
+`orderReset.providerMultiInvestigationTargets` selector. The selector shares the
+same bounded canonical source and live-effect checks. It requires at least two
+and at most 50 unresolved LumaPrints targets. Every target must have no provider
+number, a live unique Checkout Session, and no other target conflict. It returns
+the sorted identities only to the trusted local process. The operator claims a
+distinct permanent marker before configuration or data access. It performs one
+bounded GET-only Production provider scan, compares all identities in memory,
+rechecks the exact target array, and emits only `all_observed`, `some_observed`,
+`none_observed`, `inconclusive`, or a normalized conflict. It prints no identity,
+provider number, count, response, timestamp, credential, or raw error and makes
+no provider or business-data mutation. Provider absence is not proof of failed
+submission and does not clear the durable fence or authorize reset.
+
 Retired Sessions are terminal replays. Live-order and tombstone coexistence is
 a routing conflict. The webhook acknowledges a retired Session before line-item,
 order, provider, fee, or email work. `orders.create` also rejects it, and
