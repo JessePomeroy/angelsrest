@@ -239,6 +239,16 @@ provider number, count, response, timestamp, credential, or raw error and makes
 no provider or business-data mutation. Provider absence is not proof of failed
 submission and does not clear the durable fence or authorize reset.
 
+If multi-target selection stops before its provider scan,
+`orderReset.classifyProviderMultiTargetConflict` can run only under separate
+bounded read authority. It reuses the exact multi-target assessment and returns
+only source, other-live-effect, no-conflict, cardinality-change, or aggregate
+target-shape classes in a fixed order. It never returns a target, count,
+provider number, timestamp, or raw error and causes no mutation or external
+request. Its fixed caller requires the host state to be closed, pins the
+Production Convex deployment, sanitizes the child environment, and consumes a
+separate one-use protected marker before the read.
+
 Retired Sessions are terminal replays. Live-order and tombstone coexistence is
 a routing conflict. The webhook acknowledges a retired Session before line-item,
 order, provider, fee, or email work. `orders.create` also rejects it, and

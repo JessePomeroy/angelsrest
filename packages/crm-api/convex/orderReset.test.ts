@@ -198,6 +198,10 @@ describe("owner-approved full order reset", () => {
 				{},
 			)).rejects.toThrow("Order producers must be explicitly closed");
 			await expect(t.query(
+				internal.orderReset.classifyProviderMultiTargetConflict,
+				{},
+			)).rejects.toThrow("Order producers must be explicitly closed");
+			await expect(t.query(
 				internal.orderReset.classifyProviderTargetConflict,
 				{},
 			)).rejects.toThrow("Order producers must be explicitly closed");
@@ -616,6 +620,78 @@ describe("owner-approved full order reset", () => {
 			internal.orderReset.providerMultiInvestigationTargets,
 			{},
 		)).resolves.toEqual({ outcome: "live_effect_conflict" });
+	});
+
+	test("classifies multi-target conflicts without rows, counts, writes, or provider access", async () => {
+		const empty = convexTest(schema, modules);
+		await expect(empty.query(
+			internal.orderReset.classifyProviderMultiTargetConflict,
+			{},
+		)).resolves.toEqual({ outcome: "source_conflict" });
+
+		const none = convexTest(schema, modules);
+		await insertOrder(none, 1);
+		await expect(none.query(
+			internal.orderReset.classifyProviderMultiTargetConflict,
+			{},
+		)).resolves.toEqual({ outcome: "target_conflict", classes: ["unresolved_none"] });
+
+		const single = convexTest(schema, modules);
+		await insertOrder(single, 1, {
+			stripeSessionId: "cs_live_1234567890abcdef",
+			fulfillmentType: "lumaprints",
+			printFulfillmentClaim: true,
+			printFulfillmentClaimedAt: 1,
+		});
+		await expect(single.query(
+			internal.orderReset.classifyProviderMultiTargetConflict,
+			{},
+		)).resolves.toEqual({ outcome: "target_conflict", classes: ["unresolved_single"] });
+
+		const combined = convexTest(schema, modules);
+		await insertOrder(combined, 1, {
+			stripeSessionId: "cs_live_1234567890abcdef",
+			fulfillmentType: "self",
+			printFulfillmentClaim: true,
+			printFulfillmentClaimedAt: 1,
+			printFulfillmentPhase: "preparing",
+		});
+		await insertOrder(combined, 2, {
+			stripeSessionId: "cs_test_1234567890abcdef",
+			fulfillmentType: "lumaprints",
+			printFulfillmentClaim: true,
+			printFulfillmentClaimedAt: 1,
+			lumaprintsOrderNumber: "10000000001",
+			status: "shipped",
+		});
+		const before = await combined.run((ctx) => ctx.db.query("orders").collect());
+		await expect(combined.query(
+			internal.orderReset.classifyProviderMultiTargetConflict,
+			{},
+		)).resolves.toEqual({
+			outcome: "target_conflict",
+			classes: [
+				"fulfillment_not_lumaprints",
+				"preparation_only",
+				"provider_number_present",
+				"session_not_live",
+			],
+		});
+		expect(await combined.run((ctx) => ctx.db.query("orders").collect())).toEqual(before);
+
+		const ready = convexTest(schema, modules);
+		for (let index = 1; index <= 2; index += 1) {
+			await insertOrder(ready, index, {
+				stripeSessionId: `cs_live_1234567890abcde${index}`,
+				fulfillmentType: "lumaprints",
+				printFulfillmentClaim: true,
+				printFulfillmentClaimedAt: 1,
+			});
+		}
+		await expect(ready.query(
+			internal.orderReset.classifyProviderMultiTargetConflict,
+			{},
+		)).resolves.toEqual({ outcome: "no_target_conflict" });
 	});
 
 	test("routes and rejects retired checkout replays after a later reopen", async () => {

@@ -94,6 +94,26 @@ const providerMultiInvestigationTargetsValidator = v.union(
 	v.object({ outcome: v.literal("live_effect_conflict") }),
 );
 
+const providerMultiTargetConflictClassValidator = v.union(
+	v.literal("unresolved_none"),
+	v.literal("unresolved_single"),
+	v.literal("fulfillment_not_lumaprints"),
+	v.literal("preparation_only"),
+	v.literal("provider_number_present"),
+	v.literal("session_not_live"),
+	v.literal("session_not_unique"),
+);
+
+const providerMultiTargetConflictClassificationValidator = v.union(
+	v.object({ outcome: v.literal("source_conflict") }),
+	v.object({ outcome: v.literal("live_effect_conflict") }),
+	v.object({ outcome: v.literal("no_target_conflict") }),
+	v.object({
+		outcome: v.literal("target_conflict"),
+		classes: v.array(providerMultiTargetConflictClassValidator),
+	}),
+);
+
 const providerTargetConflictClassValidator = v.union(
 	v.literal("unresolved_none"),
 	v.literal("unresolved_multiple"),
@@ -114,14 +134,17 @@ const providerTargetConflictClassificationValidator = v.union(
 	}),
 );
 
-type ProviderTargetConflictClass =
-	| "unresolved_none"
-	| "unresolved_multiple"
+type ProviderTargetShapeConflictClass =
 	| "fulfillment_not_lumaprints"
 	| "preparation_only"
 	| "provider_number_present"
 	| "session_not_live"
 	| "session_not_unique";
+
+type ProviderTargetConflictClass =
+	| "unresolved_none"
+	| "unresolved_multiple"
+	| ProviderTargetShapeConflictClass;
 
 type ProviderInvestigationAssessment =
 	| { outcome: "source_conflict" | "live_effect_conflict" }
@@ -131,6 +154,26 @@ type ProviderInvestigationAssessment =
 type ProviderInvestigationSource =
 	| { outcome: "source_conflict" | "live_effect_conflict" }
 	| { outcome: "ready"; orders: Doc<"orders">[] };
+
+type ProviderMultiTargetConflictClass =
+	| "unresolved_none"
+	| "unresolved_single"
+	| ProviderTargetShapeConflictClass;
+
+type ProviderMultiInvestigationAssessment =
+	| { outcome: "source_conflict" | "live_effect_conflict" }
+	| { outcome: "target_conflict"; classes: ProviderMultiTargetConflictClass[] }
+	| { outcome: "ready"; externalIds: string[] };
+
+const providerMultiTargetConflictClassOrder = [
+	"unresolved_none",
+	"unresolved_single",
+	"fulfillment_not_lumaprints",
+	"preparation_only",
+	"provider_number_present",
+	"session_not_live",
+	"session_not_unique",
+] as const satisfies readonly ProviderMultiTargetConflictClass[];
 
 type LiveEffectClass =
 	| "refund_nonterminal"
@@ -347,8 +390,8 @@ async function providerInvestigationSource(
 async function providerTargetConflictClasses(
 	ctx: Pick<QueryCtx, "db">,
 	target: Doc<"orders">,
-) {
-	const classes: ProviderTargetConflictClass[] = [];
+): Promise<ProviderTargetShapeConflictClass[]> {
+	const classes: ProviderTargetShapeConflictClass[] = [];
 	if (target.fulfillmentType !== "lumaprints") classes.push("fulfillment_not_lumaprints");
 	if (target.printFulfillmentPhase === "preparing") classes.push("preparation_only");
 	if (target.lumaprintsOrderNumber !== undefined) classes.push("provider_number_present");
@@ -403,28 +446,62 @@ export const providerInvestigationTarget = internalQuery({
 	},
 });
 
+async function providerMultiInvestigationAssessment(
+	ctx: Pick<QueryCtx, "db">,
+): Promise<ProviderMultiInvestigationAssessment> {
+	const source = await providerInvestigationSource(ctx);
+	if (source.outcome !== "ready") return source;
+
+	const unresolved = source.orders.filter(hasUnresolvedPrintSubmission);
+	if (unresolved.length === 0) {
+		return { outcome: "target_conflict", classes: ["unresolved_none"] };
+	}
+	if (unresolved.length === 1) {
+		return { outcome: "target_conflict", classes: ["unresolved_single"] };
+	}
+	const classes = new Set<ProviderMultiTargetConflictClass>();
+	for (const target of unresolved) {
+		for (const classification of await providerTargetConflictClasses(ctx, target)) {
+			classes.add(classification);
+		}
+	}
+	if (classes.size !== 0) {
+		return {
+			outcome: "target_conflict",
+			classes: providerMultiTargetConflictClassOrder.filter((classification) =>
+				classes.has(classification)
+			),
+		};
+	}
+	return {
+		outcome: "ready",
+		externalIds: unresolved.map((target) => target.stripeSessionId).sort(),
+	};
+}
+
 /** Select all fixed unresolved provider identities for one bounded trusted-host scan. */
 export const providerMultiInvestigationTargets = internalQuery({
 	args: {},
 	returns: providerMultiInvestigationTargetsValidator,
 	handler: async (ctx) => {
 		assertOrderProducersExactlyClosed();
-		const source = await providerInvestigationSource(ctx);
-		if (source.outcome !== "ready") return source;
+		const assessment = await providerMultiInvestigationAssessment(ctx);
+		return assessment.outcome === "target_conflict"
+			? { outcome: "target_conflict" as const }
+			: assessment;
+	},
+});
 
-		const unresolved = source.orders.filter(hasUnresolvedPrintSubmission);
-		if (unresolved.length < 2 || unresolved.length > ORDER_RESET_LIMIT) {
-			return { outcome: "target_conflict" as const };
-		}
-		for (const target of unresolved) {
-			if ((await providerTargetConflictClasses(ctx, target)).length !== 0) {
-				return { outcome: "target_conflict" as const };
-			}
-		}
-		return {
-			outcome: "ready" as const,
-			externalIds: unresolved.map((target) => target.stripeSessionId).sort(),
-		};
+/** Classify only normalized causes behind a stopped multi-target selection. */
+export const classifyProviderMultiTargetConflict = internalQuery({
+	args: {},
+	returns: providerMultiTargetConflictClassificationValidator,
+	handler: async (ctx) => {
+		assertOrderProducersExactlyClosed();
+		const assessment = await providerMultiInvestigationAssessment(ctx);
+		return assessment.outcome === "ready"
+			? { outcome: "no_target_conflict" as const }
+			: assessment;
 	},
 });
 
