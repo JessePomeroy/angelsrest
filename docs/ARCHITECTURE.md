@@ -270,6 +270,27 @@ protected marker before final environment validation or the read, passes only
 the minimum CLI environment, bounds time and output, parses only exact one-key
 normalized JSON, and maps every child or parser failure to a fixed error class.
 
+After a separately approved `lookup_shape_eligible` result, the internal
+`orderReset.providerMultiLookupEligibleTargets` selector can prepare one fresh
+bounded provider observation without treating stored fulfillment type as
+provider authority. It reuses the canonical 50-row source and other-live-effect
+checks, requires two to 50 unresolved rows, accepts only the shared exact test
+or live Checkout Session shape, and rejects preparation-only state, any stored
+provider number, or global Session non-uniqueness. It sorts the identities and
+returns them only to the trusted local process. The distinct one-use caller
+claims its protected marker before final configuration, Convex, or provider
+access; requires the host and Convex producer states closed; pins the Production
+Convex target and Production-only LumaPrints configuration; performs one
+existing bounded GET-only scan; and then re-reads and compares the exact sorted
+identity array. Any recheck failure or drift suppresses the observation as a
+target conflict. Final output is limited to aggregate all, some, none, or
+inconclusive observation, normalized source/target/live-effect conflicts, or
+fixed configuration/availability errors. It prints no target, count, provider
+number, response, timestamp, credential, or raw error and has no mutation path.
+A none-observed result is not proof of non-submission and never clears the
+durable uncertainty fence or authorizes reset. Source review, rollout, custody,
+and Production provider invocation remain distinct gates.
+
 Retired Sessions are terminal replays. Live-order and tombstone coexistence is
 a routing conflict. The webhook acknowledges a retired Session before line-item,
 order, provider, fee, or email work. `orders.create` also rejects it, and

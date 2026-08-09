@@ -18,6 +18,7 @@ import {
 
 const externalId = "cs_live_1234567890abcdef";
 const secondExternalId = "cs_live_1234567890abcdeg";
+const testExternalId = "cs_test_1234567890abcdeh";
 const configuration: ProviderConfiguration = {
 	apiKey: "key",
 	apiSecret: "secret",
@@ -296,6 +297,21 @@ describe("bounded print-provider investigation", () => {
 				configuration,
 				vi.fn().mockResolvedValue(response([order(externalId), order(externalId, "10000000002")])),
 			),
+		).resolves.toBe("inconclusive");
+	});
+
+	test("uses the shared exact test-or-live identity shape for provider observation", async () => {
+		await expect(
+			observeProviderMatches(
+				[externalId, testExternalId],
+				configuration,
+				vi
+					.fn()
+					.mockResolvedValue(response([order(externalId), order(testExternalId, "10000000002")])),
+			),
+		).resolves.toBe("all_observed");
+		await expect(
+			observeProviderMatches([externalId, `cs_test_${"A".repeat(15)}`], configuration, vi.fn()),
 		).resolves.toBe("inconclusive");
 	});
 

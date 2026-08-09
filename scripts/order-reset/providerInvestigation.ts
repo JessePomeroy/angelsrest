@@ -1,6 +1,7 @@
 import { constants } from "node:fs";
 import { lstat, open } from "node:fs/promises";
 import { join } from "node:path";
+import { isStripeCheckoutSessionId } from "../../packages/crm-api/convex/helpers/checkoutSnapshot";
 import { normalizeLumaPrintsProviderNumber } from "../../src/lib/server/lumaprintsProviderNumber";
 
 const MAX_PAGES = 10;
@@ -9,7 +10,6 @@ const MAX_ROWS = MAX_PAGES * MAX_ROWS_PER_PAGE;
 const MAX_RESPONSE_BYTES = 2 * 1024 * 1024;
 const MAX_TARGETS = 50;
 const REQUEST_TIMEOUT_MS = 15_000;
-const EXTERNAL_ID = /^cs_(?:test|live)_[A-Za-z0-9]{16,120}$/;
 const CONTENT_ENCODINGS = new Set(["identity", "gzip", "br", "deflate"]);
 
 export type ProviderInvestigationTarget =
@@ -149,21 +149,20 @@ export function parseProviderMultiInvestigationTargets(
 		throw new Error("invalid");
 	}
 	if (!object(parsed)) throw new Error("invalid");
+	const externalIds = parsed.externalIds;
 	if (
 		parsed.outcome === "ready" &&
 		Object.keys(parsed).length === 2 &&
-		Array.isArray(parsed.externalIds) &&
-		parsed.externalIds.length >= 2 &&
-		parsed.externalIds.length <= MAX_TARGETS &&
-		parsed.externalIds.every(
+		Array.isArray(externalIds) &&
+		externalIds.length >= 2 &&
+		externalIds.length <= MAX_TARGETS &&
+		externalIds.every(
 			(externalId) =>
 				typeof externalId === "string" && /^cs_live_[A-Za-z0-9]{16,120}$/.test(externalId),
 		) &&
-		parsed.externalIds.every(
-			(externalId, index) => index === 0 || parsed.externalIds[index - 1] < externalId,
-		)
+		externalIds.every((externalId, index) => index === 0 || externalIds[index - 1] < externalId)
 	)
-		return { outcome: "ready", externalIds: [...parsed.externalIds] };
+		return { outcome: "ready", externalIds: [...externalIds] };
 	if (
 		(parsed.outcome === "source_conflict" ||
 			parsed.outcome === "target_conflict" ||
@@ -332,7 +331,7 @@ export async function observeProviderMatches(
 	if (
 		externalIds.length === 0 ||
 		externalIds.length > MAX_TARGETS ||
-		externalIds.some((externalId) => !EXTERNAL_ID.test(externalId)) ||
+		externalIds.some((externalId) => !isStripeCheckoutSessionId(externalId)) ||
 		new Set(externalIds).size !== externalIds.length
 	)
 		return "inconclusive";

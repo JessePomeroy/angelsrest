@@ -198,6 +198,10 @@ describe("owner-approved full order reset", () => {
 				{},
 			)).rejects.toThrow("Order producers must be explicitly closed");
 			await expect(t.query(
+				internal.orderReset.providerMultiLookupEligibleTargets,
+				{},
+			)).rejects.toThrow("Order producers must be explicitly closed");
+			await expect(t.query(
 				internal.orderReset.classifyProviderMultiTargetConflict,
 				{},
 			)).rejects.toThrow("Order producers must be explicitly closed");
@@ -624,6 +628,194 @@ describe("owner-approved full order reset", () => {
 			internal.orderReset.providerMultiInvestigationTargets,
 			{},
 		)).resolves.toEqual({ outcome: "live_effect_conflict" });
+	});
+
+	test("freshly selects lookup-eligible test and live targets without fulfillment authority or writes", async () => {
+		const t = convexTest(schema, modules);
+		await insertOrder(t, 1, {
+			stripeSessionId: "cs_live_1234567890abcdeg",
+			fulfillmentType: "self",
+			printFulfillmentClaim: true,
+			printFulfillmentClaimedAt: 1,
+		});
+		await insertOrder(t, 2, {
+			stripeSessionId: "cs_test_1234567890abcdef",
+			fulfillmentType: "lumaprints",
+			printFulfillmentClaim: true,
+			printFulfillmentClaimedAt: 1,
+		});
+		const before = await t.run((ctx) => ctx.db.query("orders").collect());
+
+		await expect(t.query(
+			internal.orderReset.providerMultiLookupEligibleTargets,
+			{},
+		)).resolves.toEqual({
+			outcome: "ready",
+			externalIds: ["cs_live_1234567890abcdeg", "cs_test_1234567890abcdef"],
+		});
+		expect(await t.run((ctx) => ctx.db.query("orders").collect())).toEqual(before);
+	});
+
+	test("bounds lookup-eligible selection and rejects every unsafe target shape", async () => {
+		const empty = convexTest(schema, modules);
+		await expect(empty.query(
+			internal.orderReset.providerMultiLookupEligibleTargets,
+			{},
+		)).resolves.toEqual({ outcome: "source_conflict" });
+
+		const single = convexTest(schema, modules);
+		await insertOrder(single, 1, {
+			stripeSessionId: "cs_test_1234567890abcdef",
+			printFulfillmentClaim: true,
+			printFulfillmentClaimedAt: 1,
+		});
+		await expect(single.query(
+			internal.orderReset.providerMultiLookupEligibleTargets,
+			{},
+		)).resolves.toEqual({ outcome: "target_conflict" });
+
+		for (const unsafe of [
+			{ stripeSessionId: "invalid-provider-identity" },
+			{ stripeSessionId: `cs_test_${"A".repeat(15)}` },
+			{ stripeSessionId: `cs_test_${"A".repeat(121)}` },
+			{ printFulfillmentPhase: "preparing" },
+			{ lumaprintsOrderNumber: "10000000001", status: "shipped" },
+		] as const) {
+			const t = convexTest(schema, modules);
+			await insertOrder(t, 1, {
+				stripeSessionId: "cs_live_1234567890abcdef",
+				printFulfillmentClaim: true,
+				printFulfillmentClaimedAt: 1,
+			});
+			await insertOrder(t, 2, {
+				stripeSessionId: "cs_test_1234567890abcdeg",
+				printFulfillmentClaim: true,
+				printFulfillmentClaimedAt: 1,
+				...unsafe,
+			});
+			await expect(t.query(
+				internal.orderReset.providerMultiLookupEligibleTargets,
+				{},
+			)).resolves.toEqual({ outcome: "target_conflict" });
+		}
+
+		const nonUnique = convexTest(schema, modules);
+		await insertOrder(nonUnique, 1, {
+			stripeSessionId: "cs_live_1234567890abcdef",
+			printFulfillmentClaim: true,
+			printFulfillmentClaimedAt: 1,
+		});
+		await insertOrder(nonUnique, 2, {
+			stripeSessionId: "cs_test_1234567890abcdeg",
+			printFulfillmentClaim: true,
+			printFulfillmentClaimedAt: 1,
+		});
+		await insertOrder(nonUnique, 3, {
+			siteUrl: "other.example",
+			stripeSessionId: "cs_test_1234567890abcdeg",
+		});
+		await expect(nonUnique.query(
+			internal.orderReset.providerMultiLookupEligibleTargets,
+			{},
+		)).resolves.toEqual({ outcome: "target_conflict" });
+
+		const otherLiveEffect = convexTest(schema, modules);
+		for (let index = 1; index <= 2; index += 1) {
+			await insertOrder(otherLiveEffect, index, {
+				stripeSessionId: `cs_${index === 1 ? "live" : "test"}_1234567890abcde${index}`,
+				printFulfillmentClaim: true,
+				printFulfillmentClaimedAt: 1,
+				...(index === 2 ? { fulfillmentRecoveryStatus: "refund_pending" } : {}),
+			});
+		}
+		await expect(otherLiveEffect.query(
+			internal.orderReset.providerMultiLookupEligibleTargets,
+			{},
+		)).resolves.toEqual({ outcome: "live_effect_conflict" });
+	});
+
+	test("uses the shared exact Checkout Session shape boundaries", async () => {
+		const t = convexTest(schema, modules);
+		const externalIds = [`cs_live_${"A".repeat(120)}`, `cs_test_${"B".repeat(16)}`];
+		for (const [index, stripeSessionId] of externalIds.entries()) {
+			await insertOrder(t, index, {
+				stripeSessionId,
+				printFulfillmentClaim: true,
+				printFulfillmentClaimedAt: 1,
+			});
+		}
+		await expect(t.query(
+			internal.orderReset.providerMultiLookupEligibleTargets,
+			{},
+		)).resolves.toEqual({ outcome: "ready", externalIds });
+	});
+
+	test("preserves every bounded source and reset-artifact conflict", async () => {
+		const overflow = convexTest(schema, modules);
+		await overflow.run(async (ctx) => {
+			for (let index = 0; index < ORDER_RESET_LIMIT + 1; index += 1) {
+				await ctx.db.insert("orders", order(index));
+			}
+		});
+		await expect(overflow.query(
+			internal.orderReset.providerMultiLookupEligibleTargets,
+			{},
+		)).resolves.toEqual({ outcome: "source_conflict" });
+
+		const legacy = convexTest(schema, modules);
+		await insertOrder(legacy, 1, { siteUrl: "https://angelsrest.online" });
+		await expect(legacy.query(
+			internal.orderReset.providerMultiLookupEligibleTargets,
+			{},
+		)).resolves.toEqual({ outcome: "source_conflict" });
+
+		const receipt = convexTest(schema, modules);
+		await insertOrder(receipt, 1);
+		await receipt.run((ctx) => ctx.db.insert("orderResetReceipts", {
+			protocolVersion: 1,
+			resetId: RESET_ID,
+			siteUrl: SITE_URL,
+			retiredOrderCount: 1,
+			manifestDigest: "0".repeat(64),
+			completedAt: 1,
+		}));
+		await expect(receipt.query(
+			internal.orderReset.providerMultiLookupEligibleTargets,
+			{},
+		)).resolves.toEqual({ outcome: "source_conflict" });
+
+		const tombstone = convexTest(schema, modules);
+		const retiredOrderId = await insertOrder(tombstone, 1);
+		await tombstone.run((ctx) => ctx.db.insert("retiredOrderSessions", {
+			protocolVersion: 1,
+			siteUrl: SITE_URL,
+			routingKind: "legacy_unscoped",
+			stripeSessionId: "cs_retired_source_conflict",
+			retiredOrderId,
+			resetId: RESET_ID,
+			retiredAt: 1,
+		}));
+		await expect(tombstone.query(
+			internal.orderReset.providerMultiLookupEligibleTargets,
+			{},
+		)).resolves.toEqual({ outcome: "source_conflict" });
+	});
+
+	test("accepts the full bounded lookup-eligible target set", async () => {
+		const t = convexTest(schema, modules);
+		for (let index = 0; index < ORDER_RESET_LIMIT; index += 1) {
+			await insertOrder(t, index, {
+				stripeSessionId: `cs_${index % 2 === 0 ? "test" : "live"}_${String(index).padStart(16, "0")}`,
+				printFulfillmentClaim: true,
+				printFulfillmentClaimedAt: 1,
+			});
+		}
+		const result = await t.query(internal.orderReset.providerMultiLookupEligibleTargets, {});
+		expect(result.outcome).toBe("ready");
+		if (result.outcome === "ready") {
+			expect(result.externalIds).toHaveLength(ORDER_RESET_LIMIT);
+			expect(result.externalIds).toEqual([...result.externalIds].sort());
+		}
 	});
 
 	test("classifies multi-target conflicts without rows, counts, writes, or provider access", async () => {
