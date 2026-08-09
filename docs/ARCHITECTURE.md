@@ -214,6 +214,16 @@ identifiers, provider numbers, response bodies, counts, timestamps, or errors.
 A match that was not observed is not proof that the earlier submission failed;
 it does not clear the durable submission fence or authorize reset.
 
+If target selection stops before a provider request,
+`orderReset.classifyProviderTargetConflict` can run only under separate bounded
+read authority. It reuses the exact selector assessment and returns only source,
+other-live-effect, no-conflict, or deterministic target-conflict classes. It
+never returns the selected row, Session, provider number, count, timestamp, or
+raw error and causes no mutation or external request. Its fixed one-use operator
+caller first requires the host producer state to be explicitly closed, pins the
+Production Convex deployment, and consumes a separate protected local marker
+before the internal read.
+
 Retired Sessions are terminal replays. Live-order and tombstone coexistence is
 a routing conflict. The webhook acknowledges a retired Session before line-item,
 order, provider, fee, or email work. `orders.create` also rejects it, and

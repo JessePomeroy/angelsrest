@@ -189,6 +189,14 @@ describe("owner-approved full order reset", () => {
 			await expect(t.query(internal.orderReset.verify, {})).rejects.toThrow(
 				"Order producers must be explicitly closed",
 			);
+			await expect(t.query(
+				internal.orderReset.providerInvestigationTarget,
+				{},
+			)).rejects.toThrow("Order producers must be explicitly closed");
+			await expect(t.query(
+				internal.orderReset.classifyProviderTargetConflict,
+				{},
+			)).rejects.toThrow("Order producers must be explicitly closed");
 			expect(await t.run((ctx) => ctx.db.query("orders").take(2))).toHaveLength(1);
 		},
 	);
@@ -201,6 +209,10 @@ describe("owner-approved full order reset", () => {
 			}
 		});
 
+		await expect(t.query(
+			internal.orderReset.classifyProviderTargetConflict,
+			{},
+		)).resolves.toEqual({ outcome: "source_conflict" });
 		await expect(apply(t)).resolves.toEqual({ outcome: "source_overflow" });
 		expect(await t.run((ctx) => ctx.db.query("retiredOrderSessions").take(1))).toEqual([]);
 		expect(await t.run((ctx) => ctx.db.query("orderResetReceipts").take(1))).toEqual([]);
@@ -446,6 +458,94 @@ describe("owner-approved full order reset", () => {
 			internal.orderReset.providerInvestigationTarget,
 			{},
 		)).resolves.toEqual({ outcome: "source_conflict" });
+	});
+
+	test("classifies provider target conflicts with deterministic normalized output", async () => {
+		const combined = convexTest(schema, modules);
+		await insertOrder(combined, 1, {
+			stripeSessionId: "cs_test_1234567890abcdef",
+			fulfillmentType: "self",
+			status: "refunded",
+			printFulfillmentClaim: true,
+			printFulfillmentClaimedAt: 1,
+			printFulfillmentPhase: "preparing",
+			lumaprintsOrderNumber: "10000000001",
+		});
+		await insertOrder(combined, 2, {
+			siteUrl: "other.example",
+			stripeSessionId: "cs_test_1234567890abcdef",
+		});
+		await expect(combined.query(
+			internal.orderReset.classifyProviderTargetConflict,
+			{},
+		)).resolves.toEqual({
+			outcome: "target_conflict",
+			classes: [
+				"fulfillment_not_lumaprints",
+				"preparation_only",
+				"provider_number_present",
+				"session_not_live",
+				"session_not_unique",
+			],
+		});
+		await expect(combined.query(
+			internal.orderReset.providerInvestigationTarget,
+			{},
+		)).resolves.toEqual({ outcome: "target_conflict" });
+	});
+
+	test("classifies provider target source, live-effect, cardinality, and ready states", async () => {
+		const empty = convexTest(schema, modules);
+		await expect(empty.query(
+			internal.orderReset.classifyProviderTargetConflict,
+			{},
+		)).resolves.toEqual({ outcome: "source_conflict" });
+
+		const clear = convexTest(schema, modules);
+		await insertOrder(clear, 1);
+		await expect(clear.query(
+			internal.orderReset.classifyProviderTargetConflict,
+			{},
+		)).resolves.toEqual({ outcome: "target_conflict", classes: ["unresolved_none"] });
+
+		const multiple = convexTest(schema, modules);
+		for (let index = 1; index <= 2; index += 1) {
+			await insertOrder(multiple, index, {
+				stripeSessionId: `cs_live_1234567890abcde${index}`,
+				fulfillmentType: "lumaprints",
+				printFulfillmentClaim: true,
+				printFulfillmentClaimedAt: 1,
+			});
+		}
+		await expect(multiple.query(
+			internal.orderReset.classifyProviderTargetConflict,
+			{},
+		)).resolves.toEqual({ outcome: "target_conflict", classes: ["unresolved_multiple"] });
+
+		const otherLiveEffect = convexTest(schema, modules);
+		await insertOrder(otherLiveEffect, 1, {
+			stripeSessionId: "cs_live_1234567890abcdef",
+			fulfillmentType: "lumaprints",
+			printFulfillmentClaim: true,
+			printFulfillmentClaimedAt: 1,
+			fulfillmentRecoveryStatus: "refund_pending",
+		});
+		await expect(otherLiveEffect.query(
+			internal.orderReset.classifyProviderTargetConflict,
+			{},
+		)).resolves.toEqual({ outcome: "live_effect_conflict" });
+
+		const ready = convexTest(schema, modules);
+		await insertOrder(ready, 1, {
+			stripeSessionId: "cs_live_1234567890abcdef",
+			fulfillmentType: "lumaprints",
+			printFulfillmentClaim: true,
+			printFulfillmentClaimedAt: 1,
+		});
+		await expect(ready.query(
+			internal.orderReset.classifyProviderTargetConflict,
+			{},
+		)).resolves.toEqual({ outcome: "no_target_conflict" });
 	});
 
 	test("routes and rejects retired checkout replays after a later reopen", async () => {

@@ -25,8 +25,17 @@ export type ProviderInvestigationResult =
 	| "provider_investigation:configuration_error"
 	| "provider_investigation:operation_unavailable";
 
-export async function claimProviderInvestigationAttempt(directory: string) {
+export async function claimProtectedOperationAttempt(
+	directory: string,
+	markerName: string,
+	markerContents: string,
+) {
 	try {
+		if (
+			!/^[a-z][a-z0-9-]{0,80}$/.test(markerName) ||
+			!/^[a-z][a-z0-9_]{0,80}\n$/.test(markerContents)
+		)
+			return false;
 		const owner = process.getuid?.();
 		if (owner === undefined) return false;
 		const directoryState = await lstat(directory);
@@ -48,14 +57,14 @@ export async function claimProviderInvestigationAttempt(directory: string) {
 				openedDirectoryState.ino !== directoryState.ino
 			)
 				return false;
-			const markerPath = join(directory, "production-provider-investigation-attempted");
+			const markerPath = join(directory, markerName);
 			const marker = await open(
 				markerPath,
 				constants.O_CREAT | constants.O_EXCL | constants.O_WRONLY | constants.O_NOFOLLOW,
 				0o600,
 			);
 			try {
-				await marker.writeFile("provider_investigation_attempted\n", { encoding: "utf8" });
+				await marker.writeFile(markerContents, { encoding: "utf8" });
 				await marker.sync();
 				await directoryHandle.sync();
 				const markerState = await marker.stat();
@@ -71,6 +80,14 @@ export async function claimProviderInvestigationAttempt(directory: string) {
 	} catch {
 		return false;
 	}
+}
+
+export async function claimProviderInvestigationAttempt(directory: string) {
+	return await claimProtectedOperationAttempt(
+		directory,
+		"production-provider-investigation-attempted",
+		"provider_investigation_attempted\n",
+	);
 }
 
 export function parseProviderInvestigationTarget(value: string): ProviderInvestigationTarget {
