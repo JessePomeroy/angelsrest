@@ -98,6 +98,10 @@ export function parseProviderInvestigationTarget(value: string): ProviderInvesti
 	throw new Error("invalid");
 }
 
+export function productionProviderModeIsSafe(value: string | undefined) {
+	return value === undefined || value === "false";
+}
+
 export interface ProviderConfiguration {
 	apiKey: string;
 	apiSecret: string;

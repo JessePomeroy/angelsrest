@@ -208,8 +208,8 @@ class. Before any configuration, Convex, or provider access, the one-use
 operator script atomically creates a permanent attempt marker in its fixed
 owner-only local state directory. A missing, unprotected, symlinked, or already
 consumed marker path stops the operation. The script holds the selected identity
-only in process memory, performs bounded Production GET requests only, rechecks
-the selector after the scan, and emits one normalized result. It never prints credentials,
+only in process memory, accepts only explicit or documented implicit Production
+provider mode, performs bounded Production GET requests only, rechecks the selector after the scan, and emits one normalized result. It never prints credentials,
 identifiers, provider numbers, response bodies, counts, timestamps, or errors.
 A match that was not observed is not proof that the earlier submission failed;
 it does not clear the durable submission fence or authorize reset.
