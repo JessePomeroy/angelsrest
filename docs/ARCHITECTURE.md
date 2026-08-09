@@ -263,7 +263,12 @@ correlation, provider fact, timestamp, or raw error and causes no mutation or
 external request. `state_changed` is only normalized category drift, not proof
 of row-set continuity. Neither eligibility class authorizes a provider request;
 any later operation must freshly select and recheck its exact target array under
-separate review, rollout, custody, and invocation gates.
+separate review, rollout, custody, and invocation gates. The classifier's
+fixed one-use caller pins the Production Convex deployment, exact Convex URL,
+unique operation ID, and explicitly closed host state. It claims a separate
+protected marker before final environment validation or the read, passes only
+the minimum CLI environment, bounds time and output, parses only exact one-key
+normalized JSON, and maps every child or parser failure to a fixed error class.
 
 Retired Sessions are terminal replays. Live-order and tombstone coexistence is
 a routing conflict. The webhook acknowledges a retired Session before line-item,
