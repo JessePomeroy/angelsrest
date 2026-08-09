@@ -174,6 +174,10 @@ type ProviderMultiInvestigationAssessment =
 	| { outcome: "target_conflict"; classes: ProviderMultiTargetConflictClass[] }
 	| { outcome: "ready"; externalIds: string[] };
 
+type ProviderMultiLookupEligibleAssessment =
+	| { outcome: "target_conflict" }
+	| { outcome: "ready"; externalIds: string[] };
+
 const providerMultiTargetConflictClassOrder = [
 	"unresolved_none",
 	"unresolved_single",
@@ -412,14 +416,21 @@ async function providerTargetConflictClasses(
 	if (!/^cs_live_[A-Za-z0-9]{16,120}$/.test(target.stripeSessionId)) {
 		classes.push("session_not_live");
 	}
+	if (!(await providerTargetSessionIsGloballyUnique(ctx, target))) {
+		classes.push("session_not_unique");
+	}
+	return classes;
+}
+
+async function providerTargetSessionIsGloballyUnique(
+	ctx: Pick<QueryCtx, "db">,
+	target: Doc<"orders">,
+) {
 	const globalMatches = await ctx.db
 		.query("orders")
 		.withIndex("by_stripeSessionId", (q) => q.eq("stripeSessionId", target.stripeSessionId))
 		.take(2);
-	if (globalMatches.length !== 1 || globalMatches[0]._id !== target._id) {
-		classes.push("session_not_unique");
-	}
-	return classes;
+	return globalMatches.length === 1 && globalMatches[0]._id === target._id;
 }
 
 async function providerInvestigationAssessment(
@@ -500,6 +511,28 @@ async function providerMultiInvestigationAssessment(
 		: source;
 }
 
+async function providerMultiLookupEligibleAssessmentForOrders(
+	ctx: Pick<QueryCtx, "db">,
+	orders: Doc<"orders">[],
+): Promise<ProviderMultiLookupEligibleAssessment> {
+	const unresolved = orders.filter(hasUnresolvedPrintSubmission);
+	if (unresolved.length < 2 || unresolved.length > ORDER_RESET_LIMIT) {
+		return { outcome: "target_conflict" };
+	}
+	for (const target of unresolved) {
+		if (
+			target.printFulfillmentPhase === "preparing"
+			|| target.lumaprintsOrderNumber !== undefined
+			|| !isStripeCheckoutSessionId(target.stripeSessionId)
+			|| !(await providerTargetSessionIsGloballyUnique(ctx, target))
+		) return { outcome: "target_conflict" };
+	}
+	return {
+		outcome: "ready",
+		externalIds: unresolved.map((target) => target.stripeSessionId).sort(),
+	};
+}
+
 function hasExpectedProviderMultiTargetConflict(
 	assessment: ProviderMultiInvestigationAssessment,
 ) {
@@ -520,6 +553,23 @@ export const providerMultiInvestigationTargets = internalQuery({
 		return assessment.outcome === "target_conflict"
 			? { outcome: "target_conflict" as const }
 			: assessment;
+	},
+});
+
+/**
+ * Freshly select all lookup-eligible unresolved identities for one bounded
+ * GET-only provider observation. Stored fulfillment type is not provider
+ * authority. The trusted caller must re-read and compare this exact array
+ * after its scan.
+ */
+export const providerMultiLookupEligibleTargets = internalQuery({
+	args: {},
+	returns: providerMultiInvestigationTargetsValidator,
+	handler: async (ctx) => {
+		assertOrderProducersExactlyClosed();
+		const source = await providerInvestigationSource(ctx);
+		if (source.outcome !== "ready") return source;
+		return await providerMultiLookupEligibleAssessmentForOrders(ctx, source.orders);
 	},
 });
 
