@@ -1,6 +1,7 @@
 import { v } from "convex/values";
 import type { Doc, Id } from "./_generated/dataModel";
 import { internalMutation, internalQuery, type QueryCtx } from "./_generated/server";
+import { isStripeCheckoutSessionId } from "./helpers/checkoutSnapshot";
 import { assertOrderProducersExactlyClosed } from "./helpers/orderProducerGate";
 
 const RESET_PROTOCOL_VERSION = 1 as const;
@@ -114,6 +115,14 @@ const providerMultiTargetConflictClassificationValidator = v.union(
 	}),
 );
 
+const providerMultiLookupEligibilityClassificationValidator = v.union(
+	v.object({ outcome: v.literal("source_conflict") }),
+	v.object({ outcome: v.literal("live_effect_conflict") }),
+	v.object({ outcome: v.literal("state_changed") }),
+	v.object({ outcome: v.literal("lookup_shape_eligible") }),
+	v.object({ outcome: v.literal("lookup_shape_ineligible") }),
+);
+
 const providerTargetConflictClassValidator = v.union(
 	v.literal("unresolved_none"),
 	v.literal("unresolved_multiple"),
@@ -173,6 +182,11 @@ const providerMultiTargetConflictClassOrder = [
 	"provider_number_present",
 	"session_not_live",
 	"session_not_unique",
+] as const satisfies readonly ProviderMultiTargetConflictClass[];
+
+const expectedProviderMultiTargetConflictClasses = [
+	"fulfillment_not_lumaprints",
+	"session_not_live",
 ] as const satisfies readonly ProviderMultiTargetConflictClass[];
 
 type LiveEffectClass =
@@ -446,13 +460,11 @@ export const providerInvestigationTarget = internalQuery({
 	},
 });
 
-async function providerMultiInvestigationAssessment(
+async function providerMultiInvestigationAssessmentForOrders(
 	ctx: Pick<QueryCtx, "db">,
+	orders: Doc<"orders">[],
 ): Promise<ProviderMultiInvestigationAssessment> {
-	const source = await providerInvestigationSource(ctx);
-	if (source.outcome !== "ready") return source;
-
-	const unresolved = source.orders.filter(hasUnresolvedPrintSubmission);
+	const unresolved = orders.filter(hasUnresolvedPrintSubmission);
 	if (unresolved.length === 0) {
 		return { outcome: "target_conflict", classes: ["unresolved_none"] };
 	}
@@ -479,6 +491,25 @@ async function providerMultiInvestigationAssessment(
 	};
 }
 
+async function providerMultiInvestigationAssessment(
+	ctx: Pick<QueryCtx, "db">,
+): Promise<ProviderMultiInvestigationAssessment> {
+	const source = await providerInvestigationSource(ctx);
+	return source.outcome === "ready"
+		? await providerMultiInvestigationAssessmentForOrders(ctx, source.orders)
+		: source;
+}
+
+function hasExpectedProviderMultiTargetConflict(
+	assessment: ProviderMultiInvestigationAssessment,
+) {
+	return assessment.outcome === "target_conflict"
+		&& assessment.classes.length === expectedProviderMultiTargetConflictClasses.length
+		&& expectedProviderMultiTargetConflictClasses.every(
+			(classification, index) => assessment.classes[index] === classification,
+		);
+}
+
 /** Select all fixed unresolved provider identities for one bounded trusted-host scan. */
 export const providerMultiInvestigationTargets = internalQuery({
 	args: {},
@@ -502,6 +533,34 @@ export const classifyProviderMultiTargetConflict = internalQuery({
 		return assessment.outcome === "ready"
 			? { outcome: "no_target_conflict" as const }
 			: assessment;
+	},
+});
+
+/**
+ * Classify only whether the exact current conflict has provider-observer-shaped
+ * identities. Stored fulfillment type is deliberately not provider authority.
+ * A state change is normalized category drift, not proof of row-set continuity.
+ */
+export const classifyProviderMultiLookupEligibility = internalQuery({
+	args: {},
+	returns: providerMultiLookupEligibilityClassificationValidator,
+	handler: async (ctx) => {
+		assertOrderProducersExactlyClosed();
+		const source = await providerInvestigationSource(ctx);
+		if (source.outcome !== "ready") return source;
+
+		const assessment = await providerMultiInvestigationAssessmentForOrders(
+			ctx,
+			source.orders,
+		);
+		if (!hasExpectedProviderMultiTargetConflict(assessment)) {
+			return { outcome: "state_changed" as const };
+		}
+
+		const unresolved = source.orders.filter(hasUnresolvedPrintSubmission);
+		return unresolved.every((target) => isStripeCheckoutSessionId(target.stripeSessionId))
+			? { outcome: "lookup_shape_eligible" as const }
+			: { outcome: "lookup_shape_ineligible" as const };
 	},
 });
 

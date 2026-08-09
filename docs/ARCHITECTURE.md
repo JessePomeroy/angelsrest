@@ -249,6 +249,22 @@ request. Its fixed caller requires the host state to be closed, pins the
 Production Convex deployment, sanitizes the child environment, and consumes a
 separate one-use protected marker before the read.
 
+The internal `orderReset.classifyProviderMultiLookupEligibility` query further
+reduces only whether the exact accepted multi-target conflict still has
+provider-observer-shaped Checkout Session identities. It requires explicitly
+closed producers, reuses the same bounded source and target assessment, and
+returns only `source_conflict`, `live_effect_conflict`, `state_changed`,
+`lookup_shape_eligible`, or `lookup_shape_ineligible`. The stored fulfillment
+type participates only in the conservative normalized-state recheck; it is not
+provider authority and never selects eligible versus ineligible. Identity shape
+uses the shared Stripe Checkout Session validator that accepts exact test and
+live forms. The query returns no row, Session, per-target mode, count,
+correlation, provider fact, timestamp, or raw error and causes no mutation or
+external request. `state_changed` is only normalized category drift, not proof
+of row-set continuity. Neither eligibility class authorizes a provider request;
+any later operation must freshly select and recheck its exact target array under
+separate review, rollout, custody, and invocation gates.
+
 Retired Sessions are terminal replays. Live-order and tombstone coexistence is
 a routing conflict. The webhook acknowledges a retired Session before line-item,
 order, provider, fee, or email work. `orders.create` also rejects it, and
