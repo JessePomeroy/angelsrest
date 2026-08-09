@@ -3,6 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, test, vi } from "vitest";
 import {
+	claimProtectedOperationAttempt,
 	claimProviderInvestigationAttempt,
 	observeProviderMatch,
 	type ProviderConfiguration,
@@ -82,6 +83,28 @@ describe("bounded print-provider investigation", () => {
 			const marker = join(directory, "production-provider-investigation-attempted");
 			expect(await readFile(marker, "utf8")).toBe("provider_investigation_attempted\n");
 			expect((await stat(marker)).mode & 0o777).toBe(0o600);
+		} finally {
+			await rm(directory, { recursive: true, force: true });
+		}
+	});
+
+	test("creates a fixed custom operation marker and rejects unsafe marker inputs", async () => {
+		const directory = await mkdtemp(join(tmpdir(), "protected-operation-test-"));
+		try {
+			await chmod(directory, 0o700);
+			await expect(
+				claimProtectedOperationAttempt(
+					directory,
+					"production-target-conflict-classifier-attempted",
+					"provider_target_classifier_attempted\n",
+				),
+			).resolves.toBe(true);
+			const marker = join(directory, "production-target-conflict-classifier-attempted");
+			expect(await readFile(marker, "utf8")).toBe("provider_target_classifier_attempted\n");
+			expect((await stat(marker)).mode & 0o777).toBe(0o600);
+			await expect(
+				claimProtectedOperationAttempt(directory, "../unsafe", "unsafe\n"),
+			).resolves.toBe(false);
 		} finally {
 			await rm(directory, { recursive: true, force: true });
 		}

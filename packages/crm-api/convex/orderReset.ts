@@ -87,6 +87,40 @@ const providerInvestigationTargetValidator = v.union(
 	v.object({ outcome: v.literal("live_effect_conflict") }),
 );
 
+const providerTargetConflictClassValidator = v.union(
+	v.literal("unresolved_none"),
+	v.literal("unresolved_multiple"),
+	v.literal("fulfillment_not_lumaprints"),
+	v.literal("preparation_only"),
+	v.literal("provider_number_present"),
+	v.literal("session_not_live"),
+	v.literal("session_not_unique"),
+);
+
+const providerTargetConflictClassificationValidator = v.union(
+	v.object({ outcome: v.literal("source_conflict") }),
+	v.object({ outcome: v.literal("live_effect_conflict") }),
+	v.object({ outcome: v.literal("no_target_conflict") }),
+	v.object({
+		outcome: v.literal("target_conflict"),
+		classes: v.array(providerTargetConflictClassValidator),
+	}),
+);
+
+type ProviderTargetConflictClass =
+	| "unresolved_none"
+	| "unresolved_multiple"
+	| "fulfillment_not_lumaprints"
+	| "preparation_only"
+	| "provider_number_present"
+	| "session_not_live"
+	| "session_not_unique";
+
+type ProviderInvestigationAssessment =
+	| { outcome: "source_conflict" | "live_effect_conflict" }
+	| { outcome: "target_conflict"; classes: ProviderTargetConflictClass[] }
+	| { outcome: "ready"; externalId: string };
+
 type LiveEffectClass =
 	| "refund_nonterminal"
 	| "refund_outcome_unknown"
@@ -267,6 +301,63 @@ async function tombstonesAreGloballyExclusive(
 	return true;
 }
 
+async function providerInvestigationAssessment(
+	ctx: Pick<QueryCtx, "db">,
+): Promise<ProviderInvestigationAssessment> {
+	if (await legacySourceExists(ctx)) return { outcome: "source_conflict" };
+	const [orders, receipts, tombstones] = await Promise.all([
+		ctx.db
+			.query("orders")
+			.withIndex("by_siteUrl", (q) => q.eq("siteUrl", SITE_URL))
+			.order("desc")
+			.take(ORDER_RESET_LIMIT + 1),
+		ctx.db
+			.query("orderResetReceipts")
+			.withIndex("by_resetId", (q) => q.eq("resetId", RESET_ID))
+			.take(1),
+		tombstonesForReset(ctx),
+	]);
+	if (
+		orders.length === 0
+		|| orders.length > ORDER_RESET_LIMIT
+		|| receipts.length !== 0
+		|| tombstones.length !== 0
+	) return { outcome: "source_conflict" };
+
+	const now = Date.now();
+	if (orders.some((order) =>
+		liveEffectClasses(order, now).some(
+			(classification) => classification !== "print_submission_unresolved",
+		)
+	)) return { outcome: "live_effect_conflict" };
+
+	const unresolved = orders.filter(hasUnresolvedPrintSubmission);
+	if (unresolved.length === 0) {
+		return { outcome: "target_conflict", classes: ["unresolved_none"] };
+	}
+	if (unresolved.length > 1) {
+		return { outcome: "target_conflict", classes: ["unresolved_multiple"] };
+	}
+	const [target] = unresolved;
+	const classes: ProviderTargetConflictClass[] = [];
+	if (target.fulfillmentType !== "lumaprints") classes.push("fulfillment_not_lumaprints");
+	if (target.printFulfillmentPhase === "preparing") classes.push("preparation_only");
+	if (target.lumaprintsOrderNumber !== undefined) classes.push("provider_number_present");
+	if (!/^cs_live_[A-Za-z0-9]{16,120}$/.test(target.stripeSessionId)) {
+		classes.push("session_not_live");
+	}
+	const globalMatches = await ctx.db
+		.query("orders")
+		.withIndex("by_stripeSessionId", (q) => q.eq("stripeSessionId", target.stripeSessionId))
+		.take(2);
+	if (globalMatches.length !== 1 || globalMatches[0]._id !== target._id) {
+		classes.push("session_not_unique");
+	}
+	return classes.length === 0
+		? { outcome: "ready", externalId: target.stripeSessionId }
+		: { outcome: "target_conflict", classes };
+}
+
 /**
  * Select the one fixed provider-investigation identity for the trusted host.
  *
@@ -278,50 +369,23 @@ export const providerInvestigationTarget = internalQuery({
 	returns: providerInvestigationTargetValidator,
 	handler: async (ctx) => {
 		assertOrderProducersExactlyClosed();
-		if (await legacySourceExists(ctx)) return { outcome: "source_conflict" as const };
-		const [orders, receipts, tombstones] = await Promise.all([
-			ctx.db
-				.query("orders")
-				.withIndex("by_siteUrl", (q) => q.eq("siteUrl", SITE_URL))
-				.order("desc")
-				.take(ORDER_RESET_LIMIT + 1),
-			ctx.db
-				.query("orderResetReceipts")
-				.withIndex("by_resetId", (q) => q.eq("resetId", RESET_ID))
-				.take(1),
-			tombstonesForReset(ctx),
-		]);
-		if (
-			orders.length === 0
-			|| orders.length > ORDER_RESET_LIMIT
-			|| receipts.length !== 0
-			|| tombstones.length !== 0
-		) return { outcome: "source_conflict" as const };
+		const assessment = await providerInvestigationAssessment(ctx);
+		return assessment.outcome === "target_conflict"
+			? { outcome: "target_conflict" as const }
+			: assessment;
+	},
+});
 
-		const now = Date.now();
-		if (orders.some((order) =>
-			liveEffectClasses(order, now).some(
-				(classification) => classification !== "print_submission_unresolved",
-			)
-		)) return { outcome: "live_effect_conflict" as const };
-
-		const unresolved = orders.filter(hasUnresolvedPrintSubmission);
-		if (unresolved.length !== 1) return { outcome: "target_conflict" as const };
-		const [target] = unresolved;
-		if (
-			target.fulfillmentType !== "lumaprints"
-			|| target.printFulfillmentPhase === "preparing"
-			|| target.lumaprintsOrderNumber !== undefined
-			|| !/^cs_live_[A-Za-z0-9]{16,120}$/.test(target.stripeSessionId)
-		) return { outcome: "target_conflict" as const };
-		const globalMatches = await ctx.db
-			.query("orders")
-			.withIndex("by_stripeSessionId", (q) => q.eq("stripeSessionId", target.stripeSessionId))
-			.take(2);
-		if (globalMatches.length !== 1 || globalMatches[0]._id !== target._id) {
-			return { outcome: "target_conflict" as const };
-		}
-		return { outcome: "ready" as const, externalId: target.stripeSessionId };
+/** Classify only the normalized family behind a stopped provider target selection. */
+export const classifyProviderTargetConflict = internalQuery({
+	args: {},
+	returns: providerTargetConflictClassificationValidator,
+	handler: async (ctx) => {
+		assertOrderProducersExactlyClosed();
+		const assessment = await providerInvestigationAssessment(ctx);
+		return assessment.outcome === "ready"
+			? { outcome: "no_target_conflict" as const }
+			: assessment;
 	},
 });
 
