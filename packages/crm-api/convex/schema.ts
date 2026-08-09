@@ -804,7 +804,8 @@ export default defineSchema({
 		reconciliationAlertedAt: v.optional(v.number()),
 	})
 		.index("by_siteUrl_and_handleHash", ["siteUrl", "handleHash"])
-		.index("by_accountScope_and_stripeSessionId", ["accountScope", "stripeSessionId"]),
+		.index("by_accountScope_and_stripeSessionId", ["accountScope", "stripeSessionId"])
+		.index("by_stripeSessionId", ["stripeSessionId"]),
 
 	// Immutable evidence and terminal outcomes for one-use admin refund recoveries.
 	manualRefundRecoveries: defineTable(v.union(
@@ -1127,6 +1128,31 @@ export default defineSchema({
 		// Deprecated authenticated-admin compatibility lookup. The hub webhook
 		// uses the provider-global index and never delegates its bearer secret.
 		.index("by_lumaprintsOrderNumber", ["siteUrl", "lumaprintsOrderNumber"]),
+
+	// Minimal replay protection retained after an owner-approved order reset.
+	retiredOrderSessions: defineTable({
+		protocolVersion: v.literal(1),
+		siteUrl: v.string(),
+		routingKind: v.union(v.literal("connected"), v.literal("legacy_unscoped")),
+		stripeSessionId: v.string(),
+		stripeConnectedAccountId: v.optional(v.string()),
+		retiredOrderId: v.id("orders"),
+		resetId: v.string(),
+		retiredAt: v.number(),
+	})
+		.index("by_stripeSessionId", ["stripeSessionId"])
+		.index("by_resetId_and_stripeSessionId", ["resetId", "stripeSessionId"])
+		.index("by_siteUrl", ["siteUrl"]),
+
+	// Durable one-use receipt for an atomic tenant order reset.
+	orderResetReceipts: defineTable({
+		protocolVersion: v.literal(1),
+		resetId: v.string(),
+		siteUrl: v.string(),
+		retiredOrderCount: v.number(),
+		manifestDigest: v.string(),
+		completedAt: v.number(),
+	}).index("by_resetId", ["resetId"]),
 
 	// One durable claim per signed Stripe event and account scope. The claim is
 	// written before the customer payment-failure email attempt, so retries and

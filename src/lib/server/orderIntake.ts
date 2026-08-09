@@ -84,21 +84,21 @@ export async function processStripeWebhookEvent(
 				const snapshotModeEnabled = env.CHECKOUT_SNAPSHOT_MODE === "handle-v2";
 				const snapshotMarkerPresent = hasCheckoutSnapshotMarker(session.metadata);
 				const consumesCheckoutSnapshot = snapshotModeEnabled || snapshotMarkerPresent;
+				const stripeAccount = typeof event.account === "string" ? event.account.trim() : undefined;
+				const metadataSiteUrl = readCheckoutTenantMarker(session.metadata);
 				let routing = null;
+				try {
+					routing = await adapters.convex.query(api.orders.resolveCheckoutRouting, {
+						stripeSessionId: session.id,
+						...(stripeAccount ? { stripeConnectedAccountId: stripeAccount } : {}),
+						...(metadataSiteUrl ? { stripeTenantMetadataSiteUrl: metadataSiteUrl } : {}),
+						webhookSecret: getWebhookSecret(),
+					});
+				} catch (cause) {
+					throw new CheckoutSnapshotProtocolError("Checkout routing failed", { cause });
+				}
+				if (routing?.source === "retired") break;
 				if (consumesCheckoutSnapshot) {
-					const stripeAccount =
-						typeof event.account === "string" ? event.account.trim() : undefined;
-					const metadataSiteUrl = readCheckoutTenantMarker(session.metadata);
-					try {
-						routing = await adapters.convex.query(api.orders.resolveCheckoutRouting, {
-							stripeSessionId: session.id,
-							...(stripeAccount ? { stripeConnectedAccountId: stripeAccount } : {}),
-							...(metadataSiteUrl ? { stripeTenantMetadataSiteUrl: metadataSiteUrl } : {}),
-							webhookSecret: getWebhookSecret(),
-						});
-					} catch (cause) {
-						throw new CheckoutSnapshotProtocolError("Checkout routing failed", { cause });
-					}
 					selectCheckoutSnapshotInput(
 						routing?.source ?? null,
 						routing?.source === "order"

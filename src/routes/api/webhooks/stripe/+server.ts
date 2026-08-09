@@ -28,13 +28,13 @@ export async function POST({ request }) {
 		"Commerce webhook",
 	);
 	assertCommerceWebhookScope(event, role);
-	if (await isClosedOrderReplay(event)) return json({ received: true });
+	if (await isAcknowledgedOrderReplay(event)) return json({ received: true });
 	const resend = getResend();
 	await processStripeWebhookEvent(event, { stripe, resend, convex, createLumaPrintsOrder }, role);
 	return json({ received: true });
 }
 
-async function isClosedOrderReplay(event: Stripe.Event) {
+async function isAcknowledgedOrderReplay(event: Stripe.Event) {
 	if (event.type !== "checkout.session.completed") return false;
 	const session = event.data.object as Stripe.Checkout.Session;
 	if (
@@ -60,7 +60,7 @@ async function isClosedOrderReplay(event: Stripe.Event) {
 		...(stripeTenantMetadataSiteUrl ? { stripeTenantMetadataSiteUrl } : {}),
 		webhookSecret: getWebhookSecret(),
 	});
-	if (routing?.source === "order") return true;
+	if (routing?.source === "retired" || routing?.source === "order") return true;
 	throw error(503, "Order intake is closed");
 }
 

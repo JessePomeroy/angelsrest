@@ -10,9 +10,9 @@ export default defineConfig({
 	},
 	webServer: {
 		command: "pnpm dev --host 127.0.0.1",
-		// Probe an API route so CI placeholder Sanity config does not block
-		// readiness through the site-wide layout data fetch.
-		url: "http://127.0.0.1:5173/api/download",
+		// Probe a static asset so CI placeholder Sanity config and the closed
+		// commerce gate cannot block server readiness.
+		url: "http://127.0.0.1:5173/robots.txt",
 		reuseExistingServer: !process.env.CI,
 		timeout: 120_000,
 	},

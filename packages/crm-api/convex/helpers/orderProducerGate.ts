@@ -12,3 +12,10 @@ export function assertOrderProducersOpen() {
 		throw new Error(ORDER_PRODUCERS_CLOSED_MESSAGE);
 	}
 }
+
+/** Require an explicit closed state for destructive maintenance. */
+export function assertOrderProducersExactlyClosed() {
+	if (process.env.ORDER_PRODUCERS_STATE !== "closed") {
+		throw new Error("Order producers must be explicitly closed");
+	}
+}

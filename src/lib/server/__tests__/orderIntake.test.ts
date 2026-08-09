@@ -1336,7 +1336,7 @@ describe("processStripeWebhookEvent", () => {
 		"",
 		"handle-v1",
 		"HANDLE-V2",
-	])("keeps current routing and makes no session-first call when mode is %s", async (mode) => {
+	])("keeps current checkout behavior while checking retired sessions when mode is %s", async (mode) => {
 		mockPrivateEnv.CHECKOUT_SNAPSHOT_MODE = mode;
 		const session = makeCheckoutSession({ metadata: {} });
 		stripe.checkout.sessions.retrieve.mockResolvedValue({
@@ -1348,10 +1348,10 @@ describe("processStripeWebhookEvent", () => {
 			makeStripeEvent("checkout.session.completed", session),
 			adapters(),
 		);
-		expect(convex.query).not.toHaveBeenCalledWith(
-			"orders.resolveCheckoutRouting",
-			expect.anything(),
-		);
+		expect(convex.query).toHaveBeenCalledWith("orders.resolveCheckoutRouting", {
+			stripeSessionId: session.id,
+			webhookSecret: "test-webhook-secret",
+		});
 		expect(stripe.checkout.sessions.listLineItems).not.toHaveBeenCalled();
 	});
 
@@ -1437,6 +1437,54 @@ describe("processStripeWebhookEvent", () => {
 		expect(mockBuildOrderItemsFromSnapshot.mock.invocationCallOrder[0]).toBeLessThan(
 			createLumaPrintsOrder.mock.invocationCallOrder[0],
 		);
+	});
+
+	it("stops a retired snapshot checkout before line-item or downstream effects", async () => {
+		const session = makeCheckoutSession({
+			metadata: {
+				checkoutSnapshotVersion: "2",
+				checkoutSnapshotHandle: snapshotHandle,
+				commerceTenantSiteUrl: "angelsrest.online",
+			},
+		});
+		convex.query.mockResolvedValue({
+			source: "retired",
+			siteUrl: "angelsrest.online",
+			stripeConnectedAccountId: undefined,
+		});
+
+		const { processStripeWebhookEvent } = await import("../orderIntake");
+		await processStripeWebhookEvent(
+			makeStripeEvent("checkout.session.completed", session),
+			adapters(),
+		);
+
+		expect(stripe.checkout.sessions.retrieve).not.toHaveBeenCalled();
+		expect(stripe.checkout.sessions.listLineItems).not.toHaveBeenCalled();
+		expect(convex.mutation).not.toHaveBeenCalled();
+		expect(createLumaPrintsOrder).not.toHaveBeenCalled();
+		expect(mockSendCustomerConfirmation).not.toHaveBeenCalled();
+		expect(mockSendAdminNotification).not.toHaveBeenCalled();
+	});
+
+	it("stops an unmarked retired checkout before downstream effects", async () => {
+		const session = makeCheckoutSession({ metadata: {} });
+		convex.query.mockResolvedValue({
+			source: "retired",
+			siteUrl: "angelsrest.online",
+			stripeConnectedAccountId: undefined,
+		});
+
+		const { processStripeWebhookEvent } = await import("../orderIntake");
+		await processStripeWebhookEvent(
+			makeStripeEvent("checkout.session.completed", session),
+			adapters(),
+		);
+
+		expect(stripe.checkout.sessions.retrieve).not.toHaveBeenCalled();
+		expect(stripe.checkout.sessions.listLineItems).not.toHaveBeenCalled();
+		expect(convex.mutation).not.toHaveBeenCalled();
+		expect(createLumaPrintsOrder).not.toHaveBeenCalled();
 	});
 
 	it.each([

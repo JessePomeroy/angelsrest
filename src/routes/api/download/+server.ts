@@ -5,6 +5,7 @@ import { client } from "$lib/sanity/client";
 import { issuePaidFile, resolvePaidDownload } from "$lib/server/catalogCommerceClients";
 import { isCheckoutSessionOwner } from "$lib/server/checkoutBinding";
 import { getConvex } from "$lib/server/convexClient";
+import { assertOrderProducersOpen } from "$lib/server/orderProducerGate";
 import { getStripe } from "$lib/server/stripeClient";
 import { getWebhookSecret } from "$lib/server/webhookSecret";
 
@@ -63,8 +64,20 @@ async function streamSanityFile(fileUrl: string, filename: string) {
 }
 
 export async function GET({ url, cookies }) {
+	try {
+		assertOrderProducersOpen();
+	} catch {
+		throw error(503, "Downloads are temporarily unavailable");
+	}
 	const sessionId = url.searchParams.get("session_id");
 	if (!sessionId) throw error(400, "Missing session_id");
+
+	const convex = getConvex();
+	const authority = await convex.query(api.orders.resolvePaidDownloadOrder, {
+		stripeSessionId: sessionId,
+		webhookSecret: getWebhookSecret(),
+	});
+	if (!authority || authority.refunded) throw error(409, "Download is not ready");
 
 	let session: Stripe.Checkout.Session;
 	try {
@@ -83,12 +96,6 @@ export async function GET({ url, cookies }) {
 	}
 
 	const itemIndex = ordinal(url.searchParams.get("item"));
-	const convex = getConvex();
-	const authority = await convex.query(api.orders.resolvePaidDownloadOrder, {
-		stripeSessionId: sessionId,
-		webhookSecret: getWebhookSecret(),
-	});
-	if (!authority || authority.refunded) throw error(409, "Download is not ready");
 	const snapshot = authority.checkoutSnapshot
 		? canonicalSnapshot(authority.checkoutSnapshot)
 		: undefined;
@@ -164,5 +171,12 @@ export async function GET({ url, cookies }) {
 		throw error(400, "This product is not a digital download");
 	const product = await client.fetch<{ fileUrl?: string } | null>(LEGACY_PAID_FILE_QUERY, { slug });
 	if (!product?.fileUrl) throw error(404, "Digital file not found");
+	const race = await convex.query(api.orders.resolvePaidDownloadOrder, {
+		stripeSessionId: sessionId,
+		webhookSecret: getWebhookSecret(),
+	});
+	if (!race || race.refunded || race.checkoutSnapshot) {
+		throw error(409, "Download is not ready");
+	}
 	return streamSanityFile(product.fileUrl, slug);
 }
