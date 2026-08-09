@@ -128,6 +128,21 @@ describe("Stripe webhook route", () => {
 		expect(mocks.createLumaPrintsOrder).not.toHaveBeenCalled();
 	});
 
+	it("acknowledges a retired-order replay while producers are closed", async () => {
+		mocks.env.ORDER_PRODUCERS_STATE = "closed";
+		mocks.convex.query.mockResolvedValue({ source: "retired", siteUrl: "tenant.example" });
+		const { POST } = await import("../+server");
+
+		const response = await POST({ request: request() } as Parameters<typeof POST>[0]);
+
+		expect(response.status).toBe(200);
+		expect(await response.json()).toEqual({ received: true });
+		expect(mocks.convex.query).toHaveBeenCalledOnce();
+		expect(mocks.process).not.toHaveBeenCalled();
+		expect(mocks.getResend).not.toHaveBeenCalled();
+		expect(mocks.createLumaPrintsOrder).not.toHaveBeenCalled();
+	});
+
 	it.each([
 		[
 			"invoice completion",

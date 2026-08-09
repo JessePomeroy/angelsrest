@@ -8,11 +8,15 @@ const mocks = vi.hoisted(() => ({
 	paidFile: vi.fn(),
 	exactSanity: vi.fn(),
 	legacySanity: vi.fn(),
+	privateEnv: {
+		WEBHOOK_SECRET: "webhook-secret",
+		ORDER_PRODUCERS_STATE: "open",
+	},
 }));
 vi.mock("$convex/api", () => ({
 	api: { orders: { resolvePaidDownloadOrder: "orders.resolvePaidDownloadOrder" } },
 }));
-vi.mock("$env/dynamic/private", () => ({ env: { WEBHOOK_SECRET: "webhook-secret" } }));
+vi.mock("$env/dynamic/private", () => ({ env: mocks.privateEnv }));
 vi.mock("$lib/server/stripeClient", () => ({
 	getStripe: () => ({ checkout: { sessions: { retrieve: mocks.retrieve } } }),
 }));
@@ -52,6 +56,7 @@ const event = (query = "session_id=cs_test_paid&slug=legacy") =>
 
 beforeEach(() => {
 	vi.clearAllMocks();
+	mocks.privateEnv.ORDER_PRODUCERS_STATE = "open";
 	mocks.retrieve.mockResolvedValue({
 		id: "cs_test_paid",
 		payment_status: "paid",
@@ -84,11 +89,19 @@ beforeEach(() => {
 });
 
 describe("paid download", () => {
-	it("finishes Stripe paid and buyer authorization before any order resolution", async () => {
+	it("rejects missing or retired order authority before any Stripe read", async () => {
+		const { GET } = await import("./+server");
+		mocks.query.mockResolvedValueOnce(null);
+
+		await expect(GET(event())).rejects.toMatchObject({ status: 409 });
+		expect(mocks.retrieve).not.toHaveBeenCalled();
+	});
+
+	it("checks order authority before Stripe paid and buyer authorization", async () => {
 		const { GET } = await import("./+server");
 		mocks.retrieve.mockResolvedValueOnce({ payment_status: "unpaid" });
 		await expect(GET(event())).rejects.toMatchObject({ status: 403 });
-		expect(mocks.query).not.toHaveBeenCalled();
+		expect(mocks.query).toHaveBeenCalledTimes(1);
 		mocks.retrieve.mockResolvedValueOnce({
 			payment_status: "paid",
 			customer_details: { email: "buyer@example.com" },
@@ -97,7 +110,16 @@ describe("paid download", () => {
 		await expect(
 			GET(event("session_id=cs_test_paid&email=other%40example.com")),
 		).rejects.toMatchObject({ status: 403 });
+		expect(mocks.query).toHaveBeenCalledTimes(2);
+	});
+
+	it("blocks downloads while reset quiescence is active", async () => {
+		const { GET } = await import("./+server");
+		mocks.privateEnv.ORDER_PRODUCERS_STATE = "closed";
+
+		await expect(GET(event())).rejects.toMatchObject({ status: 503 });
 		expect(mocks.query).not.toHaveBeenCalled();
+		expect(mocks.retrieve).not.toHaveBeenCalled();
 	});
 
 	it.each([

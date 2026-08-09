@@ -170,6 +170,38 @@ must have exactly one order-intake owner. Future Stripe Connect clients add
 tenant configuration and use the bridge; they do not copy the webhook
 coordinator into their repositories.
 
+### Retired order replay protection
+
+An owner-approved full reset can remove disposable Angels Rest order rows only
+through the fixed internal `orderReset.apply` operation. Both producer states
+must be explicitly closed. Invocation also requires fresh deployment evidence
+that all producer hosts stayed closed longer than their maximum request runtime.
+This quiescence gate drains provider work that passed a legacy claim before the
+reset code ran. Reset invocation and producer reopening remain separate
+approvals.
+
+The operation has a dedicated 50-row transaction cap and is atomic. It retains
+one minimal `retiredOrderSessions` tombstone per Checkout Session, preserves
+audit and customer tables, and writes a versioned one-use receipt. The receipt
+pins a SHA-256 digest of the exact sorted Session, account, routing, site, and
+old-order binding manifest. Retry and verification require that exact manifest
+and reject any global live order for a retired Session. The operation stops on
+source overflow, all known legacy site aliases, global Session conflicts,
+existing tombstones, a bound checkout reservation in any account scope, an
+active or recent effect lease, unresolved print submission or reconciliation,
+or a provider-owned nonterminal refund.
+
+Retired Sessions are terminal replays. Live-order and tombstone coexistence is
+a routing conflict. The webhook acknowledges a retired Session before line-item,
+order, provider, fee, or email work. `orders.create` also rejects it, and
+reservation reconciliation returns before a provider read. Paid downloads are
+closed with the producer gate during reset quiescence and check the order or
+retirement state before Stripe or file reads. The versioned tombstones and reset
+receipt are permanent compatibility data. Do not roll
+Convex or the webhook host back to code that does not understand them. Order
+numbers can restart at `ORD-001`; old customer lookup and download surfaces
+intentionally no longer resolve deleted orders.
+
 ### Manual refund reconciliation
 
 The signed commerce webhook accepts `refund.created`, `refund.updated`, and

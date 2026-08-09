@@ -448,6 +448,16 @@ function routingConflict(): never {
 	throw new Error("Checkout routing facts conflict");
 }
 
+async function retiredOrderSession(
+	ctx: Pick<QueryCtx, "db">,
+	stripeSessionId: string,
+) {
+	return await ctx.db
+		.query("retiredOrderSessions")
+		.withIndex("by_stripeSessionId", (q) => q.eq("stripeSessionId", stripeSessionId))
+		.unique();
+}
+
 export const reserveCheckoutSnapshot = internalMutation({
 	args: {
 		siteUrl: v.string(), handleHash: v.string(), snapshotDigest: v.string(),
@@ -506,6 +516,9 @@ export const bindCheckoutSnapshot = internalMutation({
 			.withIndex("by_siteUrl_and_handleHash", (q) => q.eq("siteUrl", args.siteUrl).eq("handleHash", args.handleHash)).unique();
 		if (!row) return { outcome: "not_found" as const };
 		const accountScope = stripeAccountScope(args.stripeConnectedAccountId);
+		if (await retiredOrderSession(ctx, args.stripeSessionId)) {
+			return { outcome: "conflict" as const };
+		}
 		const sessionOwner = await ctx.db.query("checkoutSnapshotReservations")
 			.withIndex("by_accountScope_and_stripeSessionId", (q) => q.eq("accountScope", accountScope)
 				.eq("stripeSessionId", args.stripeSessionId)).unique();
@@ -583,11 +596,20 @@ export const getCheckoutSnapshotForReconciliation = internalQuery({
 	args: { reservationId: v.id("checkoutSnapshotReservations"), boundAt: v.number(), attempt: v.number() },
 	handler: async (ctx, args) => {
 		const row = await ctx.db.get(args.reservationId);
-		return row?.state === "bound" && row.boundAt === args.boundAt
-			&& row.reconciliationAttempt === args.attempt && row.reconciliationAlertedAt === undefined
-			&& row.reconciliationNextAt !== undefined && Date.now() >= row.reconciliationNextAt ? {
-				stripeSessionId: row.stripeSessionId!, stripeConnectedAccountId: row.stripeConnectedAccountId,
-			} : null;
+		if (
+			row?.state !== "bound"
+			|| row.boundAt !== args.boundAt
+			|| row.reconciliationAttempt !== args.attempt
+			|| row.reconciliationAlertedAt !== undefined
+			|| row.reconciliationNextAt === undefined
+			|| Date.now() < row.reconciliationNextAt
+			|| row.stripeSessionId === undefined
+		) return null;
+		if (await retiredOrderSession(ctx, row.stripeSessionId)) return null;
+		return {
+			stripeSessionId: row.stripeSessionId,
+			stripeConnectedAccountId: row.stripeConnectedAccountId,
+		};
 	},
 });
 
@@ -783,6 +805,24 @@ export const create = mutation({
 				q.eq("stripeSessionId", args.stripeSessionId),
 			)
 			.unique();
+		const retired = await retiredOrderSession(ctx, args.stripeSessionId);
+		if (retired && existing) routingConflict();
+		if (retired) {
+			if (retired.siteUrl !== args.siteUrl) routingConflict();
+			if (retired.routingKind === "connected") {
+				if (
+					retired.stripeConnectedAccountId === undefined
+					|| args.stripeConnectedAccountId !== retired.stripeConnectedAccountId
+				) routingConflict();
+			} else if (
+				retired.stripeConnectedAccountId !== undefined
+				|| args.stripeConnectedAccountId !== undefined
+					&& !await connectedAccountMatchesSite(
+						ctx, retired.siteUrl, args.stripeConnectedAccountId,
+					)
+			) routingConflict();
+			throw new Error("Order session is retired");
+		}
 		if (existing) {
 			if (existing.siteUrl !== args.siteUrl) routingConflict();
 			if (existing.stripeConnectedAccountId !== undefined) {
@@ -1401,15 +1441,21 @@ export const reconcileSucceededManualRefund = mutation({
 	},
 });
 
-/** Server-only paid-download authority, called only after Stripe buyer authorization. */
+/** Server-only paid-download authority checked before any provider or file read. */
 export const resolvePaidDownloadOrder = query({
 	args: { stripeSessionId: v.string(), webhookSecret: v.string() },
 	handler: async (ctx, args) => {
 		await requireWebhookCallerOrAuth(ctx, args.webhookSecret, { allowAuth: false });
 		if (!isStripeCheckoutSessionId(args.stripeSessionId)) return null;
-		const order = await ctx.db.query("orders")
-			.withIndex("by_stripeSessionId", (q) => q.eq("stripeSessionId", args.stripeSessionId)).unique();
-		if (!order) return null;
+		const [order, retired] = await Promise.all([
+			ctx.db.query("orders")
+				.withIndex("by_stripeSessionId", (q) =>
+					q.eq("stripeSessionId", args.stripeSessionId),
+				)
+				.unique(),
+			retiredOrderSession(ctx, args.stripeSessionId),
+		]);
+		if (retired || !order) return null;
 		return {
 			checkoutSnapshot: order.checkoutSnapshot,
 			refunded: order.status === "refunded" || order.stripeRefundId !== undefined
@@ -1431,6 +1477,28 @@ export const resolveCheckoutRouting = query({
 		await requireWebhookCallerOrAuth(ctx, args.webhookSecret, { allowAuth: false });
 		const order = await ctx.db.query("orders")
 			.withIndex("by_stripeSessionId", (q) => q.eq("stripeSessionId", args.stripeSessionId)).unique();
+		const retired = await retiredOrderSession(ctx, args.stripeSessionId);
+		if (retired && order) routingConflict();
+		if (retired) {
+			if (retired.routingKind === "connected") {
+				if (
+					retired.stripeConnectedAccountId === undefined
+					|| args.stripeConnectedAccountId !== retired.stripeConnectedAccountId
+				) routingConflict();
+			} else if (
+				retired.stripeConnectedAccountId !== undefined
+				|| args.stripeConnectedAccountId !== undefined
+					&& !await connectedAccountMatchesSite(
+						ctx, retired.siteUrl, args.stripeConnectedAccountId,
+					)
+			) routingConflict();
+			if (
+				args.stripeTenantMetadataSiteUrl !== undefined
+				&& args.stripeTenantMetadataSiteUrl !== retired.siteUrl
+			) routingConflict();
+			return { source: "retired" as const, siteUrl: retired.siteUrl,
+				stripeConnectedAccountId: retired.stripeConnectedAccountId };
+		}
 		if (order) {
 			if (order.stripeConnectedAccountId !== undefined) {
 				if (
