@@ -87,6 +87,13 @@ const providerInvestigationTargetValidator = v.union(
 	v.object({ outcome: v.literal("live_effect_conflict") }),
 );
 
+const providerMultiInvestigationTargetsValidator = v.union(
+	v.object({ outcome: v.literal("ready"), externalIds: v.array(v.string()) }),
+	v.object({ outcome: v.literal("source_conflict") }),
+	v.object({ outcome: v.literal("target_conflict") }),
+	v.object({ outcome: v.literal("live_effect_conflict") }),
+);
+
 const providerTargetConflictClassValidator = v.union(
 	v.literal("unresolved_none"),
 	v.literal("unresolved_multiple"),
@@ -120,6 +127,10 @@ type ProviderInvestigationAssessment =
 	| { outcome: "source_conflict" | "live_effect_conflict" }
 	| { outcome: "target_conflict"; classes: ProviderTargetConflictClass[] }
 	| { outcome: "ready"; externalId: string };
+
+type ProviderInvestigationSource =
+	| { outcome: "source_conflict" | "live_effect_conflict" }
+	| { outcome: "ready"; orders: Doc<"orders">[] };
 
 type LiveEffectClass =
 	| "refund_nonterminal"
@@ -301,9 +312,9 @@ async function tombstonesAreGloballyExclusive(
 	return true;
 }
 
-async function providerInvestigationAssessment(
+async function providerInvestigationSource(
 	ctx: Pick<QueryCtx, "db">,
-): Promise<ProviderInvestigationAssessment> {
+): Promise<ProviderInvestigationSource> {
 	if (await legacySourceExists(ctx)) return { outcome: "source_conflict" };
 	const [orders, receipts, tombstones] = await Promise.all([
 		ctx.db
@@ -330,15 +341,13 @@ async function providerInvestigationAssessment(
 			(classification) => classification !== "print_submission_unresolved",
 		)
 	)) return { outcome: "live_effect_conflict" };
+	return { outcome: "ready", orders };
+}
 
-	const unresolved = orders.filter(hasUnresolvedPrintSubmission);
-	if (unresolved.length === 0) {
-		return { outcome: "target_conflict", classes: ["unresolved_none"] };
-	}
-	if (unresolved.length > 1) {
-		return { outcome: "target_conflict", classes: ["unresolved_multiple"] };
-	}
-	const [target] = unresolved;
+async function providerTargetConflictClasses(
+	ctx: Pick<QueryCtx, "db">,
+	target: Doc<"orders">,
+) {
 	const classes: ProviderTargetConflictClass[] = [];
 	if (target.fulfillmentType !== "lumaprints") classes.push("fulfillment_not_lumaprints");
 	if (target.printFulfillmentPhase === "preparing") classes.push("preparation_only");
@@ -353,6 +362,24 @@ async function providerInvestigationAssessment(
 	if (globalMatches.length !== 1 || globalMatches[0]._id !== target._id) {
 		classes.push("session_not_unique");
 	}
+	return classes;
+}
+
+async function providerInvestigationAssessment(
+	ctx: Pick<QueryCtx, "db">,
+): Promise<ProviderInvestigationAssessment> {
+	const source = await providerInvestigationSource(ctx);
+	if (source.outcome !== "ready") return source;
+
+	const unresolved = source.orders.filter(hasUnresolvedPrintSubmission);
+	if (unresolved.length === 0) {
+		return { outcome: "target_conflict", classes: ["unresolved_none"] };
+	}
+	if (unresolved.length > 1) {
+		return { outcome: "target_conflict", classes: ["unresolved_multiple"] };
+	}
+	const [target] = unresolved;
+	const classes = await providerTargetConflictClasses(ctx, target);
 	return classes.length === 0
 		? { outcome: "ready", externalId: target.stripeSessionId }
 		: { outcome: "target_conflict", classes };
@@ -373,6 +400,31 @@ export const providerInvestigationTarget = internalQuery({
 		return assessment.outcome === "target_conflict"
 			? { outcome: "target_conflict" as const }
 			: assessment;
+	},
+});
+
+/** Select all fixed unresolved provider identities for one bounded trusted-host scan. */
+export const providerMultiInvestigationTargets = internalQuery({
+	args: {},
+	returns: providerMultiInvestigationTargetsValidator,
+	handler: async (ctx) => {
+		assertOrderProducersExactlyClosed();
+		const source = await providerInvestigationSource(ctx);
+		if (source.outcome !== "ready") return source;
+
+		const unresolved = source.orders.filter(hasUnresolvedPrintSubmission);
+		if (unresolved.length < 2 || unresolved.length > ORDER_RESET_LIMIT) {
+			return { outcome: "target_conflict" as const };
+		}
+		for (const target of unresolved) {
+			if ((await providerTargetConflictClasses(ctx, target)).length !== 0) {
+				return { outcome: "target_conflict" as const };
+			}
+		}
+		return {
+			outcome: "ready" as const,
+			externalIds: unresolved.map((target) => target.stripeSessionId).sort(),
+		};
 	},
 });
 

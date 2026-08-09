@@ -5,14 +5,19 @@ import { describe, expect, test, vi } from "vitest";
 import {
 	claimProtectedOperationAttempt,
 	claimProviderInvestigationAttempt,
+	claimProviderMultiInvestigationAttempt,
 	observeProviderMatch,
+	observeProviderMatches,
 	type ProviderConfiguration,
 	parseProviderInvestigationTarget,
+	parseProviderMultiInvestigationTargets,
 	productionProviderModeIsSafe,
 	runProviderInvestigation,
+	runProviderMultiInvestigation,
 } from "./providerInvestigation";
 
 const externalId = "cs_live_1234567890abcdef";
+const secondExternalId = "cs_live_1234567890abcdeg";
 const configuration: ProviderConfiguration = {
 	apiKey: "key",
 	apiSecret: "secret",
@@ -69,6 +74,33 @@ describe("bounded print-provider investigation", () => {
 			expect(() => parseProviderInvestigationTarget(invalid)).toThrow("invalid");
 	});
 
+	test("accepts only an exact bounded sorted multi-target carrier", () => {
+		expect(
+			parseProviderMultiInvestigationTargets(
+				JSON.stringify({
+					outcome: "ready",
+					externalIds: [externalId, secondExternalId],
+				}),
+			),
+		).toEqual({ outcome: "ready", externalIds: [externalId, secondExternalId] });
+		expect(parseProviderMultiInvestigationTargets('{"outcome":"target_conflict"}')).toEqual({
+			outcome: "target_conflict",
+		});
+		for (const invalid of [
+			"not-json",
+			JSON.stringify({ outcome: "ready", externalIds: [externalId] }),
+			JSON.stringify({ outcome: "ready", externalIds: [secondExternalId, externalId] }),
+			JSON.stringify({ outcome: "ready", externalIds: [externalId, externalId] }),
+			JSON.stringify({ outcome: "ready", externalIds: [externalId, "cs_test_1234567890abcdef"] }),
+			JSON.stringify({
+				outcome: "ready",
+				externalIds: [externalId, secondExternalId],
+				extra: true,
+			}),
+		])
+			expect(() => parseProviderMultiInvestigationTargets(invalid)).toThrow("invalid");
+	});
+
 	test("atomically consumes one protected external attempt marker", async () => {
 		const directory = await mkdtemp(join(tmpdir(), "provider-investigation-test-"));
 		try {
@@ -82,6 +114,24 @@ describe("bounded print-provider investigation", () => {
 			await expect(claimProviderInvestigationAttempt(directory)).resolves.toBe(false);
 			const marker = join(directory, "production-provider-investigation-attempted");
 			expect(await readFile(marker, "utf8")).toBe("provider_investigation_attempted\n");
+			expect((await stat(marker)).mode & 0o777).toBe(0o600);
+		} finally {
+			await rm(directory, { recursive: true, force: true });
+		}
+	});
+
+	test("atomically consumes one protected multi-target attempt marker", async () => {
+		const directory = await mkdtemp(join(tmpdir(), "provider-multi-investigation-test-"));
+		try {
+			await chmod(directory, 0o700);
+			await expect(
+				Promise.all([
+					claimProviderMultiInvestigationAttempt(directory),
+					claimProviderMultiInvestigationAttempt(directory),
+				]),
+			).resolves.toEqual(expect.arrayContaining([true, false]));
+			const marker = join(directory, "production-provider-multi-investigation-attempted");
+			expect(await readFile(marker, "utf8")).toBe("provider_multi_investigation_attempted\n");
 			expect((await stat(marker)).mode & 0o777).toBe(0o600);
 		} finally {
 			await rm(directory, { recursive: true, force: true });
@@ -214,6 +264,85 @@ describe("bounded print-provider investigation", () => {
 				vi.fn().mockRejectedValue(new Error("raw transport error")),
 			),
 		).resolves.toBe("inconclusive");
+	});
+
+	test("normalizes aggregate provider observations without target data", async () => {
+		await expect(
+			observeProviderMatches(
+				[externalId, secondExternalId],
+				configuration,
+				vi
+					.fn()
+					.mockResolvedValue(response([order(externalId), order(secondExternalId, "10000000002")])),
+			),
+		).resolves.toBe("all_observed");
+		await expect(
+			observeProviderMatches(
+				[externalId, secondExternalId],
+				configuration,
+				vi.fn().mockResolvedValue(response([order(externalId)])),
+			),
+		).resolves.toBe("some_observed");
+		await expect(
+			observeProviderMatches(
+				[externalId, secondExternalId],
+				configuration,
+				vi.fn().mockResolvedValue(response([order("cs_live_ABCDEFGHIJKLMNOP")])),
+			),
+		).resolves.toBe("none_observed");
+		await expect(
+			observeProviderMatches(
+				[externalId, secondExternalId],
+				configuration,
+				vi.fn().mockResolvedValue(response([order(externalId), order(externalId, "10000000002")])),
+			),
+		).resolves.toBe("inconclusive");
+	});
+
+	test("normalizes multi-target orchestration and fails a changed recheck closed", async () => {
+		for (const observation of [
+			"all_observed",
+			"some_observed",
+			"none_observed",
+			"inconclusive",
+		] as const) {
+			await expect(
+				runProviderMultiInvestigation({
+					getTargets: async () => ({
+						outcome: "ready",
+						externalIds: [externalId, secondExternalId],
+					}),
+					observeMatches: async () => observation,
+				}),
+			).resolves.toBe(`provider_multi_investigation:${observation}`);
+		}
+		await expect(
+			runProviderMultiInvestigation({
+				getTargets: async () => ({ outcome: "source_conflict" }),
+				observeMatches: async () => "all_observed",
+			}),
+		).resolves.toBe("provider_multi_investigation:source_conflict");
+		const getChangingTargets = vi
+			.fn()
+			.mockResolvedValueOnce({ outcome: "ready", externalIds: [externalId, secondExternalId] })
+			.mockResolvedValueOnce({
+				outcome: "ready",
+				externalIds: [externalId, `${secondExternalId}X`],
+			});
+		await expect(
+			runProviderMultiInvestigation({
+				getTargets: getChangingTargets,
+				observeMatches: async () => "all_observed",
+			}),
+		).resolves.toBe("provider_multi_investigation:target_conflict");
+		await expect(
+			runProviderMultiInvestigation({
+				getTargets: async () => {
+					throw new Error("raw error");
+				},
+				observeMatches: async () => "all_observed",
+			}),
+		).resolves.toBe("provider_multi_investigation:configuration_error");
 	});
 
 	test("normalizes target and provider outcomes without returning target data", async () => {
