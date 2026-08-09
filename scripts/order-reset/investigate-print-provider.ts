@@ -10,6 +10,7 @@ import {
 	type ProviderInvestigationResult,
 	type ProviderInvestigationTarget,
 	parseProviderInvestigationTarget,
+	productionProviderModeIsSafe,
 	runProviderInvestigation,
 } from "./providerInvestigation";
 
@@ -67,7 +68,7 @@ async function main(): Promise<ProviderInvestigationResult> {
 		process.env.ORDER_RESET_PROVIDER_INVESTIGATION_ID !== OPERATION_ID ||
 		process.env.ORDER_PRODUCERS_STATE !== "closed" ||
 		convexUrl !== EXPECTED_CONVEX_URL ||
-		process.env.LUMAPRINTS_USE_SANDBOX !== "false" ||
+		!productionProviderModeIsSafe(process.env.LUMAPRINTS_USE_SANDBOX) ||
 		!apiKey ||
 		!apiSecret ||
 		!storeId ||

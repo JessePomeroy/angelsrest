@@ -7,6 +7,7 @@ import {
 	observeProviderMatch,
 	type ProviderConfiguration,
 	parseProviderInvestigationTarget,
+	productionProviderModeIsSafe,
 	runProviderInvestigation,
 } from "./providerInvestigation";
 
@@ -38,6 +39,14 @@ function order(id: string, number = "10000000001") {
 }
 
 describe("bounded print-provider investigation", () => {
+	test("accepts only explicit or documented implicit Production provider mode", () => {
+		expect(productionProviderModeIsSafe(undefined)).toBe(true);
+		expect(productionProviderModeIsSafe("false")).toBe(true);
+		expect(productionProviderModeIsSafe("true")).toBe(false);
+		expect(productionProviderModeIsSafe("")).toBe(false);
+		expect(productionProviderModeIsSafe(" false ")).toBe(false);
+	});
+
 	test("accepts only the exact bounded target carrier", () => {
 		expect(
 			parseProviderInvestigationTarget(
