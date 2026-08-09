@@ -326,6 +326,128 @@ describe("owner-approved full order reset", () => {
 		});
 	});
 
+	test("selects one authorized provider-investigation target without a write", async () => {
+		const t = convexTest(schema, modules);
+		const externalId = "cs_live_1234567890abcdef";
+		await insertOrder(t, 1, {
+			stripeSessionId: externalId,
+			fulfillmentType: "lumaprints",
+			printFulfillmentClaim: true,
+			printFulfillmentClaimedAt: 1,
+			printFulfillmentResolution: "submission_uncertain",
+		});
+		const before = await t.run((ctx) => ctx.db.query("orders").take(2));
+
+		await expect(t.query(internal.orderReset.providerInvestigationTarget, {})).resolves.toEqual({
+			outcome: "ready",
+			externalId,
+		});
+		expect(await t.run((ctx) => ctx.db.query("orders").take(2))).toEqual(before);
+		await expect(apply(t)).resolves.toEqual({ outcome: "live_effect" });
+	});
+
+	test("fails provider target selection closed on source, target, and live-effect conflicts", async () => {
+		const empty = convexTest(schema, modules);
+		await expect(empty.query(
+			internal.orderReset.providerInvestigationTarget,
+			{},
+		)).resolves.toEqual({ outcome: "source_conflict" });
+
+		const resetApplied = convexTest(schema, modules);
+		await insertOrder(resetApplied, 1);
+		await expect(apply(resetApplied)).resolves.toEqual({ outcome: "applied" });
+		await expect(resetApplied.query(
+			internal.orderReset.providerInvestigationTarget,
+			{},
+		)).resolves.toEqual({ outcome: "source_conflict" });
+
+		const duplicate = convexTest(schema, modules);
+		for (let index = 1; index <= 2; index += 1) {
+			await insertOrder(duplicate, index, {
+				stripeSessionId: `cs_live_1234567890abcde${index}`,
+				fulfillmentType: "lumaprints",
+				printFulfillmentClaim: true,
+				printFulfillmentClaimedAt: 1,
+			});
+		}
+		await expect(duplicate.query(
+			internal.orderReset.providerInvestigationTarget,
+			{},
+		)).resolves.toEqual({ outcome: "target_conflict" });
+
+		const excludedUnresolved = convexTest(schema, modules);
+		await insertOrder(excludedUnresolved, 1, {
+			stripeSessionId: "cs_live_1234567890abcdef",
+			fulfillmentType: "lumaprints",
+			printFulfillmentClaim: true,
+			printFulfillmentClaimedAt: 1,
+		});
+		await insertOrder(excludedUnresolved, 2, {
+			stripeSessionId: "cs_live_1234567890abcdeg",
+			fulfillmentType: "self",
+			printFulfillmentClaim: true,
+			printFulfillmentClaimedAt: 1,
+		});
+		await expect(excludedUnresolved.query(
+			internal.orderReset.providerInvestigationTarget,
+			{},
+		)).resolves.toEqual({ outcome: "target_conflict" });
+
+		const globalDuplicate = convexTest(schema, modules);
+		await insertOrder(globalDuplicate, 1, {
+			stripeSessionId: "cs_live_1234567890abcdef",
+			fulfillmentType: "lumaprints",
+			printFulfillmentClaim: true,
+			printFulfillmentClaimedAt: 1,
+		});
+		await insertOrder(globalDuplicate, 2, {
+			siteUrl: "other.example",
+			stripeSessionId: "cs_live_1234567890abcdef",
+		});
+		await expect(globalDuplicate.query(
+			internal.orderReset.providerInvestigationTarget,
+			{},
+		)).resolves.toEqual({ outcome: "target_conflict" });
+
+		const otherLiveEffect = convexTest(schema, modules);
+		await insertOrder(otherLiveEffect, 1, {
+			stripeSessionId: "cs_live_1234567890abcdef",
+			fulfillmentType: "lumaprints",
+			printFulfillmentClaim: true,
+			printFulfillmentClaimedAt: 1,
+			fulfillmentRecoveryStatus: "refund_pending",
+		});
+		await expect(otherLiveEffect.query(
+			internal.orderReset.providerInvestigationTarget,
+			{},
+		)).resolves.toEqual({ outcome: "live_effect_conflict" });
+
+		const preparationOnly = convexTest(schema, modules);
+		await insertOrder(preparationOnly, 1, {
+			stripeSessionId: "cs_live_1234567890abcdef",
+			fulfillmentType: "lumaprints",
+			printFulfillmentClaim: true,
+			printFulfillmentClaimedAt: 1,
+			printFulfillmentPhase: "preparing",
+		});
+		await expect(preparationOnly.query(
+			internal.orderReset.providerInvestigationTarget,
+			{},
+		)).resolves.toEqual({ outcome: "target_conflict" });
+
+		const legacy = convexTest(schema, modules);
+		await insertOrder(legacy, 1, {
+			siteUrl: "https://angelsrest.online",
+			stripeSessionId: "cs_live_1234567890abcdef",
+			fulfillmentType: "lumaprints",
+			printFulfillmentClaim: true,
+		});
+		await expect(legacy.query(
+			internal.orderReset.providerInvestigationTarget,
+			{},
+		)).resolves.toEqual({ outcome: "source_conflict" });
+	});
+
 	test("routes and rejects retired checkout replays after a later reopen", async () => {
 		const t = convexTest(schema, modules);
 		const retiredOrderId = await insertOrder(t, 1);

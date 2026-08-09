@@ -198,6 +198,22 @@ response contains only normalized source or live-effect classes in a fixed
 order. It exposes no row, identifier, PII, amount, count, deadline, or provider
 data and causes no mutation or external request.
 
+A separately approved provider investigation can use
+`orderReset.providerInvestigationTarget` only through the Convex CLI's
+explicit Production deployment authority. The selector remains internal and is
+not part of the public Convex API. The fixed selector requires both producer
+states to be closed, the same bounded canonical source, exactly one unresolved
+LumaPrints submission target, no reset artifacts, and no other live-effect
+class. Before any configuration, Convex, or provider access, the one-use
+operator script atomically creates a permanent attempt marker in its fixed
+owner-only local state directory. A missing, unprotected, symlinked, or already
+consumed marker path stops the operation. The script holds the selected identity
+only in process memory, performs bounded Production GET requests only, rechecks
+the selector after the scan, and emits one normalized result. It never prints credentials,
+identifiers, provider numbers, response bodies, counts, timestamps, or errors.
+A match that was not observed is not proof that the earlier submission failed;
+it does not clear the durable submission fence or authorize reset.
+
 Retired Sessions are terminal replays. Live-order and tombstone coexistence is
 a routing conflict. The webhook acknowledges a retired Session before line-item,
 order, provider, fee, or email work. `orders.create` also rejects it, and
