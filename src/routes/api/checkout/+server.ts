@@ -5,8 +5,15 @@ import { client } from "$lib/sanity/client";
 import { ApiErrorCode, apiError } from "$lib/server/apiError";
 import { bindCheckoutSession } from "$lib/server/checkoutBinding";
 import { isCheckoutSnapshotReservationConflict } from "$lib/server/checkoutSnapshotReservationClient";
+import {
+	assertNewOrderCheckoutOpen,
+	NewOrderCheckoutClosedError,
+} from "$lib/server/commercePurposeControls";
 import { createDirectCheckoutSession, rejectCouponAttempt } from "$lib/server/directCheckout";
-import { checkoutSnapshotMode, validateCheckoutAttemptRequest } from "$lib/server/handleCheckout";
+import {
+	checkoutSnapshotMode,
+	validateSameOriginCheckoutAttemptRequest,
+} from "$lib/server/handleCheckout";
 import { logStructured } from "$lib/server/logger";
 import { getStripe } from "$lib/server/stripeClient";
 import { resolveStripeTenantForSite } from "$lib/server/stripeTenant";
@@ -16,9 +23,13 @@ export async function POST({ request, cookies }) {
 	try {
 		const rawBody = await request.json();
 		rejectCouponAttempt(rawBody);
-		if (mode === "handle-v2") {
-			validateCheckoutAttemptRequest(rawBody?.attempt, rawBody?.attemptStartedAt);
-		}
+		const control = assertNewOrderCheckoutOpen(PUBLIC_SITE_URL);
+		const attemptIdentity = validateSameOriginCheckoutAttemptRequest(
+			PUBLIC_SITE_URL,
+			rawBody?.attempt,
+			rawBody?.attemptStartedAt,
+			rawBody?.attemptProof,
+		);
 		const stripe = getStripe();
 		const tenant = await resolveStripeTenantForSite(PUBLIC_SITE_URL);
 		const session = await createDirectCheckoutSession({
@@ -28,10 +39,15 @@ export async function POST({ request, cookies }) {
 			tenant,
 			fetcher: client.fetch.bind(client),
 			bindSession: (sessionId) => bindCheckoutSession(cookies, sessionId),
+			attemptIdentity,
+			hostGeneration: control.generation,
 		});
 
 		return json(session);
 	} catch (err: unknown) {
+		if (err instanceof NewOrderCheckoutClosedError) {
+			throw apiError(503, ApiErrorCode.UNAVAILABLE, "Checkout is temporarily unavailable");
+		}
 		if (isCheckoutSnapshotReservationConflict(err)) {
 			throw apiError(409, ApiErrorCode.CHECKOUT_ATTEMPT_REJECTED, "Checkout attempt rejected");
 		}

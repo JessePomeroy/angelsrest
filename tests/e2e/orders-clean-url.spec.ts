@@ -1,7 +1,9 @@
 import { expect, test } from "@playwright/test";
 
 test("orders page strips legacy email query params in the browser", async ({ page }) => {
-	await page.goto("/orders?email=buyer%40example.com&order=ORD-001");
+	await page.goto("/orders?email=buyer%40example.com&order=ORD-001", {
+		waitUntil: "domcontentloaded",
+	});
 
 	await expect(page).toHaveURL("/orders?order=ORD-001");
 	await expect(page.getByLabel("Order Number")).toHaveValue("ORD-001");
@@ -9,7 +11,9 @@ test("orders page strips legacy email query params in the browser", async ({ pag
 });
 
 test("orders page strips duplicated legacy email query params in the browser", async ({ page }) => {
-	await page.goto("/orders?email=&email=buyer%40example.com&order=ORD-002");
+	await page.goto("/orders?email=&email=buyer%40example.com&order=ORD-002", {
+		waitUntil: "domcontentloaded",
+	});
 
 	await expect(page).toHaveURL("/orders?order=ORD-002");
 	await expect(page.getByLabel("Order Number")).toHaveValue("ORD-002");
@@ -19,7 +23,10 @@ test("orders page strips duplicated legacy email query params in the browser", a
 test("orders page preserves non-sensitive query params while stripping legacy email params", async ({
 	page
 }) => {
-	await page.goto("/orders?source=receipt&email=buyer%40example.com&order=ORD-003&view=print");
+	await page.goto(
+		"/orders?source=receipt&email=buyer%40example.com&order=ORD-003&view=print",
+		{ waitUntil: "domcontentloaded" },
+	);
 
 	await expect(page).toHaveURL("/orders?source=receipt&order=ORD-003&view=print");
 	await expect(page.getByLabel("Order Number")).toHaveValue("ORD-003");
@@ -29,6 +36,7 @@ test("orders page preserves non-sensitive query params while stripping legacy em
 test("orders page preserves duplicated and encoded non-sensitive query params", async ({ page }) => {
 	await page.goto(
 		"/orders?source=gift%20receipt&email=buyer%40example.com&tag=alpha&order=ORD-004&tag=beta&return=%2Fshop%2Fprints%3Fsort%3Dnew",
+		{ waitUntil: "domcontentloaded" },
 	);
 
 	await expect(page).toHaveURL((url) => {

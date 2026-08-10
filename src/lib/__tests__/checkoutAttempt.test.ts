@@ -4,10 +4,12 @@ import { CheckoutAttemptTracker } from "$lib/utils/checkoutAttempt";
 const first = {
 	attempt: "123e4567-e89b-42d3-a456-426614174000",
 	attemptStartedAt: 1_800_000_000_000,
+	attemptProof: "a".repeat(64),
 };
 const second = {
 	attempt: "223e4567-e89b-42d3-a456-426614174000",
 	attemptStartedAt: 1_800_000_001_000,
+	attemptProof: "b".repeat(64),
 };
 
 describe("checkout browser attempts", () => {

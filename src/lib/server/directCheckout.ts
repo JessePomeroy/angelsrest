@@ -4,17 +4,18 @@ import { ApiErrorCode, apiError } from "$lib/server/apiError";
 import type { ResolvedCheckoutItem } from "$lib/server/checkoutCatalog";
 import { resolveCheckoutItem } from "$lib/server/checkoutCatalog";
 import { resolveCheckoutCommerce } from "$lib/server/checkoutCommerce";
+import type {
+	CheckoutAdmissionIdentity,
+	CheckoutSessionAdmissionClient,
+} from "$lib/server/checkoutSessionAdmissionClient";
 import type { CheckoutSnapshotReservationClient } from "$lib/server/checkoutSnapshotReservationClient";
 import {
 	checkoutSnapshotMode,
+	createAdmittedOrderCheckoutSession,
 	createHandleCheckoutSession,
-	validateCheckoutAttempt,
 } from "$lib/server/handleCheckout";
 import { logStructured } from "$lib/server/logger";
-import {
-	buildCheckoutLineItem,
-	createPaymentCheckoutSession,
-} from "$lib/server/stripeCheckoutSession";
+import { buildCheckoutLineItem } from "$lib/server/stripeCheckoutSession";
 import { buildTenantCheckoutOptions, type StripeTenantAccount } from "$lib/server/stripeConnect";
 
 type CheckoutFetcher = Parameters<typeof resolveCheckoutItem>[0];
@@ -34,6 +35,9 @@ export interface CreateDirectCheckoutSessionOptions {
 	log?: CheckoutLogger;
 	snapshotMode?: string;
 	reservationClient?: CheckoutSnapshotReservationClient;
+	admissionClient?: CheckoutSessionAdmissionClient;
+	attemptIdentity: CheckoutAdmissionIdentity;
+	hostGeneration: number;
 	now?: number;
 }
 
@@ -114,12 +118,14 @@ export async function createDirectCheckoutSession({
 	log = logStructured,
 	snapshotMode = env.CHECKOUT_SNAPSHOT_MODE,
 	reservationClient,
+	admissionClient,
+	attemptIdentity,
+	hostGeneration,
 	now = Date.now(),
 }: CreateDirectCheckoutSessionOptions): Promise<DirectCheckoutSessionResult> {
 	rejectCouponAttempt(rawBody);
 	const body = normalizeCheckoutBody(rawBody);
 	const mode = checkoutSnapshotMode(snapshotMode);
-	if (mode === "handle-v2") validateCheckoutAttempt(body.attempt, body.attemptStartedAt, now);
 	logRequestShape(body, log);
 
 	const productId = body.productId;
@@ -161,8 +167,9 @@ export async function createDirectCheckoutSession({
 	if (mode === "handle-v2") {
 		if (!item.snapshot) throw new Error("Checkout snapshot identity is unavailable");
 		return await createHandleCheckoutSession({
-			attempt: body.attempt,
-			attemptStartedAt: body.attemptStartedAt,
+			attempt: attemptIdentity.attempt,
+			attemptStartedAt: attemptIdentity.attemptStartedAt,
+			attemptProofClass: attemptIdentity.proofClass,
 			site: String(tenantCheckout.metadata.commerceTenantSiteUrl),
 			account: tenant?.stripeConnectedAccountId?.trim() || null,
 			catalogProvider: commerce?.provider ?? "sanity",
@@ -175,12 +182,17 @@ export async function createDirectCheckoutSession({
 			tenantCheckout,
 			bindSession,
 			reservationClient,
+			admissionClient,
+			hostGeneration,
 			now,
 		});
 	}
 
-	const session = await createPaymentCheckoutSession({
-		purpose: "order",
+	const session = await createAdmittedOrderCheckoutSession({
+		identity: attemptIdentity,
+		site: String(tenantCheckout.metadata.commerceTenantSiteUrl),
+		account: tenant?.stripeConnectedAccountId?.trim() || null,
+		hostGeneration,
 		stripe,
 		shippingAllowedCountries: fulfillment.isDigital ? undefined : ["US"],
 		lineItems,
@@ -188,6 +200,8 @@ export async function createDirectCheckoutSession({
 		cancelUrl,
 		metadata: buildCheckoutMetadata(item),
 		tenantCheckout,
+		admissionClient,
+		bindSession,
 	});
 
 	log({
@@ -202,6 +216,5 @@ export async function createDirectCheckoutSession({
 		},
 	});
 
-	bindSession(session.sessionId);
 	return session;
 }

@@ -5,8 +5,10 @@ import type { CheckoutSnapshotItem } from "$lib/server/checkoutCatalog";
 import {
 	type CreateHandleCheckoutOptions,
 	createHandleCheckoutSession,
+	issueSameOriginCheckoutAttempt,
 	validateCheckoutAttempt,
 	validateCheckoutAttemptRequest,
+	validateSameOriginCheckoutAttemptRequest,
 } from "$lib/server/handleCheckout";
 import { buildCheckoutLineItem } from "$lib/server/stripeCheckoutSession";
 import { buildTenantCheckoutOptions } from "$lib/server/stripeConnect";
@@ -45,10 +47,39 @@ function harness(overrides: Record<string, unknown> = {}) {
 	const bind = vi.fn(async () => {
 		events.push("bind");
 	});
+	const admissionClient = {
+		begin: vi.fn(async ({ identity }: { identity: { attempt: string } }) => {
+			events.push("admission-begin");
+			const changed = identity.attempt === ATTEMPT ? "a" : "b";
+			return {
+				site: "angelsrest.test",
+				account: null,
+				admissionId: "admission_123",
+				handleHash: changed.repeat(64),
+				requestFingerprint: "c".repeat(64),
+				activeLeaseTokenHash: "d".repeat(64),
+				stripeIdempotencyDigest: changed.repeat(64),
+				stripeIdempotencyKey: `checkout-admission-v1:${changed.repeat(64)}`,
+				hostGeneration: 1,
+				admissionGeneration: 1,
+				state: "active_prestripe",
+			};
+		}),
+		markCreating: vi.fn(async () => {
+			events.push("admission-creating");
+			return Math.floor(NOW / 1000) + 86_100;
+		}),
+		markUncertain: vi.fn(),
+		bind: vi.fn(async () => {
+			events.push("bind");
+		}),
+		release: vi.fn(),
+	};
 	const bindSession = vi.fn(() => events.push("cookie"));
 	const options = {
 		attempt: ATTEMPT,
 		attemptStartedAt: NOW,
+		attemptProofClass: "same_origin_host_proof",
 		site: "angelsrest.test",
 		account: null,
 		catalogProvider: "sanity",
@@ -74,10 +105,12 @@ function harness(overrides: Record<string, unknown> = {}) {
 			events.push("gate");
 		},
 		reservationClient: { reserve, bind },
+		admissionClient,
+		hostGeneration: 1,
 		now: NOW,
 		...overrides,
 	} as CreateHandleCheckoutOptions;
-	return { options, create, reserve, bind, bindSession, events };
+	return { options, create, reserve, bind, admissionClient, bindSession, events };
 }
 
 describe("handle checkout orchestration", () => {
@@ -105,7 +138,15 @@ describe("handle checkout orchestration", () => {
 		runtimeEnv.ORDER_PRODUCERS_STATE = "open";
 		const first = harness();
 		const result = await createHandleCheckoutSession(first.options);
-		expect(first.events).toEqual(["gate", "reserve", "stripe", "bind", "cookie"]);
+		expect(first.events).toEqual([
+			"gate",
+			"reserve",
+			"admission-begin",
+			"admission-creating",
+			"stripe",
+			"bind",
+			"cookie",
+		]);
 		expect(result).toEqual({
 			sessionId: "cs_test_1234567890abcdefghijklmnop",
 			url: "https://stripe.test/pay",
@@ -115,6 +156,8 @@ describe("handle checkout orchestration", () => {
 		expect(params.metadata).toEqual({
 			checkoutSnapshotVersion: "2",
 			checkoutSnapshotHandle: HANDLE,
+			checkoutAdmissionVersion: "1",
+			checkoutAdmissionHandleHash: "a".repeat(64),
 			commerceTenantSiteUrl: "angelsrest.test",
 		});
 		expect(params.expires_at).toBe(result.expiresAt);
@@ -161,8 +204,8 @@ describe("handle checkout orchestration", () => {
 
 	it("withholds browser binding and success when reservation binding fails", async () => {
 		const test = harness({
-			reservationClient: {
-				reserve: vi.fn().mockResolvedValue({ handle: HANDLE }),
+			admissionClient: {
+				...harness().admissionClient,
 				bind: vi.fn().mockRejectedValue(new Error("unavailable")),
 			},
 		});
@@ -191,6 +234,42 @@ describe("handle checkout orchestration", () => {
 		);
 	});
 
+	it("binds the same-origin challenge to the tenant, purpose, attempt, and start time", () => {
+		const credential = () => "tenant-purpose-proof-secret-0123456789";
+		const challenge = issueSameOriginCheckoutAttempt(
+			"angelsrest.online",
+			NOW,
+			() => ATTEMPT,
+			credential,
+		);
+		expect(
+			validateSameOriginCheckoutAttemptRequest(
+				"angelsrest.online",
+				challenge.attempt,
+				challenge.attemptStartedAt,
+				challenge.attemptProof,
+				NOW,
+				() => ATTEMPT,
+				credential,
+			),
+		).toEqual({
+			attempt: ATTEMPT,
+			attemptStartedAt: NOW,
+			proofClass: "same_origin_host_proof",
+		});
+		expect(() =>
+			validateSameOriginCheckoutAttemptRequest(
+				"zippymiggy.com",
+				challenge.attempt,
+				challenge.attemptStartedAt,
+				challenge.attemptProof,
+				NOW,
+				() => ATTEMPT,
+				credential,
+			),
+		).toThrowError(expect.objectContaining({ status: 409 }));
+	});
+
 	it("fails malformed attempts and redirects before reservation", async () => {
 		const test = harness({ attempt: "not-an-attempt" });
 		await expect(createHandleCheckoutSession(test.options)).rejects.toThrow("Invalid checkout");
@@ -213,7 +292,7 @@ describe("handle checkout orchestration", () => {
 		await createHandleCheckoutSession(test.options);
 		const params = test.create.mock.calls[0]?.[0] as Stripe.Checkout.SessionCreateParams;
 		expect(params.line_items).toHaveLength(40);
-		expect(Object.keys(params.metadata ?? {})).toHaveLength(3);
+		expect(Object.keys(params.metadata ?? {})).toHaveLength(5);
 		expect(JSON.stringify(params.metadata)).not.toContain("published-product");
 	});
 });

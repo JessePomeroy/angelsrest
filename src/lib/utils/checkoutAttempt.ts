@@ -1,6 +1,7 @@
 export interface CheckoutAttempt {
 	attempt: string;
 	attemptStartedAt: number;
+	attemptProof: string;
 }
 
 const MAX_LOCAL_AGE_MS = (23 * 60 + 25) * 60 * 1000;
@@ -20,12 +21,20 @@ export class CheckoutAttemptTracker {
 			this.#current.intent !== serialized ||
 			now - this.#current.retainedAt >= MAX_LOCAL_AGE_MS
 		) {
-			if (!UUID_V4.test(challenge.attempt) || !Number.isSafeInteger(challenge.attemptStartedAt)) {
+			if (
+				!UUID_V4.test(challenge.attempt) ||
+				!Number.isSafeInteger(challenge.attemptStartedAt) ||
+				!/^[0-9a-f]{64}$/.test(challenge.attemptProof)
+			) {
 				throw new Error("checkout failed");
 			}
 			this.#current = { ...challenge, intent: serialized, retainedAt: now };
 		}
-		return { attempt: this.#current.attempt, attemptStartedAt: this.#current.attemptStartedAt };
+		return {
+			attempt: this.#current.attempt,
+			attemptStartedAt: this.#current.attemptStartedAt,
+			attemptProof: this.#current.attemptProof,
+		};
 	}
 
 	discard(attempt: string) {
@@ -52,8 +61,16 @@ export function checkoutAttemptResponse(result: unknown) {
 		!Array.isArray(details)
 	) {
 		const candidate = details as Record<string, unknown>;
-		if (typeof candidate.attempt === "string" && typeof candidate.attemptStartedAt === "number") {
-			attempt = { attempt: candidate.attempt, attemptStartedAt: candidate.attemptStartedAt };
+		if (
+			typeof candidate.attempt === "string" &&
+			typeof candidate.attemptStartedAt === "number" &&
+			typeof candidate.attemptProof === "string"
+		) {
+			attempt = {
+				attempt: candidate.attempt,
+				attemptStartedAt: candidate.attemptStartedAt,
+				attemptProof: candidate.attemptProof,
+			};
 		}
 	}
 	return { code: body.code, attempt };

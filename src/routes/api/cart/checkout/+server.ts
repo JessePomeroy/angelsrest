@@ -15,14 +15,16 @@ import { resolveCheckoutItem } from "$lib/server/checkoutCatalog";
 import { resolveCheckoutCommerce } from "$lib/server/checkoutCommerce";
 import { isCheckoutSnapshotReservationConflict } from "$lib/server/checkoutSnapshotReservationClient";
 import {
-	checkoutSnapshotMode,
-	createHandleCheckoutSession,
-	validateCheckoutAttemptRequest,
-} from "$lib/server/handleCheckout";
+	assertNewOrderCheckoutOpen,
+	NewOrderCheckoutClosedError,
+} from "$lib/server/commercePurposeControls";
 import {
-	buildCheckoutLineItem,
-	createPaymentCheckoutSession,
-} from "$lib/server/stripeCheckoutSession";
+	checkoutSnapshotMode,
+	createAdmittedOrderCheckoutSession,
+	createHandleCheckoutSession,
+	validateSameOriginCheckoutAttemptRequest,
+} from "$lib/server/handleCheckout";
+import { buildCheckoutLineItem } from "$lib/server/stripeCheckoutSession";
 import { getStripe } from "$lib/server/stripeClient";
 import { resolveStripeTenantForSite } from "$lib/server/stripeTenant";
 import type { CartItem } from "$lib/shop/cart";
@@ -31,6 +33,7 @@ interface CartCheckoutRequest {
 	items: CartItem[];
 	attempt?: unknown;
 	attemptStartedAt?: unknown;
+	attemptProof?: unknown;
 }
 
 export async function POST({ request, cookies }) {
@@ -38,10 +41,16 @@ export async function POST({ request, cookies }) {
 	const mode = checkoutSnapshotMode(env.CHECKOUT_SNAPSHOT_MODE);
 	try {
 		const body = (await request.json()) as CartCheckoutRequest;
+		const control = assertNewOrderCheckoutOpen(PUBLIC_SITE_URL);
+		const attemptIdentity = validateSameOriginCheckoutAttemptRequest(
+			PUBLIC_SITE_URL,
+			body.attempt,
+			body.attemptStartedAt,
+			body.attemptProof,
+		);
 		const { items } = body;
 		const handleIntents = mode === "handle-v2" ? parseHandleCartIntent(items) : null;
 		if (mode === "handle-v2") {
-			validateCheckoutAttemptRequest(body.attempt, body.attemptStartedAt);
 			if (!handleIntents) throw error(400, "invalid cart checkout intent");
 		} else {
 			const validationError = validateCart(items);
@@ -137,8 +146,9 @@ export async function POST({ request, cookies }) {
 				return catalogItem.snapshot;
 			});
 			const session = await createHandleCheckoutSession({
-				attempt: body.attempt,
-				attemptStartedAt: body.attemptStartedAt,
+				attempt: attemptIdentity.attempt,
+				attemptStartedAt: attemptIdentity.attemptStartedAt,
+				attemptProofClass: attemptIdentity.proofClass,
 				site: String(tenantCheckout.metadata.commerceTenantSiteUrl),
 				account: tenant.stripeConnectedAccountId?.trim() || null,
 				catalogProvider: commerce?.provider ?? "sanity",
@@ -150,11 +160,15 @@ export async function POST({ request, cookies }) {
 				shippingAllowedCountries: ["US"],
 				tenantCheckout,
 				bindSession: (sessionId) => bindCheckoutSession(cookies, sessionId),
+				hostGeneration: control.generation,
 			});
 			return json(session);
 		}
-		const session = await createPaymentCheckoutSession({
-			purpose: "order",
+		const session = await createAdmittedOrderCheckoutSession({
+			identity: attemptIdentity,
+			site: String(tenantCheckout.metadata.commerceTenantSiteUrl),
+			account: tenant.stripeConnectedAccountId?.trim() || null,
+			hostGeneration: control.generation,
 			stripe,
 			shippingAllowedCountries: ["US"],
 			lineItems,
@@ -162,10 +176,13 @@ export async function POST({ request, cookies }) {
 			cancelUrl,
 			metadata: buildCartMetadata(resolvedItems),
 			tenantCheckout,
+			bindSession: (sessionId) => bindCheckoutSession(cookies, sessionId),
 		});
-		bindCheckoutSession(cookies, session.sessionId);
 		return json(session);
 	} catch (err: unknown) {
+		if (err instanceof NewOrderCheckoutClosedError) {
+			throw error(503, "Checkout is temporarily unavailable");
+		}
 		if (isCheckoutSnapshotReservationConflict(err)) {
 			throw apiError(409, ApiErrorCode.CHECKOUT_ATTEMPT_REJECTED, "Checkout attempt rejected");
 		}

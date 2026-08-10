@@ -113,13 +113,13 @@ describe("paid download", () => {
 		expect(mocks.query).toHaveBeenCalledTimes(2);
 	});
 
-	it("blocks downloads while reset quiescence is active", async () => {
+	it("retains existing paid downloads while order production is quiesced", async () => {
 		const { GET } = await import("./+server");
 		mocks.privateEnv.ORDER_PRODUCERS_STATE = "closed";
 
-		await expect(GET(event())).rejects.toMatchObject({ status: 503 });
-		expect(mocks.query).not.toHaveBeenCalled();
-		expect(mocks.retrieve).not.toHaveBeenCalled();
+		await expect(GET(event())).resolves.toMatchObject({ status: 303 });
+		expect(mocks.query).toHaveBeenCalledTimes(2);
+		expect(mocks.retrieve).toHaveBeenCalledOnce();
 	});
 
 	it.each([

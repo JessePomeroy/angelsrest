@@ -177,9 +177,29 @@ versioned registries and monotonic generations. Unit A adds dormant durable
 backend state: universal Checkout admissions fence unknown Stripe creation,
 bound Sessions retain signed order intake after new admission closes, and the
 V4 provider coordinator persists admission independently from its preparation
-lease. Existing V1–V3 callers and schedulers retain their prior semantics until
-the compatible host adopts the new protocol. New tables and order fields are
-additive/optional, so this widening requires no migration or backfill.
+lease. The compatible host requires every order-purpose Checkout to carry a
+stable authenticated attempt, begins one universal admission immediately before
+Stripe, marks the possible-create boundary atomically, and binds the exact
+Session before exposing its URL or cookie. Same-origin attempts carry an opaque
+tenant-purpose proof; spoke attempts remain authoritative only inside the
+already authenticated bridge body. Invoice Checkout is outside this order
+control, and existing paid downloads remain available.
+
+The host stamps only the admission protocol version and opaque handle digest in
+Stripe metadata. Signed webhook intake resolves the bound admission, transfers
+the optional handle-v2 snapshot and admission in the same order transaction,
+and projects optional provenance. The provider coordinator uses V4: a closed
+new-submission decision returns an explicit retryable 503 before resolver,
+Worker, composite, provider POST, refund, or notification effects, while an
+already durable admission or submission fence retains its recovery path.
+Authenticated admin-only `/api/admin/commerce/closure-state` and
+`/api/admin/commerce/catalog-sentinel` endpoints expose normalized classes for
+deployment and catalog drills without creating a reservation, admission, Stripe
+Session, or provider order and without returning identifiers or raw records.
+
+Existing V1–V3 callers and schedulers retain their prior semantics during the
+backend-first rollout. New tables and order fields are additive/optional, so
+this widening requires no migration or backfill.
 
 ### Retired order replay protection
 

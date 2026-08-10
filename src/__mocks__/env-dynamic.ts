@@ -14,4 +14,6 @@ export const env = {
 	WEBHOOK_SECRET: "test-webhook-secret",
 	ORDER_LOOKUP_SECRET: "test-order-lookup-secret",
 	ORDER_PRODUCERS_STATE: "open",
+	NEW_ORDER_CHECKOUT_CONTROL:
+		'{"version":1,"tenants":[{"siteUrl":"angelsrest.online","state":"open","generation":1},{"siteUrl":"zippymiggy.com","state":"open","generation":1}]}',
 };

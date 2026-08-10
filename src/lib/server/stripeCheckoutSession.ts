@@ -14,8 +14,7 @@ export interface CheckoutLineItemInput {
 	quantity?: number;
 }
 
-export interface CreatePaymentCheckoutSessionOptions {
-	purpose: "invoice-payment" | "order";
+interface CreatePaymentCheckoutSessionBase {
 	stripe: Stripe;
 	lineItems: Stripe.Checkout.SessionCreateParams.LineItem[];
 	successUrl: string;
@@ -23,9 +22,13 @@ export interface CreatePaymentCheckoutSessionOptions {
 	metadata: Stripe.MetadataParam;
 	shippingAllowedCountries?: AllowedCountry[];
 	tenantCheckout?: TenantStripeCheckoutOptions;
-	idempotencyKey?: string;
-	expiresAt?: number;
 }
+
+export type CreatePaymentCheckoutSessionOptions = CreatePaymentCheckoutSessionBase &
+	(
+		| { purpose: "invoice-payment"; idempotencyKey?: string; expiresAt?: never }
+		| { purpose: "order"; idempotencyKey: string; expiresAt: number }
+	);
 
 export interface PaymentCheckoutSessionResult {
 	sessionId: string;
@@ -71,6 +74,14 @@ export async function createPaymentCheckoutSession({
 	expiresAt,
 }: CreatePaymentCheckoutSessionOptions): Promise<PaymentCheckoutSessionResult> {
 	if (purpose !== "invoice-payment") assertOrderProducersOpen();
+	if (
+		purpose === "order" &&
+		(!idempotencyKey ||
+			!Number.isSafeInteger(expiresAt) ||
+			metadata.checkoutAdmissionVersion !== "1" ||
+			!/^[0-9a-f]{64}$/.test(String(metadata.checkoutAdmissionHandleHash)))
+	)
+		throw new Error("Order Checkout admission is invalid");
 	const finalMetadata = {
 		...metadata,
 		...(tenantCheckout?.metadata ?? {}),

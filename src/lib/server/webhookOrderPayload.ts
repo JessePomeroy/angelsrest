@@ -15,8 +15,11 @@ export type ConvexOrderCreatePayload = {
 	stripeConnectedAccountId?: string;
 	stripePaymentCurrency?: string;
 	stripePaymentLivemode?: boolean;
+	stripeSessionCreatedAt?: number;
+	stripeSessionExpiresAt?: number;
 	checkoutSnapshot?: CheckoutSnapshotV1;
 	checkoutSnapshotReservation?: { version: 2; handle: string };
+	checkoutSessionAdmission?: { version: 1; handleHash: string };
 	shippingAddress?: {
 		line1: string;
 		line2?: string;
@@ -45,6 +48,7 @@ export function buildConvexOrderCreatePayload({
 	webhookSecret,
 	stripeRequestOptions,
 	checkoutSnapshotInput = { protocol: "legacy" },
+	checkoutSessionAdmission,
 }: {
 	session: Stripe.Checkout.Session;
 	shippingDetails: ShippingDetails;
@@ -53,6 +57,7 @@ export function buildConvexOrderCreatePayload({
 	webhookSecret: string;
 	stripeRequestOptions?: Stripe.RequestOptions;
 	checkoutSnapshotInput?: CheckoutSnapshotInput;
+	checkoutSessionAdmission?: { version: 1; handleHash: string };
 }): ConvexOrderCreatePayload {
 	const rawPaymentIntent = session.payment_intent;
 	const stripePaymentIntentId =
@@ -76,6 +81,9 @@ export function buildConvexOrderCreatePayload({
 			: checkoutSnapshotInput.protocol === "handle-v2"
 				? { checkoutSnapshotReservation: checkoutSnapshotInput.reservation }
 				: {}),
+		...(checkoutSessionAdmission ? { checkoutSessionAdmission } : {}),
+		...(session.created === undefined ? {} : { stripeSessionCreatedAt: session.created }),
+		...(session.expires_at === undefined ? {} : { stripeSessionExpiresAt: session.expires_at }),
 		shippingAddress: shippingDetails?.address
 			? {
 					line1: shippingDetails.address.line1 || "",

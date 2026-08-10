@@ -1,16 +1,15 @@
 import { createHmac, timingSafeEqual } from "node:crypto";
 import type Stripe from "stripe";
 import type { CheckoutSnapshotItem } from "$lib/server/checkoutCatalog";
+import type { CheckoutSessionAdmissionClient } from "$lib/server/checkoutSessionAdmissionClient";
 import type { CheckoutSnapshotReservationClient } from "$lib/server/checkoutSnapshotReservationClient";
+import { assertNewOrderCheckoutOpen } from "$lib/server/commercePurposeControls";
 import {
 	checkoutSnapshotMode,
 	createHandleCheckoutSession,
 	validateCheckoutAttempt,
 } from "$lib/server/handleCheckout";
-import {
-	buildCheckoutLineItem,
-	createPaymentCheckoutSession,
-} from "$lib/server/stripeCheckoutSession";
+import { buildCheckoutLineItem } from "$lib/server/stripeCheckoutSession";
 import {
 	buildTenantCheckoutOptions,
 	COMMERCE_TENANT_METADATA_KEY,
@@ -87,6 +86,7 @@ export interface TenantPrintCheckoutOptions {
 	snapshotMode?: "handle-v2";
 	globalSnapshotMode?: string;
 	reservationClient?: CheckoutSnapshotReservationClient;
+	admissionClient?: CheckoutSessionAdmissionClient;
 	abuseGate?: () => void | Promise<void>;
 	now?: number;
 }
@@ -107,6 +107,7 @@ export async function createTenantPrintCheckoutSession({
 	snapshotMode,
 	globalSnapshotMode,
 	reservationClient,
+	admissionClient,
 	abuseGate,
 	now = Date.now(),
 }: TenantPrintCheckoutOptions): Promise<TenantPrintCheckoutResult> {
@@ -116,6 +117,7 @@ export async function createTenantPrintCheckoutSession({
 		secrets,
 		now,
 	});
+	const control = assertNewOrderCheckoutOpen(tenant.siteUrl);
 
 	const mode =
 		snapshotMode === "handle-v2" && checkoutSnapshotMode(globalSnapshotMode) === "handle-v2"
@@ -147,39 +149,31 @@ export async function createTenantPrintCheckoutSession({
 			unitAmountCents: body.amountCents,
 		}),
 	];
-	let session;
-	if (mode === "handle-v2" && body.checkoutSnapshot) {
-		session = await createHandleCheckoutSession({
-			attempt: body.attempt,
-			attemptStartedAt: body.attemptStartedAt,
-			site: body.siteUrl,
-			account,
-			catalogProvider: body.checkoutSnapshot.catalogProvider,
-			snapshotItems: body.checkoutSnapshot.items,
-			stripe,
-			lineItems,
-			successUrl: body.successUrl,
-			cancelUrl: body.cancelUrl,
-			allowedRedirectOrigins,
-			shippingAllowedCountries: ["US", "CA"],
-			tenantCheckout,
-			bindSession: () => {},
-			reservationClient,
-			abuseGate,
-			now,
-		});
-	} else {
-		session = await createPaymentCheckoutSession({
-			purpose: "order",
-			stripe,
-			shippingAllowedCountries: ["US", "CA"],
-			lineItems,
-			successUrl: body.successUrl,
-			cancelUrl: body.cancelUrl,
-			metadata: body.metadata,
-			tenantCheckout,
-		});
+	if (mode !== "handle-v2" || !body.checkoutSnapshot) {
+		throw new CheckoutBridgeError(503, "Checkout protocol is unavailable");
 	}
+	const session = await createHandleCheckoutSession({
+		attempt: body.attempt,
+		attemptStartedAt: body.attemptStartedAt,
+		attemptProofClass: "signed_bridge_body",
+		site: body.siteUrl,
+		account,
+		catalogProvider: body.checkoutSnapshot.catalogProvider,
+		snapshotItems: body.checkoutSnapshot.items,
+		stripe,
+		lineItems,
+		successUrl: body.successUrl,
+		cancelUrl: body.cancelUrl,
+		allowedRedirectOrigins,
+		shippingAllowedCountries: ["US", "CA"],
+		tenantCheckout,
+		bindSession: () => {},
+		reservationClient,
+		admissionClient,
+		hostGeneration: control.generation,
+		abuseGate,
+		now,
+	});
 
 	return {
 		sessionId: session.sessionId,
