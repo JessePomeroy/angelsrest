@@ -37,6 +37,7 @@ const REFUND_AUTOMATION_TAG = "fulfillment_recovery_v1";
 
 export class PrintReconciliationAlertRetryableError extends Error {}
 export class PrintReconciliationPendingError extends Error {}
+export class ProviderSubmissionClosedRetryableError extends Error {}
 export class AutomatedFulfillmentRefundRetryableError extends Error {}
 export class AutomatedRefundNotificationRetryableError extends Error {}
 
@@ -235,11 +236,14 @@ export async function submitPrintFulfillment(
 	}
 
 	const claimToken = randomUUID();
-	const claimed = await convex.mutation(api.orders.claimPrintFulfillmentV3, {
+	const claimed = await convex.mutation(api.orders.claimPrintFulfillmentV4, {
 		orderId,
 		claimToken,
 		webhookSecret,
 	});
+	if (claimed.kind === "submission_closed") {
+		throw new ProviderSubmissionClosedRetryableError("New print-provider submission is closed");
+	}
 	if (claimed.kind === "fulfilled")
 		return { kind: "fulfilled", lumaprintsOrderNumber: claimed.orderNumber };
 	if (claimed.kind === "manual_refunded") {
@@ -311,11 +315,14 @@ export async function submitPrintFulfillment(
 
 			// The block result can be stale when another delivery stores the GET
 			// result first. Re-read through the atomic claim before reporting a block.
-			const refreshed = await convex.mutation(api.orders.claimPrintFulfillmentV3, {
+			const refreshed = await convex.mutation(api.orders.claimPrintFulfillmentV4, {
 				orderId,
 				claimToken,
 				webhookSecret,
 			});
+			if (refreshed.kind === "submission_closed") {
+				throw new ProviderSubmissionClosedRetryableError("New print-provider submission is closed");
+			}
 			if (refreshed.kind === "fulfilled") {
 				return { kind: "fulfilled", lumaprintsOrderNumber: refreshed.orderNumber };
 			}

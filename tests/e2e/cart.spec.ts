@@ -25,7 +25,7 @@ test("cart page ignores legacy v1 persisted carts", async ({ page }) => {
 		);
 	});
 
-	await page.goto("/cart");
+	await page.goto("/cart", { waitUntil: "domcontentloaded" });
 
 	await expect(page.getByRole("heading", { name: "your cart" })).toBeVisible();
 	await expect(page.getByText("your cart is empty")).toBeVisible();

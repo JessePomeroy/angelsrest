@@ -1,5 +1,6 @@
 import type Stripe from "stripe";
 import { describe, expect, it, vi } from "vitest";
+import { env } from "$env/dynamic/private";
 import {
 	CheckoutBridgeError,
 	createTenantPrintCheckoutSession,
@@ -96,6 +97,40 @@ function makeReservation(events?: string[]) {
 	};
 }
 
+function makeAdmission(events?: string[]) {
+	return {
+		begin: vi.fn(async () => {
+			events?.push("admission-begin");
+			return {
+				site: "zippymiggy.com",
+				account: "acct_1234567890TenantA",
+				admissionId: "admission_123",
+				handleHash: "a".repeat(64),
+				requestFingerprint: "b".repeat(64),
+				activeLeaseTokenHash: "c".repeat(64),
+				stripeIdempotencyDigest: "d".repeat(64),
+				stripeIdempotencyKey: `checkout-admission-v1:${"d".repeat(64)}`,
+				hostGeneration: 1,
+				admissionGeneration: 1,
+				state: "active_prestripe",
+			};
+		}),
+		markCreating: vi.fn(async () => {
+			events?.push("admission-creating");
+			return Math.floor(NOW / 1000) + 86_100;
+		}),
+		markUncertain: vi.fn(async () => {
+			events?.push("admission-uncertain");
+		}),
+		bind: vi.fn(async () => {
+			events?.push("admission-bind");
+		}),
+		release: vi.fn(async () => {
+			events?.push("admission-release");
+		}),
+	};
+}
+
 function handleOptions(
 	bodyText: string,
 	stripe: Stripe,
@@ -112,51 +147,56 @@ function handleOptions(
 		snapshotMode: "handle-v2",
 		globalSnapshotMode: "handle-v2",
 		reservationClient,
+		admissionClient: makeAdmission(),
 		now: NOW,
 		...overrides,
 	};
 }
 
 describe("checkout bridge", () => {
-	it("keeps default legacy results and Stripe parameters", async () => {
+	it("fails a signed tenant request closed before reservation or Stripe", async () => {
+		const runtimeEnv = env as Record<string, string | undefined>;
+		const previous = runtimeEnv.NEW_ORDER_CHECKOUT_CONTROL;
+		runtimeEnv.NEW_ORDER_CHECKOUT_CONTROL = JSON.stringify({
+			version: 1,
+			tenants: [
+				{ siteUrl: "angelsrest.online", state: "open", generation: 1 },
+				{ siteUrl: "zippymiggy.com", state: "closed", generation: 2 },
+			],
+		});
+		try {
+			const bodyText = makeHandleBody();
+			const reservationClient = makeReservation();
+			const { stripe, create } = makeStripe();
+			await expect(
+				createTenantPrintCheckoutSession(handleOptions(bodyText, stripe, reservationClient)),
+			).rejects.toThrow("New order Checkout is closed");
+			expect(reservationClient.reserve).not.toHaveBeenCalled();
+			expect(create).not.toHaveBeenCalled();
+		} finally {
+			runtimeEnv.NEW_ORDER_CHECKOUT_CONTROL = previous;
+		}
+	});
+
+	it("rejects an unadmitted legacy request before Stripe", async () => {
 		const bodyText = makeBody();
 		const { stripe, create } = makeStripe();
 
-		const result = await createTenantPrintCheckoutSession({
-			bodyText,
-			headers: makeHeaders(bodyText),
-			stripe,
-			tenant: {
-				siteUrl: "zippymiggy.com",
-				stripeConnectedAccountId: "acct_123",
-			},
-			secrets: [SECRET],
-			allowedRedirectOrigins: ["https://zippymiggy.com"],
-			now: NOW,
-		});
-
-		expect(result).toEqual({
-			sessionId: "cs_test_123",
-			url: "https://stripe.test/pay",
-			platformFeeAmount: 500,
-		});
-
-		const params = create.mock.calls[0]?.[0] as Stripe.Checkout.SessionCreateParams;
-		const requestOptions = create.mock.calls[0]?.[1] as Stripe.RequestOptions | undefined;
-		expect(params.line_items?.[0]?.price_data?.unit_amount).toBe(10_000);
-		expect(params.success_url).toBe(
-			"https://zippymiggy.com/shop/success?session_id={CHECKOUT_SESSION_ID}",
-		);
-		expect(params.payment_intent_data).toEqual({
-			application_fee_amount: 500,
-			metadata: { commerceTenantSiteUrl: "zippymiggy.com" },
-		});
-		expect(params.metadata).toMatchObject({
-			productSlug: "digital-headshot",
-			paperSubcategoryId: "103001",
-			commerceTenantSiteUrl: "zippymiggy.com",
-		});
-		expect(requestOptions).toEqual({ stripeAccount: "acct_123" });
+		await expect(
+			createTenantPrintCheckoutSession({
+				bodyText,
+				headers: makeHeaders(bodyText),
+				stripe,
+				tenant: {
+					siteUrl: "zippymiggy.com",
+					stripeConnectedAccountId: "acct_123",
+				},
+				secrets: [SECRET],
+				allowedRedirectOrigins: ["https://zippymiggy.com"],
+				now: NOW,
+			}),
+		).rejects.toMatchObject(new CheckoutBridgeError(503, "Checkout protocol is unavailable"));
+		expect(create).not.toHaveBeenCalled();
 	});
 
 	it("rejects a missing signature", async () => {
@@ -254,19 +294,16 @@ describe("checkout bridge", () => {
 	});
 
 	it("accepts either bounded tenant secret during rotation", async () => {
-		const bodyText = makeBody();
+		const bodyText = makeHandleBody();
+		const reservationClient = makeReservation();
 		const { stripe } = makeStripe();
 
 		await expect(
-			createTenantPrintCheckoutSession({
-				bodyText,
-				headers: makeHeaders(bodyText),
-				stripe,
-				tenant: { siteUrl: "zippymiggy.com" },
-				secrets: ["new-tenant-secret".repeat(2), SECRET],
-				allowedRedirectOrigins: ["https://zippymiggy.com"],
-				now: NOW,
-			}),
+			createTenantPrintCheckoutSession(
+				handleOptions(bodyText, stripe, reservationClient, {
+					secrets: ["new-tenant-secret".repeat(2), SECRET],
+				}),
+			),
 		).resolves.toMatchObject({ sessionId: "cs_test_123" });
 	});
 
@@ -305,28 +342,23 @@ describe("checkout bridge", () => {
 		expect(create).not.toHaveBeenCalled();
 	});
 
-	it("keeps default legacy bytes and behavior without inspecting handle fields", async () => {
+	it("rejects legacy protocol even when ignored handle fields are malformed", async () => {
 		const bodyText = makeBody({ attempt: "bad", checkoutSnapshot: { extra: "ignored" } });
 		const reservationClient = makeReservation();
 		const { stripe, create } = makeStripe();
-		const result = await createTenantPrintCheckoutSession({
-			bodyText,
-			headers: makeHeaders(bodyText),
-			stripe,
-			tenant: { siteUrl: "zippymiggy.com", stripeConnectedAccountId: "acct_123" },
-			secrets: [SECRET],
-			allowedRedirectOrigins: ["https://zippymiggy.com"],
-			reservationClient,
-			now: NOW,
-		});
-		expect(result).toEqual({
-			sessionId: "cs_test_123",
-			url: "https://stripe.test/pay",
-			platformFeeAmount: 500,
-		});
-		expect(create.mock.calls[0]?.[0]).toMatchObject({
-			metadata: expect.objectContaining({ productSlug: "digital-headshot" }),
-		});
+		await expect(
+			createTenantPrintCheckoutSession({
+				bodyText,
+				headers: makeHeaders(bodyText),
+				stripe,
+				tenant: { siteUrl: "zippymiggy.com", stripeConnectedAccountId: "acct_123" },
+				secrets: [SECRET],
+				allowedRedirectOrigins: ["https://zippymiggy.com"],
+				reservationClient,
+				now: NOW,
+			}),
+		).rejects.toMatchObject(new CheckoutBridgeError(503, "Checkout protocol is unavailable"));
+		expect(create).not.toHaveBeenCalled();
 		expect(reservationClient.reserve).not.toHaveBeenCalled();
 	});
 
@@ -334,7 +366,7 @@ describe("checkout bridge", () => {
 		["absent", undefined],
 		["empty", ""],
 		["invalid", "HANDLE-V2"],
-	] as const)("keeps a tenant handle gate in legacy when global mode is %s", async (_label, mode) => {
+	] as const)("rejects when the global handle gate is %s", async (_label, mode) => {
 		const bodyText = makeHandleBody();
 		const reservationClient = makeReservation();
 		const { stripe, create } = makeStripe();
@@ -342,14 +374,12 @@ describe("checkout bridge", () => {
 			createTenantPrintCheckoutSession(
 				handleOptions(bodyText, stripe, reservationClient, { globalSnapshotMode: mode }),
 			),
-		).resolves.toMatchObject({ sessionId: "cs_test_123" });
-		expect(create.mock.calls[0]?.[0]).toMatchObject({
-			metadata: expect.objectContaining({ productSlug: "digital-headshot" }),
-		});
+		).rejects.toMatchObject(new CheckoutBridgeError(503, "Checkout protocol is unavailable"));
+		expect(create).not.toHaveBeenCalled();
 		expect(reservationClient.reserve).not.toHaveBeenCalled();
 	});
 
-	it("keeps a global handle gate in legacy when the tenant gate is absent", async () => {
+	it("rejects when the tenant handle gate is absent", async () => {
 		const bodyText = makeHandleBody();
 		const reservationClient = makeReservation();
 		const { stripe, create } = makeStripe();
@@ -357,10 +387,8 @@ describe("checkout bridge", () => {
 			createTenantPrintCheckoutSession(
 				handleOptions(bodyText, stripe, reservationClient, { snapshotMode: undefined }),
 			),
-		).resolves.toMatchObject({ sessionId: "cs_test_123" });
-		expect(create.mock.calls[0]?.[0]).toMatchObject({
-			metadata: expect.objectContaining({ productSlug: "digital-headshot" }),
-		});
+		).rejects.toMatchObject(new CheckoutBridgeError(503, "Checkout protocol is unavailable"));
+		expect(create).not.toHaveBeenCalled();
 		expect(reservationClient.reserve).not.toHaveBeenCalled();
 	});
 
@@ -376,12 +404,20 @@ describe("checkout bridge", () => {
 		const result = await createTenantPrintCheckoutSession(
 			handleOptions(bodyText, stripe, reservationClient, {
 				allowedRedirectOrigins: [publicOrigin],
+				admissionClient: makeAdmission(events),
 				abuseGate: () => {
 					events.push("gate");
 				},
 			}),
 		);
-		expect(events).toEqual(["gate", "reserve", "stripe", "bind"]);
+		expect(events).toEqual([
+			"gate",
+			"reserve",
+			"admission-begin",
+			"admission-creating",
+			"stripe",
+			"admission-bind",
+		]);
 		expect(result).toEqual({
 			sessionId: "cs_test_123",
 			url: "https://stripe.test/pay",
@@ -398,6 +434,8 @@ describe("checkout bridge", () => {
 		expect(params.metadata).toEqual({
 			checkoutSnapshotVersion: "2",
 			checkoutSnapshotHandle: HANDLE,
+			checkoutAdmissionVersion: "1",
+			checkoutAdmissionHandleHash: "a".repeat(64),
 			commerceTenantSiteUrl: "zippymiggy.com",
 		});
 		expect(params.line_items?.[0]?.price_data).toMatchObject({
@@ -439,7 +477,7 @@ describe("checkout bridge", () => {
 		expect(create).not.toHaveBeenCalled();
 	});
 
-	it("withholds Stripe after reserve failure and the URL after bind failure", async () => {
+	it("withholds Stripe after reserve failure and the URL after admission bind failure", async () => {
 		const bodyText = makeHandleBody();
 		const { stripe, create } = makeStripe();
 		await expect(
@@ -453,10 +491,20 @@ describe("checkout bridge", () => {
 		expect(create).not.toHaveBeenCalled();
 		await expect(
 			createTenantPrintCheckoutSession(
-				handleOptions(bodyText, stripe, {
-					reserve: vi.fn().mockResolvedValue({ handle: HANDLE }),
-					bind: vi.fn().mockRejectedValue(new Error("bind failed")),
-				}),
+				handleOptions(
+					bodyText,
+					stripe,
+					{
+						reserve: vi.fn().mockResolvedValue({ handle: HANDLE }),
+						bind: vi.fn(),
+					},
+					{
+						admissionClient: {
+							...makeAdmission(),
+							bind: vi.fn().mockRejectedValue(new Error("bind failed")),
+						},
+					},
+				),
 			),
 		).rejects.toThrow("bind failed");
 		expect(create).toHaveBeenCalledOnce();

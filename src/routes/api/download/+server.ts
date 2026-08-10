@@ -5,7 +5,6 @@ import { client } from "$lib/sanity/client";
 import { issuePaidFile, resolvePaidDownload } from "$lib/server/catalogCommerceClients";
 import { isCheckoutSessionOwner } from "$lib/server/checkoutBinding";
 import { getConvex } from "$lib/server/convexClient";
-import { assertOrderProducersOpen } from "$lib/server/orderProducerGate";
 import { getStripe } from "$lib/server/stripeClient";
 import { getWebhookSecret } from "$lib/server/webhookSecret";
 
@@ -64,11 +63,6 @@ async function streamSanityFile(fileUrl: string, filename: string) {
 }
 
 export async function GET({ url, cookies }) {
-	try {
-		assertOrderProducersOpen();
-	} catch {
-		throw error(503, "Downloads are temporarily unavailable");
-	}
 	const sessionId = url.searchParams.get("session_id");
 	if (!sessionId) throw error(400, "Missing session_id");
 

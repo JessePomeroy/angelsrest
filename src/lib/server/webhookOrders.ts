@@ -3,6 +3,7 @@ import type { Resend } from "resend";
 import type Stripe from "stripe";
 import { api } from "$convex/api";
 import type { Id } from "$convex/dataModel";
+import type { CheckoutAdmissionInput } from "$lib/server/checkoutSnapshotConsumer";
 import {
 	type CheckoutSnapshotInput,
 	CheckoutSnapshotProtocolError,
@@ -18,6 +19,7 @@ import {
 	type PrintFulfillmentOutcome,
 	PrintReconciliationAlertRetryableError,
 	PrintReconciliationPendingError,
+	ProviderSubmissionClosedRetryableError,
 	type SubmitLumaPrintsOrder,
 	sendClaimedFulfillmentFailureAdminAlert,
 	submitPrintFulfillment,
@@ -61,6 +63,7 @@ export async function createOrderInConvex(
 		stripeRequestOptions,
 		notificationProfile = ANGELS_REST_COMMERCE_PROFILE,
 		checkoutSnapshotInput = { protocol: "legacy" },
+		checkoutSessionAdmission,
 	}: {
 		session: Stripe.Checkout.Session;
 		shippingDetails: ShippingDetails;
@@ -69,6 +72,7 @@ export async function createOrderInConvex(
 		stripeRequestOptions?: Stripe.RequestOptions;
 		notificationProfile?: CommerceNotificationProfile;
 		checkoutSnapshotInput?: CheckoutSnapshotInput;
+		checkoutSessionAdmission?: CheckoutAdmissionInput;
 	},
 ): Promise<CreatedOrderResult> {
 	const payload = buildConvexOrderCreatePayload({
@@ -79,6 +83,7 @@ export async function createOrderInConvex(
 		webhookSecret: getWebhookSecret(),
 		stripeRequestOptions,
 		checkoutSnapshotInput,
+		checkoutSessionAdmission,
 	});
 	const orderResult = await convex.mutation(api.orders.create, payload).catch((cause) => {
 		if (checkoutSnapshotInput.protocol === "handle-v2") {
@@ -291,7 +296,8 @@ export async function createOrderInConvex(
 	} catch (err) {
 		if (
 			err instanceof PrintReconciliationAlertRetryableError ||
-			err instanceof PrintReconciliationPendingError
+			err instanceof PrintReconciliationPendingError ||
+			err instanceof ProviderSubmissionClosedRetryableError
 		)
 			throw err;
 		fulfillment = await handlePrintFulfillmentFailure(

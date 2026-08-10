@@ -30,6 +30,29 @@ export type CheckoutSnapshotV1 = {
 };
 export class CheckoutSnapshotProtocolError extends Error {}
 
+export type CheckoutAdmissionInput = { version: 1; handleHash: string };
+
+export function inspectCheckoutAdmissionMetadata(metadata: Stripe.Metadata | null) {
+	const record = (metadata ?? {}) as Record<string, unknown>;
+	const keys = Object.keys(record).filter((key) => key.startsWith("checkoutAdmission"));
+	if (keys.length === 0) return { kind: "unmarked" as const };
+	if (
+		keys.length !== 2 ||
+		!keys.includes("checkoutAdmissionVersion") ||
+		!keys.includes("checkoutAdmissionHandleHash") ||
+		record.checkoutAdmissionVersion !== "1" ||
+		!/^[0-9a-f]{64}$/.test(String(record.checkoutAdmissionHandleHash))
+	)
+		return { kind: "invalid-marked" as const };
+	return {
+		kind: "admission-v1" as const,
+		candidate: {
+			version: 1 as const,
+			handleHash: String(record.checkoutAdmissionHandleHash),
+		},
+	};
+}
+
 function checkoutSnapshotMarkerKeys(metadata: Stripe.Metadata | null) {
 	return Object.keys((metadata ?? {}) as Record<string, unknown>).filter((key) =>
 		key.startsWith("checkoutSnapshot"),
@@ -133,18 +156,19 @@ export function inspectCheckoutSnapshotMetadata(
 }
 
 export function selectCheckoutSnapshotInput(
-	routingSource: "order" | "reservation" | null,
+	routingSource: "order" | "reservation" | "admission" | null,
 	protocol?: ReturnType<typeof inspectCheckoutSnapshotMetadata>,
 ) {
 	if (routingSource === "order") return { protocol: "existing-order" } as const;
 	if (!protocol || protocol.kind === "invalid-marked") {
 		throw new CheckoutSnapshotProtocolError("Invalid checkout snapshot protocol");
 	}
-	if (routingSource === "reservation") {
+	if (routingSource === "reservation" || routingSource === "admission") {
 		if (protocol.kind !== "handle-v2") {
-			throw new CheckoutSnapshotProtocolError(
-				"Bound checkout snapshot requires handle-v2 metadata",
-			);
+			if (routingSource === "admission" && protocol.kind === "unmarked") {
+				return { protocol: "legacy" as const };
+			}
+			throw new CheckoutSnapshotProtocolError("Bound Checkout state requires handle-v2 metadata");
 		}
 		return { protocol: "handle-v2", reservation: { version: 2, handle: protocol.handle } } as const;
 	}

@@ -65,7 +65,12 @@ describe("createPaymentCheckoutSession", () => {
 				lineItems: [],
 				successUrl: "https://example.test/success",
 				cancelUrl: "https://example.test/cancel",
-				metadata: {},
+				metadata: {
+					checkoutAdmissionVersion: "1",
+					checkoutAdmissionHandleHash: "a".repeat(64),
+				},
+				idempotencyKey: "checkout-admission-v1:test",
+				expiresAt: 1_800_086_100,
 			}),
 		).rejects.toThrow("Order producers are closed");
 		expect(create).not.toHaveBeenCalled();
@@ -84,7 +89,10 @@ describe("createPaymentCheckoutSession", () => {
 			metadata: { type: "invoice_payment" },
 		});
 
-		expect(result).toEqual({ sessionId: "cs_test_123", url: "https://stripe.test/pay" });
+		expect(result).toEqual({
+			sessionId: "cs_test_123",
+			url: "https://stripe.test/pay",
+		});
 		expect(create).toHaveBeenCalledOnce();
 	});
 
@@ -97,7 +105,13 @@ describe("createPaymentCheckoutSession", () => {
 				lineItems: [],
 				successUrl: "https://example.test/success",
 				cancelUrl: "https://example.test/cancel",
-				metadata: { invalid: "x".repeat(501) },
+				metadata: {
+					checkoutAdmissionVersion: "1",
+					checkoutAdmissionHandleHash: "a".repeat(64),
+					invalid: "x".repeat(501),
+				},
+				idempotencyKey: "checkout-admission-v1:test",
+				expiresAt: 1_800_086_100,
 			}),
 		).rejects.toThrow("Invalid Stripe metadata");
 		expect(create).not.toHaveBeenCalled();
@@ -119,8 +133,13 @@ describe("createPaymentCheckoutSession", () => {
 			],
 			successUrl: "https://example.com/success?session_id={CHECKOUT_SESSION_ID}",
 			cancelUrl: "https://example.com/cancel",
-			metadata: { productSlug: "archival-print" },
+			metadata: {
+				productSlug: "archival-print",
+				checkoutAdmissionVersion: "1",
+				checkoutAdmissionHandleHash: "a".repeat(64),
+			},
 			idempotencyKey: "checkout:archival-print:123",
+			expiresAt: 1_800_086_100,
 			tenantCheckout: {
 				session: {
 					payment_intent_data: {
@@ -134,7 +153,11 @@ describe("createPaymentCheckoutSession", () => {
 			},
 		});
 
-		expect(result).toEqual({ sessionId: "cs_test_123", url: "https://stripe.test/pay" });
+		expect(result).toEqual({
+			sessionId: "cs_test_123",
+			url: "https://stripe.test/pay",
+			expiresAt: 1_800_086_100,
+		});
 		expect(create).toHaveBeenCalledWith(
 			{
 				payment_method_types: ["card"],
@@ -157,8 +180,11 @@ describe("createPaymentCheckoutSession", () => {
 				cancel_url: "https://example.com/cancel",
 				metadata: {
 					productSlug: "archival-print",
+					checkoutAdmissionVersion: "1",
+					checkoutAdmissionHandleHash: "a".repeat(64),
 					commerceTenantSiteUrl: "zippymiggy.com",
 				},
+				expires_at: 1_800_086_100,
 				payment_intent_data: {
 					application_fee_amount: 210,
 					metadata: { commerceTenantSiteUrl: "zippymiggy.com" },

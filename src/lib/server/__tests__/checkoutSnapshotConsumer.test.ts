@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
 	CheckoutSnapshotProtocolError,
 	hasCheckoutSnapshotMarker,
+	inspectCheckoutAdmissionMetadata,
 	inspectCheckoutSnapshotMetadata,
 	selectCheckoutSnapshotInput,
 } from "$lib/server/checkoutSnapshotConsumer";
@@ -37,6 +38,23 @@ function inspect(metadata: Stripe.Metadata, count = 1) {
 }
 
 describe("checkout snapshot protocol inspection", () => {
+	it("accepts only the exact opaque admission marker", () => {
+		expect(
+			inspectCheckoutAdmissionMetadata({
+				checkoutAdmissionVersion: "1",
+				checkoutAdmissionHandleHash: "a".repeat(64),
+			}),
+		).toEqual({
+			kind: "admission-v1",
+			candidate: { version: 1, handleHash: "a".repeat(64) },
+		});
+		expect(
+			inspectCheckoutAdmissionMetadata({
+				checkoutAdmissionVersion: "1",
+				checkoutAdmissionHandleHash: "not-a-digest",
+			}),
+		).toEqual({ kind: "invalid-marked" });
+	});
 	it("preserves exact bounded inline-v1 order", () => {
 		const result = inspect(inline([tuple(0, "second"), tuple(1, "first")]), 2);
 		expect(result.kind).toBe("inline-v1");
@@ -125,6 +143,13 @@ describe("checkout snapshot routing selection", () => {
 		expect(selectCheckoutSnapshotInput("reservation", v2)).toEqual({
 			protocol: "handle-v2",
 			reservation: { version: 2, handle },
+		});
+		expect(selectCheckoutSnapshotInput("admission", v2)).toEqual({
+			protocol: "handle-v2",
+			reservation: { version: 2, handle },
+		});
+		expect(selectCheckoutSnapshotInput("admission", { kind: "unmarked" })).toEqual({
+			protocol: "legacy",
 		});
 		const v1 = inspect(inline([tuple(0)]));
 		expect(selectCheckoutSnapshotInput(null, v1)).toMatchObject({ protocol: "inline-v1" });

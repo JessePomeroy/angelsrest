@@ -8,6 +8,7 @@ import { env } from "$env/dynamic/private";
 import {
 	CheckoutSnapshotProtocolError,
 	hasCheckoutSnapshotMarker,
+	inspectCheckoutAdmissionMetadata,
 	inspectCheckoutSnapshotMetadata,
 	readCheckoutTenantMarker,
 	selectCheckoutSnapshotInput,
@@ -26,6 +27,7 @@ import {
 	AutomatedRefundNotificationRetryableError,
 	PrintReconciliationAlertRetryableError,
 	PrintReconciliationPendingError,
+	ProviderSubmissionClosedRetryableError,
 	type SubmitLumaPrintsOrder,
 	sendClaimedAutomatedRefundNotification,
 } from "$lib/server/printFulfillment";
@@ -82,6 +84,10 @@ export async function processStripeWebhookEvent(
 				}
 
 				const snapshotModeEnabled = env.CHECKOUT_SNAPSHOT_MODE === "handle-v2";
+				const admissionProtocol = inspectCheckoutAdmissionMetadata(session.metadata);
+				if (admissionProtocol.kind === "invalid-marked") {
+					throw new CheckoutSnapshotProtocolError("Invalid Checkout admission protocol");
+				}
 				const snapshotMarkerPresent = hasCheckoutSnapshotMarker(session.metadata);
 				const consumesCheckoutSnapshot = snapshotModeEnabled || snapshotMarkerPresent;
 				const stripeAccount = typeof event.account === "string" ? event.account.trim() : undefined;
@@ -120,6 +126,8 @@ export async function processStripeWebhookEvent(
 					stripeRequestOptions: tenant.stripeRequestOptions,
 					routingSource: routing?.source ?? null,
 					completeLineItems: consumesCheckoutSnapshot,
+					checkoutSessionAdmission:
+						admissionProtocol.kind === "admission-v1" ? admissionProtocol.candidate : undefined,
 				});
 				break;
 			}
@@ -223,12 +231,16 @@ export async function processStripeWebhookEvent(
 			!(err instanceof PrintReconciliationAlertDeliveryError) &&
 			!(err instanceof PrintReconciliationAlertRetryableError) &&
 			!(err instanceof PrintReconciliationPendingError) &&
+			!(err instanceof ProviderSubmissionClosedRetryableError) &&
 			!(err instanceof AutomatedFulfillmentRefundRetryableError) &&
 			!(err instanceof AutomatedRefundNotificationRetryableError)
 		) {
 			await sendFailureAlert(adapters.resend, event.type, sessionId ?? "unknown", errorMessage);
 		}
-		throw error(500, "Webhook processing failed");
+		throw error(
+			err instanceof ProviderSubmissionClosedRetryableError ? 503 : 500,
+			"Webhook processing failed",
+		);
 	}
 }
 
@@ -352,12 +364,14 @@ async function handleCheckoutCompleted(
 		notificationProfile,
 		routingSource = null,
 		completeLineItems = false,
+		checkoutSessionAdmission,
 	}: {
 		siteUrl: string;
 		stripeRequestOptions?: Stripe.RequestOptions;
 		notificationProfile: CommerceNotificationProfile;
-		routingSource?: "order" | "reservation" | null;
+		routingSource?: "order" | "reservation" | "admission" | null;
 		completeLineItems?: boolean;
+		checkoutSessionAdmission?: { version: 1; handleHash: string };
 	},
 ) {
 	logStructured({
@@ -421,6 +435,7 @@ async function handleCheckoutCompleted(
 			stripeRequestOptions,
 			notificationProfile,
 			checkoutSnapshotInput,
+			checkoutSessionAdmission,
 		},
 	);
 

@@ -61,6 +61,7 @@ vi.mock("$convex/api", () => ({
 			claimPaymentFailureEmail: "orders.claimPaymentFailureEmail",
 			claimNonPrintOrderOutcome: "orders.claimNonPrintOrderOutcome",
 			claimPrintFulfillmentV3: "orders.claimPrintFulfillmentV3",
+			claimPrintFulfillmentV4: "orders.claimPrintFulfillmentV4",
 			claimPrintFulfillmentReconciliationAlert: "orders.claimPrintFulfillmentReconciliationAlert",
 			completeFulfillmentFailureNotificationV2: "orders.completeFulfillmentFailureNotificationV2",
 			recordAutomatedFulfillmentRefund: "orders.recordAutomatedFulfillmentRefund",
@@ -278,7 +279,7 @@ describe("processStripeWebhookEvent", () => {
 					if (result === undefined) throw new Error("Missing payment-failure claim result");
 					return result;
 				}
-				if (reference === "orders.claimPrintFulfillmentV3")
+				if (reference === "orders.claimPrintFulfillmentV4")
 					return (
 						printClaimResults.shift() ??
 						claimResultOverride ?? { kind: "claimed", externalId: claimedExternalId }
@@ -1064,7 +1065,7 @@ describe("processStripeWebhookEvent", () => {
 		expect(mockSendCustomerFulfillmentFailure).not.toHaveBeenCalled();
 		expect(mockSendAdminNotification).not.toHaveBeenCalled();
 		expect(convex.mutation).not.toHaveBeenCalledWith(
-			"orders.claimPrintFulfillmentV3",
+			"orders.claimPrintFulfillmentV4",
 			expect.anything(),
 		);
 	});
@@ -1097,7 +1098,7 @@ describe("processStripeWebhookEvent", () => {
 		expect(mockSendCustomerFulfillmentFailure).not.toHaveBeenCalled();
 		expect(mockSendAdminNotification).not.toHaveBeenCalled();
 		expect(convex.mutation).not.toHaveBeenCalledWith(
-			"orders.claimPrintFulfillmentV3",
+			"orders.claimPrintFulfillmentV4",
 			expect.anything(),
 		);
 	});

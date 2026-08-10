@@ -7,6 +7,7 @@ const attempt = (ordinal: number) => ({
 	details: {
 		attempt: `${ordinal}23e4567-e89b-42d3-a456-426614174000`,
 		attemptStartedAt: 1_800_000_000_000 + ordinal,
+		attemptProof: String(ordinal).repeat(64),
 	},
 });
 const response = (body: unknown, status = 200) =>
@@ -61,7 +62,9 @@ describe("checkout browser transport", () => {
 		const firstRetry = JSON.parse(String(fetcher.mock.calls[1]?.[1]?.body));
 		const secondRetry = JSON.parse(String(fetcher.mock.calls[3]?.[1]?.body));
 		expect(firstRetry.attempt).toBe(attempt(1).details.attempt);
+		expect(firstRetry.attemptProof).toBe(attempt(1).details.attemptProof);
 		expect(secondRetry.attempt).toBe(attempt(2).details.attempt);
+		expect(secondRetry.attemptProof).toBe(attempt(2).details.attemptProof);
 	});
 
 	it("retains an attempt across an ambiguous retry response", async () => {
