@@ -47,6 +47,10 @@ import {
 	isNonnegativeSafeInteger,
 	isStripeCurrency,
 } from "./helpers/stripeFeeCapture";
+import {
+	consumeCheckoutSessionAdmission,
+	getDurablePurposeControl,
+} from "./commerceClosure";
 
 const orderStatusValidator = v.union(
 	v.literal("new"),
@@ -448,6 +452,11 @@ async function connectedAccountMatchesSite(
 	return account === undefined || await canonicalSiteForConnectedAccount(ctx, account) === siteUrl;
 }
 
+async function assertNewOrderAdmissionOpenIfActivated(ctx: QueryCtx, siteUrl: string) {
+	const control = await getDurablePurposeControl(ctx, siteUrl, "new_order_admission");
+	if (control?.state === "closed") throw new Error("New order admission is closed");
+}
+
 function routingConflict(): never {
 	throw new Error("Checkout routing facts conflict");
 }
@@ -460,6 +469,34 @@ async function retiredOrderSession(
 		.query("retiredOrderSessions")
 		.withIndex("by_stripeSessionId", (q) => q.eq("stripeSessionId", stripeSessionId))
 		.unique();
+}
+
+async function tokenlessPreProtocolCheckoutIsCompatible(
+	ctx: QueryCtx,
+	args: {
+		siteUrl: string;
+		stripeConnectedAccountId: string | undefined;
+		stripeSessionCreatedAt: number | undefined;
+		stripeSessionExpiresAt: number | undefined;
+	},
+) {
+	if (
+		!Number.isSafeInteger(args.stripeSessionCreatedAt)
+		|| !Number.isSafeInteger(args.stripeSessionExpiresAt)
+	) return false;
+	const createdAt = args.stripeSessionCreatedAt as number;
+	const expiresAt = args.stripeSessionExpiresAt as number;
+	const lifetime = expiresAt - createdAt;
+	if (lifetime < 1800 || lifetime > 86_400) return false;
+	const cutoff = await ctx.db.query("commerceProtocolCutoffs")
+		.withIndex("by_siteUrl_and_accountScope", (q) => q
+			.eq("siteUrl", args.siteUrl)
+			.eq("accountScope", stripeAccountScope(args.stripeConnectedAccountId)))
+		.unique();
+	return cutoff !== null
+		&& Date.now() < cutoff.acceptUntilMs
+		&& createdAt < cutoff.cutoffCreatedSeconds
+		&& createdAt >= cutoff.cutoffCreatedSeconds - 86_400;
 }
 
 export const reserveCheckoutSnapshot = internalMutation({
@@ -486,6 +523,7 @@ export const reserveCheckoutSnapshot = internalMutation({
 			return { outcome: replayed ? "replayed" as const : "conflict" as const };
 		}
 		assertOrderProducersOpen();
+		await assertNewOrderAdmissionOpenIfActivated(ctx, args.siteUrl);
 		const createdAt = Date.now();
 		const unboundPurgeAt = createdAt + UNBOUND_RETENTION_MS;
 		const reservationId = await ctx.db.insert("checkoutSnapshotReservations", {
@@ -535,6 +573,7 @@ export const bindCheckoutSnapshot = internalMutation({
 		}
 		if (row.accountScope !== accountScope) return { outcome: "conflict" as const };
 		assertOrderProducersOpen();
+		await assertNewOrderAdmissionOpenIfActivated(ctx, args.siteUrl);
 		const boundAt = Date.now();
 		const boundReconcileAt = args.stripeExpiresAt * 1000 + PAID_SAFE_DELAY_MS;
 		if (!Number.isSafeInteger(boundReconcileAt)) return { outcome: "invalid" as const };
@@ -563,6 +602,7 @@ export const purgeUnboundCheckoutSnapshot = internalMutation({
 async function consumeReservation(
 	ctx: MutationCtx, siteUrl: string, stripeSessionId: string,
 	stripeConnectedAccountId: string | undefined, itemCount: number, candidate: unknown,
+	checkoutSessionAdmissionId?: Id<"checkoutSessionAdmissions">,
 ) {
 	const handle = parseReservationCandidate(candidate);
 	if (!handle) throw new Error("Invalid checkout snapshot reservation");
@@ -570,7 +610,9 @@ async function consumeReservation(
 	const row = await ctx.db.query("checkoutSnapshotReservations")
 		.withIndex("by_siteUrl_and_handleHash", (q) => q.eq("siteUrl", siteUrl).eq("handleHash", handleHash)).unique();
 	if (!row || row.state !== "bound" || row.accountScope !== stripeAccountScope(stripeConnectedAccountId)
-		|| row.stripeSessionId !== stripeSessionId || row.snapshot.items.length !== itemCount) {
+		|| row.stripeSessionId !== stripeSessionId || row.snapshot.items.length !== itemCount
+		|| checkoutSessionAdmissionId !== undefined
+			&& row.checkoutSessionAdmissionId !== checkoutSessionAdmissionId) {
 		throw new Error("Checkout snapshot reservation does not match paid session");
 	}
 	await ctx.db.delete(row._id);
@@ -759,9 +801,15 @@ export const create = mutation({
 		stripeConnectedAccountId: v.optional(v.string()),
 		stripePaymentCurrency: v.optional(v.string()),
 		stripePaymentLivemode: v.optional(v.boolean()),
+		stripeSessionCreatedAt: v.optional(v.number()),
+		stripeSessionExpiresAt: v.optional(v.number()),
 		checkoutSnapshot: v.optional(checkoutSnapshotValidator),
 		// Unknown by design: an existing paid order must win before a malformed V2 candidate is interpreted.
 		checkoutSnapshotReservation: v.optional(v.any()),
+		// Unknown by design: an existing paid order must win before a malformed
+		// admission candidate is interpreted. Only authenticated webhook intake may
+		// consume a provider-bound admission.
+		checkoutSessionAdmission: v.optional(v.any()),
 		shippingAddress: v.optional(
 			v.object({
 				line1: v.string(),
@@ -798,7 +846,14 @@ export const create = mutation({
 			await requireSiteAdmin(ctx, args.siteUrl);
 		}
 		// Don't let either capability leak into the stored document.
-		const { webhookSecret: _discard, checkoutSnapshotReservation, ...rest } = args;
+		const {
+			webhookSecret: _discard,
+			checkoutSnapshotReservation,
+			checkoutSessionAdmission,
+			stripeSessionCreatedAt,
+			stripeSessionExpiresAt,
+			...rest
+		} = args;
 		// Idempotency: if an order with this stripeSessionId already exists,
 		// return it along with fulfillment state so the caller can skip
 		// already-completed side effects (LumaPrints submission, fee capture,
@@ -900,21 +955,56 @@ export const create = mutation({
 					&& refundIntent.stripeTenantMetadataSiteUrl !== args.siteUrl
 		)) routingConflict();
 		const isManuallyRefunded = refundIntent !== null;
+		const admissionControl = auth.via === "webhook"
+			? await getDurablePurposeControl(ctx, args.siteUrl, "new_order_admission")
+			: null;
+		if (
+			admissionControl?.state === "closed"
+			&& !isManuallyRefunded
+			&& checkoutSessionAdmission === undefined
+			&& checkoutSnapshotReservation === undefined
+			&& !await tokenlessPreProtocolCheckoutIsCompatible(ctx, {
+				siteUrl: args.siteUrl,
+				stripeConnectedAccountId: args.stripeConnectedAccountId,
+				stripeSessionCreatedAt,
+				stripeSessionExpiresAt,
+			})
+		) throw new Error("New order admission is closed");
 		if (
 			!isManuallyRefunded
 			&& args.stripeFees !== undefined
 			&& !isNonnegativeSafeInteger(args.stripeFees)
 		) throw new Error("Stripe fees must be nonnegative safe-integer minor units");
 
-		let orderInput = rest;
+		let admission = null;
+		if (checkoutSessionAdmission !== undefined) {
+			if (auth.via !== "webhook") {
+				throw new Error("Checkout admission requires webhook authority");
+			}
+			admission = await consumeCheckoutSessionAdmission(ctx, {
+				siteUrl: args.siteUrl,
+				stripeConnectedAccountId: args.stripeConnectedAccountId,
+				stripeSessionId: args.stripeSessionId,
+				candidate: checkoutSessionAdmission,
+			});
+		}
+		let orderInput = admission
+			? {
+					...rest,
+					checkoutAdmissionProtocolVersion: 1 as const,
+					checkoutAdmissionHostGeneration: admission.hostGeneration,
+					checkoutAdmissionGeneration: admission.admissionGeneration,
+					checkoutAdmissionHandleHash: admission.admissionHandleHash,
+				}
+			: rest;
 		if (checkoutSnapshotReservation !== undefined) {
 			if (rest.checkoutSnapshot !== undefined) throw new Error("Checkout snapshot input is ambiguous");
 			const checkoutSnapshot = await consumeReservation(
 				ctx, args.siteUrl, args.stripeSessionId, args.stripeConnectedAccountId,
-				args.items.length, checkoutSnapshotReservation as unknown,
+				args.items.length, checkoutSnapshotReservation as unknown, admission?._id,
 			);
 			orderInput = {
-				...rest,
+				...orderInput,
 				checkoutSnapshot,
 				fulfillmentType: checkoutSnapshot.items.every(
 					({ productKind }) => productKind === "digital_download",
@@ -1323,9 +1413,10 @@ export const reconcileSucceededManualRefund = mutation({
 			&& order.lumaprintsOrderNumber === undefined
 			&& order.stripeRefundId === undefined
 			&& order.printFulfillmentClaim === true
-			&& order.printFulfillmentCoordinatorVersion !== 3
+			&& order.printFulfillmentCoordinatorVersion === undefined
 			&& recovery === null;
 		const mayRefundAfterSubmissionFence = order?.printFulfillmentCoordinatorVersion === 3
+			|| order?.printFulfillmentCoordinatorVersion === 4
 			|| recovery !== null;
 		const hasNoPrintSubmission = order !== undefined
 			&& order.lumaprintsOrderNumber === undefined
@@ -1348,7 +1439,10 @@ export const reconcileSucceededManualRefund = mutation({
 			&& order.lumaprintsOrderNumber === undefined
 			&& !order.printFulfillmentClaim
 			&& order.printFulfillmentResolution === undefined;
-		const hasV3PreProviderPreparation = order?.printFulfillmentCoordinatorVersion === 3
+		const hasVersionedPreProviderPreparation = (
+			order?.printFulfillmentCoordinatorVersion === 3
+			|| order?.printFulfillmentCoordinatorVersion === 4
+		)
 			&& order.lumaprintsOrderNumber === undefined
 			&& order.printFulfillmentClaim === true
 			&& order.printFulfillmentPhase === "preparing"
@@ -1366,7 +1460,7 @@ export const reconcileSucceededManualRefund = mutation({
 			&& order.fulfillmentRecoveryStatus === undefined
 			&& (
 				hasPreSubmissionPrintState
-				|| hasV3PreProviderPreparation
+				|| hasVersionedPreProviderPreparation
 				|| submissionIsUncertain && mayRefundAfterSubmissionFence
 				|| hasResolvedPrintSubmission
 			);
@@ -1584,6 +1678,54 @@ export const resolveCheckoutRouting = query({
 	},
 });
 
+/**
+ * Additive Unit-B routing fallback for universal Checkout admissions. Keeping
+ * this separate preserves resolveCheckoutRouting's exact V2 return union for
+ * already-deployed hosts and package consumers.
+ */
+export const resolveCheckoutAdmissionRouting = query({
+	args: {
+		stripeSessionId: v.string(),
+		stripeConnectedAccountId: v.optional(v.string()),
+		stripeTenantMetadataSiteUrl: v.optional(v.string()),
+		webhookSecret: v.string(),
+	},
+	handler: async (ctx, args) => {
+		await requireWebhookCallerOrAuth(ctx, args.webhookSecret, { allowAuth: false });
+		if (!isStripeCheckoutSessionId(args.stripeSessionId)) return null;
+		const [order, retired, admission] = await Promise.all([
+			ctx.db.query("orders")
+				.withIndex("by_stripeSessionId", (q) => q.eq("stripeSessionId", args.stripeSessionId))
+				.unique(),
+			retiredOrderSession(ctx, args.stripeSessionId),
+			ctx.db.query("checkoutSessionAdmissions")
+				.withIndex("by_accountScope_and_stripeSessionId", (q) => q
+					.eq("accountScope", stripeAccountScope(args.stripeConnectedAccountId))
+					.eq("stripeSessionId", args.stripeSessionId))
+				.unique(),
+		]);
+		if (order || retired || !admission || admission.state !== "bound") return null;
+		if (
+			admission.stripeConnectedAccountId !== args.stripeConnectedAccountId
+			|| args.stripeTenantMetadataSiteUrl !== undefined
+				&& args.stripeTenantMetadataSiteUrl !== admission.siteUrl
+		) routingConflict();
+		if (
+			args.stripeConnectedAccountId !== undefined
+			&& !await connectedAccountMatchesSite(
+				ctx,
+				admission.siteUrl,
+				args.stripeConnectedAccountId,
+			)
+		) routingConflict();
+		return {
+			source: "admission" as const,
+			siteUrl: admission.siteUrl,
+			stripeConnectedAccountId: admission.stripeConnectedAccountId,
+		};
+	},
+});
+
 /** Legacy V1 claim retained for a safe Convex-first rollout. */
 export const claimPrintFulfillment = mutation({
 	args: { orderId: v.id("orders"), webhookSecret: v.string() },
@@ -1606,9 +1748,9 @@ export const claimPrintFulfillment = mutation({
 		if (order.status === "refunded" || order.stripeRefundId)
 			return { kind: "refunded" as const, stripeRefundId: order.stripeRefundId };
 		if (order.fulfillmentRecoveryStatus) return { kind: "busy" as const };
-		// A V3 stamp survives preparation-lease release. Do not let a legacy host
-		// subsequently cross the POST fence under V3 refund-race semantics.
-		if (order.printFulfillmentCoordinatorVersion === 3) return { kind: "busy" as const };
+		// A versioned stamp survives preparation-lease release. Do not let a
+		// legacy host subsequently cross the POST fence under newer semantics.
+		if (order.printFulfillmentCoordinatorVersion !== undefined) return { kind: "busy" as const };
 		await ctx.db.patch(args.orderId, {
 			printFulfillmentClaim: true,
 			printFulfillmentResolution: "submission_uncertain",
@@ -1664,8 +1806,8 @@ export const claimPrintFulfillmentV2 = mutation({
 			return { kind: "busy" as const };
 		}
 		// Preserve the V2 return union while refusing ownership of a row that a
-		// V3 coordinator already marked durably.
-		if (order.printFulfillmentCoordinatorVersion === 3) {
+		// newer coordinator already marked durably.
+		if (order.printFulfillmentCoordinatorVersion !== undefined) {
 			return { kind: "busy" as const };
 		}
 		const now = Date.now();
@@ -1744,6 +1886,11 @@ export const claimPrintFulfillmentV3 = mutation({
 		if (order.fulfillmentRecoveryStatus || order.status !== "new") {
 			return { kind: "busy" as const };
 		}
+		// A legacy V3 caller must never take over an admitted V4 obligation after
+		// its transient preparation lease is released or expires.
+		if (order.printFulfillmentCoordinatorVersion === 4) {
+			return { kind: "busy" as const };
+		}
 		const now = Date.now();
 		if (order.printFulfillmentClaim) {
 			if (order.printFulfillmentPhase !== "preparing") {
@@ -1777,6 +1924,151 @@ export const claimPrintFulfillmentV3 = mutation({
 			externalId: order.stripeSessionId,
 			leaseExpiresAt,
 		};
+	},
+});
+
+/**
+ * Additive R4 coordinator. Durable provider admission is separate from the
+ * transient preparation lease; a closed control cannot revoke an admitted row.
+ */
+export const claimPrintFulfillmentV4 = mutation({
+	args: {
+		orderId: v.id("orders"),
+		claimToken: v.string(),
+		webhookSecret: v.string(),
+	},
+	handler: async (ctx, args) => {
+		await requireWebhookCallerOrAuth(ctx, args.webhookSecret, { allowAuth: false });
+		if (!CLAIM_TOKEN.test(args.claimToken)) throw new Error("Invalid print claim token");
+		const order = await ctx.db.get(args.orderId);
+		if (!order) throw new Error("Order not found");
+		if (order.lumaprintsOrderNumber) {
+			return { kind: "fulfilled" as const, orderNumber: order.lumaprintsOrderNumber };
+		}
+		if (hasUncertainPrintSubmission(order)) {
+			if (order.printFulfillmentResolution === "reconciliation_blocked") {
+				return {
+					kind: "reconciliation_blocked" as const,
+					reconciliationClass:
+						order.printFulfillmentReconciliationClass ?? "client_error",
+					...(order.printFulfillmentReconciliationEscalationReason === undefined
+						? {}
+						: { escalationReason: order.printFulfillmentReconciliationEscalationReason }),
+				};
+			}
+			return { kind: "reconcile" as const, externalId: order.stripeSessionId };
+		}
+		if (
+			order.status === "refunded"
+			&& order.stripeRefundId
+			&& order.fulfillmentRecoveryStatus === undefined
+		) return { kind: "manual_refunded" as const, stripeRefundId: order.stripeRefundId };
+		if (order.stripeRefundId) {
+			return { kind: "automated_refunded" as const, stripeRefundId: order.stripeRefundId };
+		}
+		if (
+			order.fulfillmentRecoveryStatus
+			|| order.status !== "new"
+			|| order.fulfillmentType !== "lumaprints"
+		) return { kind: "busy" as const };
+
+		const now = Date.now();
+		const alreadyAdmitted = order.printFulfillmentCoordinatorVersion === 4
+			&& order.printProviderAdmissionStatus === "admitted"
+			&& Number.isSafeInteger(order.printProviderAdmissionGeneration)
+			&& Number.isSafeInteger(order.printProviderAdmissionAt);
+		const hasProviderAdmissionFragment = order.printProviderAdmissionStatus !== undefined
+			|| order.printProviderAdmissionGeneration !== undefined
+			|| order.printProviderAdmissionAt !== undefined;
+		if (hasProviderAdmissionFragment && !alreadyAdmitted) {
+			return { kind: "busy" as const };
+		}
+		if (order.printFulfillmentClaim) {
+			if (order.printFulfillmentPhase !== "preparing") {
+				return { kind: "reconcile" as const, externalId: order.stripeSessionId };
+			}
+			if (
+				order.printFulfillmentLeaseExpiresAt !== undefined
+				&& order.printFulfillmentLeaseExpiresAt > now
+			) return { kind: "preparing" as const };
+		}
+
+		let providerGeneration = order.printProviderAdmissionGeneration;
+		if (!alreadyAdmitted) {
+			if (order.printFulfillmentCoordinatorVersion !== undefined) {
+				return { kind: "busy" as const };
+			}
+			const control = await getDurablePurposeControl(
+				ctx,
+				order.siteUrl,
+				"new_provider_submission",
+			);
+			if (!control || control.state !== "open") {
+				return { kind: "submission_closed" as const };
+			}
+			providerGeneration = control.generation;
+		}
+
+		const leaseExpiresAt = now + PRINT_PREPARATION_LEASE_MS;
+		await ctx.db.patch(order._id, {
+			printFulfillmentClaim: true,
+			printFulfillmentClaimToken: args.claimToken,
+			printFulfillmentPhase: "preparing",
+			printFulfillmentClaimedAt: now,
+			printFulfillmentLeaseExpiresAt: leaseExpiresAt,
+			printFulfillmentCoordinatorVersion: 4,
+			printProviderAdmissionStatus: "admitted",
+			printProviderAdmissionGeneration: providerGeneration,
+			printProviderAdmissionAt: order.printProviderAdmissionAt ?? now,
+			printFulfillmentResolution: undefined,
+			printFulfillmentReconciliationClass: undefined,
+			printFulfillmentReconciliationBlockedAt: undefined,
+			printFulfillmentReconciliationPendingFirstAt: undefined,
+			printFulfillmentReconciliationPendingAttempts: undefined,
+			printFulfillmentReconciliationLastAttemptAt: undefined,
+			printFulfillmentReconciliationLastAttemptClass: undefined,
+			printFulfillmentReconciliationPendingClassCounts: undefined,
+			printFulfillmentReconciliationEscalationReason: undefined,
+		});
+		await ctx.scheduler.runAt(
+			leaseExpiresAt,
+			internal.orders.expirePrintFulfillmentPreparationV4,
+			{ orderId: order._id, claimToken: args.claimToken, leaseExpiresAt },
+		);
+		return {
+			kind: "claimed" as const,
+			externalId: order.stripeSessionId,
+			leaseExpiresAt,
+			providerGeneration,
+		};
+	},
+});
+
+export const expirePrintFulfillmentPreparationV4 = internalMutation({
+	args: {
+		orderId: v.id("orders"),
+		claimToken: v.string(),
+		leaseExpiresAt: v.number(),
+	},
+	handler: async (ctx, args) => {
+		const order = await ctx.db.get(args.orderId);
+		if (
+			!order
+			|| order.printFulfillmentCoordinatorVersion !== 4
+			|| order.printProviderAdmissionStatus !== "admitted"
+			|| order.printFulfillmentPhase !== "preparing"
+			|| order.printFulfillmentClaimToken !== args.claimToken
+			|| order.printFulfillmentLeaseExpiresAt !== args.leaseExpiresAt
+			|| Date.now() < args.leaseExpiresAt
+		) return false;
+		await ctx.db.patch(order._id, {
+			printFulfillmentClaim: undefined,
+			printFulfillmentClaimToken: undefined,
+			printFulfillmentPhase: undefined,
+			printFulfillmentClaimedAt: undefined,
+			printFulfillmentLeaseExpiresAt: undefined,
+		});
+		return true;
 	},
 });
 
@@ -1840,6 +2132,13 @@ export const beginPrintFulfillmentSubmission = mutation({
 			|| order.printFulfillmentClaimToken !== args.claimToken
 			|| order.printFulfillmentLeaseExpiresAt === undefined
 			|| order.printFulfillmentLeaseExpiresAt <= Date.now()
+		) return { kind: "lost" as const };
+		if (
+			order.printFulfillmentCoordinatorVersion === 4
+			&& (
+				order.printProviderAdmissionStatus !== "admitted"
+				|| order.printProviderAdmissionGeneration === undefined
+			)
 		) return { kind: "lost" as const };
 		await ctx.db.patch(order._id, {
 			printFulfillmentPhase: "submitting",
