@@ -1,5 +1,11 @@
 # @jessepomeroy/crm-api
 
+## 3.2.0
+
+### Minor Changes
+
+- b8bc5ea: Add the dormant tenant-scoped commerce closure protocol, durable Checkout Session admissions, monotonic purpose controls, and provider fulfillment V4 admission fencing.
+
 ## 3.1.0
 
 ### Minor Changes
