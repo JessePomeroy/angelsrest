@@ -291,6 +291,21 @@ describe("Checkout Session admission", () => {
 		});
 		expect(creating.requestedStripeExpiresAt - Math.floor(Date.now() / 1000)).toBe(86_100);
 		expect(await t.mutation(
+			internal.commerceClosure.beginCheckoutSessionAdmission,
+			beginArgs(),
+		)).toMatchObject({
+			outcome: "replayed",
+			state: "creating",
+			requestedStripeExpiresAt: creating.requestedStripeExpiresAt,
+		});
+		expect(await t.mutation(internal.commerceClosure.markCheckoutSessionCreating, {
+			siteUrl: SITE,
+			admissionId: begun.admissionId,
+			activeLeaseTokenHash: D4,
+			requestFingerprint: D3,
+			stripeIdempotencyDigest: D1,
+		})).toEqual(creating);
+		expect(await t.mutation(
 			internal.commerceClosure.markCheckoutSessionCreationUncertain,
 			{
 				siteUrl: SITE,
@@ -299,6 +314,16 @@ describe("Checkout Session admission", () => {
 				stripeIdempotencyDigest: D1,
 			},
 		)).toBe(true);
+		expect(await t.mutation(internal.commerceClosure.markCheckoutSessionCreating, {
+			siteUrl: SITE,
+			admissionId: begun.admissionId,
+			activeLeaseTokenHash: D4,
+			requestFingerprint: D3,
+			stripeIdempotencyDigest: D1,
+		})).toEqual({
+			state: "creation_uncertain",
+			requestedStripeExpiresAt: creating.requestedStripeExpiresAt,
+		});
 		expect(await t.mutation(internal.commerceClosure.releaseCheckoutSessionAdmission, {
 			siteUrl: SITE,
 			admissionId: begun.admissionId,

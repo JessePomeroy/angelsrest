@@ -224,6 +224,9 @@ export const beginCheckoutSessionAdmission = internalMutation({
 				admissionId: existing._id,
 				state: existing.state,
 				admissionGeneration: existing.admissionGeneration,
+				...(existing.requestedStripeExpiresAt === undefined
+					? {}
+					: { requestedStripeExpiresAt: existing.requestedStripeExpiresAt }),
 			};
 		}
 
@@ -328,6 +331,19 @@ export const markCheckoutSessionCreating = internalMutation({
 		const row = await ctx.db.get(args.admissionId);
 		if (!row || row.siteUrl !== args.siteUrl) {
 			throw new Error("Checkout admission is unavailable");
+		}
+		if (
+			(row.state === "creating"
+				|| row.state === "creation_uncertain"
+				|| row.state === "bound")
+			&& row.requestFingerprint === args.requestFingerprint
+			&& row.stripeIdempotencyDigest === args.stripeIdempotencyDigest
+			&& row.requestedStripeExpiresAt !== undefined
+		) {
+			return {
+				state: row.state,
+				requestedStripeExpiresAt: row.requestedStripeExpiresAt,
+			};
 		}
 		if (
 			row.state !== "active_prestripe"
