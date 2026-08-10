@@ -1,5 +1,26 @@
 # @jessepomeroy/crm-api
 
+## 3.1.0
+
+### Minor Changes
+
+- 21d0cc7: Add the site-admin `classifyRefundTarget` query. It uses one bounded tenant scan and returns only closed target and historical-relation classes.
+- 1bb509f: Harden Stripe processing-fee accounting with provider-bound provenance, application-fee isolation, explicit lifecycle state, currency-grouped statistics, safe minor-unit validation, and honest unknown-fee reporting.
+
+### Patch Changes
+
+- 64f5c60: Require canonical tenant-scoped order numbers and reject retained order-number collisions during order creation.
+- dc50d81: Permit an explicitly authorized owner-test order reset to retire unresolved print submissions while preserving every other reset fence.
+- 4f7880d: Retain checkout replay tombstones when an owner-approved bounded reset removes disposable tenant orders.
+- 6a18041: Classify a stopped tenant reset with bounded normalized live-effect classes without exposing order data.
+- 16f7c2d: Add a bounded read-only provider investigation for multiple unresolved print submissions.
+- 2f3fbe1: Select one fixed unresolved print-submission target for a bounded provider investigation while commerce remains closed.
+- 20be393: Add normalized lookup-shape eligibility classification for the exact stopped multi-target conflict.
+- 2f1d73d: Add normalized classification for stopped multi-target print-provider selection.
+- ed64713: Add a bounded lookup-eligible provider observer with fresh exact-target rechecks.
+- efbfb9c: Classify a stopped print-provider target selection with bounded normalized conflict classes.
+- a9cc680: Keep order producers closed until ORDER_PRODUCERS_STATE has the explicit open value.
+
 ## 3.0.0
 
 ### Major Changes
