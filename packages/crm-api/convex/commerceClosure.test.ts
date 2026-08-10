@@ -682,6 +682,19 @@ describe("Checkout Session admission", () => {
 			.unique());
 		expect(cutoff!.acceptUntilMs - cutoff!.cutoffCreatedSeconds * 1000)
 			.toBe(3_222_000_000);
+		expect(await t.query(api.commerceClosure.getProtocolCutoffForInventory, {
+			siteUrl: SITE,
+			webhookSecret: WEBHOOK_SECRET,
+		})).toEqual({
+			cutoffCreatedSeconds: cutoff!.cutoffCreatedSeconds,
+			acceptUntilMs: cutoff!.acceptUntilMs,
+			activationGeneration: 1,
+			accountScopeClass: "platform",
+		});
+		await expect(t.query(api.commerceClosure.getProtocolCutoffForInventory, {
+			siteUrl: SITE,
+			webhookSecret: "wrong-webhook-secret-0123456789abcdef",
+		})).rejects.toThrow(/Not authorized/);
 	});
 });
 
