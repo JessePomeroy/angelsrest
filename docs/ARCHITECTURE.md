@@ -170,6 +170,17 @@ must have exactly one order-intake owner. Future Stripe Connect clients add
 tenant configuration and use the bridge; they do not copy the webhook
 coordinator into their repositories.
 
+R4 closure uses three purpose-specific, tenant-scoped controls rather than the
+platform-wide emergency `ORDER_PRODUCERS_STATE` gate. The host Checkout control,
+Convex order-admission control, and Convex provider-submission control use exact
+versioned registries and monotonic generations. Unit A adds dormant durable
+backend state: universal Checkout admissions fence unknown Stripe creation,
+bound Sessions retain signed order intake after new admission closes, and the
+V4 provider coordinator persists admission independently from its preparation
+lease. Existing V1–V3 callers and schedulers retain their prior semantics until
+the compatible host adopts the new protocol. New tables and order fields are
+additive/optional, so this widening requires no migration or backfill.
+
 ### Retired order replay protection
 
 An owner-approved full reset can remove disposable Angels Rest order rows only

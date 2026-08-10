@@ -310,3 +310,67 @@ export const reconcileCheckoutSnapshotReservation = internalAction({
 		}
 	},
 });
+
+/**
+ * Paid-safe reconciliation for the universal R4 admission protocol. Linked
+ * snapshot state is updated by the same mutation, so each attempt performs at
+ * most one provider read and unknown provider state remains durable.
+ */
+export const reconcileCheckoutSessionAdmission = internalAction({
+	args: {
+		admissionId: v.id("checkoutSessionAdmissions"),
+		boundAt: v.number(),
+		attempt: v.number(),
+	},
+	handler: async (ctx, args) => {
+		if (!Number.isInteger(args.attempt) || args.attempt < 0 || args.attempt > 3) return;
+		const row: { stripeSessionId: string; stripeConnectedAccountId?: string } | null =
+			await ctx.runQuery(internal.commerceClosure.getCheckoutAdmissionForReconciliation, {
+				admissionId: args.admissionId,
+				boundAt: args.boundAt,
+				attempt: args.attempt,
+			});
+		if (!row) return;
+		let paid = false;
+		let expiredUnpaid = false;
+		let providerSessionVerified = false;
+		const stripeKey = process.env.STRIPE_SECRET_KEY;
+		if (stripeKey && purposeScopedServerRolesAreDisjoint()) {
+			try {
+				const session = await new Stripe(stripeKey, {
+					apiVersion: STRIPE_API_VERSION,
+				}).checkout.sessions.retrieve(
+					row.stripeSessionId,
+					{},
+					row.stripeConnectedAccountId
+						? { stripeAccount: row.stripeConnectedAccountId }
+						: undefined,
+				);
+				providerSessionVerified = true;
+				paid = session.payment_status === "paid"
+					|| session.payment_status === "no_payment_required";
+				expiredUnpaid = session.status === "expired"
+					&& session.payment_status === "unpaid";
+			} catch {
+				// Provider uncertainty follows the bounded retry ladder and remains durable.
+			}
+		}
+		const result: { alert: "paid_without_order" | "reconciliation_uncertain" | null } =
+			await ctx.runMutation(
+				internal.commerceClosure.recordCheckoutAdmissionReconciliation,
+				{
+					admissionId: args.admissionId,
+					boundAt: args.boundAt,
+					attempt: args.attempt,
+					paid,
+					expiredUnpaid,
+					providerSessionVerified,
+				},
+			);
+		if (result.alert === "paid_without_order") {
+			console.error("checkout_session_admission.paid_without_order");
+		} else if (result.alert === "reconciliation_uncertain") {
+			console.error("checkout_session_admission.reconciliation_uncertain");
+		}
+	},
+});

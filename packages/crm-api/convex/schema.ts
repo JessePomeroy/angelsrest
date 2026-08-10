@@ -782,6 +782,99 @@ export default defineSchema({
 		.index("by_productId_and_revisionId", ["productId", "revisionId"])
 		.index("by_siteUrl", ["siteUrl"]),
 
+	// Monotonic, tenant-scoped runtime decisions for the additive R4 closure
+	// protocol. Environment registries are only deployment intent; mutations use
+	// these durable rows so an old or downgraded runtime cannot reuse an epoch.
+	commercePurposeControls: defineTable({
+		siteUrl: v.string(),
+		purpose: v.union(
+			v.literal("new_order_admission"),
+			v.literal("new_provider_submission"),
+		),
+		state: v.union(v.literal("open"), v.literal("closed")),
+		generation: v.number(),
+		acceptedHostGeneration: v.optional(v.number()),
+		createdAt: v.number(),
+		updatedAt: v.number(),
+	})
+		.index("by_siteUrl_and_purpose", ["siteUrl", "purpose"])
+		.index("by_purpose_and_state_and_generation", ["purpose", "state", "generation"]),
+
+	// One immutable pre-protocol cutoff per tenant/account scope. No timestamp is
+	// accepted from a browser or admin input; the activation mutation supplies the
+	// server clock and checked 37d7h relationship.
+	commerceProtocolCutoffs: defineTable({
+		protocolVersion: v.literal(1),
+		siteUrl: v.string(),
+		accountScope: v.string(),
+		activationGeneration: v.number(),
+		cutoffCreatedSeconds: v.number(),
+		acceptUntilMs: v.number(),
+		createdAt: v.number(),
+	})
+		.index("by_siteUrl_and_accountScope", ["siteUrl", "accountScope"])
+		.index("by_siteUrl_and_activationGeneration", ["siteUrl", "activationGeneration"]),
+
+	// Universal durable admission for every order-purpose Checkout. New rows are
+	// additive; old hosts do not create or consume them until Unit B is deployed.
+	checkoutSessionAdmissions: defineTable({
+		protocolVersion: v.literal(1),
+		siteUrl: v.string(),
+		accountScope: v.string(),
+		stripeConnectedAccountId: v.optional(v.string()),
+		attemptDigest: v.string(),
+		proofClass: v.union(
+			v.literal("same_origin_host_proof"),
+			v.literal("signed_bridge_body"),
+		),
+		admissionHandleHash: v.string(),
+		hostGeneration: v.number(),
+		admissionGeneration: v.number(),
+		state: v.union(
+			v.literal("active_prestripe"),
+			v.literal("creating"),
+			v.literal("creation_uncertain"),
+			v.literal("bound"),
+			v.literal("consumed_order"),
+			v.literal("released_definite_no_session"),
+			v.literal("expired_unpaid_provider_verified"),
+			v.literal("paid_without_order_attention"),
+			v.literal("reconciliation_uncertain_attention"),
+		),
+		requestFingerprint: v.string(),
+		activeLeaseTokenHash: v.optional(v.string()),
+		activeLeaseExpiresAt: v.optional(v.number()),
+		stripeIdempotencyDigest: v.optional(v.string()),
+		requestedStripeExpiresAt: v.optional(v.number()),
+		stripeSessionId: v.optional(v.string()),
+		stripeExpiresAt: v.optional(v.number()),
+		checkoutSnapshotReservationId: v.optional(v.id("checkoutSnapshotReservations")),
+		checkoutSnapshotHandleHash: v.optional(v.string()),
+		createdAt: v.number(),
+		updatedAt: v.number(),
+		creatingAt: v.optional(v.number()),
+		boundAt: v.optional(v.number()),
+		terminalAt: v.optional(v.number()),
+		reconciliationAttempt: v.optional(v.number()),
+		reconciliationNextAt: v.optional(v.number()),
+		reconciliationProviderVerifiedAt: v.optional(v.number()),
+		reconciliationAlertedAt: v.optional(v.number()),
+	})
+		.index("by_siteUrl_and_accountScope_and_attemptDigest", [
+			"siteUrl",
+			"accountScope",
+			"attemptDigest",
+		])
+		.index("by_siteUrl_and_hostGeneration_and_admissionGeneration_and_state", [
+			"siteUrl",
+			"hostGeneration",
+			"admissionGeneration",
+			"state",
+		])
+		.index("by_siteUrl_and_state", ["siteUrl", "state"])
+		.index("by_accountScope_and_stripeSessionId", ["accountScope", "stripeSessionId"])
+		.index("by_admissionHandleHash", ["admissionHandleHash"]),
+
 	// Short-lived, tenant-authenticated handoff from checkout creation to the paid webhook.
 	checkoutSnapshotReservations: defineTable({
 		state: v.union(v.literal("reserved"), v.literal("bound")),
@@ -802,8 +895,10 @@ export default defineSchema({
 		reconciliationNextAt: v.optional(v.number()),
 		reconciliationProviderVerifiedAt: v.optional(v.number()),
 		reconciliationAlertedAt: v.optional(v.number()),
+		checkoutSessionAdmissionId: v.optional(v.id("checkoutSessionAdmissions")),
 	})
 		.index("by_siteUrl_and_handleHash", ["siteUrl", "handleHash"])
+		.index("by_siteUrl_and_state", ["siteUrl", "state"])
 		.index("by_accountScope_and_stripeSessionId", ["accountScope", "stripeSessionId"])
 		.index("by_stripeSessionId", ["stripeSessionId"]),
 
@@ -881,6 +976,10 @@ export default defineSchema({
 		// Connected-account context needed by delayed Stripe reads after the
 		// webhook request that originally resolved tenant routing has ended.
 		stripeConnectedAccountId: v.optional(v.string()),
+		checkoutAdmissionProtocolVersion: v.optional(v.literal(1)),
+		checkoutAdmissionHostGeneration: v.optional(v.number()),
+		checkoutAdmissionGeneration: v.optional(v.number()),
+		checkoutAdmissionHandleHash: v.optional(v.string()),
 		checkoutSnapshot: v.optional(checkoutSnapshotValidator),
 		customerEmail: v.string(),
 		customerName: v.optional(v.string()),
@@ -950,9 +1049,16 @@ export default defineSchema({
 		),
 		printFulfillmentClaimedAt: v.optional(v.number()),
 		printFulfillmentLeaseExpiresAt: v.optional(v.number()),
-		// Written only by the V3 coordinator. Exact V1/V2 durable rows remain
-		// unversioned so refund races cannot opt an older host into V3 semantics.
-		printFulfillmentCoordinatorVersion: v.optional(v.literal(3)),
+		// Written only by a versioned coordinator. Exact V1/V2 durable rows remain
+		// unversioned so refund races cannot opt an older host into newer semantics.
+		printFulfillmentCoordinatorVersion: v.optional(
+			v.union(v.literal(3), v.literal(4)),
+		),
+		// V4 provider admission is durable independently from a transient
+		// preparation lease. Closing a control never revokes an accepted epoch.
+		printProviderAdmissionStatus: v.optional(v.literal("admitted")),
+		printProviderAdmissionGeneration: v.optional(v.number()),
+		printProviderAdmissionAt: v.optional(v.number()),
 		// The provider POST fence remains durable until an exact provider result
 		// resolves it. Contract failures block automatic retries without releasing it.
 		printFulfillmentResolution: v.optional(
@@ -1135,6 +1241,10 @@ export default defineSchema({
 	})
 		.index("by_siteUrl", ["siteUrl"])
 		.index("by_siteUrl_status", ["siteUrl", "status"])
+		.index("by_siteUrl_and_printProviderAdmissionStatus", [
+			"siteUrl",
+			"printProviderAdmissionStatus",
+		])
 		.index("by_stripeSessionId", ["stripeSessionId"])
 		.index("by_orderNumber", ["siteUrl", "orderNumber"])
 		.index("by_customerEmail", ["siteUrl", "customerEmail"])

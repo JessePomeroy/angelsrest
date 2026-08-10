@@ -47,6 +47,15 @@ import {
 	reservationSnapshotDigest,
 } from "./helpers/checkoutSnapshot";
 import {
+	parseAdmissionBeginRequest,
+	parseAdmissionBindRequest,
+	parseAdmissionMarkCreatingRequest,
+	parseAdmissionReleaseRequest,
+	parseAdmissionUncertainRequest,
+	parseCutoffRequest,
+	parsePurposeActivationRequest,
+} from "./helpers/checkoutAdmission";
+import {
 	catalogCommerceResolverRoleConfiguration,
 	checkoutSnapshotReservationRoleConfiguration,
 	isServerSecretCandidate,
@@ -68,6 +77,15 @@ const MAX_CATALOG_COMMERCE_BODY_BYTES = 4096;
 const SNAPSHOT_RESERVE_PATH = "/commerce/checkout-snapshots/reserve";
 const SNAPSHOT_BIND_PATH = "/commerce/checkout-snapshots/bind";
 const MAX_SNAPSHOT_BODY_BYTES = 96 * 1024;
+const ADMISSION_BEGIN_PATH = "/commerce/checkout-admissions/begin";
+const ADMISSION_MARK_CREATING_PATH = "/commerce/checkout-admissions/mark-creating";
+const ADMISSION_MARK_UNCERTAIN_PATH = "/commerce/checkout-admissions/mark-uncertain";
+const ADMISSION_BIND_PATH = "/commerce/checkout-admissions/bind";
+const ADMISSION_RELEASE_PATH = "/commerce/checkout-admissions/release";
+const PURPOSE_CONTROL_ACTIVATE_PATH = "/commerce/purpose-controls/activate";
+const PROTOCOL_CUTOFF_PATH = "/commerce/protocol-cutoff/create";
+const CLOSURE_READINESS_PATH = "/commerce/closure/readiness";
+const MAX_ADMISSION_BODY_BYTES = 8192;
 const CMS_MEDIA_COMPLETION_PATH = "/cms-media/complete-deletion";
 const MAX_COMPLETION_BODY_BYTES = 4096;
 const CATALOG_STORAGE_RECEIPT_PATH = "/cms-media/catalog-private-assets/storage-receipt";
@@ -766,6 +784,194 @@ const bindCheckoutSnapshot = httpAction(async (ctx, request) => {
 	return privateResponse({ bound: true, replayed: result.outcome === "replayed" }, 200);
 });
 
+const beginCheckoutAdmission = httpAction(async (ctx, request) => {
+	const siteUrl = await authenticateSnapshotRequest(request);
+	if (!siteUrl) return privateResponse({ error: "not_authorized" }, 401);
+	const parsed = parseAdmissionBeginRequest(
+		await readJsonObject(request, MAX_ADMISSION_BODY_BYTES),
+	);
+	if (!parsed || parsed.site !== siteUrl) {
+		return privateResponse({ error: "invalid_request" }, 400);
+	}
+	try {
+		const result = await ctx.runMutation(
+			internal.commerceClosure.beginCheckoutSessionAdmission,
+			{
+				siteUrl,
+				stripeConnectedAccountId: parsed.account ?? undefined,
+				attemptDigest: parsed.attemptDigest,
+				proofClass: parsed.proofClass,
+				admissionHandleHash: parsed.admissionHandleHash,
+				requestFingerprint: parsed.requestFingerprint,
+				activeLeaseTokenHash: parsed.activeLeaseTokenHash,
+				hostGeneration: parsed.hostGeneration,
+			},
+		);
+		return privateResponse(result, 200);
+	} catch {
+		return privateResponse({ error: "admission_unavailable" }, 503);
+	}
+});
+
+const markCheckoutAdmissionCreating = httpAction(async (ctx, request) => {
+	const siteUrl = await authenticateSnapshotRequest(request);
+	if (!siteUrl) return privateResponse({ error: "not_authorized" }, 401);
+	const parsed = parseAdmissionMarkCreatingRequest(
+		await readJsonObject(request, MAX_ADMISSION_BODY_BYTES),
+	);
+	if (!parsed || parsed.site !== siteUrl) {
+		return privateResponse({ error: "invalid_request" }, 400);
+	}
+	try {
+		const result = await ctx.runMutation(
+			internal.commerceClosure.markCheckoutSessionCreating,
+			{
+				siteUrl,
+				admissionId: parsed.admissionId as Id<"checkoutSessionAdmissions">,
+				activeLeaseTokenHash: parsed.activeLeaseTokenHash,
+				requestFingerprint: parsed.requestFingerprint,
+				stripeIdempotencyDigest: parsed.stripeIdempotencyDigest,
+			},
+		);
+		return privateResponse(result, 200);
+	} catch {
+		return privateResponse({ error: "admission_conflict" }, 409);
+	}
+});
+
+const markCheckoutAdmissionUncertain = httpAction(async (ctx, request) => {
+	const siteUrl = await authenticateSnapshotRequest(request);
+	if (!siteUrl) return privateResponse({ error: "not_authorized" }, 401);
+	const parsed = parseAdmissionUncertainRequest(
+		await readJsonObject(request, MAX_ADMISSION_BODY_BYTES),
+	);
+	if (!parsed || parsed.site !== siteUrl) {
+		return privateResponse({ error: "invalid_request" }, 400);
+	}
+	const recorded = await ctx.runMutation(
+		internal.commerceClosure.markCheckoutSessionCreationUncertain,
+		{
+			siteUrl,
+			admissionId: parsed.admissionId as Id<"checkoutSessionAdmissions">,
+			requestFingerprint: parsed.requestFingerprint,
+			stripeIdempotencyDigest: parsed.stripeIdempotencyDigest,
+		},
+	);
+	return recorded
+		? privateResponse({ recorded: true }, 200)
+		: privateResponse({ error: "admission_conflict" }, 409);
+});
+
+const bindCheckoutAdmission = httpAction(async (ctx, request) => {
+	const siteUrl = await authenticateSnapshotRequest(request);
+	if (!siteUrl) return privateResponse({ error: "not_authorized" }, 401);
+	const parsed = parseAdmissionBindRequest(
+		await readJsonObject(request, MAX_ADMISSION_BODY_BYTES),
+	);
+	if (!parsed || parsed.site !== siteUrl) {
+		return privateResponse({ error: "invalid_request" }, 400);
+	}
+	try {
+		const result = await ctx.runMutation(
+			internal.commerceClosure.bindCheckoutSessionAdmission,
+			{
+				siteUrl,
+				admissionId: parsed.admissionId as Id<"checkoutSessionAdmissions">,
+				requestFingerprint: parsed.requestFingerprint,
+				stripeIdempotencyDigest: parsed.stripeIdempotencyDigest,
+				stripeSessionId: parsed.session,
+				stripeExpiresAt: parsed.stripeExpiresAt,
+				checkoutSnapshotHandleHash: parsed.checkoutSnapshotHandle === null
+					? undefined
+					: await reservationHandleHash(siteUrl, parsed.checkoutSnapshotHandle),
+			},
+		);
+		return privateResponse(result, 200);
+	} catch {
+		return privateResponse({ error: "admission_conflict" }, 409);
+	}
+});
+
+const releaseCheckoutAdmission = httpAction(async (ctx, request) => {
+	const siteUrl = await authenticateSnapshotRequest(request);
+	if (!siteUrl) return privateResponse({ error: "not_authorized" }, 401);
+	const parsed = parseAdmissionReleaseRequest(
+		await readJsonObject(request, MAX_ADMISSION_BODY_BYTES),
+	);
+	if (!parsed || parsed.site !== siteUrl) {
+		return privateResponse({ error: "invalid_request" }, 400);
+	}
+	const released = await ctx.runMutation(
+		internal.commerceClosure.releaseCheckoutSessionAdmission,
+		{
+			siteUrl,
+			admissionId: parsed.admissionId as Id<"checkoutSessionAdmissions">,
+			activeLeaseTokenHash: parsed.activeLeaseTokenHash,
+		},
+	);
+	return privateResponse({ released }, 200);
+});
+
+const activatePurposeControl = httpAction(async (ctx, request) => {
+	const siteUrl = await authenticateSnapshotRequest(request);
+	if (!siteUrl) return privateResponse({ error: "not_authorized" }, 401);
+	const parsed = parsePurposeActivationRequest(
+		await readJsonObject(request, MAX_ADMISSION_BODY_BYTES),
+	);
+	if (!parsed || parsed.site !== siteUrl) {
+		return privateResponse({ error: "invalid_request" }, 400);
+	}
+	try {
+		const result = await ctx.runMutation(internal.commerceClosure.activatePurposeControl, {
+			siteUrl,
+			purpose: parsed.purpose,
+			state: parsed.state,
+			generation: parsed.generation,
+			acceptedHostGeneration: parsed.acceptedHostGeneration ?? undefined,
+		});
+		return privateResponse(result, 200);
+	} catch {
+		return privateResponse({ error: "control_conflict" }, 409);
+	}
+});
+
+const createProtocolCutoff = httpAction(async (ctx, request) => {
+	const siteUrl = await authenticateSnapshotRequest(request);
+	if (!siteUrl) return privateResponse({ error: "not_authorized" }, 401);
+	const parsed = parseCutoffRequest(await readJsonObject(request, MAX_ADMISSION_BODY_BYTES));
+	if (!parsed || parsed.site !== siteUrl) {
+		return privateResponse({ error: "invalid_request" }, 400);
+	}
+	try {
+		const result = await ctx.runMutation(internal.commerceClosure.createProtocolCutoff, {
+			siteUrl,
+			stripeConnectedAccountId: parsed.account ?? undefined,
+			activationGeneration: parsed.activationGeneration,
+		});
+		return privateResponse(result, 200);
+	} catch {
+		return privateResponse({ error: "cutoff_conflict" }, 409);
+	}
+});
+
+const getClosureReadiness = httpAction(async (ctx, request) => {
+	const siteUrl = await authenticateSnapshotRequest(request);
+	if (!siteUrl) return privateResponse({ error: "not_authorized" }, 401);
+	const body = await readJsonObject(request, MAX_ADMISSION_BODY_BYTES);
+	if (
+		!body
+		|| !exactKeys(body, ["version", "site"])
+		|| body.version !== 1
+		|| body.site !== siteUrl
+	) return privateResponse({ error: "invalid_request" }, 400);
+	const [controls, admission, provider] = await Promise.all([
+		ctx.runQuery(internal.commerceClosure.getNormalizedPurposeControls, { siteUrl }),
+		ctx.runQuery(internal.commerceClosure.getNormalizedAdmissionReadiness, { siteUrl }),
+		ctx.runQuery(internal.commerceClosure.getNormalizedProviderReadiness, { siteUrl }),
+	]);
+	return privateResponse({ version: 1, controls, admission, provider }, 200);
+});
+
 authComponent.registerRoutes(http, createAuth);
 for (const [purpose, path] of Object.entries(CATALOG_COMMERCE_PATHS)) {
 	http.route({
@@ -774,6 +980,26 @@ for (const [purpose, path] of Object.entries(CATALOG_COMMERCE_PATHS)) {
 }
 http.route({ path: SNAPSHOT_RESERVE_PATH, method: "POST", handler: reserveCheckoutSnapshot });
 http.route({ path: SNAPSHOT_BIND_PATH, method: "POST", handler: bindCheckoutSnapshot });
+http.route({ path: ADMISSION_BEGIN_PATH, method: "POST", handler: beginCheckoutAdmission });
+http.route({
+	path: ADMISSION_MARK_CREATING_PATH,
+	method: "POST",
+	handler: markCheckoutAdmissionCreating,
+});
+http.route({
+	path: ADMISSION_MARK_UNCERTAIN_PATH,
+	method: "POST",
+	handler: markCheckoutAdmissionUncertain,
+});
+http.route({ path: ADMISSION_BIND_PATH, method: "POST", handler: bindCheckoutAdmission });
+http.route({ path: ADMISSION_RELEASE_PATH, method: "POST", handler: releaseCheckoutAdmission });
+http.route({
+	path: PURPOSE_CONTROL_ACTIVATE_PATH,
+	method: "POST",
+	handler: activatePurposeControl,
+});
+http.route({ path: PROTOCOL_CUTOFF_PATH, method: "POST", handler: createProtocolCutoff });
+http.route({ path: CLOSURE_READINESS_PATH, method: "POST", handler: getClosureReadiness });
 http.route({
 	path: CMS_MEDIA_COMPLETION_PATH,
 	method: "POST",

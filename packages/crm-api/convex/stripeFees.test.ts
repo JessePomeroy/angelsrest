@@ -3,6 +3,7 @@
 import { convexTest } from "convex-test";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { internal } from "./_generated/api";
+import type { Id } from "./_generated/dataModel";
 import { FEE_CAPTURE_RETRY_DELAY_MS } from "./helpers/stripeFeeCapture";
 import schema from "./schema";
 
@@ -159,6 +160,59 @@ async function seedBoundReservation() {
 	const row = (await t.run((ctx) => ctx.db.query("checkoutSnapshotReservations").take(1)))[0]!;
 	await t.run((ctx) => ctx.db.patch(row._id, { reconciliationNextAt: Date.now() }));
 	return { t, row };
+}
+
+async function seedBoundAdmission(linkedSnapshot = false) {
+	const t = convexTest(schema, modules);
+	const now = Date.now();
+	const admissionId = await t.run((ctx) => ctx.db.insert("checkoutSessionAdmissions", {
+		protocolVersion: 1,
+		siteUrl: "tenant.example",
+		accountScope: "platform",
+		attemptDigest: "1".repeat(64),
+		proofClass: "same_origin_host_proof",
+		admissionHandleHash: "2".repeat(64),
+		hostGeneration: 1,
+		admissionGeneration: 1,
+		state: "bound",
+		requestFingerprint: "3".repeat(64),
+		stripeIdempotencyDigest: "4".repeat(64),
+		requestedStripeExpiresAt: Math.floor(now / 1000) + 3600,
+		stripeSessionId: "cs_test_1234567890admission",
+		stripeExpiresAt: Math.floor(now / 1000) + 3600,
+		createdAt: now - 1000,
+		updatedAt: now,
+		creatingAt: now - 500,
+		boundAt: now,
+		reconciliationAttempt: 0,
+		reconciliationNextAt: now,
+	}));
+	let reservationId: Id<"checkoutSnapshotReservations"> | undefined;
+	if (linkedSnapshot) {
+		reservationId = await t.run((ctx) => ctx.db.insert("checkoutSnapshotReservations", {
+			state: "bound",
+			siteUrl: "tenant.example",
+			handleHash: "5".repeat(64),
+			snapshotDigest: "6".repeat(64),
+			snapshot: reservationSnapshot,
+			accountScope: "platform",
+			stripeSessionId: "cs_test_1234567890admission",
+			stripeExpiresAt: Math.floor(now / 1000) + 3600,
+			unboundPurgeAt: now + 25 * 60 * 60 * 1000,
+			createdAt: now - 1000,
+			updatedAt: now,
+			boundAt: now,
+			boundReconcileAt: now,
+			reconciliationAttempt: 0,
+			reconciliationNextAt: now,
+			checkoutSessionAdmissionId: admissionId,
+		}));
+		await t.run((ctx) => ctx.db.patch(admissionId, {
+			checkoutSnapshotReservationId: reservationId,
+			checkoutSnapshotHandleHash: "5".repeat(64),
+		}));
+	}
+	return { t, admissionId, reservationId, boundAt: now };
 }
 
 describe("scheduled Stripe fee capture authority recovery", () => {
@@ -709,5 +763,64 @@ describe("bound checkout snapshot paid-safe reconciliation", () => {
 			"checkout_snapshot_reservation.reconciliation_uncertain",
 		);
 		expect(JSON.stringify(vi.mocked(console.error).mock.calls)).not.toContain("provider unavailable");
+	});
+});
+
+describe("universal Checkout admission paid-safe reconciliation", () => {
+	test("uses one provider read and atomically resolves linked expired-unpaid state", async () => {
+		const { t, admissionId, reservationId, boundAt } = await seedBoundAdmission(true);
+		await t.action(internal.stripeFees.reconcileCheckoutSessionAdmission, {
+			admissionId,
+			boundAt,
+			attempt: 0,
+		});
+		expect(retrieveCheckoutSession).toHaveBeenCalledTimes(1);
+		expect(await t.run((ctx) => ctx.db.get(admissionId))).toMatchObject({
+			state: "expired_unpaid_provider_verified",
+			reconciliationProviderVerifiedAt: Date.now(),
+		});
+		expect(reservationId).toBeDefined();
+		expect(await t.run((ctx) => ctx.db.get(reservationId!))).toBeNull();
+	});
+
+	test("retains paid admissions as normalized attention without identifiers", async () => {
+		const { t, admissionId, boundAt } = await seedBoundAdmission();
+		retrieveCheckoutSession.mockResolvedValue({ status: "complete", payment_status: "paid" });
+		await t.action(internal.stripeFees.reconcileCheckoutSessionAdmission, {
+			admissionId,
+			boundAt,
+			attempt: 0,
+		});
+		expect(await t.run((ctx) => ctx.db.get(admissionId))).toMatchObject({
+			state: "paid_without_order_attention",
+			reconciliationAlertedAt: Date.now(),
+		});
+		expect(console.error).toHaveBeenCalledWith(
+			"checkout_session_admission.paid_without_order",
+		);
+		expect(JSON.stringify(vi.mocked(console.error).mock.calls))
+			.not.toContain("cs_test_1234567890admission");
+	});
+
+	test("retains unknown admission truth after the bounded retry ladder", async () => {
+		const { t, admissionId, boundAt } = await seedBoundAdmission();
+		retrieveCheckoutSession.mockRejectedValue(new Error("raw provider failure with secret"));
+		await t.action(internal.stripeFees.reconcileCheckoutSessionAdmission, {
+			admissionId,
+			boundAt,
+			attempt: 0,
+		});
+		await t.finishAllScheduledFunctions(vi.runAllTimers);
+		expect(retrieveCheckoutSession).toHaveBeenCalledTimes(4);
+		expect(await t.run((ctx) => ctx.db.get(admissionId))).toMatchObject({
+			state: "reconciliation_uncertain_attention",
+			reconciliationAttempt: 3,
+			reconciliationAlertedAt: Date.now(),
+		});
+		expect(console.error).toHaveBeenCalledWith(
+			"checkout_session_admission.reconciliation_uncertain",
+		);
+		expect(JSON.stringify(vi.mocked(console.error).mock.calls))
+			.not.toContain("raw provider failure with secret");
 	});
 });

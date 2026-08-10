@@ -16,6 +16,7 @@ import type * as blogContent from "../blogContent.js";
 import type * as catalogPrivateAssets from "../catalogPrivateAssets.js";
 import type * as catalogProductGraphs from "../catalogProductGraphs.js";
 import type * as catalogProducts from "../catalogProducts.js";
+import type * as commerceClosure from "../commerceClosure.js";
 import type * as content from "../content.js";
 import type * as contracts from "../contracts.js";
 import type * as crm from "../crm.js";
@@ -51,7 +52,9 @@ import type * as helpers_catalogProductGraphValidators from "../helpers/catalogP
 import type * as helpers_catalogProductPolicy from "../helpers/catalogProductPolicy.js";
 import type * as helpers_catalogProductStore from "../helpers/catalogProductStore.js";
 import type * as helpers_catalogProductValidators from "../helpers/catalogProductValidators.js";
+import type * as helpers_checkoutAdmission from "../helpers/checkoutAdmission.js";
 import type * as helpers_checkoutSnapshot from "../helpers/checkoutSnapshot.js";
+import type * as helpers_commercePurposeControl from "../helpers/commercePurposeControl.js";
 import type * as helpers_contactPageValidators from "../helpers/contactPageValidators.js";
 import type * as helpers_contentLifecycle from "../helpers/contentLifecycle.js";
 import type * as helpers_contentSlugHistory from "../helpers/contentSlugHistory.js";
@@ -131,6 +134,7 @@ declare const fullApi: ApiFromModules<{
   catalogPrivateAssets: typeof catalogPrivateAssets;
   catalogProductGraphs: typeof catalogProductGraphs;
   catalogProducts: typeof catalogProducts;
+  commerceClosure: typeof commerceClosure;
   content: typeof content;
   contracts: typeof contracts;
   crm: typeof crm;
@@ -166,7 +170,9 @@ declare const fullApi: ApiFromModules<{
   "helpers/catalogProductPolicy": typeof helpers_catalogProductPolicy;
   "helpers/catalogProductStore": typeof helpers_catalogProductStore;
   "helpers/catalogProductValidators": typeof helpers_catalogProductValidators;
+  "helpers/checkoutAdmission": typeof helpers_checkoutAdmission;
   "helpers/checkoutSnapshot": typeof helpers_checkoutSnapshot;
+  "helpers/commercePurposeControl": typeof helpers_commercePurposeControl;
   "helpers/contactPageValidators": typeof helpers_contactPageValidators;
   "helpers/contentLifecycle": typeof helpers_contentLifecycle;
   "helpers/contentSlugHistory": typeof helpers_contentSlugHistory;
