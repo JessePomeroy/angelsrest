@@ -1,5 +1,12 @@
 # @jessepomeroy/crm-api
 
+## 3.3.0
+
+### Minor Changes
+
+- 5ade082: Add the authenticated, normalized commerce cutoff projection required by the
+  R4 complete-history Checkout Session inventory.
+
 ## 3.2.0
 
 ### Minor Changes
