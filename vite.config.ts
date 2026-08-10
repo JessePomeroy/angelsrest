@@ -67,6 +67,7 @@ export default defineConfig({
 			"src/**/*.test.ts",
 			"packages/crm-api/convex/**/*.test.ts",
 			"scripts/cms/**/*.test.ts",
+			"scripts/commerce/**/*.test.ts",
 			"scripts/order-reset/**/*.test.ts",
 		],
 		environment: "node",
