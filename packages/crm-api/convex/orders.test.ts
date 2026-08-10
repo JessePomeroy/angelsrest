@@ -58,6 +58,8 @@ function orderArgs(stripeSessionId: string) {
 		siteUrl: SITE_URL,
 		webhookSecret: WEBHOOK_SECRET,
 		stripeSessionId,
+		stripePaymentCurrency: "usd",
+		stripePaymentLivemode: false,
 		customerEmail: "buyer@example.com",
 		items: [{ productName: "Paid name", quantity: 2, price: 4200 }],
 		total: 8400,
@@ -2030,18 +2032,28 @@ describe("provider-authoritative manual refunds", () => {
 		const created = await t.mutation(api.orders.create, {
 			...orderArgs(MANUAL_REFUND.session),
 			stripePaymentIntentId: MANUAL_REFUND.paymentIntent,
+			// Terminal provider refund truth wins even over unusable compatibility input.
+			stripeFees: -1,
 		});
-		expect(created).toMatchObject({
-			alreadyExisted: true,
-			status: "refunded",
-			stripeRefundId: MANUAL_REFUND.refund,
-		});
+			expect(created).toMatchObject({
+				alreadyExisted: true,
+				status: "refunded",
+				stripeRefundId: MANUAL_REFUND.refund,
+				stripeFeeCaptureStatus: "canceled",
+			});
+			expect(created.stripeFees).toBeUndefined();
+			expect(created.stripeFeeCaptureAttempts).toBeUndefined();
+			expect(created.stripeFeeCaptureNextAttemptAt).toBeUndefined();
 		const stored = await t.run((ctx) => ctx.db.get(created._id));
 		expect(stored).toMatchObject({
 			status: "refunded",
 			stripeRefundId: MANUAL_REFUND.refund,
 		});
-		expect(stored?.stripeFeeCaptureStatus).toBe("canceled");
+			expect(stored?.stripeFeeCaptureStatus).toBe("canceled");
+			expect(stored?.stripeFees).toBeUndefined();
+			expect(stored?.stripeFeeProvenance).toBeUndefined();
+			expect(stored?.stripeFeeCaptureAttempts).toBeUndefined();
+			expect(stored?.stripeFeeCaptureNextAttemptAt).toBeUndefined();
 		expect(await t.run((ctx) => ctx.db.get(intents[0]._id))).toMatchObject({
 			orderId: created._id,
 		});
@@ -4015,6 +4027,8 @@ describe("order Stripe fee capture initialization", () => {
 			webhookSecret: WEBHOOK_SECRET,
 			stripeSessionId: "cs_fee_checkpoint",
 			stripePaymentIntentId: "pi_fee_checkpoint",
+			stripePaymentCurrency: "usd",
+			stripePaymentLivemode: false,
 			customerEmail: "customer@example.com",
 			items: [{ productName: "Digital file", quantity: 1, price: 1000 }],
 			total: 1000,
@@ -4050,6 +4064,171 @@ describe("order Stripe fee capture initialization", () => {
 		expect(order?.stripeFeeCaptureStatus).toBeUndefined();
 		expect(order?.stripeFeeCaptureAttempts).toBeUndefined();
 		expect(order?.stripeFeeCaptureNextAttemptAt).toBeUndefined();
+	});
+
+	test("keeps compatibility fee input explicitly legacy-unverified", async () => {
+		const t = convexTest(schema, modules);
+		const created = await t.mutation(api.orders.create, {
+			...orderArgs("cs_legacy_fee_input"),
+			stripePaymentIntentId: "pi_legacy_fee_input",
+			stripeFees: 0,
+		});
+		const order = await t.run((ctx) => ctx.db.get(created._id));
+		expect(order).toMatchObject({
+			stripeFees: 0,
+			stripeFeeProvenance: "legacy_unverified",
+			stripeFeeCaptureStatus: "legacy_unverified",
+		});
+		expect(order?.stripeFeeCaptureNextAttemptAt).toBeUndefined();
+	});
+
+	test.each([-1, 1.5, Number.NaN, Number.POSITIVE_INFINITY])(
+		"rejects invalid compatibility fee input %s",
+		async (stripeFees) => {
+			const t = convexTest(schema, modules);
+			await expect(t.mutation(api.orders.create, {
+				...orderArgs(`cs_invalid_fee_${String(stripeFees)}`),
+				stripeFees,
+			})).rejects.toThrow("nonnegative safe-integer");
+		},
+	);
+
+	test("marks compatibility fee updates unverified and clears provider provenance", async () => {
+		const t = convexTest(schema, modules);
+		const created = await t.mutation(api.orders.create, orderArgs("cs_legacy_fee_update"));
+		await t.run((ctx) => ctx.db.patch(created._id, {
+			stripeFees: 325,
+			stripeFeeCurrency: "usd",
+			stripeFeeChargeId: "ch_provider_verified",
+			stripeFeeBalanceTransactionId: "txn_provider_verified",
+			stripeFeeCapturedAt: Date.now(),
+			stripeFeeProvenanceVersion: 1,
+			stripeFeeProvenance: "provider_verified",
+			stripeFeeCaptureStatus: "captured",
+		}));
+
+		await t.mutation(api.orders.updateStatus, {
+			orderId: created._id,
+			webhookSecret: WEBHOOK_SECRET,
+			stripeFees: 99,
+		});
+
+		const order = await t.run((ctx) => ctx.db.get(created._id));
+		expect(order).toMatchObject({
+			stripeFees: 99,
+			stripeFeeProvenance: "legacy_unverified",
+			stripeFeeCaptureStatus: "legacy_unverified",
+		});
+		expect(order?.stripeFeeCurrency).toBeUndefined();
+		expect(order?.stripeFeeChargeId).toBeUndefined();
+		expect(order?.stripeFeeBalanceTransactionId).toBeUndefined();
+		expect(order?.stripeFeeCapturedAt).toBeUndefined();
+		expect(order?.stripeFeeProvenanceVersion).toBeUndefined();
+	});
+
+	test.each(["pending", "captured"] as const)(
+		"keeps the payment-intent binding immutable while fee capture is %s",
+		async (feeStatus) => {
+			const t = convexTest(schema, modules);
+			const created = await t.mutation(api.orders.create, {
+				...orderArgs(`cs_immutable_fee_binding_${feeStatus}`),
+				stripePaymentIntentId: "pi_originalfeebinding123",
+			});
+			if (feeStatus === "captured") {
+				await t.run((ctx) => ctx.db.patch(created._id, {
+					stripeFees: 325,
+					stripeFeeCurrency: "usd",
+					stripeFeeChargeId: "ch_original_fee_binding",
+					stripeFeeBalanceTransactionId: "txn_original_fee_binding",
+					stripeFeeCapturedAt: Date.now(),
+					stripeFeeProvenanceVersion: 1,
+					stripeFeeProvenance: "provider_verified",
+					stripeFeeCaptureStatus: "captured",
+					stripeFeeCaptureNextAttemptAt: undefined,
+				}));
+			}
+
+			await expect(t.mutation(api.orders.updateStatus, {
+				orderId: created._id,
+				webhookSecret: WEBHOOK_SECRET,
+				stripePaymentIntentId: "pi_replacedfeebinding123",
+			})).rejects.toThrow("binding is immutable");
+
+			expect(await t.run((ctx) => ctx.db.get(created._id))).toMatchObject({
+				stripePaymentIntentId: "pi_originalfeebinding123",
+				stripeFeeCaptureStatus: feeStatus,
+			});
+		},
+	);
+
+	test("preserves an unknown fee in order statistics", async () => {
+		const t = convexTest(schema, modules);
+		const adminEmail = "fee-stats-admin@example.com";
+		await t.run((ctx) => ctx.db.insert("platformClients", {
+			name: "Fee Stats", email: adminEmail, siteUrl: SITE_URL, tier: "full",
+			subscriptionStatus: "active", adminEmails: [adminEmail], role: "client",
+		}));
+		await t.mutation(api.orders.create, {
+			...orderArgs("cs_unknown_fee_stats"),
+		});
+		const admin = t.withIdentity({ subject: adminEmail, email: adminEmail });
+		const stats = await admin.query(api.orders.getStats, { siteUrl: SITE_URL });
+		expect(stats.recentOrders[0]?.stripeFees).toBeUndefined();
+		expect(stats.recentOrders[0]?.stripePaymentCurrency).toBe("usd");
+		expect(stats.grossPayments).toEqual([{
+			currency: "usd",
+			orderCount: 1,
+			todayMinorUnits: 8400,
+			weekMinorUnits: 8400,
+			monthMinorUnits: 8400,
+			allTimeMinorUnits: 8400,
+		}]);
+		expect(stats.unknownCurrencyOrderCount).toBe(0);
+		expect(stats.stats.legacyRevenueCurrency).toBe("usd");
+		expect(stats.stats.legacyRevenueCurrencyUnsafe).toBe(false);
+	});
+
+	test("groups gross payment statistics by currency and excludes unknown currency", async () => {
+		const t = convexTest(schema, modules);
+		const adminEmail = "grouped-fee-stats-admin@example.com";
+		await t.run(async (ctx) => {
+			await ctx.db.insert("platformClients", {
+				name: "Grouped Fee Stats", email: adminEmail, siteUrl: SITE_URL, tier: "full",
+				subscriptionStatus: "active", adminEmails: [adminEmail], role: "client",
+			});
+			await ctx.db.insert("orders", {
+				...retainedOrder("ORD-101", "cs_grouped_usd"),
+				stripePaymentCurrency: "usd",
+			});
+			await ctx.db.insert("orders", {
+				...retainedOrder("ORD-102", "cs_grouped_eur"),
+				stripePaymentCurrency: "eur",
+			});
+			await ctx.db.insert("orders", retainedOrder("ORD-103", "cs_grouped_unknown"));
+			await ctx.db.insert("orders", {
+				...retainedOrder("ORD-104", "cs_grouped_invalid"),
+				stripePaymentCurrency: "usd",
+				total: Number.NaN,
+			});
+		});
+		const admin = t.withIdentity({ subject: adminEmail, email: adminEmail });
+		const stats = await admin.query(api.orders.getStats, { siteUrl: SITE_URL });
+
+		expect(stats.grossPayments).toEqual([
+			{
+				currency: "eur", orderCount: 1, todayMinorUnits: 4200, weekMinorUnits: 4200,
+				monthMinorUnits: 4200, allTimeMinorUnits: 4200,
+			},
+			{
+				currency: "usd", orderCount: 1, todayMinorUnits: 4200, weekMinorUnits: 4200,
+				monthMinorUnits: 4200, allTimeMinorUnits: 4200,
+			},
+		]);
+		expect(stats.unknownCurrencyOrderCount).toBe(1);
+		expect(stats.invalidGrossAmountOrderCount).toBe(1);
+		expect(stats.stats.legacyRevenueCurrency).toBeUndefined();
+		expect(stats.stats.legacyRevenueCurrencyUnsafe).toBe(true);
+		expect(stats.dailyGrossPayments).toHaveLength(60);
 	});
 });
 

@@ -42,7 +42,11 @@ import {
 	classifyRefundTargetRows,
 	refundTargetClassificationValidator,
 } from "./helpers/refundTargetClassifier";
-import { FEE_CAPTURE_INITIAL_DELAY_MS } from "./helpers/stripeFeeCapture";
+import {
+	FEE_CAPTURE_INITIAL_DELAY_MS,
+	isNonnegativeSafeInteger,
+	isStripeCurrency,
+} from "./helpers/stripeFeeCapture";
 
 const orderStatusValidator = v.union(
 	v.literal("new"),
@@ -753,6 +757,8 @@ export const create = mutation({
 		customerName: v.optional(v.string()),
 		stripePaymentIntentId: v.optional(v.string()),
 		stripeConnectedAccountId: v.optional(v.string()),
+		stripePaymentCurrency: v.optional(v.string()),
+		stripePaymentLivemode: v.optional(v.boolean()),
 		checkoutSnapshot: v.optional(checkoutSnapshotValidator),
 		// Unknown by design: an existing paid order must win before a malformed V2 candidate is interpreted.
 		checkoutSnapshotReservation: v.optional(v.any()),
@@ -891,8 +897,14 @@ export const create = mutation({
 			|| refundIntent.stripePaymentIntentId !== args.stripePaymentIntentId
 			|| refundIntent.amount !== args.total
 			|| refundIntent.stripeTenantMetadataSiteUrl !== undefined
-				&& refundIntent.stripeTenantMetadataSiteUrl !== args.siteUrl
+					&& refundIntent.stripeTenantMetadataSiteUrl !== args.siteUrl
 		)) routingConflict();
+		const isManuallyRefunded = refundIntent !== null;
+		if (
+			!isManuallyRefunded
+			&& args.stripeFees !== undefined
+			&& !isNonnegativeSafeInteger(args.stripeFees)
+		) throw new Error("Stripe fees must be nonnegative safe-integer minor units");
 
 		let orderInput = rest;
 		if (checkoutSnapshotReservation !== undefined) {
@@ -921,20 +933,39 @@ export const create = mutation({
 			orderNumber = args.orderNumber;
 		}
 
-		const isManuallyRefunded = refundIntent !== null;
-		const feeCaptureScheduledAt = !isManuallyRefunded && orderInput.stripePaymentIntentId
+		const hasLegacyFeeInput = !isManuallyRefunded && orderInput.stripeFees !== undefined;
+		const hasPaymentProjection = orderInput.stripePaymentIntentId !== undefined
+			&& isStripeCurrency(orderInput.stripePaymentCurrency)
+			&& orderInput.stripePaymentLivemode !== undefined
+			&& isNonnegativeSafeInteger(orderInput.total);
+		const providerFeeCaptureAuthorized = auth.via === "webhook"
+			&& !isManuallyRefunded
+			&& !hasLegacyFeeInput
+			&& hasPaymentProjection;
+		const feeCaptureScheduledAt = providerFeeCaptureAuthorized
 			? Date.now() + FEE_CAPTURE_INITIAL_DELAY_MS
 			: undefined;
+		const feeCaptureStatus = isManuallyRefunded && orderInput.stripePaymentIntentId
+				? "canceled" as const
+			: hasLegacyFeeInput
+				? "legacy_unverified" as const
+				: providerFeeCaptureAuthorized
+					? "pending" as const
+					: auth.via === "webhook" && orderInput.stripePaymentIntentId
+						? "failed" as const
+						: undefined;
 		const _id = await ctx.db.insert("orders", {
 			...orderInput,
+			stripeFees: isManuallyRefunded ? undefined : orderInput.stripeFees,
 			orderNumber,
 			status: isManuallyRefunded ? "refunded" : "new",
 			stripeRefundId: refundIntent?.stripeRefundId,
-			stripeFeeCaptureStatus: isManuallyRefunded && orderInput.stripePaymentIntentId
-				? "canceled"
-				: feeCaptureScheduledAt !== undefined ? "pending" : undefined,
-			stripeFeeCaptureAttempts: orderInput.stripePaymentIntentId ? 0 : undefined,
+			stripeFeeProvenance: hasLegacyFeeInput ? "legacy_unverified" : undefined,
+			stripeFeeCaptureStatus: feeCaptureStatus,
+			stripeFeeCaptureAttempts: providerFeeCaptureAuthorized ? 0 : undefined,
 			stripeFeeCaptureNextAttemptAt: feeCaptureScheduledAt,
+			stripeFeeCaptureError:
+				feeCaptureStatus === "failed" ? "payment_projection_invalid" : undefined,
 		});
 		if (refundIntent) {
 			await ctx.db.patch(refundIntent._id, { orderId: _id, consumedAt: Date.now() });
@@ -962,13 +993,12 @@ export const create = mutation({
 			lumaprintsOrderNumber: undefined,
 			status: isManuallyRefunded ? ("refunded" as const) : ("new" as const),
 			stripeFees: undefined,
-			stripeFeeCaptureStatus: isManuallyRefunded && orderInput.stripePaymentIntentId
-				? ("canceled" as const)
-				: feeCaptureScheduledAt !== undefined ? ("pending" as const) : undefined,
-			stripeFeeCaptureAttempts: orderInput.stripePaymentIntentId ? 0 : undefined,
+			stripeFeeCaptureStatus: feeCaptureStatus,
+			stripeFeeCaptureAttempts: providerFeeCaptureAuthorized ? 0 : undefined,
 			stripeFeeCaptureLastAttemptAt: undefined,
 			stripeFeeCaptureNextAttemptAt: feeCaptureScheduledAt,
-			stripeFeeCaptureError: undefined,
+			stripeFeeCaptureError:
+				feeCaptureStatus === "failed" ? ("payment_projection_invalid" as const) : undefined,
 			fulfillmentError: undefined,
 			stripeRefundId: refundIntent?.stripeRefundId,
 			fulfillmentRecoveryStatus: undefined,
@@ -1411,6 +1441,9 @@ export const reconcileSucceededManualRefund = mutation({
 			stripeFeeCaptureNextAttemptAt: cancelsFeeCapture
 				? undefined
 				: order.stripeFeeCaptureNextAttemptAt,
+			stripeFeeCaptureAttemptToken: cancelsFeeCapture
+				? undefined
+				: order.stripeFeeCaptureAttemptToken,
 			stripeFeeCaptureError: cancelsFeeCapture
 				? undefined
 				: order.stripeFeeCaptureError,
@@ -3420,6 +3453,28 @@ export const updateStatus = mutation({
 			updates.lumaprintsOrderNumber !== undefined
 			&& !LUMAPRINTS_ORDER_NUMBER.test(updates.lumaprintsOrderNumber)
 		) throw new Error("Invalid LumaPrints order number");
+		if (updates.stripeFees !== undefined && !isNonnegativeSafeInteger(updates.stripeFees)) {
+			throw new Error("Stripe fees must be nonnegative safe-integer minor units");
+		}
+		if (
+			updates.stripePaymentIntentId !== undefined
+			&& !STRIPE_PAYMENT_INTENT_ID.test(updates.stripePaymentIntentId)
+		) throw new Error("Invalid Stripe payment intent ID");
+		const changesPaymentIntentBinding = updates.stripePaymentIntentId !== undefined
+			&& updates.stripePaymentIntentId !== current?.stripePaymentIntentId;
+		const hasFeeBindingOrLifecycle = current !== null && current !== undefined && (
+			current.stripePaymentIntentId !== undefined
+			|| current.stripeFees !== undefined
+			|| current.stripeFeeCurrency !== undefined
+			|| current.stripeFeeChargeId !== undefined
+			|| current.stripeFeeBalanceTransactionId !== undefined
+			|| current.stripeFeeProvenance !== undefined
+			|| current.stripeFeeCaptureStatus !== undefined
+			|| current.stripeFeeCaptureAttemptToken !== undefined
+		);
+		if (changesPaymentIntentBinding && hasFeeBindingOrLifecycle) {
+			throw new Error("Stripe payment intent binding is immutable after fee tracking begins");
+		}
 		const hasExactBaselineCompletionPayload = updates.lumaprintsOrderNumber !== undefined
 			&& Object.entries(updates).every(
 				([key, value]) => value === undefined || key === "lumaprintsOrderNumber",
@@ -3486,6 +3541,20 @@ export const updateStatus = mutation({
 		}
 		const patch: Record<string, unknown> = {};
 		for (const [key, val] of Object.entries(updates)) if (val !== undefined) patch[key] = val;
+		if (updates.stripeFees !== undefined) {
+			Object.assign(patch, {
+				stripeFeeCurrency: undefined,
+				stripeFeeChargeId: undefined,
+				stripeFeeBalanceTransactionId: undefined,
+				stripeFeeCapturedAt: undefined,
+				stripeFeeProvenanceVersion: undefined,
+				stripeFeeProvenance: "legacy_unverified",
+				stripeFeeCaptureStatus: "legacy_unverified",
+				stripeFeeCaptureNextAttemptAt: undefined,
+				stripeFeeCaptureAttemptToken: undefined,
+				stripeFeeCaptureError: undefined,
+			});
+		}
 		if (Object.keys(patch).length > 0) {
 			await ctx.db.patch(orderId, patch);
 		}
@@ -4009,9 +4078,20 @@ export const getStats = query({
 		let weekRevenue = 0;
 		let monthRevenue = 0;
 		let allTimeRevenue = 0;
+		const grossPaymentsByCurrency = new Map<string, {
+			todayMinorUnits: number;
+			weekMinorUnits: number;
+			monthMinorUnits: number;
+			allTimeMinorUnits: number;
+		}>();
+		const grossPaymentOrderCounts = new Map<string, number>();
+		const invalidAggregateCurrencies = new Set<string>();
+		let unknownCurrencyOrderCount = 0;
+		let invalidGrossAmountOrderCount = 0;
 
 		// Build daily revenue map for last 30 days
 		const dailyRevenueMap = new Map<string, number>();
+		const dailyGrossPaymentsByCurrency = new Map<string, Map<string, number>>();
 		for (let i = 29; i >= 0; i--) {
 			const d = new Date(todayStart);
 			d.setDate(d.getDate() - i);
@@ -4019,13 +4099,50 @@ export const getStats = query({
 		}
 
 		for (const order of orders) {
-			const total = order.total || 0;
+			const total = order.total;
 			allTimeRevenue += total;
 
 			const orderDate = new Date(order._creationTime);
 			if (orderDate >= todayStart) todayRevenue += total;
 			if (orderDate >= weekStart) weekRevenue += total;
 			if (orderDate >= monthStart) monthRevenue += total;
+
+			if (!isStripeCurrency(order.stripePaymentCurrency)) {
+				unknownCurrencyOrderCount += 1;
+			} else if (!isNonnegativeSafeInteger(total)) {
+				invalidGrossAmountOrderCount += 1;
+			} else if (invalidAggregateCurrencies.has(order.stripePaymentCurrency)) {
+				invalidGrossAmountOrderCount += 1;
+			} else {
+				const grouped = grossPaymentsByCurrency.get(order.stripePaymentCurrency) ?? {
+					todayMinorUnits: 0,
+					weekMinorUnits: 0,
+					monthMinorUnits: 0,
+					allTimeMinorUnits: 0,
+				};
+				const next = {
+					allTimeMinorUnits: grouped.allTimeMinorUnits + total,
+					todayMinorUnits: grouped.todayMinorUnits
+						+ (orderDate >= todayStart ? total : 0),
+					weekMinorUnits: grouped.weekMinorUnits
+						+ (orderDate >= weekStart ? total : 0),
+					monthMinorUnits: grouped.monthMinorUnits
+						+ (orderDate >= monthStart ? total : 0),
+				};
+				if (Object.values(next).every(isNonnegativeSafeInteger)) {
+					grossPaymentsByCurrency.set(order.stripePaymentCurrency, next);
+					grossPaymentOrderCounts.set(
+						order.stripePaymentCurrency,
+						(grossPaymentOrderCounts.get(order.stripePaymentCurrency) ?? 0) + 1,
+					);
+				} else {
+					invalidGrossAmountOrderCount +=
+						(grossPaymentOrderCounts.get(order.stripePaymentCurrency) ?? 0) + 1;
+					grossPaymentsByCurrency.delete(order.stripePaymentCurrency);
+					grossPaymentOrderCounts.delete(order.stripePaymentCurrency);
+					invalidAggregateCurrencies.add(order.stripePaymentCurrency);
+				}
+			}
 
 			const dateKey = orderDate.toISOString().split("T")[0];
 			if (dailyRevenueMap.has(dateKey)) {
@@ -4034,11 +4151,40 @@ export const getStats = query({
 					(dailyRevenueMap.get(dateKey) || 0) + total,
 				);
 			}
+			if (
+				dailyRevenueMap.has(dateKey)
+				&& isStripeCurrency(order.stripePaymentCurrency)
+				&& isNonnegativeSafeInteger(total)
+			) {
+				const dailyForCurrency = dailyGrossPaymentsByCurrency.get(
+					order.stripePaymentCurrency,
+				) ?? new Map<string, number>();
+				dailyForCurrency.set(dateKey, (dailyForCurrency.get(dateKey) ?? 0) + total);
+				dailyGrossPaymentsByCurrency.set(order.stripePaymentCurrency, dailyForCurrency);
+			}
 		}
 
 		const dailyRevenue = Array.from(dailyRevenueMap.entries()).map(
 			([date, amount]) => ({ date, amount }),
 		);
+		const currencies = [...grossPaymentsByCurrency.keys()].sort();
+		const grossPayments = currencies.map((currency) => ({
+			currency,
+			orderCount: grossPaymentOrderCounts.get(currency) ?? 0,
+			...grossPaymentsByCurrency.get(currency)!,
+		}));
+		const dailyGrossPayments = currencies.flatMap((currency) =>
+			[...dailyRevenueMap.keys()].map((date) => ({
+				date,
+				currency,
+				amountMinorUnits: dailyGrossPaymentsByCurrency.get(currency)?.get(date) ?? 0,
+			})),
+		);
+		const legacyRevenueCurrency = currencies.length === 1
+			&& unknownCurrencyOrderCount === 0
+			&& invalidGrossAmountOrderCount === 0
+			? currencies[0]
+			: undefined;
 
 		const recentOrders = orders.slice(0, 10).map((order) => ({
 			_id: order._id,
@@ -4047,7 +4193,19 @@ export const getStats = query({
 			customerEmail: order.customerEmail,
 			customerName: order.customerName || "",
 			total: order.total,
-			stripeFees: order.stripeFees || 0,
+			stripePaymentCurrency: order.stripePaymentCurrency,
+			stripeFees: order.stripeFees,
+			stripeFeeCurrency: order.stripeFeeCurrency,
+			stripeFeeChargeId: order.stripeFeeChargeId,
+			stripeFeeBalanceTransactionId: order.stripeFeeBalanceTransactionId,
+			stripeFeeCapturedAt: order.stripeFeeCapturedAt,
+			stripeFeeProvenanceVersion: order.stripeFeeProvenanceVersion,
+			stripeFeeProvenance: order.stripeFeeProvenance,
+			stripeFeeCaptureStatus: order.stripeFeeCaptureStatus,
+			stripeFeeCaptureAttempts: order.stripeFeeCaptureAttempts,
+			stripeFeeCaptureLastAttemptAt: order.stripeFeeCaptureLastAttemptAt,
+			stripeFeeCaptureNextAttemptAt: order.stripeFeeCaptureNextAttemptAt,
+			stripeFeeCaptureError: order.stripeFeeCaptureError,
 			status: order.status,
 		}));
 
@@ -4062,8 +4220,14 @@ export const getStats = query({
 				totalOrders: orders.length,
 				isTruncated,
 				scanLimit: AGGREGATE_SCAN_LIMIT,
+				legacyRevenueCurrency,
+				legacyRevenueCurrencyUnsafe: legacyRevenueCurrency === undefined,
 			},
 			dailyRevenue,
+			grossPayments,
+			dailyGrossPayments,
+			unknownCurrencyOrderCount,
+			invalidGrossAmountOrderCount,
 			recentOrders,
 		};
 	},

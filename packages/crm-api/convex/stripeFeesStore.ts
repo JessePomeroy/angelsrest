@@ -12,7 +12,12 @@ import type { Doc, Id } from "./_generated/dataModel";
 import type { MutationCtx } from "./_generated/server";
 import { internalMutation, internalQuery } from "./_generated/server";
 import {
+	FEE_CAPTURE_MAX_ATTEMPTS,
+	FEE_CAPTURE_PROVENANCE_VERSION,
+	FEE_CAPTURE_RETRY_DELAY_MS,
 	getFeeCaptureRetryDelayMs,
+	isNonnegativeSafeInteger,
+	isStripeCurrency,
 	stripeFeeCaptureErrorValidator,
 	type StripeFeeCaptureError,
 } from "./helpers/stripeFeeCapture";
@@ -28,7 +33,8 @@ function feeCaptureClosed(order: Doc<"orders">) {
 		|| order.stripeFees !== undefined
 		|| order.stripeFeeCaptureStatus === "captured"
 		|| order.stripeFeeCaptureStatus === "failed"
-		|| order.stripeFeeCaptureStatus === "canceled";
+		|| order.stripeFeeCaptureStatus === "canceled"
+		|| order.stripeFeeCaptureStatus === "legacy_unverified";
 }
 
 /**
@@ -42,9 +48,12 @@ export const getOrderForFees = internalQuery({
 		if (!order || feeCaptureClosed(order)) return null;
 		return {
 			_id: order._id,
-			orderNumber: order.orderNumber,
+			siteUrl: order.siteUrl,
 			stripePaymentIntentId: order.stripePaymentIntentId,
 			stripeConnectedAccountId: order.stripeConnectedAccountId,
+			stripePaymentCurrency: order.stripePaymentCurrency,
+			stripePaymentLivemode: order.stripePaymentLivemode,
+			total: order.total,
 			stripeFees: order.stripeFees,
 			stripeFeeCaptureStatus: order.stripeFeeCaptureStatus,
 			stripeFeeCaptureAttempts: order.stripeFeeCaptureAttempts,
@@ -57,17 +66,32 @@ export const getOrderForFees = internalQuery({
  * cannot regress to pending if a duplicate scheduled action arrives later.
  */
 export const beginAttempt = internalMutation({
-	args: { orderId: v.id("orders"), attempt: v.number() },
-	handler: async (ctx, { orderId, attempt }) => {
+	args: { orderId: v.id("orders"), attempt: v.number(), attemptToken: v.string() },
+	handler: async (ctx, { orderId, attempt, attemptToken }) => {
 		const order = await ctx.db.get(orderId);
-		if (!order || feeCaptureClosed(order)) return false;
+		if (
+			!order
+			|| feeCaptureClosed(order)
+			|| !Number.isInteger(attempt)
+			|| attempt < 1
+			|| attempt > FEE_CAPTURE_MAX_ATTEMPTS
+			|| attempt !== (order.stripeFeeCaptureAttempts ?? 0) + 1
+			|| order.stripeFeeCaptureAttemptToken !== undefined
+		) return false;
+		const timeoutAt = Date.now() + FEE_CAPTURE_RETRY_DELAY_MS;
 		await ctx.db.patch(orderId, {
 			stripeFeeCaptureStatus: "pending",
 			stripeFeeCaptureAttempts: Math.max(order.stripeFeeCaptureAttempts ?? 0, attempt),
 			stripeFeeCaptureLastAttemptAt: Date.now(),
-			stripeFeeCaptureNextAttemptAt: undefined,
+			stripeFeeCaptureNextAttemptAt: timeoutAt,
+			stripeFeeCaptureAttemptToken: attemptToken,
 			stripeFeeCaptureError: undefined,
 		});
+		await ctx.scheduler.runAfter(
+			FEE_CAPTURE_RETRY_DELAY_MS,
+			internal.stripeFeesStore.expireAttempt,
+			{ orderId, attempt, attemptToken },
+		);
 		return true;
 	},
 });
@@ -75,6 +99,7 @@ export const beginAttempt = internalMutation({
 type FeeCaptureRetry = {
 	orderId: Id<"orders">;
 	attempt: number;
+	attemptToken: string;
 	error: StripeFeeCaptureError;
 };
 
@@ -84,16 +109,22 @@ type FeeCaptureRetry = {
  */
 export async function recordFeeCaptureRetry(
 	ctx: Pick<MutationCtx, "db" | "scheduler">,
-	{ orderId, attempt, error }: FeeCaptureRetry,
+	{ orderId, attempt, attemptToken, error }: FeeCaptureRetry,
 	retryDelayMs: number,
 ) {
 	const order = await ctx.db.get(orderId);
-	if (!order || feeCaptureClosed(order)) return false;
+	if (
+		!order
+		|| feeCaptureClosed(order)
+		|| order.stripeFeeCaptureAttempts !== attempt
+		|| order.stripeFeeCaptureAttemptToken !== attemptToken
+	) return false;
 	const nextAttemptAt = Date.now() + retryDelayMs;
 	await ctx.db.patch(orderId, {
 		stripeFeeCaptureStatus: "pending",
 		stripeFeeCaptureAttempts: Math.max(order.stripeFeeCaptureAttempts ?? 0, attempt),
 		stripeFeeCaptureNextAttemptAt: nextAttemptAt,
+		stripeFeeCaptureAttemptToken: undefined,
 		stripeFeeCaptureError: error,
 	});
 	await ctx.scheduler.runAfter(
@@ -108,6 +139,7 @@ export const recordRetry = internalMutation({
 	args: {
 		orderId: v.id("orders"),
 		attempt: v.number(),
+		attemptToken: v.string(),
 		error: stripeFeeCaptureErrorValidator,
 	},
 	handler: async (ctx, args) => {
@@ -119,16 +151,46 @@ export const recordRetry = internalMutation({
 
 /** Patch the order with the resolved fees and terminal captured state. */
 export const setFees = internalMutation({
-	args: { orderId: v.id("orders"), stripeFees: v.number(), attempt: v.number() },
-	handler: async (ctx, { orderId, stripeFees, attempt }) => {
+	args: {
+		orderId: v.id("orders"),
+		stripeFees: v.number(),
+		stripeFeeCurrency: v.string(),
+		stripeFeeChargeId: v.string(),
+		stripeFeeBalanceTransactionId: v.string(),
+		attempt: v.number(),
+		attemptToken: v.string(),
+	},
+	handler: async (ctx, args) => {
+		const {
+			orderId, stripeFees, stripeFeeCurrency, stripeFeeChargeId,
+			stripeFeeBalanceTransactionId, attempt, attemptToken,
+		} = args;
 		const order = await ctx.db.get(orderId);
-		if (!order || feeCaptureClosed(order)) return false;
+		if (
+			!order
+			|| feeCaptureClosed(order)
+			|| order.stripeFeeCaptureAttempts !== attempt
+			|| order.stripeFeeCaptureAttemptToken !== attemptToken
+			|| !isNonnegativeSafeInteger(stripeFees)
+			|| !isStripeCurrency(stripeFeeCurrency)
+			|| !stripeFeeChargeId.startsWith("ch_")
+			|| stripeFeeChargeId.length <= 3
+			|| !stripeFeeBalanceTransactionId.startsWith("txn_")
+			|| stripeFeeBalanceTransactionId.length <= 4
+		) return false;
 		await ctx.db.patch(orderId, {
 			stripeFees,
+			stripeFeeCurrency,
+			stripeFeeChargeId,
+			stripeFeeBalanceTransactionId,
+			stripeFeeCapturedAt: Date.now(),
+			stripeFeeProvenanceVersion: FEE_CAPTURE_PROVENANCE_VERSION,
+			stripeFeeProvenance: "provider_verified",
 			stripeFeeCaptureStatus: "captured",
 			stripeFeeCaptureAttempts: Math.max(order.stripeFeeCaptureAttempts ?? 0, attempt),
 			stripeFeeCaptureLastAttemptAt: Date.now(),
 			stripeFeeCaptureNextAttemptAt: undefined,
+			stripeFeeCaptureAttemptToken: undefined,
 			stripeFeeCaptureError: undefined,
 		});
 		return true;
@@ -139,17 +201,61 @@ export const recordFailure = internalMutation({
 	args: {
 		orderId: v.id("orders"),
 		attempt: v.number(),
+		attemptToken: v.string(),
 		error: stripeFeeCaptureErrorValidator,
 	},
-	handler: async (ctx, { orderId, attempt, error }) => {
+	handler: async (ctx, { orderId, attempt, attemptToken, error }) => {
 		const order = await ctx.db.get(orderId);
-		if (!order || feeCaptureClosed(order)) return false;
+		if (
+			!order
+			|| feeCaptureClosed(order)
+			|| order.stripeFeeCaptureAttempts !== attempt
+			|| order.stripeFeeCaptureAttemptToken !== attemptToken
+		) return false;
 		await ctx.db.patch(orderId, {
 			stripeFeeCaptureStatus: "failed",
 			stripeFeeCaptureAttempts: Math.max(order.stripeFeeCaptureAttempts ?? 0, attempt),
 			stripeFeeCaptureLastAttemptAt: Date.now(),
 			stripeFeeCaptureNextAttemptAt: undefined,
+			stripeFeeCaptureAttemptToken: undefined,
 			stripeFeeCaptureError: error,
+		});
+		return true;
+	},
+});
+
+/** Recover an action that stopped after its durable pre-provider checkpoint. */
+export const expireAttempt = internalMutation({
+	args: {
+		orderId: v.id("orders"),
+		attempt: v.number(),
+		attemptToken: v.string(),
+	},
+	handler: async (ctx, { orderId, attempt, attemptToken }) => {
+		const order = await ctx.db.get(orderId);
+		if (
+			!order
+			|| feeCaptureClosed(order)
+			|| order.stripeFeeCaptureAttempts !== attempt
+			|| order.stripeFeeCaptureAttemptToken !== attemptToken
+		) return false;
+		if (attempt >= FEE_CAPTURE_MAX_ATTEMPTS) {
+			await ctx.db.patch(orderId, {
+				stripeFeeCaptureStatus: "failed",
+				stripeFeeCaptureNextAttemptAt: undefined,
+				stripeFeeCaptureAttemptToken: undefined,
+				stripeFeeCaptureError: "stripe_api_error",
+			});
+			return true;
+		}
+		await ctx.db.patch(orderId, {
+			stripeFeeCaptureNextAttemptAt: Date.now(),
+			stripeFeeCaptureAttemptToken: undefined,
+			stripeFeeCaptureError: "stripe_api_error",
+		});
+		await ctx.scheduler.runAfter(0, internal.stripeFees.captureFeesForOrder, {
+			orderId,
+			attempt: attempt + 1,
 		});
 		return true;
 	},

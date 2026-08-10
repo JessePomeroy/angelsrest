@@ -58,10 +58,48 @@ beforeEach(() => {
 	retrievePaymentIntent.mockReset();
 	retrieveCheckoutSession.mockReset();
 	retrievePaymentIntent.mockResolvedValue({
-		latest_charge: { balance_transaction: { fee: 321 } },
+		object: "payment_intent",
+		id: "pi_fee_authority",
+		status: "succeeded",
+		amount: 1000,
+		amount_received: 1000,
+		currency: "usd",
+		livemode: false,
+		metadata: { commerceTenantSiteUrl: "tenant.example" },
+		latest_charge: {
+			object: "charge",
+			id: "ch_fee_authority",
+			payment_intent: "pi_fee_authority",
+			amount: 1000,
+			amount_captured: 1000,
+			amount_refunded: 0,
+			paid: true,
+			captured: true,
+			refunded: false,
+			currency: "usd",
+			livemode: false,
+			balance_transaction: {
+				object: "balance_transaction",
+				id: "txn_fee_authority",
+				source: "ch_fee_authority",
+				amount: 1000,
+				net: 179,
+				status: "pending",
+				type: "charge",
+				reporting_category: "charge",
+				currency: "usd",
+				fee: 821,
+				fee_details: [
+					{ type: "stripe_fee", amount: 321, currency: "usd" },
+					{ type: "application_fee", amount: 500, currency: "usd" },
+				],
+			},
+		},
 	});
 	retrieveCheckoutSession.mockResolvedValue({ status: "expired", payment_status: "unpaid" });
 	vi.spyOn(console, "error").mockImplementation(() => undefined);
+	vi.spyOn(console, "warn").mockImplementation(() => undefined);
+	vi.spyOn(console, "log").mockImplementation(() => undefined);
 });
 
 afterEach(() => {
@@ -83,6 +121,8 @@ async function seedOrder() {
 			orderNumber: "ORD-FEE-AUTHORITY",
 			stripeSessionId: "cs_fee_authority",
 			stripePaymentIntentId: "pi_fee_authority",
+			stripePaymentCurrency: "usd",
+			stripePaymentLivemode: false,
 			customerEmail: "customer@example.com",
 			items: [],
 			total: 1000,
@@ -149,6 +189,11 @@ describe("scheduled Stripe fee capture authority recovery", () => {
 		const repaired = await t.run(async (ctx) => ctx.db.get(orderId));
 		expect(repaired).toMatchObject({
 			stripeFees: 321,
+			stripeFeeCurrency: "usd",
+			stripeFeeChargeId: "ch_fee_authority",
+			stripeFeeBalanceTransactionId: "txn_fee_authority",
+			stripeFeeProvenance: "provider_verified",
+			stripeFeeProvenanceVersion: 1,
 			stripeFeeCaptureStatus: "captured",
 			stripeFeeCaptureAttempts: 2,
 		});
@@ -173,7 +218,407 @@ describe("scheduled Stripe fee capture authority recovery", () => {
 		});
 		expect(exhausted?.stripeFeeCaptureNextAttemptAt).toBeUndefined();
 	});
-});
+
+	test("uses the stored connected account and rejects a mismatched payment projection", async () => {
+		const { t, orderId } = await seedOrder();
+		await t.run((ctx) => ctx.db.patch(orderId, {
+			stripeConnectedAccountId: "acct_fee_authority",
+		}));
+		retrievePaymentIntent.mockResolvedValueOnce({
+			object: "payment_intent",
+			id: "pi_fee_authority",
+			status: "succeeded",
+			amount: 1000,
+			amount_received: 999,
+			currency: "usd",
+			livemode: false,
+			metadata: { commerceTenantSiteUrl: "tenant.example" },
+			latest_charge: null,
+		});
+
+		await t.action(internal.stripeFees.captureFeesForOrder, { orderId });
+
+		expect(retrievePaymentIntent).toHaveBeenCalledWith(
+			"pi_fee_authority",
+			{ expand: ["latest_charge.balance_transaction"] },
+			{ stripeAccount: "acct_fee_authority" },
+		);
+		expect(await t.run((ctx) => ctx.db.get(orderId))).toMatchObject({
+			stripeFeeCaptureStatus: "failed",
+			stripeFeeCaptureError: "payment_projection_invalid",
+		});
+	});
+
+	test("fails a legacy missing projection before crossing the Stripe boundary", async () => {
+		const { t, orderId } = await seedOrder();
+		await t.run((ctx) => ctx.db.patch(orderId, {
+			stripePaymentCurrency: undefined,
+			stripePaymentLivemode: undefined,
+		}));
+
+		await t.action(internal.stripeFees.captureFeesForOrder, { orderId });
+
+		expect(constructStripe).not.toHaveBeenCalled();
+		expect(retrievePaymentIntent).not.toHaveBeenCalled();
+		expect(await t.run((ctx) => ctx.db.get(orderId))).toMatchObject({
+			stripeFeeCaptureStatus: "failed",
+			stripeFeeCaptureError: "payment_projection_invalid",
+		});
+	});
+
+	test.each([
+		["id", "pi_otherprovidervalue"],
+		["currency", "eur"],
+		["livemode", true],
+		["metadata", { commerceTenantSiteUrl: "other.example" }],
+	] as const)("rejects a provider payment %s mismatch", async (field, value) => {
+		const { t, orderId } = await seedOrder();
+		const complete = await retrievePaymentIntent();
+		retrievePaymentIntent.mockClear();
+		retrievePaymentIntent.mockResolvedValueOnce({
+			...complete,
+			[field]: value,
+		});
+
+		await t.action(internal.stripeFees.captureFeesForOrder, { orderId });
+
+			expect(await t.run((ctx) => ctx.db.get(orderId))).toMatchObject({
+				stripeFeeCaptureStatus: "failed",
+				stripeFeeCaptureError: "payment_projection_invalid",
+			});
+	});
+
+	test("accepts normalized-equivalent signed tenant routing", async () => {
+		const { t, orderId } = await seedOrder();
+		await t.run((ctx) => ctx.db.patch(orderId, {
+			siteUrl: "https://www.tenant.example/path/",
+		}));
+
+		await t.action(internal.stripeFees.captureFeesForOrder, { orderId });
+
+		expect(await t.run((ctx) => ctx.db.get(orderId))).toMatchObject({
+			stripeFees: 321,
+			stripeFeeCaptureStatus: "captured",
+			stripeFeeProvenance: "provider_verified",
+		});
+	});
+
+	test.each([
+		["amount", 999],
+		["amount_captured", 999],
+		["currency", "eur"],
+	] as const)("rejects a latest-charge %s mismatch", async (field, value) => {
+		const { t, orderId } = await seedOrder();
+		const complete = await retrievePaymentIntent();
+		retrievePaymentIntent.mockClear();
+		retrievePaymentIntent.mockResolvedValueOnce({
+			...complete,
+			latest_charge: {
+				...complete.latest_charge,
+				[field]: value,
+			},
+		});
+
+		await t.action(internal.stripeFees.captureFeesForOrder, { orderId });
+
+		expect(await t.run((ctx) => ctx.db.get(orderId))).toMatchObject({
+			stripeFeeCaptureStatus: "failed",
+			stripeFeeCaptureError: "provider_object_mismatch",
+		});
+	});
+
+	test("isolates the Stripe processing component on a connected direct charge", async () => {
+		const { t, orderId } = await seedOrder();
+		await t.run((ctx) => ctx.db.patch(orderId, {
+			stripeConnectedAccountId: "acct_fee_authority",
+		}));
+
+		await t.action(internal.stripeFees.captureFeesForOrder, { orderId });
+
+		expect(retrievePaymentIntent).toHaveBeenCalledWith(
+			"pi_fee_authority",
+			{ expand: ["latest_charge.balance_transaction"] },
+			{ stripeAccount: "acct_fee_authority" },
+		);
+		const stored = await t.run((ctx) => ctx.db.get(orderId));
+		expect(stored).toMatchObject({
+			stripeFees: 321,
+			stripeFeeCaptureStatus: "captured",
+			stripeFeeProvenance: "provider_verified",
+		});
+		expect(stored?.stripeFees).not.toBe(821);
+		expect(stored?.stripeFees).not.toBe(500);
+	});
+
+	test("stores an authoritative zero processing fee as captured rather than unknown", async () => {
+		const { t, orderId } = await seedOrder();
+		const complete = await retrievePaymentIntent();
+		retrievePaymentIntent.mockClear();
+		retrievePaymentIntent.mockResolvedValueOnce({
+			...complete,
+			latest_charge: {
+				...complete.latest_charge,
+				balance_transaction: {
+					...complete.latest_charge.balance_transaction,
+					fee: 0,
+					net: 1000,
+					fee_details: [
+						{ type: "stripe_fee", amount: 0, currency: "usd" },
+					],
+				},
+			},
+		});
+
+		await t.action(internal.stripeFees.captureFeesForOrder, { orderId });
+
+		expect(await t.run((ctx) => ctx.db.get(orderId))).toMatchObject({
+			stripeFees: 0,
+			stripeFeeCurrency: "usd",
+			stripeFeeCaptureStatus: "captured",
+			stripeFeeProvenance: "provider_verified",
+		});
+	});
+
+	test("captures the original-charge fee even if Stripe reports a later refund", async () => {
+		const { t, orderId } = await seedOrder();
+		const complete = await retrievePaymentIntent();
+		retrievePaymentIntent.mockClear();
+		retrievePaymentIntent.mockResolvedValueOnce({
+			...complete,
+			latest_charge: {
+				...complete.latest_charge,
+				amount_refunded: 1000,
+				refunded: true,
+			},
+		});
+
+		await t.action(internal.stripeFees.captureFeesForOrder, { orderId });
+
+		expect(await t.run((ctx) => ctx.db.get(orderId))).toMatchObject({
+			stripeFees: 321,
+			stripeFeeCaptureStatus: "captured",
+			stripeFeeProvenance: "provider_verified",
+		});
+	});
+
+	test("accepts an authoritative negative balance-transaction net", async () => {
+		const { t, orderId } = await seedOrder();
+		const complete = await retrievePaymentIntent();
+		retrievePaymentIntent.mockClear();
+		retrievePaymentIntent.mockResolvedValueOnce({
+			...complete,
+			latest_charge: {
+				...complete.latest_charge,
+				balance_transaction: {
+					...complete.latest_charge.balance_transaction,
+					fee: 1200,
+					net: -200,
+					fee_details: [
+						{ type: "stripe_fee", amount: 700, currency: "usd" },
+						{ type: "application_fee", amount: 500, currency: "usd" },
+					],
+				},
+			},
+		});
+
+		await t.action(internal.stripeFees.captureFeesForOrder, { orderId });
+
+		expect(await t.run((ctx) => ctx.db.get(orderId))).toMatchObject({
+			stripeFees: 700,
+			stripeFeeCaptureStatus: "captured",
+			stripeFeeProvenance: "provider_verified",
+		});
+	});
+
+	test("rejects a same-currency balance transaction with a different gross amount", async () => {
+		const { t, orderId } = await seedOrder();
+		const complete = await retrievePaymentIntent();
+		retrievePaymentIntent.mockClear();
+		retrievePaymentIntent.mockResolvedValueOnce({
+			...complete,
+			latest_charge: {
+				...complete.latest_charge,
+				balance_transaction: {
+					...complete.latest_charge.balance_transaction,
+					amount: 999,
+					net: 178,
+				},
+			},
+		});
+
+		await t.action(internal.stripeFees.captureFeesForOrder, { orderId });
+
+		const stored = await t.run((ctx) => ctx.db.get(orderId));
+		expect(stored).toMatchObject({
+			stripeFeeCaptureStatus: "failed",
+			stripeFeeCaptureError: "provider_object_mismatch",
+		});
+		expect(stored?.stripeFees).toBeUndefined();
+	});
+
+	test("makes a preexisting recorded fee terminal before crossing the provider boundary", async () => {
+		const { t, orderId } = await seedOrder();
+		await t.run((ctx) => ctx.db.patch(orderId, {
+			stripeFees: 777,
+			stripeFeeCurrency: "usd",
+			stripeFeeCaptureStatus: "legacy_unverified",
+			stripeFeeProvenance: "legacy_unverified",
+		}));
+
+		await t.action(internal.stripeFees.captureFeesForOrder, { orderId });
+
+		expect(constructStripe).not.toHaveBeenCalled();
+		expect(retrievePaymentIntent).not.toHaveBeenCalled();
+		expect(await t.run((ctx) => ctx.db.get(orderId))).toMatchObject({
+			stripeFees: 777,
+			stripeFeeCaptureStatus: "legacy_unverified",
+			stripeFeeProvenance: "legacy_unverified",
+		});
+	});
+
+	test("keeps a processing payment pending and captures after it succeeds", async () => {
+		const { t, orderId } = await seedOrder();
+		retrievePaymentIntent.mockResolvedValueOnce({
+			object: "payment_intent",
+			id: "pi_fee_authority",
+			status: "processing",
+			amount: 1000,
+			amount_received: 0,
+			currency: "usd",
+			livemode: false,
+			metadata: { commerceTenantSiteUrl: "tenant.example" },
+			latest_charge: null,
+		});
+
+		await t.action(internal.stripeFees.captureFeesForOrder, { orderId });
+		expect(await t.run((ctx) => ctx.db.get(orderId))).toMatchObject({
+			stripeFeeCaptureStatus: "pending",
+			stripeFeeCaptureAttempts: 1,
+			stripeFeeCaptureError: "payment_not_ready",
+		});
+
+		vi.advanceTimersByTime(FEE_CAPTURE_RETRY_DELAY_MS);
+		await t.finishInProgressScheduledFunctions();
+		expect(await t.run((ctx) => ctx.db.get(orderId))).toMatchObject({
+			stripeFees: 321,
+			stripeFeeCaptureStatus: "captured",
+			stripeFeeCaptureAttempts: 2,
+		});
+	});
+
+	test("retries an incomplete fee breakdown without treating aggregate fees as processing fees", async () => {
+		const { t, orderId } = await seedOrder();
+		const complete = await retrievePaymentIntent();
+		retrievePaymentIntent.mockClear();
+		retrievePaymentIntent.mockResolvedValueOnce({
+			...complete,
+			latest_charge: {
+				...complete.latest_charge,
+				balance_transaction: {
+					...complete.latest_charge.balance_transaction,
+					fee_details: [
+						{ type: "stripe_fee", amount: 321, currency: "usd" },
+					],
+				},
+			},
+		});
+
+		await t.action(internal.stripeFees.captureFeesForOrder, { orderId });
+		const pending = await t.run((ctx) => ctx.db.get(orderId));
+		expect(pending?.stripeFees).toBeUndefined();
+		expect(pending).toMatchObject({
+			stripeFeeCaptureStatus: "pending",
+			stripeFeeCaptureError: "fee_breakdown_not_ready",
+		});
+
+		vi.advanceTimersByTime(FEE_CAPTURE_RETRY_DELAY_MS);
+		await t.finishInProgressScheduledFunctions();
+		expect(await t.run((ctx) => ctx.db.get(orderId))).toMatchObject({
+			stripeFees: 321,
+			stripeFeeCaptureStatus: "captured",
+			stripeFeeCaptureAttempts: 2,
+		});
+	});
+
+	test("rejects a mismatched charge or balance-transaction chain without storing a fee", async () => {
+		const { t, orderId } = await seedOrder();
+		retrievePaymentIntent.mockResolvedValueOnce({
+			object: "payment_intent",
+			id: "pi_fee_authority",
+			status: "succeeded",
+			amount: 1000,
+			amount_received: 1000,
+			currency: "usd",
+			livemode: false,
+			metadata: { commerceTenantSiteUrl: "tenant.example" },
+			latest_charge: {
+				object: "charge",
+				id: "ch_fee_authority",
+				payment_intent: "pi_other",
+				paid: true,
+				captured: true,
+				currency: "usd",
+				livemode: false,
+				balance_transaction: null,
+			},
+		});
+
+		await t.action(internal.stripeFees.captureFeesForOrder, { orderId });
+
+		const order = await t.run((ctx) => ctx.db.get(orderId));
+		expect(order?.stripeFees).toBeUndefined();
+		expect(order).toMatchObject({
+			stripeFeeCaptureStatus: "failed",
+			stripeFeeCaptureError: "provider_object_mismatch",
+		});
+		const logs = JSON.stringify([
+			...vi.mocked(console.error).mock.calls,
+			...vi.mocked(console.warn).mock.calls,
+			...vi.mocked(console.log).mock.calls,
+		]);
+		expect(logs).not.toContain("ORD-FEE-AUTHORITY");
+		expect(logs).not.toContain("pi_fee_authority");
+		expect(logs).not.toContain("ch_fee_authority");
+	});
+
+	test("normalizes Stripe API failures without logging sensitive provider details", async () => {
+		const { t, orderId } = await seedOrder();
+		await t.run((ctx) => ctx.db.patch(orderId, {
+			stripeConnectedAccountId: "acct_fee_authority",
+		}));
+		const sensitiveProviderError = [
+			"raw provider failure",
+			stripeSecret,
+			"acct_fee_authority",
+			"pi_fee_authority",
+			"ORD-FEE-AUTHORITY",
+			"tenant.example",
+			"321",
+		].join(" ");
+		retrievePaymentIntent.mockRejectedValueOnce(new Error(sensitiveProviderError));
+
+		await t.action(internal.stripeFees.captureFeesForOrder, { orderId });
+
+		expect(retrievePaymentIntent).toHaveBeenCalledWith(
+			"pi_fee_authority",
+			{ expand: ["latest_charge.balance_transaction"] },
+			{ stripeAccount: "acct_fee_authority" },
+		);
+		expect(await t.run((ctx) => ctx.db.get(orderId))).toMatchObject({
+			stripeFeeCaptureStatus: "pending",
+			stripeFeeCaptureError: "stripe_api_error",
+		});
+		expect(console.error).toHaveBeenCalledWith("stripe_fee_capture.stripe_api_error");
+		const logs = JSON.stringify([
+			...vi.mocked(console.error).mock.calls,
+			...vi.mocked(console.warn).mock.calls,
+			...vi.mocked(console.log).mock.calls,
+		]);
+		for (const sensitiveFragment of sensitiveProviderError.split(" ")) {
+			expect(logs).not.toContain(sensitiveFragment);
+		}
+	});
+	});
 
 describe("bound checkout snapshot paid-safe reconciliation", () => {
 	test("does not cross the provider boundary before the scheduled time", async () => {
