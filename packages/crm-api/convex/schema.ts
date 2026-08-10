@@ -876,6 +876,8 @@ export default defineSchema({
 		orderNumber: v.string(),
 		stripeSessionId: v.string(),
 		stripePaymentIntentId: v.optional(v.string()),
+		stripePaymentCurrency: v.optional(v.string()),
+		stripePaymentLivemode: v.optional(v.boolean()),
 		// Connected-account context needed by delayed Stripe reads after the
 		// webhook request that originally resolved tenant routing has ended.
 		stripeConnectedAccountId: v.optional(v.string()),
@@ -901,7 +903,19 @@ export default defineSchema({
 		),
 		subtotal: v.optional(v.number()),
 		total: v.number(),
+		// With provider_verified provenance, this is the original-charge processing
+		// component only: the sum of balance_transaction.fee_details whose type is
+		// exactly "stripe_fee". Compatibility values are explicitly legacy_unverified;
+		// neither form includes Connect application fees, passthrough fees, or fee tax.
 		stripeFees: v.optional(v.number()),
+		stripeFeeCurrency: v.optional(v.string()),
+		stripeFeeChargeId: v.optional(v.string()),
+		stripeFeeBalanceTransactionId: v.optional(v.string()),
+		stripeFeeCapturedAt: v.optional(v.number()),
+		stripeFeeProvenanceVersion: v.optional(v.number()),
+		stripeFeeProvenance: v.optional(
+			v.union(v.literal("provider_verified"), v.literal("legacy_unverified")),
+		),
 		// Durable lifecycle for the asynchronous Stripe balance-transaction read.
 		// Optional for compatibility with orders created before fee capture was
 		// checkpointed explicitly.
@@ -911,11 +925,13 @@ export default defineSchema({
 				v.literal("captured"),
 				v.literal("failed"),
 				v.literal("canceled"),
+				v.literal("legacy_unverified"),
 			),
 		),
 		stripeFeeCaptureAttempts: v.optional(v.number()),
 		stripeFeeCaptureLastAttemptAt: v.optional(v.number()),
 		stripeFeeCaptureNextAttemptAt: v.optional(v.number()),
+		stripeFeeCaptureAttemptToken: v.optional(v.string()),
 		// Safe machine-readable code, never a raw Stripe response.
 		stripeFeeCaptureError: v.optional(stripeFeeCaptureErrorValidator),
 		couponCode: v.optional(v.string()),

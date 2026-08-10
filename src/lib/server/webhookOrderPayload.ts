@@ -13,6 +13,8 @@ export type ConvexOrderCreatePayload = {
 	customerName?: string;
 	stripePaymentIntentId?: string;
 	stripeConnectedAccountId?: string;
+	stripePaymentCurrency?: string;
+	stripePaymentLivemode?: boolean;
 	checkoutSnapshot?: CheckoutSnapshotV1;
 	checkoutSnapshotReservation?: { version: 2; handle: string };
 	shippingAddress?: {
@@ -64,6 +66,8 @@ export function buildConvexOrderCreatePayload({
 		customerEmail: session.customer_details?.email || "",
 		customerName: session.customer_details?.name || shippingDetails?.name || undefined,
 		stripePaymentIntentId: stripePaymentIntentId || undefined,
+		stripePaymentCurrency: session.currency || undefined,
+		stripePaymentLivemode: session.livemode,
 		...(stripeRequestOptions?.stripeAccount
 			? { stripeConnectedAccountId: stripeRequestOptions.stripeAccount }
 			: {}),

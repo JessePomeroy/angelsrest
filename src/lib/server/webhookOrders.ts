@@ -110,8 +110,7 @@ export async function createOrderInConvex(
 		logStructured({
 			event: "stripe_fees.skipped",
 			stage: "order_create",
-			orderId: orderNumber,
-			meta: { reason: "already captured", stripeFees: existingStripeFees },
+			meta: { reason: "already_recorded" },
 		});
 	}
 

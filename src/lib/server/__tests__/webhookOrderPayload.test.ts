@@ -7,6 +7,8 @@ function makeSession(overrides?: Partial<Stripe.Checkout.Session>): Stripe.Check
 		id: "cs_test_123",
 		amount_total: 5000,
 		amount_subtotal: 4500,
+		currency: "usd",
+		livemode: false,
 		payment_intent: "pi_test_123",
 		customer_details: {
 			name: "Jane Doe",
@@ -67,6 +69,8 @@ describe("buildConvexOrderCreatePayload", () => {
 			customerEmail: "jane@example.com",
 			customerName: "Jane Doe",
 			stripePaymentIntentId: "pi_test_123",
+			stripePaymentCurrency: "usd",
+			stripePaymentLivemode: false,
 			shippingAddress: {
 				line1: "123 Main St",
 				line2: undefined,

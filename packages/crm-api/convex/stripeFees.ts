@@ -24,35 +24,49 @@
  */
 
 import Stripe from "stripe";
+import { randomUUID } from "node:crypto";
 import { v } from "convex/values";
 import { internal } from "./_generated/api";
 import { internalAction } from "./_generated/server";
 import {
 	FEE_CAPTURE_MAX_ATTEMPTS,
+	extractStripeProcessingFeeMinorUnits,
 	getFeeCaptureRetryDelayMs,
+	isNonnegativeSafeInteger,
+	isStripeCurrency,
+	normalizeCommerceTenantSiteUrl,
 	type StripeFeeCaptureError,
 } from "./helpers/stripeFeeCapture";
 import { purposeScopedServerRolesAreDisjoint } from "./helpers/serverSecrets";
 
 const STRIPE_API_VERSION = "2026-01-28.clover" as const;
+const PAYMENT_INTENT_PENDING_STATUSES = new Set<Stripe.PaymentIntent.Status>([
+	"processing",
+	"requires_action",
+	"requires_capture",
+	"requires_confirmation",
+]);
 
 /**
- * Capture Stripe fees for a single order. Idempotent: short-circuits if
+ * Record Stripe's provider-reported fee for a single order; this never captures
+ * a PaymentIntent or creates a charge. Idempotent: short-circuits if
  * fees are already set or if the PI isn't available. Reschedules itself
  * up to `attempt: 3` when the balance_transaction hasn't finalized yet.
  */
 export const captureFeesForOrder = internalAction({
 	args: { orderId: v.id("orders"), attempt: v.optional(v.number()) },
 	handler: async (ctx, { orderId, attempt = 1 }) => {
-		if (attempt > FEE_CAPTURE_MAX_ATTEMPTS) return;
+		if (!Number.isInteger(attempt) || attempt < 1 || attempt > FEE_CAPTURE_MAX_ATTEMPTS) return;
 		const order = await ctx.runQuery(internal.stripeFeesStore.getOrderForFees, {
 			orderId,
 		});
 		if (!order) return;
 		if (order.stripeFees !== undefined) return;
+		const attemptToken = randomUUID();
 		const started = await ctx.runMutation(internal.stripeFeesStore.beginAttempt, {
 			orderId,
 			attempt,
+			attemptToken,
 		});
 		if (!started) return;
 		const recordRecoverableFailure = async (error: StripeFeeCaptureError) => {
@@ -61,6 +75,7 @@ export const captureFeesForOrder = internalAction({
 				await ctx.runMutation(internal.stripeFeesStore.recordRetry, {
 					orderId,
 					attempt,
+					attemptToken,
 					error,
 				});
 				return;
@@ -68,14 +83,12 @@ export const captureFeesForOrder = internalAction({
 			await ctx.runMutation(internal.stripeFeesStore.recordFailure, {
 				orderId,
 				attempt,
+				attemptToken,
 				error,
 			});
 		};
 		if (!purposeScopedServerRolesAreDisjoint()) {
-			console.error(
-				"[stripeFees] purpose-scoped authority configuration overlaps; Stripe fee capture deferred for order",
-				order.orderNumber,
-			);
+			console.error("stripe_fee_capture.authority_configuration_invalid");
 			await recordRecoverableFailure("authority_configuration_invalid");
 			return;
 		}
@@ -83,20 +96,34 @@ export const captureFeesForOrder = internalAction({
 			await ctx.runMutation(internal.stripeFeesStore.recordFailure, {
 				orderId,
 				attempt,
+				attemptToken,
 				error: "payment_intent_missing",
 			});
+			return;
+		}
+		const orderTenantSiteUrl = normalizeCommerceTenantSiteUrl(order.siteUrl);
+		if (
+			!order.stripePaymentIntentId.startsWith("pi_")
+			|| order.stripePaymentIntentId.length <= 3
+			|| !isStripeCurrency(order.stripePaymentCurrency)
+			|| typeof order.stripePaymentLivemode !== "boolean"
+			|| !isNonnegativeSafeInteger(order.total)
+			|| orderTenantSiteUrl === null
+		) {
+			await ctx.runMutation(internal.stripeFeesStore.recordFailure, {
+				orderId, attempt, attemptToken, error: "payment_projection_invalid",
+			});
+			console.error("stripe_fee_capture.payment_projection_invalid");
 			return;
 		}
 
 		const stripeKey = process.env.STRIPE_SECRET_KEY;
 		if (!stripeKey) {
-			console.error(
-				"[stripeFees] STRIPE_SECRET_KEY not set on Convex deployment; cannot capture fees for order",
-				order.orderNumber,
-			);
+			console.error("stripe_fee_capture.stripe_secret_key_missing");
 			await ctx.runMutation(internal.stripeFeesStore.recordFailure, {
 				orderId,
 				attempt,
+				attemptToken,
 				error: "stripe_secret_key_missing",
 			});
 			return;
@@ -112,33 +139,119 @@ export const captureFeesForOrder = internalAction({
 					? { stripeAccount: order.stripeConnectedAccountId }
 					: undefined,
 			);
+			const paymentTenantSiteUrl = normalizeCommerceTenantSiteUrl(
+				pi.metadata?.commerceTenantSiteUrl,
+			);
+			if (
+				pi.object !== "payment_intent"
+				|| pi.id !== order.stripePaymentIntentId
+				|| pi.amount !== order.total
+				|| pi.currency !== order.stripePaymentCurrency
+				|| pi.livemode !== order.stripePaymentLivemode
+				|| paymentTenantSiteUrl === null
+				|| paymentTenantSiteUrl !== orderTenantSiteUrl
+			) {
+				await ctx.runMutation(internal.stripeFeesStore.recordFailure, {
+					orderId, attempt, attemptToken, error: "payment_projection_invalid",
+				});
+				console.error("stripe_fee_capture.payment_projection_invalid");
+				return;
+			}
+			if (pi.status !== "succeeded") {
+				if (PAYMENT_INTENT_PENDING_STATUSES.has(pi.status)) {
+					console.warn("stripe_fee_capture.payment_not_ready");
+					await recordRecoverableFailure("payment_not_ready");
+					return;
+				}
+				await ctx.runMutation(internal.stripeFeesStore.recordFailure, {
+					orderId, attempt, attemptToken, error: "payment_projection_invalid",
+				});
+				console.error("stripe_fee_capture.payment_projection_invalid");
+				return;
+			}
+			if (pi.amount_received !== order.total) {
+				await ctx.runMutation(internal.stripeFeesStore.recordFailure, {
+					orderId, attempt, attemptToken, error: "payment_projection_invalid",
+				});
+				console.error("stripe_fee_capture.payment_projection_invalid");
+				return;
+			}
 			const charge = pi.latest_charge;
-			const balanceTxn =
-				typeof charge === "object" && charge !== null ? charge.balance_transaction : undefined;
-			const fees =
-				typeof balanceTxn === "object" && balanceTxn !== null ? balanceTxn.fee : undefined;
-			if (typeof fees === "number" && fees >= 0) {
+			if (
+				typeof charge !== "object"
+				|| charge === null
+				|| charge.object !== "charge"
+				|| !charge.id.startsWith("ch_")
+				|| (typeof charge.payment_intent === "string"
+					? charge.payment_intent
+					: charge.payment_intent?.id) !== order.stripePaymentIntentId
+				|| charge.amount !== order.total
+				|| charge.amount_captured !== order.total
+				|| charge.paid !== true
+				|| charge.captured !== true
+				|| charge.currency !== order.stripePaymentCurrency
+				|| charge.livemode !== order.stripePaymentLivemode
+			) {
+				await ctx.runMutation(internal.stripeFeesStore.recordFailure, {
+					orderId, attempt, attemptToken, error: "provider_object_mismatch",
+				});
+				console.error("stripe_fee_capture.provider_object_mismatch");
+				return;
+			}
+			const balanceTxn = charge.balance_transaction;
+			const processingFeeMinorUnits =
+				typeof balanceTxn === "object" && balanceTxn !== null
+					? extractStripeProcessingFeeMinorUnits(balanceTxn)
+					: null;
+			const balanceSource = typeof balanceTxn === "object" && balanceTxn !== null
+				? balanceTxn.source : undefined;
+			const balanceSourceId = typeof balanceSource === "string" ? balanceSource : balanceSource?.id;
+			if (
+				typeof balanceTxn === "object"
+				&& balanceTxn !== null
+				&& balanceTxn.object === "balance_transaction"
+				&& balanceTxn.id.startsWith("txn_")
+				&& balanceTxn.type === "charge"
+				&& balanceTxn.reporting_category === "charge"
+				&& balanceSourceId === charge.id
+				&& isStripeCurrency(balanceTxn.currency)
+				&& isNonnegativeSafeInteger(balanceTxn.amount)
+				&& (balanceTxn.currency !== charge.currency || balanceTxn.amount === charge.amount)
+				&& isNonnegativeSafeInteger(balanceTxn.fee)
+				&& Number.isSafeInteger(balanceTxn.net)
+				&& balanceTxn.net === balanceTxn.amount - balanceTxn.fee
+				&& (balanceTxn.status === "pending" || balanceTxn.status === "available")
+			) {
+				if (processingFeeMinorUnits === null) {
+					console.warn("stripe_fee_capture.fee_breakdown_not_ready");
+					await recordRecoverableFailure("fee_breakdown_not_ready");
+					return;
+				}
 				const stored = await ctx.runMutation(internal.stripeFeesStore.setFees, {
 					orderId,
-					stripeFees: fees,
+					stripeFees: processingFeeMinorUnits,
+					stripeFeeCurrency: balanceTxn.currency,
+					stripeFeeChargeId: charge.id,
+					stripeFeeBalanceTransactionId: balanceTxn.id,
 					attempt,
+					attemptToken,
 				});
 				if (stored) {
-					console.log(
-						`[stripeFees] captured ${fees} cents for order ${order.orderNumber} on attempt ${attempt}`,
-					);
+					console.log("stripe_fee_capture.captured");
 				}
 				return;
 			}
-			console.warn(
-				`[stripeFees] no fees yet for order ${order.orderNumber} (attempt ${attempt})`,
-			);
-		} catch (err) {
+			if (balanceTxn !== null && balanceTxn !== undefined && typeof balanceTxn === "object") {
+				await ctx.runMutation(internal.stripeFeesStore.recordFailure, {
+					orderId, attempt, attemptToken, error: "provider_object_mismatch",
+				});
+				console.error("stripe_fee_capture.provider_object_mismatch");
+				return;
+			}
+			console.warn("stripe_fee_capture.balance_transaction_not_ready");
+		} catch {
 			failureCode = "stripe_api_error";
-			console.error(
-				`[stripeFees] Stripe API call failed for order ${order.orderNumber} (attempt ${attempt})`,
-				err,
-			);
+			console.error("stripe_fee_capture.stripe_api_error");
 		}
 		await recordRecoverableFailure(failureCode);
 	},
