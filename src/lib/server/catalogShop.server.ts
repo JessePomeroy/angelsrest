@@ -14,6 +14,7 @@ import {
 } from "$lib/server/convexShopAdapter";
 import { logStructured } from "$lib/server/logger";
 import { sanityShop } from "$lib/server/sanityShop.server";
+import committedCatalogDisplayMediaTransferReceipts from "../../../scripts/cms/migrations/angelsrest-catalog/sanity-catalog-display-media-transfer-receipts.json";
 
 type PublishedCatalog = FunctionReturnType<typeof api.catalogProductGraphs.listPublished>;
 type ClosedReason = "mismatch" | "timeout" | "secondary_error" | "normalization_error";
@@ -40,7 +41,7 @@ const COMPLETE_CATALOG_KIND_COUNTS: Record<string, number> = {
 	merchandise: 0,
 };
 
-const SANITY_COMPARISON_QUERY = `*[_type in ["lumaProductV2", "lumaPrintSetV2", "product"]] | order(_id asc)[0...34]{_type,"slug":slug.current,title,description,category,orderRank,inStock,featured,price,"hasCollection":defined(collection),"hasParent":defined(parent),variants[]{paper,size,retailPrice,enabled},bordersEnabled,framedEnabled,frameMarkupMultiplier,availablePapers,image{alt,"source":asset->metadata.dimensions{width,height}},previewImage{alt,"source":asset->metadata.dimensions{width,height}},images[]{alt,"source":asset->metadata.dimensions{width,height}},seo{description,ogImage{alt,"source":asset->metadata.dimensions{width,height}}}}`;
+const SANITY_COMPARISON_QUERY = `*[_type in ["lumaProductV2", "lumaPrintSetV2", "product"]] | order(_id asc)[0...34]{_type,"slug":slug.current,title,description,category,orderRank,inStock,featured,price,"hasCollection":defined(collection),"hasParent":defined(parent),variants[]{paper,size,retailPrice,enabled},bordersEnabled,framedEnabled,frameMarkupMultiplier,availablePapers,image{alt,"assetRef":asset._ref,"source":asset->metadata.dimensions{width,height}},previewImage{alt,"assetRef":asset._ref,"source":asset->metadata.dimensions{width,height}},images[]{alt,"assetRef":asset._ref,"source":asset->metadata.dimensions{width,height}},seo{description,ogImage{alt,"assetRef":asset._ref,"source":asset->metadata.dimensions{width,height}}}}`;
 
 export function parseCatalogProviderMode(value: unknown) {
 	return value === "shadow" || value === "convex" || value === "sanity" ? value : "sanity";
@@ -343,6 +344,8 @@ type PresentationMedia = {
 	altText: string | null;
 	altValid: boolean;
 	source: { width: number; height: number };
+	sanityAssetRef: string | null;
+	workerAssetId: string | null;
 };
 type PresentationProduct = CatalogFacetProduct & {
 	title: string;
@@ -364,6 +367,7 @@ export type ShopCatalogSentinelComparison = {
 	presentationParity: "match" | "mismatch";
 	presentationMismatchCounts: PresentationMismatchCounts;
 	sanityPrintSetCoverFallbackCount: number;
+	transferEquivalentDimensionCount: number;
 	associationParity: "match" | "mismatch";
 	productIndexOrder: "match" | "mismatch";
 	printSetOrder: "match" | "mismatch";
@@ -381,6 +385,7 @@ export type ShopCatalogSentinelRead =
 			presentationParity: "unavailable";
 			presentationMismatchCounts: null;
 			sanityPrintSetCoverFallbackCount: null;
+			transferEquivalentDimensionCount: null;
 			associationParity: "unavailable";
 			productIndexOrder: "unavailable";
 			printSetOrder: "unavailable";
@@ -582,6 +587,8 @@ function sanityPresentationMedia(value: unknown, role: string, order: number): P
 		altText: presentationAlt(image.alt),
 		altValid: true,
 		source: presentationDimensions(image),
+		sanityAssetRef: typeof image.assetRef === "string" ? image.assetRef : null,
+		workerAssetId: null,
 	};
 }
 
@@ -639,6 +646,11 @@ function normalizeSanityPresentation(value: unknown): PresentationProduct[] {
 }
 
 const CONVEX_ASSET_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
+const CONVEX_DOCUMENT_ID = /^[a-z0-9]{20,64}$/;
+const LOWERCASE_SHA256 = /^[0-9a-f]{64}$/;
+const SANITY_IMAGE_ASSET_REF = /^image-[0-9a-f]{40}-([1-9]\d*)x([1-9]\d*)-(jpg|png|webp)$/;
+const CATALOG_DISPLAY_SOURCE_MAX_WIDTH = 4096;
+const CATALOG_DISPLAY_SOURCE_MAX_BYTES = 20_000_000;
 const CONVEX_DERIVATIVE_WIDTHS = {
 	thumb: 320,
 	card: 768,
@@ -647,7 +659,133 @@ const CONVEX_DERIVATIVE_WIDTHS = {
 	display2560: 2560,
 } as const;
 
-function convexPresentationSource(value: unknown) {
+type TransferReceiptBinding = {
+	workerAssetId: string;
+	sanitySource: { width: number; height: number };
+	transferredSource: {
+		contentType: "image/jpeg" | "image/png" | "image/webp";
+		sizeBytes: number;
+		width: number;
+		height: number;
+	};
+};
+
+function exactReceiptRecord(value: unknown, keys: readonly string[]) {
+	const candidate = record(value);
+	const actualKeys = Object.keys(candidate).sort();
+	const expectedKeys = [...keys].sort();
+	if (!matches(actualKeys, expectedKeys)) throw new NormalizationError();
+	return candidate;
+}
+
+function receiptString(value: unknown, pattern?: RegExp) {
+	if (
+		typeof value !== "string" ||
+		!value ||
+		value !== value.trim() ||
+		(pattern && !pattern.test(value))
+	) {
+		throw new NormalizationError();
+	}
+	return value;
+}
+
+function receiptPositiveInteger(value: unknown, maximum = Number.MAX_SAFE_INTEGER) {
+	const result = positiveInteger(value);
+	if (result > maximum) throw new NormalizationError();
+	return result;
+}
+
+function parseSanityImageAssetRef(value: string) {
+	const match = SANITY_IMAGE_ASSET_REF.exec(value);
+	if (!match) throw new NormalizationError();
+	const width = Number(match[1]);
+	const height = Number(match[2]);
+	if (!Number.isSafeInteger(width) || !Number.isSafeInteger(height)) throw new NormalizationError();
+	const extension = match[3];
+	return {
+		width,
+		height,
+		contentType: (extension === "jpg" ? "image/jpeg" : `image/${extension}`) as
+			| "image/jpeg"
+			| "image/png"
+			| "image/webp",
+	};
+}
+
+function parseTransferReceiptBindings(value: unknown) {
+	const root = exactReceiptRecord(value, ["schemaVersion", "siteUrl", "sanity", "receipts"]);
+	if (root.schemaVersion !== 2 || root.siteUrl !== "angelsrest.online") {
+		throw new NormalizationError();
+	}
+	const sanity = exactReceiptRecord(root.sanity, ["projectId", "dataset"]);
+	if (sanity.projectId !== "n7rvza4g" || sanity.dataset !== "production") {
+		throw new NormalizationError();
+	}
+	const receipts = record(root.receipts);
+	const entries = Object.entries(receipts);
+	if (entries.length !== COMPLETE_CATALOG_PRODUCT_COUNT) throw new NormalizationError();
+	const bindings = new Map<string, TransferReceiptBinding>();
+	const mediaAssetIds = new Set<string>();
+	const workerAssetIds = new Set<string>();
+	for (const [sanityAssetRef, rawReceipt] of entries) {
+		const sanitySource = parseSanityImageAssetRef(sanityAssetRef);
+		const receipt = exactReceiptRecord(rawReceipt, [
+			"mediaAssetId",
+			"workerAssetId",
+			"sourceSha256",
+			"source",
+		]);
+		const mediaAssetId = receiptString(receipt.mediaAssetId, CONVEX_DOCUMENT_ID);
+		const workerAssetId = receiptString(receipt.workerAssetId, CONVEX_ASSET_ID);
+		receiptString(receipt.sourceSha256, LOWERCASE_SHA256);
+		if (mediaAssetIds.has(mediaAssetId) || workerAssetIds.has(workerAssetId)) {
+			throw new NormalizationError();
+		}
+		mediaAssetIds.add(mediaAssetId);
+		workerAssetIds.add(workerAssetId);
+		const rawSource = exactReceiptRecord(receipt.source, [
+			"contentType",
+			"sizeBytes",
+			"width",
+			"height",
+		]);
+		const rawContentType = rawSource.contentType;
+		if (
+			rawContentType !== "image/jpeg" &&
+			rawContentType !== "image/png" &&
+			rawContentType !== "image/webp"
+		) {
+			throw new NormalizationError();
+		}
+		const contentType: TransferReceiptBinding["transferredSource"]["contentType"] = rawContentType;
+		const transferredSource = {
+			contentType,
+			sizeBytes: receiptPositiveInteger(rawSource.sizeBytes, CATALOG_DISPLAY_SOURCE_MAX_BYTES),
+			width: receiptPositiveInteger(rawSource.width, 100_000),
+			height: receiptPositiveInteger(rawSource.height, 100_000),
+		};
+		const originalSource =
+			transferredSource.contentType === sanitySource.contentType &&
+			transferredSource.width === sanitySource.width &&
+			transferredSource.height === sanitySource.height;
+		const derivedWidth = Math.min(sanitySource.width, CATALOG_DISPLAY_SOURCE_MAX_WIDTH);
+		const derivedHeight = Math.max(
+			1,
+			Math.round(sanitySource.height * (derivedWidth / sanitySource.width)),
+		);
+		const derivedSource =
+			sanitySource.width > CATALOG_DISPLAY_SOURCE_MAX_WIDTH &&
+			transferredSource.contentType === "image/jpeg" &&
+			transferredSource.width === derivedWidth &&
+			transferredSource.height === derivedHeight;
+		if (!originalSource && !derivedSource) throw new NormalizationError();
+		bindings.set(sanityAssetRef, { workerAssetId, sanitySource, transferredSource });
+	}
+	return bindings;
+}
+
+function convexPresentationAsset(value: unknown) {
 	const asset = presentationRecord(value);
 	if (typeof asset.assetId !== "string" || !CONVEX_ASSET_ID.test(asset.assetId)) {
 		throw new PresentationNormalizationError("mediaStructure");
@@ -665,7 +803,7 @@ function convexPresentationSource(value: unknown) {
 			throw new PresentationNormalizationError("dimensions");
 		}
 	}
-	return source;
+	return { source, workerAssetId: asset.assetId };
 }
 
 function normalizeConvexPresentation(value: unknown): PresentationProduct[] {
@@ -716,12 +854,15 @@ function normalizeConvexPresentation(value: unknown): PresentationProduct[] {
 			keys.add(key);
 			roleOrders.set(role, (item.order as number) + 1);
 			const altText = presentationAlt(item.altText);
+			const asset = convexPresentationAsset(item.asset);
 			return {
 				role,
 				order: item.order as number,
 				altText,
 				altValid: role === "social_share" || altText !== null,
-				source: convexPresentationSource(item.asset),
+				source: asset.source,
+				sanityAssetRef: null,
+				workerAssetId: asset.workerAssetId,
 			};
 		});
 		const requiredRole = kind === "print" ? "primary" : kind === "print_set" ? "cover" : "gallery";
@@ -773,8 +914,32 @@ function sortedPresentationMedia(media: PresentationMedia[]) {
 	);
 }
 
-function presentationComparison(primary: unknown, secondary: unknown) {
+function receiptBackedTransferEquivalent(
+	sanityMedia: PresentationMedia,
+	convexMedia: PresentationMedia,
+	bindings: Map<string, TransferReceiptBinding> | null,
+) {
+	if (!bindings || !sanityMedia.sanityAssetRef || !convexMedia.workerAssetId) return false;
+	const binding = bindings.get(sanityMedia.sanityAssetRef);
+	return (
+		binding !== undefined &&
+		binding.workerAssetId === convexMedia.workerAssetId &&
+		binding.sanitySource.width === sanityMedia.source.width &&
+		binding.sanitySource.height === sanityMedia.source.height &&
+		binding.transferredSource.width === convexMedia.source.width &&
+		binding.transferredSource.height === convexMedia.source.height
+	);
+}
+
+function presentationComparison(primary: unknown, secondary: unknown, transferReceipts: unknown) {
 	const counts = emptyPresentationMismatchCounts();
+	let transferEquivalentDimensionCount = 0;
+	let transferBindings: Map<string, TransferReceiptBinding> | null = null;
+	try {
+		transferBindings = parseTransferReceiptBindings(transferReceipts);
+	} catch {
+		transferBindings = null;
+	}
 	let sanity: PresentationProduct[] | null = null;
 	let convex: PresentationProduct[] | null = null;
 	try {
@@ -833,13 +998,26 @@ function presentationComparison(primary: unknown, secondary: unknown) {
 			) {
 				addPresentationMismatch(counts, "altText");
 			}
-			if (
-				leftMedia.some(
-					(item, index) =>
-						item.source.width !== rightMedia[index]?.source.width ||
-						item.source.height !== rightMedia[index]?.source.height,
-				)
-			) {
+			let blockingDimensionMismatch = false;
+			for (const [index, item] of leftMedia.entries()) {
+				const other = rightMedia[index];
+				if (
+					other &&
+					item.source.width === other.source.width &&
+					item.source.height === other.source.height
+				) {
+					continue;
+				}
+				if (other && receiptBackedTransferEquivalent(item, other, transferBindings)) {
+					transferEquivalentDimensionCount = Math.min(
+						COMPLETE_CATALOG_PRODUCT_COUNT,
+						transferEquivalentDimensionCount + 1,
+					);
+				} else {
+					blockingDimensionMismatch = true;
+				}
+			}
+			if (blockingDimensionMismatch) {
 				addPresentationMismatch(counts, "dimensions");
 			}
 		}
@@ -849,6 +1027,7 @@ function presentationComparison(primary: unknown, secondary: unknown) {
 			? ("mismatch" as const)
 			: ("match" as const),
 		counts,
+		transferEquivalentDimensionCount,
 	};
 }
 
@@ -998,6 +1177,7 @@ function normalizeConvexPrintSetOrder(value: unknown) {
 export function compareShopCatalogSentinel(
 	primary: unknown,
 	secondary: unknown,
+	transferReceipts: unknown = committedCatalogDisplayMediaTransferReceipts,
 ): ShopCatalogSentinelComparison {
 	const sanityCount = Array.isArray(primary) ? primary.length : 0;
 	const convexCount = Array.isArray(secondary) ? secondary.length : 0;
@@ -1021,7 +1201,7 @@ export function compareShopCatalogSentinel(
 		() => normalizeSanityCommerce(primary),
 		() => normalizeConvexCommerce(secondary),
 	);
-	const presentation = presentationComparison(primary, secondary);
+	const presentation = presentationComparison(primary, secondary, transferReceipts);
 	const associationParity = facetParity(
 		() => normalizeSanityAssociations(primary),
 		() => normalizeConvexAssociations(secondary),
@@ -1054,6 +1234,7 @@ export function compareShopCatalogSentinel(
 		presentationParity: presentation.parity,
 		presentationMismatchCounts: presentation.counts,
 		sanityPrintSetCoverFallbackCount: sanityPrintSetCoverFallbackCount(primary),
+		transferEquivalentDimensionCount: presentation.transferEquivalentDimensionCount,
 		associationParity,
 		productIndexOrder: productOrder,
 		printSetOrder: setOrder,
@@ -1120,6 +1301,7 @@ function unavailableShopCatalogSentinel(
 		presentationParity: "unavailable",
 		presentationMismatchCounts: null,
 		sanityPrintSetCoverFallbackCount: null,
+		transferEquivalentDimensionCount: null,
 		associationParity: "unavailable",
 		productIndexOrder: "unavailable",
 		printSetOrder: "unavailable",

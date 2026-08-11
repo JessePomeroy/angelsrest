@@ -1,8 +1,10 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
+import transferReceipts from "../../../../scripts/cms/migrations/angelsrest-catalog/sanity-catalog-display-media-transfer-receipts.json";
 
 vi.mock("$env/dynamic/private", () => ({ env: {} }));
 vi.mock("$env/dynamic/public", () => ({ env: { PUBLIC_CONVEX_URL: "https://convex.test" } }));
-vi.mock("$lib/sanity/client.server", () => ({ getSanityClient: vi.fn() }));
+const getSanityClient = vi.hoisted(() => vi.fn());
+vi.mock("$lib/sanity/client.server", () => ({ getSanityClient }));
 vi.mock("$lib/server/sanityShop.server", () => ({
 	sanityShop: {
 		loadIndex: vi.fn(),
@@ -207,8 +209,59 @@ const noPresentationMismatches = {
 	dimensions: 0,
 };
 
+const transferBoundSanityRef = "image-e99ab36cab090eb18cf258460069f73de2b22ce2-4664x3109-jpg";
+const transferBoundReceipt = transferReceipts.receipts[transferBoundSanityRef];
+
+function resizeConvexAsset(asset: ReturnType<typeof convexAsset>, width: number, height: number) {
+	asset.source = { width, height };
+	const maximumWidths = {
+		thumb: 320,
+		card: 768,
+		display1280: 1280,
+		display2048: 2048,
+		display2560: 2560,
+	} as const;
+	for (const [preset, maximumWidth] of Object.entries(maximumWidths) as Array<
+		[keyof typeof maximumWidths, number]
+	>) {
+		const derivativeWidth = Math.min(width, maximumWidth);
+		asset.derivatives[preset].width = derivativeWidth;
+		asset.derivatives[preset].height = Math.max(1, Math.round(height * (derivativeWidth / width)));
+	}
+}
+
+function receiptBoundDimensionCatalog(count = 1) {
+	const catalog = completeCatalog();
+	const sanityImages: Array<ReturnType<typeof sanityProduct>["image"] & { assetRef?: string }> = [];
+	const convexAssets: Array<ReturnType<typeof convexAsset>> = [];
+	for (let index = 0; index < count; index += 1) {
+		const sanityProductValue = catalog.sanity[index] as ReturnType<typeof sanityProduct>;
+		const convexProductValue = catalog.convex[index] as ReturnType<typeof convexProduct>;
+		const sanityImage = sanityProductValue.image as typeof sanityProductValue.image & {
+			assetRef?: string;
+		};
+		Object.assign(sanityImage, {
+			assetRef: transferBoundSanityRef,
+			source: { width: 4664, height: 3109 },
+		});
+		const convexAssetValue = first(convexProductValue.media).asset;
+		convexAssetValue.assetId = transferBoundReceipt.workerAssetId;
+		resizeConvexAsset(
+			convexAssetValue,
+			transferBoundReceipt.source.width,
+			transferBoundReceipt.source.height,
+		);
+		sanityImages.push(sanityImage);
+		convexAssets.push(convexAssetValue);
+	}
+	const sanityImage = first(sanityImages);
+	const convexAssetValue = first(convexAssets);
+	return { catalog, sanityImage, convexAsset: convexAssetValue };
+}
+
 afterEach(() => {
 	vi.useRealTimers();
+	getSanityClient.mockReset();
 });
 
 describe("catalog provider mode", () => {
@@ -448,6 +501,7 @@ describe("bounded public Shop drill sentinel", () => {
 			presentationParity: "match",
 			presentationMismatchCounts: noPresentationMismatches,
 			sanityPrintSetCoverFallbackCount: 0,
+			transferEquivalentDimensionCount: 0,
 			associationParity: "match",
 			productIndexOrder: "match",
 			printSetOrder: "match",
@@ -516,6 +570,7 @@ describe("bounded public Shop drill sentinel", () => {
 			presentationParity: "match",
 			presentationMismatchCounts: noPresentationMismatches,
 			sanityPrintSetCoverFallbackCount: 2,
+			transferEquivalentDimensionCount: 0,
 			associationParity: "match",
 			productIndexOrder: "match",
 			printSetOrder: "match",
@@ -587,6 +642,105 @@ describe("bounded public Shop drill sentinel", () => {
 			associationParity: "match",
 			productIndexOrder: "match",
 			printSetOrder: "match",
+		});
+	});
+
+	it("accepts only an exact committed receipt binding for a transferred source dimension", () => {
+		const { catalog } = receiptBoundDimensionCatalog();
+		const result = compareShopCatalogSentinel(catalog.sanity, catalog.convex);
+		expect(result).toMatchObject({
+			outcome: "exact",
+			distribution: "exact",
+			publicAdapterValidation: "exact",
+			commerceParity: "match",
+			presentationParity: "match",
+			presentationMismatchCounts: noPresentationMismatches,
+			transferEquivalentDimensionCount: 1,
+			associationParity: "match",
+			productIndexOrder: "match",
+			printSetOrder: "match",
+		});
+		const serialized = JSON.stringify(result);
+		expect(serialized).not.toContain(transferBoundSanityRef);
+		expect(serialized).not.toContain(transferBoundReceipt.workerAssetId);
+		expect(serialized).not.toContain(transferBoundReceipt.sourceSha256);
+	});
+
+	it("reports the four reviewed receipt-equivalent dimension differences as a bounded count", () => {
+		const { catalog } = receiptBoundDimensionCatalog(4);
+		expect(compareShopCatalogSentinel(catalog.sanity, catalog.convex)).toMatchObject({
+			outcome: "exact",
+			presentationParity: "match",
+			presentationMismatchCounts: noPresentationMismatches,
+			transferEquivalentDimensionCount: 4,
+		});
+	});
+
+	it("keeps a transferred dimension difference blocking for a wrong Sanity asset reference", () => {
+		const { catalog, sanityImage } = receiptBoundDimensionCatalog();
+		sanityImage.assetRef = "image-19eedd3c081d2658351f849c519e519d1f7d99af-3000x4000-jpg";
+		expect(compareShopCatalogSentinel(catalog.sanity, catalog.convex)).toMatchObject({
+			outcome: "mismatch",
+			presentationParity: "mismatch",
+			presentationMismatchCounts: {
+				...noPresentationMismatches,
+				dimensions: 1,
+			},
+			transferEquivalentDimensionCount: 0,
+		});
+	});
+
+	it("keeps a transferred dimension difference blocking for a wrong Worker asset ID", () => {
+		const { catalog, convexAsset: asset } = receiptBoundDimensionCatalog();
+		asset.assetId = "10000000-0000-4000-8000-000000000001";
+		expect(compareShopCatalogSentinel(catalog.sanity, catalog.convex)).toMatchObject({
+			outcome: "mismatch",
+			publicAdapterValidation: "exact",
+			presentationParity: "mismatch",
+			presentationMismatchCounts: {
+				...noPresentationMismatches,
+				dimensions: 1,
+			},
+			transferEquivalentDimensionCount: 0,
+		});
+	});
+
+	it("keeps a transferred dimension difference blocking for wrong receipt dimensions", () => {
+		const { catalog } = receiptBoundDimensionCatalog();
+		const receipts = structuredClone(transferReceipts);
+		receipts.receipts[transferBoundSanityRef].source.width -= 1;
+		expect(compareShopCatalogSentinel(catalog.sanity, catalog.convex, receipts)).toMatchObject({
+			outcome: "mismatch",
+			presentationParity: "mismatch",
+			presentationMismatchCounts: {
+				...noPresentationMismatches,
+				dimensions: 1,
+			},
+			transferEquivalentDimensionCount: 0,
+		});
+	});
+
+	it.each([
+		["missing root", {}],
+		["wrong schema", { ...structuredClone(transferReceipts), schemaVersion: 1 }],
+		[
+			"wrong derived content metadata",
+			(() => {
+				const receipts = structuredClone(transferReceipts);
+				receipts.receipts[transferBoundSanityRef].source.contentType = "image/png";
+				return receipts;
+			})(),
+		],
+	] as const)("fails closed on a malformed transfer receipt manifest: %s", (_name, receipts) => {
+		const { catalog } = receiptBoundDimensionCatalog();
+		expect(compareShopCatalogSentinel(catalog.sanity, catalog.convex, receipts)).toMatchObject({
+			outcome: "mismatch",
+			presentationParity: "mismatch",
+			presentationMismatchCounts: {
+				...noPresentationMismatches,
+				dimensions: 1,
+			},
+			transferEquivalentDimensionCount: 0,
 		});
 	});
 
@@ -855,10 +1009,26 @@ describe("bounded public Shop drill sentinel", () => {
 			presentationParity: "unavailable",
 			presentationMismatchCounts: null,
 			sanityPrintSetCoverFallbackCount: null,
+			transferEquivalentDimensionCount: null,
 			associationParity: "unavailable",
 			productIndexOrder: "unavailable",
 			printSetOrder: "unavailable",
 		});
+	});
+
+	it("requests Sanity asset references only inside the server-side comparison projection", async () => {
+		const catalog = completeCatalog();
+		const fetch = vi.fn(async (_query: string) => catalog.sanity);
+		getSanityClient.mockReturnValue({ fetch });
+		await expect(
+			readShopCatalogSentinel({
+				createReader: () => fakeReader(Promise.resolve(catalog.convex)) as never,
+			}),
+		).resolves.toMatchObject({ outcome: "exact" });
+		expect(fetch).toHaveBeenCalledOnce();
+		const [query] = first(fetch.mock.calls);
+		expect(query).toContain('"assetRef":asset._ref');
+		expect(query.match(/"assetRef":asset\._ref/g)).toHaveLength(4);
 	});
 
 	it("aborts and returns unavailable at the hard top-level deadline", async () => {
