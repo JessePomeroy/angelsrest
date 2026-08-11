@@ -23,6 +23,7 @@ vi.mock("$lib/server/convexClient", () => ({
 	getConvex: () => ({ query: mocks.convexQuery }),
 }));
 
+import { r4ReadPurposes, r4ReadSignatureMessage } from "$lib/server/r4ReadAuthorization";
 import { POST } from "./+server";
 
 const cutoff = 1_700_000_000;
@@ -89,28 +90,58 @@ describe("accelerated R4 fixed-point inventory", () => {
 
 	it("accepts only a fresh fixed-purpose server HMAC when no admin session exists", async () => {
 		mocks.verify.mockResolvedValue(false);
+		const body = { authorization: "r4_accelerated_fixed_point_read_v1" };
+		const rawBody = JSON.stringify(body);
 		const timestamp = String(Math.floor(Date.now() / 1_000));
+		const unsigned = request(body);
 		const signature = createHmac("sha256", mocks.env.WEBHOOK_SECRET)
-			.update(`r4-accelerated-inventory-v1:${timestamp}`)
+			.update(
+				r4ReadSignatureMessage(unsigned, r4ReadPurposes.acceleratedInventory, rawBody, timestamp),
+			)
 			.digest("hex");
 		const response = await POST({
-			request: request(
-				{ authorization: "r4_accelerated_fixed_point_read_v1" },
-				{ "x-r4-timestamp": timestamp, "x-r4-signature": signature },
-			),
+			request: request(body, { "x-r4-timestamp": timestamp, "x-r4-signature": signature }),
 		});
 		expect(response.status).toBe(200);
-
-		const staleTimestamp = String(Number(timestamp) - 301);
-		const staleSignature = createHmac("sha256", mocks.env.WEBHOOK_SECRET)
-			.update(`r4-accelerated-inventory-v1:${staleTimestamp}`)
+		const readsAfterFreshSignature = mocks.stripeList.mock.calls.length;
+		const legacySignature = createHmac("sha256", mocks.env.WEBHOOK_SECRET)
+			.update(`r4-accelerated-inventory-v1:${timestamp}`)
 			.digest("hex");
 		await expect(
 			POST({
+				request: request(body, {
+					"x-r4-timestamp": timestamp,
+					"x-r4-signature": legacySignature,
+				}),
+			}),
+		).rejects.toMatchObject({ status: 401 });
+		await expect(
+			POST({
 				request: request(
-					{ authorization: "r4_accelerated_fixed_point_read_v1" },
-					{ "x-r4-timestamp": staleTimestamp, "x-r4-signature": staleSignature },
+					{ authorization: "r4_accelerated_legacy_paid_diagnostic_v1" },
+					{ "x-r4-timestamp": timestamp, "x-r4-signature": signature },
 				),
+			}),
+		).rejects.toMatchObject({ status: 401 });
+		expect(mocks.stripeList).toHaveBeenCalledTimes(readsAfterFreshSignature);
+
+		const staleTimestamp = String(Number(timestamp) - 301);
+		const staleSignature = createHmac("sha256", mocks.env.WEBHOOK_SECRET)
+			.update(
+				r4ReadSignatureMessage(
+					unsigned,
+					r4ReadPurposes.acceleratedInventory,
+					rawBody,
+					staleTimestamp,
+				),
+			)
+			.digest("hex");
+		await expect(
+			POST({
+				request: request(body, {
+					"x-r4-timestamp": staleTimestamp,
+					"x-r4-signature": staleSignature,
+				}),
 			}),
 		).rejects.toMatchObject({ status: 401 });
 	});

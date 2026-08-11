@@ -1,88 +1,125 @@
 import { error, json } from "@sveltejs/kit";
 import { env } from "$env/dynamic/private";
+import { env as publicEnv } from "$env/dynamic/public";
 import { client } from "$lib/sanity/client";
+import { resolveCatalogCheckout } from "$lib/server/catalogCommerceClients";
 import type { CheckoutSelection, ResolvedCheckoutItem } from "$lib/server/checkoutCatalog";
 import {
 	parseCheckoutCatalogProvider,
 	resolveCheckoutCommerce,
 } from "$lib/server/checkoutCommerce";
 import { checkoutSnapshotMode } from "$lib/server/handleCheckout";
-import { verifySiteAdminRequest } from "$lib/server/siteAdminAuthorization";
+import { authorizeR4ReadRequest, r4ReadPurposes } from "$lib/server/r4ReadAuthorization";
 
-const MAX_BODY_BYTES = 4_096;
-const encoder = new TextEncoder();
+const fixedSelection: CheckoutSelection = {
+	productId: "raw-nerve-1",
+	isPrintSet: false,
+	paperSlug: "archival-matte",
+	sizeSlug: "4x6",
+};
+const sentinelAuthorization = "r4_checkout_catalog_sentinel_v1";
+const sentinelDeadlineMs = 6_000;
 
 export async function POST({ request }: { request: Request }) {
-	if (!(await verifySiteAdminRequest(request))) throw error(401, "Unauthorized");
-	const text = await request.text();
-	if (encoder.encode(text).byteLength > MAX_BODY_BYTES) throw error(400, "Invalid sentinel input");
-	const selection = parseSelection(text);
+	const authorization = await authorizeR4ReadRequest(
+		request,
+		r4ReadPurposes.checkoutCatalogSentinel,
+	);
+	if (!authorization) {
+		throw error(401, "Unauthorized");
+	}
+	if (!exactAuthorization(authorization.rawBody)) throw error(400, "Invalid sentinel input");
 	try {
-		const fetcher = client.fetch.bind(client);
-		const [active, sanity, convex] = await Promise.all([
-			resolveCheckoutCommerce(fetcher, [selection]),
-			resolveCheckoutCommerce(fetcher, [selection], { provider: () => "sanity" }),
-			resolveCheckoutCommerce(fetcher, [selection], { provider: () => "convex" }),
-		]);
-		return json({
-			version: 1,
-			checkoutCatalogProvider: parseCheckoutCatalogProvider(env.CHECKOUT_CATALOG_PROVIDER),
-			activeResolutionProvider: active.provider,
-			checkoutSnapshotMode: checkoutSnapshotMode(env.CHECKOUT_SNAPSHOT_MODE),
-			parity: semantics(sanity.items[0]) === semantics(convex.items[0]) ? "match" : "mismatch",
-			resolution: active.items.length === 1 ? "resolved" : "invalid",
+		const controller = new AbortController();
+		const fetcher = <T = unknown>(query: string, params: Record<string, unknown> = {}) =>
+			client.fetch<T>(query, params, { signal: controller.signal });
+		let timer: ReturnType<typeof setTimeout> | undefined;
+		const [active, sanity, convex] = await Promise.race([
+			Promise.all([
+				resolveCheckoutCommerce(fetcher, [fixedSelection]),
+				resolveCheckoutCommerce(fetcher, [fixedSelection], { provider: () => "sanity" }),
+				resolveCheckoutCommerce(fetcher, [fixedSelection], {
+					provider: () => "convex",
+					resolve: (item, signal) =>
+						resolveCatalogCheckout(item, {
+							origin: publicEnv.PUBLIC_CONVEX_SITE_URL,
+							bearer: env.CATALOG_COMMERCE_CHECKOUT_RESOLVER_SECRET,
+							signal,
+						}),
+				}),
+			]),
+			new Promise<never>((_resolve, reject) => {
+				timer = setTimeout(() => {
+					controller.abort();
+					reject(new Error("Catalog sentinel deadline"));
+				}, sentinelDeadlineMs);
+			}),
+		]).finally(() => {
+			controller.abort();
+			clearTimeout(timer);
 		});
+		const forcedProviderBinding =
+			sanity.provider === "sanity" && convex.provider === "convex" ? "exact" : "mismatch";
+		const resolved = [active, sanity, convex].every((result) => result.items.length === 1);
+		const checkoutCatalogProvider = parseCheckoutCatalogProvider(env.CHECKOUT_CATALOG_PROVIDER);
+		const expectedActiveProvider = checkoutCatalogProvider === "convex" ? "convex" : "sanity";
+		const expectedActive = expectedActiveProvider === "sanity" ? sanity : convex;
+		const activeProviderBinding =
+			active.provider === expectedActiveProvider &&
+			resolved &&
+			semantics(active.items[0]) === semantics(expectedActive.items[0])
+				? "exact"
+				: "mismatch";
+		return json(
+			{
+				version: 1,
+				checkoutCatalogProvider,
+				checkoutCatalogConfiguration: checkoutCatalogConfiguration(env.CHECKOUT_CATALOG_PROVIDER),
+				activeResolutionProvider: active.provider,
+				activeProviderBinding,
+				forcedProviderBinding,
+				checkoutSnapshotMode: checkoutSnapshotMode(env.CHECKOUT_SNAPSHOT_MODE),
+				parity:
+					forcedProviderBinding === "exact" &&
+					activeProviderBinding === "exact" &&
+					resolved &&
+					semantics(sanity.items[0]) === semantics(convex.items[0])
+						? "match"
+						: "mismatch",
+				resolution: resolved ? "resolved" : "invalid",
+			},
+			{ headers: { "cache-control": "no-store" } },
+		);
 	} catch {
 		throw error(503, "Catalog sentinel unavailable");
 	}
 }
 
-function parseSelection(text: string): CheckoutSelection {
+function exactAuthorization(rawBody: string) {
 	let value: unknown;
 	try {
-		value = JSON.parse(text);
+		value = JSON.parse(rawBody);
 	} catch {
-		throw error(400, "Invalid sentinel input");
+		return false;
 	}
-	if (
-		!exactObject(value, [
-			"productId",
-			"isPrintSet",
-			"paperSlug",
-			"sizeSlug",
-			"borderWidth",
-			"frame",
-		])
-	)
-		throw error(400, "Invalid sentinel input");
-	const nullable = (part: unknown) =>
-		part === null ||
-		(typeof part === "string" && part.length > 0 && part === part.trim() && part.length <= 200);
-	if (
-		typeof value.productId !== "string" ||
-		value.productId.length < 1 ||
-		value.productId.length > 200 ||
-		value.productId !== value.productId.trim() ||
-		typeof value.isPrintSet !== "boolean" ||
-		!nullable(value.paperSlug) ||
-		!nullable(value.sizeSlug) ||
-		!nullable(value.borderWidth) ||
-		!nullable(value.frame)
-	)
-		throw error(400, "Invalid sentinel input");
-	return {
-		productId: value.productId,
-		isPrintSet: value.isPrintSet,
-		...(value.paperSlug === null ? {} : { paperSlug: value.paperSlug as string }),
-		...(value.sizeSlug === null ? {} : { sizeSlug: value.sizeSlug as string }),
-		...(value.borderWidth === null ? {} : { borderWidth: value.borderWidth as string }),
-		...(value.frame === null ? {} : { frame: value.frame as string }),
-	};
+	return (
+		value !== null &&
+		typeof value === "object" &&
+		!Array.isArray(value) &&
+		Object.keys(value).length === 1 &&
+		(value as { authorization?: unknown }).authorization === sentinelAuthorization
+	);
+}
+
+function checkoutCatalogConfiguration(value: unknown) {
+	if (value === undefined) return "absent";
+	return value === "sanity" || value === "shadow" || value === "convex" ? "exact" : "invalid";
 }
 
 function semantics(item: ResolvedCheckoutItem | undefined) {
 	if (!item) return null;
 	return JSON.stringify({
+		title: item.title,
 		amount: item.unitPriceCents,
 		kind: item.productCategory,
 		digital: item.legacyFulfillment.isDigital,
@@ -91,14 +128,4 @@ function semantics(item: ResolvedCheckoutItem | undefined) {
 		media: Boolean(item.publicImage),
 		setMediaCount: item.legacyFulfillment.imageUrls.length,
 	});
-}
-
-function exactObject(value: unknown, keys: readonly string[]): value is Record<string, unknown> {
-	return (
-		value !== null &&
-		typeof value === "object" &&
-		!Array.isArray(value) &&
-		Object.keys(value).length === keys.length &&
-		keys.every((key) => Object.hasOwn(value, key))
-	);
 }
