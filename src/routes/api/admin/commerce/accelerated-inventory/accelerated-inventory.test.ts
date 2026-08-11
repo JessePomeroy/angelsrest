@@ -1,3 +1,4 @@
+import { createHmac } from "node:crypto";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { InventorySession } from "../../../../../../scripts/commerce/r4-checkout-session-inventory-core";
 
@@ -23,10 +24,10 @@ import { POST } from "./+server";
 
 const cutoff = 1_700_000_000;
 
-function request(body: unknown) {
+function request(body: unknown, headers: Record<string, string> = {}) {
 	return new Request("https://angelsrest.online/api/admin/commerce/accelerated-inventory", {
 		method: "POST",
-		headers: { "content-type": "application/json" },
+		headers: { "content-type": "application/json", ...headers },
 		body: JSON.stringify(body),
 	});
 }
@@ -80,6 +81,34 @@ describe("accelerated R4 fixed-point inventory", () => {
 			status: 400,
 		});
 		expect(mocks.stripeList).not.toHaveBeenCalled();
+	});
+
+	it("accepts only a fresh fixed-purpose server HMAC when no admin session exists", async () => {
+		mocks.verify.mockResolvedValue(false);
+		const timestamp = String(Math.floor(Date.now() / 1_000));
+		const signature = createHmac("sha256", mocks.env.WEBHOOK_SECRET)
+			.update(`r4-accelerated-inventory-v1:${timestamp}`)
+			.digest("hex");
+		const response = await POST({
+			request: request(
+				{ authorization: "r4_accelerated_fixed_point_read_v1" },
+				{ "x-r4-timestamp": timestamp, "x-r4-signature": signature },
+			),
+		});
+		expect(response.status).toBe(200);
+
+		const staleTimestamp = String(Number(timestamp) - 301);
+		const staleSignature = createHmac("sha256", mocks.env.WEBHOOK_SECRET)
+			.update(`r4-accelerated-inventory-v1:${staleTimestamp}`)
+			.digest("hex");
+		await expect(
+			POST({
+				request: request(
+					{ authorization: "r4_accelerated_fixed_point_read_v1" },
+					{ "x-r4-timestamp": staleTimestamp, "x-r4-signature": staleSignature },
+				),
+			}),
+		).rejects.toMatchObject({ status: 401 });
 	});
 
 	it("returns only normalized fixed-point evidence", async () => {
