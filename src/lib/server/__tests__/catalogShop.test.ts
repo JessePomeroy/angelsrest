@@ -14,8 +14,10 @@ vi.mock("$lib/server/sanityShop.server", () => ({
 
 import {
 	compareCatalogSemantics,
+	compareShopCatalogSentinel,
 	createCatalogShopProvider,
 	parseCatalogProviderMode,
+	readShopCatalogSentinel,
 } from "$lib/server/catalogShop.server";
 
 function first<T>(values: T[]) {
@@ -37,6 +39,10 @@ function deferred<T>() {
 const sanityProduct = () => ({
 	_type: "lumaProductV2",
 	slug: "archival-print",
+	title: "Catalog title",
+	description: "Catalog description",
+	hasCollection: false,
+	hasParent: false,
 	inStock: true,
 	featured: true,
 	variants: [
@@ -46,7 +52,7 @@ const sanityProduct = () => ({
 	bordersEnabled: true,
 	framedEnabled: false,
 	frameMarkupMultiplier: 2,
-	image: { source: { width: 3000, height: 2000 } },
+	image: { alt: "Catalog alt", source: { width: 3000, height: 2000 } },
 });
 
 const convexAsset = () => ({
@@ -66,9 +72,9 @@ const convexProduct = () => ({
 	productId: "product-private-looking",
 	revisionId: "revision-private-looking",
 	productKind: "print" as "print" | "print_set",
-	title: "Ignored copy",
+	title: "Catalog title",
 	slug: "archival-print",
-	description: "Ignored description",
+	description: "Catalog description",
 	seoDescription: null,
 	currency: "usd" as const,
 	saleAvailability: "available" as "available" | "unavailable",
@@ -97,7 +103,7 @@ const convexProduct = () => ({
 			key: "ignored-media-key",
 			role: "primary" as "primary" | "cover" | "gallery" | "set_member",
 			order: 0,
-			altText: "Ignored alt",
+			altText: "Catalog alt",
 			asset: convexAsset(),
 		},
 	],
@@ -120,7 +126,7 @@ function fakeReader(list: Promise<unknown>) {
 function completeCatalog() {
 	const sanity: unknown[] = [];
 	const convex: unknown[] = [];
-	const source = { source: { width: 3000, height: 2000 } };
+	const source = { alt: "Catalog alt", source: { width: 3000, height: 2000 } };
 	for (let index = 0; index < 11; index += 1) {
 		const slug = index === 0 ? "archival-print" : `print-${index}`;
 		sanity.push({ ...sanityProduct(), slug });
@@ -153,7 +159,12 @@ function completeCatalog() {
 			sanity.push({
 				_type: "product",
 				slug: productSlug,
+				title: "Catalog title",
+				description: "Catalog description",
 				category,
+				inStock: true,
+				hasCollection: false,
+				hasParent: false,
 				price: 10,
 				availablePapers: [],
 				images: [source],
@@ -177,7 +188,7 @@ function completeCatalog() {
 						key: "gallery",
 						role: "gallery",
 						order: 0,
-						altText: "Gallery alt",
+						altText: "Catalog alt",
 						asset: convexAsset(),
 					},
 				],
@@ -414,6 +425,216 @@ describe("catalog semantic comparison", () => {
 			primaryCount: 33,
 			secondaryCount: 33,
 		});
+	});
+});
+
+describe("bounded public Shop drill sentinel", () => {
+	it("matches all 33 products across distribution, commerce, presentation, associations, and rendered order", () => {
+		const catalog = completeCatalog();
+		expect(compareShopCatalogSentinel(catalog.sanity, catalog.convex)).toEqual({
+			outcome: "exact",
+			sanityCount: 33,
+			convexCount: 33,
+			distribution: "exact",
+			commerceParity: "match",
+			presentationParity: "match",
+			associationParity: "match",
+			productIndexOrder: "match",
+			printSetOrder: "match",
+		});
+	});
+
+	it.each([
+		[
+			"title",
+			(value: ReturnType<typeof convexProduct>) => {
+				value.title = "Drifted public title";
+			},
+		],
+		[
+			"description",
+			(value: ReturnType<typeof convexProduct>) => {
+				value.description = "Drifted public description";
+			},
+		],
+		[
+			"SEO description",
+			(value: ReturnType<typeof convexProduct>) => {
+				(value as { seoDescription: string | null }).seoDescription = "Drifted SEO description";
+			},
+		],
+		[
+			"alternative text",
+			(value: ReturnType<typeof convexProduct>) => {
+				first(value.media).altText = "Drifted alternative text";
+			},
+		],
+	] as const)("detects a %s presentation mismatch without returning the value", (_name, mutate) => {
+		const catalog = completeCatalog();
+		mutate(first(catalog.convex) as ReturnType<typeof convexProduct>);
+		const result = compareShopCatalogSentinel(catalog.sanity, catalog.convex);
+		expect(result).toMatchObject({ outcome: "mismatch", presentationParity: "mismatch" });
+		expect(JSON.stringify(result)).not.toMatch(/Drifted|public title|SEO description/i);
+	});
+
+	it("normalizes provider CDN identity while detecting media role, order, alt, and source-dimension drift", () => {
+		const catalog = completeCatalog();
+		const media = first((first(catalog.convex) as ReturnType<typeof convexProduct>).media);
+		media.asset.assetId = "20000000-0000-4000-8000-000000000002";
+		expect(compareShopCatalogSentinel(catalog.sanity, catalog.convex)).toMatchObject({
+			outcome: "exact",
+			presentationParity: "match",
+		});
+
+		media.order = 1;
+		expect(compareShopCatalogSentinel(catalog.sanity, catalog.convex)).toMatchObject({
+			outcome: "mismatch",
+			presentationParity: "mismatch",
+		});
+
+		const malformed = completeCatalog();
+		first(
+			(first(malformed.convex) as ReturnType<typeof convexProduct>).media,
+		).asset.derivatives.card.contentType = "image/avif";
+		expect(compareShopCatalogSentinel(malformed.sanity, malformed.convex)).toMatchObject({
+			outcome: "mismatch",
+			presentationParity: "mismatch",
+		});
+	});
+
+	it("fails association parity when a Sanity product or set still references a collection", () => {
+		const catalog = completeCatalog();
+		(first(catalog.sanity) as { hasCollection: boolean }).hasCollection = true;
+		expect(compareShopCatalogSentinel(catalog.sanity, catalog.convex)).toMatchObject({
+			outcome: "mismatch",
+			associationParity: "mismatch",
+		});
+	});
+
+	it("detects derived product index order and provider-specific print-set order independently", () => {
+		const ranked = completeCatalog();
+		const general = [...ranked.convex]
+			.reverse()
+			.find(
+				(value) => (value as { productKind?: string }).productKind === "tapestry",
+			) as ReturnType<typeof convexProduct>;
+		general.shopPlacement.orderRank = "a";
+		expect(compareShopCatalogSentinel(ranked.sanity, ranked.convex)).toMatchObject({
+			outcome: "mismatch",
+			productIndexOrder: "mismatch",
+		});
+
+		const reordered = completeCatalog();
+		const setIndexes = reordered.convex.flatMap((value, index) =>
+			(value as { productKind?: string }).productKind === "print_set" ? [index] : [],
+		);
+		const [left, right] = setIndexes;
+		if (left === undefined || right === undefined) throw new Error("Print-set fixtures missing");
+		[reordered.convex[left], reordered.convex[right]] = [
+			reordered.convex[right] as object,
+			reordered.convex[left] as object,
+		];
+		expect(compareShopCatalogSentinel(reordered.sanity, reordered.convex)).toMatchObject({
+			outcome: "mismatch",
+			printSetOrder: "mismatch",
+		});
+	});
+
+	it("classifies partial, overflow, wrong-distribution, and malformed catalogs as mismatch", () => {
+		for (const mutate of [
+			(catalog: ReturnType<typeof completeCatalog>) => catalog.sanity.pop(),
+			(catalog: ReturnType<typeof completeCatalog>) =>
+				catalog.convex.push({ ...convexProduct(), slug: "overflow" }),
+			(catalog: ReturnType<typeof completeCatalog>) => {
+				(first(catalog.convex) as { productKind: string }).productKind = "tapestry";
+			},
+			(catalog: ReturnType<typeof completeCatalog>) => {
+				(first(catalog.sanity) as { title: unknown }).title = { raw: "private" };
+			},
+		]) {
+			const catalog = completeCatalog();
+			mutate(catalog);
+			expect(compareShopCatalogSentinel(catalog.sanity, catalog.convex)).toMatchObject({
+				outcome: "mismatch",
+			});
+		}
+	});
+
+	it("requires explicit Sanity stock visibility and preserves an explicit unavailable match", () => {
+		for (const value of [undefined, null]) {
+			const catalog = completeCatalog();
+			(first(catalog.sanity) as { inStock?: unknown }).inStock = value;
+			expect(compareShopCatalogSentinel(catalog.sanity, catalog.convex)).toMatchObject({
+				outcome: "mismatch",
+				distribution: "mismatch",
+			});
+		}
+
+		const unavailable = completeCatalog();
+		(first(unavailable.sanity) as { inStock: boolean }).inStock = false;
+		(first(unavailable.convex) as { saleAvailability: string }).saleAvailability = "unavailable";
+		expect(compareShopCatalogSentinel(unavailable.sanity, unavailable.convex)).toMatchObject({
+			outcome: "exact",
+			distribution: "exact",
+			productIndexOrder: "match",
+		});
+	});
+
+	it("runs one fresh bounded pair of reads and suppresses raw failures", async () => {
+		const catalog = completeCatalog();
+		const fetchSanityCatalog = vi.fn(async (_signal: AbortSignal) => catalog.sanity);
+		const reader = fakeReader(Promise.resolve(catalog.convex));
+		await expect(
+			readShopCatalogSentinel({
+				fetchSanityCatalog,
+				createReader: () => reader as never,
+			}),
+		).resolves.toMatchObject({ outcome: "exact", sanityCount: 33, convexCount: 33 });
+		expect(fetchSanityCatalog).toHaveBeenCalledOnce();
+		expect(reader.listPublished).toHaveBeenCalledOnce();
+
+		await expect(
+			readShopCatalogSentinel({
+				fetchSanityCatalog: async () => {
+					throw new Error("raw secret private-id hostile stack");
+				},
+				createReader: () => reader as never,
+			}),
+		).resolves.toEqual({
+			outcome: "unavailable",
+			sanityCount: null,
+			convexCount: 33,
+			distribution: "unavailable",
+			commerceParity: "unavailable",
+			presentationParity: "unavailable",
+			associationParity: "unavailable",
+			productIndexOrder: "unavailable",
+			printSetOrder: "unavailable",
+		});
+	});
+
+	it("aborts and returns unavailable at the hard top-level deadline", async () => {
+		vi.useFakeTimers();
+		let sanitySignal: AbortSignal | undefined;
+		let convexSignal: AbortSignal | undefined;
+		const pending = new Promise<never>(() => undefined);
+		const result = readShopCatalogSentinel({
+			fetchSanityCatalog: (signal) => {
+				sanitySignal = signal;
+				return pending;
+			},
+			createReader: () => ({
+				listPublished: (signal: AbortSignal) => {
+					convexSignal = signal;
+					return pending;
+				},
+			}),
+			deadlineMs: 25,
+		});
+		await vi.advanceTimersByTimeAsync(25);
+		await expect(result).resolves.toMatchObject({ outcome: "unavailable" });
+		expect(sanitySignal?.aborted).toBe(true);
+		expect(convexSignal?.aborted).toBe(true);
 	});
 });
 
