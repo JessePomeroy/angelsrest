@@ -200,6 +200,13 @@ function completeCatalog() {
 	return { sanity, convex };
 }
 
+const noPresentationMismatches = {
+	copy: 0,
+	mediaStructure: 0,
+	altText: 0,
+	dimensions: 0,
+};
+
 afterEach(() => {
 	vi.useRealTimers();
 });
@@ -436,8 +443,11 @@ describe("bounded public Shop drill sentinel", () => {
 			sanityCount: 33,
 			convexCount: 33,
 			distribution: "exact",
+			publicAdapterValidation: "exact",
 			commerceParity: "match",
 			presentationParity: "match",
+			presentationMismatchCounts: noPresentationMismatches,
+			sanityPrintSetCoverFallbackCount: 0,
 			associationParity: "match",
 			productIndexOrder: "match",
 			printSetOrder: "match",
@@ -447,34 +457,154 @@ describe("bounded public Shop drill sentinel", () => {
 	it.each([
 		[
 			"title",
+			"copy",
 			(value: ReturnType<typeof convexProduct>) => {
 				value.title = "Drifted public title";
 			},
 		],
 		[
 			"description",
+			"copy",
 			(value: ReturnType<typeof convexProduct>) => {
 				value.description = "Drifted public description";
 			},
 		],
 		[
 			"SEO description",
+			"copy",
 			(value: ReturnType<typeof convexProduct>) => {
 				(value as { seoDescription: string | null }).seoDescription = "Drifted SEO description";
 			},
 		],
 		[
 			"alternative text",
+			"altText",
 			(value: ReturnType<typeof convexProduct>) => {
 				first(value.media).altText = "Drifted alternative text";
 			},
 		],
-	] as const)("detects a %s presentation mismatch without returning the value", (_name, mutate) => {
+	] as const)("detects a %s presentation mismatch without returning the value", (_name, mismatchClass, mutate) => {
 		const catalog = completeCatalog();
 		mutate(first(catalog.convex) as ReturnType<typeof convexProduct>);
 		const result = compareShopCatalogSentinel(catalog.sanity, catalog.convex);
 		expect(result).toMatchObject({ outcome: "mismatch", presentationParity: "mismatch" });
+		expect(result.presentationMismatchCounts).toEqual({
+			...noPresentationMismatches,
+			[mismatchClass]: 1,
+		});
 		expect(JSON.stringify(result)).not.toMatch(/Drifted|public title|SEO description/i);
+	});
+
+	it("uses the first set member for null Sanity covers and reports only the bounded fallback count", () => {
+		const catalog = completeCatalog();
+		for (const product of catalog.sanity) {
+			if ((product as { _type?: string })._type === "lumaPrintSetV2") {
+				(product as { previewImage: unknown }).previewImage = null;
+			}
+		}
+		expect(compareCatalogSemantics(catalog.sanity, catalog.convex)).toEqual({
+			primaryCount: 33,
+			secondaryCount: 33,
+		});
+		expect(compareShopCatalogSentinel(catalog.sanity, catalog.convex)).toEqual({
+			outcome: "exact",
+			sanityCount: 33,
+			convexCount: 33,
+			distribution: "exact",
+			publicAdapterValidation: "exact",
+			commerceParity: "match",
+			presentationParity: "match",
+			presentationMismatchCounts: noPresentationMismatches,
+			sanityPrintSetCoverFallbackCount: 2,
+			associationParity: "match",
+			productIndexOrder: "match",
+			printSetOrder: "match",
+		});
+	});
+
+	it("classifies missing alternative text without exposing product or media identity", () => {
+		const catalog = completeCatalog();
+		delete ((first(catalog.sanity) as ReturnType<typeof sanityProduct>).image as { alt?: string })
+			.alt;
+		const result = compareShopCatalogSentinel(catalog.sanity, catalog.convex);
+		expect(result).toMatchObject({
+			outcome: "mismatch",
+			distribution: "exact",
+			commerceParity: "match",
+			presentationParity: "mismatch",
+			presentationMismatchCounts: {
+				...noPresentationMismatches,
+				altText: 1,
+			},
+			associationParity: "match",
+			productIndexOrder: "match",
+			printSetOrder: "match",
+		});
+		expect(JSON.stringify(result)).not.toMatch(/archival-print|Catalog alt|ignored-media-key/);
+	});
+
+	it.each([
+		[
+			"Sanity source width",
+			(catalog: ReturnType<typeof completeCatalog>) => {
+				(first(catalog.sanity) as ReturnType<typeof sanityProduct>).image.source.width += 1;
+			},
+		],
+		[
+			"Sanity source height",
+			(catalog: ReturnType<typeof completeCatalog>) => {
+				(first(catalog.sanity) as ReturnType<typeof sanityProduct>).image.source.height += 1;
+			},
+		],
+		[
+			"Convex source width",
+			(catalog: ReturnType<typeof completeCatalog>) => {
+				first(
+					(first(catalog.convex) as ReturnType<typeof convexProduct>).media,
+				).asset.source.width += 1;
+			},
+		],
+		[
+			"Convex derivative height",
+			(catalog: ReturnType<typeof completeCatalog>) => {
+				first(
+					(first(catalog.convex) as ReturnType<typeof convexProduct>).media,
+				).asset.derivatives.card.height += 1;
+			},
+		],
+	] as const)("classifies a %s mismatch as dimensions only", (_name, mutate) => {
+		const catalog = completeCatalog();
+		mutate(catalog);
+		expect(compareShopCatalogSentinel(catalog.sanity, catalog.convex)).toMatchObject({
+			outcome: "mismatch",
+			distribution: "exact",
+			commerceParity: "match",
+			presentationParity: "mismatch",
+			presentationMismatchCounts: {
+				...noPresentationMismatches,
+				dimensions: 1,
+			},
+			associationParity: "match",
+			productIndexOrder: "match",
+			printSetOrder: "match",
+		});
+	});
+
+	it("caps identifier-free presentation mismatch counts at the reviewed catalog size", () => {
+		const sanity: unknown[] = [];
+		const convex: unknown[] = [];
+		for (let index = 0; index < 40; index += 1) {
+			const productSlug = `bounded-${index}`;
+			sanity.push({ ...sanityProduct(), slug: productSlug });
+			const product = convexProduct();
+			product.slug = productSlug;
+			first(product.media).altText = "Different alt";
+			convex.push(product);
+		}
+		expect(compareShopCatalogSentinel(sanity, convex).presentationMismatchCounts).toEqual({
+			...noPresentationMismatches,
+			altText: 33,
+		});
 	});
 
 	it("normalizes provider CDN identity while detecting media role, order, alt, and source-dimension drift", () => {
@@ -484,12 +614,17 @@ describe("bounded public Shop drill sentinel", () => {
 		expect(compareShopCatalogSentinel(catalog.sanity, catalog.convex)).toMatchObject({
 			outcome: "exact",
 			presentationParity: "match",
+			presentationMismatchCounts: noPresentationMismatches,
 		});
 
 		media.order = 1;
 		expect(compareShopCatalogSentinel(catalog.sanity, catalog.convex)).toMatchObject({
 			outcome: "mismatch",
 			presentationParity: "mismatch",
+			presentationMismatchCounts: {
+				...noPresentationMismatches,
+				mediaStructure: 1,
+			},
 		});
 
 		const malformed = completeCatalog();
@@ -499,6 +634,111 @@ describe("bounded public Shop drill sentinel", () => {
 		expect(compareShopCatalogSentinel(malformed.sanity, malformed.convex)).toMatchObject({
 			outcome: "mismatch",
 			presentationParity: "mismatch",
+			presentationMismatchCounts: {
+				...noPresentationMismatches,
+				mediaStructure: 1,
+			},
+		});
+	});
+
+	it("keeps every classification independent when another facet cannot normalize", () => {
+		const distribution = completeCatalog();
+		distribution.sanity.push({ ...sanityProduct(), slug: "overflow" });
+		distribution.convex.push({ ...convexProduct(), slug: "overflow" });
+		expect(compareShopCatalogSentinel(distribution.sanity, distribution.convex)).toMatchObject({
+			outcome: "mismatch",
+			distribution: "mismatch",
+			commerceParity: "match",
+			presentationParity: "match",
+			associationParity: "match",
+			productIndexOrder: "match",
+			printSetOrder: "match",
+		});
+
+		const commerce = completeCatalog();
+		first((first(commerce.convex) as ReturnType<typeof convexProduct>).variants).retailPriceCents +=
+			1;
+		expect(compareShopCatalogSentinel(commerce.sanity, commerce.convex)).toMatchObject({
+			outcome: "mismatch",
+			distribution: "exact",
+			commerceParity: "mismatch",
+			presentationParity: "match",
+			associationParity: "match",
+			productIndexOrder: "match",
+			printSetOrder: "match",
+		});
+
+		const presentation = completeCatalog();
+		first(
+			(first(presentation.convex) as ReturnType<typeof convexProduct>).media,
+		).asset.derivatives.card.contentType = "image/avif";
+		expect(compareShopCatalogSentinel(presentation.sanity, presentation.convex)).toMatchObject({
+			outcome: "mismatch",
+			distribution: "exact",
+			commerceParity: "match",
+			presentationParity: "mismatch",
+			associationParity: "match",
+			productIndexOrder: "match",
+			printSetOrder: "match",
+		});
+
+		const association = completeCatalog();
+		(first(association.sanity) as { hasCollection: unknown }).hasCollection = "malformed";
+		expect(compareShopCatalogSentinel(association.sanity, association.convex)).toMatchObject({
+			outcome: "mismatch",
+			distribution: "exact",
+			commerceParity: "match",
+			presentationParity: "match",
+			associationParity: "mismatch",
+			productIndexOrder: "match",
+			printSetOrder: "match",
+		});
+	});
+
+	it.each([
+		[
+			"schema version",
+			(product: Record<string, unknown>) => {
+				product.schemaVersion = 1;
+			},
+		],
+		[
+			"currency",
+			(product: Record<string, unknown>) => {
+				product.currency = "eur";
+			},
+		],
+		[
+			"product identifier",
+			(product: Record<string, unknown>) => {
+				product.productId = "invalid identifier";
+			},
+		],
+		[
+			"variant key",
+			(product: Record<string, unknown>) => {
+				first(product.variants as Array<Record<string, unknown>>).key = "invalid key";
+			},
+		],
+		[
+			"media key",
+			(product: Record<string, unknown>) => {
+				first(product.media as Array<Record<string, unknown>>).key = "invalid key";
+			},
+		],
+	] as const)("rejects malformed Convex public-adapter %s independently", (_name, mutate) => {
+		const catalog = completeCatalog();
+		mutate(first(catalog.convex) as Record<string, unknown>);
+		expect(compareShopCatalogSentinel(catalog.sanity, catalog.convex)).toMatchObject({
+			outcome: "mismatch",
+			distribution: "exact",
+			publicAdapterValidation: "mismatch",
+			commerceParity: "match",
+			presentationParity: "match",
+			presentationMismatchCounts: noPresentationMismatches,
+			associationParity: "match",
+			productIndexOrder: "match",
+			printSetOrder: "match",
 		});
 	});
 
@@ -566,7 +806,12 @@ describe("bounded public Shop drill sentinel", () => {
 			(first(catalog.sanity) as { inStock?: unknown }).inStock = value;
 			expect(compareShopCatalogSentinel(catalog.sanity, catalog.convex)).toMatchObject({
 				outcome: "mismatch",
-				distribution: "mismatch",
+				distribution: "exact",
+				commerceParity: "mismatch",
+				presentationParity: "match",
+				associationParity: "match",
+				productIndexOrder: "mismatch",
+				printSetOrder: "match",
 			});
 		}
 
@@ -605,8 +850,11 @@ describe("bounded public Shop drill sentinel", () => {
 			sanityCount: null,
 			convexCount: 33,
 			distribution: "unavailable",
+			publicAdapterValidation: "unavailable",
 			commerceParity: "unavailable",
 			presentationParity: "unavailable",
+			presentationMismatchCounts: null,
+			sanityPrintSetCoverFallbackCount: null,
 			associationParity: "unavailable",
 			productIndexOrder: "unavailable",
 			printSetOrder: "unavailable",

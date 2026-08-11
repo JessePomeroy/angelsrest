@@ -134,6 +134,70 @@ describe("Sanity Shop adapter", () => {
 		});
 	});
 
+	it("uses the first set member when a public print-set cover is null on every Shop surface", async () => {
+		const index = fakeSanity(
+			[],
+			[],
+			[],
+			[
+				{
+					title: "Index set",
+					slug: "index-set",
+					previewImage: null,
+					images: [image("index-first"), image("index-second")],
+				},
+			],
+		);
+		await expect(
+			createSanityShopAdapter(() => index.client).loadIndex(false),
+		).resolves.toMatchObject({
+			printSets: [
+				{
+					previewImage: "preview:index-first",
+					preview1: "thumb:index-first",
+					preview2: "thumb:index-second",
+				},
+			],
+		});
+
+		const detail = fakeSanity({
+			title: "Detail set",
+			previewImage: null,
+			images: [image("detail-first"), image("detail-second")],
+		});
+		await expect(
+			createSanityShopAdapter(() => detail.client).loadPrintSet("detail-set", false),
+		).resolves.toMatchObject({
+			printSet: { previewImage: "preview:detail-first" },
+			images: [{ thumb: "thumb:detail-first" }, { thumb: "thumb:detail-second" }],
+		});
+
+		const collection = fakeSanity(
+			{ title: "Collection", previewImage: image("collection") },
+			[],
+			[
+				{
+					title: "Collection set",
+					slug: "collection-set",
+					previewImage: null,
+					images: [image("collection-first"), image("collection-second")],
+				},
+			],
+			[],
+		);
+		await expect(
+			createSanityShopAdapter(() => collection.client).loadCollection("collection", false),
+		).resolves.toMatchObject({
+			printSets: [
+				{
+					previewImage: "preview:collection-first",
+					preview1: "thumb:collection-first",
+					preview2: "thumb:collection-second",
+				},
+			],
+		});
+	});
+
 	it("loads only top-level collection cards for the mixed Convex index", async () => {
 		const { client, fetch } = fakeSanity([
 			{
