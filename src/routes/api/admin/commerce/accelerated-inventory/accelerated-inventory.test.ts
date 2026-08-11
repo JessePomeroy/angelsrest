@@ -154,17 +154,14 @@ describe("accelerated R4 fixed-point inventory", () => {
 
 	it("returns bounded masked details only for an unresolved historical paid candidate", async () => {
 		const paid = { ...expiredSession(), payment_status: "paid" as const };
-		mocks.stripeList.mockResolvedValue({ data: [paid], has_more: false });
-		mocks.stripeRetrieve.mockResolvedValue({
+		const paidWithSummary = {
 			...paid,
 			amount_total: 1500,
 			currency: "usd",
 			customer_details: { email: "owner@example.com" },
 			customer_email: null,
-			line_items: {
-				data: [{ description: "Archival Matte 4×6", quantity: 1, amount_total: 1500 }],
-			},
-		});
+		};
+		mocks.stripeList.mockResolvedValue({ data: [paidWithSummary], has_more: false });
 		const response = await POST({
 			request: request({ authorization: "r4_accelerated_legacy_paid_diagnostic_v1" }),
 		});
@@ -180,11 +177,11 @@ describe("accelerated R4 fixed-point inventory", () => {
 					amountTotalMinor: 1500,
 					currency: "usd",
 					customerEmailMasked: "ow***@example.com",
-					lineItems: [{ description: "Archival Matte 4×6", quantity: 1, amountTotalMinor: 1500 }],
+					occurrences: 1,
 				},
 			],
 		});
-		expect(mocks.stripeRetrieve).toHaveBeenCalledTimes(1);
+		expect(mocks.stripeRetrieve).not.toHaveBeenCalled();
 		expect(text).not.toContain("cs_live_");
 		expect(text).not.toContain("owner@example.com");
 	});

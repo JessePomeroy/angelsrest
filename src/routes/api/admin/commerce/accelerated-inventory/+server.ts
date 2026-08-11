@@ -116,13 +116,17 @@ function exactAuthorization(value: unknown) {
 
 async function legacyPaidDiagnostic(convex: ReturnType<typeof getConvex>) {
 	const stripe = getStripe();
-	const profiles: Array<{
-		createdDay: string;
-		amountTotalMinor: number | null;
-		currency: string | null;
-		customerEmailMasked: string | null;
-		lineItems: Array<{ description: string; quantity: number | null; amountTotalMinor: number }>;
-	}> = [];
+	const profileCounts = new Map<
+		string,
+		{
+			createdDay: string;
+			amountTotalMinor: number | null;
+			currency: string | null;
+			customerEmailMasked: string | null;
+			occurrences: number;
+		}
+	>();
+	let candidateCount = 0;
 	let startingAfter: string | undefined;
 	for (let pageNumber = 0; pageNumber < 10_000; pageNumber += 1) {
 		const page = await stripe.checkout.sessions.list({
@@ -142,28 +146,26 @@ async function legacyPaidDiagnostic(convex: ReturnType<typeof getConvex>) {
 				? null
 				: await convex.query(api.orders.resolveCheckoutAdmissionRouting, args);
 			if (routed || admission) continue;
-			if (profiles.length >= 10) throw error(409, "Diagnostic candidate cap reached");
-			const full = await stripe.checkout.sessions.retrieve(session.id, {
-				expand: ["customer_details", "line_items"],
-			});
-			profiles.push({
-				createdDay: new Date(full.created * 1_000).toISOString().slice(0, 10),
-				amountTotalMinor: full.amount_total,
-				currency: full.currency,
-				customerEmailMasked: maskEmail(full.customer_details?.email ?? full.customer_email),
-				lineItems: (full.line_items?.data ?? []).map((item) => ({
-					description: (item.description ?? "unknown").slice(0, 120),
-					quantity: item.quantity,
-					amountTotalMinor: item.amount_total,
-				})),
-			});
+			candidateCount += 1;
+			if (candidateCount > 10_000) throw error(409, "Diagnostic candidate cap reached");
+			const profile = {
+				createdDay: new Date(session.created * 1_000).toISOString().slice(0, 10),
+				amountTotalMinor: session.amount_total,
+				currency: session.currency,
+				customerEmailMasked: maskEmail(session.customer_details?.email ?? session.customer_email),
+			};
+			const key = JSON.stringify(profile);
+			const existing = profileCounts.get(key);
+			profileCounts.set(key, { ...profile, occurrences: (existing?.occurrences ?? 0) + 1 });
 		}
 		if (!page.has_more) {
 			return {
 				version: 1 as const,
 				outcome: "diagnostic" as const,
-				candidateCount: profiles.length,
-				profiles,
+				candidateCount,
+				profiles: [...profileCounts.values()].sort((left, right) =>
+					left.createdDay.localeCompare(right.createdDay),
+				),
 			};
 		}
 		startingAfter = page.data.at(-1)?.id;
