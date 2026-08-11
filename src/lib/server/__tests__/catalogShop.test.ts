@@ -4,7 +4,11 @@ import transferReceipts from "../../../../scripts/cms/migrations/angelsrest-cata
 vi.mock("$env/dynamic/private", () => ({ env: {} }));
 vi.mock("$env/dynamic/public", () => ({ env: { PUBLIC_CONVEX_URL: "https://convex.test" } }));
 const getSanityClient = vi.hoisted(() => vi.fn());
-vi.mock("$lib/sanity/client.server", () => ({ getSanityClient }));
+const getFreshPublishedSanityClient = vi.hoisted(() => vi.fn());
+vi.mock("$lib/sanity/client.server", () => ({
+	getFreshPublishedSanityClient,
+	getSanityClient,
+}));
 vi.mock("$lib/server/sanityShop.server", () => ({
 	sanityShop: {
 		loadIndex: vi.fn(),
@@ -261,6 +265,7 @@ function receiptBoundDimensionCatalog(count = 1) {
 
 afterEach(() => {
 	vi.useRealTimers();
+	getFreshPublishedSanityClient.mockReset();
 	getSanityClient.mockReset();
 });
 
@@ -1016,19 +1021,32 @@ describe("bounded public Shop drill sentinel", () => {
 		});
 	});
 
-	it("requests Sanity asset references only inside the server-side comparison projection", async () => {
+	it("requests a fresh published Sanity projection only for the diagnostic", async () => {
 		const catalog = completeCatalog();
-		const fetch = vi.fn(async (_query: string) => catalog.sanity);
-		getSanityClient.mockReturnValue({ fetch });
+		const fetch = vi.fn(
+			async (
+				_query: string,
+				_params?: Record<string, unknown>,
+				_options?: { perspective?: string; signal?: AbortSignal },
+			) => catalog.sanity,
+		);
+		getFreshPublishedSanityClient.mockReturnValue({ fetch });
 		await expect(
 			readShopCatalogSentinel({
 				createReader: () => fakeReader(Promise.resolve(catalog.convex)) as never,
 			}),
 		).resolves.toMatchObject({ outcome: "exact" });
+		expect(getFreshPublishedSanityClient).toHaveBeenCalledOnce();
+		expect(getSanityClient).not.toHaveBeenCalled();
 		expect(fetch).toHaveBeenCalledOnce();
-		const [query] = first(fetch.mock.calls);
+		const [query, params, options] = first(fetch.mock.calls);
 		expect(query).toContain('"assetRef":asset._ref');
 		expect(query.match(/"assetRef":asset\._ref/g)).toHaveLength(4);
+		expect(params).toEqual({});
+		expect(options).toEqual({
+			perspective: "published",
+			signal: expect.any(AbortSignal),
+		});
 	});
 
 	it("aborts and returns unavailable at the hard top-level deadline", async () => {
@@ -1057,6 +1075,30 @@ describe("bounded public Shop drill sentinel", () => {
 });
 
 describe("Shop index shadow", () => {
+	it("keeps the runtime shadow comparison on the existing published client selector", async () => {
+		const catalog = completeCatalog();
+		const fetch = vi.fn(
+			async (
+				_query: string,
+				_params?: Record<string, unknown>,
+				_options?: { signal?: AbortSignal },
+			) => catalog.sanity,
+		);
+		getSanityClient.mockReturnValue({ fetch });
+		const provider = createCatalogShopProvider({
+			sanity: fakeSanity() as never,
+			mode: () => "shadow",
+			createReader: (() => fakeReader(Promise.resolve(catalog.convex))) as never,
+		});
+
+		await expect(provider.loadIndex(false)).resolves.toEqual({ route: "sanity" });
+		expect(getSanityClient).toHaveBeenCalledOnce();
+		expect(getSanityClient).toHaveBeenCalledWith(false);
+		expect(getFreshPublishedSanityClient).not.toHaveBeenCalled();
+		expect(fetch).toHaveBeenCalledOnce();
+		expect(first(fetch.mock.calls)[2]).toEqual({ signal: expect.any(AbortSignal) });
+	});
+
 	it("starts the exact Sanity primary and one complete comparison concurrently and emits no match log", async () => {
 		const output = { exact: "Sanity route result" };
 		const catalog = completeCatalog();

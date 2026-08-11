@@ -6,7 +6,7 @@ import { api } from "$convex/api";
 import { env as privateEnv } from "$env/dynamic/private";
 import { env as publicEnv } from "$env/dynamic/public";
 import { SITE_DOMAIN } from "$lib/config/site";
-import { getSanityClient } from "$lib/sanity/client.server";
+import { getFreshPublishedSanityClient, getSanityClient } from "$lib/sanity/client.server";
 import {
 	adaptConvexIndex,
 	adaptConvexPrintSet,
@@ -1253,7 +1253,7 @@ export async function readShopCatalogSentinel(
 	const fetchSanityCatalog =
 		dependencies.fetchSanityCatalog ??
 		((signal: AbortSignal) =>
-			getSanityClient(false).fetch(
+			getFreshPublishedSanityClient().fetch(
 				SANITY_COMPARISON_QUERY,
 				{},
 				{ perspective: "published", signal },

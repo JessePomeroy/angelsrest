@@ -25,6 +25,8 @@ const previewClient = env.SANITY_PREVIEW_TOKEN
 		})
 	: null;
 
+let freshPublishedClient: typeof client | null = null;
+
 /**
  * Pick the right Sanity client for this request. Pass
  * `event.locals.isPreview` from a SvelteKit load; returns the preview
@@ -34,4 +36,16 @@ const previewClient = env.SANITY_PREVIEW_TOKEN
 export function getSanityClient(isPreview: boolean) {
 	if (isPreview && previewClient) return previewClient;
 	return client;
+}
+
+/**
+ * Origin-backed published client for deterministic server diagnostics. Public
+ * Shop loaders continue to use `getSanityClient`, including its CDN client.
+ */
+export function getFreshPublishedSanityClient() {
+	freshPublishedClient ??= client.withConfig({
+		useCdn: false,
+		perspective: "published",
+	});
+	return freshPublishedClient;
 }
