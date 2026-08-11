@@ -30,6 +30,7 @@
 		"cms:catalog-private-assets-transfer": "tsx scripts/cms/sanity-catalog-private-assets-transfer.ts",
 		"cms:catalog-private-assets-v2-canary": "tsx scripts/cms/sanity-catalog-private-assets-v2-canary.ts",
 		"commerce:r4-session-inventory": "tsx scripts/commerce/r4-checkout-session-inventory.ts",
+		"commerce:r4-session-inventory:accelerated": "R4_INVENTORY_MODE=accelerated-fixed-point tsx scripts/commerce/r4-checkout-session-inventory.ts",
 		"test:e2e": "node scripts/run-playwright.mjs",
 		"smoke:gallery-host-bulk-delete": "node scripts/smoke-gallery-host-bulk-delete.mjs",
 		"test:protocol": "vitest run --config vitest.protocol.config.ts"

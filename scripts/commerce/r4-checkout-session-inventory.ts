@@ -5,6 +5,7 @@ import {
 	type InventoryRoute,
 	type InventorySession,
 	inventoryCheckoutSessions,
+	inventoryCheckoutSessionsAtFixedPoint,
 } from "./r4-checkout-session-inventory-core.js";
 
 const targetSite = "angelsrest.online";
@@ -23,7 +24,11 @@ async function main() {
 		throw new Error("Inventory configuration is incomplete");
 	}
 
-	const result = await inventoryCheckoutSessions({
+	const inventory =
+		process.env.R4_INVENTORY_MODE === "accelerated-fixed-point"
+			? inventoryCheckoutSessionsAtFixedPoint
+			: inventoryCheckoutSessions;
+	const result = await inventory({
 		stripe: { list: (input) => stripe.checkout.sessions.list(input) },
 		routing: {
 			async resolve(session): Promise<InventoryRoute> {
