@@ -6,8 +6,16 @@ const exactCatalog = {
 	sanityCount: 33,
 	convexCount: 33,
 	distribution: "exact" as const,
+	publicAdapterValidation: "exact" as const,
 	commerceParity: "match" as const,
 	presentationParity: "match" as const,
+	presentationMismatchCounts: {
+		copy: 0,
+		mediaStructure: 0,
+		altText: 0,
+		dimensions: 0,
+	},
+	sanityPrintSetCoverFallbackCount: 0,
 	associationParity: "match" as const,
 	productIndexOrder: "match" as const,
 	printSetOrder: "match" as const,
@@ -87,7 +95,7 @@ describe("deployed public Shop catalog sentinel", () => {
 			},
 			catalog: exactCatalog,
 		});
-		expect(text).not.toMatch(/slug|title|description|altText|assetId|secret|private/i);
+		expect(text).not.toMatch(/slug|title|description|assetId|secret|private/i);
 	});
 
 	it("reports Sanity-only effective scope for explicit Sanity and shadow", async () => {
@@ -134,12 +142,23 @@ describe("deployed public Shop catalog sentinel", () => {
 			...exactCatalog,
 			outcome: "mismatch",
 			presentationParity: "mismatch",
+			presentationMismatchCounts: {
+				copy: 0,
+				mediaStructure: 0,
+				altText: 1,
+				dimensions: 1,
+			},
+			sanityPrintSetCoverFallbackCount: 2,
 		});
 		const mismatch = await GET({ request: new Request(endpoint) });
 		expect(mismatch.status).toBe(409);
 		await expect(mismatch.json()).resolves.toMatchObject({
 			outcome: "mismatch",
-			catalog: { presentationParity: "mismatch" },
+			catalog: {
+				presentationParity: "mismatch",
+				presentationMismatchCounts: { altText: 1, dimensions: 1 },
+				sanityPrintSetCoverFallbackCount: 2,
+			},
 		});
 
 		mocks.read.mockRejectedValueOnce(new Error("raw secret slug private-id stack"));
@@ -148,7 +167,14 @@ describe("deployed public Shop catalog sentinel", () => {
 		expect(unavailable.status).toBe(503);
 		expect(JSON.parse(text)).toMatchObject({
 			outcome: "unavailable",
-			catalog: { outcome: "unavailable", sanityCount: null, convexCount: null },
+			catalog: {
+				outcome: "unavailable",
+				sanityCount: null,
+				convexCount: null,
+				publicAdapterValidation: "unavailable",
+				presentationMismatchCounts: null,
+				sanityPrintSetCoverFallbackCount: null,
+			},
 		});
 		expect(text).not.toMatch(/raw secret|slug|private-id|stack/i);
 	});

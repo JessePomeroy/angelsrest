@@ -143,9 +143,11 @@ function sanityMedia(value: Record<string, unknown>, type: string) {
 		return [{ role: "primary", order: 0, source: dimensions(value.image) }];
 	}
 	if (type === "lumaPrintSetV2") {
+		const images = array(value.images);
+		const cover = value.previewImage ?? images[0];
 		return [
-			{ role: "cover", order: 0, source: dimensions(value.previewImage) },
-			...array(value.images).map((image, order) => ({
+			{ role: "cover", order: 0, source: dimensions(cover) },
+			...images.map((image, order) => ({
 				role: "set_member",
 				order,
 				source: dimensions(image),
@@ -327,31 +329,41 @@ export function compareCatalogSemantics(primary: unknown, secondary: unknown): C
 	};
 }
 
-type PresentationProduct = {
-	slug: string;
-	kind: string;
+type CatalogFacetProduct = { slug: string; kind: string };
+type CommerceProduct = { slug: string; value: Record<string, unknown> };
+type OrderProduct = CatalogFacetProduct & {
 	title: string;
-	description: string | null;
-	seoDescription: string | null;
 	availability: "available" | "unavailable";
 	featured: boolean;
 	orderRank: string | null;
-	association: "absent" | "present";
-	media: Array<{
-		role: string;
-		order: number;
-		altText: string | null;
-		source: { width: number; height: number };
-	}>;
 };
+type PresentationMedia = {
+	role: string;
+	order: number;
+	altText: string | null;
+	altValid: boolean;
+	source: { width: number; height: number };
+};
+type PresentationProduct = CatalogFacetProduct & {
+	title: string;
+	description: string | null;
+	seoDescription: string | null;
+	media: PresentationMedia[];
+};
+type PresentationMismatchClass = "copy" | "mediaStructure" | "altText" | "dimensions";
+
+export type PresentationMismatchCounts = Record<PresentationMismatchClass, number>;
 
 export type ShopCatalogSentinelComparison = {
 	outcome: "exact" | "mismatch";
 	sanityCount: number;
 	convexCount: number;
 	distribution: "exact" | "mismatch";
+	publicAdapterValidation: "exact" | "mismatch";
 	commerceParity: "match" | "mismatch";
 	presentationParity: "match" | "mismatch";
+	presentationMismatchCounts: PresentationMismatchCounts;
+	sanityPrintSetCoverFallbackCount: number;
 	associationParity: "match" | "mismatch";
 	productIndexOrder: "match" | "mismatch";
 	printSetOrder: "match" | "mismatch";
@@ -364,12 +376,21 @@ export type ShopCatalogSentinelRead =
 			sanityCount: number | null;
 			convexCount: number | null;
 			distribution: "unavailable";
+			publicAdapterValidation: "unavailable";
 			commerceParity: "unavailable";
 			presentationParity: "unavailable";
+			presentationMismatchCounts: null;
+			sanityPrintSetCoverFallbackCount: null;
 			associationParity: "unavailable";
 			productIndexOrder: "unavailable";
 			printSetOrder: "unavailable";
 	  };
+
+class PresentationNormalizationError extends Error {
+	constructor(readonly classification: PresentationMismatchClass) {
+		super();
+	}
+}
 
 function sanityProductKind(product: Record<string, unknown>) {
 	const type = slug(product._type);
@@ -382,118 +403,44 @@ function sanityProductKind(product: Record<string, unknown>) {
 	throw new NormalizationError();
 }
 
-function normalizedAlt(value: unknown) {
-	return optionalString(value);
+function convexProductKind(product: Record<string, unknown>) {
+	const kind = slug(product.productKind);
+	if (!Object.hasOwn(COMPLETE_CATALOG_KIND_COUNTS, kind)) throw new NormalizationError();
+	return kind;
 }
 
-function sanityPresentationMedia(
-	value: unknown,
-	role: string,
-	order: number,
-): PresentationProduct["media"][number] {
-	const image = record(value);
-	return {
-		role,
-		order,
-		altText: normalizedAlt(image.alt),
-		source: dimensions(image),
-	};
+function requiredBoolean(value: unknown) {
+	if (typeof value !== "boolean") throw new NormalizationError();
+	return value;
 }
 
-function normalizeSanityPresentation(value: unknown): PresentationProduct[] {
-	return array(value).map((raw) => {
-		const product = record(raw);
-		const kind = sanityProductKind(product);
-		const title = slug(product.title);
-		const description = optionalString(product.description);
-		const seo = product.seo == null ? null : record(product.seo);
-		if (
-			typeof product.inStock !== "boolean" ||
-			typeof product.hasCollection !== "boolean" ||
-			typeof product.hasParent !== "boolean"
-		) {
-			throw new NormalizationError();
-		}
-		const media: PresentationProduct["media"] = [];
-		if (kind === "print") {
-			media.push(sanityPresentationMedia(product.image, "primary", 0));
-		} else if (kind === "print_set") {
-			media.push(sanityPresentationMedia(product.previewImage, "cover", 0));
-			for (const [order, image] of array(product.images).entries()) {
-				media.push(sanityPresentationMedia(image, "set_member", order));
-			}
-		} else {
-			for (const [order, image] of array(product.images).entries()) {
-				media.push(sanityPresentationMedia(image, "gallery", order));
-			}
-			if (seo?.ogImage != null) {
-				media.push(sanityPresentationMedia(seo.ogImage, "social_share", 0));
-			}
-		}
-		return {
-			slug: slug(product.slug),
-			kind,
-			title,
-			description,
-			seoDescription: optionalString(seo?.description),
-			availability: product.inStock ? "available" : "unavailable",
-			featured: optionalBoolean(product.featured, false),
-			orderRank:
-				kind === "print" || kind === "print_set" ? null : optionalString(product.orderRank),
-			association: product.hasCollection || product.hasParent ? "present" : "absent",
-			media,
-		};
-	});
+function sortedUniqueFacet<T extends { slug: string }>(products: T[]) {
+	products.sort((left, right) => ordinal(left.slug, right.slug));
+	if (products.some((product, index) => index > 0 && product.slug === products[index - 1]?.slug)) {
+		throw new NormalizationError();
+	}
+	return products;
 }
 
-function normalizeConvexPresentation(value: unknown): PresentationProduct[] {
-	// Exercise the exact public adapter validation boundary while comparing
-	// provider-neutral presentation facts below. Asset IDs and derived URLs are
-	// deliberately not part of parity, but malformed derivative contracts are.
-	adaptConvexIndex(value);
-	return array(value).map((raw) => {
-		const product = record(raw);
-		const kind = slug(product.productKind);
-		if (!Object.hasOwn(COMPLETE_CATALOG_KIND_COUNTS, kind)) throw new NormalizationError();
-		const placement = record(product.shopPlacement);
-		if (typeof placement.featured !== "boolean") throw new NormalizationError();
-		const availability = product.saleAvailability;
-		if (availability !== "available" && availability !== "unavailable") {
-			throw new NormalizationError();
-		}
-		const media = array(product.media).map((rawMedia) => {
-			const item = record(rawMedia);
-			const role = slug(item.role);
-			if (
-				!MEDIA_ROLES.has(role) ||
-				!Number.isSafeInteger(item.order) ||
-				(item.order as number) < 0
-			) {
-				throw new NormalizationError();
-			}
-			return {
-				role,
-				order: item.order as number,
-				altText: normalizedAlt(item.altText),
-				source: dimensions(record(item.asset)),
-			};
-		});
-		return {
-			slug: slug(product.slug),
-			kind,
-			title: slug(product.title),
-			description: optionalString(product.description),
-			seoDescription: optionalString(product.seoDescription),
-			availability,
-			featured: placement.featured,
-			orderRank: optionalString(placement.orderRank),
-			association: "absent",
-			media,
-		};
-	});
+function normalizeSanityDistribution(value: unknown): CatalogFacetProduct[] {
+	return sortedUniqueFacet(
+		array(value).map((raw) => {
+			const product = record(raw);
+			return { slug: slug(product.slug), kind: sanityProductKind(product) };
+		}),
+	);
 }
 
-function distributionMatches(products: PresentationProduct[]) {
+function normalizeConvexDistribution(value: unknown): CatalogFacetProduct[] {
+	return sortedUniqueFacet(
+		array(value).map((raw) => {
+			const product = record(raw);
+			return { slug: slug(product.slug), kind: convexProductKind(product) };
+		}),
+	);
+}
+
+function distributionMatches(products: CatalogFacetProduct[]) {
 	return (
 		products.length === COMPLETE_CATALOG_PRODUCT_COUNT &&
 		Object.entries(COMPLETE_CATALOG_KIND_COUNTS).every(
@@ -502,21 +449,483 @@ function distributionMatches(products: PresentationProduct[]) {
 	);
 }
 
-function presentationBySlug(products: PresentationProduct[]) {
-	return [...products]
-		.sort((left, right) => (left.slug < right.slug ? -1 : left.slug > right.slug ? 1 : 0))
-		.map((product) => ({
-			slug: product.slug,
-			title: product.title,
-			description: product.description,
-			seoDescription: product.seoDescription,
-			media: [...product.media].sort(
-				(left, right) => ordinal(left.role, right.role) || left.order - right.order,
-			),
-		}));
+function normalizeSanityCommerce(value: unknown): CommerceProduct[] {
+	return sortedUniqueFacet(
+		array(value).map((raw) => {
+			const product = record(raw);
+			const type = slug(product._type);
+			const kind = sanityProductKind(product);
+			const isPrint = kind === "print" || kind === "print_set";
+			if (
+				type === "product" &&
+				product.availablePapers != null &&
+				(!Array.isArray(product.availablePapers) || product.availablePapers.length > 0)
+			) {
+				throw new NormalizationError();
+			}
+			return {
+				slug: slug(product.slug),
+				value: {
+					kind,
+					availability: requiredBoolean(product.inStock) ? "available" : "unavailable",
+					featured: optionalBoolean(product.featured, false),
+					orderRank: type === "product" ? optionalString(product.orderRank) : null,
+					variants: isPrint
+						? printVariants(product.variants)
+						: [
+								{
+									order: 0,
+									material: null,
+									size: null,
+									retailPriceCents: cents(product.price),
+								},
+							],
+					printOptions: isPrint ? sanityPrintOptions(product) : null,
+				},
+			};
+		}),
+	);
 }
 
-function comparePresentationOrder(left: PresentationProduct, right: PresentationProduct) {
+function normalizeConvexCommerce(value: unknown): CommerceProduct[] {
+	return sortedUniqueFacet(
+		array(value).map((raw) => {
+			const product = record(raw);
+			const kind = convexProductKind(product);
+			const isPrint = kind === "print" || kind === "print_set";
+			const placement = record(product.shopPlacement);
+			if (typeof placement.featured !== "boolean") throw new NormalizationError();
+			const availability = product.saleAvailability;
+			if (availability !== "available" && availability !== "unavailable") {
+				throw new NormalizationError();
+			}
+			const variants = array(product.variants).map((rawVariant) => {
+				const variant = record(rawVariant);
+				if (!Number.isSafeInteger(variant.order) || (variant.order as number) < 0) {
+					throw new NormalizationError();
+				}
+				if (!isPrint && (variant.materialOption !== null || variant.sizeOption !== null)) {
+					throw new NormalizationError();
+				}
+				const material = isPrint ? record(variant.materialOption) : null;
+				const size = isPrint ? record(variant.sizeOption) : null;
+				return {
+					order: variant.order,
+					material: material ? { slug: slug(material.slug), label: slug(material.label) } : null,
+					size: size
+						? {
+								slug: slug(size.slug),
+								label: slug(size.label),
+								widthInches: positiveInteger(size.widthInches),
+								heightInches: positiveInteger(size.heightInches),
+							}
+						: null,
+					retailPriceCents: positiveInteger(variant.retailPriceCents),
+				};
+			});
+			return {
+				slug: slug(product.slug),
+				value: {
+					kind,
+					availability,
+					featured: placement.featured,
+					orderRank: optionalString(placement.orderRank),
+					variants,
+					printOptions: isPrint ? convexPrintOptions(product.printOptions) : null,
+				},
+			};
+		}),
+	);
+}
+
+function normalizedAlt(value: unknown) {
+	return optionalString(value);
+}
+
+function presentationRecord(value: unknown) {
+	try {
+		return record(value);
+	} catch {
+		throw new PresentationNormalizationError("mediaStructure");
+	}
+}
+
+function presentationArray(value: unknown) {
+	try {
+		return array(value);
+	} catch {
+		throw new PresentationNormalizationError("mediaStructure");
+	}
+}
+
+function presentationDimensions(value: unknown) {
+	try {
+		return dimensions(value);
+	} catch {
+		throw new PresentationNormalizationError("dimensions");
+	}
+}
+
+function presentationAlt(value: unknown) {
+	try {
+		return normalizedAlt(value);
+	} catch {
+		throw new PresentationNormalizationError("altText");
+	}
+}
+
+function sanityPresentationMedia(value: unknown, role: string, order: number): PresentationMedia {
+	const image = presentationRecord(value);
+	return {
+		role,
+		order,
+		altText: presentationAlt(image.alt),
+		altValid: true,
+		source: presentationDimensions(image),
+	};
+}
+
+function normalizeSanityPresentation(value: unknown): PresentationProduct[] {
+	const products = presentationArray(value).map((raw) => {
+		const product = presentationRecord(raw);
+		let kind: string;
+		let productSlug: string;
+		let title: string;
+		let description: string | null;
+		let seo: Record<string, unknown> | null;
+		try {
+			kind = sanityProductKind(product);
+			productSlug = slug(product.slug);
+		} catch {
+			throw new PresentationNormalizationError("mediaStructure");
+		}
+		try {
+			title = slug(product.title);
+			description = optionalString(product.description);
+			seo = product.seo == null ? null : record(product.seo);
+		} catch {
+			throw new PresentationNormalizationError("copy");
+		}
+		const media: PresentationMedia[] = [];
+		if (kind === "print") {
+			media.push(sanityPresentationMedia(product.image, "primary", 0));
+		} else if (kind === "print_set") {
+			const images = presentationArray(product.images);
+			media.push(sanityPresentationMedia(product.previewImage ?? images[0], "cover", 0));
+			for (const [order, image] of images.entries()) {
+				media.push(sanityPresentationMedia(image, "set_member", order));
+			}
+		} else {
+			for (const [order, image] of presentationArray(product.images).entries()) {
+				media.push(sanityPresentationMedia(image, "gallery", order));
+			}
+			if (seo?.ogImage != null) {
+				media.push(sanityPresentationMedia(seo.ogImage, "social_share", 0));
+			}
+		}
+		let seoDescription: string | null;
+		try {
+			seoDescription = optionalString(seo?.description);
+		} catch {
+			throw new PresentationNormalizationError("copy");
+		}
+		return { slug: productSlug, kind, title, description, seoDescription, media };
+	});
+	try {
+		return sortedUniqueFacet(products);
+	} catch {
+		throw new PresentationNormalizationError("mediaStructure");
+	}
+}
+
+const CONVEX_ASSET_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
+const CONVEX_DERIVATIVE_WIDTHS = {
+	thumb: 320,
+	card: 768,
+	display1280: 1280,
+	display2048: 2048,
+	display2560: 2560,
+} as const;
+
+function convexPresentationSource(value: unknown) {
+	const asset = presentationRecord(value);
+	if (typeof asset.assetId !== "string" || !CONVEX_ASSET_ID.test(asset.assetId)) {
+		throw new PresentationNormalizationError("mediaStructure");
+	}
+	const source = presentationDimensions(asset);
+	const derivatives = presentationRecord(asset.derivatives);
+	for (const [name, maximumWidth] of Object.entries(CONVEX_DERIVATIVE_WIDTHS)) {
+		const derivative = presentationRecord(derivatives[name]);
+		if (derivative.contentType !== "image/webp") {
+			throw new PresentationNormalizationError("mediaStructure");
+		}
+		const width = Math.min(source.width, maximumWidth);
+		const height = Math.max(1, Math.round(source.height * (width / source.width)));
+		if (derivative.width !== width || derivative.height !== height) {
+			throw new PresentationNormalizationError("dimensions");
+		}
+	}
+	return source;
+}
+
+function normalizeConvexPresentation(value: unknown): PresentationProduct[] {
+	const products = presentationArray(value).map((raw) => {
+		const product = presentationRecord(raw);
+		let kind: string;
+		let productSlug: string;
+		try {
+			kind = convexProductKind(product);
+			productSlug = slug(product.slug);
+		} catch {
+			throw new PresentationNormalizationError("mediaStructure");
+		}
+		let title: string;
+		let description: string | null;
+		let seoDescription: string | null;
+		try {
+			title = slug(product.title);
+			description = optionalString(product.description);
+			seoDescription = optionalString(product.seoDescription);
+		} catch {
+			throw new PresentationNormalizationError("copy");
+		}
+		const rawMedia = presentationArray(product.media);
+		if (rawMedia.length === 0 || rawMedia.length > 50) {
+			throw new PresentationNormalizationError("mediaStructure");
+		}
+		const keys = new Set<string>();
+		const roleOrders = new Map<string, number>();
+		const media = rawMedia.map((rawItem) => {
+			const item = presentationRecord(rawItem);
+			let key: string;
+			let role: string;
+			try {
+				key = slug(item.key);
+				role = slug(item.role);
+			} catch {
+				throw new PresentationNormalizationError("mediaStructure");
+			}
+			if (
+				keys.has(key) ||
+				!MEDIA_ROLES.has(role) ||
+				!Number.isSafeInteger(item.order) ||
+				(item.order as number) !== (roleOrders.get(role) ?? 0)
+			) {
+				throw new PresentationNormalizationError("mediaStructure");
+			}
+			keys.add(key);
+			roleOrders.set(role, (item.order as number) + 1);
+			const altText = presentationAlt(item.altText);
+			return {
+				role,
+				order: item.order as number,
+				altText,
+				altValid: role === "social_share" || altText !== null,
+				source: convexPresentationSource(item.asset),
+			};
+		});
+		const requiredRole = kind === "print" ? "primary" : kind === "print_set" ? "cover" : "gallery";
+		if (
+			!media.some(({ role }) => role === requiredRole) ||
+			(kind === "print_set" && !media.some(({ role }) => role === "set_member"))
+		) {
+			throw new PresentationNormalizationError("mediaStructure");
+		}
+		return { slug: productSlug, kind, title, description, seoDescription, media };
+	});
+	try {
+		return sortedUniqueFacet(products);
+	} catch {
+		throw new PresentationNormalizationError("mediaStructure");
+	}
+}
+
+function ordinal(left: string, right: string) {
+	return left < right ? -1 : left > right ? 1 : 0;
+}
+
+function matches(left: unknown, right: unknown) {
+	return JSON.stringify(left) === JSON.stringify(right);
+}
+
+function facetParity(left: () => unknown, right: () => unknown): "match" | "mismatch" {
+	try {
+		return matches(left(), right()) ? "match" : "mismatch";
+	} catch {
+		return "mismatch";
+	}
+}
+
+function emptyPresentationMismatchCounts(): PresentationMismatchCounts {
+	return { copy: 0, mediaStructure: 0, altText: 0, dimensions: 0 };
+}
+
+function addPresentationMismatch(
+	counts: PresentationMismatchCounts,
+	classification: PresentationMismatchClass,
+) {
+	counts[classification] = Math.min(COMPLETE_CATALOG_PRODUCT_COUNT, counts[classification] + 1);
+}
+
+function sortedPresentationMedia(media: PresentationMedia[]) {
+	return [...media].sort(
+		(left, right) => ordinal(left.role, right.role) || left.order - right.order,
+	);
+}
+
+function presentationComparison(primary: unknown, secondary: unknown) {
+	const counts = emptyPresentationMismatchCounts();
+	let sanity: PresentationProduct[] | null = null;
+	let convex: PresentationProduct[] | null = null;
+	try {
+		sanity = normalizeSanityPresentation(primary);
+	} catch (cause) {
+		addPresentationMismatch(
+			counts,
+			cause instanceof PresentationNormalizationError ? cause.classification : "mediaStructure",
+		);
+	}
+	try {
+		convex = normalizeConvexPresentation(secondary);
+	} catch (cause) {
+		addPresentationMismatch(
+			counts,
+			cause instanceof PresentationNormalizationError ? cause.classification : "mediaStructure",
+		);
+	}
+	if (sanity && convex) {
+		const sanityBySlug = new Map(sanity.map((product) => [product.slug, product]));
+		const convexBySlug = new Map(convex.map((product) => [product.slug, product]));
+		const productSlugs = new Set([...sanityBySlug.keys(), ...convexBySlug.keys()]);
+		for (const productSlug of productSlugs) {
+			const left = sanityBySlug.get(productSlug);
+			const right = convexBySlug.get(productSlug);
+			if (!left || !right || left.kind !== right.kind) {
+				addPresentationMismatch(counts, "mediaStructure");
+				continue;
+			}
+			if (
+				left.title !== right.title ||
+				left.description !== right.description ||
+				left.seoDescription !== right.seoDescription
+			) {
+				addPresentationMismatch(counts, "copy");
+			}
+			const leftMedia = sortedPresentationMedia(left.media);
+			const rightMedia = sortedPresentationMedia(right.media);
+			if (
+				leftMedia.length !== rightMedia.length ||
+				leftMedia.some(
+					(item, index) =>
+						item.role !== rightMedia[index]?.role || item.order !== rightMedia[index]?.order,
+				)
+			) {
+				addPresentationMismatch(counts, "mediaStructure");
+				continue;
+			}
+			if (
+				leftMedia.some(
+					(item, index) =>
+						!item.altValid ||
+						!rightMedia[index]?.altValid ||
+						item.altText !== rightMedia[index]?.altText,
+				)
+			) {
+				addPresentationMismatch(counts, "altText");
+			}
+			if (
+				leftMedia.some(
+					(item, index) =>
+						item.source.width !== rightMedia[index]?.source.width ||
+						item.source.height !== rightMedia[index]?.source.height,
+				)
+			) {
+				addPresentationMismatch(counts, "dimensions");
+			}
+		}
+	}
+	return {
+		parity: Object.values(counts).some((count) => count > 0)
+			? ("mismatch" as const)
+			: ("match" as const),
+		counts,
+	};
+}
+
+function sanityPrintSetCoverFallbackCount(value: unknown) {
+	if (!Array.isArray(value)) return 0;
+	let count = 0;
+	for (const raw of value) {
+		if (!raw || typeof raw !== "object" || Array.isArray(raw)) continue;
+		const product = raw as Record<string, unknown>;
+		if (
+			product._type === "lumaPrintSetV2" &&
+			product.previewImage == null &&
+			Array.isArray(product.images) &&
+			product.images[0] != null
+		) {
+			count += 1;
+		}
+	}
+	return Math.min(COMPLETE_CATALOG_KIND_COUNTS.print_set ?? 0, count);
+}
+
+function normalizeSanityAssociations(value: unknown) {
+	return sortedUniqueFacet(
+		array(value).map((raw) => {
+			const product = record(raw);
+			return {
+				slug: slug(product.slug),
+				association:
+					requiredBoolean(product.hasCollection) || requiredBoolean(product.hasParent)
+						? "present"
+						: "absent",
+			};
+		}),
+	);
+}
+
+function normalizeConvexAssociations(value: unknown) {
+	return sortedUniqueFacet(
+		array(value).map((raw) => ({ slug: slug(record(raw).slug), association: "absent" })),
+	);
+}
+
+function sanityOrderProduct(
+	product: Record<string, unknown>,
+	kind = sanityProductKind(product),
+): OrderProduct {
+	return {
+		slug: slug(product.slug),
+		kind,
+		title: slug(product.title),
+		availability: requiredBoolean(product.inStock) ? "available" : "unavailable",
+		featured: optionalBoolean(product.featured, false),
+		orderRank: kind === "print" || kind === "print_set" ? null : optionalString(product.orderRank),
+	};
+}
+
+function convexOrderProduct(
+	product: Record<string, unknown>,
+	kind = convexProductKind(product),
+): OrderProduct {
+	const placement = record(product.shopPlacement);
+	if (typeof placement.featured !== "boolean") throw new NormalizationError();
+	const availability = product.saleAvailability;
+	if (availability !== "available" && availability !== "unavailable") {
+		throw new NormalizationError();
+	}
+	return {
+		slug: slug(product.slug),
+		kind,
+		title: slug(product.title),
+		availability,
+		featured: placement.featured,
+		orderRank: optionalString(placement.orderRank),
+	};
+}
+
+function comparePresentationOrder(left: OrderProduct, right: OrderProduct) {
 	if (left.featured !== right.featured) return left.featured ? -1 : 1;
 	if (left.orderRank === null && right.orderRank !== null) return 1;
 	if (left.orderRank !== null && right.orderRank === null) return -1;
@@ -524,11 +933,7 @@ function comparePresentationOrder(left: PresentationProduct, right: Presentation
 	return byRank || ordinal(left.title, right.title) || ordinal(left.slug, right.slug);
 }
 
-function ordinal(left: string, right: string) {
-	return left < right ? -1 : left > right ? 1 : 0;
-}
-
-function productIndexOrder(products: PresentationProduct[]) {
+function productIndexOrder(products: OrderProduct[]) {
 	const available = products.filter(
 		(product) => product.availability === "available" && product.kind !== "print_set",
 	);
@@ -545,9 +950,30 @@ function productIndexOrder(products: PresentationProduct[]) {
 	return [...bucket(true), ...bucket(false)].map(({ slug }) => slug);
 }
 
-function sanityPrintSetOrder(products: PresentationProduct[]) {
-	return products
-		.filter((product) => product.kind === "print_set" && product.availability === "available")
+function normalizeProductOrder(value: unknown, provider: "sanity" | "convex") {
+	const products = array(value).flatMap((raw) => {
+		const recordValue = record(raw);
+		const kind =
+			provider === "sanity" ? sanityProductKind(recordValue) : convexProductKind(recordValue);
+		if (kind === "print_set") return [];
+		return [
+			provider === "sanity"
+				? sanityOrderProduct(recordValue, kind)
+				: convexOrderProduct(recordValue, kind),
+		];
+	});
+	return productIndexOrder(sortedUniqueFacet(products));
+}
+
+function normalizeSanityPrintSetOrder(value: unknown) {
+	return sortedUniqueFacet(
+		array(value).flatMap((raw) => {
+			const recordValue = record(raw);
+			const kind = sanityProductKind(recordValue);
+			return kind === "print_set" ? [sanityOrderProduct(recordValue, kind)] : [];
+		}),
+	)
+		.filter((product) => product.availability === "available")
 		.sort(
 			(left, right) =>
 				Number(right.featured) - Number(left.featured) ||
@@ -557,14 +983,16 @@ function sanityPrintSetOrder(products: PresentationProduct[]) {
 		.map(({ slug }) => slug);
 }
 
-function convexPrintSetOrder(products: PresentationProduct[]) {
-	return products
-		.filter((product) => product.kind === "print_set" && product.availability === "available")
-		.map(({ slug }) => slug);
-}
-
-function matches(left: unknown, right: unknown) {
-	return JSON.stringify(left) === JSON.stringify(right);
+function normalizeConvexPrintSetOrder(value: unknown) {
+	const products = array(value).flatMap((raw) => {
+		const recordValue = record(raw);
+		const kind = convexProductKind(recordValue);
+		return kind === "print_set" ? [convexOrderProduct(recordValue, kind)] : [];
+	});
+	if (new Set(products.map(({ slug }) => slug)).size !== products.length) {
+		throw new NormalizationError();
+	}
+	return products.filter((product) => product.availability === "available").map(({ slug }) => slug);
 }
 
 export function compareShopCatalogSentinel(
@@ -573,51 +1001,44 @@ export function compareShopCatalogSentinel(
 ): ShopCatalogSentinelComparison {
 	const sanityCount = Array.isArray(primary) ? primary.length : 0;
 	const convexCount = Array.isArray(secondary) ? secondary.length : 0;
-	let sanity: PresentationProduct[] = [];
-	let convex: PresentationProduct[] = [];
 	let distribution: "exact" | "mismatch" = "mismatch";
 	try {
-		sanity = normalizeSanityPresentation(primary);
-		convex = normalizeConvexPresentation(secondary);
+		const sanity = normalizeSanityDistribution(primary);
+		const convex = normalizeConvexDistribution(secondary);
 		distribution =
 			distributionMatches(sanity) && distributionMatches(convex) ? "exact" : "mismatch";
 	} catch {
 		distribution = "mismatch";
 	}
-	let commerceParity: "match" | "mismatch" = "mismatch";
+	let publicAdapterValidation: "exact" | "mismatch" = "mismatch";
 	try {
-		commerceParity = compareCatalogSemantics(primary, secondary).reason ? "mismatch" : "match";
+		adaptConvexIndex(secondary);
+		publicAdapterValidation = "exact";
 	} catch {
-		commerceParity = "mismatch";
+		publicAdapterValidation = "mismatch";
 	}
-	const presentationParity =
-		distribution === "exact" && matches(presentationBySlug(sanity), presentationBySlug(convex))
-			? "match"
-			: "mismatch";
-	const associationParity =
-		distribution === "exact" &&
-		matches(
-			[...sanity]
-				.sort((left, right) => ordinal(left.slug, right.slug))
-				.map(({ association }) => association),
-			[...convex]
-				.sort((left, right) => ordinal(left.slug, right.slug))
-				.map(({ association }) => association),
-		)
-			? "match"
-			: "mismatch";
-	const productOrder =
-		distribution === "exact" && matches(productIndexOrder(sanity), productIndexOrder(convex))
-			? "match"
-			: "mismatch";
-	const setOrder =
-		distribution === "exact" && matches(sanityPrintSetOrder(sanity), convexPrintSetOrder(convex))
-			? "match"
-			: "mismatch";
+	const commerceParity = facetParity(
+		() => normalizeSanityCommerce(primary),
+		() => normalizeConvexCommerce(secondary),
+	);
+	const presentation = presentationComparison(primary, secondary);
+	const associationParity = facetParity(
+		() => normalizeSanityAssociations(primary),
+		() => normalizeConvexAssociations(secondary),
+	);
+	const productOrder = facetParity(
+		() => normalizeProductOrder(primary, "sanity"),
+		() => normalizeProductOrder(secondary, "convex"),
+	);
+	const setOrder = facetParity(
+		() => normalizeSanityPrintSetOrder(primary),
+		() => normalizeConvexPrintSetOrder(secondary),
+	);
 	const outcome =
 		distribution === "exact" &&
+		publicAdapterValidation === "exact" &&
 		commerceParity === "match" &&
-		presentationParity === "match" &&
+		presentation.parity === "match" &&
 		associationParity === "match" &&
 		productOrder === "match" &&
 		setOrder === "match"
@@ -628,8 +1049,11 @@ export function compareShopCatalogSentinel(
 		sanityCount,
 		convexCount,
 		distribution,
+		publicAdapterValidation,
 		commerceParity,
-		presentationParity,
+		presentationParity: presentation.parity,
+		presentationMismatchCounts: presentation.counts,
+		sanityPrintSetCoverFallbackCount: sanityPrintSetCoverFallbackCount(primary),
 		associationParity,
 		productIndexOrder: productOrder,
 		printSetOrder: setOrder,
@@ -691,8 +1115,11 @@ function unavailableShopCatalogSentinel(
 		sanityCount,
 		convexCount,
 		distribution: "unavailable",
+		publicAdapterValidation: "unavailable",
 		commerceParity: "unavailable",
 		presentationParity: "unavailable",
+		presentationMismatchCounts: null,
+		sanityPrintSetCoverFallbackCount: null,
 		associationParity: "unavailable",
 		productIndexOrder: "unavailable",
 		printSetOrder: "unavailable",

@@ -35,8 +35,8 @@ type CollectionRow = {
 type PrintSetRow = {
 	title: string;
 	slug: string;
-	images?: ShopImage[];
-	previewImage: SanityImageSource;
+	images?: Array<ShopImage | null> | null;
+	previewImage?: SanityImageSource | null;
 	description?: string;
 	startingPrice?: number;
 };
@@ -99,7 +99,7 @@ type V2ProjectedProduct = {
 type PrintSetDetailRow = {
 	title: string;
 	description?: string;
-	previewImage: SanityImageSource;
+	previewImage?: SanityImageSource | null;
 	images?: Array<ShopImage | null> | null;
 	variants?: PrintVariant[] | null;
 	bordersEnabled?: boolean | null;
@@ -119,8 +119,8 @@ type CollectionDetailRow = {
 type CollectionPrintSetRow = {
 	title: string;
 	slug: string;
-	images?: ShopImage[];
-	previewImage: SanityImageSource;
+	images?: Array<ShopImage | null> | null;
+	previewImage?: SanityImageSource | null;
 	price?: number;
 };
 
@@ -195,6 +195,14 @@ const PRINT_SET_QUERY = `
     }
   }
 `;
+
+function printSetCoverUrl(value: {
+	previewImage?: SanityImageSource | null;
+	images?: Array<ShopImage | null> | null;
+}) {
+	const cover = value.previewImage ?? value.images?.[0];
+	return cover ? previewUrl(cover) : null;
+}
 
 async function loadCollectionIndex(sanity: SanityShopClient) {
 	const collections = await sanity.fetch<CollectionRow[]>(COLLECTION_INDEX_QUERY);
@@ -272,7 +280,7 @@ export function createSanityShopAdapter(selectClient: SanityClientSelector = get
 				...s,
 				preview1: s.images?.[0] ? imageSet(s.images[0])?.thumb : undefined,
 				preview2: s.images?.[1] ? imageSet(s.images[1])?.thumb : undefined,
-				previewImage: previewUrl(s.previewImage),
+				previewImage: printSetCoverUrl(s),
 				price: s.startingPrice,
 			}));
 
@@ -344,7 +352,7 @@ export function createSanityShopAdapter(selectClient: SanityClientSelector = get
 			const printSet = await sanity.fetch<PrintSetDetailRow | null>(PRINT_SET_QUERY, { slug });
 			if (!printSet) throw error(404, "Print set not found");
 
-			const preview = previewUrl(printSet.previewImage);
+			const preview = printSetCoverUrl(printSet);
 			const images = (printSet.images || [])
 				.map((img) => imageSet(img as ShopImage))
 				.filter((image) => image !== null);
@@ -426,7 +434,7 @@ export function createSanityShopAdapter(selectClient: SanityClientSelector = get
 				...set,
 				preview1: imageSet(set.images?.[0] as ShopImage)?.thumb,
 				preview2: imageSet(set.images?.[1] as ShopImage)?.thumb,
-				previewImage: previewUrl(set.previewImage),
+				previewImage: printSetCoverUrl(set),
 			}));
 			const productsWithImages = products.map((product) => ({
 				...product,
