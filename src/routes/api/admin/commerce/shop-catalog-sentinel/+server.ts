@@ -20,6 +20,7 @@ export async function GET({ request }: { request: Request }) {
 		presentationParity: "unavailable" as const,
 		presentationMismatchCounts: null,
 		sanityPrintSetCoverFallbackCount: null,
+		transferEquivalentDimensionCount: null,
 		associationParity: "unavailable" as const,
 		productIndexOrder: "unavailable" as const,
 		printSetOrder: "unavailable" as const,

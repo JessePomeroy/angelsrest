@@ -16,6 +16,7 @@ const exactCatalog = {
 		dimensions: 0,
 	},
 	sanityPrintSetCoverFallbackCount: 0,
+	transferEquivalentDimensionCount: 0,
 	associationParity: "match" as const,
 	productIndexOrder: "match" as const,
 	printSetOrder: "match" as const,
@@ -149,6 +150,7 @@ describe("deployed public Shop catalog sentinel", () => {
 				dimensions: 1,
 			},
 			sanityPrintSetCoverFallbackCount: 2,
+			transferEquivalentDimensionCount: 1,
 		});
 		const mismatch = await GET({ request: new Request(endpoint) });
 		expect(mismatch.status).toBe(409);
@@ -158,6 +160,7 @@ describe("deployed public Shop catalog sentinel", () => {
 				presentationParity: "mismatch",
 				presentationMismatchCounts: { altText: 1, dimensions: 1 },
 				sanityPrintSetCoverFallbackCount: 2,
+				transferEquivalentDimensionCount: 1,
 			},
 		});
 
@@ -174,6 +177,7 @@ describe("deployed public Shop catalog sentinel", () => {
 				publicAdapterValidation: "unavailable",
 				presentationMismatchCounts: null,
 				sanityPrintSetCoverFallbackCount: null,
+				transferEquivalentDimensionCount: null,
 			},
 		});
 		expect(text).not.toMatch(/raw secret|slug|private-id|stack/i);
