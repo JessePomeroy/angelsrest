@@ -185,4 +185,57 @@ describe("accelerated R4 fixed-point inventory", () => {
 		expect(text).not.toContain("cs_live_");
 		expect(text).not.toContain("owner@example.com");
 	});
+
+	it("clears only the exact accepted 38-session owner-test history profile", async () => {
+		const acceptedCutoff = 1_786_400_000;
+		const profiles = [
+			["2026-02-15", 6],
+			["2026-03-06", 1],
+			["2026-03-07", 16],
+			["2026-03-09", 15],
+		] as const;
+		let index = 0;
+		const sessions = profiles
+			.flatMap(([day, occurrences]) =>
+				Array.from({ length: occurrences }, () => {
+					index += 1;
+					const created = Math.floor(Date.parse(`${day}T12:00:00Z`) / 1_000);
+					return {
+						...expiredSession(),
+						id: `cs_live_${String(index).padStart(16, "0")}`,
+						created,
+						expires_at: created + 86_100,
+						payment_status: "paid" as const,
+						amount_total: 100,
+						currency: "usd",
+						customer_details: { email: "thinkingofview@gmail.com" },
+						customer_email: null,
+					};
+				}),
+			)
+			.reverse();
+		mocks.stripeList.mockResolvedValue({ data: sessions, has_more: false });
+		mocks.convexQuery.mockImplementation(async (_reference, args) => {
+			if ("siteUrl" in args && !("stripeSessionId" in args)) {
+				return {
+					cutoffCreatedSeconds: acceptedCutoff,
+					acceptUntilMs: acceptedCutoff * 1_000 + 3_222_000_000,
+					activationGeneration: 1,
+					accountScopeClass: "platform",
+				};
+			}
+			return null;
+		});
+
+		const response = await POST({
+			request: request({ authorization: "r4_accelerated_fixed_point_read_v1" }),
+		});
+		const body = await response.json();
+		expect(response.status).toBe(200);
+		expect(body).toMatchObject({
+			outcome: "clear",
+			blockerClasses: [],
+			evidenceClasses: expect.arrayContaining(["owner_test_history_disposition_verified"]),
+		});
+	});
 });
