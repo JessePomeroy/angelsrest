@@ -5,6 +5,7 @@ import type { InventorySession } from "../../../../../../scripts/commerce/r4-che
 const mocks = vi.hoisted(() => ({
 	verify: vi.fn(),
 	stripeList: vi.fn(),
+	stripeRetrieve: vi.fn(),
 	convexQuery: vi.fn(),
 	env: { WEBHOOK_SECRET: "server-only-secret" },
 }));
@@ -14,7 +15,9 @@ vi.mock("$lib/server/siteAdminAuthorization", () => ({
 	verifySiteAdminRequest: mocks.verify,
 }));
 vi.mock("$lib/server/stripeClient", () => ({
-	getStripe: () => ({ checkout: { sessions: { list: mocks.stripeList } } }),
+	getStripe: () => ({
+		checkout: { sessions: { list: mocks.stripeList, retrieve: mocks.stripeRetrieve } },
+	}),
 }));
 vi.mock("$lib/server/convexClient", () => ({
 	getConvex: () => ({ query: mocks.convexQuery }),
@@ -55,6 +58,7 @@ describe("accelerated R4 fixed-point inventory", () => {
 			data: [expiredSession()],
 			has_more: false,
 		});
+		mocks.stripeRetrieve.mockReset();
 		mocks.convexQuery.mockReset().mockImplementation(async (_reference, args) => {
 			if ("siteUrl" in args && !("stripeSessionId" in args)) {
 				return {
@@ -146,5 +150,42 @@ describe("accelerated R4 fixed-point inventory", () => {
 			blockerClasses: ["provider_error"],
 		});
 		expect(text).not.toContain("raw provider secret fragment");
+	});
+
+	it("returns bounded masked details only for an unresolved historical paid candidate", async () => {
+		const paid = { ...expiredSession(), payment_status: "paid" as const };
+		mocks.stripeList.mockResolvedValue({ data: [paid], has_more: false });
+		mocks.stripeRetrieve.mockResolvedValue({
+			...paid,
+			amount_total: 1500,
+			currency: "usd",
+			customer_details: { email: "owner@example.com" },
+			customer_email: null,
+			line_items: {
+				data: [{ description: "Archival Matte 4×6", quantity: 1, amount_total: 1500 }],
+			},
+		});
+		const response = await POST({
+			request: request({ authorization: "r4_accelerated_legacy_paid_diagnostic_v1" }),
+		});
+		const text = await response.text();
+		expect(response.status).toBe(200);
+		expect(JSON.parse(text)).toEqual({
+			version: 1,
+			outcome: "diagnostic",
+			candidateCount: 1,
+			profiles: [
+				{
+					createdDay: "2023-11-14",
+					amountTotalMinor: 1500,
+					currency: "usd",
+					customerEmailMasked: "ow***@example.com",
+					lineItems: [{ description: "Archival Matte 4×6", quantity: 1, amountTotalMinor: 1500 }],
+				},
+			],
+		});
+		expect(mocks.stripeRetrieve).toHaveBeenCalledTimes(1);
+		expect(text).not.toContain("cs_live_");
+		expect(text).not.toContain("owner@example.com");
 	});
 });
