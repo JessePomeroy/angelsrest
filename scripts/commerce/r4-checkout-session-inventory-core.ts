@@ -7,7 +7,17 @@ const ADMISSION_HASH = /^[0-9a-f]{64}$/;
 
 export type InventorySession = Pick<
 	Stripe.Checkout.Session,
-	"id" | "created" | "expires_at" | "livemode" | "metadata" | "mode" | "payment_status" | "status"
+	| "id"
+	| "after_expiration"
+	| "created"
+	| "expires_at"
+	| "livemode"
+	| "metadata"
+	| "mode"
+	| "payment_link"
+	| "payment_status"
+	| "recovered_from"
+	| "status"
 >;
 
 export interface InventoryStripeClient {
@@ -26,9 +36,19 @@ export interface InventoryRoutingClient {
 export interface InventoryResult {
 	version: 1;
 	outcome: "clear" | "incomplete";
-	scanClass: "complete" | "provider_error" | "scan_cap" | "pagination_invalid" | "head_shifted";
+	scanClass:
+		| "complete"
+		| "provider_error"
+		| "scan_cap"
+		| "pagination_invalid"
+		| "head_shifted"
+		| "history_shifted";
 	evidenceClasses: string[];
 	blockerClasses: string[];
+}
+
+interface InventoryScan extends InventoryResult {
+	projection: string[];
 }
 
 export async function inventoryCheckoutSessions({
@@ -50,28 +70,104 @@ export async function inventoryCheckoutSessions({
 	knownSites?: readonly string[];
 	maxPages?: number;
 }): Promise<InventoryResult> {
-	const cutoffMs = cutoffCreatedSeconds * 1_000;
 	if (
-		!Number.isSafeInteger(cutoffCreatedSeconds) ||
-		cutoffCreatedSeconds < 0 ||
-		!Number.isSafeInteger(cutoffMs) ||
-		!Number.isSafeInteger(acceptUntilMs) ||
-		acceptUntilMs !== cutoffMs + 3_222_000_000 ||
-		!Number.isSafeInteger(nowMs) ||
-		nowMs < acceptUntilMs ||
-		!Number.isSafeInteger(maxPages) ||
-		maxPages < 1
+		!validInputs({ cutoffCreatedSeconds, acceptUntilMs, nowMs, maxPages }) ||
+		nowMs < acceptUntilMs
 	)
 		return incomplete("pagination_invalid", ["cutoff_or_horizon_invalid"]);
+	const { projection: _projection, ...result } = await scanCheckoutSessions({
+		stripe,
+		routing,
+		cutoffCreatedSeconds,
+		nowMs,
+		targetSite,
+		knownSites,
+		maxPages,
+	});
+	return result;
+}
 
+/**
+ * Immediate read-only alternative to the elapsed-horizon proof. Two complete
+ * provider scans, including routing state, must produce one identical fixed
+ * point. Any still-payable, processing, unresolved, or shifting Session blocks.
+ */
+export async function inventoryCheckoutSessionsAtFixedPoint({
+	stripe,
+	routing,
+	cutoffCreatedSeconds,
+	acceptUntilMs,
+	nowMs,
+	targetSite = "angelsrest.online",
+	knownSites = ["angelsrest.online", "zippymiggy.com"],
+	maxPages = DEFAULT_MAX_PAGES,
+}: {
+	stripe: InventoryStripeClient;
+	routing: InventoryRoutingClient;
+	cutoffCreatedSeconds: number;
+	acceptUntilMs: number;
+	nowMs: number;
+	targetSite?: string;
+	knownSites?: readonly string[];
+	maxPages?: number;
+}): Promise<InventoryResult> {
+	if (!validInputs({ cutoffCreatedSeconds, acceptUntilMs, nowMs, maxPages })) {
+		return incomplete("pagination_invalid", ["cutoff_or_horizon_invalid"]);
+	}
+	const input = {
+		stripe,
+		routing,
+		cutoffCreatedSeconds,
+		nowMs,
+		targetSite,
+		knownSites,
+		maxPages,
+	};
+	const first = await scanCheckoutSessions(input);
+	if (first.scanClass !== "complete") return publicResult(first);
+	const second = await scanCheckoutSessions(input);
+	if (second.scanClass !== "complete") return publicResult(second);
+	if (
+		first.projection.length !== second.projection.length ||
+		first.projection.some((entry, index) => entry !== second.projection[index])
+	) {
+		return incomplete("history_shifted", ["history_shifted"]);
+	}
+	return {
+		version: 1,
+		outcome: second.outcome,
+		scanClass: "complete",
+		evidenceClasses: [...new Set([...second.evidenceClasses, "full_history_fixed_point"])].sort(),
+		blockerClasses: second.blockerClasses,
+	};
+}
+
+async function scanCheckoutSessions({
+	stripe,
+	routing,
+	cutoffCreatedSeconds,
+	nowMs,
+	targetSite,
+	knownSites,
+	maxPages,
+}: {
+	stripe: InventoryStripeClient;
+	routing: InventoryRoutingClient;
+	cutoffCreatedSeconds: number;
+	nowMs: number;
+	targetSite: string;
+	knownSites: readonly string[];
+	maxPages: number;
+}): Promise<InventoryScan> {
 	const blockers = new Set<string>();
 	const evidence = new Set<string>();
 	const seen = new Set<string>();
+	const projection: string[] = [];
 	let firstPage: Awaited<ReturnType<InventoryStripeClient["list"]>>;
 	try {
 		firstPage = await stripe.list({ limit: PAGE_SIZE });
 	} catch {
-		return incomplete("provider_error", ["provider_error"]);
+		return scanIncomplete("provider_error", ["provider_error"]);
 	}
 	const anchorHead = firstPage.data[0]?.id ?? null;
 	let page = firstPage;
@@ -79,13 +175,15 @@ export async function inventoryCheckoutSessions({
 
 	while (true) {
 		pages += 1;
-		if (pages > maxPages) return incomplete("scan_cap", ["scan_cap"]);
-		if (!validPage(page)) return incomplete("pagination_invalid", ["pagination_invalid"]);
+		if (pages > maxPages) return scanIncomplete("scan_cap", ["scan_cap"]);
+		if (!validPage(page)) return scanIncomplete("pagination_invalid", ["pagination_invalid"]);
 
 		for (const session of page.data) {
-			if (seen.has(session.id)) return incomplete("pagination_invalid", ["pagination_duplicate"]);
+			if (seen.has(session.id)) {
+				return scanIncomplete("pagination_invalid", ["pagination_duplicate"]);
+			}
 			seen.add(session.id);
-			await classifySession({
+			const classification = await classifySession({
 				session,
 				routing,
 				cutoffCreatedSeconds,
@@ -95,15 +193,16 @@ export async function inventoryCheckoutSessions({
 				blockers,
 				evidence,
 			});
+			projection.push(providerProjection(session, classification));
 		}
 
 		if (!page.has_more) break;
 		const cursor = page.data.at(-1)?.id;
-		if (!cursor) return incomplete("pagination_invalid", ["pagination_empty_more"]);
+		if (!cursor) return scanIncomplete("pagination_invalid", ["pagination_empty_more"]);
 		try {
 			page = await stripe.list({ limit: PAGE_SIZE, starting_after: cursor });
 		} catch {
-			return incomplete("provider_error", ["provider_error"]);
+			return scanIncomplete("provider_error", ["provider_error"]);
 		}
 	}
 
@@ -111,10 +210,10 @@ export async function inventoryCheckoutSessions({
 	try {
 		reread = await stripe.list({ limit: PAGE_SIZE });
 	} catch {
-		return incomplete("provider_error", ["head_reread_error"]);
+		return scanIncomplete("provider_error", ["head_reread_error"]);
 	}
 	if (!validPage(reread) || (reread.data[0]?.id ?? null) !== anchorHead) {
-		return incomplete("head_shifted", ["head_shifted"]);
+		return scanIncomplete("head_shifted", ["head_shifted"]);
 	}
 
 	evidence.add("full_history_paginated");
@@ -125,6 +224,7 @@ export async function inventoryCheckoutSessions({
 		scanClass: "complete",
 		evidenceClasses: [...evidence].sort(),
 		blockerClasses: [...blockers].sort(),
+		projection,
 	};
 }
 
@@ -146,7 +246,7 @@ async function classifySession({
 	knownSites: readonly string[];
 	blockers: Set<string>;
 	evidence: Set<string>;
-}) {
+}): Promise<string> {
 	if (
 		!SESSION_ID.test(session.id) ||
 		session.livemode !== true ||
@@ -156,22 +256,22 @@ async function classifySession({
 		session.expires_at < session.created
 	) {
 		blockers.add("provider_projection_invalid");
-		return;
+		return "provider_projection_invalid";
 	}
 	const metadata = session.metadata ?? {};
 	if (metadata.type === "invoice_payment" || metadata.type === "platform_subscription") {
 		evidence.add("retained_non_order_checkout_observed");
-		return;
+		return `retained:${metadata.type}`;
 	}
 	if (metadata.type !== undefined) {
 		blockers.add("unknown_legacy_purpose");
-		return;
+		return "unknown_legacy_purpose";
 	}
 	const marker = metadata.commerceTenantSiteUrl;
 	if (marker && marker !== targetSite) {
 		if (!knownSites.includes(marker)) blockers.add("unknown_tenant_marker");
 		else evidence.add("other_known_tenant_excluded");
-		return;
+		return knownSites.includes(marker) ? "other_known_tenant" : "unknown_tenant_marker";
 	}
 	if (
 		session.mode !== "payment" ||
@@ -179,7 +279,7 @@ async function classifySession({
 		!(["open", "complete", "expired", null] as const).includes(session.status)
 	) {
 		blockers.add("provider_projection_invalid");
-		return;
+		return "provider_projection_invalid";
 	}
 	const legacyOrderShape =
 		metadata.productId !== undefined ||
@@ -189,7 +289,19 @@ async function classifySession({
 		);
 	if (marker !== targetSite && !legacyOrderShape) {
 		blockers.add("unknown_legacy_purpose");
-		return;
+		return "unknown_legacy_purpose";
+	}
+	if (session.payment_link !== null) {
+		blockers.add("payment_link_order_source");
+	}
+	const recovery = session.after_expiration?.recovery;
+	if (
+		recovery?.enabled === true &&
+		(recovery.expires_at === null ||
+			!Number.isSafeInteger(recovery.expires_at) ||
+			recovery.expires_at * 1_000 > nowMs)
+	) {
+		blockers.add("recovery_url_active");
 	}
 
 	const admissionMarked =
@@ -204,25 +316,79 @@ async function classifySession({
 		route = await routing.resolve(session);
 	} catch {
 		blockers.add("routing_error");
-		return;
+		return "routing_error";
 	}
 	if (route === "order" || route === "retired") {
 		evidence.add(route === "order" ? "stored_order_resolved" : "retired_order_resolved");
-		return;
+		return route;
 	}
 	if (route === "reservation" || route === "admission") {
 		blockers.add("locally_bound_unresolved");
-		return;
+		return route;
 	}
 	if (session.payment_status === "paid" || session.payment_status === "no_payment_required") {
 		blockers.add("historical_paid_unresolved");
-		return;
+		return "historical_paid_unresolved";
 	}
 	if (session.status === "expired" && session.expires_at * 1_000 <= nowMs) {
 		evidence.add("expired_unpaid_provider_verified");
-		return;
+		return "expired_unpaid";
 	}
 	blockers.add("open_or_unknown_unpaid");
+	return "open_or_unknown_unpaid";
+}
+
+function providerProjection(session: InventorySession, classification: string) {
+	return JSON.stringify([
+		session.id,
+		session.after_expiration,
+		session.created,
+		session.expires_at,
+		session.livemode,
+		session.mode,
+		session.payment_link,
+		session.payment_status,
+		session.recovered_from,
+		session.status,
+		Object.entries(session.metadata ?? {}).sort(([left], [right]) => left.localeCompare(right)),
+		classification,
+	]);
+}
+
+function validInputs({
+	cutoffCreatedSeconds,
+	acceptUntilMs,
+	nowMs,
+	maxPages,
+}: {
+	cutoffCreatedSeconds: number;
+	acceptUntilMs: number;
+	nowMs: number;
+	maxPages: number;
+}) {
+	const cutoffMs = cutoffCreatedSeconds * 1_000;
+	return (
+		Number.isSafeInteger(cutoffCreatedSeconds) &&
+		cutoffCreatedSeconds >= 0 &&
+		Number.isSafeInteger(cutoffMs) &&
+		Number.isSafeInteger(acceptUntilMs) &&
+		acceptUntilMs === cutoffMs + 3_222_000_000 &&
+		Number.isSafeInteger(nowMs) &&
+		nowMs >= 0 &&
+		Number.isSafeInteger(maxPages) &&
+		maxPages >= 1
+	);
+}
+
+function publicResult({ projection: _projection, ...result }: InventoryScan): InventoryResult {
+	return result;
+}
+
+function scanIncomplete(
+	scanClass: InventoryResult["scanClass"],
+	blockers: string[],
+): InventoryScan {
+	return { ...incomplete(scanClass, blockers), projection: [] };
 }
 
 function validPage(page: Awaited<ReturnType<InventoryStripeClient["list"]>>) {

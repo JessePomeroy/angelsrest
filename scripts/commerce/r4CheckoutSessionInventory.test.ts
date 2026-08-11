@@ -3,6 +3,7 @@ import {
 	type InventoryRoute,
 	type InventorySession,
 	inventoryCheckoutSessions,
+	inventoryCheckoutSessionsAtFixedPoint,
 } from "./r4-checkout-session-inventory-core";
 
 const cutoff = 1_700_000_000;
@@ -12,12 +13,15 @@ const now = acceptUntil + 1;
 function session(overrides: Partial<InventorySession> = {}): InventorySession {
 	return {
 		id: "cs_live_1234567890abcdef",
+		after_expiration: null,
 		created: cutoff - 100,
 		expires_at: cutoff - 10,
 		livemode: true,
 		metadata: { commerceTenantSiteUrl: "angelsrest.online", productId: "product" },
 		mode: "payment",
+		payment_link: null,
 		payment_status: "unpaid",
+		recovered_from: null,
 		status: "expired",
 		...overrides,
 	};
@@ -47,6 +51,60 @@ function adapters({
 }
 
 describe("R4 complete-history Checkout Session inventory", () => {
+	it("accepts an immediate stable fixed point before the elapsed horizon", async () => {
+		const stored = session({ id: "cs_live_1234567890abcdea", payment_status: "paid" });
+		const expired = session({ id: "cs_live_1234567890abcdeb", created: cutoff - 200 });
+		const a = adapters({ pages: [[stored, expired]], routes: new Map([[stored.id, "order"]]) });
+		expect(
+			await inventoryCheckoutSessionsAtFixedPoint({
+				...a,
+				cutoffCreatedSeconds: cutoff,
+				acceptUntilMs: acceptUntil,
+				nowMs: cutoff * 1_000 + 1,
+			}),
+		).toEqual({
+			version: 1,
+			outcome: "clear",
+			scanClass: "complete",
+			evidenceClasses: [
+				"expired_unpaid_provider_verified",
+				"full_history_fixed_point",
+				"full_history_paginated",
+				"head_reread_stable",
+				"stored_order_resolved",
+			],
+			blockerClasses: [],
+		});
+		expect(a.stripe.list).toHaveBeenCalledTimes(4);
+	});
+
+	it("rejects a provider or routing state change between complete scans", async () => {
+		const open = session({ status: "open", expires_at: cutoff + 1_000 });
+		const expired = session();
+		let call = 0;
+		const stripe = {
+			list: vi.fn(async () => ({
+				data: [call++ < 2 ? open : expired],
+				has_more: false,
+			})),
+		};
+		expect(
+			await inventoryCheckoutSessionsAtFixedPoint({
+				stripe,
+				routing: { resolve: vi.fn(async () => null) },
+				cutoffCreatedSeconds: cutoff,
+				acceptUntilMs: acceptUntil,
+				nowMs: cutoff * 1_000 + 1,
+			}),
+		).toEqual({
+			version: 1,
+			outcome: "incomplete",
+			scanClass: "history_shifted",
+			evidenceClasses: [],
+			blockerClasses: ["history_shifted"],
+		});
+	});
+
 	it("accepts a complete stable history with resolved and expired-unpaid sessions", async () => {
 		const stored = session({ id: "cs_live_1234567890abcdea", payment_status: "paid" });
 		const expired = session({ id: "cs_live_1234567890abcdeb", created: cutoff - 200 });
@@ -137,6 +195,35 @@ describe("R4 complete-history Checkout Session inventory", () => {
 				"post_cutoff_missing_admission",
 				"unknown_legacy_purpose",
 			],
+		});
+	});
+
+	it("blocks recurring Stripe-side order creation through Payment Links or active recovery URLs", async () => {
+		const paymentLink = session({
+			id: "cs_live_1234567890abcdea",
+			payment_link: "plink_1234567890abcdef",
+		});
+		const recovery = session({
+			id: "cs_live_1234567890abcdeb",
+			created: cutoff - 200,
+			after_expiration: {
+				recovery: {
+					enabled: true,
+					expires_at: cutoff + 10_000,
+					url: "https://checkout.stripe.com/recovery",
+				},
+			},
+		});
+		const a = adapters({ pages: [[paymentLink, recovery]] });
+		const result = await inventoryCheckoutSessionsAtFixedPoint({
+			...a,
+			cutoffCreatedSeconds: cutoff,
+			acceptUntilMs: acceptUntil,
+			nowMs: cutoff * 1_000 + 1,
+		});
+		expect(result).toMatchObject({
+			outcome: "incomplete",
+			blockerClasses: ["payment_link_order_source", "recovery_url_active"],
 		});
 	});
 

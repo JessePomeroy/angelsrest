@@ -1,0 +1,121 @@
+import { beforeEach, describe, expect, it, vi } from "vitest";
+import type { InventorySession } from "../../../../../../scripts/commerce/r4-checkout-session-inventory-core";
+
+const mocks = vi.hoisted(() => ({
+	verify: vi.fn(),
+	stripeList: vi.fn(),
+	convexQuery: vi.fn(),
+	env: { WEBHOOK_SECRET: "server-only-secret" },
+}));
+
+vi.mock("$env/dynamic/private", () => ({ env: mocks.env }));
+vi.mock("$lib/server/siteAdminAuthorization", () => ({
+	verifySiteAdminRequest: mocks.verify,
+}));
+vi.mock("$lib/server/stripeClient", () => ({
+	getStripe: () => ({ checkout: { sessions: { list: mocks.stripeList } } }),
+}));
+vi.mock("$lib/server/convexClient", () => ({
+	getConvex: () => ({ query: mocks.convexQuery }),
+}));
+
+import { POST } from "./+server";
+
+const cutoff = 1_700_000_000;
+
+function request(body: unknown) {
+	return new Request("https://angelsrest.online/api/admin/commerce/accelerated-inventory", {
+		method: "POST",
+		headers: { "content-type": "application/json" },
+		body: JSON.stringify(body),
+	});
+}
+
+function expiredSession(): InventorySession {
+	return {
+		id: "cs_live_1234567890abcdef",
+		after_expiration: null,
+		created: cutoff - 100,
+		expires_at: cutoff - 10,
+		livemode: true,
+		metadata: { commerceTenantSiteUrl: "angelsrest.online", productId: "product" },
+		mode: "payment",
+		payment_link: null,
+		payment_status: "unpaid",
+		recovered_from: null,
+		status: "expired",
+	};
+}
+
+describe("accelerated R4 fixed-point inventory", () => {
+	beforeEach(() => {
+		mocks.verify.mockReset().mockResolvedValue(true);
+		mocks.stripeList.mockReset().mockResolvedValue({
+			data: [expiredSession()],
+			has_more: false,
+		});
+		mocks.convexQuery.mockReset().mockImplementation(async (_reference, args) => {
+			if ("siteUrl" in args && !("stripeSessionId" in args)) {
+				return {
+					cutoffCreatedSeconds: cutoff,
+					acceptUntilMs: cutoff * 1_000 + 3_222_000_000,
+					activationGeneration: 1,
+					accountScopeClass: "platform",
+				};
+			}
+			return null;
+		});
+	});
+
+	it("requires a valid session with stored site membership before provider access", async () => {
+		mocks.verify.mockResolvedValue(false);
+		await expect(
+			POST({ request: request({ authorization: "r4_accelerated_fixed_point_read_v1" }) }),
+		).rejects.toMatchObject({ status: 401 });
+		expect(mocks.stripeList).not.toHaveBeenCalled();
+	});
+
+	it("requires the exact bounded authorization body", async () => {
+		await expect(POST({ request: request({ authorization: "wrong" }) })).rejects.toMatchObject({
+			status: 400,
+		});
+		expect(mocks.stripeList).not.toHaveBeenCalled();
+	});
+
+	it("returns only normalized fixed-point evidence", async () => {
+		const response = await POST({
+			request: request({ authorization: "r4_accelerated_fixed_point_read_v1" }),
+		});
+		const text = await response.text();
+		expect(response.status).toBe(200);
+		expect(JSON.parse(text)).toEqual({
+			version: 1,
+			outcome: "clear",
+			scanClass: "complete",
+			evidenceClasses: [
+				"expired_unpaid_provider_verified",
+				"full_history_fixed_point",
+				"full_history_paginated",
+				"head_reread_stable",
+			],
+			blockerClasses: [],
+		});
+		expect(mocks.stripeList).toHaveBeenCalledTimes(4);
+		expect(text).not.toContain("cs_live_");
+		expect(text).not.toContain("server-only-secret");
+	});
+
+	it("suppresses raw provider errors", async () => {
+		mocks.stripeList.mockRejectedValue(new Error("raw provider secret fragment"));
+		const response = await POST({
+			request: request({ authorization: "r4_accelerated_fixed_point_read_v1" }),
+		});
+		const text = await response.text();
+		expect(response.status).toBe(409);
+		expect(JSON.parse(text)).toMatchObject({
+			outcome: "incomplete",
+			blockerClasses: ["provider_error"],
+		});
+		expect(text).not.toContain("raw provider secret fragment");
+	});
+});
