@@ -323,10 +323,25 @@ async function classifySession({
 		return route;
 	}
 	if (route === "reservation" || route === "admission") {
+		evidence.add(`locally_bound_route_${route}`);
+		evidence.add(`locally_bound_payment_${session.payment_status}`);
+		evidence.add(`locally_bound_status_${session.status ?? "unknown"}`);
+		evidence.add(`locally_bound_age_${preCutoffAgeClass(session.created, cutoffCreatedSeconds)}`);
 		blockers.add("locally_bound_unresolved");
 		return route;
 	}
 	if (session.payment_status === "paid" || session.payment_status === "no_payment_required") {
+		evidence.add(
+			session.created < cutoffCreatedSeconds
+				? "historical_paid_created_before_cutoff"
+				: "historical_paid_created_at_or_after_cutoff",
+		);
+		if (session.created < cutoffCreatedSeconds) {
+			evidence.add(
+				`historical_paid_age_${preCutoffAgeClass(session.created, cutoffCreatedSeconds)}`,
+			);
+		}
+		evidence.add(admissionMarked ? "historical_paid_admission_marked" : "historical_paid_legacy");
 		blockers.add("historical_paid_unresolved");
 		return "historical_paid_unresolved";
 	}
@@ -336,6 +351,15 @@ async function classifySession({
 	}
 	blockers.add("open_or_unknown_unpaid");
 	return "open_or_unknown_unpaid";
+}
+
+function preCutoffAgeClass(created: number, cutoff: number) {
+	if (created >= cutoff) return "at_or_after_cutoff";
+	const ageSeconds = cutoff - created;
+	if (ageSeconds <= 24 * 60 * 60) return "within_24h_pre_cutoff";
+	if (ageSeconds <= 7 * 24 * 60 * 60) return "1d_to_7d_pre_cutoff";
+	if (ageSeconds <= 37 * 24 * 60 * 60) return "7d_to_37d_pre_cutoff";
+	return "older_than_37d_pre_cutoff";
 }
 
 function providerProjection(session: InventorySession, classification: string) {

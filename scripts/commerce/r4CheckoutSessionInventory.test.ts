@@ -189,6 +189,15 @@ describe("R4 complete-history Checkout Session inventory", () => {
 		});
 		expect(result).toMatchObject({
 			outcome: "incomplete",
+			evidenceClasses: expect.arrayContaining([
+				"historical_paid_created_before_cutoff",
+				"historical_paid_legacy",
+				"historical_paid_age_within_24h_pre_cutoff",
+				"locally_bound_age_within_24h_pre_cutoff",
+				"locally_bound_payment_unpaid",
+				"locally_bound_route_reservation",
+				"locally_bound_status_expired",
+			]),
 			blockerClasses: [
 				"historical_paid_unresolved",
 				"locally_bound_unresolved",
