@@ -1,3 +1,4 @@
+import { createHmac, timingSafeEqual } from "node:crypto";
 import { error, json } from "@sveltejs/kit";
 import { api } from "$convex/api";
 import { env } from "$env/dynamic/private";
@@ -14,9 +15,11 @@ export const config = { maxDuration: 60 };
 
 const targetSite = "angelsrest.online";
 const authorization = "r4_accelerated_fixed_point_read_v1";
+const hmacMessagePrefix = "r4-accelerated-inventory-v1:";
+const maxClockSkewSeconds = 300;
 
 export async function POST({ request }: { request: Request }) {
-	if (!(await verifySiteAdminRequest(request))) throw error(401, "Unauthorized");
+	if (!(await authorizeRequest(request))) throw error(401, "Unauthorized");
 	const body = await request.json().catch(() => null);
 	if (!exactAuthorization(body)) throw error(400, "Invalid request");
 	if (!env.WEBHOOK_SECRET) throw error(503, "Inventory configuration is incomplete");
@@ -58,6 +61,30 @@ export async function POST({ request }: { request: Request }) {
 		targetSite,
 	});
 	return json(result, { status: result.outcome === "clear" ? 200 : 409 });
+}
+
+async function authorizeRequest(request: Request) {
+	if (await verifySiteAdminRequest(request)) return true;
+	if (!env.WEBHOOK_SECRET) return false;
+	const timestampText = request.headers.get("x-r4-timestamp");
+	const supplied = request.headers.get("x-r4-signature");
+	if (
+		!timestampText ||
+		!supplied ||
+		!/^\d{10}$/.test(timestampText) ||
+		!/^[0-9a-f]{64}$/.test(supplied)
+	) {
+		return false;
+	}
+	const timestamp = Number(timestampText);
+	const nowSeconds = Math.floor(Date.now() / 1_000);
+	if (!Number.isSafeInteger(timestamp) || Math.abs(nowSeconds - timestamp) > maxClockSkewSeconds) {
+		return false;
+	}
+	const expected = createHmac("sha256", env.WEBHOOK_SECRET)
+		.update(`${hmacMessagePrefix}${timestampText}`)
+		.digest();
+	return timingSafeEqual(expected, Buffer.from(supplied, "hex"));
 }
 
 function exactAuthorization(value: unknown): value is { authorization: typeof authorization } {
