@@ -2,7 +2,6 @@ import { json } from "@sveltejs/kit";
 import type Stripe from "stripe";
 import { api } from "$convex/api";
 import { env } from "$env/dynamic/private";
-import { STRIPE_PLATFORM_WEBHOOK_SECRET } from "$env/static/private";
 import { getConvex } from "$lib/server/convexClient";
 import { logStructured } from "$lib/server/logger";
 import { getStripe } from "$lib/server/stripeClient";
@@ -20,6 +19,14 @@ function getWebhookSecret(): string {
 	return secret;
 }
 
+function getPlatformWebhookSecret(): string {
+	const secret = env.STRIPE_PLATFORM_WEBHOOK_SECRET;
+	if (!secret) {
+		throw new Error("STRIPE_PLATFORM_WEBHOOK_SECRET is not configured");
+	}
+	return secret;
+}
+
 function stripeExpandableId(
 	value: string | { id?: string } | null | undefined,
 ): string | undefined {
@@ -33,7 +40,7 @@ export async function POST({ request }) {
 	const event = await verifyStripeWebhook(
 		request,
 		stripe,
-		STRIPE_PLATFORM_WEBHOOK_SECRET,
+		getPlatformWebhookSecret(),
 		"Platform webhook",
 	);
 

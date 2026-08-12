@@ -1,5 +1,5 @@
 import { Resend } from "resend";
-import { RESEND_API_KEY } from "$env/static/private";
+import { env } from "$env/dynamic/private";
 
 let _resend: Resend | null = null;
 
@@ -9,6 +9,11 @@ let _resend: Resend | null = null;
  * instance. See audit M3.
  */
 export function getResend(): Resend {
-	if (!_resend) _resend = new Resend(RESEND_API_KEY);
+	if (!_resend) {
+		if (!env.RESEND_API_KEY) {
+			throw new Error("RESEND_API_KEY is not configured");
+		}
+		_resend = new Resend(env.RESEND_API_KEY);
+	}
 	return _resend;
 }
