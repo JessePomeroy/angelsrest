@@ -10,7 +10,7 @@ Canonical rules for working in this repository.
   <https://angelsrest.online>
 - **Sanity Studio:** `~/Documents/work/angelsrest-studio` →
   <https://angelsrest.sanity.studio>
-- **Current architecture:** `docs/ARCHITECTURE.md`
+- **Current architecture:** `ARCHITECTURE.md`
 - **CRM spec:**
   `~/Documents/quilt/02_reference/projects/photographer_crm/implementation-spec.md`
 - **User guide:**

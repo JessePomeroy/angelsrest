@@ -232,11 +232,9 @@ every API change.
 ## Documentation policy
 
 - `AGENTS.md`: canonical implementation rules and checks.
-- `docs/ARCHITECTURE.md`: current system ownership and flows.
+- `ARCHITECTURE.md`: current system ownership and flows.
 - `LUMAPRINTS.md`: current print integration details.
 - Package READMEs: package-specific consumption/release instructions.
-- `docs/archive/`: historical context only. Archived documents must carry a
-  warning and must not be cited as current implementation guidance.
 
 Update the smallest authoritative document when a boundary changes. Do not copy
 the same workflow into multiple root files.

@@ -64,7 +64,7 @@ Examples:
 - reworking pagination or fetch strategy across several screens
 - switching to a new index or denormalized field that needs migration-safe rollout
 
-When correctness depends on handling old and new states during a rollout, consult `skills/convex-migration-helper/SKILL.md` for the migration workflow.
+When correctness depends on handling old and new states during a rollout, consult `.agents/skills/convex-migration-helper/SKILL.md` for the migration workflow.
 
 ## Workflow
 

@@ -97,7 +97,7 @@ If an older document is missing a field entirely, it will not match a compound i
 
 Do not trust old comments saying a field is "not backfilled" or "already backfilled". Verify.
 
-If correctness depends on handling old and new states during rollout, do not improvise a partial-backfill workaround in the hot path. Use a migration-safe rollout and consult `skills/convex-migration-helper/SKILL.md`.
+If correctness depends on handling old and new states during rollout, do not improvise a partial-backfill workaround in the hot path. Use a migration-safe rollout and consult `.agents/skills/convex-migration-helper/SKILL.md`.
 
 ```ts
 // Bad: optional booleans can miss older rows where the field is undefined

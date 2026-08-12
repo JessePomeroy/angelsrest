@@ -30,8 +30,8 @@ being implemented inside the existing admin dashboard. The migration is staged
 by content type; the Sanity boundary remains intact until the Editor is accepted,
 restore paths are proven, and an explicit cutover is approved.
 
-See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the authoritative system
-map, ownership rules, and request flows.
+See [ARCHITECTURE.md](ARCHITECTURE.md) for the authoritative system map,
+ownership rules, and request flows.
 
 ## Hub-and-spoke model
 
@@ -126,10 +126,6 @@ run when their flows are affected.
 ## Documentation
 
 - [AGENTS.md](AGENTS.md) — canonical repository rules and implementation constraints
-- [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) — current ownership, dependencies, authentication, and transport boundaries
+- [ARCHITECTURE.md](ARCHITECTURE.md) — current ownership, dependencies, authentication, and transport boundaries
 - [LUMAPRINTS.md](LUMAPRINTS.md) — current print-fulfillment integration
 - [packages/crm-api/README.md](packages/crm-api/README.md) — shared Convex package and release workflow
-- [docs/archive/README.md](docs/archive/README.md) — historical documents retained for context only
-
-Documents under `docs/archive/` are historical and must not be used as current
-implementation guidance.
