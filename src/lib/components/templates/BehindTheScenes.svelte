@@ -13,16 +13,11 @@
 -->
 
 <script lang="ts">
-import { PortableText } from "@portabletext/svelte";
-import { urlFor } from "$lib/sanity/client";
+import type { BlogPostDetail } from "$lib/blog/content";
+import BlogRichText from "$lib/components/BlogRichText.svelte";
 import { formatDate } from "$lib/utils/format";
-import PortableTextImage from "../PortableTextImage.svelte";
 
-const components = {
-	types: { image: PortableTextImage },
-};
-
-let { post } = $props();
+let { post }: { post: BlogPostDetail } = $props();
 </script>
 
 <article class="max-w-3xl mx-auto">
@@ -51,8 +46,10 @@ let { post } = $props();
   {#if post.mainImage}
     <div class="mb-12 -mx-4 md:-mx-12">
       <img
-        src={urlFor(post.mainImage).width(1400).url()}
-        alt={post.title}
+        src={post.mainImage.src}
+        alt={post.mainImage.alt}
+        width={post.mainImage.width}
+        height={post.mainImage.height}
         class="w-full h-auto"
       />
     </div>
@@ -60,8 +57,8 @@ let { post } = $props();
 
   <!-- Body with narrative styling -->
   <div class="prose prose-lg dark:prose-invert max-w-none font-serif">
-    {#if post.body}
-      <PortableText value={post.body} {components} />
+    {#if post.body.length > 0}
+      <BlogRichText blocks={post.body} />
     {/if}
   </div>
 

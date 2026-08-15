@@ -1,14 +1,3 @@
-<!--
-  === Available Post Types ===
-  standard, caseStudy, behindTheScenes, technical, clientStory
-
-  === How to Add a New Template ===
-  1. Create a new component in src/lib/components/templates/
-  2. Import it here and add it to the templates object
-  3. Add the new postType to Sanity schema (angelsrest-studio/schemaTypes/post.ts)
-  4. Add a case to the {#if} block below
--->
-
 <script lang="ts">
 import SEO from "$lib/components/SEO.svelte";
 import BehindTheScenes from "$lib/components/templates/BehindTheScenes.svelte";
@@ -20,21 +9,13 @@ import Technical from "$lib/components/templates/Technical.svelte";
 let { data } = $props();
 const post = $derived(data.post);
 
-const templateType = $derived(post.postType || "standard");
-
-const templates = {
-	standard: Standard,
-	caseStudy: CaseStudy,
-	behindTheScenes: BehindTheScenes,
-	technical: Technical,
-	clientStory: ClientStory,
-};
+const templateType = $derived(post.presentation);
 </script>
 
 <SEO
-  title={`${post.title} | angel's rest`}
-  description={post.excerpt || `Read ${post.title} on Angel's Rest blog.`}
-  url={`https://angelsrest.online/blog/${post.slug.current}`}
+  title={`${post.seoTitle || post.title} | angel's rest`}
+  description={post.seoDescription || `Read ${post.title} on Angel's Rest blog.`}
+  url={`${post.siteUrl}/blog/${post.slug}`}
 />
 
 {#if templateType === 'standard'}
@@ -48,6 +29,6 @@ const templates = {
 {:else if templateType === 'clientStory'}
   <ClientStory {post} />
 {:else}
-  <!-- Fallback: standard template for unknown post types -->
+  <!-- The server validates presentations; this is a defensive rendering fallback. -->
   <Standard {post} />
 {/if}

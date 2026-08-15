@@ -288,12 +288,19 @@ export default defineSchema({
 		schemaVersion: v.literal(1),
 		payload: contentRevisionPayloadValidator,
 		source: contentRevisionSourceValidator,
+		restoredFromRevisionId: v.optional(v.id("contentRevisions")),
+		restoreOperationId: v.optional(v.string()),
+		restoreRequestDigest: v.optional(v.string()),
 		checksum: v.string(),
 		createdAt: v.number(),
 		createdBy: v.string(),
 	})
 		.index("by_documentId_and_createdAt", ["documentId", "createdAt"])
-		.index("by_siteUrl_and_kind_and_createdAt", ["siteUrl", "kind", "createdAt"]),
+		.index("by_siteUrl_and_kind_and_createdAt", ["siteUrl", "kind", "createdAt"])
+		.index("by_siteUrl_and_restoreOperationId", [
+			"siteUrl",
+			"restoreOperationId",
+		]),
 
 	// Ordered Post body rows keep rich text queryable without placing an
 	// unbounded document inside the revision payload. Image blocks contain only
