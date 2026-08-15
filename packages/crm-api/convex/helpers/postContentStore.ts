@@ -28,6 +28,7 @@ import {
 	requireValidPublishedSlugChangeRetry,
 	retainPreviousPublishedSlug,
 } from "./contentSlugHistory";
+import { contentRevisionProvenanceFields } from "./contentRevisionProvenance";
 import {
 	archiveContentDocument,
 	requireActiveContentDocument,
@@ -36,11 +37,20 @@ import {
 } from "./contentLifecycle";
 import type { PublishedSlugChange } from "./contentValidators";
 
-export type PostDraftWriter = {
+type PostDraftWriterBase = {
 	actor: string;
-	source: "admin" | "sanityImport";
 	now: number;
 };
+
+export type PostDraftWriter = PostDraftWriterBase & (
+	| { source: "admin" | "sanityImport" }
+	| {
+		source: "restore";
+		restoredFromRevisionId: Id<"contentRevisions">;
+		restoreOperationId: string;
+		restoreRequestDigest: string;
+	}
+);
 
 function canonicalDraftSlug(draft: PostDraft) {
 	if (draft.slug === undefined || !draft.slug.trim()) return undefined;
@@ -67,7 +77,7 @@ async function getDocumentByKey(
 		.unique();
 }
 
-async function insertPostRevision(
+export async function insertPostRevision(
 	ctx: MutationCtx,
 	document: Doc<"contentDocuments">,
 	draft: PostDraft,
@@ -83,6 +93,7 @@ async function insertPostRevision(
 		schemaVersion: 1,
 		payload,
 		source: writer.source,
+		...contentRevisionProvenanceFields(writer),
 		checksum,
 		createdAt: writer.now,
 		createdBy: writer.actor,

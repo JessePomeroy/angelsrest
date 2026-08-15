@@ -4,25 +4,20 @@
   A structured layout for project case studies with dedicated sections
   for The Brief, The Approach, and The Result.
   
-  Schema fields used:
+  Provider-neutral fields used:
   - brief: What the client needed or project goals
   - approach: Creative direction, gear choices, film stocks
-  - result: Final delivery or personal reflection
+  - outcome: Final delivery or personal reflection
   
   Used for: Portfolio pieces, client projects, personal experiments.
 -->
 
 <script lang="ts">
-import { PortableText } from "@portabletext/svelte";
-import { urlFor } from "$lib/sanity/client";
+import type { BlogPostDetail } from "$lib/blog/content";
+import BlogRichText from "$lib/components/BlogRichText.svelte";
 import { formatDate } from "$lib/utils/format";
-import PortableTextImage from "../PortableTextImage.svelte";
 
-const components = {
-	types: { image: PortableTextImage },
-};
-
-let { post } = $props();
+let { post }: { post: BlogPostDetail } = $props();
 </script>
 
 <article class="max-w-3xl mx-auto">
@@ -51,8 +46,10 @@ let { post } = $props();
   {#if post.mainImage}
     <div class="mb-12 rounded-lg overflow-hidden">
       <img
-        src={urlFor(post.mainImage).width(1200).url()}
-        alt={post.title}
+        src={post.mainImage.src}
+        alt={post.mainImage.alt}
+        width={post.mainImage.width}
+        height={post.mainImage.height}
         class="w-full h-auto"
       />
     </div>
@@ -78,20 +75,20 @@ let { post } = $props();
       </section>
     {/if}
 
-    {#if post.result}
+    {#if post.outcome}
       <section class="bg-surface-800/50 p-6 rounded-lg">
         <h2 class="text-sm tracking-widest text-surface-400 uppercase mb-2">
           The Result
         </h2>
-        <p class="text-lg">{post.result}</p>
+        <p class="text-lg">{post.outcome}</p>
       </section>
     {/if}
   </div>
 
   <!-- Body Content -->
-  {#if post.body}
+  {#if post.body.length > 0}
     <div class="prose dark:prose-invert max-w-none">
-      <PortableText value={post.body} {components} />
+      <BlogRichText blocks={post.body} />
     </div>
   {/if}
 </article>

@@ -5,6 +5,7 @@ import type {
 	ContentRevisionPayload,
 	SingletonContentKind,
 } from "./contentValidators";
+import { contentRevisionProvenanceFields } from "./contentRevisionProvenance";
 
 type ContentContext = QueryCtx | MutationCtx;
 
@@ -166,6 +167,7 @@ export async function saveContentDraft(
 		schemaVersion: 1,
 		payload: args.payload,
 		source: "admin",
+		...contentRevisionProvenanceFields({ source: "admin" }),
 		checksum,
 		createdAt: now,
 		createdBy: actor,

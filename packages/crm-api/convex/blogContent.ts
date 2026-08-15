@@ -20,6 +20,10 @@ import {
 	blogSupportingDraftValidator,
 	blogSupportingKindValidator,
 } from "./helpers/blogContentValidators";
+import {
+	blogPinnedRestoreEntryValidator,
+	restorePinnedBlogRevisions,
+} from "./helpers/blogPinnedRestore";
 import { publishedSlugChangeValidator } from "./helpers/contentValidators";
 import {
 	ANGELS_REST_SANITY_BLOG_IMPORT_RELEASE,
@@ -100,6 +104,16 @@ export const archive = mutation({
 export const restore = mutation({
 	args: { documentId: v.id("contentDocuments") },
 	handler: async (ctx, args) => await restoreBlogDocument(ctx, args.documentId),
+});
+
+/** Operator-only atomic publication of new revisions cloned from one pinned snapshot. */
+export const restorePinnedPublishedRevisions = internalMutation({
+	args: {
+		siteUrl: v.string(),
+		operationId: v.string(),
+		entries: v.array(blogPinnedRestoreEntryValidator),
+	},
+	handler: async (ctx, args) => await restorePinnedBlogRevisions(ctx, args),
 });
 
 /** Authenticated Author/Category editor state derived from document ownership. */

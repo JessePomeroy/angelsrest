@@ -1,25 +1,5 @@
-import { getSanityClient } from "$lib/sanity/client.server";
+import { blogContent } from "$lib/server/blogContent.server";
 
-export const load = async ({ locals }) => {
-	const sanity = getSanityClient(locals.isPreview);
-	const posts = await sanity.fetch(`
-    *[_type == "post"] | order(publishedAt desc) {
-      _id,
-      title,
-      slug,
-      publishedAt,
-      mainImage,
-      postType,
-      "excerpt": array::join(string::split(pt::text(body), "")[0..200], "") + "...",
-      author->{
-        name,
-        image
-      },
-      categories[]->{
-        title
-      }
-    }
-  `);
-
-	return { posts };
-};
+export const load = async ({ locals }) => ({
+	posts: await blogContent.loadIndex(locals.isPreview),
+});
