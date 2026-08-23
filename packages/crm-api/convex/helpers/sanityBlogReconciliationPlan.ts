@@ -553,7 +553,7 @@ function collectGear(
 			};
 			if (
 				[item.camera, item.lens, item.filmStock, item.developer].every(
-					(value) => value === null,
+					(value) => value === undefined || value === null,
 				)
 			) {
 				emptyEntries.push(identity);

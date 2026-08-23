@@ -345,12 +345,26 @@ describe("revision-pinned Sanity Blog reconciliation plan", () => {
 			createSanityBlogReconciliationPlan(partialSource, partialDecision),
 		).toThrow(/exact accepted all-null set/i);
 
-		const missingRoles = sourceFixture();
-		missingRoles.posts[0].gearUsed = [{ _key: "empty-item" }];
-		const missingRolesDecision = options();
-		missingRolesDecision.decisions.gearMappings = {};
+		const omittedNullFields = sourceFixture();
+		omittedNullFields.posts[0].postType = "standard";
+		omittedNullFields.posts[0].gearUsed = [{ _key: "empty-item" }];
+		const omittedNullFieldsDecision = options();
+		omittedNullFieldsDecision.decisions.gearMappings = {};
+		omittedNullFieldsDecision.decisions.emptyGearOmissions =
+			accepted.decisions.emptyGearOmissions;
+		expect(
+			createSanityBlogReconciliationPlan(
+				omittedNullFields,
+				omittedNullFieldsDecision,
+			).posts[0].draft.equipment,
+		).toEqual([]);
+
+		const emptyStringRoles = sourceFixture();
+		emptyStringRoles.posts[0].gearUsed = [{ _key: "empty-item", camera: "" }];
+		const emptyStringRolesDecision = options();
+		emptyStringRolesDecision.decisions.gearMappings = {};
 		expect(() =>
-			createSanityBlogReconciliationPlan(missingRoles, missingRolesDecision),
+			createSanityBlogReconciliationPlan(emptyStringRoles, emptyStringRolesDecision),
 		).toThrow(/not exactly all-null/i);
 
 		const tampered = structuredClone(plan);

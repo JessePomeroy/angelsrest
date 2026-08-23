@@ -669,7 +669,7 @@ export function buildAcceptedOwnerDecisions(
 	if (sourceOrder < 0) throw new Error("Accepted empty source gear order is invalid");
 	const sourceGear = object(sourceGearItems[sourceOrder], "Accepted empty source gear item");
 	for (const field of ["camera", "developer", "filmStock", "lens"] as const) {
-		if (sourceGear[field] !== null && sourceGear[field] !== undefined && sourceGear[field] !== "") {
+		if (sourceGear[field] !== null && sourceGear[field] !== undefined) {
 			throw new Error(`Accepted empty gear item gained ${field}`);
 		}
 	}
@@ -727,7 +727,7 @@ export function buildAcceptedOwnerDecisions(
 
 export function targetBaselinesFromInventory(targetInventoryValue: unknown) {
 	const inventory = object(targetInventoryValue, "Sealed target inventory");
-	exact(inventory.schema, "angelsrest.r6.blog-convex-inventory.v1", "Target inventory schema");
+	exact(inventory.schema, "angelsrest.r6.blog-convex-inventory.v2", "Target inventory schema");
 	exact(inventory.siteUrl, R6_BLOG_COMPACT_BINDINGS.siteUrl, "Target inventory tenant");
 	exact(inventory.deployment, R6_BLOG_COMPACT_BINDINGS.deployment, "Target inventory deployment");
 	const expectedKeys = sortedStrings([
