@@ -17,6 +17,7 @@ export const webAssetSourceValidator = v.object({
 	sizeBytes: v.number(),
 	width: v.number(),
 	height: v.number(),
+	sha256: v.optional(v.string()),
 });
 
 export const webAssetMasterValidator = v.object({
@@ -109,6 +110,9 @@ export function validateReadyWebAsset(siteUrl: string, asset: ReadyWebAsset) {
 	}
 	requirePositiveSafeInteger(asset.source.width, "Source width");
 	requirePositiveSafeInteger(asset.source.height, "Source height");
+	if (asset.source.sha256 !== undefined && !/^[a-f0-9]{64}$/.test(asset.source.sha256)) {
+		throw new Error("Source SHA-256 is invalid");
+	}
 	requirePositiveSafeInteger(asset.master.sizeBytes, "Master size");
 	requirePositiveSafeInteger(asset.master.width, "Master width");
 	requirePositiveSafeInteger(asset.master.height, "Master height");

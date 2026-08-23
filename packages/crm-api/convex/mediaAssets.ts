@@ -64,6 +64,7 @@ function projectImportTarget(asset: Doc<"mediaAssets">) {
 			sizeBytes: asset.source.sizeBytes,
 			width: asset.source.width,
 			height: asset.source.height,
+			...(asset.source.sha256 === undefined ? {} : { sha256: asset.source.sha256 }),
 		},
 		masterIdentityMatches: asset.master.key === `${prefix}master.webp`,
 		derivatives: {
@@ -105,6 +106,7 @@ function projectAssetRegistration(asset: ReadyWebAsset) {
 			sizeBytes: asset.source.sizeBytes,
 			width: asset.source.width,
 			height: asset.source.height,
+			...(asset.source.sha256 === undefined ? {} : { sha256: asset.source.sha256 }),
 		},
 		master: {
 			key: asset.master.key,

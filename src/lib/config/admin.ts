@@ -29,15 +29,25 @@ const portfolioEditorApi = new Proxy(api.portfolioGalleries, {
 	},
 });
 
-const siteEditorApi = new Proxy(api.content, {
-	get(content, prop, receiver) {
-		// Angel's Rest keeps public site settings and Contact copy in Sanity during
-		// this staged adoption. The shared editor may save private Convex drafts,
-		// but it must not expose publishing until each public read boundary is connected.
-		if (prop === "publishSiteSettings" || prop === "publishContactPage") return undefined;
-		return Reflect.get(content, prop, receiver);
-	},
-});
+// Keep the site editor on an explicit browser-safe capability surface. About's
+// installed shared editor currently requires its ordinary authenticated publish
+// reference, while Site Settings and Contact remain draft-only. Migration and
+// restore operators are internal and cannot appear through this plain object.
+const siteEditorApi = {
+	getSiteSettingsEditorState: api.content.getSiteSettingsEditorState,
+	saveSiteSettingsDraft: api.content.saveSiteSettingsDraft,
+	discardSiteSettingsDraft: api.content.discardSiteSettingsDraft,
+	getHomepageQuoteEditorState: api.content.getHomepageQuoteEditorState,
+	getContactPageEditorState: api.content.getContactPageEditorState,
+	saveContactPageDraft: api.content.saveContactPageDraft,
+	discardContactPageDraft: api.content.discardContactPageDraft,
+	getAboutPageEditorState: api.content.getAboutPageEditorState,
+	saveAboutPageDraft: api.content.saveAboutPageDraft,
+	publishAboutPage: api.content.holdAboutPagePublication,
+	discardAboutPageDraft: api.content.discardAboutPageDraft,
+	listMediaAssets: api.mediaAssets.listForEditor,
+	getPlacedMediaAssets: api.mediaAssets.getManyForEditor,
+};
 
 // Keep the protected Product Editor capability plain and closed. Convex namespace
 // proxies return truthy refs for arbitrary property reads, so publication must be
@@ -113,6 +123,12 @@ export const adminConfig: AdminConfig = {
 		siteSettings: {},
 		contactPage: {
 			initialPayload: contactPageSeed,
+		},
+		aboutPage: {
+			// The route does not mount the shared editor until migration creates the draft.
+			initialPayload: {},
+			mediaBaseUrl: "https://media.angelsrest.online",
+			uploadEndpoint: "/api/admin/media",
 		},
 		blog: {
 			mediaBaseUrl: "https://media.angelsrest.online",

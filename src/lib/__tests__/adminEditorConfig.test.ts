@@ -58,6 +58,11 @@ const {
 		saveContactPageDraft: "content.saveContactPageDraft",
 		publishContactPage: "content.publishContactPage",
 		discardContactPageDraft: "content.discardContactPageDraft",
+		getAboutPageEditorState: "content.getAboutPageEditorState",
+		saveAboutPageDraft: "content.saveAboutPageDraft",
+		publishAboutPage: "content.publishAboutPage",
+		holdAboutPagePublication: "content.holdAboutPagePublication",
+		discardAboutPageDraft: "content.discardAboutPageDraft",
 	};
 	const galleriesApi = { listBySite: "galleries.listBySite" };
 	const mediaApi = {
@@ -173,6 +178,20 @@ describe("admin API aliases", () => {
 		expect(adminConfig.api.siteEditor?.discardContactPageDraft).toBe(
 			contentApi.discardContactPageDraft,
 		);
+		expect(adminConfig.api.siteEditor?.getAboutPageEditorState).toBe(
+			contentApi.getAboutPageEditorState,
+		);
+		expect(adminConfig.api.siteEditor?.saveAboutPageDraft).toBe(contentApi.saveAboutPageDraft);
+		expect(adminConfig.api.siteEditor?.publishAboutPage).toBe(contentApi.holdAboutPagePublication);
+		expect(adminConfig.api.siteEditor?.discardAboutPageDraft).toBe(
+			contentApi.discardAboutPageDraft,
+		);
+		expect(adminConfig.api.siteEditor?.listMediaAssets).toBe(mediaApi.listForEditor);
+		expect(adminConfig.api.siteEditor?.getPlacedMediaAssets).toBe(mediaApi.getManyForEditor);
+		expect(Reflect.get(adminConfig.api.siteEditor ?? {}, "importPinnedDrafts")).toBeUndefined();
+		expect(
+			Reflect.get(adminConfig.api.siteEditor ?? {}, "restorePinnedPublishedRevisions"),
+		).toBeUndefined();
 
 		const portfolioEditor = adminConfig.api.portfolioEditor;
 		expect(portfolioEditor?.listForEditor).toBe(portfolioApi.listForEditor);
@@ -222,6 +241,11 @@ describe("admin API aliases", () => {
 		expect(adminConfig.editor?.contactPage?.initialPayload).not.toHaveProperty("phone");
 		expect(adminConfig.editor?.contactPage?.initialPayload).not.toHaveProperty("availability");
 		expect(adminConfig.editor?.contactPage?.initialPayload).not.toHaveProperty("responseTime");
+		expect(adminConfig.editor?.aboutPage).toEqual({
+			initialPayload: {},
+			mediaBaseUrl: "https://media.angelsrest.online",
+			uploadEndpoint: "/api/admin/media",
+		});
 		expect(adminConfig.editor?.portfolio).toEqual({
 			mediaBaseUrl: "https://media.angelsrest.online",
 			uploadEndpoint: "/api/admin/media",

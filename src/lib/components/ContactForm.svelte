@@ -7,7 +7,10 @@ import { loadTurnstile, type TurnstileApi } from "$lib/client/turnstile";
 import { isDark } from "$lib/stores/theme";
 import { TURNSTILE_SITE_KEY } from "$lib/config/turnstile";
 
-let { hideHeader = false }: { hideHeader?: boolean } = $props();
+let {
+	hideHeader = false,
+	confirmationMessage = "message sent !",
+}: { hideHeader?: boolean; confirmationMessage?: string } = $props();
 
 /**
  * Theme-aware form text color
@@ -192,7 +195,7 @@ async function handleSubmit(e: SubmitEvent) {
                 <p class="text-red-400">{verificationError}</p>
             {/if}
             {#if status === "success"}
-                <p class="text-green-400">message sent !</p>
+                <p class="text-green-400">{confirmationMessage}</p>
             {/if}
             {#if status === "error"}
                 <p class="text-red-400">something went wrong. try again ?</p>

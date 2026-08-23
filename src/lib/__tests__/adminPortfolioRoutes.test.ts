@@ -98,6 +98,10 @@ describe("admin Editor route boundaries", () => {
 		expect(routeSource("src/routes/admin/editor/pages/contact/+page.svelte")).toContain(
 			"ContactPage",
 		);
+		const aboutRoute = routeSource("src/routes/admin/editor/pages/about/+page.svelte");
+		expect(aboutRoute).toContain("AboutPage");
+		expect(aboutRoute).toContain("getAboutPageEditorState");
+		expect(aboutRoute).toContain("migration-pending");
 		expect(existsSync(resolve(projectRoot, "src/routes/contact"))).toBe(false);
 	});
 
@@ -128,11 +132,11 @@ describe("admin Editor route boundaries", () => {
 		}
 	});
 
-	it("leaves the public Contact read Sanity-only inside the About route", () => {
+	it("routes About and Contact through the combined dormant provider", () => {
 		const aboutServer = routeSource("src/routes/about/+page.server.ts");
-		expect(aboutServer).toContain('from "$lib/sanity/client.server"');
-		expect(aboutServer).toContain('*[_type == "contactPage"][0]');
+		expect(aboutServer).toContain('from "$lib/server/aboutContactContent.server"');
+		expect(aboutServer).toContain("aboutContactContent.load");
 		expect(aboutServer).not.toContain("$convex");
-		expect(aboutServer).not.toContain("getPublishedContactPageWithRevision");
+		expect(aboutServer).not.toContain("getSanityClient");
 	});
 });

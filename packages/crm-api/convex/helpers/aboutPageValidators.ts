@@ -34,6 +34,7 @@ export const aboutPageDraftPayloadValidator = v.object({
 	sections: v.optional(v.array(aboutSectionValidator)),
 	highlights: v.optional(v.array(aboutHighlightValidator)),
 	seoDescription: v.optional(v.string()),
+	seoImageUrl: v.optional(v.string()),
 });
 
 export type AboutPageDraftPayload = Infer<typeof aboutPageDraftPayloadValidator>;
@@ -53,6 +54,7 @@ export type PublishedAboutPage = {
 	sections: Array<{ key: string; title: string; items: string[] }>;
 	highlights: Array<{ key: string; label: string; value: string }>;
 	seoDescription: string;
+	seoImageUrl?: string;
 };
 
 export const ABOUT_PORTRAIT_MAX = 10;
@@ -74,6 +76,7 @@ const LIMITS = {
 	highlightLabel: 80,
 	highlightValue: 300,
 	seoDescription: 320,
+	seoImageUrl: 2_048,
 } as const;
 
 const ALLOWED_KEYS = new Set([
@@ -86,6 +89,7 @@ const ALLOWED_KEYS = new Set([
 	"sections",
 	"highlights",
 	"seoDescription",
+	"seoImageUrl",
 ]);
 
 function assertMaximum(value: string | undefined, maximum: number, field: string) {
@@ -115,6 +119,7 @@ export function validateAboutPageDraft(payload: AboutPageDraftPayload) {
 	assertMaximum(payload.introduction, LIMITS.introduction, "Introduction");
 	assertMaximum(payload.biography, LIMITS.biography, "Biography");
 	assertMaximum(payload.seoDescription, LIMITS.seoDescription, "SEO description");
+	assertMaximum(payload.seoImageUrl, LIMITS.seoImageUrl, "SEO image URL");
 
 	const portraits = payload.portraits ?? [];
 	if (portraits.length > LIMITS.portraits) {
@@ -170,6 +175,23 @@ function optionalText(value: string | undefined, field: string, maximum: number)
 	const normalized = value?.trim();
 	if (!normalized) return undefined;
 	assertMaximum(normalized, maximum, field);
+	return normalized;
+}
+
+function optionalPublicUrl(value: string | undefined, field: string) {
+	const normalized = optionalText(value, field, LIMITS.seoImageUrl);
+	if (!normalized) return undefined;
+	let parsed: URL;
+	try {
+		parsed = new URL(normalized);
+	} catch {
+		throw new Error(`${field} must be a public HTTP URL`);
+	}
+	if (
+		(parsed.protocol !== "https:" && parsed.protocol !== "http:")
+		|| parsed.username
+		|| parsed.password
+	) throw new Error(`${field} must be a public HTTP URL`);
 	return normalized;
 }
 
@@ -243,6 +265,7 @@ export function toPublishedAboutPage(payload: AboutPageDraftPayload): PublishedA
 			"SEO description",
 			LIMITS.seoDescription,
 		),
+		seoImageUrl: optionalPublicUrl(payload.seoImageUrl, "SEO image URL"),
 	};
 }
 
@@ -270,6 +293,7 @@ export function serializeAboutPagePayload(payload: AboutPageDraftPayload) {
 			value: highlight.value ?? null,
 		})),
 		seoDescription: payload.seoDescription ?? null,
+		...(payload.seoImageUrl === undefined ? {} : { seoImageUrl: payload.seoImageUrl }),
 	});
 }
 

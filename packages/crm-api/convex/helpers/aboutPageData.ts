@@ -46,6 +46,9 @@ export async function projectPublishedAboutPage(
 			source: {
 				width: asset.source.width,
 				height: asset.source.height,
+				...(asset.source.sha256 === undefined
+					? {}
+					: { sha256: asset.source.sha256 }),
 			},
 			derivatives: asset.derivatives,
 		};
