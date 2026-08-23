@@ -138,5 +138,9 @@ describe("admin Editor route boundaries", () => {
 		expect(aboutServer).toContain("aboutContactContent.load");
 		expect(aboutServer).not.toContain("$convex");
 		expect(aboutServer).not.toContain("getSanityClient");
+
+		const aboutPage = routeSource("src/routes/about/+page.svelte");
+		expect(aboutPage).toContain('paragraph.split("\\n")');
+		expect(aboutPage).toContain("<br />");
 	});
 });

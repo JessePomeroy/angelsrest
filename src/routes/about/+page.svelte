@@ -126,7 +126,7 @@ const contact = $derived(data.content.contact);
             <h2 class="mb-2 text-lg">{contact.heading.toLowerCase()}</h2>
             <div class="text-surface-400 text-sm mb-4 leading-relaxed">
                 {#each contact.intro as paragraph}
-                    <p>{paragraph}</p>
+                    <p>{#each paragraph.split("\n") as line, index}{#if index > 0}<br />{/if}{line}{/each}</p>
                 {/each}
             </div>
             <ContactForm hideHeader confirmationMessage={contact.confirmationMessage} />
