@@ -51,7 +51,7 @@ function assertExpectedDraft(
 	}
 }
 
-async function checksumPayload(serialized: string) {
+export async function checksumContentPayload(serialized: string) {
 	const digest = await crypto.subtle.digest(
 		"SHA-256",
 		new TextEncoder().encode(serialized),
@@ -59,6 +59,49 @@ async function checksumPayload(serialized: string) {
 	return Array.from(new Uint8Array(digest), (byte) =>
 		byte.toString(16).padStart(2, "0"),
 	).join("");
+}
+
+type SingletonRevisionWriterBase = {
+	actor: string;
+	now: number;
+};
+
+export type SingletonRevisionWriter = SingletonRevisionWriterBase & (
+	| { source: "admin" | "sanityImport" }
+	| {
+			source: "restore";
+			restoredFromRevisionId: Id<"contentRevisions">;
+			restoreOperationId: string;
+			restoreRequestDigest: string;
+		}
+);
+
+/** Insert one immutable singleton revision after its domain validator has run. */
+export async function insertSingletonContentRevision(
+	ctx: MutationCtx,
+	args: {
+		document: Doc<"contentDocuments">;
+		kind: SingletonContentKind;
+		payload: ContentRevisionPayload;
+		checksum: string;
+		writer: SingletonRevisionWriter;
+	},
+) {
+	if (args.document.kind !== args.kind) {
+		throw new Error("Content revision ownership mismatch");
+	}
+	return await ctx.db.insert("contentRevisions", {
+		siteUrl: args.document.siteUrl,
+		documentId: args.document._id,
+		kind: args.kind,
+		schemaVersion: 1,
+		payload: args.payload,
+		source: args.writer.source,
+		...contentRevisionProvenanceFields(args.writer),
+		checksum: args.checksum,
+		createdAt: args.writer.now,
+		createdBy: args.writer.actor,
+	});
 }
 
 function projectAdminRevision<T>(
@@ -132,7 +175,7 @@ export async function saveContentDraft(
 	const { identity, client } = await requireSiteAdmin(ctx, args.siteUrl);
 	const now = Date.now();
 	const actor = identity.tokenIdentifier;
-	const checksum = await checksumPayload(args.serializedPayload);
+	const checksum = await checksumContentPayload(args.serializedPayload);
 	let document = await getContentDocument(ctx, client.siteUrl, args.kind);
 
 	if (document) {
@@ -160,17 +203,12 @@ export async function saveContentDraft(
 		if (!document) throw new Error("Content document creation failed");
 	}
 
-	const revisionId = await ctx.db.insert("contentRevisions", {
-		siteUrl: client.siteUrl,
-		documentId: document._id,
+	const revisionId = await insertSingletonContentRevision(ctx, {
+		document,
 		kind: args.kind,
-		schemaVersion: 1,
 		payload: args.payload,
-		source: "admin",
-		...contentRevisionProvenanceFields({ source: "admin" }),
 		checksum,
-		createdAt: now,
-		createdBy: actor,
+		writer: { actor, now, source: "admin" },
 	});
 	await ctx.db.patch(document._id, {
 		draftRevisionId: revisionId,

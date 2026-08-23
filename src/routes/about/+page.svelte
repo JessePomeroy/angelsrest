@@ -1,12 +1,11 @@
 <script lang="ts">
-import { PortableText } from "@portabletext/svelte";
-import portrait from "$lib/assets/DSCF7533.jpg";
 import AsciiImage from "$lib/components/AsciiImage.svelte";
 import ContactForm from "$lib/components/ContactForm.svelte";
 import SEO from "$lib/components/SEO.svelte";
 
 let { data } = $props();
-const contact = $derived(data.contactPage);
+const about = $derived(data.content.about);
+const contact = $derived(data.content.contact);
 </script>
 
 <svelte:head>
@@ -58,8 +57,8 @@ const contact = $derived(data.contactPage);
 
 <SEO
     title="about | angel's rest"
-    description={data.about?.seo?.description || "About Jesse Pomeroy — photographer, visual artist, and web developer. Get in touch for inquiries and collaborations."}
-    image={data.about?.seo?.ogImageUrl || "/og-image.jpg"}
+    description={about.seo.description || "About Jesse Pomeroy — photographer, visual artist, and web developer. Get in touch for inquiries and collaborations."}
+    image={about.seo.imageUrl || "/og-image.jpg"}
     url="https://angelsrest.online/about"
 />
 
@@ -76,8 +75,8 @@ const contact = $derived(data.contactPage);
                     class="aspect-[3/4] w-64 md:w-72 lg:w-80 overflow-hidden rounded-md"
                 >
                     <AsciiImage
-                        src={portrait}
-                        alt={data.about?.name || "Portrait"}
+                        src={about.portrait.src}
+                        alt={about.portrait.altText}
                         class="w-full h-full object-cover"
                         resolution={24}
                     />
@@ -87,14 +86,14 @@ const contact = $derived(data.contactPage);
 
         <!-- Bio -->
         <div class="pt-2 lg:pt-4">
-            <h1 class="mb-3 text-2xl">{data.about.name}</h1>
+            <h1 class="mb-3 text-2xl">{about.displayName}</h1>
             <p class="leading-relaxed mb-3 text-sm">
-                {data.about.shortBio}
+                {about.introduction}
             </p>
-            {#if data.about?.social?.instagram}
+            {#if about.instagramUrl}
                 <p class="text-surface-400 text-sm">
                     <a
-                        href={data.about.social.instagram}
+                        href={about.instagramUrl}
                         target="_blank"
                         rel="noopener"
                         class="hover:text-surface-200 transition-colors"
@@ -102,19 +101,19 @@ const contact = $derived(data.contactPage);
                     >
                 </p>
             {/if}
-            {#if contact?.bookingEnabled}
+            {#if contact.booking.enabled && contact.booking.calLink}
                 <div class="mt-4 pt-4 border-t border-surface-500/20">
                     <p class="text-surface-400 text-xs mb-3">
-                        want to book a session or schedule a call?
+                        {contact.booking.intro}
                     </p>
                     <button
                         type="button"
                         class="px-4 py-2.5 text-sm font-medium lowercase tracking-wide bg-white/5 border border-gray-300 dark:border-white/10 rounded-lg hover:bg-gray-100 dark:hover:bg-white/10 transition-all cursor-pointer"
                         style="color: var(--form-text-color);"
-                        data-cal-link="jesse-s1wmio/photosession"
+                        data-cal-link={contact.booking.calLink}
                         data-cal-namespace="photosession"
                     >
-                        book a time
+                        {contact.booking.label}
                     </button>
                 </div>
             {/if}
@@ -124,21 +123,13 @@ const contact = $derived(data.contactPage);
         <div
             class="pt-2 lg:pt-4 md:col-span-2 lg:col-span-1 md:border-t md:border-surface-500/20 md:pt-6 md:mt-2 lg:border-0 lg:mt-0"
         >
-            {#if contact?.heading}
-                <h2 class="mb-2 text-lg">{contact.heading.toLowerCase()}</h2>
-            {:else}
-                <h2 class="mb-2 text-lg">get in touch</h2>
-            {/if}
-            {#if contact?.intro}
-                <div class="text-surface-400 text-sm mb-4 leading-relaxed">
-                    <PortableText value={contact.intro} />
-                </div>
-            {:else}
-                <p class="text-surface-400 text-sm mb-4">
-                    for inquiries, commissions, and collaborations.
-                </p>
-            {/if}
-            <ContactForm hideHeader={!!contact?.heading} />
+            <h2 class="mb-2 text-lg">{contact.heading.toLowerCase()}</h2>
+            <div class="text-surface-400 text-sm mb-4 leading-relaxed">
+                {#each contact.intro as paragraph}
+                    <p>{paragraph}</p>
+                {/each}
+            </div>
+            <ContactForm hideHeader confirmationMessage={contact.confirmationMessage} />
         </div>
     </div>
 </section>
