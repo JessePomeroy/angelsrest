@@ -61,8 +61,6 @@ let { blocks }: { blocks: BlogTextBlock[] } = $props();
       <img
         src={block.image.src}
         alt={block.image.alt}
-        width={block.image.width}
-        height={block.image.height}
         class="w-full h-auto rounded-lg"
         loading="lazy"
       />

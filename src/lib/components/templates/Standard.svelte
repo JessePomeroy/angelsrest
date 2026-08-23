@@ -41,8 +41,6 @@ let { post }: { post: BlogPostDetail } = $props();
             <img
               src={post.author.image.src}
               alt={post.author.image.alt}
-              width={post.author.image.width}
-              height={post.author.image.height}
               class="w-8 h-8 rounded-full object-cover"
             />
           {/if}
@@ -60,8 +58,6 @@ let { post }: { post: BlogPostDetail } = $props();
       <img
         src={post.mainImage.src}
         alt={post.mainImage.alt}
-        width={post.mainImage.width}
-        height={post.mainImage.height}
         class="w-full h-auto"
       />
     </div>

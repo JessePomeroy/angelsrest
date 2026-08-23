@@ -14,8 +14,6 @@ let { post }: { post: BlogPostSummary } = $props();
       <img
         src={post.mainImage.src}
         alt={post.mainImage.alt}
-        width={post.mainImage.width}
-        height={post.mainImage.height}
         class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
       />
     </div>

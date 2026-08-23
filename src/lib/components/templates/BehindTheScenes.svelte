@@ -48,8 +48,6 @@ let { post }: { post: BlogPostDetail } = $props();
       <img
         src={post.mainImage.src}
         alt={post.mainImage.alt}
-        width={post.mainImage.width}
-        height={post.mainImage.height}
         class="w-full h-auto"
       />
     </div>
