@@ -54,6 +54,34 @@ const catalogProductGraphsApi = {
 	unpublish: api.catalogProductGraphs.unpublish,
 };
 
+// Keep the protected Blog editor on the exact author/category and Post
+// capability set consumed by the shared UI. Convex namespaces are open-ended
+// proxies, so passing either namespace through would also make future
+// migration or restore operators appear reachable from the browser config.
+const blogContentApi = {
+	listForEditor: api.blogContent.listForEditor,
+	getEditorState: api.blogContent.getEditorState,
+	createDraft: api.blogContent.createDraft,
+	saveDraft: api.blogContent.saveDraft,
+	publish: api.blogContent.publish,
+	discardDraft: api.blogContent.discardDraft,
+	unpublish: api.blogContent.unpublish,
+	archive: api.blogContent.archive,
+	restore: api.blogContent.restore,
+};
+
+const postContentApi = {
+	listForEditor: api.postContent.listForEditor,
+	getEditorState: api.postContent.getEditorState,
+	createDraft: api.postContent.createDraft,
+	saveDraft: api.postContent.saveDraft,
+	publish: api.postContent.publish,
+	discardDraft: api.postContent.discardDraft,
+	unpublish: api.postContent.unpublish,
+	archive: api.postContent.archive,
+	restore: api.postContent.restore,
+};
+
 const apiWithAliases = new Proxy(api, {
 	get(target, prop, receiver) {
 		if (prop === "siteEditor") return siteEditorApi;
@@ -67,8 +95,8 @@ const apiWithAliases = new Proxy(api, {
 				},
 			});
 		}
-		if (prop === "blogContent") return target.blogContent;
-		if (prop === "postContent") return target.postContent;
+		if (prop === "blogContent") return blogContentApi;
+		if (prop === "postContent") return postContentApi;
 		return Reflect.get(target, prop, receiver);
 	},
 }) as unknown as AdminAPI;

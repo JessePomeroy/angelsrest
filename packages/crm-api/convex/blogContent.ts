@@ -20,6 +20,11 @@ import {
 	blogSupportingDraftValidator,
 	blogSupportingKindValidator,
 } from "./helpers/blogContentValidators";
+import { assertBlogMigrationCapability } from "./helpers/blogMigrationCapability";
+import {
+	blogPinnedRestoreEntryValidator,
+	restorePinnedBlogRevisions,
+} from "./helpers/blogPinnedRestore";
 import { publishedSlugChangeValidator } from "./helpers/contentValidators";
 import {
 	ANGELS_REST_SANITY_BLOG_IMPORT_RELEASE,
@@ -36,12 +41,18 @@ export const importSanityBlogDrafts = internalMutation({
 		plan: sanityBlogImportPlanValidator,
 		digest: v.string(),
 	},
-	handler: async (ctx, { plan, digest }) =>
-		await importReleasedSanityBlogDrafts(ctx, {
+	handler: async (ctx, { plan, digest }) => {
+		assertBlogMigrationCapability({
+			siteUrl: plan.siteUrl,
+			purpose: "sanity-blog-import-v1",
+			binding: digest,
+		});
+		return await importReleasedSanityBlogDrafts(ctx, {
 			plan,
 			digest,
 			contract: ANGELS_REST_SANITY_BLOG_IMPORT_RELEASE,
-		}),
+		});
+	},
 });
 
 /** Create one idempotently keyed Author or Category draft for a verified site. */
@@ -100,6 +111,23 @@ export const archive = mutation({
 export const restore = mutation({
 	args: { documentId: v.id("contentDocuments") },
 	handler: async (ctx, args) => await restoreBlogDocument(ctx, args.documentId),
+});
+
+/** Operator-only atomic publication of new revisions cloned from one pinned snapshot. */
+export const restorePinnedPublishedRevisions = internalMutation({
+	args: {
+		siteUrl: v.string(),
+		operationId: v.string(),
+		entries: v.array(blogPinnedRestoreEntryValidator),
+	},
+	handler: async (ctx, args) => {
+		assertBlogMigrationCapability({
+			siteUrl: args.siteUrl,
+			purpose: "blog-pinned-restore-v1",
+			binding: args.operationId,
+		});
+		return await restorePinnedBlogRevisions(ctx, args);
+	},
 });
 
 /** Authenticated Author/Category editor state derived from document ownership. */

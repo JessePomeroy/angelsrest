@@ -4,23 +4,17 @@
   A technical-focused layout for gear details, film stocks, and development notes.
   Features a gear grid and monospace typography.
   
-  Schema fields used:
-  - gearUsed: Array of { camera, lens, filmStock, developer }
+  Uses the provider-neutral equipment list from the public Blog DTO.
   
   Used for: Film stock reviews, gear tests, development notes, technical tutorials.
 -->
 
 <script lang="ts">
-import { PortableText } from "@portabletext/svelte";
-import { urlFor } from "$lib/sanity/client";
+import type { BlogPostDetail } from "$lib/blog/content";
+import BlogRichText from "$lib/components/BlogRichText.svelte";
 import { formatDate } from "$lib/utils/format";
-import PortableTextImage from "../PortableTextImage.svelte";
 
-const components = {
-	types: { image: PortableTextImage },
-};
-
-let { post } = $props();
+let { post }: { post: BlogPostDetail } = $props();
 </script>
 
 <article class="max-w-3xl mx-auto">
@@ -46,25 +40,34 @@ let { post } = $props();
   </header>
 
   <!-- Gear Grid -->
-  {#if post.gearUsed && post.gearUsed.length > 0}
+  {#if post.equipment.length > 0}
     <section class="mb-12">
       <h2 class="text-sm tracking-widest text-surface-400 uppercase mb-4">
         Gear Used
       </h2>
       <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
-        {#each post.gearUsed as gear, i (i)}
+        {#each post.equipment as item, i (i)}
           <div class="bg-surface-800/50 p-4 rounded-lg text-center">
-            {#if gear.camera}
-              <p class="text-sm text-surface-300">{gear.camera}</p>
-            {/if}
-            {#if gear.lens}
-              <p class="text-sm text-surface-400">{gear.lens}</p>
-            {/if}
-            {#if gear.filmStock}
-              <p class="font-mono text-sm text-accent-400">{gear.filmStock}</p>
-            {/if}
-            {#if gear.developer}
-              <p class="text-xs text-surface-500">{gear.developer}</p>
+            {#if item.kind === 'photography'}
+              {#if item.camera}
+                <p class="text-sm text-surface-300">{item.camera}</p>
+              {/if}
+              {#if item.lens}
+                <p class="text-sm text-surface-400">{item.lens}</p>
+              {/if}
+              {#if item.filmStock}
+                <p class="font-mono text-sm text-accent-400">{item.filmStock}</p>
+              {/if}
+              {#if item.developer}
+                <p class="text-xs text-surface-500">{item.developer}</p>
+              {/if}
+            {:else}
+              {#if item.label}
+                <p class="text-sm text-surface-300">{item.label}</p>
+              {/if}
+              {#if item.details && item.details !== item.label}
+                <p class="text-xs text-surface-500">{item.details}</p>
+              {/if}
             {/if}
           </div>
         {/each}
@@ -76,8 +79,8 @@ let { post } = $props();
   {#if post.mainImage}
     <div class="mb-8 rounded-lg overflow-hidden">
       <img
-        src={urlFor(post.mainImage).width(1000).url()}
-        alt={post.title}
+        src={post.mainImage.src}
+        alt={post.mainImage.alt}
         class="w-full h-auto"
       />
     </div>
@@ -85,8 +88,8 @@ let { post } = $props();
 
   <!-- Technical content -->
   <div class="prose dark:prose-invert max-w-none font-mono text-sm">
-    {#if post.body}
-      <PortableText value={post.body} {components} />
+    {#if post.body.length > 0}
+      <BlogRichText blocks={post.body} />
     {/if}
   </div>
 
@@ -95,7 +98,7 @@ let { post } = $props();
     <div class="flex items-center gap-2 text-xs text-surface-500">
       <span>Technical Notes</span>
       <span>•</span>
-      <span>{post.gearUsed?.length || 0} items listed</span>
+      <span>{post.equipment.length} items listed</span>
     </div>
   </footer>
 </article>

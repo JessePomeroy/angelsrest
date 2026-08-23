@@ -4,25 +4,20 @@
   A wedding/event story layout with large hero header, testimonial-style
   brief/result sections, and a warm closing message.
   
-  Schema fields used:
+  Provider-neutral fields used:
   - brief: What the client wanted for their event
   - approach: How you captured the day
-  - result: Final delivery or favorite moments
+  - outcome: Final delivery or favorite moments
   
   Used for: Wedding stories, event recaps, couple features.
 -->
 
 <script lang="ts">
-import { PortableText } from "@portabletext/svelte";
-import { urlFor } from "$lib/sanity/client";
+import type { BlogPostDetail } from "$lib/blog/content";
+import BlogRichText from "$lib/components/BlogRichText.svelte";
 import { formatDate } from "$lib/utils/format";
-import PortableTextImage from "../PortableTextImage.svelte";
 
-const components = {
-	types: { image: PortableTextImage },
-};
-
-let { post } = $props();
+let { post }: { post: BlogPostDetail } = $props();
 </script>
 
 <article class="max-w-4xl mx-auto">
@@ -51,8 +46,8 @@ let { post } = $props();
   {#if post.mainImage}
     <div class="mb-12 -mx-4 md:-mx-20 rounded-lg overflow-hidden">
       <img
-        src={urlFor(post.mainImage).width(1600).url()}
-        alt={post.title}
+        src={post.mainImage.src}
+        alt={post.mainImage.alt}
         class="w-full h-auto"
       />
     </div>
@@ -78,20 +73,20 @@ let { post } = $props();
       </section>
     {/if}
 
-    {#if post.result}
+    {#if post.outcome}
       <section class="text-center">
         <h2 class="text-xs tracking-widest text-surface-400 uppercase mb-2">
           The Result
         </h2>
-        <p class="text-xl italic">{post.result}</p>
+        <p class="text-xl italic">{post.outcome}</p>
       </section>
     {/if}
   </div>
 
   <!-- Gallery Body -->
-  {#if post.body}
+  {#if post.body.length > 0}
     <div class="prose dark:prose-invert max-w-none">
-      <PortableText value={post.body} {components} />
+      <BlogRichText blocks={post.body} />
     </div>
   {/if}
 

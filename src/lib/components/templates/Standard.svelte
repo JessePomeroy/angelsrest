@@ -8,16 +8,11 @@
 -->
 
 <script lang="ts">
-import { PortableText } from "@portabletext/svelte";
-import { urlFor } from "$lib/sanity/client";
+import type { BlogPostDetail } from "$lib/blog/content";
+import BlogRichText from "$lib/components/BlogRichText.svelte";
 import { formatDate } from "$lib/utils/format";
-import PortableTextImage from "../PortableTextImage.svelte";
 
-const components = {
-	types: { image: PortableTextImage },
-};
-
-let { post } = $props();
+let { post }: { post: BlogPostDetail } = $props();
 </script>
 
 <article class="max-w-2xl mx-auto">
@@ -44,8 +39,8 @@ let { post } = $props();
         <div class="flex items-center gap-2">
           {#if post.author.image}
             <img
-              src={urlFor(post.author.image).width(32).height(32).url()}
-              alt={post.author.name}
+              src={post.author.image.src}
+              alt={post.author.image.alt}
               class="w-8 h-8 rounded-full object-cover"
             />
           {/if}
@@ -61,8 +56,8 @@ let { post } = $props();
   {#if post.mainImage}
     <div class="mb-8 rounded-lg overflow-hidden">
       <img
-        src={urlFor(post.mainImage).width(800).url()}
-        alt={post.title}
+        src={post.mainImage.src}
+        alt={post.mainImage.alt}
         class="w-full h-auto"
       />
     </div>
@@ -70,8 +65,8 @@ let { post } = $props();
 
   <!-- Body -->
   <div class="prose dark:prose-invert max-w-none">
-    {#if post.body}
-      <PortableText value={post.body} {components} />
+    {#if post.body.length > 0}
+      <BlogRichText blocks={post.body} />
     {/if}
   </div>
 
