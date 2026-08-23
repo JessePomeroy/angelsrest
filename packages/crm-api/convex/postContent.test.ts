@@ -410,6 +410,14 @@ describe("tenant-scoped Post content graphs", () => {
 					equipment: [{ key: "camera", label: "Camera", details: "35mm" }],
 				}),
 			],
+			[
+				"technical-note-without-invented-items",
+				completePost(author.documentId, {
+					slug: "technical-note-without-invented-items",
+					format: "technicalNote",
+					presentation: "technical",
+				}),
+			],
 		];
 		for (const [documentKey, draft] of drafts) {
 			const created = await createPost(

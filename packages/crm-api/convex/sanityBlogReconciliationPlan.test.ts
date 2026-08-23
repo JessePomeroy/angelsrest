@@ -272,7 +272,7 @@ describe("revision-pinned Sanity Blog reconciliation plan", () => {
 
 	test("omits only the exact revision-pinned set of all-null gear rows", () => {
 		const allNullSource = sourceFixture();
-		allNullSource.posts[0].postType = "standard";
+		allNullSource.posts[0].postType = "technical";
 		allNullSource.posts[0].gearUsed = [
 			{
 				_key: "empty-item",
