@@ -176,7 +176,7 @@ function targetInventoryFixture() {
 		...ANGELS_REST_SANITY_BLOG_IMPORT_RELEASE.documentKeys.posts,
 	];
 	return {
-		schema: "angelsrest.r6.blog-convex-inventory.v1",
+		schema: "angelsrest.r6.blog-convex-inventory.v2",
 		siteUrl: "angelsrest.online",
 		deployment: "loyal-swan-967",
 		documents: documentKeys.map((documentKey, rank) => ({
@@ -274,6 +274,8 @@ describe("R6 Blog compact plan preparation", () => {
 		const { proposal, imageAssetIds } = proposalFixture(source);
 
 		expect(Object.keys(targetBaselinesFromInventory(targetInventory))).toHaveLength(6);
+		const obsoleteSchema = { ...targetInventory, schema: "angelsrest.r6.blog-convex-inventory.v1" };
+		expect(() => targetBaselinesFromInventory(obsoleteSchema)).toThrow(/schema/i);
 		const input = buildCompactPlanInput({
 			source,
 			proposal,
