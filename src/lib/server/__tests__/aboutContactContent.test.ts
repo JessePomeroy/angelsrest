@@ -13,6 +13,7 @@ import {
 	compareAboutContact,
 	createAboutContactContentProvider,
 	parseAboutContactProviderMode,
+	projectSiteSettingsInstagramUrl,
 } from "$lib/server/aboutContactContent.server";
 
 const CONTACT_INTRO =
@@ -24,7 +25,6 @@ function sanityProjection() {
 			{
 				name: "Jesse Pomeroy",
 				shortBio: "Photographer, visual artist, and web developer.",
-				social: null,
 				seo: { description: "About Jesse Pomeroy", ogImageUrl: null },
 			},
 		],
@@ -170,6 +170,32 @@ describe("About and Contact provider boundary", () => {
 		});
 		await expect(missing.load(false)).rejects.toMatchObject({ status: 503 });
 		expect(sanity.load).toHaveBeenCalledTimes(1);
+	});
+
+	it("projects the unique Instagram link from Site Settings", () => {
+		expect(
+			projectSiteSettingsInstagramUrl({
+				socialLinks: [{ platform: "instagram", url: "https://www.instagram.com/stray_black_dog" }],
+			}),
+		).toBe("https://www.instagram.com/stray_black_dog");
+		expect(projectSiteSettingsInstagramUrl({ socialLinks: [] })).toBeNull();
+		expect(() =>
+			projectSiteSettingsInstagramUrl({
+				socialLinks: [
+					{ platform: "instagram", url: "https://instagram.com/one" },
+					{ platform: "instagram", url: "https://instagram.com/two" },
+				],
+			}),
+		).toThrow("Malformed public About and Contact projection");
+	});
+
+	it("compares the rendered About SEO fallback with its stored equivalent", () => {
+		const sanity = adaptSanityAboutContact(sanityProjection());
+		const convex = adaptConvexAboutContact(convexProjection());
+		sanity.about.seo.description = null;
+		convex.about.seo.description =
+			"About Jesse Pomeroy — photographer, visual artist, and web developer. Get in touch for inquiries and collaborations.";
+		expect(compareAboutContact(sanity, convex).codes).toEqual([]);
 	});
 
 	it("serves exact Sanity content in shadow and logs only bounded mismatch metadata", async () => {

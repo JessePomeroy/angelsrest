@@ -191,6 +191,7 @@ async function setup() {
 			},
 			decisions: {
 				id: "about-contact-decisions-v1",
+				aboutHeading: { action: "use-source-owner-approved" },
 				aboutBiography: { action: "use-plain-bio-owner-approved" },
 				aboutPortrait: {
 					action: "use-local-portrait-owner-approved",
@@ -203,6 +204,7 @@ async function setup() {
 					action: "defer-to-site-settings-owner-approved",
 				},
 				aboutSeoImage: { action: "keep-host-fallback-owner-approved" },
+				aboutSeoDescription: { action: "use-source-owner-approved" },
 				contactIntro: {
 					action: "accept-source-plain-paragraphs-owner-approved",
 				},

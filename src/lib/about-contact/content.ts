@@ -1,3 +1,6 @@
+export const ABOUT_CONTACT_SEO_DESCRIPTION_FALLBACK =
+	"About Jesse Pomeroy — photographer, visual artist, and web developer. Get in touch for inquiries and collaborations.";
+
 export type AboutContactSeo = {
 	description: string | null;
 	imageUrl: string | null;
@@ -13,7 +16,6 @@ export type AboutContactAbout = {
 	displayName: string;
 	introduction: string;
 	portrait: AboutContactPortrait;
-	instagramUrl: string | null;
 	seo: AboutContactSeo;
 };
 
