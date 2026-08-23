@@ -4,6 +4,7 @@ import { assertBlogMigrationCapability } from "./helpers/blogMigrationCapability
 import { ANGELS_REST_SANITY_BLOG_IMPORT_RELEASE } from "./helpers/sanityBlogImportPlan";
 import { sanityBlogReconciliationPlanValidator } from "./helpers/sanityBlogReconciliationPlan";
 import { reconcileSanityBlogDrafts } from "./helpers/sanityBlogReconciliationStore";
+import { publishReconciledSanityBlogDrafts } from "./helpers/sanityBlogPublicationStore";
 
 /** Operator-only: no public mutation or browser-reachable wrapper exists. */
 export const reconcileDrafts = internalMutation({
@@ -14,12 +15,28 @@ export const reconcileDrafts = internalMutation({
 	handler: async (ctx, args) => {
 		assertBlogMigrationCapability({
 			siteUrl: args.plan.siteUrl,
-			purpose: "sanity-blog-reconcile-v2",
+			purpose: "sanity-blog-compact-v1",
 			binding: args.digest,
 		});
 		return await reconcileSanityBlogDrafts(ctx, {
 			...args,
 			predecessorContract: ANGELS_REST_SANITY_BLOG_IMPORT_RELEASE,
 		});
+	},
+});
+
+/** Operator-only atomic publication of the exact reconciled six-document Blog manifest. */
+export const publishDrafts = internalMutation({
+	args: {
+		plan: sanityBlogReconciliationPlanValidator,
+		digest: v.string(),
+	},
+	handler: async (ctx, args) => {
+		assertBlogMigrationCapability({
+			siteUrl: args.plan.siteUrl,
+			purpose: "sanity-blog-compact-v1",
+			binding: args.digest,
+		});
+		return await publishReconciledSanityBlogDrafts(ctx, args);
 	},
 });

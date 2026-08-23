@@ -128,6 +128,16 @@ const gearDecisionValidator = v.object({
 	targetDetails: v.optional(v.string()),
 });
 
+const emptyGearOmissionValidator = v.object({
+	gearId: v.string(),
+	sourcePostId: v.string(),
+	sourceRevision: v.string(),
+	sourcePath: v.string(),
+	sourceKey: v.string(),
+	sourceOrder: v.number(),
+	action: v.literal("omit-all-null-owner-approved"),
+});
+
 const unsupportedFieldDecisionValidator = v.object({
 	sourceDocumentId: v.string(),
 	sourcePath: v.string(),
@@ -151,6 +161,7 @@ const decisionSetValidator = v.object({
 	postSummaries: v.array(postSummaryDecisionValidator),
 	imagePlacements: v.array(imagePlacementDecisionValidator),
 	gearMappings: v.array(gearDecisionValidator),
+	emptyGearOmissions: v.array(emptyGearOmissionValidator),
 	unsupportedFields: v.array(unsupportedFieldDecisionValidator),
 	absentTargetFields: v.array(absentTargetFieldDecisionValidator),
 });
@@ -228,6 +239,7 @@ export type SanityBlogOwnerDecisions = {
 	postSummaries: Readonly<Record<string, string>>;
 	imagePlacements: Readonly<Record<string, ImagePlacementInput>>;
 	gearMappings: Readonly<Record<string, GearMappingInput>>;
+	emptyGearOmissions?: ReadonlyArray<Infer<typeof emptyGearOmissionValidator>>;
 	unsupportedFields: ReadonlyArray<Infer<typeof unsupportedFieldDecisionValidator>>;
 	absentTargetFields: ReadonlyArray<Infer<typeof absentTargetFieldDecisionValidator>>;
 };
@@ -269,6 +281,8 @@ type SourceGear = {
 	sourceOrder: number;
 	source: Infer<typeof gearSourceValidator>;
 };
+
+type SourceEmptyGear = Omit<SourceGear, "source">;
 
 function compareOrdinal(left: string, right: string) {
 	return left < right ? -1 : left > right ? 1 : 0;
@@ -516,6 +530,7 @@ function collectGear(
 	postRevisions: ReadonlyMap<string, string>,
 ) {
 	const entries: SourceGear[] = [];
+	const emptyEntries: SourceEmptyGear[] = [];
 	for (const postValue of source.posts) {
 		const post = postValue as typeof postValue & JsonRecord;
 		const sourcePostId = cleanSourceId(post._id);
@@ -528,6 +543,22 @@ function collectGear(
 		for (const [sourceOrder, itemValue] of post.gearUsed.entries()) {
 			const item = asRecord(itemValue, `post ${sourcePostId} gear item`);
 			const sourceKey = requiredText(item._key, `post ${sourcePostId} gear key`);
+			const identity = {
+				gearId: `post:${sourcePostId}:gear:${sourceKey}`,
+				sourcePostId,
+				sourceRevision,
+				sourcePath: `posts.${sourcePostId}.gearUsed.${sourceKey}`,
+				sourceKey,
+				sourceOrder,
+			};
+			if (
+				[item.camera, item.lens, item.filmStock, item.developer].every(
+					(value) => value === null,
+				)
+			) {
+				emptyEntries.push(identity);
+				continue;
+			}
 			const sourceFields = {
 				...(gearText(item.camera, `gear ${sourceKey} camera`)
 					? { camera: gearText(item.camera, `gear ${sourceKey} camera`) }
@@ -543,23 +574,30 @@ function collectGear(
 					: {}),
 			};
 			if (Object.keys(sourceFields).length === 0) {
-				throw new Error(`post ${sourcePostId} gear ${sourceKey} has no mappable role`);
+				throw new Error(
+					`post ${sourcePostId} gear ${sourceKey} has no mappable role and is not exactly all-null`,
+				);
 			}
 			entries.push({
-				gearId: `post:${sourcePostId}:gear:${sourceKey}`,
-				sourcePostId,
-				sourceRevision,
-				sourcePath: `posts.${sourcePostId}.gearUsed.${sourceKey}`,
-				sourceKey,
-				sourceOrder,
+				...identity,
 				source: sourceFields,
 			});
 		}
 	}
-	return entries.sort((left, right) => compareOrdinal(left.gearId, right.gearId));
+	return {
+		mappable: entries.sort((left, right) => compareOrdinal(left.gearId, right.gearId)),
+		empty: emptyEntries.sort((left, right) => compareOrdinal(left.gearId, right.gearId)),
+	};
 }
 
-const SYSTEM_FIELDS = new Set(["_createdAt", "_id", "_rev", "_type", "_updatedAt"]);
+const SYSTEM_FIELDS = new Set([
+	"_createdAt",
+	"_id",
+	"_rev",
+	"_system",
+	"_type",
+	"_updatedAt",
+]);
 const AUTHOR_FIELDS = new Set([...SYSTEM_FIELDS, "bio", "image", "name", "slug"]);
 const CATEGORY_FIELDS = new Set([...SYSTEM_FIELDS, "description", "title"]);
 const POST_FIELDS = new Set([
@@ -855,6 +893,21 @@ function resolvedGearDecisions(
 	});
 }
 
+function resolvedEmptyGearOmissions(
+	emptyGear: readonly SourceEmptyGear[],
+	inputs: ReadonlyArray<Infer<typeof emptyGearOmissionValidator>>,
+) {
+	const expected = emptyGear.map((entry) => ({
+		...entry,
+		action: "omit-all-null-owner-approved" as const,
+	}));
+	const actual = [...inputs].sort((left, right) => compareOrdinal(left.gearId, right.gearId));
+	if (canonicalJson(actual) !== canonicalJson(expected)) {
+		throw new Error("Empty gear omissions must cover the exact accepted all-null set");
+	}
+	return actual;
+}
+
 function imageDecisionByTarget(
 	decisions: readonly SanityBlogReconciliationPlan["decisionSet"]["imagePlacements"][number][],
 ) {
@@ -1062,9 +1115,14 @@ export function createSanityBlogReconciliationPlan(
 		options.decisions.imagePlacements,
 		assetMappings,
 	);
+	const sourceGear = collectGear(source, revisions.posts);
 	const gearMappings = resolvedGearDecisions(
-		collectGear(source, revisions.posts),
+		sourceGear.mappable,
 		options.decisions.gearMappings,
+	);
+	const emptyGearOmissions = resolvedEmptyGearOmissions(
+		sourceGear.empty,
+		options.decisions.emptyGearOmissions ?? [],
 	);
 	const categorySlugs = exactRecord(
 		options.decisions.categorySlugs,
@@ -1131,6 +1189,7 @@ export function createSanityBlogReconciliationPlan(
 				.sort((left, right) => compareOrdinal(left.sourceId, right.sourceId)),
 			imagePlacements,
 			gearMappings,
+			emptyGearOmissions,
 			unsupportedFields: actualUnsupported,
 			absentTargetFields: [...options.decisions.absentTargetFields].sort((left, right) =>
 				compareOrdinal(left.field, right.field),
@@ -1462,6 +1521,40 @@ export function assertSanityBlogReconciliationPlan(plan: SanityBlogReconciliatio
 		}
 		if (Object.values(gear.source).every((value) => value === undefined)) {
 			throw new Error(`${gear.gearId} source roles are empty`);
+		}
+	}
+	assertExactStrings(
+		plan.decisionSet.emptyGearOmissions.map(({ gearId }) => gearId),
+		sorted(plan.decisionSet.emptyGearOmissions.map(({ gearId }) => gearId)),
+		"Empty gear omission order",
+	);
+	assertUnique(
+		plan.decisionSet.emptyGearOmissions.map(({ gearId }) => gearId),
+		"Empty gear omission IDs",
+	);
+	assertUnique(
+		[
+			...plan.decisionSet.gearMappings.map(({ gearId }) => gearId),
+			...plan.decisionSet.emptyGearOmissions.map(({ gearId }) => gearId),
+		],
+		"Gear decision IDs",
+	);
+	for (const omission of plan.decisionSet.emptyGearOmissions) {
+		const sourcePost = plan.posts.find(
+			({ sourceId }) => sourceId === omission.sourcePostId,
+		);
+		if (
+			!sourcePost
+			|| sourcePost.sourceRevision !== omission.sourceRevision
+			|| omission.gearId
+				!== `post:${omission.sourcePostId}:gear:${omission.sourceKey}`
+			|| omission.sourcePath
+				!== `posts.${omission.sourcePostId}.gearUsed.${omission.sourceKey}`
+			|| !Number.isSafeInteger(omission.sourceOrder)
+			|| omission.sourceOrder < 0
+			|| omission.action !== "omit-all-null-owner-approved"
+		) {
+			throw new Error(`${omission.gearId} empty gear omission binding is invalid`);
 		}
 	}
 	for (const post of plan.posts) {

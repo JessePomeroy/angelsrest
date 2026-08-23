@@ -1,6 +1,7 @@
 import { error, redirect } from "@sveltejs/kit";
 import { ConvexHttpClient } from "convex/browser";
 import { api } from "$convex/api";
+import { env as privateEnv } from "$env/dynamic/private";
 import { env as publicEnv } from "$env/dynamic/public";
 import {
 	BLOG_PRESENTATIONS,
@@ -40,8 +41,6 @@ const DERIVATIVES = {
 
 type Derivative = keyof typeof DERIVATIVES;
 type ProviderMode = "sanity" | "shadow" | "convex";
-// Dormant R6 foundation: a source change and review are required before any cutover.
-const DEPLOYED_BLOG_PROVIDER: ProviderMode = "sanity";
 type ShadowCode =
 	| "author"
 	| "body"
@@ -1201,7 +1200,7 @@ export function createBlogContentProvider(
 	} = {},
 ) {
 	const sanity = dependencies.sanity ?? createSanityBlogSource();
-	const mode = dependencies.mode ?? (() => DEPLOYED_BLOG_PROVIDER);
+	const mode = dependencies.mode ?? (() => privateEnv.BLOG_CONTENT_PROVIDER);
 	const reader = dependencies.createReader ?? createBlogReader;
 	const log = dependencies.log ?? logStructured;
 	const now = dependencies.now ?? Date.now;
