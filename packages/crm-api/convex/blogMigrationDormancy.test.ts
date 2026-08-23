@@ -44,6 +44,7 @@ const V2_PLAN = {
 		postSummaries: [],
 		imagePlacements: [],
 		gearMappings: [],
+		emptyGearOmissions: [],
 		unsupportedFields: [],
 		absentTargetFields: [],
 	},
@@ -58,8 +59,13 @@ const reconcileDrafts = makeFunctionReference<
 	{ plan: typeof V2_PLAN; digest: string }
 >("sanityBlogReconciliation:reconcileDrafts");
 
+const publishDrafts = makeFunctionReference<
+	"mutation",
+	{ plan: typeof V2_PLAN; digest: string }
+>("sanityBlogReconciliation:publishDrafts");
+
 describe("dormant Blog migration entrypoints", () => {
-	test("deny v1 import and v2 reconciliation before storage access", async () => {
+	test("denies import, reconciliation, and publication before storage access", async () => {
 		const t = convexTest(schema, modules);
 
 		await expect(
@@ -70,6 +76,12 @@ describe("dormant Blog migration entrypoints", () => {
 		).rejects.toThrow(/capability is disabled/i);
 		await expect(
 			t.mutation(reconcileDrafts, {
+				plan: V2_PLAN,
+				digest: "b".repeat(64),
+			}),
+		).rejects.toThrow(/capability is disabled/i);
+		await expect(
+			t.mutation(publishDrafts, {
 				plan: V2_PLAN,
 				digest: "b".repeat(64),
 			}),

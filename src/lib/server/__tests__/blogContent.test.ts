@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
+vi.mock("$env/dynamic/private", () => ({ env: {} }));
 vi.mock("$env/dynamic/public", () => ({
 	env: {
 		PUBLIC_CONVEX_URL: "https://convex.test",
@@ -10,6 +11,7 @@ vi.mock("$env/dynamic/public", () => ({
 vi.mock("$lib/sanity/client.server", () => ({ getSanityClient: vi.fn() }));
 vi.mock("$lib/server/logger", () => ({ logStructured: vi.fn() }));
 
+import { env as privateEnv } from "$env/dynamic/private";
 import type { BlogPostDetail, BlogPostSummary } from "$lib/blog/content";
 import {
 	adaptConvexBlogIndex,
@@ -692,7 +694,11 @@ describe("Blog public adapters", () => {
 });
 
 describe("Blog source selector", () => {
-	it("hard-pins deployed production reads to Sanity", async () => {
+	afterEach(() => {
+		delete privateEnv.BLOG_CONTENT_PROVIDER;
+	});
+
+	it("defaults missing private provider configuration to Sanity", async () => {
 		const sanity = fakeSanity();
 		const createReader = vi.fn(() => fakeReader());
 		const provider = createBlogContentProvider({ sanity, createReader });
@@ -703,6 +709,23 @@ describe("Blog source selector", () => {
 		expect(sanity.loadIndex).toHaveBeenCalledWith(false);
 		expect(sanity.loadPost).toHaveBeenCalledWith("a-quiet-post", false);
 		expect(createReader).not.toHaveBeenCalled();
+	});
+
+	it("reads the provider from dynamic private configuration", async () => {
+		privateEnv.BLOG_CONTENT_PROVIDER = "convex";
+		const sanity = fakeSanity();
+		const reader = fakeReader();
+		const createReader = vi.fn(() => reader);
+		const provider = createBlogContentProvider({ sanity, createReader });
+
+		await provider.loadIndex(false);
+		await provider.loadPost("a-quiet-post", false);
+
+		expect(createReader).toHaveBeenCalledTimes(2);
+		expect(reader.listPublished).toHaveBeenCalledOnce();
+		expect(reader.getPublishedBySlug).toHaveBeenCalledWith("a-quiet-post", expect.any(AbortSignal));
+		expect(sanity.loadIndex).not.toHaveBeenCalled();
+		expect(sanity.loadPost).not.toHaveBeenCalled();
 	});
 
 	it("branches preview to Sanity before reading mode or constructing the secondary", async () => {

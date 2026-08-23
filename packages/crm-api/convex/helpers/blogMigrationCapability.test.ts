@@ -1,4 +1,4 @@
-import { describe, expect, test } from "vitest";
+import { afterEach, describe, expect, test, vi } from "vitest";
 import {
 	assertBlogMigrationCapability,
 	blogMigrationCapabilityFor,
@@ -7,13 +7,21 @@ import {
 
 const SCOPE = {
 	siteUrl: "angelsrest.online",
-	purpose: "sanity-blog-reconcile-v2",
+	purpose: "sanity-blog-compact-v1",
 	binding: "a".repeat(64),
 } as const satisfies BlogMigrationCapabilityScope;
 
 describe("Blog migration capability", () => {
+	afterEach(() => vi.unstubAllEnvs());
+
 	test("is disabled by default", () => {
+		vi.stubEnv("BLOG_MIGRATION_CAPABILITY", "");
 		expect(() => assertBlogMigrationCapability(SCOPE)).toThrow(/disabled/i);
+	});
+
+	test("reads the exact capability from the runtime-private environment", () => {
+		vi.stubEnv("BLOG_MIGRATION_CAPABILITY", blogMigrationCapabilityFor(SCOPE));
+		expect(() => assertBlogMigrationCapability(SCOPE)).not.toThrow();
 	});
 
 	test.each([

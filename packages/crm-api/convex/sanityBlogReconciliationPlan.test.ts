@@ -205,6 +205,7 @@ function options(): SanityBlogReconciliationBuildOptions {
 					targetDetails: "Camera: Hasselblad 500C/M; Lens: 80mm f/2.8; Film: Portra 400",
 				},
 			},
+			emptyGearOmissions: [],
 			unsupportedFields: [
 				{
 					sourceDocumentId: "post-one",
@@ -267,6 +268,97 @@ describe("revision-pinned Sanity Blog reconciliation plan", () => {
 			{ sourceAssetRef: MAIN_REF, mediaAssetId: MAIN_ID },
 			{ sourceAssetRef: PORTRAIT_REF, mediaAssetId: PORTRAIT_ID },
 		]);
+	});
+
+	test("omits only the exact revision-pinned set of all-null gear rows", () => {
+		const allNullSource = sourceFixture();
+		allNullSource.posts[0].postType = "standard";
+		allNullSource.posts[0].gearUsed = [
+			{
+				_key: "empty-item",
+				camera: null,
+				lens: null,
+				filmStock: null,
+				developer: null,
+			},
+		];
+		const accepted = options();
+		accepted.decisions.gearMappings = {};
+		accepted.decisions.emptyGearOmissions = [
+			{
+				gearId: "post:post-one:gear:empty-item",
+				sourcePostId: "post-one",
+				sourceRevision: "post-revision-1",
+				sourcePath: "posts.post-one.gearUsed.empty-item",
+				sourceKey: "empty-item",
+				sourceOrder: 0,
+				action: "omit-all-null-owner-approved",
+			},
+		];
+
+		const plan = createSanityBlogReconciliationPlan(allNullSource, accepted);
+
+		expect(plan.decisionSet.emptyGearOmissions).toEqual(
+			accepted.decisions.emptyGearOmissions,
+		);
+		expect(plan.posts[0].draft.equipment).toEqual([]);
+
+		const missing = options();
+		missing.decisions.gearMappings = {};
+		expect(() => createSanityBlogReconciliationPlan(allNullSource, missing)).toThrow(
+			/exact accepted all-null set/i,
+		);
+
+		const wrongRevision = options();
+		wrongRevision.decisions.gearMappings = {};
+		wrongRevision.decisions.emptyGearOmissions = [
+			{
+				...accepted.decisions.emptyGearOmissions[0],
+				sourceRevision: "post-revision-2",
+			},
+		];
+		expect(() =>
+			createSanityBlogReconciliationPlan(allNullSource, wrongRevision),
+		).toThrow(/exact accepted all-null set/i);
+
+		const partialSource = sourceFixture();
+		partialSource.posts[0].gearUsed = [
+			{
+				_key: "empty-item",
+				camera: null,
+				lens: "80mm f/2.8",
+				filmStock: null,
+				developer: null,
+			},
+		];
+		const partialDecision = options();
+		partialDecision.decisions.gearMappings = {
+			"post:post-one:gear:empty-item": {
+				action: "collapse-to-equipment-owner-approved",
+				targetKey: "empty-item",
+				targetLabel: "80mm f/2.8",
+			},
+		};
+		partialDecision.decisions.emptyGearOmissions =
+			accepted.decisions.emptyGearOmissions;
+		expect(() =>
+			createSanityBlogReconciliationPlan(partialSource, partialDecision),
+		).toThrow(/exact accepted all-null set/i);
+
+		const missingRoles = sourceFixture();
+		missingRoles.posts[0].gearUsed = [{ _key: "empty-item" }];
+		const missingRolesDecision = options();
+		missingRolesDecision.decisions.gearMappings = {};
+		expect(() =>
+			createSanityBlogReconciliationPlan(missingRoles, missingRolesDecision),
+		).toThrow(/not exactly all-null/i);
+
+		const tampered = structuredClone(plan);
+		tampered.decisionSet.emptyGearOmissions[0].sourcePath =
+			"posts.post-one.gearUsed.other-item";
+		expect(() => assertSanityBlogReconciliationPlan(tampered)).toThrow(
+			/empty gear omission binding/i,
+		);
 	});
 
 	test("preserves source gear order independently of Sanity item keys", () => {
@@ -453,10 +545,22 @@ describe("revision-pinned Sanity Blog reconciliation plan", () => {
 			createSanityBlogReconciliationPlan(postFocal, postFocalDecision),
 		).toThrow(/crop\/hotspot decision/i);
 
+		const providerMetadata = sourceFixture();
+		(providerMetadata.posts[0] as unknown as Record<string, unknown>)._system = {
+			base: { id: "post-one", rev: "post-revision-1" },
+		};
+		const providerMetadataPlan = createSanityBlogReconciliationPlan(
+			providerMetadata,
+			options(),
+		);
+		expect(providerMetadataPlan.decisionSet.unsupportedFields).toEqual([
+			expect.objectContaining({ sourcePath: "posts.post-one.legacySeo" }),
+		]);
+
 		const unsupported = options();
 		unsupported.decisions.unsupportedFields = [];
 		expect(() =>
-			createSanityBlogReconciliationPlan(sourceFixture(), unsupported),
+			createSanityBlogReconciliationPlan(providerMetadata, unsupported),
 		).toThrow(/unsupported-field decisions/i);
 	});
 
