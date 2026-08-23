@@ -39,15 +39,26 @@ export type BlogTextSpan = {
 	marks: BlogTextMark[];
 };
 
+export type BlogBlockStyle = "normal" | "h1" | "h2" | "h3" | "h4" | "blockquote";
+
+export type BlogList = {
+	type: "list";
+	level: number;
+	style: "bullet" | "number";
+	items: BlogListItem[];
+};
+
+export type BlogListItem = {
+	blockStyle: BlogBlockStyle;
+	spans: BlogTextSpan[];
+	children: BlogList[];
+};
+
 export type BlogTextBlock =
 	| { type: "paragraph"; spans: BlogTextSpan[] }
-	| { type: "heading"; level: 2 | 3 | 4; spans: BlogTextSpan[] }
+	| { type: "heading"; level: 1 | 2 | 3 | 4; spans: BlogTextSpan[] }
 	| { type: "quote"; spans: BlogTextSpan[] }
-	| {
-			type: "list";
-			style: "bullet" | "number";
-			items: Array<{ spans: BlogTextSpan[] }>;
-	  }
+	| BlogList
 	| { type: "image"; image: BlogImage };
 
 export type BlogPostSummary = {

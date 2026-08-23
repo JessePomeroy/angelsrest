@@ -1,13 +1,14 @@
 import { error, redirect } from "@sveltejs/kit";
 import { ConvexHttpClient } from "convex/browser";
 import { api } from "$convex/api";
-import { env as privateEnv } from "$env/dynamic/private";
 import { env as publicEnv } from "$env/dynamic/public";
 import {
 	BLOG_PRESENTATIONS,
 	type BlogAuthor,
+	type BlogBlockStyle,
 	type BlogCategory,
 	type BlogImage,
+	type BlogList,
 	type BlogPostDetail,
 	type BlogPostSummary,
 	type BlogPresentation,
@@ -39,6 +40,8 @@ const DERIVATIVES = {
 
 type Derivative = keyof typeof DERIVATIVES;
 type ProviderMode = "sanity" | "shadow" | "convex";
+// Dormant R6 foundation: a source change and review are required before any cutover.
+const DEPLOYED_BLOG_PROVIDER: ProviderMode = "sanity";
 type ShadowCode =
 	| "author"
 	| "body"
@@ -403,103 +406,151 @@ function portableSpans(value: unknown, definitions: ReadonlyMap<string, string>)
 	});
 }
 
+type SanityBodyNode =
+	| { kind: "block"; block: Exclude<BlogTextBlock, BlogList> }
+	| {
+			kind: "listItem";
+			blockStyle: BlogBlockStyle;
+			level: number;
+			style: BlogList["style"];
+			spans: BlogTextSpan[];
+	  };
+
+function portableBlockStyle(value: unknown): BlogBlockStyle {
+	const style = value ?? "normal";
+	if (
+		style !== "normal" &&
+		style !== "h1" &&
+		style !== "h2" &&
+		style !== "h3" &&
+		style !== "h4" &&
+		style !== "blockquote"
+	)
+		fail();
+	return style;
+}
+
+function sanityBodyNode(value: unknown, seen: Set<string>): SanityBodyNode {
+	const node = object(value, [
+		"_key",
+		"_type",
+		"style",
+		"listItem",
+		"level",
+		"children",
+		"markDefs",
+		"alt",
+		"caption",
+		"assetRef",
+		"assetWidth",
+		"assetHeight",
+		"crop",
+		"hotspot",
+	]);
+	const nodeKey = key(node._key);
+	if (seen.has(nodeKey)) fail();
+	seen.add(nodeKey);
+	if (node._type === "image") {
+		const image = sanityImage(
+			{
+				assetRef: node.assetRef,
+				assetWidth: node.assetWidth,
+				assetHeight: node.assetHeight,
+				crop: node.crop,
+				hotspot: node.hotspot,
+				alt: node.alt,
+				caption: node.caption,
+			},
+			{ width: 800, fallbackAlt: "" },
+		);
+		if (!image) fail();
+		return { kind: "block", block: { type: "image", image } };
+	}
+	if (node._type !== "block") fail();
+	const spans = portableSpans(node.children, portableDefinitions(node.markDefs));
+	const blockStyle = portableBlockStyle(node.style);
+	if (node.listItem !== null && node.listItem !== undefined) {
+		if (node.listItem !== "bullet" && node.listItem !== "number") fail();
+		return {
+			kind: "listItem",
+			blockStyle,
+			level: node.level === null || node.level === undefined ? 1 : integer(node.level, 1, 500),
+			style: node.listItem,
+			spans,
+		};
+	}
+	const style = blockStyle;
+	if (style === "normal") return { kind: "block", block: { type: "paragraph", spans } };
+	if (style === "h1" || style === "h2" || style === "h3" || style === "h4") {
+		return {
+			kind: "block",
+			block: {
+				type: "heading",
+				level: Number(style.slice(1)) as 1 | 2 | 3 | 4,
+				spans,
+			},
+		};
+	}
+	if (style === "blockquote") return { kind: "block", block: { type: "quote", spans } };
+	return fail();
+}
+
+function listFromSanityItem(item: Extract<SanityBodyNode, { kind: "listItem" }>): BlogList {
+	return {
+		type: "list",
+		level: item.level,
+		style: item.style,
+		items: [{ blockStyle: item.blockStyle, spans: item.spans, children: [] }],
+	};
+}
+
+function findNestedList(root: BlogList, level: number, style: BlogList["style"]): BlogList | null {
+	if (root.level === level && root.style === style) return root;
+	const lastItem = root.items.at(-1);
+	const child = lastItem?.children.at(-1);
+	return child ? findNestedList(child, level, style) : null;
+}
+
 function sanityBody(value: unknown): BlogTextBlock[] {
-	const nodes = list(value, 500);
 	const seen = new Set<string>();
+	const nodes = list(value, 500).map((node) => sanityBodyNode(node, seen));
 	const blocks: BlogTextBlock[] = [];
-	let index = 0;
-	while (index < nodes.length) {
-		const node = object(nodes[index], [
-			"_key",
-			"_type",
-			"style",
-			"listItem",
-			"level",
-			"children",
-			"markDefs",
-			"alt",
-			"caption",
-			"assetRef",
-			"assetWidth",
-			"assetHeight",
-			"crop",
-			"hotspot",
-		]);
-		const nodeKey = key(node._key);
-		if (seen.has(nodeKey)) fail();
-		seen.add(nodeKey);
-		if (node._type === "image") {
-			const image = sanityImage(
-				{
-					assetRef: node.assetRef,
-					assetWidth: node.assetWidth,
-					assetHeight: node.assetHeight,
-					crop: node.crop,
-					hotspot: node.hotspot,
-					alt: node.alt,
-					caption: node.caption,
-				},
-				{ width: 800, fallbackAlt: "" },
-			);
-			if (!image) fail();
-			blocks.push({ type: "image", image });
-			index += 1;
+	let currentList: BlogList | null = null;
+	for (const node of nodes) {
+		if (node.kind === "block") {
+			blocks.push(node.block);
+			currentList = null;
 			continue;
 		}
-		if (node._type !== "block") fail();
-		const definitions = portableDefinitions(node.markDefs);
-		const spans = portableSpans(node.children, definitions);
-		if (node.listItem !== null && node.listItem !== undefined) {
-			if (node.listItem !== "bullet" && node.listItem !== "number") fail();
-			if (node.level !== null && node.level !== undefined && node.level !== 1) fail();
-			if (node.style !== null && node.style !== undefined && node.style !== "normal") fail();
-			const style = node.listItem as "bullet" | "number";
-			const items = [{ spans }];
-			index += 1;
-			while (index < nodes.length) {
-				const candidate = object(nodes[index], [
-					"_key",
-					"_type",
-					"style",
-					"listItem",
-					"level",
-					"children",
-					"markDefs",
-					"alt",
-					"caption",
-					"assetRef",
-					"assetWidth",
-					"assetHeight",
-					"crop",
-					"hotspot",
-				]);
-				if (
-					candidate._type !== "block" ||
-					candidate.listItem !== style ||
-					(candidate.level !== null && candidate.level !== undefined && candidate.level !== 1) ||
-					(candidate.style !== null &&
-						candidate.style !== undefined &&
-						candidate.style !== "normal")
-				)
-					break;
-				const candidateKey = key(candidate._key);
-				if (seen.has(candidateKey)) fail();
-				seen.add(candidateKey);
-				items.push({
-					spans: portableSpans(candidate.children, portableDefinitions(candidate.markDefs)),
-				});
-				index += 1;
+		if (!currentList) {
+			currentList = listFromSanityItem(node);
+			blocks.push(currentList);
+			continue;
+		}
+		if (node.level === currentList.level && node.style === currentList.style) {
+			currentList.items.push({ blockStyle: node.blockStyle, spans: node.spans, children: [] });
+			continue;
+		}
+		if (node.level > currentList.level) {
+			const nested = listFromSanityItem(node);
+			const parentItem = currentList.items.at(-1);
+			if (!parentItem) fail();
+			parentItem.children.push(nested);
+			currentList = nested;
+			continue;
+		}
+		if (node.level < currentList.level) {
+			const root = blocks.at(-1);
+			const match: BlogList | null =
+				root?.type === "list" ? findNestedList(root, node.level, node.style) : null;
+			if (match) {
+				match.items.push({ blockStyle: node.blockStyle, spans: node.spans, children: [] });
+				currentList = match;
+				continue;
 			}
-			blocks.push({ type: "list", style, items });
-			continue;
 		}
-		const style = node.style ?? "normal";
-		if (style === "normal") blocks.push({ type: "paragraph", spans });
-		else if (style === "h2" || style === "h3" || style === "h4") {
-			blocks.push({ type: "heading", level: Number(style.slice(1)) as 2 | 3 | 4, spans });
-		} else if (style === "blockquote") blocks.push({ type: "quote", spans });
-		else fail();
-		index += 1;
+		currentList = listFromSanityItem(node);
+		blocks.push(currentList);
 	}
 	return blocks;
 }
@@ -721,7 +772,7 @@ function convexBody(value: unknown): BlogTextBlock[] {
 	const document = object(value, ["version", "blocks"]);
 	if (document.version !== 1) fail();
 	const seen = new Set<string>();
-	return list(document.blocks, 500).map((raw) => {
+	return list(document.blocks, 500).map<BlogTextBlock>((raw) => {
 		const base = object(
 			raw,
 			["type", "key"],
@@ -730,9 +781,13 @@ function convexBody(value: unknown): BlogTextBlock[] {
 		const blockKey = key(base.key);
 		if (seen.has(blockKey)) fail();
 		seen.add(blockKey);
-		if (base.type === "paragraph" || base.type === "quote") {
+		if (base.type === "paragraph") {
 			const block = object(raw, ["type", "key", "children"]);
-			return { type: base.type, spans: convexSpans(block.children) };
+			return { type: "paragraph", spans: convexSpans(block.children) };
+		}
+		if (base.type === "quote") {
+			const block = object(raw, ["type", "key", "children"]);
+			return { type: "quote", spans: convexSpans(block.children) };
 		}
 		if (base.type === "heading") {
 			const block = object(raw, ["type", "key", "level", "children"]);
@@ -745,13 +800,14 @@ function convexBody(value: unknown): BlogTextBlock[] {
 			const itemKeys = new Set<string>();
 			return {
 				type: "list",
+				level: 1,
 				style: block.style,
 				items: list(block.items, 100).map((rawItem) => {
 					const item = object(rawItem, ["key", "children"]);
 					const itemKey = key(item.key);
 					if (itemKeys.has(itemKey)) fail();
 					itemKeys.add(itemKey);
-					return { spans: convexSpans(item.children) };
+					return { blockStyle: "normal", spans: convexSpans(item.children), children: [] };
 				}),
 			};
 		}
@@ -1084,7 +1140,7 @@ export function createBlogContentProvider(
 	} = {},
 ) {
 	const sanity = dependencies.sanity ?? createSanityBlogSource();
-	const mode = dependencies.mode ?? (() => privateEnv.BLOG_CONTENT_PROVIDER);
+	const mode = dependencies.mode ?? (() => DEPLOYED_BLOG_PROVIDER);
 	const reader = dependencies.createReader ?? createBlogReader;
 	const log = dependencies.log ?? logStructured;
 	const now = dependencies.now ?? Date.now;

@@ -5,7 +5,10 @@ import { convexTest } from "convex-test";
 import { describe, expect, test } from "vitest";
 import { api, internal } from "./_generated/api";
 import type { Id } from "./_generated/dataModel";
-import type { BlogPinnedRestoreEntry } from "./helpers/blogPinnedRestore";
+import {
+	type BlogPinnedRestoreEntry,
+	restorePinnedBlogRevisions,
+} from "./helpers/blogPinnedRestore";
 import { contentRevisionProvenanceFields } from "./helpers/contentRevisionProvenance";
 import type { PostDraft } from "./helpers/postContentValidators";
 import schema from "./schema";
@@ -99,6 +102,16 @@ async function setup() {
 
 type Fixture = Awaited<ReturnType<typeof setup>>;
 type Admin = Fixture["adminA"];
+type RestorePinnedArgs = Parameters<typeof restorePinnedBlogRevisions>[1];
+
+async function runPinnedRestore(
+	fixture: Fixture,
+	args: RestorePinnedArgs,
+) {
+	return await fixture.t.run(
+		async (ctx) => await restorePinnedBlogRevisions(ctx, args),
+	);
+}
 
 function paragraph(key: string, text: string) {
 	return {
@@ -420,6 +433,20 @@ async function moduleEntries(
 }
 
 describe("Blog pinned revision restore", () => {
+	test("keeps the deployed operator wrapper disabled before storage access", async () => {
+		const t = convexTest(schema, modules);
+		await expect(
+			t.mutation(internal.blogContent.restorePinnedPublishedRevisions, {
+				siteUrl: "unregistered.example",
+				operationId: "dormant-restore",
+				entries: [],
+			}),
+		).rejects.toThrow(/capability is disabled/i);
+		expect(
+			await t.run(async (ctx) => await ctx.db.query("contentRevisions").take(1)),
+		).toEqual([]);
+	});
+
 	test("requires complete restore provenance and rejects it on ordinary revisions", () => {
 		const sourceRevisionId = "source-revision" as Id<"contentRevisions">;
 		expect(contentRevisionProvenanceFields({ source: "admin" })).toEqual({});
@@ -459,7 +486,7 @@ describe("Blog pinned revision restore", () => {
 		const module = await buildPublishedModule(fixture);
 		const entries = await moduleEntries(fixture, module);
 		await expect(
-			fixture.t.mutation(internal.blogContent.restorePinnedPublishedRevisions, {
+			runPinnedRestore(fixture, {
 				siteUrl: SITE_A.siteUrl,
 				operationId: "operator-restore",
 				entries,
@@ -473,14 +500,11 @@ describe("Blog pinned revision restore", () => {
 			crossTenantModule,
 		);
 		await expect(
-			crossTenant.t.mutation(
-				internal.blogContent.restorePinnedPublishedRevisions,
-				{
-					siteUrl: SITE_B.siteUrl,
-					operationId: "cross-tenant-restore",
-					entries: crossTenantEntries,
-				},
-			),
+			runPinnedRestore(crossTenant, {
+				siteUrl: SITE_B.siteUrl,
+				operationId: "cross-tenant-restore",
+				entries: crossTenantEntries,
+			}),
 		).rejects.toThrow(/pinned site/i);
 		expect(await restoreRows(fixture, "operator-restore")).toHaveLength(3);
 		expect(await restoreRows(crossTenant, "cross-tenant-restore")).toEqual([]);
@@ -492,14 +516,11 @@ describe("Blog pinned revision restore", () => {
 		const entries = await moduleEntries(fixture, module);
 		const before = await revisionCount(fixture);
 		await expect(
-			fixture.adminA.mutation(
-				internal.blogContent.restorePinnedPublishedRevisions,
-				{
-					siteUrl: SITE_A.siteUrl,
-					operationId: "subset-manifest",
-					entries: entries.slice(0, 2),
-				},
-			),
+			runPinnedRestore(fixture, {
+				siteUrl: SITE_A.siteUrl,
+				operationId: "subset-manifest",
+				entries: entries.slice(0, 2),
+			}),
 		).rejects.toThrow(/complete published module/i);
 
 		const extra = await createSupporting(fixture.adminA, {
@@ -529,14 +550,11 @@ describe("Blog pinned revision restore", () => {
 			},
 		};
 		await expect(
-			fixture.adminA.mutation(
-				internal.blogContent.restorePinnedPublishedRevisions,
-				{
-					siteUrl: SITE_A.siteUrl,
-					operationId: "extra-document-manifest",
-					entries: [...entries, extraEntry],
-				},
-			),
+			runPinnedRestore(fixture, {
+				siteUrl: SITE_A.siteUrl,
+				operationId: "extra-document-manifest",
+				entries: [...entries, extraEntry],
+			}),
 		).rejects.toThrow(/complete published module/i);
 		expect(await revisionCount(fixture)).toBe(before + 1);
 		expect(await restoreRows(fixture, "subset-manifest")).toEqual([]);
@@ -571,7 +589,7 @@ describe("Blog pinned revision restore", () => {
 		const before = await revisionCount(fixture);
 
 		await expect(
-			fixture.t.mutation(internal.blogContent.restorePinnedPublishedRevisions, {
+			runPinnedRestore(fixture, {
 				siteUrl: SITE_A.siteUrl,
 				operationId: "duplicate-future-slugs",
 				entries,
@@ -591,14 +609,11 @@ describe("Blog pinned revision restore", () => {
 		};
 		const before = await revisionCount(fixture);
 		await expect(
-			fixture.adminA.mutation(
-				internal.blogContent.restorePinnedPublishedRevisions,
-				{
-					siteUrl: SITE_A.siteUrl,
-					operationId: "cross-document-source",
-					entries,
-				},
-			),
+			runPinnedRestore(fixture, {
+				siteUrl: SITE_A.siteUrl,
+				operationId: "cross-document-source",
+				entries,
+			}),
 		).rejects.toThrow(/ownership mismatch/i);
 		expect(await revisionCount(fixture)).toBe(before);
 	});
@@ -644,14 +659,11 @@ describe("Blog pinned revision restore", () => {
 			const staleManifest = [...entries];
 			staleManifest[0] = entry;
 			await expect(
-				fixture.adminA.mutation(
-					internal.blogContent.restorePinnedPublishedRevisions,
-					{
-						siteUrl: SITE_A.siteUrl,
-						operationId: `stale-cas-${index}`,
-						entries: staleManifest,
-					},
-				),
+				runPinnedRestore(fixture, {
+					siteUrl: SITE_A.siteUrl,
+					operationId: `stale-cas-${index}`,
+					entries: staleManifest,
+				}),
 			).rejects.toThrow(/pinned restore conflict/i);
 		}
 		expect(await revisionCount(fixture)).toBe(before);
@@ -689,14 +701,11 @@ describe("Blog pinned revision restore", () => {
 		const authorBefore = await readDocument(fixture, module.author.documentId);
 		const before = await revisionCount(fixture);
 		await expect(
-			fixture.adminA.mutation(
-				internal.blogContent.restorePinnedPublishedRevisions,
-				{
-					siteUrl: SITE_A.siteUrl,
-					operationId: "bad-relationship-atomic",
-					entries,
-				},
-			),
+			runPinnedRestore(fixture, {
+				siteUrl: SITE_A.siteUrl,
+				operationId: "bad-relationship-atomic",
+				entries,
+			}),
 		).rejects.toThrow(/not closed over Post relationships/i);
 		expect(await readDocument(fixture, module.author.documentId)).toEqual(
 			authorBefore,
@@ -720,10 +729,7 @@ describe("Blog pinned revision restore", () => {
 			operationId: "restore-module-v1",
 			entries,
 		};
-		const restored = await fixture.adminA.mutation(
-			internal.blogContent.restorePinnedPublishedRevisions,
-			args,
-		);
+		const restored = await runPinnedRestore(fixture, args);
 		expect(restored.documents).toHaveLength(3);
 		expect(new Set(restored.documents.map(({ restoredRevisionId }) => restoredRevisionId)).size).toBe(3);
 		for (const [index, result] of restored.documents.entries()) {
@@ -769,24 +775,18 @@ describe("Blog pinned revision restore", () => {
 			}),
 		).toMatchObject({ payload: { name: "Original Author" } });
 
-		const replay = await fixture.adminA.mutation(
-			internal.blogContent.restorePinnedPublishedRevisions,
-			args,
-		);
+		const replay = await runPinnedRestore(fixture, args);
 		expect(replay).toEqual(restored);
 		expect(await revisionCount(fixture)).toBe(before + 3);
 
 		const changedRequest = structuredClone(entries);
 		changedRequest[0]!.expected.updated.by = "not-the-original-request";
 		await expect(
-			fixture.adminA.mutation(
-				internal.blogContent.restorePinnedPublishedRevisions,
-				{
-					siteUrl: SITE_A.siteUrl,
-					operationId: args.operationId,
-					entries: changedRequest,
-				},
-			),
+			runPinnedRestore(fixture, {
+				siteUrl: SITE_A.siteUrl,
+				operationId: args.operationId,
+				entries: changedRequest,
+			}),
 		).rejects.toThrow(/pinned restore conflict/i);
 		expect(await revisionCount(fixture)).toBe(before + 3);
 	});
@@ -800,10 +800,7 @@ describe("Blog pinned revision restore", () => {
 			operationId: "restore-actor-drift",
 			entries,
 		};
-		const restored = await fixture.t.mutation(
-			internal.blogContent.restorePinnedPublishedRevisions,
-			args,
-		);
+		const restored = await runPinnedRestore(fixture, args);
 		const first = restored.documents[0];
 		await fixture.t.run(async (ctx) => {
 			await ctx.db.patch(first.restoredRevisionId, { createdBy: "forged-restore-actor" });
@@ -814,7 +811,7 @@ describe("Blog pinned revision restore", () => {
 		});
 
 		await expect(
-			fixture.t.mutation(internal.blogContent.restorePinnedPublishedRevisions, args),
+			runPinnedRestore(fixture, args),
 		).rejects.toThrow(/pinned restore conflict/i);
 	});
 });

@@ -1,6 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-vi.mock("$env/dynamic/private", () => ({ env: {} }));
 vi.mock("$env/dynamic/public", () => ({
 	env: {
 		PUBLIC_CONVEX_URL: "https://convex.test",
@@ -48,6 +47,40 @@ function sanitySummary() {
 		mainImage: sanityImage(),
 		author: { name: "Jesse" },
 		categories: [{ title: "Journal" }],
+	};
+}
+
+function sanityTextBlock(
+	blockKey: string,
+	text: string,
+	options: {
+		style?: "normal" | "h1" | "h2" | "h3" | "h4" | "blockquote";
+		listItem?: "bullet" | "number" | null;
+		level?: number | null;
+	} = {},
+) {
+	return {
+		_key: blockKey,
+		_type: "block",
+		style: options.style ?? "normal",
+		listItem: options.listItem ?? null,
+		level: options.level ?? null,
+		children: [
+			{
+				_key: `${blockKey}-span`,
+				_type: "span",
+				text,
+				marks: [],
+			},
+		],
+		markDefs: [],
+		alt: null,
+		caption: null,
+		assetRef: null,
+		assetWidth: null,
+		assetHeight: null,
+		crop: null,
+		hotspot: null,
 	};
 }
 
@@ -287,6 +320,172 @@ describe("Blog public adapters", () => {
 		});
 	});
 
+	it("preserves Sanity H1 blocks and list-item block styles in nested lists", () => {
+		const source = {
+			...sanityDetail(),
+			body: [
+				sanityTextBlock("heading", "Top heading", { style: "h1" }),
+				sanityTextBlock("parent-1", "Parent one", {
+					style: "h2",
+					listItem: "bullet",
+					level: 1,
+				}),
+				sanityTextBlock("child-1", "Child one", {
+					style: "blockquote",
+					listItem: "bullet",
+					level: 2,
+				}),
+				sanityTextBlock("child-2", "Child two", { listItem: "bullet", level: 2 }),
+				sanityTextBlock("parent-2", "Parent two", { listItem: "bullet", level: 1 }),
+			],
+		};
+
+		expect(adaptSanityBlogPost(source)?.body).toEqual([
+			{
+				type: "heading",
+				level: 1,
+				spans: [{ text: "Top heading", marks: [] }],
+			},
+			{
+				type: "list",
+				level: 1,
+				style: "bullet",
+				items: [
+					{
+						blockStyle: "h2",
+						spans: [{ text: "Parent one", marks: [] }],
+						children: [
+							{
+								type: "list",
+								level: 2,
+								style: "bullet",
+								items: [
+									{
+										blockStyle: "blockquote",
+										spans: [{ text: "Child one", marks: [] }],
+										children: [],
+									},
+									{
+										blockStyle: "normal",
+										spans: [{ text: "Child two", marks: [] }],
+										children: [],
+									},
+								],
+							},
+						],
+					},
+					{
+						blockStyle: "normal",
+						spans: [{ text: "Parent two", marks: [] }],
+						children: [],
+					},
+				],
+			},
+		]);
+	});
+
+	it("normalizes mixed nested list styles through deeper descent and parent rejoin", () => {
+		const source = {
+			...sanityDetail(),
+			body: [
+				sanityTextBlock("root-1", "Root one", { listItem: "bullet", level: 1 }),
+				sanityTextBlock("number-1", "Number one", { listItem: "number", level: 2 }),
+				sanityTextBlock("deep", "Deep bullet", { listItem: "bullet", level: 3 }),
+				sanityTextBlock("number-2", "Number two", { listItem: "number", level: 2 }),
+				sanityTextBlock("root-2", "Root two", { listItem: "bullet", level: 1 }),
+			],
+		};
+
+		expect(adaptSanityBlogPost(source)?.body).toEqual([
+			{
+				type: "list",
+				level: 1,
+				style: "bullet",
+				items: [
+					{
+						blockStyle: "normal",
+						spans: [{ text: "Root one", marks: [] }],
+						children: [
+							{
+								type: "list",
+								level: 2,
+								style: "number",
+								items: [
+									{
+										blockStyle: "normal",
+										spans: [{ text: "Number one", marks: [] }],
+										children: [
+											{
+												type: "list",
+												level: 3,
+												style: "bullet",
+												items: [
+													{
+														blockStyle: "normal",
+														spans: [{ text: "Deep bullet", marks: [] }],
+														children: [],
+													},
+												],
+											},
+										],
+									},
+									{
+										blockStyle: "normal",
+										spans: [{ text: "Number two", marks: [] }],
+										children: [],
+									},
+								],
+							},
+						],
+					},
+					{
+						blockStyle: "normal",
+						spans: [{ text: "Root two", marks: [] }],
+						children: [],
+					},
+				],
+			},
+		]);
+	});
+
+	it("maps current Convex lists to the same level-one recursive DTO", () => {
+		const sanitySource = {
+			...sanityDetail(),
+			body: [sanityTextBlock("item", "Item", { listItem: "bullet" })],
+		};
+		const convexSource = convexDetail();
+		(convexSource.payload.body as { blocks: unknown[] }).blocks = [
+			{
+				type: "list",
+				key: "list",
+				style: "bullet",
+				items: [
+					{
+						key: "item",
+						children: [{ type: "text", key: "span", text: "Item", marks: [] }],
+					},
+				],
+			},
+		];
+
+		const expected = [
+			{
+				type: "list",
+				level: 1,
+				style: "bullet",
+				items: [
+					{
+						blockStyle: "normal",
+						spans: [{ text: "Item", marks: [] }],
+						children: [],
+					},
+				],
+			},
+		];
+		expect(adaptSanityBlogPost(sanitySource)?.body).toEqual(expected);
+		expect(adaptConvexBlogPost(convexSource)?.body).toEqual(expected);
+	});
+
 	it("preserves Sanity's four photography roles and flags the lossy Convex summary", () => {
 		const sanitySource = { ...sanityDetail(), mainImage: null };
 		(sanitySource.gearUsed as unknown[]).push({
@@ -375,6 +574,19 @@ describe("Blog public adapters", () => {
 });
 
 describe("Blog source selector", () => {
+	it("hard-pins deployed production reads to Sanity", async () => {
+		const sanity = fakeSanity();
+		const createReader = vi.fn(() => fakeReader());
+		const provider = createBlogContentProvider({ sanity, createReader });
+
+		await provider.loadIndex(false);
+		await provider.loadPost("a-quiet-post", false);
+
+		expect(sanity.loadIndex).toHaveBeenCalledWith(false);
+		expect(sanity.loadPost).toHaveBeenCalledWith("a-quiet-post", false);
+		expect(createReader).not.toHaveBeenCalled();
+	});
+
 	it("branches preview to Sanity before reading mode or constructing the secondary", async () => {
 		const sanity = fakeSanity();
 		const mode = vi.fn(() => "convex");
