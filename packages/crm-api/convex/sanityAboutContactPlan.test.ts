@@ -1,6 +1,7 @@
 import { describe, expect, test } from "vitest";
 import type { Id } from "./_generated/dataModel";
 import {
+	ANGELS_REST_ABOUT_PARITY_SEED,
 	ANGELS_REST_ABOUT_LOCAL_PORTRAIT,
 	ANGELS_REST_CONTACT_PARITY_SEED,
 	createSanityAboutContactPlan,
@@ -85,6 +86,7 @@ function options(): SanityAboutContactBuildOptions {
 		},
 		decisions: {
 			id: "about-contact-decisions-1",
+			aboutHeading: { action: "use-source-owner-approved" },
 			aboutBiography: { action: "use-plain-bio-owner-approved" },
 			aboutPortrait: {
 				action: "use-local-portrait-owner-approved",
@@ -95,6 +97,7 @@ function options(): SanityAboutContactBuildOptions {
 			},
 			aboutSocial: { action: "defer-to-site-settings-owner-approved" },
 			aboutSeoImage: { action: "keep-host-fallback-owner-approved" },
+			aboutSeoDescription: { action: "use-source-owner-approved" },
 			contactIntro: { action: "accept-source-plain-paragraphs-owner-approved" },
 			contactStaticCopy: { action: "accept-host-seed-owner-approved" },
 			contactBooking: { action: "use-host-seed-booking-owner-approved" },
@@ -142,6 +145,7 @@ describe("Sanity About/Contact fixed source plan", () => {
 			},
 		]);
 		expect(plan.decisionSet).toMatchObject({
+			aboutHeading: { action: "use-source-owner-approved", value: "about" },
 			aboutBiography: { action: "use-plain-bio-owner-approved" },
 			aboutPortrait: {
 				action: "use-local-portrait-owner-approved",
@@ -153,6 +157,10 @@ describe("Sanity About/Contact fixed source plan", () => {
 			aboutSeoImage: {
 				action: "keep-host-fallback-owner-approved",
 				fallbackPath: "/og-image.jpg",
+			},
+			aboutSeoDescription: {
+				action: "use-source-owner-approved",
+				value: "About Jesse Pomeroy.",
 			},
 			contactIntro: { action: "accept-source-plain-paragraphs-owner-approved" },
 			contactStaticCopy: {
@@ -175,6 +183,41 @@ describe("Sanity About/Contact fixed source plan", () => {
 		await expect(requireSanityAboutContactPlan(plan, firstDigest)).resolves.toBe(firstDigest);
 		await expect(requireSanityAboutContactPlan(plan, "0".repeat(64))).rejects.toThrow(
 			"does not match canonical bytes",
+		);
+	});
+
+	test("binds exact host fallbacks when live About heading and SEO are absent", async () => {
+		const source = copySource();
+		delete source.about[0].heading;
+		source.about[0].seo = null;
+		const selected = options();
+		selected.decisions.aboutHeading = { action: "use-host-fallback-owner-approved" };
+		selected.decisions.aboutSeoDescription = {
+			action: "use-host-fallback-owner-approved",
+		};
+
+		const plan = createSanityAboutContactPlan(source, selected);
+		const about = plan.entries[0];
+		if (about?.kind !== "aboutPage") throw new Error("Expected About entry");
+		expect(about.payload).toMatchObject(ANGELS_REST_ABOUT_PARITY_SEED);
+		expect(plan.decisionSet).toMatchObject({
+			aboutHeading: {
+				action: "use-host-fallback-owner-approved",
+				sourceValueCanonical: "null",
+			},
+			aboutSeoDescription: {
+				action: "use-host-fallback-owner-approved",
+				sourceValueCanonical: "null",
+			},
+		});
+
+		const tampered = structuredClone(plan);
+		tampered.decisionSet.aboutHeading.value = "invented";
+		const tamperedAbout = tampered.entries[0];
+		if (tamperedAbout?.kind !== "aboutPage") throw new Error("Expected About entry");
+		tamperedAbout.payload.heading = "invented";
+		await expect(digestSanityAboutContactPlan(tampered)).rejects.toThrow(
+			"About heading decision binding is invalid",
 		);
 	});
 
@@ -265,5 +308,31 @@ describe("Sanity About/Contact fixed source plan", () => {
 		expect(() => createSanityAboutContactPlan(unsupportedBooking, sourceBooking)).toThrow(
 			"must be a Cal.com URL",
 		);
+	});
+
+	test("preserves Contact hard breaks inside a plain Portable Text paragraph", () => {
+		const source = copySource();
+		source.contact[0].intro = [
+			{
+				_type: "block",
+				style: "normal",
+				markDefs: [],
+				children: [
+					{
+						_type: "span",
+						text: "First line.\nSecond line.\r\nThird line.",
+						marks: [],
+					},
+				],
+			},
+		];
+
+		const plan = createSanityAboutContactPlan(source, options());
+		const contact = plan.entries[1];
+		if (contact?.kind !== "contactPage") throw new Error("Expected Contact entry");
+		expect(contact.payload.intro).toBe("First line.\nSecond line.\nThird line.");
+		expect(plan.decisionSet.contactIntro.paragraphs).toEqual([
+			"First line.\nSecond line.\nThird line.",
+		]);
 	});
 });

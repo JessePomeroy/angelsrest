@@ -40,6 +40,12 @@ export const ANGELS_REST_CONTACT_PARITY_SEED = {
 	inquiryChoices: [] as string[],
 } as const;
 
+export const ANGELS_REST_ABOUT_PARITY_SEED = {
+	heading: "about",
+	seoDescription:
+		"About Jesse Pomeroy — photographer, visual artist, and web developer. Get in touch for inquiries and collaborations.",
+} as const;
+
 const sourceIdentityValidator = v.object({
 	projectId: v.string(),
 	dataset: v.string(),
@@ -123,9 +129,25 @@ const contactBookingDecisionValidator = v.object({
 
 const decisionSetValidator = v.object({
 	id: v.string(),
+	aboutHeading: v.object({
+		action: v.union(
+			v.literal("use-source-owner-approved"),
+			v.literal("use-host-fallback-owner-approved"),
+		),
+		sourceValueCanonical: v.string(),
+		value: v.string(),
+	}),
 	aboutBiography: biographyDecisionValidator,
 	aboutPortrait: portraitDecisionValidator,
 	aboutSeoImage: aboutSeoImageDecisionValidator,
+	aboutSeoDescription: v.object({
+		action: v.union(
+			v.literal("use-source-owner-approved"),
+			v.literal("use-host-fallback-owner-approved"),
+		),
+		sourceValueCanonical: v.string(),
+		value: v.string(),
+	}),
 	aboutSocial: v.object({
 		action: v.literal("defer-to-site-settings-owner-approved"),
 		sourceValueCanonical: v.string(),
@@ -182,6 +204,9 @@ type StaticCopy = {
 
 export type SanityAboutContactOwnerDecisions = {
 	id: string;
+	aboutHeading: {
+		action: "use-source-owner-approved" | "use-host-fallback-owner-approved";
+	};
 	aboutBiography:
 		| { action: "use-plain-bio-owner-approved" }
 		| { action: "confirmed-absent-owner-approved" };
@@ -203,7 +228,10 @@ export type SanityAboutContactOwnerDecisions = {
 			  };
 	aboutSeoImage:
 		| { action: "use-sanity-og-image-owner-approved" }
-		| { action: "keep-host-fallback-owner-approved" };
+			| { action: "keep-host-fallback-owner-approved" };
+	aboutSeoDescription: {
+		action: "use-source-owner-approved" | "use-host-fallback-owner-approved";
+	};
 	aboutSocial: { action: "defer-to-site-settings-owner-approved" };
 	contactIntro: { action: "accept-source-plain-paragraphs-owner-approved" };
 	contactStaticCopy:
@@ -417,7 +445,7 @@ function plainPortableTextParagraphs(value: unknown) {
 				return span.text;
 			})
 			.join("")
-			.replace(/\s+/g, " ")
+			.replace(/\r\n?/g, "\n")
 			.trim();
 		if (!text) throw new Error("Contact introduction contains an empty paragraph");
 		return text;
@@ -449,6 +477,41 @@ function resolvedStaticCopy(decision: SanityAboutContactOwnerDecisions["contactS
 					requiredText(choice, `Replacement inquiry choice ${index + 1}`),
 				),
 			};
+}
+
+function resolvedSourceOrFallback(
+	value: unknown,
+	label: string,
+	decision: { action: "use-source-owner-approved" | "use-host-fallback-owner-approved" },
+	fallback: string,
+) {
+	const sourceValue = optionalText(value, label);
+	if (
+		(sourceValue !== undefined && decision.action !== "use-source-owner-approved")
+		|| (sourceValue === undefined && decision.action !== "use-host-fallback-owner-approved")
+	) throw new Error(`${label} decision does not match the source`);
+	return {
+		action: decision.action,
+		sourceValueCanonical: canonicalJson(sourceValue ?? null),
+		value: sourceValue ?? fallback,
+	};
+}
+
+function assertSourceOrFallbackDecision(
+	decision: {
+		action: "use-source-owner-approved" | "use-host-fallback-owner-approved";
+		sourceValueCanonical: string;
+		value: string;
+	},
+	fallback: string,
+	label: string,
+) {
+	if (
+		(decision.action === "use-host-fallback-owner-approved"
+			&& (decision.sourceValueCanonical !== "null" || decision.value !== fallback))
+		|| (decision.action === "use-source-owner-approved"
+			&& decision.sourceValueCanonical !== canonicalJson(decision.value))
+	) throw new Error(`${label} decision binding is invalid`);
 }
 
 function resolvedBooking(
@@ -560,7 +623,21 @@ export function createSanityAboutContactPlan(
 	const introParagraphs = plainPortableTextParagraphs(contact.intro);
 	const staticCopy = resolvedStaticCopy(options.decisions.contactStaticCopy);
 	const booking = resolvedBooking(contact, options.decisions.contactBooking);
-	const aboutSeo = asRecord(about.seo, "About SEO");
+	const aboutSeo = about.seo === undefined || about.seo === null
+		? {}
+		: asRecord(about.seo, "About SEO");
+	const heading = resolvedSourceOrFallback(
+		about.heading,
+		"About heading",
+		options.decisions.aboutHeading,
+		ANGELS_REST_ABOUT_PARITY_SEED.heading,
+	);
+	const seoDescription = resolvedSourceOrFallback(
+		aboutSeo.description,
+		"About SEO description",
+		options.decisions.aboutSeoDescription,
+		ANGELS_REST_ABOUT_PARITY_SEED.seoDescription,
+	);
 	const sourceSeoImageUrl = optionalText(aboutSeo.ogImageUrl, "About SEO image URL");
 	const seoImage = options.decisions.aboutSeoImage.action
 		=== "use-sanity-og-image-owner-approved"
@@ -575,7 +652,7 @@ export function createSanityAboutContactPlan(
 				fallbackPath: "/og-image.jpg" as const,
 			};
 	const aboutPayload: AboutPageDraftPayload = {
-		heading: requiredText(about.heading, "About heading"),
+		heading: heading.value,
 		displayName: requiredText(about.name, "About name"),
 		...(optionalText(about.title, "About role") === undefined
 			? {}
@@ -591,7 +668,7 @@ export function createSanityAboutContactPlan(
 		],
 		sections: aboutSections(about.sections),
 		highlights: aboutHighlights(about.highlights),
-		seoDescription: requiredText(aboutSeo.description, "About SEO description"),
+		seoDescription: seoDescription.value,
 		...(seoImage.action === "use-sanity-og-image-owner-approved"
 			? { seoImageUrl: seoImage.url }
 			: {}),
@@ -618,6 +695,7 @@ export function createSanityAboutContactPlan(
 		source: options.source,
 		decisionSet: {
 			id: options.decisions.id,
+			aboutHeading: heading,
 			aboutBiography: plainBio
 				? {
 						action: "use-plain-bio-owner-approved",
@@ -630,6 +708,7 @@ export function createSanityAboutContactPlan(
 					},
 			aboutPortrait: portrait,
 			aboutSeoImage: seoImage,
+			aboutSeoDescription: seoDescription,
 			aboutSocial: {
 				action: "defer-to-site-settings-owner-approved",
 				sourceValueCanonical: canonicalJson(about.social ?? null),
@@ -684,6 +763,22 @@ export function assertSanityAboutContactPlan(plan: SanityAboutContactPlan) {
 	requireAboutHostShape(about.payload);
 	requireContactHostShape(contact.payload);
 	requiredText(about.payload.introduction, "About introduction");
+	assertSourceOrFallbackDecision(
+		plan.decisionSet.aboutHeading,
+		ANGELS_REST_ABOUT_PARITY_SEED.heading,
+		"About heading",
+	);
+	assertSourceOrFallbackDecision(
+		plan.decisionSet.aboutSeoDescription,
+		ANGELS_REST_ABOUT_PARITY_SEED.seoDescription,
+		"About SEO description",
+	);
+	if (about.payload.heading !== plan.decisionSet.aboutHeading.value) {
+		throw new Error("About heading decision was not applied");
+	}
+	if (about.payload.seoDescription !== plan.decisionSet.aboutSeoDescription.value) {
+		throw new Error("About SEO description decision was not applied");
+	}
 	if (
 		about.payload.portraits?.length !== 1
 		|| about.payload.portraits[0]?.key !== "primary-portrait"

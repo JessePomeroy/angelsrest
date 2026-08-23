@@ -2,6 +2,7 @@
 import AsciiImage from "$lib/components/AsciiImage.svelte";
 import ContactForm from "$lib/components/ContactForm.svelte";
 import SEO from "$lib/components/SEO.svelte";
+import { ABOUT_CONTACT_SEO_DESCRIPTION_FALLBACK } from "$lib/about-contact/content";
 
 let { data } = $props();
 const about = $derived(data.content.about);
@@ -57,7 +58,7 @@ const contact = $derived(data.content.contact);
 
 <SEO
     title="about | angel's rest"
-    description={about.seo.description || "About Jesse Pomeroy — photographer, visual artist, and web developer. Get in touch for inquiries and collaborations."}
+    description={about.seo.description || ABOUT_CONTACT_SEO_DESCRIPTION_FALLBACK}
     image={about.seo.imageUrl || "/og-image.jpg"}
     url="https://angelsrest.online/about"
 />
@@ -90,10 +91,10 @@ const contact = $derived(data.content.contact);
             <p class="leading-relaxed mb-3 text-sm">
                 {about.introduction}
             </p>
-            {#if about.instagramUrl}
+            {#if data.instagramUrl}
                 <p class="text-surface-400 text-sm">
                     <a
-                        href={about.instagramUrl}
+                        href={data.instagramUrl}
                         target="_blank"
                         rel="noopener"
                         class="hover:text-surface-200 transition-colors"

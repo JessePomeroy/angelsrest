@@ -3,7 +3,10 @@ import { ConvexHttpClient } from "convex/browser";
 import { api } from "$convex/api";
 import { env as privateEnv } from "$env/dynamic/private";
 import { env as publicEnv } from "$env/dynamic/public";
-import type { AboutContactContent } from "$lib/about-contact/content";
+import {
+	ABOUT_CONTACT_SEO_DESCRIPTION_FALLBACK,
+	type AboutContactContent,
+} from "$lib/about-contact/content";
 import localPortrait from "$lib/assets/DSCF7533.jpg";
 import { SITE_DOMAIN, SITE_URL } from "$lib/config/site";
 import { contactPageSeed } from "$lib/content/contactPageSeed";
@@ -35,7 +38,6 @@ const SANITY_QUERY = `{
 	"about": *[_type == "about"][0...2]{
 		name,
 		shortBio,
-		social{instagram},
 		seo{
 			description,
 			"ogImageUrl": ogImage.asset->url
@@ -235,8 +237,7 @@ export function adaptSanityAboutContact(value: unknown): AboutContactContent {
 	const contactRows = list(root.contact, 2);
 	if (aboutRows.length !== 1 || contactRows.length !== 1) fail();
 
-	const about = object(aboutRows[0], ["name", "shortBio", "social", "seo"]);
-	const social = about.social === null ? null : object(about.social, ["instagram"]);
+	const about = object(aboutRows[0], ["name", "shortBio", "seo"]);
 	const seo = about.seo === null ? null : object(about.seo, ["description", "ogImageUrl"]);
 
 	const contact = object(contactRows[0], ["heading", "intro", "email", "phone", "bookingEnabled"]);
@@ -254,7 +255,6 @@ export function adaptSanityAboutContact(value: unknown): AboutContactContent {
 				altText: displayName,
 				sourceSha256: LOCAL_PORTRAIT_SHA256,
 			},
-			instagramUrl: social ? optionalUrl(social.instagram) : null,
 			seo: {
 				description: seo ? optionalText(seo.description, 320) : null,
 				imageUrl: seo ? optionalUrl(seo.ogImageUrl) : null,
@@ -381,7 +381,6 @@ export function adaptConvexAboutContact(value: unknown): AboutContactContent {
 			displayName: requiredText(about.displayName, 200),
 			introduction,
 			portrait: portraits[0] as AboutContactContent["about"]["portrait"],
-			instagramUrl: null,
 			seo: {
 				description: optionalText(about.seoDescription, 320),
 				imageUrl: optionalUrl(about.seoImageUrl),
@@ -404,6 +403,21 @@ export function adaptConvexAboutContact(value: unknown): AboutContactContent {
 	};
 }
 
+/** Project the About social link from the separately owned Site Settings module. */
+export function projectSiteSettingsInstagramUrl(value: unknown): string | null {
+	if (value === null || value === undefined) return null;
+	if (!value || typeof value !== "object" || Array.isArray(value)) fail();
+	const links = (value as Record<string, unknown>).socialLinks;
+	if (links === null || links === undefined) return null;
+	const matches = list(links, 20).filter((entry) => {
+		const link = object(entry, ["platform", "url"]);
+		return link.platform === "instagram";
+	});
+	if (matches.length > 1) fail();
+	if (matches.length === 0) return null;
+	return publicUrl((matches[0] as Record<string, unknown>).url);
+}
+
 function same(left: unknown, right: unknown) {
 	return JSON.stringify(left) === JSON.stringify(right);
 }
@@ -411,6 +425,10 @@ function same(left: unknown, right: unknown) {
 function aboutSemantics(value: AboutContactContent["about"]) {
 	return {
 		...value,
+		seo: {
+			...value.seo,
+			description: value.seo.description ?? ABOUT_CONTACT_SEO_DESCRIPTION_FALLBACK,
+		},
 		portrait: {
 			altText: value.portrait.altText,
 			sourceSha256: value.portrait.sourceSha256,
