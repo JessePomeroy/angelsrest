@@ -19,6 +19,18 @@ const BODY_REF = "image-body-1200x800-jpg";
 const PORTRAIT_ID = "media-portrait" as Id<"mediaAssets">;
 const MAIN_ID = "media-main" as Id<"mediaAssets">;
 const BODY_ID = "media-body" as Id<"mediaAssets">;
+const PORTRAIT_CROP = {
+	top: 0.010927888941589192,
+	right: 0.003421030847283818,
+	bottom: 0.3786675624501119,
+	left: 0,
+};
+const PORTRAIT_FOCUS = {
+	x: 0.4982894845763581,
+	y: 0.3095374222911859,
+	width: 0.9965789691527162,
+	height: 0.527364342876655,
+};
 const SOURCE = {
 	projectId: "n7rvza4g",
 	dataset: "production",
@@ -41,17 +53,11 @@ function sourceFixture(): SanityBlogReconciliationSource {
 					alt: "Author One holding a camera.",
 					crop: {
 						_type: "sanity.imageCrop",
-						top: 0,
-						bottom: 0.1,
-						left: 0,
-						right: 0,
+						...PORTRAIT_CROP,
 					},
 					hotspot: {
 						_type: "sanity.imageHotspot",
-						x: 0.5,
-						y: 0.45,
-						width: 0.6,
-						height: 0.7,
+						...PORTRAIT_FOCUS,
 					},
 				},
 			},
@@ -176,7 +182,7 @@ function options(): SanityBlogReconciliationBuildOptions {
 					altAction: "accept-source",
 					altText: "Author One holding a camera.",
 					captionAction: "confirmed-absent",
-					cropHotspotAction: "omit-owner-approved",
+					cropHotspotAction: "preserve-exact",
 				},
 				"post:post-one:main": {
 					altAction: "owner-replacement",
@@ -247,6 +253,15 @@ describe("revision-pinned Sanity Blog reconciliation plan", () => {
 			],
 		});
 		expect(plan.decisionSet.imagePlacements).toHaveLength(3);
+		expect(plan.authors[0].draft).toMatchObject({
+			kind: "author",
+			portrait: {
+				framing: {
+					crop: PORTRAIT_CROP,
+					focus: PORTRAIT_FOCUS,
+				},
+			},
+		});
 		expect(plan.assetMappings).toEqual([
 			{ sourceAssetRef: BODY_REF, mediaAssetId: BODY_ID },
 			{ sourceAssetRef: MAIN_REF, mediaAssetId: MAIN_ID },
@@ -381,7 +396,7 @@ describe("revision-pinned Sanity Blog reconciliation plan", () => {
 		);
 	});
 
-	test("requires explicit crop/hotspot and unsupported-field dispositions", () => {
+	test("requires exact portrait framing preservation and unsupported-field dispositions", () => {
 		const focal = options();
 		focal.decisions = {
 			...focal.decisions,
@@ -406,11 +421,56 @@ describe("revision-pinned Sanity Blog reconciliation plan", () => {
 			createSanityBlogReconciliationPlan(invalidCrop, options()),
 		).toThrow(/invalid Sanity type/i);
 
+		const outsideCrop = sourceFixture();
+		const outsideCropPortrait = outsideCrop.authors[0].image as unknown as {
+			crop: { left: number };
+		};
+		outsideCropPortrait.crop.left = 0.1;
+		expect(() =>
+			createSanityBlogReconciliationPlan(outsideCrop, options()),
+		).toThrow(/surviving crop/i);
+
+		const postFocal = sourceFixture();
+		(postFocal.posts[0].mainImage as Record<string, unknown>).crop = {
+			_type: "sanity.imageCrop",
+			top: 0,
+			right: 0,
+			bottom: 0.1,
+			left: 0,
+		};
+		const postFocalDecision = options();
+		postFocalDecision.decisions = {
+			...postFocalDecision.decisions,
+			imagePlacements: {
+				...postFocalDecision.decisions.imagePlacements,
+				"post:post-one:main": {
+					...postFocalDecision.decisions.imagePlacements["post:post-one:main"],
+					cropHotspotAction: "preserve-exact",
+				},
+			},
+		};
+		expect(() =>
+			createSanityBlogReconciliationPlan(postFocal, postFocalDecision),
+		).toThrow(/crop\/hotspot decision/i);
+
 		const unsupported = options();
 		unsupported.decisions.unsupportedFields = [];
 		expect(() =>
 			createSanityBlogReconciliationPlan(sourceFixture(), unsupported),
 		).toThrow(/unsupported-field decisions/i);
+	});
+
+	test("binds canonical target framing to the accepted source decision", () => {
+		const plan = createSanityBlogReconciliationPlan(sourceFixture(), options());
+		const portrait = plan.authors[0].draft.kind === "author"
+			? plan.authors[0].draft.portrait
+			: undefined;
+		if (!portrait?.framing?.crop) throw new Error("Fixture portrait framing is missing");
+		portrait.framing.crop.top += 0.001;
+
+		expect(() => assertSanityBlogReconciliationPlan(plan)).toThrow(
+			/final media placements/i,
+		);
 	});
 
 	test("rejects missing, extra, or substituted media coverage", () => {

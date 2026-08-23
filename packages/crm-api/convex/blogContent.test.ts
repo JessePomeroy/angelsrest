@@ -5,7 +5,13 @@ import { convexTest } from "convex-test";
 import { describe, expect, test } from "vitest";
 import { api, internal } from "./_generated/api";
 import type { Id } from "./_generated/dataModel";
-import type { BlogSupportingDraft } from "./helpers/blogContentValidators";
+import {
+	type AuthorDraft,
+	type BlogImageFraming,
+	type BlogSupportingDraft,
+	serializeAuthorDraft,
+	validateAuthorDraft,
+} from "./helpers/blogContentValidators";
 import schema from "./schema";
 
 const modules = import.meta.glob("./**/*.ts");
@@ -14,6 +20,20 @@ const SITE_B = { siteUrl: "site-b.example", email: "admin-b@example.com" };
 const ASSET_A = "123e4567-e89b-42d3-a456-426614174000";
 const ASSET_B = "223e4567-e89b-42d3-a456-426614174001";
 const ASSET_C = "323e4567-e89b-42d3-a456-426614174002";
+const EXACT_PORTRAIT_FRAMING = {
+	crop: {
+		top: 0.010927888941589192,
+		right: 0.003421030847283818,
+		bottom: 0.3786675624501119,
+		left: 0,
+	},
+	focus: {
+		x: 0.4982894845763581,
+		y: 0.3095374222911859,
+		width: 0.9965789691527162,
+		height: 0.527364342876655,
+	},
+} satisfies BlogImageFraming;
 
 function readyAsset(siteUrl: string, assetId: string) {
 	const prefix = `sites/${siteUrl}/web/${assetId}/`;
@@ -79,7 +99,12 @@ function category(title: string, slug: string) {
 	return { kind: "category" as const, title, slug };
 }
 
-function author(name: string, slug: string, assetId?: Id<"mediaAssets">) {
+function author(
+	name: string,
+	slug: string,
+	assetId?: Id<"mediaAssets">,
+	framing?: BlogImageFraming,
+) {
 	return {
 		kind: "author" as const,
 		name,
@@ -104,10 +129,25 @@ function author(name: string, slug: string, assetId?: Id<"mediaAssets">) {
 					assetId,
 					altText: `${name} looking toward the camera`,
 					caption: "Portrait made at the studio",
+					...(framing === undefined ? {} : { framing }),
 				},
 			}
 			: {}),
 	};
+}
+
+function authorWithFraming(framing: unknown): AuthorDraft {
+	return {
+		kind: "author",
+		name: "Framing Test",
+		slug: "framing-test",
+		portrait: {
+			key: "portrait",
+			assetId: "media-framing" as Id<"mediaAssets">,
+			altText: "Framing test portrait",
+			framing,
+		},
+	} as unknown as AuthorDraft;
 }
 
 async function expectError(operation: Promise<unknown>, message: RegExp) {
@@ -145,6 +185,58 @@ async function publish(
 ) {
 	return await admin.mutation(api.blogContent.publish, { documentId, draftRevisionId });
 }
+
+describe("Author portrait framing contract", () => {
+	test("preserves the legacy serialization bytes when framing is absent", () => {
+		const legacy: AuthorDraft = {
+			kind: "author",
+			name: "Legacy Author",
+			slug: "legacy-author",
+			portrait: {
+				key: "portrait",
+				assetId: "media-legacy" as Id<"mediaAssets">,
+				altText: "Legacy portrait",
+			},
+		};
+
+		expect(serializeAuthorDraft(legacy)).toBe(
+			'{"kind":"author","name":"Legacy Author","slug":"legacy-author","bio":null,"portrait":{"key":"portrait","assetId":"media-legacy","altText":"Legacy portrait","caption":null}}',
+		);
+	});
+
+	test("fails closed on malformed or lossy framing geometry", () => {
+		expect(() =>
+			validateAuthorDraft(authorWithFraming({ crop: null, focus: null })),
+		).toThrow(/must contain crop or focus/i);
+		expect(() =>
+			validateAuthorDraft(authorWithFraming({
+				crop: { top: 0, right: 0.5, bottom: 0, left: 0.5 },
+				focus: null,
+			})),
+		).toThrow(/positive width and height/i);
+		expect(() =>
+			validateAuthorDraft(authorWithFraming({
+				crop: null,
+				focus: { x: 0.1, y: 0.5, width: 0.4, height: 0.5 },
+			})),
+		).toThrow(/inside the image/i);
+		expect(() =>
+			validateAuthorDraft(authorWithFraming({
+				crop: { top: 0, right: 0, bottom: 0, left: 0.2 },
+				focus: { x: 0.25, y: 0.5, width: 0.2, height: 0.5 },
+			})),
+		).toThrow(/inside the surviving crop/i);
+		expect(() =>
+			validateAuthorDraft(authorWithFraming({
+				crop: null,
+				focus: { ...EXACT_PORTRAIT_FRAMING.focus, provider: "sanity" },
+			})),
+		).toThrow(/unsupported field/i);
+		expect(() =>
+			validateAuthorDraft(authorWithFraming({ crop: EXACT_PORTRAIT_FRAMING.crop })),
+		).toThrow(/missing required field.*focus/i);
+	});
+});
 
 describe("tenant-scoped Blog supporting content", () => {
 	test("requires authentication, tenant membership, and matching document kinds", async () => {
@@ -405,6 +497,42 @@ describe("tenant-scoped Blog supporting content", () => {
 				slug: "mara",
 			}),
 		).toBeNull();
+	});
+
+	test("stores and publicly projects exact provider-neutral portrait framing", async () => {
+		const { t, adminA, assetA } = await setup();
+		const draft = author(
+			"Exact Framing",
+			"exact-framing",
+			assetA.id,
+			EXACT_PORTRAIT_FRAMING,
+		);
+		const created = await create(
+			adminA,
+			SITE_A.siteUrl,
+			"author-exact-framing",
+			draft,
+		);
+		const editor = await adminA.query(api.blogContent.getEditorState, {
+			documentId: created.documentId,
+		});
+		expect(
+			editor.draft?.draft.kind === "author"
+				? editor.draft.draft.portrait?.framing
+				: undefined,
+		).toEqual(EXACT_PORTRAIT_FRAMING);
+
+		await publish(adminA, created.documentId, created.revisionId);
+		const published = await t.query(api.blogContent.getPublishedBySlug, {
+			siteUrl: SITE_A.siteUrl,
+			kind: "author",
+			slug: "exact-framing",
+		});
+		expect(
+			published?.payload.kind === "author"
+				? published.payload.portrait?.framing
+				: undefined,
+		).toEqual(EXACT_PORTRAIT_FRAMING);
 	});
 
 	test("enforces portrait tenant, readiness, and active-reference lifecycle", async () => {

@@ -6,6 +6,7 @@ import {
 	type BlogSupportingDraft,
 	toPublishedBlogSupportingContent,
 } from "./blogContentValidators";
+import { validateBlogImageFraming } from "./blogContentValidationSupport";
 import { validateBlogDocumentKey } from "./blogContentData";
 import {
 	createSanityBlogImportDryRunReport,
@@ -102,7 +103,7 @@ const imagePlacementDecisionValidator = v.object({
 	caption: v.optional(v.string()),
 	cropHotspotAction: v.union(
 		v.literal("confirmed-absent"),
-		v.literal("omit-owner-approved"),
+		v.literal("preserve-exact"),
 	),
 });
 
@@ -211,7 +212,7 @@ type ImagePlacementInput = {
 	altText: string;
 	captionAction: "confirmed-absent" | "accept-source" | "owner-replacement";
 	caption?: string;
-	cropHotspotAction: "confirmed-absent" | "omit-owner-approved";
+	cropHotspotAction: "confirmed-absent" | "preserve-exact";
 };
 
 type GearMappingInput = {
@@ -404,6 +405,12 @@ function imagePlacement(
 	const caption = optionalText(source.caption, `${base.sourcePath}.caption`);
 	const crop = sourceCrop(source.crop, `${base.sourcePath}.crop`);
 	const hotspot = sourceHotspot(source.hotspot, `${base.sourcePath}.hotspot`);
+	if (crop !== undefined || hotspot !== undefined) {
+		validateBlogImageFraming(
+			{ crop: crop ?? null, focus: hotspot ?? null },
+			`${base.sourcePath} framing`,
+		);
+	}
 	return {
 		...base,
 		sourceAssetRef: sourceImageRef(source, base.sourcePath),
@@ -806,7 +813,8 @@ function resolvedImageDecisions(
 		}
 		const hasFocalData = placement.sourceCrop !== undefined || placement.sourceHotspot !== undefined;
 		if (
-			(hasFocalData && decision.cropHotspotAction !== "omit-owner-approved")
+			(hasFocalData && placement.targetRole !== "portrait")
+			|| (hasFocalData && decision.cropHotspotAction !== "preserve-exact")
 			|| (!hasFocalData && decision.cropHotspotAction !== "confirmed-absent")
 		) throw new Error(`${placement.placementId} crop/hotspot decision is invalid`);
 		const mediaAssetId = assetIds.get(placement.sourceAssetRef);
@@ -892,6 +900,18 @@ function createSupportingDocuments(
 							...(portraitDecision.caption === undefined
 								? {}
 								: { caption: portraitDecision.caption }),
+							...(portraitDecision.cropHotspotAction === "preserve-exact"
+								? {
+										framing: {
+											crop: portraitDecision.sourceCrop
+												? { ...portraitDecision.sourceCrop }
+												: null,
+											focus: portraitDecision.sourceHotspot
+												? { ...portraitDecision.sourceHotspot }
+												: null,
+										},
+									}
+								: {}),
 						},
 					}
 				: {}),
@@ -1163,6 +1183,7 @@ function targetMediaPlacements(plan: SanityBlogReconciliationPlan) {
 				mediaAssetId: portrait.assetId,
 				altText: portrait.altText,
 				caption: portrait.caption,
+				framing: portrait.framing,
 			}),
 		);
 	}
@@ -1212,6 +1233,12 @@ function acceptedMediaPlacements(plan: SanityBlogReconciliationPlan) {
 				mediaAssetId: placement.mediaAssetId,
 				altText: placement.altText,
 				caption: placement.caption,
+				framing: placement.cropHotspotAction === "preserve-exact"
+					? {
+							crop: placement.sourceCrop ?? null,
+							focus: placement.sourceHotspot ?? null,
+						}
+					: undefined,
 			}),
 		),
 	);
@@ -1375,12 +1402,18 @@ export function assertSanityBlogReconciliationPlan(plan: SanityBlogReconciliatio
 			throw new Error(`${placement.placementId} accepted alt text differs from source`);
 		}
 		const hasFocalData = placement.sourceCrop !== undefined || placement.sourceHotspot !== undefined;
-		if (placement.sourceCrop) sourceCrop(placement.sourceCrop, `${placement.placementId}.sourceCrop`);
-		if (placement.sourceHotspot) {
-			sourceHotspot(placement.sourceHotspot, `${placement.placementId}.sourceHotspot`);
+		if (hasFocalData) {
+			validateBlogImageFraming(
+				{
+					crop: placement.sourceCrop ?? null,
+					focus: placement.sourceHotspot ?? null,
+				},
+				`${placement.placementId} source framing`,
+			);
 		}
 		if (
-			(hasFocalData && placement.cropHotspotAction !== "omit-owner-approved")
+			(hasFocalData && placement.targetRole !== "portrait")
+			|| (hasFocalData && placement.cropHotspotAction !== "preserve-exact")
 			|| (!hasFocalData && placement.cropHotspotAction !== "confirmed-absent")
 		) throw new Error(`${placement.placementId} crop/hotspot decision is invalid`);
 		if (placement.captionAction === "confirmed-absent") {

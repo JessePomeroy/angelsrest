@@ -164,6 +164,23 @@ function convexPlacement() {
 	};
 }
 
+function acceptedPortraitFraming() {
+	return {
+		crop: {
+			top: 0.010927888941589192,
+			right: 0.003421030847283818,
+			bottom: 0.3786675624501119,
+			left: 0,
+		},
+		focus: {
+			x: 0.4982894845763581,
+			y: 0.3095374222911859,
+			width: 0.9965789691527162,
+			height: 0.527364342876655,
+		},
+	};
+}
+
 function convexSummary() {
 	return {
 		revisionId: "private-revision-id",
@@ -212,6 +229,25 @@ function convexDetail() {
 						children: [{ type: "text", key: "span-1", text: "A short body", marks: [] }],
 					},
 				],
+			},
+		},
+	};
+}
+
+function convexDetailWithPortrait(framing: unknown) {
+	const detail = convexDetail();
+	return {
+		...detail,
+		payload: {
+			...detail.payload,
+			author: {
+				...detail.payload.author,
+				portrait: {
+					...convexPlacement(),
+					key: "author-portrait",
+					altText: "Jesse",
+					framing,
+				},
 			},
 		},
 	};
@@ -552,6 +588,88 @@ describe("Blog public adapters", () => {
 			mismatchCount: 1,
 		});
 		expect(JSON.stringify(leftImage)).not.toContain(source.mainImage.assetRef);
+	});
+
+	it("preserves exact Convex portrait framing and compares it without normalization", () => {
+		const framing = acceptedPortraitFraming();
+		const sanitySource = {
+			...sanityDetail(),
+			mainImage: null,
+			author: {
+				name: "Jesse",
+				image: {
+					...sanityImage(),
+					crop: framing.crop,
+					hotspot: framing.focus,
+				},
+			},
+		};
+		const convexSource = convexDetailWithPortrait(framing);
+		delete (convexSource.payload as { mainImage?: unknown }).mainImage;
+		const sanityPost = adaptSanityBlogPost(sanitySource);
+		const convexPost = adaptConvexBlogPost(convexSource);
+		const sanityPortrait = sanityPost?.author?.image;
+		const convexPortrait = convexPost?.author?.image;
+		if (!sanityPortrait || !convexPortrait || !convexPost) {
+			throw new Error("Fixture portrait is missing");
+		}
+
+		expect(convexPortrait.framing).toEqual(framing);
+		expect(JSON.stringify(convexPortrait.framing)).not.toMatch(/_type|hotspot/);
+		convexPortrait.width = sanityPortrait.width;
+		convexPortrait.height = sanityPortrait.height;
+		expect(compareBlogDetails(sanityPost, convexPost)).toMatchObject({
+			codes: [],
+			mismatchCount: 0,
+		});
+
+		const drifted = structuredClone(convexPost);
+		const driftedFocus = drifted.author?.image?.framing?.focus;
+		if (!driftedFocus) throw new Error("Fixture focus is missing");
+		driftedFocus.y += 0.001;
+		expect(compareBlogDetails(sanityPost, drifted)).toMatchObject({
+			codes: ["author"],
+			mismatchCount: 1,
+		});
+	});
+
+	it.each([
+		["outer null", null],
+		["missing focus", { crop: acceptedPortraitFraming().crop }],
+		["extra framing key", { ...acceptedPortraitFraming(), provider: "sanity" }],
+		[
+			"extra crop key",
+			{
+				...acceptedPortraitFraming(),
+				crop: { ...acceptedPortraitFraming().crop, _type: "sanity.imageCrop" },
+			},
+		],
+		["empty framing", { crop: null, focus: null }],
+		[
+			"degenerate crop",
+			{
+				...acceptedPortraitFraming(),
+				crop: { top: 0.5, right: 0, bottom: 0.5, left: 0 },
+			},
+		],
+		[
+			"zero-area focus",
+			{
+				...acceptedPortraitFraming(),
+				focus: { ...acceptedPortraitFraming().focus, width: 0 },
+			},
+		],
+		[
+			"focus outside crop",
+			{
+				crop: { top: 0, right: 0, bottom: 0, left: 0.2 },
+				focus: { x: 0.25, y: 0.5, width: 0.2, height: 0.2 },
+			},
+		],
+	])("fails closed on malformed Convex portrait framing: %s", (_label, framing) => {
+		expect(() => adaptConvexBlogPost(convexDetailWithPortrait(framing))).toThrow(
+			"Malformed public Blog projection",
+		);
 	});
 
 	it("preserves the complete Sanity list instead of truncating it to the Convex read bound", () => {
