@@ -217,11 +217,6 @@ export function assertPostFormatCounts(payload: {
 			|| payload.outcome?.trim()
 			|| payload.credits?.trim()
 		) throw new Error("Technical Notes cannot publish Project Story sections");
-		if (payload.equipmentCount === 0 && payload.materialCount === 0) {
-			throw new Error(
-				"Technical Notes require at least one equipment or material item",
-			);
-		}
 		return;
 	}
 	if (
