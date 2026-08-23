@@ -245,14 +245,64 @@ function fraction(value: unknown): number {
 	return value;
 }
 
+function convexCrop(value: unknown): NonNullable<NonNullable<BlogImage["framing"]>["crop"]> {
+	const crop = object(value, ["top", "right", "bottom", "left"]);
+	const result = {
+		top: fraction(crop.top),
+		right: fraction(crop.right),
+		bottom: fraction(crop.bottom),
+		left: fraction(crop.left),
+	};
+	if (result.left + result.right >= 1 || result.top + result.bottom >= 1) fail();
+	return result;
+}
+
+function convexFocus(value: unknown): NonNullable<NonNullable<BlogImage["framing"]>["focus"]> {
+	const focus = object(value, ["x", "y", "width", "height"]);
+	const result = {
+		x: fraction(focus.x),
+		y: fraction(focus.y),
+		width: fraction(focus.width),
+		height: fraction(focus.height),
+	};
+	if (
+		result.width === 0 ||
+		result.height === 0 ||
+		result.x - result.width / 2 < 0 ||
+		result.x + result.width / 2 > 1 ||
+		result.y - result.height / 2 < 0 ||
+		result.y + result.height / 2 > 1
+	)
+		fail();
+	return result;
+}
+
+function convexFraming(value: unknown): BlogImage["framing"] {
+	if (value === undefined) return null;
+	const framing = object(value, ["crop", "focus"]);
+	const crop = framing.crop === null ? null : convexCrop(framing.crop);
+	const focus = framing.focus === null ? null : convexFocus(framing.focus);
+	if (!crop && !focus) fail();
+	if (
+		crop &&
+		focus &&
+		(focus.x - focus.width / 2 < crop.left ||
+			focus.x + focus.width / 2 > 1 - crop.right ||
+			focus.y - focus.height / 2 < crop.top ||
+			focus.y + focus.height / 2 > 1 - crop.bottom)
+	)
+		fail();
+	return { crop, focus };
+}
+
 function sanityCrop(value: unknown) {
 	if (value === null || value === undefined) return undefined;
 	const crop = object(value, ["bottom", "left", "right", "top"]);
 	return {
+		top: fraction(crop.top),
+		right: fraction(crop.right),
 		bottom: fraction(crop.bottom),
 		left: fraction(crop.left),
-		right: fraction(crop.right),
-		top: fraction(crop.top),
 	};
 }
 
@@ -260,10 +310,10 @@ function sanityHotspot(value: unknown) {
 	if (value === null || value === undefined) return undefined;
 	const hotspot = object(value, ["height", "width", "x", "y"]);
 	return {
-		height: fraction(hotspot.height),
-		width: fraction(hotspot.width),
 		x: fraction(hotspot.x),
 		y: fraction(hotspot.y),
+		width: fraction(hotspot.width),
+		height: fraction(hotspot.height),
 	};
 }
 
@@ -679,6 +729,7 @@ function convexImage(
 	name: Derivative,
 	altValue: unknown,
 	captionValue: unknown,
+	framing: BlogImage["framing"] = null,
 ): BlogImage {
 	const asset = object(value, ["assetId", "source", "derivatives"]);
 	const assetId = requiredText(asset.assetId, 36, UUID_V4);
@@ -698,14 +749,24 @@ function convexImage(
 		width: delivered[name].width,
 		height: delivered[name].height,
 		caption: optionalText(captionValue, 2_000),
-		framing: null,
+		framing,
 	};
 }
 
-function convexPlacement(value: unknown, name: Derivative): BlogImage {
-	const placement = object(value, ["key", "altText", "asset"], ["caption"]);
+function convexPlacement(value: unknown, name: Derivative, withFraming = false): BlogImage {
+	const placement = object(
+		value,
+		["key", "altText", "asset"],
+		withFraming ? ["caption", "framing"] : ["caption"],
+	);
 	key(placement.key);
-	return convexImage(placement.asset, name, placement.altText, placement.caption);
+	return convexImage(
+		placement.asset,
+		name,
+		placement.altText,
+		placement.caption,
+		withFraming ? convexFraming(placement.framing) : null,
+	);
 }
 
 function convexSummaryAuthor(value: unknown): BlogAuthor {
@@ -720,7 +781,7 @@ function convexDetailAuthor(value: unknown): BlogAuthor {
 	requiredText(author.slug, 120, SLUG);
 	return {
 		name: requiredText(author.name, 200),
-		image: author.portrait === undefined ? null : convexPlacement(author.portrait, "thumb"),
+		image: author.portrait === undefined ? null : convexPlacement(author.portrait, "thumb", true),
 	};
 }
 

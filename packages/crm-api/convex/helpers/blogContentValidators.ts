@@ -8,6 +8,9 @@ import {
 	assertMaximum,
 	assertOnlyKeys,
 	BLOG_CONTENT_LIMITS,
+	type BlogImageCrop,
+	type BlogImageFocus,
+	type BlogImageFraming,
 	inspectTextOnlyBio,
 	optionalText,
 	requireCanonicalBlogSlug,
@@ -30,11 +33,33 @@ export const blogSupportingKindValidator = v.union(
 
 export type BlogSupportingKind = Infer<typeof blogSupportingKindValidator>;
 
+export const blogImageCropValidator = v.object({
+	top: v.number(),
+	right: v.number(),
+	bottom: v.number(),
+	left: v.number(),
+});
+
+export const blogImageFocusValidator = v.object({
+	x: v.number(),
+	y: v.number(),
+	width: v.number(),
+	height: v.number(),
+});
+
+export const blogImageFramingValidator = v.object({
+	crop: v.union(v.null(), blogImageCropValidator),
+	focus: v.union(v.null(), blogImageFocusValidator),
+});
+
+export type { BlogImageCrop, BlogImageFocus, BlogImageFraming };
+
 export const authorPortraitDraftValidator = v.object({
 	key: v.string(),
 	assetId: v.id("mediaAssets"),
 	altText: v.optional(v.string()),
 	caption: v.optional(v.string()),
+	framing: v.optional(blogImageFramingValidator),
 });
 
 /**
@@ -85,6 +110,7 @@ export type PublishedAuthor = {
 		assetId: AuthorPortraitDraft["assetId"];
 		altText: string;
 		caption?: string;
+		framing?: BlogImageFraming;
 	};
 };
 
@@ -98,6 +124,27 @@ export type PublishedCategory = {
 export type PublishedBlogSupportingContent =
 	| PublishedAuthor
 	| PublishedCategory;
+
+function copyBlogImageFraming(framing: BlogImageFraming): BlogImageFraming {
+	return {
+		crop: framing.crop
+			? {
+					top: framing.crop.top,
+					right: framing.crop.right,
+					bottom: framing.crop.bottom,
+					left: framing.crop.left,
+				}
+			: null,
+		focus: framing.focus
+			? {
+					x: framing.focus.x,
+					y: framing.focus.y,
+					width: framing.focus.width,
+					height: framing.focus.height,
+				}
+			: null,
+	};
+}
 
 /** Bound an incomplete author draft and reject provider/layout-only fields. */
 export function validateAuthorDraft(payload: AuthorDraft) {
@@ -171,6 +218,9 @@ export function toPublishedAuthor(payload: AuthorDraft): PublishedAuthor {
 				assetId: payload.portrait.assetId,
 				altText,
 				...(caption ? { caption } : {}),
+				...(payload.portrait.framing === undefined
+					? {}
+					: { framing: copyBlogImageFraming(payload.portrait.framing) }),
 			};
 		})();
 
@@ -240,6 +290,9 @@ export function serializeAuthorDraft(payload: AuthorDraft) {
 				assetId: payload.portrait.assetId,
 				altText: payload.portrait.altText ?? null,
 				caption: payload.portrait.caption ?? null,
+				...(payload.portrait.framing === undefined
+					? {}
+					: { framing: copyBlogImageFraming(payload.portrait.framing) }),
 			}
 			: null,
 	});

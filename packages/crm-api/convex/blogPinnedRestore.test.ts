@@ -18,6 +18,10 @@ const SITE_A = { siteUrl: "site-a.example", email: "admin-a@example.com" };
 const SITE_B = { siteUrl: "site-b.example", email: "admin-b@example.com" };
 const ASSET_A = "123e4567-e89b-42d3-a456-426614174000";
 const ASSET_B = "223e4567-e89b-42d3-a456-426614174001";
+const PORTRAIT_FRAMING = {
+	crop: { top: 0.01, right: 0.02, bottom: 0.2, left: 0.03 },
+	focus: { x: 0.5, y: 0.4, width: 0.8, height: 0.6 },
+};
 
 function readyAsset(siteUrl: string, assetId: string) {
 	const prefix = `sites/${siteUrl}/web/${assetId}/`;
@@ -135,6 +139,7 @@ function authorDraft(
 			key: "portrait",
 			assetId,
 			altText: `${name} portrait`,
+			framing: PORTRAIT_FRAMING,
 		},
 	};
 }
@@ -754,6 +759,7 @@ describe("Blog pinned revision restore", () => {
 				createdBy: "operator:blog-pinned-restore",
 			});
 			expect(row?.restoreRequestDigest).toMatch(/^[a-f0-9]{64}$/);
+			expect(row?.payload).toEqual(sourceRows[index]?.payload);
 			expect(
 				await fixture.t.run(
 					async (ctx) => await ctx.db.get(entries[index]?.sourceRevisionId),
@@ -773,7 +779,12 @@ describe("Blog pinned revision restore", () => {
 				kind: "author",
 				slug: "primary-author",
 			}),
-		).toMatchObject({ payload: { name: "Original Author" } });
+		).toMatchObject({
+			payload: {
+				name: "Original Author",
+				portrait: { framing: PORTRAIT_FRAMING },
+			},
+		});
 
 		const replay = await runPinnedRestore(fixture, args);
 		expect(replay).toEqual(restored);
