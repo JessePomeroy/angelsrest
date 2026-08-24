@@ -4,11 +4,11 @@ import {
 } from "./portfolioMigrationPlan";
 
 /**
- * The dormant source unit intentionally carries no accepted live manifest.
- * The bounded inventory follow-up replaces only this null with its reviewed
- * full-plan digest; until then import, attestation, and publication stay closed.
+ * Fixed binding for the owner-approved, sealed Portfolio migration manifest.
+ * Import, attestation, and publication reject every other plan digest.
  */
-export const ANGELS_REST_PORTFOLIO_PLAN_DIGEST: string | null = null;
+export const ANGELS_REST_PORTFOLIO_PLAN_DIGEST: string | null =
+	"12e03d01aabee515c9073fc31a4d0cba531c8764d36e801f373d4d12cb053ad5";
 
 export async function requireAngelsRestPortfolioMigrationPlan(
 	plan: PortfolioMigrationPlan,
