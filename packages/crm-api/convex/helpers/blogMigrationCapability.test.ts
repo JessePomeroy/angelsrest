@@ -7,7 +7,7 @@ import {
 
 const SCOPE = {
 	siteUrl: "angelsrest.online",
-	purpose: "sanity-blog-compact-v1",
+	purpose: "blog-pinned-restore-v1",
 	binding: "a".repeat(64),
 } as const satisfies BlogMigrationCapabilityScope;
 
@@ -33,10 +33,11 @@ describe("Blog migration capability", () => {
 		],
 		[
 			"different purpose",
-			blogMigrationCapabilityFor({
-				...SCOPE,
-				purpose: "sanity-blog-import-v1",
-			}),
+			`blog-migration:v1:${JSON.stringify([
+				SCOPE.siteUrl,
+				"different-purpose-v1",
+				SCOPE.binding,
+			])}`,
 		],
 		[
 			"different binding",
