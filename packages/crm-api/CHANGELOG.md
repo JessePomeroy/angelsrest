@@ -1,5 +1,11 @@
 # @jessepomeroy/crm-api
 
+## 3.3.1
+
+### Patch Changes
+
+- 9ba88ef: Retire completed internal Blog migration writers while preserving pinned restore support.
+
 ## 3.3.0
 
 ### Minor Changes
