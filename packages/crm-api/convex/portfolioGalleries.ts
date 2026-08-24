@@ -1,6 +1,6 @@
 import { v } from "convex/values";
 import type { Doc } from "./_generated/dataModel";
-import { mutation, query } from "./_generated/server";
+import { mutation, type MutationCtx, query } from "./_generated/server";
 import { requireDocumentSiteAdmin, requireSiteAdmin } from "./authHelpers";
 import {
 	assertExpectedDraft,
@@ -11,9 +11,11 @@ import {
 	loadEditorRevision,
 	portfolioDraftFromRevision,
 	requireReadyPortfolioAssets,
+	requireReadyPortfolioSeoAsset,
 	toEditorRevision,
 	loadPublicPortfolioGallery,
 } from "./helpers/portfolioData";
+import { isInitialSanityPortfolioImport } from "./helpers/portfolioMigrationStore";
 import {
 	PORTFOLIO_GALLERY_MAX,
 	PORTFOLIO_PUBLIC_PLACEMENT_MAX,
@@ -22,6 +24,19 @@ import {
 	toPublishedPortfolioGallery,
 	validatePortfolioGalleryDraft,
 } from "./helpers/portfolioValidators";
+
+async function requirePortfolioEditorUnlocked(ctx: MutationCtx, siteUrl: string) {
+	const galleries = await ctx.db
+		.query("portfolioGalleries")
+		.withIndex("by_siteUrl_and_portfolioOrder", (q) => q.eq("siteUrl", siteUrl))
+		.take(PORTFOLIO_GALLERY_MAX + 1);
+	if (galleries.length > PORTFOLIO_GALLERY_MAX) {
+		throw new Error("Portfolio gallery limit exceeded");
+	}
+	if (galleries.some(isInitialSanityPortfolioImport)) {
+		throw new Error("Imported Portfolio requires fixed initial publication");
+	}
+}
 
 export const saveDraft = mutation({
 	args: {
@@ -32,11 +47,14 @@ export const saveDraft = mutation({
 	},
 	handler: async (ctx, args) => {
 		const { identity, client } = await requireSiteAdmin(ctx, args.siteUrl);
+		await requirePortfolioEditorUnlocked(ctx, client.siteUrl);
 		validatePortfolioGalleryDraft(args.draft);
 		const checksum = await checksumPortfolioDraft(serializePortfolioGalleryDraft(args.draft));
 		const actor = identity.tokenIdentifier;
 		const now = Date.now();
 		let gallery: Doc<"portfolioGalleries"> | null = null;
+		let retainedRevision: Doc<"portfolioGalleryRevisions"> | null = null;
+		let retainedPlacements = new Map<string, Doc<"portfolioPlacements">>();
 
 		if (args.galleryId) {
 			gallery = await ctx.db.get(args.galleryId);
@@ -53,6 +71,17 @@ export const saveDraft = mutation({
 			assertExpectedDraft(gallery, args.expectedDraftRevisionId);
 			if (gallery.isPublished && gallery.slug !== args.draft.slug) {
 				throw new Error("Published gallery slug changes require redirect support");
+			}
+			retainedRevision = currentDraft
+				?? await getPortfolioRevision(ctx, gallery.publishedRevisionId);
+			if (retainedRevision) {
+				assertRevisionOwnership(retainedRevision, gallery);
+				retainedPlacements = new Map(
+					(await getPortfolioPlacements(ctx, retainedRevision._id)).map((placement) => [
+						`${placement.placementKey}:${placement.assetId}`,
+						placement,
+					]),
+				);
 			}
 		} else if (args.expectedDraftRevisionId !== undefined) {
 			throw new Error("Portfolio draft conflict: gallery does not exist");
@@ -83,6 +112,7 @@ export const saveDraft = mutation({
 				slug: args.draft.slug,
 				portfolioOrder: (siteGalleries[0]?.portfolioOrder ?? -1) + 1,
 				isPublished: false,
+				isVisible: true,
 				createdAt: now,
 				createdBy: actor,
 				updatedAt: now,
@@ -99,13 +129,22 @@ export const saveDraft = mutation({
 			title: args.draft.title,
 			description: args.draft.description,
 			slug: args.draft.slug,
+			seoDescription: retainedRevision?.seoDescription,
+			seoOgImageAssetId: retainedRevision?.seoOgImageAssetId,
+			seoOgSourceAssetRef: retainedRevision?.seoOgSourceAssetRef,
 			placementCount: args.draft.placements.length,
 			checksum,
 			source: "admin",
 			createdAt: now,
 			createdBy: actor,
 		});
+		await requireReadyPortfolioSeoAsset(
+			ctx,
+			client.siteUrl,
+			retainedRevision?.seoOgImageAssetId,
+		);
 		for (const [order, placement] of args.draft.placements.entries()) {
+			const retained = retainedPlacements.get(`${placement.key}:${placement.assetId}`);
 			await ctx.db.insert("portfolioPlacements", {
 				siteUrl: client.siteUrl,
 				galleryId: gallery._id,
@@ -116,6 +155,10 @@ export const saveDraft = mutation({
 				altText: placement.altText,
 				caption: placement.caption,
 				focalPoint: placement.focalPoint,
+				sourceAssetRef: retained?.sourceAssetRef,
+				sourceAltAbsent: retained?.sourceAltAbsent,
+				sourceCropCanonical: retained?.sourceCropCanonical,
+				sourceHotspotCanonical: retained?.sourceHotspotCanonical,
 			});
 		}
 		await ctx.db.patch(gallery._id, {
@@ -135,6 +178,7 @@ export const publish = mutation({
 	},
 	handler: async (ctx, args) => {
 		const gallery = await requireDocumentSiteAdmin(ctx, "portfolioGalleries", args.galleryId);
+		await requirePortfolioEditorUnlocked(ctx, gallery.siteUrl);
 		assertExpectedDraft(gallery, args.draftRevisionId);
 		const revision = await getPortfolioRevision(ctx, args.draftRevisionId);
 		if (!revision) throw new Error("Portfolio draft revision not found");
@@ -143,6 +187,7 @@ export const publish = mutation({
 		const draft = portfolioDraftFromRevision(revision, placements);
 		toPublishedPortfolioGallery(draft);
 		await requireReadyPortfolioAssets(ctx, gallery.siteUrl, draft.placements);
+		await requireReadyPortfolioSeoAsset(ctx, gallery.siteUrl, revision.seoOgImageAssetId);
 		const publishedGalleries = await ctx.db
 			.query("portfolioGalleries")
 			.withIndex("by_siteUrl_and_isPublished_and_portfolioOrder", (q) =>
@@ -177,6 +222,7 @@ export const publish = mutation({
 		await ctx.db.patch(gallery._id, {
 			publishedRevisionId: revision._id,
 			isPublished: true,
+			isVisible: gallery.isVisible ?? true,
 			publishedAt: now,
 			publishedBy: identity.tokenIdentifier,
 			updatedAt: now,
@@ -199,6 +245,7 @@ export const getEditorState = query({
 			slug: gallery.slug,
 			portfolioOrder: gallery.portfolioOrder,
 			isPublished: gallery.isPublished,
+			isVisible: gallery.isVisible ?? true,
 			draft,
 			published,
 			updatedAt: gallery.updatedAt,
@@ -230,6 +277,7 @@ export const listForEditor = query({
 				slug: gallery.slug,
 				portfolioOrder: gallery.portfolioOrder,
 				isPublished: gallery.isPublished,
+				isVisible: gallery.isVisible ?? true,
 				draft: toEditorRevision(draft),
 				published: toEditorRevision(published),
 				updatedAt: gallery.updatedAt,
@@ -249,6 +297,9 @@ export const reorder = mutation({
 			.query("portfolioGalleries")
 			.withIndex("by_siteUrl_and_portfolioOrder", (q) => q.eq("siteUrl", client.siteUrl))
 			.take(PORTFOLIO_GALLERY_MAX + 1);
+		if (galleries.some(isInitialSanityPortfolioImport)) {
+			throw new Error("Imported Portfolio requires fixed initial publication");
+		}
 		if (
 			galleries.length > PORTFOLIO_GALLERY_MAX
 			|| galleryIds.length !== galleries.length
@@ -273,8 +324,8 @@ export const listPublished = query({
 	handler: async (ctx, { siteUrl }) => {
 		const galleries = await ctx.db
 			.query("portfolioGalleries")
-			.withIndex("by_siteUrl_and_isPublished_and_portfolioOrder", (q) =>
-				q.eq("siteUrl", siteUrl).eq("isPublished", true),
+			.withIndex("by_siteUrl_and_isPublished_and_isVisible_and_portfolioOrder", (q) =>
+				q.eq("siteUrl", siteUrl).eq("isPublished", true).eq("isVisible", true),
 			)
 			.take(PORTFOLIO_GALLERY_MAX);
 		return await Promise.all(galleries.map(async (gallery) => {
@@ -302,8 +353,8 @@ export const listPublishedWithPlacements = query({
 	handler: async (ctx, { siteUrl }) => {
 		const galleries = await ctx.db
 			.query("portfolioGalleries")
-			.withIndex("by_siteUrl_and_isPublished_and_portfolioOrder", (q) =>
-				q.eq("siteUrl", siteUrl).eq("isPublished", true),
+			.withIndex("by_siteUrl_and_isPublished_and_isVisible_and_portfolioOrder", (q) =>
+				q.eq("siteUrl", siteUrl).eq("isPublished", true).eq("isVisible", true),
 			)
 			.take(PORTFOLIO_GALLERY_MAX);
 		const revisions = await Promise.all(
@@ -332,7 +383,7 @@ export const getPublishedBySlug = query({
 			.query("portfolioGalleries")
 			.withIndex("by_siteUrl_and_slug", (q) => q.eq("siteUrl", siteUrl).eq("slug", slug))
 			.unique();
-		if (!gallery?.isPublished || !gallery.publishedRevisionId) return null;
+		if (!gallery?.isPublished || gallery.isVisible !== true || !gallery.publishedRevisionId) return null;
 		const revision = await getPortfolioRevision(ctx, gallery.publishedRevisionId);
 		if (!revision) throw new Error("Published portfolio revision not found");
 		return await loadPublicPortfolioGallery(ctx, gallery, revision);

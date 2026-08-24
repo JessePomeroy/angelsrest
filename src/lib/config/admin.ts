@@ -13,21 +13,19 @@ import { contactPageSeed } from "$lib/content/contactPageSeed";
 // admin dashboard crashes on first render with
 // `Cannot read properties of undefined (reading 'getStats')`.
 //
-// Use a Proxy wrapper instead so unknown property reads fall through to the
-// real `api` Proxy and the alias is the only override.
-const portfolioEditorApi = new Proxy(api.portfolioGalleries, {
-	get(portfolio, prop, receiver) {
-		// Angel's Rest is staging Portfolio content privately while the public
-		// gallery remains Sanity-owned. Omitting this capability keeps the shared
-		// editor in draft-only mode without weakening the underlying Convex API.
-		if (prop === "publish") return undefined;
-		if (prop === "listMediaAssets") return api.mediaAssets.listForEditor;
-		if (prop === "getPlacedMediaAssets") return api.mediaAssets.getManyForEditor;
-		if (prop === "registerReadyWebAsset") return api.mediaAssets.registerReadyWebAsset;
-		if (prop === "requestDeletion") return api.mediaAssets.requestDeletion;
-		return Reflect.get(portfolio, prop, receiver);
-	},
-});
+// Keep the dormant Portfolio editor on an exact browser-safe allowlist. Initial
+// publication remains an internal fixed-manifest operation, so ordinary publish
+// is intentionally absent until that graph has been published and accepted.
+const portfolioEditorApi = {
+	listForEditor: api.portfolioGalleries.listForEditor,
+	getEditorState: api.portfolioGalleries.getEditorState,
+	saveDraft: api.portfolioGalleries.saveDraft,
+	reorder: api.portfolioGalleries.reorder,
+	listMediaAssets: api.mediaAssets.listForEditor,
+	getPlacedMediaAssets: api.mediaAssets.getManyForEditor,
+	registerReadyWebAsset: api.mediaAssets.registerReadyWebAsset,
+	requestDeletion: api.mediaAssets.requestDeletion,
+};
 
 // Keep the site editor on an explicit browser-safe capability surface. About's
 // installed shared editors currently require their ordinary authenticated publish

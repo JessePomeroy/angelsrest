@@ -3,6 +3,7 @@ import type { MutationCtx, QueryCtx } from "../_generated/server";
 import {
 	PORTFOLIO_PLACEMENT_MAX,
 	type PortfolioGalleryDraft,
+	toPublishedImportedPortfolioGallery,
 	toPublishedPortfolioGallery,
 } from "./portfolioValidators";
 
@@ -92,6 +93,22 @@ export async function requireReadyPortfolioAssets(
 	return assetMap;
 }
 
+export async function requireReadyPortfolioSeoAsset(
+	ctx: PortfolioCtx,
+	siteUrl: string,
+	assetId: Id<"mediaAssets"> | undefined,
+) {
+	if (!assetId) return null;
+	const asset = await ctx.db.get(assetId);
+	if (
+		!asset
+		|| asset.siteUrl !== siteUrl
+		|| asset.intent !== "web"
+		|| asset.status !== "ready"
+	) throw new Error("Portfolio SEO image requires a ready web asset from the same site");
+	return asset;
+}
+
 export function toEditorRevision(
 	revision: Doc<"portfolioGalleryRevisions"> | null,
 	placements: Doc<"portfolioPlacements">[] = [],
@@ -138,31 +155,71 @@ export async function loadPublicPortfolioGallery(
 	assertRevisionOwnership(revision, gallery);
 	const placements = await getPortfolioPlacements(ctx, revision._id);
 	const draft = portfolioDraftFromRevision(revision, placements);
-	const published = toPublishedPortfolioGallery(draft);
+	const legacyMissingAltKeys = new Set(
+		placements
+			.filter((placement) => placement.sourceAltAbsent === true)
+			.map((placement) => placement.placementKey),
+	);
+	const published = revision.source === "admin"
+		? toPublishedPortfolioGallery(draft)
+		: toPublishedImportedPortfolioGallery(draft, legacyMissingAltKeys);
 	const assets = await requireReadyPortfolioAssets(ctx, gallery.siteUrl, draft.placements);
+	const seoAsset = await requireReadyPortfolioSeoAsset(
+		ctx,
+		gallery.siteUrl,
+		revision.seoOgImageAssetId,
+	);
 
 	return {
 		galleryId: gallery._id,
 		revisionId: revision._id,
+		sourceDocumentId: gallery.sourceDocumentId ?? null,
+		sourceDocumentRevision: revision.sourceDocumentRevision ?? null,
 		title: published.title,
 		description: published.description,
 		slug: published.slug,
 		portfolioOrder: gallery.portfolioOrder,
+		isVisible: gallery.isVisible === true,
 		publishedAt: gallery.publishedAt ?? revision.createdAt,
+		seo: {
+			description: revision.seoDescription?.trim() || null,
+			ogImage: seoAsset
+				? {
+						assetId: seoAsset.assetId,
+						sourceAssetRef: revision.seoOgSourceAssetRef ?? null,
+						source: {
+							width: seoAsset.source.width,
+							height: seoAsset.source.height,
+							sha256: seoAsset.source.sha256 ?? null,
+						},
+						derivatives: seoAsset.derivatives,
+					}
+				: null,
+		},
 		placements: published.placements.map((placement, order) => {
 			const asset = assets.get(placement.assetId);
+			const storedPlacement = placements[order];
 			if (!asset) throw new Error("Published portfolio asset not found");
+			if (
+				!storedPlacement
+				|| storedPlacement.placementKey !== placement.key
+				|| storedPlacement.assetId !== placement.assetId
+			) throw new Error("Published portfolio placement projection mismatch");
 			return {
 				key: placement.key,
 				order,
 				altText: placement.altText,
 				caption: placement.caption,
 				focalPoint: placement.focalPoint ?? null,
+				sourceAssetRef: storedPlacement.sourceAssetRef ?? null,
+				sourceCropCanonical: storedPlacement.sourceCropCanonical ?? null,
+				sourceHotspotCanonical: storedPlacement.sourceHotspotCanonical ?? null,
 				asset: {
 					assetId: asset.assetId,
 					source: {
 						width: asset.source.width,
 						height: asset.source.height,
+						sha256: asset.source.sha256 ?? null,
 					},
 					derivatives: asset.derivatives,
 				},

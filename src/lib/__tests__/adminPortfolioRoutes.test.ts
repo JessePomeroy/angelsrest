@@ -115,7 +115,7 @@ describe("admin Editor route boundaries", () => {
 		});
 	});
 
-	it("routes public Site Settings through its reversible provider and leaves Portfolio on Sanity", () => {
+	it("routes public Site Settings and Portfolio through reversible server providers", () => {
 		const rootLayout = routeSource("src/routes/+layout.server.ts");
 		expect(rootLayout).toContain('from "$lib/server/siteSettingsContent.server"');
 		expect(rootLayout).toContain("siteSettingsContent.load");
@@ -127,9 +127,9 @@ describe("admin Editor route boundaries", () => {
 			"src/routes/gallery/[slug]/+page.server.ts",
 		]) {
 			const source = routeSource(path);
-			expect(source).toContain('from "$lib/sanity/client.server"');
+			expect(source).toContain('from "$lib/server/portfolioContent.server"');
 			expect(source).not.toContain("$convex");
-			expect(source).not.toContain("portfolioGalleries");
+			expect(source).not.toContain("getSanityClient");
 		}
 	});
 
