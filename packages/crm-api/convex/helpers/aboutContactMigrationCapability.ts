@@ -1,8 +1,4 @@
-export type AboutContactMigrationPurpose =
-	| "about-contact-media-attest-v1"
-	| "about-contact-pinned-restore-v1"
-	| "sanity-about-contact-publish-v1"
-	| "sanity-about-contact-import-v1";
+export type AboutContactMigrationPurpose = "about-contact-pinned-restore-v1";
 
 export type AboutContactMigrationCapabilityScope = {
 	siteUrl: string;
