@@ -1,8 +1,4 @@
-export type PortfolioMigrationPurpose =
-	| "portfolio-media-attest-v1"
-	| "sanity-portfolio-import-v1"
-	| "sanity-portfolio-publish-v1"
-	| "portfolio-pinned-restore-v1";
+export type PortfolioMigrationPurpose = "portfolio-pinned-restore-v1";
 
 export type PortfolioMigrationCapabilityScope = {
 	siteUrl: string;

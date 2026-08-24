@@ -1,6 +1,7 @@
 /// <reference types="vite/client" />
 // @vitest-environment edge-runtime
 
+import { makeFunctionReference } from "convex/server";
 import { convexTest } from "convex-test";
 import { describe, expect, test } from "vitest";
 import { api, internal } from "./_generated/api";
@@ -15,6 +16,7 @@ import {
 import {
 	attestPortfolioMediaSources,
 	importSanityPortfolioDrafts,
+	type PortfolioPinnedRestoreEntry,
 	publishSanityPortfolioDrafts,
 	restorePinnedPortfolioRevisions,
 } from "./helpers/portfolioMigrationStore";
@@ -26,6 +28,15 @@ const ADMIN = "admin-a@example.com";
 const WORKER_ASSET_ID = "123e4567-e89b-42d3-a456-426614174000";
 const SOURCE_ASSET_REF = "image-abcdef123456-1600x1067-jpg";
 const TRANSFER_SHA256 = "a".repeat(64);
+
+const restorePinned = makeFunctionReference<
+	"mutation",
+	{
+		siteUrl: string;
+		operationId: string;
+		entries: PortfolioPinnedRestoreEntry[];
+	}
+>("portfolioMigration:restorePinnedPublishedRevisions");
 
 function readyWebpAsset() {
 	const prefix = `sites/${SITE}/web/${WORKER_ASSET_ID}/`;
@@ -360,6 +371,9 @@ describe("Portfolio fixed-manifest migration", () => {
 				},
 			}],
 		};
+		await expect(t.mutation(restorePinned, restoreArgs)).rejects.toThrow(
+			/capability is disabled/i,
+		);
 		expect(await t.run(async (ctx) =>
 			await restorePinnedPortfolioRevisions(ctx, restoreArgs)
 		)).toMatchObject({ status: "restored", operationId: "portfolio-restore-1" });
