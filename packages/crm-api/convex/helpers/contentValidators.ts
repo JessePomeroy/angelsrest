@@ -1,5 +1,6 @@
 import type { Infer } from "convex/values";
 import { v } from "convex/values";
+import type { Id } from "../_generated/dataModel";
 import { aboutPageDraftPayloadValidator } from "./aboutPageValidators";
 import { blogContentRevisionPayloadValidator } from "./blogContentValidators";
 import { contactPageDraftPayloadValidator } from "./contactPageValidators";
@@ -136,6 +137,7 @@ export const siteSettingsDraftPayloadValidator = v.object({
 	tagline: v.optional(v.string()),
 	socialLinks: v.optional(v.array(siteSettingsSocialLinkValidator)),
 	seoDescription: v.optional(v.string()),
+	seoOgImageAssetId: v.optional(v.id("mediaAssets")),
 });
 
 export const homepageQuoteDraftPayloadValidator = v.object({
@@ -171,6 +173,7 @@ export type PublishedSiteSettings = {
 	tagline: string;
 	socialLinks: Array<{ platform: string; url: string }>;
 	seoDescription: string;
+	seoOgImageAssetId?: Id<"mediaAssets">;
 };
 
 export type PublishedHomepageQuote = {
@@ -215,7 +218,14 @@ function assertMaximum(value: string | undefined, maximum: number, field: string
 export function validateSiteSettingsDraft(payload: SiteSettingsDraftPayload) {
 	assertOnlyKeys(
 		payload,
-		new Set(["artistName", "siteTitle", "tagline", "socialLinks", "seoDescription"]),
+		new Set([
+			"artistName",
+			"siteTitle",
+			"tagline",
+			"socialLinks",
+			"seoDescription",
+			"seoOgImageAssetId",
+		]),
 		"Site settings",
 	);
 	assertMaximum(payload.artistName, LIMITS.artistName, "Artist name");
@@ -301,6 +311,9 @@ export function toPublishedSiteSettings(
 			"SEO description",
 			LIMITS.seoDescription,
 		),
+		...(payload.seoOgImageAssetId === undefined
+			? {}
+			: { seoOgImageAssetId: payload.seoOgImageAssetId }),
 	};
 }
 
@@ -330,7 +343,17 @@ export function serializeSiteSettingsPayload(payload: SiteSettingsDraftPayload) 
 			url: link.url,
 		})),
 		seoDescription: payload.seoDescription ?? null,
+		...(payload.seoOgImageAssetId === undefined
+			? {}
+			: { seoOgImageAssetId: payload.seoOgImageAssetId }),
 	});
+}
+
+export function siteSettingsReferencesAsset(
+	payload: SiteSettingsDraftPayload,
+	assetId: string,
+) {
+	return payload.seoOgImageAssetId === assetId;
 }
 
 export function serializeHomepageQuotePayload(

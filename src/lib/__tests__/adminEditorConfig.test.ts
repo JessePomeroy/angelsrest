@@ -163,7 +163,7 @@ describe("admin API aliases", () => {
 		expect(adminConfig.api.siteEditor?.saveSiteSettingsDraft).toBe(
 			contentApi.saveSiteSettingsDraft,
 		);
-		expect(adminConfig.api.siteEditor?.publishSiteSettings).toBeUndefined();
+		expect(adminConfig.api.siteEditor?.publishSiteSettings).toBe(contentApi.publishSiteSettings);
 		expect(adminConfig.api.siteEditor?.discardSiteSettingsDraft).toBe(
 			contentApi.discardSiteSettingsDraft,
 		);

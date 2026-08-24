@@ -30,12 +30,13 @@ const portfolioEditorApi = new Proxy(api.portfolioGalleries, {
 });
 
 // Keep the site editor on an explicit browser-safe capability surface. About's
-// installed shared editor currently requires its ordinary authenticated publish
-// reference, while Site Settings and Contact remain draft-only. Migration and
+// installed shared editors currently require their ordinary authenticated publish
+// references for About and Site Settings, while Contact remains draft-only. Migration and
 // restore operators are internal and cannot appear through this plain object.
 const siteEditorApi = {
 	getSiteSettingsEditorState: api.content.getSiteSettingsEditorState,
 	saveSiteSettingsDraft: api.content.saveSiteSettingsDraft,
+	publishSiteSettings: api.content.publishSiteSettings,
 	discardSiteSettingsDraft: api.content.discardSiteSettingsDraft,
 	getHomepageQuoteEditorState: api.content.getHomepageQuoteEditorState,
 	getContactPageEditorState: api.content.getContactPageEditorState,

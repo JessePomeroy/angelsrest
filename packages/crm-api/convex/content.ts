@@ -22,6 +22,11 @@ import {
 	saveContentDraft,
 } from "./helpers/contentStore";
 import {
+	projectPublishedSiteSettings,
+	requireReadySiteSettingsOgImage,
+} from "./helpers/siteSettingsData";
+import { isInitialSanitySiteSettingsImport } from "./helpers/siteSettingsMigrationStore";
+import {
 	type AboutPageDraftPayload,
 	aboutPageDraftPayloadValidator,
 	type ContactPageDraftPayload,
@@ -126,27 +131,29 @@ export const getSiteSettingsEditorState = query({
 /** Public-safe read: only the complete published payload is projected. */
 export const getPublishedSiteSettings = query({
 	args: { siteUrl: v.string() },
-	handler: async (ctx, { siteUrl }) =>
-		(
-			await getPublishedContentState(
-				ctx,
-				siteUrl,
-				SITE_SETTINGS_KIND,
-				(payload) => toPublishedSiteSettings(asSiteSettingsPayload(payload)),
-			)
-		)?.payload ?? null,
+	handler: async (ctx, { siteUrl }) => {
+		const state = await getPublishedContentState(
+			ctx,
+			siteUrl,
+			SITE_SETTINGS_KIND,
+			(payload) => toPublishedSiteSettings(asSiteSettingsPayload(payload)),
+		);
+		return state ? (await projectPublishedSiteSettings(ctx, siteUrl, state)).payload : null;
+	},
 });
 
 /** Public-safe read with opaque revision metadata for provider observability. */
 export const getPublishedSiteSettingsWithRevision = query({
 	args: { siteUrl: v.string() },
-	handler: async (ctx, { siteUrl }) =>
-		await getPublishedContentState(
+	handler: async (ctx, { siteUrl }) => {
+		const state = await getPublishedContentState(
 			ctx,
 			siteUrl,
 			SITE_SETTINGS_KIND,
 			(payload) => toPublishedSiteSettings(asSiteSettingsPayload(payload)),
-		),
+		);
+		return state ? await projectPublishedSiteSettings(ctx, siteUrl, state) : null;
+	},
 });
 
 /** Save an immutable revision while allowing incomplete draft content. */
@@ -158,10 +165,47 @@ export const saveSiteSettingsDraft = mutation({
 	},
 	handler: async (ctx, args) => {
 		validateSiteSettingsDraft(args.payload);
+		const { client } = await requireSiteAdmin(ctx, args.siteUrl);
+		const document = await getContentDocument(ctx, client.siteUrl, SITE_SETTINGS_KIND);
+		if (isInitialSanitySiteSettingsImport(document)) {
+			throw new Error("Imported Site Settings requires fixed initial publication");
+		}
+		let retainedSeoOgImageAssetId = args.payload.seoOgImageAssetId;
+		if (retainedSeoOgImageAssetId === undefined && document) {
+			for (const revisionId of [
+				document.draftRevisionId,
+				document.publishedRevisionId,
+			]) {
+				if (!revisionId) continue;
+				const revision = await ctx.db.get(revisionId);
+				if (
+					!revision
+					|| revision.documentId !== document._id
+					|| revision.siteUrl !== client.siteUrl
+					|| revision.kind !== SITE_SETTINGS_KIND
+				) throw new Error("Site Settings revision ownership mismatch");
+				retainedSeoOgImageAssetId = asSiteSettingsPayload(
+					revision.payload,
+				).seoOgImageAssetId;
+				if (retainedSeoOgImageAssetId !== undefined) break;
+			}
+		}
+		const payload = {
+			...args.payload,
+			...(retainedSeoOgImageAssetId === undefined
+				? {}
+				: { seoOgImageAssetId: retainedSeoOgImageAssetId }),
+		};
+		await requireReadySiteSettingsOgImage(
+			ctx,
+			client.siteUrl,
+			payload.seoOgImageAssetId,
+		);
 		return await saveContentDraft(ctx, {
 			...args,
+			payload,
 			kind: SITE_SETTINGS_KIND,
-			serializedPayload: serializeSiteSettingsPayload(args.payload),
+			serializedPayload: serializeSiteSettingsPayload(payload),
 		});
 	},
 });
@@ -172,12 +216,31 @@ export const publishSiteSettings = mutation({
 		siteUrl: v.string(),
 		draftRevisionId: v.id("contentRevisions"),
 	},
-	handler: async (ctx, args) =>
-		await publishContentDraft(
+	handler: async (ctx, args) => {
+		const { client } = await requireSiteAdmin(ctx, args.siteUrl);
+		const document = await getContentDocument(ctx, client.siteUrl, SITE_SETTINGS_KIND);
+		if (isInitialSanitySiteSettingsImport(document)) {
+			throw new Error("Imported Site Settings requires fixed initial publication");
+		}
+		const revision = await ctx.db.get(args.draftRevisionId);
+		if (!revision || !document) {
+			throw new Error("Site Settings draft revision not found");
+		}
+		if (revision.documentId !== document._id) {
+			throw new Error("Site Settings revision ownership mismatch");
+		}
+		const payload = asSiteSettingsPayload(revision.payload);
+		await requireReadySiteSettingsOgImage(
+			ctx,
+			client.siteUrl,
+			payload.seoOgImageAssetId,
+		);
+		return await publishContentDraft(
 			ctx,
 			{ ...args, kind: SITE_SETTINGS_KIND },
-			(payload) => toPublishedSiteSettings(asSiteSettingsPayload(payload)),
-		),
+			(candidate) => toPublishedSiteSettings(asSiteSettingsPayload(candidate)),
+		);
+	},
 });
 
 /** Discard only the currently loaded unpublished pointer. History is immutable. */
@@ -186,8 +249,14 @@ export const discardSiteSettingsDraft = mutation({
 		siteUrl: v.string(),
 		draftRevisionId: v.id("contentRevisions"),
 	},
-	handler: async (ctx, args) =>
-		await discardContentDraft(ctx, { ...args, kind: SITE_SETTINGS_KIND }),
+	handler: async (ctx, args) => {
+		const { client } = await requireSiteAdmin(ctx, args.siteUrl);
+		const document = await getContentDocument(ctx, client.siteUrl, SITE_SETTINGS_KIND);
+		if (isInitialSanitySiteSettingsImport(document)) {
+			throw new Error("Imported Site Settings requires fixed initial publication");
+		}
+		return await discardContentDraft(ctx, { ...args, kind: SITE_SETTINGS_KIND });
+	},
 });
 
 /** Authenticated state for Reflecting Pool's named Homepage Quote slot. */

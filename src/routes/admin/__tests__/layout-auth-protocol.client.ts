@@ -167,7 +167,18 @@ function getConfiguredAuthClient() {
 
 const authorizedData = {
 	isPreview: false,
-	siteSettings: null,
+	siteSettings: {
+		artistName: "Jesse Pomeroy",
+		siteTitle: "Angel's Rest",
+		tagline: "Photography and visual art",
+		logoUrl: null,
+		socialLinks: [],
+		seo: {
+			description: "Photography by Jesse Pomeroy",
+			ogImageUrl: null,
+			keywords: [],
+		},
+	},
 	adminSession: {
 		status: "authorized" as const,
 		email: "creator@example.com",

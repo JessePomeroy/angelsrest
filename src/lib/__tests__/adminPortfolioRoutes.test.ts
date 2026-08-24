@@ -115,10 +115,11 @@ describe("admin Editor route boundaries", () => {
 		});
 	});
 
-	it("leaves public site settings and Portfolio reads on the reversible Sanity boundary", () => {
+	it("routes public Site Settings through its reversible provider and leaves Portfolio on Sanity", () => {
 		const rootLayout = routeSource("src/routes/+layout.server.ts");
-		expect(rootLayout).toContain('from "$lib/sanity/client.server"');
-		expect(rootLayout).toContain('*[_type == "siteSettings"][0]');
+		expect(rootLayout).toContain('from "$lib/server/siteSettingsContent.server"');
+		expect(rootLayout).toContain("siteSettingsContent.load");
+		expect(rootLayout).not.toContain("getSanityClient");
 		expect(rootLayout).not.toContain("$convex");
 
 		for (const path of [

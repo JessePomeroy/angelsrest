@@ -1,21 +1,7 @@
-import { getSanityClient } from "$lib/sanity/client.server";
+import { siteSettingsContent } from "$lib/server/siteSettingsContent.server";
 
 export async function load({ locals }) {
-	const sanity = getSanityClient(locals.isPreview);
-	const siteSettings = await sanity.fetch(
-		`*[_type == "siteSettings"][0]{
-			artistName,
-			siteTitle,
-			tagline,
-			"logoUrl": logo.asset->url,
-			socialLinks[]{platform, url},
-			seo{
-				description,
-				"ogImageUrl": ogImage.asset->url,
-				keywords
-			}
-		}`,
-	);
+	const siteSettings = await siteSettingsContent.load(locals.isPreview ?? false);
 
 	return {
 		isPreview: locals.isPreview ?? false,
