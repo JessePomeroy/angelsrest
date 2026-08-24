@@ -3,29 +3,17 @@ import { ConvexHttpClient } from "convex/browser";
 import { api } from "$convex/api";
 import { env as privateEnv } from "$env/dynamic/private";
 import { env as publicEnv } from "$env/dynamic/public";
-import {
-	ABOUT_CONTACT_SEO_DESCRIPTION_FALLBACK,
-	type AboutContactContent,
-} from "$lib/about-contact/content";
+import type { AboutContactContent } from "$lib/about-contact/content";
 import localPortrait from "$lib/assets/DSCF7533.jpg";
 import { SITE_DOMAIN, SITE_URL } from "$lib/config/site";
 import { contactPageSeed } from "$lib/content/contactPageSeed";
 import { getSanityClient } from "$lib/sanity/client.server";
-import { logStructured } from "$lib/server/logger";
 
-const SHADOW_DEADLINE_MS = 750;
 const MEDIA_ROOT = `https://media.angelsrest.online/sites/${SITE_DOMAIN}/web`;
 const LOCAL_PORTRAIT_SHA256 = "0e94b665f7654c74158daf3aa2c497139c5cb7c4490d72205cfa3babd6dc4eb0";
 const UUID_V4 = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
 
-type ProviderMode = "sanity" | "shadow" | "convex";
-type ShadowCode = "about" | "contact" | "normalization_error" | "secondary_error" | "timeout";
-type Comparison = {
-	codes: ShadowCode[];
-	mismatchCount: number;
-	primaryCount: number | null;
-	secondaryCount: number | null;
-};
+type ProviderMode = "sanity" | "convex";
 type SanityClient = Pick<ReturnType<typeof getSanityClient>, "fetch">;
 type SanitySource = {
 	load(isPreview: boolean): Promise<AboutContactContent>;
@@ -418,41 +406,8 @@ export function projectSiteSettingsInstagramUrl(value: unknown): string | null {
 	return publicUrl((matches[0] as Record<string, unknown>).url);
 }
 
-function same(left: unknown, right: unknown) {
-	return JSON.stringify(left) === JSON.stringify(right);
-}
-
-function aboutSemantics(value: AboutContactContent["about"]) {
-	return {
-		...value,
-		seo: {
-			...value.seo,
-			description: value.seo.description ?? ABOUT_CONTACT_SEO_DESCRIPTION_FALLBACK,
-		},
-		portrait: {
-			altText: value.portrait.altText,
-			sourceSha256: value.portrait.sourceSha256,
-		},
-	};
-}
-
-export function compareAboutContact(
-	primary: AboutContactContent,
-	secondary: AboutContactContent,
-): Comparison {
-	const codes: ShadowCode[] = [];
-	if (!same(aboutSemantics(primary.about), aboutSemantics(secondary.about))) codes.push("about");
-	if (!same(primary.contact, secondary.contact)) codes.push("contact");
-	return {
-		codes,
-		mismatchCount: codes.length,
-		primaryCount: 2,
-		secondaryCount: 2,
-	};
-}
-
 export function parseAboutContactProviderMode(value: unknown): ProviderMode {
-	return value === "sanity" || value === "shadow" || value === "convex" ? value : "sanity";
+	return value === "sanity" || value === "convex" ? value : "sanity";
 }
 
 export function createSanityAboutContactSource(
@@ -488,50 +443,11 @@ export function createAboutContactContentProvider(
 		sanity?: SanitySource;
 		mode?: () => unknown;
 		createReader?: () => ConvexReader;
-		log?: typeof logStructured;
-		now?: () => number;
-		deadlineMs?: number;
 	} = {},
 ) {
 	const sanity = dependencies.sanity ?? createSanityAboutContactSource();
 	const mode = dependencies.mode ?? (() => privateEnv.ABOUT_CONTACT_CONTENT_PROVIDER);
 	const createReader = dependencies.createReader ?? createConvexReader;
-	const log = dependencies.log ?? logStructured;
-	const now = dependencies.now ?? Date.now;
-	const deadlineMs = dependencies.deadlineMs ?? SHADOW_DEADLINE_MS;
-
-	function report(comparison: Comparison, startedAt: number) {
-		if (comparison.codes.length === 0) return;
-		log({
-			event: "about_contact.shadow_closed",
-			level: "warn",
-			durationMs: Math.max(0, Math.min(deadlineMs, Math.round(now() - startedAt))),
-			meta: {
-				codes: comparison.codes,
-				mismatchCount: comparison.mismatchCount,
-				primaryCount: comparison.primaryCount,
-				secondaryCount: comparison.secondaryCount,
-			},
-		});
-	}
-
-	function bounded(work: Promise<Comparison>, controller: AbortController) {
-		let timer: ReturnType<typeof setTimeout> | undefined;
-		return Promise.race([
-			work,
-			new Promise<Comparison>((resolve) => {
-				timer = setTimeout(() => {
-					controller.abort();
-					resolve({
-						codes: ["timeout"],
-						mismatchCount: 1,
-						primaryCount: null,
-						secondaryCount: null,
-					});
-				}, deadlineMs);
-			}),
-		]).finally(() => clearTimeout(timer));
-	}
 
 	async function loadConvex() {
 		try {
@@ -543,49 +459,11 @@ export function createAboutContactContentProvider(
 		}
 	}
 
-	async function loadShadow() {
-		const startedAt = now();
-		const controller = new AbortController();
-		const primary = sanity.load(false);
-		const comparison = bounded(
-			(async () => {
-				try {
-					const [left, rawRight] = await Promise.all([
-						primary,
-						createReader().loadPublished(controller.signal),
-					]);
-					return compareAboutContact(left, adaptConvexAboutContact(rawRight));
-				} catch (cause) {
-					return {
-						codes: [
-							cause instanceof AboutContactProjectionError
-								? "normalization_error"
-								: "secondary_error",
-						] as ShadowCode[],
-						mismatchCount: 1,
-						primaryCount: null,
-						secondaryCount: null,
-					};
-				}
-			})(),
-			controller,
-		);
-		try {
-			const result = await primary;
-			report(await comparison, startedAt);
-			return result;
-		} catch (cause) {
-			controller.abort();
-			throw cause;
-		}
-	}
-
 	return {
 		async load(isPreview: boolean) {
 			if (isPreview) return await sanity.load(true);
 			const provider = parseAboutContactProviderMode(mode());
 			if (provider === "convex") return await loadConvex();
-			if (provider === "shadow") return await loadShadow();
 			return await sanity.load(false);
 		},
 	};
