@@ -6,9 +6,7 @@ import { env as publicEnv } from "$env/dynamic/public";
 import { SITE_DOMAIN } from "$lib/config/site";
 import { urlFor } from "$lib/sanity/client";
 import { getSanityClient } from "$lib/sanity/client.server";
-import { logStructured } from "$lib/server/logger";
 
-const SHADOW_DEADLINE_MS = 750;
 const GALLERY_MAX = 100;
 const PLACEMENT_MAX = 500;
 const MEDIA_ORIGIN = `https://media.${SITE_DOMAIN}`;
@@ -61,14 +59,7 @@ const DETAIL_QUERY = `*[_type == "gallery" && slug.current == $slug][0...2]{
 	}
 }`;
 
-type ProviderMode = "sanity" | "shadow" | "convex";
-type ShadowCode = "list" | "detail" | "normalization_error" | "secondary_error" | "timeout";
-type Comparison = {
-	codes: ShadowCode[];
-	mismatchCount: number;
-	primaryCount: number | null;
-	secondaryCount: number | null;
-};
+type ProviderMode = "sanity" | "convex";
 
 export type PortfolioIndexGallery = {
 	title: string;
@@ -108,14 +99,12 @@ type GalleryEvidence = {
 	images: ImageEvidence[];
 };
 
-type ListCandidate = { content: PortfolioIndexGallery[]; evidence: GalleryEvidence[] };
-type DetailCandidate = { content: PortfolioDetail; evidence: GalleryEvidence } | null;
 type SanityClient = {
 	fetch(query: string, params?: Record<string, string>): Promise<unknown>;
 };
 type SanitySource = {
-	list(isPreview: boolean): Promise<ListCandidate>;
-	getBySlug(slug: string, isPreview: boolean): Promise<DetailCandidate>;
+	list(isPreview: boolean): Promise<PortfolioIndexGallery[]>;
+	getBySlug(slug: string, isPreview: boolean): Promise<PortfolioDetail | null>;
 };
 type ConvexReader = {
 	listPublished(signal: AbortSignal): Promise<unknown>;
@@ -277,10 +266,9 @@ function sanityEvidence(
 	};
 }
 
-export function adaptSanityPortfolioList(value: unknown): ListCandidate {
+export function adaptSanityPortfolioList(value: unknown): PortfolioIndexGallery[] {
 	const rows = list(value, GALLERY_MAX);
 	const content: PortfolioIndexGallery[] = [];
-	const evidence: GalleryEvidence[] = [];
 	for (const raw of rows) {
 		const row = object(raw, ["_id", "_rev", "title", "slug", "orderRank", "previewImage"]);
 		requiredText(row.orderRank, 256);
@@ -296,12 +284,11 @@ export function adaptSanityPortfolioList(value: unknown): ListCandidate {
 			slug: item.slug,
 			preview: preview ? imageUrl(preview, "preview") : null,
 		});
-		evidence.push(item);
 	}
-	return { content, evidence };
+	return content;
 }
 
-export function adaptSanityPortfolioDetail(value: unknown): DetailCandidate {
+export function adaptSanityPortfolioDetail(value: unknown): PortfolioDetail | null {
 	const rows = list(value, 2);
 	if (rows.length === 0) return null;
 	if (rows.length !== 1) fail();
@@ -323,18 +310,15 @@ export function adaptSanityPortfolioDetail(value: unknown): DetailCandidate {
 	}
 	const evidence = sanityEvidence(row, images, seoDescription, seoOgImage);
 	return {
-		content: {
-			title: evidence.title,
-			description: evidence.description,
-			canonicalUrl: evidence.canonicalUrl,
-			seo: seoContent,
-			images: images.map((image) => ({
-				thumbnail: imageUrl(image, "thumbnail"),
-				full: imageUrl(image, "full"),
-				alt: image.alt,
-			})),
-		},
-		evidence,
+		title: evidence.title,
+		description: evidence.description,
+		canonicalUrl: evidence.canonicalUrl,
+		seo: seoContent,
+		images: images.map((image) => ({
+			thumbnail: imageUrl(image, "thumbnail"),
+			full: imageUrl(image, "full"),
+			alt: image.alt,
+		})),
 	};
 }
 
@@ -489,94 +473,21 @@ function adaptConvexGallery(value: unknown) {
 				alt: image.alt,
 			})),
 		} satisfies PortfolioDetail,
-		evidence,
 	};
 }
 
-export function adaptConvexPortfolioList(value: unknown): ListCandidate {
+export function adaptConvexPortfolioList(value: unknown): PortfolioIndexGallery[] {
 	const galleries = list(value, GALLERY_MAX).map(adaptConvexGallery);
-	return {
-		content: galleries.map(({ index }) => index),
-		evidence: galleries.map(({ evidence }) => evidence),
-	};
+	return galleries.map(({ index }) => index);
 }
 
-export function adaptConvexPortfolioDetail(value: unknown): DetailCandidate {
+export function adaptConvexPortfolioDetail(value: unknown): PortfolioDetail | null {
 	if (value === null) return null;
-	const gallery = adaptConvexGallery(value);
-	return { content: gallery.detail, evidence: gallery.evidence };
-}
-
-function comparableImage(image: ImageEvidence) {
-	return {
-		key: image.key,
-		assetRef: image.assetRef,
-		cropCanonical: image.cropCanonical,
-		hotspotCanonical: image.hotspotCanonical,
-		alt: image.alt,
-	};
-}
-
-function comparableGallery(gallery: GalleryEvidence) {
-	return {
-		sourceId: gallery.sourceId,
-		sourceRevision: gallery.sourceRevision,
-		slug: gallery.slug,
-		title: gallery.title,
-		description: gallery.description,
-		canonicalUrl: gallery.canonicalUrl,
-		seoDescription: gallery.seoDescription,
-		seoOgImage: gallery.seoOgImage
-			? {
-					assetRef: gallery.seoOgImage.assetRef,
-				}
-			: null,
-		images: gallery.images.map(comparableImage),
-	};
-}
-
-function compareList(primary: ListCandidate, secondary: ListCandidate): Comparison {
-	const matches =
-		canonical(
-			primary.evidence.map((gallery) => ({
-				sourceId: gallery.sourceId,
-				sourceRevision: gallery.sourceRevision,
-				slug: gallery.slug,
-				title: gallery.title,
-				preview: gallery.images[0] ? comparableImage(gallery.images[0]) : null,
-			})),
-		) ===
-		canonical(
-			secondary.evidence.map((gallery) => ({
-				sourceId: gallery.sourceId,
-				sourceRevision: gallery.sourceRevision,
-				slug: gallery.slug,
-				title: gallery.title,
-				preview: gallery.images[0] ? comparableImage(gallery.images[0]) : null,
-			})),
-		);
-	return {
-		codes: matches ? [] : ["list"],
-		mismatchCount: matches ? 0 : 1,
-		primaryCount: primary.content.length,
-		secondaryCount: secondary.content.length,
-	};
-}
-
-function compareDetail(primary: DetailCandidate, secondary: DetailCandidate): Comparison {
-	const matches =
-		canonical(primary?.evidence ? comparableGallery(primary.evidence) : null) ===
-		canonical(secondary?.evidence ? comparableGallery(secondary.evidence) : null);
-	return {
-		codes: matches ? [] : ["detail"],
-		mismatchCount: matches ? 0 : 1,
-		primaryCount: primary ? 1 : 0,
-		secondaryCount: secondary ? 1 : 0,
-	};
+	return adaptConvexGallery(value).detail;
 }
 
 export function parsePortfolioProviderMode(value: unknown): ProviderMode {
-	return value === "sanity" || value === "shadow" || value === "convex" ? value : "sanity";
+	return value === "sanity" || value === "convex" ? value : "sanity";
 }
 
 export function createSanityPortfolioSource(
@@ -625,135 +536,40 @@ export function createPortfolioContentProvider(
 		sanity?: SanitySource;
 		mode?: () => unknown;
 		createReader?: () => ConvexReader;
-		log?: typeof logStructured;
-		now?: () => number;
-		deadlineMs?: number;
 	} = {},
 ) {
 	const sanity = dependencies.sanity ?? createSanityPortfolioSource();
 	const mode = dependencies.mode ?? (() => privateEnv.PORTFOLIO_CONTENT_PROVIDER);
 	const createReader = dependencies.createReader ?? createConvexReader;
-	const log = dependencies.log ?? logStructured;
-	const now = dependencies.now ?? Date.now;
-	const deadlineMs = dependencies.deadlineMs ?? SHADOW_DEADLINE_MS;
-
-	function report(comparison: Comparison, startedAt: number) {
-		if (comparison.codes.length === 0) return;
-		log({
-			event: "portfolio.shadow_closed",
-			level: "warn",
-			durationMs: Math.max(0, Math.min(deadlineMs, Math.round(now() - startedAt))),
-			meta: {
-				codes: comparison.codes,
-				mismatchCount: comparison.mismatchCount,
-				primaryCount: comparison.primaryCount,
-				secondaryCount: comparison.secondaryCount,
-			},
-		});
-	}
-
-	function bounded(work: Promise<Comparison>, controller: AbortController) {
-		let timer: ReturnType<typeof setTimeout> | undefined;
-		return Promise.race([
-			work,
-			new Promise<Comparison>((resolve) => {
-				timer = setTimeout(() => {
-					controller.abort();
-					resolve({
-						codes: ["timeout"],
-						mismatchCount: 1,
-						primaryCount: null,
-						secondaryCount: null,
-					});
-				}, deadlineMs);
-			}),
-		]).finally(() => clearTimeout(timer));
-	}
-
-	async function shadow<T>(
-		primary: Promise<T>,
-		secondary: (signal: AbortSignal) => Promise<unknown>,
-		adapt: (value: unknown) => T,
-		compare: (left: T, right: T) => Comparison,
-	) {
-		const startedAt = now();
-		const controller = new AbortController();
-		const comparison = bounded(
-			(async () => {
-				try {
-					const [left, rawRight] = await Promise.all([primary, secondary(controller.signal)]);
-					return compare(left, adapt(rawRight));
-				} catch (cause) {
-					return {
-						codes: [
-							cause instanceof PortfolioProjectionError ? "normalization_error" : "secondary_error",
-						],
-						mismatchCount: 1,
-						primaryCount: null,
-						secondaryCount: null,
-					} as Comparison;
-				}
-			})(),
-			controller,
-		);
-		try {
-			const result = await primary;
-			report(await comparison, startedAt);
-			return result;
-		} catch (cause) {
-			controller.abort();
-			throw cause;
-		}
-	}
 
 	return {
 		async list(isPreview: boolean) {
-			if (isPreview) return (await sanity.list(true)).content;
+			if (isPreview) return await sanity.list(true);
 			const provider = parsePortfolioProviderMode(mode());
-			if (provider === "sanity") return (await sanity.list(false)).content;
 			if (provider === "convex") {
 				try {
 					return adaptConvexPortfolioList(
 						await createReader().listPublished(new AbortController().signal),
-					).content;
-				} catch {
-					unavailable();
-				}
-			}
-			return (
-				await shadow(
-					sanity.list(false),
-					(signal) => createReader().listPublished(signal),
-					adaptConvexPortfolioList,
-					compareList,
-				)
-			).content;
-		},
-		async getBySlug(slug: string, isPreview: boolean) {
-			if (isPreview) return (await sanity.getBySlug(slug, true))?.content ?? null;
-			const provider = parsePortfolioProviderMode(mode());
-			if (provider === "sanity") return (await sanity.getBySlug(slug, false))?.content ?? null;
-			if (provider === "convex") {
-				try {
-					return (
-						adaptConvexPortfolioDetail(
-							await createReader().getPublishedBySlug(slug, new AbortController().signal),
-						)?.content ?? null
 					);
 				} catch {
 					unavailable();
 				}
 			}
-			return (
-				(
-					await shadow(
-						sanity.getBySlug(slug, false),
-						(signal) => createReader().getPublishedBySlug(slug, signal),
-						adaptConvexPortfolioDetail,
-						compareDetail,
-					)
-				)?.content ?? null
-			);
+			return await sanity.list(false);
+		},
+		async getBySlug(slug: string, isPreview: boolean) {
+			if (isPreview) return await sanity.getBySlug(slug, true);
+			const provider = parsePortfolioProviderMode(mode());
+			if (provider === "convex") {
+				try {
+					return adaptConvexPortfolioDetail(
+						await createReader().getPublishedBySlug(slug, new AbortController().signal),
+					);
+				} catch {
+					unavailable();
+				}
+			}
+			return await sanity.getBySlug(slug, false);
 		},
 	};
 }
