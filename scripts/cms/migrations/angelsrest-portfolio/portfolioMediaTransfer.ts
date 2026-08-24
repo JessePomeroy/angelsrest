@@ -14,8 +14,10 @@ const CONVEX_ID = /^[a-z0-9]{20,64}$/;
 const SHA256 = /^[0-9a-f]{64}$/;
 const WORKER_ORIGIN = "https://cms-media-worker.thinkingofview.workers.dev";
 const UPLOAD_PATH = "/v1/uploads/source";
+const ACTIVE_OPERATION_MESSAGE = "CMS media asset operation is already in progress";
 
 type JsonObject = Record<string, unknown>;
+export type PortfolioMediaBoundary = "standard" | "process";
 export type PortfolioAnimationInspection = {
 	frameCount: 17;
 	frameDurationMs: 100;
@@ -144,6 +146,28 @@ function exactKeys(value: JsonObject, expected: readonly string[], label: string
 	if (actual.length !== wanted.length || actual.some((key, index) => key !== wanted[index])) {
 		throw new Error(`${label} has unexpected or missing fields`);
 	}
+}
+
+export function isPortfolioMediaLeaseConflictEnvelope(value: unknown): boolean {
+	if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+	const root = value as JsonObject;
+	return Object.keys(root).join(",") === "message" && root.message === ACTIVE_OPERATION_MESSAGE;
+}
+
+export function isPortfolioMediaLeaseConflictBody(value: string): boolean {
+	const body = value.trim();
+	if (body === ACTIVE_OPERATION_MESSAGE) return true;
+	try {
+		return isPortfolioMediaLeaseConflictEnvelope(JSON.parse(body) as unknown);
+	} catch {
+		return false;
+	}
+}
+
+export function portfolioMediaBoundaryTimeoutMs(
+	boundary: PortfolioMediaBoundary,
+): 120_000 | 330_000 {
+	return boundary === "process" ? 330_000 : 120_000;
 }
 
 function stringValue(value: unknown, label: string): string {
