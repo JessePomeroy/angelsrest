@@ -1,5 +1,11 @@
 # @jessepomeroy/crm-api
 
+## 3.3.2
+
+### Patch Changes
+
+- be663fc: Retire completed internal About and Contact migration writers while preserving pinned restore support.
+
 ## 3.3.1
 
 ### Patch Changes
