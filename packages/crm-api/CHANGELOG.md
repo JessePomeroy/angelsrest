@@ -1,5 +1,11 @@
 # @jessepomeroy/crm-api
 
+## 3.3.3
+
+### Patch Changes
+
+- ed9e689: Retire completed Site Settings attestation, import, and publication entrypoints while retaining pinned restore recovery.
+
 ## 3.3.2
 
 ### Patch Changes
