@@ -1,11 +1,10 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 vi.mock("$env/dynamic/private", () => ({ env: {} }));
 vi.mock("$env/dynamic/public", () => ({
 	env: { PUBLIC_CONVEX_URL: "https://convex.test" },
 }));
 vi.mock("$lib/sanity/client.server", () => ({ getSanityClient: vi.fn() }));
-vi.mock("$lib/server/logger", () => ({ logStructured: vi.fn() }));
 vi.mock("$lib/sanity/client", () => ({
 	urlFor: (source: { asset: { _ref: string } }) => {
 		let width = 0;
@@ -148,15 +147,11 @@ function sanitySource() {
 	};
 }
 
-afterEach(() => {
-	vi.useRealTimers();
-});
-
 describe("Portfolio provider boundary", () => {
 	it("normalizes current Sanity rendering and fixed Convex derivatives", () => {
 		const sanity = adaptSanityPortfolioDetail(sanityDetail());
 		const convex = adaptConvexPortfolioDetail(convexGallery());
-		expect(sanity?.content).toMatchObject({
+		expect(sanity).toMatchObject({
 			title: "Selected work",
 			canonicalUrl: "https://angelsrest.online/gallery/selected-work",
 			images: [
@@ -166,7 +161,7 @@ describe("Portfolio provider boundary", () => {
 				},
 			],
 		});
-		expect(convex?.content).toMatchObject({
+		expect(convex).toMatchObject({
 			title: "Selected work",
 			canonicalUrl: "https://angelsrest.online/gallery/selected-work",
 			images: [
@@ -176,14 +171,14 @@ describe("Portfolio provider boundary", () => {
 				},
 			],
 		});
-		expect(adaptSanityPortfolioList(sanityList()).content[0]).not.toHaveProperty("category");
-		expect(adaptConvexPortfolioList([convexGallery()]).content[0]).not.toHaveProperty("category");
+		expect(adaptSanityPortfolioList(sanityList())[0]).not.toHaveProperty("category");
+		expect(adaptConvexPortfolioList([convexGallery()])[0]).not.toHaveProperty("category");
 		const canonicalMismatch = sanityDetail();
 		const mismatchGallery = canonicalMismatch[0];
 		if (!mismatchGallery) throw new Error("Missing canonical mismatch fixture");
 		mismatchGallery.title = "Clownin~";
 		mismatchGallery.slug = "clownin";
-		expect(adaptSanityPortfolioDetail(canonicalMismatch)?.content.canonicalUrl).toBe(
+		expect(adaptSanityPortfolioDetail(canonicalMismatch)?.canonicalUrl).toBe(
 			"https://angelsrest.online/gallery/clownin~",
 		);
 
@@ -196,6 +191,9 @@ describe("Portfolio provider boundary", () => {
 
 	it("keeps preview on Sanity, defaults invalid modes to Sanity, and never falls back", async () => {
 		expect(parsePortfolioProviderMode(undefined)).toBe("sanity");
+		expect(parsePortfolioProviderMode("sanity")).toBe("sanity");
+		expect(parsePortfolioProviderMode("convex")).toBe("convex");
+		expect(parsePortfolioProviderMode("shadow")).toBe("sanity");
 		expect(parsePortfolioProviderMode(" convex ")).toBe("sanity");
 		const sanity = sanitySource();
 		const mode = vi.fn(() => "convex");
@@ -221,29 +219,5 @@ describe("Portfolio provider boundary", () => {
 		});
 		await expect(unavailable.list(false)).rejects.toMatchObject({ status: 503 });
 		expect(sanity.list).toHaveBeenCalledTimes(1);
-	});
-
-	it("serves Sanity in shadow and logs only bounded mismatch metadata", async () => {
-		const log = vi.fn();
-		const changed = convexGallery();
-		changed.title = "Private changed title";
-		const provider = createPortfolioContentProvider({
-			sanity: sanitySource(),
-			mode: () => "shadow",
-			createReader: () => ({
-				listPublished: async () => [changed],
-				getPublishedBySlug: async () => changed,
-			}),
-			log,
-		});
-		await expect(provider.getBySlug("selected-work", false)).resolves.toMatchObject({
-			title: "Selected work",
-		});
-		expect(log).toHaveBeenCalledOnce();
-		expect(log.mock.calls[0]?.[0]).toMatchObject({
-			event: "portfolio.shadow_closed",
-			meta: { codes: ["detail"], mismatchCount: 1, primaryCount: 1, secondaryCount: 1 },
-		});
-		expect(JSON.stringify(log.mock.calls[0]?.[0])).not.toContain("Private changed title");
 	});
 });
