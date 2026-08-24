@@ -1,11 +1,10 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 vi.mock("$env/dynamic/private", () => ({ env: {} }));
 vi.mock("$env/dynamic/public", () => ({
 	env: { PUBLIC_CONVEX_URL: "https://convex.test" },
 }));
 vi.mock("$lib/sanity/client.server", () => ({ getSanityClient: vi.fn() }));
-vi.mock("$lib/server/logger", () => ({ logStructured: vi.fn() }));
 
 import {
 	adaptConvexSiteSettings,
@@ -14,8 +13,6 @@ import {
 	createSiteSettingsContentProvider,
 	parseSiteSettingsProviderMode,
 } from "$lib/server/siteSettingsContent.server";
-
-const OG_SOURCE_SHA256 = "c4c238f25cd39d63f55692fefde0a4bd11ff1a9cfd232e94e2dcd952d0fb6d97";
 
 function sanityProjection(): {
 	siteSettings: Array<{
@@ -83,7 +80,7 @@ function convexProjection() {
 			seoOgImage: {
 				assetId,
 				url: `https://media.angelsrest.online/sites/angelsrest.online/web/${assetId}/display-2048.webp`,
-				sourceSha256: OG_SOURCE_SHA256,
+				sourceSha256: "a".repeat(64),
 			},
 		},
 	};
@@ -93,10 +90,6 @@ function fakeSanity(value = sanityProjection()) {
 	const source = createSanitySiteSettingsSource(() => ({ fetch: async () => value }));
 	return { load: vi.fn((isPreview: boolean) => source.load(isPreview)) };
 }
-
-afterEach(() => {
-	vi.useRealTimers();
-});
 
 describe("Site Settings provider boundary", () => {
 	it("strictly normalizes one Sanity singleton and the supported Convex projection", async () => {
@@ -111,17 +104,6 @@ describe("Site Settings provider boundary", () => {
 					"https://media.angelsrest.online/sites/angelsrest.online/web/123e4567-e89b-42d3-a456-426614174000/display-2048.webp",
 			},
 		});
-		const log = vi.fn();
-		const provider = createSiteSettingsContentProvider({
-			sanity: fakeSanity(),
-			mode: () => "shadow",
-			createReader: () => ({ loadPublished: vi.fn(async () => convexProjection()) }),
-			log,
-			acceptedOgSourceSha256: OG_SOURCE_SHA256,
-		});
-		await expect(provider.load(false)).resolves.toEqual(sanity);
-		expect(log).not.toHaveBeenCalled();
-
 		const duplicate = sanityProjection();
 		duplicate.siteSettings.push(structuredClone(duplicate.siteSettings[0]));
 		expect(() => adaptSanitySiteSettings(duplicate)).toThrow(
@@ -144,6 +126,9 @@ describe("Site Settings provider boundary", () => {
 
 	it("keeps preview on Sanity, accepts later valid Convex media, and never falls back", async () => {
 		expect(parseSiteSettingsProviderMode(undefined)).toBe("sanity");
+		expect(parseSiteSettingsProviderMode("sanity")).toBe("sanity");
+		expect(parseSiteSettingsProviderMode("convex")).toBe("convex");
+		expect(parseSiteSettingsProviderMode("shadow")).toBe("sanity");
 		expect(parseSiteSettingsProviderMode(" convex ")).toBe("sanity");
 
 		const sanity = fakeSanity();
@@ -156,7 +141,7 @@ describe("Site Settings provider boundary", () => {
 		expect(createReader).not.toHaveBeenCalled();
 
 		const wrongSource = convexProjection();
-		wrongSource.payload.seoOgImage.sourceSha256 = "a".repeat(64);
+		wrongSource.payload.seoOgImage.sourceSha256 = "b".repeat(64);
 		const laterPublication = createSiteSettingsContentProvider({
 			sanity,
 			mode: () => "convex",
@@ -167,21 +152,6 @@ describe("Site Settings provider boundary", () => {
 		);
 		expect(sanity.load).toHaveBeenCalledTimes(1);
 
-		const shadowLog = vi.fn();
-		const pinnedShadow = createSiteSettingsContentProvider({
-			sanity: fakeSanity(),
-			mode: () => "shadow",
-			createReader: () => ({ loadPublished: vi.fn(async () => wrongSource) }),
-			log: shadowLog,
-			acceptedOgSourceSha256: OG_SOURCE_SHA256,
-		});
-		await expect(pinnedShadow.load(false)).resolves.toEqual(
-			adaptSanitySiteSettings(sanityProjection()),
-		);
-		expect(shadowLog.mock.calls[0]?.[0]).toMatchObject({
-			meta: { codes: ["site_settings"], mismatchCount: 1 },
-		});
-
 		const unavailable = createSiteSettingsContentProvider({
 			sanity,
 			mode: () => "convex",
@@ -189,50 +159,5 @@ describe("Site Settings provider boundary", () => {
 		});
 		await expect(unavailable.load(false)).rejects.toMatchObject({ status: 503 });
 		expect(sanity.load).toHaveBeenCalledTimes(1);
-	});
-
-	it("returns the Sanity primary and bounds shadow evidence to metadata", async () => {
-		const primary = adaptSanitySiteSettings(sanityProjection());
-		const changed = convexProjection();
-		changed.payload.siteTitle = "Private changed title";
-		const log = vi.fn();
-		const provider = createSiteSettingsContentProvider({
-			sanity: fakeSanity(),
-			mode: () => "shadow",
-			createReader: () => ({ loadPublished: vi.fn(async () => changed) }),
-			log,
-			acceptedOgSourceSha256: OG_SOURCE_SHA256,
-		});
-
-		await expect(provider.load(false)).resolves.toEqual(primary);
-		expect(log.mock.calls[0]?.[0]).toMatchObject({
-			event: "site_settings.shadow_closed",
-			meta: {
-				codes: ["site_settings"],
-				mismatchCount: 1,
-				primaryCount: 1,
-				secondaryCount: 1,
-			},
-		});
-		expect(JSON.stringify(log.mock.calls[0]?.[0])).not.toMatch(
-			/Private changed title|Jesse Pomeroy|instagram/,
-		);
-
-		vi.useFakeTimers();
-		const stalledLog = vi.fn();
-		const stalled = createSiteSettingsContentProvider({
-			sanity: fakeSanity(),
-			mode: () => "shadow",
-			createReader: () => ({ loadPublished: () => new Promise(() => {}) }),
-			log: stalledLog,
-			deadlineMs: 5,
-			acceptedOgSourceSha256: OG_SOURCE_SHA256,
-		});
-		const result = stalled.load(false);
-		await vi.advanceTimersByTimeAsync(5);
-		await expect(result).resolves.toEqual(primary);
-		expect(stalledLog.mock.calls[0]?.[0]).toMatchObject({
-			meta: { codes: ["timeout"], mismatchCount: 1 },
-		});
 	});
 });
