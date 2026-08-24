@@ -194,6 +194,17 @@ describe("admin API aliases", () => {
 		).toBeUndefined();
 
 		const portfolioEditor = adminConfig.api.portfolioEditor;
+		expect(Object.getPrototypeOf(portfolioEditor ?? {})).toBe(Object.prototype);
+		expect(Object.keys(portfolioEditor ?? {})).toEqual([
+			"listForEditor",
+			"getEditorState",
+			"saveDraft",
+			"reorder",
+			"listMediaAssets",
+			"getPlacedMediaAssets",
+			"registerReadyWebAsset",
+			"requestDeletion",
+		]);
 		expect(portfolioEditor?.listForEditor).toBe(portfolioApi.listForEditor);
 		expect(portfolioEditor?.getEditorState).toBe(portfolioApi.getEditorState);
 		expect(portfolioEditor?.saveDraft).toBe(portfolioApi.saveDraft);
@@ -203,6 +214,7 @@ describe("admin API aliases", () => {
 		expect(portfolioEditor?.getPlacedMediaAssets).toBe(mediaApi.getManyForEditor);
 		expect(portfolioEditor?.registerReadyWebAsset).toBe(mediaApi.registerReadyWebAsset);
 		expect(portfolioEditor?.requestDeletion).toBe(mediaApi.requestDeletion);
+		expect(Reflect.get(portfolioEditor ?? {}, "restorePinnedPublishedRevisions")).toBeUndefined();
 		expect(adminConfig.editor?.blog?.mediaBaseUrl).toBe("https://media.angelsrest.online");
 		expect(adminConfig.editor?.products).toEqual({
 			publicationEnabled: true,

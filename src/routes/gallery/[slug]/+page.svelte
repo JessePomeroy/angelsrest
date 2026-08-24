@@ -30,7 +30,7 @@ function openModal(index: number) {
   title="{data.gallery.title} | angel's rest"
   description={data.gallery.seo?.description || data.gallery.description || `Photo gallery: ${data.gallery.title}`}
   image={data.gallery.seo?.ogImageUrl || data.gallery.images[0]?.full || "/og-image.jpg"}
-  url="https://angelsrest.online/gallery/{data.gallery.title.toLowerCase().replace(/\s+/g, '-')}"
+  url={data.gallery.canonicalUrl}
 />
 
 <div class="p-4">

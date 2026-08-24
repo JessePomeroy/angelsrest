@@ -435,6 +435,11 @@ export default defineSchema({
 		slug: v.string(),
 		portfolioOrder: v.number(),
 		isPublished: v.boolean(),
+		// Optional while dormant code coexists with any historical private drafts.
+		// New editor and migration writes always set an explicit public visibility.
+		isVisible: v.optional(v.boolean()),
+		// Present only on the fixed Sanity import and retained as stable provenance.
+		sourceDocumentId: v.optional(v.string()),
 		draftRevisionId: v.optional(v.id("portfolioGalleryRevisions")),
 		publishedRevisionId: v.optional(v.id("portfolioGalleryRevisions")),
 		createdAt: v.number(),
@@ -445,10 +450,17 @@ export default defineSchema({
 		publishedBy: v.optional(v.string()),
 	})
 		.index("by_siteUrl_and_slug", ["siteUrl", "slug"])
+		.index("by_siteUrl_and_sourceDocumentId", ["siteUrl", "sourceDocumentId"])
 		.index("by_siteUrl_and_portfolioOrder", ["siteUrl", "portfolioOrder"])
 		.index("by_siteUrl_and_isPublished_and_portfolioOrder", [
 			"siteUrl",
 			"isPublished",
+			"portfolioOrder",
+		])
+		.index("by_siteUrl_and_isPublished_and_isVisible_and_portfolioOrder", [
+			"siteUrl",
+			"isPublished",
+			"isVisible",
 			"portfolioOrder",
 		]),
 
@@ -459,6 +471,10 @@ export default defineSchema({
 		title: v.optional(v.string()),
 		description: v.optional(v.string()),
 		slug: v.string(),
+		seoDescription: v.optional(v.string()),
+		seoOgImageAssetId: v.optional(v.id("mediaAssets")),
+		seoOgSourceAssetRef: v.optional(v.string()),
+		sourceDocumentRevision: v.optional(v.string()),
 		placementCount: v.number(),
 		checksum: v.string(),
 		source: v.union(
@@ -468,9 +484,14 @@ export default defineSchema({
 		),
 		createdAt: v.number(),
 		createdBy: v.string(),
+		restoredFromRevisionId: v.optional(v.id("portfolioGalleryRevisions")),
+		restoreOperationId: v.optional(v.string()),
+		restoreRequestDigest: v.optional(v.string()),
 	})
 		.index("by_galleryId_and_createdAt", ["galleryId", "createdAt"])
-		.index("by_siteUrl_and_galleryId", ["siteUrl", "galleryId"]),
+		.index("by_siteUrl_and_galleryId", ["siteUrl", "galleryId"])
+		.index("by_siteUrl_and_seoOgImageAssetId", ["siteUrl", "seoOgImageAssetId"])
+		.index("by_siteUrl_and_restoreOperationId", ["siteUrl", "restoreOperationId"]),
 
 	portfolioPlacements: defineTable({
 		siteUrl: v.string(),
@@ -482,6 +503,10 @@ export default defineSchema({
 		altText: v.optional(v.string()),
 		caption: v.optional(v.string()),
 		focalPoint: v.optional(mediaFocalPointValidator),
+		sourceAssetRef: v.optional(v.string()),
+		sourceAltAbsent: v.optional(v.boolean()),
+		sourceCropCanonical: v.optional(v.string()),
+		sourceHotspotCanonical: v.optional(v.string()),
 	})
 		.index("by_revisionId_and_order", ["revisionId", "order"])
 		.index("by_siteUrl_and_assetId", ["siteUrl", "assetId"])

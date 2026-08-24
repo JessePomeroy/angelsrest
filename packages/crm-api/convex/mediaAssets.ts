@@ -197,6 +197,13 @@ async function requireAssetUnused(
 		)
 		.first();
 	if (portfolioUsage) throw new Error("Media asset is in use by portfolio content");
+	const portfolioSeoUsage = await ctx.db
+		.query("portfolioGalleryRevisions")
+		.withIndex("by_siteUrl_and_seoOgImageAssetId", (q) =>
+			q.eq("siteUrl", asset.siteUrl).eq("seoOgImageAssetId", asset._id),
+		)
+		.first();
+	if (portfolioSeoUsage) throw new Error("Media asset is in use by portfolio SEO content");
 
 	const catalogUsage = await ctx.db
 		.query("catalogProductMediaPlacements")
