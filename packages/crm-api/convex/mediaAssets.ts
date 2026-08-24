@@ -15,6 +15,8 @@ import {
 	aboutPageReferencesAsset,
 	type ModelingPageDraftPayload,
 	modelingPageReferencesAsset,
+	type SiteSettingsDraftPayload,
+	siteSettingsReferencesAsset,
 } from "./helpers/contentValidators";
 import {
 	type ReadyWebAsset,
@@ -257,6 +259,34 @@ async function requireAssetUnused(
 					asset._id,
 				)
 			) throw new Error("Media asset is in use by Modeling content");
+		}
+	}
+
+	const siteSettingsDocument = await ctx.db
+		.query("contentDocuments")
+		.withIndex("by_siteUrl_and_kind", (q) =>
+			q.eq("siteUrl", asset.siteUrl).eq("kind", "siteSettings"),
+		)
+		.unique();
+	if (siteSettingsDocument) {
+		const revisionIds = [
+			siteSettingsDocument.draftRevisionId,
+			siteSettingsDocument.publishedRevisionId,
+		].filter((id): id is NonNullable<typeof id> => id !== undefined);
+		const revisions = await Promise.all(
+			[...new Set(revisionIds)].map((revisionId) => ctx.db.get(revisionId)),
+		);
+		for (const revision of revisions) {
+			if (
+				revision
+				&& revision.documentId === siteSettingsDocument._id
+				&& revision.siteUrl === asset.siteUrl
+				&& revision.kind === "siteSettings"
+				&& siteSettingsReferencesAsset(
+					revision.payload as SiteSettingsDraftPayload,
+					asset._id,
+				)
+			) throw new Error("Media asset is in use by Site Settings");
 		}
 	}
 
