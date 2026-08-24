@@ -9,7 +9,6 @@ vi.mock("$env/dynamic/public", () => ({
 	},
 }));
 vi.mock("$lib/sanity/client.server", () => ({ getSanityClient: vi.fn() }));
-vi.mock("$lib/server/logger", () => ({ logStructured: vi.fn() }));
 
 import { env as privateEnv } from "$env/dynamic/private";
 import type { BlogPostDetail, BlogPostSummary } from "$lib/blog/content";
@@ -18,8 +17,6 @@ import {
 	adaptConvexBlogPost,
 	adaptSanityBlogIndex,
 	adaptSanityBlogPost,
-	compareBlogDetails,
-	compareBlogIndexes,
 	createBlogContentProvider,
 	parseBlogProviderMode,
 } from "$lib/server/blogContent.server";
@@ -255,14 +252,6 @@ function convexDetailWithPortrait(framing: unknown) {
 	};
 }
 
-function deferred<T>() {
-	let resolve!: (value: T) => void;
-	const promise = new Promise<T>((accept) => {
-		resolve = accept;
-	});
-	return { promise, resolve };
-}
-
 function fakeSanity(
 	index: BlogPostSummary[] = adaptSanityBlogIndex([sanitySummary()]),
 	detail: BlogPostDetail | null = adaptSanityBlogPost(sanityDetail()),
@@ -287,14 +276,10 @@ function fakeReader(
 	};
 }
 
-afterEach(() => {
-	vi.useRealTimers();
-});
-
 describe("Blog public adapters", () => {
 	it.each([
 		["sanity", "sanity"],
-		["shadow", "shadow"],
+		["shadow", "sanity"],
 		["convex", "convex"],
 		[undefined, "sanity"],
 		[null, "sanity"],
@@ -306,26 +291,16 @@ describe("Blog public adapters", () => {
 		expect(parseBlogProviderMode(value)).toBe(expected);
 	});
 
-	it("normalizes both providers to identifier-free DTOs with equivalent public semantics", () => {
+	it("normalizes both providers to identifier-free DTOs", () => {
 		const sanityIndex = adaptSanityBlogIndex([{ ...sanitySummary(), mainImage: null }]);
 		const convexIndexSource = convexSummary();
 		delete (convexIndexSource.payload as { mainImage?: unknown }).mainImage;
 		const convexIndex = adaptConvexBlogIndex([convexIndexSource]);
-		expect(compareBlogIndexes(sanityIndex, convexIndex)).toMatchObject({
-			codes: [],
-			mismatchCount: 0,
-			primaryCount: 1,
-			secondaryCount: 1,
-		});
 		const sanityPost = adaptSanityBlogPost({ ...sanityDetail(), mainImage: null });
 		const convexPostSource = convexDetail();
 		delete (convexPostSource.payload as { mainImage?: unknown }).mainImage;
 		const convexPost = adaptConvexBlogPost(convexPostSource);
-		expect(compareBlogDetails(sanityPost, convexPost)).toMatchObject({
-			codes: [],
-			mismatchCount: 0,
-		});
-		const serialized = JSON.stringify({ convexIndex, convexPost });
+		const serialized = JSON.stringify({ sanityIndex, sanityPost, convexIndex, convexPost });
 		expect(serialized).not.toMatch(/private-revision-id|main-image|span-1/);
 	});
 
@@ -524,7 +499,7 @@ describe("Blog public adapters", () => {
 		expect(adaptConvexBlogPost(convexSource)?.body).toEqual(expected);
 	});
 
-	it("preserves Sanity's four photography roles and flags the lossy Convex summary", () => {
+	it("preserves Sanity photography roles and maps Convex technical summaries", () => {
 		const sanitySource = { ...sanityDetail(), mainImage: null };
 		(sanitySource.gearUsed as unknown[]).push({
 			_key: "gear-1",
@@ -559,16 +534,12 @@ describe("Blog public adapters", () => {
 				details: "Hasselblad 500CM · 80mm f/2.8 · Portra 400 · C-41",
 			},
 		]);
-		expect(compareBlogDetails(sanityPost, convexPost)).toMatchObject({
-			codes: ["technical"],
-			mismatchCount: 1,
-		});
 	});
 
 	it.each([
 		"crop",
 		"hotspot",
-	] as const)("normalizes and compares Sanity %s framing without leaking its asset reference", (framingKind) => {
+	] as const)("normalizes Sanity %s framing without leaking its asset reference", (framingKind) => {
 		const source = sanitySummary();
 		Object.assign(
 			source.mainImage,
@@ -577,62 +548,22 @@ describe("Blog public adapters", () => {
 				: { hotspot: { x: 0.4, y: 0.6, width: 0.5, height: 0.5 } },
 		);
 		const primary = adaptSanityBlogIndex([source]);
-		const secondary = adaptConvexBlogIndex([convexSummary()]);
 		const leftImage = primary[0]?.mainImage;
-		const rightImage = secondary[0]?.mainImage;
-		if (!leftImage || !rightImage) throw new Error("Fixture image is missing");
-		rightImage.width = leftImage.width;
-		rightImage.height = leftImage.height;
-
+		if (!leftImage) throw new Error("Fixture image is missing");
 		expect(leftImage.framing).not.toBeNull();
-		expect(compareBlogIndexes(primary, secondary)).toMatchObject({
-			codes: ["media"],
-			mismatchCount: 1,
-		});
 		expect(JSON.stringify(leftImage)).not.toContain(source.mainImage.assetRef);
 	});
 
-	it("preserves exact Convex portrait framing and compares it without normalization", () => {
+	it("preserves exact Convex portrait framing without normalization", () => {
 		const framing = acceptedPortraitFraming();
-		const sanitySource = {
-			...sanityDetail(),
-			mainImage: null,
-			author: {
-				name: "Jesse",
-				image: {
-					...sanityImage(),
-					crop: framing.crop,
-					hotspot: framing.focus,
-				},
-			},
-		};
 		const convexSource = convexDetailWithPortrait(framing);
 		delete (convexSource.payload as { mainImage?: unknown }).mainImage;
-		const sanityPost = adaptSanityBlogPost(sanitySource);
 		const convexPost = adaptConvexBlogPost(convexSource);
-		const sanityPortrait = sanityPost?.author?.image;
 		const convexPortrait = convexPost?.author?.image;
-		if (!sanityPortrait || !convexPortrait || !convexPost) {
-			throw new Error("Fixture portrait is missing");
-		}
+		if (!convexPortrait) throw new Error("Fixture portrait is missing");
 
 		expect(convexPortrait.framing).toEqual(framing);
 		expect(JSON.stringify(convexPortrait.framing)).not.toMatch(/_type|hotspot/);
-		convexPortrait.width = sanityPortrait.width;
-		convexPortrait.height = sanityPortrait.height;
-		expect(compareBlogDetails(sanityPost, convexPost)).toMatchObject({
-			codes: [],
-			mismatchCount: 0,
-		});
-
-		const drifted = structuredClone(convexPost);
-		const driftedFocus = drifted.author?.image?.framing?.focus;
-		if (!driftedFocus) throw new Error("Fixture focus is missing");
-		driftedFocus.y += 0.001;
-		expect(compareBlogDetails(sanityPost, drifted)).toMatchObject({
-			codes: ["author"],
-			mismatchCount: 1,
-		});
 	});
 
 	it.each([
@@ -778,55 +709,5 @@ describe("Blog source selector", () => {
 			location: "/blog/a-quiet-post",
 		});
 		expect(sanity.loadPost).not.toHaveBeenCalled();
-	});
-
-	it("serves the exact Sanity result in shadow mode and logs only bounded mismatch metadata", async () => {
-		const primary = adaptSanityBlogIndex([{ ...sanitySummary(), mainImage: null }]);
-		const changed = convexSummary();
-		delete (changed.payload as { mainImage?: unknown }).mainImage;
-		changed.payload.title = "Private mismatched title";
-		const log = vi.fn();
-		const provider = createBlogContentProvider({
-			sanity: fakeSanity(primary),
-			mode: () => "shadow",
-			createReader: () => fakeReader({ list: Promise.resolve([changed]) }),
-			log,
-		});
-
-		await expect(provider.loadIndex(false)).resolves.toBe(primary);
-		expect(log).toHaveBeenCalledOnce();
-		expect(log.mock.calls[0]?.[0]).toMatchObject({
-			event: "blog.shadow_closed",
-			meta: {
-				codes: ["copy"],
-				mismatchCount: 1,
-				primaryCount: 1,
-				secondaryCount: 1,
-			},
-		});
-		expect(JSON.stringify(log.mock.calls[0]?.[0])).not.toMatch(
-			/Private mismatched title|a-quiet-post|Jesse|Journal/,
-		);
-	});
-
-	it("bounds a stalled shadow read and still serves Sanity", async () => {
-		vi.useFakeTimers();
-		const stalled = deferred<unknown>();
-		const log = vi.fn();
-		const primary = adaptSanityBlogIndex([sanitySummary()]);
-		const provider = createBlogContentProvider({
-			sanity: fakeSanity(primary),
-			mode: () => "shadow",
-			createReader: () => fakeReader({ list: stalled.promise }),
-			log,
-			deadlineMs: 5,
-		});
-
-		const result = provider.loadIndex(false);
-		await vi.advanceTimersByTimeAsync(5);
-		await expect(result).resolves.toBe(primary);
-		expect(log.mock.calls[0]?.[0]).toMatchObject({
-			meta: { codes: ["timeout"], mismatchCount: 1 },
-		});
 	});
 });
