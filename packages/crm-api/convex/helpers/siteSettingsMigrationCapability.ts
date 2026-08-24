@@ -1,8 +1,4 @@
-export type SiteSettingsMigrationPurpose =
-	| "site-settings-media-attest-v1"
-	| "sanity-site-settings-import-v1"
-	| "sanity-site-settings-publish-v1"
-	| "site-settings-pinned-restore-v1";
+export type SiteSettingsMigrationPurpose = "site-settings-pinned-restore-v1";
 
 export type SiteSettingsMigrationCapabilityScope = {
 	siteUrl: string;
