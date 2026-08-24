@@ -102,23 +102,23 @@ describe("R4 fixed-purpose read authorization", () => {
 	});
 
 	it("binds method, path, and exact raw body so a signature cannot switch reads", () => {
-		const original = signed(r4ReadPurposes.acceleratedInventory, {
+		const original = signed(r4ReadPurposes.checkoutCatalogSentinel, {
 			method: "POST",
-			pathname: "/api/admin/commerce/accelerated-inventory",
-			body: '{"authorization":"r4_accelerated_fixed_point_read_v1"}',
+			pathname: "/api/admin/commerce/catalog-sentinel",
+			body: '{"authorization":"r4_checkout_catalog_sentinel_v1"}',
 		});
 		for (const [request, body] of [
 			[
-				new Request("https://angelsrest.online/api/admin/commerce/catalog-sentinel", {
+				new Request("https://angelsrest.online/api/admin/commerce/shop-catalog-sentinel", {
 					method: "POST",
 					headers: original.request.headers,
 					body: original.body,
 				}),
 				original.body,
 			],
-			[original.request, '{"authorization":"r4_accelerated_legacy_paid_diagnostic_v1"}'],
+			[original.request, '{"authorization":"r4_checkout_catalog_sentinel_v2"}'],
 		] as const) {
-			expect(verifyR4ReadHmac(request, r4ReadPurposes.acceleratedInventory, body, nowMs)).toBe(
+			expect(verifyR4ReadHmac(request, r4ReadPurposes.checkoutCatalogSentinel, body, nowMs)).toBe(
 				false,
 			);
 		}
