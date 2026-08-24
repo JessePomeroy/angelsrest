@@ -16,7 +16,6 @@ import {
 import {
 	createSanityAboutContactPlan,
 	digestSanityAboutContactPlan,
-	type SanityAboutContactPlan,
 } from "./helpers/sanityAboutContactPlan";
 import schema from "./schema";
 
@@ -25,29 +24,6 @@ const SITE = "site-a.example";
 const ADMIN = "admin-a@example.com";
 const ASSET_UUID = "123e4567-e89b-42d3-a456-426614174000";
 const MEDIA_RECEIPT = "b".repeat(64);
-
-const attestMediaSource = makeFunctionReference<
-	"mutation",
-	{
-		siteUrl: string;
-		mediaAssetId: Id<"mediaAssets">;
-		workerAssetId: string;
-		sourceSha256: string;
-		sourceWidth: number;
-		sourceHeight: number;
-		receiptDigest: string;
-	}
->("aboutContactMigration:attestMediaSource");
-
-const importDrafts = makeFunctionReference<
-	"mutation",
-	{ plan: SanityAboutContactPlan; digest: string }
->("aboutContactMigration:importDrafts");
-
-const publishDrafts = makeFunctionReference<
-	"mutation",
-	{ plan: SanityAboutContactPlan; digest: string }
->("aboutContactMigration:publishDrafts");
 
 const restorePinned = makeFunctionReference<
 	"mutation",
@@ -306,31 +282,8 @@ function restoreEntry(
 }
 
 describe("dormant About/Contact migration", () => {
-	test("fails closed before either entrypoint can reach content storage", async () => {
+	test("fails closed before retained restore can reach content storage", async () => {
 		const fixture = await setup();
-		await expect(
-			fixture.t.mutation(attestMediaSource, {
-				siteUrl: SITE,
-				mediaAssetId: fixture.plan.decisionSet.aboutPortrait.targetMediaAssetId,
-				workerAssetId: ASSET_UUID,
-				sourceSha256: "0e94b665f7654c74158daf3aa2c497139c5cb7c4490d72205cfa3babd6dc4eb0",
-				sourceWidth: 1440,
-				sourceHeight: 2160,
-				receiptDigest: MEDIA_RECEIPT,
-			}),
-		).rejects.toThrow(/capability is disabled/i);
-		await expect(
-			fixture.t.mutation(importDrafts, {
-				plan: fixture.plan,
-				digest: fixture.digest,
-			}),
-		).rejects.toThrow(/capability is disabled/i);
-		await expect(
-			fixture.t.mutation(publishDrafts, {
-				plan: fixture.plan,
-				digest: fixture.digest,
-			}),
-		).rejects.toThrow(/capability is disabled/i);
 		await expect(
 			fixture.t.mutation(restorePinned, {
 				siteUrl: SITE,
