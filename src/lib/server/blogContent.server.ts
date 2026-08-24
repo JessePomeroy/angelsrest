@@ -21,11 +21,9 @@ import {
 import { SITE_DOMAIN, SITE_URL } from "$lib/config/site";
 import { urlFor } from "$lib/sanity/client";
 import { getSanityClient } from "$lib/sanity/client.server";
-import { logStructured } from "$lib/server/logger";
 
 const BLOG_LIST_LIMIT = 12;
 const SANITY_BLOG_LIST_MAX = 1_000;
-const SHADOW_DEADLINE_MS = 750;
 const SLUG = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 const KEY = /^[A-Za-z0-9]+(?:[._:-][A-Za-z0-9]+)*$/;
 const UUID_V4 = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
@@ -40,30 +38,7 @@ const DERIVATIVES = {
 } as const;
 
 type Derivative = keyof typeof DERIVATIVES;
-type ProviderMode = "sanity" | "shadow" | "convex";
-type ShadowCode =
-	| "author"
-	| "body"
-	| "categories"
-	| "copy"
-	| "count"
-	| "media"
-	| "normalization_error"
-	| "order"
-	| "presentation"
-	| "publication"
-	| "secondary_error"
-	| "sections"
-	| "status"
-	| "technical"
-	| "timeout";
-
-type Comparison = {
-	codes: ShadowCode[];
-	mismatchCount: number;
-	primaryCount: number | null;
-	secondaryCount: number | null;
-};
+type ProviderMode = "sanity" | "convex";
 
 type SanityBlogClient = Pick<ReturnType<typeof getSanityClient>, "fetch">;
 type SanityBlogSource = {
@@ -1014,131 +989,8 @@ function adaptSlugResolution(value: unknown): SlugResolution {
 	};
 }
 
-function imageSemantics(image: BlogImage | null) {
-	return image
-		? {
-				alt: image.alt,
-				width: image.width,
-				height: image.height,
-				caption: image.caption,
-				framing: image.framing,
-			}
-		: null;
-}
-
-function authorSemantics(author: BlogAuthor | null) {
-	return author ? { name: author.name, image: imageSemantics(author.image) } : null;
-}
-
-function bodySemantics(body: BlogTextBlock[]) {
-	return body.map((block) =>
-		block.type === "image" ? { type: "image", image: imageSemantics(block.image) } : block,
-	);
-}
-
-function same(left: unknown, right: unknown) {
-	return JSON.stringify(left) === JSON.stringify(right);
-}
-
-function compareSummary(left: BlogPostSummary, right: BlogPostSummary, codes: Set<ShadowCode>) {
-	let mismatches = 0;
-	const mismatch = (code: ShadowCode, leftValue: unknown, rightValue: unknown) => {
-		if (same(leftValue, rightValue)) return;
-		codes.add(code);
-		mismatches += 1;
-	};
-	mismatch("copy", [left.title, left.excerpt], [right.title, right.excerpt]);
-	mismatch("publication", left.publishedAt, right.publishedAt);
-	mismatch("presentation", left.presentation, right.presentation);
-	mismatch("author", authorSemantics(left.author), authorSemantics(right.author));
-	mismatch("categories", left.categories, right.categories);
-	mismatch("media", imageSemantics(left.mainImage), imageSemantics(right.mainImage));
-	return mismatches;
-}
-
-export function compareBlogIndexes(
-	primary: BlogPostSummary[],
-	secondary: BlogPostSummary[],
-): Comparison {
-	const codes = new Set<ShadowCode>();
-	let mismatchCount = 0;
-	if (primary.length !== secondary.length) {
-		codes.add("count");
-		mismatchCount += 1;
-	}
-	if (
-		!same(
-			primary.map(({ slug }) => slug),
-			secondary.map(({ slug }) => slug),
-		)
-	) {
-		codes.add("order");
-		mismatchCount += 1;
-	}
-	const rightBySlug = new Map(secondary.map((post) => [post.slug, post]));
-	for (const post of primary) {
-		const other = rightBySlug.get(post.slug);
-		if (!other) continue;
-		mismatchCount += compareSummary(post, other, codes);
-	}
-	return {
-		codes: [...codes].sort(),
-		mismatchCount: Math.min(BLOG_LIST_LIMIT, mismatchCount),
-		primaryCount: primary.length,
-		secondaryCount: secondary.length,
-	};
-}
-
-export function compareBlogDetails(
-	primary: BlogPostDetail | null,
-	secondary: BlogPostDetail | null,
-): Comparison {
-	const codes = new Set<ShadowCode>();
-	let mismatchCount = 0;
-	if (!primary || !secondary) {
-		if (primary !== secondary) {
-			codes.add("status");
-			mismatchCount = 1;
-		}
-		return {
-			codes: [...codes],
-			mismatchCount,
-			primaryCount: primary ? 1 : 0,
-			secondaryCount: secondary ? 1 : 0,
-		};
-	}
-	mismatchCount += compareSummary(primary, secondary, codes);
-	const mismatch = (code: ShadowCode, leftValue: unknown, rightValue: unknown) => {
-		if (same(leftValue, rightValue)) return;
-		codes.add(code);
-		mismatchCount += 1;
-	};
-	mismatch(
-		"copy",
-		[primary.seoTitle, primary.seoDescription],
-		[secondary.seoTitle, secondary.seoDescription],
-	);
-	mismatch(
-		"sections",
-		[primary.brief, primary.approach, primary.outcome, primary.credits],
-		[secondary.brief, secondary.approach, secondary.outcome, secondary.credits],
-	);
-	mismatch(
-		"technical",
-		[primary.equipment, primary.materials],
-		[secondary.equipment, secondary.materials],
-	);
-	mismatch("body", bodySemantics(primary.body), bodySemantics(secondary.body));
-	return {
-		codes: [...codes].sort(),
-		mismatchCount: Math.min(BLOG_LIST_LIMIT, mismatchCount),
-		primaryCount: 1,
-		secondaryCount: 1,
-	};
-}
-
 export function parseBlogProviderMode(value: unknown): ProviderMode {
-	return value === "sanity" || value === "shadow" || value === "convex" ? value : "sanity";
+	return value === "sanity" || value === "convex" ? value : "sanity";
 }
 
 export function createSanityBlogSource(
@@ -1194,50 +1046,11 @@ export function createBlogContentProvider(
 		sanity?: SanityBlogSource;
 		mode?: () => unknown;
 		createReader?: () => BlogReader;
-		log?: typeof logStructured;
-		now?: () => number;
-		deadlineMs?: number;
 	} = {},
 ) {
 	const sanity = dependencies.sanity ?? createSanityBlogSource();
 	const mode = dependencies.mode ?? (() => privateEnv.BLOG_CONTENT_PROVIDER);
 	const reader = dependencies.createReader ?? createBlogReader;
-	const log = dependencies.log ?? logStructured;
-	const now = dependencies.now ?? Date.now;
-	const deadlineMs = dependencies.deadlineMs ?? SHADOW_DEADLINE_MS;
-
-	function report(comparison: Comparison, startedAt: number) {
-		if (comparison.codes.length === 0) return;
-		log({
-			event: "blog.shadow_closed",
-			level: "warn",
-			durationMs: Math.max(0, Math.min(deadlineMs, Math.round(now() - startedAt))),
-			meta: {
-				codes: comparison.codes,
-				mismatchCount: comparison.mismatchCount,
-				primaryCount: comparison.primaryCount,
-				secondaryCount: comparison.secondaryCount,
-			},
-		});
-	}
-
-	function bounded(work: Promise<Comparison>, controller: AbortController): Promise<Comparison> {
-		let timer: ReturnType<typeof setTimeout> | undefined;
-		return Promise.race([
-			work,
-			new Promise<Comparison>((resolve) => {
-				timer = setTimeout(() => {
-					controller.abort();
-					resolve({
-						codes: ["timeout"],
-						mismatchCount: 1,
-						primaryCount: null,
-						secondaryCount: null,
-					});
-				}, deadlineMs);
-			}),
-		]).finally(() => clearTimeout(timer));
-	}
 
 	async function convexIndex(signal: AbortSignal) {
 		return adaptConvexBlogIndex(await reader().listPublished(signal));
@@ -1248,81 +1061,6 @@ export function createBlogContentProvider(
 		if (post) return { post, resolution: null };
 		const resolution = adaptSlugResolution(await reader().resolvePublishedSlug(slug, signal));
 		return { post: null, resolution };
-	}
-
-	async function shadowIndex() {
-		const startedAt = now();
-		const controller = new AbortController();
-		const primary = sanity.loadIndex(false);
-		const comparison = bounded(
-			(async () => {
-				try {
-					const [left, right] = await Promise.all([primary, convexIndex(controller.signal)]);
-					return compareBlogIndexes(left, right);
-				} catch (cause) {
-					return {
-						codes: [
-							cause instanceof BlogProjectionError ? "normalization_error" : "secondary_error",
-						] as ShadowCode[],
-						mismatchCount: 1,
-						primaryCount: null,
-						secondaryCount: null,
-					};
-				}
-			})(),
-			controller,
-		);
-		try {
-			const result = await primary;
-			report(await comparison, startedAt);
-			return result;
-		} catch (cause) {
-			controller.abort();
-			throw cause;
-		}
-	}
-
-	async function shadowPost(slug: string) {
-		const startedAt = now();
-		const controller = new AbortController();
-		const primary = sanity.loadPost(slug, false);
-		const comparison = bounded(
-			(async () => {
-				try {
-					const [left, secondary] = await Promise.all([
-						primary,
-						convexPost(slug, controller.signal),
-					]);
-					if (secondary.resolution?.status === "redirect") {
-						return {
-							codes: ["status"],
-							mismatchCount: 1,
-							primaryCount: left ? 1 : 0,
-							secondaryCount: 1,
-						};
-					}
-					return compareBlogDetails(left, secondary.post);
-				} catch (cause) {
-					return {
-						codes: [
-							cause instanceof BlogProjectionError ? "normalization_error" : "secondary_error",
-						] as ShadowCode[],
-						mismatchCount: 1,
-						primaryCount: null,
-						secondaryCount: null,
-					};
-				}
-			})(),
-			controller,
-		);
-		try {
-			const result = await primary;
-			report(await comparison, startedAt);
-			return result;
-		} catch (cause) {
-			controller.abort();
-			throw cause;
-		}
 	}
 
 	async function loadConvexIndex() {
@@ -1359,7 +1097,6 @@ export function createBlogContentProvider(
 			if (isPreview) return await sanity.loadIndex(true);
 			const provider = parseBlogProviderMode(mode());
 			if (provider === "convex") return await loadConvexIndex();
-			if (provider === "shadow") return await shadowIndex();
 			return await sanity.loadIndex(false);
 		},
 		async loadPost(slugValue: string, isPreview: boolean) {
@@ -1372,7 +1109,6 @@ export function createBlogContentProvider(
 			if (isPreview) return await loadSanityPost(slug, true);
 			const provider = parseBlogProviderMode(mode());
 			if (provider === "convex") return await loadConvexPost(slug);
-			if (provider === "shadow") return (await shadowPost(slug)) ?? notFound();
 			return await loadSanityPost(slug, false);
 		},
 	};
