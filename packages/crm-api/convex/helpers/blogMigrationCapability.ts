@@ -1,8 +1,4 @@
-export type BlogMigrationPurpose =
-	| "blog-pinned-restore-v1"
-	| "sanity-blog-import-v1"
-	| "sanity-blog-reconcile-v2"
-	| "sanity-blog-compact-v1";
+export type BlogMigrationPurpose = "blog-pinned-restore-v1";
 
 export type BlogMigrationCapabilityScope = {
 	siteUrl: string;

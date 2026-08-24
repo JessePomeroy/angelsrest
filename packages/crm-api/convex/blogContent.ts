@@ -26,34 +26,6 @@ import {
 	restorePinnedBlogRevisions,
 } from "./helpers/blogPinnedRestore";
 import { publishedSlugChangeValidator } from "./helpers/contentValidators";
-import {
-	ANGELS_REST_SANITY_BLOG_IMPORT_RELEASE,
-	sanityBlogImportPlanValidator,
-} from "./helpers/sanityBlogImportPlan";
-import { importReleasedSanityBlogDrafts } from "./helpers/sanityBlogImportStore";
-
-/**
- * Operator-only fixed-batch Sanity migration. The CLI/deploy-key boundary and
- * pinned release digest keep browsers and changed source plans out.
- */
-export const importSanityBlogDrafts = internalMutation({
-	args: {
-		plan: sanityBlogImportPlanValidator,
-		digest: v.string(),
-	},
-	handler: async (ctx, { plan, digest }) => {
-		assertBlogMigrationCapability({
-			siteUrl: plan.siteUrl,
-			purpose: "sanity-blog-import-v1",
-			binding: digest,
-		});
-		return await importReleasedSanityBlogDrafts(ctx, {
-			plan,
-			digest,
-			contract: ANGELS_REST_SANITY_BLOG_IMPORT_RELEASE,
-		});
-	},
-});
 
 /** Create one idempotently keyed Author or Category draft for a verified site. */
 export const createDraft = mutation({

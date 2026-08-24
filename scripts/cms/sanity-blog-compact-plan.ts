@@ -4,7 +4,6 @@ import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { createClient } from "@sanity/client";
 import type { Id } from "../../packages/crm-api/convex/_generated/dataModel";
-import { blogMigrationCapabilityFor } from "../../packages/crm-api/convex/helpers/blogMigrationCapability";
 import {
 	ANGELS_REST_SANITY_BLOG_IMPORT_RELEASE,
 	type SanityBlogImportReleaseContract,
@@ -891,11 +890,6 @@ async function main() {
 			baselineDocumentCount: Object.keys(input.options.targets).length,
 			baselineSha256: sha256(canonicalJson(input.options.targets)),
 		},
-		migrationCapability: blogMigrationCapabilityFor({
-			siteUrl: R6_BLOG_COMPACT_BINDINGS.siteUrl,
-			purpose: "sanity-blog-compact-v1",
-			binding: artifact.digest,
-		}),
 		effects: { sanityPublishedReads: 1, convexReads: 0, sanityWrites: 0, convexWrites: 0 },
 	};
 	await mkdir(paths.outDir, { mode: 0o700 });
