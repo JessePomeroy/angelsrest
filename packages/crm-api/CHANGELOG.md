@@ -1,5 +1,11 @@
 # @jessepomeroy/crm-api
 
+## 3.3.4
+
+### Patch Changes
+
+- 0df0390: Retire completed internal Portfolio migration writers while preserving pinned restore support.
+
 ## 3.3.3
 
 ### Patch Changes
