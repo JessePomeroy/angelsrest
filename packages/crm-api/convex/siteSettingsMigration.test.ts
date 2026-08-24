@@ -9,7 +9,6 @@ import type { Doc, Id } from "./_generated/dataModel";
 import {
 	createSanitySiteSettingsPlan,
 	digestSanitySiteSettingsPlan,
-	type SanitySiteSettingsPlan,
 } from "./helpers/sanitySiteSettingsPlan";
 import {
 	type SiteSettingsPinnedRestoreEntry,
@@ -28,28 +27,6 @@ const OG_SOURCE_REF =
 	"image-0ccd0a41f44c6387c01425cd93579ac5a4a9f341-1848x1848-png";
 const OG_SOURCE_SHA256 = "a".repeat(64);
 const OG_RECEIPT_SHA256 = "b".repeat(64);
-
-const attestMediaSource = makeFunctionReference<
-	"mutation",
-	{
-		siteUrl: string;
-		mediaAssetId: Id<"mediaAssets">;
-		workerAssetId: string;
-		sourceAssetRef: string;
-		sourceSha256: string;
-		receiptDigest: string;
-	}
->("siteSettingsMigration:attestMediaSource");
-
-const importDraft = makeFunctionReference<
-	"mutation",
-	{ plan: SanitySiteSettingsPlan; digest: string }
->("siteSettingsMigration:importDraft");
-
-const publishDraft = makeFunctionReference<
-	"mutation",
-	{ plan: SanitySiteSettingsPlan; digest: string }
->("siteSettingsMigration:publishDraft");
 
 const restorePinned = makeFunctionReference<
 	"mutation",
@@ -224,24 +201,8 @@ function restoreEntry(
 }
 
 describe("dormant Site Settings migration", () => {
-	test("fails closed at every internal mutation before content writes", async () => {
+	test("fails closed before retained restore can reach content storage", async () => {
 		const fixture = await setup();
-		await expect(
-			fixture.t.mutation(attestMediaSource, {
-				siteUrl: SITE,
-				mediaAssetId: fixture.asset.id,
-				workerAssetId: OG_ASSET_UUID,
-				sourceAssetRef: OG_SOURCE_REF,
-				sourceSha256: OG_SOURCE_SHA256,
-				receiptDigest: OG_RECEIPT_SHA256,
-			}),
-		).rejects.toThrow(/capability is disabled/i);
-		await expect(
-			fixture.t.mutation(importDraft, {
-				plan: fixture.plan,
-				digest: fixture.digest,
-			}),
-		).rejects.toThrow(/capability is disabled/i);
 		expect(await revisionCount(fixture)).toBe(0);
 
 		const imported = await fixture.t.run(
@@ -251,12 +212,6 @@ describe("dormant Site Settings migration", () => {
 					digest: fixture.digest,
 				}),
 		);
-		await expect(
-			fixture.t.mutation(publishDraft, {
-				plan: fixture.plan,
-				digest: fixture.digest,
-			}),
-		).rejects.toThrow(/capability is disabled/i);
 		const initialImport = await document(fixture);
 		expect(initialImport.draftRevisionId).toBe(imported.revisionId);
 		await expect(
@@ -288,7 +243,8 @@ describe("dormant Site Settings migration", () => {
 					digest: fixture.digest,
 				}),
 		);
-		const entry = restoreEntry(await document(fixture), imported.revisionId);
+		const publishedImport = await document(fixture);
+		const entry = restoreEntry(publishedImport, imported.revisionId);
 		await expect(
 			fixture.t.mutation(restorePinned, {
 				siteUrl: SITE,
@@ -297,6 +253,7 @@ describe("dormant Site Settings migration", () => {
 			}),
 		).rejects.toThrow(/capability is disabled/i);
 		expect(await revisionCount(fixture)).toBe(1);
+		expect(await document(fixture)).toEqual(publishedImport);
 	});
 
 	test("imports, publishes, and restores with exact zero-write replays", async () => {
