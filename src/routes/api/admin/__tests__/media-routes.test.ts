@@ -65,10 +65,13 @@ describe("CMS media host routes", () => {
 	});
 
 	it("delegates finalization and registration to the shared boundary", async () => {
-		const POST = await loadHandler("../media/process/+server");
+		vi.resetModules();
+		const route = await import("../media/process/+server");
+		const POST = route.POST as (event: unknown) => Promise<Response>;
 		const input = event("/api/admin/media/process");
 		const response = await POST(input);
 
+		expect(route.config).toEqual({ maxDuration: 300 });
 		expect(setServerConfig).toHaveBeenCalledWith(adminServerConfig);
 		expect(createProcessHandler).toHaveBeenCalledOnce();
 		expect(processHandler).toHaveBeenCalledWith(input);

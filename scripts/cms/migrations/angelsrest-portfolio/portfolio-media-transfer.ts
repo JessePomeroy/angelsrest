@@ -14,6 +14,8 @@ import {
 	createPortfolioMediaCheckpoint,
 	createPortfolioMediaReceipt,
 	createPortfolioMediaReceiptSet,
+	isPortfolioMediaLeaseConflictBody,
+	type PortfolioMediaBoundary,
 	type PortfolioMediaCheckpoint,
 	type PortfolioMediaReceipt,
 	type PortfolioTransformedSource,
@@ -22,6 +24,7 @@ import {
 	parsePortfolioMediaProcessResult,
 	parsePortfolioMediaReceipt,
 	parsePortfolioMediaReceiptSet,
+	portfolioMediaBoundaryTimeoutMs,
 	privatePortfolioObjectKey,
 	transformedPortfolioFilename,
 	validatePortfolioPublicDerivative,
@@ -60,8 +63,6 @@ const MIGRATION_PLAN_FILENAME = "portfolio-migration-plan.json";
 const ASSET_STATE_DIRECTORY = "portfolio-media-assets";
 const LOCK_FILENAME = ".portfolio-media-transfer.lock";
 const SOURCE_MISSING_RESPONSE = "Uploaded object not found";
-const ACTIVE_OPERATION_MESSAGE = "CMS media asset operation is already in progress";
-const REQUEST_TIMEOUT_MS = 120_000;
 const MAX_PROCESS_ATTEMPTS = 12;
 const MAX_PUBLIC_PROBE_ATTEMPTS = 5;
 const execFile = promisify(execFileCallback);
@@ -507,8 +508,15 @@ function assertFreshJwt(value: unknown) {
 	}
 }
 
-async function boundaryFetch(input: string | URL | Request, init?: RequestInit) {
-	return await fetch(input, { ...init, signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS) });
+async function boundaryFetch(
+	input: string | URL | Request,
+	init?: RequestInit,
+	boundary: PortfolioMediaBoundary = "standard",
+) {
+	return await fetch(input, {
+		...init,
+		signal: AbortSignal.timeout(portfolioMediaBoundaryTimeoutMs(boundary)),
+	});
 }
 
 async function readJson(response: Response, label: string) {
@@ -801,15 +809,19 @@ async function processAsset(
 	for (let attempt = 1; attempt <= MAX_PROCESS_ATTEMPTS; attempt += 1) {
 		let response: Response;
 		try {
-			response = await boundaryFetch(`${PRODUCTION_ORIGIN}${PROCESS_PATH}`, {
-				method: "POST",
-				redirect: "error",
-				headers: {
-					"Content-Type": "application/json",
-					Cookie: await authentication.cookie(),
+			response = await boundaryFetch(
+				`${PRODUCTION_ORIGIN}${PROCESS_PATH}`,
+				{
+					method: "POST",
+					redirect: "error",
+					headers: {
+						"Content-Type": "application/json",
+						Cookie: await authentication.cookie(),
+					},
+					body: JSON.stringify({ privateObjectKey }),
 				},
-				body: JSON.stringify({ privateObjectKey }),
-			});
+				"process",
+			);
 		} catch {
 			if (attempt < MAX_PROCESS_ATTEMPTS) {
 				await new Promise((resolveDelay) => setTimeout(resolveDelay, 400 * Math.min(attempt, 5)));
@@ -834,7 +846,7 @@ async function processAsset(
 			throw new Error("Portfolio CMS media processing returned an unexpected missing source");
 		}
 		if (response.status === 409) {
-			if ((await response.text()).trim() !== ACTIVE_OPERATION_MESSAGE) {
+			if (!isPortfolioMediaLeaseConflictBody(await response.text())) {
 				throw new Error("Portfolio CMS media processing returned an unexpected conflict");
 			}
 			if (attempt < MAX_PROCESS_ATTEMPTS) {

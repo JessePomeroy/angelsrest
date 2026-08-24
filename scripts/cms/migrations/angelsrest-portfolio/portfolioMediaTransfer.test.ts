@@ -11,9 +11,12 @@ import {
 	checkpointPortfolioPublicDerivativesVerified,
 	createPortfolioMediaCheckpoint,
 	createPortfolioMediaReceipt,
+	isPortfolioMediaLeaseConflictBody,
+	isPortfolioMediaLeaseConflictEnvelope,
 	type PortfolioMediaCheckpoint,
 	parsePortfolioMediaCheckpoint,
 	parsePortfolioMediaReceipt,
+	portfolioMediaBoundaryTimeoutMs,
 	validatePortfolioPublicDerivative,
 	validatePortfolioTargetAnimation,
 	validatePortfolioTransformedSource,
@@ -137,6 +140,41 @@ function publicDerivatives(item: PortfolioMediaPlanAsset, workerAssetId: string,
 }
 
 describe("Portfolio media transfer state", () => {
+	test("recognizes only the exact raw or SvelteKit media lease conflict", () => {
+		expect(
+			isPortfolioMediaLeaseConflictEnvelope({
+				message: "CMS media asset operation is already in progress",
+			}),
+		).toBe(true);
+		expect(
+			isPortfolioMediaLeaseConflictBody("CMS media asset operation is already in progress"),
+		).toBe(true);
+		expect(
+			isPortfolioMediaLeaseConflictBody(
+				'{"message":"CMS media asset operation is already in progress"}',
+			),
+		).toBe(true);
+		for (const value of [
+			{ message: "CMS media asset operation is already in progress", retryable: true },
+			{ message: "Another conflict" },
+			null,
+		]) {
+			expect(isPortfolioMediaLeaseConflictEnvelope(value)).toBe(false);
+		}
+		for (const value of [
+			'{"message":"CMS media asset operation is already in progress","retryable":true}',
+			'{"message":"Another conflict"}',
+			"<html>Conflict</html>",
+		]) {
+			expect(isPortfolioMediaLeaseConflictBody(value)).toBe(false);
+		}
+	});
+
+	test("extends only the media process request beyond the route lease", () => {
+		expect(portfolioMediaBoundaryTimeoutMs("standard")).toBe(120_000);
+		expect(portfolioMediaBoundaryTimeoutMs("process")).toBe(330_000);
+	});
+
 	test("durably bounds one capability reissue and produces an exact receipt", () => {
 		const item = asset();
 		const migrationPlan = plan(item);
