@@ -1,16 +1,14 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 vi.mock("$env/dynamic/private", () => ({ env: {} }));
 vi.mock("$env/dynamic/public", () => ({
 	env: { PUBLIC_CONVEX_URL: "https://convex.test" },
 }));
 vi.mock("$lib/sanity/client.server", () => ({ getSanityClient: vi.fn() }));
-vi.mock("$lib/server/logger", () => ({ logStructured: vi.fn() }));
 
 import {
 	adaptConvexAboutContact,
 	adaptSanityAboutContact,
-	compareAboutContact,
 	createAboutContactContentProvider,
 	parseAboutContactProviderMode,
 	projectSiteSettingsInstagramUrl,
@@ -118,10 +116,6 @@ function fakeSanity(value = adaptSanityAboutContact(sanityProjection())) {
 	return { load: vi.fn(async () => value) };
 }
 
-afterEach(() => {
-	vi.useRealTimers();
-});
-
 describe("About and Contact provider boundary", () => {
 	it("normalizes both complete providers and rejects duplicate or rich Sanity content", () => {
 		const sanity = adaptSanityAboutContact(sanityProjection());
@@ -133,8 +127,6 @@ describe("About and Contact provider boundary", () => {
 			altText: "Jesse Pomeroy",
 			sourceSha256: "0e94b665f7654c74158daf3aa2c497139c5cb7c4490d72205cfa3babd6dc4eb0",
 		});
-		expect(compareAboutContact(sanity, convex)).toMatchObject({ codes: [] });
-
 		const duplicate = sanityProjection();
 		duplicate.about.push(structuredClone(duplicate.about[0]));
 		expect(() => adaptSanityAboutContact(duplicate)).toThrow(
@@ -150,6 +142,9 @@ describe("About and Contact provider boundary", () => {
 
 	it("routes preview to Sanity first and never partially falls back from Convex", async () => {
 		expect(parseAboutContactProviderMode(undefined)).toBe("sanity");
+		expect(parseAboutContactProviderMode("sanity")).toBe("sanity");
+		expect(parseAboutContactProviderMode("convex")).toBe("convex");
+		expect(parseAboutContactProviderMode("shadow")).toBe("sanity");
 		expect(parseAboutContactProviderMode(" convex ")).toBe("sanity");
 
 		const sanity = fakeSanity();
@@ -187,60 +182,5 @@ describe("About and Contact provider boundary", () => {
 				],
 			}),
 		).toThrow("Malformed public About and Contact projection");
-	});
-
-	it("compares the rendered About SEO fallback with its stored equivalent", () => {
-		const sanity = adaptSanityAboutContact(sanityProjection());
-		const convex = adaptConvexAboutContact(convexProjection());
-		sanity.about.seo.description = null;
-		convex.about.seo.description =
-			"About Jesse Pomeroy — photographer, visual artist, and web developer. Get in touch for inquiries and collaborations.";
-		expect(compareAboutContact(sanity, convex).codes).toEqual([]);
-	});
-
-	it("serves exact Sanity content in shadow and logs only bounded mismatch metadata", async () => {
-		const primary = adaptSanityAboutContact(sanityProjection());
-		const changed = convexProjection();
-		changed.about.payload.displayName = "Private changed name";
-		const log = vi.fn();
-		const provider = createAboutContactContentProvider({
-			sanity: fakeSanity(primary),
-			mode: () => "shadow",
-			createReader: () => ({ loadPublished: vi.fn(async () => changed) }),
-			log,
-		});
-
-		await expect(provider.load(false)).resolves.toBe(primary);
-		expect(compareAboutContact(primary, adaptConvexAboutContact(changed))).toMatchObject({
-			codes: ["about"],
-			mismatchCount: 1,
-		});
-		expect(log).toHaveBeenCalledOnce();
-		expect(log.mock.calls[0]?.[0]).toMatchObject({
-			event: "about_contact.shadow_closed",
-			meta: { codes: ["about"], mismatchCount: 1, primaryCount: 2, secondaryCount: 2 },
-		});
-		expect(JSON.stringify(log.mock.calls[0]?.[0])).not.toMatch(
-			/Private changed name|hello@angelsrest\.online|photosession/,
-		);
-	});
-
-	it("bounds a stalled shadow read without delaying the Sanity response indefinitely", async () => {
-		vi.useFakeTimers();
-		const log = vi.fn();
-		const provider = createAboutContactContentProvider({
-			sanity: fakeSanity(),
-			mode: () => "shadow",
-			createReader: () => ({ loadPublished: () => new Promise(() => {}) }),
-			log,
-			deadlineMs: 5,
-		});
-
-		const result = provider.load(false);
-		await vi.advanceTimersByTimeAsync(5);
-		await expect(result).resolves.toEqual(adaptSanityAboutContact(sanityProjection()));
-		expect(log.mock.calls[0]?.[0]).toMatchObject({
-			meta: { codes: ["timeout"], mismatchCount: 1 },
-		});
 	});
 });
