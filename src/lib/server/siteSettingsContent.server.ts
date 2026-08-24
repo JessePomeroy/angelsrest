@@ -5,42 +5,14 @@ import { env as privateEnv } from "$env/dynamic/private";
 import { env as publicEnv } from "$env/dynamic/public";
 import { SITE_DOMAIN } from "$lib/config/site";
 import { getSanityClient } from "$lib/sanity/client.server";
-import { logStructured } from "$lib/server/logger";
 
-const SHADOW_DEADLINE_MS = 750;
-const HOST_OG_IMAGE_FALLBACK = "/og-image.png";
 const UUID_V4 = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
 const SHA256 = /^[a-f0-9]{64}$/;
-const ACCEPTED_OG_SOURCE = {
-	assetRef: "image-0ccd0a41f44c6387c01425cd93579ac5a4a9f341-1848x1848-png",
-	width: 1_848,
-	height: 1_848,
-	sha256: "c4c238f25cd39d63f55692fefde0a4bd11ff1a9cfd232e94e2dcd952d0fb6d97",
-} as const;
 
-type ProviderMode = "sanity" | "shadow" | "convex";
-type ShadowCode = "site_settings" | "normalization_error" | "secondary_error" | "timeout";
-type Comparison = {
-	codes: ShadowCode[];
-	mismatchCount: number;
-	primaryCount: number | null;
-	secondaryCount: number | null;
-};
+type ProviderMode = "sanity" | "convex";
 type SanityClient = { fetch(query: string): Promise<unknown> };
-type OgEvidence =
-	| {
-			provider: "sanity";
-			assetRef: string | null;
-			width: number | null;
-			height: number | null;
-	  }
-	| { provider: "convex"; sourceSha256: string };
-type SiteSettingsCandidate = {
-	content: SiteSettingsContent;
-	ogEvidence: OgEvidence;
-};
 type SanitySource = {
-	load(isPreview: boolean): Promise<SiteSettingsCandidate>;
+	load(isPreview: boolean): Promise<SiteSettingsContent>;
 };
 type ConvexReader = {
 	loadPublished(signal: AbortSignal): Promise<unknown>;
@@ -182,7 +154,7 @@ function convexOgImage(value: unknown) {
 	return { url, sourceSha256 };
 }
 
-function adaptSanityCandidate(value: unknown): SiteSettingsCandidate {
+export function adaptSanitySiteSettings(value: unknown): SiteSettingsContent {
 	const root = object(value, ["siteSettings"]);
 	const rows = list(root.siteSettings, 2);
 	if (rows.length !== 1) fail();
@@ -214,7 +186,7 @@ function adaptSanityCandidate(value: unknown): SiteSettingsCandidate {
 		(ogImageUrl !== null && (assetRef === null || width === null || height === null))
 	)
 		fail();
-	const content: SiteSettingsContent = {
+	return {
 		artistName: nullableText(settings.artistName, 120),
 		siteTitle: nullableText(settings.siteTitle, 120),
 		tagline: nullableText(settings.tagline, 300),
@@ -226,17 +198,9 @@ function adaptSanityCandidate(value: unknown): SiteSettingsCandidate {
 			keywords: seo ? keywords(seo.keywords) : [],
 		},
 	};
-	return {
-		content,
-		ogEvidence: { provider: "sanity", assetRef, width, height },
-	};
 }
 
-export function adaptSanitySiteSettings(value: unknown): SiteSettingsContent {
-	return adaptSanityCandidate(value).content;
-}
-
-function adaptConvexCandidate(value: unknown): SiteSettingsCandidate {
+export function adaptConvexSiteSettings(value: unknown): SiteSettingsContent {
 	const state = object(value, ["revisionId", "publishedAt", "payload"]);
 	requiredText(state.revisionId, 100);
 	integer(state.publishedAt);
@@ -249,7 +213,7 @@ function adaptConvexCandidate(value: unknown): SiteSettingsCandidate {
 		"seoOgImage",
 	]);
 	const image = convexOgImage(payload.seoOgImage);
-	const content: SiteSettingsContent = {
+	return {
 		artistName: requiredText(payload.artistName, 120),
 		siteTitle: requiredText(payload.siteTitle, 120),
 		tagline: requiredText(payload.tagline, 300),
@@ -261,67 +225,10 @@ function adaptConvexCandidate(value: unknown): SiteSettingsCandidate {
 			keywords: [],
 		},
 	};
-	return {
-		content,
-		ogEvidence: { provider: "convex", sourceSha256: image.sourceSha256 },
-	};
-}
-
-export function adaptConvexSiteSettings(value: unknown): SiteSettingsContent {
-	return adaptConvexCandidate(value).content;
-}
-
-function comparable(value: SiteSettingsContent) {
-	return {
-		...value,
-		// The accepted logo omission is behavior-neutral: the host does not render it.
-		logoUrl: null,
-		seo: {
-			...value.seo,
-			// Provider URLs necessarily differ after the exact asset transfer. Compare
-			// explicit-image behavior against the host fallback boundary instead.
-			ogImageUrl: value.seo.ogImageUrl === null ? HOST_OG_IMAGE_FALLBACK : "explicit",
-		},
-	};
-}
-
-function acceptedOgBinding(
-	primary: SiteSettingsCandidate,
-	secondary: SiteSettingsCandidate,
-	expectedSourceSha256: string,
-) {
-	const sanity = primary.ogEvidence.provider === "sanity" ? primary : secondary;
-	const convex = primary.ogEvidence.provider === "convex" ? primary : secondary;
-	if (sanity.ogEvidence.provider !== "sanity" || convex.ogEvidence.provider !== "convex")
-		return false;
-	return (
-		sanity.content.seo.ogImageUrl !== null &&
-		convex.content.seo.ogImageUrl !== null &&
-		sanity.ogEvidence.assetRef === ACCEPTED_OG_SOURCE.assetRef &&
-		sanity.ogEvidence.width === ACCEPTED_OG_SOURCE.width &&
-		sanity.ogEvidence.height === ACCEPTED_OG_SOURCE.height &&
-		convex.ogEvidence.sourceSha256 === expectedSourceSha256
-	);
-}
-
-function compareSiteSettings(
-	primary: SiteSettingsCandidate,
-	secondary: SiteSettingsCandidate,
-	expectedSourceSha256: string,
-): Comparison {
-	const matches =
-		JSON.stringify(comparable(primary.content)) === JSON.stringify(comparable(secondary.content)) &&
-		acceptedOgBinding(primary, secondary, expectedSourceSha256);
-	return {
-		codes: matches ? [] : ["site_settings"],
-		mismatchCount: matches ? 0 : 1,
-		primaryCount: 1,
-		secondaryCount: 1,
-	};
 }
 
 export function parseSiteSettingsProviderMode(value: unknown): ProviderMode {
-	return value === "sanity" || value === "shadow" || value === "convex" ? value : "sanity";
+	return value === "sanity" || value === "convex" ? value : "sanity";
 }
 
 export function createSanitySiteSettingsSource(
@@ -329,7 +236,7 @@ export function createSanitySiteSettingsSource(
 ): SanitySource {
 	return {
 		async load(isPreview) {
-			return adaptSanityCandidate(await selectClient(isPreview).fetch(SANITY_QUERY));
+			return adaptSanitySiteSettings(await selectClient(isPreview).fetch(SANITY_QUERY));
 		},
 	};
 }
@@ -357,106 +264,28 @@ export function createSiteSettingsContentProvider(
 		sanity?: SanitySource;
 		mode?: () => unknown;
 		createReader?: () => ConvexReader;
-		log?: typeof logStructured;
-		now?: () => number;
-		deadlineMs?: number;
-		acceptedOgSourceSha256?: string;
 	} = {},
 ) {
 	const sanity = dependencies.sanity ?? createSanitySiteSettingsSource();
 	const mode = dependencies.mode ?? (() => privateEnv.SITE_SETTINGS_CONTENT_PROVIDER);
 	const createReader = dependencies.createReader ?? createConvexReader;
-	const log = dependencies.log ?? logStructured;
-	const now = dependencies.now ?? Date.now;
-	const deadlineMs = dependencies.deadlineMs ?? SHADOW_DEADLINE_MS;
-	const acceptedOgSourceSha256 = dependencies.acceptedOgSourceSha256 ?? ACCEPTED_OG_SOURCE.sha256;
-
-	function report(comparison: Comparison, startedAt: number) {
-		if (comparison.codes.length === 0) return;
-		log({
-			event: "site_settings.shadow_closed",
-			level: "warn",
-			durationMs: Math.max(0, Math.min(deadlineMs, Math.round(now() - startedAt))),
-			meta: {
-				codes: comparison.codes,
-				mismatchCount: comparison.mismatchCount,
-				primaryCount: comparison.primaryCount,
-				secondaryCount: comparison.secondaryCount,
-			},
-		});
-	}
-
-	function bounded(work: Promise<Comparison>, controller: AbortController) {
-		let timer: ReturnType<typeof setTimeout> | undefined;
-		return Promise.race([
-			work,
-			new Promise<Comparison>((resolve) => {
-				timer = setTimeout(() => {
-					controller.abort();
-					resolve({
-						codes: ["timeout"],
-						mismatchCount: 1,
-						primaryCount: null,
-						secondaryCount: null,
-					});
-				}, deadlineMs);
-			}),
-		]).finally(() => clearTimeout(timer));
-	}
 
 	async function loadConvex() {
 		try {
-			return adaptConvexCandidate(await createReader().loadPublished(new AbortController().signal))
-				.content;
+			return adaptConvexSiteSettings(
+				await createReader().loadPublished(new AbortController().signal),
+			);
 		} catch {
 			unavailable();
 		}
 	}
 
-	async function loadShadow() {
-		const startedAt = now();
-		const controller = new AbortController();
-		const primary = sanity.load(false);
-		const comparison = bounded(
-			(async () => {
-				try {
-					const [left, rawRight] = await Promise.all([
-						primary,
-						createReader().loadPublished(controller.signal),
-					]);
-					return compareSiteSettings(left, adaptConvexCandidate(rawRight), acceptedOgSourceSha256);
-				} catch (cause) {
-					return {
-						codes: [
-							cause instanceof SiteSettingsProjectionError
-								? "normalization_error"
-								: "secondary_error",
-						] as ShadowCode[],
-						mismatchCount: 1,
-						primaryCount: null,
-						secondaryCount: null,
-					};
-				}
-			})(),
-			controller,
-		);
-		try {
-			const result = await primary;
-			report(await comparison, startedAt);
-			return result.content;
-		} catch (cause) {
-			controller.abort();
-			throw cause;
-		}
-	}
-
 	return {
 		async load(isPreview: boolean) {
-			if (isPreview) return (await sanity.load(true)).content;
+			if (isPreview) return await sanity.load(true);
 			const provider = parseSiteSettingsProviderMode(mode());
 			if (provider === "convex") return await loadConvex();
-			if (provider === "shadow") return await loadShadow();
-			return (await sanity.load(false)).content;
+			return await sanity.load(false);
 		},
 	};
 }
