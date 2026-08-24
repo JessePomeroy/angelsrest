@@ -167,11 +167,47 @@ describe("tenant-scoped CMS media assets", () => {
 					...readyAsset(SITE_A.siteUrl, "423e4567-e89b-42d3-a456-426614174000").derivatives,
 					thumb: {
 						...readyAsset(SITE_A.siteUrl, "423e4567-e89b-42d3-a456-426614174000").derivatives.thumb,
-						height: 214,
+						height: 215,
 					},
 				},
 			},
 		})).rejects.toThrow(/thumb dimensions/);
+	});
+
+	test("accepts provider-authoritative adjacent-pixel derivative heights", async () => {
+		const t = await setup();
+		const asset = readyAsset(SITE_A.siteUrl, "523e4567-e89b-42d3-a456-426614174000");
+		asset.source = { ...asset.source, width: 1600, height: 1074 };
+		asset.master = { ...asset.master, width: 1600, height: 1074 };
+		asset.derivatives = {
+			thumb: { ...asset.derivatives.thumb, width: 320, height: 214 },
+			card: { ...asset.derivatives.card, width: 768, height: 515 },
+			display1280: { ...asset.derivatives.display1280, width: 1280, height: 859 },
+			display2048: { ...asset.derivatives.display2048, width: 1600, height: 1074 },
+			display2560: { ...asset.derivatives.display2560, width: 1600, height: 1074 },
+		};
+
+		await expect(asAdmin(t, SITE_A.email).mutation(api.mediaAssets.registerReadyWebAsset, {
+			siteUrl: SITE_A.siteUrl,
+			asset,
+		})).resolves.toMatchObject({ status: "ready" });
+
+		asset.assetId = "623e4567-e89b-42d3-a456-426614174000";
+		asset.master.key = `sites/${SITE_A.siteUrl}/web/${asset.assetId}/master.webp`;
+		for (const [name, filename] of Object.entries({
+			thumb: "thumb.webp",
+			card: "card.webp",
+			display1280: "display-1280.webp",
+			display2048: "display-2048.webp",
+			display2560: "display-2560.webp",
+		}) as Array<[keyof typeof asset.derivatives, string]>) {
+			asset.derivatives[name].key = `sites/${SITE_A.siteUrl}/web/${asset.assetId}/${filename}`;
+		}
+		asset.derivatives.card.height = 514;
+		await expect(asAdmin(t, SITE_A.email).mutation(api.mediaAssets.registerReadyWebAsset, {
+			siteUrl: SITE_A.siteUrl,
+			asset,
+		})).rejects.toThrow(/card dimensions/);
 	});
 
 	test("deduplicates identical registration retries and rejects conflicting metadata", async () => {

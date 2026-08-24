@@ -138,7 +138,7 @@ export function validateReadyWebAsset(siteUrl: string, asset: ReadyWebAsset) {
 		if (derivative.key !== `${prefix}${spec.filename}`) {
 			throw new Error(`${name} key does not match its tenant and asset`);
 		}
-		if (derivative.width !== dimensions.width || derivative.height !== dimensions.height) {
+		if (!dimensionsMatchWithinImagePipelineRounding(derivative, dimensions)) {
 			throw new Error(`${name} dimensions do not match the source`);
 		}
 	}

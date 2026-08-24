@@ -266,6 +266,23 @@ describe("Convex Shop page-shape adapter", () => {
 		expect(adaptConvexPrintSet(projection("print"))).toBeNull();
 	});
 
+	it("accepts provider-authoritative adjacent-pixel heights and rejects wider drift", () => {
+		const value = structuredClone(projection("print"));
+		const asset = first(value.media).asset;
+		asset.source = { width: 1600, height: 1074 };
+		asset.derivatives = {
+			thumb: { contentType: "image/webp", width: 320, height: 214 },
+			card: { contentType: "image/webp", width: 768, height: 515 },
+			display1280: { contentType: "image/webp", width: 1280, height: 859 },
+			display2048: { contentType: "image/webp", width: 1600, height: 1074 },
+			display2560: { contentType: "image/webp", width: 1600, height: 1074 },
+		};
+
+		expect(() => adaptConvexProduct(value)).not.toThrow();
+		asset.derivatives.card.height = 514;
+		expect(() => adaptConvexProduct(value)).toThrow(ConvexShopProjectionError);
+	});
+
 	it.each([
 		["partial", (catalog: ReturnType<typeof completeCatalog>) => catalog.pop()],
 		[

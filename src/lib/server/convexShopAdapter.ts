@@ -74,9 +74,12 @@ function asset(value: unknown) {
 	for (const preset of Object.keys(PRESETS) as Preset[]) {
 		const derivative = object(derivatives[preset], ["contentType", "width", "height"]);
 		if (derivative.contentType !== "image/webp") fail();
+		const derivativeWidth = integer(derivative.width, 1, 100_000);
+		const derivativeHeight = integer(derivative.height, 1, 100_000);
 		const expectedWidth = Math.min(sourceWidth, PRESETS[preset].width);
 		const expectedHeight = Math.max(1, Math.round(sourceHeight * (expectedWidth / sourceWidth)));
-		if (derivative.width !== expectedWidth || derivative.height !== expectedHeight) fail();
+		if (derivativeWidth !== expectedWidth || Math.abs(derivativeHeight - expectedHeight) > 1)
+			fail();
 	}
 	return { url: (preset: Preset) => `${MEDIA_ROOT}/${assetId}/${PRESETS[preset].filename}.webp` };
 }

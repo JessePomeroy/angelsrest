@@ -629,7 +629,7 @@ describe("bounded public Shop drill sentinel", () => {
 			(catalog: ReturnType<typeof completeCatalog>) => {
 				first(
 					(first(catalog.convex) as ReturnType<typeof convexProduct>).media,
-				).asset.derivatives.card.height += 1;
+				).asset.derivatives.card.height += 2;
 			},
 		],
 	] as const)("classifies a %s mismatch as dimensions only", (_name, mutate) => {
@@ -647,6 +647,32 @@ describe("bounded public Shop drill sentinel", () => {
 			associationParity: "match",
 			productIndexOrder: "match",
 			printSetOrder: "match",
+		});
+	});
+
+	it("accepts provider-authoritative adjacent-pixel derivative heights and rejects wider drift", () => {
+		const catalog = completeCatalog();
+		const sanity = first(catalog.sanity) as ReturnType<typeof sanityProduct>;
+		sanity.image.source = { width: 1600, height: 1074 };
+		const asset = first((first(catalog.convex) as ReturnType<typeof convexProduct>).media).asset;
+		resizeConvexAsset(asset, 1600, 1074);
+		asset.derivatives.thumb.height = 214;
+		asset.derivatives.card.height = 515;
+
+		expect(compareShopCatalogSentinel(catalog.sanity, catalog.convex)).toMatchObject({
+			outcome: "exact",
+			presentationParity: "match",
+			presentationMismatchCounts: noPresentationMismatches,
+		});
+
+		asset.derivatives.card.height = 514;
+		expect(compareShopCatalogSentinel(catalog.sanity, catalog.convex)).toMatchObject({
+			outcome: "mismatch",
+			presentationParity: "mismatch",
+			presentationMismatchCounts: {
+				...noPresentationMismatches,
+				dimensions: 1,
+			},
 		});
 	});
 

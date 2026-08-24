@@ -797,9 +797,13 @@ function convexPresentationAsset(value: unknown) {
 		if (derivative.contentType !== "image/webp") {
 			throw new PresentationNormalizationError("mediaStructure");
 		}
+		const derivativeDimensions = presentationDimensions({ source: derivative });
 		const width = Math.min(source.width, maximumWidth);
 		const height = Math.max(1, Math.round(source.height * (width / source.width)));
-		if (derivative.width !== width || derivative.height !== height) {
+		if (
+			derivativeDimensions.width !== width ||
+			Math.abs(derivativeDimensions.height - height) > 1
+		) {
 			throw new PresentationNormalizationError("dimensions");
 		}
 	}
