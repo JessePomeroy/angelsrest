@@ -8,7 +8,7 @@
 let {
 	title = "angel's rest",
 	description = "Photography portfolio and print shop by Jesse Pomeroy. Fine art photography, prints, zines, and commissions.",
-	image = "/og-image.jpg",
+	image = "https://www.angelsrest.online/og-image.png",
 	url = "https://angelsrest.online",
 	type = "website",
 }: {

@@ -242,7 +242,7 @@ function handleV1AddToCart() {
 <SEO
 	title={`${data.product.title} | shop | angel's rest`}
 	description={data.product.description || `${data.product.title} - Available in the Angels Rest shop`}
-	image={data.product.images[0]?.full || "/og-image.jpg"}
+	image={data.product.images[0]?.full || undefined}
 	url={`https://angelsrest.online/shop/${data.product.slug}`}
 />
 

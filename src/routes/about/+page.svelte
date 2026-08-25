@@ -59,7 +59,7 @@ const contact = $derived(data.content.contact);
 <SEO
     title="about | angel's rest"
     description={about.seo.description || ABOUT_CONTACT_SEO_DESCRIPTION_FALLBACK}
-    image={about.seo.imageUrl || "/og-image.jpg"}
+    image={about.seo.imageUrl || undefined}
     url="https://angelsrest.online/about"
 />
 
