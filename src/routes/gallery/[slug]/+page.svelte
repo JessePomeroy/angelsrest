@@ -29,7 +29,7 @@ function openModal(index: number) {
 <SEO
   title="{data.gallery.title} | angel's rest"
   description={data.gallery.seo?.description || data.gallery.description || `Photo gallery: ${data.gallery.title}`}
-  image={data.gallery.seo?.ogImageUrl || data.gallery.images[0]?.full || "/og-image.jpg"}
+  image={data.gallery.seo?.ogImageUrl || data.gallery.images[0]?.full || undefined}
   url={data.gallery.canonicalUrl}
 />
 
