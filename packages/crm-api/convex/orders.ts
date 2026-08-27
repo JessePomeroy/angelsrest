@@ -419,7 +419,12 @@ async function recordShipmentEmailForOrder(
 			order: { _id: order._id, siteUrl: order.siteUrl, orderNumber: order.orderNumber },
 		};
 	}
-	const patch: Record<string, unknown> = {
+	const patch: Pick<
+		Doc<"orders">,
+		| "shipmentEmailDeliveryStatus"
+		| "shipmentEmailDeliveryAttemptedAt"
+		| "shipmentEmailDeliveryError"
+	> = {
 		shipmentEmailDeliveryStatus: status,
 		shipmentEmailDeliveryAttemptedAt: Date.now(),
 	};
