@@ -2,7 +2,8 @@ name: Deploy shared Convex
 
 # Shared Convex model: packages/crm-api/convex is the single source for the
 # platform deployment used by the hub and all spoke sites. Deploy it only under
-# an explicit manual effect authorization after the exact main revision passes CI.
+# an explicit manual effect authorization after the selected deployment revision
+# has matching CI evidence.
 #
 # Triggering is deliberately manual so source integration and production
 # deployment remain separately reviewable effects.
