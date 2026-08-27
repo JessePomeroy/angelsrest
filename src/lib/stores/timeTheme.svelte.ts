@@ -68,8 +68,7 @@ class TimeTheme {
 // corrupt state across requests.
 //
 // Defer instantiation to first access. On SSR we return a frozen stub
-// with the public readable surface only (period, apply, destroy); the
-// proxy falls through to the real instance once we're in the browser.
+// with the public readable surface only (period, apply, destroy).
 interface TimeThemePublic {
 	readonly period: TimePeriod;
 	apply(): void;
@@ -88,11 +87,3 @@ export function getTimeTheme(): TimeThemePublic {
 	if (!_timeTheme) _timeTheme = new TimeTheme();
 	return _timeTheme;
 }
-
-/** @deprecated Kept for backward compat — prefer `getTimeTheme()`. */
-export const timeTheme: TimeThemePublic = new Proxy(SSR_TIME_THEME_STUB, {
-	get(_target, prop: keyof TimeThemePublic) {
-		const instance = getTimeTheme();
-		return instance[prop];
-	},
-});

@@ -41,7 +41,7 @@ import Toaster from "$lib/components/Toaster.svelte";
 import { cart } from "$lib/shop/cart.svelte";
 
 // Time-aware theming
-import { timeTheme } from "$lib/stores/timeTheme.svelte";
+import { getTimeTheme } from "$lib/stores/timeTheme.svelte";
 
 import "$lib/styles/global.css";
 
@@ -58,6 +58,8 @@ const ogImage = $derived(
 	data.siteSettings?.seo?.ogImageUrl ||
 		"https://www.angelsrest.online/og-image.png",
 );
+
+const timeTheme = getTimeTheme();
 
 // Vercel analytics
 injectAnalytics();
