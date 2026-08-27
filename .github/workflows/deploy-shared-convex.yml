@@ -1,23 +1,17 @@
 name: Deploy shared Convex
 
 # Shared Convex model: packages/crm-api/convex is the single source for the
-# platform deployment used by the hub and all spoke sites. Deploy it once after
-# main's CI passes.
+# platform deployment used by the hub and all spoke sites. Deploy it only under
+# an explicit manual effect authorization after the exact main revision passes CI.
 #
-# Triggering: gated on a successful CI run (lint + check + tests). Prevents
-# a broken main from auto-deploying to prod. Manual override via
-# workflow_dispatch is available for force-redeploys.
+# Triggering is deliberately manual so source integration and production
+# deployment remain separately reviewable effects.
 #
 # Adding a new client does not add a new Convex deployment. Add the tenant row
 # in platformClients, publish a crm-api package version if generated API types
 # changed, and deploy this shared project once.
 
-on:
-  workflow_run:
-    workflows: ["CI"]
-    types: [completed]
-    branches: [main]
-  workflow_dispatch:
+on: workflow_dispatch
 
 # Serialise deploys; back-to-back pushes shouldn't race the same prod.
 concurrency:
@@ -32,16 +26,9 @@ jobs:
   deploy:
     name: Deploy shared Convex
     runs-on: ubuntu-latest
-    # Skip if CI failed. workflow_dispatch always passes the gate.
-    if: >-
-      github.event_name == 'workflow_dispatch' ||
-      github.event.workflow_run.conclusion == 'success'
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
-          # For workflow_run events, check out the SHA that CI validated,
-          # not whatever the default branch happens to be at trigger time.
-          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
           persist-credentials: false
 
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
