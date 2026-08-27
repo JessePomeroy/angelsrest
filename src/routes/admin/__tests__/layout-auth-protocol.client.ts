@@ -81,6 +81,32 @@ vi.mock("@jessepomeroy/admin", () => {
 		LoadingState: () => undefined,
 		isTenantAdminServerAuthorized: (session: { status?: string } | undefined) =>
 			session?.status === "authorized",
+		shouldRefreshAdminServerSession: (input: {
+			hasBrowser: boolean;
+			hasAuthClient: boolean;
+			sessionPending: boolean;
+			sessionEmail: string | null | undefined;
+			serverAuthorized: boolean;
+			refreshAttempted: boolean;
+			refreshInFlight: boolean;
+		}) =>
+			input.hasBrowser &&
+			input.hasAuthClient &&
+			!input.sessionPending &&
+			Boolean(input.sessionEmail) &&
+			!input.serverAuthorized &&
+			!input.refreshAttempted &&
+			!input.refreshInFlight,
+		shouldHoldAdminShellForServerSession: (input: {
+			hasAuthClient: boolean;
+			sessionPending: boolean;
+			sessionEmail: string | null | undefined;
+			serverAuthorized: boolean;
+		}) =>
+			input.hasAuthClient &&
+			!input.sessionPending &&
+			Boolean(input.sessionEmail) &&
+			!input.serverAuthorized,
 		setAdminConfig: (config: { authClient?: typeof authHarness.client }) => {
 			authHarness.configuredClient = config.authClient ?? null;
 		},
