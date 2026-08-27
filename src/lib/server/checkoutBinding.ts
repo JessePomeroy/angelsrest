@@ -22,7 +22,3 @@ export function isCheckoutSessionOwner(
 	const bound = cookies.get(COOKIE_NAME);
 	return Boolean(bound) && bound === sessionId;
 }
-
-export function clearCheckoutSession(cookies: Cookies): void {
-	cookies.delete(COOKIE_NAME, { path: "/" });
-}

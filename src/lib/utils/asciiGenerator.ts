@@ -3,12 +3,6 @@
  * Converts image pixel data into ASCII character grids.
  */
 
-export interface AsciiGrid {
-	chars: string[];
-	cols: number;
-	rows: number;
-}
-
 /**
  * Calculate ASCII grid dimensions from image dimensions and resolution.
  */

@@ -87,10 +87,3 @@ export interface PrintSet {
 		slug: string;
 	} | null;
 }
-
-/**
- * Print set with processed image URLs
- */
-export interface PrintSetWithImages extends PrintSet {
-	images: ProductImage[];
-}

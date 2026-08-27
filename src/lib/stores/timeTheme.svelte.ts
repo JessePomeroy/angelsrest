@@ -96,8 +96,3 @@ export const timeTheme: TimeThemePublic = new Proxy(SSR_TIME_THEME_STUB, {
 		return instance[prop];
 	},
 });
-
-/** Get time period for a given hour (useful for testing/preview) */
-export function getTimePeriodForHour(hour: number): TimePeriod {
-	return getTimePeriod(hour);
-}
