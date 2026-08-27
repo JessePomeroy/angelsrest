@@ -244,6 +244,62 @@ function setImage(item: Media) {
 	return { thumb, ...rest };
 }
 
+type ShopPrintVariant = {
+	paper: string;
+	size: string;
+	retailPrice: number;
+};
+
+type ShopPrintOptions = {
+	bordersEnabled: boolean;
+	framedEnabled: boolean;
+	frameMarkupMultiplier: number;
+};
+
+type ConvexProductOutput =
+	| {
+			productType: "v2";
+			product: {
+				title: string;
+				slug: string;
+				description: string | undefined;
+				variants: ShopPrintVariant[];
+				inStock: boolean;
+				featured: boolean;
+				images: Array<ReturnType<typeof productImage>>;
+				price?: number;
+				category?: string;
+			} & ShopPrintOptions;
+	  }
+	| {
+			productType: "v1";
+			product: {
+				title: string;
+				slug: string;
+				description: string | undefined;
+				price: number | undefined;
+				category: ReturnType<typeof category>;
+				featured: boolean;
+				inStock: boolean;
+				images: Array<ReturnType<typeof productImage>>;
+				availablePapers: [];
+				seo?: { description: string | undefined; ogImageUrl?: string };
+			};
+	  };
+
+type ConvexPrintSetOutput = {
+	printSet: {
+		title: string;
+		slug: string;
+		description: string | undefined;
+		previewImage: string;
+		variants: ShopPrintVariant[];
+		inStock: boolean;
+		parent?: { title: string; slug: string };
+	} & ShopPrintOptions;
+	images: Array<ReturnType<typeof setImage>>;
+};
+
 function completeProducts(value: unknown) {
 	if (!Array.isArray(value) || value.length !== 33) fail();
 	const products = value.map(normalize);
@@ -329,7 +385,10 @@ function selectProduct(value: unknown, productSlug?: string) {
 	return value === null ? null : normalize(value);
 }
 
-export function adaptConvexProduct(value: unknown, productSlug?: string) {
+export function adaptConvexProduct(
+	value: unknown,
+	productSlug?: string,
+): ConvexProductOutput | null {
 	const product = selectProduct(value, productSlug);
 	if (!product) return null;
 	if (product.kind === "print_set") return null;
@@ -351,7 +410,6 @@ export function adaptConvexProduct(value: unknown, productSlug?: string) {
 				inStock: product.inStock,
 				featured: product.featured,
 				images: [productImage(primary)],
-				...({} as { price?: number; category?: string }),
 			},
 		};
 	}
@@ -381,7 +439,10 @@ export function adaptConvexProduct(value: unknown, productSlug?: string) {
 	};
 }
 
-export function adaptConvexPrintSet(value: unknown, productSlug?: string) {
+export function adaptConvexPrintSet(
+	value: unknown,
+	productSlug?: string,
+): ConvexPrintSetOutput | null {
 	const product = selectProduct(value, productSlug);
 	if (!product) return null;
 	if (product.kind !== "print_set") return null;
@@ -400,7 +461,6 @@ export function adaptConvexPrintSet(value: unknown, productSlug?: string) {
 			})),
 			...product.printOptions,
 			inStock: product.inStock,
-			...({} as { parent?: { title: string; slug: string } }),
 		},
 		images: role(product, "set_member").map(setImage),
 	};

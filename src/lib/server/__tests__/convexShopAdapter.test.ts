@@ -209,6 +209,7 @@ describe("Convex Shop page-shape adapter", () => {
 
 	it("maps print, all fixed kinds, and print-set details without IDs or private facts", () => {
 		const print = adaptConvexProduct(projection("print"));
+		if (!print || print.productType !== "v2") throw new Error("Expected a V2 print");
 		expect(print).toMatchObject({
 			productType: "v2",
 			product: {
@@ -222,6 +223,22 @@ describe("Convex Shop page-shape adapter", () => {
 				],
 			},
 		});
+		const printKeys = [
+			"title",
+			"slug",
+			"description",
+			"variants",
+			"bordersEnabled",
+			"framedEnabled",
+			"frameMarkupMultiplier",
+			"inStock",
+			"featured",
+			"images",
+		];
+		expect(Reflect.ownKeys(print.product)).toEqual(printKeys);
+		expect(Object.keys(JSON.parse(JSON.stringify(print.product)))).toEqual(printKeys);
+		expect(Object.hasOwn(print.product, "price")).toBe(false);
+		expect(Object.hasOwn(print.product, "category")).toBe(false);
 		for (const [kind, category] of [
 			["postcard", "postcards"],
 			["tapestry", "tapestries"],
@@ -229,6 +246,7 @@ describe("Convex Shop page-shape adapter", () => {
 			["merchandise", "merchandise"],
 		] as const) {
 			const available = adaptConvexProduct(projection(kind));
+			if (!available || available.productType !== "v1") throw new Error("Expected a V1 product");
 			expect(available).toMatchObject({
 				productType: "v1",
 				product: { category, availablePapers: [], inStock: true },
@@ -236,12 +254,35 @@ describe("Convex Shop page-shape adapter", () => {
 			const unavailable = projection(kind);
 			unavailable.saleAvailability = "unavailable";
 			unavailable.variants = [];
-			expect(adaptConvexProduct(unavailable)).toMatchObject({
+			const unavailableOutput = adaptConvexProduct(unavailable);
+			if (!unavailableOutput || unavailableOutput.productType !== "v1")
+				throw new Error("Expected an unavailable V1 product");
+			expect(unavailableOutput).toMatchObject({
 				productType: "v1",
 				product: { inStock: false, price: undefined },
 			});
+			const generalKeys = [
+				"title",
+				"slug",
+				"description",
+				"price",
+				"category",
+				"featured",
+				"inStock",
+				"images",
+				"availablePapers",
+				"seo",
+			];
+			expect(Reflect.ownKeys(available.product)).toEqual(generalKeys);
+			expect(Object.keys(JSON.parse(JSON.stringify(available.product)))).toEqual(generalKeys);
+			expect(Reflect.ownKeys(unavailableOutput.product)).toEqual(generalKeys);
+			expect(Object.hasOwn(unavailableOutput.product, "price")).toBe(true);
+			expect(Object.keys(JSON.parse(JSON.stringify(unavailableOutput.product)))).toEqual(
+				generalKeys.filter((key) => key !== "price"),
+			);
 		}
 		const set = adaptConvexPrintSet(projection("print_set"));
+		if (!set) throw new Error("Expected a print set");
 		expect(set).toMatchObject({
 			printSet: { variants: [{ retailPrice: 42.01 }] },
 			images: [
@@ -249,7 +290,21 @@ describe("Convex Shop page-shape adapter", () => {
 				{ thumb: expect.stringContaining("/thumb.webp") },
 			],
 		});
-		expect(set?.printSet).not.toHaveProperty("parent");
+		const printSetKeys = [
+			"title",
+			"slug",
+			"description",
+			"previewImage",
+			"variants",
+			"bordersEnabled",
+			"framedEnabled",
+			"frameMarkupMultiplier",
+			"inStock",
+		];
+		expect(Reflect.ownKeys(set)).toEqual(["printSet", "images"]);
+		expect(Reflect.ownKeys(set.printSet)).toEqual(printSetKeys);
+		expect(Object.keys(JSON.parse(JSON.stringify(set.printSet)))).toEqual(printSetKeys);
+		expect(Object.hasOwn(set.printSet, "parent")).toBe(false);
 		const output = JSON.stringify({
 			print,
 			set,
