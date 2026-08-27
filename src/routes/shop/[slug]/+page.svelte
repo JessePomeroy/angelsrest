@@ -12,7 +12,7 @@ import {
 	isCanvasPaper,
 	V2_BORDER_OPTIONS,
 	V2_FRAME_OPTIONS,
-} from "$lib/shop/printCatalog";
+} from "@jessepomeroy/print-catalog";
 import {
 	getAvailablePrintPapers,
 	getAvailablePrintSizes,

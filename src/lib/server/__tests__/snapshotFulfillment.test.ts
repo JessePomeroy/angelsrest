@@ -35,7 +35,7 @@ vi.mock("$lib/server/catalogCommerceClients", () => ({
 		);
 	},
 }));
-vi.mock("$lib/shop/printCatalog", () => ({
+vi.mock("@jessepomeroy/print-catalog", () => ({
 	FRAMED_BORDER_INCHES: 0.25,
 	getPaper: () => ({ slug: "matte", subcategoryId: 103001, name: "Matte" }),
 	getSize: () => ({ width: 8, height: 10 }),

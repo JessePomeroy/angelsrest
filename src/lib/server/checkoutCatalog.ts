@@ -1,5 +1,3 @@
-import type { SanityImageSource } from "@sanity/image-url";
-import { ApiErrorCode, apiError } from "$lib/server/apiError";
 import {
 	FRAMED_BORDER_INCHES,
 	getBorder,
@@ -9,7 +7,9 @@ import {
 	getSize,
 	isCanvasPaper,
 	parseCanvasSlug,
-} from "$lib/shop/printCatalog";
+} from "@jessepomeroy/print-catalog";
+import type { SanityImageSource } from "@sanity/image-url";
+import { ApiErrorCode, apiError } from "$lib/server/apiError";
 import type { ParsedPaper } from "$lib/types/shop";
 import { imageSet, originalUrl, parsePaperOption, previewUrl } from "$lib/utils/images";
 
