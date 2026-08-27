@@ -2,13 +2,6 @@
 // Paper catalog, sizes, order payload shapes, and recipient/order-item
 // domain types used by the LumaPrints API client and the Stripe webhook.
 
-/** Available print dimensions (inches) */
-export interface PrintDimensions {
-	width: number;
-	height: number;
-	label: string; // e.g., "8×12"
-}
-
 /** Order recipient — what we pass to LumaPrints */
 export interface Recipient {
 	firstName: string;
