@@ -13,6 +13,11 @@ export const env = {
 	BETTER_AUTH_SECRET: "test-secret",
 	WEBHOOK_SECRET: "test-webhook-secret",
 	ORDER_LOOKUP_SECRET: "test-order-lookup-secret",
+	CONVEX_LOG_STREAM_HMAC_SECRET: "test-convex-log-stream-hmac-secret",
+	SENTRY_OBSERVATION_OTLP_LOGS_ENDPOINT:
+		"https://o123.ingest.sentry.io/api/456/integration/otlp/v1/logs",
+	SENTRY_OBSERVATION_PUBLIC_KEY: "0123456789abcdef0123456789abcdef",
+	SENTRY_OBSERVATION_ENVIRONMENT: "canary",
 	ORDER_PRODUCERS_STATE: "open",
 	NEW_ORDER_CHECKOUT_CONTROL:
 		'{"version":1,"tenants":[{"siteUrl":"angelsrest.online","state":"open","generation":1},{"siteUrl":"zippymiggy.com","state":"open","generation":1}]}',
