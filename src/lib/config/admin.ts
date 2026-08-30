@@ -134,6 +134,7 @@ export const adminConfig: AdminConfig = {
 		},
 		products: {
 			publicationEnabled: true,
+			publicShopEnabled: true,
 			privateAssetReplacementEnabled: true,
 			privateAssetUpload: {
 				prepareEndpoint: "/api/admin/catalog-private-assets/editor-uploads/prepare",
