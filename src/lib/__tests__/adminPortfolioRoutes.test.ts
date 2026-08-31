@@ -107,9 +107,9 @@ describe("admin Editor route boundaries", () => {
 
 	it("mounts the private product-draft workspace and preserves its opaque route identity", () => {
 		expect(routeSource("src/routes/admin/editor/products/+page.svelte")).toContain("ProductsPage");
-		expect(routeSource("src/routes/admin/editor/products/[productId]/+page.svelte")).toContain(
-			"ProductPage",
-		);
+		const productPage = routeSource("src/routes/admin/editor/products/[productId]/+page.svelte");
+		expect(productPage).toContain("ProductPage");
+		expect(productPage).toContain("{#key data.productId}");
 		expect(loadProduct({ params: { productId: "opaque-product-id" } } as never)).toEqual({
 			productId: "opaque-product-id",
 		});
