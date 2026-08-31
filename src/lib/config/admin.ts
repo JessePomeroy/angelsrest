@@ -1,5 +1,9 @@
 import type { AdminAPI, AdminConfig } from "@jessepomeroy/admin";
 import { api } from "$convex/api";
+import {
+	calculateCatalogProductMargin,
+	resolveCatalogProductVariantOptions,
+} from "$lib/catalogProductMargin";
 import { contactPageSeed } from "$lib/content/contactPageSeed";
 
 // Map Convex's `galleries` namespace to the package's `galleryDelivery` key —
@@ -134,6 +138,9 @@ export const adminConfig: AdminConfig = {
 		},
 		products: {
 			publicationEnabled: true,
+			publicShopEnabled: true,
+			marginCalculator: calculateCatalogProductMargin,
+			variantOptionResolver: resolveCatalogProductVariantOptions,
 			privateAssetReplacementEnabled: true,
 			privateAssetUpload: {
 				prepareEndpoint: "/api/admin/catalog-private-assets/editor-uploads/prepare",
