@@ -69,13 +69,12 @@ only the same token that atomically accepted or declined a quote, or signed a
 contract, may show the matching terminal receipt. Used invoice tokens, legacy
 used-only tokens, rotated links, and explicitly revoked links fail closed.
 
-Portal query migration uses a backend-widen, then host, then narrow sequence.
-Stage A adds `getPublicByToken` while deprecated `getByToken` temporarily keeps
-the exact raw 3.x token/document/client result for mixed-version production
-hosts. That legacy query is a time-bounded security hold and must gain no new
-callers. After every document host uses the safe query, Stage C narrows only the
-invoice, quote, and contract branches of `getByToken` and publishes CRM 4.0.0.
-Gallery delivery keeps its established raw query shape throughout.
+Portal query migration used a backend-widen, then host, then narrow sequence.
+Stage A added `getPublicByToken` while deprecated `getByToken` temporarily kept
+the exact raw 3.x document result for mixed-version hosts. After the host cutover,
+Stage C narrowed the invoice, quote, and contract branches of `getByToken` to the
+same client-safe projection. Gallery delivery keeps its established raw query
+shape throughout.
 
 ### Public inquiry boundary
 
