@@ -1,26 +1,24 @@
 import { error, json } from "@sveltejs/kit";
 import type Stripe from "stripe";
-import { env } from "$env/dynamic/private";
 import { PUBLIC_SITE_URL } from "$env/static/public";
-import { client as sanityClient } from "$lib/sanity/client";
 import { ApiErrorCode, apiError } from "$lib/server/apiError";
 import {
-	buildCartMetadata,
 	buildCartTenantCheckoutOptions,
 	parseHandleCartIntent,
-	validateCart,
 } from "$lib/server/cartCheckoutHelpers";
 import { bindCheckoutSession } from "$lib/server/checkoutBinding";
-import { resolveCheckoutItem } from "$lib/server/checkoutCatalog";
-import { resolveCheckoutCommerce } from "$lib/server/checkoutCommerce";
+import {
+	CurrentCheckoutCommerceError,
+	runCheckoutSessionStage,
+} from "$lib/server/checkoutFailures";
+import { throwCheckoutRouteFailure } from "$lib/server/checkoutRouteFailure";
 import { isCheckoutSnapshotReservationConflict } from "$lib/server/checkoutSnapshotReservationClient";
 import {
 	assertNewOrderCheckoutOpen,
 	NewOrderCheckoutClosedError,
 } from "$lib/server/commercePurposeControls";
+import { resolveCurrentCheckoutCommerce } from "$lib/server/currentCheckoutCommerce";
 import {
-	checkoutSnapshotMode,
-	createAdmittedOrderCheckoutSession,
 	createHandleCheckoutSession,
 	validateSameOriginCheckoutAttemptRequest,
 } from "$lib/server/handleCheckout";
@@ -30,15 +28,13 @@ import { resolveStripeTenantForSite } from "$lib/server/stripeTenant";
 import type { CartItem } from "$lib/shop/cart";
 
 interface CartCheckoutRequest {
-	items: CartItem[];
+	items: unknown;
 	attempt?: unknown;
 	attemptStartedAt?: unknown;
 	attemptProof?: unknown;
 }
 
 export async function POST({ request, cookies }) {
-	const stripe = getStripe();
-	const mode = checkoutSnapshotMode(env.CHECKOUT_SNAPSHOT_MODE);
 	try {
 		const body = (await request.json()) as CartCheckoutRequest;
 		const control = assertNewOrderCheckoutOpen(PUBLIC_SITE_URL);
@@ -49,75 +45,55 @@ export async function POST({ request, cookies }) {
 			body.attemptProof,
 		);
 		const { items } = body;
-		const handleIntents = mode === "handle-v2" ? parseHandleCartIntent(items) : null;
-		if (mode === "handle-v2") {
-			if (!handleIntents) throw error(400, "invalid cart checkout intent");
-		} else {
-			const validationError = validateCart(items);
-			if (validationError) throw error(400, validationError);
-		}
+		const handleIntents = parseHandleCartIntent(items);
+		if (!handleIntents) throw error(400, "invalid cart checkout intent");
+		const stripe = await runCheckoutSessionStage("checkout_stripe", () => getStripe());
 
-		const sourceItems = handleIntents ?? items;
-		const selection = (item: (typeof sourceItems)[number]) => ({
+		const selection = (item: (typeof handleIntents)[number]) => ({
 			productId: item.productSlug,
 			isPrintSet: item.type === "set",
 			paperSlug: item.paperSlug,
 			sizeSlug: item.sizeSlug,
 			paperIndex: item.paperIndex,
-			borderWidth:
-				item.borderWidthValue ?? ("borderWidth" in item ? item.borderWidth?.toString() : undefined),
+			borderWidth: item.borderWidthValue,
 			frame: item.frameValue,
 		});
-		const commerce =
-			mode === "handle-v2"
-				? await resolveCheckoutCommerce(
-						sanityClient.fetch.bind(sanityClient),
-						sourceItems.map(selection),
-					)
-				: null;
-		const resolved = await Promise.all(
-			sourceItems.map(async (item, index) => {
-				const catalogItem =
-					commerce?.items[index] ??
-					(await resolveCheckoutItem(sanityClient.fetch.bind(sanityClient), selection(item)));
-				const fulfillment = catalogItem.legacyFulfillment;
-				const base: CartItem =
-					mode === "handle-v2"
-						? {
-								id: "server-resolved",
-								productSlug: catalogItem.productId,
-								type: fulfillment.isPrintSet ? "set" : "print",
-								quantity: item.quantity,
-								title: catalogItem.title,
-								imageUrl: fulfillment.imageUrl ?? "",
-								unitPriceCents: catalogItem.unitPriceCents,
-							}
-						: (item as CartItem);
-				return {
-					catalogItem,
-					cartItem: {
-						...base,
-						title: catalogItem.title,
-						imageUrl: fulfillment.imageUrl ?? "",
-						imageUrls: fulfillment.isPrintSet ? [...fulfillment.imageUrls] : undefined,
-						paperName: fulfillment.paper?.name,
-						paperSubcategoryId: fulfillment.paper?.subcategoryId,
-						paperWidth: fulfillment.paper?.width,
-						paperHeight: fulfillment.paper?.height,
-						borderWidth: fulfillment.paper?.borderWidth,
-						frameSubcategoryId: fulfillment.paper?.frameSubcategoryId,
-						canvasSubcategoryId: fulfillment.paper?.canvasSubcategoryId,
-						canvasWrapHex: fulfillment.paper?.canvasWrapHex,
-						unitPriceCents: catalogItem.unitPriceCents,
-					} satisfies CartItem,
-				};
-			}),
-		);
+		const commerce = await resolveCurrentCheckoutCommerce(handleIntents.map(selection));
+		const resolved = handleIntents.map((item, index) => {
+			const catalogItem = commerce.items[index];
+			if (!catalogItem) {
+				throw new CurrentCheckoutCommerceError("invalid_authority", "authority");
+			}
+			const fulfillment = catalogItem.legacyFulfillment;
+			const base: CartItem = {
+				id: "server-resolved",
+				productSlug: catalogItem.productId,
+				type: fulfillment.isPrintSet ? "set" : "print",
+				quantity: item.quantity,
+				title: catalogItem.title,
+				imageUrl: fulfillment.imageUrl ?? "",
+				unitPriceCents: catalogItem.unitPriceCents,
+			};
+			return {
+				catalogItem,
+				cartItem: {
+					...base,
+					title: catalogItem.title,
+					imageUrl: fulfillment.imageUrl ?? "",
+					imageUrls: fulfillment.isPrintSet ? [...fulfillment.imageUrls] : undefined,
+					paperName: fulfillment.paper?.name,
+					paperSubcategoryId: fulfillment.paper?.subcategoryId,
+					paperWidth: fulfillment.paper?.width,
+					paperHeight: fulfillment.paper?.height,
+					borderWidth: fulfillment.paper?.borderWidth,
+					frameSubcategoryId: fulfillment.paper?.frameSubcategoryId,
+					canvasSubcategoryId: fulfillment.paper?.canvasSubcategoryId,
+					canvasWrapHex: fulfillment.paper?.canvasWrapHex,
+					unitPriceCents: catalogItem.unitPriceCents,
+				} satisfies CartItem,
+			};
+		});
 		const resolvedItems = resolved.map(({ cartItem }) => cartItem);
-		if (mode === "legacy") {
-			const resolvedValidationError = validateCart(resolvedItems);
-			if (resolvedValidationError) throw error(400, resolvedValidationError);
-		}
 
 		const lineItems: Stripe.Checkout.SessionCreateParams.LineItem[] = resolvedItems.map((item) => {
 			const hasPaper = typeof item.paperSubcategoryId === "number";
@@ -132,7 +108,9 @@ export async function POST({ request, cookies }) {
 			});
 		});
 
-		const tenant = await resolveStripeTenantForSite(PUBLIC_SITE_URL);
+		const tenant = await runCheckoutSessionStage("checkout_tenant", () =>
+			resolveStripeTenantForSite(PUBLIC_SITE_URL),
+		);
 		const tenantCheckout = buildCartTenantCheckoutOptions({
 			items: resolvedItems,
 			tenant,
@@ -140,43 +118,28 @@ export async function POST({ request, cookies }) {
 
 		const successUrl = `${PUBLIC_SITE_URL}/checkout/success?session_id={CHECKOUT_SESSION_ID}`;
 		const cancelUrl = `${PUBLIC_SITE_URL}/checkout/cancel`;
-		if (mode === "handle-v2") {
-			const snapshots = resolved.map(({ catalogItem }) => {
-				if (!catalogItem.snapshot) throw new Error("Checkout snapshot identity is unavailable");
-				return catalogItem.snapshot;
-			});
-			const session = await createHandleCheckoutSession({
-				attempt: attemptIdentity.attempt,
-				attemptStartedAt: attemptIdentity.attemptStartedAt,
-				attemptProofClass: attemptIdentity.proofClass,
-				site: String(tenantCheckout.metadata.commerceTenantSiteUrl),
-				account: tenant.stripeConnectedAccountId?.trim() || null,
-				catalogProvider: commerce?.provider ?? "sanity",
-				snapshotItems: snapshots,
-				stripe,
-				lineItems,
-				successUrl,
-				cancelUrl,
-				shippingAllowedCountries: ["US"],
-				tenantCheckout,
-				bindSession: (sessionId) => bindCheckoutSession(cookies, sessionId),
-				hostGeneration: control.generation,
-			});
-			return json(session);
-		}
-		const session = await createAdmittedOrderCheckoutSession({
-			identity: attemptIdentity,
+		const snapshots = resolved.map(({ catalogItem }) => {
+			if (!catalogItem.snapshot) {
+				throw new CurrentCheckoutCommerceError("invalid_authority", "authority");
+			}
+			return catalogItem.snapshot;
+		});
+		const session = await createHandleCheckoutSession({
+			attempt: attemptIdentity.attempt,
+			attemptStartedAt: attemptIdentity.attemptStartedAt,
+			attemptProofClass: attemptIdentity.proofClass,
 			site: String(tenantCheckout.metadata.commerceTenantSiteUrl),
 			account: tenant.stripeConnectedAccountId?.trim() || null,
-			hostGeneration: control.generation,
+			catalogProvider: "convex",
+			snapshotItems: snapshots,
 			stripe,
-			shippingAllowedCountries: ["US"],
 			lineItems,
 			successUrl,
 			cancelUrl,
-			metadata: buildCartMetadata(resolvedItems),
+			shippingAllowedCountries: ["US"],
 			tenantCheckout,
 			bindSession: (sessionId) => bindCheckoutSession(cookies, sessionId),
+			hostGeneration: control.generation,
 		});
 		return json(session);
 	} catch (err: unknown) {
@@ -186,14 +149,7 @@ export async function POST({ request, cookies }) {
 		if (isCheckoutSnapshotReservationConflict(err)) {
 			throw apiError(409, ApiErrorCode.CHECKOUT_ATTEMPT_REJECTED, "Checkout attempt rejected");
 		}
-		if (err && typeof err === "object" && "status" in err && (mode === "legacy" || "body" in err))
-			throw err;
-		if (mode === "handle-v2") {
-			console.error("Cart checkout failed");
-			throw error(500, "Checkout failed. Please try again.");
-		}
-		const message = err instanceof Error ? err.message : "unknown error";
-		console.error("Cart checkout error:", message);
-		throw error(500, message || "Failed to create cart checkout session");
+		if (err && typeof err === "object" && "status" in err && "body" in err) throw err;
+		throwCheckoutRouteFailure(err, "cart_checkout");
 	}
 }

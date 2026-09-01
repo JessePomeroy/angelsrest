@@ -53,6 +53,7 @@ type CatalogProduct = Doc<"catalogProducts">;
 type CatalogGraphV2Product = CatalogProduct & { graphVersion: 2 };
 type CatalogRevisionState = { createdAt: number } | null;
 const CATALOG_GRAPH_LIST_PROOF_BATCH = 50;
+const CATALOG_PUBLIC_PROJECTION_BATCH = 10;
 const CATALOG_GRAPH_RETIREMENT_REVISION_SCAN_LIMIT = 100;
 const CATALOG_GRAPH_ASSET_REFERENCE_SCAN_LIMIT = 100;
 const SANITY_CATALOG_IMPORT_KINDS = [
@@ -64,15 +65,19 @@ const SANITY_CATALOG_IMPORT_KINDS = [
 	"merchandise",
 ] as const satisfies readonly CatalogProductKind[];
 
-async function mapCatalogGraphListInBatches<T, Result>(
+export async function mapCatalogGraphListInBatches<T, Result>(
 	values: T[],
 	map: (value: T) => Promise<Result>,
+	batchSize = CATALOG_GRAPH_LIST_PROOF_BATCH,
 ) {
+	if (!Number.isSafeInteger(batchSize) || batchSize < 1) {
+		throw new Error("Catalog graph batch size must be a positive integer");
+	}
 	const results: Result[] = [];
-	for (let start = 0; start < values.length; start += CATALOG_GRAPH_LIST_PROOF_BATCH) {
+	for (let start = 0; start < values.length; start += batchSize) {
 		results.push(...await Promise.all(
 			values
-				.slice(start, start + CATALOG_GRAPH_LIST_PROOF_BATCH)
+				.slice(start, start + batchSize)
 				.map(map),
 		));
 	}
@@ -886,7 +891,6 @@ type CatalogPublicationCas = {
 };
 
 const CATALOG_PUBLIC_PRODUCT_CAP = 40;
-const CATALOG_PUBLIC_PER_KIND_SCAN_CAP = 40;
 const CATALOG_PUBLICATION_CONFLICT = "Catalog publication conflict: reload before retrying";
 const CATALOG_PUBLIC_UNAVAILABLE = "Catalog public reads are unavailable";
 
@@ -932,7 +936,7 @@ function assertCatalogPublicationHeader(product: CatalogGraphV2Product) {
 	) throw new Error("Catalog product publication fields must move together");
 }
 
-async function requireCatalogPublicationAuthorization(
+async function requireCatalogPublicationSiteAdmin(
 	ctx: MutationCtx,
 	productId: Id<"catalogProducts">,
 ) {
@@ -942,8 +946,40 @@ async function requireCatalogPublicationAuthorization(
 		productId,
 	);
 	const product = requireCatalogProductGraphV2Product(authorized.doc);
-	requireCatalogProductKindEnabled(authorized.client, product.productKind);
-	return { product, actor: authorized.identity.tokenIdentifier };
+	return {
+		product,
+		client: authorized.client,
+		actor: authorized.identity.tokenIdentifier,
+	};
+}
+
+async function loadPublishedCatalogProductHeaders(
+	ctx: CatalogContext,
+	siteUrl: string,
+) {
+	return await ctx.db
+		.query("catalogProducts")
+		.withIndex(
+			"by_siteUrl_and_graphVersion_and_publishedAt",
+			(query) => query
+				.eq("siteUrl", siteUrl)
+				.eq("graphVersion", 2)
+				.gte("publishedAt", 0),
+		)
+		.take(CATALOG_PUBLIC_PRODUCT_CAP + 1);
+}
+
+async function requireCatalogPublicationCapacity(
+	ctx: MutationCtx,
+	product: CatalogGraphV2Product,
+) {
+	// Republishing replaces one existing public pointer and does not grow the
+	// published set. Only a first publication needs a capacity reservation.
+	if (product.publishedRevisionId !== undefined) return;
+	const published = await loadPublishedCatalogProductHeaders(ctx, product.siteUrl);
+	if (published.length >= CATALOG_PUBLIC_PRODUCT_CAP) {
+		throw new Error("Catalog public product limit exceeded");
+	}
 }
 
 async function projectPublishedCatalogProduct(
@@ -968,10 +1004,11 @@ export async function publishCatalogProductGraphV2Draft(
 	ctx: MutationCtx,
 	args: CatalogPublicationCas,
 ) {
-	const { product, actor } = await requireCatalogPublicationAuthorization(
+	const { product, client, actor } = await requireCatalogPublicationSiteAdmin(
 		ctx,
 		args.productId,
 	);
+	requireCatalogProductKindEnabled(client, product.productKind);
 	validatePublicationCas(args);
 	if (!args.expectedDraftRevisionId || !hasExactPublicationCas(product, args)) {
 		publicationConflict();
@@ -988,6 +1025,7 @@ export async function publishCatalogProductGraphV2Draft(
 	if (!draft) publicationConflict();
 	projectCatalogProductGraphV2Public(draft);
 	await proveTenantWideCatalogIdentity(ctx, product);
+	await requireCatalogPublicationCapacity(ctx, product);
 	const timestamp = nextPublicationTimestamp(product);
 	await ctx.db.patch(product._id, {
 		publishedRevisionId: draft.revision._id,
@@ -1009,7 +1047,7 @@ export async function unpublishCatalogProductGraphV2(
 	ctx: MutationCtx,
 	args: CatalogPublicationCas,
 ) {
-	const { product, actor } = await requireCatalogPublicationAuthorization(
+	const { product, actor } = await requireCatalogPublicationSiteAdmin(
 		ctx,
 		args.productId,
 	);
@@ -1070,35 +1108,22 @@ export async function listPublishedCatalogProductGraphsV2(
 	siteUrl: string,
 ) {
 	const enabledKinds = await loadPublicCatalogProductKinds(ctx, siteUrl);
-	const published: CatalogGraphV2Product[] = [];
-	for (const productKind of enabledKinds) {
-		const rows = await ctx.db
-			.query("catalogProducts")
-			.withIndex(
-				"by_siteUrl_and_graphVersion_and_productKind_and_createdAt",
-				(query) => query
-					.eq("siteUrl", siteUrl)
-					.eq("graphVersion", 2)
-					.eq("productKind", productKind),
-			)
-			.take(CATALOG_PUBLIC_PER_KIND_SCAN_CAP + 1);
-		if (rows.length > CATALOG_PUBLIC_PER_KIND_SCAN_CAP) {
-			throw new Error(`Catalog public ${productKind} scan limit exceeded`);
-		}
-		for (const value of rows) {
-			const product = requireCatalogProductGraphV2Product(value);
-			if (product.productKind !== productKind) {
-				throw new Error("Catalog public product kind index mismatch");
-			}
-			assertCatalogPublicationHeader(product);
-			if (product.publishedRevisionId) published.push(product);
-		}
-	}
-	if (published.length > CATALOG_PUBLIC_PRODUCT_CAP) {
+	const rows = await loadPublishedCatalogProductHeaders(ctx, siteUrl);
+	if (rows.length > CATALOG_PUBLIC_PRODUCT_CAP) {
 		throw new Error("Catalog public product limit exceeded");
 	}
-	const projected = await Promise.all(
-		published.map((product) => projectPublishedCatalogProduct(ctx, product)),
+	const enabledKindSet = new Set(enabledKinds);
+	const published = rows
+		.filter((value) => enabledKindSet.has(value.productKind))
+		.map((value) => {
+			const product = requireCatalogProductGraphV2Product(value);
+			assertCatalogPublicationHeader(product);
+			return product;
+		});
+	const projected = await mapCatalogGraphListInBatches(
+		published,
+		async (product) => await projectPublishedCatalogProduct(ctx, product),
+		CATALOG_PUBLIC_PROJECTION_BATCH,
 	);
 	return projected.sort(comparePublishedCatalogProducts);
 }
@@ -1125,18 +1150,20 @@ export async function getPublishedCatalogProductGraphV2BySlug(
 	return await projectPublishedCatalogProduct(ctx, product);
 }
 
-/** Authenticated Editor-only detail read with no storage keys or capabilities. */
+/**
+ * Authenticated Editor-only detail read with no storage keys or capabilities.
+ * Disabled kinds remain readable so their published pointers can be removed.
+ */
 export async function getCatalogProductGraphV2EditorState(
 	ctx: QueryCtx,
 	productId: Id<"catalogProducts">,
 ) {
-	const { doc, client } = await requireDocumentSiteAdminWithClient(
+	const { doc } = await requireDocumentSiteAdminWithClient(
 		ctx,
 		"catalogProducts",
 		productId,
 	);
 	const product = requireCatalogProductGraphV2Product(doc);
-	requireCatalogProductKindEnabled(client, product.productKind);
 	const [draft, published] = await Promise.all([
 		loadCatalogProductGraphV2Revision(ctx, product, product.draftRevisionId),
 		loadCatalogProductGraphV2Revision(ctx, product, product.publishedRevisionId),
@@ -1247,14 +1274,17 @@ export async function getCatalogProductGraphV2RetirementEligibility(
 	};
 }
 
-/** Bounded V2 headers for one authenticated tenant and product kind. */
+/**
+ * Bounded V2 headers for one authenticated tenant and product kind.
+ * Disabled kinds remain discoverable for publication cleanup, but all writers
+ * other than unpublish continue to enforce the current capability policy.
+ */
 export async function listCatalogProductGraphsV2ForEditor(
 	ctx: QueryCtx,
 	siteUrl: string,
 	productKind: CatalogProductKind,
 ) {
 	const { client } = await requireSiteAdmin(ctx, siteUrl);
-	requireCatalogProductKindEnabled(client, productKind);
 	const products = await ctx.db
 		.query("catalogProducts")
 		.withIndex("by_siteUrl_and_graphVersion_and_productKind_and_createdAt", (query) =>

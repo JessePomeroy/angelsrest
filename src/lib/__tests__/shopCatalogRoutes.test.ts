@@ -38,7 +38,7 @@ describe("shop catalog route boundaries", () => {
 		);
 	});
 
-	it("keeps all four Shop loaders thin behind the private catalog provider", () => {
+	it("keeps all four Shop loaders thin behind the Convex-only catalog boundary", () => {
 		for (const path of [
 			"src/routes/shop/+page.server.ts",
 			"src/routes/shop/[slug]/+page.server.ts",
@@ -46,9 +46,14 @@ describe("shop catalog route boundaries", () => {
 			"src/routes/shop/prints/[slug]/+page.server.ts",
 		]) {
 			const loader = source(path);
-			expect(loader).toContain('from "$lib/server/catalogShop.server"');
-			expect(loader).not.toMatch(/sanity\.fetch|\$convex|catalogProductGraphs/);
+			expect(loader).toContain('from "$lib/server/convexShop.server"');
+			expect(loader).not.toMatch(/sanity\.fetch|\$convex|catalogProductGraphs|isPreview|locals/);
 		}
+		const boundary = source("src/lib/server/convexShop.server.ts");
+		expect(boundary).toContain("api.catalogProductGraphs.listPublished");
+		expect(boundary).toContain("api.catalogProductGraphs.getPublishedBySlug");
+		expect(boundary).toContain("collections: []");
+		expect(boundary).not.toMatch(/sanity|SHOP_CATALOG_PROVIDER|isPreview/);
 
 		expect(source("src/lib/server/checkoutCatalog.ts")).toContain("lumaPrintSetV2");
 	});
@@ -64,7 +69,7 @@ describe("shop catalog route boundaries", () => {
 		}
 		const checkoutRoute = source("src/routes/api/checkout/+server.ts");
 		expect(checkoutRoute.indexOf("rejectCouponAttempt(rawBody)")).toBeLessThan(
-			checkoutRoute.indexOf("const stripe = getStripe()"),
+			checkoutRoute.indexOf('runCheckoutSessionStage("checkout_stripe"'),
 		);
 	});
 

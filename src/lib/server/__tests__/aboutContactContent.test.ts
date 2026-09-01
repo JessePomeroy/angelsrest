@@ -141,11 +141,11 @@ describe("About and Contact provider boundary", () => {
 	});
 
 	it("routes preview to Sanity first and never partially falls back from Convex", async () => {
-		expect(parseAboutContactProviderMode(undefined)).toBe("sanity");
+		expect(parseAboutContactProviderMode(undefined)).toBe("convex");
 		expect(parseAboutContactProviderMode("sanity")).toBe("sanity");
 		expect(parseAboutContactProviderMode("convex")).toBe("convex");
-		expect(parseAboutContactProviderMode("shadow")).toBe("sanity");
-		expect(parseAboutContactProviderMode(" convex ")).toBe("sanity");
+		expect(parseAboutContactProviderMode("shadow")).toBe("convex");
+		expect(parseAboutContactProviderMode(" convex ")).toBe("convex");
 
 		const sanity = fakeSanity();
 		const mode = vi.fn(() => "convex");
@@ -165,6 +165,33 @@ describe("About and Contact provider boundary", () => {
 		});
 		await expect(missing.load(false)).rejects.toMatchObject({ status: 503 });
 		expect(sanity.load).toHaveBeenCalledTimes(1);
+	});
+
+	it("uses Convex for published reads when provider configuration is absent", async () => {
+		const sanity = fakeSanity();
+		const loadPublished = vi.fn(async () => convexProjection());
+		const provider = createAboutContactContentProvider({
+			sanity,
+			createReader: () => ({ loadPublished }),
+		});
+
+		await expect(provider.load(false)).resolves.toEqual(
+			adaptConvexAboutContact(convexProjection()),
+		);
+		expect(loadPublished).toHaveBeenCalledWith(expect.any(AbortSignal));
+		expect(sanity.load).not.toHaveBeenCalled();
+	});
+
+	it("retains an explicit published Sanity rollback adapter", async () => {
+		const sanity = fakeSanity();
+		const provider = createAboutContactContentProvider({
+			sanity,
+			mode: () => "sanity",
+			createReader: vi.fn(),
+		});
+
+		await provider.load(false);
+		expect(sanity.load).toHaveBeenCalledWith(false);
 	});
 
 	it("projects the unique Instagram link from Site Settings", () => {

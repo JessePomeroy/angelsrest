@@ -540,6 +540,11 @@ export default defineSchema({
 	})
 		.index("by_siteUrl_and_productKey", ["siteUrl", "productKey"])
 		.index("by_siteUrl_and_slug", ["siteUrl", "slug"])
+		.index("by_siteUrl_and_graphVersion_and_publishedAt", [
+			"siteUrl",
+			"graphVersion",
+			"publishedAt",
+		])
 		.index("by_siteUrl_and_productKind_and_createdAt", [
 			"siteUrl",
 			"productKind",

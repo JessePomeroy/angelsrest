@@ -2,6 +2,7 @@ import type Stripe from "stripe";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { env } from "$env/dynamic/private";
 import type { CheckoutSnapshotItem } from "$lib/server/checkoutCatalog";
+import type { CheckoutSessionStageError } from "$lib/server/checkoutFailures";
 import {
 	type CreateHandleCheckoutOptions,
 	createHandleCheckoutSession,
@@ -69,11 +70,11 @@ function harness(overrides: Record<string, unknown> = {}) {
 			events.push("admission-creating");
 			return Math.floor(NOW / 1000) + 86_100;
 		}),
-		markUncertain: vi.fn(),
+		markUncertain: vi.fn().mockResolvedValue(undefined),
 		bind: vi.fn(async () => {
 			events.push("bind");
 		}),
-		release: vi.fn(),
+		release: vi.fn().mockResolvedValue(undefined),
 	};
 	const bindSession = vi.fn(() => events.push("cookie"));
 	const options = {
@@ -174,7 +175,9 @@ describe("handle checkout orchestration", () => {
 				bind: vi.fn(),
 			},
 		});
-		await expect(createHandleCheckoutSession(test.options)).rejects.toThrow("unavailable");
+		await expect(createHandleCheckoutSession(test.options)).rejects.toEqual(
+			expect.objectContaining<Partial<CheckoutSessionStageError>>({ stage: "checkout_snapshot" }),
+		);
 		expect(test.create).not.toHaveBeenCalled();
 		expect(test.bindSession).not.toHaveBeenCalled();
 	});
@@ -209,8 +212,37 @@ describe("handle checkout orchestration", () => {
 				bind: vi.fn().mockRejectedValue(new Error("unavailable")),
 			},
 		});
-		await expect(createHandleCheckoutSession(test.options)).rejects.toThrow("unavailable");
+		await expect(createHandleCheckoutSession(test.options)).rejects.toEqual(
+			expect.objectContaining<Partial<CheckoutSessionStageError>>({ stage: "checkout_admission" }),
+		);
 		expect(test.bindSession).not.toHaveBeenCalled();
+	});
+
+	it("tags admission and Stripe failures at their exact effect seams", async () => {
+		const admission = harness({
+			admissionClient: {
+				...harness().admissionClient,
+				begin: vi.fn().mockRejectedValue(new Error("private admission failure")),
+			},
+		});
+		await expect(createHandleCheckoutSession(admission.options)).rejects.toMatchObject({
+			stage: "checkout_admission",
+			message: "private admission failure",
+		});
+		expect(admission.create).not.toHaveBeenCalled();
+
+		const stripeFailure = new Error("private Stripe failure");
+		const stripe = harness({
+			stripe: {
+				checkout: { sessions: { create: vi.fn().mockRejectedValue(stripeFailure) } },
+			} as unknown as Stripe,
+		});
+		await expect(createHandleCheckoutSession(stripe.options)).rejects.toMatchObject({
+			stage: "checkout_stripe",
+			message: stripeFailure.message,
+		});
+		expect(stripe.admissionClient.markUncertain).toHaveBeenCalledOnce();
+		expect(stripe.bindSession).not.toHaveBeenCalled();
 	});
 
 	it("returns a fresh bounded pre-effect challenge and rejects stale attempts", () => {

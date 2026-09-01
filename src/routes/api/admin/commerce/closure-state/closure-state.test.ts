@@ -58,11 +58,17 @@ describe("normalized commerce closure state", () => {
 		const text = await response.text();
 		expect(response.headers.get("cache-control")).toBe("no-store");
 		expect(JSON.parse(text)).toEqual({
-			version: 1,
+			version: 2,
 			emergencyOrderQuiescence: "open",
 			newOrderCheckout: { state: "open", generation: 1, configuration: "exact" },
-			checkoutSnapshotMode: "handle-v2",
-			checkoutCatalogProvider: "convex",
+			firstPartyCheckout: {
+				catalogProvider: "convex",
+				snapshotProtocol: "handle-v2",
+			},
+			compatibility: {
+				tenantBridgeAndIntakeSnapshotMode: "handle-v2",
+				legacyParityCatalogProvider: "convex",
+			},
 		});
 		expect(text).not.toContain("zippymiggy.com");
 		expect(text).not.toContain("tenants");

@@ -1,4 +1,4 @@
-import { catalogShop } from "$lib/server/catalogShop.server";
+import { convexShop } from "$lib/server/convexShop.server";
 import type { PageServerLoad } from "./$types";
 
-export const load: PageServerLoad = ({ locals }) => catalogShop.loadIndex(locals.isPreview);
+export const load: PageServerLoad = () => convexShop.loadIndex();

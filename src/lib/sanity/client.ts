@@ -3,7 +3,10 @@ import { createImageUrlBuilder, type SanityImageSource } from "@sanity/image-url
 import { env as publicEnv } from "$env/dynamic/public";
 
 /**
- * Default Sanity client: public, CDN-cached, published content only.
+ * Retained Sanity compatibility client: public, CDN-cached, published content
+ * only. Convex owns default public reads; this client supports explicit
+ * editorial rollback, preview helpers, migration tools, and historical
+ * compatibility consumers.
  * Browser-safe — does not read any private env vars, so it can be
  * imported from `+page.svelte` / browser components freely.
  *

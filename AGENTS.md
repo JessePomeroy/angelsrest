@@ -32,11 +32,13 @@ Canonical rules for working in this repository.
 
 ## System boundaries
 
-- **Sanity owns editorial content:** public portfolio galleries, products,
-  collections, blog, about, site settings, and contact-page copy.
-- **Convex owns operations:** orders, inquiries, CRM clients, invoices, quotes,
-  contracts, email templates, platform clients/messages, and private delivery
-  galleries.
+- **Convex owns published content and operations:** public portfolio galleries,
+  products, blog, about/contact copy, site settings, orders, inquiries, CRM
+  clients, invoices, quotes, contracts, email templates, platform
+  clients/messages, and private delivery galleries.
+- **Sanity is optional compatibility infrastructure:** retained Studio, hosted
+  data/assets, schemas, preview adapter, migration tools, and recovery archive.
+  It is not the default source for published pages, Shop, or new checkout.
 - **SvelteKit owns transport and composition:** SSR/load functions, public and
   admin HTTP routes, webhook verification, and external-client composition.
 - **The hub owns commerce webhooks:** this repository's commerce webhook is the
@@ -57,7 +59,7 @@ Canonical rules for working in this repository.
 
 There are two gallery domains:
 
-- **Portfolio galleries** are public Sanity content under `/gallery` and the
+- **Portfolio galleries** are public Convex content under `/gallery` and the
   admin portfolio tab.
 - **Delivery galleries** are private Convex records and R2 objects under
   `/delivery/[token]` and the admin delivery tab.
@@ -69,8 +71,10 @@ Use these full names in new code and documentation when the distinction matters.
 - Convex client helper: `src/lib/server/convexClient.ts`
 - Convex schema/functions: `packages/crm-api/convex/`
 - Site config: `src/lib/config/site.ts`
-- Sanity published client: `src/lib/sanity/client.ts`
-- Sanity preview client: `src/lib/sanity/client.server.ts`
+- Convex Shop boundary: `src/lib/server/convexShop.server.ts`
+- Current checkout authority: `src/lib/server/currentCheckoutCommerce.ts`
+- Optional Sanity published/preview clients: `src/lib/sanity/client.ts`,
+  `src/lib/sanity/client.server.ts`
 - Commerce webhook: `src/routes/api/webhooks/stripe/+server.ts`
 - Webhook orchestration: `src/lib/server/orderIntake.ts`
 - Print fulfillment: `src/lib/server/printFulfillment.ts`
@@ -131,19 +135,22 @@ tenant-authenticated cross-origin billing boundary.
 |---|---|
 | Dashboard, orders | Convex orders |
 | Inquiries | Convex inquiries |
-| Galleries: portfolio tab | Sanity galleries |
+| Galleries: portfolio tab | Convex portfolio galleries |
 | Galleries: delivery tab | Convex galleries + gallery worker/R2 |
 | CRM, board | Convex photography clients/kanban |
 | Invoices, quotes, contracts | Convex |
 | Email templates, messages, platform | Convex |
 
-## Preview and visual editing
+## Optional Sanity preview and visual editing
 
 - Enable: `GET /api/draft/enable` validates the Sanity preview secret and sets
   the preview cookie.
 - Disable: `GET /api/draft/disable` clears it.
 - `SANITY_PREVIEW_TOKEN` must be a viewer token that can read drafts.
 - Keep preview-token access in `.server.ts` modules.
+- Published requests default to Convex. Only an exact, reviewed `sanity`
+  content-provider selector may use the retained published adapter; invalid or
+  missing selectors must not silently restore Sanity.
 
 ## Checks
 
@@ -169,7 +176,8 @@ Use `pnpm build` when production bundling is relevant. Do not run Biome with
 ## Platform context
 
 - **angelsrest** is the public site and platform hub.
-- **angelsrest-studio** owns Sanity schemas/editorial workflows.
+- **angelsrest-studio** retains the optional Sanity preview and recovery
+  workflow; it is not the default public authority.
 - **packages/crm-api** owns the shared Convex schema/functions and publishable
   generated API surface.
 - **@jessepomeroy/admin** is an installed shared admin package.

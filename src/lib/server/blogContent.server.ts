@@ -990,7 +990,7 @@ function adaptSlugResolution(value: unknown): SlugResolution {
 }
 
 export function parseBlogProviderMode(value: unknown): ProviderMode {
-	return value === "sanity" || value === "convex" ? value : "sanity";
+	return value === "sanity" ? "sanity" : "convex";
 }
 
 export function createSanityBlogSource(
@@ -1065,7 +1065,7 @@ export function createBlogContentProvider(
 
 	async function loadConvexIndex() {
 		try {
-			return await convexIndex(new AbortController().signal);
+			return await convexIndex(AbortSignal.timeout(6_000));
 		} catch {
 			unavailable();
 		}
@@ -1074,7 +1074,7 @@ export function createBlogContentProvider(
 	async function loadConvexPost(slug: string) {
 		let result: Awaited<ReturnType<typeof convexPost>>;
 		try {
-			result = await convexPost(slug, new AbortController().signal);
+			result = await convexPost(slug, AbortSignal.timeout(6_000));
 		} catch {
 			unavailable();
 		}

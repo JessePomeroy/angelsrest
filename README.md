@@ -14,7 +14,7 @@ fulfillment, email, and private gallery delivery.
 | Area | Current owner |
 |---|---|
 | Public pages and HTTP composition | SvelteKit 5 |
-| Published editorial content during CMS migration | Sanity fallback |
+| Published editorial content and Shop catalog | Convex |
 | Embedded Editor drafts, revisions, and media registry | Convex |
 | Public Editor image derivatives and private sources | Cloudflare R2 through the CMS media worker |
 | CRM, orders, inquiries, documents, and tenant records | Convex |
@@ -25,10 +25,12 @@ fulfillment, email, and private gallery delivery.
 | Private delivery-gallery files | Cloudflare R2 through the gallery worker |
 | Error and performance telemetry | Sentry |
 
-Sanity remains the production editorial fallback while the replacement CMS is
-being implemented inside the existing admin dashboard. The migration is staged
-by content type; the Sanity boundary remains intact until the Editor is accepted,
-restore paths are proven, and an explicit cutover is approved.
+Convex is the default authority for the published site, Shop, and every newly
+initiated checkout. Sanity remains installed as an explicit editorial preview
+and reviewed rollback adapter, and its hosted data, Studio, migration tools, and
+encrypted recovery archive are retained. Historical Sanity-backed orders and
+paid downloads remain readable through compatibility consumers; they are not a
+source for new purchases.
 
 See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the authoritative system
 map, ownership rules, and request flows.
@@ -46,9 +48,9 @@ brand, content, administrators, and public origin.
 | `admin-dashboard` | Source for the shared `@jessepomeroy/admin` UI and server adapters |
 | `gallery-worker` | Separate Cloudflare Worker deployments for private gallery delivery and public-site Editor media |
 | `reflecting-pool` | Client spoke and tenant admin host; currently in pre-handoff production testing |
-| `sanity-studio-template` | Shared Sanity schemas, desk structure, components, and actions |
-| `angelsrest-studio` | Current Angel's Rest Sanity Studio |
-| `reflecting-pool-studio` | Current Reflecting Pool Sanity Studio |
+| `sanity-studio-template` | Retained Sanity schemas, desk structure, components, and recovery tooling |
+| `angelsrest-studio` | Retained Angel's Rest Sanity preview and recovery Studio |
+| `reflecting-pool-studio` | Independent client Studio; not part of Angel's Rest recovery custody |
 
 Cross-repository contracts are changed in their owning upstream repository
 first, then adopted and verified by affected consumers.
@@ -67,7 +69,7 @@ published from the separate `admin-dashboard` repository.
 
 ## Important boundaries
 
-- Portfolio galleries are public editorial content currently stored in Sanity.
+- Portfolio galleries and their public media placements are published from Convex.
 - Delivery galleries are private Convex records backed by protected R2 objects.
 - Editor media uses a separate tenant-authenticated Worker, private source
   bucket, immutable public derivative bucket, and Convex asset registry.
@@ -97,9 +99,9 @@ pnpm dev
 ```
 
 The example environment file groups the required application, Convex, auth,
-Sanity, Stripe, Resend, LumaPrints, gallery workers, Turnstile, and observability
-configuration. Keep real credentials in local or provider-managed secret
-stores; never commit them.
+Stripe, Resend, LumaPrints, gallery workers, Turnstile, and observability
+configuration, plus the optional Sanity preview/rollback surface. Keep real
+credentials in local or provider-managed secret stores; never commit them.
 
 Use Stripe test credentials and `LUMAPRINTS_USE_SANDBOX=true` for local work.
 Convex development commands run from `packages/crm-api/`, whose deployment

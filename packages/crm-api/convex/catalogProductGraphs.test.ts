@@ -133,7 +133,7 @@ async function sanityImportPlanWithDuplicateSlug(
 }
 
 describe("dormant private catalog product graph V2", () => {
-	test("requires the stored tenant product-kind policy for V2 boundaries", async () => {
+	test("gates V2 writers by product-kind policy while retaining cleanup reads", async () => {
 		const fixture = await setup(modules);
 		const digitalDraft = graphDraft("digital_download", fixture, "policy-download");
 		const created = await createGraph(
@@ -156,10 +156,16 @@ describe("dormant private catalog product graph V2", () => {
 		await expect(fixture.adminA.query(api.catalogProductGraphs.listForEditor, {
 			siteUrl: SITE_A.siteUrl,
 			productKind: "digital_download",
-		})).rejects.toThrow(/catalog digital_download products are not enabled/i);
+		})).resolves.toMatchObject([{
+			productId: created.productId,
+			productKind: "digital_download",
+		}]);
 		await expect(fixture.adminA.query(api.catalogProductGraphs.getEditorState, {
 			productId: created.productId,
-		})).rejects.toThrow(/catalog digital_download products are not enabled/i);
+		})).resolves.toMatchObject({
+			productId: created.productId,
+			productKind: "digital_download",
+		});
 		await expect(saveGraph(
 			fixture.adminA,
 			created.productId,

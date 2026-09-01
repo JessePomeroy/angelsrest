@@ -228,7 +228,7 @@ export function adaptConvexSiteSettings(value: unknown): SiteSettingsContent {
 }
 
 export function parseSiteSettingsProviderMode(value: unknown): ProviderMode {
-	return value === "sanity" || value === "convex" ? value : "sanity";
+	return value === "sanity" ? "sanity" : "convex";
 }
 
 export function createSanitySiteSettingsSource(
@@ -273,7 +273,7 @@ export function createSiteSettingsContentProvider(
 	async function loadConvex() {
 		try {
 			return adaptConvexSiteSettings(
-				await createReader().loadPublished(new AbortController().signal),
+				await createReader().loadPublished(AbortSignal.timeout(6_000)),
 			);
 		} catch {
 			unavailable();

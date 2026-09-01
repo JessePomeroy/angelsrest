@@ -189,12 +189,12 @@ describe("Portfolio provider boundary", () => {
 		);
 	});
 
-	it("keeps preview on Sanity, defaults invalid modes to Sanity, and never falls back", async () => {
-		expect(parsePortfolioProviderMode(undefined)).toBe("sanity");
+	it("keeps preview on Sanity, defaults invalid modes to Convex, and never falls back", async () => {
+		expect(parsePortfolioProviderMode(undefined)).toBe("convex");
 		expect(parsePortfolioProviderMode("sanity")).toBe("sanity");
 		expect(parsePortfolioProviderMode("convex")).toBe("convex");
-		expect(parsePortfolioProviderMode("shadow")).toBe("sanity");
-		expect(parsePortfolioProviderMode(" convex ")).toBe("sanity");
+		expect(parsePortfolioProviderMode("shadow")).toBe("convex");
+		expect(parsePortfolioProviderMode(" convex ")).toBe("convex");
 		const sanity = sanitySource();
 		const mode = vi.fn(() => "convex");
 		const createReader = vi.fn(() => ({
@@ -219,5 +219,40 @@ describe("Portfolio provider boundary", () => {
 		});
 		await expect(unavailable.list(false)).rejects.toMatchObject({ status: 503 });
 		expect(sanity.list).toHaveBeenCalledTimes(1);
+	});
+
+	it("uses Convex for published reads when provider configuration is absent", async () => {
+		const sanity = sanitySource();
+		const listPublished = vi.fn(async () => [convexGallery()]);
+		const getPublishedBySlug = vi.fn(async () => convexGallery());
+		const provider = createPortfolioContentProvider({
+			sanity,
+			createReader: () => ({ listPublished, getPublishedBySlug }),
+		});
+
+		await expect(provider.list(false)).resolves.toEqual(
+			adaptConvexPortfolioList([convexGallery()]),
+		);
+		await expect(provider.getBySlug("gallery-one", false)).resolves.toEqual(
+			adaptConvexPortfolioDetail(convexGallery()),
+		);
+		expect(listPublished).toHaveBeenCalledWith(expect.any(AbortSignal));
+		expect(getPublishedBySlug).toHaveBeenCalledWith("gallery-one", expect.any(AbortSignal));
+		expect(sanity.list).not.toHaveBeenCalled();
+		expect(sanity.getBySlug).not.toHaveBeenCalled();
+	});
+
+	it("retains an explicit published Sanity rollback adapter", async () => {
+		const sanity = sanitySource();
+		const provider = createPortfolioContentProvider({
+			sanity,
+			mode: () => "sanity",
+			createReader: vi.fn(),
+		});
+
+		await provider.list(false);
+		await provider.getBySlug("selected-work", false);
+		expect(sanity.list).toHaveBeenCalledWith(false);
+		expect(sanity.getBySlug).toHaveBeenCalledWith("selected-work", false);
 	});
 });

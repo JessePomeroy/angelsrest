@@ -8,6 +8,7 @@ import {
 	parseCheckoutCatalogProvider,
 	resolveCheckoutCommerce,
 } from "$lib/server/checkoutCommerce";
+import { resolveCurrentCheckoutCommerce } from "$lib/server/currentCheckoutCommerce";
 import { checkoutSnapshotMode } from "$lib/server/handleCheckout";
 import { authorizeR4ReadRequest, r4ReadPurposes } from "$lib/server/r4ReadAuthorization";
 
@@ -18,81 +19,106 @@ const fixedSelection: CheckoutSelection = {
 	sizeSlug: "4x6",
 };
 const sentinelAuthorization = "r4_checkout_catalog_sentinel_v1";
-const sentinelDeadlineMs = 6_000;
+const diagnosticDeadlineMs = 750;
 
 export async function POST({ request }: { request: Request }) {
 	const authorization = await authorizeR4ReadRequest(
 		request,
 		r4ReadPurposes.checkoutCatalogSentinel,
 	);
-	if (!authorization) {
-		throw error(401, "Unauthorized");
-	}
+	if (!authorization) throw error(401, "Unauthorized");
 	if (!exactAuthorization(authorization.rawBody)) throw error(400, "Invalid sentinel input");
-	try {
-		const controller = new AbortController();
-		const fetcher = <T = unknown>(query: string, params: Record<string, unknown> = {}) =>
-			client.fetch<T>(query, params, { signal: controller.signal });
-		let timer: ReturnType<typeof setTimeout> | undefined;
-		const [active, sanity, convex] = await Promise.race([
-			Promise.all([
-				resolveCheckoutCommerce(fetcher, [fixedSelection]),
-				resolveCheckoutCommerce(fetcher, [fixedSelection], { provider: () => "sanity" }),
-				resolveCheckoutCommerce(fetcher, [fixedSelection], {
-					provider: () => "convex",
-					resolve: (item, signal) =>
-						resolveCatalogCheckout(item, {
-							origin: publicEnv.PUBLIC_CONVEX_SITE_URL,
-							bearer: env.CATALOG_COMMERCE_CHECKOUT_RESOLVER_SECRET,
-							signal,
-						}),
-				}),
-			]),
-			new Promise<never>((_resolve, reject) => {
-				timer = setTimeout(() => {
-					controller.abort();
-					reject(new Error("Catalog sentinel deadline"));
-				}, sentinelDeadlineMs);
-			}),
-		]).finally(() => {
-			controller.abort();
-			clearTimeout(timer);
+
+	const controller = new AbortController();
+	const fetcher = <T = unknown>(query: string, params: Record<string, unknown> = {}) =>
+		client.fetch<T>(query, params, { signal: controller.signal });
+	const resolve = (item: Parameters<typeof resolveCatalogCheckout>[0], signal: AbortSignal) =>
+		resolveCatalogCheckout(item, {
+			origin: publicEnv.PUBLIC_CONVEX_SITE_URL,
+			bearer: env.CATALOG_COMMERCE_CHECKOUT_RESOLVER_SECRET,
+			signal,
 		});
-		const forcedProviderBinding =
-			sanity.provider === "sanity" && convex.provider === "convex" ? "exact" : "mismatch";
-		const resolved = [active, sanity, convex].every((result) => result.items.length === 1);
-		const checkoutCatalogProvider = parseCheckoutCatalogProvider(env.CHECKOUT_CATALOG_PROVIDER);
-		const expectedActiveProvider = checkoutCatalogProvider === "convex" ? "convex" : "sanity";
-		const expectedActive = expectedActiveProvider === "sanity" ? sanity : convex;
-		const activeProviderBinding =
-			active.provider === expectedActiveProvider &&
-			resolved &&
-			semantics(active.items[0]) === semantics(expectedActive.items[0])
+
+	let timer: ReturnType<typeof setTimeout> | undefined;
+	const currentPromise = Promise.allSettled([
+		resolveCurrentCheckoutCommerce([fixedSelection], { resolve }),
+	]);
+	const diagnosticPromise = Promise.race([
+		Promise.allSettled([
+			resolveCheckoutCommerce(fetcher, [fixedSelection], { provider: () => "sanity" }),
+			resolveCheckoutCommerce(fetcher, [fixedSelection], {
+				provider: () => "convex",
+				resolve,
+			}),
+		]),
+		new Promise<null>((resolveDeadline) => {
+			timer = setTimeout(() => {
+				controller.abort();
+				resolveDeadline(null);
+			}, diagnosticDeadlineMs);
+		}),
+	]);
+	const [currentSettled, diagnosticSettled] = await Promise.all([
+		currentPromise,
+		diagnosticPromise,
+	]).finally(() => {
+		controller.abort();
+		clearTimeout(timer);
+	});
+
+	const current = settledValue(currentSettled[0]);
+	const sanity = settledValue(diagnosticSettled?.[0]);
+	const convex = settledValue(diagnosticSettled?.[1]);
+	const currentResolution =
+		current?.provider === "convex" && current.items.length === 1 ? "resolved" : "unavailable";
+	const forcedProviderBinding =
+		!sanity || !convex
+			? "unavailable"
+			: sanity.provider === "sanity" && convex.provider === "convex"
 				? "exact"
 				: "mismatch";
-		return json(
-			{
-				version: 1,
-				checkoutCatalogProvider,
-				checkoutCatalogConfiguration: checkoutCatalogConfiguration(env.CHECKOUT_CATALOG_PROVIDER),
-				activeResolutionProvider: active.provider,
-				activeProviderBinding,
-				forcedProviderBinding,
-				checkoutSnapshotMode: checkoutSnapshotMode(env.CHECKOUT_SNAPSHOT_MODE),
-				parity:
-					forcedProviderBinding === "exact" &&
-					activeProviderBinding === "exact" &&
-					resolved &&
-					semantics(sanity.items[0]) === semantics(convex.items[0])
-						? "match"
-						: "mismatch",
-				resolution: resolved ? "resolved" : "invalid",
+	const diagnosticResolution =
+		sanity?.items.length === 1 && convex?.items.length === 1
+			? "resolved"
+			: sanity && convex
+				? "invalid"
+				: "unavailable";
+	const legacyParity =
+		diagnosticResolution !== "resolved"
+			? "unavailable"
+			: semantics(sanity?.items[0]) === semantics(convex?.items[0])
+				? "match"
+				: "mismatch";
+
+	return json(
+		{
+			version: 2,
+			outcome: currentResolution === "resolved" ? "healthy" : "unavailable",
+			currentCheckout: {
+				catalogProvider: "convex",
+				snapshotProtocol: "handle-v2",
+				resolution: currentResolution,
 			},
-			{ headers: { "cache-control": "no-store" } },
-		);
-	} catch {
-		throw error(503, "Catalog sentinel unavailable");
-	}
+			diagnostics: {
+				legacyProviderConfiguration: {
+					provider: parseCheckoutCatalogProvider(env.CHECKOUT_CATALOG_PROVIDER),
+					configuration: checkoutCatalogConfiguration(env.CHECKOUT_CATALOG_PROVIDER),
+				},
+				tenantBridgeAndIntakeSnapshotMode: checkoutSnapshotMode(env.CHECKOUT_SNAPSHOT_MODE),
+				forcedProviderBinding,
+				legacySanityConvexParity: legacyParity,
+				resolution: diagnosticResolution,
+			},
+		},
+		{
+			status: currentResolution === "resolved" ? 200 : 503,
+			headers: { "cache-control": "no-store" },
+		},
+	);
+}
+
+function settledValue<T>(result: PromiseSettledResult<T> | undefined): T | null {
+	return result?.status === "fulfilled" ? result.value : null;
 }
 
 function exactAuthorization(rawBody: string) {

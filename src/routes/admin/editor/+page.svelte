@@ -91,11 +91,11 @@ async function copyCurrentSettings() {
 				Start blank
 			</button>
 		</div>
-		<p class="status" aria-live="polite">
-			{seedStatus === "saving"
-				? "Creating a private unpublished draft…"
-				: "Publishing and preview are not connected; the public site stays on Sanity."}
-		</p>
+			<p class="status" aria-live="polite">
+				{seedStatus === "saving"
+					? "Creating a private unpublished draft…"
+					: "Publishing drives the public site through Convex; Sanity preview remains optional."}
+			</p>
 	</section>
 {:else}
 	<SiteSettingsPage />
