@@ -11,6 +11,13 @@ import {
 	contentSlugKindValidator,
 } from "./helpers/contentValidators";
 import {
+	documentEmailAttemptStatusValidator,
+	documentEmailDocumentValidator,
+	documentEmailEnvelopeValidator,
+	documentEmailProviderTagValidator,
+	documentEmailResolutionAuditValidator,
+} from "./helpers/documentEmailAttemptValidators";
+import {
 	catalogFulfillmentModeValidator,
 	catalogProductKindValidator,
 	catalogRevisionSourceValidator,
@@ -1587,6 +1594,44 @@ export default defineSchema({
 		.index("by_siteUrl", ["siteUrl"])
 		.index("by_siteUrl_and_type", ["siteUrl", "type"]),
 
+	// Durable envelope and effect state for creator-sent CRM documents. Each
+	// (siteUrl, attemptId) pair freezes one recipient, rendered message, portal
+	// link, and provider idempotency key before the external send begins.
+	documentEmailAttempts: defineTable({
+		protocolVersion: v.literal(1),
+		siteUrl: v.string(),
+		attemptId: v.string(),
+		document: documentEmailDocumentValidator,
+		documentKey: v.string(),
+		open: v.boolean(),
+		providerRetryBlocked: v.boolean(),
+		clientId: v.id("photographyClients"),
+		portalTokenId: v.id("portalTokens"),
+		portalUrl: v.string(),
+		requestedPortalExpiresAt: v.optional(v.number()),
+		portalExpiresAt: v.optional(v.number()),
+		envelope: documentEmailEnvelopeValidator,
+		providerIdempotencyKey: v.string(),
+		providerTags: v.array(documentEmailProviderTagValidator),
+		status: documentEmailAttemptStatusValidator,
+		claimCount: v.number(),
+		claimId: v.optional(v.string()),
+		claimedAt: v.optional(v.number()),
+		claimExpiresAt: v.optional(v.number()),
+		providerMessageId: v.optional(v.string()),
+		failure: v.optional(v.string()),
+		emailLogId: v.optional(v.id("emailLog")),
+		activityLogId: v.optional(v.id("activityLog")),
+		createdAt: v.number(),
+		updatedAt: v.number(),
+		terminalAt: v.optional(v.number()),
+		resolution: v.optional(documentEmailResolutionAuditValidator),
+	})
+		.index("by_siteUrl_and_attemptId", ["siteUrl", "attemptId"])
+		.index("by_siteUrl_and_documentKey_and_open", ["siteUrl", "documentKey", "open"])
+		.index("by_siteUrl_and_documentKey_and_status", ["siteUrl", "documentKey", "status"])
+		.index("by_status_and_claimExpiresAt", ["status", "claimExpiresAt"]),
+
 	// Portal share tokens — public links for clients to view/act on documents
 	portalTokens: defineTable({
 		token: v.string(),
@@ -1600,7 +1645,18 @@ export default defineSchema({
 		documentId: v.string(),
 		clientId: v.id("photographyClients"),
 		expiresAt: v.optional(v.number()),
+		// `used` alone is legacy/ambiguous. Only an atomic customer action writes
+		// `consumedAction`, which can prove a matching terminal receipt. `revokedAt`
+		// is an administrative/security invalidation and never is readable.
 		used: v.boolean(),
+		consumedAction: v.optional(
+			v.union(
+				v.literal("quote_accepted"),
+				v.literal("quote_declined"),
+				v.literal("contract_signed"),
+			),
+		),
+		revokedAt: v.optional(v.number()),
 	})
 		.index("by_token", ["token"])
 		.index("by_siteUrl", ["siteUrl"])

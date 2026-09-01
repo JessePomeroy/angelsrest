@@ -12,11 +12,17 @@ import type Stripe from "stripe";
 import { env } from "$env/dynamic/private";
 import { ADMIN_EMAIL, SITE_DOMAIN } from "$lib/config/site";
 import {
+	type CommerceEmailItem,
+	renderCustomerCommerceEmailHtml,
+	renderOwnerCommerceEmailHtml,
+} from "$lib/server/commerceEmailHtml";
+import {
 	ANGELS_REST_COMMERCE_PROFILE,
 	type CommerceNotificationProfile,
 } from "$lib/server/commerceTenant";
 import { logStructured } from "$lib/server/logger";
 import type { LumaPrintsReconciliationClass } from "$lib/server/lumaprints";
+import { RECEIPT_PAPER_TEXTURE_PUBLIC_URL } from "$lib/server/receiptPaperTexture";
 import { formatCents } from "$lib/utils/format";
 import { parseCanonicalOrderNumber } from "../../../packages/crm-api/convex/helpers/numbering";
 
@@ -30,12 +36,38 @@ function commerceOrigin(profile: CommerceNotificationProfile) {
 	return profile.siteUrl.startsWith("http") ? profile.siteUrl : `https://${profile.siteUrl}`;
 }
 
+function commerceEmailBrand(profile: CommerceNotificationProfile) {
+	const homeUrl = commerceOrigin(profile);
+	return {
+		siteName: profile.siteName,
+		homeUrl,
+		...(profile.siteUrl === SITE_DOMAIN
+			? { receiptTextureUrl: RECEIPT_PAPER_TEXTURE_PUBLIC_URL }
+			: {}),
+	};
+}
+
 function commerceSender(profile: CommerceNotificationProfile, suffix = "") {
 	const displayName = profile.siteName.replace(/[\r\n<>]/g, " ").trim() || "Angel's Rest";
 	if (profile.siteUrl === SITE_DOMAIN) {
 		return `Angel's Rest${suffix} <orders@angelsrest.online>`;
 	}
 	return `${displayName}${suffix} via Angel's Rest <orders@angelsrest.online>`;
+}
+
+function requireCommerceEmailAccepted(
+	result: {
+		data?: { id?: string } | null;
+		error?: { message?: string } | null;
+	},
+	failureMessage: string,
+) {
+	if (result.error) {
+		throw new Error(result.error.message || failureMessage);
+	}
+	if (!result.data?.id) {
+		throw new Error(`${failureMessage}: provider returned no delivery id`);
+	}
 }
 
 /** Notify a customer after the hub atomically claims a LumaPrints shipment. */
@@ -60,16 +92,25 @@ export async function sendCustomerShipmentNotification(
 	const tracking = trackingNumber
 		? `Tracking${carrier ? ` (${carrier})` : ""}: ${trackingNumber}`
 		: "Tracking details should update soon.";
+	const html = renderCustomerCommerceEmailHtml({
+		kind: "shipment",
+		brand: commerceEmailBrand(notificationProfile),
+		orderNumber,
+		...(trackingNumber ? { trackingNumber } : {}),
+		...(carrier ? { carrier } : {}),
+		statusUrl: `${commerceOrigin(notificationProfile)}/orders`,
+	});
 	const result = await resend.emails.send(
 		{
 			from: commerceSender(notificationProfile),
 			to: [customerEmail],
 			subject: `Order ${orderNumber} has shipped - ${notificationProfile.siteName}`,
 			text: `Your ${notificationProfile.siteName} order ${orderNumber} has shipped.\n\n${tracking}\n\nView order status: ${commerceOrigin(notificationProfile)}/orders`,
+			html,
 		},
 		{ idempotencyKey: `shipment-email:${lumaprintsOrderNumber}` },
 	);
-	if (result.error) throw new Error(result.error.message || "Shipment email delivery failed");
+	requireCommerceEmailAccepted(result, "Shipment email delivery failed");
 }
 
 /** Format shipping address for emails */
@@ -90,8 +131,45 @@ export function formatShippingAddress(shippingDetails: ShippingDetails): string 
 /** Format line items for emails */
 export function formatLineItems(lineItems: Stripe.LineItem[]): string {
 	return lineItems
-		.map((item) => `• ${item.description} (${item.quantity}x) - ${formatCents(item.amount_total)}`)
+		.map((item) => {
+			const emailItem = commerceEmailItem(item);
+			return `• ${emailItem.description} (${emailItem.quantity} × ${emailItem.unitPrice}) — ${emailItem.total}`;
+		})
 		.join("\n");
+}
+
+function lineItemQuantity(item: Stripe.LineItem) {
+	return typeof item.quantity === "number" &&
+		Number.isSafeInteger(item.quantity) &&
+		item.quantity > 0
+		? item.quantity
+		: 1;
+}
+
+function lineItemUnitAmount(item: Stripe.LineItem, quantity: number) {
+	if (
+		typeof item.price?.unit_amount === "number" &&
+		Number.isSafeInteger(item.price.unit_amount) &&
+		item.price.unit_amount >= 0
+	) {
+		return item.price.unit_amount;
+	}
+
+	const lineSubtotal =
+		typeof item.amount_subtotal === "number" && item.amount_subtotal >= 0
+			? item.amount_subtotal
+			: item.amount_total;
+	return Math.round(lineSubtotal / quantity);
+}
+
+function commerceEmailItem(item: Stripe.LineItem): CommerceEmailItem {
+	const quantity = lineItemQuantity(item);
+	return {
+		description: item.description ?? "Item",
+		quantity: String(quantity),
+		unitPrice: formatCents(lineItemUnitAmount(item, quantity)),
+		total: formatCents(item.amount_total),
+	};
 }
 
 // ─── Failure Alerting ────────────────────────────────────────────────────────
@@ -104,7 +182,15 @@ export async function sendFailureAlert(
 	errorMessage: string,
 ) {
 	try {
-		await resend.emails.send({
+		const html = renderOwnerCommerceEmailHtml({
+			kind: "webhook_failure",
+			brand: commerceEmailBrand(ANGELS_REST_COMMERCE_PROFILE),
+			eventType,
+			sessionId,
+			errorMessage,
+			stripeUrl: "https://dashboard.stripe.com",
+		});
+		const result = await resend.emails.send({
 			from: "Angel's Rest Alerts <orders@angelsrest.online>",
 			to: [env.NOTIFICATION_EMAIL || ADMIN_EMAIL],
 			subject: `Webhook failure: ${eventType}`,
@@ -118,7 +204,9 @@ Action required:
 - Check Stripe dashboard for the payment: https://dashboard.stripe.com
 - If retries exhaust, manually fulfill the order
 - Check server logs for full stack trace`,
+			html,
 		});
+		requireCommerceEmailAccepted(result, "Webhook failure alert delivery failed");
 	} catch (emailErr) {
 		// Alert email itself failed — log but don't throw (we're already in error handling)
 		logStructured({
@@ -177,6 +265,13 @@ export async function sendPrintReconciliationBlockedAlert(
 		escalationReason === undefined
 			? RECONCILIATION_CLASS_COPY[reconciliationClass]
 			: escalationCopy[escalationReason];
+	const html = renderOwnerCommerceEmailHtml({
+		kind: "reconciliation_blocked",
+		brand: commerceEmailBrand(notificationProfile),
+		orderNumber: orderReference,
+		classification,
+		adminUrl: `${commerceOrigin(notificationProfile)}/admin/orders`,
+	});
 	const result = await resend.emails.send(
 		{
 			from: commerceSender(notificationProfile, " Alerts"),
@@ -190,12 +285,11 @@ No customer failure email or automatic refund was sent.
 The provider submission claim remains locked to prevent another provider POST.
 This alert does not assert that the provider order is absent.
 Review the provider and admin dashboards before you take manual action.`,
+			html,
 		},
 		{ idempotencyKey: `print-reconciliation-blocked:${externalId}` },
 	);
-	if (result.error) {
-		throw new Error(result.error.message || "Reconciliation-blocked alert delivery failed");
-	}
+	requireCommerceEmailAccepted(result, "Reconciliation-blocked alert delivery failed");
 }
 
 /** Send order confirmation email to the customer */
@@ -260,13 +354,33 @@ Best regards,
 ${notificationProfile.siteName}
 ${origin}
   `.trim();
+	const html = renderCustomerCommerceEmailHtml({
+		kind: "order_confirmation",
+		brand: commerceEmailBrand(notificationProfile),
+		customerName: shippingDetails?.name || session.customer_details?.name || "there",
+		orderId: session.id,
+		total: formatCents(session.amount_total || 0),
+		items: lineItems.map(commerceEmailItem),
+		delivery: isDigital
+			? {
+					kind: "digital",
+					downloadUrl: `${origin}/checkout/success?session_id=${encodeURIComponent(session.id)}`,
+				}
+			: {
+					kind: "physical",
+					shippingAddress: formatShippingAddress(shippingDetails),
+					statusUrl: `${origin}/orders${orderNumber ? `?order=${encodeURIComponent(orderNumber)}` : ""}`,
+				},
+	});
 
-	await resend.emails.send({
+	const result = await resend.emails.send({
 		from: commerceSender(notificationProfile),
 		to: [customerEmail],
 		subject: `Order Confirmation - ${session.id}`,
 		text: emailContent,
+		html,
 	});
+	requireCommerceEmailAccepted(result, "Customer confirmation delivery failed");
 }
 
 /** Notify a customer only after a permanent fulfillment failure is durably refunded. */
@@ -286,6 +400,13 @@ export async function sendCustomerFulfillmentFailure(
 		notificationProfile?: CommerceNotificationProfile;
 	},
 ) {
+	const html = renderCustomerCommerceEmailHtml({
+		kind: "refund_issued",
+		brand: commerceEmailBrand(notificationProfile),
+		orderNumber,
+		refundId: stripeRefundId,
+		total: formatCents(total),
+	});
 	const result = await resend.emails.send(
 		{
 			from: commerceSender(notificationProfile),
@@ -300,12 +421,11 @@ The refund has been created successfully. Your bank determines when the credit a
 
 We are sorry we could not complete this order for ${notificationProfile.siteName}. Reply to this email if you need any help.
 			`.trim(),
+			html,
 		},
 		{ idempotencyKey: `fulfillment-refund-customer:${stripeRefundId}` },
 	);
-	if (result.error) {
-		throw new Error(result.error.message || "Customer refund email delivery failed");
-	}
+	requireCommerceEmailAccepted(result, "Customer refund email delivery failed");
 }
 
 /** Send order notification email to admin */
@@ -348,15 +468,34 @@ View full details: https://dashboard.stripe.com/payments/${session.payment_inten
 ---
 This order was automatically processed through ${notificationProfile.siteName}.
   `.trim();
+	const paymentIntentId =
+		typeof session.payment_intent === "string"
+			? session.payment_intent
+			: (session.payment_intent?.id ?? String(session.payment_intent));
+	const html = renderOwnerCommerceEmailHtml({
+		kind: "new_order",
+		brand: commerceEmailBrand(notificationProfile),
+		orderId: session.id,
+		...(orderNumber ? { orderNumber } : {}),
+		customerName: shippingDetails?.name || customerEmail,
+		customerEmail,
+		total: formatCents(session.amount_total || 0),
+		paymentStatus: String(session.payment_status),
+		items: lineItems.map(commerceEmailItem),
+		shippingAddress: formatShippingAddress(shippingDetails),
+		stripeUrl: `https://dashboard.stripe.com/payments/${paymentIntentId}`,
+	});
 
-	await resend.emails.send({
+	const result = await resend.emails.send({
 		from: commerceSender(notificationProfile, " Orders"),
 		to: [notificationProfile.adminEmail],
 		subject: orderNumber
 			? `New Order ${orderNumber}: ${formatCents(session.amount_total || 0)} from ${shippingDetails?.name || customerEmail}`
 			: `New Order: ${formatCents(session.amount_total || 0)} from ${shippingDetails?.name || customerEmail}`,
 		text: emailContent,
+		html,
 	});
+	requireCommerceEmailAccepted(result, "Admin order notification delivery failed");
 }
 
 /** Send payment-failed notification to the customer */
@@ -372,6 +511,12 @@ export async function sendPaymentFailedEmail(
 		notificationProfile?: CommerceNotificationProfile;
 	},
 ) {
+	const html = renderCustomerCommerceEmailHtml({
+		kind: "payment_failed",
+		brand: commerceEmailBrand(notificationProfile),
+		reason: errorMessage,
+		shopUrl: `${commerceOrigin(notificationProfile)}/shop`,
+	});
 	const result = await resend.emails.send({
 		from: commerceSender(notificationProfile),
 		to: [customerEmail],
@@ -391,9 +536,9 @@ Best regards,
 ${notificationProfile.siteName}
 ${commerceOrigin(notificationProfile)}
 `.trim(),
+		html,
 	});
-	if (result.error)
-		throw new Error(result.error.message || "Payment-failure email delivery failed");
+	requireCommerceEmailAccepted(result, "Payment-failure email delivery failed");
 }
 
 /**
@@ -419,6 +564,16 @@ export async function sendFulfillmentFailureAlert(
 	},
 ) {
 	const refundLine = `Customer auto-refunded via Stripe (refund ID: ${stripeRefundId})`;
+	const html = renderOwnerCommerceEmailHtml({
+		kind: "fulfillment_refund_succeeded",
+		brand: commerceEmailBrand(notificationProfile),
+		orderNumber,
+		customerEmail,
+		errorSummary,
+		refundId: stripeRefundId,
+		total: formatCents(total),
+		adminUrl: `${commerceOrigin(notificationProfile)}/admin/orders`,
+	});
 
 	const result = await resend.emails.send(
 		{
@@ -441,10 +596,11 @@ The refund ID and terminal recovery state are stored on the order.
 
 Admin dashboard: ${commerceOrigin(notificationProfile)}/admin/orders
 `.trim(),
+			html,
 		},
 		{ idempotencyKey: `fulfillment-refund-admin:${stripeRefundId}` },
 	);
-	if (result.error) throw new Error(result.error.message || "Admin refund email delivery failed");
+	requireCommerceEmailAccepted(result, "Admin refund email delivery failed");
 }
 
 /** Alert operators when Stripe explicitly fails or cancels an automated refund. */
@@ -468,6 +624,17 @@ export async function sendAutomatedRefundFailureAlert(
 		notificationProfile?: CommerceNotificationProfile;
 	},
 ) {
+	const html = renderOwnerCommerceEmailHtml({
+		kind: "automated_refund_failed",
+		brand: commerceEmailBrand(notificationProfile),
+		orderNumber,
+		customerEmail,
+		errorSummary,
+		refundId: stripeRefundId,
+		refundStatus,
+		total: formatCents(total),
+		adminUrl: `${commerceOrigin(notificationProfile)}/admin/orders`,
+	});
 	const result = await resend.emails.send(
 		{
 			from: commerceSender(notificationProfile, " Alerts"),
@@ -487,10 +654,11 @@ ${errorSummary}
 No customer refund-success email was sent. The order is durably blocked for operator review.
 Review Stripe and the admin dashboard before taking further action:
 ${commerceOrigin(notificationProfile)}/admin/orders`,
+			html,
 		},
 		{ idempotencyKey: `fulfillment-refund-failed:${stripeRefundId}` },
 	);
-	if (result.error) throw new Error(result.error.message || "Refund-failure alert delivery failed");
+	requireCommerceEmailAccepted(result, "Refund-failure alert delivery failed");
 }
 
 /** Alert operators when an automated refund remains nonterminal past its retry bound. */
@@ -530,6 +698,18 @@ export async function sendAutomatedRefundAttentionAlert(
 		stripeRefundId === undefined
 			? "Stripe refund ID: not observed\nStripe refund status: unknown"
 			: `Stripe refund ID: ${stripeRefundId}\nStripe refund status: ${refundStatus}`;
+	const html = renderOwnerCommerceEmailHtml({
+		kind: "automated_refund_attention",
+		brand: commerceEmailBrand(notificationProfile),
+		orderNumber,
+		customerEmail,
+		errorSummary,
+		...(stripeRefundId ? { refundId: stripeRefundId } : {}),
+		...(refundStatus ? { refundStatus } : {}),
+		reason,
+		total: formatCents(total),
+		adminUrl: `${commerceOrigin(notificationProfile)}/admin/orders`,
+	});
 	const result = await resend.emails.send(
 		{
 			from: commerceSender(notificationProfile, " Alerts"),
@@ -551,11 +731,11 @@ No refund success was inferred and no customer refund-success email was sent.
 Signed Stripe refund updates may still resolve this order automatically.
 Review Stripe and the admin dashboard:
 ${commerceOrigin(notificationProfile)}/admin/orders`,
+			html,
 		},
 		{
 			idempotencyKey: `fulfillment-refund-attention:order:${notificationIdentity}`,
 		},
 	);
-	if (result.error)
-		throw new Error(result.error.message || "Refund-attention alert delivery failed");
+	requireCommerceEmailAccepted(result, "Refund-attention alert delivery failed");
 }

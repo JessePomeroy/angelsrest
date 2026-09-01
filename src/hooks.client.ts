@@ -8,6 +8,7 @@
 
 import { handleErrorWithSentry, init } from "@sentry/sveltekit";
 import { env } from "$env/dynamic/public";
+import { scrubPrivateCapabilityTelemetry } from "$lib/capabilityPrivacy";
 
 init({
 	dsn: env.PUBLIC_SENTRY_DSN,
@@ -16,6 +17,9 @@ init({
 	},
 	tracesSampleRate: 0,
 	sendDefaultPii: false,
+	beforeBreadcrumb: scrubPrivateCapabilityTelemetry,
+	beforeSend: scrubPrivateCapabilityTelemetry,
+	beforeSendTransaction: scrubPrivateCapabilityTelemetry,
 });
 
 const sentryHandleError = handleErrorWithSentry();

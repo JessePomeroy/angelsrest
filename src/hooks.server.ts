@@ -12,8 +12,9 @@
 import { captureException, flush, withIsolationScope } from "@sentry/node";
 import type { Handle, HandleServerError } from "@sveltejs/kit";
 import { contentSecurityPolicy } from "$lib/config/securityPolicy";
+import { applyCapabilityResponsePrivacy } from "$lib/server/capabilityResponsePrivacy";
 
-function addSecurityHeaders(response: Response): Response {
+function addSecurityHeaders(response: Response, pathname: string): Response {
 	const cloned = new Response(response.body, response);
 	cloned.headers.set("X-Frame-Options", "DENY");
 	cloned.headers.set("X-Content-Type-Options", "nosniff");
@@ -40,6 +41,7 @@ function addSecurityHeaders(response: Response): Response {
 		//   in both script-src and frame-src for the managed widget.
 		contentSecurityPolicy,
 	);
+	applyCapabilityResponsePrivacy(cloned.headers, pathname);
 	return cloned;
 }
 
@@ -57,7 +59,7 @@ const appHandle: Handle = async ({ event, resolve }) => {
 		return response;
 	}
 
-	return addSecurityHeaders(response);
+	return addSecurityHeaders(response, event.url.pathname);
 };
 
 export const handle: Handle = (input) =>
