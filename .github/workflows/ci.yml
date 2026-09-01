@@ -94,3 +94,13 @@ jobs:
 
       - name: Browser and public server E2E
         run: pnpm test:e2e
+        # The browser suite is dependency-isolated from Convex because CI uses
+        # an intentionally nonexistent Convex URL. Select the retained,
+        # published Sanity rollback adapter explicitly so the app hydrates and
+        # the tests exercise browser behavior instead of an upstream outage.
+        # Missing/invalid selectors still default to Convex everywhere else.
+        env:
+          ABOUT_CONTACT_CONTENT_PROVIDER: sanity
+          SITE_SETTINGS_CONTENT_PROVIDER: sanity
+          PORTFOLIO_CONTENT_PROVIDER: sanity
+          BLOG_CONTENT_PROVIDER: sanity
