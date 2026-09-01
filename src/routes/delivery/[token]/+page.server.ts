@@ -47,7 +47,7 @@ export async function load({ params, cookies }) {
 	const { token } = params;
 	const accessGrant = cookies.get(ACCESS_COOKIE) || undefined;
 
-	const result = await convex.query(api.portal.getByToken, { token, accessGrant });
+	const result = await convex.query(api.portal.getPublicByToken, { token, accessGrant });
 
 	if (!result) {
 		throw error(404, "This gallery link is not valid.");

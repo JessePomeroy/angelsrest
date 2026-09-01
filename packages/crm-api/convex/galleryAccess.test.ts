@@ -77,7 +77,7 @@ async function setupProtectedGallery() {
 describe("gallery password access grants", () => {
 	test("protected portal metadata requires a grant and never returns password material", async () => {
 		const { t, galleryId, token } = await setupProtectedGallery();
-		const portal = await t.query(api.portal.getByToken, { token });
+		const portal = await t.query(api.portal.getPublicByToken, { token });
 
 		expect(portal && !portal.expired && portal.requiresPassword).toBe(true);
 		if (!portal || portal.expired) throw new Error("Expected a valid gallery portal");
@@ -99,7 +99,7 @@ describe("gallery password access grants", () => {
 			grant: "server-issued-grant",
 			verifierVersion: "password-v1",
 		});
-		const portal = await t.query(api.portal.getByToken, {
+		const portal = await t.query(api.portal.getPublicByToken, {
 			token,
 			accessGrant: issued.accessGrant,
 		});

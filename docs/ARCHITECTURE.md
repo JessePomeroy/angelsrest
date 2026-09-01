@@ -34,6 +34,7 @@ modules or private environment variables.
 | Orders and fulfillment state | Convex | `packages/crm-api/convex/orders.ts` |
 | Inquiries | Convex | `packages/crm-api/convex/inquiries.ts`, `/api/contact` |
 | CRM, board, invoices, quotes, contracts | Convex | matching Convex modules |
+| Document-email delivery attempts and portal capabilities | Convex | `documentEmailAttempts.ts`, `portal.ts` |
 | Platform tenants and connected Stripe accounts | Convex | `platform.ts`, `authHelpers.ts` |
 | Private delivery galleries and image metadata | Convex | `galleries.ts`, `portal.ts` |
 | Private gallery objects and prepared downloads | Cloudflare R2 | gallery worker via shared admin handlers |
@@ -53,6 +54,29 @@ name when an unqualified `gallery` would obscure the owner.
   error capture. Admin authentication lives in the admin layout and auth routes,
   not in the global hook.
 
+### Bearer-capability routes
+
+`/portal/*` and `/delivery/*` paths carry private capabilities. The host excludes
+their paths from analytics and replaces bearer segments with stable redacted
+route labels in browser and server error telemetry. The telemetry scrubber covers
+request URLs, transaction fields, and retained navigation/fetch breadcrumbs so a
+later ordinary-page error cannot carry an earlier capability. Responses return
+`noindex`, `nofollow`, `noarchive`, `Referrer-Policy: no-referrer`, and private
+no-store cache policy. Current hosts read `portal.getPublicByToken`, which returns
+explicit client-safe projections rather than raw invoice, quote, or contract
+documents. A used portal token is not automatically a readable receipt:
+only the same token that atomically accepted or declined a quote, or signed a
+contract, may show the matching terminal receipt. Used invoice tokens, legacy
+used-only tokens, rotated links, and explicitly revoked links fail closed.
+
+Portal query migration uses a backend-widen, then host, then narrow sequence.
+Stage A adds `getPublicByToken` while deprecated `getByToken` temporarily keeps
+the exact raw 3.x token/document/client result for mixed-version production
+hosts. That legacy query is a time-bounded security hold and must gain no new
+callers. After every document host uses the safe query, Stage C narrows only the
+invoice, quote, and contract branches of `getByToken` and publishes CRM 4.0.0.
+Gallery delivery keeps its established raw query shape throughout.
+
 ### Public inquiry boundary
 
 1. The contact form renders the shared Cloudflare Turnstile widget and submits
@@ -61,7 +85,10 @@ name when an unqualified `gallery` would obscure the owner.
    the managed siteverify Worker before any email or Convex side effect.
 3. A successful route call forwards the server-only `WEBHOOK_SECRET` to
    `inquiries.create`; direct public Convex callers are rejected.
-4. The public widget key and Worker URL live in `src/lib/config/turnstile.ts`.
+4. The durable inquiry is created before the owner notification is attempted.
+   A thrown or resolved Resend failure is logged after persistence and still
+   returns success; notification failure cannot erase the saved inquiry.
+5. The public widget key and Worker URL live in `src/lib/config/turnstile.ts`.
    The widget secret exists only as the Worker's `TURNSTILE_SECRET_KEY` binding.
 
 Future client contact forms may share the managed Worker, but their production
@@ -83,6 +110,40 @@ security boundary; keep verification inside the host route.
    `requireSiteAdmin`, `requireDocumentSiteAdmin`, or `requireCreator`.
 7. Shared server handlers, including gallery-worker/R2 operations, call the
    host's per-request site-admin verifier before performing side effects.
+
+### Document-email delivery and recovery
+
+Invoice, quote, and contract emails use a durable Convex delivery attempt rather
+than treating one HTTP request as delivery truth. The authenticated host freezes
+the exact recipient, subject, HTML, plain text, portal capability, Resend
+idempotency key, and provider tags before claiming provider work. A per-document
+open-attempt fence adopts the canonical existing attempt across tabs, sessions,
+and concurrent UUIDs. Claims are leased and bounded by the provider's retry
+window; an ambiguous provider outcome cannot be replaced with a fresh delivery
+key.
+
+Provider acceptance completes the attempt, writes the email/activity records,
+and applies any permitted document status transition atomically. Definite
+failure, uncertainty, and operator resolution remain distinct. Browser recovery
+receives a sanitized projection only; it never receives the frozen envelope,
+portal URL or token, provider key or tags, claim identity, or internal log IDs.
+Recovery and send responses are private and no-store. A negative operator
+resolution requires explicit confirmation and, after provider work, the bounded
+safety delay; a known provider message ID can instead reconcile acceptance.
+
+Portal capability count is bounded to 64 raw rows per invoice, quote, or contract
+before prepare, public creation, provider claim, and accepted completion. Delivery
+gallery share links remain outside this document-email history bound. Accepted
+replacement delivery revokes every prior capability for the exact site, document,
+and client while leaving unrelated tenant data untouched. Failed or definitely
+unsent replacement attempts revoke only their own new capability, preserving the
+last known delivered link. These are additive schema and function changes with no
+initial data backfill. The shared Admin package must land and publish its recovery
+handlers before the host mounts the three authenticated recovery routes. Admin
+`3.41.0` is now pinned in this source candidate, the host exposes those three
+fixed routes, and its browser configuration passes exactly the eight public
+attempt references. They remain inactive until the additive Convex Stage A
+schema/functions are deployed.
 
 ### Editor media boundary
 
@@ -163,7 +224,10 @@ and test full client-side navigation, expiry, logout, and concurrent requests.
 9. Notifications are sent through Resend with the resolved tenant's name,
    public origin, and admin recipient. The shared `orders@angelsrest.online`
    mailbox remains the transport sender until per-tenant verified sending
-   domains are deliberately onboarded.
+   domains are deliberately onboarded. Angels Rest order confirmations render
+   their live receipt text over one continuous, immutable public-R2 paper
+   texture at `media.angelsrest.online`, with a solid email-safe fallback and
+   explicit quantity, unit price, and line total for every item.
 
 This is a runtime ownership boundary, not merely shared code: one Stripe event
 must have exactly one order-intake owner. Future Stripe Connect clients add

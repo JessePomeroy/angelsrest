@@ -1,17 +1,18 @@
 <script lang="ts">
-import type { Doc } from "$convex/dataModel";
-import { formatCents, formatDate, formatTimestamp } from "$lib/utils/format";
+import { formatCents, formatDateOnly, formatTimestamp } from "$lib/utils/format";
 import { getInvoiceSubtotal, getInvoiceTotal } from "./portalPageData";
+import type { PortalInvoiceDocument } from "./portalPageData";
 
 type Props = {
-	document: Doc<"invoices">;
+	document: PortalInvoiceDocument;
 	client: { name: string } | null;
-	status: Doc<"invoices">["status"];
+	used: boolean;
+	status: PortalInvoiceDocument["status"];
 	loading: boolean;
 	onPay: () => void;
 };
 
-let { document: doc, client, status, loading, onPay }: Props = $props();
+let { document: doc, client, used, status, loading, onPay }: Props = $props();
 </script>
 
 <div class="doc-header">
@@ -20,7 +21,7 @@ let { document: doc, client, status, loading, onPay }: Props = $props();
 	<div class="doc-meta">
 		{#if client}<div class="meta-row"><span class="meta-label">Bill to</span><span class="meta-value">{client.name}</span></div>{/if}
 		<div class="meta-row"><span class="meta-label">Date</span><span class="meta-value">{formatTimestamp(doc._creationTime)}</span></div>
-		{#if doc.dueDate}<div class="meta-row"><span class="meta-label">Due date</span><span class="meta-value">{formatDate(doc.dueDate)}</span></div>{/if}
+		{#if doc.dueDate}<div class="meta-row"><span class="meta-label">Due date</span><span class="meta-value">{formatDateOnly(doc.dueDate)}</span></div>{/if}
 		<div class="meta-row"><span class="meta-label">Status</span><span class="meta-value status-badge status-{status}">{status}</span></div>
 	</div>
 </div>
@@ -40,6 +41,8 @@ let { document: doc, client, status, loading, onPay }: Props = $props();
 
 {#if status === "paid"}
 	<div class="status-message success-message">This invoice has been paid. Thank you!</div>
-{:else if status === "sent" || status === "overdue"}
+{:else if (status === "sent" || status === "overdue") && !used}
 	<div class="doc-actions"><button class="btn-primary" onclick={onPay} disabled={loading}>{loading ? "..." : "Pay Now"}</button></div>
+{:else if used}
+	<div class="status-message">This invoice link is read-only.</div>
 {/if}

@@ -1,22 +1,47 @@
 import { describe, expect, it } from "vitest";
 import type { Doc } from "$convex/dataModel";
-import { getInvoiceSubtotal, getInvoiceTotal, getQuoteTotal } from "./portalPageData";
+import {
+	getInvoiceSubtotal,
+	getInvoiceTotal,
+	getQuoteTotal,
+	type PortalContractDocument,
+	type PortalInvoiceDocument,
+	type PortalQuoteDocument,
+} from "./portalPageData";
 import { createPortalPageData } from "./portalPageData.server";
 
 const commonToken = { used: false, siteUrl: "example.test" };
 const client = { name: "Client", email: "client@example.test" };
 
-function document<T extends "quotes" | "invoices" | "contracts" | "galleries">(
-	value: Partial<Doc<T>>,
-): Doc<T> {
-	return value as Doc<T>;
-}
-
 describe("createPortalPageData", () => {
 	it.each([
-		["quote", document<"quotes">({ quoteNumber: "Q-1", packages: [] })],
-		["invoice", document<"invoices">({ invoiceNumber: "I-1", items: [] })],
-		["contract", document<"contracts">({ title: "Agreement", body: "Terms" })],
+		[
+			"quote",
+			{
+				_creationTime: 1,
+				quoteNumber: "Q-1",
+				status: "sent",
+				packages: [],
+			} satisfies PortalQuoteDocument,
+		],
+		[
+			"invoice",
+			{
+				_creationTime: 1,
+				invoiceNumber: "I-1",
+				status: "sent",
+				items: [],
+			} satisfies PortalInvoiceDocument,
+		],
+		[
+			"contract",
+			{
+				_creationTime: 1,
+				title: "Agreement",
+				status: "sent",
+				body: "Terms",
+			} satisfies PortalContractDocument,
+		],
 	] as const)("correlates a %s token with its document", (type, portalDocument) => {
 		const result = createPortalPageData("shared-token", "Example Studio", {
 			token: { ...commonToken, type },
@@ -39,7 +64,12 @@ describe("createPortalPageData", () => {
 		expect(() =>
 			createPortalPageData("shared-token", "Example Studio", {
 				token: { ...commonToken, type: "quote" },
-				document: document<"invoices">({ invoiceNumber: "I-1", items: [] }),
+				document: {
+					_creationTime: 1,
+					invoiceNumber: "I-1",
+					status: "sent",
+					items: [],
+				} satisfies PortalInvoiceDocument,
 				client,
 			}),
 		).toThrow("Portal quote token returned a non-quote document");
@@ -49,7 +79,7 @@ describe("createPortalPageData", () => {
 		expect(() =>
 			createPortalPageData("shared-token", "Example Studio", {
 				token: { ...commonToken, type: "gallery" },
-				document: document<"galleries">({ name: "Gallery" }),
+				document: { name: "Gallery" } as Doc<"galleries">,
 				client,
 			}),
 		).toThrow("Gallery tokens are not supported by the document portal");

@@ -34,6 +34,7 @@ import {
 } from "@jessepomeroy/gallery-delivery/prepared-zip";
 import { toasts } from "$lib/stores/toast.svelte";
 import { trapFocus } from "$lib/utils/focusTrap";
+import PrivateCapabilityHead from "$lib/components/PrivateCapabilityHead.svelte";
 
 let { data, form } = $props();
 
@@ -429,9 +430,7 @@ let favoriteCount = $derived(
 );
 </script>
 
-<svelte:head>
-	<title>{data.gallery.name} | Gallery</title>
-</svelte:head>
+<PrivateCapabilityHead title="{data.gallery.name} | Gallery" />
 
 <svelte:window onkeydown={handleKeydown} />
 

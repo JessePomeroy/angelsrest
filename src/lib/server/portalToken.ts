@@ -21,7 +21,7 @@ export async function validatePortalToken(
 	token: string,
 	expectedType: "quote" | "contract" | "invoice",
 ) {
-	const result = await convex.query(api.portal.getByToken, { token });
+	const result = await convex.query(api.portal.getPublicByToken, { token });
 	if (!result) {
 		throw error(404, "Invalid token");
 	}

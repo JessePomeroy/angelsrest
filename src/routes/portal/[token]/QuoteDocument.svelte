@@ -1,13 +1,13 @@
 <script lang="ts">
-import type { Doc } from "$convex/dataModel";
-import { formatCents, formatDate, formatTimestamp } from "$lib/utils/format";
+import { formatCents, formatDateOnly, formatTimestamp } from "$lib/utils/format";
 import { getQuoteTotal } from "./portalPageData";
+import type { PortalQuoteDocument } from "./portalPageData";
 
 type Props = {
-	document: Doc<"quotes">;
+	document: PortalQuoteDocument;
 	client: { name: string } | null;
 	used: boolean;
-	status: Doc<"quotes">["status"];
+	status: PortalQuoteDocument["status"];
 	loading: boolean;
 	onAccept: () => void;
 	onDecline: () => void;
@@ -22,7 +22,7 @@ let { document: doc, client, used, status, loading, onAccept, onDecline }: Props
 	<div class="doc-meta">
 		{#if client}<div class="meta-row"><span class="meta-label">Prepared for</span><span class="meta-value">{client.name}</span></div>{/if}
 		<div class="meta-row"><span class="meta-label">Date</span><span class="meta-value">{formatTimestamp(doc._creationTime)}</span></div>
-		{#if doc.validUntil}<div class="meta-row"><span class="meta-label">Valid until</span><span class="meta-value">{formatDate(doc.validUntil)}</span></div>{/if}
+		{#if doc.validUntil}<div class="meta-row"><span class="meta-label">Valid until</span><span class="meta-value">{formatDateOnly(doc.validUntil)}</span></div>{/if}
 		<div class="meta-row"><span class="meta-label">Status</span><span class="meta-value status-badge status-{status}">{status}</span></div>
 	</div>
 </div>
@@ -48,4 +48,6 @@ let { document: doc, client, used, status, loading, onAccept, onDecline }: Props
 	<div class="status-message success-message">This quote has been accepted.</div>
 {:else if status === "declined"}
 	<div class="status-message">This quote has been declined.</div>
+{:else if status === "expired"}
+	<div class="status-message">This quote has expired.</div>
 {/if}

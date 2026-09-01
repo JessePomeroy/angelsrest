@@ -25,6 +25,7 @@ import { injectAnalytics } from "@vercel/analytics/sveltekit";
 import type { Snippet } from "svelte";
 import { onMount } from "svelte";
 import { page } from "$app/state";
+import { filterPrivateCapabilityAnalytics } from "$lib/capabilityPrivacy";
 
 // Header gif for non-homepage routes
 import headerGif from "$lib/assets/ponyolovesham.gif";
@@ -62,7 +63,7 @@ const ogImage = $derived(
 const timeTheme = getTimeTheme();
 
 // Vercel analytics
-injectAnalytics();
+injectAnalytics({ beforeSend: filterPrivateCapabilityAnalytics });
 
 // Keep time period in sync reactively
 $effect(() => {

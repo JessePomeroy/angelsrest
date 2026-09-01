@@ -1,6 +1,6 @@
 <script lang="ts">
 import { invalidateAll } from "$app/navigation";
-import SEO from "$lib/components/SEO.svelte";
+import PrivateCapabilityHead from "$lib/components/PrivateCapabilityHead.svelte";
 import type { PageData } from "./$types";
 import ContractDocument from "./ContractDocument.svelte";
 import InvoiceDocument from "./InvoiceDocument.svelte";
@@ -132,7 +132,7 @@ async function payInvoice() {
 }
 </script>
 
-<SEO title="{data.type === 'invoice' ? 'Invoice' : data.type === 'quote' ? 'Quote' : 'Contract'} from {data.businessName}" description="View your {data.type}" />
+<PrivateCapabilityHead title="{data.type === 'invoice' ? 'Invoice' : data.type === 'quote' ? 'Quote' : 'Contract'} from {data.businessName}" />
 
 <div class="portal">
 	<header class="portal-header">
@@ -162,6 +162,7 @@ async function payInvoice() {
 			<InvoiceDocument
 				document={data.document}
 				client={data.client}
+				used={data.used}
 				status={data.document.status}
 				loading={actionLoading}
 				onPay={payInvoice}

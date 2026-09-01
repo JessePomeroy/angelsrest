@@ -95,6 +95,20 @@ const postContentApi = {
 	restore: api.postContent.restore,
 };
 
+// Keep the server-owned document-email journal on an exact eight-reference
+// surface. The package's browser recovery UI consumes these opaque refs, while
+// tenant authorization remains in the shared server handlers and Convex.
+const documentEmailAttemptsApi = {
+	get: api.documentEmailAttempts.get,
+	getRecovery: api.documentEmailAttempts.getRecovery,
+	getOpenRecoveryByDocument: api.documentEmailAttempts.getOpenRecoveryByDocument,
+	prepare: api.documentEmailAttempts.prepare,
+	claim: api.documentEmailAttempts.claim,
+	complete: api.documentEmailAttempts.complete,
+	fail: api.documentEmailAttempts.fail,
+	resolve: api.documentEmailAttempts.resolve,
+};
+
 const apiWithAliases = new Proxy(api, {
 	get(target, prop, receiver) {
 		if (prop === "siteEditor") return siteEditorApi;
@@ -110,6 +124,7 @@ const apiWithAliases = new Proxy(api, {
 		}
 		if (prop === "blogContent") return blogContentApi;
 		if (prop === "postContent") return postContentApi;
+		if (prop === "documentEmailAttempts") return documentEmailAttemptsApi;
 		return Reflect.get(target, prop, receiver);
 	},
 }) as unknown as AdminAPI;

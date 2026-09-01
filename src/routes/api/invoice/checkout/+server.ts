@@ -1,10 +1,9 @@
 import { createHash } from "node:crypto";
 import { error, json } from "@sveltejs/kit";
 import { api } from "$convex/api";
-import type { Doc, Id } from "$convex/dataModel";
+import type { Id } from "$convex/dataModel";
 import { PUBLIC_SITE_URL } from "$env/static/public";
 import { getConvex } from "$lib/server/convexClient";
-import { validatePortalToken } from "$lib/server/portalToken";
 import {
 	buildCheckoutLineItem,
 	createPaymentCheckoutSession,
@@ -60,10 +59,14 @@ export async function POST({ request }) {
 			throw error(400, "Missing required field: token");
 		}
 
-		const portal = await validatePortalToken(convex, token, "invoice");
-		const invoice = portal.document as Doc<"invoices">;
-		const invoiceId = portal.token.documentId;
-		const siteUrl = portal.token.siteUrl;
+		const webhookSecret = getWebhookSecret();
+		const invoice = await convex.query(api.portal.getInvoiceCheckoutTarget, {
+			token,
+			webhookSecret,
+		});
+		if (!invoice) throw error(404, "Invalid invoice link");
+		const invoiceId = invoice.invoiceId;
+		const siteUrl = invoice.siteUrl;
 
 		if (invoice.status === "paid") {
 			throw error(400, "Invoice has already been paid");
@@ -117,7 +120,6 @@ export async function POST({ request }) {
 			taxPercent,
 			taxCents,
 		});
-		const webhookSecret = getWebhookSecret();
 		const tenant = await resolveStripeTenantForSite(siteUrl, {
 			requirePlatformClient: true,
 		});

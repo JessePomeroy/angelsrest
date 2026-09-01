@@ -18,6 +18,7 @@
 
 import { init } from "@sentry/node";
 import { env } from "$env/dynamic/public";
+import { scrubPrivateCapabilityTelemetry } from "$lib/capabilityPrivacy";
 
 // Use dynamic public env so a missing PUBLIC_SENTRY_DSN doesn't fail the
 // build — Sentry no-ops when dsn is undefined/empty.
@@ -36,4 +37,9 @@ init({
 	// emails and addresses. We'll attach scrubbed context manually via
 	// the structured logger when needed.
 	sendDefaultPii: false,
+	// Bearer capabilities live in URL paths. Scrub both freshly captured request
+	// data and breadcrumbs retained before a later, unrelated error is emitted.
+	beforeBreadcrumb: scrubPrivateCapabilityTelemetry,
+	beforeSend: scrubPrivateCapabilityTelemetry,
+	beforeSendTransaction: scrubPrivateCapabilityTelemetry,
 });

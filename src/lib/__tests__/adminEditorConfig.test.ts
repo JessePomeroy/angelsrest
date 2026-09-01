@@ -12,6 +12,7 @@ const {
 	catalogApi,
 	catalogGraphApi,
 	contentApi,
+	documentEmailApi,
 	galleriesApi,
 	mediaApi,
 	portfolioApi,
@@ -69,6 +70,16 @@ const {
 		discardAboutPageDraft: "content.discardAboutPageDraft",
 	};
 	const galleriesApi = { listBySite: "galleries.listBySite" };
+	const documentEmailApi = {
+		get: "documentEmailAttempts.get",
+		getRecovery: "documentEmailAttempts.getRecovery",
+		getOpenRecoveryByDocument: "documentEmailAttempts.getOpenRecoveryByDocument",
+		prepare: "documentEmailAttempts.prepare",
+		claim: "documentEmailAttempts.claim",
+		complete: "documentEmailAttempts.complete",
+		fail: "documentEmailAttempts.fail",
+		resolve: "documentEmailAttempts.resolve",
+	};
 	const mediaApi = {
 		listForEditor: "mediaAssets.listForEditor",
 		getManyForEditor: "mediaAssets.getManyForEditor",
@@ -88,6 +99,7 @@ const {
 		catalogApi,
 		catalogGraphApi,
 		contentApi,
+		documentEmailApi,
 		galleriesApi,
 		mediaApi,
 		portfolioApi,
@@ -95,6 +107,7 @@ const {
 			catalogProducts: catalogApi,
 			catalogProductGraphs: catalogGraphApi,
 			content: contentApi,
+			documentEmailAttempts: documentEmailApi,
 			galleries: galleriesApi,
 			galleryPassword: { setPassword: "galleryPassword.setPassword" },
 			blogContent: blogApi,
@@ -160,6 +173,21 @@ describe("admin API aliases", () => {
 		expect(adminConfig.api.galleryDelivery?.listBySite).toBe(galleriesApi.listBySite);
 		expect(adminConfig.api.galleryDelivery?.setPassword).toBe(apiMock.galleryPassword.setPassword);
 		expect(adminConfig.api.crm).toBe(apiMock.crm);
+		expect(adminConfig.api.documentEmailAttempts).not.toBe(documentEmailApi);
+		expect(adminConfig.api.documentEmailAttempts).toEqual(documentEmailApi);
+		expect(Object.keys(adminConfig.api.documentEmailAttempts ?? {})).toEqual([
+			"get",
+			"getRecovery",
+			"getOpenRecoveryByDocument",
+			"prepare",
+			"claim",
+			"complete",
+			"fail",
+			"resolve",
+		]);
+		expect(Reflect.get(adminConfig.api.documentEmailAttempts ?? {}, "unknownCapability")).toBe(
+			undefined,
+		);
 		expect(adminConfig.api.siteEditor).not.toBe(contentApi);
 		expect(adminConfig.api.siteEditor?.getSiteSettingsEditorState).toBe(
 			contentApi.getSiteSettingsEditorState,
