@@ -83,7 +83,10 @@ jobs:
           commit: "chore(crm-api): version packages"
           title: "chore(crm-api): version packages"
         env:
+          # Publication uses the ephemeral repository token granted
+          # `packages: write` above. The long-lived cross-repo token remains
+          # read-only and is used only by the dependency-install step.
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          GH_PACKAGES_TOKEN: ${{ secrets.GH_PACKAGES_TOKEN }}
-          NPM_TOKEN: ${{ secrets.GH_PACKAGES_TOKEN }}
-          NODE_AUTH_TOKEN: ${{ secrets.GH_PACKAGES_TOKEN }}
+          GH_PACKAGES_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          NPM_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
