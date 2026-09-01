@@ -219,10 +219,34 @@ function privateDescriptor(graph: LoadedGraph) {
 	return { kind: "merchant" as const, source: null };
 }
 
+function fulfillmentMedia(graph: LoadedGraph) {
+	const media = projectCatalogProductGraphV2Public(graph).media;
+	const withoutPresentationCopy = (item: (typeof media)[number]) => ({
+		...item,
+		// Checkout and fulfillment use role/order/asset identity only. Keep the
+		// exact envelope shape while excluding presentation copy whose UTF-8 size
+		// can exceed the private resolver's bounded response contract.
+		altText: null,
+	});
+	if (graph.draft.productKind === "print") {
+		const primary = media.find(({ role }) => role === "primary");
+		if (!primary) throw rejected();
+		return [withoutPresentationCopy(primary)];
+	}
+	if (graph.draft.productKind === "print_set") {
+		const cover = media.find(({ role }) => role === "cover");
+		const members = media.filter(({ role }) => role === "set_member");
+		if (!cover || members.length === 0) throw rejected();
+		return [cover, ...members].map(withoutPresentationCopy);
+	}
+	const gallery = media.find(({ role }) => role === "gallery");
+	if (!gallery) throw rejected();
+	return [withoutPresentationCopy(gallery)];
+}
+
 function baseResponse(graph: LoadedGraph, item: SnapshotItem) {
 	const variant = selectedVariant(graph, item);
 	const commerce = resolvePrintCommerce(graph, item, variant.retailPriceCents);
-	const publishedProjection = projectCatalogProductGraphV2Public(graph);
 	return {
 		version: 1 as const,
 		item,
@@ -235,7 +259,7 @@ function baseResponse(graph: LoadedGraph, item: SnapshotItem) {
 			variantKey: variant.variantKey,
 		},
 		commerce: { currency: "usd" as const, ...commerce },
-		media: publishedProjection.media,
+		media: fulfillmentMedia(graph),
 	};
 }
 

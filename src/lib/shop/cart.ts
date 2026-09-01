@@ -29,7 +29,7 @@ export interface CartState {
 	updatedAt: string;
 }
 
-export const STORAGE_KEY = "angelsrest:cart:v2";
+export const STORAGE_KEY = "angelsrest:cart:v3";
 export const CART_EXPIRY_DAYS = 30;
 export const MAX_QUANTITY_PER_LINE = 20;
 

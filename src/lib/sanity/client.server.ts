@@ -39,8 +39,8 @@ export function getSanityClient(isPreview: boolean) {
 }
 
 /**
- * Origin-backed published client for deterministic server diagnostics. Public
- * Shop loaders continue to use `getSanityClient`, including its CDN client.
+ * Origin-backed published client for deterministic legacy parity diagnostics.
+ * Default public Shop loaders use the Convex-only Shop boundary.
  */
 export function getFreshPublishedSanityClient() {
 	freshPublishedClient ??= client.withConfig({

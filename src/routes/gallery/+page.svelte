@@ -2,7 +2,7 @@
 /**
  * Gallery Index Page
  * Shows a grid of all galleries — click one to view its images.
- * Data comes from +page.server.ts which fetches from Sanity.
+ * Data comes from the Convex-owned public portfolio projection.
  */
 import SEO from "$lib/components/SEO.svelte";
 

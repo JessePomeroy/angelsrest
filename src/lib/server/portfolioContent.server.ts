@@ -487,7 +487,7 @@ export function adaptConvexPortfolioDetail(value: unknown): PortfolioDetail | nu
 }
 
 export function parsePortfolioProviderMode(value: unknown): ProviderMode {
-	return value === "sanity" || value === "convex" ? value : "sanity";
+	return value === "sanity" ? "sanity" : "convex";
 }
 
 export function createSanityPortfolioSource(
@@ -549,7 +549,7 @@ export function createPortfolioContentProvider(
 			if (provider === "convex") {
 				try {
 					return adaptConvexPortfolioList(
-						await createReader().listPublished(new AbortController().signal),
+						await createReader().listPublished(AbortSignal.timeout(6_000)),
 					);
 				} catch {
 					unavailable();
@@ -563,7 +563,7 @@ export function createPortfolioContentProvider(
 			if (provider === "convex") {
 				try {
 					return adaptConvexPortfolioDetail(
-						await createReader().getPublishedBySlug(slug, new AbortController().signal),
+						await createReader().getPublishedBySlug(slug, AbortSignal.timeout(6_000)),
 					);
 				} catch {
 					unavailable();

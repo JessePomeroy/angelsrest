@@ -5,7 +5,7 @@
  */
 
 /**
- * Paper option from Sanity
+ * Normalized paper option at the public Shop boundary
  * Format: "Name|subcategoryId|width|height"
  * Example: "Archival Matte 4×6|103001|4|6"
  */

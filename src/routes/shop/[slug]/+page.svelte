@@ -191,7 +191,7 @@ async function handleV1Checkout() {
 		const url = await createCheckout({
 			productId: data.product.slug,
 			coupon: null,
-			paperIndex: selectedPaperIndex,
+			...(selectedPaperData ? { paperIndex: selectedPaperIndex } : {}),
 		});
 		window.location.href = url;
 	} catch (err: unknown) {

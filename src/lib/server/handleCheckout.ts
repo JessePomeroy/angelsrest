@@ -3,14 +3,19 @@ import type Stripe from "stripe";
 import { ApiErrorCode, apiError } from "$lib/server/apiError";
 import { getCheckoutSnapshotReservationCredential } from "$lib/server/checkoutBridgeConfig";
 import type { CheckoutSnapshotItem } from "$lib/server/checkoutCatalog";
+import { CheckoutSessionStageError } from "$lib/server/checkoutFailures";
 import {
 	type CheckoutAdmissionIdentity,
+	type CheckoutAdmissionPermit,
 	type CheckoutSessionAdmissionClient,
 	checkoutRequestFingerprint,
 	createCheckoutSessionAdmissionClient,
 } from "$lib/server/checkoutSessionAdmissionClient";
-import type { CheckoutSnapshotReservationClient } from "$lib/server/checkoutSnapshotReservationClient";
-import { createCheckoutSnapshotReservationClient } from "$lib/server/checkoutSnapshotReservationClient";
+import {
+	type CheckoutSnapshotReservationClient,
+	createCheckoutSnapshotReservationClient,
+	isCheckoutSnapshotReservationConflict,
+} from "$lib/server/checkoutSnapshotReservationClient";
 import { assertOrderProducersOpen } from "$lib/server/orderProducerGate";
 import {
 	createPaymentCheckoutSession,
@@ -184,15 +189,25 @@ export async function createHandleCheckoutSession({
 		tenantCheckout.metadata[COMMERCE_TENANT_METADATA_KEY] !== site
 	)
 		throw invalid();
-	await abuseGate();
+	try {
+		await abuseGate();
+	} catch (cause) {
+		throw new CheckoutSessionStageError("checkout_admission", cause);
+	}
 
-	const { handle } = await reservationClient.reserve({
-		site,
-		attempt: validatedAttempt.attempt,
-		account,
-		catalogProvider,
-		items: snapshotItems,
-	});
+	let handle: string;
+	try {
+		({ handle } = await reservationClient.reserve({
+			site,
+			attempt: validatedAttempt.attempt,
+			account,
+			catalogProvider,
+			items: snapshotItems,
+		}));
+	} catch (cause) {
+		if (isCheckoutSnapshotReservationConflict(cause)) throw cause;
+		throw new CheckoutSessionStageError("checkout_snapshot", cause);
+	}
 	const identity = {
 		attempt: validatedAttempt.attempt,
 		attemptStartedAt: Number(attemptStartedAt),
@@ -265,19 +280,24 @@ export async function createAdmittedOrderCheckoutSession({
 		metadata,
 		checkoutSnapshotHandle: checkoutSnapshotHandle ?? null,
 	});
-	const permit = await admissionClient.begin({
-		site,
-		account,
-		identity,
-		hostGeneration,
-		requestFingerprint,
-	});
+	let permit: CheckoutAdmissionPermit;
+	try {
+		permit = await admissionClient.begin({
+			site,
+			account,
+			identity,
+			hostGeneration,
+			requestFingerprint,
+		});
+	} catch (cause) {
+		throw new CheckoutSessionStageError("checkout_admission", cause);
+	}
 	let requestedStripeExpiresAt: number;
 	try {
 		requestedStripeExpiresAt = await admissionClient.markCreating(permit);
 	} catch (cause) {
 		await admissionClient.release(permit).catch(() => {});
-		throw cause;
+		throw new CheckoutSessionStageError("checkout_admission", cause);
 	}
 	let session: PaymentCheckoutSessionResult;
 	try {
@@ -299,15 +319,19 @@ export async function createAdmittedOrderCheckoutSession({
 		});
 	} catch (cause) {
 		await admissionClient.markUncertain(permit).catch(() => {});
-		throw cause;
+		throw new CheckoutSessionStageError("checkout_stripe", cause);
 	}
-	await admissionClient.bind({
-		permit,
-		session: session.sessionId,
-		stripeExpiresAt: requestedStripeExpiresAt,
-		checkoutSnapshotHandle,
-	});
-	bindSession(session.sessionId);
+	try {
+		await admissionClient.bind({
+			permit,
+			session: session.sessionId,
+			stripeExpiresAt: requestedStripeExpiresAt,
+			checkoutSnapshotHandle,
+		});
+		bindSession(session.sessionId);
+	} catch (cause) {
+		throw new CheckoutSessionStageError("checkout_admission", cause);
+	}
 	return { ...session, expiresAt: requestedStripeExpiresAt };
 }
 

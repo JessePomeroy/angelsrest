@@ -102,6 +102,17 @@ describe("handle cart intent", () => {
 		]);
 	});
 
+	it.each([0, 1])("preserves legacy paperIndex %i for authority classification", (paperIndex) => {
+		expect(parseHandleCartIntent([makeItem({ paperIndex })])).toEqual([
+			{
+				productSlug: "shore-no-1",
+				type: "print",
+				quantity: 1,
+				paperIndex,
+			},
+		]);
+	});
+
 	it("supports 1–40 lines independent of legacy metadata size", () => {
 		const nearLimitSets = Array.from({ length: 40 }, (_, index) =>
 			makeSetItem({ id: String(index), imageUrls: Array(20).fill(`https://cdn.test/${index}`) }),

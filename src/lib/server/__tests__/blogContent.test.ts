@@ -279,14 +279,14 @@ function fakeReader(
 describe("Blog public adapters", () => {
 	it.each([
 		["sanity", "sanity"],
-		["shadow", "sanity"],
+		["shadow", "convex"],
 		["convex", "convex"],
-		[undefined, "sanity"],
-		[null, "sanity"],
-		["", "sanity"],
-		[" convex ", "sanity"],
-		["Convex", "sanity"],
-		["other", "sanity"],
+		[undefined, "convex"],
+		[null, "convex"],
+		["", "convex"],
+		[" convex ", "convex"],
+		["Convex", "convex"],
+		["other", "convex"],
 	])("parses %j as %s", (value, expected) => {
 		expect(parseBlogProviderMode(value)).toBe(expected);
 	});
@@ -629,17 +629,20 @@ describe("Blog source selector", () => {
 		delete privateEnv.BLOG_CONTENT_PROVIDER;
 	});
 
-	it("defaults missing private provider configuration to Sanity", async () => {
+	it("defaults missing private provider configuration to Convex", async () => {
 		const sanity = fakeSanity();
-		const createReader = vi.fn(() => fakeReader());
+		const reader = fakeReader();
+		const createReader = vi.fn(() => reader);
 		const provider = createBlogContentProvider({ sanity, createReader });
 
 		await provider.loadIndex(false);
 		await provider.loadPost("a-quiet-post", false);
 
-		expect(sanity.loadIndex).toHaveBeenCalledWith(false);
-		expect(sanity.loadPost).toHaveBeenCalledWith("a-quiet-post", false);
-		expect(createReader).not.toHaveBeenCalled();
+		expect(createReader).toHaveBeenCalledTimes(2);
+		expect(reader.listPublished).toHaveBeenCalledOnce();
+		expect(reader.getPublishedBySlug).toHaveBeenCalledWith("a-quiet-post", expect.any(AbortSignal));
+		expect(sanity.loadIndex).not.toHaveBeenCalled();
+		expect(sanity.loadPost).not.toHaveBeenCalled();
 	});
 
 	it("reads the provider from dynamic private configuration", async () => {
@@ -657,6 +660,20 @@ describe("Blog source selector", () => {
 		expect(reader.getPublishedBySlug).toHaveBeenCalledWith("a-quiet-post", expect.any(AbortSignal));
 		expect(sanity.loadIndex).not.toHaveBeenCalled();
 		expect(sanity.loadPost).not.toHaveBeenCalled();
+	});
+
+	it("retains an explicit published Sanity rollback adapter", async () => {
+		const sanity = fakeSanity();
+		const provider = createBlogContentProvider({
+			sanity,
+			mode: () => "sanity",
+			createReader: vi.fn(),
+		});
+
+		await provider.loadIndex(false);
+		await provider.loadPost("a-quiet-post", false);
+		expect(sanity.loadIndex).toHaveBeenCalledWith(false);
+		expect(sanity.loadPost).toHaveBeenCalledWith("a-quiet-post", false);
 	});
 
 	it("branches preview to Sanity before reading mode or constructing the secondary", async () => {

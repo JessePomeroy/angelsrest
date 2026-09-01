@@ -1,6 +1,6 @@
 /**
  * Gallery Detail - Server Load Function
- * Fetches a single gallery by slug from Sanity.
+ * Fetches a single published gallery by slug from the public content boundary.
  * The [slug] in the folder name becomes params.slug.
  */
 

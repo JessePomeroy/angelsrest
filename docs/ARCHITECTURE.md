@@ -7,8 +7,8 @@ canonical rule file; this document explains ownership and dependency direction.
 
 ```text
 SvelteKit routes and UI
-  ├── Sanity client (editorial reads / preview)
-  ├── Convex generated API (operational reads and writes)
+  ├── Convex generated API (published content and operational reads/writes)
+  ├── optional Sanity adapter (preview and reviewed rollback only)
   ├── @jessepomeroy/admin (shared admin UI and host adapters)
   ├── @jessepomeroy/print-catalog (pure shared print domain)
   └── server integrations (Stripe, LumaPrints, Resend, gallery workers)
@@ -27,8 +27,9 @@ modules or private environment variables.
 
 | Domain | Owner | Entry points |
 |---|---|---|
-| Published editorial content during migration | Sanity fallback | `src/lib/sanity/client.ts`, `client.server.ts`, public load functions |
+| Published editorial content and Shop catalog | Convex | public content modules, `catalogProductGraphs.ts`, `src/lib/server/convexShop.server.ts` |
 | Embedded Editor drafts, revisions, and media registry | Convex | `packages/crm-api/convex/*Content.ts`, `mediaAssets.ts` |
+| Optional editorial preview and rollback reads | retained Sanity adapter | `src/lib/sanity/client.ts`, `client.server.ts`; exact `sanity` provider selection only |
 | Editor media sources and public WebP derivatives | Cloudflare R2 | CMS media worker via `/api/admin/media/*` |
 | Private catalog print masters and paid files | Cloudflare R2 bytes; Convex registry and coordination | purpose-separated receipt ingresses in `convex/http.ts`, internal `catalogPrivateAssets.ts` mutations |
 | Orders and fulfillment state | Convex | `packages/crm-api/convex/orders.ts` |
@@ -50,7 +51,7 @@ name when an unqualified `gallery` would obscure the owner.
 - `.server.ts` modules contain preview tokens and other private-only logic.
 - Public `.svelte` components consume serialized load data or browser-safe API
   clients.
-- `src/hooks.server.ts` owns security headers, Sanity preview state, and server
+- `src/hooks.server.ts` owns security headers, optional Sanity preview state, and server
   error capture. Admin authentication lives in the admin layout and auth routes,
   not in the global hook.
 
@@ -162,8 +163,9 @@ schema/functions are deployed.
    accepted from the browser.
 5. Private sources remain in the CMS private bucket. Public pages receive only
    immutable derivatives from `https://media.angelsrest.online`.
-6. This boundary is separate from private client-gallery delivery and does not
-   switch any public content type away from its Sanity fallback by itself.
+6. This boundary is separate from private client-gallery delivery. Published
+   content modules resolve their accepted Convex revisions and immutable public
+   derivatives; the retained Sanity adapter is not a media authority.
 
 ### Private catalog asset registration
 
@@ -176,9 +178,10 @@ schema/functions are deployed.
 3. No public or authenticated-admin mutation can create these verified rows.
    Responses expose only the status and source-key-to-Convex-ID mapping; storage
    keys, hashes, provenance, capabilities, and private URLs remain server-only.
-4. The registration gate is provider-neutral and reusable, while each migration
-   must still prove its exact manifest completeness. Sanity remains authoritative
-   until that migration's unpublished import, parity, rollback, and cutover gates pass.
+4. The registration gate is provider-neutral and reusable. Each migration must
+   prove its exact manifest completeness before cutover; after acceptance,
+   Convex registry state and R2 bytes are authoritative while provider provenance
+   remains audit data.
 
 Authenticated server reads also create a fresh client through
 `createAuthenticatedConvexClient`. The cached `getConvex()` client is reserved
@@ -192,6 +195,21 @@ and test full client-side navigation, expiry, logout, and concurrent requests.
 ## Commerce and fulfillment
 
 ### Shop checkout
+
+`convexShop.server.ts` is the deep public Shop module. It owns bounded Convex
+list and exact-slug reads, projection validation, normalized 404/503 behavior,
+and the accepted zero-collection baseline. The four Shop loaders import this
+module directly; they do not inspect preview state or provider flags. The
+retained `catalogShop.server.ts` and `sanityShop.server.ts` modules are legacy
+parity/rollback adapters, not route authority.
+
+`currentCheckoutCommerce.ts` is the authority module for every newly initiated
+Angels Rest direct or cart purchase. It resolves the exact published Convex graph
+and authenticated commerce envelope, then always reserves a Convex handle-v2
+snapshot before Stripe. Current checkout routes contain no Sanity client,
+provider selector, or legacy-session fallback. `checkoutCommerce.ts` remains a
+one-way legacy parity wrapper, while `snapshotFulfillment.ts` and
+`/api/download` retain historical Sanity snapshot/download compatibility.
 
 1. The selling site resolves current product/catalog data; browser-supplied
    prices are not authoritative.
@@ -712,9 +730,9 @@ the same workflow into multiple root files.
 | Repository | Responsibility | Direction |
 |---|---|---|
 | `angelsrest` | Public creator site, platform hub, shared Convex/package owner | Composition root |
-| `angelsrest-studio` | Angel's Rest Sanity instance | Downstream of Studio template |
+| `angelsrest-studio` | Retained Angel's Rest Sanity preview/recovery instance | Downstream of Studio template |
 | `reflecting-pool` | Maggie's client spoke and tenant admin host | Consumes shared packages/services |
-| `reflecting-pool-studio` | Maggie's Sanity instance | Downstream of Studio template |
+| `reflecting-pool-studio` | Independent client legacy Studio; outside Angel's Rest recovery custody | Downstream of Studio template |
 | `sanity-studio-template` | Shared Studio schemas, desk, components, and actions | Upstream for client Studios |
 | `admin-dashboard` | Source for `@jessepomeroy/admin` client/server package | Upstream for host admin UI/adapters |
 | `gallery-worker` | Separate gallery-delivery and CMS-media Workers with distinct R2 boundaries | Called through host/admin adapters |

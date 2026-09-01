@@ -409,7 +409,7 @@ export function projectSiteSettingsInstagramUrl(value: unknown): string | null {
 }
 
 export function parseAboutContactProviderMode(value: unknown): ProviderMode {
-	return value === "sanity" || value === "convex" ? value : "sanity";
+	return value === "sanity" ? "sanity" : "convex";
 }
 
 export function createSanityAboutContactSource(
@@ -454,7 +454,7 @@ export function createAboutContactContentProvider(
 	async function loadConvex() {
 		try {
 			return adaptConvexAboutContact(
-				await createReader().loadPublished(new AbortController().signal),
+				await createReader().loadPublished(AbortSignal.timeout(6_000)),
 			);
 		} catch {
 			unavailable();

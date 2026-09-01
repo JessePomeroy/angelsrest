@@ -1,26 +1,18 @@
 import type Stripe from "stripe";
-import { env } from "$env/dynamic/private";
 import { ApiErrorCode, apiError } from "$lib/server/apiError";
-import type { ResolvedCheckoutItem } from "$lib/server/checkoutCatalog";
-import { resolveCheckoutItem } from "$lib/server/checkoutCatalog";
-import { resolveCheckoutCommerce } from "$lib/server/checkoutCommerce";
+import { CurrentCheckoutCommerceError } from "$lib/server/checkoutFailures";
 import type {
 	CheckoutAdmissionIdentity,
 	CheckoutSessionAdmissionClient,
 } from "$lib/server/checkoutSessionAdmissionClient";
 import type { CheckoutSnapshotReservationClient } from "$lib/server/checkoutSnapshotReservationClient";
-import {
-	checkoutSnapshotMode,
-	createAdmittedOrderCheckoutSession,
-	createHandleCheckoutSession,
-} from "$lib/server/handleCheckout";
+import { resolveCurrentCheckoutCommerce } from "$lib/server/currentCheckoutCommerce";
+import { createHandleCheckoutSession } from "$lib/server/handleCheckout";
 import { logStructured } from "$lib/server/logger";
 import { buildCheckoutLineItem } from "$lib/server/stripeCheckoutSession";
 import { buildTenantCheckoutOptions, type StripeTenantAccount } from "$lib/server/stripeConnect";
 
-type CheckoutFetcher = Parameters<typeof resolveCheckoutItem>[0];
 type CheckoutBody = Record<string, unknown>;
-type ResolveCheckoutItem = (body: CheckoutBody) => Promise<ResolvedCheckoutItem>;
 type CheckoutLogger = typeof logStructured;
 
 export interface CreateDirectCheckoutSessionOptions {
@@ -28,12 +20,9 @@ export interface CreateDirectCheckoutSessionOptions {
 	stripe: Stripe;
 	siteUrl: string;
 	tenant?: StripeTenantAccount;
-	fetcher: CheckoutFetcher;
 	bindSession: (sessionId: string) => void;
-	resolveItem?: ResolveCheckoutItem;
-	resolveCommerce?: typeof resolveCheckoutCommerce;
+	resolveCommerce?: typeof resolveCurrentCheckoutCommerce;
 	log?: CheckoutLogger;
-	snapshotMode?: string;
 	reservationClient?: CheckoutSnapshotReservationClient;
 	admissionClient?: CheckoutSessionAdmissionClient;
 	attemptIdentity: CheckoutAdmissionIdentity;
@@ -83,40 +72,14 @@ function logRequestShape(body: CheckoutBody, log: CheckoutLogger) {
 	});
 }
 
-function buildCheckoutMetadata(item: ResolvedCheckoutItem): Stripe.MetadataParam {
-	const fulfillment = item.legacyFulfillment;
-	return {
-		productId: item.productId,
-		productSlug: item.productId,
-		isDigital: fulfillment.isDigital ? "true" : "false",
-		isPrintSet: fulfillment.isPrintSet ? "true" : "false",
-		imageUrls: fulfillment.isPrintSet ? JSON.stringify(fulfillment.imageUrls) : "",
-		imageUrl: !fulfillment.isPrintSet ? fulfillment.imageUrl || "" : "",
-		paperName: fulfillment.paper?.name || "",
-		paperSubcategoryId: fulfillment.paper?.subcategoryId?.toString() || "",
-		paperWidth: fulfillment.paper?.width?.toString() || "",
-		paperHeight: fulfillment.paper?.height?.toString() || "",
-		borderWidth: fulfillment.paper?.borderWidth?.toString() || "",
-		frameSubcategoryId: fulfillment.paper?.frameSubcategoryId?.toString() || "",
-		canvasSubcategoryId: fulfillment.paper?.canvasSubcategoryId?.toString() || "",
-		canvasWrapHex: fulfillment.paper?.canvasWrapHex || "",
-		couponCode: "",
-		originalPrice: (item.unitPriceCents / 100).toString(),
-		discountAmount: "0",
-	};
-}
-
 export async function createDirectCheckoutSession({
 	body: rawBody,
 	stripe,
 	siteUrl,
 	tenant,
-	fetcher,
 	bindSession,
-	resolveItem,
-	resolveCommerce = resolveCheckoutCommerce,
+	resolveCommerce = resolveCurrentCheckoutCommerce,
 	log = logStructured,
-	snapshotMode = env.CHECKOUT_SNAPSHOT_MODE,
 	reservationClient,
 	admissionClient,
 	attemptIdentity,
@@ -125,7 +88,6 @@ export async function createDirectCheckoutSession({
 }: CreateDirectCheckoutSessionOptions): Promise<DirectCheckoutSessionResult> {
 	rejectCouponAttempt(rawBody);
 	const body = normalizeCheckoutBody(rawBody);
-	const mode = checkoutSnapshotMode(snapshotMode);
 	logRequestShape(body, log);
 
 	const productId = body.productId;
@@ -138,16 +100,11 @@ export async function createDirectCheckoutSession({
 		throw apiError(400, ApiErrorCode.MISSING_FIELD, "Missing required field: productId");
 	}
 
-	const commerce =
-		mode === "handle-v2"
-			? await resolveCommerce(fetcher, [body], {
-					resolveSanity: resolveItem ? () => resolveItem(body) : undefined,
-				})
-			: null;
-	const item =
-		commerce?.items[0] ??
-		(resolveItem ? await resolveItem(body) : await resolveCheckoutItem(fetcher, body));
-	const finalPrice = item.unitPriceCents / 100;
+	const commerce = await resolveCommerce([body]);
+	const item = commerce.items[0];
+	if (!item || commerce.items.length !== 1) {
+		throw new CurrentCheckoutCommerceError("invalid_authority", "authority");
+	}
 	const subtotalCents = item.unitPriceCents;
 	const fulfillment = item.legacyFulfillment;
 	const tenantCheckout = buildTenantCheckoutOptions({
@@ -164,57 +121,25 @@ export async function createDirectCheckoutSession({
 	];
 	const successUrl = `${siteUrl}/checkout/success?session_id={CHECKOUT_SESSION_ID}`;
 	const cancelUrl = `${siteUrl}/checkout/cancel`;
-	if (mode === "handle-v2") {
-		if (!item.snapshot) throw new Error("Checkout snapshot identity is unavailable");
-		return await createHandleCheckoutSession({
-			attempt: attemptIdentity.attempt,
-			attemptStartedAt: attemptIdentity.attemptStartedAt,
-			attemptProofClass: attemptIdentity.proofClass,
-			site: String(tenantCheckout.metadata.commerceTenantSiteUrl),
-			account: tenant?.stripeConnectedAccountId?.trim() || null,
-			catalogProvider: commerce?.provider ?? "sanity",
-			snapshotItems: [item.snapshot],
-			stripe,
-			lineItems,
-			successUrl,
-			cancelUrl,
-			shippingAllowedCountries: fulfillment.isDigital ? undefined : ["US"],
-			tenantCheckout,
-			bindSession,
-			reservationClient,
-			admissionClient,
-			hostGeneration,
-			now,
-		});
-	}
-
-	const session = await createAdmittedOrderCheckoutSession({
-		identity: attemptIdentity,
+	if (!item.snapshot) throw new CurrentCheckoutCommerceError("invalid_authority", "authority");
+	return await createHandleCheckoutSession({
+		attempt: attemptIdentity.attempt,
+		attemptStartedAt: attemptIdentity.attemptStartedAt,
+		attemptProofClass: attemptIdentity.proofClass,
 		site: String(tenantCheckout.metadata.commerceTenantSiteUrl),
 		account: tenant?.stripeConnectedAccountId?.trim() || null,
-		hostGeneration,
+		catalogProvider: "convex",
+		snapshotItems: [item.snapshot],
 		stripe,
-		shippingAllowedCountries: fulfillment.isDigital ? undefined : ["US"],
 		lineItems,
 		successUrl,
 		cancelUrl,
-		metadata: buildCheckoutMetadata(item),
+		shippingAllowedCountries: fulfillment.isDigital ? undefined : ["US"],
 		tenantCheckout,
-		admissionClient,
 		bindSession,
+		reservationClient,
+		admissionClient,
+		hostGeneration,
+		now,
 	});
-
-	log({
-		event: "checkout.session_created",
-		meta: {
-			sessionId: session.sessionId,
-			productId: item.productId,
-			isPrintSet: fulfillment.isPrintSet,
-			finalPrice,
-			hasCoupon: false,
-			platformFeeAmount: tenantCheckout.platformFeeAmount,
-		},
-	});
-
-	return session;
 }

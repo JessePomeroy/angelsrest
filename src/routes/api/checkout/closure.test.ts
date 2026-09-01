@@ -5,14 +5,14 @@ const mocks = vi.hoisted(() => ({
 	stripeCreate: vi.fn(),
 	getStripe: vi.fn(),
 	resolveTenant: vi.fn(),
-	sanityFetch: vi.fn(),
+	resolveCurrentCommerce: vi.fn(),
 }));
 
 vi.mock("$env/static/public", () => ({
 	PUBLIC_SITE_URL: "https://www.angelsrest.online",
 }));
-vi.mock("$lib/sanity/client", () => ({
-	client: { fetch: mocks.sanityFetch },
+vi.mock("$lib/server/currentCheckoutCommerce", () => ({
+	resolveCurrentCheckoutCommerce: mocks.resolveCurrentCommerce,
 }));
 vi.mock("$lib/server/stripeClient", () => ({ getStripe: mocks.getStripe }));
 vi.mock("$lib/server/stripeTenant", () => ({
@@ -58,7 +58,7 @@ describe("new-order Checkout closure", () => {
 			status: 503,
 			body: { code: "UNAVAILABLE", message: "Checkout is temporarily unavailable" },
 		});
-		expect(mocks.sanityFetch).not.toHaveBeenCalled();
+		expect(mocks.resolveCurrentCommerce).not.toHaveBeenCalled();
 		expect(mocks.resolveTenant).not.toHaveBeenCalled();
 		expect(mocks.getStripe).not.toHaveBeenCalled();
 		expect(mocks.stripeCreate).not.toHaveBeenCalled();
@@ -76,9 +76,9 @@ describe("new-order Checkout closure", () => {
 			status: 503,
 			body: { message: "Checkout is temporarily unavailable" },
 		});
-		expect(mocks.sanityFetch).not.toHaveBeenCalled();
+		expect(mocks.resolveCurrentCommerce).not.toHaveBeenCalled();
 		expect(mocks.resolveTenant).not.toHaveBeenCalled();
-		expect(mocks.getStripe).toHaveBeenCalledOnce();
+		expect(mocks.getStripe).not.toHaveBeenCalled();
 		expect(mocks.stripeCreate).not.toHaveBeenCalled();
 	});
 });

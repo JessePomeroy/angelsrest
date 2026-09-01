@@ -13,15 +13,21 @@ export async function GET({ request }: { request: Request }) {
 	const checkout = newOrderCheckoutDecision("angelsrest.online");
 	return json(
 		{
-			version: 1,
+			version: 2,
 			emergencyOrderQuiescence: normalizeOrderProducersState(env.ORDER_PRODUCERS_STATE),
 			newOrderCheckout: {
 				state: checkout.state,
 				generation: checkout.generation,
 				configuration: checkout.valid ? "exact" : "invalid",
 			},
-			checkoutSnapshotMode: checkoutSnapshotMode(env.CHECKOUT_SNAPSHOT_MODE),
-			checkoutCatalogProvider: parseCheckoutCatalogProvider(env.CHECKOUT_CATALOG_PROVIDER),
+			firstPartyCheckout: {
+				catalogProvider: "convex",
+				snapshotProtocol: "handle-v2",
+			},
+			compatibility: {
+				tenantBridgeAndIntakeSnapshotMode: checkoutSnapshotMode(env.CHECKOUT_SNAPSHOT_MODE),
+				legacyParityCatalogProvider: parseCheckoutCatalogProvider(env.CHECKOUT_CATALOG_PROVIDER),
+			},
 		},
 		{ headers: { "cache-control": "no-store" } },
 	);

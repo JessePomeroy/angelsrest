@@ -125,11 +125,11 @@ describe("Site Settings provider boundary", () => {
 	});
 
 	it("keeps preview on Sanity, accepts later valid Convex media, and never falls back", async () => {
-		expect(parseSiteSettingsProviderMode(undefined)).toBe("sanity");
+		expect(parseSiteSettingsProviderMode(undefined)).toBe("convex");
 		expect(parseSiteSettingsProviderMode("sanity")).toBe("sanity");
 		expect(parseSiteSettingsProviderMode("convex")).toBe("convex");
-		expect(parseSiteSettingsProviderMode("shadow")).toBe("sanity");
-		expect(parseSiteSettingsProviderMode(" convex ")).toBe("sanity");
+		expect(parseSiteSettingsProviderMode("shadow")).toBe("convex");
+		expect(parseSiteSettingsProviderMode(" convex ")).toBe("convex");
 
 		const sanity = fakeSanity();
 		const mode = vi.fn(() => "convex");
@@ -159,5 +159,32 @@ describe("Site Settings provider boundary", () => {
 		});
 		await expect(unavailable.load(false)).rejects.toMatchObject({ status: 503 });
 		expect(sanity.load).toHaveBeenCalledTimes(1);
+	});
+
+	it("uses Convex for published reads when provider configuration is absent", async () => {
+		const sanity = fakeSanity();
+		const loadPublished = vi.fn(async () => convexProjection());
+		const provider = createSiteSettingsContentProvider({
+			sanity,
+			createReader: () => ({ loadPublished }),
+		});
+
+		await expect(provider.load(false)).resolves.toEqual(
+			adaptConvexSiteSettings(convexProjection()),
+		);
+		expect(loadPublished).toHaveBeenCalledWith(expect.any(AbortSignal));
+		expect(sanity.load).not.toHaveBeenCalled();
+	});
+
+	it("retains an explicit published Sanity rollback adapter", async () => {
+		const sanity = fakeSanity();
+		const provider = createSiteSettingsContentProvider({
+			sanity,
+			mode: () => "sanity",
+			createReader: vi.fn(),
+		});
+
+		await provider.load(false);
+		expect(sanity.load).toHaveBeenCalledWith(false);
 	});
 });

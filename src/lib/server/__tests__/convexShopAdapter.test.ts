@@ -2,10 +2,8 @@ import { describe, expect, it, vi } from "vitest";
 
 vi.mock("$env/dynamic/private", () => ({ env: {} }));
 vi.mock("$env/dynamic/public", () => ({ env: { PUBLIC_CONVEX_URL: "https://convex.test" } }));
-vi.mock("$lib/sanity/client.server", () => ({ getSanityClient: vi.fn() }));
-vi.mock("$lib/server/sanityShop.server", () => ({ sanityShop: {} }));
 
-import { createCatalogShopProvider } from "$lib/server/catalogShop.server";
+import { createConvexShop, readConvexShopRuntimeSentinel } from "$lib/server/convexShop.server";
 import {
 	adaptConvexIndex,
 	adaptConvexPrintSet,
@@ -39,12 +37,12 @@ function uuid(value: string) {
 	return `10000000-0000-4000-8000-${String(hash).padStart(12, "0")}`;
 }
 
-function media(role: string, order: number, id: string) {
+function media(role: string, order: number, id: string, altText?: string) {
 	return {
 		key: `${role}-${order}`,
 		role,
 		order,
-		altText: role === "social_share" ? null : `${role} alt`,
+		altText: role === "social_share" ? null : (altText ?? `${role} alt`),
 		asset: { assetId: uuid(id), source: { width: 3000, height: 2000 }, derivatives },
 	};
 }
@@ -112,22 +110,22 @@ function completeCatalog() {
 	];
 }
 
-function fakeSanity() {
+function reader(list: unknown = completeCatalog()) {
 	return {
-		loadIndex: vi.fn(async () => ({ source: "sanity" })),
-		loadCollectionIndex: vi.fn(async () => [{ slug: "sanity-collection" }]),
-		loadProduct: vi.fn(async () => ({ source: "sanity-product" })),
-		loadPrintSet: vi.fn(async () => ({ source: "sanity-set" })),
-		loadCollection: vi.fn(async () => ({ source: "sanity-collection" })),
+		listPublished: vi.fn(async () => list),
+		getPublishedBySlug: vi.fn(async (slug: string) =>
+			Array.isArray(list)
+				? (list.find(
+						(value) =>
+							value && typeof value === "object" && (value as { slug?: unknown }).slug === slug,
+					) ?? null)
+				: null,
+		),
 	};
 }
 
-function reader(list: unknown = completeCatalog()) {
-	return { listPublished: vi.fn(async () => list) };
-}
-
 describe("Convex Shop page-shape adapter", () => {
-	it("requires the complete baseline, filters unavailable rows, and maps immutable cards", () => {
+	it("accepts the bounded live catalog, filters unavailable rows, and maps immutable cards", () => {
 		const catalog = completeCatalog();
 		const unavailable = catalog[1];
 		if (!unavailable) throw new Error("Fixture is incomplete");
@@ -146,6 +144,31 @@ describe("Convex Shop page-shape adapter", () => {
 			previewImage: `https://media.angelsrest.online/sites/angelsrest.online/web/${uuid("asset-print-set-0-cover")}/card.webp`,
 			preview1: `https://media.angelsrest.online/sites/angelsrest.online/web/${uuid("asset-print-set-0-one")}/thumb.webp`,
 		});
+	});
+
+	it("accepts empty and partial catalogs without freezing a historical kind distribution", () => {
+		expect(adaptConvexIndex([])).toEqual({ products: [], printSets: [] });
+		expect(adaptConvexIndex([projection("tapestry"), projection("merchandise")])).toMatchObject({
+			products: [{ category: "merchandise" }, { category: "tapestries" }],
+			printSets: [],
+		});
+	});
+
+	it("accepts an unavailable cover-only print set without exposing it in the index", () => {
+		const unavailable = projection("print_set");
+		unavailable.saleAvailability = "unavailable";
+		unavailable.variants = [];
+		unavailable.media = [media("cover", 0, "unavailable-set-cover")];
+
+		expect(adaptConvexIndex([unavailable])).toEqual({ products: [], printSets: [] });
+		expect(adaptConvexPrintSet(unavailable)).toMatchObject({
+			printSet: { inStock: false, variants: [] },
+			images: [],
+		});
+
+		const missingCover = structuredClone(unavailable);
+		missingCover.media = [media("social_share", 0, "unavailable-set-social")];
+		expect(() => adaptConvexPrintSet(missingCover)).toThrow(ConvexShopProjectionError);
 	});
 
 	it("reconstructs the live Sanity featured and V2-first merge order", () => {
@@ -314,6 +337,33 @@ describe("Convex Shop page-shape adapter", () => {
 		expect(output).not.toMatch(/productId|revisionId|private|hash|provenance|capabilit|credential/);
 	});
 
+	it("preserves every tapestry gallery image in its saved order with its own alt text", () => {
+		const tapestry = projection("tapestry");
+		tapestry.media = [
+			media("gallery", 0, "tapestry-first", "first tapestry view"),
+			media("gallery", 1, "tapestry-second", "second tapestry view"),
+			media("gallery", 2, "tapestry-third", "third tapestry view"),
+			media("social_share", 0, "tapestry-social"),
+		];
+
+		const result = adaptConvexProduct(tapestry);
+		if (!result || result.productType !== "v1") throw new Error("Expected a tapestry");
+		expect(result.product.images).toEqual([
+			expect.objectContaining({
+				alt: "first tapestry view",
+				full: expect.stringContaining(`${uuid("tapestry-first")}/display-1280.webp`),
+			}),
+			expect.objectContaining({
+				alt: "second tapestry view",
+				full: expect.stringContaining(`${uuid("tapestry-second")}/display-1280.webp`),
+			}),
+			expect.objectContaining({
+				alt: "third tapestry view",
+				full: expect.stringContaining(`${uuid("tapestry-third")}/display-1280.webp`),
+			}),
+		]);
+	});
+
 	it("returns null for unknown and wrong-kind routes", () => {
 		expect(adaptConvexProduct(null)).toBeNull();
 		expect(adaptConvexProduct(projection("print_set"))).toBeNull();
@@ -339,10 +389,11 @@ describe("Convex Shop page-shape adapter", () => {
 	});
 
 	it.each([
-		["partial", (catalog: ReturnType<typeof completeCatalog>) => catalog.pop()],
 		[
-			"overflow",
-			(catalog: ReturnType<typeof completeCatalog>) => catalog.push(projection("print", 99)),
+			"over-cap",
+			(catalog: ReturnType<typeof completeCatalog>) => {
+				while (catalog.length <= 40) catalog.push(projection("tapestry", catalog.length));
+			},
 		],
 		[
 			"duplicate slug",
@@ -353,8 +404,8 @@ describe("Convex Shop page-shape adapter", () => {
 			},
 		],
 		[
-			"wrong count",
-			(catalog: ReturnType<typeof completeCatalog>) => (first(catalog).productKind = "tapestry"),
+			"unknown kind",
+			(catalog: ReturnType<typeof completeCatalog>) => (first(catalog).productKind = "other"),
 		],
 	])("rejects a %s catalog", (_name, mutate) => {
 		const catalog = completeCatalog();
@@ -448,96 +499,170 @@ describe("Convex Shop page-shape adapter", () => {
 	});
 });
 
-describe("explicit Convex provider dispatch", () => {
-	it("uses Convex products plus only the dedicated Sanity collection index", async () => {
-		const sanity = fakeSanity();
-		const catalogReader = reader();
-		const provider = createCatalogShopProvider({
-			sanity: sanity as never,
-			mode: () => "convex",
-			createReader: () => catalogReader as never,
+describe("Convex-only Shop runtime", () => {
+	it("reports health from the same dynamic Convex index projection", async () => {
+		const catalogReader = reader([projection("tapestry"), projection("print_set")]);
+		await expect(
+			readConvexShopRuntimeSentinel({ createReader: () => catalogReader as never }),
+		).resolves.toEqual({
+			outcome: "healthy",
+			publishedProductCount: 2,
+			productIndexCount: 1,
+			printSetIndexCount: 1,
+			collectionIndexCount: 0,
 		});
-		const result = await provider.loadIndex(false);
-		expect(result.collections).toEqual([{ slug: "sanity-collection" }]);
+	});
+
+	it("loads the dynamic Convex index with no collection dependency", async () => {
+		const catalogReader = reader([projection("tapestry"), projection("print_set")]);
+		const shop = createConvexShop({ createReader: () => catalogReader as never });
+
+		await expect(shop.loadIndex()).resolves.toMatchObject({
+			products: [{ slug: "tapestry-0" }],
+			printSets: [{ slug: "print-set-0" }],
+			collections: [],
+		});
 		expect(catalogReader.listPublished).toHaveBeenCalledOnce();
-		expect(sanity.loadCollectionIndex).toHaveBeenCalledWith(false);
-		expect(sanity.loadIndex).not.toHaveBeenCalled();
+		expect(catalogReader.getPublishedBySlug).not.toHaveBeenCalled();
 	});
 
-	it("selects detail reads from a complete list and leaves collection detail on Sanity", async () => {
-		const sanity = fakeSanity();
+	it("uses the exact-slug query for detail and retires collection detail with a 404", async () => {
 		const catalogReader = reader();
-		const provider = createCatalogShopProvider({
-			sanity: sanity as never,
-			mode: () => "convex",
-			createReader: () => catalogReader as never,
+		const shop = createConvexShop({ createReader: () => catalogReader as never });
+
+		await expect(shop.loadProduct("print-0")).resolves.toMatchObject({ productType: "v2" });
+		await expect(shop.loadPrintSet("print-set-0")).resolves.toHaveProperty("printSet");
+		await expect(shop.loadCollection("collection")).rejects.toMatchObject({
+			status: 404,
+			body: { message: "Print collection not found" },
 		});
-		await expect(provider.loadProduct("print-0", false)).resolves.toMatchObject({
-			productType: "v2",
-		});
-		await expect(provider.loadPrintSet("print-set-0", false)).resolves.toHaveProperty("printSet");
-		await expect(provider.loadCollection("collection", false)).resolves.toEqual({
-			source: "sanity-collection",
-		});
-		expect(sanity.loadProduct).not.toHaveBeenCalled();
-		expect(sanity.loadPrintSet).not.toHaveBeenCalled();
+		expect(catalogReader.listPublished).not.toHaveBeenCalled();
+		expect(catalogReader.getPublishedBySlug).toHaveBeenNthCalledWith(
+			1,
+			"print-0",
+			expect.any(AbortSignal),
+		);
+		expect(catalogReader.getPublishedBySlug).toHaveBeenNthCalledWith(
+			2,
+			"print-set-0",
+			expect.any(AbortSignal),
+		);
 	});
 
-	it("returns 404s only after a complete list omits the requested route kind", async () => {
-		const catalogReader = reader();
-		const provider = createCatalogShopProvider({
-			sanity: fakeSanity() as never,
-			mode: () => "convex",
-			createReader: () => catalogReader as never,
+	it("fails a valid detail projection closed when its slug does not match the requested slug", async () => {
+		const productReader = reader();
+		productReader.getPublishedBySlug.mockResolvedValue(projection("print", 1) as never);
+		const productShop = createConvexShop({ createReader: () => productReader as never });
+		await expect(productShop.loadProduct("print-0")).rejects.toMatchObject({
+			status: 503,
+			body: { message: "Shop catalog is unavailable" },
 		});
-		await expect(provider.loadProduct("missing", false)).rejects.toMatchObject({
+
+		const setReader = reader();
+		setReader.getPublishedBySlug.mockResolvedValue(projection("print_set", 1) as never);
+		const setShop = createConvexShop({ createReader: () => setReader as never });
+		await expect(setShop.loadPrintSet("print-set-0")).rejects.toMatchObject({
+			status: 503,
+			body: { message: "Shop catalog is unavailable" },
+		});
+	});
+
+	it("returns clean 404s for missing or wrong-kind exact-slug reads", async () => {
+		const catalogReader = reader();
+		const shop = createConvexShop({ createReader: () => catalogReader as never });
+
+		await expect(shop.loadProduct("missing")).rejects.toMatchObject({
 			status: 404,
 			body: { message: "Product not found" },
 		});
-		await expect(provider.loadProduct("print-set-0", false)).rejects.toMatchObject({ status: 404 });
-		await expect(provider.loadPrintSet("print-0", false)).rejects.toMatchObject({
+		await expect(shop.loadProduct("print-set-0")).rejects.toMatchObject({ status: 404 });
+		await expect(shop.loadPrintSet("print-0")).rejects.toMatchObject({
 			status: 404,
 			body: { message: "Print set not found" },
 		});
 	});
 
-	it("fails malformed or unavailable Convex reads closed without Sanity fallback", async () => {
-		for (const value of [[projection("print")], new Error("private upstream detail")]) {
-			const sanity = fakeSanity();
-			const catalogReader = reader();
-			if (value instanceof Error) catalogReader.listPublished.mockRejectedValue(value);
-			else catalogReader.listPublished.mockResolvedValue(value as never);
-			const provider = createCatalogShopProvider({
-				sanity: sanity as never,
-				mode: () => "convex",
-				createReader: () => catalogReader as never,
-			});
-			await expect(provider.loadIndex(false)).rejects.toMatchObject({
-				status: 503,
-				body: { message: "Shop catalog is unavailable" },
-			});
-			expect(sanity.loadIndex).not.toHaveBeenCalled();
-		}
-		const provider = createCatalogShopProvider({
-			sanity: fakeSanity() as never,
-			mode: () => "convex",
-			createReader: () => reader([projection("print")]) as never,
-		});
-		await expect(provider.loadProduct("print-0", false)).rejects.toMatchObject({ status: 503 });
-	});
-
-	it("fails a dedicated Sanity collection-index error closed", async () => {
-		const failure = new Error("collection unavailable");
-		const sanity = fakeSanity();
-		sanity.loadCollectionIndex.mockRejectedValue(failure);
-		const provider = createCatalogShopProvider({
-			sanity: sanity as never,
-			mode: () => "convex",
-			createReader: () => reader() as never,
-		});
-		await expect(provider.loadIndex(false)).rejects.toMatchObject({
+	it("fails malformed or unavailable Convex reads closed", async () => {
+		const malformed = projection("tapestry") as Record<string, unknown>;
+		malformed.schemaVersion = 1;
+		const malformedReader = reader([malformed]);
+		const malformedShop = createConvexShop({ createReader: () => malformedReader as never });
+		await expect(malformedShop.loadIndex()).rejects.toMatchObject({
 			status: 503,
 			body: { message: "Shop catalog is unavailable" },
 		});
+
+		const unavailableReader = reader();
+		unavailableReader.listPublished.mockRejectedValue(new Error("private upstream list"));
+		unavailableReader.getPublishedBySlug.mockRejectedValue(new Error("private upstream detail"));
+		const unavailableShop = createConvexShop({
+			createReader: () => unavailableReader as never,
+		});
+		await expect(unavailableShop.loadIndex()).rejects.toMatchObject({ status: 503 });
+		await expect(unavailableShop.loadProduct("print-0")).rejects.toMatchObject({ status: 503 });
+	});
+
+	it("uses the production AbortSignal timeout to close an ignored pending read", async () => {
+		const catalogReader = reader();
+		catalogReader.listPublished.mockImplementation(() => new Promise<never>(() => {}));
+		const shop = createConvexShop({
+			createReader: () => catalogReader as never,
+			deadlineMs: 5,
+		});
+		await expect(shop.loadIndex()).rejects.toMatchObject({
+			status: 503,
+			body: { message: "Shop catalog is unavailable" },
+		});
+	});
+
+	it("bounds never-settling index, detail, and authoritative sentinel reads", async () => {
+		const indexController = new AbortController();
+		const indexTimeout = vi.fn(() => indexController.signal);
+		const indexReader = reader();
+		indexReader.listPublished.mockImplementation(() => new Promise<never>(() => {}));
+		const indexShop = createConvexShop({
+			createReader: () => indexReader as never,
+			deadlineMs: 17,
+			createTimeoutSignal: indexTimeout,
+		});
+		const indexFailure = expect(indexShop.loadIndex()).rejects.toMatchObject({
+			status: 503,
+			body: { message: "Shop catalog is unavailable" },
+		});
+		indexController.abort(new Error("private index timeout"));
+		await indexFailure;
+		expect(indexTimeout).toHaveBeenCalledWith(17);
+
+		const detailController = new AbortController();
+		const detailTimeout = vi.fn(() => detailController.signal);
+		const detailReader = reader();
+		detailReader.getPublishedBySlug.mockImplementation(() => new Promise<never>(() => {}));
+		const detailShop = createConvexShop({
+			createReader: () => detailReader as never,
+			deadlineMs: 19,
+			createTimeoutSignal: detailTimeout,
+		});
+		const detailFailure = expect(detailShop.loadProduct("print-0")).rejects.toMatchObject({
+			status: 503,
+			body: { message: "Shop catalog is unavailable" },
+		});
+		detailController.abort(new Error("private detail timeout"));
+		await detailFailure;
+		expect(detailTimeout).toHaveBeenCalledWith(19);
+
+		const sentinelController = new AbortController();
+		const sentinelTimeout = vi.fn(() => sentinelController.signal);
+		const sentinelReader = reader();
+		sentinelReader.listPublished.mockImplementation(() => new Promise<never>(() => {}));
+		const sentinelFailure = expect(
+			readConvexShopRuntimeSentinel({
+				createReader: () => sentinelReader as never,
+				deadlineMs: 23,
+				createTimeoutSignal: sentinelTimeout,
+			}),
+		).rejects.toBeInstanceOf(Error);
+		sentinelController.abort(new Error("private sentinel timeout"));
+		await sentinelFailure;
+		expect(sentinelTimeout).toHaveBeenCalledWith(23);
 	});
 });

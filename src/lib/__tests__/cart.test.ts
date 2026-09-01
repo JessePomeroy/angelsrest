@@ -12,6 +12,7 @@ import {
 	itemMatchKey,
 	MAX_QUANTITY_PER_LINE,
 	removeItemFromCart,
+	STORAGE_KEY,
 	updateItemQuantity,
 } from "../shop/cart";
 
@@ -57,6 +58,12 @@ function makeSetItem(overrides: Partial<Omit<CartItem, "id">> = {}): Omit<CartIt
 		...overrides,
 	};
 }
+
+describe("cart storage contract", () => {
+	it("uses a v3 namespace so pre-cutover carts cannot hydrate", () => {
+		expect(STORAGE_KEY).toBe("angelsrest:cart:v3");
+	});
+});
 
 describe("emptyCart", () => {
 	it("returns a cart with no items and a current ISO timestamp", () => {
