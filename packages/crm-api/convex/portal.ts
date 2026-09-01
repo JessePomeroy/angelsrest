@@ -525,28 +525,6 @@ function projectPublicDocumentPortalRead(loaded: LoadedPortalRead) {
 	};
 }
 
-function projectLegacyDocumentPortalRead(loaded: LoadedPortalRead) {
-	if (loaded.tokenExpired) {
-		return { expired: true as const, reason: "expired" as const };
-	}
-	if (!documentCapabilityIsReadable(loaded)) {
-		return loaded.tokenDoc.used
-			? { expired: true as const, reason: "used" as const }
-			: null;
-	}
-	const legacyClient: { name: string; email?: string } | null = {
-		name: loaded.client.name,
-		email: loaded.client.email,
-	};
-	return {
-		expired: false as const,
-		token: loaded.tokenDoc,
-		document: loaded.document,
-		client: legacyClient,
-		requiresPassword: false as const,
-	};
-}
-
 /**
  * Final public bearer-capability read for current hosts. Invoice, quote, and
  * contract results are explicit client-safe projections; gallery delivery
@@ -566,12 +544,9 @@ export const getPublicByToken = query({
 });
 
 /**
- * @deprecated Stage-A mixed-version compatibility query. Existing 3.x hosts
- * receive the exact legacy raw token/document/client shape while the backend is
- * widened and current hosts move to `getPublicByToken`. This temporary security
- * hold must not gain new callers. After every document host has migrated, Stage
- * C narrows only invoice/quote/contract branches and publishes CRM 4.0; gallery
- * delivery keeps this legacy shape.
+ * @deprecated Compatibility alias. Document branches now return the same
+ * client-safe projection as `getPublicByToken`; gallery delivery intentionally
+ * retains its established raw result shape.
  */
 export const getByToken = query({
 	args: { token: v.string(), accessGrant: v.optional(v.string()) },
@@ -589,15 +564,14 @@ export const getByToken = query({
 		if (loaded.value.tokenDoc.type === "gallery") {
 			return await projectGalleryPortalRead(ctx, loaded.value, accessGrant);
 		}
-		return projectLegacyDocumentPortalRead(loaded.value);
+		return projectPublicDocumentPortalRead(loaded.value);
 	},
 });
 
 /**
  * Resolve the raw invoice ID required for Stripe metadata only for the trusted
  * SvelteKit server. The final `getPublicByToken` bearer query deliberately omits
- * it; deprecated `getByToken` retains it only during the Stage-A compatibility
- * hold described above.
+ * it; the deprecated `getByToken` alias omits it for document capabilities too.
  */
 export const getInvoiceCheckoutTarget = query({
 	args: { token: v.string(), webhookSecret: v.string() },

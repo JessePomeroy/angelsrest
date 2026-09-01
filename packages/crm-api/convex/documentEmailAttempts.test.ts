@@ -2464,7 +2464,7 @@ describe("portal document ownership hardening", () => {
 		).resolves.toBeNull();
 		await expect(
 			t.query(api.portal.getByToken, { token: paidInvoiceToken }),
-		).resolves.toEqual({ expired: true, reason: "used" });
+		).resolves.toBeNull();
 
 		for (const status of ["draft", "sent", "partial", "overdue", "canceled"] as const) {
 			const invoiceId = await createInvoice(adminA, clientId);
@@ -2535,10 +2535,7 @@ describe("portal document ownership hardening", () => {
 		});
 
 		await expect(t.query(api.portal.getPublicByToken, { token })).resolves.toBeNull();
-		await expect(t.query(api.portal.getByToken, { token })).resolves.toEqual({
-			expired: true,
-			reason: "expired",
-		});
+		await expect(t.query(api.portal.getByToken, { token })).resolves.toBeNull();
 	});
 
 	test("bounds and validates public contract signature evidence", async () => {
@@ -2588,7 +2585,7 @@ describe("portal document ownership hardening", () => {
 });
 
 describe("portal public projections and validity boundaries", () => {
-	test("widens the legacy shape while the final query returns only client-safe fields", async () => {
+	test("returns only client-safe document fields from both public query names", async () => {
 		const { t, adminA, clientId } = await setup();
 		const invoiceId = await createInvoice(adminA, clientId);
 		await t.run((ctx) =>
@@ -2669,59 +2666,6 @@ describe("portal public projections and validity boundaries", () => {
 		) {
 			throw new Error("Expected live legacy document portal results");
 		}
-		const raw = await t.run(async (ctx) => ({
-			invoice: await ctx.db.get(invoiceId),
-			quote: await ctx.db.get(quoteId),
-			contract: await ctx.db.get(contractId),
-			invoiceToken: await ctx.db
-				.query("portalTokens")
-				.withIndex("by_token", (q) => q.eq("token", invoiceToken))
-				.unique(),
-			quoteToken: await ctx.db
-				.query("portalTokens")
-				.withIndex("by_token", (q) => q.eq("token", quoteToken))
-				.unique(),
-			contractToken: await ctx.db
-				.query("portalTokens")
-				.withIndex("by_token", (q) => q.eq("token", contractToken))
-				.unique(),
-		}));
-		expect(legacyInvoice.token).toEqual(raw.invoiceToken);
-		expect(legacyInvoice.document).toEqual(raw.invoice);
-		expect(legacyQuote.token).toEqual(raw.quoteToken);
-		expect(legacyQuote.document).toEqual(raw.quote);
-		expect(legacyContract.token).toEqual(raw.contractToken);
-		expect(legacyContract.document).toEqual(raw.contract);
-		expect(legacyInvoice).toMatchObject({
-			token: {
-				type: "invoice",
-				documentId: invoiceId,
-				clientId,
-				siteUrl: SITE_A,
-				used: false,
-			},
-			document: {
-				_id: invoiceId,
-				status: "sent",
-				items: [{ description: "Portrait session", quantity: 1, unitPrice: 250 }],
-				taxPercent: 6,
-				stripeCheckoutSessionId: "cs_private_invoice_sentinel",
-			},
-			client: { name: "Primary client", email: CLIENT_EMAIL },
-		});
-		expect(legacyQuote).toMatchObject({
-			token: { type: "quote", documentId: quoteId, clientId },
-			document: { _id: quoteId, convertedToInvoice: invoiceId },
-		});
-		expect(legacyContract).toMatchObject({
-			token: { type: "contract", documentId: contractId, clientId },
-			document: {
-				_id: contractId,
-				signedByEmail: "private-signer-email@example.com",
-				signatureData: "private-signature-data-sentinel",
-			},
-		});
-
 		const [invoice, quote, contract] = await Promise.all([
 			t.query(api.portal.getPublicByToken, { token: invoiceToken }),
 			t.query(api.portal.getPublicByToken, { token: quoteToken }),
@@ -2730,6 +2674,9 @@ describe("portal public projections and validity boundaries", () => {
 		if (!invoice || invoice.expired || !quote || quote.expired || !contract || contract.expired) {
 			throw new Error("Expected live document portal projections");
 		}
+		expect(legacyInvoice).toEqual(invoice);
+		expect(legacyQuote).toEqual(quote);
+		expect(legacyContract).toEqual(contract);
 
 		expect(Object.keys(invoice.token).sort()).toEqual(["siteUrl", "type", "used"]);
 		expect(Object.keys(invoice.client ?? {}).sort()).toEqual(["name"]);

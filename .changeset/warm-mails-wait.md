@@ -9,14 +9,11 @@ quote, and contract projections that omit database IDs, provider checkout
 state, CRM fields, client email, and stored signature evidence. Current Angels
 Rest hosts use this final safe query.
 
-The rollout is deliberately backend-widen, then host, then narrow. The Stage-A
-backend keeps deprecated `portal.getByToken` on its exact raw 3.x
-token/document/client result shape, including `token.documentId`, so an older
-production host remains compatible while the new query is deployed. That raw
-legacy query is a temporary security hold and must gain no new callers. After
-all document hosts use `getPublicByToken`, Stage C narrows only the invoice,
-quote, and contract branches of `getByToken` and publishes CRM 4.0.0. Gallery
-delivery retains its existing raw result shape through every stage.
+The rollout used a backend-widen, then host, then narrow sequence. Stage A kept
+deprecated `portal.getByToken` on its exact raw 3.x document shape while current
+hosts moved to `getPublicByToken`. After that host cutover, Stage C narrowed the
+invoice, quote, and contract branches of `getByToken` to the same client-safe
+projection. Gallery delivery retains its existing raw result shape.
 
 Terminal receipt reloads require a token-local atomic quote or contract action;
 legacy used-only and administratively revoked capabilities fail closed.
