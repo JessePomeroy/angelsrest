@@ -63,17 +63,15 @@ const contact = $derived(data.content.contact);
     url="https://angelsrest.online/about"
 />
 
-<section class="px-6! md:px-8! lg:px-10!">
+<section class="about-page">
     <div
         class="grid grid-cols-1 md:grid-cols-[auto_1fr] lg:grid-cols-[auto_1fr_1fr] gap-6 lg:gap-10 max-w-[1400px]"
     >
         <!-- Portrait -->
         <div class="h-fit">
-            <div
-                class="bg-surface-500/10 border border-surface-500/20 p-2 rounded-lg inline-block"
-            >
+            <div class="portrait-frame">
                 <div
-                    class="aspect-[3/4] w-64 md:w-72 lg:w-80 overflow-hidden rounded-md"
+                    class="aspect-[3/4] w-64 md:w-72 lg:w-80 overflow-hidden"
                 >
                     <AsciiImage
                         src={about.portrait.src}
@@ -109,7 +107,7 @@ const contact = $derived(data.content.contact);
                     </p>
                     <button
                         type="button"
-                        class="px-4 py-2.5 text-sm font-medium lowercase tracking-wide bg-white/5 border border-gray-300 dark:border-white/10 rounded-lg hover:bg-gray-100 dark:hover:bg-white/10 transition-all cursor-pointer"
+                        class="booking-button"
                         style="color: var(--form-text-color);"
                         data-cal-link={contact.booking.calLink}
                         data-cal-namespace="photosession"
@@ -134,3 +132,11 @@ const contact = $derived(data.content.contact);
         </div>
     </div>
 </section>
+
+<style>
+    .about-page { width: 100%; }
+    .portrait-frame { display: inline-block; padding: 7px; border: 1px solid color-mix(in srgb, currentColor 14%, transparent); }
+    .booking-button { min-height: 42px; padding: 10px 14px; border: 1px solid color-mix(in srgb, currentColor 28%, transparent); border-radius: 0; background: transparent; font-size: 0.78rem; font-weight: 500; letter-spacing: 0.08em; text-transform: lowercase; cursor: pointer; transition: border-color 160ms ease, background 160ms ease; }
+    .booking-button:hover { border-color: var(--time-accent); background: color-mix(in srgb, currentColor 6%, transparent); }
+    .booking-button:focus-visible { outline: 1px solid var(--time-accent); outline-offset: 2px; }
+</style>

@@ -142,7 +142,7 @@ async function handleSubmit(e: SubmitEvent) {
                 placeholder="your name"
                 required
                 style="color: var(--form-text-color);"
-                class="bg-white/5 border border-white/10 text-sm rounded-lg px-3 py-2.5 shadow-sm placeholder:text-surface-400/70 focus:outline-none focus:border-surface-400 focus:ring-2 focus:ring-white/10 transition-all w-full"
+                class="contact-field"
             />
         </div>
         <div class="flex flex-col gap-2.5">
@@ -154,7 +154,7 @@ async function handleSubmit(e: SubmitEvent) {
                 placeholder="you@example.com"
                 required
                 style="color: var(--form-text-color);"
-                class="bg-white/5 border border-white/10 text-sm rounded-lg px-3 py-2.5 shadow-sm placeholder:text-surface-400/70 focus:outline-none focus:border-surface-400 focus:ring-2 focus:ring-white/10 transition-all w-full"
+                class="contact-field"
             />
         </div>
         <div class="flex flex-col gap-2.5">
@@ -165,7 +165,7 @@ async function handleSubmit(e: SubmitEvent) {
                 name="subject"
                 placeholder="what's this about ?"
                 style="color: var(--form-text-color);"
-                class="bg-white/5 border border-white/10 text-sm rounded-lg px-3 py-2.5 shadow-sm placeholder:text-surface-400/70 focus:outline-none focus:border-surface-400 focus:ring-2 focus:ring-white/10 transition-all w-full"
+                class="contact-field"
             />
         </div>
         <div class="flex flex-col gap-2.5">
@@ -177,13 +177,13 @@ async function handleSubmit(e: SubmitEvent) {
                 placeholder="your message..."
                 required
                 style="color: var(--form-text-color);"
-                class="bg-white/5 border border-white/10 text-sm rounded-lg px-3 py-2.5 shadow-sm placeholder:text-surface-400/70 focus:outline-none focus:border-surface-400 focus:ring-2 focus:ring-white/10 transition-all w-full resize-y"
+                class="contact-field resize-y"
             ></textarea>
         </div>
 		<div id="contact-turnstile"></div>
         <button
             type="submit"
-            class="mt-2 mb-6 px-4 py-3 text-sm font-medium lowercase tracking-wide bg-white/5 dark:bg-white/5 border border-gray-300 dark:border-white/10 rounded-lg hover:bg-gray-100 dark:hover:bg-white/10 transition-all cursor-pointer"
+            class="contact-submit"
             style="color: var(--form-text-color);"
             disabled={status === "sending" || !verificationReady}
         >
@@ -203,3 +203,14 @@ async function handleSubmit(e: SubmitEvent) {
         </div>
     </form>
 </div>
+
+<style>
+    .contact-field { width: 100%; min-height: 44px; padding: 10px 12px; border: 1px solid color-mix(in srgb, currentColor 18%, transparent); border-radius: 0; background: color-mix(in srgb, var(--color-surface-900) 18%, transparent); font-size: 0.82rem; transition: border-color 160ms ease, background 160ms ease; }
+    .contact-field::placeholder { color: color-mix(in srgb, currentColor 44%, transparent); }
+    .contact-field:focus { border-color: var(--time-accent); outline: 1px solid var(--time-accent); outline-offset: -1px; background: color-mix(in srgb, var(--color-surface-900) 25%, transparent); }
+    textarea.contact-field { min-height: 112px; }
+    .contact-submit { min-height: 44px; margin: 8px 0 24px; padding: 11px 16px; border: 1px solid color-mix(in srgb, currentColor 30%, transparent); border-radius: 0; background: transparent; font-size: 0.78rem; font-weight: 500; letter-spacing: 0.08em; text-transform: lowercase; cursor: pointer; transition: border-color 160ms ease, background 160ms ease; }
+    .contact-submit:hover:not(:disabled) { border-color: var(--time-accent); background: color-mix(in srgb, currentColor 6%, transparent); }
+    .contact-submit:focus-visible { outline: 1px solid var(--time-accent); outline-offset: 2px; }
+    .contact-submit:disabled { cursor: not-allowed; opacity: 0.45; }
+</style>

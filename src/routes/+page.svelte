@@ -42,33 +42,70 @@ import SEO from "$lib/components/SEO.svelte";
 <!-- Hero section - fills available space between nav and footer, centers content -->
 <h1 class="sr-only">Angel's Rest Photography</h1>
 
-<section
-    class="flex flex-col items-center justify-center text-center min-h-0 flex-1 gap-4 md:gap-6"
->
+<section class="home-hero">
     <!-- Hero gif -->
-    <img src={heroGif} alt="Angel's Rest" class="max-w-full w-200 rounded-md" />
+    <div class="hero-image">
+        <img src={heroGif} alt="Angel's Rest" />
+    </div>
 
     <!-- Tagline -->
-    <p class="text-surface-400 text-sm tracking-[0.2em] lowercase">
+    <p class="hero-tagline">
         artist in residence[midwest]
     </p>
 
     <!-- CTA buttons - wrap on mobile -->
-    <div class="flex flex-wrap justify-center gap-4 mt-4">
-        <a
-            href="/gallery"
-            class="btn preset-filled-surface-50 px-8 py-3 text-xs tracking-[0.15em]"
-            >view gallery</a
-        >
-        <a
-            href="/shop"
-            class="btn preset-outlined-surface-50 px-8 py-3 text-xs tracking-[0.15em]"
-            style="color: var(--time-accent);">shop</a
-        >
-        <a
-            href="/about"
-            class="btn preset-outlined-surface-50 px-8 py-3 text-xs tracking-[0.15em]"
-            >book session</a
-        >
+    <div class="hero-links">
+        <a href="/gallery">view gallery</a>
+        <a href="/shop">shop</a>
+        <a href="/about">book session</a>
     </div>
 </section>
+
+<style>
+    .home-hero {
+        display: flex;
+        flex: 1;
+        min-height: 0;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 20px;
+        text-align: center;
+    }
+
+    .hero-image {
+        width: min(100%, 900px);
+    }
+
+    .hero-image img { width: 100%; }
+
+    .hero-tagline {
+        color: color-mix(in srgb, currentColor 58%, transparent);
+        font-size: 0.75rem;
+        letter-spacing: 0.2em;
+    }
+
+    .hero-links {
+        display: flex;
+        flex-wrap: wrap;
+        justify-content: center;
+        gap: 0;
+        border-block: 1px solid color-mix(in srgb, currentColor 14%, transparent);
+    }
+
+    .hero-links a {
+        min-width: 150px;
+        padding: 11px 18px;
+        color: inherit;
+        border-right: 1px solid color-mix(in srgb, currentColor 14%, transparent);
+        font-size: 0.7rem;
+        letter-spacing: 0.12em;
+    }
+
+    .hero-links a:last-child { border-right: 0; }
+    @media (max-width: 520px) {
+        .hero-links { width: 100%; }
+        .hero-links a { flex: 1 1 100%; border-right: 0; border-bottom: 1px solid color-mix(in srgb, currentColor 14%, transparent); }
+        .hero-links a:last-child { border-bottom: 0; }
+    }
+</style>

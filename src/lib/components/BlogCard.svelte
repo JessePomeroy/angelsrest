@@ -7,45 +7,51 @@ let { post }: { post: BlogPostSummary } = $props();
 
 <a
   href="/blog/{post.slug}"
-  class="group block bg-surface-500/10 border border-surface-500/20 rounded-lg overflow-hidden hover:border-surface-400/40 transition-all"
+  class="post-row"
 >
-  {#if post.mainImage}
-    <div class="aspect-[16/9] overflow-hidden">
-      <img
-        src={post.mainImage.src}
-        alt={post.mainImage.alt}
-        class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
-      />
-    </div>
-  {/if}
-
-  <div class="p-5">
+  <div class="post-copy">
     {#if post.categories.length > 0}
-      <div class="flex gap-2 mb-2">
+      <div class="categories">
         {#each post.categories as category (category.title)}
-          <span class="text-xs text-surface-500 tracking-wider">
-            {category.title}
-          </span>
+          <span>{category.title}</span>
         {/each}
       </div>
     {/if}
 
-    <h2 class="text-lg font-medium mb-2 group-hover:text-surface-200 transition-colors">
-      {post.title}
-    </h2>
+    <h2>{post.title}</h2>
 
     {#if post.excerpt}
-      <p class="text-surface-400 text-sm mb-4 line-clamp-2">
-        {post.excerpt}
-      </p>
+      <p class="excerpt">{post.excerpt}</p>
     {/if}
 
-    <div class="flex items-center gap-3 text-xs text-surface-500">
+    <div class="post-meta">
       {#if post.author}
         <span>{post.author.name}</span>
-        <span>•</span>
+        <span aria-hidden="true">/</span>
       {/if}
       <span>{formatDate(post.publishedAt)}</span>
     </div>
   </div>
+
+  {#if post.mainImage}
+    <div class="post-image">
+      <img src={post.mainImage.src} alt={post.mainImage.alt} />
+    </div>
+  {/if}
 </a>
+
+<style>
+  .post-row { display: grid; grid-template-columns: minmax(0, 1fr) minmax(180px, 34%); gap: clamp(24px, 5vw, 64px); padding-block: 28px; color: inherit; border-bottom: 1px solid color-mix(in srgb, currentColor 13%, transparent); }
+  .post-copy { min-width: 0; align-self: center; }
+  .categories { display: flex; gap: 12px; margin-bottom: 9px; color: var(--time-accent); font-size: 0.65rem; letter-spacing: 0.12em; }
+  h2 { margin-bottom: 10px; font-size: clamp(1.05rem, 2vw, 1.35rem); font-weight: 500; line-height: 1.3; }
+  .excerpt { display: -webkit-box; margin-bottom: 18px; overflow: hidden; color: color-mix(in srgb, currentColor 62%, transparent); font-size: 0.82rem; line-height: 1.65; line-clamp: 3; -webkit-box-orient: vertical; -webkit-line-clamp: 3; }
+  .post-meta { display: flex; gap: 10px; color: color-mix(in srgb, currentColor 48%, transparent); font-size: 0.66rem; letter-spacing: 0.08em; }
+  .post-image { min-height: 150px; overflow: hidden; border: 1px solid color-mix(in srgb, currentColor 13%, transparent); }
+  .post-image img { width: 100%; height: 100%; object-fit: cover; transition: transform 400ms cubic-bezier(.22,1,.36,1); }
+  .post-row:hover .post-image img { transform: scale(1.025); }
+  @media (max-width: 640px) {
+    .post-row { grid-template-columns: 1fr; gap: 18px; }
+    .post-image { grid-row: 1; aspect-ratio: 16 / 9; }
+  }
+</style>

@@ -33,12 +33,11 @@ function openModal(index: number) {
   url={data.gallery.canonicalUrl}
 />
 
-<div class="p-4">
-  <!-- Back link to gallery index -->
-  <a href="/gallery" class="text-sm opacity-70 hover:opacity-100">← Back</a>
-
-  <!-- Gallery title -->
-  <h1 class="text-2xl font-bold mt-2 mb-4">{data.gallery.title}</h1>
+<section class="gallery-detail">
+  <header class="gallery-heading">
+    <a href="/gallery">← back</a>
+    <h1>{data.gallery.title}</h1>
+  </header>
 
   <!-- 
     Masonry image grid using CSS columns
@@ -46,23 +45,22 @@ function openModal(index: number) {
     - break-inside-avoid prevents images from splitting across columns
     - Uses optimized thumbnail URLs (400px webp)
   -->
-  <div class="columns-2 md:columns-3 lg:columns-4 gap-2 px-2 md:px-4">
+  <div class="image-grid">
     {#each data.gallery.images as image, i (image.full ?? i)}
       <button
-        class="mb-2 w-full break-inside-avoid"
+        class="image-button"
         onclick={() => openModal(i)}
         aria-label="View image {i + 1}"
       >
         <img
           src={image.thumbnail}
           alt={image.alt || "Gallery image " + (i + 1)}
-          class="w-full h-auto hover:scale-105 transition-transform rounded-md"
           loading="lazy"
         />
       </button>
     {/each}
   </div>
-</div>
+</section>
 
 <!-- 
   Lightbox modal
@@ -76,3 +74,18 @@ function openModal(index: number) {
     onClose={() => (modalOpen = false)}
   />
 {/if}
+
+<style>
+  .gallery-detail { width: 100%; }
+  .gallery-heading { min-height: 88px; margin-bottom: 8px; border-bottom: 1px solid color-mix(in srgb, currentColor 15%, transparent); }
+  .gallery-heading a { color: color-mix(in srgb, currentColor 58%, transparent); font-size: 0.72rem; letter-spacing: 0.06em; }
+  .gallery-heading a:hover { color: currentColor; }
+  .gallery-heading h1 { margin-top: 8px; font-size: 1.35rem; font-weight: 500; }
+  .image-grid { columns: 2; column-gap: 8px; }
+  .image-button { display: block; width: 100%; margin: 0 0 8px; padding: 0; break-inside: avoid; border: 0; background: transparent; cursor: zoom-in; }
+  .image-button img { display: block; width: 100%; height: auto; transition: opacity 180ms ease; }
+  .image-button:hover img { opacity: 0.86; }
+  .image-button:focus-visible { outline: 1px solid var(--time-accent); outline-offset: 2px; }
+  @media (min-width: 768px) { .image-grid { columns: 3; } }
+  @media (min-width: 1100px) { .image-grid { columns: 4; } }
+</style>
