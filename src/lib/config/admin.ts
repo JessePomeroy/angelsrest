@@ -24,6 +24,8 @@ const portfolioEditorApi = {
 	listForEditor: api.portfolioGalleries.listForEditor,
 	getEditorState: api.portfolioGalleries.getEditorState,
 	saveDraft: api.portfolioGalleries.saveDraft,
+	setVisibility: api.portfolioGalleries.setVisibility,
+	remove: api.portfolioGalleries.remove,
 	reorder: api.portfolioGalleries.reorder,
 	listMediaAssets: api.mediaAssets.listForEditor,
 	getPlacedMediaAssets: api.mediaAssets.getManyForEditor,

@@ -458,6 +458,7 @@ export default defineSchema({
 		updatedBy: v.string(),
 		publishedAt: v.optional(v.number()),
 		publishedBy: v.optional(v.string()),
+		deletionRequestedAt: v.optional(v.number()),
 	})
 		.index("by_siteUrl_and_slug", ["siteUrl", "slug"])
 		.index("by_siteUrl_and_sourceDocumentId", ["siteUrl", "sourceDocumentId"])

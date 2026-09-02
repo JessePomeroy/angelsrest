@@ -265,6 +265,54 @@ describe("tenant-scoped portfolio gallery revisions", () => {
 		expect(published?.title).toBe("Published title");
 	});
 
+	test("hides and restores a gallery before permanently removing only its gallery records", async () => {
+		const { t, adminA, adminB, assetA } = await setup();
+		const draft = await adminA.mutation(api.portfolioGalleries.saveDraft, {
+			siteUrl: SITE_A.siteUrl,
+			draft: {
+				title: "Private when needed",
+				slug: "private-when-needed",
+				placements: [placement("one", assetA.id, { altText: "Portrait" })],
+			},
+		});
+		await adminA.mutation(api.portfolioGalleries.publish, {
+			galleryId: draft.galleryId,
+			draftRevisionId: draft.revisionId,
+		});
+		await expect(adminB.mutation(api.portfolioGalleries.setVisibility, {
+			galleryId: draft.galleryId,
+			isVisible: false,
+		})).rejects.toThrow(/Not authorized/);
+		await adminA.mutation(api.portfolioGalleries.setVisibility, {
+			galleryId: draft.galleryId,
+			isVisible: false,
+		});
+		expect(await adminA.query(api.portfolioGalleries.getPublishedBySlug, {
+			siteUrl: SITE_A.siteUrl,
+			slug: "private-when-needed",
+		})).toBeNull();
+		await adminA.mutation(api.portfolioGalleries.setVisibility, {
+			galleryId: draft.galleryId,
+			isVisible: true,
+		});
+		expect(await adminA.query(api.portfolioGalleries.getPublishedBySlug, {
+			siteUrl: SITE_A.siteUrl,
+			slug: "private-when-needed",
+		})).not.toBeNull();
+
+		await adminA.mutation(api.portfolioGalleries.remove, { galleryId: draft.galleryId });
+		expect(await adminA.query(api.portfolioGalleries.listForEditor, {
+			siteUrl: SITE_A.siteUrl,
+		})).toEqual([]);
+		const stored = await t.run(async (ctx) => ({
+			gallery: await ctx.db.get(draft.galleryId),
+			revision: await ctx.db.get(draft.revisionId),
+			placements: await ctx.db.query("portfolioPlacements").collect(),
+			asset: await ctx.db.get(assetA.id),
+		}));
+		expect(stored).toMatchObject({ gallery: null, revision: null, placements: [], asset: {} });
+	});
+
 	test("bounds the aggregate public projection before another gallery can publish", async () => {
 		const { t, adminA, assetA, assetB } = await setup();
 		const first = await adminA.mutation(api.portfolioGalleries.saveDraft, {

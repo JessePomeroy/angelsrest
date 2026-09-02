@@ -4,8 +4,8 @@
 
    Color shifts based on time of day.
    Works alongside light/dark mode — these tint
-   the background, accent UI elements, and add
-   atmospheric glow.
+   the public-site background, accent UI elements,
+   and atmospheric glow. Admin uses only the accent.
 
    Periods:
    - dawn: soft pink/coral warmth
@@ -120,7 +120,7 @@ html.dark[data-time-period="night"] {
 }
 
 /* ---- Apply the time tint BEHIND content ---- */
-body::before {
+body:not(.admin-route):not(.portal-route)::before {
 	content: "";
 	position: fixed;
 	inset: 0;
@@ -131,7 +131,7 @@ body::before {
 }
 
 /* Radial glow accent — larger and more visible */
-body::after {
+body:not(.admin-route):not(.portal-route)::after {
 	content: "";
 	position: fixed;
 	top: 0;
@@ -185,9 +185,9 @@ body::after {
 }
 
 /* Form inputs pick up time accent on focus */
-[data-time-period] input:focus,
-[data-time-period] textarea:focus,
-[data-time-period] select:focus {
+[data-time-period] body:not(.admin-route):not(.portal-route) input:focus,
+[data-time-period] body:not(.admin-route):not(.portal-route) textarea:focus,
+[data-time-period] body:not(.admin-route):not(.portal-route) select:focus {
 	border-color: var(--time-accent);
 	box-shadow: 0 0 0 2px color-mix(in srgb, var(--time-accent) 15%, transparent);
 }
