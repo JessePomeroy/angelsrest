@@ -549,6 +549,7 @@ let favoriteCount = $derived(
 							<img
 								src={image.thumbUrl}
 								alt=""
+								draggable="false"
 								loading={i < 6 ? "eager" : "lazy"}
 								decoding="async"
 								onerror={() => failedThumbnailIds = markFailed(failedThumbnailIds, image._id)}
@@ -596,7 +597,7 @@ let favoriteCount = $derived(
 						{#if image.isVideo}
 							<span class="file-tile" aria-label={image.filename}><span>video</span></span>
 						{:else if image.canPreview && !failedThumbnailIds.has(image._id)}
-							<img src={image.thumbUrl} alt="" loading="lazy" decoding="async" onerror={() => failedThumbnailIds = markFailed(failedThumbnailIds, image._id)} />
+							<img src={image.thumbUrl} alt="" draggable="false" loading="lazy" decoding="async" onerror={() => failedThumbnailIds = markFailed(failedThumbnailIds, image._id)} />
 						{:else}
 							<span class="file-tile" aria-label={image.filename}>
 								<span>{image.canPreview ? "image unavailable" : image.fileLabel}</span>
@@ -656,7 +657,7 @@ let favoriteCount = $derived(
 				<!-- svelte-ignore a11y_media_has_caption -->
 				<video src={images[lightboxIndex].previewUrl} controls playsinline preload="metadata"></video>
 			{:else if images[lightboxIndex].canPreview && !failedPreviewIds.has(images[lightboxIndex]._id)}
-				<img src={images[lightboxIndex].previewUrl} alt={images[lightboxIndex].filename} onerror={() => failedPreviewIds = markFailed(failedPreviewIds, images[lightboxIndex]._id)} />
+				<img src={images[lightboxIndex].previewUrl} alt={images[lightboxIndex].filename} draggable="false" onerror={() => failedPreviewIds = markFailed(failedPreviewIds, images[lightboxIndex]._id)} />
 			{:else}
 				<div class="lightbox-file">
 					<span>{images[lightboxIndex].canPreview ? "image unavailable" : images[lightboxIndex].fileLabel}</span>
@@ -853,6 +854,15 @@ let favoriteCount = $derived(
 		height: 100%;
 		object-fit: cover;
 		transition: transform 0.2s;
+	}
+
+	.image-btn img,
+	.list-thumb img,
+	.lightbox-content > img {
+		-webkit-touch-callout: none;
+		-webkit-user-drag: none;
+		user-select: none;
+		pointer-events: none;
 	}
 
 	.file-tile {
