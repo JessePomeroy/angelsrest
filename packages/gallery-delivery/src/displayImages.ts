@@ -1,4 +1,8 @@
-import { galleryFileLabel, isBrowserPreviewableGalleryFile } from "./fileTypes";
+import {
+	galleryFileLabel,
+	isBrowserPreviewableGalleryFile,
+	isBrowserPreviewableGalleryVideo,
+} from "./fileTypes";
 
 type GalleryDisplayInput = {
 	filename: string;
@@ -11,6 +15,7 @@ export type GalleryDisplayImage<T extends GalleryDisplayInput> = T & {
 	thumbUrl: string;
 	previewUrl: string;
 	canPreview: boolean;
+	isVideo: boolean;
 	fileLabel: string;
 	previewSource: GalleryPreviewSource;
 };
@@ -18,11 +23,13 @@ export type GalleryDisplayImage<T extends GalleryDisplayInput> = T & {
 function galleryImageUrl(
 	workerUrl: string,
 	r2Key: string,
-	derivative: "thumb" | "preview",
+	derivative: "original" | "thumb" | "preview",
 	access: { token: string; accessGrant?: string },
 ) {
 	const normalizedWorkerUrl = workerUrl.replace(/\/+$/, "");
-	const derivativeKey = r2Key.replace("/original/", `/${derivative}/`);
+	const derivativeKey = derivative === "original"
+		? r2Key
+		: r2Key.replace("/original/", `/${derivative}/`);
 	const params = new URLSearchParams({ token: access.token });
 	if (access.accessGrant) params.set("accessGrant", access.accessGrant);
 	return `${normalizedWorkerUrl}/image/${encodeURIComponent(derivativeKey)}?${params}`;
@@ -55,20 +62,26 @@ export function resolveGalleryDisplayImages<T extends GalleryDisplayInput>(
 	}
 
 	return images.map((image) => {
+		const isVideo = isBrowserPreviewableGalleryVideo(image.filename);
 		const isOriginalPreviewable = isBrowserPreviewableGalleryFile(image.filename);
-		const sidecar = isOriginalPreviewable ? image : sidecarsByPairKey.get(pairKeyForImage(image));
-		const previewSource: GalleryPreviewSource = isOriginalPreviewable
+		const sidecar = isOriginalPreviewable || isVideo
+			? image
+			: sidecarsByPairKey.get(pairKeyForImage(image));
+		const previewSource: GalleryPreviewSource = isOriginalPreviewable || isVideo
 			? "self"
 			: sidecar
 				? "sidecar"
 				: "none";
 		const previewKey = sidecar?.r2Key ?? image.r2Key;
+		const thumbDerivative = isVideo ? "original" : "thumb";
+		const previewDerivative = isVideo ? "original" : "preview";
 
 		return {
 			...image,
-			thumbUrl: galleryImageUrl(workerUrl, previewKey, "thumb", access),
-			previewUrl: galleryImageUrl(workerUrl, previewKey, "preview", access),
+			thumbUrl: galleryImageUrl(workerUrl, previewKey, thumbDerivative, access),
+			previewUrl: galleryImageUrl(workerUrl, previewKey, previewDerivative, access),
 			canPreview: previewSource !== "none",
+			isVideo,
 			fileLabel: galleryFileLabel(image.filename),
 			previewSource,
 		};

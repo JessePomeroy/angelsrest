@@ -89,4 +89,20 @@ describe("resolveGalleryDisplayImages", () => {
 		expect(raw.previewSource).toBe("none");
 		expect(raw.fileLabel).toBe("raf");
 	});
+
+	it("serves common browser video formats from the protected original", () => {
+		const [video] = resolveGalleryDisplayImages(
+			[{
+				filename: "ceremony.mov",
+				r2Key: "angelsrest.online/galleries/test/original/ceremony.mov",
+			}],
+			workerUrl,
+			access,
+		);
+
+		expect(video).toMatchObject({ canPreview: true, isVideo: true, previewSource: "self" });
+		expect(video.previewUrl).toBe(
+			"https://gallery-worker.example.com/image/angelsrest.online%2Fgalleries%2Ftest%2Foriginal%2Fceremony.mov?token=gallery-token&accessGrant=server-grant",
+		);
+	});
 });

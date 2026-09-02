@@ -536,8 +536,10 @@ let favoriteCount = $derived(
 		<div class="image-grid">
 			{#each images as image, i (image._id)}
 				<div class="grid-cell">
-					<button class="image-btn" onclick={() => openLightbox(i)} aria-label={"View photo " + (i + 1) + " of " + images.length}>
-						{#if image.canPreview}
+					<button class="image-btn" onclick={() => openLightbox(i)} aria-label={"View item " + (i + 1) + " of " + images.length}>
+						{#if image.isVideo}
+							<span class="file-tile" aria-label={image.filename}><span>video</span></span>
+						{:else if image.canPreview}
 							<img src={image.thumbUrl} alt={"Photo " + (i + 1) + ": " + image.filename} loading="lazy" />
 						{:else}
 							<span class="file-tile" aria-label={image.filename}>
@@ -579,7 +581,9 @@ let favoriteCount = $derived(
 			{#each images as image, i (image._id)}
 				<div class="list-row">
 					<button class="list-thumb" type="button" onclick={() => openLightbox(i)} aria-label={"View " + image.filename}>
-						{#if image.canPreview}
+						{#if image.isVideo}
+							<span class="file-tile" aria-label={image.filename}><span>video</span></span>
+						{:else if image.canPreview}
 							<img src={image.thumbUrl} alt="" loading="lazy" />
 						{:else}
 							<span class="file-tile" aria-label={image.filename}>
@@ -626,7 +630,7 @@ let favoriteCount = $derived(
 		class="lightbox"
 		role="dialog"
 		aria-modal="true"
-		aria-label="Image lightbox"
+		aria-label="Gallery lightbox"
 		tabindex="-1"
 		bind:this={lightboxEl}
 		onclick={(e) => {
@@ -636,7 +640,10 @@ let favoriteCount = $derived(
 		onkeydown={handleKeydown}
 	>
 		<div class="lightbox-content">
-			{#if images[lightboxIndex].canPreview}
+			{#if images[lightboxIndex].isVideo}
+				<!-- svelte-ignore a11y_media_has_caption -->
+				<video src={images[lightboxIndex].previewUrl} controls playsinline preload="metadata"></video>
+			{:else if images[lightboxIndex].canPreview}
 				<img src={images[lightboxIndex].previewUrl} alt={images[lightboxIndex].filename} />
 			{:else}
 				<div class="lightbox-file">
@@ -658,7 +665,7 @@ let favoriteCount = $derived(
 						</button>
 					{/if}
 					{#if data.gallery.downloadEnabled}
-						<a class="lb-btn" aria-label="Download original image" href={images[lightboxIndex].downloadUrl} download>
+						<a class="lb-btn" aria-label="Download original file" href={images[lightboxIndex].downloadUrl} download>
 							↓ download
 						</a>
 					{/if}
@@ -1049,7 +1056,8 @@ let favoriteCount = $derived(
 		align-items: center;
 	}
 
-	.lightbox-content img {
+	.lightbox-content img,
+	.lightbox-content video {
 		max-width: 100%;
 		max-height: 75vh;
 		object-fit: contain;
