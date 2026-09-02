@@ -1,0 +1,23 @@
+{
+  "timestampUtc": "2026-07-30T03:34:32Z",
+  "repository": "JessePomeroy/angelsrest",
+  "pullRequest": 359,
+  "expectedHeadSha": "f9ea6812aeca4b824334d8d8104a7e08fc67bb1c",
+  "requiredChecks": [
+    {
+      "name": "ci",
+      "state": "SUCCESS"
+    }
+  ],
+  "mergeMethod": "squash",
+  "mergeSha": "6e563742544e43fa82a0d84bb418c8cbd3c7fef4",
+  "originMainSha": "6e563742544e43fa82a0d84bb418c8cbd3c7fef4",
+  "vercelProject": "angelsrest",
+  "vercelTarget": "production",
+  "deploymentReady": true,
+  "deploymentCommitSha": "6e563742544e43fa82a0d84bb418c8cbd3c7fef4",
+  "deploymentUrl": "angelsrest-c2g14df86-jesse-pomeroys-projects.vercel.app",
+  "shopCatalogProviderNamePresentBeforeMerge": false,
+  "shopCatalogProviderNamePresentAfterDeployment": false,
+  "restrictedEndpointCallsMade": false
+}
