@@ -357,9 +357,11 @@ export function adaptConvexAboutContact(value: unknown): AboutContactContent {
 	optionalText(contact.responseTime, 300);
 	const booking = object(contact.booking, ["enabled", "label", "intro"], ["url"]);
 	if (typeof booking.enabled !== "boolean") fail();
-	let link: { url: string | null; calLink: string | null } = { url: null, calLink: null };
-	if (booking.enabled) link = calBooking(booking.url);
-	else if (booking.url !== undefined) fail();
+	const link = booking.enabled
+		? calBooking(booking.url)
+		: booking.url !== undefined
+			? fail()
+			: { url: null, calLink: null };
 	const choices = list(contact.inquiryChoices, 12).map((choice) => requiredText(choice, 120));
 	if (new Set(choices.map((choice) => choice.toLocaleLowerCase())).size !== choices.length) fail();
 
