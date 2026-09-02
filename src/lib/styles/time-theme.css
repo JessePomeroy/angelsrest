@@ -120,7 +120,7 @@ html.dark[data-time-period="night"] {
 }
 
 /* ---- Apply the time tint BEHIND content ---- */
-body:not(.admin-route):not(.portal-route)::before {
+body:not(.admin-route):not(.portal-route):not(:has([data-admin]))::before {
 	content: "";
 	position: fixed;
 	inset: 0;
@@ -131,7 +131,7 @@ body:not(.admin-route):not(.portal-route)::before {
 }
 
 /* Radial glow accent — larger and more visible */
-body:not(.admin-route):not(.portal-route)::after {
+body:not(.admin-route):not(.portal-route):not(:has([data-admin]))::after {
 	content: "";
 	position: fixed;
 	top: 0;
