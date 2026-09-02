@@ -1,4 +1,8 @@
 import { describe, expect, it, vi } from "vitest";
+import {
+	calculateCatalogProductMargin,
+	resolveCatalogProductVariantOptions,
+} from "$lib/catalogProductMargin";
 import { adminConfig } from "$lib/config/admin";
 
 const {
@@ -218,6 +222,9 @@ describe("admin API aliases", () => {
 		expect(adminConfig.editor?.blog?.mediaBaseUrl).toBe("https://media.angelsrest.online");
 		expect(adminConfig.editor?.products).toEqual({
 			publicationEnabled: true,
+			publicShopEnabled: true,
+			marginCalculator: calculateCatalogProductMargin,
+			variantOptionResolver: resolveCatalogProductVariantOptions,
 			privateAssetReplacementEnabled: true,
 			privateAssetUpload: {
 				prepareEndpoint: "/api/admin/catalog-private-assets/editor-uploads/prepare",
