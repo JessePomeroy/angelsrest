@@ -43,6 +43,7 @@ export const createAuth = (ctx: GenericCtx<DataModel>) => {
 					definePayload: ({ user }) => ({
 						email: user.email,
 						email_verified: user.emailVerified,
+						better_auth_email_verified: user.emailVerified,
 						name: user.name,
 					}),
 				},

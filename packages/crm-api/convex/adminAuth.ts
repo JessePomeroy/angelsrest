@@ -1,6 +1,6 @@
 import { v } from "convex/values";
 import { mutation, query } from "./_generated/server";
-import { isSiteAdminIdentity, requireAuth } from "./authHelpers";
+import { isEmailVerified, isSiteAdminIdentity, requireAuth } from "./authHelpers";
 
 /**
  * Return the currently-authenticated identity for this request, or null if
@@ -17,7 +17,7 @@ export const whoami = query({
 		if (!identity) return null;
 		return {
 			email: identity.email ?? null,
-			emailVerified: identity.emailVerified ?? false,
+			emailVerified: isEmailVerified(identity),
 			name: identity.name ?? null,
 			subject: identity.subject,
 			tokenIdentifier: identity.tokenIdentifier,
@@ -40,7 +40,7 @@ export const claimAdminAccess = mutation({
 		if (stableIds.includes(identity.tokenIdentifier)) {
 			return { claimed: false, authorized: true, tier: client.tier };
 		}
-		if (identity.emailVerified !== true || !identity.email) {
+		if (!isEmailVerified(identity) || !identity.email) {
 			throw new Error("A verified account is required");
 		}
 		const invited = client.adminEmails.some(
