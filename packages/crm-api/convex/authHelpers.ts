@@ -1,4 +1,5 @@
 import type { Doc, Id, TableNames } from "./_generated/dataModel";
+import type { UserIdentity } from "convex/server";
 import type { MutationCtx, QueryCtx } from "./_generated/server";
 import { DEFAULT_LIST_LIMIT } from "./helpers/limits";
 import { purposeScopedServerRolesAreDisjoint } from "./helpers/serverSecrets";
@@ -13,6 +14,21 @@ export async function requireAuth(ctx: MutationCtx | QueryCtx) {
 		throw new Error("Not authenticated");
 	}
 	return identity;
+}
+
+export function isSiteAdminIdentity(
+	identity: UserIdentity,
+	client: Doc<"platformClients">,
+) {
+	const stableIds = client.adminIdentityIds ?? [];
+	if (stableIds.length > 0) {
+		return stableIds.includes(identity.tokenIdentifier);
+	}
+	// The migration fallback is email-based, but never verification-optional.
+	// Tokens without an explicit verified claim must refresh before access.
+	if (identity.emailVerified !== true || !identity.email) return false;
+	const identityEmail = identity.email.toLowerCase();
+	return client.adminEmails.some((email) => email.toLowerCase() === identityEmail);
 }
 
 /**
@@ -110,17 +126,14 @@ function constantTimeEquals(a: string, b: string): boolean {
  * `requireAuth` alone only verifies "someone is logged in."
  *
  * Returns the verified identity + the `platformClients` row for the site.
- * Throws `Not authorized` if the identity's email is not in that site's
- * `adminEmails` list.
+ * Stable claimed identities are authoritative. A verified invited email is a
+ * bounded compatibility read only while that tenant has no claimed identity.
  */
 export async function requireSiteAdmin(
 	ctx: MutationCtx | QueryCtx,
 	siteUrl: string,
 ) {
 	const identity = await requireAuth(ctx);
-	if (!identity.email) {
-		throw new Error("Not authorized (missing email in identity)");
-	}
 	const client = await ctx.db
 		.query("platformClients")
 		.withIndex("by_siteUrl", (q) => q.eq("siteUrl", siteUrl))
@@ -128,11 +141,7 @@ export async function requireSiteAdmin(
 	if (!client) {
 		throw new Error("Not authorized (site not found)");
 	}
-	const identityEmail = identity.email.toLowerCase();
-	const isAdmin = client.adminEmails
-		.map((e) => e.toLowerCase())
-		.includes(identityEmail);
-	if (!isAdmin) {
+	if (!isSiteAdminIdentity(identity, client)) {
 		throw new Error("Not authorized (not a site admin)");
 	}
 	return { identity, client };
@@ -193,16 +202,9 @@ export async function requireDocumentSiteAdminWithClient<T extends TableNames>(
  */
 export async function requireCreator(ctx: MutationCtx | QueryCtx) {
 	const identity = await requireAuth(ctx);
-	if (!identity.email) {
-		throw new Error("Not authorized (missing email in identity)");
-	}
-
-	const identityEmail = identity.email.toLowerCase();
 	const platformRows = await ctx.db.query("platformClients").take(DEFAULT_LIST_LIMIT);
 	const creatorRows = platformRows.filter((client) => client.role === "creator");
-	const memberships = platformRows.filter((client) =>
-		client.adminEmails.map((email) => email.toLowerCase()).includes(identityEmail),
-	);
+	const memberships = platformRows.filter((client) => isSiteAdminIdentity(identity, client));
 	const creatorMembership = memberships.find((client) => client.role === "creator");
 	if (creatorMembership) {
 		return { identity, client: creatorMembership };

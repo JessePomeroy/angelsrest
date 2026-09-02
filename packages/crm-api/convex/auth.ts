@@ -29,7 +29,7 @@ export const createAuth = (ctx: GenericCtx<DataModel>) => {
 				}
 			}),
 		},
-		emailAndPassword: { enabled: true },
+		emailAndPassword: { enabled: true, disableSignUp: true },
 		socialProviders: {
 			google: {
 				clientId: process.env.AUTH_GOOGLE_ID as string,
@@ -39,6 +39,13 @@ export const createAuth = (ctx: GenericCtx<DataModel>) => {
 		plugins: [
 			convex({
 				authConfig,
+				jwt: {
+					definePayload: ({ user }) => ({
+						email: user.email,
+						email_verified: user.emailVerified,
+						name: user.name,
+					}),
+				},
 				// Auto-rotate JWKS keys if the JWT library hits
 				// ERR_JOSE_NOT_SUPPORTED (alg mismatch between the stored key
 				// and the current plugin config). Without this flag, sign-in

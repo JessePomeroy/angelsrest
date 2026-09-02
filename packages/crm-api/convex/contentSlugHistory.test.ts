@@ -28,8 +28,8 @@ async function setup() {
 	}
 	return {
 		t,
-		adminA: t.withIdentity({ subject: SITE_A.email, email: SITE_A.email }),
-		adminB: t.withIdentity({ subject: SITE_B.email, email: SITE_B.email }),
+		adminA: t.withIdentity({ subject: SITE_A.email, email: SITE_A.email, emailVerified: true }),
+		adminB: t.withIdentity({ subject: SITE_B.email, email: SITE_B.email, emailVerified: true }),
 	};
 }
 

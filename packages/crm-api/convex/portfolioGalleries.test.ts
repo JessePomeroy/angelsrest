@@ -55,8 +55,8 @@ async function setup() {
 			role: "client",
 		});
 	}
-	const adminA = t.withIdentity({ subject: SITE_A.email, email: SITE_A.email });
-	const adminB = t.withIdentity({ subject: SITE_B.email, email: SITE_B.email });
+	const adminA = t.withIdentity({ subject: SITE_A.email, email: SITE_A.email, emailVerified: true });
+	const adminB = t.withIdentity({ subject: SITE_B.email, email: SITE_B.email, emailVerified: true });
 	const [assetA, assetB, assetOtherSite] = await Promise.all([
 		adminA.mutation(api.mediaAssets.registerReadyWebAsset, {
 			siteUrl: SITE_A.siteUrl,

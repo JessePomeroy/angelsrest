@@ -234,6 +234,9 @@ export default defineSchema({
 		stripeSubscriptionId: v.optional(v.string()),
 		stripeConnectedAccountId: v.optional(v.string()),
 		adminEmails: v.array(v.string()),
+		// Stable Better Auth identities claimed by verified invited admins.
+		// Optional during the R12 widen/claim/narrow rollout.
+		adminIdentityIds: v.optional(v.array(v.string())),
 		role: v.optional(v.union(v.literal("creator"), v.literal("client"))),
 		catalogProductKinds: v.optional(catalogProductKindsValidator),
 		notes: v.optional(v.string()),

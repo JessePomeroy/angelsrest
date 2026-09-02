@@ -187,7 +187,7 @@ async function siteAdmin(t: ReturnType<typeof convexTest>) {
 		adminEmails: [ADMIN_EMAIL],
 		role: "client",
 	}));
-	return t.withIdentity({ subject: ADMIN_EMAIL, email: ADMIN_EMAIL });
+	return t.withIdentity({ subject: ADMIN_EMAIL, email: ADMIN_EMAIL, emailVerified: true });
 }
 
 async function foreignSiteAdmin(t: ReturnType<typeof convexTest>) {
@@ -203,6 +203,7 @@ async function foreignSiteAdmin(t: ReturnType<typeof convexTest>) {
 	return t.withIdentity({
 		subject: FOREIGN_ADMIN_EMAIL,
 		email: FOREIGN_ADMIN_EMAIL,
+		emailVerified: true,
 	});
 }
 

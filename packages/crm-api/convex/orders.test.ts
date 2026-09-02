@@ -171,7 +171,7 @@ async function createRecoveryAdmin(t: ReturnType<typeof convexTest>) {
 		adminEmails: [email],
 		role: "client",
 	}));
-	return t.withIdentity({ subject: email, email });
+	return t.withIdentity({ subject: email, email, emailVerified: true });
 }
 
 function manualRefundArgs(overrides: Record<string, unknown> = {}) {
@@ -780,7 +780,7 @@ describe("print fulfillment fence", () => {
 			adminEmails: ["owner@tenant.example"],
 			role: "client",
 		}));
-		const admin = t.withIdentity({ email: "owner@tenant.example" });
+		const admin = t.withIdentity({ email: "owner@tenant.example", emailVerified: true });
 		const created = await t.mutation(api.orders.create, orderArgs("cs_test_rejectcompat123456"));
 		await t.mutation(api.orders.claimPrintFulfillment, {
 			orderId: created._id,
@@ -958,6 +958,7 @@ describe("provider-authoritative manual refunds", () => {
 		const otherAdmin = t.withIdentity({
 			subject: "other-refund-admin@example.com",
 			email: "refund-recovery-admin@example.com",
+			emailVerified: true,
 		});
 		await expect(otherAdmin.mutation(
 			api.orders.reconcileSucceededManualRefund,
@@ -2177,7 +2178,7 @@ describe("provider-authoritative manual refunds", () => {
 			}),
 		);
 		const created = await t.mutation(api.orders.create, orderArgs(MANUAL_REFUND.session));
-		const admin = t.withIdentity({ email: "owner@tenant.example" });
+		const admin = t.withIdentity({ email: "owner@tenant.example", emailVerified: true });
 		for (const transition of [
 			{ status: "refunded" as const },
 			{ stripeRefundId: MANUAL_REFUND.refund },
@@ -4171,7 +4172,7 @@ describe("order Stripe fee capture initialization", () => {
 		await t.mutation(api.orders.create, {
 			...orderArgs("cs_unknown_fee_stats"),
 		});
-		const admin = t.withIdentity({ subject: adminEmail, email: adminEmail });
+		const admin = t.withIdentity({ subject: adminEmail, email: adminEmail, emailVerified: true });
 		const stats = await admin.query(api.orders.getStats, { siteUrl: SITE_URL });
 		expect(stats.recentOrders[0]?.stripeFees).toBeUndefined();
 		expect(stats.recentOrders[0]?.stripePaymentCurrency).toBe("usd");
@@ -4211,7 +4212,7 @@ describe("order Stripe fee capture initialization", () => {
 				total: Number.NaN,
 			});
 		});
-		const admin = t.withIdentity({ subject: adminEmail, email: adminEmail });
+		const admin = t.withIdentity({ subject: adminEmail, email: adminEmail, emailVerified: true });
 		const stats = await admin.query(api.orders.getStats, { siteUrl: SITE_URL });
 
 		expect(stats.grossPayments).toEqual([
@@ -4330,7 +4331,7 @@ describe("V2 order shipment email leases", () => {
 			webhookSecret: WEBHOOK_SECRET,
 		})).rejects.toThrow("Not authenticated");
 
-		const admin = t.withIdentity({ subject: adminEmail, email: adminEmail });
+		const admin = t.withIdentity({ subject: adminEmail, email: adminEmail, emailVerified: true });
 		await expect(admin.query(api.orders.getByLumaprintsOrderNumber, {
 			siteUrl: SITE_URL,
 			lumaprintsOrderNumber: "123",

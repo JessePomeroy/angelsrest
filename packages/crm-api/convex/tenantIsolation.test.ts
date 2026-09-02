@@ -61,6 +61,7 @@ function asAdmin(
 	return t.withIdentity({
 		subject: email,
 		email,
+		emailVerified: true,
 	});
 }
 

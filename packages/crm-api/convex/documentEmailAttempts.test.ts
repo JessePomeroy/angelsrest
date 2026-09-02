@@ -82,8 +82,8 @@ async function setup() {
 		adminEmails: [ADMIN_B],
 		role: "client",
 	});
-	const adminA = t.withIdentity({ subject: ADMIN_A, email: ADMIN_A });
-	const adminB = t.withIdentity({ subject: ADMIN_B, email: ADMIN_B });
+	const adminA = t.withIdentity({ subject: ADMIN_A, email: ADMIN_A, emailVerified: true });
+	const adminB = t.withIdentity({ subject: ADMIN_B, email: ADMIN_B, emailVerified: true });
 	const clientId = await adminA.mutation(api.crm.createClient, {
 		siteUrl: SITE_A,
 		name: "Primary client",
