@@ -197,7 +197,7 @@ function resolveV1Paper(
 	options: unknown[] | undefined,
 	fallbackCents: number | null,
 	selection: CheckoutSelection,
-): { paper: ResolvedPaper | null; unitPriceCents: number; variantKey: string | null } {
+) {
 	if (!options?.length) {
 		if (fallbackCents === null) {
 			throw apiError(400, ApiErrorCode.INVALID_INPUT, "Product is missing a valid price");
