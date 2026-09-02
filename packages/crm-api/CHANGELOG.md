@@ -1,5 +1,11 @@
 # @jessepomeroy/crm-api
 
+## 4.1.1
+
+### Patch Changes
+
+- a5a4873: Accept Better Auth's signed custom email-verification claim when binding stable admin identities.
+
 ## 4.1.0
 
 ### Minor Changes
