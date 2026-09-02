@@ -62,12 +62,12 @@ body {
 	background-color: #f1f5f9;
 }
 
-body.admin-route {
+[data-time-period] [data-admin] {
 	--admin-accent-color: var(--time-accent, #818cf8);
 	--admin-accent-color-hover: color-mix(in srgb, var(--time-accent, #818cf8) 82%, white);
 }
 
-html:not(.dark) body.admin-route {
+html:not(.dark)[data-time-period] [data-admin] {
 	--admin-accent-color-hover: color-mix(in srgb, var(--time-accent, #818cf8) 82%, black);
 }
 
