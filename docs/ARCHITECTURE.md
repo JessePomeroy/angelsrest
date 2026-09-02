@@ -7,8 +7,8 @@ canonical rule file; this document explains ownership and dependency direction.
 
 ```text
 SvelteKit routes and UI
-  ├── Sanity client (editorial reads / preview)
-  ├── Convex generated API (operational reads and writes)
+  ├── Sanity client (staged preview/fallback/recovery and historical compatibility)
+  ├── Convex generated API (published CMS content and operational data)
   ├── @jessepomeroy/admin (shared admin UI and host adapters)
   ├── @jessepomeroy/print-catalog (pure shared print domain)
   └── server integrations (Stripe, LumaPrints, Resend, gallery workers)
@@ -27,7 +27,9 @@ modules or private environment variables.
 
 | Domain | Owner | Entry points |
 |---|---|---|
-| Published editorial content during migration | Sanity fallback | `src/lib/sanity/client.ts`, `client.server.ts`, public load functions |
+| Published product catalog and Angels Rest first-party direct/cart checkout snapshots | Convex | `catalogProductGraphs.ts`, `src/lib/server/convexShop.server.ts`, `currentCheckoutCommerce.ts` |
+| Published portfolio, blog, about/contact, and site settings | Convex, with staged Sanity preview/fallback/recovery | matching `*Content.server.ts` modules and Convex content functions |
+| Historical Sanity purchase/download compatibility | Sanity exact-revision readers | `snapshotFulfillment.ts`, `/api/download` |
 | Embedded Editor drafts, revisions, and media registry | Convex | `packages/crm-api/convex/*Content.ts`, `mediaAssets.ts` |
 | Editor media sources and public WebP derivatives | Cloudflare R2 | CMS media worker via `/api/admin/media/*` |
 | Private catalog print masters and paid files | Cloudflare R2 bytes; Convex registry and coordination | purpose-separated receipt ingresses in `convex/http.ts`, internal `catalogPrivateAssets.ts` mutations |
@@ -102,8 +104,10 @@ security boundary; keep verification inside the host route.
    accepted from the browser.
 5. Private sources remain in the CMS private bucket. Public pages receive only
    immutable derivatives from `https://media.angelsrest.online`.
-6. This boundary is separate from private client-gallery delivery and does not
-   switch any public content type away from its Sanity fallback by itself.
+6. This boundary is separate from private client-gallery delivery. Product
+   catalog publication now composes these registered derivatives through the
+   published Convex graph; other editorial content types retain their own staged
+   provider boundaries.
 
 ### Private catalog asset registration
 
@@ -116,9 +120,11 @@ security boundary; keep verification inside the host route.
 3. No public or authenticated-admin mutation can create these verified rows.
    Responses expose only the status and source-key-to-Convex-ID mapping; storage
    keys, hashes, provenance, capabilities, and private URLs remain server-only.
-4. The registration gate is provider-neutral and reusable, while each migration
-   must still prove its exact manifest completeness. Sanity remains authoritative
-   until that migration's unpublished import, parity, rollback, and cutover gates pass.
+4. The registration gate is provider-neutral and reusable. The product migration
+   used it to prove exact manifest completeness before the Angels Rest public
+   product Shop and first-party direct/cart checkout moved to Convex. Its Sanity
+   comparison records remain available to diagnostic/recovery tooling and are
+   not consulted by those current request paths.
 
 Authenticated server reads also create a fresh client through
 `createAuthenticatedConvexClient`. The cached `getConvex()` client is reserved
@@ -133,8 +139,9 @@ and test full client-side navigation, expiry, logout, and concurrent requests.
 
 ### Shop checkout
 
-1. The selling site resolves current product/catalog data; browser-supplied
-   prices are not authoritative.
+1. Angels Rest first-party direct/cart checkout resolves the exact published
+   Convex product revision and server-owned price. Browser-supplied prices are
+   not authoritative, and those request paths never fall back to Sanity.
 2. Angels Rest creates its own Checkout directly. Client spokes call the signed
    `/api/tenant-checkout/print` bridge using their stored bare-domain tenant key.
 3. The hub resolves the canonical stored tenant before selecting its
@@ -164,6 +171,13 @@ and test full client-side navigation, expiry, logout, and concurrent requests.
    public origin, and admin recipient. The shared `orders@angelsrest.online`
    mailbox remains the transport sender until per-tenant verified sending
    domains are deliberately onboarded.
+
+Historical compatibility is intentionally narrower than current authority.
+Fulfillment replay may resolve an exact Sanity revision named by an already
+sealed Sanity-backed snapshot, and the download route may serve an existing
+paid Sanity file. Those consumers cannot author a product, populate a current
+Shop page, or initiate a new Sanity-backed checkout. Removing them requires a
+separate migration of historical customer entitlements, not a provider flag.
 
 This is a runtime ownership boundary, not merely shared code: one Stripe event
 must have exactly one order-intake owner. Future Stripe Connect clients add

@@ -1,5 +1,14 @@
 # Angels Rest catalog migration journal
 
+> Historical checkpoint: this journal records the pre-cutover migration and its
+> sealed Sanity/Convex parity evidence. Present-tense authority and hold language
+> below describes the gate at which it was recorded. The current application
+> architecture is documented in `../../../../docs/ARCHITECTURE.md`; the Angels
+> Rest public product Shop and first-party direct/cart checkout request paths are
+> now Convex-authoritative. Retained Sanity code remains available for migration
+> parity, preview/recovery, and historical purchase/download compatibility until
+> the later roadmap archive/isolated-restore and default-path-decoupling gates.
+
 This directory is the versioned journal for the complete Angels Rest Shop migration from the published Sanity catalog to private, unpublished Convex content.
 
 ## CMS-5.3b adapter and readiness gate

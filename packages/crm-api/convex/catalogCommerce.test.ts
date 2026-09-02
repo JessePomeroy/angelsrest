@@ -192,6 +192,145 @@ describe("catalog commerce checkout", () => {
 		expect(noneFinish.item).toMatchObject({ borderOptionKey: "none", frameOptionKey: "none" });
 	});
 
+	test("returns only fulfillment-required media for every product kind", async () => {
+		const fixture = await setup(modules);
+		const cases = [
+			["print", ["primary"], ["primary"]],
+			["print_set", ["cover", "set_member", "set_member"],
+				["cover", "member-1-media", "member-2-media"]],
+			["postcard", ["gallery"], ["gallery"]],
+			["tapestry", ["gallery"], ["gallery"]],
+			["digital_download", ["gallery"], ["gallery"]],
+			["merchandise", ["gallery"], ["gallery"]],
+		] as const;
+		for (const [kind, expectedRoles, expectedKeys] of cases) {
+			const draft = graphDraft(kind, fixture, `media-${kind}`);
+			if (draft.productKind === "print" || draft.productKind === "print_set") {
+				draft.webMedia.push({
+					key: "social",
+					order: 0,
+					role: "social_share",
+					assetId: fixture.webA2,
+					altText: "Optional share card",
+				});
+			} else {
+				draft.webMedia.push(
+					{
+						key: "gallery-2",
+						order: 1,
+						role: "gallery",
+						assetId: fixture.webA2,
+						altText: "Optional gallery image",
+					},
+					{
+						key: "social",
+						order: 0,
+						role: "social_share",
+						assetId: fixture.webA2,
+						altText: "Optional share card",
+					},
+				);
+			}
+			const created = await createGraph(
+				fixture.adminA,
+				SITE_A.siteUrl,
+				`media-${kind}`,
+				draft,
+			);
+			await publish(fixture, created);
+			const result = await resolve(fixture, checkout(item(created, kind)));
+			expect(result.media.map(({ role }) => role)).toEqual(expectedRoles);
+			expect(result.media.map(({ key }) => key)).toEqual(expectedKeys);
+			expect(result.media.every(({ altText }) => altText === null)).toBe(true);
+		}
+	});
+
+	test("keeps the maximum twenty-member print-set checkout envelope bounded", async () => {
+		const fixture = await setup(modules);
+		const draft = graphDraft("print_set", fixture, "maximum-commerce-set");
+		const maximumKey = (prefix: string, index: number) => {
+			const beginning = `${prefix}-${index}-`;
+			return `${beginning}${"x".repeat(120 - beginning.length)}`;
+		};
+		const members = Array.from({ length: 20 }, (_, index) => ({
+			mediaKey: maximumKey("media", index),
+			sourceKey: maximumKey("source", index),
+			memberKey: maximumKey("member", index),
+		}));
+		draft.title = "t".repeat(160);
+		draft.description = "d".repeat(5_000);
+		draft.seoDescription = "s".repeat(320);
+		draft.webMedia = [
+			{
+				key: maximumKey("cover", 0),
+				order: 0,
+				role: "cover",
+				assetId: fixture.webA,
+				altText: "界".repeat(1_000),
+			},
+			...members.map(({ mediaKey }, index) => ({
+				key: mediaKey,
+				order: index,
+				role: "set_member" as const,
+				assetId: index % 2 === 0 ? fixture.webA : fixture.webA2,
+				altText: "界".repeat(1_000),
+			})),
+			{
+				key: maximumKey("social", 0),
+				order: 0,
+				role: "social_share",
+				assetId: fixture.webA2,
+				altText: "a".repeat(1_000),
+			},
+		];
+		draft.printSources = members.map(({ sourceKey }, index) => ({
+			key: sourceKey,
+			order: index,
+			assetId: fixture.printA,
+		}));
+		draft.setMembers = members.map(({ mediaKey, sourceKey, memberKey }, index) => ({
+			key: memberKey,
+			order: index,
+			mediaPlacementKey: mediaKey,
+			printSourceKey: sourceKey,
+		}));
+		const created = await createGraph(
+			fixture.adminA,
+			SITE_A.siteUrl,
+			"maximum-commerce-set",
+			draft,
+		);
+		await publish(fixture, created);
+		const result = await resolve(fixture, checkout(item(created, "print_set")));
+		expect(result.media).toHaveLength(21);
+		expect(result.media.map(({ role }) => role)).toEqual([
+			"cover",
+			...Array.from({ length: 20 }, () => "set_member"),
+		]);
+		expect(result.media.some(({ role }) => role === "social_share")).toBe(false);
+		expect(result.media.every(({ altText }) => altText === null)).toBe(true);
+		expect(new TextEncoder().encode(JSON.stringify(result)).byteLength).toBeLessThan(64 * 1024);
+	});
+
+	test("fails closed when a print set has no member fulfillment media", async () => {
+		const fixture = await setup(modules);
+		const draft = graphDraft("print_set", fixture, "missing-member-media");
+		draft.saleAvailability = "unavailable";
+		draft.webMedia = draft.webMedia.filter(({ role }) => role !== "set_member");
+		draft.printSources = [];
+		draft.setMembers = [];
+		const created = await createGraph(
+			fixture.adminA,
+			SITE_A.siteUrl,
+			"missing-member-media",
+			draft,
+		);
+		await seedOrder(fixture, item(created, "print_set"));
+		await expect(resolve(fixture, paid("paid_fulfillment"))).rejects.toThrow(
+			/Catalog commerce resolution rejected/,
+		);
+	});
+
 	test("requires exact current identity, policy, availability, variant, finish, and private relation", async () => {
 		const fixture = await setup(modules);
 		const print = await createGraph(
@@ -263,6 +402,13 @@ describe("paid catalog commerce", () => {
 			const result = await resolve(fixture, paid(purpose, session));
 			if (!("descriptor" in result)) throw new Error("Paid result lost its descriptor");
 			expect(result.descriptor.kind).toBe(descriptorKind);
+			expect(result.media.map(({ role }) => role)).toEqual(
+				kind === "print"
+					? ["primary"]
+					: kind === "print_set"
+						? ["cover", "set_member", "set_member"]
+						: ["gallery"],
+			);
 			const keys = allKeys(result);
 			expect(keys).not.toEqual(expect.arrayContaining([
 				"provenance", "createdBy", "verifiedBy", "grant", "capability", "actor",

@@ -14,6 +14,7 @@ import {
 } from "../test/catalogProductGraphFixtures";
 import { api } from "./_generated/api";
 import type { Doc, Id } from "./_generated/dataModel";
+import { mapCatalogGraphListInBatches } from "./helpers/catalogProductGraphStore";
 import type { CatalogProductGraphV2Draft } from "./helpers/catalogProductGraphValidators";
 import { CATALOG_PRODUCT_KIND_ORDER } from "./helpers/catalogProductPolicy";
 
@@ -75,6 +76,26 @@ async function insertBareProducts(
 }
 
 describe("catalog V2 publication lifecycle", () => {
+	test("maps forty public projections in order with no more than ten active", async () => {
+		const values = Array.from({ length: 40 }, (_, index) => index);
+		let active = 0;
+		let maxActive = 0;
+		const projected = await mapCatalogGraphListInBatches(
+			values,
+			async (value) => {
+				active += 1;
+				maxActive = Math.max(maxActive, active);
+				for (let step = value % 10; step < 9; step += 1) await Promise.resolve();
+				active -= 1;
+				return value * 2;
+			},
+			10,
+		);
+
+		expect(maxActive).toBe(10);
+		expect(projected).toEqual(values.map((value) => value * 2));
+	});
+
 	test.each(CATALOG_PRODUCT_KIND_ORDER)("publishes and unpublishes one complete %s graph without changing history", async (kind) => {
 		const fixture = await setup(modules);
 		const created = await createGraph(
@@ -129,7 +150,7 @@ describe("catalog V2 publication lifecycle", () => {
 	});
 
 	test.each(["publishDraft", "unpublish"] as const)(
-		"authorizes %s before state, enforces tenant policy, and leaves rejected state unchanged",
+		"authorizes %s before state and leaves rejected state unchanged",
 		async (operation) => {
 			const fixture = await setup(modules);
 			const slug = `authorization-${operation.toLowerCase()}`;
@@ -152,13 +173,6 @@ describe("catalog V2 publication lifecycle", () => {
 			const before = await product(fixture, created.productId);
 			await expect(fixture.t.mutation(mutation, args)).rejects.toThrow(/not authenticated/i);
 			await expect(fixture.adminB.mutation(mutation, args)).rejects.toThrow(/not authorized/i);
-			await fixture.t.run(async (ctx) => {
-				const client = await ctx.db.query("platformClients")
-					.withIndex("by_siteUrl", (q) => q.eq("siteUrl", SITE_A.siteUrl)).unique();
-				if (!client) throw new Error("Client fixture is missing");
-				await ctx.db.patch(client._id, { catalogProductKinds: ["postcard"] });
-			});
-			await expect(fixture.adminA.mutation(mutation, args)).rejects.toThrow(/not enabled/i);
 			expect(await product(fixture, created.productId)).toEqual(before);
 		},
 	);
@@ -414,6 +428,80 @@ describe("catalog V2 publication lifecycle", () => {
 		})).resolves.toMatchObject({ productKind: "postcard" });
 	});
 
+	test("disabled published kinds remain editor-visible and can only be unpublished", async () => {
+		const fixture = await setup(modules);
+		const created = await createGraph(
+			fixture.adminA,
+			SITE_A.siteUrl,
+			"disabled-cleanup",
+			graphDraft("print", fixture, "disabled-cleanup"),
+		);
+		await fixture.adminA.mutation(
+			api.catalogProductGraphs.publishDraft,
+			await publicationArgs(fixture, created.productId),
+		);
+		await fixture.t.run(async (ctx) => {
+			const client = await ctx.db.query("platformClients")
+				.withIndex("by_siteUrl", (query) => query.eq("siteUrl", SITE_A.siteUrl))
+				.unique();
+			if (!client) throw new Error("Client fixture is missing");
+			await ctx.db.patch(client._id, { catalogProductKinds: ["postcard"] });
+		});
+
+		await expect(fixture.t.query(api.catalogProductGraphs.listPublished, {
+			siteUrl: SITE_A.siteUrl,
+		})).resolves.toEqual([]);
+		await expect(fixture.t.query(api.catalogProductGraphs.getPublishedBySlug, {
+			siteUrl: SITE_A.siteUrl,
+			slug: "disabled-cleanup",
+		})).resolves.toBeNull();
+
+		await expect(fixture.adminA.query(api.catalogProductGraphs.listForEditor, {
+			siteUrl: SITE_A.siteUrl,
+			productKind: "print",
+		})).resolves.toMatchObject([{
+			productId: created.productId,
+			productKind: "print",
+			published: { revisionId: created.revisionId },
+		}]);
+		await expect(fixture.adminA.query(api.catalogProductGraphs.getEditorState, {
+			productId: created.productId,
+		})).resolves.toMatchObject({
+			productId: created.productId,
+			productKind: "print",
+			published: { revisionId: created.revisionId },
+		});
+
+		const beforeRejectedWrites = await product(fixture, created.productId);
+		const beforeRejectedCounts = await storedCounts(fixture);
+		const replacement = graphDraft("print", fixture, "disabled-cleanup");
+		replacement.title = "Rejected disabled-kind replacement";
+		await expect(saveGraph(
+			fixture.adminA,
+			created.productId,
+			replacement,
+			created.revisionId,
+		)).rejects.toThrow(/not enabled/i);
+		await expect(fixture.adminA.mutation(
+			api.catalogProductGraphs.publishDraft,
+			await publicationArgs(fixture, created.productId),
+		)).rejects.toThrow(/not enabled/i);
+		expect(await product(fixture, created.productId)).toEqual(beforeRejectedWrites);
+		expect(await storedCounts(fixture)).toEqual(beforeRejectedCounts);
+
+		const unpublished = await fixture.adminA.mutation(
+			api.catalogProductGraphs.unpublish,
+			await publicationArgs(fixture, created.productId),
+		);
+		expect(unpublished).toMatchObject({
+			productId: created.productId,
+			publishedRevisionId: null,
+			publishedAt: null,
+		});
+		expect((await product(fixture, created.productId)).publishedRevisionId)
+			.toBeUndefined();
+	});
+
 	test.each(["missing", "malformed"] as const)(
 		"public list and detail fail closed with one generic error for a %s catalog policy",
 		async (policy) => {
@@ -472,12 +560,87 @@ describe("catalog V2 publication lifecycle", () => {
 		})).rejects.toThrow(/count mismatch/i);
 	});
 
-	test("fails closed on independent per-kind scan overflow before graph loading", async () => {
+	test("more than 40 unpublished drafts do not consume the public scan", async () => {
 		const fixture = await setup(modules);
-		await insertBareProducts(fixture, 41);
+		const created = await createGraph(
+			fixture.adminA,
+			SITE_A.siteUrl,
+			"published-among-drafts",
+			graphDraft("postcard", fixture, "published-among-drafts"),
+		);
+		await fixture.adminA.mutation(
+			api.catalogProductGraphs.publishDraft,
+			await publicationArgs(fixture, created.productId),
+		);
+		for (let index = 0; index < 41; index += 1) {
+			const slug = `unpublished-${String(index).padStart(2, "0")}`;
+			await createGraph(
+				fixture.adminA,
+				SITE_A.siteUrl,
+				slug,
+				graphDraft("postcard", fixture, slug),
+			);
+		}
+
 		await expect(fixture.t.query(api.catalogProductGraphs.listPublished, {
 			siteUrl: SITE_A.siteUrl,
-		})).rejects.toThrow(/postcard scan limit exceeded/i);
+		})).resolves.toMatchObject([{ slug: "published-among-drafts" }]);
+	});
+
+	test("rejects a 41st first publication while allowing republishing at the cap", async () => {
+		const fixture = await setup(modules);
+		const created: Array<Awaited<ReturnType<typeof createGraph>>> = [];
+		for (let index = 0; index < 40; index += 1) {
+			const slug = `capacity-${String(index).padStart(2, "0")}`;
+			const value = await createGraph(
+				fixture.adminA,
+				SITE_A.siteUrl,
+				slug,
+				graphDraft("postcard", fixture, slug),
+			);
+			await fixture.adminA.mutation(
+				api.catalogProductGraphs.publishDraft,
+				await publicationArgs(fixture, value.productId),
+			);
+			created.push(value);
+		}
+
+		const overflow = await createGraph(
+			fixture.adminA,
+			SITE_A.siteUrl,
+			"capacity-overflow",
+			graphDraft("tapestry", fixture, "capacity-overflow"),
+		);
+		const beforeOverflow = await product(fixture, overflow.productId);
+		await expect(fixture.adminA.mutation(
+			api.catalogProductGraphs.publishDraft,
+			await publicationArgs(fixture, overflow.productId),
+		)).rejects.toThrow(/Catalog public product limit exceeded/);
+		expect(await product(fixture, overflow.productId)).toEqual(beforeOverflow);
+
+		const current = created[0];
+		if (!current) throw new Error("Republish fixture is missing");
+		const replacement = graphDraft("postcard", fixture, "capacity-00");
+		replacement.title = "Republished at capacity";
+		const saved = await saveGraph(
+			fixture.adminA,
+			current.productId,
+			replacement,
+			current.revisionId,
+		);
+		await expect(fixture.adminA.mutation(
+			api.catalogProductGraphs.publishDraft,
+			await publicationArgs(fixture, current.productId),
+		)).resolves.toMatchObject({ publishedRevisionId: saved.revisionId });
+
+		const list = await fixture.t.query(api.catalogProductGraphs.listPublished, {
+			siteUrl: SITE_A.siteUrl,
+		});
+		expect(list).toHaveLength(40);
+		expect(list.find(({ slug }) => slug === "capacity-00")).toMatchObject({
+			title: "Republished at capacity",
+			revisionId: saved.revisionId,
+		});
 	});
 
 	test("fails closed on total publication overflow before graph fanout", async () => {

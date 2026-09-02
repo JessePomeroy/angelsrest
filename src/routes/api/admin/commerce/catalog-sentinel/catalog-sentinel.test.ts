@@ -3,7 +3,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
 	verify: vi.fn(),
-	resolve: vi.fn(),
+	resolveCurrent: vi.fn(),
+	resolveParity: vi.fn(),
 	resolveCatalogCheckout: vi.fn(),
 	sanityFetch: vi.fn(),
 	env: {
@@ -24,10 +25,13 @@ vi.mock("$lib/sanity/client", () => ({ client: { fetch: mocks.sanityFetch } }));
 vi.mock("$lib/server/catalogCommerceClients", () => ({
 	resolveCatalogCheckout: mocks.resolveCatalogCheckout,
 }));
+vi.mock("$lib/server/currentCheckoutCommerce", () => ({
+	resolveCurrentCheckoutCommerce: mocks.resolveCurrent,
+}));
 vi.mock("$lib/server/checkoutCommerce", () => ({
 	parseCheckoutCatalogProvider: (value: unknown) =>
 		value === "sanity" || value === "shadow" || value === "convex" ? value : "sanity",
-	resolveCheckoutCommerce: mocks.resolve,
+	resolveCheckoutCommerce: mocks.resolveParity,
 }));
 
 import { r4ReadPurposes, r4ReadSignatureMessage } from "$lib/server/r4ReadAuthorization";
@@ -63,16 +67,11 @@ function request(body: unknown = authorizationBody, headers: Record<string, stri
 	});
 }
 
-function resetResolutions(
-	active = { provider: "convex", items: [item] },
+function resetDiagnostics(
 	sanity = { provider: "sanity", items: [item] },
 	convex = { provider: "convex", items: [item] },
 ) {
-	mocks.resolve
-		.mockReset()
-		.mockResolvedValueOnce(active)
-		.mockResolvedValueOnce(sanity)
-		.mockResolvedValueOnce(convex);
+	mocks.resolveParity.mockReset().mockResolvedValueOnce(sanity).mockResolvedValueOnce(convex);
 }
 
 afterEach(() => {
@@ -85,14 +84,15 @@ describe("deployed Checkout catalog sentinel", () => {
 		mocks.env.CHECKOUT_CATALOG_PROVIDER = "convex";
 		mocks.resolveCatalogCheckout.mockReset().mockResolvedValue({ version: 1 });
 		mocks.sanityFetch.mockReset();
-		resetResolutions();
+		mocks.resolveCurrent.mockReset().mockResolvedValue({ provider: "convex", items: [item] });
+		resetDiagnostics();
 	});
 
 	it("requires membership or the fixed-purpose machine signature before any catalog read", async () => {
 		mocks.verify.mockResolvedValue(false);
 		await expect(POST({ request: request() })).rejects.toMatchObject({ status: 401 });
-		expect(mocks.resolve).not.toHaveBeenCalled();
-		expect(mocks.sanityFetch).not.toHaveBeenCalled();
+		expect(mocks.resolveCurrent).not.toHaveBeenCalled();
+		expect(mocks.resolveParity).not.toHaveBeenCalled();
 
 		const rawBody = JSON.stringify(authorizationBody);
 		const timestamp = String(Math.floor(Date.now() / 1_000));
@@ -118,35 +118,42 @@ describe("deployed Checkout catalog sentinel", () => {
 
 	it("uses only the audit-bound fixed selection and exact authorization body", async () => {
 		await POST({ request: request() });
-		expect(mocks.resolve).toHaveBeenCalledTimes(3);
-		for (const call of mocks.resolve.mock.calls) expect(call[1]).toEqual([fixedSelection]);
+		expect(mocks.resolveCurrent).toHaveBeenCalledWith([fixedSelection], expect.any(Object));
+		expect(mocks.resolveParity).toHaveBeenCalledTimes(2);
+		for (const call of mocks.resolveParity.mock.calls) expect(call[1]).toEqual([fixedSelection]);
 
-		resetResolutions();
-		await expect(
-			POST({
-				request: request({
-					...authorizationBody,
-					x: 1,
-				}),
-			}),
-		).rejects.toMatchObject({ status: 400 });
-		expect(mocks.resolve).not.toHaveBeenCalled();
+		mocks.resolveCurrent.mockClear();
+		mocks.resolveParity.mockClear();
+		await expect(POST({ request: request({ ...authorizationBody, x: 1 }) })).rejects.toMatchObject({
+			status: 400,
+		});
+		expect(mocks.resolveCurrent).not.toHaveBeenCalled();
+		expect(mocks.resolveParity).not.toHaveBeenCalled();
 	});
 
-	it("returns only normalized active, binding, mode, and title-inclusive parity classes", async () => {
+	it("reports fixed Convex current authority and nests retired provider diagnostics", async () => {
 		const response = await POST({ request: request() });
 		const text = await response.text();
+		expect(response.status).toBe(200);
 		expect(response.headers.get("cache-control")).toBe("no-store");
 		expect(JSON.parse(text)).toEqual({
-			version: 1,
-			checkoutCatalogProvider: "convex",
-			checkoutCatalogConfiguration: "exact",
-			activeResolutionProvider: "convex",
-			activeProviderBinding: "exact",
-			forcedProviderBinding: "exact",
-			checkoutSnapshotMode: "handle-v2",
-			parity: "match",
-			resolution: "resolved",
+			version: 2,
+			outcome: "healthy",
+			currentCheckout: {
+				catalogProvider: "convex",
+				snapshotProtocol: "handle-v2",
+				resolution: "resolved",
+			},
+			diagnostics: {
+				legacyProviderConfiguration: {
+					provider: "convex",
+					configuration: "exact",
+				},
+				tenantBridgeAndIntakeSnapshotMode: "handle-v2",
+				forcedProviderBinding: "exact",
+				legacySanityConvexParity: "match",
+				resolution: "resolved",
+			},
 		});
 		for (const forbidden of [
 			"raw-nerve-1",
@@ -160,90 +167,99 @@ describe("deployed Checkout catalog sentinel", () => {
 		}
 	});
 
-	it("distinguishes absent and invalid provider configuration from explicit Sanity", async () => {
-		mocks.env.CHECKOUT_CATALOG_PROVIDER = undefined;
-		resetResolutions(
-			{ provider: "sanity", items: [item] },
-			{ provider: "sanity", items: [item] },
-			{ provider: "convex", items: [item] },
-		);
-		await expect((await POST({ request: request() })).json()).resolves.toMatchObject({
-			checkoutCatalogProvider: "sanity",
-			checkoutCatalogConfiguration: "absent",
-		});
-
-		mocks.env.CHECKOUT_CATALOG_PROVIDER = "invalid";
-		resetResolutions(
-			{ provider: "sanity", items: [item] },
-			{ provider: "sanity", items: [item] },
-			{ provider: "convex", items: [item] },
-		);
-		await expect((await POST({ request: request() })).json()).resolves.toMatchObject({
-			checkoutCatalogProvider: "sanity",
-			checkoutCatalogConfiguration: "invalid",
-		});
+	it("keeps retired provider flags diagnostic and unable to steer current authority", async () => {
+		for (const [value, provider, configuration] of [
+			["sanity", "sanity", "exact"],
+			["shadow", "shadow", "exact"],
+			[undefined, "sanity", "absent"],
+			["invalid", "sanity", "invalid"],
+		] as const) {
+			mocks.env.CHECKOUT_CATALOG_PROVIDER = value;
+			resetDiagnostics();
+			const response = await POST({ request: request() });
+			expect(response.status).toBe(200);
+			await expect(response.json()).resolves.toMatchObject({
+				outcome: "healthy",
+				currentCheckout: { catalogProvider: "convex", snapshotProtocol: "handle-v2" },
+				diagnostics: {
+					legacyProviderConfiguration: { provider, configuration },
+				},
+			});
+		}
 	});
 
-	it("binds the active result to its named forced provider and compares titles", async () => {
-		resetResolutions(
-			{ provider: "convex", items: [{ ...item, title: "Drifted active title" }] },
-			{ provider: "sanity", items: [item] },
+	it("keeps Sanity mismatch or outage diagnostic without failing current checkout health", async () => {
+		resetDiagnostics(
+			{ provider: "sanity", items: [{ ...item, title: "Sanity drift" }] },
 			{ provider: "convex", items: [item] },
 		);
 		await expect((await POST({ request: request() })).json()).resolves.toMatchObject({
-			activeProviderBinding: "mismatch",
-			parity: "mismatch",
+			outcome: "healthy",
+			diagnostics: { legacySanityConvexParity: "mismatch" },
 		});
 
-		resetResolutions(
-			{ provider: "convex", items: [{ ...item, title: "Convex title" }] },
-			{ provider: "sanity", items: [item] },
-			{ provider: "convex", items: [{ ...item, title: "Convex title" }] },
-		);
-		await expect((await POST({ request: request() })).json()).resolves.toMatchObject({
-			activeProviderBinding: "exact",
-			parity: "mismatch",
+		mocks.resolveParity
+			.mockReset()
+			.mockRejectedValueOnce(new Error("raw token private-product-id"))
+			.mockResolvedValueOnce({ provider: "convex", items: [item] });
+		const unavailable = await POST({ request: request() });
+		const text = await unavailable.text();
+		expect(unavailable.status).toBe(200);
+		expect(JSON.parse(text)).toMatchObject({
+			outcome: "healthy",
+			diagnostics: {
+				forcedProviderBinding: "unavailable",
+				legacySanityConvexParity: "unavailable",
+				resolution: "unavailable",
+			},
 		});
-
-		resetResolutions(
-			{ provider: "sanity", items: [item] },
-			{ provider: "sanity", items: [item] },
-			{ provider: "convex", items: [item] },
-		);
-		await expect((await POST({ request: request() })).json()).resolves.toMatchObject({
-			checkoutCatalogProvider: "convex",
-			activeResolutionProvider: "sanity",
-			activeProviderBinding: "mismatch",
-			parity: "mismatch",
-		});
+		expect(text).not.toMatch(/raw token|private-product-id/);
 	});
 
-	it("uses the public Convex site and checkout-only resolver secret only for the forced diagnostic", async () => {
+	it("returns a sanitized 503 only when current Convex checkout authority is unavailable", async () => {
+		mocks.resolveCurrent.mockRejectedValueOnce(new Error("raw token private-product-id"));
+		const response = await POST({ request: request() });
+		const text = await response.text();
+		expect(response.status).toBe(503);
+		expect(JSON.parse(text)).toMatchObject({
+			outcome: "unavailable",
+			currentCheckout: {
+				catalogProvider: "convex",
+				snapshotProtocol: "handle-v2",
+				resolution: "unavailable",
+			},
+		});
+		expect(text).not.toMatch(/raw token|private-product-id/);
+	});
+
+	it("uses the checkout-only resolver secret for current and forced Convex diagnostics", async () => {
 		await POST({ request: request() });
-		const forcedDependencies = mocks.resolve.mock.calls[2]?.[2] as {
+		const currentDependencies = mocks.resolveCurrent.mock.calls[0]?.[1] as {
+			resolve: (snapshot: unknown, signal: AbortSignal) => Promise<unknown>;
+		};
+		const forcedDependencies = mocks.resolveParity.mock.calls[1]?.[2] as {
 			provider: () => unknown;
 			resolve: (snapshot: unknown, signal: AbortSignal) => Promise<unknown>;
 		};
 		expect(forcedDependencies.provider()).toBe("convex");
 		const signal = new AbortController().signal;
 		const snapshot = { productKey: "private" };
+		await currentDependencies.resolve(snapshot, signal);
 		await forcedDependencies.resolve(snapshot, signal);
-		expect(mocks.resolveCatalogCheckout).toHaveBeenCalledWith(snapshot, {
-			origin: "https://production.convex.site",
-			bearer: "checkout-only-secret",
-			signal,
-		});
+		expect(mocks.resolveCatalogCheckout).toHaveBeenCalledTimes(2);
+		for (const call of mocks.resolveCatalogCheckout.mock.calls) {
+			expect(call).toEqual([
+				snapshot,
+				{
+					origin: "https://production.convex.site",
+					bearer: "checkout-only-secret",
+					signal,
+				},
+			]);
+		}
 	});
 
-	it("suppresses resolver errors and never returns raw fragments", async () => {
-		mocks.resolve.mockReset().mockRejectedValue(new Error("raw token private-product-id"));
-		await expect(POST({ request: request() })).rejects.toMatchObject({
-			status: 503,
-			body: { message: "Catalog sentinel unavailable" },
-		});
-	});
-
-	it("aborts the shared Sanity signal and returns normalized 503 at the hard deadline", async () => {
+	it("bounds a stalled legacy diagnostic and aborts it without delaying authority indefinitely", async () => {
 		vi.useFakeTimers();
 		let signal: AbortSignal | undefined;
 		const pending = new Promise<never>(() => undefined);
@@ -253,14 +269,18 @@ describe("deployed Checkout catalog sentinel", () => {
 				return pending;
 			},
 		);
-		mocks.resolve.mockReset().mockImplementation((fetcher) => fetcher("query", {}));
+		mocks.resolveParity
+			.mockReset()
+			.mockImplementationOnce((fetcher) => fetcher("query", {}))
+			.mockResolvedValueOnce({ provider: "convex", items: [item] });
 		const result = POST({ request: request() });
-		const rejection = expect(result).rejects.toMatchObject({
-			status: 503,
-			body: { message: "Catalog sentinel unavailable" },
+		await vi.advanceTimersByTimeAsync(750);
+		const response = await result;
+		expect(response.status).toBe(200);
+		await expect(response.json()).resolves.toMatchObject({
+			outcome: "healthy",
+			diagnostics: { resolution: "unavailable" },
 		});
-		await vi.advanceTimersByTimeAsync(6_000);
-		await rejection;
 		expect(signal?.aborted).toBe(true);
 	});
 });

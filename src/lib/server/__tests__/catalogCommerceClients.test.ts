@@ -351,6 +351,148 @@ describe("fixed-purpose catalog clients", () => {
 		}
 	});
 
+	it("accepts maximum trimmed print-set resolver envelopes under the 64 KiB decoded cap", async () => {
+		const maximumKey = (prefix: string, index: number) => {
+			const beginning = `${prefix}-${index}-`;
+			return `${beginning}${"x".repeat(120 - beginning.length)}`;
+		};
+		const item = {
+			...snapshotItem,
+			productKey: "p".repeat(32),
+			revisionId: "r".repeat(32),
+			productKind: "print_set" as const,
+			variantKey: "v".repeat(120),
+		};
+		const projectedAsset = {
+			assetId: "10000000-0000-4000-8000-000000000001",
+			source: { width: 100_000, height: 100_000 },
+			derivatives: {
+				thumb: { contentType: "image/webp", width: 100_000, height: 100_000 },
+				card: { contentType: "image/webp", width: 100_000, height: 100_000 },
+				display1280: { contentType: "image/webp", width: 100_000, height: 100_000 },
+				display2048: { contentType: "image/webp", width: 100_000, height: 100_000 },
+				display2560: { contentType: "image/webp", width: 100_000, height: 100_000 },
+			},
+		};
+		const maximumResponse = {
+			version: 1,
+			purpose: "checkout",
+			item,
+			identity: {
+				productId: item.productKey,
+				revisionId: item.revisionId,
+				productKind: item.productKind,
+				title: "t".repeat(160),
+				slug: "s".repeat(96),
+				variantKey: item.variantKey,
+			},
+			commerce: {
+				currency: "usd",
+				amountCents: 100_000_000,
+				finish: {
+					materialKey: "archival-matte",
+					sizeKey: "8x10",
+					borderKey: null,
+					frameKey: null,
+					paper: { name: "Archival Matte", subcategoryId: 103001 },
+					size: { label: "8×10", width: 8, height: 10 },
+					border: { inches: 0 },
+					frame: { subcategoryId: 0 },
+					canvas: null,
+				},
+			},
+			media: [
+				{
+					key: maximumKey("cover", 0),
+					role: "cover",
+					order: 0,
+					altText: null,
+					asset: projectedAsset,
+				},
+				...Array.from({ length: 20 }, (_, index) => ({
+					key: maximumKey("media", index),
+					role: "set_member",
+					order: index,
+					altText: null,
+					asset: projectedAsset,
+				})),
+			],
+		};
+		const untrimmedPresentationResponse = {
+			...maximumResponse,
+			media: maximumResponse.media.map((entry) => ({
+				...entry,
+				altText: "界".repeat(1_000),
+			})),
+		};
+		expect(Buffer.byteLength(JSON.stringify(untrimmedPresentationResponse))).toBeGreaterThan(
+			64 * 1024,
+		);
+		const body = JSON.stringify(maximumResponse);
+		const decodedBytes = Buffer.byteLength(body);
+		expect(decodedBytes).toBeGreaterThan(8 * 1024);
+		expect(decodedBytes).toBeLessThanOrEqual(64 * 1024);
+		const checkoutFetch = vi.fn(
+			async () =>
+				new Response(body, {
+					headers: {
+						"content-type": "application/json",
+						"content-length": String(decodedBytes),
+					},
+				}),
+		);
+		await expect(
+			resolveCatalogCheckout(item, { origin, bearer: token, fetch: checkoutFetch }),
+		).resolves.toEqual(maximumResponse);
+		expect(checkoutFetch).toHaveBeenCalledOnce();
+
+		const privateObjectKey = `sites/${"s".repeat(253)}/catalog/print-sources/${"a".repeat(160)}/original`;
+		const maximumPaidResponse = {
+			...maximumResponse,
+			purpose: "paid_fulfillment",
+			current: {
+				kindEnabled: true,
+				publishedRevision: false,
+				slugMatches: false,
+				available: false,
+				variantEnabled: false,
+			},
+			descriptor: {
+				kind: "print_sources",
+				sources: Array.from({ length: 20 }, (_, index) => ({
+					memberKey: maximumKey("member", index),
+					relationKey: maximumKey("source", index),
+					key: privateObjectKey,
+					mime: "image/jpeg",
+					bytes: 100_000_000,
+					hash: "f".repeat(64),
+					dimensions: { width: 100_000, height: 100_000 },
+				})),
+			},
+		};
+		const paidBody = JSON.stringify(maximumPaidResponse);
+		const paidDecodedBytes = Buffer.byteLength(paidBody);
+		expect(paidDecodedBytes).toBeGreaterThan(24 * 1024);
+		expect(paidDecodedBytes).toBeLessThanOrEqual(64 * 1024);
+		const paidFetch = vi.fn(
+			async () =>
+				new Response(paidBody, {
+					headers: {
+						"content-type": "application/json",
+						"content-length": String(paidDecodedBytes),
+					},
+				}),
+		);
+		await expect(
+			resolvePaidFulfillment("cs_test_123456789", 0, {
+				origin,
+				bearer: token,
+				fetch: paidFetch,
+			}),
+		).resolves.toMatchObject({ descriptor: { kind: "print_sources", sources: { length: 20 } } });
+		expect(paidFetch).toHaveBeenCalledOnce();
+	});
+
 	it.each([
 		"gzip",
 		"br",

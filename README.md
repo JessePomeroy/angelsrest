@@ -14,7 +14,8 @@ fulfillment, email, and private gallery delivery.
 | Area | Current owner |
 |---|---|
 | Public pages and HTTP composition | SvelteKit 5 |
-| Published editorial content during CMS migration | Sanity fallback |
+| Published product catalog and Angels Rest first-party direct/cart checkout authority | Convex Catalog Graph V2 |
+| Published portfolio, blog, about/contact, and site settings | Convex, with staged Sanity preview/fallback/recovery |
 | Embedded Editor drafts, revisions, and media registry | Convex |
 | Public Editor image derivatives and private sources | Cloudflare R2 through the CMS media worker |
 | CRM, orders, inquiries, documents, and tenant records | Convex |
@@ -25,10 +26,14 @@ fulfillment, email, and private gallery delivery.
 | Private delivery-gallery files | Cloudflare R2 through the gallery worker |
 | Error and performance telemetry | Sentry |
 
-Sanity remains the production editorial fallback while the replacement CMS is
-being implemented inside the existing admin dashboard. The migration is staged
-by content type; the Sanity boundary remains intact until the Editor is accepted,
-restore paths are proven, and an explicit cutover is approved.
+The current public product Shop and Angels Rest first-party direct/cart checkout
+resolve published Convex revisions and do not fall back to Sanity. Portfolio,
+blog, about/contact, and site settings also use their published Convex records
+on the current Production path. Those migrated editorial modules retain tested
+Sanity preview/fallback/recovery readers until the roadmap archive, isolated
+restore, and default-path-decoupling gates are complete. Historical Sanity-backed
+purchase snapshots and paid-download records remain readable so the migration
+cannot strand an existing customer.
 
 See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the authoritative system
 map, ownership rules, and request flows.
@@ -47,7 +52,7 @@ brand, content, administrators, and public origin.
 | `gallery-worker` | Separate Cloudflare Worker deployments for private gallery delivery and public-site Editor media |
 | `reflecting-pool` | Client spoke and tenant admin host; currently in pre-handoff production testing |
 | `sanity-studio-template` | Shared Sanity schemas, desk structure, components, and actions |
-| `angelsrest-studio` | Current Angel's Rest Sanity Studio |
+| `angelsrest-studio` | Retained Sanity preview/recovery schemas and migration records pending the archive/isolated-restore and default-path-decoupling roadmap gates |
 | `reflecting-pool-studio` | Current Reflecting Pool Sanity Studio |
 
 Cross-repository contracts are changed in their owning upstream repository
@@ -67,7 +72,13 @@ published from the separate `admin-dashboard` repository.
 
 ## Important boundaries
 
-- Portfolio galleries are public editorial content currently stored in Sanity.
+- Portfolio galleries are published from Convex; their Sanity reader remains a
+  staged preview/fallback/recovery path.
+- Products are revisioned and published from Convex. Public Shop pages and
+  Angels Rest first-party direct/cart checkout read that published graph
+  directly.
+- Historical Sanity purchase/download resolution is a compatibility boundary,
+  not an authoring or fallback path for a new order.
 - Delivery galleries are private Convex records backed by protected R2 objects.
 - Editor media uses a separate tenant-authenticated Worker, private source
   bucket, immutable public derivative bucket, and Convex asset registry.

@@ -1,6 +1,6 @@
 import { gzipSync } from "node:zlib";
 import { describe, expect, it, vi } from "vitest";
-import { resolveCatalogCheckout } from "$lib/server/catalogCommerceClients";
+import { CatalogBoundaryError, resolveCatalogCheckout } from "$lib/server/catalogCommerceClients";
 import type {
 	CheckoutSelection,
 	CheckoutSnapshotItem,
@@ -10,6 +10,12 @@ import {
 	parseCheckoutCatalogProvider,
 	resolveCheckoutCommerce as resolveCommerce,
 } from "$lib/server/checkoutCommerce";
+import {
+	type CurrentCheckoutCommerceError,
+	resolveCurrentCheckoutCommerce as resolveCurrentCommerce,
+} from "$lib/server/currentCheckoutCommerce";
+
+vi.mock("$lib/sanity/client", () => ({ client: {}, urlFor: vi.fn() }));
 
 type Item = CheckoutSnapshotItem;
 type Kind = Item["productKind"];
@@ -161,6 +167,10 @@ const resolveOne = (
 	dependencies: NonNullable<Parameters<typeof resolveCommerce>[2]>,
 	selected = selection("print"),
 ) => resolveCommerce(fetcher, [selected], dependencies);
+const resolveCurrentOne = (
+	dependencies: NonNullable<Parameters<typeof resolveCurrentCommerce>[1]>,
+	selected = selection("print"),
+) => resolveCurrentCommerce([selected], dependencies);
 function canvasAuthority(canvas: unknown = realCanvas) {
 	return convexDependencies("print", {
 		query: vi.fn().mockResolvedValue(canvasProduct),
@@ -199,7 +209,7 @@ describe("checkout commerce provider", () => {
 		"merchandise",
 	] as const)("maps authenticated authority for direct %s checkout and stores convex", async (kind) => {
 		const dependencies = convexDependencies(kind);
-		const result = await resolveOne(dependencies, selection(kind));
+		const result = await resolveCurrentOne(dependencies, selection(kind));
 		expect(result.provider).toBe("convex");
 		expect(result.items[0]).toMatchObject({
 			title: `Trusted ${kind}`,
@@ -221,7 +231,7 @@ describe("checkout commerce provider", () => {
 	});
 	it("preserves null option identity and rejects selector, current tuple, echo, and result forgery", async () => {
 		const nullOptions = convexDependencies("print");
-		await resolveOne(nullOptions, { ...selection("print"), borderWidth: null, frame: null });
+		await resolveCurrentOne(nullOptions, { ...selection("print"), borderWidth: null, frame: null });
 		expect(vi.mocked(nullOptions.resolve).mock.calls[0]?.[0]).toMatchObject({
 			borderOptionKey: null,
 			frameOptionKey: null,
@@ -230,12 +240,34 @@ describe("checkout commerce provider", () => {
 			select?: CheckoutSelection;
 			query?: unknown;
 			mutate?: (item: CheckoutSnapshotItem) => unknown;
+			kind: CurrentCheckoutCommerceError["kind"];
+			phase: CurrentCheckoutCommerceError["phase"];
 		}> = [
-			{ select: { ...selection("print"), paperSlug: "forged" } },
-			{ query: { ...product("print"), slug: "wrong" } },
-			{ mutate: (item) => response({ ...item, revisionId: "forged" }) },
-			{ mutate: (item) => ({ ...response(item), identity: { title: "incomplete" } }) },
-			{ mutate: (item) => ({ ...response(item), media: [media("gallery")] }) },
+			{
+				select: { ...selection("print"), paperSlug: "forged" },
+				kind: "selection_changed",
+				phase: "graph",
+			},
+			{
+				query: { ...product("print"), slug: "wrong" },
+				kind: "invalid_authority",
+				phase: "graph",
+			},
+			{
+				mutate: (item) => response({ ...item, revisionId: "forged" }),
+				kind: "invalid_authority",
+				phase: "authority",
+			},
+			{
+				mutate: (item) => ({ ...response(item), identity: { title: "incomplete" } }),
+				kind: "invalid_authority",
+				phase: "authority",
+			},
+			{
+				mutate: (item) => ({ ...response(item), media: [media("gallery")] }),
+				kind: "invalid_authority",
+				phase: "authority",
+			},
 		];
 		for (const candidate of cases) {
 			const dependencies = convexDependencies("print", {
@@ -244,11 +276,101 @@ describe("checkout commerce provider", () => {
 					Promise.resolve(candidate.mutate ? candidate.mutate(item) : response(item)),
 				),
 			});
-			await expect(resolveOne(dependencies, candidate.select)).rejects.toThrow(
-				"Checkout catalog resolution failed",
-			);
+			await expect(resolveCurrentOne(dependencies, candidate.select)).rejects.toMatchObject({
+				kind: candidate.kind,
+				phase: candidate.phase,
+			});
 		}
 	});
+
+	it.each([
+		"postcard",
+		"tapestry",
+		"digital_download",
+		"merchandise",
+	] as const)("ignores only the legacy paperIndex zero sentinel for fixed-price %s", async (kind) => {
+		const dependencies = convexDependencies(kind);
+		await expect(
+			resolveCurrentOne(dependencies, { ...selection(kind), paperIndex: 0 }),
+		).resolves.toMatchObject({ provider: "convex" });
+		expect(dependencies.resolve).toHaveBeenCalledOnce();
+	});
+
+	it.each([
+		1,
+		-1,
+		"0",
+		null,
+	])("rejects fixed-price legacy paperIndex value %j as a changed selection", async (paperIndex) => {
+		const dependencies = convexDependencies("tapestry");
+		await expect(
+			resolveCurrentOne(dependencies, {
+				...selection("tapestry"),
+				paperIndex,
+			} as unknown as CheckoutSelection),
+		).rejects.toMatchObject({ kind: "selection_changed", phase: "graph" });
+		expect(dependencies.resolve).not.toHaveBeenCalled();
+	});
+
+	it.each([
+		["print", 0],
+		["print", 1],
+		["print_set", 0],
+		["print_set", 1],
+	] as const)("rejects stale ordinal %i for %s before resolving authority", async (kind, paperIndex) => {
+		const dependencies = convexDependencies(kind);
+		await expect(
+			resolveCurrentOne(dependencies, {
+				productId: `${kind}-one`,
+				isPrintSet: kind === "print_set",
+				paperIndex,
+			}),
+		).rejects.toMatchObject({ kind: "selection_changed", phase: "graph" });
+		expect(dependencies.resolve).not.toHaveBeenCalled();
+	});
+
+	it("classifies missing catalog state, resolver rejection, and dependency failure safely", async () => {
+		await expect(
+			resolveCurrentOne({ query: vi.fn().mockResolvedValue(null), resolve: vi.fn() }),
+		).rejects.toMatchObject({ kind: "selection_changed", phase: "query" });
+		await expect(
+			resolveCurrentOne({
+				query: vi.fn().mockResolvedValue(product("print")),
+				resolve: vi.fn().mockRejectedValue(new CatalogBoundaryError("rejected", "status")),
+			}),
+		).rejects.toMatchObject({ kind: "selection_changed", phase: "status" });
+		await expect(
+			resolveCurrentOne({
+				query: vi.fn().mockResolvedValue(product("print")),
+				resolve: vi.fn().mockRejectedValue(new CatalogBoundaryError("rejected", "envelope")),
+			}),
+		).rejects.toMatchObject({ kind: "invalid_authority", phase: "envelope" });
+		await expect(
+			resolveCurrentOne({ query: vi.fn().mockRejectedValue(new Error("private query")) }),
+		).rejects.toMatchObject({ kind: "unavailable", phase: "query" });
+		await expect(
+			resolveCurrentOne({
+				query: vi.fn().mockResolvedValue(product("print")),
+				resolve: vi.fn().mockRejectedValue(new Error("private resolver")),
+			}),
+		).rejects.toMatchObject({ kind: "unavailable", phase: "resolver" });
+	});
+
+	it("bounds injected query and resolver work even when dependencies ignore cancellation", async () => {
+		await expect(
+			resolveCurrentOne({
+				signal: AbortSignal.timeout(10),
+				query: vi.fn(() => new Promise(() => {})),
+			}),
+		).rejects.toMatchObject({ kind: "unavailable", phase: "query" });
+		await expect(
+			resolveCurrentOne({
+				signal: AbortSignal.timeout(10),
+				query: vi.fn().mockResolvedValue(product("print")),
+				resolve: vi.fn(() => new Promise(() => {})),
+			}),
+		).rejects.toMatchObject({ kind: "unavailable", phase: "resolver" });
+	}, 500);
 	it("accepts null and the real five-field canvas shape with clean shadow mapping", async () => {
 		const paper = {
 			name: 'Canvas White — 1.25" stretch',
@@ -258,9 +380,9 @@ describe("checkout commerce provider", () => {
 			canvasSubcategoryId: 101002,
 			canvasWrapHex: "#FFFFFF",
 		};
-		await expect(resolveOne(canvasAuthority(null), canvasSelection)).resolves.toBeDefined();
+		await expect(resolveCurrentOne(canvasAuthority(null), canvasSelection)).resolves.toBeDefined();
 		const authority = canvasAuthority();
-		const result = await resolveOne(authority, canvasSelection);
+		const result = await resolveCurrentOne(authority, canvasSelection);
 		const resolve = authority.resolve;
 		expect(result.items[0]?.legacyFulfillment.paper).toEqual(paper);
 		expect(result.items[0]?.legacyFulfillment.paper).not.toHaveProperty("color");
@@ -298,14 +420,17 @@ describe("checkout commerce provider", () => {
 		["wrap hex type", { ...realCanvas, wrapHex: 0 }],
 		["wrap hex bound", { ...realCanvas, wrapHex: "#".repeat(21) }],
 	])("rejects malformed canvas %s", async (_case, canvas) => {
-		await expect(resolveOne(canvasAuthority(canvas), canvasSelection)).rejects.toThrow(
-			"Checkout catalog resolution failed",
+		await expect(resolveCurrentOne(canvasAuthority(canvas), canvasSelection)).rejects.toMatchObject(
+			{
+				kind: "invalid_authority",
+				phase: "authority",
+			},
 		);
 	});
 
 	it("accepts 50 media and 20 set members while rejecting a 21st member", async () => {
 		const resolveWithMedia = (kind: Kind, entries: ReturnType<typeof media>[]) =>
-			resolveOne(
+			resolveCurrentOne(
 				convexDependencies(kind, {
 					resolve: vi.fn((item: CheckoutSnapshotItem) =>
 						Promise.resolve(response(item, { media: entries })),
@@ -320,7 +445,7 @@ describe("checkout commerce provider", () => {
 		await resolveWithMedia("merchandise", gallery);
 		await expect(
 			resolveWithMedia("print_set", [media("cover"), ...members, media("set_member", 20)]),
-		).rejects.toThrow("Checkout catalog resolution failed");
+		).rejects.toMatchObject({ kind: "invalid_authority", phase: "authority" });
 	});
 	it("fails unavailable and missing resolver authentication without a Sanity fallback", async () => {
 		const sanity = vi.fn();
@@ -328,13 +453,11 @@ describe("checkout commerce provider", () => {
 			resolve: vi.fn().mockRejectedValue(new Error("authoritative unavailable")),
 			resolveSanity: sanity,
 		});
-		await expect(resolveOne(unavailable)).rejects.toThrow();
+		await expect(resolveCurrentOne(unavailable)).rejects.toThrow();
 		expect(sanity).not.toHaveBeenCalled();
 		await expect(
-			resolveOne({
-				provider: () => "convex",
+			resolveCurrentOne({
 				query: vi.fn().mockResolvedValue(product("print")),
-				resolveSanity: sanity,
 			}),
 		).rejects.toMatchObject({ kind: "unavailable" });
 		expect(sanity).not.toHaveBeenCalled();

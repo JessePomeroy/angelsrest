@@ -32,11 +32,19 @@ Canonical rules for working in this repository.
 
 ## System boundaries
 
-- **Sanity owns editorial content:** public portfolio galleries, products,
-  collections, blog, about, site settings, and contact-page copy.
-- **Convex owns operations:** orders, inquiries, CRM clients, invoices, quotes,
-  contracts, email templates, platform clients/messages, and private delivery
-  galleries.
+- **Convex owns current published CMS content and operations:** product drafts,
+  revisions and publication; the public product Shop; portfolio galleries;
+  blog; about/contact and site settings; orders, inquiries, CRM clients,
+  invoices, quotes, contracts, email templates, platform clients/messages, and
+  private delivery galleries. Angels Rest first-party direct/cart checkout also
+  resolves its current product authority from Convex.
+- **Sanity remains a bounded compatibility system during the roadmap:** the
+  migrated editorial modules retain tested preview/fallback/recovery readers,
+  and historical Sanity-backed purchase/download records remain readable. It
+  is not used by the current Angels Rest public product Shop or first-party
+  direct/cart checkout request paths. Archive/isolated restore and broader
+  default-path decoupling remain R10 and R11 work; neither authorizes deletion
+  of the retained optional provider.
 - **SvelteKit owns transport and composition:** SSR/load functions, public and
   admin HTTP routes, webhook verification, and external-client composition.
 - **The hub owns commerce webhooks:** this repository's commerce webhook is the
@@ -57,8 +65,9 @@ Canonical rules for working in this repository.
 
 There are two gallery domains:
 
-- **Portfolio galleries** are public Sanity content under `/gallery` and the
-  admin portfolio tab.
+- **Portfolio galleries** are public Convex content under `/gallery` and the
+  admin portfolio tab, with Sanity retained only as the staged
+  preview/fallback/recovery boundary.
 - **Delivery galleries** are private Convex records and R2 objects under
   `/delivery/[token]` and the admin delivery tab.
 
@@ -71,6 +80,7 @@ Use these full names in new code and documentation when the distinction matters.
 - Site config: `src/lib/config/site.ts`
 - Sanity published client: `src/lib/sanity/client.ts`
 - Sanity preview client: `src/lib/sanity/client.server.ts`
+- Public Convex Shop boundary: `src/lib/server/convexShop.server.ts`
 - Commerce webhook: `src/routes/api/webhooks/stripe/+server.ts`
 - Webhook orchestration: `src/lib/server/orderIntake.ts`
 - Print fulfillment: `src/lib/server/printFulfillment.ts`
@@ -131,8 +141,9 @@ tenant-authenticated cross-origin billing boundary.
 |---|---|
 | Dashboard, orders | Convex orders |
 | Inquiries | Convex inquiries |
-| Galleries: portfolio tab | Sanity galleries |
+| Galleries: portfolio tab | Convex portfolio galleries |
 | Galleries: delivery tab | Convex galleries + gallery worker/R2 |
+| Editor products and public Shop | Convex Catalog Graph V2 + CMS media worker/R2 |
 | CRM, board | Convex photography clients/kanban |
 | Invoices, quotes, contracts | Convex |
 | Email templates, messages, platform | Convex |
@@ -144,6 +155,8 @@ tenant-authenticated cross-origin billing boundary.
 - Disable: `GET /api/draft/disable` clears it.
 - `SANITY_PREVIEW_TOKEN` must be a viewer token that can read drafts.
 - Keep preview-token access in `.server.ts` modules.
+- Sanity preview mode applies only to content types that still use Sanity. Shop
+  routes always read published Convex product revisions.
 
 ## Checks
 
@@ -169,7 +182,9 @@ Use `pnpm build` when production bundling is relevant. Do not run Biome with
 ## Platform context
 
 - **angelsrest** is the public site and platform hub.
-- **angelsrest-studio** owns Sanity schemas/editorial workflows.
+- **angelsrest-studio** retains the Sanity schemas, preview/recovery workflows,
+  and migration records pending the roadmap archive/retirement gates; it is not
+  current public CMS or Shop authority.
 - **packages/crm-api** owns the shared Convex schema/functions and publishable
   generated API surface.
 - **@jessepomeroy/admin** is an installed shared admin package.
