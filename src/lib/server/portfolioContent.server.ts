@@ -332,7 +332,7 @@ function derivative(value: unknown, assetId: string, filename: string) {
 	return `${MEDIA_ORIGIN}/${key}`;
 }
 
-function convexImage(value: unknown): { evidence: ImageEvidence; thumbnail: string; full: string } {
+function convexImage(value: unknown) {
 	const item = object(value, [
 		"key",
 		"order",
