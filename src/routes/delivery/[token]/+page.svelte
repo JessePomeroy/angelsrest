@@ -57,6 +57,8 @@ let preparedZipCancelRequestId = $state<string | null>(null);
 let preparedZipCancelingRequestId = $state<string | null>(null);
 let folderDownloadStatusToken = 0;
 let selectedImageIds = $state(new Set<string>());
+let failedThumbnailIds = $state(new Set<string>());
+let failedPreviewIds = $state(new Set<string>());
 let galleryView = $state<"grid" | "list">("grid");
 let selectedImages = $derived(images.filter((img) => selectedImageIds.has(img._id)));
 let selectedCount = $derived(selectedImages.length);
@@ -145,6 +147,10 @@ function selectAllImages() {
 
 function clearSelection() {
 	selectedImageIds = new Set();
+}
+
+function markFailed(set: Set<string>, imageId: string) {
+	return new Set(set).add(imageId);
 }
 
 function triggerDownload(image: { downloadUrl: string | null; filename: string }) {
@@ -539,11 +545,17 @@ let favoriteCount = $derived(
 					<button class="image-btn" onclick={() => openLightbox(i)} aria-label={"View item " + (i + 1) + " of " + images.length}>
 						{#if image.isVideo}
 							<span class="file-tile" aria-label={image.filename}><span>video</span></span>
-						{:else if image.canPreview}
-							<img src={image.thumbUrl} alt={"Photo " + (i + 1) + ": " + image.filename} loading="lazy" />
+						{:else if image.canPreview && !failedThumbnailIds.has(image._id)}
+							<img
+								src={image.thumbUrl}
+								alt=""
+								loading={i < 6 ? "eager" : "lazy"}
+								decoding="async"
+								onerror={() => failedThumbnailIds = markFailed(failedThumbnailIds, image._id)}
+							/>
 						{:else}
 							<span class="file-tile" aria-label={image.filename}>
-								<span>{image.fileLabel}</span>
+								<span>{image.canPreview ? "image unavailable" : image.fileLabel}</span>
 							</span>
 						{/if}
 					</button>
@@ -583,11 +595,11 @@ let favoriteCount = $derived(
 					<button class="list-thumb" type="button" onclick={() => openLightbox(i)} aria-label={"View " + image.filename}>
 						{#if image.isVideo}
 							<span class="file-tile" aria-label={image.filename}><span>video</span></span>
-						{:else if image.canPreview}
-							<img src={image.thumbUrl} alt="" loading="lazy" />
+						{:else if image.canPreview && !failedThumbnailIds.has(image._id)}
+							<img src={image.thumbUrl} alt="" loading="lazy" decoding="async" onerror={() => failedThumbnailIds = markFailed(failedThumbnailIds, image._id)} />
 						{:else}
 							<span class="file-tile" aria-label={image.filename}>
-								<span>{image.fileLabel}</span>
+								<span>{image.canPreview ? "image unavailable" : image.fileLabel}</span>
 							</span>
 						{/if}
 					</button>
@@ -643,11 +655,11 @@ let favoriteCount = $derived(
 			{#if images[lightboxIndex].isVideo}
 				<!-- svelte-ignore a11y_media_has_caption -->
 				<video src={images[lightboxIndex].previewUrl} controls playsinline preload="metadata"></video>
-			{:else if images[lightboxIndex].canPreview}
-				<img src={images[lightboxIndex].previewUrl} alt={images[lightboxIndex].filename} />
+			{:else if images[lightboxIndex].canPreview && !failedPreviewIds.has(images[lightboxIndex]._id)}
+				<img src={images[lightboxIndex].previewUrl} alt={images[lightboxIndex].filename} onerror={() => failedPreviewIds = markFailed(failedPreviewIds, images[lightboxIndex]._id)} />
 			{:else}
 				<div class="lightbox-file">
-					<span>{images[lightboxIndex].fileLabel}</span>
+					<span>{images[lightboxIndex].canPreview ? "image unavailable" : images[lightboxIndex].fileLabel}</span>
 				</div>
 			{/if}
 			<div class="lightbox-controls">

@@ -30,7 +30,7 @@ function galleryImageUrl(
 	const derivativeKey = derivative === "original"
 		? r2Key
 		: r2Key.replace("/original/", `/${derivative}/`);
-	const params = new URLSearchParams({ token: access.token });
+	const params = new URLSearchParams({ v: "2", token: access.token });
 	if (access.accessGrant) params.set("accessGrant", access.accessGrant);
 	return `${normalizedWorkerUrl}/image/${encodeURIComponent(derivativeKey)}?${params}`;
 }
