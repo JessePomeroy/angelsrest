@@ -26,9 +26,13 @@ export function isSiteAdminIdentity(
 	}
 	// The migration fallback is email-based, but never verification-optional.
 	// Tokens without an explicit verified claim must refresh before access.
-	if (identity.emailVerified !== true || !identity.email) return false;
+	if (!isEmailVerified(identity) || !identity.email) return false;
 	const identityEmail = identity.email.toLowerCase();
 	return client.adminEmails.some((email) => email.toLowerCase() === identityEmail);
+}
+
+export function isEmailVerified(identity: UserIdentity) {
+	return identity.emailVerified === true || identity.better_auth_email_verified === true;
 }
 
 /**

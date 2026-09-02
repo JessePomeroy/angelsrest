@@ -142,6 +142,19 @@ describe("platform tenant site identity", () => {
 		).resolves.toMatchObject({ authorized: false });
 	});
 
+	test("accepts the signed verification claim emitted by Better Auth", async () => {
+		const t = await seedClient(["admin@example.com"]);
+		const verified = t.withIdentity({
+			subject: "better-auth-admin",
+			email: "admin@example.com",
+			better_auth_email_verified: true,
+		});
+
+		await expect(
+			verified.mutation(api.adminAuth.claimAdminAccess, { siteUrl: "zippymiggy.com" }),
+		).resolves.toMatchObject({ claimed: true, authorized: true });
+	});
+
 	test("does not authorize or bind an unverified or unknown invited email", async () => {
 		const t = await seedClient(["admin@example.com"]);
 		const unknown = t.withIdentity({
@@ -152,6 +165,7 @@ describe("platform tenant site identity", () => {
 			subject: "unverified-admin",
 			email: "admin@example.com",
 			emailVerified: false,
+			better_auth_email_verified: false,
 		});
 
 		await expect(
