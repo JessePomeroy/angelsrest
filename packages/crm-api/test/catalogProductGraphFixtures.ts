@@ -137,8 +137,8 @@ export async function setup(modules: Record<string, () => Promise<unknown>>) {
 			],
 		});
 	}
-	const adminA = t.withIdentity({ subject: SITE_A.email, email: SITE_A.email });
-	const adminB = t.withIdentity({ subject: SITE_B.email, email: SITE_B.email });
+	const adminA = t.withIdentity({ subject: SITE_A.email, email: SITE_A.email, emailVerified: true });
+	const adminB = t.withIdentity({ subject: SITE_B.email, email: SITE_B.email, emailVerified: true });
 	const [webA, webA2, webB] = await Promise.all([
 		adminA.mutation(api.mediaAssets.registerReadyWebAsset, {
 			siteUrl: SITE_A.siteUrl,
