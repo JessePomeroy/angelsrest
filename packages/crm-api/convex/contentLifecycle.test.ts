@@ -25,7 +25,7 @@ async function setup() {
 	});
 	return {
 		t,
-		admin: t.withIdentity({ subject: SITE.email, email: SITE.email }),
+		admin: t.withIdentity({ subject: SITE.email, email: SITE.email, emailVerified: true }),
 	};
 }
 

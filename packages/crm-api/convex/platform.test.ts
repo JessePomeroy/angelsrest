@@ -102,7 +102,7 @@ async function setupPlatformAdmin() {
 			role: "creator",
 		});
 	});
-	return { t, admin: t.withIdentity({ subject: email, email }) };
+	return { t, admin: t.withIdentity({ subject: email, email, emailVerified: true }) };
 }
 
 function clientInput(siteUrl: string, name = siteUrl) {
@@ -118,6 +118,59 @@ function clientInput(siteUrl: string, name = siteUrl) {
 }
 
 describe("platform tenant site identity", () => {
+	test("claims verified invited admins by stable identity and rejects same-email substitutes", async () => {
+		const t = await seedClient(["admin@example.com"]);
+		const verified = t.withIdentity({
+			subject: "verified-admin",
+			email: "admin@example.com",
+			emailVerified: true,
+		});
+		const substitute = t.withIdentity({
+			subject: "different-account",
+			email: "admin@example.com",
+			emailVerified: true,
+		});
+
+		await expect(
+			verified.mutation(api.adminAuth.claimAdminAccess, { siteUrl: "zippymiggy.com" }),
+		).resolves.toMatchObject({ claimed: true, authorized: true });
+		await expect(
+			substitute.query(api.adminAuth.checkAdminAccess, {
+				email: "admin@example.com",
+				siteUrl: "zippymiggy.com",
+			}),
+		).resolves.toMatchObject({ authorized: false });
+	});
+
+	test("does not authorize or bind an unverified or unknown invited email", async () => {
+		const t = await seedClient(["admin@example.com"]);
+		const unknown = t.withIdentity({
+			subject: "unknown-verification-admin",
+			email: "admin@example.com",
+		});
+		const unverified = t.withIdentity({
+			subject: "unverified-admin",
+			email: "admin@example.com",
+			emailVerified: false,
+		});
+
+		await expect(
+			unknown.query(api.adminAuth.checkAdminAccess, {
+				email: "admin@example.com",
+				siteUrl: "zippymiggy.com",
+			}),
+		).resolves.toMatchObject({ authorized: false });
+		await expect(
+			unverified.query(api.adminAuth.checkAdminAccess, {
+				email: "admin@example.com",
+				siteUrl: "zippymiggy.com",
+			}),
+		).resolves.toMatchObject({ authorized: false });
+		await expect(
+			unverified.mutation(api.adminAuth.claimAdminAccess, { siteUrl: "zippymiggy.com" }),
+		).rejects.toThrow("verified account");
+	});
+
 	test("rejects duplicate create and colliding update without changing either row", async () => {
 		const { t, admin } = await setupPlatformAdmin();
 		const firstId = await admin.mutation(
@@ -190,6 +243,7 @@ describe("platform catalog product capability policy", () => {
 		const clientAdmin = t.withIdentity({
 			subject: "owner@catalog.example",
 			email: "owner@catalog.example",
+			emailVerified: true,
 		});
 		await expect(clientAdmin.mutation(api.platform.updateClient, {
 			clientId,

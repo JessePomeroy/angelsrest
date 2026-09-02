@@ -33,6 +33,7 @@ async function setupTenant() {
 	const admin = t.withIdentity({
 		subject: ADMIN_EMAIL,
 		email: ADMIN_EMAIL,
+		emailVerified: true,
 	});
 	const clientId = await admin.mutation(api.crm.createClient, {
 		siteUrl: SITE_URL,

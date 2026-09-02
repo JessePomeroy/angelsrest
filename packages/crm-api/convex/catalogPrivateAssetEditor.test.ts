@@ -64,9 +64,9 @@ async function seedClients(t: TestHarness) {
 		});
 	}
 	return {
-		adminA: t.withIdentity({ subject: "admin-a", email: "admin-a@example.com" }),
-		adminB: t.withIdentity({ subject: "admin-b", email: "admin-b@example.com" }),
-		stranger: t.withIdentity({ subject: "stranger", email: "stranger@example.com" }),
+		adminA: t.withIdentity({ subject: "admin-a", email: "admin-a@example.com", emailVerified: true }),
+		adminB: t.withIdentity({ subject: "admin-b", email: "admin-b@example.com", emailVerified: true }),
+		stranger: t.withIdentity({ subject: "stranger", email: "stranger@example.com", emailVerified: true }),
 	};
 }
 

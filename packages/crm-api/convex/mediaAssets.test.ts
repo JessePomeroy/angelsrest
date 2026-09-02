@@ -64,7 +64,7 @@ async function setup() {
 }
 
 function asAdmin(t: Awaited<ReturnType<typeof setup>>, email: string) {
-	return t.withIdentity({ subject: email, email });
+	return t.withIdentity({ subject: email, email, emailVerified: true });
 }
 
 function restoreEnvironment(name: string, previous: string | undefined) {

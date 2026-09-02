@@ -21,7 +21,7 @@ async function setupProtectedGallery() {
 		adminEmails: [ADMIN],
 		role: "client",
 	});
-	const admin = t.withIdentity({ subject: ADMIN, email: ADMIN });
+	const admin = t.withIdentity({ subject: ADMIN, email: ADMIN, emailVerified: true });
 	const clientId = await admin.mutation(api.crm.createClient, {
 		siteUrl: SITE,
 		name: "Gallery Client",
