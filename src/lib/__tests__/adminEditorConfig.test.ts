@@ -91,6 +91,8 @@ const {
 		getEditorState: "portfolioGalleries.getEditorState",
 		saveDraft: "portfolioGalleries.saveDraft",
 		publish: "portfolioGalleries.publish",
+		setVisibility: "portfolioGalleries.setVisibility",
+		remove: "portfolioGalleries.remove",
 		reorder: "portfolioGalleries.reorder",
 	};
 	return {
@@ -243,10 +245,8 @@ describe("admin API aliases", () => {
 		expect(portfolioEditor?.getEditorState).toBe(portfolioApi.getEditorState);
 		expect(portfolioEditor?.saveDraft).toBe(portfolioApi.saveDraft);
 		expect(portfolioEditor?.publish).toBeUndefined();
-		expect(Reflect.get(portfolioEditor ?? {}, "setVisibility")).toBe(
-			Reflect.get(portfolioApi, "setVisibility"),
-		);
-		expect(Reflect.get(portfolioEditor ?? {}, "remove")).toBe(Reflect.get(portfolioApi, "remove"));
+		expect(portfolioEditor?.setVisibility).toBe(portfolioApi.setVisibility);
+		expect(portfolioEditor?.remove).toBe(portfolioApi.remove);
 		expect(portfolioEditor?.reorder).toBe(portfolioApi.reorder);
 		expect(portfolioEditor?.listMediaAssets).toBe(mediaApi.listForEditor);
 		expect(portfolioEditor?.getPlacedMediaAssets).toBe(mediaApi.getManyForEditor);
