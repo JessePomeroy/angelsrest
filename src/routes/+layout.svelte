@@ -91,6 +91,8 @@ onMount(() => {
 });
 </script>
 
+<svelte:body class:admin-route={isAdmin} class:portal-route={isPortal} />
+
 {#if isPortal}
   {@render children()}
 {:else if isAdmin}
