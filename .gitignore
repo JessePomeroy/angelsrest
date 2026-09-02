@@ -22,6 +22,12 @@ vite.config.js.timestamp-*
 vite.config.ts.timestamp-*
 .claude/worktrees/
 
+# Machine-local AI tooling. Keep repository instructions in AGENTS.md only.
+/.agents/
+/.claude/
+/.codex/
+/CLAUDE.md
+
 # Local audit/rotation working docs may contain sensitive provider details.
 AUDIT.md
 ROTATION.md
