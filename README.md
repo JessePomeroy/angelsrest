@@ -128,6 +128,7 @@ run when their flows are affected.
 ## Documentation
 
 - [AGENTS.md](AGENTS.md) — canonical repository rules and implementation constraints
+- [docs/SECURITY-OPERATIONS.md](docs/SECURITY-OPERATIONS.md) — authority, least-privilege, recovery, and incident runbook
 - [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) — current ownership, dependencies, authentication, and transport boundaries
 - [LUMAPRINTS.md](LUMAPRINTS.md) — current print-fulfillment integration
 - [packages/crm-api/README.md](packages/crm-api/README.md) — shared Convex package and release workflow

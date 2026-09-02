@@ -98,18 +98,27 @@ security boundary; keep verification inside the host route.
 ## Admin architecture
 
 1. Better Auth establishes the browser session.
-2. `src/routes/admin/+layout.server.ts` validates the session and checks the
-   authenticated email against the host site's stored `adminEmails` membership
-   before child server loads return sensitive data.
-3. `src/routes/admin/+layout.svelte` authenticates the Convex WebSocket through
+2. Public email/password signup is disabled. A prelisted `adminEmails` address
+   may claim access only from a verified account; that claim stores the stable
+   Better Auth `tokenIdentifier` in `adminIdentityIds`.
+3. `src/routes/admin/+layout.server.ts` validates the session, performs that
+   idempotent claim, and checks stable site membership before child server loads
+   return sensitive data.
+4. `src/routes/admin/+layout.svelte` authenticates the Convex WebSocket through
    `setupAuth`, driven by the server-validated layout state.
-4. Queries use the authenticated WebSocket.
-5. Mutations use `/api/admin/mutation`, which validates the cookie and creates a
+5. Queries use the authenticated WebSocket.
+6. Mutations use `/api/admin/mutation`, which validates the cookie and creates a
    fresh authenticated `ConvexHttpClient` for the request.
-6. Convex functions enforce site or creator membership through
+7. Convex functions enforce site or creator membership through
    `requireSiteAdmin`, `requireDocumentSiteAdmin`, or `requireCreator`.
-7. Shared server handlers, including gallery-worker/R2 operations, call the
+8. Shared server handlers, including gallery-worker/R2 operations, call the
    host's per-request site-admin verifier before performing side effects.
+
+R12 uses a widen/claim/narrow migration. The widened schema temporarily permits
+verified legacy email membership only while a tenant has no claimed stable
+identity. Both production tenants must claim and be verified before the final
+narrow removes that compatibility read. Creating a platform client records an
+invitation; it does not create or disclose a generated password.
 
 ### Document-email delivery and recovery
 

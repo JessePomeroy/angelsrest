@@ -14,6 +14,9 @@ function createAuthenticatedClient(token: string): ConvexHttpClient | null {
 }
 
 async function querySiteAdminAccess(client: ConvexHttpClient, email: string) {
+	await client.mutation(api.adminAuth.claimAdminAccess, {
+		siteUrl: adminConfig.siteUrl,
+	});
 	return await client.query(api.adminAuth.checkAdminAccess, {
 		email,
 		siteUrl: adminConfig.siteUrl,
