@@ -23,8 +23,10 @@ const authHarness = vi.hoisted(() => {
 		isPending: false,
 	};
 	const signOut = vi.fn<(...args: unknown[]) => Promise<unknown>>();
+	const token = vi.fn<() => Promise<{ data: { token: string } | null }>>();
 	const unchangedMethod = vi.fn();
 	const client = {
+		convex: { token },
 		signOut,
 		unchangedMethod,
 		useSession: () => ({
@@ -39,6 +41,7 @@ const authHarness = vi.hoisted(() => {
 	return {
 		client,
 		signOut,
+		token,
 		unchangedMethod,
 		configuredClient: null as typeof client | null,
 		emitSession(value: SessionValue) {
@@ -336,6 +339,11 @@ describe("admin layout Convex auth protocol and lifecycle", () => {
 		tokenRequestCount = 0;
 		authHarness.reset();
 		authHarness.signOut.mockReset();
+		authHarness.token.mockReset();
+		authHarness.token.mockImplementation(async () => {
+			tokenRequestCount += 1;
+			return { data: { token: makeToken(tokenRequestCount) } };
+		});
 		authHarness.unchangedMethod.mockReset();
 		authHarness.configuredClient = null;
 		navigationHarness.invalidateAll.mockReset();
@@ -349,13 +357,7 @@ describe("admin layout Convex auth protocol and lifecycle", () => {
 		vi.stubGlobal("WebSocket", InMemoryWebSocket as unknown as typeof WebSocket);
 		vi.stubGlobal(
 			"fetch",
-			vi.fn(async () => {
-				tokenRequestCount += 1;
-				return new Response(JSON.stringify({ token: makeToken(tokenRequestCount) }), {
-					status: 200,
-					headers: { "content-type": "application/json" },
-				});
-			}),
+			vi.fn(() => Promise.reject(new Error("legacy token endpoint called"))),
 		);
 	});
 
@@ -415,6 +417,43 @@ describe("admin layout Convex auth protocol and lifecycle", () => {
 		});
 		unsubscribeNavigation();
 		unsubscribeInitial?.();
+	});
+
+	it("renews an expiring Convex JWT through Better Auth instead of rereading the cookie", async () => {
+		const query = makeFunctionReference<"query", Record<string, never>, unknown>("products:list");
+		let unsubscribe: (() => void) | undefined;
+		mountAuthorizedLayout(
+			createRawSnippet(() => {
+				unsubscribe = getConvexClient().onUpdate(query, {}, () => undefined);
+				return { render: () => "<div data-protected-query></div>" };
+			}),
+		);
+		const socket = sockets[0];
+
+		await vi.waitFor(() => {
+			expect(messagesFor(socket).filter(authenticatesUser)).toHaveLength(1);
+		});
+		confirmUser(socket, 0, 1, true);
+
+		await vi.waitFor(() => {
+			expect(authHarness.token).toHaveBeenCalledTimes(2);
+			expect(messagesFor(socket).filter(authenticatesUser)).toHaveLength(2);
+		});
+		expect(fetch).not.toHaveBeenCalled();
+		unsubscribe?.();
+	});
+
+	it("offers an explicit recovery when the authenticated session cannot mint a token", async () => {
+		authHarness.token.mockResolvedValue({ data: null });
+		mountAuthorizedLayout();
+
+		await vi.waitFor(() => {
+			expect(document.body.textContent).toContain("your session expired.");
+		});
+		const button = document.querySelector<HTMLButtonElement>(".admin-session-recovery button");
+		expect(button?.textContent).toBe("sign in again");
+		button?.click();
+		expect(reloadHarness.reloadAdminRoot).toHaveBeenCalledOnce();
 	});
 
 	it("closes a paused authenticated connection before reload and blocks stale auth work", async () => {
