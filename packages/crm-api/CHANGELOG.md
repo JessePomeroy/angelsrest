@@ -1,5 +1,11 @@
 # @jessepomeroy/crm-api
 
+## 4.1.0
+
+### Minor Changes
+
+- e82625b: Add verified stable-identity claims for tenant administrators while retaining a bounded legacy membership read for the staged R12 migration.
+
 ## 4.0.1
 
 ### Patch Changes
