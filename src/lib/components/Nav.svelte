@@ -23,18 +23,13 @@ const links = [
 </script>
 
 <!-- Desktop nav - hidden on mobile (md:flex), centered with max-width -->
-<nav
-  aria-label="Main navigation"
-  class="hidden md:flex w-full items-center justify-between px-8 py-6 max-w-[1400px] !mx-auto border-b border-surface-500/20"
->
+<nav aria-label="Main navigation" class="site-nav">
   <!-- Site title/logo -->
-  <a href="/" class="text-sm tracking-widest lowercase font-light text-gray-900 dark:text-surface-50"
-    >angel's rest</a
-  >
+  <a href="/" class="site-name">angel's rest</a>
   
-  <div class="flex items-center gap-8">
+  <div class="nav-cluster">
     <!-- Navigation links -->
-    <ul class="flex gap-8 list-none">
+    <ul class="nav-links">
       {#each links as link (link.href)}
         <li>
           <!-- 
@@ -43,11 +38,8 @@ const links = [
           -->
           <a
             href={link.href}
-            class="text-xs tracking-wider lowercase transition-colors duration-200 {page
-              .url.pathname === link.href ||
-            (link.href !== '/' && page.url.pathname.startsWith(link.href))
-              ? 'text-gray-900 dark:text-surface-50'
-              : 'text-gray-600 hover:text-gray-900 dark:text-surface-400 dark:hover:text-surface-50'}"
+            class:active={page.url.pathname === link.href ||
+              (link.href !== '/' && page.url.pathname.startsWith(link.href))}
           >
             {link.label}
           </a>
@@ -62,3 +54,61 @@ const links = [
     <CartIcon variant="nav" />
   </div>
 </nav>
+
+<style>
+  .site-nav {
+    display: none;
+    width: min(100%, 1400px);
+    height: 64px;
+    margin-inline: auto;
+    padding-inline: clamp(2.5rem, 4vw, 4rem);
+    align-items: center;
+    justify-content: space-between;
+    border-bottom: 1px solid color-mix(in srgb, currentColor 14%, transparent);
+  }
+
+  .site-name {
+    color: inherit;
+    font-size: 0.78rem;
+    font-weight: 500;
+    letter-spacing: 0.18em;
+  }
+
+  .nav-cluster,
+  .nav-links {
+    display: flex;
+    align-items: center;
+  }
+
+  .nav-cluster { gap: 2rem; }
+  .nav-links { gap: clamp(1.25rem, 2.5vw, 2rem); }
+
+  .nav-links a {
+    position: relative;
+    display: block;
+    padding-block: 22px 20px;
+    color: color-mix(in srgb, currentColor 64%, transparent);
+    font-size: 0.72rem;
+    letter-spacing: 0.12em;
+  }
+
+  .nav-links a::after {
+    content: "";
+    position: absolute;
+    right: 0;
+    bottom: -1px;
+    left: 0;
+    height: 1px;
+    background: var(--time-accent);
+    transform: scaleX(0);
+    transition: transform 180ms ease;
+  }
+
+  .nav-links a:hover,
+  .nav-links a.active { color: currentColor; }
+  .nav-links a.active::after { transform: scaleX(1); }
+
+  @media (min-width: 768px) {
+    .site-nav { display: flex; }
+  }
+</style>

@@ -18,22 +18,43 @@ onMount(() => {
 });
 </script>
 
-<footer
-	class="hidden md:block py-6 px-8 text-center text-surface-400 text-xs tracking-wider border-t border-surface-500/20 max-w-350 mx-auto"
->
+<footer class="site-footer">
+	<p>&copy; {year} {siteName}</p>
 	{#if socialLinks.length > 0}
-		<div class="flex justify-center gap-4 mb-3">
+		<div class="social-links">
 			{#each socialLinks as link (link.url)}
 				<a
 					href={link.url}
 					target="_blank"
 					rel="noopener noreferrer"
-					class="hover:text-surface-200 transition-colors"
+					class="social-link"
 				>
 					{link.platform}
 				</a>
 			{/each}
 		</div>
 	{/if}
-	<p>&copy; {year} {siteName}</p>
 </footer>
+
+<style>
+	.site-footer {
+		display: none;
+		width: min(calc(100% - 5rem), 1320px);
+		min-height: 64px;
+		margin-inline: auto;
+		padding-block: 20px;
+		align-items: center;
+		justify-content: space-between;
+		border-top: 1px solid color-mix(in srgb, currentColor 14%, transparent);
+		color: color-mix(in srgb, currentColor 58%, transparent);
+		font-size: 0.68rem;
+		letter-spacing: 0.12em;
+	}
+
+	.social-links { display: flex; gap: 1.25rem; }
+	.social-link { color: inherit; }
+
+	@media (min-width: 768px) {
+		.site-footer { display: flex; }
+	}
+</style>
