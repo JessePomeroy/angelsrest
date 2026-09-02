@@ -1,6 +1,7 @@
 import { v } from "convex/values";
+import { internal } from "./_generated/api";
 import type { Doc } from "./_generated/dataModel";
-import { mutation, type MutationCtx, query } from "./_generated/server";
+import { internalMutation, mutation, type MutationCtx, query } from "./_generated/server";
 import { requireDocumentSiteAdmin, requireSiteAdmin } from "./authHelpers";
 import {
 	assertExpectedDraft,
@@ -25,11 +26,20 @@ import {
 	validatePortfolioGalleryDraft,
 } from "./helpers/portfolioValidators";
 
+const REMOVE_BATCH_SIZE = 64;
+
+function assertGalleryActive(gallery: Doc<"portfolioGalleries">) {
+	if (gallery.deletionRequestedAt !== undefined) {
+		throw new Error("Portfolio gallery is being deleted");
+	}
+}
+
 async function requirePortfolioEditorUnlocked(ctx: MutationCtx, siteUrl: string) {
-	const galleries = await ctx.db
+	const galleries = (await ctx.db
 		.query("portfolioGalleries")
 		.withIndex("by_siteUrl_and_portfolioOrder", (q) => q.eq("siteUrl", siteUrl))
-		.take(PORTFOLIO_GALLERY_MAX + 1);
+		.take(PORTFOLIO_GALLERY_MAX + 1))
+		.filter((gallery) => gallery.deletionRequestedAt === undefined);
 	if (galleries.length > PORTFOLIO_GALLERY_MAX) {
 		throw new Error("Portfolio gallery limit exceeded");
 	}
@@ -61,6 +71,7 @@ export const saveDraft = mutation({
 			if (!gallery || gallery.siteUrl !== client.siteUrl) {
 				throw new Error("Portfolio gallery not found");
 			}
+			assertGalleryActive(gallery);
 			const currentDraft = await getPortfolioRevision(ctx, gallery.draftRevisionId);
 			if (currentDraft) {
 				assertRevisionOwnership(currentDraft, gallery);
@@ -178,6 +189,7 @@ export const publish = mutation({
 	},
 	handler: async (ctx, args) => {
 		const gallery = await requireDocumentSiteAdmin(ctx, "portfolioGalleries", args.galleryId);
+		assertGalleryActive(gallery);
 		await requirePortfolioEditorUnlocked(ctx, gallery.siteUrl);
 		assertExpectedDraft(gallery, args.draftRevisionId);
 		const revision = await getPortfolioRevision(ctx, args.draftRevisionId);
@@ -232,10 +244,74 @@ export const publish = mutation({
 	},
 });
 
+export const setVisibility = mutation({
+	args: {
+		galleryId: v.id("portfolioGalleries"),
+		isVisible: v.boolean(),
+	},
+	handler: async (ctx, { galleryId, isVisible }) => {
+		const gallery = await requireDocumentSiteAdmin(ctx, "portfolioGalleries", galleryId);
+		assertGalleryActive(gallery);
+		const identity = await ctx.auth.getUserIdentity();
+		if (!identity) throw new Error("Not authenticated");
+		await ctx.db.patch(galleryId, {
+			isVisible,
+			updatedAt: Date.now(),
+			updatedBy: identity.tokenIdentifier,
+		});
+		return { isVisible };
+	},
+});
+
+export const remove = mutation({
+	args: { galleryId: v.id("portfolioGalleries") },
+	handler: async (ctx, { galleryId }) => {
+		const gallery = await requireDocumentSiteAdmin(ctx, "portfolioGalleries", galleryId);
+		if (gallery.deletionRequestedAt === undefined) {
+			await ctx.db.patch(galleryId, {
+				isPublished: false,
+				isVisible: false,
+				deletionRequestedAt: Date.now(),
+			});
+		}
+		await ctx.runMutation(internal.portfolioGalleries._removeBatch, { galleryId });
+		return null;
+	},
+});
+
+export const _removeBatch = internalMutation({
+	args: { galleryId: v.id("portfolioGalleries") },
+	handler: async (ctx, { galleryId }) => {
+		const gallery = await ctx.db.get(galleryId);
+		if (!gallery?.deletionRequestedAt) return;
+		let remaining = REMOVE_BATCH_SIZE;
+		const placements = await ctx.db
+			.query("portfolioPlacements")
+			.withIndex("by_galleryId_and_revisionId", (q) => q.eq("galleryId", galleryId))
+			.take(remaining);
+		for (const placement of placements) await ctx.db.delete(placement._id);
+		remaining -= placements.length;
+		if (remaining > 0) {
+			const revisions = await ctx.db
+				.query("portfolioGalleryRevisions")
+				.withIndex("by_galleryId_and_createdAt", (q) => q.eq("galleryId", galleryId))
+				.take(remaining);
+			for (const revision of revisions) await ctx.db.delete(revision._id);
+			remaining -= revisions.length;
+		}
+		if (remaining > 0) {
+			await ctx.db.delete(galleryId);
+			return;
+		}
+		await ctx.scheduler.runAfter(0, internal.portfolioGalleries._removeBatch, { galleryId });
+	},
+});
+
 export const getEditorState = query({
 	args: { galleryId: v.id("portfolioGalleries") },
 	handler: async (ctx, { galleryId }) => {
 		const gallery = await requireDocumentSiteAdmin(ctx, "portfolioGalleries", galleryId);
+		assertGalleryActive(gallery);
 		const [draft, published] = await Promise.all([
 			loadEditorRevision(ctx, gallery, gallery.draftRevisionId),
 			loadEditorRevision(ctx, gallery, gallery.publishedRevisionId),
@@ -265,7 +341,9 @@ export const listForEditor = query({
 		if (galleries.length > PORTFOLIO_GALLERY_MAX) {
 			throw new Error("Portfolio gallery limit exceeded");
 		}
-		return await Promise.all(galleries.map(async (gallery) => {
+		return await Promise.all(galleries.filter((gallery) =>
+			gallery.deletionRequestedAt === undefined
+		).map(async (gallery) => {
 			const [draft, published] = await Promise.all([
 				getPortfolioRevision(ctx, gallery.draftRevisionId),
 				getPortfolioRevision(ctx, gallery.publishedRevisionId),
@@ -293,10 +371,11 @@ export const reorder = mutation({
 	},
 	handler: async (ctx, { siteUrl, galleryIds }) => {
 		const { identity, client } = await requireSiteAdmin(ctx, siteUrl);
-		const galleries = await ctx.db
+		const galleries = (await ctx.db
 			.query("portfolioGalleries")
 			.withIndex("by_siteUrl_and_portfolioOrder", (q) => q.eq("siteUrl", client.siteUrl))
-			.take(PORTFOLIO_GALLERY_MAX + 1);
+			.take(PORTFOLIO_GALLERY_MAX + 1))
+			.filter((gallery) => gallery.deletionRequestedAt === undefined);
 		if (galleries.some(isInitialSanityPortfolioImport)) {
 			throw new Error("Imported Portfolio requires fixed initial publication");
 		}

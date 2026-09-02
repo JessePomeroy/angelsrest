@@ -231,6 +231,8 @@ describe("admin API aliases", () => {
 			"listForEditor",
 			"getEditorState",
 			"saveDraft",
+			"setVisibility",
+			"remove",
 			"reorder",
 			"listMediaAssets",
 			"getPlacedMediaAssets",
@@ -241,6 +243,10 @@ describe("admin API aliases", () => {
 		expect(portfolioEditor?.getEditorState).toBe(portfolioApi.getEditorState);
 		expect(portfolioEditor?.saveDraft).toBe(portfolioApi.saveDraft);
 		expect(portfolioEditor?.publish).toBeUndefined();
+		expect(Reflect.get(portfolioEditor ?? {}, "setVisibility")).toBe(
+			Reflect.get(portfolioApi, "setVisibility"),
+		);
+		expect(Reflect.get(portfolioEditor ?? {}, "remove")).toBe(Reflect.get(portfolioApi, "remove"));
 		expect(portfolioEditor?.reorder).toBe(portfolioApi.reorder);
 		expect(portfolioEditor?.listMediaAssets).toBe(mediaApi.listForEditor);
 		expect(portfolioEditor?.getPlacedMediaAssets).toBe(mediaApi.getManyForEditor);
