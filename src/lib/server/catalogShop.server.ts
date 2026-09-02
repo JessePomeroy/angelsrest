@@ -14,7 +14,7 @@ import {
 } from "$lib/server/convexShopAdapter";
 import { logStructured } from "$lib/server/logger";
 import { sanityShop } from "$lib/server/sanityShop.server";
-import committedCatalogDisplayMediaTransferReceipts from "../../../scripts/cms/migrations/angelsrest-catalog/sanity-catalog-display-media-transfer-receipts.json";
+import committedCatalogDisplayMediaTransferReceipts from "./catalogDisplayMediaTransferReceipts.json";
 
 type PublishedCatalog = FunctionReturnType<typeof api.catalogProductGraphs.listPublished>;
 type ClosedReason = "mismatch" | "timeout" | "secondary_error" | "normalization_error";

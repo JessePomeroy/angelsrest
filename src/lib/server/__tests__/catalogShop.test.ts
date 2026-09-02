@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import transferReceipts from "../../../../scripts/cms/migrations/angelsrest-catalog/sanity-catalog-display-media-transfer-receipts.json";
+import transferReceipts from "../catalogDisplayMediaTransferReceipts.json";
 
 vi.mock("$env/dynamic/private", () => ({ env: {} }));
 vi.mock("$env/dynamic/public", () => ({ env: { PUBLIC_CONVEX_URL: "https://convex.test" } }));
