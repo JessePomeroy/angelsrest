@@ -1,4 +1,4 @@
-import { createAdminAuthValidator, createAdminTokenHandler } from "@jessepomeroy/admin/server";
+import { createAdminAuthValidator } from "@jessepomeroy/admin/server";
 import { getToken } from "@mmailaender/convex-better-auth-svelte/sveltekit";
 import { api } from "$convex/api";
 import { env as publicEnv } from "$env/dynamic/public";
@@ -27,4 +27,3 @@ export const adminAuth = createAdminAuthValidator({
 });
 
 export const { requireAuth, requireAuthWithIdentity } = adminAuth;
-export const adminTokenHandler = createAdminTokenHandler({ getToken });

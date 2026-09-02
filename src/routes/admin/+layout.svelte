@@ -8,7 +8,7 @@ import {
 	shouldHoldAdminShellForServerSession,
 	shouldRefreshAdminServerSession,
 } from "@jessepomeroy/admin";
-import { closeConvex, setupAuth, setupConvex } from "convex-svelte";
+import { closeConvex, setupAuth, setupConvex, useAuth } from "convex-svelte";
 import { untrack } from "svelte";
 import { browser } from "$app/environment";
 import { invalidateAll } from "$app/navigation";
@@ -124,9 +124,9 @@ $effect(() => {
 // of the flickery session subscription. `+layout.server.ts` re-runs on
 // every navigation and re-validates the cookie via Convex's
 // `adminAuth.whoami`, so the value stays stable across SPA nav (no
-// transient nulls). `fetchAccessToken` hits `/api/admin/token` which
-// reads the HttpOnly Better Auth cookie server-side and returns the
-// JWT for the Convex client.
+// transient nulls). `fetchAccessToken` asks Better Auth to mint a fresh
+// short-lived Convex JWT from the longer-lived session whenever Convex
+// refreshes its token.
 //
 // Transient null client-session emissions do not affect Convex auth. A
 // successful explicit sign-out closes this app-scoped client and reloads the
@@ -143,14 +143,15 @@ setupAuth(
 		isLoading: serverSessionRefreshInFlight,
 		isAuthenticated: serverSessionAuthorized,
 		fetchAccessToken: async () => {
-			const res = await fetch("/api/admin/token");
-			if (!res.ok) return null;
-
-			const { token } = await res.json();
-			return (token as string | null | undefined) ?? null;
+			const { data } = await authClient.convex.token();
+			return data?.token ?? null;
 		},
 	}),
 	{ initialState: { isAuthenticated: untrack(() => serverSessionAuthorized) } },
+);
+const convexAuth = useAuth();
+let shouldRecoverConvexAuth = $derived(
+	serverSessionAuthorized && !convexAuth.isLoading && !convexAuth.isAuthenticated,
 );
 
 setAdminConfig({
@@ -163,6 +164,11 @@ setAdminConfig({
 	{#if shouldHoldAdminShell}
 		<div class="admin-session-loading" data-admin>
 			<LoadingState />
+		</div>
+	{:else if shouldRecoverConvexAuth}
+		<div class="admin-session-recovery" data-admin>
+			<p>your session expired.</p>
+			<button type="button" onclick={reloadAdminRoot}>sign in again</button>
 		</div>
 	{:else}
 		<AdminLayout {data}>
@@ -178,5 +184,24 @@ setAdminConfig({
 		align-items: center;
 		justify-content: center;
 		background: var(--admin-bg);
+	}
+
+	.admin-session-recovery {
+		min-height: 100vh;
+		display: grid;
+		place-content: center;
+		gap: 12px;
+		text-align: center;
+		background: var(--admin-bg);
+		color: var(--admin-text);
+	}
+
+	.admin-session-recovery button {
+		padding: 10px 18px;
+		border: 1px solid var(--admin-border-strong);
+		border-radius: 6px;
+		background: var(--admin-surface);
+		color: inherit;
+		cursor: pointer;
 	}
 </style>
