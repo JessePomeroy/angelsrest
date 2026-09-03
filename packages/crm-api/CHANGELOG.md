@@ -1,5 +1,11 @@
 # @jessepomeroy/crm-api
 
+## 4.1.2
+
+### Patch Changes
+
+- 1cd1fb2: Retire completed incident, shipment-observer, and development-only operator interfaces; reserve deleted portfolio gallery identities; and allow media cleanup once only immutable history references an asset.
+
 ## 4.1.1
 
 ### Patch Changes
