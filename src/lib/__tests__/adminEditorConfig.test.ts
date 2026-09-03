@@ -5,7 +5,7 @@ import {
 	resolveCatalogProductVariantOptions,
 } from "$lib/catalogProductMargin";
 import { adminConfig } from "$lib/config/admin";
-import { createAdminPlatformCapabilities } from "$lib/config/adminPlatformCapabilities";
+import { createAdminServerCapabilities } from "$lib/config/adminPlatformCapabilities.server";
 
 const {
 	apiMock,
@@ -191,7 +191,7 @@ describe("admin platform capabilities", () => {
 		expect(adminConfig.api.galleryDelivery?.setPassword).toBe(apiMock.galleryPassword.setPassword);
 		expect(adminConfig.api.crm?.getStats).toBe(apiMock.crm.getStats);
 		expect(adminConfig.api.documentEmailAttempts).toBeUndefined();
-		const serverCapabilities = createAdminPlatformCapabilities(api, "server");
+		const serverCapabilities = createAdminServerCapabilities(api);
 		expect(serverCapabilities.documentEmailAttempts).not.toBe(documentEmailApi);
 		expect(serverCapabilities.documentEmailAttempts).toEqual(documentEmailApi);
 		expect(Object.keys(serverCapabilities.documentEmailAttempts ?? {})).toEqual([

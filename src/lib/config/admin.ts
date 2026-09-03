@@ -5,7 +5,7 @@ import {
 	resolveCatalogProductVariantOptions,
 } from "$lib/catalogProductMargin";
 import { contactPageSeed } from "$lib/content/contactPageSeed";
-import { createAdminPlatformCapabilities } from "./adminPlatformCapabilities";
+import { createAdminBrowserCapabilities } from "./adminPlatformCapabilities";
 
 export const adminConfig: AdminConfig = {
 	siteUrl: "angelsrest.online",
@@ -14,7 +14,7 @@ export const adminConfig: AdminConfig = {
 	isCreator: true,
 	sanityStudioUrl: "https://angelsrest.sanity.studio",
 	galleryWorkerUrl: "https://gallery-worker.thinkingofview.workers.dev",
-	api: createAdminPlatformCapabilities(api, "browser"),
+	api: createAdminBrowserCapabilities(api),
 	editor: {
 		siteSettings: {},
 		contactPage: {

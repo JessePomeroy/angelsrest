@@ -3,16 +3,17 @@ import type * as generatedApiModule from "$convex/api";
 
 type GeneratedApi = typeof generatedApiModule.api;
 
+export type AdminBrowserCapabilities = Omit<AdminAPI, "documentEmailAttempts"> & {
+	readonly documentEmailAttempts?: never;
+};
+
 /**
  * Adapt the generated Convex module proxy to the stable capability interface
- * consumed by the shared Admin package. Browser configuration receives only
- * browser-used references; server handlers additionally receive the durable
- * document-email journal.
+ * consumed by the shared Admin package's browser surface. Server-only
+ * extensions live in the adjacent `.server` module and cannot be requested
+ * through this interface.
  */
-export function createAdminPlatformCapabilities(
-	api: GeneratedApi,
-	exposure: "browser" | "server",
-): AdminAPI {
+export function createAdminBrowserCapabilities(api: GeneratedApi): AdminBrowserCapabilities {
 	const capabilities = {
 		activityLog: { getClientActivity: api.activityLog.getClientActivity },
 		adminAuth: { checkAdminAccess: api.adminAuth.checkAdminAccess },
@@ -201,21 +202,7 @@ export function createAdminPlatformCapabilities(
 			listTags: api.tags.listTags,
 			getClientTags: api.tags.getClientTags,
 		},
-	} satisfies AdminAPI;
+	} satisfies AdminBrowserCapabilities;
 
-	if (exposure === "browser") return capabilities;
-
-	return {
-		...capabilities,
-		documentEmailAttempts: {
-			get: api.documentEmailAttempts.get,
-			getRecovery: api.documentEmailAttempts.getRecovery,
-			getOpenRecoveryByDocument: api.documentEmailAttempts.getOpenRecoveryByDocument,
-			prepare: api.documentEmailAttempts.prepare,
-			claim: api.documentEmailAttempts.claim,
-			complete: api.documentEmailAttempts.complete,
-			fail: api.documentEmailAttempts.fail,
-			resolve: api.documentEmailAttempts.resolve,
-		},
-	};
+	return capabilities;
 }
