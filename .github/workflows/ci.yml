@@ -69,11 +69,18 @@ jobs:
         if: github.event_name == 'pull_request'
         run: |
           changed=$(git diff --name-only origin/main...HEAD)
+          base_version=$(git show origin/main:packages/crm-api/package.json | node -e "let s=''; process.stdin.on('data', c => s += c).on('end', () => process.stdout.write(JSON.parse(s).version))")
+          head_version=$(node -p "require('./packages/crm-api/package.json').version")
+          if [ "$base_version" != "$head_version" ] && [ "$GITHUB_HEAD_REF" != 'changeset-release/main' ]; then
+            echo 'Direct CRM API version changes are reserved for the Changesets release PR.'
+            exit 1
+          fi
           public=$(grep -E '^packages/crm-api/(src/|convex/.*\.ts$)' <<<"$changed" | grep -Ev '(\.test\.ts$|/__tests__/|/_generated/ai/)' || true)
-          if [ -n "$public" ]; then
+          if { [ -n "$public" ] || grep -Fxq 'packages/crm-api/package.json' <<<"$changed"; } && [ "$GITHUB_HEAD_REF" != 'changeset-release/main' ]; then
             added=$(git diff --diff-filter=A --name-only origin/main...HEAD -- '.changeset/*.md' | grep -v '/README.md$' || true)
             test -n "$added" || { echo 'CRM API surface changes require a new .changeset/*.md file.'; exit 1; }
-            corepack pnpm changeset status --since=origin/main
+            corepack pnpm changeset status --since=origin/main --output=/tmp/changeset-status.json
+            node -e "const s=require('/tmp/changeset-status.json'); if (!s.releases.some(r => r.name === '@jessepomeroy/crm-api')) process.exit(1)"
           fi
 
       # Audit H50: match the local `pnpm lint` command (biome check .) so CI
