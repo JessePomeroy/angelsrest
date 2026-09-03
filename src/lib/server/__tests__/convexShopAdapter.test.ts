@@ -171,7 +171,7 @@ describe("Convex Shop page-shape adapter", () => {
 		expect(() => adaptConvexPrintSet(missingCover)).toThrow(ConvexShopProjectionError);
 	});
 
-	it("reconstructs the live Sanity featured and V2-first merge order", () => {
+	it("reconstructs the live featured catalog order", () => {
 		const catalog = completeCatalog();
 		for (const product of catalog) product.saleAvailability = "unavailable";
 		const orderedProducts = [

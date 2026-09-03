@@ -4,12 +4,10 @@ Canonical rules for working in this repository.
 
 ## Project context
 
-- **Stack:** SvelteKit 5 (runes), Tailwind CSS v4, Sanity, Convex, Stripe,
+- **Stack:** SvelteKit 5 (runes), Tailwind CSS v4, Convex, Stripe,
   LumaPrints, Resend, and Cloudflare R2
 - **Frontend and platform hub:** `~/Documents/work/angelsrest` →
   <https://angelsrest.online>
-- **Sanity Studio:** `~/Documents/work/angelsrest-studio` →
-  <https://angelsrest.sanity.studio>
 - **Current architecture:** `docs/ARCHITECTURE.md`
 - **CRM spec:**
   `~/Documents/quilt/02_reference/projects/photographer_crm/implementation-spec.md`
@@ -36,9 +34,9 @@ Canonical rules for working in this repository.
   products, blog, about/contact copy, site settings, orders, inquiries, CRM
   clients, invoices, quotes, contracts, email templates, platform
   clients/messages, and private delivery galleries.
-- **Sanity is optional compatibility infrastructure:** retained Studio, hosted
-  data/assets, schemas, preview adapter, migration tools, and recovery archive.
-  It is not the default source for published pages, Shop, or new checkout.
+- **Convex is the sole content and commerce authority:** no runtime provider
+  switch, preview adapter, migration endpoint, or historical purchase fallback
+  may restore a retired provider.
 - **SvelteKit owns transport and composition:** SSR/load functions, public and
   admin HTTP routes, webhook verification, and external-client composition.
 - **The hub owns commerce webhooks:** this repository's commerce webhook is the
@@ -53,7 +51,7 @@ Canonical rules for working in this repository.
   verifies the provider's configured Basic credentials and resolves the
   provider-global order number to its stored tenant. Client spokes must not
   receive the broad Convex webhook secret or run a duplicate shipment handler.
-- **External systems:** Stripe, LumaPrints, Resend, Sanity, Convex, and the
+- **External systems:** Stripe, LumaPrints, Resend, Convex, and the
   gallery worker are network boundaries. Make their failure and retry behavior
   explicit; avoid speculative interfaces around pure in-process code.
 
@@ -73,15 +71,13 @@ Use these full names in new code and documentation when the distinction matters.
 - Site config: `src/lib/config/site.ts`
 - Convex Shop boundary: `src/lib/server/convexShop.server.ts`
 - Current checkout authority: `src/lib/server/currentCheckoutCommerce.ts`
-- Optional Sanity published/preview clients: `src/lib/sanity/client.ts`,
-  `src/lib/sanity/client.server.ts`
 - Commerce webhook: `src/routes/api/webhooks/stripe/+server.ts`
 - Webhook orchestration: `src/lib/server/orderIntake.ts`
 - Print fulfillment: `src/lib/server/printFulfillment.ts`
 - LumaPrints client/payload builder: `src/lib/server/lumaprints.ts`
 - Tenant checkout authentication registry: `src/lib/server/checkoutBridgeConfig.ts`
 - Admin host config: `src/lib/config/admin.ts` and `admin.server.ts`
-- Server hooks: `src/hooks.server.ts` (security headers, preview state, errors)
+- Server hooks: `src/hooks.server.ts` (security headers and errors)
 
 The `$convex` alias points to
 `packages/crm-api/convex/_generated` through `svelte.config.js`.
@@ -141,17 +137,6 @@ tenant-authenticated cross-origin billing boundary.
 | Invoices, quotes, contracts | Convex |
 | Email templates, messages, platform | Convex |
 
-## Optional Sanity preview and visual editing
-
-- Enable: `GET /api/draft/enable` validates the Sanity preview secret and sets
-  the preview cookie.
-- Disable: `GET /api/draft/disable` clears it.
-- `SANITY_PREVIEW_TOKEN` must be a viewer token that can read drafts.
-- Keep preview-token access in `.server.ts` modules.
-- Published requests default to Convex. Only an exact, reviewed `sanity`
-  content-provider selector may use the retained published adapter; invalid or
-  missing selectors must not silently restore Sanity.
-
 ## Checks
 
 ```bash
@@ -176,8 +161,6 @@ Use `pnpm build` when production bundling is relevant. Do not run Biome with
 ## Platform context
 
 - **angelsrest** is the public site and platform hub.
-- **angelsrest-studio** retains the optional Sanity preview and recovery
-  workflow; it is not the default public authority.
 - **packages/crm-api** owns the shared Convex schema/functions and publishable
   generated API surface.
 - **@jessepomeroy/admin** is an installed shared admin package.

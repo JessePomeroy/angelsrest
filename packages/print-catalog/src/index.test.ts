@@ -52,7 +52,7 @@ describe("@jessepomeroy/print-catalog", () => {
 		expect(getPaper("canvas-black-rolled")?.name).toBe("Canvas Black — rolled");
 	});
 
-	it("exports stable Sanity dropdown helpers", () => {
+	it("exports stable editor option helpers", () => {
 		expect(PAPER_DROPDOWN_OPTIONS[0]).toEqual({ title: "Archival Matte", value: "archival-matte" });
 		expect(PAPER_DROPDOWN_OPTIONS.at(-1)).toEqual({
 			title: "Canvas White — rolled",

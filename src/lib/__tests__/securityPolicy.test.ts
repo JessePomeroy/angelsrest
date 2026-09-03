@@ -18,8 +18,8 @@ describe("production security policy", () => {
 		expect(connections).not.toContain("https://*.workers.dev");
 	});
 
-	it("preserves the Sanity fallback while migration remains reversible", () => {
-		expect(directiveSources("img-src")).toContain("https://cdn.sanity.io");
-		expect(directiveSources("connect-src")).toContain("https://*.sanity.io");
+	it("does not authorize retired CMS network boundaries", () => {
+		expect(directiveSources("img-src")).not.toContain("https://cdn.sanity.io");
+		expect(directiveSources("connect-src")).not.toContain("https://*.sanity.io");
 	});
 });

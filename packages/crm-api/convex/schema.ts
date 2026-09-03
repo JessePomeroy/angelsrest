@@ -222,7 +222,6 @@ export default defineSchema({
 		name: v.string(),
 		email: v.string(),
 		siteUrl: v.string(),
-		sanityProjectId: v.optional(v.string()),
 		tier: v.union(v.literal("basic"), v.literal("full")),
 		subscriptionStatus: v.union(
 			v.literal("active"),

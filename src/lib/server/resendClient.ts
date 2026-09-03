@@ -1,5 +1,5 @@
 import { Resend } from "resend";
-import { RESEND_API_KEY } from "$env/static/private";
+import { getResendApiKey } from "$lib/server/runtimeConfig";
 
 let _resend: Resend | null = null;
 
@@ -9,6 +9,6 @@ let _resend: Resend | null = null;
  * instance. See audit M3.
  */
 export function getResend(): Resend {
-	if (!_resend) _resend = new Resend(RESEND_API_KEY);
+	if (!_resend) _resend = new Resend(getResendApiKey());
 	return _resend;
 }

@@ -297,7 +297,7 @@ function parseSinglePrintSnapshot(value: unknown) {
 	if (!exactRecord(value, ["schemaVersion", "catalogProvider", "items"])) invalidSnapshot();
 	if (
 		value.schemaVersion !== 1 ||
-		(value.catalogProvider !== "sanity" && value.catalogProvider !== "convex") ||
+		value.catalogProvider !== "convex" ||
 		!Array.isArray(value.items) ||
 		value.items.length !== 1
 	)
@@ -316,7 +316,7 @@ function parseSinglePrintSnapshot(value: unknown) {
 	}
 	return {
 		schemaVersion: 1 as const,
-		catalogProvider: value.catalogProvider as "sanity" | "convex",
+		catalogProvider: "convex" as const,
 		items: [item as unknown as CheckoutSnapshotItem] as [CheckoutSnapshotItem],
 	};
 }

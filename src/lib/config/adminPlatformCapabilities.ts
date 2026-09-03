@@ -44,7 +44,7 @@ export function createAdminBrowserCapabilities(api: GeneratedApi): AdminBrowserC
 			discardContactPageDraft: api.content.discardContactPageDraft,
 			getAboutPageEditorState: api.content.getAboutPageEditorState,
 			saveAboutPageDraft: api.content.saveAboutPageDraft,
-			publishAboutPage: api.content.holdAboutPagePublication,
+			publishAboutPage: api.content.publishAboutPage,
 			discardAboutPageDraft: api.content.discardAboutPageDraft,
 			listMediaAssets: api.mediaAssets.listForEditor,
 			getPlacedMediaAssets: api.mediaAssets.getManyForEditor,

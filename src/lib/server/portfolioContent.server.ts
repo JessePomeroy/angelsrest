@@ -1,65 +1,15 @@
 import { error } from "@sveltejs/kit";
 import { ConvexHttpClient } from "convex/browser";
 import { api } from "$convex/api";
-import { env as privateEnv } from "$env/dynamic/private";
-import { env as publicEnv } from "$env/dynamic/public";
 import { SITE_DOMAIN } from "$lib/config/site";
-import { urlFor } from "$lib/sanity/client";
-import { getSanityClient } from "$lib/sanity/client.server";
+import { getConvexUrl } from "$lib/server/runtimeConfig";
 
 const GALLERY_MAX = 100;
 const PLACEMENT_MAX = 500;
 const MEDIA_ORIGIN = `https://media.${SITE_DOMAIN}`;
 const UUID_V4 = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
 const SHA256 = /^[a-f0-9]{64}$/;
-const SANITY_IMAGE_REF = /^image-[A-Za-z0-9]+-\d+x\d+-[A-Za-z0-9]+$/;
-
-const LIST_QUERY = `*[_type == "gallery"] | order(orderRank asc, _id asc)[0...101]{
-	_id,
-	_rev,
-	title,
-	"slug": slug.current,
-	orderRank,
-	"previewImage": images[0]{
-		_key,
-		alt,
-		crop{bottom, left, right, top},
-		hotspot{height, width, x, y},
-		"assetRef": asset._ref,
-		"width": asset->metadata.dimensions.width,
-		"height": asset->metadata.dimensions.height
-	}
-}`;
-
-const DETAIL_QUERY = `*[_type == "gallery" && slug.current == $slug][0...2]{
-	_id,
-	_rev,
-	title,
-	"slug": slug.current,
-	description,
-	images[]{
-		_key,
-		alt,
-		crop{bottom, left, right, top},
-		hotspot{height, width, x, y},
-		"assetRef": asset._ref,
-		"width": asset->metadata.dimensions.width,
-		"height": asset->metadata.dimensions.height
-	},
-	seo{
-		description,
-		"ogImageUrl": ogImage.asset->url,
-		"ogImage": ogImage{
-			crop{bottom, left, right, top},
-			hotspot{height, width, x, y},
-			"assetRef": asset._ref,
-			"width": asset->metadata.dimensions.width,
-			"height": asset->metadata.dimensions.height
-		}
-	}
-}`;
-
-type ProviderMode = "sanity" | "convex";
+const LEGACY_SOURCE_IMAGE_REF = /^image-[A-Za-z0-9]+-\d+x\d+-[A-Za-z0-9]+$/;
 
 export type PortfolioIndexGallery = {
 	title: string;
@@ -99,13 +49,6 @@ type GalleryEvidence = {
 	images: ImageEvidence[];
 };
 
-type SanityClient = {
-	fetch(query: string, params?: Record<string, string>): Promise<unknown>;
-};
-type SanitySource = {
-	list(isPreview: boolean): Promise<PortfolioIndexGallery[]>;
-	getBySlug(slug: string, isPreview: boolean): Promise<PortfolioDetail | null>;
-};
 type ConvexReader = {
 	listPublished(signal: AbortSignal): Promise<unknown>;
 	getPublishedBySlug(slug: string, signal: AbortSignal): Promise<unknown>;
@@ -159,167 +102,8 @@ function integer(value: unknown, minimum = 0, maximum = Number.MAX_SAFE_INTEGER)
 	return value as number;
 }
 
-function number(value: unknown, minimum: number, maximum: number) {
-	if (typeof value !== "number" || !Number.isFinite(value) || value < minimum || value > maximum)
-		fail();
-	return value;
-}
-
-function canonical(value: unknown): string {
-	if (value === null) return "null";
-	if (typeof value === "number" || typeof value === "boolean" || typeof value === "string") {
-		return JSON.stringify(value);
-	}
-	if (Array.isArray(value)) return `[${value.map(canonical).join(",")}]`;
-	if (value && typeof value === "object") {
-		return `{${Object.entries(value as Record<string, unknown>)
-			.sort(([left], [right]) => (left < right ? -1 : left > right ? 1 : 0))
-			.map(([key, item]) => `${JSON.stringify(key)}:${canonical(item)}`)
-			.join(",")}}`;
-	}
-	return fail();
-}
-
-function crop(value: unknown) {
-	if (value === null) return null;
-	const item = object(value, ["bottom", "left", "right", "top"]);
-	return {
-		bottom: number(item.bottom, 0, 1),
-		left: number(item.left, 0, 1),
-		right: number(item.right, 0, 1),
-		top: number(item.top, 0, 1),
-	};
-}
-
-function hotspot(value: unknown) {
-	if (value === null) return null;
-	const item = object(value, ["height", "width", "x", "y"]);
-	return {
-		height: number(item.height, 0, 1),
-		width: number(item.width, 0, 1),
-		x: number(item.x, 0, 1),
-		y: number(item.y, 0, 1),
-	};
-}
-
-type SanityImage = ImageEvidence & {
-	source: {
-		asset: { _ref: string };
-		crop?: ReturnType<typeof crop>;
-		hotspot?: ReturnType<typeof hotspot>;
-	};
-};
-
-function sanityImage(value: unknown, keyRequired = true): SanityImage {
-	const item = object(value, ["_key", "alt", "crop", "hotspot", "assetRef", "width", "height"]);
-	const assetRef = requiredText(item.assetRef, 500, SANITY_IMAGE_REF);
-	const normalizedCrop = crop(item.crop);
-	const normalizedHotspot = hotspot(item.hotspot);
-	const key = item._key === null ? null : requiredText(item._key, 100);
-	if (keyRequired && key === null) fail();
-	return {
-		key,
-		assetRef,
-		width: integer(item.width, 1, 100_000),
-		height: integer(item.height, 1, 100_000),
-		cropCanonical: canonical(normalizedCrop),
-		hotspotCanonical: canonical(normalizedHotspot),
-		alt: optionalText(item.alt, 500) ?? "",
-		workerAssetId: null,
-		sourceSha256: null,
-		source: {
-			asset: { _ref: assetRef },
-			...(normalizedCrop ? { crop: normalizedCrop } : {}),
-			...(normalizedHotspot ? { hotspot: normalizedHotspot } : {}),
-		},
-	};
-}
-
-function imageUrl(image: SanityImage, kind: "preview" | "thumbnail" | "full") {
-	const builder = urlFor(image.source);
-	if (kind === "preview") return builder.width(600).format("webp").quality(80).url();
-	if (kind === "thumbnail") return builder.width(400).format("webp").quality(80).url();
-	return builder.width(1600).format("webp").quality(90).url();
-}
-
 function titleDerivedCanonicalUrl(title: string) {
 	return `https://${SITE_DOMAIN}/gallery/${title.toLowerCase().replace(/\s+/g, "-")}`;
-}
-
-function sanityEvidence(
-	row: Record<string, unknown>,
-	images: SanityImage[],
-	seoDescription: string | null,
-	seoOgImage: SanityImage | null,
-): GalleryEvidence {
-	const title = requiredText(row.title, 120);
-	return {
-		sourceId: requiredText(row._id, 256),
-		sourceRevision: requiredText(row._rev, 256),
-		slug: requiredText(row.slug, 96),
-		title,
-		description: optionalText(row.description, 2_000),
-		canonicalUrl: titleDerivedCanonicalUrl(title),
-		seoDescription,
-		seoOgImage,
-		images,
-	};
-}
-
-export function adaptSanityPortfolioList(value: unknown): PortfolioIndexGallery[] {
-	const rows = list(value, GALLERY_MAX);
-	const content: PortfolioIndexGallery[] = [];
-	for (const raw of rows) {
-		const row = object(raw, ["_id", "_rev", "title", "slug", "orderRank", "previewImage"]);
-		requiredText(row.orderRank, 256);
-		const preview = row.previewImage === null ? null : sanityImage(row.previewImage);
-		const item = sanityEvidence(
-			{ ...row, description: null },
-			preview ? [preview] : [],
-			null,
-			null,
-		);
-		content.push({
-			title: item.title,
-			slug: item.slug,
-			preview: preview ? imageUrl(preview, "preview") : null,
-		});
-	}
-	return content;
-}
-
-export function adaptSanityPortfolioDetail(value: unknown): PortfolioDetail | null {
-	const rows = list(value, 2);
-	if (rows.length === 0) return null;
-	if (rows.length !== 1) fail();
-	const row = object(rows[0], ["_id", "_rev", "title", "slug", "description", "images", "seo"]);
-	const images = list(row.images, PLACEMENT_MAX).map((image) => sanityImage(image));
-	let seoDescription: string | null = null;
-	let seoOgImage: SanityImage | null = null;
-	let seoContent: PortfolioDetail["seo"] = null;
-	if (row.seo !== null) {
-		const seo = object(row.seo, ["description", "ogImageUrl", "ogImage"]);
-		seoDescription = optionalText(seo.description, 320);
-		seoOgImage =
-			seo.ogImage === null
-				? null
-				: sanityImage({ _key: null, alt: null, ...(seo.ogImage as object) }, false);
-		const ogImageUrl = optionalText(seo.ogImageUrl, 2_048);
-		if ((seoOgImage === null) !== (ogImageUrl === null)) fail();
-		seoContent = { description: seoDescription, ogImageUrl };
-	}
-	const evidence = sanityEvidence(row, images, seoDescription, seoOgImage);
-	return {
-		title: evidence.title,
-		description: evidence.description,
-		canonicalUrl: evidence.canonicalUrl,
-		seo: seoContent,
-		images: images.map((image) => ({
-			thumbnail: imageUrl(image, "thumbnail"),
-			full: imageUrl(image, "full"),
-			alt: image.alt,
-		})),
-	};
 }
 
 function derivative(value: unknown, assetId: string, filename: string) {
@@ -366,7 +150,7 @@ function convexImage(value: unknown) {
 			assetRef:
 				item.sourceAssetRef === null
 					? ""
-					: requiredText(item.sourceAssetRef, 500, SANITY_IMAGE_REF),
+					: requiredText(item.sourceAssetRef, 500, LEGACY_SOURCE_IMAGE_REF),
 			width: integer(source.width, 1, 100_000),
 			height: integer(source.height, 1, 100_000),
 			cropCanonical:
@@ -486,28 +270,9 @@ export function adaptConvexPortfolioDetail(value: unknown): PortfolioDetail | nu
 	return adaptConvexGallery(value).detail;
 }
 
-export function parsePortfolioProviderMode(value: unknown): ProviderMode {
-	return value === "sanity" ? "sanity" : "convex";
-}
-
-export function createSanityPortfolioSource(
-	selectClient: (isPreview: boolean) => SanityClient = getSanityClient,
-): SanitySource {
-	return {
-		async list(isPreview) {
-			return adaptSanityPortfolioList(await selectClient(isPreview).fetch(LIST_QUERY));
-		},
-		async getBySlug(slug, isPreview) {
-			return adaptSanityPortfolioDetail(
-				await selectClient(isPreview).fetch(DETAIL_QUERY, { slug }),
-			);
-		},
-	};
-}
-
 function createConvexReader(): ConvexReader {
 	function client(signal: AbortSignal) {
-		return new ConvexHttpClient(publicEnv.PUBLIC_CONVEX_URL || "", {
+		return new ConvexHttpClient(getConvexUrl(), {
 			logger: false,
 			fetch: (input, init) => fetch(input, { ...init, signal }),
 		});
@@ -532,44 +297,28 @@ function unavailable(): never {
 }
 
 export function createPortfolioContentProvider(
-	dependencies: {
-		sanity?: SanitySource;
-		mode?: () => unknown;
-		createReader?: () => ConvexReader;
-	} = {},
+	dependencies: { createReader?: () => ConvexReader } = {},
 ) {
-	const sanity = dependencies.sanity ?? createSanityPortfolioSource();
-	const mode = dependencies.mode ?? (() => privateEnv.PORTFOLIO_CONTENT_PROVIDER);
 	const createReader = dependencies.createReader ?? createConvexReader;
 
 	return {
-		async list(isPreview: boolean) {
-			if (isPreview) return await sanity.list(true);
-			const provider = parsePortfolioProviderMode(mode());
-			if (provider === "convex") {
-				try {
-					return adaptConvexPortfolioList(
-						await createReader().listPublished(AbortSignal.timeout(6_000)),
-					);
-				} catch {
-					unavailable();
-				}
+		async list(_isPreview?: boolean) {
+			try {
+				return adaptConvexPortfolioList(
+					await createReader().listPublished(AbortSignal.timeout(6_000)),
+				);
+			} catch {
+				unavailable();
 			}
-			return await sanity.list(false);
 		},
-		async getBySlug(slug: string, isPreview: boolean) {
-			if (isPreview) return await sanity.getBySlug(slug, true);
-			const provider = parsePortfolioProviderMode(mode());
-			if (provider === "convex") {
-				try {
-					return adaptConvexPortfolioDetail(
-						await createReader().getPublishedBySlug(slug, AbortSignal.timeout(6_000)),
-					);
-				} catch {
-					unavailable();
-				}
+		async getBySlug(slug: string, _isPreview?: boolean) {
+			try {
+				return adaptConvexPortfolioDetail(
+					await createReader().getPublishedBySlug(slug, AbortSignal.timeout(6_000)),
+				);
+			} catch {
+				unavailable();
 			}
-			return await sanity.getBySlug(slug, false);
 		},
 	};
 }

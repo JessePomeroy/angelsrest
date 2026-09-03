@@ -63,10 +63,10 @@ vi.mock("$lib/server/webhookEmails", async (importOriginal) => {
 
 const checkoutSnapshot = {
 	schemaVersion: 1 as const,
-	catalogProvider: "sanity" as const,
+	catalogProvider: "convex" as const,
 	items: [
 		{
-			productKey: "sanity.print.integration",
+			productKey: "catalog.print.integration",
 			revisionId: "immutable-revision-1",
 			productKind: "print" as const,
 			variantKey: "8x10",

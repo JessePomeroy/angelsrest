@@ -23,7 +23,7 @@ function makeItem(overrides: Partial<CartItem> = {}): CartItem {
 		productSlug: "shore-no-1",
 		type: "print",
 		title: "Shore No. 1",
-		imageUrl: "https://cdn.sanity.io/images/abc/shore-no-1.jpg",
+		imageUrl: "https://media.example.test/images/abc/shore-no-1.jpg",
 		paperName: "Archival Matte",
 		paperSubcategoryId: 103001,
 		paperWidth: 8,
@@ -45,7 +45,7 @@ function makeMerchItem(overrides: Partial<CartItem> = {}): CartItem {
 		productSlug: "pokemon-tapestry",
 		type: "print",
 		title: "Pokemon Starters Tapestry",
-		imageUrl: "https://cdn.sanity.io/images/abc/pokemon-tapestry.jpg",
+		imageUrl: "https://media.example.test/images/abc/pokemon-tapestry.jpg",
 		quantity: 1,
 		unitPriceCents: 18900,
 		...overrides,
@@ -63,11 +63,11 @@ function makeSetItem(overrides: Partial<CartItem> = {}): CartItem {
 		productSlug: "tide-set",
 		type: "set",
 		title: "Tide Set",
-		imageUrl: "https://cdn.sanity.io/images/abc/tide-cover.jpg",
+		imageUrl: "https://media.example.test/images/abc/tide-cover.jpg",
 		imageUrls: [
-			"https://cdn.sanity.io/images/abc/tide-1.jpg",
-			"https://cdn.sanity.io/images/abc/tide-2.jpg",
-			"https://cdn.sanity.io/images/abc/tide-3.jpg",
+			"https://media.example.test/images/abc/tide-1.jpg",
+			"https://media.example.test/images/abc/tide-2.jpg",
+			"https://media.example.test/images/abc/tide-3.jpg",
 		],
 		paperName: "Glossy",
 		paperSubcategoryId: 103007,
@@ -176,7 +176,7 @@ describe("validateCart", () => {
 		const tooMany = Array.from(
 			{ length: 8 },
 			(_, i) =>
-				`https://cdn.sanity.io/images/n7rvza4g/production/abc123def456789-1200x800-${i}.jpg`,
+				`https://media.example.test/images/n7rvza4g/production/abc123def456789-1200x800-${i}.jpg`,
 		);
 		expect(validateCart([makeSetItem({ imageUrls: tooMany })])).toMatch(/too many images/);
 	});
@@ -233,7 +233,7 @@ describe("buildCartMetadata", () => {
 	it("uses the abbreviated key format the webhook expects for prints", () => {
 		const meta = buildCartMetadata([
 			makeItem({
-				imageUrl: "https://cdn.sanity.io/images/abc/foo.jpg",
+				imageUrl: "https://media.example.test/images/abc/foo.jpg",
 				paperSubcategoryId: 103001,
 				paperWidth: 8,
 				paperHeight: 12,
@@ -242,7 +242,7 @@ describe("buildCartMetadata", () => {
 		]);
 		const parsed = JSON.parse(meta.cartItem_0);
 		expect(parsed).toEqual({
-			u: "https://cdn.sanity.io/images/abc/foo.jpg",
+			u: "https://media.example.test/images/abc/foo.jpg",
 			s: 103001,
 			w: 8,
 			h: 12,
@@ -254,7 +254,7 @@ describe("buildCartMetadata", () => {
 		const meta = buildCartMetadata([makeMerchItem({ quantity: 2 })]);
 		const parsed = JSON.parse(meta.cartItem_0);
 		expect(parsed).toEqual({
-			u: "https://cdn.sanity.io/images/abc/pokemon-tapestry.jpg",
+			u: "https://media.example.test/images/abc/pokemon-tapestry.jpg",
 			q: 2,
 		});
 		expect(parsed.s).toBeUndefined();
@@ -274,12 +274,12 @@ describe("buildCartMetadata", () => {
 		const meta = buildCartMetadata([makeSetItem()]);
 		const parsed = JSON.parse(meta.cartItem_0);
 		expect(parsed.i).toEqual([
-			"https://cdn.sanity.io/images/abc/tide-1.jpg",
-			"https://cdn.sanity.io/images/abc/tide-2.jpg",
-			"https://cdn.sanity.io/images/abc/tide-3.jpg",
+			"https://media.example.test/images/abc/tide-1.jpg",
+			"https://media.example.test/images/abc/tide-2.jpg",
+			"https://media.example.test/images/abc/tide-3.jpg",
 		]);
 		// Cover image stays as `u` so the cart UI can show one thumbnail.
-		expect(parsed.u).toBe("https://cdn.sanity.io/images/abc/tide-cover.jpg");
+		expect(parsed.u).toBe("https://media.example.test/images/abc/tide-cover.jpg");
 		// Paper info is preserved alongside `i`.
 		expect(parsed.s).toBe(103007);
 		expect(parsed.w).toBe(6);
@@ -293,9 +293,9 @@ describe("buildCartMetadata", () => {
 	});
 
 	it("stays under the 500-char Stripe metadata value cap for realistic URLs", () => {
-		// Realistic Sanity CDN URL — about 90 chars
+		// Realistic media CDN URL — about 90 chars
 		const realisticUrl =
-			"https://cdn.sanity.io/images/abc12def/production/abc123def456789-1200x800.jpg";
+			"https://media.example.test/images/abc12def/production/abc123def456789-1200x800.jpg";
 		const meta = buildCartMetadata([makeItem({ imageUrl: realisticUrl })]);
 		expect(meta.cartItem_0.length).toBeLessThan(500);
 	});

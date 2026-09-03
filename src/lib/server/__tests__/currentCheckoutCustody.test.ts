@@ -1,4 +1,4 @@
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 
@@ -17,8 +17,7 @@ describe("current checkout authority custody", () => {
 		expect(current).toContain('from "$convex/api"');
 		expect(current).toContain('provider: "convex"');
 
-		const parity = source("src/lib/server/checkoutCommerce.ts");
-		expect(parity).toContain('from "$lib/server/currentCheckoutCommerce"');
+		expect(existsSync(resolve(projectRoot, "src/lib/server/checkoutCommerce.ts"))).toBe(false);
 	});
 
 	it("routes every newly initiated direct and cart purchase through Convex snapshots", () => {
@@ -51,14 +50,12 @@ describe("current checkout authority custody", () => {
 		);
 	});
 
-	it("retains historical Sanity snapshot fulfillment and download compatibility", () => {
+	it("removes historical provider fulfillment and download compatibility", () => {
 		const fulfillment = source("src/lib/server/snapshotFulfillment.ts");
-		expect(fulfillment).toContain('snapshot.catalogProvider === "sanity"');
-		expect(fulfillment).toContain("sanityItems(item, paidQuantity)");
-
 		const download = source("src/routes/api/download/+server.ts");
-		expect(download).toContain('snapshot.catalogProvider === "convex"');
-		expect(download).toContain("exactSanity.fetch");
-		expect(download).toContain("LEGACY_PAID_FILE_QUERY");
+		for (const current of [fulfillment, download]) {
+			expect(current).toContain('catalogProvider !== "convex"');
+			expect(current).not.toMatch(/sanity|legacy paid file/i);
+		}
 	});
 });

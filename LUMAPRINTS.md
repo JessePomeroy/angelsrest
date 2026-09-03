@@ -50,12 +50,12 @@ guessed compatibility paths.
 
 | Concern | Source of truth |
 |---|---|
-| Public product content and retail variants | Selected Sanity fallback or published Convex catalog |
+| Public product content and retail variants | Published Convex catalog |
 | Shared papers, sizes, frames, canvas options, Luma IDs, and wholesale data | `packages/print-catalog/` |
 | Order/payment/fulfillment state | Convex `orders` |
 | LumaPrints request construction and HTTP calls | `src/lib/server/lumaprints.ts` |
 | Stripe-to-Luma orchestration and error classification | `src/lib/server/printFulfillment.ts` and `webhookErrorClassification.ts` |
-| Sanity image URL preparation | `src/lib/shop/lumaprintsUrls.ts` |
+| Private print-source capability issuance | `src/lib/server/catalogCommerceClients.ts` |
 
 Do not add a second catalog table in the host app. Extend
 `@jessepomeroy/print-catalog` when shared print metadata changes.
@@ -63,8 +63,8 @@ Do not add a second catalog table in the host app. Extend
 ## Image and option constraints
 
 - LumaPrints accepts JPEG/JPG/PNG, not WebP.
-- `prepareSanityUrlForPrint` removes presentation transforms and requests a
-  high-quality print source.
+- LumaPrints receives the exact short-lived print-source URL issued by the
+  authenticated Convex/Worker fulfillment boundary.
 - Option `39` (no bleed) is used only for direct Fine Art Paper because bleed
   option `36` changes the effective aspect ratio and can trigger rejection.
 - Framed Fine Art Paper uses its mat option groups without direct-paper option

@@ -41,7 +41,7 @@ describe("checkout snapshot reservation client", () => {
 				site: "angelsrest.test",
 				attempt: ATTEMPT,
 				account: null,
-				catalogProvider: "sanity",
+				catalogProvider: "convex",
 				items: [snapshotItem],
 			}),
 		).resolves.toEqual({ handle: HANDLE });
@@ -63,7 +63,7 @@ describe("checkout snapshot reservation client", () => {
 			site: "angelsrest.test",
 			attempt: ATTEMPT,
 			account: null,
-			snapshot: { schemaVersion: 1, catalogProvider: "sanity", items: [snapshotItem] },
+			snapshot: { schemaVersion: 1, catalogProvider: "convex", items: [snapshotItem] },
 		});
 		expect(fetcher.mock.calls[1]?.[0]).toBe(
 			"https://tenant.convex.site/commerce/checkout-snapshots/bind",
@@ -87,7 +87,7 @@ describe("checkout snapshot reservation client", () => {
 			site: "angelsrest.test",
 			attempt: ATTEMPT,
 			account: null,
-			catalogProvider: "sanity" as const,
+			catalogProvider: "convex" as const,
 			items: [snapshotItem],
 		};
 		await expect(
@@ -126,7 +126,7 @@ describe("checkout snapshot reservation client", () => {
 				site: "angelsrest.test",
 				attempt: ATTEMPT,
 				account: null,
-				catalogProvider: "sanity",
+				catalogProvider: "convex",
 				items: [snapshotItem],
 			})
 			.catch((value: unknown) => value);
@@ -150,7 +150,7 @@ describe("checkout snapshot reservation client", () => {
 					site: "angelsrest.test",
 					attempt: ATTEMPT,
 					account: null,
-					catalogProvider: "sanity",
+					catalogProvider: "convex",
 					items: [snapshotItem],
 				})
 				.catch((value: unknown) => value);

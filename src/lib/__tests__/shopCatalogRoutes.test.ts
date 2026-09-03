@@ -55,7 +55,7 @@ describe("shop catalog route boundaries", () => {
 		expect(boundary).toContain("collections: []");
 		expect(boundary).not.toMatch(/sanity|SHOP_CATALOG_PROVIDER|isPreview/);
 
-		expect(source("src/lib/server/checkoutCatalog.ts")).toContain("lumaPrintSetV2");
+		expect(source("src/lib/server/checkoutCatalog.ts")).not.toMatch(/sanity|provider switch/i);
 	});
 
 	it("has no coupon state or promo input in either product checkout UI", () => {

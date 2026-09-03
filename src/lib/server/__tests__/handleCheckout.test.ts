@@ -83,7 +83,7 @@ function harness(overrides: Record<string, unknown> = {}) {
 		attemptProofClass: "same_origin_host_proof",
 		site: "angelsrest.test",
 		account: null,
-		catalogProvider: "sanity",
+		catalogProvider: "convex",
 		snapshotItems: [ITEM],
 		stripe: { checkout: { sessions: { create } } } as unknown as Stripe,
 		lineItems: [

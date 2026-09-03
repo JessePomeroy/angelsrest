@@ -1,24 +1,14 @@
 import { error, json } from "@sveltejs/kit";
 import type Stripe from "stripe";
 import { api } from "$convex/api";
-import { env } from "$env/dynamic/private";
-import { STRIPE_PLATFORM_WEBHOOK_SECRET } from "$env/static/private";
 import { getConvex } from "$lib/server/convexClient";
 import { logStructured } from "$lib/server/logger";
+import { getStripePlatformWebhookSecret } from "$lib/server/runtimeConfig";
 import { getStripe } from "$lib/server/stripeClient";
 import { verifyStripeWebhook } from "$lib/server/stripeWebhook";
+import { getWebhookSecret } from "$lib/server/webhookSecret";
 
 const convex = getConvex();
-
-function getWebhookSecret(): string {
-	const secret = env.WEBHOOK_SECRET;
-	if (!secret) {
-		throw new Error(
-			"WEBHOOK_SECRET is not set — cannot call webhook-gated Convex platform mutations.",
-		);
-	}
-	return secret;
-}
 
 function stripeExpandableId(
 	value: string | { id?: string } | null | undefined,
@@ -33,7 +23,7 @@ export async function POST({ request }) {
 	const event = await verifyStripeWebhook(
 		request,
 		stripe,
-		STRIPE_PLATFORM_WEBHOOK_SECRET,
+		getStripePlatformWebhookSecret(),
 		"Platform webhook",
 	);
 	if (typeof event.account === "string" && event.account.length > 0) {

@@ -2,8 +2,8 @@ import { createHash } from "node:crypto";
 import { error, json } from "@sveltejs/kit";
 import { api } from "$convex/api";
 import type { Id } from "$convex/dataModel";
-import { PUBLIC_SITE_URL } from "$env/static/public";
 import { getConvex } from "$lib/server/convexClient";
+import { getPublicSiteOrigin } from "$lib/server/runtimeConfig";
 import {
 	buildCheckoutLineItem,
 	createPaymentCheckoutSession,
@@ -53,6 +53,7 @@ function buildInvoiceCheckoutFingerprint({
 export async function POST({ request }) {
 	const stripe = getStripe();
 	try {
+		const siteOrigin = getPublicSiteOrigin();
 		const { token } = await request.json();
 
 		if (!token) {
@@ -152,8 +153,8 @@ export async function POST({ request }) {
 			purpose: "invoice-payment",
 			stripe,
 			lineItems,
-			successUrl: `${PUBLIC_SITE_URL}/invoice/payment-success?session_id={CHECKOUT_SESSION_ID}`,
-			cancelUrl: `${PUBLIC_SITE_URL}/invoice/payment-canceled`,
+			successUrl: `${siteOrigin}/invoice/payment-success?session_id={CHECKOUT_SESSION_ID}`,
+			cancelUrl: `${siteOrigin}/invoice/payment-canceled`,
 			metadata: {
 				type: "invoice_payment",
 				invoiceId,

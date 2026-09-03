@@ -302,10 +302,10 @@ describe("reservation, binding, and order transfer", () => {
 		const replay = await reserve(t);
 		expect(first.response.status).toBe(200);
 		expect(replay.json).toEqual({ version: 2, handle: first.json.handle, replayed: true });
-		const changed = await reserve(t, reserveBody(undefined, {
+		const invalidProvider = await reserve(t, reserveBody(undefined, {
 			snapshot: { ...snapshot, catalogProvider: "sanity" },
 		}));
-		expect(changed.response.status).toBe(409);
+		expect(invalidProvider.response.status).toBe(400);
 		const hashA = await reservationHandleHash(SITE_A, first.json.handle!);
 		const hashB = await reservationHandleHash(SITE_B, first.json.handle!);
 		expect(hashA).not.toBe(hashB);

@@ -38,8 +38,8 @@ vi.mock("$env/dynamic/private", () => ({
 	env: mocks.env,
 }));
 
-vi.mock("$env/static/public", () => ({
-	PUBLIC_SITE_URL: "https://angelsrest.test",
+vi.mock("$lib/server/runtimeConfig", () => ({
+	getPublicSiteOrigin: () => "https://angelsrest.test",
 }));
 
 vi.mock("$lib/config/site", () => ({

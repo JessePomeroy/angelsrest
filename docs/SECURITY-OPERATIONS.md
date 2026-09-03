@@ -10,8 +10,8 @@ It contains no credential values.
 |---|---|---|
 | Admin authentication | Better Auth | Provider session recovery; no public password signup |
 | Tenant authorization | Convex `platformClients.adminIdentityIds` | Tenant-bounded verified-invite claim only for an unclaimed tenant |
-| Published content and Shop catalog | Convex | Explicit, reviewed Sanity provider selection |
-| Editor drafts and media registry | Convex | Retained migration captures and Sanity recovery tooling |
+| Published content and Shop catalog | Convex | Deployment backups and the external historical archive |
+| Editor drafts and media registry | Convex | Deployment backups and retained source metadata |
 | Editor and private catalog bytes | Cloudflare R2 | Convex receipts, tombstones, and retained source metadata |
 | Orders, CRM, documents, inquiries | Convex | Provider exports and deployment backups |
 | Checkout and refunds | Stripe, orchestrated by the Angels Rest hub | Close checkout admission, preserve snapshots, reconcile by provider IDs |
@@ -19,9 +19,9 @@ It contains no credential values.
 | Transactional email | Resend | Durable document-email attempts and provider message IDs |
 | Private delivery galleries | Convex metadata plus private R2 objects | Capability-scoped Worker reads and prepared-download recovery |
 
-Sanity is a retained, optional recovery provider. It is not the authority for
-new content, Shop reads, or checkout. Reflecting Pool's independent Sanity
-project is outside Angels Rest recovery custody.
+Sanity is not application infrastructure. The source clients, preview and
+provider routes, migration entry points, and historical purchase fallbacks are
+retired; an external archive remains historical evidence only.
 
 ## Least-privilege roles
 
@@ -60,13 +60,13 @@ client records an invitation; it never creates or discloses a password.
 - R2 recovery is bucket-specific: public derivatives may be regenerated from
   retained private sources; private catalog and gallery objects must remain
   private and be reconciled against Convex metadata before restoration.
-- The encrypted Angels Rest Sanity archive, hosted datasets, Studio, and
-  provider adapter remain retained until a separate owner-approved deletion.
+- The encrypted historical archive remains outside the application repository
+  until a separately approved archive-retention decision.
 - Stripe, LumaPrints, and Resend objects are external evidence. Restore local
   state by stable provider identifiers; never synthesize a successful provider
   outcome.
-- Roll back host code to a known-good Convex-compatible revision. Once Convex
-  has accepted new authoritative writes, do not roll back to stale Sanity data.
+- Roll back host code to a known-good Convex-compatible revision. Do not restore
+  a retired provider as live authority.
 
 ## Incident order
 
@@ -142,11 +142,9 @@ for independently verifiable provenance.
 ## R12 held cleanup
 
 The value-free 2026-09-02 inventory found these removal candidates with no
-active host source consumer: Vercel `ADMIN_PASSWORD`, `SANITY_WRITE_TOKEN`,
-`SHARP_SPIKE_TOKEN`, and `NPM_TOKEN`; and the repository Actions secret
-`CONVEX_DEPLOY_KEY_REFLECTING_POOL_PROD`. `SHOP_CATALOG_PROVIDER` affects only a
-legacy parity diagnostic and may also be removed once that diagnostic default is
-accepted. None has been deleted; external cleanup requires an exact owner
+active host source consumer: Vercel `ADMIN_PASSWORD`, `SHARP_SPIKE_TOKEN`, and
+`NPM_TOKEN`; and the repository Actions secret
+`CONVEX_DEPLOY_KEY_REFLECTING_POOL_PROD`. None has been deleted; external cleanup requires an exact owner
 approval. Treat `NPM_TOKEN` as package-manager infrastructure until a clean
 production install proves that the private package registry does not consume it.
 

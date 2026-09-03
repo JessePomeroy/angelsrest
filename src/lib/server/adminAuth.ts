@@ -1,7 +1,7 @@
 import { createAdminAuthValidator } from "@jessepomeroy/admin/server";
 import { getToken } from "@mmailaender/convex-better-auth-svelte/sveltekit";
 import { api } from "$convex/api";
-import { env as publicEnv } from "$env/dynamic/public";
+import { getConvexUrl } from "$lib/server/runtimeConfig";
 
 /**
  * Verify the request has a valid Better Auth session.
@@ -22,7 +22,7 @@ import { env as publicEnv } from "$env/dynamic/public";
  */
 export const adminAuth = createAdminAuthValidator({
 	getToken,
-	getConvexUrl: () => publicEnv.PUBLIC_CONVEX_URL,
+	getConvexUrl,
 	whoami: api.adminAuth.whoami,
 });
 

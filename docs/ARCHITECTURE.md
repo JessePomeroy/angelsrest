@@ -8,7 +8,6 @@ canonical rule file; this document explains ownership and dependency direction.
 ```text
 SvelteKit routes and UI
   ├── Convex generated API (published content and operational reads/writes)
-  ├── optional Sanity adapter (preview and reviewed rollback only)
   ├── @jessepomeroy/admin (shared admin UI and host adapters)
   ├── @jessepomeroy/print-catalog (pure shared print domain)
   └── server integrations (Stripe, LumaPrints, Resend, gallery workers)
@@ -29,7 +28,6 @@ modules or private environment variables.
 |---|---|---|
 | Published editorial content and Shop catalog | Convex | public content modules, `catalogProductGraphs.ts`, `src/lib/server/convexShop.server.ts` |
 | Embedded Editor drafts, revisions, and media registry | Convex | `packages/crm-api/convex/*Content.ts`, `mediaAssets.ts` |
-| Optional editorial preview and rollback reads | retained Sanity adapter | `src/lib/sanity/client.ts`, `client.server.ts`; exact `sanity` provider selection only |
 | Editor media sources and public WebP derivatives | Cloudflare R2 | CMS media worker via `/api/admin/media/*` |
 | Private catalog print masters and paid files | Cloudflare R2 bytes; Convex registry and coordination | purpose-separated receipt ingresses in `convex/http.ts`, internal `catalogPrivateAssets.ts` mutations |
 | Orders and fulfillment state | Convex | `packages/crm-api/convex/orders.ts` |
@@ -48,12 +46,27 @@ name when an unqualified `gallery` would obscure the owner.
 
 - `+page.server.ts` and `+server.ts` compose remote clients and enforce HTTP
   boundary validation.
-- `.server.ts` modules contain preview tokens and other private-only logic.
+- `.server.ts` modules contain private-only integration logic.
 - Public `.svelte` components consume serialized load data or browser-safe API
   clients.
-- `src/hooks.server.ts` owns security headers, optional Sanity preview state, and server
+- `src/hooks.server.ts` owns security headers and server
   error capture. Admin authentication lives in the admin layout and auth routes,
   not in the global hook.
+
+### Runtime integration configuration
+
+`src/lib/server/runtimeConfig.ts` is the server-side environment boundary for
+Convex, Stripe, Resend, LumaPrints, and the canonical public site origin. Its
+small accessors validate only when the owning integration is invoked, return
+canonical scalar values or frozen configuration, and expose no secret values in
+configuration errors. Shared singleton clients remain lazy; authenticated
+Convex work still creates a fresh client per request, while deadline-scoped
+public readers construct isolated clients with the same validated Convex URL.
+
+Browser code continues to import the two genuinely public build-time values it
+needs for Convex WebSocket setup. Missing Stripe, Resend, LumaPrints, or
+server-only webhook configuration therefore cannot make an unrelated public
+page import or production bundle fail before that integration is used.
 
 ### Bearer-capability routes
 
@@ -177,7 +190,7 @@ only through server configuration, and the matching Convex functions are deploye
    immutable derivatives from `https://media.angelsrest.online`.
 6. This boundary is separate from private client-gallery delivery. Published
    content modules resolve their accepted Convex revisions and immutable public
-   derivatives; the retained Sanity adapter is not a media authority.
+   derivatives.
 7. Permanent portfolio-gallery deletion first records a non-sensitive identity
    tombstone, so a retired public slug is never assigned to different work.
    Media bytes may be deleted only after no active draft or published revision
@@ -216,17 +229,14 @@ and test full client-side navigation, expiry, logout, and concurrent requests.
 `convexShop.server.ts` is the deep public Shop module. It owns bounded Convex
 list and exact-slug reads, projection validation, normalized 404/503 behavior,
 and the accepted zero-collection baseline. The four Shop loaders import this
-module directly; they do not inspect preview state or provider flags. The
-retained `catalogShop.server.ts` and `sanityShop.server.ts` modules are legacy
-parity/rollback adapters, not route authority.
+module directly and do not inspect preview state or provider flags.
 
 `currentCheckoutCommerce.ts` is the authority module for every newly initiated
 Angels Rest direct or cart purchase. It resolves the exact published Convex graph
 and authenticated commerce envelope, then always reserves a Convex handle-v2
-snapshot before Stripe. Current checkout routes contain no Sanity client,
-provider selector, or legacy-session fallback. `checkoutCommerce.ts` remains a
-one-way legacy parity wrapper, while `snapshotFulfillment.ts` and
-`/api/download` retain historical Sanity snapshot/download compatibility.
+snapshot before Stripe. Checkout, fulfillment, and paid downloads accept only
+the current Convex snapshot contract; there is no provider selector or legacy
+purchase fallback.
 
 1. The selling site resolves current product/catalog data; browser-supplied
    prices are not authoritative.
@@ -739,10 +749,7 @@ the same workflow into multiple root files.
 | Repository | Responsibility | Direction |
 |---|---|---|
 | `angelsrest` | Public creator site, platform hub, shared Convex/package owner | Composition root |
-| `angelsrest-studio` | Retained Angel's Rest Sanity preview/recovery instance | Downstream of Studio template |
 | `reflecting-pool` | Maggie's client spoke and tenant admin host | Consumes shared packages/services |
-| `reflecting-pool-studio` | Independent client legacy Studio; outside Angel's Rest recovery custody | Downstream of Studio template |
-| `sanity-studio-template` | Shared Studio schemas, desk, components, and actions | Upstream for client Studios |
 | `admin-dashboard` | Source for `@jessepomeroy/admin` client/server package | Upstream for host admin UI/adapters |
 | `gallery-worker` | Separate gallery-delivery and CMS-media Workers with distinct R2 boundaries | Called through host/admin adapters |
 

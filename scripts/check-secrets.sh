@@ -7,7 +7,7 @@
 #
 # Patterns scanned (added / tuned as services change):
 #   - Stripe live keys:        sk_live_..., pk_live_..., rk_live_..., whsec_...
-#   - Sanity tokens:           skXXXX... (roughly 180-char base64-ish secrets)
+#   - Long provider tokens:    skXXXX... (roughly 40+ mixed-case characters)
 #   - Resend:                  re_[A-Za-z0-9_]+ followed by a second _-segment
 #   - Generic "looks like a secret" heuristics:
 #       BEGIN PRIVATE KEY / BEGIN RSA / .pem-style blocks
@@ -55,7 +55,7 @@ PATTERNS=(
   'whsec_[A-Za-z0-9]{20,}'
   # Resend live API keys
   're_[A-Za-z0-9]+_[A-Za-z0-9_-]{20,}'
-  # Sanity tokens typically start with sk + ~150+ char mixed-case body
+  # Long provider tokens that begin with sk
   'sk[a-zA-Z0-9]{40,}'
   # AWS access key ID
   'AKIA[0-9A-Z]{16}'

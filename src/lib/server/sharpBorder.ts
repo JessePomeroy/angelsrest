@@ -17,7 +17,6 @@
  */
 
 import sharp from "sharp";
-import { prepareSanityUrlForPrint } from "$lib/shop/lumaprintsUrls";
 import type { PrintSourcePolicy } from "$lib/shop/types";
 
 const DPI = 300;
@@ -36,16 +35,13 @@ function borderedPrintKey(stripeSessionId: string, itemIndex: number) {
 }
 
 /**
- * Fetch an image from Sanity CDN at print quality (?max=8000&q=100),
- * add a white border, and return the composited JPEG buffer.
+ * Fetch a print source, add a white border, and return the composited JPEG buffer.
  */
 export async function composeBorderedPrint(
 	imageUrl: string,
 	borderWidthInches: number,
-	sourcePolicy: PrintSourcePolicy = "byte_exact",
 ): Promise<Buffer> {
-	const printUrl = sourcePolicy === "sanity_cdn" ? prepareSanityUrlForPrint(imageUrl) : imageUrl;
-	const response = await fetch(printUrl);
+	const response = await fetch(imageUrl);
 	if (!response.ok) {
 		throw new Error(`Border source rejected (${response.status})`);
 	}
@@ -126,11 +122,7 @@ export async function processBorderedPrints(
 	// Sequential Sharp compositing (memory pressure — each op can use 100+ MB)
 	const composites: { index: number; buffer: Buffer }[] = [];
 	for (const item of items) {
-		const buffer = await composeBorderedPrint(
-			item.imageUrl,
-			item.borderWidthInches,
-			item.sourcePolicy,
-		);
+		const buffer = await composeBorderedPrint(item.imageUrl, item.borderWidthInches);
 		composites.push({ index: item.index, buffer });
 	}
 

@@ -15,7 +15,7 @@ export interface CheckoutSnapshotReservationClient {
 		site: string;
 		attempt: string;
 		account: string | null;
-		catalogProvider: "sanity" | "convex";
+		catalogProvider: "convex";
 		items: readonly CheckoutSnapshotItem[];
 	}): Promise<{ handle: string }>;
 	bind(input: {

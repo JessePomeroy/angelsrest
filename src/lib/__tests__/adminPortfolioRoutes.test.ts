@@ -11,7 +11,7 @@ function routeSource(path: string) {
 }
 
 describe("admin Editor route boundaries", () => {
-	it("maps the inherited public Sanity settings into an ordered private-draft seed", async () => {
+	it("maps the current public settings into an ordered private-draft seed", async () => {
 		const parent = vi.fn().mockResolvedValue({
 			adminSession: {
 				status: "authorized",
@@ -55,7 +55,7 @@ describe("admin Editor route boundaries", () => {
 		expect(serverSource).not.toContain("sanity.fetch");
 	});
 
-	it("normalizes absent Sanity settings to a mutation-safe blank seed", async () => {
+	it("normalizes absent public settings to a mutation-safe blank seed", async () => {
 		await expect(
 			loadSiteSettings({ parent: async () => ({ siteSettings: null }) } as never),
 		).resolves.toEqual({

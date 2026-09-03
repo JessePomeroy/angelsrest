@@ -16,7 +16,6 @@ import {
 	toEditorRevision,
 	loadPublicPortfolioGallery,
 } from "./helpers/portfolioData";
-import { isInitialSanityPortfolioImport } from "./helpers/portfolioMigrationStore";
 import {
 	PORTFOLIO_GALLERY_MAX,
 	PORTFOLIO_PUBLIC_PLACEMENT_MAX,
@@ -42,9 +41,6 @@ async function requirePortfolioEditorUnlocked(ctx: MutationCtx, siteUrl: string)
 		.filter((gallery) => gallery.deletionRequestedAt === undefined);
 	if (galleries.length > PORTFOLIO_GALLERY_MAX) {
 		throw new Error("Portfolio gallery limit exceeded");
-	}
-	if (galleries.some(isInitialSanityPortfolioImport)) {
-		throw new Error("Imported Portfolio requires fixed initial publication");
 	}
 }
 
@@ -394,9 +390,6 @@ export const reorder = mutation({
 			.withIndex("by_siteUrl_and_portfolioOrder", (q) => q.eq("siteUrl", client.siteUrl))
 			.take(PORTFOLIO_GALLERY_MAX + 1))
 			.filter((gallery) => gallery.deletionRequestedAt === undefined);
-		if (galleries.some(isInitialSanityPortfolioImport)) {
-			throw new Error("Imported Portfolio requires fixed initial publication");
-		}
 		if (
 			galleries.length > PORTFOLIO_GALLERY_MAX
 			|| galleryIds.length !== galleries.length

@@ -1,6 +1,6 @@
 import { ConvexHttpClient } from "convex/browser";
 import { api } from "$convex/api";
-import { env as publicEnv } from "$env/dynamic/public";
+import { getConvexUrl } from "$lib/server/runtimeConfig";
 import type { StripeTenantAccount } from "$lib/server/stripeConnect";
 
 type TenantLookup = (siteUrl: string) => Promise<StripeTenantAccount | null>;
@@ -33,12 +33,7 @@ export async function resolveStripeTenantForSite(
 }
 
 function createConvexTenantLookup(): TenantLookup {
-	const convexUrl = publicEnv.PUBLIC_CONVEX_URL;
-	if (!convexUrl) {
-		return async () => null;
-	}
-
-	const convex = new ConvexHttpClient(convexUrl);
+	const convex = new ConvexHttpClient(getConvexUrl());
 	return async (siteUrl) => {
 		return await convex.query(api.platform.getStripeAccountForSite, { siteUrl });
 	};

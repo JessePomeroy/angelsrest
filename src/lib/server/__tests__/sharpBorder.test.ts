@@ -18,19 +18,13 @@ describe("sharp border source policy", () => {
 		delete process.env.GALLERY_WORKER_TOKEN;
 	});
 
-	it("preserves opaque capabilities byte-exact and rewrites only explicit Sanity sources", async () => {
+	it("preserves source URLs byte-exact", async () => {
 		const { composeBorderedPrint } = await import("../sharpBorder");
 		const opaque = "https://opaque.example/source.jpg?sealed=a_b-C#exact";
-		await composeBorderedPrint(opaque, 0.25, "opaque_capability");
-		await composeBorderedPrint(
-			"https://cdn.sanity.io/images/project/data/source.jpg?w=100",
-			0.25,
-			"sanity_cdn",
-		);
-		expect(vi.mocked(fetch).mock.calls.map(([url]) => url)).toEqual([
-			opaque,
-			"https://cdn.sanity.io/images/project/data/source.jpg?max=8000&q=100",
-		]);
+		await composeBorderedPrint(opaque, 0.25);
+		const second = "https://cdn.example/source.jpg?w=100";
+		await composeBorderedPrint(second, 0.25);
+		expect(vi.mocked(fetch).mock.calls.map(([url]) => url)).toEqual([opaque, second]);
 	});
 
 	it("keys cross-tenant same-number outputs by exact session and redacts failures", async () => {
@@ -55,9 +49,9 @@ describe("sharp border source policy", () => {
 		);
 
 		vi.mocked(fetch).mockResolvedValueOnce(new Response("secret body", { status: 404 }));
-		await expect(
-			composeBorderedPrint("https://opaque.example/?secret=1", 0.25, "opaque_capability"),
-		).rejects.toThrow("Border source rejected (404)");
+		await expect(composeBorderedPrint("https://opaque.example/?secret=1", 0.25)).rejects.toThrow(
+			"Border source rejected (404)",
+		);
 		vi.mocked(fetch).mockResolvedValueOnce(new Response("raw private response", { status: 500 }));
 		await expect(uploadBorderedPrintToR2(Buffer.from("image"), firstSession, 0)).rejects.toThrow(
 			"Border output rejected (500)",

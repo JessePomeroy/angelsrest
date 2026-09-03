@@ -16,7 +16,7 @@ export interface Recipient {
 }
 
 /** A single item in a LumaPrints order submission */
-export type PrintSourcePolicy = "sanity_cdn" | "opaque_capability" | "bordered_r2" | "byte_exact";
+export type PrintSourcePolicy = "opaque_capability" | "bordered_r2" | "byte_exact";
 
 export interface OrderItem {
 	imageUrl: string;

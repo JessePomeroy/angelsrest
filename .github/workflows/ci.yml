@@ -32,16 +32,13 @@ jobs:
       RESEND_API_KEY: placeholder
       PUBLIC_SITE_URL: https://www.angelsrest.online
       PUBLIC_STRIPE_PUBLIC_KEY: placeholder
-      # Public, non-secret project identifier. Browser E2E needs the published
-      # layout query to resolve instead of failing against a nonexistent project.
-      PUBLIC_SANITY_PROJECT_ID: n7rvza4g
-      PUBLIC_SANITY_DATASET: production
-      PUBLIC_CONVEX_URL: https://placeholder.convex.cloud
-      PUBLIC_CONVEX_SITE_URL: https://placeholder.convex.site
+      # Public, non-secret production read endpoints. Browser E2E exercises the
+      # same Convex-only published-content boundary as the deployed site.
+      PUBLIC_CONVEX_URL: https://loyal-swan-967.convex.cloud
+      PUBLIC_CONVEX_SITE_URL: https://loyal-swan-967.convex.site
       GALLERY_WORKER_URL: placeholder
       GALLERY_ADMIN_SECRET: placeholder
       CHECKOUT_SNAPSHOT_MODE: handle-v2
-      CHECKOUT_CATALOG_PROVIDER: convex
       NEW_ORDER_CHECKOUT_CONTROL: '{"version":1,"tenants":[{"siteUrl":"angelsrest.online","state":"open","generation":1},{"siteUrl":"zippymiggy.com","state":"open","generation":1}]}'
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
@@ -94,13 +91,3 @@ jobs:
 
       - name: Browser and public server E2E
         run: pnpm test:e2e
-        # The browser suite is dependency-isolated from Convex because CI uses
-        # an intentionally nonexistent Convex URL. Select the retained,
-        # published Sanity rollback adapter explicitly so the app hydrates and
-        # the tests exercise browser behavior instead of an upstream outage.
-        # Missing/invalid selectors still default to Convex everywhere else.
-        env:
-          ABOUT_CONTACT_CONTENT_PROVIDER: sanity
-          SITE_SETTINGS_CONTENT_PROVIDER: sanity
-          PORTFOLIO_CONTENT_PROVIDER: sanity
-          BLOG_CONTENT_PROVIDER: sanity
