@@ -18,16 +18,12 @@ beforeEach(() => {
 	process.env.WEBHOOK_SECRET = WEBHOOK_SECRET;
 	process.env.ORDER_LOOKUP_SECRET = ORDER_LOOKUP_SECRET;
 	process.env.ORDER_PRODUCERS_STATE = "open";
-	process.env.STRIPE_REFUND_RECOVERY_ID = MANUAL_REFUND_RECOVERY_ID;
-	process.env.CONVEX_CLOUD_URL = "https://loyal-swan-967.convex.cloud";
 });
 
 afterEach(() => {
 	delete process.env.WEBHOOK_SECRET;
 	delete process.env.ORDER_LOOKUP_SECRET;
 	delete process.env.ORDER_PRODUCERS_STATE;
-	delete process.env.STRIPE_REFUND_RECOVERY_ID;
-	delete process.env.CONVEX_CLOUD_URL;
 });
 
 const checkoutSnapshot = {
@@ -80,18 +76,6 @@ function retainedOrder(orderNumber: string, stripeSessionId: string, siteUrl = S
 	};
 }
 
-const MANUAL_REFUND_RECOVERY_ID = "angelsrest-refund-event-selection-gap-v1";
-const ADMIN_RECOVERY = {
-	siteUrl: "angelsrest.online",
-	context: "acct_1SzVXnEdZA9bU4XS",
-	event: "evt_3TzgMtEdZA9bU4XS1UakYelP",
-	refund: "re_3TzgMtEdZA9bU4XS18G1xdUE",
-	charge: "ch_3TzgMtEdZA9bU4XS16dVR60J",
-	paymentIntent: "pi_3TzgMtEdZA9bU4XS1mivC9KA",
-	session: "cs_live_a1F5xkFjDxDIQ3Qjikpdo3Oo4OEwwM2jfpiAP589tBByIWZ5iDBLIBzlL0",
-	amount: 1500,
-} as const;
-
 const MANUAL_REFUND = {
 	event: "evt_1234567890abcdef",
 	refund: "re_1234567890abcdef",
@@ -101,78 +85,6 @@ const MANUAL_REFUND = {
 	session: "cs_test_1234567890abcdef",
 	account: "acct_1234567890abcdef",
 };
-
-function manualRefundRecoveryClaimArgs(overrides: Record<string, unknown> = {}) {
-	return {
-		webhookSecret: WEBHOOK_SECRET,
-		recoveryId: MANUAL_REFUND_RECOVERY_ID,
-		manifestVersion: 1,
-		siteUrl: ADMIN_RECOVERY.siteUrl,
-		stripeContext: ADMIN_RECOVERY.context,
-		stripeEventId: ADMIN_RECOVERY.event,
-		stripeEventType: "refund.updated" as const,
-		stripeEventApiVersion: "2026-01-28.clover",
-		stripeRefundId: ADMIN_RECOVERY.refund,
-		stripeChargeId: ADMIN_RECOVERY.charge,
-		stripePaymentIntentId: ADMIN_RECOVERY.paymentIntent,
-		stripeSessionId: ADMIN_RECOVERY.session,
-		stripeTenantMetadataSiteUrl: ADMIN_RECOVERY.siteUrl,
-		amount: ADMIN_RECOVERY.amount,
-		currency: "usd" as const,
-		livemode: true,
-		...overrides,
-	};
-}
-
-function manualRefundRecoveryProjectionArgs(overrides: Record<string, unknown> = {}) {
-	return manualRefundArgs({
-		eventLivemode: true,
-		sessionLivemode: true,
-		refundRecoveryId: MANUAL_REFUND_RECOVERY_ID,
-		refundRecoveryManifestVersion: 1,
-		refundRecoveryStripeContext: ADMIN_RECOVERY.context,
-		refundRecoveryEventApiVersion: "2026-01-28.clover",
-		refundRecoveryProviderEvidence: {
-			verifiedAt: Date.now(),
-			currentRefundStatus: "succeeded" as const,
-			currentRefundHasAutomatedMetadata: false as const,
-			currentRefundHasRecoveryAuditMetadata: false as const,
-			paymentIntentStatus: "succeeded" as const,
-			paymentIntentAmount: ADMIN_RECOVERY.amount,
-			paymentIntentAmountReceived: ADMIN_RECOVERY.amount,
-			paymentIntentCurrency: "usd" as const,
-			paymentIntentLivemode: true as const,
-			paymentIntentLatestChargeId: ADMIN_RECOVERY.charge,
-			sessionMode: "payment" as const,
-			sessionStatus: "complete" as const,
-			sessionPaymentStatus: "paid" as const,
-		},
-		stripeEventId: ADMIN_RECOVERY.event,
-		stripeRefundId: ADMIN_RECOVERY.refund,
-		stripeChargeId: ADMIN_RECOVERY.charge,
-		stripeSessionId: ADMIN_RECOVERY.session,
-		stripePaymentIntentId: ADMIN_RECOVERY.paymentIntent,
-		siteUrl: ADMIN_RECOVERY.siteUrl,
-		refundAmount: ADMIN_RECOVERY.amount,
-		sessionAmountTotal: ADMIN_RECOVERY.amount,
-		stripeTenantMetadataSiteUrl: ADMIN_RECOVERY.siteUrl,
-		...overrides,
-	});
-}
-
-async function createRecoveryAdmin(t: ReturnType<typeof convexTest>) {
-	const email = "refund-recovery-admin@example.com";
-	await t.run((ctx) => ctx.db.insert("platformClients", {
-		name: "Angels Rest",
-		email,
-		siteUrl: ADMIN_RECOVERY.siteUrl,
-		tier: "full",
-		subscriptionStatus: "active",
-		adminEmails: [email],
-		role: "client",
-	}));
-	return t.withIdentity({ subject: email, email, emailVerified: true });
-}
 
 function manualRefundArgs(overrides: Record<string, unknown> = {}) {
 	return {
@@ -858,196 +770,6 @@ describe("print fulfillment fence", () => {
 });
 
 describe("provider-authoritative manual refunds", () => {
-	test("claims only the exact incident under site-admin and webhook authority", async () => {
-		const t = convexTest(schema, modules);
-		const admin = await createRecoveryAdmin(t);
-		const claimArgs = manualRefundRecoveryClaimArgs();
-
-		const claims = await Promise.all([
-			admin.mutation(api.orders.claimManualRefundRecovery, claimArgs),
-			admin.mutation(api.orders.claimManualRefundRecovery, claimArgs),
-		]);
-
-		expect(claims.map(({ claimed }) => claimed).sort()).toEqual([false, true]);
-		const recoveries = await t.run((ctx) => ctx.db.query("manualRefundRecoveries").take(2));
-		expect(recoveries).toHaveLength(1);
-		expect(recoveries[0]).toMatchObject({
-			recoveryId: MANUAL_REFUND_RECOVERY_ID,
-			manifestVersion: 1,
-			siteUrl: ADMIN_RECOVERY.siteUrl,
-			stripeEventId: ADMIN_RECOVERY.event,
-			stripeRefundId: ADMIN_RECOVERY.refund,
-			stripeSessionId: ADMIN_RECOVERY.session,
-			state: "claimed",
-		});
-		expect(recoveries[0].claimedByTokenIdentifier).toContain("refund-recovery-admin@example.com");
-		await expect(t.mutation(api.orders.claimManualRefundRecovery, claimArgs)).rejects.toThrow();
-		await expect(admin.mutation(api.orders.claimManualRefundRecovery, {
-			...claimArgs,
-			amount: ADMIN_RECOVERY.amount + 1,
-		})).rejects.toThrow("Invalid manual refund recovery claim");
-		await expect(admin.mutation(api.orders.claimManualRefundRecovery, {
-			...claimArgs,
-			webhookSecret: "wrong",
-		})).rejects.toThrow();
-	});
-
-	test("completes the evidence-bound recovery claim atomically with reconciliation", async () => {
-		const t = convexTest(schema, modules);
-		const admin = await createRecoveryAdmin(t);
-		const created = await t.mutation(api.orders.create, {
-			...orderArgs(ADMIN_RECOVERY.session),
-			siteUrl: ADMIN_RECOVERY.siteUrl,
-			items: [{ productName: "Historical print", quantity: 1, price: ADMIN_RECOVERY.amount }],
-			total: ADMIN_RECOVERY.amount,
-			stripePaymentIntentId: ADMIN_RECOVERY.paymentIntent,
-		});
-		await admin.mutation(api.orders.claimManualRefundRecovery, manualRefundRecoveryClaimArgs());
-
-		await expect(admin.mutation(
-			api.orders.reconcileSucceededManualRefund,
-			manualRefundRecoveryProjectionArgs(),
-		)).resolves.toEqual({ kind: "reconciled" });
-		const recovery = (await t.run((ctx) =>
-			ctx.db.query("manualRefundRecoveries").withIndex(
-				"by_recoveryId",
-				(q) => q.eq("recoveryId", MANUAL_REFUND_RECOVERY_ID),
-			).unique()))!;
-		expect(recovery).toMatchObject({
-			state: "completed",
-			resultKind: "reconciled",
-			providerEvidence: expect.objectContaining({ paymentIntentStatus: "succeeded" }),
-		});
-		if (recovery.state !== "completed") throw new Error("Expected completed recovery");
-		expect(recovery.completedAt).toEqual(expect.any(Number));
-		expect(await t.run((ctx) => ctx.db.get(created._id))).toMatchObject({
-			status: "refunded",
-			stripeRefundId: ADMIN_RECOVERY.refund,
-		});
-		await expect(admin.mutation(
-			api.orders.reconcileSucceededManualRefund,
-			manualRefundRecoveryProjectionArgs(),
-		)).rejects.toThrow("claim is unavailable");
-		await expect(admin.mutation(api.orders.failManualRefundRecovery, {
-			webhookSecret: WEBHOOK_SECRET,
-			recoveryId: MANUAL_REFUND_RECOVERY_ID,
-			siteUrl: ADMIN_RECOVERY.siteUrl,
-			resultReason: "late_failure",
-			failureStage: "execution",
-		})).resolves.toEqual({ completed: false });
-	});
-
-	test("rejects evidence or actor changes from the immutable recovery claim", async () => {
-		const t = convexTest(schema, modules);
-		const admin = await createRecoveryAdmin(t);
-		await t.mutation(api.orders.create, {
-			...orderArgs(ADMIN_RECOVERY.session),
-			siteUrl: ADMIN_RECOVERY.siteUrl,
-			items: [{ productName: "Historical print", quantity: 1, price: ADMIN_RECOVERY.amount }],
-			total: ADMIN_RECOVERY.amount,
-			stripePaymentIntentId: ADMIN_RECOVERY.paymentIntent,
-		});
-		await admin.mutation(api.orders.claimManualRefundRecovery, manualRefundRecoveryClaimArgs());
-
-		await expect(admin.mutation(
-			api.orders.reconcileSucceededManualRefund,
-			manualRefundRecoveryProjectionArgs({
-				stripeSessionId: "cs_test_differentsession1234",
-			}),
-		)).rejects.toThrow("claim is unavailable");
-		const otherAdmin = t.withIdentity({
-			subject: "other-refund-admin@example.com",
-			email: "refund-recovery-admin@example.com",
-			emailVerified: true,
-		});
-		await expect(otherAdmin.mutation(
-			api.orders.reconcileSucceededManualRefund,
-			manualRefundRecoveryProjectionArgs(),
-		)).rejects.toThrow("claim is unavailable");
-		const recovery = (await t.run((ctx) =>
-			ctx.db.query("manualRefundRecoveries").take(1)))[0];
-		expect(recovery).toMatchObject({ state: "claimed" });
-	});
-
-	test("fails closed without the Convex recovery gate or an existing order", async () => {
-		const t = convexTest(schema, modules);
-		const admin = await createRecoveryAdmin(t);
-		const claimArgs = manualRefundRecoveryClaimArgs();
-		delete process.env.STRIPE_REFUND_RECOVERY_ID;
-		await expect(admin.mutation(api.orders.claimManualRefundRecovery, claimArgs)).rejects.toThrow(
-			"Manual refund recovery is disabled",
-		);
-		process.env.STRIPE_REFUND_RECOVERY_ID = MANUAL_REFUND_RECOVERY_ID;
-		await admin.mutation(api.orders.claimManualRefundRecovery, claimArgs);
-
-		await expect(admin.mutation(
-			api.orders.reconcileSucceededManualRefund,
-			manualRefundRecoveryProjectionArgs(),
-		)).resolves.toEqual({ kind: "rejected", reason: "state_conflict" });
-		await expect(t.run((ctx) => ctx.db.query("manualRefundIntents").collect())).resolves.toEqual([]);
-	});
-
-	test("rejects an ineligible existing order without creating a refund intent", async () => {
-		const t = convexTest(schema, modules);
-		const admin = await createRecoveryAdmin(t);
-		const created = await t.mutation(api.orders.create, {
-			...orderArgs(ADMIN_RECOVERY.session),
-			siteUrl: ADMIN_RECOVERY.siteUrl,
-			items: [{ productName: "Historical print", quantity: 1, price: ADMIN_RECOVERY.amount }],
-			total: ADMIN_RECOVERY.amount,
-			stripePaymentIntentId: ADMIN_RECOVERY.paymentIntent,
-		});
-		await t.run((ctx) => ctx.db.patch(created._id, { status: "shipped" }));
-		await admin.mutation(api.orders.claimManualRefundRecovery, manualRefundRecoveryClaimArgs());
-
-		await expect(admin.mutation(
-			api.orders.reconcileSucceededManualRefund,
-			manualRefundRecoveryProjectionArgs(),
-		)).resolves.toEqual({ kind: "rejected", reason: "state_conflict" });
-		await expect(t.run((ctx) => ctx.db.query("manualRefundIntents").collect())).resolves.toEqual([]);
-		expect(await t.run((ctx) => ctx.db.get(created._id))).toMatchObject({ status: "shipped" });
-	});
-
-	test("records a failed one-use recovery without making it claimable again", async () => {
-		const t = convexTest(schema, modules);
-		const admin = await createRecoveryAdmin(t);
-		const claimArgs = manualRefundRecoveryClaimArgs();
-		await admin.mutation(api.orders.claimManualRefundRecovery, claimArgs);
-
-		await expect(admin.mutation(api.orders.failManualRefundRecovery, {
-			webhookSecret: WEBHOOK_SECRET,
-			recoveryId: MANUAL_REFUND_RECOVERY_ID,
-			siteUrl: ADMIN_RECOVERY.siteUrl,
-			resultReason: "provider_evidence_rejected",
-			failureStage: "provider_evidence",
-			providerFailureObservations: {
-				observedAt: Date.now(),
-				failedChecks: ["current_refund.automated_metadata"],
-			},
-		})).resolves.toEqual({ completed: true });
-		const recovery = (await t.run((ctx) =>
-			ctx.db.query("manualRefundRecoveries").take(1)))[0];
-		expect(recovery).toMatchObject({
-			state: "completed",
-			resultKind: "failed",
-			resultReason: "provider_evidence_rejected",
-			failureStage: "provider_evidence",
-			providerFailureObservations: {
-				failedChecks: ["current_refund.automated_metadata"],
-			},
-		});
-		await expect(admin.mutation(api.orders.claimManualRefundRecovery, claimArgs)).resolves.toEqual({
-			claimed: false,
-		});
-		await expect(admin.mutation(api.orders.failManualRefundRecovery, {
-			webhookSecret: "wrong",
-			recoveryId: MANUAL_REFUND_RECOVERY_ID,
-			siteUrl: ADMIN_RECOVERY.siteUrl,
-			resultReason: "wrong_authority",
-			failureStage: "execution",
-		})).rejects.toThrow();
-	});
-
 	test("converges concurrent refunds for the retained legacy order and preserves its reservation", async () => {
 		const t = convexTest(schema, modules);
 		const created = await t.mutation(api.orders.create, {
@@ -4578,47 +4300,6 @@ describe("V2 order shipment email leases", () => {
 			expect(order?.shipmentEmailNotificationProtocol).toBeUndefined();
 			expect(order?.shipmentEmailNotificationClaimToken).toBeUndefined();
 		}
-	});
-
-	test("makes the temporary global V1 bridge inert after V2 touches a row", async () => {
-		const { t, orderId } = await seedLumaPrintsOrder();
-		await t.mutation(api.orders.claimShipmentEmailNotificationV2, claimArgs());
-		const before = await t.run((ctx) => ctx.db.get(orderId));
-
-		await expect(
-			t.mutation(api.orders.claimShipmentEmailNotificationByOrderNumber, {
-				webhookSecret: WEBHOOK_SECRET,
-				lumaprintsOrderNumber: "123",
-				trackingNumber: "V1-MUST-NOT-WRITE",
-			}),
-		).resolves.toMatchObject({ claimed: false });
-		await expect(
-			t.mutation(api.orders.recordShipmentEmailDeliveryByOrderNumber, {
-				webhookSecret: WEBHOOK_SECRET,
-				lumaprintsOrderNumber: "123",
-				status: "failed",
-				error: "arbitrary provider or Resend secret",
-			}),
-		).resolves.toMatchObject({ recorded: false });
-		expect(await t.run((ctx) => ctx.db.get(orderId))).toEqual(before);
-	});
-
-	test("redacts arbitrary error text accepted by the temporary V1 bridge", async () => {
-		const { t, orderId } = await seedLumaPrintsOrder();
-		await t.mutation(api.orders.claimShipmentEmailNotificationByOrderNumber, {
-			webhookSecret: WEBHOOK_SECRET,
-			lumaprintsOrderNumber: "123",
-		});
-		await t.mutation(api.orders.recordShipmentEmailDeliveryByOrderNumber, {
-			webhookSecret: WEBHOOK_SECRET,
-			lumaprintsOrderNumber: "123",
-			status: "failed",
-			error: "private-token-that-must-not-be-stored",
-		});
-		expect(await t.run((ctx) => ctx.db.get(orderId))).toMatchObject({
-			shipmentEmailDeliveryStatus: "failed",
-			shipmentEmailDeliveryError: "legacy_delivery_failed",
-		});
 	});
 
 	test("rejects noncanonical numbers, duplicate global identities, and bad authority", async () => {

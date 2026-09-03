@@ -308,9 +308,20 @@ describe("tenant-scoped portfolio gallery revisions", () => {
 			gallery: await ctx.db.get(draft.galleryId),
 			revision: await ctx.db.get(draft.revisionId),
 			placements: await ctx.db.query("portfolioPlacements").collect(),
+			retired: await ctx.db.query("retiredPortfolioGalleryIdentities").unique(),
 			asset: await ctx.db.get(assetA.id),
 		}));
-		expect(stored).toMatchObject({ gallery: null, revision: null, placements: [], asset: {} });
+		expect(stored).toMatchObject({
+			gallery: null,
+			revision: null,
+			placements: [],
+			retired: { slug: "private-when-needed", galleryId: draft.galleryId },
+			asset: {},
+		});
+		await expect(adminA.mutation(api.portfolioGalleries.saveDraft, {
+			siteUrl: SITE_A.siteUrl,
+			draft: { slug: "private-when-needed", placements: [] },
+		})).rejects.toThrow(/slug.*retired/i);
 	});
 
 	test("bounds the aggregate public projection before another gallery can publish", async () => {

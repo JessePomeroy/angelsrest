@@ -9,7 +9,7 @@ It contains no credential values.
 | Surface | Authority | Recovery or compatibility path |
 |---|---|---|
 | Admin authentication | Better Auth | Provider session recovery; no public password signup |
-| Tenant authorization | Convex `platformClients.adminIdentityIds` | Verified invited-email claim only during the R12 widen/claim rollout |
+| Tenant authorization | Convex `platformClients.adminIdentityIds` | Tenant-bounded verified-invite claim only for an unclaimed tenant |
 | Published content and Shop catalog | Convex | Explicit, reviewed Sanity provider selection |
 | Editor drafts and media registry | Convex | Retained migration captures and Sanity recovery tooling |
 | Editor and private catalog bytes | Cloudflare R2 | Convex receipts, tombstones, and retained source metadata |
@@ -42,19 +42,16 @@ project is outside Angels Rest recovery custody.
 
 ## Identity rollout
 
-R12 uses a widen/claim/narrow sequence:
+The widened claim path is deployed and public signup is disabled. Angels Rest
+has one verified stable identity claim, so its authorization no longer consults
+the invited-email fallback. The source contract rejects an unverified account
+and a different subject presenting the same email.
 
-1. Deploy the optional `adminIdentityIds` field, verified claim mutation, and
-   disabled public password signup.
-2. Deploy hosts that attempt the idempotent claim before checking membership.
-3. Sign in normally to each production tenant and verify its stable identity is
-   stored.
-4. Confirm a different subject with the same email is rejected.
-5. Remove the temporary invited-email compatibility read and redeploy.
-
-Do not narrow before every active production tenant has a verified stable
-claim. Creating a platform-client record is an invitation; it must never create
-or disclose a generated password.
+Reflecting Pool remains unclaimed under the owner's explicit deferral. Its
+compatibility path is tenant-bounded, requires a verified invited email, and is
+available only while that tenant has no stable identity. Do not remove this
+fallback globally until that tenant is claimed or retired. Creating a platform
+client records an invitation; it never creates or discloses a password.
 
 ## Backup and restore
 
@@ -99,6 +96,30 @@ tenant routing, refunds, durable deduplication, rollback, and credential
 recovery. That acceptance is an external-effects gate, not part of ordinary
 source deployment.
 
+The 2026-09-02 production inventory found zero connected accounts for both
+registered tenants. This gate is therefore inactive and no payment acceptance
+was run during R12.
+
+## Dependency and source hygiene
+
+The 2026-09-02 registry-backed audits report zero known vulnerabilities in the
+complete Angels Rest, shared Admin, and Gallery Worker dependency graphs.
+Relevant builds, type checks, tests, and Worker dry-run bundles pass on the
+updated locks. CI and package workflows install with lifecycle scripts disabled;
+required builds remain explicit steps.
+
+Five broken machine-local skill symlinks were removed from version control and
+`/skills/` is ignored. `AGENTS.md` remains the sole tracked agent-governance
+file. The deployable development password/JWKS mutation and its local password
+hash and dummy-data scripts were removed. Repository secret scanning found no
+tracked credential material.
+
+The older V1–V3 print-fulfillment mutations and deprecated site-scoped shipment
+APIs remain deliberately: they are authenticated rolling-deploy and rollback
+compatibility for previously published consumers. Current hub code uses V4
+print coordination and the tokenized V2 shipment lease. Remove the older
+protocols only after a separately reviewed consumer and rollback inventory.
+
 ## Release and recovery evidence
 
 For every security-affecting release, retain:
@@ -111,18 +132,31 @@ For every security-affecting release, retain:
 - the known-good rollback revision; and
 - an explicit record of any deferred risk.
 
-Release tags and packages currently lack a portable cryptographic attestation
-chain. GitHub workflows pin actions by commit and minimize permissions, but the
-remaining signed-tag/package-provenance decision must be explicitly accepted or
-closed before R12 exits.
+Portable cryptographic release attestation is intentionally deferred by owner
+decision: it is unnecessary for the current controlled repositories and
+consumer set. Reviewed commits, CI, lockfiles, package versions, deployment IDs,
+and rollback revisions remain the release evidence. Revisit attestation only if
+distribution expands to untrusted consumers or a regulatory requirement calls
+for independently verifiable provenance.
 
 ## R12 held cleanup
 
-The following production environment names appeared potentially obsolete in a
-name-only inventory and must not be deleted without a separate value-free usage
-check and owner approval: `ADMIN_PASSWORD`, dated
-`R5_BACKUP_RECOVERY_KEY_*` entries, `SHARP_SPIKE_TOKEN`,
-`SANITY_WRITE_TOKEN`, and `SHOP_CATALOG_PROVIDER`.
-`CHECKOUT_SNAPSHOT_MODE` remains active for compatibility intake and must be
-retained. Legacy CMS/media variables require adapter and rotation review before
-any removal.
+The value-free 2026-09-02 inventory found these removal candidates with no
+active host source consumer: Vercel `ADMIN_PASSWORD`, `SANITY_WRITE_TOKEN`,
+`SHARP_SPIKE_TOKEN`, and `NPM_TOKEN`; and the repository Actions secret
+`CONVEX_DEPLOY_KEY_REFLECTING_POOL_PROD`. `SHOP_CATALOG_PROVIDER` affects only a
+legacy parity diagnostic and may also be removed once that diagnostic default is
+accepted. None has been deleted; external cleanup requires an exact owner
+approval. Treat `NPM_TOKEN` as package-manager infrastructure until a clean
+production install proves that the private package registry does not consume it.
+
+During R12 source verification, Convex's local-deployment setup created the
+empty dashboard project shell `angelsrest-r12-local`. The function push used
+only a local backend; no application functions or data reached that cloud
+project. The unused shell is retained pending explicit owner approval to delete
+it.
+
+Retain both dated `R5_BACKUP_RECOVERY_KEY_*` values until the encrypted archive
+identifies a single accepted recovery key and a restore recheck passes. Retain
+`CHECKOUT_SNAPSHOT_MODE`, which remains active for compatibility intake. Legacy
+CMS/media credentials require a role-by-role rotation review before removal.

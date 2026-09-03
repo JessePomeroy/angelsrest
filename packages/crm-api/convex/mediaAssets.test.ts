@@ -633,11 +633,22 @@ describe("tenant-scoped CMS media assets", () => {
 				placementKey: "test-placement",
 				order: 0,
 			});
+			await ctx.db.patch(galleryId, { draftRevisionId: revisionId });
+			return galleryId;
 		});
 
 		await expect(admin.mutation(api.mediaAssets.requestDeletion, {
 			siteUrl: SITE_A.siteUrl,
 			id: created.id,
 		})).rejects.toThrow(/in use by portfolio content/);
+		await t.run(async (ctx) => {
+			const gallery = await ctx.db.query("portfolioGalleries").unique();
+			if (!gallery) throw new Error("Portfolio fixture not found");
+			await ctx.db.patch(gallery._id, { draftRevisionId: undefined });
+		});
+		await expect(admin.mutation(api.mediaAssets.requestDeletion, {
+			siteUrl: SITE_A.siteUrl,
+			id: created.id,
+		})).resolves.toMatchObject({ status: "deleting" });
 	});
 });
