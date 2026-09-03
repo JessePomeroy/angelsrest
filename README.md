@@ -124,8 +124,10 @@ run when their flows are affected.
 ## Documentation
 
 - [AGENTS.md](AGENTS.md) — canonical repository rules and implementation constraints
-- [docs/SECURITY-OPERATIONS.md](docs/SECURITY-OPERATIONS.md) — authority, least-privilege, recovery, and incident runbook
 - [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) — current ownership, dependencies, authentication, and transport boundaries
+- [docs/contracts/architecture-invariants.md](docs/contracts/architecture-invariants.md) — stable safety rules and their primary proofs
+- [docs/runbooks/security-operations.md](docs/runbooks/security-operations.md) — authority, least-privilege, recovery, and incident response
+- [docs/migrations/](docs/migrations/) — completed migration narratives and source-bound records
 - [LUMAPRINTS.md](LUMAPRINTS.md) — current print-fulfillment integration
 - [packages/crm-api/README.md](packages/crm-api/README.md) — shared Convex package and release workflow
 - [docs/archive/README.md](docs/archive/README.md) — historical documents retained for context only
