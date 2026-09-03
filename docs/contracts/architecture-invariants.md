@@ -13,7 +13,7 @@ building overlapping suites.
 | Admin server access requires stored site membership, not identity alone | `src/lib/server/__tests__/siteAdminAuthorization.test.ts` and `src/routes/admin/__tests__/layout-server.test.ts` |
 | Public document portals use client-safe projections | `src/lib/server/__tests__/architectureInvariants.test.ts` and portal projection tests |
 | External effects use durable claim and idempotency protocols | `documentEmailAttempts.test.ts`, `lumaprintsWebhook.test.ts`, and focused order-intake tests |
-| Current runtime cannot import migration, compatibility, or recovery code | `src/lib/server/__tests__/architectureInvariants.test.ts` |
+| Current authority modules cannot import migration, compatibility, or recovery code | `src/lib/server/__tests__/architectureInvariants.test.ts` |
 | Generated Convex files are regenerated, never hand-edited | generator markers checked by `architectureInvariants.test.ts`; code-generation procedure in `packages/crm-api/README.md` |
 
 ## Contract details
