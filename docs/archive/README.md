@@ -8,6 +8,8 @@ Current guidance lives in:
 
 - [`../../AGENTS.md`](../../AGENTS.md) for repository rules
 - [`../ARCHITECTURE.md`](../ARCHITECTURE.md) for system boundaries and flows
+- [`../runbooks/security-operations.md`](../runbooks/security-operations.md) for current security and recovery procedure
+- [`../migrations/`](../migrations/) for completed migration records
 - [`../../LUMAPRINTS.md`](../../LUMAPRINTS.md) for print fulfillment
 
 Archived material includes:
