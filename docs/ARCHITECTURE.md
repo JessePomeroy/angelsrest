@@ -151,6 +151,10 @@ Generated Convex files are never edited by hand. Read
 the sanctioned code-generation flow. Public schema or function changes require
 a Changeset and a mixed-version-safe rollout.
 
+Package publication, exact-version host adoption, and runtime deployment are
+separate approval gates. The ordered procedure and per-runtime rollback paths
+are in [`runbooks/package-release-and-adoption.md`](runbooks/package-release-and-adoption.md).
+
 ## Documentation
 
 - `AGENTS.md` — canonical repository rules and checks.
