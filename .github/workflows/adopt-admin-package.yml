@@ -1,0 +1,71 @@
+name: Prepare Admin package adoption PR
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Published @jessepomeroy/admin version
+        required: true
+        type: string
+      release_url:
+        description: Reviewed package release or version PR URL
+        required: true
+        type: string
+
+permissions:
+  actions: write
+  contents: write
+  packages: read
+  pull-requests: write
+
+jobs:
+  prepare:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24.18.0
+          registry-url: "https://npm.pkg.github.com"
+          scope: "@jessepomeroy"
+          package-manager-cache: false
+          token: ""
+
+      - run: corepack enable
+      - run: corepack pnpm install --frozen-lockfile --ignore-scripts
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.GH_PACKAGES_TOKEN }}
+
+      - name: Pin the exact published version
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.GH_PACKAGES_TOKEN }}
+          VERSION: ${{ inputs.version }}
+        run: |
+          [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]] || { echo 'version must be exact semver'; exit 1; }
+          corepack pnpm add -w "@jessepomeroy/admin@$VERSION" --save-exact --ignore-scripts
+          test "$(node -p "require('./package.json').dependencies['@jessepomeroy/admin']")" = "$VERSION"
+
+      - run: corepack pnpm check:package-contract
+      - run: corepack pnpm check
+      - run: corepack pnpm test
+
+      - name: Open the host adoption PR
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_URL: ${{ inputs.release_url }}
+          VERSION: ${{ inputs.version }}
+        run: |
+          branch="automation/adopt-admin-$VERSION-${GITHUB_RUN_ID}"
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git switch -c "$branch"
+          git add package.json pnpm-lock.yaml
+          git diff --cached --quiet && { echo 'Exact version is already adopted.'; exit 0; }
+          git commit -m "chore(admin): adopt $VERSION"
+          git push --set-upstream origin "$branch"
+          gh pr create --base main --head "$branch" --title "chore(admin): adopt $VERSION" --body "Adopts the exact reviewed package release: $RELEASE_URL\n\nThis workflow does not merge or deploy the host."
+          gh workflow run ci.yml --ref "$branch"
