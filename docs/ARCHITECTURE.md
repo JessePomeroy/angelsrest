@@ -26,7 +26,7 @@ modules or private environment variables.
 
 | Domain | Owner | Entry points |
 |---|---|---|
-| Published editorial content and Shop catalog | Convex | public content modules, `catalogProductGraphs.ts`, `src/lib/server/convexShop.server.ts` |
+| Published editorial content and Shop catalog | Convex | public content modules, `catalogProductGraphs.ts`, `src/lib/server/current/convexShop.server.ts` |
 | Embedded Editor drafts, revisions, and media registry | Convex | `packages/crm-api/convex/*Content.ts`, `mediaAssets.ts` |
 | Editor media sources and public WebP derivatives | Cloudflare R2 | CMS media worker via `/api/admin/media/*` |
 | Private catalog print masters and paid files | Cloudflare R2 bytes; Convex registry and coordination | purpose-separated receipt ingresses in `convex/http.ts`, internal `catalogPrivateAssets.ts` mutations |
@@ -67,6 +67,26 @@ Browser code continues to import the two genuinely public build-time values it
 needs for Convex WebSocket setup. Missing Stripe, Resend, LumaPrints, or
 server-only webhook configuration therefore cannot make an unrelated public
 page import or production bundle fail before that integration is used.
+
+### Source seams
+
+`src/lib/server/current/` contains the Convex-only authority modules used by
+current public content, Shop, and checkout paths. These modules may use active
+server integration primitives, but they must not import recovery, migration,
+retired-provider, or browser code.
+
+`src/lib/server/recovery/` contains authenticated retry and reconciliation
+orchestration. It is entered only from the owning server workflow and is never
+part of a public read or browser dependency graph. The remaining modules at the
+server root are active integration primitives and orchestration, not a legacy
+provider layer.
+
+There is no historical purchase compatibility or executable migration path.
+Migration-named Convex helper files that remain are empty compatibility stubs
+for checked-in generated imports and may be deleted only after sanctioned
+Convex code generation removes those imports. `sanityImport` and `provider:
+"sanity"` values on migrated rows are immutable data lineage, not runtime
+provider capabilities.
 
 ### Bearer-capability routes
 
@@ -226,17 +246,17 @@ and test full client-side navigation, expiry, logout, and concurrent requests.
 
 ### Shop checkout
 
-`convexShop.server.ts` is the deep public Shop module. It owns bounded Convex
-list and exact-slug reads, projection validation, normalized 404/503 behavior,
-and the accepted zero-collection baseline. The four Shop loaders import this
-module directly and do not inspect preview state or provider flags.
+`current/convexShop.server.ts` is the deep public Shop module. It owns bounded
+Convex list and exact-slug reads, projection validation, normalized 404/503
+behavior, and the accepted zero-collection baseline. The four Shop loaders
+import this module directly and do not inspect preview state or provider flags.
 
-`currentCheckoutCommerce.ts` is the authority module for every newly initiated
-Angels Rest direct or cart purchase. It resolves the exact published Convex graph
-and authenticated commerce envelope, then always reserves a Convex handle-v2
-snapshot before Stripe. Checkout, fulfillment, and paid downloads accept only
-the current Convex snapshot contract; there is no provider selector or legacy
-purchase fallback.
+`current/currentCheckoutCommerce.server.ts` is the authority module for every
+newly initiated Angels Rest direct or cart purchase. It resolves the exact
+published Convex graph and authenticated commerce envelope, then always reserves
+a Convex handle-v2 snapshot before Stripe. Checkout, fulfillment, and paid
+downloads accept only the current Convex snapshot contract; there is no provider
+selector or legacy purchase fallback.
 
 1. The selling site resolves current product/catalog data; browser-supplied
    prices are not authoritative.

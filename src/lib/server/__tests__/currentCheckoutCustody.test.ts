@@ -10,7 +10,7 @@ function source(path: string) {
 
 describe("current checkout authority custody", () => {
 	it("keeps current authority in a Convex-only module with no provider-mode seam", () => {
-		const current = source("src/lib/server/currentCheckoutCommerce.ts");
+		const current = source("src/lib/server/current/currentCheckoutCommerce.server.ts");
 		expect(current).not.toMatch(
 			/\$lib\/sanity|\$env\/dynamic\/private|CHECKOUT_CATALOG_PROVIDER|CHECKOUT_SNAPSHOT_MODE|\bresolveCheckoutItem\b|from "\$lib\/server\/checkoutCommerce"/,
 		);
@@ -35,7 +35,7 @@ describe("current checkout authority custody", () => {
 		const direct = source("src/lib/server/directCheckout.ts");
 		const cart = source("src/routes/api/cart/checkout/+server.ts");
 		for (const checkout of [direct, cart]) {
-			expect(checkout).toContain('from "$lib/server/currentCheckoutCommerce"');
+			expect(checkout).toContain('from "$lib/server/current/currentCheckoutCommerce.server"');
 			expect(checkout).toContain('catalogProvider: "convex"');
 			expect(checkout).toContain("createHandleCheckoutSession");
 		}

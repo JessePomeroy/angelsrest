@@ -5,7 +5,7 @@
  */
 
 import { error } from "@sveltejs/kit";
-import { portfolioContent } from "$lib/server/portfolioContent.server";
+import { portfolioContent } from "$lib/server/current/portfolioContent.server";
 
 export async function load({ params }) {
 	const gallery = await portfolioContent.getBySlug(params.slug);

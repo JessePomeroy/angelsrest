@@ -6,7 +6,7 @@ import type {
 	CheckoutSessionAdmissionClient,
 } from "$lib/server/checkoutSessionAdmissionClient";
 import type { CheckoutSnapshotReservationClient } from "$lib/server/checkoutSnapshotReservationClient";
-import { resolveCurrentCheckoutCommerce } from "$lib/server/currentCheckoutCommerce";
+import { resolveCurrentCheckoutCommerce } from "$lib/server/current/currentCheckoutCommerce.server";
 import { createHandleCheckoutSession } from "$lib/server/handleCheckout";
 import { logStructured } from "$lib/server/logger";
 import { buildCheckoutLineItem } from "$lib/server/stripeCheckoutSession";

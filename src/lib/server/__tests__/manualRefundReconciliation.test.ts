@@ -4,7 +4,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
 	ManualRefundReconciliationRetryableError,
 	reconcileSucceededManualRefund,
-} from "$lib/server/manualRefundReconciliation";
+} from "$lib/server/recovery/manualRefundReconciliation.server";
 
 const { mockLogStructured, mockPrivateEnv } = vi.hoisted(() => ({
 	mockLogStructured: vi.fn(),

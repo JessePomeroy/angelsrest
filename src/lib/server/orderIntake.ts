@@ -19,10 +19,6 @@ import {
 } from "$lib/server/commerceTenant";
 import { logStructured } from "$lib/server/logger";
 import {
-	ManualRefundReconciliationRetryableError,
-	reconcileSucceededManualRefund,
-} from "$lib/server/manualRefundReconciliation";
-import {
 	AutomatedFulfillmentRefundRetryableError,
 	AutomatedRefundNotificationRetryableError,
 	PrintReconciliationAlertRetryableError,
@@ -31,6 +27,10 @@ import {
 	type SubmitLumaPrintsOrder,
 	sendClaimedAutomatedRefundNotification,
 } from "$lib/server/printFulfillment";
+import {
+	ManualRefundReconciliationRetryableError,
+	reconcileSucceededManualRefund,
+} from "$lib/server/recovery/manualRefundReconciliation.server";
 import { COMMERCE_TENANT_METADATA_KEY } from "$lib/server/stripeConnect";
 import type { CommerceWebhookRole } from "$lib/server/stripeWebhook";
 import type { ShippingDetails } from "$lib/server/webhookEmails";

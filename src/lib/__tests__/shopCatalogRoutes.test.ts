@@ -46,10 +46,10 @@ describe("shop catalog route boundaries", () => {
 			"src/routes/shop/prints/[slug]/+page.server.ts",
 		]) {
 			const loader = source(path);
-			expect(loader).toContain('from "$lib/server/convexShop.server"');
+			expect(loader).toContain('from "$lib/server/current/convexShop.server"');
 			expect(loader).not.toMatch(/sanity\.fetch|\$convex|catalogProductGraphs|isPreview|locals/);
 		}
-		const boundary = source("src/lib/server/convexShop.server.ts");
+		const boundary = source("src/lib/server/current/convexShop.server.ts");
 		expect(boundary).toContain("api.catalogProductGraphs.listPublished");
 		expect(boundary).toContain("api.catalogProductGraphs.getPublishedBySlug");
 		expect(boundary).toContain("collections: []");

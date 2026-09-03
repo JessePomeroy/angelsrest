@@ -1,4 +1,4 @@
-import { siteSettingsContent } from "$lib/server/siteSettingsContent.server";
+import { siteSettingsContent } from "$lib/server/current/siteSettingsContent.server";
 
 export async function load() {
 	return { siteSettings: await siteSettingsContent.load() };
