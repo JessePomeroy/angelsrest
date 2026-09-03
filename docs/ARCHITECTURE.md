@@ -114,11 +114,12 @@ security boundary; keep verification inside the host route.
 8. Shared server handlers, including gallery-worker/R2 operations, call the
    host's per-request site-admin verifier before performing side effects.
 
-R12 uses a widen/claim/narrow migration. The widened schema temporarily permits
-verified legacy email membership only while a tenant has no claimed stable
-identity. Both production tenants must claim and be verified before the final
-narrow removes that compatibility read. Creating a platform client records an
-invitation; it does not create or disclose a generated password.
+R12 uses a widen/claim/narrow migration. Angels Rest has claimed and verified a
+stable identity, so its authorization no longer depends on email equality. The
+deferred Reflecting Pool tenant remains on the tenant-bounded verified-invite
+fallback until its owner completes a claim or the tenant is retired. Creating a
+platform client records an invitation; it does not create or disclose a
+generated password.
 
 ### Document-email delivery and recovery
 
@@ -146,13 +147,10 @@ gallery share links remain outside this document-email history bound. Accepted
 replacement delivery revokes every prior capability for the exact site, document,
 and client while leaving unrelated tenant data untouched. Failed or definitely
 unsent replacement attempts revoke only their own new capability, preserving the
-last known delivered link. These are additive schema and function changes with no
-initial data backfill. The shared Admin package must land and publish its recovery
-handlers before the host mounts the three authenticated recovery routes. Admin
-`3.41.0` is now pinned in this source candidate, the host exposes those three
-fixed routes, and its browser configuration passes exactly the eight public
-attempt references. They remain inactive until the additive Convex Stage A
-schema/functions are deployed.
+last known delivered link. These additive schema and function changes required no
+initial data backfill. Shared Admin `3.42.1` is pinned, the host exposes the three
+authenticated recovery routes and passes exactly eight public attempt references,
+and the matching Convex functions are deployed.
 
 ### Editor media boundary
 
@@ -175,6 +173,11 @@ schema/functions are deployed.
 6. This boundary is separate from private client-gallery delivery. Published
    content modules resolve their accepted Convex revisions and immutable public
    derivatives; the retained Sanity adapter is not a media authority.
+7. Permanent portfolio-gallery deletion first records a non-sensitive identity
+   tombstone, so a retired public slug is never assigned to different work.
+   Media bytes may be deleted only after no active draft or published revision
+   references them; immutable historical revisions remain audit history but do
+   not indefinitely pin storage.
 
 ### Private catalog asset registration
 
@@ -291,7 +294,13 @@ Existing V1–V3 callers and schedulers retain their prior semantics during the
 backend-first rollout. New tables and order fields are additive/optional, so
 this widening requires no migration or backfill.
 
-### Retired order replay protection
+### Retired order replay protection (historical)
+
+R12 removed the completed one-use reset, classifier, and provider-observer
+functions. The permanent `retiredOrderSessions` tombstones and reset receipt
+remain as data, and current order intake still rejects retired Sessions. The
+operation description below is retained only as historical design context; it
+does not describe a callable interface.
 
 An owner-approved full reset can remove disposable Angels Rest order rows only
 through the fixed internal `orderReset.apply` operation. Both producer states
@@ -525,11 +534,10 @@ closed while deploying the additive schema, V3 claim/coordinator, and
 refund/notification lease mutations, then deploy the V3 host before reopening
 fulfillment. The V2 claim return union and object shapes remain exact: a blocked
 row maps to baseline `busy`, an uncertain nonblocked row maps to baseline
-`reconcile`, and richer blocked state is V3-only. Remove the temporary
-baseline-host completion bridge only in a later reviewed release. The bridge
-accepts one exact webhook-authorized completion and rejects replays, but it
-cannot suppress a confirmation email already owned by an in-flight old host.
-It never lets an administrator write provider-global identity.
+`reconcile`, and richer blocked state is V3-only. R12 retired the temporary
+baseline-host completion bridge and signed shipment-drain observer after
+current source had no remaining caller. The tokenized V2 lease remains the
+only hub shipment-email path.
 
 After any order has V3 coordinator fields, rollback is host-only. Keep the
 additive Convex schema, indexes, V3 mutations, and compatibility functions
@@ -544,23 +552,10 @@ authorizes a replay. If that drain cannot be proved, keep or restore the V3 host
 and do not resume producers on the baseline host. Only after the drain is proved
 may the host roll back, with the additive Convex deployment retained.
 
-A disabled-by-default admin recovery route exists only for the reviewed
-historical refund incident. `POST /api/admin/orders/refund-recovery` requires an
-exact same-origin request, a Better Auth session, stored site membership, the
-one server-owned recovery ID, and a matching private environment gate. Convex
-also requires the exact incident manifest, the same short-lived private gate,
-its exact built-in Production URL, and the same derived admin actor. The route
-durably claims the recovery before provider reads. It then retrieves the exact
-historical Stripe Event, current Refund, PaymentIntent, and exact Checkout
-Session and validates their Charge binding in the server-owned platform context.
-Browser input cannot provide Stripe or tenant facts. Convex records normalized
-provider evidence for accepted checks and a bounded failed-check list for
-rejected checks. It completes a valid reconciliation in the existing order
-transaction. A missing order creates no refund intent. Failed or incomplete
-claims never become reusable. An audit-write failure returns an explicit
-indeterminate result. The route has no admin UI control and sends no email or
-fulfillment request. Deployment, gate enablement, invocation, gate removal, and
-code cleanup are separate approvals.
+The reviewed historical refund incident remains represented by its retained
+audit rows. Its one-off host route, provider-read adapter, private gate, and
+public Convex claim/failure functions have been retired. The ordinary signed
+Stripe refund reconciliation path remains unchanged.
 
 The accepted historical reservation closeout retains one minimal non-sensitive
 tombstone in `checkoutSnapshotReservationCloseouts`. The table remains in the

@@ -40,31 +40,9 @@ type IgnoredReason =
 	| "session_mode_mismatch"
 	| "invoice_payment"
 	| "invalid_tenant_marker"
-	| "provider_evidence_mismatch"
 	| "tenant_identity_conflict";
 
 export class ManualRefundReconciliationRetryableError extends Error {}
-
-export interface ManualRefundRecoveryContext {
-	recoveryId: string;
-	manifestVersion: number;
-	stripeContext: string;
-	eventApiVersion: string;
-	expectedSessionId: string;
-	verifiedRefund: Stripe.Refund;
-	providerEvidence: {
-		verifiedAt: number;
-		currentRefundStatus: "succeeded";
-		currentRefundHasAutomatedMetadata: false;
-		currentRefundHasRecoveryAuditMetadata: false;
-		paymentIntentStatus: "succeeded";
-		paymentIntentAmount: number;
-		paymentIntentAmountReceived: number;
-		paymentIntentCurrency: "usd";
-		paymentIntentLivemode: true;
-		paymentIntentLatestChargeId: string;
-	};
-}
 
 export type ManualRefundReconciliationResult =
 	| { kind: "ignored"; reason: IgnoredReason }
@@ -152,7 +130,6 @@ export async function reconcileSucceededManualRefund(
 	event: ManualRefundEvent,
 	adapters: { stripe: Stripe; convex: ConvexHttpClient },
 	verifiedDestinationRole?: CommerceWebhookRole,
-	recovery?: ManualRefundRecoveryContext,
 ): Promise<ManualRefundReconciliationResult> {
 	const accountId = event.account;
 	const stripeContext = event.context;
@@ -168,28 +145,10 @@ export async function reconcileSucceededManualRefund(
 		(verifiedDestinationRole !== "your-account" || !ID_PATTERNS.account.test(stripeContext));
 	if (roleScopeMismatch || unsupportedContext) return ignore("unsupported_scope");
 	if (!ID_PATTERNS.event.test(event.id)) return ignore("invalid_event_id");
-	if (
-		recovery &&
-		(stripeContext !== recovery.stripeContext || event.api_version !== recovery.eventApiVersion)
-	)
-		return ignore("provider_evidence_mismatch");
-
-	const signedRefund = event.data.object;
-	const refund = recovery?.verifiedRefund ?? signedRefund;
-	if (
-		recovery &&
-		(signedRefund.id !== refund.id ||
-			signedRefund.status !== refund.status ||
-			signedRefund.amount !== refund.amount ||
-			signedRefund.currency !== refund.currency ||
-			objectId(signedRefund.charge) !== objectId(refund.charge) ||
-			objectId(signedRefund.payment_intent) !== objectId(refund.payment_intent))
-	)
-		return ignore("provider_evidence_mismatch");
+	const refund = event.data.object;
 	const automationTag = refund.metadata?.automated;
 	const isAutomated = automationTag === REFUND_AUTOMATION_TAG;
 	if (hasMetadataKey(refund.metadata, "automated") && !isAutomated) return ignore("automated");
-	if (recovery && isAutomated) return ignore("provider_evidence_mismatch");
 	const automatedOrderNumber = isAutomated ? refund.metadata?.orderNumber : undefined;
 	if (
 		isAutomated &&
@@ -238,11 +197,7 @@ export async function reconcileSucceededManualRefund(
 	if (sessions.has_more || sessions.data.length !== 1) return ignore("ambiguous_session");
 
 	const session = sessions.data[0];
-	if (
-		!ID_PATTERNS.session.test(session.id) ||
-		(recovery && session.id !== recovery.expectedSessionId)
-	)
-		return ignore("invalid_session");
+	if (!ID_PATTERNS.session.test(session.id)) return ignore("invalid_session");
 	if (
 		session.mode !== "payment" ||
 		session.status !== "complete" ||
@@ -331,20 +286,6 @@ export async function reconcileSucceededManualRefund(
 		}
 		result = await adapters.convex.mutation(api.orders.reconcileSucceededManualRefund, {
 			webhookSecret: getWebhookSecret(),
-			...(recovery
-				? {
-						refundRecoveryId: recovery.recoveryId,
-						refundRecoveryManifestVersion: recovery.manifestVersion,
-						refundRecoveryStripeContext: recovery.stripeContext,
-						refundRecoveryEventApiVersion: recovery.eventApiVersion,
-						refundRecoveryProviderEvidence: {
-							...recovery.providerEvidence,
-							sessionMode: "payment" as const,
-							sessionStatus: "complete" as const,
-							sessionPaymentStatus: "paid" as const,
-						},
-					}
-				: {}),
 			stripeEventId: event.id,
 			stripeRefundId: refund.id,
 			stripeChargeId: chargeId,

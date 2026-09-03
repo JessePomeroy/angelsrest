@@ -190,28 +190,46 @@ async function requireAssetUnused(
 		throw new Error("Media asset is in use by Post content");
 	}
 
-	const portfolioUsage = await ctx.db
+	const portfolioUsages = ctx.db
 		.query("portfolioPlacements")
 		.withIndex("by_siteUrl_and_assetId", (q) =>
 			q.eq("siteUrl", asset.siteUrl).eq("assetId", asset._id),
-		)
-		.first();
-	if (portfolioUsage) throw new Error("Media asset is in use by portfolio content");
-	const portfolioSeoUsage = await ctx.db
+		);
+	for await (const usage of portfolioUsages) {
+		const gallery = await ctx.db.get(usage.galleryId);
+		if (
+			gallery?.siteUrl === asset.siteUrl
+			&& (gallery.draftRevisionId === usage.revisionId
+				|| gallery.publishedRevisionId === usage.revisionId)
+		) throw new Error("Media asset is in use by portfolio content");
+	}
+	const portfolioSeoUsages = ctx.db
 		.query("portfolioGalleryRevisions")
 		.withIndex("by_siteUrl_and_seoOgImageAssetId", (q) =>
 			q.eq("siteUrl", asset.siteUrl).eq("seoOgImageAssetId", asset._id),
-		)
-		.first();
-	if (portfolioSeoUsage) throw new Error("Media asset is in use by portfolio SEO content");
+		);
+	for await (const usage of portfolioSeoUsages) {
+		const gallery = await ctx.db.get(usage.galleryId);
+		if (
+			gallery?.siteUrl === asset.siteUrl
+			&& (gallery.draftRevisionId === usage._id
+				|| gallery.publishedRevisionId === usage._id)
+		) throw new Error("Media asset is in use by portfolio SEO content");
+	}
 
-	const catalogUsage = await ctx.db
+	const catalogUsages = ctx.db
 		.query("catalogProductMediaPlacements")
 		.withIndex("by_siteUrl_and_assetId", (q) =>
 			q.eq("siteUrl", asset.siteUrl).eq("assetId", asset._id),
-		)
-		.first();
-	if (catalogUsage) throw new Error("Media asset is in use by catalog content");
+		);
+	for await (const usage of catalogUsages) {
+		const product = await ctx.db.get(usage.productId);
+		if (
+			product?.siteUrl === asset.siteUrl
+			&& (product.draftRevisionId === usage.revisionId
+				|| product.publishedRevisionId === usage.revisionId)
+		) throw new Error("Media asset is in use by catalog content");
+	}
 
 	const aboutDocument = await ctx.db
 		.query("contentDocuments")

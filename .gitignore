@@ -26,6 +26,7 @@ vite.config.ts.timestamp-*
 /.agents/
 /.claude/
 /.codex/
+/skills/
 /CLAUDE.md
 
 # Local audit/rotation working docs may contain sensitive provider details.

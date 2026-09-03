@@ -107,6 +107,15 @@ export const saveDraft = mutation({
 		if (slugOwner && slugOwner._id !== gallery?._id) {
 			throw new Error(`Portfolio gallery slug "${args.draft.slug}" already exists`);
 		}
+		const retiredSlug = await ctx.db
+			.query("retiredPortfolioGalleryIdentities")
+			.withIndex("by_siteUrl_and_slug", (q) =>
+				q.eq("siteUrl", client.siteUrl).eq("slug", args.draft.slug),
+			)
+			.unique();
+		if (retiredSlug && retiredSlug.galleryId !== gallery?._id) {
+			throw new Error(`Portfolio gallery slug "${args.draft.slug}" is retired`);
+		}
 		await requireReadyPortfolioAssets(ctx, client.siteUrl, args.draft.placements);
 
 		if (!gallery) {
@@ -268,6 +277,15 @@ export const remove = mutation({
 	handler: async (ctx, { galleryId }) => {
 		const gallery = await requireDocumentSiteAdmin(ctx, "portfolioGalleries", galleryId);
 		if (gallery.deletionRequestedAt === undefined) {
+			const identity = await ctx.auth.getUserIdentity();
+			if (!identity) throw new Error("Not authenticated");
+			await ctx.db.insert("retiredPortfolioGalleryIdentities", {
+				siteUrl: gallery.siteUrl,
+				galleryId,
+				slug: gallery.slug,
+				deletedAt: Date.now(),
+				deletedBy: identity.tokenIdentifier,
+			});
 			await ctx.db.patch(galleryId, {
 				isPublished: false,
 				isVisible: false,

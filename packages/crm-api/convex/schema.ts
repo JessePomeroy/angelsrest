@@ -475,6 +475,18 @@ export default defineSchema({
 			"portfolioOrder",
 		]),
 
+	// A deleted gallery leaves only its non-sensitive identity behind. Slugs are
+	// never recycled, so an old public URL cannot later resolve to different work.
+	retiredPortfolioGalleryIdentities: defineTable({
+		siteUrl: v.string(),
+		galleryId: v.id("portfolioGalleries"),
+		slug: v.string(),
+		deletedAt: v.number(),
+		deletedBy: v.string(),
+	})
+		.index("by_galleryId", ["galleryId"])
+		.index("by_siteUrl_and_slug", ["siteUrl", "slug"]),
+
 	portfolioGalleryRevisions: defineTable({
 		siteUrl: v.string(),
 		galleryId: v.id("portfolioGalleries"),
