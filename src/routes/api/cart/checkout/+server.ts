@@ -16,7 +16,7 @@ import {
 	assertNewOrderCheckoutOpen,
 	NewOrderCheckoutClosedError,
 } from "$lib/server/commercePurposeControls";
-import { resolveCurrentCheckoutCommerce } from "$lib/server/currentCheckoutCommerce";
+import { resolveCurrentCheckoutCommerce } from "$lib/server/current/currentCheckoutCommerce.server";
 import {
 	createHandleCheckoutSession,
 	validateSameOriginCheckoutAttemptRequest,

@@ -3,13 +3,16 @@ import { describe, expect, it, vi } from "vitest";
 vi.mock("$env/dynamic/private", () => ({ env: {} }));
 vi.mock("$env/dynamic/public", () => ({ env: { PUBLIC_CONVEX_URL: "https://convex.test" } }));
 
-import { createConvexShop, readConvexShopRuntimeSentinel } from "$lib/server/convexShop.server";
 import {
 	adaptConvexIndex,
 	adaptConvexPrintSet,
 	adaptConvexProduct,
 	ConvexShopProjectionError,
 } from "$lib/server/convexShopAdapter";
+import {
+	createConvexShop,
+	readConvexShopRuntimeSentinel,
+} from "$lib/server/current/convexShop.server";
 
 const derivatives = {
 	thumb: { contentType: "image/webp", width: 320, height: 213 },

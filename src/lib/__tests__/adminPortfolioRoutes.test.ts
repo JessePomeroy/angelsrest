@@ -117,7 +117,7 @@ describe("admin Editor route boundaries", () => {
 
 	it("routes public Site Settings and Portfolio through reversible server providers", () => {
 		const rootLayout = routeSource("src/routes/+layout.server.ts");
-		expect(rootLayout).toContain('from "$lib/server/siteSettingsContent.server"');
+		expect(rootLayout).toContain('from "$lib/server/current/siteSettingsContent.server"');
 		expect(rootLayout).toContain("siteSettingsContent.load");
 		expect(rootLayout).not.toContain("getSanityClient");
 		expect(rootLayout).not.toContain("$convex");
@@ -127,7 +127,7 @@ describe("admin Editor route boundaries", () => {
 			"src/routes/gallery/[slug]/+page.server.ts",
 		]) {
 			const source = routeSource(path);
-			expect(source).toContain('from "$lib/server/portfolioContent.server"');
+			expect(source).toContain('from "$lib/server/current/portfolioContent.server"');
 			expect(source).not.toContain("$convex");
 			expect(source).not.toContain("getSanityClient");
 		}
@@ -135,7 +135,7 @@ describe("admin Editor route boundaries", () => {
 
 	it("routes About and Contact through the combined dormant provider", () => {
 		const aboutServer = routeSource("src/routes/about/+page.server.ts");
-		expect(aboutServer).toContain('from "$lib/server/aboutContactContent.server"');
+		expect(aboutServer).toContain('from "$lib/server/current/aboutContactContent.server"');
 		expect(aboutServer).toContain("aboutContactContent.load");
 		expect(aboutServer).not.toContain("$convex");
 		expect(aboutServer).not.toContain("getSanityClient");

@@ -17,7 +17,7 @@ vi.mock("$lib/server/commercePurposeControls", () => ({
 	assertNewOrderCheckoutOpen: mocks.assertOpen,
 	NewOrderCheckoutClosedError: class NewOrderCheckoutClosedError extends Error {},
 }));
-vi.mock("$lib/server/currentCheckoutCommerce", () => ({
+vi.mock("$lib/server/current/currentCheckoutCommerce.server", () => ({
 	resolveCurrentCheckoutCommerce: mocks.resolveCurrentCommerce,
 }));
 vi.mock("$lib/server/handleCheckout", () => ({

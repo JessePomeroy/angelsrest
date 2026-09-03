@@ -1,5 +1,5 @@
 import { error, json } from "@sveltejs/kit";
-import { readConvexShopRuntimeSentinel } from "$lib/server/convexShop.server";
+import { readConvexShopRuntimeSentinel } from "$lib/server/current/convexShop.server";
 import { authorizeR4ReadRequest, r4ReadPurposes } from "$lib/server/r4ReadAuthorization";
 
 export async function GET({ request }: { request: Request }) {

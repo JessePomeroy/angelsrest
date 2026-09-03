@@ -1,7 +1,7 @@
 import {
 	aboutContactContent,
 	projectSiteSettingsInstagramUrl,
-} from "$lib/server/aboutContactContent.server";
+} from "$lib/server/current/aboutContactContent.server";
 
 export const load = async ({ parent }) => {
 	const { siteSettings } = await parent();

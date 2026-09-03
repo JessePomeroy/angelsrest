@@ -69,8 +69,8 @@ Use these full names in new code and documentation when the distinction matters.
 - Convex client helper: `src/lib/server/convexClient.ts`
 - Convex schema/functions: `packages/crm-api/convex/`
 - Site config: `src/lib/config/site.ts`
-- Convex Shop boundary: `src/lib/server/convexShop.server.ts`
-- Current checkout authority: `src/lib/server/currentCheckoutCommerce.ts`
+- Convex Shop boundary: `src/lib/server/current/convexShop.server.ts`
+- Current checkout authority: `src/lib/server/current/currentCheckoutCommerce.server.ts`
 - Commerce webhook: `src/routes/api/webhooks/stripe/+server.ts`
 - Webhook orchestration: `src/lib/server/orderIntake.ts`
 - Print fulfillment: `src/lib/server/printFulfillment.ts`

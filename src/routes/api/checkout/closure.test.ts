@@ -11,7 +11,7 @@ const mocks = vi.hoisted(() => ({
 vi.mock("$lib/server/runtimeConfig", () => ({
 	getPublicSiteOrigin: () => "https://www.angelsrest.online",
 }));
-vi.mock("$lib/server/currentCheckoutCommerce", () => ({
+vi.mock("$lib/server/current/currentCheckoutCommerce.server", () => ({
 	resolveCurrentCheckoutCommerce: mocks.resolveCurrentCommerce,
 }));
 vi.mock("$lib/server/stripeClient", () => ({ getStripe: mocks.getStripe }));

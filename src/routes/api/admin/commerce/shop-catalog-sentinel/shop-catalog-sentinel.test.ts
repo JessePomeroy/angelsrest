@@ -19,7 +19,7 @@ vi.mock("$env/dynamic/private", () => ({ env: mocks.env }));
 vi.mock("$lib/server/siteAdminAuthorization", () => ({
 	verifySiteAdminRequest: mocks.verify,
 }));
-vi.mock("$lib/server/convexShop.server", () => ({
+vi.mock("$lib/server/current/convexShop.server", () => ({
 	readConvexShopRuntimeSentinel: mocks.readRuntime,
 }));
 
