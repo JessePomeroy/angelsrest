@@ -70,21 +70,6 @@ $effect(() => {
 });
 
 onMount(() => {
-	// Enable Sanity Visual Editing overlay when in preview mode
-	if (data.isPreview) {
-		let mounted = true;
-		let disableVisualEditing: (() => void) | undefined;
-
-		import("@sanity/visual-editing").then(({ enableVisualEditing }) => {
-			if (mounted) disableVisualEditing = enableVisualEditing();
-		});
-
-		return () => {
-			mounted = false;
-			disableVisualEditing?.();
-			timeTheme.destroy();
-		};
-	}
 	return () => {
 		timeTheme.destroy();
 	};

@@ -6,10 +6,6 @@ import {
 	requireReadyAboutAssets,
 } from "./helpers/aboutPageData";
 import {
-	requireAboutHostShape,
-	requireContactHostShape,
-} from "./helpers/aboutContactHostContract";
-import {
 	projectPublishedModelingPage,
 	requireReadyModelingAssets,
 } from "./helpers/modelingPageData";
@@ -25,7 +21,6 @@ import {
 	projectPublishedSiteSettings,
 	requireReadySiteSettingsOgImage,
 } from "./helpers/siteSettingsData";
-import { isInitialSanitySiteSettingsImport } from "./helpers/siteSettingsMigrationStore";
 import {
 	type AboutPageDraftPayload,
 	aboutPageDraftPayloadValidator,
@@ -60,21 +55,6 @@ const HOMEPAGE_QUOTE_KIND = "homepageQuote" as const;
 const CONTACT_PAGE_KIND = "contactPage" as const;
 const ABOUT_PAGE_KIND = "aboutPage" as const;
 const MODELING_PAGE_KIND = "modelingPage" as const;
-
-async function importedAboutContactDocument(
-	ctx: Parameters<typeof getContentDocument>[0],
-	siteUrl: string,
-	kind: typeof ABOUT_PAGE_KIND | typeof CONTACT_PAGE_KIND,
-) {
-	const document = await getContentDocument(ctx, siteUrl, kind);
-	if (document?.createdBy.startsWith("sanityImport:about-contact:")) {
-		if (!document.publishedRevisionId) {
-			throw new Error("Imported About and Contact content requires fixed-pair publication");
-		}
-		return document;
-	}
-	return null;
-}
 
 function asSiteSettingsPayload(
 	payload: ContentRevisionPayload,
@@ -167,9 +147,6 @@ export const saveSiteSettingsDraft = mutation({
 		validateSiteSettingsDraft(args.payload);
 		const { client } = await requireSiteAdmin(ctx, args.siteUrl);
 		const document = await getContentDocument(ctx, client.siteUrl, SITE_SETTINGS_KIND);
-		if (isInitialSanitySiteSettingsImport(document)) {
-			throw new Error("Imported Site Settings requires fixed initial publication");
-		}
 		let retainedSeoOgImageAssetId = args.payload.seoOgImageAssetId;
 		if (retainedSeoOgImageAssetId === undefined && document) {
 			for (const revisionId of [
@@ -219,9 +196,6 @@ export const publishSiteSettings = mutation({
 	handler: async (ctx, args) => {
 		const { client } = await requireSiteAdmin(ctx, args.siteUrl);
 		const document = await getContentDocument(ctx, client.siteUrl, SITE_SETTINGS_KIND);
-		if (isInitialSanitySiteSettingsImport(document)) {
-			throw new Error("Imported Site Settings requires fixed initial publication");
-		}
 		const revision = await ctx.db.get(args.draftRevisionId);
 		if (!revision || !document) {
 			throw new Error("Site Settings draft revision not found");
@@ -252,9 +226,6 @@ export const discardSiteSettingsDraft = mutation({
 	handler: async (ctx, args) => {
 		const { client } = await requireSiteAdmin(ctx, args.siteUrl);
 		const document = await getContentDocument(ctx, client.siteUrl, SITE_SETTINGS_KIND);
-		if (isInitialSanitySiteSettingsImport(document)) {
-			throw new Error("Imported Site Settings requires fixed initial publication");
-		}
 		return await discardContentDraft(ctx, { ...args, kind: SITE_SETTINGS_KIND });
 	},
 });
@@ -368,22 +339,12 @@ export const publishContactPage = mutation({
 		siteUrl: v.string(),
 		draftRevisionId: v.id("contentRevisions"),
 	},
-	handler: async (ctx, args) => {
-		const { client } = await requireSiteAdmin(ctx, args.siteUrl);
-		const imported = await importedAboutContactDocument(ctx, client.siteUrl, CONTACT_PAGE_KIND);
-		if (imported) {
-			const revision = await ctx.db.get(args.draftRevisionId);
-			if (!revision || revision.documentId !== imported._id) {
-				throw new Error("Contact draft revision not found");
-			}
-			requireContactHostShape(asContactPagePayload(revision.payload));
-		}
-		return await publishContentDraft(
+	handler: async (ctx, args) =>
+		await publishContentDraft(
 			ctx,
 			{ ...args, kind: CONTACT_PAGE_KIND },
 			(payload) => toPublishedContactPage(asContactPagePayload(payload)),
-		);
-	},
+		),
 });
 
 export const discardContactPageDraft = mutation({
@@ -478,14 +439,9 @@ export const publishAboutPage = mutation({
 	},
 	handler: async (ctx, args) => {
 		const { client } = await requireSiteAdmin(ctx, args.siteUrl);
-		const imported = await importedAboutContactDocument(ctx, client.siteUrl, ABOUT_PAGE_KIND);
 		const revision = await ctx.db.get(args.draftRevisionId);
 		if (!revision) throw new Error("About draft revision not found");
 		const payload = asAboutPagePayload(revision.payload);
-		if (imported) {
-			if (revision.documentId !== imported._id) throw new Error("About draft revision not found");
-			requireAboutHostShape(payload);
-		}
 		const published = toPublishedAboutPage(payload);
 		await requireReadyAboutAssets(
 			ctx,
@@ -497,18 +453,6 @@ export const publishAboutPage = mutation({
 			{ ...args, kind: ABOUT_PAGE_KIND },
 			(candidate) => toPublishedAboutPage(asAboutPagePayload(candidate)),
 		);
-	},
-});
-
-/** Shared-editor placeholder while fixed-pair migration publication is gated. */
-export const holdAboutPagePublication = mutation({
-	args: {
-		siteUrl: v.string(),
-		draftRevisionId: v.id("contentRevisions"),
-	},
-	handler: async (ctx, { siteUrl }) => {
-		await requireSiteAdmin(ctx, siteUrl);
-		throw new Error("About publication is held for the fixed About and Contact manifest");
 	},
 });
 

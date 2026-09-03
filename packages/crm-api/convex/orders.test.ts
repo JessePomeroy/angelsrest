@@ -28,10 +28,10 @@ afterEach(() => {
 
 const checkoutSnapshot = {
 	schemaVersion: 1 as const,
-	catalogProvider: "sanity" as const,
+	catalogProvider: "convex" as const,
 	items: [
 		{
-			productKey: "sanity.catalog.print-one",
+			productKey: "catalog.print-one",
 			revisionId: "immutable-revision-1",
 			productKind: "print" as const,
 			variantKey: "matte-8x10",
@@ -41,7 +41,7 @@ const checkoutSnapshot = {
 			frameOptionKey: "none",
 		},
 		{
-			productKey: "sanity.catalog.download-one",
+			productKey: "catalog.download-one",
 			revisionId: "immutable-revision-2",
 			productKind: "digital_download" as const,
 			variantKey: null,
@@ -770,7 +770,7 @@ describe("print fulfillment fence", () => {
 });
 
 describe("provider-authoritative manual refunds", () => {
-	test("converges concurrent refunds for the retained legacy order and preserves its reservation", async () => {
+	test("converges concurrent refunds for an existing order and preserves its reservation", async () => {
 		const t = convexTest(schema, modules);
 		const created = await t.mutation(api.orders.create, {
 			...orderArgs(MANUAL_REFUND.session),
@@ -787,7 +787,7 @@ describe("provider-authoritative manual refunds", () => {
 				snapshotDigest: "digest",
 				snapshot: {
 					schemaVersion: 1,
-					catalogProvider: "sanity",
+					catalogProvider: "convex",
 					items: [{
 						productKey: "print-one",
 						revisionId: "revision-one",

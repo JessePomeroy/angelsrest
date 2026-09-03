@@ -1,52 +1,48 @@
 import type { AdminServerConfig } from "@jessepomeroy/admin/server";
 import { api } from "$convex/api";
-import { env as privateEnv } from "$env/dynamic/private";
-import { env as publicEnv } from "$env/dynamic/public";
 import { adminAuth } from "$lib/server/adminAuth";
 import { getGalleryWorkerUrl } from "$lib/server/galleryWorkerUrl";
+import {
+	getCatalogPrivateEditorUploadConfig,
+	getCmsMediaConvexSiteOrigin,
+	getCmsMediaDeletionCompletionSecret,
+	getCmsMediaTenantSecret,
+	getConvexUrl,
+	getGalleryAdminSecret,
+	getResendApiKey,
+} from "$lib/server/runtimeConfig";
 import { verifySiteAdminRequest } from "$lib/server/siteAdminAuthorization";
 import { adminConfig } from "./admin";
 import { createAdminServerCapabilities } from "./adminPlatformCapabilities.server";
 
-const TOKEN68_BEARER_PATTERN = /^[-A-Za-z0-9._~+/]+={0,}$/;
-
-function isValidBearerCredential(value: string | undefined): value is string {
-	return (
-		typeof value === "string" &&
-		value.length >= 32 &&
-		value.length <= 512 &&
-		TOKEN68_BEARER_PATTERN.test(value)
-	);
-}
-
-const hostJournalSecret = privateEnv.CATALOG_PRIVATE_EDITOR_UPLOAD_HOST_JOURNAL_SECRET;
-const storageCallerSecret = privateEnv.CATALOG_PRIVATE_EDITOR_UPLOAD_STORAGE_CALLER_SECRET;
-const catalogPrivateEditorUpload =
-	publicEnv.PUBLIC_CONVEX_URL === "https://loyal-swan-967.convex.cloud" &&
-	isValidBearerCredential(hostJournalSecret) &&
-	isValidBearerCredential(storageCallerSecret) &&
-	hostJournalSecret !== storageCallerSecret
-		? {
-				convexJournalOrigin: "https://loyal-swan-967.convex.site",
-				hostJournalSecret,
-				workerOrigin: "https://cms-media-worker.thinkingofview.workers.dev" as const,
-				storageCallerSecret,
-				browserOrigin: "https://www.angelsrest.online",
-			}
-		: undefined;
-
 export const adminServerConfig: AdminServerConfig = {
 	...adminConfig,
 	api: createAdminServerCapabilities(api),
-	galleryWorkerUrl: getGalleryWorkerUrl(),
-	galleryAdminSecret: privateEnv.GALLERY_ADMIN_SECRET ?? "",
+	get galleryWorkerUrl() {
+		return getGalleryWorkerUrl();
+	},
+	get galleryAdminSecret() {
+		return getGalleryAdminSecret();
+	},
 	cmsMediaWorkerUrl: "https://cms-media-worker.thinkingofview.workers.dev",
-	cmsMediaTenantSecret: privateEnv.CMS_MEDIA_WORKER_SECRET ?? "",
-	cmsMediaConvexSiteUrl: publicEnv.PUBLIC_CONVEX_SITE_URL ?? "",
-	cmsMediaDeletionCompletionSecret: privateEnv.CMS_MEDIA_DELETION_COMPLETION_SECRET ?? "",
-	catalogPrivateEditorUpload,
-	convexUrl: publicEnv.PUBLIC_CONVEX_URL ?? "",
-	resendApiKey: privateEnv.RESEND_API_KEY ?? "",
+	get cmsMediaTenantSecret() {
+		return getCmsMediaTenantSecret();
+	},
+	get cmsMediaConvexSiteUrl() {
+		return getCmsMediaConvexSiteOrigin();
+	},
+	get cmsMediaDeletionCompletionSecret() {
+		return getCmsMediaDeletionCompletionSecret();
+	},
+	get catalogPrivateEditorUpload() {
+		return getCatalogPrivateEditorUploadConfig();
+	},
+	get convexUrl() {
+		return getConvexUrl();
+	},
+	get resendApiKey() {
+		return getResendApiKey();
+	},
 	verifyAdmin: verifySiteAdminRequest,
 	getConvexToken: adminAuth.getTokenFromRequest,
 };

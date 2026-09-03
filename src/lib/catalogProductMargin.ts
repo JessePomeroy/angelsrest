@@ -48,7 +48,7 @@ export const resolveCatalogProductVariantOptions: CatalogProductVariantOptionRes
 });
 
 /**
- * Reuses the former Sanity calculator at the host-owned catalog boundary.
+ * Reuses the catalog margin calculator at the host-owned boundary.
  * Prices enter the shared editor as cents; print-catalog calculations use USD.
  */
 export const calculateCatalogProductMargin: CatalogProductMarginCalculator = (input) => {

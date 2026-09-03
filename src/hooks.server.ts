@@ -2,7 +2,7 @@
  * SvelteKit Server Hooks
  *
  * Composes:
- * - Security headers + Sanity preview detection
+ * - Security headers
  * - Server error capture through @sentry/node (audit #50a — no perf tracing)
  *
  * The Sentry init itself lives in `instrumentation.server.ts` per SvelteKit
@@ -46,10 +46,6 @@ function addSecurityHeaders(response: Response, pathname: string): Response {
 }
 
 const appHandle: Handle = async ({ event, resolve }) => {
-	// Detect Sanity preview mode from cookie (set by /api/draft/enable)
-	const isPreview = event.cookies.get("__sanity_preview") === "true";
-	event.locals.isPreview = isPreview;
-
 	const response = await resolve(event);
 
 	// Skip security headers for auth API routes — the auth library sets its

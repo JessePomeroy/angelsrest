@@ -1,19 +1,12 @@
-import { ConvexHttpClient } from "convex/browser";
 import { api } from "$convex/api";
-import { env as publicEnv } from "$env/dynamic/public";
 import { adminConfig } from "$lib/config/admin";
 import { adminAuth } from "$lib/server/adminAuth";
+import { createAuthenticatedConvexClient } from "$lib/server/convexClient";
 
-function createAuthenticatedClient(token: string): ConvexHttpClient | null {
-	const convexUrl = publicEnv.PUBLIC_CONVEX_URL;
-	if (!convexUrl) return null;
-
-	const client = new ConvexHttpClient(convexUrl);
-	client.setAuth(token);
-	return client;
-}
-
-async function querySiteAdminAccess(client: ConvexHttpClient, email: string) {
+async function querySiteAdminAccess(
+	client: ReturnType<typeof createAuthenticatedConvexClient>,
+	email: string,
+) {
 	await client.mutation(api.adminAuth.claimAdminAccess, {
 		siteUrl: adminConfig.siteUrl,
 	});
@@ -29,10 +22,9 @@ async function querySiteAdminAccess(client: ConvexHttpClient, email: string) {
  */
 export async function getSiteAdminAccess(token: string, email: string) {
 	if (!token || !email) return null;
-	const client = createAuthenticatedClient(token);
-	if (!client) return null;
 
 	try {
+		const client = createAuthenticatedConvexClient(token);
 		return await querySiteAdminAccess(client, email);
 	} catch {
 		return null;
@@ -48,8 +40,7 @@ export async function authorizeSiteAdminRequest(request: Request) {
 		const token = await adminAuth.getTokenFromRequest(request);
 		if (!token) return null;
 
-		const client = createAuthenticatedClient(token);
-		if (!client) return null;
+		const client = createAuthenticatedConvexClient(token);
 
 		const identity = await client.query(api.adminAuth.whoami, {});
 		if (!identity?.email) return null;

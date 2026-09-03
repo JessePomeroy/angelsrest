@@ -12,6 +12,7 @@ import {
 	ANGELS_REST_COMMERCE_PROFILE,
 	type CommerceNotificationProfile,
 } from "$lib/server/commerceTenant";
+import { FulfillmentValidationError } from "$lib/server/fulfillmentValidationError";
 import { logStructured } from "$lib/server/logger";
 import {
 	handlePermanentFulfillmentFailure,
@@ -271,6 +272,9 @@ export async function createOrderInConvex(
 
 	let fulfillment: PrintFulfillmentOutcome;
 	try {
+		if (orderResult.checkoutSnapshot && orderResult.checkoutSnapshot.catalogProvider !== "convex") {
+			throw new FulfillmentValidationError("Checkout snapshot provider is unsupported");
+		}
 		fulfillment = await submitPrintFulfillment(
 			{ convex, createLumaPrintsOrder },
 			{
@@ -282,6 +286,7 @@ export async function createOrderInConvex(
 				checkoutSnapshot: orderResult.checkoutSnapshot
 					? {
 							...orderResult.checkoutSnapshot,
+							catalogProvider: "convex" as const,
 							items: orderResult.checkoutSnapshot.items.map((item) => ({
 								...item,
 								materialOptionKey: item.materialOptionKey ?? null,

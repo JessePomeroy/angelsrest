@@ -1,8 +1,7 @@
 // Server-only LumaPrints client; see LUMAPRINTS.md for integration constraints.
 
-import { env } from "$env/dynamic/private";
 import { normalizeLumaPrintsProviderNumber } from "$lib/server/lumaprintsProviderNumber";
-import { prepareSanityUrlForPrint } from "$lib/shop/lumaprintsUrls";
+import { getLumaPrintsRuntimeConfig } from "$lib/server/runtimeConfig";
 import type {
 	LumaPrintsOrder,
 	LumaPrintsOrderResponse,
@@ -10,14 +9,18 @@ import type {
 	Recipient,
 } from "$lib/shop/types";
 
-const BASE_URL =
-	env.LUMAPRINTS_USE_SANDBOX === "true"
-		? "https://us.api-sandbox.lumaprints.com"
-		: "https://us.api.lumaprints.com";
+function getRuntimeConfig() {
+	try {
+		return getLumaPrintsRuntimeConfig();
+	} catch {
+		throw new LumaPrintsError("LumaPrints configuration was invalid", {
+			kind: "configuration",
+		});
+	}
+}
 
 function getHeaders(): HeadersInit {
-	const apiKey = env.LUMAPRINTS_API_KEY ?? "";
-	const apiSecret = env.LUMAPRINTS_API_SECRET ?? "";
+	const { apiKey, apiSecret } = getRuntimeConfig();
 	return {
 		"Content-Type": "application/json",
 		Authorization: `Basic ${btoa(`${apiKey}:${apiSecret}`)}`,
@@ -133,14 +136,7 @@ function exact(value: Record<string, unknown>, keys: string[]) {
 }
 
 function getStoreId(): number {
-	const raw = env.LUMAPRINTS_STORE_ID;
-	const numeric = typeof raw === "string" && /^\d+$/.test(raw) ? Number(raw) : Number.NaN;
-	if (!Number.isSafeInteger(numeric) || numeric <= 0) {
-		throw new LumaPrintsError("LumaPrints store configuration was invalid", {
-			kind: "configuration",
-		});
-	}
-	return numeric;
+	return getRuntimeConfig().storeId;
 }
 
 function parseParameterValue(value: string): string | null {
@@ -269,7 +265,7 @@ function parseOrderResponse(value: unknown): LumaPrintsOrderResponse {
 
 async function fetchLumaPrints(path: string, init: RequestInit = {}): Promise<Response> {
 	try {
-		return await fetch(`${BASE_URL}${path}`, {
+		return await fetch(`${getRuntimeConfig().baseUrl}${path}`, {
 			...init,
 			signal: AbortSignal.timeout(LUMAPRINTS_REQUEST_TIMEOUT_MS),
 		});
@@ -504,8 +500,7 @@ export async function findOrderByExternalId(
 	throw reconciliationRetryable("Order reconciliation response exceeded its pagination bound");
 }
 
-/** Pure payload builder. Sanity sources retain print-quality transforms;
- * direct paper uses option 39, framed paper [67, 96], and canvas [3]. */
+/** Pure payload builder: direct paper uses option 39, framed paper [67, 96], and canvas [3]. */
 export function buildLumaPrintsOrder(
 	externalId: string,
 	recipient: Recipient,
@@ -535,10 +530,6 @@ export function buildLumaPrintsOrder(
 				: isFramed
 					? (item.frameSubcategoryId as number)
 					: item.paperSubcategoryId;
-			const imageUrl =
-				item.sourcePolicy === "sanity_cdn"
-					? prepareSanityUrlForPrint(item.imageUrl)
-					: item.imageUrl;
 			const options: number[] = [];
 			let solidColorHexCode: string | undefined;
 			if (isCanvas) {
@@ -558,7 +549,7 @@ export function buildLumaPrintsOrder(
 				quantity: item.quantity,
 				width: item.width,
 				height: item.height,
-				file: { imageUrl },
+				file: { imageUrl: item.imageUrl },
 				orderItemOptions: options,
 				...(solidColorHexCode ? { solidColorHexCode } : {}),
 			};

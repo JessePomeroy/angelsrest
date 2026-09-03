@@ -119,6 +119,8 @@ vi.mock("$convex/api", () => ({
 
 vi.mock("$env/dynamic/private", () => ({
 	env: {
+		LUMAPRINTS_API_KEY: "test-key",
+		LUMAPRINTS_API_SECRET: "test-secret",
 		LUMAPRINTS_STORE_ID: "123",
 		WEBHOOK_SECRET: "test-webhook-secret",
 	},
@@ -330,6 +332,7 @@ describe("print fulfillment", () => {
 				if (reference === "orders.completePrintFulfillmentSubmission") {
 					return { kind: "fulfilled" };
 				}
+				if (reference === "orders.releasePrintFulfillmentClaim") return true;
 			},
 		);
 		mockBuildLumaPrintsOrder.mockImplementation(buildLumaPrintsOrder);

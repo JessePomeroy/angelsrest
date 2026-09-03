@@ -62,8 +62,8 @@ beforeEach(() => {
 
 const mockItems: OrderItem[] = [
 	{
-		imageUrl: "https://cdn.sanity.io/images/proj/dataset/photo.jpg?w=1200&fm=webp&q=80",
-		sourcePolicy: "sanity_cdn",
+		imageUrl: "https://media.example.test/photo.jpg?sealed=1",
+		sourcePolicy: "byte_exact",
 		paperSubcategoryId: 103001,
 		width: 8,
 		height: 12,
@@ -73,8 +73,8 @@ const mockItems: OrderItem[] = [
 
 describe("buildLumaPrintsOrder", () => {
 	it("creates correct top-level structure", () => {
-		const order = buildLumaPrintsOrder("sanity-order-123", mockRecipient, mockItems);
-		expect(order.externalId).toBe("sanity-order-123");
+		const order = buildLumaPrintsOrder("catalog-order-123", mockRecipient, mockItems);
+		expect(order.externalId).toBe("catalog-order-123");
 		// from mock env LUMAPRINTS_STORE_ID = "83765" in src/__mocks__/env-dynamic.ts
 		expect(order.storeId).toBe(83765);
 		expect(order.shippingMethod).toBe("default");
@@ -147,16 +147,9 @@ describe("buildLumaPrintsOrder", () => {
 		}
 	});
 
-	it("transforms image URLs to print quality (max=8000&q=100) for order items", () => {
-		// prepareSanityUrlForPrint strips existing params and appends
-		// ?max=8000&q=100 for maximum print quality.
+	it("preserves the catalog-issued source URL byte-exact", () => {
 		const order = buildLumaPrintsOrder("order-6", mockRecipient, mockItems);
-		for (const item of order.orderItems) {
-			expect(item.file.imageUrl).toContain("?max=8000&q=100");
-			// Original webp/q=80 params from mockItems should be gone
-			expect(item.file.imageUrl).not.toContain("fm=webp");
-			expect(item.file.imageUrl).not.toContain("w=1200");
-		}
+		expect(order.orderItems[0].file.imageUrl).toBe(mockItems[0].imageUrl);
 	});
 
 	it("preserves opaque capabilities and bordered R2 outputs byte-exact", () => {
@@ -191,24 +184,24 @@ describe("buildLumaPrintsOrder", () => {
 	it("builds multi-item orders correctly (print set support)", () => {
 		const printSetItems: OrderItem[] = [
 			{
-				imageUrl: "https://cdn.sanity.io/images/a.jpg?w=1200",
-				sourcePolicy: "sanity_cdn",
+				imageUrl: "https://media.example.test/a.jpg?sealed=1",
+				sourcePolicy: "byte_exact",
 				paperSubcategoryId: 103001,
 				width: 4,
 				height: 6,
 				quantity: 1,
 			},
 			{
-				imageUrl: "https://cdn.sanity.io/images/b.jpg?w=1200",
-				sourcePolicy: "sanity_cdn",
+				imageUrl: "https://media.example.test/b.jpg?sealed=2",
+				sourcePolicy: "byte_exact",
 				paperSubcategoryId: 103001,
 				width: 4,
 				height: 6,
 				quantity: 1,
 			},
 			{
-				imageUrl: "https://cdn.sanity.io/images/c.jpg?w=1200",
-				sourcePolicy: "sanity_cdn",
+				imageUrl: "https://media.example.test/c.jpg?sealed=3",
+				sourcePolicy: "byte_exact",
 				paperSubcategoryId: 103001,
 				width: 4,
 				height: 6,
@@ -218,11 +211,9 @@ describe("buildLumaPrintsOrder", () => {
 		const order = buildLumaPrintsOrder("print-set-order", mockRecipient, printSetItems);
 		expect(order.orderItems).toHaveLength(3);
 		expect(order.orderItems[2].externalItemId).toBe("print-set-order-item-3");
-		// All items use print quality URLs (existing query params replaced)
-		for (const item of order.orderItems) {
-			expect(item.file.imageUrl).toContain("?max=8000&q=100");
-			expect(item.file.imageUrl).not.toContain("w=1200");
-		}
+		expect(order.orderItems.map(({ file }) => file.imageUrl)).toEqual(
+			printSetItems.map(({ imageUrl }) => imageUrl),
+		);
 	});
 });
 

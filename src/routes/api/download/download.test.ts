@@ -6,8 +6,6 @@ const mocks = vi.hoisted(() => ({
 	query: vi.fn(),
 	paidDownload: vi.fn(),
 	paidFile: vi.fn(),
-	exactSanity: vi.fn(),
-	legacySanity: vi.fn(),
 	privateEnv: {
 		WEBHOOK_SECRET: "webhook-secret",
 		ORDER_PRODUCERS_STATE: "open",
@@ -25,12 +23,6 @@ vi.mock("$lib/server/convexClient", () => ({ getConvex: () => ({ query: mocks.qu
 vi.mock("$lib/server/catalogCommerceClients", () => ({
 	resolvePaidDownload: mocks.paidDownload,
 	issuePaidFile: mocks.paidFile,
-}));
-vi.mock("$lib/sanity/client", () => ({
-	client: {
-		withConfig: () => ({ fetch: mocks.exactSanity }),
-		fetch: mocks.legacySanity,
-	},
 }));
 
 const digital = {
@@ -122,10 +114,7 @@ describe("paid download", () => {
 		expect(mocks.retrieve).toHaveBeenCalledOnce();
 	});
 
-	it.each([
-		"convex",
-		"sanity",
-	] as const)("accepts valid %s inline-v1 omitted options and canonicalizes the issuer race", async (catalogProvider) => {
+	it("accepts an inline-v1 item with omitted options and canonicalizes the issuer race", async () => {
 		const { GET } = await import("./+server");
 		const omitted = {
 			productKey: digital.productKey,
@@ -133,24 +122,13 @@ describe("paid download", () => {
 			productKind: digital.productKind,
 			variantKey: digital.variantKey,
 		};
-		const initial = { ...snapshot, catalogProvider, items: [omitted] };
-		const canonical = { ...snapshot, catalogProvider };
+		const initial = { ...snapshot, items: [omitted] };
 		mocks.query
 			.mockResolvedValueOnce({ checkoutSnapshot: initial, refunded: false })
-			.mockResolvedValueOnce({ checkoutSnapshot: canonical, refunded: false });
-		mocks.exactSanity.mockResolvedValue({
-			_id: digital.productKey,
-			_rev: digital.revisionId,
-			fileUrl: "https://cdn.sanity.io/file.zip",
-		});
+			.mockResolvedValueOnce({ checkoutSnapshot: snapshot, refunded: false });
 		const response = await GET(event("session_id=cs_test_paid&item=0"));
-		expect(response.status).toBe(catalogProvider === "convex" ? 303 : 200);
-		if (catalogProvider === "convex") {
-			expect(mocks.paidDownload).toHaveBeenCalledWith("cs_test_paid", 0);
-		} else {
-			expect(mocks.exactSanity).toHaveBeenCalled();
-			expect(await response.text()).toBe("zip");
-		}
+		expect(response.status).toBe(303);
+		expect(mocks.paidDownload).toHaveBeenCalledWith("cs_test_paid", 0);
 	});
 
 	it("discards an issued Convex grant when refund or immutable item changes", async () => {
@@ -169,28 +147,13 @@ describe("paid download", () => {
 		}
 	});
 
-	it("exact-resolves Sanity without caller slug and closes a refund race", async () => {
+	it("rejects a retired catalog provider before issuing a download", async () => {
 		const { GET } = await import("./+server");
-		const sanitySnapshot = { ...snapshot, catalogProvider: "sanity" as const };
-		mocks.query
-			.mockResolvedValueOnce({ checkoutSnapshot: sanitySnapshot, refunded: false })
-			.mockResolvedValueOnce({ checkoutSnapshot: sanitySnapshot, refunded: true });
-		mocks.exactSanity.mockResolvedValue({
-			_id: "product-id",
-			_rev: "revision-id",
-			fileUrl: "https://cdn.sanity.io/file.zip",
+		mocks.query.mockResolvedValueOnce({
+			checkoutSnapshot: { ...snapshot, catalogProvider: "retired" },
+			refunded: false,
 		});
-		await expect(GET(event("session_id=cs_test_paid&slug=wrong"))).rejects.toMatchObject({
-			status: 409,
-		});
-		expect(mocks.exactSanity).toHaveBeenCalledWith(
-			expect.stringContaining("_id == $id && _rev == $rev"),
-			{
-				id: "product-id",
-				rev: "revision-id",
-			},
-		);
-		expect(fetch).not.toHaveBeenCalled();
+		await expect(GET(event())).rejects.toMatchObject({ status: 404 });
 		expect(mocks.paidDownload).not.toHaveBeenCalled();
 	});
 });

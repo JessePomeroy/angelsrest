@@ -25,7 +25,7 @@ type SnapshotItem = {
 };
 export type CheckoutSnapshotV1 = {
 	schemaVersion: 1;
-	catalogProvider: "sanity" | "convex";
+	catalogProvider: "convex";
 	items: SnapshotItem[];
 };
 export class CheckoutSnapshotProtocolError extends Error {}
@@ -87,10 +87,7 @@ export function inspectCheckoutSnapshotMetadata(
 			? ({ kind: "handle-v2", handle: String(meta.checkoutSnapshotHandle) } as const)
 			: invalid();
 	}
-	if (
-		meta.checkoutSnapshotVersion !== "1" ||
-		!["sanity", "convex"].includes(meta.catalogProvider as string)
-	) {
+	if (meta.checkoutSnapshotVersion !== "1" || meta.catalogProvider !== "convex") {
 		return invalid();
 	}
 	const rawCount = meta.checkoutSnapshotItemCount;

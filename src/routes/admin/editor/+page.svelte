@@ -94,7 +94,7 @@ async function copyCurrentSettings() {
 			<p class="status" aria-live="polite">
 				{seedStatus === "saving"
 					? "Creating a private unpublished draft…"
-					: "Publishing drives the public site through Convex; Sanity preview remains optional."}
+					: "Publishing drives the public site through Convex."}
 			</p>
 	</section>
 {:else}

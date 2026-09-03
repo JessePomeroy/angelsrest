@@ -13,7 +13,7 @@ const NOW = 1_800_000_000_000;
 const ATTEMPT = "123e4567-e89b-42d3-a456-426614174000";
 const HANDLE = "223e4567-e89b-42d3-a456-426614174000";
 const SNAPSHOT_ITEM = {
-	productKey: "sanity-product",
+	productKey: "catalog-product",
 	revisionId: "published-revision",
 	productKind: "print",
 	variantKey: "archival-8x10",
@@ -46,7 +46,7 @@ function makeBody(overrides: Record<string, unknown> = {}) {
 	});
 }
 
-function snapshot(items: unknown[] = [SNAPSHOT_ITEM], catalogProvider: unknown = "sanity") {
+function snapshot(items: unknown[] = [SNAPSHOT_ITEM], catalogProvider: unknown = "convex") {
 	return { schemaVersion: 1, catalogProvider, items };
 }
 

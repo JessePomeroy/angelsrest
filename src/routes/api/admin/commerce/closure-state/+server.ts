@@ -1,6 +1,5 @@
 import { error, json } from "@sveltejs/kit";
 import { env } from "$env/dynamic/private";
-import { parseCheckoutCatalogProvider } from "$lib/server/checkoutCommerce";
 import { newOrderCheckoutDecision } from "$lib/server/commercePurposeControls";
 import { checkoutSnapshotMode } from "$lib/server/handleCheckout";
 import { normalizeOrderProducersState } from "$lib/server/orderProducerGate";
@@ -26,7 +25,6 @@ export async function GET({ request }: { request: Request }) {
 			},
 			compatibility: {
 				tenantBridgeAndIntakeSnapshotMode: checkoutSnapshotMode(env.CHECKOUT_SNAPSHOT_MODE),
-				legacyParityCatalogProvider: parseCheckoutCatalogProvider(env.CHECKOUT_CATALOG_PROVIDER),
 			},
 		},
 		{ headers: { "cache-control": "no-store" } },

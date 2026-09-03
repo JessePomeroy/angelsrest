@@ -7,7 +7,6 @@ const mocks = vi.hoisted(() => ({
 		WEBHOOK_SECRET: "server-only-secret",
 		ORDER_PRODUCERS_STATE: "open",
 		CHECKOUT_SNAPSHOT_MODE: "handle-v2",
-		CHECKOUT_CATALOG_PROVIDER: "convex",
 		NEW_ORDER_CHECKOUT_CONTROL:
 			'{"version":1,"tenants":[{"siteUrl":"angelsrest.online","state":"open","generation":1},{"siteUrl":"zippymiggy.com","state":"open","generation":1}]}',
 	},
@@ -16,9 +15,6 @@ const mocks = vi.hoisted(() => ({
 vi.mock("$env/dynamic/private", () => ({ env: mocks.env }));
 vi.mock("$lib/server/siteAdminAuthorization", () => ({
 	verifySiteAdminRequest: mocks.verify,
-}));
-vi.mock("$lib/server/checkoutCommerce", () => ({
-	parseCheckoutCatalogProvider: (value: unknown) => value,
 }));
 
 import { r4ReadPurposes, r4ReadSignatureMessage } from "$lib/server/r4ReadAuthorization";
@@ -67,7 +63,6 @@ describe("normalized commerce closure state", () => {
 			},
 			compatibility: {
 				tenantBridgeAndIntakeSnapshotMode: "handle-v2",
-				legacyParityCatalogProvider: "convex",
 			},
 		});
 		expect(text).not.toContain("zippymiggy.com");

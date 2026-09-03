@@ -68,7 +68,6 @@ const {
 		getAboutPageEditorState: "content.getAboutPageEditorState",
 		saveAboutPageDraft: "content.saveAboutPageDraft",
 		publishAboutPage: "content.publishAboutPage",
-		holdAboutPagePublication: "content.holdAboutPagePublication",
 		discardAboutPageDraft: "content.discardAboutPageDraft",
 	};
 	const galleriesApi = { listBySite: "galleries.listBySite" };
@@ -233,7 +232,7 @@ describe("admin platform capabilities", () => {
 			contentApi.getAboutPageEditorState,
 		);
 		expect(adminConfig.api.siteEditor?.saveAboutPageDraft).toBe(contentApi.saveAboutPageDraft);
-		expect(adminConfig.api.siteEditor?.publishAboutPage).toBe(contentApi.holdAboutPagePublication);
+		expect(adminConfig.api.siteEditor?.publishAboutPage).toBe(contentApi.publishAboutPage);
 		expect(adminConfig.api.siteEditor?.discardAboutPageDraft).toBe(
 			contentApi.discardAboutPageDraft,
 		);

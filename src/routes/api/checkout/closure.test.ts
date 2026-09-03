@@ -8,8 +8,8 @@ const mocks = vi.hoisted(() => ({
 	resolveCurrentCommerce: vi.fn(),
 }));
 
-vi.mock("$env/static/public", () => ({
-	PUBLIC_SITE_URL: "https://www.angelsrest.online",
+vi.mock("$lib/server/runtimeConfig", () => ({
+	getPublicSiteOrigin: () => "https://www.angelsrest.online",
 }));
 vi.mock("$lib/server/currentCheckoutCommerce", () => ({
 	resolveCurrentCheckoutCommerce: mocks.resolveCurrentCommerce,

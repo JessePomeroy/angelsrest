@@ -157,7 +157,6 @@ export const createClient = mutation({
 		name: v.string(),
 		email: v.string(),
 		siteUrl: v.string(),
-		sanityProjectId: v.optional(v.string()),
 		tier: v.union(v.literal("basic"), v.literal("full")),
 		subscriptionStatus: v.union(
 			v.literal("active"),
@@ -233,7 +232,6 @@ export const updateClient = mutation({
 		name: v.optional(v.string()),
 		email: v.optional(v.string()),
 		siteUrl: v.optional(v.string()),
-		sanityProjectId: v.optional(v.string()),
 		tier: v.optional(v.union(v.literal("basic"), v.literal("full"))),
 		role: v.optional(v.union(v.literal("creator"), v.literal("client"))),
 		subscriptionStatus: v.optional(
@@ -340,7 +338,6 @@ export const seedClient = internalMutation({
 		adminEmails: v.array(v.string()),
 		role: v.optional(v.union(v.literal("creator"), v.literal("client"))),
 		stripeConnectedAccountId: v.optional(v.string()),
-		sanityProjectId: v.optional(v.string()),
 		catalogProductKinds: v.optional(catalogProductKindsValidator),
 		notes: v.optional(v.string()),
 	},

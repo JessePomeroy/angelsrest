@@ -40,8 +40,6 @@ export default defineConfig({
 		sveltekit(),
 	],
 	build: {
-		// Sanity visual editing is preview-only but still emitted as a large
-		// dynamic chunk. Keep the warning useful for genuinely oversized chunks.
 		chunkSizeWarningLimit: 900,
 		rollupOptions: {
 			onLog(level, log, handler) {

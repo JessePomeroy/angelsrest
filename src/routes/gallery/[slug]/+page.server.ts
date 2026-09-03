@@ -7,8 +7,8 @@
 import { error } from "@sveltejs/kit";
 import { portfolioContent } from "$lib/server/portfolioContent.server";
 
-export async function load({ params, locals }) {
-	const gallery = await portfolioContent.getBySlug(params.slug, locals.isPreview);
+export async function load({ params }) {
+	const gallery = await portfolioContent.getBySlug(params.slug);
 	if (!gallery) throw error(404, "Gallery not found");
 	return { gallery };
 }

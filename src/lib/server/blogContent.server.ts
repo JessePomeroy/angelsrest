@@ -1,15 +1,11 @@
 import { error, redirect } from "@sveltejs/kit";
 import { ConvexHttpClient } from "convex/browser";
 import { api } from "$convex/api";
-import { env as privateEnv } from "$env/dynamic/private";
-import { env as publicEnv } from "$env/dynamic/public";
 import {
 	BLOG_PRESENTATIONS,
 	type BlogAuthor,
-	type BlogBlockStyle,
 	type BlogCategory,
 	type BlogImage,
-	type BlogList,
 	type BlogPostDetail,
 	type BlogPostSummary,
 	type BlogPresentation,
@@ -19,15 +15,12 @@ import {
 	type BlogTextSpan,
 } from "$lib/blog/content";
 import { SITE_DOMAIN, SITE_URL } from "$lib/config/site";
-import { urlFor } from "$lib/sanity/client";
-import { getSanityClient } from "$lib/sanity/client.server";
+import { getConvexUrl } from "$lib/server/runtimeConfig";
 
 const BLOG_LIST_LIMIT = 12;
-const SANITY_BLOG_LIST_MAX = 1_000;
 const SLUG = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 const KEY = /^[A-Za-z0-9]+(?:[._:-][A-Za-z0-9]+)*$/;
 const UUID_V4 = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
-const SANITY_IMAGE_HOST = "cdn.sanity.io";
 const MEDIA_ROOT = `https://media.${SITE_DOMAIN}/sites/${SITE_DOMAIN}/web`;
 const DERIVATIVES = {
 	thumb: { filename: "thumb", width: 320 },
@@ -38,13 +31,6 @@ const DERIVATIVES = {
 } as const;
 
 type Derivative = keyof typeof DERIVATIVES;
-type ProviderMode = "sanity" | "convex";
-
-type SanityBlogClient = Pick<ReturnType<typeof getSanityClient>, "fetch">;
-type SanityBlogSource = {
-	loadIndex(isPreview: boolean): Promise<BlogPostSummary[]>;
-	loadPost(slug: string, isPreview: boolean): Promise<BlogPostDetail | null>;
-};
 type SlugResolution =
 	| { status: "current"; kind: "post"; slug: string }
 	| { status: "redirect"; kind: "post"; slug: string }
@@ -54,62 +40,6 @@ type BlogReader = {
 	getPublishedBySlug(slug: string, signal: AbortSignal): Promise<unknown>;
 	resolvePublishedSlug(slug: string, signal: AbortSignal): Promise<unknown>;
 };
-
-const SANITY_IMAGE_PROJECTION = `{
-	"assetRef": asset._ref,
-	"assetWidth": asset->metadata.dimensions.width,
-	"assetHeight": asset->metadata.dimensions.height,
-	"crop": crop{bottom, left, right, top},
-	"hotspot": hotspot{height, width, x, y},
-	alt,
-	caption
-}`;
-
-const SANITY_INDEX_QUERY = `
-	*[_type == "post"] | order(publishedAt desc) {
-		title,
-		"slug": slug.current,
-		publishedAt,
-		postType,
-		"excerpt": array::join(string::split(pt::text(body), "")[0..200], "") + "...",
-		"mainImage": mainImage ${SANITY_IMAGE_PROJECTION},
-		"author": author->{name},
-		"categories": coalesce(categories[]->{title}, [])
-	}
-`;
-
-const SANITY_DETAIL_QUERY = `
-	*[_type == "post" && slug.current == $slug][0] {
-		title,
-		"slug": slug.current,
-		publishedAt,
-		postType,
-		"excerpt": array::join(string::split(pt::text(body), "")[0..200], "") + "...",
-		brief,
-		approach,
-		result,
-		gearUsed[]{_key, camera, lens, filmStock, developer},
-		"mainImage": mainImage ${SANITY_IMAGE_PROJECTION},
-		"author": author->{name, "image": image ${SANITY_IMAGE_PROJECTION}},
-		"categories": coalesce(categories[]->{title}, []),
-		"body": coalesce(body[]{
-			_key,
-			_type,
-			style,
-			listItem,
-			level,
-			children[]{_key, _type, text, marks},
-			markDefs[]{_key, _type, href},
-			alt,
-			caption,
-			"assetRef": asset._ref,
-			"assetWidth": asset->metadata.dimensions.width,
-			"assetHeight": asset->metadata.dimensions.height,
-			"crop": crop{bottom, left, right, top},
-			"hotspot": hotspot{height, width, x, y}
-		}, [])
-	}
-`;
 
 export class BlogProjectionError extends Error {
 	constructor() {
@@ -180,13 +110,6 @@ function key(value: unknown): string {
 	return requiredText(value, 120, KEY);
 }
 
-function dateFromString(value: unknown): string {
-	if (typeof value !== "string" || value.length > 40) fail();
-	const parsed = Date.parse(value);
-	if (!Number.isSafeInteger(parsed)) fail();
-	return new Date(parsed).toISOString();
-}
-
 function dateFromTimestamp(value: unknown): string {
 	return new Date(integer(value, 0, 8_640_000_000_000_000)).toISOString();
 }
@@ -194,11 +117,6 @@ function dateFromTimestamp(value: unknown): string {
 function presentation(value: unknown): BlogPresentation {
 	if (!BLOG_PRESENTATIONS.includes(value as BlogPresentation)) fail();
 	return value as BlogPresentation;
-}
-
-function sanityPresentation(value: unknown): BlogPresentation {
-	if (value === undefined || value === null || value === "") return "standard";
-	return presentation(value);
 }
 
 function safeHref(value: unknown): string {
@@ -267,423 +185,6 @@ function convexFraming(value: unknown): BlogImage["framing"] {
 	)
 		fail();
 	return { crop, focus };
-}
-
-function sanityCrop(value: unknown) {
-	if (value === null || value === undefined) return undefined;
-	const crop = object(value, ["bottom", "left", "right", "top"]);
-	return {
-		top: fraction(crop.top),
-		right: fraction(crop.right),
-		bottom: fraction(crop.bottom),
-		left: fraction(crop.left),
-	};
-}
-
-function sanityHotspot(value: unknown) {
-	if (value === null || value === undefined) return undefined;
-	const hotspot = object(value, ["height", "width", "x", "y"]);
-	return {
-		x: fraction(hotspot.x),
-		y: fraction(hotspot.y),
-		width: fraction(hotspot.width),
-		height: fraction(hotspot.height),
-	};
-}
-
-function sanityImageUrl(value: Record<string, unknown>, width: number, height?: number): string {
-	const assetRef = requiredText(value.assetRef, 500);
-	if (!assetRef.startsWith("image-") || !KEY.test(assetRef)) fail();
-	const crop = sanityCrop(value.crop);
-	const hotspot = sanityHotspot(value.hotspot);
-	const source = {
-		asset: { _type: "reference" as const, _ref: assetRef },
-		...(crop ? { crop } : {}),
-		...(hotspot ? { hotspot } : {}),
-	};
-	let builder = urlFor(source).width(width);
-	if (height !== undefined) builder = builder.height(height);
-	const result = builder.url();
-	let parsed: URL;
-	try {
-		parsed = new URL(result);
-	} catch {
-		fail();
-	}
-	if (parsed.protocol !== "https:" || parsed.hostname !== SANITY_IMAGE_HOST) fail();
-	return result;
-}
-
-function sanityImage(
-	value: unknown,
-	options: { width: number; height?: number; fallbackAlt: string; fixedAlt?: boolean },
-): BlogImage | null {
-	if (value === null || value === undefined) return null;
-	const image = object(value, [
-		"assetRef",
-		"assetWidth",
-		"assetHeight",
-		"crop",
-		"hotspot",
-		"alt",
-		"caption",
-	]);
-	const sourceWidth = integer(image.assetWidth, 1, 100_000);
-	const sourceHeight = integer(image.assetHeight, 1, 100_000);
-	const crop = sanityCrop(image.crop) ?? null;
-	const focus = sanityHotspot(image.hotspot) ?? null;
-	const croppedWidth = sourceWidth * (1 - (crop?.left ?? 0) - (crop?.right ?? 0));
-	const croppedHeight = sourceHeight * (1 - (crop?.top ?? 0) - (crop?.bottom ?? 0));
-	if (croppedWidth <= 0 || croppedHeight <= 0) fail();
-	const deliveredHeight =
-		options.height ?? Math.max(1, Math.round(croppedHeight * (options.width / croppedWidth)));
-	return {
-		src: sanityImageUrl(image, options.width, options.height),
-		alt: options.fixedAlt
-			? options.fallbackAlt
-			: (optionalText(image.alt, 500) ?? options.fallbackAlt),
-		width: options.width,
-		height: deliveredHeight,
-		caption: optionalText(image.caption, 2_000),
-		framing:
-			crop || focus
-				? {
-						crop,
-						focus,
-					}
-				: null,
-	};
-}
-
-function sanityAuthor(value: unknown, withImage: boolean): BlogAuthor | null {
-	if (value === null || value === undefined) return null;
-	const author = object(value, ["name"], withImage ? ["image"] : []);
-	const name = requiredText(author.name, 200);
-	return {
-		name,
-		image: withImage
-			? sanityImage(author.image, {
-					width: 32,
-					height: 32,
-					fallbackAlt: name,
-					fixedAlt: true,
-				})
-			: null,
-	};
-}
-
-function categories(value: unknown): BlogCategory[] {
-	const seen = new Set<string>();
-	return list(value, 20).map((raw) => {
-		const category = object(raw, ["title"]);
-		const title = requiredText(category.title, 200);
-		if (seen.has(title)) fail();
-		seen.add(title);
-		return { title };
-	});
-}
-
-function portableMarks(value: unknown, definitions: ReadonlyMap<string, string>): BlogTextMark[] {
-	const result: BlogTextMark[] = [];
-	const seen = new Set<string>();
-	for (const raw of list(value ?? [], 3)) {
-		if (typeof raw !== "string") fail();
-		let mark: BlogTextMark;
-		if (raw === "strong") mark = { type: "strong" };
-		else if (raw === "em") mark = { type: "emphasis" };
-		else {
-			const href = definitions.get(raw);
-			if (!href) fail();
-			mark = { type: "link", href };
-		}
-		if (seen.has(mark.type)) fail();
-		seen.add(mark.type);
-		result.push(mark);
-	}
-	return result;
-}
-
-function portableDefinitions(value: unknown): Map<string, string> {
-	const result = new Map<string, string>();
-	for (const raw of list(value ?? [], 200)) {
-		const definition = object(raw, ["_key", "_type", "href"]);
-		if (definition._type !== "link") fail();
-		const definitionKey = key(definition._key);
-		if (result.has(definitionKey)) fail();
-		result.set(definitionKey, safeHref(definition.href));
-	}
-	return result;
-}
-
-function portableSpans(value: unknown, definitions: ReadonlyMap<string, string>): BlogTextSpan[] {
-	const seen = new Set<string>();
-	return list(value, 200).map((raw) => {
-		const span = object(raw, ["_key", "_type", "text", "marks"]);
-		if (span._type !== "span") fail();
-		const spanKey = key(span._key);
-		if (seen.has(spanKey)) fail();
-		seen.add(spanKey);
-		return {
-			text: rawText(span.text, 10_000),
-			marks: portableMarks(span.marks, definitions),
-		};
-	});
-}
-
-type SanityBodyNode =
-	| { kind: "block"; block: Exclude<BlogTextBlock, BlogList> }
-	| {
-			kind: "listItem";
-			blockStyle: BlogBlockStyle;
-			level: number;
-			style: BlogList["style"];
-			spans: BlogTextSpan[];
-	  };
-
-function portableBlockStyle(value: unknown): BlogBlockStyle {
-	const style = value ?? "normal";
-	if (
-		style !== "normal" &&
-		style !== "h1" &&
-		style !== "h2" &&
-		style !== "h3" &&
-		style !== "h4" &&
-		style !== "blockquote"
-	)
-		fail();
-	return style;
-}
-
-function sanityBodyNode(value: unknown, seen: Set<string>): SanityBodyNode {
-	const node = object(value, [
-		"_key",
-		"_type",
-		"style",
-		"listItem",
-		"level",
-		"children",
-		"markDefs",
-		"alt",
-		"caption",
-		"assetRef",
-		"assetWidth",
-		"assetHeight",
-		"crop",
-		"hotspot",
-	]);
-	const nodeKey = key(node._key);
-	if (seen.has(nodeKey)) fail();
-	seen.add(nodeKey);
-	if (node._type === "image") {
-		const image = sanityImage(
-			{
-				assetRef: node.assetRef,
-				assetWidth: node.assetWidth,
-				assetHeight: node.assetHeight,
-				crop: node.crop,
-				hotspot: node.hotspot,
-				alt: node.alt,
-				caption: node.caption,
-			},
-			{ width: 800, fallbackAlt: "" },
-		);
-		if (!image) fail();
-		return { kind: "block", block: { type: "image", image } };
-	}
-	if (node._type !== "block") fail();
-	const spans = portableSpans(node.children, portableDefinitions(node.markDefs));
-	const blockStyle = portableBlockStyle(node.style);
-	if (node.listItem !== null && node.listItem !== undefined) {
-		if (node.listItem !== "bullet" && node.listItem !== "number") fail();
-		return {
-			kind: "listItem",
-			blockStyle,
-			level: node.level === null || node.level === undefined ? 1 : integer(node.level, 1, 500),
-			style: node.listItem,
-			spans,
-		};
-	}
-	const style = blockStyle;
-	if (style === "normal") return { kind: "block", block: { type: "paragraph", spans } };
-	if (style === "h1" || style === "h2" || style === "h3" || style === "h4") {
-		return {
-			kind: "block",
-			block: {
-				type: "heading",
-				level: Number(style.slice(1)) as 1 | 2 | 3 | 4,
-				spans,
-			},
-		};
-	}
-	if (style === "blockquote") return { kind: "block", block: { type: "quote", spans } };
-	return fail();
-}
-
-function listFromSanityItem(item: Extract<SanityBodyNode, { kind: "listItem" }>): BlogList {
-	return {
-		type: "list",
-		level: item.level,
-		style: item.style,
-		items: [{ blockStyle: item.blockStyle, spans: item.spans, children: [] }],
-	};
-}
-
-function findNestedList(root: BlogList, level: number, style: BlogList["style"]): BlogList | null {
-	if (root.level === level && root.style === style) return root;
-	const lastItem = root.items.at(-1);
-	const child = lastItem?.children.at(-1);
-	return child ? findNestedList(child, level, style) : null;
-}
-
-function sanityBody(value: unknown): BlogTextBlock[] {
-	const seen = new Set<string>();
-	const nodes = list(value, 500).map((node) => sanityBodyNode(node, seen));
-	const blocks: BlogTextBlock[] = [];
-	let currentList: BlogList | null = null;
-	for (const node of nodes) {
-		if (node.kind === "block") {
-			blocks.push(node.block);
-			currentList = null;
-			continue;
-		}
-		if (!currentList) {
-			currentList = listFromSanityItem(node);
-			blocks.push(currentList);
-			continue;
-		}
-		if (node.level === currentList.level && node.style === currentList.style) {
-			currentList.items.push({ blockStyle: node.blockStyle, spans: node.spans, children: [] });
-			continue;
-		}
-		if (node.level > currentList.level) {
-			const nested = listFromSanityItem(node);
-			const parentItem = currentList.items.at(-1);
-			if (!parentItem) fail();
-			parentItem.children.push(nested);
-			currentList = nested;
-			continue;
-		}
-		if (node.level < currentList.level) {
-			const root = blocks.at(-1);
-			const match: BlogList | null =
-				root?.type === "list" ? findNestedList(root, node.level, node.style) : null;
-			if (match) {
-				match.items.push({ blockStyle: node.blockStyle, spans: node.spans, children: [] });
-				currentList = match;
-				continue;
-			}
-		}
-		currentList = listFromSanityItem(node);
-		blocks.push(currentList);
-	}
-	return blocks;
-}
-
-function sanityEquipment(value: unknown): BlogTechnicalItem[] {
-	const seen = new Set<string>();
-	return list(value ?? [], 50).map((raw) => {
-		const item = object(raw, ["_key", "camera", "lens", "filmStock", "developer"]);
-		const itemKey = key(item._key);
-		if (seen.has(itemKey)) fail();
-		seen.add(itemKey);
-		return {
-			kind: "photography",
-			camera: optionalText(item.camera, 500),
-			lens: optionalText(item.lens, 500),
-			filmStock: optionalText(item.filmStock, 500),
-			developer: optionalText(item.developer, 500),
-		};
-	});
-}
-
-function sanitySummary(value: unknown): BlogPostSummary {
-	const post = object(value, [
-		"title",
-		"slug",
-		"publishedAt",
-		"postType",
-		"excerpt",
-		"mainImage",
-		"author",
-		"categories",
-	]);
-	const title = requiredText(post.title, 300);
-	return {
-		siteUrl: SITE_URL,
-		title,
-		slug: canonicalSlug(post.slug),
-		publishedAt: dateFromString(post.publishedAt),
-		excerpt: rawText(post.excerpt, 500),
-		presentation: sanityPresentation(post.postType),
-		author: sanityAuthor(post.author, false),
-		categories: categories(post.categories),
-		mainImage: sanityImage(post.mainImage, {
-			width: 600,
-			height: 340,
-			fallbackAlt: title,
-			fixedAlt: true,
-		}),
-	};
-}
-
-export function adaptSanityBlogIndex(value: unknown): BlogPostSummary[] {
-	const posts = list(value, SANITY_BLOG_LIST_MAX).map(sanitySummary);
-	const slugs = new Set(posts.map(({ slug }) => slug));
-	if (slugs.size !== posts.length) fail();
-	return posts;
-}
-
-export function adaptSanityBlogPost(value: unknown): BlogPostDetail | null {
-	if (value === null) return null;
-	const post = object(value, [
-		"title",
-		"slug",
-		"publishedAt",
-		"postType",
-		"excerpt",
-		"brief",
-		"approach",
-		"result",
-		"gearUsed",
-		"mainImage",
-		"author",
-		"categories",
-		"body",
-	]);
-	const title = requiredText(post.title, 300);
-	const body = sanityBody(post.body);
-	const postPresentation = sanityPresentation(post.postType);
-	const mainWidth = {
-		standard: 800,
-		behindTheScenes: 1_400,
-		caseStudy: 1_200,
-		clientStory: 1_600,
-		technical: 1_000,
-	}[postPresentation];
-	return {
-		siteUrl: SITE_URL,
-		title,
-		slug: canonicalSlug(post.slug),
-		publishedAt: dateFromString(post.publishedAt),
-		excerpt: rawText(post.excerpt, 500),
-		presentation: postPresentation,
-		author: sanityAuthor(post.author, true),
-		categories: categories(post.categories),
-		mainImage: sanityImage(post.mainImage, {
-			width: mainWidth,
-			fallbackAlt: title,
-			fixedAlt: true,
-		}),
-		seoTitle: null,
-		seoDescription: null,
-		brief: optionalText(post.brief, 10_000),
-		approach: optionalText(post.approach, 10_000),
-		outcome: optionalText(post.result, 10_000),
-		credits: null,
-		equipment: sanityEquipment(post.gearUsed),
-		materials: [],
-		body,
-	};
 }
 
 function derivative(value: unknown, name: Derivative, sourceWidth: number, sourceHeight: number) {
@@ -989,28 +490,9 @@ function adaptSlugResolution(value: unknown): SlugResolution {
 	};
 }
 
-export function parseBlogProviderMode(value: unknown): ProviderMode {
-	return value === "sanity" ? "sanity" : "convex";
-}
-
-export function createSanityBlogSource(
-	selectClient: (isPreview: boolean) => SanityBlogClient = getSanityClient,
-): SanityBlogSource {
-	return {
-		async loadIndex(isPreview) {
-			return adaptSanityBlogIndex(await selectClient(isPreview).fetch(SANITY_INDEX_QUERY));
-		},
-		async loadPost(slug, isPreview) {
-			return adaptSanityBlogPost(
-				await selectClient(isPreview).fetch(SANITY_DETAIL_QUERY, { slug }),
-			);
-		},
-	};
-}
-
 function createBlogReader(): BlogReader {
 	const request = (signal: AbortSignal) =>
-		new ConvexHttpClient(publicEnv.PUBLIC_CONVEX_URL || "", {
+		new ConvexHttpClient(getConvexUrl(), {
 			logger: false,
 			fetch: (input, init) => fetch(input, { ...init, signal }),
 		});
@@ -1041,15 +523,7 @@ function notFound(): never {
 	throw error(404, "Post not found");
 }
 
-export function createBlogContentProvider(
-	dependencies: {
-		sanity?: SanityBlogSource;
-		mode?: () => unknown;
-		createReader?: () => BlogReader;
-	} = {},
-) {
-	const sanity = dependencies.sanity ?? createSanityBlogSource();
-	const mode = dependencies.mode ?? (() => privateEnv.BLOG_CONTENT_PROVIDER);
+export function createBlogContentProvider(dependencies: { createReader?: () => BlogReader } = {}) {
 	const reader = dependencies.createReader ?? createBlogReader;
 
 	async function convexIndex(signal: AbortSignal) {
@@ -1087,29 +561,18 @@ export function createBlogContentProvider(
 		notFound();
 	}
 
-	async function loadSanityPost(slug: string, isPreview: boolean) {
-		const post = await sanity.loadPost(slug, isPreview);
-		return post ?? notFound();
-	}
-
 	return {
-		async loadIndex(isPreview: boolean) {
-			if (isPreview) return await sanity.loadIndex(true);
-			const provider = parseBlogProviderMode(mode());
-			if (provider === "convex") return await loadConvexIndex();
-			return await sanity.loadIndex(false);
+		async loadIndex(_isPreview?: boolean) {
+			return await loadConvexIndex();
 		},
-		async loadPost(slugValue: string, isPreview: boolean) {
+		async loadPost(slugValue: string, _isPreview?: boolean) {
 			let slug: string;
 			try {
 				slug = canonicalSlug(slugValue);
 			} catch {
 				notFound();
 			}
-			if (isPreview) return await loadSanityPost(slug, true);
-			const provider = parseBlogProviderMode(mode());
-			if (provider === "convex") return await loadConvexPost(slug);
-			return await loadSanityPost(slug, false);
+			return await loadConvexPost(slug);
 		},
 	};
 }

@@ -38,7 +38,7 @@ export interface CreateHandleCheckoutOptions {
 	attemptProofClass: CheckoutAdmissionIdentity["proofClass"];
 	site: string;
 	account: string | null;
-	catalogProvider: "sanity" | "convex";
+	catalogProvider: "convex";
 	snapshotItems: readonly CheckoutSnapshotItem[];
 	stripe: Stripe;
 	lineItems: Stripe.Checkout.SessionCreateParams.LineItem[];
@@ -176,7 +176,7 @@ export async function createHandleCheckoutSession({
 	if (!site || site !== site.trim() || site.length > 253 || site.includes("/")) throw invalid();
 	if (account !== null && !ACCOUNT_ID.test(account)) throw invalid();
 	if (
-		(catalogProvider !== "sanity" && catalogProvider !== "convex") ||
+		catalogProvider !== "convex" ||
 		snapshotItems.length < 1 ||
 		snapshotItems.length > 40 ||
 		lineItems.length !== snapshotItems.length

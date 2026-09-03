@@ -25,12 +25,11 @@ fulfillment, email, and private gallery delivery.
 | Private delivery-gallery files | Cloudflare R2 through the gallery worker |
 | Error and performance telemetry | Sentry |
 
-Convex is the default authority for the published site, Shop, and every newly
-initiated checkout. Sanity remains installed as an explicit editorial preview
-and reviewed rollback adapter, and its hosted data, Studio, migration tools, and
-encrypted recovery archive are retained. Historical Sanity-backed orders and
-paid downloads remain readable through compatibility consumers; they are not a
-source for new purchases.
+Convex is the sole runtime authority for the published site, Shop, Editor, and
+checkout. The former Sanity clients, preview routes, provider switches,
+migration entry points, and purchase/download fallbacks have been removed. The
+external recovery archive remains historical evidence rather than executable
+application infrastructure.
 
 See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the authoritative system
 map, ownership rules, and request flows.
@@ -48,9 +47,6 @@ brand, content, administrators, and public origin.
 | `admin-dashboard` | Source for the shared `@jessepomeroy/admin` UI and server adapters |
 | `gallery-worker` | Separate Cloudflare Worker deployments for private gallery delivery and public-site Editor media |
 | `reflecting-pool` | Client spoke and tenant admin host; currently in pre-handoff production testing |
-| `sanity-studio-template` | Retained Sanity schemas, desk structure, components, and recovery tooling |
-| `angelsrest-studio` | Retained Angel's Rest Sanity preview and recovery Studio |
-| `reflecting-pool-studio` | Independent client Studio; not part of Angel's Rest recovery custody |
 
 Cross-repository contracts are changed in their owning upstream repository
 first, then adopted and verified by affected consumers.
@@ -100,7 +96,7 @@ pnpm dev
 
 The example environment file groups the required application, Convex, auth,
 Stripe, Resend, LumaPrints, gallery workers, Turnstile, and observability
-configuration, plus the optional Sanity preview/rollback surface. Keep real
+configuration. Keep real
 credentials in local or provider-managed secret stores; never commit them.
 
 Use Stripe test credentials and `LUMAPRINTS_USE_SANDBOX=true` for local work.

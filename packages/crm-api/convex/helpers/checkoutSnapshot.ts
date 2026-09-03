@@ -20,7 +20,7 @@ const ITEM_KEYS = [
 /** Immutable provider-neutral routing identity captured when checkout resolves. */
 export const checkoutSnapshotValidator = v.object({
 	schemaVersion: v.literal(1),
-	catalogProvider: v.union(v.literal("sanity"), v.literal("convex")),
+	catalogProvider: v.literal("convex"),
 	items: v.array(
 		v.object({
 			productKey: v.string(),
@@ -35,10 +35,10 @@ export const checkoutSnapshotValidator = v.object({
 	),
 });
 
-/** Reservation rows use one normalized shape; legacy inline order inputs stay compatible. */
+/** Reservation rows and persisted orders use one normalized Convex catalog shape. */
 export const reservedCheckoutSnapshotValidator = v.object({
 	schemaVersion: v.literal(1),
-	catalogProvider: v.union(v.literal("sanity"), v.literal("convex")),
+	catalogProvider: v.literal("convex"),
 	items: v.array(v.object({
 		productKey: v.string(), revisionId: v.string(), productKind: catalogProductKindValidator,
 		variantKey: nullableKey, materialOptionKey: nullableKey, sizeOptionKey: nullableKey,
@@ -69,8 +69,8 @@ function siteString(value: unknown) {
 
 export function parseReservedCheckoutSnapshot(value: unknown): ReservedCheckoutSnapshot | null {
 	if (!exactRecord(value, ["schemaVersion", "catalogProvider", "items"])) return null;
-	if (value.schemaVersion !== 1 || (value.catalogProvider !== "sanity" && value.catalogProvider !== "convex")) return null;
-	const catalogProvider: "sanity" | "convex" = value.catalogProvider;
+	if (value.schemaVersion !== 1 || value.catalogProvider !== "convex") return null;
+	const catalogProvider = "convex" as const;
 	if (!Array.isArray(value.items) || value.items.length < 1 || value.items.length > 40) return null;
 	const items: ReservedCheckoutSnapshot["items"] = [];
 	for (const item of value.items) {

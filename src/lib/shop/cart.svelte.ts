@@ -57,7 +57,7 @@ class CartStore {
 			const raw = localStorage.getItem(STORAGE_KEY);
 			if (!raw) return;
 			const parsed = JSON.parse(raw) as CartState;
-			// Sanity-check the shape — corrupted localStorage should not
+			// Validate the shape — corrupted localStorage should not
 			// crash the entire app on first paint.
 			if (!parsed || !Array.isArray(parsed.items)) {
 				this.#reset();

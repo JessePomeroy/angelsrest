@@ -1,6 +1,5 @@
 import { error, json } from "@sveltejs/kit";
 import type Stripe from "stripe";
-import { PUBLIC_SITE_URL } from "$env/static/public";
 import { ApiErrorCode, apiError } from "$lib/server/apiError";
 import {
 	buildCartTenantCheckoutOptions,
@@ -22,6 +21,7 @@ import {
 	createHandleCheckoutSession,
 	validateSameOriginCheckoutAttemptRequest,
 } from "$lib/server/handleCheckout";
+import { getPublicSiteOrigin } from "$lib/server/runtimeConfig";
 import { buildCheckoutLineItem } from "$lib/server/stripeCheckoutSession";
 import { getStripe } from "$lib/server/stripeClient";
 import { resolveStripeTenantForSite } from "$lib/server/stripeTenant";
@@ -36,10 +36,11 @@ interface CartCheckoutRequest {
 
 export async function POST({ request, cookies }) {
 	try {
+		const siteOrigin = getPublicSiteOrigin();
 		const body = (await request.json()) as CartCheckoutRequest;
-		const control = assertNewOrderCheckoutOpen(PUBLIC_SITE_URL);
+		const control = assertNewOrderCheckoutOpen(siteOrigin);
 		const attemptIdentity = validateSameOriginCheckoutAttemptRequest(
-			PUBLIC_SITE_URL,
+			siteOrigin,
 			body.attempt,
 			body.attemptStartedAt,
 			body.attemptProof,
@@ -109,15 +110,15 @@ export async function POST({ request, cookies }) {
 		});
 
 		const tenant = await runCheckoutSessionStage("checkout_tenant", () =>
-			resolveStripeTenantForSite(PUBLIC_SITE_URL),
+			resolveStripeTenantForSite(siteOrigin),
 		);
 		const tenantCheckout = buildCartTenantCheckoutOptions({
 			items: resolvedItems,
 			tenant,
 		});
 
-		const successUrl = `${PUBLIC_SITE_URL}/checkout/success?session_id={CHECKOUT_SESSION_ID}`;
-		const cancelUrl = `${PUBLIC_SITE_URL}/checkout/cancel`;
+		const successUrl = `${siteOrigin}/checkout/success?session_id={CHECKOUT_SESSION_ID}`;
+		const cancelUrl = `${siteOrigin}/checkout/cancel`;
 		const snapshots = resolved.map(({ catalogItem }) => {
 			if (!catalogItem.snapshot) {
 				throw new CurrentCheckoutCommerceError("invalid_authority", "authority");

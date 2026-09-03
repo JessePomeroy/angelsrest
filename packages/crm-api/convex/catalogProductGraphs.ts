@@ -7,7 +7,6 @@ import {
 	getCatalogProductGraphV2EditorState,
 	getCatalogProductGraphV2RetirementEligibility,
 	getPublishedCatalogProductGraphV2BySlug,
-	importSanityCatalogGraphV2Drafts,
 	listCatalogProductGraphV2DraftPrivateAssetCandidates,
 	listCatalogProductGraphsV2ForEditor,
 	listPublishedCatalogProductGraphsV2,
@@ -25,7 +24,6 @@ import {
 	catalogProductPublicationRevisionValidator,
 } from "./helpers/catalogProductGraphValidators";
 import { catalogProductKindValidator } from "./helpers/catalogProductValidators";
-import { sanityCatalogV2GraphPlanValidator } from "./helpers/sanityCatalogGraphPlan";
 
 /** Create the first private, immutable V2 graph for one catalog product. */
 export const createDraft = mutation({
@@ -35,15 +33,6 @@ export const createDraft = mutation({
 		draft: catalogProductGraphV2DraftValidator,
 	},
 	handler: async (ctx, args) => await createCatalogProductGraphV2Draft(ctx, args),
-});
-
-/** Import the complete Sanity catalog as dormant, unpublished private V2 drafts. */
-export const importSanityDrafts = mutation({
-	args: {
-		siteUrl: v.string(),
-		plan: sanityCatalogV2GraphPlanValidator,
-	},
-	handler: async (ctx, args) => await importSanityCatalogGraphV2Drafts(ctx, args),
 });
 
 /** Save a replacement private draft without mutating historical graph rows. */

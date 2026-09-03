@@ -1,52 +1,16 @@
 import { error } from "@sveltejs/kit";
 import { ConvexHttpClient } from "convex/browser";
 import { api } from "$convex/api";
-import { env as privateEnv } from "$env/dynamic/private";
-import { env as publicEnv } from "$env/dynamic/public";
 import type { AboutContactContent } from "$lib/about-contact/content";
-import localPortrait from "$lib/assets/DSCF7533.jpg";
 import { SITE_DOMAIN, SITE_URL } from "$lib/config/site";
-import { contactPageSeed } from "$lib/content/contactPageSeed";
-import { getSanityClient } from "$lib/sanity/client.server";
+import { getConvexUrl } from "$lib/server/runtimeConfig";
 
 const MEDIA_ROOT = `https://media.angelsrest.online/sites/${SITE_DOMAIN}/web`;
-const LOCAL_PORTRAIT_SHA256 = "0e94b665f7654c74158daf3aa2c497139c5cb7c4490d72205cfa3babd6dc4eb0";
 const UUID_V4 = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
 
-type ProviderMode = "sanity" | "convex";
-type SanityClient = Pick<ReturnType<typeof getSanityClient>, "fetch">;
-type SanitySource = {
-	load(isPreview: boolean): Promise<AboutContactContent>;
-};
 type ConvexReader = {
 	loadPublished(signal: AbortSignal): Promise<unknown>;
 };
-
-const SANITY_QUERY = `{
-	"about": *[_type == "about"][0...2]{
-		name,
-		shortBio,
-		seo{
-			description,
-			"ogImageUrl": ogImage.asset->url
-		}
-	},
-	"contact": *[_type == "contactPage"][0...2]{
-		heading,
-		intro[]{
-			_key,
-			_type,
-			style,
-			listItem,
-			level,
-			children[]{_key, _type, text, marks},
-			markDefs[]{_key, _type, href}
-		},
-		email,
-		phone,
-		bookingEnabled
-	}
-}`;
 
 export class AboutContactProjectionError extends Error {
 	constructor() {
@@ -86,11 +50,6 @@ function requiredText(value: unknown, maximum: number, pattern?: RegExp): string
 	const normalized = value.trim();
 	if (!normalized || normalized.length > maximum || (pattern && !pattern.test(normalized))) fail();
 	return normalized;
-}
-
-function rawText(value: unknown, maximum: number): string {
-	if (typeof value !== "string" || value.length > maximum) fail();
-	return value;
 }
 
 function optionalText(value: unknown, maximum: number): string | null {
@@ -155,107 +114,6 @@ function plainParagraphs(value: unknown): string[] {
 	const paragraphs = normalized.split(/\n\s*\n/).map((paragraph) => paragraph.trim());
 	if (paragraphs.length > 20 || paragraphs.some((paragraph) => !paragraph)) fail();
 	return paragraphs;
-}
-
-function sanityParagraphs(value: unknown): string[] {
-	const blocks = list(value, 20);
-	if (blocks.length === 0) fail();
-	const blockKeys = new Set<string>();
-	return blocks.map((rawBlock) => {
-		const block = object(rawBlock, [
-			"_key",
-			"_type",
-			"style",
-			"listItem",
-			"level",
-			"children",
-			"markDefs",
-		]);
-		const blockKey = requiredText(block._key, 100);
-		if (blockKeys.has(blockKey)) fail();
-		blockKeys.add(blockKey);
-		if (
-			block._type !== "block" ||
-			block.style !== "normal" ||
-			block.listItem !== null ||
-			block.level !== null ||
-			list(block.markDefs, 20).length !== 0
-		)
-			fail();
-		const children = list(block.children, 200);
-		if (children.length === 0) fail();
-		const childKeys = new Set<string>();
-		const paragraph = children
-			.map((rawChild) => {
-				const child = object(rawChild, ["_key", "_type", "text", "marks"]);
-				const childKey = requiredText(child._key, 100);
-				if (childKeys.has(childKey)) fail();
-				childKeys.add(childKey);
-				if (child._type !== "span" || list(child.marks, 10).length !== 0) fail();
-				return rawText(child.text, 10_000);
-			})
-			.join("")
-			.trim();
-		if (!paragraph || paragraph.length > 2_000) fail();
-		return paragraph;
-	});
-}
-
-function seedContact(enabled: boolean) {
-	const booking = enabled ? calBooking(contactPageSeed.bookingUrl) : { url: null, calLink: null };
-	const choices = list(contactPageSeed.inquiryChoices ?? [], 12).map((choice) =>
-		requiredText(choice, 120),
-	);
-	if (new Set(choices.map((choice) => choice.toLocaleLowerCase())).size !== choices.length) fail();
-	return {
-		confirmationMessage: requiredText(contactPageSeed.confirmationMessage, 500),
-		booking: {
-			enabled,
-			...booking,
-			label: requiredText(contactPageSeed.bookingLabel, 120),
-			intro: requiredText(contactPageSeed.bookingIntro, 1_000),
-		},
-		inquiryChoices: choices,
-	};
-}
-
-export function adaptSanityAboutContact(value: unknown): AboutContactContent {
-	const root = object(value, ["about", "contact"]);
-	const aboutRows = list(root.about, 2);
-	const contactRows = list(root.contact, 2);
-	if (aboutRows.length !== 1 || contactRows.length !== 1) fail();
-
-	const about = object(aboutRows[0], ["name", "shortBio", "seo"]);
-	const seo = about.seo === null ? null : object(about.seo, ["description", "ogImageUrl"]);
-
-	const contact = object(contactRows[0], ["heading", "intro", "email", "phone", "bookingEnabled"]);
-	if (contact.bookingEnabled !== null && typeof contact.bookingEnabled !== "boolean") fail();
-	const seed = seedContact(contact.bookingEnabled === true);
-
-	const displayName = requiredText(about.name, 200);
-	return {
-		siteUrl: SITE_URL,
-		about: {
-			displayName,
-			introduction: requiredText(about.shortBio, 2_000),
-			portrait: {
-				src: localPortrait,
-				altText: displayName,
-				sourceSha256: LOCAL_PORTRAIT_SHA256,
-			},
-			seo: {
-				description: seo ? optionalText(seo.description, 320) : null,
-				imageUrl: seo ? optionalUrl(seo.ogImageUrl) : null,
-			},
-		},
-		contact: {
-			heading: requiredText(contact.heading, 120),
-			intro: sanityParagraphs(contact.intro),
-			email: email(contact.email),
-			phone: optionalText(contact.phone, 80),
-			...seed,
-		},
-	};
 }
 
 function derivative(value: unknown) {
@@ -408,24 +266,10 @@ export function projectSiteSettingsInstagramUrl(value: unknown): string | null {
 	return publicUrl((matches[0] as Record<string, unknown>).url);
 }
 
-export function parseAboutContactProviderMode(value: unknown): ProviderMode {
-	return value === "sanity" ? "sanity" : "convex";
-}
-
-export function createSanityAboutContactSource(
-	selectClient: (isPreview: boolean) => SanityClient = getSanityClient,
-): SanitySource {
-	return {
-		async load(isPreview) {
-			return adaptSanityAboutContact(await selectClient(isPreview).fetch(SANITY_QUERY));
-		},
-	};
-}
-
 function createConvexReader(): ConvexReader {
 	return {
 		async loadPublished(signal) {
-			const client = new ConvexHttpClient(publicEnv.PUBLIC_CONVEX_URL || "", {
+			const client = new ConvexHttpClient(getConvexUrl(), {
 				logger: false,
 				fetch: (input, init) => fetch(input, { ...init, signal }),
 			});
@@ -441,14 +285,8 @@ function unavailable(): never {
 }
 
 export function createAboutContactContentProvider(
-	dependencies: {
-		sanity?: SanitySource;
-		mode?: () => unknown;
-		createReader?: () => ConvexReader;
-	} = {},
+	dependencies: { createReader?: () => ConvexReader } = {},
 ) {
-	const sanity = dependencies.sanity ?? createSanityAboutContactSource();
-	const mode = dependencies.mode ?? (() => privateEnv.ABOUT_CONTACT_CONTENT_PROVIDER);
 	const createReader = dependencies.createReader ?? createConvexReader;
 
 	async function loadConvex() {
@@ -462,11 +300,8 @@ export function createAboutContactContentProvider(
 	}
 
 	return {
-		async load(isPreview: boolean) {
-			if (isPreview) return await sanity.load(true);
-			const provider = parseAboutContactProviderMode(mode());
-			if (provider === "convex") return await loadConvex();
-			return await sanity.load(false);
+		async load(_isPreview?: boolean) {
+			return await loadConvex();
 		},
 	};
 }

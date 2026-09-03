@@ -14,6 +14,8 @@ const mockSendPaymentFailedEmail = vi.fn();
 const mockSendPrintReconciliationBlockedAlert = vi.fn();
 const mockBuildOrderItemsFromSnapshot = vi.fn();
 const mockPrivateEnv = vi.hoisted(() => ({
+	LUMAPRINTS_API_KEY: "test-key",
+	LUMAPRINTS_API_SECRET: "test-secret",
 	LUMAPRINTS_STORE_ID: "123",
 	WEBHOOK_SECRET: "test-webhook-secret",
 	CHECKOUT_SNAPSHOT_MODE: undefined as string | undefined,
@@ -140,7 +142,7 @@ function makeCheckoutSession(
 			},
 		},
 		metadata: {
-			imageUrl: "https://cdn.sanity.io/images/photo.jpg",
+			imageUrl: "https://media.example.test/photo.jpg",
 			paperSubcategoryId: "103001",
 			paperWidth: "8",
 			paperHeight: "10",
@@ -1367,11 +1369,11 @@ describe("processStripeWebhookEvent", () => {
 		const lineItems = [makeLineItem()];
 		const checkoutSnapshot = {
 			schemaVersion: 1 as const,
-			catalogProvider: "sanity" as const,
+			catalogProvider: "convex" as const,
 			items: [
 				{
-					productKey: "sanity-product-id",
-					revisionId: "sanity-revision-id",
+					productKey: "catalog-product-id",
+					revisionId: "catalog-revision-id",
 					productKind: "print" as const,
 					variantKey: null,
 					materialOptionKey: "archival-matte",
@@ -1391,8 +1393,8 @@ describe("processStripeWebhookEvent", () => {
 		orderCreateResults = [makeOrderResult({ checkoutSnapshot })];
 		mockBuildOrderItemsFromSnapshot.mockResolvedValue([
 			{
-				imageUrl: "https://cdn.sanity.io/images/print.jpg",
-				sourcePolicy: "sanity_cdn",
+				imageUrl: "https://media.example.test/images/print.jpg",
+				sourcePolicy: "byte_exact",
 				quantity: 1,
 				paperSubcategoryId: 103001,
 				width: 4,
@@ -2275,11 +2277,11 @@ describe("processStripeWebhookEvent", () => {
 			const lineItems = [makeLineItem()];
 			const checkoutSnapshot = {
 				schemaVersion: 1 as const,
-				catalogProvider: "sanity" as const,
+				catalogProvider: "convex" as const,
 				items: [
 					{
-						productKey: "sanity-product-id",
-						revisionId: "sanity-revision-id",
+						productKey: "catalog-product-id",
+						revisionId: "catalog-revision-id",
 						productKind: "print" as const,
 						variantKey: "variant",
 						materialOptionKey: "paper",
@@ -2346,8 +2348,8 @@ describe("processStripeWebhookEvent", () => {
 			});
 			mockBuildOrderItemsFromSnapshot.mockResolvedValue([
 				{
-					imageUrl: "https://cdn.sanity.io/images/print.jpg",
-					sourcePolicy: "sanity_cdn",
+					imageUrl: "https://media.example.test/images/print.jpg",
+					sourcePolicy: "byte_exact",
 					quantity: 1,
 					paperSubcategoryId: 103001,
 					width: 8,

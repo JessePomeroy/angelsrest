@@ -1,6 +1,5 @@
 import { ConvexHttpClient } from "convex/browser";
 import { api } from "$convex/api";
-import { env as publicEnv } from "$env/dynamic/public";
 import { SITE_DOMAIN } from "$lib/config/site";
 import { CatalogBoundaryError, resolveCatalogCheckout } from "$lib/server/catalogCommerceClients";
 import type {
@@ -12,6 +11,7 @@ import {
 	CurrentCheckoutCommerceError,
 	type CurrentCheckoutCommercePhase,
 } from "$lib/server/checkoutFailures";
+import { getConvexUrl } from "$lib/server/runtimeConfig";
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
 const KINDS = new Set("print print_set postcard tapestry digital_download merchandise".split(" "));
@@ -273,7 +273,7 @@ function authority(value: unknown, item: CheckoutSnapshotItem, slug: string) {
 }
 
 function client(signal: AbortSignal) {
-	return new ConvexHttpClient(publicEnv.PUBLIC_CONVEX_URL || "", {
+	return new ConvexHttpClient(getConvexUrl(), {
 		logger: false,
 		fetch: (input, init) => fetch(input, { ...init, signal }),
 	});

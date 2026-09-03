@@ -2,7 +2,6 @@ import { error } from "@sveltejs/kit";
 import { ConvexHttpClient } from "convex/browser";
 import type { FunctionReturnType } from "convex/server";
 import { api } from "$convex/api";
-import { env as publicEnv } from "$env/dynamic/public";
 import { SITE_DOMAIN } from "$lib/config/site";
 import {
 	adaptConvexIndex,
@@ -10,6 +9,7 @@ import {
 	adaptConvexProduct,
 	assertConvexPublishedDetailSlug,
 } from "$lib/server/convexShopAdapter";
+import { getConvexUrl } from "$lib/server/runtimeConfig";
 import type { PrintCollection, PrintSet, Product } from "$lib/types/shop";
 
 type PublishedCatalog = FunctionReturnType<typeof api.catalogProductGraphs.listPublished>;
@@ -36,7 +36,7 @@ interface RetiredPrintCollectionPage {
 
 function createConvexShopReader(): ConvexShopReader {
 	const request = (signal: AbortSignal) =>
-		new ConvexHttpClient(publicEnv.PUBLIC_CONVEX_URL || "", {
+		new ConvexHttpClient(getConvexUrl(), {
 			logger: false,
 			fetch: (input, init) => fetch(input, { ...init, signal }),
 		});
