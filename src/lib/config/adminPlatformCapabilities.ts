@@ -1,0 +1,208 @@
+import type { AdminAPI } from "@jessepomeroy/admin";
+import type * as generatedApiModule from "$convex/api";
+
+type GeneratedApi = typeof generatedApiModule.api;
+
+export type AdminBrowserCapabilities = Omit<AdminAPI, "documentEmailAttempts"> & {
+	readonly documentEmailAttempts?: never;
+};
+
+/**
+ * Adapt the generated Convex module proxy to the stable capability interface
+ * consumed by the shared Admin package's browser surface. Server-only
+ * extensions live in the adjacent `.server` module and cannot be requested
+ * through this interface.
+ */
+export function createAdminBrowserCapabilities(api: GeneratedApi): AdminBrowserCapabilities {
+	const capabilities = {
+		activityLog: { getClientActivity: api.activityLog.getClientActivity },
+		adminAuth: { checkAdminAccess: api.adminAuth.checkAdminAccess },
+		contracts: {
+			create: api.contracts.create,
+			update: api.contracts.update,
+			remove: api.contracts.remove,
+			get: api.contracts.get,
+			list: api.contracts.list,
+			markSent: api.contracts.markSent,
+			markSigned: api.contracts.markSigned,
+			listTemplates: api.contracts.listTemplates,
+			createTemplate: api.contracts.createTemplate,
+			updateTemplate: api.contracts.updateTemplate,
+			removeTemplate: api.contracts.removeTemplate,
+		},
+		siteEditor: {
+			getSiteSettingsEditorState: api.content.getSiteSettingsEditorState,
+			saveSiteSettingsDraft: api.content.saveSiteSettingsDraft,
+			publishSiteSettings: api.content.publishSiteSettings,
+			discardSiteSettingsDraft: api.content.discardSiteSettingsDraft,
+			getHomepageQuoteEditorState: api.content.getHomepageQuoteEditorState,
+			saveHomepageQuoteDraft: api.content.saveHomepageQuoteDraft,
+			publishHomepageQuote: api.content.publishHomepageQuote,
+			discardHomepageQuoteDraft: api.content.discardHomepageQuoteDraft,
+			getContactPageEditorState: api.content.getContactPageEditorState,
+			saveContactPageDraft: api.content.saveContactPageDraft,
+			discardContactPageDraft: api.content.discardContactPageDraft,
+			getAboutPageEditorState: api.content.getAboutPageEditorState,
+			saveAboutPageDraft: api.content.saveAboutPageDraft,
+			publishAboutPage: api.content.holdAboutPagePublication,
+			discardAboutPageDraft: api.content.discardAboutPageDraft,
+			listMediaAssets: api.mediaAssets.listForEditor,
+			getPlacedMediaAssets: api.mediaAssets.getManyForEditor,
+		},
+		portfolioEditor: {
+			listForEditor: api.portfolioGalleries.listForEditor,
+			getEditorState: api.portfolioGalleries.getEditorState,
+			saveDraft: api.portfolioGalleries.saveDraft,
+			setVisibility: api.portfolioGalleries.setVisibility,
+			remove: api.portfolioGalleries.remove,
+			reorder: api.portfolioGalleries.reorder,
+			listMediaAssets: api.mediaAssets.listForEditor,
+			getPlacedMediaAssets: api.mediaAssets.getManyForEditor,
+			registerReadyWebAsset: api.mediaAssets.registerReadyWebAsset,
+			requestDeletion: api.mediaAssets.requestDeletion,
+		},
+		blogContent: {
+			listForEditor: api.blogContent.listForEditor,
+			getEditorState: api.blogContent.getEditorState,
+			createDraft: api.blogContent.createDraft,
+			saveDraft: api.blogContent.saveDraft,
+			publish: api.blogContent.publish,
+			discardDraft: api.blogContent.discardDraft,
+			unpublish: api.blogContent.unpublish,
+			archive: api.blogContent.archive,
+			restore: api.blogContent.restore,
+		},
+		postContent: {
+			listForEditor: api.postContent.listForEditor,
+			getEditorState: api.postContent.getEditorState,
+			createDraft: api.postContent.createDraft,
+			saveDraft: api.postContent.saveDraft,
+			publish: api.postContent.publish,
+			discardDraft: api.postContent.discardDraft,
+			unpublish: api.postContent.unpublish,
+			archive: api.postContent.archive,
+			restore: api.postContent.restore,
+		},
+		catalogProducts: {
+			listForEditor: api.catalogProducts.listForEditor,
+			getEditorState: api.catalogProducts.getEditorState,
+			createDraft: api.catalogProducts.createDraft,
+			saveDraft: api.catalogProducts.saveDraft,
+			discardDraft: api.catalogProducts.discardDraft,
+		},
+		catalogProductGraphs: {
+			listForEditor: api.catalogProductGraphs.listForEditor,
+			getEditorState: api.catalogProductGraphs.getEditorState,
+			createDraft: api.catalogProductGraphs.createDraft,
+			saveDraft: api.catalogProductGraphs.saveDraft,
+			discardDraft: api.catalogProductGraphs.discardDraft,
+			listDraftPrivateAssetCandidates: api.catalogProductGraphs.listDraftPrivateAssetCandidates,
+			replaceDraftPrivateAsset: api.catalogProductGraphs.replaceDraftPrivateAsset,
+			publishDraft: api.catalogProductGraphs.publishDraft,
+			unpublish: api.catalogProductGraphs.unpublish,
+		},
+		mediaAssets: {
+			listForEditor: api.mediaAssets.listForEditor,
+			getManyForEditor: api.mediaAssets.getManyForEditor,
+			registerReadyWebAsset: api.mediaAssets.registerReadyWebAsset,
+		},
+		crm: {
+			createClient: api.crm.createClient,
+			updateClient: api.crm.updateClient,
+			deleteClient: api.crm.deleteClient,
+			listClients: api.crm.listClients,
+			getStats: api.crm.getStats,
+		},
+		emailLog: { create: api.emailLog.create },
+		emailTemplates: {
+			create: api.emailTemplates.create,
+			update: api.emailTemplates.update,
+			remove: api.emailTemplates.remove,
+			get: api.emailTemplates.get,
+			getByCategory: api.emailTemplates.getByCategory,
+			list: api.emailTemplates.list,
+		},
+		galleryDelivery: {
+			create: api.galleries.create,
+			setPassword: api.galleryPassword.setPassword,
+			update: api.galleries.update,
+			remove: api.galleries.remove,
+			get: api.galleries.get,
+			addImage: api.galleries.addImage,
+			removeImage: api.galleries.removeImage,
+			reorderImages: api.galleries.reorderImages,
+			getImages: api.galleries.getImages,
+			listImageStorageKeys: api.galleries.listImageStorageKeys,
+			listBySite: api.galleries.listBySite,
+		},
+		inquiries: { updateStatus: api.inquiries.updateStatus },
+		invoices: {
+			create: api.invoices.create,
+			update: api.invoices.update,
+			remove: api.invoices.remove,
+			get: api.invoices.get,
+			list: api.invoices.list,
+			markSent: api.invoices.markSent,
+			markPaid: api.invoices.markPaid,
+			getNextNumber: api.invoices.getNextNumber,
+		},
+		kanban: {
+			initializeBoard: api.kanban.initializeBoard,
+			moveCard: api.kanban.moveCard,
+			addColumn: api.kanban.addColumn,
+			renameColumn: api.kanban.renameColumn,
+			deleteColumn: api.kanban.deleteColumn,
+			listBoardConfigs: api.kanban.listBoardConfigs,
+		},
+		messages: {
+			send: api.messages.send,
+			markRead: api.messages.markRead,
+			list: api.messages.list,
+			listPaginated: api.messages.listPaginated,
+			allThreads: api.messages.allThreads,
+			allThreadsPaginated: api.messages.allThreadsPaginated,
+		},
+		notifications: {
+			getUnreadFlags: api.notifications.getUnreadFlags,
+			markSeen: api.notifications.markSeen,
+		},
+		orders: {
+			list: api.orders.list,
+			updateStatus: api.orders.updateStatus,
+			getStats: api.orders.getStats,
+		},
+		platform: {
+			createClient: api.platform.createClient,
+			updateClient: api.platform.updateClient,
+			updateSubscription: api.platform.updateSubscription,
+			listAll: api.platform.listAll,
+		},
+		portal: { createToken: api.portal.createToken },
+		quotes: {
+			create: api.quotes.create,
+			update: api.quotes.update,
+			remove: api.quotes.remove,
+			get: api.quotes.get,
+			list: api.quotes.list,
+			markSent: api.quotes.markSent,
+			markAccepted: api.quotes.markAccepted,
+			markDeclined: api.quotes.markDeclined,
+			convertToInvoice: api.quotes.convertToInvoice,
+			getNextNumber: api.quotes.getNextNumber,
+			listPresets: api.quotes.listPresets,
+			createPreset: api.quotes.createPreset,
+			updatePreset: api.quotes.updatePreset,
+			removePreset: api.quotes.removePreset,
+		},
+		tags: {
+			createTag: api.tags.createTag,
+			deleteTag: api.tags.deleteTag,
+			assignTag: api.tags.assignTag,
+			removeTag: api.tags.removeTag,
+			listTags: api.tags.listTags,
+			getClientTags: api.tags.getClientTags,
+		},
+	} satisfies AdminBrowserCapabilities;
+
+	return capabilities;
+}
