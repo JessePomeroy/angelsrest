@@ -6,7 +6,6 @@ const MAX_CLOCK_SKEW_SECONDS = 300;
 const SIGNATURE_DOMAIN = "angels-rest-r4-read-v1";
 
 export const r4ReadPurposes = {
-	checkoutCatalogSentinel: "r4-checkout-catalog-sentinel-v1",
 	closureState: "r4-closure-state-v1",
 	shopCatalogSentinel: "r4-shop-catalog-sentinel-v1",
 } as const;
@@ -17,12 +16,6 @@ const contracts: Record<
 	R4ReadPurpose,
 	{ method: "GET" | "POST"; pathname: string; contentType: string | null; maxBodyBytes: number }
 > = {
-	[r4ReadPurposes.checkoutCatalogSentinel]: {
-		method: "POST",
-		pathname: "/api/admin/commerce/catalog-sentinel",
-		contentType: "application/json",
-		maxBodyBytes: 96,
-	},
 	[r4ReadPurposes.closureState]: {
 		method: "GET",
 		pathname: "/api/admin/commerce/closure-state",

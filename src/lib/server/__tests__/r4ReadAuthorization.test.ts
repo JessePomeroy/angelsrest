@@ -63,62 +63,44 @@ describe("R4 fixed-purpose read authorization", () => {
 	});
 
 	it("accepts only a fresh lowercase SHA-256 signature for the exact purpose", () => {
-		const signedCheckout = signed(r4ReadPurposes.checkoutCatalogSentinel, {
-			method: "POST",
-			pathname: "/api/admin/commerce/catalog-sentinel",
-			body: '{"authorization":"r4_checkout_catalog_sentinel_v1"}',
+		const signedShop = signed(r4ReadPurposes.shopCatalogSentinel, {
+			pathname: "/api/admin/commerce/shop-catalog-sentinel",
 		});
 		expect(
 			verifyR4ReadHmac(
-				signedCheckout.request,
-				r4ReadPurposes.checkoutCatalogSentinel,
-				signedCheckout.body,
+				signedShop.request,
+				r4ReadPurposes.shopCatalogSentinel,
+				signedShop.body,
 				nowMs,
 			),
 		).toBe(true);
 		expect(
-			verifyR4ReadHmac(
-				signedCheckout.request,
-				r4ReadPurposes.shopCatalogSentinel,
-				signedCheckout.body,
-				nowMs,
-			),
+			verifyR4ReadHmac(signedShop.request, r4ReadPurposes.closureState, signedShop.body, nowMs),
 		).toBe(false);
-		const uppercase = new Request(signedCheckout.request, {
-			headers: signedCheckout.request.headers,
+		const uppercase = new Request(signedShop.request, {
+			headers: signedShop.request.headers,
 		});
 		uppercase.headers.set(
 			"x-r4-signature",
 			uppercase.headers.get("x-r4-signature")?.toUpperCase() ?? "",
 		);
-		expect(
-			verifyR4ReadHmac(
-				uppercase,
-				r4ReadPurposes.checkoutCatalogSentinel,
-				signedCheckout.body,
-				nowMs,
-			),
-		).toBe(false);
+		expect(verifyR4ReadHmac(uppercase, r4ReadPurposes.shopCatalogSentinel, "", nowMs)).toBe(false);
 	});
 
 	it("binds method, path, and exact raw body so a signature cannot switch reads", () => {
-		const original = signed(r4ReadPurposes.checkoutCatalogSentinel, {
-			method: "POST",
-			pathname: "/api/admin/commerce/catalog-sentinel",
-			body: '{"authorization":"r4_checkout_catalog_sentinel_v1"}',
+		const original = signed(r4ReadPurposes.shopCatalogSentinel, {
+			pathname: "/api/admin/commerce/shop-catalog-sentinel",
 		});
 		for (const [request, body] of [
 			[
-				new Request("https://angelsrest.online/api/admin/commerce/shop-catalog-sentinel", {
-					method: "POST",
+				new Request("https://angelsrest.online/api/admin/commerce/closure-state", {
 					headers: original.request.headers,
-					body: original.body,
 				}),
 				original.body,
 			],
-			[original.request, '{"authorization":"r4_checkout_catalog_sentinel_v2"}'],
+			[original.request, "different body"],
 		] as const) {
-			expect(verifyR4ReadHmac(request, r4ReadPurposes.checkoutCatalogSentinel, body, nowMs)).toBe(
+			expect(verifyR4ReadHmac(request, r4ReadPurposes.shopCatalogSentinel, body, nowMs)).toBe(
 				false,
 			);
 		}
@@ -158,19 +140,12 @@ describe("R4 fixed-purpose read authorization", () => {
 			new Request("https://angelsrest.online/api/admin/commerce/closure-state", {
 				method: "POST",
 			}),
-			new Request("https://angelsrest.online/api/admin/commerce/catalog-sentinel", {
-				method: "POST",
-				headers: { "content-type": "text/plain" },
-				body: "{}",
-			}),
-			new Request("https://angelsrest.online/api/admin/commerce/catalog-sentinel", {
-				method: "POST",
+			new Request("https://angelsrest.online/api/admin/commerce/closure-state", {
 				headers: { "content-type": "application/json" },
-				body: "x".repeat(97),
 			}),
 		]) {
 			await expect(
-				authorizeR4ReadRequest(request, r4ReadPurposes.checkoutCatalogSentinel),
+				authorizeR4ReadRequest(request, r4ReadPurposes.closureState),
 			).resolves.toBeNull();
 		}
 		expect(mocks.verify).not.toHaveBeenCalled();
