@@ -10,7 +10,7 @@ export default defineConfig({
 	},
 	webServer: {
 		command: "pnpm dev --host 127.0.0.1",
-		// Probe a static asset so CI placeholder Sanity config and the closed
+		// Probe a static asset so remote content availability and the closed
 		// commerce gate cannot block server readiness.
 		url: "http://127.0.0.1:5173/robots.txt",
 		reuseExistingServer: !process.env.CI,

@@ -3,7 +3,7 @@
  *
  * This is the source of truth for paper, size, border, frame, canvas, and
  * wholesale lookup metadata used by public shop pages, checkout, fulfillment,
- * and Sanity Studio margin fields.
+ * and catalog editor margin fields.
  */
 
 export interface V2Paper {
