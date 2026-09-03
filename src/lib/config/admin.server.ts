@@ -1,10 +1,12 @@
 import type { AdminServerConfig } from "@jessepomeroy/admin/server";
+import { api } from "$convex/api";
 import { env as privateEnv } from "$env/dynamic/private";
 import { env as publicEnv } from "$env/dynamic/public";
 import { adminAuth } from "$lib/server/adminAuth";
 import { getGalleryWorkerUrl } from "$lib/server/galleryWorkerUrl";
 import { verifySiteAdminRequest } from "$lib/server/siteAdminAuthorization";
 import { adminConfig } from "./admin";
+import { createAdminPlatformCapabilities } from "./adminPlatformCapabilities";
 
 const TOKEN68_BEARER_PATTERN = /^[-A-Za-z0-9._~+/]+={0,}$/;
 
@@ -35,6 +37,7 @@ const catalogPrivateEditorUpload =
 
 export const adminServerConfig: AdminServerConfig = {
 	...adminConfig,
+	api: createAdminPlatformCapabilities(api, "server"),
 	galleryWorkerUrl: getGalleryWorkerUrl(),
 	galleryAdminSecret: privateEnv.GALLERY_ADMIN_SECRET ?? "",
 	cmsMediaWorkerUrl: "https://cms-media-worker.thinkingofview.workers.dev",

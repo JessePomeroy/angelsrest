@@ -1,9 +1,11 @@
 import { describe, expect, it, vi } from "vitest";
+import { api } from "$convex/api";
 import {
 	calculateCatalogProductMargin,
 	resolveCatalogProductVariantOptions,
 } from "$lib/catalogProductMargin";
 import { adminConfig } from "$lib/config/admin";
+import { createAdminPlatformCapabilities } from "$lib/config/adminPlatformCapabilities";
 
 const {
 	apiMock,
@@ -17,7 +19,7 @@ const {
 	mediaApi,
 	portfolioApi,
 } = vi.hoisted(() => {
-	const editorRefs = (namespace: "blogContent" | "postContent") =>
+	const editorRefs = (namespace: string) =>
 		new Proxy({} as Record<string, string>, {
 			get(_target, prop) {
 				return typeof prop === "string" ? `${namespace}.${prop}` : undefined;
@@ -95,17 +97,8 @@ const {
 		remove: "portfolioGalleries.remove",
 		reorder: "portfolioGalleries.reorder",
 	};
-	return {
-		blogApi,
-		postApi,
-		catalogApi,
-		catalogGraphApi,
-		contentApi,
-		documentEmailApi,
-		galleriesApi,
-		mediaApi,
-		portfolioApi,
-		apiMock: {
+	const apiMock = new Proxy(
+		{
 			catalogProducts: catalogApi,
 			catalogProductGraphs: catalogGraphApi,
 			content: contentApi,
@@ -118,13 +111,35 @@ const {
 			mediaAssets: mediaApi,
 			crm: { getStats: "crm.getStats" },
 		},
+		{
+			get(target, prop, receiver) {
+				return (
+					Reflect.get(target, prop, receiver) ??
+					(typeof prop === "string" ? editorRefs(prop) : undefined)
+				);
+			},
+		},
+	);
+	return {
+		blogApi,
+		postApi,
+		catalogApi,
+		catalogGraphApi,
+		contentApi,
+		documentEmailApi,
+		galleriesApi,
+		mediaApi,
+		portfolioApi,
+		apiMock,
 	};
 });
 
 vi.mock("$convex/api", () => ({ api: apiMock }));
 
-describe("admin API aliases", () => {
-	it("adds the CMS media registry without disturbing existing host aliases", () => {
+describe("admin platform capabilities", () => {
+	it("adapts the generated API without exposing server-only browser capabilities", () => {
+		expect(Object.getPrototypeOf(adminConfig.api)).toBe(Object.prototype);
+		expect(Reflect.get(adminConfig.api, "unknownCapability")).toBeUndefined();
 		for (const [configured, source] of [
 			[adminConfig.api.blogContent, blogApi],
 			[adminConfig.api.postContent, postApi],
@@ -145,7 +160,7 @@ describe("admin API aliases", () => {
 			expect(Reflect.get(configured ?? {}, "importSanityBlogDrafts")).toBeUndefined();
 			expect(Reflect.get(configured ?? {}, "restorePublishedManifest")).toBeUndefined();
 		}
-		expect(adminConfig.api.catalogProducts).toBe(catalogApi);
+		expect(adminConfig.api.catalogProducts).toEqual(catalogApi);
 		expect(adminConfig.api.catalogProducts).not.toHaveProperty("publish");
 		const productGraphApi = adminConfig.api.catalogProductGraphs;
 		expect(productGraphApi).not.toBe(catalogGraphApi);
@@ -174,10 +189,12 @@ describe("admin API aliases", () => {
 		expect(adminConfig.api.mediaAssets?.registerReadyWebAsset).toBe(mediaApi.registerReadyWebAsset);
 		expect(adminConfig.api.galleryDelivery?.listBySite).toBe(galleriesApi.listBySite);
 		expect(adminConfig.api.galleryDelivery?.setPassword).toBe(apiMock.galleryPassword.setPassword);
-		expect(adminConfig.api.crm).toBe(apiMock.crm);
-		expect(adminConfig.api.documentEmailAttempts).not.toBe(documentEmailApi);
-		expect(adminConfig.api.documentEmailAttempts).toEqual(documentEmailApi);
-		expect(Object.keys(adminConfig.api.documentEmailAttempts ?? {})).toEqual([
+		expect(adminConfig.api.crm?.getStats).toBe(apiMock.crm.getStats);
+		expect(adminConfig.api.documentEmailAttempts).toBeUndefined();
+		const serverCapabilities = createAdminPlatformCapabilities(api, "server");
+		expect(serverCapabilities.documentEmailAttempts).not.toBe(documentEmailApi);
+		expect(serverCapabilities.documentEmailAttempts).toEqual(documentEmailApi);
+		expect(Object.keys(serverCapabilities.documentEmailAttempts ?? {})).toEqual([
 			"get",
 			"getRecovery",
 			"getOpenRecoveryByDocument",
@@ -187,7 +204,7 @@ describe("admin API aliases", () => {
 			"fail",
 			"resolve",
 		]);
-		expect(Reflect.get(adminConfig.api.documentEmailAttempts ?? {}, "unknownCapability")).toBe(
+		expect(Reflect.get(serverCapabilities.documentEmailAttempts ?? {}, "unknownCapability")).toBe(
 			undefined,
 		);
 		expect(adminConfig.api.siteEditor).not.toBe(contentApi);

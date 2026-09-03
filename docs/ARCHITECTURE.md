@@ -113,6 +113,11 @@ security boundary; keep verification inside the host route.
    `requireSiteAdmin`, `requireDocumentSiteAdmin`, or `requireCreator`.
 8. Shared server handlers, including gallery-worker/R2 operations, call the
    host's per-request site-admin verifier before performing side effects.
+9. `createAdminPlatformCapabilities` adapts the generated Convex proxy to the
+   shared Admin interface. Its browser mode exposes exact editor and operational
+   capability groups without the server-owned document-email journal; server
+   mode adds that journal for authenticated handler factories. Host config does
+   not proxy or cast the generated API.
 
 R12 uses a widen/claim/narrow migration. Angels Rest has claimed and verified a
 stable identity, so its authorization no longer depends on email equality. The
@@ -149,8 +154,8 @@ and client while leaving unrelated tenant data untouched. Failed or definitely
 unsent replacement attempts revoke only their own new capability, preserving the
 last known delivered link. These additive schema and function changes required no
 initial data backfill. Shared Admin `3.42.1` is pinned, the host exposes the three
-authenticated recovery routes and passes exactly eight public attempt references,
-and the matching Convex functions are deployed.
+authenticated recovery routes and passes exactly eight public attempt references
+only through server configuration, and the matching Convex functions are deployed.
 
 ### Editor media boundary
 
