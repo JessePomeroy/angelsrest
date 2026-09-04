@@ -93,6 +93,7 @@ export const getStripeAccountForSite = query({
 			.unique();
 		if (!client) return null;
 		return {
+			tenantId: client.tenantId,
 			siteUrl: client.siteUrl,
 			name: client.name,
 			stripeConnectedAccountId: client.stripeConnectedAccountId,
@@ -147,6 +148,7 @@ export const getCommerceProfileForSite = query({
 		if (!client) return null;
 
 		return {
+			tenantId: client.tenantId,
 			siteName: client.name || client.siteUrl,
 			siteUrl: client.siteUrl,
 			adminEmail: client.adminEmails[0] || client.email,

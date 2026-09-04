@@ -12,6 +12,7 @@ import {
 import { buildCheckoutLineItem } from "$lib/server/stripeCheckoutSession";
 import {
 	buildTenantCheckoutOptions,
+	COMMERCE_TENANT_ID_METADATA_KEY,
 	COMMERCE_TENANT_METADATA_KEY,
 	type StripeTenantAccount,
 } from "$lib/server/stripeConnect";
@@ -33,6 +34,7 @@ const ITEM_KEYS = [
 const RESERVED_METADATA_KEYS = new Set([
 	"catalogProvider",
 	"checkoutFingerprint",
+	COMMERCE_TENANT_ID_METADATA_KEY,
 	COMMERCE_TENANT_METADATA_KEY,
 	"invoiceId",
 	"siteUrl",
