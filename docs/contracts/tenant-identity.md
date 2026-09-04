@@ -63,3 +63,12 @@ New Angels Rest Checkout Sessions and PaymentIntents carry both
 `commerceTenantId` and `commerceTenantSiteUrl`. Webhook resolution compares the
 opaque identity with the compatibility domain and fails closed on disagreement.
 Unclaimed tenants continue emitting only `commerceTenantSiteUrl`.
+
+## Stage B2 — durable checkout widening
+
+Checkout snapshot reservations and Session admissions may retain an optional
+tenant ID beside `siteUrl`. Private protocol parsers accept both the old request
+shape and the additive identified shape. An ID is accepted only when it and the
+site reference resolve to the same tenant; omission preserves the old protocol
+for unclaimed tenants. Host adoption follows only after this backend widening
+is deployed.

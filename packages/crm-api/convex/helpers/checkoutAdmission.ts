@@ -4,6 +4,7 @@ import {
 	isStripeConnectedAccountId,
 } from "./checkoutSnapshot";
 import { isCommerceTenant } from "./commercePurposeControl";
+import { isTenantId } from "./tenantContext";
 
 const HEX_DIGEST = /^[0-9a-f]{64}$/;
 const UUID_V4 = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
@@ -30,13 +31,16 @@ function account(value: unknown) {
 }
 
 export function parseAdmissionBeginRequest(value: unknown) {
-	if (!exactObject(value, [
+	const keys = [
 		"version", "site", "account", "attemptDigest", "proofClass", "admissionHandleHash",
 		"requestFingerprint", "activeLeaseTokenHash", "hostGeneration",
-	])) return null;
+	];
+	if (!exactObject(value, keys) && !exactObject(value, [...keys, "tenantId"])) return null;
 	const connectedAccount = account(value.account);
+	const tenantId = value.tenantId === undefined ? undefined : value.tenantId;
 	return value.version === 1
 		&& isCommerceTenant(value.site)
+		&& (tenantId === undefined || isTenantId(tenantId))
 		&& connectedAccount !== undefined
 		&& digest(value.attemptDigest)
 		&& (value.proofClass === "same_origin_host_proof" || value.proofClass === "signed_bridge_body")
@@ -47,6 +51,7 @@ export function parseAdmissionBeginRequest(value: unknown) {
 		&& Number(value.hostGeneration) >= 1
 		? {
 				site: value.site,
+				...(tenantId ? { tenantId } : {}),
 				account: connectedAccount,
 				attemptDigest: value.attemptDigest,
 				proofClass: value.proofClass as "same_origin_host_proof" | "signed_bridge_body",

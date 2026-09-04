@@ -1,5 +1,6 @@
 import { type Infer, v } from "convex/values";
 import { catalogProductKindValidator } from "./catalogProductValidators";
+import { isTenantId } from "./tenantContext";
 
 const nullableKey = v.union(v.string(), v.null());
 const encoder = new TextEncoder();
@@ -115,24 +116,38 @@ export function isBoundedStripeExpiration(
 }
 
 export function parseReservationRequest(value: unknown) {
-	if (!exactRecord(value, ["version", "site", "attempt", "account", "snapshot"])) return null;
+	if (
+		!exactRecord(value, ["version", "site", "attempt", "account", "snapshot"]) &&
+		!exactRecord(value, ["version", "site", "tenantId", "attempt", "account", "snapshot"])
+	)
+		return null;
 	const site = siteString(value.site);
+	const tenantId = value.tenantId === undefined ? undefined : value.tenantId;
 	const account = value.account === null ? null : value.account;
 	const snapshot = parseReservedCheckoutSnapshot(value.snapshot);
 	return value.version === 1 && site && UUID_V4.test(String(value.attempt)) && snapshot
+		&& (tenantId === undefined || isTenantId(tenantId))
 		&& (account === null || isStripeConnectedAccountId(account))
-		? { site, attempt: value.attempt as string, account, snapshot } : null;
+		? { site, ...(tenantId ? { tenantId } : {}), attempt: value.attempt as string, account, snapshot } : null;
 }
 
 export function parseReservationBindRequest(value: unknown) {
-	if (!exactRecord(value, ["version", "site", "handle", "account", "session", "stripeExpiresAt"])) return null;
+	if (
+		!exactRecord(value, ["version", "site", "handle", "account", "session", "stripeExpiresAt"]) &&
+		!exactRecord(value, [
+			"version", "site", "tenantId", "handle", "account", "session", "stripeExpiresAt",
+		])
+	)
+		return null;
 	const site = siteString(value.site);
+	const tenantId = value.tenantId === undefined ? undefined : value.tenantId;
 	const account = value.account === null ? null : value.account;
 	return value.version === 1 && site && UUID_V4.test(String(value.handle))
+		&& (tenantId === undefined || isTenantId(tenantId))
 		&& (account === null || isStripeConnectedAccountId(account))
 		&& isStripeCheckoutSessionId(value.session)
 		&& isBoundedStripeExpiration(value.stripeExpiresAt)
-		? { site, handle: value.handle as string, account, session: value.session,
+		? { site, ...(tenantId ? { tenantId } : {}), handle: value.handle as string, account, session: value.session,
 			stripeExpiresAt: value.stripeExpiresAt as number } : null;
 }
 

@@ -895,6 +895,7 @@ export default defineSchema({
 	// additive; old hosts do not create or consume them until Unit B is deployed.
 	checkoutSessionAdmissions: defineTable({
 		protocolVersion: v.literal(1),
+		tenantId: v.optional(v.string()),
 		siteUrl: v.string(),
 		accountScope: v.string(),
 		stripeConnectedAccountId: v.optional(v.string()),
@@ -954,6 +955,7 @@ export default defineSchema({
 	// Short-lived, tenant-authenticated handoff from checkout creation to the paid webhook.
 	checkoutSnapshotReservations: defineTable({
 		state: v.union(v.literal("reserved"), v.literal("bound")),
+		tenantId: v.optional(v.string()),
 		siteUrl: v.string(),
 		handleHash: v.string(),
 		snapshotDigest: v.string(),

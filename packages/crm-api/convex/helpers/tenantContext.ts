@@ -15,6 +15,25 @@ type TenantContext = {
 	resolvedBy: "tenantId" | "alias" | "legacy_siteUrl";
 };
 
+const TENANT_ID =
+	/^tenant_[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
+
+export function isTenantId(value: unknown): value is string {
+	return typeof value === "string" && TENANT_ID.test(value);
+}
+
+export async function tenantIdentityMatchesSite(
+	ctx: Pick<QueryCtx, "db">,
+	tenantId: string,
+	siteUrl: string,
+) {
+	const [byId, bySiteUrl] = await Promise.all([
+		resolveTenantContext(ctx, { tenantId }),
+		resolveTenantContext(ctx, { siteUrl }),
+	]);
+	return byId !== null && bySiteUrl !== null && byId.tenantId === bySiteUrl.tenantId;
+}
+
 function normalizeDomain(value: string) {
 	const trimmed = value.trim().replace(/\/+$/, "");
 	if (!trimmed) throw new Error("Tenant domain cannot be empty");

@@ -27,6 +27,7 @@ const SESSION = "cs_test_1234567890abcdefghijklmnop";
 const BOUND_SESSION = "cs_test_1234567890abcdefghijklmnox";
 const RESERVE_PATH = "/commerce/checkout-snapshots/reserve";
 const BIND_PATH = "/commerce/checkout-snapshots/bind";
+const TENANT_ID_A = "tenant_05eb6092-5d8c-43ce-ad26-1a59522bd07b";
 const envNames = [
 	"CHECKOUT_SNAPSHOT_RESERVATION_SECRETS", "WEBHOOK_SECRET", "BETTER_AUTH_SECRET", "SITE_URL",
 	"AUTH_GOOGLE_SECRET", "STRIPE_SECRET_KEY", "ORDER_LOOKUP_SECRET", "ORDER_PRODUCERS_STATE",
@@ -131,6 +132,27 @@ async function seedPlatformClients(t: ReturnType<typeof convexTest>) {
 	});
 }
 
+async function seedTenantIdentity(t: ReturnType<typeof convexTest>) {
+	await t.run(async (ctx) => {
+		await ctx.db.insert("platformClients", {
+			tenantId: TENANT_ID_A,
+			name: SITE_A,
+			email: `owner@${SITE_A}`,
+			siteUrl: SITE_A,
+			tier: "full",
+			subscriptionStatus: "active",
+			adminEmails: [`owner@${SITE_A}`],
+		});
+		await ctx.db.insert("tenantAliases", {
+			tenantId: TENANT_ID_A,
+			kind: "domain",
+			value: SITE_A,
+			verifiedAt: Date.now(),
+			verificationMethod: "operator",
+		});
+	});
+}
+
 describe("checkout snapshot reservation input and authentication", () => {
 	test("requires the exact normalized bounded snapshot shape", () => {
 		expect(parseReservedCheckoutSnapshot(snapshot)).toEqual(snapshot);
@@ -199,6 +221,30 @@ describe("checkout snapshot reservation input and authentication", () => {
 });
 
 describe("reservation, binding, and order transfer", () => {
+	test("stores an optional matching tenant ID while preserving legacy requests", async () => {
+		const t = convexTest(schema, modules);
+		await seedTenantIdentity(t);
+		const identified = await reserve(t, reserveBody(undefined, { tenantId: TENANT_ID_A }));
+		expect(identified.response.status).toBe(200);
+		expect((await rows(t))[0]?.tenantId).toBe(TENANT_ID_A);
+		expect((await reserve(t)).json.replayed).toBe(true);
+
+		const legacy = await reserve(
+			t,
+			reserveBody("123e4567-e89b-42d3-a456-426614174018"),
+		);
+		expect(legacy.response.status).toBe(200);
+		expect((await rows(t)).some((row) => row.tenantId === undefined)).toBe(true);
+		expect(
+			(await reserve(
+				t,
+				reserveBody("123e4567-e89b-42d3-a456-426614174019", {
+					tenantId: "tenant_15eb6092-5d8c-43ce-ad26-1a59522bd07b",
+				}),
+			)).response.status,
+		).toBe(403);
+	});
+
 	test.each([
 		["missing", undefined],
 		["explicit closed", "closed"],

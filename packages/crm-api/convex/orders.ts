@@ -30,6 +30,7 @@ import {
 	reservationHandleHash,
 	stripeAccountScope,
 } from "./helpers/checkoutSnapshot";
+import { tenantIdentityMatchesSite } from "./helpers/tenantContext";
 import { AGGREGATE_SCAN_LIMIT, BULK_SCAN_LIMIT } from "./helpers/limits";
 import {
 	assertOrderNumberAvailable,
@@ -396,7 +397,7 @@ async function tokenlessPreProtocolCheckoutIsCompatible(
 
 export const reserveCheckoutSnapshot = internalMutation({
 	args: {
-		siteUrl: v.string(), handleHash: v.string(), snapshotDigest: v.string(),
+		tenantId: v.optional(v.string()), siteUrl: v.string(), handleHash: v.string(), snapshotDigest: v.string(),
 		snapshot: reservedCheckoutSnapshotValidator, stripeConnectedAccountId: v.optional(v.string()),
 	},
 	handler: async (ctx, args) => {
@@ -407,6 +408,9 @@ export const reserveCheckoutSnapshot = internalMutation({
 		if (!await connectedAccountMatchesSite(ctx, args.siteUrl, args.stripeConnectedAccountId)) {
 			return { outcome: "routing_mismatch" as const };
 		}
+		if (args.tenantId && !await tenantIdentityMatchesSite(ctx, args.tenantId, args.siteUrl)) {
+			return { outcome: "routing_mismatch" as const };
+		}
 		const existing = await ctx.db.query("checkoutSnapshotReservations")
 			.withIndex("by_siteUrl_and_handleHash", (q) => q.eq("siteUrl", args.siteUrl).eq("handleHash", args.handleHash)).unique();
 		const accountScope = stripeAccountScope(args.stripeConnectedAccountId);
@@ -414,7 +418,8 @@ export const reserveCheckoutSnapshot = internalMutation({
 			const replayed = existing.snapshotDigest === args.snapshotDigest
 				&& JSON.stringify(existing.snapshot) === JSON.stringify(args.snapshot)
 				&& existing.accountScope === accountScope
-				&& existing.stripeConnectedAccountId === args.stripeConnectedAccountId;
+				&& existing.stripeConnectedAccountId === args.stripeConnectedAccountId
+				&& (args.tenantId === undefined || existing.tenantId === args.tenantId);
 			return { outcome: replayed ? "replayed" as const : "conflict" as const };
 		}
 		assertOrderProducersOpen();
@@ -422,7 +427,7 @@ export const reserveCheckoutSnapshot = internalMutation({
 		const createdAt = Date.now();
 		const unboundPurgeAt = createdAt + UNBOUND_RETENTION_MS;
 		const reservationId = await ctx.db.insert("checkoutSnapshotReservations", {
-			state: "reserved", siteUrl: args.siteUrl, handleHash: args.handleHash,
+			state: "reserved", tenantId: args.tenantId, siteUrl: args.siteUrl, handleHash: args.handleHash,
 			snapshotDigest: args.snapshotDigest, snapshot: args.snapshot, accountScope,
 			stripeConnectedAccountId: args.stripeConnectedAccountId,
 			unboundPurgeAt, createdAt, updatedAt: createdAt,
@@ -436,7 +441,7 @@ export const reserveCheckoutSnapshot = internalMutation({
 
 export const bindCheckoutSnapshot = internalMutation({
 	args: {
-		siteUrl: v.string(), handleHash: v.string(), stripeConnectedAccountId: v.optional(v.string()),
+		tenantId: v.optional(v.string()), siteUrl: v.string(), handleHash: v.string(), stripeConnectedAccountId: v.optional(v.string()),
 		stripeSessionId: v.string(), stripeExpiresAt: v.number(),
 	},
 	handler: async (ctx, args) => {
@@ -449,9 +454,15 @@ export const bindCheckoutSnapshot = internalMutation({
 		if (!await connectedAccountMatchesSite(ctx, args.siteUrl, args.stripeConnectedAccountId)) {
 			return { outcome: "routing_mismatch" as const };
 		}
+		if (args.tenantId && !await tenantIdentityMatchesSite(ctx, args.tenantId, args.siteUrl)) {
+			return { outcome: "routing_mismatch" as const };
+		}
 		const row = await ctx.db.query("checkoutSnapshotReservations")
 			.withIndex("by_siteUrl_and_handleHash", (q) => q.eq("siteUrl", args.siteUrl).eq("handleHash", args.handleHash)).unique();
 		if (!row) return { outcome: "not_found" as const };
+		if (args.tenantId !== undefined && row.tenantId !== args.tenantId) {
+			return { outcome: "conflict" as const };
+		}
 		const accountScope = stripeAccountScope(args.stripeConnectedAccountId);
 		if (await retiredOrderSession(ctx, args.stripeSessionId)) {
 			return { outcome: "conflict" as const };
