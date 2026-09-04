@@ -39,6 +39,9 @@ Sanity is not application infrastructure. Executable clients, preview/provider
 routes, migration entry points, dependencies, and historical purchase readers
 are retired. `sanityImport` and `provider: "sanity"` values on migrated Convex
 rows are inert lineage, and the external archive is historical evidence only.
+The read-only external inventory and unapproved cleanup allowlist are recorded
+in
+[`migrations/sanity-external-inventory-2026-09-03.md`](migrations/sanity-external-inventory-2026-09-03.md).
 
 ## Host boundary
 
