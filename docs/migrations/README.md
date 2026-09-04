@@ -19,5 +19,8 @@ future audits, but they are not current implementation guidance.
 - [`checkout-admission-reopening-2026-09-04.md`](checkout-admission-reopening-2026-09-04.md)
   records the DF-04 Angels Rest-only generation-5 reopening, non-creating
   production preflight, canonical tenant-key repair, and rollback boundary.
+- [`convex-compatibility-stub-retirement-2026-09-04.md`](convex-compatibility-stub-retirement-2026-09-04.md)
+  records the DF-07 sanctioned-codegen removal of 30 empty migration modules
+  and their stale generated API declaration entries.
 
 Use [`../ARCHITECTURE.md`](../ARCHITECTURE.md) for the current system map.
