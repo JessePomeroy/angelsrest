@@ -18,8 +18,17 @@ function quantity(lineItems: Stripe.LineItem[], ordinal: number) {
 	return Number(value);
 }
 
-function sameItem(left: unknown, right: CheckoutSnapshotItem) {
-	return JSON.stringify(left) === JSON.stringify(right);
+function sameItem(left: CheckoutSnapshotItem, right: CheckoutSnapshotItem) {
+	return (
+		left.productKey === right.productKey &&
+		left.revisionId === right.revisionId &&
+		left.productKind === right.productKind &&
+		left.variantKey === right.variantKey &&
+		left.materialOptionKey === right.materialOptionKey &&
+		left.sizeOptionKey === right.sizeOptionKey &&
+		left.borderOptionKey === right.borderOptionKey &&
+		left.frameOptionKey === right.frameOptionKey
+	);
 }
 
 function orientSize(
