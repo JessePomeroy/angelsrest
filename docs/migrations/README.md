@@ -16,5 +16,8 @@ future audits, but they are not current implementation guidance.
 - [`architecture-retrofit-verification-2026-09-03.md`](architecture-retrofit-verification-2026-09-03.md)
   records the AR-FINAL release references, production smoke evidence, explicit
   compatibility outcomes, and deferred boundary awaiting the owner seal.
+- [`checkout-admission-reopening-2026-09-04.md`](checkout-admission-reopening-2026-09-04.md)
+  records the DF-04 Angels Rest-only generation-5 reopening, non-creating
+  production preflight, canonical tenant-key repair, and rollback boundary.
 
 Use [`../ARCHITECTURE.md`](../ARCHITECTURE.md) for the current system map.
