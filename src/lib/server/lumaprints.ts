@@ -56,7 +56,7 @@ type LumaPrintsJsonFailurePhase =
 
 type LumaPrintsSubmissionEvidence =
 	| { phase: "transport"; kind: "network" | "timeout"; timeoutMs: number }
-	| { phase: "status"; statusCode: number }
+	| ({ phase: "status"; statusCode: number } & LumaPrintsErrorDetails)
 	| { phase: LumaPrintsJsonFailurePhase };
 
 /** Outcome of the create-order operation, without retaining a provider body. */
@@ -281,6 +281,60 @@ async function fetchLumaPrints(path: string, init: RequestInit = {}): Promise<Re
 	}
 }
 
+/** Retain only fixed diagnostic labels and documented dimensions, never upstream text/URLs. */
+async function rejectionDiagnostics(response: Response): Promise<LumaPrintsErrorDetails> {
+	try {
+		const invalid = () => new Error("Unreadable provider diagnostic");
+		const body = await readBoundedJson(
+			response,
+			LUMAPRINTS_CREATE_RESPONSE_MAX_BYTES,
+			invalid,
+			invalid,
+			invalid,
+		);
+		if (!object(body)) return { providerReason: "unrecognized" };
+		const message = [body.message]
+			.flat()
+			.filter((value) => typeof value === "string")
+			.join(" ");
+		const reasons = Object.entries({
+			billing_address: /billing address/i,
+			payment_method: /payment method|primary card/i,
+			image_dimensions: /aspect ratio|resolution|dimensions|sized incorrectly/i,
+			image_source: /image|imageUrl/i,
+			product_options: /subcategory|orderItemOptions/i,
+			recipient: /recipient/i,
+			shipping: /shipping/i,
+			store: /storeId/i,
+			external_id: /externalId|externalItemId/i,
+		})
+			.filter(([, pattern]) => pattern.test(message))
+			.map(([reason]) => reason);
+		const details: Record<string, string | number> = {
+			providerReason: reasons.join(",") || "unrecognized",
+		};
+		for (const key of [
+			"expectedWidth",
+			"expectedHeight",
+			"actualImageWidth",
+			"actualImageHeight",
+		]) {
+			const value = body[key];
+			if (
+				typeof value === "number" &&
+				Number.isSafeInteger(value) &&
+				value > 0 &&
+				value <= 1_000_000
+			)
+				details[key] = value;
+		}
+		return details;
+	} catch {
+		// Diagnostics must never change the already-known submission disposition.
+		return { providerReason: "unavailable" };
+	}
+}
+
 /** Submit an order to LumaPrints. */
 export async function createOrder(order: LumaPrintsOrder): Promise<LumaPrintsOrderResponse> {
 	let res: Response;
@@ -308,7 +362,7 @@ export async function createOrder(order: LumaPrintsOrder): Promise<LumaPrintsOrd
 			res.status === 400 || res.status === 406 || res.status === 429
 				? "definitely_rejected"
 				: "uncertain",
-			{ phase: "status", statusCode: res.status },
+			{ phase: "status", statusCode: res.status, ...(await rejectionDiagnostics(res)) },
 		);
 	}
 	const body = await readBoundedJson(

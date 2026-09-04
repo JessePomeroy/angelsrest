@@ -364,10 +364,61 @@ describe("createOrder", () => {
 				disposition: "definitely_rejected",
 				phase: "status",
 				statusCode: 400,
+				providerReason: "unavailable",
 			});
 			expect(JSON.stringify((err as LumaPrintsError).details)).not.toContain(
 				"private upstream detail",
 			);
+		}
+	});
+
+	it("retains safe rejection diagnostics without response text or capability URLs", async () => {
+		for (const [body, expected] of [
+			[
+				{ message: "The default billing address of this account has not been configured." },
+				{ providerReason: "billing_address" },
+			],
+			[
+				{
+					message: [
+						"Image aspect ratio is incorrect: https://private.example/secret",
+						"jane@example.com",
+					],
+					imageUrl: "https://private.example/secret",
+					expectedWidth: 1800,
+					expectedHeight: 1200,
+					actualImageWidth: 6935,
+					actualImageHeight: "private-value",
+					errorCode: "private-value",
+				},
+				{
+					providerReason: "image_dimensions,image_source",
+					expectedWidth: 1800,
+					expectedHeight: 1200,
+					actualImageWidth: 6935,
+				},
+			],
+			[
+				{ message: "private-value", expectedWidth: -1, actualImageHeight: 1e20 },
+				{ providerReason: "unrecognized" },
+			],
+			[
+				{ message: "billing address", padding: "x".repeat(33 * 1024) },
+				{ providerReason: "unavailable" },
+			],
+		] as const) {
+			vi.stubGlobal("fetch", vi.fn().mockResolvedValue(providerJson(body, { status: 400 })));
+			const error = await createOrder(
+				buildLumaPrintsOrder("fail-order", mockRecipient, mockItems),
+			).catch((error: LumaPrintsSubmissionError) => error);
+			expect(error).toMatchObject({ disposition: "definitely_rejected" });
+			expect((error as LumaPrintsSubmissionError).details).toEqual({
+				operation: "create_order",
+				disposition: "definitely_rejected",
+				phase: "status",
+				statusCode: 400,
+				...expected,
+			});
 		}
 	});
 

@@ -48,8 +48,9 @@ vi.mock("$lib/server/lumaprints", () => {
 		constructor(
 			message: string,
 			readonly disposition: "definitely_rejected" | "uncertain",
+			details?: unknown,
 		) {
-			super(message);
+			super(message, details);
 			this.name = "LumaPrintsSubmissionError";
 		}
 	}
@@ -550,11 +551,16 @@ describe("print fulfillment", () => {
 			LumaPrintsSubmissionError: new (
 				message: string,
 				disposition: "definitely_rejected" | "uncertain",
+				details?: unknown,
 			) => Error;
 		};
 		const { submitPrintFulfillment } = await import("../printFulfillment");
 		mockCreateLumaPrintsOrder.mockRejectedValueOnce(
-			new LumaPrintsSubmissionError("rejected", "definitely_rejected"),
+			new LumaPrintsSubmissionError("rejected", "definitely_rejected", {
+				phase: "status",
+				statusCode: 400,
+				providerReason: "billing_address",
+			}),
 		);
 
 		await expect(
@@ -563,6 +569,14 @@ describe("print fulfillment", () => {
 				printInput,
 			),
 		).rejects.toThrow("rejected");
+		expect(mockLogStructured).toHaveBeenCalledWith({
+			event: "lumaprints.failed",
+			level: "error",
+			stage: "lumaprints_submit",
+			orderId: "ORD-001",
+			error: expect.any(Error),
+			meta: { phase: "status", statusCode: 400, providerReason: "billing_address" },
+		});
 		const claim = convex.mutation.mock.calls.find(
 			([reference]: unknown[]) => reference === "orders.claimPrintFulfillmentV4",
 		)?.[1] as { claimToken: string } | undefined;
@@ -597,6 +611,12 @@ describe("print fulfillment", () => {
 				printInput,
 			),
 		).rejects.toThrow("submission outcome is unknown");
+		expect(mockLogStructured).toHaveBeenCalledWith(
+			expect.objectContaining({
+				level: "error",
+				error: new Error("LumaPrints order submission failed"),
+			}),
+		);
 		expect(convex.mutation).not.toHaveBeenCalledWith(
 			"orders.rejectPrintFulfillmentSubmission",
 			expect.anything(),
