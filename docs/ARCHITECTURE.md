@@ -41,9 +41,11 @@ are retired. `sanityImport` and `provider: "sanity"` values on migrated Convex
 rows do not create provider access; they retain lineage and, where documented,
 bounded legacy validation compatibility. The external archive is historical
 evidence only.
-The read-only external inventory and unapproved cleanup allowlist are recorded
-in
-[`migrations/sanity-external-inventory-2026-09-03.md`](migrations/sanity-external-inventory-2026-09-03.md).
+The former provider project and hosted Studio are deleted. The read-only
+inventory and completed external retirement are recorded in
+[`migrations/sanity-external-inventory-2026-09-03.md`](migrations/sanity-external-inventory-2026-09-03.md)
+and
+[`migrations/sanity-external-retirement-2026-09-03.md`](migrations/sanity-external-retirement-2026-09-03.md).
 
 ## Host boundary
 

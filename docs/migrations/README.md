@@ -9,6 +9,9 @@ future audits, but they are not current implementation guidance.
   active-documentation reset.
 - [`sanity-external-inventory-2026-09-03.md`](sanity-external-inventory-2026-09-03.md)
   records the read-only AR-06 hosted-resource, credential-name, provenance, and
-  recovery-custody inventory plus the unapproved AR-07 action allowlist.
+  recovery-custody inventory plus the exact AR-07 decision boundary.
+- [`sanity-external-retirement-2026-09-03.md`](sanity-external-retirement-2026-09-03.md)
+  records the approved AR-07 archive, configuration cutover, provider deletion,
+  production verification, and retained recovery evidence.
 
 Use [`../ARCHITECTURE.md`](../ARCHITECTURE.md) for the current system map.
