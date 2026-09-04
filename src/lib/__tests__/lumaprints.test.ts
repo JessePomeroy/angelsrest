@@ -114,6 +114,11 @@ describe("buildLumaPrintsOrder", () => {
 		expect(order.recipient.phone).toBe("313-555-1234");
 	});
 
+	it("uses a mononym as the provider-required surname", () => {
+		const order = buildLumaPrintsOrder("mononym", { ...mockRecipient, lastName: "" }, mockItems);
+		expect(order.recipient.lastName).toBe("Jane");
+	});
+
 	it("uses empty string for optional address2 when not provided", () => {
 		const recipientNoAddr2 = { ...mockRecipient, address2: undefined };
 		const order = buildLumaPrintsOrder("order-2", recipientNoAddr2, mockItems);
