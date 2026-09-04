@@ -17,13 +17,12 @@
  */
 
 import { init } from "@sentry/node";
-import { env } from "$env/dynamic/public";
 import { scrubPrivateCapabilityTelemetry } from "$lib/capabilityPrivacy";
 
-// Use dynamic public env so a missing PUBLIC_SENTRY_DSN doesn't fail the
-// build — Sentry no-ops when dsn is undefined/empty.
+// Vercel imports instrumentation before SvelteKit initializes $env/dynamic.
+// Read the public DSN from Node directly; Sentry no-ops when it is absent.
 init({
-	dsn: env.PUBLIC_SENTRY_DSN,
+	dsn: process.env.PUBLIC_SENTRY_DSN,
 	// Tag every event with which site it came from. Lets a single Sentry
 	// project serve multiple deployments (angelsrest, reflecting-pool,
 	// future per-client deploys) with filterable issue lists.
