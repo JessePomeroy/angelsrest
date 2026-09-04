@@ -13,7 +13,8 @@ migration entry point, or purchase fallback. What remains is:
 1. a public historical Sanity dataset and its assets;
 2. a live hosted Studio backed by a separate public source repository;
 3. four unused Sanity-named Vercel variables and one local Sanity CLI session;
-4. immutable lineage labels on migrated Convex records;
+4. retained lineage labels and bounded provenance-driven compatibility for
+   migrated Convex records;
 5. empty generated-API compatibility stubs; and
 6. an owner-accepted encrypted recovery snapshot in verified local and private
    Cloudflare R2 custody.
@@ -57,6 +58,7 @@ Target review dates are decision checkpoints, not automatic deletion dates.
 | Local Studio checkout | Jesse Pomeroy; working copy of the separate Studio repository | On `agent/r5-snapshot-status-sync` at `d7ff307`; clean during audit | Retain until the all-ref bundle and GitHub archive state are verified; any local move/removal requires a separate exact path approval | GitHub plus proposed all-ref bundle | After archive verification |
 | Local Sanity CLI session at `~/.config/sanity/config.json` | Jesse Pomeroy; account-scoped CLI authentication, mode `0600` | File exists; no value was read and no current application consumes it | Retain while provider cleanup may still be needed. Log out/remove only after checking whether the account session serves another Sanity project | Reauthentication through the owner account | After provider disposition |
 | Sanity deployment/account credentials | Jesse Pomeroy / Sanity; provider management access | No Studio GitHub Actions secrets or variables are configured; hosted app remains reachable | Do not revoke by inference. Inventory nonsecret token IDs/scopes immediately before any approved provider cleanup, then revoke only credentials proven Angels-specific and unused elsewhere | Owner account recovery and fresh least-privilege credential | During approved cleanup |
+| Owner factual-alt review note | Jesse Pomeroy; unfinished review of 21 migrated Blog images | All review tasks remain unchecked; its direct `cdn.sanity.io` source-image links still return 200 and are its current manual inspection path | Keep the Sanity CDN assets available until the review is completed or explicitly closed, or repoint every link to the retained Convex/R2 media identity already recorded beside it | Each entry records a Convex media ID; repoint and verify those assets before provider deletion | Before dataset deletion |
 | Encrypted local recovery baseline | Jesse Pomeroy; primary historical recovery custody | Full 2,273,228,482-byte ciphertext rehashed on 2026-09-03 to accepted SHA-256 `62a64b1...21eb`; manifest, receipt, and checksum index also matched their accepted hashes | Retain at least through 2027-10-02, thirteen months after R12 acceptance, and longer unless a newer accepted disposition supersedes it | This is the recovery artifact | 2027-10-03 earliest |
 | Private R2 bucket `angelsrest-cms-recovery` and accepted baseline prefix | Jesse Pomeroy / Cloudflare; independent encrypted custody | Bucket exists; the `baseline/` lock remains indefinite; remote manifest read on 2026-09-03 matched accepted SHA-256 `057f5e...66d`; candidate lifecycle remains 31 days | Preserve the accepted baseline and indefinite lock through the same minimum retention. Any weakening or deletion needs a newer exact disposition | Local encrypted baseline plus separately held recovery key | 2027-10-03 earliest |
 | Retired reset-script archive `Documents/archives/angelsrest/angelsrest-retired-cms-order-reset-scripts-2026-09-02.tar.gz` | Jesse Pomeroy; historical operator-source evidence | Local 185,583-byte archive found on 2026-09-03 | Retain with migration history until an archive-wide policy exists; it is not a dataset backup | Git history where available | 2027-10-03 |
@@ -103,11 +105,13 @@ Its `.env.example` lists only optional, nonsecret margin-preview overrides.
 - Architecture tests explicitly reject Sanity in current Shop and checkout
   authority.
 
-### Retained provenance, not provider access
+### Retained provenance-driven compatibility, not provider access
 
 The following Convex source files accept historical `sanityImport` or
-`provider: "sanity"` values. They do not connect to Sanity and must remain while
-migrated rows retain those values:
+`provider: "sanity"` values. They do not connect to Sanity. Most preserve and
+validate lineage shape; portfolio public reads also use imported/restored
+revision provenance to permit the exact legacy missing-alt fallback on marked
+placements. These paths must remain while migrated rows retain those values:
 
 - `packages/crm-api/convex/schema.ts`
 - `packages/crm-api/convex/helpers/blogContentStore.ts`
@@ -121,9 +125,13 @@ migrated rows retain those values:
 - `packages/crm-api/convex/helpers/contentStore.ts`
 - `packages/crm-api/convex/helpers/contentValidators.ts`
 - `packages/crm-api/convex/helpers/postContentStore.ts`
+- `packages/crm-api/convex/helpers/portfolioData.ts`
+- `packages/crm-api/convex/helpers/portfolioValidators.ts`
 
-These values are immutable lineage. They are not on the AR-07 deletion
-allowlist. Replacing them would require a separately reviewed data migration.
+These values and their bounded compatibility policy are not Sanity runtime
+authority, but neither are they uniformly passive. They are not on the AR-07
+deletion allowlist. Replacing them would require a separately reviewed data
+migration and public-read compatibility decision.
 
 ### Empty generated-API compatibility stubs
 
@@ -180,17 +188,25 @@ Approval may select a subset. Anything absent from this list remains forbidden.
     verification instead of a new restore drill.
 12. Undeploy only Studio app `v36dvbb34bxdmx0g3gel8pua` and verify
     `angelsrest.sanity.studio` no longer serves the app.
-13. Delete only dataset `production` after confirming the Phase C inventory
-    contains no other required dataset or release state.
-14. Delete project `n7rvza4g` only if it is empty after the approved dataset,
+13. Before dataset deletion, complete or explicitly close the unfinished
+    `angels-rest-blog-factual-alt-review.md`, or replace all 21 direct Sanity CDN
+    links with verified retained Convex/R2 media URLs using its recorded media
+    IDs.
+14. Delete only dataset `production` after that owner-review dependency is
+    closed and the Phase C inventory confirms no other required dataset or
+    release state.
+15. Delete project `n7rvza4g` only if it is empty after the approved dataset,
     app, and integration cleanup and the owner separately names project
     deletion.
-15. Revoke only Angels-specific Sanity credentials proven unused elsewhere;
+16. Revoke only Angels-specific Sanity credentials proven unused elsewhere;
     then remove the local CLI session only if it serves no other project.
 
 ### Explicitly retained / excluded
 
-- Keep all migrated Convex provenance and imported identifiers.
+- Keep all migrated Convex provenance, imported identifiers, and their bounded
+  legacy read compatibility unless a separate data migration replaces them.
+- Keep the 21 referenced Sanity CDN assets until the factual-alt review is
+  completed, closed, or repointed and verified against retained media.
 - Keep the accepted local and R2 encrypted baseline and its lock through at
   least 2027-10-02.
 - Keep the recovery key until the recovery decision above is accepted.
