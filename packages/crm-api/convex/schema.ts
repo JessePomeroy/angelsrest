@@ -219,6 +219,8 @@ const manualRefundRecoveryEvidenceFields = {
 export default defineSchema({
 	// Photographers you've built sites for
 	platformClients: defineTable({
+		// Immutable routing identity. Optional only while existing rows are widened.
+		tenantId: v.optional(v.string()),
 		name: v.string(),
 		email: v.string(),
 		siteUrl: v.string(),
@@ -240,10 +242,25 @@ export default defineSchema({
 		catalogProductKinds: v.optional(catalogProductKindsValidator),
 		notes: v.optional(v.string()),
 	})
+		.index("by_tenantId", ["tenantId"])
 		.index("by_siteUrl", ["siteUrl"])
 		.index("by_email", ["email"])
 		.index("by_stripeSubscriptionId", ["stripeSubscriptionId"])
 		.index("by_stripeConnectedAccountId", ["stripeConnectedAccountId"]),
+
+	// Verified public names that may change without changing tenant identity.
+	tenantAliases: defineTable({
+		tenantId: v.string(),
+		kind: v.union(v.literal("domain"), v.literal("origin")),
+		value: v.string(),
+		verifiedAt: v.number(),
+		verificationMethod: v.union(
+			v.literal("platform_client_site_url"),
+			v.literal("operator"),
+		),
+	})
+		.index("by_kind_and_value", ["kind", "value"])
+		.index("by_tenantId", ["tenantId"]),
 
 	// Provider-neutral editorial identity. Legacy page kinds remain tenant
 	// singletons; supporting Blog records use a stable document key plus a

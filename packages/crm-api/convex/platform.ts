@@ -8,17 +8,19 @@ import {
 	normalizeCatalogProductKinds,
 } from "./helpers/catalogProductPolicy";
 import { DEFAULT_LIST_LIMIT } from "./helpers/limits";
+import {
+	ensureTenantAliases,
+	ensureTenantIdentity,
+	resolveTenantContext,
+} from "./helpers/tenantContext";
 
 async function assertSiteUrlAvailable(
 	ctx: MutationCtx,
 	siteUrl: string,
 	clientId?: Id<"platformClients">,
 ) {
-	const owner = await ctx.db
-		.query("platformClients")
-		.withIndex("by_siteUrl", (q) => q.eq("siteUrl", siteUrl))
-		.unique();
-	if (owner && owner._id !== clientId) {
+	const owner = await resolveTenantContext(ctx, { siteUrl });
+	if (owner && owner.client._id !== clientId) {
 		throw new Error(`A platform client already owns siteUrl="${siteUrl}"`);
 	}
 }
@@ -152,6 +154,41 @@ export const getCommerceProfileForSite = query({
 	},
 });
 
+/** Server-authorized routing lookup. Tenant identity is not an auth credential. */
+export const getTenantRoutingContext = query({
+	args: {
+		tenantId: v.optional(v.string()),
+		siteUrl: v.optional(v.string()),
+		origin: v.optional(v.string()),
+		webhookSecret: v.optional(v.string()),
+	},
+	handler: async (ctx, { tenantId, siteUrl, origin, webhookSecret }) => {
+		const auth = await requireWebhookCallerOrAuth(ctx, webhookSecret);
+		if (auth.via === "auth") await requirePlatformAdmin(ctx);
+		const references = [tenantId, siteUrl, origin].filter(
+			(value) => value !== undefined,
+		);
+		if (references.length !== 1) {
+			throw new Error("Provide exactly one tenantId, siteUrl, or origin");
+		}
+		const context = await resolveTenantContext(
+			ctx,
+			tenantId !== undefined
+				? { tenantId }
+				: siteUrl !== undefined
+					? { siteUrl }
+					: { origin: origin as string },
+		);
+		if (!context) return null;
+		return {
+			tenantId: context.tenantId,
+			siteUrl: context.siteUrl,
+			siteName: context.client.name,
+			resolvedBy: context.resolvedBy,
+		};
+	},
+});
+
 export const createClient = mutation({
 	args: {
 		name: v.string(),
@@ -174,13 +211,17 @@ export const createClient = mutation({
 		await requirePlatformAdmin(ctx);
 		await assertSiteUrlAvailable(ctx, args.siteUrl);
 		const { catalogProductKinds, ...client } = args;
-		return await ctx.db.insert("platformClients", {
+		const id = await ctx.db.insert("platformClients", {
 			...client,
 			role: args.role ?? "client",
 			catalogProductKinds: normalizeCatalogProductKinds(
 				catalogProductKinds ?? [],
 			),
 		});
+		const stored = await ctx.db.get(id);
+		if (!stored) throw new Error("Created tenant could not be read back");
+		await ensureTenantIdentity(ctx, stored, "platform_client_site_url");
+		return id;
 	},
 });
 
@@ -248,8 +289,22 @@ export const updateClient = mutation({
 	},
 	handler: async (ctx, { clientId, catalogProductKinds, ...updates }) => {
 		await requirePlatformAdmin(ctx);
+		const client = await ctx.db.get(clientId);
+		if (!client) throw new Error("Platform client not found");
 		if (updates.siteUrl !== undefined) {
 			await assertSiteUrlAvailable(ctx, updates.siteUrl, clientId);
+			const { tenantId } = await ensureTenantIdentity(
+				ctx,
+				client,
+				"platform_client_site_url",
+			);
+			await ensureTenantAliases(
+				ctx,
+				tenantId,
+				clientId,
+				updates.siteUrl,
+				"platform_client_site_url",
+			);
 		}
 		const patch: Record<string, unknown> = {};
 		for (const [key, val] of Object.entries(updates)) {
@@ -358,7 +413,25 @@ export const seedClient = internalMutation({
 				catalogProductKinds ?? [],
 			),
 		});
+		const stored = await ctx.db.get(id);
+		if (!stored) throw new Error("Seeded tenant could not be read back");
+		await ensureTenantIdentity(ctx, stored, "platform_client_site_url");
 		return { created: true, id };
+	},
+});
+
+/** Idempotently widen one legacy platform client before tenant-ID adoption. */
+export const backfillTenantIdentity = internalMutation({
+	args: { siteUrl: v.string() },
+	handler: async (ctx, { siteUrl }) => {
+		const client = await ctx.db
+			.query("platformClients")
+			.withIndex("by_siteUrl", (q) => q.eq("siteUrl", siteUrl))
+			.unique();
+		if (!client) {
+			throw new Error(`No platformClients row with siteUrl="${siteUrl}"`);
+		}
+		return await ensureTenantIdentity(ctx, client, "operator");
 	},
 });
 
@@ -511,6 +584,9 @@ export const ensureSiteAdmin = internalMutation({
 
 		const patch: Record<string, unknown> = {};
 		if (row.siteUrl !== siteUrl) {
+			await assertSiteUrlAvailable(ctx, siteUrl, row._id);
+			const { tenantId } = await ensureTenantIdentity(ctx, row, "operator");
+			await ensureTenantAliases(ctx, tenantId, row._id, siteUrl, "operator");
 			patch.siteUrl = siteUrl;
 		}
 		const alreadyPresent = row.adminEmails
@@ -599,6 +675,8 @@ export const renameClientSiteUrl = internalMutation({
 				`A platformClients row already exists at siteUrl="${toSiteUrl}" (id=${collision._id}). Delete one before renaming.`,
 			);
 		}
+		const { tenantId } = await ensureTenantIdentity(ctx, row, "operator");
+		await ensureTenantAliases(ctx, tenantId, row._id, toSiteUrl, "operator");
 		await ctx.db.patch(row._id, { siteUrl: toSiteUrl });
 		return { id: row._id, from: fromSiteUrl, to: toSiteUrl };
 	},

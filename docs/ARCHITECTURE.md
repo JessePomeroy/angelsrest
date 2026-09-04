@@ -78,6 +78,21 @@ Shared Admin handlers must call the host's per-request site-admin verifier
 before Worker, R2, email, or other effects. Request-specific auth must never be
 set on the cached public Convex client.
 
+## Tenant identity
+
+`platformClients.tenantId` is the immutable opaque routing identity for a
+tenant. Verified domains and origins live in `tenantAliases` and resolve through
+the single `resolveTenantContext` module; a tenant ID identifies the tenant but
+does not authorize a caller. Better Auth membership, signed provider context,
+or a purpose-specific server secret remains the authorization boundary.
+
+The widening is mixed-version safe. Existing `siteUrl` fields and indexes remain
+operational, and the tenant ID is optional only until the operator backfill is
+complete. New platform clients receive their ID and initial aliases in the same
+transaction. Adoption by Stripe, checkout, gallery, Admin, and webhook contracts
+is staged separately; see
+[`contracts/tenant-identity.md`](contracts/tenant-identity.md).
+
 ## Public content and media
 
 Published content modules resolve accepted Convex revisions and immutable

@@ -118,6 +118,123 @@ function clientInput(siteUrl: string, name = siteUrl) {
 }
 
 describe("platform tenant site identity", () => {
+	test("assigns stable opaque identity and resolves verified domain aliases", async () => {
+		const { t, admin } = await setupPlatformAdmin();
+		const clientId = await admin.mutation(
+			api.platform.createClient,
+			clientInput("routing.example", "Routing Tenant"),
+		);
+		const stored = await t.run(async (ctx) => await ctx.db.get(clientId));
+		expect(stored?.tenantId).toMatch(/^tenant_[0-9a-f-]{36}$/);
+
+		const byDomain = await t.query(api.platform.getTenantRoutingContext, {
+			siteUrl: "www.routing.example",
+			webhookSecret: WEBHOOK_SECRET,
+		});
+		await expect(
+			t.query(api.platform.getTenantRoutingContext, {
+				origin: "https://routing.example/path",
+				webhookSecret: WEBHOOK_SECRET,
+			}),
+		).resolves.toMatchObject({
+			tenantId: stored?.tenantId,
+			siteUrl: "routing.example",
+			resolvedBy: "alias",
+		});
+		expect(byDomain).toMatchObject({
+			tenantId: stored?.tenantId,
+			siteName: "Routing Tenant",
+			resolvedBy: "alias",
+		});
+		await expect(
+			t.query(api.platform.getTenantRoutingContext, {
+				origin: "http://routing.example",
+				webhookSecret: WEBHOOK_SECRET,
+			}),
+		).resolves.toBeNull();
+	});
+
+	test("backfills legacy identity idempotently without breaking siteUrl lookup", async () => {
+		const { t } = await setupPlatformAdmin();
+		await expect(
+			t.query(api.platform.getTenantRoutingContext, {
+				siteUrl: "angelsrest.online",
+				webhookSecret: WEBHOOK_SECRET,
+			}),
+		).resolves.toMatchObject({ tenantId: null, resolvedBy: "legacy_siteUrl" });
+
+		const first = await t.mutation(internal.platform.backfillTenantIdentity, {
+			siteUrl: "angelsrest.online",
+		});
+		expect(first).toMatchObject({ identityAdded: true, aliasesAdded: 4 });
+		await expect(
+			t.mutation(internal.platform.backfillTenantIdentity, {
+				siteUrl: "angelsrest.online",
+			}),
+		).resolves.toMatchObject({
+			tenantId: first.tenantId,
+			identityAdded: false,
+			aliasesAdded: 0,
+		});
+		await expect(
+			t.query(api.platform.getTenantRoutingContext, {
+				tenantId: first.tenantId,
+				webhookSecret: WEBHOOK_SECRET,
+			}),
+		).resolves.toMatchObject({
+			siteUrl: "angelsrest.online",
+			resolvedBy: "tenantId",
+		});
+	});
+
+	test("refuses to preempt an equivalent legacy tenant while backfilling", async () => {
+		const t = convexTest(schema, modules);
+		const ids = await t.run(async (ctx) => [
+			await ctx.db.insert("platformClients", clientInput("collision.example")),
+			await ctx.db.insert(
+				"platformClients",
+				clientInput("https://www.collision.example"),
+			),
+		]);
+		await expect(
+			t.mutation(internal.platform.backfillTenantIdentity, {
+				siteUrl: "collision.example",
+			}),
+		).rejects.toThrow(/alias conflicts/i);
+
+		const state = await t.run(async (ctx) => ({
+			clients: await Promise.all(ids.map(async (id) => await ctx.db.get(id))),
+			aliases: await ctx.db.query("tenantAliases").collect(),
+		}));
+		expect(state.clients.every((client) => client?.tenantId === undefined)).toBe(true);
+		expect(state.aliases).toEqual([]);
+	});
+
+	test("preserves tenant identity and old aliases when the public domain changes", async () => {
+		const { t, admin } = await setupPlatformAdmin();
+		const clientId = await admin.mutation(
+			api.platform.createClient,
+			clientInput("before.example"),
+		);
+		const before = await t.run(async (ctx) => await ctx.db.get(clientId));
+		await admin.mutation(api.platform.updateClient, {
+			clientId,
+			siteUrl: "after.example",
+		});
+
+		for (const siteUrl of ["before.example", "after.example"]) {
+			await expect(
+				t.query(api.platform.getTenantRoutingContext, {
+					siteUrl,
+					webhookSecret: WEBHOOK_SECRET,
+				}),
+			).resolves.toMatchObject({
+				tenantId: before?.tenantId,
+				siteUrl: "after.example",
+			});
+		}
+	});
+
 	test("claims verified invited admins by stable identity and rejects same-email substitutes", async () => {
 		const t = await seedClient(["admin@example.com"]);
 		const verified = t.withIdentity({
@@ -193,6 +310,9 @@ describe("platform tenant site identity", () => {
 		);
 		await expect(
 			admin.mutation(api.platform.createClient, clientInput("first.example", "Duplicate")),
+		).rejects.toThrow(/already owns siteUrl/i);
+		await expect(
+			admin.mutation(api.platform.createClient, clientInput("www.first.example")),
 		).rejects.toThrow(/already owns siteUrl/i);
 
 		const secondId = await admin.mutation(
