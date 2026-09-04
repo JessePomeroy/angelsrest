@@ -100,6 +100,7 @@ export async function processStripeWebhookEvent(
 						stripeSessionId: session.id,
 						...(stripeAccount ? { stripeConnectedAccountId: stripeAccount } : {}),
 						...(metadataSiteUrl ? { stripeTenantMetadataSiteUrl: metadataSiteUrl } : {}),
+						...(metadataTenantId ? { stripeTenantMetadataTenantId: metadataTenantId } : {}),
 						webhookSecret: getWebhookSecret(),
 					});
 				} catch (cause) {
@@ -128,6 +129,7 @@ export async function processStripeWebhookEvent(
 						})
 					: await tenantPromise;
 				await handleCheckoutCompleted(session, adapters, {
+					tenantId: tenant.tenantId,
 					siteUrl: tenant.siteUrl,
 					notificationProfile: tenant.notificationProfile,
 					stripeRequestOptions: tenant.stripeRequestOptions,
@@ -366,6 +368,7 @@ async function handleCheckoutCompleted(
 	session: Stripe.Checkout.Session,
 	adapters: OrderIntakeAdapters,
 	{
+		tenantId,
 		siteUrl,
 		stripeRequestOptions,
 		notificationProfile,
@@ -373,6 +376,7 @@ async function handleCheckoutCompleted(
 		completeLineItems = false,
 		checkoutSessionAdmission,
 	}: {
+		tenantId?: string;
 		siteUrl: string;
 		stripeRequestOptions?: Stripe.RequestOptions;
 		notificationProfile: CommerceNotificationProfile;
@@ -438,6 +442,7 @@ async function handleCheckoutCompleted(
 			session: fullSession,
 			shippingDetails,
 			lineItems,
+			tenantId,
 			siteUrl,
 			stripeRequestOptions,
 			notificationProfile,

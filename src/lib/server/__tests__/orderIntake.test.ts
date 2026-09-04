@@ -167,6 +167,7 @@ function makeLineItem(ordinal = 0): Stripe.LineItem {
 }
 
 const snapshotHandle = "123e4567-e89b-42d3-a456-426614174000";
+const tenantId = "tenant_05eb6092-5d8c-43ce-ad26-1a59522bd07b";
 function handleMetadata(overrides: Record<string, string> = {}) {
 	return {
 		...makeCheckoutSession().metadata,
@@ -1364,6 +1365,7 @@ describe("processStripeWebhookEvent", () => {
 				checkoutSnapshotVersion: "2",
 				checkoutSnapshotHandle: snapshotHandle,
 				commerceTenantSiteUrl: "angelsrest.online",
+				commerceTenantId: tenantId,
 			},
 		});
 		const lineItems = [makeLineItem()];
@@ -1385,10 +1387,15 @@ describe("processStripeWebhookEvent", () => {
 		};
 		stripe.checkout.sessions.retrieve.mockResolvedValue(session);
 		stripe.checkout.sessions.listLineItems.mockResolvedValue({ data: lineItems, has_more: false });
-		convex.query.mockResolvedValue({
-			source: "reservation",
-			siteUrl: "angelsrest.online",
-			stripeConnectedAccountId: undefined,
+		convex.query.mockImplementation(async (reference: string) => {
+			if (reference === "orders.resolveCheckoutRouting") {
+				return {
+					source: "reservation",
+					siteUrl: "angelsrest.online",
+					stripeConnectedAccountId: undefined,
+				};
+			}
+			return { tenantId, siteUrl: "angelsrest.online" };
 		});
 		orderCreateResults = [makeOrderResult({ checkoutSnapshot })];
 		mockBuildOrderItemsFromSnapshot.mockResolvedValue([
@@ -1411,6 +1418,7 @@ describe("processStripeWebhookEvent", () => {
 		expect(convex.query).toHaveBeenCalledWith("orders.resolveCheckoutRouting", {
 			stripeSessionId: session.id,
 			stripeTenantMetadataSiteUrl: "angelsrest.online",
+			stripeTenantMetadataTenantId: tenantId,
 			webhookSecret: "test-webhook-secret",
 		});
 		expect(stripe.checkout.sessions.listLineItems).toHaveBeenCalledWith(
@@ -1421,6 +1429,7 @@ describe("processStripeWebhookEvent", () => {
 		expect(convex.mutation).toHaveBeenCalledWith(
 			"orders.create",
 			expect.objectContaining({
+				tenantId,
 				checkoutSnapshotReservation: { version: 2, handle: snapshotHandle },
 				items: [
 					{
@@ -1430,6 +1439,18 @@ describe("processStripeWebhookEvent", () => {
 					},
 				],
 			}),
+		);
+		expect(convex.mutation).toHaveBeenCalledWith(
+			"orders.claimPrintFulfillmentV4",
+			expect.objectContaining({ tenantId }),
+		);
+		expect(convex.mutation).toHaveBeenCalledWith(
+			"orders.beginPrintFulfillmentSubmission",
+			expect.objectContaining({ tenantId }),
+		);
+		expect(convex.mutation).toHaveBeenCalledWith(
+			"orders.completePrintFulfillmentSubmission",
+			expect.objectContaining({ tenantId }),
 		);
 		expect(mockBuildOrderItemsFromSnapshot).toHaveBeenCalledWith(
 			checkoutSnapshot,
