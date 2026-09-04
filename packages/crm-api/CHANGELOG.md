@@ -1,5 +1,30 @@
 # @jessepomeroy/crm-api
 
+## 5.0.0
+
+### Major Changes
+
+- 0105b88: Retire the executable Sanity migration and compatibility API surface now that
+  Angels Rest content, checkout, fulfillment, and downloads are Convex-only.
+  Remove the unused platform-client Sanity project field while preserving inert
+  provenance accepted on already-migrated Convex records.
+
+### Minor Changes
+
+- 1c08b3a: Add stable opaque tenant IDs, verified domain/origin aliases, and a mixed-version
+  tenant routing resolver while retaining existing `siteUrl` contracts.
+
+### Patch Changes
+
+- 1c29dc6: Persist verified tenant identity on new orders and accept optional tenant fences
+  for checkout routing and print-provider commands.
+- 9a0028b: Expose stable tenant identity to new Stripe checkout and webhook routing while preserving site URL compatibility for unclaimed tenants.
+- 09f4225: Remove empty historical migration modules and regenerate the Convex API binding
+  without their stale module entries.
+- 7ad4831: Regenerate the published Convex API binding after adding the tenant-context
+  module during AR-08 Stage A.
+- dd289b0: Allow durable checkout reservations and admissions to retain an optional verified tenant ID alongside the compatibility domain.
+
 ## 4.1.2
 
 ### Patch Changes
