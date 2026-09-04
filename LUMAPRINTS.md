@@ -89,8 +89,9 @@ them in route code.
   documented non-acceptance statuses `400`, `406`, and `429` are definitely
   rejected. Network failures, timeouts, server or unexpected statuses, and
   malformed success responses remain uncertain. Error bodies are byte-bounded
-  and reduced to fixed reason labels and validated image dimensions; raw text,
-  URLs, and customer data are never retained. Submission failures report the
+  and reduced to fixed reason labels, known request-field paths, numeric
+  provider codes, and validated image dimensions; raw text, URLs, and customer
+  data are never retained. Submission failures report the
   safe evidence and HTTP status to Vercel/Sentry before recovery, with a bounded
   Sentry flush. Diagnostics do not change the submission disposition.
 - Network, timeout, rate-limit, server, and not-yet-visible reconciliation

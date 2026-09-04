@@ -397,7 +397,8 @@ describe("createOrder", () => {
 					errorCode: "private-value",
 				},
 				{
-					providerReason: "image_dimensions,image_source",
+					providerReason: "image_dimensions,image_source,invalid",
+					providerFields: "orderItems[].file.imageUrl",
 					expectedWidth: 1800,
 					expectedHeight: 1200,
 					actualImageWidth: 6935,
@@ -406,6 +407,19 @@ describe("createOrder", () => {
 			[
 				{ message: "private-value", expectedWidth: -1, actualImageHeight: 1e20 },
 				{ providerReason: "unrecognized" },
+			],
+			[
+				{
+					statusCode: 400,
+					errorCode: 27,
+					errors: [{ path: "orderItems[0].file.imageUrl", message: "is not reachable" }],
+				},
+				{
+					providerReason: "image_source,image_access",
+					providerFields: "orderItems[].file.imageUrl",
+					providerStatusCode: 400,
+					providerCode: 27,
+				},
 			],
 			[
 				{ message: "billing address", padding: "x".repeat(33 * 1024) },
