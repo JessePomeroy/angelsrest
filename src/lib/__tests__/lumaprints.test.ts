@@ -397,12 +397,22 @@ describe("createOrder", () => {
 					errorCode: "private-value",
 				},
 				{
-					providerReason: "image_dimensions,image_source,invalid",
-					providerFields: "orderItems[].file.imageUrl",
+					providerReason: "image_dimensions,invalid",
 					expectedWidth: 1800,
 					expectedHeight: 1200,
 					actualImageWidth: 6935,
 				},
+			],
+			[
+				{
+					message: "Exception message.",
+					statusCode: 400,
+					request: {
+						recipient: { lastName: "private-value" },
+						orderItems: [{ imageUrl: "private" }],
+					},
+				},
+				{ providerReason: "provider_exception", providerStatusCode: 400 },
 			],
 			[
 				{ message: "private-value", expectedWidth: -1, actualImageHeight: 1e20 },

@@ -287,6 +287,14 @@ function matchingLabels(text: string, patterns: Record<string, RegExp>) {
 		.map(([label]) => label);
 }
 
+function diagnosticStrings(value: unknown): string[] {
+	if (typeof value === "string") return [value];
+	if (Array.isArray(value)) return value.flatMap(diagnosticStrings);
+	return object(value)
+		? Object.entries(value).flatMap(([key, nested]) => [key, ...diagnosticStrings(nested)])
+		: [];
+}
+
 /** Retain only fixed diagnostic labels and documented numbers, never upstream text/URLs. */
 async function rejectionDiagnostics(response: Response): Promise<LumaPrintsErrorDetails> {
 	try {
@@ -299,7 +307,17 @@ async function rejectionDiagnostics(response: Response): Promise<LumaPrintsError
 			invalid,
 		);
 		if (!object(body)) return { providerReason: "unrecognized" };
-		const text = JSON.stringify(body);
+		const text = [
+			body.message,
+			body.error,
+			body.errors,
+			body.detail,
+			body.details,
+			body.reason,
+			body.title,
+		]
+			.flatMap(diagnosticStrings)
+			.join(" ");
 		const reasons = matchingLabels(text, {
 			billing_address: /billing address/i,
 			payment_method: /payment method|primary card/i,
@@ -316,7 +334,18 @@ async function rejectionDiagnostics(response: Response): Promise<LumaPrintsError
 			invalid: /invalid|incorrect|not acceptable|unsupported/i,
 			provider_exception: /exception/i,
 		});
-		const fields = matchingLabels(text, {
+		const fieldText = [
+			body.field,
+			body.path,
+			body.property,
+			body.propertyName,
+			body.param,
+			body.parameter,
+			body.errors,
+		]
+			.flatMap(diagnosticStrings)
+			.join(" ");
+		const fields = matchingLabels(fieldText, {
 			"recipient.firstName": /firstName/i,
 			"recipient.lastName": /lastName/i,
 			"recipient.addressLine1": /addressLine1/i,
