@@ -42,10 +42,11 @@ function validResolution(resolution: PaidFulfillmentResolution, item: CheckoutSn
 		finish.sizeKey === item.sizeOptionKey &&
 		finish.borderKey === item.borderOptionKey &&
 		finish.frameKey === item.frameOptionKey &&
-		resolution.descriptor.kind === "print_sources" &&
-		resolution.descriptor.sources.length >= 1 &&
-		resolution.descriptor.sources.length <= 20 &&
-		resolution.descriptor.sources.every(isPrintSourceDescriptor)
+		(resolution.descriptor.kind === "merchant" ||
+			(resolution.descriptor.kind === "print_sources" &&
+				resolution.descriptor.sources.length >= 1 &&
+				resolution.descriptor.sources.length <= 20 &&
+				resolution.descriptor.sources.every(isPrintSourceDescriptor)))
 	);
 }
 
@@ -70,6 +71,7 @@ export async function buildOrderItemsFromSnapshot(
 	}
 	const items: OrderItem[] = [];
 	for (const { value, paidQuantity } of resolved) {
+		if (value.descriptor.kind === "merchant") continue;
 		if (value.descriptor.kind !== "print_sources" || !value.commerce.finish)
 			throw new FulfillmentValidationError("Paid fulfillment descriptor is invalid");
 		const finish = value.commerce.finish;

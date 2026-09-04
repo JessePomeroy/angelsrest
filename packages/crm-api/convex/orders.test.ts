@@ -6,6 +6,12 @@ import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { api, internal } from "./_generated/api";
 import { reservationHandleHash, reservationSnapshotDigest } from "./helpers/checkoutSnapshot";
 import schema from "./schema";
+import {
+	createGraph,
+	graphDraft,
+	setup as setupCatalog,
+	SITE_A as CATALOG_SITE,
+} from "../test/catalogProductGraphFixtures";
 
 const modules = import.meta.glob("./**/*.ts");
 const WEBHOOK_SECRET = "test-webhook-secret";
@@ -407,6 +413,46 @@ describe("order producer gate", () => {
 });
 
 describe("durable checkout snapshot", () => {
+	test("derives provider fulfillment from the immutable revision and repairs a safe replay", async () => {
+		const fixture = await setupCatalog(modules);
+		const product = await createGraph(
+			fixture.adminA,
+			CATALOG_SITE.siteUrl,
+			"provider-order",
+			graphDraft("print", fixture, "provider-order"),
+		);
+		const input = {
+			siteUrl: CATALOG_SITE.siteUrl,
+			stripeSessionId: "cs_test_provider_order",
+			customerEmail: "buyer@example.com",
+			items: [{ productName: "Provider print", quantity: 1, price: 4200 }],
+			total: 4200,
+			fulfillmentType: "self" as const,
+			checkoutSnapshot: {
+				schemaVersion: 1 as const,
+				catalogProvider: "convex" as const,
+				items: [{
+					productKey: product.productId,
+					revisionId: product.revisionId,
+					productKind: "print" as const,
+					variantKey: "matte-small",
+					materialOptionKey: "archival-matte",
+					sizeOptionKey: "8x10",
+					borderOptionKey: "none",
+					frameOptionKey: "none",
+				}],
+			},
+		};
+		const created = await fixture.adminA.mutation(api.orders.create, input);
+		expect(created.fulfillmentType).toBe("lumaprints");
+		await fixture.t.run((ctx) => ctx.db.patch(created._id, { fulfillmentType: "self" }));
+		const replay = await fixture.adminA.mutation(api.orders.create, input);
+		expect(replay).toMatchObject({ alreadyExisted: true, fulfillmentType: "lumaprints" });
+		expect((await fixture.t.run((ctx) => ctx.db.get(created._id)))?.fulfillmentType).toBe(
+			"lumaprints",
+		);
+	});
+
 	test("keeps legacy rows absent and never backfills them on retry", async () => {
 		const t = convexTest(schema, modules);
 		const created = await t.mutation(api.orders.create, orderArgs("cs_legacy"));

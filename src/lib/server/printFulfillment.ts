@@ -197,6 +197,7 @@ export async function submitPrintFulfillment(
 	input: {
 		orderId: Id<"orders">;
 		orderNumber: string;
+		fulfillmentType?: "lumaprints" | "self" | "digital";
 		tenantId?: string;
 		lineItems: Stripe.LineItem[];
 		shippingDetails: ShippingDetails;
@@ -204,16 +205,26 @@ export async function submitPrintFulfillment(
 		checkoutSnapshot?: CheckoutSnapshotV1;
 	},
 ): Promise<PrintFulfillmentOutcome> {
-	const { orderId, orderNumber, tenantId, lineItems, shippingDetails, session, checkoutSnapshot } =
-		input;
+	const {
+		orderId,
+		orderNumber,
+		fulfillmentType = "lumaprints",
+		tenantId,
+		lineItems,
+		shippingDetails,
+		session,
+		checkoutSnapshot,
+	} = input;
 	const webhookSecret = getWebhookSecret();
 	const tenantFence = tenantId === undefined ? {} : { tenantId };
 	const legacyItems = checkoutSnapshot ? undefined : buildOrderItemsFromSession(session, lineItems);
-	const hasPrintItems = checkoutSnapshot
-		? checkoutSnapshot.items.some(
-				({ productKind }) => productKind === "print" || productKind === "print_set",
-			)
-		: (legacyItems?.length ?? 0) > 0;
+	const hasPrintItems =
+		fulfillmentType === "lumaprints" &&
+		(checkoutSnapshot
+			? checkoutSnapshot.items.some(
+					({ productKind }) => productKind === "print" || productKind === "print_set",
+				)
+			: (legacyItems?.length ?? 0) > 0);
 	if (!hasPrintItems) {
 		const outcome = await convex.mutation(api.orders.claimNonPrintOrderOutcome, {
 			orderId,

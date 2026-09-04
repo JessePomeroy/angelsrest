@@ -430,6 +430,14 @@ describe("paid catalog commerce", () => {
 				});
 			} else expect(result.descriptor).toEqual({ kind: "merchant", source: null });
 		}
+		const merchantPrint = await createGraph(fixture.adminA, SITE_A.siteUrl, "paid-merchant-print", {
+			...graphDraft("print", fixture, "paid-merchant-print"),
+			fulfillmentMode: "merchant_fulfilled",
+		});
+		const merchantItem = item(merchantPrint, "print");
+		await seedOrder(fixture, merchantItem, `${SESSION}merchant`);
+		const merchant = await resolve(fixture, paid("paid_fulfillment", `${SESSION}merchant`));
+		expect("descriptor" in merchant && merchant.descriptor).toEqual({ kind: "merchant", source: null });
 	});
 
 	test("uses the stored paid item, isolates tenant/index/purpose, and denies refunded downloads", async () => {

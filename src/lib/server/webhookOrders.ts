@@ -107,6 +107,7 @@ export async function createOrderInConvex(
 	const existingPrintClaim = orderResult.printFulfillmentClaim;
 	const existingPrintPhase = orderResult.printFulfillmentPhase;
 	const existingPrintResolution = orderResult.printFulfillmentResolution;
+	const fulfillmentType = orderResult.fulfillmentType;
 
 	logStructured({
 		event: alreadyExisted ? "order.rehydrated" : "order.created",
@@ -283,6 +284,7 @@ export async function createOrderInConvex(
 			{
 				orderId,
 				orderNumber,
+				fulfillmentType,
 				tenantId,
 				lineItems,
 				shippingDetails,
