@@ -48,6 +48,16 @@ function aliasesForSiteUrl(siteUrl: string) {
 	];
 }
 
+function legacySiteUrlCandidates(siteUrl: string) {
+	return Array.from(
+		new Set([
+			siteUrl.trim().replace(/\/+$/, ""),
+			normalizeDomain(siteUrl),
+			...aliasesForSiteUrl(siteUrl).map(({ value }) => value),
+		]),
+	).filter(Boolean);
+}
+
 async function clientForTenantId(
 	ctx: Pick<QueryCtx, "db">,
 	tenantId: string,
@@ -95,16 +105,9 @@ export async function resolveTenantContext(
 			resolvedBy: "alias",
 		};
 	}
+	if ("origin" in reference) return null;
 
-	const candidates = Array.from(
-		new Set([
-			"siteUrl" in reference ? reference.siteUrl.trim().replace(/\/+$/, "") : "",
-			value,
-			normalizeDomain(value),
-			...aliasesForSiteUrl(value).map(({ value: alias }) => alias),
-		]),
-	).filter(Boolean);
-	for (const siteUrl of candidates) {
+	for (const siteUrl of legacySiteUrlCandidates(reference.siteUrl)) {
 		const client = await ctx.db
 			.query("platformClients")
 			.withIndex("by_siteUrl", (q) => q.eq("siteUrl", siteUrl))
@@ -154,9 +157,19 @@ async function ensureAlias(
 export async function ensureTenantAliases(
 	ctx: Pick<MutationCtx, "db">,
 	tenantId: string,
+	clientId: Doc<"platformClients">["_id"],
 	siteUrl: string,
 	verificationMethod: VerificationMethod,
 ) {
+	for (const candidate of legacySiteUrlCandidates(siteUrl)) {
+		const owner = await ctx.db
+			.query("platformClients")
+			.withIndex("by_siteUrl", (q) => q.eq("siteUrl", candidate))
+			.unique();
+		if (owner && owner._id !== clientId) {
+			throw new Error(`Tenant domain alias conflicts with siteUrl: ${candidate}`);
+		}
+	}
 	let aliasesAdded = 0;
 	for (const alias of aliasesForSiteUrl(siteUrl)) {
 		if (
@@ -184,6 +197,7 @@ export async function ensureTenantIdentity(
 	const aliasesAdded = await ensureTenantAliases(
 		ctx,
 		tenantId,
+		client._id,
 		client.siteUrl,
 		verificationMethod,
 	);

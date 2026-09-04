@@ -146,6 +146,12 @@ describe("platform tenant site identity", () => {
 			siteName: "Routing Tenant",
 			resolvedBy: "alias",
 		});
+		await expect(
+			t.query(api.platform.getTenantRoutingContext, {
+				origin: "http://routing.example",
+				webhookSecret: WEBHOOK_SECRET,
+			}),
+		).resolves.toBeNull();
 	});
 
 	test("backfills legacy identity idempotently without breaking siteUrl lookup", async () => {
@@ -179,6 +185,29 @@ describe("platform tenant site identity", () => {
 			siteUrl: "angelsrest.online",
 			resolvedBy: "tenantId",
 		});
+	});
+
+	test("refuses to preempt an equivalent legacy tenant while backfilling", async () => {
+		const t = convexTest(schema, modules);
+		const ids = await t.run(async (ctx) => [
+			await ctx.db.insert("platformClients", clientInput("collision.example")),
+			await ctx.db.insert(
+				"platformClients",
+				clientInput("https://www.collision.example"),
+			),
+		]);
+		await expect(
+			t.mutation(internal.platform.backfillTenantIdentity, {
+				siteUrl: "collision.example",
+			}),
+		).rejects.toThrow(/alias conflicts/i);
+
+		const state = await t.run(async (ctx) => ({
+			clients: await Promise.all(ids.map(async (id) => await ctx.db.get(id))),
+			aliases: await ctx.db.query("tenantAliases").collect(),
+		}));
+		expect(state.clients.every((client) => client?.tenantId === undefined)).toBe(true);
+		expect(state.aliases).toEqual([]);
 	});
 
 	test("preserves tenant identity and old aliases when the public domain changes", async () => {

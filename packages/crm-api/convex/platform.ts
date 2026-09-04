@@ -301,6 +301,7 @@ export const updateClient = mutation({
 			await ensureTenantAliases(
 				ctx,
 				tenantId,
+				clientId,
 				updates.siteUrl,
 				"platform_client_site_url",
 			);
@@ -585,7 +586,7 @@ export const ensureSiteAdmin = internalMutation({
 		if (row.siteUrl !== siteUrl) {
 			await assertSiteUrlAvailable(ctx, siteUrl, row._id);
 			const { tenantId } = await ensureTenantIdentity(ctx, row, "operator");
-			await ensureTenantAliases(ctx, tenantId, siteUrl, "operator");
+			await ensureTenantAliases(ctx, tenantId, row._id, siteUrl, "operator");
 			patch.siteUrl = siteUrl;
 		}
 		const alreadyPresent = row.adminEmails
@@ -675,7 +676,7 @@ export const renameClientSiteUrl = internalMutation({
 			);
 		}
 		const { tenantId } = await ensureTenantIdentity(ctx, row, "operator");
-		await ensureTenantAliases(ctx, tenantId, toSiteUrl, "operator");
+		await ensureTenantAliases(ctx, tenantId, row._id, toSiteUrl, "operator");
 		await ctx.db.patch(row._id, { siteUrl: toSiteUrl });
 		return { id: row._id, from: fromSiteUrl, to: toSiteUrl };
 	},
