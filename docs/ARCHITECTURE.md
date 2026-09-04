@@ -87,10 +87,11 @@ does not authorize a caller. Better Auth membership, signed provider context,
 or a purpose-specific server secret remains the authorization boundary.
 
 The widening is mixed-version safe. Existing `siteUrl` fields and indexes remain
-operational, and the tenant ID is optional only until the operator backfill is
-complete. New platform clients receive their ID and initial aliases in the same
-transaction. Adoption by Stripe, checkout, gallery, Admin, and webhook contracts
-is staged separately; see
+operational, and the shared schema keeps the tenant ID optional while explicitly
+unclaimed tenants remain. New platform clients receive their ID and initial
+aliases in the same transaction. Angels Rest has adopted the ID at Stripe,
+checkout, order, and print-provider command boundaries; other contracts remain
+separately staged. See
 [`contracts/tenant-identity.md`](contracts/tenant-identity.md).
 
 ## Public content and media
