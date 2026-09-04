@@ -1,7 +1,10 @@
 import { ConvexHttpClient } from "convex/browser";
 import { api } from "$convex/api";
 import { getConvexUrl } from "$lib/server/runtimeConfig";
-import type { StripeTenantAccount } from "$lib/server/stripeConnect";
+import {
+	normalizeCommerceTenantSiteUrl,
+	type StripeTenantAccount,
+} from "$lib/server/stripeConnect";
 
 type TenantLookup = (siteUrl: string) => Promise<StripeTenantAccount | null>;
 
@@ -15,7 +18,7 @@ export async function resolveStripeTenantForSite(
 	options: ResolveStripeTenantOptions = {},
 ): Promise<StripeTenantAccount> {
 	const lookup = options.lookup ?? createConvexTenantLookup();
-	const tenant = await lookup(siteUrl);
+	const tenant = await lookup(normalizeCommerceTenantSiteUrl(siteUrl));
 
 	if (tenant) {
 		return {

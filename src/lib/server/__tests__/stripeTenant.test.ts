@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
+import { buildTenantCheckoutOptions } from "../stripeConnect";
 import { resolveStripeTenantForSite } from "../stripeTenant";
 
 describe("resolveStripeTenantForSite", () => {
@@ -21,11 +22,19 @@ describe("resolveStripeTenantForSite", () => {
 		const tenantId = "tenant_05eb6092-5d8c-43ce-ad26-1a59522bd07b";
 		const lookup = vi.fn().mockResolvedValue({ tenantId, siteUrl: "angelsrest.online" });
 
-		await expect(resolveStripeTenantForSite("angelsrest.online", { lookup })).resolves.toEqual({
+		const tenant = await resolveStripeTenantForSite("https://www.angelsrest.online", { lookup });
+		expect(tenant).toEqual({
 			tenantId,
 			siteUrl: "angelsrest.online",
 			name: undefined,
 			stripeConnectedAccountId: undefined,
+		});
+		expect(lookup).toHaveBeenCalledWith("angelsrest.online");
+		expect(
+			buildTenantCheckoutOptions({ tenant, kind: "print", subtotalCents: 1_000 }).metadata,
+		).toEqual({
+			commerceTenantSiteUrl: "angelsrest.online",
+			commerceTenantId: tenantId,
 		});
 	});
 

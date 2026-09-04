@@ -42,24 +42,17 @@ export async function resolveCommerceTenant(
 	const accountId = typeof event.account === "string" ? event.account : undefined;
 	const metadataSiteUrl = routedSiteUrl ?? readMetadataSiteUrl(event);
 	const metadataTenantId = routedTenantId ?? readMetadataTenantId(event);
+	const identityContext = metadataTenantId
+		? await resolvePairedTenantContext(convex, metadataTenantId, metadataSiteUrl)
+		: undefined;
 	if (!accountId && !metadataSiteUrl) {
-		if (metadataTenantId) identityConflict("tenant_id_without_site", { accountId: false });
 		return {
 			siteUrl: SITE_DOMAIN,
 			notificationProfile: ANGELS_REST_COMMERCE_PROFILE,
 		};
 	}
 
-	if (!accountId && isHubSite(metadataSiteUrl)) {
-		if (metadataTenantId) {
-			const context = await convex.query(api.platform.getTenantRoutingContext, {
-				tenantId: metadataTenantId,
-				webhookSecret: requireWebhookSecret(),
-			});
-			if (!context || !isHubSite(context.siteUrl)) {
-				identityConflict("hub_tenant_id_mismatch", { accountId: false });
-			}
-		}
+	if (!accountId && (isHubSite(metadataSiteUrl) || isHubSite(identityContext?.siteUrl))) {
 		return {
 			...(metadataTenantId ? { tenantId: metadataTenantId } : {}),
 			siteUrl: SITE_DOMAIN,
@@ -79,13 +72,14 @@ export async function resolveCommerceTenant(
 			);
 		}
 		if (
+			!identityContext &&
 			metadataSiteUrl &&
 			normalizeCommerceTenantSiteUrl(metadataSiteUrl) !==
 				normalizeCommerceTenantSiteUrl(client.siteUrl)
 		) {
 			identityConflict("connected_site_mismatch", { accountId: true });
 		}
-		if (metadataTenantId && metadataTenantId !== client.tenantId) {
+		if (identityContext && identityContext.tenantId !== client.tenantId) {
 			identityConflict("connected_tenant_id_mismatch", { accountId: true });
 		}
 
@@ -103,13 +97,13 @@ export async function resolveCommerceTenant(
 
 	if (!metadataSiteUrl) throw new CommerceTenantIdentityError("Commerce tenant metadata missing");
 	const profile = await convex.query(api.platform.getCommerceProfileForSite, {
-		siteUrl: metadataSiteUrl,
+		siteUrl: identityContext?.siteUrl ?? metadataSiteUrl,
 		webhookSecret,
 	});
 	if (!profile) {
 		throw new CommerceTenantIdentityError(`No platform client found for ${metadataSiteUrl}`);
 	}
-	if (metadataTenantId && metadataTenantId !== profile.tenantId) {
+	if (identityContext && identityContext.tenantId !== profile.tenantId) {
 		identityConflict("platform_tenant_id_mismatch", { accountId: false });
 	}
 
@@ -138,6 +132,23 @@ function readMetadataTenantId(event: Stripe.Event) {
 		identityConflict("invalid_tenant_id", { accountId: typeof event.account === "string" });
 	}
 	return value;
+}
+
+async function resolvePairedTenantContext(
+	convex: ConvexHttpClient,
+	tenantId: string,
+	siteUrl: string | undefined,
+) {
+	if (!siteUrl) identityConflict("tenant_id_without_site", { accountId: false });
+	const webhookSecret = requireWebhookSecret();
+	const [byId, bySiteUrl] = await Promise.all([
+		convex.query(api.platform.getTenantRoutingContext, { tenantId, webhookSecret }),
+		convex.query(api.platform.getTenantRoutingContext, { siteUrl, webhookSecret }),
+	]);
+	if (!byId || !bySiteUrl || byId.tenantId !== bySiteUrl.tenantId) {
+		identityConflict("tenant_id_domain_mismatch", { accountId: false });
+	}
+	return byId;
 }
 
 function identityConflict(reason: string, meta: Record<string, unknown>): never {

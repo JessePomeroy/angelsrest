@@ -103,14 +103,37 @@ describe("commerce tenant resolution", () => {
 				convex,
 			),
 		).resolves.toMatchObject({ tenantId: TENANT_ID, siteUrl: "angelsrest.online" });
-		expect(query).toHaveBeenCalledWith("platform.getTenantRoutingContext", {
+		expect(query).toHaveBeenNthCalledWith(1, "platform.getTenantRoutingContext", {
 			tenantId: TENANT_ID,
+			webhookSecret: "test-webhook-secret",
+		});
+		expect(query).toHaveBeenNthCalledWith(2, "platform.getTenantRoutingContext", {
+			siteUrl: "angelsrest.online",
 			webhookSecret: "test-webhook-secret",
 		});
 	});
 
-	it("rejects a claimed ID whose canonical domain disagrees", async () => {
-		query.mockResolvedValue({ tenantId: TENANT_ID, siteUrl: "other.example" });
+	it("accepts a retained domain alias when it resolves to the same tenant ID", async () => {
+		query.mockResolvedValue({ tenantId: TENANT_ID, siteUrl: "angelsrest.online" });
+
+		await expect(
+			resolveCommerceTenant(
+				event("checkout.session.completed", {
+					[COMMERCE_TENANT_METADATA_KEY]: "old-angels.example",
+					[COMMERCE_TENANT_ID_METADATA_KEY]: TENANT_ID,
+				}),
+				convex,
+			),
+		).resolves.toMatchObject({ tenantId: TENANT_ID, siteUrl: "angelsrest.online" });
+	});
+
+	it("rejects a claimed ID whose domain resolves to another tenant", async () => {
+		query
+			.mockResolvedValueOnce({ tenantId: TENANT_ID, siteUrl: "angelsrest.online" })
+			.mockResolvedValueOnce({
+				tenantId: "tenant_15eb6092-5d8c-43ce-ad26-1a59522bd07b",
+				siteUrl: "other.example",
+			});
 
 		await expect(
 			resolveCommerceTenant(
