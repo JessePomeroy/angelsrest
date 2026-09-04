@@ -19,6 +19,7 @@ export async function resolveStripeTenantForSite(
 
 	if (tenant) {
 		return {
+			tenantId: tenant.tenantId,
 			siteUrl: tenant.siteUrl || siteUrl,
 			name: tenant.name,
 			stripeConnectedAccountId: tenant.stripeConnectedAccountId,

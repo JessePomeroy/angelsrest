@@ -22,6 +22,7 @@ import {
 	type PaymentCheckoutSessionResult,
 } from "$lib/server/stripeCheckoutSession";
 import {
+	COMMERCE_TENANT_ID_METADATA_KEY,
 	COMMERCE_TENANT_METADATA_KEY,
 	type TenantStripeCheckoutOptions,
 } from "$lib/server/stripeConnect";
@@ -185,7 +186,9 @@ export async function createHandleCheckoutSession({
 	validateRedirect(successUrl, site, allowedRedirectOrigins);
 	validateRedirect(cancelUrl, site, allowedRedirectOrigins);
 	if (
-		Object.keys(tenantCheckout.metadata).length !== 1 ||
+		!Object.keys(tenantCheckout.metadata).every(
+			(key) => key === COMMERCE_TENANT_METADATA_KEY || key === COMMERCE_TENANT_ID_METADATA_KEY,
+		) ||
 		tenantCheckout.metadata[COMMERCE_TENANT_METADATA_KEY] !== site
 	)
 		throw invalid();

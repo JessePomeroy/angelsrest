@@ -17,6 +17,18 @@ describe("resolveStripeTenantForSite", () => {
 		expect(lookup).toHaveBeenCalledWith("zippymiggy.com");
 	});
 
+	it("retains a claimed tenant identity for new checkout metadata", async () => {
+		const tenantId = "tenant_05eb6092-5d8c-43ce-ad26-1a59522bd07b";
+		const lookup = vi.fn().mockResolvedValue({ tenantId, siteUrl: "angelsrest.online" });
+
+		await expect(resolveStripeTenantForSite("angelsrest.online", { lookup })).resolves.toEqual({
+			tenantId,
+			siteUrl: "angelsrest.online",
+			name: undefined,
+			stripeConnectedAccountId: undefined,
+		});
+	});
+
 	it("falls back to direct platform checkout when no tenant row is required", async () => {
 		const lookup = vi.fn().mockResolvedValue(null);
 

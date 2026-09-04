@@ -10,6 +10,7 @@ import {
 	hasCheckoutSnapshotMarker,
 	inspectCheckoutAdmissionMetadata,
 	inspectCheckoutSnapshotMetadata,
+	readCheckoutTenantIdMarker,
 	readCheckoutTenantMarker,
 	selectCheckoutSnapshotInput,
 } from "$lib/server/checkoutSnapshotConsumer";
@@ -92,6 +93,7 @@ export async function processStripeWebhookEvent(
 				const consumesCheckoutSnapshot = snapshotModeEnabled || snapshotMarkerPresent;
 				const stripeAccount = typeof event.account === "string" ? event.account.trim() : undefined;
 				const metadataSiteUrl = readCheckoutTenantMarker(session.metadata);
+				const metadataTenantId = readCheckoutTenantIdMarker(session.metadata);
 				let routing = null;
 				try {
 					routing = await adapters.convex.query(api.orders.resolveCheckoutRouting, {
@@ -112,7 +114,12 @@ export async function processStripeWebhookEvent(
 							: inspectCheckoutSnapshotMetadata(session.metadata),
 					);
 				}
-				const tenantPromise = resolveCommerceTenant(event, adapters.convex, routing?.siteUrl);
+				const tenantPromise = resolveCommerceTenant(
+					event,
+					adapters.convex,
+					routing?.siteUrl,
+					metadataTenantId,
+				);
 				const suppressTenantFailureAlert =
 					snapshotModeEnabled || (snapshotMarkerPresent && routing?.source !== "order");
 				const tenant = suppressTenantFailureAlert

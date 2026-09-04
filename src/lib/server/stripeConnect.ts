@@ -2,8 +2,12 @@ import type Stripe from "stripe";
 
 export const PLATFORM_PRINT_FEE_RATE = 0.05;
 export const COMMERCE_TENANT_METADATA_KEY = "commerceTenantSiteUrl";
+export const COMMERCE_TENANT_ID_METADATA_KEY = "commerceTenantId";
+export const COMMERCE_TENANT_ID_PATTERN =
+	/^tenant_[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
 
 export interface StripeTenantAccount {
+	tenantId?: string | null;
 	siteUrl: string;
 	name?: string;
 	stripeConnectedAccountId?: string | null;
@@ -48,7 +52,14 @@ export function buildTenantCheckoutOptions({
 	const connectedAccountId = normalizeConnectedAccountId(tenant.stripeConnectedAccountId);
 	const tenantSiteUrl = normalizeCommerceTenantSiteUrl(tenant.siteUrl);
 	if (!tenantSiteUrl) throw new Error("Invalid commerce tenant siteUrl");
-	const metadata = { [COMMERCE_TENANT_METADATA_KEY]: tenantSiteUrl };
+	const tenantId = tenant.tenantId?.trim();
+	if (tenantId && !COMMERCE_TENANT_ID_PATTERN.test(tenantId)) {
+		throw new Error("Invalid commerce tenantId");
+	}
+	const metadata = {
+		[COMMERCE_TENANT_METADATA_KEY]: tenantSiteUrl,
+		...(tenantId ? { [COMMERCE_TENANT_ID_METADATA_KEY]: tenantId } : {}),
+	};
 	const platformFeeAmount = connectedAccountId
 		? calculatePlatformFeeAmount({ kind, subtotalCents })
 		: 0;

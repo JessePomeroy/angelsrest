@@ -2,13 +2,19 @@ import type { ConvexHttpClient } from "convex/browser";
 import type Stripe from "stripe";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { resolveCommerceTenant } from "$lib/server/commerceTenant";
-import { COMMERCE_TENANT_METADATA_KEY } from "$lib/server/stripeConnect";
+import {
+	COMMERCE_TENANT_ID_METADATA_KEY,
+	COMMERCE_TENANT_METADATA_KEY,
+} from "$lib/server/stripeConnect";
+
+const TENANT_ID = "tenant_05eb6092-5d8c-43ce-ad26-1a59522bd07b";
 
 vi.mock("$convex/api", () => ({
 	api: {
 		platform: {
 			getByStripeConnectedAccountId: "platform.getByStripeConnectedAccountId",
 			getCommerceProfileForSite: "platform.getCommerceProfileForSite",
+			getTenantRoutingContext: "platform.getTenantRoutingContext",
 		},
 	},
 }));
@@ -85,6 +91,38 @@ describe("commerce tenant resolution", () => {
 		});
 	});
 
+	it("dual-reads the claimed hub identity and compatibility domain", async () => {
+		query.mockResolvedValue({ tenantId: TENANT_ID, siteUrl: "angelsrest.online" });
+
+		await expect(
+			resolveCommerceTenant(
+				event("checkout.session.completed", {
+					[COMMERCE_TENANT_METADATA_KEY]: "angelsrest.online",
+					[COMMERCE_TENANT_ID_METADATA_KEY]: TENANT_ID,
+				}),
+				convex,
+			),
+		).resolves.toMatchObject({ tenantId: TENANT_ID, siteUrl: "angelsrest.online" });
+		expect(query).toHaveBeenCalledWith("platform.getTenantRoutingContext", {
+			tenantId: TENANT_ID,
+			webhookSecret: "test-webhook-secret",
+		});
+	});
+
+	it("rejects a claimed ID whose canonical domain disagrees", async () => {
+		query.mockResolvedValue({ tenantId: TENANT_ID, siteUrl: "other.example" });
+
+		await expect(
+			resolveCommerceTenant(
+				event("checkout.session.completed", {
+					[COMMERCE_TENANT_METADATA_KEY]: "angelsrest.online",
+					[COMMERCE_TENANT_ID_METADATA_KEY]: TENANT_ID,
+				}),
+				convex,
+			),
+		).rejects.toThrow("Commerce tenant identity does not match");
+	});
+
 	it("uses the same marker on platform-account PaymentIntent failures", async () => {
 		query.mockResolvedValue({
 			siteName: "Reflecting Pool",
@@ -122,7 +160,7 @@ describe("commerce tenant resolution", () => {
 				),
 				convex,
 			),
-		).rejects.toThrow("Stripe account acct_123 does not match commerce tenant other.example");
+		).rejects.toThrow("Commerce tenant identity does not match");
 	});
 
 	it("fails closed when a marked platform tenant is not registered", async () => {

@@ -56,3 +56,10 @@ that `zippymiggy.com` remained unwidened and untouched.
 Stage B must therefore adopt opaque identity only where the resolved Angels Rest
 tenant ID is present. Existing `siteUrl` behavior remains the compatibility path
 for tenants outside this approved migration scope.
+
+## Stage B1 — Stripe identity adoption
+
+New Angels Rest Checkout Sessions and PaymentIntents carry both
+`commerceTenantId` and `commerceTenantSiteUrl`. Webhook resolution compares the
+opaque identity with the compatibility domain and fails closed on disagreement.
+Unclaimed tenants continue emitting only `commerceTenantSiteUrl`.
