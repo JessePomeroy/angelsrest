@@ -229,16 +229,27 @@ describe("reservation, binding, and order transfer", () => {
 		expect((await rows(t))[0]?.tenantId).toBe(TENANT_ID_A);
 		expect((await reserve(t)).json.replayed).toBe(true);
 
-		const legacy = await reserve(
+		const legacyReplay = await reserve(
 			t,
 			reserveBody("123e4567-e89b-42d3-a456-426614174018"),
 		);
-		expect(legacy.response.status).toBe(200);
-		expect((await rows(t)).some((row) => row.tenantId === undefined)).toBe(true);
+		expect(legacyReplay.response.status).toBe(200);
+		expect((await reserve(t, reserveBody("123e4567-e89b-42d3-a456-426614174018", {
+			tenantId: TENANT_ID_A,
+		}))).json.replayed).toBe(true);
+		expect((await rows(t)).every((row) => row.tenantId === TENANT_ID_A)).toBe(true);
+
+		const legacyBind = await reserve(
+			t,
+			reserveBody("123e4567-e89b-42d3-a456-426614174019"),
+		);
+		expect((await bind(t, legacyBind.json.handle!, { tenantId: TENANT_ID_A })).json.bound)
+			.toBe(true);
+		expect((await rows(t)).every((row) => row.tenantId === TENANT_ID_A)).toBe(true);
 		expect(
 			(await reserve(
 				t,
-				reserveBody("123e4567-e89b-42d3-a456-426614174019", {
+				reserveBody("123e4567-e89b-42d3-a456-426614174020", {
 					tenantId: "tenant_15eb6092-5d8c-43ce-ad26-1a59522bd07b",
 				}),
 			)).response.status,

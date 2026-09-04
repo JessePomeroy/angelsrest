@@ -221,12 +221,30 @@ export const beginCheckoutSessionAdmission = internalMutation({
 				|| existing.requestFingerprint !== args.requestFingerprint
 				|| existing.admissionHandleHash !== args.admissionHandleHash
 				|| existing.stripeConnectedAccountId !== args.stripeConnectedAccountId
-				|| args.tenantId !== undefined && existing.tenantId !== args.tenantId
+				|| args.tenantId !== undefined
+					&& existing.tenantId !== undefined
+					&& existing.tenantId !== args.tenantId
 				|| existing.hostGeneration !== args.hostGeneration
 				|| existing.admissionGeneration !== control.generation
 				|| existing.state === "active_prestripe"
 					&& existing.activeLeaseTokenHash !== args.activeLeaseTokenHash
 			) throw new Error("Checkout admission attempt conflicts");
+			if (args.tenantId !== undefined && existing.tenantId === undefined) {
+				if (existing.checkoutSnapshotReservationId !== undefined) {
+					const reservation = await ctx.db.get(existing.checkoutSnapshotReservationId);
+					if (
+						!reservation
+						|| reservation.siteUrl !== existing.siteUrl
+						|| reservation.accountScope !== existing.accountScope
+						|| reservation.checkoutSessionAdmissionId !== existing._id
+						|| reservation.tenantId !== undefined && reservation.tenantId !== args.tenantId
+					) throw new Error("Checkout admission attempt conflicts");
+					if (reservation.tenantId === undefined) {
+						await ctx.db.patch(reservation._id, { tenantId: args.tenantId, updatedAt: Date.now() });
+					}
+				}
+				await ctx.db.patch(existing._id, { tenantId: args.tenantId, updatedAt: Date.now() });
+			}
 			return {
 				outcome: "replayed" as const,
 				admissionId: existing._id,

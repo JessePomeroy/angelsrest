@@ -419,7 +419,12 @@ export const reserveCheckoutSnapshot = internalMutation({
 				&& JSON.stringify(existing.snapshot) === JSON.stringify(args.snapshot)
 				&& existing.accountScope === accountScope
 				&& existing.stripeConnectedAccountId === args.stripeConnectedAccountId
-				&& (args.tenantId === undefined || existing.tenantId === args.tenantId);
+				&& (args.tenantId === undefined
+					|| existing.tenantId === undefined
+					|| existing.tenantId === args.tenantId);
+			if (replayed && args.tenantId !== undefined && existing.tenantId === undefined) {
+				await ctx.db.patch(existing._id, { tenantId: args.tenantId, updatedAt: Date.now() });
+			}
 			return { outcome: replayed ? "replayed" as const : "conflict" as const };
 		}
 		assertOrderProducersOpen();
@@ -460,7 +465,11 @@ export const bindCheckoutSnapshot = internalMutation({
 		const row = await ctx.db.query("checkoutSnapshotReservations")
 			.withIndex("by_siteUrl_and_handleHash", (q) => q.eq("siteUrl", args.siteUrl).eq("handleHash", args.handleHash)).unique();
 		if (!row) return { outcome: "not_found" as const };
-		if (args.tenantId !== undefined && row.tenantId !== args.tenantId) {
+		if (
+			args.tenantId !== undefined
+			&& row.tenantId !== undefined
+			&& row.tenantId !== args.tenantId
+		) {
 			return { outcome: "conflict" as const };
 		}
 		const accountScope = stripeAccountScope(args.stripeConnectedAccountId);
@@ -475,6 +484,9 @@ export const bindCheckoutSnapshot = internalMutation({
 			const replayed = row.accountScope === accountScope
 				&& row.stripeConnectedAccountId === args.stripeConnectedAccountId
 				&& row.stripeSessionId === args.stripeSessionId && row.stripeExpiresAt === args.stripeExpiresAt;
+			if (replayed && args.tenantId !== undefined && row.tenantId === undefined) {
+				await ctx.db.patch(row._id, { tenantId: args.tenantId, updatedAt: Date.now() });
+			}
 			return { outcome: replayed ? "replayed" as const : "conflict" as const };
 		}
 		if (row.accountScope !== accountScope) return { outcome: "conflict" as const };
@@ -484,7 +496,7 @@ export const bindCheckoutSnapshot = internalMutation({
 		const boundReconcileAt = args.stripeExpiresAt * 1000 + PAID_SAFE_DELAY_MS;
 		if (!Number.isSafeInteger(boundReconcileAt)) return { outcome: "invalid" as const };
 		await ctx.db.patch(row._id, {
-			state: "bound", stripeSessionId: args.stripeSessionId,
+			state: "bound", tenantId: row.tenantId ?? args.tenantId, stripeSessionId: args.stripeSessionId,
 			stripeExpiresAt: args.stripeExpiresAt, boundAt, boundReconcileAt, updatedAt: boundAt,
 			reconciliationAttempt: 0, reconciliationNextAt: boundReconcileAt,
 		});

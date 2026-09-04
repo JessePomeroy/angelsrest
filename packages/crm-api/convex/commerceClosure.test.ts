@@ -293,6 +293,18 @@ describe("Checkout Session admission", () => {
 		expect(
 			await t.mutation(internal.commerceClosure.beginCheckoutSessionAdmission, beginArgs()),
 		).toMatchObject({ outcome: "replayed", admissionId: identified.admissionId });
+		const legacyArgs = beginArgs("6".repeat(64), "7".repeat(64), "8".repeat(64));
+		const legacy = await t.mutation(
+			internal.commerceClosure.beginCheckoutSessionAdmission,
+			legacyArgs,
+		);
+		expect(
+			await t.mutation(internal.commerceClosure.beginCheckoutSessionAdmission, {
+				...legacyArgs,
+				tenantId: TENANT_ID,
+			}),
+		).toMatchObject({ outcome: "replayed", admissionId: legacy.admissionId });
+		expect((await t.run((ctx) => ctx.db.get(legacy.admissionId)))?.tenantId).toBe(TENANT_ID);
 		await expect(
 			t.mutation(internal.commerceClosure.beginCheckoutSessionAdmission, {
 				...beginArgs("5".repeat(64)),
