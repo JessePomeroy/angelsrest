@@ -487,6 +487,32 @@ describe("reservation, binding, and order transfer", () => {
 		})).toEqual({ source: "order", siteUrl: SITE_A, stripeConnectedAccountId: undefined });
 	});
 
+	test("persists and fences the verified tenant identity without changing legacy routing", async () => {
+		const t = convexTest(schema, modules);
+		await seedTenantIdentity(t);
+		const reserved = await reserve(t, reserveBody(undefined, { tenantId: TENANT_ID_A }));
+		await bind(t, reserved.json.handle!, { tenantId: TENANT_ID_A });
+		expect(await t.query(api.orders.resolveCheckoutRouting, {
+			stripeSessionId: SESSION,
+			stripeTenantMetadataSiteUrl: SITE_A,
+			stripeTenantMetadataTenantId: TENANT_ID_A,
+			webhookSecret: WEBHOOK,
+		})).toMatchObject({ source: "reservation", siteUrl: SITE_A });
+
+		const created = await t.mutation(api.orders.create, {
+			...orderArgs(),
+			tenantId: TENANT_ID_A,
+			checkoutSnapshotReservation: { version: 2, handle: reserved.json.handle },
+		});
+		expect((await t.run((ctx) => ctx.db.get(created._id)))?.tenantId).toBe(TENANT_ID_A);
+		await expect(t.query(api.orders.resolveCheckoutRouting, {
+			stripeSessionId: SESSION,
+			stripeTenantMetadataSiteUrl: SITE_A,
+			stripeTenantMetadataTenantId: "tenant_15eb6092-5d8c-43ce-ad26-1a59522bd07b",
+			webhookSecret: WEBHOOK,
+		})).rejects.toThrow("routing facts conflict");
+	});
+
 	test("rejects contradictory existing-order accounts with a canonical legacy fallback", async () => {
 		const t = convexTest(schema, modules);
 		await seedPlatformClients(t);

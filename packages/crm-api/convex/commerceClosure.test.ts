@@ -154,6 +154,27 @@ async function insertPrintOrder(t: ReturnType<typeof convexTest>, session = SESS
 	}));
 }
 
+async function seedTenantIdentity(t: ReturnType<typeof convexTest>) {
+	await t.run(async (ctx) => {
+		await ctx.db.insert("platformClients", {
+			tenantId: TENANT_ID,
+			name: "Angel's Rest",
+			email: "owner@angelsrest.online",
+			siteUrl: SITE,
+			tier: "full",
+			subscriptionStatus: "active",
+			adminEmails: ["owner@angelsrest.online"],
+		});
+		await ctx.db.insert("tenantAliases", {
+			tenantId: TENANT_ID,
+			kind: "domain",
+			value: SITE,
+			verifiedAt: Date.now(),
+			verificationMethod: "operator",
+		});
+	});
+}
+
 describe("durable commerce controls", () => {
 	test("activates only exact environment intent and enforces monotonic epochs", async () => {
 		const t = convexTest(schema, modules);
@@ -750,6 +771,26 @@ describe("Checkout Session admission", () => {
 });
 
 describe("provider V4", () => {
+	test("fences provider admission with the order's verified tenant identity", async () => {
+		const t = convexTest(schema, modules);
+		await seedTenantIdentity(t);
+		await activateProvider(t, "open", 1);
+		const orderId = await insertPrintOrder(t);
+		await t.run((ctx) => ctx.db.patch(orderId, { tenantId: TENANT_ID }));
+		expect(await t.mutation(api.orders.claimPrintFulfillmentV4, {
+			orderId,
+			claimToken: CLAIM_A,
+			tenantId: TENANT_ID,
+			webhookSecret: WEBHOOK_SECRET,
+		})).toMatchObject({ kind: "claimed" });
+		await expect(t.mutation(api.orders.beginPrintFulfillmentSubmission, {
+			orderId,
+			claimToken: CLAIM_A,
+			tenantId: "tenant_15eb6092-5d8c-43ce-ad26-1a59522bd07b",
+			webhookSecret: WEBHOOK_SECRET,
+		})).rejects.toThrow("routing facts conflict");
+	});
+
 	test("defaults closed without mutation, then preserves durable admission across closure", async () => {
 		const t = convexTest(schema, modules);
 		const orderId = await insertPrintOrder(t);

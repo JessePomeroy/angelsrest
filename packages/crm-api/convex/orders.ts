@@ -357,6 +357,38 @@ function routingConflict(): never {
 	throw new Error("Checkout routing facts conflict");
 }
 
+async function assertTenantRouting(
+	ctx: Pick<QueryCtx, "db">,
+	tenantId: string | undefined,
+	siteUrl: string,
+	storedTenantId?: string,
+) {
+	if (
+		tenantId !== undefined
+		&& (storedTenantId !== undefined && storedTenantId !== tenantId
+			|| !await tenantIdentityMatchesSite(ctx, tenantId, siteUrl))
+	) routingConflict();
+}
+
+async function adoptOrderTenant(
+	ctx: MutationCtx,
+	order: Doc<"orders">,
+	tenantId: string | undefined,
+) {
+	await assertTenantRouting(ctx, tenantId, order.siteUrl, order.tenantId);
+	if (tenantId !== undefined && order.tenantId === undefined) {
+		await ctx.db.patch(order._id, { tenantId });
+	}
+}
+
+async function assertOrderTenant(
+	ctx: Pick<QueryCtx, "db">,
+	order: Doc<"orders">,
+	tenantId: string | undefined,
+) {
+	await assertTenantRouting(ctx, tenantId, order.siteUrl, order.tenantId);
+}
+
 async function retiredOrderSession(
 	ctx: Pick<QueryCtx, "db">,
 	stripeSessionId: string,
@@ -534,7 +566,7 @@ async function consumeReservation(
 		throw new Error("Checkout snapshot reservation does not match paid session");
 	}
 	await ctx.db.delete(row._id);
-	return row.snapshot;
+	return { snapshot: row.snapshot, tenantId: row.tenantId };
 }
 
 /** Private catalog commerce authority; reachable only through the authenticated HTTP route. */
@@ -696,6 +728,7 @@ export const classifyRefundTarget = query({
  */
 export const create = mutation({
 	args: {
+		tenantId: v.optional(v.string()),
 		siteUrl: v.string(),
 		webhookSecret: v.optional(v.string()),
 		orderNumber: v.optional(v.string()),
@@ -753,12 +786,14 @@ export const create = mutation({
 		// Don't let either capability leak into the stored document.
 		const {
 			webhookSecret: _discard,
+			tenantId,
 			checkoutSnapshotReservation,
 			checkoutSessionAdmission,
 			stripeSessionCreatedAt,
 			stripeSessionExpiresAt,
 			...rest
 		} = args;
+		await assertTenantRouting(ctx, tenantId, args.siteUrl);
 		// Idempotency: if an order with this stripeSessionId already exists,
 		// return it along with fulfillment state so the caller can skip
 		// already-completed side effects (LumaPrints submission, fee capture,
@@ -790,6 +825,7 @@ export const create = mutation({
 			throw new Error("Order session is retired");
 		}
 		if (existing) {
+			await adoptOrderTenant(ctx, existing, tenantId);
 			if (existing.siteUrl !== args.siteUrl) routingConflict();
 			if (existing.stripeConnectedAccountId !== undefined) {
 				if (
@@ -902,20 +938,25 @@ export const create = mutation({
 					checkoutAdmissionHandleHash: admission.admissionHandleHash,
 				}
 			: rest;
+		let durableTenantId = admission?.tenantId;
 		if (checkoutSnapshotReservation !== undefined) {
 			if (rest.checkoutSnapshot !== undefined) throw new Error("Checkout snapshot input is ambiguous");
-			const checkoutSnapshot = await consumeReservation(
+			const reservation = await consumeReservation(
 				ctx, args.siteUrl, args.stripeSessionId, args.stripeConnectedAccountId,
 				args.items.length, checkoutSnapshotReservation as unknown, admission?._id,
 			);
+			await assertTenantRouting(ctx, durableTenantId, args.siteUrl, reservation.tenantId);
+			durableTenantId ??= reservation.tenantId;
 			orderInput = {
 				...orderInput,
-				checkoutSnapshot,
-				fulfillmentType: checkoutSnapshot.items.every(
+				checkoutSnapshot: reservation.snapshot,
+				fulfillmentType: reservation.snapshot.items.every(
 					({ productKind }) => productKind === "digital_download",
 				) ? "digital" : rest.fulfillmentType,
 			};
 		}
+		await assertTenantRouting(ctx, tenantId, args.siteUrl, durableTenantId);
+		durableTenantId ??= tenantId;
 
 		let orderNumber: string;
 		if (args.orderNumber === undefined) {
@@ -951,6 +992,7 @@ export const create = mutation({
 						: undefined;
 		const _id = await ctx.db.insert("orders", {
 			...orderInput,
+			tenantId: durableTenantId,
 			stripeFees: isManuallyRefunded ? undefined : orderInput.stripeFees,
 			orderNumber,
 			status: isManuallyRefunded ? "refunded" : "new",
@@ -1305,6 +1347,7 @@ export const resolveCheckoutRouting = query({
 		stripeSessionId: v.string(),
 		stripeConnectedAccountId: v.optional(v.string()),
 		stripeTenantMetadataSiteUrl: v.optional(v.string()),
+		stripeTenantMetadataTenantId: v.optional(v.string()),
 		webhookSecret: v.string(),
 	},
 	handler: async (ctx, args) => {
@@ -1314,6 +1357,9 @@ export const resolveCheckoutRouting = query({
 		const retired = await retiredOrderSession(ctx, args.stripeSessionId);
 		if (retired && order) routingConflict();
 		if (retired) {
+			await assertTenantRouting(
+				ctx, args.stripeTenantMetadataTenantId, retired.siteUrl,
+			);
 			if (retired.routingKind === "connected") {
 				if (
 					retired.stripeConnectedAccountId === undefined
@@ -1334,6 +1380,9 @@ export const resolveCheckoutRouting = query({
 				stripeConnectedAccountId: retired.stripeConnectedAccountId };
 		}
 		if (order) {
+			await assertTenantRouting(
+				ctx, args.stripeTenantMetadataTenantId, order.siteUrl, order.tenantId,
+			);
 			if (order.stripeConnectedAccountId !== undefined) {
 				if (
 					args.stripeConnectedAccountId !== order.stripeConnectedAccountId
@@ -1364,6 +1413,9 @@ export const resolveCheckoutRouting = query({
 				.eq("accountScope", stripeAccountScope(args.stripeConnectedAccountId))
 				.eq("stripeSessionId", args.stripeSessionId)).unique();
 		if (!reservation || reservation.state !== "bound") return null;
+		await assertTenantRouting(
+			ctx, args.stripeTenantMetadataTenantId, reservation.siteUrl, reservation.tenantId,
+		);
 		if (args.stripeConnectedAccountId !== undefined) {
 			if (
 				reservation.stripeConnectedAccountId !== args.stripeConnectedAccountId
@@ -1395,6 +1447,7 @@ export const resolveCheckoutAdmissionRouting = query({
 		stripeSessionId: v.string(),
 		stripeConnectedAccountId: v.optional(v.string()),
 		stripeTenantMetadataSiteUrl: v.optional(v.string()),
+		stripeTenantMetadataTenantId: v.optional(v.string()),
 		webhookSecret: v.string(),
 	},
 	handler: async (ctx, args) => {
@@ -1412,6 +1465,9 @@ export const resolveCheckoutAdmissionRouting = query({
 				.unique(),
 		]);
 		if (order || retired || !admission || admission.state !== "bound") return null;
+		await assertTenantRouting(
+			ctx, args.stripeTenantMetadataTenantId, admission.siteUrl, admission.tenantId,
+		);
 		if (
 			admission.stripeConnectedAccountId !== args.stripeConnectedAccountId
 			|| args.stripeTenantMetadataSiteUrl !== undefined
@@ -1642,6 +1698,7 @@ export const claimPrintFulfillmentV4 = mutation({
 	args: {
 		orderId: v.id("orders"),
 		claimToken: v.string(),
+		tenantId: v.optional(v.string()),
 		webhookSecret: v.string(),
 	},
 	handler: async (ctx, args) => {
@@ -1649,6 +1706,7 @@ export const claimPrintFulfillmentV4 = mutation({
 		if (!CLAIM_TOKEN.test(args.claimToken)) throw new Error("Invalid print claim token");
 		const order = await ctx.db.get(args.orderId);
 		if (!order) throw new Error("Order not found");
+		await assertOrderTenant(ctx, order, args.tenantId);
 		if (order.lumaprintsOrderNumber) {
 			return { kind: "fulfilled" as const, orderNumber: order.lumaprintsOrderNumber };
 		}
@@ -1781,11 +1839,15 @@ export const expirePrintFulfillmentPreparationV4 = internalMutation({
 
 /** Release only the caller's pre-submission preparation lease. */
 export const releasePrintFulfillmentClaim = mutation({
-	args: { orderId: v.id("orders"), claimToken: v.string(), webhookSecret: v.string() },
+	args: {
+		orderId: v.id("orders"), claimToken: v.string(), tenantId: v.optional(v.string()),
+		webhookSecret: v.string(),
+	},
 	returns: v.boolean(),
 	handler: async (ctx, args) => {
 		await requireWebhookCallerOrAuth(ctx, args.webhookSecret, { allowAuth: false });
 		const order = await ctx.db.get(args.orderId);
+		if (order) await assertOrderTenant(ctx, order, args.tenantId);
 		if (
 			!order
 			|| order.status !== "new"
@@ -1818,11 +1880,15 @@ export const releasePrintFulfillmentClaim = mutation({
 
 /** Atomically fence the irreversible provider POST after local preparation. */
 export const beginPrintFulfillmentSubmission = mutation({
-	args: { orderId: v.id("orders"), claimToken: v.string(), webhookSecret: v.string() },
+	args: {
+		orderId: v.id("orders"), claimToken: v.string(), tenantId: v.optional(v.string()),
+		webhookSecret: v.string(),
+	},
 	handler: async (ctx, args) => {
 		await requireWebhookCallerOrAuth(ctx, args.webhookSecret, { allowAuth: false });
 		const order = await ctx.db.get(args.orderId);
 		if (!order) throw new Error("Order not found");
+		await assertOrderTenant(ctx, order, args.tenantId);
 		if (
 			order.status === "refunded"
 			&& order.stripeRefundId
@@ -1865,6 +1931,7 @@ export const completePrintFulfillmentSubmission = mutation({
 		claimToken: v.string(),
 		externalId: v.string(),
 		lumaprintsOrderNumber: v.string(),
+		tenantId: v.optional(v.string()),
 		webhookSecret: v.string(),
 	},
 	handler: async (ctx, args) => {
@@ -1878,6 +1945,7 @@ export const completePrintFulfillmentSubmission = mutation({
 		if (!order || order.stripeSessionId !== args.externalId) {
 			throw new Error("Print fulfillment identity does not match order");
 		}
+		await assertOrderTenant(ctx, order, args.tenantId);
 		if (order.lumaprintsOrderNumber !== undefined) {
 			if (
 				order.lumaprintsOrderNumber !== args.lumaprintsOrderNumber
@@ -1905,6 +1973,7 @@ export const rejectPrintFulfillmentSubmission = mutation({
 		orderId: v.id("orders"),
 		claimToken: v.string(),
 		externalId: v.string(),
+		tenantId: v.optional(v.string()),
 		webhookSecret: v.string(),
 	},
 	returns: v.union(
@@ -1922,6 +1991,7 @@ export const rejectPrintFulfillmentSubmission = mutation({
 		if (!order || order.stripeSessionId !== args.externalId) {
 			throw new Error("Print fulfillment identity does not match order");
 		}
+		await assertOrderTenant(ctx, order, args.tenantId);
 		if (
 			order.lumaprintsOrderNumber !== undefined
 			|| !hasUncertainPrintSubmission(order)
@@ -1973,6 +2043,7 @@ export const reconcilePrintFulfillmentSubmission = mutation({
 		orderId: v.id("orders"),
 		externalId: v.string(),
 		lumaprintsOrderNumber: v.string(),
+		tenantId: v.optional(v.string()),
 		webhookSecret: v.string(),
 	},
 	handler: async (ctx, args) => {
@@ -1985,6 +2056,7 @@ export const reconcilePrintFulfillmentSubmission = mutation({
 		if (!order || order.stripeSessionId !== args.externalId) {
 			throw new Error("Print fulfillment identity does not match order");
 		}
+		await assertOrderTenant(ctx, order, args.tenantId);
 		if (order.lumaprintsOrderNumber !== undefined) {
 			if (
 				order.lumaprintsOrderNumber !== args.lumaprintsOrderNumber
@@ -2009,6 +2081,7 @@ export const recordPrintFulfillmentReconciliationPending = mutation({
 		orderId: v.id("orders"),
 		externalId: v.string(),
 		reason: printFulfillmentInconclusiveClassValidator,
+		tenantId: v.optional(v.string()),
 		webhookSecret: v.string(),
 	},
 	returns: v.union(
@@ -2028,6 +2101,7 @@ export const recordPrintFulfillmentReconciliationPending = mutation({
 		if (!order || order.stripeSessionId !== args.externalId) {
 			throw new Error("Print fulfillment identity does not match order");
 		}
+		await assertOrderTenant(ctx, order, args.tenantId);
 		if (order.lumaprintsOrderNumber !== undefined || !hasUncertainPrintSubmission(order)) {
 			throw new Error("Print fulfillment reconciliation claim is unavailable");
 		}
@@ -2091,6 +2165,7 @@ export const blockPrintFulfillmentReconciliation = mutation({
 		orderId: v.id("orders"),
 		externalId: v.string(),
 		reconciliationClass: printFulfillmentReconciliationClassValidator,
+		tenantId: v.optional(v.string()),
 		webhookSecret: v.string(),
 	},
 	returns: v.boolean(),
@@ -2103,6 +2178,7 @@ export const blockPrintFulfillmentReconciliation = mutation({
 		if (!order || order.stripeSessionId !== args.externalId) {
 			throw new Error("Print fulfillment identity does not match order");
 		}
+		await assertOrderTenant(ctx, order, args.tenantId);
 		if (order.lumaprintsOrderNumber !== undefined) return false;
 		if (!hasUncertainPrintSubmission(order)) {
 			throw new Error("Print fulfillment reconciliation claim is unavailable");
