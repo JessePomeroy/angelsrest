@@ -119,7 +119,7 @@ export function createCheckoutSessionAdmissionClient({
 			const response = await post(BEGIN_PATH, site, {
 				version: 1,
 				site,
-				...(tenantId ? { tenantId } : {}),
+				...(tenantId === undefined ? {} : { tenantId }),
 				account,
 				attemptDigest,
 				proofClass: identity.proofClass,

@@ -73,7 +73,7 @@ export function createCheckoutSnapshotReservationClient({
 			const response = await post(RESERVE_PATH, site, {
 				version: 1,
 				site,
-				...(tenantId ? { tenantId } : {}),
+				...(tenantId === undefined ? {} : { tenantId }),
 				attempt,
 				account,
 				snapshot: { schemaVersion: 1, catalogProvider, items },
@@ -91,7 +91,7 @@ export function createCheckoutSnapshotReservationClient({
 			const response = await post(BIND_PATH, site, {
 				version: 1,
 				site,
-				...(tenantId ? { tenantId } : {}),
+				...(tenantId === undefined ? {} : { tenantId }),
 				handle,
 				account,
 				session,
