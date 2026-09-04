@@ -102,10 +102,10 @@ Cloudflare R2 custody, including its indefinite baseline lock, through at least
 separate recovery-key disposition replaces this rule.
 
 The archived Studio repository and verified bundle preserve source history.
-Migrated Convex `sanityImport` and `provider: "sanity"` values preserve data
-lineage only; they do not provide or require Sanity access. The generated Convex
-compatibility stubs likewise remain until sanctioned code generation removes
-their generated imports.
+Migrated Convex `sanityImport` and `provider: "sanity"` values preserve lineage
+and bounded legacy read and validation compatibility; they do not provide or
+require Sanity access. The generated Convex compatibility stubs likewise remain
+until sanctioned code generation removes their generated imports.
 
 Restoration would create an isolated replacement project from the encrypted
 archive and archived source. It must not silently reintroduce Sanity as a live
