@@ -566,7 +566,7 @@ export function buildLumaPrintsOrder(
 		shippingMethod: "default",
 		recipient: {
 			firstName: recipient.firstName,
-			lastName: recipient.lastName,
+			lastName: recipient.lastName || recipient.firstName,
 			addressLine1: recipient.address1,
 			addressLine2: recipient.address2 || "",
 			city: recipient.city,
