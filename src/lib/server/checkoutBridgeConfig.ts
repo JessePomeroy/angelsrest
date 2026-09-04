@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 import { env } from "$env/dynamic/private";
+import { normalizeCommerceTenantSiteUrl } from "$lib/server/stripeConnect";
 
 const MAX_REGISTRY_BYTES = 64 * 1024;
 const MAX_TENANTS = 100;
@@ -32,7 +33,7 @@ export function getCheckoutSnapshotReservationCredential(
 ): string {
 	try {
 		const { reservation } = validateCheckoutRoles(rawBridgeRegistry, rawRegistry, rawFingerprints);
-		const current = reservation[siteUrl]?.[0];
+		const current = reservation[normalizeCommerceTenantSiteUrl(siteUrl)]?.[0];
 		if (current) return current;
 	} catch {}
 	throw new Error("Checkout reservation credentials are unavailable");

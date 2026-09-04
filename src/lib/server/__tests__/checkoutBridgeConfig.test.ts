@@ -61,7 +61,11 @@ describe("checkout bridge tenant registry", () => {
 		});
 		const manifest = fingerprintManifest([PRIMARY_SECRET], [RESERVATION_SECRET, previous]);
 		expect(
-			getCheckoutSnapshotReservationCredential("angelsrest.test", reservationRegistry, manifest),
+			getCheckoutSnapshotReservationCredential(
+				"https://www.angelsrest.test",
+				reservationRegistry,
+				manifest,
+			),
 		).toBe(RESERVATION_SECRET);
 		expect(() =>
 			getCheckoutSnapshotReservationCredential("other.test", reservationRegistry, manifest),
