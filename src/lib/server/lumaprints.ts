@@ -281,7 +281,21 @@ async function fetchLumaPrints(path: string, init: RequestInit = {}): Promise<Re
 	}
 }
 
-/** Retain only fixed diagnostic labels and documented dimensions, never upstream text/URLs. */
+function matchingLabels(text: string, patterns: Record<string, RegExp>) {
+	return Object.entries(patterns)
+		.filter(([, pattern]) => pattern.test(text))
+		.map(([label]) => label);
+}
+
+function diagnosticStrings(value: unknown): string[] {
+	if (typeof value === "string") return [value];
+	if (Array.isArray(value)) return value.flatMap(diagnosticStrings);
+	return object(value)
+		? Object.entries(value).flatMap(([key, nested]) => [key, ...diagnosticStrings(nested)])
+		: [];
+}
+
+/** Retain only fixed diagnostic labels and documented numbers, never upstream text/URLs. */
 async function rejectionDiagnostics(response: Response): Promise<LumaPrintsErrorDetails> {
 	try {
 		const invalid = () => new Error("Unreadable provider diagnostic");
@@ -293,26 +307,84 @@ async function rejectionDiagnostics(response: Response): Promise<LumaPrintsError
 			invalid,
 		);
 		if (!object(body)) return { providerReason: "unrecognized" };
-		const message = [body.message]
-			.flat()
-			.filter((value) => typeof value === "string")
+		const text = [
+			body.message,
+			body.error,
+			body.errors,
+			body.detail,
+			body.details,
+			body.reason,
+			body.title,
+		]
+			.flatMap(diagnosticStrings)
 			.join(" ");
-		const reasons = Object.entries({
+		const reasons = matchingLabels(text, {
 			billing_address: /billing address/i,
 			payment_method: /payment method|primary card/i,
 			image_dimensions: /aspect ratio|resolution|dimensions|sized incorrectly/i,
-			image_source: /image|imageUrl/i,
+			image_source: /imageUrl|image (?:url|source|file)|artwork/i,
+			image_access: /fetch|download|accessible|reachable/i,
 			product_options: /subcategory|orderItemOptions/i,
 			recipient: /recipient/i,
 			shipping: /shipping/i,
 			store: /storeId/i,
 			external_id: /externalId|externalItemId/i,
-		})
-			.filter(([, pattern]) => pattern.test(message))
-			.map(([reason]) => reason);
+			duplicate: /already exists|duplicate/i,
+			required: /required|missing/i,
+			invalid: /invalid|incorrect|not acceptable|unsupported/i,
+			provider_exception: /exception/i,
+		});
+		const fieldText = [
+			body.field,
+			body.path,
+			body.property,
+			body.propertyName,
+			body.param,
+			body.parameter,
+			body.errors,
+		]
+			.flatMap(diagnosticStrings)
+			.join(" ");
+		const fields = matchingLabels(fieldText, {
+			"recipient.firstName": /firstName/i,
+			"recipient.lastName": /lastName/i,
+			"recipient.addressLine1": /addressLine1/i,
+			"recipient.addressLine2": /addressLine2/i,
+			"recipient.city": /\bcity\b/i,
+			"recipient.state": /\bstate\b/i,
+			"recipient.zipCode": /zipCode/i,
+			"recipient.country": /\bcountry\b/i,
+			"recipient.phone": /\bphone\b/i,
+			"orderItems[].externalItemId": /externalItemId/i,
+			"orderItems[].subcategoryId": /subcategoryId/i,
+			"orderItems[].quantity": /\bquantity\b/i,
+			"orderItems[].width": /\bwidth\b/i,
+			"orderItems[].height": /\bheight\b/i,
+			"orderItems[].file.imageUrl": /imageUrl/i,
+			"orderItems[].orderItemOptions": /orderItemOptions/i,
+			externalId: /(?<!Item)externalId/i,
+			storeId: /storeId/i,
+			shippingMethod: /shippingMethod/i,
+			productionTime: /productionTime/i,
+		});
 		const details: Record<string, string | number> = {
 			providerReason: reasons.join(",") || "unrecognized",
+			...(fields.length ? { providerFields: fields.join(",") } : {}),
 		};
+		if (
+			Number.isInteger(body.statusCode) &&
+			Number(body.statusCode) >= 100 &&
+			Number(body.statusCode) <= 599
+		)
+			details.providerStatusCode = Number(body.statusCode);
+		const providerCode = [body.code, body.errorCode].find(
+			(value): value is number =>
+				typeof value === "number" &&
+				Number.isSafeInteger(value) &&
+				value >= 0 &&
+				value <= 1_000_000,
+		);
+		if (providerCode !== undefined) details.providerCode = providerCode;
 		for (const key of [
 			"expectedWidth",
 			"expectedHeight",
