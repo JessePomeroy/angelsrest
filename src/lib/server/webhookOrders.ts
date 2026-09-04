@@ -60,6 +60,7 @@ export async function createOrderInConvex(
 		session,
 		shippingDetails,
 		lineItems,
+		tenantId,
 		siteUrl,
 		stripeRequestOptions,
 		notificationProfile = ANGELS_REST_COMMERCE_PROFILE,
@@ -69,6 +70,7 @@ export async function createOrderInConvex(
 		session: Stripe.Checkout.Session;
 		shippingDetails: ShippingDetails;
 		lineItems: Stripe.LineItem[];
+		tenantId?: string;
 		siteUrl: string;
 		stripeRequestOptions?: Stripe.RequestOptions;
 		notificationProfile?: CommerceNotificationProfile;
@@ -80,6 +82,7 @@ export async function createOrderInConvex(
 		session,
 		shippingDetails,
 		lineItems,
+		tenantId,
 		siteUrl,
 		webhookSecret: getWebhookSecret(),
 		stripeRequestOptions,
@@ -280,6 +283,7 @@ export async function createOrderInConvex(
 			{
 				orderId,
 				orderNumber,
+				tenantId,
 				lineItems,
 				shippingDetails,
 				session,

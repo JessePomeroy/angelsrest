@@ -167,12 +167,14 @@ async function recordInconclusiveReconciliation(
 	orderId: Id<"orders">,
 	externalId: string,
 	reason: PrintReconciliationEscalationReason,
+	tenantId: string | undefined,
 	webhookSecret: string,
 ): Promise<PrintFulfillmentOutcome | null> {
 	const pending = await convex.mutation(api.orders.recordPrintFulfillmentReconciliationPending, {
 		orderId,
 		externalId,
 		reason,
+		...(tenantId === undefined ? {} : { tenantId }),
 		webhookSecret,
 	});
 	if (pending.kind === "pending") return null;
@@ -195,14 +197,17 @@ export async function submitPrintFulfillment(
 	input: {
 		orderId: Id<"orders">;
 		orderNumber: string;
+		tenantId?: string;
 		lineItems: Stripe.LineItem[];
 		shippingDetails: ShippingDetails;
 		session: Stripe.Checkout.Session;
 		checkoutSnapshot?: CheckoutSnapshotV1;
 	},
 ): Promise<PrintFulfillmentOutcome> {
-	const { orderId, orderNumber, lineItems, shippingDetails, session, checkoutSnapshot } = input;
+	const { orderId, orderNumber, tenantId, lineItems, shippingDetails, session, checkoutSnapshot } =
+		input;
 	const webhookSecret = getWebhookSecret();
+	const tenantFence = tenantId === undefined ? {} : { tenantId };
 	const legacyItems = checkoutSnapshot ? undefined : buildOrderItemsFromSession(session, lineItems);
 	const hasPrintItems = checkoutSnapshot
 		? checkoutSnapshot.items.some(
@@ -239,6 +244,7 @@ export async function submitPrintFulfillment(
 	const claimed = await convex.mutation(api.orders.claimPrintFulfillmentV4, {
 		orderId,
 		claimToken,
+		...tenantFence,
 		webhookSecret,
 	});
 	if (claimed.kind === "submission_closed") {
@@ -286,6 +292,7 @@ export async function submitPrintFulfillment(
 					orderId,
 					claimed.externalId,
 					classifyInconclusiveReconciliation(error),
+					tenantId,
 					webhookSecret,
 				);
 				if (escalation) return escalation;
@@ -298,6 +305,7 @@ export async function submitPrintFulfillment(
 				orderId,
 				externalId: claimed.externalId,
 				reconciliationClass,
+				...tenantFence,
 				webhookSecret,
 			});
 			if (blocked) {
@@ -318,6 +326,7 @@ export async function submitPrintFulfillment(
 			const refreshed = await convex.mutation(api.orders.claimPrintFulfillmentV4, {
 				orderId,
 				claimToken,
+				...tenantFence,
 				webhookSecret,
 			});
 			if (refreshed.kind === "submission_closed") {
@@ -355,6 +364,7 @@ export async function submitPrintFulfillment(
 				const released = await convex.mutation(api.orders.releasePrintFulfillmentClaim, {
 					orderId,
 					claimToken,
+					...tenantFence,
 					webhookSecret,
 				});
 				if (!released) throw new Error("Print preparation claim release is pending");
@@ -367,6 +377,7 @@ export async function submitPrintFulfillment(
 				orderId,
 				claimed.externalId,
 				"result_not_observed",
+				tenantId,
 				webhookSecret,
 			);
 			if (escalation) return escalation;
@@ -376,6 +387,7 @@ export async function submitPrintFulfillment(
 			orderId,
 			externalId: claimed.externalId,
 			lumaprintsOrderNumber: existing.orderNumber,
+			...tenantFence,
 			webhookSecret,
 		});
 		if (completion.kind === "manual_refunded") {
@@ -395,6 +407,7 @@ export async function submitPrintFulfillment(
 		const released = await convex.mutation(api.orders.releasePrintFulfillmentClaim, {
 			orderId,
 			claimToken,
+			...tenantFence,
 			webhookSecret,
 		});
 		if (!released) throw new Error("Print preparation claim release is pending");
@@ -464,6 +477,7 @@ export async function submitPrintFulfillment(
 	const submission = await convex.mutation(api.orders.beginPrintFulfillmentSubmission, {
 		orderId,
 		claimToken,
+		...tenantFence,
 		webhookSecret,
 	});
 	if (submission.kind === "manual_refunded") {
@@ -489,6 +503,7 @@ export async function submitPrintFulfillment(
 				orderId,
 				claimToken,
 				externalId: submission.externalId,
+				...tenantFence,
 				webhookSecret,
 			});
 			if (rejection.kind === "manual_refunded") {
@@ -516,6 +531,7 @@ export async function submitPrintFulfillment(
 		claimToken,
 		externalId: submission.externalId,
 		lumaprintsOrderNumber: result.orderNumber,
+		...tenantFence,
 		webhookSecret,
 	});
 	logStructured({

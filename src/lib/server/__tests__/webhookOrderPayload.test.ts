@@ -173,6 +173,19 @@ describe("buildConvexOrderCreatePayload", () => {
 		expect(payload.stripeConnectedAccountId).toBe("acct_connected_123");
 	});
 
+	it("adds the server-resolved tenant ID only when one is supplied", () => {
+		const payload = buildConvexOrderCreatePayload({
+			session: makeSession(),
+			shippingDetails: null,
+			lineItems: [],
+			tenantId: "tenant_05eb6092-5d8c-43ce-ad26-1a59522bd07b",
+			siteUrl: "angelsrest.online",
+			webhookSecret: "secret",
+		});
+
+		expect(payload.tenantId).toBe("tenant_05eb6092-5d8c-43ce-ad26-1a59522bd07b");
+	});
+
 	it("falls back for missing customer, line item, and amount details", () => {
 		const payload = buildConvexOrderCreatePayload({
 			session: makeSession({

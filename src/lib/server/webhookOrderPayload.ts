@@ -7,6 +7,7 @@ import type { ShippingDetails } from "$lib/server/webhookEmails";
 
 export type ConvexOrderCreatePayload = {
 	webhookSecret: string;
+	tenantId?: string;
 	siteUrl: string;
 	stripeSessionId: string;
 	customerEmail: string;
@@ -44,6 +45,7 @@ export function buildConvexOrderCreatePayload({
 	session,
 	shippingDetails,
 	lineItems,
+	tenantId,
 	siteUrl,
 	webhookSecret,
 	stripeRequestOptions,
@@ -53,6 +55,7 @@ export function buildConvexOrderCreatePayload({
 	session: Stripe.Checkout.Session;
 	shippingDetails: ShippingDetails;
 	lineItems: Stripe.LineItem[];
+	tenantId?: string;
 	siteUrl: string;
 	webhookSecret: string;
 	stripeRequestOptions?: Stripe.RequestOptions;
@@ -66,6 +69,7 @@ export function buildConvexOrderCreatePayload({
 
 	return {
 		webhookSecret,
+		...(tenantId === undefined ? {} : { tenantId }),
 		siteUrl,
 		stripeSessionId: session.id,
 		customerEmail: session.customer_details?.email || "",

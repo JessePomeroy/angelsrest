@@ -2,7 +2,10 @@ import { error, json } from "@sveltejs/kit";
 import type Stripe from "stripe";
 import { api } from "$convex/api";
 import { env } from "$env/dynamic/private";
-import { readCheckoutTenantMarker } from "$lib/server/checkoutSnapshotConsumer";
+import {
+	readCheckoutTenantIdMarker,
+	readCheckoutTenantMarker,
+} from "$lib/server/checkoutSnapshotConsumer";
 import { getConvex } from "$lib/server/convexClient";
 import { logStructured } from "$lib/server/logger";
 import { createOrder as createLumaPrintsOrder } from "$lib/server/lumaprints";
@@ -54,10 +57,12 @@ async function isAcknowledgedOrderReplay(event: Stripe.Event) {
 	const stripeConnectedAccountId =
 		typeof event.account === "string" ? event.account.trim() : undefined;
 	const stripeTenantMetadataSiteUrl = readCheckoutTenantMarker(session.metadata);
+	const stripeTenantMetadataTenantId = readCheckoutTenantIdMarker(session.metadata);
 	const routing = await convex.query(api.orders.resolveCheckoutRouting, {
 		stripeSessionId: session.id,
 		...(stripeConnectedAccountId ? { stripeConnectedAccountId } : {}),
 		...(stripeTenantMetadataSiteUrl ? { stripeTenantMetadataSiteUrl } : {}),
+		...(stripeTenantMetadataTenantId ? { stripeTenantMetadataTenantId } : {}),
 		webhookSecret: getWebhookSecret(),
 	});
 	if (routing?.source === "retired" || routing?.source === "order") return true;
