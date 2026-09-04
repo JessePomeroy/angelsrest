@@ -78,3 +78,42 @@ server-resolved Stripe tenant bundle into reservation and admission messages.
 The browser cannot supply or override it. Hosts whose resolved tenant has no ID
 continue sending the exact legacy request shape; this intentionally leaves
 `zippymiggy.com` on its existing `siteUrl` compatibility path.
+
+## Stage B3 — order and provider-command adoption
+
+New orders retain the optional tenant ID resolved by the trusted webhook host
+and reconcile it with any bound checkout admission or snapshot reservation.
+Stripe routing lookups compare a supplied metadata ID with both the compatibility
+site and any stored ID. Current print-provider state commands likewise compare
+the host's optional ID with the order before crossing their durable fences.
+
+These comparisons supplement authorization; they do not replace the webhook
+secret, signed Stripe event, or provider evidence. The ID is not added to the
+LumaPrints request and no R2 key changes. A missing ID remains a true legacy
+omission. A present malformed or contradictory ID fails before order replay or
+provider effects.
+
+## Angels Rest Stage C checkpoint — 2026-09-03
+
+The approved migration scope is `angelsrest.online` only. A read-only production
+inventory after Stage B3 found:
+
+| Surface | Angels Rest result | Required action |
+|---|---:|---|
+| Platform identity | claimed; four verified domain/origin aliases | none |
+| Stable Admin identities | one | email fallback is inactive |
+| Orders | zero | no backfill |
+| Checkout admissions | zero | no backfill |
+| Checkout snapshot reservations | zero | no backfill |
+
+Creating an idempotent row migration for empty tables would add unused authority
+and rollback surface, so no migration was introduced. The dual-field shape is
+the terminal mixed-scope contract for now: `tenantId` is authoritative when
+present and verified, while `siteUrl` remains required for existing indexes and
+the explicitly deferred unclaimed tenant.
+
+`zippymiggy.com` is outside this checkpoint. It remains unclaimed and must not be
+widened, backfilled, or narrowed without a separate owner-approved rollout. The
+signed spoke-to-hub bridge therefore remains on the compatibility contract until
+an approved claimed spoke exists; this does not reopen the completed Angels Rest
+adoption.
