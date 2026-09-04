@@ -1,8 +1,11 @@
 # Sanity external inventory — 2026-09-03
 
-Status: AR-06 read-only inventory complete. No source, dataset, asset,
-deployment, credential, repository, or archive was changed by this audit.
-The actions under **AR-07 proposed allowlist** are proposals, not authority.
+Status: historical AR-06 read-only inventory complete. This file preserves the
+pre-cleanup evidence and the exact action allowlist that was later approved.
+AR-07 execution and final verification are recorded in
+[`sanity-external-retirement-2026-09-03.md`](sanity-external-retirement-2026-09-03.md).
+No source, dataset, asset, deployment, credential, repository, or archive was
+changed by the inventory itself.
 
 ## Conclusion
 
@@ -149,10 +152,11 @@ schemas, media/orderable/presentation plugins, and project/deployment IDs in
 describe Angels Rest production. The Studio is outside the Angels Rest runtime,
 but remains a live hosted/provider surface until AR-07 decides it.
 
-## AR-07 proposed allowlist — not authorized
+## AR-07 proposed allowlist — historical decision input
 
-The following is the exact maximum action set proposed for separate review.
-Approval may select a subset. Anything absent from this list remains forbidden.
+The following was the exact maximum action set proposed for separate review.
+It is retained as the historical decision boundary; the completion record above
+documents what the owner approved and what was executed.
 
 ### Phase A — preserve source before provider cleanup
 

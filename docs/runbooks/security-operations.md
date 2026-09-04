@@ -20,8 +20,11 @@ It contains no credential values.
 | Private delivery galleries | Convex metadata plus private R2 objects | Capability-scoped Worker reads and prepared-download recovery |
 
 Sanity is not application infrastructure. The source clients, preview and
-provider routes, migration entry points, and historical purchase fallbacks are
-retired; an external archive remains historical evidence only.
+provider routes, migration entry points, historical purchase fallbacks,
+provider project, and hosted Studio are retired. The verified source bundle and
+encrypted dataset archive remain historical recovery evidence only. The shared
+account CLI session remains because it also administers the separately owned
+Reflecting Pool project; it grants no access to the deleted Angels project.
 
 ## Least-privilege roles
 
