@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { flush } from "@sentry/node";
 import type { ConvexHttpClient } from "convex/browser";
 import type { Resend } from "resend";
 import type Stripe from "stripe";
@@ -509,6 +510,15 @@ export async function submitPrintFulfillment(
 	try {
 		result = await createLumaPrintsOrder(lpOrder);
 	} catch (error) {
+		logStructured({
+			event: "lumaprints.failed",
+			level: "error",
+			stage: "lumaprints_submit",
+			orderId: orderNumber,
+			error: new Error("LumaPrints order submission failed"),
+			meta: error instanceof LumaPrintsSubmissionError ? error.details : { phase: "client" },
+		});
+		await flush(2000).catch(() => false);
 		if (error instanceof LumaPrintsSubmissionError && error.disposition === "definitely_rejected") {
 			const rejection = await convex.mutation(api.orders.rejectPrintFulfillmentSubmission, {
 				orderId,

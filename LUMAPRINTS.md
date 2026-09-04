@@ -6,9 +6,9 @@ production and shipment.
 
 ## Current source flow
 
-The source includes the V3 coordinator and additive compatibility state.
-Production activation remains closed. Verify the reviewed deployment state
-before any future activation.
+The current host uses the V4 coordinator with additive compatibility state.
+Verify the actual production deployment and admission state before live work;
+source code alone is not evidence that fulfillment is ready.
 
 ```text
 Stripe checkout.session.completed
@@ -88,8 +88,11 @@ them in route code.
 - Create-order failures use an operation-specific disposition. Only the
   documented non-acceptance statuses `400`, `406`, and `429` are definitely
   rejected. Network failures, timeouts, server or unexpected statuses, and
-  malformed success responses remain uncertain; evidence is bounded and never
-  retains the provider body.
+  malformed success responses remain uncertain. Error bodies are byte-bounded
+  and reduced to fixed reason labels and validated image dimensions; raw text,
+  URLs, and customer data are never retained. Submission failures report the
+  safe evidence and HTTP status to Vercel/Sentry before recovery, with a bounded
+  Sentry flush. Diagnostics do not change the submission disposition.
 - Network, timeout, rate-limit, server, and not-yet-visible reconciliation
   results remain retryable. They keep the durable submission claim.
 - A documented create non-acceptance can enter the refund path only after an
@@ -169,3 +172,18 @@ Any end-to-end provider check needs separate approval and a verified target.
 The current owner has no usable sandbox procedure and does not authorize more
 sandbox work. Never use a production checkout as a routine development smoke
 test.
+
+Before another paid attempt, confirm the store's default billing address and
+primary payment method, then use the authenticated, non-order
+[`POST /api/v1/images/checkImageConfig`](https://api-docs.lumaprints.com/api-5384561)
+with the exact print source and options. The
+[`POST /api/v1/pricing/shipping`](https://api-docs.lumaprints.com/api-10598366)
+endpoint can check the destination and print configuration without ordering.
+Do not retain private source URLs or customer details in diagnostic records.
+
+On 2026-09-04, ORD-003's verified PNG (6935 × 4623, 55,009,177 bytes), glossy
+subcategory `103007`, landscape 6 × 4 size, and option `39` passed image
+validation with HTTP 200. A shipping quote using the saved order address also
+returned HTTP 200 with six methods. The owner confirmed both billing
+prerequisites. These checks created no order or charge; they do not establish
+why the earlier order POST was rejected or guarantee order acceptance.
