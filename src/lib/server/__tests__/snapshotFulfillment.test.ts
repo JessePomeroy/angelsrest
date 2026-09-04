@@ -100,21 +100,33 @@ beforeEach(() => {
 });
 
 describe("snapshot fulfillment authority", () => {
-	it("leaves merchant-handled prints out of the provider payload", async () => {
-		mocks.paidFulfillment.mockResolvedValue({
+	it("compares paid selections by value, ignoring field order but rejecting changed fields", async () => {
+		const resolution = {
 			item: print,
 			identity: { productKind: "print" },
 			commerce: { finish },
 			descriptor: { kind: "merchant", source: null },
-		});
+		};
+		mocks.paidFulfillment.mockResolvedValue(resolution);
 		const { buildOrderItemsFromSnapshot } = await import("../snapshotFulfillment");
-		await expect(
+		// Convex returns fields alphabetically; the resolver parser rebuilds their order.
+		const stored = Object.fromEntries(
+			Object.entries(print).sort(([left], [right]) => left.localeCompare(right)),
+		) as typeof print;
+		const build = () =>
 			buildOrderItemsFromSnapshot(
-				{ schemaVersion: 1, catalogProvider: "convex", items: [print] },
+				{ schemaVersion: 1, catalogProvider: "convex", items: [stored] },
 				"cs_test_merchant",
 				[{ quantity: 1 }] as Stripe.LineItem[],
-			),
-		).resolves.toEqual([]);
+			);
+		await expect(build()).resolves.toEqual([]);
+		for (const key of Object.keys(print)) {
+			mocks.paidFulfillment.mockResolvedValue({
+				...resolution,
+				item: { ...print, [key]: "different" },
+			});
+			await expect(build()).rejects.toThrow("does not match");
+		}
 		expect(mocks.printSource).not.toHaveBeenCalled();
 	});
 
