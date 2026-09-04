@@ -191,6 +191,10 @@ are in [`runbooks/package-release-and-adoption.md`](runbooks/package-release-and
 Update the smallest authoritative document when a boundary changes and link to
 it instead of copying the workflow into multiple files.
 
+The latest production verification and explicit deferred outcomes are recorded
+in
+[`migrations/architecture-retrofit-verification-2026-09-03.md`](migrations/architecture-retrofit-verification-2026-09-03.md).
+
 ## Repositories
 
 | Repository | Responsibility |

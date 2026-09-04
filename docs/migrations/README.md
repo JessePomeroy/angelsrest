@@ -13,5 +13,8 @@ future audits, but they are not current implementation guidance.
 - [`sanity-external-retirement-2026-09-03.md`](sanity-external-retirement-2026-09-03.md)
   records the approved AR-07 archive, configuration cutover, provider deletion,
   production verification, and retained recovery evidence.
+- [`architecture-retrofit-verification-2026-09-03.md`](architecture-retrofit-verification-2026-09-03.md)
+  records the AR-FINAL release references, production smoke evidence, explicit
+  compatibility outcomes, and deferred boundary awaiting the owner seal.
 
 Use [`../ARCHITECTURE.md`](../ARCHITECTURE.md) for the current system map.
