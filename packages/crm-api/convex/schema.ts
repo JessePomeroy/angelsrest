@@ -1045,6 +1045,7 @@ export default defineSchema({
 
 	// Print orders (from Stripe checkout on any client site)
 	orders: defineTable({
+		tenantId: v.optional(v.string()),
 		siteUrl: v.string(),
 		orderNumber: v.string(),
 		stripeSessionId: v.string(),
