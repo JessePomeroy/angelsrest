@@ -193,6 +193,39 @@ function hasUncertainPrintSubmission(order: Doc<"orders">) {
 		);
 }
 
+async function snapshotFulfillmentType(
+	ctx: MutationCtx,
+	siteUrl: string,
+	snapshot: NonNullable<Doc<"orders">["checkoutSnapshot"]>,
+	fallback: Doc<"orders">["fulfillmentType"],
+) {
+	const modes = new Set<string>();
+	for (const item of snapshot.items) {
+		const revisionId = ctx.db.normalizeId("catalogProductRevisions", item.revisionId);
+		const revision = revisionId ? await ctx.db.get(revisionId) : null;
+		if (
+			!revision || revision.siteUrl !== siteUrl || revision.productId !== item.productKey
+			|| revision.productKind !== item.productKind
+		) return fallback;
+		modes.add(revision.fulfillmentMode);
+	}
+	if (modes.has("production_partner")) return "lumaprints" as const;
+	return modes.size === 1 && modes.has("digital_delivery") ? "digital" as const : "self" as const;
+}
+
+function canRepairFulfillmentType(order: Doc<"orders">) {
+	return order.status === "new"
+		&& order.lumaprintsOrderNumber === undefined
+		&& order.printFulfillmentClaim !== true
+		&& order.printFulfillmentPhase === undefined
+		&& order.printFulfillmentResolution === undefined
+		&& order.printFulfillmentCoordinatorVersion === undefined
+		&& order.printProviderAdmissionStatus === undefined
+		&& order.stripeRefundId === undefined
+		&& order.fulfillmentRecoveryStatus === undefined
+		&& order.orderConfirmationClaimedAt === undefined;
+}
+
 /**
  * Temporary rollout compatibility for the exact durable states written by the
  * baseline V1 and V2 hosts. New hosts must use the tokenized completion or GET
@@ -844,10 +877,20 @@ export const create = mutation({
 				// signed event account canonically belongs to the stored tenant.
 				routingConflict();
 			}
+			let fulfillmentType = existing.fulfillmentType;
+			if (existing.checkoutSnapshot && canRepairFulfillmentType(existing)) {
+				fulfillmentType = await snapshotFulfillmentType(
+					ctx, existing.siteUrl, existing.checkoutSnapshot, fulfillmentType,
+				);
+				if (fulfillmentType !== existing.fulfillmentType) {
+					await ctx.db.patch(existing._id, { fulfillmentType });
+				}
+			}
 			return {
 				_id: existing._id,
 				orderNumber: existing.orderNumber,
 				alreadyExisted: true as const,
+				fulfillmentType,
 				lumaprintsOrderNumber: existing.lumaprintsOrderNumber,
 				status: existing.status,
 				stripeFees: existing.stripeFees,
@@ -955,6 +998,14 @@ export const create = mutation({
 				) ? "digital" : rest.fulfillmentType,
 			};
 		}
+		if (orderInput.checkoutSnapshot) {
+			orderInput = {
+				...orderInput,
+				fulfillmentType: await snapshotFulfillmentType(
+					ctx, args.siteUrl, orderInput.checkoutSnapshot, orderInput.fulfillmentType,
+				),
+			};
+		}
 		await assertTenantRouting(ctx, tenantId, args.siteUrl, durableTenantId);
 		durableTenantId ??= tenantId;
 
@@ -1027,6 +1078,7 @@ export const create = mutation({
 			// Old webhook consumers already treat `alreadyExisted` refunded rows as
 			// terminal and suppress fulfillment and notification side effects.
 			alreadyExisted: isManuallyRefunded,
+			fulfillmentType: orderInput.fulfillmentType,
 			lumaprintsOrderNumber: undefined,
 			status: isManuallyRefunded ? ("refunded" as const) : ("new" as const),
 			stripeFees: undefined,

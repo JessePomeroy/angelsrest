@@ -100,6 +100,24 @@ beforeEach(() => {
 });
 
 describe("snapshot fulfillment authority", () => {
+	it("leaves merchant-handled prints out of the provider payload", async () => {
+		mocks.paidFulfillment.mockResolvedValue({
+			item: print,
+			identity: { productKind: "print" },
+			commerce: { finish },
+			descriptor: { kind: "merchant", source: null },
+		});
+		const { buildOrderItemsFromSnapshot } = await import("../snapshotFulfillment");
+		await expect(
+			buildOrderItemsFromSnapshot(
+				{ schemaVersion: 1, catalogProvider: "convex", items: [print] },
+				"cs_test_merchant",
+				[{ quantity: 1 }] as Stripe.LineItem[],
+			),
+		).resolves.toEqual([]);
+		expect(mocks.printSource).not.toHaveBeenCalled();
+	});
+
 	it("orients each Convex source independently while preserving order, quantity, border, and frame", async () => {
 		mocks.paidFulfillment
 			.mockResolvedValueOnce({

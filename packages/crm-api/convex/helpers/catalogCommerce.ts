@@ -185,7 +185,10 @@ function resolvePrintCommerce(graph: LoadedGraph, item: SnapshotItem, retailPric
 }
 
 function privateDescriptor(graph: LoadedGraph) {
-	if (graph.draft.productKind === "print" || graph.draft.productKind === "print_set") {
+	if (
+		(graph.draft.productKind === "print" || graph.draft.productKind === "print_set")
+		&& graph.draft.fulfillmentMode === "production_partner"
+	) {
 		const members = graph.draft.productKind === "print_set"
 			? new Map(graph.setMembers.map((member) => [member.printSourceKey, member.memberKey]))
 			: new Map<string, string>();

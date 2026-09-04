@@ -566,8 +566,6 @@ function parsePaid(value: unknown, purpose: "paid_fulfillment" | "paid_download"
 		!exact(rawDescriptor, ["kind", "source"]) ||
 		rawDescriptor.source !== null ||
 		purpose !== "paid_fulfillment" ||
-		item.productKind === "print" ||
-		item.productKind === "print_set" ||
 		item.productKind === "digital_download"
 	) {
 		throw rejected();

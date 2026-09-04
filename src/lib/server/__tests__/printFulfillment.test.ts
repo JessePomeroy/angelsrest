@@ -271,6 +271,21 @@ describe("print fulfillment", () => {
 		mockSendFulfillmentFailureAlert.mockResolvedValue({ id: "email-123" });
 	});
 
+	it("completes a studio-handled print without claiming or calling the provider", async () => {
+		const { submitPrintFulfillment } = await import("../printFulfillment");
+		await expect(
+			submitPrintFulfillment(
+				{ convex, createLumaPrintsOrder: mockCreateLumaPrintsOrder },
+				{ ...printInput, fulfillmentType: "self" },
+			),
+		).resolves.toEqual({ kind: "no_print_items" });
+		expect(convex.mutation).toHaveBeenCalledWith("orders.claimNonPrintOrderOutcome", {
+			orderId,
+			webhookSecret: "test-webhook-secret",
+		});
+		expect(mockCreateLumaPrintsOrder).not.toHaveBeenCalled();
+	});
+
 	it("returns an explicit retryable closure before resolver, worker, POST, refund, or email effects", async () => {
 		const { ProviderSubmissionClosedRetryableError, submitPrintFulfillment } = await import(
 			"../printFulfillment"
