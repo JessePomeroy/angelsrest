@@ -72,3 +72,9 @@ shape and the additive identified shape. An ID is accepted only when it and the
 site reference resolve to the same tenant; omission preserves the old protocol
 for unclaimed tenants. Host adoption follows only after this backend widening
 is deployed.
+
+After the widening is live, the checkout host copies the optional ID from its
+server-resolved Stripe tenant bundle into reservation and admission messages.
+The browser cannot supply or override it. Hosts whose resolved tenant has no ID
+continue sending the exact legacy request shape; this intentionally leaves
+`zippymiggy.com` on its existing `siteUrl` compatibility path.

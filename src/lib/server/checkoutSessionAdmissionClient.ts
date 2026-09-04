@@ -49,6 +49,7 @@ export interface CheckoutAdmissionPermit {
 
 export interface CheckoutSessionAdmissionClient {
 	begin(input: {
+		tenantId?: string;
 		site: string;
 		account: string | null;
 		identity: CheckoutAdmissionIdentity;
@@ -105,7 +106,7 @@ export function createCheckoutSessionAdmissionClient({
 	}
 
 	return {
-		async begin({ site, account, identity, hostGeneration, requestFingerprint }) {
+		async begin({ tenantId, site, account, identity, hostGeneration, requestFingerprint }) {
 			const authority = credential(site);
 			const scope = `${site}\0${account ?? "platform"}\0${identity.attempt}\0${identity.attemptStartedAt}\0${identity.proofClass}`;
 			const attemptDigest = sha256(`checkout-attempt-v1\0${scope}`);
@@ -118,6 +119,7 @@ export function createCheckoutSessionAdmissionClient({
 			const response = await post(BEGIN_PATH, site, {
 				version: 1,
 				site,
+				...(tenantId === undefined ? {} : { tenantId }),
 				account,
 				attemptDigest,
 				proofClass: identity.proofClass,

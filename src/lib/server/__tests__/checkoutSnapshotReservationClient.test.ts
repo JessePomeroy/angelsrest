@@ -8,6 +8,7 @@ const ATTEMPT = "123e4567-e89b-42d3-a456-426614174000";
 const HANDLE = "223e4567-e89b-42d3-a456-426614174000";
 const SESSION = "cs_test_1234567890abcdefghijklmnop";
 const SECRET = "reservation-secret-that-must-never-escape";
+const TENANT_ID = "tenant_05eb6092-5d8c-43ce-ad26-1a59522bd07b";
 const snapshotItem = {
 	productKey: "product-secret-selection",
 	revisionId: "revision-secret-selection",
@@ -68,6 +69,40 @@ describe("checkout snapshot reservation client", () => {
 		expect(fetcher.mock.calls[1]?.[0]).toBe(
 			"https://tenant.convex.site/commerce/checkout-snapshots/bind",
 		);
+	});
+
+	it("adds the opaque tenant ID only when the host supplies it", async () => {
+		const fetcher = vi
+			.fn<typeof fetch>()
+			.mockResolvedValueOnce(
+				new Response(JSON.stringify({ version: 2, handle: HANDLE, replayed: false })),
+			)
+			.mockResolvedValueOnce(new Response(JSON.stringify({ bound: true, replayed: false })));
+		const client = createCheckoutSnapshotReservationClient({
+			baseUrl: "https://tenant.convex.site",
+			fetcher,
+			credential: () => SECRET,
+		});
+		await client.reserve({
+			tenantId: TENANT_ID,
+			site: "angelsrest.online",
+			attempt: ATTEMPT,
+			account: null,
+			catalogProvider: "convex",
+			items: [snapshotItem],
+		});
+		await client.bind({
+			tenantId: TENANT_ID,
+			site: "angelsrest.online",
+			handle: HANDLE,
+			account: null,
+			session: SESSION,
+			stripeExpiresAt: 1_800_086_100,
+		});
+		expect(fetcher.mock.calls.map((call) => JSON.parse(String(call[1]?.body)))).toEqual([
+			expect.objectContaining({ tenantId: TENANT_ID }),
+			expect.objectContaining({ tenantId: TENANT_ID }),
+		]);
 	});
 
 	it("aborts stalled streams and stops chunked responses above 2 KiB", async () => {

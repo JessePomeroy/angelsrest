@@ -12,6 +12,7 @@ const encoder = new TextEncoder();
 
 export interface CheckoutSnapshotReservationClient {
 	reserve(input: {
+		tenantId?: string;
 		site: string;
 		attempt: string;
 		account: string | null;
@@ -19,6 +20,7 @@ export interface CheckoutSnapshotReservationClient {
 		items: readonly CheckoutSnapshotItem[];
 	}): Promise<{ handle: string }>;
 	bind(input: {
+		tenantId?: string;
 		site: string;
 		handle: string;
 		account: string | null;
@@ -67,10 +69,11 @@ export function createCheckoutSnapshotReservationClient({
 	}
 
 	return {
-		async reserve({ site, attempt, account, catalogProvider, items }) {
+		async reserve({ tenantId, site, attempt, account, catalogProvider, items }) {
 			const response = await post(RESERVE_PATH, site, {
 				version: 1,
 				site,
+				...(tenantId === undefined ? {} : { tenantId }),
 				attempt,
 				account,
 				snapshot: { schemaVersion: 1, catalogProvider, items },
@@ -84,10 +87,11 @@ export function createCheckoutSnapshotReservationClient({
 				throw unavailable();
 			return { handle: String(response.handle) };
 		},
-		async bind({ site, handle, account, session, stripeExpiresAt }) {
+		async bind({ tenantId, site, handle, account, session, stripeExpiresAt }) {
 			const response = await post(BIND_PATH, site, {
 				version: 1,
 				site,
+				...(tenantId === undefined ? {} : { tenantId }),
 				handle,
 				account,
 				session,

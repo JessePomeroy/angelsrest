@@ -17,6 +17,7 @@ import { buildTenantCheckoutOptions } from "$lib/server/stripeConnect";
 const NOW = Date.parse("2026-01-01T00:00:00Z");
 const ATTEMPT = "123e4567-e89b-42d3-a456-426614174000";
 const HANDLE = "223e4567-e89b-42d3-a456-426614174000";
+const TENANT_ID = "tenant_05eb6092-5d8c-43ce-ad26-1a59522bd07b";
 const runtimeEnv = env as Record<string, string | undefined>;
 const ITEM: CheckoutSnapshotItem = {
 	productKey: "published-product",
@@ -166,6 +167,23 @@ describe("handle checkout orchestration", () => {
 			unit_amount: 4200,
 			product_data: { name: "Trusted title", images: ["https://cdn.example/trusted.jpg"] },
 		});
+	});
+
+	it("carries a server-resolved tenant ID into both durable checkout records", async () => {
+		const test = harness({
+			tenantCheckout: buildTenantCheckoutOptions({
+				tenant: { tenantId: TENANT_ID, siteUrl: "angelsrest.test" },
+				kind: "print",
+				subtotalCents: 4200,
+			}),
+		});
+		await createHandleCheckoutSession(test.options);
+		expect(test.reserve).toHaveBeenCalledWith(expect.objectContaining({ tenantId: TENANT_ID }));
+		expect(test.admissionClient.begin).toHaveBeenCalledWith(
+			expect.objectContaining({ tenantId: TENANT_ID }),
+		);
+		const params = test.create.mock.calls[0]?.[0] as Stripe.Checkout.SessionCreateParams;
+		expect(params.metadata).toMatchObject({ commerceTenantId: TENANT_ID });
 	});
 
 	it("does not call Stripe after reserve failure", async () => {
