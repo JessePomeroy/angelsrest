@@ -756,7 +756,7 @@ const reserveCheckoutSnapshot = httpAction(async (ctx, request) => {
 		reservationHandleHash(siteUrl, handle), reservationSnapshotDigest(parsed.snapshot),
 	]);
 	const result = await ctx.runMutation(internal.orders.reserveCheckoutSnapshot, {
-		siteUrl, handleHash, snapshotDigest, snapshot: parsed.snapshot,
+		tenantId: parsed.tenantId, siteUrl, handleHash, snapshotDigest, snapshot: parsed.snapshot,
 		stripeConnectedAccountId: parsed.account ?? undefined,
 	});
 	if (result.outcome === "invalid") return privateResponse({ error: "invalid_request" }, 400);
@@ -773,7 +773,7 @@ const bindCheckoutSnapshot = httpAction(async (ctx, request) => {
 		return privateResponse({ error: "invalid_request" }, 400);
 	}
 	const result = await ctx.runMutation(internal.orders.bindCheckoutSnapshot, {
-		siteUrl, handleHash: await reservationHandleHash(siteUrl, parsed.handle),
+		tenantId: parsed.tenantId, siteUrl, handleHash: await reservationHandleHash(siteUrl, parsed.handle),
 		stripeConnectedAccountId: parsed.account ?? undefined,
 		stripeSessionId: parsed.session, stripeExpiresAt: parsed.stripeExpiresAt,
 	});
@@ -797,6 +797,7 @@ const beginCheckoutAdmission = httpAction(async (ctx, request) => {
 		const result = await ctx.runMutation(
 			internal.commerceClosure.beginCheckoutSessionAdmission,
 			{
+				tenantId: parsed.tenantId,
 				siteUrl,
 				stripeConnectedAccountId: parsed.account ?? undefined,
 				attemptDigest: parsed.attemptDigest,

@@ -25,6 +25,7 @@ const D3 = "3".repeat(64);
 const D4 = "4".repeat(64);
 const CHECKOUT_AUTHORITY = "closure-checkout-authority-0123456789abcdef";
 const BRIDGE_AUTHORITY = "closure-bridge-authority-0123456789abcdefgh";
+const TENANT_ID = "tenant_05eb6092-5d8c-43ce-ad26-1a59522bd07b";
 const ACTIVATE_PATH = "/commerce/purpose-controls/activate";
 const BEGIN_PATH = "/commerce/checkout-admissions/begin";
 const READINESS_PATH = "/commerce/closure/readiness";
@@ -262,6 +263,56 @@ describe("durable commerce controls", () => {
 });
 
 describe("Checkout Session admission", () => {
+	test("stores a matching optional tenant ID without requiring it from older hosts", async () => {
+		const t = convexTest(schema, modules);
+		await t.run(async (ctx) => {
+			await ctx.db.insert("platformClients", {
+				tenantId: TENANT_ID,
+				name: SITE,
+				email: "owner@angelsrest.online",
+				siteUrl: SITE,
+				tier: "full",
+				subscriptionStatus: "active",
+				adminEmails: ["owner@angelsrest.online"],
+			});
+			await ctx.db.insert("tenantAliases", {
+				tenantId: TENANT_ID,
+				kind: "domain",
+				value: SITE,
+				verifiedAt: Date.now(),
+				verificationMethod: "operator",
+			});
+		});
+		await activateAdmission(t, "open", 1);
+		const identified = await t.mutation(
+			internal.commerceClosure.beginCheckoutSessionAdmission,
+			{ ...beginArgs(), tenantId: TENANT_ID },
+		);
+		const row = await t.run((ctx) => ctx.db.get(identified.admissionId));
+		expect(row?.tenantId).toBe(TENANT_ID);
+		expect(
+			await t.mutation(internal.commerceClosure.beginCheckoutSessionAdmission, beginArgs()),
+		).toMatchObject({ outcome: "replayed", admissionId: identified.admissionId });
+		const legacyArgs = beginArgs("6".repeat(64), "7".repeat(64), "8".repeat(64));
+		const legacy = await t.mutation(
+			internal.commerceClosure.beginCheckoutSessionAdmission,
+			legacyArgs,
+		);
+		expect(
+			await t.mutation(internal.commerceClosure.beginCheckoutSessionAdmission, {
+				...legacyArgs,
+				tenantId: TENANT_ID,
+			}),
+		).toMatchObject({ outcome: "replayed", admissionId: legacy.admissionId });
+		expect((await t.run((ctx) => ctx.db.get(legacy.admissionId)))?.tenantId).toBe(TENANT_ID);
+		await expect(
+			t.mutation(internal.commerceClosure.beginCheckoutSessionAdmission, {
+				...beginArgs("5".repeat(64)),
+				tenantId: "tenant_15eb6092-5d8c-43ce-ad26-1a59522bd07b",
+			}),
+		).rejects.toThrow(/identity/);
+	});
+
 	test("fences creation uncertainty and atomically consumes a bound admission", async () => {
 		const t = convexTest(schema, modules);
 		await activateAdmission(t, "open", 1);
