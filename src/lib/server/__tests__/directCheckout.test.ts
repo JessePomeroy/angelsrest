@@ -6,6 +6,7 @@ import { createDirectCheckoutSession } from "$lib/server/directCheckout";
 const ATTEMPT = "123e4567-e89b-42d3-a456-426614174000";
 const ATTEMPT_STARTED_AT = Date.parse("2026-01-01T00:00:00Z");
 const SNAPSHOT_HANDLE = "223e4567-e89b-42d3-a456-426614174000";
+const TENANT_ID = "tenant_05eb6092-5d8c-43ce-ad26-1a59522bd07b";
 
 function admissionOptions() {
 	const bind = vi.fn();
@@ -115,6 +116,7 @@ describe("createDirectCheckoutSession", () => {
 			body,
 			stripe,
 			siteUrl: "https://angelsrest.test",
+			tenant: { tenantId: TENANT_ID, siteUrl: "angelsrest.test" },
 			bindSession,
 			resolveCommerce,
 			log: vi.fn(),
@@ -130,6 +132,7 @@ describe("createDirectCheckoutSession", () => {
 		});
 		expect(resolveCommerce).toHaveBeenCalledWith([body]);
 		expect(reservation.reservationClient.reserve).toHaveBeenCalledWith({
+			tenantId: TENANT_ID,
 			site: "angelsrest.test",
 			attempt: ATTEMPT,
 			account: null,
@@ -143,7 +146,7 @@ describe("createDirectCheckoutSession", () => {
 		expect(params.shipping_address_collection).toEqual({ allowed_countries: ["US"] });
 		expect(params.line_items?.[0]?.price_data?.unit_amount).toBe(4200);
 		expect(params.payment_intent_data).toEqual({
-			metadata: { commerceTenantSiteUrl: "angelsrest.test" },
+			metadata: { commerceTenantId: TENANT_ID, commerceTenantSiteUrl: "angelsrest.test" },
 		});
 		expect(requestOptions?.idempotencyKey).toBe(`checkout-admission-v1:${"d".repeat(64)}`);
 		expect(params.metadata).toEqual({
@@ -151,6 +154,7 @@ describe("createDirectCheckoutSession", () => {
 			checkoutSnapshotHandle: SNAPSHOT_HANDLE,
 			checkoutAdmissionVersion: "1",
 			checkoutAdmissionHandleHash: "a".repeat(64),
+			commerceTenantId: TENANT_ID,
 			commerceTenantSiteUrl: "angelsrest.test",
 		});
 	});

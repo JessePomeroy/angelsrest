@@ -23,6 +23,7 @@ import {
 } from "$lib/server/stripeCheckoutSession";
 import {
 	COMMERCE_TENANT_ID_METADATA_KEY,
+	COMMERCE_TENANT_ID_PATTERN,
 	COMMERCE_TENANT_METADATA_KEY,
 	type TenantStripeCheckoutOptions,
 } from "$lib/server/stripeConnect";
@@ -185,13 +186,17 @@ export async function createHandleCheckoutSession({
 		throw invalid();
 	validateRedirect(successUrl, site, allowedRedirectOrigins);
 	validateRedirect(cancelUrl, site, allowedRedirectOrigins);
+	const tenantIdValue = tenantCheckout.metadata[COMMERCE_TENANT_ID_METADATA_KEY];
 	if (
 		!Object.keys(tenantCheckout.metadata).every(
 			(key) => key === COMMERCE_TENANT_METADATA_KEY || key === COMMERCE_TENANT_ID_METADATA_KEY,
 		) ||
-		tenantCheckout.metadata[COMMERCE_TENANT_METADATA_KEY] !== site
+		tenantCheckout.metadata[COMMERCE_TENANT_METADATA_KEY] !== site ||
+		(tenantIdValue !== undefined &&
+			(typeof tenantIdValue !== "string" || !COMMERCE_TENANT_ID_PATTERN.test(tenantIdValue)))
 	)
 		throw invalid();
+	const tenantId = typeof tenantIdValue === "string" ? tenantIdValue : undefined;
 	try {
 		await abuseGate();
 	} catch (cause) {
@@ -201,6 +206,7 @@ export async function createHandleCheckoutSession({
 	let handle: string;
 	try {
 		({ handle } = await reservationClient.reserve({
+			...(tenantId ? { tenantId } : {}),
 			site,
 			attempt: validatedAttempt.attempt,
 			account,
@@ -218,6 +224,7 @@ export async function createHandleCheckoutSession({
 	};
 	return await createAdmittedOrderCheckoutSession({
 		identity,
+		tenantId,
 		site,
 		account,
 		hostGeneration,
@@ -239,6 +246,7 @@ export async function createHandleCheckoutSession({
 
 export async function createAdmittedOrderCheckoutSession({
 	identity,
+	tenantId,
 	site,
 	account,
 	hostGeneration,
@@ -254,6 +262,7 @@ export async function createAdmittedOrderCheckoutSession({
 	bindSession,
 }: {
 	identity: CheckoutAdmissionIdentity;
+	tenantId?: string;
 	site: string;
 	account: string | null;
 	hostGeneration: number;
@@ -286,6 +295,7 @@ export async function createAdmittedOrderCheckoutSession({
 	let permit: CheckoutAdmissionPermit;
 	try {
 		permit = await admissionClient.begin({
+			...(tenantId ? { tenantId } : {}),
 			site,
 			account,
 			identity,
