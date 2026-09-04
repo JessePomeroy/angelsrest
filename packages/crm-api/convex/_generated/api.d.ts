@@ -121,6 +121,7 @@ import type * as helpers_siteSettingsData from "../helpers/siteSettingsData.js";
 import type * as helpers_siteSettingsMigrationCapability from "../helpers/siteSettingsMigrationCapability.js";
 import type * as helpers_siteSettingsMigrationStore from "../helpers/siteSettingsMigrationStore.js";
 import type * as helpers_stripeFeeCapture from "../helpers/stripeFeeCapture.js";
+import type * as helpers_tenantContext from "../helpers/tenantContext.js";
 import type * as helpers_validators from "../helpers/validators.js";
 import type * as http from "../http.js";
 import type * as inquiries from "../inquiries.js";
@@ -261,6 +262,7 @@ declare const fullApi: ApiFromModules<{
   "helpers/siteSettingsMigrationCapability": typeof helpers_siteSettingsMigrationCapability;
   "helpers/siteSettingsMigrationStore": typeof helpers_siteSettingsMigrationStore;
   "helpers/stripeFeeCapture": typeof helpers_stripeFeeCapture;
+  "helpers/tenantContext": typeof helpers_tenantContext;
   "helpers/validators": typeof helpers_validators;
   http: typeof http;
   inquiries: typeof inquiries;
