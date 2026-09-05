@@ -101,7 +101,10 @@ export const update = mutation({
 		status: v.optional(statusValidator),
 	},
 	handler: async (ctx, { contractId, siteUrl, ...updates }) => {
-		await patchDocument(ctx, contractId, siteUrl, updates);
+		const previous = await patchDocument(ctx, contractId, siteUrl, updates);
+		if (updates.status !== previous.status) {
+			if (updates.status === "signed") await ctx.db.patch(contractId, { signedAt: Date.now() });
+		}
 	},
 });
 

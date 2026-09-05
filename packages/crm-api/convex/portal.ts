@@ -695,7 +695,7 @@ export const declineQuote = mutation({
 		}
 		requireQuoteResponseWindow(quote, Date.now());
 		{
-			await ctx.db.patch(quoteId, { status: "declined" });
+			await ctx.db.patch(quoteId, { status: "declined", declinedAt: Date.now() });
 			await ctx.runMutation(internal.activityLog.logActivity, {
 				siteUrl: quote.siteUrl,
 				clientId: quote.clientId,

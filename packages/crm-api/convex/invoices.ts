@@ -140,7 +140,11 @@ export const update = mutation({
 		status: v.optional(statusValidator),
 	},
 	handler: async (ctx, { invoiceId, siteUrl, ...updates }) => {
-		await patchDocument(ctx, invoiceId, siteUrl, updates);
+		const previous = await patchDocument(ctx, invoiceId, siteUrl, updates);
+		if (updates.status !== previous.status) {
+			if (updates.status === "paid") await ctx.db.patch(invoiceId, { paidAt: Date.now() });
+			if (updates.status === "overdue") await ctx.db.patch(invoiceId, { overdueAt: Date.now() });
+		}
 	},
 });
 
