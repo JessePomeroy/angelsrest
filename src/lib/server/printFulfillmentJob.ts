@@ -89,6 +89,10 @@ export async function runPrintFulfillmentStep(
 				order.printFulfillmentResolution !== undefined;
 			if (
 				!submitted &&
+				order.status === "new" &&
+				!order.stripeRefundId &&
+				!order.fulfillmentRecoveryStatus &&
+				!order.lumaprintsOrderNumber &&
 				sources.some(
 					({ url, expiresAt }) =>
 						!url || !expiresAt || expiresAt < Date.now() + 23 * 60 * 60 * 1000,

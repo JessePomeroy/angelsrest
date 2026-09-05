@@ -48,6 +48,8 @@ const order = {
 	siteUrl: "angelsrest.online",
 	stripeSessionId: "cs_test_saved",
 	orderNumber: "ORD-001",
+	status: "new",
+	fulfillmentType: "lumaprints",
 };
 function request(body: unknown = input, secret = mocks.env.PRINT_FULFILLMENT_RUNNER_SECRET) {
 	return {
@@ -102,10 +104,16 @@ it("renews stale capabilities before submission without re-rendering", async () 
 	expect(mocks.render).not.toHaveBeenCalled();
 	expect(mocks.retrieve).not.toHaveBeenCalled();
 });
-it("reconciles a submitted order even after source capabilities expire", async () => {
+it.each([
+	{ printFulfillmentPhase: "submitting" },
+	{ status: "canceled" },
+	{ status: "refunded", stripeRefundId: "re_saved" },
+	{ status: "fulfillment_error", fulfillmentRecoveryStatus: "refund_pending" },
+	{ lumaprintsOrderNumber: "10000000001" },
+])("finishes a submitted or terminal order after capabilities expire: %j", async (state) => {
 	mocks.query.mockResolvedValue({
 		job: { stage: "finish" },
-		order: { ...order, printFulfillmentPhase: "submitting" },
+		order: { ...order, ...state },
 		sources: [{ ...source, expiresAt: 0 }],
 	});
 	await POST(request());
