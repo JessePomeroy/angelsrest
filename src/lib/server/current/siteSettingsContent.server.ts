@@ -171,7 +171,7 @@ export function createSiteSettingsContentProvider(
 	}
 
 	return {
-		async load(_isPreview?: boolean) {
+		async load() {
 			return await loadConvex();
 		},
 	};
