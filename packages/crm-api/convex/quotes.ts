@@ -121,7 +121,11 @@ export const update = mutation({
 		status: v.optional(statusValidator),
 	},
 	handler: async (ctx, { quoteId, siteUrl, ...updates }) => {
-		await patchDocument(ctx, quoteId, siteUrl, updates);
+		const previous = await patchDocument(ctx, quoteId, siteUrl, updates);
+		if (updates.status !== previous.status) {
+			if (updates.status === "accepted") await ctx.db.patch(quoteId, { acceptedAt: Date.now() });
+			if (updates.status === "declined") await ctx.db.patch(quoteId, { declinedAt: Date.now() });
+		}
 	},
 });
 
@@ -240,7 +244,9 @@ export const markDeclined = mutation({
 		if (!doc || doc.siteUrl !== siteUrl) {
 			throw new Error("Not found");
 		}
-		await ctx.db.patch(quoteId, { status: "declined" });
+		if (doc.status !== "declined") {
+			await ctx.db.patch(quoteId, { status: "declined", declinedAt: Date.now() });
+		}
 	},
 });
 

@@ -1471,6 +1471,7 @@ export default defineSchema({
 		dueDate: v.optional(v.string()),
 		sentAt: v.optional(v.number()),
 		paidAt: v.optional(v.number()),
+		overdueAt: v.optional(v.number()),
 		stripeCheckoutSessionId: v.optional(v.string()),
 		stripeCheckoutFingerprint: v.optional(v.string()),
 		stripeCheckoutStatus: v.optional(
@@ -1502,6 +1503,8 @@ export default defineSchema({
 	})
 		.index("by_siteUrl", ["siteUrl"])
 		.index("by_client", ["clientId"])
+		.index("by_siteUrl_and_status_and_paidAt", ["siteUrl", "status", "paidAt"])
+		.index("by_siteUrl_and_status_and_overdueAt", ["siteUrl", "status", "overdueAt"])
 		.index("by_siteUrl_status", ["siteUrl", "status"])
 		.index("by_siteUrl_and_invoiceNumber", ["siteUrl", "invoiceNumber"]),
 
@@ -1538,10 +1541,13 @@ export default defineSchema({
 		notes: v.optional(v.string()),
 		sentAt: v.optional(v.number()),
 		acceptedAt: v.optional(v.number()),
+		declinedAt: v.optional(v.number()),
 		convertedToInvoice: v.optional(v.id("invoices")),
 	})
 		.index("by_siteUrl", ["siteUrl"])
 		.index("by_client", ["clientId"])
+		.index("by_siteUrl_and_status_and_acceptedAt", ["siteUrl", "status", "acceptedAt"])
+		.index("by_siteUrl_and_status_and_declinedAt", ["siteUrl", "status", "declinedAt"])
 		.index("by_siteUrl_status", ["siteUrl", "status"])
 		.index("by_siteUrl_and_quoteNumber", ["siteUrl", "quoteNumber"]),
 
@@ -1588,6 +1594,7 @@ export default defineSchema({
 	})
 		.index("by_siteUrl", ["siteUrl"])
 		.index("by_client", ["clientId"])
+		.index("by_siteUrl_and_status_and_signedAt", ["siteUrl", "status", "signedAt"])
 		.index("by_siteUrl_status", ["siteUrl", "status"]),
 
 	// Contract templates — Full tier only

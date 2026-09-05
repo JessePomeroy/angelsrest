@@ -1,7 +1,6 @@
 import { v } from "convex/values";
 import { mutation, query } from "./_generated/server";
 import { requireSiteAdmin } from "./authHelpers";
-import { RECENT_ITEMS_LIMIT } from "./helpers/limits";
 
 const TRACKED_PAGES = [
 	"orders",
@@ -15,11 +14,7 @@ const TRACKED_PAGES = [
 
 type PageKey = (typeof TRACKED_PAGES)[number];
 
-// Use siteUrl as the user key for notification tracking. The admin is
-// single-user per site (authenticated via Better Auth session, not Convex
-// identity), so siteUrl uniquely identifies the admin user. When client
-// sites are onboarded with multiple admins, this will need to accept a
-// userId arg from the client.
+// Notification read state is shared by authorized admins of a site.
 
 export const getUnreadFlags = query({
 	args: { siteUrl: v.string() },
@@ -30,9 +25,7 @@ export const getUnreadFlags = query({
 		// Get all lastSeen records for this user+site
 		const lastSeenRecords = await ctx.db
 			.query("adminLastSeen")
-			.withIndex("by_siteUrl_and_userId", (q) =>
-				q.eq("siteUrl", siteUrl).eq("userId", userId),
-			)
+			.withIndex("by_siteUrl_and_userId", (q) => q.eq("siteUrl", siteUrl).eq("userId", userId))
 			.collect();
 
 		const lastSeenMap = new Map<string, number>();
@@ -94,56 +87,99 @@ export const getUnreadFlags = query({
 			flags.crm = true;
 		}
 
-		// Quotes: any accepted/declined since last seen
+		// Select transitions by their timestamps, regardless of document creation order.
+		// Legacy records without a transition timestamp retain the creation-time fallback.
 		const quotesLastSeen = lastSeenMap.get("quotes") ?? 0;
-		const recentQuotes = await ctx.db
-			.query("quotes")
-			.withIndex("by_siteUrl", (q) => q.eq("siteUrl", siteUrl))
-			.order("desc")
-			.take(RECENT_ITEMS_LIMIT);
-		for (const q of recentQuotes) {
-			const actionTime = q.acceptedAt || q._creationTime;
-			if (
-				(q.status === "accepted" || q.status === "declined") &&
-				actionTime > quotesLastSeen
-			) {
-				flags.quotes = true;
-				break;
-			}
-		}
+		flags.quotes = Boolean(
+			(await ctx.db
+				.query("quotes")
+				.withIndex("by_siteUrl_and_status_and_acceptedAt", (q) =>
+					q.eq("siteUrl", siteUrl).eq("status", "accepted").gt("acceptedAt", quotesLastSeen),
+				)
+				.first()) ||
+				(await ctx.db
+					.query("quotes")
+					.withIndex("by_siteUrl_and_status_and_acceptedAt", (q) =>
+						q
+							.eq("siteUrl", siteUrl)
+							.eq("status", "accepted")
+							.eq("acceptedAt", undefined)
+							.gt("_creationTime", quotesLastSeen),
+					)
+					.first()) ||
+				(await ctx.db
+					.query("quotes")
+					.withIndex("by_siteUrl_and_status_and_declinedAt", (q) =>
+						q.eq("siteUrl", siteUrl).eq("status", "declined").gt("declinedAt", quotesLastSeen),
+					)
+					.first()) ||
+				(await ctx.db
+					.query("quotes")
+					.withIndex("by_siteUrl_and_status_and_declinedAt", (q) =>
+						q
+							.eq("siteUrl", siteUrl)
+							.eq("status", "declined")
+							.eq("declinedAt", undefined)
+							.gt("_creationTime", quotesLastSeen),
+					)
+					.first()),
+		);
 
-		// Invoices: any paid since last seen
 		const invoicesLastSeen = lastSeenMap.get("invoices") ?? 0;
-		const recentInvoices = await ctx.db
-			.query("invoices")
-			.withIndex("by_siteUrl", (q) => q.eq("siteUrl", siteUrl))
-			.order("desc")
-			.take(RECENT_ITEMS_LIMIT);
-		for (const inv of recentInvoices) {
-			const actionTime = inv.paidAt || inv._creationTime;
-			if (
-				(inv.status === "paid" || inv.status === "overdue") &&
-				actionTime > invoicesLastSeen
-			) {
-				flags.invoices = true;
-				break;
-			}
-		}
+		flags.invoices = Boolean(
+			(await ctx.db
+				.query("invoices")
+				.withIndex("by_siteUrl_and_status_and_paidAt", (q) =>
+					q.eq("siteUrl", siteUrl).eq("status", "paid").gt("paidAt", invoicesLastSeen),
+				)
+				.first()) ||
+				(await ctx.db
+					.query("invoices")
+					.withIndex("by_siteUrl_and_status_and_paidAt", (q) =>
+						q
+							.eq("siteUrl", siteUrl)
+							.eq("status", "paid")
+							.eq("paidAt", undefined)
+							.gt("_creationTime", invoicesLastSeen),
+					)
+					.first()) ||
+				(await ctx.db
+					.query("invoices")
+					.withIndex("by_siteUrl_and_status_and_overdueAt", (q) =>
+						q.eq("siteUrl", siteUrl).eq("status", "overdue").gt("overdueAt", invoicesLastSeen),
+					)
+					.first()) ||
+				(await ctx.db
+					.query("invoices")
+					.withIndex("by_siteUrl_and_status_and_overdueAt", (q) =>
+						q
+							.eq("siteUrl", siteUrl)
+							.eq("status", "overdue")
+							.eq("overdueAt", undefined)
+							.gt("_creationTime", invoicesLastSeen),
+					)
+					.first()),
+		);
 
-		// Contracts: any signed since last seen
 		const contractsLastSeen = lastSeenMap.get("contracts") ?? 0;
-		const recentContracts = await ctx.db
-			.query("contracts")
-			.withIndex("by_siteUrl", (q) => q.eq("siteUrl", siteUrl))
-			.order("desc")
-			.take(RECENT_ITEMS_LIMIT);
-		for (const c of recentContracts) {
-			const actionTime = c.signedAt || c._creationTime;
-			if (c.status === "signed" && actionTime > contractsLastSeen) {
-				flags.contracts = true;
-				break;
-			}
-		}
+		flags.contracts = Boolean(
+			(await ctx.db
+				.query("contracts")
+				.withIndex("by_siteUrl_and_status_and_signedAt", (q) =>
+					q.eq("siteUrl", siteUrl).eq("status", "signed").gt("signedAt", contractsLastSeen),
+				)
+				.first()) ||
+				(await ctx.db
+					.query("contracts")
+					.withIndex("by_siteUrl_and_status_and_signedAt", (q) =>
+						q
+							.eq("siteUrl", siteUrl)
+							.eq("status", "signed")
+							.eq("signedAt", undefined)
+							.gt("_creationTime", contractsLastSeen),
+					)
+					.first()),
+		);
 
 		return flags;
 	},
