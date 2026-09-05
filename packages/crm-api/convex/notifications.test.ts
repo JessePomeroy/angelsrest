@@ -194,9 +194,11 @@ test("admin updates record real transitions without resetting timestamps on repe
 	await admin.mutation(api.invoices.update, { siteUrl, invoiceId, status: "overdue" });
 	expect(await t.run((ctx) => ctx.db.get(quoteId))).toMatchObject({ declinedAt: 3000 });
 	expect(await t.run((ctx) => ctx.db.get(invoiceId))).toMatchObject({ overdueAt: 3000 });
+	await admin.mutation(api.notifications.markSeen, { siteUrl, page: "quotes" });
 	vi.setSystemTime(4000);
 	await admin.mutation(api.quotes.markDeclined, { siteUrl, quoteId });
-	expect(await t.run((ctx) => ctx.db.get(quoteId))).toMatchObject({ declinedAt: 4000 });
+	expect(await t.run((ctx) => ctx.db.get(quoteId))).toMatchObject({ declinedAt: 3000 });
+	expect((await admin.query(api.notifications.getUnreadFlags, { siteUrl })).quotes).toBe(false);
 });
 test("does not leak foreign transitions and requires stored site membership", async () => {
 	const { t, admin, clientId } = await setup();

@@ -244,7 +244,9 @@ export const markDeclined = mutation({
 		if (!doc || doc.siteUrl !== siteUrl) {
 			throw new Error("Not found");
 		}
-		await ctx.db.patch(quoteId, { status: "declined", declinedAt: Date.now() });
+		if (doc.status !== "declined") {
+			await ctx.db.patch(quoteId, { status: "declined", declinedAt: Date.now() });
+		}
 	},
 });
 
