@@ -181,21 +181,25 @@ export const V2_FRAME_OPTIONS: V2FrameOption[] = [
 export const FRAMED_BORDER_INCHES = 0.25;
 export const FRAMED_MAT_SIZE_OPTION_ID = 67;
 export const FRAMED_MAT_COLOR_OPTION_ID = 96;
+export const FRAMED_PAPER_OPTION_IDS: Record<number, number> = {
+	103001: 74,
+	103002: 75,
+	103003: 76,
+	103005: 78,
+	103007: 79,
+	103009: 82,
+};
 
 export const FRAME_WHOLESALE_COSTS: Record<string, Record<string, number>> = {
 	"0.875": {
-		"4x6": 15.94,
 		"5x7": 16.85,
 		"6x9": 18.33,
 		"8x10": 20.08,
 		"11x14": 24.65,
 		"16x20": 35.12,
 		"24x36": 66.4,
-		"30x40": 84.26,
-		"40x60": 146.31,
 	},
 	"1.25": {
-		"4x6": 16.35,
 		"5x7": 17.34,
 		"6x9": 18.94,
 		"8x10": 20.8,
@@ -291,6 +295,28 @@ export function getBorder(value: string): V2BorderOption | undefined {
 
 export function getFrame(value: string): V2FrameOption | undefined {
 	return V2_FRAME_OPTIONS.find((frame) => frame.value === value);
+}
+
+export function getAvailableFrames(sizeSlug: string): V2FrameOption[] {
+	return V2_FRAME_OPTIONS.filter(
+		(frame) => frame.subcategoryId === 0 || getFrameWholesaleCost(frame.value, sizeSlug) !== null,
+	);
+}
+
+export function getPrintTargetDpi(subcategoryId: number): number | null {
+	if (Object.values(CANVAS_SUBCATEGORY_IDS).includes(subcategoryId)) return 200;
+	if (
+		V2_PAPERS.some((paper) => paper.subcategoryId === subcategoryId) ||
+		V2_FRAME_OPTIONS.some(
+			(frame) => frame.subcategoryId > 0 && frame.subcategoryId === subcategoryId,
+		)
+	)
+		return 300;
+	return null;
+}
+
+export function getFramedPaperOptionId(paperSubcategoryId: number): number | null {
+	return FRAMED_PAPER_OPTION_IDS[paperSubcategoryId] ?? null;
 }
 
 export function isCanvasPaper(slug: string): boolean {

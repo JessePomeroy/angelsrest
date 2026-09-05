@@ -29,6 +29,13 @@ import {
 import type { ShippingDetails } from "$lib/server/webhookEmails";
 import { buildConvexOrderCreatePayload } from "$lib/server/webhookOrderPayload";
 import { getWebhookSecret } from "$lib/server/webhookSecret";
+import type { OrderItem } from "$lib/shop/types";
+
+export type PreparedPrintJob = {
+	jobId: Id<"printFulfillmentJobs">;
+	leaseToken: string;
+	items: OrderItem[];
+};
 
 export interface CreatedOrderResult {
 	orderNumber: string;
@@ -53,6 +60,7 @@ export async function createOrderInConvex(
 		createLumaPrintsOrder,
 		confirmLumaPrintsOrder,
 		onOrderRecorded,
+		printJob,
 	}: {
 		stripe: Stripe;
 		convex: ConvexHttpClient;
@@ -60,6 +68,7 @@ export async function createOrderInConvex(
 		createLumaPrintsOrder: SubmitLumaPrintsOrder;
 		confirmLumaPrintsOrder?: ConfirmLumaPrintsOrder;
 		onOrderRecorded?: (orderId: Id<"orders">, orderNumber: string) => Promise<void>;
+		printJob?: PreparedPrintJob;
 	},
 	{
 		session,
@@ -94,12 +103,16 @@ export async function createOrderInConvex(
 		checkoutSnapshotInput,
 		checkoutSessionAdmission,
 	});
-	const orderResult = await convex.mutation(api.orders.create, payload).catch((cause) => {
-		if (checkoutSnapshotInput.protocol === "handle-v2") {
-			throw new CheckoutSnapshotProtocolError("Bound checkout snapshot transfer failed", { cause });
-		}
-		throw cause;
-	});
+	const orderResult = await convex
+		.mutation(api.orders.create, { ...payload, runPrintJob: true })
+		.catch((cause) => {
+			if (checkoutSnapshotInput.protocol === "handle-v2") {
+				throw new CheckoutSnapshotProtocolError("Bound checkout snapshot transfer failed", {
+					cause,
+				});
+			}
+			throw cause;
+		});
 	const { _id: orderId, orderNumber, alreadyExisted } = orderResult;
 	const existingLumaprintsOrderNumber = orderResult.lumaprintsOrderNumber;
 	const existingStatus = orderResult.status;
@@ -121,6 +134,17 @@ export async function createOrderInConvex(
 		meta: { alreadyExisted },
 	});
 	await onOrderRecorded?.(orderId, orderNumber);
+	if (printJob && printJob.jobId !== orderResult.printJobId)
+		throw new Error("Print job does not match the paid order");
+	if (orderResult.printJobId && !printJob) {
+		return {
+			orderNumber,
+			_id: orderId,
+			alreadyExisted,
+			fulfillment: { kind: "scheduled" },
+			notification: "none",
+		};
+	}
 
 	const needsProviderReconciliation =
 		existingPrintClaim === true &&
@@ -296,12 +320,19 @@ export async function createOrderInConvex(
 			throw new FulfillmentValidationError("Checkout snapshot provider is unsupported");
 		}
 		fulfillment = await submitPrintFulfillment(
-			{ convex, createLumaPrintsOrder, confirmLumaPrintsOrder },
+			{
+				convex,
+				createLumaPrintsOrder,
+				confirmLumaPrintsOrder,
+				preparedItems: printJob?.items,
+				printJobLeaseToken: printJob?.leaseToken,
+			},
 			{
 				orderId,
 				orderNumber,
 				fulfillmentType,
 				tenantId,
+				siteUrl,
 				lineItems,
 				shippingDetails,
 				session,

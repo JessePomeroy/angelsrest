@@ -1,7 +1,7 @@
 import type Stripe from "stripe";
 import {
 	isPrintSourceDescriptor,
-	issuePrintSource,
+	issueTenantPrintSource,
 	type PaidFulfillmentResolution,
 	type PrintSourceDescriptor,
 	resolvePaidFulfillment,
@@ -59,38 +59,39 @@ function validResolution(resolution: PaidFulfillmentResolution, item: CheckoutSn
 	);
 }
 
-export async function buildOrderItemsFromSnapshot(
+/** Resolve one paid line without minting URLs or downloading its images. */
+export async function resolveSnapshotPrintSources(
 	snapshot: CheckoutSnapshotV1,
 	stripeSessionId: string,
-	lineItems: Stripe.LineItem[],
-): Promise<OrderItem[]> {
+	ordinal: number,
+	paidQuantity: number,
+) {
 	if (snapshot.catalogProvider !== "convex") {
 		throw new FulfillmentValidationError("Checkout snapshot provider is unsupported");
 	}
-	const printable = snapshot.items
-		.map((item, ordinal) => ({ item, ordinal }))
-		.filter(({ item }) => item.productKind === "print" || item.productKind === "print_set")
-		.map(({ item, ordinal }) => ({ item, ordinal, paidQuantity: quantity(lineItems, ordinal) }));
-	const resolved: Array<{ value: PaidFulfillmentResolution; paidQuantity: number }> = [];
-	for (const { item, ordinal, paidQuantity } of printable) {
-		const value = await resolvePaidFulfillment(stripeSessionId, ordinal);
-		if (!validResolution(value, item))
-			throw new FulfillmentValidationError("Paid fulfillment resolution does not match");
-		resolved.push({ value, paidQuantity });
-	}
-	const items: OrderItem[] = [];
-	for (const { value, paidQuantity } of resolved) {
-		if (value.descriptor.kind === "merchant") continue;
-		if (value.descriptor.kind !== "print_sources" || !value.commerce.finish)
-			throw new FulfillmentValidationError("Paid fulfillment descriptor is invalid");
-		const finish = value.commerce.finish;
-		for (const source of value.descriptor.sources) {
-			if (!isPrintSourceDescriptor(source))
-				throw new FulfillmentValidationError("Paid fulfillment print source is invalid");
-			const size = orientSize(finish.size, source.dimensions);
-			items.push({
-				imageUrl: await issuePrintSource(source),
-				sourcePolicy: "opaque_capability",
+	const item = snapshot.items[ordinal];
+	if (!item) throw new FulfillmentValidationError("Paid line-item ordinal is invalid");
+	if (item.productKind !== "print" && item.productKind !== "print_set") return [];
+	if (!Number.isSafeInteger(paidQuantity) || paidQuantity <= 0)
+		throw new FulfillmentValidationError("Paid line-item quantity is invalid");
+	const value = await resolvePaidFulfillment(stripeSessionId, ordinal);
+	if (!validResolution(value, item))
+		throw new FulfillmentValidationError("Paid fulfillment resolution does not match");
+	if (value.descriptor.kind === "merchant") return [];
+	if (value.descriptor.kind !== "print_sources" || !value.commerce.finish)
+		throw new FulfillmentValidationError("Paid fulfillment descriptor is invalid");
+	const finish = value.commerce.finish;
+	return value.descriptor.sources.map((source) => {
+		const size = orientSize(finish.size, source.dimensions);
+		return {
+			descriptor: {
+				key: source.key,
+				hash: source.hash,
+				bytes: source.bytes,
+				mime: source.mime,
+				dimensions: source.dimensions,
+			},
+			item: {
 				quantity: paidQuantity,
 				paperSubcategoryId: finish.canvas?.subcategoryId ?? finish.paper.subcategoryId,
 				width: size.width,
@@ -99,8 +100,37 @@ export async function buildOrderItemsFromSnapshot(
 				frameSubcategoryId: finish.frame.subcategoryId || undefined,
 				canvasSubcategoryId: finish.canvas?.subcategoryId,
 				canvasWrapHex: finish.canvas?.wrapHex,
-			});
-		}
+			} satisfies Omit<OrderItem, "imageUrl" | "sourcePolicy">,
+		};
+	});
+}
+
+export async function buildOrderItemsFromSnapshot(
+	snapshot: CheckoutSnapshotV1,
+	stripeSessionId: string,
+	lineItems: Stripe.LineItem[],
+	siteUrl?: string,
+): Promise<OrderItem[]> {
+	if (snapshot.catalogProvider !== "convex")
+		throw new FulfillmentValidationError("Checkout snapshot provider is unsupported");
+	const resolved: Awaited<ReturnType<typeof resolveSnapshotPrintSources>> = [];
+	for (const [ordinal, item] of snapshot.items.entries()) {
+		if (item.productKind !== "print" && item.productKind !== "print_set") continue;
+		resolved.push(
+			...(await resolveSnapshotPrintSources(
+				snapshot,
+				stripeSessionId,
+				ordinal,
+				quantity(lineItems, ordinal),
+			)),
+		);
 	}
+	const items: OrderItem[] = [];
+	for (const { descriptor, item } of resolved)
+		items.push({
+			...item,
+			imageUrl: await issueTenantPrintSource(descriptor, siteUrl),
+			sourcePolicy: "opaque_capability",
+		});
 	return items;
 }

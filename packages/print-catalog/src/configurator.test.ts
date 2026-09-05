@@ -9,6 +9,7 @@ import {
 const variants = [
 	{ paper: "archival-matte", size: "8x10", retailPrice: 42 },
 	{ paper: "archival-matte", size: "11x14", retailPrice: 54 },
+	{ paper: "archival-matte", size: "24x36", retailPrice: 120 },
 	{ paper: "glossy", size: "8x10", retailPrice: 45 },
 	{ paper: "glossy", size: "8x10", retailPrice: 999, enabled: false },
 ];
@@ -22,6 +23,7 @@ describe("print configurator", () => {
 		expect(getAvailablePrintSizes(variants, "archival-matte")).toEqual([
 			{ slug: "8x10", label: "8×10" },
 			{ slug: "11x14", label: "11×14" },
+			{ slug: "24x36", label: "24×36" },
 		]);
 	});
 
@@ -48,6 +50,13 @@ describe("print configurator", () => {
 			borderWidthValue: "0.25",
 			frameValue: "0.875-black",
 		});
+		expect(resolvePrintConfiguration({
+			variants,
+			paperSlug: "archival-matte",
+			sizeSlug: "24x36",
+			borderWidthValue: "none",
+			frameValue: "none",
+		})?.displayPrice).toBe(120);
 	});
 
 	it("resolves the server-equivalent framed display price and fulfillment metadata", () => {
@@ -97,6 +106,16 @@ describe("print configurator", () => {
 				sizeSlug: "24x36",
 				borderWidthValue: "none",
 				frameValue: "none",
+			}),
+		).toBeNull();
+		expect(
+			resolvePrintConfiguration({
+				variants: [{ paper: "glossy", size: "4x6", retailPrice: 15 }],
+				paperSlug: "glossy",
+				sizeSlug: "4x6",
+				borderWidthValue: "none",
+				frameValue: "1.25-white",
+				framedEnabled: true,
 			}),
 		).toBeNull();
 	});

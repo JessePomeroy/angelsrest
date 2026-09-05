@@ -13,10 +13,12 @@ const mockSendFulfillmentFailureAlert = vi.fn();
 const mockSendPaymentFailedEmail = vi.fn();
 const mockSendPrintReconciliationBlockedAlert = vi.fn();
 const mockBuildOrderItemsFromSnapshot = vi.fn();
+const mockPreparePrintSources = vi.fn(async (items: unknown) => items);
 const mockPrivateEnv = vi.hoisted(() => ({
 	LUMAPRINTS_API_KEY: "test-key",
 	LUMAPRINTS_API_SECRET: "test-secret",
 	LUMAPRINTS_STORE_ID: "123",
+	LUMAPRINTS_USE_SANDBOX: "true",
 	WEBHOOK_SECRET: "test-webhook-secret",
 	CHECKOUT_SNAPSHOT_MODE: undefined as string | undefined,
 }));
@@ -99,6 +101,9 @@ vi.mock("$convex/api", () => ({
 vi.mock("$env/dynamic/private", () => ({ env: mockPrivateEnv }));
 vi.mock("$lib/server/snapshotFulfillment", () => ({
 	buildOrderItemsFromSnapshot: mockBuildOrderItemsFromSnapshot,
+}));
+vi.mock("$lib/server/printSourcePreparation", () => ({
+	preparePrintSources: mockPreparePrintSources,
 }));
 
 vi.mock("$lib/config/site", () => ({
@@ -619,6 +624,23 @@ describe("processStripeWebhookEvent", () => {
 		expect(stripe.checkout.sessions.list).not.toHaveBeenCalled();
 		expect(convex.mutation).not.toHaveBeenCalled();
 		expect(mockSendFailureAlert).not.toHaveBeenCalled();
+	});
+
+	it("acknowledges a durably queued print without doing image work inside the webhook", async () => {
+		const session = makeCheckoutSession();
+		stripe.checkout.sessions.retrieve.mockResolvedValue({
+			...session,
+			line_items: { data: [makeLineItem()] },
+		});
+		orderCreateResults = [makeOrderResult({ printJobId: "job-123" })];
+		const { processStripeWebhookEvent } = await import("../orderIntake");
+		await processStripeWebhookEvent(
+			makeStripeEvent("checkout.session.completed", session),
+			adapters(),
+		);
+		expect(mockPreparePrintSources).not.toHaveBeenCalled();
+		expect(createLumaPrintsOrder).not.toHaveBeenCalled();
+		expect(convex.mutation).toHaveBeenCalledWith("orders.prepareOrderReceipt", expect.anything());
 	});
 
 	it("drives a print checkout through the real fulfillment orchestration interface", async () => {
@@ -1479,6 +1501,7 @@ describe("processStripeWebhookEvent", () => {
 			checkoutSnapshot,
 			session.id,
 			lineItems,
+			"angelsrest.online",
 		);
 		expect(createLumaPrintsOrder).toHaveBeenCalledTimes(1);
 		expect(mockBuildOrderItemsFromSnapshot.mock.invocationCallOrder[0]).toBeLessThan(

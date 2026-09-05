@@ -135,15 +135,20 @@ describe("buildLumaPrintsOrder", () => {
 	it("uses no-bleed only for direct Fine Art Paper", () => {
 		const direct = buildLumaPrintsOrder("order-4", mockRecipient, mockItems);
 		const framed = buildLumaPrintsOrder("order-framed", mockRecipient, [
-			{ ...mockItems[0], frameSubcategoryId: 203001 },
+			{ ...mockItems[0], paperSubcategoryId: 103007, frameSubcategoryId: 105001 },
 		]);
 		const canvas = buildLumaPrintsOrder("order-canvas", mockRecipient, [
 			{ ...mockItems[0], canvasSubcategoryId: 303001, canvasWrapHex: "#ffffff" },
 		]);
 
 		expect(direct.orderItems[0].orderItemOptions).toEqual([39]);
-		expect(framed.orderItems[0].orderItemOptions).toEqual([67, 96]);
+		expect(framed.orderItems[0].orderItemOptions).toEqual([79, 67, 96]);
 		expect(canvas.orderItems[0].orderItemOptions).toEqual([3]);
+		expect(() =>
+			buildLumaPrintsOrder("order-unsupported-frame", mockRecipient, [
+				{ ...mockItems[0], paperSubcategoryId: 999999, frameSubcategoryId: 105001 },
+			]),
+		).toThrow("Framed print paper is unsupported");
 	});
 
 	it("does NOT include option 36 (Bleed) in orderItemOptions", () => {
@@ -158,14 +163,14 @@ describe("buildLumaPrintsOrder", () => {
 		expect(order.orderItems[0].file.imageUrl).toBe(mockItems[0].imageUrl);
 	});
 
-	it("preserves opaque capabilities and bordered R2 outputs byte-exact", () => {
+	it("preserves opaque capabilities and legacy sources byte-exact", () => {
 		const opaque = "https://opaque.example/source.jpg?sealed=a_b-C";
-		const bordered = "https://worker.example/image/bordered.jpg?version=1";
+		const legacy = "https://cdn.example/image.jpg?version=1";
 		const order = buildLumaPrintsOrder("exact-urls", mockRecipient, [
 			{ ...mockItems[0], imageUrl: opaque, sourcePolicy: "opaque_capability" },
-			{ ...mockItems[0], imageUrl: bordered, sourcePolicy: "bordered_r2" },
+			{ ...mockItems[0], imageUrl: legacy, sourcePolicy: "byte_exact" },
 		]);
-		expect(order.orderItems.map(({ file }) => file.imageUrl)).toEqual([opaque, bordered]);
+		expect(order.orderItems.map(({ file }) => file.imageUrl)).toEqual([opaque, legacy]);
 	});
 
 	it("generates correct externalItemId for each item", () => {
@@ -295,6 +300,53 @@ describe("LumaPrints request deadlines", () => {
 		expect(init.method).toBeUndefined();
 		expect(init.signal).toBeInstanceOf(AbortSignal);
 		expect((init.signal as AbortSignal).aborted).toBe(false);
+	});
+
+	it.each([
+		"transport",
+		"stream",
+	] as const)("shares one reconciliation budget across pages and %s consumption", async (phase) => {
+		let now = 0;
+		const clock = vi.spyOn(Date, "now").mockImplementation(() => now);
+		const timeout = vi.spyOn(AbortSignal, "timeout");
+		const fetchMock = vi
+			.fn()
+			.mockImplementationOnce(async () => {
+				now = 14_000;
+				return providerPage([listedOrder("other", "10000000001")], {
+					totalOrders: 2,
+					currentPage: 1,
+					totalPages: 2,
+				});
+			})
+			.mockImplementationOnce(async () => {
+				const expired = new DOMException("timed out", "TimeoutError");
+				if (phase === "transport") {
+					now = 20_000;
+					throw expired;
+				}
+				return new Response(
+					new ReadableStream({
+						pull(controller) {
+							now = 20_000;
+							controller.error(expired);
+						},
+					}),
+					{ headers: { "content-type": "application/json" } },
+				);
+			});
+		vi.stubGlobal("fetch", fetchMock);
+		try {
+			await expect(findOrderByExternalId("cs_test_1234567890abcdef")).rejects.toMatchObject({
+				disposition: "retryable",
+				message: "Order reconciliation response exceeded its time bound",
+			});
+			expect(timeout.mock.calls.map(([duration]) => duration)).toEqual([15_000, 6_000]);
+			expect(fetchMock).toHaveBeenCalledTimes(2);
+		} finally {
+			clock.mockRestore();
+			timeout.mockRestore();
+		}
 	});
 
 	it("surfaces timeout failures as uncertain create outcomes", async () => {

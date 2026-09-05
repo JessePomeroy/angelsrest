@@ -127,11 +127,12 @@ export function resolvePrintConfiguration(
 	if (input.framedEnabled !== true && frame.subcategoryId > 0) return null;
 
 	const frameMarkupMultiplier = input.frameMarkupMultiplier ?? 2;
-	const frameSurcharge =
+	const frameCost =
 		frame.subcategoryId > 0
-			? (getFrameWholesaleCost(normalized.frameValue, input.sizeSlug) ?? 0) *
-				frameMarkupMultiplier
+			? getFrameWholesaleCost(normalized.frameValue, input.sizeSlug)
 			: 0;
+	if (frameCost === null) return null;
+	const frameSurcharge = frameCost * frameMarkupMultiplier;
 	const canvas = isCanvasPaper(normalized.paperSlug)
 		? parseCanvasSlug(normalized.paperSlug)
 		: null;

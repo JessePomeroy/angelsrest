@@ -1,5 +1,10 @@
 import { env as privateEnv } from "$env/dynamic/private";
 import { env as publicEnv } from "$env/dynamic/public";
+import { normalizeCommerceTenantSiteUrl } from "$lib/server/stripeConnect";
+
+const MAX_TENANT_REGISTRY_BYTES = 64 * 1024;
+const MAX_TENANTS = 100;
+const MAX_SECRETS_PER_TENANT = 2;
 
 export class RuntimeConfigurationError extends Error {
 	constructor(readonly integration: string) {
@@ -38,8 +43,44 @@ export const getStripePlatformWebhookSecret = () =>
 export const getResendApiKey = () => required(privateEnv.RESEND_API_KEY, "Resend");
 export const getGalleryAdminSecret = () =>
 	required(privateEnv.GALLERY_ADMIN_SECRET, "Gallery administration");
-export const getCmsMediaTenantSecret = () =>
-	required(privateEnv.CMS_MEDIA_WORKER_SECRET, "CMS media");
+export function getCmsMediaTenantSecret(siteUrl?: string) {
+	const role = tenantCredentialRole(
+		privateEnv.CMS_MEDIA_WORKER_SECRET,
+		privateEnv.CMS_MEDIA_WORKER_TENANT_SECRETS,
+		"CMS media",
+	);
+	if (!siteUrl) return role.scalar;
+	const tenant = normalizeCommerceTenantSiteUrl(siteUrl);
+	return required(
+		tenant === normalizeCommerceTenantSiteUrl(getPublicSiteOrigin())
+			? role.scalar
+			: role.registry[tenant]?.[0],
+		"CMS media",
+	);
+}
+export function getCatalogPrintSourceIssuerSecret(siteUrl?: string) {
+	const upload = tenantCredentialRole(
+		privateEnv.CMS_MEDIA_WORKER_SECRET,
+		privateEnv.CMS_MEDIA_WORKER_TENANT_SECRETS,
+		"CMS media",
+	);
+	const issuer = tenantCredentialRole(
+		privateEnv.CATALOG_PRINT_SOURCE_ISSUER_SECRET,
+		privateEnv.CATALOG_PRINT_SOURCE_ISSUER_TENANT_SECRETS,
+		"Print source issuer",
+	);
+	if (issuer.all.some((secret) => upload.all.includes(secret))) {
+		throw new RuntimeConfigurationError("Print source issuer");
+	}
+	if (!siteUrl) return issuer.scalar;
+	const tenant = normalizeCommerceTenantSiteUrl(siteUrl);
+	return required(
+		tenant === normalizeCommerceTenantSiteUrl(getPublicSiteOrigin())
+			? issuer.scalar
+			: issuer.registry[tenant]?.[0],
+		"Print source issuer",
+	);
+}
 export const getCmsMediaConvexSiteOrigin = () =>
 	origin(publicEnv.PUBLIC_CONVEX_SITE_URL, "CMS media deletion completion");
 export const getCmsMediaDeletionCompletionSecret = () =>
@@ -65,12 +106,17 @@ export function getCatalogPrivateEditorUploadConfig() {
 export function getLumaPrintsRuntimeConfig() {
 	const rawStoreId = required(privateEnv.LUMAPRINTS_STORE_ID, "LumaPrints");
 	const storeId = /^\d+$/.test(rawStoreId) ? Number(rawStoreId) : Number.NaN;
-	if (!Number.isSafeInteger(storeId) || storeId <= 0) {
+	const sandbox = privateEnv.LUMAPRINTS_USE_SANDBOX;
+	if (
+		!Number.isSafeInteger(storeId) ||
+		storeId <= 0 ||
+		!["true", "false"].includes(sandbox ?? "")
+	) {
 		throw new RuntimeConfigurationError("LumaPrints");
 	}
 	return Object.freeze({
 		baseUrl:
-			privateEnv.LUMAPRINTS_USE_SANDBOX === "true"
+			sandbox === "true"
 				? "https://us.api-sandbox.lumaprints.com"
 				: "https://us.api.lumaprints.com",
 		apiKey: required(privateEnv.LUMAPRINTS_API_KEY, "LumaPrints"),
@@ -85,4 +131,53 @@ function isBearerCredential(value: string | undefined): value is string {
 	return Boolean(
 		value && value.length >= 32 && value.length <= 512 && TOKEN68_BEARER_PATTERN.test(value),
 	);
+}
+
+function tenantCredentialRole(
+	scalar: string | undefined,
+	rawRegistry: string | undefined,
+	integration: string,
+) {
+	const configuredScalar = required(scalar, integration);
+	const registry = parseTenantSecrets(rawRegistry, integration);
+	const all = [configuredScalar, ...Object.values(registry).flat()];
+	if (new Set(all).size !== all.length) throw new RuntimeConfigurationError(integration);
+	return { scalar: configuredScalar, registry, all };
+}
+
+function parseTenantSecrets(raw: string | undefined, integration: string) {
+	if (!raw) return Object.create(null) as Record<string, string[]>;
+	if (Buffer.byteLength(raw, "utf8") > MAX_TENANT_REGISTRY_BYTES) {
+		throw new RuntimeConfigurationError(integration);
+	}
+	let parsed: unknown;
+	try {
+		parsed = JSON.parse(raw);
+	} catch {
+		throw new RuntimeConfigurationError(integration);
+	}
+	if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+		throw new RuntimeConfigurationError(integration);
+	}
+	const entries = Object.entries(parsed);
+	if (entries.length < 1 || entries.length > MAX_TENANTS) {
+		throw new RuntimeConfigurationError(integration);
+	}
+	const registry = Object.create(null) as Record<string, string[]>;
+	const seen = new Set<string>();
+	for (const [siteUrl, value] of entries) {
+		if (
+			siteUrl !== normalizeCommerceTenantSiteUrl(siteUrl) ||
+			!Array.isArray(value) ||
+			value.length < 1 ||
+			value.length > MAX_SECRETS_PER_TENANT ||
+			new Set(value).size !== value.length ||
+			value.some((secret) => !isBearerCredential(secret) || seen.has(secret))
+		) {
+			throw new RuntimeConfigurationError(integration);
+		}
+		for (const secret of value) seen.add(secret);
+		registry[siteUrl] = value;
+	}
+	return registry;
 }

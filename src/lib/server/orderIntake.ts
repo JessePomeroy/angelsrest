@@ -44,7 +44,7 @@ import {
 	sendPaymentFailedEmail,
 	sendPrintReconciliationBlockedAlert,
 } from "$lib/server/webhookEmails";
-import { createOrderInConvex } from "$lib/server/webhookOrders";
+import { createOrderInConvex, type PreparedPrintJob } from "$lib/server/webhookOrders";
 import { getWebhookSecret } from "$lib/server/webhookSecret";
 
 class PaymentFailureEmailClaimError extends Error {}
@@ -56,6 +56,7 @@ export interface OrderIntakeAdapters {
 	convex: ConvexHttpClient;
 	createLumaPrintsOrder: SubmitLumaPrintsOrder;
 	confirmLumaPrintsOrder?: ConfirmLumaPrintsOrder;
+	printJob?: PreparedPrintJob;
 }
 
 export async function processStripeWebhookEvent(
@@ -368,7 +369,7 @@ async function handlePaymentFailed(
 	}
 }
 
-async function handleCheckoutCompleted(
+export async function handleCheckoutCompleted(
 	session: Stripe.Checkout.Session,
 	adapters: OrderIntakeAdapters,
 	{
@@ -443,6 +444,7 @@ async function handleCheckoutCompleted(
 			resend: adapters.resend,
 			createLumaPrintsOrder: adapters.createLumaPrintsOrder,
 			confirmLumaPrintsOrder: adapters.confirmLumaPrintsOrder,
+			printJob: adapters.printJob,
 			onOrderRecorded: async (orderId, orderNumber) => {
 				receiptError = await sendOrderReceipt(adapters.convex, adapters.resend, orderId, {
 					session: fullSession,
@@ -665,16 +667,14 @@ async function fetchSessionDetails(
 	completeLineItems = false,
 ) {
 	if (completeLineItems) {
-		const fullSession = await stripe.checkout.sessions.retrieve(
-			session.id,
-			{ expand: ["customer_details"] },
-			requestOptions,
-		);
-		const page = await stripe.checkout.sessions.listLineItems(
-			session.id,
-			{ limit: 41 },
-			requestOptions,
-		);
+		const [fullSession, page] = await Promise.all([
+			stripe.checkout.sessions.retrieve(
+				session.id,
+				{ expand: ["customer_details"] },
+				requestOptions,
+			),
+			stripe.checkout.sessions.listLineItems(session.id, { limit: 41 }, requestOptions),
+		]);
 		if (page.data.length > 40 || page.has_more) {
 			throw new CheckoutSnapshotProtocolError("Checkout has more than 40 line items");
 		}

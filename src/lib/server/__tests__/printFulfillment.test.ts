@@ -14,7 +14,7 @@ const mockSendAutomatedRefundAttentionAlert = vi.fn();
 const mockSendAutomatedRefundFailureAlert = vi.fn();
 const mockFindLumaPrintsOrder = vi.fn();
 const mockConfirmLumaPrintsOrder = vi.fn();
-const mockProcessBorderedPrints = vi.fn();
+const mockPreparePrintSources = vi.fn();
 
 vi.mock("$lib/server/logger", () => ({
 	logStructured: mockLogStructured,
@@ -73,7 +73,9 @@ vi.mock("$lib/server/webhookDecoder", () => ({
 vi.mock("$lib/server/snapshotFulfillment", () => ({
 	buildOrderItemsFromSnapshot: mockBuildOrderItemsFromSnapshot,
 }));
-vi.mock("$lib/server/sharpBorder", () => ({ processBorderedPrints: mockProcessBorderedPrints }));
+vi.mock("$lib/server/printSourcePreparation", () => ({
+	preparePrintSources: mockPreparePrintSources,
+}));
 
 vi.mock("$lib/server/webhookEmails", () => ({
 	sendAutomatedRefundAttentionAlert: mockSendAutomatedRefundAttentionAlert,
@@ -127,6 +129,7 @@ vi.mock("$env/dynamic/private", () => ({
 		LUMAPRINTS_API_KEY: "test-key",
 		LUMAPRINTS_API_SECRET: "test-secret",
 		LUMAPRINTS_STORE_ID: "123",
+		LUMAPRINTS_USE_SANDBOX: "false",
 		WEBHOOK_SECRET: "test-webhook-secret",
 	},
 }));
@@ -161,6 +164,7 @@ describe("print fulfillment", () => {
 	const printInput = {
 		orderId,
 		orderNumber: "ORD-001",
+		siteUrl: "angelsrest.online",
 		lineItems: [],
 		shippingDetails: shippingDetails as never,
 		session,
@@ -265,15 +269,7 @@ describe("print fulfillment", () => {
 			country: "US",
 			phone: "",
 		});
-		mockProcessBorderedPrints.mockImplementation(
-			(items, stripeSessionId) =>
-				new Map(
-					items.map(({ index }: { index: number }) => [
-						index,
-						`https://worker.example/image/prints/bordered/${stripeSessionId}/${index}.jpg`,
-					]),
-				),
-		);
+		mockPreparePrintSources.mockImplementation(async (items) => items);
 		mockBuildLumaPrintsOrder.mockImplementation((externalId: string) => ({ externalId }));
 		mockCreateLumaPrintsOrder.mockResolvedValue({ orderNumber: "123" });
 		mockConfirmLumaPrintsOrder.mockResolvedValue(true);
@@ -330,13 +326,13 @@ describe("print fulfillment", () => {
 			),
 		).rejects.toBeInstanceOf(ProviderSubmissionClosedRetryableError);
 		expect(mockBuildOrderItemsFromSnapshot).not.toHaveBeenCalled();
-		expect(mockProcessBorderedPrints).not.toHaveBeenCalled();
+		expect(mockPreparePrintSources).not.toHaveBeenCalled();
 		expect(mockCreateLumaPrintsOrder).not.toHaveBeenCalled();
 		expect(stripe.refunds.create).not.toHaveBeenCalled();
 		expect(mockSendFulfillmentFailureAlert).not.toHaveBeenCalled();
 	});
 
-	it("isolates same-number tenant borders by session and submits exact URL-safe payloads", async () => {
+	it("prepares print sources inside the trusted tenant before submission", async () => {
 		const { buildLumaPrintsOrder } =
 			await vi.importActual<typeof import("../lumaprints")>("../lumaprints");
 		const { submitPrintFulfillment } = await import("../printFulfillment");
@@ -375,6 +371,13 @@ describe("print fulfillment", () => {
 				borderWidth: 0.25,
 			},
 		]);
+		mockPreparePrintSources.mockImplementation(async (items, { siteUrl }) =>
+			items.map((item: object, index: number) => ({
+				...item,
+				imageUrl: `https://worker.example/prepared/${siteUrl}/${index}.jpg`,
+				sourcePolicy: "opaque_capability",
+			})),
+		);
 		for (const { id, orderId } of cases)
 			await submitPrintFulfillment(
 				{ convex, createLumaPrintsOrder: mockCreateLumaPrintsOrder },
@@ -403,12 +406,15 @@ describe("print fulfillment", () => {
 					quantity: 2,
 					width: 8,
 					height: 10,
-					file: { imageUrl: `https://worker.example/image/prints/bordered/${id}/0.jpg` },
+					file: { imageUrl: "https://worker.example/prepared/angelsrest.online/0.jpg" },
 					orderItemOptions: [39],
 				},
 			],
 		});
-		expect(mockProcessBorderedPrints.mock.calls.map(([, id]) => id)).toEqual(sessions);
+		expect(mockPreparePrintSources).toHaveBeenCalledTimes(2);
+		expect(mockPreparePrintSources.mock.calls.map(([, options]) => options)).toEqual(
+			sessions.map(() => ({ siteUrl: "angelsrest.online" })),
+		);
 		expect(mockCreateLumaPrintsOrder.mock.calls.map(([payload]) => payload)).toEqual(
 			sessions.map(expected),
 		);
@@ -474,13 +480,16 @@ describe("print fulfillment", () => {
 			{ convex, createLumaPrintsOrder: mockCreateLumaPrintsOrder },
 			input,
 		);
-		expect(mockBuildOrderItemsFromSnapshot).toHaveBeenLastCalledWith(checkoutSnapshot, session.id, [
-			expect.objectContaining({ quantity: 3 }),
-		]);
+		expect(mockBuildOrderItemsFromSnapshot).toHaveBeenLastCalledWith(
+			checkoutSnapshot,
+			session.id,
+			[expect.objectContaining({ quantity: 3 })],
+			"angelsrest.online",
+		);
 		expect(mockBuildOrderItemsFromSession).not.toHaveBeenCalled();
 	});
 
-	it("holds the claim during bordered-image effects and releases it after preparation failure", async () => {
+	it("holds the claim during image preparation and releases it before provider submission", async () => {
 		const { submitPrintFulfillment } = await import("../printFulfillment");
 		mockBuildOrderItemsFromSession.mockReturnValueOnce([
 			{
@@ -493,7 +502,7 @@ describe("print fulfillment", () => {
 				borderWidth: 0.25,
 			},
 		]);
-		mockProcessBorderedPrints.mockRejectedValueOnce(new Error("R2 unavailable"));
+		mockPreparePrintSources.mockRejectedValueOnce(new Error("R2 unavailable"));
 
 		await expect(
 			submitPrintFulfillment(
@@ -502,7 +511,7 @@ describe("print fulfillment", () => {
 			),
 		).rejects.toThrow("R2 unavailable");
 		expect(convex.mutation.mock.invocationCallOrder[0]).toBeLessThan(
-			mockProcessBorderedPrints.mock.invocationCallOrder[0],
+			mockPreparePrintSources.mock.invocationCallOrder[0],
 		);
 		expect(convex.mutation).toHaveBeenLastCalledWith("orders.releasePrintFulfillmentClaim", {
 			orderId,
@@ -1445,7 +1454,7 @@ describe("print fulfillment", () => {
 			).rejects.toThrow("Paid fulfillment print source is invalid");
 
 			expect(mockBuildOrderItemsFromSnapshot).toHaveBeenCalledOnce();
-			expect(mockProcessBorderedPrints).not.toHaveBeenCalled();
+			expect(mockPreparePrintSources).not.toHaveBeenCalled();
 			expect(mockCreateLumaPrintsOrder).not.toHaveBeenCalled();
 			expect(convex.mutation).not.toHaveBeenCalledWith(
 				"orders.beginPrintFulfillmentSubmission",

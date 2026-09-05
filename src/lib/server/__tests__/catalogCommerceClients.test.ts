@@ -1,5 +1,7 @@
 import { brotliCompressSync, deflateSync, gzipSync } from "node:zlib";
 import { describe, expect, it, vi } from "vitest";
+import { env as privateEnv } from "$env/dynamic/private";
+import { env as publicEnv } from "$env/dynamic/public";
 import {
 	CatalogBoundaryError,
 	issuePaidFile,
@@ -7,6 +9,7 @@ import {
 	resolveCatalogCheckout,
 	resolvePaidDownload,
 	resolvePaidFulfillment,
+	storeRenderedPrintSource,
 } from "$lib/server/catalogCommerceClients";
 
 const token = "a".repeat(32);
@@ -763,6 +766,149 @@ describe("fixed-purpose catalog clients", () => {
 			bytes: descriptor.bytes,
 			mime: descriptor.mime,
 		});
+	});
+
+	it("stores rendered prints immutably before issuing their provider capability", async () => {
+		const hash = "c".repeat(64);
+		const bytes = new Uint8Array([1, 2, 3]);
+		const assetKey = `lumaprints-render-v1-${hash}`;
+		const key = `sites/angelsrest.online/catalog/print-sources/${assetKey}/original`;
+		let capabilityRequests = 0;
+		const fetch = vi.fn(async (input: URL | RequestInfo, init?: RequestInit) => {
+			const url = new URL(String(input));
+			if (url.pathname === "/v1/catalog-assets/uploads/capabilities") {
+				capabilityRequests += 1;
+				return capabilityRequests === 1
+					? json({
+							status: "upload_required",
+							kind: "print_source",
+							assetKey,
+							privateObjectKey: key,
+							uploadUrl: `/v1/catalog-assets/uploads/source?key=${encodeURIComponent(key)}`,
+							uploadToken: "upload-token",
+							expiresAt: new Date(Date.now() + 60_000).toISOString(),
+						})
+					: json({
+							status: "stored_unverified",
+							replayed: true,
+							asset: {
+								privateObjectKey: key,
+								sha256: hash,
+								sizeBytes: bytes.byteLength,
+								contentType: "image/jpeg",
+							},
+						});
+			}
+			if (url.pathname === "/v1/catalog-assets/uploads/source") {
+				expect(init?.headers).toMatchObject({
+					"Content-Length": "3",
+					"X-CMS-Media-Upload-Token": "upload-token",
+				});
+				return json({ status: "stored_unverified" });
+			}
+			return json({
+				version: 1,
+				url: capability("print_source"),
+				expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
+			});
+		});
+		const config = {
+			upload: { origin, bearer: token, fetch },
+			issue: { origin, bearer: "b".repeat(32), fetch },
+		};
+
+		await expect(
+			storeRenderedPrintSource(
+				"angelsrest.online",
+				{ bytes, hash, width: 1800, height: 1200 },
+				config,
+			),
+		).resolves.toBe(capability("print_source"));
+		await expect(
+			storeRenderedPrintSource(
+				"angelsrest.online",
+				{ bytes, hash, width: 1800, height: 1200 },
+				config,
+			),
+		).resolves.toBe(capability("print_source"));
+		expect(fetch.mock.calls.filter(([, init]) => init?.method === "PUT")).toHaveLength(1);
+		expect(JSON.parse(String(fetch.mock.calls[0]?.[1]?.body))).toMatchObject({
+			assetKey,
+			sha256: hash,
+			provenance: { provider: "editor_upload", sourceId: `fulfillment-render:${hash}` },
+		});
+	});
+
+	it("uses distinct tenant upload and issuer credentials for rendered prints", async () => {
+		const uploadSecret = "u".repeat(32);
+		const issuerSecret = "i".repeat(32);
+		const mutablePrivateEnv = privateEnv as Record<string, string | undefined>;
+		const mutablePublicEnv = publicEnv as Record<string, string | undefined>;
+		const previous = {
+			publicSiteUrl: mutablePublicEnv.PUBLIC_SITE_URL,
+			workerOrigin: mutablePrivateEnv.CATALOG_FULFILLMENT_WORKER_ORIGIN,
+			hubUpload: mutablePrivateEnv.CMS_MEDIA_WORKER_SECRET,
+			hubIssuer: mutablePrivateEnv.CATALOG_PRINT_SOURCE_ISSUER_SECRET,
+			uploadRegistry: mutablePrivateEnv.CMS_MEDIA_WORKER_TENANT_SECRETS,
+			issuerRegistry: mutablePrivateEnv.CATALOG_PRINT_SOURCE_ISSUER_TENANT_SECRETS,
+		};
+		mutablePublicEnv.PUBLIC_SITE_URL = "https://angelsrest.online";
+		mutablePrivateEnv.CATALOG_FULFILLMENT_WORKER_ORIGIN = origin;
+		mutablePrivateEnv.CMS_MEDIA_WORKER_SECRET = "h".repeat(32);
+		mutablePrivateEnv.CATALOG_PRINT_SOURCE_ISSUER_SECRET = "j".repeat(32);
+		mutablePrivateEnv.CMS_MEDIA_WORKER_TENANT_SECRETS = JSON.stringify({
+			"client.example": [uploadSecret],
+		});
+		mutablePrivateEnv.CATALOG_PRINT_SOURCE_ISSUER_TENANT_SECRETS = JSON.stringify({
+			"client.example": [issuerSecret],
+		});
+		const hash = "d".repeat(64);
+		const key = `sites/client.example/catalog/print-sources/lumaprints-render-v1-${hash}/original`;
+		const authorizations: string[] = [];
+		const fetch = vi.fn(async (input: URL | RequestInfo, init?: RequestInit) => {
+			const url = new URL(String(input));
+			const authorization = new Headers(init?.headers).get("authorization");
+			if (authorization) authorizations.push(authorization);
+			if (url.pathname === "/v1/catalog-assets/uploads/capabilities") {
+				return json({
+					status: "upload_required",
+					kind: "print_source",
+					assetKey: `lumaprints-render-v1-${hash}`,
+					privateObjectKey: key,
+					uploadUrl: `/v1/catalog-assets/uploads/source?key=${encodeURIComponent(key)}`,
+					uploadToken: "upload-token",
+					expiresAt: new Date(Date.now() + 60_000).toISOString(),
+				});
+			}
+			if (url.pathname === "/v1/catalog-assets/uploads/source") {
+				return json({ status: "stored_unverified" });
+			}
+			return json({
+				version: 1,
+				url: capability("print_source"),
+				expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
+			});
+		});
+		vi.stubGlobal("fetch", fetch);
+		try {
+			await expect(
+				storeRenderedPrintSource("client.example", {
+					bytes: new Uint8Array([1, 2, 3]),
+					hash,
+					width: 1800,
+					height: 1200,
+				}),
+			).resolves.toBe(capability("print_source"));
+			expect(authorizations).toEqual([`Bearer ${uploadSecret}`, `Bearer ${issuerSecret}`]);
+		} finally {
+			vi.unstubAllGlobals();
+			mutablePublicEnv.PUBLIC_SITE_URL = previous.publicSiteUrl;
+			mutablePrivateEnv.CATALOG_FULFILLMENT_WORKER_ORIGIN = previous.workerOrigin;
+			mutablePrivateEnv.CMS_MEDIA_WORKER_SECRET = previous.hubUpload;
+			mutablePrivateEnv.CATALOG_PRINT_SOURCE_ISSUER_SECRET = previous.hubIssuer;
+			mutablePrivateEnv.CMS_MEDIA_WORKER_TENANT_SECRETS = previous.uploadRegistry;
+			mutablePrivateEnv.CATALOG_PRINT_SOURCE_ISSUER_TENANT_SECRETS = previous.issuerRegistry;
+		}
 	});
 
 	it("validates print dimensions and MIME before requesting a capability", async () => {

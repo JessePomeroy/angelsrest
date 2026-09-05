@@ -6,7 +6,7 @@ production and shipment.
 
 ## Current source flow
 
-The current host uses the V4 coordinator with additive compatibility state.
+The current host uses the V5 coordinator with additive compatibility state.
 Verify the actual production deployment and admission state before live work;
 source code alone is not evidence that fulfillment is ready.
 
@@ -15,6 +15,8 @@ Stripe checkout.session.completed
   → src/routes/api/webhooks/stripe/+server.ts (signature verification)
   → src/lib/server/orderIntake.ts (event and tenant routing)
   → src/lib/server/webhookOrders.ts (idempotent Convex order creation)
+  → Convex printFulfillmentJobs (atomic enqueue; webhook returns after receipt)
+  → /api/internal/print-fulfillment (one leased, resumable step)
   → src/lib/server/printFulfillment.ts (print orchestration)
   → src/lib/server/lumaprints.ts (LumaPrints HTTP API)
   → packages/crm-api/convex/orders.ts (fulfillment state)
@@ -33,7 +35,7 @@ supplies the configured `storeId` and a one-based `page`, then scans the strict
 `orders`/`totalOrders`/`currentPage`/`totalPages` envelope locally for a
 case-sensitive `externalId` match. It never sends the undocumented
 `externalId` or `limit` query parameters. The scan is capped at 10 pages, 100
-rows per page, and 1,000 rows total. Duplicate rows and changing pagination are
+rows per page, 1,000 rows total, and a 20-second total lookup budget. Duplicate rows and changing pagination are
 treated as retryable instability, as are responses that exceed the finite page,
 row, or byte resource bounds; distinct orders with the same exact identity are
 blocked as ambiguous. A stable absence or first-page list-level 404 is returned
@@ -63,8 +65,14 @@ Do not add a second catalog table in the host app. Extend
 ## Image and option constraints
 
 - LumaPrints accepts JPEG/JPG/PNG, not WebP.
-- LumaPrints receives the exact short-lived print-source URL issued by the
-  authenticated Convex/Worker fulfillment boundary.
+- Every print source is fetched, auto-oriented, center-cropped to the ordered
+  canvas, flattened to opaque white, and encoded as an exact-ratio sRGB JPEG
+  before submission. The immutable result is stored by content hash and exposed
+  through a short-lived URL issued by the authenticated Convex/Worker boundary.
+- Rendering targets 300 DPI for paper or 200 for canvas, capped by native source
+  resolution and a 40-million-pixel output budget. That memory bound must not
+  remove larger sizes from the catalog. The provider's non-order validator
+  accepts lower-density images; this is not a guarantee of print quality.
 - Option `39` (no bleed) is used only for direct Fine Art Paper because bleed
   option `36` changes the effective aspect ratio and can trigger rejection.
 - Framed Fine Art Paper uses its mat option groups without direct-paper option
@@ -72,8 +80,8 @@ Do not add a second catalog table in the host app. Extend
 - Private print-source capabilities must retain at least 23 hours of their
   documented 24-hour Worker lifetime when returned. Short-lived or stale
   capabilities fail preparation before the provider-submission fence.
-- Bordered images are composed before submission and should not be transformed
-  a second time.
+- Borders are rendered inside that exact outer canvas, so their width does not
+  change the dimensions LumaPrints validates.
 
 Keep these rules in the request builder and its tests rather than duplicating
 them in route code.
@@ -84,10 +92,24 @@ them in route code.
   `/api/shop/shipping-price` provider relays are retired. Their paths remain only
   as compatibility tombstones that return a fixed empty HTTP 410 response
   without reading the request body or calling LumaPrints.
-- Transient submission failures are rethrown so Stripe can retry the webhook.
+- New print orders use durable jobs: resolve one paid line, prepare one image,
+  issue download capabilities in batches of at most 20, then submit. Source
+  descriptors and progress are checkpointed in Convex; restarting a step does
+  not re-render the whole order. A scheduled watchdog recovers interrupted
+  calls. The job holds a separate lease from the irreversible provider fence.
+- Only new orders created by the updated host are enrolled. Deployment does not
+  replay historical orders. Non-print orders retain their existing path.
+- After POST, new jobs wait at least a minute before GET confirmation and retry
+  inconclusive reads with backoff through the existing 24-hour window. A retry
+  never clears an uncertain submission or repeats its POST. Older orders retain
+  their prior retry policy.
+- Preparation errors or exhausted step retries stop for operator review with
+  a safe order diagnostic, without inferring provider rejection or refunding.
+- HTTP 201 means only that preliminary checks passed and asynchronous processing
+  was queued; it does not prove that the order was accepted into production.
 - Create-order failures use an operation-specific disposition. Only the
-  documented non-acceptance statuses `400`, `406`, and `429` are definitely
-  rejected. Network failures, timeouts, server or unexpected statuses, and
+  documented non-acceptance statuses `400` and `406` are definitely rejected.
+  Network failures, timeouts, rate limits, server or unexpected statuses, and
   malformed success responses remain uncertain. Error bodies are byte-bounded
   and reduced to fixed reason labels, known request-field paths, numeric
   provider codes, and validated image dimensions; raw text, URLs, and customer
@@ -153,11 +175,21 @@ LUMAPRINTS_API_KEY=
 LUMAPRINTS_API_SECRET=
 LUMAPRINTS_STORE_ID=
 LUMAPRINTS_USE_SANDBOX=true
+PRINT_FULFILLMENT_RUNNER_SECRET=
 ```
 
-Use `.env.local` for local development. Keep sandbox mode enabled in local and
-Vercel preview environments; production is the only environment that should
-submit real orders.
+Deploy shared Convex job support before the updated host. Configure the same
+unique runner secret in both, and set Convex `PRINT_FULFILLMENT_RUNNER_URL` to
+`https://www.angelsrest.online/api/internal/print-fulfillment`. This callback
+accepts only a job ID and live lease token; it never accepts an order payload or
+tenant selected by a caller. Set production `LUMAPRINTS_USE_SANDBOX=false`
+explicitly; retain `true` for previews. Do not point a production scheduler at
+a preview deployment.
+
+Use `.env.local` for local development. LumaPrints sandbox and production are
+isolated, and production test orders can revoke API access. Keep sandbox mode
+enabled in local and Vercel preview environments; never use a production order
+as a development test.
 
 ## Verification
 
