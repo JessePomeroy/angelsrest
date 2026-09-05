@@ -1202,9 +1202,13 @@ export default defineSchema({
 		paperSubcategoryId: v.optional(v.string()),
 		trackingNumber: v.optional(v.string()),
 		trackingUrl: v.optional(v.string()),
-		// Shared atomic success-notification fence for both non-print outcomes and
-		// durable print-provider completions.
+		// Legacy success-notification fence, also reserved by immediate receipts.
 		orderConfirmationClaimedAt: v.optional(v.number()),
+		// Immediate receipts retry only within Resend's idempotency window. Each
+		// audience records acceptance independently; historical claims stay terminal.
+		orderReceiptStartedAt: v.optional(v.number()),
+		orderReceiptCustomerSentAt: v.optional(v.number()),
+		orderReceiptAdminSentAt: v.optional(v.number()),
 		// Legacy terminal marker for the pre-lease shipment email side effect.
 		// A historical marker, or a historical shipped row without V2 evidence,
 		// remains terminal and is never opted into retryable delivery.

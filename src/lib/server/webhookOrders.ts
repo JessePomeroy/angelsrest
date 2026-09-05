@@ -52,12 +52,14 @@ export async function createOrderInConvex(
 		resend,
 		createLumaPrintsOrder,
 		confirmLumaPrintsOrder,
+		onOrderRecorded,
 	}: {
 		stripe: Stripe;
 		convex: ConvexHttpClient;
 		resend: Resend;
 		createLumaPrintsOrder: SubmitLumaPrintsOrder;
 		confirmLumaPrintsOrder?: ConfirmLumaPrintsOrder;
+		onOrderRecorded?: (orderId: Id<"orders">, orderNumber: string) => Promise<void>;
 	},
 	{
 		session,
@@ -118,6 +120,7 @@ export async function createOrderInConvex(
 		orderId: orderNumber,
 		meta: { alreadyExisted },
 	});
+	await onOrderRecorded?.(orderId, orderNumber);
 
 	const needsProviderReconciliation =
 		existingPrintClaim === true &&

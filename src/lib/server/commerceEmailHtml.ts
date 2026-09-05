@@ -430,8 +430,8 @@ export function renderClassicOrderConfirmationEmailHtml(
 				)}${section(
 					"What happens next",
 					numberedSteps([
-						"We will process your order within 1–2 business days.",
-						"Made-to-order prints typically ship within two weeks.",
+						"We are arranging fulfillment for your order.",
+						"You can check progress on your order status page.",
 						"We will email tracking information as soon as your order ships.",
 					]),
 				)}`;
@@ -440,11 +440,11 @@ export function renderClassicOrderConfirmationEmailHtml(
 		audience: "customer",
 		siteName: input.brand.siteName,
 		homeUrl: input.brand.homeUrl,
-		documentTitle: "Order confirmation",
+		documentTitle: "Order receipt",
 		preheader: `${input.brand.siteName} received your payment for order ${input.orderId}.`,
-		eyebrow: "Order confirmed",
+		eyebrow: "Order received",
 		title: "Thank you for your order.",
-		intro: `Hi ${input.customerName}, your payment was received and your order is confirmed.`,
+		intro: `Hi ${input.customerName}, we have received your order and payment.`,
 		summary: [
 			{ label: "Order ID", value: input.orderId },
 			{ label: "Total", value: input.total },
@@ -474,8 +474,8 @@ function renderOrderReceipt(
 				)}${receiptSection(
 					"Next",
 					`<table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="margin-top: 12px;">
-				<tr><td valign="top" style="width: 28px; padding: 3px 0 9px; color: #555149; font-family: 'Noto Sans Mono', 'Roboto Mono', 'Lucida Console', Monaco, Consolas, 'Liberation Mono', monospace; font-size: 12px;">01</td><td style="padding: 0 0 9px 8px; color: #373530; font-family: 'Noto Sans Mono', 'Roboto Mono', 'Lucida Console', Monaco, Consolas, 'Liberation Mono', monospace; font-size: 13px; line-height: 1.55;">We process orders within 1–2 business days.</td></tr>
-				<tr><td valign="top" style="width: 28px; padding: 3px 0 9px; color: #555149; font-family: 'Noto Sans Mono', 'Roboto Mono', 'Lucida Console', Monaco, Consolas, 'Liberation Mono', monospace; font-size: 12px;">02</td><td style="padding: 0 0 9px 8px; color: #373530; font-family: 'Noto Sans Mono', 'Roboto Mono', 'Lucida Console', Monaco, Consolas, 'Liberation Mono', monospace; font-size: 13px; line-height: 1.55;">Made-to-order prints typically ship within two weeks.</td></tr>
+				<tr><td valign="top" style="width: 28px; padding: 3px 0 9px; color: #555149; font-family: 'Noto Sans Mono', 'Roboto Mono', 'Lucida Console', Monaco, Consolas, 'Liberation Mono', monospace; font-size: 12px;">01</td><td style="padding: 0 0 9px 8px; color: #373530; font-family: 'Noto Sans Mono', 'Roboto Mono', 'Lucida Console', Monaco, Consolas, 'Liberation Mono', monospace; font-size: 13px; line-height: 1.55;">We are arranging fulfillment for your order.</td></tr>
+				<tr><td valign="top" style="width: 28px; padding: 3px 0 9px; color: #555149; font-family: 'Noto Sans Mono', 'Roboto Mono', 'Lucida Console', Monaco, Consolas, 'Liberation Mono', monospace; font-size: 12px;">02</td><td style="padding: 0 0 9px 8px; color: #373530; font-family: 'Noto Sans Mono', 'Roboto Mono', 'Lucida Console', Monaco, Consolas, 'Liberation Mono', monospace; font-size: 13px; line-height: 1.55;">You can check progress on your order status page.</td></tr>
 				<tr><td valign="top" style="width: 28px; padding: 3px 0 0; color: #555149; font-family: 'Noto Sans Mono', 'Roboto Mono', 'Lucida Console', Monaco, Consolas, 'Liberation Mono', monospace; font-size: 12px;">03</td><td style="padding: 0 0 0 8px; color: #373530; font-family: 'Noto Sans Mono', 'Roboto Mono', 'Lucida Console', Monaco, Consolas, 'Liberation Mono', monospace; font-size: 13px; line-height: 1.55;">Tracking arrives by email as soon as the order ships.</td></tr>
 			</table>`,
 				)}`;
@@ -515,7 +515,7 @@ function renderOrderReceipt(
 						<td class="receipt-pad" style="padding: 27px 38px 25px;">
 							<p style="margin: 0; color: #555149; font-family: 'Noto Sans Mono', 'Roboto Mono', 'Lucida Console', Monaco, Consolas, 'Liberation Mono', monospace; font-size: 11px; font-weight: 700; letter-spacing: 0.1em; line-height: 1.4; text-transform: uppercase;">Payment received</p>
 							<h1 class="receipt-title" style="margin: 11px 0 0; color: #262521; font-family: 'Noto Sans Mono', 'Roboto Mono', 'Lucida Console', Monaco, Consolas, 'Liberation Mono', monospace; font-size: 32px; font-weight: 700; letter-spacing: -0.065em; line-height: 1; text-transform: uppercase;">Thank you.</h1>
-							<p style="margin: 17px 0 0; color: #373530; font-family: 'Noto Sans Mono', 'Roboto Mono', 'Lucida Console', Monaco, Consolas, 'Liberation Mono', monospace; font-size: 13px; line-height: 1.6;">Hi ${escapeHtml(input.customerName)} — your order is confirmed.</p>
+							<p style="margin: 17px 0 0; color: #373530; font-family: 'Noto Sans Mono', 'Roboto Mono', 'Lucida Console', Monaco, Consolas, 'Liberation Mono', monospace; font-size: 13px; line-height: 1.6;">Hi ${escapeHtml(input.customerName)} — we have received your order and payment.</p>
 							<table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="margin-top: 22px; border-top: 1px dashed #777269; border-bottom: 1px dashed #777269;">
 								<tr><td style="padding: 12px 10px 5px 0; color: #555149; font-family: 'Noto Sans Mono', 'Roboto Mono', 'Lucida Console', Monaco, Consolas, 'Liberation Mono', monospace; font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase;">Order ID</td><td align="right" style="padding: 12px 0 5px 10px; color: #262521; font-family: 'Noto Sans Mono', 'Roboto Mono', 'Lucida Console', Monaco, Consolas, 'Liberation Mono', monospace; font-size: 12px; font-weight: 700; overflow-wrap: anywhere;">${escapeHtml(input.orderId)}</td></tr>
 								<tr><td style="padding: 5px 10px 12px 0; color: #555149; font-family: 'Noto Sans Mono', 'Roboto Mono', 'Lucida Console', Monaco, Consolas, 'Liberation Mono', monospace; font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase;">Payment</td><td align="right" style="padding: 5px 0 12px 10px; color: #262521; font-family: 'Noto Sans Mono', 'Roboto Mono', 'Lucida Console', Monaco, Consolas, 'Liberation Mono', monospace; font-size: 12px; font-weight: 700; text-transform: uppercase;">Confirmed</td></tr>
@@ -648,7 +648,7 @@ export function renderOwnerCommerceEmailHtml(input: OwnerCommerceEmailInput) {
 					{ label: "Ship to", value: input.shippingAddress },
 				])}${actionBlock("Open in Stripe", input.stripeUrl)}`,
 			)}`,
-			footer: `This order was automatically processed through ${input.brand.siteName}.`,
+			footer: `This order was received through ${input.brand.siteName}.`,
 		});
 	}
 

@@ -506,6 +506,88 @@ describe("durable checkout snapshot", () => {
 	});
 });
 
+describe("immediate order receipts", () => {
+	test("allows a pending print receipt with webhook authority and fences legacy confirmation", async () => {
+		const t = convexTest(schema, modules);
+		const orderId = await seedRawLegacyPrintOrder(t, "V2");
+		const args = { orderId, webhookSecret: WEBHOOK_SECRET };
+		await expect(t.mutation(api.orders.prepareOrderReceipt, {
+			...args, webhookSecret: "invalid",
+		})).rejects.toThrow();
+		await expect(t.mutation(api.orders.completeOrderReceipt, {
+			...args, audience: "customer", webhookSecret: "invalid",
+		})).rejects.toThrow();
+		await expect(t.mutation(api.orders.completeOrderReceipt, {
+			...args, audience: "customer",
+		})).resolves.toBe(false);
+		await expect(t.mutation(api.orders.prepareOrderReceipt, args)).resolves.toEqual({
+			kind: "send", customer: true, admin: true, expiresAt: expect.any(Number),
+		});
+		const order = await t.run((ctx) => ctx.db.get(orderId));
+		expect(order?.orderReceiptStartedAt).toEqual(expect.any(Number));
+		expect(order?.orderConfirmationClaimedAt).toBe(order?.orderReceiptStartedAt);
+		expect(order?.printFulfillmentResolution).toBe("submission_uncertain");
+	});
+
+	test("does not restart historical confirmations or terminal and refund orders", async () => {
+		const t = convexTest(schema, modules);
+		for (const [index, state] of ([
+			{ orderConfirmationClaimedAt: Date.now() },
+			{ status: "canceled" }, { status: "refunded" }, { status: "fulfillment_error" },
+			{ fulfillmentRecoveryStatus: "refund_pending" },
+			{ stripeRefundId: MANUAL_REFUND.refund }, { automatedRefundId: MANUAL_REFUND.refund },
+		] as const).entries()) {
+			const orderId = await t.run((ctx) => ctx.db.insert("orders", {
+				...retainedOrder(`ORD-${index}`, `cs_receipt_suppressed_${index}`), ...state,
+			}));
+			await expect(t.mutation(api.orders.prepareOrderReceipt, {
+				orderId, webhookSecret: WEBHOOK_SECRET,
+			})).resolves.toEqual({ kind: "unavailable" });
+			expect((await t.run((ctx) => ctx.db.get(orderId)))?.orderReceiptStartedAt).toBeUndefined();
+			if (!("orderConfirmationClaimedAt" in state)) {
+				await t.run((ctx) => ctx.db.patch(orderId, { orderReceiptStartedAt: Date.now() }));
+				await expect(t.mutation(api.orders.prepareOrderReceipt, {
+					orderId, webhookSecret: WEBHOOK_SECRET,
+				})).resolves.toEqual({ kind: "unavailable" });
+			}
+		}
+	});
+
+	test("retries only unsent audiences within the original 23-hour window", async () => {
+		vi.useFakeTimers();
+		const now = 1_750_000_000_000;
+		vi.setSystemTime(now);
+		try {
+			const t = convexTest(schema, modules);
+			const orderId = await seedRawLegacyPrintOrder(t, "V2");
+			const args = { orderId, webhookSecret: WEBHOOK_SECRET };
+			const expiresAt = now + 23 * 60 * 60 * 1000;
+			const initial = { kind: "send", customer: true, admin: true, expiresAt };
+			await expect(t.mutation(api.orders.prepareOrderReceipt, args)).resolves.toEqual(initial);
+			await expect(t.mutation(api.orders.prepareOrderReceipt, args)).resolves.toEqual(initial);
+			await t.mutation(api.orders.completeOrderReceipt, { ...args, audience: "customer" });
+			vi.setSystemTime(expiresAt - 1);
+			await t.mutation(api.orders.completeOrderReceipt, { ...args, audience: "customer" });
+			await expect(t.mutation(api.orders.prepareOrderReceipt, args)).resolves.toEqual({
+				...initial, customer: false,
+			});
+			vi.setSystemTime(expiresAt);
+			await expect(t.mutation(api.orders.prepareOrderReceipt, args)).resolves.toEqual({
+				kind: "uncertain",
+			});
+			const order = await t.run((ctx) => ctx.db.get(orderId));
+			expect(order?.orderReceiptStartedAt).toBe(now);
+			expect(order?.orderReceiptCustomerSentAt).toBe(now);
+			expect(order?.orderReceiptAdminSentAt).toBeUndefined();
+			// A delayed provider acknowledgement can still close an expired receipt.
+			await t.mutation(api.orders.completeOrderReceipt, { ...args, audience: "admin" });
+			await expect(t.mutation(api.orders.prepareOrderReceipt, args)).resolves.toEqual({ kind: "complete" });
+		} finally {
+			vi.useRealTimers();
+		}
+	});
+});
+
 describe("print fulfillment fence", () => {
 	test("uses global session IDs and makes claim/recovery CAS mutually exclusive", async () => {
 		const t = convexTest(schema, modules);
