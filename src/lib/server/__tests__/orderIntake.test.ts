@@ -60,6 +60,7 @@ vi.mock("$convex/api", () => ({
 			markAutomatedFulfillmentRefundRequestUncertain:
 				"orders.markAutomatedFulfillmentRefundRequestUncertain",
 			claimOrderConfirmation: "orders.claimOrderConfirmation",
+			prepareOrderReceipt: "orders.prepareOrderReceipt",
 			claimPaymentFailureEmail: "orders.claimPaymentFailureEmail",
 			claimNonPrintOrderOutcome: "orders.claimNonPrintOrderOutcome",
 			claimPrintFulfillmentV3: "orders.claimPrintFulfillmentV3",
@@ -275,6 +276,8 @@ describe("processStripeWebhookEvent", () => {
 				if (reference === "orders.claimNonPrintOrderOutcome") {
 					return nonPrintOutcomeOverride ?? { kind: "success" };
 				}
+				// This mocked suite exercises legacy outcomes; receipt delivery uses real Convex tests.
+				if (reference === "orders.prepareOrderReceipt") return { kind: "complete" };
 				if (reference === "orders.claimOrderConfirmation") {
 					const result = orderConfirmationClaimResults.shift();
 					if (result === undefined) throw new Error("Missing order-confirmation claim result");

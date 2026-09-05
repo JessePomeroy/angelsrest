@@ -151,6 +151,12 @@ rollback order live in
 
 ## Email and inquiries
 
+Paid-order receipts are attempted immediately after the order is recorded, before
+print fulfillment. Customer and owner acceptance are recorded separately; email
+failure leaves fulfillment running and requests a webhook retry. Stable Resend
+keys bound automatic retries to 23 hours; expired uncertainty needs operator
+review. Legacy confirmation claims remain fenced to avoid duplicate receipts.
+
 `/api/contact` validates Turnstile through the managed Worker, then creates the
 Convex inquiry before attempting the owner notification. Notification failure
 cannot erase the saved inquiry. Direct public writes to `inquiries.create` are

@@ -94,29 +94,36 @@ describe("webhook customer emails", () => {
 		).toBe("• Archival print (2 × $12.00) — $20.00");
 	});
 
-	it("adds physical-order HTML without changing the existing delivery contract or plain text", async () => {
+	it("sends an immediate paid receipt with the order number and an idempotency key", async () => {
 		const mockResend = resend();
 
-		await sendCustomerConfirmation(mockResend as any, {
-			session: baseSession,
-			customerEmail: "buyer@example.com",
-			shippingDetails,
-			lineItems,
-			orderNumber: "ORD-001",
-		});
+		await sendCustomerConfirmation(
+			mockResend as any,
+			{
+				session: baseSession,
+				customerEmail: "buyer@example.com",
+				shippingDetails,
+				lineItems,
+				orderNumber: "ORD-001",
+			},
+			"order-receipt:customer:order-001",
+		);
 
 		const payload = mockResend.emails.send.mock.calls[0]?.[0];
 		if (!payload) throw new Error("expected confirmation email payload");
 		expect(mockResend.emails.send).toHaveBeenCalledOnce();
 		expect(payload.from).toBe("Angel's Rest <orders@angelsrest.online>");
 		expect(payload.to).toEqual(["buyer@example.com"]);
-		expect(payload.subject).toBe("Order Confirmation - cs_test_123");
+		expect(payload.subject).toBe("Order received — ORD-001");
+		expect(mockResend.emails.send.mock.calls[0]?.[1]).toEqual({
+			idempotencyKey: "order-receipt:customer:order-001",
+		});
 		expect(payload.text).toBe(`Hi Buyer,
 
-Thank you for your order! Your payment has been successfully processed.
+Thank you! We have received your order and payment.
 
 ORDER DETAILS
-Order ID: cs_test_123
+Order ID: ORD-001
 Total: $25.00
 
 ITEMS ORDERED
@@ -132,8 +139,8 @@ TRACK YOUR ORDER
 View your order status anytime: https://angelsrest.online/orders?order=ORD-001
 
 WHAT'S NEXT?
-• Your order will be processed within 1-2 business days
-• Made-to-order prints typically ship within 2 weeks
+• We are arranging fulfillment for your order
+• You can check progress on your order status page
 • You'll receive tracking information once your order ships
 
 If you have any questions, just reply to this email.
@@ -145,6 +152,8 @@ Angel's Rest
 https://angelsrest.online`);
 		expect(payload.html).toContain("<!doctype html>");
 		expect(payload.html).toContain("<h1");
+		expect(payload.html).toContain("ORD-001");
+		expect(payload.html).not.toContain("cs_test_123");
 		expect(payload.html).toContain("2 × $12.50");
 		expect(payload.html).toContain(
 			'background="https://media.angelsrest.online/sites/angelsrest.online/email/receipt-paper-warning-lines-60eaecf2f022.jpg"',
@@ -197,7 +206,7 @@ https://angelsrest.online`);
 		expect(payload.attachments).toBeUndefined();
 	});
 
-	it("selects the tenant digital branch while preserving the existing digital plain text", async () => {
+	it("keeps the tenant digital download path and falls back to the session reference", async () => {
 		const mockResend = resend();
 
 		await sendCustomerConfirmation(mockResend as any, {
@@ -217,10 +226,10 @@ https://angelsrest.online`);
 		expect(mockResend.emails.send).toHaveBeenCalledOnce();
 		expect(payload.from).toBe("Reflecting Pool via Angel's Rest <orders@angelsrest.online>");
 		expect(payload.to).toEqual(["buyer@example.com"]);
-		expect(payload.subject).toBe("Order Confirmation - cs_test_123");
+		expect(payload.subject).toBe("Order received — cs_test_123");
 		expect(payload.text).toBe(`Hi Buyer,
 
-Thank you for your order! Your payment has been successfully processed.
+Thank you! We have received your order and payment.
 
 ORDER DETAILS
 Order ID: cs_test_123
@@ -693,18 +702,22 @@ https://zippymiggy.com`);
 			adminEmail: "owner@example.com",
 		};
 
-		await sendAdminNotification(mockResend as any, {
-			session: {
-				...baseSession,
-				payment_status: "paid",
-				payment_intent: "pi_test_123",
+		await sendAdminNotification(
+			mockResend as any,
+			{
+				session: {
+					...baseSession,
+					payment_status: "paid",
+					payment_intent: "pi_test_123",
+				},
+				customerEmail: "buyer@example.com",
+				shippingDetails,
+				lineItems,
+				orderNumber: "ORD-010",
+				notificationProfile,
 			},
-			customerEmail: "buyer@example.com",
-			shippingDetails,
-			lineItems,
-			orderNumber: "ORD-010",
-			notificationProfile,
-		});
+			"order-receipt:admin:order-010",
+		);
 		await sendPaymentFailedEmail(mockResend as any, {
 			customerEmail: "buyer@example.com",
 			errorMessage: "card declined",
@@ -762,6 +775,8 @@ https://zippymiggy.com`);
 			subject: "New Order ORD-010: $25.00 from Buyer",
 		});
 		expect(payloads[0]?.html).toContain("A new order is ready.");
+		expect(payloads[0]?.html).toContain("This order was received through Reflecting Pool.");
+		expect(payloads[0]?.text).not.toContain("automatically processed");
 		expect(payloads[1]).toMatchObject({
 			to: ["buyer@example.com"],
 			subject: "Payment could not be processed - Reflecting Pool",
@@ -772,7 +787,9 @@ https://zippymiggy.com`);
 		expect(payloads[4]?.html).toContain("The automated refund was canceled.");
 		expect(payloads[5]?.html).toContain("A refund needs attention.");
 		expect(payloads[6]?.html).toContain("A webhook needs attention.");
-		expect(mockResend.emails.send.mock.calls[0]?.[1]).toBeUndefined();
+		expect(mockResend.emails.send.mock.calls[0]?.[1]).toEqual({
+			idempotencyKey: "order-receipt:admin:order-010",
+		});
 		expect(mockResend.emails.send.mock.calls[1]?.[1]).toBeUndefined();
 		expect(mockResend.emails.send.mock.calls[2]?.[1]).toEqual({
 			idempotencyKey: "fulfillment-refund-customer:re_success123",

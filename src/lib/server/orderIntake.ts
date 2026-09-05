@@ -19,6 +19,7 @@ import {
 	resolveCommerceTenant,
 } from "$lib/server/commerceTenant";
 import { logStructured } from "$lib/server/logger";
+import { OrderReceiptRetryableError, sendOrderReceipt } from "$lib/server/orderReceipt";
 import {
 	AutomatedFulfillmentRefundRetryableError,
 	AutomatedRefundNotificationRetryableError,
@@ -239,6 +240,7 @@ export async function processStripeWebhookEvent(
 			!(err instanceof CheckoutSnapshotProtocolError) &&
 			!(err instanceof ManualRefundReconciliationRetryableError) &&
 			!(err instanceof PaymentFailureEmailClaimError) &&
+			!(err instanceof OrderReceiptRetryableError) &&
 			!(err instanceof PrintReconciliationAlertDeliveryError) &&
 			!(err instanceof PrintReconciliationAlertRetryableError) &&
 			!(err instanceof PrintReconciliationPendingError) &&
@@ -433,6 +435,7 @@ async function handleCheckoutCompleted(
 		return;
 	}
 
+	let receiptError: OrderReceiptRetryableError | undefined;
 	const orderResult = await createOrderInConvex(
 		{
 			stripe: adapters.stripe,
@@ -440,6 +443,16 @@ async function handleCheckoutCompleted(
 			resend: adapters.resend,
 			createLumaPrintsOrder: adapters.createLumaPrintsOrder,
 			confirmLumaPrintsOrder: adapters.confirmLumaPrintsOrder,
+			onOrderRecorded: async (orderId, orderNumber) => {
+				receiptError = await sendOrderReceipt(adapters.convex, adapters.resend, orderId, {
+					session: fullSession,
+					customerEmail,
+					shippingDetails,
+					lineItems,
+					orderNumber,
+					notificationProfile,
+				});
+			},
 		},
 		{
 			session: fullSession,
@@ -636,6 +649,7 @@ async function handleCheckoutCompleted(
 		throw new Error(`Unexpected fulfillment notification outcome for ${orderResult.orderNumber}`);
 	}
 
+	if (receiptError) throw receiptError;
 	logStructured({
 		event: "checkout.processed",
 		stage: "webhook",

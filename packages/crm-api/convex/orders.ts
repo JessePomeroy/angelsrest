@@ -3692,6 +3692,61 @@ export const completeFulfillmentFailureNotificationV2 = mutation({
 	},
 });
 
+/** Prepare an immediate receipt independently of print submission. */
+export const prepareOrderReceipt = mutation({
+	args: { orderId: v.id("orders"), webhookSecret: v.string() },
+	returns: v.union(
+		v.object({ kind: v.literal("send"), expiresAt: v.number(), customer: v.boolean(), admin: v.boolean() }),
+		v.object({ kind: v.literal("complete") }),
+		v.object({ kind: v.literal("unavailable") }),
+		v.object({ kind: v.literal("uncertain") }),
+	),
+	handler: async (ctx, args) => {
+		await requireWebhookCallerOrAuth(ctx, args.webhookSecret, { allowAuth: false });
+		const order = await ctx.db.get(args.orderId);
+		if (!order) throw new Error("Order not found");
+		const now = Date.now();
+		const startedAt = order.orderReceiptStartedAt ?? now;
+		if (
+			order.status === "canceled" || order.status === "refunded"
+			|| order.status === "fulfillment_error"
+			|| order.fulfillmentRecoveryStatus !== undefined
+			|| order.stripeRefundId !== undefined || order.automatedRefundId !== undefined
+		) return { kind: "unavailable" as const };
+		if (order.orderReceiptStartedAt === undefined) {
+			if (order.orderConfirmationClaimedAt !== undefined) return { kind: "unavailable" as const };
+			await ctx.db.patch(order._id, {
+				orderReceiptStartedAt: startedAt,
+				orderConfirmationClaimedAt: startedAt,
+			});
+		}
+		const customer = order.orderReceiptCustomerSentAt === undefined;
+		const admin = order.orderReceiptAdminSentAt === undefined;
+		if (!customer && !admin) return { kind: "complete" as const };
+		const expiresAt = startedAt + EMAIL_AUTOMATIC_RETRY_WINDOW_MS;
+		if (now >= expiresAt) return { kind: "uncertain" as const };
+		return { kind: "send" as const, expiresAt, customer, admin };
+	},
+});
+
+/** Record provider acceptance without advancing the other receipt audience. */
+export const completeOrderReceipt = mutation({
+	args: {
+		orderId: v.id("orders"),
+		audience: v.union(v.literal("customer"), v.literal("admin")),
+		webhookSecret: v.string(),
+	},
+	returns: v.boolean(),
+	handler: async (ctx, args) => {
+		await requireWebhookCallerOrAuth(ctx, args.webhookSecret, { allowAuth: false });
+		const order = await ctx.db.get(args.orderId);
+		if (!order || order.orderReceiptStartedAt === undefined) return false;
+		const field = args.audience === "customer" ? "orderReceiptCustomerSentAt" : "orderReceiptAdminSentAt";
+		if (order[field] === undefined) await ctx.db.patch(order._id, { [field]: Date.now() });
+		return true;
+	},
+});
+
 /** Atomically select the notification outcome for an order without print submission. */
 export const claimNonPrintOrderOutcome = mutation({
 	args: { orderId: v.id("orders"), webhookSecret: v.string() },

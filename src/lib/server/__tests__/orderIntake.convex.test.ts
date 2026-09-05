@@ -348,10 +348,10 @@ describe("order intake with real Convex state", () => {
 			expect.anything(),
 			expect.objectContaining({ reconciliationClass: "ambiguous_result" }),
 		);
+		expect(email.confirmation).toHaveBeenCalledOnce();
+		expect(email.admin).toHaveBeenCalledOnce();
 		for (const send of [
-			email.admin,
 			email.automatedRefundFailure,
-			email.confirmation,
 			email.fulfillmentCustomer,
 			email.fulfillmentAdmin,
 			email.failureAlert,
@@ -360,6 +360,94 @@ describe("order intake with real Convex state", () => {
 			expect(send).not.toHaveBeenCalled();
 		}
 		expect(fetchMock).toHaveBeenCalledOnce();
+		expect(createLumaPrintsOrder).not.toHaveBeenCalled();
+		expect(stripe.refunds.create as ReturnType<typeof vi.fn>).not.toHaveBeenCalled();
+	});
+
+	test.each([
+		false,
+		true,
+	])("sends receipts before provider confirmation and retries only failed mail (initial failure: %s)", async (failCustomerFirst) => {
+		const t = convexTest(schema, modules);
+		const convex = {
+			mutation: (reference: Parameters<typeof t.mutation>[0], args: unknown) =>
+				t.mutation(reference, args as never),
+			query: (reference: Parameters<typeof t.query>[0], args: unknown) =>
+				t.query(reference, args as never),
+		} as unknown as ConvexHttpClient;
+		const session = checkoutSession();
+		const created = await t.mutation(api.orders.create, {
+			siteUrl: SITE_URL,
+			webhookSecret: WEBHOOK_SECRET,
+			stripeSessionId: SESSION_ID,
+			stripePaymentIntentId: PAYMENT_INTENT_ID,
+			customerEmail: "buyer@example.com",
+			checkoutSnapshot,
+			items: [{ productName: "Immutable print", quantity: 1, price: 4200 }],
+			total: 4200,
+			fulfillmentType: "lumaprints",
+		});
+		await t.run((ctx) =>
+			ctx.db.patch(created._id, {
+				printFulfillmentClaim: true,
+				printFulfillmentClaimToken: CLAIM_TOKEN,
+				printFulfillmentPhase: "submitting",
+				printFulfillmentCoordinatorVersion: 5,
+				printFulfillmentResolution: "submission_uncertain",
+				lumaprintsSubmissionOrderNumber: "123",
+			}),
+		);
+		const stripe = {
+			checkout: {
+				sessions: {
+					retrieve: vi.fn().mockResolvedValue(session),
+					listLineItems: vi.fn().mockResolvedValue({
+						data: [{ id: "li_receipt", description: "Print", quantity: 1, amount_total: 4200 }],
+						has_more: false,
+					}),
+				},
+			},
+			refunds: { create: vi.fn() },
+		} as unknown as Stripe;
+		const createLumaPrintsOrder = vi.fn();
+		const confirmLumaPrintsOrder = vi.fn().mockResolvedValue(failCustomerFirst);
+		const adapters = {
+			stripe,
+			convex,
+			resend: { emails: { send: vi.fn() } } as never,
+			createLumaPrintsOrder,
+			confirmLumaPrintsOrder,
+		};
+		if (failCustomerFirst) email.confirmation.mockRejectedValueOnce(new Error("Mail unavailable"));
+
+		for (let attempt = 0; attempt < 2; attempt++) {
+			const delivery = processStripeWebhookEvent(checkoutEvent(session), adapters);
+			if (failCustomerFirst && attempt === 1) await expect(delivery).resolves.toBeUndefined();
+			else await expect(delivery).rejects.toMatchObject({ status: 500 });
+			await t.run((ctx) =>
+				ctx.db.patch(created._id, { printFulfillmentReconciliationLastAttemptAt: 0 }),
+			);
+		}
+
+		for (const [audience, send] of [
+			["customer", email.confirmation],
+			["admin", email.admin],
+		] as const) {
+			expect(send).toHaveBeenCalledTimes(audience === "customer" && failCustomerFirst ? 2 : 1);
+			expect(send.mock.invocationCallOrder[0]).toBeLessThan(
+				confirmLumaPrintsOrder.mock.invocationCallOrder[0],
+			);
+			for (const call of send.mock.calls)
+				expect(call[2]).toBe(`order-receipt-${audience}:${SESSION_ID}`);
+		}
+		expect(await t.run((ctx) => ctx.db.get(created._id))).toMatchObject({
+			status: "new",
+			orderReceiptCustomerSentAt: expect.any(Number),
+			orderReceiptAdminSentAt: expect.any(Number),
+			printFulfillmentResolution: failCustomerFirst ? "resolved" : "submission_uncertain",
+		});
+		expect(confirmLumaPrintsOrder).toHaveBeenCalledTimes(failCustomerFirst ? 1 : 2);
+		expect(confirmLumaPrintsOrder).toHaveBeenCalledWith("123", SESSION_ID);
 		expect(createLumaPrintsOrder).not.toHaveBeenCalled();
 		expect(stripe.refunds.create as ReturnType<typeof vi.fn>).not.toHaveBeenCalled();
 	});

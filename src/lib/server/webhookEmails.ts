@@ -292,7 +292,7 @@ Review the provider and admin dashboards before you take manual action.`,
 	requireCommerceEmailAccepted(result, "Reconciliation-blocked alert delivery failed");
 }
 
-/** Send order confirmation email to the customer */
+/** Acknowledge the paid order before print fulfillment is confirmed. */
 export async function sendCustomerConfirmation(
 	resend: Resend,
 	{
@@ -310,9 +310,11 @@ export async function sendCustomerConfirmation(
 		orderNumber?: string;
 		notificationProfile?: CommerceNotificationProfile;
 	},
+	idempotencyKey?: string,
 ) {
 	const origin = commerceOrigin(notificationProfile);
 	const isDigital = session.metadata?.isDigital === "true";
+	const orderReference = orderNumber ?? session.id;
 
 	const digitalSection = isDigital
 		? `
@@ -329,18 +331,18 @@ TRACK YOUR ORDER
 View your order status anytime: ${origin}/orders${orderNumber ? `?order=${encodeURIComponent(orderNumber)}` : ""}
 
 WHAT'S NEXT?
-• Your order will be processed within 1-2 business days
-• Made-to-order prints typically ship within 2 weeks
+• We are arranging fulfillment for your order
+• You can check progress on your order status page
 • You'll receive tracking information once your order ships
 `;
 
 	const emailContent = `
 Hi ${shippingDetails?.name || session.customer_details?.name || "there"},
 
-Thank you for your order! Your payment has been successfully processed.
+Thank you! We have received your order and payment.
 
 ORDER DETAILS
-Order ID: ${session.id}
+Order ID: ${orderReference}
 Total: ${formatCents(session.amount_total || 0)}
 
 ITEMS ORDERED
@@ -358,7 +360,7 @@ ${origin}
 		kind: "order_confirmation",
 		brand: commerceEmailBrand(notificationProfile),
 		customerName: shippingDetails?.name || session.customer_details?.name || "there",
-		orderId: session.id,
+		orderId: orderReference,
 		total: formatCents(session.amount_total || 0),
 		items: lineItems.map(commerceEmailItem),
 		delivery: isDigital
@@ -373,13 +375,16 @@ ${origin}
 				},
 	});
 
-	const result = await resend.emails.send({
-		from: commerceSender(notificationProfile),
-		to: [customerEmail],
-		subject: `Order Confirmation - ${session.id}`,
-		text: emailContent,
-		html,
-	});
+	const result = await resend.emails.send(
+		{
+			from: commerceSender(notificationProfile),
+			to: [customerEmail],
+			subject: `Order received — ${orderReference}`,
+			text: emailContent,
+			html,
+		},
+		idempotencyKey ? { idempotencyKey } : undefined,
+	);
 	requireCommerceEmailAccepted(result, "Customer confirmation delivery failed");
 }
 
@@ -446,6 +451,7 @@ export async function sendAdminNotification(
 		orderNumber?: string;
 		notificationProfile?: CommerceNotificationProfile;
 	},
+	idempotencyKey?: string,
 ) {
 	const emailContent = `
 🎉 NEW ORDER RECEIVED!
@@ -466,7 +472,7 @@ STRIPE DASHBOARD
 View full details: https://dashboard.stripe.com/payments/${session.payment_intent}
 
 ---
-This order was automatically processed through ${notificationProfile.siteName}.
+This order was received through ${notificationProfile.siteName}.
   `.trim();
 	const paymentIntentId =
 		typeof session.payment_intent === "string"
@@ -486,15 +492,18 @@ This order was automatically processed through ${notificationProfile.siteName}.
 		stripeUrl: `https://dashboard.stripe.com/payments/${paymentIntentId}`,
 	});
 
-	const result = await resend.emails.send({
-		from: commerceSender(notificationProfile, " Orders"),
-		to: [notificationProfile.adminEmail],
-		subject: orderNumber
-			? `New Order ${orderNumber}: ${formatCents(session.amount_total || 0)} from ${shippingDetails?.name || customerEmail}`
-			: `New Order: ${formatCents(session.amount_total || 0)} from ${shippingDetails?.name || customerEmail}`,
-		text: emailContent,
-		html,
-	});
+	const result = await resend.emails.send(
+		{
+			from: commerceSender(notificationProfile, " Orders"),
+			to: [notificationProfile.adminEmail],
+			subject: orderNumber
+				? `New Order ${orderNumber}: ${formatCents(session.amount_total || 0)} from ${shippingDetails?.name || customerEmail}`
+				: `New Order: ${formatCents(session.amount_total || 0)} from ${shippingDetails?.name || customerEmail}`,
+			text: emailContent,
+			html,
+		},
+		idempotencyKey ? { idempotencyKey } : undefined,
+	);
 	requireCommerceEmailAccepted(result, "Admin order notification delivery failed");
 }
 

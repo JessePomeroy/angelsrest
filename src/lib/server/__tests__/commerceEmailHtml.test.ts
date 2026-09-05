@@ -61,6 +61,10 @@ describe("commerceEmailHtml", () => {
 		expect(html).toContain("2 × $24.00");
 		expect(html).toContain("Avery Harper<br>123 Forest Road<br>Detroit, MI 48201<br>US");
 		expect(html).toContain("Next");
+		expect(html).toContain("we have received your order and payment.");
+		expect(html).toContain("We are arranging fulfillment for your order.");
+		expect(html).not.toContain("your order is confirmed");
+		expect(html).not.toContain("within 1–2 business days");
 		expect(html).toContain(
 			'<a class="receipt-button" href="https://angelsrest.online/orders?order=ORD-018"',
 		);
@@ -94,6 +98,8 @@ describe("commerceEmailHtml", () => {
 		expect(html).toContain("@media (prefers-color-scheme: dark)");
 		expect(html).toContain('width="600"');
 		expect(html).toContain("Thank you for your order.");
+		expect(html).toContain("Order received");
+		expect(html).toContain("We are arranging fulfillment for your order.");
 		expect(html).toContain("Items ordered");
 		expect(html).toContain("2 × $24.00");
 	});
