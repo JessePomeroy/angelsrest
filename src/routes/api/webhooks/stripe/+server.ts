@@ -1,3 +1,4 @@
+import type { Config } from "@sveltejs/adapter-vercel";
 import { error, json } from "@sveltejs/kit";
 import type Stripe from "stripe";
 import { api } from "$convex/api";
@@ -22,6 +23,8 @@ import {
 import { getWebhookSecret } from "$lib/server/webhookSecret";
 
 const convex = getConvex();
+
+export const config = { maxDuration: 45 } satisfies Config;
 
 export async function POST({ request }) {
 	const stripe = getStripe();
