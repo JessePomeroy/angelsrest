@@ -114,6 +114,40 @@ test("confirmed orders can finish notifications; exhausted preparation becomes v
 	expect((await t.run((ctx) => ctx.db.get(second._id)))?.stripeRefundId).toBeUndefined();
 });
 
+test.each(["preparation_failed", "attempts_exhausted", "after_refund"])("manual refund survives job blocking: %s", async (failure) => {
+	const { t, jobId, orderId, claim } = await setup();
+	if (failure === "attempts_exhausted") await t.run((ctx) => ctx.db.patch(jobId, { attempts: 11 }));
+	const active = await claim();
+	const refund = {
+		webhookSecret: secret, siteUrl, stripeSessionId: args.stripeSessionId,
+		stripeEventId: "evt_printjob1234567890", stripeRefundId: "re_printjob1234567890",
+		stripeChargeId: "ch_printjob1234567890", stripePaymentIntentId: "pi_printjob1234567890",
+		refundAmount: args.total, sessionAmountTotal: args.total,
+		refundCurrency: "usd" as const, sessionCurrency: "usd" as const,
+		eventLivemode: false, sessionLivemode: false,
+	};
+	if (failure === "after_refund") {
+		expect(await t.mutation(api.orders.reconcileSucceededManualRefund, refund)).toEqual({ kind: "reconciled" });
+	}
+	if (failure === "attempts_exhausted") {
+		await t.mutation(internal.printFulfillmentJobs.failAttempt, { jobId, leaseToken: active.leaseToken });
+	} else {
+		await t.mutation(api.printFulfillmentJobs.advance, { ...active, result: { kind: "blocked", code: "preparation_failed" } });
+	}
+	expect((await t.run((ctx) => ctx.db.get(jobId)))?.stage).toBe("blocked");
+	if (failure !== "after_refund") {
+		expect((await t.run((ctx) => ctx.db.get(orderId)))?.fulfillmentError).toContain("operator review");
+	}
+	expect(await t.mutation(api.orders.reconcileSucceededManualRefund, refund))
+		.toEqual({ kind: failure === "after_refund" ? "replayed" : "reconciled" });
+	expect(await t.mutation(api.orders.reconcileSucceededManualRefund, refund)).toEqual({ kind: "replayed" });
+	const order = await t.run((ctx) => ctx.db.get(orderId));
+	expect(order).toMatchObject({ status: "refunded", stripeRefundId: refund.stripeRefundId });
+	expect(order?.fulfillmentError).toBeUndefined();
+	expect(order?.automatedRefundId).toBeUndefined();
+	expect(await t.mutation(internal.printFulfillmentJobs.begin, { jobId, nextAt: Date.now() })).toBeNull();
+});
+
 test("job reconciliation waits after receipt and remains pending beyond five GET attempts", async () => {
 	const { t, jobId, orderId, step } = await setup();
 	await t.run(async (ctx) => {

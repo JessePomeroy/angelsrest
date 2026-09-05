@@ -34,7 +34,8 @@ async function owned(ctx: QueryCtx | MutationCtx, args: Authority) {
 async function schedule(ctx: MutationCtx, job: Job, patch: Partial<Job>, nextAt = Date.now()) {
 	if (patch.stage === "blocked") {
 		const order = await ctx.db.get(job.orderId);
-		if (order && order.printJobId === job._id) {
+		if (order && order.printJobId === job._id
+			&& order.stripeRefundId === undefined && order.fulfillmentRecoveryStatus === undefined) {
 			await ctx.db.patch(order._id, {
 				fulfillmentError: `Print fulfillment needs operator review (${patch.errorCode ?? "job_blocked"}).`,
 			});

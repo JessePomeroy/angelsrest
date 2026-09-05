@@ -1339,13 +1339,16 @@ export const reconcileSucceededManualRefund = mutation({
 				order?.printFulfillmentPhase === undefined
 					|| order.printFulfillmentPhase === "preparing"
 			);
+		const printJob = order?.printJobId && order.fulfillmentError !== undefined
+			? await ctx.db.get(order.printJobId) : null;
+		const hasJobDiagnostic = printJob?.stage === "blocked" && printJob.orderId === order?._id;
 		const isRefundableOrder = (
 			order?.status === "new"
 			|| order?.status === "canceled"
 			|| order?.status === "shipped" && hasResolvedPrintSubmission
 		)
 			&& order.stripeRefundId === undefined
-			&& order.fulfillmentError === undefined
+			&& (order.fulfillmentError === undefined || hasJobDiagnostic)
 			&& order.fulfillmentRecoveryStatus === undefined
 			&& (
 				hasPreSubmissionPrintState
