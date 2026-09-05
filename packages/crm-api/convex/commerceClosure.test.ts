@@ -770,14 +770,95 @@ describe("Checkout Session admission", () => {
 	});
 });
 
-describe("provider V4", () => {
+describe("provider admission", () => {
+	test("keeps a V5 queue receipt provisional until an exact provider read is recorded", async () => {
+		const t = convexTest(schema, modules);
+		await activateProvider(t, "open", 1);
+		const orderId = await insertPrintOrder(t, "cs_test_v5queueconfirmation1234");
+		await expect(t.mutation(api.orders.claimPrintFulfillmentV5, {
+			orderId,
+			claimToken: CLAIM_A,
+			webhookSecret: WEBHOOK_SECRET,
+		})).resolves.toMatchObject({ kind: "claimed" });
+		await t.mutation(api.orders.beginPrintFulfillmentSubmission, {
+			orderId,
+			claimToken: CLAIM_A,
+			webhookSecret: WEBHOOK_SECRET,
+		});
+		await expect(t.mutation(api.orders.recordPrintFulfillmentSubmissionReceipt, {
+			orderId,
+			claimToken: CLAIM_A,
+			externalId: "cs_test_v5queueconfirmation1234",
+			lumaprintsSubmissionOrderNumber: "10001978978",
+			webhookSecret: WEBHOOK_SECRET,
+		})).resolves.toEqual({ kind: "recorded" });
+
+		expect(await t.run((ctx) => ctx.db.get(orderId))).toMatchObject({
+			lumaprintsSubmissionOrderNumber: "10001978978",
+			printFulfillmentPhase: "submitting",
+			printFulfillmentResolution: "submission_uncertain",
+		});
+		await expect(t.mutation(api.orders.claimOrderConfirmation, {
+			orderId,
+			webhookSecret: WEBHOOK_SECRET,
+		})).resolves.toBe(false);
+		await expect(t.mutation(api.orders.recordPrintFulfillmentReconciliationPending, {
+			orderId,
+			externalId: "cs_test_v5queueconfirmation1234",
+			reason: "result_not_observed",
+			webhookSecret: WEBHOOK_SECRET,
+		})).resolves.toEqual({ kind: "pending", attempts: 1 });
+		await expect(t.mutation(api.orders.claimPrintFulfillmentV5, {
+			orderId,
+			claimToken: CLAIM_B,
+			webhookSecret: WEBHOOK_SECRET,
+		})).resolves.toMatchObject({ kind: "waiting", retryAt: expect.any(Number) });
+		await t.run((ctx) => ctx.db.patch(orderId, {
+			printFulfillmentReconciliationLastAttemptAt: 0,
+		}));
+		await expect(t.mutation(api.orders.completePrintFulfillmentSubmission, {
+			orderId,
+			claimToken: CLAIM_A,
+			externalId: "cs_test_v5queueconfirmation1234",
+			lumaprintsOrderNumber: "10001978978",
+			webhookSecret: WEBHOOK_SECRET,
+		})).rejects.toThrow("requires provider confirmation");
+		await expect(t.mutation(api.orders.claimPrintFulfillmentV5, {
+			orderId,
+			claimToken: CLAIM_B,
+			webhookSecret: WEBHOOK_SECRET,
+		})).resolves.toEqual({
+			kind: "reconcile",
+			externalId: "cs_test_v5queueconfirmation1234",
+			submissionOrderNumber: "10001978978",
+		});
+		await expect(t.mutation(api.orders.reconcilePrintFulfillmentSubmission, {
+			orderId,
+			externalId: "cs_test_v5queueconfirmation1234",
+			lumaprintsOrderNumber: "10001978979",
+			webhookSecret: WEBHOOK_SECRET,
+		})).rejects.toThrow("conflicts with its submission receipt");
+		await expect(t.mutation(api.orders.reconcilePrintFulfillmentSubmission, {
+			orderId,
+			externalId: "cs_test_v5queueconfirmation1234",
+			lumaprintsOrderNumber: "10001978978",
+			webhookSecret: WEBHOOK_SECRET,
+		})).resolves.toEqual({ kind: "fulfilled" });
+		const stored = await t.run((ctx) => ctx.db.get(orderId));
+		expect(stored).toMatchObject({
+			lumaprintsOrderNumber: "10001978978",
+			printFulfillmentResolution: "resolved",
+		});
+		expect(stored?.lumaprintsSubmissionOrderNumber).toBeUndefined();
+	});
+
 	test("fences provider admission with the order's verified tenant identity", async () => {
 		const t = convexTest(schema, modules);
 		await seedTenantIdentity(t);
 		await activateProvider(t, "open", 1);
 		const orderId = await insertPrintOrder(t);
 		await t.run((ctx) => ctx.db.patch(orderId, { tenantId: TENANT_ID }));
-		expect(await t.mutation(api.orders.claimPrintFulfillmentV4, {
+		expect(await t.mutation(api.orders.claimPrintFulfillmentV5, {
 			orderId,
 			claimToken: CLAIM_A,
 			tenantId: TENANT_ID,
@@ -794,7 +875,7 @@ describe("provider V4", () => {
 	test("defaults closed without mutation, then preserves durable admission across closure", async () => {
 		const t = convexTest(schema, modules);
 		const orderId = await insertPrintOrder(t);
-		expect(await t.mutation(api.orders.claimPrintFulfillmentV4, {
+		expect(await t.mutation(api.orders.claimPrintFulfillmentV5, {
 			orderId,
 			claimToken: CLAIM_A,
 			webhookSecret: WEBHOOK_SECRET,
@@ -804,7 +885,12 @@ describe("provider V4", () => {
 		);
 
 		await activateProvider(t, "open", 1);
-		const claimed = await t.mutation(api.orders.claimPrintFulfillmentV4, {
+		expect(await t.mutation(api.orders.claimPrintFulfillmentV4, {
+			orderId,
+			claimToken: CLAIM_A,
+			webhookSecret: WEBHOOK_SECRET,
+		})).toEqual({ kind: "submission_closed" });
+		const claimed = await t.mutation(api.orders.claimPrintFulfillmentV5, {
 			orderId,
 			claimToken: CLAIM_A,
 			webhookSecret: WEBHOOK_SECRET,
@@ -831,14 +917,14 @@ describe("provider V4", () => {
 			webhookSecret: WEBHOOK_SECRET,
 		})).toEqual({ kind: "busy" });
 		await activateProvider(t, "closed", 2);
-		expect(await t.mutation(api.orders.claimPrintFulfillmentV4, {
+		expect(await t.mutation(api.orders.claimPrintFulfillmentV5, {
 			orderId,
 			claimToken: CLAIM_B,
 			webhookSecret: WEBHOOK_SECRET,
 		})).toMatchObject({ kind: "claimed", providerGeneration: 1 });
 		const row = await t.run((ctx) => ctx.db.get(orderId));
 		expect(row).toMatchObject({
-			printFulfillmentCoordinatorVersion: 4,
+			printFulfillmentCoordinatorVersion: 5,
 			printProviderAdmissionStatus: "admitted",
 			printProviderAdmissionGeneration: 1,
 			printFulfillmentPhase: "preparing",
@@ -849,7 +935,7 @@ describe("provider V4", () => {
 		const t = convexTest(schema, modules);
 		await activateProvider(t, "open", 1);
 		const orderId = await insertPrintOrder(t, SESSION_B);
-		const claim = await t.mutation(api.orders.claimPrintFulfillmentV4, {
+		const claim = await t.mutation(api.orders.claimPrintFulfillmentV5, {
 			orderId,
 			claimToken: CLAIM_A,
 			webhookSecret: WEBHOOK_SECRET,
@@ -862,7 +948,7 @@ describe("provider V4", () => {
 			leaseExpiresAt: claim.leaseExpiresAt,
 		})).toBe(true);
 		expect(await t.run((ctx) => ctx.db.get(orderId))).toMatchObject({
-			printFulfillmentCoordinatorVersion: 4,
+			printFulfillmentCoordinatorVersion: 5,
 			printProviderAdmissionStatus: "admitted",
 			printProviderAdmissionGeneration: 1,
 		});
@@ -886,7 +972,7 @@ describe("provider V4", () => {
 		});
 
 		await activateProvider(t, "open", 1);
-		const claim = await t.mutation(api.orders.claimPrintFulfillmentV4, {
+		const claim = await t.mutation(api.orders.claimPrintFulfillmentV5, {
 			orderId,
 			claimToken: CLAIM_A,
 			webhookSecret: WEBHOOK_SECRET,
@@ -903,6 +989,10 @@ describe("provider V4", () => {
 		expect(await t.query(internal.commerceClosure.getNormalizedProviderReadiness, {
 			siteUrl: SITE,
 		})).toEqual({ outcome: "incomplete", blockerClasses: ["admitted_idle"] });
+		await t.run((ctx) => ctx.db.patch(orderId, { status: "canceled" }));
+		expect(await t.query(internal.commerceClosure.getNormalizedProviderReadiness, {
+			siteUrl: SITE,
+		})).toEqual({ outcome: "clear", blockerClasses: [] });
 	});
 
 	test("fails closed on partial provider-admission provenance", async () => {
@@ -912,7 +1002,7 @@ describe("provider V4", () => {
 		await t.run((ctx) => ctx.db.patch(orderId, {
 			printProviderAdmissionStatus: "admitted",
 		}));
-		expect(await t.mutation(api.orders.claimPrintFulfillmentV4, {
+		expect(await t.mutation(api.orders.claimPrintFulfillmentV5, {
 			orderId,
 			claimToken: CLAIM_A,
 			webhookSecret: WEBHOOK_SECRET,

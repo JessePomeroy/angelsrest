@@ -250,7 +250,7 @@ async function readBoundedJson(
 }
 
 function parseOrderResponse(value: unknown): LumaPrintsOrderResponse {
-	if (!object(value) || !exact(value, ["message", "orderNumber"])) {
+	if (!object(value)) {
 		throw new LumaPrintsSubmissionError("Order submission response was malformed", "uncertain", {
 			phase: "envelope",
 		});
@@ -440,9 +440,7 @@ export async function createOrder(order: LumaPrintsOrder): Promise<LumaPrintsOrd
 	if (!res.ok) {
 		throw new LumaPrintsSubmissionError(
 			"Order submission failed",
-			res.status === 400 || res.status === 406 || res.status === 429
-				? "definitely_rejected"
-				: "uncertain",
+			res.status === 400 || res.status === 406 ? "definitely_rejected" : "uncertain",
 			{ phase: "status", statusCode: res.status, ...(await rejectionDiagnostics(res)) },
 		);
 	}
@@ -482,6 +480,68 @@ function reconciliationRetryable(message: string) {
 
 function isRetryableProviderStatus(status: number) {
 	return status === 408 || status === 429 || (status >= 500 && status <= 599);
+}
+
+/** Confirm that a queued provider number belongs to the expected order and store. */
+export async function confirmOrder(
+	orderNumber: string,
+	expectedExternalId: string,
+): Promise<boolean> {
+	if (
+		normalizeLumaPrintsProviderNumber(orderNumber) !== orderNumber ||
+		!STRIPE_CHECKOUT_SESSION_ID.test(expectedExternalId)
+	) {
+		throw reconciliationFailure("Order confirmation identity was invalid", "client_error");
+	}
+	let storeId: number;
+	try {
+		storeId = getStoreId();
+	} catch {
+		throw reconciliationFailure("Order confirmation client failed", "client_error");
+	}
+
+	let res: Response;
+	try {
+		res = await fetchLumaPrints(`/api/v1/orders/${orderNumber}`, { headers: getHeaders() });
+	} catch (error) {
+		const details =
+			error instanceof LumaPrintsError && object(error.details) ? error.details : null;
+		if (details?.kind === "network" || details?.kind === "timeout") {
+			throw reconciliationRetryable("Order confirmation transport failed");
+		}
+		throw reconciliationFailure("Order confirmation client failed", "client_error");
+	}
+	if (res.status === 404) return false;
+	if (!res.ok) {
+		if (isRetryableProviderStatus(res.status)) {
+			throw reconciliationRetryable("Order confirmation is unavailable");
+		}
+		throw reconciliationFailure("Order confirmation was rejected", "provider_rejected");
+	}
+
+	const body = await readBoundedJson(
+		res,
+		LUMAPRINTS_RECONCILIATION_RESPONSE_MAX_BYTES,
+		() => reconciliationFailure("Order confirmation response was malformed", "response_contract"),
+		() => reconciliationRetryable("Order confirmation stream failed"),
+		() => reconciliationRetryable("Order confirmation response exceeded its size bound"),
+	);
+	if (!object(body) || typeof body.externalId !== "string") {
+		throw reconciliationFailure("Order confirmation response was malformed", "response_contract");
+	}
+	const confirmedOrderNumber = normalizeLumaPrintsProviderNumber(body.orderNumber);
+	const confirmedStoreId = normalizeLumaPrintsProviderNumber(body.storeId);
+	if (confirmedOrderNumber === null || confirmedStoreId === null) {
+		throw reconciliationFailure("Order confirmation response was malformed", "response_contract");
+	}
+	if (
+		confirmedOrderNumber !== orderNumber ||
+		body.externalId !== expectedExternalId ||
+		confirmedStoreId !== String(storeId)
+	) {
+		throw reconciliationFailure("Order confirmation identity did not match", "ambiguous_result");
+	}
+	return true;
 }
 
 interface ReconciliationPage {

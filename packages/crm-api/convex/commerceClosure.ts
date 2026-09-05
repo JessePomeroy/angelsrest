@@ -797,6 +797,7 @@ export const getNormalizedProviderReadiness = internalQuery({
 			if (
 				order.fulfillmentType !== "lumaprints"
 				|| order.status === "refunded"
+				|| order.status === "canceled"
 				|| order.stripeRefundId !== undefined
 				|| order.fulfillmentRecoveryStatus !== undefined
 			) continue;
@@ -806,7 +807,10 @@ export const getNormalizedProviderReadiness = internalQuery({
 				|| order.printFulfillmentResolution === "reconciliation_blocked"
 			) continue;
 			if (
-				order.printFulfillmentCoordinatorVersion === 4
+				(
+					order.printFulfillmentCoordinatorVersion === 4
+					|| order.printFulfillmentCoordinatorVersion === 5
+				)
 				&& order.printProviderAdmissionStatus === "admitted"
 				&& order.printProviderAdmissionGeneration !== undefined
 			) {
@@ -817,6 +821,7 @@ export const getNormalizedProviderReadiness = internalQuery({
 			}
 			if (
 				order.printFulfillmentCoordinatorVersion === 4
+				|| order.printFulfillmentCoordinatorVersion === 5
 				|| order.printProviderAdmissionStatus !== undefined
 				|| order.printProviderAdmissionGeneration !== undefined
 			) {

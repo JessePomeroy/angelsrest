@@ -24,7 +24,7 @@ import { getWebhookSecret } from "$lib/server/webhookSecret";
 
 const convex = getConvex();
 
-export const config = { maxDuration: 45 } satisfies Config;
+export const config = { maxDuration: 60 } satisfies Config;
 
 export async function POST({ request }) {
 	const stripe = getStripe();

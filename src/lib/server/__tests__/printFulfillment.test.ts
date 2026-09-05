@@ -13,6 +13,7 @@ const mockSendCustomerFulfillmentFailure = vi.fn();
 const mockSendAutomatedRefundAttentionAlert = vi.fn();
 const mockSendAutomatedRefundFailureAlert = vi.fn();
 const mockFindLumaPrintsOrder = vi.fn();
+const mockConfirmLumaPrintsOrder = vi.fn();
 const mockProcessBorderedPrints = vi.fn();
 
 vi.mock("$lib/server/logger", () => ({
@@ -59,6 +60,7 @@ vi.mock("$lib/server/lumaprints", () => {
 		LumaPrintsReconciliationError,
 		LumaPrintsSubmissionError,
 		buildLumaPrintsOrder: mockBuildLumaPrintsOrder,
+		confirmOrder: mockConfirmLumaPrintsOrder,
 		createOrder: mockCreateLumaPrintsOrder,
 		findOrderByExternalId: mockFindLumaPrintsOrder,
 	};
@@ -97,12 +99,14 @@ vi.mock("$convex/api", () => ({
 			claimNonPrintOrderOutcome: "orders.claimNonPrintOrderOutcome",
 			claimPrintFulfillmentV3: "orders.claimPrintFulfillmentV3",
 			claimPrintFulfillmentV4: "orders.claimPrintFulfillmentV4",
+			claimPrintFulfillmentV5: "orders.claimPrintFulfillmentV5",
 			claimPrintFulfillmentReconciliationAlert: "orders.claimPrintFulfillmentReconciliationAlert",
 			completeFulfillmentFailureNotificationV2: "orders.completeFulfillmentFailureNotificationV2",
 			recordAutomatedFulfillmentRefund: "orders.recordAutomatedFulfillmentRefund",
 			recordPrintFulfillmentReconciliationPending:
 				"orders.recordPrintFulfillmentReconciliationPending",
 			completePrintFulfillmentSubmission: "orders.completePrintFulfillmentSubmission",
+			recordPrintFulfillmentSubmissionReceipt: "orders.recordPrintFulfillmentSubmissionReceipt",
 			reconcilePrintFulfillmentSubmission: "orders.reconcilePrintFulfillmentSubmission",
 			rejectPrintFulfillmentSubmission: "orders.rejectPrintFulfillmentSubmission",
 			releasePrintFulfillmentClaim: "orders.releasePrintFulfillmentClaim",
@@ -185,11 +189,12 @@ describe("print fulfillment", () => {
 	beforeEach(() => {
 		vi.clearAllMocks();
 		mockCreateLumaPrintsOrder.mockReset();
+		mockConfirmLumaPrintsOrder.mockReset();
 		mockFindLumaPrintsOrder.mockReset();
 		convex.mutation.mockReset();
 		convex.mutation.mockImplementation(async (reference: string, args: { update?: string }) => {
 			if (reference === "orders.claimNonPrintOrderOutcome") return { kind: "success" };
-			if (reference === "orders.claimPrintFulfillmentV4")
+			if (reference === "orders.claimPrintFulfillmentV5")
 				return { kind: "claimed", externalId: session.id };
 			if (reference === "orders.beginPrintFulfillmentSubmission") {
 				return { kind: "submitting", externalId: session.id };
@@ -201,6 +206,9 @@ describe("print fulfillment", () => {
 			}
 			if (reference === "orders.recordPrintFulfillmentReconciliationPending") {
 				return { kind: "pending", attempts: 1 };
+			}
+			if (reference === "orders.recordPrintFulfillmentSubmissionReceipt") {
+				return { kind: "recorded" };
 			}
 			if (reference === "orders.claimAutomatedFulfillmentRefundV2") {
 				return { kind: "claimed", leaseExpiresAt: Date.now() + 60_000 };
@@ -268,6 +276,7 @@ describe("print fulfillment", () => {
 		);
 		mockBuildLumaPrintsOrder.mockImplementation((externalId: string) => ({ externalId }));
 		mockCreateLumaPrintsOrder.mockResolvedValue({ orderNumber: "123" });
+		mockConfirmLumaPrintsOrder.mockResolvedValue(true);
 		mockFindLumaPrintsOrder.mockResolvedValue(null);
 		mockSendFulfillmentFailureAlert.mockResolvedValue({ id: "email-123" });
 	});
@@ -292,7 +301,7 @@ describe("print fulfillment", () => {
 			"../printFulfillment"
 		);
 		convex.mutation.mockImplementation(async (reference: string) => {
-			if (reference === "orders.claimPrintFulfillmentV4") {
+			if (reference === "orders.claimPrintFulfillmentV5") {
 				return { kind: "submission_closed" };
 			}
 		});
@@ -339,13 +348,16 @@ describe("print fulfillment", () => {
 		convex.mutation.mockImplementation(
 			async (reference: string, args: { orderId: Id<"orders"> }) => {
 				const externalId = cases.find(({ orderId }) => orderId === args.orderId)?.id;
-				if (reference === "orders.claimPrintFulfillmentV4") {
+				if (reference === "orders.claimPrintFulfillmentV5") {
 					return { kind: "claimed", externalId };
 				}
 				if (reference === "orders.beginPrintFulfillmentSubmission") {
 					return { kind: "submitting", externalId };
 				}
-				if (reference === "orders.completePrintFulfillmentSubmission") {
+				if (reference === "orders.recordPrintFulfillmentSubmissionReceipt") {
+					return { kind: "recorded" };
+				}
+				if (reference === "orders.reconcilePrintFulfillmentSubmission") {
 					return { kind: "fulfilled" };
 				}
 				if (reference === "orders.releasePrintFulfillmentClaim") return true;
@@ -400,6 +412,7 @@ describe("print fulfillment", () => {
 		expect(mockCreateLumaPrintsOrder.mock.calls.map(([payload]) => payload)).toEqual(
 			sessions.map(expected),
 		);
+		expect(mockConfirmLumaPrintsOrder.mock.calls).toEqual(sessions.map((id) => ["123", id]));
 		expect(JSON.stringify(mockLogStructured.mock.calls)).not.toMatch(
 			/opaque\.example|worker\.example/,
 		);
@@ -443,7 +456,7 @@ describe("print fulfillment", () => {
 		await expect(
 			submitPrintFulfillment({ convex, createLumaPrintsOrder: mockCreateLumaPrintsOrder }, input),
 		).rejects.toThrow("capability unavailable");
-		expect(convex.mutation).toHaveBeenNthCalledWith(1, "orders.claimPrintFulfillmentV4", {
+		expect(convex.mutation).toHaveBeenNthCalledWith(1, "orders.claimPrintFulfillmentV5", {
 			orderId,
 			claimToken: expect.any(String),
 			webhookSecret: "test-webhook-secret",
@@ -502,7 +515,7 @@ describe("print fulfillment", () => {
 	it("does not submit when a manual refund cancels preparation before the provider fence", async () => {
 		const { submitPrintFulfillment } = await import("../printFulfillment");
 		convex.mutation.mockImplementation(async (reference: string) => {
-			if (reference === "orders.claimPrintFulfillmentV4") {
+			if (reference === "orders.claimPrintFulfillmentV5") {
 				return { kind: "claimed", externalId: session.id };
 			}
 			if (reference === "orders.beginPrintFulfillmentSubmission") {
@@ -529,7 +542,7 @@ describe("print fulfillment", () => {
 			if (reference === "orders.reconcilePrintFulfillmentSubmission") {
 				return { kind: "fulfilled" };
 			}
-			if (reference !== "orders.claimPrintFulfillmentV4") return;
+			if (reference !== "orders.claimPrintFulfillmentV5") return;
 			if (claimed) return { kind: "reconcile", externalId: session.id };
 			claimed = true;
 			return { kind: "claimed", externalId: session.id };
@@ -545,6 +558,66 @@ describe("print fulfillment", () => {
 		await expect(submit()).resolves.toMatchObject({ kind: "fulfilled" });
 		expect(mockCreateLumaPrintsOrder).toHaveBeenCalledOnce();
 		expect(mockFindLumaPrintsOrder).toHaveBeenCalledWith(session.id);
+	});
+
+	it("keeps a queue receipt provisional until a later direct confirmation", async () => {
+		const { PrintReconciliationPendingError, submitPrintFulfillment } = await import(
+			"../printFulfillment"
+		);
+		let firstClaim = true;
+		convex.mutation.mockImplementation(async (reference: string) => {
+			if (reference === "orders.claimPrintFulfillmentV5") {
+				if (firstClaim) {
+					firstClaim = false;
+					return { kind: "claimed", externalId: session.id };
+				}
+				return {
+					kind: "reconcile",
+					externalId: session.id,
+					submissionOrderNumber: "123",
+				};
+			}
+			if (reference === "orders.beginPrintFulfillmentSubmission") {
+				return { kind: "submitting", externalId: session.id };
+			}
+			if (reference === "orders.recordPrintFulfillmentSubmissionReceipt") {
+				return { kind: "recorded" };
+			}
+			if (reference === "orders.recordPrintFulfillmentReconciliationPending") {
+				return { kind: "pending", attempts: 1 };
+			}
+			if (reference === "orders.reconcilePrintFulfillmentSubmission") {
+				return { kind: "fulfilled" };
+			}
+		});
+		mockConfirmLumaPrintsOrder.mockResolvedValueOnce(false).mockResolvedValueOnce(true);
+		const submit = () =>
+			submitPrintFulfillment(
+				{
+					convex,
+					createLumaPrintsOrder: mockCreateLumaPrintsOrder,
+					confirmLumaPrintsOrder: mockConfirmLumaPrintsOrder,
+					findLumaPrintsOrder: mockFindLumaPrintsOrder,
+				},
+				printInput,
+			);
+
+		await expect(submit()).rejects.toBeInstanceOf(PrintReconciliationPendingError);
+		await expect(submit()).resolves.toEqual({
+			kind: "fulfilled",
+			lumaprintsOrderNumber: "123",
+		});
+		expect(mockCreateLumaPrintsOrder).toHaveBeenCalledOnce();
+		expect(mockConfirmLumaPrintsOrder.mock.calls).toEqual([
+			["123", session.id],
+			["123", session.id],
+		]);
+		expect(mockFindLumaPrintsOrder).not.toHaveBeenCalled();
+		expect(
+			convex.mutation.mock.calls.filter(
+				([reference]: unknown[]) => reference === "orders.recordPrintFulfillmentSubmissionReceipt",
+			),
+		).toHaveLength(1);
 	});
 
 	it("clears only a definitely rejected POST fence before entering refund recovery", async () => {
@@ -579,7 +652,7 @@ describe("print fulfillment", () => {
 			meta: { phase: "status", statusCode: 400, providerReason: "billing_address" },
 		});
 		const claim = convex.mutation.mock.calls.find(
-			([reference]: unknown[]) => reference === "orders.claimPrintFulfillmentV4",
+			([reference]: unknown[]) => reference === "orders.claimPrintFulfillmentV5",
 		)?.[1] as { claimToken: string } | undefined;
 		if (!claim) throw new Error("Expected a print claim");
 		expect(convex.mutation).toHaveBeenCalledWith("orders.rejectPrintFulfillmentSubmission", {
@@ -589,7 +662,7 @@ describe("print fulfillment", () => {
 			webhookSecret: "test-webhook-secret",
 		});
 		expect(convex.mutation).not.toHaveBeenCalledWith(
-			"orders.completePrintFulfillmentSubmission",
+			"orders.recordPrintFulfillmentSubmissionReceipt",
 			expect.anything(),
 		);
 	});
@@ -628,7 +701,7 @@ describe("print fulfillment", () => {
 		const { LumaPrintsReconciliationError } = await import("$lib/server/lumaprints");
 		const { submitPrintFulfillment } = await import("../printFulfillment");
 		convex.mutation.mockImplementation(async (reference: string) => {
-			if (reference === "orders.claimPrintFulfillmentV4") {
+			if (reference === "orders.claimPrintFulfillmentV5") {
 				return { kind: "reconcile", externalId: session.id };
 			}
 			if (reference === "orders.recordPrintFulfillmentReconciliationPending") {
@@ -673,7 +746,7 @@ describe("print fulfillment", () => {
 		const { LumaPrintsReconciliationError } = await import("$lib/server/lumaprints");
 		const { submitPrintFulfillment } = await import("../printFulfillment");
 		convex.mutation.mockImplementation(async (reference: string) => {
-			if (reference === "orders.claimPrintFulfillmentV4") {
+			if (reference === "orders.claimPrintFulfillmentV5") {
 				return { kind: "reconcile", externalId: session.id };
 			}
 			if (reference === "orders.recordPrintFulfillmentReconciliationPending") {
@@ -717,7 +790,7 @@ describe("print fulfillment", () => {
 		let blocked = false;
 		let alertAvailable = true;
 		convex.mutation.mockImplementation(async (reference: string) => {
-			if (reference === "orders.claimPrintFulfillmentV4") {
+			if (reference === "orders.claimPrintFulfillmentV5") {
 				return blocked
 					? { kind: "reconciliation_blocked", reconciliationClass: "response_contract" }
 					: { kind: "reconcile", externalId: session.id };
@@ -772,7 +845,7 @@ describe("print fulfillment", () => {
 		const { LumaPrintsReconciliationError } = await import("$lib/server/lumaprints");
 		const { submitPrintFulfillment } = await import("../printFulfillment");
 		convex.mutation.mockImplementation(async (reference: string) => {
-			if (reference === "orders.claimPrintFulfillmentV4") {
+			if (reference === "orders.claimPrintFulfillmentV5") {
 				return { kind: "reconcile", externalId: session.id };
 			}
 			if (reference === "orders.recordPrintFulfillmentReconciliationPending") {
@@ -811,7 +884,7 @@ describe("print fulfillment", () => {
 	it("keeps untyped reconciliation exceptions retryable instead of inventing a block class", async () => {
 		const { submitPrintFulfillment } = await import("../printFulfillment");
 		convex.mutation.mockImplementation(async (reference: string) => {
-			if (reference === "orders.claimPrintFulfillmentV4") {
+			if (reference === "orders.claimPrintFulfillmentV5") {
 				return { kind: "reconcile", externalId: session.id };
 			}
 			if (reference === "orders.recordPrintFulfillmentReconciliationPending") {
@@ -839,7 +912,7 @@ describe("print fulfillment", () => {
 	it("keeps a blocked reconciliation retryable while another alert lease is active", async () => {
 		const { submitPrintFulfillment } = await import("../printFulfillment");
 		convex.mutation.mockImplementation(async (reference: string) => {
-			if (reference === "orders.claimPrintFulfillmentV4") {
+			if (reference === "orders.claimPrintFulfillmentV5") {
 				return { kind: "reconciliation_blocked", reconciliationClass: "response_contract" };
 			}
 			if (reference === "orders.claimPrintFulfillmentReconciliationAlert") {
@@ -866,7 +939,7 @@ describe("print fulfillment", () => {
 			{ kind: "fulfilled", orderNumber: "457" },
 		];
 		convex.mutation.mockImplementation(async (reference: string) => {
-			if (reference === "orders.claimPrintFulfillmentV4") return claimResults.shift();
+			if (reference === "orders.claimPrintFulfillmentV5") return claimResults.shift();
 			if (reference === "orders.blockPrintFulfillmentReconciliation") return false;
 		});
 		mockFindLumaPrintsOrder.mockRejectedValueOnce(
@@ -890,16 +963,19 @@ describe("print fulfillment", () => {
 		);
 	});
 
-	it("records a fenced provider success after a manual refund commits", async () => {
+	it("records a fenced provider receipt after a manual refund commits", async () => {
 		const { submitPrintFulfillment } = await import("../printFulfillment");
 		convex.mutation.mockImplementation(async (reference: string) => {
-			if (reference === "orders.claimPrintFulfillmentV4") {
+			if (reference === "orders.claimPrintFulfillmentV5") {
 				return { kind: "claimed", externalId: session.id };
 			}
 			if (reference === "orders.beginPrintFulfillmentSubmission") {
 				return { kind: "submitting", externalId: session.id };
 			}
-			if (reference === "orders.completePrintFulfillmentSubmission") {
+			if (reference === "orders.recordPrintFulfillmentSubmissionReceipt") {
+				return { kind: "recorded" };
+			}
+			if (reference === "orders.reconcilePrintFulfillmentSubmission") {
 				return { kind: "manual_refunded", stripeRefundId: "re_manual_123" };
 			}
 		});
@@ -911,24 +987,29 @@ describe("print fulfillment", () => {
 			),
 		).resolves.toEqual({ kind: "manual_refunded", stripeRefundId: "re_manual_123" });
 		const claimArgs = convex.mutation.mock.calls.find(
-			(call: unknown[]) => call[0] === "orders.claimPrintFulfillmentV4",
+			(call: unknown[]) => call[0] === "orders.claimPrintFulfillmentV5",
 		)?.[1] as { claimToken: string } | undefined;
 		if (!claimArgs) throw new Error("Expected a print fulfillment claim");
 		expect(convex.mutation).toHaveBeenCalledWith(
-			"orders.completePrintFulfillmentSubmission",
+			"orders.recordPrintFulfillmentSubmissionReceipt",
 			expect.objectContaining({
 				claimToken: claimArgs.claimToken,
 				externalId: session.id,
-				lumaprintsOrderNumber: "123",
+				lumaprintsSubmissionOrderNumber: "123",
 			}),
 		);
 		expect(mockCreateLumaPrintsOrder).toHaveBeenCalledOnce();
+		expect(mockConfirmLumaPrintsOrder).toHaveBeenCalledWith("123", session.id);
+		expect(convex.mutation).toHaveBeenCalledWith(
+			"orders.reconcilePrintFulfillmentSubmission",
+			expect.objectContaining({ lumaprintsOrderNumber: "123" }),
+		);
 	});
 
 	it("GET-reconciles a refunded uncertain submission without another POST", async () => {
 		const { submitPrintFulfillment } = await import("../printFulfillment");
 		convex.mutation.mockImplementation(async (reference: string) => {
-			if (reference === "orders.claimPrintFulfillmentV4") {
+			if (reference === "orders.claimPrintFulfillmentV5") {
 				return { kind: "reconcile", externalId: session.id };
 			}
 			if (reference === "orders.reconcilePrintFulfillmentSubmission") {

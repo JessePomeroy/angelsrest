@@ -161,6 +161,7 @@ const SHIPMENT_EMAIL_NOTIFICATION_LEASE_MS = 15 * 60 * 1000;
 const EMAIL_AUTOMATIC_RETRY_WINDOW_MS = 23 * 60 * 60 * 1000;
 const PRINT_RECONCILIATION_PENDING_MAX_AGE_MS = 24 * 60 * 60 * 1000;
 const PRINT_RECONCILIATION_PENDING_MAX_ATTEMPTS = 5;
+const PRINT_RECONCILIATION_INITIAL_DELAY_MS = 60 * 1000;
 const AUTOMATED_REFUND_PENDING_MAX_AGE_MS = 24 * 60 * 60 * 1000;
 const AUTOMATED_REFUND_PENDING_MAX_ATTEMPTS = 5;
 const REFUND_AUTOMATION_TAG = "fulfillment_recovery_v1";
@@ -184,6 +185,37 @@ async function findGlobalLumaPrintsOrder(ctx: MutationCtx, lumaprintsOrderNumber
 	return matchingOrders[0] ?? null;
 }
 
+async function findGlobalLumaPrintsSubmission(
+	ctx: MutationCtx,
+	lumaprintsSubmissionOrderNumber: string,
+) {
+	const matchingOrders = await ctx.db
+		.query("orders")
+		.withIndex("by_lumaprintsSubmissionOrderNumber_global", (q) =>
+			q.eq("lumaprintsSubmissionOrderNumber", lumaprintsSubmissionOrderNumber),
+		)
+		.take(2);
+	if (matchingOrders.length > 1) {
+		throw new Error("Duplicate LumaPrints submission order number across tenants");
+	}
+	return matchingOrders[0] ?? null;
+}
+
+async function assertLumaPrintsOrderNumberAvailable(
+	ctx: MutationCtx,
+	orderId: Id<"orders">,
+	lumaprintsOrderNumber: string,
+) {
+	const [completed, submitted] = await Promise.all([
+		findGlobalLumaPrintsOrder(ctx, lumaprintsOrderNumber),
+		findGlobalLumaPrintsSubmission(ctx, lumaprintsOrderNumber),
+	]);
+	if (
+		(completed && completed._id !== orderId)
+		|| (submitted && submitted._id !== orderId)
+	) throw new Error("LumaPrints order number belongs to another order");
+}
+
 function hasUncertainPrintSubmission(order: Doc<"orders">) {
 	return order.printFulfillmentClaim === true
 		&& order.lumaprintsOrderNumber === undefined
@@ -192,6 +224,16 @@ function hasUncertainPrintSubmission(order: Doc<"orders">) {
 			order.printFulfillmentPhase === "submitting"
 				|| order.printFulfillmentPhase === undefined
 		);
+}
+
+function printReconciliationRetryAt(order: Doc<"orders">) {
+	const attempts = order.printFulfillmentReconciliationPendingAttempts;
+	const lastAttemptAt = order.printFulfillmentReconciliationLastAttemptAt;
+	if (!attempts || lastAttemptAt === undefined) return undefined;
+	return lastAttemptAt + Math.min(
+		PRINT_RECONCILIATION_INITIAL_DELAY_MS * 4 ** (attempts - 1),
+		60 * 60 * 1000,
+	);
 }
 
 async function snapshotFulfillmentType(
@@ -265,12 +307,16 @@ async function attachPrintFulfillmentResult(
 	lumaprintsOrderNumber: string,
 	options: { reserveOrderConfirmation?: boolean } = {},
 ) {
-	const existing = await findGlobalLumaPrintsOrder(ctx, lumaprintsOrderNumber);
-	if (existing && existing._id !== order._id) {
-		throw new Error("LumaPrints order number belongs to another order");
+	if (
+		order.lumaprintsSubmissionOrderNumber !== undefined
+		&& order.lumaprintsSubmissionOrderNumber !== lumaprintsOrderNumber
+	) {
+		throw new Error("LumaPrints order number conflicts with its submission receipt");
 	}
+	await assertLumaPrintsOrderNumberAvailable(ctx, order._id, lumaprintsOrderNumber);
 	await ctx.db.patch(order._id, {
 		lumaprintsOrderNumber,
+		lumaprintsSubmissionOrderNumber: undefined,
 		printFulfillmentClaim: undefined,
 		printFulfillmentClaimToken: undefined,
 		printFulfillmentPhase: undefined,
@@ -290,6 +336,23 @@ async function attachPrintFulfillmentResult(
 			: {}),
 	});
 	return printFulfillmentCompletionOutcome({ ...order, lumaprintsOrderNumber });
+}
+
+async function findGlobalLumaPrintsOrderForShipment(
+	ctx: MutationCtx,
+	lumaprintsOrderNumber: string,
+) {
+	const [completed, submitted] = await Promise.all([
+		findGlobalLumaPrintsOrder(ctx, lumaprintsOrderNumber),
+		findGlobalLumaPrintsSubmission(ctx, lumaprintsOrderNumber),
+	]);
+	if (completed && submitted && completed._id !== submitted._id) {
+		throw new Error("LumaPrints order number belongs to multiple orders");
+	}
+	if (completed) return completed;
+	if (!submitted || !hasUncertainPrintSubmission(submitted)) return null;
+	await attachPrintFulfillmentResult(ctx, submitted, lumaprintsOrderNumber);
+	return await ctx.db.get(submitted._id);
 }
 
 async function claimShipmentEmailForOrder(
@@ -1223,7 +1286,8 @@ export const reconcileSucceededManualRefund = mutation({
 			&& order.printFulfillmentClaim === true
 			&& order.printFulfillmentCoordinatorVersion === undefined;
 		const mayRefundAfterSubmissionFence = order?.printFulfillmentCoordinatorVersion === 3
-			|| order?.printFulfillmentCoordinatorVersion === 4;
+			|| order?.printFulfillmentCoordinatorVersion === 4
+			|| order?.printFulfillmentCoordinatorVersion === 5;
 		const hasNoPrintSubmission = order !== undefined
 			&& order.lumaprintsOrderNumber === undefined
 			&& !order.printFulfillmentClaim
@@ -1248,6 +1312,7 @@ export const reconcileSucceededManualRefund = mutation({
 		const hasVersionedPreProviderPreparation = (
 			order?.printFulfillmentCoordinatorVersion === 3
 			|| order?.printFulfillmentCoordinatorVersion === 4
+			|| order?.printFulfillmentCoordinatorVersion === 5
 		)
 			&& order.lumaprintsOrderNumber === undefined
 			&& order.printFulfillmentClaim === true
@@ -1260,7 +1325,11 @@ export const reconcileSucceededManualRefund = mutation({
 				order?.printFulfillmentPhase === undefined
 					|| order.printFulfillmentPhase === "preparing"
 			);
-		const isRefundableNew = (order?.status === "new" || order?.status === "canceled")
+		const isRefundableOrder = (
+			order?.status === "new"
+			|| order?.status === "canceled"
+			|| order?.status === "shipped" && hasResolvedPrintSubmission
+		)
 			&& order.stripeRefundId === undefined
 			&& order.fulfillmentError === undefined
 			&& order.fulfillmentRecoveryStatus === undefined
@@ -1310,7 +1379,7 @@ export const reconcileSucceededManualRefund = mutation({
 			}
 			return { kind: "replayed" };
 		}
-		if (!isRefundableNew && !canTakeOverPendingRecovery) {
+		if (!isRefundableOrder && !canTakeOverPendingRecovery) {
 			return { kind: "rejected", reason: "state_conflict" };
 		}
 		const cancelsFeeCapture = order.stripePaymentIntentId !== undefined
@@ -1703,9 +1772,12 @@ export const claimPrintFulfillmentV3 = mutation({
 		if (order.fulfillmentRecoveryStatus || order.status !== "new") {
 			return { kind: "busy" as const };
 		}
-		// A legacy V3 caller must never take over an admitted V4 obligation after
+		// A legacy V3 caller must never take over a newer admitted obligation after
 		// its transient preparation lease is released or expires.
-		if (order.printFulfillmentCoordinatorVersion === 4) {
+		if (
+			order.printFulfillmentCoordinatorVersion === 4
+			|| order.printFulfillmentCoordinatorVersion === 5
+		) {
 			return { kind: "busy" as const };
 		}
 		const now = Date.now();
@@ -1744,18 +1816,18 @@ export const claimPrintFulfillmentV3 = mutation({
 	},
 });
 
-/**
- * Additive R4 coordinator. Durable provider admission is separate from the
- * transient preparation lease; a closed control cannot revoke an admitted row.
- */
-export const claimPrintFulfillmentV4 = mutation({
-	args: {
-		orderId: v.id("orders"),
-		claimToken: v.string(),
-		tenantId: v.optional(v.string()),
-		webhookSecret: v.string(),
-	},
-	handler: async (ctx, args) => {
+type PrintFulfillmentClaimArgs = {
+	orderId: Id<"orders">;
+	claimToken: string;
+	tenantId?: string;
+	webhookSecret: string;
+};
+
+async function claimPrintFulfillmentWithAdmission(
+	ctx: MutationCtx,
+	args: PrintFulfillmentClaimArgs,
+	coordinatorVersion: 4 | 5,
+) {
 		await requireWebhookCallerOrAuth(ctx, args.webhookSecret, { allowAuth: false });
 		if (!CLAIM_TOKEN.test(args.claimToken)) throw new Error("Invalid print claim token");
 		const order = await ctx.db.get(args.orderId);
@@ -1763,6 +1835,9 @@ export const claimPrintFulfillmentV4 = mutation({
 		await assertOrderTenant(ctx, order, args.tenantId);
 		if (order.lumaprintsOrderNumber) {
 			return { kind: "fulfilled" as const, orderNumber: order.lumaprintsOrderNumber };
+		}
+		if (coordinatorVersion === 4 && order.printFulfillmentCoordinatorVersion === 5) {
+			return { kind: "busy" as const };
 		}
 		if (hasUncertainPrintSubmission(order)) {
 			if (order.printFulfillmentResolution === "reconciliation_blocked") {
@@ -1773,6 +1848,22 @@ export const claimPrintFulfillmentV4 = mutation({
 					...(order.printFulfillmentReconciliationEscalationReason === undefined
 						? {}
 						: { escalationReason: order.printFulfillmentReconciliationEscalationReason }),
+				};
+			}
+			const retryAt = printReconciliationRetryAt(order);
+			if (retryAt !== undefined && retryAt > Date.now()) {
+				return coordinatorVersion === 5
+					? {
+							kind: "waiting" as const,
+							retryAt,
+						}
+					: { kind: "preparing" as const };
+			}
+			if (coordinatorVersion === 5 && order.lumaprintsSubmissionOrderNumber !== undefined) {
+				return {
+					kind: "reconcile" as const,
+					externalId: order.stripeSessionId,
+					submissionOrderNumber: order.lumaprintsSubmissionOrderNumber,
 				};
 			}
 			return { kind: "reconcile" as const, externalId: order.stripeSessionId };
@@ -1790,9 +1881,13 @@ export const claimPrintFulfillmentV4 = mutation({
 			|| order.status !== "new"
 			|| order.fulfillmentType !== "lumaprints"
 		) return { kind: "busy" as const };
+		if (coordinatorVersion === 4) return { kind: "submission_closed" as const };
 
 		const now = Date.now();
-		const alreadyAdmitted = order.printFulfillmentCoordinatorVersion === 4
+		const alreadyAdmitted = (
+			order.printFulfillmentCoordinatorVersion === coordinatorVersion
+			|| coordinatorVersion === 5 && order.printFulfillmentCoordinatorVersion === 4
+		)
 			&& order.printProviderAdmissionStatus === "admitted"
 			&& Number.isSafeInteger(order.printProviderAdmissionGeneration)
 			&& Number.isSafeInteger(order.printProviderAdmissionAt);
@@ -1835,7 +1930,7 @@ export const claimPrintFulfillmentV4 = mutation({
 			printFulfillmentPhase: "preparing",
 			printFulfillmentClaimedAt: now,
 			printFulfillmentLeaseExpiresAt: leaseExpiresAt,
-			printFulfillmentCoordinatorVersion: 4,
+			printFulfillmentCoordinatorVersion: coordinatorVersion,
 			printProviderAdmissionStatus: "admitted",
 			printProviderAdmissionGeneration: providerGeneration,
 			printProviderAdmissionAt: order.printProviderAdmissionAt ?? now,
@@ -1860,7 +1955,25 @@ export const claimPrintFulfillmentV4 = mutation({
 			leaseExpiresAt,
 			providerGeneration,
 		};
-	},
+}
+
+const printFulfillmentClaimArgs = {
+	orderId: v.id("orders"),
+	claimToken: v.string(),
+	tenantId: v.optional(v.string()),
+	webhookSecret: v.string(),
+};
+
+/** R4 reconciliation-only coordinator retained for rolling deploys. */
+export const claimPrintFulfillmentV4 = mutation({
+	args: printFulfillmentClaimArgs,
+	handler: (ctx, args) => claimPrintFulfillmentWithAdmission(ctx, args, 4),
+});
+
+/** Queue-aware coordinator: a POST receipt remains provisional until provider confirmation. */
+export const claimPrintFulfillmentV5 = mutation({
+	args: printFulfillmentClaimArgs,
+	handler: (ctx, args) => claimPrintFulfillmentWithAdmission(ctx, args, 5),
 });
 
 export const expirePrintFulfillmentPreparationV4 = internalMutation({
@@ -1873,7 +1986,10 @@ export const expirePrintFulfillmentPreparationV4 = internalMutation({
 		const order = await ctx.db.get(args.orderId);
 		if (
 			!order
-			|| order.printFulfillmentCoordinatorVersion !== 4
+			|| (
+				order.printFulfillmentCoordinatorVersion !== 4
+				&& order.printFulfillmentCoordinatorVersion !== 5
+			)
 			|| order.printProviderAdmissionStatus !== "admitted"
 			|| order.printFulfillmentPhase !== "preparing"
 			|| order.printFulfillmentClaimToken !== args.claimToken
@@ -1961,7 +2077,10 @@ export const beginPrintFulfillmentSubmission = mutation({
 			|| order.printFulfillmentLeaseExpiresAt <= Date.now()
 		) return { kind: "lost" as const };
 		if (
-			order.printFulfillmentCoordinatorVersion === 4
+			(
+				order.printFulfillmentCoordinatorVersion === 4
+				|| order.printFulfillmentCoordinatorVersion === 5
+			)
 			&& (
 				order.printProviderAdmissionStatus !== "admitted"
 				|| order.printProviderAdmissionGeneration === undefined
@@ -1978,7 +2097,77 @@ export const beginPrintFulfillmentSubmission = mutation({
 	},
 });
 
-/** Store the exact fenced POST result, even when a refund committed first. */
+/** Persist a V5 queue receipt without treating it as a provider-confirmed order. */
+export const recordPrintFulfillmentSubmissionReceipt = mutation({
+	args: {
+		orderId: v.id("orders"),
+		claimToken: v.string(),
+		externalId: v.string(),
+		lumaprintsSubmissionOrderNumber: v.string(),
+		tenantId: v.optional(v.string()),
+		webhookSecret: v.string(),
+	},
+	handler: async (ctx, args) => {
+		await requireWebhookCallerOrAuth(ctx, args.webhookSecret, { allowAuth: false });
+		if (!CLAIM_TOKEN.test(args.claimToken)) throw new Error("Invalid print claim token");
+		if (
+			!isStripeCheckoutSessionId(args.externalId)
+			|| !LUMAPRINTS_ORDER_NUMBER.test(args.lumaprintsSubmissionOrderNumber)
+		) throw new Error("Invalid print fulfillment receipt");
+		const order = await ctx.db.get(args.orderId);
+		if (!order || order.stripeSessionId !== args.externalId) {
+			throw new Error("Print fulfillment identity does not match order");
+		}
+		await assertOrderTenant(ctx, order, args.tenantId);
+		if (order.lumaprintsOrderNumber !== undefined) {
+			if (
+				order.lumaprintsOrderNumber !== args.lumaprintsSubmissionOrderNumber
+				|| order.printFulfillmentResolution !== "resolved"
+			) throw new Error("Print fulfillment receipt conflicts");
+			return printFulfillmentCompletionOutcome(order);
+		}
+		if (order.lumaprintsSubmissionOrderNumber !== undefined) {
+			if (
+				order.lumaprintsSubmissionOrderNumber !== args.lumaprintsSubmissionOrderNumber
+				|| order.printFulfillmentCoordinatorVersion !== 5
+				|| order.printFulfillmentPhase !== "submitting"
+				|| (
+					order.printFulfillmentResolution !== "submission_uncertain"
+					&& order.printFulfillmentResolution !== "reconciliation_blocked"
+				)
+			) throw new Error("Print fulfillment receipt conflicts");
+			return { kind: "recorded" as const };
+		}
+		if (
+			order.printFulfillmentCoordinatorVersion !== 5
+			|| !hasUncertainPrintSubmission(order)
+			|| order.printFulfillmentPhase !== "submitting"
+			|| order.printFulfillmentClaimToken !== args.claimToken
+		) throw new Error("Print fulfillment submission claim is unavailable");
+		await assertLumaPrintsOrderNumberAvailable(
+			ctx,
+			order._id,
+			args.lumaprintsSubmissionOrderNumber,
+		);
+		await ctx.db.patch(order._id, {
+			lumaprintsSubmissionOrderNumber: args.lumaprintsSubmissionOrderNumber,
+			printFulfillmentClaimToken: undefined,
+			printFulfillmentClaimedAt: undefined,
+			printFulfillmentLeaseExpiresAt: undefined,
+			printFulfillmentReconciliationClass: undefined,
+			printFulfillmentReconciliationBlockedAt: undefined,
+			printFulfillmentReconciliationPendingFirstAt: undefined,
+			printFulfillmentReconciliationPendingAttempts: undefined,
+			printFulfillmentReconciliationLastAttemptAt: undefined,
+			printFulfillmentReconciliationLastAttemptClass: undefined,
+			printFulfillmentReconciliationPendingClassCounts: undefined,
+			printFulfillmentReconciliationEscalationReason: undefined,
+		});
+		return { kind: "recorded" as const };
+	},
+});
+
+/** Store an exact legacy fenced POST result, even when a refund committed first. */
 export const completePrintFulfillmentSubmission = mutation({
 	args: {
 		orderId: v.id("orders"),
@@ -2007,6 +2196,9 @@ export const completePrintFulfillmentSubmission = mutation({
 			) throw new Error("Print fulfillment result conflicts");
 			return printFulfillmentCompletionOutcome(order);
 		}
+		if (order.printFulfillmentCoordinatorVersion !== undefined) {
+			throw new Error("Versioned print fulfillment requires provider confirmation");
+		}
 		if (
 			!hasUncertainPrintSubmission(order)
 			|| order.printFulfillmentPhase !== "submitting"
@@ -2032,6 +2224,7 @@ export const rejectPrintFulfillmentSubmission = mutation({
 	},
 	returns: v.union(
 		v.object({ kind: v.literal("refund_pending") }),
+		v.object({ kind: v.literal("canceled") }),
 		v.object({ kind: v.literal("manual_refunded"), stripeRefundId: v.string() }),
 		v.object({ kind: v.literal("automated_refunded"), stripeRefundId: v.string() }),
 	),
@@ -2054,6 +2247,7 @@ export const rejectPrintFulfillmentSubmission = mutation({
 		) throw new Error("Print fulfillment submission claim is unavailable");
 
 		const clearFence = {
+			lumaprintsSubmissionOrderNumber: undefined,
 			printFulfillmentClaim: undefined,
 			printFulfillmentClaimToken: undefined,
 			printFulfillmentPhase: undefined,
@@ -2074,6 +2268,10 @@ export const rejectPrintFulfillmentSubmission = mutation({
 		if (order.stripeRefundId) {
 			await ctx.db.patch(order._id, clearFence);
 			return { kind: "automated_refunded" as const, stripeRefundId: order.stripeRefundId };
+		}
+		if (order.status === "canceled") {
+			await ctx.db.patch(order._id, clearFence);
+			return { kind: "canceled" as const };
 		}
 		if (
 			order.status !== "new"
@@ -2126,7 +2324,7 @@ export const reconcilePrintFulfillmentSubmission = mutation({
 });
 
 /**
- * Record one inconclusive V3 GET result. Repeated absence or resource-bound
+ * Record one inconclusive provider read. Repeated absence or resource-bound
  * reads eventually become operator-blocked without asserting that the provider
  * order does not exist, clearing the POST fence, or authorizing a refund.
  */
@@ -2172,6 +2370,13 @@ export const recordPrintFulfillmentReconciliationPending = mutation({
 			};
 		}
 		const now = Date.now();
+		const retryAt = printReconciliationRetryAt(order);
+		if (retryAt !== undefined && retryAt > now) {
+			return {
+				kind: "pending" as const,
+				attempts: order.printFulfillmentReconciliationPendingAttempts ?? 0,
+			};
+		}
 		const firstAt = order.printFulfillmentReconciliationPendingFirstAt ?? now;
 		const attempts = (order.printFulfillmentReconciliationPendingAttempts ?? 0) + 1;
 		const classCounts = order.printFulfillmentReconciliationPendingClassCounts ?? {
@@ -3849,7 +4054,10 @@ export const claimShipmentEmailNotificationV2 = mutation({
 		if (!CLAIM_TOKEN.test(args.claimToken)) {
 			throw new Error("Invalid shipment email claim token");
 		}
-		const order = await findGlobalLumaPrintsOrder(ctx, args.lumaprintsOrderNumber);
+		const order = await findGlobalLumaPrintsOrderForShipment(
+			ctx,
+			args.lumaprintsOrderNumber,
+		);
 		if (!order) return null;
 
 		const trackingPatch = {

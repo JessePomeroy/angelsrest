@@ -22,6 +22,7 @@ import { logStructured } from "$lib/server/logger";
 import {
 	AutomatedFulfillmentRefundRetryableError,
 	AutomatedRefundNotificationRetryableError,
+	type ConfirmLumaPrintsOrder,
 	PrintReconciliationAlertRetryableError,
 	PrintReconciliationPendingError,
 	ProviderSubmissionClosedRetryableError,
@@ -53,6 +54,7 @@ export interface OrderIntakeAdapters {
 	resend: Resend;
 	convex: ConvexHttpClient;
 	createLumaPrintsOrder: SubmitLumaPrintsOrder;
+	confirmLumaPrintsOrder?: ConfirmLumaPrintsOrder;
 }
 
 export async function processStripeWebhookEvent(
@@ -437,6 +439,7 @@ async function handleCheckoutCompleted(
 			convex: adapters.convex,
 			resend: adapters.resend,
 			createLumaPrintsOrder: adapters.createLumaPrintsOrder,
+			confirmLumaPrintsOrder: adapters.confirmLumaPrintsOrder,
 		},
 		{
 			session: fullSession,
