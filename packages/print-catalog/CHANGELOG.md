@@ -1,5 +1,11 @@
 # @jessepomeroy/print-catalog
 
+## 0.3.1
+
+### Patch Changes
+
+- 3779f04: Correct framed-paper provider options and omit unsupported frame/size combinations from available choices.
+
 ## 0.3.0
 
 ### Minor Changes

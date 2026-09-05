@@ -1,5 +1,18 @@
 # @jessepomeroy/crm-api
 
+## 5.1.0
+
+### Minor Changes
+
+- be7812e: Add webhook-only receipt checkpoints independent of print fulfillment, with separate customer and owner acceptance and bounded idempotent retries.
+
+### Patch Changes
+
+- d539d36: Allow verified manual refunds after a blocked print job without weakening refund ownership or provider submission safeguards. Preserve refund state when a late job failure arrives.
+- 56dee23: Checkpoint paid print preparation outside the webhook time limit with leased, scheduled jobs and source-level progress. Preserve provider submission fences and allow new-job reconciliation through its existing 24-hour window.
+- Updated dependencies [3779f04]
+  - @jessepomeroy/print-catalog@0.3.1
+
 ## 5.0.1
 
 ### Patch Changes
