@@ -815,6 +815,47 @@ describe("print fulfillment fence", () => {
 	});
 });
 
+describe("local fulfillment cancellation", () => {
+	test("stops an unresolved print order without erasing its provider fence", async () => {
+		const t = convexTest(schema, modules);
+		await t.run((ctx) => ctx.db.insert("platformClients", {
+			name: "Tenant",
+			email: "owner@tenant.example",
+			siteUrl: SITE_URL,
+			tier: "full",
+			subscriptionStatus: "active",
+			adminEmails: ["owner@tenant.example"],
+			role: "client",
+		}));
+		const created = await t.mutation(api.orders.create, orderArgs("cs_test_cancel12345678"));
+		await t.run((ctx) => ctx.db.patch(created._id, {
+			printFulfillmentClaim: true,
+			printFulfillmentClaimToken: CLAIM_TOKEN_A,
+			printFulfillmentPhase: "submitting",
+			printFulfillmentResolution: "submission_uncertain",
+		}));
+		const admin = t.withIdentity({ email: "owner@tenant.example", emailVerified: true });
+
+		await expect(admin.mutation(api.orders.cancelFulfillment, {
+			orderId: created._id,
+		})).resolves.toBe(true);
+		await expect(admin.mutation(api.orders.cancelFulfillment, {
+			orderId: created._id,
+		})).resolves.toBe(false);
+		expect(await t.run((ctx) => ctx.db.get(created._id))).toMatchObject({
+			status: "canceled",
+			printFulfillmentClaim: true,
+			printFulfillmentClaimToken: CLAIM_TOKEN_A,
+			printFulfillmentPhase: "submitting",
+			printFulfillmentResolution: "submission_uncertain",
+		});
+		await expect(admin.mutation(api.orders.updateStatus, {
+			orderId: created._id,
+			status: "new",
+		})).rejects.toThrow("Canceled order fulfillment is terminal");
+	});
+});
+
 describe("provider-authoritative manual refunds", () => {
 	test("converges concurrent refunds for an existing order and preserves its reservation", async () => {
 		const t = convexTest(schema, modules);

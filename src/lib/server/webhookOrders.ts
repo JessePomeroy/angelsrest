@@ -116,6 +116,16 @@ export async function createOrderInConvex(
 		meta: { alreadyExisted },
 	});
 
+	if (existingStatus === "canceled") {
+		return {
+			orderNumber,
+			_id: orderId,
+			alreadyExisted,
+			fulfillment: { kind: "canceled" },
+			notification: "none",
+		};
+	}
+
 	if (existingStripeFees !== undefined) {
 		logStructured({
 			event: "stripe_fees.skipped",
@@ -328,6 +338,7 @@ export async function createOrderInConvex(
 	let notification: CreatedOrderResult["notification"];
 	if (
 		fulfillment.kind === "manual_refunded" ||
+		fulfillment.kind === "canceled" ||
 		fulfillment.kind === "no_print_items_replayed" ||
 		fulfillment.kind === "reconciliation_blocked" ||
 		fulfillment.kind === "automated_refund_failed" ||

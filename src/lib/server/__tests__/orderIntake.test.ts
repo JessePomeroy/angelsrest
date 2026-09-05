@@ -2082,6 +2082,26 @@ describe("processStripeWebhookEvent", () => {
 		expect(mockSendFulfillmentFailureAlert).not.toHaveBeenCalled();
 	});
 
+	it("acknowledges a locally canceled fulfillment without retrying side effects", async () => {
+		const session = makeCheckoutSession();
+		stripe.checkout.sessions.retrieve.mockResolvedValue({
+			...session,
+			line_items: { data: [makeLineItem()] },
+		});
+		orderCreateResults = [makeOrderResult({ alreadyExisted: true, status: "canceled" })];
+
+		const { processStripeWebhookEvent } = await import("../orderIntake");
+		await processStripeWebhookEvent(
+			makeStripeEvent("checkout.session.completed", session),
+			adapters(),
+		);
+
+		expect(createLumaPrintsOrder).not.toHaveBeenCalled();
+		expect(stripe.refunds.create).not.toHaveBeenCalled();
+		expect(mockSendCustomerConfirmation).not.toHaveBeenCalled();
+		expect(mockSendCustomerFulfillmentFailure).not.toHaveBeenCalled();
+	});
+
 	it("sends payment failure email for a marked Your-account commerce PaymentIntent", async () => {
 		const paymentIntent = {
 			id: "pi_test_123",

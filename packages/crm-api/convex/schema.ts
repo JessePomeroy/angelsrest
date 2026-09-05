@@ -1233,6 +1233,9 @@ export default defineSchema({
 			v.literal("shipped"),
 			v.literal("delivered"),
 			v.literal("refunded"),
+			// Local fulfillment stop. This does not assert a Stripe refund or a
+			// provider-side cancellation and therefore preserves any provider fence.
+			v.literal("canceled"),
 			// Permanent fulfillment failure. `fulfillmentError` records the
 			// upstream problem; `stripeRefundId` is present only when a refund
 			// was successfully created. Do not infer refund/email delivery from
