@@ -158,6 +158,7 @@ describe("order intake with real Convex state", () => {
 	afterEach(() => {
 		delete process.env.WEBHOOK_SECRET;
 		delete process.env.ORDER_PRODUCERS_STATE;
+		vi.useRealTimers();
 		vi.unstubAllGlobals();
 	});
 
@@ -365,9 +366,11 @@ describe("order intake with real Convex state", () => {
 	});
 
 	test.each([
-		false,
-		true,
-	])("sends receipts before provider confirmation and retries only failed mail (initial failure: %s)", async (failCustomerFirst) => {
+		"success",
+		"failed",
+		"stalled",
+	] as const)("sends receipts before provider confirmation and retries only failed mail (initial delivery: %s)", async (initialDelivery) => {
+		const failCustomerFirst = initialDelivery !== "success";
 		const t = convexTest(schema, modules);
 		const convex = {
 			mutation: (reference: Parameters<typeof t.mutation>[0], args: unknown) =>
@@ -418,12 +421,25 @@ describe("order intake with real Convex state", () => {
 			createLumaPrintsOrder,
 			confirmLumaPrintsOrder,
 		};
-		if (failCustomerFirst) email.confirmation.mockRejectedValueOnce(new Error("Mail unavailable"));
+		if (initialDelivery === "failed") {
+			email.confirmation.mockRejectedValueOnce(new Error("Mail unavailable"));
+		} else if (initialDelivery === "stalled") {
+			email.confirmation.mockImplementationOnce(() => new Promise<void>(() => {}));
+			vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+		}
 
 		for (let attempt = 0; attempt < 2; attempt++) {
 			const delivery = processStripeWebhookEvent(checkoutEvent(session), adapters);
-			if (failCustomerFirst && attempt === 1) await expect(delivery).resolves.toBeUndefined();
-			else await expect(delivery).rejects.toMatchObject({ status: 500 });
+			const outcome =
+				failCustomerFirst && attempt === 1
+					? expect(delivery).resolves.toBeUndefined()
+					: expect(delivery).rejects.toMatchObject({ status: 500 });
+			if (initialDelivery === "stalled" && attempt === 0) {
+				await vi.waitFor(() => expect(email.confirmation).toHaveBeenCalledOnce());
+				expect(confirmLumaPrintsOrder).not.toHaveBeenCalled();
+				await vi.advanceTimersByTimeAsync(5_000);
+			}
+			await outcome;
 			await t.run((ctx) =>
 				ctx.db.patch(created._id, { printFulfillmentReconciliationLastAttemptAt: 0 }),
 			);

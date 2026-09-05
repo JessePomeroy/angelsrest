@@ -32,7 +32,7 @@ export async function sendOrderReceipt(
 		});
 	}
 	if (receipt.kind !== "send") return;
-	const results = await Promise.allSettled(
+	const delivery = Promise.allSettled(
 		(["customer", "admin"] as const).map(async (audience) => {
 			if (!receipt[audience]) return;
 			if (Date.now() >= receipt.expiresAt) throw new Error("Receipt retry window expired");
@@ -49,6 +49,18 @@ export async function sendOrderReceipt(
 			});
 		}),
 	);
+	// The SDK has no supported abort option. Late acceptance can still be recorded;
+	// retries use the same key if the request outlives this webhook invocation.
+	let timer: ReturnType<typeof setTimeout> | undefined;
+	const results = await Promise.race([
+		delivery,
+		new Promise<PromiseSettledResult<void>[]>((resolve) => {
+			timer = setTimeout(
+				() => resolve([{ status: "rejected", reason: new Error("Receipt delivery timed out") }]),
+				5_000,
+			);
+		}),
+	]).finally(() => clearTimeout(timer));
 	const failure = results.find((result) => result.status === "rejected");
 	if (failure?.status === "rejected") {
 		const error = new OrderReceiptRetryableError("Order receipt delivery needs retry", {
