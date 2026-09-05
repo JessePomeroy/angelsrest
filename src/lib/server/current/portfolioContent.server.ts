@@ -302,7 +302,7 @@ export function createPortfolioContentProvider(
 	const createReader = dependencies.createReader ?? createConvexReader;
 
 	return {
-		async list(_isPreview?: boolean) {
+		async list() {
 			try {
 				return adaptConvexPortfolioList(
 					await createReader().listPublished(AbortSignal.timeout(6_000)),
@@ -311,7 +311,7 @@ export function createPortfolioContentProvider(
 				unavailable();
 			}
 		},
-		async getBySlug(slug: string, _isPreview?: boolean) {
+		async getBySlug(slug: string) {
 			try {
 				return adaptConvexPortfolioDetail(
 					await createReader().getPublishedBySlug(slug, AbortSignal.timeout(6_000)),

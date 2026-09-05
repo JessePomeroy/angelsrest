@@ -562,10 +562,10 @@ export function createBlogContentProvider(dependencies: { createReader?: () => B
 	}
 
 	return {
-		async loadIndex(_isPreview?: boolean) {
+		async loadIndex() {
 			return await loadConvexIndex();
 		},
-		async loadPost(slugValue: string, _isPreview?: boolean) {
+		async loadPost(slugValue: string) {
 			let slug: string;
 			try {
 				slug = canonicalSlug(slugValue);

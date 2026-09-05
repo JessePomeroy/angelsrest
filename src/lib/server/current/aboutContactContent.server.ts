@@ -300,7 +300,7 @@ export function createAboutContactContentProvider(
 	}
 
 	return {
-		async load(_isPreview?: boolean) {
+		async load() {
 			return await loadConvex();
 		},
 	};
