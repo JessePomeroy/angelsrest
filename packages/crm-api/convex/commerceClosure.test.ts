@@ -785,6 +785,12 @@ describe("provider admission", () => {
 			claimToken: CLAIM_A,
 			webhookSecret: WEBHOOK_SECRET,
 		});
+		await expect(t.mutation(api.orders.blockPrintFulfillmentReconciliation, {
+			orderId,
+			externalId: "cs_test_v5queueconfirmation1234",
+			reconciliationClass: "response_contract",
+			webhookSecret: WEBHOOK_SECRET,
+		})).resolves.toBe(true);
 		await expect(t.mutation(api.orders.recordPrintFulfillmentSubmissionReceipt, {
 			orderId,
 			claimToken: CLAIM_A,
@@ -793,11 +799,13 @@ describe("provider admission", () => {
 			webhookSecret: WEBHOOK_SECRET,
 		})).resolves.toEqual({ kind: "recorded" });
 
-		expect(await t.run((ctx) => ctx.db.get(orderId))).toMatchObject({
+		const queued = await t.run((ctx) => ctx.db.get(orderId));
+		expect(queued).toMatchObject({
 			lumaprintsSubmissionOrderNumber: "10001978978",
 			printFulfillmentPhase: "submitting",
 			printFulfillmentResolution: "submission_uncertain",
 		});
+		expect(queued?.printFulfillmentReconciliationClass).toBeUndefined();
 		await expect(t.mutation(api.orders.claimOrderConfirmation, {
 			orderId,
 			webhookSecret: WEBHOOK_SECRET,

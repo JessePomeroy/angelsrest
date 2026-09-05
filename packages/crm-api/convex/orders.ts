@@ -2154,6 +2154,7 @@ export const recordPrintFulfillmentSubmissionReceipt = mutation({
 			printFulfillmentClaimToken: undefined,
 			printFulfillmentClaimedAt: undefined,
 			printFulfillmentLeaseExpiresAt: undefined,
+			printFulfillmentResolution: "submission_uncertain",
 			printFulfillmentReconciliationClass: undefined,
 			printFulfillmentReconciliationBlockedAt: undefined,
 			printFulfillmentReconciliationPendingFirstAt: undefined,
