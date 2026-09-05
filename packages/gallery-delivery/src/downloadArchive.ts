@@ -1,3 +1,10 @@
+import {
+	abortReason,
+	throwIfAborted,
+	raceWithAbort,
+	withGalleryWritable,
+	type FileSystemWritableFileStreamLike,
+} from "./downloadWritable";
 import type { GalleryDownloadImage } from "./downloadPlan";
 
 type SaveFilePickerWindow = Window &
@@ -13,12 +20,6 @@ type SaveFilePickerWindow = Window &
 
 type FileSystemFileHandleLike = {
 	createWritable: () => Promise<FileSystemWritableFileStreamLike>;
-};
-
-type FileSystemWritableFileStreamLike = {
-	write: (data: Blob | BufferSource | string) => Promise<void>;
-	close: () => Promise<void>;
-	abort?: (reason?: unknown) => Promise<void>;
 };
 
 type ZipEntry = {
@@ -49,49 +50,6 @@ let crcTable: Uint32Array | null = null;
 
 export function canSaveGalleryZipFile(win: Window & typeof globalThis = window) {
 	return typeof (win as SaveFilePickerWindow).showSaveFilePicker === "function";
-}
-
-function galleryDownloadAbortError() {
-	return new DOMException("Gallery ZIP download canceled.", "AbortError");
-}
-
-function abortReason(signal?: AbortSignal) {
-	return signal?.reason ?? galleryDownloadAbortError();
-}
-
-function throwIfAborted(signal?: AbortSignal) {
-	if (signal?.aborted) {
-		throw abortReason(signal);
-	}
-}
-
-async function raceWithAbort<T>(
-	operation: Promise<T>,
-	signal: AbortSignal | undefined,
-	onAbort?: () => Promise<void> | void,
-) {
-	if (!signal) return operation;
-	throwIfAborted(signal);
-
-	let abortHandler: (() => void) | undefined;
-	const abort = new Promise<never>((_, reject) => {
-		abortHandler = () => {
-			void Promise.resolve(onAbort?.())
-				.catch(() => {
-					// Surface the user cancellation instead of a best-effort cleanup failure.
-				})
-				.then(() => {
-					reject(abortReason(signal));
-				});
-		};
-		signal.addEventListener("abort", abortHandler, { once: true });
-	});
-
-	try {
-		return await Promise.race([operation, abort]);
-	} finally {
-		if (abortHandler) signal.removeEventListener("abort", abortHandler);
-	}
 }
 
 function getCrcTable() {
@@ -391,13 +349,7 @@ export async function saveGalleryImagesAsZipFile({
 		],
 	});
 	const writable = await file.createWritable();
-	let writableClosed = false;
-	let writableAborted = false;
-	const abortWritable = async (reason: unknown = abortReason(signal)) => {
-		if (writableClosed || writableAborted) return;
-		writableAborted = true;
-		await writable.abort?.(reason);
-	};
+
 	const seenNames = new Map<string, number>();
 	const entries = images.map((image) => ({
 		name: uniqueZipName(image.filename, seenNames),
@@ -415,28 +367,10 @@ export async function saveGalleryImagesAsZipFile({
 		},
 	}));
 
-	try {
+	await withGalleryWritable(writable, signal, async ({ write }) => {
 		for await (const chunk of zipChunks(entries, signal, onProgress)) {
 			throwIfAborted(signal);
-			await raceWithAbort(writable.write(writableChunk(chunk)), signal, () => {
-				return abortWritable(abortReason(signal));
-			});
+			await write(writableChunk(chunk));
 		}
-		throwIfAborted(signal);
-		await raceWithAbort(writable.close(), signal, () => {
-			return abortWritable(abortReason(signal));
-		});
-		writableClosed = true;
-	} catch (error) {
-		if (signal?.aborted) {
-			await abortWritable(abortReason(signal)).catch(() => {
-				// Best-effort cleanup; surface the cancellation reason to the UI.
-			});
-			throw abortReason(signal);
-		}
-		await abortWritable(error).catch(() => {
-			// Best-effort cleanup; surface the original download/write failure.
-		});
-		throw error;
-	}
+	});
 }

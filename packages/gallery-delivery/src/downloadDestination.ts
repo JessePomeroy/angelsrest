@@ -1,3 +1,8 @@
+import {
+	raceWithAbort,
+	withGalleryWritable,
+	type FileSystemWritableFileStreamLike,
+} from "./downloadWritable";
 import type { GalleryDownloadImage } from "./downloadPlan";
 
 type DirectoryPickerWindow = Window &
@@ -14,12 +19,6 @@ type FileSystemDirectoryHandleLike = {
 
 type FileSystemFileHandleLike = {
 	createWritable: () => Promise<FileSystemWritableFileStreamLike>;
-};
-
-type FileSystemWritableFileStreamLike = {
-	write: (data: Blob | BufferSource | string) => Promise<void>;
-	close: () => Promise<void>;
-	abort?: (reason?: unknown) => Promise<void>;
 };
 
 export type GalleryFolderDownloadProgress = {
@@ -44,35 +43,6 @@ function throwIfAborted(signal?: AbortSignal) {
 
 function abortReason(signal?: AbortSignal) {
 	return signal?.reason ?? galleryDownloadAbortError();
-}
-
-async function raceWithAbort<T>(
-	operation: Promise<T>,
-	signal: AbortSignal | undefined,
-	onAbort?: () => Promise<void> | void,
-) {
-	if (!signal) return operation;
-	throwIfAborted(signal);
-
-	let abortHandler: (() => void) | undefined;
-	const abort = new Promise<never>((_, reject) => {
-		abortHandler = () => {
-			void Promise.resolve(onAbort?.())
-				.catch(() => {
-					// The abort reason is more useful to callers than a best-effort cleanup failure.
-				})
-				.then(() => {
-					reject(abortReason(signal));
-				});
-		};
-		signal.addEventListener("abort", abortHandler, { once: true });
-	});
-
-	try {
-		return await Promise.race([operation, abort]);
-	} finally {
-		if (abortHandler) signal.removeEventListener("abort", abortHandler);
-	}
 }
 
 function safeFilename(filename: string) {
@@ -152,65 +122,39 @@ export async function saveGalleryImagesToDirectory({
 
 		const file = await directory.getFileHandle(filename, { create: true });
 		const writable = await file.createWritable();
-		let writableClosed = false;
-		let writableAborted = false;
-		const abortWritable = async (reason: unknown = abortReason(signal)) => {
-			if (writableClosed || writableAborted) return;
-			writableAborted = true;
-			await writable.abort?.(reason);
-		};
 
-		try {
-			if (response.body) {
-				const reader = response.body.getReader();
-				const abortReader = async () => {
-					await Promise.allSettled([
-						reader.cancel(abortReason(signal)),
-						abortWritable(abortReason(signal)),
-					]);
-				};
-				try {
-					while (true) {
-						throwIfAborted(signal);
-						const { value, done } = await raceWithAbort(reader.read(), signal, abortReader);
-						if (done) break;
-						throwIfAborted(signal);
-						if (value)
-							await raceWithAbort(writable.write(value), signal, () => {
-								return abortWritable(abortReason(signal));
-							});
+		await withGalleryWritable(
+			writable,
+			signal,
+			async ({ write, abort }) => {
+				if (response.body) {
+					const reader = response.body.getReader();
+					const abortReader = async () => {
+						await Promise.allSettled([reader.cancel(abortReason(signal)), abort()]);
+					};
+					try {
+						while (true) {
+							throwIfAborted(signal);
+							const { value, done } = await raceWithAbort(
+								reader.read(),
+								signal,
+								abortReader,
+								"Gallery download canceled.",
+							);
+							if (done) break;
+							throwIfAborted(signal);
+							if (value) await write(value);
+						}
+					} finally {
+						reader.releaseLock();
 					}
-				} finally {
-					reader.releaseLock();
+				} else {
+					throwIfAborted(signal);
+					await write(await response.blob());
 				}
-				throwIfAborted(signal);
-				await raceWithAbort(writable.close(), signal, () => {
-					return abortWritable(abortReason(signal));
-				});
-				writableClosed = true;
-			} else {
-				throwIfAborted(signal);
-				await raceWithAbort(writable.write(await response.blob()), signal, () => {
-					return abortWritable(abortReason(signal));
-				});
-				throwIfAborted(signal);
-				await raceWithAbort(writable.close(), signal, () => {
-					return abortWritable(abortReason(signal));
-				});
-				writableClosed = true;
-			}
-		} catch (error) {
-			if (signal?.aborted) {
-				await abortWritable(abortReason(signal)).catch(() => {
-					// Best-effort cleanup; surface the cancellation reason to the UI.
-				});
-				throw abortReason(signal);
-			}
-			await abortWritable(error).catch(() => {
-				// Best-effort cleanup; surface the original write/download failure.
-			});
-			throw error;
-		}
+			},
+			"Gallery download canceled.",
+		);
 
 		throwIfAborted(signal);
 		onProgress?.({
