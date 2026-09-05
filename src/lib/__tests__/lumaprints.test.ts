@@ -304,13 +304,13 @@ describe("LumaPrints request deadlines", () => {
 			name: "LumaPrintsSubmissionError",
 			operation: "create_order",
 			disposition: "uncertain",
-			message: "LumaPrints request timed out after 15000ms",
+			message: "LumaPrints request timed out after 25000ms",
 			details: {
 				operation: "create_order",
 				disposition: "uncertain",
 				phase: "transport",
 				kind: "timeout",
-				timeoutMs: 15_000,
+				timeoutMs: 25_000,
 			},
 		});
 		expect(classifyLumaPrintsFailure(thrown)).toBe("transient");
@@ -331,7 +331,7 @@ describe("LumaPrints request deadlines", () => {
 				disposition: "uncertain",
 				phase: "transport",
 				kind: "network",
-				timeoutMs: 15_000,
+				timeoutMs: 25_000,
 			},
 		});
 	});

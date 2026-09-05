@@ -117,6 +117,7 @@ export class LumaPrintsReconciliationError extends LumaPrintsError {
 }
 
 const LUMAPRINTS_REQUEST_TIMEOUT_MS = 15_000;
+const LUMAPRINTS_CREATE_TIMEOUT_MS = 25_000;
 const LUMAPRINTS_CREATE_RESPONSE_MAX_BYTES = 32 * 1024;
 const LUMAPRINTS_RECONCILIATION_RESPONSE_MAX_BYTES = 2 * 1024 * 1024;
 const LUMAPRINTS_RECONCILIATION_MAX_PAGES = 10;
@@ -263,20 +264,24 @@ function parseOrderResponse(value: unknown): LumaPrintsOrderResponse {
 	return { orderNumber };
 }
 
-async function fetchLumaPrints(path: string, init: RequestInit = {}): Promise<Response> {
+async function fetchLumaPrints(
+	path: string,
+	init: RequestInit = {},
+	timeoutMs = LUMAPRINTS_REQUEST_TIMEOUT_MS,
+): Promise<Response> {
 	try {
 		return await fetch(`${getRuntimeConfig().baseUrl}${path}`, {
 			...init,
-			signal: AbortSignal.timeout(LUMAPRINTS_REQUEST_TIMEOUT_MS),
+			signal: AbortSignal.timeout(timeoutMs),
 		});
 	} catch (error) {
 		const cause = error instanceof Error ? error.name : typeof error;
 		const kind = cause === "TimeoutError" || cause === "AbortError" ? "timeout" : "network";
 		throw new LumaPrintsError(
 			kind === "timeout"
-				? `LumaPrints request timed out after ${LUMAPRINTS_REQUEST_TIMEOUT_MS}ms`
+				? `LumaPrints request timed out after ${timeoutMs}ms`
 				: "LumaPrints network request failed",
-			{ kind, timeoutMs: LUMAPRINTS_REQUEST_TIMEOUT_MS, cause },
+			{ kind, timeoutMs, cause },
 		);
 	}
 }
@@ -411,21 +416,25 @@ async function rejectionDiagnostics(response: Response): Promise<LumaPrintsError
 export async function createOrder(order: LumaPrintsOrder): Promise<LumaPrintsOrderResponse> {
 	let res: Response;
 	try {
-		res = await fetchLumaPrints("/api/v1/orders", {
-			method: "POST",
-			headers: getHeaders(),
-			body: JSON.stringify(order),
-		});
+		res = await fetchLumaPrints(
+			"/api/v1/orders",
+			{
+				method: "POST",
+				headers: getHeaders(),
+				body: JSON.stringify(order),
+			},
+			LUMAPRINTS_CREATE_TIMEOUT_MS,
+		);
 	} catch (error) {
 		const details =
 			error instanceof LumaPrintsError && object(error.details) ? error.details : null;
 		const kind = details?.kind === "timeout" ? "timeout" : "network";
 		throw new LumaPrintsSubmissionError(
 			kind === "timeout"
-				? `LumaPrints request timed out after ${LUMAPRINTS_REQUEST_TIMEOUT_MS}ms`
+				? `LumaPrints request timed out after ${LUMAPRINTS_CREATE_TIMEOUT_MS}ms`
 				: "LumaPrints network request failed",
 			"uncertain",
-			{ phase: "transport", kind, timeoutMs: LUMAPRINTS_REQUEST_TIMEOUT_MS },
+			{ phase: "transport", kind, timeoutMs: LUMAPRINTS_CREATE_TIMEOUT_MS },
 		);
 	}
 	if (!res.ok) {
@@ -448,7 +457,7 @@ export async function createOrder(order: LumaPrintsOrder): Promise<LumaPrintsOrd
 			new LumaPrintsSubmissionError("Order submission response stream failed", "uncertain", {
 				phase: "transport",
 				kind: "network",
-				timeoutMs: LUMAPRINTS_REQUEST_TIMEOUT_MS,
+				timeoutMs: LUMAPRINTS_CREATE_TIMEOUT_MS,
 			}),
 		() =>
 			new LumaPrintsSubmissionError(
