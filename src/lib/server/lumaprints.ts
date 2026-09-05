@@ -636,6 +636,7 @@ export function buildLumaPrintsOrder(
 		externalId,
 		storeId: getStoreId(),
 		shippingMethod: "default",
+		productionTime: "regular",
 		recipient: {
 			firstName: recipient.firstName,
 			lastName: recipient.lastName || recipient.firstName,

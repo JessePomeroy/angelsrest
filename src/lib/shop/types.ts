@@ -41,6 +41,7 @@ export interface LumaPrintsOrder {
 	externalId: string;
 	storeId: number;
 	shippingMethod: string;
+	productionTime: "regular";
 	recipient: {
 		firstName: string;
 		lastName: string;

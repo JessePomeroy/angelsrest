@@ -372,6 +372,7 @@ describe("print fulfillment", () => {
 			externalId: id,
 			storeId: 123,
 			shippingMethod: "default",
+			productionTime: "regular",
 			recipient: {
 				firstName: "Jane",
 				lastName: "Doe",
