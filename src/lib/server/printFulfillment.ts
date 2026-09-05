@@ -32,7 +32,7 @@ import {
 	formatFailureForAdmin,
 } from "$lib/server/webhookErrorClassification";
 import { getWebhookSecret } from "$lib/server/webhookSecret";
-import type { LumaPrintsOrder, LumaPrintsOrderResponse } from "$lib/shop/types";
+import type { LumaPrintsOrder, LumaPrintsOrderResponse, OrderItem } from "$lib/shop/types";
 
 /** Distinguishes automated recovery refunds from manual refunds. */
 const REFUND_AUTOMATION_TAG = "fulfillment_recovery_v1";
@@ -58,6 +58,7 @@ export type ConfirmLumaPrintsOrder = (
 
 export type PrintFulfillmentOutcome =
 	| { kind: "fulfilled"; lumaprintsOrderNumber: string }
+	| { kind: "scheduled" }
 	| { kind: "no_print_items" }
 	| { kind: "no_print_items_replayed" }
 	| { kind: "canceled" }
@@ -97,6 +98,8 @@ export interface PrintFulfillmentAdapters {
 	createLumaPrintsOrder: SubmitLumaPrintsOrder;
 	confirmLumaPrintsOrder?: ConfirmLumaPrintsOrder;
 	findLumaPrintsOrder?: (externalId: string) => Promise<LumaPrintsOrderResponse | null>;
+	preparedItems?: OrderItem[];
+	printJobLeaseToken?: string;
 }
 
 export interface PermanentFulfillmentFailureAdapters {
@@ -202,12 +205,15 @@ export async function submitPrintFulfillment(
 		createLumaPrintsOrder,
 		confirmLumaPrintsOrder = confirmOrder,
 		findLumaPrintsOrder = findOrderByExternalId,
+		preparedItems,
+		printJobLeaseToken,
 	}: PrintFulfillmentAdapters,
 	input: {
 		orderId: Id<"orders">;
 		orderNumber: string;
 		fulfillmentType?: "lumaprints" | "self" | "digital";
 		tenantId?: string;
+		siteUrl: string;
 		lineItems: Stripe.LineItem[];
 		shippingDetails: ShippingDetails;
 		session: Stripe.Checkout.Session;
@@ -219,6 +225,7 @@ export async function submitPrintFulfillment(
 		orderNumber,
 		fulfillmentType = "lumaprints",
 		tenantId,
+		siteUrl,
 		lineItems,
 		shippingDetails,
 		session,
@@ -264,6 +271,7 @@ export async function submitPrintFulfillment(
 	const claimed = await convex.mutation(api.orders.claimPrintFulfillmentV5, {
 		orderId,
 		claimToken,
+		...(printJobLeaseToken ? { printJobLeaseToken } : {}),
 		...tenantFence,
 		webhookSecret,
 	});
@@ -357,6 +365,7 @@ export async function submitPrintFulfillment(
 			const refreshed = await convex.mutation(api.orders.claimPrintFulfillmentV5, {
 				orderId,
 				claimToken,
+				...(printJobLeaseToken ? { printJobLeaseToken } : {}),
 				...tenantFence,
 				webhookSecret,
 			});
@@ -452,18 +461,20 @@ export async function submitPrintFulfillment(
 	};
 
 	let recipient;
-	let items;
+	let items: OrderItem[];
 	try {
 		recipient = checkoutSnapshot?.items.some(
 			({ productKind }) => productKind === "print" || productKind === "print_set",
 		)
 			? buildRecipientFromShipping(shippingDetails)
 			: undefined;
-		items = checkoutSnapshot
-			? await import("$lib/server/snapshotFulfillment").then(({ buildOrderItemsFromSnapshot }) =>
-					buildOrderItemsFromSnapshot(checkoutSnapshot, session.id, lineItems),
-				)
-			: (legacyItems ?? []);
+		items =
+			preparedItems ??
+			(checkoutSnapshot
+				? await import("$lib/server/snapshotFulfillment").then(({ buildOrderItemsFromSnapshot }) =>
+						buildOrderItemsFromSnapshot(checkoutSnapshot, session.id, lineItems, siteUrl),
+					)
+				: (legacyItems ?? []));
 	} catch (cause) {
 		await releasePreparationClaim();
 		throw cause;
@@ -481,29 +492,17 @@ export async function submitPrintFulfillment(
 
 	let lpOrder: LumaPrintsOrder;
 	try {
-		const borderedItems = items
-			.map((item, index) => ({
-				index,
-				imageUrl: item.imageUrl,
-				borderWidthInches: item.borderWidth ?? 0,
-				sourcePolicy: item.sourcePolicy ?? ("byte_exact" as const),
-			}))
-			.filter((item) => item.borderWidthInches > 0);
-		if (borderedItems.length > 0) {
-			const { processBorderedPrints } = await import("$lib/server/sharpBorder");
-			const urlMap = await timed(
+		if (!preparedItems) {
+			const { preparePrintSources } = await import("$lib/server/printSourcePreparation");
+			items = await timed(
 				{
-					event: "sharp.bordered",
+					event: "sharp.prepared",
 					stage: "sharp_composite",
 					orderId: orderNumber,
-					meta: { borderedCount: borderedItems.length },
+					meta: { printCount: items.length },
 				},
-				() => processBorderedPrints(borderedItems, session.id),
+				() => preparePrintSources(items, { siteUrl }),
 			);
-			for (const [index, r2Url] of urlMap) {
-				items[index].imageUrl = r2Url;
-				items[index].sourcePolicy = "bordered_r2";
-			}
 		}
 		recipient ??= buildRecipientFromShipping(shippingDetails);
 		lpOrder = buildLumaPrintsOrder(session.id, recipient, items);
@@ -515,6 +514,7 @@ export async function submitPrintFulfillment(
 	const submission = await convex.mutation(api.orders.beginPrintFulfillmentSubmission, {
 		orderId,
 		claimToken,
+		...(printJobLeaseToken ? { printJobLeaseToken } : {}),
 		...tenantFence,
 		webhookSecret,
 	});
@@ -596,6 +596,9 @@ export async function submitPrintFulfillment(
 			errorSummary: "Fulfillment was already refunded",
 		};
 	}
+	// A new queued job gives the provider time to persist its preliminary POST receipt.
+	if (preparedItems)
+		throw new PrintReconciliationPendingError("Print provider confirmation is pending");
 	return reconcileSubmission(submission.externalId, result.orderNumber);
 }
 

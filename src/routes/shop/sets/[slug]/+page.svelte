@@ -10,12 +10,12 @@ import { cart } from "$lib/shop/cart.svelte";
 import { cartUI } from "$lib/shop/cartUI.svelte";
 import { toasts } from "$lib/stores/toast.svelte";
 import {
+	getAvailableFrames,
 	getFrame,
 	getPaper,
 	getSize,
 	isCanvasPaper,
 	V2_BORDER_OPTIONS,
-	V2_FRAME_OPTIONS,
 } from "@jessepomeroy/print-catalog";
 import {
 	getAvailablePrintPapers,
@@ -66,6 +66,8 @@ const availableSizes = $derived.by(() => {
 	return getAvailablePrintSizes(data.printSet.variants, selectedPaperSlug);
 });
 
+const availableFrames = $derived(getAvailableFrames(selectedSizeSlug));
+
 $effect(() => {
 	if (
 		availableSizes.length > 0 &&
@@ -73,6 +75,10 @@ $effect(() => {
 	) {
 		selectedSizeSlug = availableSizes[0].slug;
 	}
+});
+
+$effect(() => {
+	if (!availableFrames.some((frame) => frame.value === selectedFrame)) selectedFrame = "none";
 });
 
 const selectedConfiguration = $derived.by(() => {
@@ -301,7 +307,7 @@ function handleAddToCart() {
 							Frame
 						</label>
 						<select id="set-frame" class="select w-full" bind:value={selectedFrame}>
-							{#each V2_FRAME_OPTIONS as frame (frame.value)}
+							{#each availableFrames as frame (frame.value)}
 								<option value={frame.value}>{frame.label}</option>
 							{/each}
 						</select>

@@ -47,5 +47,71 @@ describe("server runtime configuration", () => {
 			storeId: 83765,
 		});
 		expect(Object.isFrozen(config)).toBe(true);
+		delete privateEnv.LUMAPRINTS_USE_SANDBOX;
+		expect(() => getLumaPrintsRuntimeConfig()).toThrow("LumaPrints is not configured");
+		privateEnv.LUMAPRINTS_USE_SANDBOX = "false";
+		expect(getLumaPrintsRuntimeConfig().baseUrl).toBe("https://us.api.lumaprints.com");
+	});
+
+	it("selects CMS-media credentials by trusted tenant", async () => {
+		publicEnv.PUBLIC_SITE_URL = "https://www.angelsrest.online";
+		privateEnv.CMS_MEDIA_WORKER_SECRET = "hub-secret";
+		privateEnv.CATALOG_PRINT_SOURCE_ISSUER_SECRET = "hub-issuer";
+		privateEnv.CMS_MEDIA_WORKER_TENANT_SECRETS = JSON.stringify({
+			"client.example": ["c".repeat(32)],
+		});
+		privateEnv.CATALOG_PRINT_SOURCE_ISSUER_TENANT_SECRETS = JSON.stringify({
+			"client.example": ["i".repeat(32)],
+		});
+		const { getCatalogPrintSourceIssuerSecret, getCmsMediaTenantSecret } = await import(
+			"$lib/server/runtimeConfig"
+		);
+
+		expect(getCmsMediaTenantSecret("angelsrest.online")).toBe("hub-secret");
+		expect(getCmsMediaTenantSecret("client.example")).toBe("c".repeat(32));
+		expect(getCatalogPrintSourceIssuerSecret("angelsrest.online")).toBe("hub-issuer");
+		expect(getCatalogPrintSourceIssuerSecret("client.example")).toBe("i".repeat(32));
+		expect(() => getCmsMediaTenantSecret("unknown.example")).toThrow("CMS media is not configured");
+		expect(() => getCatalogPrintSourceIssuerSecret("unknown.example")).toThrow(
+			"Print source issuer is not configured",
+		);
+		privateEnv.CATALOG_PRINT_SOURCE_ISSUER_TENANT_SECRETS = JSON.stringify({
+			"client.example": ["i".repeat(32), "i".repeat(32)],
+		});
+		expect(() => getCatalogPrintSourceIssuerSecret("client.example")).toThrow(
+			"Print source issuer is not configured",
+		);
+	});
+
+	it("rejects credential reuse across tenants, rotations, and Worker roles", async () => {
+		publicEnv.PUBLIC_SITE_URL = "https://angelsrest.online";
+		privateEnv.CMS_MEDIA_WORKER_SECRET = "u".repeat(32);
+		privateEnv.CATALOG_PRINT_SOURCE_ISSUER_SECRET = "i".repeat(32);
+		privateEnv.CMS_MEDIA_WORKER_TENANT_SECRETS = JSON.stringify({
+			"a.example": ["a".repeat(32), "p".repeat(32)],
+			"b.example": ["b".repeat(32)],
+		});
+		privateEnv.CATALOG_PRINT_SOURCE_ISSUER_TENANT_SECRETS = JSON.stringify({
+			"a.example": ["x".repeat(32)],
+			"b.example": ["p".repeat(32)],
+		});
+		const { getCatalogPrintSourceIssuerSecret } = await import("$lib/server/runtimeConfig");
+
+		expect(() => getCatalogPrintSourceIssuerSecret("a.example")).toThrow(
+			"Print source issuer is not configured",
+		);
+		privateEnv.CATALOG_PRINT_SOURCE_ISSUER_TENANT_SECRETS = JSON.stringify({
+			"a.example": ["x".repeat(32)],
+			"b.example": ["i".repeat(32)],
+		});
+		expect(() => getCatalogPrintSourceIssuerSecret("a.example")).toThrow(
+			"Print source issuer is not configured",
+		);
+		privateEnv.CATALOG_PRINT_SOURCE_ISSUER_TENANT_SECRETS = JSON.stringify({
+			"a.example": ["u".repeat(32)],
+		});
+		expect(() => getCatalogPrintSourceIssuerSecret("a.example")).toThrow(
+			"Print source issuer is not configured",
+		);
 	});
 });

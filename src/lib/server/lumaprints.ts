@@ -1,5 +1,7 @@
 // Server-only LumaPrints client; see LUMAPRINTS.md for integration constraints.
 
+import { getFramedPaperOptionId } from "@jessepomeroy/print-catalog";
+import { FulfillmentValidationError } from "$lib/server/fulfillmentValidationError";
 import { normalizeLumaPrintsProviderNumber } from "$lib/server/lumaprintsProviderNumber";
 import { getLumaPrintsRuntimeConfig } from "$lib/server/runtimeConfig";
 import type {
@@ -118,6 +120,7 @@ export class LumaPrintsReconciliationError extends LumaPrintsError {
 
 const LUMAPRINTS_REQUEST_TIMEOUT_MS = 15_000;
 const LUMAPRINTS_CREATE_TIMEOUT_MS = 25_000;
+const LUMAPRINTS_RECONCILIATION_TIMEOUT_MS = 20_000;
 const LUMAPRINTS_CREATE_RESPONSE_MAX_BYTES = 32 * 1024;
 const LUMAPRINTS_RECONCILIATION_RESPONSE_MAX_BYTES = 2 * 1024 * 1024;
 const LUMAPRINTS_RECONCILIATION_MAX_PAGES = 10;
@@ -608,13 +611,23 @@ export async function findOrderByExternalId(
 	let rowsRead = 0;
 	let match: LumaPrintsOrderResponse | null = null;
 	const seenOrderNumbers = new Set<string>();
+	const deadline = Date.now() + LUMAPRINTS_RECONCILIATION_TIMEOUT_MS;
+	const timeBoundFailure = () =>
+		reconciliationRetryable("Order reconciliation response exceeded its time bound");
 
 	for (let page = 1; page <= LUMAPRINTS_RECONCILIATION_MAX_PAGES; page += 1) {
+		const remainingMs = deadline - Date.now();
+		if (remainingMs <= 0) throw timeBoundFailure();
 		const query = new URLSearchParams({ storeId: String(storeId), page: String(page) });
 		let res: Response;
 		try {
-			res = await fetchLumaPrints(`/api/v1/orders?${query}`, { headers: getHeaders() });
+			res = await fetchLumaPrints(
+				`/api/v1/orders?${query}`,
+				{ headers: getHeaders() },
+				Math.min(LUMAPRINTS_REQUEST_TIMEOUT_MS, remainingMs),
+			);
 		} catch (error) {
+			if (Date.now() >= deadline) throw timeBoundFailure();
 			const details =
 				error instanceof LumaPrintsError && object(error.details) ? error.details : null;
 			if (details?.kind === "network" || details?.kind === "timeout") {
@@ -634,9 +647,13 @@ export async function findOrderByExternalId(
 			LUMAPRINTS_RECONCILIATION_RESPONSE_MAX_BYTES,
 			() =>
 				reconciliationFailure("Order reconciliation response was malformed", "response_contract"),
-			() => reconciliationRetryable("Order reconciliation stream failed"),
+			() =>
+				Date.now() >= deadline
+					? timeBoundFailure()
+					: reconciliationRetryable("Order reconciliation stream failed"),
 			() => reconciliationRetryable("Order reconciliation response exceeded its size bound"),
 		);
+		if (Date.now() >= deadline) throw timeBoundFailure();
 		const parsed = parseReconciliationPage(body, storeId);
 		if (
 			parsed.currentPage !== page ||
@@ -695,7 +712,7 @@ export async function findOrderByExternalId(
 	throw reconciliationRetryable("Order reconciliation response exceeded its pagination bound");
 }
 
-/** Pure payload builder: direct paper uses option 39, framed paper [67, 96], and canvas [3]. */
+/** Pure payload builder for direct paper, framed paper, and canvas options. */
 export function buildLumaPrintsOrder(
 	externalId: string,
 	recipient: Recipient,
@@ -720,6 +737,10 @@ export function buildLumaPrintsOrder(
 		orderItems: items.map((item, i) => {
 			const isCanvas = typeof item.canvasSubcategoryId === "number" && item.canvasSubcategoryId > 0;
 			const isFramed = typeof item.frameSubcategoryId === "number" && item.frameSubcategoryId > 0;
+			const framedPaperOption = isFramed ? getFramedPaperOptionId(item.paperSubcategoryId) : null;
+			if (isFramed && framedPaperOption === null) {
+				throw new FulfillmentValidationError("Framed print paper is unsupported");
+			}
 			// Priority: canvas > frame > paper subcategory
 			const subcategoryId = isCanvas
 				? (item.canvasSubcategoryId as number)
@@ -731,9 +752,8 @@ export function buildLumaPrintsOrder(
 			if (isCanvas) {
 				options.push(3); // Solid Color wrap
 				solidColorHexCode = item.canvasWrapHex || "#000000";
-			} else if (isFramed) {
-				// Framed Fine Art Paper has its own option groups. The direct-paper
-				// no-bleed option is not valid for this subcategory.
+			} else if (framedPaperOption !== null) {
+				options.push(framedPaperOption);
 				options.push(67); // Mat size: 2"
 				options.push(96); // Mat color: White
 			} else {

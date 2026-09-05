@@ -9,6 +9,10 @@ import {
 } from "@jessepomeroy/print-catalog";
 import { env } from "$env/dynamic/private";
 import type { CheckoutSnapshotItem } from "$lib/server/checkoutCatalog";
+import {
+	getCatalogPrintSourceIssuerSecret,
+	getCmsMediaTenantSecret,
+} from "$lib/server/runtimeConfig";
 
 const PATHS = {
 	checkout: "/commerce/catalog/checkout/resolve",
@@ -46,6 +50,8 @@ const PRINT_CAPABILITY_TTL_MS = 24 * 60 * 60 * 1000;
 const PRINT_CAPABILITY_MIN_REMAINING_MS = PRINT_CAPABILITY_TTL_MS - 60 * 60 * 1000;
 const PAID_CAPABILITY_TTL_MS = 15 * 60 * 1000;
 const CATALOG_RESPONSE_BODY_MAX_BYTES = 64 * 1024;
+const CMS_MEDIA_WORKER_ORIGIN = "https://cms-media-worker.thinkingofview.workers.dev";
+const CMS_UPLOAD_TOKEN_HEADER = "X-CMS-Media-Upload-Token";
 
 type Config = {
 	origin?: string;
@@ -730,9 +736,151 @@ async function issue(purpose: IssuerPurpose, value: Descriptor, config = configu
 	} catch {
 		throw rejected();
 	}
-	return result.url;
+	return { url: result.url, expiresAt };
 }
 export const issuePrintSource = (value: PrintSourceDescriptor, config?: Config) =>
-	issue("print_source", value, config);
+	issue("print_source", value, config).then(({ url }) => url);
+export const issueTenantPrintSourceCapability = (value: PrintSourceDescriptor, siteUrl?: string) =>
+	issue("print_source", value, {
+		...configured("print_source"),
+		bearer: getCatalogPrintSourceIssuerSecret(siteUrl),
+	});
+export const issueTenantPrintSource = (value: PrintSourceDescriptor, siteUrl?: string) =>
+	issueTenantPrintSourceCapability(value, siteUrl).then(({ url }) => url);
 export const issuePaidFile = (value: Descriptor, config?: Config) =>
-	issue("paid_file", value, config);
+	issue("paid_file", value, config).then(({ url }) => url);
+
+export async function storeRenderedPrintSource(
+	siteUrl: string,
+	rendered: { bytes: Uint8Array; hash: string; width: number; height: number },
+	config?: { upload?: Config; issue?: Config },
+) {
+	const descriptor = await storePrintArtifact(siteUrl, rendered, config?.upload);
+	return config?.issue
+		? issuePrintSource(descriptor, config.issue)
+		: issueTenantPrintSource(descriptor, siteUrl);
+}
+
+/** Persist the immutable artifact separately from its short-lived download capability. */
+export async function storePrintArtifact(
+	siteUrl: string,
+	rendered: { bytes: Uint8Array; hash: string; width: number; height: number },
+	upload: Config = {
+		origin: CMS_MEDIA_WORKER_ORIGIN,
+		bearer: getCmsMediaTenantSecret(siteUrl),
+	},
+) {
+	if (
+		!/^([a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/.test(
+			siteUrl,
+		) ||
+		!sha256.test(rendered.hash) ||
+		rendered.bytes.byteLength < 1 ||
+		rendered.bytes.byteLength > PRINT_SOURCE_BYTES_MAX ||
+		!positiveSourceDimension(rendered.width) ||
+		!positiveSourceDimension(rendered.height)
+	) {
+		throw rejected();
+	}
+	const assetKey = `lumaprints-render-v1-${rendered.hash}`;
+	const key = `sites/${siteUrl}/catalog/print-sources/${assetKey}/original`;
+	const descriptor = {
+		key,
+		hash: rendered.hash,
+		bytes: rendered.bytes.byteLength,
+		mime: "image/jpeg" as const,
+		dimensions: { width: rendered.width, height: rendered.height },
+	};
+	const response = await (upload.fetch ?? fetch)(
+		endpoint(upload, "/v1/catalog-assets/uploads/capabilities"),
+		{
+			method: "POST",
+			headers: { Authorization: `Bearer ${upload.bearer}`, "Content-Type": "application/json" },
+			body: JSON.stringify({
+				siteUrl,
+				kind: "print_source",
+				assetKey,
+				originalFilename: `${assetKey}.jpg`,
+				contentType: descriptor.mime,
+				sizeBytes: descriptor.bytes,
+				sha256: descriptor.hash,
+				provenance: {
+					provider: "editor_upload",
+					sourceId: `fulfillment-render:${descriptor.hash}`,
+				},
+				widthPixels: descriptor.dimensions.width,
+				heightPixels: descriptor.dimensions.height,
+			}),
+			signal: upload.signal
+				? AbortSignal.any([upload.signal, AbortSignal.timeout(5_000)])
+				: AbortSignal.timeout(5_000),
+		},
+	).catch(() => {
+		throw new CatalogBoundaryError("unavailable", "fetch");
+	});
+	if (!response.ok) {
+		throw new CatalogBoundaryError(response.status === 409 ? "rejected" : "unavailable", "status");
+	}
+	const value = await readJson(response);
+	const stored =
+		object(value) &&
+		value.status === "stored_unverified" &&
+		object(value.asset) &&
+		value.asset.privateObjectKey === key &&
+		value.asset.sha256 === descriptor.hash &&
+		value.asset.sizeBytes === descriptor.bytes &&
+		value.asset.contentType === descriptor.mime;
+	if (!stored) {
+		if (
+			!object(value) ||
+			!exact(value, [
+				"status",
+				"kind",
+				"assetKey",
+				"privateObjectKey",
+				"uploadUrl",
+				"uploadToken",
+				"expiresAt",
+			]) ||
+			value.status !== "upload_required" ||
+			value.kind !== "print_source" ||
+			value.assetKey !== assetKey ||
+			value.privateObjectKey !== key ||
+			typeof value.uploadUrl !== "string" ||
+			typeof value.uploadToken !== "string" ||
+			!capabilityToken.test(value.uploadToken)
+		) {
+			throw rejected();
+		}
+		const uploadUrl = new URL(value.uploadUrl, upload.origin);
+		if (
+			uploadUrl.origin !== upload.origin ||
+			uploadUrl.pathname !== "/v1/catalog-assets/uploads/source" ||
+			uploadUrl.searchParams.size !== 1 ||
+			uploadUrl.searchParams.get("key") !== key
+		) {
+			throw rejected();
+		}
+		const storedResponse = await (upload.fetch ?? fetch)(uploadUrl, {
+			method: "PUT",
+			headers: {
+				"Content-Type": descriptor.mime,
+				"Content-Length": String(descriptor.bytes),
+				[CMS_UPLOAD_TOKEN_HEADER]: value.uploadToken,
+			},
+			body: new Uint8Array(rendered.bytes),
+			signal: upload.signal
+				? AbortSignal.any([upload.signal, AbortSignal.timeout(20_000)])
+				: AbortSignal.timeout(20_000),
+		}).catch(() => {
+			throw new CatalogBoundaryError("unavailable", "fetch");
+		});
+		if (!storedResponse.ok) {
+			throw new CatalogBoundaryError(
+				storedResponse.status === 409 ? "rejected" : "unavailable",
+				"status",
+			);
+		}
+	}
+	return descriptor;
+}
