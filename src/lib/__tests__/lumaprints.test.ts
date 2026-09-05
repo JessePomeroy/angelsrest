@@ -259,10 +259,12 @@ describe("LumaPrintsError", () => {
 
 describe("LumaPrints request deadlines", () => {
 	beforeEach(() => {
+		vi.restoreAllMocks();
 		vi.unstubAllGlobals();
 	});
 
 	it("applies an active deadline signal to the create-order POST", async () => {
+		const timeout = vi.spyOn(AbortSignal, "timeout");
 		const fetchMock = vi
 			.fn()
 			.mockResolvedValue(providerJson({ message: "queued", orderNumber: 10000000001 }));
@@ -271,6 +273,7 @@ describe("LumaPrints request deadlines", () => {
 		await createOrder(buildLumaPrintsOrder("deadline-order", mockRecipient, mockItems));
 
 		expect(fetchMock).toHaveBeenCalledOnce();
+		expect(timeout).toHaveBeenCalledWith(25_000);
 		for (const [, init] of fetchMock.mock.calls) {
 			expect(init.signal).toBeInstanceOf(AbortSignal);
 			expect((init.signal as AbortSignal).aborted).toBe(false);
@@ -278,12 +281,14 @@ describe("LumaPrints request deadlines", () => {
 	});
 
 	it("passes an active deadline signal to the reconciliation GET", async () => {
+		const timeout = vi.spyOn(AbortSignal, "timeout");
 		const fetchMock = vi.fn().mockResolvedValue(providerPage([]));
 		vi.stubGlobal("fetch", fetchMock);
 
 		await expect(findOrderByExternalId("cs_test_1234567890abcdef")).resolves.toBeNull();
 
 		expect(fetchMock).toHaveBeenCalledOnce();
+		expect(timeout).toHaveBeenCalledWith(15_000);
 		const [rawUrl, init] = fetchMock.mock.calls[0];
 		expect(String(rawUrl)).toContain("/api/v1/orders?");
 		expect(init.method).toBeUndefined();
