@@ -117,7 +117,7 @@ jobs:
 
       - name: Browser and public server E2E
         id: e2e
-        run: pnpm test:e2e
+        run: pnpm test:e2e --repeat-each=10
 
       - name: Preserve failed browser diagnostics
         if: failure() && steps.e2e.outcome == 'failure'
