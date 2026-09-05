@@ -1,5 +1,13 @@
 # @jessepomeroy/crm-api
 
+## 5.0.1
+
+### Patch Changes
+
+- 22ca9d4: Support terminal local cancellation of unresolved print fulfillment.
+- 97e7eac: Honor published product fulfillment modes when creating and replaying checkout orders.
+- 89ba937: Keep LumaPrints queue receipts provisional until the provider confirms the order.
+
 ## 5.0.0
 
 ### Major Changes
