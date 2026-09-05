@@ -49,6 +49,7 @@ import {
 	richTextSpanValidator,
 } from "./helpers/richTextContract";
 import { stripeFeeCaptureErrorValidator } from "./helpers/stripeFeeCapture";
+import { printJobDescriptor, printJobItem, printJobStage } from "./helpers/printFulfillmentJobs";
 import { categoryValidator } from "./helpers/validators";
 
 const contentBlockValueValidator = v.union(
@@ -1043,8 +1044,23 @@ export default defineSchema({
 		.index("by_accountScope_and_stripeSessionId", ["accountScope", "stripeSessionId"])
 		.index("by_stripeRefundId", ["stripeRefundId"]),
 
+	// Image bytes remain in R2; one child row checkpoints each bounded print source.
+	printFulfillmentJobs: defineTable({
+		orderId: v.id("orders"), stage: printJobStage,
+		cursor: v.number(), ordinalCount: v.number(), sourceCount: v.number(),
+		attempts: v.number(), startedAt: v.number(), nextAt: v.number(),
+		leaseToken: v.optional(v.string()), leaseExpiresAt: v.optional(v.number()),
+		errorCode: v.optional(v.string()),
+	}).index("by_orderId", ["orderId"]),
+	printFulfillmentSources: defineTable({
+		jobId: v.id("printFulfillmentJobs"), index: v.number(),
+		descriptor: printJobDescriptor, item: printJobItem,
+		url: v.optional(v.string()), expiresAt: v.optional(v.number()),
+	}).index("by_jobId_and_index", ["jobId", "index"]),
+
 	// Print orders (from Stripe checkout on any client site)
 	orders: defineTable({
+		printJobId: v.optional(v.id("printFulfillmentJobs")),
 		tenantId: v.optional(v.string()),
 		siteUrl: v.string(),
 		orderNumber: v.string(),

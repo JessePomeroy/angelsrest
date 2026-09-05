@@ -38,6 +38,7 @@ import {
 	parseCanonicalOrderNumber,
 } from "./helpers/numbering";
 import { assertOrderProducersOpen } from "./helpers/orderProducerGate";
+import { enqueuePrintFulfillmentJob } from "./helpers/printFulfillmentJobs";
 import { resolveBoundedOrderStatsScan } from "./helpers/orderStats";
 import {
 	classifyRefundTargetRows,
@@ -229,7 +230,11 @@ function hasUncertainPrintSubmission(order: Doc<"orders">) {
 function printReconciliationRetryAt(order: Doc<"orders">) {
 	const attempts = order.printFulfillmentReconciliationPendingAttempts;
 	const lastAttemptAt = order.printFulfillmentReconciliationLastAttemptAt;
-	if (!attempts || lastAttemptAt === undefined) return undefined;
+	if (!attempts || lastAttemptAt === undefined) {
+		return order.printJobId && order.printFulfillmentReconciliationPendingFirstAt !== undefined
+			? order.printFulfillmentReconciliationPendingFirstAt + PRINT_RECONCILIATION_INITIAL_DELAY_MS
+			: undefined;
+	}
 	return lastAttemptAt + Math.min(
 		PRINT_RECONCILIATION_INITIAL_DELAY_MS * 4 ** (attempts - 1),
 		60 * 60 * 1000,
@@ -840,6 +845,7 @@ export const create = mutation({
 		stripeSessionCreatedAt: v.optional(v.number()),
 		stripeSessionExpiresAt: v.optional(v.number()),
 		checkoutSnapshot: v.optional(checkoutSnapshotValidator),
+		runPrintJob: v.optional(v.literal(true)),
 		// Unknown by design: an existing paid order must win before a malformed V2 candidate is interpreted.
 		checkoutSnapshotReservation: v.optional(v.any()),
 		// Unknown by design: an existing paid order must win before a malformed
@@ -889,8 +895,10 @@ export const create = mutation({
 			checkoutSessionAdmission,
 			stripeSessionCreatedAt,
 			stripeSessionExpiresAt,
+			runPrintJob,
 			...rest
 		} = args;
+		if (runPrintJob && auth.via !== "webhook") throw new Error("Print jobs require webhook authority");
 		await assertTenantRouting(ctx, tenantId, args.siteUrl);
 		// Idempotency: if an order with this stripeSessionId already exists,
 		// return it along with fulfillment state so the caller can skip
@@ -953,6 +961,7 @@ export const create = mutation({
 			}
 			return {
 				_id: existing._id,
+				printJobId: existing.printJobId,
 				orderNumber: existing.orderNumber,
 				alreadyExisted: true as const,
 				fulfillmentType,
@@ -1123,6 +1132,10 @@ export const create = mutation({
 		if (refundIntent) {
 			await ctx.db.patch(refundIntent._id, { orderId: _id, consumedAt: Date.now() });
 		}
+		const printJobId = runPrintJob && auth.via === "webhook" && !isManuallyRefunded
+			&& orderInput.fulfillmentType === "lumaprints" && orderInput.checkoutSnapshot?.catalogProvider === "convex"
+			? await enqueuePrintFulfillmentJob(ctx, _id, orderInput.checkoutSnapshot.items.length)
+			: undefined;
 
 		// Schedule Stripe fee capture off the webhook hot path (audit H5).
 		// Stripe's balance_transaction isn't populated the instant
@@ -1139,6 +1152,7 @@ export const create = mutation({
 
 		return {
 			_id,
+			printJobId,
 			orderNumber,
 			// Old webhook consumers already treat `alreadyExisted` refunded rows as
 			// terminal and suppress fulfillment and notification side effects.
@@ -1619,6 +1633,7 @@ export const claimPrintFulfillment = mutation({
 		await requireWebhookCallerOrAuth(ctx, args.webhookSecret, { allowAuth: false });
 		const order = await ctx.db.get(args.orderId);
 		if (!order) throw new Error("Order not found");
+		if (order.printJobId) return { kind: "busy" as const };
 		if (order.lumaprintsOrderNumber)
 			return { kind: "fulfilled" as const, orderNumber: order.lumaprintsOrderNumber };
 		if (hasUncertainPrintSubmission(order)) {
@@ -1670,6 +1685,7 @@ export const claimPrintFulfillmentV2 = mutation({
 		if (!CLAIM_TOKEN.test(args.claimToken)) throw new Error("Invalid print claim token");
 		const order = await ctx.db.get(args.orderId);
 		if (!order) throw new Error("Order not found");
+		if (order.printJobId) return { kind: "busy" as const };
 		if (order.lumaprintsOrderNumber)
 			return { kind: "fulfilled" as const, orderNumber: order.lumaprintsOrderNumber };
 		if (hasUncertainPrintSubmission(order)) {
@@ -1740,6 +1756,7 @@ export const claimPrintFulfillmentV3 = mutation({
 		if (!CLAIM_TOKEN.test(args.claimToken)) throw new Error("Invalid print claim token");
 		const order = await ctx.db.get(args.orderId);
 		if (!order) throw new Error("Order not found");
+		if (order.printJobId) return { kind: "busy" as const };
 		if (order.lumaprintsOrderNumber) {
 			return { kind: "fulfilled" as const, orderNumber: order.lumaprintsOrderNumber };
 		}
@@ -1819,9 +1836,18 @@ export const claimPrintFulfillmentV3 = mutation({
 type PrintFulfillmentClaimArgs = {
 	orderId: Id<"orders">;
 	claimToken: string;
+	printJobLeaseToken?: string;
 	tenantId?: string;
 	webhookSecret: string;
 };
+
+async function ownsPrintJobPreparation(ctx: MutationCtx, order: Doc<"orders">, leaseToken?: string) {
+	if (!order.printJobId) return true;
+	const job = await ctx.db.get(order.printJobId);
+	return !!leaseToken && job?.orderId === order._id && job.stage === "finish"
+		&& job.leaseToken === leaseToken && job.leaseExpiresAt !== undefined
+		&& job.leaseExpiresAt > Date.now();
+}
 
 async function claimPrintFulfillmentWithAdmission(
 	ctx: MutationCtx,
@@ -1868,6 +1894,7 @@ async function claimPrintFulfillmentWithAdmission(
 			}
 			return { kind: "reconcile" as const, externalId: order.stripeSessionId };
 		}
+		if (!await ownsPrintJobPreparation(ctx, order, args.printJobLeaseToken)) return { kind: "busy" as const };
 		if (
 			order.status === "refunded"
 			&& order.stripeRefundId
@@ -1923,7 +1950,9 @@ async function claimPrintFulfillmentWithAdmission(
 			providerGeneration = control.generation;
 		}
 
-		const leaseExpiresAt = now + PRINT_PREPARATION_LEASE_MS;
+		const leaseExpiresAt = order.printJobId
+			? (await ctx.db.get(order.printJobId))?.leaseExpiresAt ?? now
+			: now + PRINT_PREPARATION_LEASE_MS;
 		await ctx.db.patch(order._id, {
 			printFulfillmentClaim: true,
 			printFulfillmentClaimToken: args.claimToken,
@@ -1960,6 +1989,7 @@ async function claimPrintFulfillmentWithAdmission(
 const printFulfillmentClaimArgs = {
 	orderId: v.id("orders"),
 	claimToken: v.string(),
+	printJobLeaseToken: v.optional(v.string()),
 	tenantId: v.optional(v.string()),
 	webhookSecret: v.string(),
 };
@@ -2052,6 +2082,7 @@ export const releasePrintFulfillmentClaim = mutation({
 export const beginPrintFulfillmentSubmission = mutation({
 	args: {
 		orderId: v.id("orders"), claimToken: v.string(), tenantId: v.optional(v.string()),
+		printJobLeaseToken: v.optional(v.string()),
 		webhookSecret: v.string(),
 	},
 	handler: async (ctx, args) => {
@@ -2059,6 +2090,7 @@ export const beginPrintFulfillmentSubmission = mutation({
 		const order = await ctx.db.get(args.orderId);
 		if (!order) throw new Error("Order not found");
 		await assertOrderTenant(ctx, order, args.tenantId);
+		if (!await ownsPrintJobPreparation(ctx, order, args.printJobLeaseToken)) return { kind: "lost" as const };
 		if (
 			order.status === "refunded"
 			&& order.stripeRefundId
@@ -2157,7 +2189,7 @@ export const recordPrintFulfillmentSubmissionReceipt = mutation({
 			printFulfillmentResolution: "submission_uncertain",
 			printFulfillmentReconciliationClass: undefined,
 			printFulfillmentReconciliationBlockedAt: undefined,
-			printFulfillmentReconciliationPendingFirstAt: undefined,
+			printFulfillmentReconciliationPendingFirstAt: order.printJobId ? Date.now() : undefined,
 			printFulfillmentReconciliationPendingAttempts: undefined,
 			printFulfillmentReconciliationLastAttemptAt: undefined,
 			printFulfillmentReconciliationLastAttemptClass: undefined,
@@ -2391,7 +2423,7 @@ export const recordPrintFulfillmentReconciliationPending = mutation({
 			...classCounts,
 			[args.reason]: classCounts[args.reason] + 1,
 		};
-		const shouldBlock = attempts >= PRINT_RECONCILIATION_PENDING_MAX_ATTEMPTS
+		const shouldBlock = (!order.printJobId && attempts >= PRINT_RECONCILIATION_PENDING_MAX_ATTEMPTS)
 			|| now - firstAt >= PRINT_RECONCILIATION_PENDING_MAX_AGE_MS;
 		await ctx.db.patch(order._id, {
 			printFulfillmentReconciliationPendingFirstAt: firstAt,
