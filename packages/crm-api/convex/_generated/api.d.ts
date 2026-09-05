@@ -83,6 +83,7 @@ import type * as helpers_postContentQueries from "../helpers/postContentQueries.
 import type * as helpers_postContentStore from "../helpers/postContentStore.js";
 import type * as helpers_postContentValidationSupport from "../helpers/postContentValidationSupport.js";
 import type * as helpers_postContentValidators from "../helpers/postContentValidators.js";
+import type * as helpers_printFulfillmentJobs from "../helpers/printFulfillmentJobs.js";
 import type * as helpers_querying from "../helpers/querying.js";
 import type * as helpers_quoteValidity from "../helpers/quoteValidity.js";
 import type * as helpers_refundTargetClassifier from "../helpers/refundTargetClassifier.js";
@@ -107,6 +108,7 @@ import type * as platform from "../platform.js";
 import type * as portal from "../portal.js";
 import type * as portfolioGalleries from "../portfolioGalleries.js";
 import type * as postContent from "../postContent.js";
+import type * as printFulfillmentJobs from "../printFulfillmentJobs.js";
 import type * as quotes from "../quotes.js";
 import type * as stripeFees from "../stripeFees.js";
 import type * as stripeFeesStore from "../stripeFeesStore.js";
@@ -194,6 +196,7 @@ declare const fullApi: ApiFromModules<{
   "helpers/postContentStore": typeof helpers_postContentStore;
   "helpers/postContentValidationSupport": typeof helpers_postContentValidationSupport;
   "helpers/postContentValidators": typeof helpers_postContentValidators;
+  "helpers/printFulfillmentJobs": typeof helpers_printFulfillmentJobs;
   "helpers/querying": typeof helpers_querying;
   "helpers/quoteValidity": typeof helpers_quoteValidity;
   "helpers/refundTargetClassifier": typeof helpers_refundTargetClassifier;
@@ -218,6 +221,7 @@ declare const fullApi: ApiFromModules<{
   portal: typeof portal;
   portfolioGalleries: typeof portfolioGalleries;
   postContent: typeof postContent;
+  printFulfillmentJobs: typeof printFulfillmentJobs;
   quotes: typeof quotes;
   stripeFees: typeof stripeFees;
   stripeFeesStore: typeof stripeFeesStore;
