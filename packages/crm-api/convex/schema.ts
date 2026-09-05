@@ -1435,6 +1435,7 @@ export default defineSchema({
 		.index("by_siteUrl", ["siteUrl"])
 		.index("by_siteUrl_status", ["siteUrl", "status"])
 		.index("by_siteUrl_category", ["siteUrl", "category"])
+		.index("by_siteUrl_and_category_and_status", ["siteUrl", "category", "status"])
 		.index("by_siteUrl_and_boardColumnId", ["siteUrl", "boardColumnId"]),
 
 	// Invoices — Full tier only
