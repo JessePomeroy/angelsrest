@@ -7,7 +7,7 @@ const mocks = vi.hoisted(() => ({
 }));
 vi.mock("$lib/server/catalogCommerceClients", () => ({
 	resolvePaidFulfillment: mocks.paidFulfillment,
-	issuePrintSource: mocks.printSource,
+	issueTenantPrintSource: mocks.printSource,
 	isPrintSourceDescriptor: (value: unknown) => {
 		if (!value || typeof value !== "object" || Array.isArray(value)) return false;
 		const source = value as Record<string, unknown>;
@@ -184,15 +184,16 @@ describe("snapshot fulfillment authority", () => {
 			},
 			"cs_test_paid",
 			[{ quantity: 2 }, { quantity: 3 }] as Stripe.LineItem[],
+			"client.example",
 		);
 		expect(mocks.paidFulfillment.mock.calls).toEqual([
 			["cs_test_paid", 0],
 			["cs_test_paid", 1],
 		]);
-		expect(mocks.printSource.mock.calls.map(([value]) => value.key)).toEqual([
-			"one",
-			"set-a",
-			"set-b",
+		expect(mocks.printSource.mock.calls.map(([value, siteUrl]) => [value.key, siteUrl])).toEqual([
+			["one", "client.example"],
+			["set-a", "client.example"],
+			["set-b", "client.example"],
 		]);
 		expect(items).toEqual([
 			{

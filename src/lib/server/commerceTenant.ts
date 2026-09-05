@@ -42,6 +42,28 @@ export async function resolveCommerceTenant(
 	const accountId = typeof event.account === "string" ? event.account : undefined;
 	const metadataSiteUrl = routedSiteUrl ?? readMetadataSiteUrl(event);
 	const metadataTenantId = routedTenantId ?? readMetadataTenantId(event);
+	return resolveCommerceContext(convex, accountId, metadataSiteUrl, metadataTenantId);
+}
+
+/** Resume only the tenant/account already authenticated and stored at paid-order intake. */
+export function resolveStoredCommerceTenant(
+	order: { siteUrl: string; tenantId?: string; stripeConnectedAccountId?: string },
+	convex: ConvexHttpClient,
+) {
+	return resolveCommerceContext(
+		convex,
+		order.stripeConnectedAccountId,
+		order.siteUrl,
+		order.tenantId,
+	);
+}
+
+async function resolveCommerceContext(
+	convex: ConvexHttpClient,
+	accountId: string | undefined,
+	metadataSiteUrl: string | undefined,
+	metadataTenantId: string | undefined,
+): Promise<ResolvedCommerceTenant> {
 	const identityContext = metadataTenantId
 		? await resolvePairedTenantContext(convex, metadataTenantId, metadataSiteUrl)
 		: undefined;

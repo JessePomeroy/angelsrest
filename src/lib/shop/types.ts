@@ -16,7 +16,7 @@ export interface Recipient {
 }
 
 /** A single item in a LumaPrints order submission */
-export type PrintSourcePolicy = "opaque_capability" | "bordered_r2" | "byte_exact";
+export type PrintSourcePolicy = "opaque_capability" | "byte_exact";
 
 export interface OrderItem {
 	imageUrl: string;
@@ -26,7 +26,7 @@ export interface OrderItem {
 	width: number;
 	height: number;
 	quantity: number;
-	/** Border width in inches. When set, the webhook runs Sharp to composite a white border. */
+	/** Border width in inches, rendered inside the ordered print canvas. */
 	borderWidth?: number;
 	/** LumaPrints frame subcategory ID (105001-105007). When set, the order is submitted as framed. */
 	frameSubcategoryId?: number;

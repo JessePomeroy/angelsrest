@@ -2,9 +2,11 @@ import { describe, expect, it } from "vitest";
 import {
 	CANVAS_AVAILABLE_SIZES,
 	FRAMED_BORDER_INCHES,
+	getAvailableFrames,
 	getFrameWholesaleCost,
 	getPaper,
 	getPaperBySlug,
+	getPrintTargetDpi,
 	getSizeBySlug,
 	getWholesaleCost,
 	LUMA_PAPERS,
@@ -37,6 +39,13 @@ describe("@jessepomeroy/print-catalog", () => {
 		expect(getFrameWholesaleCost("0.875-black", "8x10")).toBe(20.08);
 		expect(getFrameWholesaleCost("1.25-oak", "8x10")).toBe(20.8);
 		expect(getFrameWholesaleCost("8x10")).toBe(20.08);
+		expect(getAvailableFrames("4x6").map(({ value }) => value)).toEqual(["none"]);
+		expect(getAvailableFrames("30x40").map(({ value }) => value)).toEqual([
+			"none",
+			"1.25-black",
+			"1.25-white",
+			"1.25-oak",
+		]);
 	});
 
 	it("resolves canvas metadata for checkout and Studio dropdowns", () => {
@@ -50,6 +59,15 @@ describe("@jessepomeroy/print-catalog", () => {
 		});
 		expect(getWholesaleCost("canvas-black-1.25", "16x20")).toBe(25.95);
 		expect(getPaper("canvas-black-rolled")?.name).toBe("Canvas Black — rolled");
+	});
+
+	it("provides rendering density targets for supported products", () => {
+		expect([
+			getPrintTargetDpi(101001),
+			getPrintTargetDpi(103001),
+			getPrintTargetDpi(105001),
+			getPrintTargetDpi(0),
+		]).toEqual([200, 300, 300, null]);
 	});
 
 	it("exports stable editor option helpers", () => {
