@@ -564,11 +564,13 @@ async function handleCheckoutCompleted(
 			orderId: orderResult.orderNumber,
 			meta: {
 				reason:
-					orderResult.fulfillment.kind === "manual_refunded"
-						? "order_manually_refunded"
-						: orderResult.fulfillment.kind === "reconciliation_blocked"
-							? "print_reconciliation_blocked"
-							: "confirmation_already_claimed",
+					orderResult.fulfillment.kind === "canceled"
+						? "fulfillment_canceled"
+						: orderResult.fulfillment.kind === "manual_refunded"
+							? "order_manually_refunded"
+							: orderResult.fulfillment.kind === "reconciliation_blocked"
+								? "print_reconciliation_blocked"
+								: "confirmation_already_claimed",
 			},
 		});
 	} else if (

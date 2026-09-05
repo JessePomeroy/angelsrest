@@ -60,6 +60,7 @@ const orderStatusValidator = v.union(
 	v.literal("shipped"),
 	v.literal("delivered"),
 	v.literal("refunded"),
+	v.literal("canceled"),
 	v.literal("fulfillment_error"),
 );
 
@@ -246,6 +247,7 @@ function hasBaselinePrintCompletionClaim(order: Doc<"orders">) {
 }
 
 function printFulfillmentCompletionOutcome(order: Doc<"orders">) {
+	if (order.status === "canceled") return { kind: "canceled" as const };
 	if (
 		order.status === "refunded"
 		&& order.stripeRefundId
@@ -1258,7 +1260,7 @@ export const reconcileSucceededManualRefund = mutation({
 				order?.printFulfillmentPhase === undefined
 					|| order.printFulfillmentPhase === "preparing"
 			);
-		const isRefundableNew = order?.status === "new"
+		const isRefundableNew = (order?.status === "new" || order?.status === "canceled")
 			&& order.stripeRefundId === undefined
 			&& order.fulfillmentError === undefined
 			&& order.fulfillmentRecoveryStatus === undefined
@@ -3652,6 +3654,7 @@ export const updateStatus = mutation({
 		const isManualTerminal = current?.status === "refunded"
 			&& current.stripeRefundId !== undefined
 			&& current.fulfillmentRecoveryStatus === undefined;
+		const isCanceledTerminal = current?.status === "canceled";
 		if (
 			isManualTerminal
 			&& (
@@ -3665,6 +3668,10 @@ export const updateStatus = mutation({
 				|| updates.fulfillmentRecoveryStatus !== undefined
 			)
 		) throw new Error("Refunded order fulfillment is terminal");
+		if (
+			isCanceledTerminal
+			&& Object.entries(updates).some(([key, value]) => key !== "notes" && value !== undefined)
+		) throw new Error("Canceled order fulfillment is terminal");
 		if (
 			auth.via === "auth"
 			&& current?.printFulfillmentClaim
@@ -3692,6 +3699,25 @@ export const updateStatus = mutation({
 		if (Object.keys(patch).length > 0) {
 			await ctx.db.patch(orderId, patch);
 		}
+	},
+});
+
+/** Stop a paid print order locally without asserting a refund or provider result. */
+export const cancelFulfillment = mutation({
+	args: { orderId: v.id("orders") },
+	returns: v.boolean(),
+	handler: async (ctx, { orderId }) => {
+		const order = await requireDocumentSiteAdmin(ctx, "orders", orderId);
+		if (order.status === "canceled") return false;
+		if (
+			order.status !== "new"
+			|| order.fulfillmentType !== "lumaprints"
+			|| order.lumaprintsOrderNumber !== undefined
+			|| order.stripeRefundId !== undefined
+			|| order.fulfillmentRecoveryStatus !== undefined
+		) throw new Error("Only unresolved print fulfillment can be canceled locally");
+		await ctx.db.patch(orderId, { status: "canceled" });
+		return true;
 	},
 });
 

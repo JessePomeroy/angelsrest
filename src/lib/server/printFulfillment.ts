@@ -55,6 +55,7 @@ export type PrintFulfillmentOutcome =
 	| { kind: "fulfilled"; lumaprintsOrderNumber: string }
 	| { kind: "no_print_items" }
 	| { kind: "no_print_items_replayed" }
+	| { kind: "canceled" }
 	| { kind: "manual_refunded"; stripeRefundId: string }
 	| {
 			kind: "reconciliation_blocked";
