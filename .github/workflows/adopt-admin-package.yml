@@ -21,6 +21,11 @@ permissions:
 jobs:
   prepare:
     runs-on: ubuntu-latest
+    env:
+      # SvelteKit generates static env exports before host checks and tests.
+      PUBLIC_SITE_URL: https://www.angelsrest.online
+      PUBLIC_CONVEX_URL: https://placeholder.convex.cloud
+      PUBLIC_CONVEX_SITE_URL: https://placeholder.convex.site
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
