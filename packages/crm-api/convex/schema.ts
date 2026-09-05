@@ -1120,6 +1120,9 @@ export default defineSchema({
 			v.literal("digital"),
 		),
 		lumaprintsOrderNumber: v.optional(v.string()),
+		// A successful create-order response is only a queue receipt. The provider
+		// order becomes final after an identity-checked read confirms it exists.
+		lumaprintsSubmissionOrderNumber: v.optional(v.string()),
 		// The legacy boolean remains for safe reconciliation of pre-lease claims.
 		printFulfillmentClaim: v.optional(v.boolean()),
 		printFulfillmentClaimToken: v.optional(v.string()),
@@ -1131,9 +1134,9 @@ export default defineSchema({
 		// Written only by a versioned coordinator. Exact V1/V2 durable rows remain
 		// unversioned so refund races cannot opt an older host into newer semantics.
 		printFulfillmentCoordinatorVersion: v.optional(
-			v.union(v.literal(3), v.literal(4)),
+			v.union(v.literal(3), v.literal(4), v.literal(5)),
 		),
-		// V4 provider admission is durable independently from a transient
+		// Provider admission is durable independently from a transient
 		// preparation lease. Closing a control never revokes an accepted epoch.
 		printProviderAdmissionStatus: v.optional(v.literal("admitted")),
 		printProviderAdmissionGeneration: v.optional(v.number()),
@@ -1333,6 +1336,9 @@ export default defineSchema({
 		// Hub-owned shipment webhook lookup. LumaPrints order numbers are
 		// provider-global; the mutation rejects duplicates rather than guessing.
 		.index("by_lumaprintsOrderNumber_global", ["lumaprintsOrderNumber"])
+		.index("by_lumaprintsSubmissionOrderNumber_global", [
+			"lumaprintsSubmissionOrderNumber",
+		])
 		// Deprecated authenticated-admin compatibility lookup. The hub webhook
 		// uses the provider-global index and never delegates its bearer secret.
 		.index("by_lumaprintsOrderNumber", ["siteUrl", "lumaprintsOrderNumber"]),

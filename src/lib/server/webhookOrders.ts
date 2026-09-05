@@ -15,6 +15,7 @@ import {
 import { FulfillmentValidationError } from "$lib/server/fulfillmentValidationError";
 import { logStructured } from "$lib/server/logger";
 import {
+	type ConfirmLumaPrintsOrder,
 	handlePermanentFulfillmentFailure,
 	handlePrintFulfillmentFailure,
 	type PrintFulfillmentOutcome,
@@ -50,11 +51,13 @@ export async function createOrderInConvex(
 		convex,
 		resend,
 		createLumaPrintsOrder,
+		confirmLumaPrintsOrder,
 	}: {
 		stripe: Stripe;
 		convex: ConvexHttpClient;
 		resend: Resend;
 		createLumaPrintsOrder: SubmitLumaPrintsOrder;
+		confirmLumaPrintsOrder?: ConfirmLumaPrintsOrder;
 	},
 	{
 		session,
@@ -116,7 +119,13 @@ export async function createOrderInConvex(
 		meta: { alreadyExisted },
 	});
 
-	if (existingStatus === "canceled") {
+	const needsProviderReconciliation =
+		existingPrintClaim === true &&
+		existingLumaprintsOrderNumber === undefined &&
+		existingPrintPhase !== "preparing" &&
+		existingPrintResolution !== "resolved";
+
+	if (existingStatus === "canceled" && !needsProviderReconciliation) {
 		return {
 			orderNumber,
 			_id: orderId,
@@ -162,12 +171,6 @@ export async function createOrderInConvex(
 				!manuallyRefunded && (await claimOrderConfirmation(convex, orderId)) ? "success" : "none",
 		};
 	}
-
-	const needsProviderReconciliation =
-		existingPrintClaim === true &&
-		existingLumaprintsOrderNumber === undefined &&
-		existingPrintPhase !== "preparing" &&
-		existingPrintResolution !== "resolved";
 
 	if (
 		(existingRecoveryStatus === "refunded" || existingStatus === "refunded") &&
@@ -290,7 +293,7 @@ export async function createOrderInConvex(
 			throw new FulfillmentValidationError("Checkout snapshot provider is unsupported");
 		}
 		fulfillment = await submitPrintFulfillment(
-			{ convex, createLumaPrintsOrder },
+			{ convex, createLumaPrintsOrder, confirmLumaPrintsOrder },
 			{
 				orderId,
 				orderNumber,

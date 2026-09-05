@@ -3,6 +3,7 @@ import { env } from "$env/dynamic/private";
 import type { OrderItem, Recipient } from "$lib/shop/types";
 import {
 	buildLumaPrintsOrder,
+	confirmOrder,
 	createOrder,
 	findOrderByExternalId,
 	LumaPrintsError,
@@ -463,7 +464,11 @@ describe("createOrder", () => {
 	] as const)("normalizes documented numeric or canonical-string order numbers", async (value, expected) => {
 		vi.stubGlobal(
 			"fetch",
-			vi.fn().mockResolvedValue(providerJson({ message: "queued", orderNumber: value })),
+			vi
+				.fn()
+				.mockResolvedValue(
+					providerJson({ message: "queued", orderNumber: value, providerVersion: 2 }),
+				),
 		);
 
 		const result = await createOrder(
@@ -486,7 +491,6 @@ describe("createOrder", () => {
 		{ message: "queued", orderNumber: "+1" },
 		{ message: "queued", orderNumber: "0" },
 		{ message: "queued", orderNumber: "1".repeat(65) },
-		{ message: "queued", orderNumber: "10000000001", unexpected: true },
 	])("rejects malformed create response envelopes", async (body) => {
 		vi.stubGlobal("fetch", vi.fn().mockResolvedValue(providerJson(body)));
 		await expect(
@@ -551,7 +555,7 @@ describe("createOrder", () => {
 	});
 
 	it.each([
-		400, 406, 429,
+		400, 406,
 	])("treats documented create non-acceptance status %s as definitely rejected", async (status) => {
 		vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(null, { status })));
 		const thrown = await createOrder(
@@ -566,8 +570,8 @@ describe("createOrder", () => {
 	});
 
 	it.each([
-		401, 403, 408, 418, 422, 500, 503,
-	])("keeps unexpected create status %s uncertain", async (status) => {
+		401, 403, 408, 418, 422, 429, 500, 503,
+	])("keeps non-final create status %s uncertain", async (status) => {
 		vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(null, { status })));
 		const thrown = await createOrder(
 			buildLumaPrintsOrder("uncertain-order", mockRecipient, mockItems),
@@ -578,6 +582,56 @@ describe("createOrder", () => {
 			details: { operation: "create_order", phase: "status", statusCode: status },
 		});
 		expect(classifyLumaPrintsFailure(thrown)).toBe("transient");
+	});
+});
+
+describe("confirmOrder", () => {
+	const externalId = "cs_test_1234567890abcdef";
+	const orderNumber = "10000000001";
+
+	beforeEach(() => {
+		vi.unstubAllGlobals();
+	});
+
+	it("confirms only the exact queued order identity and treats 404 as pending", async () => {
+		const fetchMock = vi
+			.fn()
+			.mockResolvedValueOnce(
+				providerJson({ orderNumber, externalId, storeId: "83765", documentedDetail: true }),
+			)
+			.mockResolvedValueOnce(new Response(null, { status: 404 }));
+		vi.stubGlobal("fetch", fetchMock);
+
+		await expect(confirmOrder(orderNumber, externalId)).resolves.toBe(true);
+		await expect(confirmOrder(orderNumber, externalId)).resolves.toBe(false);
+		expect(fetchMock).toHaveBeenCalledWith(
+			expect.stringContaining(`/api/v1/orders/${orderNumber}`),
+			expect.objectContaining({ headers: expect.any(Object), signal: expect.any(AbortSignal) }),
+		);
+	});
+
+	it.each([
+		[{ externalId, storeId: "83765" }, "response_contract"],
+		[{ orderNumber, externalId: `${externalId}x`, storeId: "83765" }, "ambiguous_result"],
+		[{ orderNumber, externalId, storeId: "83766" }, "ambiguous_result"],
+	] as const)("blocks malformed or mismatched provider identity", async (body, reconciliationClass) => {
+		vi.stubGlobal("fetch", vi.fn().mockResolvedValue(providerJson(body)));
+		await expect(confirmOrder(orderNumber, externalId)).rejects.toMatchObject({
+			disposition: "blocked",
+			reconciliationClass,
+		});
+	});
+
+	it.each([
+		[429, "retryable", undefined],
+		[503, "retryable", undefined],
+		[403, "blocked", "provider_rejected"],
+	] as const)("classifies confirmation status %s", async (status, disposition, reconciliationClass) => {
+		vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(null, { status })));
+		await expect(confirmOrder(orderNumber, externalId)).rejects.toMatchObject({
+			disposition,
+			...(reconciliationClass ? { reconciliationClass } : {}),
+		});
 	});
 });
 

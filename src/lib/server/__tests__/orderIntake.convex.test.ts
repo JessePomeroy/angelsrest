@@ -237,6 +237,11 @@ describe("order intake with real Convex state", () => {
 		await expect(processStripeWebhookEvent(checkoutEvent(session), adapters)).rejects.toMatchObject(
 			{ status: 500 },
 		);
+		await t.run((ctx) =>
+			ctx.db.patch(created._id, {
+				printFulfillmentReconciliationLastAttemptAt: 0,
+			}),
+		);
 		await processStripeWebhookEvent(checkoutEvent(session), adapters);
 
 		const orders = await t.run((ctx) => ctx.db.query("orders").collect());
