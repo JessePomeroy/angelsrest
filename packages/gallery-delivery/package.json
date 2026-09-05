@@ -59,6 +59,7 @@
 		"src/downloadPolicy.ts",
 		"src/downloadRoute.ts",
 		"src/downloadUrls.ts",
+		"src/downloadWritable.ts",
 		"src/favoriteState.ts",
 		"src/fileTypes.ts",
 		"src/preparedZip.ts"

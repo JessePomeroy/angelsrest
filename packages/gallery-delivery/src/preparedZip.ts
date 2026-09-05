@@ -1,3 +1,10 @@
+import {
+	abortReason,
+	throwIfAborted,
+	raceWithAbort,
+	withGalleryWritable,
+	type FileSystemWritableFileStreamLike,
+} from "./downloadWritable";
 import type { GalleryDownloadPlan } from "./downloadPlan";
 import {
 	galleryPreparedZipArchiveUrl,
@@ -37,11 +44,7 @@ export type PreparedZipArchiveFileHandle = {
 	createWritable: () => Promise<FileSystemWritableFileStreamLike>;
 };
 
-export type FileSystemWritableFileStreamLike = {
-	write: (data: Blob | BufferSource | string) => Promise<void>;
-	close: () => Promise<void>;
-	abort?: (reason?: unknown) => Promise<void>;
-};
+export type { FileSystemWritableFileStreamLike } from "./downloadWritable";
 
 export type PreparedZipArchiveFile = {
 	file: PreparedZipArchiveFileHandle;
@@ -362,25 +365,15 @@ export async function savePreparedZipArchiveResponseToFile({
 	}
 
 	const writable = await archiveFile.file.createWritable();
-	let writableClosed = false;
-	let writableAborted = false;
-	const abortWritable = async (reason: unknown = abortReason(signal)) => {
-		if (writableClosed || writableAborted) return;
-		writableAborted = true;
-		await writable.abort?.(reason);
-	};
 
 	const totalBytes = parseContentLength(response.headers.get("content-length"));
 	let savedBytes = 0;
 
-	try {
+	await withGalleryWritable(writable, signal, async ({ write, abort }) => {
 		if (response.body) {
 			const reader = response.body.getReader();
 			const abortReader = async () => {
-				await Promise.allSettled([
-					reader.cancel(abortReason(signal)),
-					abortWritable(abortReason(signal)),
-				]);
+				await Promise.allSettled([reader.cancel(abortReason(signal)), abort()]);
 			};
 			try {
 				while (true) {
@@ -389,9 +382,7 @@ export async function savePreparedZipArchiveResponseToFile({
 					if (done) break;
 					throwIfAborted(signal);
 					if (!value) continue;
-					await raceWithAbort(writable.write(writableChunk(value)), signal, () => {
-						return abortWritable(abortReason(signal));
-					});
+					await write(writableChunk(value));
 					savedBytes += value.byteLength;
 					onProgress?.({ savedBytes, totalBytes, filename: archiveFile.filename });
 				}
@@ -401,30 +392,11 @@ export async function savePreparedZipArchiveResponseToFile({
 		} else {
 			throwIfAborted(signal);
 			const blob = await response.blob();
-			await raceWithAbort(writable.write(blob), signal, () => {
-				return abortWritable(abortReason(signal));
-			});
+			await write(blob);
 			savedBytes = blob.size;
 			onProgress?.({ savedBytes, totalBytes, filename: archiveFile.filename });
 		}
-
-		throwIfAborted(signal);
-		await raceWithAbort(writable.close(), signal, () => {
-			return abortWritable(abortReason(signal));
-		});
-		writableClosed = true;
-	} catch (error) {
-		if (signal?.aborted) {
-			await abortWritable(abortReason(signal)).catch(() => {
-				// Best-effort cleanup; surface the cancellation reason to the UI.
-			});
-			throw abortReason(signal);
-		}
-		await abortWritable(error).catch(() => {
-			// Best-effort cleanup; surface the original download/write failure.
-		});
-		throw error;
-	}
+	});
 }
 
 async function readPreparedZipStatusResponse(
@@ -512,49 +484,6 @@ function writableChunk(chunk: Uint8Array) {
 		chunk.byteLength === chunk.buffer.byteLength
 		? chunk.buffer
 		: chunk.slice().buffer;
-}
-
-function galleryDownloadAbortError() {
-	return new DOMException("Gallery ZIP download canceled.", "AbortError");
-}
-
-function abortReason(signal?: AbortSignal) {
-	return signal?.reason ?? galleryDownloadAbortError();
-}
-
-function throwIfAborted(signal?: AbortSignal) {
-	if (signal?.aborted) {
-		throw abortReason(signal);
-	}
-}
-
-async function raceWithAbort<T>(
-	operation: Promise<T>,
-	signal: AbortSignal | undefined,
-	onAbort?: () => Promise<void> | void,
-) {
-	if (!signal) return operation;
-	throwIfAborted(signal);
-
-	let abortHandler: (() => void) | undefined;
-	const abort = new Promise<never>((_, reject) => {
-		abortHandler = () => {
-			void Promise.resolve(onAbort?.())
-				.catch(() => {
-					// Surface the user cancellation instead of a best-effort cleanup failure.
-				})
-				.then(() => {
-					reject(abortReason(signal));
-				});
-		};
-		signal.addEventListener("abort", abortHandler, { once: true });
-	});
-
-	try {
-		return await Promise.race([operation, abort]);
-	} finally {
-		if (abortHandler) signal.removeEventListener("abort", abortHandler);
-	}
 }
 
 function abortableDelay({
