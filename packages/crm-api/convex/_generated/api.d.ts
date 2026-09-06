@@ -84,7 +84,6 @@ import type * as helpers_postContentStore from "../helpers/postContentStore.js";
 import type * as helpers_postContentValidationSupport from "../helpers/postContentValidationSupport.js";
 import type * as helpers_postContentValidators from "../helpers/postContentValidators.js";
 import type * as helpers_printFulfillmentJobs from "../helpers/printFulfillmentJobs.js";
-import type * as helpers_querying from "../helpers/querying.js";
 import type * as helpers_quoteValidity from "../helpers/quoteValidity.js";
 import type * as helpers_refundTargetClassifier from "../helpers/refundTargetClassifier.js";
 import type * as helpers_richTextContract from "../helpers/richTextContract.js";
@@ -197,7 +196,6 @@ declare const fullApi: ApiFromModules<{
   "helpers/postContentValidationSupport": typeof helpers_postContentValidationSupport;
   "helpers/postContentValidators": typeof helpers_postContentValidators;
   "helpers/printFulfillmentJobs": typeof helpers_printFulfillmentJobs;
-  "helpers/querying": typeof helpers_querying;
   "helpers/quoteValidity": typeof helpers_quoteValidity;
   "helpers/refundTargetClassifier": typeof helpers_refundTargetClassifier;
   "helpers/richTextContract": typeof helpers_richTextContract;

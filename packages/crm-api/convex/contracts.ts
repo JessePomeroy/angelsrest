@@ -9,7 +9,6 @@ import { deleteDocument } from "./helpers/deleting";
 import { DEFAULT_LIST_LIMIT } from "./helpers/limits";
 import { markDocumentSent } from "./helpers/marking";
 import { patchDocument } from "./helpers/patching";
-import { queryBySiteUrl } from "./helpers/querying";
 import { categoryValidator } from "./helpers/validators";
 
 // Keep in sync with the `contracts.status` union in schema.ts. Widening to
@@ -29,7 +28,13 @@ export const list = query({
 	},
 	handler: async (ctx, { siteUrl, status }) => {
 		await requireSiteAdmin(ctx, siteUrl);
-		const all = await queryBySiteUrl(ctx, "contracts", siteUrl, { status });
+		const selectedStatus = statusValidator.members.find((member) => member.value === status)?.value;
+		if (status !== undefined && selectedStatus === undefined) return [];
+		const documents = ctx.db.query("contracts");
+		const matching = selectedStatus === undefined
+			? documents.withIndex("by_siteUrl", (q) => q.eq("siteUrl", siteUrl))
+			: documents.withIndex("by_siteUrl_status", (q) => q.eq("siteUrl", siteUrl).eq("status", selectedStatus));
+		const all = await matching.order("desc").take(200);
 		return all.map((contract) => ({
 			...contract,
 			clientName: contract.clientName ?? "unknown",

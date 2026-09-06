@@ -9,7 +9,6 @@ import {
 } from "./helpers/documentNumbering";
 import { markDocumentSent } from "./helpers/marking";
 import { patchDocument } from "./helpers/patching";
-import { queryBySiteUrl } from "./helpers/querying";
 
 // Keep in sync with the `invoices.status` union in schema.ts. Widening to
 // v.string() here lets nonsense values through arg validation and only fails
@@ -30,7 +29,13 @@ export const list = query({
 	},
 	handler: async (ctx, { siteUrl, status }) => {
 		await requireSiteAdmin(ctx, siteUrl);
-		const all = await queryBySiteUrl(ctx, "invoices", siteUrl, { status });
+		const selectedStatus = statusValidator.members.find((member) => member.value === status)?.value;
+		if (status !== undefined && selectedStatus === undefined) return [];
+		const documents = ctx.db.query("invoices");
+		const matching = selectedStatus === undefined
+			? documents.withIndex("by_siteUrl", (q) => q.eq("siteUrl", siteUrl))
+			: documents.withIndex("by_siteUrl_status", (q) => q.eq("siteUrl", siteUrl).eq("status", selectedStatus));
+		const all = await matching.order("desc").take(200);
 		return all.map((invoice) => ({
 			...invoice,
 			clientName: invoice.clientName ?? "unknown",
