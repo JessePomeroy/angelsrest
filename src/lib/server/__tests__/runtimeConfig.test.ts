@@ -83,6 +83,28 @@ describe("server runtime configuration", () => {
 		);
 	});
 
+	it("requires dedicated tenant-bound print upload credentials without changing media credentials", async () => {
+		publicEnv.PUBLIC_SITE_URL = "https://www.angelsrest.online";
+		privateEnv.CMS_MEDIA_WORKER_SECRET = "legacy-placeholder";
+		privateEnv.CATALOG_PRINT_SOURCE_ISSUER_SECRET = "i".repeat(32);
+		const config = await import("$lib/server/runtimeConfig");
+		expect(() => config.getCatalogPrintArtifactUploadSecret("angelsrest.online")).toThrow();
+		privateEnv.CATALOG_PRINT_ARTIFACT_UPLOAD_SECRET = `${"a".repeat(43)}=`;
+		privateEnv.CATALOG_PRINT_ARTIFACT_UPLOAD_TENANT_SECRETS = JSON.stringify({
+			"client.example": ["c".repeat(32)],
+		});
+		expect(config.getCatalogPrintArtifactUploadSecret("angelsrest.online")).toBe(
+			privateEnv.CATALOG_PRINT_ARTIFACT_UPLOAD_SECRET,
+		);
+		expect(config.getCatalogPrintArtifactUploadSecret("client.example")).toBe("c".repeat(32));
+		expect(config.getCmsMediaTenantSecret("angelsrest.online")).toBe("legacy-placeholder");
+		expect(() => config.getCatalogPrintArtifactUploadSecret("unknown.example")).toThrow();
+		for (const invalid of ["short", "i".repeat(32), "c".repeat(32), `${"a".repeat(512)}=`]) {
+			privateEnv.CATALOG_PRINT_ARTIFACT_UPLOAD_SECRET = invalid;
+			expect(() => config.getCatalogPrintArtifactUploadSecret("angelsrest.online")).toThrow();
+		}
+	});
+
 	it("rejects credential reuse across tenants, rotations, and Worker roles", async () => {
 		publicEnv.PUBLIC_SITE_URL = "https://angelsrest.online";
 		privateEnv.CMS_MEDIA_WORKER_SECRET = "u".repeat(32);

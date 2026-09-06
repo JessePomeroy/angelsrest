@@ -890,12 +890,18 @@ describe("fixed-purpose catalog clients", () => {
 			hubIssuer: mutablePrivateEnv.CATALOG_PRINT_SOURCE_ISSUER_SECRET,
 			uploadRegistry: mutablePrivateEnv.CMS_MEDIA_WORKER_TENANT_SECRETS,
 			issuerRegistry: mutablePrivateEnv.CATALOG_PRINT_SOURCE_ISSUER_TENANT_SECRETS,
+			artifactUpload: mutablePrivateEnv.CATALOG_PRINT_ARTIFACT_UPLOAD_SECRET,
+			artifactRegistry: mutablePrivateEnv.CATALOG_PRINT_ARTIFACT_UPLOAD_TENANT_SECRETS,
 		};
 		mutablePublicEnv.PUBLIC_SITE_URL = "https://angelsrest.online";
 		mutablePrivateEnv.CATALOG_FULFILLMENT_WORKER_ORIGIN = origin;
 		mutablePrivateEnv.CMS_MEDIA_WORKER_SECRET = "h".repeat(32);
 		mutablePrivateEnv.CATALOG_PRINT_SOURCE_ISSUER_SECRET = "j".repeat(32);
 		mutablePrivateEnv.CMS_MEDIA_WORKER_TENANT_SECRETS = JSON.stringify({
+			"client.example": ["l".repeat(32)],
+		});
+		mutablePrivateEnv.CATALOG_PRINT_ARTIFACT_UPLOAD_SECRET = "a".repeat(32);
+		mutablePrivateEnv.CATALOG_PRINT_ARTIFACT_UPLOAD_TENANT_SECRETS = JSON.stringify({
 			"client.example": [uploadSecret],
 		});
 		mutablePrivateEnv.CATALOG_PRINT_SOURCE_ISSUER_TENANT_SECRETS = JSON.stringify({
@@ -947,6 +953,8 @@ describe("fixed-purpose catalog clients", () => {
 			mutablePrivateEnv.CATALOG_PRINT_SOURCE_ISSUER_SECRET = previous.hubIssuer;
 			mutablePrivateEnv.CMS_MEDIA_WORKER_TENANT_SECRETS = previous.uploadRegistry;
 			mutablePrivateEnv.CATALOG_PRINT_SOURCE_ISSUER_TENANT_SECRETS = previous.issuerRegistry;
+			mutablePrivateEnv.CATALOG_PRINT_ARTIFACT_UPLOAD_SECRET = previous.artifactUpload;
+			mutablePrivateEnv.CATALOG_PRINT_ARTIFACT_UPLOAD_TENANT_SECRETS = previous.artifactRegistry;
 		}
 	});
 
