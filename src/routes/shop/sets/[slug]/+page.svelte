@@ -196,7 +196,7 @@ function handleAddToCart() {
 					{/each}
 				</div>
 			{:else}
-				<div class="aspect-square bg-surface-100-800-token rounded-md flex items-center justify-center">
+				<div class="aspect-square bg-surface-100 dark:bg-surface-800 rounded-md flex items-center justify-center">
 					<span class="text-surface-500">No images</span>
 				</div>
 			{/if}
@@ -206,13 +206,13 @@ function handleAddToCart() {
 		<div class="space-y-6">
 			<div>
 				<h1 class="text-3xl font-semibold mb-2">{data.printSet.title}</h1>
-				<span class="text-sm text-surface-600-300-token">
+				<span class="text-sm text-surface-600 dark:text-surface-300">
 					{data.images.length} print{data.images.length === 1 ? "" : "s"} in this set
 				</span>
 			</div>
 
 			{#if data.printSet.description}
-				<div class="text-surface-700-200-token">
+				<div class="text-surface-700 dark:text-surface-200">
 					<p>{data.printSet.description}</p>
 				</div>
 			{/if}
@@ -221,19 +221,19 @@ function handleAddToCart() {
 			<div class="flex items-center gap-2">
 				{#if data.printSet.inStock}
 					<div class="w-3 h-3 rounded-full bg-success-500"></div>
-					<span class="text-sm text-surface-600-300-token">In stock</span>
+					<span class="text-sm text-surface-600 dark:text-surface-300">In stock</span>
 				{:else}
 					<div class="w-3 h-3 rounded-full bg-error-500"></div>
-					<span class="text-sm text-surface-600-300-token">Out of stock</span>
+					<span class="text-sm text-surface-600 dark:text-surface-300">Out of stock</span>
 				{/if}
 			</div>
 
 			<!-- Desktop: inline price + buttons -->
 			<div class="hidden md:flex items-baseline justify-between gap-4 py-2">
-				<div class="text-3xl font-semibold text-surface-900-50-token">
+				<div class="text-3xl font-semibold text-surface-900 dark:text-surface-50">
 					{#if selectedConfiguration}
 						${displaySetPrice}
-						<span class="text-base font-normal text-surface-600-300-token">
+						<span class="text-base font-normal text-surface-600 dark:text-surface-300">
 							{getPaper(selectedPaperSlug)?.name} · {getSize(selectedSizeSlug)?.label}{selectedBorderWidth !== 'none' ? ` · ${selectedBorderWidth}" border` : ''}{selectedFrame !== 'none' ? ` · ${getFrame(selectedFrame)?.label} frame` : ''}
 						</span>
 					{:else}
@@ -242,38 +242,38 @@ function handleAddToCart() {
 				</div>
 				<div class="flex gap-2 shrink-0">
 					{#if data.printSet.inStock && selectedConfiguration}
-						<button class="btn btn-sm variant-soft-surface" onclick={handleAddToCart}>
+						<button class="inline-flex items-center justify-center gap-2 rounded-md whitespace-nowrap text-xs px-3 py-1 transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-surface-900 dark:focus-visible:outline-surface-50 disabled:opacity-50 disabled:cursor-not-allowed bg-surface-200 text-surface-900 dark:bg-surface-700 dark:text-surface-50" onclick={handleAddToCart}>
 							add to cart
 						</button>
 						<button
-							class="btn btn-sm variant-filled-primary"
+							class="inline-flex items-center justify-center gap-2 rounded-md whitespace-nowrap text-xs px-3 py-1 transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-surface-900 dark:focus-visible:outline-surface-50 disabled:opacity-50 disabled:cursor-not-allowed bg-primary-500 text-slate-950 not-disabled:hover:bg-primary-500/80"
 							disabled={isLoading}
 							onclick={handleCheckout}
 						>
 							{isLoading ? "processing..." : "buy now"}
 						</button>
 					{:else if !data.printSet.inStock}
-						<button class="btn btn-sm variant-filled-primary" disabled>out of stock</button>
+						<button class="inline-flex items-center justify-center gap-2 rounded-md whitespace-nowrap text-xs px-3 py-1 transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-surface-900 dark:focus-visible:outline-surface-50 disabled:opacity-50 disabled:cursor-not-allowed bg-primary-500 text-slate-950 not-disabled:hover:bg-primary-500/80" disabled>out of stock</button>
 					{/if}
 				</div>
 			</div>
 
 			<div class="space-y-4">
 				<div>
-					<label for="set-paper" class="block text-sm text-surface-600-300-token mb-1">
+					<label for="set-paper" class="block text-sm text-surface-600 dark:text-surface-300 mb-1">
 						Material
 					</label>
-					<select id="set-paper" class="select w-full" bind:value={selectedPaperSlug}>
+					<select id="set-paper" class="block rounded-md border border-surface-300 dark:border-surface-600 bg-transparent text-base py-1 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-surface-900 dark:focus-visible:outline-surface-50 disabled:opacity-50 w-full" bind:value={selectedPaperSlug}>
 						{#each availablePapers as paper (paper.slug)}
 							<option value={paper.slug}>{paper.name}</option>
 						{/each}
 					</select>
 				</div>
 				<div>
-					<label for="set-size" class="block text-sm text-surface-600-300-token mb-1">
+					<label for="set-size" class="block text-sm text-surface-600 dark:text-surface-300 mb-1">
 						Size
 					</label>
-					<select id="set-size" class="select w-full" bind:value={selectedSizeSlug}>
+					<select id="set-size" class="block rounded-md border border-surface-300 dark:border-surface-600 bg-transparent text-base py-1 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-surface-900 dark:focus-visible:outline-surface-50 disabled:opacity-50 w-full" bind:value={selectedSizeSlug}>
 						{#each availableSizes as size (size.slug)}
 							<option value={size.slug}>{size.label}</option>
 						{/each}
@@ -282,12 +282,12 @@ function handleAddToCart() {
 
 				{#if data.printSet.bordersEnabled !== false && !isCanvasSelected}
 					<div>
-						<label for="set-border" class="block text-sm text-surface-600-300-token mb-1">
+						<label for="set-border" class="block text-sm text-surface-600 dark:text-surface-300 mb-1">
 							Border
 						</label>
 						<select
 							id="set-border"
-							class="select w-full"
+							class="block rounded-md border border-surface-300 dark:border-surface-600 bg-transparent text-base py-1 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-surface-900 dark:focus-visible:outline-surface-50 disabled:opacity-50 w-full"
 							bind:value={selectedBorderWidth}
 							disabled={selectedFrame !== 'none'}
 						>
@@ -303,10 +303,10 @@ function handleAddToCart() {
 
 				{#if data.printSet.framedEnabled && !isCanvasSelected}
 					<div>
-						<label for="set-frame" class="block text-sm text-surface-600-300-token mb-1">
+						<label for="set-frame" class="block text-sm text-surface-600 dark:text-surface-300 mb-1">
 							Frame
 						</label>
-						<select id="set-frame" class="select w-full" bind:value={selectedFrame}>
+						<select id="set-frame" class="block rounded-md border border-surface-300 dark:border-surface-600 bg-transparent text-base py-1 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-surface-900 dark:focus-visible:outline-surface-50 disabled:opacity-50 w-full" bind:value={selectedFrame}>
 							{#each availableFrames as frame (frame.value)}
 								<option value={frame.value}>{frame.label}</option>
 							{/each}
@@ -325,7 +325,7 @@ function handleAddToCart() {
 						<div class="flex items-center gap-1.5">
 							{#if selectedConfiguration}
 								<span class="text-xl font-semibold">${displaySetPrice}</span>
-								<span class="text-xs {isStuck ? 'text-surface-300' : 'text-surface-600-300-token'}">
+								<span class="text-xs {isStuck ? 'text-surface-300' : 'text-surface-600 dark:text-surface-300'}">
 									{getPaper(selectedPaperSlug)?.name} · {getSize(selectedSizeSlug)?.label}{selectedBorderWidth !== 'none' ? ` · ${selectedBorderWidth}" border` : ''}{selectedFrame !== 'none' ? ` · ${getFrame(selectedFrame)?.label} frame` : ''}
 								</span>
 							{:else}
@@ -334,18 +334,18 @@ function handleAddToCart() {
 						</div>
 						<div class="flex gap-1.5">
 							{#if data.printSet.inStock && selectedConfiguration}
-								<button class="btn btn-sm text-xs px-2 variant-soft-surface" onclick={handleAddToCart}>
+								<button class="inline-flex items-center justify-center gap-2 rounded-md whitespace-nowrap text-xs px-2 py-1 transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-surface-900 dark:focus-visible:outline-surface-50 disabled:opacity-50 disabled:cursor-not-allowed bg-surface-200 text-surface-900 dark:bg-surface-700 dark:text-surface-50" onclick={handleAddToCart}>
 									add to cart
 								</button>
 								<button
-									class="btn btn-sm text-xs px-2 variant-filled-primary"
+									class="inline-flex items-center justify-center gap-2 rounded-md whitespace-nowrap text-xs px-2 py-1 transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-surface-900 dark:focus-visible:outline-surface-50 disabled:opacity-50 disabled:cursor-not-allowed bg-primary-500 text-slate-950 not-disabled:hover:bg-primary-500/80"
 									disabled={isLoading}
 									onclick={handleCheckout}
 								>
 									{isLoading ? "..." : "buy now"}
 								</button>
 							{:else if !data.printSet.inStock}
-								<button class="btn btn-sm text-xs px-2 variant-filled-primary" disabled>out of stock</button>
+								<button class="inline-flex items-center justify-center gap-2 rounded-md whitespace-nowrap text-xs px-2 py-1 transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-surface-900 dark:focus-visible:outline-surface-50 disabled:opacity-50 disabled:cursor-not-allowed bg-primary-500 text-slate-950 not-disabled:hover:bg-primary-500/80" disabled>out of stock</button>
 							{/if}
 						</div>
 					</div>

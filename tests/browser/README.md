@@ -25,3 +25,10 @@ edge navigation control disappears, keyboard containment,
 and Escape focus restoration. Every check runs in desktop and mobile Chromium.
 These fixtures verify the actual components, but do not replace full-site
 routing, authenticated integration, or visual checks.
+
+S02 also mounts the actual theme switcher, checkout cancellation page, and print
+set configurator with typed local data. Checks cover light/dark muted copy,
+filled action and native-option contrast, select focus and value changes,
+disabled controls, selection with and without a time period, and readable
+afternoon cart labels. Color checks use the browser canvas to resolve CSS
+colors to sRGB; translucent selection is composited over the fixture body.

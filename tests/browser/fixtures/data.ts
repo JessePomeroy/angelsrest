@@ -54,3 +54,22 @@ export const deliveryData = {
 	requiresPassword: false,
 	client: { name: "Fixture client" },
 } satisfies PageData;
+
+export const printSetData = {
+	siteSettings: deliveryData.siteSettings,
+	printSet: {
+		title: "Fixture print set",
+		slug: "fixture-print-set",
+		description: "A local print set for theme checks.",
+		previewImage: preview,
+		variants: [
+			{ paper: "archival-matte", size: "8x10", retailPrice: 25 },
+			{ paper: "archival-matte", size: "11x14", retailPrice: 35 },
+		],
+		inStock: true,
+		bordersEnabled: true,
+		framedEnabled: true,
+		frameMarkupMultiplier: 1,
+	},
+	images: [{ full: preview, thumb: preview, original: preview, alt: "Fixture print" }],
+} satisfies import("../../../src/routes/shop/sets/[slug]/$types").PageData;

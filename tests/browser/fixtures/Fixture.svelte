@@ -1,12 +1,17 @@
 <script lang="ts">
+import PrintSet from "../../../src/routes/shop/sets/[slug]/+page.svelte";
+import CheckoutCancel from "../../../src/routes/checkout/cancel/+page.svelte";
+import ThemeSwitcher from "../../../src/lib/components/ThemeSwitcher.svelte";
 import CartDrawer from "../../../src/lib/components/cart/CartDrawer.svelte";
 import DeliveryGallery from "../../../src/routes/delivery/[token]/+page.svelte";
 import { cart } from "../../../src/lib/shop/cart.svelte";
 import { cartUI } from "../../../src/lib/shop/cartUI.svelte";
-import { deliveryData, preview } from "./data";
+import { deliveryData, preview, printSetData } from "./data";
 
 const params = new URLSearchParams(window.location.search);
 const fixture = params.get("fixture") ?? "cart";
+const setData = { ...printSetData, printSet: { ...printSetData.printSet, inStock: params.get("stock") !== "false" } };
+document.documentElement.dataset.timePeriod = "afternoon";
 
 if (params.get("populated") === "true") {
 	cart.add({
@@ -20,7 +25,16 @@ if (params.get("populated") === "true") {
 }
 </script>
 
-{#if fixture === "cart"}
+{#if fixture === "set"}
+	<ThemeSwitcher />
+	<PrintSet data={setData} />
+	<CartDrawer />
+{:else if fixture === "theme"}
+	<ThemeSwitcher />
+	<CheckoutCancel />
+	<button type="button" onclick={() => cartUI.open()}>Open cart</button>
+	<CartDrawer />
+{:else if fixture === "cart"}
 	<button type="button" onclick={() => cartUI.open()}>Open cart</button>
 	<a href="#outside">Outside link</a>
 	<CartDrawer />

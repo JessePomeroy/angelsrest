@@ -119,7 +119,7 @@ function openModal(node: HTMLDialogElement) {
         type="button"
         onclick={close}
         aria-label="Close cart"
-        class="p-1 -mr-1 text-surface-600-300-token hover:text-surface-900-50-token transition-colors"
+        class="p-1 -mr-1 text-surface-600 dark:text-surface-300 hover:text-surface-900 dark:hover:text-surface-50 transition-colors"
       >
         <XIcon class="size-5" />
       </button>
@@ -131,14 +131,14 @@ function openModal(node: HTMLDialogElement) {
         <div
           class="mt-4 mb-2 px-3 py-2 text-xs bg-surface-500/10 border border-surface-500/20 rounded-md flex items-start justify-between gap-2"
         >
-          <span class="text-surface-700-200-token leading-relaxed">
+          <span class="text-surface-700 dark:text-surface-200 leading-relaxed">
             we cleared your cart from a previous visit (older than 30 days).
           </span>
           <button
             type="button"
             onclick={dismissExpired}
             aria-label="Dismiss notice"
-            class="flex-shrink-0 text-surface-500 hover:text-surface-900-50-token"
+            class="flex-shrink-0 text-surface-500 hover:text-surface-900 dark:hover:text-surface-50"
           >
             <XIcon class="size-3" />
           </button>
@@ -147,13 +147,13 @@ function openModal(node: HTMLDialogElement) {
 
       {#if isEmpty}
         <div class="flex flex-col items-center justify-center text-center py-16">
-          <div class="text-sm tracking-wider lowercase text-surface-600-300-token mb-2">
+          <div class="text-sm tracking-wider lowercase text-surface-600 dark:text-surface-300 mb-2">
             your cart is empty
           </div>
           <a
             href="/shop"
             onclick={close}
-            class="text-xs tracking-wider lowercase text-surface-500 hover:text-surface-900-50-token underline underline-offset-4 inline-flex items-center gap-1"
+            class="text-xs tracking-wider lowercase text-surface-500 hover:text-surface-900 dark:hover:text-surface-50 underline underline-offset-4 inline-flex items-center gap-1"
           >
             browse the shop
             <ArrowRightIcon class="size-3" />
@@ -176,7 +176,7 @@ function openModal(node: HTMLDialogElement) {
         class="px-6 py-5 border-t border-surface-500/15 bg-surface-50 dark:bg-surface-900"
       >
         <div class="flex items-baseline justify-between mb-4">
-          <span class="text-xs tracking-wider lowercase text-surface-600-300-token">
+          <span class="text-xs tracking-wider lowercase text-surface-600 dark:text-surface-300">
             subtotal
           </span>
           <span class="text-xl font-semibold tabular-nums">
@@ -192,9 +192,9 @@ function openModal(node: HTMLDialogElement) {
           type="button"
           onclick={checkout}
           disabled={isCheckingOut}
-          class="btn variant-filled-primary w-full mb-2"
+          class="inline-flex items-center justify-center gap-2 rounded-md whitespace-nowrap text-base px-4 py-1 transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-surface-900 dark:focus-visible:outline-surface-50 disabled:opacity-50 disabled:cursor-not-allowed bg-primary-500 text-slate-950 not-disabled:hover:bg-primary-500/80 w-full mb-2"
         >
-          <span class="time-aware-text">
+          <span>
             {isCheckingOut ? "processing..." : "checkout"}
           </span>
         </button>
@@ -202,7 +202,7 @@ function openModal(node: HTMLDialogElement) {
         <button
           type="button"
           onclick={viewFullCart}
-          class="block w-full text-center text-xs tracking-wider lowercase text-surface-500 hover:text-surface-900-50-token underline underline-offset-4"
+          class="block w-full text-center text-xs tracking-wider lowercase text-surface-500 hover:text-surface-900 dark:hover:text-surface-50 underline underline-offset-4"
         >
           view full cart
         </button>

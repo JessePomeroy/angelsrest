@@ -26,12 +26,12 @@ let { data } = $props();
 <div class="px-2! md:px-8! lg:px-10!">
   <!-- Back link with breadcrumb -->
   <div class="mb-6">
-    <a href="/shop" class="inline-block text-sm text-surface-600-300-token hover:text-surface-400">
+    <a href="/shop" class="inline-block text-sm text-surface-600 dark:text-surface-300 hover:text-surface-400">
       ← back to shop
     </a>
     {#if data.collection.parent}
       <span class="mx-2 text-surface-500">/</span>
-      <a href="/shop/prints/{data.collection.parent.slug}" class="inline-block text-sm text-surface-600-300-token hover:text-surface-400">
+      <a href="/shop/prints/{data.collection.parent.slug}" class="inline-block text-sm text-surface-600 dark:text-surface-300 hover:text-surface-400">
         {data.collection.parent.title}
       </a>
     {/if}
@@ -41,7 +41,7 @@ let { data } = $props();
   <div class="text-center mb-6">
     <h1 class="text-3xl font-bold mb-2">{data.collection.title}</h1>
     {#if data.collection.description}
-      <p class="text-lg text-surface-600-300-token">{data.collection.description}</p>
+      <p class="text-lg text-surface-600 dark:text-surface-300">{data.collection.description}</p>
     {/if}
   </div>
 

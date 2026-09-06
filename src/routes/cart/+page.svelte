@@ -69,13 +69,13 @@ async function checkout() {
     <div
       class="mb-6 px-4 py-3 text-sm bg-surface-500/10 border border-surface-500/20 rounded-md flex items-start justify-between gap-3"
     >
-      <span class="text-surface-700-200-token">
+      <span class="text-surface-700 dark:text-surface-200">
         we cleared your cart from a previous visit (older than 30 days).
       </span>
       <button
         type="button"
         onclick={dismissExpired}
-        class="text-xs tracking-wider lowercase text-surface-500 hover:text-surface-900-50-token underline underline-offset-4"
+        class="text-xs tracking-wider lowercase text-surface-500 hover:text-surface-900 dark:hover:text-surface-50 underline underline-offset-4"
       >
         dismiss
       </button>
@@ -84,12 +84,12 @@ async function checkout() {
 
   {#if isEmpty}
     <div class="py-24 text-center">
-      <p class="text-sm tracking-wider lowercase text-surface-600-300-token mb-4">
+      <p class="text-sm tracking-wider lowercase text-surface-600 dark:text-surface-300 mb-4">
         your cart is empty
       </p>
       <a
         href="/shop"
-        class="btn variant-filled-primary"
+        class="inline-flex items-center justify-center gap-2 rounded-md whitespace-nowrap text-base px-4 py-1 transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-surface-900 dark:focus-visible:outline-surface-50 disabled:opacity-50 disabled:cursor-not-allowed bg-primary-500 text-slate-950 not-disabled:hover:bg-primary-500/80"
       >
         browse the shop
       </a>
@@ -123,11 +123,11 @@ async function checkout() {
         <h2 class="text-sm tracking-widest lowercase font-light">order summary</h2>
 
         <div class="space-y-2 text-sm">
-          <div class="flex justify-between text-surface-600-300-token">
+          <div class="flex justify-between text-surface-600 dark:text-surface-300">
             <span class="lowercase">items</span>
             <span class="tabular-nums">{itemCount}</span>
           </div>
-          <div class="flex justify-between text-surface-600-300-token">
+          <div class="flex justify-between text-surface-600 dark:text-surface-300">
             <span class="lowercase">shipping</span>
             <span class="lowercase">included</span>
           </div>
@@ -136,7 +136,7 @@ async function checkout() {
         <div
           class="flex items-baseline justify-between pt-3 border-t border-surface-500/15"
         >
-          <span class="text-xs tracking-wider lowercase text-surface-600-300-token">
+          <span class="text-xs tracking-wider lowercase text-surface-600 dark:text-surface-300">
             subtotal
           </span>
           <span class="text-2xl font-semibold tabular-nums">
@@ -152,9 +152,9 @@ async function checkout() {
           type="button"
           onclick={checkout}
           disabled={isCheckingOut}
-          class="btn variant-filled-primary w-full"
+          class="inline-flex items-center justify-center gap-2 rounded-md whitespace-nowrap text-base px-4 py-1 transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-surface-900 dark:focus-visible:outline-surface-50 disabled:opacity-50 disabled:cursor-not-allowed bg-primary-500 text-slate-950 not-disabled:hover:bg-primary-500/80 w-full"
         >
-          <span class="time-aware-text">
+          <span>
             {isCheckingOut ? "processing..." : "checkout"}
           </span>
         </button>

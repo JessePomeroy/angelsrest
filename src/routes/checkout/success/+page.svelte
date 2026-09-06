@@ -44,7 +44,7 @@ let { data, form }: { data: PageData; form?: { verifyError?: string } } = $props
     </div>
     
     <h1 class="text-3xl font-semibold mb-4">Thank you for your order!</h1>
-    <p class="text-surface-600-300-token">
+    <p class="text-surface-600 dark:text-surface-300">
       Your payment was successful. You'll receive an email confirmation shortly.
     </p>
   </div>
@@ -56,11 +56,11 @@ let { data, form }: { data: PageData; form?: { verifyError?: string } } = $props
       (no binding cookie), we show a friendlier "look up your order"
       state instead of PII.
     -->
-    <div class="bg-surface-100-800-token rounded-lg p-6 mb-8 text-center">
-      <p class="text-sm text-surface-600-300-token">
+    <div class="bg-surface-100 dark:bg-surface-800 rounded-lg p-6 mb-8 text-center">
+      <p class="text-sm text-surface-600 dark:text-surface-300">
         This looks like a shared link. For privacy we don't show order details on this page unless you're the buyer.
       </p>
-      <p class="text-sm text-surface-600-300-token mt-2">
+      <p class="text-sm text-surface-600 dark:text-surface-300 mt-2">
         To see your order, look it up with your email and order number at
         <a href="/orders" class="underline">/orders</a>.
       </p>
@@ -71,7 +71,7 @@ let { data, form }: { data: PageData; form?: { verifyError?: string } } = $props
           class="mt-5 space-y-3"
         >
           <input type="hidden" name="session_id" value={data.sessionId} />
-          <label class="block text-left text-sm text-surface-600-300-token" for="order-email">
+          <label class="block text-left text-sm text-surface-600 dark:text-surface-300" for="order-email">
             email used at checkout
           </label>
           <input
@@ -80,7 +80,7 @@ let { data, form }: { data: PageData; form?: { verifyError?: string } } = $props
             type="email"
             autocomplete="email"
             required
-            class="w-full rounded-md border border-surface-300-600-token bg-transparent px-3 py-2 text-sm"
+            class="w-full rounded-md border border-surface-300 dark:border-surface-600 bg-transparent px-3 py-2 text-sm"
           />
           {#if form?.verifyError}
             <p class="text-sm text-red-500" role="alert">{form.verifyError}</p>
@@ -95,7 +95,7 @@ let { data, form }: { data: PageData; form?: { verifyError?: string } } = $props
       {/if}
     </div>
   {:else if data.orderDetails}
-    <div class="bg-surface-100-800-token rounded-lg p-6 mb-8">
+    <div class="bg-surface-100 dark:bg-surface-800 rounded-lg p-6 mb-8">
       <h2 class="text-lg font-medium mb-4">Order Details</h2>
       
       <!-- Customer Info -->
@@ -109,7 +109,7 @@ let { data, form }: { data: PageData; form?: { verifyError?: string } } = $props
       <!-- Order Items -->
       {#if data.orderDetails.items.length > 0}
         <div class="mb-4">
-          <h3 class="text-sm font-medium text-surface-600-300-token mb-2">Items:</h3>
+          <h3 class="text-sm font-medium text-surface-600 dark:text-surface-300 mb-2">Items:</h3>
           {#each data.orderDetails.items as item, i (item.description ?? i)}
             <div class="flex justify-between items-center py-1">
               <span>{item.description ?? "Item"}</span>
@@ -120,7 +120,7 @@ let { data, form }: { data: PageData; form?: { verifyError?: string } } = $props
       {/if}
       
       <!-- Total -->
-      <div class="border-t border-surface-300-600-token pt-2 mb-4">
+      <div class="border-t border-surface-300 dark:border-surface-600 pt-2 mb-4">
         <div class="flex justify-between items-center font-medium">
           <span>Total Paid:</span>
           <span>{formatCents(data.orderDetails.amountTotal ?? 0, data.orderDetails.currency ?? "usd")}</span>
@@ -138,7 +138,7 @@ let { data, form }: { data: PageData; form?: { verifyError?: string } } = $props
           <h3 class="text-lg font-medium mb-2">your download is ready</h3>
           <a
             href="/api/download?session_id={data.orderDetails.sessionId}&slug={data.orderDetails.productSlug}&item=0"
-            class="btn variant-filled-primary px-8 py-3 w-full text-center"
+            class="inline-flex items-center justify-center gap-2 rounded-md whitespace-nowrap text-base px-8 py-3 transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-surface-900 dark:focus-visible:outline-surface-50 disabled:opacity-50 disabled:cursor-not-allowed bg-primary-500 text-slate-950 not-disabled:hover:bg-primary-500/80 w-full text-center"
           >
             download now
           </a>
@@ -151,8 +151,8 @@ let { data, form }: { data: PageData; form?: { verifyError?: string } } = $props
       <!-- Shipping Address (physical products only) -->
       {#if !data.orderDetails.isDigital && data.orderDetails.shippingAddress}
         <div>
-          <h3 class="text-sm font-medium text-surface-600-300-token mb-2">Shipping Address:</h3>
-          <div class="text-sm text-surface-700-200-token">
+          <h3 class="text-sm font-medium text-surface-600 dark:text-surface-300 mb-2">Shipping Address:</h3>
+          <div class="text-sm text-surface-700 dark:text-surface-200">
             <div>{data.orderDetails.shippingAddress.name}</div>
             <div>{data.orderDetails.shippingAddress.line1}</div>
             {#if data.orderDetails.shippingAddress.line2}
@@ -172,7 +172,7 @@ let { data, form }: { data: PageData; form?: { verifyError?: string } } = $props
   {#if data.orderDetails?.isDigital}
     <div class="bg-blue-50 dark:bg-blue-950/30 rounded-lg p-6 mb-8">
       <h3 class="font-medium mb-2">what's included</h3>
-      <ul class="text-sm text-surface-600-300-token space-y-1">
+      <ul class="text-sm text-surface-600 dark:text-surface-300 space-y-1">
         <li>- check your email for the order confirmation</li>
         <li>- use your confirmation email to re-verify downloads later</li>
         <li>- questions? email hello@angelsrest.online</li>
@@ -181,7 +181,7 @@ let { data, form }: { data: PageData; form?: { verifyError?: string } } = $props
   {:else}
     <div class="bg-blue-50 dark:bg-blue-950/30 rounded-lg p-6 mb-8">
       <h3 class="font-medium mb-2">What happens next?</h3>
-      <ul class="text-sm text-surface-600-300-token space-y-1">
+      <ul class="text-sm text-surface-600 dark:text-surface-300 space-y-1">
         <li>- You'll receive an email confirmation shortly</li>
         <li>- Your order will be processed within 1-2 business days</li>
         <li>- Made-to-order prints typically ship within 2 weeks</li>
@@ -192,10 +192,10 @@ let { data, form }: { data: PageData; form?: { verifyError?: string } } = $props
 
   <!-- Navigation -->
   <div class="flex gap-4 justify-center">
-    <a href="/shop" class="btn variant-soft-surface">
+    <a href="/shop" class="inline-flex items-center justify-center gap-2 rounded-md whitespace-nowrap text-base px-4 py-1 transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-surface-900 dark:focus-visible:outline-surface-50 disabled:opacity-50 disabled:cursor-not-allowed bg-surface-200 text-surface-900 dark:bg-surface-700 dark:text-surface-50">
       Continue Shopping
     </a>
-    <a href="/" class="btn variant-filled-primary">
+    <a href="/" class="inline-flex items-center justify-center gap-2 rounded-md whitespace-nowrap text-base px-4 py-1 transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-surface-900 dark:focus-visible:outline-surface-50 disabled:opacity-50 disabled:cursor-not-allowed bg-primary-500 text-slate-950 not-disabled:hover:bg-primary-500/80">
       Back to Home
     </a>
   </div>

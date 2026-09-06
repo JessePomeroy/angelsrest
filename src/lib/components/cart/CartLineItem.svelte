@@ -90,7 +90,7 @@ const extraImageCount = $derived(
       {item.title}
     </a>
     {#if item.paperName && item.paperWidth && item.paperHeight}
-      <div class="text-xs text-surface-600-300-token lowercase truncate">
+      <div class="text-xs text-surface-600 dark:text-surface-300 lowercase truncate">
         {item.paperName} · {item.paperWidth}×{item.paperHeight}{item.canvasSubcategoryId ? ' · canvas' : ''}{item.borderWidth ? ` · ${item.borderWidth}" border` : ''}{item.frameSubcategoryId ? ' · framed' : ''}
       </div>
     {/if}
