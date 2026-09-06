@@ -58,6 +58,36 @@ export function getCmsMediaTenantSecret(siteUrl?: string) {
 		"CMS media",
 	);
 }
+export function getCatalogPrintArtifactUploadSecret(siteUrl: string) {
+	const upload = tenantCredentialRole(
+		privateEnv.CATALOG_PRINT_ARTIFACT_UPLOAD_SECRET,
+		privateEnv.CATALOG_PRINT_ARTIFACT_UPLOAD_TENANT_SECRETS,
+		"Print artifact upload",
+	);
+	const otherSecrets = [
+		...tenantCredentialRole(
+			privateEnv.CMS_MEDIA_WORKER_SECRET,
+			privateEnv.CMS_MEDIA_WORKER_TENANT_SECRETS,
+			"CMS media",
+		).all,
+		...tenantCredentialRole(
+			privateEnv.CATALOG_PRINT_SOURCE_ISSUER_SECRET,
+			privateEnv.CATALOG_PRINT_SOURCE_ISSUER_TENANT_SECRETS,
+			"Print source issuer",
+		).all,
+	];
+	if (upload.all.some((secret) => !isBearerCredential(secret) || otherSecrets.includes(secret))) {
+		throw new RuntimeConfigurationError("Print artifact upload");
+	}
+	const tenant = normalizeCommerceTenantSiteUrl(siteUrl);
+	return required(
+		tenant === normalizeCommerceTenantSiteUrl(getPublicSiteOrigin())
+			? upload.scalar
+			: upload.registry[tenant]?.[0],
+		"Print artifact upload",
+	);
+}
+
 export function getCatalogPrintSourceIssuerSecret(siteUrl?: string) {
 	const upload = tenantCredentialRole(
 		privateEnv.CMS_MEDIA_WORKER_SECRET,

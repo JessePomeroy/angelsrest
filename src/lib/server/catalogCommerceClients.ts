@@ -10,8 +10,8 @@ import {
 import { env } from "$env/dynamic/private";
 import type { CheckoutSnapshotItem } from "$lib/server/checkoutCatalog";
 import {
+	getCatalogPrintArtifactUploadSecret,
 	getCatalogPrintSourceIssuerSecret,
-	getCmsMediaTenantSecret,
 	isBearerCredential,
 } from "$lib/server/runtimeConfig";
 
@@ -768,7 +768,7 @@ export async function storePrintArtifact(
 	rendered: { bytes: Uint8Array; hash: string; width: number; height: number },
 	upload: Config = {
 		origin: CMS_MEDIA_WORKER_ORIGIN,
-		bearer: getCmsMediaTenantSecret(siteUrl),
+		bearer: getCatalogPrintArtifactUploadSecret(siteUrl),
 	},
 ) {
 	if (
