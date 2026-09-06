@@ -8,11 +8,6 @@
 /* Tailwind v4: Enable class-based dark mode */
 @custom-variant dark (&:where(.dark, .dark *));
 
-@import "@skeletonlabs/skeleton";
-@import "@skeletonlabs/skeleton-svelte";
-
-/* Single theme: hamlindigo for both light and dark modes */
-@import "@skeletonlabs/skeleton/themes/hamlindigo";
 @import "./theme.css";
 
 /* ---- Base Resets ---- */

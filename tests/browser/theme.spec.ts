@@ -59,33 +59,35 @@ test("real theme switch updates muted copy, filled action, selection and cart la
 		const back = page.getByRole("link", { name: "Back to Shop", exact: true });
 		await expect(back).not.toHaveCSS("background-color", "rgba(0, 0, 0, 0)");
 		await expect.poll(() => contrast(back)).toBeGreaterThanOrEqual(4.5);
-		for (const period of [null, "afternoon"]) {
+		for (const period of [null, "dawn", "morning", "afternoon", "golden", "evening", "night"]) {
 			await page.locator("html").evaluate((html, period) => {
 				if (period) html.dataset.timePeriod = period;
 				else delete html.dataset.timePeriod;
 			}, period);
 			await expect.poll(() => contrast(copy, "::selection")).toBeGreaterThanOrEqual(4.5);
+			await expect.poll(() => contrast(back)).toBeGreaterThanOrEqual(4.5);
+			await page.getByRole("button", { name: "Open cart", exact: true }).click();
+			const checkout = page
+				.getByRole("dialog")
+				.getByRole("button", { name: "checkout", exact: true });
+			await expect(checkout).not.toHaveCSS("background-color", "rgba(0, 0, 0, 0)");
+			await expect.poll(() => contrast(checkout)).toBeGreaterThanOrEqual(4.5);
+			await expect
+				.poll(() =>
+					checkout
+						.locator("span")
+						.evaluate(
+							(span) =>
+								getComputedStyle(span).color === getComputedStyle(span.parentElement ?? span).color,
+						),
+				)
+				.toBe(true);
+			await page.keyboard.press("Escape");
 		}
-		await page.getByRole("button", { name: "Open cart", exact: true }).click();
-		const checkout = page
-			.getByRole("dialog")
-			.getByRole("button", { name: "checkout", exact: true });
-		await expect(checkout).not.toHaveCSS("background-color", "rgba(0, 0, 0, 0)");
-		await expect.poll(() => contrast(checkout)).toBeGreaterThanOrEqual(4.5);
-		await expect
-			.poll(() =>
-				checkout
-					.locator("span")
-					.evaluate(
-						(span) =>
-							getComputedStyle(span).color === getComputedStyle(span.parentElement ?? span).color,
-					),
-			)
-			.toBe(true);
-		await page.keyboard.press("Escape");
 	}
 	expect(colors[0]).not.toBe(colors[1]);
-	await expect(page.locator("html")).toHaveAttribute("data-time-period", "afternoon");
+	await expect(page.locator("html")).toHaveAttribute("data-time-period", "night");
+	await expect(page.locator("html")).not.toHaveAttribute("data-theme");
 });
 
 for (const mode of ["Light", "Dark"]) {

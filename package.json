@@ -31,8 +31,6 @@
 		"@changesets/cli": "^2.31.0",
 		"@edge-runtime/vm": "^5.0.0",
 		"@playwright/test": "^1.59.1",
-		"@skeletonlabs/skeleton": "^4.15.2",
-		"@skeletonlabs/skeleton-svelte": "^4.15.2",
 		"@sveltejs/adapter-auto": "^7.0.1",
 		"@sveltejs/adapter-vercel": "^6.3.4",
 		"@sveltejs/kit": "^2.70.3",

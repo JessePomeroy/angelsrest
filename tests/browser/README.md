@@ -32,3 +32,9 @@ filled action and native-option contrast, select focus and value changes,
 disabled controls, selection with and without a time period, and readable
 afternoon cart labels. Color checks use the browser canvas to resolve CSS
 colors to sRGB; translucent selection is composited over the fixture body.
+
+S03 exercises the production bottom navigation with a minimal reactive route
+state stub, checking destinations, active routes, near-prefix exclusions,
+mobile target sizes, and desktop hiding. Theme checks run the primary actions,
+selection, and cart labels across all six time periods in both modes, and
+verify that switching modes no longer sets a Skeleton theme attribute.
