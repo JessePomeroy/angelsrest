@@ -41,12 +41,12 @@ function setDark() {
 </script>
 
 <!-- Use proper Skeleton design tokens -->
-<div class="flex items-center bg-surface-200-700-token rounded-full p-0.5">
+<div class="flex items-center bg-surface-200 dark:bg-surface-700 rounded-full p-0.5">
   <!-- Light mode button -->
   <button
     onclick={setLight}
     class="p-1.5 rounded-full transition-all duration-200 {!$isDark
-      ? 'bg-surface-50 text-surface-900-50-token shadow-sm'
+      ? 'bg-surface-50 text-surface-900 dark:text-surface-50 shadow-sm'
       : 'text-surface-500 hover:text-surface-600'}"
     aria-label="Light mode"
   >

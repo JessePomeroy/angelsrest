@@ -1,4 +1,4 @@
-/* Global Tailwind, retained Skeleton primitives/tokens, and site theme layers. */
+/* Global Tailwind and site theme layers. */
 
 @import "tailwindcss";
 @plugin "@tailwindcss/typography";
@@ -13,6 +13,7 @@
 
 /* Single theme: hamlindigo for both light and dark modes */
 @import "@skeletonlabs/skeleton/themes/hamlindigo";
+@import "./theme.css";
 
 /* ---- Base Resets ---- */
 
@@ -48,13 +49,22 @@ html {
 /* ---- Core Theme Setup ---- */
 
 :root {
+	color-scheme: light;
+	scrollbar-color: var(--color-surface-300) var(--color-surface-100);
+	scrollbar-width: thin;
 	--admin-dark-rgb: 30, 41, 59;
 	--admin-light-rgb: 241, 245, 249;
 	--admin-accent-color: #818cf8;
 	--admin-accent-color-hover: #a5b4fc;
 }
 
+html.dark {
+	color-scheme: dark;
+	scrollbar-color: var(--color-surface-700) var(--color-surface-900);
+}
+
 body {
+	color: var(--color-surface-950);
 	font-family: "Synonym", sans-serif;
 	line-height: 1.6;
 	min-height: 100vh;
@@ -72,6 +82,7 @@ html:not(.dark)[data-time-period] [data-admin] {
 }
 
 html.dark body {
+	color: var(--color-surface-50);
 	background-color: #1e293b;
 }
 
@@ -100,9 +111,47 @@ img {
 }
 
 ::selection {
-	background: rgba(var(--color-primary-500) / 0.3);
+	color: var(--color-surface-950);
+	background: color-mix(in srgb, var(--color-primary-500) 30%, transparent);
 }
+html.dark ::selection {
+	color: var(--color-surface-50);
+}
+
 /* Blog prose headings use Chillax display font */
 .prose :where(h1, h2, h3, h4, h5, h6) {
 	font-family: "Chillax", sans-serif;
+}
+
+/* Native controls retain affordances without library primitives. Component
+ * utilities and scoped Admin styles can override this base layer. */
+@layer base {
+	button:not(:disabled),
+	[role="button"]:not(:disabled) {
+		cursor: pointer;
+	}
+
+	:disabled {
+		opacity: 0.5;
+	}
+
+	:disabled > * {
+		pointer-events: none;
+	}
+
+	html {
+		-webkit-tap-highlight-color: color-mix(in srgb, var(--color-surface-500) 30%, transparent);
+	}
+
+	select option,
+	select optgroup {
+		background-color: var(--color-surface-50);
+		color: var(--color-surface-950);
+	}
+
+	html.dark select option,
+	html.dark select optgroup {
+		background-color: var(--color-surface-950);
+		color: var(--color-surface-50);
+	}
 }

@@ -1,0 +1,48 @@
+/* Site-owned palette and the existing 1.067 typography scale.
+ * Keep these values stable while removing the component-library dependency.
+ * @theme exposes colors to both Tailwind utilities and scoped CSS.
+ */
+@theme static {
+	--color-primary-500: oklch(80.28% 0.08 266.51deg);
+	--color-success-500: oklch(61.08% 0.08 171.46deg);
+	--color-success-700: oklch(50.85% 0.07 170.86deg);
+	--color-error-500: oklch(57.08% 0.09 0.42deg);
+	--color-error-700: oklch(47.34% 0.07 0.01deg);
+	--color-surface-50: oklch(93.75% 0.01 273.43deg);
+	--color-surface-100: oklch(91.84% 0.01 266.73deg);
+	--color-surface-200: oklch(89.7% 0.02 266.3deg);
+	--color-surface-300: oklch(83.29% 0.03 268.82deg);
+	--color-surface-400: oklch(70.33% 0.05 267.74deg);
+	--color-surface-500: oklch(56.88% 0.07 266.47deg);
+	--color-surface-600: oklch(52.73% 0.07 266.75deg);
+	--color-surface-700: oklch(46.53% 0.06 265.38deg);
+	--color-surface-800: oklch(39.92% 0.05 265.76deg);
+	--color-surface-900: oklch(35% 0.04 267.12deg);
+	--color-surface-950: oklch(31.91% 0.04 266.95deg);
+	--text-xs: calc(0.75rem * 1.067);
+	--text-xs--line-height: calc(calc(1 / 0.75) * 1.067);
+	--text-sm: calc(0.875rem * 1.067);
+	--text-sm--line-height: calc(calc(1.25 / 0.875) * 1.067);
+	--text-base: calc(1rem * 1.067);
+	--text-base--line-height: calc(calc(1.5 / 1) * 1.067);
+	--text-lg: calc(1.125rem * 1.067);
+	--text-lg--line-height: calc(calc(1.75 / 1.125) * 1.067);
+	--text-xl: calc(1.25rem * 1.067);
+	--text-xl--line-height: calc(calc(1.75 / 1.25) * 1.067);
+	--text-2xl: calc(1.5rem * 1.067);
+	--text-2xl--line-height: calc(calc(2 / 1.5) * 1.067);
+	--text-3xl: calc(1.875rem * 1.067);
+	--text-3xl--line-height: calc(calc(2.25 / 1.875) * 1.067);
+	--text-4xl: calc(2.25rem * 1.067);
+	--text-4xl--line-height: calc(calc(2.5 / 2.25) * 1.067);
+	--text-5xl: calc(3rem * 1.067);
+	--text-5xl--line-height: calc(1 * 1.067);
+	--text-6xl: calc(3.75rem * 1.067);
+	--text-6xl--line-height: calc(1 * 1.067);
+	--text-7xl: calc(4.5rem * 1.067);
+	--text-7xl--line-height: calc(1 * 1.067);
+	--text-8xl: calc(6rem * 1.067);
+	--text-8xl--line-height: calc(1 * 1.067);
+	--text-9xl: calc(8rem * 1.067);
+	--text-9xl--line-height: calc(1 * 1.067);
+}
