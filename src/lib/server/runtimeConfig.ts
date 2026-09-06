@@ -127,7 +127,7 @@ export function getLumaPrintsRuntimeConfig() {
 
 const TOKEN68_BEARER_PATTERN = /^[-A-Za-z0-9._~+/]+={0,}$/;
 
-function isBearerCredential(value: string | undefined): value is string {
+export function isBearerCredential(value: string | undefined): value is string {
 	return Boolean(
 		value && value.length >= 32 && value.length <= 512 && TOKEN68_BEARER_PATTERN.test(value),
 	);
