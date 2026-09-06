@@ -878,9 +878,9 @@ describe("fixed-purpose catalog clients", () => {
 		expect(fetch).toHaveBeenCalledOnce();
 	});
 
-	it("uses distinct tenant upload and issuer credentials for rendered prints", async () => {
-		const uploadSecret = "u".repeat(32);
-		const issuerSecret = "i".repeat(32);
+	it("preserves padded tenant upload and issuer credentials for rendered prints", async () => {
+		const uploadSecret = `${"u".repeat(43)}=`;
+		const issuerSecret = `${"i".repeat(42)}==`;
 		const mutablePrivateEnv = privateEnv as Record<string, string | undefined>;
 		const mutablePublicEnv = publicEnv as Record<string, string | undefined>;
 		const previous = {
@@ -1074,6 +1074,39 @@ describe("fixed-purpose catalog clients", () => {
 			const fetch = vi.fn(async () => json({ version: 1, url, expiresAt }));
 			await expect(issue(fetch)).resolves.toBe(url);
 		}
+	});
+
+	it.each([
+		undefined,
+		"",
+		"a".repeat(31),
+		"a".repeat(513),
+		`${"a".repeat(512)}=`,
+		"=".repeat(32),
+		`${token}=a`,
+		`${token} `,
+		`${token}\n`,
+		`${token}\r\n`,
+		`${token}\r\nX-Injected: value`,
+		`${token}é`,
+	])("rejects malformed bearer credentials before upload (#%#)", async (bearer) => {
+		const fetch = vi.fn();
+		await expect(
+			storePrintArtifact(
+				"angelsrest.online",
+				{
+					bytes: new Uint8Array([1]),
+					hash: "c".repeat(64),
+					width: 1,
+					height: 1,
+				},
+				{ origin, bearer, fetch },
+			),
+		).rejects.toMatchObject({
+			kind: "unavailable",
+			phase: "configuration",
+		});
+		expect(fetch).not.toHaveBeenCalled();
 	});
 
 	it("defaults unavailable, rejects non-exact origins and bounded responses, and never retries", async () => {

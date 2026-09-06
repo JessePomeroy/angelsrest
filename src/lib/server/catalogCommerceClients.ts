@@ -12,6 +12,7 @@ import type { CheckoutSnapshotItem } from "$lib/server/checkoutCatalog";
 import {
 	getCatalogPrintSourceIssuerSecret,
 	getCmsMediaTenantSecret,
+	isBearerCredential,
 } from "$lib/server/runtimeConfig";
 
 const PATHS = {
@@ -36,7 +37,6 @@ const CURRENT_KEYS = "kindEnabled publishedRevision slugMatches available varian
 );
 const SOURCE_KEYS = "memberKey relationKey key mime bytes hash dimensions".split(" ");
 const FILE_KEYS = "kind relationKey key mime bytes hash filename version".split(" ");
-const token68 = /^[A-Za-z0-9._~+/-]{32,512}$/;
 const sha256 = /^[a-f0-9]{64}$/;
 const sixDigitHex = /^#[0-9A-Fa-f]{6}$/;
 const PRINT_SOURCE_DIMENSION_MAX = 100_000;
@@ -412,7 +412,7 @@ function parsePaidZip(
 }
 
 function endpoint({ origin, bearer }: Config, path: string) {
-	if (!origin || !bearer || !token68.test(bearer)) throw new CatalogBoundaryError("unavailable");
+	if (!origin || !isBearerCredential(bearer)) throw new CatalogBoundaryError("unavailable");
 	try {
 		const parsed = new URL(origin);
 		if (parsed.protocol !== "https:" || parsed.origin !== origin || parsed.href !== `${origin}/`)
