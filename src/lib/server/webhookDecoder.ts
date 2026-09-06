@@ -51,7 +51,7 @@ type PrintOptions = Pick<
  * the session/lineItems shapes are known.
  */
 export function buildOrderItemsFromSession(
-	session: Stripe.Checkout.Session,
+	session: Pick<Stripe.Checkout.Session, "metadata">,
 	lineItems: Stripe.LineItem[],
 ): OrderItem[] {
 	const meta = (session.metadata ?? {}) as StripeMetadata;

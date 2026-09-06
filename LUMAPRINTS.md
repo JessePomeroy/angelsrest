@@ -71,6 +71,15 @@ Order replay does not replace either the instruction or recipient. Existing
 orders retain their historical resolution and retry behavior. No provider POST,
 refund, receipt, admission, or reconciliation fence is removed by this rollout.
 
+The runner consumes a frozen order directly: resolve from its saved instruction,
+prepare/checkpoint the existing recipe, then call the shared recorded-order
+submission/recovery coordinator. It does not retrieve a Stripe Checkout Session,
+re-resolve the historical catalog, create/replay the paid order, or send its
+payment receipt. Fulfillment outcome alerts still use the existing claims.
+Orders without frozen input retain the historical runner path. The new
+`product` field on job items is additive; deploy this backend before enabling
+frozen reservation capture. This source slice does not enable capture.
+
 | Concern | Source of truth |
 |---|---|
 | Public product content and retail variants | Published Convex catalog |

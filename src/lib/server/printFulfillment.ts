@@ -216,7 +216,7 @@ export async function submitPrintFulfillment(
 		siteUrl: string;
 		lineItems: Stripe.LineItem[];
 		shippingDetails: ShippingDetails;
-		session: Stripe.Checkout.Session;
+		session: Pick<Stripe.Checkout.Session, "id" | "metadata">;
 		checkoutSnapshot?: CheckoutSnapshotV1;
 	},
 ): Promise<PrintFulfillmentOutcome> {
@@ -233,14 +233,15 @@ export async function submitPrintFulfillment(
 	} = input;
 	const webhookSecret = getWebhookSecret();
 	const tenantFence = tenantId === undefined ? {} : { tenantId };
-	const legacyItems = checkoutSnapshot ? undefined : buildOrderItemsFromSession(session, lineItems);
+	const legacyItems =
+		checkoutSnapshot || preparedItems ? undefined : buildOrderItemsFromSession(session, lineItems);
 	const hasPrintItems =
 		fulfillmentType === "lumaprints" &&
 		(checkoutSnapshot
 			? checkoutSnapshot.items.some(
 					({ productKind }) => productKind === "print" || productKind === "print_set",
 				)
-			: (legacyItems?.length ?? 0) > 0);
+			: (preparedItems ?? legacyItems ?? []).length > 0);
 	if (!hasPrintItems) {
 		const outcome = await convex.mutation(api.orders.claimNonPrintOrderOutcome, {
 			orderId,
@@ -616,7 +617,7 @@ export async function handlePrintFulfillmentFailure(
 		orderId: Id<"orders">;
 		orderNumber: string;
 		error: unknown;
-		session: Stripe.Checkout.Session;
+		session: Pick<Stripe.Checkout.Session, "id" | "payment_intent" | "amount_total">;
 		stripeRequestOptions?: Stripe.RequestOptions;
 		customerEmail: string;
 		notificationProfile?: CommerceNotificationProfile;
@@ -671,7 +672,7 @@ export async function handlePermanentFulfillmentFailure(
 		orderNumber: string;
 		error: unknown;
 		durableFulfillmentError?: string;
-		session: Stripe.Checkout.Session;
+		session: Pick<Stripe.Checkout.Session, "id" | "payment_intent" | "amount_total">;
 		stripeRequestOptions?: Stripe.RequestOptions;
 		customerEmail: string;
 		notificationProfile?: CommerceNotificationProfile;

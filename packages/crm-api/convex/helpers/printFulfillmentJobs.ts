@@ -15,7 +15,12 @@ export const printJobDescriptor = v.object({
 	mime: v.union(v.literal("image/jpeg"), v.literal("image/png")),
 	dimensions: v.object({ width: v.number(), height: v.number() }),
 });
+export const printJobProduct = v.object({
+	subcategoryId: v.number(), orderItemOptions: v.array(v.number()),
+	solidColorHexCode: v.optional(v.string()),
+});
 export const printJobItem = v.object({
+	product: v.optional(printJobProduct),
 	paperSubcategoryId: v.number(), width: v.number(), height: v.number(), quantity: v.number(),
 	borderWidth: v.optional(v.number()), frameSubcategoryId: v.optional(v.number()),
 	canvasSubcategoryId: v.optional(v.number()), canvasWrapHex: v.optional(v.string()),
@@ -34,10 +39,7 @@ export const reservedPrintInputValidator = v.object({
 				borderWidth: v.optional(v.number()), frameSubcategoryId: v.optional(v.number()),
 				canvasSubcategoryId: v.optional(v.number()), canvasWrapHex: v.optional(v.string()),
 			}),
-			product: v.object({
-				subcategoryId: v.number(), orderItemOptions: v.array(v.number()),
-				solidColorHexCode: v.optional(v.string()),
-			}),
+			product: printJobProduct,
 		})),
 	})),
 });

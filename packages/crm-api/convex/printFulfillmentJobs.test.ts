@@ -83,6 +83,15 @@ test("expired attempts reschedule durably without repeating checkpointed sources
 	await expect(t.query(api.printFulfillmentJobs.read, stale)).rejects.toThrow("lease");
 });
 
+test("frozen provider options survive resolve and preparation checkpoints", async () => {
+	const { step, t, claim } = await setup();
+	const frozen = { ...source, item: { ...source.item, product: { subcategoryId: 103007, orderItemOptions: [39] } } };
+	await step({ kind: "resolved", sources: [frozen] });
+	await step({ kind: "prepared", ...frozen });
+	const state = await t.query(api.printFulfillmentJobs.read, await claim());
+	expect(state.sources[0].item.product).toEqual(frozen.item.product);
+});
+
 test("capabilities refresh without rendering again, but never after the POST fence", async () => {
 	const { t, orderId, claim, step } = await setup();
 	await step({ kind: "resolved", sources: [source] });

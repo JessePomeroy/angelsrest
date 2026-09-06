@@ -2,7 +2,7 @@ import type { ConvexHttpClient } from "convex/browser";
 import type { Resend } from "resend";
 import type Stripe from "stripe";
 import { api } from "$convex/api";
-import type { Id } from "$convex/dataModel";
+import type { Doc, Id } from "$convex/dataModel";
 import type { CheckoutAdmissionInput } from "$lib/server/checkoutSnapshotConsumer";
 import {
 	type CheckoutSnapshotInput,
@@ -26,7 +26,7 @@ import {
 	sendClaimedFulfillmentFailureAdminAlert,
 	submitPrintFulfillment,
 } from "$lib/server/printFulfillment";
-import type { ShippingDetails } from "$lib/server/webhookEmails";
+import type { OrderEmailSession, ShippingDetails } from "$lib/server/webhookEmails";
 import { buildConvexOrderCreatePayload } from "$lib/server/webhookOrderPayload";
 import { getWebhookSecret } from "$lib/server/webhookSecret";
 import type { OrderItem } from "$lib/shop/types";
@@ -114,19 +114,6 @@ export async function createOrderInConvex(
 			throw cause;
 		});
 	const { _id: orderId, orderNumber, alreadyExisted } = orderResult;
-	const existingLumaprintsOrderNumber = orderResult.lumaprintsOrderNumber;
-	const existingStatus = orderResult.status;
-	const existingStripeFees = orderResult.stripeFees;
-	const existingFulfillmentError = orderResult.fulfillmentError;
-	const existingStripeRefundId = orderResult.stripeRefundId;
-	const existingRecoveryStatus = orderResult.fulfillmentRecoveryStatus;
-	const existingAutomatedRefundId = orderResult.automatedRefundId;
-	const existingAutomatedRefundStatus = orderResult.automatedRefundStatus;
-	const existingPrintClaim = orderResult.printFulfillmentClaim;
-	const existingPrintPhase = orderResult.printFulfillmentPhase;
-	const existingPrintResolution = orderResult.printFulfillmentResolution;
-	const fulfillmentType = orderResult.fulfillmentType;
-
 	logStructured({
 		event: alreadyExisted ? "order.rehydrated" : "order.created",
 		stage: "order_create",
@@ -145,6 +132,95 @@ export async function createOrderInConvex(
 			notification: "none",
 		};
 	}
+
+	return finishRecordedPrintOrder(
+		{ stripe, convex, resend, createLumaPrintsOrder, confirmLumaPrintsOrder },
+		{
+			orderResult,
+			printJob,
+			session,
+			shippingDetails,
+			lineItems,
+			tenantId,
+			siteUrl,
+			stripeRequestOptions,
+			notificationProfile,
+		},
+	);
+}
+
+type RecordedPrintOrder = Pick<
+	Doc<"orders">,
+	| "_id"
+	| "orderNumber"
+	| "printJobId"
+	| "fulfillmentType"
+	| "lumaprintsOrderNumber"
+	| "status"
+	| "stripeFees"
+	| "fulfillmentError"
+	| "stripeRefundId"
+	| "fulfillmentRecoveryStatus"
+	| "automatedRefundId"
+	| "automatedRefundStatus"
+	| "printFulfillmentClaim"
+	| "printFulfillmentPhase"
+	| "printFulfillmentResolution"
+	| "checkoutSnapshot"
+> & { alreadyExisted: boolean };
+
+/** Shared recovery/submission coordinator; never creates an order or sends its payment receipt. */
+export async function finishRecordedPrintOrder(
+	{
+		stripe,
+		convex,
+		resend,
+		createLumaPrintsOrder,
+		confirmLumaPrintsOrder,
+	}: {
+		stripe: Stripe;
+		convex: ConvexHttpClient;
+		resend: Resend;
+		createLumaPrintsOrder: SubmitLumaPrintsOrder;
+		confirmLumaPrintsOrder?: ConfirmLumaPrintsOrder;
+	},
+	{
+		orderResult,
+		printJob,
+		session,
+		shippingDetails,
+		lineItems,
+		tenantId,
+		siteUrl,
+		stripeRequestOptions,
+		notificationProfile = ANGELS_REST_COMMERCE_PROFILE,
+	}: {
+		orderResult: RecordedPrintOrder;
+		printJob?: PreparedPrintJob;
+		session: OrderEmailSession;
+		shippingDetails: ShippingDetails;
+		lineItems: Stripe.LineItem[];
+		tenantId?: string;
+		siteUrl: string;
+		stripeRequestOptions?: Stripe.RequestOptions;
+		notificationProfile?: CommerceNotificationProfile;
+	},
+): Promise<CreatedOrderResult> {
+	if (printJob && printJob.jobId !== orderResult.printJobId)
+		throw new Error("Print job does not match the paid order");
+	const { _id: orderId, orderNumber, alreadyExisted } = orderResult;
+	const existingLumaprintsOrderNumber = orderResult.lumaprintsOrderNumber;
+	const existingStatus = orderResult.status;
+	const existingStripeFees = orderResult.stripeFees;
+	const existingFulfillmentError = orderResult.fulfillmentError;
+	const existingStripeRefundId = orderResult.stripeRefundId;
+	const existingRecoveryStatus = orderResult.fulfillmentRecoveryStatus;
+	const existingAutomatedRefundId = orderResult.automatedRefundId;
+	const existingAutomatedRefundStatus = orderResult.automatedRefundStatus;
+	const existingPrintClaim = orderResult.printFulfillmentClaim;
+	const existingPrintPhase = orderResult.printFulfillmentPhase;
+	const existingPrintResolution = orderResult.printFulfillmentResolution;
+	const fulfillmentType = orderResult.fulfillmentType;
 
 	const needsProviderReconciliation =
 		existingPrintClaim === true &&
