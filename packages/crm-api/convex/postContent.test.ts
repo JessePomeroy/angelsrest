@@ -5,6 +5,7 @@ import { convexTest } from "convex-test";
 import { describe, expect, test } from "vitest";
 import { api, internal } from "./_generated/api";
 import type { Id } from "./_generated/dataModel";
+import { preparePostRevision } from "./helpers/postContentIntegrity";
 import type { PostDraft } from "./helpers/postContentValidators";
 import schema from "./schema";
 
@@ -242,6 +243,36 @@ async function expectError(operation: Promise<unknown>, message: RegExp) {
 }
 
 describe("tenant-scoped Post content graphs", () => {
+	test("retains v1 checksum compatibility for ordered Post graphs", async () => {
+		// Captured from main before consolidating preparation; ordering and empty fields are intentional.
+		const prepared = await preparePostRevision(emptyPost({
+			title: "A field note 🌲", slug: "field-note", displayPublishedAt: 0,
+			format: "technicalNote", presentation: "technical",
+			summary: "  A summary.  ", seoTitle: "", seoDescription: "Description",
+			authorDocumentId: "author-1" as Id<"contentDocuments">,
+			categories: [
+				{ key: "category-2", documentId: "category-2" as Id<"contentDocuments"> },
+				{ key: "category-1", documentId: "category-1" as Id<"contentDocuments"> },
+			],
+			mainImage: { key: "main", assetId: "asset-main" as Id<"mediaAssets">, altText: "", caption: "Main" },
+			body: { version: 1, blocks: [
+				{ type: "paragraph", key: "p1", children: [
+					{ type: "text", key: "t1", text: "First\n paragraph", marks: [] },
+				] },
+				imageBlock("image1", "asset-body" as Id<"mediaAssets">, "Body"),
+			] },
+			equipment: [{ key: "second", label: "Camera", details: "" }, { key: "first" }],
+			materials: [{ key: "paper", details: "Matte" }],
+		}));
+		expect(prepared.checksum).toBe("c778bb25a0ade4a5dd64cdb5688b094e0ab2be2dff90dcd8755061f0f60e0d09");
+		expect(prepared.payload).toMatchObject({
+			summaryChecksum: "ed62fb9a4654c93b051701c61f1aeb427bc5b6593af50c184dcc56d16ccf7e6f",
+			excerpt: "A summary.", bodyBlockCount: 2, categoryCount: 2,
+			equipmentCount: 2, materialCount: 1, mediaPlacementCount: 2, referenceCount: 3,
+			hasAuthor: true, hasMainImage: true,
+		});
+	});
+
 	test("requires authentication and keeps editor operations inside one tenant", async () => {
 		const { t, adminA, adminB } = await setup();
 		await expectError(

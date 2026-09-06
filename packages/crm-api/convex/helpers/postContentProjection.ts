@@ -8,12 +8,11 @@ import {
 import {
 	asPostRevisionPayload,
 	assertPostRevisionOwnership,
-	checksumPostSummaryIntegrity,
 	getReadyPostAssets,
 	loadPostRevision,
 	requirePostDraftRelations,
 } from "./postContentGraph";
-import type { PostSummaryIntegrityInput } from "./postContentIntegrity";
+import { checksumPostSummaryIntegrity, type PostSummaryIntegrityInput } from "./postContentIntegrity";
 import {
 	POST_CONTENT_LIMITS,
 	toPublishedPostDraft,

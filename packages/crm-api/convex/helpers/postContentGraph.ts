@@ -7,15 +7,9 @@ import {
 } from "./blogContentData";
 import { toPublishedBlogSupportingContent } from "./blogContentValidators";
 import type { ContentRevisionPayload } from "./contentValidators";
-import {
-	postChecksumInput,
-	postSummaryChecksumInput,
-	postSummaryIntegrityFromDraft,
-	type PostSummaryIntegrityInput,
-} from "./postContentIntegrity";
+import { preparePostRevision } from "./postContentIntegrity";
 import {
 	POST_CONTENT_LIMITS,
-	postRevisionPayloadFromDraft,
 	serializePostRevisionPayload,
 	type PostDraft,
 	type PostRevisionPayload,
@@ -83,32 +77,8 @@ export function assertExpectedPostDraft(
 	}
 }
 
-async function checksumInput(input: string) {
-	const digest = await crypto.subtle.digest(
-		"SHA-256",
-		new TextEncoder().encode(input),
-	);
-	return Array.from(new Uint8Array(digest), (byte) =>
-		byte.toString(16).padStart(2, "0"),
-	).join("");
-}
-
-export async function checksumPostDraft(draft: PostDraft) {
-	return await checksumInput(postChecksumInput(draft));
-}
-
-export async function checksumPostSummary(draft: PostDraft) {
-	return await checksumPostSummaryIntegrity(postSummaryIntegrityFromDraft(draft));
-}
-
-export async function checksumPostSummaryIntegrity(
-	input: PostSummaryIntegrityInput,
-) {
-	return await checksumInput(postSummaryChecksumInput(input));
-}
-
 /** Canonicalize every relation ID before checksumming or storing a graph. */
-export function normalizePostDraftIds(ctx: PostCtx, draft: PostDraft) {
+export async function preparePostDraftRevision(ctx: PostCtx, draft: PostDraft) {
 	const validated = validatePostDraft(draft);
 	const normalizeDocumentId = (id: string) => {
 		const normalized = ctx.db.normalizeId("contentDocuments", id);
@@ -120,7 +90,7 @@ export function normalizePostDraftIds(ctx: PostCtx, draft: PostDraft) {
 		if (!normalized) throw new Error("Post media asset ID is invalid");
 		return normalized;
 	};
-	return validatePostDraft({
+	return await preparePostRevision({
 		...validated,
 		authorDocumentId: validated.authorDocumentId
 			? normalizeDocumentId(validated.authorDocumentId)
@@ -465,20 +435,18 @@ export async function loadPostRevision(
 			: undefined,
 		body: { version: 1, blocks: bodyBlocks },
 	};
-	validatePostDraft(draft);
-	const summaryChecksum = await checksumPostSummary(draft);
+	const prepared = await preparePostRevision(draft);
+	const { summaryChecksum } = prepared.payload;
 	if (summaryChecksum !== payload.summaryChecksum) {
 		throw new Error("Post revision summary checksum mismatch");
 	}
-	const derived = postRevisionPayloadFromDraft(draft, summaryChecksum);
 	if (
-		serializePostRevisionPayload(derived)
+		serializePostRevisionPayload(prepared.payload)
 		!== serializePostRevisionPayload(payload)
 	) {
 		throw new Error("Post revision payload does not match its graph");
 	}
-	const checksum = await checksumPostDraft(draft);
-	if (checksum !== revision.checksum) {
+	if (prepared.checksum !== revision.checksum) {
 		throw new Error("Post revision checksum mismatch");
 	}
 	return {
