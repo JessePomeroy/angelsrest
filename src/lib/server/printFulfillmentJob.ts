@@ -1,6 +1,7 @@
 import { api } from "$convex/api";
 import type { Id } from "$convex/dataModel";
 import {
+	CatalogBoundaryError,
 	issueTenantPrintSource,
 	issueTenantPrintSourceCapability,
 	storePrintArtifact,
@@ -14,6 +15,7 @@ import { handleCheckoutCompleted } from "$lib/server/orderIntake";
 import { PrintReconciliationPendingError } from "$lib/server/printFulfillment";
 import { renderPrintSource } from "$lib/server/printSourcePreparation";
 import { getResend } from "$lib/server/resendClient";
+import { RuntimeConfigurationError } from "$lib/server/runtimeConfig";
 import { resolveSnapshotPrintSources } from "$lib/server/snapshotFulfillment";
 import { getStripe } from "$lib/server/stripeClient";
 import { getWebhookSecret } from "$lib/server/webhookSecret";
@@ -27,6 +29,8 @@ export async function runPrintFulfillmentStep(
 	const convex = getConvex();
 	const authority = { jobId, leaseToken, webhookSecret: getWebhookSecret() };
 	const { job, order, sources } = await convex.query(api.printFulfillmentJobs.read, authority);
+	let operation: string = job.stage;
+	const startedAt = Date.now();
 	try {
 		if (job.stage === "resolve") {
 			const snapshot = order.checkoutSnapshot;
@@ -55,12 +59,20 @@ export async function runPrintFulfillmentStep(
 		} else if (job.stage === "prepare") {
 			const source = sources[0];
 			if (!source) throw new FulfillmentValidationError("Print source is unavailable");
-			const rendered = await renderPrintSource({
-				...source.item,
-				imageUrl: await issueTenantPrintSource(source.descriptor, order.siteUrl),
-				sourcePolicy: "opaque_capability",
-			});
+			operation = "issue_source";
+			const rendered = await renderPrintSource(
+				{
+					...source.item,
+					imageUrl: await issueTenantPrintSource(source.descriptor, order.siteUrl),
+					sourcePolicy: "opaque_capability",
+				},
+				(stage) => {
+					operation = stage;
+				},
+			);
+			operation = "store_artifact";
 			const descriptor = await storePrintArtifact(order.siteUrl, rendered);
+			operation = "checkpoint";
 			await convex.mutation(api.printFulfillmentJobs.advance, {
 				...authority,
 				result: {
@@ -143,13 +155,25 @@ export async function runPrintFulfillmentStep(
 		}
 	} catch (cause) {
 		// Raw source URLs, recipient data and provider response bodies never enter diagnostics.
+		const errorType =
+			cause instanceof CatalogBoundaryError
+				? `catalog_${cause.kind}_${cause.phase}`
+				: cause instanceof RuntimeConfigurationError
+					? "configuration"
+					: cause instanceof FulfillmentValidationError
+						? "validation"
+						: cause instanceof Error &&
+								["TypeError", "RangeError", "TimeoutError", "AbortError"].includes(cause.name)
+							? cause.name
+							: "unexpected";
 		logStructured({
 			event: "print_job.step_failed",
 			stage: "lumaprints_submit",
 			level: "error",
 			orderId: order.orderNumber,
-			error: new Error("Print job step failed"),
-			meta: { phase: job.stage },
+			durationMs: Date.now() - startedAt,
+			error: new Error(`Print job ${operation} failed (${errorType})`),
+			meta: { phase: job.stage, operation, sourceIndex: job.cursor, errorType },
 		});
 		await convex.mutation(api.printFulfillmentJobs.advance, {
 			...authority,

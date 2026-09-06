@@ -1,7 +1,12 @@
 import sharp from "sharp";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { OrderItem } from "$lib/shop/types";
-import { preparePrintSources, printGeometry, readPrintSource } from "../printSourcePreparation";
+import {
+	preparePrintSources,
+	printGeometry,
+	readPrintSource,
+	renderPrintSource,
+} from "../printSourcePreparation";
 
 describe("print source preparation", () => {
 	afterEach(() => vi.unstubAllGlobals());
@@ -102,6 +107,9 @@ describe("print source preparation", () => {
 			borderWidth: 0.25,
 		};
 
+		const stages: string[] = [];
+		await renderPrintSource(item, (stage) => stages.push(stage));
+		expect(stages).toEqual(["download", "decode", "geometry", "render"]);
 		const [prepared] = await preparePrintSources([item], { siteUrl: "angelsrest.online", store });
 		const { data, info } = await sharp(output).raw().toBuffer({ resolveWithObject: true });
 		const center = (Math.floor(info.height / 2) * info.width + Math.floor(info.width / 2)) * 3;

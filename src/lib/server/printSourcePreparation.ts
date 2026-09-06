@@ -126,15 +126,22 @@ async function fetchSource(imageUrl: string) {
 	return readPrintSource(response);
 }
 
-export async function renderPrintSource(item: OrderItem) {
+export async function renderPrintSource(
+	item: OrderItem,
+	onStage: (stage: "download" | "decode" | "geometry" | "render") => void = () => {},
+) {
+	onStage("download");
 	const source = await fetchSource(item.imageUrl);
 	const options = {
 		autoOrient: true,
 		failOn: "warning" as const,
 		limitInputPixels: MAX_INPUT_PIXELS,
 	};
+	onStage("decode");
 	const metadata = await sharp(source, options).metadata();
+	onStage("geometry");
 	const geometry = printGeometry(item, metadata.autoOrient);
+	onStage("render");
 	const { data, info } = await sharp(source, options)
 		.resize(geometry.innerWidth, geometry.innerHeight, {
 			fit: "cover",
