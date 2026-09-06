@@ -7,8 +7,6 @@ import { requireSiteAdmin } from "./authHelpers";
 import {
 	CATALOG_PRIVATE_ASSET_CANARY_EXPECTATION,
 	createCatalogPrivateAssetV2CanarySnapshot,
-	requireCatalogPrivateAssetV2CanaryInspectionReceipt,
-	requireCatalogPrivateAssetV2CanaryStorageReceipt,
 } from "./helpers/catalogPrivateAssetCanarySnapshot";
 import {
 	catalogPrivateEditorReceiptError,
@@ -45,7 +43,6 @@ import {
 } from "./helpers/catalogPrivateAssetReceiptContract";
 import {
 	CATALOG_PRIVATE_EDITOR_OPERATION_ID_PATTERN,
-	claimsCatalogPrivateEditorOperation,
 	sameCatalogPrivateInspectionReceiptSet,
 	sameCatalogPrivateStorageReceiptSet,
 	validateCatalogPrivateEditorInspectionReceiptSet,
@@ -309,24 +306,6 @@ async function admitEditorInspectionReceipt(
 	return operation;
 }
 
-async function admitHistoricalEditorStorageReceipt(
-	ctx: MutationCtx,
-	receiptSet: CatalogPrivateStorageReceiptSet,
-) {
-	return claimsCatalogPrivateEditorOperation(receiptSet)
-		? await admitEditorStorageReceipt(ctx, receiptSet)
-		: null;
-}
-
-async function admitHistoricalEditorInspectionReceipt(
-	ctx: MutationCtx,
-	receiptSet: CatalogPrivateInspectionReceiptSet,
-) {
-	return claimsCatalogPrivateEditorOperation(receiptSet)
-		? await admitEditorInspectionReceipt(ctx, receiptSet)
-		: null;
-}
-
 async function reconcileJournalStorageEvidence(
 	ctx: MutationCtx,
 	operation: Doc<"catalogPrivateAssetEditorOperations">,
@@ -472,35 +451,6 @@ export const backfillTargetAuthorities = internalMutation({
 			siteUrl ?? CATALOG_PRIVATE_ASSET_CANARY_EXPECTATION.siteUrl,
 			receiptSetId ?? CATALOG_PRIVATE_ASSET_CANARY_EXPECTATION.v1ReceiptSetId,
 		);
-	},
-});
-
-/** Server-to-server storage evidence only; not part of the public/admin API. */
-export const recordStorageReceiptSet = internalMutation({
-	args: { receiptSet: catalogPrivateStorageReceiptSetValidator },
-	handler: async (ctx, { receiptSet }) => {
-		// Reserved editor operation facts always pass through the same strict
-		// admission before retained canary checks. Removing the canary cannot
-		// turn this historical path into an editor-policy bypass.
-		const operation = await admitHistoricalEditorStorageReceipt(ctx, receiptSet);
-		await requireCatalogPrivateAssetV2CanaryStorageReceipt(ctx, receiptSet);
-		const result = await recordCatalogPrivateStorageReceiptSet(ctx, receiptSet);
-		if (operation) await reconcileJournalStorageEvidence(ctx, operation, result.status === "verified");
-		return result;
-	},
-});
-
-/** Independently authenticated content-inspection evidence only. */
-export const recordInspectionReceiptSet = internalMutation({
-	args: { receiptSet: catalogPrivateInspectionReceiptSetValidator },
-	handler: async (ctx, { receiptSet }) => {
-		const operation = await admitHistoricalEditorInspectionReceipt(ctx, receiptSet);
-		await requireCatalogPrivateAssetV2CanaryInspectionReceipt(ctx, receiptSet);
-		const result = await recordCatalogPrivateInspectionReceiptSet(ctx, receiptSet);
-		if (operation) {
-			await reconcileJournalInspectionEvidence(ctx, operation, result.status === "verified");
-		}
-		return result;
 	},
 });
 

@@ -47,6 +47,14 @@ inventory and completed external retirement are recorded in
 and
 [`migrations/sanity-external-retirement-2026-09-03.md`](migrations/sanity-external-retirement-2026-09-03.md).
 
+The remaining historical private-catalog batch receipt routes and their internal
+mutation wrappers are retired. Only the dedicated schema-2 editor journal and
+receipt ingress can register new editor assets; its independent byte inspection
+remains required. The Worker keeps generic private uploads because current hub
+print fulfillment uses them. Accepted provenance, receipt identity, target
+verification and bounded operator recovery projections remain readable without
+contacting Sanity. See [the retirement disposition](migrations/catalog-migration-ingress-retirement-2026-09-05.md).
+
 ## Host boundary
 
 - Server routes compose integrations and validate transport inputs.

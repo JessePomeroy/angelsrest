@@ -519,24 +519,6 @@ type EditorInspectionReceiptSet = Extract<
 	{ schemaVersion: typeof CATALOG_PRIVATE_ASSET_RECEIPT_SET_V2_VERSION }
 >;
 
-/**
- * Detects the reserved schema-2 editor namespace without reclassifying retained
- * V1, Sanity, or noncanonical historical editor provenance.
- */
-export function claimsCatalogPrivateEditorOperation(
-	receiptSet: CatalogPrivateStorageReceiptSet | CatalogPrivateInspectionReceiptSet,
-) {
-	return (
-		receiptSet.schemaVersion === CATALOG_PRIVATE_ASSET_RECEIPT_SET_V2_VERSION &&
-		receiptSet.receipts.some(
-			({ facts }) =>
-				facts.provenance.provider === "editor_upload" &&
-				(facts.provenance.sourceId.startsWith(CATALOG_PRIVATE_EDITOR_SOURCE_PREFIX) ||
-					facts.assetKey.startsWith(CATALOG_PRIVATE_EDITOR_ASSET_KEY_PREFIX)),
-		)
-	);
-}
-
 function editorShapeError(): never {
 	throw catalogPrivateEditorReceiptError("validation");
 }

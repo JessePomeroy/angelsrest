@@ -5,12 +5,8 @@ import { convexTest } from "convex-test";
 import { describe, expect, test } from "vitest";
 import schema from "./schema";
 import {
-	INSPECTION_PATH,
-	INSPECTION_SECRET_A,
-	STORAGE_PATH,
-	STORAGE_SECRET_A,
 	inspectionSet,
-	postReceipt,
+	recordFixtureReceipt,
 	storageSet,
 	storedState,
 	withReceiptEnvironment,
@@ -19,21 +15,20 @@ import {
 const modules = import.meta.glob("./**/*.ts");
 
 async function completeRegistration(t: ReturnType<typeof convexTest>) {
-	const stored = await postReceipt(t, STORAGE_PATH, STORAGE_SECRET_A, storageSet());
-	if (stored.status !== 200) throw new Error("storage fixture registration failed");
-	const inspected = await postReceipt(
+	const stored = await recordFixtureReceipt(t, "storage", storageSet());
+	if (stored.accepted !== true) throw new Error("storage fixture registration failed");
+	const inspected = await recordFixtureReceipt(
 		t,
-		INSPECTION_PATH,
-		INSPECTION_SECRET_A,
+		"inspection",
 		inspectionSet(),
 	);
-	if (inspected.status !== 200) throw new Error("inspection fixture registration failed");
+	if (inspected.accepted !== true) throw new Error("inspection fixture registration failed");
 }
 
 async function expectReplayRejectedWithoutWrites(t: ReturnType<typeof convexTest>) {
 	const before = JSON.stringify(await storedState(t));
-	const response = await postReceipt(t, STORAGE_PATH, STORAGE_SECRET_A, storageSet());
-	expect(response.status).toBe(409);
+	const response = await recordFixtureReceipt(t, "storage", storageSet());
+	expect(response.accepted).toBe(false);
 	expect(JSON.stringify(await storedState(t))).toBe(before);
 }
 
@@ -42,11 +37,11 @@ describe("private catalog receipt concurrency and integrity", () => {
 		const sameRole = convexTest(schema, modules);
 		await withReceiptEnvironment(async () => {
 			const responses = await Promise.all([
-				postReceipt(sameRole, STORAGE_PATH, STORAGE_SECRET_A, storageSet()),
-				postReceipt(sameRole, STORAGE_PATH, STORAGE_SECRET_A, storageSet()),
+				recordFixtureReceipt(sameRole, "storage", storageSet()),
+				recordFixtureReceipt(sameRole, "storage", storageSet()),
 			]);
-			expect(responses.map((response) => response.status)).toEqual([200, 200]);
-			const bodies = await Promise.all(responses.map((response) => response.json()));
+			expect(responses.map((response) => response.accepted)).toEqual([true, true]);
+			const bodies = await Promise.all(responses.map((response) => response.result));
 			expect(bodies.map((body) => body.replayed).sort()).toEqual([false, true]);
 			const state = await storedState(sameRole);
 			expect(state.coordinations).toHaveLength(1);
@@ -57,28 +52,26 @@ describe("private catalog receipt concurrency and integrity", () => {
 		const oppositeRoles = convexTest(schema, modules);
 		await withReceiptEnvironment(async () => {
 			const responses = await Promise.all([
-				postReceipt(oppositeRoles, STORAGE_PATH, STORAGE_SECRET_A, storageSet()),
-				postReceipt(
+				recordFixtureReceipt(oppositeRoles, "storage", storageSet()),
+				recordFixtureReceipt(
 					oppositeRoles,
-					INSPECTION_PATH,
-					INSPECTION_SECRET_A,
+					"inspection",
 					inspectionSet(),
 				),
 			]);
-			expect(responses.map((response) => response.status)).toEqual([200, 200]);
+			expect(responses.map((response) => response.accepted)).toEqual([true, true]);
 			const state = await storedState(oppositeRoles);
 			expect(state.coordinations).toHaveLength(1);
 			expect(state.coordinations[0]?.status).toBe("verified");
 			expect(state.printSources).toHaveLength(1);
 			expect(state.paidFiles).toHaveLength(1);
 
-			const replay = await postReceipt(
+			const replay = await recordFixtureReceipt(
 				oppositeRoles,
-				STORAGE_PATH,
-				STORAGE_SECRET_A,
+				"storage",
 				storageSet(),
 			);
-			const result = await replay.json() as {
+			const result = await replay.result as {
 				status: string;
 				targets: Array<{ assetId: string }>;
 			};
