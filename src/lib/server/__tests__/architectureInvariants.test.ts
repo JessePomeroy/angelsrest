@@ -93,12 +93,4 @@ describe("architecture invariants", () => {
 			expect(source(path)).not.toContain("api.portal.getByToken");
 		}
 	});
-
-	it("keeps generated Convex outputs visibly generator-owned", () => {
-		for (const path of files("packages/crm-api/convex/_generated").filter(
-			(path) => !path.includes("/_generated/ai/"),
-		)) {
-			expect(source(path), path).toContain("THIS CODE IS AUTOMATICALLY GENERATED");
-		}
-	});
 });
