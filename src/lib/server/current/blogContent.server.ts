@@ -526,10 +526,6 @@ function notFound(): never {
 export function createBlogContentProvider(dependencies: { createReader?: () => BlogReader } = {}) {
 	const reader = dependencies.createReader ?? createBlogReader;
 
-	async function convexIndex(signal: AbortSignal) {
-		return adaptConvexBlogIndex(await reader().listPublished(signal));
-	}
-
 	async function convexPost(slug: string, signal: AbortSignal) {
 		const post = adaptConvexBlogPost(await reader().getPublishedBySlug(slug, signal));
 		if (post) return { post, resolution: null };
@@ -537,33 +533,13 @@ export function createBlogContentProvider(dependencies: { createReader?: () => B
 		return { post: null, resolution };
 	}
 
-	async function loadConvexIndex() {
-		try {
-			return await convexIndex(AbortSignal.timeout(6_000));
-		} catch {
-			unavailable();
-		}
-	}
-
-	async function loadConvexPost(slug: string) {
-		let result: Awaited<ReturnType<typeof convexPost>>;
-		try {
-			result = await convexPost(slug, AbortSignal.timeout(6_000));
-		} catch {
-			unavailable();
-		}
-		if (result.post) return result.post;
-		if (result.resolution?.status === "redirect") {
-			if (result.resolution.slug === slug) unavailable();
-			redirect(308, `/blog/${result.resolution.slug}`);
-		}
-		if (result.resolution?.status === "current") unavailable();
-		notFound();
-	}
-
 	return {
 		async loadIndex() {
-			return await loadConvexIndex();
+			try {
+				return adaptConvexBlogIndex(await reader().listPublished(AbortSignal.timeout(6_000)));
+			} catch {
+				unavailable();
+			}
 		},
 		async loadPost(slugValue: string) {
 			let slug: string;
@@ -572,7 +548,19 @@ export function createBlogContentProvider(dependencies: { createReader?: () => B
 			} catch {
 				notFound();
 			}
-			return await loadConvexPost(slug);
+			let result: Awaited<ReturnType<typeof convexPost>>;
+			try {
+				result = await convexPost(slug, AbortSignal.timeout(6_000));
+			} catch {
+				unavailable();
+			}
+			if (result.post) return result.post;
+			if (result.resolution?.status === "redirect") {
+				if (result.resolution.slug === slug) unavailable();
+				redirect(308, `/blog/${result.resolution.slug}`);
+			}
+			if (result.resolution?.status === "current") unavailable();
+			notFound();
 		},
 	};
 }

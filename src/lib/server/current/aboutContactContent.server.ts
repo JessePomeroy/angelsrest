@@ -289,19 +289,15 @@ export function createAboutContactContentProvider(
 ) {
 	const createReader = dependencies.createReader ?? createConvexReader;
 
-	async function loadConvex() {
-		try {
-			return adaptConvexAboutContact(
-				await createReader().loadPublished(AbortSignal.timeout(6_000)),
-			);
-		} catch {
-			unavailable();
-		}
-	}
-
 	return {
 		async load() {
-			return await loadConvex();
+			try {
+				return adaptConvexAboutContact(
+					await createReader().loadPublished(AbortSignal.timeout(6_000)),
+				);
+			} catch {
+				unavailable();
+			}
 		},
 	};
 }
