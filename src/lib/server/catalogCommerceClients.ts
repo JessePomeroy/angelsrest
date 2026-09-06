@@ -43,6 +43,7 @@ const PRINT_SOURCE_DIMENSION_MAX = 100_000;
 const PRINT_SOURCE_BYTES_MAX = 100_000_000;
 const PAID_FILE_BYTES_MAX = 16 * 1024 * 1024;
 const capabilityToken = /^[A-Za-z0-9_-]+$/;
+const signedUploadToken = /^[A-Za-z0-9_-]+\.[A-Za-z0-9_-]{43}$/;
 const CAPABILITY_TOKEN_MIN_BYTES = 12 + 16;
 const CAPABILITY_TOKEN_MAX_BYTES = 720;
 const CAPABILITY_FUTURE_SKEW_MS = 60_000;
@@ -848,7 +849,8 @@ export async function storePrintArtifact(
 			value.privateObjectKey !== key ||
 			typeof value.uploadUrl !== "string" ||
 			typeof value.uploadToken !== "string" ||
-			!capabilityToken.test(value.uploadToken)
+			value.uploadToken.length > 16_384 ||
+			!signedUploadToken.test(value.uploadToken)
 		) {
 			throw rejected();
 		}

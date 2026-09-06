@@ -1,3 +1,4 @@
+import { createHmac } from "node:crypto";
 import { brotliCompressSync, deflateSync, gzipSync } from "node:zlib";
 import { describe, expect, it, vi } from "vitest";
 import { env as privateEnv } from "$env/dynamic/private";
@@ -9,12 +10,15 @@ import {
 	resolveCatalogCheckout,
 	resolvePaidDownload,
 	resolvePaidFulfillment,
+	storePrintArtifact,
 	storeRenderedPrintSource,
 } from "$lib/server/catalogCommerceClients";
 
 const token = "a".repeat(32);
 const origin = "https://private.example";
 const sealedCapability = Buffer.alloc(64, 7).toString("base64url");
+const uploadPayload = Buffer.from('{"version":1}').toString("base64url");
+const uploadToken = `${uploadPayload}.${createHmac("sha256", "upload-test").update(uploadPayload).digest("base64url")}`;
 function capability(purpose: "paid_file" | "print_source", extension?: "jpg" | "png" | "zip") {
 	const segment = purpose === "print_source" ? "print-source" : "paid-file";
 	const suffix = extension ?? (purpose === "print_source" ? "jpg" : "zip");
@@ -785,7 +789,7 @@ describe("fixed-purpose catalog clients", () => {
 							assetKey,
 							privateObjectKey: key,
 							uploadUrl: `/v1/catalog-assets/uploads/source?key=${encodeURIComponent(key)}`,
-							uploadToken: "upload-token",
+							uploadToken,
 							expiresAt: new Date(Date.now() + 60_000).toISOString(),
 						})
 					: json({
@@ -802,7 +806,7 @@ describe("fixed-purpose catalog clients", () => {
 			if (url.pathname === "/v1/catalog-assets/uploads/source") {
 				expect(init?.headers).toMatchObject({
 					"Content-Length": "3",
-					"X-CMS-Media-Upload-Token": "upload-token",
+					"X-CMS-Media-Upload-Token": uploadToken,
 				});
 				return json({ status: "stored_unverified" });
 			}
@@ -837,6 +841,41 @@ describe("fixed-purpose catalog clients", () => {
 			sha256: hash,
 			provenance: { provider: "editor_upload", sourceId: `fulfillment-render:${hash}` },
 		});
+	});
+
+	it.each([
+		"upload-token",
+		`${uploadToken}.extra`,
+		`${uploadToken}\r\n`,
+		`${"a".repeat(16_384)}.${"b".repeat(43)}`,
+	])("rejects malformed signed upload tokens before PUT (#%#)", async (uploadToken) => {
+		const hash = "c".repeat(64);
+		const assetKey = `lumaprints-render-v1-${hash}`;
+		const key = `sites/angelsrest.online/catalog/print-sources/${assetKey}/original`;
+		const fetch = vi.fn(async () =>
+			json({
+				status: "upload_required",
+				kind: "print_source",
+				assetKey,
+				privateObjectKey: key,
+				uploadUrl: `/v1/catalog-assets/uploads/source?key=${encodeURIComponent(key)}`,
+				uploadToken,
+				expiresAt: new Date(Date.now() + 60_000).toISOString(),
+			}),
+		);
+		await expect(
+			storePrintArtifact(
+				"angelsrest.online",
+				{
+					bytes: new Uint8Array([1]),
+					hash,
+					width: 1800,
+					height: 1200,
+				},
+				{ origin, bearer: token, fetch },
+			),
+		).rejects.toMatchObject({ kind: "rejected", phase: "envelope" });
+		expect(fetch).toHaveBeenCalledOnce();
 	});
 
 	it("uses distinct tenant upload and issuer credentials for rendered prints", async () => {
@@ -876,7 +915,7 @@ describe("fixed-purpose catalog clients", () => {
 					assetKey: `lumaprints-render-v1-${hash}`,
 					privateObjectKey: key,
 					uploadUrl: `/v1/catalog-assets/uploads/source?key=${encodeURIComponent(key)}`,
-					uploadToken: "upload-token",
+					uploadToken,
 					expiresAt: new Date(Date.now() + 60_000).toISOString(),
 				});
 			}

@@ -8,11 +8,13 @@ const mocks = vi.hoisted(() => ({
 	issue: vi.fn(),
 	finish: vi.fn(),
 	retrieve: vi.fn(),
+	log: vi.fn(),
 	env: { PRINT_FULFILLMENT_RUNNER_SECRET: "r".repeat(40), WEBHOOK_SECRET: "webhook-test-secret" },
 }));
 vi.mock("$env/dynamic/private", () => ({ env: mocks.env }));
 vi.mock("$lib/server/convexClient", () => ({ getConvex: () => mocks }));
-vi.mock("$lib/server/catalogCommerceClients", () => ({
+vi.mock("$lib/server/catalogCommerceClients", async (importOriginal) => ({
+	...(await importOriginal<typeof import("$lib/server/catalogCommerceClients")>()),
 	issueTenantPrintSource: mocks.issue,
 	issueTenantPrintSourceCapability: mocks.issue,
 	storePrintArtifact: mocks.store,
@@ -27,8 +29,11 @@ vi.mock("$lib/server/stripeClient", () => ({
 	getStripe: () => ({ checkout: { sessions: { retrieve: mocks.retrieve } } }),
 }));
 vi.mock("$lib/server/resendClient", () => ({ getResend: () => ({}) }));
-vi.mock("$lib/server/logger", () => ({ logStructured: vi.fn() }));
+vi.mock("$lib/server/logger", () => ({ logStructured: mocks.log }));
 
+import { CatalogBoundaryError } from "$lib/server/catalogCommerceClients";
+import { FulfillmentValidationError } from "$lib/server/fulfillmentValidationError";
+import { RuntimeConfigurationError } from "$lib/server/runtimeConfig";
 import { POST } from "../../../routes/api/internal/print-fulfillment/+server";
 
 const input = { jobId: "a".repeat(32), leaseToken: "123e4567-e89b-42d3-a456-426614174000" };
@@ -86,6 +91,45 @@ it("prepares only the leased source and checkpoints its descriptor, not a bearer
 				descriptor: source.descriptor,
 				item: source.item,
 			},
+		}),
+	);
+	expect(mocks.finish).not.toHaveBeenCalled();
+});
+it.each([
+	["download", new DOMException("private URL", "TimeoutError"), "TimeoutError", "retry"],
+	["decode", new TypeError("private URL"), "TypeError", "retry"],
+	["geometry", new FulfillmentValidationError("private key"), "validation", "blocked"],
+	["render", new Error("private customer data"), "unexpected", "retry"],
+	[
+		"store_artifact",
+		new CatalogBoundaryError("rejected", "envelope"),
+		"catalog_rejected_envelope",
+		"retry",
+	],
+	["store_artifact", new RuntimeConfigurationError("private config"), "configuration", "retry"],
+	["checkpoint", new Error("private lease token"), "unexpected", "retry"],
+])("records safe %s failure diagnostics without changing retry behavior", async (operation, cause, errorType, kind) => {
+	mocks.query.mockResolvedValue({ job: { stage: "prepare", cursor: 4 }, order, sources: [source] });
+	if (operation === "checkpoint") mocks.mutation.mockRejectedValueOnce(cause);
+	else if (operation === "store_artifact") mocks.store.mockRejectedValueOnce(cause);
+	else
+		mocks.render.mockImplementationOnce((_item, onStage) => {
+			onStage?.(operation);
+			throw cause;
+		});
+	await POST(request());
+	const entry = mocks.log.mock.calls[0]?.[0];
+	expect(entry).toMatchObject({
+		event: "print_job.step_failed",
+		meta: { phase: "prepare", operation, sourceIndex: 4, errorType },
+	});
+	expect(entry.error.message).toBe(`Print job ${operation} failed (${errorType})`);
+	expect(JSON.stringify(entry) + entry.error.stack).not.toContain("private");
+	expect(entry.error.cause).toBeUndefined();
+	expect(mocks.mutation).toHaveBeenLastCalledWith(
+		expect.anything(),
+		expect.objectContaining({
+			result: { kind, code: kind === "blocked" ? "preparation_failed" : "step_failed" },
 		}),
 	);
 	expect(mocks.finish).not.toHaveBeenCalled();
