@@ -1,4 +1,6 @@
 <script lang="ts">
+import BottomNav from "../../../src/lib/components/BottomNav.svelte";
+import { page as fixturePage } from "./state.svelte";
 import PrintSet from "../../../src/routes/shop/sets/[slug]/+page.svelte";
 import CheckoutCancel from "../../../src/routes/checkout/cancel/+page.svelte";
 import ThemeSwitcher from "../../../src/lib/components/ThemeSwitcher.svelte";
@@ -25,7 +27,11 @@ if (params.get("populated") === "true") {
 }
 </script>
 
-{#if fixture === "set"}
+{#if fixture === "navigation"}
+	<ThemeSwitcher />
+	<label>Current path <input value={fixturePage.url.pathname} oninput={(event) => { fixturePage.url = new URL(event.currentTarget.value, "http://127.0.0.1:5196"); }} /></label>
+	<BottomNav />
+{:else if fixture === "set"}
 	<ThemeSwitcher />
 	<PrintSet data={setData} />
 	<CartDrawer />

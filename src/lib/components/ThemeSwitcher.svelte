@@ -1,7 +1,7 @@
 <!--
   ThemeSwitcher Component
   
-  Clean implementation using hamlindigo theme for both light and dark modes.
+  Uses the site palette for both light and dark modes.
   Only toggles the 'dark' class on <html> element.
 -->
 
@@ -23,8 +23,6 @@ function applyTheme(dark: boolean) {
 		} else {
 			html.classList.remove("dark");
 		}
-		// Always hamlindigo
-		html.setAttribute("data-theme", "hamlindigo");
 		localStorage.setItem("theme", dark ? "dark" : "light");
 	}
 }
@@ -40,7 +38,7 @@ function setDark() {
 }
 </script>
 
-<!-- Use proper Skeleton design tokens -->
+<!-- Site-owned surface colors -->
 <div class="flex items-center bg-surface-200 dark:bg-surface-700 rounded-full p-0.5">
   <!-- Light mode button -->
   <button

@@ -18,9 +18,10 @@ Canonical rules for working in this repository.
 
 - Use Svelte 5 runes (`$props()`, `$state()`, `$derived()`, `$effect()`).
 - Use Tailwind CSS v4 utilities. Do not use Skeleton component classes such as
-  `.btn`, `.card`, or `.input`. The retained Skeleton surface color variables
-  (`--color-surface-50` through `--color-surface-900`) may be referenced from
-  scoped styles or Tailwind arbitrary values.
+  `.btn`, `.card`, or `.input`. The site-owned surface color variables
+  (`--color-surface-50` through `--color-surface-950`) are defined in
+  `src/lib/styles/theme.css` and may be referenced from scoped styles or Tailwind arbitrary values. Skeleton is not a dependency; use
+  native Svelte markup and Tailwind utilities for public controls.
 - Admin pages use scoped styles and `--admin-*` variables, not Tailwind.
 - Server secrets use `$env/dynamic/private`. Never import private env modules
   from browser-reachable code.

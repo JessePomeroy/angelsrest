@@ -1,10 +1,10 @@
 <!doctype html>
-<html lang="en" data-theme="hamlindigo">
+<html lang="en">
 	<head>
 		<meta charset="utf-8" />
-		<meta name="viewport" content="width=device-width, initial-scale=1" />
+		<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
 		<!--
-			Clean theme initialization - hamlindigo for both modes
+			Apply the saved light/dark mode before hydration
 			Only toggles the 'dark' class for light/dark switching
 		-->
 		<script>
@@ -18,9 +18,6 @@
 				} else {
 					document.documentElement.classList.remove('dark');
 				}
-				
-				// Always use hamlindigo
-				document.documentElement.setAttribute('data-theme', 'hamlindigo');
 				
 				// Time-aware theming: set period based on current hour
 				const hour = new Date().getHours();

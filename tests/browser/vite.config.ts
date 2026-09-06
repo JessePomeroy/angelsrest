@@ -12,6 +12,7 @@ export default defineConfig({
 		alias: {
 			$lib: path("../../src/lib"),
 			"$app/environment": path("./fixtures/environment.ts"),
+			"$app/state": path("./fixtures/state.svelte.ts"),
 			"$app/navigation": path("./fixtures/navigation.ts"),
 			"$env/static/public": path("./fixtures/environment.ts"),
 			"convex-svelte": path("./fixtures/convex.ts"),
