@@ -25,30 +25,6 @@ export type PortfolioDetail = {
 	images: Array<{ thumbnail: string; full: string; alt: string }>;
 };
 
-type ImageEvidence = {
-	key: string | null;
-	assetRef: string;
-	width: number;
-	height: number;
-	cropCanonical: string;
-	hotspotCanonical: string;
-	alt: string;
-	workerAssetId: string | null;
-	sourceSha256: string | null;
-};
-
-type GalleryEvidence = {
-	sourceId: string | null;
-	sourceRevision: string | null;
-	slug: string;
-	title: string;
-	description: string | null;
-	canonicalUrl: string;
-	seoDescription: string | null;
-	seoOgImage: ImageEvidence | null;
-	images: ImageEvidence[];
-};
-
 type ConvexReader = {
 	listPublished(signal: AbortSignal): Promise<unknown>;
 	getPublishedBySlug(slug: string, signal: AbortSignal): Promise<unknown>;
@@ -116,7 +92,7 @@ function derivative(value: unknown, assetId: string, filename: string) {
 	return `${MEDIA_ORIGIN}/${key}`;
 }
 
-function convexImage(value: unknown) {
+function convexImage(value: unknown, index: number) {
 	const item = object(value, [
 		"key",
 		"order",
@@ -143,27 +119,15 @@ function convexImage(value: unknown) {
 	derivative(derivatives.display1280, assetId, "display-1280.webp");
 	const full = derivative(derivatives.display2048, assetId, "display-2048.webp");
 	derivative(derivatives.display2560, assetId, "display-2560.webp");
-	const sourceSha256 = source.sha256 === null ? null : requiredText(source.sha256, 64, SHA256);
-	return {
-		evidence: {
-			key: requiredText(item.key, 100),
-			assetRef:
-				item.sourceAssetRef === null
-					? ""
-					: requiredText(item.sourceAssetRef, 500, LEGACY_SOURCE_IMAGE_REF),
-			width: integer(source.width, 1, 100_000),
-			height: integer(source.height, 1, 100_000),
-			cropCanonical:
-				item.sourceCropCanonical === null ? "" : requiredText(item.sourceCropCanonical, 500),
-			hotspotCanonical:
-				item.sourceHotspotCanonical === null ? "" : requiredText(item.sourceHotspotCanonical, 500),
-			alt: optionalText(item.altText, 500) ?? "",
-			workerAssetId: assetId,
-			sourceSha256,
-		},
-		thumbnail,
-		full,
-	};
+	if (source.sha256 !== null) requiredText(source.sha256, 64, SHA256);
+	requiredText(item.key, 100);
+	if (item.sourceAssetRef !== null) requiredText(item.sourceAssetRef, 500, LEGACY_SOURCE_IMAGE_REF);
+	integer(source.width, 1, 100_000);
+	integer(source.height, 1, 100_000);
+	if (item.sourceCropCanonical !== null) requiredText(item.sourceCropCanonical, 500);
+	if (item.sourceHotspotCanonical !== null) requiredText(item.sourceHotspotCanonical, 500);
+	if (integer(item.order, 0, PLACEMENT_MAX - 1) !== index) fail();
+	return { thumbnail, full, alt: optionalText(item.altText, 500) ?? "" };
 }
 
 function adaptConvexGallery(value: unknown) {
@@ -186,57 +150,32 @@ function adaptConvexGallery(value: unknown) {
 	integer(row.portfolioOrder, 0, GALLERY_MAX - 1);
 	integer(row.publishedAt);
 	if (row.isVisible !== true) fail();
-	const images = list(row.placements, PLACEMENT_MAX).map((rawPlacement, index) => {
-		const item = convexImage(rawPlacement);
-		const placement = object(rawPlacement, [
-			"key",
-			"order",
-			"altText",
-			"caption",
-			"focalPoint",
-			"sourceAssetRef",
-			"sourceCropCanonical",
-			"sourceHotspotCanonical",
-			"asset",
-		]);
-		if (integer(placement.order, 0, PLACEMENT_MAX - 1) !== index) fail();
-		return item;
-	});
+	const images = list(row.placements, PLACEMENT_MAX).map(convexImage);
 	const seo = object(row.seo, ["description", "ogImage"]);
-	let seoOgImage: ImageEvidence | null = null;
 	let ogImageUrl: string | null = null;
 	if (seo.ogImage !== null) {
 		const image = object(seo.ogImage, ["assetId", "sourceAssetRef", "source", "derivatives"]);
-		const synthetic = convexImage({
-			key: "seo",
-			order: 0,
-			altText: "SEO image",
-			caption: null,
-			focalPoint: null,
-			sourceAssetRef: image.sourceAssetRef,
-			sourceCropCanonical: null,
-			sourceHotspotCanonical: null,
-			asset: { assetId: image.assetId, source: image.source, derivatives: image.derivatives },
-		});
-		seoOgImage = synthetic.evidence;
-		ogImageUrl = synthetic.full;
+		ogImageUrl = convexImage(
+			{
+				key: "seo",
+				order: 0,
+				altText: "SEO image",
+				caption: null,
+				focalPoint: null,
+				sourceAssetRef: image.sourceAssetRef,
+				sourceCropCanonical: null,
+				sourceHotspotCanonical: null,
+				asset: { assetId: image.assetId, source: image.source, derivatives: image.derivatives },
+			},
+			0,
+		).full;
 	}
 	const title = requiredText(row.title, 120);
 	const description = optionalText(row.description, 2_000);
 	const slug = requiredText(row.slug, 80);
 	const seoDescription = optionalText(seo.description, 320);
-	const evidence: GalleryEvidence = {
-		sourceId: row.sourceDocumentId === null ? null : requiredText(row.sourceDocumentId, 256),
-		sourceRevision:
-			row.sourceDocumentRevision === null ? null : requiredText(row.sourceDocumentRevision, 256),
-		title,
-		description,
-		slug,
-		canonicalUrl: titleDerivedCanonicalUrl(title),
-		seoDescription,
-		seoOgImage,
-		images: images.map(({ evidence }) => evidence),
-	};
+	if (row.sourceDocumentId !== null) requiredText(row.sourceDocumentId, 256);
+	if (row.sourceDocumentRevision !== null) requiredText(row.sourceDocumentRevision, 256);
 	return {
 		index: {
 			title,
@@ -246,16 +185,12 @@ function adaptConvexGallery(value: unknown) {
 		detail: {
 			title,
 			description,
-			canonicalUrl: evidence.canonicalUrl,
+			canonicalUrl: titleDerivedCanonicalUrl(title),
 			seo:
 				seoDescription !== null || ogImageUrl !== null
 					? { description: seoDescription, ogImageUrl }
 					: null,
-			images: images.map(({ evidence: image, thumbnail, full }) => ({
-				thumbnail,
-				full,
-				alt: image.alt,
-			})),
+			images,
 		} satisfies PortfolioDetail,
 	};
 }
