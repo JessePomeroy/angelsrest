@@ -319,39 +319,6 @@ export function postExcerptFromDraft(draft: PostDraft) {
 		.slice(0, POST_CONTENT_LIMITS.summary);
 }
 
-export function postRevisionPayloadFromDraft(
-	draft: PostDraft,
-	summaryChecksum: string,
-): PostRevisionPayload {
-	const validated = validatePostDraft(draft);
-	const bodyImages = validated.body.blocks.filter((block) => block.type === "image").length;
-	return {
-		kind: "post",
-		title: validated.title,
-		slug: validated.slug,
-		format: validated.format,
-		presentation: validated.presentation,
-		displayPublishedAt: validated.displayPublishedAt,
-		summary: validated.summary,
-		seoTitle: validated.seoTitle,
-		seoDescription: validated.seoDescription,
-		brief: validated.brief,
-		approach: validated.approach,
-		outcome: validated.outcome,
-		credits: validated.credits,
-		excerpt: postExcerptFromDraft(validated),
-		summaryChecksum,
-		bodyBlockCount: validated.body.blocks.length,
-		categoryCount: validated.categories.length,
-		equipmentCount: validated.equipment.length,
-		materialCount: validated.materials.length,
-		mediaPlacementCount: bodyImages + (validated.mainImage ? 1 : 0),
-		referenceCount: validated.categories.length + (validated.authorDocumentId ? 1 : 0),
-		hasAuthor: validated.authorDocumentId !== undefined,
-		hasMainImage: validated.mainImage !== undefined,
-	};
-}
-
 export function serializePostRevisionPayload(payload: PostRevisionPayload) {
 	validatePostRevisionPayload(payload);
 	return JSON.stringify({

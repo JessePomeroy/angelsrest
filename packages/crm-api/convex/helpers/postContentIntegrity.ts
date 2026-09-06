@@ -7,8 +7,7 @@ import {
 } from "./postContentValidators";
 
 /** Exact, order-preserving graph serialization for idempotent save retries. */
-export function serializePostDraft(draft: PostDraft) {
-	const validated = validatePostDraft(draft);
+function serializePostDraft(validated: PostDraft) {
 	return JSON.stringify({
 		kind: "post",
 		title: validated.title ?? null,
@@ -56,44 +55,35 @@ export type PostSummaryIntegrityInput = Omit<
 	mainImage?: PostDraft["mainImage"];
 };
 
-export function postSummaryIntegrityFromDraft(
-	draft: PostDraft,
-): PostSummaryIntegrityInput {
-	const validated = validatePostDraft(draft);
-	const bodyImageCount = validated.body.blocks.filter(
-		(block) => block.type === "image",
-	).length;
+function postRevisionHeader(draft: PostDraft): Omit<PostRevisionPayload, "summaryChecksum"> {
+	const bodyImages = draft.body.blocks.filter((block) => block.type === "image").length;
 	return {
 		kind: "post",
-		title: validated.title,
-		slug: validated.slug,
-		format: validated.format,
-		presentation: validated.presentation,
-		displayPublishedAt: validated.displayPublishedAt,
-		summary: validated.summary,
-		seoTitle: validated.seoTitle,
-		seoDescription: validated.seoDescription,
-		brief: validated.brief,
-		approach: validated.approach,
-		outcome: validated.outcome,
-		credits: validated.credits,
-		excerpt: postExcerptFromDraft(validated),
-		bodyBlockCount: validated.body.blocks.length,
-		categoryCount: validated.categories.length,
-		equipmentCount: validated.equipment.length,
-		materialCount: validated.materials.length,
-		mediaPlacementCount: bodyImageCount + (validated.mainImage ? 1 : 0),
-		referenceCount:
-			validated.categories.length + (validated.authorDocumentId ? 1 : 0),
-		hasAuthor: validated.authorDocumentId !== undefined,
-		hasMainImage: validated.mainImage !== undefined,
-		authorDocumentId: validated.authorDocumentId,
-		categories: validated.categories,
-		mainImage: validated.mainImage,
+		title: draft.title,
+		slug: draft.slug,
+		format: draft.format,
+		presentation: draft.presentation,
+		displayPublishedAt: draft.displayPublishedAt,
+		summary: draft.summary,
+		seoTitle: draft.seoTitle,
+		seoDescription: draft.seoDescription,
+		brief: draft.brief,
+		approach: draft.approach,
+		outcome: draft.outcome,
+		credits: draft.credits,
+		excerpt: postExcerptFromDraft(draft),
+		bodyBlockCount: draft.body.blocks.length,
+		categoryCount: draft.categories.length,
+		equipmentCount: draft.equipment.length,
+		materialCount: draft.materials.length,
+		mediaPlacementCount: bodyImages + (draft.mainImage ? 1 : 0),
+		referenceCount: draft.categories.length + (draft.authorDocumentId ? 1 : 0),
+		hasAuthor: draft.authorDocumentId !== undefined,
+		hasMainImage: draft.mainImage !== undefined,
 	};
 }
 
-export function postSummaryChecksumInput(input: PostSummaryIntegrityInput) {
+function postSummaryChecksumInput(input: PostSummaryIntegrityInput) {
 	return `post-summary:v1:${JSON.stringify({
 		kind: "post",
 		title: input.title ?? null,
@@ -133,6 +123,27 @@ export function postSummaryChecksumInput(input: PostSummaryIntegrityInput) {
 	})}`;
 }
 
-export function postChecksumInput(draft: PostDraft) {
-	return `post-content:v1:${serializePostDraft(draft)}`;
+async function checksumInput(input: string) {
+	const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(input));
+	return Array.from(new Uint8Array(digest), (byte) =>
+		byte.toString(16).padStart(2, "0"),
+	).join("");
+}
+
+export async function checksumPostSummaryIntegrity(input: PostSummaryIntegrityInput) {
+	return await checksumInput(postSummaryChecksumInput(input));
+}
+
+/** Derive stored headers and both v1 checksums from the same validated graph. */
+export async function preparePostRevision(input: PostDraft) {
+	const draft = validatePostDraft(input);
+	const header = postRevisionHeader(draft);
+	const checksum = await checksumInput(`post-content:v1:${serializePostDraft(draft)}`);
+	const summaryChecksum = await checksumPostSummaryIntegrity({
+		...header,
+		authorDocumentId: draft.authorDocumentId,
+		categories: draft.categories,
+		mainImage: draft.mainImage,
+	});
+	return { draft, checksum, payload: { ...header, summaryChecksum } };
 }
