@@ -138,7 +138,8 @@ describe("createGalleryDownloadPlan", () => {
 		expect(plan.prepare.body.imageKeys).toEqual(images.map((img) => img.r2Key));
 	});
 
-	it("uses the extracted default ZIP cap boundary", () => {
+	it("uses the one-GiB default ZIP cap boundary", () => {
+		expect(DEFAULT_MAX_ON_DEMAND_ZIP_BYTES).toBe(1024 * 1024 * 1024);
 		const atLimit = createGalleryDownloadPlan({
 			images: [
 				{ ...images[0], sizeBytes: DEFAULT_MAX_ON_DEMAND_ZIP_BYTES - 1 },
