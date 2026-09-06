@@ -46,3 +46,6 @@ packages/crm-api/convex/**/*.d.ts.map
 # from the repository root can bootstrap an empty root-level tree, so ignore it
 # and always run those commands from packages/crm-api/.
 /convex/
+
+# Pinned, read-only Worker checkout used by the cross-repository artwork proof.
+/.contract/

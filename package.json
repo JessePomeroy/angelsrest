@@ -22,7 +22,8 @@
 		"test:watch": "vitest",
 		"test:e2e": "node scripts/run-playwright.mjs",
 		"smoke:gallery-host-bulk-delete": "node scripts/smoke-gallery-host-bulk-delete.mjs",
-		"test:protocol": "vitest run --config vitest.protocol.config.ts"
+		"test:protocol": "vitest run --config vitest.protocol.config.ts",
+		"test:print-contract": "vitest run --config vitest.print-contract.config.ts"
 	},
 	"devDependencies": {
 		"@biomejs/biome": "^2.4.13",

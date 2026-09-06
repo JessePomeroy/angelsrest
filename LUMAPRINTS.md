@@ -193,6 +193,37 @@ as a development test.
 
 ## Verification
 
+### Host/Worker artwork contract
+
+`pnpm test:print-contract` connects the actual host upload/URL client to the
+actual Worker handlers. It uses synthetic JPEG bytes and an in-memory R2
+boundary; unexpected requests fail instead of reaching the network. The proof
+covers padded, separate role credentials, immutable replay, byte/hash checks,
+tenant isolation, and provider-style unauthenticated GET/HEAD downloads.
+It does not prove Cloudflare routing, deployed secrets, real R2 behavior, or
+LumaPrints acceptance. The Worker retains its own route/runtime tests.
+
+CI checks out the reviewed Worker revision pinned in `.github/workflows/ci.yml`
+under ignored `.contract/gallery-worker`, using the existing read-only
+cross-repository token. Locally, create that same source-only checkout:
+
+```bash
+git clone --no-checkout https://github.com/JessePomeroy/gallery-worker.git .contract/gallery-worker
+git -C .contract/gallery-worker checkout --detach 39976f12c757e6a7ef2179e858e8700c9b0357d6
+pnpm test:print-contract
+```
+
+Do not install Worker dependencies or copy secrets for this test. Update the CI
+pin and these instructions together when adopting a new Worker interface.
+Missing access/source is a failed check, never a skipped proof.
+
+Before runtime activation, separately verify the deployed host/Worker revisions,
+operation-specific credentials, sealing roots, runner URL/secret, and explicit
+provider environment/store. Confirm pending jobs and submission fences before
+changing admission. This test creates no order and grants no replay authority.
+
+### Focused unit checks
+
 ```bash
 pnpm exec vitest run src/lib/__tests__/lumaprints.test.ts
 pnpm exec vitest run src/lib/__tests__/lumaprintsUrls.test.ts
