@@ -20,7 +20,8 @@ No provider credentials, hosted content, or live writes are required.
 
 The S01 checks cover empty/populated cart focus entry and keyboard containment,
 Escape/button/backdrop dismissal with focus restoration and reopening, plus
-delivery lightbox single-step arrows, both boundaries, keyboard containment,
+delivery lightbox single-step arrows, both boundaries, focus retention when an
+edge navigation control disappears, keyboard containment,
 and Escape focus restoration. Every check runs in desktop and mobile Chromium.
 These fixtures verify the actual components, but do not replace full-site
 routing, authenticated integration, or visual checks.

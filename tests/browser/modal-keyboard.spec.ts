@@ -86,3 +86,34 @@ test("delivery lightbox arrows advance once and stop at both edges", async ({ pa
 	await expect(dialog).not.toBeVisible();
 	await expect(opener).toBeFocused();
 });
+
+for (const edge of ["first", "last"] as const) {
+	test(`delivery keyboard remains usable after ${edge} navigation button disappears`, async ({
+		page,
+	}) => {
+		await page.goto("/?fixture=delivery");
+		const start = edge === "last" ? 3 : 2;
+		const opener = page.getByRole("button", { name: `View item ${start} of 4`, exact: true });
+		await opener.click();
+		const dialog = page.getByRole("dialog", { name: "Gallery lightbox" });
+		const navigation = dialog.getByRole("button", {
+			name: edge === "last" ? "Next image" : "Previous image",
+		});
+		await navigation.focus();
+		await page.keyboard.press("Enter");
+		await expect(dialog.locator(".lightbox-counter")).toHaveText(
+			edge === "last" ? "4 / 4" : "1 / 4",
+		);
+		await expect(navigation).toHaveCount(0);
+		await expect
+			.poll(() => dialog.evaluate((element) => element.contains(document.activeElement)))
+			.toBe(true);
+		await page.keyboard.press(edge === "last" ? "ArrowLeft" : "ArrowRight");
+		await expect(dialog.locator(".lightbox-counter")).toHaveText(
+			edge === "last" ? "3 / 4" : "2 / 4",
+		);
+		await page.keyboard.press("Escape");
+		await expect(dialog).not.toBeVisible();
+		await expect(opener).toBeFocused();
+	});
+}
