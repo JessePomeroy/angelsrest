@@ -67,6 +67,60 @@ describe("published portfolio galleries", () => {
 		});
 	});
 
+	it("keeps historical provenance readable and title-derived URLs with an SEO image", async () => {
+		const row = gallery();
+		const placement = row.placements[0];
+		const content = provider({
+			...row,
+			slug: "different-slug",
+			sourceDocumentId: "legacy-gallery",
+			sourceDocumentRevision: "revision",
+			seo: {
+				description: null,
+				ogImage: {
+					...placement.asset,
+					source: { ...placement.asset.source, sha256: null },
+					sourceAssetRef: "image-abc-100x200-jpg",
+				},
+			},
+			placements: [
+				{
+					...placement,
+					altText: null,
+					sourceAssetRef: "image-abc-100x200-jpg",
+					sourceCropCanonical: "{}",
+					sourceHotspotCanonical: "{}",
+				},
+			],
+		});
+		await expect(content.getBySlug("different-slug")).resolves.toMatchObject({
+			canonicalUrl: `https://${SITE_DOMAIN}/gallery/quiet-places`,
+			seo: { description: null, ogImageUrl: `${assetRoot}/display-2048.webp` },
+			images: [{ alt: "" }],
+		});
+	});
+
+	it("still rejects malformed provenance and dimensions even though they are not returned", async () => {
+		const row = gallery();
+		const placement = row.placements[0];
+		const invalid = [
+			{ ...row, sourceDocumentId: "" },
+			{ ...row, sourceDocumentRevision: " " },
+			...[
+				{ key: "" },
+				{ sourceAssetRef: "not-an-image" },
+				{ sourceCropCanonical: "" },
+				{ sourceHotspotCanonical: " " },
+				{ asset: { ...placement.asset, source: { ...placement.asset.source, width: 0 } } },
+				{ asset: { ...placement.asset, source: { ...placement.asset.source, height: 100001 } } },
+			].map((patch) => ({ ...row, placements: [{ ...placement, ...patch }] })),
+		];
+		for (const value of invalid) {
+			await expect(provider(value).list()).rejects.toMatchObject({ status: 503 });
+			await expect(provider(value).getBySlug(row.slug)).rejects.toMatchObject({ status: 503 });
+		}
+	});
+
 	it("distinguishes an empty portfolio and a missing gallery from a failed read", async () => {
 		const getPublishedBySlug = vi.fn().mockResolvedValue(null);
 		const content = createPortfolioContentProvider({
