@@ -4,6 +4,7 @@ import {
 	getFrame,
 	getFrameWholesaleCost,
 	getPaper,
+	getPrintProductConfiguration,
 	getSize,
 	getWholesaleCost,
 	isCanvasPaper,
@@ -22,7 +23,9 @@ import { loadCatalogProductKinds } from "./catalogProductPolicy";
 import {
 	isStripeCheckoutSessionId,
 	parseReservedCheckoutSnapshot,
+	type ReservedCheckoutSnapshot,
 } from "./checkoutSnapshot";
+import type { reservedPrintInputValidator } from "./printFulfillmentJobs";
 
 const itemValidator = v.object({
 	productKey: v.string(),
@@ -284,6 +287,52 @@ function isRefunded(order: Doc<"orders">) {
 	return order.status === "refunded" || order.stripeRefundId !== undefined
 		|| order.fulfillmentRecoveryStatus === "refund_pending"
 		|| order.fulfillmentRecoveryStatus === "refunded";
+}
+
+/** Resolve once inside reservation creation; retries keep the original instruction. */
+export async function freezeCheckoutPrintInput(
+	ctx: QueryCtx, siteUrl: string, snapshot: ReservedCheckoutSnapshot,
+): Promise<Infer<typeof reservedPrintInputValidator>> {
+	const enabledKinds = await loadCatalogProductKinds(ctx, siteUrl);
+	const lines: Infer<typeof reservedPrintInputValidator>["lines"] = [];
+	if (snapshot.items.length < 1 || snapshot.items.length > 40) throw rejected();
+	for (const selected of snapshot.items) {
+		const { product, graph } = await loadExactGraph(ctx, siteUrl, selected);
+		if (!enabledKinds.includes(product.productKind)
+			|| product.publishedRevisionId !== graph.revision._id
+			|| graph.draft.saleAvailability !== "available") throw rejected();
+		const commerce = resolvePrintCommerce(graph, selected, selectedVariant(graph, selected).retailPriceCents);
+		const descriptor = privateDescriptor(graph);
+		const sources: Infer<typeof reservedPrintInputValidator>["lines"][number]["sources"] = [];
+		if (descriptor.kind === "print_sources") {
+			const finish = commerce.finish;
+			if (!finish || descriptor.sources.length < 1 || descriptor.sources.length > 20) throw rejected();
+			for (const source of descriptor.sources) {
+				if ((source.mime !== "image/jpeg" && source.mime !== "image/png")
+					|| !source.dimensions.width || !source.dimensions.height) throw rejected();
+				const item = {
+					paperSubcategoryId: finish.paper.subcategoryId,
+					width: finish.size.width, height: finish.size.height,
+					borderWidth: finish.border.inches || undefined,
+					frameSubcategoryId: finish.frame.subcategoryId || undefined,
+					canvasSubcategoryId: finish.canvas?.subcategoryId,
+					canvasWrapHex: finish.canvas?.wrapHex,
+				};
+				const providerProduct = getPrintProductConfiguration(item);
+				if (!providerProduct) throw rejected();
+				sources.push({
+					descriptor: { key: source.key, hash: source.hash, bytes: source.bytes,
+						mime: source.mime, dimensions: { width: source.dimensions.width, height: source.dimensions.height } },
+					item, product: providerProduct,
+				});
+			}
+		}
+		lines.push({ amountCents: commerce.amountCents, sources });
+	}
+	const input = { version: 1 as const, lines };
+	// Leave room for the original routing snapshot and paid-order fields under Convex's document limit.
+	if (new TextEncoder().encode(JSON.stringify(input)).byteLength > 512 * 1024) throw rejected();
+	return input;
 }
 
 export async function resolveCatalogCommerce(

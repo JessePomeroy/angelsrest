@@ -22,6 +22,26 @@ export const printJobItem = v.object({
 });
 export const printJobSource = v.object({ descriptor: printJobDescriptor, item: printJobItem });
 
+/** One bounded entry per reserved checkout line; quantity is supplied only by paid intake. */
+export const reservedPrintInputValidator = v.object({
+	version: v.literal(1),
+	lines: v.array(v.object({
+		amountCents: v.number(),
+		sources: v.array(v.object({
+			descriptor: printJobDescriptor,
+			item: v.object({
+				paperSubcategoryId: v.number(), width: v.number(), height: v.number(),
+				borderWidth: v.optional(v.number()), frameSubcategoryId: v.optional(v.number()),
+				canvasSubcategoryId: v.optional(v.number()), canvasWrapHex: v.optional(v.string()),
+			}),
+			product: v.object({
+				subcategoryId: v.number(), orderItemOptions: v.array(v.number()),
+				solidColorHexCode: v.optional(v.string()),
+			}),
+		})),
+	})),
+});
+
 export async function enqueuePrintFulfillmentJob(
 	ctx: MutationCtx,
 	orderId: Id<"orders">,

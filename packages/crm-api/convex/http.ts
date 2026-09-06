@@ -715,6 +715,7 @@ const reserveCheckoutSnapshot = httpAction(async (ctx, request) => {
 	]);
 	const result = await ctx.runMutation(internal.orders.reserveCheckoutSnapshot, {
 		tenantId: parsed.tenantId, siteUrl, handleHash, snapshotDigest, snapshot: parsed.snapshot,
+		printInputVersion: parsed.printInputVersion,
 		stripeConnectedAccountId: parsed.account ?? undefined,
 	});
 	if (result.outcome === "invalid") return privateResponse({ error: "invalid_request" }, 400);

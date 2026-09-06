@@ -6,6 +6,7 @@ import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { api, internal } from "./_generated/api";
 import {
 	parseReservationBindRequest,
+	parseReservationRequest,
 	parseReservedCheckoutSnapshot,
 	reservationHandleHash,
 	reservationSnapshotDigest,
@@ -154,6 +155,13 @@ async function seedTenantIdentity(t: ReturnType<typeof convexTest>) {
 }
 
 describe("checkout snapshot reservation input and authentication", () => {
+	test("accepts only explicit version-one print capture without changing old request shapes", () => {
+		expect(parseReservationRequest(reserveBody())?.printInputVersion).toBeUndefined();
+		expect(parseReservationRequest(reserveBody(undefined, { printInputVersion: 1 }))?.printInputVersion).toBe(1);
+		for (const printInputVersion of [0, 2, null, true, "1"]) {
+			expect(parseReservationRequest(reserveBody(undefined, { printInputVersion }))).toBeNull();
+		}
+	});
 	test("requires the exact normalized bounded snapshot shape", () => {
 		expect(parseReservedCheckoutSnapshot(snapshot)).toEqual(snapshot);
 		expect(parseReservedCheckoutSnapshot({ ...snapshot, extra: true })).toBeNull();
