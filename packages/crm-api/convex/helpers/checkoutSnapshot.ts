@@ -116,11 +116,15 @@ export function isBoundedStripeExpiration(
 }
 
 export function parseReservationRequest(value: unknown) {
+	const baseKeys = ["version", "site", "attempt", "account", "snapshot"];
 	if (
-		!exactRecord(value, ["version", "site", "attempt", "account", "snapshot"]) &&
-		!exactRecord(value, ["version", "site", "tenantId", "attempt", "account", "snapshot"])
+		!exactRecord(value, baseKeys) &&
+		!exactRecord(value, [...baseKeys, "tenantId"]) &&
+		!exactRecord(value, [...baseKeys, "printInputVersion"]) &&
+		!exactRecord(value, [...baseKeys, "tenantId", "printInputVersion"])
 	)
 		return null;
+	if (Object.hasOwn(value, "printInputVersion") && value.printInputVersion !== 1) return null;
 	const site = siteString(value.site);
 	const tenantId = value.tenantId === undefined ? undefined : value.tenantId;
 	const account = value.account === null ? null : value.account;
@@ -128,7 +132,8 @@ export function parseReservationRequest(value: unknown) {
 	return value.version === 1 && site && UUID_V4.test(String(value.attempt)) && snapshot
 		&& (tenantId === undefined || isTenantId(tenantId))
 		&& (account === null || isStripeConnectedAccountId(account))
-		? { site, ...(tenantId ? { tenantId } : {}), attempt: value.attempt as string, account, snapshot } : null;
+		? { site, ...(tenantId ? { tenantId } : {}), attempt: value.attempt as string, account, snapshot,
+			...(value.printInputVersion === 1 ? { printInputVersion: 1 as const } : {}) } : null;
 }
 
 export function parseReservationBindRequest(value: unknown) {

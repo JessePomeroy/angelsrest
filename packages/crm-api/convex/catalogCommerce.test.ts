@@ -1,7 +1,7 @@
 /// <reference types="vite/client" />
 // @vitest-environment edge-runtime
 
-import { afterEach, beforeEach, describe, expect, test } from "vitest";
+import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import {
 	createGraph,
 	graphDraft,
@@ -15,6 +15,7 @@ import { api, internal } from "./_generated/api";
 import type { Id } from "./_generated/dataModel";
 import type { CatalogCommerceRequest } from "./helpers/catalogCommerce";
 import { parseCatalogCommerceRequest } from "./helpers/catalogCommerce";
+import { reservationHandleHash, reservationSnapshotDigest } from "./helpers/checkoutSnapshot";
 import { serverSecretFingerprint } from "./helpers/serverSecrets";
 
 const modules = import.meta.glob("./**/*.ts");
@@ -45,6 +46,7 @@ const AUTHORITY_ENV = [
 	"WEBHOOK_SECRET",
 	"ORDER_LOOKUP_SECRET",
 	"SITE_URL",
+	"ORDER_PRODUCERS_STATE",
 ] as const;
 const priorEnv = new Map<string, string | undefined>();
 
@@ -70,6 +72,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+	vi.useRealTimers();
 	for (const name of AUTHORITY_ENV) {
 		const value = priorEnv.get(name);
 		if (value === undefined) delete process.env[name];
@@ -154,6 +157,71 @@ function allKeys(value: unknown): string[] {
 }
 
 describe("catalog commerce checkout", () => {
+	test("opt-in print input survives catalog changes and paid replay with its exact recipient", async () => {
+		vi.useFakeTimers();
+		process.env.ORDER_PRODUCERS_STATE = "open";
+		process.env.WEBHOOK_SECRET = "frozen-input-webhook-authority-0123456789abcdef";
+		const fixture = await setup(modules);
+		const draft = graphDraft("print", fixture, "frozen-print");
+		const created = await createGraph(fixture.adminA, SITE_A.siteUrl, "frozen-print", draft);
+		await publish(fixture, created);
+		const snapshot = { schemaVersion: 1 as const, catalogProvider: "convex" as const, items: [item(created, "print")] };
+		const handle = "123e4567-e89b-42d3-a456-426614174000";
+		const args = {
+			siteUrl: SITE_A.siteUrl, handleHash: await reservationHandleHash(SITE_A.siteUrl, handle),
+			snapshot, snapshotDigest: await reservationSnapshotDigest(snapshot), printInputVersion: 1 as const,
+		};
+		expect(await fixture.t.mutation(internal.orders.reserveCheckoutSnapshot, args)).toEqual({ outcome: "created" });
+		const reservation = await fixture.t.run((ctx) => ctx.db.query("checkoutSnapshotReservations").unique());
+		expect(reservation?.printInput).toMatchObject({ version: 1, lines: [{ amountCents: 4200, sources: [{
+			item: { paperSubcategoryId: 103001, width: 8, height: 10 },
+			product: { subcategoryId: 103001, orderItemOptions: [39] },
+			descriptor: { mime: "image/jpeg", bytes: 25_000_000 },
+		}] }] });
+		vi.setSystemTime(Date.now() + 1000);
+		await saveGraph(fixture.adminA, created.productId, { ...draft, fulfillmentMode: "merchant_fulfilled" },
+			(await product(fixture, created.productId)).draftRevisionId);
+		vi.setSystemTime(Date.now() + 1000);
+		await publish(fixture, created);
+		expect(await fixture.t.mutation(internal.orders.reserveCheckoutSnapshot, args)).toEqual({ outcome: "replayed" });
+		expect(await fixture.t.mutation(internal.orders.reserveCheckoutSnapshot, { ...args, printInputVersion: undefined })).toEqual({ outcome: "conflict" });
+		await fixture.t.mutation(internal.orders.bindCheckoutSnapshot, {
+			siteUrl: SITE_A.siteUrl, handleHash: args.handleHash, stripeSessionId: SESSION,
+			stripeExpiresAt: Math.floor(Date.now() / 1000) + 3600,
+		});
+		const paid = {
+			siteUrl: SITE_A.siteUrl, webhookSecret: process.env.WEBHOOK_SECRET,
+			stripeSessionId: SESSION, customerEmail: "buyer@example.com", customerName: "The Payer",
+			shippingRecipientName: "The Recipient", shippingAddress: {
+				line1: "1 Test Street", city: "Test City", state: "MI", postalCode: "48000", country: "US",
+			},
+			checkoutSnapshotReservation: { version: 2, handle },
+			items: [{ productName: "Frozen print", quantity: 2, price: 8400 }],
+			total: 8400, fulfillmentType: "self" as const,
+		};
+		await expect(fixture.t.mutation(api.orders.create, { ...paid, shippingRecipientName: undefined })).rejects.toThrow("shipping recipient");
+		const order = await fixture.t.mutation(api.orders.create, paid);
+		await fixture.t.mutation(api.orders.create, { ...paid, shippingRecipientName: "Changed Recipient" });
+		const stored = await fixture.t.run((ctx) => ctx.db.get(order._id));
+		expect(stored?.printInput).toEqual(reservation?.printInput);
+		expect(stored).toMatchObject({ fulfillmentType: "lumaprints", customerName: "The Payer", shippingRecipientName: "The Recipient" });
+		expect(await fixture.t.run((ctx) => ctx.db.query("checkoutSnapshotReservations").unique())).toBeNull();
+	});
+
+	test("frozen input cannot capture another tenant's artwork or an unpublished revision", async () => {
+		vi.useFakeTimers();
+		process.env.ORDER_PRODUCERS_STATE = "open";
+		const fixture = await setup(modules);
+		const created = await createGraph(fixture.adminA, SITE_A.siteUrl, "frozen-rejected", graphDraft("print", fixture));
+		const snapshot = { schemaVersion: 1 as const, catalogProvider: "convex" as const, items: [item(created, "print")] };
+		const args = { siteUrl: SITE_A.siteUrl, handleHash: "a".repeat(64),
+			snapshot, snapshotDigest: await reservationSnapshotDigest(snapshot), printInputVersion: 1 as const };
+		await expect(fixture.t.mutation(internal.orders.reserveCheckoutSnapshot, args)).rejects.toThrow("rejected");
+		await publish(fixture, created);
+		await expect(fixture.t.mutation(internal.orders.reserveCheckoutSnapshot, { ...args, siteUrl: SITE_B.siteUrl })).rejects.toThrow("rejected");
+		expect(await fixture.t.run((ctx) => ctx.db.query("checkoutSnapshotReservations").unique())).toBeNull();
+	});
+
 	test("resolves exact integer print pricing and preserves null versus none identity", async () => {
 		const fixture = await setup(modules);
 		const created = await createGraph(

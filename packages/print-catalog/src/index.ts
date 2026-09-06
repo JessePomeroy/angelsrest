@@ -47,6 +47,35 @@ export interface CanvasPaperInfo {
 	wrapHex: string;
 }
 
+export interface PrintProductConfiguration {
+	subcategoryId: number;
+	orderItemOptions: number[];
+	solidColorHexCode?: string;
+}
+
+/** The provider's product/finish selection, independent of artwork and recipient. */
+export function getPrintProductConfiguration(item: {
+	paperSubcategoryId: number;
+	frameSubcategoryId?: number;
+	canvasSubcategoryId?: number;
+	canvasWrapHex?: string;
+}): PrintProductConfiguration | null {
+	const canvas = item.canvasSubcategoryId;
+	const frame = item.frameSubcategoryId;
+	const isCanvas = typeof canvas === "number" && canvas > 0;
+	const isFramed = typeof frame === "number" && frame > 0;
+	const paperOption = isFramed ? getFramedPaperOptionId(item.paperSubcategoryId) : null;
+	if (isFramed && paperOption === null) return null;
+	if (isCanvas) return {
+		subcategoryId: canvas, orderItemOptions: [3], // Solid-color canvas wrap.
+		solidColorHexCode: item.canvasWrapHex || "#000000",
+	};
+	if (isFramed && paperOption !== null) return {
+		subcategoryId: frame, orderItemOptions: [paperOption, 67, 96], // 2-inch white mat.
+	};
+	return { subcategoryId: item.paperSubcategoryId, orderItemOptions: [39] }; // No bleed; preserve exact ratio.
+}
+
 export const V2_PAPERS: V2Paper[] = [
 	{
 		slug: "archival-matte",

@@ -50,6 +50,27 @@ guessed compatibility paths.
 
 ## Ownership
 
+### Frozen print-input rollout (source-only, opt-in)
+
+The reservation endpoint additionally accepts `printInputVersion: 1`. Only a
+host deployed with the corresponding paid-input consumer should send it. No
+existing host opts in by default, and old reservations/orders are not backfilled.
+Deploy the additive Convex schema/functions before enabling a consumer.
+
+For opted-in reservations, Convex captures each line's resolved price, print
+dimensions/border, provider subcategory and options, and verified original R2
+descriptor in the reservation transaction. Capture requires the exact currently
+published revision for that tenant. It is bounded to 40 lines, 20 sources per
+line, and 512 KiB of instructions. A replay preserves the first instruction,
+including after catalog changes; it cannot switch input versions.
+
+Paid intake transfers that instruction to the order atomically with consuming
+the bound reservation. Printed orders require `shippingRecipientName` and the
+paid address/quantities. The recipient is distinct from `customerName` (payer).
+Order replay does not replace either the instruction or recipient. Existing
+orders retain their historical resolution and retry behavior. No provider POST,
+refund, receipt, admission, or reconciliation fence is removed by this rollout.
+
 | Concern | Source of truth |
 |---|---|
 | Public product content and retail variants | Published Convex catalog |

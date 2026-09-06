@@ -1,6 +1,6 @@
 // Server-only LumaPrints client; see LUMAPRINTS.md for integration constraints.
 
-import { getFramedPaperOptionId } from "@jessepomeroy/print-catalog";
+import { getPrintProductConfiguration } from "@jessepomeroy/print-catalog";
 import { FulfillmentValidationError } from "$lib/server/fulfillmentValidationError";
 import { normalizeLumaPrintsProviderNumber } from "$lib/server/lumaprintsProviderNumber";
 import { getLumaPrintsRuntimeConfig } from "$lib/server/runtimeConfig";
@@ -735,39 +735,17 @@ export function buildLumaPrintsOrder(
 			phone: recipient.phone || "",
 		},
 		orderItems: items.map((item, i) => {
-			const isCanvas = typeof item.canvasSubcategoryId === "number" && item.canvasSubcategoryId > 0;
-			const isFramed = typeof item.frameSubcategoryId === "number" && item.frameSubcategoryId > 0;
-			const framedPaperOption = isFramed ? getFramedPaperOptionId(item.paperSubcategoryId) : null;
-			if (isFramed && framedPaperOption === null) {
+			const product = getPrintProductConfiguration(item);
+			if (!product) {
 				throw new FulfillmentValidationError("Framed print paper is unsupported");
-			}
-			// Priority: canvas > frame > paper subcategory
-			const subcategoryId = isCanvas
-				? (item.canvasSubcategoryId as number)
-				: isFramed
-					? (item.frameSubcategoryId as number)
-					: item.paperSubcategoryId;
-			const options: number[] = [];
-			let solidColorHexCode: string | undefined;
-			if (isCanvas) {
-				options.push(3); // Solid Color wrap
-				solidColorHexCode = item.canvasWrapHex || "#000000";
-			} else if (framedPaperOption !== null) {
-				options.push(framedPaperOption);
-				options.push(67); // Mat size: 2"
-				options.push(96); // Mat color: White
-			} else {
-				options.push(39); // No Bleed (direct Fine Art Paper)
 			}
 			return {
 				externalItemId: `${externalId}-item-${i + 1}`,
-				subcategoryId,
+				...product,
 				quantity: item.quantity,
 				width: item.width,
 				height: item.height,
 				file: { imageUrl: item.imageUrl },
-				orderItemOptions: options,
-				...(solidColorHexCode ? { solidColorHexCode } : {}),
 			};
 		}),
 	};

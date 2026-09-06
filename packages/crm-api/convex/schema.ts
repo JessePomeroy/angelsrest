@@ -49,7 +49,7 @@ import {
 	richTextSpanValidator,
 } from "./helpers/richTextContract";
 import { stripeFeeCaptureErrorValidator } from "./helpers/stripeFeeCapture";
-import { printJobDescriptor, printJobItem, printJobStage } from "./helpers/printFulfillmentJobs";
+import { printJobDescriptor, printJobItem, printJobStage, reservedPrintInputValidator } from "./helpers/printFulfillmentJobs";
 import { categoryValidator } from "./helpers/validators";
 
 const contentBlockValueValidator = v.union(
@@ -961,6 +961,7 @@ export default defineSchema({
 		handleHash: v.string(),
 		snapshotDigest: v.string(),
 		snapshot: reservedCheckoutSnapshotValidator,
+		printInput: v.optional(reservedPrintInputValidator),
 		accountScope: v.string(),
 		stripeConnectedAccountId: v.optional(v.string()),
 		stripeSessionId: v.optional(v.string()),
@@ -1076,8 +1077,10 @@ export default defineSchema({
 		checkoutAdmissionGeneration: v.optional(v.number()),
 		checkoutAdmissionHandleHash: v.optional(v.string()),
 		checkoutSnapshot: v.optional(checkoutSnapshotValidator),
+		printInput: v.optional(reservedPrintInputValidator),
 		customerEmail: v.string(),
 		customerName: v.optional(v.string()),
+		shippingRecipientName: v.optional(v.string()),
 		shippingAddress: v.optional(
 			v.object({
 				line1: v.string(),

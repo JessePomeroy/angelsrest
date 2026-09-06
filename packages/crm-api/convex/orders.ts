@@ -18,6 +18,7 @@ import {
 import {
 	catalogCommerceRequestValidator,
 	catalogCommerceResolutionErrorKind,
+	freezeCheckoutPrintInput,
 	resolveCatalogCommerce,
 } from "./helpers/catalogCommerce";
 import {
@@ -262,7 +263,7 @@ async function snapshotFulfillmentType(
 }
 
 function canRepairFulfillmentType(order: Doc<"orders">) {
-	return order.status === "new"
+	return order.printInput === undefined && order.status === "new"
 		&& order.lumaprintsOrderNumber === undefined
 		&& order.printFulfillmentClaim !== true
 		&& order.printFulfillmentPhase === undefined
@@ -534,6 +535,7 @@ export const reserveCheckoutSnapshot = internalMutation({
 	args: {
 		tenantId: v.optional(v.string()), siteUrl: v.string(), handleHash: v.string(), snapshotDigest: v.string(),
 		snapshot: reservedCheckoutSnapshotValidator, stripeConnectedAccountId: v.optional(v.string()),
+		printInputVersion: v.optional(v.literal(1)),
 	},
 	handler: async (ctx, args) => {
 		if (
@@ -551,6 +553,7 @@ export const reserveCheckoutSnapshot = internalMutation({
 		const accountScope = stripeAccountScope(args.stripeConnectedAccountId);
 		if (existing) {
 			const replayed = existing.snapshotDigest === args.snapshotDigest
+				&& existing.printInput?.version === args.printInputVersion
 				&& JSON.stringify(existing.snapshot) === JSON.stringify(args.snapshot)
 				&& existing.accountScope === accountScope
 				&& existing.stripeConnectedAccountId === args.stripeConnectedAccountId
@@ -566,9 +569,12 @@ export const reserveCheckoutSnapshot = internalMutation({
 		await assertNewOrderAdmissionOpenIfActivated(ctx, args.siteUrl);
 		const createdAt = Date.now();
 		const unboundPurgeAt = createdAt + UNBOUND_RETENTION_MS;
+		const printInput = args.printInputVersion === 1
+			? await freezeCheckoutPrintInput(ctx, args.siteUrl, args.snapshot) : undefined;
 		const reservationId = await ctx.db.insert("checkoutSnapshotReservations", {
 			state: "reserved", tenantId: args.tenantId, siteUrl: args.siteUrl, handleHash: args.handleHash,
 			snapshotDigest: args.snapshotDigest, snapshot: args.snapshot, accountScope,
+			printInput,
 			stripeConnectedAccountId: args.stripeConnectedAccountId,
 			unboundPurgeAt, createdAt, updatedAt: createdAt,
 		});
@@ -669,7 +675,7 @@ async function consumeReservation(
 		throw new Error("Checkout snapshot reservation does not match paid session");
 	}
 	await ctx.db.delete(row._id);
-	return { snapshot: row.snapshot, tenantId: row.tenantId };
+	return { snapshot: row.snapshot, tenantId: row.tenantId, printInput: row.printInput };
 }
 
 /** Private catalog commerce authority; reachable only through the authenticated HTTP route. */
@@ -838,6 +844,7 @@ export const create = mutation({
 		stripeSessionId: v.string(),
 		customerEmail: v.string(),
 		customerName: v.optional(v.string()),
+		shippingRecipientName: v.optional(v.string()),
 		stripePaymentIntentId: v.optional(v.string()),
 		stripeConnectedAccountId: v.optional(v.string()),
 		stripePaymentCurrency: v.optional(v.string()),
@@ -1056,6 +1063,7 @@ export const create = mutation({
 				}
 			: rest;
 		let durableTenantId = admission?.tenantId;
+		let printInput: Doc<"orders">["printInput"];
 		if (checkoutSnapshotReservation !== undefined) {
 			if (rest.checkoutSnapshot !== undefined) throw new Error("Checkout snapshot input is ambiguous");
 			const reservation = await consumeReservation(
@@ -1064,6 +1072,7 @@ export const create = mutation({
 			);
 			await assertTenantRouting(ctx, durableTenantId, args.siteUrl, reservation.tenantId);
 			durableTenantId ??= reservation.tenantId;
+			printInput = reservation.printInput;
 			orderInput = {
 				...orderInput,
 				checkoutSnapshot: reservation.snapshot,
@@ -1072,7 +1081,16 @@ export const create = mutation({
 				) ? "digital" : rest.fulfillmentType,
 			};
 		}
-		if (orderInput.checkoutSnapshot) {
+		if (printInput) {
+			const hasPrint = printInput.lines.some((line) => line.sources.length > 0);
+			if (hasPrint && (!args.shippingRecipientName?.trim()
+				|| args.shippingRecipientName.length > 200 || !args.shippingAddress
+				|| args.items.some((item) => !Number.isSafeInteger(item.quantity) || item.quantity < 1))) {
+				throw new Error("Frozen print input requires a paid shipping recipient and quantity");
+			}
+			orderInput = { ...orderInput, fulfillmentType: hasPrint ? "lumaprints"
+				: orderInput.checkoutSnapshot?.items.every((item) => item.productKind === "digital_download") ? "digital" : "self" };
+		} else if (orderInput.checkoutSnapshot) {
 			orderInput = {
 				...orderInput,
 				fulfillmentType: await snapshotFulfillmentType(
@@ -1117,6 +1135,7 @@ export const create = mutation({
 						: undefined;
 		const _id = await ctx.db.insert("orders", {
 			...orderInput,
+			printInput,
 			tenantId: durableTenantId,
 			stripeFees: isManuallyRefunded ? undefined : orderInput.stripeFees,
 			orderNumber,
