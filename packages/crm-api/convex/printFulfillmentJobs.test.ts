@@ -92,6 +92,22 @@ test("frozen provider options survive resolve and preparation checkpoints", asyn
 	expect(state.sources[0].item.product).toEqual(frozen.item.product);
 });
 
+test("frozen jobs retain original identity beside the versioned artifact across retry and issuance", async () => {
+	const { t, orderId, step, claim } = await setup();
+	await t.run((ctx) => ctx.db.patch(orderId, { printInput: { version: 1, lines: [{ amountCents: 1000, sources: [{
+		descriptor: source.descriptor, item: { paperSubcategoryId: 103007, width: 4, height: 6 },
+		product: { subcategoryId: 103007, orderItemOptions: [39] },
+	}] }] } }));
+	await step({ kind: "resolved", sources: [source] });
+	const active = await claim();
+	await expect(t.mutation(api.printFulfillmentJobs.advance, { ...active, result: { kind: "prepared", ...source } })).rejects.toThrow("recipe");
+	const artifact = { ...source.descriptor, key: `sites/${siteUrl}/catalog/print-sources/render/original`, hash: "b".repeat(64) };
+	await t.mutation(api.printFulfillmentJobs.advance, { ...active, result: { kind: "prepared", descriptor: artifact, item: source.item, recipeVersion: 1 } });
+	await step({ kind: "retry", code: "step_failed" });
+	const state = await t.query(api.printFulfillmentJobs.read, await claim());
+		expect(state.sources[0]).toMatchObject({ descriptor: source.descriptor, artifact: { recipeVersion: 1, descriptor: artifact } });
+});
+
 test("capabilities refresh without rendering again, but never after the POST fence", async () => {
 	const { t, orderId, claim, step } = await setup();
 	await step({ kind: "resolved", sources: [source] });

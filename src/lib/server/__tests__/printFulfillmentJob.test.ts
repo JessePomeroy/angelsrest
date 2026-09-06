@@ -102,6 +102,34 @@ it("prepares only the leased source and checkpoints its descriptor, not a bearer
 	);
 	expect(mocks.finish).not.toHaveBeenCalled();
 });
+
+it("uses the direct artwork protocol for frozen orders and issues the artifact rather than the original", async () => {
+	const frozen = { ...order, printInput: { version: 1, lines: [] } };
+	mocks.query.mockResolvedValue({
+		job: { stage: "prepare", cursor: 0 },
+		order: frozen,
+		sources: [source],
+	});
+	await POST(request());
+	expect(mocks.store).toHaveBeenCalledWith(
+		order.siteUrl,
+		expect.anything(),
+		undefined,
+		"direct-v1",
+	);
+	expect(mocks.mutation.mock.calls[0]?.[1].result).toMatchObject({
+		kind: "prepared",
+		recipeVersion: 1,
+	});
+	const descriptor = { ...source.descriptor, key: "rendered-artifact" };
+	mocks.query.mockResolvedValue({
+		job: { stage: "issue", cursor: 0 },
+		order: frozen,
+		sources: [{ ...source, artifact: { recipeVersion: 1, descriptor } }],
+	});
+	await POST(request());
+	expect(mocks.issue).toHaveBeenLastCalledWith(descriptor, order.siteUrl);
+});
 it.each([
 	["download", new DOMException("private URL", "TimeoutError"), "TimeoutError", "retry"],
 	["decode", new TypeError("private URL"), "TypeError", "retry"],

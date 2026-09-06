@@ -43,6 +43,35 @@ function makeLineItem(overrides?: Partial<Stripe.LineItem>): Stripe.LineItem {
 }
 
 describe("buildConvexOrderCreatePayload", () => {
+	it("retains the shipping recipient from a frozen session without consulting the current rollout gate", () => {
+		const input = {
+			session: makeSession({ metadata: { printInputVersion: "1" } }),
+			shippingDetails: {
+				name: "Gift recipient",
+				address: {
+					line1: "123 Example St",
+					line2: null,
+					city: "Detroit",
+					state: "MI",
+					postal_code: "48201",
+					country: "US",
+				},
+			},
+			lineItems: [makeLineItem()],
+			siteUrl: "angelsrest.online",
+			webhookSecret: "secret",
+		};
+		expect(buildConvexOrderCreatePayload(input)).toMatchObject({
+			shippingRecipientName: "Gift recipient",
+			customerName: "Jane Doe",
+		});
+		expect(() =>
+			buildConvexOrderCreatePayload({
+				...input,
+				session: makeSession({ metadata: { printInputVersion: "2" } }),
+			}),
+		).toThrow("Unsupported frozen print protocol");
+	});
 	it("maps Stripe checkout sessions into Convex order create args", () => {
 		const payload = buildConvexOrderCreatePayload({
 			session: makeSession(),

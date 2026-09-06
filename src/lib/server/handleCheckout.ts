@@ -17,6 +17,7 @@ import {
 	isCheckoutSnapshotReservationConflict,
 } from "$lib/server/checkoutSnapshotReservationClient";
 import { assertOrderProducersOpen } from "$lib/server/orderProducerGate";
+import { getFrozenPrintInputVersion } from "$lib/server/runtimeConfig";
 import {
 	createPaymentCheckoutSession,
 	type PaymentCheckoutSessionResult,
@@ -204,6 +205,7 @@ export async function createHandleCheckoutSession({
 	}
 
 	let handle: string;
+	const printInputVersion = getFrozenPrintInputVersion(site);
 	try {
 		({ handle } = await reservationClient.reserve({
 			...(tenantId ? { tenantId } : {}),
@@ -212,6 +214,7 @@ export async function createHandleCheckoutSession({
 			account,
 			catalogProvider,
 			items: snapshotItems,
+			...(printInputVersion === undefined ? {} : { printInputVersion }),
 		}));
 	} catch (cause) {
 		if (isCheckoutSnapshotReservationConflict(cause)) throw cause;
@@ -235,6 +238,7 @@ export async function createHandleCheckoutSession({
 		metadata: {
 			checkoutSnapshotVersion: "2",
 			checkoutSnapshotHandle: handle,
+			...(printInputVersion === undefined ? {} : { printInputVersion: String(printInputVersion) }),
 		},
 		shippingAllowedCountries,
 		tenantCheckout,

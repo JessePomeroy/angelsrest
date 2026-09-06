@@ -770,6 +770,7 @@ export async function storePrintArtifact(
 		origin: CMS_MEDIA_WORKER_ORIGIN,
 		bearer: getCatalogPrintArtifactUploadSecret(siteUrl),
 	},
+	protocol: "upload-token" | "direct-v1" = "upload-token",
 ) {
 	if (
 		!/^([a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/.test(
@@ -792,6 +793,54 @@ export async function storePrintArtifact(
 		mime: "image/jpeg" as const,
 		dimensions: { width: rendered.width, height: rendered.height },
 	};
+	if (protocol === "direct-v1") {
+		const response = await (upload.fetch ?? fetch)(
+			endpoint(upload, "/v1/catalog-assets/print-artifacts"),
+			{
+				method: "PUT",
+				headers: {
+					Authorization: `Bearer ${upload.bearer}`,
+					"Content-Type": descriptor.mime,
+					"Content-Length": String(descriptor.bytes),
+					"X-CMS-Print-Artifact": JSON.stringify({
+						version: 1,
+						site: siteUrl,
+						hash: descriptor.hash,
+						width: rendered.width,
+						height: rendered.height,
+					}),
+				},
+				body: new Uint8Array(rendered.bytes),
+				signal: upload.signal
+					? AbortSignal.any([upload.signal, AbortSignal.timeout(20_000)])
+					: AbortSignal.timeout(20_000),
+			},
+		).catch(() => {
+			throw new CatalogBoundaryError("unavailable", "fetch");
+		});
+		if (!response.ok)
+			throw new CatalogBoundaryError(
+				response.status === 409 ? "rejected" : "unavailable",
+				"status",
+			);
+		const stored = await readJson(response);
+		if (
+			!object(stored) ||
+			stored.status !== "stored_unverified" ||
+			(stored.replayed === false
+				? stored.privateObjectKey !== key || stored.assetKey !== assetKey
+				: stored.replayed !== true ||
+					!object(stored.asset) ||
+					stored.asset.privateObjectKey !== key ||
+					stored.asset.sha256 !== descriptor.hash ||
+					stored.asset.sizeBytes !== descriptor.bytes ||
+					stored.asset.contentType !== descriptor.mime ||
+					stored.asset.widthPixels !== rendered.width ||
+					stored.asset.heightPixels !== rendered.height)
+		)
+			throw rejected();
+		return descriptor;
+	}
 	const response = await (upload.fetch ?? fetch)(
 		endpoint(upload, "/v1/catalog-assets/uploads/capabilities"),
 		{

@@ -18,6 +18,7 @@ export interface CheckoutSnapshotReservationClient {
 		account: string | null;
 		catalogProvider: "convex";
 		items: readonly CheckoutSnapshotItem[];
+		printInputVersion?: 1;
 	}): Promise<{ handle: string }>;
 	bind(input: {
 		tenantId?: string;
@@ -69,7 +70,7 @@ export function createCheckoutSnapshotReservationClient({
 	}
 
 	return {
-		async reserve({ tenantId, site, attempt, account, catalogProvider, items }) {
+		async reserve({ tenantId, site, attempt, account, catalogProvider, items, printInputVersion }) {
 			const response = await post(RESERVE_PATH, site, {
 				version: 1,
 				site,
@@ -77,6 +78,7 @@ export function createCheckoutSnapshotReservationClient({
 				attempt,
 				account,
 				snapshot: { schemaVersion: 1, catalogProvider, items },
+				...(printInputVersion === undefined ? {} : { printInputVersion }),
 			});
 			if (!exactRecord(response, ["version", "handle", "replayed"])) throw unavailable();
 			if (
