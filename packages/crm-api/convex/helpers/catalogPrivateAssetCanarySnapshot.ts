@@ -1,10 +1,6 @@
 import type { Doc } from "../_generated/dataModel";
 import type { QueryCtx } from "../_generated/server";
-import type {
-	CatalogPrivateAssetFacts,
-	CatalogPrivateInspectionReceiptSet,
-	CatalogPrivateStorageReceiptSet,
-} from "./catalogPrivateAssetReceiptContract";
+import type { CatalogPrivateAssetFacts } from "./catalogPrivateAssetReceiptContract";
 import {
 	createCatalogPrivateAssetReceiptSetId,
 	validateCatalogPrivateInspectionReceiptSet,
@@ -56,49 +52,6 @@ export const CATALOG_PRIVATE_ASSET_CANARY_EXPECTATION = {
 	expectedSharpVersion: EXPECTED_SHARP_VERSION,
 	expectedLibvipsVersion: EXPECTED_LIBVIPS_VERSION,
 } satisfies CatalogPrivateAssetCanaryExpectation;
-
-async function requireCanaryReceiptIdentity(
-	ctx: QueryCtx,
-	receiptSet: Pick<CatalogPrivateStorageReceiptSet, "schemaVersion" | "siteUrl" | "receiptSetId">,
-	expectation: CatalogPrivateAssetCanaryExpectation,
-) {
-	if (receiptSet.schemaVersion !== 2 || receiptSet.siteUrl !== expectation.siteUrl) return;
-	const snapshot = await createCatalogPrivateAssetV2CanarySnapshot(ctx, expectation);
-	if (receiptSet.receiptSetId !== snapshot.canary.receiptSetId) {
-		throw new Error("Angels Rest V2 receipt identity differs from the acceptance canary");
-	}
-}
-
-export async function requireCatalogPrivateAssetV2CanaryStorageReceipt(
-	ctx: QueryCtx,
-	receiptSet: CatalogPrivateStorageReceiptSet,
-	expectation: CatalogPrivateAssetCanaryExpectation = CATALOG_PRIVATE_ASSET_CANARY_EXPECTATION,
-) {
-	await requireCanaryReceiptIdentity(ctx, receiptSet, expectation);
-}
-
-export async function requireCatalogPrivateAssetV2CanaryInspectionReceipt(
-	ctx: QueryCtx,
-	receiptSet: CatalogPrivateInspectionReceiptSet,
-	expectation: CatalogPrivateAssetCanaryExpectation = CATALOG_PRIVATE_ASSET_CANARY_EXPECTATION,
-) {
-	await requireCanaryReceiptIdentity(ctx, receiptSet, expectation);
-	if (receiptSet.schemaVersion !== 2 || receiptSet.siteUrl !== expectation.siteUrl) return;
-	const printReceipts = receiptSet.receipts.filter((receipt) =>
-		receipt.facts.kind === "print_source"
-	);
-	if (
-		printReceipts.length !== 2 ||
-		printReceipts.some(
-			(receipt) =>
-				receipt.inspection.method !== "sharp_libvips_full_raster_v1" ||
-				receipt.inspection.sharpVersion !== expectation.expectedSharpVersion ||
-				receipt.inspection.libvipsVersion !== expectation.expectedLibvipsVersion,
-		)
-	) {
-		throw new Error("Angels Rest V2 receipt decoder versions differ from the acceptance canary");
-	}
-}
 
 const LIMITS = {
 	coordinations: 2,

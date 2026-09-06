@@ -8,14 +8,7 @@ import {
 	catalogPrivateEditorPrevalidationHttpStatus,
 	catalogPrivateEditorReceiptHttpStatus,
 } from "./helpers/catalogPrivateAssetEditorErrors";
-import type {
-	CatalogPrivateInspectionReceiptSet,
-	CatalogPrivateStorageReceiptSet,
-} from "./helpers/catalogPrivateAssetReceiptContract";
-import {
-	CATALOG_PRIVATE_ASSET_RECEIPT_SET_V2_VERSION,
-	CATALOG_PRIVATE_ASSET_RECEIPT_SET_VERSION,
-} from "./helpers/catalogPrivateAssetReceiptContract";
+import { CATALOG_PRIVATE_ASSET_RECEIPT_SET_V2_VERSION } from "./helpers/catalogPrivateAssetReceiptContract";
 import {
 	validateCatalogPrivateEditorInspectionReceiptSet,
 	validateCatalogPrivateEditorStorageReceiptSet,
@@ -88,10 +81,6 @@ const CLOSURE_READINESS_PATH = "/commerce/closure/readiness";
 const MAX_ADMISSION_BODY_BYTES = 8192;
 const CMS_MEDIA_COMPLETION_PATH = "/cms-media/complete-deletion";
 const MAX_COMPLETION_BODY_BYTES = 4096;
-const CATALOG_STORAGE_RECEIPT_PATH = "/cms-media/catalog-private-assets/storage-receipt";
-const CATALOG_INSPECTION_RECEIPT_PATH =
-	"/cms-media/catalog-private-assets/inspection-receipt";
-const MAX_CATALOG_RECEIPT_BODY_BYTES = 256 * 1024;
 const CATALOG_EDITOR_STORAGE_RECEIPT_PATH =
 	"/cms-media/catalog-private-assets/editor-upload/storage-receipt";
 const CATALOG_EDITOR_INSPECTION_RECEIPT_PATH =
@@ -290,9 +279,7 @@ function journalHandler(
 }
 
 type ReceiptSetEnvelope = Record<string, unknown> & {
-	schemaVersion:
-		| typeof CATALOG_PRIVATE_ASSET_RECEIPT_SET_VERSION
-		| typeof CATALOG_PRIVATE_ASSET_RECEIPT_SET_V2_VERSION;
+	schemaVersion: typeof CATALOG_PRIVATE_ASSET_RECEIPT_SET_V2_VERSION;
 	receiptSetId: string;
 	siteUrl: string;
 	receipts: unknown[];
@@ -301,26 +288,16 @@ type ReceiptSetEnvelope = Record<string, unknown> & {
 function isReceiptSetEnvelope(body: Record<string, unknown>): body is ReceiptSetEnvelope {
 	return (
 		Object.keys(body).length === 4 &&
-		(body.schemaVersion === CATALOG_PRIVATE_ASSET_RECEIPT_SET_VERSION ||
-			body.schemaVersion === CATALOG_PRIVATE_ASSET_RECEIPT_SET_V2_VERSION) &&
+		body.schemaVersion === CATALOG_PRIVATE_ASSET_RECEIPT_SET_V2_VERSION &&
 		typeof body.receiptSetId === "string" &&
 		isTenantSiteSegment(body.siteUrl) &&
-		Array.isArray(body.receipts)
-	);
-}
-
-function isEditorReceiptSetEnvelope(
-	body: Record<string, unknown>,
-): body is ReceiptSetEnvelope & { schemaVersion: 2 } {
-	return (
-		isReceiptSetEnvelope(body) &&
-		body.schemaVersion === CATALOG_PRIVATE_ASSET_RECEIPT_SET_V2_VERSION &&
+		Array.isArray(body.receipts) &&
 		body.receipts.length === 1
 	);
 }
 
 async function prevalidateEditorReceipt(
-	body: ReceiptSetEnvelope & { schemaVersion: 2 },
+	body: ReceiptSetEnvelope,
 	role: "storage" | "inspection",
 ) {
 	if (role === "storage") {
@@ -379,10 +356,7 @@ const completeCmsMediaDeletion = httpAction(async (ctx, request) => {
 	}
 });
 
-function catalogReceiptHandler(
-	role: "storage" | "inspection",
-	mode: "historical" | "editor_upload" = "historical",
-) {
+function catalogReceiptHandler(role: "storage" | "inspection") {
 	return httpAction(async (ctx, request) => {
 		const registries = catalogReceiptRegistries();
 		if (!registries) {
@@ -395,70 +369,56 @@ function catalogReceiptHandler(
 		if (!isServerSecretCandidate(supplied)) return privateResponse("Unauthorized", 401);
 		const body = await readJsonObject(
 			request,
-			mode === "editor_upload"
-				? MAX_CATALOG_EDITOR_RECEIPT_BODY_BYTES
-				: MAX_CATALOG_RECEIPT_BODY_BYTES,
+			MAX_CATALOG_EDITOR_RECEIPT_BODY_BYTES,
 		);
 		if (!body || !isReceiptSetEnvelope(body)) return privateResponse("Invalid request", 400);
 		const { siteUrl } = body;
 		if (!(await tenantSecretMatches(registries[role], siteUrl, supplied))) {
 			return privateResponse("Unauthorized", 401);
 		}
-		let editorReceipt: Awaited<ReturnType<typeof prevalidateEditorReceipt>> | null = null;
-		if (mode === "editor_upload") {
-			if (!isEditorReceiptSetEnvelope(body)) return privateResponse("Invalid request", 400);
-			try {
-				editorReceipt = await prevalidateEditorReceipt(body, role);
-			} catch (error) {
-				const status = catalogPrivateEditorPrevalidationHttpStatus(error);
-				if (status === 503) {
-					console.error(
-						JSON.stringify({
-							event: "cms.catalog_private_receipt_rejected",
-							role,
-							mode,
-							siteUrl,
-							code: "receipt_retryable_failure",
-						}),
-					);
-				}
-				return privateResponse(
-					status === 400
-						? "Invalid request"
-						: "Private catalog receipt service is temporarily unavailable",
-					status,
+		let editorReceipt: Awaited<ReturnType<typeof prevalidateEditorReceipt>>;
+		try {
+			editorReceipt = await prevalidateEditorReceipt(body, role);
+		} catch (error) {
+			const status = catalogPrivateEditorPrevalidationHttpStatus(error);
+			if (status === 503) {
+				console.error(
+					JSON.stringify({
+						event: "cms.catalog_private_receipt_rejected",
+						role,
+						mode: "editor_upload",
+						siteUrl,
+						code: "receipt_retryable_failure",
+					}),
 				);
 			}
+			return privateResponse(
+				status === 400
+					? "Invalid request"
+					: "Private catalog receipt service is temporarily unavailable",
+				status,
+			);
 		}
 		try {
 			let result;
-			if (editorReceipt?.role === "storage") {
+			if (editorReceipt.role === "storage") {
 				result = await ctx.runMutation(internal.catalogPrivateAssets.recordEditorStorageReceipt, {
 					receiptSet: editorReceipt.receiptSet,
 				});
-			} else if (editorReceipt?.role === "inspection") {
+			} else {
 				result = await ctx.runMutation(
 					internal.catalogPrivateAssets.recordEditorInspectionReceipt,
 					{ receiptSet: editorReceipt.receiptSet },
 				);
-			} else {
-				result =
-					role === "storage"
-						? await ctx.runMutation(internal.catalogPrivateAssets.recordStorageReceiptSet, {
-								receiptSet: body as unknown as CatalogPrivateStorageReceiptSet,
-							})
-						: await ctx.runMutation(internal.catalogPrivateAssets.recordInspectionReceiptSet, {
-								receiptSet: body as unknown as CatalogPrivateInspectionReceiptSet,
-							});
 			}
 			return privateResponse(result, 200);
 		} catch (error) {
-			const status = mode === "editor_upload" ? catalogPrivateEditorReceiptHttpStatus(error) : 409;
+			const status = catalogPrivateEditorReceiptHttpStatus(error);
 			console.error(
 				JSON.stringify({
 					event: "cms.catalog_private_receipt_rejected",
 					role,
-					mode,
+					mode: "editor_upload",
 					siteUrl,
 					code:
 						status === 400
@@ -480,10 +440,8 @@ function catalogReceiptHandler(
 	});
 }
 
-const recordCatalogStorageReceipt = catalogReceiptHandler("storage");
-const recordCatalogInspectionReceipt = catalogReceiptHandler("inspection");
-const recordCatalogEditorStorageReceipt = catalogReceiptHandler("storage", "editor_upload");
-const recordCatalogEditorInspectionReceipt = catalogReceiptHandler("inspection", "editor_upload");
+const recordCatalogEditorStorageReceipt = catalogReceiptHandler("storage");
+const recordCatalogEditorInspectionReceipt = catalogReceiptHandler("inspection");
 
 const beginCatalogEditorJournal = journalHandler("host", CATALOG_EDITOR_JOURNAL_BEGIN_PATH, async (ctx, siteUrl, body) => {
 	const parsed = parseCatalogEditorBeginBody(body);
@@ -1005,16 +963,6 @@ http.route({
 	path: CMS_MEDIA_COMPLETION_PATH,
 	method: "POST",
 	handler: completeCmsMediaDeletion,
-});
-http.route({
-	path: CATALOG_STORAGE_RECEIPT_PATH,
-	method: "POST",
-	handler: recordCatalogStorageReceipt,
-});
-http.route({
-	path: CATALOG_INSPECTION_RECEIPT_PATH,
-	method: "POST",
-	handler: recordCatalogInspectionReceipt,
 });
 
 http.route({
