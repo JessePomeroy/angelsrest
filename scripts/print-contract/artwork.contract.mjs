@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import {
 	handleCreateCatalogPrivateUploadCapability,
 	handlePutCatalogPrivateSource,
+	handlePutPrintArtifact,
 } from "@print-worker/catalogPrivateUploadRoutes";
 import { handleCmsFulfillmentRequest } from "@print-worker/fulfillmentCapabilities";
 import sharp from "sharp";
@@ -94,6 +95,9 @@ describe("host ↔ Worker print artwork contract (no network)", () => {
 			// No fallback to real fetch: an unexpected origin/path fails the proof.
 			expect(url.origin).toBe(origin);
 			requests.push(`${request.method} ${url.pathname}`);
+			if (url.pathname === "/v1/catalog-assets/print-artifacts" && request.method === "PUT") {
+				return handlePutPrintArtifact(request, workerEnv);
+			}
 			if (url.pathname === "/v1/catalog-assets/uploads/capabilities" && request.method === "POST") {
 				return handleCreateCatalogPrivateUploadCapability(request, workerEnv);
 			}
@@ -119,8 +123,11 @@ describe("host ↔ Worker print artwork contract (no network)", () => {
 	});
 	afterEach(() => vi.unstubAllGlobals());
 
-	it("stores exact JPEG bytes, issues a usable 24-hour URL, and resumes without rewriting", async () => {
-		const descriptor = await storePrintArtifact(tenant, rendered);
+	it.each([
+		"upload-token",
+		"direct-v1",
+	])("stores exact JPEG bytes with %s, issues a usable URL and resumes immutably", async (protocol) => {
+		const descriptor = await storePrintArtifact(tenant, rendered, undefined, protocol);
 		const capability = await issueTenantPrintSourceCapability(descriptor, tenant);
 		expect(capability.expiresAt - Date.now()).toBeGreaterThan(23 * 60 * 60 * 1000);
 		const head = await fetch(capability.url, { method: "HEAD" });
@@ -137,20 +144,33 @@ describe("host ↔ Worker print artwork contract (no network)", () => {
 			width: 600,
 			height: 400,
 		});
-		expect(await storePrintArtifact(tenant, rendered)).toEqual(descriptor);
-		expect(requests.filter((request) => request.startsWith("PUT "))).toHaveLength(1);
+		expect(await storePrintArtifact(tenant, rendered, undefined, protocol)).toEqual(descriptor);
+		expect(requests.filter((request) => request.startsWith("PUT "))).toHaveLength(
+			protocol === "direct-v1" ? 2 : 1,
+		);
+		if (protocol === "direct-v1")
+			expect(requests).not.toContain("POST /v1/catalog-assets/uploads/capabilities");
 		expect(bucket.objects.size).toBe(1);
 	});
 
-	it("fails closed for a different tenant or a wrong byte hash", async () => {
+	it.each([
+		"upload-token",
+		"direct-v1",
+	])("fails closed for a different tenant or wrong hash with %s", async (protocol) => {
 		await expect(
-			storePrintArtifact("another.example", rendered, { origin, bearer: uploadSecret }),
+			storePrintArtifact("another.example", rendered, { origin, bearer: uploadSecret }, protocol),
 		).rejects.toThrow();
-		expect(requests).toEqual(["POST /v1/catalog-assets/uploads/capabilities"]);
+		expect(requests).toEqual([
+			protocol === "direct-v1"
+				? "PUT /v1/catalog-assets/print-artifacts"
+				: "POST /v1/catalog-assets/uploads/capabilities",
+		]);
 		await expect(
-			storePrintArtifact(tenant, { ...rendered, hash: "ab".repeat(32) }),
+			storePrintArtifact(tenant, { ...rendered, hash: "ab".repeat(32) }, undefined, protocol),
 		).rejects.toThrow();
-		expect(requests.filter((request) => request.startsWith("PUT "))).toHaveLength(1);
+		expect(requests.filter((request) => request.startsWith("PUT "))).toHaveLength(
+			protocol === "direct-v1" ? 2 : 1,
+		);
 		expect(bucket.objects.size).toBe(0);
 	});
 

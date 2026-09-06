@@ -90,12 +90,18 @@ export async function runPrintFulfillmentStep(
 				},
 			);
 			operation = "store_artifact";
-			const descriptor = await storePrintArtifact(order.siteUrl, rendered);
+			const descriptor = await storePrintArtifact(
+				order.siteUrl,
+				rendered,
+				undefined,
+				order.printInput ? "direct-v1" : "upload-token",
+			);
 			operation = "checkpoint";
 			await convex.mutation(api.printFulfillmentJobs.advance, {
 				...authority,
 				result: {
 					kind: "prepared",
+					...(order.printInput ? { recipeVersion: 1 as const } : {}),
 					descriptor,
 					item: {
 						...source.item,
@@ -106,9 +112,14 @@ export async function runPrintFulfillmentStep(
 			});
 		} else if (job.stage === "issue") {
 			const urls = await Promise.all(
-				sources.map(({ descriptor }) =>
-					issueTenantPrintSourceCapability(descriptor, order.siteUrl),
-				),
+				sources.map((source) => {
+					if (order.printInput && !source.artifact)
+						throw new FulfillmentValidationError("Prepared print artifact is unavailable");
+					return issueTenantPrintSourceCapability(
+						source.artifact?.descriptor ?? source.descriptor,
+						order.siteUrl,
+					);
+				}),
 			);
 			await convex.mutation(api.printFulfillmentJobs.advance, {
 				...authority,

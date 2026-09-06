@@ -26,6 +26,7 @@ export const printJobItem = v.object({
 	canvasSubcategoryId: v.optional(v.number()), canvasWrapHex: v.optional(v.string()),
 });
 export const printJobSource = v.object({ descriptor: printJobDescriptor, item: printJobItem });
+export const printJobArtifact = v.object({ recipeVersion: v.literal(1), descriptor: printJobDescriptor });
 
 /** One bounded entry per reserved checkout line; quantity is supplied only by paid intake. */
 export const reservedPrintInputValidator = v.object({

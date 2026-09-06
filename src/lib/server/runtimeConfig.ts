@@ -38,6 +38,14 @@ function origin(value: string | undefined, integration: string): string {
 export const getPublicSiteOrigin = () => origin(publicEnv.PUBLIC_SITE_URL, "Public site origin");
 export const getConvexUrl = () => origin(publicEnv.PUBLIC_CONVEX_URL, "Convex");
 export const getStripeSecretKey = () => required(privateEnv.STRIPE_SECRET_KEY, "Stripe");
+/** Enable only after the additive Convex schema and dedicated artwork Worker are deployed. */
+export function getFrozenPrintInputVersion(siteUrl: string): 1 | undefined {
+	if (siteUrl !== "angelsrest.online") return undefined;
+	const mode = privateEnv.PRINT_INPUT_PROTOCOL;
+	if (mode === undefined || mode === "") return undefined;
+	if (mode !== "frozen-v1") throw new RuntimeConfigurationError("Frozen print protocol");
+	return 1;
+}
 export const getStripePlatformWebhookSecret = () =>
 	required(privateEnv.STRIPE_PLATFORM_WEBHOOK_SECRET, "Stripe platform webhook");
 export const getResendApiKey = () => required(privateEnv.RESEND_API_KEY, "Resend");

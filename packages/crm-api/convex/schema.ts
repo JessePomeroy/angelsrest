@@ -49,7 +49,7 @@ import {
 	richTextSpanValidator,
 } from "./helpers/richTextContract";
 import { stripeFeeCaptureErrorValidator } from "./helpers/stripeFeeCapture";
-import { printJobDescriptor, printJobItem, printJobStage, reservedPrintInputValidator } from "./helpers/printFulfillmentJobs";
+import { printJobArtifact, printJobDescriptor, printJobItem, printJobStage, reservedPrintInputValidator } from "./helpers/printFulfillmentJobs";
 import { categoryValidator } from "./helpers/validators";
 
 const contentBlockValueValidator = v.union(
@@ -1056,6 +1056,7 @@ export default defineSchema({
 	printFulfillmentSources: defineTable({
 		jobId: v.id("printFulfillmentJobs"), index: v.number(),
 		descriptor: printJobDescriptor, item: printJobItem,
+		artifact: v.optional(printJobArtifact),
 		url: v.optional(v.string()), expiresAt: v.optional(v.number()),
 	}).index("by_jobId_and_index", ["jobId", "index"]),
 

@@ -32,6 +32,7 @@ const ITEM: CheckoutSnapshotItem = {
 
 afterEach(() => {
 	runtimeEnv.ORDER_PRODUCERS_STATE = "open";
+	delete runtimeEnv.PRINT_INPUT_PROTOCOL;
 });
 
 function harness(overrides: Record<string, unknown> = {}) {
@@ -116,6 +117,36 @@ function harness(overrides: Record<string, unknown> = {}) {
 }
 
 describe("handle checkout orchestration", () => {
+	it.each([
+		undefined,
+		"frozen-v1",
+	])("opts in only with the explicit Angels Rest gate: %s", async (mode) => {
+		runtimeEnv.ORDER_PRODUCERS_STATE = "open";
+		runtimeEnv.PRINT_INPUT_PROTOCOL = mode;
+		const site = "angelsrest.online";
+		const test = harness({
+			site,
+			successUrl: `https://${site}/checkout/success`,
+			cancelUrl: `https://${site}/checkout/cancel`,
+			tenantCheckout: buildTenantCheckoutOptions({
+				tenant: { siteUrl: site },
+				kind: "print",
+				subtotalCents: 4200,
+			}),
+		});
+		await createHandleCheckoutSession(test.options);
+		expect(test.reserve).toHaveBeenCalledWith(
+			expect.objectContaining(mode ? { printInputVersion: 1 } : { site }),
+		);
+		expect(test.create.mock.calls[0]?.[0].metadata?.printInputVersion).toBe(mode ? "1" : undefined);
+		if (!mode)
+			expect(test.reserve).not.toHaveBeenCalledWith(
+				expect.objectContaining({ printInputVersion: 1 }),
+			);
+		const spoke = harness();
+		await createHandleCheckoutSession(spoke.options);
+		expect(spoke.create.mock.calls[0]?.[0].metadata).not.toHaveProperty("printInputVersion");
+	});
 	it.each([
 		["missing", undefined],
 		["explicit closed", "closed"],

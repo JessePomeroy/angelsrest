@@ -86,7 +86,8 @@ export const advance = mutation({
 		...authority,
 		result: v.union(
 			v.object({ kind: v.literal("resolved"), sources: v.array(printJobSource) }),
-			v.object({ kind: v.literal("prepared"), descriptor: printJobDescriptor, item: printJobItem }),
+			v.object({ kind: v.literal("prepared"), descriptor: printJobDescriptor, item: printJobItem,
+				recipeVersion: v.optional(v.literal(1)) }),
 			v.object({ kind: v.literal("issued"), urls: v.array(v.object({ url: v.string(), expiresAt: v.number() })) }),
 			v.object({ kind: v.literal("finished") }),
 			v.object({ kind: v.literal("refresh") }),
@@ -133,7 +134,15 @@ export const advance = mutation({
 			const source = await ctx.db.query("printFulfillmentSources")
 				.withIndex("by_jobId_and_index", (q) => q.eq("jobId", job._id).eq("index", job.cursor)).unique();
 			if (!source) throw new Error("Print job source is unavailable");
-			await ctx.db.patch(source._id, { descriptor: result.descriptor, item: result.item });
+			if (order.printInput) {
+				if (result.recipeVersion !== 1) throw new Error("Frozen print recipe is unavailable");
+				// The source descriptor stays original; artifact identity never replaces it.
+				await ctx.db.patch(source._id, {
+					artifact: { recipeVersion: 1, descriptor: result.descriptor }, item: result.item,
+				});
+			} else {
+				await ctx.db.patch(source._id, { descriptor: result.descriptor, item: result.item });
+			}
 			const prepared = job.cursor + 1 === job.sourceCount;
 			await schedule(ctx, job, { stage: prepared ? "issue" : "prepare", cursor: prepared ? 0 : job.cursor + 1, attempts: 0, errorCode: undefined });
 			return;

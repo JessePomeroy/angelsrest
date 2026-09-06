@@ -80,6 +80,38 @@ Orders without frozen input retain the historical runner path. The new
 `product` field on job items is additive; deploy this backend before enabling
 frozen reservation capture. This source slice does not enable capture.
 
+LP-05 activation is explicit: leave `PRINT_INPUT_PROTOCOL` unset until the
+LP-02/03/05 Convex schema/functions and LP-04 Worker (`cdc1b6f`) are deployed and
+the corresponding host/runner is available. Then `PRINT_INPUT_PROTOCOL=frozen-v1`
+enables only new `angelsrest.online` handle-v2 checkouts. Missing/empty is off;
+other values fail closed for this tenant. Other sites remain unchanged.
+The reserved version is stamped into Stripe's server-built Session metadata
+and admission fingerprint. Paid intake copies the verified shipping recipient
+for that version regardless of the current gate, and Convex's bound reservation
+remains the instruction authority. Toggling the gate cannot reinterpret an
+already reserved attempt; a version conflict requires a fresh checkout attempt.
+
+For frozen jobs, the source row's `descriptor` remains the original.
+`artifact: { recipeVersion: 1, descriptor }` records the independently rendered
+JPEG. The saved paid input retains requested dimensions/options; the prepared
+item records the renderer's orientation-adjusted dimensions. Recipe 1 is the
+existing bounded auto-orient/crop/inside-border/opaque-sRGB-JPEG renderer, not a
+new image algorithm. Provider URLs are issued only for the artifact. Older jobs
+retain their progressing descriptor and token-upload protocol.
+
+The direct upload performs one dedicated authenticated PUT with no automatic
+fallback; timeout/retry uses the same content-addressed key and immutable replay.
+Both transports are exercised by `pnpm test:print-contract` against real Worker
+handlers pinned at `cdc1b6f914edc79fad256ce3a98bd7ab8b50e1ea`, with only R2/runtime
+substituted and no network fallback. Locally place that Worker revision at
+`.contract/gallery-worker`; CI fetches it with the existing private-repo credential.
+
+Rollback: disable new capture first, but keep the frozen consumer, additive
+Convex schema and Worker route until all frozen reservations/jobs are drained.
+Do not deploy a pre-LP-03 runner over frozen jobs or remove required schema fields.
+No backfill/replay, paid test order, credential activation, or manual deployment
+is authorized by source merge. Provider acceptance still needs separate evidence.
+
 | Concern | Source of truth |
 |---|---|
 | Public product content and retail variants | Published Convex catalog |

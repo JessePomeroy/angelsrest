@@ -21,6 +21,29 @@ const snapshotItem = {
 };
 
 describe("checkout snapshot reservation client", () => {
+	it("passes the frozen-input opt-in unchanged to the reservation authority", async () => {
+		const fetcher = vi
+			.fn<typeof fetch>()
+			.mockResolvedValue(
+				new Response(JSON.stringify({ version: 2, handle: HANDLE, replayed: false })),
+			);
+		const client = createCheckoutSnapshotReservationClient({
+			baseUrl: "https://tenant.convex.site",
+			fetcher,
+			credential: () => SECRET,
+		});
+		await client.reserve({
+			site: "angelsrest.online",
+			attempt: ATTEMPT,
+			account: null,
+			catalogProvider: "convex",
+			items: [snapshotItem],
+			printInputVersion: 1,
+		});
+		expect(JSON.parse(String(fetcher.mock.calls[0]?.[1]?.body))).toMatchObject({
+			printInputVersion: 1,
+		});
+	});
 	it("sends exact bounded reserve and bind contracts with per-request auth", async () => {
 		const fetcher = vi
 			.fn<typeof fetch>()
