@@ -50,9 +50,9 @@ and
 The remaining historical private-catalog batch receipt routes and their internal
 mutation wrappers are retired. Only the dedicated schema-2 editor journal and
 receipt ingress can register new editor assets; its independent byte inspection
-remains required. The Worker keeps generic private uploads because current hub
-print fulfillment uses them. Accepted provenance, receipt identity, target
-verification and bounded operator recovery projections remain readable without
+remains required. The Worker keeps generic private uploads for non-frozen print
+orders; frozen print jobs use a dedicated artifact PUT. Accepted provenance,
+receipt identity, target verification and bounded operator recovery projections remain readable without
 contacting Sanity. See [the retirement disposition](migrations/catalog-migration-ingress-retirement-2026-09-05.md).
 
 ## Host boundary
@@ -150,6 +150,18 @@ server-stamped checkout metadata, never browser input. Provider work and
 notifications use durable claims, bounded leases, stable idempotency keys, and
 explicit completion or uncertainty states. The stable cross-runtime contract is
 documented in [`contracts/commerce-intake.md`](contracts/commerce-intake.md).
+
+New Angels Rest handle-v2 checkouts can opt into frozen print input with
+`PRINT_INPUT_PROTOCOL=frozen-v1`; it is off by default. Convex captures the
+resolved print specification and original artwork identity at reservation,
+then transfers them into the paid order with the verified shipping recipient.
+Frozen jobs finish from that saved input without re-entering checkout intake.
+They retain original and rendered artifact descriptors separately and upload
+the JPEG through the Worker's dedicated print-only PUT. Existing orders keep
+their old protocol; provider submission and notification fences are shared.
+See [LumaPrints ownership and constraints](../LUMAPRINTS.md) and the
+[activation/retirement runbook](runbooks/frozen-print-rollout.md). Source merge
+does not enable capture or establish provider acceptance.
 
 Manual refunds are reconciled from signed Stripe events and exact provider
 evidence. Partial, ambiguous, or conflicting evidence fails closed; absence is

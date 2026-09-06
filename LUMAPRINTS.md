@@ -111,6 +111,9 @@ Convex schema and Worker route until all frozen reservations/jobs are drained.
 Do not deploy a pre-LP-03 runner over frozen jobs or remove required schema fields.
 No backfill/replay, paid test order, credential activation, or manual deployment
 is authorized by source merge. Provider acceptance still needs separate evidence.
+The [activation and retirement runbook](docs/runbooks/frozen-print-rollout.md)
+records the ordered runtime gates, retained callers, and evidence needed before
+removing compatibility code.
 
 | Concern | Source of truth |
 |---|---|
@@ -271,7 +274,7 @@ cross-repository token. Locally, create that same source-only checkout:
 
 ```bash
 git clone --no-checkout https://github.com/JessePomeroy/gallery-worker.git .contract/gallery-worker
-git -C .contract/gallery-worker checkout --detach 39976f12c757e6a7ef2179e858e8700c9b0357d6
+git -C .contract/gallery-worker checkout --detach cdc1b6f914edc79fad256ce3a98bd7ab8b50e1ea
 pnpm test:print-contract
 ```
 
