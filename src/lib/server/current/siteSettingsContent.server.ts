@@ -160,19 +160,15 @@ export function createSiteSettingsContentProvider(
 ) {
 	const createReader = dependencies.createReader ?? createConvexReader;
 
-	async function loadConvex() {
-		try {
-			return adaptConvexSiteSettings(
-				await createReader().loadPublished(AbortSignal.timeout(6_000)),
-			);
-		} catch {
-			unavailable();
-		}
-	}
-
 	return {
 		async load() {
-			return await loadConvex();
+			try {
+				return adaptConvexSiteSettings(
+					await createReader().loadPublished(AbortSignal.timeout(6_000)),
+				);
+			} catch {
+				unavailable();
+			}
 		},
 	};
 }
