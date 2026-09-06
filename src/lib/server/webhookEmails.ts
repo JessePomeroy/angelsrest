@@ -32,6 +32,21 @@ export type ShippingDetails =
 	| null
 	| undefined;
 
+/** The fields used by fulfillment mail; full Stripe sessions are not required. */
+export type OrderEmailSession = Pick<
+	Stripe.Checkout.Session,
+	"id" | "metadata" | "payment_intent" | "amount_total" | "payment_status"
+> & {
+	customer_details: Pick<
+		NonNullable<Stripe.Checkout.Session["customer_details"]>,
+		"name" | "email"
+	> | null;
+};
+export type OrderEmailLineItem = Pick<
+	Stripe.LineItem,
+	"description" | "quantity" | "amount_total"
+> & { amount_subtotal?: number; price?: { unit_amount: number | null } | null };
+
 function commerceOrigin(profile: CommerceNotificationProfile) {
 	return profile.siteUrl.startsWith("http") ? profile.siteUrl : `https://${profile.siteUrl}`;
 }
@@ -129,7 +144,7 @@ export function formatShippingAddress(shippingDetails: ShippingDetails): string 
 }
 
 /** Format line items for emails */
-export function formatLineItems(lineItems: Stripe.LineItem[]): string {
+export function formatLineItems(lineItems: OrderEmailLineItem[]): string {
 	return lineItems
 		.map((item) => {
 			const emailItem = commerceEmailItem(item);
@@ -138,7 +153,7 @@ export function formatLineItems(lineItems: Stripe.LineItem[]): string {
 		.join("\n");
 }
 
-function lineItemQuantity(item: Stripe.LineItem) {
+function lineItemQuantity(item: OrderEmailLineItem) {
 	return typeof item.quantity === "number" &&
 		Number.isSafeInteger(item.quantity) &&
 		item.quantity > 0
@@ -146,7 +161,7 @@ function lineItemQuantity(item: Stripe.LineItem) {
 		: 1;
 }
 
-function lineItemUnitAmount(item: Stripe.LineItem, quantity: number) {
+function lineItemUnitAmount(item: OrderEmailLineItem, quantity: number) {
 	if (
 		typeof item.price?.unit_amount === "number" &&
 		Number.isSafeInteger(item.price.unit_amount) &&
@@ -162,7 +177,7 @@ function lineItemUnitAmount(item: Stripe.LineItem, quantity: number) {
 	return Math.round(lineSubtotal / quantity);
 }
 
-function commerceEmailItem(item: Stripe.LineItem): CommerceEmailItem {
+function commerceEmailItem(item: OrderEmailLineItem): CommerceEmailItem {
 	const quantity = lineItemQuantity(item);
 	return {
 		description: item.description ?? "Item",
@@ -303,10 +318,10 @@ export async function sendCustomerConfirmation(
 		orderNumber,
 		notificationProfile = ANGELS_REST_COMMERCE_PROFILE,
 	}: {
-		session: Stripe.Checkout.Session;
+		session: OrderEmailSession;
 		customerEmail: string;
 		shippingDetails: ShippingDetails;
-		lineItems: Stripe.LineItem[];
+		lineItems: OrderEmailLineItem[];
 		orderNumber?: string;
 		notificationProfile?: CommerceNotificationProfile;
 	},
@@ -444,10 +459,10 @@ export async function sendAdminNotification(
 		orderNumber,
 		notificationProfile = ANGELS_REST_COMMERCE_PROFILE,
 	}: {
-		session: Stripe.Checkout.Session;
+		session: OrderEmailSession;
 		customerEmail: string;
 		shippingDetails: ShippingDetails;
-		lineItems: Stripe.LineItem[];
+		lineItems: OrderEmailLineItem[];
 		orderNumber?: string;
 		notificationProfile?: CommerceNotificationProfile;
 	},

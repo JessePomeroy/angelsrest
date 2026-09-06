@@ -7,6 +7,9 @@ const mocks = vi.hoisted(() => ({
 	store: vi.fn(),
 	issue: vi.fn(),
 	finish: vi.fn(),
+	directFinish: vi.fn(),
+	notify: vi.fn(),
+	resolve: vi.fn(),
 	retrieve: vi.fn(),
 	log: vi.fn(),
 	env: { PRINT_FULFILLMENT_RUNNER_SECRET: "r".repeat(40), WEBHOOK_SECRET: "webhook-test-secret" },
@@ -20,8 +23,12 @@ vi.mock("$lib/server/catalogCommerceClients", async (importOriginal) => ({
 	storePrintArtifact: mocks.store,
 }));
 vi.mock("$lib/server/printSourcePreparation", () => ({ renderPrintSource: mocks.render }));
-vi.mock("$lib/server/snapshotFulfillment", () => ({ resolveSnapshotPrintSources: vi.fn() }));
-vi.mock("$lib/server/orderIntake", () => ({ handleCheckoutCompleted: mocks.finish }));
+vi.mock("$lib/server/snapshotFulfillment", () => ({ resolveSnapshotPrintSources: mocks.resolve }));
+vi.mock("$lib/server/orderIntake", () => ({
+	handleCheckoutCompleted: mocks.finish,
+	deliverFulfillmentOutcome: mocks.notify,
+}));
+vi.mock("$lib/server/webhookOrders", () => ({ finishRecordedPrintOrder: mocks.directFinish }));
 vi.mock("$lib/server/commerceTenant", () => ({
 	resolveStoredCommerceTenant: async () => ({ siteUrl: "angelsrest.online" }),
 }));
@@ -147,6 +154,87 @@ it("renews stale capabilities before submission without re-rendering", async () 
 	);
 	expect(mocks.render).not.toHaveBeenCalled();
 	expect(mocks.retrieve).not.toHaveBeenCalled();
+});
+
+it("resolves frozen paid instructions without a catalog request", async () => {
+	const product = { subcategoryId: 103007, orderItemOptions: [39] };
+	mocks.query.mockResolvedValue({
+		job: { stage: "resolve", cursor: 0 },
+		order: {
+			...order,
+			items: [{ quantity: 2 }],
+			printInput: { version: 1, lines: [{ sources: [{ ...source, product }] }] },
+		},
+		sources: [],
+	});
+	await POST(request());
+	expect(mocks.resolve).not.toHaveBeenCalled();
+	expect(mocks.retrieve).not.toHaveBeenCalled();
+	expect(mocks.mutation).toHaveBeenCalledWith(
+		expect.anything(),
+		expect.objectContaining({
+			result: {
+				kind: "resolved",
+				sources: [
+					{ descriptor: source.descriptor, item: { ...source.item, quantity: 2, product } },
+				],
+			},
+		}),
+	);
+});
+
+it.each([
+	{},
+	{ printFulfillmentPhase: "submitting", printFulfillmentResolution: "submission_uncertain" },
+	{ status: "canceled" },
+	{ status: "refunded", stripeRefundId: "re_saved" },
+])("finishes frozen jobs from the saved order without checkout intake: %j", async (state) => {
+	const paid = {
+		...order,
+		...state,
+		_id: "saved-order",
+		printJobId: input.jobId,
+		printInput: { version: 1, lines: [] },
+		total: 2000,
+		stripePaymentIntentId: "pi_saved",
+		customerEmail: "payer@example.com",
+		customerName: "Payer",
+		shippingRecipientName: "Gift Recipient",
+		shippingAddress: {
+			line1: "123 Main",
+			city: "Detroit",
+			state: "MI",
+			postalCode: "48201",
+			country: "US",
+		},
+		items: [{ productName: "Print", quantity: 2, price: 2000 }],
+	};
+	mocks.query.mockResolvedValue({ job: { stage: "finish" }, order: paid, sources: [source] });
+	mocks.directFinish.mockResolvedValue({
+		fulfillment: { kind: "fulfilled" },
+		notification: "none",
+	});
+	await POST(request());
+	expect(mocks.retrieve).not.toHaveBeenCalled();
+	expect(mocks.finish).not.toHaveBeenCalled();
+	expect(mocks.directFinish).toHaveBeenCalledWith(
+		expect.anything(),
+		expect.objectContaining({
+			orderResult: { ...paid, alreadyExisted: true },
+			session: expect.objectContaining({
+				id: order.stripeSessionId,
+				amount_total: 2000,
+				payment_intent: "pi_saved",
+			}),
+			shippingDetails: expect.objectContaining({ name: "Gift Recipient" }),
+			printJob: expect.objectContaining({ jobId: input.jobId, leaseToken: input.leaseToken }),
+		}),
+	);
+	expect(mocks.notify).toHaveBeenCalledTimes(1);
+	expect(mocks.mutation).toHaveBeenLastCalledWith(
+		expect.anything(),
+		expect.objectContaining({ result: { kind: "finished" } }),
+	);
 });
 it.each([
 	{ printFulfillmentPhase: "submitting" },

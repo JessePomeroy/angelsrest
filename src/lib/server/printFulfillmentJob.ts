@@ -11,13 +11,15 @@ import { getConvex } from "$lib/server/convexClient";
 import { FulfillmentValidationError } from "$lib/server/fulfillmentValidationError";
 import { logStructured } from "$lib/server/logger";
 import { createOrder as createLumaPrintsOrder } from "$lib/server/lumaprints";
-import { handleCheckoutCompleted } from "$lib/server/orderIntake";
+import { deliverFulfillmentOutcome, handleCheckoutCompleted } from "$lib/server/orderIntake";
 import { PrintReconciliationPendingError } from "$lib/server/printFulfillment";
 import { renderPrintSource } from "$lib/server/printSourcePreparation";
 import { getResend } from "$lib/server/resendClient";
 import { RuntimeConfigurationError } from "$lib/server/runtimeConfig";
 import { resolveSnapshotPrintSources } from "$lib/server/snapshotFulfillment";
 import { getStripe } from "$lib/server/stripeClient";
+import type { OrderEmailSession, ShippingDetails } from "$lib/server/webhookEmails";
+import { finishRecordedPrintOrder } from "$lib/server/webhookOrders";
 import { getWebhookSecret } from "$lib/server/webhookSecret";
 import type { OrderItem } from "$lib/shop/types";
 
@@ -33,6 +35,23 @@ export async function runPrintFulfillmentStep(
 	const startedAt = Date.now();
 	try {
 		if (job.stage === "resolve") {
+			if (order.printInput) {
+				const line = order.printInput.lines[job.cursor];
+				const quantity = order.items[job.cursor]?.quantity;
+				if (!line || !Number.isSafeInteger(quantity) || quantity <= 0)
+					throw new FulfillmentValidationError("Frozen paid print line is unavailable");
+				await convex.mutation(api.printFulfillmentJobs.advance, {
+					...authority,
+					result: {
+						kind: "resolved",
+						sources: line.sources.map(({ descriptor, item, product }) => ({
+							descriptor,
+							item: { ...item, product, quantity },
+						})),
+					},
+				});
+				return;
+			}
 			const snapshot = order.checkoutSnapshot;
 			if (!snapshot || snapshot.catalogProvider !== "convex")
 				throw new FulfillmentValidationError("Paid snapshot is unavailable");
@@ -128,23 +147,71 @@ export async function runPrintFulfillmentStep(
 				timeout: 8_000,
 				maxNetworkRetries: 0,
 			};
-			const session = await stripe.checkout.sessions.retrieve(
-				order.stripeSessionId,
-				{},
-				stripeRequestOptions,
-			);
 			try {
-				await handleCheckoutCompleted(
-					session,
-					{
-						stripe,
-						convex,
-						resend: getResend(),
-						createLumaPrintsOrder,
+				if (order.printInput) {
+					if (!order.shippingRecipientName || !order.shippingAddress)
+						throw new FulfillmentValidationError("Frozen shipping recipient is unavailable");
+					const session: OrderEmailSession = {
+						id: order.stripeSessionId,
+						payment_intent: order.stripePaymentIntentId ?? null,
+						amount_total: order.total,
+						payment_status: "paid",
+						metadata: null,
+						customer_details: { email: order.customerEmail, name: order.customerName ?? null },
+					};
+					const address = order.shippingAddress;
+					const shippingDetails: ShippingDetails = {
+						name: order.shippingRecipientName,
+						address: {
+							line1: address.line1,
+							line2: address.line2 ?? null,
+							city: address.city,
+							state: address.state,
+							postal_code: address.postalCode,
+							country: address.country,
+						},
+					};
+					const adapters = { stripe, convex, resend: getResend(), createLumaPrintsOrder };
+					const orderResult = await finishRecordedPrintOrder(adapters, {
+						orderResult: { ...order, alreadyExisted: true },
 						printJob: { jobId, leaseToken, items },
-					},
-					{ ...tenant, stripeRequestOptions, routingSource: "order", completeLineItems: true },
-				);
+						session,
+						shippingDetails,
+						// Prepared items already contain the paid quantity and frozen provider options.
+						lineItems: [],
+						...tenant,
+						stripeRequestOptions,
+					});
+					await deliverFulfillmentOutcome(adapters, {
+						orderResult,
+						session,
+						shippingDetails,
+						customerEmail: order.customerEmail,
+						lineItems: order.items.map(({ productName, quantity, price }) => ({
+							description: productName,
+							quantity,
+							amount_total: price,
+						})),
+						notificationProfile: tenant.notificationProfile,
+					});
+				} else {
+					const session = await stripe.checkout.sessions.retrieve(
+						order.stripeSessionId,
+						{},
+						stripeRequestOptions,
+					);
+					await handleCheckoutCompleted(
+						session,
+						{
+							stripe,
+							convex,
+							resend: getResend(),
+							createLumaPrintsOrder,
+							printJob: { jobId, leaseToken, items },
+						},
+						{ ...tenant, stripeRequestOptions, routingSource: "order", completeLineItems: true },
+					);
+				}
 			} catch (cause) {
 				if (!(cause instanceof PrintReconciliationPendingError)) throw cause;
 			}

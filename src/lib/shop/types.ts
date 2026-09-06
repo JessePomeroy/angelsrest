@@ -1,6 +1,7 @@
 // Shared types for the print shop + LumaPrints fulfillment integration.
 // Paper catalog, sizes, order payload shapes, and recipient/order-item
 // domain types used by the LumaPrints API client and the Stripe webhook.
+import type { PrintProductConfiguration } from "@jessepomeroy/print-catalog";
 
 /** Order recipient — what we pass to LumaPrints */
 export interface Recipient {
@@ -19,6 +20,8 @@ export interface Recipient {
 export type PrintSourcePolicy = "opaque_capability" | "byte_exact";
 
 export interface OrderItem {
+	/** Resolved at reservation time for versioned paid input; old orders use the catalog mapping. */
+	product?: PrintProductConfiguration;
 	imageUrl: string;
 	/** Explicit URL handling policy across capability, Sharp, and provider boundaries. */
 	sourcePolicy?: PrintSourcePolicy;

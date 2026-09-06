@@ -73,6 +73,14 @@ const mockItems: OrderItem[] = [
 ];
 
 describe("buildLumaPrintsOrder", () => {
+	it("uses the frozen provider configuration instead of reinterpreting installed mappings", () => {
+		const product = { subcategoryId: 105001, orderItemOptions: [44, 67, 96] };
+		const order = buildLumaPrintsOrder("frozen-order", mockRecipient, [
+			{ ...mockItems[0], product },
+		]);
+		expect(order.orderItems[0]).toMatchObject(product);
+		expect(order.orderItems[0].file.imageUrl).toBe(mockItems[0].imageUrl);
+	});
 	it("creates correct top-level structure", () => {
 		const order = buildLumaPrintsOrder("catalog-order-123", mockRecipient, mockItems);
 		expect(order.externalId).toBe("catalog-order-123");

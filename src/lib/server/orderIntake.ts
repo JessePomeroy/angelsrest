@@ -36,7 +36,11 @@ import {
 } from "$lib/server/recovery/manualRefundReconciliation.server";
 import { COMMERCE_TENANT_METADATA_KEY } from "$lib/server/stripeConnect";
 import type { CommerceWebhookRole } from "$lib/server/stripeWebhook";
-import type { ShippingDetails } from "$lib/server/webhookEmails";
+import type {
+	OrderEmailLineItem,
+	OrderEmailSession,
+	ShippingDetails,
+} from "$lib/server/webhookEmails";
 import {
 	sendAdminNotification,
 	sendCustomerConfirmation,
@@ -44,7 +48,11 @@ import {
 	sendPaymentFailedEmail,
 	sendPrintReconciliationBlockedAlert,
 } from "$lib/server/webhookEmails";
-import { createOrderInConvex, type PreparedPrintJob } from "$lib/server/webhookOrders";
+import {
+	type CreatedOrderResult,
+	createOrderInConvex,
+	type PreparedPrintJob,
+} from "$lib/server/webhookOrders";
 import { getWebhookSecret } from "$lib/server/webhookSecret";
 
 class PaymentFailureEmailClaimError extends Error {}
@@ -469,6 +477,43 @@ export async function handleCheckoutCompleted(
 		},
 	);
 
+	await deliverFulfillmentOutcome(adapters, {
+		orderResult,
+		session: fullSession,
+		customerEmail,
+		shippingDetails,
+		lineItems,
+		notificationProfile,
+	});
+
+	if (receiptError) throw receiptError;
+	logStructured({
+		event: "checkout.processed",
+		stage: "webhook",
+		sessionId: session.id,
+		orderId: orderResult.orderNumber,
+	});
+}
+
+/** Deliver only the claimed fulfillment outcome; payment receipt delivery remains intake-owned. */
+export async function deliverFulfillmentOutcome(
+	adapters: Pick<OrderIntakeAdapters, "convex" | "resend">,
+	{
+		orderResult,
+		session,
+		customerEmail,
+		shippingDetails,
+		lineItems,
+		notificationProfile,
+	}: {
+		orderResult: CreatedOrderResult;
+		session: OrderEmailSession;
+		customerEmail: string;
+		shippingDetails: ShippingDetails;
+		lineItems: OrderEmailLineItem[];
+		notificationProfile: CommerceNotificationProfile;
+	},
+) {
 	if (
 		orderResult.fulfillment.kind === "reconciliation_blocked" &&
 		orderResult.fulfillment.alertClaimToken !== undefined
@@ -602,13 +647,13 @@ export async function handleCheckoutCompleted(
 			customerEmail,
 			errorSummary: orderResult.fulfillment.errorSummary,
 			stripeRefundId: orderResult.fulfillment.stripeRefundId,
-			total: fullSession.amount_total ?? 0,
+			total: session.amount_total ?? 0,
 			notificationProfile,
 		});
 	} else if (orderResult.notification === "success") {
 		try {
 			await sendCustomerConfirmation(adapters.resend, {
-				session: fullSession,
+				session,
 				customerEmail,
 				shippingDetails,
 				lineItems,
@@ -629,7 +674,7 @@ export async function handleCheckoutCompleted(
 
 		try {
 			await sendAdminNotification(adapters.resend, {
-				session: fullSession,
+				session,
 				customerEmail,
 				shippingDetails,
 				lineItems,
@@ -650,14 +695,6 @@ export async function handleCheckoutCompleted(
 	} else {
 		throw new Error(`Unexpected fulfillment notification outcome for ${orderResult.orderNumber}`);
 	}
-
-	if (receiptError) throw receiptError;
-	logStructured({
-		event: "checkout.processed",
-		stage: "webhook",
-		sessionId: session.id,
-		orderId: orderResult.orderNumber,
-	});
 }
 
 async function fetchSessionDetails(

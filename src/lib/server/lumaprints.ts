@@ -735,7 +735,7 @@ export function buildLumaPrintsOrder(
 			phone: recipient.phone || "",
 		},
 		orderItems: items.map((item, i) => {
-			const product = getPrintProductConfiguration(item);
+			const product = item.product ?? getPrintProductConfiguration(item);
 			if (!product) {
 				throw new FulfillmentValidationError("Framed print paper is unsupported");
 			}
