@@ -1,5 +1,5 @@
 <script lang="ts">
-import { onMount } from "svelte";
+import { onMount, tick } from "svelte";
 import { setupConvex, useConvexClient } from "convex-svelte";
 import { api } from "$convex/api";
 import type { Id } from "$convex/dataModel";
@@ -90,12 +90,24 @@ function closeLightbox() {
 	previouslyFocused?.focus();
 }
 
+async function moveLightbox(direction: -1 | 1) {
+	const nextIndex = lightboxIndex + direction;
+	if (nextIndex < 0 || nextIndex >= images.length) return;
+	const focused = document.activeElement;
+	lightboxIndex = nextIndex;
+	await tick();
+	// Endpoint navigation buttons and media controls can disappear on a change.
+	// Keep keyboard input in the lightbox when the focused element was removed.
+	if (lightboxEl && focused && !focused.isConnected && document.activeElement === document.body) {
+		lightboxEl.querySelector<HTMLElement>(".lb-close")?.focus();
+	}
+}
+
 function handleKeydown(e: KeyboardEvent) {
 	if (!lightboxOpen) return;
 	if (e.key === "Escape") closeLightbox();
-	if (e.key === "ArrowRight" && lightboxIndex < images.length - 1)
-		lightboxIndex++;
-	if (e.key === "ArrowLeft" && lightboxIndex > 0) lightboxIndex--;
+	if (e.key === "ArrowRight") void moveLightbox(1);
+	if (e.key === "ArrowLeft") void moveLightbox(-1);
 	if (lightboxEl) trapFocus(e, lightboxEl);
 }
 
@@ -438,8 +450,6 @@ let favoriteCount = $derived(
 
 <PrivateCapabilityHead title="{data.gallery.name} | Gallery" />
 
-<svelte:window onkeydown={handleKeydown} />
-
 {#if data.requiresPassword}
 	<section class="password-gate" aria-labelledby="gallery-password-title">
 		<h1 id="gallery-password-title">{data.gallery.name}</h1>
@@ -686,10 +696,10 @@ let favoriteCount = $derived(
 			</div>
 		</div>
 		{#if lightboxIndex > 0}
-			<button class="lb-nav lb-prev" aria-label="Previous image" onclick={(e) => { e.stopPropagation(); lightboxIndex--; }}>‹</button>
+			<button class="lb-nav lb-prev" aria-label="Previous image" onclick={(e) => { e.stopPropagation(); void moveLightbox(-1); }}>‹</button>
 		{/if}
 		{#if lightboxIndex < images.length - 1}
-			<button class="lb-nav lb-next" aria-label="Next image" onclick={(e) => { e.stopPropagation(); lightboxIndex++; }}>›</button>
+			<button class="lb-nav lb-next" aria-label="Next image" onclick={(e) => { e.stopPropagation(); void moveLightbox(1); }}>›</button>
 		{/if}
 		<button class="lb-close" aria-label="Close lightbox" onclick={closeLightbox}>✕</button>
 	</div>

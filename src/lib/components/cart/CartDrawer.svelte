@@ -23,12 +23,13 @@
 <script lang="ts">
 import { ArrowRightIcon, XIcon } from "@lucide/svelte";
 import { cubicOut } from "svelte/easing";
-import { fade, fly } from "svelte/transition";
+import { fly } from "svelte/transition";
 import { goto } from "$app/navigation";
 import { cart } from "$lib/shop/cart.svelte";
 import { cartUI } from "$lib/shop/cartUI.svelte";
 import { createCartCheckout } from "$lib/utils/cartCheckout";
 import { formatCents } from "$lib/utils/format";
+import { trapFocus } from "$lib/utils/focusTrap";
 import CartLineItem from "./CartLineItem.svelte";
 
 let isCheckingOut = $state(false);
@@ -66,52 +67,38 @@ function viewFullCart() {
 	goto("/cart");
 }
 
-// Lock body scroll while drawer is open. Plain effect on isOpen.
-$effect(() => {
-	if (typeof document === "undefined") return;
-	if (cartUI.isOpen) {
-		const original = document.body.style.overflow;
-		document.body.style.overflow = "hidden";
-		return () => {
-			document.body.style.overflow = original;
-		};
-	}
-});
-
-// Close on Escape key.
-$effect(() => {
-	if (typeof window === "undefined") return;
-	if (!cartUI.isOpen) return;
-	function onKey(e: KeyboardEvent) {
-		if (e.key === "Escape") close();
-	}
-	window.addEventListener("keydown", onKey);
-	return () => window.removeEventListener("keydown", onKey);
-});
+// Native modality keeps the page behind the sheet inert. Own focus and scroll
+// restoration here so close, navigation, and component teardown share cleanup.
+function openModal(node: HTMLDialogElement) {
+	const opener = document.activeElement;
+	const originalOverflow = document.body.style.overflow;
+	node.showModal();
+	document.body.style.overflow = "hidden";
+	return {
+		destroy() {
+			node.close();
+			document.body.style.overflow = originalOverflow;
+			if (opener instanceof HTMLElement && opener.isConnected) opener.focus();
+		},
+	};
+}
 </script>
 
 {#if cartUI.isOpen}
-  <!-- Backdrop -->
-  <button
-    type="button"
-    aria-label="Close cart"
-    onclick={close}
-    transition:fade={{ duration: 180 }}
-    class="fixed inset-0 z-[60] bg-gray-900/50 backdrop-blur-sm md:cursor-default"
-  ></button>
-
-  <!--
-    Drawer panel.
-    Desktop: right slide-in (400px wide).
-    Mobile: bottom sheet (85vh max-height).
-
-    `role="dialog"` requires a non-interactive container — using <div> rather
-    than <aside> here keeps svelte-check's a11y rule happy.
-  -->
-  <div
+  <dialog
+    use:openModal
     aria-label="Shopping cart"
-    role="dialog"
-    aria-modal="true"
+    class="fixed inset-0 m-0 h-full w-full max-h-none max-w-none border-0 bg-transparent p-0 text-inherit backdrop:bg-gray-900/50 backdrop:backdrop-blur-sm"
+    oncancel={(event) => {
+      event.preventDefault();
+      close();
+    }}
+    onclick={(event) => {
+      if (event.target === event.currentTarget) close();
+    }}
+    onkeydown={(event) => trapFocus(event, event.currentTarget)}
+  >
+  <div
     transition:fly={{
       x: 0,
       y: 0,
@@ -226,4 +213,5 @@ $effect(() => {
       </footer>
     {/if}
   </div>
+  </dialog>
 {/if}
