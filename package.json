@@ -21,6 +21,7 @@
 		"test": "vitest run && pnpm test:protocol",
 		"test:watch": "vitest",
 		"test:e2e": "node scripts/run-playwright.mjs",
+		"test:browser": "node scripts/run-playwright.mjs --config tests/browser/playwright.config.ts",
 		"smoke:gallery-host-bulk-delete": "node scripts/smoke-gallery-host-bulk-delete.mjs",
 		"test:protocol": "vitest run --config vitest.protocol.config.ts",
 		"test:print-contract": "vitest run --config vitest.print-contract.config.ts"

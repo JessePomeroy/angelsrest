@@ -438,8 +438,6 @@ let favoriteCount = $derived(
 
 <PrivateCapabilityHead title="{data.gallery.name} | Gallery" />
 
-<svelte:window onkeydown={handleKeydown} />
-
 {#if data.requiresPassword}
 	<section class="password-gate" aria-labelledby="gallery-password-title">
 		<h1 id="gallery-password-title">{data.gallery.name}</h1>
