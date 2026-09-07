@@ -1,6 +1,6 @@
 # Public CSS migration
 
-S08 replaces Tailwind utilities with component-owned CSS while preserving rendered behavior. The navigation/theme pilot merged in PR #558. ThemeSwitcher, BottomNav, MobileNav and JellyNav now use scoped CSS. The foundation slice makes the site palette, type scale and browser reset ordinary CSS. Shared Admin styles already use scoped CSS and `--admin-*` variables.
+S08 replaces Tailwind utilities with component-owned CSS while preserving rendered behavior. The navigation/theme pilot merged in PR #558. ThemeSwitcher, BottomNav, MobileNav and JellyNav now use scoped CSS. The foundation merged in PR #560, making the site palette, type scale and browser reset ordinary CSS. The public root layout and cart icon variants now use scoped CSS; the existing desktop navigation and footer already did. Shared Admin styles already use scoped CSS and `--admin-*` variables.
 
 ## Inventory and sequence
 

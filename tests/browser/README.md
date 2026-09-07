@@ -71,3 +71,5 @@ components with controlled animation frames and observed WebGL calls, including
 initial/live reduced-motion preference, setup failure cleanup, and late image
 callbacks after unmount. These checks establish scheduling/resource ownership;
 they do not measure frame rate or GPU power on physical mobile devices.
+
+S08 adds an actual root-layout fixture with analytics transport disabled. It checks responsive content spacing, skip-link focus, desktop/mobile cart access and the centered wide-screen content limit. The native CSS foundation test injects raw reset/token files without Tailwind compilation.

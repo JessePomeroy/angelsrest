@@ -14,6 +14,7 @@ export default defineConfig({
 		dedupe: ["svelte"],
 		alias: {
 			$lib: path("../../src/lib"),
+			"@vercel/analytics/sveltekit": path("./fixtures/analytics.ts"),
 			"$app/stores": path("./fixtures/stores.ts"),
 			"$app/environment": path("./fixtures/environment.ts"),
 			"$app/state": path("./fixtures/state.svelte.ts"),

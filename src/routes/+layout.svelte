@@ -91,14 +91,14 @@ onMount(() => {
 
   <a href="#main-content" class="skip-link">Skip to content</a>
 
-  <div class="flex flex-col min-h-screen relative z-10">
+  <div class="site-shell">
     <!-- Desktop navigation (hidden on mobile) -->
     <Nav />
 
     <!-- Main content area -->
     <main
       id="main-content"
-      class="flex-1 max-w-[1400px] !mx-auto w-full px-4 pt-6 pb-8 md:px-10 md:pt-8 md:pb-12"
+      class="site-content"
     >
       {@render children()}
     </main>
@@ -108,7 +108,7 @@ onMount(() => {
 
     <!-- Mobile theme toggle - fixed position above bottom nav, homepage only -->
     {#if page.url.pathname === "/"}
-      <div class="fixed bottom-20 right-4 z-40 md:hidden">
+      <div class="mobile-theme-switcher">
         <ThemeSwitcher />
       </div>
     {/if}
@@ -130,6 +130,31 @@ onMount(() => {
 <Toaster />
 
 <style>
+.site-shell {
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+  position: relative;
+  z-index: 10;
+}
+.site-content {
+  flex: 1;
+  max-width: 1400px;
+  margin-inline: auto;
+  width: 100%;
+  padding: 1.5rem 1rem 2rem;
+}
+.mobile-theme-switcher {
+  position: fixed;
+  bottom: 5rem;
+  right: 1rem;
+  z-index: 40;
+}
+@media (min-width: 48rem) {
+  .site-content { padding: 2rem 2.5rem 3rem; }
+  .mobile-theme-switcher { display: none; }
+}
+
 .skip-link {
   position: absolute;
   left: -9999px;

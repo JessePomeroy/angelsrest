@@ -1,4 +1,5 @@
 <script lang="ts">
+import SiteChrome from "./SiteChrome.svelte";
 import LiquidDetailsHarness from "./LiquidDetailsHarness.svelte";
 import MotionHarness from "./MotionHarness.svelte";
 import PrintHarness from "./PrintHarness.svelte";
@@ -37,7 +38,9 @@ if (params.get("populated") === "true") {
 }
 </script>
 
-{#if fixture === "liquid-details"}
+{#if fixture === "chrome"}
+	<SiteChrome />
+{:else if fixture === "liquid-details"}
 	<LiquidDetailsHarness />
 {:else if fixture === "motion"}
 	<MotionHarness />
