@@ -1,3 +1,4 @@
+import { readClientTags } from "./tags";
 import { paginationOptsValidator } from "convex/server";
 import { v } from "convex/values";
 import { internal } from "./_generated/api";
@@ -70,6 +71,31 @@ export const listClientsPaginated = query({
 	handler: async (ctx, args) => {
 		await requireSiteAdmin(ctx, args.siteUrl);
 		return await clientsByFilter(ctx, args).order("desc").paginate(args.paginationOpts);
+	},
+});
+
+/** Fresh snapshot pages keep the tag join below the transaction row budget. */
+export const listClientsWithTags = query({
+	args: {
+		siteUrl: v.string(),
+		paginationOpts: paginationOptsValidator,
+		category: v.optional(categoryValidator),
+		status: v.optional(statusValidator),
+	},
+	handler: async (ctx, args) => {
+		await requireSiteAdmin(ctx, args.siteUrl);
+		const result = await clientsByFilter(ctx, args).order("desc").paginate({
+			...args.paginationOpts,
+			numItems: Math.min(args.paginationOpts.numItems, 50),
+			maximumRowsRead: 50,
+		});
+		return {
+			...result,
+			page: await Promise.all(result.page.map(async (client) => ({
+				...client,
+				tags: await readClientTags(ctx, client._id, args.siteUrl),
+			}))),
+		};
 	},
 });
 
