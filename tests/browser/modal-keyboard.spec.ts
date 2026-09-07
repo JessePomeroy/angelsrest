@@ -96,6 +96,7 @@ for (const edge of ["first", "last"] as const) {
 		const opener = page.getByRole("button", { name: `View item ${start} of 4`, exact: true });
 		await opener.click();
 		const dialog = page.getByRole("dialog", { name: "Gallery lightbox" });
+		await expect(dialog.getByRole("button", { name: "Close lightbox" })).toBeFocused();
 		const navigation = dialog.getByRole("button", {
 			name: edge === "last" ? "Next image" : "Previous image",
 		});

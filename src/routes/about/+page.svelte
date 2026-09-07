@@ -108,7 +108,6 @@ const contact = $derived(data.content.contact);
                     <button
                         type="button"
                         class="booking-button"
-                        style="color: var(--form-text-color);"
                         data-cal-link={contact.booking.calLink}
                         data-cal-namespace="photosession"
                     >
@@ -136,7 +135,8 @@ const contact = $derived(data.content.contact);
 <style>
     .about-page { width: 100%; }
     .portrait-frame { display: inline-block; padding: 7px; border: 1px solid color-mix(in srgb, currentColor 14%, transparent); }
-    .booking-button { min-height: 42px; padding: 10px 14px; border: 1px solid color-mix(in srgb, currentColor 28%, transparent); border-radius: 0; background: transparent; font-size: 0.78rem; font-weight: 500; letter-spacing: 0.08em; text-transform: lowercase; cursor: pointer; transition: border-color 160ms ease, background 160ms ease; }
+    :global(.dark) .booking-button { color: #fafafa; }
+    .booking-button { color: #000; min-height: 42px; padding: 10px 14px; border: 1px solid color-mix(in srgb, currentColor 28%, transparent); border-radius: 0; background: transparent; font-size: 0.78rem; font-weight: 500; letter-spacing: 0.08em; text-transform: lowercase; cursor: pointer; transition: border-color 160ms ease, background 160ms ease; }
     .booking-button:hover { border-color: var(--time-accent); background: color-mix(in srgb, currentColor 6%, transparent); }
     .booking-button:focus-visible { outline: 1px solid var(--time-accent); outline-offset: 2px; }
 </style>

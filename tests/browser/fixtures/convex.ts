@@ -7,4 +7,8 @@ export function useConvexClient() {
 		},
 	};
 }
-export const api = { galleries: { updateImage: "fixture:updateImage" } };
+export { api } from "../../../packages/crm-api/convex/_generated/api";
+
+export function useQuery() {
+	throw new Error("Unexpected Convex query in browser fixture");
+}

@@ -1,4 +1,6 @@
 <script lang="ts">
+import ContactForm from "../../../src/lib/components/ContactForm.svelte";
+import ThemeOwnership from "./ThemeOwnership.svelte";
 import BottomNav from "../../../src/lib/components/BottomNav.svelte";
 import { page as fixturePage } from "./state.svelte";
 import PrintSet from "../../../src/routes/shop/sets/[slug]/+page.svelte";
@@ -27,7 +29,12 @@ if (params.get("populated") === "true") {
 }
 </script>
 
-{#if fixture === "navigation"}
+{#if fixture === "contact"}
+	<ThemeSwitcher />
+	<ContactForm />
+{:else if fixture === "ownership"}
+	<ThemeOwnership />
+{:else if fixture === "navigation"}
 	<ThemeSwitcher />
 	<label>Current path <input value={fixturePage.url.pathname} oninput={(event) => { fixturePage.url = new URL(event.currentTarget.value, "http://127.0.0.1:5196"); }} /></label>
 	<BottomNav />
