@@ -52,3 +52,7 @@ Cart fixtures cover empty, populated, expired and checkout-error states in both 
 ## Checkout confirmation and cancellation
 
 Checkout success and cancellation use scoped CSS for their layouts, status panels, native verification form and navigation/download controls. Verification POST fields/actions, proof-gated data handling and download URLs remain unchanged. Fixtures cover basic, shared-link, missing-session, verification-error, physical and digital confirmations plus cancellation; browser checks verify native form submission and keyboard focus without calling Stripe or the real verification/download routes.
+
+## Customer order lookup
+
+Order lookup uses scoped CSS for its form, result and status badge. The former utility-class status map is now native CSS selected by `data-status`, including the gray fallback for an unknown status. Status labels remain typed display data. Lookup POST transport, Turnstile token handling/reset and error behavior are unchanged. The form spacing selector explicitly reaches the Turnstile child root; captures cover idle/loading/error and all six supported statuses plus fallback. Browser checks exercise status transitions, child spacing and disabled-hover precedence.
