@@ -8,7 +8,7 @@
 -->
 
 <script>
-import heroGif from "$lib/assets/clouds2.gif";
+import { publicAssets } from "$lib/config/publicAssets";
 import SEO from "$lib/components/SEO.svelte";
 </script>
 
@@ -45,7 +45,7 @@ import SEO from "$lib/components/SEO.svelte";
 <section class="home-hero">
     <!-- Hero gif -->
     <div class="hero-image">
-        <img src={heroGif} alt="Angel's Rest" />
+        <img src={publicAssets.hero} alt="Angel's Rest" />
     </div>
 
     <!-- Tagline -->

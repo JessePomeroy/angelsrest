@@ -1,12 +1,13 @@
 import { render } from "svelte/server";
 import { describe, expect, it } from "vitest";
 import SEO from "$lib/components/SEO.svelte";
+import { publicAssets } from "$lib/config/publicAssets";
 
-const defaultImageUrl = "https://www.angelsrest.online/og-image.png";
+const defaultImageUrl = publicAssets.openGraph;
 const retiredImagePath = ["/og-image", ".jpg"].join("");
 
 describe("SEO", () => {
-	it("uses the direct PNG fallback when image is omitted or undefined", () => {
+	it("uses the direct media-hosted PNG fallback when image is omitted or undefined", () => {
 		const omittedImageHead = render(SEO).head;
 		const undefinedImageHead = render(SEO, {
 			props: { image: undefined },

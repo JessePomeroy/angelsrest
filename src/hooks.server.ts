@@ -13,6 +13,7 @@ import { captureException, flush, withIsolationScope } from "@sentry/node";
 import type { Handle, HandleServerError } from "@sveltejs/kit";
 import { contentSecurityPolicy } from "$lib/config/securityPolicy";
 import { applyCapabilityResponsePrivacy } from "$lib/server/capabilityResponsePrivacy";
+import { applyPublicPageCache } from "$lib/server/publicPageCache";
 
 function addSecurityHeaders(response: Response, pathname: string): Response {
 	const cloned = new Response(response.body, response);
@@ -55,7 +56,9 @@ const appHandle: Handle = async ({ event, resolve }) => {
 		return response;
 	}
 
-	return addSecurityHeaders(response, event.url.pathname);
+	const secured = addSecurityHeaders(response, event.url.pathname);
+	applyPublicPageCache(event, secured);
+	return secured;
 };
 
 export const handle: Handle = (input) =>
