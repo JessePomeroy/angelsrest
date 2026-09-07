@@ -4,7 +4,7 @@ Canonical rules for working in this repository.
 
 ## Project context
 
-- **Stack:** SvelteKit 5 (runes), Tailwind CSS v4, Convex, Stripe,
+- **Stack:** SvelteKit 5 (runes), scoped CSS, Convex, Stripe,
   LumaPrints, Resend, and Cloudflare R2
 - **Frontend and platform hub:** `~/Documents/work/angelsrest` →
   <https://angelsrest.online>
@@ -17,13 +17,13 @@ Canonical rules for working in this repository.
 ## Technical constraints
 
 - Use Svelte 5 runes (`$props()`, `$state()`, `$derived()`, `$effect()`).
-- The public UI is migrating from Tailwind CSS v4 to scoped CSS; follow
-  `docs/CSS_MIGRATION.md`. Use scoped CSS in migrated components and preserve
-  existing utilities elsewhere until their slice is converted. Do not use Skeleton component classes such as
-  `.btn`, `.card`, or `.input`. The site-owned surface color variables
-  (`--color-surface-50` through `--color-surface-950`) are defined in
-  `src/lib/styles/theme.css` and may be referenced from scoped styles or Tailwind arbitrary values. Skeleton is not a dependency; use
-  native Svelte markup for public controls.
+- Public components use scoped CSS and native Svelte markup. Shared palette,
+  type scale, reset and article styles live in `src/lib/styles/`; preserve the
+  cascade findings in `docs/CSS_MIGRATION.md`. Tailwind and Skeleton are not
+  dependencies. Do not introduce their utility/component classes or directives.
+- Site-owned surface colors (`--color-surface-50` through
+  `--color-surface-950`) are defined in `src/lib/styles/theme.css` and may be
+  referenced from scoped styles.
 - Admin pages use scoped styles and `--admin-*` variables, not Tailwind.
 - Server secrets use `$env/dynamic/private`. Never import private env modules
   from browser-reachable code.

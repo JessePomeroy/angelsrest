@@ -3,3 +3,5 @@ export async function goto(url: string) {
 }
 
 export function afterNavigate(callback: () => void) { callback(); }
+
+export async function invalidateAll() {}

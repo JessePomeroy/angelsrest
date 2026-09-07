@@ -2,7 +2,6 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { sentrySvelteKit } from "@sentry/sveltekit";
 import { sveltekit } from "@sveltejs/kit/vite";
-import tailwindcss from "@tailwindcss/vite";
 import { defineConfig } from "vitest/config";
 
 // Resolve paths against the config file's location, not the cwd. Using
@@ -15,7 +14,6 @@ const canUploadSentrySourceMaps = Boolean(
 
 export default defineConfig({
 	plugins: [
-		tailwindcss(),
 		// Audit H46: wire the Sentry plugin so source maps are uploaded at
 		// build time. Without this Sentry ingests the minified stack frames
 		// and dashboards are unreadable. Uploads are enabled only when the

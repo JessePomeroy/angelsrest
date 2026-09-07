@@ -549,7 +549,7 @@ onMount(() => {
 	.absorption-ring { width: 68px; height: 68px; }
 	.cart-droplet { position: absolute; left: 0; top: 0; width: 18px; height: 18px; border-radius: 50%; background: radial-gradient(circle at 28% 22%, white, rgb(222 240 246 / 65%) 28%, rgb(138 171 183 / 55%) 70%, rgb(255 255 255 / 80%)); box-shadow: inset -1px -1px 3px rgb(68 105 119 / 40%), 0 2px 5px rgb(40 70 80 / 15%); pointer-events: none; }
 	.photo-lens { position: absolute; left: 0; top: 0; width: 80px; height: 80px; border-radius: 50%; opacity: 0; transition: opacity 600ms ease; pointer-events: none; mask-image: radial-gradient(circle, black 45%, transparent 70%); }
-	.photo-lens.visible { opacity: .5; }
+	.photo-lens.visible { opacity: .5; visibility: visible; }
 	.dragging .photo-lens, .flying .photo-lens, .expanded .photo-lens { opacity: 0; transition: none; }
 	.water-surface { opacity: 0; position: absolute; left: 0; top: 0; pointer-events: none; }
 	.rendered .water-surface { opacity: 1; }

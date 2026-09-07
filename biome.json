@@ -67,10 +67,5 @@
 				}
 			}
 		}
-	],
-	"css": {
-		"parser": {
-			"tailwindDirectives": true
-		}
-	}
+	]
 }

@@ -79,7 +79,7 @@ onMount(() => {
 </script>
 
 <div
-	class="fixed inset-0 -z-10 pointer-events-none"
+	class="gradient-background"
 	aria-hidden="true"
 >
 	{#if hasMouse}
@@ -94,6 +94,7 @@ onMount(() => {
 </div>
 
 <style>
+	.gradient-background { position: fixed; inset: 0; z-index: -10; pointer-events: none; }
 	.orb {
 		position: absolute;
 		border-radius: 50%;

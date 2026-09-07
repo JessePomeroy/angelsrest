@@ -1,8 +1,8 @@
 # Public CSS migration
 
-S08 replaces Tailwind utilities with component-owned CSS while preserving rendered behavior. The navigation/theme pilot merged in PR #558. ThemeSwitcher, BottomNav, MobileNav and JellyNav now use scoped CSS. The foundation merged in PR #560, making the site palette, type scale and browser reset ordinary CSS. The public root layout and cart icon variants now use scoped CSS; the existing desktop navigation and footer already did. Shared Admin styles already use scoped CSS and `--admin-*` variables.
+S08 replaces Tailwind utilities with component-owned CSS while preserving rendered behavior. All authored consumers are converted, and Tailwind and its Vite/typography plugins are removed. The navigation/theme pilot merged in PR #558. ThemeSwitcher, BottomNav, MobileNav and JellyNav now use scoped CSS. The foundation merged in PR #560, making the site palette, type scale and browser reset ordinary CSS. The public root layout and cart icon variants now use scoped CSS; the existing desktop navigation and footer already did. Shared Admin styles already use scoped CSS and `--admin-*` variables.
 
-## Inventory and sequence
+## Starting inventory and implementation sequence
 
 The starting point is `86135ae` (S07 complete). Source searches found class attributes/directives in 50 Svelte files, with both utilities and existing semantic classes represented. This count is an inventory aid, not a count of files needing conversion. There are no `@apply` directives in `src/`. Tailwind configuration is concentrated in `src/lib/styles/global.css` and `theme.css`; the five blog templates originally used typography-plugin `prose` classes.
 
@@ -24,11 +24,11 @@ The public theme switcher keeps the shared store and pressed states. Icon dimens
 
 Use the actual-component browser suite for navigation, liquid navigation and shared theme ownership. Compare desktop/mobile captures in light/dark across all six time periods; check keyboard focus, route ancestry, touch targets, breakpoint visibility, cart access and reduced-motion switching. Physical iOS safe-area behavior still needs device verification.
 
-The site palette and type scale live in `theme.css` as native custom properties, imported in the existing theme layer. `tailwind-bridge.css` temporarily registers their names with an `@theme inline` block imported using `reference`: utilities use the site variables without emitting another definition. Default Tailwind tokens remain for unconverted utility classes.
+The site palette and type scale live in `theme.css` as native custom properties, imported in the existing theme layer. During migration, `tailwind-bridge.css` registered their names with an `@theme inline` block imported using `reference`: utilities used the site variables without emitting another definition. The bridge and default Tailwind tokens were removed after the consumer conversions.
 
 `reset.css` replaces the Preflight import in the same base layer. It preserves the installed 4.2.4 normalization rules, including native controls, hidden content, media, tables, placeholders and date-input quirks; its font stacks and settings are ordinary CSS. The source attribution/license is retained. Existing unlayered global typography, list resets, time themes and Admin overrides keep their precedence.
 
-A browser test injects reset/theme source directly into a document without Tailwind compilation to verify native token resolution and basic control/layout normalization. Do not remove the remaining utility/typography build plugins until later slices resolve their consumers.
+A browser test injects reset/theme source directly into a document without Tailwind compilation to verify native token resolution and basic control/layout normalization. The final dependency slice removes the utility/typography build plugins after resolving their consumers.
 
 
 ## Public content conversion
@@ -39,7 +39,7 @@ The content fixture uses typed public route data and writable provider stubs. It
 
 ## Blog typography
 
-All five blog templates, rich-text image presentation and the listing empty state now use native CSS. `article.css` owns shared typography for the elements supported by `BlogRichText`: paragraphs, headings, nested lists, quotes, marked spans, links and images/captions. It preserves the prior light/dark article palette and narrative sizing, with MIT attribution for the adapted typography rules. Templates own their layout and technical/narrative font choices. The typography build plugin is no longer invoked; its package will be removed with the remaining Tailwind build dependencies.
+All five blog templates, rich-text image presentation and the listing empty state now use native CSS. `article.css` owns shared typography for the elements supported by `BlogRichText`: paragraphs, headings, nested lists, quotes, marked spans, links and images/captions. It preserves the prior light/dark article palette and narrative sizing, with MIT attribution for the adapted typography rules. Templates own their layout and technical/narrative font choices. The typography build plugin and package are removed with the Tailwind build dependencies.
 
 Global text/list/link resets exclude `.article-body` descendants so article spacing remains intact. Figure spacing stays font-relative: the previous `my-8` utility was ineffective in technical articles. Browser fixtures cover all five templates and populated/empty listings, including technical equipment breakpoints, nested lists, links, images and light/dark styles.
 
@@ -74,3 +74,14 @@ Typed fixtures cover paper pricing, physical/digital/sold-out/unpriced/missing-i
 The retained print-collection template and shop empty state use scoped CSS. Collection padding keeps its 767/768/1024px transitions without the former important utilities; native component rules produce the same result. The time-aware card hover rule moved from the global `.group` selector into the collection component, retaining unlayered precedence and all six light/dark time accents. Existing collection route availability and category filtering are unchanged.
 
 Fixtures cover populated/empty collection and shop views, breadcrumb/card destinations, columns, category filtering and hover scale. Comparison captures cover all three padding widths plus mobile and all six hover periods.
+
+
+## Final dependency removal
+
+Tailwind, `@tailwindcss/vite` and `@tailwindcss/typography` are removed from the manifest and lockfile (11 installed packages removed). Vite and the browser fixture build no longer load Tailwind; the temporary theme bridge, fixture `@source` and Biome Tailwind parser setting are removed. The native reset and article styles retain their source licenses. Repository instructions now require scoped CSS.
+
+A compiler-based class scan caught dependencies missed by the earlier naming heuristic: the gradient wrapper's fixed positioning, the invoice payment-result pages' `container` breakpoints, and the photo lens's dynamic `visible` class. These now have explicit native styles. The final scan found no static utility consumers; the lens visibility class is an explicitly styled component state. No provider/auth/payment transport changes are included.
+
+Final captures cover public chrome, actual Admin layout, private delivery, all portal document kinds, both invoice result pages, cart/checkout, print/set/digital product views, collection/shop, article typography and contact/order forms. All 84 measured snapshots match, including full computed properties for print selects. Of 76 screenshots, 61 are identical; remaining differences are raster details (mobile select text affects at most 0.12% of a capture, while other differences are at most five color-channel values). Film-grain comparison uses a fixed random seed. Browser fixtures use local provider stubs and fallback fonts; these captures are not a physical-device or live-provider test.
+
+Production CSS measurement against the immediately preceding S08k build: 29 assets / 383,089 raw bytes / 65,503 independently gzipped bytes before; 29 assets / 366,216 raw bytes / 62,662 independently gzipped bytes after. This sums emitted client CSS across all routes; it is not the transfer size of one page.
