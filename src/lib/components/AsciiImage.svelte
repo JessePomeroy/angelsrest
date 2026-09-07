@@ -215,7 +215,7 @@ function handleMouseLeave() {
 </script>
 
 <div
-  class="ascii-image-container relative overflow-hidden"
+  class="ascii-image-container"
   onmouseenter={handleMouseEnter}
   onmouseleave={handleMouseLeave}
   role="img"
@@ -234,18 +234,22 @@ function handleMouseLeave() {
     <img
       src={displayedAsciiUrl || asciiDataUrl}
       alt=""
-      class="{className} absolute inset-0"
+      class="{className} ascii-overlay"
       aria-hidden="true"
     />
   {/if}
 
   <!-- Hidden canvases -->
-  <canvas bind:this={sourceCanvas} class="hidden"></canvas>
-  <canvas bind:this={asciiCanvas} class="hidden"></canvas>
+  <canvas bind:this={sourceCanvas} class="ascii-canvas"></canvas>
+  <canvas bind:this={asciiCanvas} class="ascii-canvas"></canvas>
 </div>
 
 <style>
   .ascii-image-container {
     cursor: pointer;
+    position: relative;
+    overflow: hidden;
   }
+  .ascii-overlay { position: absolute; inset: 0; }
+  .ascii-canvas { display: none; }
 </style>

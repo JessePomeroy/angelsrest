@@ -59,15 +59,15 @@ async function handleSubmit(e: SubmitEvent) {
 <!-- Contact Form -->
 <div>
     {#if !hideHeader}
-        <h2 class="mb-2 text-lg">get in touch</h2>
-        <p class="text-surface-400 text-sm mb-8">
+        <h2 class="contact-heading">get in touch</h2>
+        <p class="contact-description">
             for inquiries, commissions, and collaborations.
         </p>
     {/if}
 
-    <form onsubmit={handleSubmit} class="flex flex-col gap-5">
-        <div class="flex flex-col gap-2.5">
-            <label for="name" class="text-sm font-medium">name</label>
+    <form onsubmit={handleSubmit} class="contact-form">
+        <div class="field-group">
+            <label for="name" class="field-label">name</label>
             <input
                 type="text"
                 id="name"
@@ -77,8 +77,8 @@ async function handleSubmit(e: SubmitEvent) {
                 class="contact-field"
             />
         </div>
-        <div class="flex flex-col gap-2.5">
-            <label for="email" class="text-sm font-medium">email</label>
+        <div class="field-group">
+            <label for="email" class="field-label">email</label>
             <input
                 type="email"
                 id="email"
@@ -88,8 +88,8 @@ async function handleSubmit(e: SubmitEvent) {
                 class="contact-field"
             />
         </div>
-        <div class="flex flex-col gap-2.5">
-            <label for="subject" class="text-sm font-medium">subject</label>
+        <div class="field-group">
+            <label for="subject" class="field-label">subject</label>
             <input
                 type="text"
                 id="subject"
@@ -98,15 +98,15 @@ async function handleSubmit(e: SubmitEvent) {
                 class="contact-field"
             />
         </div>
-        <div class="flex flex-col gap-2.5">
-            <label for="message" class="text-sm font-medium">message</label>
+        <div class="field-group">
+            <label for="message" class="field-label">message</label>
             <textarea
                 id="message"
                 name="message"
                 rows="4"
                 placeholder="your message..."
                 required
-                class="contact-field resize-y"
+                class="contact-field"
             ></textarea>
         </div>
 		<TurnstileWidget
@@ -140,19 +140,29 @@ async function handleSubmit(e: SubmitEvent) {
 
         <div aria-live="polite">
             {#if verificationError}
-                <p class="text-red-400">{verificationError}</p>
+                <p class="form-error">{verificationError}</p>
             {/if}
             {#if status === "success"}
-                <p class="text-green-400">{confirmationMessage}</p>
+                <p class="form-success">{confirmationMessage}</p>
             {/if}
             {#if status === "error"}
-                <p class="text-red-400">something went wrong. try again ?</p>
+                <p class="form-error">something went wrong. try again ?</p>
             {/if}
         </div>
     </form>
 </div>
 
 <style>
+    @layer components {
+        .contact-heading { font-size: var(--text-lg); line-height: var(--text-lg--line-height); }
+        .contact-description { color: var(--color-surface-400); font-size: var(--text-sm); line-height: var(--text-sm--line-height); }
+        .contact-form { display: flex; flex-direction: column; gap: 1.25rem; }
+        .field-group { display: flex; flex-direction: column; gap: 0.625rem; }
+        .field-label { font-size: var(--text-sm); line-height: var(--text-sm--line-height); font-weight: 500; }
+        .form-error { color: oklch(70.4% 0.191 22.216); }
+        .form-success { color: oklch(79.2% 0.209 151.711); }
+    }
+
     .contact-field, .contact-submit { color: #000; }
     :global(.dark) .contact-field, :global(.dark) .contact-submit { color: #fafafa; }
     .contact-field { width: 100%; min-height: 44px; padding: 10px 12px; border: 1px solid color-mix(in srgb, currentColor 18%, transparent); border-radius: 0; background: color-mix(in srgb, var(--color-surface-900) 18%, transparent); font-size: 0.82rem; transition: border-color 160ms ease, background 160ms ease; }

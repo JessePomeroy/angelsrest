@@ -40,7 +40,7 @@ import SEO from "$lib/components/SEO.svelte";
 />
 
 <!-- Hero section - fills available space between nav and footer, centers content -->
-<h1 class="sr-only">Angel's Rest Photography</h1>
+<h1 class="page-heading">Angel's Rest Photography</h1>
 
 <section class="home-hero">
     <!-- Hero gif -->
@@ -62,6 +62,10 @@ import SEO from "$lib/components/SEO.svelte";
 </section>
 
 <style>
+    .page-heading {
+        position: absolute; width: 1px; height: 1px; padding: 0; margin: 0;
+        overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border-width: 0;
+    }
     .home-hero {
         display: flex;
         flex: 1;

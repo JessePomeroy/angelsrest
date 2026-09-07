@@ -103,7 +103,7 @@ function handleTouchEnd() {
 <svelte:window onkeydown={handleKeydown} />
 
 <div
-  class="fixed inset-0 bg-black/90 backdrop-blur-sm z-50 flex items-center justify-center"
+  class="lightbox"
   onclick={(e) => {
     // Only close when the click hits the backdrop itself, not a child.
     // Removes the need for stopPropagation on the inner content div.
@@ -122,23 +122,23 @@ function handleTouchEnd() {
   tabindex="-1"
   bind:this={dialogEl}
 >
-  <div class="relative max-w-[90vw] max-h-[90vh]" role="document">
+  <div class="image-stage" role="document">
     <button
-      class="absolute top-4 right-4 z-10 p-2 text-white/70 rounded-full hover:bg-white hover:text-black"
+      class="close-lightbox"
       aria-label="Close lightbox"
       onclick={onClose}
     >
       x
     </button>
 
-    <div class="absolute top-4 left-4 text-white/70 text-sm" aria-live="polite">
+    <div class="image-count" aria-live="polite">
       {index + 1}/{images.length}
     </div>
 
     <img
       src={getImageUrl(images[index])}
       alt={images[index]?.alt || `Gallery image ${index + 1} of ${images.length}`}
-      class="max-w-full max-h-[90vh] object-contain rounded-md"
+      class="gallery-image"
       style="transform: translateX({offsetX}px); transition: {isDragging
         ? 'none'
         : 'transform 0.2s ease-out'}"
@@ -151,7 +151,7 @@ function handleTouchEnd() {
     {#if images.length > 1}
       <button
         type="button"
-        class="absolute left-4 top-1/2 -translate-y-1/2 text-white/70 hover:text-white text-4xl"
+        class="image-previous"
         aria-label="Previous image"
         onclick={prev}
       >
@@ -159,7 +159,7 @@ function handleTouchEnd() {
       </button>
       <button
         type="button"
-        class="absolute right-4 top-1/2 -translate-y-1/2 text-white/70 hover:text-white text-4xl"
+        class="image-next"
         aria-label="Next image"
         onclick={next}
       >
@@ -168,3 +168,20 @@ function handleTouchEnd() {
     {/if}
   </div>
 </div>
+
+<style>
+  @layer components {
+    .lightbox { position: fixed; inset: 0; background: rgb(0 0 0 / 90%); -webkit-backdrop-filter: blur(8px); backdrop-filter: blur(8px); z-index: 50; display: flex; align-items: center; justify-content: center; }
+    .image-stage { position: relative; max-width: 90vw; max-height: 90vh; }
+    .close-lightbox { position: absolute; top: 1rem; right: 1rem; z-index: 10; padding: 0.5rem; color: color-mix(in oklab, white 70%, transparent); border-radius: 9999px; }
+    .image-count { position: absolute; top: 1rem; left: 1rem; color: color-mix(in oklab, white 70%, transparent); font-size: var(--text-sm); line-height: var(--text-sm--line-height); }
+    .gallery-image { max-width: 100%; max-height: 90vh; object-fit: contain; border-radius: 0.375rem; }
+    .image-previous, .image-next { position: absolute; top: 50%; translate: 0 -50%; color: color-mix(in oklab, white 70%, transparent); font-size: var(--text-4xl); line-height: var(--text-4xl--line-height); }
+    .image-previous { left: 1rem; }
+    .image-next { right: 1rem; }
+    @media (hover: hover) {
+      .close-lightbox:hover { background: white; color: black; }
+      .image-previous:hover, .image-next:hover { color: white; }
+    }
+  }
+</style>
