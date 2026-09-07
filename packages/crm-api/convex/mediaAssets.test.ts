@@ -595,6 +595,36 @@ describe("tenant-scoped CMS media assets", () => {
 		}, duplicatedRegistry);
 	});
 
+	test("rechecks active singleton pins at completion while releasing retained history", async () => {
+		const t = await setup();
+		const admin = asAdmin(t, SITE_A.email);
+		const { id } = await admin.mutation(api.mediaAssets.registerReadyWebAsset, { siteUrl: SITE_A.siteUrl, asset: readyAsset() });
+		const { documentId, revisionId } = await t.run(async ctx => {
+			const documentId = await ctx.db.insert("contentDocuments", {
+				siteUrl: SITE_A.siteUrl, kind: "siteSettings", createdAt: 1, createdBy: "test", updatedAt: 1, updatedBy: "test",
+			});
+			const revisionId = await ctx.db.insert("contentRevisions", {
+				siteUrl: SITE_A.siteUrl, documentId, kind: "siteSettings", schemaVersion: 1,
+				payload: { seoOgImageAssetId: id }, source: "admin", checksum: "settings", createdAt: 1, createdBy: "test",
+			});
+			await ctx.db.patch(documentId, { draftRevisionId: revisionId, publishedRevisionId: revisionId });
+			return { documentId, revisionId };
+		});
+		const request = () => admin.mutation(api.mediaAssets.requestDeletion, { siteUrl: SITE_A.siteUrl, id });
+		await expect(request()).rejects.toThrow("Media asset is in use by Site Settings");
+		await t.run(ctx => ctx.db.patch(documentId, { draftRevisionId: undefined }));
+		await expect(request()).rejects.toThrow("Media asset is in use by Site Settings");
+		await t.run(ctx => ctx.db.patch(documentId, { publishedRevisionId: undefined }));
+		await expect(request()).resolves.toMatchObject({ status: "deleting" });
+		// A reference added after the cleanup request must still block completion.
+		await t.run(ctx => ctx.db.patch(documentId, { draftRevisionId: revisionId }));
+		const complete = () => t.mutation(internal.mediaAssets.completeDeletion, { siteUrl: SITE_A.siteUrl, id, assetId: ASSET_ID });
+		await expect(complete()).rejects.toThrow("Media asset is in use by Site Settings");
+		expect((await admin.query(api.mediaAssets.get, { id })).status).toBe("deleting");
+		await t.run(ctx => ctx.db.patch(documentId, { draftRevisionId: undefined }));
+		await expect(complete()).resolves.toMatchObject({ deleted: true });
+	});
+
 	test("blocks deletion while any portfolio placement references the asset", async () => {
 		const t = await setup();
 		const admin = asAdmin(t, SITE_A.email);

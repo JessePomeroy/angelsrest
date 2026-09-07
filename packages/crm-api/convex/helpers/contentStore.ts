@@ -29,15 +29,34 @@ async function getRevision(
 	return revisionId ? await ctx.db.get(revisionId) : null;
 }
 
+function revisionBelongsToDocument(
+	revision: Doc<"contentRevisions"> | null,
+	document: Doc<"contentDocuments">,
+): revision is Doc<"contentRevisions"> {
+	return revision !== null
+		&& revision.documentId === document._id
+		&& revision.siteUrl === document.siteUrl
+		&& revision.kind === document.kind;
+}
+
+/** Only active, owned revisions can pin media; retained history does not. */
+export async function getActiveSingletonRevisions(
+	ctx: ContentContext,
+	siteUrl: string,
+	kind: SingletonContentKind,
+) {
+	const document = await getContentDocument(ctx, siteUrl, kind);
+	if (!document) return [];
+	const ids = [...new Set([document.draftRevisionId, document.publishedRevisionId])];
+	const revisions = await Promise.all(ids.map(id => getRevision(ctx, id)));
+	return revisions.filter(revision => revisionBelongsToDocument(revision, document));
+}
+
 function assertRevisionBelongsToDocument(
 	revision: Doc<"contentRevisions">,
 	document: Doc<"contentDocuments">,
 ) {
-	if (
-		revision.documentId !== document._id ||
-		revision.siteUrl !== document.siteUrl ||
-		revision.kind !== document.kind
-	) {
+	if (!revisionBelongsToDocument(revision, document)) {
 		throw new Error("Content revision ownership mismatch");
 	}
 }
