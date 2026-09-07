@@ -157,8 +157,9 @@ const extraImageCount = $derived(
     @media (hover: hover) { .quantity-button:hover { background-color: color-mix(in oklab, var(--color-surface-500) 10%, transparent); } }
     .quantity { padding-inline: 0.5rem; font-size: var(--text-sm); line-height: var(--text-sm--line-height); font-variant-numeric: tabular-nums; min-width: 1.5rem; text-align: center; }
     .line-total { font-size: var(--text-sm); line-height: var(--text-sm--line-height); font-weight: 500; font-variant-numeric: tabular-nums; }
-    .remove-button { align-self: flex-start; flex-shrink: 0; min-height: 44px; padding-inline: 0.5rem; font-size: var(--text-xs); text-decoration: underline; text-underline-offset: 0.2em; color: var(--color-surface-500); transition-property: color, background-color, border-color, outline-color, text-decoration-color, fill, stroke; transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1); transition-duration: 150ms; }
-    @media (hover: hover) { .remove-button:hover { color: var(--color-error-500); } }
+    .remove-button { align-self: flex-start; flex-shrink: 0; min-height: 44px; padding-inline: 0.5rem; font-size: var(--text-xs); text-decoration: underline; text-underline-offset: 0.2em; color: var(--color-surface-700); transition-property: color, background-color, border-color, outline-color, text-decoration-color, fill, stroke; transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1); transition-duration: 150ms; }
+    :global(.dark) .remove-button { color: var(--color-surface-200); }
+    @media (hover: hover) { .remove-button:hover { text-decoration-thickness: 2px; } }
     .page-line { padding-block: 1.25rem; }
     .page-line .thumbnail { width: 5rem; height: 5rem; }
     @media (min-width: 48rem) { .page-line .thumbnail { width: 6rem; height: 6rem; } }
