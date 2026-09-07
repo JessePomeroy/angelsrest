@@ -136,3 +136,29 @@ test("unfiltered and category-only lists retain bounded descending results", asy
 		}),
 	).rejects.toThrow("Not authenticated");
 });
+
+test("tagged pages stay bounded, retain filters and conceal foreign tags", async () => {
+	const { t, admin } = await setup();
+	const seeded = await t.run(async (ctx) => {
+		const tagId = await ctx.db.insert("clientTags", { siteUrl, name: "local" });
+		const foreignTag = await ctx.db.insert("clientTags", { siteUrl: "other.example", name: "foreign" });
+		const ids = [];
+		for (let i = 0; i < 55; i++) {
+			const clientId = await ctx.db.insert("photographyClients", { siteUrl, name: `Client ${i}`, category: "web", status: "booked" });
+			ids.push(clientId);
+			for (const id of [tagId, foreignTag]) await ctx.db.insert("clientTagAssignments", { siteUrl, clientId, tagId: id });
+		}
+		return { ids, tagId };
+	});
+	const args = { siteUrl, category: "web" as const, status: "booked" as const };
+	const first = await admin.query(api.crm.listClientsWithTags, { ...args, paginationOpts: { numItems: 500, cursor: null } });
+	expect(first.page).toHaveLength(50);
+	expect(first.isDone).toBe(false);
+	const next = await admin.query(api.crm.listClientsWithTags, { ...args, paginationOpts: { numItems: 50, cursor: first.continueCursor } });
+	expect(next.isDone).toBe(true);
+	expect([...first.page, ...next.page].map(row => row._id)).toEqual([...seeded.ids].reverse());
+	for (const row of [...first.page, ...next.page]) expect(row.tags.map(tag => tag._id)).toEqual([seeded.tagId]);
+	expect((await admin.query(api.crm.listClientsWithTags, { ...args, status: "lead", paginationOpts: { numItems: 50, cursor: null } })).page).toEqual([]);
+	await expect(t.query(api.crm.listClientsWithTags, { ...args, paginationOpts: { numItems: 50, cursor: null } })).rejects.toThrow();
+	await expect(admin.query(api.crm.listClientsWithTags, { ...args, siteUrl: "other.example", paginationOpts: { numItems: 50, cursor: null } })).rejects.toThrow();
+});
