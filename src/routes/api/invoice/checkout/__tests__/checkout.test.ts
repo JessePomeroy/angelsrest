@@ -54,7 +54,7 @@ function makeRequest(body: unknown) {
 			method: "POST",
 			body: JSON.stringify(body),
 		}),
-	};
+	} as Parameters<typeof POST>[0];
 }
 
 function expectedIdempotencyKey({
@@ -215,6 +215,93 @@ describe("invoice checkout route", () => {
 		});
 
 		await expect(POST(makeRequest({ token: "portal-token-123" }) as any)).rejects.toMatchObject({
+			status: 400,
+		});
+		expect(mocks.stripeSessionCreate).not.toHaveBeenCalled();
+	});
+
+	it("bills fractional quantities as rounded whole-cent lines with matching tax", async () => {
+		mocks.convexQuery.mockResolvedValue({
+			invoiceId: "invoice-123",
+			siteUrl: "angelsrest.online",
+			status: "sent",
+			taxPercent: 6.25,
+			items: [
+				{ description: "Half hour A", quantity: 0.5, unitPrice: 1999 },
+				{ description: "Half hour B", quantity: 0.5, unitPrice: 1999 },
+			],
+		});
+		await POST(makeRequest({ token: "portal-token-123" }));
+		const params = mocks.stripeSessionCreate.mock
+			.calls[0][0] as Stripe.Checkout.SessionCreateParams;
+		expect(params.line_items).toEqual([
+			expect.objectContaining({
+				quantity: 1,
+				price_data: expect.objectContaining({
+					unit_amount: 1000,
+					product_data: expect.objectContaining({ name: "Half hour A (0.5 units)" }),
+				}),
+			}),
+			expect.objectContaining({
+				quantity: 1,
+				price_data: expect.objectContaining({
+					unit_amount: 1000,
+					product_data: expect.objectContaining({ name: "Half hour B (0.5 units)" }),
+				}),
+			}),
+			expect.objectContaining({
+				quantity: 1,
+				price_data: expect.objectContaining({ unit_amount: 125 }),
+			}),
+		]);
+		const firstKey = mocks.stripeSessionCreate.mock.calls[0][1].idempotencyKey;
+		await POST(makeRequest({ token: "portal-token-123" }));
+		expect(mocks.stripeSessionCreate.mock.calls[1][1].idempotencyKey).toBe(firstKey);
+		mocks.convexQuery.mockResolvedValue({
+			invoiceId: "invoice-123",
+			siteUrl: "angelsrest.online",
+			status: "sent",
+			taxPercent: 6.25,
+			items: [
+				{ description: "Half hour A", quantity: 0.5001, unitPrice: 1999 },
+				{ description: "Half hour B", quantity: 0.5, unitPrice: 1999 },
+			],
+		});
+		await POST(makeRequest({ token: "portal-token-123" }));
+		expect(mocks.stripeSessionCreate.mock.calls[2][1].idempotencyKey).not.toBe(firstKey);
+	});
+
+	it.each([
+		{ quantity: 0, unitPrice: 100 },
+		{ quantity: -0.5, unitPrice: 100 },
+		{ quantity: Number.NaN, unitPrice: 100 },
+		{ quantity: Number.POSITIVE_INFINITY, unitPrice: 100 },
+		{ quantity: 0.5, unitPrice: 100.5 },
+		{ quantity: 0.5, unitPrice: -100 },
+		{ quantity: 2, unitPrice: Number.MAX_SAFE_INTEGER },
+	])("rejects invalid stored invoice amounts before provider I/O: %j", async (item) => {
+		mocks.convexQuery.mockResolvedValue({
+			invoiceId: "invoice-123",
+			siteUrl: "angelsrest.online",
+			status: "sent",
+			items: [{ description: "Invalid", ...item }],
+		});
+		await expect(POST(makeRequest({ token: "portal-token-123" }))).rejects.toMatchObject({
+			status: 400,
+		});
+		expect(mocks.resolveStripeTenantForSite).not.toHaveBeenCalled();
+		expect(mocks.stripeSessionCreate).not.toHaveBeenCalled();
+		expect(mocks.convexMutation).not.toHaveBeenCalled();
+	});
+
+	it("retains the online minimum for fractional sub-cent lines", async () => {
+		mocks.convexQuery.mockResolvedValue({
+			invoiceId: "invoice-123",
+			siteUrl: "angelsrest.online",
+			status: "sent",
+			items: [{ description: "Tiny", quantity: 0.001, unitPrice: 100 }],
+		});
+		await expect(POST(makeRequest({ token: "portal-token-123" }))).rejects.toMatchObject({
 			status: 400,
 		});
 		expect(mocks.stripeSessionCreate).not.toHaveBeenCalled();
