@@ -1,5 +1,7 @@
 import { v } from "convex/values";
-import { internalMutation, query } from "./_generated/server";
+import type { WithoutSystemFields } from "convex/server";
+import type { Doc } from "./_generated/dataModel";
+import { query, type MutationCtx } from "./_generated/server";
 import { requireDocumentSiteAdmin } from "./authHelpers";
 
 export const getClientActivity = query({
@@ -18,15 +20,6 @@ export const getClientActivity = query({
 	},
 });
 
-export const logActivity = internalMutation({
-	args: {
-		siteUrl: v.string(),
-		clientId: v.id("photographyClients"),
-		action: v.string(),
-		description: v.string(),
-		metadata: v.optional(v.string()),
-	},
-	handler: async (ctx, args) => {
-		return await ctx.db.insert("activityLog", args);
-	},
-});
+export async function logActivity(ctx: MutationCtx, entry: WithoutSystemFields<Doc<"activityLog">>) {
+	return await ctx.db.insert("activityLog", entry);
+}

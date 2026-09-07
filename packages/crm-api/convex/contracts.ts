@@ -1,5 +1,5 @@
+import { logActivity } from "./activityLog";
 import { v } from "convex/values";
-import { internal } from "./_generated/api";
 import { mutation, query } from "./_generated/server";
 import {
 	requireDocumentSiteAdmin,
@@ -81,7 +81,7 @@ export const create = mutation({
 			status: "draft",
 		});
 
-		await ctx.runMutation(internal.activityLog.logActivity, {
+		await logActivity(ctx, {
 			siteUrl: args.siteUrl,
 			clientId: args.clientId,
 			action: "contract_created",
@@ -137,7 +137,7 @@ export const markSigned = mutation({
 		}
 		await ctx.db.patch(contractId, { status: "signed", signedAt: Date.now() });
 
-		await ctx.runMutation(internal.activityLog.logActivity, {
+		await logActivity(ctx, {
 			siteUrl: contract.siteUrl,
 			clientId: contract.clientId,
 			action: "contract_signed",
