@@ -24,8 +24,8 @@ test("print-set controls retain focus, finish state, child spacing and responsiv
 	expect(placeholder.width).toBeCloseTo(placeholder.height, 1);
 });
 
-test("sticky purchase bar keeps observer states, class and bottom offset", async ({ page }, info) => {
-	test.skip(info.project.name === "desktop", "Mobile-only purchase bar");
+test("sticky purchase bar keeps observer states, class and bottom offset", async ({ page, isMobile }) => {
+	test.skip(!isMobile, "Mobile-only purchase bar");
 	await page.emulateMedia({ colorScheme: "light" });
 	await page.goto("/?fixture=sticky");
 	const bar = page.locator(".fixture-sticky");

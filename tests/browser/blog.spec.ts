@@ -1,4 +1,5 @@
 import { expect, test } from "@playwright/test";
+import { computedColor } from "./computedColor";
 
 for (const kind of ["standard", "behindTheScenes", "caseStudy", "clientStory", "technical"]) {
 	test(`${kind} preserves readable rich text in light and dark`, async ({ page }) => {
@@ -35,9 +36,9 @@ for (const kind of ["standard", "behindTheScenes", "caseStudy", "clientStory", "
 			expect(geometry.font).toContain("ui-serif");
 			expect(geometry.size).toBe(18);
 		}
-		await expect(body).toHaveCSS("color", "oklch(0.373 0.034 259.733)");
+		await expect(body).toHaveCSS("color", await computedColor(page, "oklch(0.373 0.034 259.733)"));
 		await page.evaluate(() => document.documentElement.classList.add("dark"));
-		await expect(body).toHaveCSS("color", "oklch(0.872 0.01 258.338)");
+		await expect(body).toHaveCSS("color", await computedColor(page, "oklch(0.872 0.01 258.338)"));
 		await expect(body.getByRole("link")).toHaveCSS("color", "rgb(255, 255, 255)");
 		expect(errors).toEqual([]);
 	});

@@ -13,8 +13,8 @@ test("collection layout preserves breakpoints, breadcrumbs and destinations", as
   }
 });
 
-test("collection hover keeps the time accent and image scale", async ({ page }, info) => {
-  test.skip(info.project.name === "mobile", "Desktop hover");
+test("collection hover keeps the time accent and image scale", async ({ page, isMobile }) => {
+  test.skip(isMobile, "Desktop hover");
   await page.goto("/?fixture=collection-css");
   const entry = page.getByRole("link", { name: "Fixture print 1" });
   for (const [period, color] of [["dawn", "rgb(249, 168, 212)"], ["night", "rgb(165, 180, 252)"]] as const) {

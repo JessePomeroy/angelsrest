@@ -43,8 +43,8 @@ test("liquid navigation opens destinations and cart, and responds to motion pref
 	await expect(page.getByRole("navigation", { name: "Mobile navigation" })).toHaveCount(1);
 });
 
-test("touch drag flings the sphere without opening navigation or selecting page text", async ({ page, isMobile }) => {
-	test.skip(!isMobile);
+test("touch drag flings the sphere without opening navigation or selecting page text", async ({ page, isMobile, browserName }) => {
+	test.skip(!isMobile || browserName !== "chromium", "Touch injection requires Chromium CDP; physical iOS remains a device check.");
 	await page.emulateMedia({ reducedMotion: "no-preference" });
 	await page.goto("/?fixture=liquid-navigation");
 	const sphere = page.locator(".sphere");
