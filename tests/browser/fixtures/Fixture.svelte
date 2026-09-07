@@ -1,4 +1,5 @@
 <script lang="ts">
+import SiteChrome from "./SiteChrome.svelte";
 import MotionHarness from "./MotionHarness.svelte";
 import PrintHarness from "./PrintHarness.svelte";
 import DeliveryDownloadHarness from "./DeliveryDownloadHarness.svelte";
@@ -36,7 +37,9 @@ if (params.get("populated") === "true") {
 }
 </script>
 
-{#if fixture === "motion"}
+{#if fixture === "chrome"}
+	<SiteChrome />
+{:else if fixture === "motion"}
 	<MotionHarness />
 {:else if fixture === "print"}
 	<PrintHarness />
