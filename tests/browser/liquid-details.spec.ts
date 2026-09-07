@@ -1,4 +1,20 @@
-import { expect, test } from "@playwright/test";
+import { expect, test, type Page } from "@playwright/test";
+async function observeCartDroplet(page: Page) {
+	await page.evaluate(() => {
+		delete document.documentElement.dataset.cartDroplet;
+		// Record the transient node before Playwright's click finishes its
+		// rendering wait on software WebGL. No animation timing is changed.
+		const observer = new MutationObserver((records) => {
+			const appeared = records.some((record) => [...record.addedNodes].some((node) =>
+				node instanceof HTMLElement && node.matches(".cart-droplet"),
+			));
+			if (!appeared) return;
+			document.documentElement.dataset.cartDroplet = document.querySelector("dialog[open]") ? "after-cart" : "before-cart";
+			observer.disconnect();
+		});
+		observer.observe(document.body, { childList: true, subtree: true });
+	});
+}
 
 test("cart droplet arrives before the cart opens, and motion changes preserve access", async ({ page, isMobile }) => {
 	test.skip(!isMobile);
@@ -6,8 +22,9 @@ test("cart droplet arrives before the cart opens, and motion changes preserve ac
 	await page.emulateMedia({ reducedMotion: "no-preference" });
 	await page.goto("/?fixture=liquid-details");
 	await expect(page.locator(".sphere")).toBeVisible();
+	await observeCartDroplet(page);
 	await page.getByRole("button", { name: "Add print" }).tap();
-	await expect(page.locator(".cart-droplet")).toBeAttached();
+	await expect(page.locator("html")).toHaveAttribute("data-cart-droplet", "before-cart");
 	await expect(page.getByRole("dialog")).toBeVisible();
 	await expect(page.locator(".cart-droplet")).toHaveCount(0);
 	await page.keyboard.press("Escape");
@@ -47,8 +64,9 @@ test("the real print-set add button delivers to the sphere before opening its ca
 	await page.emulateMedia({ reducedMotion: "no-preference" });
 	await page.goto("/?fixture=liquid-shop");
 	await expect(page.locator(".sphere")).toBeVisible();
+	await observeCartDroplet(page);
 	await page.getByRole("button", { name: /add to cart/i }).first().click();
-	await expect(page.locator(".cart-droplet")).toBeAttached();
+	await expect(page.locator("html")).toHaveAttribute("data-cart-droplet", "before-cart");
 	await expect(page.getByRole("dialog")).toBeVisible();
 	await expect(page.locator(".cart-count")).toHaveText("1");
 });
