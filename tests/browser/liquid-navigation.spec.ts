@@ -50,13 +50,15 @@ test("touch drag flings the sphere without opening navigation or selecting page 
 	const box = await sphere.boundingBox();
 	if (!box) throw new Error("Missing sphere bounds");
 	const session = await page.context().newCDPSession(page);
+	// Preserve a quick release even when software WebGL slows the test runner.
+	const startTime = Date.now() / 1000;
 	const x = box.x + box.width / 2;
 	const y = box.y + box.height / 2;
-	await session.send("Input.dispatchTouchEvent", { type: "touchStart", touchPoints: [{ x, y }] });
+	await session.send("Input.dispatchTouchEvent", { type: "touchStart", timestamp: startTime, touchPoints: [{ x, y }] });
 	for (let step = 1; step <= 8; step++) {
-		await session.send("Input.dispatchTouchEvent", { type: "touchMove", touchPoints: [{ x: x - step * 12, y: y - step * 20 }] });
+		await session.send("Input.dispatchTouchEvent", { type: "touchMove", timestamp: startTime + step / 60, touchPoints: [{ x: x - step * 12, y: y - step * 20 }] });
 	}
-	await session.send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] });
+	await session.send("Input.dispatchTouchEvent", { type: "touchEnd", timestamp: startTime + 9 / 60, touchPoints: [] });
 	await expect(sphere).toHaveAttribute("aria-expanded", "false");
 	await expect(page.locator(".jelly-nav")).toHaveClass(/flying/);
 	await expect.poll(async () => (await sphere.boundingBox())?.y).toBeLessThan(box.y - 100);
