@@ -20,6 +20,8 @@ test("reduced motion keeps the original nav and cart without loading liquid modu
 
 test("liquid navigation opens destinations and cart, and responds to motion preference changes", async ({ page, isMobile }) => {
 	test.skip(!isMobile);
+	// CI uses software WebGL; allow the real shader and animated hit targets to settle.
+	test.setTimeout(60_000);
 	await page.emulateMedia({ reducedMotion: "no-preference" });
 	await page.goto("/?fixture=liquid-navigation");
 	const sphere = page.locator(".sphere");
