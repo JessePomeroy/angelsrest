@@ -55,27 +55,27 @@ async function checkout() {
   url="https://angelsrest.online/cart"
 />
 
-<div class="max-w-6xl mx-auto">
+<div class="cart-page">
   <a
     href="/shop"
-    class="text-sm opacity-70 hover:opacity-100 mb-4 inline-flex items-center gap-1"
+    class="back-link"
   >
-    <ArrowLeftIcon class="size-3" /> back to shop
+    <ArrowLeftIcon size="0.75rem" /> back to shop
   </a>
 
-  <h1 class="text-3xl font-semibold mb-8 lowercase">your cart</h1>
+  <h1 class="page-title">your cart</h1>
 
   {#if wasExpired}
     <div
-      class="mb-6 px-4 py-3 text-sm bg-surface-500/10 border border-surface-500/20 rounded-md flex items-start justify-between gap-3"
+      class="expiry-notice"
     >
-      <span class="text-surface-700 dark:text-surface-200">
+      <span class="notice-copy">
         we cleared your cart from a previous visit (older than 30 days).
       </span>
       <button
         type="button"
         onclick={dismissExpired}
-        class="text-xs tracking-wider lowercase text-surface-500 hover:text-surface-900 dark:hover:text-surface-50 underline underline-offset-4"
+        class="dismiss-button"
       >
         dismiss
       </button>
@@ -83,13 +83,13 @@ async function checkout() {
   {/if}
 
   {#if isEmpty}
-    <div class="py-24 text-center">
-      <p class="text-sm tracking-wider lowercase text-surface-600 dark:text-surface-300 mb-4">
+    <div class="empty-state">
+      <p class="empty-message">
         your cart is empty
       </p>
       <a
         href="/shop"
-        class="inline-flex items-center justify-center gap-2 rounded-md whitespace-nowrap text-base px-4 py-1 transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-surface-900 dark:focus-visible:outline-surface-50 disabled:opacity-50 disabled:cursor-not-allowed bg-primary-500 text-slate-950 not-disabled:hover:bg-primary-500/80"
+        class="shop-link"
       >
         browse the shop
       </a>
@@ -103,10 +103,10 @@ async function checkout() {
       Desktop (md+): two columns with the summary as a sticky bordered
       card on the right.
     -->
-    <div class="grid grid-cols-1 md:grid-cols-3 md:gap-8">
+    <div class="cart-layout">
       <!-- Line items -->
-      <div class="md:col-span-2">
-        <ul class="list-none p-0 m-0 border-t border-surface-500/15">
+      <div class="line-items">
+        <ul class="cart-items">
           {#each items as item (item.id)}
             <li>
               <CartLineItem {item} variant="page" />
@@ -117,52 +117,99 @@ async function checkout() {
 
       <!-- Totals / checkout panel -->
       <aside
-        class="self-start space-y-4 mt-6 pt-6 border-t border-surface-500/15
-               md:mt-0 md:p-6 md:border md:border-surface-500/20 md:rounded-md md:sticky md:top-8"
+        class="order-summary"
       >
-        <h2 class="text-sm tracking-widest lowercase font-light">order summary</h2>
+        <h2 class="summary-title">order summary</h2>
 
-        <div class="space-y-2 text-sm">
-          <div class="flex justify-between text-surface-600 dark:text-surface-300">
-            <span class="lowercase">items</span>
-            <span class="tabular-nums">{itemCount}</span>
+        <div class="summary-details">
+          <div class="detail-row">
+            <span class="detail-label">items</span>
+            <span class="detail-value">{itemCount}</span>
           </div>
-          <div class="flex justify-between text-surface-600 dark:text-surface-300">
-            <span class="lowercase">shipping</span>
-            <span class="lowercase">included</span>
+          <div class="detail-row">
+            <span class="detail-label">shipping</span>
+            <span class="detail-label">included</span>
           </div>
         </div>
 
         <div
-          class="flex items-baseline justify-between pt-3 border-t border-surface-500/15"
+          class="subtotal-row"
         >
-          <span class="text-xs tracking-wider lowercase text-surface-600 dark:text-surface-300">
+          <span class="subtotal-label">
             subtotal
           </span>
-          <span class="text-2xl font-semibold tabular-nums">
+          <span class="subtotal-value">
             {formatCents(totalCents)}
           </span>
         </div>
 
         {#if checkoutError}
-          <p class="text-xs text-error-500 lowercase">{checkoutError}</p>
+          <p class="checkout-error">{checkoutError}</p>
         {/if}
 
         <button
           type="button"
           onclick={checkout}
           disabled={isCheckingOut}
-          class="inline-flex items-center justify-center gap-2 rounded-md whitespace-nowrap text-base px-4 py-1 transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-surface-900 dark:focus-visible:outline-surface-50 disabled:opacity-50 disabled:cursor-not-allowed bg-primary-500 text-slate-950 not-disabled:hover:bg-primary-500/80 w-full"
+          class="checkout-button"
         >
           <span>
             {isCheckingOut ? "processing..." : "checkout"}
           </span>
         </button>
 
-        <p class="text-[10px] text-surface-500 text-center">
+        <p class="payment-note">
           secure payment by stripe
         </p>
       </aside>
     </div>
   {/if}
 </div>
+
+<style>
+  @layer components {
+    .cart-page { max-width: 72rem; margin-inline: auto; }
+    .back-link { font-size: var(--text-sm); line-height: var(--text-sm--line-height); opacity: 0.7; margin-bottom: 1rem; display: inline-flex; align-items: center; gap: 0.25rem; }
+    @media (hover: hover) { .back-link:hover { opacity: 1.0; } }
+    .page-title { font-size: var(--text-3xl); text-transform: lowercase; }
+    .expiry-notice { margin-bottom: 1.5rem; padding-inline: 1rem; padding-block: 0.75rem; font-size: var(--text-sm); line-height: var(--text-sm--line-height); background-color: color-mix(in oklab, var(--color-surface-500) 10%, transparent); border: 1px solid; border-color: color-mix(in oklab, var(--color-surface-500) 20%, transparent); border-radius: 0.375rem; display: flex; align-items: flex-start; justify-content: space-between; gap: 0.75rem; }
+    .notice-copy { color: var(--color-surface-700); }
+    :global(.dark) .notice-copy { color: var(--color-surface-200); }
+    .dismiss-button { font-size: var(--text-xs); line-height: var(--text-xs--line-height); letter-spacing: 0.05em; text-transform: lowercase; color: var(--color-surface-500); text-decoration-line: underline; text-underline-offset: 4px; }
+    @media (hover: hover) { .dismiss-button:hover { color: var(--color-surface-900); } }
+    @media (hover: hover) { :global(.dark) .dismiss-button:hover { color: var(--color-surface-50); } }
+    .empty-state { padding-block: 6rem; text-align: center; }
+    .empty-message { font-size: var(--text-sm); line-height: var(--text-sm--line-height); letter-spacing: 0.05em; text-transform: lowercase; color: var(--color-surface-600); }
+    :global(.dark) .empty-message { color: var(--color-surface-300); }
+    .shop-link { display: inline-flex; align-items: center; justify-content: center; gap: 0.5rem; border-radius: 0.375rem; white-space: nowrap; font-size: var(--text-base); line-height: var(--text-base--line-height); padding-inline: 1rem; padding-block: 0.25rem; transition-property: color, background-color, border-color, outline-color, text-decoration-color, fill, stroke; transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1); transition-duration: 150ms; background-color: var(--color-primary-500); color: oklch(12.9% 0.042 264.695); }
+    .shop-link:focus-visible { outline-style: solid; outline-width: 2px; outline-offset: 2px; outline-color: var(--color-surface-900); }
+    :global(.dark) .shop-link:focus-visible { outline-color: var(--color-surface-50); }
+    .shop-link:disabled { opacity: 0.5; cursor: not-allowed; }
+    @media (hover: hover) { .shop-link:hover:not(:disabled) { background-color: color-mix(in oklab, var(--color-primary-500) 80%, transparent); } }
+    .cart-layout { display: grid; grid-template-columns: repeat(1, minmax(0, 1fr)); }
+    @media (min-width: 48rem) { .cart-layout { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 2rem; } }
+    @media (min-width: 48rem) { .line-items { grid-column: span 2 / span 2; } }
+    .cart-items { list-style-type: none; padding: 0; margin: 0; border-top: 1px solid; border-color: color-mix(in oklab, var(--color-surface-500) 15%, transparent); }
+    .order-summary > :not(:last-child) { margin-block-start: 0; margin-block-end: 1rem; }
+    .order-summary { align-self: flex-start; margin-top: 1.5rem; padding-top: 1.5rem; border-top: 1px solid; border-color: color-mix(in oklab, var(--color-surface-500) 15%, transparent); }
+    @media (min-width: 48rem) { .order-summary { margin-top: 0; padding: 1.5rem; border: 1px solid; border-color: color-mix(in oklab, var(--color-surface-500) 20%, transparent); border-radius: 0.375rem; position: sticky; top: 2rem; } }
+    .summary-title { font-size: var(--text-sm); text-transform: lowercase; }
+    .summary-details > :not(:last-child) { margin-block-start: 0; margin-block-end: 0.5rem; }
+    .summary-details { font-size: var(--text-sm); line-height: var(--text-sm--line-height); }
+    .detail-row { display: flex; justify-content: space-between; color: var(--color-surface-600); }
+    :global(.dark) .detail-row { color: var(--color-surface-300); }
+    .detail-label { text-transform: lowercase; }
+    .detail-value { font-variant-numeric: tabular-nums; }
+    .subtotal-row { display: flex; align-items: baseline; justify-content: space-between; padding-top: 0.75rem; border-top: 1px solid; border-color: color-mix(in oklab, var(--color-surface-500) 15%, transparent); }
+    .subtotal-label { font-size: var(--text-xs); line-height: var(--text-xs--line-height); letter-spacing: 0.05em; text-transform: lowercase; color: var(--color-surface-600); }
+    :global(.dark) .subtotal-label { color: var(--color-surface-300); }
+    .subtotal-value { font-size: var(--text-2xl); line-height: var(--text-2xl--line-height); font-weight: 600; font-variant-numeric: tabular-nums; }
+    .checkout-error { font-size: var(--text-xs); line-height: var(--text-xs--line-height); color: var(--color-error-500); text-transform: lowercase; }
+    .checkout-button { display: inline-flex; align-items: center; justify-content: center; gap: 0.5rem; border-radius: 0.375rem; white-space: nowrap; font-size: var(--text-base); line-height: var(--text-base--line-height); padding-inline: 1rem; padding-block: 0.25rem; transition-property: color, background-color, border-color, outline-color, text-decoration-color, fill, stroke; transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1); transition-duration: 150ms; background-color: var(--color-primary-500); color: oklch(12.9% 0.042 264.695); width: 100%; }
+    .checkout-button:focus-visible { outline-style: solid; outline-width: 2px; outline-offset: 2px; outline-color: var(--color-surface-900); }
+    :global(.dark) .checkout-button:focus-visible { outline-color: var(--color-surface-50); }
+    .checkout-button:disabled { opacity: 0.5; cursor: not-allowed; }
+    @media (hover: hover) { .checkout-button:hover:not(:disabled) { background-color: color-mix(in oklab, var(--color-primary-500) 80%, transparent); } }
+    .payment-note { font-size: 10px; color: var(--color-surface-500); text-align: center; }
+  }
+</style>

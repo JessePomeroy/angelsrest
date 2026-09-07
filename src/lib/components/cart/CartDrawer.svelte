@@ -6,14 +6,9 @@
   app without prop drilling.
 
   Layout:
-  - Desktop: slides in from the right edge, max-width 420px, full height.
+  - Desktop: slides in from the right edge, width 400px, full height.
   - Mobile: slides up from the bottom edge as a sheet, max-height 85vh.
   - Backdrop covers the rest of the screen, click closes.
-
-  This is hand-rolled rather than using Skeleton's Drawer primitive — keeps
-  the visual language aligned with the rest of the site (lowercase, light
-  fonts, soft surface tokens, no card-heavy boxing) and avoids the slightly
-  generic feel of Skeleton's defaults.
 
   The expired-cart toast is rendered inline at the top of the body (not as a
   separate floating notification) so the user sees it in the same eyeline as
@@ -88,7 +83,7 @@ function openModal(node: HTMLDialogElement) {
   <dialog
     use:openModal
     aria-label="Shopping cart"
-    class="fixed inset-0 m-0 h-full w-full max-h-none max-w-none border-0 bg-transparent p-0 text-inherit backdrop:bg-gray-900/50 backdrop:backdrop-blur-sm"
+    class="cart-dialog"
     oncancel={(event) => {
       event.preventDefault();
       close();
@@ -105,62 +100,59 @@ function openModal(node: HTMLDialogElement) {
       duration: 240,
       easing: cubicOut,
     }}
-    class="fixed z-[61] flex flex-col bg-surface-50 dark:bg-surface-900 shadow-2xl
-           bottom-0 left-0 right-0 max-h-[85vh] rounded-t-2xl
-           md:top-0 md:right-0 md:bottom-0 md:left-auto md:w-[400px] md:max-w-[90vw]
-           md:max-h-none md:h-screen md:rounded-t-none"
+    class="cart-sheet"
   >
     <!-- Header -->
     <header
-      class="flex items-center justify-between px-6 py-5 border-b border-surface-500/15"
+      class="drawer-header"
     >
-      <h2 class="text-sm tracking-widest lowercase font-light">your cart</h2>
+      <h2 class="drawer-title">your cart</h2>
       <button
         type="button"
         onclick={close}
         aria-label="Close cart"
-        class="p-1 -mr-1 text-surface-600 dark:text-surface-300 hover:text-surface-900 dark:hover:text-surface-50 transition-colors"
+        class="close-button"
       >
-        <XIcon class="size-5" />
+        <XIcon size="1.25rem" />
       </button>
     </header>
 
     <!-- Body -->
-    <div class="flex-1 overflow-y-auto px-6">
+    <div class="drawer-body">
       {#if wasExpired}
         <div
-          class="mt-4 mb-2 px-3 py-2 text-xs bg-surface-500/10 border border-surface-500/20 rounded-md flex items-start justify-between gap-2"
+          class="expiry-notice"
         >
-          <span class="text-surface-700 dark:text-surface-200 leading-relaxed">
+          <span class="notice-copy">
             we cleared your cart from a previous visit (older than 30 days).
           </span>
           <button
             type="button"
             onclick={dismissExpired}
             aria-label="Dismiss notice"
-            class="flex-shrink-0 text-surface-500 hover:text-surface-900 dark:hover:text-surface-50"
+            class="dismiss-button"
           >
-            <XIcon class="size-3" />
+            <XIcon size="0.75rem" />
           </button>
         </div>
       {/if}
 
       {#if isEmpty}
-        <div class="flex flex-col items-center justify-center text-center py-16">
-          <div class="text-sm tracking-wider lowercase text-surface-600 dark:text-surface-300 mb-2">
+        <div class="empty-state">
+          <div class="empty-message">
             your cart is empty
           </div>
           <a
             href="/shop"
             onclick={close}
-            class="text-xs tracking-wider lowercase text-surface-500 hover:text-surface-900 dark:hover:text-surface-50 underline underline-offset-4 inline-flex items-center gap-1"
+            class="shop-link"
           >
             browse the shop
-            <ArrowRightIcon class="size-3" />
+            <ArrowRightIcon size="0.75rem" />
           </a>
         </div>
       {:else}
-        <ul class="list-none p-0 m-0">
+        <ul class="cart-items">
           {#each items as item (item.id)}
             <li>
               <CartLineItem {item} variant="drawer" />
@@ -173,26 +165,26 @@ function openModal(node: HTMLDialogElement) {
     <!-- Footer -->
     {#if !isEmpty}
       <footer
-        class="px-6 py-5 border-t border-surface-500/15 bg-surface-50 dark:bg-surface-900"
+        class="drawer-footer"
       >
-        <div class="flex items-baseline justify-between mb-4">
-          <span class="text-xs tracking-wider lowercase text-surface-600 dark:text-surface-300">
+        <div class="subtotal-row">
+          <span class="subtotal-label">
             subtotal
           </span>
-          <span class="text-xl font-semibold tabular-nums">
+          <span class="subtotal-value">
             {formatCents(totalCents)}
           </span>
         </div>
 
         {#if checkoutError}
-          <p class="text-xs text-error-500 mb-3 lowercase">{checkoutError}</p>
+          <p class="checkout-error">{checkoutError}</p>
         {/if}
 
         <button
           type="button"
           onclick={checkout}
           disabled={isCheckingOut}
-          class="inline-flex items-center justify-center gap-2 rounded-md whitespace-nowrap text-base px-4 py-1 transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-surface-900 dark:focus-visible:outline-surface-50 disabled:opacity-50 disabled:cursor-not-allowed bg-primary-500 text-slate-950 not-disabled:hover:bg-primary-500/80 w-full mb-2"
+          class="checkout-button"
         >
           <span>
             {isCheckingOut ? "processing..." : "checkout"}
@@ -202,12 +194,12 @@ function openModal(node: HTMLDialogElement) {
         <button
           type="button"
           onclick={viewFullCart}
-          class="block w-full text-center text-xs tracking-wider lowercase text-surface-500 hover:text-surface-900 dark:hover:text-surface-50 underline underline-offset-4"
+          class="full-cart-button"
         >
           view full cart
         </button>
 
-        <p class="text-[10px] text-surface-500 text-center mt-3">
+        <p class="payment-note">
           free shipping · secure payment by stripe
         </p>
       </footer>
@@ -215,3 +207,49 @@ function openModal(node: HTMLDialogElement) {
   </div>
   </dialog>
 {/if}
+
+<style>
+  @layer components {
+    .cart-dialog { position: fixed; inset: 0; margin: 0; height: 100%; width: 100%; max-height: none; max-width: none; border-width: 0; background-color: transparent; padding: 0; color: inherit; }
+    .cart-dialog::backdrop { background-color: color-mix(in oklab, oklch(21% 0.034 264.665) 50%, transparent); -webkit-backdrop-filter: blur(8px); backdrop-filter: blur(8px); }
+    .cart-sheet { position: fixed; z-index: 61; display: flex; flex-direction: column; background-color: var(--color-surface-50); box-shadow: 0 25px 50px -12px rgb(0 0 0 / 25%); bottom: 0; left: 0; right: 0; max-height: 85vh; border-top-left-radius: 1rem; border-top-right-radius: 1rem; }
+    :global(.dark) .cart-sheet { background-color: var(--color-surface-900); }
+    @media (min-width: 48rem) { .cart-sheet { top: 0; right: 0; bottom: 0; left: auto; width: 400px; max-width: 90vw; max-height: none; height: 100vh; border-top-left-radius: 0; border-top-right-radius: 0; } }
+    .drawer-header { display: flex; align-items: center; justify-content: space-between; padding-inline: 1.5rem; padding-block: 1.25rem; border-bottom: 1px solid; border-color: color-mix(in oklab, var(--color-surface-500) 15%, transparent); }
+    .drawer-title { font-size: var(--text-sm); text-transform: lowercase; }
+    .close-button { padding: 0.25rem; margin-right: -0.25rem; color: var(--color-surface-600); transition-property: color, background-color, border-color, outline-color, text-decoration-color, fill, stroke; transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1); transition-duration: 150ms; }
+    :global(.dark) .close-button { color: var(--color-surface-300); }
+    @media (hover: hover) { .close-button:hover { color: var(--color-surface-900); } }
+    @media (hover: hover) { :global(.dark) .close-button:hover { color: var(--color-surface-50); } }
+    .drawer-body { flex: 1; overflow-y: auto; padding-inline: 1.5rem; }
+    .expiry-notice { margin-top: 1rem; margin-bottom: 0.5rem; padding-inline: 0.75rem; padding-block: 0.5rem; font-size: var(--text-xs); line-height: var(--text-xs--line-height); background-color: color-mix(in oklab, var(--color-surface-500) 10%, transparent); border: 1px solid; border-color: color-mix(in oklab, var(--color-surface-500) 20%, transparent); border-radius: 0.375rem; display: flex; align-items: flex-start; justify-content: space-between; gap: 0.5rem; }
+    .notice-copy { color: var(--color-surface-700); line-height: 1.625; }
+    :global(.dark) .notice-copy { color: var(--color-surface-200); }
+    .dismiss-button { flex-shrink: 0; color: var(--color-surface-500); }
+    @media (hover: hover) { .dismiss-button:hover { color: var(--color-surface-900); } }
+    @media (hover: hover) { :global(.dark) .dismiss-button:hover { color: var(--color-surface-50); } }
+    .empty-state { display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; padding-block: 4rem; }
+    .empty-message { font-size: var(--text-sm); line-height: var(--text-sm--line-height); letter-spacing: 0.05em; text-transform: lowercase; color: var(--color-surface-600); margin-bottom: 0.5rem; }
+    :global(.dark) .empty-message { color: var(--color-surface-300); }
+    .shop-link { font-size: var(--text-xs); line-height: var(--text-xs--line-height); letter-spacing: 0.05em; text-transform: lowercase; color: var(--color-surface-500); text-decoration-line: underline; text-underline-offset: 4px; display: inline-flex; align-items: center; gap: 0.25rem; }
+    @media (hover: hover) { .shop-link:hover { color: var(--color-surface-900); } }
+    @media (hover: hover) { :global(.dark) .shop-link:hover { color: var(--color-surface-50); } }
+    .cart-items { list-style-type: none; padding: 0; margin: 0; }
+    .drawer-footer { padding-inline: 1.5rem; padding-block: 1.25rem; border-top: 1px solid; border-color: color-mix(in oklab, var(--color-surface-500) 15%, transparent); background-color: var(--color-surface-50); }
+    :global(.dark) .drawer-footer { background-color: var(--color-surface-900); }
+    .subtotal-row { display: flex; align-items: baseline; justify-content: space-between; margin-bottom: 1rem; }
+    .subtotal-label { font-size: var(--text-xs); line-height: var(--text-xs--line-height); letter-spacing: 0.05em; text-transform: lowercase; color: var(--color-surface-600); }
+    :global(.dark) .subtotal-label { color: var(--color-surface-300); }
+    .subtotal-value { font-size: var(--text-xl); line-height: var(--text-xl--line-height); font-weight: 600; font-variant-numeric: tabular-nums; }
+    .checkout-error { font-size: var(--text-xs); line-height: var(--text-xs--line-height); color: var(--color-error-500); text-transform: lowercase; }
+    .checkout-button { display: inline-flex; align-items: center; justify-content: center; gap: 0.5rem; border-radius: 0.375rem; white-space: nowrap; font-size: var(--text-base); line-height: var(--text-base--line-height); padding-inline: 1rem; padding-block: 0.25rem; transition-property: color, background-color, border-color, outline-color, text-decoration-color, fill, stroke; transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1); transition-duration: 150ms; background-color: var(--color-primary-500); color: oklch(12.9% 0.042 264.695); width: 100%; margin-bottom: 0.5rem; }
+    .checkout-button:focus-visible { outline-style: solid; outline-width: 2px; outline-offset: 2px; outline-color: var(--color-surface-900); }
+    :global(.dark) .checkout-button:focus-visible { outline-color: var(--color-surface-50); }
+    .checkout-button:disabled { opacity: 0.5; cursor: not-allowed; }
+    @media (hover: hover) { .checkout-button:hover:not(:disabled) { background-color: color-mix(in oklab, var(--color-primary-500) 80%, transparent); } }
+    .full-cart-button { display: block; width: 100%; text-align: center; font-size: var(--text-xs); line-height: var(--text-xs--line-height); letter-spacing: 0.05em; text-transform: lowercase; color: var(--color-surface-500); text-decoration-line: underline; text-underline-offset: 4px; }
+    @media (hover: hover) { .full-cart-button:hover { color: var(--color-surface-900); } }
+    @media (hover: hover) { :global(.dark) .full-cart-button:hover { color: var(--color-surface-50); } }
+    .payment-note { font-size: 10px; color: var(--color-surface-500); text-align: center; }
+  }
+</style>

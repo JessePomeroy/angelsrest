@@ -42,3 +42,9 @@ The content fixture uses typed public route data and writable provider stubs. It
 All five blog templates, rich-text image presentation and the listing empty state now use native CSS. `article.css` owns shared typography for the elements supported by `BlogRichText`: paragraphs, headings, nested lists, quotes, marked spans, links and images/captions. It preserves the prior light/dark article palette and narrative sizing, with MIT attribution for the adapted typography rules. Templates own their layout and technical/narrative font choices. The typography build plugin is no longer invoked; its package will be removed with the remaining Tailwind build dependencies.
 
 Global text/list/link resets exclude `.article-body` descendants so article spacing remains intact. Figure spacing stays font-relative: the previous `my-8` utility was ineffective in technical articles. Browser fixtures cover all five templates and populated/empty listings, including technical equipment breakpoints, nested lists, links, images and light/dark styles.
+
+## Cart presentation
+
+The cart drawer, full cart page and shared line item use scoped CSS, including their responsive layouts, dark/hover/focus/disabled states and native dialog backdrop. Icons use explicit rem-based sizes. The drawer uses a single native shadow instead of Tailwind shadow-composition placeholders. Long titles keep block layout and ellipsis clipping so controls remain visible. Store transitions, checkout transport, dialog modality and focus restoration retain their existing owners.
+
+Cart fixtures cover empty, populated, expired and checkout-error states in both layouts. Browser checks exercise quantities, removals, pending/error recovery and the 767/768px boundary; existing keyboard tests continue to cover focus trapping and restoration.
