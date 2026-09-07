@@ -1,14 +1,17 @@
-/* Global Tailwind and site theme layers. */
+/* Site foundation with temporary utility layers during the CSS migration. */
 
-@import "tailwindcss";
+@layer theme, base, components, utilities;
+@import "tailwindcss/theme.css" layer(theme);
+@import "./theme.css" layer(theme);
+@import "./reset.css" layer(base);
+@import "tailwindcss/utilities.css" layer(utilities);
+@import "./tailwind-bridge.css" reference;
 @plugin "@tailwindcss/typography";
 @import "./time-theme.css";
 @import "./grain.css";
 
 /* Tailwind v4: Enable class-based dark mode */
 @custom-variant dark (&:where(.dark, .dark *));
-
-@import "./theme.css";
 
 /* ---- Base Resets ---- */
 
