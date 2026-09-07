@@ -128,6 +128,24 @@ only for the same marker-backed quote acceptance/decline or contract signature;
 used invoice, legacy, rotated, and revoked links fail closed. Delivery-gallery
 query shape remains separate.
 
+Invoice unit prices are nonnegative safe integer cents; quantities may be any
+finite positive fraction. Round each line (`Math.round(quantity * unitPrice)`)
+before summing, then round percentage tax once on the subtotal. Tax is finite
+and between 0 and 100; line, subtotal, tax and total cents must remain safe
+integers. `packages/crm-api/src/invoiceAmounts.ts` owns this calculation for
+Convex numeric writes, the portal and invoice Checkout. The independently
+released Admin package applies the same policy to dollar-entry forms (convert
+unit prices to cents first), previews and both email renderers. Release/adoption
+must be checked separately; this source change does not migrate stored invoices
+or rewrite already-sent email. Numeric edits validate the combined updated
+document; metadata-only edits remain available for existing records.
+
+Invoice Checkout preserves integer line quantities and their retry fingerprints.
+A fractional line is sent to Stripe as quantity one at its rounded line amount,
+with the original quantity in its label and fingerprint. The online payment
+minimum still applies; a valid draft can have a zero total without being payable
+online. Portal capability authorization and tenant resolution remain unchanged.
+
 ## Commerce and fulfillment
 
 `current/convexShop.server.ts` owns bounded published-product reads and

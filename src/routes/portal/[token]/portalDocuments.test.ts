@@ -80,4 +80,57 @@ describe("portal document presentation", () => {
 		expect(body).toContain("This contract was signed");
 		expect(body).not.toContain("Sign Contract");
 	});
+
+	it("renders fractional quantities with rounded lines, subtotal and tax", () => {
+		const { body } = render(InvoiceDocument, {
+			props: {
+				document: {
+					_creationTime: 1_700_000_000_000,
+					invoiceNumber: "I-FRACTION",
+					status: "sent",
+					items: [
+						{ description: "Half hour A", quantity: 0.5, unitPrice: 1999 },
+						{ description: "Half hour B", quantity: 0.5, unitPrice: 1999 },
+					],
+					taxPercent: 6.25,
+				},
+				client: null,
+				used: false,
+				status: "sent",
+				loading: false,
+				onPay: vi.fn(),
+			},
+		});
+		expect(body.match(/\$10\.00/g)).toHaveLength(2);
+		expect(body).toContain("$20.00");
+		expect(body).toContain("$1.25");
+		expect(body).toContain("$21.25");
+		expect(body).toContain("Pay Now");
+	});
+
+	it.each([
+		"sent",
+		"paid",
+	] as const)("keeps a historical invalid %s invoice readable without offering payment", (status) => {
+		const { body } = render(InvoiceDocument, {
+			props: {
+				document: {
+					_creationTime: 1_700_000_000_000,
+					invoiceNumber: "I-LEGACY",
+					status,
+					items: [{ description: "Invalid legacy line", quantity: 0, unitPrice: 100 }],
+				},
+				client: { name: "Taylor" },
+				used: false,
+				status,
+				loading: false,
+				onPay: vi.fn(),
+			},
+		});
+		expect(body).toContain("I-LEGACY");
+		expect(body).toContain("Taylor");
+		expect(body).toContain("corrected invoice");
+		expect(body).not.toContain("Pay Now");
+		if (status === "paid") expect(body).toContain("has been paid");
+	});
 });

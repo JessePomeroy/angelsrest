@@ -147,6 +147,72 @@ describe("authoritative invoice numbering", () => {
 	});
 });
 
+describe("invoice numeric writes", () => {
+	test("preserves fractional quantities on create and partial numeric updates", async () => {
+		const { t, admin, clientId } = await setupTenant();
+		const items = [{ description: "Half hour", quantity: 0.5, unitPrice: 1999 }];
+		const invoiceId = await admin.mutation(api.invoices.create, {
+			siteUrl: SITE_URL, clientId, invoiceType: "one-time", items, taxPercent: 6.25,
+		});
+		expect(await t.run((ctx) => ctx.db.get(invoiceId))).toMatchObject({ items, taxPercent: 6.25 });
+		await admin.mutation(api.invoices.update, { siteUrl: SITE_URL, invoiceId, taxPercent: 0 });
+		expect(await t.run((ctx) => ctx.db.get(invoiceId))).toMatchObject({ items, taxPercent: 0 });
+	});
+
+	test.each([
+		{ quantity: 0, unitPrice: 100 },
+		{ quantity: -0.5, unitPrice: 100 },
+		{ quantity: Number.NaN, unitPrice: 100 },
+		{ quantity: Number.POSITIVE_INFINITY, unitPrice: 100 },
+		{ quantity: 0.5, unitPrice: -100 },
+		{ quantity: 0.5, unitPrice: 100.5 },
+		{ quantity: 2, unitPrice: Number.MAX_SAFE_INTEGER },
+	])("rejects invalid create and atomically rolls back invalid update: %j", async (item) => {
+		const { t, admin, clientId } = await setupTenant();
+		await expect(admin.mutation(api.invoices.create, {
+			siteUrl: SITE_URL, clientId, invoiceType: "one-time",
+			items: [{ description: "Invalid", ...item }],
+		})).rejects.toThrow();
+		const invoiceId = await admin.mutation(api.invoices.create, {
+			siteUrl: SITE_URL, clientId, invoiceType: "one-time",
+			items: [{ description: "Valid", quantity: 1, unitPrice: 100 }],
+		});
+		const before = await t.run((ctx) => ctx.db.get(invoiceId));
+		await expect(admin.mutation(api.invoices.update, {
+			siteUrl: SITE_URL, invoiceId, items: [{ description: "Invalid", ...item }], status: "paid",
+		})).rejects.toThrow();
+		expect(await t.run((ctx) => ctx.db.get(invoiceId))).toEqual(before);
+	});
+
+	test("validates combined stored items and updated tax without blocking metadata-only repairs", async () => {
+		const { t, admin, invoiceId } = await seedInvoice();
+		await t.run((ctx) => ctx.db.patch(invoiceId, {
+			items: [{ description: "Large", quantity: 1, unitPrice: Number.MAX_SAFE_INTEGER }],
+		}));
+		await expect(admin.mutation(api.invoices.update, {
+			siteUrl: SITE_URL, invoiceId, taxPercent: 100,
+		})).rejects.toThrow("precision");
+		await expect(admin.mutation(api.invoices.update, {
+			siteUrl: SITE_URL, invoiceId, taxPercent: -1,
+		})).rejects.toThrow("tax");
+		await admin.mutation(api.invoices.update, { siteUrl: SITE_URL, invoiceId, notes: "Review amount" });
+		expect(await t.run((ctx) => ctx.db.get(invoiceId))).toMatchObject({ notes: "Review amount" });
+	});
+
+	test("quote conversion cannot create an invoice with invalid unit cents", async () => {
+		const { t, admin, clientId } = await setupTenant();
+		const quoteId = await admin.mutation(api.quotes.create, {
+			siteUrl: SITE_URL, quoteNumber: "Q-1", clientId,
+			packages: [{ name: "Invalid amount", price: 10.5 }],
+		});
+		await expect(admin.mutation(api.quotes.convertToInvoice, {
+			siteUrl: SITE_URL, quoteId, invoiceType: "one-time",
+		})).rejects.toThrow("price");
+		expect(await t.run((ctx) => ctx.db.query("invoices").collect())).toEqual([]);
+		expect((await t.run((ctx) => ctx.db.get(quoteId)))?.convertedToInvoice).toBeUndefined();
+	});
+});
+
 describe("invoice checkout state", () => {
 	test("recordCheckoutStarted rejects invoices that are already paid", async () => {
 		const { admin, invoiceId } = await seedInvoice();

@@ -12,6 +12,7 @@ import { getStripe } from "$lib/server/stripeClient";
 import { buildTenantCheckoutOptions } from "$lib/server/stripeConnect";
 import { resolveStripeTenantForSite } from "$lib/server/stripeTenant";
 import { getWebhookSecret } from "$lib/server/webhookSecret";
+import { calculateInvoiceAmounts } from "../../../../../packages/crm-api/src/invoiceAmounts";
 
 const convex = getConvex();
 const MIN_USD_CHARGE_CENTS = 50;
@@ -76,43 +77,21 @@ export async function POST({ request }) {
 			throw error(400, "Invoice is not payable");
 		}
 
-		// Invoice amounts are stored in cents in Convex/admin (`unitPrice: 100`
-		// means $1.00). Stripe also expects `unit_amount` in cents, so do not
-		// multiply again here.
-		const lineItemsCents = invoice.items.map(
-			(item: { description: string; quantity: number; unitPrice: number }) => {
-				if (
-					!Number.isFinite(item.quantity) ||
-					item.quantity <= 0 ||
-					!Number.isInteger(item.quantity)
-				) {
-					throw error(400, "Invalid invoice line item quantity");
-				}
-				if (
-					!Number.isFinite(item.unitPrice) ||
-					item.unitPrice < 0 ||
-					!Number.isInteger(item.unitPrice)
-				) {
-					throw error(400, "Invalid invoice line item price");
-				}
-				return {
-					description: item.description,
-					quantity: item.quantity,
-					unitPriceCents: item.unitPrice,
-				};
-			},
-		);
-		const subtotalCents = lineItemsCents.reduce(
-			(sum: number, item: { quantity: number; unitPriceCents: number }) =>
-				sum + item.quantity * item.unitPriceCents,
-			0,
-		);
-		const taxPercent = Number(invoice.taxPercent ?? 0);
-		if (!Number.isFinite(taxPercent) || taxPercent < 0 || taxPercent > 100) {
-			throw error(400, "Invalid invoice tax percentage");
+		let amounts: ReturnType<typeof calculateInvoiceAmounts>;
+		try {
+			amounts = calculateInvoiceAmounts(invoice.items, invoice.taxPercent);
+		} catch (err) {
+			throw error(400, err instanceof Error ? err.message : "Invalid invoice amounts");
 		}
-		const taxCents = taxPercent > 0 ? Math.round((subtotalCents * taxPercent) / 100) : 0;
-		const totalCents = subtotalCents + taxCents;
+		// Keep the original quantities in the fingerprint. Existing integer
+		// invoices retain their exact Stripe payload and retry identity.
+		const lineItemsCents = invoice.items.map((item) => ({
+			description: item.description,
+			quantity: item.quantity,
+			unitPriceCents: item.unitPrice,
+		}));
+		const taxPercent = invoice.taxPercent ?? 0;
+		const { taxCents, totalCents } = amounts;
 		if (totalCents < MIN_USD_CHARGE_CENTS) {
 			throw error(400, "Invoice total must be at least $0.50 to pay online.");
 		}
@@ -130,14 +109,16 @@ export async function POST({ request }) {
 			subtotalCents: totalCents,
 		});
 
-		const lineItems = lineItemsCents.map(
-			(item: { description: string; quantity: number; unitPriceCents: number }) =>
-				buildCheckoutLineItem({
-					name: item.description,
-					unitAmountCents: item.unitPriceCents,
-					quantity: item.quantity,
-				}),
-		);
+		const lineItems = lineItemsCents.map((item, index) => {
+			const fractional = !Number.isInteger(item.quantity);
+			// Stripe quantities are integers; a fractional service line becomes
+			// one billed line at its already-rounded cent amount.
+			return buildCheckoutLineItem({
+				name: fractional ? `${item.description} (${item.quantity} units)` : item.description,
+				unitAmountCents: fractional ? amounts.lineAmountsCents[index] : item.unitPriceCents,
+				quantity: fractional ? 1 : item.quantity,
+			});
+		});
 
 		// Add tax as a separate line item if applicable
 		if (taxCents > 0) {

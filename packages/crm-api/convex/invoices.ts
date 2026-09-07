@@ -1,4 +1,5 @@
 import { logActivity } from "./activityLog";
+import { calculateInvoiceAmounts } from "../src/invoiceAmounts";
 import { v } from "convex/values";
 import { mutation, query } from "./_generated/server";
 import { requireSiteAdmin, requireWebhookCallerOrAuth } from "./authHelpers";
@@ -106,6 +107,7 @@ export const create = mutation({
 		if (!client || client.siteUrl !== args.siteUrl) {
 			throw new Error("Client not found");
 		}
+		calculateInvoiceAmounts(args.items, args.taxPercent);
 		const invoiceNumber = await allocateNextInvoiceNumber(ctx, args.siteUrl);
 		const invoiceId = await ctx.db.insert("invoices", {
 			...args,
@@ -146,6 +148,13 @@ export const update = mutation({
 	},
 	handler: async (ctx, { invoiceId, siteUrl, ...updates }) => {
 		const previous = await patchDocument(ctx, invoiceId, siteUrl, updates);
+		if (updates.items !== undefined || updates.taxPercent !== undefined) {
+			// A failed validation rolls back the patch in this atomic mutation.
+			calculateInvoiceAmounts(
+				updates.items ?? previous.items,
+				updates.taxPercent ?? previous.taxPercent,
+			);
+		}
 		if (updates.status !== previous.status) {
 			if (updates.status === "paid") await ctx.db.patch(invoiceId, { paidAt: Date.now() });
 			if (updates.status === "overdue") await ctx.db.patch(invoiceId, { overdueAt: Date.now() });
