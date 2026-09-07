@@ -10,6 +10,8 @@ for (const kind of ["page", "drawer"]) {
 		await expect(rows.first().getByRole("button", { name: /^Remove/ })).toHaveText("remove");
 		await expect(page.locator(".extra-images")).toHaveText("+1");
 		const title = rows.first().getByRole("link");
+		await expect(title).toHaveAttribute("href", "/shop/long-title");
+		await expect(rows.last().getByRole("link")).toHaveAttribute("href", "/shop/sets/print-set");
 		await expect(title).toHaveCSS("text-overflow", "ellipsis");
 		await expect(title).toHaveCSS("overflow", "hidden");
 		const widths = await title.evaluate((element) => ({ scroll: element.scrollWidth, client: element.clientWidth }));

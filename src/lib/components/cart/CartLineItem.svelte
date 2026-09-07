@@ -82,7 +82,7 @@ const extraImageCount = $derived(
       so the order summary below also clips.
     -->
     <a
-      href={`/shop/${item.productSlug}`}
+      href={`/shop/${item.type === "set" ? "sets/" : ""}${item.productSlug}`}
       class="product-title"
     >
       {item.title}
