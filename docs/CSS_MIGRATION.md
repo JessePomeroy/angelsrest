@@ -56,3 +56,9 @@ Checkout success and cancellation use scoped CSS for their layouts, status panel
 ## Customer order lookup
 
 Order lookup uses scoped CSS for its form, result and status badge. The former utility-class status map is now native CSS selected by `data-status`, including the gray fallback for an unknown status. Status labels remain typed display data. Lookup POST transport, Turnstile token handling/reset and error behavior are unchanged. The form spacing selector explicitly reaches the Turnstile child root; captures cover idle/loading/error and all six supported statuses plus fallback. Browser checks exercise status transitions, child spacing and disabled-hover precedence.
+
+## Print sets and shared controls
+
+Print-set layout/purchase actions, `PrintConfigurator` and `StickyMobileBar` now use scoped CSS. Selection, cart feedback, checkout calls and the sticky observer remain unchanged. The bar retains its class/bottom-offset API and existing dynamic background/shadow styles. Parent spacing explicitly reaches shared component roots; mobile/desktop actions keep their 768px boundary.
+
+Fixtures include framed/canvas/unavailable/sold-out/missing-image sets, shared controls on the product page, and standalone inline/stuck bar states. Browser checks protect configurator spacing/focus/disabled finishes, image placeholders, responsive actions and the sticky API.
