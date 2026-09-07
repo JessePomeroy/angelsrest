@@ -62,3 +62,9 @@ Order lookup uses scoped CSS for its form, result and status badge. The former u
 Print-set layout/purchase actions, `PrintConfigurator` and `StickyMobileBar` now use scoped CSS. Selection, cart feedback, checkout calls and the sticky observer remain unchanged. The bar retains its class/bottom-offset API and existing dynamic background/shadow styles. Parent spacing explicitly reaches shared component roots; mobile/desktop actions keep their 768px boundary.
 
 Fixtures include framed/canvas/unavailable/sold-out/missing-image sets, shared controls on the product page, and standalone inline/stuck bar states. Browser checks protect configurator spacing/focus/disabled finishes, image placeholders, responsive actions and the sticky API.
+
+## Individual products
+
+Both product-page branches use scoped CSS: configurable prints and merchandise/digital products. Image-gallery layout/hover styles, stock badges, native paper selection and responsive purchase controls preserve their prior cascade. The print configurator retains its shared-root spacing; mobile selection/category colors follow the sticky state through Svelte class directives.
+
+Typed fixtures cover paper pricing, physical/digital/sold-out/unpriced/missing-image products, print finishes and lightbox selection. Browser checks protect cart/checkout fields, purchase restrictions, keyboard navigation/focus restoration and the 767/768px boundary. Product state and transport code remain unchanged.
