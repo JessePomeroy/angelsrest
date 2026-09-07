@@ -17,17 +17,17 @@ import { formatDate } from "$lib/utils/format";
 let { post }: { post: BlogPostDetail } = $props();
 </script>
 
-<article class="max-w-3xl mx-auto">
+<article class="post">
   <!-- Technical Header -->
-  <header class="mb-12">
-    <span class="text-xs tracking-widest text-surface-400 uppercase mb-4 block">
+  <header class="post-header">
+    <span class="template-label">
       Technical Write-up
     </span>
-    <h1 class="text-3xl md:text-4xl font-light tracking-wide mb-4">
+    <h1 class="post-title">
       {post.title}
     </h1>
     {#if post.author || post.publishedAt}
-      <div class="flex items-center gap-4 text-sm text-surface-400">
+      <div class="byline">
         {#if post.author}
           <span>{post.author.name}</span>
           {#if post.publishedAt}<span>•</span>{/if}
@@ -41,32 +41,32 @@ let { post }: { post: BlogPostDetail } = $props();
 
   <!-- Gear Grid -->
   {#if post.equipment.length > 0}
-    <section class="mb-12">
-      <h2 class="text-sm tracking-widest text-surface-400 uppercase mb-4">
+    <section class="equipment">
+      <h2 class="equipment-heading">
         Gear Used
       </h2>
-      <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
+      <div class="equipment-grid">
         {#each post.equipment as item, i (i)}
-          <div class="bg-surface-800/50 p-4 rounded-lg text-center">
+          <div class="equipment-item">
             {#if item.kind === 'photography'}
               {#if item.camera}
-                <p class="text-sm text-surface-300">{item.camera}</p>
+                <p class="equipment-name">{item.camera}</p>
               {/if}
               {#if item.lens}
-                <p class="text-sm text-surface-400">{item.lens}</p>
+                <p class="equipment-detail">{item.lens}</p>
               {/if}
               {#if item.filmStock}
-                <p class="font-mono text-sm text-accent-400">{item.filmStock}</p>
+                <p class="film-stock">{item.filmStock}</p>
               {/if}
               {#if item.developer}
-                <p class="text-xs text-surface-500">{item.developer}</p>
+                <p class="equipment-notes">{item.developer}</p>
               {/if}
             {:else}
               {#if item.label}
-                <p class="text-sm text-surface-300">{item.label}</p>
+                <p class="equipment-name">{item.label}</p>
               {/if}
               {#if item.details && item.details !== item.label}
-                <p class="text-xs text-surface-500">{item.details}</p>
+                <p class="equipment-notes">{item.details}</p>
               {/if}
             {/if}
           </div>
@@ -77,28 +77,52 @@ let { post }: { post: BlogPostDetail } = $props();
 
   <!-- Featured Image -->
   {#if post.mainImage}
-    <div class="mb-8 rounded-lg overflow-hidden">
+    <div class="featured-image">
       <img
         src={post.mainImage.src}
         alt={post.mainImage.alt}
-        class="w-full h-auto"
+        class="featured-photo"
       />
     </div>
   {/if}
 
   <!-- Technical content -->
-  <div class="prose dark:prose-invert max-w-none font-mono text-sm">
+  <div class="article-body article-body--technical">
     {#if post.body.length > 0}
       <BlogRichText blocks={post.body} />
     {/if}
   </div>
 
   <!-- Technical footer -->
-  <footer class="mt-12 pt-8 border-t border-surface-500/20">
-    <div class="flex items-center gap-2 text-xs text-surface-500">
+  <footer class="post-footer">
+    <div class="technical-notes">
       <span>Technical Notes</span>
       <span>•</span>
       <span>{post.equipment.length} items listed</span>
     </div>
   </footer>
 </article>
+
+<style>
+  @layer components {
+    .post { max-width: 48rem; margin-inline: auto; }
+    .post-header, .equipment { margin-bottom: 3rem; }
+    .template-label { font-size: var(--text-xs); line-height: var(--text-xs--line-height); letter-spacing: 0.1em; color: var(--color-surface-400); text-transform: uppercase; margin-bottom: 1rem; display: block; }
+    .post-title { font-size: var(--text-3xl); }
+    @media (min-width: 48rem) { .post-title { font-size: var(--text-4xl); } }
+    .byline { display: flex; align-items: center; gap: 1rem; font-size: var(--text-sm); line-height: var(--text-sm--line-height); color: var(--color-surface-400); }
+    .equipment-heading { font-size: var(--text-sm); color: var(--color-surface-400); text-transform: uppercase; }
+    .equipment-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1rem; }
+    @media (min-width: 48rem) { .equipment-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
+    .equipment-item { background-color: color-mix(in oklab, var(--color-surface-800) 50%, transparent); padding: 1rem; border-radius: 0.5rem; text-align: center; }
+    .equipment-name { font-size: var(--text-sm); line-height: var(--text-sm--line-height); color: var(--color-surface-300); }
+    .equipment-detail { font-size: var(--text-sm); line-height: var(--text-sm--line-height); color: var(--color-surface-400); }
+    .film-stock { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace; font-size: var(--text-sm); line-height: var(--text-sm--line-height); }
+    .equipment-notes { font-size: var(--text-xs); line-height: var(--text-xs--line-height); color: var(--color-surface-500); }
+    .featured-image { margin-bottom: 2rem; border-radius: 0.5rem; overflow: hidden; }
+    .featured-photo { width: 100%; height: auto; }
+    .article-body--technical { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace; font-size: var(--text-sm); line-height: var(--text-sm--line-height); }
+    .post-footer { margin-top: 3rem; padding-top: 2rem; border-top-width: 1px; border-top-style: solid; border-color: color-mix(in oklab, var(--color-surface-500) 20%, transparent); }
+    .technical-notes { display: flex; align-items: center; gap: 0.5rem; font-size: var(--text-xs); line-height: var(--text-xs--line-height); color: var(--color-surface-500); }
+  }
+</style>

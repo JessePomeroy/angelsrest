@@ -20,17 +20,17 @@ import { formatDate } from "$lib/utils/format";
 let { post }: { post: BlogPostDetail } = $props();
 </script>
 
-<article class="max-w-3xl mx-auto">
+<article class="post">
   <!-- Header with narrative feel -->
-  <header class="mb-12">
-    <span class="text-xs tracking-widest text-surface-400 uppercase mb-4 block">
+  <header class="post-header">
+    <span class="template-label">
       Behind the Scenes
     </span>
-    <h1 class="text-4xl md:text-5xl font-light tracking-wide mb-6">
+    <h1 class="post-title">
       {post.title}
     </h1>
     {#if post.author || post.publishedAt}
-      <div class="flex items-center gap-4 text-sm text-surface-400">
+      <div class="byline">
         {#if post.author}
           <span>{post.author.name}</span>
           {#if post.publishedAt}<span>•</span>{/if}
@@ -44,28 +44,45 @@ let { post }: { post: BlogPostDetail } = $props();
 
   <!-- Full-width featured image -->
   {#if post.mainImage}
-    <div class="mb-12 -mx-4 md:-mx-12">
+    <div class="featured-image">
       <img
         src={post.mainImage.src}
         alt={post.mainImage.alt}
-        class="w-full h-auto"
+        class="featured-photo"
       />
     </div>
   {/if}
 
   <!-- Body with narrative styling -->
-  <div class="prose prose-lg dark:prose-invert max-w-none font-serif">
+  <div class="article-body article-body--narrative">
     {#if post.body.length > 0}
       <BlogRichText blocks={post.body} />
     {/if}
   </div>
 
   <!-- Signature footer -->
-  <footer class="mt-12 pt-8 border-t border-surface-500/20 text-center">
+  <footer class="post-footer">
     {#if post.author}
-      <p class="text-surface-400 italic">
+      <p class="signature">
         — {post.author.name}
       </p>
     {/if}
   </footer>
 </article>
+
+<style>
+  @layer components {
+    .post { max-width: 48rem; margin-inline: auto; }
+    .post-header { margin-bottom: 3rem; }
+    .template-label { font-size: var(--text-xs); line-height: var(--text-xs--line-height); letter-spacing: 0.1em; color: var(--color-surface-400); text-transform: uppercase; margin-bottom: 1rem; display: block; }
+    .post-title { font-size: var(--text-4xl); }
+    @media (min-width: 48rem) { .post-title { font-size: var(--text-5xl); } }
+    .byline { display: flex; align-items: center; gap: 1rem; font-size: var(--text-sm); line-height: var(--text-sm--line-height); color: var(--color-surface-400); }
+    .featured-image { margin-bottom: 3rem; margin-inline: -1rem; }
+    @media (min-width: 48rem) { .featured-image { margin-inline: -3rem; } }
+    .featured-photo { width: 100%; height: auto; }
+    .article-body--narrative { font-family: ui-serif, Georgia, Cambria, "Times New Roman", Times, serif; }
+    .post-footer { margin-top: 3rem; padding-top: 2rem; border-top-width: 1px; border-top-style: solid; border-color: color-mix(in oklab, var(--color-surface-500) 20%, transparent); text-align: center; }
+    .signature { color: var(--color-surface-400); font-style: italic; }
+  }
+</style>

@@ -1,4 +1,5 @@
 <script lang="ts">
+import BlogHarness from "./BlogHarness.svelte";
 import ContentHarness from "./ContentHarness.svelte";
 import SiteChrome from "./SiteChrome.svelte";
 import LiquidDetailsHarness from "./LiquidDetailsHarness.svelte";
@@ -39,7 +40,9 @@ if (params.get("populated") === "true") {
 }
 </script>
 
-{#if fixture === "content"}
+{#if fixture === "blog"}
+  <BlogHarness />
+{:else if fixture === "content"}
 	<ContentHarness />
 {:else if fixture === "chrome"}
 	<SiteChrome />

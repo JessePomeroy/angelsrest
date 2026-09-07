@@ -57,18 +57,25 @@ let { blocks }: { blocks: BlogTextBlock[] } = $props();
   {:else if block.type === 'list'}
     {@render list(block)}
   {:else if block.type === 'image'}
-    <figure class="my-8">
+    <figure>
       <img
         src={block.image.src}
         alt={block.image.alt}
-        class="w-full h-auto rounded-lg"
+        class="article-image"
         loading="lazy"
       />
       {#if block.image.caption}
-        <figcaption class="text-center text-sm text-surface-400 mt-2">
+        <figcaption class="article-caption">
           {block.image.caption}
         </figcaption>
       {/if}
     </figure>
   {/if}
 {/each}
+
+<style>
+  @layer components {
+    .article-image { width: 100%; height: auto; border-radius: 0.5rem; }
+    .article-caption { text-align: center; font-size: var(--text-sm); line-height: var(--text-sm--line-height); color: var(--color-surface-400); margin-top: 0.5rem; }
+  }
+</style>

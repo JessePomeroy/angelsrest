@@ -20,17 +20,17 @@ import { formatDate } from "$lib/utils/format";
 let { post }: { post: BlogPostDetail } = $props();
 </script>
 
-<article class="max-w-3xl mx-auto">
+<article class="post">
   <!-- Header -->
-  <header class="mb-12 text-center">
-    <span class="text-xs tracking-widest text-surface-400 uppercase mb-4 block">
+  <header class="post-header">
+    <span class="template-label">
       Case Study
     </span>
-    <h1 class="text-4xl md:text-5xl font-light tracking-wide mb-6">
+    <h1 class="post-title">
       {post.title}
     </h1>
     {#if post.author || post.publishedAt}
-      <div class="flex items-center justify-center gap-4 text-sm text-surface-400">
+      <div class="byline">
         {#if post.author}
           <span>{post.author.name}</span>
           {#if post.publishedAt}<span>•</span>{/if}
@@ -44,49 +44,66 @@ let { post }: { post: BlogPostDetail } = $props();
 
   <!-- Featured Image -->
   {#if post.mainImage}
-    <div class="mb-12 rounded-lg overflow-hidden">
+    <div class="featured-image">
       <img
         src={post.mainImage.src}
         alt={post.mainImage.alt}
-        class="w-full h-auto"
+        class="featured-photo"
       />
     </div>
   {/if}
 
   <!-- Brief / Approach / Result Grid -->
-  <div class="grid gap-8 mb-12">
+  <div class="project-summary">
     {#if post.brief}
-      <section class="bg-surface-800/50 p-6 rounded-lg">
-        <h2 class="text-sm tracking-widest text-surface-400 uppercase mb-2">
+      <section class="summary-section">
+        <h2 class="summary-heading">
           The Brief
         </h2>
-        <p class="text-lg">{post.brief}</p>
+        <p class="summary-copy">{post.brief}</p>
       </section>
     {/if}
 
     {#if post.approach}
-      <section class="bg-surface-800/50 p-6 rounded-lg">
-        <h2 class="text-sm tracking-widest text-surface-400 uppercase mb-2">
+      <section class="summary-section">
+        <h2 class="summary-heading">
           The Approach
         </h2>
-        <p class="text-lg">{post.approach}</p>
+        <p class="summary-copy">{post.approach}</p>
       </section>
     {/if}
 
     {#if post.outcome}
-      <section class="bg-surface-800/50 p-6 rounded-lg">
-        <h2 class="text-sm tracking-widest text-surface-400 uppercase mb-2">
+      <section class="summary-section">
+        <h2 class="summary-heading">
           The Result
         </h2>
-        <p class="text-lg">{post.outcome}</p>
+        <p class="summary-copy">{post.outcome}</p>
       </section>
     {/if}
   </div>
 
   <!-- Body Content -->
   {#if post.body.length > 0}
-    <div class="prose dark:prose-invert max-w-none">
+    <div class="article-body">
       <BlogRichText blocks={post.body} />
     </div>
   {/if}
 </article>
+
+<style>
+  @layer components {
+    .post { max-width: 48rem; margin-inline: auto; }
+    .post-header { margin-bottom: 3rem; text-align: center; }
+    .template-label { font-size: var(--text-xs); line-height: var(--text-xs--line-height); letter-spacing: 0.1em; color: var(--color-surface-400); text-transform: uppercase; margin-bottom: 1rem; display: block; }
+    .post-title { font-size: var(--text-4xl); }
+    @media (min-width: 48rem) { .post-title { font-size: var(--text-5xl); } }
+    .byline { display: flex; align-items: center; justify-content: center; gap: 1rem; font-size: var(--text-sm); line-height: var(--text-sm--line-height); color: var(--color-surface-400); }
+    .featured-image { margin-bottom: 3rem; border-radius: 0.5rem; overflow: hidden; }
+    .featured-photo { width: 100%; height: auto; }
+    .project-summary { display: grid; gap: 2rem; margin-bottom: 3rem; }
+    .summary-section { background-color: color-mix(in oklab, var(--color-surface-800) 50%, transparent); padding: 1.5rem; border-radius: 0.5rem; }
+    .summary-heading { font-size: var(--text-sm); color: var(--color-surface-400); text-transform: uppercase; }
+    .summary-copy { font-size: var(--text-lg); line-height: var(--text-lg--line-height); }
+  }
+</style>
