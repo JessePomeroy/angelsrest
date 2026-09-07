@@ -68,3 +68,9 @@ Fixtures include framed/canvas/unavailable/sold-out/missing-image sets, shared c
 Both product-page branches use scoped CSS: configurable prints and merchandise/digital products. Image-gallery layout/hover styles, stock badges, native paper selection and responsive purchase controls preserve their prior cascade. The print configurator retains its shared-root spacing; mobile selection/category colors follow the sticky state through Svelte class directives.
 
 Typed fixtures cover paper pricing, physical/digital/sold-out/unpriced/missing-image products, print finishes and lightbox selection. Browser checks protect cart/checkout fields, purchase restrictions, keyboard navigation/focus restoration and the 767/768px boundary. Product state and transport code remain unchanged.
+
+## Remaining catalog presentation
+
+The retained print-collection template and shop empty state use scoped CSS. Collection padding keeps its 767/768/1024px transitions without the former important utilities; native component rules produce the same result. The time-aware card hover rule moved from the global `.group` selector into the collection component, retaining unlayered precedence and all six light/dark time accents. Existing collection route availability and category filtering are unchanged.
+
+Fixtures cover populated/empty collection and shop views, breadcrumb/card destinations, columns, category filtering and hover scale. Comparison captures cover all three padding widths plus mobile and all six hover periods.

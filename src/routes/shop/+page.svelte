@@ -209,13 +209,16 @@ const categories = [
     {/if}
 
     {#if filteredProducts.length === 0 && filteredCollections.length === 0 && filteredPrintSets.length === 0}
-        <div class="text-center text-surface-500 mt-12">
+        <div class="empty-state">
             <p>No products found in this category.</p>
         </div>
     {/if}
 </section>
 
 <style>
+  @layer components {
+    .empty-state { text-align: center; color: var(--color-surface-500); margin-top: 3rem; }
+  }
     .shop-index { width: 100%; }
     .shop-heading { display: grid; grid-template-columns: 1fr auto; min-height: 56px; margin-bottom: 0; align-items: start; border-bottom: 1px solid color-mix(in srgb, currentColor 15%, transparent); }
     .shop-heading h1 { font-size: 1.35rem; font-weight: 500; }

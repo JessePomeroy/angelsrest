@@ -168,12 +168,6 @@ body:not(.admin-route):not(.portal-route):not(:has([data-admin]))::after {
 	border-color: var(--time-border);
 }
 
-/* Card borders get a subtle time tint on hover */
-[data-time-period] .group:hover > div {
-	border-color: var(--time-accent);
-	opacity: 0.85;
-}
-
 /* Footer border picks up time color */
 [data-time-period] footer {
 	border-color: var(--time-border);
