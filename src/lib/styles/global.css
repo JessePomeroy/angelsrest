@@ -1,17 +1,11 @@
-/* Site foundation with temporary utility layers during the CSS migration. */
+/* Site-owned CSS foundation. Components provide scoped presentation styles. */
 
-@layer theme, base, components, utilities;
-@import "tailwindcss/theme.css" layer(theme);
+@layer theme, base, components;
 @import "./theme.css" layer(theme);
 @import "./reset.css" layer(base);
-@import "tailwindcss/utilities.css" layer(utilities);
-@import "./tailwind-bridge.css" reference;
 @import "./article.css";
 @import "./time-theme.css";
 @import "./grain.css";
-
-/* Tailwind v4: Enable class-based dark mode */
-@custom-variant dark (&:where(.dark, .dark *));
 
 /* ---- Base Resets ---- */
 
@@ -122,7 +116,7 @@ html.dark ::selection {
 }
 
 /* Native controls retain affordances without library primitives. Component
- * utilities and scoped Admin styles can override this base layer. */
+ * styles and scoped Admin styles can override this base layer. */
 @layer base {
 	button:not(:disabled),
 	[role="button"]:not(:disabled) {

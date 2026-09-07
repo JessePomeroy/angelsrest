@@ -1,6 +1,5 @@
 import { fileURLToPath } from "node:url";
 import { svelte } from "@sveltejs/vite-plugin-svelte";
-import tailwindcss from "@tailwindcss/vite";
 import { defineConfig } from "vite";
 
 const path = (relative: string) => fileURLToPath(new URL(relative, import.meta.url));
@@ -8,7 +7,7 @@ const path = (relative: string) => fileURLToPath(new URL(relative, import.meta.u
 export default defineConfig({
 	root: path("./fixtures"),
 	// Keep real component styles while avoiding dev virtual-CSS cache misses for packed packages.
-	plugins: [svelte({ configFile: false, compilerOptions: { css: "injected" } }), tailwindcss()],
+	plugins: [svelte({ configFile: false, compilerOptions: { css: "injected" } })],
 	optimizeDeps: { exclude: ["@jessepomeroy/admin", "@jessepomeroy/admin/theme"] },
 	resolve: {
 		dedupe: ["svelte"],
