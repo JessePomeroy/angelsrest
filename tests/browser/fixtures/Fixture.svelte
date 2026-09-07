@@ -1,4 +1,5 @@
 <script lang="ts">
+import CollectionHarness from "./CollectionHarness.svelte";
 import ProductHarness from "./ProductHarness.svelte";
 import StickyHarness from "./StickyHarness.svelte";
 import CheckoutHarness from "./CheckoutHarness.svelte";
@@ -44,7 +45,9 @@ if (params.get("populated") === "true") {
 }
 </script>
 
-{#if fixture === "product-css"}
+{#if fixture === "collection-css"}
+  <CollectionHarness />
+{:else if fixture === "product-css"}
   <ProductHarness />
 {:else if fixture === "sticky"}
   <StickyHarness />
