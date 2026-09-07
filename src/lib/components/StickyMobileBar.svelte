@@ -53,6 +53,12 @@ let sentinel: HTMLDivElement | undefined = $state();
 let isStuck = $state(false);
 
 $effect(() => {
+	if (!chrome) return;
+	chrome.purchaseBarDocked = barVisible && isStuck;
+	return () => { chrome.purchaseBarDocked = false; };
+});
+
+$effect(() => {
 	if (!sentinel) return;
 	const observer = new IntersectionObserver(
 		([entry]) => {

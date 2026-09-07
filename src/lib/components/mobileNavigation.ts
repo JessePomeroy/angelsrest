@@ -7,4 +7,5 @@ export const MOBILE_CHROME = Symbol("mobile-chrome");
 export interface MobileChrome {
 	bottomNavHeight: number | undefined;
 	purchaseBarHeight: number;
+	purchaseBarDocked?: boolean;
 }

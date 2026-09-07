@@ -30,7 +30,14 @@ test("purchase bar meets square bottom navigation under reduced motion", async (
  const nav=page.locator('.bottom-nav'),bar=page.locator('.sticky-bar');
  await expect(bar).toBeInViewport();
  await expect.poll(async()=>{const n=await nav.boundingBox(),b=await bar.boundingBox();return n&&b?Math.abs(n.y-(b.y+b.height)):Infinity;}).toBeLessThanOrEqual(1);
+ await expect.poll(() => page.evaluate(() => getComputedStyle(document.querySelector(".bottom-nav")!).borderTopColor === getComputedStyle(document.querySelector(".sticky-bar")!).backgroundColor)).toBe(true);
  await expect(nav.locator('[aria-current="page"]')).toHaveCSS("border-radius","0px");
+ const dockedHeight = await nav.evaluate(element => element.getBoundingClientRect().height);
+ await bar.evaluate(element => element.scrollIntoView({block:"center"}));
+ await expect(nav).not.toHaveClass(/purchase-docked/);
+ await expect.poll(() => nav.evaluate(element => element.getBoundingClientRect().height)).toBe(dockedHeight);
+ await page.evaluate(() => window.scrollTo(0, 0));
+ await expect(nav).toHaveClass(/purchase-docked/);
  // Content resizing must not restore a gap through a guessed nav height.
  await nav.locator('a').evaluateAll(links=>links.forEach(link=>(link as HTMLElement).style.paddingBlock="14px"));
  await expect.poll(async()=>{const n=await nav.boundingBox(),b=await bar.boundingBox();return n&&b?Math.abs(n.y-(b.y+b.height)):Infinity;}).toBeLessThanOrEqual(1);

@@ -101,3 +101,19 @@ The first iPhone 17 / iOS 26.6.1 check found missing landscape navigation and a 
 The site layout owns typed, per-instance mobile geometry through Svelte context. `BottomNav` reports its fractional border-box height, including safe-area padding, and the purchase bar uses that height instead of a guessed offset. With the sphere active, the bar sits at the viewport bottom with safe-area padding, and its visible height reserves space in the sphere's movement bounds. Physical viewport dimensions remain separate for rendering and saved coordinates. The ordinary nav uses square selections. Observers clean up on unmount, and standalone purchase bars retain their explicit offset API.
 
 Combined layout/product browser fixtures cover rotation with an expanded menu, reduced-motion switching, fractional nav resizing, renderer import failure, and keeping sphere movement above the purchase controls. Linux WebKit captures supplement these checks; the corrected release still needs a physical iPhone retest.
+
+### Production CSS order and follow-up cart layout
+
+A shared component stylesheet can precede the root stylesheet in SvelteKit's
+generated head. Declaring `components` first accidentally gives the later `base`
+layer higher priority, resetting component padding and borders. The document now
+declares `theme, base, components` before generated head content. A WebKit replay
+of the production stylesheet order failed with zero cart padding before this fix.
+
+The docked purchase bar and bottom nav retain their measured dimensions; the
+nav's top border takes the purchase bar color while docked to remove the visible
+separator without creating a ResizeObserver/IntersectionObserver feedback loop.
+Cart line totals are labeled and grouped with product details, above quantity and
+remove controls, leaving the cart subtotal in the separate footer. Physical Safari
+confirmation of the remaining seam is still needed; equal DOM bounds alone do
+not prove that a painted seam is absent.

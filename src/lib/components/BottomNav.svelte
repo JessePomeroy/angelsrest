@@ -31,6 +31,7 @@ const links = [
   bind:borderBoxSize={navSize}
   aria-label="Mobile navigation"
   class="bottom-nav"
+  class:purchase-docked={chrome?.purchaseBarDocked}
 >
   <ul>
     {#each links as link (link.href)}
@@ -85,6 +86,8 @@ const links = [
     border-color: var(--time-border, var(--color-surface-700));
     background: var(--color-surface-900);
   }
+  /* Keep measured geometry stable while painting the seam as part of the bar. */
+  .bottom-nav.purchase-docked { border-top-color: var(--color-surface-900); }
   :global(.dark) a { color: var(--color-surface-200); }
   :global(.dark) a:focus-visible { outline-color: var(--color-surface-50); }
   a[aria-current="page"], :global(.dark) a[aria-current="page"] {
