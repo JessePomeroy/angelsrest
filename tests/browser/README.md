@@ -50,3 +50,10 @@ ready Turnstile API stub prevents loading the external verification provider.
 Component CSS is injected by the Svelte compiler in this fixture to avoid
 virtual-CSS metadata cache misses when testing a locally packed Admin package.
 Production bundling is verified separately with the host build.
+
+S05 uses deterministic Cal and Turnstile provider scripts with the production
+booking and verification components. Checks cover disabled booking, delayed
+loads, unmount/reentry, failures and retries, modal cleanup, independent
+verification instances, and actual contact/order request tokens and readiness.
+These checks exercise the provider command boundary without live bookings or
+Cloudflare verification; server verification remains covered separately.

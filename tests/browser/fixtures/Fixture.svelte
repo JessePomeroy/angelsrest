@@ -1,4 +1,7 @@
 <script lang="ts">
+import BookingHarness from "./BookingHarness.svelte";
+import TurnstileHarness from "./TurnstileHarness.svelte";
+import Orders from "../../../src/routes/orders/+page.svelte";
 import ContactForm from "../../../src/lib/components/ContactForm.svelte";
 import ThemeOwnership from "./ThemeOwnership.svelte";
 import BottomNav from "../../../src/lib/components/BottomNav.svelte";
@@ -29,7 +32,13 @@ if (params.get("populated") === "true") {
 }
 </script>
 
-{#if fixture === "contact"}
+{#if fixture === "booking"}
+	<BookingHarness />
+{:else if fixture === "turnstile"}
+	<TurnstileHarness />
+{:else if fixture === "orders"}
+	<Orders />
+{:else if fixture === "contact"}
 	<ThemeSwitcher />
 	<ContactForm />
 {:else if fixture === "ownership"}

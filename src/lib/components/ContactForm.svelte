@@ -2,9 +2,7 @@
 /** ContactForm.svelte
  * contact form extracted out of the about page during refactor
  */
-import { onMount } from "svelte";
-import { loadTurnstile, type TurnstileApi } from "$lib/client/turnstile";
-import { TURNSTILE_SITE_KEY } from "$lib/config/turnstile";
+import TurnstileWidget from "$lib/components/TurnstileWidget.svelte";
 
 let {
 	hideHeader = false,
@@ -14,54 +12,11 @@ let {
 let status = $state("idle"); // 'idle' | 'sending' | 'success' | 'error'
 let verificationError = $state("");
 let verificationReady = $state(false);
-let turnstileApi: TurnstileApi | undefined;
-let turnstileWidgetId: string | undefined;
-
-onMount(() => {
-	let disposed = false;
-	void loadTurnstile()
-		.then((api) => {
-			if (disposed) return;
-			turnstileApi = api;
-			turnstileWidgetId = api.render("#contact-turnstile", {
-				sitekey: TURNSTILE_SITE_KEY,
-				theme: "auto",
-				action: "turnstile-spin-v1",
-				callback: () => {
-					verificationReady = true;
-					verificationError = "";
-				},
-				"error-callback": () => {
-					verificationReady = false;
-					verificationError = "Verification could not load. Please try again.";
-					return false;
-				},
-				"expired-callback": () => {
-					verificationError = "Verification expired. Please complete it again.";
-					resetTurnstile();
-				},
-			});
-		})
-		.catch((error) => {
-			console.error("contact Turnstile failed to load", error);
-			if (!disposed) {
-				verificationReady = false;
-				verificationError = "Verification could not load. Please refresh and try again.";
-			}
-		});
-
-	return () => {
-		disposed = true;
-		verificationReady = false;
-		if (turnstileApi && turnstileWidgetId) turnstileApi.remove(turnstileWidgetId);
-		turnstileWidgetId = undefined;
-		turnstileApi = undefined;
-	};
-});
+let turnstileWidget: TurnstileWidget | undefined;
 
 function resetTurnstile() {
 	verificationReady = false;
-	if (turnstileApi && turnstileWidgetId) turnstileApi.reset(turnstileWidgetId);
+	turnstileWidget?.reset();
 }
 
 async function handleSubmit(e: SubmitEvent) {
@@ -154,7 +109,27 @@ async function handleSubmit(e: SubmitEvent) {
                 class="contact-field resize-y"
             ></textarea>
         </div>
-		<div id="contact-turnstile"></div>
+		<TurnstileWidget
+			bind:this={turnstileWidget}
+			theme="auto"
+			onverified={() => {
+				verificationReady = true;
+				verificationError = "";
+			}}
+			onerror={() => {
+				verificationReady = false;
+				verificationError = "Verification could not load. Please try again.";
+			}}
+			onexpired={() => {
+				verificationError = "Verification expired. Please complete it again.";
+				resetTurnstile();
+			}}
+			onloaderror={(error) => {
+				console.error("contact Turnstile failed to load", error);
+				verificationReady = false;
+				verificationError = "Verification could not load. Please refresh and try again.";
+			}}
+		/>
         <button
             type="submit"
             class="contact-submit"
