@@ -17,11 +17,13 @@ Canonical rules for working in this repository.
 ## Technical constraints
 
 - Use Svelte 5 runes (`$props()`, `$state()`, `$derived()`, `$effect()`).
-- Use Tailwind CSS v4 utilities. Do not use Skeleton component classes such as
+- The public UI is migrating from Tailwind CSS v4 to scoped CSS; follow
+  `docs/CSS_MIGRATION.md`. Use scoped CSS in migrated components and preserve
+  existing utilities elsewhere until their slice is converted. Do not use Skeleton component classes such as
   `.btn`, `.card`, or `.input`. The site-owned surface color variables
   (`--color-surface-50` through `--color-surface-950`) are defined in
   `src/lib/styles/theme.css` and may be referenced from scoped styles or Tailwind arbitrary values. Skeleton is not a dependency; use
-  native Svelte markup and Tailwind utilities for public controls.
+  native Svelte markup for public controls.
 - Admin pages use scoped styles and `--admin-*` variables, not Tailwind.
 - Server secrets use `$env/dynamic/private`. Never import private env modules
   from browser-reachable code.

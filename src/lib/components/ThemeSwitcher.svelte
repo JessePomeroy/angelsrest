@@ -10,29 +10,53 @@ import { MoonIcon, SunIcon } from "@lucide/svelte";
 import { isDark } from "$lib/stores/theme";
 </script>
 
-<!-- Site-owned surface colors -->
-<div class="flex items-center bg-surface-200 dark:bg-surface-700 rounded-full p-0.5">
-  <!-- Light mode button -->
+<div class="theme-switcher">
   <button
     onclick={isDark.setLight}
     aria-pressed={!$isDark}
-    class="p-1.5 rounded-full transition-all duration-200 {!$isDark
-      ? 'bg-surface-50 text-surface-900 dark:text-surface-50 shadow-sm'
-      : 'text-surface-500 hover:text-surface-600'}"
+    class="light-mode"
     aria-label="Light mode"
   >
-    <SunIcon class="size-3" />
+    <SunIcon size="0.75rem" />
   </button>
-  
-  <!-- Dark mode button -->
   <button
     onclick={isDark.setDark}
     aria-pressed={$isDark}
-    class="p-1.5 rounded-full transition-all duration-200 {$isDark
-      ? 'bg-surface-900 text-surface-50 shadow-sm'
-      : 'text-surface-500 hover:text-surface-600'}"
+    class="dark-mode"
     aria-label="Dark mode"
   >
-    <MoonIcon class="size-3" />
+    <MoonIcon size="0.75rem" />
   </button>
 </div>
+
+<style>
+  .theme-switcher {
+    display: flex;
+    align-items: center;
+    background: var(--color-surface-200);
+    border-radius: 9999px;
+    padding: 0.125rem;
+  }
+  button {
+    padding: 0.375rem;
+    border-radius: 9999px;
+    color: var(--color-surface-500);
+    transition: all 200ms cubic-bezier(0.4, 0, 0.2, 1);
+  }
+  button[aria-pressed="true"] {
+    box-shadow: 0 1px 3px rgb(0 0 0 / 10%), 0 1px 2px -1px rgb(0 0 0 / 10%);
+  }
+  .light-mode[aria-pressed="true"] {
+    background: var(--color-surface-50);
+    color: var(--color-surface-900);
+  }
+  .dark-mode[aria-pressed="true"] {
+    background: var(--color-surface-900);
+    color: var(--color-surface-50);
+  }
+  :global(.dark) .theme-switcher { background: var(--color-surface-700); }
+  :global(.dark) .light-mode[aria-pressed="true"] { color: var(--color-surface-50); }
+  @media (hover: hover) {
+    button[aria-pressed="false"]:hover { color: var(--color-surface-600); }
+  }
+</style>

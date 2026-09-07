@@ -19,9 +19,9 @@ const links = [
 
 <nav
   aria-label="Mobile navigation"
-  class="sticky bottom-0 z-50 border-t border-surface-300 bg-surface-50 pb-[env(safe-area-inset-bottom)] dark:border-surface-700 dark:bg-surface-900 md:hidden"
+  class="bottom-nav"
 >
-  <ul class="grid grid-cols-5 gap-1 p-1">
+  <ul>
     {#each links as link (link.href)}
       {@const Icon = link.icon}
       {@const active = page.url.pathname === link.href || (link.href !== '/' && page.url.pathname.startsWith(`${link.href}/`))}
@@ -29,12 +29,60 @@ const links = [
         <a
           href={link.href}
           aria-current={active ? 'page' : undefined}
-          class="flex min-h-14 items-center justify-center flex-col gap-1 rounded-md px-1 py-2 text-xs focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-surface-900 dark:focus-visible:outline-surface-50 {active ? 'bg-primary-500 text-slate-950' : 'text-surface-700 hover:bg-surface-200 dark:text-surface-200 dark:hover:bg-surface-700'}"
         >
-          <Icon class="size-5" aria-hidden="true" />
+          <Icon size="1.25rem" aria-hidden="true" />
           <span>{link.label}</span>
         </a>
       </li>
     {/each}
   </ul>
 </nav>
+
+<style>
+  .bottom-nav {
+    position: sticky;
+    bottom: 0;
+    z-index: 50;
+    border-top: 1px solid var(--time-border, var(--color-surface-300));
+    background: var(--color-surface-50);
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+  ul {
+    display: grid;
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+    gap: 0.25rem;
+    padding: 0;
+  }
+  a {
+    display: flex;
+    min-height: 3.5rem;
+    align-items: center;
+    justify-content: center;
+    flex-direction: column;
+    gap: 0.25rem;
+    border-radius: 0.375rem;
+    padding: 0.5rem 0.25rem;
+    font-size: var(--text-xs);
+    line-height: var(--text-xs--line-height);
+    color: var(--color-surface-700);
+  }
+  a:focus-visible {
+    outline: 2px solid var(--color-surface-900);
+    outline-offset: -2px;
+  }
+  :global(.dark) .bottom-nav {
+    border-color: var(--time-border, var(--color-surface-700));
+    background: var(--color-surface-900);
+  }
+  :global(.dark) a { color: var(--color-surface-200); }
+  :global(.dark) a:focus-visible { outline-color: var(--color-surface-50); }
+  a[aria-current="page"], :global(.dark) a[aria-current="page"] {
+    background: var(--color-primary-500);
+    color: oklch(12.9% 0.042 264.695);
+  }
+  @media (hover: hover) {
+    a:not([aria-current]):hover { background: var(--color-surface-200); }
+    :global(.dark) a:not([aria-current]):hover { background: var(--color-surface-700); }
+  }
+  @media (min-width: 48rem) { .bottom-nav { display: none; } }
+</style>
