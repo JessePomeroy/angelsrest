@@ -14,7 +14,7 @@
 -->
 
 <script lang="ts">
-import { MinusIcon, PlusIcon, XIcon } from "@lucide/svelte";
+import { MinusIcon, PlusIcon } from "@lucide/svelte";
 import type { CartItem } from "$lib/shop/cart";
 import { cart } from "$lib/shop/cart.svelte";
 import { formatCents } from "$lib/utils/format";
@@ -77,7 +77,7 @@ const extraImageCount = $derived(
       Block layout is required for the title to actually clip — anchors are
       `display: inline` by default, where overflow/text-ellipsis are
       no-ops. Without this, a long product title (e.g. the godzilla
-      tapestry) overflows its parent flex column, pushes the price + X
+      tapestry) overflows its parent flex column, pushes the price + remove
       button off-screen, AND inflates the page width past the viewport
       so the order summary below also clips.
     -->
@@ -136,7 +136,7 @@ const extraImageCount = $derived(
     aria-label={`Remove ${item.title}`}
     class="remove-button"
   >
-    <XIcon size="1rem" />
+    remove
   </button>
 </div>
 
@@ -157,8 +157,9 @@ const extraImageCount = $derived(
     @media (hover: hover) { .quantity-button:hover { background-color: color-mix(in oklab, var(--color-surface-500) 10%, transparent); } }
     .quantity { padding-inline: 0.5rem; font-size: var(--text-sm); line-height: var(--text-sm--line-height); font-variant-numeric: tabular-nums; min-width: 1.5rem; text-align: center; }
     .line-total { font-size: var(--text-sm); line-height: var(--text-sm--line-height); font-weight: 500; font-variant-numeric: tabular-nums; }
-    .remove-button { align-self: flex-start; padding: 0.25rem; margin-top: -0.25rem; margin-right: -0.25rem; color: var(--color-surface-500); transition-property: color, background-color, border-color, outline-color, text-decoration-color, fill, stroke; transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1); transition-duration: 150ms; }
-    @media (hover: hover) { .remove-button:hover { color: var(--color-error-500); } }
+    .remove-button { align-self: flex-start; flex-shrink: 0; min-height: 44px; padding-inline: 0.5rem; font-size: var(--text-xs); text-decoration: underline; text-underline-offset: 0.2em; color: var(--color-surface-700); transition-property: color, background-color, border-color, outline-color, text-decoration-color, fill, stroke; transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1); transition-duration: 150ms; }
+    :global(.dark) .remove-button { color: var(--color-surface-200); }
+    @media (hover: hover) { .remove-button:hover { text-decoration-thickness: 2px; } }
     .page-line { padding-block: 1.25rem; }
     .page-line .thumbnail { width: 5rem; height: 5rem; }
     @media (min-width: 48rem) { .page-line .thumbnail { width: 6rem; height: 6rem; } }

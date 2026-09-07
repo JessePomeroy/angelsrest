@@ -7,6 +7,7 @@ for (const kind of ["page", "drawer"]) {
 		if (kind === "drawer") await page.getByRole("button", { name: "Open cart fixture" }).click();
 		const rows = page.locator(".cart-line");
 		await expect(rows).toHaveCount(2);
+		await expect(rows.first().getByRole("button", { name: /^Remove/ })).toHaveText("remove");
 		await expect(page.locator(".extra-images")).toHaveText("+1");
 		const title = rows.first().getByRole("link");
 		await expect(title).toHaveCSS("text-overflow", "ellipsis");
