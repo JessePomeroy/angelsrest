@@ -30,7 +30,7 @@ let { data } = $props();
         {#each data.galleries as gallery (gallery.slug)}
             <a href="/gallery/{gallery.slug}" class="gallery-entry">
                 <div class="image-frame">
-                    <img src={gallery.preview} alt={gallery.title} loading="lazy" />
+                    <img data-water-lens src={gallery.preview} alt={gallery.title} loading="lazy" />
                 </div>
                 <div class="entry-caption">
                     <h2>{gallery.title}</h2>

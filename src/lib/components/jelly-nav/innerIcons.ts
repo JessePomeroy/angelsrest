@@ -33,7 +33,10 @@ export function stepInnerIcons(
 			icon.vx += Math.cos(time * 0.45 + i * 2.1) * 1.5 * dt;
 			icon.vy += Math.sin(time * 0.38 + i * 1.7) * 1.5 * dt;
 			const speed = Math.hypot(icon.vx, icon.vy);
-			const scale = Math.min(Math.exp(-0.035 * dt), 22 / Math.max(speed, 1));
+			const scale = Math.min(
+				Math.exp(-(0.12 + Math.max(0, speed - 9) * 0.06) * dt),
+				22 / Math.max(speed, 1),
+			);
 			icon.vx *= scale;
 			icon.vy *= scale;
 			icon.x += icon.vx * dt;
