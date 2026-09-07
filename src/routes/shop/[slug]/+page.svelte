@@ -468,23 +468,20 @@ function handleV1AddToCart(event: MouseEvent) {
     .desktop-buy-button:disabled { opacity: 0.5; cursor: not-allowed; }
     @media (hover: hover) { .desktop-buy-button:hover:not(:disabled) { background-color: color-mix(in oklab, var(--color-primary-500) 80%, transparent); } }
     .payment-note { font-size: var(--text-xs); line-height: var(--text-xs--line-height); color: var(--color-surface-500); }
-    .mobile-purchase { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; column-gap: 1rem; row-gap: 0.25rem; }
-    .mobile-price-group { display: flex; align-items: center; gap: 0.375rem; }
+    .mobile-purchase { display: grid; gap: 0.75rem; text-align: left; }
+    .mobile-price-group { display: flex; align-items: baseline; gap: 0.375rem; }
     .mobile-price { font-size: var(--text-xl); line-height: var(--text-xl--line-height); font-weight: 600; }
     .mobile-selection { font-size: var(--text-xs); line-height: var(--text-xs--line-height); color: var(--color-surface-600); }
     :global(.dark) .mobile-selection { color: var(--color-surface-300); }
     .mobile-selection-prompt { font-size: var(--text-sm); line-height: var(--text-sm--line-height); color: var(--color-surface-500); }
-    .mobile-actions { display: flex; gap: 0.375rem; }
-    .mobile-cart-button { display: inline-flex; align-items: center; justify-content: center; gap: 0.5rem; border-radius: 0.375rem; white-space: nowrap; font-size: var(--text-xs); line-height: var(--text-xs--line-height); padding-inline: 0.5rem; padding-block: 0.25rem; transition-property: color, background-color, border-color, outline-color, text-decoration-color, fill, stroke; transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1); transition-duration: 150ms; background-color: var(--color-surface-200); color: var(--color-surface-900); }
-    .mobile-cart-button:focus-visible { outline-style: solid; outline-width: 2px; outline-offset: 2px; outline-color: var(--color-surface-900); }
-    :global(.dark) .mobile-cart-button:focus-visible { outline-color: var(--color-surface-50); }
+    .mobile-actions { display: grid; grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr); gap: 0.75rem; }
+    .mobile-cart-button { display: inline-flex; align-items: center; justify-content: center; min-height: 44px; padding: 0.5rem 0.75rem; border-radius: 0.375rem; font-size: var(--text-sm); line-height: var(--text-sm--line-height); background: transparent; color: inherit; border: 1px solid currentColor; }
+    .mobile-cart-button:focus-visible { outline: 2px solid currentColor; outline-offset: 3px; }
     .mobile-cart-button:disabled { opacity: 0.5; cursor: not-allowed; }
-    :global(.dark) .mobile-cart-button { background-color: var(--color-surface-700); color: var(--color-surface-50); }
-    .mobile-buy-button { display: inline-flex; align-items: center; justify-content: center; gap: 0.5rem; border-radius: 0.375rem; white-space: nowrap; font-size: var(--text-xs); line-height: var(--text-xs--line-height); padding-inline: 0.5rem; padding-block: 0.25rem; transition-property: color, background-color, border-color, outline-color, text-decoration-color, fill, stroke; transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1); transition-duration: 150ms; background-color: var(--color-primary-500); color: oklch(12.9% 0.042 264.695); }
-    .mobile-buy-button:focus-visible { outline-style: solid; outline-width: 2px; outline-offset: 2px; outline-color: var(--color-surface-900); }
-    :global(.dark) .mobile-buy-button:focus-visible { outline-color: var(--color-surface-50); }
+    .mobile-buy-button { display: inline-flex; align-items: center; justify-content: center; min-height: 44px; padding: 0.5rem 0.75rem; border-radius: 0.375rem; font-size: var(--text-sm); line-height: var(--text-sm--line-height); background: var(--time-accent, var(--color-primary-500)); color: oklch(12.9% 0.042 264.695); border: 1px solid transparent; }
+    .mobile-buy-button:focus-visible { outline: 2px solid var(--purchase-focus-color); outline-offset: 3px; }
     .mobile-buy-button:disabled { opacity: 0.5; cursor: not-allowed; }
-    @media (hover: hover) { .mobile-buy-button:hover:not(:disabled) { background-color: color-mix(in oklab, var(--color-primary-500) 80%, transparent); } }
+    @media (hover: hover) { .mobile-buy-button:hover:not(:disabled) { filter: brightness(0.95); } }
     .paper-label { display: block; font-size: var(--text-sm); line-height: var(--text-sm--line-height); color: var(--color-surface-600); margin-bottom: 0.25rem; }
     :global(.dark) .paper-label { color: var(--color-surface-300); }
     .paper-choice { display: block; border-radius: 0.375rem; border: 1px solid; border-color: var(--color-surface-300); background-color: transparent; font-size: var(--text-base); line-height: var(--text-base--line-height); padding-block: 0.25rem; width: 100%; }
@@ -492,12 +489,12 @@ function handleV1AddToCart(event: MouseEvent) {
     .paper-choice:focus-visible { outline-style: solid; outline-width: 2px; outline-offset: 2px; outline-color: var(--color-surface-900); }
     :global(.dark) .paper-choice:focus-visible { outline-color: var(--color-surface-50); }
     .paper-choice:disabled { opacity: 0.5; }
-    .merch-purchase { display: flex; align-items: center; justify-content: space-between; gap: 0.5rem; }
+    .merch-purchase { display: grid; gap: 0.75rem; text-align: left; }
     .merch-price-group { display: flex; align-items: center; gap: 0.375rem; min-width: 0rem; }
     .merch-price { font-size: var(--text-xl); line-height: var(--text-xl--line-height); font-weight: 600; flex-shrink: 0; }
     .mobile-category { font-size: var(--text-xs); line-height: var(--text-xs--line-height); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--color-surface-600); }
     :global(.dark) .mobile-category { color: var(--color-surface-300); }
-    .merch-actions { display: flex; gap: 0.375rem; flex-shrink: 0; }
+    .merch-actions { display: grid; grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr); gap: 0.75rem; }
     .mobile-selection.stuck, .mobile-category.stuck { color: var(--color-surface-300); }
   }
 </style>

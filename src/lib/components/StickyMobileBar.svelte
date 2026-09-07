@@ -89,7 +89,8 @@ $effect(() => {
 
 <style>
   @layer components {
-    .sticky-bar { position: sticky; z-index: 40; padding-top: 0.5rem; padding-bottom: calc(0.5rem + var(--mobile-purchase-safe-area, 0px)); padding-inline: 1rem; transition: background-color 200ms cubic-bezier(0.4, 0, 0.2, 1); }
+    .sticky-bar { --purchase-focus-color: var(--color-surface-900); position: sticky; z-index: 40; padding-top: 0.5rem; padding-bottom: calc(0.5rem + var(--mobile-purchase-safe-area, 0px)); padding-inline: 0; transition: background-color 200ms cubic-bezier(0.4, 0, 0.2, 1); }
+    :global(.dark) .sticky-bar, .sticky-bar.stuck { --purchase-focus-color: var(--color-surface-50); }
     .sticky-bar.stuck { color: var(--color-surface-50); }
     .sticky-sentinel { height: 0; }
     @media (min-width: 48rem) { .sticky-bar, .sticky-sentinel { display: none; } }
