@@ -55,7 +55,6 @@
 		"@jessepomeroy/print-catalog": "workspace:^",
 		"@lucide/svelte": "^0.563.1",
 		"@mmailaender/convex-better-auth-svelte": "^0.8.0",
-		"@react-email/render": "^2.0.9",
 		"@sentry/node": "^10.62.0",
 		"@sentry/sveltekit": "^10.62.0",
 		"@vercel/analytics": "^1.6.1",
@@ -63,7 +62,6 @@
 		"convex": "^1.42.1",
 		"convex-svelte": "^0.14.0",
 		"react": "^19.2.7",
-		"react-dom": "^19.2.7",
 		"resend": "^6.12.2",
 		"sharp": "^0.35.3",
 		"stripe": "20.3.1",
@@ -85,6 +83,8 @@
 			"@sentry/cli"
 		],
 		"overrides": {
+			"resend@6.12.2>@react-email/render": "-",
+			"better-auth@1.6.23>react-dom": "-",
 			"uuid@<11.1.1": "11.1.1",
 			"cookie@<0.7.0": "^0.7.0",
 			"postcss@<8.5.23": "8.5.23",
