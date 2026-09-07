@@ -9,20 +9,9 @@ import StickyMobileBar from "$lib/components/StickyMobileBar.svelte";
 import { cart } from "$lib/shop/cart.svelte";
 import { cartUI } from "$lib/shop/cartUI.svelte";
 import { toasts } from "$lib/stores/toast.svelte";
-import {
-	getAvailableFrames,
-	getFrame,
-	getPaper,
-	getSize,
-	isCanvasPaper,
-	V2_BORDER_OPTIONS,
-} from "@jessepomeroy/print-catalog";
-import {
-	getAvailablePrintPapers,
-	getAvailablePrintSizes,
-	normalizePrintFinishSelection,
-	resolvePrintConfiguration,
-} from "$lib/shop/printConfigurator";
+import { getFrame, getPaper, getSize } from "@jessepomeroy/print-catalog";
+import { createPrintSelection } from "$lib/shop/printSelection.svelte";
+import PrintConfigurator from "$lib/components/PrintConfigurator.svelte";
 import type { ProductImage } from "$lib/types/shop";
 import { createCheckout } from "$lib/utils/checkout";
 
@@ -30,69 +19,8 @@ let { data } = $props();
 
 let isLoading = $state(false);
 
-// ─── Configurator state ─────────────────────────────────────
-let selectedPaperSlug = $state("");
-let selectedSizeSlug = $state("");
-let selectedBorderWidth = $state("none");
-let selectedFrame = $state("none");
-
-const isCanvasSelected = $derived(isCanvasPaper(selectedPaperSlug));
-
-// Keep the form controls synchronized with the shared finish invariants.
-$effect(() => {
-	const normalized = normalizePrintFinishSelection({
-		paperSlug: selectedPaperSlug,
-		borderWidthValue: selectedBorderWidth,
-		frameValue: selectedFrame,
-	});
-	if (selectedBorderWidth !== normalized.borderWidthValue) {
-		selectedBorderWidth = normalized.borderWidthValue;
-	}
-	if (selectedFrame !== normalized.frameValue) {
-		selectedFrame = normalized.frameValue;
-	}
-});
-
-const availablePapers = $derived(getAvailablePrintPapers(data.printSet.variants));
-
-$effect(() => {
-	if (availablePapers.length > 0 && !selectedPaperSlug) {
-		selectedPaperSlug = availablePapers[0].slug;
-	}
-});
-
-const availableSizes = $derived.by(() => {
-	if (!selectedPaperSlug) return [];
-	return getAvailablePrintSizes(data.printSet.variants, selectedPaperSlug);
-});
-
-const availableFrames = $derived(getAvailableFrames(selectedSizeSlug));
-
-$effect(() => {
-	if (
-		availableSizes.length > 0 &&
-		!availableSizes.some((size) => size.slug === selectedSizeSlug)
-	) {
-		selectedSizeSlug = availableSizes[0].slug;
-	}
-});
-
-$effect(() => {
-	if (!availableFrames.some((frame) => frame.value === selectedFrame)) selectedFrame = "none";
-});
-
-const selectedConfiguration = $derived.by(() => {
-	return resolvePrintConfiguration({
-		variants: data.printSet.variants,
-		paperSlug: selectedPaperSlug,
-		sizeSlug: selectedSizeSlug,
-		borderWidthValue: selectedBorderWidth,
-		frameValue: selectedFrame,
-		bordersEnabled: data.printSet.bordersEnabled,
-		framedEnabled: data.printSet.framedEnabled,
-		frameMarkupMultiplier: data.printSet.frameMarkupMultiplier,
-	});
-});
+const selection = createPrintSelection(() => data.printSet);
+const selectedConfiguration = $derived(selection.configuration);
 
 const displaySetPrice = $derived.by(() => {
 	return selectedConfiguration?.displayPrice ?? null;
@@ -234,7 +162,7 @@ function handleAddToCart() {
 					{#if selectedConfiguration}
 						${displaySetPrice}
 						<span class="text-base font-normal text-surface-600 dark:text-surface-300">
-							{getPaper(selectedPaperSlug)?.name} · {getSize(selectedSizeSlug)?.label}{selectedBorderWidth !== 'none' ? ` · ${selectedBorderWidth}" border` : ''}{selectedFrame !== 'none' ? ` · ${getFrame(selectedFrame)?.label} frame` : ''}
+							{getPaper(selection.paper)?.name} · {getSize(selection.size)?.label}{selection.border !== 'none' ? ` · ${selection.border}" border` : ''}{selection.frame !== 'none' ? ` · ${getFrame(selection.frame)?.label} frame` : ''}
 						</span>
 					{:else}
 						<span class="text-base text-surface-500">Select paper & size</span>
@@ -258,62 +186,7 @@ function handleAddToCart() {
 				</div>
 			</div>
 
-			<div class="space-y-4">
-				<div>
-					<label for="set-paper" class="block text-sm text-surface-600 dark:text-surface-300 mb-1">
-						Material
-					</label>
-					<select id="set-paper" class="block rounded-md border border-surface-300 dark:border-surface-600 bg-transparent text-base py-1 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-surface-900 dark:focus-visible:outline-surface-50 disabled:opacity-50 w-full" bind:value={selectedPaperSlug}>
-						{#each availablePapers as paper (paper.slug)}
-							<option value={paper.slug}>{paper.name}</option>
-						{/each}
-					</select>
-				</div>
-				<div>
-					<label for="set-size" class="block text-sm text-surface-600 dark:text-surface-300 mb-1">
-						Size
-					</label>
-					<select id="set-size" class="block rounded-md border border-surface-300 dark:border-surface-600 bg-transparent text-base py-1 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-surface-900 dark:focus-visible:outline-surface-50 disabled:opacity-50 w-full" bind:value={selectedSizeSlug}>
-						{#each availableSizes as size (size.slug)}
-							<option value={size.slug}>{size.label}</option>
-						{/each}
-					</select>
-				</div>
-
-				{#if data.printSet.bordersEnabled !== false && !isCanvasSelected}
-					<div>
-						<label for="set-border" class="block text-sm text-surface-600 dark:text-surface-300 mb-1">
-							Border
-						</label>
-						<select
-							id="set-border"
-							class="block rounded-md border border-surface-300 dark:border-surface-600 bg-transparent text-base py-1 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-surface-900 dark:focus-visible:outline-surface-50 disabled:opacity-50 w-full"
-							bind:value={selectedBorderWidth}
-							disabled={selectedFrame !== 'none'}
-						>
-							{#each V2_BORDER_OPTIONS as border (border.value)}
-								<option value={border.value}>{border.label}</option>
-							{/each}
-						</select>
-						{#if selectedFrame !== 'none'}
-							<p class="text-xs text-surface-500 mt-1">border included with frame</p>
-						{/if}
-					</div>
-				{/if}
-
-				{#if data.printSet.framedEnabled && !isCanvasSelected}
-					<div>
-						<label for="set-frame" class="block text-sm text-surface-600 dark:text-surface-300 mb-1">
-							Frame
-						</label>
-						<select id="set-frame" class="block rounded-md border border-surface-300 dark:border-surface-600 bg-transparent text-base py-1 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-surface-900 dark:focus-visible:outline-surface-50 disabled:opacity-50 w-full" bind:value={selectedFrame}>
-							{#each availableFrames as frame (frame.value)}
-								<option value={frame.value}>{frame.label}</option>
-							{/each}
-						</select>
-					</div>
-				{/if}
-			</div>
+			<PrintConfigurator {selection} />
 
 			<p class="text-xs text-surface-500">
 				Secure checkout powered by Stripe
@@ -326,7 +199,7 @@ function handleAddToCart() {
 							{#if selectedConfiguration}
 								<span class="text-xl font-semibold">${displaySetPrice}</span>
 								<span class="text-xs {isStuck ? 'text-surface-300' : 'text-surface-600 dark:text-surface-300'}">
-									{getPaper(selectedPaperSlug)?.name} · {getSize(selectedSizeSlug)?.label}{selectedBorderWidth !== 'none' ? ` · ${selectedBorderWidth}" border` : ''}{selectedFrame !== 'none' ? ` · ${getFrame(selectedFrame)?.label} frame` : ''}
+									{getPaper(selection.paper)?.name} · {getSize(selection.size)?.label}{selection.border !== 'none' ? ` · ${selection.border}" border` : ''}{selection.frame !== 'none' ? ` · ${getFrame(selection.frame)?.label} frame` : ''}
 								</span>
 							{:else}
 								<span class="text-sm text-surface-500">Select paper & size</span>

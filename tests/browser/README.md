@@ -57,3 +57,10 @@ loads, unmount/reentry, failures and retries, modal cleanup, independent
 verification instances, and actual contact/order request tokens and readiness.
 These checks exercise the provider command boundary without live bookings or
 Cloudflare verification; server verification remains covered separately.
+
+S06 mounts the actual product/set pages with live fixture data and the actual
+shared print controls. Delivery tests retain the real download protocol package
+and substitute file pickers, file streams, and Worker responses. They cover
+selected/favorite targets, failure/retry, cancellation, unmount during a pending
+picker or stream, ZIP capability fields, prepared-ZIP cancellation, and cleanup
+of generated download forms. No files are written outside the browser fixture.
