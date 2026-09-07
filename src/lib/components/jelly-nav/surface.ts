@@ -24,6 +24,7 @@ interface SurfaceFrame {
 	agitation: number;
 	ambientRipple: number;
 	dark: boolean;
+	warmth: number;
 }
 
 export interface WaterSurface {
@@ -67,6 +68,7 @@ export function createWaterSurface(
 		uAgitation: { value: 0 },
 		uAmbientRipple: { value: 0 },
 		uDark: { value: 0 },
+		uWarmth: { value: 0 },
 	};
 	const material = new ShaderMaterial({
 		uniforms,
@@ -123,6 +125,7 @@ export function createWaterSurface(
 			uniforms.uAgitation.value = frame.agitation;
 			uniforms.uAmbientRipple.value = frame.ambientRipple;
 			uniforms.uDark.value = frame.dark ? 1 : 0;
+			uniforms.uWarmth.value = frame.warmth;
 			renderer.render(scene, camera);
 			return !shaderFailed;
 		},

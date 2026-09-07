@@ -3,7 +3,7 @@ import GalleryModal from "$lib/components/GalleryModal.svelte";
 import SEO from "$lib/components/SEO.svelte";
 import StickyMobileBar from "$lib/components/StickyMobileBar.svelte";
 import { cart } from "$lib/shop/cart.svelte";
-import { cartUI } from "$lib/shop/cartUI.svelte";
+import { showCartAddition } from "$lib/shop/cartFeedback";
 import { toasts } from "$lib/stores/toast.svelte";
 import { getFrame, getPaper, getSize } from "@jessepomeroy/print-catalog";
 import { createPrintSelection } from "$lib/shop/printSelection.svelte";
@@ -78,7 +78,7 @@ function handleV2Checkout() {
 		});
 }
 
-function handleV2AddToCart() {
+function handleV2AddToCart(event: MouseEvent) {
 	if (!selectedConfiguration) return;
 	cart.add({
 		productSlug: data.product.slug,
@@ -109,7 +109,7 @@ function handleV2AddToCart() {
 		quantity: 1,
 		unitPriceCents: Math.round(selectedConfiguration.displayPrice * 100),
 	});
-	cartUI.open();
+	showCartAddition(event.currentTarget);
 }
 
 // ─── V1 checkout/cart handlers ──────────────────────────────
@@ -136,7 +136,7 @@ const canAddToCartV1 = $derived(
 		data.product.inStock,
 );
 
-function handleV1AddToCart() {
+function handleV1AddToCart(event: MouseEvent) {
 	if (!canAddToCartV1) return;
 	const priceDollars = selectedPaperData?.price ?? data.product.price;
 	if (typeof priceDollars !== "number") return;
@@ -163,7 +163,7 @@ function handleV1AddToCart() {
 		quantity: 1,
 		unitPriceCents: Math.round(priceDollars * 100),
 	});
-	cartUI.open();
+	showCartAddition(event.currentTarget);
 }
 </script>
 
@@ -184,7 +184,7 @@ function handleV1AddToCart() {
 		<div class="space-y-4">
 			{#if data.product.images.length > 0}
 				<button class="w-full" onclick={() => openModal(0)}>
-					<img
+					<img data-water-lens
 						src={data.product.images[0].full}
 						alt={data.product.images[0].alt}
 						loading="lazy"
@@ -199,7 +199,7 @@ function handleV1AddToCart() {
 								class="aspect-square overflow-hidden rounded-md"
 								onclick={() => openModal(i + 1)}
 							>
-								<img
+								<img data-water-lens
 									src={image.thumbnail}
 									alt={image.alt}
 									loading="lazy"

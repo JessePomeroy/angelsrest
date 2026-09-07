@@ -65,5 +65,9 @@ test("touch drag flings the sphere without opening navigation or selecting page 
 	await expect(page.locator(".jelly-nav")).toHaveClass(/flying/);
 	await expect.poll(async () => (await sphere.boundingBox())?.y).toBeLessThan(box.y - 100);
 	expect(await page.evaluate(() => window.getSelection()?.toString())).toBe("");
+	await expect.poll(() => page.locator(".wake-ring").count()).toBeGreaterThan(0);
+	expect(await page.locator(".wake-ring").count()).toBeLessThanOrEqual(3);
+	await page.keyboard.press("Escape");
+	await expect(page.locator(".wake-ring")).toHaveCount(0);
 	await session.detach();
 });

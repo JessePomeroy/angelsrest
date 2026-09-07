@@ -1,4 +1,5 @@
 <script lang="ts">
+import LiquidDetailsHarness from "./LiquidDetailsHarness.svelte";
 import MotionHarness from "./MotionHarness.svelte";
 import PrintHarness from "./PrintHarness.svelte";
 import DeliveryDownloadHarness from "./DeliveryDownloadHarness.svelte";
@@ -36,7 +37,9 @@ if (params.get("populated") === "true") {
 }
 </script>
 
-{#if fixture === "motion"}
+{#if fixture === "liquid-details"}
+	<LiquidDetailsHarness />
+{:else if fixture === "motion"}
 	<MotionHarness />
 {:else if fixture === "print"}
 	<PrintHarness />
@@ -60,6 +63,10 @@ if (params.get("populated") === "true") {
 	<ThemeSwitcher />
 	<label>Current path <input value={fixturePage.url.pathname} oninput={(event) => { fixturePage.url = new URL(event.currentTarget.value, "http://127.0.0.1:5196"); }} /></label>
 	<BottomNav />
+{:else if fixture === "liquid-shop"}
+	<PrintSet data={setData} />
+	<MobileNav />
+	<CartDrawer />
 {:else if fixture === "set"}
 	<ThemeSwitcher />
 	<PrintSet data={setData} />
