@@ -12,7 +12,9 @@ const canUploadSentrySourceMaps = Boolean(
 	process.env.SENTRY_AUTH_TOKEN && process.env.SENTRY_ORG && process.env.SENTRY_PROJECT,
 );
 
-export default defineConfig({
+export default defineConfig(({ isSsrBuild }) => ({
+	// Keep server function names useful in error reports while reducing emitted JS.
+	esbuild: isSsrBuild ? { keepNames: true } : undefined,
 	plugins: [
 		// Audit H46: wire the Sentry plugin so source maps are uploaded at
 		// build time. Without this Sentry ingests the minified stack frames
@@ -38,6 +40,7 @@ export default defineConfig({
 		sveltekit(),
 	],
 	build: {
+		minify: "esbuild",
 		chunkSizeWarningLimit: 900,
 		rollupOptions: {
 			onLog(level, log, handler) {
@@ -72,4 +75,4 @@ export default defineConfig({
 			"$env/static/public": path.resolve(__dirname, "./src/__mocks__/env-public.ts"),
 		},
 	},
-});
+}));

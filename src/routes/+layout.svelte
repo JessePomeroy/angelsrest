@@ -21,6 +21,7 @@
 </svelte:head>
 
 <script lang="ts">
+import { publicAssets } from "$lib/config/publicAssets";
 import { injectAnalytics } from "@vercel/analytics/sveltekit";
 import type { LayoutProps } from "./$types";
 import { onMount, setContext } from "svelte";
@@ -60,7 +61,7 @@ const ogDesc = $derived(
 );
 const ogImage = $derived(
 	data.siteSettings?.seo?.ogImageUrl ||
-		"https://www.angelsrest.online/og-image.png",
+		publicAssets.openGraph,
 );
 
 const timeTheme = getTimeTheme();

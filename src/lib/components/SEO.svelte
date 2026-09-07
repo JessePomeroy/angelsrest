@@ -1,4 +1,5 @@
 <script lang="ts">
+import { publicAssets } from "$lib/config/publicAssets";
 /**
  * SEO Component
  * Reusable head tags for consistent SEO across all pages.
@@ -8,7 +9,7 @@
 let {
 	title = "angel's rest",
 	description = "Photography portfolio and print shop by Jesse Pomeroy. Fine art photography, prints, zines, and commissions.",
-	image = "https://www.angelsrest.online/og-image.png",
+	image = publicAssets.openGraph,
 	url = "https://angelsrest.online",
 	type = "website",
 }: {
