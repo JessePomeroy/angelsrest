@@ -7,7 +7,7 @@
 import SEO from "$lib/components/SEO.svelte";
 import StickyMobileBar from "$lib/components/StickyMobileBar.svelte";
 import { cart } from "$lib/shop/cart.svelte";
-import { cartUI } from "$lib/shop/cartUI.svelte";
+import { showCartAddition } from "$lib/shop/cartFeedback";
 import { toasts } from "$lib/stores/toast.svelte";
 import { getFrame, getPaper, getSize } from "@jessepomeroy/print-catalog";
 import { createPrintSelection } from "$lib/shop/printSelection.svelte";
@@ -51,7 +51,7 @@ function handleCheckout() {
 		});
 }
 
-function handleAddToCart() {
+function handleAddToCart(event: MouseEvent) {
 	if (!selectedConfiguration) return;
 
 	const originalUrls = (data.images as ProductImage[]).map(
@@ -88,7 +88,7 @@ function handleAddToCart() {
 		quantity: 1,
 		unitPriceCents: Math.round(selectedConfiguration.displayPrice * 100),
 	});
-	cartUI.open();
+	showCartAddition(event.currentTarget);
 }
 </script>
 
@@ -114,7 +114,7 @@ function handleAddToCart() {
 				<div class="columns-2 gap-2">
 					{#each data.images as image (image.full ?? image.thumb)}
 						<div class="mb-2 break-inside-avoid">
-							<img
+							<img data-water-lens
 								src={(image as ProductImage).thumb}
 								alt={image.alt}
 								loading="lazy"

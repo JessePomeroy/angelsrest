@@ -40,3 +40,15 @@ describe("floating navigation icons", () => {
 		expect(Math.hypot(icons[1].x - icons[0].x, icons[1].y - icons[0].y)).toBeGreaterThanOrEqual(13);
 	});
 });
+
+describe("settling after a fling", () => {
+	it("lets extra momentum decay back into slow currents", () => {
+		const icons = createInnerIcons(6);
+		stepInnerIcons(icons, 1 / 60, 0, { x: 600, y: -600 });
+		const initialEnergy = icons.reduce((sum, icon) => sum + icon.vx ** 2 + icon.vy ** 2, 0);
+		for (let frame = 1; frame <= 600; frame++) stepInnerIcons(icons, 1 / 60, frame / 60);
+		const finalEnergy = icons.reduce((sum, icon) => sum + icon.vx ** 2 + icon.vy ** 2, 0);
+		expect(finalEnergy).toBeLessThan(initialEnergy * 0.2);
+		expect(finalEnergy).toBeGreaterThan(0);
+	});
+});

@@ -10,6 +10,7 @@ uniform float uTime;
 uniform float uAgitation;
 uniform float uAmbientRipple;
 uniform float uDark;
+uniform float uWarmth;
 varying vec2 vUv;
 
 // Smooth union gives the separating drops a shared surface and a thinning
@@ -130,6 +131,8 @@ void main() {
 	float specular = pow(max(dot(lightNormal, normalize(lightDirection - ray)), 0.0), 110.0);
 	vec3 color = mix(transmission, reflection, 0.56 + fresnel * 0.44);
 	color += vec3(specular * 1.1);
+	// Subtle amber at golden hour, silver-blue at night.
+	color *= vec3(1.0 + uWarmth * 0.10, 1.0 + uWarmth * 0.025, 1.0 - uWarmth * 0.10);
 	color = mix(color, color * vec3(0.96, 0.99, 1.0), 0.2);
 	float reflectedLight = smoothstep(0.6, 1.6, max(reflection.r, max(reflection.g, reflection.b)));
 	float alpha = clamp(0.20 + rim * 0.57 + specular * 0.48 + reflectedLight * 0.5 + uDark * 0.04, 0.0, 0.92);

@@ -52,7 +52,7 @@ function openModal(index: number) {
         onclick={() => openModal(i)}
         aria-label="View image {i + 1}"
       >
-        <img
+        <img data-water-lens
           src={image.thumbnail}
           alt={image.alt || "Gallery image " + (i + 1)}
           loading="lazy"

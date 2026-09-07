@@ -12,6 +12,8 @@ import { onMount } from "svelte";
 import { afterNavigate } from "$app/navigation";
 import { page } from "$app/state";
 import { cart } from "$lib/shop/cart.svelte";
+import { registerCartFeedback } from "$lib/shop/cartFeedback";
+import { drawPhotoLens } from "./jelly-nav/photoLens";
 import { cartUI } from "$lib/shop/cartUI.svelte";
 import {
 	DOCK_RADIUS,
@@ -43,6 +45,11 @@ const links = [
 
 let trigger: HTMLButtonElement;
 let canvas: HTMLCanvasElement;
+let lensCanvas: HTMLCanvasElement;
+let lensVisible = $state(false);
+let wake = $state.raw<{ x: number; y: number; age: number; id: number }[]>([]);
+let cartDrop = $state.raw<{ x: number; y: number; scale: number } | null>(null);
+let absorption = $state(0);
 let expanded = $state(false);
 let dragging = $state(false);
 let flying = $state(false);
@@ -232,11 +239,40 @@ onMount(() => {
 	let lastTime = 0;
 	let activeUntil = 0;
 	let dark = document.documentElement.classList.contains("dark");
-	const themeObserver = new MutationObserver(() => {
-		dark = document.documentElement.classList.contains("dark");
+	const warmthForPeriod = () => {
+		const period = document.documentElement.dataset.timePeriod;
+		return period === "golden" ? 1 : period === "dawn" ? 0.65 : period === "evening" ? 0.25 : period === "night" ? -1 : 0;
+	};
+	let warmth = warmthForPeriod();
+	let lastWake = 0;
+	let restStarted = 0;
+	let lastLensDraw = 0;
+	let absorbedAt = -10000;
+	let delivery: { origin: Point; start: number; absorbed?: boolean; complete: () => void } | null = null;
+	const unregisterFeedback = registerCartFeedback((origin, complete) => {
+		delivery?.complete();
+		close();
+		flight = null;
+		flying = false;
+		delivery = { origin: { x: origin.x - viewport.left, y: origin.y - viewport.top }, start: performance.now(), complete };
+		cartDrop = { ...delivery.origin, scale: 1 };
 		requestFrame();
 	});
-	themeObserver.observe(document.documentElement, { attributes: true, attributeFilter: ["class"] });
+	function clearDetails() {
+		wake = [];
+		lensVisible = false;
+		restStarted = 0;
+		cartDrop = null;
+		const pending = delivery;
+		delivery = null;
+		pending?.complete();
+	}
+	const themeObserver = new MutationObserver(() => {
+		dark = document.documentElement.classList.contains("dark");
+		warmth = warmthForPeriod();
+		requestFrame();
+	});
+	themeObserver.observe(document.documentElement, { attributes: true, attributeFilter: ["class", "data-time-period"] });
 
 	function animate(time: number) {
 		animation = 0;
@@ -285,6 +321,41 @@ onMount(() => {
 			drops: drops.map(({ x, y }) => ({ x, y })),
 			open: clamp(openness.x, 0, 1),
 		};
+		wake = wake.map((ring) => ({ ...ring, age: time - ring.id })).filter((ring) => ring.age < 750);
+		if (flying && !expanded && Math.hypot(center.vx, center.vy) > 100 && time - lastWake > 120) {
+			wake = [...wake.slice(-2), { x: center.x, y: center.y, age: 0, id: time }];
+			lastWake = time;
+		}
+		if (delivery) {
+			const progress = clamp((time - delivery.start) / 700, 0, 1);
+			const ease = progress * progress * (3 - 2 * progress);
+			cartDrop = {
+				x: delivery.origin.x + (center.x - delivery.origin.x) * ease,
+				y: delivery.origin.y + (center.y - delivery.origin.y) * ease - Math.sin(progress * Math.PI) * 45,
+				scale: 1 - Math.max(0, (progress - 0.75) / 0.25) * 0.85,
+			};
+			if (progress === 1) {
+				if (!delivery.absorbed) { absorbedAt = time; delivery.absorbed = true; }
+				cartDrop = null;
+			}
+			if (time - delivery.start >= 1000) {
+				const complete = delivery.complete;
+				delivery = null;
+				complete();
+			}
+		}
+		absorption = Math.max(0, 1 - (time - absorbedAt) / 650);
+		if (dragging || flying || expanded || cartUI.isOpen || Math.hypot(center.vx, center.vy) > 8) {
+			restStarted = time;
+			lensVisible = false;
+		} else if (time - lastLensDraw > 100) {
+			if (!restStarted) restStarted = time;
+			const moment = (time - restStarted) % 12000;
+			lensVisible = moment > 1200 && moment < 4000 && drawPhotoLens(lensCanvas, {
+				x: center.x + viewport.left, y: center.y + viewport.top,
+			});
+			lastLensDraw = time;
+		}
 		const pressure = {
 			x: clamp((DOCK_RADIUS + 2 - Math.min(center.x, viewport.width - center.x)) / DOCK_RADIUS, 0, 0.45),
 			y: clamp((DOCK_RADIUS + 2 - Math.min(center.y, viewport.height - center.y)) / DOCK_RADIUS, 0, 0.45),
@@ -303,8 +374,9 @@ onMount(() => {
 			viewport,
 			time: time / 1000,
 			ambientRipple: reducedMotion ? 0 : 1,
-			agitation: reducedMotion ? 0 : Math.min(1, Math.hypot(center.vx, center.vy) / 500 + Math.abs(openness.vx) * 0.3 + (dragging ? 0.25 : 0)),
+			agitation: reducedMotion ? 0 : Math.min(1, Math.hypot(center.vx, center.vy) / 500 + Math.abs(openness.vx) * 0.3 + absorption * 0.65 + (dragging ? 0.25 : 0)),
 			dark,
+			warmth,
 		}) ?? false;
 		if (!reducedMotion && (surface || moving || !expanded)) {
 			animation = requestAnimationFrame(animate);
@@ -320,6 +392,7 @@ onMount(() => {
 	};
 	function visibility() {
 		if (document.hidden) {
+			clearDetails();
 			finishPointer(true);
 			flight = null;
 			flying = false;
@@ -328,6 +401,8 @@ onMount(() => {
 			animation = 0;
 		} else requestFrame();
 	}
+	function scrollDetails() { lensVisible = false; restStarted = performance.now(); }
+	window.addEventListener("scroll", scrollDetails, { passive: true, capture: true });
 	function motionPreference() { reducedMotion = media.matches; requestFrame(); }
 	// Safari can initiate selection from content beneath a transparent overlay.
 	// Cancel the native touch gesture only on the sphere, leaving page gestures alone.
@@ -344,6 +419,9 @@ onMount(() => {
 
 	return () => {
 		disposed = true;
+		unregisterFeedback();
+		clearDetails();
+		window.removeEventListener("scroll", scrollDetails, true);
 		trigger.removeEventListener("touchstart", preventNativeTouch);
 		trigger.removeEventListener("touchmove", preventNativeTouch);
 		cancelAnimationFrame(animation);
@@ -368,6 +446,10 @@ onMount(() => {
 	{#if expanded}
 		<button class="dismiss" type="button" tabindex="-1" aria-label="Close navigation" onclick={() => close(true)}></button>
 	{/if}
+	{#each wake as ring (ring.id)}
+		<span class="wake-ring" aria-hidden="true" style:opacity={(1 - ring.age / 750) * 0.16}
+			style:transform={`translate(${ring.x - 30}px, ${ring.y - 30}px) scale(${1 + ring.age / 1100})`}></span>
+	{/each}
 	<!-- Frost sits under the liquid renderer so reflections and icons stay sharp. -->
 	<div class="frost-layer" aria-hidden="true">
 		<span class="frost" style:width={`${frostRadius * 2}px`} style:height={`${frostRadius * 2}px`}
@@ -379,6 +461,15 @@ onMount(() => {
 				style:transform={`translate3d(${drop.x - dropRadius}px, ${drop.y - dropRadius}px, 0)`}></span>
 		{/each}
 	</div>
+	<canvas bind:this={lensCanvas} class="photo-lens" class:visible={lensVisible} width="160" height="160" aria-hidden="true"
+		style:transform={`translate3d(${frame.center.x - 40}px, ${frame.center.y - 40}px, 0)`}></canvas>
+	{#if cartDrop}
+		<span class="cart-droplet" aria-hidden="true" style:transform={`translate3d(${cartDrop.x - 9}px, ${cartDrop.y - 9}px, 0) scale(${cartDrop.scale})`}></span>
+	{/if}
+	{#if absorption > 0}
+		<span class="absorption-ring" aria-hidden="true" style:opacity={absorption * 0.45}
+			style:transform={`translate(${frame.center.x - 34}px, ${frame.center.y - 34}px) scale(${1.5 - absorption * 0.5})`}></span>
+	{/if}
 	<canvas bind:this={canvas} class="water-surface" aria-hidden="true"
 		style:width={`${SURFACE_SIZE}px`} style:height={`${SURFACE_SIZE}px`}
 		style:transform={`translate3d(${frame.center.x - SURFACE_SIZE / 2}px, ${frame.center.y - SURFACE_SIZE / 2}px, 0)`}></canvas>
@@ -454,6 +545,12 @@ onMount(() => {
 		-webkit-mask-image: radial-gradient(closest-side, #000 72%, transparent 100%);
 	}
 	:global(.dark) .frost { background: rgb(24 32 34 / 60%); }
+	.wake-ring, .absorption-ring { position: absolute; left: 0; top: 0; width: 60px; height: 60px; border-radius: 50%; border: 1px solid rgb(100 134 149 / 70%); box-shadow: 0 1px 2px rgb(255 255 255 / 65%); pointer-events: none; }
+	.absorption-ring { width: 68px; height: 68px; }
+	.cart-droplet { position: absolute; left: 0; top: 0; width: 18px; height: 18px; border-radius: 50%; background: radial-gradient(circle at 28% 22%, white, rgb(222 240 246 / 65%) 28%, rgb(138 171 183 / 55%) 70%, rgb(255 255 255 / 80%)); box-shadow: inset -1px -1px 3px rgb(68 105 119 / 40%), 0 2px 5px rgb(40 70 80 / 15%); pointer-events: none; }
+	.photo-lens { position: absolute; left: 0; top: 0; width: 80px; height: 80px; border-radius: 50%; opacity: 0; transition: opacity 600ms ease; pointer-events: none; mask-image: radial-gradient(circle, black 45%, transparent 70%); }
+	.photo-lens.visible { opacity: .5; }
+	.dragging .photo-lens, .flying .photo-lens, .expanded .photo-lens { opacity: 0; transition: none; }
 	.water-surface { opacity: 0; position: absolute; left: 0; top: 0; pointer-events: none; }
 	.rendered .water-surface { opacity: 1; }
 	.sphere, .destination {
