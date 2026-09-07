@@ -64,3 +64,10 @@ and substitute file pickers, file streams, and Worker responses. They cover
 selected/favorite targets, failure/retry, cancellation, unmount during a pending
 picker or stream, ZIP capability fields, prepared-ZIP cancellation, and cleanup
 of generated download forms. No files are written outside the browser fixture.
+
+S07 verifies the successful public order projection without invented date or
+address fields. Motion fixtures exercise the real grain, gradient, and ASCII
+components with controlled animation frames and observed WebGL calls, including
+initial/live reduced-motion preference, setup failure cleanup, and late image
+callbacks after unmount. These checks establish scheduling/resource ownership;
+they do not measure frame rate or GPU power on physical mobile devices.
