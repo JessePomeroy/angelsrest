@@ -103,4 +103,14 @@ describe("portal totals", () => {
 	it("applies the existing percentage tax calculation", () => {
 		expect(getInvoiceTotal([{ quantity: 1, unitPrice: 10_000 }], 6)).toBe(10_600);
 	});
+
+	it("uses per-line cent rounding for fractional quantities before tax", () => {
+		const items = [
+			{ quantity: 0.5, unitPrice: 1999 },
+			{ quantity: 0.5, unitPrice: 1999 },
+		];
+		expect(getInvoiceSubtotal(items)).toBe(2000);
+		expect(getInvoiceTotal(items, 6.25)).toBe(2125);
+		expect(getInvoiceTotal([{ quantity: 1, unitPrice: 1999 }], 6.25)).toBe(2124);
+	});
 });
