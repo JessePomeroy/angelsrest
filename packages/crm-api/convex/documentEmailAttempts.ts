@@ -492,6 +492,19 @@ function validateFailure(value: string) {
 	requireBoundedText(value, "Delivery failure", MAX_FAILURE_BYTES);
 }
 
+async function advanceAcceptedDocument(
+	ctx: MutationCtx,
+	document: SendableDocument,
+	now: number,
+): Promise<boolean> {
+	const updates: { status?: "sent"; sentAt?: number } = {};
+	if (document.status === "draft") updates.status = "sent";
+	if (document.sentAt === undefined) updates.sentAt = now;
+	if (updates.status === undefined && updates.sentAt === undefined) return false;
+	await ctx.db.patch(document._id, updates);
+	return true;
+}
+
 async function completeDocumentLifecycle(
 	ctx: MutationCtx,
 	attempt: Doc<"documentEmailAttempts">,
@@ -502,18 +515,7 @@ async function completeDocumentLifecycle(
 		throw new Error("Document email target no longer matches its tenant client");
 	}
 
-	const updates: { status?: "sent"; sentAt?: number } = {};
-	if (document.status === "draft") updates.status = "sent";
-	if (document.sentAt === undefined) updates.sentAt = now;
-	if (updates.status !== undefined || updates.sentAt !== undefined) {
-		if (attempt.document.type === "invoice") {
-			await ctx.db.patch(attempt.document.id, updates);
-		} else if (attempt.document.type === "quote") {
-			await ctx.db.patch(attempt.document.id, updates);
-		} else {
-			await ctx.db.patch(attempt.document.id, updates);
-		}
-	}
+	await advanceAcceptedDocument(ctx, document, now);
 
 	if (attempt.document.type === "invoice") {
 		const invoice = document as Doc<"invoices">;
@@ -546,23 +548,9 @@ async function applyAcceptedResolutionLifecycle(
 		return { lifecycle: "target_mismatch", keepPortalActionable: false };
 	}
 
-	const updates: { status?: "sent"; sentAt?: number } = {};
-	if (document.status === "draft") updates.status = "sent";
-	if (document.sentAt === undefined) updates.sentAt = now;
-	if (updates.status !== undefined || updates.sentAt !== undefined) {
-		if (attempt.document.type === "invoice") {
-			await ctx.db.patch(attempt.document.id, updates);
-		} else if (attempt.document.type === "quote") {
-			await ctx.db.patch(attempt.document.id, updates);
-		} else {
-			await ctx.db.patch(attempt.document.id, updates);
-		}
-	}
+	const advanced = await advanceAcceptedDocument(ctx, document, now);
 	return {
-		lifecycle:
-			updates.status !== undefined || updates.sentAt !== undefined
-				? "advanced"
-				: "preserved",
+		lifecycle: advanced ? "advanced" : "preserved",
 		keepPortalActionable: hasSendableDocumentStatus(attempt.document, document),
 	};
 }
