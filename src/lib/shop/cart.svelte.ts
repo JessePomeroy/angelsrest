@@ -26,6 +26,7 @@ import {
 	clearCart,
 	emptyCart,
 	isCartExpired,
+	parseCartState,
 	removeItemFromCart,
 	STORAGE_KEY,
 	updateItemQuantity,
@@ -56,10 +57,8 @@ class CartStore {
 		try {
 			const raw = localStorage.getItem(STORAGE_KEY);
 			if (!raw) return;
-			const parsed = JSON.parse(raw) as CartState;
-			// Validate the shape — corrupted localStorage should not
-			// crash the entire app on first paint.
-			if (!parsed || !Array.isArray(parsed.items)) {
+			const parsed = parseCartState(JSON.parse(raw));
+			if (!parsed) {
 				this.#reset();
 				return;
 			}
