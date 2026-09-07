@@ -1,4 +1,5 @@
 import { logActivity } from "./activityLog";
+import { calculateInvoiceAmounts } from "../src/invoiceAmounts";
 import { v } from "convex/values";
 import { mutation, query } from "./_generated/server";
 import {
@@ -207,6 +208,7 @@ export const convertToInvoice = mutation({
 		}));
 
 		// Create the invoice
+		calculateInvoiceAmounts(items);
 		const client = await ctx.db.get(quote.clientId);
 		const invoiceNumber = await allocateNextInvoiceNumber(ctx, quote.siteUrl);
 		const invoiceId = await ctx.db.insert("invoices", {

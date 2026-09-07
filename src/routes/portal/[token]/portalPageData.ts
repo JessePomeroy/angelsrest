@@ -1,3 +1,7 @@
+import { calculateInvoiceAmounts } from "../../../../packages/crm-api/src/invoiceAmounts";
+
+export { calculateInvoiceAmounts };
+
 export type PortalClient = { name: string } | null;
 
 export type PortalQuoteDocument = {
@@ -56,13 +60,12 @@ export function getQuoteTotal(packages: ReadonlyArray<{ price: number }>): numbe
 export function getInvoiceSubtotal(
 	items: ReadonlyArray<{ quantity: number; unitPrice: number }>,
 ): number {
-	return items.reduce((sum, item) => sum + item.quantity * item.unitPrice, 0);
+	return calculateInvoiceAmounts(items).subtotalCents;
 }
 
 export function getInvoiceTotal(
 	items: ReadonlyArray<{ quantity: number; unitPrice: number }>,
 	taxPercent?: number,
 ): number {
-	const subtotal = getInvoiceSubtotal(items);
-	return taxPercent ? subtotal + subtotal * (taxPercent / 100) : subtotal;
+	return calculateInvoiceAmounts(items, taxPercent).totalCents;
 }

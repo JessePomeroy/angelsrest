@@ -1,6 +1,6 @@
 <script lang="ts">
 import { formatCents, formatDateOnly, formatTimestamp } from "$lib/utils/format";
-import { getInvoiceSubtotal, getInvoiceTotal } from "./portalPageData";
+import { calculateInvoiceAmounts } from "./portalPageData";
 import type { PortalInvoiceDocument } from "./portalPageData";
 
 type Props = {
@@ -13,6 +13,13 @@ type Props = {
 };
 
 let { document: doc, client, used, status, loading, onPay }: Props = $props();
+const amounts = $derived.by(() => {
+	try {
+		return calculateInvoiceAmounts(doc.items, doc.taxPercent);
+	} catch {
+		return null;
+	}
+});
 </script>
 
 <div class="doc-header">
@@ -27,21 +34,25 @@ let { document: doc, client, used, status, loading, onPay }: Props = $props();
 </div>
 
 <div class="doc-body">
+	{#if amounts}
 	<table class="line-items">
 		<thead><tr><th scope="col" class="th-desc">Description</th><th scope="col" class="th-qty">Qty</th><th scope="col" class="th-price">Unit Price</th><th scope="col" class="th-total">Total</th></tr></thead>
-		<tbody>{#each doc.items as item, i (i)}<tr><td>{item.description}</td><td class="td-center">{item.quantity}</td><td class="td-right">{formatCents(item.unitPrice)}</td><td class="td-right">{formatCents(item.quantity * item.unitPrice)}</td></tr>{/each}</tbody>
+		<tbody>{#each doc.items as item, i (i)}<tr><td>{item.description}</td><td class="td-center">{item.quantity}</td><td class="td-right">{formatCents(item.unitPrice)}</td><td class="td-right">{formatCents(amounts.lineAmountsCents[i])}</td></tr>{/each}</tbody>
 	</table>
 	<div class="invoice-totals">
-		<div class="subtotal-row"><span>Subtotal</span><span>{formatCents(getInvoiceSubtotal(doc.items))}</span></div>
-		{#if doc.taxPercent}<div class="subtotal-row"><span>Tax ({doc.taxPercent}%)</span><span>{formatCents(getInvoiceSubtotal(doc.items) * (doc.taxPercent / 100))}</span></div>{/if}
-		<div class="total-row"><span class="total-label">Total</span><span class="total-amount">{formatCents(getInvoiceTotal(doc.items, doc.taxPercent))}</span></div>
+		<div class="subtotal-row"><span>Subtotal</span><span>{formatCents(amounts.subtotalCents)}</span></div>
+		{#if doc.taxPercent}<div class="subtotal-row"><span>Tax ({doc.taxPercent}%)</span><span>{formatCents(amounts.taxCents)}</span></div>{/if}
+		<div class="total-row"><span class="total-label">Total</span><span class="total-amount">{formatCents(amounts.totalCents)}</span></div>
 	</div>
+	{:else}
+		<p class="status-message">This invoice has invalid amounts. Please contact the business for a corrected invoice.</p>
+	{/if}
 	{#if doc.notes}<div class="notes-section"><h4 class="notes-heading">Notes</h4><p class="notes-text">{doc.notes}</p></div>{/if}
 </div>
 
 {#if status === "paid"}
 	<div class="status-message success-message">This invoice has been paid. Thank you!</div>
-{:else if (status === "sent" || status === "overdue") && !used}
+{:else if amounts && (status === "sent" || status === "overdue") && !used}
 	<div class="doc-actions"><button class="btn-primary" onclick={onPay} disabled={loading}>{loading ? "..." : "Pay Now"}</button></div>
 {:else if used}
 	<div class="status-message">This invoice link is read-only.</div>

@@ -1,5 +1,28 @@
 import { expect, test } from "@playwright/test";
 
+test("fractional invoice displays the same rounded line, subtotal and tax amounts as checkout", async ({ page }) => {
+  const errors: string[] = [];
+  page.on("pageerror", error => errors.push(error.message));
+  await page.goto("/?fixture=portal-css&kind=fractional");
+  await expect(page.getByRole("cell", { name: "0.5", exact: true })).toHaveCount(2);
+  await expect(page.getByRole("cell", { name: "$10.00", exact: true })).toHaveCount(2);
+  await expect(page.locator(".invoice-totals")).toContainText("$20.00");
+  await expect(page.locator(".invoice-totals")).toContainText("$1.25");
+  await expect(page.locator(".total-amount")).toHaveText("$21.25");
+  await expect(page.getByRole("button", { name: "Pay Now", exact: true })).toBeEnabled();
+  expect(errors).toEqual([]);
+});
+
+test("invalid historical invoice stays readable and cannot initiate payment", async ({ page }) => {
+  const errors: string[] = [];
+  page.on("pageerror", error => errors.push(error.message));
+  await page.goto("/?fixture=portal-css&kind=invalid-invoice");
+  await expect(page.getByRole("heading", { name: "INV-FRACTION" })).toBeVisible();
+  await expect(page.getByText(/Please contact the business for a corrected invoice/)).toBeVisible();
+  await expect(page.getByRole("button", { name: "Pay Now" })).toHaveCount(0);
+  expect(errors).toEqual([]);
+});
+
 for (const kind of ["invoice", "quote", "contract"]) {
   test(`native foundation preserves ${kind} document styles and controls`, async ({ page }) => {
     const errors: string[] = [];
