@@ -47,26 +47,24 @@ const extraImageCount = $derived(
 </script>
 
 <div
-  class="flex gap-3 {variant === 'drawer' ? 'py-4' : 'py-5'} border-b border-surface-500/15"
+  class="cart-line" class:page-line={variant === "page"}
 >
   <!-- Thumbnail -->
   <div
-    class="relative flex-shrink-0 {variant === 'drawer'
-      ? 'w-16 h-16'
-      : 'w-20 h-20 md:w-24 md:h-24'} overflow-hidden rounded-md bg-surface-500/10"
+    class="thumbnail"
   >
     {#if item.imageUrl}
       <img
         src={item.imageUrl}
         alt={item.title}
         loading="lazy"
-        class="w-full h-full object-cover"
+        class="product-image"
       />
     {/if}
     {#if extraImageCount > 0}
       <span
         aria-hidden="true"
-        class="absolute bottom-0 right-0 px-1 py-0.5 text-[10px] font-medium bg-gray-900/80 text-surface-50 rounded-tl-md"
+        class="extra-images"
       >
         +{extraImageCount}
       </span>
@@ -74,9 +72,9 @@ const extraImageCount = $derived(
   </div>
 
   <!-- Body -->
-  <div class="flex-1 min-w-0 flex flex-col gap-1">
+  <div class="line-body">
     <!--
-      `block` is required for `truncate` to actually clip — anchors are
+      Block layout is required for the title to actually clip — anchors are
       `display: inline` by default, where overflow/text-ellipsis are
       no-ops. Without this, a long product title (e.g. the godzilla
       tapestry) overflows its parent flex column, pushes the price + X
@@ -85,31 +83,31 @@ const extraImageCount = $derived(
     -->
     <a
       href={`/shop/${item.productSlug}`}
-      class="block text-sm font-medium leading-tight truncate hover:underline"
+      class="product-title"
     >
       {item.title}
     </a>
     {#if item.paperName && item.paperWidth && item.paperHeight}
-      <div class="text-xs text-surface-600 dark:text-surface-300 lowercase truncate">
+      <div class="print-details">
         {item.paperName} · {item.paperWidth}×{item.paperHeight}{item.canvasSubcategoryId ? ' · canvas' : ''}{item.borderWidth ? ` · ${item.borderWidth}" border` : ''}{item.frameSubcategoryId ? ' · framed' : ''}
       </div>
     {/if}
 
-    <div class="flex items-center justify-between mt-1">
+    <div class="line-controls">
       <!-- Qty controls -->
       <div
-        class="flex items-center border border-surface-500/30 rounded-md overflow-hidden"
+        class="quantity-controls"
       >
         <button
           type="button"
           onclick={decrement}
           aria-label="Decrease quantity"
-          class="px-2 py-1 hover:bg-surface-500/10 transition-colors"
+          class="quantity-button"
         >
-          <MinusIcon class="size-3" />
+          <MinusIcon size="0.75rem" />
         </button>
         <span
-          class="px-2 text-sm tabular-nums min-w-[1.5rem] text-center"
+          class="quantity"
           aria-live="polite"
         >
           {item.quantity}
@@ -118,14 +116,14 @@ const extraImageCount = $derived(
           type="button"
           onclick={increment}
           aria-label="Increase quantity"
-          class="px-2 py-1 hover:bg-surface-500/10 transition-colors"
+          class="quantity-button"
         >
-          <PlusIcon class="size-3" />
+          <PlusIcon size="0.75rem" />
         </button>
       </div>
 
       <!-- Line subtotal -->
-      <div class="text-sm font-medium tabular-nums">
+      <div class="line-total">
         {formatCents(lineSubtotal)}
       </div>
     </div>
@@ -136,8 +134,33 @@ const extraImageCount = $derived(
     type="button"
     onclick={remove}
     aria-label={`Remove ${item.title}`}
-    class="self-start p-1 -mt-1 -mr-1 text-surface-500 hover:text-error-500 transition-colors"
+    class="remove-button"
   >
-    <XIcon class="size-4" />
+    <XIcon size="1rem" />
   </button>
 </div>
+
+<style>
+  @layer components {
+    .cart-line { display: flex; gap: 0.75rem; padding-block: 1rem; border-bottom: 1px solid; border-color: color-mix(in oklab, var(--color-surface-500) 15%, transparent); }
+    .thumbnail { position: relative; flex-shrink: 0; width: 4rem; height: 4rem; overflow: hidden; border-radius: 0.375rem; background-color: color-mix(in oklab, var(--color-surface-500) 10%, transparent); }
+    .product-image { width: 100%; height: 100%; object-fit: cover; }
+    .extra-images { position: absolute; bottom: 0; right: 0; padding-inline: 0.25rem; padding-block: 0.125rem; font-size: 10px; font-weight: 500; background-color: color-mix(in oklab, oklch(21% 0.034 264.665) 80%, transparent); color: var(--color-surface-50); border-top-left-radius: 0.375rem; }
+    .line-body { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 0.25rem; }
+    .product-title { display: block; font-size: var(--text-sm); line-height: var(--text-sm--line-height); font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; line-height: 1.25; }
+    @media (hover: hover) { .product-title:hover { text-decoration-line: underline; } }
+    .print-details { font-size: var(--text-xs); line-height: var(--text-xs--line-height); color: var(--color-surface-600); text-transform: lowercase; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    :global(.dark) .print-details { color: var(--color-surface-300); }
+    .line-controls { display: flex; align-items: center; justify-content: space-between; margin-top: 0.25rem; }
+    .quantity-controls { display: flex; align-items: center; border: 1px solid; border-color: color-mix(in oklab, var(--color-surface-500) 30%, transparent); border-radius: 0.375rem; overflow: hidden; }
+    .quantity-button { padding-inline: 0.5rem; padding-block: 0.25rem; transition-property: color, background-color, border-color, outline-color, text-decoration-color, fill, stroke; transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1); transition-duration: 150ms; }
+    @media (hover: hover) { .quantity-button:hover { background-color: color-mix(in oklab, var(--color-surface-500) 10%, transparent); } }
+    .quantity { padding-inline: 0.5rem; font-size: var(--text-sm); line-height: var(--text-sm--line-height); font-variant-numeric: tabular-nums; min-width: 1.5rem; text-align: center; }
+    .line-total { font-size: var(--text-sm); line-height: var(--text-sm--line-height); font-weight: 500; font-variant-numeric: tabular-nums; }
+    .remove-button { align-self: flex-start; padding: 0.25rem; margin-top: -0.25rem; margin-right: -0.25rem; color: var(--color-surface-500); transition-property: color, background-color, border-color, outline-color, text-decoration-color, fill, stroke; transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1); transition-duration: 150ms; }
+    @media (hover: hover) { .remove-button:hover { color: var(--color-error-500); } }
+    .page-line { padding-block: 1.25rem; }
+    .page-line .thumbnail { width: 5rem; height: 5rem; }
+    @media (min-width: 48rem) { .page-line .thumbnail { width: 6rem; height: 6rem; } }
+  }
+</style>

@@ -1,4 +1,5 @@
 <script lang="ts">
+import CartHarness from "./CartHarness.svelte";
 import BlogHarness from "./BlogHarness.svelte";
 import ContentHarness from "./ContentHarness.svelte";
 import SiteChrome from "./SiteChrome.svelte";
@@ -40,7 +41,9 @@ if (params.get("populated") === "true") {
 }
 </script>
 
-{#if fixture === "blog"}
+{#if fixture === "cart-css"}
+  <CartHarness />
+{:else if fixture === "blog"}
   <BlogHarness />
 {:else if fixture === "content"}
 	<ContentHarness />
