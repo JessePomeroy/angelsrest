@@ -33,18 +33,18 @@ let { data, form }: { data: PageData; form?: { verifyError?: string } } = $props
 />
 
 <!-- Success Page Content -->
-<div class="max-w-2xl mx-auto px-6 py-8">
+<div class="confirmation-page">
   
   <!-- Success Icon and Header -->
-  <div class="text-center mb-8">
-    <div class="w-20 h-20 rounded-full bg-green-500/20 flex items-center justify-center mx-auto mb-6">
-      <svg class="w-10 h-10 text-green-500" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+  <div class="confirmation-header">
+    <div class="success-mark">
+      <svg class="success-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path>
       </svg>
     </div>
     
-    <h1 class="text-3xl font-semibold mb-4">Thank you for your order!</h1>
-    <p class="text-surface-600 dark:text-surface-300">
+    <h1 class="page-title">Thank you for your order!</h1>
+    <p class="confirmation-message">
       Your payment was successful. You'll receive an email confirmation shortly.
     </p>
   </div>
@@ -56,22 +56,22 @@ let { data, form }: { data: PageData; form?: { verifyError?: string } } = $props
       (no binding cookie), we show a friendlier "look up your order"
       state instead of PII.
     -->
-    <div class="bg-surface-100 dark:bg-surface-800 rounded-lg p-6 mb-8 text-center">
-      <p class="text-sm text-surface-600 dark:text-surface-300">
+    <div class="verification-panel">
+      <p class="privacy-message">
         This looks like a shared link. For privacy we don't show order details on this page unless you're the buyer.
       </p>
-      <p class="text-sm text-surface-600 dark:text-surface-300 mt-2">
+      <p class="lookup-message">
         To see your order, look it up with your email and order number at
-        <a href="/orders" class="underline">/orders</a>.
+        <a href="/orders" class="lookup-link">/orders</a>.
       </p>
       {#if data.sessionId}
         <form
           method="POST"
           action="?/verify&session_id={encodeURIComponent(data.sessionId)}"
-          class="mt-5 space-y-3"
+          class="verification-form"
         >
           <input type="hidden" name="session_id" value={data.sessionId} />
-          <label class="block text-left text-sm text-surface-600 dark:text-surface-300" for="order-email">
+          <label class="email-label" for="order-email">
             email used at checkout
           </label>
           <input
@@ -80,14 +80,14 @@ let { data, form }: { data: PageData; form?: { verifyError?: string } } = $props
             type="email"
             autocomplete="email"
             required
-            class="w-full rounded-md border border-surface-300 dark:border-surface-600 bg-transparent px-3 py-2 text-sm"
+            class="email-input"
           />
           {#if form?.verifyError}
-            <p class="text-sm text-red-500" role="alert">{form.verifyError}</p>
+            <p class="verification-error" role="alert">{form.verifyError}</p>
           {/if}
           <button
             type="submit"
-            class="w-full rounded-md bg-primary-500 px-4 py-2 text-sm font-medium text-white"
+            class="verify-button"
           >
             verify order
           </button>
@@ -95,23 +95,23 @@ let { data, form }: { data: PageData; form?: { verifyError?: string } } = $props
       {/if}
     </div>
   {:else if data.orderDetails}
-    <div class="bg-surface-100 dark:bg-surface-800 rounded-lg p-6 mb-8">
-      <h2 class="text-lg font-medium mb-4">Order Details</h2>
+    <div class="order-panel">
+      <h2 class="details-heading">Order Details</h2>
       
       <!-- Customer Info -->
       {#if data.orderDetails.customerEmail}
-        <div class="mb-4">
-          <span class="text-sm text-surface-500">Email:</span>
-          <span class="ml-2">{data.orderDetails.customerEmail}</span>
+        <div class="order-section">
+          <span class="email-caption">Email:</span>
+          <span class="customer-email">{data.orderDetails.customerEmail}</span>
         </div>
       {/if}
       
       <!-- Order Items -->
       {#if data.orderDetails.items.length > 0}
-        <div class="mb-4">
-          <h3 class="text-sm font-medium text-surface-600 dark:text-surface-300 mb-2">Items:</h3>
+        <div class="order-section">
+          <h3 class="section-heading">Items:</h3>
           {#each data.orderDetails.items as item, i (item.description ?? i)}
-            <div class="flex justify-between items-center py-1">
+            <div class="item-row">
               <span>{item.description ?? "Item"}</span>
               <span>{formatCents(item.amount ?? 0, data.orderDetails.currency ?? "usd")}</span>
             </div>
@@ -120,8 +120,8 @@ let { data, form }: { data: PageData; form?: { verifyError?: string } } = $props
       {/if}
       
       <!-- Total -->
-      <div class="border-t border-surface-300 dark:border-surface-600 pt-2 mb-4">
-        <div class="flex justify-between items-center font-medium">
+      <div class="order-total">
+        <div class="total-row">
           <span>Total Paid:</span>
           <span>{formatCents(data.orderDetails.amountTotal ?? 0, data.orderDetails.currency ?? "usd")}</span>
         </div>
@@ -134,15 +134,15 @@ let { data, form }: { data: PageData; form?: { verifyError?: string } } = $props
           confirmation links verify the buyer email by POSTing the form
           above and redirecting back to this clean session URL.
         -->
-        <div class="mt-6 p-4 bg-green-500/10 border border-green-500/20 rounded-lg">
-          <h3 class="text-lg font-medium mb-2">your download is ready</h3>
+        <div class="download-panel">
+          <h3 class="download-heading">your download is ready</h3>
           <a
             href="/api/download?session_id={data.orderDetails.sessionId}&slug={data.orderDetails.productSlug}&item=0"
-            class="inline-flex items-center justify-center gap-2 rounded-md whitespace-nowrap text-base px-8 py-3 transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-surface-900 dark:focus-visible:outline-surface-50 disabled:opacity-50 disabled:cursor-not-allowed bg-primary-500 text-slate-950 not-disabled:hover:bg-primary-500/80 w-full text-center"
+            class="download-link"
           >
             download now
           </a>
-          <p class="text-sm text-surface-500 mt-2 text-center">
+          <p class="download-note">
             bookmark this page to re-download anytime.
           </p>
         </div>
@@ -151,8 +151,8 @@ let { data, form }: { data: PageData; form?: { verifyError?: string } } = $props
       <!-- Shipping Address (physical products only) -->
       {#if !data.orderDetails.isDigital && data.orderDetails.shippingAddress}
         <div>
-          <h3 class="text-sm font-medium text-surface-600 dark:text-surface-300 mb-2">Shipping Address:</h3>
-          <div class="text-sm text-surface-700 dark:text-surface-200">
+          <h3 class="section-heading">Shipping Address:</h3>
+          <div class="shipping-address">
             <div>{data.orderDetails.shippingAddress.name}</div>
             <div>{data.orderDetails.shippingAddress.line1}</div>
             {#if data.orderDetails.shippingAddress.line2}
@@ -170,18 +170,18 @@ let { data, form }: { data: PageData; form?: { verifyError?: string } } = $props
 
   <!-- Next Steps (different for digital vs physical) -->
   {#if data.orderDetails?.isDigital}
-    <div class="bg-blue-50 dark:bg-blue-950/30 rounded-lg p-6 mb-8">
-      <h3 class="font-medium mb-2">what's included</h3>
-      <ul class="text-sm text-surface-600 dark:text-surface-300 space-y-1">
+    <div class="next-steps">
+      <h3>what's included</h3>
+      <ul class="steps-list">
         <li>- check your email for the order confirmation</li>
         <li>- use your confirmation email to re-verify downloads later</li>
         <li>- questions? email hello@angelsrest.online</li>
       </ul>
     </div>
   {:else}
-    <div class="bg-blue-50 dark:bg-blue-950/30 rounded-lg p-6 mb-8">
-      <h3 class="font-medium mb-2">What happens next?</h3>
-      <ul class="text-sm text-surface-600 dark:text-surface-300 space-y-1">
+    <div class="next-steps">
+      <h3>What happens next?</h3>
+      <ul class="steps-list">
         <li>- You'll receive an email confirmation shortly</li>
         <li>- Your order will be processed within 1-2 business days</li>
         <li>- Made-to-order prints typically ship within 2 weeks</li>
@@ -191,12 +191,77 @@ let { data, form }: { data: PageData; form?: { verifyError?: string } } = $props
   {/if}
 
   <!-- Navigation -->
-  <div class="flex gap-4 justify-center">
-    <a href="/shop" class="inline-flex items-center justify-center gap-2 rounded-md whitespace-nowrap text-base px-4 py-1 transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-surface-900 dark:focus-visible:outline-surface-50 disabled:opacity-50 disabled:cursor-not-allowed bg-surface-200 text-surface-900 dark:bg-surface-700 dark:text-surface-50">
+  <div class="actions">
+    <a href="/shop" class="shop-link">
       Continue Shopping
     </a>
-    <a href="/" class="inline-flex items-center justify-center gap-2 rounded-md whitespace-nowrap text-base px-4 py-1 transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-surface-900 dark:focus-visible:outline-surface-50 disabled:opacity-50 disabled:cursor-not-allowed bg-primary-500 text-slate-950 not-disabled:hover:bg-primary-500/80">
+    <a href="/" class="home-link">
       Back to Home
     </a>
   </div>
 </div>
+
+<style>
+  @layer components {
+    .confirmation-page { max-width: 42rem; margin-inline: auto; padding-inline: 1.5rem; padding-block: 2rem; }
+    .confirmation-header { text-align: center; margin-bottom: 2rem; }
+    .success-mark { width: 5rem; height: 5rem; border-radius: 9999px; background-color: color-mix(in oklab, oklch(72.3% 0.219 149.579) 20%, transparent); display: flex; align-items: center; justify-content: center; margin-inline: auto; margin-bottom: 1.5rem; }
+    .success-icon { width: 2.5rem; height: 2.5rem; color: oklch(72.3% 0.219 149.579); }
+    .page-title { font-size: var(--text-3xl); }
+    .confirmation-message { color: var(--color-surface-600); }
+    :global(.dark) .confirmation-message { color: var(--color-surface-300); }
+    .verification-panel { background-color: var(--color-surface-100); border-radius: 0.5rem; padding: 1.5rem; margin-bottom: 2rem; text-align: center; }
+    :global(.dark) .verification-panel { background-color: var(--color-surface-800); }
+    .privacy-message { font-size: var(--text-sm); line-height: var(--text-sm--line-height); color: var(--color-surface-600); }
+    :global(.dark) .privacy-message { color: var(--color-surface-300); }
+    .lookup-message { font-size: var(--text-sm); line-height: var(--text-sm--line-height); color: var(--color-surface-600); }
+    :global(.dark) .lookup-message { color: var(--color-surface-300); }
+    .lookup-link { text-decoration-line: underline; }
+    .verification-form > :not(:last-child) { margin-block-start: 0; margin-block-end: 0.75rem; }
+    .verification-form { margin-top: 1.25rem; }
+    .email-label { display: block; text-align: left; font-size: var(--text-sm); line-height: var(--text-sm--line-height); color: var(--color-surface-600); }
+    :global(.dark) .email-label { color: var(--color-surface-300); }
+    .email-input { width: 100%; border-radius: 0.375rem; border: 1px solid; border-color: var(--color-surface-300); background-color: transparent; padding-inline: 0.75rem; padding-block: 0.5rem; font-size: var(--text-sm); line-height: var(--text-sm--line-height); }
+    :global(.dark) .email-input { border-color: var(--color-surface-600); }
+    .verification-error { font-size: var(--text-sm); line-height: var(--text-sm--line-height); color: oklch(63.7% 0.237 25.331); }
+    .verify-button { width: 100%; border-radius: 0.375rem; background-color: var(--color-primary-500); padding-inline: 1rem; padding-block: 0.5rem; font-size: var(--text-sm); line-height: var(--text-sm--line-height); font-weight: 500; color: white; }
+    .order-panel { background-color: var(--color-surface-100); border-radius: 0.5rem; padding: 1.5rem; margin-bottom: 2rem; }
+    :global(.dark) .order-panel { background-color: var(--color-surface-800); }
+    .details-heading { font-size: var(--text-lg); }
+    .order-section { margin-bottom: 1rem; }
+    .email-caption { font-size: var(--text-sm); line-height: var(--text-sm--line-height); color: var(--color-surface-500); }
+    .customer-email { margin-left: 0.5rem; }
+    .section-heading { font-size: var(--text-sm); color: var(--color-surface-600); }
+    :global(.dark) .section-heading { color: var(--color-surface-300); }
+    .item-row { display: flex; justify-content: space-between; align-items: center; padding-block: 0.25rem; }
+    .order-total { border-top: 1px solid; border-color: var(--color-surface-300); padding-top: 0.5rem; margin-bottom: 1rem; }
+    :global(.dark) .order-total { border-color: var(--color-surface-600); }
+    .total-row { display: flex; justify-content: space-between; align-items: center; font-weight: 500; }
+    .download-panel { margin-top: 1.5rem; padding: 1rem; background-color: color-mix(in oklab, oklch(72.3% 0.219 149.579) 10%, transparent); border: 1px solid; border-color: color-mix(in oklab, oklch(72.3% 0.219 149.579) 20%, transparent); border-radius: 0.5rem; }
+    .download-heading { font-size: var(--text-lg); }
+    .download-link { display: inline-flex; align-items: center; justify-content: center; gap: 0.5rem; border-radius: 0.375rem; white-space: nowrap; font-size: var(--text-base); line-height: var(--text-base--line-height); padding-inline: 2rem; padding-block: 0.75rem; transition-property: color, background-color, border-color, outline-color, text-decoration-color, fill, stroke; transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1); transition-duration: 150ms; background-color: var(--color-primary-500); color: oklch(12.9% 0.042 264.695); width: 100%; text-align: center; }
+    .download-link:focus-visible { outline-style: solid; outline-width: 2px; outline-offset: 2px; outline-color: var(--color-surface-900); }
+    :global(.dark) .download-link:focus-visible { outline-color: var(--color-surface-50); }
+    .download-link:disabled { opacity: 0.5; cursor: not-allowed; }
+    @media (hover: hover) { .download-link:hover:not(:disabled) { background-color: color-mix(in oklab, var(--color-primary-500) 80%, transparent); } }
+    .download-note { font-size: var(--text-sm); line-height: var(--text-sm--line-height); color: var(--color-surface-500); text-align: center; }
+    .shipping-address { font-size: var(--text-sm); line-height: var(--text-sm--line-height); color: var(--color-surface-700); }
+    :global(.dark) .shipping-address { color: var(--color-surface-200); }
+    .next-steps { background-color: oklch(97% 0.014 254.604); border-radius: 0.5rem; padding: 1.5rem; margin-bottom: 2rem; }
+    :global(.dark) .next-steps { background-color: color-mix(in oklab, oklch(28.2% 0.091 267.935) 30%, transparent); }
+    .steps-list > :not(:last-child) { margin-block-start: 0; margin-block-end: 0.25rem; }
+    .steps-list { font-size: var(--text-sm); line-height: var(--text-sm--line-height); color: var(--color-surface-600); }
+    :global(.dark) .steps-list { color: var(--color-surface-300); }
+    .actions { display: flex; gap: 1rem; justify-content: center; }
+    .shop-link { display: inline-flex; align-items: center; justify-content: center; gap: 0.5rem; border-radius: 0.375rem; white-space: nowrap; font-size: var(--text-base); line-height: var(--text-base--line-height); padding-inline: 1rem; padding-block: 0.25rem; transition-property: color, background-color, border-color, outline-color, text-decoration-color, fill, stroke; transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1); transition-duration: 150ms; background-color: var(--color-surface-200); color: var(--color-surface-900); }
+    .shop-link:focus-visible { outline-style: solid; outline-width: 2px; outline-offset: 2px; outline-color: var(--color-surface-900); }
+    :global(.dark) .shop-link:focus-visible { outline-color: var(--color-surface-50); }
+    .shop-link:disabled { opacity: 0.5; cursor: not-allowed; }
+    :global(.dark) .shop-link { background-color: var(--color-surface-700); color: var(--color-surface-50); }
+    .home-link { display: inline-flex; align-items: center; justify-content: center; gap: 0.5rem; border-radius: 0.375rem; white-space: nowrap; font-size: var(--text-base); line-height: var(--text-base--line-height); padding-inline: 1rem; padding-block: 0.25rem; transition-property: color, background-color, border-color, outline-color, text-decoration-color, fill, stroke; transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1); transition-duration: 150ms; background-color: var(--color-primary-500); color: oklch(12.9% 0.042 264.695); }
+    .home-link:focus-visible { outline-style: solid; outline-width: 2px; outline-offset: 2px; outline-color: var(--color-surface-900); }
+    :global(.dark) .home-link:focus-visible { outline-color: var(--color-surface-50); }
+    .home-link:disabled { opacity: 0.5; cursor: not-allowed; }
+    @media (hover: hover) { .home-link:hover:not(:disabled) { background-color: color-mix(in oklab, var(--color-primary-500) 80%, transparent); } }
+  }
+</style>
