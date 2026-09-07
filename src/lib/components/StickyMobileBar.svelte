@@ -7,7 +7,7 @@
   dark background + box-shadow bleed when stuck.
 
   Props:
-    - bottomOffset: distance from viewport bottom when stuck (default: 4rem - 1px for bottom nav)
+    - bottomOffset: distance from viewport bottom when stuck (default: measured bottom-nav height when inside the site layout)
     - class: additional classes on the outer div
 
   Usage:
@@ -20,11 +20,28 @@
 -->
 
 <script lang="ts">
-import type { Snippet } from "svelte";
+import { getContext, type Snippet } from "svelte";
+import { MOBILE_CHROME, type MobileChrome } from "./mobileNavigation";
+const chrome = getContext<MobileChrome | undefined>(MOBILE_CHROME);
+let barSize = $state<ResizeObserverSize[]>();
+let barVisible = $state(false);
+let bar = $state<HTMLDivElement>();
+
+$effect(() => {
+	if (!bar || !chrome) return;
+	const observer = new IntersectionObserver(([entry]) => { barVisible = entry.isIntersecting; });
+	observer.observe(bar);
+	return () => observer.disconnect();
+});
+$effect(() => {
+	if (!chrome) return;
+	chrome.purchaseBarHeight = barVisible ? barSize?.[0]?.blockSize ?? 0 : 0;
+	return () => { chrome.purchaseBarHeight = 0; };
+});
 
 let {
 	children,
-	bottomOffset = "calc(4rem - 1px)",
+	bottomOffset = "var(--mobile-nav-height, calc(4rem - 1px))",
 	class: extraClass = "",
 }: {
 	children: Snippet<[boolean]>;
@@ -41,7 +58,7 @@ $effect(() => {
 		([entry]) => {
 			isStuck = !entry.isIntersecting;
 		},
-		{ threshold: 0, rootMargin: "0px 0px -64px 0px" },
+		{ threshold: 0, rootMargin: `0px 0px -${chrome?.bottomNavHeight ?? 64}px 0px` },
 	);
 	observer.observe(sentinel);
 	return () => observer.disconnect();
@@ -49,6 +66,8 @@ $effect(() => {
 </script>
 
 <div
+ bind:this={bar}
+ bind:borderBoxSize={barSize}
 	class="sticky-bar {extraClass}"
 	class:stuck={isStuck}
 	style:bottom={bottomOffset}
@@ -64,7 +83,7 @@ $effect(() => {
 
 <style>
   @layer components {
-    .sticky-bar { position: sticky; z-index: 40; padding-block: 0.5rem; padding-inline: 1rem; transition: all 200ms cubic-bezier(0.4, 0, 0.2, 1); }
+    .sticky-bar { position: sticky; z-index: 40; padding-top: 0.5rem; padding-bottom: calc(0.5rem + var(--mobile-purchase-safe-area, 0px)); padding-inline: 1rem; transition: background-color 200ms cubic-bezier(0.4, 0, 0.2, 1); }
     .sticky-bar.stuck { color: var(--color-surface-50); }
     .sticky-sentinel { height: 0; }
     @media (min-width: 48rem) { .sticky-bar, .sticky-sentinel { display: none; } }

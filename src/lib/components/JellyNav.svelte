@@ -8,7 +8,8 @@ import {
 	UserIcon,
 	XIcon,
 } from "@lucide/svelte";
-import { onMount } from "svelte";
+import { onMount, untrack } from "svelte";
+
 import { afterNavigate } from "$app/navigation";
 import { page } from "$app/state";
 import { cart } from "$lib/shop/cart.svelte";
@@ -31,6 +32,14 @@ import {
 } from "./jelly-nav/motion";
 import { createInnerIcons, stepInnerIcons } from "./jelly-nav/innerIcons";
 import type { WaterSurface } from "./jelly-nav/surface";
+
+let { bottomInset = 0 }: { bottomInset?: number } = $props();
+let measureViewport = () => {};
+$effect(() => {
+	bottomInset;
+	untrack(() => measureViewport());
+});
+
 
 const POSITION_KEY = "angelsrest-water-nav-position";
 const SURFACE_SIZE = 320;
@@ -58,6 +67,8 @@ let mounted = $state(false);
 let rendered = $state(false);
 let reducedMotion = false;
 let viewport = $state({ width: 390, height: 844, left: 0, top: 0 });
+// Keep physical viewport coordinates for rendering and saved positions.
+const movementBounds = $derived({ width: viewport.width, height: Math.max(0, viewport.height - bottomInset) });
 let dock = { x: 195, y: 772 };
 let frame = $state.raw({
 	center: dock,
@@ -94,7 +105,7 @@ function pointerDown(event: PointerEvent) {
 	trigger.focus({ preventScroll: true });
 	flight = null;
 	flying = false;
-	dock = clampDock(frame.center, viewport);
+	dock = clampDock(frame.center, movementBounds);
 	const origin = { x: event.clientX, y: event.clientY };
 	pointer = {
 		id: event.pointerId, origin, last: origin,
@@ -123,7 +134,7 @@ function pointerMove(event: PointerEvent) {
 	dock = clampDock({
 		x: event.clientX - pointer.offset.x - viewport.left,
 		y: event.clientY - pointer.offset.y - viewport.top,
-	}, viewport);
+	}, movementBounds);
 	requestFrame();
 }
 
@@ -167,7 +178,7 @@ function keyboardMove(event: KeyboardEvent) {
 	flight = null;
 	flying = false;
 	close();
-	dock = clampDock({ x: dock.x + delta.x, y: dock.y + delta.y }, viewport);
+	dock = clampDock({ x: dock.x + delta.x, y: dock.y + delta.y }, movementBounds);
 	savePosition();
 	requestFrame();
 }
@@ -183,7 +194,7 @@ onMount(() => {
 	let disposed = false;
 	let surfaceUnavailable = false;
 	async function loadSurface() {
-		if (surface || loadingSurface || surfaceUnavailable || window.innerWidth >= 768) return;
+		if (surface || loadingSurface || surfaceUnavailable) return;
 		loadingSurface = true;
 		try {
 			const { createWaterSurface } = await import("./jelly-nav/surface");
@@ -204,24 +215,21 @@ onMount(() => {
 			left: visualViewport?.offsetLeft ?? 0,
 			top: visualViewport?.offsetTop ?? 0,
 		};
-		dock = clampDock(dock, viewport);
+		dock = clampDock(dock, movementBounds);
 		flight = null;
 		flying = false;
-		if (window.innerWidth >= 768) {
-			close();
-			finishPointer(true);
-		}
 		requestFrame();
 		void loadSurface();
 	}
+	measureViewport = measure;
 	measure();
-	dock = clampDock({ x: viewport.width / 2, y: viewport.height - 76 }, viewport);
+	dock = clampDock({ x: viewport.width / 2, y: movementBounds.height - 76 }, movementBounds);
 	try {
 		const saved: unknown = JSON.parse(localStorage.getItem(POSITION_KEY) ?? "null");
 		if (saved && typeof saved === "object" && "x" in saved && "y" in saved
 			&& typeof saved.x === "number" && typeof saved.y === "number"
 			&& Number.isFinite(saved.x) && Number.isFinite(saved.y)) {
-			dock = clampDock({ x: saved.x * viewport.width, y: saved.y * viewport.height }, viewport);
+			dock = clampDock({ x: saved.x * viewport.width, y: saved.y * viewport.height }, movementBounds);
 		}
 	} catch { /* Ignore unavailable or malformed saved placement. */ }
 
@@ -276,7 +284,7 @@ onMount(() => {
 
 	function animate(time: number) {
 		animation = 0;
-		if (disposed || document.hidden || window.innerWidth >= 768) return;
+		if (disposed || document.hidden) return;
 		const moving = time < activeUntil || dragging || flying
 			|| Math.hypot(flow.x, flow.y) > 1 || Math.hypot(compression.x, compression.y) > 0.001;
 		// Idle ripples need fewer draws than direct touch motion on a phone GPU.
@@ -287,11 +295,11 @@ onMount(() => {
 		const dt = lastTime ? (time - lastTime) / 1000 : 1 / 60;
 		lastTime = time;
 		if (flight) {
-			flying = !reducedMotion && stepFling(flight, viewport, dt);
+			flying = !reducedMotion && stepFling(flight, movementBounds, dt);
 			dock = { x: flight.x, y: flight.y };
 			if (!flying) { flight = null; savePosition(); }
 		}
-		const target = expanded ? menuCenter(dock, viewport) : dock;
+		const target = expanded ? menuCenter(dock, movementBounds) : dock;
 		if (dragging || flying) {
 			settleSpring(center, dock);
 			center.vx = flight?.vx ?? pointer?.velocity.x ?? 0;
@@ -385,7 +393,7 @@ onMount(() => {
 
 	requestFrame = () => {
 		activeUntil = performance.now() + 1800;
-		if (!animation && !document.hidden && window.innerWidth < 768) {
+		if (!animation && !document.hidden) {
 			lastTime = 0;
 			animation = requestAnimationFrame(animate);
 		}
@@ -530,7 +538,6 @@ onMount(() => {
     position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
     overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border-width: 0;
   }
-  @media (min-width: 48rem) { .jelly-nav { display: none; } }
 
 	.jelly-nav { position: fixed; z-index: 50; width: 0; height: 0; pointer-events: none; visibility: hidden; }
 	.mounted { visibility: visible; }

@@ -23,7 +23,9 @@
 <script lang="ts">
 import { injectAnalytics } from "@vercel/analytics/sveltekit";
 import type { LayoutProps } from "./$types";
-import { onMount } from "svelte";
+import { onMount, setContext } from "svelte";
+import { MOBILE_CHROME, type MobileChrome } from "$lib/components/mobileNavigation";
+
 import { page } from "$app/state";
 import { filterPrivateCapabilityAnalytics } from "$lib/capabilityPrivacy";
 
@@ -42,6 +44,10 @@ import Toaster from "$lib/components/Toaster.svelte";
 import { getTimeTheme } from "$lib/stores/timeTheme.svelte";
 
 import "$lib/styles/global.css";
+
+const mobileChrome = $state<MobileChrome>({ bottomNavHeight: undefined, purchaseBarHeight: 0 });
+setContext(MOBILE_CHROME, mobileChrome);
+
 
 let { children, data }: LayoutProps = $props();
 
@@ -91,7 +97,10 @@ onMount(() => {
 
   <a href="#main-content" class="skip-link">Skip to content</a>
 
-  <div class="site-shell">
+  <div class="site-shell"
+    style:--mobile-nav-height={mobileChrome.bottomNavHeight === undefined ? undefined : `${mobileChrome.bottomNavHeight}px`}
+    style:--mobile-purchase-safe-area={mobileChrome.bottomNavHeight === 0 ? "env(safe-area-inset-bottom)" : "0px"}
+  >
     <!-- Desktop navigation (hidden on mobile) -->
     <Nav />
 

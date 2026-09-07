@@ -93,3 +93,11 @@ The component suite now runs desktop Chromium, mobile Chromium and WebKit with t
 Color expectations are normalized through the current engine's computed-style serialization so OKLCH float precision does not create false failures. Hover-only assertions run on desktop; the sticky purchase bar runs on both mobile projects. The gradient lifecycle test dispatches mouse events directly and waits for asynchronous media-preference application before asserting the animation queue. It verifies scheduling and cleanup, not physical touch input or GPU performance.
 
 The sphere drag test still uses Chromium CDP touch injection and explicitly skips WebKit. Physical iPhone safe areas, Safari toolbar changes, real touch dragging and mobile GPU behavior remain device acceptance work. Provider fixtures also remain distinct from live authenticated or payment/email/fulfillment integration checks.
+
+## Physical iPhone layout follow-up
+
+The first iPhone 17 / iOS 26.6.1 check found missing landscape navigation and a roughly 3.8px gap between the reduced-motion bottom nav and purchase bar. Mobile navigation now remains available on short landscape touch viewports; `MobileNav` owns renderer eligibility, including reduced-motion and import-failure fallbacks. The ordinary desktop layout remains in use outside that phone-sized condition.
+
+The site layout owns typed, per-instance mobile geometry through Svelte context. `BottomNav` reports its fractional border-box height, including safe-area padding, and the purchase bar uses that height instead of a guessed offset. With the sphere active, the bar sits at the viewport bottom with safe-area padding, and its visible height reserves space in the sphere's movement bounds. Physical viewport dimensions remain separate for rendering and saved coordinates. The ordinary nav uses square selections. Observers clean up on unmount, and standalone purchase bars retain their explicit offset API.
+
+Combined layout/product browser fixtures cover rotation with an expanded menu, reduced-motion switching, fractional nav resizing, renderer import failure, and keeping sphere movement above the purchase controls. Linux WebKit captures supplement these checks; the corrected release still needs a physical iPhone retest.

@@ -1,4 +1,7 @@
 <script lang="ts">
+import { getContext } from "svelte";
+import { MOBILE_CHROME, type MobileChrome } from "./mobileNavigation";
+
 import {
 	HouseIcon,
 	ImageIcon,
@@ -7,6 +10,13 @@ import {
 	UserIcon,
 } from "@lucide/svelte";
 import { page } from "$app/state";
+
+const chrome = getContext<MobileChrome | undefined>(MOBILE_CHROME);
+let navSize = $state<ResizeObserverSize[]>();
+$effect(() => {
+	if (chrome && navSize?.[0]) chrome.bottomNavHeight = navSize[0].blockSize;
+});
+
 
 const links = [
 	{ label: "Home", href: "/", icon: HouseIcon },
@@ -18,6 +28,7 @@ const links = [
 </script>
 
 <nav
+  bind:borderBoxSize={navSize}
   aria-label="Mobile navigation"
   class="bottom-nav"
 >
@@ -60,7 +71,7 @@ const links = [
     justify-content: center;
     flex-direction: column;
     gap: 0.25rem;
-    border-radius: 0.375rem;
+    border-radius: 0;
     padding: 0.5rem 0.25rem;
     font-size: var(--text-xs);
     line-height: var(--text-xs--line-height);
@@ -85,4 +96,5 @@ const links = [
     :global(.dark) a:not([aria-current]):hover { background: var(--color-surface-700); }
   }
   @media (min-width: 48rem) { .bottom-nav { display: none; } }
+  @media (pointer: coarse) and (orientation: landscape) and (max-height: 500px) { .bottom-nav { display: block; } }
 </style>
