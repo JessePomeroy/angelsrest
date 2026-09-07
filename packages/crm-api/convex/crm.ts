@@ -74,7 +74,7 @@ export const listClientsPaginated = query({
 	},
 });
 
-/** Page-scoped tag reads keep the worst-case join below the transaction row budget. */
+/** Fresh snapshot pages keep the tag join below the transaction row budget. */
 export const listClientsWithTags = query({
 	args: {
 		siteUrl: v.string(),
