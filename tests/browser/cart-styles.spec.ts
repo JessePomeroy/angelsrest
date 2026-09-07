@@ -14,6 +14,10 @@ for (const kind of ["page", "drawer"]) {
 		await expect(title).toHaveCSS("overflow", "hidden");
 		const widths = await title.evaluate((element) => ({ scroll: element.scrollWidth, client: element.clientWidth }));
 		expect(widths.scroll).toBeGreaterThan(widths.client);
+		await expect(rows.first().locator(".line-total")).toHaveText("item total $50.00");
+		const itemPrice = await rows.first().locator(".line-total").boundingBox();
+		const controls = await rows.first().locator(".line-controls").boundingBox();
+		expect(itemPrice!.y + itemPrice!.height).toBeLessThanOrEqual(controls!.y);
 		await expect(page.locator(".subtotal-value")).toHaveText("$100.00");
 		await rows.first().getByRole("button", { name: "Increase quantity" }).click();
 		await expect(rows.first().locator(".quantity")).toHaveText("3");

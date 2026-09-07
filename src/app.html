@@ -3,6 +3,8 @@
 	<head>
 		<meta charset="utf-8" />
 		<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+		<!-- Shared component CSS can precede root CSS in SvelteKit's generated head. -->
+		<style>@layer theme, base, components;</style>
 		<!--
 			Apply the saved light/dark mode before hydration
 			Only toggles the 'dark' class for light/dark switching
