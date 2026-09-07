@@ -1,8 +1,12 @@
 <script lang="ts">
+import type { FunctionReturnType } from "convex/server";
+import type { api } from "$convex/api";
 import { page } from "$app/state";
 import TurnstileWidget from "$lib/components/TurnstileWidget.svelte";
 import { toasts } from "$lib/stores/toast.svelte";
-import { formatCents, formatDate } from "$lib/utils/format";
+import { formatCents } from "$lib/utils/format";
+
+type CustomerOrder = NonNullable<FunctionReturnType<typeof api.orders.lookupForCustomer>>;
 
 let email = $state("");
 let orderNumber = $state(page.url.searchParams.get("order") || "");
@@ -10,7 +14,7 @@ let loading = $state(false);
 let error = $state("");
 let verificationError = $state("");
 let verificationReady = $state(false);
-let order: any = $state(null);
+let order = $state<CustomerOrder | null>(null);
 let turnstileWidget: TurnstileWidget | undefined;
 
 function resetTurnstile() {
@@ -45,7 +49,7 @@ async function lookupOrder(form: HTMLFormElement) {
 				"cf-turnstile-response": turnstileToken,
 			}),
 		});
-		const data = await response.json();
+		const data: { order?: CustomerOrder; error?: string } = await response.json();
 
 		if (response.ok && data.order) {
 			order = data.order;
@@ -168,7 +172,6 @@ const statusColors: Record<string, string> = {
 				<div class="flex justify-between items-start mb-3">
 					<div>
 						<h2 class="text-lg font-bold">{order.orderNumber}</h2>
-						<p class="text-gray-400 text-xs">{formatDate(order.createdAt)}</p>
 					</div>
 					<span class="px-2 py-1 rounded text-xs font-medium {statusColors[order.status] || 'bg-gray-600'}">
 						{statusLabels[order.status] || order.status}
@@ -181,26 +184,15 @@ const statusColors: Record<string, string> = {
 						{#each order.items || [] as item, i (i)}
 							<li class="flex justify-between text-sm">
 								<span>{item.productName} × {item.quantity}</span>
-								<span class="text-gray-400">{formatCents(item.price, order.currency)}</span>
+								<span class="text-gray-400">{formatCents(item.price)}</span>
 							</li>
 						{/each}
 					</ul>
 					<p class="font-medium mt-2 text-right">
-						Total: {formatCents(order.total, order.currency)}
+						Total: {formatCents(order.total)}
 					</p>
 				</div>
 
-				{#if order.shippingAddress}
-					<div class="mt-3 pt-3 border-t border-gray-700">
-						<h3 class="font-medium text-gray-400 text-xs mb-1">Ship to</h3>
-						<p class="text-sm text-gray-300">
-							{order.customerName}<br/>
-							{order.shippingAddress.line1}<br/>
-							{#if order.shippingAddress.line2}{order.shippingAddress.line2}<br/>{/if}
-							{order.shippingAddress.city}, {order.shippingAddress.state} {order.shippingAddress.postalCode}
-						</p>
-					</div>
-				{/if}
 			</div>
 		{/if}
 		</div>

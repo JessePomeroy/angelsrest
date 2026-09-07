@@ -22,7 +22,7 @@
 
 <script lang="ts">
 import { injectAnalytics } from "@vercel/analytics/sveltekit";
-import type { Snippet } from "svelte";
+import type { LayoutProps } from "./$types";
 import { onMount } from "svelte";
 import { page } from "$app/state";
 import { filterPrivateCapabilityAnalytics } from "$lib/capabilityPrivacy";
@@ -43,7 +43,7 @@ import { getTimeTheme } from "$lib/stores/timeTheme.svelte";
 
 import "$lib/styles/global.css";
 
-let { children, data }: { children: Snippet; data: any } = $props();
+let { children, data }: LayoutProps = $props();
 
 let isPortal = $derived(page.url.pathname.startsWith("/portal"));
 let isAdmin = $derived(page.url.pathname.startsWith("/admin"));

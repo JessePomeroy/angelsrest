@@ -1,7 +1,8 @@
 <script lang="ts">
 import { onMount } from "svelte";
+import type { SiteSettingsContent } from "$lib/server/current/siteSettingsContent.server";
 
-let { siteSettings }: { siteSettings?: any } = $props();
+let { siteSettings }: { siteSettings?: Pick<SiteSettingsContent, "siteTitle" | "socialLinks"> } = $props();
 
 const siteName = $derived(
 	siteSettings?.siteTitle?.toLowerCase() || "angelsrest",

@@ -177,3 +177,20 @@ test("order lookup preserves POST token protocol and resets after rejection", as
 	await expect(submit).toBeDisabled();
 	expect(await page.evaluate(() => window.turnstileFixture.resets)).toEqual(["widget-0"]);
 });
+
+test("successful order lookup renders only the public response fields", async ({ page }) => {
+ await page.route("**/api/orders/lookup", route => route.fulfill({
+  contentType: "application/json",
+  body: JSON.stringify({ order: { orderNumber: "ORD-FIXTURE", status: "shipped", items: [{ productName: "Fixture print", quantity: 2, price: 2500 }], total: 5000 } }),
+ }));
+ await page.goto("/?fixture=orders");
+ await page.getByLabel("Email", { exact: true }).fill("fixture@example.invalid");
+ await page.getByLabel("Order Number", { exact: true }).fill("ORD-FIXTURE");
+ await page.getByRole("button", { name: "Provider verify" }).click();
+ await page.getByRole("button", { name: "Track Order", exact: true }).click();
+ await expect(page.getByRole("heading", { name: "ORD-FIXTURE", exact: true })).toBeVisible();
+ await expect(page.getByText("Fixture print × 2", { exact: true })).toBeVisible();
+ await expect(page.getByText("Total: $50.00", { exact: true })).toBeVisible();
+ await expect(page.getByText("Invalid Date", { exact: true })).toHaveCount(0);
+ await expect(page.getByRole("heading", { name: "Ship to", exact: true })).toHaveCount(0);
+});
