@@ -1,5 +1,5 @@
+import { logActivity } from "./activityLog";
 import { v } from "convex/values";
-import { internal } from "./_generated/api";
 import type { Doc, Id } from "./_generated/dataModel";
 import type { MutationCtx, QueryCtx } from "./_generated/server";
 import { mutation, query } from "./_generated/server";
@@ -653,7 +653,7 @@ export const acceptQuote = mutation({
 				status: "accepted",
 				acceptedAt: Date.now(),
 			});
-			await ctx.runMutation(internal.activityLog.logActivity, {
+			await logActivity(ctx, {
 				siteUrl: quote.siteUrl,
 				clientId: quote.clientId,
 				action: "quote_accepted",
@@ -696,7 +696,7 @@ export const declineQuote = mutation({
 		requireQuoteResponseWindow(quote, Date.now());
 		{
 			await ctx.db.patch(quoteId, { status: "declined", declinedAt: Date.now() });
-			await ctx.runMutation(internal.activityLog.logActivity, {
+			await logActivity(ctx, {
 				siteUrl: quote.siteUrl,
 				clientId: quote.clientId,
 				action: "quote_declined",
@@ -769,7 +769,7 @@ export const signContract = mutation({
 				signedByEmail: normalized.signerEmail,
 				signatureData: normalized.signatureData,
 			});
-			await ctx.runMutation(internal.activityLog.logActivity, {
+			await logActivity(ctx, {
 				siteUrl: contract.siteUrl,
 				clientId: contract.clientId,
 				action: "contract_signed",

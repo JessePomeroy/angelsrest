@@ -1,7 +1,7 @@
+import { logActivity } from "./activityLog";
 import { readClientTags } from "./tags";
 import { paginationOptsValidator } from "convex/server";
 import { v } from "convex/values";
-import { internal } from "./_generated/api";
 import type { Doc } from "./_generated/dataModel";
 import { mutation, query, type QueryCtx } from "./_generated/server";
 import { requireDocumentSiteAdmin, requireSiteAdmin } from "./authHelpers";
@@ -137,7 +137,7 @@ export const createClient = mutation({
 			status: "lead",
 		});
 
-		await ctx.runMutation(internal.activityLog.logActivity, {
+		await logActivity(ctx, {
 			siteUrl: args.siteUrl,
 			clientId,
 			action: "client_created",
@@ -167,7 +167,7 @@ export const updateClient = mutation({
 
 		// Log status changes
 		if (updates.status && updates.status !== existing.status) {
-			await ctx.runMutation(internal.activityLog.logActivity, {
+			await logActivity(ctx, {
 				siteUrl: existing.siteUrl,
 				clientId,
 				action: "status_changed",

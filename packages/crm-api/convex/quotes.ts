@@ -1,5 +1,5 @@
+import { logActivity } from "./activityLog";
 import { v } from "convex/values";
-import { internal } from "./_generated/api";
 import { mutation, query } from "./_generated/server";
 import {
 	requireDocumentSiteAdmin,
@@ -95,7 +95,7 @@ export const create = mutation({
 			status: "draft",
 		});
 
-		await ctx.runMutation(internal.activityLog.logActivity, {
+		await logActivity(ctx, {
 			siteUrl: args.siteUrl,
 			clientId: args.clientId,
 			action: "quote_created",
@@ -163,7 +163,7 @@ export const markAccepted = mutation({
 		}
 		await ctx.db.patch(quoteId, { status: "accepted", acceptedAt: Date.now() });
 
-		await ctx.runMutation(internal.activityLog.logActivity, {
+		await logActivity(ctx, {
 			siteUrl: quote.siteUrl,
 			clientId: quote.clientId,
 			action: "quote_accepted",
@@ -226,7 +226,7 @@ export const convertToInvoice = mutation({
 
 		// Audit M27: observability for the conversion so the client activity
 		// feed reflects both quote and invoice lifecycle in one place.
-		await ctx.runMutation(internal.activityLog.logActivity, {
+		await logActivity(ctx, {
 			siteUrl: quote.siteUrl,
 			clientId: quote.clientId,
 			action: "quote_converted_to_invoice",

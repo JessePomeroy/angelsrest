@@ -1,3 +1,4 @@
+import { logActivity } from "./activityLog";
 import { v } from "convex/values";
 import { internal } from "./_generated/api";
 import type { Id } from "./_generated/dataModel";
@@ -105,7 +106,7 @@ export const assignTag = mutation({
 		const id = await ctx.db.insert("clientTagAssignments", args);
 
 		if (tag && client) {
-			await ctx.runMutation(internal.activityLog.logActivity, {
+			await logActivity(ctx, {
 				siteUrl: args.siteUrl,
 				clientId: args.clientId,
 				action: "tag_added",
@@ -147,7 +148,7 @@ export const removeTag = mutation({
 			await ctx.db.delete(toRemove._id);
 
 			if (tag) {
-				await ctx.runMutation(internal.activityLog.logActivity, {
+				await logActivity(ctx, {
 					siteUrl: args.siteUrl,
 					clientId: args.clientId,
 					action: "tag_removed",

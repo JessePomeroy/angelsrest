@@ -1,5 +1,5 @@
+import { logActivity } from "./activityLog";
 import { v } from "convex/values";
-import { internal } from "./_generated/api";
 import { mutation, query } from "./_generated/server";
 import { requireSiteAdmin, requireWebhookCallerOrAuth } from "./authHelpers";
 import { deleteDocument } from "./helpers/deleting";
@@ -114,7 +114,7 @@ export const create = mutation({
 			status: "draft",
 		});
 
-		await ctx.runMutation(internal.activityLog.logActivity, {
+		await logActivity(ctx, {
 			siteUrl: args.siteUrl,
 			clientId: args.clientId,
 			action: "invoice_created",
@@ -258,7 +258,7 @@ export const markPaid = mutation({
 				: {}),
 		});
 
-		await ctx.runMutation(internal.activityLog.logActivity, {
+		await logActivity(ctx, {
 			siteUrl: invoice.siteUrl,
 			clientId: invoice.clientId,
 			action: "invoice_paid",
