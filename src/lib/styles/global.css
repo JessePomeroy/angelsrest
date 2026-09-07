@@ -6,7 +6,7 @@
 @import "./reset.css" layer(base);
 @import "tailwindcss/utilities.css" layer(utilities);
 @import "./tailwind-bridge.css" reference;
-@plugin "@tailwindcss/typography";
+@import "./article.css";
 @import "./time-theme.css";
 @import "./grain.css";
 
@@ -21,19 +21,19 @@
 	box-sizing: border-box;
 }
 
-/* Remove default margins/padding (except inside prose/blog content) */
+/* Remove default margins/padding (except inside article/blog content) */
 body,
 nav {
 	margin: 0;
 	padding: 0;
 }
 
-:where(p, h1, h2, h3, h4, h5, h6):not(:where(.prose *)) {
+:where(p, h1, h2, h3, h4, h5, h6):not(:where(.article-body *)) {
 	margin: 0;
 	padding: 0;
 }
 
-:where(ul, ol):not(:where(.prose *)) {
+:where(ul, ol):not(:where(.article-body *)) {
 	margin: 0;
 	padding: 0;
 	list-style: none;
@@ -84,21 +84,21 @@ html.dark body {
 	background-color: #1e293b;
 }
 
-/* Heading typography (except inside prose/blog content) */
-:where(h1, h2, h3, h4, h5, h6):not(:where(.prose *)) {
+/* Heading typography (except inside article/blog content) */
+:where(h1, h2, h3, h4, h5, h6):not(:where(.article-body *)) {
 	font-family: "Chillax", sans-serif;
 	font-weight: 600;
 	letter-spacing: -0.02em;
 	line-height: 1.2;
 }
 
-/* Basic link and image styles (except inside prose/blog content) */
-:where(a):not(:where(.prose *)) {
+/* Basic link and image styles (except inside article/blog content) */
+:where(a):not(:where(.article-body *)) {
 	text-decoration: none;
 	transition: opacity 0.2s ease;
 }
 
-:where(a):not(:where(.prose *)):hover {
+:where(a):not(:where(.article-body *)):hover {
 	opacity: 0.8;
 }
 
@@ -116,8 +116,8 @@ html.dark ::selection {
 	color: var(--color-surface-50);
 }
 
-/* Blog prose headings use Chillax display font */
-.prose :where(h1, h2, h3, h4, h5, h6) {
+/* Blog article headings use Chillax display font */
+.article-body :where(h1, h2, h3, h4, h5, h6) {
 	font-family: "Chillax", sans-serif;
 }
 

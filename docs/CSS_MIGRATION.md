@@ -4,11 +4,11 @@ S08 replaces Tailwind utilities with component-owned CSS while preserving render
 
 ## Inventory and sequence
 
-The starting point is `86135ae` (S07 complete). Source searches found class attributes/directives in 50 Svelte files, with both utilities and existing semantic classes represented. This count is an inventory aid, not a count of files needing conversion. There are no `@apply` directives in `src/`. Tailwind configuration is concentrated in `src/lib/styles/global.css` and `theme.css`; the five blog templates use typography-plugin `prose` classes.
+The starting point is `86135ae` (S07 complete). Source searches found class attributes/directives in 50 Svelte files, with both utilities and existing semantic classes represented. This count is an inventory aid, not a count of files needing conversion. There are no `@apply` directives in `src/`. Tailwind configuration is concentrated in `src/lib/styles/global.css` and `theme.css`; the five blog templates originally used typography-plugin `prose` classes.
 
 1. **Navigation/theme pilot:** move utility styling into the four components above. Preserve route matching, cart behavior, lazy liquid rendering, motion preferences and shared theme state. Keep the current reset and tokens during this slice.
 2. **CSS foundation:** move the site palette/type scale from Tailwind `@theme` to ordinary custom properties, with a temporary utility bridge. Establish an explicit reset after checking Preflight inheritance in public, Admin and portal views.
-3. **Site chrome and content:** convert header/footer, gallery, about and blog surfaces in focused families. Replace article typography deliberately across all five templates, including nested lists, quotes, code, links and images.
+3. **Site chrome and content:** convert header/footer, gallery, about and blog surfaces in focused families. Replace article typography deliberately across all five templates, including nested lists, quotes, links and images supported by the typed renderer.
 4. **Commerce and forms:** convert product/set/collection, cart/checkout, contact/order lookup and private delivery surfaces. Preserve selection, validation, disabled states, sticky purchase controls and download behavior.
 5. **Dependency removal:** remove Tailwind, Vite and typography plugins after remaining utilities/directives are gone. Update the browser fixture build and repository instructions; check inherited Admin/portal styles and measure emitted CSS before claiming savings.
 
@@ -36,3 +36,9 @@ A browser test injects reset/theme source directly into a document without Tailw
 Home's accessibility text, the about/contact layout, ASCII image wrappers and the portfolio lightbox use native component styles. The gallery index/detail pages already used scoped CSS. Converted typography and form layout rules use the native `components` cascade layer so existing unlayered heading and paragraph resets keep their precedence. Ineffective utility margins on those text elements were omitted.
 
 The content fixture uses typed public route data and writable provider stubs. It checks three about-page column arrangements and lightbox keyboard/focus behavior; existing Turnstile and ASCII motion tests continue to cover those component lifecycles. The hero GIF is replaced with a fixed image only during comparison captures.
+
+## Blog typography
+
+All five blog templates, rich-text image presentation and the listing empty state now use native CSS. `article.css` owns shared typography for the elements supported by `BlogRichText`: paragraphs, headings, nested lists, quotes, marked spans, links and images/captions. It preserves the prior light/dark article palette and narrative sizing, with MIT attribution for the adapted typography rules. Templates own their layout and technical/narrative font choices. The typography build plugin is no longer invoked; its package will be removed with the remaining Tailwind build dependencies.
+
+Global text/list/link resets exclude `.article-body` descendants so article spacing remains intact. Figure spacing stays font-relative: the previous `my-8` utility was ineffective in technical articles. Browser fixtures cover all five templates and populated/empty listings, including technical equipment breakpoints, nested lists, links, images and light/dark styles.

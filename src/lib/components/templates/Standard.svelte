@@ -15,33 +15,33 @@ import { formatDate } from "$lib/utils/format";
 let { post }: { post: BlogPostDetail } = $props();
 </script>
 
-<article class="max-w-2xl mx-auto">
+<article class="post">
   <!-- Post Header -->
-  <header class="mb-8">
+  <header class="post-header">
     <!-- Categories -->
     {#if post.categories && post.categories.length > 0}
-      <div class="flex gap-2 mb-4">
+      <div class="categories">
         {#each post.categories as category (category.title)}
-          <span class="text-xs text-surface-400 tracking-wider">
+          <span class="category">
             {category.title}
           </span>
         {/each}
       </div>
     {/if}
 
-    <h1 class="text-3xl md:text-4xl font-light tracking-wide mb-4">
+    <h1 class="post-title">
       {post.title}
     </h1>
 
     <!-- Author and Date -->
-    <div class="flex items-center gap-4 text-sm text-surface-400">
+    <div class="byline">
       {#if post.author}
-        <div class="flex items-center gap-2">
+        <div class="author">
           {#if post.author.image}
             <img
               src={post.author.image.src}
               alt={post.author.image.alt}
-              class="w-8 h-8 rounded-full object-cover"
+              class="author-avatar"
             />
           {/if}
           <span>{post.author.name}</span>
@@ -54,26 +54,45 @@ let { post }: { post: BlogPostDetail } = $props();
 
   <!-- Featured Image -->
   {#if post.mainImage}
-    <div class="mb-8 rounded-lg overflow-hidden">
+    <div class="featured-image">
       <img
         src={post.mainImage.src}
         alt={post.mainImage.alt}
-        class="w-full h-auto"
+        class="featured-photo"
       />
     </div>
   {/if}
 
   <!-- Body -->
-  <div class="prose dark:prose-invert max-w-none">
+  <div class="article-body">
     {#if post.body.length > 0}
       <BlogRichText blocks={post.body} />
     {/if}
   </div>
 
   <!-- Back link -->
-  <div class="mt-12 pt-8 border-t border-surface-500/20">
-    <a href="/blog" class="text-surface-400 hover:text-surface-200 transition-colors">
+  <div class="post-footer">
+    <a href="/blog" class="back-link">
       ← back to blog
     </a>
   </div>
 </article>
+
+<style>
+  @layer components {
+    .post { max-width: 42rem; margin-inline: auto; }
+    .post-header { margin-bottom: 2rem; }
+    .categories { display: flex; gap: 0.5rem; margin-bottom: 1rem; }
+    .category { font-size: var(--text-xs); line-height: var(--text-xs--line-height); color: var(--color-surface-400); letter-spacing: 0.05em; }
+    .post-title { font-size: var(--text-3xl); }
+    @media (min-width: 48rem) { .post-title { font-size: var(--text-4xl); } }
+    .byline { display: flex; align-items: center; gap: 1rem; font-size: var(--text-sm); line-height: var(--text-sm--line-height); color: var(--color-surface-400); }
+    .author { display: flex; align-items: center; gap: 0.5rem; }
+    .author-avatar { width: 2rem; height: 2rem; border-radius: 3.40282e38px; object-fit: cover; }
+    .featured-image { margin-bottom: 2rem; border-radius: 0.5rem; overflow: hidden; }
+    .featured-photo { width: 100%; height: auto; }
+    .post-footer { margin-top: 3rem; padding-top: 2rem; border-top-width: 1px; border-top-style: solid; border-color: color-mix(in oklab, var(--color-surface-500) 20%, transparent); }
+    .back-link { color: var(--color-surface-400); transition-property: color, background-color, border-color, outline-color, text-decoration-color, fill, stroke; transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1); transition-duration: 150ms; }
+    .back-link:hover { color: var(--color-surface-200); }
+  }
+</style>

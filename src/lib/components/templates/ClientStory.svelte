@@ -20,17 +20,17 @@ import { formatDate } from "$lib/utils/format";
 let { post }: { post: BlogPostDetail } = $props();
 </script>
 
-<article class="max-w-4xl mx-auto">
+<article class="post">
   <!-- Hero Header -->
-  <header class="mb-12 text-center">
-    <span class="text-xs tracking-widest text-surface-400 uppercase mb-4 block">
+  <header class="post-header">
+    <span class="template-label">
       Client Story
     </span>
-    <h1 class="text-4xl md:text-6xl font-light tracking-wide mb-8">
+    <h1 class="post-title">
       {post.title}
     </h1>
     {#if post.author || post.publishedAt}
-      <div class="flex items-center justify-center gap-4 text-sm text-surface-400">
+      <div class="byline">
         {#if post.author}
           <span>Photos by {post.author.name}</span>
           {#if post.publishedAt}<span>•</span>{/if}
@@ -44,61 +44,85 @@ let { post }: { post: BlogPostDetail } = $props();
 
   <!-- Full-bleed Featured Image -->
   {#if post.mainImage}
-    <div class="mb-12 -mx-4 md:-mx-20 rounded-lg overflow-hidden">
+    <div class="featured-image">
       <img
         src={post.mainImage.src}
         alt={post.mainImage.alt}
-        class="w-full h-auto"
+        class="featured-photo"
       />
     </div>
   {/if}
 
   <!-- Brief / Approach / Result -->
-  <div class="grid gap-6 mb-12 max-w-2xl mx-auto">
+  <div class="project-summary">
     {#if post.brief}
-      <section class="text-center">
-        <h2 class="text-xs tracking-widest text-surface-400 uppercase mb-2">
+      <section class="testimonial">
+        <h2 class="summary-heading">
           The Brief
         </h2>
-        <p class="text-xl italic">{post.brief}</p>
+        <p class="testimonial-copy">{post.brief}</p>
       </section>
     {/if}
 
     {#if post.approach}
-      <section class="bg-surface-800/30 p-6 rounded-lg">
-        <h2 class="text-xs tracking-widest text-surface-400 uppercase mb-2 text-center">
+      <section class="approach">
+        <h2 class="approach-heading">
           Our Approach
         </h2>
-        <p class="text-lg">{post.approach}</p>
+        <p class="approach-copy">{post.approach}</p>
       </section>
     {/if}
 
     {#if post.outcome}
-      <section class="text-center">
-        <h2 class="text-xs tracking-widest text-surface-400 uppercase mb-2">
+      <section class="testimonial">
+        <h2 class="summary-heading">
           The Result
         </h2>
-        <p class="text-xl italic">{post.outcome}</p>
+        <p class="testimonial-copy">{post.outcome}</p>
       </section>
     {/if}
   </div>
 
   <!-- Gallery Body -->
   {#if post.body.length > 0}
-    <div class="prose dark:prose-invert max-w-none">
+    <div class="article-body">
       <BlogRichText blocks={post.body} />
     </div>
   {/if}
 
   <!-- Story footer -->
-  <footer class="mt-16 pt-8 border-t border-surface-500/20 text-center">
-    <p class="text-surface-400 italic">
+  <footer class="post-footer">
+    <p class="closing-message">
       Thank you for sharing your day with us 💕
     </p>
     {#if post.author}
-      <p class="text-surface-500 mt-2">
+      <p class="signature">
         — {post.author.name}
       </p>
     {/if}
   </footer>
 </article>
+
+<style>
+  @layer components {
+    .post { max-width: 56rem; margin-inline: auto; }
+    .post-header { margin-bottom: 3rem; text-align: center; }
+    .template-label { font-size: var(--text-xs); line-height: var(--text-xs--line-height); letter-spacing: 0.1em; color: var(--color-surface-400); text-transform: uppercase; margin-bottom: 1rem; display: block; }
+    .post-title { font-size: var(--text-4xl); }
+    @media (min-width: 48rem) { .post-title { font-size: var(--text-6xl); } }
+    .byline { display: flex; align-items: center; justify-content: center; gap: 1rem; font-size: var(--text-sm); line-height: var(--text-sm--line-height); color: var(--color-surface-400); }
+    .featured-image { margin-bottom: 3rem; margin-inline: -1rem; border-radius: 0.5rem; overflow: hidden; }
+    @media (min-width: 48rem) { .featured-image { margin-inline: -5rem; } }
+    .featured-photo { width: 100%; height: auto; }
+    .project-summary { display: grid; gap: 1.5rem; margin-bottom: 3rem; max-width: 42rem; margin-inline: auto; }
+    .testimonial { text-align: center; }
+    .summary-heading { font-size: var(--text-xs); color: var(--color-surface-400); text-transform: uppercase; }
+    .testimonial-copy { font-size: var(--text-xl); line-height: var(--text-xl--line-height); font-style: italic; }
+    .approach { background-color: color-mix(in oklab, var(--color-surface-800) 30%, transparent); padding: 1.5rem; border-radius: 0.5rem; }
+    .approach-heading { font-size: var(--text-xs); color: var(--color-surface-400); text-transform: uppercase; text-align: center; }
+    .approach-copy { font-size: var(--text-lg); line-height: var(--text-lg--line-height); }
+    .post-footer { margin-top: 4rem; padding-top: 2rem; border-top-width: 1px; border-top-style: solid; border-color: color-mix(in oklab, var(--color-surface-500) 20%, transparent); text-align: center; }
+    .closing-message { color: var(--color-surface-400); font-style: italic; }
+    .signature { color: var(--color-surface-500); }
+  }
+</style>

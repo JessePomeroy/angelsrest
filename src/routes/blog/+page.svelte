@@ -49,11 +49,12 @@ let { data } = $props();
       {/each}
     </div>
   {:else}
-    <p class="text-surface-400">no posts yet — check back soon!</p>
+    <p class="empty-message">no posts yet — check back soon!</p>
   {/if}
 </section>
 
 <style>
+  .empty-message { color: var(--color-surface-400); }
   .blog-index { width: min(100%, 980px); margin-inline: auto; }
   .section-heading { display: flex; min-height: 56px; align-items: flex-start; justify-content: space-between; border-bottom: 1px solid color-mix(in srgb, currentColor 15%, transparent); }
   .section-heading h1 { font-size: 1.35rem; font-weight: 500; }
