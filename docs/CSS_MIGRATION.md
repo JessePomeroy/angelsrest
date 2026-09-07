@@ -48,3 +48,7 @@ Global text/list/link resets exclude `.article-body` descendants so article spac
 The cart drawer, full cart page and shared line item use scoped CSS, including their responsive layouts, dark/hover/focus/disabled states and native dialog backdrop. Icons use explicit rem-based sizes. The drawer uses a single native shadow instead of Tailwind shadow-composition placeholders. Long titles keep block layout and ellipsis clipping so controls remain visible. Store transitions, checkout transport, dialog modality and focus restoration retain their existing owners.
 
 Cart fixtures cover empty, populated, expired and checkout-error states in both layouts. Browser checks exercise quantities, removals, pending/error recovery and the 767/768px boundary; existing keyboard tests continue to cover focus trapping and restoration.
+
+## Checkout confirmation and cancellation
+
+Checkout success and cancellation use scoped CSS for their layouts, status panels, native verification form and navigation/download controls. Verification POST fields/actions, proof-gated data handling and download URLs remain unchanged. Fixtures cover basic, shared-link, missing-session, verification-error, physical and digital confirmations plus cancellation; browser checks verify native form submission and keyboard focus without calling Stripe or the real verification/download routes.
