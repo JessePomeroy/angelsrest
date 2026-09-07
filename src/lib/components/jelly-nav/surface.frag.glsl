@@ -2,6 +2,7 @@ precision highp float;
 
 uniform vec2 uSize;
 uniform vec3 uDrops[7];
+uniform vec4 uDropTraits[7];
 uniform vec2 uVelocity;
 uniform vec2 uCompression;
 uniform vec4 uWalls;
@@ -25,6 +26,17 @@ float surface(vec3 p) {
 	for (int i = 0; i < 7; i++) {
 		vec3 drop = uDrops[i];
 		vec3 local = p - vec3(drop.xy, 0.0);
+		float individuality = smoothstep(0.15, 0.9, uOpen);
+		vec4 traits = uDropTraits[i];
+		float phase = traits.w * individuality;
+		float tilt = traits.z * individuality;
+		local.xy = mat2(cos(tilt), -sin(tilt), sin(tilt), cos(tilt)) * local.xy;
+		vec2 profile = mix(vec2(1.0), traits.xy, individuality);
+		local.xy /= profile;
+		local.z *= profile.x * profile.y;
+		// A tiny off-center lean bends the highlight differently on every drop.
+		local.x += local.z * sin(phase) * 0.10 * individuality;
+		float waveTime = uTime * (1.0 + phase * 0.035);
 		// Stretch along the smoothed flow, then flatten and spread at contact.
 		// Opposing transverse scales keep the apparent volume approximately constant.
 		float speed = length(uVelocity);
@@ -38,13 +50,13 @@ float surface(vec3 p) {
 		local.xy /= scale;
 		local.z *= scale.x * scale.y;
 		local.xy -= uVelocity * local.z * 0.00016;
-		float ripple = sin(local.x * 0.11 + uTime * 2.2)
-			* sin(local.y * 0.085 - uTime * 1.8)
-			* sin(local.z * 0.10 + uTime * 1.4);
+		float ripple = sin(local.x * 0.11 + waveTime * 2.2 + phase)
+			* sin(local.y * 0.085 - waveTime * 1.8 + phase * 0.7)
+			* sin(local.z * 0.10 + waveTime * 1.4);
 		// Broad, slow waves keep the surface alive even after its position settles.
-		float swell = sin(local.x * 0.075 + uTime * 0.85)
-			* cos(local.y * 0.065 - uTime * 0.65)
-			* sin(local.z * 0.055 + uTime * 0.55);
+		float swell = sin(local.x * 0.075 + waveTime * 0.85 + phase)
+			* cos(local.y * 0.065 - waveTime * 0.65 + phase * 0.4)
+			* sin(local.z * 0.055 + waveTime * 0.55);
 		float d = length(local) - drop.z + ripple * uAgitation * 1.1
 			+ swell * uAmbientRipple * 1.6;
 		distanceToSurface = joinDrops(distanceToSurface, d, 15.0);
@@ -68,12 +80,28 @@ vec3 normalAt(vec3 p) {
 // without exaggerating the silhouette. Tangent projection keeps the lighting
 // continuous across the shared surface when droplets merge.
 vec3 rippledNormal(vec3 p, vec3 normal) {
+	// Blend local wave origins across the necks instead of assigning a hard
+	// material ID. Highlights remain continuous while drops split and merge.
+	vec3 waveOrigin = vec3(0.0);
+	float phase = 0.0;
+	float totalWeight = 0.0;
+	for (int i = 0; i < 7; i++) {
+		vec3 center = vec3(uDrops[i].xy, 0.0);
+		float gap = abs(length(p - center) - uDrops[i].z);
+		float weight = exp(-gap * 0.22);
+		waveOrigin += center * weight;
+		phase += uDropTraits[i].w * weight;
+		totalWeight += weight;
+	}
+	float individuality = smoothstep(0.15, 0.9, uOpen);
+	p -= waveOrigin / max(totalWeight, 0.0001) * individuality;
+	phase = phase / max(totalWeight, 0.0001) * individuality;
 	vec3 waveA = normalize(vec3(0.8, 0.35, 0.5));
 	vec3 waveB = normalize(vec3(-0.3, 0.9, 0.4));
 	vec3 waveC = normalize(vec3(0.45, -0.4, 0.8));
-	vec3 slope = waveA * cos(dot(p, waveA) * 0.13 - uTime * 0.8) * 0.20
-		+ waveB * cos(dot(p, waveB) * 0.105 + uTime * 0.65) * 0.15
-		+ waveC * cos(dot(p, waveC) * 0.18 - uTime * 1.05) * 0.07;
+	vec3 slope = waveA * cos(dot(p, waveA) * 0.13 - uTime * (0.8 + phase * 0.025) + phase) * 0.20
+		+ waveB * cos(dot(p, waveB) * 0.105 + uTime * 0.65 + phase * 1.3) * 0.15
+		+ waveC * cos(dot(p, waveC) * 0.18 - uTime * 1.05 + phase * 0.6) * 0.07;
 	vec3 tangentSlope = slope - normal * dot(slope, normal);
 	float strength = (uAmbientRipple * 0.85 + uAgitation * 0.35)
 		* smoothstep(0.1, 0.55, normal.z);

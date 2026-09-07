@@ -60,6 +60,19 @@ export function createWaterSurface(
 	const uniforms = {
 		uSize: { value: new Vector2(size, size) },
 		uDrops: { value: Array.from({ length: 7 }, () => new Vector3()) },
+		// Each satellite has its own curvature, tilt and wave phase. The shader
+		// fades these traits away as the droplets rejoin the main volume.
+		uDropTraits: {
+			value: [
+				new Vector4(1, 1, 0, 0),
+				new Vector4(0.93, 1.08, 0.35, 1.1),
+				new Vector4(1.08, 0.94, -0.6, 2.7),
+				new Vector4(0.98, 1.05, 0.9, 4.2),
+				new Vector4(1.06, 0.96, 0.2, 5.8),
+				new Vector4(0.94, 1.07, -0.85, 7.4),
+				new Vector4(1.04, 0.97, 1.2, 9.1),
+			],
+		},
 		uVelocity: { value: new Vector2() },
 		uCompression: { value: new Vector2() },
 		uWalls: { value: new Vector4() },
