@@ -37,6 +37,73 @@ export function emptyCart(now: Date = new Date()): CartState {
 	return { items: [], updatedAt: now.toISOString() };
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+	return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function isNonnegativeInteger(value: unknown): value is number {
+	return typeof value === "number" && Number.isSafeInteger(value) && value >= 0;
+}
+
+function isCartItem(value: unknown): value is CartItem {
+	if (!isRecord(value)) return false;
+	return (
+		typeof value.id === "string" &&
+		value.id.trim().length > 0 &&
+		typeof value.productSlug === "string" &&
+		value.productSlug.trim().length > 0 &&
+		(value.type === "print" || value.type === "set") &&
+		typeof value.title === "string" &&
+		typeof value.imageUrl === "string" &&
+		isNonnegativeInteger(value.quantity) &&
+		value.quantity >= 1 &&
+		value.quantity <= MAX_QUANTITY_PER_LINE &&
+		isNonnegativeInteger(value.unitPriceCents) &&
+		(value.imageUrls === undefined ||
+			(Array.isArray(value.imageUrls) &&
+				value.imageUrls.every((url) => typeof url === "string"))) &&
+		["paperName", "canvasWrapHex", "paperSlug", "sizeSlug", "borderWidthValue", "frameValue"].every(
+			(field) => value[field] === undefined || typeof value[field] === "string",
+		) &&
+		["paperSubcategoryId", "frameSubcategoryId", "canvasSubcategoryId"].every(
+			(field) =>
+				value[field] === undefined || (isNonnegativeInteger(value[field]) && value[field] > 0),
+		) &&
+		["paperWidth", "paperHeight"].every(
+			(field) =>
+				value[field] === undefined ||
+				(typeof value[field] === "number" && Number.isFinite(value[field]) && value[field] > 0),
+		) &&
+		(value.paperIndex === undefined || isNonnegativeInteger(value.paperIndex)) &&
+		(value.borderWidth === undefined ||
+			(typeof value.borderWidth === "number" &&
+				Number.isFinite(value.borderWidth) &&
+				value.borderWidth >= 0))
+	);
+}
+
+/** Saved cart data is untrusted; only adopt entries safe for rendering and totals. */
+export function parseCartState(value: unknown): CartState | null {
+	if (
+		!isRecord(value) ||
+		!Array.isArray(value.items) ||
+		typeof value.updatedAt !== "string" ||
+		!Number.isFinite(Date.parse(value.updatedAt))
+	)
+		return null;
+	const items: CartItem[] = [];
+	const ids = new Set<string>();
+	let totalCents = 0;
+	for (const item of value.items) {
+		if (!isCartItem(item) || ids.has(item.id)) return null;
+		totalCents += item.quantity * item.unitPriceCents;
+		if (!Number.isSafeInteger(totalCents)) return null;
+		ids.add(item.id);
+		items.push(item);
+	}
+	return { items, updatedAt: value.updatedAt };
+}
+
 export function itemMatchKey(
 	item: Pick<
 		CartItem,

@@ -9,6 +9,7 @@ import {
 	emptyCart,
 	isCartExpired,
 	MAX_QUANTITY_PER_LINE,
+	parseCartState,
 	removeItemFromCart,
 	STORAGE_KEY,
 	updateItemQuantity,
@@ -129,5 +130,138 @@ describe("cart state", () => {
 	])("expires a cart aged %s days: %s", (days, expected) => {
 		const cart = emptyCart(new Date(now.getTime() - days * 86400000));
 		expect(isCartExpired(cart, now)).toBe(expected);
+	});
+});
+
+describe("persisted cart parsing", () => {
+	it.each([
+		{
+			productSlug: "canvas-print",
+			canvasSubcategoryId: 101001,
+			canvasWrapHex: "#FFFFFF",
+			borderWidthValue: "none",
+			frameValue: "none",
+		},
+		{
+			productSlug: "framed-print",
+			paperSlug: "archival-matte",
+			sizeSlug: "8x12",
+			borderWidth: 0.25,
+			borderWidthValue: "0.25",
+			frameSubcategoryId: 105001,
+			frameValue: "black",
+		},
+		{ productSlug: "legacy-print", paperIndex: 0, paperWidth: 8.5, paperHeight: 11 },
+		{ productSlug: "paired-prints", type: "set" as const, imageUrls: ["first.jpg", "second.jpg"] },
+	])("retains valid print choices: $productSlug", (options) => {
+		const stored = { items: [{ ...item, ...options, id: "valid" }], updatedAt: now.toISOString() };
+		expect(parseCartState(JSON.parse(JSON.stringify(stored)))).toEqual(stored);
+	});
+
+	it("preserves fixed-price merchandise without print options, blank images, and zero prices", () => {
+		const stored = {
+			items: [
+				{
+					id: "merch",
+					productSlug: "shirt",
+					type: "print",
+					title: "Shirt",
+					imageUrl: "",
+					quantity: 20,
+					unitPriceCents: 0,
+				},
+			],
+			updatedAt: now.toISOString(),
+		};
+		expect(parseCartState(stored)).toEqual(stored);
+		expect(parseCartState(emptyCart(now))).toEqual(emptyCart(now));
+	});
+
+	it.each([
+		null,
+		[],
+		{},
+		{ items: null, updatedAt: now.toISOString() },
+		{ items: [null], updatedAt: now.toISOString() },
+		{ items: [{}], updatedAt: now.toISOString() },
+		{ items: [[item]], updatedAt: now.toISOString() },
+		{ items: [], updatedAt: "not a date" },
+		{ items: [], updatedAt: "" },
+		{ items: [], updatedAt: 0 },
+		{ items: [] },
+	])("rejects malformed saved state: %j", (stored) => {
+		expect(parseCartState(stored)).toBeNull();
+	});
+
+	it.each([
+		{ id: "" },
+		{ id: null },
+		{ productSlug: " " },
+		{ productSlug: 123 },
+		{ type: "digital" },
+		{ type: "merch" },
+		{ title: {} },
+		{ imageUrl: null },
+		{ quantity: "1" },
+		{ quantity: 0 },
+		{ quantity: -1 },
+		{ quantity: 1.5 },
+		{ quantity: MAX_QUANTITY_PER_LINE + 1 },
+		{ unitPriceCents: -1 },
+		{ unitPriceCents: 10.5 },
+		{ unitPriceCents: Number.NaN },
+		{ unitPriceCents: Number.POSITIVE_INFINITY },
+		{ unitPriceCents: Number.MAX_SAFE_INTEGER + 1 },
+		{ imageUrls: "photo.jpg" },
+		{ imageUrls: [null] },
+		{ paperIndex: -1 },
+		{ paperIndex: 0.5 },
+		{ paperSubcategoryId: 0 },
+		{ frameSubcategoryId: 1.5 },
+		{ canvasSubcategoryId: "101001" },
+		{ paperWidth: 0 },
+		{ paperHeight: Number.POSITIVE_INFINITY },
+		{ borderWidth: -0.25 },
+	])("rejects unsafe item fields: %j", (difference) => {
+		expect(
+			parseCartState({ ...oneItem(), items: [{ ...oneItem().items[0], ...difference }] }),
+		).toBeNull();
+	});
+
+	it.each([
+		"paperName",
+		"paperSlug",
+		"sizeSlug",
+		"canvasWrapHex",
+		"borderWidthValue",
+		"frameValue",
+	])("rejects malformed optional %s", (field) => {
+		expect(
+			parseCartState({ ...oneItem(), items: [{ ...oneItem().items[0], [field]: {} }] }),
+		).toBeNull();
+	});
+
+	it("rejects a JSON numeric overflow before totals can become infinite", () => {
+		const raw = JSON.stringify(oneItem()).replace(
+			'"unitPriceCents":4500',
+			'"unitPriceCents":1e400',
+		);
+		expect(parseCartState(JSON.parse(raw))).toBeNull();
+	});
+
+	it("rejects duplicate line identities that would break keyed cart rendering", () => {
+		const duplicate = { ...oneItem().items[0], productSlug: "another-print" };
+		expect(parseCartState({ ...oneItem(), items: [oneItem().items[0], duplicate] })).toBeNull();
+	});
+
+	it("rejects unsafe line or combined totals even when each unit price is safe", () => {
+		const expensive = { ...oneItem().items[0], unitPriceCents: Number.MAX_SAFE_INTEGER };
+		expect(parseCartState({ ...oneItem(), items: [{ ...expensive, quantity: 2 }] })).toBeNull();
+		expect(
+			parseCartState({
+				...oneItem(),
+				items: [expensive, { ...expensive, id: "second", unitPriceCents: 1 }],
+			}),
+		).toBeNull();
 	});
 });
