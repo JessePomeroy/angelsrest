@@ -1,8 +1,6 @@
-/* Site-owned palette and the existing 1.067 typography scale.
- * Keep these values stable while removing the component-library dependency.
- * @theme exposes colors to both Tailwind utilities and scoped CSS.
- */
-@theme static {
+/* Site-owned palette and the existing 1.067 typography scale. */
+:root,
+:host {
 	--color-primary-500: oklch(80.28% 0.08 266.51deg);
 	--color-success-500: oklch(61.08% 0.08 171.46deg);
 	--color-success-700: oklch(50.85% 0.07 170.86deg);

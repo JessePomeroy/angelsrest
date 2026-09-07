@@ -1,6 +1,6 @@
 # Public CSS migration
 
-S08 replaces Tailwind utilities with component-owned CSS while preserving rendered behavior. The first slice converts ThemeSwitcher, BottomNav, MobileNav and the remaining JellyNav utility classes. Shared Admin styles already use scoped CSS and `--admin-*` variables.
+S08 replaces Tailwind utilities with component-owned CSS while preserving rendered behavior. The navigation/theme pilot merged in PR #558. ThemeSwitcher, BottomNav, MobileNav and JellyNav now use scoped CSS. The foundation slice makes the site palette, type scale and browser reset ordinary CSS. Shared Admin styles already use scoped CSS and `--admin-*` variables.
 
 ## Inventory and sequence
 
@@ -24,4 +24,8 @@ The public theme switcher keeps the shared store and pressed states. Icon dimens
 
 Use the actual-component browser suite for navigation, liquid navigation and shared theme ownership. Compare desktop/mobile captures in light/dark across all six time periods; check keyboard focus, route ancestry, touch targets, breakpoint visibility, cart access and reduced-motion switching. Physical iOS safe-area behavior still needs device verification.
 
-The pilot is not a standalone reset replacement. It still inherits the current global foundation, and its semantic tokens remain defined by the existing theme file. Do not remove the build plugins until later slices resolve these dependencies.
+The site palette and type scale live in `theme.css` as native custom properties, imported in the existing theme layer. `tailwind-bridge.css` temporarily registers their names with an `@theme inline` block imported using `reference`: utilities use the site variables without emitting another definition. Default Tailwind tokens remain for unconverted utility classes.
+
+`reset.css` replaces the Preflight import in the same base layer. It preserves the installed 4.2.4 normalization rules, including native controls, hidden content, media, tables, placeholders and date-input quirks; its font stacks and settings are ordinary CSS. The source attribution/license is retained. Existing unlayered global typography, list resets, time themes and Admin overrides keep their precedence.
+
+A browser test injects reset/theme source directly into a document without Tailwind compilation to verify native token resolution and basic control/layout normalization. Do not remove the remaining utility/typography build plugins until later slices resolve their consumers.
