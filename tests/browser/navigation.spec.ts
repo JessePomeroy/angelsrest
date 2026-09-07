@@ -45,3 +45,34 @@ test("bottom navigation is a mobile landmark with route-aware links and usable t
 		if (active) await expect(current).toHaveAccessibleName(active);
 	}
 });
+
+test("navigation preserves time borders, keyboard focus and the desktop breakpoint", async ({ page }) => {
+	await page.setViewportSize({ width: 767, height: 800 });
+	await page.goto("/?fixture=navigation");
+	const nav = page.getByRole("navigation", { name: "Mobile navigation" });
+	const home = nav.getByRole("link", { name: "Home", exact: true });
+	for (const mode of ["Light", "Dark"]) {
+		await page.getByRole("button", { name: `${mode} mode`, exact: true }).click();
+		for (const period of ["dawn", "morning", "afternoon", "golden", "evening", "night"]) {
+			await page.evaluate((period) => { document.documentElement.dataset.timePeriod = period; }, period);
+			const expected = await page.evaluate(() => {
+				const probe = document.createElement("span");
+				probe.style.color = "var(--time-border)";
+				document.body.append(probe);
+				const color = getComputedStyle(probe).color;
+				probe.remove();
+				return color;
+			});
+			await expect(nav).toHaveCSS("border-top-color", expected);
+		}
+		await page.getByLabel("Current path").focus();
+		await page.keyboard.press("Tab");
+		await expect(home).toBeFocused();
+		await expect(home).toHaveCSS("outline-style", "solid");
+		await expect(home).toHaveCSS("outline-width", "2px");
+		await expect(home).toHaveCSS("outline-offset", "-2px");
+	}
+	await expect(nav).toBeVisible();
+	await page.setViewportSize({ width: 768, height: 800 });
+	await expect(nav).toBeHidden();
+});
