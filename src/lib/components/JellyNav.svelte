@@ -363,7 +363,7 @@ onMount(() => {
 	if (event.key === "Escape" && (expanded || dragging || flying)) { finishPointer(true); flight = null; flying = false; close(true); }
 }} />
 
-<div class="jelly-nav md:hidden" class:expanded class:dragging class:flying class:rendered class:mounted
+<div class="jelly-nav" class:expanded class:dragging class:flying class:rendered class:mounted
 	style:left={`${viewport.left}px`} style:top={`${viewport.top}px`}>
 	{#if expanded}
 		<button class="dismiss" type="button" tabindex="-1" aria-label="Close navigation" onclick={() => close(true)}></button>
@@ -430,11 +430,17 @@ onMount(() => {
 			{/each}
 		</div>
 	</nav>
-	<p id="water-nav-help" class="sr-only">Tap to open navigation. Drag to move; release to fling. Tap a moving sphere to catch it. With keyboard focus, use arrow keys to move the sphere.</p>
-	<span class="sr-only" role="status">{announcement}</span>
+	<p id="water-nav-help" class="visually-hidden">Tap to open navigation. Drag to move; release to fling. Tap a moving sphere to catch it. With keyboard focus, use arrow keys to move the sphere.</p>
+	<span class="visually-hidden" role="status">{announcement}</span>
 </div>
 
 <style>
+  .visually-hidden {
+    position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
+    overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border-width: 0;
+  }
+  @media (min-width: 48rem) { .jelly-nav { display: none; } }
+
 	.jelly-nav { position: fixed; z-index: 50; width: 0; height: 0; pointer-events: none; visibility: hidden; }
 	.mounted { visibility: visible; }
 	.dismiss { position: fixed; inset: 0; pointer-events: auto; border: 0; background: transparent; }

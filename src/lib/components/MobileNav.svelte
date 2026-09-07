@@ -31,14 +31,23 @@ onMount(() => {
 </script>
 
 {#if liquidEnabled && LiquidNav}
-	<div class="h-36 md:hidden"></div>
+	<div class="liquid-spacer"></div>
 	<LiquidNav />
 {:else}
 	{#if cart.itemCount > 0}
-		<div class="fixed bottom-36 right-4 z-40 md:hidden">
+		<div class="fallback-cart">
 			<CartIcon variant="pill" />
 		</div>
 	{/if}
-	<div class="h-20 md:hidden"></div>
+	<div class="fallback-spacer"></div>
 	<BottomNav />
 {/if}
+
+<style>
+  .liquid-spacer { height: 9rem; }
+  .fallback-spacer { height: 5rem; }
+  .fallback-cart { position: fixed; bottom: 9rem; right: 1rem; z-index: 40; }
+  @media (min-width: 48rem) {
+    .liquid-spacer, .fallback-spacer, .fallback-cart { display: none; }
+  }
+</style>
