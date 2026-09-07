@@ -9,7 +9,7 @@ import {
 	shouldRefreshAdminServerSession,
 } from "@jessepomeroy/admin";
 import { closeConvex, setupAuth, setupConvex, useAuth } from "convex-svelte";
-import { untrack } from "svelte";
+import { onDestroy, untrack } from "svelte";
 import { browser } from "$app/environment";
 import { invalidateAll } from "$app/navigation";
 import { PUBLIC_CONVEX_URL } from "$env/static/public";
@@ -26,10 +26,11 @@ let serverSessionRefreshInFlight = $state(false);
 
 if (authClient) {
 	const sessionStore = authClient.useSession();
-	sessionStore.subscribe((val) => {
+	const unsubscribe = sessionStore.subscribe((val) => {
 		clientSessionEmail = val?.data?.user?.email ?? null;
 		clientSessionPending = val?.isPending ?? false;
 	});
+	onDestroy(unsubscribe);
 }
 
 function signOutSucceeded(result: unknown) {

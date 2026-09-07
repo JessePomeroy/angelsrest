@@ -40,6 +40,9 @@ let asciiDataUrl = $state("");
 let displayedAsciiUrl = $state("");
 let isHovering = $state(false);
 let imageLoaded = $state(false);
+let reducedMotion = $state(true);
+let disposed = true;
+let pendingImage: HTMLImageElement | undefined;
 
 let animationFrame: number | null = null;
 let asciiChars: string[] = [];
@@ -52,21 +55,48 @@ let imgHeight = 0;
 const scramblePool = $derived(buildScramblePool(charSet));
 
 onMount(() => {
-	loadAndGenerate();
+	disposed = false;
+	const motion = window.matchMedia("(prefers-reduced-motion: reduce)");
+	function syncMotion() {
+		reducedMotion = motion.matches;
+		stopAnimation();
+		if (!reducedMotion) {
+			if (!imageLoaded && !pendingImage) loadAndGenerate();
+			else if (isHovering) startScrambleAnimation();
+		}
+	}
+	syncMotion();
+	motion.addEventListener("change", syncMotion);
 	return () => {
-		if (animationFrame) cancelAnimationFrame(animationFrame);
+		disposed = true;
+		motion.removeEventListener("change", syncMotion);
+		stopAnimation();
+		if (pendingImage) {
+			pendingImage.onload = null;
+			pendingImage.onerror = null;
+			pendingImage = undefined;
+		}
 	};
 });
 
 function loadAndGenerate() {
 	const img = new Image();
+	pendingImage = img;
 	img.crossOrigin = "anonymous";
 
 	img.onerror = (e) => {
+		img.onload = null;
+		img.onerror = null;
+		pendingImage = undefined;
+		if (disposed) return;
 		console.error("ASCII image failed to load:", e);
 	};
 
 	img.onload = () => {
+		img.onload = null;
+		img.onerror = null;
+		pendingImage = undefined;
+		if (disposed || reducedMotion) return;
 		const ctx = sourceCanvas.getContext("2d");
 		if (!ctx) return;
 
@@ -92,6 +122,7 @@ function loadAndGenerate() {
 		asciiChars = pixelsToAscii(imageData.data, asciiCols, asciiRows, charSet);
 		asciiDataUrl = renderAsciiToCanvas(asciiChars);
 		imageLoaded = true;
+		if (isHovering) startScrambleAnimation();
 	};
 
 	img.src = src;
@@ -129,15 +160,17 @@ function renderAsciiToCanvas(chars: string[]): string {
 }
 
 function startScrambleAnimation() {
-	if (!asciiChars.length) return;
+	if (disposed || reducedMotion || !asciiChars.length) return;
 
-	if (animationFrame) cancelAnimationFrame(animationFrame);
+	if (animationFrame !== null) cancelAnimationFrame(animationFrame);
 
 	settledIndices = new Set();
 	const startTime = performance.now();
 	const indicesToSettle = buildSettleOrder(asciiChars);
 
 	function animate(currentTime: number) {
+		animationFrame = null;
+		if (disposed || reducedMotion || !isHovering) return;
 		const elapsed = currentTime - startTime;
 		const progress = Math.min(elapsed / settleDuration, 1);
 
@@ -164,7 +197,7 @@ function startScrambleAnimation() {
 }
 
 function stopAnimation() {
-	if (animationFrame) {
+	if (animationFrame !== null) {
 		cancelAnimationFrame(animationFrame);
 		animationFrame = null;
 	}
@@ -193,11 +226,11 @@ function handleMouseLeave() {
     {src}
     {alt}
     class={className}
-    style="visibility: {isHovering && imageLoaded ? 'hidden' : 'visible'};"
+    style="visibility: {isHovering && imageLoaded && !reducedMotion ? 'hidden' : 'visible'};"
   />
 
   <!-- ASCII as image - uses same object-cover as original -->
-  {#if imageLoaded && isHovering}
+  {#if imageLoaded && isHovering && !reducedMotion}
     <img
       src={displayedAsciiUrl || asciiDataUrl}
       alt=""
