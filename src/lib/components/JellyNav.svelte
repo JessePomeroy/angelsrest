@@ -430,9 +430,6 @@ onMount(() => {
 			{/each}
 		</div>
 	</nav>
-	<span class="gesture-hint" aria-hidden="true" style:transform={`translate3d(${frame.center.x - 80}px, ${Math.min(frame.center.y + 48, viewport.height - 20)}px, 0)`}>
-		{dragging ? "release to fling" : expanded || flying ? "" : "tap to open · drag to fling"}
-	</span>
 	<p id="water-nav-help" class="sr-only">Tap to open navigation. Drag to move; release to fling. Tap a moving sphere to catch it. With keyboard focus, use arrow keys to move the sphere.</p>
 	<span class="sr-only" role="status">{announcement}</span>
 </div>
@@ -480,7 +477,6 @@ onMount(() => {
 	.destination[aria-current="page"] .bubble-label { text-decoration: underline; text-underline-offset: 3px; }
 	.sphere:focus, .sphere:focus-visible, .destination:focus, .destination:focus-visible { outline: none; }
 	.cart-count { position: absolute; top: 6px; right: 4px; min-width: 17px; padding: 2px 4px; border-radius: 10px; background: #344041; color: #fff; font-size: 9px; line-height: 13px; text-align: center; }
-	.gesture-hint { position: absolute; left: 0; top: 0; width: 160px; text-align: center; font-size: 9px; letter-spacing: .04em; white-space: nowrap; opacity: .65; }
 	:global(.dark) .sphere, :global(.dark) .destination { color: #e5e9e8; }
 	:global(.dark) .bubble-label { color: #edf0ef; background: rgb(24 32 34 / 82%); text-shadow: none; }
 	@media (prefers-reduced-motion: reduce) { .jelly-nav * { transition: none; } }
