@@ -111,4 +111,5 @@ const links = [
   @media (min-width: 768px) {
     .site-nav { display: flex; }
   }
+  @media (pointer: coarse) and (orientation: landscape) and (max-height: 500px) { .site-nav { display: none; } }
 </style>
