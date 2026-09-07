@@ -7,10 +7,14 @@ const path = (relative: string) => fileURLToPath(new URL(relative, import.meta.u
 
 export default defineConfig({
 	root: path("./fixtures"),
-	plugins: [svelte({ configFile: false }), tailwindcss()],
+	// Keep real component styles while avoiding dev virtual-CSS cache misses for packed packages.
+	plugins: [svelte({ configFile: false, compilerOptions: { css: "injected" } }), tailwindcss()],
+	optimizeDeps: { exclude: ["@jessepomeroy/admin", "@jessepomeroy/admin/theme"] },
 	resolve: {
+		dedupe: ["svelte"],
 		alias: {
 			$lib: path("../../src/lib"),
+			"$app/stores": path("./fixtures/stores.ts"),
 			"$app/environment": path("./fixtures/environment.ts"),
 			"$app/state": path("./fixtures/state.svelte.ts"),
 			"$app/navigation": path("./fixtures/navigation.ts"),

@@ -4,34 +4,12 @@
  */
 import { onMount } from "svelte";
 import { loadTurnstile, type TurnstileApi } from "$lib/client/turnstile";
-import { isDark } from "$lib/stores/theme";
 import { TURNSTILE_SITE_KEY } from "$lib/config/turnstile";
 
 let {
 	hideHeader = false,
 	confirmationMessage = "message sent !",
 }: { hideHeader?: boolean; confirmationMessage?: string } = $props();
-
-/**
- * Theme-aware form text color
- *
- * Tailwind's dark: variant wasn't working reliably with !text-black,
- * so we use a CSS variable that updates reactively when the theme changes.
- *
- * The --form-text-color variable is applied via inline styles on form elements.
- * - Light mode: #000000 (black)
- * - Dark mode: #fafafa (near-white)
- */
-$effect(() => {
-	// Audit M19: `$effect` already runs client-only in Svelte 5, but the
-	// explicit guard documents intent and covers any host that polyfills
-	// `$effect` during SSR (Vite dev warm-up has done this in the past).
-	if (typeof document === "undefined") return;
-	document.documentElement.style.setProperty(
-		"--form-text-color",
-		$isDark ? "#fafafa" : "#000000",
-	);
-});
 
 let status = $state("idle"); // 'idle' | 'sending' | 'success' | 'error'
 let verificationError = $state("");
@@ -141,7 +119,6 @@ async function handleSubmit(e: SubmitEvent) {
                 name="name"
                 placeholder="your name"
                 required
-                style="color: var(--form-text-color);"
                 class="contact-field"
             />
         </div>
@@ -153,7 +130,6 @@ async function handleSubmit(e: SubmitEvent) {
                 name="email"
                 placeholder="you@example.com"
                 required
-                style="color: var(--form-text-color);"
                 class="contact-field"
             />
         </div>
@@ -164,7 +140,6 @@ async function handleSubmit(e: SubmitEvent) {
                 id="subject"
                 name="subject"
                 placeholder="what's this about ?"
-                style="color: var(--form-text-color);"
                 class="contact-field"
             />
         </div>
@@ -176,7 +151,6 @@ async function handleSubmit(e: SubmitEvent) {
                 rows="4"
                 placeholder="your message..."
                 required
-                style="color: var(--form-text-color);"
                 class="contact-field resize-y"
             ></textarea>
         </div>
@@ -184,7 +158,6 @@ async function handleSubmit(e: SubmitEvent) {
         <button
             type="submit"
             class="contact-submit"
-            style="color: var(--form-text-color);"
             disabled={status === "sending" || !verificationReady}
         >
             {status === "sending" ? "sending..." : "send message"}
@@ -205,6 +178,8 @@ async function handleSubmit(e: SubmitEvent) {
 </div>
 
 <style>
+    .contact-field, .contact-submit { color: #000; }
+    :global(.dark) .contact-field, :global(.dark) .contact-submit { color: #fafafa; }
     .contact-field { width: 100%; min-height: 44px; padding: 10px 12px; border: 1px solid color-mix(in srgb, currentColor 18%, transparent); border-radius: 0; background: color-mix(in srgb, var(--color-surface-900) 18%, transparent); font-size: 0.82rem; transition: border-color 160ms ease, background 160ms ease; }
     .contact-field::placeholder { color: color-mix(in srgb, currentColor 44%, transparent); }
     .contact-field:focus { border-color: var(--time-accent); outline: 1px solid var(--time-accent); outline-offset: -1px; background: color-mix(in srgb, var(--color-surface-900) 25%, transparent); }

@@ -2,47 +2,20 @@
   ThemeSwitcher Component
   
   Uses the site palette for both light and dark modes.
-  Only toggles the 'dark' class on <html> element.
+  The shared theme store owns DOM updates and persistence.
 -->
 
 <script lang="ts">
 import { MoonIcon, SunIcon } from "@lucide/svelte";
-import { onMount } from "svelte";
-import { browser } from "$app/environment";
 import { isDark } from "$lib/stores/theme";
-
-onMount(() => {
-	applyTheme($isDark);
-});
-
-function applyTheme(dark: boolean) {
-	if (browser) {
-		const html = document.documentElement;
-		if (dark) {
-			html.classList.add("dark");
-		} else {
-			html.classList.remove("dark");
-		}
-		localStorage.setItem("theme", dark ? "dark" : "light");
-	}
-}
-
-function setLight() {
-	isDark.setLight();
-	applyTheme(false);
-}
-
-function setDark() {
-	isDark.setDark();
-	applyTheme(true);
-}
 </script>
 
 <!-- Site-owned surface colors -->
 <div class="flex items-center bg-surface-200 dark:bg-surface-700 rounded-full p-0.5">
   <!-- Light mode button -->
   <button
-    onclick={setLight}
+    onclick={isDark.setLight}
+    aria-pressed={!$isDark}
     class="p-1.5 rounded-full transition-all duration-200 {!$isDark
       ? 'bg-surface-50 text-surface-900 dark:text-surface-50 shadow-sm'
       : 'text-surface-500 hover:text-surface-600'}"
@@ -53,7 +26,8 @@ function setDark() {
   
   <!-- Dark mode button -->
   <button
-    onclick={setDark}
+    onclick={isDark.setDark}
+    aria-pressed={$isDark}
     class="p-1.5 rounded-full transition-all duration-200 {$isDark
       ? 'bg-surface-900 text-surface-50 shadow-sm'
       : 'text-surface-500 hover:text-surface-600'}"

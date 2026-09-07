@@ -38,3 +38,15 @@ state stub, checking destinations, active routes, near-prefix exclusions,
 mobile target sizes, and desktop hiding. Theme checks run the primary actions,
 selection, and cart labels across all six time periods in both modes, and
 verify that switching modes no longer sets a Skeleton theme attribute.
+
+
+S04 mounts the installed Admin layout alongside the public theme switcher and
+checks shared state across Admin mount/unmount cycles and page reloads, with
+both available and denied local storage. Its static unauthorized session only
+supplies layout capabilities; this is not an authentication test. The first-paint
+script is taken from the production app shell. The actual contact form also
+checks field/button colors in both modes without document style mutation; a
+ready Turnstile API stub prevents loading the external verification provider.
+Component CSS is injected by the Svelte compiler in this fixture to avoid
+virtual-CSS metadata cache misses when testing a locally packed Admin package.
+Production bundling is verified separately with the host build.
