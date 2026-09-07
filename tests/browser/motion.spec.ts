@@ -109,28 +109,34 @@ for (const failure of ["compile", "link", "buffer"]) {
 }
 
 test("gradient suppresses CSS drift and cursor RAF on preference changes and unmount", async ({ page }) => {
+	// Exercise the mouse listener directly: mobile WebKit does not synthesize mouse movement.
 	await page.emulateMedia({ reducedMotion: "reduce" });
 	await page.goto("/?fixture=motion&kind=gradient");
 	await expect(page.locator(".orb-primary")).toHaveCSS("animation-name", "none");
-	await page.mouse.move(350, 400);
+	await page.evaluate(() => window.dispatchEvent(new MouseEvent("mousemove", { clientX: 350, clientY: 400 })));
 	expect(await page.evaluate(() => window.motionProbe.queued())).toBe(0);
 	await page.emulateMedia({ reducedMotion: "no-preference" });
 	await expect(page.locator(".orb-primary")).not.toHaveCSS("animation-name", "none");
-	await page.mouse.move(100, 100);
-	await expect.poll(() => page.evaluate(() => window.motionProbe.queued())).toBe(1);
+	// Wait for the listener to observe the asynchronously applied media preference.
+	await expect.poll(() => page.evaluate(() => {
+		window.dispatchEvent(new MouseEvent("mousemove", { clientX: 100, clientY: 100 }));
+		return window.motionProbe.queued();
+	})).toBe(1);
 	await page.evaluate(() => window.motionProbe.tick(1000));
 	const transform = await page.locator(".orb-primary").evaluate(element => (element as HTMLElement).style.transform);
 	expect(transform).toContain("translate3d");
 	await page.emulateMedia({ reducedMotion: "reduce" });
 	await expect.poll(() => page.evaluate(() => window.motionProbe.queued())).toBe(0);
-	await page.mouse.move(250, 250);
+	await page.evaluate(() => window.dispatchEvent(new MouseEvent("mousemove", { clientX: 250, clientY: 250 })));
 	await page.evaluate(() => window.motionProbe.tick(2000));
 	expect(await page.locator(".orb-primary").evaluate(element => (element as HTMLElement).style.transform)).toBe(transform);
 	await page.emulateMedia({ reducedMotion: "no-preference" });
-	await page.mouse.move(300, 300);
-	await expect.poll(() => page.evaluate(() => window.motionProbe.queued())).toBe(1);
+	await expect.poll(() => page.evaluate(() => {
+		window.dispatchEvent(new MouseEvent("mousemove", { clientX: 300, clientY: 300 }));
+		return window.motionProbe.queued();
+	})).toBe(1);
 	await page.getByRole("button", { name: "Unmount motion" }).click();
-	await page.mouse.move(50, 50);
+	await page.evaluate(() => window.dispatchEvent(new MouseEvent("mousemove", { clientX: 50, clientY: 50 })));
 	expect(await page.evaluate(() => window.motionProbe.queued())).toBe(0);
 });
 

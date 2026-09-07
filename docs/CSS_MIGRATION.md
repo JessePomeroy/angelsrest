@@ -85,3 +85,11 @@ A compiler-based class scan caught dependencies missed by the earlier naming heu
 Final captures cover public chrome, actual Admin layout, private delivery, all portal document kinds, both invoice result pages, cart/checkout, print/set/digital product views, collection/shop, article typography and contact/order forms. All 84 measured snapshots match, including full computed properties for print selects. Of 76 screenshots, 61 are identical; remaining differences are raster details (mobile select text affects at most 0.12% of a capture, while other differences are at most five color-channel values). Film-grain comparison uses a fixed random seed. Browser fixtures use local provider stubs and fallback fonts; these captures are not a physical-device or live-provider test.
 
 Production CSS measurement against the immediately preceding S08k build: 29 assets / 383,089 raw bytes / 65,503 independently gzipped bytes before; 29 assets / 366,216 raw bytes / 62,662 independently gzipped bytes after. This sums emitted client CSS across all routes; it is not the transfer size of one page.
+
+## WebKit follow-up coverage
+
+The component suite now runs desktop Chromium, mobile Chromium and WebKit with the iPhone 13 device preset. Install both engines with `pnpm exec playwright install --with-deps chromium webkit`, then run `pnpm test:browser`. CI uses the same project matrix with two workers.
+
+Color expectations are normalized through the current engine's computed-style serialization so OKLCH float precision does not create false failures. Hover-only assertions run on desktop; the sticky purchase bar runs on both mobile projects. The gradient lifecycle test dispatches mouse events directly and waits for asynchronous media-preference application before asserting the animation queue. It verifies scheduling and cleanup, not physical touch input or GPU performance.
+
+The sphere drag test still uses Chromium CDP touch injection and explicitly skips WebKit. Physical iPhone safe areas, Safari toolbar changes, real touch dragging and mobile GPU behavior remain device acceptance work. Provider fixtures also remain distinct from live authenticated or payment/email/fulfillment integration checks.

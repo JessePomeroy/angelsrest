@@ -1,4 +1,5 @@
 import { expect, test } from "@playwright/test";
+import { computedColor } from "./computedColor";
 
 test.beforeEach(async ({ page }) => {
   await page.emulateMedia({ reducedMotion: "reduce", colorScheme: "light" });
@@ -36,7 +37,7 @@ test("order status presentation updates across every supported status and fallba
   }
   expect(colors.get("printing")).toBe(colors.get("ready"));
   expect(new Set(colors.values()).size).toBe(6);
-  expect(colors.get("unknown")).toBe("oklch(0.446 0.03 256.802)");
+  expect(colors.get("unknown")).toBe(await computedColor(page, "oklch(0.446 0.03 256.802)"));
 });
 
 test("verification controls retain their disabled color even when hovered", async ({ page }) => {
@@ -45,7 +46,7 @@ test("verification controls retain their disabled color even when hovered", asyn
   await expect(submit).toBeDisabled();
   await expect(page.getByRole("button", { name: "Verify fixture" }).locator("..")).toHaveCSS("margin-bottom", "12px");
   await submit.hover();
-  await expect(submit).toHaveCSS("background-color", "oklch(0.446 0.03 256.802)");
+  await expect(submit).toHaveCSS("background-color", await computedColor(page, "oklch(0.446 0.03 256.802)"));
   await expect(submit).toHaveCSS("opacity", "0.5");
   await page.getByRole("button", { name: "Verify fixture" }).click();
   await expect(submit).toBeEnabled();

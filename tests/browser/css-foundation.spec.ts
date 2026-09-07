@@ -1,5 +1,6 @@
 import { readFileSync } from "node:fs";
 import { expect, test } from "@playwright/test";
+import { computedColor } from "./computedColor";
 
 const reset = readFileSync(new URL("../../src/lib/styles/reset.css", import.meta.url), "utf8");
 const theme = readFileSync(new URL("../../src/lib/styles/theme.css", import.meta.url), "utf8");
@@ -31,6 +32,6 @@ test("native CSS foundation works without Tailwind compilation", async ({ page }
 		await expect(control).toHaveCSS("background-color", "rgba(0, 0, 0, 0)");
 	}
 	await expect(page.getByLabel("Native text")).toHaveCSS("resize", "vertical");
-	await expect(page.locator("#sample")).toHaveCSS("color", "oklch(0.3191 0.04 266.95)");
+	await expect(page.locator("#sample")).toHaveCSS("color", await computedColor(page, "oklch(0.3191 0.04 266.95)"));
 	await expect(page.locator("#sample")).toHaveCSS("font-size", "14.938px");
 });

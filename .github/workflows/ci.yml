@@ -123,8 +123,8 @@ jobs:
       - name: Retired platform checkout handler stays absent
         run: test ! -f src/routes/api/platform/create-checkout/+server.ts
 
-      - name: Install Playwright Chromium
-        run: pnpm exec playwright install --with-deps chromium
+      - name: Install Playwright Chromium and WebKit
+        run: pnpm exec playwright install --with-deps chromium webkit
 
       - name: Component browser regressions
         run: pnpm test:browser
