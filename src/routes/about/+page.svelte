@@ -1,5 +1,6 @@
 <script lang="ts">
 import AsciiImage from "$lib/components/AsciiImage.svelte";
+import BookingButton from "$lib/components/BookingButton.svelte";
 import ContactForm from "$lib/components/ContactForm.svelte";
 import SEO from "$lib/components/SEO.svelte";
 import { ABOUT_CONTACT_SEO_DESCRIPTION_FALLBACK } from "$lib/about-contact/content";
@@ -8,53 +9,6 @@ let { data } = $props();
 const about = $derived(data.content.about);
 const contact = $derived(data.content.contact);
 </script>
-
-<svelte:head>
-    <!-- Cal element-click embed code begins -->
-    <script type="text/javascript">
-        (function (C, A, L) {
-            let p = function (a, ar) {
-                a.q.push(ar);
-            };
-            let d = C.document;
-            C.Cal =
-                C.Cal ||
-                function () {
-                    let cal = C.Cal;
-                    let ar = arguments;
-                    if (!cal.loaded) {
-                        cal.ns = {};
-                        cal.q = cal.q || [];
-                        d.head.appendChild(d.createElement("script")).src = A;
-                        cal.loaded = true;
-                    }
-                    if (ar[0] === L) {
-                        const api = function () {
-                            p(api, arguments);
-                        };
-                        const namespace = ar[1];
-                        api.q = api.q || [];
-                        if (typeof namespace === "string") {
-                            cal.ns[namespace] = cal.ns[namespace] || api;
-                            p(cal.ns[namespace], ar);
-                            p(cal, ["initNamespace", namespace]);
-                        } else p(cal, ar);
-                        return;
-                    }
-                    p(cal, ar);
-                };
-        })(window, "https://app.cal.com/embed/embed.js", "init");
-
-        Cal("init", "photosession", { origin: "https://app.cal.com" });
-
-        Cal.ns.photosession("ui", {
-            hideEventTypeDetails: false,
-            layout: "month_view",
-            useSlotsViewOnSmallScreen: true,
-        });
-    </script>
-    <!-- Cal element-click embed code ends -->
-</svelte:head>
 
 <SEO
     title="about | angel's rest"
@@ -105,14 +59,7 @@ const contact = $derived(data.content.contact);
                     <p class="text-surface-400 text-xs mb-3">
                         {contact.booking.intro}
                     </p>
-                    <button
-                        type="button"
-                        class="booking-button"
-                        data-cal-link={contact.booking.calLink}
-                        data-cal-namespace="photosession"
-                    >
-                        {contact.booking.label}
-                    </button>
+                    <BookingButton calLink={contact.booking.calLink} label={contact.booking.label} />
                 </div>
             {/if}
         </div>
@@ -135,8 +82,4 @@ const contact = $derived(data.content.contact);
 <style>
     .about-page { width: 100%; }
     .portrait-frame { display: inline-block; padding: 7px; border: 1px solid color-mix(in srgb, currentColor 14%, transparent); }
-    :global(.dark) .booking-button { color: #fafafa; }
-    .booking-button { color: #000; min-height: 42px; padding: 10px 14px; border: 1px solid color-mix(in srgb, currentColor 28%, transparent); border-radius: 0; background: transparent; font-size: 0.78rem; font-weight: 500; letter-spacing: 0.08em; text-transform: lowercase; cursor: pointer; transition: border-color 160ms ease, background 160ms ease; }
-    .booking-button:hover { border-color: var(--time-accent); background: color-mix(in srgb, currentColor 6%, transparent); }
-    .booking-button:focus-visible { outline: 1px solid var(--time-accent); outline-offset: 2px; }
 </style>

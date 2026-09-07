@@ -1,8 +1,6 @@
 <script lang="ts">
 import { page } from "$app/state";
-import { onMount } from "svelte";
-import { loadTurnstile, type TurnstileApi } from "$lib/client/turnstile";
-import { TURNSTILE_SITE_KEY } from "$lib/config/turnstile";
+import TurnstileWidget from "$lib/components/TurnstileWidget.svelte";
 import { toasts } from "$lib/stores/toast.svelte";
 import { formatCents, formatDate } from "$lib/utils/format";
 
@@ -13,54 +11,11 @@ let error = $state("");
 let verificationError = $state("");
 let verificationReady = $state(false);
 let order: any = $state(null);
-let turnstileApi: TurnstileApi | undefined;
-let turnstileWidgetId: string | undefined;
-
-onMount(() => {
-	let disposed = false;
-	void loadTurnstile()
-		.then((api) => {
-			if (disposed) return;
-			turnstileApi = api;
-			turnstileWidgetId = api.render("#order-lookup-turnstile", {
-				sitekey: TURNSTILE_SITE_KEY,
-				theme: "dark",
-				action: "turnstile-spin-v1",
-				callback: () => {
-					verificationReady = true;
-					verificationError = "";
-				},
-				"error-callback": () => {
-					verificationReady = false;
-					verificationError = "Verification could not load. Please try again.";
-					return false;
-				},
-				"expired-callback": () => {
-					verificationError = "Verification expired. Please complete it again.";
-					resetTurnstile();
-				},
-			});
-		})
-		.catch((loadError) => {
-			console.error("orders Turnstile failed to load", loadError);
-			if (!disposed) {
-				verificationReady = false;
-				verificationError = "Verification could not load. Please refresh and try again.";
-			}
-		});
-
-	return () => {
-		disposed = true;
-		verificationReady = false;
-		if (turnstileApi && turnstileWidgetId) turnstileApi.remove(turnstileWidgetId);
-		turnstileWidgetId = undefined;
-		turnstileApi = undefined;
-	};
-});
+let turnstileWidget: TurnstileWidget | undefined;
 
 function resetTurnstile() {
 	verificationReady = false;
-	if (turnstileApi && turnstileWidgetId) turnstileApi.reset(turnstileWidgetId);
+	turnstileWidget?.reset();
 }
 
 async function lookupOrder(form: HTMLFormElement) {
@@ -167,7 +122,27 @@ const statusColors: Record<string, string> = {
 				/>
 			</div>
 
-				<div id="order-lookup-turnstile"></div>
+				<TurnstileWidget
+					bind:this={turnstileWidget}
+					theme="dark"
+					onverified={() => {
+						verificationReady = true;
+						verificationError = "";
+					}}
+					onerror={() => {
+						verificationReady = false;
+						verificationError = "Verification could not load. Please try again.";
+					}}
+					onexpired={() => {
+						verificationError = "Verification expired. Please complete it again.";
+						resetTurnstile();
+					}}
+					onloaderror={(error) => {
+						console.error("orders Turnstile failed to load", error);
+						verificationReady = false;
+						verificationError = "Verification could not load. Please refresh and try again.";
+					}}
+				/>
 
 				<button
 					type="submit"
