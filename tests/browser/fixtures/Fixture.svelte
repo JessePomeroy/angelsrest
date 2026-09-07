@@ -1,4 +1,6 @@
 <script lang="ts">
+import PrintHarness from "./PrintHarness.svelte";
+import DeliveryDownloadHarness from "./DeliveryDownloadHarness.svelte";
 import BookingHarness from "./BookingHarness.svelte";
 import TurnstileHarness from "./TurnstileHarness.svelte";
 import Orders from "../../../src/routes/orders/+page.svelte";
@@ -33,7 +35,11 @@ if (params.get("populated") === "true") {
 }
 </script>
 
-{#if fixture === "booking"}
+{#if fixture === "print"}
+	<PrintHarness />
+{:else if fixture === "delivery-downloads"}
+	<DeliveryDownloadHarness />
+{:else if fixture === "booking"}
 	<BookingHarness />
 {:else if fixture === "turnstile"}
 	<TurnstileHarness />
