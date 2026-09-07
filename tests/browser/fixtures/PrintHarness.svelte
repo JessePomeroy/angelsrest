@@ -27,17 +27,18 @@ const productData = $derived({
 	product: {
 		...options, title: "Fixture product", slug: `fixture-product-${scenario}`,
 		description: "Fixture selection", featured: false,
-		images: [{ full: preview, thumbnail: preview, original: preview, alt: "Fixture product" }],
+		images: scenario === "no-images" ? [] : [{ full: preview, thumbnail: preview, original: preview, alt: "Fixture product" }],
 	},
 } satisfies import("../../../src/routes/shop/[slug]/$types").PageData);
 const setData = $derived({
 	...printSetData,
+	images: scenario === "no-images" ? [] : printSetData.images,
 	printSet: { ...printSetData.printSet, ...options, slug: `fixture-set-${scenario}` },
 } satisfies import("../../../src/routes/shop/sets/[slug]/$types").PageData);
 </script>
 
 <nav aria-label="Fixture scenarios">
-	{#each ["original", "other", "empty", "no-finishes", "no-frames", "sold-out"] as value}
+	{#each ["original", "other", "empty", "no-finishes", "no-frames", "sold-out", "no-images"] as value}
 		<button type="button" onclick={() => scenario = value}>{value}</button>
 	{/each}
 </nav>

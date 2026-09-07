@@ -98,127 +98,127 @@ function handleAddToCart(event: MouseEvent) {
 	url="https://angelsrest.online/shop/sets/{data.printSet.slug}"
 />
 
-<div class="max-w-6xl mx-auto px-4 md:px-8">
-	<a href="/shop" class="text-sm opacity-70 hover:opacity-100 mb-4 inline-block">
+<div class="set-page">
+	<a href="/shop" class="back-link">
 		← Back to shop
 		{#if data.printSet.parent}
-			<span class="mx-2 text-surface-500">/</span>
+			<span class="breadcrumb-separator">/</span>
 			{data.printSet.parent.title}
 		{/if}
 	</a>
 
-	<div class="grid md:grid-cols-2 gap-8">
+	<div class="set-layout">
 		<!-- Images grid -->
-		<div class="space-y-4">
+		<div class="set-images">
 			{#if data.images.length > 0}
-				<div class="columns-2 gap-2">
+				<div class="image-columns">
 					{#each data.images as image (image.full ?? image.thumb)}
-						<div class="mb-2 break-inside-avoid">
+						<div class="image-cell">
 							<img data-water-lens
 								src={(image as ProductImage).thumb}
 								alt={image.alt}
 								loading="lazy"
-								class="w-full h-auto rounded-md"
+								class="set-image"
 							/>
 						</div>
 					{/each}
 				</div>
 			{:else}
-				<div class="aspect-square bg-surface-100 dark:bg-surface-800 rounded-md flex items-center justify-center">
-					<span class="text-surface-500">No images</span>
+				<div class="empty-images">
+					<span class="empty-image-label">No images</span>
 				</div>
 			{/if}
 		</div>
 
 		<!-- Product details -->
-		<div class="space-y-6">
+		<div class="set-details">
 			<div>
-				<h1 class="text-3xl font-semibold mb-2">{data.printSet.title}</h1>
-				<span class="text-sm text-surface-600 dark:text-surface-300">
+				<h1 class="set-title">{data.printSet.title}</h1>
+				<span class="set-meta">
 					{data.images.length} print{data.images.length === 1 ? "" : "s"} in this set
 				</span>
 			</div>
 
 			{#if data.printSet.description}
-				<div class="text-surface-700 dark:text-surface-200">
+				<div class="set-description">
 					<p>{data.printSet.description}</p>
 				</div>
 			{/if}
 
 			<!-- Stock status -->
-			<div class="flex items-center gap-2">
+			<div class="stock-status">
 				{#if data.printSet.inStock}
-					<div class="w-3 h-3 rounded-full bg-success-500"></div>
-					<span class="text-sm text-surface-600 dark:text-surface-300">In stock</span>
+					<div class="in-stock-dot"></div>
+					<span class="set-meta">In stock</span>
 				{:else}
-					<div class="w-3 h-3 rounded-full bg-error-500"></div>
-					<span class="text-sm text-surface-600 dark:text-surface-300">Out of stock</span>
+					<div class="out-of-stock-dot"></div>
+					<span class="set-meta">Out of stock</span>
 				{/if}
 			</div>
 
 			<!-- Desktop: inline price + buttons -->
-			<div class="hidden md:flex items-baseline justify-between gap-4 py-2">
-				<div class="text-3xl font-semibold text-surface-900 dark:text-surface-50">
+			<div class="desktop-purchase">
+				<div class="desktop-price">
 					{#if selectedConfiguration}
 						${displaySetPrice}
-						<span class="text-base font-normal text-surface-600 dark:text-surface-300">
+						<span class="desktop-selection">
 							{getPaper(selection.paper)?.name} · {getSize(selection.size)?.label}{selection.border !== 'none' ? ` · ${selection.border}" border` : ''}{selection.frame !== 'none' ? ` · ${getFrame(selection.frame)?.label} frame` : ''}
 						</span>
 					{:else}
-						<span class="text-base text-surface-500">Select paper & size</span>
+						<span class="selection-prompt">Select paper & size</span>
 					{/if}
 				</div>
-				<div class="flex gap-2 shrink-0">
+				<div class="desktop-actions">
 					{#if data.printSet.inStock && selectedConfiguration}
-						<button class="inline-flex items-center justify-center gap-2 rounded-md whitespace-nowrap text-xs px-3 py-1 transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-surface-900 dark:focus-visible:outline-surface-50 disabled:opacity-50 disabled:cursor-not-allowed bg-surface-200 text-surface-900 dark:bg-surface-700 dark:text-surface-50" onclick={handleAddToCart}>
+						<button class="desktop-cart-button" onclick={handleAddToCart}>
 							add to cart
 						</button>
 						<button
-							class="inline-flex items-center justify-center gap-2 rounded-md whitespace-nowrap text-xs px-3 py-1 transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-surface-900 dark:focus-visible:outline-surface-50 disabled:opacity-50 disabled:cursor-not-allowed bg-primary-500 text-slate-950 not-disabled:hover:bg-primary-500/80"
+							class="desktop-buy-button"
 							disabled={isLoading}
 							onclick={handleCheckout}
 						>
 							{isLoading ? "processing..." : "buy now"}
 						</button>
 					{:else if !data.printSet.inStock}
-						<button class="inline-flex items-center justify-center gap-2 rounded-md whitespace-nowrap text-xs px-3 py-1 transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-surface-900 dark:focus-visible:outline-surface-50 disabled:opacity-50 disabled:cursor-not-allowed bg-primary-500 text-slate-950 not-disabled:hover:bg-primary-500/80" disabled>out of stock</button>
+						<button class="desktop-buy-button" disabled>out of stock</button>
 					{/if}
 				</div>
 			</div>
 
 			<PrintConfigurator {selection} />
 
-			<p class="text-xs text-surface-500">
+			<p class="payment-note">
 				Secure checkout powered by Stripe
 			</p>
 
 			<StickyMobileBar>
 				{#snippet children(isStuck)}
-					<div class="flex flex-wrap items-center justify-between gap-x-4 gap-y-1">
-						<div class="flex items-center gap-1.5">
+					<div class="mobile-purchase">
+						<div class="mobile-price-group">
 							{#if selectedConfiguration}
-								<span class="text-xl font-semibold">${displaySetPrice}</span>
-								<span class="text-xs {isStuck ? 'text-surface-300' : 'text-surface-600 dark:text-surface-300'}">
+								<span class="mobile-price">${displaySetPrice}</span>
+								<span class="mobile-selection" class:stuck={isStuck}>
 									{getPaper(selection.paper)?.name} · {getSize(selection.size)?.label}{selection.border !== 'none' ? ` · ${selection.border}" border` : ''}{selection.frame !== 'none' ? ` · ${getFrame(selection.frame)?.label} frame` : ''}
 								</span>
 							{:else}
-								<span class="text-sm text-surface-500">Select paper & size</span>
+								<span class="mobile-selection-prompt">Select paper & size</span>
 							{/if}
 						</div>
-						<div class="flex gap-1.5">
+						<div class="mobile-actions">
 							{#if data.printSet.inStock && selectedConfiguration}
-								<button class="inline-flex items-center justify-center gap-2 rounded-md whitespace-nowrap text-xs px-2 py-1 transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-surface-900 dark:focus-visible:outline-surface-50 disabled:opacity-50 disabled:cursor-not-allowed bg-surface-200 text-surface-900 dark:bg-surface-700 dark:text-surface-50" onclick={handleAddToCart}>
+								<button class="mobile-cart-button" onclick={handleAddToCart}>
 									add to cart
 								</button>
 								<button
-									class="inline-flex items-center justify-center gap-2 rounded-md whitespace-nowrap text-xs px-2 py-1 transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-surface-900 dark:focus-visible:outline-surface-50 disabled:opacity-50 disabled:cursor-not-allowed bg-primary-500 text-slate-950 not-disabled:hover:bg-primary-500/80"
+									class="mobile-buy-button"
 									disabled={isLoading}
 									onclick={handleCheckout}
 								>
 									{isLoading ? "..." : "buy now"}
 								</button>
 							{:else if !data.printSet.inStock}
-								<button class="inline-flex items-center justify-center gap-2 rounded-md whitespace-nowrap text-xs px-2 py-1 transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-surface-900 dark:focus-visible:outline-surface-50 disabled:opacity-50 disabled:cursor-not-allowed bg-primary-500 text-slate-950 not-disabled:hover:bg-primary-500/80" disabled>out of stock</button>
+								<button class="mobile-buy-button" disabled>out of stock</button>
 							{/if}
 						</div>
 					</div>
@@ -227,3 +227,68 @@ function handleAddToCart(event: MouseEvent) {
 		</div>
 	</div>
 </div>
+
+<style>
+  @layer components {
+    .set-page { max-width: 72rem; margin-inline: auto; padding-inline: 1rem; }
+    @media (min-width: 48rem) { .set-page { padding-inline: 2rem; } }
+    .back-link { font-size: var(--text-sm); line-height: var(--text-sm--line-height); opacity: 0.7; margin-bottom: 1rem; display: inline-block; }
+    @media (hover: hover) { .back-link:hover { opacity: 1.0; } }
+    .breadcrumb-separator { margin-inline: 0.5rem; color: var(--color-surface-500); }
+    .set-layout { display: grid; gap: 2rem; }
+    @media (min-width: 48rem) { .set-layout { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+    .set-images > :global(:not(:last-child)) { margin-block-start: 0; margin-block-end: 1.0rem; }
+    .image-columns { column-count: 2; gap: 0.5rem; }
+    .image-cell { margin-bottom: 0.5rem; break-inside: avoid; }
+    .set-image { width: 100%; height: auto; border-radius: 0.375rem; }
+    .empty-images { aspect-ratio: 1 / 1; background-color: var(--color-surface-100); border-radius: 0.375rem; display: flex; align-items: center; justify-content: center; }
+    :global(.dark) .empty-images { background-color: var(--color-surface-800); }
+    .empty-image-label { color: var(--color-surface-500); }
+    .set-details > :global(:not(:last-child)) { margin-block-start: 0; margin-block-end: 1.5rem; }
+    .set-title { font-size: var(--text-3xl); }
+    .set-meta { font-size: var(--text-sm); line-height: var(--text-sm--line-height); color: var(--color-surface-600); }
+    :global(.dark) .set-meta { color: var(--color-surface-300); }
+    .set-description { color: var(--color-surface-700); }
+    :global(.dark) .set-description { color: var(--color-surface-200); }
+    .stock-status { display: flex; align-items: center; gap: 0.5rem; }
+    .in-stock-dot { width: 0.75rem; height: 0.75rem; border-radius: 9999px; background-color: var(--color-success-500); }
+    .out-of-stock-dot { width: 0.75rem; height: 0.75rem; border-radius: 9999px; background-color: var(--color-error-500); }
+    .desktop-purchase { display: none; align-items: baseline; justify-content: space-between; gap: 1rem; padding-block: 0.5rem; }
+    @media (min-width: 48rem) { .desktop-purchase { display: flex; } }
+    .desktop-price { font-size: var(--text-3xl); line-height: var(--text-3xl--line-height); font-weight: 600; color: var(--color-surface-900); }
+    :global(.dark) .desktop-price { color: var(--color-surface-50); }
+    .desktop-selection { font-size: var(--text-base); line-height: var(--text-base--line-height); font-weight: 400; color: var(--color-surface-600); }
+    :global(.dark) .desktop-selection { color: var(--color-surface-300); }
+    .selection-prompt { font-size: var(--text-base); line-height: var(--text-base--line-height); color: var(--color-surface-500); }
+    .desktop-actions { display: flex; gap: 0.5rem; flex-shrink: 0; }
+    .desktop-cart-button { display: inline-flex; align-items: center; justify-content: center; gap: 0.5rem; border-radius: 0.375rem; white-space: nowrap; font-size: var(--text-xs); line-height: var(--text-xs--line-height); padding-inline: 0.75rem; padding-block: 0.25rem; transition-property: color, background-color, border-color, outline-color, text-decoration-color, fill, stroke; transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1); transition-duration: 150ms; background-color: var(--color-surface-200); color: var(--color-surface-900); }
+    .desktop-cart-button:focus-visible { outline-style: solid; outline-width: 2px; outline-offset: 2px; outline-color: var(--color-surface-900); }
+    :global(.dark) .desktop-cart-button:focus-visible { outline-color: var(--color-surface-50); }
+    .desktop-cart-button:disabled { opacity: 0.5; cursor: not-allowed; }
+    :global(.dark) .desktop-cart-button { background-color: var(--color-surface-700); color: var(--color-surface-50); }
+    .desktop-buy-button { display: inline-flex; align-items: center; justify-content: center; gap: 0.5rem; border-radius: 0.375rem; white-space: nowrap; font-size: var(--text-xs); line-height: var(--text-xs--line-height); padding-inline: 0.75rem; padding-block: 0.25rem; transition-property: color, background-color, border-color, outline-color, text-decoration-color, fill, stroke; transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1); transition-duration: 150ms; background-color: var(--color-primary-500); color: oklch(12.9% 0.042 264.695); }
+    .desktop-buy-button:focus-visible { outline-style: solid; outline-width: 2px; outline-offset: 2px; outline-color: var(--color-surface-900); }
+    :global(.dark) .desktop-buy-button:focus-visible { outline-color: var(--color-surface-50); }
+    .desktop-buy-button:disabled { opacity: 0.5; cursor: not-allowed; }
+    @media (hover: hover) { .desktop-buy-button:hover:not(:disabled) { background-color: color-mix(in oklab, var(--color-primary-500) 80%, transparent); } }
+    .payment-note { font-size: var(--text-xs); line-height: var(--text-xs--line-height); color: var(--color-surface-500); }
+    .mobile-purchase { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; column-gap: 1rem; row-gap: 0.25rem; }
+    .mobile-price-group { display: flex; align-items: center; gap: 0.375rem; }
+    .mobile-price { font-size: var(--text-xl); line-height: var(--text-xl--line-height); font-weight: 600; }
+    .mobile-selection { font-size: var(--text-xs); line-height: var(--text-xs--line-height); color: var(--color-surface-600); }
+    :global(.dark) .mobile-selection { color: var(--color-surface-300); }
+    .mobile-selection-prompt { font-size: var(--text-sm); line-height: var(--text-sm--line-height); color: var(--color-surface-500); }
+    .mobile-actions { display: flex; gap: 0.375rem; }
+    .mobile-cart-button { display: inline-flex; align-items: center; justify-content: center; gap: 0.5rem; border-radius: 0.375rem; white-space: nowrap; font-size: var(--text-xs); line-height: var(--text-xs--line-height); padding-inline: 0.5rem; padding-block: 0.25rem; transition-property: color, background-color, border-color, outline-color, text-decoration-color, fill, stroke; transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1); transition-duration: 150ms; background-color: var(--color-surface-200); color: var(--color-surface-900); }
+    .mobile-cart-button:focus-visible { outline-style: solid; outline-width: 2px; outline-offset: 2px; outline-color: var(--color-surface-900); }
+    :global(.dark) .mobile-cart-button:focus-visible { outline-color: var(--color-surface-50); }
+    .mobile-cart-button:disabled { opacity: 0.5; cursor: not-allowed; }
+    :global(.dark) .mobile-cart-button { background-color: var(--color-surface-700); color: var(--color-surface-50); }
+    .mobile-buy-button { display: inline-flex; align-items: center; justify-content: center; gap: 0.5rem; border-radius: 0.375rem; white-space: nowrap; font-size: var(--text-xs); line-height: var(--text-xs--line-height); padding-inline: 0.5rem; padding-block: 0.25rem; transition-property: color, background-color, border-color, outline-color, text-decoration-color, fill, stroke; transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1); transition-duration: 150ms; background-color: var(--color-primary-500); color: oklch(12.9% 0.042 264.695); }
+    .mobile-buy-button:focus-visible { outline-style: solid; outline-width: 2px; outline-offset: 2px; outline-color: var(--color-surface-900); }
+    :global(.dark) .mobile-buy-button:focus-visible { outline-color: var(--color-surface-50); }
+    .mobile-buy-button:disabled { opacity: 0.5; cursor: not-allowed; }
+    @media (hover: hover) { .mobile-buy-button:hover:not(:disabled) { background-color: color-mix(in oklab, var(--color-primary-500) 80%, transparent); } }
+    .mobile-selection.stuck { color: var(--color-surface-300); }
+  }
+</style>

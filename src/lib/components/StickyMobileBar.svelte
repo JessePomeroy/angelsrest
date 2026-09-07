@@ -13,7 +13,7 @@
   Usage:
     <StickyMobileBar>
       {#snippet children(isStuck)}
-        <span class={isStuck ? 'text-white' : ''}>$15</span>
+        <span>$15</span>
         <button>buy now</button>
       {/snippet}
     </StickyMobileBar>
@@ -49,7 +49,8 @@ $effect(() => {
 </script>
 
 <div
-	class="md:hidden sticky z-40 py-2 px-4 transition-all duration-200 {isStuck ? 'text-surface-50' : ''} {extraClass}"
+	class="sticky-bar {extraClass}"
+	class:stuck={isStuck}
 	style:bottom={bottomOffset}
 	style:background={isStuck ? "var(--color-surface-900)" : undefined}
 	style:box-shadow={isStuck
@@ -59,4 +60,13 @@ $effect(() => {
 	{@render children(isStuck)}
 </div>
 <!-- Sentinel: placed after the bar so observer fires when the bar's bottom reaches the nav -->
-<div bind:this={sentinel} class="md:hidden h-0"></div>
+<div bind:this={sentinel} class="sticky-sentinel"></div>
+
+<style>
+  @layer components {
+    .sticky-bar { position: sticky; z-index: 40; padding-block: 0.5rem; padding-inline: 1rem; transition: all 200ms cubic-bezier(0.4, 0, 0.2, 1); }
+    .sticky-bar.stuck { color: var(--color-surface-50); }
+    .sticky-sentinel { height: 0; }
+    @media (min-width: 48rem) { .sticky-bar, .sticky-sentinel { display: none; } }
+  }
+</style>

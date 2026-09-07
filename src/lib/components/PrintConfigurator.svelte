@@ -5,12 +5,12 @@ let { selection }: { selection: PrintSelection } = $props();
 const id = $props.id();
 </script>
 
-<div class="space-y-4">
+<div class="configuration">
 	<div>
-		<label for={`${id}-paper`} class="block text-sm text-surface-600 dark:text-surface-300 mb-1">
+		<label for={`${id}-paper`} class="field-label">
 			Material
 		</label>
-		<select id={`${id}-paper`} class="block rounded-md border border-surface-300 dark:border-surface-600 bg-transparent text-base py-1 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-surface-900 dark:focus-visible:outline-surface-50 disabled:opacity-50 w-full" bind:value={selection.paper} disabled={!selection.papers.length}>
+		<select id={`${id}-paper`} class="choice" bind:value={selection.paper} disabled={!selection.papers.length}>
 			{#each selection.papers as paper (paper.slug)}
 				<option value={paper.slug}>{paper.name}</option>
 			{/each}
@@ -18,10 +18,10 @@ const id = $props.id();
 	</div>
 
 	<div>
-		<label for={`${id}-size`} class="block text-sm text-surface-600 dark:text-surface-300 mb-1">
+		<label for={`${id}-size`} class="field-label">
 			Size
 		</label>
-		<select id={`${id}-size`} class="block rounded-md border border-surface-300 dark:border-surface-600 bg-transparent text-base py-1 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-surface-900 dark:focus-visible:outline-surface-50 disabled:opacity-50 w-full" bind:value={selection.size} disabled={!selection.sizes.length}>
+		<select id={`${id}-size`} class="choice" bind:value={selection.size} disabled={!selection.sizes.length}>
 			{#each selection.sizes as size (size.slug)}
 				<option value={size.slug}>{size.label}</option>
 			{/each}
@@ -30,12 +30,12 @@ const id = $props.id();
 
 	{#if selection.bordersEnabled}
 		<div>
-			<label for={`${id}-border`} class="block text-sm text-surface-600 dark:text-surface-300 mb-1">
+			<label for={`${id}-border`} class="field-label">
 				Border
 			</label>
 			<select
 				id={`${id}-border`}
-				class="block rounded-md border border-surface-300 dark:border-surface-600 bg-transparent text-base py-1 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-surface-900 dark:focus-visible:outline-surface-50 disabled:opacity-50 w-full"
+				class="choice"
 				bind:value={selection.border}
 				disabled={selection.frame !== "none"}
 			>
@@ -44,17 +44,17 @@ const id = $props.id();
 				{/each}
 			</select>
 			{#if selection.frame !== "none"}
-				<p class="text-xs text-surface-500 mt-1">border included with frame</p>
+				<p class="border-note">border included with frame</p>
 			{/if}
 		</div>
 	{/if}
 
 	{#if selection.framesEnabled}
 		<div>
-			<label for={`${id}-frame`} class="block text-sm text-surface-600 dark:text-surface-300 mb-1">
+			<label for={`${id}-frame`} class="field-label">
 				Frame
 			</label>
-			<select id={`${id}-frame`} class="block rounded-md border border-surface-300 dark:border-surface-600 bg-transparent text-base py-1 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-surface-900 dark:focus-visible:outline-surface-50 disabled:opacity-50 w-full" bind:value={selection.frame}>
+			<select id={`${id}-frame`} class="choice" bind:value={selection.frame}>
 				{#each selection.frames as frame (frame.value)}
 					<option value={frame.value}>{frame.label}</option>
 				{/each}
@@ -62,3 +62,17 @@ const id = $props.id();
 		</div>
 	{/if}
 </div>
+
+<style>
+  @layer components {
+    .configuration > :global(:not(:last-child)) { margin-block-start: 0; margin-block-end: 1.0rem; }
+    .field-label { display: block; font-size: var(--text-sm); line-height: var(--text-sm--line-height); color: var(--color-surface-600); margin-bottom: 0.25rem; }
+    :global(.dark) .field-label { color: var(--color-surface-300); }
+    .choice { display: block; border-radius: 0.375rem; border: 1px solid; border-color: var(--color-surface-300); background-color: transparent; font-size: var(--text-base); line-height: var(--text-base--line-height); padding-block: 0.25rem; width: 100%; }
+    :global(.dark) .choice { border-color: var(--color-surface-600); }
+    .choice:focus-visible { outline-style: solid; outline-width: 2px; outline-offset: 2px; outline-color: var(--color-surface-900); }
+    :global(.dark) .choice:focus-visible { outline-color: var(--color-surface-50); }
+    .choice:disabled { opacity: 0.5; }
+    .border-note { font-size: var(--text-xs); line-height: var(--text-xs--line-height); color: var(--color-surface-500); }
+  }
+</style>
