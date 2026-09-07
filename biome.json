@@ -43,6 +43,29 @@
 			"assist": {
 				"enabled": false
 			}
+		},
+		{
+			"includes": [
+				"src/routes/+layout.svelte",
+				"src/routes/orders/+page.svelte",
+				"src/lib/components/Footer.svelte",
+				"src/lib/components/GalleryModal.svelte"
+			],
+			"linter": {
+				"enabled": true,
+				"rules": {
+					"suspicious": {
+						"noExplicitAny": "error"
+					},
+					"style": {
+						"useConst": "off",
+						"useImportType": "off"
+					},
+					"correctness": {
+						"noUnusedImports": "off"
+					}
+				}
+			}
 		}
 	],
 	"css": {

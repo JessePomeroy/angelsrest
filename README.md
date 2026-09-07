@@ -121,6 +121,14 @@ Use `pnpm build` when production bundling is relevant. End-to-end and focused
 smoke checks are available through the scripts in `package.json` and should be
 run when their flows are affected.
 
+Biome also lints the script blocks of the root layout, order lookup, Footer,
+and GalleryModal, with `noExplicitAny` enforced. This pilot is listed in
+`biome.json` and runs through both `pnpm lint` and the staged Svelte hook.
+Template-aware checks remain in `pnpm check`; Svelte formatting stays disabled.
+The partial-parser rule exceptions follow [Biome's language support guidance](https://biomejs.dev/internals/language-support/#linting-html-ish-languages).
+Expand the pilot as components are reviewed, without adding broad formatting
+changes or enabling experimental template parsing across the repository.
+
 ## Documentation
 
 - [AGENTS.md](AGENTS.md) — canonical repository rules and implementation constraints

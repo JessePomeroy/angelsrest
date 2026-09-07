@@ -1,12 +1,18 @@
 <script lang="ts">
 import { trapFocus } from "$lib/utils/focusTrap";
 
+interface GalleryImage {
+	full?: string;
+	url?: string;
+	alt?: string;
+}
+
 let {
 	images = [],
 	currentIndex = 0,
 	onClose,
 }: {
-	images: any[];
+	images: GalleryImage[];
 	currentIndex: number;
 	onClose: () => void;
 } = $props();
@@ -39,7 +45,7 @@ let offsetX = $state(0);
 let isDragging = $state(false);
 let startX = 0;
 
-function getImageUrl(img: any) {
+function getImageUrl(img: GalleryImage | undefined) {
 	// Audit L4: if the image object lacks both `full` and `url`, fall back
 	// to an empty string (which renders a broken image the UI already
 	// handles) rather than returning the whole object — which would
