@@ -7,6 +7,8 @@ import {
 	signCheckoutBridgeBody,
 	type TenantPrintCheckoutOptions,
 } from "../checkoutBridge";
+import * as stripeCheckoutSession from "../stripeCheckoutSession";
+import * as stripeConnect from "../stripeConnect";
 
 const SECRET = "checkout-bridge-secret";
 const NOW = 1_800_000_000_000;
@@ -196,6 +198,74 @@ describe("checkout bridge", () => {
 				now: NOW,
 			}),
 		).rejects.toMatchObject(new CheckoutBridgeError(503, "Checkout protocol is unavailable"));
+		expect(create).not.toHaveBeenCalled();
+	});
+
+	it("rejects an unavailable protocol before constructing tenant or Stripe checkout options", async () => {
+		const bodyText = makeBody();
+		const reservationClient = makeReservation();
+		const admissionClient = makeAdmission();
+		const abuseGate = vi.fn();
+		const { stripe, create } = makeStripe();
+		const tenantOptions = vi.spyOn(stripeConnect, "buildTenantCheckoutOptions");
+		const lineItem = vi.spyOn(stripeCheckoutSession, "buildCheckoutLineItem");
+		try {
+			await expect(
+				createTenantPrintCheckoutSession(
+					handleOptions(bodyText, stripe, reservationClient, {
+						snapshotMode: undefined,
+						admissionClient,
+						abuseGate,
+					}),
+				),
+			).rejects.toMatchObject(new CheckoutBridgeError(503, "Checkout protocol is unavailable"));
+			expect(tenantOptions).not.toHaveBeenCalled();
+			expect(lineItem).not.toHaveBeenCalled();
+			expect(abuseGate).not.toHaveBeenCalled();
+			expect(reservationClient.reserve).not.toHaveBeenCalled();
+			expect(admissionClient.begin).not.toHaveBeenCalled();
+			expect(create).not.toHaveBeenCalled();
+		} finally {
+			tenantOptions.mockRestore();
+			lineItem.mockRestore();
+		}
+	});
+
+	it("does not validate unreachable server tenant checkout options for an unavailable protocol", async () => {
+		const bodyText = makeBody();
+		const { stripe, create } = makeStripe();
+		await expect(
+			createTenantPrintCheckoutSession(
+				handleOptions(bodyText, stripe, makeReservation(), {
+					snapshotMode: undefined,
+					tenant: { siteUrl: "zippymiggy.com", tenantId: "invalid-server-tenant-id" },
+				}),
+			),
+		).rejects.toMatchObject(new CheckoutBridgeError(503, "Checkout protocol is unavailable"));
+		expect(create).not.toHaveBeenCalled();
+	});
+
+	it.each([
+		["malformed JSON", "{", "Invalid JSON body"],
+		["non-object JSON", "[]", "Invalid checkout request"],
+		["amount before metadata", makeBody({ amountCents: 0, metadata: null }), "Invalid amountCents"],
+		[
+			"metadata before tenant mismatch",
+			makeBody({ metadata: { siteUrl: "forged" }, siteUrl: "other-client.com" }),
+			"Reserved checkout metadata is not allowed",
+		],
+		[
+			"tenant mismatch before redirect",
+			makeBody({ siteUrl: "other-client.com", successUrl: "https://attacker.example" }),
+			"Tenant siteUrl mismatch",
+		],
+	] as const)("preserves unavailable-protocol validation order: %s", async (_label, bodyText, message) => {
+		const { stripe, create } = makeStripe();
+		await expect(
+			createTenantPrintCheckoutSession(
+				handleOptions(bodyText, stripe, makeReservation(), { snapshotMode: undefined }),
+			),
+		).rejects.toMatchObject(new CheckoutBridgeError(400, message));
 		expect(create).not.toHaveBeenCalled();
 	});
 
@@ -446,6 +516,82 @@ describe("checkout bridge", () => {
 				images: ["https://cdn.example/print.jpg"],
 			},
 		});
+	});
+
+	it("decodes the exact signed handle body once", async () => {
+		const bodyText = `\n${makeHandleBody()}\n`;
+		const { stripe } = makeStripe();
+		const options = handleOptions(bodyText, stripe, makeReservation());
+		const parse = vi.spyOn(JSON, "parse");
+		try {
+			await expect(createTenantPrintCheckoutSession(options)).resolves.toMatchObject({
+				sessionId: "cs_test_123",
+			});
+			expect(parse.mock.calls.filter(([text]) => text === bodyText)).toHaveLength(1);
+		} finally {
+			parse.mockRestore();
+		}
+	});
+
+	it.each([
+		[
+			"size before exact keys",
+			{ extra: "x".repeat(64 * 1024) },
+			400,
+			"Checkout request is too large",
+		],
+		["exact keys before attempt", { extra: true, attempt: "bad" }, 400, "Invalid checkout request"],
+		[
+			"attempt before snapshot",
+			{ attempt: "bad", checkoutSnapshot: null },
+			409,
+			"Checkout attempt rejected",
+		],
+		[
+			"snapshot before amount",
+			{ checkoutSnapshot: null, amountCents: 0 },
+			400,
+			"Invalid checkout snapshot",
+		],
+		["amount before metadata", { amountCents: 0, metadata: null }, 400, "Invalid amountCents"],
+		[
+			"metadata before title bounds",
+			{ metadata: null, productName: "x".repeat(501) },
+			400,
+			"Missing metadata",
+		],
+		["amount ceiling", { amountCents: 100_000_000 }, 400, "Invalid checkout request"],
+	] as const)("preserves active validation order: %s", async (_label, overrides, status, message) => {
+		const bodyText = makeHandleBody(overrides);
+		const reservationClient = makeReservation();
+		const { stripe, create } = makeStripe();
+		await expect(
+			createTenantPrintCheckoutSession(handleOptions(bodyText, stripe, reservationClient)),
+		).rejects.toMatchObject(new CheckoutBridgeError(status, message));
+		expect(reservationClient.reserve).not.toHaveBeenCalled();
+		expect(create).not.toHaveBeenCalled();
+	});
+
+	it.each([
+		[
+			{ siteUrl: "zippymiggy.com", stripeConnectedAccountId: "acct_short" },
+			"Invalid checkout tenant account",
+		],
+		[
+			{ siteUrl: "zippymiggy.com", tenantId: "invalid-server-tenant-id" },
+			"Invalid commerce tenantId",
+		],
+	])("retains active server tenant validation for %j", async (tenant, message) => {
+		const bodyText = makeHandleBody();
+		const reservationClient = makeReservation();
+		const { stripe, create } = makeStripe();
+		await expect(
+			createTenantPrintCheckoutSession(
+				handleOptions(bodyText, stripe, reservationClient, { tenant }),
+			),
+		).rejects.toThrow(message);
+		expect(reservationClient.reserve).not.toHaveBeenCalled();
+		expect(create).not.toHaveBeenCalled();
 	});
 
 	it.each([
