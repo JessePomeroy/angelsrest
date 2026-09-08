@@ -114,6 +114,15 @@ uses a tenant-bound Convex manifest, deletes exact Worker objects, and completes
 the retained Convex tombstone. Private delivery-gallery media uses its separate
 Worker/R2 protocol.
 
+### Blog author identity
+
+Blog Posts may explicitly select `authorSource: "siteSettings"` instead of an
+author-document reference. Their public byline follows the same tenant's
+published `artistName`; settings drafts never leak into it. Existing posts keep
+their explicit authors, and marker-free revision checksums and public response
+shapes are unchanged. The additive shared backend must be deployed before a host
+enables compact blog authoring. No author records are created implicitly.
+
 ## Private capabilities
 
 `/portal/*` and `/delivery/*` URLs are bearer capabilities. Responses are
