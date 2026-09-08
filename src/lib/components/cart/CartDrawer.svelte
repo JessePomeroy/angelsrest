@@ -25,6 +25,7 @@ import { cartUI } from "$lib/shop/cartUI.svelte";
 import { createCartCheckout } from "$lib/utils/cartCheckout";
 import { formatCents } from "$lib/utils/format";
 import { trapFocus } from "$lib/utils/focusTrap";
+import { openModal } from "$lib/utils/openModal";
 import CartLineItem from "./CartLineItem.svelte";
 
 let isCheckingOut = $state(false);
@@ -62,21 +63,6 @@ function viewFullCart() {
 	goto("/cart");
 }
 
-// Native modality keeps the page behind the sheet inert. Own focus and scroll
-// restoration here so close, navigation, and component teardown share cleanup.
-function openModal(node: HTMLDialogElement) {
-	const opener = document.activeElement;
-	const originalOverflow = document.body.style.overflow;
-	node.showModal();
-	document.body.style.overflow = "hidden";
-	return {
-		destroy() {
-			node.close();
-			document.body.style.overflow = originalOverflow;
-			if (opener instanceof HTMLElement && opener.isConnected) opener.focus();
-		},
-	};
-}
 </script>
 
 {#if cartUI.isOpen}

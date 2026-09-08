@@ -118,3 +118,108 @@ for (const edge of ["first", "last"] as const) {
 		await expect(opener).toBeFocused();
 	});
 }
+
+for (const count of [0, 1, 2]) {
+	test(`public lightbox keeps background inert and focus contained (${count} images)`, async ({ page }) => {
+		await page.goto(`/?fixture=content&kind=gallery&images=${count}`);
+		await page.getByRole("button", { name: "Open portfolio lightbox" }).click();
+		const dialog = page.getByRole("dialog", { name: /Image lightbox/ });
+		const close = dialog.getByRole("button", { name: "Close lightbox" });
+		await expect(close).toBeFocused();
+		await expect(dialog).toHaveJSProperty("open", true);
+		await expect.poll(() => page.evaluate(() => document.body.style.overflow)).toBe("hidden");
+		await page.locator('a[href="#outside"]').evaluate(element => element.focus());
+		await expect(close).toBeFocused();
+		for (const key of ["Shift+Tab", ...Array<string>(6).fill("Tab")]) {
+			await page.keyboard.press(key);
+			await expect.poll(() => dialog.evaluate(element => element.contains(document.activeElement))).toBe(true);
+		}
+		await expect(dialog.getByRole("img")).toHaveCount(count ? 1 : 0);
+		if (!count) await expect(dialog.getByText("No images available.")).toBeVisible();
+	});
+}
+
+for (const dismissal of ["Escape", "close button", "backdrop", "unmount"] as const) {
+	test(`public lightbox ${dismissal} restores prior scroll and opener`, async ({ page }) => {
+		await page.goto("/?fixture=content&kind=gallery");
+		await page.evaluate(() => { document.body.style.overflow = "clip"; });
+		const opener = page.getByRole("button", { name: "Open portfolio lightbox" });
+		await opener.click();
+		const dialog = page.getByRole("dialog", { name: /Image lightbox/ });
+		await expect(dialog).toBeVisible();
+		if (dismissal === "Escape") await page.keyboard.press("Escape");
+		else if (dismissal === "close button") await dialog.getByRole("button", { name: "Close lightbox" }).click();
+		else if (dismissal === "backdrop") await page.mouse.click(5, 5);
+		else await page.getByRole("button", { name: "Remove lightbox host", includeHidden: true }).dispatchEvent("click");
+		await expect(dialog).toHaveCount(0);
+		await expect(opener).toBeFocused();
+		await expect.poll(() => page.evaluate(() => document.body.style.overflow)).toBe("clip");
+		if (dismissal !== "unmount") {
+			await page.keyboard.press("Enter");
+			await expect(dialog).toBeVisible();
+		}
+	});
+}
+
+test("public portfolio page arrows and swipes wrap once and reopening selects the clicked image", async ({ page }) => {
+	await page.goto("/?fixture=content&kind=portfolio-page");
+	const opener = page.getByRole("button", { name: "View image 2", exact: true });
+	await opener.click();
+	const dialog = page.getByRole("dialog", { name: /Image lightbox/ });
+	const count = dialog.locator(".image-count");
+	await expect(count).toHaveText("2/2");
+	await expect.poll(() => count.evaluate(element => {
+		const rect = element.getBoundingClientRect();
+		return document.elementFromPoint(rect.x + rect.width / 2, rect.y + rect.height / 2) === element;
+	})).toBe(true);
+	await page.keyboard.press("ArrowRight");
+	await expect(count).toHaveText("1/2");
+	await page.keyboard.press("ArrowLeft");
+	await expect(count).toHaveText("2/2");
+	const image = dialog.getByRole("img");
+	await image.click();
+	await expect(dialog).toBeVisible();
+	const target = await image.elementHandle();
+	await image.dispatchEvent("touchstart", { touches: [{ identifier: 0, target, clientX: 200 }] });
+	await image.dispatchEvent("touchmove", { touches: [{ identifier: 0, target, clientX: 100 }] });
+	await image.dispatchEvent("touchend");
+	await expect(count).toHaveText("1/2");
+	await image.dispatchEvent("touchstart", { touches: [{ identifier: 0, target, clientX: 100 }] });
+	await image.dispatchEvent("touchmove", { touches: [{ identifier: 0, target, clientX: 200 }] });
+	await image.dispatchEvent("touchend");
+	await expect(count).toHaveText("2/2");
+	await page.keyboard.press("Escape");
+	await expect(opener).toBeFocused();
+	await page.getByRole("button", { name: "View image 1", exact: true }).click();
+	await expect(count).toHaveText("1/2");
+});
+
+for (const removeFirst of [false, true]) {
+	test(`overlapping public dialogs retain scroll lock (${removeFirst ? "remove lower first" : "close upper first"})`, async ({ page }) => {
+		await page.goto("/?fixture=content&kind=gallery");
+		await page.evaluate(() => { document.body.style.overflow = "clip"; });
+		await page.getByRole("button", { name: "Open portfolio lightbox" }).click();
+		const lightbox = page.locator("dialog.lightbox");
+		// Simulate a second owner opening during an already active modal lifetime.
+		await page.getByRole("button", { name: "Open overlapping cart", includeHidden: true }).dispatchEvent("click");
+		const cart = page.getByRole("dialog", { name: "Shopping cart" });
+		await expect(cart).toBeVisible();
+		await page.keyboard.press("ArrowRight");
+		await expect(lightbox.locator(".image-count")).toHaveText("1/2");
+		if (removeFirst) {
+			await page.getByRole("button", { name: "Remove lightbox host", includeHidden: true }).dispatchEvent("click");
+			await expect(lightbox).toHaveCount(0);
+			await expect.poll(() => page.evaluate(() => document.body.style.overflow)).toBe("hidden");
+		}
+		await page.keyboard.press("Escape");
+		await expect(cart).toHaveCount(0);
+		if (!removeFirst) {
+			await expect(lightbox).toBeVisible();
+			await expect(lightbox.getByRole("button", { name: "Close lightbox" })).toBeFocused();
+			await expect.poll(() => page.evaluate(() => document.body.style.overflow)).toBe("hidden");
+			await page.keyboard.press("Escape");
+			await expect(lightbox).toHaveCount(0);
+		}
+		await expect.poll(() => page.evaluate(() => document.body.style.overflow)).toBe("clip");
+	});
+}
