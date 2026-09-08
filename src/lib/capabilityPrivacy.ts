@@ -1,6 +1,7 @@
 export type AnalyticsUrlEvent = { url: string };
 
 const PRIVATE_CAPABILITY_PATH_PATTERN = /\/(portal|delivery)\/[^/?#&\s"'<>\\]+/g;
+const QUERY_PARAMETER_PATTERN = /([?&])([^=&#\s"'<>\\]+)=([^&#\s"'<>\\]*)/g;
 
 function isPathWithin(pathname: string, prefix: string) {
 	return pathname === prefix || pathname.startsWith(`${prefix}/`);
@@ -41,7 +42,22 @@ export function redactPrivateCapabilityPaths(value: string) {
 }
 
 function scrubTelemetryValue(value: unknown, seen: WeakMap<object, unknown>): unknown {
-	if (typeof value === "string") return redactPrivateCapabilityPaths(value);
+	if (typeof value === "string") {
+		// Telemetry strings may contain multiple relative URLs or surrounding text.
+		// Decode names, not whole URLs: an encoded separator in a value stays data.
+		return redactPrivateCapabilityPaths(value).replace(
+			QUERY_PARAMETER_PATTERN,
+			(match, separator: string, name: string) => {
+				let key: string;
+				try {
+					key = decodeURIComponent(name).toLowerCase();
+				} catch {
+					return match;
+				}
+				return key === "token" || key === "accessgrant" ? `${separator}${name}=[redacted]` : match;
+			},
+		);
+	}
 	if (value === null || typeof value !== "object") return value;
 
 	const prior = seen.get(value);

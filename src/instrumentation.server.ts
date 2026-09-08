@@ -36,7 +36,7 @@ init({
 	// emails and addresses. We'll attach scrubbed context manually via
 	// the structured logger when needed.
 	sendDefaultPii: false,
-	// Bearer capabilities live in URL paths. Scrub both freshly captured request
+	// Bearer capabilities live in URL paths and queries. Scrub freshly captured request
 	// data and breadcrumbs retained before a later, unrelated error is emitted.
 	beforeBreadcrumb: scrubPrivateCapabilityTelemetry,
 	beforeSend: scrubPrivateCapabilityTelemetry,
