@@ -6,11 +6,13 @@ const probeScript = `(() => {
  const queue = new Map();
  let nextId = 1;
  const probe = window.motionProbe = {
-  draws: 0, rasterDraws: 0, encodes: 0, deleted: [], images: [], lateLoad: null,
+  draws: 0, rasterDraws: 0, glyphDraws: 0, encodes: 0, deleted: [], images: [], lateLoad: null, lateFrame: null, failPaint: false,
   queued: () => queue.size,
   tick(time) { const callbacks = [...queue.values()]; queue.clear(); callbacks.forEach(callback => callback(time)); },
   captureLate() { const image = this.images[0]; this.lateLoad = image.onload && (() => image.onloadSaved.call(image, new Event("load"))); image.onloadSaved = image.onload; },
-  fireLate() { if (this.lateLoad) this.lateLoad(); }
+  fireLate() { if (this.lateLoad) this.lateLoad(); },
+  captureFrame() { this.lateFrame = [...queue.values()][0]; },
+  fireLateFrame(time) { this.lateFrame?.(time); }
  };
  window.requestAnimationFrame = callback => { const id = nextId++; queue.set(id, callback); return id; };
  window.cancelAnimationFrame = id => queue.delete(id);
@@ -31,7 +33,19 @@ const probeScript = `(() => {
  };
  const getContext = HTMLCanvasElement.prototype.getContext;
  HTMLCanvasElement.prototype.getContext = function(kind, ...args) {
+  if (kind === "2d" && fail === "canvas") return null;
   return kind === "webgl" ? gl : getContext.call(this, kind, ...args);
+ };
+ const getImageData = CanvasRenderingContext2D.prototype.getImageData;
+ CanvasRenderingContext2D.prototype.getImageData = function(...args) {
+  if (fail === "read") throw new DOMException("Synthetic unreadable image", "SecurityError");
+  return getImageData.apply(this, args);
+ };
+ const fillText = CanvasRenderingContext2D.prototype.fillText;
+ CanvasRenderingContext2D.prototype.fillText = function(...args) {
+  if (probe.failPaint) throw new Error("Synthetic canvas rendering failure");
+  probe.glyphDraws++;
+  return fillText.apply(this, args);
  };
  const drawImage = CanvasRenderingContext2D.prototype.drawImage;
  CanvasRenderingContext2D.prototype.drawImage = function(...args) { probe.rasterDraws++; return drawImage.apply(this, args); };
@@ -43,6 +57,8 @@ const probeScript = `(() => {
   probe.images.push(image);
   if (new URLSearchParams(location.search).has("delay-image")) {
    Object.defineProperty(image, "src", { get() { return ""; }, set(value) {} });
+  } else if (fail === "image") {
+   Object.defineProperty(image, "src", { set() { queueMicrotask(() => image.onerror?.(new Event("error"))); } });
   }
   return image;
  };
@@ -53,13 +69,17 @@ declare global {
 		motionProbe: {
 			draws: number;
 			rasterDraws: number;
+			glyphDraws: number;
 			encodes: number;
+			failPaint: boolean;
 			deleted: string[];
 			images: HTMLImageElement[];
 			queued: () => number;
 			tick: (time: number) => void;
 			captureLate: () => void;
 			fireLate: () => void;
+			captureFrame: () => void;
+			fireLateFrame: (time: number) => void;
 		};
 	}
 }
@@ -144,24 +164,31 @@ test("ASCII keeps the original under reduced motion and cancels active scramble 
 	await page.emulateMedia({ reducedMotion: "reduce" });
 	await page.goto("/?fixture=motion&kind=ascii");
 	const container = page.locator(".ascii-image-container");
-	await container.dispatchEvent("mouseenter");
+	await container.dispatchEvent("pointerenter", { pointerType: "mouse" });
 	expect(await page.evaluate(() => window.motionProbe.queued())).toBe(0);
 	await expect(container.locator("img")).toHaveCount(1);
 	await expect(container.locator("img")).toHaveCSS("visibility", "visible");
 	await page.emulateMedia({ reducedMotion: "no-preference" });
-	await expect.poll(() => page.evaluate(() => window.motionProbe.encodes)).toBe(1);
+	await expect.poll(() => page.evaluate(() => window.motionProbe.glyphDraws)).toBeGreaterThan(0);
 	await expect.poll(() => page.evaluate(() => window.motionProbe.queued())).toBe(1);
+	await expect(container.locator(".ascii-overlay")).toBeVisible();
+	const initialGlyphs = await page.evaluate(() => window.motionProbe.glyphDraws);
 	await page.evaluate(() => window.motionProbe.tick(performance.now() + 100));
-	expect(await page.evaluate(() => window.motionProbe.encodes)).toBe(2);
+	expect(await page.evaluate(() => window.motionProbe.glyphDraws)).toBeGreaterThan(initialGlyphs);
 	await page.emulateMedia({ reducedMotion: "reduce" });
 	await expect.poll(() => page.evaluate(() => window.motionProbe.queued())).toBe(0);
 	await expect(container.locator("img")).toHaveCount(1);
 	await expect(container.locator("img")).toHaveCSS("visibility", "visible");
 	await page.emulateMedia({ reducedMotion: "no-preference" });
 	await expect.poll(() => page.evaluate(() => window.motionProbe.queued())).toBe(1);
+	const beforeUnmount = await page.evaluate(() => window.motionProbe.glyphDraws);
+	await page.evaluate(() => window.motionProbe.captureFrame());
 	await page.getByRole("button", { name: "Unmount motion" }).click();
-	await page.evaluate(() => window.motionProbe.tick(performance.now() + 200));
-	expect(await page.evaluate(() => [window.motionProbe.queued(), window.motionProbe.encodes])).toEqual([0, 2]);
+	await page.evaluate(() => {
+		window.motionProbe.tick(performance.now() + 200);
+		window.motionProbe.fireLateFrame(performance.now() + 200);
+	});
+	expect(await page.evaluate(() => [window.motionProbe.queued(), window.motionProbe.encodes, window.motionProbe.glyphDraws])).toEqual([0, 0, beforeUnmount]);
 });
 
 test("ASCII unmount disconnects pending image handlers and rejects a captured late callback", async ({ page }) => {
@@ -173,4 +200,39 @@ test("ASCII unmount disconnects pending image handlers and rejects a captured la
 	expect(await page.evaluate(() => window.motionProbe.images.map(image => [image.onload, image.onerror]))).toEqual([[null, null]]);
 	await page.evaluate(() => window.motionProbe.fireLate());
 	expect(await page.evaluate(() => [window.motionProbe.queued(), window.motionProbe.rasterDraws, window.motionProbe.encodes])).toEqual([0, 0, 0]);
+});
+
+for (const failure of ["image", "canvas", "read"]) {
+	test(`ASCII keeps the ordinary image after ${failure} failure`, async ({ page }) => {
+		const errors: string[] = [];
+		page.on("pageerror", error => errors.push(error.message));
+		await page.emulateMedia({ reducedMotion: "no-preference" });
+		await page.goto(`/?fixture=motion&kind=ascii&failure=${failure}`);
+		const portrait = page.locator(".ascii-image-container");
+		await expect.poll(() => page.evaluate(() => window.motionProbe.images[0]?.onload === null)).toBe(true);
+		await portrait.click();
+		await expect(portrait.locator("img")).toBeVisible();
+		await expect.poll(() => portrait.locator("img").evaluate(image => image instanceof HTMLImageElement && image.naturalWidth)).toBeGreaterThan(0);
+		await expect(portrait.locator(".ascii-overlay")).not.toBeVisible();
+		expect(await page.evaluate(() => [window.motionProbe.queued(), window.motionProbe.encodes])).toEqual([0, 0]);
+		expect(errors).toEqual([]);
+	});
+}
+
+test("ASCII restores the ordinary image and stops scheduling after an animation paint fails", async ({ page }) => {
+	const errors: string[] = [];
+	page.on("pageerror", error => errors.push(error.message));
+	await page.emulateMedia({ reducedMotion: "no-preference" });
+	await page.goto("/?fixture=motion&kind=ascii");
+	const portrait = page.locator(".ascii-image-container");
+	await portrait.hover();
+	await expect(portrait.locator(".ascii-overlay")).toBeVisible();
+	await page.evaluate(() => {
+		window.motionProbe.failPaint = true;
+		window.motionProbe.tick(performance.now() + 100);
+	});
+	await expect(portrait.locator("img")).toBeVisible();
+	await expect(portrait.locator(".ascii-overlay")).not.toBeVisible();
+	expect(await page.evaluate(() => window.motionProbe.queued())).toBe(0);
+	expect(errors).toEqual([]);
 });
