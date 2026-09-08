@@ -5,8 +5,8 @@ import { defineConfig } from "vitest/config";
 
 const root = path.dirname(fileURLToPath(import.meta.url));
 
-// Compile the one protocol regression with Svelte's client runtime in jsdom.
-// This exercises the installed convex-svelte package without a browser runner.
+// Compile admin lifecycle regressions with Svelte's client runtime in jsdom.
+// This exercises installed components and clients without a browser runner.
 export default defineConfig({
 	plugins: [
 		svelte({
@@ -23,7 +23,7 @@ export default defineConfig({
 		},
 	},
 	test: {
-		include: ["src/routes/admin/__tests__/layout-auth-protocol.client.ts"],
+		include: ["src/routes/admin/__tests__/*.client.ts"],
 		environment: "jsdom",
 		globals: true,
 	},
