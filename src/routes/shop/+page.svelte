@@ -3,62 +3,27 @@
  * Shop Index Page
  *
  * Shows products organized by category:
- * - All: non-print products + individual prints without collections
- * - Prints: collections + print sets + individual prints
+ * - All: individual products
+ * - Prints: print sets + individual prints
  * - Other categories: products in that category
  *
- * Collections and Print Sets are specific to the Prints category.
+ * Print Sets are specific to the Prints category.
  */
 import SEO from "$lib/components/SEO.svelte";
-import type { PrintCollection, PrintSet, Product } from "$lib/types/shop";
+import type { PageData } from "./$types";
 
-let { data } = $props();
+let { data }: { data: PageData } = $props();
 
 let activeCategory = $state("all");
 
-// Determine what to show based on active category
-const categoryConfig = {
-	all: { showCollections: false, showPrintSets: false },
-	prints: { showCollections: true, showPrintSets: true },
-	postcards: { showCollections: false, showPrintSets: false },
-	tapestries: { showCollections: false, showPrintSets: false },
-	digital: { showCollections: false, showPrintSets: false },
-	merchandise: { showCollections: false, showPrintSets: false },
-} as const;
-
-// Get current category config
-const config = $derived(
-	categoryConfig[activeCategory as keyof typeof categoryConfig] ??
-		categoryConfig.all,
-);
-
-// Filter products based on category
-// - "all": exclude prints that belong to collections
-// - "prints": show only prints without a collection link
-// - other: filter by exact category match
-const filteredProducts = $derived.by(() => {
-	const products = data.products as Product[];
-
-	if (activeCategory === "all") {
-		return products.filter(
-			(p) => p.category !== "prints" || !p.collection?.slug,
-		);
-	}
-	if (activeCategory === "prints") {
-		return products.filter(
-			(p) => p.category === "prints" && !p.collection?.slug,
-		);
-	}
-	return products.filter((p) => p.category === activeCategory);
-});
-
-// Collections and print sets only show for Prints category
-const filteredCollections = $derived(
-	config.showCollections ? (data.collections as PrintCollection[]) : [],
+const filteredProducts = $derived(
+	activeCategory === "all"
+		? data.products
+		: data.products.filter((product) => product.category === activeCategory),
 );
 
 const filteredPrintSets = $derived(
-	config.showPrintSets ? (data.printSets as PrintSet[]) : [],
+	activeCategory === "prints" ? data.printSets : [],
 );
 
 const categories = [
@@ -99,37 +64,6 @@ const categories = [
             </button>
         {/each}
     </div>
-
-    <!-- Collections grid (Prints only) -->
-    {#if filteredCollections.length > 0}
-        <div class="catalog-section">
-            <h2 class="catalog-heading">collections</h2>
-            <div class="catalog-columns">
-                {#each filteredCollections as collection (collection.slug)}
-                    <a
-                        href="/shop/prints/{collection.slug}"
-                        class="catalog-entry"
-                    >
-                        <div class="catalog-image">
-                            {#if collection.previewImage}
-                                <div class="image-clip">
-                                    <img
-                                        src={collection.previewImage}
-                                        alt={collection.alt || collection.title}
-                                        loading="lazy"
-                                        class="catalog-photo"
-                                    />
-                                </div>
-                            {/if}
-                            <h2 class="entry-title">
-                                {collection.title}
-                            </h2>
-                        </div>
-                    </a>
-                {/each}
-            </div>
-        </div>
-    {/if}
 
     <!-- Print Sets grid (Prints only) -->
     {#if filteredPrintSets.length > 0}
@@ -208,7 +142,7 @@ const categories = [
         </div>
     {/if}
 
-    {#if filteredProducts.length === 0 && filteredCollections.length === 0 && filteredPrintSets.length === 0}
+    {#if filteredProducts.length === 0 && filteredPrintSets.length === 0}
         <div class="empty-state">
             <p>No products found in this category.</p>
         </div>

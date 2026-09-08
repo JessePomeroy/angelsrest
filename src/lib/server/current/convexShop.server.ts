@@ -10,7 +10,6 @@ import {
 	assertConvexPublishedDetailSlug,
 } from "$lib/server/convexShopAdapter";
 import { getConvexUrl } from "$lib/server/runtimeConfig";
-import type { PrintCollection, PrintSet, Product } from "$lib/types/shop";
 
 type PublishedCatalog = FunctionReturnType<typeof api.catalogProductGraphs.listPublished>;
 type PublishedProduct = FunctionReturnType<typeof api.catalogProductGraphs.getPublishedBySlug>;
@@ -26,13 +25,6 @@ type ConvexShopDependencies = {
 	deadlineMs?: number;
 	createTimeoutSignal?: (deadlineMs: number) => AbortSignal;
 };
-
-interface RetiredPrintCollectionPage {
-	collection: PrintCollection;
-	subCollections: PrintCollection[];
-	printSets: PrintSet[];
-	products: Product[];
-}
 
 function createConvexShopReader(): ConvexShopReader {
 	const request = (signal: AbortSignal) =>
@@ -101,12 +93,9 @@ export function createConvexShop(dependencies: ConvexShopDependencies = {}) {
 	return {
 		async loadIndex() {
 			try {
-				return {
-					...adaptConvexIndex(
-						await readWithDeadline(dependencies, (signal) => reader().listPublished(signal)),
-					),
-					collections: [],
-				};
+				return adaptConvexIndex(
+					await readWithDeadline(dependencies, (signal) => reader().listPublished(signal)),
+				);
 			} catch {
 				unavailable();
 			}
@@ -133,7 +122,7 @@ export function createConvexShop(dependencies: ConvexShopDependencies = {}) {
 			}
 			notFound("Print set not found");
 		},
-		async loadCollection(_slug: string): Promise<RetiredPrintCollectionPage> {
+		async loadCollection(_slug: string): Promise<never> {
 			notFound("Print collection not found");
 		},
 	};
