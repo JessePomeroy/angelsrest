@@ -40,21 +40,6 @@ vi.mock("@jessepomeroy/print-catalog", () => ({
 	isCanvasPaper: () => false,
 	parseCanvasSlug: () => null,
 }));
-vi.mock("$lib/utils/images", () => ({
-	imageSet: (image?: { url?: string }) => (image?.url ? { original: image.url } : null),
-	originalUrl: (image?: { url?: string }) => image?.url ?? null,
-	parsePaperOption: (option?: { name?: string; price?: number }) =>
-		option?.name === "Legacy Matte" || option?.name === "Legacy Matte|103001|8|10"
-			? {
-					name: "Legacy Matte",
-					subcategoryId: "103001",
-					width: 8,
-					height: 10,
-					price: option.price ?? null,
-				}
-			: null,
-	previewUrl: (image?: { url?: string }) => image?.url ?? null,
-}));
 
 const print = {
 	productKey: "product",
