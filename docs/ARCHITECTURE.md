@@ -123,6 +123,12 @@ their explicit authors, and marker-free revision checksums and public response
 shapes are unchanged. The additive shared backend must be deployed before a host
 enables compact blog authoring. No author records are created implicitly.
 
+The optional `summarySource: "body"` marker preserves automatic-excerpt ownership
+through saved revisions, including failed publication and reload. Editors refresh
+marked excerpts from current body text on publication; explicitly edited summaries
+clear the marker. Both optional markers participate in revision integrity only
+when present, preserving existing unmarked revision checksums.
+
 ## Private capabilities
 
 `/portal/*` and `/delivery/*` URLs are bearer capabilities. Responses are

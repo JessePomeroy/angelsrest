@@ -408,6 +408,7 @@ export async function loadPostRevision(
 		presentation: payload.presentation,
 		displayPublishedAt: payload.displayPublishedAt,
 		summary: payload.summary,
+		...(payload.summarySource ? { summarySource: payload.summarySource } : {}),
 		seoTitle: payload.seoTitle,
 		seoDescription: payload.seoDescription,
 		brief: payload.brief,

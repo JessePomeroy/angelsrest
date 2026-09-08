@@ -71,6 +71,7 @@ export const postDraftValidator = v.object({
 	presentation: v.optional(postPresentationValidator),
 	displayPublishedAt: v.optional(v.number()),
 	summary: v.optional(v.string()),
+	summarySource: v.optional(v.literal("body")),
 	seoTitle: v.optional(v.string()),
 	seoDescription: v.optional(v.string()),
 	brief: v.optional(v.string()),
@@ -95,6 +96,7 @@ export const postRevisionPayloadValidator = v.object({
 	presentation: v.optional(postPresentationValidator),
 	displayPublishedAt: v.optional(v.number()),
 	summary: v.optional(v.string()),
+	summarySource: v.optional(v.literal("body")),
 	seoTitle: v.optional(v.string()),
 	seoDescription: v.optional(v.string()),
 	brief: v.optional(v.string()),
@@ -168,6 +170,7 @@ export function validatePostDraft(draft: PostDraft) {
 			"presentation",
 			"displayPublishedAt",
 			"summary",
+			"summarySource",
 			"seoTitle",
 			"seoDescription",
 			"brief",
@@ -185,6 +188,9 @@ export function validatePostDraft(draft: PostDraft) {
 		"Post draft",
 	);
 	if (draft.kind !== "post") throw new Error("Post draft kind must be post");
+	if (draft.summarySource !== undefined && draft.summarySource !== "body") {
+		throw new Error("Post summary source is invalid");
+	}
 	if (draft.authorSource !== undefined && draft.authorSource !== "siteSettings") {
 		throw new Error("Post author source is invalid");
 	}
@@ -345,6 +351,7 @@ export function serializePostRevisionPayload(payload: PostRevisionPayload) {
 		presentation: payload.presentation ?? null,
 		displayPublishedAt: payload.displayPublishedAt ?? null,
 		summary: payload.summary ?? null,
+		...(payload.summarySource ? { summarySource: payload.summarySource } : {}),
 		seoTitle: payload.seoTitle ?? null,
 		seoDescription: payload.seoDescription ?? null,
 		brief: payload.brief ?? null,
@@ -366,6 +373,9 @@ export function serializePostRevisionPayload(payload: PostRevisionPayload) {
 }
 
 export function validatePostRevisionPayload(payload: PostRevisionPayload) {
+	if (payload.summarySource !== undefined && payload.summarySource !== "body") {
+		throw new Error("Post summary source is invalid");
+	}
 	if (payload.authorSource !== undefined && payload.authorSource !== "siteSettings") {
 		throw new Error("Post author source is invalid");
 	}
