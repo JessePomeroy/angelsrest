@@ -8,9 +8,11 @@ function fixtureData(): PageData {
   if (["shared", "shared-no-session", "error"].includes(kind)) {
     return { siteSettings, unverified: true, sessionId: kind === "shared-no-session" ? "" : "cs_fixture", orderDetails: null };
   }
-  if (!["physical", "digital"].includes(kind)) return { siteSettings, orderDetails: null };
+  const fulfillment = (["physical", "digital", "mixed", "pending", "unavailable", "unpaid"] as const).find(value => value === kind);
+  if (!fulfillment) return { siteSettings, orderDetails: null };
   return { siteSettings, orderDetails: {
-    sessionId: "cs_fixture", customerEmail: "buyer@example.invalid", amountTotal: 7500, currency: "usd", paymentStatus: "paid", productId: "fixture-product", productSlug: "fixture-print", isDigital: kind === "digital",
+    sessionId: "cs_fixture", customerEmail: "buyer@example.invalid", amountTotal: 7500, currency: "usd", paymentStatus: fulfillment === "unpaid" ? "unpaid" : "paid", fulfillment,
+    downloadItems: fulfillment === "digital" ? [0] : fulfillment === "mixed" ? [1] : [],
     shippingAddress: { name: "Fixture Buyer", line1: "1 Fixture Way", line2: "Studio 2", city: "Example City", state: "MI", postalCode: "00000", country: "US" },
     items: [{ description: "Fixture photograph", quantity: 1, amount: 5000 }, { description: "Companion photograph", quantity: 1, amount: 2500 }],
   } };

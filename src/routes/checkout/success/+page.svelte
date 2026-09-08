@@ -45,7 +45,13 @@ let { data, form }: { data: PageData; form?: { verifyError?: string } } = $props
     
     <h1 class="page-title">Thank you for your order!</h1>
     <p class="confirmation-message">
-      Your payment was successful. You'll receive an email confirmation shortly.
+      {#if data.orderDetails?.paymentStatus === "paid" && data.orderDetails.fulfillment !== "unavailable"}
+        Your payment was successful. You'll receive an email confirmation shortly.
+      {:else if data.orderDetails?.paymentStatus !== "paid" && data.orderDetails}
+        Your payment is not complete. Check your order status before trying again.
+      {:else}
+        Check your order details below or use your confirmation email for help.
+      {/if}
     </p>
   </div>
 
@@ -122,34 +128,50 @@ let { data, form }: { data: PageData; form?: { verifyError?: string } } = $props
       <!-- Total -->
       <div class="order-total">
         <div class="total-row">
-          <span>Total Paid:</span>
+          <span>{data.orderDetails.paymentStatus === "paid" ? "Total Paid:" : "Order Total:"}</span>
           <span>{formatCents(data.orderDetails.amountTotal ?? 0, data.orderDetails.currency ?? "usd")}</span>
         </div>
       </div>
       
       <!-- Digital Download -->
-      {#if data.orderDetails.isDigital}
+      {#if data.orderDetails.downloadItems.length > 0}
         <!--
           Audit H36: downloads use the httpOnly checkout proof. Shared
           confirmation links verify the buyer email by POSTing the form
           above and redirecting back to this clean session URL.
         -->
         <div class="download-panel">
-          <h3 class="download-heading">your download is ready</h3>
-          <a
-            href="/api/download?session_id={data.orderDetails.sessionId}&slug={data.orderDetails.productSlug}&item=0"
-            class="download-link"
-          >
-            download now
-          </a>
+          <h3 class="download-heading">your downloads</h3>
+          {#each data.orderDetails.downloadItems as ordinal (ordinal)}
+            <a
+              href="/api/download?session_id={encodeURIComponent(data.orderDetails.sessionId)}&item={ordinal}"
+              class="download-link"
+            >
+              {data.orderDetails.downloadItems.length === 1
+                ? "download now"
+                : `download ${data.orderDetails.items[ordinal]?.description ?? `item ${ordinal + 1}`}`}
+            </a>
+          {/each}
           <p class="download-note">
             bookmark this page to re-download anytime.
           </p>
         </div>
       {/if}
 
+      {#if data.orderDetails.fulfillment === "pending" || data.orderDetails.fulfillment === "unavailable"}
+        <div class="verification-panel">
+          <p role="status">{data.orderDetails.fulfillment === "unavailable"
+            ? "downloads are unavailable for this order. Check your order status or contact us for help."
+            : "Order delivery details are not available yet. Refresh this page or look up your order for help."}</p>
+          {#if data.orderDetails.fulfillment === "pending"}
+            <a href="/checkout/success?session_id={encodeURIComponent(data.orderDetails.sessionId)}" data-sveltekit-reload class="lookup-link">refresh order details</a>
+          {/if}
+          <p><a href="/orders" class="lookup-link">look up your order</a></p>
+        </div>
+      {/if}
+
       <!-- Shipping Address (physical products only) -->
-      {#if !data.orderDetails.isDigital && data.orderDetails.shippingAddress}
+      {#if (data.orderDetails.fulfillment === "physical" || data.orderDetails.fulfillment === "mixed") && data.orderDetails.shippingAddress}
         <div>
           <h3 class="section-heading">Shipping Address:</h3>
           <div class="shipping-address">
@@ -169,7 +191,7 @@ let { data, form }: { data: PageData; form?: { verifyError?: string } } = $props
   {/if}
 
   <!-- Next Steps (different for digital vs physical) -->
-  {#if data.orderDetails?.isDigital}
+  {#if data.orderDetails?.fulfillment === "digital" || data.orderDetails?.fulfillment === "mixed"}
     <div class="next-steps">
       <h3>what's included</h3>
       <ul class="steps-list">
@@ -178,7 +200,8 @@ let { data, form }: { data: PageData; form?: { verifyError?: string } } = $props
         <li>- questions? email hello@angelsrest.online</li>
       </ul>
     </div>
-  {:else}
+  {/if}
+  {#if data.orderDetails?.fulfillment === "physical" || data.orderDetails?.fulfillment === "mixed"}
     <div class="next-steps">
       <h3>What happens next?</h3>
       <ul class="steps-list">

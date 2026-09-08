@@ -14,8 +14,14 @@
 
 import { fail, redirect } from "@sveltejs/kit";
 import type Stripe from "stripe";
+import { api } from "$convex/api";
 import { bindCheckoutSession, isCheckoutSessionOwner } from "$lib/server/checkoutBinding";
+import { hasCheckoutSnapshotMarker } from "$lib/server/checkoutSnapshotConsumer";
+import { getConvex } from "$lib/server/convexClient";
 import { getStripe } from "$lib/server/stripeClient";
+import { getWebhookSecret } from "$lib/server/webhookSecret";
+
+type Fulfillment = "pending" | "unpaid" | "unavailable" | "digital" | "physical" | "mixed";
 
 export async function load({ url, cookies }) {
 	const stripe = getStripe();
@@ -76,6 +82,44 @@ export async function load({ url, cookies }) {
 	}
 
 	const shippingDetails = session.collected_information?.shipping_details;
+	let fulfillment: Fulfillment = "unpaid";
+	let downloadItems: number[] = [];
+	if (session.payment_status === "paid") {
+		fulfillment = "pending";
+		try {
+			// Current Checkout metadata carries an opaque handle, not product flags.
+			// Read the stored order only after buyer verification; expose no snapshot.
+			const order = await getConvex().query(api.orders.resolvePaidDownloadOrder, {
+				stripeSessionId: session.id,
+				webhookSecret: getWebhookSecret(),
+			});
+			const snapshot = order?.checkoutSnapshot;
+			if (order?.refunded) {
+				// This projection also covers refunds still pending reconciliation.
+				fulfillment = "unavailable";
+			} else if (snapshot?.catalogProvider === "convex" && snapshot.items.length > 0) {
+				downloadItems = snapshot.items.flatMap((item, ordinal) =>
+					item.productKind === "digital_download" ? [ordinal] : [],
+				);
+				fulfillment =
+					downloadItems.length === snapshot.items.length
+						? "digital"
+						: downloadItems.length > 0
+							? "mixed"
+							: "physical";
+			} else if (
+				!hasCheckoutSnapshotMarker(session.metadata) &&
+				session.metadata?.isDigital !== "true" &&
+				(shippingDetails?.address || session.metadata?.isDigital === "false")
+			) {
+				// Presentation-only compatibility for known historical physical orders.
+				// Legacy metadata never supplies a digital item or download capability.
+				fulfillment = "physical";
+			}
+		} catch {
+			console.error("Could not load checkout fulfillment details");
+		}
+	}
 
 	// Transform Stripe data into our format
 	const orderDetails = {
@@ -106,10 +150,8 @@ export async function load({ url, cookies }) {
 				amount: item.amount_total,
 			})) || [],
 
-		// Metadata
-		productId: session.metadata?.productId,
-		productSlug: session.metadata?.productSlug || "",
-		isDigital: session.metadata?.isDigital === "true",
+		fulfillment,
+		downloadItems,
 	};
 
 	return {
