@@ -23,6 +23,7 @@ import { getContext, type Snippet } from "svelte";
 import { MOBILE_CHROME, type MobileChrome } from "./mobileNavigation";
 const chrome = getContext<MobileChrome | undefined>(MOBILE_CHROME);
 let barSize = $state<ResizeObserverSize[]>();
+let reservedHeight = $state<number>();
 let slotSize = $state<ResizeObserverSize[]>();
 let barVisible = $state(false);
 let bar = $state<HTMLDivElement>();
@@ -38,6 +39,14 @@ function measureOverflow() {
 
 $effect(() => {
 	if (barSize) measureOverflow();
+});
+
+$effect(() => {
+	const height = barSize?.[0]?.blockSize;
+	if (height === undefined) return;
+	// Resize the observed ancestor outside its descendant's resize delivery.
+	const frame = requestAnimationFrame(() => { reservedHeight = height; });
+	return () => cancelAnimationFrame(frame);
 });
 
 $effect(() => {
@@ -108,7 +117,7 @@ $effect(() => {
  bind:this={slot}
  bind:borderBoxSize={slotSize}
  class="sticky-slot"
- style:height={barSize?.[0] ? `${barSize[0].blockSize}px` : undefined}
+ style:height={barSize?.[0] ? `${reservedHeight ?? barSize[0].blockSize}px` : undefined}
  style:--purchase-bottom={bottomOffset}
 >
 <div
