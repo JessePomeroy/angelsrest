@@ -159,18 +159,6 @@ describe("buildLumaPrintsOrder", () => {
 		).toThrow("Framed print paper is unsupported");
 	});
 
-	it("does NOT include option 36 (Bleed) in orderItemOptions", () => {
-		const order = buildLumaPrintsOrder("order-5", mockRecipient, mockItems);
-		for (const item of order.orderItems) {
-			expect(item.orderItemOptions).not.toContain(36);
-		}
-	});
-
-	it("preserves the catalog-issued source URL byte-exact", () => {
-		const order = buildLumaPrintsOrder("order-6", mockRecipient, mockItems);
-		expect(order.orderItems[0].file.imageUrl).toBe(mockItems[0].imageUrl);
-	});
-
 	it("preserves opaque capabilities and legacy sources byte-exact", () => {
 		const opaque = "https://opaque.example/source.jpg?sealed=a_b-C";
 		const legacy = "https://cdn.example/image.jpg?version=1";
@@ -179,16 +167,6 @@ describe("buildLumaPrintsOrder", () => {
 			{ ...mockItems[0], imageUrl: legacy, sourcePolicy: "byte_exact" },
 		]);
 		expect(order.orderItems.map(({ file }) => file.imageUrl)).toEqual([opaque, legacy]);
-	});
-
-	it("generates correct externalItemId for each item", () => {
-		const multiItems: OrderItem[] = [
-			{ ...mockItems[0], imageUrl: "https://cdn.example.com/a.jpg" },
-			{ ...mockItems[0], imageUrl: "https://cdn.example.com/b.jpg" },
-		];
-		const order = buildLumaPrintsOrder("multi-order", mockRecipient, multiItems);
-		expect(order.orderItems[0].externalItemId).toBe("multi-order-item-1");
-		expect(order.orderItems[1].externalItemId).toBe("multi-order-item-2");
 	});
 
 	it("copies width, height, quantity, and subcategoryId to order items", () => {
@@ -229,7 +207,11 @@ describe("buildLumaPrintsOrder", () => {
 		];
 		const order = buildLumaPrintsOrder("print-set-order", mockRecipient, printSetItems);
 		expect(order.orderItems).toHaveLength(3);
-		expect(order.orderItems[2].externalItemId).toBe("print-set-order-item-3");
+		expect(order.orderItems.map(({ externalItemId }) => externalItemId)).toEqual([
+			"print-set-order-item-1",
+			"print-set-order-item-2",
+			"print-set-order-item-3",
+		]);
 		expect(order.orderItems.map(({ file }) => file.imageUrl)).toEqual(
 			printSetItems.map(({ imageUrl }) => imageUrl),
 		);

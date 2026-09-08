@@ -1,62 +1,21 @@
 import type Stripe from "stripe";
 import { describe, expect, it } from "vitest";
-import { buildCartMetadata } from "../server/cartCheckoutHelpers";
 import { FulfillmentValidationError } from "../server/fulfillmentValidationError";
 import { buildOrderItemsFromSession as __test__buildOrderItemsFromSession } from "../server/webhookDecoder";
-import type { CartItem } from "../shop/cart";
-
-function makeItem(overrides: Partial<CartItem> = {}): CartItem {
-	return {
-		id: "abc-123",
-		productSlug: "shore-no-1",
-		type: "print",
-		title: "Shore No. 1",
-		imageUrl: "https://media.example.test/images/abc/shore-no-1.jpg",
-		paperName: "Archival Matte",
-		paperSubcategoryId: 103001,
-		paperWidth: 8,
-		paperHeight: 12,
-		quantity: 1,
-		unitPriceCents: 4500,
-		...overrides,
-	};
-}
-
-/**
- * Build a print set cart item — type=set with an imageUrls array. The
- * webhook decoder should expand a set entry into one OrderItem per image
- * in the array, multiplying through by the cart line's quantity.
- */
-function makeSetItem(overrides: Partial<CartItem> = {}): CartItem {
-	return {
-		id: "set-1",
-		productSlug: "tide-set",
-		type: "set",
-		title: "Tide Set",
-		imageUrl: "https://media.example.test/images/abc/tide-cover.jpg",
-		imageUrls: [
-			"https://media.example.test/images/abc/tide-1.jpg",
-			"https://media.example.test/images/abc/tide-2.jpg",
-			"https://media.example.test/images/abc/tide-3.jpg",
-		],
-		paperName: "Glossy",
-		paperSubcategoryId: 103007,
-		paperWidth: 6,
-		paperHeight: 9,
-		quantity: 1,
-		unitPriceCents: 12000,
-		...overrides,
-	};
-}
 
 function makeSession(metadata: Record<string, string>): Stripe.Checkout.Session {
 	return { metadata } as unknown as Stripe.Checkout.Session;
 }
 
-describe("__test__buildOrderItemsFromSession — cart shape (PR C)", () => {
+// Fixed historical Stripe metadata, independent of current cart state or encoders.
+describe("__test__buildOrderItemsFromSession — historical cart metadata", () => {
 	it("decodes a single-item cart back into one OrderItem", () => {
-		const items = [makeItem()];
-		const session = makeSession(buildCartMetadata(items));
+		const session = makeSession({
+			isCart: "true",
+			cartItemCount: "1",
+			cartItem_0:
+				'{"u":"https://media.example.test/images/abc/shore-no-1.jpg","q":1,"s":103001,"w":8,"h":12}',
+		});
 		const orderItems = __test__buildOrderItemsFromSession(session, []);
 		expect(orderItems).toHaveLength(1);
 		expect(orderItems[0]).toMatchObject({
@@ -70,37 +29,19 @@ describe("__test__buildOrderItemsFromSession — cart shape (PR C)", () => {
 	});
 
 	it("decodes a multi-item cart with mixed papers and sizes", () => {
-		const items: CartItem[] = [
-			makeItem({
-				id: "a",
-				imageUrl: "https://media.example.test/images/abc/a.jpg",
-				paperSubcategoryId: 103001,
-				paperWidth: 8,
-				paperHeight: 12,
-				quantity: 1,
-			}),
-			makeItem({
-				id: "b",
-				imageUrl: "https://media.example.test/images/abc/b.jpg",
-				paperSubcategoryId: 103007,
-				paperWidth: 16,
-				paperHeight: 24,
-				quantity: 2,
-			}),
-			makeItem({
-				id: "c",
-				imageUrl: "https://media.example.test/images/abc/c.jpg",
-				paperSubcategoryId: 103001,
-				paperWidth: 4,
-				paperHeight: 6,
-				quantity: 3,
-			}),
-		];
-		const session = makeSession(buildCartMetadata(items));
+		const session = makeSession({
+			isCart: "true",
+			cartItemCount: "3",
+			cartItem_0:
+				'{"u":"https://media.example.test/images/abc/a.jpg","q":1,"s":103001,"w":8,"h":12}',
+			cartItem_1:
+				'{"u":"https://media.example.test/images/abc/b.jpg","q":2,"s":103007,"w":16,"h":24}',
+			cartItem_2:
+				'{"u":"https://media.example.test/images/abc/c.jpg","q":3,"s":103001,"w":4,"h":6}',
+		});
 		const orderItems = __test__buildOrderItemsFromSession(session, []);
 		expect(orderItems).toHaveLength(3);
-		// Each cart entry preserves its OWN paper/size — proves the cart
-		// branch isn't accidentally inheriting top-level paper metadata.
+		// Each cart entry preserves its own paper, size and quantity.
 		expect(orderItems[0].paperSubcategoryId).toBe(103001);
 		expect(orderItems[0].width).toBe(8);
 		expect(orderItems[1].paperSubcategoryId).toBe(103007);
@@ -124,9 +65,9 @@ describe("__test__buildOrderItemsFromSession — cart shape (PR C)", () => {
 		const session = makeSession({
 			isCart: "true",
 			cartItemCount: "3",
-			cartItem_0: JSON.stringify({ u: "a.jpg", s: 103001, w: 8, h: 12, q: 1 }),
+			cartItem_0: '{"u":"a.jpg","s":103001,"w":8,"h":12,"q":1}',
 			cartItem_1: "not valid json",
-			cartItem_2: JSON.stringify({ u: "c.jpg", s: 103001, w: 8, h: 12, q: 1 }),
+			cartItem_2: '{"u":"c.jpg","s":103001,"w":8,"h":12,"q":1}',
 		});
 		const orderItems = __test__buildOrderItemsFromSession(session, []);
 		expect(orderItems).toHaveLength(2);
@@ -138,15 +79,9 @@ describe("__test__buildOrderItemsFromSession — cart shape (PR C)", () => {
 		const session = makeSession({
 			isCart: "true",
 			cartItemCount: "2",
-			cartItem_0: JSON.stringify({ u: "a.jpg", s: 103001, w: 8, h: 12, q: 1 }),
+			cartItem_0: '{"u":"a.jpg","s":103001,"w":8,"h":12,"q":1}',
 			// Width is a string instead of a number — should be skipped
-			cartItem_1: JSON.stringify({
-				u: "b.jpg",
-				s: 103001,
-				w: "8",
-				h: 12,
-				q: 1,
-			}),
+			cartItem_1: '{"u":"b.jpg","s":103001,"w":"8","h":12,"q":1}',
 		});
 		const orderItems = __test__buildOrderItemsFromSession(session, []);
 		expect(orderItems).toHaveLength(1);
@@ -154,54 +89,21 @@ describe("__test__buildOrderItemsFromSession — cart shape (PR C)", () => {
 	});
 
 	it("skips merch entries (no paper info) so they aren't sent to LumaPrints", () => {
-		// A merch item is encoded with just { u, q } — no s/w/h. The decoder
-		// should treat its absence as the signal to skip LumaPrints
-		// submission entirely. The Convex order itself is built from the
-		// Stripe line items elsewhere, so the customer still has a record.
 		const session = makeSession({
 			isCart: "true",
 			cartItemCount: "1",
-			cartItem_0: JSON.stringify({
-				u: "https://media.example.test/images/abc/tapestry.jpg",
-				q: 1,
-			}),
+			cartItem_0: '{"u":"https://media.example.test/images/abc/tapestry.jpg","q":1}',
 		});
 		expect(__test__buildOrderItemsFromSession(session, [])).toEqual([]);
 	});
 
-	it("returns only the print rows in a mixed prints + merch cart", () => {
-		const items: CartItem[] = [
-			makeItem({
-				id: "print",
-				imageUrl: "https://media.example.test/images/abc/print.jpg",
-			}),
-			// Build a merch item by stripping the paper fields
-			{
-				...makeItem({ id: "merch" }),
-				paperName: undefined,
-				paperSubcategoryId: undefined,
-				paperWidth: undefined,
-				paperHeight: undefined,
-				imageUrl: "https://media.example.test/images/abc/tapestry.jpg",
-			},
-			makeItem({
-				id: "print2",
-				imageUrl: "https://media.example.test/images/abc/print2.jpg",
-				paperWidth: 16,
-				paperHeight: 24,
-			}),
-		];
-		const session = makeSession(buildCartMetadata(items));
-		const orderItems = __test__buildOrderItemsFromSession(session, []);
-		// Only the two print items should make it through to LumaPrints.
-		expect(orderItems).toHaveLength(2);
-		expect(orderItems[0].imageUrl).toBe("https://media.example.test/images/abc/print.jpg");
-		expect(orderItems[1].imageUrl).toBe("https://media.example.test/images/abc/print2.jpg");
-		expect(orderItems[1].width).toBe(16);
-	});
-
-	it("expands a set entry into one OrderItem per image in the imageUrls array", () => {
-		const session = makeSession(buildCartMetadata([makeSetItem()]));
+	it("expands a set entry with its paper config and cart line quantity on every image", () => {
+		const session = makeSession({
+			isCart: "true",
+			cartItemCount: "1",
+			cartItem_0:
+				'{"u":"https://media.example.test/images/abc/tide-cover.jpg","q":2,"s":103007,"w":6,"h":9,"i":["https://media.example.test/images/abc/tide-1.jpg","https://media.example.test/images/abc/tide-2.jpg","https://media.example.test/images/abc/tide-3.jpg"]}',
+		});
 		const orderItems = __test__buildOrderItemsFromSession(session, []);
 		expect(orderItems).toHaveLength(3);
 		expect(orderItems.map((i) => i.imageUrl)).toEqual([
@@ -209,55 +111,39 @@ describe("__test__buildOrderItemsFromSession — cart shape (PR C)", () => {
 			"https://media.example.test/images/abc/tide-2.jpg",
 			"https://media.example.test/images/abc/tide-3.jpg",
 		]);
-		// Every image inherits the set's paper config.
 		for (const item of orderItems) {
 			expect(item.paperSubcategoryId).toBe(103007);
 			expect(item.width).toBe(6);
 			expect(item.height).toBe(9);
-			expect(item.quantity).toBe(1);
-		}
-	});
-
-	it("multiplies set images by the cart line quantity", () => {
-		// Buying 2 of a 3-image set submits each image with quantity 2,
-		// matching "I want two of this print set."
-		const session = makeSession(buildCartMetadata([makeSetItem({ quantity: 2 })]));
-		const orderItems = __test__buildOrderItemsFromSession(session, []);
-		expect(orderItems).toHaveLength(3);
-		for (const item of orderItems) {
 			expect(item.quantity).toBe(2);
 		}
 	});
 
 	it("returns the union of single prints, merch (skipped), and set expansions", () => {
-		const items: CartItem[] = [
-			makeItem({
-				id: "print",
-				imageUrl: "https://media.example.test/images/abc/print.jpg",
-			}),
-			// Merch item — paper fields stripped to model the tapestry case
-			{
-				...makeItem({ id: "merch" }),
-				paperName: undefined,
-				paperSubcategoryId: undefined,
-				paperWidth: undefined,
-				paperHeight: undefined,
-				imageUrl: "https://media.example.test/images/abc/tapestry.jpg",
-			},
-			makeSetItem({ id: "set", quantity: 1 }),
-		];
-		const session = makeSession(buildCartMetadata(items));
+		const session = makeSession({
+			isCart: "true",
+			cartItemCount: "3",
+			cartItem_0:
+				'{"u":"https://media.example.test/images/abc/print.jpg","q":1,"s":103001,"w":8,"h":12}',
+			cartItem_1: '{"u":"https://media.example.test/images/abc/tapestry.jpg","q":1}',
+			cartItem_2:
+				'{"u":"https://media.example.test/images/abc/tide-cover.jpg","q":1,"s":103007,"w":6,"h":9,"i":["https://media.example.test/images/abc/tide-1.jpg","https://media.example.test/images/abc/tide-2.jpg","https://media.example.test/images/abc/tide-3.jpg"]}',
+		});
 		const orderItems = __test__buildOrderItemsFromSession(session, []);
-		// 1 print + 0 merch + 3 set images = 4 LumaPrints OrderItems
-		expect(orderItems).toHaveLength(4);
-		expect(orderItems[0].imageUrl).toBe("https://media.example.test/images/abc/print.jpg");
-		expect(orderItems[1].imageUrl).toBe("https://media.example.test/images/abc/tide-1.jpg");
-		expect(orderItems[3].imageUrl).toBe("https://media.example.test/images/abc/tide-3.jpg");
+		expect(orderItems.map(({ imageUrl }) => imageUrl)).toEqual([
+			"https://media.example.test/images/abc/print.jpg",
+			"https://media.example.test/images/abc/tide-1.jpg",
+			"https://media.example.test/images/abc/tide-2.jpg",
+			"https://media.example.test/images/abc/tide-3.jpg",
+		]);
+		expect(orderItems.map(({ quantity }) => quantity)).toEqual([1, 1, 1, 1]);
 	});
 
-	it("keeps cart precedence over stale direct-set metadata", () => {
+	it("keeps cart image and paper precedence over stale direct-set metadata", () => {
 		const session = makeSession({
-			...buildCartMetadata([makeItem({ imageUrl: "cart.jpg" })]),
+			isCart: "true",
+			cartItemCount: "1",
+			cartItem_0: '{"u":"cart.jpg","q":1,"s":103007,"w":8,"h":12}',
 			isPrintSet: "true",
 			imageUrl: "single.jpg",
 			imageUrls: JSON.stringify(["set-a.jpg", "set-b.jpg"]),
@@ -265,21 +151,8 @@ describe("__test__buildOrderItemsFromSession — cart shape (PR C)", () => {
 			paperWidth: "99",
 			paperHeight: "99",
 		});
-		expect(__test__buildOrderItemsFromSession(session, []).map(({ imageUrl }) => imageUrl)).toEqual(
-			["cart.jpg"],
-		);
-	});
-
-	it("ignores top-level paperSubcategoryId when isCart is set", () => {
-		// Cart entries should drive everything; top-level metadata is
-		// either absent or irrelevant for cart checkouts.
-		const session = makeSession({
-			...buildCartMetadata([makeItem({ paperSubcategoryId: 103007 })]),
-			// Stale top-level metadata that should be ignored
-			paperSubcategoryId: "999999",
-			paperWidth: "99",
-		});
 		const orderItems = __test__buildOrderItemsFromSession(session, []);
+		expect(orderItems.map(({ imageUrl }) => imageUrl)).toEqual(["cart.jpg"]);
 		expect(orderItems[0].paperSubcategoryId).toBe(103007);
 		expect(orderItems[0].width).toBe(8);
 	});
