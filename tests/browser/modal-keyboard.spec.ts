@@ -121,6 +121,7 @@ for (const edge of ["first", "last"] as const) {
 
 for (const count of [0, 1, 2]) {
 	test(`public lightbox keeps background inert and focus contained (${count} images)`, async ({ page }) => {
+		if (count === 2) await page.emulateMedia({ reducedMotion: "reduce", colorScheme: "light" });
 		await page.goto(`/?fixture=content&kind=gallery&images=${count}`);
 		await page.getByRole("button", { name: "Open portfolio lightbox" }).click();
 		const dialog = page.getByRole("dialog", { name: /Image lightbox/ });
@@ -136,6 +137,14 @@ for (const count of [0, 1, 2]) {
 		}
 		await expect(dialog.getByRole("img")).toHaveCount(count ? 1 : 0);
 		if (!count) await expect(dialog.getByText("No images available.")).toBeVisible();
+		if (count === 2) {
+			await expect(dialog.getByAltText("First portfolio image")).toBeVisible();
+			await page.keyboard.press("ArrowRight");
+			await expect(dialog.getByAltText("Second portfolio image")).toBeVisible();
+			await close.focus();
+			await page.keyboard.press("Shift+Tab");
+			await expect(dialog.getByRole("button", { name: "Next image", exact: true })).toBeFocused();
+		}
 	});
 }
 
