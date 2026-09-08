@@ -64,6 +64,31 @@ test("confirmation keeps mixed item ordinals and neutral unavailable states", as
 	}
 });
 
+test("multiple descriptive download labels fit narrow and wide confirmations", async ({ page }) => {
+  for (const width of [320, 393, 1280]) {
+    await page.setViewportSize({ width, height: 852 });
+    await page.goto("/?fixture=checkout-css&kind=digital-many");
+    const links = page.locator('a[href^="/api/download"]');
+    await expect(links).toHaveCount(2);
+    // Measure before focus/click can scroll overflowing content into view.
+    expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(width);
+    for (const [ordinal, link] of (await links.all()).entries()) {
+      await expect(link).toHaveAttribute("href", `/api/download?session_id=cs_fixture&item=${ordinal}`);
+      const geometry = await link.evaluate(element => ({
+        left: element.getBoundingClientRect().left,
+        right: element.getBoundingClientRect().right,
+        fits: element.scrollWidth <= element.clientWidth,
+      }));
+      expect(geometry.left).toBeGreaterThanOrEqual(0);
+      expect(geometry.right).toBeLessThanOrEqual(width);
+      expect(geometry.fits).toBe(true);
+      await link.focus();
+      await expect(link).toBeFocused();
+      await link.click({ trial: true });
+    }
+  }
+});
+
 test("cancel action remains keyboard-accessible in both themes", async ({ page }) => {
 	await page.emulateMedia({ colorScheme: "light" });
 	await page.goto("/?fixture=checkout-css&kind=cancel");
