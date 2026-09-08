@@ -1,7 +1,7 @@
 export type AnalyticsUrlEvent = { url: string };
 
 const PRIVATE_CAPABILITY_PATH_PATTERN = /\/(portal|delivery)\/[^/?#&\s"'<>\\]+/g;
-const QUERY_PARAMETER_PATTERN = /([?&])([^=&#\s"'<>\\]+)=([^&#\s"'<>\\]*)/g;
+const QUERY_PARAMETER_PATTERN = /([?&])([^=?&#\s"'<>\\]+)=([^&#\s"'<>\\]*)/g;
 
 function isPathWithin(pathname: string, prefix: string) {
 	return pathname === prefix || pathname.startsWith(`${prefix}/`);

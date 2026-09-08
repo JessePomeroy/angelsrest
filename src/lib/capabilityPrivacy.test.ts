@@ -146,6 +146,14 @@ describe("private capability path privacy", () => {
 		);
 	});
 
+	it("bounds telemetry processing for long URLs without query assignments", () => {
+		const url = `https://worker.test/image/file?${"?".repeat(64_000)}`;
+		const started = performance.now();
+		expect(scrubPrivateCapabilityTelemetry(url)).toBe(url);
+		// A wide budget catches quadratic rescanning without timing normal work closely.
+		expect(performance.now() - started).toBeLessThan(1_000);
+	});
+
 	it.each([
 		galleryOriginalDownloadUrl,
 		galleryPreparedZipStatusUrl,
