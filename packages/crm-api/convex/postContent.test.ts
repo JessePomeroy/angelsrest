@@ -243,6 +243,57 @@ async function expectError(operation: Promise<unknown>, message: RegExp) {
 }
 
 describe("tenant-scoped Post content graphs", () => {
+	test("publishes owner-authored posts from same-site published settings without creating authors", async () => {
+		const { t, adminA, adminB } = await setup();
+		const settings = (artistName: string) => ({ artistName, siteTitle: "Journal", tagline: "Field notes", seoDescription: "A local journal." });
+		const ownerA = await adminA.mutation(api.content.saveSiteSettingsDraft, { siteUrl: SITE_A.siteUrl, payload: settings("Artist A") });
+		await adminA.mutation(api.content.publishSiteSettings, { siteUrl: SITE_A.siteUrl, draftRevisionId: ownerA.revisionId });
+		const ownerB = await adminB.mutation(api.content.saveSiteSettingsDraft, { siteUrl: SITE_B.siteUrl, payload: settings("Business B") });
+		await adminB.mutation(api.content.publishSiteSettings, { siteUrl: SITE_B.siteUrl, draftRevisionId: ownerB.revisionId });
+		const draft = { ...emptyPost({ title: "Owner note", slug: "owner-note", format: "essay", presentation: "standard", displayPublishedAt: 1_000, summary: "An owner-authored note.", body: { version: 1, blocks: [paragraph("opening", "From the owner.")] } }), authorSource: "siteSettings" as const };
+		await expectError(t.mutation(api.postContent.createDraft, { siteUrl: SITE_A.siteUrl, documentKey: "unauth-owner", draft }), /not authenticated/i);
+		await expectError(createPost(adminB, SITE_A.siteUrl, "other-owner", draft), /not authorized/i);
+		const created = await createPost(adminA, SITE_A.siteUrl, "owner-note", draft);
+		await publishPost(adminA, created.documentId, created.revisionId);
+		const other = await createPost(adminB, SITE_B.siteUrl, "owner-note", draft);
+		await publishPost(adminB, other.documentId, other.revisionId);
+		const read = () => t.query(api.postContent.getPublishedBySlug, { siteUrl: SITE_A.siteUrl, slug: "owner-note" });
+		expect((await read())?.payload.author).toEqual({ kind: "author", name: "Artist A", slug: "site-owner" });
+		expect((await t.query(api.postContent.listPublished, { siteUrl: SITE_B.siteUrl, limit: 10 }))[0].payload.author).toEqual({ name: "Business B", slug: "site-owner" });
+		const updated = await adminA.mutation(api.content.saveSiteSettingsDraft, { siteUrl: SITE_A.siteUrl, payload: settings("New published name") });
+		expect((await read())?.payload.author.name).toBe("Artist A");
+		await adminA.mutation(api.content.publishSiteSettings, { siteUrl: SITE_A.siteUrl, draftRevisionId: updated.revisionId });
+		expect((await read())?.payload.author.name).toBe("New published name");
+		expect((await t.query(api.postContent.listPublished, { siteUrl: SITE_A.siteUrl, limit: 10 }))[0].payload.author.name).toBe("New published name");
+		expect((await adminA.query(api.postContent.getEditorState, { documentId: created.documentId }))?.published?.draft).toMatchObject({ authorSource: "siteSettings" });
+		expect(await adminA.query(api.blogContent.listForEditor, { siteUrl: SITE_A.siteUrl, kind: "author" })).toEqual([]);
+	});
+
+	test("requires published owner settings and keeps explicit-author validation intact", async () => {
+		const { adminA } = await setup();
+		const draft = { ...emptyPost({ title: "Owner note", slug: "owner-note", format: "essay", presentation: "standard", displayPublishedAt: 1_000, summary: "An owner-authored note.", body: { version: 1, blocks: [paragraph("opening", "From the owner.")] } }), authorSource: "siteSettings" as const };
+		const created = await createPost(adminA, SITE_A.siteUrl, "owner-gates", draft);
+		await expectError(publishPost(adminA, created.documentId, created.revisionId), /publish.*site settings/i);
+		await adminA.mutation(api.content.saveSiteSettingsDraft, { siteUrl: SITE_A.siteUrl, payload: { artistName: "Private draft name" } });
+		await expectError(publishPost(adminA, created.documentId, created.revisionId), /publish.*site settings/i);
+		const explicit = await createAuthor(adminA, SITE_A.siteUrl, "explicit-author", "explicit-author");
+		await expectError(savePost(adminA, created.documentId, { ...draft, authorDocumentId: explicit.documentId }, created.revisionId), /author source.*explicit author/i);
+		const { authorSource: _authorSource, ...withoutAuthor } = draft;
+		const missing = await savePost(adminA, created.documentId, withoutAuthor, created.revisionId);
+		await expectError(publishPost(adminA, created.documentId, missing.revisionId), /author is required/i);
+		const legacy = await savePost(adminA, created.documentId, { ...withoutAuthor, authorDocumentId: explicit.documentId }, missing.revisionId);
+		await publishPost(adminA, created.documentId, legacy.revisionId);
+		expect((await adminA.query(api.postContent.getPublishedBySlug, { siteUrl: SITE_A.siteUrl, slug: "owner-note" }))?.payload.author.name).toBe("Author explicit-author");
+	});
+
+	test("covers the owner-author marker in both revision integrity checksums", async () => {
+		const legacy = await preparePostRevision(emptyPost());
+		const marked = await preparePostRevision({ ...emptyPost(), authorSource: "siteSettings" });
+		expect(marked.checksum).not.toBe(legacy.checksum);
+		expect(marked.payload.summaryChecksum).not.toBe(legacy.payload.summaryChecksum);
+		expect(marked.payload).toMatchObject({ authorSource: "siteSettings", hasAuthor: false, referenceCount: 0 });
+	});
+
 	test("retains v1 checksum compatibility for ordered Post graphs", async () => {
 		// Captured from main before consolidating preparation; ordering and empty fields are intentional.
 		const prepared = await preparePostRevision(emptyPost({

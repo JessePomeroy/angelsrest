@@ -8,6 +8,7 @@ import {
 
 /** Exact, order-preserving graph serialization for idempotent save retries. */
 function serializePostDraft(validated: PostDraft) {
+	// Omit absent additive markers so marker-free revisions retain their v1 checksums.
 	return JSON.stringify({
 		kind: "post",
 		title: validated.title ?? null,
@@ -25,6 +26,7 @@ function serializePostDraft(validated: PostDraft) {
 		equipment: stableTechnicalItems(validated.equipment),
 		materials: stableTechnicalItems(validated.materials),
 		authorDocumentId: validated.authorDocumentId ?? null,
+		...(validated.authorSource ? { authorSource: validated.authorSource } : {}),
 		categories: validated.categories.map((category) => ({
 			key: category.key,
 			documentId: category.documentId,
@@ -79,6 +81,7 @@ function postRevisionHeader(draft: PostDraft): Omit<PostRevisionPayload, "summar
 		mediaPlacementCount: bodyImages + (draft.mainImage ? 1 : 0),
 		referenceCount: draft.categories.length + (draft.authorDocumentId ? 1 : 0),
 		hasAuthor: draft.authorDocumentId !== undefined,
+		...(draft.authorSource ? { authorSource: draft.authorSource } : {}),
 		hasMainImage: draft.mainImage !== undefined,
 	};
 }
@@ -106,6 +109,7 @@ function postSummaryChecksumInput(input: PostSummaryIntegrityInput) {
 		mediaPlacementCount: input.mediaPlacementCount,
 		referenceCount: input.referenceCount,
 		hasAuthor: input.hasAuthor,
+		...(input.authorSource ? { authorSource: input.authorSource } : {}),
 		hasMainImage: input.hasMainImage,
 		authorDocumentId: input.authorDocumentId ?? null,
 		categories: input.categories.map((category) => ({
