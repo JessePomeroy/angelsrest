@@ -26,18 +26,33 @@ test("print-set controls retain focus, finish state, child spacing and responsiv
 
 test("sticky purchase bar keeps observer states, class and bottom offset", async ({ page, isMobile }) => {
 	test.skip(!isMobile, "Mobile-only purchase bar");
+	await page.setViewportSize({ width: 390, height: 600 });
 	await page.emulateMedia({ colorScheme: "light" });
 	await page.goto("/?fixture=sticky");
 	const bar = page.locator(".fixture-sticky");
-	await expect(bar).toHaveCSS("position", "sticky");
 	await expect(bar).toHaveCSS("bottom", "24px");
 	await expect(page.getByLabel("Sticky state")).toHaveText("stuck");
 	await expect(bar).toHaveClass(/stuck/);
+	await expect.poll(async () => {
+		const box = await bar.boundingBox();
+		return box ? Math.abs(box.y + box.height - 576) : Infinity;
+	}).toBeLessThanOrEqual(1);
+	const slotPosition = () => page.locator(".sticky-sentinel").evaluate(element => element.getBoundingClientRect().y + window.scrollY);
+	const initialSlot = await slotPosition();
+	const initialHeight = await page.evaluate(() => document.documentElement.scrollHeight);
 	await page.evaluate(() => window.scrollTo(0, 500));
 	await expect(page.getByLabel("Sticky state")).toHaveText("inline");
 	await expect(bar).not.toHaveClass(/\bstuck\b/);
+	await expect(bar).toBeInViewport({ ratio: 1 });
+	expect(await slotPosition()).toBeCloseTo(initialSlot, 1);
+	expect(await page.evaluate(() => document.documentElement.scrollHeight)).toBe(initialHeight);
+	await page.evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight));
+	await expect(page.getByLabel("Sticky state")).toHaveText("inline");
+	await expect(bar).not.toBeInViewport();
 	await page.evaluate(() => window.scrollTo(0, 0));
 	await expect(page.getByLabel("Sticky state")).toHaveText("stuck");
+	expect(await slotPosition()).toBeCloseTo(initialSlot, 1);
+	expect(await page.evaluate(() => document.documentElement.scrollHeight)).toBe(initialHeight);
 	await page.setViewportSize({ width: 768, height: 900 });
 	await expect(bar).toBeHidden();
 });

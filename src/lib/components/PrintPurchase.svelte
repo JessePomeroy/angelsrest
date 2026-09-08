@@ -105,12 +105,12 @@ const summary = $derived(configuration
     .desktop-buy-button:disabled { opacity: 0.5; cursor: not-allowed; }
     @media (hover: hover) { .desktop-buy-button:hover:not(:disabled) { background-color: color-mix(in oklab, var(--color-primary-500) 80%, transparent); } }
     .mobile-purchase { display: grid; gap: 0.75rem; text-align: left; }
-    .mobile-price-group { display: flex; align-items: baseline; gap: 0.375rem; }
-    .mobile-price { font-size: var(--text-xl); line-height: var(--text-xl--line-height); font-weight: 600; }
-    .mobile-selection { font-size: var(--text-xs); line-height: var(--text-xs--line-height); color: var(--color-surface-600); }
+    .mobile-price-group { display: flex; flex-wrap: wrap; align-items: baseline; gap: 0.375rem; }
+    .mobile-price { flex: 0 0 auto; font-size: var(--text-xl); line-height: var(--text-xl--line-height); font-weight: 600; }
+    .mobile-selection { flex: 1 1 12ch; min-inline-size: 0; overflow-wrap: anywhere; font-size: var(--text-xs); line-height: var(--text-xs--line-height); color: var(--color-surface-600); }
     :global(.dark) .mobile-selection { color: var(--color-surface-300); }
     .mobile-selection-prompt { font-size: var(--text-sm); line-height: var(--text-sm--line-height); color: var(--color-surface-500); }
-    .mobile-actions { display: grid; grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr); gap: 0.75rem; }
+    .mobile-actions { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 7rem), 1fr)); gap: 0.75rem; }
     .mobile-cart-button { display: inline-flex; align-items: center; justify-content: center; min-height: 44px; padding: 0.5rem 0.75rem; border-radius: 0.375rem; font-size: var(--text-sm); line-height: var(--text-sm--line-height); background: transparent; color: inherit; border: 1px solid currentColor; }
     .mobile-cart-button:focus-visible { outline: 2px solid currentColor; outline-offset: 3px; }
     .mobile-cart-button:disabled { opacity: 0.5; cursor: not-allowed; }

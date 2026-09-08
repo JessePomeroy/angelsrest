@@ -297,7 +297,7 @@ function handleV1AddToCart(event: MouseEvent) {
     @media (min-width: 48rem) { .product-page { padding-inline: 2rem; } }
     .back-link { font-size: var(--text-sm); line-height: var(--text-sm--line-height); opacity: 0.7; margin-bottom: 1rem; display: inline-block; }
     @media (hover: hover) { .back-link:hover { opacity: 1.0; } }
-    .product-layout { display: grid; gap: 2rem; }
+    .product-layout { display: grid; grid-template-columns: minmax(0, 1fr); gap: 2rem; }
     @media (min-width: 48rem) { .product-layout { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
     .product-images > :global(:not(:last-child)) { margin-block-start: 0; margin-block-end: 1.0rem; }
     .main-image-button { width: 100%; }

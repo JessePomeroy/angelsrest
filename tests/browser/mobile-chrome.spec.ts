@@ -33,7 +33,7 @@ test("purchase bar meets square bottom navigation under reduced motion", async (
  await expect.poll(() => page.evaluate(() => getComputedStyle(document.querySelector(".bottom-nav")!).borderTopColor === getComputedStyle(document.querySelector(".sticky-bar")!).backgroundColor)).toBe(true);
  await expect(nav.locator('[aria-current="page"]')).toHaveCSS("border-radius","0px");
  const dockedHeight = await nav.evaluate(element => element.getBoundingClientRect().height);
- await bar.evaluate(element => element.scrollIntoView({block:"center"}));
+ await page.locator(".sticky-sentinel").evaluate(element => element.scrollIntoView({block:"center"}));
  await expect(nav).not.toHaveClass(/purchase-docked/);
  await expect.poll(() => nav.evaluate(element => element.getBoundingClientRect().height)).toBe(dockedHeight);
  await page.evaluate(() => window.scrollTo(0, 0));
