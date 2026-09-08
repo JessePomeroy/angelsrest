@@ -243,6 +243,19 @@ async function expectError(operation: Promise<unknown>, message: RegExp) {
 }
 
 describe("tenant-scoped Post content graphs", () => {
+	test("preserves automatic excerpt ownership through saved revisions and integrity checks", async () => {
+		const { adminA } = await setup();
+		const draft = { ...emptyPost({ summary: "Generated excerpt" }), summarySource: "body" as const };
+		const prepared = await preparePostRevision(draft);
+		const legacy = await preparePostRevision(emptyPost({ summary: "Generated excerpt" }));
+		expect(prepared.checksum).not.toBe(legacy.checksum);
+		expect(prepared.payload.summaryChecksum).not.toBe(legacy.payload.summaryChecksum);
+		const created = await createPost(adminA, SITE_A.siteUrl, "automatic-excerpt", draft);
+		expect((await adminA.query(api.postContent.getEditorState, { documentId: created.documentId }))?.draft?.draft).toMatchObject({ summarySource: "body", summary: "Generated excerpt" });
+		const saved = await savePost(adminA, created.documentId, { ...draft, title: "Reopened draft" }, created.revisionId);
+		expect((await adminA.query(api.postContent.getEditorState, { documentId: created.documentId }))?.draft).toMatchObject({ revisionId: saved.revisionId, draft: { summarySource: "body" } });
+	});
+
 	test("publishes owner-authored posts from same-site published settings without creating authors", async () => {
 		const { t, adminA, adminB } = await setup();
 		const settings = (artistName: string) => ({ artistName, siteTitle: "Journal", tagline: "Field notes", seoDescription: "A local journal." });
