@@ -275,7 +275,7 @@ describe("Convex Shop page-shape adapter", () => {
 			if (!available || available.productType !== "v1") throw new Error("Expected a V1 product");
 			expect(available).toMatchObject({
 				productType: "v1",
-				product: { category, availablePapers: [], inStock: true },
+				product: { category, price: 42.01, inStock: true },
 			});
 			const unavailable = projection(kind);
 			unavailable.saleAvailability = "unavailable";
@@ -296,7 +296,6 @@ describe("Convex Shop page-shape adapter", () => {
 				"featured",
 				"inStock",
 				"images",
-				"availablePapers",
 				"seo",
 			];
 			expect(Reflect.ownKeys(available.product)).toEqual(generalKeys);
@@ -338,6 +337,19 @@ describe("Convex Shop page-shape adapter", () => {
 			index: adaptConvexIndex(completeCatalog()),
 		});
 		expect(output).not.toMatch(/productId|revisionId|private|hash|provenance|capabilit|credential/);
+	});
+
+	it.each([
+		"postcard",
+		"tapestry",
+		"digital_download",
+		"merchandise",
+	])("rejects print selectors on a fixed-price %s projection", (kind) => {
+		const value = projection(kind);
+		const printVariant = first(projection("print").variants);
+		first(value.variants).materialOption = printVariant.materialOption;
+		first(value.variants).sizeOption = printVariant.sizeOption;
+		expect(() => adaptConvexProduct(value)).toThrow(ConvexShopProjectionError);
 	});
 
 	it("preserves every tapestry gallery image in its saved order with its own alt text", () => {
@@ -523,7 +535,6 @@ describe("Convex-only Shop runtime", () => {
 		await expect(shop.loadIndex()).resolves.toMatchObject({
 			products: [{ slug: "tapestry-0" }],
 			printSets: [{ slug: "print-set-0" }],
-			collections: [],
 		});
 		expect(catalogReader.listPublished).toHaveBeenCalledOnce();
 		expect(catalogReader.getPublishedBySlug).not.toHaveBeenCalled();

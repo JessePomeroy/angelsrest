@@ -121,22 +121,27 @@ export async function createTenantPrintCheckoutSession({
 	});
 	const control = assertNewOrderCheckoutOpen(tenant.siteUrl);
 
-	const mode =
-		snapshotMode === "handle-v2" && checkoutSnapshotMode(globalSnapshotMode) === "handle-v2"
-			? "handle-v2"
-			: "legacy";
-	const body =
-		mode === "handle-v2"
-			? parseHandleTenantPrintCheckoutRequest(bodyText, now)
-			: parseTenantPrintCheckoutRequest(bodyText);
+	const handleEnabled =
+		snapshotMode === "handle-v2" && checkoutSnapshotMode(globalSnapshotMode) === "handle-v2";
+	if (handleEnabled && Buffer.byteLength(bodyText, "utf8") > 64 * 1024) {
+		throw new CheckoutBridgeError(400, "Checkout request is too large");
+	}
+	const record = parseCheckoutBridgeBody(bodyText);
+	const body = handleEnabled
+		? parseHandleTenantPrintCheckoutRequest(record, now)
+		: parseTenantPrintCheckoutRequest(record);
 	if (body.siteUrl !== tenant.siteUrl) {
 		throw new CheckoutBridgeError(400, "Tenant siteUrl mismatch");
 	}
 	const account = tenant.stripeConnectedAccountId?.trim() || null;
-	if (mode === "handle-v2" && account && !/^acct_[A-Za-z0-9]{16,64}$/.test(account))
+	if (handleEnabled && account && !/^acct_[A-Za-z0-9]{16,64}$/.test(account))
 		throw new CheckoutBridgeError(500, "Invalid checkout tenant account");
 	validateRedirectUrl(body.successUrl, "successUrl", allowedRedirectOrigins);
 	validateRedirectUrl(body.cancelUrl, "cancelUrl", allowedRedirectOrigins);
+	// Preserve request validation without preparing checkout options for an unavailable protocol.
+	if (!handleEnabled || !body.checkoutSnapshot) {
+		throw new CheckoutBridgeError(503, "Checkout protocol is unavailable");
+	}
 
 	const tenantCheckout = buildTenantCheckoutOptions({
 		tenant,
@@ -151,9 +156,6 @@ export async function createTenantPrintCheckoutSession({
 			unitAmountCents: body.amountCents,
 		}),
 	];
-	if (mode !== "handle-v2" || !body.checkoutSnapshot) {
-		throw new CheckoutBridgeError(503, "Checkout protocol is unavailable");
-	}
 	const session = await createHandleCheckoutSession({
 		attempt: body.attempt,
 		attemptStartedAt: body.attemptStartedAt,
@@ -258,18 +260,9 @@ function validateRedirectUrl(
 }
 
 function parseHandleTenantPrintCheckoutRequest(
-	bodyText: string,
+	value: Record<string, unknown>,
 	now: number,
 ): TenantPrintCheckoutRequest {
-	if (Buffer.byteLength(bodyText, "utf8") > 64 * 1024) {
-		throw new CheckoutBridgeError(400, "Checkout request is too large");
-	}
-	let value: unknown;
-	try {
-		value = JSON.parse(bodyText);
-	} catch {
-		throw new CheckoutBridgeError(400, "Invalid JSON body");
-	}
 	if (!exactRecord(value, HANDLE_KEYS))
 		throw new CheckoutBridgeError(400, "Invalid checkout request");
 	try {
@@ -278,7 +271,7 @@ function parseHandleTenantPrintCheckoutRequest(
 		throw new CheckoutBridgeError(409, "Checkout attempt rejected");
 	}
 	const checkoutSnapshot = parseSinglePrintSnapshot(value.checkoutSnapshot);
-	const body = parseTenantPrintCheckoutRequest(bodyText);
+	const body = parseTenantPrintCheckoutRequest(value);
 	if (
 		body.amountCents > 99_999_999 ||
 		!boundedString(body.productName, 500) ||
@@ -346,7 +339,7 @@ function exactRecord(value: unknown, keys: readonly string[]): value is Record<s
 	);
 }
 
-function parseTenantPrintCheckoutRequest(bodyText: string): TenantPrintCheckoutRequest {
+function parseCheckoutBridgeBody(bodyText: string): Record<string, unknown> {
 	let body: unknown;
 	try {
 		body = JSON.parse(bodyText);
@@ -358,7 +351,12 @@ function parseTenantPrintCheckoutRequest(bodyText: string): TenantPrintCheckoutR
 		throw new CheckoutBridgeError(400, "Invalid checkout request");
 	}
 
-	const record = body as Record<string, unknown>;
+	return body as Record<string, unknown>;
+}
+
+function parseTenantPrintCheckoutRequest(
+	record: Record<string, unknown>,
+): TenantPrintCheckoutRequest {
 	const siteUrl = requireString(record.siteUrl, "siteUrl");
 	const amountCents = requirePositiveInteger(record.amountCents, "amountCents");
 

@@ -1,5 +1,4 @@
 import { getPaperBySlug, getSizeBySlug, getWholesaleCost } from "@jessepomeroy/print-catalog";
-import type { PaperOption } from "$lib/types/shop";
 
 const MEDIA_ROOT = "https://media.angelsrest.online/sites/angelsrest.online/web";
 const CATALOG_PRODUCT_LIMIT = 40;
@@ -283,7 +282,6 @@ type ConvexProductOutput =
 				featured: boolean;
 				inStock: boolean;
 				images: Array<ReturnType<typeof productImage>>;
-				availablePapers: PaperOption[];
 				seo?: { description: string | undefined; ogImageUrl?: string };
 			};
 	  };
@@ -372,7 +370,6 @@ export function adaptConvexIndex(value: unknown) {
 					preview2: members[1]?.url("thumb"),
 					startingPrice: amount,
 					price: amount,
-					availablePapers: [] as PaperOption[],
 				};
 			}),
 	};
@@ -430,7 +427,6 @@ export function adaptConvexProduct(
 			featured: product.featured,
 			inStock: product.inStock,
 			images: gallery.map(productImage),
-			availablePapers: [],
 			...(product.seoDescription || social
 				? {
 						seo: {
