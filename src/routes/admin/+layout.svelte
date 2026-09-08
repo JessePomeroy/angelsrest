@@ -21,13 +21,25 @@ let { data, children } = $props();
 
 let clientSessionPending = $state(Boolean(authClient));
 let clientSessionEmail = $state<string | null>(null);
-let serverSessionRefreshAttempted = $state(false);
-let serverSessionRefreshInFlight = $state(false);
+let recoveryStatus = $state<"idle" | "refreshing" | "settled">("idle");
+let recoveryError = $state("");
+let signOutPending = $state(false);
+let recoveryGeneration = 0;
+onDestroy(() => {
+	recoveryGeneration += 1;
+});
 
 if (authClient) {
 	const sessionStore = authClient.useSession();
 	const unsubscribe = sessionStore.subscribe((val) => {
-		clientSessionEmail = val?.data?.user?.email ?? null;
+		const email = val?.data?.user?.email ?? null;
+		if (email !== clientSessionEmail) {
+			recoveryGeneration += 1;
+			recoveryStatus = "idle";
+			recoveryError = "";
+			signOutPending = false;
+		}
+		clientSessionEmail = email;
 		clientSessionPending = val?.isPending ?? false;
 	});
 	onDestroy(unsubscribe);
@@ -80,8 +92,8 @@ let shouldRecoverServerSession = $derived(
 		sessionPending: clientSessionPending,
 		sessionEmail: clientSessionEmail,
 		serverAuthorized: serverSessionAuthorized,
-		refreshAttempted: serverSessionRefreshAttempted,
-		refreshInFlight: serverSessionRefreshInFlight,
+		refreshAttempted: recoveryStatus !== "idle",
+		refreshInFlight: recoveryStatus === "refreshing",
 	}),
 );
 let shouldHoldAdminShell = $derived(
@@ -93,22 +105,47 @@ let shouldHoldAdminShell = $derived(
 	}),
 );
 
-$effect(() => {
-	if (!shouldRecoverServerSession) return;
+async function refreshServerSession() {
+	if (recoveryStatus === "refreshing" || signOutPending) return;
+	const generation = ++recoveryGeneration;
+	recoveryStatus = "refreshing";
+	recoveryError = "";
+	try {
+		await invalidateAll();
+	} catch {
+		if (generation === recoveryGeneration) {
+			recoveryError = "could not refresh your session. please try again.";
+		}
+	} finally {
+		// A changed browser identity or unmount invalidates this completion.
+		if (generation === recoveryGeneration) recoveryStatus = "settled";
+	}
+}
 
-	serverSessionRefreshAttempted = true;
-	serverSessionRefreshInFlight = true;
-	invalidateAll().finally(() => {
-		serverSessionRefreshInFlight = false;
-	});
-});
-
 $effect(() => {
-	if (!clientSessionEmail) {
-		serverSessionRefreshAttempted = false;
-		serverSessionRefreshInFlight = false;
+	if (shouldRecoverServerSession) {
+		untrack(() => { void refreshServerSession(); });
 	}
 });
+
+async function signOutOfRecovery() {
+	if (signOutPending) return;
+	const generation = recoveryGeneration;
+	signOutPending = true;
+	recoveryError = "";
+	try {
+		const result = await signOut();
+		if (generation === recoveryGeneration && !signOutSucceeded(result)) {
+			recoveryError = "could not sign out. please try again.";
+		}
+	} catch {
+		if (generation === recoveryGeneration) {
+			recoveryError = "could not sign out. please try again.";
+		}
+	} finally {
+		if (generation === recoveryGeneration) signOutPending = false;
+	}
+}
 
 // Authenticate the browser Convex WebSocket without re-introducing the
 // `createSvelteAuthClient` pause bug.
@@ -141,7 +178,7 @@ $effect(() => {
 setupConvex(PUBLIC_CONVEX_URL);
 setupAuth(
 	() => ({
-		isLoading: serverSessionRefreshInFlight,
+		isLoading: recoveryStatus === "refreshing",
 		isAuthenticated: serverSessionAuthorized,
 		fetchAccessToken: async () => {
 			const { data } = await authClient.convex.token();
@@ -162,7 +199,17 @@ setAdminConfig({
 </script>
 
 <AuthGuard>
-	{#if shouldHoldAdminShell}
+	{#if shouldHoldAdminShell && recoveryStatus === "settled"}
+		<div class="admin-session-recovery" data-admin>
+			<h1>admin access unavailable</h1>
+			<p>{data.adminSession?.status === "unauthorized"
+				? "this account is not authorized to access this admin panel."
+				: "we could not verify your session. retry or sign out to sign in again."}</p>
+			{#if recoveryError}<p role="alert">{recoveryError}</p>{/if}
+			<button type="button" onclick={refreshServerSession} disabled={signOutPending}>retry</button>
+			<button type="button" onclick={signOutOfRecovery} disabled={signOutPending}>{signOutPending ? "signing out…" : "sign out"}</button>
+		</div>
+	{:else if shouldHoldAdminShell}
 		<div class="admin-session-loading" data-admin>
 			<LoadingState />
 		</div>
@@ -192,6 +239,7 @@ setAdminConfig({
 		display: grid;
 		place-content: center;
 		gap: 12px;
+		padding: 24px;
 		text-align: center;
 		background: var(--admin-bg);
 		color: var(--admin-text);
@@ -204,5 +252,10 @@ setAdminConfig({
 		background: var(--admin-surface);
 		color: inherit;
 		cursor: pointer;
+	}
+
+	.admin-session-recovery button:disabled {
+		opacity: 0.6;
+		cursor: wait;
 	}
 </style>
