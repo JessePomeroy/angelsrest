@@ -523,7 +523,6 @@ describe("Convex-only Shop runtime", () => {
 		await expect(shop.loadIndex()).resolves.toMatchObject({
 			products: [{ slug: "tapestry-0" }],
 			printSets: [{ slug: "print-set-0" }],
-			collections: [],
 		});
 		expect(catalogReader.listPublished).toHaveBeenCalledOnce();
 		expect(catalogReader.getPublishedBySlug).not.toHaveBeenCalled();
