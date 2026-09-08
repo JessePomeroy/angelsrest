@@ -152,7 +152,7 @@ function handleAddToCart(event: MouseEvent) {
     .back-link { font-size: var(--text-sm); line-height: var(--text-sm--line-height); opacity: 0.7; margin-bottom: 1rem; display: inline-block; }
     @media (hover: hover) { .back-link:hover { opacity: 1.0; } }
     .breadcrumb-separator { margin-inline: 0.5rem; color: var(--color-surface-500); }
-    .set-layout { display: grid; gap: 2rem; }
+    .set-layout { display: grid; grid-template-columns: minmax(0, 1fr); gap: 2rem; }
     @media (min-width: 48rem) { .set-layout { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
     .set-images > :global(:not(:last-child)) { margin-block-start: 0; margin-block-end: 1.0rem; }
     .image-columns { column-count: 2; gap: 0.5rem; }
