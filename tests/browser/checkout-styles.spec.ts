@@ -88,6 +88,47 @@ test("multiple descriptive download labels fit narrow and wide confirmations", a
   }
 });
 
+for (const [width, fontScale] of [[320, 100], [393, 100], [1280, 100], [320, 200], [1280, 200]]) {
+  test(`confirmation navigation reflows at ${width}px and ${fontScale}% text`, async ({ page }) => {
+    await page.setViewportSize({ width, height: 852 });
+    await page.goto("/?fixture=checkout-css&kind=basic");
+    await page.evaluate(scale => { document.documentElement.style.fontSize = `${scale}%`; }, fontScale);
+    const actions = page.locator(".actions");
+    await expect(actions.getByRole("link")).toHaveCount(2);
+    // Scroll vertically only; measure before keyboard/click helpers can reveal overflow.
+    const geometry = await actions.evaluate(element => {
+      window.scrollTo(0, element.getBoundingClientRect().top + window.scrollY);
+      return {
+        documentWidth: document.documentElement.scrollWidth,
+        viewportWidth: document.documentElement.clientWidth,
+        links: [...element.querySelectorAll("a")].map(link => {
+          const bounds = link.getBoundingClientRect();
+          return {
+            left: bounds.left, right: bounds.right,
+            fits: link.scrollWidth <= link.clientWidth,
+            hittable: link.contains(document.elementFromPoint(bounds.left + bounds.width / 2, bounds.top + bounds.height / 2)),
+          };
+        }),
+      };
+    });
+    expect(geometry.documentWidth).toBeLessThanOrEqual(geometry.viewportWidth);
+    for (const bounds of geometry.links) {
+      expect(bounds.left).toBeGreaterThanOrEqual(0);
+      expect(bounds.right).toBeLessThanOrEqual(width);
+      expect(bounds.fits).toBe(true);
+      expect(bounds.hittable).toBe(true);
+    }
+    for (const [label, href] of [["Continue Shopping", "/shop"], ["Back to Home", "/"]]) {
+      const link = actions.getByRole("link", { name: label });
+      await expect(link).toHaveAttribute("href", href);
+      await page.keyboard.press("Tab");
+      await expect(link).toBeFocused();
+      await expect(link).toHaveCSS("outline-width", "2px");
+      await link.click({ trial: true });
+    }
+  });
+}
+
 test("cancel action remains keyboard-accessible in both themes", async ({ page }) => {
 	await page.emulateMedia({ colorScheme: "light" });
 	await page.goto("/?fixture=checkout-css&kind=cancel");
