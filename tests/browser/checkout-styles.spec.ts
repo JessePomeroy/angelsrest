@@ -31,13 +31,61 @@ test("confirmation handles physical, digital and missing details", async ({ page
 	await expect(page.getByRole("link", { name: "download now" })).toHaveCount(0);
 	await page.goto("/?fixture=checkout-css&kind=digital");
 	await expect(page.getByText("Fixture Buyer", { exact: true })).toHaveCount(0);
-	await expect(page.getByRole("link", { name: "download now" })).toHaveAttribute("href", "/api/download?session_id=cs_fixture&slug=fixture-print&item=0");
+	await expect(page.getByRole("link", { name: "download now" })).toHaveAttribute("href", "/api/download?session_id=cs_fixture&item=0");
+	await expect(page.getByText(/Made-to-order prints/)).toHaveCount(0);
 	await page.goto("/?fixture=checkout-css&kind=shared-no-session");
 	await expect(page.getByRole("link", { name: "/orders" })).toHaveAttribute("href", "/orders");
 	await expect(page.getByRole("button", { name: "verify order" })).toHaveCount(0);
 	await page.goto("/?fixture=checkout-css&kind=basic");
 	await expect(page.getByRole("heading", { name: "Thank you for your order!" })).toBeVisible();
 	await expect(page.getByRole("heading", { name: "Order Details" })).toHaveCount(0);
+});
+
+test("confirmation keeps mixed item ordinals and neutral unavailable states", async ({ page }) => {
+	await page.goto("/?fixture=checkout-css&kind=mixed");
+	await expect(page.getByRole("link", { name: "download now" })).toHaveAttribute("href", "/api/download?session_id=cs_fixture&item=1");
+	await expect(page.getByText("Fixture Buyer", { exact: true })).toBeVisible();
+	await expect(page.getByText(/Made-to-order prints/)).toBeVisible();
+	for (const kind of ["pending", "unavailable", "unpaid"]) {
+		await page.goto(`/?fixture=checkout-css&kind=${kind}`);
+		await expect(page.locator('a[href^="/api/download"]')).toHaveCount(0);
+		await expect(page.getByText(/Made-to-order prints/)).toHaveCount(0);
+		if (kind === "pending") {
+			const refresh = page.getByRole("link", { name: "refresh order details" });
+			await expect(refresh).toHaveAttribute("href", "/checkout/success?session_id=cs_fixture");
+			await expect(refresh).toHaveAttribute("data-sveltekit-reload", "");
+			await refresh.focus();
+			await expect(refresh).toBeFocused();
+		} else if (kind === "unavailable") {
+			await expect(page.getByRole("status")).toContainText("downloads are unavailable");
+		} else {
+			await expect(page.getByText(/Your payment is not complete/)).toBeVisible();
+		}
+	}
+});
+
+test("multiple descriptive download labels fit narrow and wide confirmations", async ({ page }) => {
+  for (const width of [320, 393, 1280]) {
+    await page.setViewportSize({ width, height: 852 });
+    await page.goto("/?fixture=checkout-css&kind=digital-many");
+    const links = page.locator('a[href^="/api/download"]');
+    await expect(links).toHaveCount(2);
+    // Measure before focus/click can scroll overflowing content into view.
+    for (const [ordinal, link] of (await links.all()).entries()) {
+      await expect(link).toHaveAttribute("href", `/api/download?session_id=cs_fixture&item=${ordinal}`);
+      const geometry = await link.evaluate(element => ({
+        left: element.getBoundingClientRect().left,
+        right: element.getBoundingClientRect().right,
+        fits: element.scrollWidth <= element.clientWidth,
+      }));
+      expect(geometry.left).toBeGreaterThanOrEqual(0);
+      expect(geometry.right).toBeLessThanOrEqual(width);
+      expect(geometry.fits).toBe(true);
+      await link.focus();
+      await expect(link).toBeFocused();
+      await link.click({ trial: true });
+    }
+  }
 });
 
 test("cancel action remains keyboard-accessible in both themes", async ({ page }) => {
