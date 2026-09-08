@@ -188,7 +188,7 @@ function toggle() {
 		position: relative;
 		overflow: hidden;
 	}
-	.ascii-image-container:disabled { cursor: default; }
+	.ascii-image-container:disabled { cursor: default; opacity: 1; }
 	.ascii-image-container:focus-visible { outline: 2px solid var(--time-accent); outline-offset: -3px; }
 	.ascii-image-container > img { display: block; }
 	.ascii-overlay { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }

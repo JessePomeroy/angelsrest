@@ -164,6 +164,7 @@ test("ASCII keeps the original under reduced motion and cancels active scramble 
 	await page.emulateMedia({ reducedMotion: "reduce" });
 	await page.goto("/?fixture=motion&kind=ascii");
 	const container = page.locator(".ascii-image-container");
+	await expect(container).toHaveCSS("opacity", "1");
 	await container.dispatchEvent("pointerenter", { pointerType: "mouse" });
 	expect(await page.evaluate(() => window.motionProbe.queued())).toBe(0);
 	await expect(container.locator("img")).toHaveCount(1);
@@ -172,6 +173,7 @@ test("ASCII keeps the original under reduced motion and cancels active scramble 
 	await expect.poll(() => page.evaluate(() => window.motionProbe.glyphDraws)).toBeGreaterThan(0);
 	await expect.poll(() => page.evaluate(() => window.motionProbe.queued())).toBe(1);
 	await expect(container.locator(".ascii-overlay")).toBeVisible();
+	await expect(container).toHaveCSS("opacity", "1");
 	const initialGlyphs = await page.evaluate(() => window.motionProbe.glyphDraws);
 	await page.evaluate(() => window.motionProbe.tick(performance.now() + 100));
 	expect(await page.evaluate(() => window.motionProbe.glyphDraws)).toBeGreaterThan(initialGlyphs);
@@ -179,6 +181,7 @@ test("ASCII keeps the original under reduced motion and cancels active scramble 
 	await expect.poll(() => page.evaluate(() => window.motionProbe.queued())).toBe(0);
 	await expect(container.locator("img")).toHaveCount(1);
 	await expect(container.locator("img")).toHaveCSS("visibility", "visible");
+	await expect(container).toHaveCSS("opacity", "1");
 	await page.emulateMedia({ reducedMotion: "no-preference" });
 	await expect.poll(() => page.evaluate(() => window.motionProbe.queued())).toBe(1);
 	const beforeUnmount = await page.evaluate(() => window.motionProbe.glyphDraws);
