@@ -127,6 +127,7 @@ jobs:
         run: pnpm exec playwright install --with-deps chromium webkit
 
       - name: Component browser regressions
+        id: component_browser
         run: pnpm test:browser
 
       - name: Browser and public server E2E
@@ -134,7 +135,7 @@ jobs:
         run: pnpm test:e2e
 
       - name: Preserve failed browser diagnostics
-        if: failure() && steps.e2e.outcome == 'failure'
+        if: failure() && (steps.component_browser.outcome == 'failure' || steps.e2e.outcome == 'failure')
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: playwright-failure
