@@ -28,7 +28,7 @@
 	},
 	"devDependencies": {
 		"@biomejs/biome": "^2.4.13",
-		"@changesets/cli": "^2.31.0",
+		"@changesets/cli": "^3.0.2",
 		"@edge-runtime/vm": "^5.0.0",
 		"@playwright/test": "^1.59.1",
 		"@sveltejs/adapter-auto": "^7.0.1",

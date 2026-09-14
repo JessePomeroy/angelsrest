@@ -71,33 +71,32 @@ jobs:
           NODE_AUTH_TOKEN: ${{ secrets.GH_PACKAGES_TOKEN }}
 
       - name: Create release PR or publish
-        uses: changesets/action@a45c4d594aa4e2c509dc14a9f2b3b67ba3780d0d # v1.9.0
+        uses: changesets/action@ae32849d5ba541f9ae29e40e22a623bc13562f51 # v2.1.2
         id: changesets
         with:
-          version: corepack pnpm changeset version
-          publish: corepack pnpm changeset publish
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          version-script: corepack pnpm changeset version
+          publish-script: corepack pnpm changeset publish
           # NB: do NOT include `[skip ci]` here. It propagates into the
           # squash-merge commit on main and suppresses this workflow's
           # publish run (the second half of the two-state machine), which
           # bit us on the 1.0.0 publish — had to dispatch manually. The
           # cost of letting CI re-run on the version-PR's bump commits is
           # a few extra runs per release; cheaper than human ops.
-          commit: "chore(crm-api): version packages"
-          title: "chore(crm-api): version packages"
+          commit-message: "chore(crm-api): version packages"
+          pr-title: "chore(crm-api): version packages"
         env:
           # Publication uses the ephemeral repository token granted
           # `packages: write` above. The long-lived cross-repo token remains
           # read-only and is used only by the dependency-install step.
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GH_PACKAGES_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          NPM_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Run CI on the version PR
-        if: steps.changesets.outputs.pullRequestNumber != ''
+        if: steps.changesets.outputs.pr-number != ''
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          PR_NUMBER: ${{ steps.changesets.outputs.pullRequestNumber }}
+          PR_NUMBER: ${{ steps.changesets.outputs.pr-number }}
         run: |
           branch=$(gh pr view "$PR_NUMBER" --json headRefName --jq .headRefName)
           gh workflow run ci.yml --ref "$branch"
