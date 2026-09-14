@@ -1,3 +1,4 @@
 {
-	"installCommand": "pnpm config set //npm.pkg.github.com/:_authToken \"$GH_PACKAGES_TOKEN\" && pnpm install --frozen-lockfile"
+	"installCommand": "pnpm config set //npm.pkg.github.com/:_authToken \"$GH_PACKAGES_TOKEN\" && pnpm install --frozen-lockfile",
+	"ignoreCommand": "node scripts/vercel-ignore-build.mjs"
 }

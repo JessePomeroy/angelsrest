@@ -5,6 +5,7 @@ import { convexTest } from "convex-test";
 import { describe, expect, test } from "vitest";
 import { api, internal } from "./_generated/api";
 import type { Id } from "./_generated/dataModel";
+import { preparePostRevision } from "./helpers/postContentIntegrity";
 import type { PostDraft } from "./helpers/postContentValidators";
 import schema from "./schema";
 
@@ -81,8 +82,8 @@ async function setup() {
 			role: "client",
 		});
 	}
-	const adminA = t.withIdentity({ subject: SITE_A.email, email: SITE_A.email });
-	const adminB = t.withIdentity({ subject: SITE_B.email, email: SITE_B.email });
+	const adminA = t.withIdentity({ subject: SITE_A.email, email: SITE_A.email, emailVerified: true });
+	const adminB = t.withIdentity({ subject: SITE_B.email, email: SITE_B.email, emailVerified: true });
 	const [assetA, assetB, assetC] = await Promise.all([
 		adminA.mutation(api.mediaAssets.registerReadyWebAsset, {
 			siteUrl: SITE_A.siteUrl,
@@ -242,6 +243,100 @@ async function expectError(operation: Promise<unknown>, message: RegExp) {
 }
 
 describe("tenant-scoped Post content graphs", () => {
+	test("preserves automatic excerpt ownership through saved revisions and integrity checks", async () => {
+		const { adminA } = await setup();
+		const draft = { ...emptyPost({ summary: "Generated excerpt" }), summarySource: "body" as const };
+		const prepared = await preparePostRevision(draft);
+		const legacy = await preparePostRevision(emptyPost({ summary: "Generated excerpt" }));
+		expect(prepared.checksum).not.toBe(legacy.checksum);
+		expect(prepared.payload.summaryChecksum).not.toBe(legacy.payload.summaryChecksum);
+		const created = await createPost(adminA, SITE_A.siteUrl, "automatic-excerpt", draft);
+		expect((await adminA.query(api.postContent.getEditorState, { documentId: created.documentId }))?.draft?.draft).toMatchObject({ summarySource: "body", summary: "Generated excerpt" });
+		const saved = await savePost(adminA, created.documentId, { ...draft, title: "Reopened draft" }, created.revisionId);
+		expect((await adminA.query(api.postContent.getEditorState, { documentId: created.documentId }))?.draft).toMatchObject({ revisionId: saved.revisionId, draft: { summarySource: "body" } });
+	});
+
+	test("publishes owner-authored posts from same-site published settings without creating authors", async () => {
+		const { t, adminA, adminB } = await setup();
+		const settings = (artistName: string) => ({ artistName, siteTitle: "Journal", tagline: "Field notes", seoDescription: "A local journal." });
+		const ownerA = await adminA.mutation(api.content.saveSiteSettingsDraft, { siteUrl: SITE_A.siteUrl, payload: settings("Artist A") });
+		await adminA.mutation(api.content.publishSiteSettings, { siteUrl: SITE_A.siteUrl, draftRevisionId: ownerA.revisionId });
+		const ownerB = await adminB.mutation(api.content.saveSiteSettingsDraft, { siteUrl: SITE_B.siteUrl, payload: settings("Business B") });
+		await adminB.mutation(api.content.publishSiteSettings, { siteUrl: SITE_B.siteUrl, draftRevisionId: ownerB.revisionId });
+		const draft = { ...emptyPost({ title: "Owner note", slug: "owner-note", format: "essay", presentation: "standard", displayPublishedAt: 1_000, summary: "An owner-authored note.", body: { version: 1, blocks: [paragraph("opening", "From the owner.")] } }), authorSource: "siteSettings" as const };
+		await expectError(t.mutation(api.postContent.createDraft, { siteUrl: SITE_A.siteUrl, documentKey: "unauth-owner", draft }), /not authenticated/i);
+		await expectError(createPost(adminB, SITE_A.siteUrl, "other-owner", draft), /not authorized/i);
+		const created = await createPost(adminA, SITE_A.siteUrl, "owner-note", draft);
+		await publishPost(adminA, created.documentId, created.revisionId);
+		const other = await createPost(adminB, SITE_B.siteUrl, "owner-note", draft);
+		await publishPost(adminB, other.documentId, other.revisionId);
+		const read = () => t.query(api.postContent.getPublishedBySlug, { siteUrl: SITE_A.siteUrl, slug: "owner-note" });
+		expect((await read())?.payload.author).toEqual({ kind: "author", name: "Artist A", slug: "site-owner" });
+		expect((await t.query(api.postContent.listPublished, { siteUrl: SITE_B.siteUrl, limit: 10 }))[0].payload.author).toEqual({ name: "Business B", slug: "site-owner" });
+		const updated = await adminA.mutation(api.content.saveSiteSettingsDraft, { siteUrl: SITE_A.siteUrl, payload: settings("New published name") });
+		expect((await read())?.payload.author.name).toBe("Artist A");
+		await adminA.mutation(api.content.publishSiteSettings, { siteUrl: SITE_A.siteUrl, draftRevisionId: updated.revisionId });
+		expect((await read())?.payload.author.name).toBe("New published name");
+		expect((await t.query(api.postContent.listPublished, { siteUrl: SITE_A.siteUrl, limit: 10 }))[0].payload.author.name).toBe("New published name");
+		expect((await adminA.query(api.postContent.getEditorState, { documentId: created.documentId }))?.published?.draft).toMatchObject({ authorSource: "siteSettings" });
+		expect(await adminA.query(api.blogContent.listForEditor, { siteUrl: SITE_A.siteUrl, kind: "author" })).toEqual([]);
+	});
+
+	test("requires published owner settings and keeps explicit-author validation intact", async () => {
+		const { adminA } = await setup();
+		const draft = { ...emptyPost({ title: "Owner note", slug: "owner-note", format: "essay", presentation: "standard", displayPublishedAt: 1_000, summary: "An owner-authored note.", body: { version: 1, blocks: [paragraph("opening", "From the owner.")] } }), authorSource: "siteSettings" as const };
+		const created = await createPost(adminA, SITE_A.siteUrl, "owner-gates", draft);
+		await expectError(publishPost(adminA, created.documentId, created.revisionId), /publish.*site settings/i);
+		await adminA.mutation(api.content.saveSiteSettingsDraft, { siteUrl: SITE_A.siteUrl, payload: { artistName: "Private draft name" } });
+		await expectError(publishPost(adminA, created.documentId, created.revisionId), /publish.*site settings/i);
+		const explicit = await createAuthor(adminA, SITE_A.siteUrl, "explicit-author", "explicit-author");
+		await expectError(savePost(adminA, created.documentId, { ...draft, authorDocumentId: explicit.documentId }, created.revisionId), /author source.*explicit author/i);
+		const { authorSource: _authorSource, ...withoutAuthor } = draft;
+		const missing = await savePost(adminA, created.documentId, withoutAuthor, created.revisionId);
+		await expectError(publishPost(adminA, created.documentId, missing.revisionId), /author is required/i);
+		const legacy = await savePost(adminA, created.documentId, { ...withoutAuthor, authorDocumentId: explicit.documentId }, missing.revisionId);
+		await publishPost(adminA, created.documentId, legacy.revisionId);
+		expect((await adminA.query(api.postContent.getPublishedBySlug, { siteUrl: SITE_A.siteUrl, slug: "owner-note" }))?.payload.author.name).toBe("Author explicit-author");
+	});
+
+	test("covers the owner-author marker in both revision integrity checksums", async () => {
+		const legacy = await preparePostRevision(emptyPost());
+		const marked = await preparePostRevision({ ...emptyPost(), authorSource: "siteSettings" });
+		expect(marked.checksum).not.toBe(legacy.checksum);
+		expect(marked.payload.summaryChecksum).not.toBe(legacy.payload.summaryChecksum);
+		expect(marked.payload).toMatchObject({ authorSource: "siteSettings", hasAuthor: false, referenceCount: 0 });
+	});
+
+	test("retains v1 checksum compatibility for ordered Post graphs", async () => {
+		// Captured from main before consolidating preparation; ordering and empty fields are intentional.
+		const prepared = await preparePostRevision(emptyPost({
+			title: "A field note 🌲", slug: "field-note", displayPublishedAt: 0,
+			format: "technicalNote", presentation: "technical",
+			summary: "  A summary.  ", seoTitle: "", seoDescription: "Description",
+			authorDocumentId: "author-1" as Id<"contentDocuments">,
+			categories: [
+				{ key: "category-2", documentId: "category-2" as Id<"contentDocuments"> },
+				{ key: "category-1", documentId: "category-1" as Id<"contentDocuments"> },
+			],
+			mainImage: { key: "main", assetId: "asset-main" as Id<"mediaAssets">, altText: "", caption: "Main" },
+			body: { version: 1, blocks: [
+				{ type: "paragraph", key: "p1", children: [
+					{ type: "text", key: "t1", text: "First\n paragraph", marks: [] },
+				] },
+				imageBlock("image1", "asset-body" as Id<"mediaAssets">, "Body"),
+			] },
+			equipment: [{ key: "second", label: "Camera", details: "" }, { key: "first" }],
+			materials: [{ key: "paper", details: "Matte" }],
+		}));
+		expect(prepared.checksum).toBe("c778bb25a0ade4a5dd64cdb5688b094e0ab2be2dff90dcd8755061f0f60e0d09");
+		expect(prepared.payload).toMatchObject({
+			summaryChecksum: "ed62fb9a4654c93b051701c61f1aeb427bc5b6593af50c184dcc56d16ccf7e6f",
+			excerpt: "A summary.", bodyBlockCount: 2, categoryCount: 2,
+			equipmentCount: 2, materialCount: 1, mediaPlacementCount: 2, referenceCount: 3,
+			hasAuthor: true, hasMainImage: true,
+		});
+	});
+
 	test("requires authentication and keeps editor operations inside one tenant", async () => {
 		const { t, adminA, adminB } = await setup();
 		await expectError(
@@ -408,6 +503,14 @@ describe("tenant-scoped Post content graphs", () => {
 					format: "technicalNote",
 					presentation: "technical",
 					equipment: [{ key: "camera", label: "Camera", details: "35mm" }],
+				}),
+			],
+			[
+				"technical-note-without-invented-items",
+				completePost(author.documentId, {
+					slug: "technical-note-without-invented-items",
+					format: "technicalNote",
+					presentation: "technical",
 				}),
 			],
 		];

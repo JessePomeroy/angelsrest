@@ -1,5 +1,8 @@
+import { createHmac } from "node:crypto";
 import { brotliCompressSync, deflateSync, gzipSync } from "node:zlib";
 import { describe, expect, it, vi } from "vitest";
+import { env as privateEnv } from "$env/dynamic/private";
+import { env as publicEnv } from "$env/dynamic/public";
 import {
 	CatalogBoundaryError,
 	issuePaidFile,
@@ -7,11 +10,15 @@ import {
 	resolveCatalogCheckout,
 	resolvePaidDownload,
 	resolvePaidFulfillment,
+	storePrintArtifact,
+	storeRenderedPrintSource,
 } from "$lib/server/catalogCommerceClients";
 
 const token = "a".repeat(32);
 const origin = "https://private.example";
 const sealedCapability = Buffer.alloc(64, 7).toString("base64url");
+const uploadPayload = Buffer.from('{"version":1}').toString("base64url");
+const uploadToken = `${uploadPayload}.${createHmac("sha256", "upload-test").update(uploadPayload).digest("base64url")}`;
 function capability(purpose: "paid_file" | "print_source", extension?: "jpg" | "png" | "zip") {
 	const segment = purpose === "print_source" ? "print-source" : "paid-file";
 	const suffix = extension ?? (purpose === "print_source" ? "jpg" : "zip");
@@ -351,6 +358,148 @@ describe("fixed-purpose catalog clients", () => {
 		}
 	});
 
+	it("accepts maximum trimmed print-set resolver envelopes under the 64 KiB decoded cap", async () => {
+		const maximumKey = (prefix: string, index: number) => {
+			const beginning = `${prefix}-${index}-`;
+			return `${beginning}${"x".repeat(120 - beginning.length)}`;
+		};
+		const item = {
+			...snapshotItem,
+			productKey: "p".repeat(32),
+			revisionId: "r".repeat(32),
+			productKind: "print_set" as const,
+			variantKey: "v".repeat(120),
+		};
+		const projectedAsset = {
+			assetId: "10000000-0000-4000-8000-000000000001",
+			source: { width: 100_000, height: 100_000 },
+			derivatives: {
+				thumb: { contentType: "image/webp", width: 100_000, height: 100_000 },
+				card: { contentType: "image/webp", width: 100_000, height: 100_000 },
+				display1280: { contentType: "image/webp", width: 100_000, height: 100_000 },
+				display2048: { contentType: "image/webp", width: 100_000, height: 100_000 },
+				display2560: { contentType: "image/webp", width: 100_000, height: 100_000 },
+			},
+		};
+		const maximumResponse = {
+			version: 1,
+			purpose: "checkout",
+			item,
+			identity: {
+				productId: item.productKey,
+				revisionId: item.revisionId,
+				productKind: item.productKind,
+				title: "t".repeat(160),
+				slug: "s".repeat(96),
+				variantKey: item.variantKey,
+			},
+			commerce: {
+				currency: "usd",
+				amountCents: 100_000_000,
+				finish: {
+					materialKey: "archival-matte",
+					sizeKey: "8x10",
+					borderKey: null,
+					frameKey: null,
+					paper: { name: "Archival Matte", subcategoryId: 103001 },
+					size: { label: "8×10", width: 8, height: 10 },
+					border: { inches: 0 },
+					frame: { subcategoryId: 0 },
+					canvas: null,
+				},
+			},
+			media: [
+				{
+					key: maximumKey("cover", 0),
+					role: "cover",
+					order: 0,
+					altText: null,
+					asset: projectedAsset,
+				},
+				...Array.from({ length: 20 }, (_, index) => ({
+					key: maximumKey("media", index),
+					role: "set_member",
+					order: index,
+					altText: null,
+					asset: projectedAsset,
+				})),
+			],
+		};
+		const untrimmedPresentationResponse = {
+			...maximumResponse,
+			media: maximumResponse.media.map((entry) => ({
+				...entry,
+				altText: "界".repeat(1_000),
+			})),
+		};
+		expect(Buffer.byteLength(JSON.stringify(untrimmedPresentationResponse))).toBeGreaterThan(
+			64 * 1024,
+		);
+		const body = JSON.stringify(maximumResponse);
+		const decodedBytes = Buffer.byteLength(body);
+		expect(decodedBytes).toBeGreaterThan(8 * 1024);
+		expect(decodedBytes).toBeLessThanOrEqual(64 * 1024);
+		const checkoutFetch = vi.fn(
+			async () =>
+				new Response(body, {
+					headers: {
+						"content-type": "application/json",
+						"content-length": String(decodedBytes),
+					},
+				}),
+		);
+		await expect(
+			resolveCatalogCheckout(item, { origin, bearer: token, fetch: checkoutFetch }),
+		).resolves.toEqual(maximumResponse);
+		expect(checkoutFetch).toHaveBeenCalledOnce();
+
+		const privateObjectKey = `sites/${"s".repeat(253)}/catalog/print-sources/${"a".repeat(160)}/original`;
+		const maximumPaidResponse = {
+			...maximumResponse,
+			purpose: "paid_fulfillment",
+			current: {
+				kindEnabled: true,
+				publishedRevision: false,
+				slugMatches: false,
+				available: false,
+				variantEnabled: false,
+			},
+			descriptor: {
+				kind: "print_sources",
+				sources: Array.from({ length: 20 }, (_, index) => ({
+					memberKey: maximumKey("member", index),
+					relationKey: maximumKey("source", index),
+					key: privateObjectKey,
+					mime: "image/jpeg",
+					bytes: 100_000_000,
+					hash: "f".repeat(64),
+					dimensions: { width: 100_000, height: 100_000 },
+				})),
+			},
+		};
+		const paidBody = JSON.stringify(maximumPaidResponse);
+		const paidDecodedBytes = Buffer.byteLength(paidBody);
+		expect(paidDecodedBytes).toBeGreaterThan(24 * 1024);
+		expect(paidDecodedBytes).toBeLessThanOrEqual(64 * 1024);
+		const paidFetch = vi.fn(
+			async () =>
+				new Response(paidBody, {
+					headers: {
+						"content-type": "application/json",
+						"content-length": String(paidDecodedBytes),
+					},
+				}),
+		);
+		await expect(
+			resolvePaidFulfillment("cs_test_123456789", 0, {
+				origin,
+				bearer: token,
+				fetch: paidFetch,
+			}),
+		).resolves.toMatchObject({ descriptor: { kind: "print_sources", sources: { length: 20 } } });
+		expect(paidFetch).toHaveBeenCalledOnce();
+	});
+
 	it.each([
 		"gzip",
 		"br",
@@ -623,6 +772,192 @@ describe("fixed-purpose catalog clients", () => {
 		});
 	});
 
+	it("stores rendered prints immutably before issuing their provider capability", async () => {
+		const hash = "c".repeat(64);
+		const bytes = new Uint8Array([1, 2, 3]);
+		const assetKey = `lumaprints-render-v1-${hash}`;
+		const key = `sites/angelsrest.online/catalog/print-sources/${assetKey}/original`;
+		let capabilityRequests = 0;
+		const fetch = vi.fn(async (input: URL | RequestInfo, init?: RequestInit) => {
+			const url = new URL(String(input));
+			if (url.pathname === "/v1/catalog-assets/uploads/capabilities") {
+				capabilityRequests += 1;
+				return capabilityRequests === 1
+					? json({
+							status: "upload_required",
+							kind: "print_source",
+							assetKey,
+							privateObjectKey: key,
+							uploadUrl: `/v1/catalog-assets/uploads/source?key=${encodeURIComponent(key)}`,
+							uploadToken,
+							expiresAt: new Date(Date.now() + 60_000).toISOString(),
+						})
+					: json({
+							status: "stored_unverified",
+							replayed: true,
+							asset: {
+								privateObjectKey: key,
+								sha256: hash,
+								sizeBytes: bytes.byteLength,
+								contentType: "image/jpeg",
+							},
+						});
+			}
+			if (url.pathname === "/v1/catalog-assets/uploads/source") {
+				expect(init?.headers).toMatchObject({
+					"Content-Length": "3",
+					"X-CMS-Media-Upload-Token": uploadToken,
+				});
+				return json({ status: "stored_unverified" });
+			}
+			return json({
+				version: 1,
+				url: capability("print_source"),
+				expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
+			});
+		});
+		const config = {
+			upload: { origin, bearer: token, fetch },
+			issue: { origin, bearer: "b".repeat(32), fetch },
+		};
+
+		await expect(
+			storeRenderedPrintSource(
+				"angelsrest.online",
+				{ bytes, hash, width: 1800, height: 1200 },
+				config,
+			),
+		).resolves.toBe(capability("print_source"));
+		await expect(
+			storeRenderedPrintSource(
+				"angelsrest.online",
+				{ bytes, hash, width: 1800, height: 1200 },
+				config,
+			),
+		).resolves.toBe(capability("print_source"));
+		expect(fetch.mock.calls.filter(([, init]) => init?.method === "PUT")).toHaveLength(1);
+		expect(JSON.parse(String(fetch.mock.calls[0]?.[1]?.body))).toMatchObject({
+			assetKey,
+			sha256: hash,
+			provenance: { provider: "editor_upload", sourceId: `fulfillment-render:${hash}` },
+		});
+	});
+
+	it.each([
+		"upload-token",
+		`${uploadToken}.extra`,
+		`${uploadToken}\r\n`,
+		`${"a".repeat(16_384)}.${"b".repeat(43)}`,
+	])("rejects malformed signed upload tokens before PUT (#%#)", async (uploadToken) => {
+		const hash = "c".repeat(64);
+		const assetKey = `lumaprints-render-v1-${hash}`;
+		const key = `sites/angelsrest.online/catalog/print-sources/${assetKey}/original`;
+		const fetch = vi.fn(async () =>
+			json({
+				status: "upload_required",
+				kind: "print_source",
+				assetKey,
+				privateObjectKey: key,
+				uploadUrl: `/v1/catalog-assets/uploads/source?key=${encodeURIComponent(key)}`,
+				uploadToken,
+				expiresAt: new Date(Date.now() + 60_000).toISOString(),
+			}),
+		);
+		await expect(
+			storePrintArtifact(
+				"angelsrest.online",
+				{
+					bytes: new Uint8Array([1]),
+					hash,
+					width: 1800,
+					height: 1200,
+				},
+				{ origin, bearer: token, fetch },
+			),
+		).rejects.toMatchObject({ kind: "rejected", phase: "envelope" });
+		expect(fetch).toHaveBeenCalledOnce();
+	});
+
+	it("preserves padded tenant upload and issuer credentials for rendered prints", async () => {
+		const uploadSecret = `${"u".repeat(43)}=`;
+		const issuerSecret = `${"i".repeat(42)}==`;
+		const mutablePrivateEnv = privateEnv as Record<string, string | undefined>;
+		const mutablePublicEnv = publicEnv as Record<string, string | undefined>;
+		const previous = {
+			publicSiteUrl: mutablePublicEnv.PUBLIC_SITE_URL,
+			workerOrigin: mutablePrivateEnv.CATALOG_FULFILLMENT_WORKER_ORIGIN,
+			hubUpload: mutablePrivateEnv.CMS_MEDIA_WORKER_SECRET,
+			hubIssuer: mutablePrivateEnv.CATALOG_PRINT_SOURCE_ISSUER_SECRET,
+			uploadRegistry: mutablePrivateEnv.CMS_MEDIA_WORKER_TENANT_SECRETS,
+			issuerRegistry: mutablePrivateEnv.CATALOG_PRINT_SOURCE_ISSUER_TENANT_SECRETS,
+			artifactUpload: mutablePrivateEnv.CATALOG_PRINT_ARTIFACT_UPLOAD_SECRET,
+			artifactRegistry: mutablePrivateEnv.CATALOG_PRINT_ARTIFACT_UPLOAD_TENANT_SECRETS,
+		};
+		mutablePublicEnv.PUBLIC_SITE_URL = "https://angelsrest.online";
+		mutablePrivateEnv.CATALOG_FULFILLMENT_WORKER_ORIGIN = origin;
+		mutablePrivateEnv.CMS_MEDIA_WORKER_SECRET = "h".repeat(32);
+		mutablePrivateEnv.CATALOG_PRINT_SOURCE_ISSUER_SECRET = "j".repeat(32);
+		mutablePrivateEnv.CMS_MEDIA_WORKER_TENANT_SECRETS = JSON.stringify({
+			"client.example": ["l".repeat(32)],
+		});
+		mutablePrivateEnv.CATALOG_PRINT_ARTIFACT_UPLOAD_SECRET = "a".repeat(32);
+		mutablePrivateEnv.CATALOG_PRINT_ARTIFACT_UPLOAD_TENANT_SECRETS = JSON.stringify({
+			"client.example": [uploadSecret],
+		});
+		mutablePrivateEnv.CATALOG_PRINT_SOURCE_ISSUER_TENANT_SECRETS = JSON.stringify({
+			"client.example": [issuerSecret],
+		});
+		const hash = "d".repeat(64);
+		const key = `sites/client.example/catalog/print-sources/lumaprints-render-v1-${hash}/original`;
+		const authorizations: string[] = [];
+		const fetch = vi.fn(async (input: URL | RequestInfo, init?: RequestInit) => {
+			const url = new URL(String(input));
+			const authorization = new Headers(init?.headers).get("authorization");
+			if (authorization) authorizations.push(authorization);
+			if (url.pathname === "/v1/catalog-assets/uploads/capabilities") {
+				return json({
+					status: "upload_required",
+					kind: "print_source",
+					assetKey: `lumaprints-render-v1-${hash}`,
+					privateObjectKey: key,
+					uploadUrl: `/v1/catalog-assets/uploads/source?key=${encodeURIComponent(key)}`,
+					uploadToken,
+					expiresAt: new Date(Date.now() + 60_000).toISOString(),
+				});
+			}
+			if (url.pathname === "/v1/catalog-assets/uploads/source") {
+				return json({ status: "stored_unverified" });
+			}
+			return json({
+				version: 1,
+				url: capability("print_source"),
+				expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
+			});
+		});
+		vi.stubGlobal("fetch", fetch);
+		try {
+			await expect(
+				storeRenderedPrintSource("client.example", {
+					bytes: new Uint8Array([1, 2, 3]),
+					hash,
+					width: 1800,
+					height: 1200,
+				}),
+			).resolves.toBe(capability("print_source"));
+			expect(authorizations).toEqual([`Bearer ${uploadSecret}`, `Bearer ${issuerSecret}`]);
+		} finally {
+			vi.unstubAllGlobals();
+			mutablePublicEnv.PUBLIC_SITE_URL = previous.publicSiteUrl;
+			mutablePrivateEnv.CATALOG_FULFILLMENT_WORKER_ORIGIN = previous.workerOrigin;
+			mutablePrivateEnv.CMS_MEDIA_WORKER_SECRET = previous.hubUpload;
+			mutablePrivateEnv.CATALOG_PRINT_SOURCE_ISSUER_SECRET = previous.hubIssuer;
+			mutablePrivateEnv.CMS_MEDIA_WORKER_TENANT_SECRETS = previous.uploadRegistry;
+			mutablePrivateEnv.CATALOG_PRINT_SOURCE_ISSUER_TENANT_SECRETS = previous.issuerRegistry;
+			mutablePrivateEnv.CATALOG_PRINT_ARTIFACT_UPLOAD_SECRET = previous.artifactUpload;
+			mutablePrivateEnv.CATALOG_PRINT_ARTIFACT_UPLOAD_TENANT_SECRETS = previous.artifactRegistry;
+		}
+	});
+
 	it("validates print dimensions and MIME before requesting a capability", async () => {
 		const valid = {
 			key: "private/key",
@@ -747,6 +1082,39 @@ describe("fixed-purpose catalog clients", () => {
 			const fetch = vi.fn(async () => json({ version: 1, url, expiresAt }));
 			await expect(issue(fetch)).resolves.toBe(url);
 		}
+	});
+
+	it.each([
+		undefined,
+		"",
+		"a".repeat(31),
+		"a".repeat(513),
+		`${"a".repeat(512)}=`,
+		"=".repeat(32),
+		`${token}=a`,
+		`${token} `,
+		`${token}\n`,
+		`${token}\r\n`,
+		`${token}\r\nX-Injected: value`,
+		`${token}é`,
+	])("rejects malformed bearer credentials before upload (#%#)", async (bearer) => {
+		const fetch = vi.fn();
+		await expect(
+			storePrintArtifact(
+				"angelsrest.online",
+				{
+					bytes: new Uint8Array([1]),
+					hash: "c".repeat(64),
+					width: 1,
+					height: 1,
+				},
+				{ origin, bearer, fetch },
+			),
+		).rejects.toMatchObject({
+			kind: "unavailable",
+			phase: "configuration",
+		});
+		expect(fetch).not.toHaveBeenCalled();
 	});
 
 	it("defaults unavailable, rejects non-exact origins and bounded responses, and never retries", async () => {

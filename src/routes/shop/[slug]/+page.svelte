@@ -3,25 +3,13 @@ import GalleryModal from "$lib/components/GalleryModal.svelte";
 import SEO from "$lib/components/SEO.svelte";
 import StickyMobileBar from "$lib/components/StickyMobileBar.svelte";
 import { cart } from "$lib/shop/cart.svelte";
-import { cartUI } from "$lib/shop/cartUI.svelte";
+import { showCartAddition } from "$lib/shop/cartFeedback";
 import { toasts } from "$lib/stores/toast.svelte";
-import {
-	getFrame,
-	getPaper,
-	getSize,
-	isCanvasPaper,
-	V2_BORDER_OPTIONS,
-	V2_FRAME_OPTIONS,
-} from "$lib/shop/printCatalog";
-import {
-	getAvailablePrintPapers,
-	getAvailablePrintSizes,
-	normalizePrintFinishSelection,
-	resolvePrintConfiguration,
-} from "$lib/shop/printConfigurator";
-import type { ParsedPaper } from "$lib/types/shop";
+import { createPrintSelection } from "$lib/shop/printSelection.svelte";
+import PrintConfigurator from "$lib/components/PrintConfigurator.svelte";
+import PrintPurchase from "$lib/components/PrintPurchase.svelte";
+import { printConfigurationCartFields } from "$lib/shop/printPurchase";
 import { createCheckout } from "$lib/utils/checkout";
-import { parsePaperOption } from "$lib/utils/images";
 
 let { data } = $props();
 
@@ -29,82 +17,8 @@ let modalOpen = $state(false);
 let selectedIndex = $state(0);
 let isLoading = $state(false);
 
-// ─── V2 state ───────────────────────────────────────────────
-let selectedPaperSlug = $state("");
-let selectedSizeSlug = $state("");
-let selectedBorderWidth = $state("none");
-let selectedFrame = $state("none");
-
-// Canvas is just a paper type — detect it for UI rules (hide border/frame)
-const isCanvasSelected = $derived(isCanvasPaper(selectedPaperSlug));
-
-// Keep the form controls synchronized with the shared finish invariants.
-$effect(() => {
-	const normalized = normalizePrintFinishSelection({
-		paperSlug: selectedPaperSlug,
-		borderWidthValue: selectedBorderWidth,
-		frameValue: selectedFrame,
-	});
-	if (selectedBorderWidth !== normalized.borderWidthValue) {
-		selectedBorderWidth = normalized.borderWidthValue;
-	}
-	if (selectedFrame !== normalized.frameValue) {
-		selectedFrame = normalized.frameValue;
-	}
-});
-
-// Unique materials (papers + canvas) from the product's variants
-const v2Papers = $derived.by(() => {
-	if (data.productType !== "v2") return [];
-	return getAvailablePrintPapers(data.product.variants);
-});
-
-// Initialize selected paper to first available
-$effect(() => {
-	if (data.productType === "v2" && v2Papers.length > 0 && !selectedPaperSlug) {
-		selectedPaperSlug = v2Papers[0].slug;
-	}
-});
-
-// Sizes available for the selected material
-const v2Sizes = $derived.by(() => {
-	if (data.productType !== "v2" || !selectedPaperSlug) return [];
-	return getAvailablePrintSizes(data.product.variants, selectedPaperSlug);
-});
-
-// Initialize selected size when material changes
-$effect(() => {
-	if (v2Sizes.length > 0 && !v2Sizes.some((s) => s.slug === selectedSizeSlug)) {
-		selectedSizeSlug = v2Sizes[0].slug;
-	}
-});
-
-const selectedConfiguration = $derived.by(() => {
-	if (data.productType !== "v2") return null;
-	return resolvePrintConfiguration({
-		variants: data.product.variants,
-		paperSlug: selectedPaperSlug,
-		sizeSlug: selectedSizeSlug,
-		borderWidthValue: selectedBorderWidth,
-		frameValue: selectedFrame,
-		bordersEnabled: data.product.bordersEnabled,
-		framedEnabled: data.product.framedEnabled,
-		frameMarkupMultiplier: data.product.frameMarkupMultiplier,
-	});
-});
-
-// ─── V1 state ───────────────────────────────────────────────
-let selectedPaperIndex = $state(0);
-
-const selectedPaperData: ParsedPaper | null = $derived.by(() => {
-	if (data.productType !== "v1") return null;
-	if (!data.product.availablePapers?.length) return null;
-	const paper =
-		data.product.availablePapers[selectedPaperIndex] ||
-		data.product.availablePapers[0];
-	if (!paper?.name) return null;
-	return parsePaperOption(paper);
-});
+const selection = createPrintSelection(() => data.productType === "v2" ? data.product : { variants: [] });
+const selectedConfiguration = $derived(selection.configuration);
 
 // ─── Shared ─────────────────────────────────────────────────
 function openModal(index: number) {
@@ -112,13 +26,7 @@ function openModal(index: number) {
 	modalOpen = true;
 }
 
-// Display price (variant retail + canvas/frame surcharges)
-const displayPrice = $derived.by(() => {
-	if (data.productType === "v2") {
-		return selectedConfiguration?.displayPrice ?? null;
-	}
-	return selectedPaperData?.price ?? data.product.price ?? null;
-});
+const displayPrice = $derived(data.productType === "v1" ? data.product.price ?? null : null);
 const displayPriceLabel = $derived(
 	typeof displayPrice === "number" && Number.isFinite(displayPrice)
 		? `$${displayPrice}`
@@ -150,7 +58,7 @@ function handleV2Checkout() {
 		});
 }
 
-function handleV2AddToCart() {
+function handleV2AddToCart(event: MouseEvent) {
 	if (!selectedConfiguration) return;
 	cart.add({
 		productSlug: data.product.slug,
@@ -158,30 +66,9 @@ function handleV2AddToCart() {
 		title: data.product.title,
 		imageUrl:
 			data.product.images[0]?.original || data.product.images[0]?.full || "",
-		paperName: selectedConfiguration.paper.name,
-		paperSubcategoryId: selectedConfiguration.paperSubcategoryId,
-		paperWidth: selectedConfiguration.size.width,
-		paperHeight: selectedConfiguration.size.height,
-		paperSlug: selectedConfiguration.paperSlug,
-		sizeSlug: selectedConfiguration.sizeSlug,
-		borderWidthValue: selectedConfiguration.borderWidthValue,
-		frameValue: selectedConfiguration.frameValue,
-		...(selectedConfiguration.borderWidth
-			? { borderWidth: selectedConfiguration.borderWidth }
-			: {}),
-		...(selectedConfiguration.frameSubcategoryId
-			? { frameSubcategoryId: selectedConfiguration.frameSubcategoryId }
-			: {}),
-		...(selectedConfiguration.canvas
-			? {
-					canvasSubcategoryId: selectedConfiguration.canvas.subcategoryId,
-					canvasWrapHex: selectedConfiguration.canvas.wrapHex,
-				}
-			: {}),
-		quantity: 1,
-		unitPriceCents: Math.round(selectedConfiguration.displayPrice * 100),
+		...printConfigurationCartFields(selectedConfiguration),
 	});
-	cartUI.open();
+	showCartAddition(event.currentTarget);
 }
 
 // ─── V1 checkout/cart handlers ──────────────────────────────
@@ -191,7 +78,6 @@ async function handleV1Checkout() {
 		const url = await createCheckout({
 			productId: data.product.slug,
 			coupon: null,
-			paperIndex: selectedPaperIndex,
 		});
 		window.location.href = url;
 	} catch (err: unknown) {
@@ -208,257 +94,130 @@ const canAddToCartV1 = $derived(
 		data.product.inStock,
 );
 
-function handleV1AddToCart() {
+function handleV1AddToCart(event: MouseEvent) {
 	if (!canAddToCartV1) return;
-	const priceDollars = selectedPaperData?.price ?? data.product.price;
+	const priceDollars = data.product.price;
 	if (typeof priceDollars !== "number") return;
 
-	const hasPaper = !!selectedPaperData;
 	cart.add({
 		productSlug: data.product.slug,
 		type: "print",
 		title: data.product.title,
 		imageUrl:
 			data.product.images[0]?.original || data.product.images[0]?.full || "",
-		...(hasPaper
-			? {
-					paperName: selectedPaperData.name,
-					paperSubcategoryId: Number.parseInt(
-						selectedPaperData.subcategoryId,
-						10,
-					),
-					paperWidth: selectedPaperData.width,
-					paperHeight: selectedPaperData.height,
-					paperIndex: selectedPaperIndex,
-				}
-			: {}),
 		quantity: 1,
 		unitPriceCents: Math.round(priceDollars * 100),
 	});
-	cartUI.open();
+	showCartAddition(event.currentTarget);
 }
 </script>
 
 <SEO
 	title={`${data.product.title} | shop | angel's rest`}
 	description={data.product.description || `${data.product.title} - Available in the Angels Rest shop`}
-	image={data.product.images[0]?.full || "/og-image.jpg"}
+	image={data.product.images[0]?.full || undefined}
 	url={`https://angelsrest.online/shop/${data.product.slug}`}
 />
 
-<div class="max-w-6xl mx-auto px-4 md:px-8">
-	<a href="/shop" class="text-sm opacity-70 hover:opacity-100 mb-4 inline-block">
+<div class="product-page">
+	<a href="/shop" class="back-link">
 		← Back to shop
 	</a>
 
-	<div class="grid md:grid-cols-2 gap-8">
+	<div class="product-layout">
 		<!-- Image gallery (shared between V1 and V2) -->
-		<div class="space-y-4">
+		<div class="product-images">
 			{#if data.product.images.length > 0}
-				<button class="w-full" onclick={() => openModal(0)}>
-					<img
+				<button class="main-image-button" onclick={() => openModal(0)}>
+					<img data-water-lens
 						src={data.product.images[0].full}
 						alt={data.product.images[0].alt}
 						loading="lazy"
-						class="w-full h-auto hover:scale-105 transition-transform rounded-md"
+						class="main-image"
 					/>
 				</button>
 
 				{#if data.product.images.length > 1}
-					<div class="grid grid-cols-3 gap-2">
+					<div class="thumbnails">
 						{#each data.product.images.slice(1) as image, i (image.full ?? i)}
 							<button
-								class="aspect-square overflow-hidden rounded-md"
+								class="thumbnail-button"
 								onclick={() => openModal(i + 1)}
 							>
-								<img
+								<img data-water-lens
 									src={image.thumbnail}
 									alt={image.alt}
 									loading="lazy"
-									class="w-full h-full object-cover hover:scale-105 transition-transform"
+									class="thumbnail-image"
 								/>
 							</button>
 						{/each}
 					</div>
 				{/if}
 			{:else}
-				<div class="aspect-square bg-surface-100-800-token rounded-md flex items-center justify-center">
-					<span class="text-surface-500">No image available</span>
+				<div class="empty-images">
+					<span class="empty-image-label">No image available</span>
 				</div>
 			{/if}
 		</div>
 
 		<!-- Product details -->
-		<div class="space-y-6">
+		<div class="product-details">
 			<div>
-				<h1 class="text-3xl font-semibold mb-2">{data.product.title}</h1>
+				<h1 class="product-title">{data.product.title}</h1>
 				{#if data.productType === "v1" && data.product.category}
-					<span class="chip variant-soft-surface">
+					<span class="category-badge">
 						{data.product.category.charAt(0).toUpperCase() + data.product.category.slice(1)}
 					</span>
 				{/if}
 			</div>
 
 			{#if data.product.description}
-				<div class="text-surface-700-200-token">
+				<div class="description">
 					<p>{data.product.description}</p>
 				</div>
 			{/if}
 
 			<!-- Stock status -->
-			<div class="flex items-center gap-2">
+			<div class="stock-status">
 				{#if data.product.inStock}
-					<div class="w-3 h-3 rounded-full bg-success-500"></div>
-					<span class="text-sm text-surface-600-300-token">In stock</span>
+					<div class="in-stock-dot"></div>
+					<span class="stock-label">In stock</span>
 				{:else}
-					<div class="w-3 h-3 rounded-full bg-error-500"></div>
-					<span class="text-sm text-surface-600-300-token">Out of stock</span>
+					<div class="out-of-stock-dot"></div>
+					<span class="stock-label">Out of stock</span>
 				{/if}
 			</div>
 
 			{#if data.productType === "v2"}
 				<!-- ═══ V2 Configurator ═══ -->
 
-				<!-- Desktop: inline price bar with buttons (no sticky needed) -->
-				<div class="hidden md:flex items-baseline justify-between gap-4 py-2">
-					<div class="text-3xl font-semibold text-surface-900-50-token">
-						{#if selectedConfiguration}
-							${displayPrice}
-							<span class="text-base font-normal text-surface-600-300-token">
-								{getPaper(selectedPaperSlug)?.name ?? selectedPaperSlug} · {getSize(selectedSizeSlug)?.label}{selectedBorderWidth !== 'none' ? ` · ${selectedBorderWidth}" border` : ''}{selectedFrame !== 'none' ? ` · ${getFrame(selectedFrame)?.label} frame` : ''}
-							</span>
-						{:else}
-							<span class="text-base text-surface-500">Select paper & size</span>
-						{/if}
-					</div>
-					<div class="flex gap-2">
-						{#if data.product.inStock && selectedConfiguration}
-							<button class="btn btn-sm variant-soft-surface" onclick={handleV2AddToCart}>
-								add to cart
-							</button>
-							<button
-								class="btn btn-sm variant-filled-primary"
-								disabled={isLoading}
-								onclick={handleV2Checkout}
-							>
-								{isLoading ? "processing..." : "buy now"}
-							</button>
-						{:else if !data.product.inStock}
-							<button class="btn btn-sm variant-filled-primary" disabled>out of stock</button>
-						{/if}
-					</div>
-				</div>
-
-				<div class="space-y-4">
-					<div>
-						<label for="paper-select" class="block text-sm text-surface-600-300-token mb-1">
-							Material
-						</label>
-						<select id="paper-select" class="select w-full" bind:value={selectedPaperSlug}>
-							{#each v2Papers as paper (paper.slug)}
-								<option value={paper.slug}>{paper.name}</option>
-							{/each}
-						</select>
-					</div>
-
-					<div>
-						<label for="size-select" class="block text-sm text-surface-600-300-token mb-1">
-							Size
-						</label>
-						<select id="size-select" class="select w-full" bind:value={selectedSizeSlug}>
-							{#each v2Sizes as size (size.slug)}
-								<option value={size.slug}>{size.label}</option>
-							{/each}
-						</select>
-					</div>
-
-					{#if data.product.bordersEnabled !== false && !isCanvasSelected}
-						<div>
-							<label for="border-select" class="block text-sm text-surface-600-300-token mb-1">
-								Border
-							</label>
-							<select
-								id="border-select"
-								class="select w-full"
-								bind:value={selectedBorderWidth}
-								disabled={selectedFrame !== "none"}
-							>
-								{#each V2_BORDER_OPTIONS as border (border.value)}
-									<option value={border.value}>{border.label}</option>
-								{/each}
-							</select>
-							{#if selectedFrame !== "none"}
-								<p class="text-xs text-surface-500 mt-1">border included with frame</p>
-							{/if}
-						</div>
-					{/if}
-
-					{#if data.product.framedEnabled && !isCanvasSelected}
-						<div>
-							<label for="frame-select" class="block text-sm text-surface-600-300-token mb-1">
-								Frame
-							</label>
-							<select id="frame-select" class="select w-full" bind:value={selectedFrame}>
-								{#each V2_FRAME_OPTIONS as frame (frame.value)}
-									<option value={frame.value}>{frame.label}</option>
-								{/each}
-							</select>
-						</div>
-					{/if}
-				</div>
-
-				<p class="text-xs text-surface-500">
-					Secure checkout powered by Stripe
-				</p>
-
-				<StickyMobileBar>
-					{#snippet children(isStuck)}
-						<div class="flex flex-wrap items-center justify-between gap-x-4 gap-y-1">
-							<div class="flex items-center gap-1.5">
-								{#if selectedConfiguration}
-									<span class="text-xl font-semibold">${displayPrice}</span>
-									<span class="text-xs {isStuck ? 'text-surface-300' : 'text-surface-600-300-token'}">
-										{getPaper(selectedPaperSlug)?.name ?? selectedPaperSlug} · {getSize(selectedSizeSlug)?.label}{selectedBorderWidth !== 'none' ? ` · ${selectedBorderWidth}" border` : ''}{selectedFrame !== 'none' ? ` · ${getFrame(selectedFrame)?.label} frame` : ''}
-									</span>
-								{:else}
-									<span class="text-sm text-surface-500">Select paper & size</span>
-								{/if}
-							</div>
-							<div class="flex gap-1.5">
-								{#if data.product.inStock && selectedConfiguration}
-									<button class="btn btn-sm text-xs px-2 variant-soft-surface" onclick={handleV2AddToCart}>
-										add to cart
-									</button>
-									<button
-										class="btn btn-sm text-xs px-2 variant-filled-primary"
-										disabled={isLoading}
-										onclick={handleV2Checkout}
-									>
-										{isLoading ? "..." : "buy now"}
-									</button>
-								{:else if !data.product.inStock}
-									<button class="btn btn-sm text-xs px-2 variant-filled-primary" disabled>out of stock</button>
-								{/if}
-							</div>
-						</div>
-					{/snippet}
-				</StickyMobileBar>
+				<PrintPurchase
+					configuration={selectedConfiguration}
+					inStock={data.product.inStock}
+					loading={isLoading}
+					onAddToCart={handleV2AddToCart}
+					onCheckout={handleV2Checkout}
+				>
+					<PrintConfigurator {selection} />
+					<p class="payment-note">Secure checkout powered by Stripe</p>
+				</PrintPurchase>
 			{:else}
 				<!-- ═══ V1 Layout (merch, postcards, tapestries, digital) ═══ -->
 
 				<!-- Desktop: inline price + buttons -->
-				<div class="hidden md:flex items-baseline justify-between gap-4 py-2">
-					<div class="text-3xl font-semibold text-surface-900-50-token">
+				<div class="desktop-purchase">
+					<div class="desktop-price">
 						{displayPriceLabel}
 					</div>
-					<div class="flex gap-2">
+					<div class="desktop-actions">
 						{#if canAddToCartV1}
-							<button class="btn btn-sm variant-soft-surface" onclick={handleV1AddToCart}>
+							<button class="desktop-cart-button" onclick={handleV1AddToCart}>
 								add to cart
 							</button>
 						{/if}
 						<button
-							class="btn btn-sm variant-filled-primary"
+							class="desktop-buy-button"
 							disabled={!data.product.inStock || isLoading}
 							onclick={handleV1Checkout}
 						>
@@ -475,48 +234,33 @@ function handleV1AddToCart() {
 					</div>
 				</div>
 
-				{#if data.product.category !== "digital" && data.product.availablePapers?.length > 0}
-					<div>
-						<label for="paper-type" class="block text-sm text-surface-600-300-token mb-1">
-							Paper Type
-						</label>
-						<select id="paper-type" class="select w-full" bind:value={selectedPaperIndex}>
-							{#each data.product.availablePapers as paper, i (paper.subcategoryId ?? paper.name ?? i)}
-								<option value={i}>
-									{paper.name ? paper.name.split("|")[0] : `Option ${i + 1}`}
-								</option>
-							{/each}
-						</select>
-					</div>
-				{/if}
-
 				{#if data.product.category === "digital"}
-					<p class="text-xs text-surface-500">instant download after payment</p>
+					<p class="payment-note">instant download after payment</p>
 				{/if}
-				<p class="text-xs text-surface-500">
+				<p class="payment-note">
 					Secure checkout powered by Stripe
 				</p>
 
 				<!-- Mobile: sticky bar -->
 				<StickyMobileBar>
 					{#snippet children(isStuck)}
-						<div class="flex items-center justify-between gap-2">
-							<div class="flex items-center gap-1.5 min-w-0">
-								<span class="text-xl font-semibold shrink-0">{displayPriceLabel}</span>
+						<div class="merch-purchase">
+							<div class="merch-price-group">
+								<span class="merch-price">{displayPriceLabel}</span>
 								{#if data.product.category}
-									<span class="text-xs truncate {isStuck ? 'text-surface-300' : 'text-surface-600-300-token'}">
+									<span class="mobile-category" class:stuck={isStuck}>
 										{data.product.category}
 									</span>
 								{/if}
 							</div>
-							<div class="flex gap-1.5 shrink-0">
+							<div class="merch-actions">
 								{#if canAddToCartV1}
-									<button class="btn btn-sm text-xs px-2 variant-soft-surface" onclick={handleV1AddToCart}>
+									<button class="mobile-cart-button" onclick={handleV1AddToCart}>
 										add to cart
 									</button>
 								{/if}
 								<button
-									class="btn btn-sm text-xs px-2 variant-filled-primary"
+									class="mobile-buy-button"
 									disabled={!data.product.inStock || isLoading}
 									onclick={handleV1Checkout}
 								>
@@ -546,3 +290,66 @@ function handleV1AddToCart() {
 		onClose={() => (modalOpen = false)}
 	/>
 {/if}
+
+<style>
+  @layer components {
+    .product-page { max-width: 72rem; margin-inline: auto; padding-inline: 1rem; }
+    @media (min-width: 48rem) { .product-page { padding-inline: 2rem; } }
+    .back-link { font-size: var(--text-sm); line-height: var(--text-sm--line-height); opacity: 0.7; margin-bottom: 1rem; display: inline-block; }
+    @media (hover: hover) { .back-link:hover { opacity: 1.0; } }
+    .product-layout { display: grid; grid-template-columns: minmax(0, 1fr); gap: 2rem; }
+    @media (min-width: 48rem) { .product-layout { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+    .product-images > :global(:not(:last-child)) { margin-block-start: 0; margin-block-end: 1.0rem; }
+    .main-image-button { width: 100%; }
+    .main-image { width: 100%; height: auto; transition-property: transform, translate, scale, rotate; transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1); transition-duration: 150ms; border-radius: 0.375rem; }
+    @media (hover: hover) { .main-image:hover { scale: 1.05; } }
+    .thumbnails { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 0.5rem; }
+    .thumbnail-button { aspect-ratio: 1 / 1; overflow: hidden; border-radius: 0.375rem; }
+    .thumbnail-image { width: 100%; height: 100%; object-fit: cover; transition-property: transform, translate, scale, rotate; transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1); transition-duration: 150ms; }
+    @media (hover: hover) { .thumbnail-image:hover { scale: 1.05; } }
+    .empty-images { aspect-ratio: 1 / 1; background-color: var(--color-surface-100); border-radius: 0.375rem; display: flex; align-items: center; justify-content: center; }
+    :global(.dark) .empty-images { background-color: var(--color-surface-800); }
+    .empty-image-label { color: var(--color-surface-500); }
+    .product-details > :global(:not(:last-child)) { margin-block-start: 0; margin-block-end: 1.5rem; }
+    .product-title { font-size: var(--text-3xl); }
+    .category-badge { display: inline-flex; align-items: center; gap: 0.5rem; border-radius: 0.375rem; white-space: nowrap; font-size: var(--text-xs); line-height: var(--text-xs--line-height); padding-inline: 0.75rem; padding-block: 0.25rem; background-color: var(--color-surface-200); color: var(--color-surface-900); }
+    :global(.dark) .category-badge { background-color: var(--color-surface-700); color: var(--color-surface-50); }
+    .description { color: var(--color-surface-700); }
+    :global(.dark) .description { color: var(--color-surface-200); }
+    .stock-status { display: flex; align-items: center; gap: 0.5rem; }
+    .in-stock-dot { width: 0.75rem; height: 0.75rem; border-radius: 9999px; background-color: var(--color-success-500); }
+    .stock-label { font-size: var(--text-sm); line-height: var(--text-sm--line-height); color: var(--color-surface-600); }
+    :global(.dark) .stock-label { color: var(--color-surface-300); }
+    .out-of-stock-dot { width: 0.75rem; height: 0.75rem; border-radius: 9999px; background-color: var(--color-error-500); }
+    .desktop-purchase { display: none; align-items: baseline; justify-content: space-between; gap: 1rem; padding-block: 0.5rem; }
+    @media (min-width: 48rem) { .desktop-purchase { display: flex; } }
+    .desktop-price { font-size: var(--text-3xl); line-height: var(--text-3xl--line-height); font-weight: 600; color: var(--color-surface-900); }
+    :global(.dark) .desktop-price { color: var(--color-surface-50); }
+    .desktop-actions { display: flex; gap: 0.5rem; }
+    .desktop-cart-button { display: inline-flex; align-items: center; justify-content: center; gap: 0.5rem; border-radius: 0.375rem; white-space: nowrap; font-size: var(--text-xs); line-height: var(--text-xs--line-height); padding-inline: 0.75rem; padding-block: 0.25rem; transition-property: color, background-color, border-color, outline-color, text-decoration-color, fill, stroke; transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1); transition-duration: 150ms; background-color: var(--color-surface-200); color: var(--color-surface-900); }
+    .desktop-cart-button:focus-visible { outline-style: solid; outline-width: 2px; outline-offset: 2px; outline-color: var(--color-surface-900); }
+    :global(.dark) .desktop-cart-button:focus-visible { outline-color: var(--color-surface-50); }
+    .desktop-cart-button:disabled { opacity: 0.5; cursor: not-allowed; }
+    :global(.dark) .desktop-cart-button { background-color: var(--color-surface-700); color: var(--color-surface-50); }
+    .desktop-buy-button { display: inline-flex; align-items: center; justify-content: center; gap: 0.5rem; border-radius: 0.375rem; white-space: nowrap; font-size: var(--text-xs); line-height: var(--text-xs--line-height); padding-inline: 0.75rem; padding-block: 0.25rem; transition-property: color, background-color, border-color, outline-color, text-decoration-color, fill, stroke; transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1); transition-duration: 150ms; background-color: var(--color-primary-500); color: oklch(12.9% 0.042 264.695); }
+    .desktop-buy-button:focus-visible { outline-style: solid; outline-width: 2px; outline-offset: 2px; outline-color: var(--color-surface-900); }
+    :global(.dark) .desktop-buy-button:focus-visible { outline-color: var(--color-surface-50); }
+    .desktop-buy-button:disabled { opacity: 0.5; cursor: not-allowed; }
+    @media (hover: hover) { .desktop-buy-button:hover:not(:disabled) { background-color: color-mix(in oklab, var(--color-primary-500) 80%, transparent); } }
+    .payment-note { font-size: var(--text-xs); line-height: var(--text-xs--line-height); color: var(--color-surface-500); }
+    .mobile-cart-button { display: inline-flex; align-items: center; justify-content: center; min-height: 44px; padding: 0.5rem 0.75rem; border-radius: 0.375rem; font-size: var(--text-sm); line-height: var(--text-sm--line-height); background: transparent; color: inherit; border: 1px solid currentColor; }
+    .mobile-cart-button:focus-visible { outline: 2px solid currentColor; outline-offset: 3px; }
+    .mobile-cart-button:disabled { opacity: 0.5; cursor: not-allowed; }
+    .mobile-buy-button { display: inline-flex; align-items: center; justify-content: center; min-height: 44px; padding: 0.5rem 0.75rem; border-radius: 0.375rem; font-size: var(--text-sm); line-height: var(--text-sm--line-height); background: var(--time-accent, var(--color-primary-500)); color: oklch(12.9% 0.042 264.695); border: 1px solid transparent; }
+    .mobile-buy-button:focus-visible { outline: 2px solid var(--purchase-focus-color); outline-offset: 3px; }
+    .mobile-buy-button:disabled { opacity: 0.5; cursor: not-allowed; }
+    @media (hover: hover) { .mobile-buy-button:hover:not(:disabled) { filter: brightness(0.95); } }
+    .merch-purchase { display: grid; gap: 0.75rem; text-align: left; }
+    .merch-price-group { display: flex; align-items: center; gap: 0.375rem; min-width: 0rem; }
+    .merch-price { font-size: var(--text-xl); line-height: var(--text-xl--line-height); font-weight: 600; flex-shrink: 0; }
+    .mobile-category { font-size: var(--text-xs); line-height: var(--text-xs--line-height); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--color-surface-600); }
+    :global(.dark) .mobile-category { color: var(--color-surface-300); }
+    .merch-actions { display: grid; grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr); gap: 0.75rem; }
+    .mobile-category.stuck { color: var(--color-surface-300); }
+  }
+</style>

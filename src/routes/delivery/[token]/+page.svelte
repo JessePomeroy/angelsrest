@@ -1,24 +1,9 @@
 <script lang="ts">
-import { onMount } from "svelte";
+import { tick } from "svelte";
 import { setupConvex, useConvexClient } from "convex-svelte";
 import { api } from "$convex/api";
 import type { Id } from "$convex/dataModel";
 import { PUBLIC_CONVEX_URL } from "$env/static/public";
-import {
-	canSaveGalleryZipFile,
-	saveGalleryImagesAsZipFile,
-} from "@jessepomeroy/gallery-delivery/download-archive";
-import {
-	canChooseGalleryDownloadDirectory,
-	saveGalleryImagesToDirectory,
-} from "@jessepomeroy/gallery-delivery/download-destination";
-import {
-	createGalleryDownloadPlan,
-	type GalleryDownloadImage,
-	type GalleryDownloadPlan,
-	submitGalleryZipDownloadForm,
-} from "@jessepomeroy/gallery-delivery/download-plan";
-import { chooseGalleryDownloadRoute } from "@jessepomeroy/gallery-delivery/download-route";
 import {
 	applyGalleryFavoriteOverrides,
 	beginGalleryFavoriteMutation,
@@ -26,14 +11,10 @@ import {
 	createGalleryFavoriteState,
 	rollbackGalleryFavoriteMutation,
 } from "@jessepomeroy/gallery-delivery/favorite-state";
-import {
-	cancelPreparedZipDownload,
-	runPreparedZipDownload,
-	type PreparedZipDownloadStep,
-	type PreparedZipProgress,
-} from "@jessepomeroy/gallery-delivery/prepared-zip";
+import { createDeliveryDownloads } from "$lib/delivery/downloads.svelte";
 import { toasts } from "$lib/stores/toast.svelte";
 import { trapFocus } from "$lib/utils/focusTrap";
+import PrivateCapabilityHead from "$lib/components/PrivateCapabilityHead.svelte";
 
 let { data, form } = $props();
 
@@ -46,33 +27,18 @@ let favoriteState = $state(createGalleryFavoriteState());
 let images = $derived(applyGalleryFavoriteOverrides(data.images, favoriteState));
 let lightboxIndex = $state(-1);
 let lightboxOpen = $derived(lightboxIndex >= 0);
-let downloading = $state(false);
-let folderDownloadsSupported = $state(false);
-let zipFileDownloadsSupported = $state(false);
-let chooseDownloadFolder = $state(false);
-let folderDownloadStatus = $state<string | null>(null);
-let folderDownloadAbortController = $state<AbortController | null>(null);
-let preparedZipCancelRequestId = $state<string | null>(null);
-let preparedZipCancelingRequestId = $state<string | null>(null);
-let folderDownloadStatusToken = 0;
+const downloads = createDeliveryDownloads(() => data);
 let selectedImageIds = $state(new Set<string>());
+let failedThumbnailIds = $state(new Set<string>());
+let failedPreviewIds = $state(new Set<string>());
 let galleryView = $state<"grid" | "list">("grid");
 let selectedImages = $derived(images.filter((img) => selectedImageIds.has(img._id)));
 let selectedCount = $derived(selectedImages.length);
 let allImagesSelected = $derived(
 	images.length > 0 && selectedCount === images.length,
 );
-let folderDownloadInProgress = $derived(folderDownloadAbortController !== null);
-let chosenLocationDownloadsSupported = $derived(
-	folderDownloadsSupported || zipFileDownloadsSupported,
-);
 let lightboxEl = $state<HTMLDivElement | null>(null);
 let previouslyFocused: HTMLElement | null = null;
-
-onMount(() => {
-	folderDownloadsSupported = canChooseGalleryDownloadDirectory(window);
-	zipFileDownloadsSupported = canSaveGalleryZipFile(window);
-});
 
 function openLightbox(index: number) {
 	previouslyFocused = document.activeElement as HTMLElement;
@@ -87,12 +53,24 @@ function closeLightbox() {
 	previouslyFocused?.focus();
 }
 
+async function moveLightbox(direction: -1 | 1) {
+	const nextIndex = lightboxIndex + direction;
+	if (nextIndex < 0 || nextIndex >= images.length) return;
+	const focused = document.activeElement;
+	lightboxIndex = nextIndex;
+	await tick();
+	// Endpoint navigation buttons and media controls can disappear on a change.
+	// Keep keyboard input in the lightbox when the focused element was removed.
+	if (lightboxEl && focused && !focused.isConnected && document.activeElement === document.body) {
+		lightboxEl.querySelector<HTMLElement>(".lb-close")?.focus();
+	}
+}
+
 function handleKeydown(e: KeyboardEvent) {
 	if (!lightboxOpen) return;
 	if (e.key === "Escape") closeLightbox();
-	if (e.key === "ArrowRight" && lightboxIndex < images.length - 1)
-		lightboxIndex++;
-	if (e.key === "ArrowLeft" && lightboxIndex > 0) lightboxIndex--;
+	if (e.key === "ArrowRight") void moveLightbox(1);
+	if (e.key === "ArrowLeft") void moveLightbox(-1);
 	if (lightboxEl) trapFocus(e, lightboxEl);
 }
 
@@ -146,278 +124,20 @@ function clearSelection() {
 	selectedImageIds = new Set();
 }
 
-function triggerDownload(image: { downloadUrl: string | null; filename: string }) {
-	if (!image.downloadUrl) {
-		toasts.show("Downloads are disabled for this gallery.", { type: "error" });
-		return;
-	}
-
-	const a = document.createElement("a");
-	a.href = image.downloadUrl;
-	a.download = image.filename;
-	a.rel = "noopener";
-	document.body.appendChild(a);
-	a.click();
-	a.remove();
-}
-
-function submitZipDownload(plan: Extract<GalleryDownloadPlan, { type: "zip" }>) {
-	submitGalleryZipDownloadForm({
-		plan,
-		document,
-		setTimeout: window.setTimeout,
-	});
-}
-
-function setFolderDownloadStatus(message: string | null) {
-	folderDownloadStatus = message;
-	folderDownloadStatusToken += 1;
-	return folderDownloadStatusToken;
-}
-
-function clearFolderDownloadStatusLater(token: number, delayMs: number) {
-	window.setTimeout(() => {
-		if (folderDownloadStatusToken === token) {
-			setFolderDownloadStatus(null);
-		}
-	}, delayMs);
-}
-
-async function saveImagesToFolder(targetImages: GalleryDownloadImage[]) {
-	const controller = new AbortController();
-	folderDownloadAbortController = controller;
-	setFolderDownloadStatus("choose a folder to save this download.");
-	try {
-		await saveGalleryImagesToDirectory({
-			images: targetImages,
-			window,
-			signal: controller.signal,
-			onProgress(progress) {
-				setFolderDownloadStatus(
-					`saving ${progress.completed}/${progress.total} — ${progress.filename}`,
-				);
-			},
-		});
-		const statusToken = setFolderDownloadStatus(
-			`saved ${targetImages.length} file${targetImages.length === 1 ? "" : "s"}.`,
-		);
-		clearFolderDownloadStatusLater(statusToken, 5000);
-	} finally {
-		if (folderDownloadAbortController === controller) {
-			folderDownloadAbortController = null;
-		}
-	}
-}
-
-async function saveImagesToZip(targetImages: GalleryDownloadImage[], galleryName: string) {
-	const controller = new AbortController();
-	folderDownloadAbortController = controller;
-	setFolderDownloadStatus("choose where to save this ZIP.");
-	try {
-		await saveGalleryImagesAsZipFile({
-			images: targetImages,
-			galleryName,
-			window,
-			signal: controller.signal,
-			onProgress(progress) {
-				setFolderDownloadStatus(
-					`zipping ${progress.completed}/${progress.total} — ${progress.filename}`,
-				);
-			},
-		});
-		const statusToken = setFolderDownloadStatus(
-			`saved ${targetImages.length} file${targetImages.length === 1 ? "" : "s"} as ZIP.`,
-		);
-		clearFolderDownloadStatusLater(statusToken, 5000);
-	} finally {
-		if (folderDownloadAbortController === controller) {
-			folderDownloadAbortController = null;
-		}
-	}
-}
-
-function preparedZipStatusMessage(status: PreparedZipProgress) {
-	if (status.status === "queued") return "queued ZIP build...";
-	if (status.status === "building") {
-		return `building ZIP ${status.processedBytes > 0 ? `${status.processedBytes} bytes processed` : `${status.imageCount} files`}`;
-	}
-	if (status.status === "ready") return "ZIP ready. starting download...";
-	return "preparing ZIP...";
-}
-
-function formatDownloadBytes(bytes: number) {
-	if (bytes >= 1024 * 1024 * 1024) return `${(bytes / 1024 / 1024 / 1024).toFixed(1)} GB`;
-	if (bytes >= 1024 * 1024) return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
-	if (bytes >= 1024) return `${(bytes / 1024).toFixed(0)} KB`;
-	return `${bytes} B`;
-}
-
-function preparedZipSaveProgressMessage({
-	filename,
-	savedBytes,
-	totalBytes,
-}: {
-	filename: string;
-	savedBytes: number;
-	totalBytes?: number;
-}) {
-	return totalBytes
-		? `saving ${filename} — ${formatDownloadBytes(savedBytes)} / ${formatDownloadBytes(totalBytes)}`
-		: `saving ${filename} — ${formatDownloadBytes(savedBytes)}`;
-}
-
-function preparedZipStepMessage(step: PreparedZipDownloadStep) {
-	if (step === "chooseArchiveFile") return "choose where to save this ZIP.";
-	if (step === "preparing") return "preparing ZIP...";
-	if (step === "savedToFile") return "ZIP saved.";
-	return "ZIP download started.";
-}
-
-async function savePreparedZip(
-	plan: Extract<GalleryDownloadPlan, { type: "tooLarge" }>,
-	galleryName: string,
-) {
-	let requestId: string | null = null;
-	let activeController: AbortController | null = null;
-	try {
-		const result = await runPreparedZipDownload({
-			accessGrant: data.accessGrant || undefined,
-			document,
-			galleryName,
-			onController(controller) {
-				activeController = controller;
-				folderDownloadAbortController = controller;
-			},
-			onProgress(status) {
-				setFolderDownloadStatus(preparedZipStatusMessage(status));
-			},
-			onRequestId(nextRequestId) {
-				requestId = nextRequestId;
-				preparedZipCancelRequestId = nextRequestId;
-			},
-			onSaveProgress(progress) {
-				setFolderDownloadStatus(preparedZipSaveProgressMessage(progress));
-			},
-			onStep(step) {
-				setFolderDownloadStatus(preparedZipStepMessage(step));
-			},
-			plan,
-			saveToFile: chooseDownloadFolder && zipFileDownloadsSupported,
-			token: data.token,
-			window,
-			workerUrl: data.workerUrl,
-		});
-		const statusToken = setFolderDownloadStatus(
-			preparedZipStepMessage(result.mode === "file" ? "savedToFile" : "browserDownloadStarted"),
-		);
-		clearFolderDownloadStatusLater(statusToken, 5000);
-	} finally {
-		if (activeController && folderDownloadAbortController === activeController) {
-			folderDownloadAbortController = null;
-		}
-		if (requestId && preparedZipCancelRequestId === requestId) {
-			preparedZipCancelRequestId = null;
-		}
-	}
-}
-
-function isPickerAbort(error: unknown) {
-	return error instanceof DOMException && error.name === "AbortError";
-}
-
-function cancelFolderDownload() {
-	setFolderDownloadStatus("canceling download...");
-	const requestId = preparedZipCancelRequestId;
-	if (requestId) {
-		preparedZipCancelingRequestId = requestId;
-		void cancelPreparedZipDownload({
-			accessGrant: data.accessGrant || undefined,
-			fetch: window.fetch.bind(window),
-			requestId,
-			token: data.token,
-			workerUrl: data.workerUrl,
-		})
-			.catch((error) => {
-				console.warn("prepared ZIP cancellation failed", error);
-				const statusToken = setFolderDownloadStatus(
-					"download stopped locally. server cancel failed.",
-				);
-				clearFolderDownloadStatusLater(statusToken, 5000);
-			})
-			.finally(() => {
-				if (preparedZipCancelingRequestId === requestId) {
-					preparedZipCancelingRequestId = null;
-				}
-			});
-	}
-	folderDownloadAbortController?.abort(new DOMException("Download canceled.", "AbortError"));
-}
-
-async function downloadImages(
-	targetImages: GalleryDownloadImage[],
-	emptyMessage: string,
-	galleryName = data.gallery.name,
-) {
-	const plan = createGalleryDownloadPlan({
-		accessGrant: data.accessGrant || undefined,
-		images: targetImages,
-		emptyMessage,
-		galleryName,
-		token: data.token,
-		workerUrl: data.workerUrl,
-	});
-
-	if (plan.type === "empty") {
-		toasts.show(plan.message, { type: "info" });
-		return;
-	}
-
-	downloading = true;
-	try {
-		const route = chooseGalleryDownloadRoute({
-			chooseLocation: chooseDownloadFolder,
-			folderDownloadsSupported,
-			planType: plan.type,
-			targetCount: targetImages.length,
-			zipFileDownloadsSupported,
-		});
-
-		if (route === "folder") {
-			await saveImagesToFolder(targetImages);
-		} else if (route === "browserZip") {
-			await saveImagesToZip(targetImages, galleryName);
-		} else if (route === "preparedZip" && plan.type === "tooLarge") {
-			await savePreparedZip(plan, galleryName);
-		} else if (plan.type === "single") {
-			triggerDownload(plan.image);
-		} else if (plan.type === "zip") {
-			submitZipDownload(plan);
-		}
-	} catch (error) {
-		if (isPickerAbort(error)) {
-			const statusToken = setFolderDownloadStatus("download canceled.");
-			clearFolderDownloadStatusLater(statusToken, 3000);
-		} else {
-			setFolderDownloadStatus(null);
-			toasts.show("Download failed. Please try again.", { type: "error" });
-		}
-	} finally {
-		window.setTimeout(() => {
-			downloading = false;
-		}, 1500);
-	}
+function markFailed(set: Set<string>, imageId: string) {
+	return new Set(set).add(imageId);
 }
 
 function downloadAll() {
-	return downloadImages(images, "No photos are available to download yet.");
+	return downloads.downloadImages(images, "No photos are available to download yet.");
 }
 
 function downloadSelected() {
-	return downloadImages(selectedImages, "No photos selected yet.");
+	return downloads.downloadImages(selectedImages, "No photos selected yet.");
 }
 
 function downloadFavorites() {
-	return downloadImages(
+	return downloads.downloadImages(
 		images.filter((img) => img.isFavorite),
 		"No favorites selected yet.",
 		`${data.gallery.name}-favorites`,
@@ -429,11 +149,7 @@ let favoriteCount = $derived(
 );
 </script>
 
-<svelte:head>
-	<title>{data.gallery.name} | Gallery</title>
-</svelte:head>
-
-<svelte:window onkeydown={handleKeydown} />
+<PrivateCapabilityHead title="{data.gallery.name} | Gallery" />
 
 {#if data.requiresPassword}
 	<section class="password-gate" aria-labelledby="gallery-password-title">
@@ -458,54 +174,52 @@ let favoriteCount = $derived(
 		</p>
 		{#if data.gallery.downloadEnabled}
 			<div class="download-bar">
-				<button class="download-btn" onclick={downloadAll} disabled={downloading}>
-					{folderDownloadInProgress ? "saving..." : downloading ? "starting..." : "download all"}
+				<button class="download-btn" onclick={downloadAll} disabled={downloads.downloading}>
+					{downloads.folderDownloadInProgress ? "saving..." : downloads.downloading ? "starting..." : "download all"}
 				</button>
 				<button
 					class="download-btn secondary"
 					onclick={downloadSelected}
-					disabled={downloading || selectedCount === 0}
+					disabled={downloads.downloading || selectedCount === 0}
 				>
 					download selected ({selectedCount})
 				</button>
 				{#if data.gallery.favoritesEnabled && favoriteCount > 0}
-					<button class="download-btn secondary" onclick={downloadFavorites} disabled={downloading}>
+					<button class="download-btn secondary" onclick={downloadFavorites} disabled={downloads.downloading}>
 						download favorites ({favoriteCount})
 					</button>
 				{/if}
 				<button
 					class="download-btn tertiary"
 					onclick={allImagesSelected ? clearSelection : selectAllImages}
-					disabled={downloading || images.length === 0}
+					disabled={downloads.downloading || images.length === 0}
 				>
 					{allImagesSelected ? "clear selection" : "select all"}
 				</button>
-				<label class="folder-download-toggle" aria-disabled={!chosenLocationDownloadsSupported}>
+				<label class="folder-download-toggle" aria-disabled={!downloads.chosenLocationDownloadsSupported}>
 					<input
 						type="checkbox"
-						bind:checked={chooseDownloadFolder}
-						disabled={!chosenLocationDownloadsSupported || downloading}
+						bind:checked={downloads.chooseDownloadFolder}
+						disabled={!downloads.chosenLocationDownloadsSupported || downloads.downloading}
 					/>
 					<span>choose location</span>
 				</label>
-				{#if folderDownloadInProgress}
+				{#if downloads.folderDownloadInProgress}
 					<button
 						class="download-btn danger"
 						type="button"
-						onclick={cancelFolderDownload}
-						disabled={preparedZipCancelRequestId !== null &&
-							preparedZipCancelingRequestId === preparedZipCancelRequestId}
+						onclick={downloads.cancelFolderDownload}
+						disabled={downloads.canceling}
 					>
-						{preparedZipCancelRequestId !== null &&
-						preparedZipCancelingRequestId === preparedZipCancelRequestId
+						{downloads.canceling
 							? "canceling..."
 							: "cancel download"}
 					</button>
 				{/if}
 			</div>
-			{#if folderDownloadStatus}
-				<p class="download-status" role="status">{folderDownloadStatus}</p>
-			{:else if !chosenLocationDownloadsSupported}
+			{#if downloads.folderDownloadStatus}
+				<p class="download-status" role="status">{downloads.folderDownloadStatus}</p>
+			{:else if !downloads.chosenLocationDownloadsSupported}
 				<p class="download-status subtle">chosen-location downloads require a Chromium browser.</p>
 			{/if}
 		{/if}
@@ -537,12 +251,21 @@ let favoriteCount = $derived(
 		<div class="image-grid">
 			{#each images as image, i (image._id)}
 				<div class="grid-cell">
-					<button class="image-btn" onclick={() => openLightbox(i)} aria-label={"View photo " + (i + 1) + " of " + images.length}>
-						{#if image.canPreview}
-							<img src={image.thumbUrl} alt={"Photo " + (i + 1) + ": " + image.filename} loading="lazy" />
+					<button class="image-btn" onclick={() => openLightbox(i)} aria-label={"View item " + (i + 1) + " of " + images.length}>
+						{#if image.isVideo}
+							<span class="file-tile" aria-label={image.filename}><span>video</span></span>
+						{:else if image.canPreview && !failedThumbnailIds.has(image._id)}
+							<img
+								src={image.thumbUrl}
+								alt=""
+								draggable="false"
+								loading={i < 6 ? "eager" : "lazy"}
+								decoding="async"
+								onerror={() => failedThumbnailIds = markFailed(failedThumbnailIds, image._id)}
+							/>
 						{:else}
 							<span class="file-tile" aria-label={image.filename}>
-								<span>{image.fileLabel}</span>
+								<span>{image.canPreview ? "image unavailable" : image.fileLabel}</span>
 							</span>
 						{/if}
 					</button>
@@ -580,11 +303,13 @@ let favoriteCount = $derived(
 			{#each images as image, i (image._id)}
 				<div class="list-row">
 					<button class="list-thumb" type="button" onclick={() => openLightbox(i)} aria-label={"View " + image.filename}>
-						{#if image.canPreview}
-							<img src={image.thumbUrl} alt="" loading="lazy" />
+						{#if image.isVideo}
+							<span class="file-tile" aria-label={image.filename}><span>video</span></span>
+						{:else if image.canPreview && !failedThumbnailIds.has(image._id)}
+							<img src={image.thumbUrl} alt="" draggable="false" loading="lazy" decoding="async" onerror={() => failedThumbnailIds = markFailed(failedThumbnailIds, image._id)} />
 						{:else}
 							<span class="file-tile" aria-label={image.filename}>
-								<span>{image.fileLabel}</span>
+								<span>{image.canPreview ? "image unavailable" : image.fileLabel}</span>
 							</span>
 						{/if}
 					</button>
@@ -627,7 +352,7 @@ let favoriteCount = $derived(
 		class="lightbox"
 		role="dialog"
 		aria-modal="true"
-		aria-label="Image lightbox"
+		aria-label="Gallery lightbox"
 		tabindex="-1"
 		bind:this={lightboxEl}
 		onclick={(e) => {
@@ -637,11 +362,14 @@ let favoriteCount = $derived(
 		onkeydown={handleKeydown}
 	>
 		<div class="lightbox-content">
-			{#if images[lightboxIndex].canPreview}
-				<img src={images[lightboxIndex].previewUrl} alt={images[lightboxIndex].filename} />
+			{#if images[lightboxIndex].isVideo}
+				<!-- svelte-ignore a11y_media_has_caption -->
+				<video src={images[lightboxIndex].previewUrl} controls playsinline preload="metadata"></video>
+			{:else if images[lightboxIndex].canPreview && !failedPreviewIds.has(images[lightboxIndex]._id)}
+				<img src={images[lightboxIndex].previewUrl} alt={images[lightboxIndex].filename} draggable="false" onerror={() => failedPreviewIds = markFailed(failedPreviewIds, images[lightboxIndex]._id)} />
 			{:else}
 				<div class="lightbox-file">
-					<span>{images[lightboxIndex].fileLabel}</span>
+					<span>{images[lightboxIndex].canPreview ? "image unavailable" : images[lightboxIndex].fileLabel}</span>
 				</div>
 			{/if}
 			<div class="lightbox-controls">
@@ -659,7 +387,7 @@ let favoriteCount = $derived(
 						</button>
 					{/if}
 					{#if data.gallery.downloadEnabled}
-						<a class="lb-btn" aria-label="Download original image" href={images[lightboxIndex].downloadUrl} download>
+						<a class="lb-btn" aria-label="Download original file" href={images[lightboxIndex].downloadUrl} download>
 							↓ download
 						</a>
 					{/if}
@@ -667,10 +395,10 @@ let favoriteCount = $derived(
 			</div>
 		</div>
 		{#if lightboxIndex > 0}
-			<button class="lb-nav lb-prev" aria-label="Previous image" onclick={(e) => { e.stopPropagation(); lightboxIndex--; }}>‹</button>
+			<button class="lb-nav lb-prev" aria-label="Previous image" onclick={(e) => { e.stopPropagation(); void moveLightbox(-1); }}>‹</button>
 		{/if}
 		{#if lightboxIndex < images.length - 1}
-			<button class="lb-nav lb-next" aria-label="Next image" onclick={(e) => { e.stopPropagation(); lightboxIndex++; }}>›</button>
+			<button class="lb-nav lb-next" aria-label="Next image" onclick={(e) => { e.stopPropagation(); void moveLightbox(1); }}>›</button>
 		{/if}
 		<button class="lb-close" aria-label="Close lightbox" onclick={closeLightbox}>✕</button>
 	</div>
@@ -835,6 +563,15 @@ let favoriteCount = $derived(
 		height: 100%;
 		object-fit: cover;
 		transition: transform 0.2s;
+	}
+
+	.image-btn img,
+	.list-thumb img,
+	.lightbox-content > img {
+		-webkit-touch-callout: none;
+		-webkit-user-drag: none;
+		user-select: none;
+		pointer-events: none;
 	}
 
 	.file-tile {
@@ -1050,7 +787,8 @@ let favoriteCount = $derived(
 		align-items: center;
 	}
 
-	.lightbox-content img {
+	.lightbox-content img,
+	.lightbox-content video {
 		max-width: 100%;
 		max-height: 75vh;
 		object-fit: contain;
@@ -1070,6 +808,8 @@ let favoriteCount = $derived(
 
 	.lightbox-controls {
 		display: flex;
+		flex-wrap: wrap;
+		width: 100%;
 		align-items: center;
 		gap: 16px;
 		margin-top: 12px;
@@ -1077,15 +817,25 @@ let favoriteCount = $derived(
 		font-size: 0.82rem;
 	}
 
-	.lightbox-counter { font-variant-numeric: tabular-nums; }
-	.lightbox-filename { opacity: 0.5; flex: 1; }
+	.lightbox-counter { font-variant-numeric: tabular-nums; flex-shrink: 0; white-space: nowrap; }
+	.lightbox-filename {
+		opacity: 0.5;
+		flex: 1 1 160px;
+		min-width: 0;
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
+	}
 
 	.lightbox-actions {
 		display: flex;
+		flex-shrink: 0;
+		margin-left: auto;
 		gap: 8px;
 	}
 
 	.lb-btn {
+		white-space: nowrap;
 		padding: 5px 14px;
 		border: 1px solid rgba(255, 255, 255, 0.3);
 		border-radius: 5px;

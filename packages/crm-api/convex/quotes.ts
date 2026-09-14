@@ -1,5 +1,6 @@
+import { logActivity } from "./activityLog";
+import { calculateInvoiceAmounts } from "../src/invoiceAmounts";
 import { v } from "convex/values";
-import { internal } from "./_generated/api";
 import { mutation, query } from "./_generated/server";
 import {
 	requireDocumentSiteAdmin,
@@ -14,7 +15,6 @@ import {
 import { DEFAULT_LIST_LIMIT } from "./helpers/limits";
 import { markDocumentSent } from "./helpers/marking";
 import { patchDocument } from "./helpers/patching";
-import { queryBySiteUrl } from "./helpers/querying";
 import { categoryValidator } from "./helpers/validators";
 
 // Keep in sync with the `quotes.status` union in schema.ts. Widening to
@@ -35,7 +35,13 @@ export const list = query({
 	},
 	handler: async (ctx, { siteUrl, status }) => {
 		await requireSiteAdmin(ctx, siteUrl);
-		const all = await queryBySiteUrl(ctx, "quotes", siteUrl, { status });
+		const selectedStatus = statusValidator.members.find((member) => member.value === status)?.value;
+		if (status !== undefined && selectedStatus === undefined) return [];
+		const documents = ctx.db.query("quotes");
+		const matching = selectedStatus === undefined
+			? documents.withIndex("by_siteUrl", (q) => q.eq("siteUrl", siteUrl))
+			: documents.withIndex("by_siteUrl_status", (q) => q.eq("siteUrl", siteUrl).eq("status", selectedStatus));
+		const all = await matching.order("desc").take(200);
 		return all.map((quote) => ({
 			...quote,
 			clientName: quote.clientName ?? "unknown",
@@ -90,7 +96,7 @@ export const create = mutation({
 			status: "draft",
 		});
 
-		await ctx.runMutation(internal.activityLog.logActivity, {
+		await logActivity(ctx, {
 			siteUrl: args.siteUrl,
 			clientId: args.clientId,
 			action: "quote_created",
@@ -121,7 +127,11 @@ export const update = mutation({
 		status: v.optional(statusValidator),
 	},
 	handler: async (ctx, { quoteId, siteUrl, ...updates }) => {
-		await patchDocument(ctx, quoteId, siteUrl, updates);
+		const previous = await patchDocument(ctx, quoteId, siteUrl, updates);
+		if (updates.status !== previous.status) {
+			if (updates.status === "accepted") await ctx.db.patch(quoteId, { acceptedAt: Date.now() });
+			if (updates.status === "declined") await ctx.db.patch(quoteId, { declinedAt: Date.now() });
+		}
 	},
 });
 
@@ -154,7 +164,7 @@ export const markAccepted = mutation({
 		}
 		await ctx.db.patch(quoteId, { status: "accepted", acceptedAt: Date.now() });
 
-		await ctx.runMutation(internal.activityLog.logActivity, {
+		await logActivity(ctx, {
 			siteUrl: quote.siteUrl,
 			clientId: quote.clientId,
 			action: "quote_accepted",
@@ -198,6 +208,7 @@ export const convertToInvoice = mutation({
 		}));
 
 		// Create the invoice
+		calculateInvoiceAmounts(items);
 		const client = await ctx.db.get(quote.clientId);
 		const invoiceNumber = await allocateNextInvoiceNumber(ctx, quote.siteUrl);
 		const invoiceId = await ctx.db.insert("invoices", {
@@ -217,7 +228,7 @@ export const convertToInvoice = mutation({
 
 		// Audit M27: observability for the conversion so the client activity
 		// feed reflects both quote and invoice lifecycle in one place.
-		await ctx.runMutation(internal.activityLog.logActivity, {
+		await logActivity(ctx, {
 			siteUrl: quote.siteUrl,
 			clientId: quote.clientId,
 			action: "quote_converted_to_invoice",
@@ -240,7 +251,9 @@ export const markDeclined = mutation({
 		if (!doc || doc.siteUrl !== siteUrl) {
 			throw new Error("Not found");
 		}
-		await ctx.db.patch(quoteId, { status: "declined" });
+		if (doc.status !== "declined") {
+			await ctx.db.patch(quoteId, { status: "declined", declinedAt: Date.now() });
+		}
 	},
 });
 

@@ -5,24 +5,13 @@
  * Renders lumaPrintSetV2 sets with the shared catalog-aware configurator.
  */
 import SEO from "$lib/components/SEO.svelte";
-import StickyMobileBar from "$lib/components/StickyMobileBar.svelte";
 import { cart } from "$lib/shop/cart.svelte";
-import { cartUI } from "$lib/shop/cartUI.svelte";
+import { showCartAddition } from "$lib/shop/cartFeedback";
 import { toasts } from "$lib/stores/toast.svelte";
-import {
-	getFrame,
-	getPaper,
-	getSize,
-	isCanvasPaper,
-	V2_BORDER_OPTIONS,
-	V2_FRAME_OPTIONS,
-} from "$lib/shop/printCatalog";
-import {
-	getAvailablePrintPapers,
-	getAvailablePrintSizes,
-	normalizePrintFinishSelection,
-	resolvePrintConfiguration,
-} from "$lib/shop/printConfigurator";
+import { createPrintSelection } from "$lib/shop/printSelection.svelte";
+import PrintConfigurator from "$lib/components/PrintConfigurator.svelte";
+import PrintPurchase from "$lib/components/PrintPurchase.svelte";
+import { printConfigurationCartFields } from "$lib/shop/printPurchase";
 import type { ProductImage } from "$lib/types/shop";
 import { createCheckout } from "$lib/utils/checkout";
 
@@ -30,67 +19,8 @@ let { data } = $props();
 
 let isLoading = $state(false);
 
-// ─── Configurator state ─────────────────────────────────────
-let selectedPaperSlug = $state("");
-let selectedSizeSlug = $state("");
-let selectedBorderWidth = $state("none");
-let selectedFrame = $state("none");
-
-const isCanvasSelected = $derived(isCanvasPaper(selectedPaperSlug));
-
-// Keep the form controls synchronized with the shared finish invariants.
-$effect(() => {
-	const normalized = normalizePrintFinishSelection({
-		paperSlug: selectedPaperSlug,
-		borderWidthValue: selectedBorderWidth,
-		frameValue: selectedFrame,
-	});
-	if (selectedBorderWidth !== normalized.borderWidthValue) {
-		selectedBorderWidth = normalized.borderWidthValue;
-	}
-	if (selectedFrame !== normalized.frameValue) {
-		selectedFrame = normalized.frameValue;
-	}
-});
-
-const availablePapers = $derived(getAvailablePrintPapers(data.printSet.variants));
-
-$effect(() => {
-	if (availablePapers.length > 0 && !selectedPaperSlug) {
-		selectedPaperSlug = availablePapers[0].slug;
-	}
-});
-
-const availableSizes = $derived.by(() => {
-	if (!selectedPaperSlug) return [];
-	return getAvailablePrintSizes(data.printSet.variants, selectedPaperSlug);
-});
-
-$effect(() => {
-	if (
-		availableSizes.length > 0 &&
-		!availableSizes.some((size) => size.slug === selectedSizeSlug)
-	) {
-		selectedSizeSlug = availableSizes[0].slug;
-	}
-});
-
-const selectedConfiguration = $derived.by(() => {
-	return resolvePrintConfiguration({
-		variants: data.printSet.variants,
-		paperSlug: selectedPaperSlug,
-		sizeSlug: selectedSizeSlug,
-		borderWidthValue: selectedBorderWidth,
-		frameValue: selectedFrame,
-		bordersEnabled: data.printSet.bordersEnabled,
-		framedEnabled: data.printSet.framedEnabled,
-		frameMarkupMultiplier: data.printSet.frameMarkupMultiplier,
-	});
-});
-
-const displaySetPrice = $derived.by(() => {
-	return selectedConfiguration?.displayPrice ?? null;
-});
+const selection = createPrintSelection(() => data.printSet);
+const selectedConfiguration = $derived(selection.configuration);
 
 function handleCheckout() {
 	if (!selectedConfiguration) return;
@@ -117,7 +47,7 @@ function handleCheckout() {
 		});
 }
 
-function handleAddToCart() {
+function handleAddToCart(event: MouseEvent) {
 	if (!selectedConfiguration) return;
 
 	const originalUrls = (data.images as ProductImage[]).map(
@@ -131,30 +61,9 @@ function handleAddToCart() {
 		title: data.printSet.title,
 		imageUrl: data.printSet.previewImage || originalUrls[0],
 		imageUrls: originalUrls,
-		paperName: selectedConfiguration.paper.name,
-		paperSubcategoryId: selectedConfiguration.paperSubcategoryId,
-		paperWidth: selectedConfiguration.size.width,
-		paperHeight: selectedConfiguration.size.height,
-		paperSlug: selectedConfiguration.paperSlug,
-		sizeSlug: selectedConfiguration.sizeSlug,
-		borderWidthValue: selectedConfiguration.borderWidthValue,
-		frameValue: selectedConfiguration.frameValue,
-		...(selectedConfiguration.borderWidth
-			? { borderWidth: selectedConfiguration.borderWidth }
-			: {}),
-		...(selectedConfiguration.frameSubcategoryId
-			? { frameSubcategoryId: selectedConfiguration.frameSubcategoryId }
-			: {}),
-		...(selectedConfiguration.canvas
-			? {
-					canvasSubcategoryId: selectedConfiguration.canvas.subcategoryId,
-					canvasWrapHex: selectedConfiguration.canvas.wrapHex,
-				}
-			: {}),
-		quantity: 1,
-		unitPriceCents: Math.round(selectedConfiguration.displayPrice * 100),
+		...printConfigurationCartFields(selectedConfiguration),
 	});
-	cartUI.open();
+	showCartAddition(event.currentTarget);
 }
 </script>
 
@@ -164,187 +73,104 @@ function handleAddToCart() {
 	url="https://angelsrest.online/shop/sets/{data.printSet.slug}"
 />
 
-<div class="max-w-6xl mx-auto px-4 md:px-8">
-	<a href="/shop" class="text-sm opacity-70 hover:opacity-100 mb-4 inline-block">
+<div class="set-page">
+	<a href="/shop" class="back-link">
 		← Back to shop
 		{#if data.printSet.parent}
-			<span class="mx-2 text-surface-500">/</span>
+			<span class="breadcrumb-separator">/</span>
 			{data.printSet.parent.title}
 		{/if}
 	</a>
 
-	<div class="grid md:grid-cols-2 gap-8">
+	<div class="set-layout">
 		<!-- Images grid -->
-		<div class="space-y-4">
+		<div class="set-images">
 			{#if data.images.length > 0}
-				<div class="columns-2 gap-2">
+				<div class="image-columns">
 					{#each data.images as image (image.full ?? image.thumb)}
-						<div class="mb-2 break-inside-avoid">
-							<img
+						<div class="image-cell">
+							<img data-water-lens
 								src={(image as ProductImage).thumb}
 								alt={image.alt}
 								loading="lazy"
-								class="w-full h-auto rounded-md"
+								class="set-image"
 							/>
 						</div>
 					{/each}
 				</div>
 			{:else}
-				<div class="aspect-square bg-surface-100-800-token rounded-md flex items-center justify-center">
-					<span class="text-surface-500">No images</span>
+				<div class="empty-images">
+					<span class="empty-image-label">No images</span>
 				</div>
 			{/if}
 		</div>
 
 		<!-- Product details -->
-		<div class="space-y-6">
+		<div class="set-details">
 			<div>
-				<h1 class="text-3xl font-semibold mb-2">{data.printSet.title}</h1>
-				<span class="text-sm text-surface-600-300-token">
+				<h1 class="set-title">{data.printSet.title}</h1>
+				<span class="set-meta">
 					{data.images.length} print{data.images.length === 1 ? "" : "s"} in this set
 				</span>
 			</div>
 
 			{#if data.printSet.description}
-				<div class="text-surface-700-200-token">
+				<div class="set-description">
 					<p>{data.printSet.description}</p>
 				</div>
 			{/if}
 
 			<!-- Stock status -->
-			<div class="flex items-center gap-2">
+			<div class="stock-status">
 				{#if data.printSet.inStock}
-					<div class="w-3 h-3 rounded-full bg-success-500"></div>
-					<span class="text-sm text-surface-600-300-token">In stock</span>
+					<div class="in-stock-dot"></div>
+					<span class="set-meta">In stock</span>
 				{:else}
-					<div class="w-3 h-3 rounded-full bg-error-500"></div>
-					<span class="text-sm text-surface-600-300-token">Out of stock</span>
+					<div class="out-of-stock-dot"></div>
+					<span class="set-meta">Out of stock</span>
 				{/if}
 			</div>
 
-			<!-- Desktop: inline price + buttons -->
-			<div class="hidden md:flex items-baseline justify-between gap-4 py-2">
-				<div class="text-3xl font-semibold text-surface-900-50-token">
-					{#if selectedConfiguration}
-						${displaySetPrice}
-						<span class="text-base font-normal text-surface-600-300-token">
-							{getPaper(selectedPaperSlug)?.name} · {getSize(selectedSizeSlug)?.label}{selectedBorderWidth !== 'none' ? ` · ${selectedBorderWidth}" border` : ''}{selectedFrame !== 'none' ? ` · ${getFrame(selectedFrame)?.label} frame` : ''}
-						</span>
-					{:else}
-						<span class="text-base text-surface-500">Select paper & size</span>
-					{/if}
-				</div>
-				<div class="flex gap-2 shrink-0">
-					{#if data.printSet.inStock && selectedConfiguration}
-						<button class="btn btn-sm variant-soft-surface" onclick={handleAddToCart}>
-							add to cart
-						</button>
-						<button
-							class="btn btn-sm variant-filled-primary"
-							disabled={isLoading}
-							onclick={handleCheckout}
-						>
-							{isLoading ? "processing..." : "buy now"}
-						</button>
-					{:else if !data.printSet.inStock}
-						<button class="btn btn-sm variant-filled-primary" disabled>out of stock</button>
-					{/if}
-				</div>
-			</div>
-
-			<div class="space-y-4">
-				<div>
-					<label for="set-paper" class="block text-sm text-surface-600-300-token mb-1">
-						Material
-					</label>
-					<select id="set-paper" class="select w-full" bind:value={selectedPaperSlug}>
-						{#each availablePapers as paper (paper.slug)}
-							<option value={paper.slug}>{paper.name}</option>
-						{/each}
-					</select>
-				</div>
-				<div>
-					<label for="set-size" class="block text-sm text-surface-600-300-token mb-1">
-						Size
-					</label>
-					<select id="set-size" class="select w-full" bind:value={selectedSizeSlug}>
-						{#each availableSizes as size (size.slug)}
-							<option value={size.slug}>{size.label}</option>
-						{/each}
-					</select>
-				</div>
-
-				{#if data.printSet.bordersEnabled !== false && !isCanvasSelected}
-					<div>
-						<label for="set-border" class="block text-sm text-surface-600-300-token mb-1">
-							Border
-						</label>
-						<select
-							id="set-border"
-							class="select w-full"
-							bind:value={selectedBorderWidth}
-							disabled={selectedFrame !== 'none'}
-						>
-							{#each V2_BORDER_OPTIONS as border (border.value)}
-								<option value={border.value}>{border.label}</option>
-							{/each}
-						</select>
-						{#if selectedFrame !== 'none'}
-							<p class="text-xs text-surface-500 mt-1">border included with frame</p>
-						{/if}
-					</div>
-				{/if}
-
-				{#if data.printSet.framedEnabled && !isCanvasSelected}
-					<div>
-						<label for="set-frame" class="block text-sm text-surface-600-300-token mb-1">
-							Frame
-						</label>
-						<select id="set-frame" class="select w-full" bind:value={selectedFrame}>
-							{#each V2_FRAME_OPTIONS as frame (frame.value)}
-								<option value={frame.value}>{frame.label}</option>
-							{/each}
-						</select>
-					</div>
-				{/if}
-			</div>
-
-			<p class="text-xs text-surface-500">
-				Secure checkout powered by Stripe
-			</p>
-
-			<StickyMobileBar>
-				{#snippet children(isStuck)}
-					<div class="flex flex-wrap items-center justify-between gap-x-4 gap-y-1">
-						<div class="flex items-center gap-1.5">
-							{#if selectedConfiguration}
-								<span class="text-xl font-semibold">${displaySetPrice}</span>
-								<span class="text-xs {isStuck ? 'text-surface-300' : 'text-surface-600-300-token'}">
-									{getPaper(selectedPaperSlug)?.name} · {getSize(selectedSizeSlug)?.label}{selectedBorderWidth !== 'none' ? ` · ${selectedBorderWidth}" border` : ''}{selectedFrame !== 'none' ? ` · ${getFrame(selectedFrame)?.label} frame` : ''}
-								</span>
-							{:else}
-								<span class="text-sm text-surface-500">Select paper & size</span>
-							{/if}
-						</div>
-						<div class="flex gap-1.5">
-							{#if data.printSet.inStock && selectedConfiguration}
-								<button class="btn btn-sm text-xs px-2 variant-soft-surface" onclick={handleAddToCart}>
-									add to cart
-								</button>
-								<button
-									class="btn btn-sm text-xs px-2 variant-filled-primary"
-									disabled={isLoading}
-									onclick={handleCheckout}
-								>
-									{isLoading ? "..." : "buy now"}
-								</button>
-							{:else if !data.printSet.inStock}
-								<button class="btn btn-sm text-xs px-2 variant-filled-primary" disabled>out of stock</button>
-							{/if}
-						</div>
-					</div>
-				{/snippet}
-			</StickyMobileBar>
+			<PrintPurchase
+				configuration={selectedConfiguration}
+				inStock={data.printSet.inStock}
+				loading={isLoading}
+				onAddToCart={handleAddToCart}
+				onCheckout={handleCheckout}
+			>
+				<PrintConfigurator {selection} />
+				<p class="payment-note">Secure checkout powered by Stripe</p>
+			</PrintPurchase>
 		</div>
 	</div>
 </div>
+
+<style>
+  @layer components {
+    .set-page { max-width: 72rem; margin-inline: auto; padding-inline: 1rem; }
+    @media (min-width: 48rem) { .set-page { padding-inline: 2rem; } }
+    .back-link { font-size: var(--text-sm); line-height: var(--text-sm--line-height); opacity: 0.7; margin-bottom: 1rem; display: inline-block; }
+    @media (hover: hover) { .back-link:hover { opacity: 1.0; } }
+    .breadcrumb-separator { margin-inline: 0.5rem; color: var(--color-surface-500); }
+    .set-layout { display: grid; grid-template-columns: minmax(0, 1fr); gap: 2rem; }
+    @media (min-width: 48rem) { .set-layout { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+    .set-images > :global(:not(:last-child)) { margin-block-start: 0; margin-block-end: 1.0rem; }
+    .image-columns { column-count: 2; gap: 0.5rem; }
+    .image-cell { margin-bottom: 0.5rem; break-inside: avoid; }
+    .set-image { width: 100%; height: auto; border-radius: 0.375rem; }
+    .empty-images { aspect-ratio: 1 / 1; background-color: var(--color-surface-100); border-radius: 0.375rem; display: flex; align-items: center; justify-content: center; }
+    :global(.dark) .empty-images { background-color: var(--color-surface-800); }
+    .empty-image-label { color: var(--color-surface-500); }
+    .set-details > :global(:not(:last-child)) { margin-block-start: 0; margin-block-end: 1.5rem; }
+    .set-title { font-size: var(--text-3xl); }
+    .set-meta { font-size: var(--text-sm); line-height: var(--text-sm--line-height); color: var(--color-surface-600); }
+    :global(.dark) .set-meta { color: var(--color-surface-300); }
+    .set-description { color: var(--color-surface-700); }
+    :global(.dark) .set-description { color: var(--color-surface-200); }
+    .stock-status { display: flex; align-items: center; gap: 0.5rem; }
+    .in-stock-dot { width: 0.75rem; height: 0.75rem; border-radius: 9999px; background-color: var(--color-success-500); }
+    .out-of-stock-dot { width: 0.75rem; height: 0.75rem; border-radius: 9999px; background-color: var(--color-error-500); }
+    .set-details { --print-purchase-actions-shrink: 0; }
+    .payment-note { font-size: var(--text-xs); line-height: var(--text-xs--line-height); color: var(--color-surface-500); }
+  }
+</style>

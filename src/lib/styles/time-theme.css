@@ -4,8 +4,8 @@
 
    Color shifts based on time of day.
    Works alongside light/dark mode — these tint
-   the background, accent UI elements, and add
-   atmospheric glow.
+   the public-site background, accent UI elements,
+   and atmospheric glow. Admin uses only the accent.
 
    Periods:
    - dawn: soft pink/coral warmth
@@ -120,7 +120,7 @@ html.dark[data-time-period="night"] {
 }
 
 /* ---- Apply the time tint BEHIND content ---- */
-body::before {
+body:not(.admin-route):not(.portal-route):not(:has([data-admin]))::before {
 	content: "";
 	position: fixed;
 	inset: 0;
@@ -131,7 +131,7 @@ body::before {
 }
 
 /* Radial glow accent — larger and more visible */
-body::after {
+body:not(.admin-route):not(.portal-route):not(:has([data-admin]))::after {
 	content: "";
 	position: fixed;
 	top: 0;
@@ -168,12 +168,6 @@ body::after {
 	border-color: var(--time-border);
 }
 
-/* Card borders get a subtle time tint on hover */
-[data-time-period] .group:hover > div {
-	border-color: var(--time-accent);
-	opacity: 0.85;
-}
-
 /* Footer border picks up time color */
 [data-time-period] footer {
 	border-color: var(--time-border);
@@ -185,28 +179,9 @@ body::after {
 }
 
 /* Form inputs pick up time accent on focus */
-[data-time-period] input:focus,
-[data-time-period] textarea:focus,
-[data-time-period] select:focus {
+[data-time-period] body:not(.admin-route):not(.portal-route) input:focus,
+[data-time-period] body:not(.admin-route):not(.portal-route) textarea:focus,
+[data-time-period] body:not(.admin-route):not(.portal-route) select:focus {
 	border-color: var(--time-accent);
 	box-shadow: 0 0 0 2px color-mix(in srgb, var(--time-accent) 15%, transparent);
-}
-
-/* ---- Time-aware text utility ---- */
-
-/* Apply to any text node that should pick up the current time period's
- * accent color, with a subtle atmospheric glow. Used for primary CTA copy
- * (e.g. cart "checkout" button) so the most-clicked surfaces breathe with
- * the rest of the page's time tint.
- */
-[data-time-period] .time-aware-text {
-	color: var(--time-accent);
-	text-shadow: 0 0 12px var(--time-glow);
-	/* Slightly heavier than the default button weight so the CTA stays
-	 * legible at low-contrast time periods (afternoon, morning) where the
-	 * accent color is a soft yellow against a light surface. */
-	font-weight: 500;
-	transition:
-		color 2s ease,
-		text-shadow 2s ease;
 }

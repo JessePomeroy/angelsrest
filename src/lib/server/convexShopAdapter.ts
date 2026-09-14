@@ -1,14 +1,15 @@
 import { getPaperBySlug, getSizeBySlug, getWholesaleCost } from "@jessepomeroy/print-catalog";
 
 const MEDIA_ROOT = "https://media.angelsrest.online/sites/angelsrest.online/web";
-const KIND_COUNTS = {
-	print: 11,
-	print_set: 2,
-	postcard: 0,
-	tapestry: 19,
-	digital_download: 1,
-	merchandise: 0,
-} as const;
+const CATALOG_PRODUCT_LIMIT = 40;
+const KINDS = [
+	"print",
+	"print_set",
+	"postcard",
+	"tapestry",
+	"digital_download",
+	"merchandise",
+] as const;
 const CATEGORIES = {
 	postcard: "postcards",
 	tapestry: "tapestries",
@@ -28,10 +29,8 @@ const PRESETS = {
 	display2560: { filename: "display-2560", width: 2560 },
 } as const;
 
-type Kind = keyof typeof KIND_COUNTS;
+type Kind = (typeof KINDS)[number];
 type Preset = keyof typeof PRESETS;
-
-const KINDS = Object.keys(KIND_COUNTS) as Kind[];
 
 export class ConvexShopProjectionError extends Error {}
 
@@ -74,9 +73,12 @@ function asset(value: unknown) {
 	for (const preset of Object.keys(PRESETS) as Preset[]) {
 		const derivative = object(derivatives[preset], ["contentType", "width", "height"]);
 		if (derivative.contentType !== "image/webp") fail();
+		const derivativeWidth = integer(derivative.width, 1, 100_000);
+		const derivativeHeight = integer(derivative.height, 1, 100_000);
 		const expectedWidth = Math.min(sourceWidth, PRESETS[preset].width);
 		const expectedHeight = Math.max(1, Math.round(sourceHeight * (expectedWidth / sourceWidth)));
-		if (derivative.width !== expectedWidth || derivative.height !== expectedHeight) fail();
+		if (derivativeWidth !== expectedWidth || Math.abs(derivativeHeight - expectedHeight) > 1)
+			fail();
 	}
 	return { url: (preset: Preset) => `${MEDIA_ROOT}/${assetId}/${PRESETS[preset].filename}.webp` };
 }
@@ -124,7 +126,7 @@ function variants(value: unknown, isPrint: boolean, available: boolean) {
 	return result;
 }
 
-function media(value: unknown, kind: Kind) {
+function media(value: unknown, kind: Kind, available: boolean) {
 	if (!Array.isArray(value) || value.length === 0 || value.length > 50) fail();
 	const keys = new Set<string>();
 	const roleOrders = new Map<string, number>();
@@ -142,7 +144,8 @@ function media(value: unknown, kind: Kind) {
 	});
 	const required = kind === "print" ? "primary" : kind === "print_set" ? "cover" : "gallery";
 	if (!result.some((item) => item.role === required)) fail();
-	if (kind === "print_set" && !result.some((item) => item.role === "set_member")) fail();
+	if (kind === "print_set" && available && !result.some((item) => item.role === "set_member"))
+		fail();
 	return result;
 }
 
@@ -194,7 +197,7 @@ function normalize(value: unknown) {
 		featured: placement.featured,
 		orderRank: placement.orderRank === null ? null : text(placement.orderRank, 120),
 		variants: variants(item.variants, isPrint, availability === "available"),
-		media: media(item.media, kind),
+		media: media(item.media, kind, availability === "available"),
 		...(options
 			? {
 					printOptions: {
@@ -241,12 +244,65 @@ function setImage(item: Media) {
 	return { thumb, ...rest };
 }
 
-function completeProducts(value: unknown) {
-	if (!Array.isArray(value) || value.length !== 33) fail();
+type ShopPrintVariant = {
+	paper: string;
+	size: string;
+	retailPrice: number;
+};
+
+type ShopPrintOptions = {
+	bordersEnabled: boolean;
+	framedEnabled: boolean;
+	frameMarkupMultiplier: number;
+};
+
+type ConvexProductOutput =
+	| {
+			productType: "v2";
+			product: {
+				title: string;
+				slug: string;
+				description: string | undefined;
+				variants: ShopPrintVariant[];
+				inStock: boolean;
+				featured: boolean;
+				images: Array<ReturnType<typeof productImage>>;
+				price?: number;
+				category?: string;
+			} & ShopPrintOptions;
+	  }
+	| {
+			productType: "v1";
+			product: {
+				title: string;
+				slug: string;
+				description: string | undefined;
+				price: number | undefined;
+				category: ReturnType<typeof category>;
+				featured: boolean;
+				inStock: boolean;
+				images: Array<ReturnType<typeof productImage>>;
+				seo?: { description: string | undefined; ogImageUrl?: string };
+			};
+	  };
+
+type ConvexPrintSetOutput = {
+	printSet: {
+		title: string;
+		slug: string;
+		description: string | undefined;
+		previewImage: string;
+		variants: ShopPrintVariant[];
+		inStock: boolean;
+		parent?: { title: string; slug: string };
+	} & ShopPrintOptions;
+	images: Array<ReturnType<typeof setImage>>;
+};
+
+function catalogProducts(value: unknown) {
+	if (!Array.isArray(value) || value.length > CATALOG_PRODUCT_LIMIT) fail();
 	const products = value.map(normalize);
 	if (new Set(products.map(({ slug }) => slug)).size !== products.length) fail();
-	for (const kind of KINDS)
-		if (products.filter((product) => product.kind === kind).length !== KIND_COUNTS[kind]) fail();
 	return products;
 }
 
@@ -277,7 +333,7 @@ function orderIndexBucket(products: Product[]) {
 }
 
 export function adaptConvexIndex(value: unknown) {
-	const available = completeProducts(value).filter((product) => product.inStock);
+	const available = catalogProducts(value).filter((product) => product.inStock);
 	const products = [
 		...orderIndexBucket(available.filter((product) => product.featured)),
 		...orderIndexBucket(available.filter((product) => !product.featured)),
@@ -321,12 +377,19 @@ export function adaptConvexIndex(value: unknown) {
 
 function selectProduct(value: unknown, productSlug?: string) {
 	if (productSlug !== undefined) {
-		return completeProducts(value).find((product) => product.slug === productSlug) ?? null;
+		return catalogProducts(value).find((product) => product.slug === productSlug) ?? null;
 	}
 	return value === null ? null : normalize(value);
 }
 
-export function adaptConvexProduct(value: unknown, productSlug?: string) {
+export function assertConvexPublishedDetailSlug(value: unknown, requestedSlug: string) {
+	if (value !== null && normalize(value).slug !== requestedSlug) fail();
+}
+
+export function adaptConvexProduct(
+	value: unknown,
+	productSlug?: string,
+): ConvexProductOutput | null {
 	const product = selectProduct(value, productSlug);
 	if (!product) return null;
 	if (product.kind === "print_set") return null;
@@ -348,7 +411,6 @@ export function adaptConvexProduct(value: unknown, productSlug?: string) {
 				inStock: product.inStock,
 				featured: product.featured,
 				images: [productImage(primary)],
-				...({} as { price?: number; category?: string }),
 			},
 		};
 	}
@@ -365,7 +427,6 @@ export function adaptConvexProduct(value: unknown, productSlug?: string) {
 			featured: product.featured,
 			inStock: product.inStock,
 			images: gallery.map(productImage),
-			availablePapers: [],
 			...(product.seoDescription || social
 				? {
 						seo: {
@@ -378,7 +439,10 @@ export function adaptConvexProduct(value: unknown, productSlug?: string) {
 	};
 }
 
-export function adaptConvexPrintSet(value: unknown, productSlug?: string) {
+export function adaptConvexPrintSet(
+	value: unknown,
+	productSlug?: string,
+): ConvexPrintSetOutput | null {
 	const product = selectProduct(value, productSlug);
 	if (!product) return null;
 	if (product.kind !== "print_set") return null;
@@ -397,7 +461,6 @@ export function adaptConvexPrintSet(value: unknown, productSlug?: string) {
 			})),
 			...product.printOptions,
 			inStock: product.inStock,
-			...({} as { parent?: { title: string; slug: string } }),
 		},
 		images: role(product, "set_member").map(setImage),
 	};

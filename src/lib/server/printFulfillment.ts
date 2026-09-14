@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { flush } from "@sentry/node";
 import type { ConvexHttpClient } from "convex/browser";
 import type { Resend } from "resend";
 import type Stripe from "stripe";
@@ -12,6 +13,7 @@ import {
 import { logStructured, timed } from "$lib/server/logger";
 import {
 	buildLumaPrintsOrder,
+	confirmOrder,
 	findOrderByExternalId,
 	type LumaPrintsReconciliationClass,
 	LumaPrintsReconciliationError,
@@ -30,7 +32,7 @@ import {
 	formatFailureForAdmin,
 } from "$lib/server/webhookErrorClassification";
 import { getWebhookSecret } from "$lib/server/webhookSecret";
-import type { LumaPrintsOrder, LumaPrintsOrderResponse } from "$lib/shop/types";
+import type { LumaPrintsOrder, LumaPrintsOrderResponse, OrderItem } from "$lib/shop/types";
 
 /** Distinguishes automated recovery refunds from manual refunds. */
 const REFUND_AUTOMATION_TAG = "fulfillment_recovery_v1";
@@ -49,11 +51,17 @@ export type PrintReconciliationEscalationReason =
 	| "result_not_observed";
 
 export type SubmitLumaPrintsOrder = (order: LumaPrintsOrder) => Promise<LumaPrintsOrderResponse>;
+export type ConfirmLumaPrintsOrder = (
+	orderNumber: string,
+	expectedExternalId: string,
+) => Promise<boolean>;
 
 export type PrintFulfillmentOutcome =
 	| { kind: "fulfilled"; lumaprintsOrderNumber: string }
+	| { kind: "scheduled" }
 	| { kind: "no_print_items" }
 	| { kind: "no_print_items_replayed" }
+	| { kind: "canceled" }
 	| { kind: "manual_refunded"; stripeRefundId: string }
 	| {
 			kind: "reconciliation_blocked";
@@ -88,7 +96,10 @@ export type PrintFulfillmentOutcome =
 export interface PrintFulfillmentAdapters {
 	convex: ConvexHttpClient;
 	createLumaPrintsOrder: SubmitLumaPrintsOrder;
+	confirmLumaPrintsOrder?: ConfirmLumaPrintsOrder;
 	findLumaPrintsOrder?: (externalId: string) => Promise<LumaPrintsOrderResponse | null>;
+	preparedItems?: OrderItem[];
+	printJobLeaseToken?: string;
 }
 
 export interface PermanentFulfillmentFailureAdapters {
@@ -167,12 +178,14 @@ async function recordInconclusiveReconciliation(
 	orderId: Id<"orders">,
 	externalId: string,
 	reason: PrintReconciliationEscalationReason,
+	tenantId: string | undefined,
 	webhookSecret: string,
 ): Promise<PrintFulfillmentOutcome | null> {
 	const pending = await convex.mutation(api.orders.recordPrintFulfillmentReconciliationPending, {
 		orderId,
 		externalId,
 		reason,
+		...(tenantId === undefined ? {} : { tenantId }),
 		webhookSecret,
 	});
 	if (pending.kind === "pending") return null;
@@ -190,25 +203,45 @@ export async function submitPrintFulfillment(
 	{
 		convex,
 		createLumaPrintsOrder,
+		confirmLumaPrintsOrder = confirmOrder,
 		findLumaPrintsOrder = findOrderByExternalId,
+		preparedItems,
+		printJobLeaseToken,
 	}: PrintFulfillmentAdapters,
 	input: {
 		orderId: Id<"orders">;
 		orderNumber: string;
+		fulfillmentType?: "lumaprints" | "self" | "digital";
+		tenantId?: string;
+		siteUrl: string;
 		lineItems: Stripe.LineItem[];
 		shippingDetails: ShippingDetails;
-		session: Stripe.Checkout.Session;
+		session: Pick<Stripe.Checkout.Session, "id" | "metadata">;
 		checkoutSnapshot?: CheckoutSnapshotV1;
 	},
 ): Promise<PrintFulfillmentOutcome> {
-	const { orderId, orderNumber, lineItems, shippingDetails, session, checkoutSnapshot } = input;
+	const {
+		orderId,
+		orderNumber,
+		fulfillmentType = "lumaprints",
+		tenantId,
+		siteUrl,
+		lineItems,
+		shippingDetails,
+		session,
+		checkoutSnapshot,
+	} = input;
 	const webhookSecret = getWebhookSecret();
-	const legacyItems = checkoutSnapshot ? undefined : buildOrderItemsFromSession(session, lineItems);
-	const hasPrintItems = checkoutSnapshot
-		? checkoutSnapshot.items.some(
-				({ productKind }) => productKind === "print" || productKind === "print_set",
-			)
-		: (legacyItems?.length ?? 0) > 0;
+	const tenantFence = tenantId === undefined ? {} : { tenantId };
+	const legacyItems =
+		checkoutSnapshot || preparedItems ? undefined : buildOrderItemsFromSession(session, lineItems);
+	const hasPrintItems =
+		fulfillmentType === "lumaprints" &&
+		(checkoutSnapshot
+			? checkoutSnapshot.items.some(
+					({ productKind }) => productKind === "print" || productKind === "print_set",
+				)
+			: (preparedItems ?? legacyItems ?? []).length > 0);
 	if (!hasPrintItems) {
 		const outcome = await convex.mutation(api.orders.claimNonPrintOrderOutcome, {
 			orderId,
@@ -236,9 +269,11 @@ export async function submitPrintFulfillment(
 	}
 
 	const claimToken = randomUUID();
-	const claimed = await convex.mutation(api.orders.claimPrintFulfillmentV4, {
+	const claimed = await convex.mutation(api.orders.claimPrintFulfillmentV5, {
 		orderId,
 		claimToken,
+		...(printJobLeaseToken ? { printJobLeaseToken } : {}),
+		...tenantFence,
 		webhookSecret,
 	});
 	if (claimed.kind === "submission_closed") {
@@ -269,12 +304,23 @@ export async function submitPrintFulfillment(
 	if (claimed.kind === "busy" || claimed.kind === "preparing") {
 		throw new Error("Print fulfillment is already in progress");
 	}
+	if (claimed.kind === "waiting") {
+		throw new PrintReconciliationPendingError("Print provider confirmation is pending");
+	}
 	if (claimed.externalId !== session.id)
 		throw new Error("Print fulfillment identity does not match paid order");
-	if (claimed.kind === "reconcile") {
+	const reconcileSubmission = async (
+		externalId: string,
+		submissionOrderNumber?: string,
+	): Promise<PrintFulfillmentOutcome> => {
 		let existing: LumaPrintsOrderResponse | null;
 		try {
-			existing = await findLumaPrintsOrder(claimed.externalId);
+			existing =
+				submissionOrderNumber === undefined
+					? await findLumaPrintsOrder(externalId)
+					: (await confirmLumaPrintsOrder(submissionOrderNumber, externalId))
+						? { orderNumber: submissionOrderNumber }
+						: null;
 		} catch (error) {
 			if (
 				!(error instanceof LumaPrintsReconciliationError) ||
@@ -284,8 +330,9 @@ export async function submitPrintFulfillment(
 				const escalation = await recordInconclusiveReconciliation(
 					convex,
 					orderId,
-					claimed.externalId,
+					externalId,
 					classifyInconclusiveReconciliation(error),
+					tenantId,
 					webhookSecret,
 				);
 				if (escalation) return escalation;
@@ -296,8 +343,9 @@ export async function submitPrintFulfillment(
 			const reconciliationClass = error.reconciliationClass;
 			const blocked = await convex.mutation(api.orders.blockPrintFulfillmentReconciliation, {
 				orderId,
-				externalId: claimed.externalId,
+				externalId,
 				reconciliationClass,
+				...tenantFence,
 				webhookSecret,
 			});
 			if (blocked) {
@@ -307,7 +355,7 @@ export async function submitPrintFulfillment(
 					alertClaimToken: await claimReconciliationAlert(
 						convex,
 						orderId,
-						claimed.externalId,
+						externalId,
 						webhookSecret,
 					),
 				};
@@ -315,9 +363,11 @@ export async function submitPrintFulfillment(
 
 			// The block result can be stale when another delivery stores the GET
 			// result first. Re-read through the atomic claim before reporting a block.
-			const refreshed = await convex.mutation(api.orders.claimPrintFulfillmentV4, {
+			const refreshed = await convex.mutation(api.orders.claimPrintFulfillmentV5, {
 				orderId,
 				claimToken,
+				...(printJobLeaseToken ? { printJobLeaseToken } : {}),
+				...tenantFence,
 				webhookSecret,
 			});
 			if (refreshed.kind === "submission_closed") {
@@ -346,7 +396,7 @@ export async function submitPrintFulfillment(
 					alertClaimToken: await claimReconciliationAlert(
 						convex,
 						orderId,
-						claimed.externalId,
+						externalId,
 						webhookSecret,
 					),
 				};
@@ -355,6 +405,7 @@ export async function submitPrintFulfillment(
 				const released = await convex.mutation(api.orders.releasePrintFulfillmentClaim, {
 					orderId,
 					claimToken,
+					...tenantFence,
 					webhookSecret,
 				});
 				if (!released) throw new Error("Print preparation claim release is pending");
@@ -365,8 +416,9 @@ export async function submitPrintFulfillment(
 			const escalation = await recordInconclusiveReconciliation(
 				convex,
 				orderId,
-				claimed.externalId,
+				externalId,
 				"result_not_observed",
+				tenantId,
 				webhookSecret,
 			);
 			if (escalation) return escalation;
@@ -374,8 +426,9 @@ export async function submitPrintFulfillment(
 		}
 		const completion = await convex.mutation(api.orders.reconcilePrintFulfillmentSubmission, {
 			orderId,
-			externalId: claimed.externalId,
+			externalId,
 			lumaprintsOrderNumber: existing.orderNumber,
+			...tenantFence,
 			webhookSecret,
 		});
 		if (completion.kind === "manual_refunded") {
@@ -388,31 +441,41 @@ export async function submitPrintFulfillment(
 				errorSummary: "Fulfillment was already refunded",
 			};
 		}
+		if (completion.kind === "canceled") return { kind: "canceled" };
 		return { kind: "fulfilled", lumaprintsOrderNumber: existing.orderNumber };
+	};
+	if (claimed.kind === "reconcile") {
+		return reconcileSubmission(
+			claimed.externalId,
+			"submissionOrderNumber" in claimed ? claimed.submissionOrderNumber : undefined,
+		);
 	}
 
 	const releasePreparationClaim = async () => {
 		const released = await convex.mutation(api.orders.releasePrintFulfillmentClaim, {
 			orderId,
 			claimToken,
+			...tenantFence,
 			webhookSecret,
 		});
 		if (!released) throw new Error("Print preparation claim release is pending");
 	};
 
 	let recipient;
-	let items;
+	let items: OrderItem[];
 	try {
 		recipient = checkoutSnapshot?.items.some(
 			({ productKind }) => productKind === "print" || productKind === "print_set",
 		)
 			? buildRecipientFromShipping(shippingDetails)
 			: undefined;
-		items = checkoutSnapshot
-			? await import("$lib/server/snapshotFulfillment").then(({ buildOrderItemsFromSnapshot }) =>
-					buildOrderItemsFromSnapshot(checkoutSnapshot, session.id, lineItems),
-				)
-			: (legacyItems ?? []);
+		items =
+			preparedItems ??
+			(checkoutSnapshot
+				? await import("$lib/server/snapshotFulfillment").then(({ buildOrderItemsFromSnapshot }) =>
+						buildOrderItemsFromSnapshot(checkoutSnapshot, session.id, lineItems, siteUrl),
+					)
+				: (legacyItems ?? []));
 	} catch (cause) {
 		await releasePreparationClaim();
 		throw cause;
@@ -430,29 +493,17 @@ export async function submitPrintFulfillment(
 
 	let lpOrder: LumaPrintsOrder;
 	try {
-		const borderedItems = items
-			.map((item, index) => ({
-				index,
-				imageUrl: item.imageUrl,
-				borderWidthInches: item.borderWidth ?? 0,
-				sourcePolicy: item.sourcePolicy ?? ("byte_exact" as const),
-			}))
-			.filter((item) => item.borderWidthInches > 0);
-		if (borderedItems.length > 0) {
-			const { processBorderedPrints } = await import("$lib/server/sharpBorder");
-			const urlMap = await timed(
+		if (!preparedItems) {
+			const { preparePrintSources } = await import("$lib/server/printSourcePreparation");
+			items = await timed(
 				{
-					event: "sharp.bordered",
+					event: "sharp.prepared",
 					stage: "sharp_composite",
 					orderId: orderNumber,
-					meta: { borderedCount: borderedItems.length },
+					meta: { printCount: items.length },
 				},
-				() => processBorderedPrints(borderedItems, session.id),
+				() => preparePrintSources(items, { siteUrl }),
 			);
-			for (const [index, r2Url] of urlMap) {
-				items[index].imageUrl = r2Url;
-				items[index].sourcePolicy = "bordered_r2";
-			}
 		}
 		recipient ??= buildRecipientFromShipping(shippingDetails);
 		lpOrder = buildLumaPrintsOrder(session.id, recipient, items);
@@ -464,6 +515,8 @@ export async function submitPrintFulfillment(
 	const submission = await convex.mutation(api.orders.beginPrintFulfillmentSubmission, {
 		orderId,
 		claimToken,
+		...(printJobLeaseToken ? { printJobLeaseToken } : {}),
+		...tenantFence,
 		webhookSecret,
 	});
 	if (submission.kind === "manual_refunded") {
@@ -484,11 +537,21 @@ export async function submitPrintFulfillment(
 	try {
 		result = await createLumaPrintsOrder(lpOrder);
 	} catch (error) {
+		logStructured({
+			event: "lumaprints.failed",
+			level: "error",
+			stage: "lumaprints_submit",
+			orderId: orderNumber,
+			error: new Error("LumaPrints order submission failed"),
+			meta: error instanceof LumaPrintsSubmissionError ? error.details : { phase: "client" },
+		});
+		await flush(2000).catch(() => false);
 		if (error instanceof LumaPrintsSubmissionError && error.disposition === "definitely_rejected") {
 			const rejection = await convex.mutation(api.orders.rejectPrintFulfillmentSubmission, {
 				orderId,
 				claimToken,
 				externalId: submission.externalId,
+				...tenantFence,
 				webhookSecret,
 			});
 			if (rejection.kind === "manual_refunded") {
@@ -501,43 +564,43 @@ export async function submitPrintFulfillment(
 					errorSummary: "Fulfillment was already refunded",
 				};
 			}
+			if (rejection.kind === "canceled") return { kind: "canceled" };
 			throw error;
 		}
 		throw new Error("Print provider submission outcome is unknown");
 	}
-	logStructured({
-		event: "lumaprints.submitted",
-		stage: "lumaprints_submit",
-		orderId: orderNumber,
-		meta: { itemCount: items.length },
-	});
-	const completion = await convex.mutation(api.orders.completePrintFulfillmentSubmission, {
+	const receipt = await convex.mutation(api.orders.recordPrintFulfillmentSubmissionReceipt, {
 		orderId,
 		claimToken,
 		externalId: submission.externalId,
-		lumaprintsOrderNumber: result.orderNumber,
+		lumaprintsSubmissionOrderNumber: result.orderNumber,
+		...tenantFence,
 		webhookSecret,
 	});
 	logStructured({
-		event: "lumaprints.recorded",
+		event: "lumaprints.queued",
 		stage: "lumaprints_submit",
 		orderId: orderNumber,
-		meta: { lumaprintsOrderNumber: result.orderNumber },
+		meta: { itemCount: items.length, lumaprintsSubmissionOrderNumber: result.orderNumber },
 	});
-	if (completion.kind === "manual_refunded") {
-		return { kind: "manual_refunded", stripeRefundId: completion.stripeRefundId };
+	if (receipt.kind === "fulfilled") {
+		return { kind: "fulfilled", lumaprintsOrderNumber: result.orderNumber };
 	}
-	if (completion.kind === "automated_refunded") {
+	if (receipt.kind === "canceled") return { kind: "canceled" };
+	if (receipt.kind === "manual_refunded") {
+		return { kind: "manual_refunded", stripeRefundId: receipt.stripeRefundId };
+	}
+	if (receipt.kind === "automated_refunded") {
 		return {
 			kind: "permanent_failure_refunded",
-			stripeRefundId: completion.stripeRefundId,
+			stripeRefundId: receipt.stripeRefundId,
 			errorSummary: "Fulfillment was already refunded",
 		};
 	}
-	return {
-		kind: "fulfilled",
-		lumaprintsOrderNumber: result.orderNumber,
-	} satisfies PrintFulfillmentOutcome;
+	// A new queued job gives the provider time to persist its preliminary POST receipt.
+	if (preparedItems)
+		throw new PrintReconciliationPendingError("Print provider confirmation is pending");
+	return reconcileSubmission(submission.externalId, result.orderNumber);
 }
 
 export async function handlePrintFulfillmentFailure(
@@ -554,7 +617,7 @@ export async function handlePrintFulfillmentFailure(
 		orderId: Id<"orders">;
 		orderNumber: string;
 		error: unknown;
-		session: Stripe.Checkout.Session;
+		session: Pick<Stripe.Checkout.Session, "id" | "payment_intent" | "amount_total">;
 		stripeRequestOptions?: Stripe.RequestOptions;
 		customerEmail: string;
 		notificationProfile?: CommerceNotificationProfile;
@@ -609,7 +672,7 @@ export async function handlePermanentFulfillmentFailure(
 		orderNumber: string;
 		error: unknown;
 		durableFulfillmentError?: string;
-		session: Stripe.Checkout.Session;
+		session: Pick<Stripe.Checkout.Session, "id" | "payment_intent" | "amount_total">;
 		stripeRequestOptions?: Stripe.RequestOptions;
 		customerEmail: string;
 		notificationProfile?: CommerceNotificationProfile;

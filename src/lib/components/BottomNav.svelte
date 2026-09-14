@@ -1,13 +1,7 @@
-<!--
-  Mobile Bottom Navigation
-  
-  - Sticky footer nav for mobile (hidden on desktop with md:hidden)
-  - Uses Skeleton's Navigation component with bar layout
-  - 5-column grid for nav items with Lucide icons
-  - 'bottom-nav' class used for light mode styling overrides in global.css
--->
-
 <script lang="ts">
+import { getContext } from "svelte";
+import { MOBILE_CHROME, type MobileChrome } from "./mobileNavigation";
+
 import {
 	HouseIcon,
 	ImageIcon,
@@ -15,10 +9,15 @@ import {
 	ShoppingBagIcon,
 	UserIcon,
 } from "@lucide/svelte";
-import { Navigation } from "@skeletonlabs/skeleton-svelte";
 import { page } from "$app/state";
 
-// Navigation links with icons
+const chrome = getContext<MobileChrome | undefined>(MOBILE_CHROME);
+let navSize = $state<ResizeObserverSize[]>();
+$effect(() => {
+	if (chrome && navSize?.[0]) chrome.bottomNavHeight = navSize[0].blockSize;
+});
+
+
 const links = [
 	{ label: "Home", href: "/", icon: HouseIcon },
 	{ label: "Gallery", href: "/gallery", icon: ImageIcon },
@@ -28,20 +27,77 @@ const links = [
 ];
 </script>
 
-<!-- 
-  Mobile nav bar - sticky to bottom, hidden on desktop
-  'bottom-nav' class is targeted in global.css for light mode color overrides
--->
-<div class="sticky bottom-0 left-0 right-0 z-50 md:hidden bottom-nav" aria-label="Mobile navigation">
-  <Navigation layout="bar">
-    <Navigation.Menu class="grid grid-cols-5 gap-1">
-      {#each links as link (link.href)}
-        {@const Icon = link.icon}
-        <Navigation.TriggerAnchor href={link.href}>
-          <Icon class="size-5" />
-          <Navigation.TriggerText>{link.label}</Navigation.TriggerText>
-        </Navigation.TriggerAnchor>
-      {/each}
-    </Navigation.Menu>
-  </Navigation>
-</div>
+<nav
+  bind:borderBoxSize={navSize}
+  aria-label="Mobile navigation"
+  class="bottom-nav"
+  class:purchase-docked={chrome?.purchaseBarDocked}
+>
+  <ul>
+    {#each links as link (link.href)}
+      {@const Icon = link.icon}
+      {@const active = page.url.pathname === link.href || (link.href !== '/' && page.url.pathname.startsWith(`${link.href}/`))}
+      <li>
+        <a
+          href={link.href}
+          aria-current={active ? 'page' : undefined}
+        >
+          <Icon size="1.25rem" aria-hidden="true" />
+          <span>{link.label}</span>
+        </a>
+      </li>
+    {/each}
+  </ul>
+</nav>
+
+<style>
+  .bottom-nav {
+    position: sticky;
+    bottom: 0;
+    z-index: 50;
+    border-top: 1px solid var(--time-border, var(--color-surface-300));
+    background: var(--color-surface-50);
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+  ul {
+    display: grid;
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+    gap: 0.25rem;
+    padding: 0;
+  }
+  a {
+    display: flex;
+    min-height: 3.5rem;
+    align-items: center;
+    justify-content: center;
+    flex-direction: column;
+    gap: 0.25rem;
+    border-radius: 0;
+    padding: 0.5rem 0.25rem;
+    font-size: var(--text-xs);
+    line-height: var(--text-xs--line-height);
+    color: var(--color-surface-700);
+  }
+  a:focus-visible {
+    outline: 2px solid var(--color-surface-900);
+    outline-offset: -2px;
+  }
+  :global(.dark) .bottom-nav {
+    border-color: var(--time-border, var(--color-surface-700));
+    background: var(--color-surface-900);
+  }
+  /* Keep measured geometry stable while painting the seam as part of the bar. */
+  .bottom-nav.purchase-docked { border-top-color: var(--color-surface-900); }
+  :global(.dark) a { color: var(--color-surface-200); }
+  :global(.dark) a:focus-visible { outline-color: var(--color-surface-50); }
+  a[aria-current="page"], :global(.dark) a[aria-current="page"] {
+    background: var(--color-primary-500);
+    color: oklch(12.9% 0.042 264.695);
+  }
+  @media (hover: hover) {
+    a:not([aria-current]):hover { background: var(--color-surface-200); }
+    :global(.dark) a:not([aria-current]):hover { background: var(--color-surface-700); }
+  }
+  @media (min-width: 48rem) { .bottom-nav { display: none; } }
+  @media (pointer: coarse) and (orientation: landscape) and (max-height: 500px) { .bottom-nav { display: block; } }
+</style>

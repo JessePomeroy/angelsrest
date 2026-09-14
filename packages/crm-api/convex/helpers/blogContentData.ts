@@ -220,6 +220,9 @@ export async function projectPublishedBlogContent(
 					...(published.portrait.caption
 						? { caption: published.portrait.caption }
 						: {}),
+					...(published.portrait.framing === undefined
+						? {}
+						: { framing: published.portrait.framing }),
 					asset: {
 						assetId: asset.assetId,
 						source: {

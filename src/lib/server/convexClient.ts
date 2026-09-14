@@ -1,11 +1,11 @@
 import { ConvexHttpClient } from "convex/browser";
-import { env as publicEnv } from "$env/dynamic/public";
+import { getConvexUrl } from "$lib/server/runtimeConfig";
 
 let _client: ConvexHttpClient | null = null;
 
 export function getConvex(): ConvexHttpClient {
 	if (!_client) {
-		_client = new ConvexHttpClient(publicEnv.PUBLIC_CONVEX_URL || "");
+		_client = new ConvexHttpClient(getConvexUrl());
 	}
 	return _client;
 }
@@ -16,7 +16,7 @@ export function getConvex(): ConvexHttpClient {
  * process-wide unauthenticated singleton above.
  */
 export function createAuthenticatedConvexClient(token: string): ConvexHttpClient {
-	const client = new ConvexHttpClient(publicEnv.PUBLIC_CONVEX_URL || "");
+	const client = new ConvexHttpClient(getConvexUrl());
 	client.setAuth(token);
 	return client;
 }

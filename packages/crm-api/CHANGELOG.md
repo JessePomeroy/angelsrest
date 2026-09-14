@@ -1,5 +1,155 @@
 # @jessepomeroy/crm-api
 
+## 5.1.0
+
+### Minor Changes
+
+- 025ede2: Retain optional body-managed excerpt metadata across draft revisions so compact editors can refresh generated summaries after failed publication or reload without changing custom summaries. Preserve marker-free v1 checksums and public response shapes.
+- eae224d: Apply CRM category/status filters through indexes before bounded selection and
+  support the same status filter in the paginated list. Report a truncation flag
+  when CRM statistics reach their bounded scan limit so consumers can label partial
+  totals explicitly.
+- 38579d8: Add bounded paginated CRM client rows with tenant-scoped tags for the shared Admin.
+- be7812e: Add webhook-only receipt checkpoints independent of print fulfillment, with separate customer and owner acceptance and bounded idempotent retries.
+- 6e457be: Select unread CRM document transitions using indexed action timestamps, and record declined/overdue transitions.
+- 6dd19c4: Allow explicitly owner-authored blog posts to resolve their byline from the same site's published Site Settings. Preserve existing author references, public response shapes, and legacy revision checksums. Deploy the additive backend before enabling compact blog authoring in a host.
+
+### Patch Changes
+
+- 7cea0cd: Retain original descriptors and versioned artifact checkpoints for frozen print jobs. Deploy before enabling the host frozen-v1 protocol.
+- d539d36: Allow verified manual refunds after a blocked print job without weakening refund ownership or provider submission safeguards. Preserve refund state when a late job failure arrives.
+- 566f396: Finish deleting tag assignments in bounded scheduled batches when a tag has more
+  than 500 assignments. Remove the tag immediately to prevent new assignments while
+  cleanup completes, preserving site authorization and unrelated tags.
+- 314551c: Replace the unused generic tenant-query dispatcher with concrete invoice, quote and contract list reads, preserving authorization, indexed status filtering and the 200-row cap.
+- b42b1a7: Write client activity through a schema-typed internal helper instead of dispatching a nested mutation. Preserve callers' authorization, activity payloads and transaction behavior.
+- 483c29b: Allow frozen provider options in print-job source checkpoints. Deploy the additive backend before opting new checkout reservations into frozen input.
+- 56dee23: Checkpoint paid print preparation outside the webhook time limit with leased, scheduled jobs and source-level progress. Preserve provider submission fences and allow new-job reconciliation through its existing 24-hour window.
+- 4766aa3: Support positive fractional invoice quantities with per-line cent rounding, rounded tax, and finite safe-cent validation on invoice creation, numeric edits, and quote conversion. The host portal and invoice checkout use the same arithmetic; no stored invoice migration is performed.
+- 4629f44: Add opt-in reservation-time print instructions with immutable artwork/finish identity and a distinct paid shipping recipient. Preserve existing reservation and order behavior until a host explicitly adopts the new input. Share the existing provider product-option mapping without changing its output.
+- 40f88e0: Consolidate Post revision preparation while preserving v1 checksums, stored headers and retry behavior.
+- 06de47b: Retire historical private-catalog migration receipt ingress and internal wrappers while preserving current editor admission and accepted-asset identity.
+- d2aa4f9: Share document advancement after accepted email delivery while preserving completion and operator-resolution policies, terminal statuses, and original sent timestamps.
+- 0e07bb9: Share active singleton revision traversal in the content store for About, Modeling and Site Settings media deletion checks. Preserve revision ownership, active draft/published pins, retained-history behavior and completion rechecks.
+- Updated dependencies [4629f44]
+- Updated dependencies [3779f04]
+  - @jessepomeroy/print-catalog@0.3.1
+
+## 5.0.1
+
+### Patch Changes
+
+- 22ca9d4: Support terminal local cancellation of unresolved print fulfillment.
+- 97e7eac: Honor published product fulfillment modes when creating and replaying checkout orders.
+- 89ba937: Keep LumaPrints queue receipts provisional until the provider confirms the order.
+
+## 5.0.0
+
+### Major Changes
+
+- 0105b88: Retire the executable Sanity migration and compatibility API surface now that
+  Angels Rest content, checkout, fulfillment, and downloads are Convex-only.
+  Remove the unused platform-client Sanity project field while preserving inert
+  provenance accepted on already-migrated Convex records.
+
+### Minor Changes
+
+- 1c08b3a: Add stable opaque tenant IDs, verified domain/origin aliases, and a mixed-version
+  tenant routing resolver while retaining existing `siteUrl` contracts.
+
+### Patch Changes
+
+- 1c29dc6: Persist verified tenant identity on new orders and accept optional tenant fences
+  for checkout routing and print-provider commands.
+- 9a0028b: Expose stable tenant identity to new Stripe checkout and webhook routing while preserving site URL compatibility for unclaimed tenants.
+- 09f4225: Remove empty historical migration modules and regenerate the Convex API binding
+  without their stale module entries.
+- 7ad4831: Regenerate the published Convex API binding after adding the tenant-context
+  module during AR-08 Stage A.
+- dd289b0: Allow durable checkout reservations and admissions to retain an optional verified tenant ID alongside the compatibility domain.
+
+## 4.1.2
+
+### Patch Changes
+
+- 1cd1fb2: Retire completed incident, shipment-observer, and development-only operator interfaces; reserve deleted portfolio gallery identities; and allow media cleanup once only immutable history references an asset.
+
+## 4.1.1
+
+### Patch Changes
+
+- a5a4873: Accept Better Auth's signed custom email-verification claim when binding stable admin identities.
+
+## 4.1.0
+
+### Minor Changes
+
+- e82625b: Add verified stable-identity claims for tenant administrators while retaining a bounded legacy membership read for the staged R12 migration.
+
+## 4.0.1
+
+### Patch Changes
+
+- 774b1dd: Index and bound the published Catalog Graph V2 read path, enforce the public
+  catalog capacity on first publication, and keep disabled product kinds visible
+  to tenant administrators so they can be safely unpublished. Bound catalog
+  commerce envelopes to fulfillment-required media without presentation copy so
+  maximum print-set checkout and paid-fulfillment responses remain within the
+  authenticated resolver contract.
+
+## 4.0.0
+
+### Major Changes
+
+- 153155e: Add the tenant-scoped document email delivery and operator-recovery journal,
+  quote-validity enforcement, and idempotent quote and contract portal actions.
+  Add `portal.getPublicByToken`, which returns explicit client-safe invoice,
+  quote, and contract projections that omit database IDs, provider checkout
+  state, CRM fields, client email, and stored signature evidence. Current Angels
+  Rest hosts use this final safe query.
+
+  The rollout used a backend-widen, then host, then narrow sequence. Stage A kept
+  deprecated `portal.getByToken` on its exact raw 3.x document shape while current
+  hosts moved to `getPublicByToken`. After that host cutover, Stage C narrowed the
+  invoice, quote, and contract branches of `getByToken` to the same client-safe
+  projection. Gallery delivery retains its existing raw result shape.
+
+  Terminal receipt reloads require a token-local atomic quote or contract action;
+  legacy used-only and administratively revoked capabilities fail closed.
+  Accepted replacement delivery revokes every prior matching portal capability,
+  with a bounded per-document history that is enforced before provider work.
+
+## 3.3.4
+
+### Patch Changes
+
+- 0df0390: Retire completed internal Portfolio migration writers while preserving pinned restore support.
+
+## 3.3.3
+
+### Patch Changes
+
+- ed9e689: Retire completed Site Settings attestation, import, and publication entrypoints while retaining pinned restore recovery.
+
+## 3.3.2
+
+### Patch Changes
+
+- be663fc: Retire completed internal About and Contact migration writers while preserving pinned restore support.
+
+## 3.3.1
+
+### Patch Changes
+
+- 9ba88ef: Retire completed internal Blog migration writers while preserving pinned restore support.
+
+## 3.3.0
+
+### Minor Changes
+
+- 5ade082: Add the authenticated, normalized commerce cutoff projection required by the
+  R4 complete-history Checkout Session inventory.
+
 ## 3.2.0
 
 ### Minor Changes

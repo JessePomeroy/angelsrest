@@ -1,4 +1,4 @@
-import { internal } from "../_generated/api";
+import { logActivity } from "../activityLog";
 import type { Doc, Id } from "../_generated/dataModel";
 import type { MutationCtx } from "../_generated/server";
 import { patchDocument } from "./patching";
@@ -36,7 +36,7 @@ export async function markDocumentSent<T extends SendableTable>(
 		status: "sent",
 		sentAt: Date.now(),
 	});
-	await ctx.runMutation(internal.activityLog.logActivity, {
+	await logActivity(ctx, {
 		siteUrl,
 		clientId: doc.clientId,
 		action,

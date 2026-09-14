@@ -1,8 +1,9 @@
 // Server-only LumaPrints client; see LUMAPRINTS.md for integration constraints.
 
-import { env } from "$env/dynamic/private";
+import { getPrintProductConfiguration } from "@jessepomeroy/print-catalog";
+import { FulfillmentValidationError } from "$lib/server/fulfillmentValidationError";
 import { normalizeLumaPrintsProviderNumber } from "$lib/server/lumaprintsProviderNumber";
-import { prepareSanityUrlForPrint } from "$lib/shop/lumaprintsUrls";
+import { getLumaPrintsRuntimeConfig } from "$lib/server/runtimeConfig";
 import type {
 	LumaPrintsOrder,
 	LumaPrintsOrderResponse,
@@ -10,14 +11,18 @@ import type {
 	Recipient,
 } from "$lib/shop/types";
 
-const BASE_URL =
-	env.LUMAPRINTS_USE_SANDBOX === "true"
-		? "https://us.api-sandbox.lumaprints.com"
-		: "https://us.api.lumaprints.com";
+function getRuntimeConfig() {
+	try {
+		return getLumaPrintsRuntimeConfig();
+	} catch {
+		throw new LumaPrintsError("LumaPrints configuration was invalid", {
+			kind: "configuration",
+		});
+	}
+}
 
 function getHeaders(): HeadersInit {
-	const apiKey = env.LUMAPRINTS_API_KEY ?? "";
-	const apiSecret = env.LUMAPRINTS_API_SECRET ?? "";
+	const { apiKey, apiSecret } = getRuntimeConfig();
 	return {
 		"Content-Type": "application/json",
 		Authorization: `Basic ${btoa(`${apiKey}:${apiSecret}`)}`,
@@ -53,7 +58,7 @@ type LumaPrintsJsonFailurePhase =
 
 type LumaPrintsSubmissionEvidence =
 	| { phase: "transport"; kind: "network" | "timeout"; timeoutMs: number }
-	| { phase: "status"; statusCode: number }
+	| ({ phase: "status"; statusCode: number } & LumaPrintsErrorDetails)
 	| { phase: LumaPrintsJsonFailurePhase };
 
 /** Outcome of the create-order operation, without retaining a provider body. */
@@ -114,6 +119,8 @@ export class LumaPrintsReconciliationError extends LumaPrintsError {
 }
 
 const LUMAPRINTS_REQUEST_TIMEOUT_MS = 15_000;
+const LUMAPRINTS_CREATE_TIMEOUT_MS = 25_000;
+const LUMAPRINTS_RECONCILIATION_TIMEOUT_MS = 20_000;
 const LUMAPRINTS_CREATE_RESPONSE_MAX_BYTES = 32 * 1024;
 const LUMAPRINTS_RECONCILIATION_RESPONSE_MAX_BYTES = 2 * 1024 * 1024;
 const LUMAPRINTS_RECONCILIATION_MAX_PAGES = 10;
@@ -133,14 +140,7 @@ function exact(value: Record<string, unknown>, keys: string[]) {
 }
 
 function getStoreId(): number {
-	const raw = env.LUMAPRINTS_STORE_ID;
-	const numeric = typeof raw === "string" && /^\d+$/.test(raw) ? Number(raw) : Number.NaN;
-	if (!Number.isSafeInteger(numeric) || numeric <= 0) {
-		throw new LumaPrintsError("LumaPrints store configuration was invalid", {
-			kind: "configuration",
-		});
-	}
-	return numeric;
+	return getRuntimeConfig().storeId;
 }
 
 function parseParameterValue(value: string): string | null {
@@ -253,7 +253,7 @@ async function readBoundedJson(
 }
 
 function parseOrderResponse(value: unknown): LumaPrintsOrderResponse {
-	if (!object(value) || !exact(value, ["message", "orderNumber"])) {
+	if (!object(value)) {
 		throw new LumaPrintsSubmissionError("Order submission response was malformed", "uncertain", {
 			phase: "envelope",
 		});
@@ -267,21 +267,151 @@ function parseOrderResponse(value: unknown): LumaPrintsOrderResponse {
 	return { orderNumber };
 }
 
-async function fetchLumaPrints(path: string, init: RequestInit = {}): Promise<Response> {
+async function fetchLumaPrints(
+	path: string,
+	init: RequestInit = {},
+	timeoutMs = LUMAPRINTS_REQUEST_TIMEOUT_MS,
+): Promise<Response> {
 	try {
-		return await fetch(`${BASE_URL}${path}`, {
+		return await fetch(`${getRuntimeConfig().baseUrl}${path}`, {
 			...init,
-			signal: AbortSignal.timeout(LUMAPRINTS_REQUEST_TIMEOUT_MS),
+			signal: AbortSignal.timeout(timeoutMs),
 		});
 	} catch (error) {
 		const cause = error instanceof Error ? error.name : typeof error;
 		const kind = cause === "TimeoutError" || cause === "AbortError" ? "timeout" : "network";
 		throw new LumaPrintsError(
 			kind === "timeout"
-				? `LumaPrints request timed out after ${LUMAPRINTS_REQUEST_TIMEOUT_MS}ms`
+				? `LumaPrints request timed out after ${timeoutMs}ms`
 				: "LumaPrints network request failed",
-			{ kind, timeoutMs: LUMAPRINTS_REQUEST_TIMEOUT_MS, cause },
+			{ kind, timeoutMs, cause },
 		);
+	}
+}
+
+function matchingLabels(text: string, patterns: Record<string, RegExp>) {
+	return Object.entries(patterns)
+		.filter(([, pattern]) => pattern.test(text))
+		.map(([label]) => label);
+}
+
+function diagnosticStrings(value: unknown): string[] {
+	if (typeof value === "string") return [value];
+	if (Array.isArray(value)) return value.flatMap(diagnosticStrings);
+	return object(value)
+		? Object.entries(value).flatMap(([key, nested]) => [key, ...diagnosticStrings(nested)])
+		: [];
+}
+
+/** Retain only fixed diagnostic labels and documented numbers, never upstream text/URLs. */
+async function rejectionDiagnostics(response: Response): Promise<LumaPrintsErrorDetails> {
+	try {
+		const invalid = () => new Error("Unreadable provider diagnostic");
+		const body = await readBoundedJson(
+			response,
+			LUMAPRINTS_CREATE_RESPONSE_MAX_BYTES,
+			invalid,
+			invalid,
+			invalid,
+		);
+		if (!object(body)) return { providerReason: "unrecognized" };
+		const text = [
+			body.message,
+			body.error,
+			body.errors,
+			body.detail,
+			body.details,
+			body.reason,
+			body.title,
+		]
+			.flatMap(diagnosticStrings)
+			.join(" ");
+		const reasons = matchingLabels(text, {
+			billing_address: /billing address/i,
+			payment_method: /payment method|primary card/i,
+			image_dimensions: /aspect ratio|resolution|dimensions|sized incorrectly/i,
+			image_source: /imageUrl|image (?:url|source|file)|artwork/i,
+			image_access: /fetch|download|accessible|reachable/i,
+			product_options: /subcategory|orderItemOptions/i,
+			recipient: /recipient/i,
+			shipping: /shipping/i,
+			store: /storeId/i,
+			external_id: /externalId|externalItemId/i,
+			duplicate: /already exists|duplicate/i,
+			required: /required|missing/i,
+			invalid: /invalid|incorrect|not acceptable|unsupported/i,
+			provider_exception: /exception/i,
+		});
+		const fieldText = [
+			body.field,
+			body.path,
+			body.property,
+			body.propertyName,
+			body.param,
+			body.parameter,
+			body.errors,
+		]
+			.flatMap(diagnosticStrings)
+			.join(" ");
+		const fields = matchingLabels(fieldText, {
+			"recipient.firstName": /firstName/i,
+			"recipient.lastName": /lastName/i,
+			"recipient.addressLine1": /addressLine1/i,
+			"recipient.addressLine2": /addressLine2/i,
+			"recipient.city": /\bcity\b/i,
+			"recipient.state": /\bstate\b/i,
+			"recipient.zipCode": /zipCode/i,
+			"recipient.country": /\bcountry\b/i,
+			"recipient.phone": /\bphone\b/i,
+			"orderItems[].externalItemId": /externalItemId/i,
+			"orderItems[].subcategoryId": /subcategoryId/i,
+			"orderItems[].quantity": /\bquantity\b/i,
+			"orderItems[].width": /\bwidth\b/i,
+			"orderItems[].height": /\bheight\b/i,
+			"orderItems[].file.imageUrl": /imageUrl/i,
+			"orderItems[].orderItemOptions": /orderItemOptions/i,
+			externalId: /(?<!Item)externalId/i,
+			storeId: /storeId/i,
+			shippingMethod: /shippingMethod/i,
+			productionTime: /productionTime/i,
+		});
+		const details: Record<string, string | number> = {
+			providerReason: reasons.join(",") || "unrecognized",
+			...(fields.length ? { providerFields: fields.join(",") } : {}),
+		};
+		if (
+			Number.isInteger(body.statusCode) &&
+			Number(body.statusCode) >= 100 &&
+			Number(body.statusCode) <= 599
+		)
+			details.providerStatusCode = Number(body.statusCode);
+		const providerCode = [body.code, body.errorCode].find(
+			(value): value is number =>
+				typeof value === "number" &&
+				Number.isSafeInteger(value) &&
+				value >= 0 &&
+				value <= 1_000_000,
+		);
+		if (providerCode !== undefined) details.providerCode = providerCode;
+		for (const key of [
+			"expectedWidth",
+			"expectedHeight",
+			"actualImageWidth",
+			"actualImageHeight",
+		]) {
+			const value = body[key];
+			if (
+				typeof value === "number" &&
+				Number.isSafeInteger(value) &&
+				value > 0 &&
+				value <= 1_000_000
+			)
+				details[key] = value;
+		}
+		return details;
+	} catch {
+		// Diagnostics must never change the already-known submission disposition.
+		return { providerReason: "unavailable" };
 	}
 }
 
@@ -289,30 +419,32 @@ async function fetchLumaPrints(path: string, init: RequestInit = {}): Promise<Re
 export async function createOrder(order: LumaPrintsOrder): Promise<LumaPrintsOrderResponse> {
 	let res: Response;
 	try {
-		res = await fetchLumaPrints("/api/v1/orders", {
-			method: "POST",
-			headers: getHeaders(),
-			body: JSON.stringify(order),
-		});
+		res = await fetchLumaPrints(
+			"/api/v1/orders",
+			{
+				method: "POST",
+				headers: getHeaders(),
+				body: JSON.stringify(order),
+			},
+			LUMAPRINTS_CREATE_TIMEOUT_MS,
+		);
 	} catch (error) {
 		const details =
 			error instanceof LumaPrintsError && object(error.details) ? error.details : null;
 		const kind = details?.kind === "timeout" ? "timeout" : "network";
 		throw new LumaPrintsSubmissionError(
 			kind === "timeout"
-				? `LumaPrints request timed out after ${LUMAPRINTS_REQUEST_TIMEOUT_MS}ms`
+				? `LumaPrints request timed out after ${LUMAPRINTS_CREATE_TIMEOUT_MS}ms`
 				: "LumaPrints network request failed",
 			"uncertain",
-			{ phase: "transport", kind, timeoutMs: LUMAPRINTS_REQUEST_TIMEOUT_MS },
+			{ phase: "transport", kind, timeoutMs: LUMAPRINTS_CREATE_TIMEOUT_MS },
 		);
 	}
 	if (!res.ok) {
 		throw new LumaPrintsSubmissionError(
 			"Order submission failed",
-			res.status === 400 || res.status === 406 || res.status === 429
-				? "definitely_rejected"
-				: "uncertain",
-			{ phase: "status", statusCode: res.status },
+			res.status === 400 || res.status === 406 ? "definitely_rejected" : "uncertain",
+			{ phase: "status", statusCode: res.status, ...(await rejectionDiagnostics(res)) },
 		);
 	}
 	const body = await readBoundedJson(
@@ -326,7 +458,7 @@ export async function createOrder(order: LumaPrintsOrder): Promise<LumaPrintsOrd
 			new LumaPrintsSubmissionError("Order submission response stream failed", "uncertain", {
 				phase: "transport",
 				kind: "network",
-				timeoutMs: LUMAPRINTS_REQUEST_TIMEOUT_MS,
+				timeoutMs: LUMAPRINTS_CREATE_TIMEOUT_MS,
 			}),
 		() =>
 			new LumaPrintsSubmissionError(
@@ -351,6 +483,68 @@ function reconciliationRetryable(message: string) {
 
 function isRetryableProviderStatus(status: number) {
 	return status === 408 || status === 429 || (status >= 500 && status <= 599);
+}
+
+/** Confirm that a queued provider number belongs to the expected order and store. */
+export async function confirmOrder(
+	orderNumber: string,
+	expectedExternalId: string,
+): Promise<boolean> {
+	if (
+		normalizeLumaPrintsProviderNumber(orderNumber) !== orderNumber ||
+		!STRIPE_CHECKOUT_SESSION_ID.test(expectedExternalId)
+	) {
+		throw reconciliationFailure("Order confirmation identity was invalid", "client_error");
+	}
+	let storeId: number;
+	try {
+		storeId = getStoreId();
+	} catch {
+		throw reconciliationFailure("Order confirmation client failed", "client_error");
+	}
+
+	let res: Response;
+	try {
+		res = await fetchLumaPrints(`/api/v1/orders/${orderNumber}`, { headers: getHeaders() });
+	} catch (error) {
+		const details =
+			error instanceof LumaPrintsError && object(error.details) ? error.details : null;
+		if (details?.kind === "network" || details?.kind === "timeout") {
+			throw reconciliationRetryable("Order confirmation transport failed");
+		}
+		throw reconciliationFailure("Order confirmation client failed", "client_error");
+	}
+	if (res.status === 404) return false;
+	if (!res.ok) {
+		if (isRetryableProviderStatus(res.status)) {
+			throw reconciliationRetryable("Order confirmation is unavailable");
+		}
+		throw reconciliationFailure("Order confirmation was rejected", "provider_rejected");
+	}
+
+	const body = await readBoundedJson(
+		res,
+		LUMAPRINTS_RECONCILIATION_RESPONSE_MAX_BYTES,
+		() => reconciliationFailure("Order confirmation response was malformed", "response_contract"),
+		() => reconciliationRetryable("Order confirmation stream failed"),
+		() => reconciliationRetryable("Order confirmation response exceeded its size bound"),
+	);
+	if (!object(body) || typeof body.externalId !== "string") {
+		throw reconciliationFailure("Order confirmation response was malformed", "response_contract");
+	}
+	const confirmedOrderNumber = normalizeLumaPrintsProviderNumber(body.orderNumber);
+	const confirmedStoreId = normalizeLumaPrintsProviderNumber(body.storeId);
+	if (confirmedOrderNumber === null || confirmedStoreId === null) {
+		throw reconciliationFailure("Order confirmation response was malformed", "response_contract");
+	}
+	if (
+		confirmedOrderNumber !== orderNumber ||
+		body.externalId !== expectedExternalId ||
+		confirmedStoreId !== String(storeId)
+	) {
+		throw reconciliationFailure("Order confirmation identity did not match", "ambiguous_result");
+	}
+	return true;
 }
 
 interface ReconciliationPage {
@@ -417,13 +611,23 @@ export async function findOrderByExternalId(
 	let rowsRead = 0;
 	let match: LumaPrintsOrderResponse | null = null;
 	const seenOrderNumbers = new Set<string>();
+	const deadline = Date.now() + LUMAPRINTS_RECONCILIATION_TIMEOUT_MS;
+	const timeBoundFailure = () =>
+		reconciliationRetryable("Order reconciliation response exceeded its time bound");
 
 	for (let page = 1; page <= LUMAPRINTS_RECONCILIATION_MAX_PAGES; page += 1) {
+		const remainingMs = deadline - Date.now();
+		if (remainingMs <= 0) throw timeBoundFailure();
 		const query = new URLSearchParams({ storeId: String(storeId), page: String(page) });
 		let res: Response;
 		try {
-			res = await fetchLumaPrints(`/api/v1/orders?${query}`, { headers: getHeaders() });
+			res = await fetchLumaPrints(
+				`/api/v1/orders?${query}`,
+				{ headers: getHeaders() },
+				Math.min(LUMAPRINTS_REQUEST_TIMEOUT_MS, remainingMs),
+			);
 		} catch (error) {
+			if (Date.now() >= deadline) throw timeBoundFailure();
 			const details =
 				error instanceof LumaPrintsError && object(error.details) ? error.details : null;
 			if (details?.kind === "network" || details?.kind === "timeout") {
@@ -443,9 +647,13 @@ export async function findOrderByExternalId(
 			LUMAPRINTS_RECONCILIATION_RESPONSE_MAX_BYTES,
 			() =>
 				reconciliationFailure("Order reconciliation response was malformed", "response_contract"),
-			() => reconciliationRetryable("Order reconciliation stream failed"),
+			() =>
+				Date.now() >= deadline
+					? timeBoundFailure()
+					: reconciliationRetryable("Order reconciliation stream failed"),
 			() => reconciliationRetryable("Order reconciliation response exceeded its size bound"),
 		);
+		if (Date.now() >= deadline) throw timeBoundFailure();
 		const parsed = parseReconciliationPage(body, storeId);
 		if (
 			parsed.currentPage !== page ||
@@ -504,8 +712,7 @@ export async function findOrderByExternalId(
 	throw reconciliationRetryable("Order reconciliation response exceeded its pagination bound");
 }
 
-/** Pure payload builder. Sanity sources retain print-quality transforms;
- * direct paper uses option 39, framed paper [67, 96], and canvas [3]. */
+/** Pure payload builder for direct paper, framed paper, and canvas options. */
 export function buildLumaPrintsOrder(
 	externalId: string,
 	recipient: Recipient,
@@ -515,9 +722,10 @@ export function buildLumaPrintsOrder(
 		externalId,
 		storeId: getStoreId(),
 		shippingMethod: "default",
+		productionTime: "regular",
 		recipient: {
 			firstName: recipient.firstName,
-			lastName: recipient.lastName,
+			lastName: recipient.lastName || recipient.firstName,
 			addressLine1: recipient.address1,
 			addressLine2: recipient.address2 || "",
 			city: recipient.city,
@@ -527,40 +735,17 @@ export function buildLumaPrintsOrder(
 			phone: recipient.phone || "",
 		},
 		orderItems: items.map((item, i) => {
-			const isCanvas = typeof item.canvasSubcategoryId === "number" && item.canvasSubcategoryId > 0;
-			const isFramed = typeof item.frameSubcategoryId === "number" && item.frameSubcategoryId > 0;
-			// Priority: canvas > frame > paper subcategory
-			const subcategoryId = isCanvas
-				? (item.canvasSubcategoryId as number)
-				: isFramed
-					? (item.frameSubcategoryId as number)
-					: item.paperSubcategoryId;
-			const imageUrl =
-				item.sourcePolicy === "sanity_cdn"
-					? prepareSanityUrlForPrint(item.imageUrl)
-					: item.imageUrl;
-			const options: number[] = [];
-			let solidColorHexCode: string | undefined;
-			if (isCanvas) {
-				options.push(3); // Solid Color wrap
-				solidColorHexCode = item.canvasWrapHex || "#000000";
-			} else if (isFramed) {
-				// Framed Fine Art Paper has its own option groups. The direct-paper
-				// no-bleed option is not valid for this subcategory.
-				options.push(67); // Mat size: 2"
-				options.push(96); // Mat color: White
-			} else {
-				options.push(39); // No Bleed (direct Fine Art Paper)
+			const product = item.product ?? getPrintProductConfiguration(item);
+			if (!product) {
+				throw new FulfillmentValidationError("Framed print paper is unsupported");
 			}
 			return {
 				externalItemId: `${externalId}-item-${i + 1}`,
-				subcategoryId,
+				...product,
 				quantity: item.quantity,
 				width: item.width,
 				height: item.height,
-				file: { imageUrl },
-				orderItemOptions: options,
-				...(solidColorHexCode ? { solidColorHexCode } : {}),
+				file: { imageUrl: item.imageUrl },
 			};
 		}),
 	};

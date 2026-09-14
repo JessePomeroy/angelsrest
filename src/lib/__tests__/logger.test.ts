@@ -1,230 +1,122 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-// Mock @sentry/node before importing the logger so the logger picks
-// up the mocked module. vi.mock is hoisted statically — see
-// `feedback_vitest_mock_hoisting.md` for why we don't re-apply this in
-// beforeEach.
-vi.mock("@sentry/node", () => {
-	const captureException = vi.fn();
-	const addBreadcrumb = vi.fn();
-	const setTag = vi.fn();
-	const setExtra = vi.fn();
-	const setContext = vi.fn();
-	const withScope = vi.fn((cb: (scope: unknown) => void) => {
-		cb({ setTag, setExtra, setContext });
-	});
-	return {
-		captureException,
-		addBreadcrumb,
-		withScope,
-		// Expose the inner mocks for assertions
-		__mocks: { captureException, addBreadcrumb, setTag, setExtra, setContext },
-	};
-});
+const sentry = vi.hoisted(() => ({
+	captureException: vi.fn(),
+	addBreadcrumb: vi.fn(),
+	setTag: vi.fn(),
+	setExtra: vi.fn(),
+	setContext: vi.fn(),
+}));
+vi.mock("@sentry/node", () => ({
+	...sentry,
+	withScope: (callback: (scope: typeof sentry) => void) => callback(sentry),
+}));
 
-import * as Sentry from "@sentry/node";
 import { logStructured, timed } from "../server/logger";
 
-type SentryMockBag = {
-	captureException: ReturnType<typeof vi.fn>;
-	addBreadcrumb: ReturnType<typeof vi.fn>;
-	setTag: ReturnType<typeof vi.fn>;
-	setExtra: ReturnType<typeof vi.fn>;
-	setContext: ReturnType<typeof vi.fn>;
-};
-const sentryMocks = (Sentry as unknown as { __mocks: SentryMockBag }).__mocks;
-
-describe("logStructured", () => {
-	let logSpy: ReturnType<typeof vi.spyOn>;
-	let warnSpy: ReturnType<typeof vi.spyOn>;
-	let errorSpy: ReturnType<typeof vi.spyOn>;
-
-	beforeEach(() => {
-		logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
-		warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
-		errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
-		sentryMocks.captureException.mockClear();
-		sentryMocks.addBreadcrumb.mockClear();
-		sentryMocks.setTag.mockClear();
-		sentryMocks.setExtra.mockClear();
-		sentryMocks.setContext.mockClear();
-	});
-
-	afterEach(() => {
-		logSpy.mockRestore();
-		warnSpy.mockRestore();
-		errorSpy.mockRestore();
-	});
-
-	describe("JSON output shape", () => {
-		it("emits a JSON line to console.log for info events", () => {
-			logStructured({
-				event: "order.created",
-				stage: "order_create",
-				orderId: "ORD-001",
-				durationMs: 42,
-			});
-
-			expect(logSpy).toHaveBeenCalledTimes(1);
-			const payload = JSON.parse(logSpy.mock.calls[0][0] as string);
-			expect(payload).toMatchObject({
-				level: "info",
-				event: "order.created",
-				stage: "order_create",
-				orderId: "ORD-001",
-				durationMs: 42,
-			});
-			expect(payload.ts).toMatch(/^\d{4}-\d{2}-\d{2}T/);
-		});
-
-		it("uses console.warn for warn level", () => {
-			logStructured({ event: "fee.unavailable", level: "warn" });
-			expect(warnSpy).toHaveBeenCalledTimes(1);
-			expect(logSpy).not.toHaveBeenCalled();
-		});
-
-		it("uses console.error for error level", () => {
-			logStructured({
-				event: "lumaprints.failed",
-				level: "error",
-				error: new Error("boom"),
-			});
-			expect(errorSpy).toHaveBeenCalledTimes(1);
-		});
-
-		it("strips undefined fields from output", () => {
-			logStructured({ event: "noop" });
-			const payload = JSON.parse(logSpy.mock.calls[0][0] as string);
-			expect(payload).not.toHaveProperty("orderId");
-			expect(payload).not.toHaveProperty("sessionId");
-			expect(payload).not.toHaveProperty("durationMs");
-			expect(payload).not.toHaveProperty("stage");
-		});
-
-		it("includes errorMessage when error is provided", () => {
-			logStructured({
-				event: "fail",
-				level: "error",
-				error: new Error("kapow"),
-			});
-			const payload = JSON.parse(errorSpy.mock.calls[0][0] as string);
-			expect(payload.errorMessage).toBe("kapow");
-		});
-
-		it("merges meta fields into the payload", () => {
-			logStructured({
-				event: "order.created",
-				meta: { itemCount: 3, paperId: 42 },
-			});
-			const payload = JSON.parse(logSpy.mock.calls[0][0] as string);
-			expect(payload.itemCount).toBe(3);
-			expect(payload.paperId).toBe(42);
-		});
-	});
-
-	describe("Sentry routing", () => {
-		it("calls captureException when level=error and error is provided", () => {
-			const err = new Error("kaboom");
-			logStructured({
-				event: "lumaprints.failed",
-				level: "error",
-				stage: "lumaprints_submit",
-				orderId: "ORD-007",
-				error: err,
-			});
-
-			expect(sentryMocks.captureException).toHaveBeenCalledTimes(1);
-			expect(sentryMocks.captureException).toHaveBeenCalledWith(err);
-			expect(sentryMocks.setTag).toHaveBeenCalledWith("stage", "lumaprints_submit");
-			expect(sentryMocks.setTag).toHaveBeenCalledWith("orderId", "ORD-007");
-			expect(sentryMocks.addBreadcrumb).not.toHaveBeenCalled();
-		});
-
-		it("does NOT call captureException for info events", () => {
-			logStructured({ event: "order.created", orderId: "ORD-001" });
-			expect(sentryMocks.captureException).not.toHaveBeenCalled();
-		});
-
-		it("does NOT call captureException for error level WITHOUT an error object", () => {
-			// Edge case: someone calls level=error but only as a flag, no exception
-			// to forward. We still log to console.error but skip Sentry capture.
-			logStructured({ event: "manual.error", level: "error" });
-			expect(sentryMocks.captureException).not.toHaveBeenCalled();
-			expect(sentryMocks.addBreadcrumb).toHaveBeenCalledTimes(1);
-		});
-
-		it("adds a breadcrumb for info events", () => {
-			logStructured({
-				event: "order.created",
-				stage: "order_create",
-				orderId: "ORD-001",
-			});
-			expect(sentryMocks.addBreadcrumb).toHaveBeenCalledTimes(1);
-			const crumb = sentryMocks.addBreadcrumb.mock.calls[0][0];
-			expect(crumb.category).toBe("order_create");
-			expect(crumb.message).toBe("order.created");
-			expect(crumb.level).toBe("info");
-		});
-
-		it("maps warn level to warning breadcrumb", () => {
-			logStructured({ event: "fee.unavailable", level: "warn" });
-			const crumb = sentryMocks.addBreadcrumb.mock.calls[0][0];
-			expect(crumb.level).toBe("warning");
-		});
-
-		it("uses 'app' as default breadcrumb category when stage is omitted", () => {
-			logStructured({ event: "noop" });
-			const crumb = sentryMocks.addBreadcrumb.mock.calls[0][0];
-			expect(crumb.category).toBe("app");
-		});
-	});
+beforeEach(() => {
+	vi.clearAllMocks();
+	vi.spyOn(console, "log").mockImplementation(() => {});
+	vi.spyOn(console, "warn").mockImplementation(() => {});
+	vi.spyOn(console, "error").mockImplementation(() => {});
 });
+afterEach(() => vi.restoreAllMocks());
 
-describe("timed", () => {
-	let logSpy: ReturnType<typeof vi.spyOn>;
-	let errorSpy: ReturnType<typeof vi.spyOn>;
-
-	beforeEach(() => {
-		logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
-		errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
-		sentryMocks.captureException.mockClear();
-		sentryMocks.addBreadcrumb.mockClear();
+describe("structured logging", () => {
+	it("writes structured info with metadata and a breadcrumb", () => {
+		logStructured({
+			event: "order.created",
+			stage: "order_create",
+			orderId: "ORD-001",
+			durationMs: 42,
+			meta: { itemCount: 3 },
+		});
+		expect(console.log).toHaveBeenCalledOnce();
+		const payload = JSON.parse(vi.mocked(console.log).mock.calls[0][0]);
+		expect(payload).toEqual({
+			ts: expect.stringMatching(/^\d{4}-\d{2}-\d{2}T/),
+			level: "info",
+			event: "order.created",
+			stage: "order_create",
+			orderId: "ORD-001",
+			durationMs: 42,
+			itemCount: 3,
+		});
+		expect(sentry.addBreadcrumb).toHaveBeenCalledExactlyOnceWith({
+			category: "order_create",
+			message: "order.created",
+			level: "info",
+			data: payload,
+		});
+		expect(sentry.captureException).not.toHaveBeenCalled();
 	});
 
-	afterEach(() => {
-		logSpy.mockRestore();
-		errorSpy.mockRestore();
+	it.each([
+		[undefined, "log", "info"],
+		["warn", "warn", "warning"],
+		["error", "error", "info"],
+	] as const)("routes %s without an exception to %s and a breadcrumb", (level, method, breadcrumbLevel) => {
+		logStructured({ event: "noop", level });
+		expect(console[method]).toHaveBeenCalledOnce();
+		for (const other of ["log", "warn", "error"] as const) {
+			if (other !== method) expect(console[other]).not.toHaveBeenCalled();
+		}
+		const payload = JSON.parse(vi.mocked(console[method]).mock.calls[0][0]);
+		expect(payload).toEqual({ ts: expect.any(String), level: level ?? "info", event: "noop" });
+		expect(sentry.addBreadcrumb).toHaveBeenCalledExactlyOnceWith({
+			category: "app",
+			message: "noop",
+			level: breadcrumbLevel,
+			data: payload,
+		});
+		expect(sentry.captureException).not.toHaveBeenCalled();
 	});
 
-	it("logs an info entry with durationMs on success", async () => {
-		const result = await timed(
-			{ event: "lumaprints.submitted", stage: "lumaprints_submit" },
-			async () => {
-				await new Promise((r) => setTimeout(r, 5));
-				return "ok";
-			},
-		);
-
-		expect(result).toBe("ok");
-		expect(logSpy).toHaveBeenCalledTimes(1);
-		const payload = JSON.parse(logSpy.mock.calls[0][0] as string);
-		expect(payload.event).toBe("lumaprints.submitted");
-		expect(payload.level).toBe("info");
-		expect(payload.durationMs).toBeGreaterThanOrEqual(0);
+	it("forwards exceptions and contextual tags without a breadcrumb", () => {
+		const error = new Error("kapow");
+		logStructured({
+			event: "fail",
+			level: "error",
+			stage: "lumaprints_submit",
+			orderId: "ORD-007",
+			error,
+		});
+		expect(console.error).toHaveBeenCalledOnce();
+		expect(JSON.parse(vi.mocked(console.error).mock.calls[0][0])).toMatchObject({
+			level: "error",
+			errorMessage: "kapow",
+		});
+		expect(sentry.captureException).toHaveBeenCalledExactlyOnceWith(error);
+		expect(sentry.setTag).toHaveBeenCalledWith("stage", "lumaprints_submit");
+		expect(sentry.setTag).toHaveBeenCalledWith("orderId", "ORD-007");
+		expect(sentry.addBreadcrumb).not.toHaveBeenCalled();
 	});
 
-	it("logs an error entry with durationMs and re-throws on failure", async () => {
-		const err = new Error("network down");
+	it("returns a timed result and logs its elapsed duration", async () => {
+		vi.spyOn(Date, "now").mockReturnValueOnce(100).mockReturnValueOnce(142);
+		await expect(timed({ event: "done" }, async () => "ok")).resolves.toBe("ok");
+		expect(console.log).toHaveBeenCalledOnce();
+		expect(JSON.parse(vi.mocked(console.log).mock.calls[0][0])).toMatchObject({
+			event: "done",
+			level: "info",
+			durationMs: 42,
+		});
+	});
+
+	it("logs elapsed failure and rethrows the original error", async () => {
+		vi.spyOn(Date, "now").mockReturnValueOnce(100).mockReturnValueOnce(125);
+		const error = new Error("network down");
 		await expect(
-			timed({ event: "lumaprints.submitted", stage: "lumaprints_submit" }, async () => {
-				throw err;
+			timed({ event: "failed" }, async () => {
+				throw error;
 			}),
-		).rejects.toThrow("network down");
-
-		expect(errorSpy).toHaveBeenCalledTimes(1);
-		const payload = JSON.parse(errorSpy.mock.calls[0][0] as string);
-		expect(payload.level).toBe("error");
-		expect(payload.errorMessage).toBe("network down");
-		expect(sentryMocks.captureException).toHaveBeenCalledWith(err);
+		).rejects.toBe(error);
+		expect(console.error).toHaveBeenCalledOnce();
+		expect(JSON.parse(vi.mocked(console.error).mock.calls[0][0])).toMatchObject({
+			level: "error",
+			errorMessage: "network down",
+			durationMs: 25,
+		});
+		expect(sentry.captureException).toHaveBeenCalledWith(error);
 	});
 });

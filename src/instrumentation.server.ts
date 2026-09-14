@@ -17,12 +17,12 @@
  */
 
 import { init } from "@sentry/node";
-import { env } from "$env/dynamic/public";
+import { scrubPrivateCapabilityTelemetry } from "$lib/capabilityPrivacy";
 
-// Use dynamic public env so a missing PUBLIC_SENTRY_DSN doesn't fail the
-// build — Sentry no-ops when dsn is undefined/empty.
+// Vercel imports instrumentation before SvelteKit initializes $env/dynamic.
+// Read the public DSN from Node directly; Sentry no-ops when it is absent.
 init({
-	dsn: env.PUBLIC_SENTRY_DSN,
+	dsn: process.env.PUBLIC_SENTRY_DSN,
 	// Tag every event with which site it came from. Lets a single Sentry
 	// project serve multiple deployments (angelsrest, reflecting-pool,
 	// future per-client deploys) with filterable issue lists.
@@ -36,4 +36,9 @@ init({
 	// emails and addresses. We'll attach scrubbed context manually via
 	// the structured logger when needed.
 	sendDefaultPii: false,
+	// Bearer capabilities live in URL paths and queries. Scrub freshly captured request
+	// data and breadcrumbs retained before a later, unrelated error is emitted.
+	beforeBreadcrumb: scrubPrivateCapabilityTelemetry,
+	beforeSend: scrubPrivateCapabilityTelemetry,
+	beforeSendTransaction: scrubPrivateCapabilityTelemetry,
 });

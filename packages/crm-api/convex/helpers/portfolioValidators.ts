@@ -85,7 +85,10 @@ function requireText(value: string | undefined, field: string, maximum: number) 
 	return normalized;
 }
 
-export function toPublishedPortfolioGallery(draft: PortfolioGalleryDraft) {
+function toPublishedPortfolioGalleryWithAltPolicy(
+	draft: PortfolioGalleryDraft,
+	acceptedLegacyMissingAltPlacementKeys: ReadonlySet<string>,
+) {
 	validatePortfolioGalleryDraft(draft);
 	if (draft.placements.length === 0) {
 		throw new Error("At least one portfolio image is required before publishing");
@@ -96,7 +99,7 @@ export function toPublishedPortfolioGallery(draft: PortfolioGalleryDraft) {
 		slug: draft.slug,
 		placements: draft.placements.map((placement, index) => {
 			const altText = placement.altText?.trim() ?? "";
-			if (!altText) {
+			if (!altText && !acceptedLegacyMissingAltPlacementKeys.has(placement.key)) {
 				throw new Error(`Placement ${index + 1} needs alt text before publishing`);
 			}
 			return {
@@ -108,6 +111,21 @@ export function toPublishedPortfolioGallery(draft: PortfolioGalleryDraft) {
 			};
 		}),
 	};
+}
+
+export function toPublishedPortfolioGallery(draft: PortfolioGalleryDraft) {
+	return toPublishedPortfolioGalleryWithAltPolicy(draft, new Set());
+}
+
+/** Exact legacy runtime fallback accepted only for provenance-marked Sanity imports. */
+export function toPublishedImportedPortfolioGallery(
+	draft: PortfolioGalleryDraft,
+	acceptedLegacyMissingAltPlacementKeys: ReadonlySet<string>,
+) {
+	return toPublishedPortfolioGalleryWithAltPolicy(
+		draft,
+		acceptedLegacyMissingAltPlacementKeys,
+	);
 }
 
 export function serializePortfolioGalleryDraft(draft: PortfolioGalleryDraft) {

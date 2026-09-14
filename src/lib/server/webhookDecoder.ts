@@ -12,7 +12,6 @@ import {
 	type LumaPrintsCartItemPayload,
 } from "$lib/server/cartMetadataCodec";
 import { FulfillmentValidationError } from "$lib/server/fulfillmentValidationError";
-import { isSanityPrintSource } from "$lib/shop/lumaprintsUrls";
 import type { OrderItem, Recipient } from "$lib/shop/types";
 import type { ShippingDetails } from "./webhookEmails";
 
@@ -33,11 +32,11 @@ type PrintOptions = Pick<
  * Build the list of LumaPrints order items from Stripe checkout metadata.
  *
  * Handles three shapes of order:
- *   - **Cart** (added cart PR C): `metadata.isCart === "true"` with one
+ *   - **Historical cart:** `metadata.isCart === "true"` with one
  *     `cartItem_{n}` JSON entry per line. Each cart item carries its own
  *     paper/size, so this branch ignores the top-level paper metadata.
- *     Encoding contract is shared with `buildCartMetadata` in
- *     `src/routes/api/cart/checkout/+server.ts` — keep them in sync.
+ *     New checkout uses handle-v2 snapshots; fixed historical-wire fixtures
+ *     in `webhookCartShape.test.ts` protect this retained decoding contract.
  *   - **Print set:** `metadata.isPrintSet === "true"` with an `imageUrls`
  *     JSON array, one LumaPrints item per image, same paper/size for
  *     every image. Reads paper from top-level metadata.
@@ -52,7 +51,7 @@ type PrintOptions = Pick<
  * the session/lineItems shapes are known.
  */
 export function buildOrderItemsFromSession(
-	session: Stripe.Checkout.Session,
+	session: Pick<Stripe.Checkout.Session, "metadata">,
 	lineItems: Stripe.LineItem[],
 ): OrderItem[] {
 	const meta = (session.metadata ?? {}) as StripeMetadata;
@@ -99,7 +98,7 @@ function buildCartOrderItems(meta: StripeMetadata): OrderItem[] {
 function buildCartOrderItem(parsed: LumaPrintsCartItemPayload, imageUrl: string): OrderItem {
 	return {
 		imageUrl,
-		sourcePolicy: isSanityPrintSource(imageUrl) ? "sanity_cdn" : "byte_exact",
+		sourcePolicy: "byte_exact",
 		paperSubcategoryId: parsed.s,
 		width: parsed.w,
 		height: parsed.h,
@@ -149,7 +148,7 @@ function buildTopLevelPrintOptions(meta: StripeMetadata): PrintOptions | null {
 function buildPrintSetOrderItems(meta: StripeMetadata, printOptions: PrintOptions): OrderItem[] {
 	return parseImageUrls(meta.imageUrls).map((imageUrl) => ({
 		imageUrl,
-		sourcePolicy: isSanityPrintSource(imageUrl) ? "sanity_cdn" : "byte_exact",
+		sourcePolicy: "byte_exact",
 		...printOptions,
 		quantity: 1,
 	}));
@@ -174,7 +173,7 @@ function buildSinglePrintOrderItems(
 	return [
 		{
 			imageUrl,
-			sourcePolicy: isSanityPrintSource(imageUrl) ? "sanity_cdn" : "byte_exact",
+			sourcePolicy: "byte_exact",
 			...printOptions,
 			quantity: lineItems[0]?.quantity ?? 1,
 		},

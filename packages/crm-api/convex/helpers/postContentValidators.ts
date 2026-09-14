@@ -71,6 +71,7 @@ export const postDraftValidator = v.object({
 	presentation: v.optional(postPresentationValidator),
 	displayPublishedAt: v.optional(v.number()),
 	summary: v.optional(v.string()),
+	summarySource: v.optional(v.literal("body")),
 	seoTitle: v.optional(v.string()),
 	seoDescription: v.optional(v.string()),
 	brief: v.optional(v.string()),
@@ -80,6 +81,7 @@ export const postDraftValidator = v.object({
 	equipment: v.array(postTechnicalItemValidator),
 	materials: v.array(postTechnicalItemValidator),
 	authorDocumentId: v.optional(v.id("contentDocuments")),
+	authorSource: v.optional(v.literal("siteSettings")),
 	categories: v.array(postCategoryReferenceDraftValidator),
 	mainImage: v.optional(postMainImageDraftValidator),
 	body: richTextDocumentValidator,
@@ -94,6 +96,7 @@ export const postRevisionPayloadValidator = v.object({
 	presentation: v.optional(postPresentationValidator),
 	displayPublishedAt: v.optional(v.number()),
 	summary: v.optional(v.string()),
+	summarySource: v.optional(v.literal("body")),
 	seoTitle: v.optional(v.string()),
 	seoDescription: v.optional(v.string()),
 	brief: v.optional(v.string()),
@@ -109,6 +112,7 @@ export const postRevisionPayloadValidator = v.object({
 	mediaPlacementCount: v.number(),
 	referenceCount: v.number(),
 	hasAuthor: v.boolean(),
+	authorSource: v.optional(v.literal("siteSettings")),
 	hasMainImage: v.boolean(),
 });
 
@@ -129,9 +133,11 @@ export type PublishedPostDraft = PostDraft & {
 	presentation: PostPresentation;
 	displayPublishedAt: number;
 	summary: string;
-	authorDocumentId: NonNullable<PostDraft["authorDocumentId"]>;
 	body: RichTextDocument;
-};
+} & (
+	| { authorSource: "siteSettings"; authorDocumentId?: undefined }
+	| { authorSource?: undefined; authorDocumentId: NonNullable<PostDraft["authorDocumentId"]> }
+);
 
 export type PublishedPostHeader = PostRevisionPayload & {
 	title: string;
@@ -164,6 +170,7 @@ export function validatePostDraft(draft: PostDraft) {
 			"presentation",
 			"displayPublishedAt",
 			"summary",
+			"summarySource",
 			"seoTitle",
 			"seoDescription",
 			"brief",
@@ -173,6 +180,7 @@ export function validatePostDraft(draft: PostDraft) {
 			"equipment",
 			"materials",
 			"authorDocumentId",
+			"authorSource",
 			"categories",
 			"mainImage",
 			"body",
@@ -180,6 +188,15 @@ export function validatePostDraft(draft: PostDraft) {
 		"Post draft",
 	);
 	if (draft.kind !== "post") throw new Error("Post draft kind must be post");
+	if (draft.summarySource !== undefined && draft.summarySource !== "body") {
+		throw new Error("Post summary source is invalid");
+	}
+	if (draft.authorSource !== undefined && draft.authorSource !== "siteSettings") {
+		throw new Error("Post author source is invalid");
+	}
+	if (draft.authorSource && draft.authorDocumentId) {
+		throw new Error("Post author source cannot be combined with an explicit author");
+	}
 	assertMaximum(draft.title, POST_CONTENT_LIMITS.title, "Post title");
 	assertMaximum(draft.slug, POST_CONTENT_LIMITS.slug, "Post slug");
 	assertMaximum(draft.summary, POST_CONTENT_LIMITS.summary, "Post summary");
@@ -251,7 +268,9 @@ export function toPublishedPostHeader(
 	if (!format) throw new Error("Post format is required before publishing");
 	if (!presentation) throw new Error("Post presentation is required before publishing");
 	assertPostPresentation(format, presentation);
-	if (!payload.hasAuthor) throw new Error("Post author is required before publishing");
+	if (!payload.hasAuthor && payload.authorSource !== "siteSettings") {
+		throw new Error("Post author is required before publishing");
+	}
 	assertPostFormatCounts({ ...payload, format });
 	if (
 		payload.displayPublishedAt === undefined
@@ -278,7 +297,7 @@ export function toPublishedPostDraft(draft: PostDraft): PublishedPostDraft {
 	if (!format) throw new Error("Post format is required before publishing");
 	if (!presentation) throw new Error("Post presentation is required before publishing");
 	assertPostPresentation(format, presentation);
-	if (!validated.authorDocumentId) {
+	if (!validated.authorDocumentId && validated.authorSource !== "siteSettings") {
 		throw new Error("Post author is required before publishing");
 	}
 	const body = assertRichTextDocument(validated.body, "publish");
@@ -293,8 +312,12 @@ export function toPublishedPostDraft(draft: PostDraft): PublishedPostDraft {
 			POST_CONTENT_LIMITS.altText,
 		);
 	}
+	const author = validated.authorSource === "siteSettings"
+		? { authorSource: validated.authorSource, authorDocumentId: undefined }
+		: { authorDocumentId: validated.authorDocumentId ?? (() => { throw new Error("Post author is required before publishing"); })(), authorSource: undefined };
 	return {
 		...validated,
+		...author,
 		title: requireText(validated.title, "Post title", POST_CONTENT_LIMITS.title),
 		slug: requireCanonicalPostSlug(validated.slug),
 		format,
@@ -305,7 +328,6 @@ export function toPublishedPostDraft(draft: PostDraft): PublishedPostDraft {
 				throw new Error("Post display publication time is required before publishing");
 			})(),
 		summary: requireText(validated.summary, "Post summary", POST_CONTENT_LIMITS.summary),
-		authorDocumentId: validated.authorDocumentId,
 		body,
 	};
 }
@@ -319,39 +341,6 @@ export function postExcerptFromDraft(draft: PostDraft) {
 		.slice(0, POST_CONTENT_LIMITS.summary);
 }
 
-export function postRevisionPayloadFromDraft(
-	draft: PostDraft,
-	summaryChecksum: string,
-): PostRevisionPayload {
-	const validated = validatePostDraft(draft);
-	const bodyImages = validated.body.blocks.filter((block) => block.type === "image").length;
-	return {
-		kind: "post",
-		title: validated.title,
-		slug: validated.slug,
-		format: validated.format,
-		presentation: validated.presentation,
-		displayPublishedAt: validated.displayPublishedAt,
-		summary: validated.summary,
-		seoTitle: validated.seoTitle,
-		seoDescription: validated.seoDescription,
-		brief: validated.brief,
-		approach: validated.approach,
-		outcome: validated.outcome,
-		credits: validated.credits,
-		excerpt: postExcerptFromDraft(validated),
-		summaryChecksum,
-		bodyBlockCount: validated.body.blocks.length,
-		categoryCount: validated.categories.length,
-		equipmentCount: validated.equipment.length,
-		materialCount: validated.materials.length,
-		mediaPlacementCount: bodyImages + (validated.mainImage ? 1 : 0),
-		referenceCount: validated.categories.length + (validated.authorDocumentId ? 1 : 0),
-		hasAuthor: validated.authorDocumentId !== undefined,
-		hasMainImage: validated.mainImage !== undefined,
-	};
-}
-
 export function serializePostRevisionPayload(payload: PostRevisionPayload) {
 	validatePostRevisionPayload(payload);
 	return JSON.stringify({
@@ -362,6 +351,7 @@ export function serializePostRevisionPayload(payload: PostRevisionPayload) {
 		presentation: payload.presentation ?? null,
 		displayPublishedAt: payload.displayPublishedAt ?? null,
 		summary: payload.summary ?? null,
+		...(payload.summarySource ? { summarySource: payload.summarySource } : {}),
 		seoTitle: payload.seoTitle ?? null,
 		seoDescription: payload.seoDescription ?? null,
 		brief: payload.brief ?? null,
@@ -377,11 +367,21 @@ export function serializePostRevisionPayload(payload: PostRevisionPayload) {
 		mediaPlacementCount: payload.mediaPlacementCount,
 		referenceCount: payload.referenceCount,
 		hasAuthor: payload.hasAuthor,
+		...(payload.authorSource ? { authorSource: payload.authorSource } : {}),
 		hasMainImage: payload.hasMainImage,
 	});
 }
 
 export function validatePostRevisionPayload(payload: PostRevisionPayload) {
+	if (payload.summarySource !== undefined && payload.summarySource !== "body") {
+		throw new Error("Post summary source is invalid");
+	}
+	if (payload.authorSource !== undefined && payload.authorSource !== "siteSettings") {
+		throw new Error("Post author source is invalid");
+	}
+	if (payload.authorSource && payload.hasAuthor) {
+		throw new Error("Post author source cannot be combined with an explicit author");
+	}
 	const counts = [
 		payload.bodyBlockCount,
 		payload.categoryCount,

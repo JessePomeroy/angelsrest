@@ -2,6 +2,7 @@ import type Stripe from "stripe";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { env } from "$env/dynamic/private";
 import type { CheckoutSnapshotItem } from "$lib/server/checkoutCatalog";
+import type { CheckoutSessionStageError } from "$lib/server/checkoutFailures";
 import {
 	type CreateHandleCheckoutOptions,
 	createHandleCheckoutSession,
@@ -16,6 +17,7 @@ import { buildTenantCheckoutOptions } from "$lib/server/stripeConnect";
 const NOW = Date.parse("2026-01-01T00:00:00Z");
 const ATTEMPT = "123e4567-e89b-42d3-a456-426614174000";
 const HANDLE = "223e4567-e89b-42d3-a456-426614174000";
+const TENANT_ID = "tenant_05eb6092-5d8c-43ce-ad26-1a59522bd07b";
 const runtimeEnv = env as Record<string, string | undefined>;
 const ITEM: CheckoutSnapshotItem = {
 	productKey: "published-product",
@@ -30,6 +32,7 @@ const ITEM: CheckoutSnapshotItem = {
 
 afterEach(() => {
 	runtimeEnv.ORDER_PRODUCERS_STATE = "open";
+	delete runtimeEnv.PRINT_INPUT_PROTOCOL;
 });
 
 function harness(overrides: Record<string, unknown> = {}) {
@@ -69,11 +72,11 @@ function harness(overrides: Record<string, unknown> = {}) {
 			events.push("admission-creating");
 			return Math.floor(NOW / 1000) + 86_100;
 		}),
-		markUncertain: vi.fn(),
+		markUncertain: vi.fn().mockResolvedValue(undefined),
 		bind: vi.fn(async () => {
 			events.push("bind");
 		}),
-		release: vi.fn(),
+		release: vi.fn().mockResolvedValue(undefined),
 	};
 	const bindSession = vi.fn(() => events.push("cookie"));
 	const options = {
@@ -82,7 +85,7 @@ function harness(overrides: Record<string, unknown> = {}) {
 		attemptProofClass: "same_origin_host_proof",
 		site: "angelsrest.test",
 		account: null,
-		catalogProvider: "sanity",
+		catalogProvider: "convex",
 		snapshotItems: [ITEM],
 		stripe: { checkout: { sessions: { create } } } as unknown as Stripe,
 		lineItems: [
@@ -114,6 +117,36 @@ function harness(overrides: Record<string, unknown> = {}) {
 }
 
 describe("handle checkout orchestration", () => {
+	it.each([
+		undefined,
+		"frozen-v1",
+	])("opts in only with the explicit Angels Rest gate: %s", async (mode) => {
+		runtimeEnv.ORDER_PRODUCERS_STATE = "open";
+		runtimeEnv.PRINT_INPUT_PROTOCOL = mode;
+		const site = "angelsrest.online";
+		const test = harness({
+			site,
+			successUrl: `https://${site}/checkout/success`,
+			cancelUrl: `https://${site}/checkout/cancel`,
+			tenantCheckout: buildTenantCheckoutOptions({
+				tenant: { siteUrl: site },
+				kind: "print",
+				subtotalCents: 4200,
+			}),
+		});
+		await createHandleCheckoutSession(test.options);
+		expect(test.reserve).toHaveBeenCalledWith(
+			expect.objectContaining(mode ? { printInputVersion: 1 } : { site }),
+		);
+		expect(test.create.mock.calls[0]?.[0].metadata?.printInputVersion).toBe(mode ? "1" : undefined);
+		if (!mode)
+			expect(test.reserve).not.toHaveBeenCalledWith(
+				expect.objectContaining({ printInputVersion: 1 }),
+			);
+		const spoke = harness();
+		await createHandleCheckoutSession(spoke.options);
+		expect(spoke.create.mock.calls[0]?.[0].metadata).not.toHaveProperty("printInputVersion");
+	});
 	it.each([
 		["missing", undefined],
 		["explicit closed", "closed"],
@@ -167,6 +200,23 @@ describe("handle checkout orchestration", () => {
 		});
 	});
 
+	it("carries a server-resolved tenant ID into both durable checkout records", async () => {
+		const test = harness({
+			tenantCheckout: buildTenantCheckoutOptions({
+				tenant: { tenantId: TENANT_ID, siteUrl: "angelsrest.test" },
+				kind: "print",
+				subtotalCents: 4200,
+			}),
+		});
+		await createHandleCheckoutSession(test.options);
+		expect(test.reserve).toHaveBeenCalledWith(expect.objectContaining({ tenantId: TENANT_ID }));
+		expect(test.admissionClient.begin).toHaveBeenCalledWith(
+			expect.objectContaining({ tenantId: TENANT_ID }),
+		);
+		const params = test.create.mock.calls[0]?.[0] as Stripe.Checkout.SessionCreateParams;
+		expect(params.metadata).toMatchObject({ commerceTenantId: TENANT_ID });
+	});
+
 	it("does not call Stripe after reserve failure", async () => {
 		const test = harness({
 			reservationClient: {
@@ -174,7 +224,9 @@ describe("handle checkout orchestration", () => {
 				bind: vi.fn(),
 			},
 		});
-		await expect(createHandleCheckoutSession(test.options)).rejects.toThrow("unavailable");
+		await expect(createHandleCheckoutSession(test.options)).rejects.toEqual(
+			expect.objectContaining<Partial<CheckoutSessionStageError>>({ stage: "checkout_snapshot" }),
+		);
 		expect(test.create).not.toHaveBeenCalled();
 		expect(test.bindSession).not.toHaveBeenCalled();
 	});
@@ -209,8 +261,37 @@ describe("handle checkout orchestration", () => {
 				bind: vi.fn().mockRejectedValue(new Error("unavailable")),
 			},
 		});
-		await expect(createHandleCheckoutSession(test.options)).rejects.toThrow("unavailable");
+		await expect(createHandleCheckoutSession(test.options)).rejects.toEqual(
+			expect.objectContaining<Partial<CheckoutSessionStageError>>({ stage: "checkout_admission" }),
+		);
 		expect(test.bindSession).not.toHaveBeenCalled();
+	});
+
+	it("tags admission and Stripe failures at their exact effect seams", async () => {
+		const admission = harness({
+			admissionClient: {
+				...harness().admissionClient,
+				begin: vi.fn().mockRejectedValue(new Error("private admission failure")),
+			},
+		});
+		await expect(createHandleCheckoutSession(admission.options)).rejects.toMatchObject({
+			stage: "checkout_admission",
+			message: "private admission failure",
+		});
+		expect(admission.create).not.toHaveBeenCalled();
+
+		const stripeFailure = new Error("private Stripe failure");
+		const stripe = harness({
+			stripe: {
+				checkout: { sessions: { create: vi.fn().mockRejectedValue(stripeFailure) } },
+			} as unknown as Stripe,
+		});
+		await expect(createHandleCheckoutSession(stripe.options)).rejects.toMatchObject({
+			stage: "checkout_stripe",
+			message: stripeFailure.message,
+		});
+		expect(stripe.admissionClient.markUncertain).toHaveBeenCalledOnce();
+		expect(stripe.bindSession).not.toHaveBeenCalled();
 	});
 
 	it("returns a fresh bounded pre-effect challenge and rejects stale attempts", () => {

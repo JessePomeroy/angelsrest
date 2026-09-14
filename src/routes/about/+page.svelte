@@ -1,84 +1,35 @@
 <script lang="ts">
-import { PortableText } from "@portabletext/svelte";
-import portrait from "$lib/assets/DSCF7533.jpg";
 import AsciiImage from "$lib/components/AsciiImage.svelte";
+import BookingButton from "$lib/components/BookingButton.svelte";
 import ContactForm from "$lib/components/ContactForm.svelte";
 import SEO from "$lib/components/SEO.svelte";
+import { ABOUT_CONTACT_SEO_DESCRIPTION_FALLBACK } from "$lib/about-contact/content";
 
 let { data } = $props();
-const contact = $derived(data.contactPage);
+const about = $derived(data.content.about);
+const contact = $derived(data.content.contact);
 </script>
-
-<svelte:head>
-    <!-- Cal element-click embed code begins -->
-    <script type="text/javascript">
-        (function (C, A, L) {
-            let p = function (a, ar) {
-                a.q.push(ar);
-            };
-            let d = C.document;
-            C.Cal =
-                C.Cal ||
-                function () {
-                    let cal = C.Cal;
-                    let ar = arguments;
-                    if (!cal.loaded) {
-                        cal.ns = {};
-                        cal.q = cal.q || [];
-                        d.head.appendChild(d.createElement("script")).src = A;
-                        cal.loaded = true;
-                    }
-                    if (ar[0] === L) {
-                        const api = function () {
-                            p(api, arguments);
-                        };
-                        const namespace = ar[1];
-                        api.q = api.q || [];
-                        if (typeof namespace === "string") {
-                            cal.ns[namespace] = cal.ns[namespace] || api;
-                            p(cal.ns[namespace], ar);
-                            p(cal, ["initNamespace", namespace]);
-                        } else p(cal, ar);
-                        return;
-                    }
-                    p(cal, ar);
-                };
-        })(window, "https://app.cal.com/embed/embed.js", "init");
-
-        Cal("init", "photosession", { origin: "https://app.cal.com" });
-
-        Cal.ns.photosession("ui", {
-            hideEventTypeDetails: false,
-            layout: "month_view",
-            useSlotsViewOnSmallScreen: true,
-        });
-    </script>
-    <!-- Cal element-click embed code ends -->
-</svelte:head>
 
 <SEO
     title="about | angel's rest"
-    description={data.about?.seo?.description || "About Jesse Pomeroy — photographer, visual artist, and web developer. Get in touch for inquiries and collaborations."}
-    image={data.about?.seo?.ogImageUrl || "/og-image.jpg"}
+    description={about.seo.description || ABOUT_CONTACT_SEO_DESCRIPTION_FALLBACK}
+    image={about.seo.imageUrl || undefined}
     url="https://angelsrest.online/about"
 />
 
-<section class="px-6! md:px-8! lg:px-10!">
+<section class="about-page">
     <div
-        class="grid grid-cols-1 md:grid-cols-[auto_1fr] lg:grid-cols-[auto_1fr_1fr] gap-6 lg:gap-10 max-w-[1400px]"
+        class="about-grid"
     >
         <!-- Portrait -->
-        <div class="h-fit">
-            <div
-                class="bg-surface-500/10 border border-surface-500/20 p-2 rounded-lg inline-block"
-            >
+        <div class="portrait-column">
+            <div class="portrait-frame">
                 <div
-                    class="aspect-[3/4] w-64 md:w-72 lg:w-80 overflow-hidden rounded-md"
+                    class="portrait-image"
                 >
                     <AsciiImage
-                        src={portrait}
-                        alt={data.about?.name || "Portrait"}
-                        class="w-full h-full object-cover"
+                        src={about.portrait.src}
+                        alt={about.portrait.altText}
                         resolution={24}
                     />
                 </div>
@@ -86,59 +37,76 @@ const contact = $derived(data.contactPage);
         </div>
 
         <!-- Bio -->
-        <div class="pt-2 lg:pt-4">
-            <h1 class="mb-3 text-2xl">{data.about.name}</h1>
-            <p class="leading-relaxed mb-3 text-sm">
-                {data.about.shortBio}
+        <div class="biography">
+            <h1 class="bio-title">{about.displayName}</h1>
+            <p class="bio-intro">
+                {about.introduction}
             </p>
-            {#if data.about?.social?.instagram}
-                <p class="text-surface-400 text-sm">
+            {#if data.instagramUrl}
+                <p class="social-profile">
                     <a
-                        href={data.about.social.instagram}
+                        href={data.instagramUrl}
                         target="_blank"
                         rel="noopener"
-                        class="hover:text-surface-200 transition-colors"
+                        class="social-link"
                         >instagram</a
                     >
                 </p>
             {/if}
-            {#if contact?.bookingEnabled}
-                <div class="mt-4 pt-4 border-t border-surface-500/20">
-                    <p class="text-surface-400 text-xs mb-3">
-                        want to book a session or schedule a call?
+            {#if contact.booking.enabled && contact.booking.calLink}
+                <div class="booking-section">
+                    <p class="booking-intro">
+                        {contact.booking.intro}
                     </p>
-                    <button
-                        type="button"
-                        class="px-4 py-2.5 text-sm font-medium lowercase tracking-wide bg-white/5 border border-gray-300 dark:border-white/10 rounded-lg hover:bg-gray-100 dark:hover:bg-white/10 transition-all cursor-pointer"
-                        style="color: var(--form-text-color);"
-                        data-cal-link="jesse-s1wmio/photosession"
-                        data-cal-namespace="photosession"
-                    >
-                        book a time
-                    </button>
+                    <BookingButton calLink={contact.booking.calLink} label={contact.booking.label} />
                 </div>
             {/if}
         </div>
 
         <!-- Contact form -->
         <div
-            class="pt-2 lg:pt-4 md:col-span-2 lg:col-span-1 md:border-t md:border-surface-500/20 md:pt-6 md:mt-2 lg:border-0 lg:mt-0"
+            class="contact-section"
         >
-            {#if contact?.heading}
-                <h2 class="mb-2 text-lg">{contact.heading.toLowerCase()}</h2>
-            {:else}
-                <h2 class="mb-2 text-lg">get in touch</h2>
-            {/if}
-            {#if contact?.intro}
-                <div class="text-surface-400 text-sm mb-4 leading-relaxed">
-                    <PortableText value={contact.intro} />
-                </div>
-            {:else}
-                <p class="text-surface-400 text-sm mb-4">
-                    for inquiries, commissions, and collaborations.
-                </p>
-            {/if}
-            <ContactForm hideHeader={!!contact?.heading} />
+            <h2 class="contact-heading">{contact.heading.toLowerCase()}</h2>
+            <div class="contact-intro">
+                {#each contact.intro as paragraph}
+                    <p>{#each paragraph.split("\n") as line, index}{#if index > 0}<br />{/if}{line}{/each}</p>
+                {/each}
+            </div>
+            <ContactForm hideHeader confirmationMessage={contact.confirmationMessage} />
         </div>
     </div>
 </section>
+
+<style>
+    @layer components {
+        .about-grid { display: grid; grid-template-columns: minmax(0, 1fr); gap: 1.5rem; max-width: 1400px; }
+        .portrait-column { height: fit-content; }
+        .portrait-image { aspect-ratio: 3 / 4; width: 16rem; overflow: hidden; }
+        .portrait-image :global(img) { width: 100%; height: 100%; object-fit: cover; }
+        .biography, .contact-section { padding-top: 0.5rem; }
+        .bio-title { font-size: var(--text-2xl); line-height: var(--text-2xl--line-height); }
+        .bio-intro { font-size: var(--text-sm); line-height: 1.625; }
+        .social-profile { color: var(--color-surface-400); font-size: var(--text-sm); line-height: var(--text-sm--line-height); }
+        .social-link { transition: color 150ms cubic-bezier(0.4, 0, 0.2, 1); }
+        .booking-section { margin-top: 1rem; padding-top: 1rem; border-top: 1px solid color-mix(in oklab, var(--color-surface-500) 20%, transparent); }
+        .booking-intro { color: var(--color-surface-400); font-size: var(--text-xs); line-height: var(--text-xs--line-height); }
+        .contact-heading { font-size: var(--text-lg); line-height: var(--text-lg--line-height); }
+        .contact-intro { color: var(--color-surface-400); font-size: var(--text-sm); margin-bottom: 1rem; line-height: 1.625; }
+        @media (hover: hover) { .social-link:hover { color: var(--color-surface-200); } }
+        @media (min-width: 48rem) {
+            .about-grid { grid-template-columns: auto 1fr; }
+            .portrait-image { width: 18rem; }
+            .contact-section { grid-column: span 2 / span 2; border-top: 1px solid color-mix(in oklab, var(--color-surface-500) 20%, transparent); padding-top: 1.5rem; margin-top: 0.5rem; }
+        }
+        @media (min-width: 64rem) {
+            .about-grid { grid-template-columns: auto 1fr 1fr; gap: 2.5rem; }
+            .portrait-image { width: 20rem; }
+            .biography, .contact-section { padding-top: 1rem; }
+            .contact-section { grid-column: span 1 / span 1; border-width: 0; margin-top: 0; }
+        }
+    }
+
+    .about-page { width: 100%; }
+    .portrait-frame { display: inline-block; padding: 7px; border: 1px solid color-mix(in srgb, currentColor 14%, transparent); }
+</style>

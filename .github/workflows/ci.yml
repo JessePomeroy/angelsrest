@@ -1,6 +1,7 @@
 name: CI
 
 on:
+  workflow_dispatch:
   push:
     branches: [main]
   pull_request:
@@ -32,20 +33,18 @@ jobs:
       RESEND_API_KEY: placeholder
       PUBLIC_SITE_URL: https://www.angelsrest.online
       PUBLIC_STRIPE_PUBLIC_KEY: placeholder
-      # Public, non-secret project identifier. Browser E2E needs the published
-      # layout query to resolve instead of failing against a nonexistent project.
-      PUBLIC_SANITY_PROJECT_ID: n7rvza4g
-      PUBLIC_SANITY_DATASET: production
-      PUBLIC_CONVEX_URL: https://placeholder.convex.cloud
-      PUBLIC_CONVEX_SITE_URL: https://placeholder.convex.site
+      # Public, non-secret production read endpoints. Browser E2E exercises the
+      # same Convex-only published-content boundary as the deployed site.
+      PUBLIC_CONVEX_URL: https://loyal-swan-967.convex.cloud
+      PUBLIC_CONVEX_SITE_URL: https://loyal-swan-967.convex.site
       GALLERY_WORKER_URL: placeholder
       GALLERY_ADMIN_SECRET: placeholder
       CHECKOUT_SNAPSHOT_MODE: handle-v2
-      CHECKOUT_CATALOG_PROVIDER: convex
       NEW_ORDER_CHECKOUT_CONTROL: '{"version":1,"tenants":[{"siteUrl":"angelsrest.online","state":"open","generation":1},{"siteUrl":"zippymiggy.com","state":"open","generation":1}]}'
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          fetch-depth: 0
           persist-credentials: false
 
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
@@ -61,10 +60,42 @@ jobs:
           corepack enable
           corepack pnpm --version | grep -Fx '10.34.5'
 
+      # Use the real, reviewed peer implementation; never copy its response shapes.
+      - name: Check out pinned artwork Worker contract
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          repository: JessePomeroy/gallery-worker
+          ref: cdc1b6f914edc79fad256ce3a98bd7ab8b50e1ea
+          path: .contract/gallery-worker
+          token: ${{ secrets.GH_PACKAGES_TOKEN }}
+          persist-credentials: false
+
       - name: Install dependencies
         run: corepack pnpm install --frozen-lockfile --ignore-scripts
         env:
           NODE_AUTH_TOKEN: ${{ secrets.GH_PACKAGES_TOKEN }}
+
+      - name: Require a changeset for CRM API surface changes
+        if: github.event_name == 'pull_request'
+        env:
+          PR_AUTHOR: ${{ github.event.pull_request.user.login }}
+        run: |
+          changed=$(git diff --name-only origin/main...HEAD)
+          base_version=$(git show origin/main:packages/crm-api/package.json | node -e "let s=''; process.stdin.on('data', c => s += c).on('end', () => process.stdout.write(JSON.parse(s).version))")
+          head_version=$(node -p "require('./packages/crm-api/package.json').version")
+          release_pr=false
+          if [ "$GITHUB_HEAD_REF" = 'changeset-release/main' ] && [ "$PR_AUTHOR" = 'github-actions[bot]' ]; then release_pr=true; fi
+          if [ "$base_version" != "$head_version" ] && [ "$release_pr" != true ]; then
+            echo 'Direct CRM API version changes are reserved for the Changesets release PR.'
+            exit 1
+          fi
+          public=$(grep -E '^packages/crm-api/(src/|convex/.*\.ts$)' <<<"$changed" | grep -Ev '(\.test\.ts$|/__tests__/|/_generated/ai/)' || true)
+          if { [ -n "$public" ] || grep -Fxq 'packages/crm-api/package.json' <<<"$changed"; } && [ "$release_pr" != true ]; then
+            added=$(git diff --diff-filter=A --name-only origin/main...HEAD -- '.changeset/*.md' | grep -v '/README.md$' || true)
+            test -n "$added" || { echo 'CRM API surface changes require a new .changeset/*.md file.'; exit 1; }
+            corepack pnpm changeset status --since=origin/main --output=/tmp/changeset-status.json
+            node -e "const s=require('/tmp/changeset-status.json'); if (!s.releases.some(r => r.name === '@jessepomeroy/crm-api')) process.exit(1)"
+          fi
 
       # Audit H50: match the local `pnpm lint` command (biome check .) so CI
       # and local linting agree on scope. Previously CI scanned only src/,
@@ -75,6 +106,8 @@ jobs:
       - name: Type check
         run: |
           pnpm check
+          pnpm check:package-contract
+          pnpm --filter @jessepomeroy/crm-api exec tsc -p tsconfig.json --noEmit
           pnpm --filter @jessepomeroy/gallery-delivery check
           pnpm --filter @jessepomeroy/print-catalog check
 
@@ -82,6 +115,7 @@ jobs:
       # land in the status check, not in production.
       - name: Tests
         run: |
+          pnpm test:print-contract
           pnpm test
           pnpm --filter @jessepomeroy/gallery-delivery test
           pnpm --filter @jessepomeroy/print-catalog test
@@ -89,8 +123,21 @@ jobs:
       - name: Retired platform checkout handler stays absent
         run: test ! -f src/routes/api/platform/create-checkout/+server.ts
 
-      - name: Install Playwright Chromium
-        run: pnpm exec playwright install --with-deps chromium
+      - name: Install Playwright Chromium and WebKit
+        run: pnpm exec playwright install --with-deps chromium webkit
+
+      - name: Component browser regressions
+        id: component_browser
+        run: pnpm test:browser
 
       - name: Browser and public server E2E
+        id: e2e
         run: pnpm test:e2e
+
+      - name: Preserve failed browser diagnostics
+        if: failure() && (steps.component_browser.outcome == 'failure' || steps.e2e.outcome == 'failure')
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: playwright-failure
+          path: test-results/
+          retention-days: 7

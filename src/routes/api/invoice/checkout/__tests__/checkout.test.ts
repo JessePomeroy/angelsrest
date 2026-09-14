@@ -30,7 +30,7 @@ vi.mock("$lib/server/stripeTenant", () => ({
 vi.mock("$convex/api", () => ({
 	api: {
 		invoices: { recordCheckoutStarted: "invoices.recordCheckoutStarted" },
-		portal: { getByToken: "portal.getByToken" },
+		portal: { getInvoiceCheckoutTarget: "portal.getInvoiceCheckoutTarget" },
 	},
 }));
 
@@ -38,8 +38,8 @@ vi.mock("$env/dynamic/private", () => ({
 	env: mocks.env,
 }));
 
-vi.mock("$env/static/public", () => ({
-	PUBLIC_SITE_URL: "https://angelsrest.test",
+vi.mock("$lib/server/runtimeConfig", () => ({
+	getPublicSiteOrigin: () => "https://angelsrest.test",
 }));
 
 vi.mock("$lib/config/site", () => ({
@@ -54,7 +54,7 @@ function makeRequest(body: unknown) {
 			method: "POST",
 			body: JSON.stringify(body),
 		}),
-	};
+	} as Parameters<typeof POST>[0];
 }
 
 function expectedIdempotencyKey({
@@ -102,21 +102,14 @@ describe("invoice checkout route", () => {
 			url: "https://stripe.test/invoice",
 		});
 		mocks.convexQuery.mockResolvedValue({
-			expired: false,
-			token: {
-				type: "invoice",
-				documentId: "invoice-123",
-				siteUrl: "angelsrest.online",
-			},
-			document: {
-				_id: "invoice-123",
-				status: "sent",
-				taxPercent: 10,
-				items: [
-					{ description: "Design work", quantity: 2, unitPrice: 1250 },
-					{ description: "Print credit", quantity: 1, unitPrice: 426 },
-				],
-			},
+			invoiceId: "invoice-123",
+			siteUrl: "angelsrest.online",
+			status: "sent",
+			taxPercent: 10,
+			items: [
+				{ description: "Design work", quantity: 2, unitPrice: 1250 },
+				{ description: "Print credit", quantity: 1, unitPrice: 426 },
+			],
 		});
 		mocks.resolveStripeTenantForSite.mockResolvedValue({
 			siteUrl: "angelsrest.online",
@@ -128,8 +121,9 @@ describe("invoice checkout route", () => {
 		const response = await POST(makeRequest({ token: "portal-token-123" }) as any);
 
 		await expect(response.json()).resolves.toEqual({ url: "https://stripe.test/invoice" });
-		expect(mocks.convexQuery).toHaveBeenCalledWith("portal.getByToken", {
+		expect(mocks.convexQuery).toHaveBeenCalledWith("portal.getInvoiceCheckoutTarget", {
 			token: "portal-token-123",
+			webhookSecret: "test-webhook-secret",
 		});
 
 		const params = mocks.stripeSessionCreate.mock
@@ -214,16 +208,10 @@ describe("invoice checkout route", () => {
 
 	it("rejects paid invoices before creating a Stripe session", async () => {
 		mocks.convexQuery.mockResolvedValueOnce({
-			expired: false,
-			token: {
-				type: "invoice",
-				documentId: "invoice-123",
-				siteUrl: "angelsrest.online",
-			},
-			document: {
-				status: "paid",
-				items: [],
-			},
+			invoiceId: "invoice-123",
+			siteUrl: "angelsrest.online",
+			status: "paid",
+			items: [],
 		});
 
 		await expect(POST(makeRequest({ token: "portal-token-123" }) as any)).rejects.toMatchObject({
@@ -232,18 +220,99 @@ describe("invoice checkout route", () => {
 		expect(mocks.stripeSessionCreate).not.toHaveBeenCalled();
 	});
 
+	it("bills fractional quantities as rounded whole-cent lines with matching tax", async () => {
+		mocks.convexQuery.mockResolvedValue({
+			invoiceId: "invoice-123",
+			siteUrl: "angelsrest.online",
+			status: "sent",
+			taxPercent: 6.25,
+			items: [
+				{ description: "Half hour A", quantity: 0.5, unitPrice: 1999 },
+				{ description: "Half hour B", quantity: 0.5, unitPrice: 1999 },
+			],
+		});
+		await POST(makeRequest({ token: "portal-token-123" }));
+		const params = mocks.stripeSessionCreate.mock
+			.calls[0][0] as Stripe.Checkout.SessionCreateParams;
+		expect(params.line_items).toEqual([
+			expect.objectContaining({
+				quantity: 1,
+				price_data: expect.objectContaining({
+					unit_amount: 1000,
+					product_data: expect.objectContaining({ name: "Half hour A (0.5 units)" }),
+				}),
+			}),
+			expect.objectContaining({
+				quantity: 1,
+				price_data: expect.objectContaining({
+					unit_amount: 1000,
+					product_data: expect.objectContaining({ name: "Half hour B (0.5 units)" }),
+				}),
+			}),
+			expect.objectContaining({
+				quantity: 1,
+				price_data: expect.objectContaining({ unit_amount: 125 }),
+			}),
+		]);
+		const firstKey = mocks.stripeSessionCreate.mock.calls[0][1].idempotencyKey;
+		await POST(makeRequest({ token: "portal-token-123" }));
+		expect(mocks.stripeSessionCreate.mock.calls[1][1].idempotencyKey).toBe(firstKey);
+		mocks.convexQuery.mockResolvedValue({
+			invoiceId: "invoice-123",
+			siteUrl: "angelsrest.online",
+			status: "sent",
+			taxPercent: 6.25,
+			items: [
+				{ description: "Half hour A", quantity: 0.5001, unitPrice: 1999 },
+				{ description: "Half hour B", quantity: 0.5, unitPrice: 1999 },
+			],
+		});
+		await POST(makeRequest({ token: "portal-token-123" }));
+		expect(mocks.stripeSessionCreate.mock.calls[2][1].idempotencyKey).not.toBe(firstKey);
+	});
+
+	it.each([
+		{ quantity: 0, unitPrice: 100 },
+		{ quantity: -0.5, unitPrice: 100 },
+		{ quantity: Number.NaN, unitPrice: 100 },
+		{ quantity: Number.POSITIVE_INFINITY, unitPrice: 100 },
+		{ quantity: 0.5, unitPrice: 100.5 },
+		{ quantity: 0.5, unitPrice: -100 },
+		{ quantity: 2, unitPrice: Number.MAX_SAFE_INTEGER },
+	])("rejects invalid stored invoice amounts before provider I/O: %j", async (item) => {
+		mocks.convexQuery.mockResolvedValue({
+			invoiceId: "invoice-123",
+			siteUrl: "angelsrest.online",
+			status: "sent",
+			items: [{ description: "Invalid", ...item }],
+		});
+		await expect(POST(makeRequest({ token: "portal-token-123" }))).rejects.toMatchObject({
+			status: 400,
+		});
+		expect(mocks.resolveStripeTenantForSite).not.toHaveBeenCalled();
+		expect(mocks.stripeSessionCreate).not.toHaveBeenCalled();
+		expect(mocks.convexMutation).not.toHaveBeenCalled();
+	});
+
+	it("retains the online minimum for fractional sub-cent lines", async () => {
+		mocks.convexQuery.mockResolvedValue({
+			invoiceId: "invoice-123",
+			siteUrl: "angelsrest.online",
+			status: "sent",
+			items: [{ description: "Tiny", quantity: 0.001, unitPrice: 100 }],
+		});
+		await expect(POST(makeRequest({ token: "portal-token-123" }))).rejects.toMatchObject({
+			status: 400,
+		});
+		expect(mocks.stripeSessionCreate).not.toHaveBeenCalled();
+	});
+
 	it("rejects non-payable invoice statuses before creating a Stripe session", async () => {
 		mocks.convexQuery.mockResolvedValueOnce({
-			expired: false,
-			token: {
-				type: "invoice",
-				documentId: "invoice-123",
-				siteUrl: "angelsrest.online",
-			},
-			document: {
-				status: "draft",
-				items: [{ description: "Design work", quantity: 1, unitPrice: 10 }],
-			},
+			invoiceId: "invoice-123",
+			siteUrl: "angelsrest.online",
+			status: "draft",
+			items: [{ description: "Design work", quantity: 1, unitPrice: 10 }],
 		});
 
 		await expect(POST(makeRequest({ token: "portal-token-123" }) as any)).rejects.toMatchObject({
@@ -281,18 +350,11 @@ describe("invoice checkout route", () => {
 
 	it("omits the tax line when invoice tax is zero", async () => {
 		mocks.convexQuery.mockResolvedValueOnce({
-			expired: false,
-			token: {
-				type: "invoice",
-				documentId: "invoice-123",
-				siteUrl: "angelsrest.online",
-			},
-			document: {
-				_id: "invoice-123",
-				status: "sent",
-				taxPercent: 0,
-				items: [{ description: "Design work", quantity: 1, unitPrice: 1250 }],
-			},
+			invoiceId: "invoice-123",
+			siteUrl: "angelsrest.online",
+			status: "sent",
+			taxPercent: 0,
+			items: [{ description: "Design work", quantity: 1, unitPrice: 1250 }],
 		});
 
 		await POST(makeRequest({ token: "portal-token-123" }) as any);
@@ -338,17 +400,11 @@ describe("invoice checkout route", () => {
 
 	it("rejects invalid invoice tax before creating a Stripe session", async () => {
 		mocks.convexQuery.mockResolvedValueOnce({
-			expired: false,
-			token: {
-				type: "invoice",
-				documentId: "invoice-123",
-				siteUrl: "angelsrest.online",
-			},
-			document: {
-				status: "sent",
-				taxPercent: 101,
-				items: [{ description: "Design work", quantity: 1, unitPrice: 10 }],
-			},
+			invoiceId: "invoice-123",
+			siteUrl: "angelsrest.online",
+			status: "sent",
+			taxPercent: 101,
+			items: [{ description: "Design work", quantity: 1, unitPrice: 10 }],
 		});
 
 		await expect(POST(makeRequest({ token: "portal-token-123" }) as any)).rejects.toMatchObject({
@@ -358,39 +414,21 @@ describe("invoice checkout route", () => {
 	});
 
 	it("rejects non-invoice portal tokens before creating a Stripe session", async () => {
-		mocks.convexQuery.mockResolvedValueOnce({
-			expired: false,
-			token: {
-				type: "quote",
-				documentId: "quote-123",
-				siteUrl: "angelsrest.online",
-			},
-			document: {
-				status: "sent",
-				items: [],
-			},
-		});
+		mocks.convexQuery.mockResolvedValueOnce(null);
 
 		await expect(POST(makeRequest({ token: "quote-token" }) as any)).rejects.toMatchObject({
-			status: 400,
+			status: 404,
 		});
 		expect(mocks.stripeSessionCreate).not.toHaveBeenCalled();
 	});
 
 	it("routes tenant invoices through the token site and connected Stripe account", async () => {
 		mocks.convexQuery.mockResolvedValueOnce({
-			expired: false,
-			token: {
-				type: "invoice",
-				documentId: "invoice-tenant-123",
-				siteUrl: "zippymiggy.com",
-			},
-			document: {
-				_id: "invoice-tenant-123",
-				status: "sent",
-				taxPercent: 0,
-				items: [{ description: "Session balance", quantity: 1, unitPrice: 10000 }],
-			},
+			invoiceId: "invoice-tenant-123",
+			siteUrl: "zippymiggy.com",
+			status: "sent",
+			taxPercent: 0,
+			items: [{ description: "Session balance", quantity: 1, unitPrice: 10000 }],
 		});
 		mocks.resolveStripeTenantForSite.mockResolvedValueOnce({
 			siteUrl: "zippymiggy.com",
@@ -434,18 +472,11 @@ describe("invoice checkout route", () => {
 
 	it("does not inflate stored cent amounts before sending them to Stripe", async () => {
 		mocks.convexQuery.mockResolvedValueOnce({
-			expired: false,
-			token: {
-				type: "invoice",
-				documentId: "invoice-123",
-				siteUrl: "angelsrest.online",
-			},
-			document: {
-				_id: "invoice-123",
-				status: "sent",
-				taxPercent: 0,
-				items: [{ description: "Smoke invoice", quantity: 1, unitPrice: 50 }],
-			},
+			invoiceId: "invoice-123",
+			siteUrl: "angelsrest.online",
+			status: "sent",
+			taxPercent: 0,
+			items: [{ description: "Smoke invoice", quantity: 1, unitPrice: 50 }],
 		});
 
 		await POST(makeRequest({ token: "portal-token-123" }) as any);
@@ -465,18 +496,11 @@ describe("invoice checkout route", () => {
 
 	it("rejects invoice totals below Stripe's USD minimum before creating checkout", async () => {
 		mocks.convexQuery.mockResolvedValueOnce({
-			expired: false,
-			token: {
-				type: "invoice",
-				documentId: "invoice-123",
-				siteUrl: "angelsrest.online",
-			},
-			document: {
-				_id: "invoice-123",
-				status: "sent",
-				taxPercent: 0,
-				items: [{ description: "One cent test", quantity: 1, unitPrice: 1 }],
-			},
+			invoiceId: "invoice-123",
+			siteUrl: "angelsrest.online",
+			status: "sent",
+			taxPercent: 0,
+			items: [{ description: "One cent test", quantity: 1, unitPrice: 1 }],
 		});
 
 		await expect(POST(makeRequest({ token: "portal-token-123" }) as any)).rejects.toMatchObject({

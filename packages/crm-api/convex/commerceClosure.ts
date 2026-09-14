@@ -5,8 +5,10 @@ import {
 	internalMutation,
 	internalQuery,
 	type MutationCtx,
+	query,
 	type QueryCtx,
 } from "./_generated/server";
+import { requireWebhookCallerOrAuth } from "./authHelpers";
 import {
 	assertSafeCommerceGeneration,
 	checkedAcceptUntilMs,
@@ -20,6 +22,7 @@ import {
 	isStripeConnectedAccountId,
 	stripeAccountScope,
 } from "./helpers/checkoutSnapshot";
+import { tenantIdentityMatchesSite } from "./helpers/tenantContext";
 
 export const ACTIVE_ADMISSION_LEASE_MS = 120_000;
 export const ORDER_SESSION_LIFETIME_SECONDS = 86_100;
@@ -171,6 +174,7 @@ export const getNormalizedPurposeControls = internalQuery({
 
 export const beginCheckoutSessionAdmission = internalMutation({
 	args: {
+		tenantId: v.optional(v.string()),
 		siteUrl: v.string(),
 		stripeConnectedAccountId: v.optional(v.string()),
 		attemptDigest: v.string(),
@@ -194,6 +198,9 @@ export const beginCheckoutSessionAdmission = internalMutation({
 		if (!await accountMatchesSite(ctx, args.siteUrl, args.stripeConnectedAccountId)) {
 			throw new Error("Checkout admission routing does not match tenant");
 		}
+		if (args.tenantId && !await tenantIdentityMatchesSite(ctx, args.tenantId, args.siteUrl)) {
+			throw new Error("Checkout admission identity does not match tenant");
+		}
 		const control = await getDurablePurposeControl(ctx, args.siteUrl, "new_order_admission");
 		if (
 			!control
@@ -214,11 +221,30 @@ export const beginCheckoutSessionAdmission = internalMutation({
 				|| existing.requestFingerprint !== args.requestFingerprint
 				|| existing.admissionHandleHash !== args.admissionHandleHash
 				|| existing.stripeConnectedAccountId !== args.stripeConnectedAccountId
+				|| args.tenantId !== undefined
+					&& existing.tenantId !== undefined
+					&& existing.tenantId !== args.tenantId
 				|| existing.hostGeneration !== args.hostGeneration
 				|| existing.admissionGeneration !== control.generation
 				|| existing.state === "active_prestripe"
 					&& existing.activeLeaseTokenHash !== args.activeLeaseTokenHash
 			) throw new Error("Checkout admission attempt conflicts");
+			if (args.tenantId !== undefined && existing.tenantId === undefined) {
+				if (existing.checkoutSnapshotReservationId !== undefined) {
+					const reservation = await ctx.db.get(existing.checkoutSnapshotReservationId);
+					if (
+						!reservation
+						|| reservation.siteUrl !== existing.siteUrl
+						|| reservation.accountScope !== existing.accountScope
+						|| reservation.checkoutSessionAdmissionId !== existing._id
+						|| reservation.tenantId !== undefined && reservation.tenantId !== args.tenantId
+					) throw new Error("Checkout admission attempt conflicts");
+					if (reservation.tenantId === undefined) {
+						await ctx.db.patch(reservation._id, { tenantId: args.tenantId, updatedAt: Date.now() });
+					}
+				}
+				await ctx.db.patch(existing._id, { tenantId: args.tenantId, updatedAt: Date.now() });
+			}
 			return {
 				outcome: "replayed" as const,
 				admissionId: existing._id,
@@ -234,6 +260,7 @@ export const beginCheckoutSessionAdmission = internalMutation({
 		const activeLeaseExpiresAt = createdAt + ACTIVE_ADMISSION_LEASE_MS;
 		const admissionId = await ctx.db.insert("checkoutSessionAdmissions", {
 			protocolVersion: 1,
+			tenantId: args.tenantId,
 			siteUrl: args.siteUrl,
 			accountScope,
 			stripeConnectedAccountId: args.stripeConnectedAccountId,
@@ -464,6 +491,7 @@ export const bindCheckoutSessionAdmission = internalMutation({
 				|| reservation.state !== "reserved"
 				|| reservation.siteUrl !== row.siteUrl
 				|| reservation.accountScope !== row.accountScope
+				|| reservation.tenantId !== row.tenantId
 				|| reservation.checkoutSessionAdmissionId !== undefined
 			) throw new Error("Checkout snapshot reservation cannot bind admission");
 			checkoutSnapshotReservationId = reservation._id;
@@ -545,6 +573,25 @@ export const createProtocolCutoff = internalMutation({
 			createdAt: Date.now(),
 		});
 		return { outcome: "created" as const };
+	},
+});
+
+/** Server-only authority projection for the post-horizon account-history inventory. */
+export const getProtocolCutoffForInventory = query({
+	args: { siteUrl: v.string(), webhookSecret: v.string() },
+	handler: async (ctx, args) => {
+		await requireWebhookCallerOrAuth(ctx, args.webhookSecret, { allowAuth: false });
+		if (!isCommerceTenant(args.siteUrl)) return null;
+		const row = await ctx.db.query("commerceProtocolCutoffs")
+			.withIndex("by_siteUrl_and_accountScope", (q) => q.eq("siteUrl", args.siteUrl))
+			.unique();
+		if (!row) return null;
+		return {
+			cutoffCreatedSeconds: row.cutoffCreatedSeconds,
+			acceptUntilMs: row.acceptUntilMs,
+			activationGeneration: row.activationGeneration,
+			accountScopeClass: row.accountScope === "platform" ? "platform" as const : "connected" as const,
+		};
 	},
 });
 
@@ -750,6 +797,7 @@ export const getNormalizedProviderReadiness = internalQuery({
 			if (
 				order.fulfillmentType !== "lumaprints"
 				|| order.status === "refunded"
+				|| order.status === "canceled"
 				|| order.stripeRefundId !== undefined
 				|| order.fulfillmentRecoveryStatus !== undefined
 			) continue;
@@ -759,7 +807,10 @@ export const getNormalizedProviderReadiness = internalQuery({
 				|| order.printFulfillmentResolution === "reconciliation_blocked"
 			) continue;
 			if (
-				order.printFulfillmentCoordinatorVersion === 4
+				(
+					order.printFulfillmentCoordinatorVersion === 4
+					|| order.printFulfillmentCoordinatorVersion === 5
+				)
 				&& order.printProviderAdmissionStatus === "admitted"
 				&& order.printProviderAdmissionGeneration !== undefined
 			) {
@@ -770,6 +821,7 @@ export const getNormalizedProviderReadiness = internalQuery({
 			}
 			if (
 				order.printFulfillmentCoordinatorVersion === 4
+				|| order.printFulfillmentCoordinatorVersion === 5
 				|| order.printProviderAdmissionStatus !== undefined
 				|| order.printProviderAdmissionGeneration !== undefined
 			) {

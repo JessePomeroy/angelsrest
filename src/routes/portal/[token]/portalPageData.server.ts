@@ -1,15 +1,29 @@
 import type { Doc } from "$convex/dataModel";
-import type { PortalPageData, PortalPageDataBase } from "./portalPageData";
+import type {
+	PortalContractDocument,
+	PortalInvoiceDocument,
+	PortalPageData,
+	PortalPageDataBase,
+	PortalQuoteDocument,
+} from "./portalPageData";
 
-type PortalDocument = Doc<"quotes"> | Doc<"invoices"> | Doc<"contracts"> | Doc<"galleries">;
+type PortalDocument =
+	| PortalQuoteDocument
+	| PortalInvoiceDocument
+	| PortalContractDocument
+	| Doc<"galleries">;
 
 type PortalQuerySuccess = {
-	token: Pick<Doc<"portalTokens">, "type" | "used" | "siteUrl">;
+	token: {
+		type: "quote" | "invoice" | "contract" | "gallery";
+		used: boolean;
+		siteUrl: string;
+	};
 	document: PortalDocument;
 	client: PortalPageDataBase["client"];
 };
 
-function isQuoteDocument(value: PortalDocument): value is Doc<"quotes"> {
+function isQuoteDocument(value: PortalDocument): value is PortalQuoteDocument {
 	return (
 		"quoteNumber" in value &&
 		typeof value.quoteNumber === "string" &&
@@ -18,7 +32,7 @@ function isQuoteDocument(value: PortalDocument): value is Doc<"quotes"> {
 	);
 }
 
-function isInvoiceDocument(value: PortalDocument): value is Doc<"invoices"> {
+function isInvoiceDocument(value: PortalDocument): value is PortalInvoiceDocument {
 	return (
 		"invoiceNumber" in value &&
 		typeof value.invoiceNumber === "string" &&
@@ -27,7 +41,7 @@ function isInvoiceDocument(value: PortalDocument): value is Doc<"invoices"> {
 	);
 }
 
-function isContractDocument(value: PortalDocument): value is Doc<"contracts"> {
+function isContractDocument(value: PortalDocument): value is PortalContractDocument {
 	return (
 		"title" in value &&
 		typeof value.title === "string" &&

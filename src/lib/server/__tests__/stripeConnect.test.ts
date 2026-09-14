@@ -35,6 +35,21 @@ describe("Stripe Connect tenant helpers", () => {
 		});
 	});
 
+	it("stamps an approved opaque tenant identity beside its compatibility domain", () => {
+		const tenantId = "tenant_05eb6092-5d8c-43ce-ad26-1a59522bd07b";
+		const options = buildTenantCheckoutOptions({
+			tenant: { tenantId, siteUrl: "angelsrest.online" },
+			kind: "print",
+			subtotalCents: 10_000,
+		});
+
+		expect(options.metadata).toEqual({
+			commerceTenantSiteUrl: "angelsrest.online",
+			commerceTenantId: tenantId,
+		});
+		expect(options.session.payment_intent_data?.metadata).toEqual(options.metadata);
+	});
+
 	it("routes print checkout through the connected account with an application fee", () => {
 		const options = buildTenantCheckoutOptions({
 			tenant: {

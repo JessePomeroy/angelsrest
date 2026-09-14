@@ -4,12 +4,10 @@ Canonical rules for working in this repository.
 
 ## Project context
 
-- **Stack:** SvelteKit 5 (runes), Tailwind CSS v4, Sanity, Convex, Stripe,
+- **Stack:** SvelteKit 5 (runes), scoped CSS, Convex, Stripe,
   LumaPrints, Resend, and Cloudflare R2
 - **Frontend and platform hub:** `~/Documents/work/angelsrest` →
   <https://angelsrest.online>
-- **Sanity Studio:** `~/Documents/work/angelsrest-studio` →
-  <https://angelsrest.sanity.studio>
 - **Current architecture:** `docs/ARCHITECTURE.md`
 - **CRM spec:**
   `~/Documents/quilt/02_reference/projects/photographer_crm/implementation-spec.md`
@@ -19,10 +17,13 @@ Canonical rules for working in this repository.
 ## Technical constraints
 
 - Use Svelte 5 runes (`$props()`, `$state()`, `$derived()`, `$effect()`).
-- Use Tailwind CSS v4 utilities. Do not use Skeleton component classes such as
-  `.btn`, `.card`, or `.input`. The retained Skeleton surface color variables
-  (`--color-surface-50` through `--color-surface-900`) may be referenced from
-  scoped styles or Tailwind arbitrary values.
+- Public components use scoped CSS and native Svelte markup. Shared palette,
+  type scale, reset and article styles live in `src/lib/styles/`; preserve the
+  cascade findings in `docs/CSS_MIGRATION.md`. Tailwind and Skeleton are not
+  dependencies. Do not introduce their utility/component classes or directives.
+- Site-owned surface colors (`--color-surface-50` through
+  `--color-surface-950`) are defined in `src/lib/styles/theme.css` and may be
+  referenced from scoped styles.
 - Admin pages use scoped styles and `--admin-*` variables, not Tailwind.
 - Server secrets use `$env/dynamic/private`. Never import private env modules
   from browser-reachable code.
@@ -32,11 +33,13 @@ Canonical rules for working in this repository.
 
 ## System boundaries
 
-- **Sanity owns editorial content:** public portfolio galleries, products,
-  collections, blog, about, site settings, and contact-page copy.
-- **Convex owns operations:** orders, inquiries, CRM clients, invoices, quotes,
-  contracts, email templates, platform clients/messages, and private delivery
-  galleries.
+- **Convex owns published content and operations:** public portfolio galleries,
+  products, blog, about/contact copy, site settings, orders, inquiries, CRM
+  clients, invoices, quotes, contracts, email templates, platform
+  clients/messages, and private delivery galleries.
+- **Convex is the sole content and commerce authority:** no runtime provider
+  switch, preview adapter, migration endpoint, or historical purchase fallback
+  may restore a retired provider.
 - **SvelteKit owns transport and composition:** SSR/load functions, public and
   admin HTTP routes, webhook verification, and external-client composition.
 - **The hub owns commerce webhooks:** this repository's commerce webhook is the
@@ -51,13 +54,13 @@ Canonical rules for working in this repository.
   verifies the provider's configured Basic credentials and resolves the
   provider-global order number to its stored tenant. Client spokes must not
   receive the broad Convex webhook secret or run a duplicate shipment handler.
-- **External systems:** Stripe, LumaPrints, Resend, Sanity, Convex, and the
+- **External systems:** Stripe, LumaPrints, Resend, Convex, and the
   gallery worker are network boundaries. Make their failure and retry behavior
   explicit; avoid speculative interfaces around pure in-process code.
 
 There are two gallery domains:
 
-- **Portfolio galleries** are public Sanity content under `/gallery` and the
+- **Portfolio galleries** are public Convex content under `/gallery` and the
   admin portfolio tab.
 - **Delivery galleries** are private Convex records and R2 objects under
   `/delivery/[token]` and the admin delivery tab.
@@ -69,15 +72,15 @@ Use these full names in new code and documentation when the distinction matters.
 - Convex client helper: `src/lib/server/convexClient.ts`
 - Convex schema/functions: `packages/crm-api/convex/`
 - Site config: `src/lib/config/site.ts`
-- Sanity published client: `src/lib/sanity/client.ts`
-- Sanity preview client: `src/lib/sanity/client.server.ts`
+- Convex Shop boundary: `src/lib/server/current/convexShop.server.ts`
+- Current checkout authority: `src/lib/server/current/currentCheckoutCommerce.server.ts`
 - Commerce webhook: `src/routes/api/webhooks/stripe/+server.ts`
 - Webhook orchestration: `src/lib/server/orderIntake.ts`
 - Print fulfillment: `src/lib/server/printFulfillment.ts`
 - LumaPrints client/payload builder: `src/lib/server/lumaprints.ts`
 - Tenant checkout authentication registry: `src/lib/server/checkoutBridgeConfig.ts`
 - Admin host config: `src/lib/config/admin.ts` and `admin.server.ts`
-- Server hooks: `src/hooks.server.ts` (security headers, preview state, errors)
+- Server hooks: `src/hooks.server.ts` (security headers and errors)
 
 The `$convex` alias points to
 `packages/crm-api/convex/_generated` through `svelte.config.js`.
@@ -131,19 +134,11 @@ tenant-authenticated cross-origin billing boundary.
 |---|---|
 | Dashboard, orders | Convex orders |
 | Inquiries | Convex inquiries |
-| Galleries: portfolio tab | Sanity galleries |
+| Galleries: portfolio tab | Convex portfolio galleries |
 | Galleries: delivery tab | Convex galleries + gallery worker/R2 |
 | CRM, board | Convex photography clients/kanban |
 | Invoices, quotes, contracts | Convex |
 | Email templates, messages, platform | Convex |
-
-## Preview and visual editing
-
-- Enable: `GET /api/draft/enable` validates the Sanity preview secret and sets
-  the preview cookie.
-- Disable: `GET /api/draft/disable` clears it.
-- `SANITY_PREVIEW_TOKEN` must be a viewer token that can read drafts.
-- Keep preview-token access in `.server.ts` modules.
 
 ## Checks
 
@@ -169,7 +164,6 @@ Use `pnpm build` when production bundling is relevant. Do not run Biome with
 ## Platform context
 
 - **angelsrest** is the public site and platform hub.
-- **angelsrest-studio** owns Sanity schemas/editorial workflows.
 - **packages/crm-api** owns the shared Convex schema/functions and publishable
   generated API surface.
 - **@jessepomeroy/admin** is an installed shared admin package.

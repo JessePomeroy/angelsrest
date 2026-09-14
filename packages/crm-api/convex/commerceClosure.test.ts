@@ -25,6 +25,7 @@ const D3 = "3".repeat(64);
 const D4 = "4".repeat(64);
 const CHECKOUT_AUTHORITY = "closure-checkout-authority-0123456789abcdef";
 const BRIDGE_AUTHORITY = "closure-bridge-authority-0123456789abcdefgh";
+const TENANT_ID = "tenant_05eb6092-5d8c-43ce-ad26-1a59522bd07b";
 const ACTIVATE_PATH = "/commerce/purpose-controls/activate";
 const BEGIN_PATH = "/commerce/checkout-admissions/begin";
 const READINESS_PATH = "/commerce/closure/readiness";
@@ -153,6 +154,27 @@ async function insertPrintOrder(t: ReturnType<typeof convexTest>, session = SESS
 	}));
 }
 
+async function seedTenantIdentity(t: ReturnType<typeof convexTest>) {
+	await t.run(async (ctx) => {
+		await ctx.db.insert("platformClients", {
+			tenantId: TENANT_ID,
+			name: "Angel's Rest",
+			email: "owner@angelsrest.online",
+			siteUrl: SITE,
+			tier: "full",
+			subscriptionStatus: "active",
+			adminEmails: ["owner@angelsrest.online"],
+		});
+		await ctx.db.insert("tenantAliases", {
+			tenantId: TENANT_ID,
+			kind: "domain",
+			value: SITE,
+			verifiedAt: Date.now(),
+			verificationMethod: "operator",
+		});
+	});
+}
+
 describe("durable commerce controls", () => {
 	test("activates only exact environment intent and enforces monotonic epochs", async () => {
 		const t = convexTest(schema, modules);
@@ -262,6 +284,56 @@ describe("durable commerce controls", () => {
 });
 
 describe("Checkout Session admission", () => {
+	test("stores a matching optional tenant ID without requiring it from older hosts", async () => {
+		const t = convexTest(schema, modules);
+		await t.run(async (ctx) => {
+			await ctx.db.insert("platformClients", {
+				tenantId: TENANT_ID,
+				name: SITE,
+				email: "owner@angelsrest.online",
+				siteUrl: SITE,
+				tier: "full",
+				subscriptionStatus: "active",
+				adminEmails: ["owner@angelsrest.online"],
+			});
+			await ctx.db.insert("tenantAliases", {
+				tenantId: TENANT_ID,
+				kind: "domain",
+				value: SITE,
+				verifiedAt: Date.now(),
+				verificationMethod: "operator",
+			});
+		});
+		await activateAdmission(t, "open", 1);
+		const identified = await t.mutation(
+			internal.commerceClosure.beginCheckoutSessionAdmission,
+			{ ...beginArgs(), tenantId: TENANT_ID },
+		);
+		const row = await t.run((ctx) => ctx.db.get(identified.admissionId));
+		expect(row?.tenantId).toBe(TENANT_ID);
+		expect(
+			await t.mutation(internal.commerceClosure.beginCheckoutSessionAdmission, beginArgs()),
+		).toMatchObject({ outcome: "replayed", admissionId: identified.admissionId });
+		const legacyArgs = beginArgs("6".repeat(64), "7".repeat(64), "8".repeat(64));
+		const legacy = await t.mutation(
+			internal.commerceClosure.beginCheckoutSessionAdmission,
+			legacyArgs,
+		);
+		expect(
+			await t.mutation(internal.commerceClosure.beginCheckoutSessionAdmission, {
+				...legacyArgs,
+				tenantId: TENANT_ID,
+			}),
+		).toMatchObject({ outcome: "replayed", admissionId: legacy.admissionId });
+		expect((await t.run((ctx) => ctx.db.get(legacy.admissionId)))?.tenantId).toBe(TENANT_ID);
+		await expect(
+			t.mutation(internal.commerceClosure.beginCheckoutSessionAdmission, {
+				...beginArgs("5".repeat(64)),
+				tenantId: "tenant_15eb6092-5d8c-43ce-ad26-1a59522bd07b",
+			}),
+		).rejects.toThrow(/identity/);
+	});
+
 	test("fences creation uncertainty and atomically consumes a bound admission", async () => {
 		const t = convexTest(schema, modules);
 		await activateAdmission(t, "open", 1);
@@ -682,14 +754,136 @@ describe("Checkout Session admission", () => {
 			.unique());
 		expect(cutoff!.acceptUntilMs - cutoff!.cutoffCreatedSeconds * 1000)
 			.toBe(3_222_000_000);
+		expect(await t.query(api.commerceClosure.getProtocolCutoffForInventory, {
+			siteUrl: SITE,
+			webhookSecret: WEBHOOK_SECRET,
+		})).toEqual({
+			cutoffCreatedSeconds: cutoff!.cutoffCreatedSeconds,
+			acceptUntilMs: cutoff!.acceptUntilMs,
+			activationGeneration: 1,
+			accountScopeClass: "platform",
+		});
+		await expect(t.query(api.commerceClosure.getProtocolCutoffForInventory, {
+			siteUrl: SITE,
+			webhookSecret: "wrong-webhook-secret-0123456789abcdef",
+		})).rejects.toThrow(/Not authorized/);
 	});
 });
 
-describe("provider V4", () => {
+describe("provider admission", () => {
+	test("keeps a V5 queue receipt provisional until an exact provider read is recorded", async () => {
+		const t = convexTest(schema, modules);
+		await activateProvider(t, "open", 1);
+		const orderId = await insertPrintOrder(t, "cs_test_v5queueconfirmation1234");
+		await expect(t.mutation(api.orders.claimPrintFulfillmentV5, {
+			orderId,
+			claimToken: CLAIM_A,
+			webhookSecret: WEBHOOK_SECRET,
+		})).resolves.toMatchObject({ kind: "claimed" });
+		await t.mutation(api.orders.beginPrintFulfillmentSubmission, {
+			orderId,
+			claimToken: CLAIM_A,
+			webhookSecret: WEBHOOK_SECRET,
+		});
+		await expect(t.mutation(api.orders.blockPrintFulfillmentReconciliation, {
+			orderId,
+			externalId: "cs_test_v5queueconfirmation1234",
+			reconciliationClass: "response_contract",
+			webhookSecret: WEBHOOK_SECRET,
+		})).resolves.toBe(true);
+		await expect(t.mutation(api.orders.recordPrintFulfillmentSubmissionReceipt, {
+			orderId,
+			claimToken: CLAIM_A,
+			externalId: "cs_test_v5queueconfirmation1234",
+			lumaprintsSubmissionOrderNumber: "10001978978",
+			webhookSecret: WEBHOOK_SECRET,
+		})).resolves.toEqual({ kind: "recorded" });
+
+		const queued = await t.run((ctx) => ctx.db.get(orderId));
+		expect(queued).toMatchObject({
+			lumaprintsSubmissionOrderNumber: "10001978978",
+			printFulfillmentPhase: "submitting",
+			printFulfillmentResolution: "submission_uncertain",
+		});
+		expect(queued?.printFulfillmentReconciliationClass).toBeUndefined();
+		await expect(t.mutation(api.orders.claimOrderConfirmation, {
+			orderId,
+			webhookSecret: WEBHOOK_SECRET,
+		})).resolves.toBe(false);
+		await expect(t.mutation(api.orders.recordPrintFulfillmentReconciliationPending, {
+			orderId,
+			externalId: "cs_test_v5queueconfirmation1234",
+			reason: "result_not_observed",
+			webhookSecret: WEBHOOK_SECRET,
+		})).resolves.toEqual({ kind: "pending", attempts: 1 });
+		await expect(t.mutation(api.orders.claimPrintFulfillmentV5, {
+			orderId,
+			claimToken: CLAIM_B,
+			webhookSecret: WEBHOOK_SECRET,
+		})).resolves.toMatchObject({ kind: "waiting", retryAt: expect.any(Number) });
+		await t.run((ctx) => ctx.db.patch(orderId, {
+			printFulfillmentReconciliationLastAttemptAt: 0,
+		}));
+		await expect(t.mutation(api.orders.completePrintFulfillmentSubmission, {
+			orderId,
+			claimToken: CLAIM_A,
+			externalId: "cs_test_v5queueconfirmation1234",
+			lumaprintsOrderNumber: "10001978978",
+			webhookSecret: WEBHOOK_SECRET,
+		})).rejects.toThrow("requires provider confirmation");
+		await expect(t.mutation(api.orders.claimPrintFulfillmentV5, {
+			orderId,
+			claimToken: CLAIM_B,
+			webhookSecret: WEBHOOK_SECRET,
+		})).resolves.toEqual({
+			kind: "reconcile",
+			externalId: "cs_test_v5queueconfirmation1234",
+			submissionOrderNumber: "10001978978",
+		});
+		await expect(t.mutation(api.orders.reconcilePrintFulfillmentSubmission, {
+			orderId,
+			externalId: "cs_test_v5queueconfirmation1234",
+			lumaprintsOrderNumber: "10001978979",
+			webhookSecret: WEBHOOK_SECRET,
+		})).rejects.toThrow("conflicts with its submission receipt");
+		await expect(t.mutation(api.orders.reconcilePrintFulfillmentSubmission, {
+			orderId,
+			externalId: "cs_test_v5queueconfirmation1234",
+			lumaprintsOrderNumber: "10001978978",
+			webhookSecret: WEBHOOK_SECRET,
+		})).resolves.toEqual({ kind: "fulfilled" });
+		const stored = await t.run((ctx) => ctx.db.get(orderId));
+		expect(stored).toMatchObject({
+			lumaprintsOrderNumber: "10001978978",
+			printFulfillmentResolution: "resolved",
+		});
+		expect(stored?.lumaprintsSubmissionOrderNumber).toBeUndefined();
+	});
+
+	test("fences provider admission with the order's verified tenant identity", async () => {
+		const t = convexTest(schema, modules);
+		await seedTenantIdentity(t);
+		await activateProvider(t, "open", 1);
+		const orderId = await insertPrintOrder(t);
+		await t.run((ctx) => ctx.db.patch(orderId, { tenantId: TENANT_ID }));
+		expect(await t.mutation(api.orders.claimPrintFulfillmentV5, {
+			orderId,
+			claimToken: CLAIM_A,
+			tenantId: TENANT_ID,
+			webhookSecret: WEBHOOK_SECRET,
+		})).toMatchObject({ kind: "claimed" });
+		await expect(t.mutation(api.orders.beginPrintFulfillmentSubmission, {
+			orderId,
+			claimToken: CLAIM_A,
+			tenantId: "tenant_15eb6092-5d8c-43ce-ad26-1a59522bd07b",
+			webhookSecret: WEBHOOK_SECRET,
+		})).rejects.toThrow("routing facts conflict");
+	});
+
 	test("defaults closed without mutation, then preserves durable admission across closure", async () => {
 		const t = convexTest(schema, modules);
 		const orderId = await insertPrintOrder(t);
-		expect(await t.mutation(api.orders.claimPrintFulfillmentV4, {
+		expect(await t.mutation(api.orders.claimPrintFulfillmentV5, {
 			orderId,
 			claimToken: CLAIM_A,
 			webhookSecret: WEBHOOK_SECRET,
@@ -699,7 +893,12 @@ describe("provider V4", () => {
 		);
 
 		await activateProvider(t, "open", 1);
-		const claimed = await t.mutation(api.orders.claimPrintFulfillmentV4, {
+		expect(await t.mutation(api.orders.claimPrintFulfillmentV4, {
+			orderId,
+			claimToken: CLAIM_A,
+			webhookSecret: WEBHOOK_SECRET,
+		})).toEqual({ kind: "submission_closed" });
+		const claimed = await t.mutation(api.orders.claimPrintFulfillmentV5, {
 			orderId,
 			claimToken: CLAIM_A,
 			webhookSecret: WEBHOOK_SECRET,
@@ -726,14 +925,14 @@ describe("provider V4", () => {
 			webhookSecret: WEBHOOK_SECRET,
 		})).toEqual({ kind: "busy" });
 		await activateProvider(t, "closed", 2);
-		expect(await t.mutation(api.orders.claimPrintFulfillmentV4, {
+		expect(await t.mutation(api.orders.claimPrintFulfillmentV5, {
 			orderId,
 			claimToken: CLAIM_B,
 			webhookSecret: WEBHOOK_SECRET,
 		})).toMatchObject({ kind: "claimed", providerGeneration: 1 });
 		const row = await t.run((ctx) => ctx.db.get(orderId));
 		expect(row).toMatchObject({
-			printFulfillmentCoordinatorVersion: 4,
+			printFulfillmentCoordinatorVersion: 5,
 			printProviderAdmissionStatus: "admitted",
 			printProviderAdmissionGeneration: 1,
 			printFulfillmentPhase: "preparing",
@@ -744,7 +943,7 @@ describe("provider V4", () => {
 		const t = convexTest(schema, modules);
 		await activateProvider(t, "open", 1);
 		const orderId = await insertPrintOrder(t, SESSION_B);
-		const claim = await t.mutation(api.orders.claimPrintFulfillmentV4, {
+		const claim = await t.mutation(api.orders.claimPrintFulfillmentV5, {
 			orderId,
 			claimToken: CLAIM_A,
 			webhookSecret: WEBHOOK_SECRET,
@@ -757,7 +956,7 @@ describe("provider V4", () => {
 			leaseExpiresAt: claim.leaseExpiresAt,
 		})).toBe(true);
 		expect(await t.run((ctx) => ctx.db.get(orderId))).toMatchObject({
-			printFulfillmentCoordinatorVersion: 4,
+			printFulfillmentCoordinatorVersion: 5,
 			printProviderAdmissionStatus: "admitted",
 			printProviderAdmissionGeneration: 1,
 		});
@@ -781,7 +980,7 @@ describe("provider V4", () => {
 		});
 
 		await activateProvider(t, "open", 1);
-		const claim = await t.mutation(api.orders.claimPrintFulfillmentV4, {
+		const claim = await t.mutation(api.orders.claimPrintFulfillmentV5, {
 			orderId,
 			claimToken: CLAIM_A,
 			webhookSecret: WEBHOOK_SECRET,
@@ -798,6 +997,10 @@ describe("provider V4", () => {
 		expect(await t.query(internal.commerceClosure.getNormalizedProviderReadiness, {
 			siteUrl: SITE,
 		})).toEqual({ outcome: "incomplete", blockerClasses: ["admitted_idle"] });
+		await t.run((ctx) => ctx.db.patch(orderId, { status: "canceled" }));
+		expect(await t.query(internal.commerceClosure.getNormalizedProviderReadiness, {
+			siteUrl: SITE,
+		})).toEqual({ outcome: "clear", blockerClasses: [] });
 	});
 
 	test("fails closed on partial provider-admission provenance", async () => {
@@ -807,7 +1010,7 @@ describe("provider V4", () => {
 		await t.run((ctx) => ctx.db.patch(orderId, {
 			printProviderAdmissionStatus: "admitted",
 		}));
-		expect(await t.mutation(api.orders.claimPrintFulfillmentV4, {
+		expect(await t.mutation(api.orders.claimPrintFulfillmentV5, {
 			orderId,
 			claimToken: CLAIM_A,
 			webhookSecret: WEBHOOK_SECRET,

@@ -6,6 +6,7 @@ import {
 
 const SITE = "angelsrest.online";
 const ATTEMPT = "123e4567-e89b-42d3-a456-426614174000";
+const TENANT_ID = "tenant_05eb6092-5d8c-43ce-ad26-1a59522bd07b";
 
 function jsonResponse(body: unknown, status = 200) {
 	return new Response(JSON.stringify(body), {
@@ -41,6 +42,7 @@ describe("Checkout Session admission client", () => {
 		});
 		const requestFingerprint = checkoutRequestFingerprint({ product: "print", cents: 4200 });
 		const permit = await client.begin({
+			tenantId: TENANT_ID,
 			site: SITE,
 			account: null,
 			identity: {
@@ -69,6 +71,7 @@ describe("Checkout Session admission client", () => {
 		const beginBody = JSON.parse(String(fetcher.mock.calls[0]?.[1]?.body));
 		expect(beginBody).toMatchObject({
 			version: 1,
+			tenantId: TENANT_ID,
 			site: SITE,
 			account: null,
 			proofClass: "same_origin_host_proof",

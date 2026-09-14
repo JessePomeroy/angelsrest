@@ -1,5 +1,5 @@
+import { logActivity } from "./activityLog";
 import { v } from "convex/values";
-import { internal } from "./_generated/api";
 import { mutation, query } from "./_generated/server";
 import {
 	requireDocumentSiteAdmin,
@@ -9,7 +9,6 @@ import { deleteDocument } from "./helpers/deleting";
 import { DEFAULT_LIST_LIMIT } from "./helpers/limits";
 import { markDocumentSent } from "./helpers/marking";
 import { patchDocument } from "./helpers/patching";
-import { queryBySiteUrl } from "./helpers/querying";
 import { categoryValidator } from "./helpers/validators";
 
 // Keep in sync with the `contracts.status` union in schema.ts. Widening to
@@ -29,7 +28,13 @@ export const list = query({
 	},
 	handler: async (ctx, { siteUrl, status }) => {
 		await requireSiteAdmin(ctx, siteUrl);
-		const all = await queryBySiteUrl(ctx, "contracts", siteUrl, { status });
+		const selectedStatus = statusValidator.members.find((member) => member.value === status)?.value;
+		if (status !== undefined && selectedStatus === undefined) return [];
+		const documents = ctx.db.query("contracts");
+		const matching = selectedStatus === undefined
+			? documents.withIndex("by_siteUrl", (q) => q.eq("siteUrl", siteUrl))
+			: documents.withIndex("by_siteUrl_status", (q) => q.eq("siteUrl", siteUrl).eq("status", selectedStatus));
+		const all = await matching.order("desc").take(200);
 		return all.map((contract) => ({
 			...contract,
 			clientName: contract.clientName ?? "unknown",
@@ -76,7 +81,7 @@ export const create = mutation({
 			status: "draft",
 		});
 
-		await ctx.runMutation(internal.activityLog.logActivity, {
+		await logActivity(ctx, {
 			siteUrl: args.siteUrl,
 			clientId: args.clientId,
 			action: "contract_created",
@@ -101,7 +106,10 @@ export const update = mutation({
 		status: v.optional(statusValidator),
 	},
 	handler: async (ctx, { contractId, siteUrl, ...updates }) => {
-		await patchDocument(ctx, contractId, siteUrl, updates);
+		const previous = await patchDocument(ctx, contractId, siteUrl, updates);
+		if (updates.status !== previous.status) {
+			if (updates.status === "signed") await ctx.db.patch(contractId, { signedAt: Date.now() });
+		}
 	},
 });
 
@@ -129,7 +137,7 @@ export const markSigned = mutation({
 		}
 		await ctx.db.patch(contractId, { status: "signed", signedAt: Date.now() });
 
-		await ctx.runMutation(internal.activityLog.logActivity, {
+		await logActivity(ctx, {
 			siteUrl: contract.siteUrl,
 			clientId: contract.clientId,
 			action: "contract_signed",

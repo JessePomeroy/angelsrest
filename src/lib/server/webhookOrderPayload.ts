@@ -3,14 +3,17 @@ import type {
 	CheckoutSnapshotInput,
 	CheckoutSnapshotV1,
 } from "$lib/server/checkoutSnapshotConsumer";
+import { CheckoutSnapshotProtocolError } from "$lib/server/checkoutSnapshotConsumer";
 import type { ShippingDetails } from "$lib/server/webhookEmails";
 
 export type ConvexOrderCreatePayload = {
 	webhookSecret: string;
+	tenantId?: string;
 	siteUrl: string;
 	stripeSessionId: string;
 	customerEmail: string;
 	customerName?: string;
+	shippingRecipientName?: string;
 	stripePaymentIntentId?: string;
 	stripeConnectedAccountId?: string;
 	stripePaymentCurrency?: string;
@@ -44,6 +47,7 @@ export function buildConvexOrderCreatePayload({
 	session,
 	shippingDetails,
 	lineItems,
+	tenantId,
 	siteUrl,
 	webhookSecret,
 	stripeRequestOptions,
@@ -53,6 +57,7 @@ export function buildConvexOrderCreatePayload({
 	session: Stripe.Checkout.Session;
 	shippingDetails: ShippingDetails;
 	lineItems: Stripe.LineItem[];
+	tenantId?: string;
 	siteUrl: string;
 	webhookSecret: string;
 	stripeRequestOptions?: Stripe.RequestOptions;
@@ -63,13 +68,22 @@ export function buildConvexOrderCreatePayload({
 	const stripePaymentIntentId =
 		typeof rawPaymentIntent === "string" ? rawPaymentIntent : rawPaymentIntent?.id;
 	const isDigital = session.metadata?.isDigital === "true";
+	const printInputVersion = session.metadata?.printInputVersion;
+	if (printInputVersion !== undefined && printInputVersion !== "1") {
+		throw new CheckoutSnapshotProtocolError("Unsupported frozen print protocol");
+	}
 
 	return {
 		webhookSecret,
+		...(tenantId === undefined ? {} : { tenantId }),
 		siteUrl,
 		stripeSessionId: session.id,
 		customerEmail: session.customer_details?.email || "",
 		customerName: session.customer_details?.name || shippingDetails?.name || undefined,
+		// The durable server-stamped marker survives disabling capture for new checkouts.
+		...(printInputVersion === "1"
+			? { shippingRecipientName: shippingDetails?.name || undefined }
+			: {}),
 		stripePaymentIntentId: stripePaymentIntentId || undefined,
 		stripePaymentCurrency: session.currency || undefined,
 		stripePaymentLivemode: session.livemode,

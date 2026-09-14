@@ -10,6 +10,7 @@ import {
 	hasCheckoutSnapshotMarker,
 	inspectCheckoutAdmissionMetadata,
 	inspectCheckoutSnapshotMetadata,
+	readCheckoutTenantIdMarker,
 	readCheckoutTenantMarker,
 	selectCheckoutSnapshotInput,
 } from "$lib/server/checkoutSnapshotConsumer";
@@ -18,22 +19,28 @@ import {
 	resolveCommerceTenant,
 } from "$lib/server/commerceTenant";
 import { logStructured } from "$lib/server/logger";
-import {
-	ManualRefundReconciliationRetryableError,
-	reconcileSucceededManualRefund,
-} from "$lib/server/manualRefundReconciliation";
+import { OrderReceiptRetryableError, sendOrderReceipt } from "$lib/server/orderReceipt";
 import {
 	AutomatedFulfillmentRefundRetryableError,
 	AutomatedRefundNotificationRetryableError,
+	type ConfirmLumaPrintsOrder,
 	PrintReconciliationAlertRetryableError,
 	PrintReconciliationPendingError,
 	ProviderSubmissionClosedRetryableError,
 	type SubmitLumaPrintsOrder,
 	sendClaimedAutomatedRefundNotification,
 } from "$lib/server/printFulfillment";
+import {
+	ManualRefundReconciliationRetryableError,
+	reconcileSucceededManualRefund,
+} from "$lib/server/recovery/manualRefundReconciliation.server";
 import { COMMERCE_TENANT_METADATA_KEY } from "$lib/server/stripeConnect";
 import type { CommerceWebhookRole } from "$lib/server/stripeWebhook";
-import type { ShippingDetails } from "$lib/server/webhookEmails";
+import type {
+	OrderEmailLineItem,
+	OrderEmailSession,
+	ShippingDetails,
+} from "$lib/server/webhookEmails";
 import {
 	sendAdminNotification,
 	sendCustomerConfirmation,
@@ -41,7 +48,11 @@ import {
 	sendPaymentFailedEmail,
 	sendPrintReconciliationBlockedAlert,
 } from "$lib/server/webhookEmails";
-import { createOrderInConvex } from "$lib/server/webhookOrders";
+import {
+	type CreatedOrderResult,
+	createOrderInConvex,
+	type PreparedPrintJob,
+} from "$lib/server/webhookOrders";
 import { getWebhookSecret } from "$lib/server/webhookSecret";
 
 class PaymentFailureEmailClaimError extends Error {}
@@ -52,6 +63,8 @@ export interface OrderIntakeAdapters {
 	resend: Resend;
 	convex: ConvexHttpClient;
 	createLumaPrintsOrder: SubmitLumaPrintsOrder;
+	confirmLumaPrintsOrder?: ConfirmLumaPrintsOrder;
+	printJob?: PreparedPrintJob;
 }
 
 export async function processStripeWebhookEvent(
@@ -92,12 +105,14 @@ export async function processStripeWebhookEvent(
 				const consumesCheckoutSnapshot = snapshotModeEnabled || snapshotMarkerPresent;
 				const stripeAccount = typeof event.account === "string" ? event.account.trim() : undefined;
 				const metadataSiteUrl = readCheckoutTenantMarker(session.metadata);
+				const metadataTenantId = readCheckoutTenantIdMarker(session.metadata);
 				let routing = null;
 				try {
 					routing = await adapters.convex.query(api.orders.resolveCheckoutRouting, {
 						stripeSessionId: session.id,
 						...(stripeAccount ? { stripeConnectedAccountId: stripeAccount } : {}),
 						...(metadataSiteUrl ? { stripeTenantMetadataSiteUrl: metadataSiteUrl } : {}),
+						...(metadataTenantId ? { stripeTenantMetadataTenantId: metadataTenantId } : {}),
 						webhookSecret: getWebhookSecret(),
 					});
 				} catch (cause) {
@@ -112,7 +127,12 @@ export async function processStripeWebhookEvent(
 							: inspectCheckoutSnapshotMetadata(session.metadata),
 					);
 				}
-				const tenantPromise = resolveCommerceTenant(event, adapters.convex, routing?.siteUrl);
+				const tenantPromise = resolveCommerceTenant(
+					event,
+					adapters.convex,
+					routing?.siteUrl,
+					metadataTenantId,
+				);
 				const suppressTenantFailureAlert =
 					snapshotModeEnabled || (snapshotMarkerPresent && routing?.source !== "order");
 				const tenant = suppressTenantFailureAlert
@@ -121,6 +141,7 @@ export async function processStripeWebhookEvent(
 						})
 					: await tenantPromise;
 				await handleCheckoutCompleted(session, adapters, {
+					tenantId: tenant.tenantId,
 					siteUrl: tenant.siteUrl,
 					notificationProfile: tenant.notificationProfile,
 					stripeRequestOptions: tenant.stripeRequestOptions,
@@ -228,6 +249,7 @@ export async function processStripeWebhookEvent(
 			!(err instanceof CheckoutSnapshotProtocolError) &&
 			!(err instanceof ManualRefundReconciliationRetryableError) &&
 			!(err instanceof PaymentFailureEmailClaimError) &&
+			!(err instanceof OrderReceiptRetryableError) &&
 			!(err instanceof PrintReconciliationAlertDeliveryError) &&
 			!(err instanceof PrintReconciliationAlertRetryableError) &&
 			!(err instanceof PrintReconciliationPendingError) &&
@@ -355,10 +377,11 @@ async function handlePaymentFailed(
 	}
 }
 
-async function handleCheckoutCompleted(
+export async function handleCheckoutCompleted(
 	session: Stripe.Checkout.Session,
 	adapters: OrderIntakeAdapters,
 	{
+		tenantId,
 		siteUrl,
 		stripeRequestOptions,
 		notificationProfile,
@@ -366,6 +389,7 @@ async function handleCheckoutCompleted(
 		completeLineItems = false,
 		checkoutSessionAdmission,
 	}: {
+		tenantId?: string;
 		siteUrl: string;
 		stripeRequestOptions?: Stripe.RequestOptions;
 		notificationProfile: CommerceNotificationProfile;
@@ -420,17 +444,31 @@ async function handleCheckoutCompleted(
 		return;
 	}
 
+	let receiptError: OrderReceiptRetryableError | undefined;
 	const orderResult = await createOrderInConvex(
 		{
 			stripe: adapters.stripe,
 			convex: adapters.convex,
 			resend: adapters.resend,
 			createLumaPrintsOrder: adapters.createLumaPrintsOrder,
+			confirmLumaPrintsOrder: adapters.confirmLumaPrintsOrder,
+			printJob: adapters.printJob,
+			onOrderRecorded: async (orderId, orderNumber) => {
+				receiptError = await sendOrderReceipt(adapters.convex, adapters.resend, orderId, {
+					session: fullSession,
+					customerEmail,
+					shippingDetails,
+					lineItems,
+					orderNumber,
+					notificationProfile,
+				});
+			},
 		},
 		{
 			session: fullSession,
 			shippingDetails,
 			lineItems,
+			tenantId,
 			siteUrl,
 			stripeRequestOptions,
 			notificationProfile,
@@ -439,6 +477,43 @@ async function handleCheckoutCompleted(
 		},
 	);
 
+	await deliverFulfillmentOutcome(adapters, {
+		orderResult,
+		session: fullSession,
+		customerEmail,
+		shippingDetails,
+		lineItems,
+		notificationProfile,
+	});
+
+	if (receiptError) throw receiptError;
+	logStructured({
+		event: "checkout.processed",
+		stage: "webhook",
+		sessionId: session.id,
+		orderId: orderResult.orderNumber,
+	});
+}
+
+/** Deliver only the claimed fulfillment outcome; payment receipt delivery remains intake-owned. */
+export async function deliverFulfillmentOutcome(
+	adapters: Pick<OrderIntakeAdapters, "convex" | "resend">,
+	{
+		orderResult,
+		session,
+		customerEmail,
+		shippingDetails,
+		lineItems,
+		notificationProfile,
+	}: {
+		orderResult: CreatedOrderResult;
+		session: OrderEmailSession;
+		customerEmail: string;
+		shippingDetails: ShippingDetails;
+		lineItems: OrderEmailLineItem[];
+		notificationProfile: CommerceNotificationProfile;
+	},
+) {
 	if (
 		orderResult.fulfillment.kind === "reconciliation_blocked" &&
 		orderResult.fulfillment.alertClaimToken !== undefined
@@ -552,11 +627,13 @@ async function handleCheckoutCompleted(
 			orderId: orderResult.orderNumber,
 			meta: {
 				reason:
-					orderResult.fulfillment.kind === "manual_refunded"
-						? "order_manually_refunded"
-						: orderResult.fulfillment.kind === "reconciliation_blocked"
-							? "print_reconciliation_blocked"
-							: "confirmation_already_claimed",
+					orderResult.fulfillment.kind === "canceled"
+						? "fulfillment_canceled"
+						: orderResult.fulfillment.kind === "manual_refunded"
+							? "order_manually_refunded"
+							: orderResult.fulfillment.kind === "reconciliation_blocked"
+								? "print_reconciliation_blocked"
+								: "confirmation_already_claimed",
 			},
 		});
 	} else if (
@@ -570,13 +647,13 @@ async function handleCheckoutCompleted(
 			customerEmail,
 			errorSummary: orderResult.fulfillment.errorSummary,
 			stripeRefundId: orderResult.fulfillment.stripeRefundId,
-			total: fullSession.amount_total ?? 0,
+			total: session.amount_total ?? 0,
 			notificationProfile,
 		});
 	} else if (orderResult.notification === "success") {
 		try {
 			await sendCustomerConfirmation(adapters.resend, {
-				session: fullSession,
+				session,
 				customerEmail,
 				shippingDetails,
 				lineItems,
@@ -597,7 +674,7 @@ async function handleCheckoutCompleted(
 
 		try {
 			await sendAdminNotification(adapters.resend, {
-				session: fullSession,
+				session,
 				customerEmail,
 				shippingDetails,
 				lineItems,
@@ -618,13 +695,6 @@ async function handleCheckoutCompleted(
 	} else {
 		throw new Error(`Unexpected fulfillment notification outcome for ${orderResult.orderNumber}`);
 	}
-
-	logStructured({
-		event: "checkout.processed",
-		stage: "webhook",
-		sessionId: session.id,
-		orderId: orderResult.orderNumber,
-	});
 }
 
 async function fetchSessionDetails(
@@ -634,16 +704,14 @@ async function fetchSessionDetails(
 	completeLineItems = false,
 ) {
 	if (completeLineItems) {
-		const fullSession = await stripe.checkout.sessions.retrieve(
-			session.id,
-			{ expand: ["customer_details"] },
-			requestOptions,
-		);
-		const page = await stripe.checkout.sessions.listLineItems(
-			session.id,
-			{ limit: 41 },
-			requestOptions,
-		);
+		const [fullSession, page] = await Promise.all([
+			stripe.checkout.sessions.retrieve(
+				session.id,
+				{ expand: ["customer_details"] },
+				requestOptions,
+			),
+			stripe.checkout.sessions.listLineItems(session.id, { limit: 41 }, requestOptions),
+		]);
 		if (page.data.length > 40 || page.has_more) {
 			throw new CheckoutSnapshotProtocolError("Checkout has more than 40 line items");
 		}

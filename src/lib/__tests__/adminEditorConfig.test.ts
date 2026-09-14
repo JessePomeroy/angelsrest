@@ -1,90 +1,165 @@
 import { describe, expect, it, vi } from "vitest";
+import { api } from "$convex/api";
+import {
+	calculateCatalogProductMargin,
+	resolveCatalogProductVariantOptions,
+} from "$lib/catalogProductMargin";
 import { adminConfig } from "$lib/config/admin";
+import { createAdminServerCapabilities } from "$lib/config/adminPlatformCapabilities.server";
 
-const { apiMock, catalogApi, catalogGraphApi, contentApi, galleriesApi, mediaApi, portfolioApi } =
-	vi.hoisted(() => {
-		const catalogApi = {
-			listForEditor: "catalogProducts.listForEditor",
-			getEditorState: "catalogProducts.getEditorState",
-			createDraft: "catalogProducts.createDraft",
-			saveDraft: "catalogProducts.saveDraft",
-			discardDraft: "catalogProducts.discardDraft",
-		};
-		const catalogGraphRefs = {
-			listForEditor: "catalogProductGraphs.listForEditor",
-			getEditorState: "catalogProductGraphs.getEditorState",
-			createDraft: "catalogProductGraphs.createDraft",
-			saveDraft: "catalogProductGraphs.saveDraft",
-			discardDraft: "catalogProductGraphs.discardDraft",
-			listDraftPrivateAssetCandidates: "catalogProductGraphs.listDraftPrivateAssetCandidates",
-			replaceDraftPrivateAsset: "catalogProductGraphs.replaceDraftPrivateAsset",
-			publishDraft: "catalogProductGraphs.publishDraft",
-			unpublish: "catalogProductGraphs.unpublish",
-			listPublished: "catalogProductGraphs.listPublished",
-			getPublishedBySlug: "catalogProductGraphs.getPublishedBySlug",
-		};
-		const catalogGraphApi = new Proxy({} as typeof catalogGraphRefs, {
+const {
+	apiMock,
+	blogApi,
+	postApi,
+	catalogApi,
+	catalogGraphApi,
+	contentApi,
+	documentEmailApi,
+	galleriesApi,
+	mediaApi,
+	portfolioApi,
+} = vi.hoisted(() => {
+	const editorRefs = (namespace: string) =>
+		new Proxy({} as Record<string, string>, {
 			get(_target, prop) {
-				if (typeof prop !== "string") return undefined;
-				return (
-					catalogGraphRefs[prop as keyof typeof catalogGraphRefs] ?? `catalogProductGraphs.${prop}`
-				);
+				return typeof prop === "string" ? `${namespace}.${prop}` : undefined;
 			},
 		});
-		const contentApi = {
-			getSiteSettingsEditorState: "content.getSiteSettingsEditorState",
-			saveSiteSettingsDraft: "content.saveSiteSettingsDraft",
-			publishSiteSettings: "content.publishSiteSettings",
-			discardSiteSettingsDraft: "content.discardSiteSettingsDraft",
-			getHomepageQuoteEditorState: "content.getHomepageQuoteEditorState",
-			getContactPageEditorState: "content.getContactPageEditorState",
-			saveContactPageDraft: "content.saveContactPageDraft",
-			publishContactPage: "content.publishContactPage",
-			discardContactPageDraft: "content.discardContactPageDraft",
-		};
-		const galleriesApi = { listBySite: "galleries.listBySite" };
-		const mediaApi = {
-			listForEditor: "mediaAssets.listForEditor",
-			getManyForEditor: "mediaAssets.getManyForEditor",
-			registerReadyWebAsset: "mediaAssets.registerReadyWebAsset",
-			requestDeletion: "mediaAssets.requestDeletion",
-		};
-		const portfolioApi = {
-			listForEditor: "portfolioGalleries.listForEditor",
-			getEditorState: "portfolioGalleries.getEditorState",
-			saveDraft: "portfolioGalleries.saveDraft",
-			publish: "portfolioGalleries.publish",
-			reorder: "portfolioGalleries.reorder",
-		};
-		return {
-			catalogApi,
-			catalogGraphApi,
-			contentApi,
-			galleriesApi,
-			mediaApi,
-			portfolioApi,
-			apiMock: {
-				catalogProducts: catalogApi,
-				catalogProductGraphs: catalogGraphApi,
-				content: contentApi,
-				galleries: galleriesApi,
-				galleryPassword: { setPassword: "galleryPassword.setPassword" },
-				blogContent: { listForEditor: "blogContent.listForEditor" },
-				postContent: { listForEditor: "postContent.listForEditor" },
-				portfolioGalleries: portfolioApi,
-				mediaAssets: mediaApi,
-				crm: { getStats: "crm.getStats" },
-			},
-		};
+	const blogApi = editorRefs("blogContent");
+	const postApi = editorRefs("postContent");
+	const catalogApi = {
+		listForEditor: "catalogProducts.listForEditor",
+		getEditorState: "catalogProducts.getEditorState",
+		createDraft: "catalogProducts.createDraft",
+		saveDraft: "catalogProducts.saveDraft",
+		discardDraft: "catalogProducts.discardDraft",
+	};
+	const catalogGraphRefs = {
+		listForEditor: "catalogProductGraphs.listForEditor",
+		getEditorState: "catalogProductGraphs.getEditorState",
+		createDraft: "catalogProductGraphs.createDraft",
+		saveDraft: "catalogProductGraphs.saveDraft",
+		discardDraft: "catalogProductGraphs.discardDraft",
+		listDraftPrivateAssetCandidates: "catalogProductGraphs.listDraftPrivateAssetCandidates",
+		replaceDraftPrivateAsset: "catalogProductGraphs.replaceDraftPrivateAsset",
+		publishDraft: "catalogProductGraphs.publishDraft",
+		unpublish: "catalogProductGraphs.unpublish",
+		listPublished: "catalogProductGraphs.listPublished",
+		getPublishedBySlug: "catalogProductGraphs.getPublishedBySlug",
+	};
+	const catalogGraphApi = new Proxy({} as typeof catalogGraphRefs, {
+		get(_target, prop) {
+			if (typeof prop !== "string") return undefined;
+			return (
+				catalogGraphRefs[prop as keyof typeof catalogGraphRefs] ?? `catalogProductGraphs.${prop}`
+			);
+		},
 	});
+	const contentApi = {
+		getSiteSettingsEditorState: "content.getSiteSettingsEditorState",
+		saveSiteSettingsDraft: "content.saveSiteSettingsDraft",
+		publishSiteSettings: "content.publishSiteSettings",
+		discardSiteSettingsDraft: "content.discardSiteSettingsDraft",
+		getHomepageQuoteEditorState: "content.getHomepageQuoteEditorState",
+		getContactPageEditorState: "content.getContactPageEditorState",
+		saveContactPageDraft: "content.saveContactPageDraft",
+		publishContactPage: "content.publishContactPage",
+		discardContactPageDraft: "content.discardContactPageDraft",
+		getAboutPageEditorState: "content.getAboutPageEditorState",
+		saveAboutPageDraft: "content.saveAboutPageDraft",
+		publishAboutPage: "content.publishAboutPage",
+		discardAboutPageDraft: "content.discardAboutPageDraft",
+	};
+	const galleriesApi = { listBySite: "galleries.listBySite" };
+	const documentEmailApi = {
+		get: "documentEmailAttempts.get",
+		getRecovery: "documentEmailAttempts.getRecovery",
+		getOpenRecoveryByDocument: "documentEmailAttempts.getOpenRecoveryByDocument",
+		prepare: "documentEmailAttempts.prepare",
+		claim: "documentEmailAttempts.claim",
+		complete: "documentEmailAttempts.complete",
+		fail: "documentEmailAttempts.fail",
+		resolve: "documentEmailAttempts.resolve",
+	};
+	const mediaApi = {
+		listForEditor: "mediaAssets.listForEditor",
+		getManyForEditor: "mediaAssets.getManyForEditor",
+		registerReadyWebAsset: "mediaAssets.registerReadyWebAsset",
+		requestDeletion: "mediaAssets.requestDeletion",
+	};
+	const portfolioApi = {
+		listForEditor: "portfolioGalleries.listForEditor",
+		getEditorState: "portfolioGalleries.getEditorState",
+		saveDraft: "portfolioGalleries.saveDraft",
+		publish: "portfolioGalleries.publish",
+		setVisibility: "portfolioGalleries.setVisibility",
+		remove: "portfolioGalleries.remove",
+		reorder: "portfolioGalleries.reorder",
+	};
+	const apiMock = new Proxy(
+		{
+			catalogProducts: catalogApi,
+			catalogProductGraphs: catalogGraphApi,
+			content: contentApi,
+			documentEmailAttempts: documentEmailApi,
+			galleries: galleriesApi,
+			galleryPassword: { setPassword: "galleryPassword.setPassword" },
+			blogContent: blogApi,
+			postContent: postApi,
+			portfolioGalleries: portfolioApi,
+			mediaAssets: mediaApi,
+			crm: { getStats: "crm.getStats" },
+		},
+		{
+			get(target, prop, receiver) {
+				return (
+					Reflect.get(target, prop, receiver) ??
+					(typeof prop === "string" ? editorRefs(prop) : undefined)
+				);
+			},
+		},
+	);
+	return {
+		blogApi,
+		postApi,
+		catalogApi,
+		catalogGraphApi,
+		contentApi,
+		documentEmailApi,
+		galleriesApi,
+		mediaApi,
+		portfolioApi,
+		apiMock,
+	};
+});
 
 vi.mock("$convex/api", () => ({ api: apiMock }));
 
-describe("admin API aliases", () => {
-	it("adds the CMS media registry without disturbing existing host aliases", () => {
-		expect(adminConfig.api.blogContent).toBe(apiMock.blogContent);
-		expect(adminConfig.api.postContent).toBe(apiMock.postContent);
-		expect(adminConfig.api.catalogProducts).toBe(catalogApi);
+describe("admin platform capabilities", () => {
+	it("adapts the generated API without exposing server-only browser capabilities", () => {
+		expect(Object.getPrototypeOf(adminConfig.api)).toBe(Object.prototype);
+		expect(Reflect.get(adminConfig.api, "unknownCapability")).toBeUndefined();
+		for (const [configured, source] of [
+			[adminConfig.api.blogContent, blogApi],
+			[adminConfig.api.postContent, postApi],
+		] as const) {
+			expect(configured).not.toBe(source);
+			expect(Object.getPrototypeOf(configured)).toBe(Object.prototype);
+			expect(Object.keys(configured ?? {})).toEqual([
+				"listForEditor",
+				"getEditorState",
+				"createDraft",
+				"saveDraft",
+				"publish",
+				"discardDraft",
+				"unpublish",
+				"archive",
+				"restore",
+			]);
+			expect(Reflect.get(configured ?? {}, "importSanityBlogDrafts")).toBeUndefined();
+			expect(Reflect.get(configured ?? {}, "restorePublishedManifest")).toBeUndefined();
+		}
+		expect(adminConfig.api.catalogProducts).toEqual(catalogApi);
 		expect(adminConfig.api.catalogProducts).not.toHaveProperty("publish");
 		const productGraphApi = adminConfig.api.catalogProductGraphs;
 		expect(productGraphApi).not.toBe(catalogGraphApi);
@@ -113,7 +188,24 @@ describe("admin API aliases", () => {
 		expect(adminConfig.api.mediaAssets?.registerReadyWebAsset).toBe(mediaApi.registerReadyWebAsset);
 		expect(adminConfig.api.galleryDelivery?.listBySite).toBe(galleriesApi.listBySite);
 		expect(adminConfig.api.galleryDelivery?.setPassword).toBe(apiMock.galleryPassword.setPassword);
-		expect(adminConfig.api.crm).toBe(apiMock.crm);
+		expect(adminConfig.api.crm?.getStats).toBe(apiMock.crm.getStats);
+		expect(adminConfig.api.documentEmailAttempts).toBeUndefined();
+		const serverCapabilities = createAdminServerCapabilities(api);
+		expect(serverCapabilities.documentEmailAttempts).not.toBe(documentEmailApi);
+		expect(serverCapabilities.documentEmailAttempts).toEqual(documentEmailApi);
+		expect(Object.keys(serverCapabilities.documentEmailAttempts ?? {})).toEqual([
+			"get",
+			"getRecovery",
+			"getOpenRecoveryByDocument",
+			"prepare",
+			"claim",
+			"complete",
+			"fail",
+			"resolve",
+		]);
+		expect(Reflect.get(serverCapabilities.documentEmailAttempts ?? {}, "unknownCapability")).toBe(
+			undefined,
+		);
 		expect(adminConfig.api.siteEditor).not.toBe(contentApi);
 		expect(adminConfig.api.siteEditor?.getSiteSettingsEditorState).toBe(
 			contentApi.getSiteSettingsEditorState,
@@ -121,7 +213,7 @@ describe("admin API aliases", () => {
 		expect(adminConfig.api.siteEditor?.saveSiteSettingsDraft).toBe(
 			contentApi.saveSiteSettingsDraft,
 		);
-		expect(adminConfig.api.siteEditor?.publishSiteSettings).toBeUndefined();
+		expect(adminConfig.api.siteEditor?.publishSiteSettings).toBe(contentApi.publishSiteSettings);
 		expect(adminConfig.api.siteEditor?.discardSiteSettingsDraft).toBe(
 			contentApi.discardSiteSettingsDraft,
 		);
@@ -136,20 +228,54 @@ describe("admin API aliases", () => {
 		expect(adminConfig.api.siteEditor?.discardContactPageDraft).toBe(
 			contentApi.discardContactPageDraft,
 		);
+		expect(adminConfig.api.siteEditor?.getAboutPageEditorState).toBe(
+			contentApi.getAboutPageEditorState,
+		);
+		expect(adminConfig.api.siteEditor?.saveAboutPageDraft).toBe(contentApi.saveAboutPageDraft);
+		expect(adminConfig.api.siteEditor?.publishAboutPage).toBe(contentApi.publishAboutPage);
+		expect(adminConfig.api.siteEditor?.discardAboutPageDraft).toBe(
+			contentApi.discardAboutPageDraft,
+		);
+		expect(adminConfig.api.siteEditor?.listMediaAssets).toBe(mediaApi.listForEditor);
+		expect(adminConfig.api.siteEditor?.getPlacedMediaAssets).toBe(mediaApi.getManyForEditor);
+		expect(Reflect.get(adminConfig.api.siteEditor ?? {}, "importPinnedDrafts")).toBeUndefined();
+		expect(
+			Reflect.get(adminConfig.api.siteEditor ?? {}, "restorePinnedPublishedRevisions"),
+		).toBeUndefined();
 
 		const portfolioEditor = adminConfig.api.portfolioEditor;
+		expect(Object.getPrototypeOf(portfolioEditor ?? {})).toBe(Object.prototype);
+		expect(Object.keys(portfolioEditor ?? {})).toEqual([
+			"listForEditor",
+			"getEditorState",
+			"saveDraft",
+			"setVisibility",
+			"remove",
+			"reorder",
+			"listMediaAssets",
+			"getPlacedMediaAssets",
+			"registerReadyWebAsset",
+			"requestDeletion",
+		]);
 		expect(portfolioEditor?.listForEditor).toBe(portfolioApi.listForEditor);
 		expect(portfolioEditor?.getEditorState).toBe(portfolioApi.getEditorState);
 		expect(portfolioEditor?.saveDraft).toBe(portfolioApi.saveDraft);
 		expect(portfolioEditor?.publish).toBeUndefined();
+		expect(portfolioEditor?.setVisibility).toBe(portfolioApi.setVisibility);
+		expect(portfolioEditor?.remove).toBe(portfolioApi.remove);
 		expect(portfolioEditor?.reorder).toBe(portfolioApi.reorder);
 		expect(portfolioEditor?.listMediaAssets).toBe(mediaApi.listForEditor);
 		expect(portfolioEditor?.getPlacedMediaAssets).toBe(mediaApi.getManyForEditor);
 		expect(portfolioEditor?.registerReadyWebAsset).toBe(mediaApi.registerReadyWebAsset);
 		expect(portfolioEditor?.requestDeletion).toBe(mediaApi.requestDeletion);
+		expect(Reflect.get(portfolioEditor ?? {}, "restorePinnedPublishedRevisions")).toBeUndefined();
 		expect(adminConfig.editor?.blog?.mediaBaseUrl).toBe("https://media.angelsrest.online");
+		expect(adminConfig.editor?.blog?.mode).toBe("compact");
 		expect(adminConfig.editor?.products).toEqual({
 			publicationEnabled: true,
+			publicShopEnabled: true,
+			marginCalculator: calculateCatalogProductMargin,
+			variantOptionResolver: resolveCatalogProductVariantOptions,
 			privateAssetReplacementEnabled: true,
 			privateAssetUpload: {
 				prepareEndpoint: "/api/admin/catalog-private-assets/editor-uploads/prepare",
@@ -185,6 +311,11 @@ describe("admin API aliases", () => {
 		expect(adminConfig.editor?.contactPage?.initialPayload).not.toHaveProperty("phone");
 		expect(adminConfig.editor?.contactPage?.initialPayload).not.toHaveProperty("availability");
 		expect(adminConfig.editor?.contactPage?.initialPayload).not.toHaveProperty("responseTime");
+		expect(adminConfig.editor?.aboutPage).toEqual({
+			initialPayload: {},
+			mediaBaseUrl: "https://media.angelsrest.online",
+			uploadEndpoint: "/api/admin/media",
+		});
 		expect(adminConfig.editor?.portfolio).toEqual({
 			mediaBaseUrl: "https://media.angelsrest.online",
 			uploadEndpoint: "/api/admin/media",

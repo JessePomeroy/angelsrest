@@ -176,6 +176,23 @@ describe("POST /api/portal/[token]/sign", () => {
 		expect(mockConvexMutation).not.toHaveBeenCalled();
 	});
 
+	it("rejects non-string and oversized signature evidence before Convex", async () => {
+		for (const body of [
+			{ signerName: 42 },
+			{ signerName: "Jane", signerEmail: { address: "jane@example.com" } },
+			{ signerName: "Jane\nInjected" },
+			{ signerName: "Jane", signerEmail: "not an email" },
+			{ signerName: "Jane", signatureData: "bad\u0000evidence" },
+			{ signerName: "界".repeat(67) },
+			{ signerName: "Jane", signatureData: "界".repeat(87_382) },
+		]) {
+			await expect(POST(makeReq("good", body))).rejects.toMatchObject({
+				status: 400,
+			});
+		}
+		expect(mockConvexMutation).not.toHaveBeenCalled();
+	});
+
 	it("returns 404 when token is invalid/expired/used", async () => {
 		mockConvexMutation.mockRejectedValue(new Error("Token already used"));
 		try {
@@ -193,6 +210,18 @@ describe("POST /api/portal/[token]/sign", () => {
 			expect.fail("should have thrown");
 		} catch (err: any) {
 			expect(err.status).toBe(400);
+		}
+	});
+
+	it("returns 409 when a used-token replay changes the signature evidence", async () => {
+		mockConvexMutation.mockRejectedValue(
+			new Error("Signature replay does not match the recorded signature"),
+		);
+		try {
+			await POST(makeReq("used-token", { signerName: "Different signer" }));
+			expect.fail("should have thrown");
+		} catch (err: any) {
+			expect(err.status).toBe(409);
 		}
 	});
 

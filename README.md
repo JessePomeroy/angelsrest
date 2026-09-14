@@ -14,7 +14,7 @@ fulfillment, email, and private gallery delivery.
 | Area | Current owner |
 |---|---|
 | Public pages and HTTP composition | SvelteKit 5 |
-| Published editorial content during CMS migration | Sanity fallback |
+| Published editorial content and Shop catalog | Convex |
 | Embedded Editor drafts, revisions, and media registry | Convex |
 | Public Editor image derivatives and private sources | Cloudflare R2 through the CMS media worker |
 | CRM, orders, inquiries, documents, and tenant records | Convex |
@@ -25,10 +25,11 @@ fulfillment, email, and private gallery delivery.
 | Private delivery-gallery files | Cloudflare R2 through the gallery worker |
 | Error and performance telemetry | Sentry |
 
-Sanity remains the production editorial fallback while the replacement CMS is
-being implemented inside the existing admin dashboard. The migration is staged
-by content type; the Sanity boundary remains intact until the Editor is accepted,
-restore paths are proven, and an explicit cutover is approved.
+Convex is the sole runtime authority for the published site, Shop, Editor, and
+checkout. The former Sanity clients, preview routes, provider switches,
+migration entry points, and purchase/download fallbacks have been removed. The
+external recovery archive remains historical evidence rather than executable
+application infrastructure.
 
 See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the authoritative system
 map, ownership rules, and request flows.
@@ -46,9 +47,6 @@ brand, content, administrators, and public origin.
 | `admin-dashboard` | Source for the shared `@jessepomeroy/admin` UI and server adapters |
 | `gallery-worker` | Separate Cloudflare Worker deployments for private gallery delivery and public-site Editor media |
 | `reflecting-pool` | Client spoke and tenant admin host; currently in pre-handoff production testing |
-| `sanity-studio-template` | Shared Sanity schemas, desk structure, components, and actions |
-| `angelsrest-studio` | Current Angel's Rest Sanity Studio |
-| `reflecting-pool-studio` | Current Reflecting Pool Sanity Studio |
 
 Cross-repository contracts are changed in their owning upstream repository
 first, then adopted and verified by affected consumers.
@@ -67,7 +65,7 @@ published from the separate `admin-dashboard` repository.
 
 ## Important boundaries
 
-- Portfolio galleries are public editorial content currently stored in Sanity.
+- Portfolio galleries and their public media placements are published from Convex.
 - Delivery galleries are private Convex records backed by protected R2 objects.
 - Editor media uses a separate tenant-authenticated Worker, private source
   bucket, immutable public derivative bucket, and Convex asset registry.
@@ -97,9 +95,9 @@ pnpm dev
 ```
 
 The example environment file groups the required application, Convex, auth,
-Sanity, Stripe, Resend, LumaPrints, gallery workers, Turnstile, and observability
-configuration. Keep real credentials in local or provider-managed secret
-stores; never commit them.
+Stripe, Resend, LumaPrints, gallery workers, Turnstile, and observability
+configuration. Keep real
+credentials in local or provider-managed secret stores; never commit them.
 
 Use Stripe test credentials and `LUMAPRINTS_USE_SANDBOX=true` for local work.
 Convex development commands run from `packages/crm-api/`, whose deployment
@@ -123,10 +121,21 @@ Use `pnpm build` when production bundling is relevant. End-to-end and focused
 smoke checks are available through the scripts in `package.json` and should be
 run when their flows are affected.
 
+Biome also lints the script blocks of the root layout, order lookup, Footer,
+and GalleryModal, with `noExplicitAny` enforced. This pilot is listed in
+`biome.json` and runs through both `pnpm lint` and the staged Svelte hook.
+Template-aware checks remain in `pnpm check`; Svelte formatting stays disabled.
+The partial-parser rule exceptions follow [Biome's language support guidance](https://biomejs.dev/internals/language-support/#linting-html-ish-languages).
+Expand the pilot as components are reviewed, without adding broad formatting
+changes or enabling experimental template parsing across the repository.
+
 ## Documentation
 
 - [AGENTS.md](AGENTS.md) — canonical repository rules and implementation constraints
 - [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) — current ownership, dependencies, authentication, and transport boundaries
+- [docs/contracts/architecture-invariants.md](docs/contracts/architecture-invariants.md) — stable safety rules and their primary proofs
+- [docs/runbooks/security-operations.md](docs/runbooks/security-operations.md) — authority, least-privilege, recovery, and incident response
+- [docs/migrations/](docs/migrations/) — completed migration narratives and source-bound records
 - [LUMAPRINTS.md](LUMAPRINTS.md) — current print-fulfillment integration
 - [packages/crm-api/README.md](packages/crm-api/README.md) — shared Convex package and release workflow
 - [docs/archive/README.md](docs/archive/README.md) — historical documents retained for context only

@@ -128,6 +128,30 @@ describe("Stripe webhook route", () => {
 		expect(mocks.createLumaPrintsOrder).not.toHaveBeenCalled();
 	});
 
+	it("rejects a malformed explicit tenant ID instead of treating it as legacy", async () => {
+		mocks.env.ORDER_PRODUCERS_STATE = "closed";
+		mocks.verify.mockResolvedValue({
+			event: event({
+				data: {
+					object: {
+						id: "cs_test_123",
+						metadata: { commerceTenantId: "not-a-tenant-id" },
+						mode: "payment",
+					},
+				},
+			}),
+			role: "your-account",
+		});
+		const { POST } = await import("../+server");
+
+		await expect(POST({ request: request() } as Parameters<typeof POST>[0])).rejects.toMatchObject({
+			status: 400,
+			body: { message: "Checkout tenant identity is invalid" },
+		});
+		expect(mocks.convex.query).not.toHaveBeenCalled();
+		expect(mocks.process).not.toHaveBeenCalled();
+	});
+
 	it("acknowledges a retired-order replay while producers are closed", async () => {
 		mocks.env.ORDER_PRODUCERS_STATE = "closed";
 		mocks.convex.query.mockResolvedValue({ source: "retired", siteUrl: "tenant.example" });

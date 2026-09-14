@@ -8,12 +8,12 @@ import {
 import {
 	asPostRevisionPayload,
 	assertPostRevisionOwnership,
-	checksumPostSummaryIntegrity,
 	getReadyPostAssets,
 	loadPostRevision,
 	requirePostDraftRelations,
 } from "./postContentGraph";
-import type { PostSummaryIntegrityInput } from "./postContentIntegrity";
+import { checksumPostSummaryIntegrity, type PostSummaryIntegrityInput } from "./postContentIntegrity";
+import { requirePublishedSiteOwnerAuthor } from "./siteSettingsData";
 import {
 	POST_CONTENT_LIMITS,
 	toPublishedPostDraft,
@@ -49,20 +49,23 @@ async function projectSupportingDocument(
 async function projectPostReferences(
 	ctx: QueryCtx,
 	document: Doc<"contentDocuments">,
-	authorDocumentId: Id<"contentDocuments">,
+	authorDocumentId: Id<"contentDocuments"> | undefined,
 	categoryDocumentIds: Id<"contentDocuments">[],
+	authorSource?: "siteSettings",
 ) {
-	const documents = await Promise.all(
-		[authorDocumentId, ...categoryDocumentIds].map((id) => ctx.db.get(id)),
-	);
-	const authorDocument = documents[0];
-	if (!authorDocument || authorDocument.siteUrl !== document.siteUrl) {
-		throw new Error("Published Post author reference is invalid");
-	}
-	const author = await projectSupportingDocument(ctx, authorDocument, "author");
+	const author = authorSource === "siteSettings"
+		? await requirePublishedSiteOwnerAuthor(ctx, document.siteUrl)
+		: await (async () => {
+			const authorDocument = authorDocumentId ? await ctx.db.get(authorDocumentId) : null;
+			if (!authorDocument || authorDocument.siteUrl !== document.siteUrl) {
+				throw new Error("Published Post author reference is invalid");
+			}
+			return await projectSupportingDocument(ctx, authorDocument, "author");
+		})();
 	if (author.kind !== "author") throw new Error("Published Post author projection mismatch");
 	const categories = await Promise.all(
-		documents.slice(1).map(async (categoryDocument) => {
+		categoryDocumentIds.map(async (id) => {
+			const categoryDocument = await ctx.db.get(id);
 			if (!categoryDocument || categoryDocument.siteUrl !== document.siteUrl) {
 				throw new Error("Published Post category reference is invalid");
 			}
@@ -100,6 +103,7 @@ export async function projectPublishedPostDetail(
 		document,
 		published.authorDocumentId,
 		published.categories.map((category) => category.documentId),
+		published.authorSource,
 	);
 	return {
 		revisionId: loaded.revision._id,
@@ -241,7 +245,7 @@ export async function projectPublishedPostSummary(
 		revision,
 	);
 	if (
-		authorReferences.length !== 1
+		authorReferences.length !== (header.authorSource === "siteSettings" ? 0 : 1)
 		|| categoryReferences.length !== header.categoryCount
 		|| mainMedia.length !== (header.hasMainImage ? 1 : 0)
 		|| header.referenceCount !== authorReferences.length + categoryReferences.length
@@ -250,7 +254,9 @@ export async function projectPublishedPostSummary(
 		throw new Error("Published Post main image alt text is missing");
 	}
 	const authorDocumentId = authorReferences[0]?.toDocumentId;
-	if (!authorDocumentId) throw new Error("Published Post author reference is missing");
+	if (!authorDocumentId && header.authorSource !== "siteSettings") {
+		throw new Error("Published Post author reference is missing");
+	}
 	const { summaryChecksum, ...summaryPayload } = payload;
 	const summaryIntegrity: PostSummaryIntegrityInput = {
 		...summaryPayload,
@@ -276,6 +282,7 @@ export async function projectPublishedPostSummary(
 		document,
 		authorDocumentId,
 		categoryReferences.map((reference) => reference.toDocumentId),
+		header.authorSource,
 	);
 	const mainAsset = mainMedia[0]
 		? (

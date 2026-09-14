@@ -64,7 +64,7 @@ async function setup() {
 }
 
 function asAdmin(t: Awaited<ReturnType<typeof setup>>, email: string) {
-	return t.withIdentity({ subject: email, email });
+	return t.withIdentity({ subject: email, email, emailVerified: true });
 }
 
 function restoreEnvironment(name: string, previous: string | undefined) {
@@ -167,11 +167,47 @@ describe("tenant-scoped CMS media assets", () => {
 					...readyAsset(SITE_A.siteUrl, "423e4567-e89b-42d3-a456-426614174000").derivatives,
 					thumb: {
 						...readyAsset(SITE_A.siteUrl, "423e4567-e89b-42d3-a456-426614174000").derivatives.thumb,
-						height: 214,
+						height: 215,
 					},
 				},
 			},
 		})).rejects.toThrow(/thumb dimensions/);
+	});
+
+	test("accepts provider-authoritative adjacent-pixel derivative heights", async () => {
+		const t = await setup();
+		const asset = readyAsset(SITE_A.siteUrl, "523e4567-e89b-42d3-a456-426614174000");
+		asset.source = { ...asset.source, width: 1600, height: 1074 };
+		asset.master = { ...asset.master, width: 1600, height: 1074 };
+		asset.derivatives = {
+			thumb: { ...asset.derivatives.thumb, width: 320, height: 214 },
+			card: { ...asset.derivatives.card, width: 768, height: 515 },
+			display1280: { ...asset.derivatives.display1280, width: 1280, height: 859 },
+			display2048: { ...asset.derivatives.display2048, width: 1600, height: 1074 },
+			display2560: { ...asset.derivatives.display2560, width: 1600, height: 1074 },
+		};
+
+		await expect(asAdmin(t, SITE_A.email).mutation(api.mediaAssets.registerReadyWebAsset, {
+			siteUrl: SITE_A.siteUrl,
+			asset,
+		})).resolves.toMatchObject({ status: "ready" });
+
+		asset.assetId = "623e4567-e89b-42d3-a456-426614174000";
+		asset.master.key = `sites/${SITE_A.siteUrl}/web/${asset.assetId}/master.webp`;
+		for (const [name, filename] of Object.entries({
+			thumb: "thumb.webp",
+			card: "card.webp",
+			display1280: "display-1280.webp",
+			display2048: "display-2048.webp",
+			display2560: "display-2560.webp",
+		}) as Array<[keyof typeof asset.derivatives, string]>) {
+			asset.derivatives[name].key = `sites/${SITE_A.siteUrl}/web/${asset.assetId}/${filename}`;
+		}
+		asset.derivatives.card.height = 514;
+		await expect(asAdmin(t, SITE_A.email).mutation(api.mediaAssets.registerReadyWebAsset, {
+			siteUrl: SITE_A.siteUrl,
+			asset,
+		})).rejects.toThrow(/card dimensions/);
 	});
 
 	test("deduplicates identical registration retries and rejects conflicting metadata", async () => {
@@ -559,6 +595,36 @@ describe("tenant-scoped CMS media assets", () => {
 		}, duplicatedRegistry);
 	});
 
+	test("rechecks active singleton pins at completion while releasing retained history", async () => {
+		const t = await setup();
+		const admin = asAdmin(t, SITE_A.email);
+		const { id } = await admin.mutation(api.mediaAssets.registerReadyWebAsset, { siteUrl: SITE_A.siteUrl, asset: readyAsset() });
+		const { documentId, revisionId } = await t.run(async ctx => {
+			const documentId = await ctx.db.insert("contentDocuments", {
+				siteUrl: SITE_A.siteUrl, kind: "siteSettings", createdAt: 1, createdBy: "test", updatedAt: 1, updatedBy: "test",
+			});
+			const revisionId = await ctx.db.insert("contentRevisions", {
+				siteUrl: SITE_A.siteUrl, documentId, kind: "siteSettings", schemaVersion: 1,
+				payload: { seoOgImageAssetId: id }, source: "admin", checksum: "settings", createdAt: 1, createdBy: "test",
+			});
+			await ctx.db.patch(documentId, { draftRevisionId: revisionId, publishedRevisionId: revisionId });
+			return { documentId, revisionId };
+		});
+		const request = () => admin.mutation(api.mediaAssets.requestDeletion, { siteUrl: SITE_A.siteUrl, id });
+		await expect(request()).rejects.toThrow("Media asset is in use by Site Settings");
+		await t.run(ctx => ctx.db.patch(documentId, { draftRevisionId: undefined }));
+		await expect(request()).rejects.toThrow("Media asset is in use by Site Settings");
+		await t.run(ctx => ctx.db.patch(documentId, { publishedRevisionId: undefined }));
+		await expect(request()).resolves.toMatchObject({ status: "deleting" });
+		// A reference added after the cleanup request must still block completion.
+		await t.run(ctx => ctx.db.patch(documentId, { draftRevisionId: revisionId }));
+		const complete = () => t.mutation(internal.mediaAssets.completeDeletion, { siteUrl: SITE_A.siteUrl, id, assetId: ASSET_ID });
+		await expect(complete()).rejects.toThrow("Media asset is in use by Site Settings");
+		expect((await admin.query(api.mediaAssets.get, { id })).status).toBe("deleting");
+		await t.run(ctx => ctx.db.patch(documentId, { draftRevisionId: undefined }));
+		await expect(complete()).resolves.toMatchObject({ deleted: true });
+	});
+
 	test("blocks deletion while any portfolio placement references the asset", async () => {
 		const t = await setup();
 		const admin = asAdmin(t, SITE_A.email);
@@ -597,11 +663,22 @@ describe("tenant-scoped CMS media assets", () => {
 				placementKey: "test-placement",
 				order: 0,
 			});
+			await ctx.db.patch(galleryId, { draftRevisionId: revisionId });
+			return galleryId;
 		});
 
 		await expect(admin.mutation(api.mediaAssets.requestDeletion, {
 			siteUrl: SITE_A.siteUrl,
 			id: created.id,
 		})).rejects.toThrow(/in use by portfolio content/);
+		await t.run(async (ctx) => {
+			const gallery = await ctx.db.query("portfolioGalleries").unique();
+			if (!gallery) throw new Error("Portfolio fixture not found");
+			await ctx.db.patch(gallery._id, { draftRevisionId: undefined });
+		});
+		await expect(admin.mutation(api.mediaAssets.requestDeletion, {
+			siteUrl: SITE_A.siteUrl,
+			id: created.id,
+		})).resolves.toMatchObject({ status: "deleting" });
 	});
 });

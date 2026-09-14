@@ -55,8 +55,8 @@ async function setup() {
 			role: "client",
 		});
 	}
-	const adminA = t.withIdentity({ subject: SITE_A.email, email: SITE_A.email });
-	const adminB = t.withIdentity({ subject: SITE_B.email, email: SITE_B.email });
+	const adminA = t.withIdentity({ subject: SITE_A.email, email: SITE_A.email, emailVerified: true });
+	const adminB = t.withIdentity({ subject: SITE_B.email, email: SITE_B.email, emailVerified: true });
 	const [assetA, assetB, assetOtherSite] = await Promise.all([
 		adminA.mutation(api.mediaAssets.registerReadyWebAsset, {
 			siteUrl: SITE_A.siteUrl,
@@ -263,6 +263,65 @@ describe("tenant-scoped portfolio gallery revisions", () => {
 			slug: "work",
 		});
 		expect(published?.title).toBe("Published title");
+	});
+
+	test("hides and restores a gallery before permanently removing only its gallery records", async () => {
+		const { t, adminA, adminB, assetA } = await setup();
+		const draft = await adminA.mutation(api.portfolioGalleries.saveDraft, {
+			siteUrl: SITE_A.siteUrl,
+			draft: {
+				title: "Private when needed",
+				slug: "private-when-needed",
+				placements: [placement("one", assetA.id, { altText: "Portrait" })],
+			},
+		});
+		await adminA.mutation(api.portfolioGalleries.publish, {
+			galleryId: draft.galleryId,
+			draftRevisionId: draft.revisionId,
+		});
+		await expect(adminB.mutation(api.portfolioGalleries.setVisibility, {
+			galleryId: draft.galleryId,
+			isVisible: false,
+		})).rejects.toThrow(/Not authorized/);
+		await adminA.mutation(api.portfolioGalleries.setVisibility, {
+			galleryId: draft.galleryId,
+			isVisible: false,
+		});
+		expect(await adminA.query(api.portfolioGalleries.getPublishedBySlug, {
+			siteUrl: SITE_A.siteUrl,
+			slug: "private-when-needed",
+		})).toBeNull();
+		await adminA.mutation(api.portfolioGalleries.setVisibility, {
+			galleryId: draft.galleryId,
+			isVisible: true,
+		});
+		expect(await adminA.query(api.portfolioGalleries.getPublishedBySlug, {
+			siteUrl: SITE_A.siteUrl,
+			slug: "private-when-needed",
+		})).not.toBeNull();
+
+		await adminA.mutation(api.portfolioGalleries.remove, { galleryId: draft.galleryId });
+		expect(await adminA.query(api.portfolioGalleries.listForEditor, {
+			siteUrl: SITE_A.siteUrl,
+		})).toEqual([]);
+		const stored = await t.run(async (ctx) => ({
+			gallery: await ctx.db.get(draft.galleryId),
+			revision: await ctx.db.get(draft.revisionId),
+			placements: await ctx.db.query("portfolioPlacements").collect(),
+			retired: await ctx.db.query("retiredPortfolioGalleryIdentities").unique(),
+			asset: await ctx.db.get(assetA.id),
+		}));
+		expect(stored).toMatchObject({
+			gallery: null,
+			revision: null,
+			placements: [],
+			retired: { slug: "private-when-needed", galleryId: draft.galleryId },
+			asset: {},
+		});
+		await expect(adminA.mutation(api.portfolioGalleries.saveDraft, {
+			siteUrl: SITE_A.siteUrl,
+			draft: { slug: "private-when-needed", placements: [] },
+		})).rejects.toThrow(/slug.*retired/i);
 	});
 
 	test("bounds the aggregate public projection before another gallery can publish", async () => {

@@ -6,17 +6,14 @@ import {
 	asPostRevisionPayload,
 	assertPostDocument,
 	assertPostRevisionOwnership,
-	checksumPostDraft,
-	checksumPostSummary,
 	listPostDocuments,
 	loadPostRevision,
-	normalizePostDraftIds,
+	preparePostDraftRevision,
 	requirePostDraftRelations,
 	validatePostDocumentKey,
 } from "./postContentGraph";
 import {
 	POST_CONTENT_LIMITS,
-	postRevisionPayloadFromDraft,
 	requireCanonicalPostSlug,
 	toPublishedPostDraft,
 	toPublishedPostHeader,
@@ -28,6 +25,7 @@ import {
 	requireValidPublishedSlugChangeRetry,
 	retainPreviousPublishedSlug,
 } from "./contentSlugHistory";
+import { contentRevisionProvenanceFields } from "./contentRevisionProvenance";
 import {
 	archiveContentDocument,
 	requireActiveContentDocument,
@@ -36,11 +34,20 @@ import {
 } from "./contentLifecycle";
 import type { PublishedSlugChange } from "./contentValidators";
 
-export type PostDraftWriter = {
+type PostDraftWriterBase = {
 	actor: string;
-	source: "admin" | "sanityImport";
 	now: number;
 };
+
+export type PostDraftWriter = PostDraftWriterBase & (
+	| { source: "admin" | "sanityImport" }
+	| {
+		source: "restore";
+		restoredFromRevisionId: Id<"contentRevisions">;
+		restoreOperationId: string;
+		restoreRequestDigest: string;
+	}
+);
 
 function canonicalDraftSlug(draft: PostDraft) {
 	if (draft.slug === undefined || !draft.slug.trim()) return undefined;
@@ -70,12 +77,10 @@ async function getDocumentByKey(
 async function insertPostRevision(
 	ctx: MutationCtx,
 	document: Doc<"contentDocuments">,
-	draft: PostDraft,
-	checksum: string,
-	summaryChecksum: string,
+	prepared: Awaited<ReturnType<typeof preparePostDraftRevision>>,
 	writer: PostDraftWriter,
 ) {
-	const payload = postRevisionPayloadFromDraft(draft, summaryChecksum);
+	const { draft, checksum, payload } = prepared;
 	const revisionId = await ctx.db.insert("contentRevisions", {
 		siteUrl: document.siteUrl,
 		documentId: document._id,
@@ -83,6 +88,7 @@ async function insertPostRevision(
 		schemaVersion: 1,
 		payload,
 		source: writer.source,
+		...contentRevisionProvenanceFields(writer),
 		checksum,
 		createdAt: writer.now,
 		createdBy: writer.actor,
@@ -225,9 +231,8 @@ export async function createPostDraftForSite(
 	},
 ) {
 	validatePostDocumentKey(args.documentKey);
-	const draft = normalizePostDraftIds(ctx, args.draft);
-	const checksum = await checksumPostDraft(draft);
-	const summaryChecksum = await checksumPostSummary(draft);
+	const prepared = await preparePostDraftRevision(ctx, args.draft);
+	const { draft, checksum } = prepared;
 	const existing = await getDocumentByKey(ctx, args.siteUrl, args.documentKey);
 	if (existing) {
 		const document = assertPostDocument(existing);
@@ -282,9 +287,7 @@ export async function createPostDraftForSite(
 	const revisionId = await insertPostRevision(
 		ctx,
 		document,
-		draft,
-		checksum,
-		summaryChecksum,
+		prepared,
 		args.writer,
 	);
 	await ctx.db.patch(documentId, { draftRevisionId: revisionId });
@@ -324,9 +327,8 @@ export async function savePostDraft(
 	);
 	const document = assertPostDocument(stored);
 	requireActiveContentDocument(document, "Post document");
-	const draft = normalizePostDraftIds(ctx, args.draft);
-	const checksum = await checksumPostDraft(draft);
-	const summaryChecksum = await checksumPostSummary(draft);
+	const prepared = await preparePostDraftRevision(ctx, args.draft);
+	const { draft, checksum } = prepared;
 	const current = await requireExactCurrentRevision(
 		ctx,
 		document,
@@ -350,9 +352,7 @@ export async function savePostDraft(
 	const revisionId = await insertPostRevision(
 		ctx,
 		document,
-		draft,
-		checksum,
-		summaryChecksum,
+		prepared,
 		{
 			actor: identity.tokenIdentifier,
 			source: "admin",

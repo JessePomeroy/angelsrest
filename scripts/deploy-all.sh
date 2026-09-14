@@ -6,11 +6,11 @@
 #
 # ★ STATUS: BREAK-GLASS, not required setup. ★
 #
-# The canonical deploy path is `.github/workflows/deploy-shared-convex.yml`, which
-# auto-fires on every green CI run AND supports manual force-redeploys via
-# Actions → Deploy shared Convex → "Run workflow" (workflow_dispatch). That
-# covers ~100% of normal and emergency use cases — same effect as this
-# script, runs in the cloud, no laptop or password manager needed.
+# The canonical deploy path is `.github/workflows/deploy-shared-convex.yml`.
+# It runs only through Actions → Deploy shared Convex → "Run workflow"
+# (`workflow_dispatch`) after the selected deployment revision has matching CI
+# evidence. That covers normal reviewed deployments and emergency redeploys —
+# the same effect as this script, without a laptop or password manager.
 #
 # This script exists for the rare case where GitHub Actions itself is
 # unavailable (outage, account locked, network), or for one-off local

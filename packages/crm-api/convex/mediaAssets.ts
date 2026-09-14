@@ -10,11 +10,14 @@ import {
 } from "./_generated/server";
 import { requireDocumentSiteAdmin, requireSiteAdmin } from "./authHelpers";
 import { requireBlogAssetUnused } from "./helpers/blogContentData";
+import { getActiveSingletonRevisions } from "./helpers/contentStore";
 import {
 	type AboutPageDraftPayload,
 	aboutPageReferencesAsset,
 	type ModelingPageDraftPayload,
 	modelingPageReferencesAsset,
+	type SiteSettingsDraftPayload,
+	siteSettingsReferencesAsset,
 } from "./helpers/contentValidators";
 import {
 	type ReadyWebAsset,
@@ -64,6 +67,7 @@ function projectImportTarget(asset: Doc<"mediaAssets">) {
 			sizeBytes: asset.source.sizeBytes,
 			width: asset.source.width,
 			height: asset.source.height,
+			...(asset.source.sha256 === undefined ? {} : { sha256: asset.source.sha256 }),
 		},
 		masterIdentityMatches: asset.master.key === `${prefix}master.webp`,
 		derivatives: {
@@ -105,6 +109,7 @@ function projectAssetRegistration(asset: ReadyWebAsset) {
 			sizeBytes: asset.source.sizeBytes,
 			width: asset.source.width,
 			height: asset.source.height,
+			...(asset.source.sha256 === undefined ? {} : { sha256: asset.source.sha256 }),
 		},
 		master: {
 			key: asset.master.key,
@@ -121,16 +126,6 @@ function projectAssetRegistration(asset: ReadyWebAsset) {
 			display2560: { ...asset.derivatives.display2560 },
 		},
 	};
-}
-
-function storedRegistration(asset: {
-	assetId: string;
-	originalFilename: string;
-	source: ReadyWebAsset["source"];
-	master: ReadyWebAsset["master"];
-	derivatives: ReadyWebAsset["derivatives"];
-}) {
-	return projectAssetRegistration(asset);
 }
 
 function cleanupManifest(asset: {
@@ -186,76 +181,58 @@ async function requireAssetUnused(
 		throw new Error("Media asset is in use by Post content");
 	}
 
-	const portfolioUsage = await ctx.db
+	const portfolioUsages = ctx.db
 		.query("portfolioPlacements")
 		.withIndex("by_siteUrl_and_assetId", (q) =>
 			q.eq("siteUrl", asset.siteUrl).eq("assetId", asset._id),
-		)
-		.first();
-	if (portfolioUsage) throw new Error("Media asset is in use by portfolio content");
+		);
+	for await (const usage of portfolioUsages) {
+		const gallery = await ctx.db.get(usage.galleryId);
+		if (
+			gallery?.siteUrl === asset.siteUrl
+			&& (gallery.draftRevisionId === usage.revisionId
+				|| gallery.publishedRevisionId === usage.revisionId)
+		) throw new Error("Media asset is in use by portfolio content");
+	}
+	const portfolioSeoUsages = ctx.db
+		.query("portfolioGalleryRevisions")
+		.withIndex("by_siteUrl_and_seoOgImageAssetId", (q) =>
+			q.eq("siteUrl", asset.siteUrl).eq("seoOgImageAssetId", asset._id),
+		);
+	for await (const usage of portfolioSeoUsages) {
+		const gallery = await ctx.db.get(usage.galleryId);
+		if (
+			gallery?.siteUrl === asset.siteUrl
+			&& (gallery.draftRevisionId === usage._id
+				|| gallery.publishedRevisionId === usage._id)
+		) throw new Error("Media asset is in use by portfolio SEO content");
+	}
 
-	const catalogUsage = await ctx.db
+	const catalogUsages = ctx.db
 		.query("catalogProductMediaPlacements")
 		.withIndex("by_siteUrl_and_assetId", (q) =>
 			q.eq("siteUrl", asset.siteUrl).eq("assetId", asset._id),
-		)
-		.first();
-	if (catalogUsage) throw new Error("Media asset is in use by catalog content");
-
-	const aboutDocument = await ctx.db
-		.query("contentDocuments")
-		.withIndex("by_siteUrl_and_kind", (q) =>
-			q.eq("siteUrl", asset.siteUrl).eq("kind", "aboutPage"),
-		)
-		.unique();
-	if (aboutDocument) {
-		const revisionIds = [
-			aboutDocument.draftRevisionId,
-			aboutDocument.publishedRevisionId,
-		].filter((id): id is NonNullable<typeof id> => id !== undefined);
-		const revisions = await Promise.all(
-			[...new Set(revisionIds)].map((revisionId) => ctx.db.get(revisionId)),
 		);
-		for (const revision of revisions) {
-			if (
-				revision
-				&& revision.documentId === aboutDocument._id
-				&& revision.siteUrl === asset.siteUrl
-				&& revision.kind === "aboutPage"
-				&& aboutPageReferencesAsset(
-					revision.payload as AboutPageDraftPayload,
-					asset._id,
-				)
-			) throw new Error("Media asset is in use by About content");
-		}
+	for await (const usage of catalogUsages) {
+		const product = await ctx.db.get(usage.productId);
+		if (
+			product?.siteUrl === asset.siteUrl
+			&& (product.draftRevisionId === usage.revisionId
+				|| product.publishedRevisionId === usage.revisionId)
+		) throw new Error("Media asset is in use by catalog content");
 	}
 
-	const modelingDocument = await ctx.db
-		.query("contentDocuments")
-		.withIndex("by_siteUrl_and_kind", (q) =>
-			q.eq("siteUrl", asset.siteUrl).eq("kind", "modelingPage"),
-		)
-		.unique();
-	if (modelingDocument) {
-		const revisionIds = [
-			modelingDocument.draftRevisionId,
-			modelingDocument.publishedRevisionId,
-		].filter((id): id is NonNullable<typeof id> => id !== undefined);
-		const revisions = await Promise.all(
-			[...new Set(revisionIds)].map((revisionId) => ctx.db.get(revisionId)),
-		);
-		for (const revision of revisions) {
-			if (
-				revision
-				&& revision.documentId === modelingDocument._id
-				&& revision.siteUrl === asset.siteUrl
-				&& revision.kind === "modelingPage"
-				&& modelingPageReferencesAsset(
-					revision.payload as ModelingPageDraftPayload,
-					asset._id,
-				)
-			) throw new Error("Media asset is in use by Modeling content");
-		}
+	const about = await getActiveSingletonRevisions(ctx, asset.siteUrl, "aboutPage");
+	if (about.some(revision => aboutPageReferencesAsset(revision.payload as AboutPageDraftPayload, asset._id))) {
+		throw new Error("Media asset is in use by About content");
+	}
+	const modeling = await getActiveSingletonRevisions(ctx, asset.siteUrl, "modelingPage");
+	if (modeling.some(revision => modelingPageReferencesAsset(revision.payload as ModelingPageDraftPayload, asset._id))) {
+		throw new Error("Media asset is in use by Modeling content");
+	}
+	const settings = await getActiveSingletonRevisions(ctx, asset.siteUrl, "siteSettings");
+	if (settings.some(revision => siteSettingsReferencesAsset(revision.payload as SiteSettingsDraftPayload, asset._id))) {
+		throw new Error("Media asset is in use by Site Settings");
 	}
 
 	await requireBlogAssetUnused(ctx, asset);
@@ -286,7 +263,7 @@ export const registerReadyWebAsset = mutation({
 		}
 		if (existing) {
 			if (
-				JSON.stringify(storedRegistration(existing))
+				JSON.stringify(projectAssetRegistration(existing))
 				!== JSON.stringify(projectAssetRegistration(asset))
 			) throw new Error("Media asset registration conflict");
 			return { id: existing._id, status: existing.status };

@@ -2,16 +2,12 @@ import type Stripe from "stripe";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
-	fetchSanity: vi.fn(),
 	paidFulfillment: vi.fn(),
 	printSource: vi.fn(),
 }));
-vi.mock("$lib/sanity/client", () => ({
-	client: { withConfig: () => ({ fetch: mocks.fetchSanity }) },
-}));
 vi.mock("$lib/server/catalogCommerceClients", () => ({
 	resolvePaidFulfillment: mocks.paidFulfillment,
-	issuePrintSource: mocks.printSource,
+	issueTenantPrintSource: mocks.printSource,
 	isPrintSourceDescriptor: (value: unknown) => {
 		if (!value || typeof value !== "object" || Array.isArray(value)) return false;
 		const source = value as Record<string, unknown>;
@@ -35,7 +31,7 @@ vi.mock("$lib/server/catalogCommerceClients", () => ({
 		);
 	},
 }));
-vi.mock("$lib/shop/printCatalog", () => ({
+vi.mock("@jessepomeroy/print-catalog", () => ({
 	FRAMED_BORDER_INCHES: 0.25,
 	getPaper: () => ({ slug: "matte", subcategoryId: 103001, name: "Matte" }),
 	getSize: () => ({ width: 8, height: 10 }),
@@ -43,21 +39,6 @@ vi.mock("$lib/shop/printCatalog", () => ({
 	getFrame: () => ({ subcategoryId: 0 }),
 	isCanvasPaper: () => false,
 	parseCanvasSlug: () => null,
-}));
-vi.mock("$lib/utils/images", () => ({
-	imageSet: (image?: { url?: string }) => (image?.url ? { original: image.url } : null),
-	originalUrl: (image?: { url?: string }) => image?.url ?? null,
-	parsePaperOption: (option?: { name?: string; price?: number }) =>
-		option?.name === "Legacy Matte" || option?.name === "Legacy Matte|103001|8|10"
-			? {
-					name: "Legacy Matte",
-					subcategoryId: "103001",
-					width: 8,
-					height: 10,
-					price: option.price ?? null,
-				}
-			: null,
-	previewUrl: (image?: { url?: string }) => image?.url ?? null,
 }));
 
 const print = {
@@ -104,6 +85,36 @@ beforeEach(() => {
 });
 
 describe("snapshot fulfillment authority", () => {
+	it("compares paid selections by value, ignoring field order but rejecting changed fields", async () => {
+		const resolution = {
+			item: print,
+			identity: { productKind: "print" },
+			commerce: { finish },
+			descriptor: { kind: "merchant", source: null },
+		};
+		mocks.paidFulfillment.mockResolvedValue(resolution);
+		const { buildOrderItemsFromSnapshot } = await import("../snapshotFulfillment");
+		// Convex returns fields alphabetically; the resolver parser rebuilds their order.
+		const stored = Object.fromEntries(
+			Object.entries(print).sort(([left], [right]) => left.localeCompare(right)),
+		) as typeof print;
+		const build = () =>
+			buildOrderItemsFromSnapshot(
+				{ schemaVersion: 1, catalogProvider: "convex", items: [stored] },
+				"cs_test_merchant",
+				[{ quantity: 1 }] as Stripe.LineItem[],
+			);
+		await expect(build()).resolves.toEqual([]);
+		for (const key of Object.keys(print)) {
+			mocks.paidFulfillment.mockResolvedValue({
+				...resolution,
+				item: { ...print, [key]: "different" },
+			});
+			await expect(build()).rejects.toThrow("does not match");
+		}
+		expect(mocks.printSource).not.toHaveBeenCalled();
+	});
+
 	it("orients each Convex source independently while preserving order, quantity, border, and frame", async () => {
 		mocks.paidFulfillment
 			.mockResolvedValueOnce({
@@ -158,15 +169,16 @@ describe("snapshot fulfillment authority", () => {
 			},
 			"cs_test_paid",
 			[{ quantity: 2 }, { quantity: 3 }] as Stripe.LineItem[],
+			"client.example",
 		);
 		expect(mocks.paidFulfillment.mock.calls).toEqual([
 			["cs_test_paid", 0],
 			["cs_test_paid", 1],
 		]);
-		expect(mocks.printSource.mock.calls.map(([value]) => value.key)).toEqual([
-			"one",
-			"set-a",
-			"set-b",
+		expect(mocks.printSource.mock.calls.map(([value, siteUrl]) => [value.key, siteUrl])).toEqual([
+			["one", "client.example"],
+			["set-a", "client.example"],
+			["set-b", "client.example"],
 		]);
 		expect(items).toEqual([
 			{
@@ -312,293 +324,6 @@ describe("snapshot fulfillment authority", () => {
 			),
 		).rejects.toThrow("does not match");
 		expect(mocks.paidFulfillment).toHaveBeenCalledTimes(2);
-		expect(mocks.printSource).not.toHaveBeenCalled();
-	});
-
-	it("exact-resolves the persisted Sanity id/revision/selectors and mints no capability", async () => {
-		mocks.fetchSanity.mockResolvedValue({
-			_id: "product",
-			_rev: "revision",
-			_type: "lumaProductV2",
-			slug: "exact-print",
-			title: "Exact print",
-			inStock: true,
-			image: {
-				url: "https://cdn.sanity.io/exact.jpg?old=1",
-				sourceDimensions: { width: 6000, height: 4000 },
-			},
-			variants: [{ _key: "variant", enabled: true, paper: "paper", size: "size", retailPrice: 25 }],
-		});
-		const { buildOrderItemsFromSnapshot } = await import("../snapshotFulfillment");
-		const sanityPrint = { ...print, borderOptionKey: "none", frameOptionKey: "none" };
-		const items = await buildOrderItemsFromSnapshot(
-			{
-				schemaVersion: 1,
-				catalogProvider: "sanity",
-				items: [sanityPrint],
-			},
-			"cs_test_paid",
-			[{ quantity: 4 }] as Stripe.LineItem[],
-		);
-		expect(mocks.fetchSanity).toHaveBeenCalledWith(
-			expect.stringMatching(
-				/_id == \$id && _rev == \$rev[\s\S]*"sourceDimensions": asset->metadata\.dimensions\{width,height\}/,
-			),
-			{
-				id: "product",
-				rev: "revision",
-			},
-		);
-		expect(items[0]).toMatchObject({
-			quantity: 4,
-			sourcePolicy: "sanity_cdn",
-			width: 10,
-			height: 8,
-		});
-		expect(mocks.printSource).not.toHaveBeenCalled();
-		mocks.fetchSanity.mockResolvedValueOnce({
-			_id: "product",
-			_rev: "revision",
-			_type: "lumaProductV2",
-			slug: "exact-print",
-			title: "Exact print",
-			inStock: true,
-			image: { url: "https://cdn.sanity.io/exact.jpg" },
-			variants: [{ _key: "variant", enabled: true, paper: "paper", size: "size", retailPrice: 25 }],
-		});
-		await expect(
-			buildOrderItemsFromSnapshot(
-				{ schemaVersion: 1, catalogProvider: "sanity", items: [sanityPrint] },
-				"cs_test_paid",
-				[{ quantity: 1 }] as Stripe.LineItem[],
-			),
-		).rejects.toThrow("dimensions");
-		mocks.fetchSanity.mockResolvedValueOnce(null);
-		await expect(
-			buildOrderItemsFromSnapshot(
-				{
-					schemaVersion: 1,
-					catalogProvider: "sanity",
-					items: [sanityPrint],
-				},
-				"cs_test_paid",
-				[{ quantity: 1 }] as Stripe.LineItem[],
-			),
-		).rejects.toThrow("unavailable");
-	});
-
-	it("fulfills an exact legacy Sanity product with source dimensions and orientation", async () => {
-		mocks.fetchSanity.mockResolvedValue({
-			_id: "legacy-product",
-			_rev: "legacy-revision",
-			_type: "product",
-			slug: "legacy-print",
-			title: "Legacy print",
-			category: "prints",
-			price: 25,
-			inStock: true,
-			images: [
-				{
-					url: "https://cdn.sanity.io/legacy-landscape.jpg",
-					sourceDimensions: { width: 6000, height: 4000 },
-				},
-			],
-			availablePapers: [
-				{
-					_key: "legacy-paper",
-					name: "Legacy Matte",
-					price: 25,
-					subcategoryId: 103001,
-					width: 8,
-					height: 10,
-				},
-			],
-		});
-		const legacyPrint = {
-			...print,
-			productKey: "legacy-product",
-			revisionId: "legacy-revision",
-			variantKey: "legacy-paper",
-			materialOptionKey: null,
-			sizeOptionKey: null,
-		};
-		const { buildOrderItemsFromSnapshot } = await import("../snapshotFulfillment");
-
-		const items = await buildOrderItemsFromSnapshot(
-			{ schemaVersion: 1, catalogProvider: "sanity", items: [legacyPrint] },
-			"cs_test_paid",
-			[{ quantity: 3 }] as Stripe.LineItem[],
-		);
-
-		expect(mocks.fetchSanity).toHaveBeenCalledWith(
-			expect.stringMatching(
-				/_id == \$id && _rev == \$rev[\s\S]*images\[\][\s\S]*"sourceDimensions": asset->metadata\.dimensions\{width,height\}/,
-			),
-			{ id: "legacy-product", rev: "legacy-revision" },
-		);
-		expect(items).toEqual([
-			{
-				imageUrl: "https://cdn.sanity.io/legacy-landscape.jpg",
-				sourcePolicy: "sanity_cdn",
-				quantity: 3,
-				paperSubcategoryId: 103001,
-				width: 10,
-				height: 8,
-			},
-		]);
-		expect(mocks.printSource).not.toHaveBeenCalled();
-	});
-
-	it("fulfills an exact single-paper primitive legacy snapshot with landscape orientation", async () => {
-		mocks.fetchSanity.mockResolvedValue({
-			_id: "legacy-product",
-			_rev: "legacy-revision",
-			_type: "product",
-			slug: "legacy-print",
-			title: "Legacy print",
-			category: "prints",
-			price: 25,
-			inStock: true,
-			images: [
-				{
-					url: "https://cdn.sanity.io/legacy-landscape.jpg",
-					sourceDimensions: { width: 6000, height: 4000 },
-				},
-			],
-			availablePapers: ["Legacy Matte|103001|8|10"],
-		});
-		const legacyPrint = {
-			...print,
-			productKey: "legacy-product",
-			revisionId: "legacy-revision",
-			variantKey: null,
-			materialOptionKey: null,
-			sizeOptionKey: null,
-		};
-		const { buildOrderItemsFromSnapshot } = await import("../snapshotFulfillment");
-
-		const items = await buildOrderItemsFromSnapshot(
-			{ schemaVersion: 1, catalogProvider: "sanity", items: [legacyPrint] },
-			"cs_test_paid",
-			[{ quantity: 3 }] as Stripe.LineItem[],
-		);
-
-		expect(items).toEqual([
-			{
-				imageUrl: "https://cdn.sanity.io/legacy-landscape.jpg",
-				sourcePolicy: "sanity_cdn",
-				quantity: 3,
-				paperSubcategoryId: 103001,
-				width: 10,
-				height: 8,
-			},
-		]);
-		expect(mocks.fetchSanity.mock.calls[0]?.[0]).toMatch(/\n {2}availablePapers,\n/);
-		expect(mocks.fetchSanity.mock.calls[0]?.[0]).not.toContain("availablePapers[]");
-		expect(mocks.paidFulfillment).not.toHaveBeenCalled();
-		expect(mocks.printSource).not.toHaveBeenCalled();
-	});
-
-	it.each([
-		["multiple primitive options", ["Legacy Matte|103001|8|10", "Legacy Matte|103001|8|10"]],
-		["an invalid primitive option", ["Malformed paper"]],
-		["a keyed object option", [{ _key: "legacy-paper", name: "Legacy Matte", price: 25 }]],
-	])("fails closed for a null-key legacy snapshot with %s", async (_case, availablePapers) => {
-		mocks.fetchSanity.mockResolvedValue({
-			_id: "legacy-product",
-			_rev: "legacy-revision",
-			_type: "product",
-			slug: "legacy-print",
-			title: "Legacy print",
-			category: "prints",
-			price: 25,
-			inStock: true,
-			images: [
-				{
-					url: "https://cdn.sanity.io/legacy-landscape.jpg",
-					sourceDimensions: { width: 6000, height: 4000 },
-				},
-			],
-			availablePapers,
-		});
-		const legacyPrint = {
-			...print,
-			productKey: "legacy-product",
-			revisionId: "legacy-revision",
-			variantKey: null,
-			materialOptionKey: null,
-			sizeOptionKey: null,
-		};
-		const { buildOrderItemsFromSnapshot } = await import("../snapshotFulfillment");
-
-		await expect(
-			buildOrderItemsFromSnapshot(
-				{ schemaVersion: 1, catalogProvider: "sanity", items: [legacyPrint] },
-				"cs_test_paid",
-				[{ quantity: 1 }] as Stripe.LineItem[],
-			),
-		).rejects.toThrow("Exact product selection is invalid");
-		expect(mocks.paidFulfillment).not.toHaveBeenCalled();
-		expect(mocks.printSource).not.toHaveBeenCalled();
-	});
-});
-
-describe("Sanity print-set orientation", () => {
-	it("orients mixed portrait and landscape members independently", async () => {
-		mocks.fetchSanity.mockResolvedValue({
-			_id: "mixed-set",
-			_rev: "mixed-set-revision",
-			_type: "lumaPrintSetV2",
-			slug: "mixed-orientation-set",
-			title: "Mixed orientation set",
-			inStock: true,
-			previewImage: { url: "https://cdn.sanity.io/set-preview.jpg" },
-			images: [
-				{
-					url: "https://cdn.sanity.io/set-portrait.jpg",
-					sourceDimensions: { width: 4000, height: 6000 },
-				},
-				{
-					url: "https://cdn.sanity.io/set-landscape.jpg",
-					sourceDimensions: { width: 6000, height: 4000 },
-				},
-			],
-			variants: [{ _key: "variant", enabled: true, paper: "paper", size: "size", retailPrice: 50 }],
-		});
-		const snapshotItem = {
-			...print,
-			productKey: "mixed-set",
-			revisionId: "mixed-set-revision",
-			productKind: "print_set" as const,
-			borderOptionKey: "none",
-			frameOptionKey: "none",
-		};
-		const { buildOrderItemsFromSnapshot } = await import("../snapshotFulfillment");
-
-		const items = await buildOrderItemsFromSnapshot(
-			{ schemaVersion: 1, catalogProvider: "sanity", items: [snapshotItem] },
-			"cs_test_paid",
-			[{ quantity: 2 }] as Stripe.LineItem[],
-		);
-
-		expect(items).toEqual([
-			{
-				imageUrl: "https://cdn.sanity.io/set-portrait.jpg",
-				sourcePolicy: "sanity_cdn",
-				quantity: 2,
-				paperSubcategoryId: 103001,
-				width: 8,
-				height: 10,
-			},
-			{
-				imageUrl: "https://cdn.sanity.io/set-landscape.jpg",
-				sourcePolicy: "sanity_cdn",
-				quantity: 2,
-				paperSubcategoryId: 103001,
-				width: 10,
-				height: 8,
-			},
-		]);
 		expect(mocks.printSource).not.toHaveBeenCalled();
 	});
 });

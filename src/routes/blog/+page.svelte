@@ -36,16 +36,28 @@ let { data } = $props();
   url="https://angelsrest.online/blog"
 />
 
-<div class="max-w-2xl mx-auto">
-  <h1 class="text-2xl font-light tracking-wider lowercase mb-8">blog</h1>
+<section class="blog-index">
+  <header class="section-heading">
+    <h1>blog</h1>
+    <span>{data.posts?.length ?? 0} entries</span>
+  </header>
 
   {#if data.posts && data.posts.length > 0}
-    <div class="flex flex-col gap-8">
-      {#each data.posts as post (post._id)}
+    <div class="post-list">
+      {#each data.posts as post (post.slug)}
         <BlogCard {post} />
       {/each}
     </div>
   {:else}
-    <p class="text-surface-400">no posts yet — check back soon!</p>
+    <p class="empty-message">no posts yet — check back soon!</p>
   {/if}
-</div>
+</section>
+
+<style>
+  .empty-message { color: var(--color-surface-400); }
+  .blog-index { width: min(100%, 980px); margin-inline: auto; }
+  .section-heading { display: flex; min-height: 56px; align-items: flex-start; justify-content: space-between; border-bottom: 1px solid color-mix(in srgb, currentColor 15%, transparent); }
+  .section-heading h1 { font-size: 1.35rem; font-weight: 500; }
+  .section-heading span { padding-top: 5px; color: color-mix(in srgb, currentColor 55%, transparent); font-size: 0.68rem; letter-spacing: 0.12em; }
+  .post-list { display: flex; flex-direction: column; }
+</style>

@@ -21,31 +21,36 @@
 </svelte:head>
 
 <script lang="ts">
+import { publicAssets } from "$lib/config/publicAssets";
 import { injectAnalytics } from "@vercel/analytics/sveltekit";
-import type { Snippet } from "svelte";
-import { onMount } from "svelte";
-import { page } from "$app/state";
+import type { LayoutProps } from "./$types";
+import { onMount, setContext } from "svelte";
+import { MOBILE_CHROME, type MobileChrome } from "$lib/components/mobileNavigation";
 
-// Header gif for non-homepage routes
-import headerGif from "$lib/assets/ponyolovesham.gif";
+import { page } from "$app/state";
+import { filterPrivateCapabilityAnalytics } from "$lib/capabilityPrivacy";
+
 import BottomNav from "$lib/components/BottomNav.svelte";
 import CartDrawer from "$lib/components/cart/CartDrawer.svelte";
 import GradientBackground from "$lib/components/GradientBackground.svelte";
 import GrainOverlay from "$lib/components/GrainOverlay.svelte";
-import CartIcon from "$lib/components/cart/CartIcon.svelte";
+import MobileNav from "$lib/components/MobileNav.svelte";
 import Footer from "$lib/components/Footer.svelte";
 // Layout components
 import Nav from "$lib/components/Nav.svelte";
 import ThemeSwitcher from "$lib/components/ThemeSwitcher.svelte";
 import Toaster from "$lib/components/Toaster.svelte";
-import { cart } from "$lib/shop/cart.svelte";
 
 // Time-aware theming
-import { timeTheme } from "$lib/stores/timeTheme.svelte";
+import { getTimeTheme } from "$lib/stores/timeTheme.svelte";
 
 import "$lib/styles/global.css";
 
-let { children, data }: { children: Snippet; data: any } = $props();
+const mobileChrome = $state<MobileChrome>({ bottomNavHeight: undefined, purchaseBarHeight: 0 });
+setContext(MOBILE_CHROME, mobileChrome);
+
+
+let { children, data }: LayoutProps = $props();
 
 let isPortal = $derived(page.url.pathname.startsWith("/portal"));
 let isAdmin = $derived(page.url.pathname.startsWith("/admin"));
@@ -56,11 +61,13 @@ const ogDesc = $derived(
 );
 const ogImage = $derived(
 	data.siteSettings?.seo?.ogImageUrl ||
-		"https://www.angelsrest.online/og-image.png",
+		publicAssets.openGraph,
 );
 
+const timeTheme = getTimeTheme();
+
 // Vercel analytics
-injectAnalytics();
+injectAnalytics({ beforeSend: filterPrivateCapabilityAnalytics });
 
 // Keep time period in sync reactively
 $effect(() => {
@@ -69,26 +76,13 @@ $effect(() => {
 });
 
 onMount(() => {
-	// Enable Sanity Visual Editing overlay when in preview mode
-	if (data.isPreview) {
-		let mounted = true;
-		let disableVisualEditing: (() => void) | undefined;
-
-		import("@sanity/visual-editing").then(({ enableVisualEditing }) => {
-			if (mounted) disableVisualEditing = enableVisualEditing();
-		});
-
-		return () => {
-			mounted = false;
-			disableVisualEditing?.();
-			timeTheme.destroy();
-		};
-	}
 	return () => {
 		timeTheme.destroy();
 	};
 });
 </script>
+
+<svelte:body class:admin-route={isAdmin} class:portal-route={isPortal} />
 
 {#if isPortal}
   {@render children()}
@@ -104,23 +98,17 @@ onMount(() => {
 
   <a href="#main-content" class="skip-link">Skip to content</a>
 
-  <div class="flex flex-col min-h-screen relative z-10">
+  <div class="site-shell"
+    style:--mobile-nav-height={mobileChrome.bottomNavHeight === undefined ? undefined : `${mobileChrome.bottomNavHeight}px`}
+    style:--mobile-purchase-safe-area={mobileChrome.bottomNavHeight === 0 ? "env(safe-area-inset-bottom)" : "0px"}
+  >
     <!-- Desktop navigation (hidden on mobile) -->
     <Nav />
-
-    <!-- Mobile header - only shown on non-homepage routes -->
-    {#if page.url.pathname !== "/"}
-      <div class="md:hidden">
-        <img src={headerGif} alt="" class="w-full" />
-      </div>
-      <div class="h-4 md:hidden"></div>
-      <div class="hidden md:block h-6"></div>
-    {/if}
 
     <!-- Main content area -->
     <main
       id="main-content"
-      class="flex-1 max-w-[1400px] !mx-auto w-full px-1 pt-2 pb-2 md:pb-4 md:px-8"
+      class="site-content"
     >
       {@render children()}
     </main>
@@ -130,28 +118,12 @@ onMount(() => {
 
     <!-- Mobile theme toggle - fixed position above bottom nav, homepage only -->
     {#if page.url.pathname === "/"}
-      <div class="fixed bottom-20 right-4 z-40 md:hidden">
+      <div class="mobile-theme-switcher">
         <ThemeSwitcher />
       </div>
     {/if}
 
-    <!--
-      Mobile cart pill — fixed above the bottom nav, only when the cart has
-      items. On the homepage where the ThemeSwitcher also lives at bottom-20,
-      the cart pill stacks above it at bottom-36. On other routes the cart
-      sits alone at bottom-36, still well clear of the BottomNav.
-    -->
-    {#if cart.itemCount > 0}
-      <div class="fixed bottom-36 right-4 z-40 md:hidden">
-        <CartIcon variant="pill" />
-      </div>
-    {/if}
-
-    <!-- Spacer to prevent content from hiding behind fixed bottom nav -->
-    <div class="h-20 md:hidden"></div>
-
-    <!-- Mobile bottom navigation (hidden on desktop) -->
-    <BottomNav />
+    <MobileNav />
   </div>
 {/if}
 
@@ -168,6 +140,31 @@ onMount(() => {
 <Toaster />
 
 <style>
+.site-shell {
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+  position: relative;
+  z-index: 10;
+}
+.site-content {
+  flex: 1;
+  max-width: 1400px;
+  margin-inline: auto;
+  width: 100%;
+  padding: 1.5rem 1rem 2rem;
+}
+.mobile-theme-switcher {
+  position: fixed;
+  bottom: 5rem;
+  right: 1rem;
+  z-index: 40;
+}
+@media (min-width: 48rem) {
+  .site-content { padding: 2rem 2.5rem 3rem; }
+  .mobile-theme-switcher { display: none; }
+}
+
 .skip-link {
   position: absolute;
   left: -9999px;

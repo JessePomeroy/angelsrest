@@ -9,7 +9,7 @@ const convex = getConvex();
 export const load = (async ({ params }) => {
 	const { token } = params;
 
-	const result = await convex.query(api.portal.getByToken, { token });
+	const result = await convex.query(api.portal.getPublicByToken, { token });
 
 	if (!result) {
 		throw error(404, "This link is not valid or has expired.");

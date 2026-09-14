@@ -64,9 +64,9 @@ async function seedClients(t: TestHarness) {
 		});
 	}
 	return {
-		adminA: t.withIdentity({ subject: "admin-a", email: "admin-a@example.com" }),
-		adminB: t.withIdentity({ subject: "admin-b", email: "admin-b@example.com" }),
-		stranger: t.withIdentity({ subject: "stranger", email: "stranger@example.com" }),
+		adminA: t.withIdentity({ subject: "admin-a", email: "admin-a@example.com", emailVerified: true }),
+		adminB: t.withIdentity({ subject: "admin-b", email: "admin-b@example.com", emailVerified: true }),
+		stranger: t.withIdentity({ subject: "stranger", email: "stranger@example.com", emailVerified: true }),
 	};
 }
 
@@ -334,9 +334,9 @@ describe("exact-one private catalog editor receipt contract", () => {
 		expect(await catalogGraphState(t)).toEqual(graphBefore);
 	});
 
-	test("resolves a fully historical canonical pair only through its strict operation binding", async () => {
+	test("rejects canonical editor receipts on retired historical ingress without binding an operation", async () => {
 		const t = convexTest(schema, modules);
-		const { adminA } = await seedClients(t);
+		await seedClients(t);
 		const facts = editorPrintFacts(SITE_A, "0".repeat(40));
 		const receiptSetId = await editorIdentity(facts);
 		const graphBefore = await catalogGraphState(t);
@@ -350,7 +350,7 @@ describe("exact-one private catalog editor receipt contract", () => {
 						editorStorageSetV2(receiptSetId, facts),
 					)
 				).status,
-			).toBe(200);
+			).toBe(404);
 			expect(
 				(
 					await postReceipt(
@@ -360,33 +360,12 @@ describe("exact-one private catalog editor receipt contract", () => {
 						editorInspectionSetV2(receiptSetId, facts),
 					)
 				).status,
-			).toBe(200);
+			).toBe(404);
 		});
 
-		const state = await storedState(t);
-		expect(state.operations).toEqual([
-			expect.objectContaining({
-				operationId: editorOperationId(facts),
-				receiptSetId,
-				assetKey: facts.assetKey,
-			}),
-		]);
-		expect(state.coordinations).toEqual([
-			expect.objectContaining({ status: "verified", receiptSetId }),
-		]);
-		const resolved = await adminA.query(api.catalogPrivateAssets.resolveEditorUpload, {
-			siteUrl: SITE_A,
-			operationId: editorOperationId(facts),
-			productKind: "print",
+		expect(await storedState(t)).toEqual({
+			operations: [], coordinations: [], authorities: [], printSources: [], paidFiles: [],
 		});
-		expect(resolved).toMatchObject({
-			kind: "print_source",
-			assetId: state.printSources[0]?._id,
-			originalFilename: facts.originalFilename,
-			widthPixels: facts.widthPixels,
-			heightPixels: facts.heightPixels,
-		});
-		expectEditorSafe(resolved);
 		expect(await catalogGraphState(t)).toEqual(graphBefore);
 	});
 

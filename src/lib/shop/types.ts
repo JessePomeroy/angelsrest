@@ -1,13 +1,7 @@
 // Shared types for the print shop + LumaPrints fulfillment integration.
 // Paper catalog, sizes, order payload shapes, and recipient/order-item
 // domain types used by the LumaPrints API client and the Stripe webhook.
-
-/** Available print dimensions (inches) */
-export interface PrintDimensions {
-	width: number;
-	height: number;
-	label: string; // e.g., "8×12"
-}
+import type { PrintProductConfiguration } from "@jessepomeroy/print-catalog";
 
 /** Order recipient — what we pass to LumaPrints */
 export interface Recipient {
@@ -23,9 +17,11 @@ export interface Recipient {
 }
 
 /** A single item in a LumaPrints order submission */
-export type PrintSourcePolicy = "sanity_cdn" | "opaque_capability" | "bordered_r2" | "byte_exact";
+export type PrintSourcePolicy = "opaque_capability" | "byte_exact";
 
 export interface OrderItem {
+	/** Resolved at reservation time for versioned paid input; old orders use the catalog mapping. */
+	product?: PrintProductConfiguration;
 	imageUrl: string;
 	/** Explicit URL handling policy across capability, Sharp, and provider boundaries. */
 	sourcePolicy?: PrintSourcePolicy;
@@ -33,7 +29,7 @@ export interface OrderItem {
 	width: number;
 	height: number;
 	quantity: number;
-	/** Border width in inches. When set, the webhook runs Sharp to composite a white border. */
+	/** Border width in inches, rendered inside the ordered print canvas. */
 	borderWidth?: number;
 	/** LumaPrints frame subcategory ID (105001-105007). When set, the order is submitted as framed. */
 	frameSubcategoryId?: number;
@@ -48,6 +44,7 @@ export interface LumaPrintsOrder {
 	externalId: string;
 	storeId: number;
 	shippingMethod: string;
+	productionTime: "regular";
 	recipient: {
 		firstName: string;
 		lastName: string;

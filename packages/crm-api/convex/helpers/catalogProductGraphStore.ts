@@ -43,36 +43,29 @@ import {
 	loadCatalogProductKinds,
 	requireCatalogProductKindEnabled,
 } from "./catalogProductPolicy";
-import {
-	assertSanityCatalogV2GraphPlan,
-	type SanityCatalogV2GraphPlan,
-} from "./sanityCatalogGraphPlan";
 
 type CatalogContext = QueryCtx | MutationCtx;
 type CatalogProduct = Doc<"catalogProducts">;
 type CatalogGraphV2Product = CatalogProduct & { graphVersion: 2 };
 type CatalogRevisionState = { createdAt: number } | null;
 const CATALOG_GRAPH_LIST_PROOF_BATCH = 50;
+const CATALOG_PUBLIC_PROJECTION_BATCH = 10;
 const CATALOG_GRAPH_RETIREMENT_REVISION_SCAN_LIMIT = 100;
 const CATALOG_GRAPH_ASSET_REFERENCE_SCAN_LIMIT = 100;
-const SANITY_CATALOG_IMPORT_KINDS = [
-	"print",
-	"print_set",
-	"postcard",
-	"tapestry",
-	"digital_download",
-	"merchandise",
-] as const satisfies readonly CatalogProductKind[];
 
-async function mapCatalogGraphListInBatches<T, Result>(
+export async function mapCatalogGraphListInBatches<T, Result>(
 	values: T[],
 	map: (value: T) => Promise<Result>,
+	batchSize = CATALOG_GRAPH_LIST_PROOF_BATCH,
 ) {
+	if (!Number.isSafeInteger(batchSize) || batchSize < 1) {
+		throw new Error("Catalog graph batch size must be a positive integer");
+	}
 	const results: Result[] = [];
-	for (let start = 0; start < values.length; start += CATALOG_GRAPH_LIST_PROOF_BATCH) {
+	for (let start = 0; start < values.length; start += batchSize) {
 		results.push(...await Promise.all(
 			values
-				.slice(start, start + CATALOG_GRAPH_LIST_PROOF_BATCH)
+				.slice(start, start + batchSize)
 				.map(map),
 		));
 	}
@@ -90,26 +83,6 @@ async function getProductByKey(
 			query.eq("siteUrl", siteUrl).eq("productKey", productKey),
 		)
 		.unique();
-}
-
-async function listExistingCatalogGraphV2Products(ctx: CatalogContext, siteUrl: string) {
-	const products = [] as CatalogGraphV2Product[];
-	for (const productKind of SANITY_CATALOG_IMPORT_KINDS) {
-		const rows = await ctx.db
-			.query("catalogProducts")
-			.withIndex("by_siteUrl_and_graphVersion_and_productKind_and_createdAt", (query) =>
-				query
-					.eq("siteUrl", siteUrl)
-					.eq("graphVersion", 2)
-					.eq("productKind", productKind),
-			)
-			.take(CATALOG_PRODUCT_LIMITS.productsPerKind + 1);
-		if (rows.length > CATALOG_PRODUCT_LIMITS.productsPerKind) {
-			throw new Error(`Catalog ${productKind} product limit exceeded`);
-		}
-		products.push(...rows.map(requireCatalogProductGraphV2Product));
-	}
-	return products;
 }
 
 async function requireAvailableSlug(
@@ -515,137 +488,6 @@ export async function createCatalogProductGraphV2Draft(
 	return { productId: product._id, revisionId: inserted.revisionId };
 }
 
-async function verifySanityImportedCatalogProduct(
-	ctx: MutationCtx,
-	product: CatalogGraphV2Product,
-	planned: SanityCatalogV2GraphPlan["products"][number],
-) {
-	if (product.productKind !== planned.draft.productKind) {
-		throw new Error(`Catalog product key "${planned.productKey}" already exists`);
-	}
-	if (product.publishedRevisionId !== undefined) {
-		throw new Error("Sanity catalog import can only replay unpublished products");
-	}
-	const draft = await loadCatalogProductGraphV2Revision(ctx, product, product.draftRevisionId);
-	if (!draft) throw new Error("Sanity catalog imported product has no draft revision");
-	if (draft.revision.source !== "sanityImport") {
-		throw new Error("Existing catalog draft was not created by Sanity import");
-	}
-	if (draft.revision.checksum !== planned.graphChecksum) {
-		throw new Error("Existing Sanity catalog draft does not match the graph plan");
-	}
-	return {
-		productKey: planned.productKey,
-		productId: product._id,
-		revisionId: draft.revision._id,
-		graphChecksum: planned.graphChecksum,
-	};
-}
-
-/** Import one complete Sanity catalog V2 graph as unpublished private drafts. */
-export async function importSanityCatalogGraphV2Drafts(
-	ctx: MutationCtx,
-	args: {
-		siteUrl: string;
-		plan: SanityCatalogV2GraphPlan;
-	},
-) {
-	const { identity, client } = await requireSiteAdmin(ctx, args.siteUrl);
-	const plan = await assertSanityCatalogV2GraphPlan(args.plan);
-	const plannedProducts = [...plan.products].sort((left, right) =>
-		left.productKey.localeCompare(right.productKey)
-	);
-	if (plannedProducts.length === 0) throw new Error("Sanity catalog import plan is empty");
-	for (const planned of plannedProducts) {
-		requireCatalogProductKindEnabled(client, planned.draft.productKind);
-	}
-
-	const existingProducts = await listExistingCatalogGraphV2Products(ctx, client.siteUrl);
-	const existingByKey = new Map(existingProducts.map((product) => [product.productKey, product]));
-	const planKeys = new Set(plannedProducts.map((product) => product.productKey));
-	const unexpectedExisting = existingProducts.filter((product) => !planKeys.has(product.productKey));
-	if (unexpectedExisting.length > 0) {
-		throw new Error("Sanity catalog import requires an empty or exact-replay V2 catalog");
-	}
-	const existingPlanned = plannedProducts.filter((product) =>
-		existingByKey.has(product.productKey)
-	);
-	if (existingPlanned.length > 0 && existingPlanned.length !== plannedProducts.length) {
-		throw new Error("Partial Sanity catalog import state is not replayable");
-	}
-	if (existingPlanned.length === plannedProducts.length) {
-		const products = [];
-		for (const planned of plannedProducts) {
-			const product = existingByKey.get(planned.productKey);
-			if (!product) throw new Error("Sanity catalog replay lost a planned product");
-			products.push(await verifySanityImportedCatalogProduct(ctx, product, planned));
-		}
-		return {
-			status: "replayed" as const,
-			graphPlanChecksum: plan.graphPlanChecksum,
-			productCount: products.length,
-			products,
-		};
-	}
-
-	const now = Date.now();
-	validateCatalogTimestamp(now, "Sanity catalog import timestamp");
-	const actor = identity.tokenIdentifier;
-	const products = [];
-	for (const planned of plannedProducts) {
-		validateCatalogProductKey(planned.productKey);
-		validateCatalogProductGraphV2Draft(planned.draft);
-		const draft = await normalizeCatalogProductGraphV2DraftAssets(
-			ctx,
-			client.siteUrl,
-			planned.draft,
-		);
-		const checksum = await checksumCatalogProductGraphV2Draft(draft);
-		if (checksum !== planned.graphChecksum) {
-			throw new Error(`Sanity catalog graph checksum changed for ${planned.productKey}`);
-		}
-		const slug = canonicalCatalogSlug(draft.slug);
-		await requireAvailableSlug(ctx, client.siteUrl, slug);
-		const productId = await ctx.db.insert("catalogProducts", {
-			siteUrl: client.siteUrl,
-			productKey: planned.productKey,
-			productKind: draft.productKind,
-			graphVersion: 2,
-			slug,
-			createdAt: now,
-			createdBy: actor,
-			updatedAt: now,
-			updatedBy: actor,
-		});
-		const productValue = await ctx.db.get(productId);
-		if (!productValue) throw new Error("Sanity catalog product creation failed");
-		const product = requireCatalogProductGraphV2Product(productValue);
-		const inserted = await insertCatalogProductGraphV2Revision(ctx, {
-			product,
-			draft,
-			source: "sanityImport",
-			createdAt: now,
-			createdBy: actor,
-		});
-		if (inserted.checksum !== planned.graphChecksum) {
-			throw new Error(`Sanity catalog inserted checksum changed for ${planned.productKey}`);
-		}
-		await ctx.db.patch(product._id, { draftRevisionId: inserted.revisionId });
-		products.push({
-			productKey: planned.productKey,
-			productId: product._id,
-			revisionId: inserted.revisionId,
-			graphChecksum: planned.graphChecksum,
-		});
-	}
-	return {
-		status: "imported" as const,
-		graphPlanChecksum: plan.graphPlanChecksum,
-		productCount: products.length,
-		products,
-	};
-}
-
 /** Save a replacement V2 draft while retaining every historical graph. */
 export async function saveCatalogProductGraphV2Draft(
 	ctx: MutationCtx,
@@ -886,7 +728,6 @@ type CatalogPublicationCas = {
 };
 
 const CATALOG_PUBLIC_PRODUCT_CAP = 40;
-const CATALOG_PUBLIC_PER_KIND_SCAN_CAP = 40;
 const CATALOG_PUBLICATION_CONFLICT = "Catalog publication conflict: reload before retrying";
 const CATALOG_PUBLIC_UNAVAILABLE = "Catalog public reads are unavailable";
 
@@ -932,7 +773,7 @@ function assertCatalogPublicationHeader(product: CatalogGraphV2Product) {
 	) throw new Error("Catalog product publication fields must move together");
 }
 
-async function requireCatalogPublicationAuthorization(
+async function requireCatalogPublicationSiteAdmin(
 	ctx: MutationCtx,
 	productId: Id<"catalogProducts">,
 ) {
@@ -942,8 +783,40 @@ async function requireCatalogPublicationAuthorization(
 		productId,
 	);
 	const product = requireCatalogProductGraphV2Product(authorized.doc);
-	requireCatalogProductKindEnabled(authorized.client, product.productKind);
-	return { product, actor: authorized.identity.tokenIdentifier };
+	return {
+		product,
+		client: authorized.client,
+		actor: authorized.identity.tokenIdentifier,
+	};
+}
+
+async function loadPublishedCatalogProductHeaders(
+	ctx: CatalogContext,
+	siteUrl: string,
+) {
+	return await ctx.db
+		.query("catalogProducts")
+		.withIndex(
+			"by_siteUrl_and_graphVersion_and_publishedAt",
+			(query) => query
+				.eq("siteUrl", siteUrl)
+				.eq("graphVersion", 2)
+				.gte("publishedAt", 0),
+		)
+		.take(CATALOG_PUBLIC_PRODUCT_CAP + 1);
+}
+
+async function requireCatalogPublicationCapacity(
+	ctx: MutationCtx,
+	product: CatalogGraphV2Product,
+) {
+	// Republishing replaces one existing public pointer and does not grow the
+	// published set. Only a first publication needs a capacity reservation.
+	if (product.publishedRevisionId !== undefined) return;
+	const published = await loadPublishedCatalogProductHeaders(ctx, product.siteUrl);
+	if (published.length >= CATALOG_PUBLIC_PRODUCT_CAP) {
+		throw new Error("Catalog public product limit exceeded");
+	}
 }
 
 async function projectPublishedCatalogProduct(
@@ -968,10 +841,11 @@ export async function publishCatalogProductGraphV2Draft(
 	ctx: MutationCtx,
 	args: CatalogPublicationCas,
 ) {
-	const { product, actor } = await requireCatalogPublicationAuthorization(
+	const { product, client, actor } = await requireCatalogPublicationSiteAdmin(
 		ctx,
 		args.productId,
 	);
+	requireCatalogProductKindEnabled(client, product.productKind);
 	validatePublicationCas(args);
 	if (!args.expectedDraftRevisionId || !hasExactPublicationCas(product, args)) {
 		publicationConflict();
@@ -988,6 +862,7 @@ export async function publishCatalogProductGraphV2Draft(
 	if (!draft) publicationConflict();
 	projectCatalogProductGraphV2Public(draft);
 	await proveTenantWideCatalogIdentity(ctx, product);
+	await requireCatalogPublicationCapacity(ctx, product);
 	const timestamp = nextPublicationTimestamp(product);
 	await ctx.db.patch(product._id, {
 		publishedRevisionId: draft.revision._id,
@@ -1009,7 +884,7 @@ export async function unpublishCatalogProductGraphV2(
 	ctx: MutationCtx,
 	args: CatalogPublicationCas,
 ) {
-	const { product, actor } = await requireCatalogPublicationAuthorization(
+	const { product, actor } = await requireCatalogPublicationSiteAdmin(
 		ctx,
 		args.productId,
 	);
@@ -1070,35 +945,22 @@ export async function listPublishedCatalogProductGraphsV2(
 	siteUrl: string,
 ) {
 	const enabledKinds = await loadPublicCatalogProductKinds(ctx, siteUrl);
-	const published: CatalogGraphV2Product[] = [];
-	for (const productKind of enabledKinds) {
-		const rows = await ctx.db
-			.query("catalogProducts")
-			.withIndex(
-				"by_siteUrl_and_graphVersion_and_productKind_and_createdAt",
-				(query) => query
-					.eq("siteUrl", siteUrl)
-					.eq("graphVersion", 2)
-					.eq("productKind", productKind),
-			)
-			.take(CATALOG_PUBLIC_PER_KIND_SCAN_CAP + 1);
-		if (rows.length > CATALOG_PUBLIC_PER_KIND_SCAN_CAP) {
-			throw new Error(`Catalog public ${productKind} scan limit exceeded`);
-		}
-		for (const value of rows) {
-			const product = requireCatalogProductGraphV2Product(value);
-			if (product.productKind !== productKind) {
-				throw new Error("Catalog public product kind index mismatch");
-			}
-			assertCatalogPublicationHeader(product);
-			if (product.publishedRevisionId) published.push(product);
-		}
-	}
-	if (published.length > CATALOG_PUBLIC_PRODUCT_CAP) {
+	const rows = await loadPublishedCatalogProductHeaders(ctx, siteUrl);
+	if (rows.length > CATALOG_PUBLIC_PRODUCT_CAP) {
 		throw new Error("Catalog public product limit exceeded");
 	}
-	const projected = await Promise.all(
-		published.map((product) => projectPublishedCatalogProduct(ctx, product)),
+	const enabledKindSet = new Set(enabledKinds);
+	const published = rows
+		.filter((value) => enabledKindSet.has(value.productKind))
+		.map((value) => {
+			const product = requireCatalogProductGraphV2Product(value);
+			assertCatalogPublicationHeader(product);
+			return product;
+		});
+	const projected = await mapCatalogGraphListInBatches(
+		published,
+		async (product) => await projectPublishedCatalogProduct(ctx, product),
+		CATALOG_PUBLIC_PROJECTION_BATCH,
 	);
 	return projected.sort(comparePublishedCatalogProducts);
 }
@@ -1125,18 +987,20 @@ export async function getPublishedCatalogProductGraphV2BySlug(
 	return await projectPublishedCatalogProduct(ctx, product);
 }
 
-/** Authenticated Editor-only detail read with no storage keys or capabilities. */
+/**
+ * Authenticated Editor-only detail read with no storage keys or capabilities.
+ * Disabled kinds remain readable so their published pointers can be removed.
+ */
 export async function getCatalogProductGraphV2EditorState(
 	ctx: QueryCtx,
 	productId: Id<"catalogProducts">,
 ) {
-	const { doc, client } = await requireDocumentSiteAdminWithClient(
+	const { doc } = await requireDocumentSiteAdminWithClient(
 		ctx,
 		"catalogProducts",
 		productId,
 	);
 	const product = requireCatalogProductGraphV2Product(doc);
-	requireCatalogProductKindEnabled(client, product.productKind);
 	const [draft, published] = await Promise.all([
 		loadCatalogProductGraphV2Revision(ctx, product, product.draftRevisionId),
 		loadCatalogProductGraphV2Revision(ctx, product, product.publishedRevisionId),
@@ -1247,14 +1111,17 @@ export async function getCatalogProductGraphV2RetirementEligibility(
 	};
 }
 
-/** Bounded V2 headers for one authenticated tenant and product kind. */
+/**
+ * Bounded V2 headers for one authenticated tenant and product kind.
+ * Disabled kinds remain discoverable for publication cleanup, but all writers
+ * other than unpublish continue to enforce the current capability policy.
+ */
 export async function listCatalogProductGraphsV2ForEditor(
 	ctx: QueryCtx,
 	siteUrl: string,
 	productKind: CatalogProductKind,
 ) {
 	const { client } = await requireSiteAdmin(ctx, siteUrl);
-	requireCatalogProductKindEnabled(client, productKind);
 	const products = await ctx.db
 		.query("catalogProducts")
 		.withIndex("by_siteUrl_and_graphVersion_and_productKind_and_createdAt", (query) =>

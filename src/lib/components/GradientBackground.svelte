@@ -24,8 +24,11 @@ onMount(() => {
 	let currentY = 0.2;
 	let animFrame = 0;
 	let idle = true;
+	const motion = window.matchMedia("(prefers-reduced-motion: reduce)");
+	let disposed = false;
 
 	const onMouseMove = (e: MouseEvent) => {
+		if (disposed || motion.matches) return;
 		hasMouse = true;
 		mouseX = e.clientX / window.innerWidth;
 		mouseY = e.clientY / window.innerHeight;
@@ -38,6 +41,7 @@ onMount(() => {
 	window.addEventListener("mousemove", onMouseMove, { passive: true });
 
 	function animate() {
+		if (disposed || motion.matches) return;
 		currentX += (mouseX - currentX) * 0.03;
 		currentY += (mouseY - currentY) * 0.03;
 
@@ -59,7 +63,15 @@ onMount(() => {
 		}
 	}
 
+	function syncMotion() {
+		if (!motion.matches) return;
+		cancelAnimationFrame(animFrame);
+		idle = true;
+	}
+	motion.addEventListener("change", syncMotion);
 	return () => {
+		disposed = true;
+		motion.removeEventListener("change", syncMotion);
 		window.removeEventListener("mousemove", onMouseMove);
 		cancelAnimationFrame(animFrame);
 	};
@@ -67,7 +79,7 @@ onMount(() => {
 </script>
 
 <div
-	class="fixed inset-0 -z-10 pointer-events-none"
+	class="gradient-background"
 	aria-hidden="true"
 >
 	{#if hasMouse}
@@ -82,6 +94,7 @@ onMount(() => {
 </div>
 
 <style>
+	.gradient-background { position: fixed; inset: 0; z-index: -10; pointer-events: none; }
 	.orb {
 		position: absolute;
 		border-radius: 50%;
@@ -136,5 +149,10 @@ onMount(() => {
 
 	.animate-drift-2 {
 		animation: drift-2 55s ease-in-out infinite;
+	}
+	@media (prefers-reduced-motion: reduce) {
+		.orb { animation: none; will-change: auto; }
+		.orb-primary { transform: translate3d(-20vw, -30vh, 0); }
+		.orb-secondary { transform: translate3d(20vw, 25vh, 0); }
 	}
 </style>

@@ -23,6 +23,15 @@ export const COMPACT_LIST_LIMIT = 50;
 /** Default limit for admin UI list views — standard table rows. */
 export const DEFAULT_LIST_LIMIT = 100;
 
+/**
+ * Hard bound for raw `portalTokens.by_documentId` ranges belonging to invoice,
+ * quote, and contract documents. Document email replacement acceptance revokes
+ * the complete matching capability history in one transaction, so creation
+ * must keep those ranges exhaustively readable. Gallery capabilities are not
+ * part of this document-email rotation protocol.
+ */
+export const PORTAL_CAPABILITIES_PER_DOCUMENT_LIMIT = 64;
+
 /** Lookup-style tables — tag picker, small reference lists. */
 export const LOOKUP_LIMIT = 200;
 

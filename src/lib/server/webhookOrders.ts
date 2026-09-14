@@ -2,7 +2,7 @@ import type { ConvexHttpClient } from "convex/browser";
 import type { Resend } from "resend";
 import type Stripe from "stripe";
 import { api } from "$convex/api";
-import type { Id } from "$convex/dataModel";
+import type { Doc, Id } from "$convex/dataModel";
 import type { CheckoutAdmissionInput } from "$lib/server/checkoutSnapshotConsumer";
 import {
 	type CheckoutSnapshotInput,
@@ -12,8 +12,10 @@ import {
 	ANGELS_REST_COMMERCE_PROFILE,
 	type CommerceNotificationProfile,
 } from "$lib/server/commerceTenant";
+import { FulfillmentValidationError } from "$lib/server/fulfillmentValidationError";
 import { logStructured } from "$lib/server/logger";
 import {
+	type ConfirmLumaPrintsOrder,
 	handlePermanentFulfillmentFailure,
 	handlePrintFulfillmentFailure,
 	type PrintFulfillmentOutcome,
@@ -24,9 +26,16 @@ import {
 	sendClaimedFulfillmentFailureAdminAlert,
 	submitPrintFulfillment,
 } from "$lib/server/printFulfillment";
-import type { ShippingDetails } from "$lib/server/webhookEmails";
+import type { OrderEmailSession, ShippingDetails } from "$lib/server/webhookEmails";
 import { buildConvexOrderCreatePayload } from "$lib/server/webhookOrderPayload";
 import { getWebhookSecret } from "$lib/server/webhookSecret";
+import type { OrderItem } from "$lib/shop/types";
+
+export type PreparedPrintJob = {
+	jobId: Id<"printFulfillmentJobs">;
+	leaseToken: string;
+	items: OrderItem[];
+};
 
 export interface CreatedOrderResult {
 	orderNumber: string;
@@ -49,16 +58,23 @@ export async function createOrderInConvex(
 		convex,
 		resend,
 		createLumaPrintsOrder,
+		confirmLumaPrintsOrder,
+		onOrderRecorded,
+		printJob,
 	}: {
 		stripe: Stripe;
 		convex: ConvexHttpClient;
 		resend: Resend;
 		createLumaPrintsOrder: SubmitLumaPrintsOrder;
+		confirmLumaPrintsOrder?: ConfirmLumaPrintsOrder;
+		onOrderRecorded?: (orderId: Id<"orders">, orderNumber: string) => Promise<void>;
+		printJob?: PreparedPrintJob;
 	},
 	{
 		session,
 		shippingDetails,
 		lineItems,
+		tenantId,
 		siteUrl,
 		stripeRequestOptions,
 		notificationProfile = ANGELS_REST_COMMERCE_PROFILE,
@@ -68,6 +84,7 @@ export async function createOrderInConvex(
 		session: Stripe.Checkout.Session;
 		shippingDetails: ShippingDetails;
 		lineItems: Stripe.LineItem[];
+		tenantId?: string;
 		siteUrl: string;
 		stripeRequestOptions?: Stripe.RequestOptions;
 		notificationProfile?: CommerceNotificationProfile;
@@ -79,18 +96,118 @@ export async function createOrderInConvex(
 		session,
 		shippingDetails,
 		lineItems,
+		tenantId,
 		siteUrl,
 		webhookSecret: getWebhookSecret(),
 		stripeRequestOptions,
 		checkoutSnapshotInput,
 		checkoutSessionAdmission,
 	});
-	const orderResult = await convex.mutation(api.orders.create, payload).catch((cause) => {
-		if (checkoutSnapshotInput.protocol === "handle-v2") {
-			throw new CheckoutSnapshotProtocolError("Bound checkout snapshot transfer failed", { cause });
-		}
-		throw cause;
+	const orderResult = await convex
+		.mutation(api.orders.create, { ...payload, runPrintJob: true })
+		.catch((cause) => {
+			if (checkoutSnapshotInput.protocol === "handle-v2") {
+				throw new CheckoutSnapshotProtocolError("Bound checkout snapshot transfer failed", {
+					cause,
+				});
+			}
+			throw cause;
+		});
+	const { _id: orderId, orderNumber, alreadyExisted } = orderResult;
+	logStructured({
+		event: alreadyExisted ? "order.rehydrated" : "order.created",
+		stage: "order_create",
+		orderId: orderNumber,
+		meta: { alreadyExisted },
 	});
+	await onOrderRecorded?.(orderId, orderNumber);
+	if (printJob && printJob.jobId !== orderResult.printJobId)
+		throw new Error("Print job does not match the paid order");
+	if (orderResult.printJobId && !printJob) {
+		return {
+			orderNumber,
+			_id: orderId,
+			alreadyExisted,
+			fulfillment: { kind: "scheduled" },
+			notification: "none",
+		};
+	}
+
+	return finishRecordedPrintOrder(
+		{ stripe, convex, resend, createLumaPrintsOrder, confirmLumaPrintsOrder },
+		{
+			orderResult,
+			printJob,
+			session,
+			shippingDetails,
+			lineItems,
+			tenantId,
+			siteUrl,
+			stripeRequestOptions,
+			notificationProfile,
+		},
+	);
+}
+
+type RecordedPrintOrder = Pick<
+	Doc<"orders">,
+	| "_id"
+	| "orderNumber"
+	| "printJobId"
+	| "fulfillmentType"
+	| "lumaprintsOrderNumber"
+	| "status"
+	| "stripeFees"
+	| "fulfillmentError"
+	| "stripeRefundId"
+	| "fulfillmentRecoveryStatus"
+	| "automatedRefundId"
+	| "automatedRefundStatus"
+	| "printFulfillmentClaim"
+	| "printFulfillmentPhase"
+	| "printFulfillmentResolution"
+	| "checkoutSnapshot"
+> & { alreadyExisted: boolean };
+
+/** Shared recovery/submission coordinator; never creates an order or sends its payment receipt. */
+export async function finishRecordedPrintOrder(
+	{
+		stripe,
+		convex,
+		resend,
+		createLumaPrintsOrder,
+		confirmLumaPrintsOrder,
+	}: {
+		stripe: Stripe;
+		convex: ConvexHttpClient;
+		resend: Resend;
+		createLumaPrintsOrder: SubmitLumaPrintsOrder;
+		confirmLumaPrintsOrder?: ConfirmLumaPrintsOrder;
+	},
+	{
+		orderResult,
+		printJob,
+		session,
+		shippingDetails,
+		lineItems,
+		tenantId,
+		siteUrl,
+		stripeRequestOptions,
+		notificationProfile = ANGELS_REST_COMMERCE_PROFILE,
+	}: {
+		orderResult: RecordedPrintOrder;
+		printJob?: PreparedPrintJob;
+		session: OrderEmailSession;
+		shippingDetails: ShippingDetails;
+		lineItems: Stripe.LineItem[];
+		tenantId?: string;
+		siteUrl: string;
+		stripeRequestOptions?: Stripe.RequestOptions;
+		notificationProfile?: CommerceNotificationProfile;
+	},
+): Promise<CreatedOrderResult> {
+	if (printJob && printJob.jobId !== orderResult.printJobId)
+		throw new Error("Print job does not match the paid order");
 	const { _id: orderId, orderNumber, alreadyExisted } = orderResult;
 	const existingLumaprintsOrderNumber = orderResult.lumaprintsOrderNumber;
 	const existingStatus = orderResult.status;
@@ -103,13 +220,23 @@ export async function createOrderInConvex(
 	const existingPrintClaim = orderResult.printFulfillmentClaim;
 	const existingPrintPhase = orderResult.printFulfillmentPhase;
 	const existingPrintResolution = orderResult.printFulfillmentResolution;
+	const fulfillmentType = orderResult.fulfillmentType;
 
-	logStructured({
-		event: alreadyExisted ? "order.rehydrated" : "order.created",
-		stage: "order_create",
-		orderId: orderNumber,
-		meta: { alreadyExisted },
-	});
+	const needsProviderReconciliation =
+		existingPrintClaim === true &&
+		existingLumaprintsOrderNumber === undefined &&
+		existingPrintPhase !== "preparing" &&
+		existingPrintResolution !== "resolved";
+
+	if (existingStatus === "canceled" && !needsProviderReconciliation) {
+		return {
+			orderNumber,
+			_id: orderId,
+			alreadyExisted,
+			fulfillment: { kind: "canceled" },
+			notification: "none",
+		};
+	}
 
 	if (existingStripeFees !== undefined) {
 		logStructured({
@@ -147,12 +274,6 @@ export async function createOrderInConvex(
 				!manuallyRefunded && (await claimOrderConfirmation(convex, orderId)) ? "success" : "none",
 		};
 	}
-
-	const needsProviderReconciliation =
-		existingPrintClaim === true &&
-		existingLumaprintsOrderNumber === undefined &&
-		existingPrintPhase !== "preparing" &&
-		existingPrintResolution !== "resolved";
 
 	if (
 		(existingRecoveryStatus === "refunded" || existingStatus === "refunded") &&
@@ -271,17 +392,30 @@ export async function createOrderInConvex(
 
 	let fulfillment: PrintFulfillmentOutcome;
 	try {
+		if (orderResult.checkoutSnapshot && orderResult.checkoutSnapshot.catalogProvider !== "convex") {
+			throw new FulfillmentValidationError("Checkout snapshot provider is unsupported");
+		}
 		fulfillment = await submitPrintFulfillment(
-			{ convex, createLumaPrintsOrder },
+			{
+				convex,
+				createLumaPrintsOrder,
+				confirmLumaPrintsOrder,
+				preparedItems: printJob?.items,
+				printJobLeaseToken: printJob?.leaseToken,
+			},
 			{
 				orderId,
 				orderNumber,
+				fulfillmentType,
+				tenantId,
+				siteUrl,
 				lineItems,
 				shippingDetails,
 				session,
 				checkoutSnapshot: orderResult.checkoutSnapshot
 					? {
 							...orderResult.checkoutSnapshot,
+							catalogProvider: "convex" as const,
 							items: orderResult.checkoutSnapshot.items.map((item) => ({
 								...item,
 								materialOptionKey: item.materialOptionKey ?? null,
@@ -317,6 +451,7 @@ export async function createOrderInConvex(
 	let notification: CreatedOrderResult["notification"];
 	if (
 		fulfillment.kind === "manual_refunded" ||
+		fulfillment.kind === "canceled" ||
 		fulfillment.kind === "no_print_items_replayed" ||
 		fulfillment.kind === "reconciliation_blocked" ||
 		fulfillment.kind === "automated_refund_failed" ||

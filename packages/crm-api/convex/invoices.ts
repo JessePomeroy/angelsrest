@@ -1,5 +1,6 @@
+import { logActivity } from "./activityLog";
+import { calculateInvoiceAmounts } from "../src/invoiceAmounts";
 import { v } from "convex/values";
-import { internal } from "./_generated/api";
 import { mutation, query } from "./_generated/server";
 import { requireSiteAdmin, requireWebhookCallerOrAuth } from "./authHelpers";
 import { deleteDocument } from "./helpers/deleting";
@@ -9,7 +10,6 @@ import {
 } from "./helpers/documentNumbering";
 import { markDocumentSent } from "./helpers/marking";
 import { patchDocument } from "./helpers/patching";
-import { queryBySiteUrl } from "./helpers/querying";
 
 // Keep in sync with the `invoices.status` union in schema.ts. Widening to
 // v.string() here lets nonsense values through arg validation and only fails
@@ -30,7 +30,13 @@ export const list = query({
 	},
 	handler: async (ctx, { siteUrl, status }) => {
 		await requireSiteAdmin(ctx, siteUrl);
-		const all = await queryBySiteUrl(ctx, "invoices", siteUrl, { status });
+		const selectedStatus = statusValidator.members.find((member) => member.value === status)?.value;
+		if (status !== undefined && selectedStatus === undefined) return [];
+		const documents = ctx.db.query("invoices");
+		const matching = selectedStatus === undefined
+			? documents.withIndex("by_siteUrl", (q) => q.eq("siteUrl", siteUrl))
+			: documents.withIndex("by_siteUrl_status", (q) => q.eq("siteUrl", siteUrl).eq("status", selectedStatus));
+		const all = await matching.order("desc").take(200);
 		return all.map((invoice) => ({
 			...invoice,
 			clientName: invoice.clientName ?? "unknown",
@@ -101,6 +107,7 @@ export const create = mutation({
 		if (!client || client.siteUrl !== args.siteUrl) {
 			throw new Error("Client not found");
 		}
+		calculateInvoiceAmounts(args.items, args.taxPercent);
 		const invoiceNumber = await allocateNextInvoiceNumber(ctx, args.siteUrl);
 		const invoiceId = await ctx.db.insert("invoices", {
 			...args,
@@ -109,7 +116,7 @@ export const create = mutation({
 			status: "draft",
 		});
 
-		await ctx.runMutation(internal.activityLog.logActivity, {
+		await logActivity(ctx, {
 			siteUrl: args.siteUrl,
 			clientId: args.clientId,
 			action: "invoice_created",
@@ -140,7 +147,18 @@ export const update = mutation({
 		status: v.optional(statusValidator),
 	},
 	handler: async (ctx, { invoiceId, siteUrl, ...updates }) => {
-		await patchDocument(ctx, invoiceId, siteUrl, updates);
+		const previous = await patchDocument(ctx, invoiceId, siteUrl, updates);
+		if (updates.items !== undefined || updates.taxPercent !== undefined) {
+			// A failed validation rolls back the patch in this atomic mutation.
+			calculateInvoiceAmounts(
+				updates.items ?? previous.items,
+				updates.taxPercent ?? previous.taxPercent,
+			);
+		}
+		if (updates.status !== previous.status) {
+			if (updates.status === "paid") await ctx.db.patch(invoiceId, { paidAt: Date.now() });
+			if (updates.status === "overdue") await ctx.db.patch(invoiceId, { overdueAt: Date.now() });
+		}
 	},
 });
 
@@ -249,7 +267,7 @@ export const markPaid = mutation({
 				: {}),
 		});
 
-		await ctx.runMutation(internal.activityLog.logActivity, {
+		await logActivity(ctx, {
 			siteUrl: invoice.siteUrl,
 			clientId: invoice.clientId,
 			action: "invoice_paid",

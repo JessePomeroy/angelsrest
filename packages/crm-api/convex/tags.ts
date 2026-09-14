@@ -1,6 +1,9 @@
+import { logActivity } from "./activityLog";
 import { v } from "convex/values";
 import { internal } from "./_generated/api";
-import { mutation, query } from "./_generated/server";
+import type { Id } from "./_generated/dataModel";
+import type { QueryCtx } from "./_generated/server";
+import { internalMutation, mutation, query } from "./_generated/server";
 import { requireDocumentSiteAdmin, requireSiteAdmin } from "./authHelpers";
 import { BULK_SCAN_LIMIT, COMPACT_LIST_LIMIT, LOOKUP_LIMIT } from "./helpers/limits";
 
@@ -15,20 +18,19 @@ export const listTags = query({
 	},
 });
 
+export async function readClientTags(ctx: QueryCtx, clientId: Id<"photographyClients">, siteUrl: string) {
+	const assignments = await ctx.db.query("clientTagAssignments")
+		.withIndex("by_clientId", (q) => q.eq("clientId", clientId))
+		.take(COMPACT_LIST_LIMIT);
+	const tags = await Promise.all(assignments.map((assignment) => ctx.db.get(assignment.tagId)));
+	return tags.filter((tag): tag is NonNullable<typeof tag> => tag !== null && tag.siteUrl === siteUrl);
+}
+
 export const getClientTags = query({
 	args: { clientId: v.id("photographyClients") },
 	handler: async (ctx, { clientId }) => {
-		await requireDocumentSiteAdmin(ctx, "photographyClients", clientId);
-		const assignments = await ctx.db
-			.query("clientTagAssignments")
-			.withIndex("by_clientId", (q) => q.eq("clientId", clientId))
-			.take(COMPACT_LIST_LIMIT);
-
-		// Fan out tag reads in parallel instead of serial (N+1). See audit M25.
-		const tags = await Promise.all(
-			assignments.map((assignment) => ctx.db.get(assignment.tagId)),
-		);
-		return tags.filter((t): t is NonNullable<typeof t> => t !== null);
+		const client = await requireDocumentSiteAdmin(ctx, "photographyClients", clientId);
+		return await readClientTags(ctx, clientId, client.siteUrl);
 	},
 });
 
@@ -44,10 +46,9 @@ export const createTag = mutation({
 	},
 });
 
-export const deleteTag = mutation({
+export const deleteTagAssignments = internalMutation({
 	args: { tagId: v.id("clientTags") },
-	handler: async (ctx, { tagId }) => {
-		await requireDocumentSiteAdmin(ctx, "clientTags", tagId);
+	handler: async (ctx, { tagId }): Promise<null> => {
 		const assignments = await ctx.db
 			.query("clientTagAssignments")
 			.withIndex("by_tagId", (q) => q.eq("tagId", tagId))
@@ -57,6 +58,19 @@ export const deleteTag = mutation({
 			await ctx.db.delete(assignment._id);
 		}
 
+		if (assignments.length === BULK_SCAN_LIMIT) {
+			await ctx.scheduler.runAfter(0, internal.tags.deleteTagAssignments, { tagId });
+		}
+		return null;
+	},
+});
+
+export const deleteTag = mutation({
+	args: { tagId: v.id("clientTags") },
+	handler: async (ctx, { tagId }) => {
+		await requireDocumentSiteAdmin(ctx, "clientTags", tagId);
+		await ctx.runMutation(internal.tags.deleteTagAssignments, { tagId });
+		// Deleting the parent also prevents assignments from being added between batches.
 		await ctx.db.delete(tagId);
 	},
 });
@@ -92,7 +106,7 @@ export const assignTag = mutation({
 		const id = await ctx.db.insert("clientTagAssignments", args);
 
 		if (tag && client) {
-			await ctx.runMutation(internal.activityLog.logActivity, {
+			await logActivity(ctx, {
 				siteUrl: args.siteUrl,
 				clientId: args.clientId,
 				action: "tag_added",
@@ -134,7 +148,7 @@ export const removeTag = mutation({
 			await ctx.db.delete(toRemove._id);
 
 			if (tag) {
-				await ctx.runMutation(internal.activityLog.logActivity, {
+				await logActivity(ctx, {
 					siteUrl: args.siteUrl,
 					clientId: args.clientId,
 					action: "tag_removed",

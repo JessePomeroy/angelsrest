@@ -5,16 +5,18 @@ import { createAuthClient } from "better-auth/svelte";
 // evaluated on first use in the browser. Eager construction at module load
 // time caused SSR to fall back to `http://localhost`, which then baked a
 // bad baseURL into the client for any pre-hydration code path.
-let _client: ReturnType<typeof createAuthClient> | null = null;
+const createBrowserAuthClient = () =>
+	createAuthClient({
+		baseURL: window.location.origin,
+		plugins: [convexClient()],
+	});
+type AuthClient = ReturnType<typeof createBrowserAuthClient>;
 
-export const authClient = new Proxy({} as ReturnType<typeof createAuthClient>, {
+let _client: AuthClient | null = null;
+
+export const authClient = new Proxy({} as AuthClient, {
 	get(_, prop) {
-		if (!_client) {
-			_client = createAuthClient({
-				baseURL: window.location.origin,
-				plugins: [convexClient()],
-			});
-		}
+		_client ??= createBrowserAuthClient();
 		// Proxy trap intentionally widens to property-access on the lazy client.
 		return (_client as Record<string | symbol, unknown>)[prop as string | symbol];
 	},

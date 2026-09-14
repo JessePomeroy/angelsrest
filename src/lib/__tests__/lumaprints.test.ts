@@ -3,6 +3,7 @@ import { env } from "$env/dynamic/private";
 import type { OrderItem, Recipient } from "$lib/shop/types";
 import {
 	buildLumaPrintsOrder,
+	confirmOrder,
 	createOrder,
 	findOrderByExternalId,
 	LumaPrintsError,
@@ -62,8 +63,8 @@ beforeEach(() => {
 
 const mockItems: OrderItem[] = [
 	{
-		imageUrl: "https://cdn.sanity.io/images/proj/dataset/photo.jpg?w=1200&fm=webp&q=80",
-		sourcePolicy: "sanity_cdn",
+		imageUrl: "https://media.example.test/photo.jpg?sealed=1",
+		sourcePolicy: "byte_exact",
 		paperSubcategoryId: 103001,
 		width: 8,
 		height: 12,
@@ -72,9 +73,17 @@ const mockItems: OrderItem[] = [
 ];
 
 describe("buildLumaPrintsOrder", () => {
+	it("uses the frozen provider configuration instead of reinterpreting installed mappings", () => {
+		const product = { subcategoryId: 105001, orderItemOptions: [44, 67, 96] };
+		const order = buildLumaPrintsOrder("frozen-order", mockRecipient, [
+			{ ...mockItems[0], product },
+		]);
+		expect(order.orderItems[0]).toMatchObject(product);
+		expect(order.orderItems[0].file.imageUrl).toBe(mockItems[0].imageUrl);
+	});
 	it("creates correct top-level structure", () => {
-		const order = buildLumaPrintsOrder("sanity-order-123", mockRecipient, mockItems);
-		expect(order.externalId).toBe("sanity-order-123");
+		const order = buildLumaPrintsOrder("catalog-order-123", mockRecipient, mockItems);
+		expect(order.externalId).toBe("catalog-order-123");
 		// from mock env LUMAPRINTS_STORE_ID = "83765" in src/__mocks__/env-dynamic.ts
 		expect(order.storeId).toBe(83765);
 		expect(order.shippingMethod).toBe("default");
@@ -114,6 +123,11 @@ describe("buildLumaPrintsOrder", () => {
 		expect(order.recipient.phone).toBe("313-555-1234");
 	});
 
+	it("uses a mononym as the provider-required surname", () => {
+		const order = buildLumaPrintsOrder("mononym", { ...mockRecipient, lastName: "" }, mockItems);
+		expect(order.recipient.lastName).toBe("Jane");
+	});
+
 	it("uses empty string for optional address2 when not provided", () => {
 		const recipientNoAddr2 = { ...mockRecipient, address2: undefined };
 		const order = buildLumaPrintsOrder("order-2", recipientNoAddr2, mockItems);
@@ -129,54 +143,30 @@ describe("buildLumaPrintsOrder", () => {
 	it("uses no-bleed only for direct Fine Art Paper", () => {
 		const direct = buildLumaPrintsOrder("order-4", mockRecipient, mockItems);
 		const framed = buildLumaPrintsOrder("order-framed", mockRecipient, [
-			{ ...mockItems[0], frameSubcategoryId: 203001 },
+			{ ...mockItems[0], paperSubcategoryId: 103007, frameSubcategoryId: 105001 },
 		]);
 		const canvas = buildLumaPrintsOrder("order-canvas", mockRecipient, [
 			{ ...mockItems[0], canvasSubcategoryId: 303001, canvasWrapHex: "#ffffff" },
 		]);
 
 		expect(direct.orderItems[0].orderItemOptions).toEqual([39]);
-		expect(framed.orderItems[0].orderItemOptions).toEqual([67, 96]);
+		expect(framed.orderItems[0].orderItemOptions).toEqual([79, 67, 96]);
 		expect(canvas.orderItems[0].orderItemOptions).toEqual([3]);
+		expect(() =>
+			buildLumaPrintsOrder("order-unsupported-frame", mockRecipient, [
+				{ ...mockItems[0], paperSubcategoryId: 999999, frameSubcategoryId: 105001 },
+			]),
+		).toThrow("Framed print paper is unsupported");
 	});
 
-	it("does NOT include option 36 (Bleed) in orderItemOptions", () => {
-		const order = buildLumaPrintsOrder("order-5", mockRecipient, mockItems);
-		for (const item of order.orderItems) {
-			expect(item.orderItemOptions).not.toContain(36);
-		}
-	});
-
-	it("transforms image URLs to print quality (max=8000&q=100) for order items", () => {
-		// prepareSanityUrlForPrint strips existing params and appends
-		// ?max=8000&q=100 for maximum print quality.
-		const order = buildLumaPrintsOrder("order-6", mockRecipient, mockItems);
-		for (const item of order.orderItems) {
-			expect(item.file.imageUrl).toContain("?max=8000&q=100");
-			// Original webp/q=80 params from mockItems should be gone
-			expect(item.file.imageUrl).not.toContain("fm=webp");
-			expect(item.file.imageUrl).not.toContain("w=1200");
-		}
-	});
-
-	it("preserves opaque capabilities and bordered R2 outputs byte-exact", () => {
+	it("preserves opaque capabilities and legacy sources byte-exact", () => {
 		const opaque = "https://opaque.example/source.jpg?sealed=a_b-C";
-		const bordered = "https://worker.example/image/bordered.jpg?version=1";
+		const legacy = "https://cdn.example/image.jpg?version=1";
 		const order = buildLumaPrintsOrder("exact-urls", mockRecipient, [
 			{ ...mockItems[0], imageUrl: opaque, sourcePolicy: "opaque_capability" },
-			{ ...mockItems[0], imageUrl: bordered, sourcePolicy: "bordered_r2" },
+			{ ...mockItems[0], imageUrl: legacy, sourcePolicy: "byte_exact" },
 		]);
-		expect(order.orderItems.map(({ file }) => file.imageUrl)).toEqual([opaque, bordered]);
-	});
-
-	it("generates correct externalItemId for each item", () => {
-		const multiItems: OrderItem[] = [
-			{ ...mockItems[0], imageUrl: "https://cdn.example.com/a.jpg" },
-			{ ...mockItems[0], imageUrl: "https://cdn.example.com/b.jpg" },
-		];
-		const order = buildLumaPrintsOrder("multi-order", mockRecipient, multiItems);
-		expect(order.orderItems[0].externalItemId).toBe("multi-order-item-1");
-		expect(order.orderItems[1].externalItemId).toBe("multi-order-item-2");
+		expect(order.orderItems.map(({ file }) => file.imageUrl)).toEqual([opaque, legacy]);
 	});
 
 	it("copies width, height, quantity, and subcategoryId to order items", () => {
@@ -191,24 +181,24 @@ describe("buildLumaPrintsOrder", () => {
 	it("builds multi-item orders correctly (print set support)", () => {
 		const printSetItems: OrderItem[] = [
 			{
-				imageUrl: "https://cdn.sanity.io/images/a.jpg?w=1200",
-				sourcePolicy: "sanity_cdn",
+				imageUrl: "https://media.example.test/a.jpg?sealed=1",
+				sourcePolicy: "byte_exact",
 				paperSubcategoryId: 103001,
 				width: 4,
 				height: 6,
 				quantity: 1,
 			},
 			{
-				imageUrl: "https://cdn.sanity.io/images/b.jpg?w=1200",
-				sourcePolicy: "sanity_cdn",
+				imageUrl: "https://media.example.test/b.jpg?sealed=2",
+				sourcePolicy: "byte_exact",
 				paperSubcategoryId: 103001,
 				width: 4,
 				height: 6,
 				quantity: 1,
 			},
 			{
-				imageUrl: "https://cdn.sanity.io/images/c.jpg?w=1200",
-				sourcePolicy: "sanity_cdn",
+				imageUrl: "https://media.example.test/c.jpg?sealed=3",
+				sourcePolicy: "byte_exact",
 				paperSubcategoryId: 103001,
 				width: 4,
 				height: 6,
@@ -217,12 +207,14 @@ describe("buildLumaPrintsOrder", () => {
 		];
 		const order = buildLumaPrintsOrder("print-set-order", mockRecipient, printSetItems);
 		expect(order.orderItems).toHaveLength(3);
-		expect(order.orderItems[2].externalItemId).toBe("print-set-order-item-3");
-		// All items use print quality URLs (existing query params replaced)
-		for (const item of order.orderItems) {
-			expect(item.file.imageUrl).toContain("?max=8000&q=100");
-			expect(item.file.imageUrl).not.toContain("w=1200");
-		}
+		expect(order.orderItems.map(({ externalItemId }) => externalItemId)).toEqual([
+			"print-set-order-item-1",
+			"print-set-order-item-2",
+			"print-set-order-item-3",
+		]);
+		expect(order.orderItems.map(({ file }) => file.imageUrl)).toEqual(
+			printSetItems.map(({ imageUrl }) => imageUrl),
+		);
 	});
 });
 
@@ -263,10 +255,12 @@ describe("LumaPrintsError", () => {
 
 describe("LumaPrints request deadlines", () => {
 	beforeEach(() => {
+		vi.restoreAllMocks();
 		vi.unstubAllGlobals();
 	});
 
 	it("applies an active deadline signal to the create-order POST", async () => {
+		const timeout = vi.spyOn(AbortSignal, "timeout");
 		const fetchMock = vi
 			.fn()
 			.mockResolvedValue(providerJson({ message: "queued", orderNumber: 10000000001 }));
@@ -275,6 +269,7 @@ describe("LumaPrints request deadlines", () => {
 		await createOrder(buildLumaPrintsOrder("deadline-order", mockRecipient, mockItems));
 
 		expect(fetchMock).toHaveBeenCalledOnce();
+		expect(timeout).toHaveBeenCalledWith(25_000);
 		for (const [, init] of fetchMock.mock.calls) {
 			expect(init.signal).toBeInstanceOf(AbortSignal);
 			expect((init.signal as AbortSignal).aborted).toBe(false);
@@ -282,17 +277,66 @@ describe("LumaPrints request deadlines", () => {
 	});
 
 	it("passes an active deadline signal to the reconciliation GET", async () => {
+		const timeout = vi.spyOn(AbortSignal, "timeout");
 		const fetchMock = vi.fn().mockResolvedValue(providerPage([]));
 		vi.stubGlobal("fetch", fetchMock);
 
 		await expect(findOrderByExternalId("cs_test_1234567890abcdef")).resolves.toBeNull();
 
 		expect(fetchMock).toHaveBeenCalledOnce();
+		expect(timeout).toHaveBeenCalledWith(15_000);
 		const [rawUrl, init] = fetchMock.mock.calls[0];
 		expect(String(rawUrl)).toContain("/api/v1/orders?");
 		expect(init.method).toBeUndefined();
 		expect(init.signal).toBeInstanceOf(AbortSignal);
 		expect((init.signal as AbortSignal).aborted).toBe(false);
+	});
+
+	it.each([
+		"transport",
+		"stream",
+	] as const)("shares one reconciliation budget across pages and %s consumption", async (phase) => {
+		let now = 0;
+		const clock = vi.spyOn(Date, "now").mockImplementation(() => now);
+		const timeout = vi.spyOn(AbortSignal, "timeout");
+		const fetchMock = vi
+			.fn()
+			.mockImplementationOnce(async () => {
+				now = 14_000;
+				return providerPage([listedOrder("other", "10000000001")], {
+					totalOrders: 2,
+					currentPage: 1,
+					totalPages: 2,
+				});
+			})
+			.mockImplementationOnce(async () => {
+				const expired = new DOMException("timed out", "TimeoutError");
+				if (phase === "transport") {
+					now = 20_000;
+					throw expired;
+				}
+				return new Response(
+					new ReadableStream({
+						pull(controller) {
+							now = 20_000;
+							controller.error(expired);
+						},
+					}),
+					{ headers: { "content-type": "application/json" } },
+				);
+			});
+		vi.stubGlobal("fetch", fetchMock);
+		try {
+			await expect(findOrderByExternalId("cs_test_1234567890abcdef")).rejects.toMatchObject({
+				disposition: "retryable",
+				message: "Order reconciliation response exceeded its time bound",
+			});
+			expect(timeout.mock.calls.map(([duration]) => duration)).toEqual([15_000, 6_000]);
+			expect(fetchMock).toHaveBeenCalledTimes(2);
+		} finally {
+			clock.mockRestore();
+			timeout.mockRestore();
+		}
 	});
 
 	it("surfaces timeout failures as uncertain create outcomes", async () => {
@@ -308,13 +352,13 @@ describe("LumaPrints request deadlines", () => {
 			name: "LumaPrintsSubmissionError",
 			operation: "create_order",
 			disposition: "uncertain",
-			message: "LumaPrints request timed out after 15000ms",
+			message: "LumaPrints request timed out after 25000ms",
 			details: {
 				operation: "create_order",
 				disposition: "uncertain",
 				phase: "transport",
 				kind: "timeout",
-				timeoutMs: 15_000,
+				timeoutMs: 25_000,
 			},
 		});
 		expect(classifyLumaPrintsFailure(thrown)).toBe("transient");
@@ -335,7 +379,7 @@ describe("LumaPrints request deadlines", () => {
 				disposition: "uncertain",
 				phase: "transport",
 				kind: "network",
-				timeoutMs: 15_000,
+				timeoutMs: 25_000,
 			},
 		});
 	});
@@ -373,10 +417,85 @@ describe("createOrder", () => {
 				disposition: "definitely_rejected",
 				phase: "status",
 				statusCode: 400,
+				providerReason: "unavailable",
 			});
 			expect(JSON.stringify((err as LumaPrintsError).details)).not.toContain(
 				"private upstream detail",
 			);
+		}
+	});
+
+	it("retains safe rejection diagnostics without response text or capability URLs", async () => {
+		for (const [body, expected] of [
+			[
+				{ message: "The default billing address of this account has not been configured." },
+				{ providerReason: "billing_address" },
+			],
+			[
+				{
+					message: [
+						"Image aspect ratio is incorrect: https://private.example/secret",
+						"jane@example.com",
+					],
+					imageUrl: "https://private.example/secret",
+					expectedWidth: 1800,
+					expectedHeight: 1200,
+					actualImageWidth: 6935,
+					actualImageHeight: "private-value",
+					errorCode: "private-value",
+				},
+				{
+					providerReason: "image_dimensions,invalid",
+					expectedWidth: 1800,
+					expectedHeight: 1200,
+					actualImageWidth: 6935,
+				},
+			],
+			[
+				{
+					message: "Exception message.",
+					statusCode: 400,
+					request: {
+						recipient: { lastName: "private-value" },
+						orderItems: [{ imageUrl: "private" }],
+					},
+				},
+				{ providerReason: "provider_exception", providerStatusCode: 400 },
+			],
+			[
+				{ message: "private-value", expectedWidth: -1, actualImageHeight: 1e20 },
+				{ providerReason: "unrecognized" },
+			],
+			[
+				{
+					statusCode: 400,
+					errorCode: 27,
+					errors: [{ path: "orderItems[0].file.imageUrl", message: "is not reachable" }],
+				},
+				{
+					providerReason: "image_source,image_access",
+					providerFields: "orderItems[].file.imageUrl",
+					providerStatusCode: 400,
+					providerCode: 27,
+				},
+			],
+			[
+				{ message: "billing address", padding: "x".repeat(33 * 1024) },
+				{ providerReason: "unavailable" },
+			],
+		] as const) {
+			vi.stubGlobal("fetch", vi.fn().mockResolvedValue(providerJson(body, { status: 400 })));
+			const error = await createOrder(
+				buildLumaPrintsOrder("fail-order", mockRecipient, mockItems),
+			).catch((error: LumaPrintsSubmissionError) => error);
+			expect(error).toMatchObject({ disposition: "definitely_rejected" });
+			expect((error as LumaPrintsSubmissionError).details).toEqual({
+				operation: "create_order",
+				disposition: "definitely_rejected",
+				phase: "status",
+				statusCode: 400,
+				...expected,
+			});
 		}
 	});
 
@@ -387,7 +506,11 @@ describe("createOrder", () => {
 	] as const)("normalizes documented numeric or canonical-string order numbers", async (value, expected) => {
 		vi.stubGlobal(
 			"fetch",
-			vi.fn().mockResolvedValue(providerJson({ message: "queued", orderNumber: value })),
+			vi
+				.fn()
+				.mockResolvedValue(
+					providerJson({ message: "queued", orderNumber: value, providerVersion: 2 }),
+				),
 		);
 
 		const result = await createOrder(
@@ -410,7 +533,6 @@ describe("createOrder", () => {
 		{ message: "queued", orderNumber: "+1" },
 		{ message: "queued", orderNumber: "0" },
 		{ message: "queued", orderNumber: "1".repeat(65) },
-		{ message: "queued", orderNumber: "10000000001", unexpected: true },
 	])("rejects malformed create response envelopes", async (body) => {
 		vi.stubGlobal("fetch", vi.fn().mockResolvedValue(providerJson(body)));
 		await expect(
@@ -475,7 +597,7 @@ describe("createOrder", () => {
 	});
 
 	it.each([
-		400, 406, 429,
+		400, 406,
 	])("treats documented create non-acceptance status %s as definitely rejected", async (status) => {
 		vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(null, { status })));
 		const thrown = await createOrder(
@@ -490,8 +612,8 @@ describe("createOrder", () => {
 	});
 
 	it.each([
-		401, 403, 408, 418, 422, 500, 503,
-	])("keeps unexpected create status %s uncertain", async (status) => {
+		401, 403, 408, 418, 422, 429, 500, 503,
+	])("keeps non-final create status %s uncertain", async (status) => {
 		vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(null, { status })));
 		const thrown = await createOrder(
 			buildLumaPrintsOrder("uncertain-order", mockRecipient, mockItems),
@@ -502,6 +624,56 @@ describe("createOrder", () => {
 			details: { operation: "create_order", phase: "status", statusCode: status },
 		});
 		expect(classifyLumaPrintsFailure(thrown)).toBe("transient");
+	});
+});
+
+describe("confirmOrder", () => {
+	const externalId = "cs_test_1234567890abcdef";
+	const orderNumber = "10000000001";
+
+	beforeEach(() => {
+		vi.unstubAllGlobals();
+	});
+
+	it("confirms only the exact queued order identity and treats 404 as pending", async () => {
+		const fetchMock = vi
+			.fn()
+			.mockResolvedValueOnce(
+				providerJson({ orderNumber, externalId, storeId: "83765", documentedDetail: true }),
+			)
+			.mockResolvedValueOnce(new Response(null, { status: 404 }));
+		vi.stubGlobal("fetch", fetchMock);
+
+		await expect(confirmOrder(orderNumber, externalId)).resolves.toBe(true);
+		await expect(confirmOrder(orderNumber, externalId)).resolves.toBe(false);
+		expect(fetchMock).toHaveBeenCalledWith(
+			expect.stringContaining(`/api/v1/orders/${orderNumber}`),
+			expect.objectContaining({ headers: expect.any(Object), signal: expect.any(AbortSignal) }),
+		);
+	});
+
+	it.each([
+		[{ externalId, storeId: "83765" }, "response_contract"],
+		[{ orderNumber, externalId: `${externalId}x`, storeId: "83765" }, "ambiguous_result"],
+		[{ orderNumber, externalId, storeId: "83766" }, "ambiguous_result"],
+	] as const)("blocks malformed or mismatched provider identity", async (body, reconciliationClass) => {
+		vi.stubGlobal("fetch", vi.fn().mockResolvedValue(providerJson(body)));
+		await expect(confirmOrder(orderNumber, externalId)).rejects.toMatchObject({
+			disposition: "blocked",
+			reconciliationClass,
+		});
+	});
+
+	it.each([
+		[429, "retryable", undefined],
+		[503, "retryable", undefined],
+		[403, "blocked", "provider_rejected"],
+	] as const)("classifies confirmation status %s", async (status, disposition, reconciliationClass) => {
+		vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(null, { status })));
+		await expect(confirmOrder(orderNumber, externalId)).rejects.toMatchObject({
+			disposition,
+			...(reconciliationClass ? { reconciliationClass } : {}),
+		});
 	});
 });
 

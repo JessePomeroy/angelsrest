@@ -1,0 +1,232 @@
+import { createHash } from "node:crypto";
+import {
+	handleCreateCatalogPrivateUploadCapability,
+	handlePutCatalogPrivateSource,
+	handlePutPrintArtifact,
+} from "@print-worker/catalogPrivateUploadRoutes";
+import { handleCmsFulfillmentRequest } from "@print-worker/fulfillmentCapabilities";
+import sharp from "sharp";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import {
+	issueTenantPrintSourceCapability,
+	storePrintArtifact,
+} from "../../src/lib/server/catalogCommerceClients";
+import { renderPrintSource } from "../../src/lib/server/printSourcePreparation";
+import { adminSecret, issuerSecret, origin, tenant, uploadSecret } from "./env.mjs";
+
+// The only fake is the storage/runtime boundary, not either side of the HTTP protocol.
+function storage() {
+	const objects = new Map();
+	return {
+		objects,
+		async head(key) {
+			return objects.get(key) ?? null;
+		},
+		async put(key, stream, options) {
+			expect(options.onlyIf.get("If-None-Match")).toBe("*");
+			if (objects.has(key)) return null;
+			const bytes = new Uint8Array(await new Response(stream).arrayBuffer());
+			const hash = createHash("sha256").update(bytes).digest("hex");
+			if (hash !== Buffer.from(options.sha256).toString("hex"))
+				throw new Error("Checksum mismatch");
+			const object = {
+				key,
+				size: bytes.length,
+				etag: hash,
+				httpEtag: `"${hash}"`,
+				uploaded: new Date(),
+				httpMetadata: options.httpMetadata,
+				customMetadata: options.customMetadata,
+				checksums: { sha256: options.sha256 },
+				bytes,
+			};
+			objects.set(key, object);
+			return object;
+		},
+		async get(key, options) {
+			const object = objects.get(key);
+			if (!object || options.onlyIf.etagMatches !== object.etag) return null;
+			return { ...object, body: new Response(object.bytes).body };
+		},
+	};
+}
+
+class FixedLengthStream extends TransformStream {
+	constructor(expected) {
+		let seen = 0;
+		super({
+			transform(chunk, controller) {
+				seen += chunk.byteLength;
+				if (seen > expected) throw new Error("Upload too long");
+				controller.enqueue(chunk);
+			},
+			flush() {
+				if (seen !== expected) throw new Error("Upload too short");
+			},
+		});
+	}
+}
+
+describe("host ↔ Worker print artwork contract (no network)", () => {
+	let bucket;
+	let workerEnv;
+	let requests;
+	let rendered;
+	let original;
+	beforeEach(async () => {
+		bucket = storage();
+		requests = [];
+		original = undefined;
+		const registry = (secret) => JSON.stringify({ [tenant]: [secret] });
+		workerEnv = {
+			CMS_MEDIA_PRIVATE_BUCKET: bucket,
+			CMS_MEDIA_TENANT_SECRETS: registry(adminSecret),
+			CATALOG_PRINT_ARTIFACT_UPLOAD_SECRETS: registry(uploadSecret),
+			CATALOG_PRIVATE_FULFILLMENT_PRINT_SOURCE_ISSUER_SECRETS: registry(issuerSecret),
+			CATALOG_PRIVATE_FULFILLMENT_PAID_DOWNLOAD_ISSUER_SECRETS: registry(
+				"fixture-paid-issuer-0123456789abcdef",
+			),
+			CATALOG_PRIVATE_FULFILLMENT_SEALING_ROOTS: JSON.stringify({
+				current: Buffer.alloc(32, 17).toString("base64url"),
+				previous: null,
+			}),
+		};
+		vi.stubGlobal("FixedLengthStream", FixedLengthStream);
+		vi.stubGlobal("fetch", async (input, init) => {
+			const request = new Request(input, init);
+			const url = new URL(request.url);
+			// No fallback to real fetch: an unexpected origin/path fails the proof.
+			expect(url.origin).toBe(origin);
+			requests.push(`${request.method} ${url.pathname}`);
+			if (url.pathname === "/fixture-original.png" && request.method === "GET" && original) {
+				return new Response(new Uint8Array(original), {
+					headers: {
+						"Content-Type": "image/png",
+						"Content-Length": String(original.byteLength),
+					},
+				});
+			}
+			if (url.pathname === "/v1/catalog-assets/print-artifacts" && request.method === "PUT") {
+				return handlePutPrintArtifact(request, workerEnv);
+			}
+			if (url.pathname === "/v1/catalog-assets/uploads/capabilities" && request.method === "POST") {
+				return handleCreateCatalogPrivateUploadCapability(request, workerEnv);
+			}
+			if (url.pathname === "/v1/catalog-assets/uploads/source" && request.method === "PUT") {
+				return handlePutCatalogPrivateSource(request, workerEnv);
+			}
+			if (url.pathname.startsWith("/v1/catalog-assets/fulfillment/print-source/")) {
+				return handleCmsFulfillmentRequest(request, workerEnv);
+			}
+			throw new Error("Unexpected contract request");
+		});
+		const bytes = await sharp({
+			create: { width: 600, height: 400, channels: 3, background: "#345678" },
+		})
+			.jpeg()
+			.toBuffer();
+		rendered = {
+			bytes,
+			hash: createHash("sha256").update(bytes).digest("hex"),
+			width: 600,
+			height: 400,
+		};
+	});
+	afterEach(() => vi.unstubAllGlobals());
+
+	it.each([
+		"upload-token",
+		"direct-v1",
+	])("prepares a large original before storing it with %s", async (protocol) => {
+		// Match the blocked jobs' source dimensions without using customer artwork.
+		// Uncompressed PNG also exercises a larger download than their 55 MB input.
+		original = await sharp({
+			create: { width: 6935, height: 4623, channels: 3, background: "#345678" },
+		})
+			.png({ compressionLevel: 0 })
+			.toBuffer();
+		expect(original.byteLength).toBeGreaterThan(55_009_177);
+		expect(original.byteLength).toBeLessThan(100 * 1024 * 1024);
+		const stages = [];
+		const prepared = await renderPrintSource(
+			{
+				imageUrl: `${origin}/fixture-original.png`,
+				width: 4,
+				height: 6,
+				paperSubcategoryId: 103007,
+				quantity: 1,
+			},
+			(stage) => stages.push(stage),
+		);
+		expect(stages).toEqual(["download", "decode", "geometry", "render"]);
+		expect([prepared.width, prepared.height]).toEqual([1800, 1200]);
+		expect(prepared.geometry).toMatchObject({ widthInches: 6, heightInches: 4 });
+		const descriptor = await storePrintArtifact(tenant, prepared, undefined, protocol);
+		const capability = await issueTenantPrintSourceCapability(descriptor, tenant);
+		const response = await fetch(capability.url);
+		expect(response.status).toBe(200);
+		const downloaded = Buffer.from(await response.arrayBuffer());
+		expect(downloaded.equals(prepared.bytes)).toBe(true);
+		expect(createHash("sha256").update(downloaded).digest("hex")).toBe(descriptor.hash);
+		expect(bucket.objects.size).toBe(1);
+	}, 15_000);
+
+	it.each([
+		"upload-token",
+		"direct-v1",
+	])("stores exact JPEG bytes with %s, issues a usable URL and resumes immutably", async (protocol) => {
+		const descriptor = await storePrintArtifact(tenant, rendered, undefined, protocol);
+		const capability = await issueTenantPrintSourceCapability(descriptor, tenant);
+		expect(capability.expiresAt - Date.now()).toBeGreaterThan(23 * 60 * 60 * 1000);
+		const head = await fetch(capability.url, { method: "HEAD" });
+		expect(head.status).toBe(200);
+		expect(head.headers.get("content-type")).toBe("image/jpeg");
+		expect(Number(head.headers.get("content-length"))).toBe(rendered.bytes.length);
+		expect(await head.text()).toBe("");
+		const response = await fetch(capability.url);
+		expect(response.status).toBe(200);
+		const bytes = Buffer.from(await response.arrayBuffer());
+		expect(bytes.equals(rendered.bytes)).toBe(true);
+		expect(await sharp(bytes).metadata()).toMatchObject({
+			format: "jpeg",
+			width: 600,
+			height: 400,
+		});
+		expect(await storePrintArtifact(tenant, rendered, undefined, protocol)).toEqual(descriptor);
+		expect(requests.filter((request) => request.startsWith("PUT "))).toHaveLength(
+			protocol === "direct-v1" ? 2 : 1,
+		);
+		if (protocol === "direct-v1")
+			expect(requests).not.toContain("POST /v1/catalog-assets/uploads/capabilities");
+		expect(bucket.objects.size).toBe(1);
+	});
+
+	it.each([
+		"upload-token",
+		"direct-v1",
+	])("fails closed for a different tenant or wrong hash with %s", async (protocol) => {
+		await expect(
+			storePrintArtifact("another.example", rendered, { origin, bearer: uploadSecret }, protocol),
+		).rejects.toThrow();
+		expect(requests).toEqual([
+			protocol === "direct-v1"
+				? "PUT /v1/catalog-assets/print-artifacts"
+				: "POST /v1/catalog-assets/uploads/capabilities",
+		]);
+		await expect(
+			storePrintArtifact(tenant, { ...rendered, hash: "ab".repeat(32) }, undefined, protocol),
+		).rejects.toThrow();
+		expect(requests.filter((request) => request.startsWith("PUT "))).toHaveLength(
+			protocol === "direct-v1" ? 2 : 1,
+		);
+		expect(bucket.objects.size).toBe(0);
+	});
+
+	it("does not turn an upload credential into a provider URL issuer", async () => {
+		const descriptor = await storePrintArtifact(tenant, rendered);
+		workerEnv.CATALOG_PRIVATE_FULFILLMENT_PRINT_SOURCE_ISSUER_SECRETS = JSON.stringify({
+			[tenant]: [uploadSecret],
+		});
+		await expect(issueTenantPrintSourceCapability(descriptor, tenant)).rejects.toThrow();
+	});
+});

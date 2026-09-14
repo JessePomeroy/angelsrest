@@ -297,3 +297,21 @@ export async function storedState(t: ReturnType<typeof convexTest>) {
 		paidFiles: await ctx.db.query("catalogDigitalFileAssets").take(40),
 	}));
 }
+
+
+/** Exercise retained registry invariants directly, with no historical HTTP ingress. */
+export async function recordFixtureReceipt(
+	t: ReturnType<typeof convexTest>,
+	...[role, body]: ["storage", CatalogPrivateStorageReceiptSet] | ["inspection", CatalogPrivateInspectionReceiptSet]
+) {
+	const { recordCatalogPrivateStorageReceiptSet, recordCatalogPrivateInspectionReceiptSet } =
+		await import("../convex/helpers/catalogPrivateAssetRegistry");
+	try {
+		const result = await t.run(async (ctx) => role === "storage"
+			? await recordCatalogPrivateStorageReceiptSet(ctx, body)
+			: await recordCatalogPrivateInspectionReceiptSet(ctx, body));
+		return { accepted: true, result };
+	} catch (error) {
+		return { accepted: false, get result(): never { throw error; } };
+	}
+}

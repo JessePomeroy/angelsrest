@@ -13,8 +13,12 @@ const mockSendFulfillmentFailureAlert = vi.fn();
 const mockSendPaymentFailedEmail = vi.fn();
 const mockSendPrintReconciliationBlockedAlert = vi.fn();
 const mockBuildOrderItemsFromSnapshot = vi.fn();
+const mockPreparePrintSources = vi.fn(async (items: unknown) => items);
 const mockPrivateEnv = vi.hoisted(() => ({
+	LUMAPRINTS_API_KEY: "test-key",
+	LUMAPRINTS_API_SECRET: "test-secret",
 	LUMAPRINTS_STORE_ID: "123",
+	LUMAPRINTS_USE_SANDBOX: "true",
 	WEBHOOK_SECRET: "test-webhook-secret",
 	CHECKOUT_SNAPSHOT_MODE: undefined as string | undefined,
 }));
@@ -58,16 +62,19 @@ vi.mock("$convex/api", () => ({
 			markAutomatedFulfillmentRefundRequestUncertain:
 				"orders.markAutomatedFulfillmentRefundRequestUncertain",
 			claimOrderConfirmation: "orders.claimOrderConfirmation",
+			prepareOrderReceipt: "orders.prepareOrderReceipt",
 			claimPaymentFailureEmail: "orders.claimPaymentFailureEmail",
 			claimNonPrintOrderOutcome: "orders.claimNonPrintOrderOutcome",
 			claimPrintFulfillmentV3: "orders.claimPrintFulfillmentV3",
 			claimPrintFulfillmentV4: "orders.claimPrintFulfillmentV4",
+			claimPrintFulfillmentV5: "orders.claimPrintFulfillmentV5",
 			claimPrintFulfillmentReconciliationAlert: "orders.claimPrintFulfillmentReconciliationAlert",
 			completeFulfillmentFailureNotificationV2: "orders.completeFulfillmentFailureNotificationV2",
 			recordAutomatedFulfillmentRefund: "orders.recordAutomatedFulfillmentRefund",
 			completePrintFulfillmentReconciliationAlert:
 				"orders.completePrintFulfillmentReconciliationAlert",
 			completePrintFulfillmentSubmission: "orders.completePrintFulfillmentSubmission",
+			recordPrintFulfillmentSubmissionReceipt: "orders.recordPrintFulfillmentSubmissionReceipt",
 			create: "orders.create",
 			reconcilePrintFulfillmentSubmission: "orders.reconcilePrintFulfillmentSubmission",
 			reconcileAutomatedFulfillmentRefund: "orders.reconcileAutomatedFulfillmentRefund",
@@ -94,6 +101,9 @@ vi.mock("$convex/api", () => ({
 vi.mock("$env/dynamic/private", () => ({ env: mockPrivateEnv }));
 vi.mock("$lib/server/snapshotFulfillment", () => ({
 	buildOrderItemsFromSnapshot: mockBuildOrderItemsFromSnapshot,
+}));
+vi.mock("$lib/server/printSourcePreparation", () => ({
+	preparePrintSources: mockPreparePrintSources,
 }));
 
 vi.mock("$lib/config/site", () => ({
@@ -140,7 +150,7 @@ function makeCheckoutSession(
 			},
 		},
 		metadata: {
-			imageUrl: "https://cdn.sanity.io/images/photo.jpg",
+			imageUrl: "https://media.example.test/photo.jpg",
 			paperSubcategoryId: "103001",
 			paperWidth: "8",
 			paperHeight: "10",
@@ -165,6 +175,7 @@ function makeLineItem(ordinal = 0): Stripe.LineItem {
 }
 
 const snapshotHandle = "123e4567-e89b-42d3-a456-426614174000";
+const tenantId = "tenant_05eb6092-5d8c-43ce-ad26-1a59522bd07b";
 function handleMetadata(overrides: Record<string, string> = {}) {
 	return {
 		...makeCheckoutSession().metadata,
@@ -224,6 +235,7 @@ describe("processStripeWebhookEvent", () => {
 	} as any;
 	const resend = {} as any;
 	const createLumaPrintsOrder = vi.fn();
+	const confirmLumaPrintsOrder = vi.fn();
 	const stripe = {
 		checkout: {
 			sessions: {
@@ -269,6 +281,8 @@ describe("processStripeWebhookEvent", () => {
 				if (reference === "orders.claimNonPrintOrderOutcome") {
 					return nonPrintOutcomeOverride ?? { kind: "success" };
 				}
+				// This mocked suite exercises legacy outcomes; receipt delivery uses real Convex tests.
+				if (reference === "orders.prepareOrderReceipt") return { kind: "complete" };
 				if (reference === "orders.claimOrderConfirmation") {
 					const result = orderConfirmationClaimResults.shift();
 					if (result === undefined) throw new Error("Missing order-confirmation claim result");
@@ -279,7 +293,7 @@ describe("processStripeWebhookEvent", () => {
 					if (result === undefined) throw new Error("Missing payment-failure claim result");
 					return result;
 				}
-				if (reference === "orders.claimPrintFulfillmentV4")
+				if (reference === "orders.claimPrintFulfillmentV5")
 					return (
 						printClaimResults.shift() ??
 						claimResultOverride ?? { kind: "claimed", externalId: claimedExternalId }
@@ -340,6 +354,9 @@ describe("processStripeWebhookEvent", () => {
 				if (reference === "orders.recordPrintFulfillmentReconciliationPending") {
 					return { kind: "pending", attempts: 1 };
 				}
+				if (reference === "orders.recordPrintFulfillmentSubmissionReceipt") {
+					return { kind: "recorded" };
+				}
 				if (reference === "orders.blockPrintFulfillmentReconciliation") {
 					const result = blockReconciliationResults.shift();
 					if (result === undefined) throw new Error("Missing reconciliation-block claim result");
@@ -386,10 +403,11 @@ describe("processStripeWebhookEvent", () => {
 		stripe.checkout.sessions.listLineItems.mockReset();
 		stripe.refunds.create.mockResolvedValue({ id: "re_test_123", status: "succeeded" });
 		createLumaPrintsOrder.mockResolvedValue({ orderNumber: "123" });
+		confirmLumaPrintsOrder.mockResolvedValue(true);
 	});
 
 	function adapters() {
-		return { stripe, resend, convex, createLumaPrintsOrder };
+		return { stripe, resend, convex, createLumaPrintsOrder, confirmLumaPrintsOrder };
 	}
 
 	function manualRefundEvent(overrides: Record<string, unknown> = {}) {
@@ -608,6 +626,23 @@ describe("processStripeWebhookEvent", () => {
 		expect(mockSendFailureAlert).not.toHaveBeenCalled();
 	});
 
+	it("acknowledges a durably queued print without doing image work inside the webhook", async () => {
+		const session = makeCheckoutSession();
+		stripe.checkout.sessions.retrieve.mockResolvedValue({
+			...session,
+			line_items: { data: [makeLineItem()] },
+		});
+		orderCreateResults = [makeOrderResult({ printJobId: "job-123" })];
+		const { processStripeWebhookEvent } = await import("../orderIntake");
+		await processStripeWebhookEvent(
+			makeStripeEvent("checkout.session.completed", session),
+			adapters(),
+		);
+		expect(mockPreparePrintSources).not.toHaveBeenCalled();
+		expect(createLumaPrintsOrder).not.toHaveBeenCalled();
+		expect(convex.mutation).toHaveBeenCalledWith("orders.prepareOrderReceipt", expect.anything());
+	});
+
 	it("drives a print checkout through the real fulfillment orchestration interface", async () => {
 		const session = makeCheckoutSession();
 		stripe.checkout.sessions.retrieve.mockResolvedValue({
@@ -626,8 +661,17 @@ describe("processStripeWebhookEvent", () => {
 		expect(mockSendAdminNotification).toHaveBeenCalledTimes(1);
 		expect(mockSendCustomerFulfillmentFailure).not.toHaveBeenCalled();
 		expect(convex.mutation).toHaveBeenCalledWith(
-			"orders.completePrintFulfillmentSubmission",
+			"orders.recordPrintFulfillmentSubmissionReceipt",
+			expect.objectContaining({ lumaprintsSubmissionOrderNumber: "123" }),
+		);
+		expect(confirmLumaPrintsOrder).toHaveBeenCalledWith("123", session.id);
+		expect(convex.mutation).toHaveBeenCalledWith(
+			"orders.reconcilePrintFulfillmentSubmission",
 			expect.objectContaining({ lumaprintsOrderNumber: "123" }),
+		);
+		expect(convex.mutation).not.toHaveBeenCalledWith(
+			"orders.completePrintFulfillmentSubmission",
+			expect.anything(),
 		);
 	});
 
@@ -676,7 +720,7 @@ describe("processStripeWebhookEvent", () => {
 			{ idempotencyKey: `fulfillment-refund:${session.id}` },
 		);
 		expect(convex.mutation).not.toHaveBeenCalledWith(
-			"orders.completePrintFulfillmentSubmission",
+			"orders.recordPrintFulfillmentSubmissionReceipt",
 			expect.anything(),
 		);
 		expect(mockSendCustomerFulfillmentFailure).toHaveBeenCalledOnce();
@@ -1065,7 +1109,7 @@ describe("processStripeWebhookEvent", () => {
 		expect(mockSendCustomerFulfillmentFailure).not.toHaveBeenCalled();
 		expect(mockSendAdminNotification).not.toHaveBeenCalled();
 		expect(convex.mutation).not.toHaveBeenCalledWith(
-			"orders.claimPrintFulfillmentV4",
+			"orders.claimPrintFulfillmentV5",
 			expect.anything(),
 		);
 	});
@@ -1098,7 +1142,7 @@ describe("processStripeWebhookEvent", () => {
 		expect(mockSendCustomerFulfillmentFailure).not.toHaveBeenCalled();
 		expect(mockSendAdminNotification).not.toHaveBeenCalled();
 		expect(convex.mutation).not.toHaveBeenCalledWith(
-			"orders.claimPrintFulfillmentV4",
+			"orders.claimPrintFulfillmentV5",
 			expect.anything(),
 		);
 	});
@@ -1362,16 +1406,17 @@ describe("processStripeWebhookEvent", () => {
 				checkoutSnapshotVersion: "2",
 				checkoutSnapshotHandle: snapshotHandle,
 				commerceTenantSiteUrl: "angelsrest.online",
+				commerceTenantId: tenantId,
 			},
 		});
 		const lineItems = [makeLineItem()];
 		const checkoutSnapshot = {
 			schemaVersion: 1 as const,
-			catalogProvider: "sanity" as const,
+			catalogProvider: "convex" as const,
 			items: [
 				{
-					productKey: "sanity-product-id",
-					revisionId: "sanity-revision-id",
+					productKey: "catalog-product-id",
+					revisionId: "catalog-revision-id",
 					productKind: "print" as const,
 					variantKey: null,
 					materialOptionKey: "archival-matte",
@@ -1383,16 +1428,21 @@ describe("processStripeWebhookEvent", () => {
 		};
 		stripe.checkout.sessions.retrieve.mockResolvedValue(session);
 		stripe.checkout.sessions.listLineItems.mockResolvedValue({ data: lineItems, has_more: false });
-		convex.query.mockResolvedValue({
-			source: "reservation",
-			siteUrl: "angelsrest.online",
-			stripeConnectedAccountId: undefined,
+		convex.query.mockImplementation(async (reference: string) => {
+			if (reference === "orders.resolveCheckoutRouting") {
+				return {
+					source: "reservation",
+					siteUrl: "angelsrest.online",
+					stripeConnectedAccountId: undefined,
+				};
+			}
+			return { tenantId, siteUrl: "angelsrest.online" };
 		});
 		orderCreateResults = [makeOrderResult({ checkoutSnapshot })];
 		mockBuildOrderItemsFromSnapshot.mockResolvedValue([
 			{
-				imageUrl: "https://cdn.sanity.io/images/print.jpg",
-				sourcePolicy: "sanity_cdn",
+				imageUrl: "https://media.example.test/images/print.jpg",
+				sourcePolicy: "byte_exact",
 				quantity: 1,
 				paperSubcategoryId: 103001,
 				width: 4,
@@ -1409,6 +1459,7 @@ describe("processStripeWebhookEvent", () => {
 		expect(convex.query).toHaveBeenCalledWith("orders.resolveCheckoutRouting", {
 			stripeSessionId: session.id,
 			stripeTenantMetadataSiteUrl: "angelsrest.online",
+			stripeTenantMetadataTenantId: tenantId,
 			webhookSecret: "test-webhook-secret",
 		});
 		expect(stripe.checkout.sessions.listLineItems).toHaveBeenCalledWith(
@@ -1419,6 +1470,7 @@ describe("processStripeWebhookEvent", () => {
 		expect(convex.mutation).toHaveBeenCalledWith(
 			"orders.create",
 			expect.objectContaining({
+				tenantId,
 				checkoutSnapshotReservation: { version: 2, handle: snapshotHandle },
 				items: [
 					{
@@ -1429,10 +1481,27 @@ describe("processStripeWebhookEvent", () => {
 				],
 			}),
 		);
+		expect(convex.mutation).toHaveBeenCalledWith(
+			"orders.claimPrintFulfillmentV5",
+			expect.objectContaining({ tenantId }),
+		);
+		expect(convex.mutation).toHaveBeenCalledWith(
+			"orders.beginPrintFulfillmentSubmission",
+			expect.objectContaining({ tenantId }),
+		);
+		expect(convex.mutation).toHaveBeenCalledWith(
+			"orders.recordPrintFulfillmentSubmissionReceipt",
+			expect.objectContaining({ tenantId }),
+		);
+		expect(convex.mutation).toHaveBeenCalledWith(
+			"orders.reconcilePrintFulfillmentSubmission",
+			expect.objectContaining({ tenantId }),
+		);
 		expect(mockBuildOrderItemsFromSnapshot).toHaveBeenCalledWith(
 			checkoutSnapshot,
 			session.id,
 			lineItems,
+			"angelsrest.online",
 		);
 		expect(createLumaPrintsOrder).toHaveBeenCalledTimes(1);
 		expect(mockBuildOrderItemsFromSnapshot.mock.invocationCallOrder[0]).toBeLessThan(
@@ -2059,6 +2128,43 @@ describe("processStripeWebhookEvent", () => {
 		expect(mockSendFulfillmentFailureAlert).not.toHaveBeenCalled();
 	});
 
+	it("confirms a queued canceled fulfillment without retrying side effects", async () => {
+		const session = makeCheckoutSession();
+		stripe.checkout.sessions.retrieve.mockResolvedValue({
+			...session,
+			line_items: { data: [makeLineItem()] },
+		});
+		orderCreateResults = [
+			makeOrderResult({
+				alreadyExisted: true,
+				status: "canceled",
+				printFulfillmentClaim: true,
+				printFulfillmentPhase: "submitting",
+				printFulfillmentResolution: "submission_uncertain",
+			}),
+		];
+		printClaimResults = [
+			{ kind: "reconcile", externalId: session.id, submissionOrderNumber: "123" },
+		];
+		printCompletionResultOverride = { kind: "canceled" };
+
+		const { processStripeWebhookEvent } = await import("../orderIntake");
+		await processStripeWebhookEvent(
+			makeStripeEvent("checkout.session.completed", session),
+			adapters(),
+		);
+
+		expect(createLumaPrintsOrder).not.toHaveBeenCalled();
+		expect(confirmLumaPrintsOrder).toHaveBeenCalledWith("123", session.id);
+		expect(convex.mutation).toHaveBeenCalledWith(
+			"orders.reconcilePrintFulfillmentSubmission",
+			expect.objectContaining({ lumaprintsOrderNumber: "123" }),
+		);
+		expect(stripe.refunds.create).not.toHaveBeenCalled();
+		expect(mockSendCustomerConfirmation).not.toHaveBeenCalled();
+		expect(mockSendCustomerFulfillmentFailure).not.toHaveBeenCalled();
+	});
+
 	it("sends payment failure email for a marked Your-account commerce PaymentIntent", async () => {
 		const paymentIntent = {
 			id: "pi_test_123",
@@ -2275,11 +2381,11 @@ describe("processStripeWebhookEvent", () => {
 			const lineItems = [makeLineItem()];
 			const checkoutSnapshot = {
 				schemaVersion: 1 as const,
-				catalogProvider: "sanity" as const,
+				catalogProvider: "convex" as const,
 				items: [
 					{
-						productKey: "sanity-product-id",
-						revisionId: "sanity-revision-id",
+						productKey: "catalog-product-id",
+						revisionId: "catalog-revision-id",
 						productKind: "print" as const,
 						variantKey: "variant",
 						materialOptionKey: "paper",
@@ -2346,8 +2452,8 @@ describe("processStripeWebhookEvent", () => {
 			});
 			mockBuildOrderItemsFromSnapshot.mockResolvedValue([
 				{
-					imageUrl: "https://cdn.sanity.io/images/print.jpg",
-					sourcePolicy: "sanity_cdn",
+					imageUrl: "https://media.example.test/images/print.jpg",
+					sourcePolicy: "byte_exact",
 					quantity: 1,
 					paperSubcategoryId: 103001,
 					width: 8,

@@ -4,6 +4,7 @@ import {
 	getFrame,
 	getFrameWholesaleCost,
 	getPaper,
+	getPrintProductConfiguration,
 	getSize,
 	getWholesaleCost,
 	isCanvasPaper,
@@ -22,7 +23,9 @@ import { loadCatalogProductKinds } from "./catalogProductPolicy";
 import {
 	isStripeCheckoutSessionId,
 	parseReservedCheckoutSnapshot,
+	type ReservedCheckoutSnapshot,
 } from "./checkoutSnapshot";
+import type { reservedPrintInputValidator } from "./printFulfillmentJobs";
 
 const itemValidator = v.object({
 	productKey: v.string(),
@@ -185,7 +188,10 @@ function resolvePrintCommerce(graph: LoadedGraph, item: SnapshotItem, retailPric
 }
 
 function privateDescriptor(graph: LoadedGraph) {
-	if (graph.draft.productKind === "print" || graph.draft.productKind === "print_set") {
+	if (
+		(graph.draft.productKind === "print" || graph.draft.productKind === "print_set")
+		&& graph.draft.fulfillmentMode === "production_partner"
+	) {
 		const members = graph.draft.productKind === "print_set"
 			? new Map(graph.setMembers.map((member) => [member.printSourceKey, member.memberKey]))
 			: new Map<string, string>();
@@ -219,10 +225,34 @@ function privateDescriptor(graph: LoadedGraph) {
 	return { kind: "merchant" as const, source: null };
 }
 
+function fulfillmentMedia(graph: LoadedGraph) {
+	const media = projectCatalogProductGraphV2Public(graph).media;
+	const withoutPresentationCopy = (item: (typeof media)[number]) => ({
+		...item,
+		// Checkout and fulfillment use role/order/asset identity only. Keep the
+		// exact envelope shape while excluding presentation copy whose UTF-8 size
+		// can exceed the private resolver's bounded response contract.
+		altText: null,
+	});
+	if (graph.draft.productKind === "print") {
+		const primary = media.find(({ role }) => role === "primary");
+		if (!primary) throw rejected();
+		return [withoutPresentationCopy(primary)];
+	}
+	if (graph.draft.productKind === "print_set") {
+		const cover = media.find(({ role }) => role === "cover");
+		const members = media.filter(({ role }) => role === "set_member");
+		if (!cover || members.length === 0) throw rejected();
+		return [cover, ...members].map(withoutPresentationCopy);
+	}
+	const gallery = media.find(({ role }) => role === "gallery");
+	if (!gallery) throw rejected();
+	return [withoutPresentationCopy(gallery)];
+}
+
 function baseResponse(graph: LoadedGraph, item: SnapshotItem) {
 	const variant = selectedVariant(graph, item);
 	const commerce = resolvePrintCommerce(graph, item, variant.retailPriceCents);
-	const publishedProjection = projectCatalogProductGraphV2Public(graph);
 	return {
 		version: 1 as const,
 		item,
@@ -235,7 +265,7 @@ function baseResponse(graph: LoadedGraph, item: SnapshotItem) {
 			variantKey: variant.variantKey,
 		},
 		commerce: { currency: "usd" as const, ...commerce },
-		media: publishedProjection.media,
+		media: fulfillmentMedia(graph),
 	};
 }
 
@@ -257,6 +287,52 @@ function isRefunded(order: Doc<"orders">) {
 	return order.status === "refunded" || order.stripeRefundId !== undefined
 		|| order.fulfillmentRecoveryStatus === "refund_pending"
 		|| order.fulfillmentRecoveryStatus === "refunded";
+}
+
+/** Resolve once inside reservation creation; retries keep the original instruction. */
+export async function freezeCheckoutPrintInput(
+	ctx: QueryCtx, siteUrl: string, snapshot: ReservedCheckoutSnapshot,
+): Promise<Infer<typeof reservedPrintInputValidator>> {
+	const enabledKinds = await loadCatalogProductKinds(ctx, siteUrl);
+	const lines: Infer<typeof reservedPrintInputValidator>["lines"] = [];
+	if (snapshot.items.length < 1 || snapshot.items.length > 40) throw rejected();
+	for (const selected of snapshot.items) {
+		const { product, graph } = await loadExactGraph(ctx, siteUrl, selected);
+		if (!enabledKinds.includes(product.productKind)
+			|| product.publishedRevisionId !== graph.revision._id
+			|| graph.draft.saleAvailability !== "available") throw rejected();
+		const commerce = resolvePrintCommerce(graph, selected, selectedVariant(graph, selected).retailPriceCents);
+		const descriptor = privateDescriptor(graph);
+		const sources: Infer<typeof reservedPrintInputValidator>["lines"][number]["sources"] = [];
+		if (descriptor.kind === "print_sources") {
+			const finish = commerce.finish;
+			if (!finish || descriptor.sources.length < 1 || descriptor.sources.length > 20) throw rejected();
+			for (const source of descriptor.sources) {
+				if ((source.mime !== "image/jpeg" && source.mime !== "image/png")
+					|| !source.dimensions.width || !source.dimensions.height) throw rejected();
+				const item = {
+					paperSubcategoryId: finish.paper.subcategoryId,
+					width: finish.size.width, height: finish.size.height,
+					borderWidth: finish.border.inches || undefined,
+					frameSubcategoryId: finish.frame.subcategoryId || undefined,
+					canvasSubcategoryId: finish.canvas?.subcategoryId,
+					canvasWrapHex: finish.canvas?.wrapHex,
+				};
+				const providerProduct = getPrintProductConfiguration(item);
+				if (!providerProduct) throw rejected();
+				sources.push({
+					descriptor: { key: source.key, hash: source.hash, bytes: source.bytes,
+						mime: source.mime, dimensions: { width: source.dimensions.width, height: source.dimensions.height } },
+					item, product: providerProduct,
+				});
+			}
+		}
+		lines.push({ amountCents: commerce.amountCents, sources });
+	}
+	const input = { version: 1 as const, lines };
+	// Leave room for the original routing snapshot and paid-order fields under Convex's document limit.
+	if (new TextEncoder().encode(JSON.stringify(input)).byteLength > 512 * 1024) throw rejected();
+	return input;
 }
 
 export async function resolveCatalogCommerce(

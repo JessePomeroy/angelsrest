@@ -1,5 +1,6 @@
 import { type Infer, v } from "convex/values";
 import { catalogProductKindValidator } from "./catalogProductValidators";
+import { isTenantId } from "./tenantContext";
 
 const nullableKey = v.union(v.string(), v.null());
 const encoder = new TextEncoder();
@@ -20,7 +21,7 @@ const ITEM_KEYS = [
 /** Immutable provider-neutral routing identity captured when checkout resolves. */
 export const checkoutSnapshotValidator = v.object({
 	schemaVersion: v.literal(1),
-	catalogProvider: v.union(v.literal("sanity"), v.literal("convex")),
+	catalogProvider: v.literal("convex"),
 	items: v.array(
 		v.object({
 			productKey: v.string(),
@@ -35,10 +36,10 @@ export const checkoutSnapshotValidator = v.object({
 	),
 });
 
-/** Reservation rows use one normalized shape; legacy inline order inputs stay compatible. */
+/** Reservation rows and persisted orders use one normalized Convex catalog shape. */
 export const reservedCheckoutSnapshotValidator = v.object({
 	schemaVersion: v.literal(1),
-	catalogProvider: v.union(v.literal("sanity"), v.literal("convex")),
+	catalogProvider: v.literal("convex"),
 	items: v.array(v.object({
 		productKey: v.string(), revisionId: v.string(), productKind: catalogProductKindValidator,
 		variantKey: nullableKey, materialOptionKey: nullableKey, sizeOptionKey: nullableKey,
@@ -69,8 +70,8 @@ function siteString(value: unknown) {
 
 export function parseReservedCheckoutSnapshot(value: unknown): ReservedCheckoutSnapshot | null {
 	if (!exactRecord(value, ["schemaVersion", "catalogProvider", "items"])) return null;
-	if (value.schemaVersion !== 1 || (value.catalogProvider !== "sanity" && value.catalogProvider !== "convex")) return null;
-	const catalogProvider: "sanity" | "convex" = value.catalogProvider;
+	if (value.schemaVersion !== 1 || value.catalogProvider !== "convex") return null;
+	const catalogProvider = "convex" as const;
 	if (!Array.isArray(value.items) || value.items.length < 1 || value.items.length > 40) return null;
 	const items: ReservedCheckoutSnapshot["items"] = [];
 	for (const item of value.items) {
@@ -115,24 +116,43 @@ export function isBoundedStripeExpiration(
 }
 
 export function parseReservationRequest(value: unknown) {
-	if (!exactRecord(value, ["version", "site", "attempt", "account", "snapshot"])) return null;
+	const baseKeys = ["version", "site", "attempt", "account", "snapshot"];
+	if (
+		!exactRecord(value, baseKeys) &&
+		!exactRecord(value, [...baseKeys, "tenantId"]) &&
+		!exactRecord(value, [...baseKeys, "printInputVersion"]) &&
+		!exactRecord(value, [...baseKeys, "tenantId", "printInputVersion"])
+	)
+		return null;
+	if (Object.hasOwn(value, "printInputVersion") && value.printInputVersion !== 1) return null;
 	const site = siteString(value.site);
+	const tenantId = value.tenantId === undefined ? undefined : value.tenantId;
 	const account = value.account === null ? null : value.account;
 	const snapshot = parseReservedCheckoutSnapshot(value.snapshot);
 	return value.version === 1 && site && UUID_V4.test(String(value.attempt)) && snapshot
+		&& (tenantId === undefined || isTenantId(tenantId))
 		&& (account === null || isStripeConnectedAccountId(account))
-		? { site, attempt: value.attempt as string, account, snapshot } : null;
+		? { site, ...(tenantId ? { tenantId } : {}), attempt: value.attempt as string, account, snapshot,
+			...(value.printInputVersion === 1 ? { printInputVersion: 1 as const } : {}) } : null;
 }
 
 export function parseReservationBindRequest(value: unknown) {
-	if (!exactRecord(value, ["version", "site", "handle", "account", "session", "stripeExpiresAt"])) return null;
+	if (
+		!exactRecord(value, ["version", "site", "handle", "account", "session", "stripeExpiresAt"]) &&
+		!exactRecord(value, [
+			"version", "site", "tenantId", "handle", "account", "session", "stripeExpiresAt",
+		])
+	)
+		return null;
 	const site = siteString(value.site);
+	const tenantId = value.tenantId === undefined ? undefined : value.tenantId;
 	const account = value.account === null ? null : value.account;
 	return value.version === 1 && site && UUID_V4.test(String(value.handle))
+		&& (tenantId === undefined || isTenantId(tenantId))
 		&& (account === null || isStripeConnectedAccountId(account))
 		&& isStripeCheckoutSessionId(value.session)
 		&& isBoundedStripeExpiration(value.stripeExpiresAt)
-		? { site, handle: value.handle as string, account, session: value.session,
+		? { site, ...(tenantId ? { tenantId } : {}), handle: value.handle as string, account, session: value.session,
 			stripeExpiresAt: value.stripeExpiresAt as number } : null;
 }
 

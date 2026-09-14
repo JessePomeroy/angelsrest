@@ -81,7 +81,7 @@ describe("admin server secret custody", () => {
 		const { adminServerConfig } = await import("$lib/config/admin.server");
 
 		expect(adminServerConfig.catalogPrivateEditorUpload).toBeUndefined();
-		expect(adminServerConfig.convexUrl).toBe(convexUrl);
+		expect(adminServerConfig.convexUrl).toBe(convexUrl.replace(/\/+$/, ""));
 		expect(adminServerConfig.verifyAdmin).toBe(verifySiteAdminRequest);
 		expect(adminServerConfig.cmsMediaDeletionCompletionSecret).toBe("completion-secret");
 	});

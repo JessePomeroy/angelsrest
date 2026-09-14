@@ -6,7 +6,7 @@
     revision used an absolute-positioned floating badge that sat on top of
     the cart silhouette and obscured it; inline count keeps the icon clean
     and scales naturally for 2-digit totals.
-  - **pill** (mobile FAB): circular w-12 h-12 button with a floating count
+  - **pill** (mobile FAB): circular 3rem button with a floating count
     badge in the top-right corner. Bigger touch target, recognizable mobile
     pattern.
 
@@ -40,13 +40,13 @@ const displayCount = $derived(count > 99 ? "99+" : String(count));
     type="button"
     onclick={() => cartUI.open()}
     aria-label={count > 0 ? `Open cart, ${count} item${count === 1 ? "" : "s"}` : "Open cart"}
-    class="relative flex items-center justify-center w-12 h-12 rounded-full bg-surface-50 dark:bg-surface-900 border border-surface-500/30 shadow-lg active:scale-95 transition-transform"
+    class="cart-pill"
   >
-    <ShoppingCartIcon class="size-5" />
+    <ShoppingCartIcon size="1.25rem" />
     {#if count > 0}
       <span
         aria-hidden="true"
-        class="absolute -top-1 -right-1 min-w-[16px] h-4 px-1 rounded-full bg-gray-900 dark:bg-surface-50 text-surface-50 dark:text-gray-900 text-[10px] font-medium leading-4 text-center"
+        class="pill-count"
       >
         {displayCount}
       </span>
@@ -57,13 +57,68 @@ const displayCount = $derived(count > 99 ? "99+" : String(count));
     type="button"
     onclick={() => cartUI.open()}
     aria-label={count > 0 ? `Open cart, ${count} item${count === 1 ? "" : "s"}` : "Open cart"}
-    class="inline-flex items-center gap-1.5 text-gray-600 hover:text-gray-900 dark:text-surface-400 dark:hover:text-surface-50 transition-colors"
+    class="cart-link"
   >
-    <ShoppingCartIcon class="size-5" />
+    <ShoppingCartIcon size="1.25rem" />
     {#if count > 0}
-      <span class="text-xs tabular-nums tracking-wider">
+      <span class="inline-count">
         {displayCount}
       </span>
     {/if}
   </button>
 {/if}
+
+<style>
+  .cart-pill {
+    position: relative;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 3rem;
+    height: 3rem;
+    border-radius: 9999px;
+    background: var(--color-surface-50);
+    border: 1px solid color-mix(in oklab, var(--color-surface-500) 30%, transparent);
+    box-shadow: 0 10px 15px -3px rgb(0 0 0 / 10%), 0 4px 6px -4px rgb(0 0 0 / 10%);
+    transition: transform 150ms cubic-bezier(0.4, 0, 0.2, 1), scale 150ms cubic-bezier(0.4, 0, 0.2, 1);
+  }
+  .cart-pill:active { scale: 0.95; }
+  .pill-count {
+    position: absolute;
+    top: -0.25rem;
+    right: -0.25rem;
+    min-width: 16px;
+    height: 1rem;
+    padding-inline: 0.25rem;
+    border-radius: 9999px;
+    background: oklch(21% 0.034 264.665);
+    color: var(--color-surface-50);
+    font-size: 10px;
+    font-weight: 500;
+    line-height: 1rem;
+    text-align: center;
+  }
+  .cart-link {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.375rem;
+    color: oklch(44.6% 0.03 256.802);
+    transition: color 150ms cubic-bezier(0.4, 0, 0.2, 1);
+  }
+  .inline-count {
+    font-size: var(--text-xs);
+    line-height: var(--text-xs--line-height);
+    font-variant-numeric: tabular-nums;
+    letter-spacing: 0.05em;
+  }
+  :global(.dark) .cart-pill { background: var(--color-surface-900); }
+  :global(.dark) .pill-count {
+    background: var(--color-surface-50);
+    color: oklch(21% 0.034 264.665);
+  }
+  :global(.dark) .cart-link { color: var(--color-surface-400); }
+  @media (hover: hover) {
+    .cart-link:hover { color: oklch(21% 0.034 264.665); }
+    :global(.dark) .cart-link:hover { color: var(--color-surface-50); }
+  }
+</style>

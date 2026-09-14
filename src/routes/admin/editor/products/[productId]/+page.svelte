@@ -5,4 +5,6 @@ import type { PageData } from "./$types";
 let { data }: { data: PageData } = $props();
 </script>
 
-<ProductPage productId={data.productId} />
+{#key data.productId}
+	<ProductPage productId={data.productId} />
+{/key}

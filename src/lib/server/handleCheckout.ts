@@ -3,20 +3,28 @@ import type Stripe from "stripe";
 import { ApiErrorCode, apiError } from "$lib/server/apiError";
 import { getCheckoutSnapshotReservationCredential } from "$lib/server/checkoutBridgeConfig";
 import type { CheckoutSnapshotItem } from "$lib/server/checkoutCatalog";
+import { CheckoutSessionStageError } from "$lib/server/checkoutFailures";
 import {
 	type CheckoutAdmissionIdentity,
+	type CheckoutAdmissionPermit,
 	type CheckoutSessionAdmissionClient,
 	checkoutRequestFingerprint,
 	createCheckoutSessionAdmissionClient,
 } from "$lib/server/checkoutSessionAdmissionClient";
-import type { CheckoutSnapshotReservationClient } from "$lib/server/checkoutSnapshotReservationClient";
-import { createCheckoutSnapshotReservationClient } from "$lib/server/checkoutSnapshotReservationClient";
+import {
+	type CheckoutSnapshotReservationClient,
+	createCheckoutSnapshotReservationClient,
+	isCheckoutSnapshotReservationConflict,
+} from "$lib/server/checkoutSnapshotReservationClient";
 import { assertOrderProducersOpen } from "$lib/server/orderProducerGate";
+import { getFrozenPrintInputVersion } from "$lib/server/runtimeConfig";
 import {
 	createPaymentCheckoutSession,
 	type PaymentCheckoutSessionResult,
 } from "$lib/server/stripeCheckoutSession";
 import {
+	COMMERCE_TENANT_ID_METADATA_KEY,
+	COMMERCE_TENANT_ID_PATTERN,
 	COMMERCE_TENANT_METADATA_KEY,
 	type TenantStripeCheckoutOptions,
 } from "$lib/server/stripeConnect";
@@ -33,7 +41,7 @@ export interface CreateHandleCheckoutOptions {
 	attemptProofClass: CheckoutAdmissionIdentity["proofClass"];
 	site: string;
 	account: string | null;
-	catalogProvider: "sanity" | "convex";
+	catalogProvider: "convex";
 	snapshotItems: readonly CheckoutSnapshotItem[];
 	stripe: Stripe;
 	lineItems: Stripe.Checkout.SessionCreateParams.LineItem[];
@@ -171,7 +179,7 @@ export async function createHandleCheckoutSession({
 	if (!site || site !== site.trim() || site.length > 253 || site.includes("/")) throw invalid();
 	if (account !== null && !ACCOUNT_ID.test(account)) throw invalid();
 	if (
-		(catalogProvider !== "sanity" && catalogProvider !== "convex") ||
+		catalogProvider !== "convex" ||
 		snapshotItems.length < 1 ||
 		snapshotItems.length > 40 ||
 		lineItems.length !== snapshotItems.length
@@ -179,20 +187,39 @@ export async function createHandleCheckoutSession({
 		throw invalid();
 	validateRedirect(successUrl, site, allowedRedirectOrigins);
 	validateRedirect(cancelUrl, site, allowedRedirectOrigins);
+	const tenantIdValue = tenantCheckout.metadata[COMMERCE_TENANT_ID_METADATA_KEY];
 	if (
-		Object.keys(tenantCheckout.metadata).length !== 1 ||
-		tenantCheckout.metadata[COMMERCE_TENANT_METADATA_KEY] !== site
+		!Object.keys(tenantCheckout.metadata).every(
+			(key) => key === COMMERCE_TENANT_METADATA_KEY || key === COMMERCE_TENANT_ID_METADATA_KEY,
+		) ||
+		tenantCheckout.metadata[COMMERCE_TENANT_METADATA_KEY] !== site ||
+		(tenantIdValue !== undefined &&
+			(typeof tenantIdValue !== "string" || !COMMERCE_TENANT_ID_PATTERN.test(tenantIdValue)))
 	)
 		throw invalid();
-	await abuseGate();
+	const tenantId = typeof tenantIdValue === "string" ? tenantIdValue : undefined;
+	try {
+		await abuseGate();
+	} catch (cause) {
+		throw new CheckoutSessionStageError("checkout_admission", cause);
+	}
 
-	const { handle } = await reservationClient.reserve({
-		site,
-		attempt: validatedAttempt.attempt,
-		account,
-		catalogProvider,
-		items: snapshotItems,
-	});
+	let handle: string;
+	const printInputVersion = getFrozenPrintInputVersion(site);
+	try {
+		({ handle } = await reservationClient.reserve({
+			...(tenantId ? { tenantId } : {}),
+			site,
+			attempt: validatedAttempt.attempt,
+			account,
+			catalogProvider,
+			items: snapshotItems,
+			...(printInputVersion === undefined ? {} : { printInputVersion }),
+		}));
+	} catch (cause) {
+		if (isCheckoutSnapshotReservationConflict(cause)) throw cause;
+		throw new CheckoutSessionStageError("checkout_snapshot", cause);
+	}
 	const identity = {
 		attempt: validatedAttempt.attempt,
 		attemptStartedAt: Number(attemptStartedAt),
@@ -200,6 +227,7 @@ export async function createHandleCheckoutSession({
 	};
 	return await createAdmittedOrderCheckoutSession({
 		identity,
+		tenantId,
 		site,
 		account,
 		hostGeneration,
@@ -210,6 +238,7 @@ export async function createHandleCheckoutSession({
 		metadata: {
 			checkoutSnapshotVersion: "2",
 			checkoutSnapshotHandle: handle,
+			...(printInputVersion === undefined ? {} : { printInputVersion: String(printInputVersion) }),
 		},
 		shippingAllowedCountries,
 		tenantCheckout,
@@ -221,6 +250,7 @@ export async function createHandleCheckoutSession({
 
 export async function createAdmittedOrderCheckoutSession({
 	identity,
+	tenantId,
 	site,
 	account,
 	hostGeneration,
@@ -236,6 +266,7 @@ export async function createAdmittedOrderCheckoutSession({
 	bindSession,
 }: {
 	identity: CheckoutAdmissionIdentity;
+	tenantId?: string;
 	site: string;
 	account: string | null;
 	hostGeneration: number;
@@ -265,19 +296,25 @@ export async function createAdmittedOrderCheckoutSession({
 		metadata,
 		checkoutSnapshotHandle: checkoutSnapshotHandle ?? null,
 	});
-	const permit = await admissionClient.begin({
-		site,
-		account,
-		identity,
-		hostGeneration,
-		requestFingerprint,
-	});
+	let permit: CheckoutAdmissionPermit;
+	try {
+		permit = await admissionClient.begin({
+			...(tenantId ? { tenantId } : {}),
+			site,
+			account,
+			identity,
+			hostGeneration,
+			requestFingerprint,
+		});
+	} catch (cause) {
+		throw new CheckoutSessionStageError("checkout_admission", cause);
+	}
 	let requestedStripeExpiresAt: number;
 	try {
 		requestedStripeExpiresAt = await admissionClient.markCreating(permit);
 	} catch (cause) {
 		await admissionClient.release(permit).catch(() => {});
-		throw cause;
+		throw new CheckoutSessionStageError("checkout_admission", cause);
 	}
 	let session: PaymentCheckoutSessionResult;
 	try {
@@ -299,15 +336,19 @@ export async function createAdmittedOrderCheckoutSession({
 		});
 	} catch (cause) {
 		await admissionClient.markUncertain(permit).catch(() => {});
-		throw cause;
+		throw new CheckoutSessionStageError("checkout_stripe", cause);
 	}
-	await admissionClient.bind({
-		permit,
-		session: session.sessionId,
-		stripeExpiresAt: requestedStripeExpiresAt,
-		checkoutSnapshotHandle,
-	});
-	bindSession(session.sessionId);
+	try {
+		await admissionClient.bind({
+			permit,
+			session: session.sessionId,
+			stripeExpiresAt: requestedStripeExpiresAt,
+			checkoutSnapshotHandle,
+		});
+		bindSession(session.sessionId);
+	} catch (cause) {
+		throw new CheckoutSessionStageError("checkout_admission", cause);
+	}
 	return { ...session, expiresAt: requestedStripeExpiresAt };
 }
 

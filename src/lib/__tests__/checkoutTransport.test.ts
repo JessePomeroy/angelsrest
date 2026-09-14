@@ -19,7 +19,7 @@ afterEach(() => {
 });
 
 describe("checkout browser transport", () => {
-	it("sends the exact legacy single and cart bytes first", async () => {
+	it("omits fixed-price paperIndex and sends the cart bootstrap bytes before challenge", async () => {
 		const fetcher = vi
 			.fn<typeof fetch>()
 			.mockResolvedValueOnce(response({ url: "https://stripe.test/single" }))
@@ -81,5 +81,31 @@ describe("checkout browser transport", () => {
 		const ambiguous = JSON.parse(String(fetcher.mock.calls[1]?.[1]?.body));
 		const retained = JSON.parse(String(fetcher.mock.calls[3]?.[1]?.body));
 		expect(retained.attempt).toBe(ambiguous.attempt);
+	});
+
+	it("surfaces the actionable changed-selection message for direct and cart checkout", async () => {
+		const message =
+			"This product's options changed. Refresh the page and choose it again before checkout.";
+		const conflict = () => response({ message: { code: "CONFLICT", message } }, 409);
+		const fetcher = vi.fn<typeof fetch>().mockImplementation(async () => conflict());
+		vi.stubGlobal("fetch", fetcher);
+		const { createCheckout } = await import("$lib/utils/checkout");
+		const { createCartCheckout } = await import("$lib/utils/cartCheckout");
+
+		await expect(createCheckout({ productId: "print-one", coupon: null })).rejects.toThrow(message);
+		await expect(
+			createCartCheckout([
+				{
+					id: "legacy-print",
+					productSlug: "print-one",
+					type: "print",
+					title: "Print One",
+					imageUrl: "https://cdn.test/print.jpg",
+					paperIndex: 0,
+					quantity: 1,
+					unitPriceCents: 4200,
+				},
+			]),
+		).rejects.toThrow(message);
 	});
 });

@@ -17,8 +17,6 @@ import {
 
 const modules = import.meta.glob("./**/*.ts");
 const roles = [
-	{ role: "storage", path: STORAGE_PATH, secret: STORAGE_SECRET_A },
-	{ role: "inspection", path: INSPECTION_PATH, secret: INSPECTION_SECRET_A },
 	{ role: "editor storage", path: EDITOR_STORAGE_PATH, secret: STORAGE_SECRET_A },
 	{ role: "editor inspection", path: EDITOR_INSPECTION_PATH, secret: INSPECTION_SECRET_A },
 ] as const;
@@ -69,4 +67,20 @@ describe("private catalog receipt HTTP limits", () => {
 			paidFiles: [],
 		});
 	});
+});
+
+
+test.each([STORAGE_PATH, INSPECTION_PATH])("retires historical receipt ingress %s without writes", async (path) => {
+	const t = convexTest(schema, modules);
+	await withReceiptEnvironment(async () => {
+		for (const secret of [STORAGE_SECRET_A, INSPECTION_SECRET_A, ""]) {
+			const response = await t.fetch(path, {
+				method: "POST",
+				headers: { "Content-Type": "application/json", Authorization: `Bearer ${secret}` },
+				body: JSON.stringify({ schemaVersion: 1, receipts: [] }),
+			});
+			expect(response.status).toBe(404);
+		}
+	});
+	expect(await storedState(t)).toEqual({ operations: [], coordinations: [], authorities: [], printSources: [], paidFiles: [] });
 });

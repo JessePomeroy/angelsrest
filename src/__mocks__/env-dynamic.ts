@@ -7,6 +7,8 @@ export const env = {
 	// that runtime hits. Flip to "true" if a test specifically needs to
 	// verify sandbox routing.
 	LUMAPRINTS_USE_SANDBOX: "false",
+	RESEND_API_KEY: "test-resend-key",
+	STRIPE_PLATFORM_WEBHOOK_SECRET: "whsec_platform_mock",
 	STRIPE_WEBHOOK_SECRET: "whsec_mock",
 	STRIPE_CONNECT_WEBHOOK_SECRET: "",
 	GALLERY_ADMIN_SECRET: "test-secret",

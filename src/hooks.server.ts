@@ -2,7 +2,7 @@
  * SvelteKit Server Hooks
  *
  * Composes:
- * - Security headers + Sanity preview detection
+ * - Security headers
  * - Server error capture through @sentry/node (audit #50a — no perf tracing)
  *
  * The Sentry init itself lives in `instrumentation.server.ts` per SvelteKit
@@ -12,8 +12,10 @@
 import { captureException, flush, withIsolationScope } from "@sentry/node";
 import type { Handle, HandleServerError } from "@sveltejs/kit";
 import { contentSecurityPolicy } from "$lib/config/securityPolicy";
+import { applyCapabilityResponsePrivacy } from "$lib/server/capabilityResponsePrivacy";
+import { applyPublicPageCache } from "$lib/server/publicPageCache";
 
-function addSecurityHeaders(response: Response): Response {
+function addSecurityHeaders(response: Response, pathname: string): Response {
 	const cloned = new Response(response.body, response);
 	cloned.headers.set("X-Frame-Options", "DENY");
 	cloned.headers.set("X-Content-Type-Options", "nosniff");
@@ -40,14 +42,11 @@ function addSecurityHeaders(response: Response): Response {
 		//   in both script-src and frame-src for the managed widget.
 		contentSecurityPolicy,
 	);
+	applyCapabilityResponsePrivacy(cloned.headers, pathname);
 	return cloned;
 }
 
 const appHandle: Handle = async ({ event, resolve }) => {
-	// Detect Sanity preview mode from cookie (set by /api/draft/enable)
-	const isPreview = event.cookies.get("__sanity_preview") === "true";
-	event.locals.isPreview = isPreview;
-
 	const response = await resolve(event);
 
 	// Skip security headers for auth API routes — the auth library sets its
@@ -57,7 +56,9 @@ const appHandle: Handle = async ({ event, resolve }) => {
 		return response;
 	}
 
-	return addSecurityHeaders(response);
+	const secured = addSecurityHeaders(response, event.url.pathname);
+	applyPublicPageCache(event, secured);
+	return secured;
 };
 
 export const handle: Handle = (input) =>

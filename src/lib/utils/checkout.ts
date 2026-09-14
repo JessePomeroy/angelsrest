@@ -25,7 +25,7 @@ export async function createCheckout(params: CheckoutParams): Promise<string> {
 		isPrintSet: params.isPrintSet || false,
 		paperSlug: params.paperSlug,
 		sizeSlug: params.sizeSlug,
-		paperIndex: params.paperIndex,
+		...(params.paperIndex === undefined ? {} : { paperIndex: params.paperIndex }),
 		borderWidth: params.borderWidth,
 		frame: params.frame,
 	};

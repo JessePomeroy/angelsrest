@@ -50,6 +50,12 @@ export type LogStage =
 	| "lumaprints_shipping"
 	| "stripe_refund"
 	| "stripe_session_create"
+	| "checkout_catalog"
+	| "checkout_snapshot"
+	| "checkout_admission"
+	| "checkout_tenant"
+	| "checkout_stripe"
+	| "checkout_internal"
 	| "fulfillment_failure"
 	| "email_customer"
 	| "email_admin";

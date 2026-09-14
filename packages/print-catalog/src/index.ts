@@ -3,7 +3,7 @@
  *
  * This is the source of truth for paper, size, border, frame, canvas, and
  * wholesale lookup metadata used by public shop pages, checkout, fulfillment,
- * and Sanity Studio margin fields.
+ * and catalog editor margin fields.
  */
 
 export interface V2Paper {
@@ -45,6 +45,35 @@ export interface CanvasPaperInfo {
 	subcategoryId: number;
 	wrapOptionId: number;
 	wrapHex: string;
+}
+
+export interface PrintProductConfiguration {
+	subcategoryId: number;
+	orderItemOptions: number[];
+	solidColorHexCode?: string;
+}
+
+/** The provider's product/finish selection, independent of artwork and recipient. */
+export function getPrintProductConfiguration(item: {
+	paperSubcategoryId: number;
+	frameSubcategoryId?: number;
+	canvasSubcategoryId?: number;
+	canvasWrapHex?: string;
+}): PrintProductConfiguration | null {
+	const canvas = item.canvasSubcategoryId;
+	const frame = item.frameSubcategoryId;
+	const isCanvas = typeof canvas === "number" && canvas > 0;
+	const isFramed = typeof frame === "number" && frame > 0;
+	const paperOption = isFramed ? getFramedPaperOptionId(item.paperSubcategoryId) : null;
+	if (isFramed && paperOption === null) return null;
+	if (isCanvas) return {
+		subcategoryId: canvas, orderItemOptions: [3], // Solid-color canvas wrap.
+		solidColorHexCode: item.canvasWrapHex || "#000000",
+	};
+	if (isFramed && paperOption !== null) return {
+		subcategoryId: frame, orderItemOptions: [paperOption, 67, 96], // 2-inch white mat.
+	};
+	return { subcategoryId: item.paperSubcategoryId, orderItemOptions: [39] }; // No bleed; preserve exact ratio.
 }
 
 export const V2_PAPERS: V2Paper[] = [
@@ -181,21 +210,25 @@ export const V2_FRAME_OPTIONS: V2FrameOption[] = [
 export const FRAMED_BORDER_INCHES = 0.25;
 export const FRAMED_MAT_SIZE_OPTION_ID = 67;
 export const FRAMED_MAT_COLOR_OPTION_ID = 96;
+export const FRAMED_PAPER_OPTION_IDS: Record<number, number> = {
+	103001: 74,
+	103002: 75,
+	103003: 76,
+	103005: 78,
+	103007: 79,
+	103009: 82,
+};
 
 export const FRAME_WHOLESALE_COSTS: Record<string, Record<string, number>> = {
 	"0.875": {
-		"4x6": 15.94,
 		"5x7": 16.85,
 		"6x9": 18.33,
 		"8x10": 20.08,
 		"11x14": 24.65,
 		"16x20": 35.12,
 		"24x36": 66.4,
-		"30x40": 84.26,
-		"40x60": 146.31,
 	},
 	"1.25": {
-		"4x6": 16.35,
 		"5x7": 17.34,
 		"6x9": 18.94,
 		"8x10": 20.8,
@@ -291,6 +324,28 @@ export function getBorder(value: string): V2BorderOption | undefined {
 
 export function getFrame(value: string): V2FrameOption | undefined {
 	return V2_FRAME_OPTIONS.find((frame) => frame.value === value);
+}
+
+export function getAvailableFrames(sizeSlug: string): V2FrameOption[] {
+	return V2_FRAME_OPTIONS.filter(
+		(frame) => frame.subcategoryId === 0 || getFrameWholesaleCost(frame.value, sizeSlug) !== null,
+	);
+}
+
+export function getPrintTargetDpi(subcategoryId: number): number | null {
+	if (Object.values(CANVAS_SUBCATEGORY_IDS).includes(subcategoryId)) return 200;
+	if (
+		V2_PAPERS.some((paper) => paper.subcategoryId === subcategoryId) ||
+		V2_FRAME_OPTIONS.some(
+			(frame) => frame.subcategoryId > 0 && frame.subcategoryId === subcategoryId,
+		)
+	)
+		return 300;
+	return null;
+}
+
+export function getFramedPaperOptionId(paperSubcategoryId: number): number | null {
+	return FRAMED_PAPER_OPTION_IDS[paperSubcategoryId] ?? null;
 }
 
 export function isCanvasPaper(slug: string): boolean {

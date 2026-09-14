@@ -1,126 +1,57 @@
-<!--
-  BlogCard Component
-  
-  A reusable component that displays a single blog post preview.
-  Used on the /blog listing page.
-  
-  Components in $lib/components/ can be imported anywhere in the app.
--->
-
 <script lang="ts">
-// Import the urlFor helper to generate Sanity image URLs
-import { urlFor } from "$lib/sanity/client";
+import type { BlogPostSummary } from "$lib/blog/content";
 import { formatDate } from "$lib/utils/format";
 
-/**
- * TypeScript Interface
- *
- * Defines the shape of the `post` prop we expect.
- * This helps catch errors and enables autocomplete in your editor.
- *
- * The ? means the field is optional (might not exist).
- */
-interface Post {
-	_id: string;
-	title: string;
-	slug: { current: string }; // Sanity slugs are objects with a .current property
-	publishedAt: string;
-	mainImage?: any; // Sanity image object (complex, so we use 'any')
-	excerpt?: string;
-	author?: {
-		name: string;
-		image?: any;
-	};
-	categories?: { title: string }[];
-}
-
-/**
- * Props declaration using Svelte 5 syntax.
- *
- * This component expects a single prop called `post`
- * that matches the Post interface above.
- */
-let { post }: { post: Post } = $props();
+let { post }: { post: BlogPostSummary } = $props();
 </script>
 
-<!--
-  The entire card is wrapped in an <a> tag (link).
-  Clicking anywhere on the card navigates to the full post.
-  
-  Classes explained:
-  - group: Allows child elements to react to parent hover (group-hover:)
-  - block: Makes the <a> behave like a block element (full width)
-  - bg-surface-500/10: Background color at 10% opacity
-  - border: Border styling
-  - rounded-lg: Rounded corners
-  - overflow-hidden: Clips content that exceeds bounds (for image zoom effect)
-  - hover:border-surface-400/40: Border lightens on hover
-  - transition-all: Smooth transitions for all animatable properties
--->
 <a
-  href="/blog/{post.slug.current}"
-  class="group block bg-surface-500/10 border border-surface-500/20 rounded-lg overflow-hidden hover:border-surface-400/40 transition-all"
+  href="/blog/{post.slug}"
+  class="post-row"
 >
-  <!--
-    Featured Image (conditional)
-    Only renders if post.mainImage exists.
-  -->
-  {#if post.mainImage}
-    <div class="aspect-[16/9] overflow-hidden">
-      <!--
-        urlFor() is a Sanity helper that builds image URLs.
-        .width(600).height(340) - requests a resized image (faster loading)
-        .url() - returns the final URL string
-        
-        group-hover:scale-105 - image zooms slightly when PARENT is hovered
-        transition-transform duration-300 - smooth 300ms animation
-      -->
-      <img
-        src={urlFor(post.mainImage).width(600).height(340).url()}
-        alt={post.title}
-        class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
-      />
-    </div>
-  {/if}
-
-  <!-- Text content area -->
-  <div class="p-5">
-    <!--
-      Categories (conditional)
-      Only renders if categories exist and array has items.
-    -->
-    {#if post.categories && post.categories.length > 0}
-      <div class="flex gap-2 mb-2">
+  <div class="post-copy">
+    {#if post.categories.length > 0}
+      <div class="categories">
         {#each post.categories as category (category.title)}
-          <span class="text-xs text-surface-500 tracking-wider">
-            {category.title}
-          </span>
+          <span>{category.title}</span>
         {/each}
       </div>
     {/if}
 
-    <!-- Post title -->
-    <h2 class="text-lg font-medium mb-2 group-hover:text-surface-200 transition-colors">
-      {post.title}
-    </h2>
+    <h2>{post.title}</h2>
 
-    <!--
-      Excerpt (post preview text)
-      line-clamp-2: Truncates text to 2 lines with ellipsis (...)
-    -->
     {#if post.excerpt}
-      <p class="text-surface-400 text-sm mb-4 line-clamp-2">
-        {post.excerpt}
-      </p>
+      <p class="excerpt">{post.excerpt}</p>
     {/if}
 
-    <!-- Author and date metadata -->
-    <div class="flex items-center gap-3 text-xs text-surface-500">
+    <div class="post-meta">
       {#if post.author}
         <span>{post.author.name}</span>
-        <span>•</span>
+        <span aria-hidden="true">/</span>
       {/if}
       <span>{formatDate(post.publishedAt)}</span>
     </div>
   </div>
+
+  {#if post.mainImage}
+    <div class="post-image">
+      <img src={post.mainImage.src} alt={post.mainImage.alt} />
+    </div>
+  {/if}
 </a>
+
+<style>
+  .post-row { display: grid; grid-template-columns: minmax(0, 1fr) minmax(180px, 34%); gap: clamp(24px, 5vw, 64px); padding-block: 28px; color: inherit; border-bottom: 1px solid color-mix(in srgb, currentColor 13%, transparent); }
+  .post-copy { min-width: 0; align-self: center; }
+  .categories { display: flex; gap: 12px; margin-bottom: 9px; color: var(--time-accent); font-size: 0.65rem; letter-spacing: 0.12em; }
+  h2 { margin-bottom: 10px; font-size: clamp(1.05rem, 2vw, 1.35rem); font-weight: 500; line-height: 1.3; }
+  .excerpt { display: -webkit-box; margin-bottom: 18px; overflow: hidden; color: color-mix(in srgb, currentColor 62%, transparent); font-size: 0.82rem; line-height: 1.65; line-clamp: 3; -webkit-box-orient: vertical; -webkit-line-clamp: 3; }
+  .post-meta { display: flex; gap: 10px; color: color-mix(in srgb, currentColor 48%, transparent); font-size: 0.66rem; letter-spacing: 0.08em; }
+  .post-image { min-height: 150px; overflow: hidden; border: 1px solid color-mix(in srgb, currentColor 13%, transparent); }
+  .post-image img { width: 100%; height: 100%; object-fit: cover; transition: transform 400ms cubic-bezier(.22,1,.36,1); }
+  .post-row:hover .post-image img { transform: scale(1.025); }
+  @media (max-width: 640px) {
+    .post-row { grid-template-columns: 1fr; gap: 18px; }
+    .post-image { grid-row: 1; aspect-ratio: 16 / 9; }
+  }
+</style>

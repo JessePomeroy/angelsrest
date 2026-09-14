@@ -8,6 +8,7 @@ const ATTEMPT = "123e4567-e89b-42d3-a456-426614174000";
 const HANDLE = "223e4567-e89b-42d3-a456-426614174000";
 const SESSION = "cs_test_1234567890abcdefghijklmnop";
 const SECRET = "reservation-secret-that-must-never-escape";
+const TENANT_ID = "tenant_05eb6092-5d8c-43ce-ad26-1a59522bd07b";
 const snapshotItem = {
 	productKey: "product-secret-selection",
 	revisionId: "revision-secret-selection",
@@ -20,6 +21,29 @@ const snapshotItem = {
 };
 
 describe("checkout snapshot reservation client", () => {
+	it("passes the frozen-input opt-in unchanged to the reservation authority", async () => {
+		const fetcher = vi
+			.fn<typeof fetch>()
+			.mockResolvedValue(
+				new Response(JSON.stringify({ version: 2, handle: HANDLE, replayed: false })),
+			);
+		const client = createCheckoutSnapshotReservationClient({
+			baseUrl: "https://tenant.convex.site",
+			fetcher,
+			credential: () => SECRET,
+		});
+		await client.reserve({
+			site: "angelsrest.online",
+			attempt: ATTEMPT,
+			account: null,
+			catalogProvider: "convex",
+			items: [snapshotItem],
+			printInputVersion: 1,
+		});
+		expect(JSON.parse(String(fetcher.mock.calls[0]?.[1]?.body))).toMatchObject({
+			printInputVersion: 1,
+		});
+	});
 	it("sends exact bounded reserve and bind contracts with per-request auth", async () => {
 		const fetcher = vi
 			.fn<typeof fetch>()
@@ -41,7 +65,7 @@ describe("checkout snapshot reservation client", () => {
 				site: "angelsrest.test",
 				attempt: ATTEMPT,
 				account: null,
-				catalogProvider: "sanity",
+				catalogProvider: "convex",
 				items: [snapshotItem],
 			}),
 		).resolves.toEqual({ handle: HANDLE });
@@ -63,11 +87,45 @@ describe("checkout snapshot reservation client", () => {
 			site: "angelsrest.test",
 			attempt: ATTEMPT,
 			account: null,
-			snapshot: { schemaVersion: 1, catalogProvider: "sanity", items: [snapshotItem] },
+			snapshot: { schemaVersion: 1, catalogProvider: "convex", items: [snapshotItem] },
 		});
 		expect(fetcher.mock.calls[1]?.[0]).toBe(
 			"https://tenant.convex.site/commerce/checkout-snapshots/bind",
 		);
+	});
+
+	it("adds the opaque tenant ID only when the host supplies it", async () => {
+		const fetcher = vi
+			.fn<typeof fetch>()
+			.mockResolvedValueOnce(
+				new Response(JSON.stringify({ version: 2, handle: HANDLE, replayed: false })),
+			)
+			.mockResolvedValueOnce(new Response(JSON.stringify({ bound: true, replayed: false })));
+		const client = createCheckoutSnapshotReservationClient({
+			baseUrl: "https://tenant.convex.site",
+			fetcher,
+			credential: () => SECRET,
+		});
+		await client.reserve({
+			tenantId: TENANT_ID,
+			site: "angelsrest.online",
+			attempt: ATTEMPT,
+			account: null,
+			catalogProvider: "convex",
+			items: [snapshotItem],
+		});
+		await client.bind({
+			tenantId: TENANT_ID,
+			site: "angelsrest.online",
+			handle: HANDLE,
+			account: null,
+			session: SESSION,
+			stripeExpiresAt: 1_800_086_100,
+		});
+		expect(fetcher.mock.calls.map((call) => JSON.parse(String(call[1]?.body)))).toEqual([
+			expect.objectContaining({ tenantId: TENANT_ID }),
+			expect.objectContaining({ tenantId: TENANT_ID }),
+		]);
 	});
 
 	it("aborts stalled streams and stops chunked responses above 2 KiB", async () => {
@@ -87,7 +145,7 @@ describe("checkout snapshot reservation client", () => {
 			site: "angelsrest.test",
 			attempt: ATTEMPT,
 			account: null,
-			catalogProvider: "sanity" as const,
+			catalogProvider: "convex" as const,
 			items: [snapshotItem],
 		};
 		await expect(
@@ -126,7 +184,7 @@ describe("checkout snapshot reservation client", () => {
 				site: "angelsrest.test",
 				attempt: ATTEMPT,
 				account: null,
-				catalogProvider: "sanity",
+				catalogProvider: "convex",
 				items: [snapshotItem],
 			})
 			.catch((value: unknown) => value);
@@ -150,7 +208,7 @@ describe("checkout snapshot reservation client", () => {
 					site: "angelsrest.test",
 					attempt: ATTEMPT,
 					account: null,
-					catalogProvider: "sanity",
+					catalogProvider: "convex",
 					items: [snapshotItem],
 				})
 				.catch((value: unknown) => value);

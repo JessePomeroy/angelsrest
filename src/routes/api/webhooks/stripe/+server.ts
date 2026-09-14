@@ -1,8 +1,12 @@
+import type { Config } from "@sveltejs/adapter-vercel";
 import { error, json } from "@sveltejs/kit";
 import type Stripe from "stripe";
 import { api } from "$convex/api";
 import { env } from "$env/dynamic/private";
-import { readCheckoutTenantMarker } from "$lib/server/checkoutSnapshotConsumer";
+import {
+	readCheckoutTenantIdMarker,
+	readCheckoutTenantMarker,
+} from "$lib/server/checkoutSnapshotConsumer";
 import { getConvex } from "$lib/server/convexClient";
 import { logStructured } from "$lib/server/logger";
 import { createOrder as createLumaPrintsOrder } from "$lib/server/lumaprints";
@@ -10,6 +14,7 @@ import { processStripeWebhookEvent } from "$lib/server/orderIntake";
 import { assertOrderProducersOpen, OrderProducersClosedError } from "$lib/server/orderProducerGate";
 import { getResend } from "$lib/server/resendClient";
 import { getStripe } from "$lib/server/stripeClient";
+import { COMMERCE_TENANT_ID_METADATA_KEY } from "$lib/server/stripeConnect";
 import {
 	type CommerceWebhookRole,
 	type StripeWebhookSecretCandidate,
@@ -18,6 +23,8 @@ import {
 import { getWebhookSecret } from "$lib/server/webhookSecret";
 
 const convex = getConvex();
+
+export const config = { maxDuration: 60 } satisfies Config;
 
 export async function POST({ request }) {
 	const stripe = getStripe();
@@ -54,10 +61,17 @@ async function isAcknowledgedOrderReplay(event: Stripe.Event) {
 	const stripeConnectedAccountId =
 		typeof event.account === "string" ? event.account.trim() : undefined;
 	const stripeTenantMetadataSiteUrl = readCheckoutTenantMarker(session.metadata);
+	const stripeTenantMetadataTenantId = readCheckoutTenantIdMarker(session.metadata);
+	if (
+		session.metadata?.[COMMERCE_TENANT_ID_METADATA_KEY] !== undefined &&
+		stripeTenantMetadataTenantId === undefined
+	)
+		throw error(400, "Checkout tenant identity is invalid");
 	const routing = await convex.query(api.orders.resolveCheckoutRouting, {
 		stripeSessionId: session.id,
 		...(stripeConnectedAccountId ? { stripeConnectedAccountId } : {}),
 		...(stripeTenantMetadataSiteUrl ? { stripeTenantMetadataSiteUrl } : {}),
+		...(stripeTenantMetadataTenantId ? { stripeTenantMetadataTenantId } : {}),
 		webhookSecret: getWebhookSecret(),
 	});
 	if (routing?.source === "retired" || routing?.source === "order") return true;

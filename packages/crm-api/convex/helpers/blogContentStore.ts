@@ -26,6 +26,7 @@ import {
 	requireValidPublishedSlugChangeRetry,
 	retainPreviousPublishedSlug,
 } from "./contentSlugHistory";
+import { contentRevisionProvenanceFields } from "./contentRevisionProvenance";
 import {
 	archiveContentDocument,
 	requireActiveContentDocument,
@@ -35,11 +36,20 @@ import {
 } from "./contentLifecycle";
 import type { PublishedSlugChange } from "./contentValidators";
 
-export type BlogDraftWriter = {
+type BlogDraftWriterBase = {
 	actor: string;
-	source: "admin" | "sanityImport";
 	now: number;
 };
+
+export type BlogDraftWriter = BlogDraftWriterBase & (
+	| { source: "admin" | "sanityImport" }
+	| {
+		source: "restore";
+		restoredFromRevisionId: Id<"contentRevisions">;
+		restoreOperationId: string;
+		restoreRequestDigest: string;
+	}
+);
 
 function canonicalDraftSlug(draft: BlogSupportingDraft) {
 	if (draft.slug === undefined || !draft.slug.trim()) return undefined;
@@ -70,7 +80,7 @@ async function getDocumentByKey(
 		.unique();
 }
 
-async function insertRevision(
+export async function insertBlogRevision(
 	ctx: MutationCtx,
 	document: Doc<"contentDocuments">,
 	draft: BlogSupportingDraft,
@@ -84,6 +94,7 @@ async function insertRevision(
 		schemaVersion: 1,
 		payload: draft,
 		source: writer.source,
+		...contentRevisionProvenanceFields(writer),
 		checksum,
 		createdAt: writer.now,
 		createdBy: writer.actor,
@@ -172,7 +183,7 @@ export async function createBlogDraftForSite(
 	});
 	const document = await ctx.db.get(documentId);
 	if (!document) throw new Error("Blog supporting document creation failed");
-	const revisionId = await insertRevision(
+	const revisionId = await insertBlogRevision(
 		ctx,
 		document,
 		args.draft,
@@ -240,7 +251,7 @@ export async function saveBlogDraft(
 	const identity = await ctx.auth.getUserIdentity();
 	if (!identity) throw new Error("Not authenticated");
 	const now = Date.now();
-	const revisionId = await insertRevision(
+	const revisionId = await insertBlogRevision(
 		ctx,
 		document,
 		args.draft,

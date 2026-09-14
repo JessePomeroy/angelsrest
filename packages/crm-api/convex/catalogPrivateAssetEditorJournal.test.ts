@@ -1116,7 +1116,7 @@ describe("catalog editor durable journal HTTP roles", () => {
 		const receipts = await receiptsFor(begun.operationId);
 		await postReceipt(t, EDITOR_STORAGE_PATH, STORAGE_SECRET, receipts.storage);
 		await postReceipt(t, EDITOR_INSPECTION_PATH, INSPECTION_RECEIPT_SECRET, receipts.inspection);
-		const admin = t.withIdentity({ subject: ADMIN_EMAIL, email: ADMIN_EMAIL });
+		const admin = t.withIdentity({ subject: ADMIN_EMAIL, email: ADMIN_EMAIL, emailVerified: true });
 		await expect(admin.query(api.catalogPrivateAssets.resolveEditorUpload, {
 			siteUrl: SITE,
 			operationId: begun.operationId,

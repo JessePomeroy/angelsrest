@@ -56,8 +56,8 @@ async function setup() {
 	}
 	return {
 		t,
-		adminA: t.withIdentity({ subject: SITE_A.email, email: SITE_A.email }),
-		adminB: t.withIdentity({ subject: SITE_B.email, email: SITE_B.email }),
+		adminA: t.withIdentity({ subject: SITE_A.email, email: SITE_A.email, emailVerified: true }),
+		adminB: t.withIdentity({ subject: SITE_B.email, email: SITE_B.email, emailVerified: true }),
 	};
 }
 
@@ -200,7 +200,7 @@ describe("tenant-scoped catalog product drafts", () => {
 				role: "client",
 			});
 		});
-		const adminA = t.withIdentity({ subject: SITE_A.email, email: SITE_A.email });
+		const adminA = t.withIdentity({ subject: SITE_A.email, email: SITE_A.email, emailVerified: true });
 		await expectError(
 			create(adminA, SITE_A.siteUrl, "missing-policy", draft()),
 			/catalog product policy is not configured/i,

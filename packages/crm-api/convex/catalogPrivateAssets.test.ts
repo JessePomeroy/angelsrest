@@ -16,16 +16,11 @@ import {
 import schema from "./schema";
 import {
 	DEFAULT_RECEIPT_SET_ID,
-	INSPECTION_PATH,
-	INSPECTION_SECRET_A,
-	STORAGE_PATH,
-	STORAGE_SECRET_A,
-	STORAGE_SECRET_B,
 	SITE_A,
 	inspectionSet,
 	inspectionSetV2,
 	paidFacts,
-	postReceipt,
+	recordFixtureReceipt,
 	printFacts,
 	storageSet,
 	storageSetV2,
@@ -45,7 +40,7 @@ function v2PrintInspection(receiptSet: ReturnType<typeof inspectionSetV2>) {
 	return receipt.inspection;
 }
 
-describe("private catalog dual-receipt registration", () => {
+describe("private catalog registry transaction invariants", () => {
 	test("binds the deterministic receipt identity to exact canonical asset membership", async () => {
 		const defaultFacts = [printFacts(), paidFacts()];
 		expect(await createCatalogPrivateAssetReceiptSetId(SITE_A, defaultFacts))
@@ -63,13 +58,12 @@ describe("private catalog dual-receipt registration", () => {
 				[defaultFacts[0]!],
 				[defaultFacts[0]!, extraPrint, defaultFacts[1]!],
 			]) {
-				const response = await postReceipt(
+				const response = await recordFixtureReceipt(
 					t,
-					STORAGE_PATH,
-					STORAGE_SECRET_A,
+					"storage",
 					storageSet(facts, DEFAULT_RECEIPT_SET_ID),
 				);
-				expect(response.status).toBe(409);
+				expect(response.accepted).toBe(false);
 			}
 		});
 		expect((await storedState(t)).coordinations).toHaveLength(0);
@@ -119,25 +113,23 @@ describe("private catalog dual-receipt registration", () => {
 		expect(receiptSetId).toMatch(/^catalog-private-assets-v2:[a-f0-9]{64}$/);
 
 		await withReceiptEnvironment(async () => {
-			const stored = await postReceipt(
+			const stored = await recordFixtureReceipt(
 				t,
-				STORAGE_PATH,
-				STORAGE_SECRET_A,
+				"storage",
 				storageSetV2(receiptSetId, facts),
 			);
-			expect(await stored.json()).toEqual({
+			expect(await stored.result).toEqual({
 				status: "pending_inspection",
 				replayed: false,
 				assetCount: 2,
 			});
 
 			const legacyInspection = inspectionSet(facts, receiptSetId);
-			expect((await postReceipt(
+			expect((await recordFixtureReceipt(
 				t,
-				INSPECTION_PATH,
-				INSPECTION_SECRET_A,
+				"inspection",
 				legacyInspection,
-			)).status).toBe(409);
+			)).accepted).toBe(false);
 
 			const invalidInspections = [
 				(inspection: ReturnType<typeof inspectionSetV2>) => {
@@ -177,22 +169,20 @@ describe("private catalog dual-receipt registration", () => {
 			for (const invalidate of invalidInspections) {
 				const invalid = inspectionSetV2(receiptSetId, facts);
 				invalidate(invalid);
-				expect((await postReceipt(
+				expect((await recordFixtureReceipt(
 					t,
-					INSPECTION_PATH,
-					INSPECTION_SECRET_A,
+					"inspection",
 					invalid,
-				)).status).toBe(409);
+				)).accepted).toBe(false);
 				expect((await storedState(t)).printSources).toHaveLength(0);
 			}
 
-			const inspected = await postReceipt(
+			const inspected = await recordFixtureReceipt(
 				t,
-				INSPECTION_PATH,
-				INSPECTION_SECRET_A,
+				"inspection",
 				inspectionSetV2(receiptSetId, facts),
 			);
-			expect(await inspected.json()).toMatchObject({
+			expect(await inspected.result).toMatchObject({
 				status: "verified",
 				replayed: false,
 			});
@@ -202,23 +192,22 @@ describe("private catalog dual-receipt registration", () => {
 			expect(state.paidFiles).toHaveLength(1);
 			const verifiedState = JSON.stringify(state);
 
-			for (const [path, secret, receiptSet] of [
-				[INSPECTION_PATH, INSPECTION_SECRET_A, inspectionSetV2(receiptSetId, facts)],
-				[STORAGE_PATH, STORAGE_SECRET_A, storageSetV2(receiptSetId, facts)],
+			for (const receipt of [
+				["inspection", inspectionSetV2(receiptSetId, facts)],
+				["storage", storageSetV2(receiptSetId, facts)],
 			] as const) {
-				const replay = await postReceipt(t, path, secret, receiptSet);
-				expect(await replay.json()).toMatchObject({ status: "verified", replayed: true });
+				const replay = await recordFixtureReceipt(t, ...receipt);
+				expect(await replay.result).toMatchObject({ status: "verified", replayed: true });
 				expect(JSON.stringify(await storedState(t))).toBe(verifiedState);
 			}
 
 			const rasterDrift = inspectionSetV2(receiptSetId, facts);
 			v2PrintInspection(rasterDrift).rasterSha256 = "d".repeat(64);
-			expect((await postReceipt(
+			expect((await recordFixtureReceipt(
 				t,
-				INSPECTION_PATH,
-				INSPECTION_SECRET_A,
+				"inspection",
 				rasterDrift,
-			)).status).toBe(409);
+			)).accepted).toBe(false);
 			expect(JSON.stringify(await storedState(t))).toBe(verifiedState);
 		});
 	});
@@ -256,27 +245,24 @@ describe("private catalog dual-receipt registration", () => {
 
 		const t = convexTest(schema, modules);
 		await withReceiptEnvironment(async () => {
-			expect((await postReceipt(
+			expect((await recordFixtureReceipt(
 				t,
-				INSPECTION_PATH,
-				INSPECTION_SECRET_A,
+				"inspection",
 				unsafe,
-			)).status).toBe(409);
+			)).accepted).toBe(false);
 			expect((await storedState(t)).coordinations).toHaveLength(0);
 
-			expect((await postReceipt(
+			expect((await recordFixtureReceipt(
 				t,
-				INSPECTION_PATH,
-				INSPECTION_SECRET_A,
+				"inspection",
 				inspectionSetV2(receiptSetId, facts),
-			)).status).toBe(200);
-			const completed = await postReceipt(
+			)).accepted).toBe(true);
+			const completed = await recordFixtureReceipt(
 				t,
-				STORAGE_PATH,
-				STORAGE_SECRET_A,
+				"storage",
 				storageSetV2(receiptSetId, facts),
 			);
-			expect(await completed.json()).toMatchObject({ status: "verified", replayed: false });
+			expect(await completed.result).toMatchObject({ status: "verified", replayed: false });
 			const state = await storedState(t);
 			expect(state.printSources).toHaveLength(0);
 			expect(state.paidFiles).toHaveLength(1);
@@ -286,9 +272,9 @@ describe("private catalog dual-receipt registration", () => {
 	test("keeps the first complete receipt set pending and atomically registers the matching set", async () => {
 		const t = convexTest(schema, modules);
 		await withReceiptEnvironment(async () => {
-			const stored = await postReceipt(t, STORAGE_PATH, STORAGE_SECRET_A, storageSet());
-			expect(stored.status).toBe(200);
-			expect(await stored.json()).toEqual({
+			const stored = await recordFixtureReceipt(t, "storage", storageSet());
+			expect(stored.accepted).toBe(true);
+			expect(await stored.result).toEqual({
 				status: "pending_inspection",
 				replayed: false,
 				assetCount: 2,
@@ -298,21 +284,20 @@ describe("private catalog dual-receipt registration", () => {
 			expect(pending.printSources).toHaveLength(0);
 			expect(pending.paidFiles).toHaveLength(0);
 
-			const storageReplay = await postReceipt(t, STORAGE_PATH, STORAGE_SECRET_A, storageSet());
-			expect(await storageReplay.json()).toEqual({
+			const storageReplay = await recordFixtureReceipt(t, "storage", storageSet());
+			expect(await storageReplay.result).toEqual({
 				status: "pending_inspection",
 				replayed: true,
 				assetCount: 2,
 			});
 
-			const inspected = await postReceipt(
+			const inspected = await recordFixtureReceipt(
 				t,
-				INSPECTION_PATH,
-				INSPECTION_SECRET_A,
+				"inspection",
 				inspectionSet(),
 			);
-			expect(inspected.status).toBe(200);
-			const result = await inspected.json() as Record<string, unknown>;
+			expect(inspected.accepted).toBe(true);
+			const result = await inspected.result as Record<string, unknown>;
 			expect(Object.keys(result).sort()).toEqual(["replayed", "status", "targets"]);
 			expect(result.status).toBe("verified");
 			expect(result.replayed).toBe(false);
@@ -333,13 +318,12 @@ describe("private catalog dual-receipt registration", () => {
 			expect(verified.paidFiles[0]?.status).toBe("verified");
 
 			const beforeReplay = JSON.stringify(verified);
-			const inspectionReplay = await postReceipt(
+			const inspectionReplay = await recordFixtureReceipt(
 				t,
-				INSPECTION_PATH,
-				INSPECTION_SECRET_A,
+				"inspection",
 				inspectionSet(),
 			);
-			expect(await inspectionReplay.json()).toMatchObject({
+			expect(await inspectionReplay.result).toMatchObject({
 				status: "verified",
 				replayed: true,
 				targets,
@@ -351,13 +335,12 @@ describe("private catalog dual-receipt registration", () => {
 	test("accepts the independent inspection role first", async () => {
 		const t = convexTest(schema, modules);
 		await withReceiptEnvironment(async () => {
-			const inspected = await postReceipt(
+			const inspected = await recordFixtureReceipt(
 				t,
-				INSPECTION_PATH,
-				INSPECTION_SECRET_A,
+				"inspection",
 				inspectionSet(),
 			);
-			expect(await inspected.json()).toEqual({
+			expect(await inspected.result).toEqual({
 				status: "pending_storage",
 				replayed: false,
 				assetCount: 2,
@@ -377,28 +360,27 @@ describe("private catalog dual-receipt registration", () => {
 				totalUncompressedBytes: paidInspection.inspection.totalUncompressedBytes,
 				entryCount: paidInspection.inspection.entryCount,
 			};
-			const replay = await postReceipt(
+			const replay = await recordFixtureReceipt(
 				t,
-				INSPECTION_PATH,
-				INSPECTION_SECRET_A,
+				"inspection",
 				reordered,
 			);
-			expect(await replay.json()).toEqual({
+			expect(await replay.result).toEqual({
 				status: "pending_storage",
 				replayed: true,
 				assetCount: 2,
 			});
 			expect((await storedState(t)).printSources).toHaveLength(0);
 
-			const stored = await postReceipt(t, STORAGE_PATH, STORAGE_SECRET_A, storageSet());
-			expect(await stored.json()).toMatchObject({ status: "verified", replayed: false });
+			const stored = await recordFixtureReceipt(t, "storage", storageSet());
+			expect(await stored.result).toMatchObject({ status: "verified", replayed: false });
 			const state = await storedState(t);
 			expect(state.printSources).toHaveLength(1);
 			expect(state.paidFiles).toHaveLength(1);
 		});
 	});
 
-	test("registers the current 11-print and one-paid-file migration set as one transaction", async () => {
+	test("preserves historical 11-print and one-paid-file registry identity in one transaction", async () => {
 		const t = convexTest(schema, modules);
 		const prints = Array.from({ length: 11 }, (_, index) => {
 			const identity = index.toString(16).padStart(40, "0");
@@ -415,24 +397,22 @@ describe("private catalog dual-receipt registration", () => {
 		const completeSet: CatalogPrivateAssetFacts[] = [...prints, paidFacts()];
 		const receiptSetId = await createCatalogPrivateAssetReceiptSetId(SITE_A, completeSet);
 		await withReceiptEnvironment(async () => {
-			const first = await postReceipt(
+			const first = await recordFixtureReceipt(
 				t,
-				STORAGE_PATH,
-				STORAGE_SECRET_A,
+				"storage",
 				storageSet(completeSet, receiptSetId),
 			);
-			expect(await first.json()).toEqual({
+			expect(await first.result).toEqual({
 				status: "pending_inspection",
 				replayed: false,
 				assetCount: 12,
 			});
-			const second = await postReceipt(
+			const second = await recordFixtureReceipt(
 				t,
-				INSPECTION_PATH,
-				INSPECTION_SECRET_A,
+				"inspection",
 				inspectionSet(completeSet, receiptSetId),
 			);
-			const result = await second.json() as { status: string; targets: unknown[] };
+			const result = await second.result as { status: string; targets: unknown[] };
 			expect(result.status).toBe("verified");
 			expect(result.targets).toHaveLength(12);
 			const state = await storedState(t);
@@ -441,66 +421,36 @@ describe("private catalog dual-receipt registration", () => {
 		});
 	});
 
-	test("fails closed for missing, foreign, wrong-role, or reused credentials", async () => {
-		const t = convexTest(schema, modules);
-		await withReceiptEnvironment(async () => {
-			for (const secret of ["wrong-secret-that-is-at-least-32-characters", STORAGE_SECRET_B]) {
-				const response = await postReceipt(t, STORAGE_PATH, secret, storageSet());
-				expect(response.status).toBe(401);
-			}
-			const wrongRole = await postReceipt(t, STORAGE_PATH, INSPECTION_SECRET_A, storageSet());
-			expect(wrongRole.status).toBe(401);
-		});
-		expect((await storedState(t)).coordinations).toHaveLength(0);
-
-		await withReceiptEnvironment(async () => {
-			const overlap = await postReceipt(t, STORAGE_PATH, STORAGE_SECRET_A, storageSet());
-			expect(overlap.status).toBe(503);
-		}, {
-			inspection: JSON.stringify({ [SITE_A]: [STORAGE_SECRET_A] }),
-		});
-		expect((await storedState(t)).coordinations).toHaveLength(0);
-
-		await withReceiptEnvironment(async () => {
-			delete process.env.CATALOG_PRIVATE_ASSET_INSPECTION_RECEIPT_SECRETS;
-			const missing = await postReceipt(t, STORAGE_PATH, STORAGE_SECRET_A, storageSet());
-			expect(missing.status).toBe(503);
-		});
-		expect((await storedState(t)).coordinations).toHaveLength(0);
-	});
-
 	test("rejects receipt drift without changing the pending set", async () => {
 		const t = convexTest(schema, modules);
 		await withReceiptEnvironment(async () => {
 			const original = storageSet();
-			expect((await postReceipt(t, STORAGE_PATH, STORAGE_SECRET_A, original)).status).toBe(200);
+			expect((await recordFixtureReceipt(t, "storage", original)).accepted).toBe(true);
 			const pending = JSON.stringify(await storedState(t));
 
 			const storageDrift = storageSet();
 			storageDrift.receipts[0]!.etag = "changed-etag";
-			expect((await postReceipt(t, STORAGE_PATH, STORAGE_SECRET_A, storageDrift)).status).toBe(409);
+			expect((await recordFixtureReceipt(t, "storage", storageDrift)).accepted).toBe(false);
 			expect(JSON.stringify(await storedState(t))).toBe(pending);
 
 			const inspectionDrift = inspectionSet();
 			inspectionDrift.receipts[0]!.facts.sha256 = "c".repeat(64);
-			expect((await postReceipt(
+			expect((await recordFixtureReceipt(
 				t,
-				INSPECTION_PATH,
-				INSPECTION_SECRET_A,
+				"inspection",
 				inspectionDrift,
-			)).status).toBe(409);
+			)).accepted).toBe(false);
 			expect(JSON.stringify(await storedState(t))).toBe(pending);
 
 			const unsafeZip = inspectionSet();
 			const paid = unsafeZip.receipts[1];
 			if (!paid || paid.inspection.method !== "safe_zip_v1") throw new Error("fixture drift");
 			paid.inspection.unsafePathCount = 1;
-			expect((await postReceipt(
+			expect((await recordFixtureReceipt(
 				t,
-				INSPECTION_PATH,
-				INSPECTION_SECRET_A,
+				"inspection",
 				unsafeZip,
-			)).status).toBe(409);
+			)).accepted).toBe(false);
 			expect(JSON.stringify(await storedState(t))).toBe(pending);
 		});
 	});
@@ -525,18 +475,16 @@ describe("private catalog dual-receipt registration", () => {
 		const facts = [first, second];
 		const receiptSetId = await createCatalogPrivateAssetReceiptSetId(SITE_A, facts);
 		await withReceiptEnvironment(async () => {
-			expect((await postReceipt(
+			expect((await recordFixtureReceipt(
 				t,
-				STORAGE_PATH,
-				STORAGE_SECRET_A,
+				"storage",
 				storageSet(facts, receiptSetId),
-			)).status).toBe(200);
-			expect((await postReceipt(
+			)).accepted).toBe(true);
+			expect((await recordFixtureReceipt(
 				t,
-				INSPECTION_PATH,
-				INSPECTION_SECRET_A,
+				"inspection",
 				inspectionSet(facts, receiptSetId),
-			)).status).toBe(200);
+			)).accepted).toBe(true);
 			const state = await storedState(t);
 			expect(state.printSources).toHaveLength(2);
 			expect(new Set(state.printSources.map((asset) => asset._id)).size).toBe(2);
@@ -557,8 +505,8 @@ describe("private catalog dual-receipt registration", () => {
 			await ctx.db.insert("catalogPrintSourceAssets", target.asset);
 		});
 		await withReceiptEnvironment(async () => {
-			const response = await postReceipt(t, STORAGE_PATH, STORAGE_SECRET_A, storageSet());
-			expect(response.status).toBe(409);
+			const response = await recordFixtureReceipt(t, "storage", storageSet());
+			expect(response.accepted).toBe(false);
 		});
 		const state = await storedState(t);
 		expect(state.coordinations).toHaveLength(0);

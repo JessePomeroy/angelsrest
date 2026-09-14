@@ -1,9 +1,9 @@
 import { expect, test } from "@playwright/test";
 
-test("cart page ignores legacy v1 persisted carts", async ({ page }) => {
+test("cart page ignores pre-cutover v2 paperIndex carts", async ({ page }) => {
 	await page.addInitScript(() => {
 		localStorage.setItem(
-			"angelsrest:cart:v1",
+			"angelsrest:cart:v2",
 			JSON.stringify({
 				items: [
 					{
@@ -16,6 +16,7 @@ test("cart page ignores legacy v1 persisted carts", async ({ page }) => {
 						paperSubcategoryId: 103001,
 						paperWidth: 8,
 						paperHeight: 10,
+						paperIndex: 1,
 						quantity: 1,
 						unitPriceCents: 100,
 					},

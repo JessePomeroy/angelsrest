@@ -11,6 +11,13 @@ import {
 	contentSlugKindValidator,
 } from "./helpers/contentValidators";
 import {
+	documentEmailAttemptStatusValidator,
+	documentEmailDocumentValidator,
+	documentEmailEnvelopeValidator,
+	documentEmailProviderTagValidator,
+	documentEmailResolutionAuditValidator,
+} from "./helpers/documentEmailAttemptValidators";
+import {
 	catalogFulfillmentModeValidator,
 	catalogProductKindValidator,
 	catalogRevisionSourceValidator,
@@ -42,6 +49,7 @@ import {
 	richTextSpanValidator,
 } from "./helpers/richTextContract";
 import { stripeFeeCaptureErrorValidator } from "./helpers/stripeFeeCapture";
+import { printJobArtifact, printJobDescriptor, printJobItem, printJobStage, reservedPrintInputValidator } from "./helpers/printFulfillmentJobs";
 import { categoryValidator } from "./helpers/validators";
 
 const contentBlockValueValidator = v.union(
@@ -212,10 +220,11 @@ const manualRefundRecoveryEvidenceFields = {
 export default defineSchema({
 	// Photographers you've built sites for
 	platformClients: defineTable({
+		// Immutable routing identity. Optional only while existing rows are widened.
+		tenantId: v.optional(v.string()),
 		name: v.string(),
 		email: v.string(),
 		siteUrl: v.string(),
-		sanityProjectId: v.optional(v.string()),
 		tier: v.union(v.literal("basic"), v.literal("full")),
 		subscriptionStatus: v.union(
 			v.literal("active"),
@@ -227,14 +236,32 @@ export default defineSchema({
 		stripeSubscriptionId: v.optional(v.string()),
 		stripeConnectedAccountId: v.optional(v.string()),
 		adminEmails: v.array(v.string()),
+		// Stable Better Auth identities claimed by verified invited admins.
+		// Optional during the R12 widen/claim/narrow rollout.
+		adminIdentityIds: v.optional(v.array(v.string())),
 		role: v.optional(v.union(v.literal("creator"), v.literal("client"))),
 		catalogProductKinds: v.optional(catalogProductKindsValidator),
 		notes: v.optional(v.string()),
 	})
+		.index("by_tenantId", ["tenantId"])
 		.index("by_siteUrl", ["siteUrl"])
 		.index("by_email", ["email"])
 		.index("by_stripeSubscriptionId", ["stripeSubscriptionId"])
 		.index("by_stripeConnectedAccountId", ["stripeConnectedAccountId"]),
+
+	// Verified public names that may change without changing tenant identity.
+	tenantAliases: defineTable({
+		tenantId: v.string(),
+		kind: v.union(v.literal("domain"), v.literal("origin")),
+		value: v.string(),
+		verifiedAt: v.number(),
+		verificationMethod: v.union(
+			v.literal("platform_client_site_url"),
+			v.literal("operator"),
+		),
+	})
+		.index("by_kind_and_value", ["kind", "value"])
+		.index("by_tenantId", ["tenantId"]),
 
 	// Provider-neutral editorial identity. Legacy page kinds remain tenant
 	// singletons; supporting Blog records use a stable document key plus a
@@ -288,12 +315,19 @@ export default defineSchema({
 		schemaVersion: v.literal(1),
 		payload: contentRevisionPayloadValidator,
 		source: contentRevisionSourceValidator,
+		restoredFromRevisionId: v.optional(v.id("contentRevisions")),
+		restoreOperationId: v.optional(v.string()),
+		restoreRequestDigest: v.optional(v.string()),
 		checksum: v.string(),
 		createdAt: v.number(),
 		createdBy: v.string(),
 	})
 		.index("by_documentId_and_createdAt", ["documentId", "createdAt"])
-		.index("by_siteUrl_and_kind_and_createdAt", ["siteUrl", "kind", "createdAt"]),
+		.index("by_siteUrl_and_kind_and_createdAt", ["siteUrl", "kind", "createdAt"])
+		.index("by_siteUrl_and_restoreOperationId", [
+			"siteUrl",
+			"restoreOperationId",
+		]),
 
 	// Ordered Post body rows keep rich text queryable without placing an
 	// unbounded document inside the revision payload. Image blocks contain only
@@ -428,6 +462,11 @@ export default defineSchema({
 		slug: v.string(),
 		portfolioOrder: v.number(),
 		isPublished: v.boolean(),
+		// Optional while dormant code coexists with any historical private drafts.
+		// New editor and migration writes always set an explicit public visibility.
+		isVisible: v.optional(v.boolean()),
+		// Present only on the fixed Sanity import and retained as stable provenance.
+		sourceDocumentId: v.optional(v.string()),
 		draftRevisionId: v.optional(v.id("portfolioGalleryRevisions")),
 		publishedRevisionId: v.optional(v.id("portfolioGalleryRevisions")),
 		createdAt: v.number(),
@@ -436,14 +475,34 @@ export default defineSchema({
 		updatedBy: v.string(),
 		publishedAt: v.optional(v.number()),
 		publishedBy: v.optional(v.string()),
+		deletionRequestedAt: v.optional(v.number()),
 	})
 		.index("by_siteUrl_and_slug", ["siteUrl", "slug"])
+		.index("by_siteUrl_and_sourceDocumentId", ["siteUrl", "sourceDocumentId"])
 		.index("by_siteUrl_and_portfolioOrder", ["siteUrl", "portfolioOrder"])
 		.index("by_siteUrl_and_isPublished_and_portfolioOrder", [
 			"siteUrl",
 			"isPublished",
 			"portfolioOrder",
+		])
+		.index("by_siteUrl_and_isPublished_and_isVisible_and_portfolioOrder", [
+			"siteUrl",
+			"isPublished",
+			"isVisible",
+			"portfolioOrder",
 		]),
+
+	// A deleted gallery leaves only its non-sensitive identity behind. Slugs are
+	// never recycled, so an old public URL cannot later resolve to different work.
+	retiredPortfolioGalleryIdentities: defineTable({
+		siteUrl: v.string(),
+		galleryId: v.id("portfolioGalleries"),
+		slug: v.string(),
+		deletedAt: v.number(),
+		deletedBy: v.string(),
+	})
+		.index("by_galleryId", ["galleryId"])
+		.index("by_siteUrl_and_slug", ["siteUrl", "slug"]),
 
 	portfolioGalleryRevisions: defineTable({
 		siteUrl: v.string(),
@@ -452,6 +511,10 @@ export default defineSchema({
 		title: v.optional(v.string()),
 		description: v.optional(v.string()),
 		slug: v.string(),
+		seoDescription: v.optional(v.string()),
+		seoOgImageAssetId: v.optional(v.id("mediaAssets")),
+		seoOgSourceAssetRef: v.optional(v.string()),
+		sourceDocumentRevision: v.optional(v.string()),
 		placementCount: v.number(),
 		checksum: v.string(),
 		source: v.union(
@@ -461,9 +524,14 @@ export default defineSchema({
 		),
 		createdAt: v.number(),
 		createdBy: v.string(),
+		restoredFromRevisionId: v.optional(v.id("portfolioGalleryRevisions")),
+		restoreOperationId: v.optional(v.string()),
+		restoreRequestDigest: v.optional(v.string()),
 	})
 		.index("by_galleryId_and_createdAt", ["galleryId", "createdAt"])
-		.index("by_siteUrl_and_galleryId", ["siteUrl", "galleryId"]),
+		.index("by_siteUrl_and_galleryId", ["siteUrl", "galleryId"])
+		.index("by_siteUrl_and_seoOgImageAssetId", ["siteUrl", "seoOgImageAssetId"])
+		.index("by_siteUrl_and_restoreOperationId", ["siteUrl", "restoreOperationId"]),
 
 	portfolioPlacements: defineTable({
 		siteUrl: v.string(),
@@ -475,6 +543,10 @@ export default defineSchema({
 		altText: v.optional(v.string()),
 		caption: v.optional(v.string()),
 		focalPoint: v.optional(mediaFocalPointValidator),
+		sourceAssetRef: v.optional(v.string()),
+		sourceAltAbsent: v.optional(v.boolean()),
+		sourceCropCanonical: v.optional(v.string()),
+		sourceHotspotCanonical: v.optional(v.string()),
 	})
 		.index("by_revisionId_and_order", ["revisionId", "order"])
 		.index("by_siteUrl_and_assetId", ["siteUrl", "assetId"])
@@ -501,6 +573,11 @@ export default defineSchema({
 	})
 		.index("by_siteUrl_and_productKey", ["siteUrl", "productKey"])
 		.index("by_siteUrl_and_slug", ["siteUrl", "slug"])
+		.index("by_siteUrl_and_graphVersion_and_publishedAt", [
+			"siteUrl",
+			"graphVersion",
+			"publishedAt",
+		])
 		.index("by_siteUrl_and_productKind_and_createdAt", [
 			"siteUrl",
 			"productKind",
@@ -819,6 +896,7 @@ export default defineSchema({
 	// additive; old hosts do not create or consume them until Unit B is deployed.
 	checkoutSessionAdmissions: defineTable({
 		protocolVersion: v.literal(1),
+		tenantId: v.optional(v.string()),
 		siteUrl: v.string(),
 		accountScope: v.string(),
 		stripeConnectedAccountId: v.optional(v.string()),
@@ -878,10 +956,12 @@ export default defineSchema({
 	// Short-lived, tenant-authenticated handoff from checkout creation to the paid webhook.
 	checkoutSnapshotReservations: defineTable({
 		state: v.union(v.literal("reserved"), v.literal("bound")),
+		tenantId: v.optional(v.string()),
 		siteUrl: v.string(),
 		handleHash: v.string(),
 		snapshotDigest: v.string(),
 		snapshot: reservedCheckoutSnapshotValidator,
+		printInput: v.optional(reservedPrintInputValidator),
 		accountScope: v.string(),
 		stripeConnectedAccountId: v.optional(v.string()),
 		stripeSessionId: v.optional(v.string()),
@@ -965,8 +1045,25 @@ export default defineSchema({
 		.index("by_accountScope_and_stripeSessionId", ["accountScope", "stripeSessionId"])
 		.index("by_stripeRefundId", ["stripeRefundId"]),
 
+	// Image bytes remain in R2; one child row checkpoints each bounded print source.
+	printFulfillmentJobs: defineTable({
+		orderId: v.id("orders"), stage: printJobStage,
+		cursor: v.number(), ordinalCount: v.number(), sourceCount: v.number(),
+		attempts: v.number(), startedAt: v.number(), nextAt: v.number(),
+		leaseToken: v.optional(v.string()), leaseExpiresAt: v.optional(v.number()),
+		errorCode: v.optional(v.string()),
+	}).index("by_orderId", ["orderId"]),
+	printFulfillmentSources: defineTable({
+		jobId: v.id("printFulfillmentJobs"), index: v.number(),
+		descriptor: printJobDescriptor, item: printJobItem,
+		artifact: v.optional(printJobArtifact),
+		url: v.optional(v.string()), expiresAt: v.optional(v.number()),
+	}).index("by_jobId_and_index", ["jobId", "index"]),
+
 	// Print orders (from Stripe checkout on any client site)
 	orders: defineTable({
+		printJobId: v.optional(v.id("printFulfillmentJobs")),
+		tenantId: v.optional(v.string()),
 		siteUrl: v.string(),
 		orderNumber: v.string(),
 		stripeSessionId: v.string(),
@@ -981,8 +1078,10 @@ export default defineSchema({
 		checkoutAdmissionGeneration: v.optional(v.number()),
 		checkoutAdmissionHandleHash: v.optional(v.string()),
 		checkoutSnapshot: v.optional(checkoutSnapshotValidator),
+		printInput: v.optional(reservedPrintInputValidator),
 		customerEmail: v.string(),
 		customerName: v.optional(v.string()),
+		shippingRecipientName: v.optional(v.string()),
 		shippingAddress: v.optional(
 			v.object({
 				line1: v.string(),
@@ -1041,6 +1140,9 @@ export default defineSchema({
 			v.literal("digital"),
 		),
 		lumaprintsOrderNumber: v.optional(v.string()),
+		// A successful create-order response is only a queue receipt. The provider
+		// order becomes final after an identity-checked read confirms it exists.
+		lumaprintsSubmissionOrderNumber: v.optional(v.string()),
 		// The legacy boolean remains for safe reconciliation of pre-lease claims.
 		printFulfillmentClaim: v.optional(v.boolean()),
 		printFulfillmentClaimToken: v.optional(v.string()),
@@ -1052,9 +1154,9 @@ export default defineSchema({
 		// Written only by a versioned coordinator. Exact V1/V2 durable rows remain
 		// unversioned so refund races cannot opt an older host into newer semantics.
 		printFulfillmentCoordinatorVersion: v.optional(
-			v.union(v.literal(3), v.literal(4)),
+			v.union(v.literal(3), v.literal(4), v.literal(5)),
 		),
-		// V4 provider admission is durable independently from a transient
+		// Provider admission is durable independently from a transient
 		// preparation lease. Closing a control never revokes an accepted epoch.
 		printProviderAdmissionStatus: v.optional(v.literal("admitted")),
 		printProviderAdmissionGeneration: v.optional(v.number()),
@@ -1120,9 +1222,13 @@ export default defineSchema({
 		paperSubcategoryId: v.optional(v.string()),
 		trackingNumber: v.optional(v.string()),
 		trackingUrl: v.optional(v.string()),
-		// Shared atomic success-notification fence for both non-print outcomes and
-		// durable print-provider completions.
+		// Legacy success-notification fence, also reserved by immediate receipts.
 		orderConfirmationClaimedAt: v.optional(v.number()),
+		// Immediate receipts retry only within Resend's idempotency window. Each
+		// audience records acceptance independently; historical claims stay terminal.
+		orderReceiptStartedAt: v.optional(v.number()),
+		orderReceiptCustomerSentAt: v.optional(v.number()),
+		orderReceiptAdminSentAt: v.optional(v.number()),
 		// Legacy terminal marker for the pre-lease shipment email side effect.
 		// A historical marker, or a historical shipped row without V2 evidence,
 		// remains terminal and is never opted into retryable delivery.
@@ -1154,6 +1260,9 @@ export default defineSchema({
 			v.literal("shipped"),
 			v.literal("delivered"),
 			v.literal("refunded"),
+			// Local fulfillment stop. This does not assert a Stripe refund or a
+			// provider-side cancellation and therefore preserves any provider fence.
+			v.literal("canceled"),
 			// Permanent fulfillment failure. `fulfillmentError` records the
 			// upstream problem; `stripeRefundId` is present only when a refund
 			// was successfully created. Do not infer refund/email delivery from
@@ -1251,6 +1360,9 @@ export default defineSchema({
 		// Hub-owned shipment webhook lookup. LumaPrints order numbers are
 		// provider-global; the mutation rejects duplicates rather than guessing.
 		.index("by_lumaprintsOrderNumber_global", ["lumaprintsOrderNumber"])
+		.index("by_lumaprintsSubmissionOrderNumber_global", [
+			"lumaprintsSubmissionOrderNumber",
+		])
 		// Deprecated authenticated-admin compatibility lookup. The hub webhook
 		// uses the provider-global index and never delegates its bearer secret.
 		.index("by_lumaprintsOrderNumber", ["siteUrl", "lumaprintsOrderNumber"]),
@@ -1327,6 +1439,7 @@ export default defineSchema({
 		.index("by_siteUrl", ["siteUrl"])
 		.index("by_siteUrl_status", ["siteUrl", "status"])
 		.index("by_siteUrl_category", ["siteUrl", "category"])
+		.index("by_siteUrl_and_category_and_status", ["siteUrl", "category", "status"])
 		.index("by_siteUrl_and_boardColumnId", ["siteUrl", "boardColumnId"]),
 
 	// Invoices — Full tier only
@@ -1362,6 +1475,7 @@ export default defineSchema({
 		dueDate: v.optional(v.string()),
 		sentAt: v.optional(v.number()),
 		paidAt: v.optional(v.number()),
+		overdueAt: v.optional(v.number()),
 		stripeCheckoutSessionId: v.optional(v.string()),
 		stripeCheckoutFingerprint: v.optional(v.string()),
 		stripeCheckoutStatus: v.optional(
@@ -1393,6 +1507,8 @@ export default defineSchema({
 	})
 		.index("by_siteUrl", ["siteUrl"])
 		.index("by_client", ["clientId"])
+		.index("by_siteUrl_and_status_and_paidAt", ["siteUrl", "status", "paidAt"])
+		.index("by_siteUrl_and_status_and_overdueAt", ["siteUrl", "status", "overdueAt"])
 		.index("by_siteUrl_status", ["siteUrl", "status"])
 		.index("by_siteUrl_and_invoiceNumber", ["siteUrl", "invoiceNumber"]),
 
@@ -1429,10 +1545,13 @@ export default defineSchema({
 		notes: v.optional(v.string()),
 		sentAt: v.optional(v.number()),
 		acceptedAt: v.optional(v.number()),
+		declinedAt: v.optional(v.number()),
 		convertedToInvoice: v.optional(v.id("invoices")),
 	})
 		.index("by_siteUrl", ["siteUrl"])
 		.index("by_client", ["clientId"])
+		.index("by_siteUrl_and_status_and_acceptedAt", ["siteUrl", "status", "acceptedAt"])
+		.index("by_siteUrl_and_status_and_declinedAt", ["siteUrl", "status", "declinedAt"])
 		.index("by_siteUrl_status", ["siteUrl", "status"])
 		.index("by_siteUrl_and_quoteNumber", ["siteUrl", "quoteNumber"]),
 
@@ -1479,6 +1598,7 @@ export default defineSchema({
 	})
 		.index("by_siteUrl", ["siteUrl"])
 		.index("by_client", ["clientId"])
+		.index("by_siteUrl_and_status_and_signedAt", ["siteUrl", "status", "signedAt"])
 		.index("by_siteUrl_status", ["siteUrl", "status"]),
 
 	// Contract templates — Full tier only
@@ -1555,6 +1675,44 @@ export default defineSchema({
 		.index("by_siteUrl", ["siteUrl"])
 		.index("by_siteUrl_and_type", ["siteUrl", "type"]),
 
+	// Durable envelope and effect state for creator-sent CRM documents. Each
+	// (siteUrl, attemptId) pair freezes one recipient, rendered message, portal
+	// link, and provider idempotency key before the external send begins.
+	documentEmailAttempts: defineTable({
+		protocolVersion: v.literal(1),
+		siteUrl: v.string(),
+		attemptId: v.string(),
+		document: documentEmailDocumentValidator,
+		documentKey: v.string(),
+		open: v.boolean(),
+		providerRetryBlocked: v.boolean(),
+		clientId: v.id("photographyClients"),
+		portalTokenId: v.id("portalTokens"),
+		portalUrl: v.string(),
+		requestedPortalExpiresAt: v.optional(v.number()),
+		portalExpiresAt: v.optional(v.number()),
+		envelope: documentEmailEnvelopeValidator,
+		providerIdempotencyKey: v.string(),
+		providerTags: v.array(documentEmailProviderTagValidator),
+		status: documentEmailAttemptStatusValidator,
+		claimCount: v.number(),
+		claimId: v.optional(v.string()),
+		claimedAt: v.optional(v.number()),
+		claimExpiresAt: v.optional(v.number()),
+		providerMessageId: v.optional(v.string()),
+		failure: v.optional(v.string()),
+		emailLogId: v.optional(v.id("emailLog")),
+		activityLogId: v.optional(v.id("activityLog")),
+		createdAt: v.number(),
+		updatedAt: v.number(),
+		terminalAt: v.optional(v.number()),
+		resolution: v.optional(documentEmailResolutionAuditValidator),
+	})
+		.index("by_siteUrl_and_attemptId", ["siteUrl", "attemptId"])
+		.index("by_siteUrl_and_documentKey_and_open", ["siteUrl", "documentKey", "open"])
+		.index("by_siteUrl_and_documentKey_and_status", ["siteUrl", "documentKey", "status"])
+		.index("by_status_and_claimExpiresAt", ["status", "claimExpiresAt"]),
+
 	// Portal share tokens — public links for clients to view/act on documents
 	portalTokens: defineTable({
 		token: v.string(),
@@ -1568,7 +1726,18 @@ export default defineSchema({
 		documentId: v.string(),
 		clientId: v.id("photographyClients"),
 		expiresAt: v.optional(v.number()),
+		// `used` alone is legacy/ambiguous. Only an atomic customer action writes
+		// `consumedAction`, which can prove a matching terminal receipt. `revokedAt`
+		// is an administrative/security invalidation and never is readable.
 		used: v.boolean(),
+		consumedAction: v.optional(
+			v.union(
+				v.literal("quote_accepted"),
+				v.literal("quote_declined"),
+				v.literal("contract_signed"),
+			),
+		),
+		revokedAt: v.optional(v.number()),
 	})
 		.index("by_token", ["token"])
 		.index("by_siteUrl", ["siteUrl"])

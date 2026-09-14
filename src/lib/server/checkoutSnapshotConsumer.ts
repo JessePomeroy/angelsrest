@@ -1,5 +1,9 @@
 import type Stripe from "stripe";
-import { COMMERCE_TENANT_METADATA_KEY } from "$lib/server/stripeConnect";
+import {
+	COMMERCE_TENANT_ID_METADATA_KEY,
+	COMMERCE_TENANT_ID_PATTERN,
+	COMMERCE_TENANT_METADATA_KEY,
+} from "$lib/server/stripeConnect";
 
 const kindValues = [
 	"print",
@@ -25,7 +29,7 @@ type SnapshotItem = {
 };
 export type CheckoutSnapshotV1 = {
 	schemaVersion: 1;
-	catalogProvider: "sanity" | "convex";
+	catalogProvider: "convex";
 	items: SnapshotItem[];
 };
 export class CheckoutSnapshotProtocolError extends Error {}
@@ -68,6 +72,11 @@ export function readCheckoutTenantMarker(metadata: Stripe.Metadata | null) {
 	return exactString(value, 253) ? value : undefined;
 }
 
+export function readCheckoutTenantIdMarker(metadata: Stripe.Metadata | null) {
+	const value = (metadata as Record<string, unknown> | null)?.[COMMERCE_TENANT_ID_METADATA_KEY];
+	return typeof value === "string" && COMMERCE_TENANT_ID_PATTERN.test(value) ? value : undefined;
+}
+
 export function inspectCheckoutSnapshotMetadata(
 	metadata: Stripe.Metadata | null,
 	lineItemCount?: number,
@@ -87,10 +96,7 @@ export function inspectCheckoutSnapshotMetadata(
 			? ({ kind: "handle-v2", handle: String(meta.checkoutSnapshotHandle) } as const)
 			: invalid();
 	}
-	if (
-		meta.checkoutSnapshotVersion !== "1" ||
-		!["sanity", "convex"].includes(meta.catalogProvider as string)
-	) {
+	if (meta.checkoutSnapshotVersion !== "1" || meta.catalogProvider !== "convex") {
 		return invalid();
 	}
 	const rawCount = meta.checkoutSnapshotItemCount;

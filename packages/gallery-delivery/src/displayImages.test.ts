@@ -20,10 +20,10 @@ describe("resolveGalleryDisplayImages", () => {
 		expect(image.canPreview).toBe(true);
 		expect(image.previewSource).toBe("self");
 		expect(image.thumbUrl).toBe(
-			"https://gallery-worker.example.com/image/angelsrest.online%2Fgalleries%2Ftest%2Fthumb%2Fdscf1443.jpg?token=gallery-token&accessGrant=server-grant",
+			"https://gallery-worker.example.com/image/angelsrest.online%2Fgalleries%2Ftest%2Fthumb%2Fdscf1443.jpg?v=2&token=gallery-token&accessGrant=server-grant",
 		);
 		expect(image.previewUrl).toBe(
-			"https://gallery-worker.example.com/image/angelsrest.online%2Fgalleries%2Ftest%2Fpreview%2Fdscf1443.jpg?token=gallery-token&accessGrant=server-grant",
+			"https://gallery-worker.example.com/image/angelsrest.online%2Fgalleries%2Ftest%2Fpreview%2Fdscf1443.jpg?v=2&token=gallery-token&accessGrant=server-grant",
 		);
 	});
 
@@ -49,10 +49,10 @@ describe("resolveGalleryDisplayImages", () => {
 		expect(raw.fileLabel).toBe("raf");
 		expect(raw.previewSource).toBe("sidecar");
 		expect(raw.thumbUrl).toBe(
-			"https://gallery-worker.example.com/image/angelsrest.online%2Fgalleries%2Ftest%2Fthumb%2Fdscf1443.jpg?token=gallery-token&accessGrant=server-grant",
+			"https://gallery-worker.example.com/image/angelsrest.online%2Fgalleries%2Ftest%2Fthumb%2Fdscf1443.jpg?v=2&token=gallery-token&accessGrant=server-grant",
 		);
 		expect(raw.previewUrl).toBe(
-			"https://gallery-worker.example.com/image/angelsrest.online%2Fgalleries%2Ftest%2Fpreview%2Fdscf1443.jpg?token=gallery-token&accessGrant=server-grant",
+			"https://gallery-worker.example.com/image/angelsrest.online%2Fgalleries%2Ftest%2Fpreview%2Fdscf1443.jpg?v=2&token=gallery-token&accessGrant=server-grant",
 		);
 	});
 
@@ -69,7 +69,7 @@ describe("resolveGalleryDisplayImages", () => {
 		);
 
 		expect(image.thumbUrl).toBe(
-			"https://gallery-worker.example.com/image/angelsrest.online%2Fgalleries%2Ftest%2Fthumb%2Fdscf%2001%3F%23.jpg?token=gallery-token&accessGrant=server-grant",
+			"https://gallery-worker.example.com/image/angelsrest.online%2Fgalleries%2Ftest%2Fthumb%2Fdscf%2001%3F%23.jpg?v=2&token=gallery-token&accessGrant=server-grant",
 		);
 	});
 
@@ -88,5 +88,21 @@ describe("resolveGalleryDisplayImages", () => {
 		expect(raw.canPreview).toBe(false);
 		expect(raw.previewSource).toBe("none");
 		expect(raw.fileLabel).toBe("raf");
+	});
+
+	it("serves common browser video formats from the protected original", () => {
+		const [video] = resolveGalleryDisplayImages(
+			[{
+				filename: "ceremony.mov",
+				r2Key: "angelsrest.online/galleries/test/original/ceremony.mov",
+			}],
+			workerUrl,
+			access,
+		);
+
+		expect(video).toMatchObject({ canPreview: true, isVideo: true, previewSource: "self" });
+		expect(video.previewUrl).toBe(
+			"https://gallery-worker.example.com/image/angelsrest.online%2Fgalleries%2Ftest%2Foriginal%2Fceremony.mov?v=2&token=gallery-token&accessGrant=server-grant",
+		);
 	});
 });

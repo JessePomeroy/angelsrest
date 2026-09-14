@@ -2,7 +2,6 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { sentrySvelteKit } from "@sentry/sveltekit";
 import { sveltekit } from "@sveltejs/kit/vite";
-import tailwindcss from "@tailwindcss/vite";
 import { defineConfig } from "vitest/config";
 
 // Resolve paths against the config file's location, not the cwd. Using
@@ -13,9 +12,10 @@ const canUploadSentrySourceMaps = Boolean(
 	process.env.SENTRY_AUTH_TOKEN && process.env.SENTRY_ORG && process.env.SENTRY_PROJECT,
 );
 
-export default defineConfig({
+export default defineConfig(({ isSsrBuild }) => ({
+	// Keep server function names useful in error reports while reducing emitted JS.
+	esbuild: isSsrBuild ? { keepNames: true } : undefined,
 	plugins: [
-		tailwindcss(),
 		// Audit H46: wire the Sentry plugin so source maps are uploaded at
 		// build time. Without this Sentry ingests the minified stack frames
 		// and dashboards are unreadable. Uploads are enabled only when the
@@ -40,8 +40,7 @@ export default defineConfig({
 		sveltekit(),
 	],
 	build: {
-		// Sanity visual editing is preview-only but still emitted as a large
-		// dynamic chunk. Keep the warning useful for genuinely oversized chunks.
+		minify: "esbuild",
 		chunkSizeWarningLimit: 900,
 		rollupOptions: {
 			onLog(level, log, handler) {
@@ -66,8 +65,7 @@ export default defineConfig({
 		include: [
 			"src/**/*.test.ts",
 			"packages/crm-api/convex/**/*.test.ts",
-			"scripts/cms/**/*.test.ts",
-			"scripts/order-reset/**/*.test.ts",
+			"scripts/commerce/**/*.test.ts",
 		],
 		environment: "node",
 		globals: true,
@@ -77,4 +75,4 @@ export default defineConfig({
 			"$env/static/public": path.resolve(__dirname, "./src/__mocks__/env-public.ts"),
 		},
 	},
-});
+}));

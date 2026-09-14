@@ -7,6 +7,7 @@ node_modules
 .wrangler
 .svelte-kit
 /build
+/test-results/
 
 # OS
 .DS_Store
@@ -21,6 +22,13 @@ Thumbs.db
 vite.config.js.timestamp-*
 vite.config.ts.timestamp-*
 .claude/worktrees/
+
+# Machine-local AI tooling. Keep repository instructions in AGENTS.md only.
+/.agents/
+/.claude/
+/.codex/
+/skills/
+/CLAUDE.md
 
 # Local audit/rotation working docs may contain sensitive provider details.
 AUDIT.md
@@ -39,8 +47,5 @@ packages/crm-api/convex/**/*.d.ts.map
 # and always run those commands from packages/crm-api/.
 /convex/
 
-# Durable, machine-local state for the bounded Sanity Blog media transfer.
-/scripts/cms/migrations/angelsrest-blog/.sanity-blog-media-transfer-checkpoint.json
-/scripts/cms/migrations/angelsrest-blog/.sanity-blog-media-transfer.lock
-/scripts/cms/migrations/angelsrest-blog/.sanity-blog-*.candidate-*.json
-/scripts/cms/migrations/angelsrest-blog/.sanity-blog-*.tmp-*
+# Pinned, read-only Worker checkout used by the cross-repository artwork proof.
+/.contract/

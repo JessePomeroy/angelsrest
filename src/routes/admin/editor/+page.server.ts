@@ -1,7 +1,7 @@
 import type { SiteSettingsDraftPayload } from "@jessepomeroy/admin";
 import type { PageServerLoad } from "./$types";
 
-type SanitySiteSettings = {
+type PublicSiteSettings = {
 	artistName?: string | null;
 	siteTitle?: string | null;
 	tagline?: string | null;
@@ -15,11 +15,11 @@ type SanitySiteSettings = {
 };
 
 export const load: PageServerLoad = async ({ parent }) => {
-	// The root layout already fetched the public Sanity document. Reuse that
-	// inherited data so opening the protected workspace does not issue a second
-	// provider query or create a second source of current settings.
+	// The root layout already fetched the current public projection. Reuse that
+	// inherited Convex-owned data so opening the protected workspace does not
+	// issue a second query or create another source of current settings.
 	const { siteSettings } = await parent();
-	const current = siteSettings as SanitySiteSettings | null | undefined;
+	const current = siteSettings as PublicSiteSettings | null | undefined;
 
 	const siteSettingsEditorSeed = {
 		artistName: current?.artistName ?? "",

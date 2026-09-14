@@ -1,7 +1,9 @@
+import { logActivity } from "./activityLog";
+import { readClientTags } from "./tags";
 import { paginationOptsValidator } from "convex/server";
 import { v } from "convex/values";
-import { internal } from "./_generated/api";
-import { mutation, query } from "./_generated/server";
+import type { Doc } from "./_generated/dataModel";
+import { mutation, query, type QueryCtx } from "./_generated/server";
 import { requireDocumentSiteAdmin, requireSiteAdmin } from "./authHelpers";
 import { deleteDocument } from "./helpers/deleting";
 import { BULK_SCAN_LIMIT, LARGE_SCAN_LIMIT } from "./helpers/limits";
@@ -19,36 +21,43 @@ const statusValidator = v.union(
 	v.literal("archived"),
 );
 
+function clientsByFilter(
+	ctx: QueryCtx,
+	{
+		siteUrl,
+		category,
+		status,
+	}: {
+		siteUrl: string;
+		category?: Doc<"photographyClients">["category"];
+		status?: Doc<"photographyClients">["status"];
+	},
+) {
+	const clients = ctx.db.query("photographyClients");
+	if (category && status)
+		return clients.withIndex("by_siteUrl_and_category_and_status", (q) =>
+			q.eq("siteUrl", siteUrl).eq("category", category).eq("status", status),
+		);
+	if (status)
+		return clients.withIndex("by_siteUrl_status", (q) =>
+			q.eq("siteUrl", siteUrl).eq("status", status),
+		);
+	if (category)
+		return clients.withIndex("by_siteUrl_category", (q) =>
+			q.eq("siteUrl", siteUrl).eq("category", category),
+		);
+	return clients.withIndex("by_siteUrl", (q) => q.eq("siteUrl", siteUrl));
+}
+
 export const listClients = query({
 	args: {
 		siteUrl: v.string(),
 		category: v.optional(categoryValidator),
 		status: v.optional(statusValidator),
 	},
-	handler: async (ctx, { siteUrl, category, status }) => {
-		await requireSiteAdmin(ctx, siteUrl);
-		if (category) {
-			const results = await ctx.db
-				.query("photographyClients")
-				.withIndex("by_siteUrl_category", (q) =>
-					q.eq("siteUrl", siteUrl).eq("category", category),
-				)
-				.order("desc")
-				.take(BULK_SCAN_LIMIT);
-			if (status) {
-				return results.filter((c) => c.status === status);
-			}
-			return results;
-		}
-		const results = await ctx.db
-			.query("photographyClients")
-			.withIndex("by_siteUrl", (q) => q.eq("siteUrl", siteUrl))
-			.order("desc")
-			.take(BULK_SCAN_LIMIT);
-		if (status) {
-			return results.filter((c) => c.status === status);
-		}
-		return results;
+	handler: async (ctx, args) => {
+		await requireSiteAdmin(ctx, args.siteUrl);
+		return await clientsByFilter(ctx, args).order("desc").take(BULK_SCAN_LIMIT);
 	},
 });
 
@@ -57,23 +66,36 @@ export const listClientsPaginated = query({
 		siteUrl: v.string(),
 		paginationOpts: paginationOptsValidator,
 		category: v.optional(categoryValidator),
+		status: v.optional(statusValidator),
 	},
-	handler: async (ctx, { siteUrl, paginationOpts, category }) => {
-		await requireSiteAdmin(ctx, siteUrl);
-		if (category) {
-			return await ctx.db
-				.query("photographyClients")
-				.withIndex("by_siteUrl_category", (q) =>
-					q.eq("siteUrl", siteUrl).eq("category", category),
-				)
-				.order("desc")
-				.paginate(paginationOpts);
-		}
-		return await ctx.db
-			.query("photographyClients")
-			.withIndex("by_siteUrl", (q) => q.eq("siteUrl", siteUrl))
-			.order("desc")
-			.paginate(paginationOpts);
+	handler: async (ctx, args) => {
+		await requireSiteAdmin(ctx, args.siteUrl);
+		return await clientsByFilter(ctx, args).order("desc").paginate(args.paginationOpts);
+	},
+});
+
+/** Fresh snapshot pages keep the tag join below the transaction row budget. */
+export const listClientsWithTags = query({
+	args: {
+		siteUrl: v.string(),
+		paginationOpts: paginationOptsValidator,
+		category: v.optional(categoryValidator),
+		status: v.optional(statusValidator),
+	},
+	handler: async (ctx, args) => {
+		await requireSiteAdmin(ctx, args.siteUrl);
+		const result = await clientsByFilter(ctx, args).order("desc").paginate({
+			...args.paginationOpts,
+			numItems: Math.min(args.paginationOpts.numItems, 50),
+			maximumRowsRead: 50,
+		});
+		return {
+			...result,
+			page: await Promise.all(result.page.map(async (client) => ({
+				...client,
+				tags: await readClientTags(ctx, client._id, args.siteUrl),
+			}))),
+		};
 	},
 });
 
@@ -115,7 +137,7 @@ export const createClient = mutation({
 			status: "lead",
 		});
 
-		await ctx.runMutation(internal.activityLog.logActivity, {
+		await logActivity(ctx, {
 			siteUrl: args.siteUrl,
 			clientId,
 			action: "client_created",
@@ -145,7 +167,7 @@ export const updateClient = mutation({
 
 		// Log status changes
 		if (updates.status && updates.status !== existing.status) {
-			await ctx.runMutation(internal.activityLog.logActivity, {
+			await logActivity(ctx, {
 				siteUrl: existing.siteUrl,
 				clientId,
 				action: "status_changed",
@@ -166,12 +188,14 @@ export const getStats = query({
 	args: { siteUrl: v.string() },
 	handler: async (ctx, { siteUrl }) => {
 		await requireSiteAdmin(ctx, siteUrl);
-		const all = await ctx.db
+		const rows = await ctx.db
 			.query("photographyClients")
 			.withIndex("by_siteUrl", (q) => q.eq("siteUrl", siteUrl))
-			.take(LARGE_SCAN_LIMIT);
+			.take(LARGE_SCAN_LIMIT + 1);
+		const all = rows.slice(0, LARGE_SCAN_LIMIT);
 
 		return {
+			truncated: rows.length > LARGE_SCAN_LIMIT,
 			total: all.length,
 			leads: all.filter((c) => c.status === "lead").length,
 			booked: all.filter((c) => c.status === "booked").length,

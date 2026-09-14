@@ -5,7 +5,7 @@
 	<title>payment received</title>
 </svelte:head>
 
-<div class="container">
+<div class="payment-page">
 	<div class="content">
 		<h1>payment received</h1>
 		<p>thank you — your invoice payment has been processed successfully.</p>
@@ -14,7 +14,8 @@
 </div>
 
 <style>
-	.container {
+	.payment-page {
+		width: 100%;
 		min-height: 100vh;
 		display: flex;
 		align-items: center;
@@ -46,4 +47,9 @@
 		color: #888;
 		font-size: 0.875rem;
 	}
+	@media (min-width: 40rem) { .payment-page { max-width: 40rem; } }
+	@media (min-width: 48rem) { .payment-page { max-width: 48rem; } }
+	@media (min-width: 64rem) { .payment-page { max-width: 64rem; } }
+	@media (min-width: 80rem) { .payment-page { max-width: 80rem; } }
+	@media (min-width: 96rem) { .payment-page { max-width: 96rem; } }
 </style>

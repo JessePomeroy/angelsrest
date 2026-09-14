@@ -1,66 +1,62 @@
 <!--
   ThemeSwitcher Component
   
-  Clean implementation using hamlindigo theme for both light and dark modes.
-  Only toggles the 'dark' class on <html> element.
+  Uses the site palette for both light and dark modes.
+  The shared theme store owns DOM updates and persistence.
 -->
 
 <script lang="ts">
 import { MoonIcon, SunIcon } from "@lucide/svelte";
-import { onMount } from "svelte";
-import { browser } from "$app/environment";
 import { isDark } from "$lib/stores/theme";
-
-onMount(() => {
-	applyTheme($isDark);
-});
-
-function applyTheme(dark: boolean) {
-	if (browser) {
-		const html = document.documentElement;
-		if (dark) {
-			html.classList.add("dark");
-		} else {
-			html.classList.remove("dark");
-		}
-		// Always hamlindigo
-		html.setAttribute("data-theme", "hamlindigo");
-		localStorage.setItem("theme", dark ? "dark" : "light");
-	}
-}
-
-function setLight() {
-	isDark.setLight();
-	applyTheme(false);
-}
-
-function setDark() {
-	isDark.setDark();
-	applyTheme(true);
-}
 </script>
 
-<!-- Use proper Skeleton design tokens -->
-<div class="flex items-center bg-surface-200-700-token rounded-full p-0.5">
-  <!-- Light mode button -->
+<div class="theme-switcher">
   <button
-    onclick={setLight}
-    class="p-1.5 rounded-full transition-all duration-200 {!$isDark
-      ? 'bg-surface-50 text-surface-900-50-token shadow-sm'
-      : 'text-surface-500 hover:text-surface-600'}"
+    onclick={isDark.setLight}
+    aria-pressed={!$isDark}
+    class="light-mode"
     aria-label="Light mode"
   >
-    <SunIcon class="size-3" />
+    <SunIcon size="0.75rem" />
   </button>
-  
-  <!-- Dark mode button -->
   <button
-    onclick={setDark}
-    class="p-1.5 rounded-full transition-all duration-200 {$isDark
-      ? 'bg-surface-900 text-surface-50 shadow-sm'
-      : 'text-surface-500 hover:text-surface-600'}"
+    onclick={isDark.setDark}
+    aria-pressed={$isDark}
+    class="dark-mode"
     aria-label="Dark mode"
   >
-    <MoonIcon class="size-3" />
+    <MoonIcon size="0.75rem" />
   </button>
 </div>
+
+<style>
+  .theme-switcher {
+    display: flex;
+    align-items: center;
+    background: var(--color-surface-200);
+    border-radius: 9999px;
+    padding: 0.125rem;
+  }
+  button {
+    padding: 0.375rem;
+    border-radius: 9999px;
+    color: var(--color-surface-500);
+    transition: all 200ms cubic-bezier(0.4, 0, 0.2, 1);
+  }
+  button[aria-pressed="true"] {
+    box-shadow: 0 1px 3px rgb(0 0 0 / 10%), 0 1px 2px -1px rgb(0 0 0 / 10%);
+  }
+  .light-mode[aria-pressed="true"] {
+    background: var(--color-surface-50);
+    color: var(--color-surface-900);
+  }
+  .dark-mode[aria-pressed="true"] {
+    background: var(--color-surface-900);
+    color: var(--color-surface-50);
+  }
+  :global(.dark) .theme-switcher { background: var(--color-surface-700); }
+  :global(.dark) .light-mode[aria-pressed="true"] { color: var(--color-surface-50); }
+  @media (hover: hover) {
+    button[aria-pressed="false"]:hover { color: var(--color-surface-600); }
+  }
+</style>

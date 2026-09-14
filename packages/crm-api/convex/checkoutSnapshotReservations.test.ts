@@ -6,6 +6,7 @@ import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { api, internal } from "./_generated/api";
 import {
 	parseReservationBindRequest,
+	parseReservationRequest,
 	parseReservedCheckoutSnapshot,
 	reservationHandleHash,
 	reservationSnapshotDigest,
@@ -27,6 +28,7 @@ const SESSION = "cs_test_1234567890abcdefghijklmnop";
 const BOUND_SESSION = "cs_test_1234567890abcdefghijklmnox";
 const RESERVE_PATH = "/commerce/checkout-snapshots/reserve";
 const BIND_PATH = "/commerce/checkout-snapshots/bind";
+const TENANT_ID_A = "tenant_05eb6092-5d8c-43ce-ad26-1a59522bd07b";
 const envNames = [
 	"CHECKOUT_SNAPSHOT_RESERVATION_SECRETS", "WEBHOOK_SECRET", "BETTER_AUTH_SECRET", "SITE_URL",
 	"AUTH_GOOGLE_SECRET", "STRIPE_SECRET_KEY", "ORDER_LOOKUP_SECRET", "ORDER_PRODUCERS_STATE",
@@ -131,7 +133,35 @@ async function seedPlatformClients(t: ReturnType<typeof convexTest>) {
 	});
 }
 
+async function seedTenantIdentity(t: ReturnType<typeof convexTest>) {
+	await t.run(async (ctx) => {
+		await ctx.db.insert("platformClients", {
+			tenantId: TENANT_ID_A,
+			name: SITE_A,
+			email: `owner@${SITE_A}`,
+			siteUrl: SITE_A,
+			tier: "full",
+			subscriptionStatus: "active",
+			adminEmails: [`owner@${SITE_A}`],
+		});
+		await ctx.db.insert("tenantAliases", {
+			tenantId: TENANT_ID_A,
+			kind: "domain",
+			value: SITE_A,
+			verifiedAt: Date.now(),
+			verificationMethod: "operator",
+		});
+	});
+}
+
 describe("checkout snapshot reservation input and authentication", () => {
+	test("accepts only explicit version-one print capture without changing old request shapes", () => {
+		expect(parseReservationRequest(reserveBody())?.printInputVersion).toBeUndefined();
+		expect(parseReservationRequest(reserveBody(undefined, { printInputVersion: 1 }))?.printInputVersion).toBe(1);
+		for (const printInputVersion of [0, 2, null, true, "1"]) {
+			expect(parseReservationRequest(reserveBody(undefined, { printInputVersion }))).toBeNull();
+		}
+	});
 	test("requires the exact normalized bounded snapshot shape", () => {
 		expect(parseReservedCheckoutSnapshot(snapshot)).toEqual(snapshot);
 		expect(parseReservedCheckoutSnapshot({ ...snapshot, extra: true })).toBeNull();
@@ -199,6 +229,41 @@ describe("checkout snapshot reservation input and authentication", () => {
 });
 
 describe("reservation, binding, and order transfer", () => {
+	test("stores an optional matching tenant ID while preserving legacy requests", async () => {
+		const t = convexTest(schema, modules);
+		await seedTenantIdentity(t);
+		const identified = await reserve(t, reserveBody(undefined, { tenantId: TENANT_ID_A }));
+		expect(identified.response.status).toBe(200);
+		expect((await rows(t))[0]?.tenantId).toBe(TENANT_ID_A);
+		expect((await reserve(t)).json.replayed).toBe(true);
+
+		const legacyReplay = await reserve(
+			t,
+			reserveBody("123e4567-e89b-42d3-a456-426614174018"),
+		);
+		expect(legacyReplay.response.status).toBe(200);
+		expect((await reserve(t, reserveBody("123e4567-e89b-42d3-a456-426614174018", {
+			tenantId: TENANT_ID_A,
+		}))).json.replayed).toBe(true);
+		expect((await rows(t)).every((row) => row.tenantId === TENANT_ID_A)).toBe(true);
+
+		const legacyBind = await reserve(
+			t,
+			reserveBody("123e4567-e89b-42d3-a456-426614174019"),
+		);
+		expect((await bind(t, legacyBind.json.handle!, { tenantId: TENANT_ID_A })).json.bound)
+			.toBe(true);
+		expect((await rows(t)).every((row) => row.tenantId === TENANT_ID_A)).toBe(true);
+		expect(
+			(await reserve(
+				t,
+				reserveBody("123e4567-e89b-42d3-a456-426614174020", {
+					tenantId: "tenant_15eb6092-5d8c-43ce-ad26-1a59522bd07b",
+				}),
+			)).response.status,
+		).toBe(403);
+	});
+
 	test.each([
 		["missing", undefined],
 		["explicit closed", "closed"],
@@ -302,10 +367,10 @@ describe("reservation, binding, and order transfer", () => {
 		const replay = await reserve(t);
 		expect(first.response.status).toBe(200);
 		expect(replay.json).toEqual({ version: 2, handle: first.json.handle, replayed: true });
-		const changed = await reserve(t, reserveBody(undefined, {
+		const invalidProvider = await reserve(t, reserveBody(undefined, {
 			snapshot: { ...snapshot, catalogProvider: "sanity" },
 		}));
-		expect(changed.response.status).toBe(409);
+		expect(invalidProvider.response.status).toBe(400);
 		const hashA = await reservationHandleHash(SITE_A, first.json.handle!);
 		const hashB = await reservationHandleHash(SITE_B, first.json.handle!);
 		expect(hashA).not.toBe(hashB);
@@ -428,6 +493,32 @@ describe("reservation, binding, and order transfer", () => {
 		expect(await t.query(api.orders.resolveCheckoutRouting, {
 			stripeSessionId: SESSION, stripeTenantMetadataSiteUrl: SITE_A, webhookSecret: WEBHOOK,
 		})).toEqual({ source: "order", siteUrl: SITE_A, stripeConnectedAccountId: undefined });
+	});
+
+	test("persists and fences the verified tenant identity without changing legacy routing", async () => {
+		const t = convexTest(schema, modules);
+		await seedTenantIdentity(t);
+		const reserved = await reserve(t, reserveBody(undefined, { tenantId: TENANT_ID_A }));
+		await bind(t, reserved.json.handle!, { tenantId: TENANT_ID_A });
+		expect(await t.query(api.orders.resolveCheckoutRouting, {
+			stripeSessionId: SESSION,
+			stripeTenantMetadataSiteUrl: SITE_A,
+			stripeTenantMetadataTenantId: TENANT_ID_A,
+			webhookSecret: WEBHOOK,
+		})).toMatchObject({ source: "reservation", siteUrl: SITE_A });
+
+		const created = await t.mutation(api.orders.create, {
+			...orderArgs(),
+			tenantId: TENANT_ID_A,
+			checkoutSnapshotReservation: { version: 2, handle: reserved.json.handle },
+		});
+		expect((await t.run((ctx) => ctx.db.get(created._id)))?.tenantId).toBe(TENANT_ID_A);
+		await expect(t.query(api.orders.resolveCheckoutRouting, {
+			stripeSessionId: SESSION,
+			stripeTenantMetadataSiteUrl: SITE_A,
+			stripeTenantMetadataTenantId: "tenant_15eb6092-5d8c-43ce-ad26-1a59522bd07b",
+			webhookSecret: WEBHOOK,
+		})).rejects.toThrow("routing facts conflict");
 	});
 
 	test("rejects contradictory existing-order accounts with a canonical legacy fallback", async () => {
