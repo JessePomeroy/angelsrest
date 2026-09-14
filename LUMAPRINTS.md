@@ -258,6 +258,80 @@ as a development test.
 
 ## Verification
 
+### Authenticated prepared-image diagnostic
+
+`POST /api/admin/commerce/print-image-diagnostic` accepts only `{ "orderId": "…" }`
+from a same-origin, authenticated Angels Rest site administrator. The read-only
+Convex query independently checks stored membership and selects only an unresolved
+frozen order with a provisional provider number, a completed single-source job,
+and an existing prepared JPEG of at most 10 MB. It never falls back to an original
+or accepts an image URL or artwork descriptor from the caller.
+
+The diagnostic issues a fresh download capability without replacing the saved
+one, verifies anonymous HEAD/GET, exact bytes/hash and JPEG dimensions, then makes
+one production `POST /api/v1/images/checkImageConfig`. It does not upload artwork,
+submit/retry orders, alter order/job/source state, refund, or send notifications.
+Responses contain only bounded diagnostic fields: no credentials, capabilities,
+private object keys, customer fields, or raw provider messages. A successful
+image check proves current retrieval and image compatibility, not asynchronous
+order creation or historical acceptance. Production sandbox-mode configuration
+fails closed; this diagnostic never switches environments or retries a request.
+
+The report separates `provider.urlMatches` from `provider.dimensionComparison`
+(`exact`, `transposed`, `different`, or `unavailable`). `passed` requires HTTP 200,
+the exact echoed URL, and same-axis pixel dimensions. An HTTP 200 whose response
+cannot be fully verified has outcome `unverified`, not `failed`; reversed axes
+are reported without assuming that the provider physically rotated the image.
+Neither outcome grants order-submission or retry authority.
+
+#### Live result — 2026-09-14 UTC (September 13 local time)
+
+The approved single-image investigation ran against the existing prepared JPEG
+for the unresolved frozen order created on September 6. No new order was submitted.
+
+| Check | Observed result |
+| --- | --- |
+| Fresh Worker capability | 614-character URL; approximately 24 hours remaining |
+| Anonymous HEAD and GET | Both HTTP 200; expected JPEG headers |
+| Saved artifact verification | Exactly 1,208,785 bytes; SHA-256 matched the saved descriptor |
+| Decoded JPEG | 1800 × 1200 pixels |
+| Saved print configuration | 6 × 4 inches; subcategory 103007; option 39 |
+| LumaPrints image checker | HTTP 200; reported actual and recommended dimensions of 1200 × 1800 |
+| Existing provisional order lookup | Still HTTP 404 |
+| Order, job, and source records | Before/after digest identical |
+
+The diagnostic returned `provider_response_unverified`, because its conservative
+response check requires the provider's reported width and height to match the
+decoded image in the same axis order. This is **not** a provider 400/406 rejection:
+the provider returned 200 with transposed dimensions. The published response
+contract does not explain that normalization, and that initial report did not
+separately retain the URL-echo comparison. The later reporting refinement cannot
+recover that missing observation retroactively. Do not reinterpret the result
+as proof that the image is invalid or that a physical rotation occurred.
+
+This verifies current anonymous access to the exact prepared artwork and records
+the provider's successful HTTP response. It does not establish historical URL
+availability, asynchronous order creation, or the cause of the missing order.
+The next decisive evidence is LumaPrints' processing trace/error for the original
+provisional order number and external reference. Do not clear reconciliation
+fences or resubmit the order based on this image check.
+
+Source: [LumaPrints image-check contract](https://api-docs.lumaprints.com/api-5384561).
+
+#### Local preparation checks — 2026-09-14 UTC
+
+The seven host/Worker contract cases pass against both the CI-pinned Worker
+revision `cdc1b6f` and the separately checked local Worker revision `ea76d28`.
+The CI pin remains unchanged. The expanded proof renders a synthetic
+6935 × 4623 PNG, larger than the blocked jobs' 55 MB originals but within the
+existing input limit, through download, decode, geometry, JPEG rendering,
+both upload transports, capability issuance, and exact-byte retrieval.
+
+This shows that the current implementations handle that source size/dimension
+class locally. It neither identifies the historical `step_failed` operation
+nor verifies Vercel/Cloudflare resource limits or production credentials. No
+historical jobs were replayed and no provider order endpoint was called.
+
 ### Host/Worker artwork contract
 
 `pnpm test:print-contract` connects the actual host upload/URL client to the
