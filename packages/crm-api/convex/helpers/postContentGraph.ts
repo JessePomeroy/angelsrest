@@ -8,6 +8,7 @@ import {
 import { toPublishedBlogSupportingContent } from "./blogContentValidators";
 import type { ContentRevisionPayload } from "./contentValidators";
 import { preparePostRevision } from "./postContentIntegrity";
+import { requirePublishedSiteOwnerAuthor } from "./siteSettingsData";
 import {
 	POST_CONTENT_LIMITS,
 	serializePostRevisionPayload,
@@ -285,6 +286,9 @@ export async function requirePostDraftRelations(
 	draft: PostDraft,
 	requirePublished: boolean,
 ) {
+	if (requirePublished && draft.authorSource === "siteSettings") {
+		await requirePublishedSiteOwnerAuthor(ctx, siteUrl);
+	}
 	const bodyAssetIds = draft.body.blocks
 		.filter((block) => block.type === "image")
 		.map((block) => {
@@ -404,6 +408,7 @@ export async function loadPostRevision(
 		presentation: payload.presentation,
 		displayPublishedAt: payload.displayPublishedAt,
 		summary: payload.summary,
+		...(payload.summarySource ? { summarySource: payload.summarySource } : {}),
 		seoTitle: payload.seoTitle,
 		seoDescription: payload.seoDescription,
 		brief: payload.brief,
@@ -421,6 +426,7 @@ export async function loadPostRevision(
 			details: row.details,
 		})),
 		authorDocumentId: authorReferences[0]?.toDocumentId,
+		...(payload.authorSource ? { authorSource: payload.authorSource } : {}),
 		categories: categoryReferences.map((reference) => ({
 			key: reference.referenceKey,
 			documentId: reference.toDocumentId,

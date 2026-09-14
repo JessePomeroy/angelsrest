@@ -32,11 +32,11 @@ type PrintOptions = Pick<
  * Build the list of LumaPrints order items from Stripe checkout metadata.
  *
  * Handles three shapes of order:
- *   - **Cart** (added cart PR C): `metadata.isCart === "true"` with one
+ *   - **Historical cart:** `metadata.isCart === "true"` with one
  *     `cartItem_{n}` JSON entry per line. Each cart item carries its own
  *     paper/size, so this branch ignores the top-level paper metadata.
- *     Encoding contract is shared with `buildCartMetadata` in
- *     `src/routes/api/cart/checkout/+server.ts` — keep them in sync.
+ *     New checkout uses handle-v2 snapshots; fixed historical-wire fixtures
+ *     in `webhookCartShape.test.ts` protect this retained decoding contract.
  *   - **Print set:** `metadata.isPrintSet === "true"` with an `imageUrls`
  *     JSON array, one LumaPrints item per image, same paper/size for
  *     every image. Reads paper from top-level metadata.

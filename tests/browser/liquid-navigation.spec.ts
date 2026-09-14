@@ -45,6 +45,8 @@ test("liquid navigation opens destinations and cart, and responds to motion pref
 
 test("touch drag flings the sphere without opening navigation or selecting page text", async ({ page, isMobile, browserName }) => {
 	test.skip(!isMobile || browserName !== "chromium", "Touch injection requires Chromium CDP; physical iOS remains a device check.");
+	// Software WebGL can exhaust the shared test budget before Escape; keep assertion timeouts unchanged.
+	test.setTimeout(60_000);
 	await page.emulateMedia({ reducedMotion: "no-preference" });
 	await page.goto("/?fixture=liquid-navigation");
 	const sphere = page.locator(".sphere");

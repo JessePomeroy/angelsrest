@@ -26,6 +26,7 @@ export const adminConfig: AdminConfig = {
 			uploadEndpoint: "/api/admin/media",
 		},
 		blog: {
+			mode: "compact",
 			mediaBaseUrl: "https://media.angelsrest.online",
 		},
 		products: {

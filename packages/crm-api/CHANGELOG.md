@@ -1,5 +1,40 @@
 # @jessepomeroy/crm-api
 
+## 5.1.0
+
+### Minor Changes
+
+- 025ede2: Retain optional body-managed excerpt metadata across draft revisions so compact editors can refresh generated summaries after failed publication or reload without changing custom summaries. Preserve marker-free v1 checksums and public response shapes.
+- eae224d: Apply CRM category/status filters through indexes before bounded selection and
+  support the same status filter in the paginated list. Report a truncation flag
+  when CRM statistics reach their bounded scan limit so consumers can label partial
+  totals explicitly.
+- 38579d8: Add bounded paginated CRM client rows with tenant-scoped tags for the shared Admin.
+- be7812e: Add webhook-only receipt checkpoints independent of print fulfillment, with separate customer and owner acceptance and bounded idempotent retries.
+- 6e457be: Select unread CRM document transitions using indexed action timestamps, and record declined/overdue transitions.
+- 6dd19c4: Allow explicitly owner-authored blog posts to resolve their byline from the same site's published Site Settings. Preserve existing author references, public response shapes, and legacy revision checksums. Deploy the additive backend before enabling compact blog authoring in a host.
+
+### Patch Changes
+
+- 7cea0cd: Retain original descriptors and versioned artifact checkpoints for frozen print jobs. Deploy before enabling the host frozen-v1 protocol.
+- d539d36: Allow verified manual refunds after a blocked print job without weakening refund ownership or provider submission safeguards. Preserve refund state when a late job failure arrives.
+- 566f396: Finish deleting tag assignments in bounded scheduled batches when a tag has more
+  than 500 assignments. Remove the tag immediately to prevent new assignments while
+  cleanup completes, preserving site authorization and unrelated tags.
+- 314551c: Replace the unused generic tenant-query dispatcher with concrete invoice, quote and contract list reads, preserving authorization, indexed status filtering and the 200-row cap.
+- b42b1a7: Write client activity through a schema-typed internal helper instead of dispatching a nested mutation. Preserve callers' authorization, activity payloads and transaction behavior.
+- 483c29b: Allow frozen provider options in print-job source checkpoints. Deploy the additive backend before opting new checkout reservations into frozen input.
+- 56dee23: Checkpoint paid print preparation outside the webhook time limit with leased, scheduled jobs and source-level progress. Preserve provider submission fences and allow new-job reconciliation through its existing 24-hour window.
+- 4766aa3: Support positive fractional invoice quantities with per-line cent rounding, rounded tax, and finite safe-cent validation on invoice creation, numeric edits, and quote conversion. The host portal and invoice checkout use the same arithmetic; no stored invoice migration is performed.
+- 4629f44: Add opt-in reservation-time print instructions with immutable artwork/finish identity and a distinct paid shipping recipient. Preserve existing reservation and order behavior until a host explicitly adopts the new input. Share the existing provider product-option mapping without changing its output.
+- 40f88e0: Consolidate Post revision preparation while preserving v1 checksums, stored headers and retry behavior.
+- 06de47b: Retire historical private-catalog migration receipt ingress and internal wrappers while preserving current editor admission and accepted-asset identity.
+- d2aa4f9: Share document advancement after accepted email delivery while preserving completion and operator-resolution policies, terminal statuses, and original sent timestamps.
+- 0e07bb9: Share active singleton revision traversal in the content store for About, Modeling and Site Settings media deletion checks. Preserve revision ownership, active draft/published pins, retained-history behavior and completion rechecks.
+- Updated dependencies [4629f44]
+- Updated dependencies [3779f04]
+  - @jessepomeroy/print-catalog@0.3.1
+
 ## 5.0.1
 
 ### Patch Changes

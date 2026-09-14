@@ -1,5 +1,6 @@
 <script lang="ts">
 import { trapFocus } from "$lib/utils/focusTrap";
+import { openModal } from "$lib/utils/openModal";
 
 interface GalleryImage {
 	full?: string;
@@ -23,23 +24,8 @@ let {
 // `offset`, and the rendered index is derived from both.
 let offset = $state(0);
 let index = $derived(
-	((currentIndex + offset) % images.length + images.length) % images.length,
+	images.length ? ((currentIndex + offset) % images.length + images.length) % images.length : 0,
 );
-let dialogEl = $state<HTMLDivElement | null>(null);
-let previouslyFocused: HTMLElement | null = null;
-
-$effect(() => {
-	if (dialogEl) {
-		previouslyFocused = document.activeElement as HTMLElement;
-		const closeBtn = dialogEl.querySelector<HTMLElement>(
-			'[aria-label="Close lightbox"]',
-		);
-		closeBtn?.focus();
-	}
-	return () => {
-		previouslyFocused?.focus();
-	};
-});
 
 let offsetX = $state(0);
 let isDragging = $state(false);
@@ -54,6 +40,7 @@ function getImageUrl(img: GalleryImage | undefined) {
 }
 
 $effect(() => {
+	if (images.length < 2) return;
 	const preloadIndexes = [
 		(index + 1) % images.length,
 		(index - 1 + images.length) % images.length,
@@ -72,14 +59,11 @@ function prev() {
 	offset -= 1;
 }
 
-function handleKeydown(e: KeyboardEvent) {
-	if (e.key === "Escape") onClose();
+function handleKeydown(e: KeyboardEvent & { currentTarget: HTMLDialogElement }) {
 	if (e.key === "ArrowRight") next();
 	if (e.key === "ArrowLeft") prev();
-	if (dialogEl) trapFocus(e, dialogEl);
+	trapFocus(e, e.currentTarget);
 }
-
-let touchStartX = 0;
 
 function handleTouchStart(e: TouchEvent) {
 	isDragging = true;
@@ -100,29 +84,22 @@ function handleTouchEnd() {
 }
 </script>
 
-<svelte:window onkeydown={handleKeydown} />
-
-<div
+<dialog
+  use:openModal
   class="lightbox"
   onclick={(e) => {
     // Only close when the click hits the backdrop itself, not a child.
     // Removes the need for stopPropagation on the inner content div.
     if (e.target === e.currentTarget) onClose();
   }}
-  onkeydown={(e) => {
-    // a11y: click handler above needs a matching keyboard handler on the
-    // same element. Escape-to-close is the natural pair. Arrow-key
-    // navigation / tab trap is still handled globally via svelte:window
-    // below so the keys work even when focus has drifted.
-    if (e.key === "Escape" && e.target === e.currentTarget) onClose();
+  oncancel={(event) => {
+    event.preventDefault();
+    onClose();
   }}
-  role="dialog"
-  aria-modal="true"
-  aria-label="Image lightbox — {index + 1} of {images.length}"
-  tabindex="-1"
-  bind:this={dialogEl}
+  onkeydown={handleKeydown}
+  aria-label="Image lightbox — {images.length ? index + 1 : 0} of {images.length}"
 >
-  <div class="image-stage" role="document">
+  <div class="image-stage" class:empty={images.length === 0} role="document">
     <button
       class="close-lightbox"
       aria-label="Close lightbox"
@@ -132,9 +109,10 @@ function handleTouchEnd() {
     </button>
 
     <div class="image-count" aria-live="polite">
-      {index + 1}/{images.length}
+      {images.length ? index + 1 : 0}/{images.length}
     </div>
 
+    {#if images.length}
     <img
       src={getImageUrl(images[index])}
       alt={images[index]?.alt || `Gallery image ${index + 1} of ${images.length}`}
@@ -147,6 +125,9 @@ function handleTouchEnd() {
       ontouchend={handleTouchEnd}
       draggable="false"
     />
+    {:else}
+      <p>No images available.</p>
+    {/if}
 
     {#if images.length > 1}
       <button
@@ -167,14 +148,17 @@ function handleTouchEnd() {
       </button>
     {/if}
   </div>
-</div>
+</dialog>
 
 <style>
   @layer components {
-    .lightbox { position: fixed; inset: 0; background: rgb(0 0 0 / 90%); -webkit-backdrop-filter: blur(8px); backdrop-filter: blur(8px); z-index: 50; display: flex; align-items: center; justify-content: center; }
+    .lightbox { position: fixed; inset: 0; width: 100%; height: 100%; max-width: none; max-height: none; margin: 0; padding: 0; border: 0; color: white; background: rgb(0 0 0 / 90%); -webkit-backdrop-filter: blur(8px); backdrop-filter: blur(8px); }
+    .lightbox[open] { display: flex; align-items: center; justify-content: center; }
+    .lightbox::backdrop { background: transparent; }
     .image-stage { position: relative; max-width: 90vw; max-height: 90vh; }
+    .image-stage.empty { min-width: 12rem; padding: 4rem 2rem 2rem; }
     .close-lightbox { position: absolute; top: 1rem; right: 1rem; z-index: 10; padding: 0.5rem; color: color-mix(in oklab, white 70%, transparent); border-radius: 9999px; }
-    .image-count { position: absolute; top: 1rem; left: 1rem; color: color-mix(in oklab, white 70%, transparent); font-size: var(--text-sm); line-height: var(--text-sm--line-height); }
+    .image-count { position: absolute; top: 1rem; left: 1rem; z-index: 1; color: color-mix(in oklab, white 70%, transparent); font-size: var(--text-sm); line-height: var(--text-sm--line-height); }
     .gallery-image { max-width: 100%; max-height: 90vh; object-fit: contain; border-radius: 0.375rem; }
     .image-previous, .image-next { position: absolute; top: 50%; translate: 0 -50%; color: color-mix(in oklab, white 70%, transparent); font-size: var(--text-4xl); line-height: var(--text-4xl--line-height); }
     .image-previous { left: 1rem; }

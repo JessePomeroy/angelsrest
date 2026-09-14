@@ -808,6 +808,8 @@ let favoriteCount = $derived(
 
 	.lightbox-controls {
 		display: flex;
+		flex-wrap: wrap;
+		width: 100%;
 		align-items: center;
 		gap: 16px;
 		margin-top: 12px;
@@ -815,15 +817,25 @@ let favoriteCount = $derived(
 		font-size: 0.82rem;
 	}
 
-	.lightbox-counter { font-variant-numeric: tabular-nums; }
-	.lightbox-filename { opacity: 0.5; flex: 1; }
+	.lightbox-counter { font-variant-numeric: tabular-nums; flex-shrink: 0; white-space: nowrap; }
+	.lightbox-filename {
+		opacity: 0.5;
+		flex: 1 1 160px;
+		min-width: 0;
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
+	}
 
 	.lightbox-actions {
 		display: flex;
+		flex-shrink: 0;
+		margin-left: auto;
 		gap: 8px;
 	}
 
 	.lb-btn {
+		white-space: nowrap;
 		padding: 5px 14px;
 		border: 1px solid rgba(255, 255, 255, 0.3);
 		border-radius: 5px;

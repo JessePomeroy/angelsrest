@@ -1,9 +1,20 @@
 import type { Id } from "../_generated/dataModel";
 import type { MutationCtx, QueryCtx } from "../_generated/server";
-import type { PublishedSiteSettings } from "./contentValidators";
+import { toPublishedSiteSettings, type PublishedSiteSettings } from "./contentValidators";
+import { getPublishedContentState } from "./contentStore";
 
 type SiteSettingsCtx = QueryCtx | MutationCtx;
 const PUBLIC_MEDIA_ORIGIN = "https://media.angelsrest.online";
+
+/** Owner bylines follow published settings; private settings drafts never become public. */
+export async function requirePublishedSiteOwnerAuthor(ctx: SiteSettingsCtx, siteUrl: string) {
+	const state = await getPublishedContentState(ctx, siteUrl, "siteSettings", (payload) => {
+		if (!("artistName" in payload)) throw new Error("Published Site Settings artist name is missing");
+		return toPublishedSiteSettings(payload);
+	});
+	if (!state) throw new Error("Publish Site Settings before publishing an owner-authored Post");
+	return { kind: "author" as const, name: state.payload.artistName, slug: "site-owner" };
+}
 
 export async function requireReadySiteSettingsOgImage(
 	ctx: SiteSettingsCtx,

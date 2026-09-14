@@ -270,6 +270,7 @@ describe("admin platform capabilities", () => {
 		expect(portfolioEditor?.requestDeletion).toBe(mediaApi.requestDeletion);
 		expect(Reflect.get(portfolioEditor ?? {}, "restorePinnedPublishedRevisions")).toBeUndefined();
 		expect(adminConfig.editor?.blog?.mediaBaseUrl).toBe("https://media.angelsrest.online");
+		expect(adminConfig.editor?.blog?.mode).toBe("compact");
 		expect(adminConfig.editor?.products).toEqual({
 			publicationEnabled: true,
 			publicShopEnabled: true,

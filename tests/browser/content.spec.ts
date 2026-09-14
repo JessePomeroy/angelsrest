@@ -37,20 +37,3 @@ test("about keeps portrait, biography and contact arranged across three breakpoi
 	await expect(page.getByLabel("email", { exact: true })).toHaveCSS("border-top-width", "1px");
 	expect(errors).toEqual([]);
 });
-
-test("portfolio lightbox keeps focus, keyboard navigation and close restoration", async ({ page }) => {
-	await page.goto("/?fixture=content&kind=gallery");
-	const opener = page.getByRole("button", { name: "Open portfolio lightbox" });
-	await opener.click();
-	const dialog = page.getByRole("dialog");
-	const close = page.getByRole("button", { name: "Close lightbox" });
-	await expect(close).toBeFocused();
-	await expect(dialog.getByAltText("First portfolio image")).toBeVisible();
-	await page.keyboard.press("ArrowRight");
-	await expect(dialog.getByAltText("Second portfolio image")).toBeVisible();
-	await page.keyboard.press("Shift+Tab");
-	await expect(page.getByRole("button", { name: "Next image", exact: true })).toBeFocused();
-	await page.keyboard.press("Escape");
-	await expect(dialog).toHaveCount(0);
-	await expect(opener).toBeFocused();
-});

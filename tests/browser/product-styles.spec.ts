@@ -1,23 +1,46 @@
 import { expect, test } from "@playwright/test";
 
-test("merchandise paper selection retains cart and checkout fields", async ({ page }) => {
+for (const scenario of ["physical", "postcard", "tapestry"]) {
+  test(`${scenario} retains fixed-price cart and checkout without print selectors`, async ({ page }) => {
+    let checkout: Record<string, unknown> | undefined;
+    await page.route("**/api/checkout", async route => {
+      checkout = route.request().postDataJSON();
+      await route.fulfill({ contentType: "application/json", body: JSON.stringify({ url: `${page.url()}#checkout` }) });
+    });
+    await page.goto(`/?fixture=product-css&scenario=${scenario}`);
+    await expect(page.getByLabel("Paper Type", { exact: true })).toHaveCount(0);
+    const price = page.locator(".desktop-price, .merch-price").filter({ visible: true });
+    await expect(price).toHaveText("$12.34");
+    const add = page.getByRole("button", { name: "add to cart", exact: true }).filter({ visible: true });
+    await add.focus();
+    await expect(add).toHaveCSS("outline-width", "2px");
+    await add.click();
+    await add.click();
+    const payload = JSON.parse(await page.getByLabel("Cart payload").textContent() ?? "[]");
+    expect(payload).toEqual([{
+      id: expect.any(String), productSlug: `fixture-merch-${scenario}`, type: "print",
+      title: "Fixture merchandise", imageUrl: expect.any(String), unitPriceCents: 1234, quantity: 2,
+    }]);
+    await page.getByRole("button", { name: "buy now", exact: true }).filter({ visible: true }).click();
+    await expect(page).toHaveURL(/#checkout$/);
+    expect(checkout).toEqual({ productId: `fixture-merch-${scenario}`, coupon: null, isPrintSet: false });
+  });
+}
+
+test("digital downloads retain direct checkout without joining the physical cart", async ({ page }) => {
   let checkout: Record<string, unknown> | undefined;
   await page.route("**/api/checkout", async route => {
     checkout = route.request().postDataJSON();
     await route.fulfill({ contentType: "application/json", body: JSON.stringify({ url: `${page.url()}#checkout` }) });
   });
-  await page.goto("/?fixture=product-css&scenario=paper");
-  const paper = page.getByLabel("Paper Type", { exact: true });
-  await paper.focus();
-  await expect(paper).toHaveCSS("outline-width", "2px");
-  await paper.selectOption("1");
-  await page.getByRole("button", { name: "add to cart", exact: true }).filter({ visible: true }).click();
-  const payload = JSON.parse(await page.getByLabel("Cart payload").textContent() ?? "[]");
-  expect(payload).toHaveLength(1);
-  expect(payload[0]).toMatchObject({ productSlug: "fixture-merch-paper", paperIndex: 1, paperWidth: 5, paperHeight: 7, paperSubcategoryId: 103002, unitPriceCents: 2000 });
-  await page.getByRole("button", { name: "buy now", exact: true }).filter({ visible: true }).click();
+  await page.goto("/?fixture=product-css&scenario=digital");
+  await expect(page.getByRole("button", { name: "add to cart", exact: true })).toHaveCount(0);
+  await expect(page.getByLabel("Paper Type", { exact: true })).toHaveCount(0);
+  await expect(page.getByText("instant download after payment", { exact: true })).toBeVisible();
+  await page.getByRole("button", { name: /^(buy & download|download)$/ }).filter({ visible: true }).click();
   await expect(page).toHaveURL(/#checkout$/);
-  expect(checkout).toEqual({ productId: "fixture-merch-paper", coupon: null, isPrintSet: false, paperIndex: 1 });
+  expect(checkout).toEqual({ productId: "fixture-merch-digital", coupon: null, isPrintSet: false });
+  await expect(page.getByLabel("Cart payload")).toHaveText("[]");
 });
 
 test("digital and sold-out products retain their purchase restrictions", async ({ page }) => {

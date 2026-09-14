@@ -1,3 +1,9 @@
+import {
+	galleryOriginalDownloadUrl,
+	galleryPreparedZipArchiveUrl,
+	galleryPreparedZipCancelUrl,
+	galleryPreparedZipStatusUrl,
+} from "@jessepomeroy/gallery-delivery/download-urls";
 import { describe, expect, it } from "vitest";
 import {
 	filterPrivateCapabilityAnalytics,
@@ -138,5 +144,58 @@ describe("private capability path privacy", () => {
 		expect(redactPrivateCapabilityPaths("ordinary /portfolio/client-work path")).toBe(
 			"ordinary /portfolio/client-work path",
 		);
+	});
+
+	it("bounds telemetry processing for long URLs without query assignments", () => {
+		const url = `https://worker.test/image/file?${"?".repeat(64_000)}`;
+		const started = performance.now();
+		expect(scrubPrivateCapabilityTelemetry(url)).toBe(url);
+		// A wide budget catches quadratic rescanning without timing normal work closely.
+		expect(performance.now() - started).toBeLessThan(1_000);
+	});
+
+	it.each([
+		galleryOriginalDownloadUrl,
+		galleryPreparedZipStatusUrl,
+		galleryPreparedZipCancelUrl,
+		galleryPreparedZipArchiveUrl,
+	])("scrubs capabilities from current delivery URL builder %s", (buildUrl) => {
+		const url = buildUrl("https://worker.test", "/archive.zip", "gallery-secret", "grant+secret");
+		const event = {
+			request: { url: "https://angelsrest.online/shop" },
+			breadcrumbs: [{ category: "fetch", data: { url, method: "GET", status_code: 200 } }],
+		};
+
+		const scrubbed = scrubPrivateCapabilityTelemetry(event);
+		const scrubbedUrl = new URL(scrubbed.breadcrumbs[0].data.url);
+		expect(scrubbedUrl.searchParams.get("token")).toBe("[redacted]");
+		expect(scrubbedUrl.searchParams.get("accessGrant")).toBe("[redacted]");
+		expect(scrubbedUrl.pathname).toBe(new URL(url).pathname);
+		expect(scrubbed.request).toEqual(event.request);
+		expect(scrubbed.breadcrumbs[0].data.method).toBe("GET");
+		expect(scrubbed.breadcrumbs[0].data.status_code).toBe(200);
+		expect(event.breadcrumbs[0].data.url).toBe(url);
+		expect(JSON.stringify(scrubbed)).not.toMatch(/gallery-secret|grant(?:%2B|\+)secret/);
+	});
+
+	it.each([
+		[
+			"/image/file?v=2&token=first&token=second&accessGrant=grant#preview",
+			"/image/file?v=2&token=[redacted]&token=[redacted]&accessGrant=[redacted]#preview",
+		],
+		[
+			"/download/file?%74oken=secret&access%47rant=grant",
+			"/download/file?%74oken=[redacted]&access%47rant=[redacted]",
+		],
+		[
+			"/download/file?bad%=keep&token=secret&size=full",
+			"/download/file?bad%=keep&token=[redacted]&size=full",
+		],
+		[
+			'GET /delivery/path-secret?token=secret and "/image/file?accessGrant=grant"',
+			'GET /delivery/[redacted]?token=[redacted] and "/image/file?accessGrant=[redacted]"',
+		],
+	])("scrubs query capabilities in telemetry strings: %s", (input, expected) => {
+		expect(scrubPrivateCapabilityTelemetry(input)).toBe(expected);
 	});
 });

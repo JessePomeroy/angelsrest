@@ -11,6 +11,7 @@ import {
 	issueTenantPrintSourceCapability,
 	storePrintArtifact,
 } from "../../src/lib/server/catalogCommerceClients";
+import { renderPrintSource } from "../../src/lib/server/printSourcePreparation";
 import { adminSecret, issuerSecret, origin, tenant, uploadSecret } from "./env.mjs";
 
 // The only fake is the storage/runtime boundary, not either side of the HTTP protocol.
@@ -71,9 +72,11 @@ describe("host ↔ Worker print artwork contract (no network)", () => {
 	let workerEnv;
 	let requests;
 	let rendered;
+	let original;
 	beforeEach(async () => {
 		bucket = storage();
 		requests = [];
+		original = undefined;
 		const registry = (secret) => JSON.stringify({ [tenant]: [secret] });
 		workerEnv = {
 			CMS_MEDIA_PRIVATE_BUCKET: bucket,
@@ -95,6 +98,14 @@ describe("host ↔ Worker print artwork contract (no network)", () => {
 			// No fallback to real fetch: an unexpected origin/path fails the proof.
 			expect(url.origin).toBe(origin);
 			requests.push(`${request.method} ${url.pathname}`);
+			if (url.pathname === "/fixture-original.png" && request.method === "GET" && original) {
+				return new Response(new Uint8Array(original), {
+					headers: {
+						"Content-Type": "image/png",
+						"Content-Length": String(original.byteLength),
+					},
+				});
+			}
 			if (url.pathname === "/v1/catalog-assets/print-artifacts" && request.method === "PUT") {
 				return handlePutPrintArtifact(request, workerEnv);
 			}
@@ -122,6 +133,43 @@ describe("host ↔ Worker print artwork contract (no network)", () => {
 		};
 	});
 	afterEach(() => vi.unstubAllGlobals());
+
+	it.each([
+		"upload-token",
+		"direct-v1",
+	])("prepares a large original before storing it with %s", async (protocol) => {
+		// Match the blocked jobs' source dimensions without using customer artwork.
+		// Uncompressed PNG also exercises a larger download than their 55 MB input.
+		original = await sharp({
+			create: { width: 6935, height: 4623, channels: 3, background: "#345678" },
+		})
+			.png({ compressionLevel: 0 })
+			.toBuffer();
+		expect(original.byteLength).toBeGreaterThan(55_009_177);
+		expect(original.byteLength).toBeLessThan(100 * 1024 * 1024);
+		const stages = [];
+		const prepared = await renderPrintSource(
+			{
+				imageUrl: `${origin}/fixture-original.png`,
+				width: 4,
+				height: 6,
+				paperSubcategoryId: 103007,
+				quantity: 1,
+			},
+			(stage) => stages.push(stage),
+		);
+		expect(stages).toEqual(["download", "decode", "geometry", "render"]);
+		expect([prepared.width, prepared.height]).toEqual([1800, 1200]);
+		expect(prepared.geometry).toMatchObject({ widthInches: 6, heightInches: 4 });
+		const descriptor = await storePrintArtifact(tenant, prepared, undefined, protocol);
+		const capability = await issueTenantPrintSourceCapability(descriptor, tenant);
+		const response = await fetch(capability.url);
+		expect(response.status).toBe(200);
+		const downloaded = Buffer.from(await response.arrayBuffer());
+		expect(downloaded.equals(prepared.bytes)).toBe(true);
+		expect(createHash("sha256").update(downloaded).digest("hex")).toBe(descriptor.hash);
+		expect(bucket.objects.size).toBe(1);
+	}, 15_000);
 
 	it.each([
 		"upload-token",

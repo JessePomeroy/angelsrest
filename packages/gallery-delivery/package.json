@@ -1,6 +1,6 @@
 {
 	"name": "@jessepomeroy/gallery-delivery",
-	"version": "0.2.0",
+	"version": "0.2.1",
 	"description": "Shared browser delivery, download, and optimistic favorite behavior for photographer CRM gallery hosts.",
 	"type": "module",
 	"types": "./src/index.ts",
@@ -71,7 +71,7 @@
 	},
 	"devDependencies": {
 		"typescript": "^5.9.3",
-		"vitest": "^4.1.9"
+		"vitest": "^4.1.11"
 	},
 	"publishConfig": {
 		"registry": "https://npm.pkg.github.com"

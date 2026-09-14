@@ -9,6 +9,54 @@ test.beforeEach(async ({ page }) => {
 });
 
 for (const kind of ["product", "set"]) {
+	test(`${kind} shows the same resolved price and finish summary in both purchase presentations`, async ({ page }) => {
+		await page.goto(`/?fixture=print&kind=${kind}`);
+		const summaries = page.locator(".desktop-selection, .mobile-selection");
+		await expect(summaries).toHaveText(["Archival Matte · 8×10", "Archival Matte · 8×10"]);
+		await page.getByLabel("Frame", { exact: true }).selectOption("0.875-black");
+		const framed = 'Archival Matte · 8×10 · 0.25" border · 0.875" Black frame';
+		await expect(summaries).toHaveText([framed, framed]);
+		await expect(page.locator(".desktop-price")).toContainText("$45.08");
+		await expect(page.locator(".mobile-price")).toHaveText("$45.08");
+		await page.getByLabel("Material", { exact: true }).selectOption("canvas-black-0.75");
+		const canvas = 'Canvas Black — 0.75" stretch · 16×20';
+		await expect(summaries).toHaveText([canvas, canvas]);
+		await expect(page.locator(".desktop-price")).toContainText("$80");
+		await expect(page.locator(".mobile-price")).toHaveText("$80");
+		await page.getByRole("button", { name: "empty", exact: true }).click();
+		await expect(summaries).toHaveCount(0);
+		await expect(page.getByText("Select paper & size", { exact: true })).toHaveCount(2);
+	});
+
+	test(`${kind} disables both checkout presentations while pending and recovers after failure`, async ({ page }) => {
+		await page.emulateMedia({ reducedMotion: "reduce" });
+		let release = () => {};
+		const pending = new Promise<void>(resolve => { release = resolve; });
+		let requests = 0;
+		await page.route("**/api/checkout", async route => {
+			requests++;
+			await pending;
+			await route.fulfill({ status: 500, contentType: "application/json", body: JSON.stringify({ error: "Fixture checkout unavailable" }) });
+		});
+		await page.goto(`/?fixture=chrome&purchase=true&kind=${kind}`);
+		await page.getByRole("button", { name: "buy now", exact: true }).filter({ visible: true }).click();
+		await expect(page.locator(".desktop-buy-button")).toBeDisabled();
+		await expect(page.locator(".desktop-buy-button")).toHaveText("processing...");
+		await expect(page.locator(".mobile-buy-button")).toBeDisabled();
+		await expect(page.locator(".mobile-buy-button")).toHaveText("...");
+		await expect.poll(() => requests).toBe(1);
+		release();
+		await expect(page.getByRole("region", { name: "Notifications" }).getByRole("status")).toContainText("Fixture checkout unavailable");
+		await expect(page.locator(".desktop-buy-button")).toBeEnabled();
+		await expect(page.locator(".mobile-buy-button")).toBeEnabled();
+		await expect(page.getByRole("button", { name: "buy now", exact: true }).filter({ visible: true })).toHaveCount(1);
+		await expect(page.getByLabel("Cart payload")).toHaveText("[]");
+		await page.getByRole("button", { name: "Dismiss notification" }).click();
+		await page.getByRole("button", { name: "buy now", exact: true }).filter({ visible: true }).click();
+		await expect.poll(() => requests).toBe(2);
+		await expect(page.getByRole("region", { name: "Notifications" }).getByRole("status")).toContainText("Fixture checkout unavailable");
+	});
+
 	test(`${kind} normalizes finishes, canvas, unavailable sizes, and reused page data`, async ({ page }) => {
 		const errors: string[] = [];
 		page.on("pageerror", error => errors.push(error.message));

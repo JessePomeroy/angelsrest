@@ -10,7 +10,7 @@ const products = [...[0, 1, 2, 3].map(index => ({
   title: `Fixture ${category}`, slug: `fixture-${category}`, preview,
   price: 12, category, featured: false, inStock: true,
 }))];
-const printSets = [{ title: "Fixture pair", slug: "fixture-pair", previewImage: preview, preview1: preview, preview2: preview, price: 40, startingPrice: 40, description: undefined, availablePapers: [] }];
+const printSets = [{ title: "Fixture pair", slug: "fixture-pair", previewImage: preview, preview1: preview, preview2: preview, price: 40, startingPrice: 40, description: undefined }];
 const shopData = {
   siteSettings: deliveryData.siteSettings,
   printSets: empty ? [] : printSets,

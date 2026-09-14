@@ -74,42 +74,15 @@ vi.mock("$lib/adminFullPageReload", () => ({
 }));
 vi.mock("$lib/auth/client", () => ({ authClient: authHarness.client }));
 vi.mock("$lib/config/admin", () => ({ adminConfig: {} }));
-vi.mock("@jessepomeroy/admin", () => {
+vi.mock("@jessepomeroy/admin", async () => {
 	const renderChildren = (anchor: unknown, props: { children?: (anchor: unknown) => void }) =>
 		props.children?.(anchor);
 
 	return {
+		...(await import("../../../../node_modules/@jessepomeroy/admin/dist/adminSession.js")),
 		AdminLayout: renderChildren,
 		AuthGuard: renderChildren,
 		LoadingState: () => undefined,
-		isTenantAdminServerAuthorized: (session: { status?: string } | undefined) =>
-			session?.status === "authorized",
-		shouldRefreshAdminServerSession: (input: {
-			hasBrowser: boolean;
-			hasAuthClient: boolean;
-			sessionPending: boolean;
-			sessionEmail: string | null | undefined;
-			serverAuthorized: boolean;
-			refreshAttempted: boolean;
-			refreshInFlight: boolean;
-		}) =>
-			input.hasBrowser &&
-			input.hasAuthClient &&
-			!input.sessionPending &&
-			Boolean(input.sessionEmail) &&
-			!input.serverAuthorized &&
-			!input.refreshAttempted &&
-			!input.refreshInFlight,
-		shouldHoldAdminShellForServerSession: (input: {
-			hasAuthClient: boolean;
-			sessionPending: boolean;
-			sessionEmail: string | null | undefined;
-			serverAuthorized: boolean;
-		}) =>
-			input.hasAuthClient &&
-			!input.sessionPending &&
-			Boolean(input.sessionEmail) &&
-			!input.serverAuthorized,
 		setAdminConfig: (config: { authClient?: typeof authHarness.client }) => {
 			authHarness.configuredClient = config.authClient ?? null;
 		},
