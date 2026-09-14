@@ -5,6 +5,12 @@ const mocks = vi.hoisted(() => ({
 	client: vi.fn(),
 	query: vi.fn(),
 	diagnose: vi.fn(),
+	sandbox: vi.fn(),
+}));
+
+vi.mock("$lib/server/printImageSandboxDiagnostic", async (original) => ({
+	...(await original<typeof import("$lib/server/printImageSandboxDiagnostic")>()),
+	diagnosePreparedPrintImageInSandbox: mocks.sandbox,
 }));
 vi.mock("$lib/server/siteAdminAuthorization", () => ({
 	authorizeSiteAdminRequest: mocks.authorize,
@@ -31,6 +37,44 @@ beforeEach(() => {
 	mocks.client.mockReset().mockReturnValue({ query: mocks.query });
 	mocks.query.mockReset().mockResolvedValue({ prepared: true });
 	mocks.diagnose.mockReset().mockResolvedValue({ version: 1, outcome: "passed" });
+	mocks.sandbox.mockReset().mockResolvedValue({ version: 1, environment: "sandbox" });
+});
+
+test.each([
+	{ environment: "production" },
+	{ environment: "https://attacker.example" },
+	{ sandboxExternalId: "ar-sandbox-prepared-12345678-1234-4234-8234-123456789abc" },
+	{ environment: "sandbox", sandboxExternalId: "cs_live_never" },
+	{ environment: "sandbox", storeId: 1 },
+	{ environment: "sandbox", apiKey: "private" },
+	{ environment: "sandbox", recipient: {} },
+])("rejects unsupported sandbox input: %s", async (extra) => {
+	expect((await POST({ request: request(JSON.stringify({ orderId, ...extra })) })).status).toBe(
+		400,
+	);
+	expect(mocks.query).not.toHaveBeenCalled();
+	expect(mocks.sandbox).not.toHaveBeenCalled();
+});
+
+test.each([
+	undefined,
+	"ar-sandbox-prepared-12345678-1234-4234-8234-123456789abc",
+])("sandbox calls only its own diagnostic with a saved source: %s", async (sandboxExternalId) => {
+	const response = await POST({
+		request: request(JSON.stringify({ orderId, environment: "sandbox", sandboxExternalId })),
+	});
+	expect(response.status).toBe(200);
+	expect(response.headers.get("cache-control")).toBe("no-store");
+	expect(mocks.sandbox).toHaveBeenCalledExactlyOnceWith({ prepared: true }, sandboxExternalId);
+	expect(mocks.diagnose).not.toHaveBeenCalled();
+});
+
+test("sandbox requires authorization too", async () => {
+	mocks.authorize.mockResolvedValue(null);
+	expect(
+		(await POST({ request: request(JSON.stringify({ orderId, environment: "sandbox" })) })).status,
+	).toBe(401);
+	expect(mocks.sandbox).not.toHaveBeenCalled();
 });
 
 test("requires stored site-admin authorization before querying artwork or issuing a capability", async () => {

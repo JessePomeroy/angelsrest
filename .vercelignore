@@ -1,0 +1,7 @@
+node_modules
+.svelte-kit
+.vercel
+.contract
+.env
+.env.*
+!.env.example

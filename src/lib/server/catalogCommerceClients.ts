@@ -680,7 +680,11 @@ function capabilityPath(purpose: IssuerPurpose, mime: string, pathname: string) 
 			? "/v1/catalog-assets/fulfillment/print-source/"
 			: "/v1/catalog-assets/fulfillment/paid-file/";
 	if (!pathname.startsWith(prefix) || !pathname.endsWith(`.${extension}`)) return false;
-	const token = pathname.slice(prefix.length, -(extension.length + 1));
+	const suffix =
+		purpose === "print_source" && pathname.endsWith(`/print.${extension}`)
+			? `/print.${extension}`
+			: `.${extension}`;
+	const token = pathname.slice(prefix.length, -suffix.length);
 	return canonicalCapabilityToken(token);
 }
 

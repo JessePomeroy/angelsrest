@@ -8,6 +8,7 @@ vi.mock("$lib/server/catalogCommerceClients", () => ({
 vi.mock("$lib/server/runtimeConfig", () => ({ getLumaPrintsRuntimeConfig: vi.fn() }));
 
 import { diagnosePreparedPrintImage, readPrintDiagnosticBytes } from "../printImageDiagnostic";
+import { diagnosePreparedPrintImageInSandbox } from "../printImageSandboxDiagnostic";
 
 const url =
 	"https://cms-media-worker.thinkingofview.workers.dev/v1/catalog-assets/fulfillment/print-source/privateToken.jpg";
@@ -98,6 +99,17 @@ test("validates the exact prepared JPEG through anonymous HEAD/GET and only the 
 		}),
 	);
 	expect(JSON.stringify(report)).not.toMatch(/private|https:|Authorization|imageUrl|sha256/);
+});
+
+test("checks the exact short-filename capability through the same provider path", async () => {
+	const shortUrl = url.replace(/\.jpg$/, "/print.jpg");
+	const { source, dependencies, request } = fixture(200, { imageUrl: shortUrl });
+	dependencies.issue.mockResolvedValue({ url: shortUrl, expiresAt: Date.now() + 86_400_000 });
+	const report = await diagnosePreparedPrintImage(source, dependencies);
+	expect(report).toMatchObject({ outcome: "passed", provider: { urlMatches: true } });
+	expect(request.mock.calls.slice(0, 2).map(([address]) => address)).toEqual([shortUrl, shortUrl]);
+	expect(JSON.parse(String(request.mock.calls[2]?.[1]?.body)).imageUrl).toBe(shortUrl);
+	expect(JSON.stringify(report)).not.toMatch(/privateToken|https:/);
 });
 
 test("separates the echoed URL from transposed dimensions without calling HTTP 200 a rejection", async () => {
@@ -234,4 +246,131 @@ test("bounded reads reject a body that exceeds its saved size", async () => {
 	await expect(readPrintDiagnosticBytes(new Response("oversized").body, 2)).rejects.toThrow(
 		"body_limit",
 	);
+});
+
+const externalId = "ar-sandbox-prepared-12345678-1234-4234-8234-123456789abc";
+function sandboxFixture(providerOverride: Record<string, unknown> = {}) {
+	const result = fixture(200, providerOverride);
+	result.dependencies.configuration.mockReturnValue({
+		baseUrl: "https://us.api-sandbox.lumaprints.com",
+		apiKey: "sandbox-key",
+		apiSecret: "sandbox-secret",
+		storeId: 84630,
+	});
+	return result;
+}
+
+test("sandbox image-only mode never submits an order or uses the production API", async () => {
+	const { source, dependencies, request } = sandboxFixture();
+	const report = await diagnosePreparedPrintImageInSandbox(source, undefined, dependencies);
+	expect(report).toMatchObject({
+		environment: "sandbox",
+		image: { outcome: "passed" },
+		order: { outcome: "not_submitted" },
+	});
+	expect(request).toHaveBeenCalledTimes(3);
+	expect(request.mock.calls[2][0]).toBe(
+		"https://us.api-sandbox.lumaprints.com/api/v1/images/checkImageConfig",
+	);
+	expect(JSON.stringify(report)).not.toMatch(/private|sandbox-key|sandbox-secret|https:/);
+});
+
+test.each([
+	false,
+	true,
+])("explicit sandbox submission uses the exact checked JPEG, synthetic recipient, and no retry (transposed=%s)", async (transposed) => {
+	const { source, dependencies, request } = sandboxFixture(
+		transposed ? { actualImageWidth: 8, actualImageHeight: 12 } : {},
+	);
+	request.mockResolvedValueOnce(
+		Response.json({ orderNumber: 10000339499, message: `private ${url}` }, { status: 201 }),
+	);
+	const report = await diagnosePreparedPrintImageInSandbox(source, externalId, dependencies);
+	expect(report).toMatchObject({
+		image: { outcome: transposed ? "unverified" : "passed" },
+		order: {
+			outcome: "queued",
+			status: 201,
+			orderNumber: "10000339499",
+			imageUrlSha256: createHash("sha256").update(url).digest("hex"),
+		},
+	});
+	expect(request).toHaveBeenCalledTimes(4);
+	const [endpoint, options] = request.mock.calls[3];
+	expect(endpoint).toBe("https://us.api-sandbox.lumaprints.com/api/v1/orders");
+	expect(options?.redirect).toBe("error");
+	expect(JSON.parse(String(options?.body))).toMatchObject({
+		externalId,
+		storeId: 84630,
+		recipient: { firstName: "Sandbox", lastName: "Test", addressLine1: "955 E Ball Rd" },
+		orderItems: [
+			{
+				quantity: 1,
+				subcategoryId: 103007,
+				width: 6,
+				height: 4,
+				file: { imageUrl: url },
+				orderItemOptions: [39],
+			},
+		],
+	});
+	expect(dependencies.issue).toHaveBeenCalledTimes(1);
+	expect(JSON.stringify(report)).not.toMatch(/private|sandbox-key|sandbox-secret|https:/);
+});
+
+test.each([
+	{ imageUrl: "https://other.example/private.jpg" },
+	{ actualImageHeight: 9 },
+	{ actualImageWidth: null },
+])("sandbox never submits after an unverifiable image: %s", async (providerOverride) => {
+	const { source, dependencies, request } = sandboxFixture(providerOverride);
+	expect(
+		(await diagnosePreparedPrintImageInSandbox(source, externalId, dependencies)).order.outcome,
+	).toBe("not_submitted");
+	expect(request).toHaveBeenCalledTimes(3);
+});
+
+test("sandbox fails closed for live configuration, an invalid test ID, and absent credentials", async () => {
+	const { source, dependencies, request } = fixture();
+	expect(
+		(await diagnosePreparedPrintImageInSandbox(source, externalId, dependencies)).order.outcome,
+	).toBe("not_submitted");
+	expect(
+		(await diagnosePreparedPrintImageInSandbox(source, "cs_live_never", dependencies)).order
+			.outcome,
+	).toBe("not_submitted");
+	dependencies.configuration.mockImplementation(() => {
+		throw new Error("private credentials missing");
+	});
+	expect(
+		(await diagnosePreparedPrintImageInSandbox(source, externalId, dependencies)).order.outcome,
+	).toBe("not_submitted");
+	expect(dependencies.issue).not.toHaveBeenCalled();
+	expect(request).not.toHaveBeenCalled();
+});
+
+test.each([
+	[400, "rejected"],
+	[406, "rejected"],
+	[429, "unknown"],
+	[500, "unknown"],
+	[201, "unknown"],
+])("sandbox preserves uncertain/rejected status %s and never retries", async (status, outcome) => {
+	const { source, dependencies, request } = sandboxFixture();
+	request.mockResolvedValueOnce(
+		Response.json({ message: `private ${url}` }, { status: Number(status) }),
+	);
+	const report = await diagnosePreparedPrintImageInSandbox(source, externalId, dependencies);
+	expect(report.order).toMatchObject({ outcome, status });
+	expect(request).toHaveBeenCalledTimes(4);
+	expect(JSON.stringify(report)).not.toMatch(/private|https:/);
+});
+
+test("sandbox POST transport failure stays unknown and is never retried", async () => {
+	const { source, dependencies, request } = sandboxFixture();
+	request.mockRejectedValueOnce(new Error(`private ${url}`));
+	expect(
+		(await diagnosePreparedPrintImageInSandbox(source, externalId, dependencies)).order.outcome,
+	).toBe("unknown");
+	expect(request).toHaveBeenCalledTimes(4);
 });

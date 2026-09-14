@@ -102,7 +102,7 @@ retain their progressing descriptor and token-upload protocol.
 The direct upload performs one dedicated authenticated PUT with no automatic
 fallback; timeout/retry uses the same content-addressed key and immutable replay.
 Both transports are exercised by `pnpm test:print-contract` against real Worker
-handlers pinned at `cdc1b6f914edc79fad256ce3a98bd7ab8b50e1ea`, with only R2/runtime
+handlers pinned at `ff69466907215ff739b2f82545bf8c625a879b18`, with only R2/runtime
 substituted and no network fallback. Locally place that Worker revision at
 `.contract/gallery-worker`; CI fetches it with the existing private-repo credential.
 
@@ -260,7 +260,7 @@ as a development test.
 
 ### Authenticated prepared-image diagnostic
 
-`POST /api/admin/commerce/print-image-diagnostic` accepts only `{ "orderId": "…" }`
+`POST /api/admin/commerce/print-image-diagnostic` defaults to `{ "orderId": "…" }`
 from a same-origin, authenticated Angels Rest site administrator. The read-only
 Convex query independently checks stored membership and selects only an unresolved
 frozen order with a provisional provider number, a completed single-source job,
@@ -275,7 +275,7 @@ Responses contain only bounded diagnostic fields: no credentials, capabilities,
 private object keys, customer fields, or raw provider messages. A successful
 image check proves current retrieval and image compatibility, not asynchronous
 order creation or historical acceptance. Production sandbox-mode configuration
-fails closed; this diagnostic never switches environments or retries a request.
+fails closed for this default request; it never retries a request.
 
 The report separates `provider.urlMatches` from `provider.dimensionComparison`
 (`exact`, `transposed`, `different`, or `unavailable`). `passed` requires HTTP 200,
@@ -283,6 +283,113 @@ the exact echoed URL, and same-axis pixel dimensions. An HTTP 200 whose response
 cannot be fully verified has outcome `unverified`, not `failed`; reversed axes
 are reported without assuming that the provider physically rotated the image.
 Neither outcome grants order-submission or retry authority.
+
+#### Explicit sandbox mode
+
+Add `"environment": "sandbox"` for an image-only sandbox check. This uses the
+same saved JPEG, Worker issuer, anonymous download verification, and redacted
+report, but only `https://us.api-sandbox.lumaprints.com`. The issuer credential
+and temporary image URL stay server-side. Separate server-only variables are
+required: `LUMAPRINTS_SANDBOX_API_KEY`, `LUMAPRINTS_SANDBOX_API_SECRET`, and
+`LUMAPRINTS_SANDBOX_STORE_ID`. Missing configuration fails closed; these never
+fall back to or replace production fulfillment credentials.
+
+An explicitly approved provider-order probe additionally supplies
+`"sandboxExternalId": "ar-sandbox-prepared-<UUID>"`. It submits one single-item
+sandbox order using the exact checked URL and saved print options, quantity one,
+and fixed synthetic recipient details. It cannot accept a destination, product,
+URL, store, or credentials from the caller. No Stripe operation, customer email,
+or order/job/source mutation is involved. The sandbox order probe allows the
+observed transposed dimensions only when HTTP 200 echoes the exact URL and both
+decoded dimensions match; the conservative image report remains `unverified`.
+
+This operator probe is **not an idempotent fulfillment endpoint**. Record a
+durable local attempt marker before sending a submission request, invoke it once,
+and never resend after a timeout or lost response. There are no automatic
+retries. `queued` means HTTP 201 with a valid provisional order number, not final
+acceptance. Follow up with sandbox GET-only reconciliation and compare the saved
+external reference, item/options, and `order.imageUrlSha256`. A POST transport
+error or malformed success is `unknown`; only 400/406 is `rejected`.
+
+#### Prepared-image sandbox probe — 2026-09-14 UTC
+
+The approved server-side sandbox diagnostic was deployed separately from live
+fulfillment configuration. Anonymous HEAD/GET verified the existing prepared
+1800 × 1200 JPEG, exactly 1,208,785 bytes and its saved SHA-256. Both the image-only
+check and the check immediately before submission received sandbox HTTP 200,
+with the exact 614-character Worker capability echoed and dimensions reported
+as 1200 × 1800. The conservative image outcome therefore remains `unverified`.
+
+Exactly one sandbox order POST at 22:30 UTC returned HTTP 201 with provisional
+number `10000339497`. Subsequent GETs still returned 404 through 22:58 UTC. At
+22:36 UTC, the complete store-scoped order list and dashboard contained only the earlier
+synthetic-image control (`10000339496`), whose GET still returned 200. This is
+unconfirmed asynchronous creation, **not** evidence of a 400/406 rejection.
+Do not resubmit the probe or infer the background-processing cause from 201.
+
+The original production order and saved source projection had identical
+before/after fingerprints. No production order, refund, job replay, or customer
+notification was performed. The issuer credential and image capability stayed
+server-side.
+
+The owner subsequently authorized controlled sandbox order tests as needed.
+Nine additional tests used byte-identical synthetic JPEGs (49,792 bytes), the
+same print/shipping configuration, and distinct test references. Every image
+check returned 200 and every order POST returned 201. With a total URL length
+of 614 characters, a long query or long parent directory plus `print.jpg` produced
+a retrievable order; a 562-character final filename did not. A 128-character
+filename also worked, while 240, 255, 256, and 519-character filenames remained
+404. The existing Worker URL's final filename is 519 characters.
+
+This isolates long-filename handling as the strongest explanation, not total
+URL length or JPEG MIME/bytes. The precise internal limit/mechanism is unknown;
+do not describe it as a proven 255-byte filesystem error. A proposed compatible
+URL shape is `/print-source/<encrypted-token>/print.jpg`, with the token moved
+to the parent segment and the same authorization/expiry semantics. The compatible
+fix accepts both shapes in the host and issues the short filename in the Worker
+while retaining legacy redemption. The v1 cryptographic domain, expiry, immutable
+object checks, and paid-file URL format remain unchanged. Host telemetry scrubs
+both print-capability shapes. Roll out the host before the Worker; neither this
+fix nor a successful sandbox test authorizes replaying production orders.
+
+Retained Worker logs for 22:28–22:35 UTC contain 15 fulfillment events, all 200
+or 206, including three full GET responses immediately after the order receipt.
+URLs are redacted, so the timing/route evidence cannot independently identify
+the exact capability or caller, nor prove that LumaPrints consumed every byte.
+No provider-internal processing trace was available in the inspected dashboard
+or published API. No email to the provider was needed for these differential
+tests, and none was sent.
+
+#### Short-filename fix verified — 2026-09-14 23:23 UTC
+
+The compatible host change was deployed first as
+`dpl_GtYMUyhazxK1kh1Tq2jHZVScc5a1`, followed by CMS media Worker version
+`9655e6eb-b9b8-4d89-a5bf-7ccd51f8a6ff`. Worker bindings, observability settings,
+compatibility date, and existing Container image were retained; no secrets were
+rotated. The host/Worker contract passed against both the old CI-pinned Worker
+and the new source. The CI pin now adopts merged Worker repair
+`ff69466907215ff739b2f82545bf8c625a879b18` ([Worker PR #110](https://github.com/JessePomeroy/gallery-worker/pull/110)).
+
+A fresh sandbox order used the same saved 1,208,785-byte, 1800 × 1200 JPEG and
+saved print options. Its URL is now 620 characters overall but ends in the
+nine-character `print.jpg`. Anonymous HEAD/GET and the saved hash matched;
+the image checker still returned 200 with the exact URL and transposed dimensions.
+
+The one-shot POST returned 201 with number `10000339507` at 23:23:27 UTC.
+GET returned **200 at 23:23:41 UTC**, with matching store, external reference,
+item, options, and submitted image-URL fingerprint. Provider status was
+`Pending Payment`; this confirms sandbox order creation, not payment or shipment.
+Unlike the earlier long-filename test, the order is now retrievable.
+
+Live anonymous HEAD/GET also succeeded for the legacy URL equivalent, returning
+identical bytes. The original production order and saved source projection kept
+the same before/after fingerprints. No production order was submitted or replayed.
+
+Checks passed: 960 Worker tests and typecheck; 2,023 host tests, 27 protocol tests,
+five build-ignore tests, lint, Svelte check, production build, and seven real
+host/Worker contract cases against each Worker source. Svelte check requires
+the documented public environment variables. Build retained the existing optional
+Sharp-platform and Resend renderer dependency warnings.
 
 #### Live result — 2026-09-14 UTC (September 13 local time)
 
@@ -322,7 +429,7 @@ Source: [LumaPrints image-check contract](https://api-docs.lumaprints.com/api-53
 
 The seven host/Worker contract cases pass against both the CI-pinned Worker
 revision `cdc1b6f` and the separately checked local Worker revision `ea76d28`.
-The CI pin remains unchanged. The expanded proof renders a synthetic
+At that checkpoint the CI pin remained unchanged. The expanded proof renders a synthetic
 6935 × 4623 PNG, larger than the blocked jobs' 55 MB originals but within the
 existing input limit, through download, decode, geometry, JPEG rendering,
 both upload transports, capability issuance, and exact-byte retrieval.
@@ -348,7 +455,7 @@ cross-repository token. Locally, create that same source-only checkout:
 
 ```bash
 git clone --no-checkout https://github.com/JessePomeroy/gallery-worker.git .contract/gallery-worker
-git -C .contract/gallery-worker checkout --detach cdc1b6f914edc79fad256ce3a98bd7ab8b50e1ea
+git -C .contract/gallery-worker checkout --detach ff69466907215ff739b2f82545bf8c625a879b18
 pnpm test:print-contract
 ```
 
@@ -371,10 +478,11 @@ pnpm exec vitest run src/lib/server/__tests__/orderIntake.test.ts
 pnpm --filter @jessepomeroy/print-catalog test
 ```
 
-Any end-to-end provider check needs separate approval and a verified target.
-The current owner has no usable sandbox procedure and does not authorize more
-sandbox work. Never use a production checkout as a routine development smoke
-test.
+The owner authorized controlled sandbox checks as needed on September 14, 2026.
+Verify sandbox credentials and store before each run; use fresh test references
+and never replay uncertain submissions. This does not authorize production test
+orders, historical production retries, or unrelated deployment/configuration
+changes. Never use a production checkout as a routine development smoke test.
 
 Before another paid attempt, confirm the store's default billing address and
 primary payment method, then use the authenticated, non-order

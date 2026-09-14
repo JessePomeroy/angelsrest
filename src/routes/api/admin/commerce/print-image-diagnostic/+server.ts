@@ -7,9 +7,13 @@ import {
 	diagnosePreparedPrintImage,
 	readPrintDiagnosticBytes,
 } from "$lib/server/printImageDiagnostic";
+import {
+	diagnosePreparedPrintImageInSandbox,
+	sandboxDiagnosticId,
+} from "$lib/server/printImageSandboxDiagnostic";
 import { authorizeSiteAdminRequest } from "$lib/server/siteAdminAuthorization";
 
-export const config = { maxDuration: 60 } satisfies Config;
+export const config = { maxDuration: 90 } satisfies Config;
 const headers = { "cache-control": "no-store", "referrer-policy": "no-referrer" };
 
 export async function POST({ request }: { request: Request }) {
@@ -37,7 +41,15 @@ export async function POST({ request }: { request: Request }) {
 		!payload ||
 		typeof payload !== "object" ||
 		Array.isArray(payload) ||
-		Object.keys(payload).length !== 1 ||
+		Object.keys(payload).some(
+			(key) => !["orderId", "environment", "sandboxExternalId"].includes(key),
+		) ||
+		("environment" in payload && payload.environment !== "sandbox") ||
+		("sandboxExternalId" in payload &&
+			(!("environment" in payload) ||
+				payload.environment !== "sandbox" ||
+				typeof payload.sandboxExternalId !== "string" ||
+				!sandboxDiagnosticId.test(payload.sandboxExternalId))) ||
 		!("orderId" in payload) ||
 		typeof payload.orderId !== "string" ||
 		!/^[a-z0-9]{32}$/.test(payload.orderId)
@@ -52,6 +64,13 @@ export async function POST({ request }: { request: Request }) {
 		});
 		if (!source)
 			return json({ error: "Prepared diagnostic source unavailable" }, { status: 404, headers });
+		if ("environment" in payload && payload.environment === "sandbox") {
+			const externalId =
+				"sandboxExternalId" in payload && typeof payload.sandboxExternalId === "string"
+					? payload.sandboxExternalId
+					: undefined;
+			return json(await diagnosePreparedPrintImageInSandbox(source, externalId), { headers });
+		}
 		return json(await diagnosePreparedPrintImage(source), { headers });
 	} catch {
 		return json({ error: "Diagnostic unavailable" }, { status: 503, headers });

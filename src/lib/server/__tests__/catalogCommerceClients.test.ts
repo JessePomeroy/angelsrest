@@ -147,6 +147,66 @@ function paidResponse(purpose: "paid_fulfillment" | "paid_download") {
 }
 
 describe("fixed-purpose catalog clients", () => {
+	it.each([
+		"jpg",
+		"png",
+	] as const)("accepts short print.%s filenames without rewriting the capability", async (extension) => {
+		const url = capability("print_source", extension).replace(
+			`.${extension}`,
+			`/print.${extension}`,
+		);
+		const fetch = vi.fn(async () =>
+			json({
+				version: 1,
+				url,
+				expiresAt: new Date(Date.now() + 86_400_000).toISOString(),
+			}),
+		);
+		await expect(
+			issuePrintSource(
+				{
+					key: "private/key",
+					hash: "c".repeat(64),
+					bytes: 10,
+					mime: extension === "jpg" ? "image/jpeg" : "image/png",
+					dimensions: { width: 6000, height: 4000 },
+				},
+				{ origin, bearer: token, fetch },
+			),
+		).resolves.toBe(url);
+	});
+
+	it.each([
+		"/other.jpg",
+		"/print.png",
+		"/nested/print.jpg",
+		"/print.jpg?token=x",
+		"/print.jpg#fragment",
+		"/print.JPG",
+		"/print.jpg/extra",
+	])("rejects decorated or wrong-format print capability suffix %s", async (suffix) => {
+		const url = capability("print_source").replace(/\.jpg$/, suffix);
+		const fetch = vi.fn(async () =>
+			json({
+				version: 1,
+				url,
+				expiresAt: new Date(Date.now() + 86_400_000).toISOString(),
+			}),
+		);
+		await expect(
+			issuePrintSource(
+				{
+					key: "private/key",
+					hash: "c".repeat(64),
+					bytes: 10,
+					mime: "image/jpeg",
+					dimensions: { width: 6000, height: 4000 },
+				},
+				{ origin, bearer: token, fetch },
+			),
+		).rejects.toMatchObject({ kind: "rejected" });
+	});
+
 	it("dispatches each Convex purpose to its exact path and bearer", async () => {
 		const fetch = vi.fn(async (_url: URL | RequestInfo, init?: RequestInit) => {
 			const body = JSON.parse(String(init?.body));

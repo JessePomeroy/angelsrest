@@ -1,6 +1,8 @@
 export type AnalyticsUrlEvent = { url: string };
 
 const PRIVATE_CAPABILITY_PATH_PATTERN = /\/(portal|delivery)\/[^/?#&\s"'<>\\]+/g;
+const PRINT_CAPABILITY_PATH_PATTERN =
+	/(\/v1\/catalog-assets\/fulfillment\/print-source\/)(?!capabilities(?:[/?#&\s"'<>\\]|$))[^/?#&\s"'<>\\]+/g;
 const QUERY_PARAMETER_PATTERN = /([?&])([^=?&#\s"'<>\\]+)=([^&#\s"'<>\\]*)/g;
 
 function isPathWithin(pathname: string, prefix: string) {
@@ -35,10 +37,12 @@ export function filterPrivateCapabilityAnalytics<T extends AnalyticsUrlEvent>(ev
  * inside `/api/portal/<token>/...` action URLs.
  */
 export function redactPrivateCapabilityPaths(value: string) {
-	return value.replace(
-		PRIVATE_CAPABILITY_PATH_PATTERN,
-		(_match, route: "portal" | "delivery") => `/${route}/[redacted]`,
-	);
+	return value
+		.replace(
+			PRIVATE_CAPABILITY_PATH_PATTERN,
+			(_match, route: "portal" | "delivery") => `/${route}/[redacted]`,
+		)
+		.replace(PRINT_CAPABILITY_PATH_PATTERN, "$1[redacted]");
 }
 
 function scrubTelemetryValue(value: unknown, seen: WeakMap<object, unknown>): unknown {
