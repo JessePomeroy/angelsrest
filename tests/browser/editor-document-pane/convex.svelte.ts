@@ -182,17 +182,21 @@ export function useQuery(ref: Ref, args: Args | (() => Args) = {}) {
 	};
 }
 export function usePaginatedQuery(ref: Ref, args: Args | (() => Args) = {}) {
+	const failed = params.get("state") === "error";
 	const result = $derived(
-		fixtureQuery(getFunctionName(ref), typeof args === "function" ? args() : args),
+		loading || failed
+			? undefined
+			: fixtureQuery(getFunctionName(ref), typeof args === "function" ? args() : args),
 	);
 	return {
 		get results() {
 			return result && typeof result === "object" && "page" in result ? result.page : [];
 		},
 		get status() {
-			return loading ? "LoadingFirstPage" : "Exhausted";
+			return loading || failed ? "LoadingFirstPage" : "Exhausted";
 		},
 		isLoading: loading,
+		error: failed ? new Error("Simulated read failure") : undefined,
 		loadMore() {},
 	};
 }

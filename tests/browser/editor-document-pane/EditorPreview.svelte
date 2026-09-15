@@ -101,7 +101,7 @@ setAdminConfig({
 	{:else if route === '/admin/editor/pages/contact'}<ContactPage />
 	{:else if route === '/admin/editor/pages/about'}<div class="host-about"><AboutPage /></div>
 	{:else if route === '/admin/editor/portfolio'}<PortfolioGalleriesPage />
-	{:else if route.startsWith('/admin/editor/portfolio/')}<PortfolioGalleryPage galleryId="demo-portfolio-1" />
+	{:else if route.startsWith('/admin/editor/portfolio/')}<PortfolioGalleryPage galleryId={route.slice('/admin/editor/portfolio/'.length)} />
 	{:else if route === '/admin/editor/products'}<ProductsPage />
 	{:else if route.startsWith('/admin/editor/products/')}<ProductPage productId="demo-product-1" />
 	{:else if route === '/admin/editor/blog'}<BlogPage />

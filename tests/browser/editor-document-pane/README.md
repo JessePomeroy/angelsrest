@@ -82,3 +82,13 @@ node tests/browser/editor-document-pane/verify-mobile-refinements.mjs
 ```
 
 Observed: 28 focused checks passed, plus the 158-case/23-interaction full regression and 936 package tests. Browser tests wait for the actual intro-end event before measuring settled controls. Chromium touch gestures and desktop Firefox pointer dismissal were checked; this does not establish native iPhone Firefox behavior. Paper capture timed out again, so the inventory retains an explicit comparison gap.
+
+## PR-review fixture corrections
+
+Independent review found two fixture-only defects: portfolio detail routing always selected the first gallery, and paginated reads returned successful data for the requested error state. The preview now passes the selected gallery ID and preserves empty initial results for loading/error reads, exposing the simulated error through the query hook.
+
+```fish
+node tests/browser/editor-document-pane/verify-preview-fidelity.mjs
+```
+
+Seven checks cover real navigation between both gallery examples at phone/desktop sizes in both themes, and the actual compiled paginated hook plus message-page presentation for populated/loading/error states. Before the corrections, one passed and six failed consistently. All seven pass afterward. The existing message page shows its loading branch after an initial query error; the fixture preserves that application behavior and does not add an error banner to production code.
