@@ -1,0 +1,163 @@
+{
+  "schemaVersion": 1,
+  "updatedAt": "2026-09-15",
+  "status": "implemented-local-paper-comparison-blocked",
+  "branch": "test/editor-document-pane",
+  "bases": { "sharedAdmin": "fe9ae6c", "host": "21056bc8" },
+  "scope": "Extend the approved tactile editor approach across the shared admin's operational pages, navigation, forms, dialogs, lists and other document editors.",
+  "mobileRefinements": {
+    "updatedAt": "2026-09-15",
+    "status": "implemented-local-paper-comparison-blocked",
+    "request": "Phone screenshots: compact the clients layout, remove scrolling inside quote/contract tab strips, and animate mobile sheets with a drag-to-close handle while preserving existing dismissal.",
+    "sourceFiles": [
+      "src/lib/pages/CrmPage.svelte",
+      "src/lib/pages/QuotesPage.svelte",
+      "src/lib/pages/ContractsPage.svelte",
+      "src/lib/components/AdminModal.svelte",
+      "src/lib/components/adminSheet.ts"
+    ],
+    "clients": "Compact wrapping stats; paired category/status filters; full-width search; gutter-aligned tag action; title and add action share a row when space permits.",
+    "tabs": "Remove the auto-overflow container and negative bottom margin that produced a 43px scrollport around 44px controls. Tabs wrap if necessary; page and data-table scrolling are unchanged.",
+    "sheets": {
+      "mobileBreakpoint": "max-width: 768px",
+      "motion": "240ms slide/fade on open and close; 160ms snap-back; reduced-motion preference skips animations.",
+      "drag": "Handle-only downward drag with pointer capture; short/cancelled drags return to rest; a completed drag continues into the closing animation.",
+      "content": "Only the content region scrolls. Handle and header remain available without covering focused fields.",
+      "dismissal": "Close button, outside tap, Escape and parent-driven cancellation retained. Existing modal lifecycle owns focus and scroll lock until Svelte completes the global outro.",
+      "desktop": "No handle or slide animation; existing centered-dialog presentation retained."
+    },
+    "verification": {
+      "script": "tests/browser/editor-document-pane/verify-mobile-refinements.mjs",
+      "before": "2 layout checks passed, 22 failed; each reported mobile tab strip scrolled vertically by 1px.",
+      "after": "28 checks passed: 24 layout/tab cases plus motion-enabled and reduced-motion gesture/lifecycle cases.",
+      "widths": [320, 390, 768, 1440],
+      "themes": ["light", "dark"],
+      "gestures": "Chromium native touch dispatch: long drag, short drag, pointer cancellation; pointer-handle dismissal also passed in desktop Chromium and Firefox at a phone-sized viewport.",
+      "keyboard": "Close-button focus, Escape/opener restoration, reverse Tab through long forms, and page scroll lock through outro completion passed. A header-overlap issue discovered during implementation was corrected by using a separate content scroll region.",
+      "broaderRegression": "158 rendered cases and 23 interaction checks passed after the changes.",
+      "admin": "936 tests passed; Svelte check 0 errors/0 warnings; package build passed.",
+      "host": "Svelte check 0 errors/0 warnings with fictional public Convex URLs; normal lint scope passed.",
+      "helperLint": "adminSheet.ts passed targeted Biome check.",
+      "captures": "/tmp/admin-mobile-refinements-PyKGrA",
+      "finalBrowserReport": "/tmp/admin-workbench-verified-Kqxgmm/report.json",
+      "fixReport": "docs/design/admin-mobile-fix-report.json"
+    },
+    "affectedReferenceKeys": ["admin.crm.default", "admin.quotes.default", "admin.contracts.default", "admin.shared.controls", "admin.emails.default"],
+    "paper": {
+      "status": "blocked-before-update",
+      "lastVerified": null,
+      "reason": "A fresh screenshot attempt on the existing small editable reference group timed out again. No Paper board is marked updated or compared for these refinements."
+    },
+    "limitations": ["Firefox on the user's iPhone is not verified by a desktop Firefox test. Native WebKit cannot launch here because libicudata.so.74 is unavailable.", "Fictional fixtures only; no real provider writes or production deployment."]
+  },
+  "sourceRoots": {
+    "sharedAdmin": "JessePomeroy/admin-dashboard, branch test/editor-document-pane",
+    "hostPreview": "JessePomeroy/angelsrest, branch test/editor-document-pane"
+  },
+  "sourceMapping": {
+    "paletteAndControls": ["src/lib/theme.css", "src/lib/styles/admin-controls.css"],
+    "navigationAndLayout": ["src/lib/components/AdminLayout.svelte", "src/lib/styles/editor-shell.css", "src/lib/components/PageHeader.svelte"],
+    "formsAndDialogs": ["src/lib/components/FilterBar.svelte", "src/lib/components/AdminModal.svelte", "src/lib/styles/form-controls.css", "src/lib/styles/form-fields.css", "src/lib/styles/detail-modal.css"],
+    "tables": ["src/lib/styles/data-table.css", "src/lib/pages/PlatformPage.svelte"],
+    "dashboard": ["src/lib/pages/DashboardPage.svelte"],
+    "board": ["src/lib/pages/board/BoardColumn.svelte"],
+    "messages": ["src/lib/pages/MessagesPage.svelte", "src/lib/pages/messages/ThreadList.svelte", "src/lib/pages/messages/ConversationView.svelte"],
+    "deliveryGalleries": ["src/lib/pages/gallery-delivery/GalleryDeliveryPage.svelte"],
+    "emailTemplates": ["src/lib/pages/EmailsPage.svelte"],
+    "login": ["src/lib/components/LoginPage.svelte"],
+    "documentEditors": ["src/lib/styles/editor-document.css", "src/lib/styles/editor-workbench.css"]
+  },
+  "design": {
+    "bodyFont": "Inherited Synonym",
+    "displayFont": "Inherited Chillax",
+    "palette": "Host-owned light/dark bases and time-period accent; control colors are derived, not a replacement palette.",
+    "fields": "16px text, 48px minimum height, square corners and inset surface.",
+    "actions": "44px targets, raised edge, neutral high-contrast primary actions and quiet removal controls.",
+    "selection": "Tinted selected state; no ornamental checkmarks or nested segmented-choice borders.",
+    "layout": "Plain document/table surfaces, consistent operational gutters, larger dashboard metrics, two-column chart/activity on desktop, single-column on phone.",
+    "preserved": ["financial calculations and currency grouping", "all existing mutation handlers", "auth and membership enforcement", "HTTP/WebSocket transport ownership", "provider boundaries", "approved gallery/product media layouts and listbox correction"]
+  },
+  "preview": {
+    "fixture": "tests/browser/editor-document-pane",
+    "localUrl": "http://127.0.0.1:5208/?route=/admin&theme=dark&period=morning&state=populated",
+    "classification": "synthetic",
+    "providerWrites": false,
+    "sourcePreprocessing": "Uses vitePreprocess, matching the shared package; earlier full-admin baseline modal screenshots lacked this and are not a reliable production-style comparison."
+  },
+  "browser": {
+    "implementationObservedAt": "2026-09-15",
+    "renderedCases": 158,
+    "interactionChecks": 23,
+    "uncaughtPageErrors": 0,
+    "widths": [390, 834, 1440],
+    "height": 1000,
+    "themes": ["dark", "light"],
+    "period": "morning",
+    "clock": "2026-09-15T13:00:00Z",
+    "timezone": "America/Detroit",
+    "motion": "reduce",
+    "captures": "/tmp/admin-workbench-verified-xtTV5k",
+    "report": "/tmp/admin-workbench-verified-xtTV5k/report.json",
+    "script": "tests/browser/editor-document-pane/verify-admin-workbench.mjs",
+    "measurementChecks": ["root overflow", "16px square fields and minimum height", "create-dialog horizontal containment", "focus stays in dialog and returns on Escape"],
+    "interactionChecksScope": ["client, invoice, quote, contract, email-template and delivery-gallery create dialogs", "CRM search", "disabled and failed client save with retained draft", "quote preset selection", "message composition and mobile back", "simulated login error", "mobile navigation"],
+    "additionalStates": ["CRM empty", "CRM read error", "invoice loading", "delivery galleries empty"],
+    "separateEditorRegression": "17 rendered cases and 4 editing flows passed; dropdown touch/pointer, keyboard, Escape, Tab and outside-click checks passed at 390 and 1440.",
+    "visualInspection": "Representative final dashboard, CRM, board, delivery galleries, platform, conversation, invoice/contract forms and About/Contact/Blog editor screenshots inspected. Matrix measurements are not a pixel-perfect visual audit."
+  },
+  "screens": [
+    { "key": "admin.dashboard.default", "route": "/admin" },
+    { "key": "admin.orders.default", "route": "/admin/orders" },
+    { "key": "admin.inquiries.default", "route": "/admin/inquiries" },
+    { "key": "admin.crm.default", "route": "/admin/crm" },
+    { "key": "admin.board.default", "route": "/admin/board" },
+    { "key": "admin.invoicing.default", "route": "/admin/invoicing" },
+    { "key": "admin.quotes.default", "route": "/admin/quotes" },
+    { "key": "admin.contracts.default", "route": "/admin/contracts" },
+    { "key": "admin.emails.default", "route": "/admin/emails" },
+    { "key": "admin.messages.default", "route": "/admin/messages" },
+    { "key": "admin.platform.default", "route": "/admin/platform" },
+    { "key": "admin.delivery_galleries.default", "route": "/admin/galleries" },
+    { "key": "admin.editor.settings.default", "route": "/admin/editor" },
+    { "key": "admin.editor.pages.default", "route": "/admin/editor/pages" },
+    { "key": "admin.editor.about.default", "route": "/admin/editor/pages/about" },
+    { "key": "admin.editor.contact.default", "route": "/admin/editor/pages/contact" },
+    { "key": "admin.editor.portfolio.default", "route": "/admin/editor/portfolio" },
+    { "key": "admin.editor.portfolio_detail.default", "route": "/admin/editor/portfolio/demo-portfolio-1" },
+    { "key": "admin.editor.products.default", "route": "/admin/editor/products" },
+    { "key": "admin.editor.product.default", "route": "/admin/editor/products/demo-product-1" },
+    { "key": "admin.editor.blog.default", "route": "/admin/editor/blog" },
+    { "key": "admin.editor.blog_post.default", "route": "/admin/editor/blog/posts/demo-post-1" },
+    { "key": "admin.editor.blog_author.default", "route": "/admin/editor/blog/authors/demo-author-1" },
+    { "key": "admin.editor.blog_category.default", "route": "/admin/editor/blog/categories/demo-category-1" },
+    { "key": "admin.auth.login", "route": "/admin", "setup": "screen=login" }
+  ],
+  "paper": {
+    "fileId": "01M25K34Z4EFZ5BEPJ49JBF0X1",
+    "testPageId": "8-0",
+    "url": "https://app.paper.design/file/01M25K34Z4EFZ5BEPJ49JBF0X1/8-0",
+    "status": "blocked-before-update",
+    "lastVerified": null,
+    "reason": "Basic information remained readable, but a new screenshot attempt on the existing small editable field group timed out again. Required visual checkpoints cannot complete. No new full-admin board or canonical reference is marked updated or verified.",
+    "canonicalReferenceKeys": "The screen keys above map to the existing handbook inventory. Update those editable references in place after the renderer recovers and the local treatment is adopted.",
+    "unrelatedStudiesChanged": false
+  },
+  "checks": {
+    "adminTests": "936 passed in 89 files",
+    "adminSvelte": "0 errors, 0 warnings",
+    "adminBuild": "passed",
+    "hostSvelte": "0 errors, 0 warnings using fictional public Convex URLs",
+    "hostLint": "311 files passed; normal scope excludes browser fixtures",
+    "newStylesheetsBiome": "admin-controls.css and editor-workbench.css passed",
+    "existingCssFragments": "Standalone lint passed with Svelte global pseudo-class recognition skipped; 11 pre-existing editor-shell specificity warnings remain.",
+    "diffWhitespace": "passed"
+  },
+  "limitations": [
+    "No production deployment, package release, real authentication, successful persistence, uploads, email or provider workflows were tested.",
+    "WebKit remains unavailable because libicudata.so.74 is missing; Chromium touch emulation is not an iPhone Safari test.",
+    "Existing keyboard gallery reordering limitation and earlier documented editor baseline issues are not resolved by this styling task.",
+    "Available Chillax faces remain 400/600; the existing requested 500 heading style uses the available face.",
+    "The Paper update and same-condition comparison remain incomplete."
+  ],
+  "releaseState": "Source changes prepared for review; production dependencies unchanged; package publication and deployment are separate."
+}

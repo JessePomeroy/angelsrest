@@ -1,0 +1,42 @@
+{
+  "version": "3.2.0",
+  "fix_branch": "test/editor-document-pane",
+  "base_commit": "fe9ae6cae66680fbfb983cd474bedfe05555225c",
+  "dry_run": false,
+  "circuit_breaker_tripped": false,
+  "phase2_timeout_hit": false,
+  "fixes": [
+    {
+      "bugId": "MOBILE-TAB-SCROLL",
+      "severity": "Low",
+      "status": "fixed",
+      "files": ["src/lib/pages/QuotesPage.svelte", "src/lib/pages/ContractsPage.svelte"],
+      "lines": "QuotesPage:780-798; ContractsPage:556-574; corresponding mobile overflow declarations removed",
+      "description": "The mobile auto-overflow tab container was 43px tall around 44px controls because of a negative bottom margin, making the whole tab strip scroll vertically by 1px. Removed the scroll-container declarations and negative margin; tabs wrap without their own scroll area. The 16 tab regression cases failed before and passed after across four widths and two themes. Source paths are relative to the shared admin worktree; the host fixture only supplies synthetic records.",
+      "reason": "User explicitly requested correction of the circled quote/contract tab regions. Adjacent clients layout and mobile sheet gestures are authorized design/enhancement work recorded separately in the rollout inventory. Real iPhone/WebKit and Paper comparison remain unavailable; no claim is made for those checks."
+    }
+  ],
+  "verification": {
+    "baseline_pass": 0,
+    "baseline_fail": 16,
+    "flaky_tests": 0,
+    "final_pass": 16,
+    "final_fail": 0,
+    "new_failures": 0,
+    "resolved_failures": 16,
+    "typecheck_pass": true,
+    "build_pass": true,
+    "fixer_bugs_found": 0
+  },
+  "summary": {
+    "total_confirmed": 1,
+    "eligible": 1,
+    "manual_review": 0,
+    "fixed": 1,
+    "fix_reverted": 0,
+    "fix_failed": 0,
+    "skipped": 0,
+    "fixer_bug": 0,
+    "partial": 0
+  }
+}

@@ -1,0 +1,41 @@
+{
+	"version": "3.2.0",
+	"fix_branch": "test/editor-document-pane",
+	"base_commit": "fe9ae6cae66680fbfb983cd474bedfe05555225c",
+	"dry_run": false,
+	"circuit_breaker_tripped": false,
+	"phase2_timeout_hit": false,
+	"fixes": [
+		{
+			"bugId": "EDITOR-LISTBOX-POINTER-1",
+			"severity": "Medium",
+			"status": "fixed",
+			"files": ["src/lib/pages/editor/EditorListbox.svelte"],
+			"lines": "109-123",
+			"description": "Explicitly approved material-dropdown correction in the shared admin worktree. The old deferred focusout handler saw document.activeElement as body between focus targets and removed the option before click. The new handler checks FocusEvent.relatedTarget, retaining internal focus moves and closing external ones. Host fixture verify-listbox.mjs failed before the fix and passes at 390px with touch and 1440px with pointer, including keyboard selection, Escape, Tab and outside-click dismissal. WebKit was attempted but could not launch because libicudata.so.74 is missing. No production, Safari or provider-write success is claimed."
+		}
+	],
+	"verification": {
+		"baseline_pass": 0,
+		"baseline_fail": 1,
+		"flaky_tests": 0,
+		"final_pass": 2,
+		"final_fail": 0,
+		"new_failures": 0,
+		"resolved_failures": 1,
+		"typecheck_pass": true,
+		"build_pass": true,
+		"fixer_bugs_found": 0
+	},
+	"summary": {
+		"total_confirmed": 1,
+		"eligible": 1,
+		"manual_review": 0,
+		"fixed": 1,
+		"fix_reverted": 0,
+		"fix_failed": 0,
+		"skipped": 0,
+		"fixer_bug": 0,
+		"partial": 0
+	}
+}
