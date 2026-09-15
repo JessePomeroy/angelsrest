@@ -1,0 +1,920 @@
+{
+  "audit_id": "editor-document-pane-resweep-20260915",
+  "created_at": "2026-09-15T13:40:00Z",
+  "punchlist_version": "local-20260915",
+  "taxonomy_version": "local-50-entry-20260915",
+  "schema_version": "audit.schema-20260915",
+  "brief": {
+    "user": "site owner",
+    "task": "review and edit existing content through the redesigned rightmost document panes without contacting providers",
+    "entry_point": "isolated editor preview",
+    "state": "fictional populated, empty, loading and read-error records; disposable local edits and simulated failures",
+    "device": "1440x1000, 834x1000, 390x844/1000; inherited morning light/dark themes",
+    "profile": "experience",
+    "severity_basis": "task completion and usability"
+  },
+  "target": {
+    "classification": "synthetic"
+  },
+  "provenance": [
+    {
+      "provenance_id": "prov-resweep-visual",
+      "classification": "synthetic",
+      "source": "Actual local Svelte editor components with fictional query fixtures",
+      "summary": "Independent visual critic; no live records, provider writes or invented production outcomes.",
+      "publication_approved": true
+    },
+    {
+      "provenance_id": "prov-resweep-content",
+      "classification": "synthetic",
+      "source": "Actual local Svelte editor components with fictional query fixtures",
+      "summary": "Independent content critic; no live records, provider writes or invented production outcomes.",
+      "publication_approved": true
+    },
+    {
+      "provenance_id": "prov-resweep-behavior",
+      "classification": "synthetic",
+      "source": "Actual local Svelte editor components with fictional query fixtures",
+      "summary": "Independent behavior critic; no live records, provider writes or invented production outcomes.",
+      "publication_approved": true
+    }
+  ],
+  "capabilities": {
+    "rendered_surface_proven_live": true,
+    "supported_inputs": [
+      "screenshot",
+      "source",
+      "rendered",
+      "interaction",
+      "content-text"
+    ]
+  },
+  "critics": [
+    {
+      "critic_id": "visual",
+      "ledger_ids": [
+        "l-state-babel",
+        "l-double-booked-signal",
+        "l-load-bearing-border",
+        "l-weight-whiplash",
+        "l-order-drift",
+        "l-foreign-frame",
+        "l-long-distance-label",
+        "l-marathon-measure",
+        "l-hidden-shelf",
+        "l-keyboard-dead-zone",
+        "l-sub-floor-target",
+        "l-vanishing-ink",
+        "l-tint-on-tint-trap",
+        "l-phantom-state",
+        "l-silent-stall",
+        "l-motion-pileup",
+        "l-recall-tax",
+        "l-demolition-preview",
+        "l-elided-series",
+        "l-swallowed-rule"
+      ]
+    },
+    {
+      "critic_id": "content",
+      "ledger_ids": [
+        "l-backstage-bleed",
+        "l-counted-in-crates",
+        "l-arithmetic-mirage",
+        "l-phantom-freshness",
+        "l-scolding-machine",
+        "l-foghorn-error",
+        "l-blindfold-link",
+        "l-blank-doorplate",
+        "l-painted-on-headings",
+        "l-corporate-fog",
+        "l-guessing-game-field",
+        "l-echo-interrogation",
+        "l-needless-census",
+        "l-silent-picture",
+        "l-patchwork-voice",
+        "l-yesterdays-signage"
+      ]
+    },
+    {
+      "critic_id": "behavior",
+      "ledger_ids": [
+        "l-ventriloquist-confirmation",
+        "l-forked-tally",
+        "l-celebrated-no-op",
+        "l-twin-cap-trapdoor",
+        "l-parallax-count",
+        "l-coincidental-concord",
+        "l-day-one-deadbolt",
+        "l-manifest-gap",
+        "l-dropped-baton",
+        "l-ouroboros-trigger",
+        "l-undead-understudy",
+        "l-amnesiac-relaunch",
+        "l-evaporated-undo",
+        "l-silent-curfew"
+      ]
+    }
+  ],
+  "ledger": [
+    {
+      "ledger_id": "l-state-babel",
+      "defect": "state-babel",
+      "disposition": "checked_absent",
+      "eligibility_evidence": "Synthetic rendered Svelte components, safe disposable interactions, screenshots, content text and actual source; owned by assigned independent critic.",
+      "probe": "Inventory radio/status/disabled encodings across routes and kinds.",
+      "closure_evidence": "Consistent filled radio state and native checked state; no excessive competing encodings."
+    },
+    {
+      "ledger_id": "l-double-booked-signal",
+      "defect": "double-booked-signal",
+      "disposition": "checked_absent",
+      "eligibility_evidence": "Synthetic rendered Svelte components, safe disposable interactions, screenshots, content text and actual source; owned by assigned independent critic.",
+      "probe": "Compare actions, statuses, radios and validation roles.",
+      "closure_evidence": "Component roles and labels distinguish signals; no reused conflicting meaning found."
+    },
+    {
+      "ledger_id": "l-load-bearing-border",
+      "defect": "load-bearing-border",
+      "disposition": "checked_absent",
+      "eligibility_evidence": "Synthetic rendered Svelte components, safe disposable interactions, screenshots, content text and actual source; owned by assigned independent critic.",
+      "probe": "Operate radio arrows and measure boxes before/after selection.",
+      "closure_evidence": "Both options remain 171x44; focus and hover do not alter layout bounds."
+    },
+    {
+      "ledger_id": "l-weight-whiplash",
+      "defect": "weight-whiplash",
+      "disposition": "checked_absent",
+      "eligibility_evidence": "Synthetic rendered Svelte components, safe disposable interactions, screenshots, content text and actual source; owned by assigned independent critic.",
+      "probe": "Compare titles and section typography across route/size/kind matrix.",
+      "closure_evidence": "Titles 28.8px desktop and 23.2px tablet/mobile; section headings 15.04px; consistent hierarchy."
+    },
+    {
+      "ledger_id": "l-order-drift",
+      "defect": "order-drift",
+      "disposition": "checked_absent",
+      "eligibility_evidence": "Synthetic rendered Svelte components, safe disposable interactions, screenshots, content text and actual source; owned by assigned independent critic.",
+      "probe": "Compare section/field/media/variant reading order across viewports.",
+      "closure_evidence": "Column changes preserve reading and option order."
+    },
+    {
+      "ledger_id": "l-foreign-frame",
+      "defect": "foreign-frame",
+      "disposition": "checked_absent",
+      "eligibility_evidence": "Synthetic rendered Svelte components, safe disposable interactions, screenshots, content text and actual source; owned by assigned independent critic.",
+      "probe": "Trigger and dismiss Settings discard; compare with themed media dialogs.",
+      "closure_evidence": "Native confirm is usable and clearly dismissible. All critics vetoed the visual-only candidate."
+    },
+    {
+      "ledger_id": "l-long-distance-label",
+      "defect": "long-distance-label",
+      "disposition": "checked_absent",
+      "eligibility_evidence": "Synthetic rendered Svelte components, safe disposable interactions, screenshots, content text and actual source; owned by assigned independent critic.",
+      "probe": "Measure rendered labels and control rectangles.",
+      "closure_evidence": "Gaps about 8.2–10.2px; larger spans contain explicit help; sections remain spatially grouped."
+    },
+    {
+      "ledger_id": "l-marathon-measure",
+      "defect": "marathon-measure",
+      "disposition": "checked_absent",
+      "eligibility_evidence": "Synthetic rendered Svelte components, safe disposable interactions, screenshots, content text and actual source; owned by assigned independent critic.",
+      "probe": "Use per-character line boxes across final rendered matrix.",
+      "closure_evidence": "Longest measured line 77; blog helper 62 and article about 75 on desktop."
+    },
+    {
+      "ledger_id": "l-hidden-shelf",
+      "defect": "hidden-shelf",
+      "disposition": "checked_absent",
+      "eligibility_evidence": "Synthetic rendered Svelte components, safe disposable interactions, screenshots, content text and actual source; owned by assigned independent critic.",
+      "probe": "Open material/size listboxes and reach final option with End.",
+      "closure_evidence": "All 14/9 options remain present with scroll access; filenames show ellipsis."
+    },
+    {
+      "ledger_id": "l-keyboard-dead-zone",
+      "defect": "keyboard-dead-zone",
+      "disposition": "checked_absent",
+      "eligibility_evidence": "Synthetic rendered Svelte components, safe disposable interactions, screenshots, content text and actual source; owned by assigned independent critic.",
+      "probe": "Tab through editor, operate radios/listboxes and close pickers.",
+      "closure_evidence": "Named rich editor reachable; arrows/End/Escape work and picker opener focus returns."
+    },
+    {
+      "ledger_id": "l-sub-floor-target",
+      "defect": "sub-floor-target",
+      "disposition": "checked_absent",
+      "eligibility_evidence": "Synthetic rendered Svelte components, safe disposable interactions, screenshots, content text and actual source; owned by assigned independent critic.",
+      "probe": "Measure all uncovered interactive hit areas across final matrix.",
+      "closure_evidence": "No uncovered target below 24px; mobile back links 44px; small native inputs have associated label hit areas."
+    },
+    {
+      "ledger_id": "l-vanishing-ink",
+      "defect": "vanishing-ink",
+      "disposition": "found",
+      "eligibility_evidence": "Synthetic rendered Svelte components, safe disposable interactions, screenshots, content text and actual source; owned by assigned independent critic.",
+      "probe": "Measure composited text and focused controls in light/dark states.",
+      "closure_evidence": "All final text pairs pass; inherited light focus indicator remains 1.203:1."
+    },
+    {
+      "ledger_id": "l-tint-on-tint-trap",
+      "defect": "tint-on-tint-trap",
+      "disposition": "checked_absent",
+      "eligibility_evidence": "Synthetic rendered Svelte components, safe disposable interactions, screenshots, content text and actual source; owned by assigned independent critic.",
+      "probe": "Compute selected control/media text-background pairs.",
+      "closure_evidence": "Heading text contrasts with selected fills; media rows transparent; no separate tint failure."
+    },
+    {
+      "ledger_id": "l-phantom-state",
+      "defect": "phantom-state",
+      "disposition": "found",
+      "eligibility_evidence": "Synthetic rendered Svelte components, safe disposable interactions, screenshots, content text and actual source; owned by assigned independent critic.",
+      "probe": "Render loading/empty/error fixtures for each document family.",
+      "closure_evidence": "Existing Settings/About/Contact initial query errors continue showing loading."
+    },
+    {
+      "ledger_id": "l-silent-stall",
+      "defect": "silent-stall",
+      "disposition": "checked_absent",
+      "eligibility_evidence": "Synthetic rendered Svelte components, safe disposable interactions, screenshots, content text and actual source; owned by assigned independent critic.",
+      "probe": "Hold synthetic loading over 1.2 seconds with working rAF control.",
+      "closure_evidence": "Status text remains visible. Votes 0/1/0 rejected absence of animation as insufficient evidence of task harm."
+    },
+    {
+      "ledger_id": "l-motion-pileup",
+      "defect": "motion-pileup",
+      "disposition": "checked_absent",
+      "eligibility_evidence": "Synthetic rendered Svelte components, safe disposable interactions, screenshots, content text and actual source; owned by assigned independent critic.",
+      "probe": "Operate dialogs, focus and selection with rAF control.",
+      "closure_evidence": "No animation-gated correctness or duplicate motion; control rAF ~16.6ms."
+    },
+    {
+      "ledger_id": "l-recall-tax",
+      "defect": "recall-tax",
+      "disposition": "checked_absent",
+      "eligibility_evidence": "Synthetic rendered Svelte components, safe disposable interactions, screenshots, content text and actual source; owned by assigned independent critic.",
+      "probe": "Inventory non-destructive content inspection across document types.",
+      "closure_evidence": "Placements, variants, members, download fields, article and structured content inspectable in place."
+    },
+    {
+      "ledger_id": "l-demolition-preview",
+      "defect": "demolition-preview",
+      "disposition": "checked_absent",
+      "eligibility_evidence": "Synthetic rendered Svelte components, safe disposable interactions, screenshots, content text and actual source; owned by assigned independent critic.",
+      "probe": "Compare all normal inspection paths with destructive confirmation paths.",
+      "closure_evidence": "Contents can be inspected without delete confirmation."
+    },
+    {
+      "ledger_id": "l-elided-series",
+      "defect": "elided-series",
+      "disposition": "checked_absent",
+      "eligibility_evidence": "Synthetic rendered Svelte components, safe disposable interactions, screenshots, content text and actual source; owned by assigned independent critic.",
+      "probe": "Reconcile rendered content/option counts; inventory chart surfaces.",
+      "closure_evidence": "No charts in scope; rows and variant/listbox counts reconcile."
+    },
+    {
+      "ledger_id": "l-swallowed-rule",
+      "defect": "swallowed-rule",
+      "disposition": "checked_absent",
+      "eligibility_evidence": "Synthetic rendered Svelte components, safe disposable interactions, screenshots, content text and actual source; owned by assigned independent critic.",
+      "probe": "Inspect CSSOM and rendered values across final matrix.",
+      "closure_evidence": "Document padding, bounded text, square controls, enabled action foregrounds and transparent media rows all reach computed styles."
+    },
+    {
+      "ledger_id": "l-backstage-bleed",
+      "defect": "backstage-bleed",
+      "disposition": "checked_absent",
+      "eligibility_evidence": "Synthetic rendered Svelte components, safe disposable interactions, screenshots, content text and actual source; owned by assigned independent critic.",
+      "probe": "Scan visible labels and statuses across kinds; clear product title.",
+      "closure_evidence": "No internal variant keys/kind tokens; empty name shows Untitled product in H1 and browser title."
+    },
+    {
+      "ledger_id": "l-counted-in-crates",
+      "defect": "counted-in-crates",
+      "disposition": "checked_absent",
+      "eligibility_evidence": "Synthetic rendered Svelte components, safe disposable interactions, screenshots, content text and actual source; owned by assigned independent critic.",
+      "probe": "Compare content summaries with their exact rendered rows.",
+      "closure_evidence": "Placement/image/variant/portrait/member units agree; fixed-price types expose one price."
+    },
+    {
+      "ledger_id": "l-arithmetic-mirage",
+      "defect": "arithmetic-mirage",
+      "disposition": "found",
+      "eligibility_evidence": "Synthetic rendered Svelte components, safe disposable interactions, screenshots, content text and actual source; owned by assigned independent critic.",
+      "probe": "Reconcile rendered content and character counters and price breakdowns.",
+      "closure_evidence": "Counts agree; existing first print margin shows a one-cent subtraction mismatch."
+    },
+    {
+      "ledger_id": "l-phantom-freshness",
+      "defect": "phantom-freshness",
+      "disposition": "checked_absent",
+      "eligibility_evidence": "Synthetic rendered Svelte components, safe disposable interactions, screenshots, content text and actual source; owned by assigned independent critic.",
+      "probe": "Inspect empty images, portraits, links and sections alongside saved state.",
+      "closure_evidence": "Empty content is described as absent; draft status does not claim image freshness."
+    },
+    {
+      "ledger_id": "l-scolding-machine",
+      "defect": "scolding-machine",
+      "disposition": "not_assessed",
+      "eligibility_evidence": "Synthetic rendered Svelte components, safe disposable interactions, screenshots, content text and actual source; owned by assigned independent critic.",
+      "probe": "Read actual read-error branches and distinguish injected save-failure copy.",
+      "closure_evidence": "Reachable gallery/product/post copy is neutral. Singleton error-copy branches blocked by existing query-error/loading defect.",
+      "not_assessed_id": "na-scolding-machine"
+    },
+    {
+      "ledger_id": "l-foghorn-error",
+      "defect": "foghorn-error",
+      "disposition": "not_assessed",
+      "eligibility_evidence": "Synthetic rendered Svelte components, safe disposable interactions, screenshots, content text and actual source; owned by assigned independent critic.",
+      "probe": "Compare failure descriptions and recovery cues per consumer.",
+      "closure_evidence": "Gallery/product/post identify failed content; singleton error messages blocked by their existing query-error/loading defect.",
+      "not_assessed_id": "na-foghorn-error"
+    },
+    {
+      "ledger_id": "l-blindfold-link",
+      "defect": "blindfold-link",
+      "disposition": "checked_absent",
+      "eligibility_evidence": "Synthetic rendered Svelte components, safe disposable interactions, screenshots, content text and actual source; owned by assigned independent critic.",
+      "probe": "Inventory document back, page-entry and preview link names.",
+      "closure_evidence": "Names identify destinations/purpose. Authored links and unchanged navigation excluded."
+    },
+    {
+      "ledger_id": "l-blank-doorplate",
+      "defect": "blank-doorplate",
+      "disposition": "found",
+      "eligibility_evidence": "Synthetic rendered Svelte components, safe disposable interactions, screenshots, content text and actual source; owned by assigned independent critic.",
+      "probe": "Map object identities across H1/browser titles and nested groups.",
+      "closure_evidence": "Document identities and empty-title fallbacks pass. Existing About group still labeled section 1 despite entered title."
+    },
+    {
+      "ledger_id": "l-painted-on-headings",
+      "defect": "painted-on-headings",
+      "disposition": "found",
+      "eligibility_evidence": "Synthetic rendered Svelte components, safe disposable interactions, screenshots, content text and actual source; owned by assigned independent critic.",
+      "probe": "Inspect heading outlines across all document kinds and nested groups.",
+      "closure_evidence": "Variant H3 hierarchy passes. Existing About selected-detail heading remains STRONG."
+    },
+    {
+      "ledger_id": "l-corporate-fog",
+      "defect": "corporate-fog",
+      "disposition": "checked_absent",
+      "eligibility_evidence": "Synthetic rendered Svelte components, safe disposable interactions, screenshots, content text and actual source; owned by assigned independent critic.",
+      "probe": "Scan rendered UI prose/acronyms across all reachable branches.",
+      "closure_evidence": "No SEO remnants, unexplained kind tokens or UI sentences above 25 words; authored prose excluded."
+    },
+    {
+      "ledger_id": "l-guessing-game-field",
+      "defect": "guessing-game-field",
+      "disposition": "checked_absent",
+      "eligibility_evidence": "Synthetic rendered Svelte components, safe disposable interactions, screenshots, content text and actual source; owned by assigned independent critic.",
+      "probe": "Inventory field labels and associated formatting guidance.",
+      "closure_evidence": "No unlabeled fields; gallery URL path has associated lowercase/hyphen guidance; product/blog and download instructions remain."
+    },
+    {
+      "ledger_id": "l-echo-interrogation",
+      "defect": "echo-interrogation",
+      "disposition": "checked_absent",
+      "eligibility_evidence": "Synthetic rendered Svelte components, safe disposable interactions, screenshots, content text and actual source; owned by assigned independent critic.",
+      "probe": "Compare prefilled fields and separate identity concepts.",
+      "closure_evidence": "Existing values populate; related identity fields serve distinct purposes; no repeated entry introduced."
+    },
+    {
+      "ledger_id": "l-needless-census",
+      "defect": "needless-census",
+      "disposition": "checked_absent",
+      "eligibility_evidence": "Synthetic rendered Svelte components, safe disposable interactions, screenshots, content text and actual source; owned by assigned independent critic.",
+      "probe": "Inventory requested information against publishing tasks.",
+      "closure_evidence": "Fields contain relevant public/business content without demographic collection."
+    },
+    {
+      "ledger_id": "l-silent-picture",
+      "defect": "silent-picture",
+      "disposition": "checked_absent",
+      "eligibility_evidence": "Synthetic rendered Svelte components, safe disposable interactions, screenshots, content text and actual source; owned by assigned independent critic.",
+      "probe": "Inspect placed-image previews and their labeled alt-text controls.",
+      "closure_evidence": "Placed image alt controls remain descriptive and associated. Shared chooser finding lies outside document-pane scope."
+    },
+    {
+      "ledger_id": "l-patchwork-voice",
+      "defect": "patchwork-voice",
+      "disposition": "checked_absent",
+      "eligibility_evidence": "Synthetic rendered Svelte components, safe disposable interactions, screenshots, content text and actual source; owned by assigned independent critic.",
+      "probe": "Map names, statuses, counts and field terms across sibling surfaces.",
+      "closure_evidence": "Dynamic H1/browser titles and empty fallbacks agree; count units remain consistent."
+    },
+    {
+      "ledger_id": "l-yesterdays-signage",
+      "defect": "yesterdays-signage",
+      "disposition": "checked_absent",
+      "eligibility_evidence": "Synthetic rendered Svelte components, safe disposable interactions, screenshots, content text and actual source; owned by assigned independent critic.",
+      "probe": "Compare overview/empty guidance to available current controls.",
+      "closure_evidence": "Revised guidance matches chooser/uploader positions, search fields and current kind labels."
+    },
+    {
+      "ledger_id": "l-ventriloquist-confirmation",
+      "defect": "ventriloquist-confirmation",
+      "disposition": "not_assessed",
+      "eligibility_evidence": "Synthetic rendered Svelte components, safe disposable interactions, screenshots, content text and actual source; owned by assigned independent critic.",
+      "probe": "Simulate rejected saves and inspect feedback and retained values.",
+      "closure_evidence": "Failure feedback is truthful and edits retained; committed-success announcements blocked.",
+      "not_assessed_id": "na-ventriloquist-confirmation"
+    },
+    {
+      "ledger_id": "l-forked-tally",
+      "defect": "forked-tally",
+      "disposition": "checked_absent",
+      "eligibility_evidence": "Synthetic rendered Svelte components, safe disposable interactions, screenshots, content text and actual source; owned by assigned independent critic.",
+      "probe": "Add/remove local media and compare completion/destination counts.",
+      "closure_evidence": "Same units; gallery 3 to 2 to 3, About/product 1 to 2, blog body 0 to 1; no conflict."
+    },
+    {
+      "ledger_id": "l-celebrated-no-op",
+      "defect": "celebrated-no-op",
+      "disposition": "not_assessed",
+      "eligibility_evidence": "Synthetic rendered Svelte components, safe disposable interactions, screenshots, content text and actual source; owned by assigned independent critic.",
+      "probe": "Try already-selected media and local cap controls.",
+      "closure_evidence": "Already-selected media/capped additions disabled; provider deduplication outcome unavailable.",
+      "not_assessed_id": "na-celebrated-no-op"
+    },
+    {
+      "ledger_id": "l-twin-cap-trapdoor",
+      "defect": "twin-cap-trapdoor",
+      "disposition": "not_assessed",
+      "eligibility_evidence": "Synthetic rendered Svelte components, safe disposable interactions, screenshots, content text and actual source; owned by assigned independent critic.",
+      "probe": "Reach local social/inquiry/variant caps and remove/re-add.",
+      "closure_evidence": "20/12/100 controls retain accepted rows and restore capacity after removal.",
+      "not_assessed_id": "na-twin-cap-trapdoor"
+    },
+    {
+      "ledger_id": "l-parallax-count",
+      "defect": "parallax-count",
+      "disposition": "checked_absent",
+      "eligibility_evidence": "Synthetic rendered Svelte components, safe disposable interactions, screenshots, content text and actual source; owned by assigned independent critic.",
+      "probe": "Compare current rendered rows with document summaries after local changes.",
+      "closure_evidence": "Counts and units agree before/after edits and at tested local caps."
+    },
+    {
+      "ledger_id": "l-coincidental-concord",
+      "defect": "coincidental-concord",
+      "disposition": "checked_absent",
+      "eligibility_evidence": "Synthetic rendered Svelte components, safe disposable interactions, screenshots, content text and actual source; owned by assigned independent critic.",
+      "probe": "Change variant size with keyboard and edit product name.",
+      "closure_evidence": "Variant heading uses resolved selected option; H1 and tab title track edited name."
+    },
+    {
+      "ledger_id": "l-day-one-deadbolt",
+      "defect": "day-one-deadbolt",
+      "disposition": "not_assessed",
+      "eligibility_evidence": "Synthetic rendered Svelte components, safe disposable interactions, screenshots, content text and actual source; owned by assigned independent critic.",
+      "probe": "Inspect empty collection/document affordances.",
+      "closure_evidence": "Empty fixture views expose expected add/choose controls.",
+      "not_assessed_id": "na-day-one-deadbolt"
+    },
+    {
+      "ledger_id": "l-manifest-gap",
+      "defect": "manifest-gap",
+      "disposition": "checked_absent",
+      "eligibility_evidence": "Synthetic rendered Svelte components, safe disposable interactions, screenshots, content text and actual source; owned by assigned independent critic.",
+      "probe": "Render all six product kinds with the repaired fixtures.",
+      "closure_evidence": "All supported types render appropriate variant, fixed-price or digital-download controls."
+    },
+    {
+      "ledger_id": "l-dropped-baton",
+      "defect": "dropped-baton",
+      "disposition": "found",
+      "eligibility_evidence": "Synthetic rendered Svelte components, safe disposable interactions, screenshots, content text and actual source; owned by assigned independent critic.",
+      "probe": "Cancel/complete each picker and gallery delete confirmation; inspect activeElement after two frames.",
+      "closure_evidence": "Picker openers restored. Existing gallery delete Cancel returns BODY despite live recreated opener."
+    },
+    {
+      "ledger_id": "l-ouroboros-trigger",
+      "defect": "ouroboros-trigger",
+      "disposition": "not_assessed",
+      "eligibility_evidence": "Synthetic rendered Svelte components, safe disposable interactions, screenshots, content text and actual source; owned by assigned independent critic.",
+      "probe": "Trigger pointer reorder, await settling and reconcile all item identities.",
+      "closure_evidence": "Desktop five lists settle; mobile settings/contact/gallery/variants settle without loss.",
+      "not_assessed_id": "na-ouroboros-trigger"
+    },
+    {
+      "ledger_id": "l-undead-understudy",
+      "defect": "undead-understudy",
+      "disposition": "checked_absent",
+      "eligibility_evidence": "Synthetic rendered Svelte components, safe disposable interactions, screenshots, content text and actual source; owned by assigned independent critic.",
+      "probe": "Observe local add/remove/failed-save transitions.",
+      "closure_evidence": "Expected single feedback/state transition; no competing placeholder signal in tested local paths."
+    },
+    {
+      "ledger_id": "l-amnesiac-relaunch",
+      "defect": "amnesiac-relaunch",
+      "disposition": "found",
+      "eligibility_evidence": "Synthetic rendered Svelte components, safe disposable interactions, screenshots, content text and actual source; owned by assigned independent critic.",
+      "probe": "Type names, reload, record dialogs and inspect restored fields.",
+      "closure_evidence": "Existing product/blog lose unsaved edits silently; other four families warn and restore."
+    },
+    {
+      "ledger_id": "l-evaporated-undo",
+      "defect": "evaporated-undo",
+      "disposition": "not_assessed",
+      "eligibility_evidence": "Synthetic rendered Svelte components, safe disposable interactions, screenshots, content text and actual source; owned by assigned independent critic.",
+      "probe": "Exercise rich-text undo and inspect add controls after removal.",
+      "closure_evidence": "Rich-text undo remains mounted and restores text; local add controls survive removals.",
+      "not_assessed_id": "na-evaporated-undo"
+    },
+    {
+      "ledger_id": "l-silent-curfew",
+      "defect": "silent-curfew",
+      "disposition": "not_assessed",
+      "eligibility_evidence": "Synthetic rendered Svelte components, safe disposable interactions, screenshots, content text and actual source; owned by assigned independent critic.",
+      "probe": "Inspect expiry/renewal capabilities of safe fixture.",
+      "closure_evidence": "No timed provider/session transition available.",
+      "not_assessed_id": "na-silent-curfew"
+    }
+  ],
+  "findings": [
+    {
+      "finding_id": "f-73c946b93e52",
+      "defect": "arithmetic-mirage",
+      "surface": "Print product margin breakdown",
+      "locator": ".margin-summary",
+      "fingerprint": "73c946b93e52547b279f8a5371c69a76999ca89cea99583effcd50042629c15e",
+      "manifestation": "conditional",
+      "symptom": "The displayed price breakdown disagrees with its take-home amount by one cent.",
+      "evidence": [
+        {
+          "type": "rendered",
+          "provenance_id": "prov-resweep-content",
+          "classification": "synthetic",
+          "source": "Isolated actual editor components; pre-existing condition, not a redesign regression",
+          "summary": "The fictional first print row shows $45.00 retail, $1.71 cost, $1.61 fee and $41.69 take-home; displayed subtraction gives $41.68. Other fixture variants agree. Existing calculation and rounding code is unchanged.",
+          "verified_how": "rendered",
+          "publication_approved": true
+        }
+      ],
+      "verified_how": "rendered",
+      "severity_basis": "task completion and usability",
+      "severity_votes": [
+        {
+          "critic_id": "visual",
+          "severity": 1
+        },
+        {
+          "critic_id": "content",
+          "severity": 1
+        },
+        {
+          "critic_id": "behavior",
+          "severity": 1
+        }
+      ],
+      "severity": 1,
+      "decision": "confirmed",
+      "fix": "Reconcile displayed rounding or label independently rounded estimates.",
+      "fix_tier": "reported-only",
+      "fixed_how": "reported-only",
+      "lifecycle": "open"
+    },
+    {
+      "finding_id": "f-b8b8865d1bde",
+      "defect": "blank-doorplate",
+      "also_matches": [
+        "painted-on-headings"
+      ],
+      "surface": "About selected-detail groups",
+      "locator": ".card-header strong",
+      "fingerprint": "b8b8865d1bde44d450156916163d9d9efdd034a7cfc250e813cbfa6c37454ee3",
+      "manifestation": "consistent",
+      "symptom": "A titled About section still displays a generic group name without a heading.",
+      "evidence": [
+        {
+          "type": "rendered",
+          "provenance_id": "prov-resweep-content",
+          "classification": "synthetic",
+          "source": "Isolated actual editor components; pre-existing condition, not a redesign regression",
+          "summary": "The title input contains Selected work, but the group label is STRONG section 1 with no H3 in all four tested viewport/theme combinations. This markup is unchanged.",
+          "verified_how": "rendered",
+          "publication_approved": true
+        }
+      ],
+      "verified_how": "rendered",
+      "severity_basis": "task completion and usability",
+      "severity_votes": [
+        {
+          "critic_id": "visual",
+          "severity": 2
+        },
+        {
+          "critic_id": "content",
+          "severity": 1
+        },
+        {
+          "critic_id": "behavior",
+          "severity": 2
+        }
+      ],
+      "severity": 1.6666666666666667,
+      "decision": "confirmed",
+      "fix": "Use the contextual section title as H3 with a section-number fallback.",
+      "fix_tier": "reported-only",
+      "fixed_how": "reported-only",
+      "lifecycle": "open"
+    },
+    {
+      "finding_id": "f-c8334ef90917",
+      "defect": "dropped-baton",
+      "surface": "Portfolio gallery delete confirmation",
+      "locator": ".delete-confirmation",
+      "fingerprint": "c8334ef90917a0edd7913a93ee038e5702a17b7a795ec341036b90e90a8115bd",
+      "manifestation": "consistent",
+      "symptom": "Cancelling deletion loses the keyboard user's position.",
+      "evidence": [
+        {
+          "type": "interaction",
+          "provenance_id": "prov-resweep-behavior",
+          "classification": "synthetic",
+          "source": "Isolated actual editor components; pre-existing condition, not a redesign regression",
+          "summary": "All four configurations: Cancel returns activeElement to BODY after two animation frames; the recreated delete-gallery opener exists and all three placements remain. Existing handlers unchanged.",
+          "verified_how": "interaction",
+          "publication_approved": true
+        }
+      ],
+      "verified_how": "interaction",
+      "severity_basis": "task completion and usability",
+      "severity_votes": [
+        {
+          "critic_id": "visual",
+          "severity": 2
+        },
+        {
+          "critic_id": "content",
+          "severity": 2
+        },
+        {
+          "critic_id": "behavior",
+          "severity": 2
+        }
+      ],
+      "severity": 2,
+      "decision": "confirmed",
+      "fix": "Restore focus to the recreated delete-gallery opener after cancellation.",
+      "fix_tier": "reported-only",
+      "fixed_how": "reported-only",
+      "lifecycle": "open"
+    },
+    {
+      "finding_id": "f-3d884ac059eb",
+      "defect": "amnesiac-relaunch",
+      "surface": "Product and blog document drafts",
+      "locator": "ProductPage and BlogPostPage unsaved title inputs",
+      "fingerprint": "3d884ac059eb5f2dcaadd20bf8644dcfbe37947bf92dfbeac0fc677db8794344",
+      "manifestation": "consistent",
+      "symptom": "Refreshing silently loses unsaved product and blog title edits.",
+      "evidence": [
+        {
+          "type": "interaction",
+          "provenance_id": "prov-resweep-behavior",
+          "classification": "synthetic",
+          "source": "Isolated actual editor components; pre-existing condition, not a redesign regression",
+          "summary": "All four configurations: synthetic edited names revert on reload without a beforeunload dialog or stored device draft. Gallery, Settings, Contact and About warn and restore. Existing lifecycle code unchanged.",
+          "verified_how": "interaction",
+          "publication_approved": true
+        }
+      ],
+      "verified_how": "interaction",
+      "severity_basis": "task completion and usability",
+      "severity_votes": [
+        {
+          "critic_id": "visual",
+          "severity": 3
+        },
+        {
+          "critic_id": "content",
+          "severity": 3
+        },
+        {
+          "critic_id": "behavior",
+          "severity": 3
+        }
+      ],
+      "severity": 3,
+      "decision": "confirmed",
+      "fix": "Preserve device drafts or warn before leaving with unsaved work.",
+      "fix_tier": "reported-only",
+      "fixed_how": "reported-only",
+      "lifecycle": "open"
+    },
+    {
+      "finding_id": "f-ac12c8220731",
+      "defect": "vanishing-ink",
+      "surface": "Light-theme document keyboard focus",
+      "locator": "focused controls and .rich-editor-surface:focus-visible",
+      "fingerprint": "ac12c82207310743897708c813eccd65f2f3f34df230a5940aff5c41ef4cadbd",
+      "manifestation": "conditional",
+      "symptom": "The inherited keyboard focus indicator is difficult to see.",
+      "evidence": [
+        {
+          "type": "rendered",
+          "provenance_id": "prov-resweep-visual",
+          "classification": "synthetic",
+          "source": "Isolated actual editor components; pre-existing condition, not a redesign regression",
+          "summary": "Real keyboard focus renders a two-pixel yellow outline or inset ring with 1.203:1 contrast against the light canvas. Text contrast passes after the redesign; inherited focus styling is unchanged.",
+          "verified_how": "rendered",
+          "publication_approved": true
+        }
+      ],
+      "verified_how": "rendered",
+      "severity_basis": "task completion and usability",
+      "severity_votes": [
+        {
+          "critic_id": "visual",
+          "severity": 3
+        },
+        {
+          "critic_id": "content",
+          "severity": 3
+        },
+        {
+          "critic_id": "behavior",
+          "severity": 3
+        }
+      ],
+      "severity": 3,
+      "decision": "confirmed",
+      "fix": "Use an adequately contrasting inherited neutral for document focus indicators.",
+      "fix_tier": "reported-only",
+      "fixed_how": "reported-only",
+      "lifecycle": "open"
+    },
+    {
+      "finding_id": "f-7d74b0affa84",
+      "defect": "phantom-state",
+      "surface": "Settings, About and Contact initial query errors",
+      "locator": "editorQuery data consumption and uninitialized draft branch",
+      "fingerprint": "7d74b0affa849a15e50fc09dbd9d8354a307fa213dad28d4f352c19c77c280ec",
+      "manifestation": "conditional",
+      "symptom": "Failed reads keep showing loading instead of explaining the error.",
+      "evidence": [
+        {
+          "type": "rendered",
+          "provenance_id": "prov-resweep-visual",
+          "classification": "synthetic",
+          "source": "Isolated actual editor components; pre-existing condition, not a redesign regression",
+          "summary": "All three synthetic read-error fixtures remain in loading. Their specific consumers wait for data without presenting query errors; Gallery, Product and Blog show errors. No production failure induced; original request-state logic unchanged.",
+          "verified_how": "rendered",
+          "publication_approved": true
+        }
+      ],
+      "verified_how": "rendered",
+      "severity_basis": "task completion and usability",
+      "severity_votes": [
+        {
+          "critic_id": "visual",
+          "severity": 3
+        },
+        {
+          "critic_id": "content",
+          "severity": 3
+        },
+        {
+          "critic_id": "behavior",
+          "severity": 3
+        }
+      ],
+      "severity": 3,
+      "decision": "confirmed",
+      "fix": "Handle initial query failures separately from pending initialization and expose recovery.",
+      "fix_tier": "reported-only",
+      "fixed_how": "reported-only",
+      "lifecycle": "open"
+    }
+  ],
+  "rejections": [
+    {
+      "observation": "RV2: foreign-frame — native Settings discard confirmation",
+      "reason": "All three critics rated 0: different chrome alone establishes no usability harm; confirmation is clear and dismissible. No missing taxonomy condition established."
+    },
+    {
+      "observation": "RV4: silent-stall — held synthetic loading state uses stationary status text",
+      "reason": "Votes content 0, visual 1, behavior 0; mean 0.333. Visible loading text communicates the state. Missing animation alone is not a demonstrated task defect; no taxonomy gap established."
+    }
+  ],
+  "gaps": [
+    {
+      "gap_id": "g-baseline-pointer-listbox",
+      "summary": "Existing pointer size selection closed its listbox without changing the value, reproduced with the new stylesheet disabled. Keyboard selection works. This is a baseline interaction observation, not a layout regression; no exact named taxonomy mapping asserted."
+    },
+    {
+      "gap_id": "g-baseline-link-cancel",
+      "summary": "Blog inline link Cancel left BODY focused in the synthetic fixture. Retained as supplementary baseline evidence, without generalizing from the gallery confirmation finding."
+    }
+  ],
+  "overrides": [
+    {
+      "convention": "Keep the host-owned fonts, time-dependent palette and hard corners; no card-shaped groups. Navigation and collection panes are unchanged."
+    }
+  ],
+  "not_assessed": [
+    {
+      "not_assessed_id": "na-scolding-machine",
+      "check_id": "scolding-machine",
+      "blocker": "Existing Settings/About/Contact query-error consumers show loading instead of an error, preventing error-copy review.",
+      "probe": "Read actual read-error branches and distinguish injected save-failure copy. Repeat with the named unavailable dependency resolved.",
+      "escalation_required": true
+    },
+    {
+      "not_assessed_id": "na-foghorn-error",
+      "check_id": "foghorn-error",
+      "blocker": "Existing Settings/About/Contact query errors never reveal error copy; error specificity cannot be assessed there.",
+      "probe": "Compare failure descriptions and recovery cues per consumer. Repeat with the named unavailable dependency resolved.",
+      "escalation_required": true
+    },
+    {
+      "not_assessed_id": "na-ventriloquist-confirmation",
+      "check_id": "ventriloquist-confirmation",
+      "blocker": "Fixture rejects every provider mutation, so committed-success confirmation cannot be exercised.",
+      "probe": "Simulate rejected saves and inspect feedback and retained values. Repeat with the named unavailable dependency resolved.",
+      "escalation_required": true
+    },
+    {
+      "not_assessed_id": "na-celebrated-no-op",
+      "check_id": "celebrated-no-op",
+      "blocker": "No provider writes; provider-side no-op rejection and success feedback unavailable.",
+      "probe": "Try already-selected media and local cap controls. Repeat with the named unavailable dependency resolved.",
+      "escalation_required": true
+    },
+    {
+      "not_assessed_id": "na-twin-cap-trapdoor",
+      "check_id": "twin-cap-trapdoor",
+      "blocker": "Provider acceptance is blocked and only three media assets are seeded, so server/media capacity boundaries cannot be verified.",
+      "probe": "Reach local social/inquiry/variant caps and remove/re-add. Repeat with the named unavailable dependency resolved.",
+      "escalation_required": true
+    },
+    {
+      "not_assessed_id": "na-day-one-deadbolt",
+      "check_id": "day-one-deadbolt",
+      "blocker": "Static retained-document fixtures do not model a never-created tenant/document; genuine first-time onboarding unavailable.",
+      "probe": "Inspect empty collection/document affordances. Repeat with the named unavailable dependency resolved.",
+      "escalation_required": true
+    },
+    {
+      "not_assessed_id": "na-ouroboros-trigger",
+      "check_id": "ouroboros-trigger",
+      "blocker": "The synthetic mobile About pointer drag did not initiate reliably, blocking full gesture closure; no oscillation inferred.",
+      "probe": "Trigger pointer reorder, await settling and reconcile all item identities. Repeat with the named unavailable dependency resolved.",
+      "escalation_required": true
+    },
+    {
+      "not_assessed_id": "na-evaporated-undo",
+      "check_id": "evaporated-undo",
+      "blocker": "Destructive provider completion and its recovery are blocked by the fixture's mutation refusal.",
+      "probe": "Exercise rich-text undo and inspect add controls after removal. Repeat with the named unavailable dependency resolved.",
+      "escalation_required": true
+    },
+    {
+      "not_assessed_id": "na-silent-curfew",
+      "check_id": "silent-curfew",
+      "blocker": "Static fixture authentication does not model timed expiry, renewal or re-authentication preservation.",
+      "probe": "Inspect expiry/renewal capabilities of safe fixture. Repeat with the named unavailable dependency resolved.",
+      "escalation_required": true
+    }
+  ],
+  "strengths": [
+    {
+      "strength_id": "s-document-layout",
+      "summary": "The redesigned panes retain all tested controls, fit narrow screens, use hard corners and readable text, and preserve owner typography.",
+      "evidence": [
+        {
+          "provenance_id": "prov-resweep-visual",
+          "classification": "synthetic",
+          "source": "Final 90-case rendered matrix",
+          "summary": "No horizontal pane overflow, rounded-corner violations, text-contrast failures or new layout regressions; maximum measured line 77 characters.",
+          "verified_how": "rendered",
+          "publication_approved": true
+        }
+      ]
+    },
+    {
+      "strength_id": "s-local-editor-behavior",
+      "summary": "Local editor operations preserve their expected behavior through the layout change.",
+      "evidence": [
+        {
+          "provenance_id": "prov-resweep-behavior",
+          "classification": "synthetic",
+          "source": "Actual editor interaction checks",
+          "summary": "Picker completion restores live openers; counts stay coherent; rejected saves retain edits; keyboard listbox changes update new variant headings.",
+          "verified_how": "interaction",
+          "publication_approved": true
+        }
+      ]
+    }
+  ],
+  "redaction": {
+    "status": "complete",
+    "reviewer": "primary-agent",
+    "attested": true
+  },
+  "resweep": {
+    "scope": "Rightmost document panes only; all confirmed findings below are pre-existing behavior/content, not regressions introduced by the redesign.",
+    "visual_matrix_cases": 90,
+    "content_matrix_cases": 200,
+    "behavior_mount_cases": 160,
+    "new_layout_regressions": 0,
+    "provider_success_verified": false
+  }
+}

@@ -1,0 +1,331 @@
+{
+  "schemaVersion": 1,
+  "updatedAt": "2026-09-15",
+  "status": "local-test-only",
+  "branch": "test/editor-document-pane",
+  "bases": {
+    "sharedAdmin": "fe9ae6c",
+    "host": "21056bc8"
+  },
+  "scope": "Original rightmost editor document-pane experiment. The later full-admin rollout is recorded separately below.",
+  "fullAdminRollout": {
+    "inventory": "docs/design/full-admin-workbench-experiment.json",
+    "status": "implemented-local-paper-comparison-blocked",
+    "note": "The workbench control treatment now covers the full admin and all document editors. Earlier prototype observations below remain historical records."
+  },
+  "workbenchPrototype": {
+    "updatedAt": "2026-09-15T16:29:00Z",
+    "status": "implemented-local-paper-comparison-incomplete",
+    "scope": ["portfolio-gallery detail", "product detail", "explicitly approved EditorListbox focus correction"],
+    "stylesheet": "shared admin: src/lib/styles/editor-workbench.css",
+    "choiceRefinement": "User-requested: remove checkmarks and nested borders; symmetric centered labels, a single outer boundary, tinted selection and keyboard focus retained. Touch and arrow-key checks pass in both themes.",
+    "fixture": "tests/browser/editor-document-pane",
+    "captures": {
+      "directory": "/tmp/editor-workbench.eeqive",
+      "pattern": "final-{gallery|product}-{390|1440}-{dark|light}.png",
+      "fullPage": true,
+      "viewportHeights": { "390": 844, "1440": 1000 },
+      "clock": "2026-09-15T13:00:00Z",
+      "timezone": "America/Detroit",
+      "period": "morning",
+      "motion": "reduce",
+      "data": "populated fictional fixtures"
+    },
+    "browserChecks": {
+      "renderedCases": 17,
+      "editingFlows": 4,
+      "pageErrors": 0,
+      "widths": [390, 834, 1440],
+      "themes": ["light", "dark"],
+      "allSixProductKindsRendered": true,
+      "extra320pxOverflowCheck": "passed for gallery and product",
+      "listboxRegression": "passed: touch/pointer, keyboard, Escape, Tab, outside click at 390px and 1440px",
+      "galleryPointerReorder": "observed passing on desktop",
+      "compoundPriceField": "phone screenshot feedback corrected: one outer border and one focus outline; tested in both themes and all matrix widths",
+      "galleryKeyboardReorder": "pre-existing failure reproduced with and without new styling; not fixed",
+      "webkit": "unavailable: missing libicudata.so.74"
+    },
+    "paper": {
+      "status": "blocked-incomplete",
+      "artboards": ["BD0-0", "BD6-0", "BD8-0"],
+      "updatedArtboard": "BD0-0",
+      "nativeFieldGroup": "BHB-0",
+      "lastVerified": null,
+      "reason": "Existing gallery scaffold and one editable input group updated. Header and field screenshot attempts timed out; stopped at the required visual checkpoint. Product and mobile boards are not updated to this treatment."
+    },
+    "checks": {
+      "adminTests": "936 passed in 89 files",
+      "adminSvelte": "0 errors, 0 warnings",
+      "hostSvelte": "0 errors, 0 warnings, using fictional public Convex values",
+      "adminBuild": "passed",
+      "hostLint": "311 files passed; browser fixtures excluded by normal config",
+      "workbenchStylesheetLint": "passed"
+    },
+    "providerWrites": false,
+    "paperDocumentationUpdated": true,
+    "releaseState": "uncommitted; not published or deployed"
+  },
+  "paper": {
+    "fileId": "01M25K34Z4EFZ5BEPJ49JBF0X1",
+    "pageId": "8-0",
+    "url": "https://app.paper.design/file/01M25K34Z4EFZ5BEPJ49JBF0X1/8-0",
+    "status": "blocked-incomplete",
+    "reason": "Document scaffolds and headers were added. Full-board screenshot, small-header screenshot retry and PNG export fallback each timed out. Mandatory visual checkpoint could not complete, so remaining groups were not added and no board is verified.",
+    "existingReferenceBoardsChanged": false
+  },
+  "browser": {
+    "classification": "synthetic",
+    "implementationVerified": true,
+    "viewportMatrix": [
+      {
+        "width": 1440,
+        "height": 1000
+      },
+      {
+        "width": 834,
+        "height": 1000
+      },
+      {
+        "width": 390,
+        "height": 844
+      },
+      {
+        "width": 390,
+        "height": 1000
+      }
+    ],
+    "themes": [
+      "light",
+      "dark"
+    ],
+    "period": "morning",
+    "clock": "2026-09-15T13:00:00Z",
+    "timezone": "America/Detroit",
+    "motion": "reduce",
+    "state": "populated; additional empty/loading/error and disposable interactions covered in audit",
+    "externalWrites": false
+  },
+  "fonts": {
+    "body": "Synonym",
+    "display": "Chillax",
+    "source": "Inherited host tokens",
+    "gap": "Available Chillax faces are 400 and 600. The existing requested 500 heading style resolves through the available regular face; no new font installed."
+  },
+  "checks": {
+    "adminSvelte": "passed: 0 errors, 0 warnings",
+    "adminTests": "passed: 936 tests in 89 files",
+    "adminBuild": "passed",
+    "hostSvelte": "passed with fictional public Convex environment values",
+    "hostLint": "passed: 311 files; standard repo scope excludes browser fixtures",
+    "documentStylesheetBiome": "passed",
+    "syntheticAudit": "schema, semantic, coverage and privacy validation passed"
+  },
+  "screens": [
+    {
+      "key": "portfolio",
+      "route": "/admin/editor/portfolio/demo-portfolio-1",
+      "fixture": "tests/browser/editor-document-pane",
+      "setup": {
+        "theme": "dark",
+        "period": "morning",
+        "state": "populated"
+      },
+      "browserViewport": {
+        "width": 1440,
+        "height": 1000
+      },
+      "documentCrop": {
+        "width": 968,
+        "height": 936,
+        "left": 472,
+        "top": 64
+      },
+      "captureKey": "final-portfolio",
+      "paperArtboardId": "BD0-0",
+      "paperStatus": "incomplete-unverified",
+      "browserStatus": "inspected-synthetic",
+      "note": "Paper is a crop of the document pane at the recorded full-browser viewport. Below-fold content and unchanged navigation are not included."
+    },
+    {
+      "key": "settings",
+      "route": "/admin/editor",
+      "fixture": "tests/browser/editor-document-pane",
+      "setup": {
+        "theme": "dark",
+        "period": "morning",
+        "state": "populated"
+      },
+      "browserViewport": {
+        "width": 1440,
+        "height": 1000
+      },
+      "documentCrop": {
+        "width": 1160,
+        "height": 1000,
+        "left": 220,
+        "top": 0
+      },
+      "captureKey": "final-settings",
+      "paperArtboardId": "BD3-0",
+      "paperStatus": "incomplete-unverified",
+      "browserStatus": "inspected-synthetic",
+      "note": "Paper is a crop of the document pane at the recorded full-browser viewport. Below-fold content and unchanged navigation are not included."
+    },
+    {
+      "key": "pages",
+      "route": "/admin/editor/pages",
+      "fixture": "tests/browser/editor-document-pane",
+      "setup": {
+        "theme": "dark",
+        "period": "morning",
+        "state": "populated"
+      },
+      "browserViewport": {
+        "width": 1440,
+        "height": 1000
+      },
+      "documentCrop": {
+        "width": 1160,
+        "height": 1000,
+        "left": 220,
+        "top": 0
+      },
+      "captureKey": "final-pages",
+      "paperArtboardId": "BD5-0",
+      "paperStatus": "incomplete-unverified",
+      "browserStatus": "inspected-synthetic",
+      "note": "Paper is a crop of the document pane at the recorded full-browser viewport. Below-fold content and unchanged navigation are not included."
+    },
+    {
+      "key": "product",
+      "route": "/admin/editor/products/demo-product-1",
+      "fixture": "tests/browser/editor-document-pane",
+      "setup": {
+        "theme": "dark",
+        "period": "morning",
+        "state": "populated"
+      },
+      "browserViewport": {
+        "width": 1440,
+        "height": 1000
+      },
+      "documentCrop": {
+        "width": 860,
+        "height": 936,
+        "left": 580,
+        "top": 64
+      },
+      "captureKey": "final-product",
+      "paperArtboardId": "BD6-0",
+      "paperStatus": "incomplete-unverified",
+      "browserStatus": "inspected-synthetic",
+      "note": "Paper is a crop of the document pane at the recorded full-browser viewport. Below-fold content and unchanged navigation are not included."
+    },
+    {
+      "key": "blog",
+      "route": "/admin/editor/blog/posts/demo-post-1",
+      "fixture": "tests/browser/editor-document-pane",
+      "setup": {
+        "theme": "dark",
+        "period": "morning",
+        "state": "populated"
+      },
+      "browserViewport": {
+        "width": 1440,
+        "height": 1000
+      },
+      "documentCrop": {
+        "width": 982,
+        "height": 936,
+        "left": 458,
+        "top": 64
+      },
+      "captureKey": "final-blog",
+      "paperArtboardId": "BD4-0",
+      "paperStatus": "incomplete-unverified",
+      "browserStatus": "inspected-synthetic",
+      "note": "Paper is a crop of the document pane at the recorded full-browser viewport. Below-fold content and unchanged navigation are not included."
+    },
+    {
+      "key": "about-mobile",
+      "route": "/admin/editor/pages/about",
+      "fixture": "tests/browser/editor-document-pane",
+      "setup": {
+        "theme": "dark",
+        "period": "morning",
+        "state": "populated"
+      },
+      "browserViewport": {
+        "width": 390,
+        "height": 1000
+      },
+      "documentCrop": {
+        "width": 390,
+        "height": 944,
+        "left": 0,
+        "top": 56
+      },
+      "captureKey": "final-about-mobile",
+      "paperArtboardId": "BD7-0",
+      "paperStatus": "incomplete-unverified",
+      "browserStatus": "inspected-synthetic",
+      "note": "Paper is a crop of the document pane at the recorded full-browser viewport. Below-fold content and unchanged navigation are not included."
+    },
+    {
+      "key": "portfolio-mobile",
+      "route": "/admin/editor/portfolio/demo-portfolio-1",
+      "fixture": "tests/browser/editor-document-pane",
+      "setup": {
+        "theme": "dark",
+        "period": "morning",
+        "state": "populated"
+      },
+      "browserViewport": {
+        "width": 390,
+        "height": 1000
+      },
+      "documentCrop": {
+        "width": 390,
+        "height": 846.437,
+        "left": 0,
+        "top": 153.563
+      },
+      "captureKey": "final-portfolio-mobile",
+      "paperArtboardId": "BD8-0",
+      "paperStatus": "incomplete-unverified",
+      "browserStatus": "inspected-synthetic",
+      "note": "Paper is a crop of the document pane at the recorded full-browser viewport. Below-fold content and unchanged navigation are not included."
+    },
+    {
+      "key": "settings-light",
+      "route": "/admin/editor",
+      "fixture": "tests/browser/editor-document-pane",
+      "setup": {
+        "theme": "light",
+        "period": "morning",
+        "state": "populated"
+      },
+      "browserViewport": {
+        "width": 1440,
+        "height": 1000
+      },
+      "documentCrop": {
+        "width": 1160,
+        "height": 1000,
+        "left": 220,
+        "top": 0
+      },
+      "captureKey": "final-settings-light",
+      "paperArtboardId": "BD9-0",
+      "paperStatus": "incomplete-unverified",
+      "browserStatus": "inspected-synthetic",
+      "note": "Paper is a crop of the document pane at the recorded full-browser viewport. Below-fold content and unchanged navigation are not included."
+    }
+  ],
+  "limitations": [
+    "Successful saves/publication/uploads and provider recovery were intentionally not exercised.",
+    "Mobile About pointer reorder did not initiate reliably in the fixture; not marked passed.",
+    "Existing focus contrast, draft reload persistence, query-error handling and other baseline findings are recorded in the separate synthetic re-sweep audit.",
+    "Paper comparison is blocked; these test drafts are not production design references."
+  ]
+}
