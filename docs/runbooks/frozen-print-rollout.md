@@ -10,9 +10,24 @@ The interface, rendering rules, and submission policy live in
 [LUMAPRINTS.md](../../LUMAPRINTS.md). Do not substitute a paid test order for
 contract verification or assume HTTP 201 proves provider acceptance.
 
+## Verified deployment checkpoint — 2026-09-15 UTC
+
+Angels Rest explicitly enabled `PRINT_INPUT_PROTOCOL=frozen-v1` on September 6.
+The September 14–15 repairs additionally verified short-filename provider
+acceptance and real-R2 immutable artifact replay. Worker
+`ef6cdef4-4664-47c9-ad5b-f742947663b7` let the existing `ORD-014` scheduled retry
+complete; provider order `10002005297` was confirmed at 00:39 UTC. No historical
+job replay was required. Printing, shipment, and earlier unresolved orders were
+not established by that result. See the [runtime checkpoint](../../LUMAPRINTS.md#runtime-checkpoint--2026-09-15-utc)
+for source and deployment evidence.
+
+The unchecked list below is a reusable procedure for a future activation, not
+a claim that the production gate remains disabled. Configuration defaults,
+source availability, deployed activation, and provider confirmation are separate.
+
 ## Ordered activation checklist
 
-These are operator gates, not actions completed by the source PRs.
+These are operator gates, not actions automatically completed by source PRs.
 
 - [ ] Record exact deployed revisions, target tenant/provider environment/store,
   and existing reservations/jobs/submission states using authorized read-only
@@ -35,6 +50,9 @@ These are operator gates, not actions completed by the source PRs.
   verify deployed configuration/routing: local proof cannot establish real R2,
   Cloudflare routing, credentials, or provider access. A synthetic live artifact
   upload is an R2 write and needs an approved exact target and cleanup plan.
+  Include first PUT, identical replay, and conflicting replay against the same
+  key. A local R2 substitute returning `null` cannot verify native R2 exceptions.
+  Record unchanged bytes/ETag on conflict and remove only task-created fixtures.
 - [ ] Only after the preceding gates pass, explicitly authorize enabling host
   `PRINT_INPUT_PROTOCOL=frozen-v1` for new Angels Rest handle-v2 checkouts.
   Other tenants stay unchanged. An existing attempt cannot switch versions;

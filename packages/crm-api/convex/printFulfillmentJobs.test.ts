@@ -30,9 +30,12 @@ beforeEach(() => {
 });
 afterEach(() => { vi.useRealTimers(); vi.unstubAllEnvs(); });
 
-async function setup() {
+async function setup(printOrderReferenceVersion?: 1) {
 	const t = convexTest(schema, modules);
-	const order = await t.mutation(api.orders.create, { ...args, runPrintJob: true });
+	const order = await t.mutation(api.orders.create, {
+		...args, runPrintJob: true,
+		...(printOrderReferenceVersion === undefined ? {} : { printOrderReferenceVersion }),
+	});
 	if (!order.printJobId) throw new Error("Expected print job");
 	const jobId = order.printJobId;
 	async function claim() {
@@ -46,6 +49,56 @@ async function setup() {
 	}
 	return { t, jobId, orderId: order._id, claim, step };
 }
+
+test("readable references are frozen only on opted-in new print jobs and survive older-host replay", async () => {
+	const { t, jobId, orderId } = await setup(1);
+	expect(await t.run((ctx) => ctx.db.get(orderId))).toMatchObject({
+		orderNumber: "ORD-001", lumaprintsExternalId: "AR-ORD-001", stripeSessionId: args.stripeSessionId,
+	});
+	expect(await t.mutation(api.orders.create, { ...args, runPrintJob: true })).toMatchObject({
+		_id: orderId, printJobId: jobId, lumaprintsExternalId: "AR-ORD-001", alreadyExisted: true,
+	});
+	const historical = { ...args, stripeSessionId: "cs_test_historicalreference1234", runPrintJob: true as const };
+	const old = await t.mutation(api.orders.create, historical);
+	const replay = await t.mutation(api.orders.create, { ...historical, printOrderReferenceVersion: 1 });
+	expect(replay._id).toBe(old._id);
+	expect(replay.lumaprintsExternalId).toBeUndefined();
+	expect((await t.run((ctx) => ctx.db.get(old._id)))?.lumaprintsExternalId).toBeUndefined();
+});
+
+test("readable references require Angels Rest webhook scope and an actual print job", async () => {
+	const t = convexTest(schema, modules);
+	await expect(t.mutation(api.orders.create, {
+		...args, siteUrl: "another.example", runPrintJob: true, printOrderReferenceVersion: 1,
+	})).rejects.toThrow("Readable print references require Angels Rest webhook authority");
+	const digital = await t.mutation(api.orders.create, {
+		...args, checkoutSnapshot: undefined, fulfillmentType: "digital", runPrintJob: true, printOrderReferenceVersion: 1,
+	});
+	expect(digital.printJobId).toBeUndefined();
+	expect(digital.lumaprintsExternalId).toBeUndefined();
+});
+
+test("a runner must acknowledge the frozen provider reference before claiming or reconciling", async () => {
+	const { t, jobId, orderId, claim } = await setup(1);
+	await t.run(async (ctx) => {
+		await ctx.db.patch(jobId, { stage: "finish" });
+		await ctx.db.insert("commercePurposeControls", { siteUrl, purpose: "new_provider_submission", state: "open", generation: 1, createdAt: Date.now(), updatedAt: Date.now() });
+	});
+	const jobLease = await claim();
+	const command = { orderId, claimToken: "123e4567-e89b-42d3-a456-426614174000", printJobLeaseToken: jobLease.leaseToken, webhookSecret: secret };
+	expect(await t.mutation(api.orders.claimPrintFulfillmentV5, command)).toEqual({ kind: "busy" });
+	expect(await t.mutation(api.orders.claimPrintFulfillmentV5, { ...command, providerExternalId: "AR-ORD-002" })).toEqual({ kind: "busy" });
+	expect(await t.mutation(api.orders.claimPrintFulfillmentV5, { ...command, providerExternalId: "AR-ORD-001" })).toMatchObject({
+		kind: "claimed", externalId: args.stripeSessionId,
+	});
+	expect(await t.mutation(api.orders.beginPrintFulfillmentSubmission, command)).toMatchObject({
+		kind: "submitting", externalId: args.stripeSessionId,
+	});
+	expect(await t.mutation(api.orders.claimPrintFulfillmentV5, command)).toEqual({ kind: "busy" });
+	expect(await t.mutation(api.orders.claimPrintFulfillmentV5, { ...command, providerExternalId: "AR-ORD-001" })).toMatchObject({
+		kind: "reconcile", externalId: args.stripeSessionId,
+	});
+});
 
 test("new webhook orders enqueue once; historical orders never acquire jobs on replay", async () => {
 	const { t, jobId } = await setup();

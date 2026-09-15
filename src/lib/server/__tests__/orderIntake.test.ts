@@ -1246,6 +1246,10 @@ describe("processStripeWebhookEvent", () => {
 				stripeSessionId: "cs_test_123",
 			}),
 		);
+		expect(convex.mutation).not.toHaveBeenCalledWith(
+			"orders.create",
+			expect.objectContaining({ printOrderReferenceVersion: 1 }),
+		);
 		expect(mockSendCustomerConfirmation).toHaveBeenCalledWith(
 			resend,
 			expect.objectContaining({
@@ -1756,6 +1760,7 @@ describe("processStripeWebhookEvent", () => {
 
 		const calls = convex.mutation.mock.calls as Array<[string, Record<string, unknown>]>;
 		const payload = calls.find(([reference]) => reference === "orders.create")?.[1];
+		expect(payload).toMatchObject({ printOrderReferenceVersion: 1 });
 		expect(payload).not.toHaveProperty("checkoutSnapshot");
 		expect(payload).not.toHaveProperty("checkoutSnapshotReservation");
 		expect(createLumaPrintsOrder).not.toHaveBeenCalled();

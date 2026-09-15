@@ -10,9 +10,9 @@ Canonical rules for working in this repository.
   <https://angelsrest.online>
 - **Current architecture:** `docs/ARCHITECTURE.md`
 - **CRM spec:**
-  `~/Documents/quilt/02_reference/projects/photographer_crm/implementation-spec.md`
+  `~/Documents/Obsidian/quilt/02_reference/project-support/photographer-crm/historical/implementation-spec.md`
 - **User guide:**
-  `~/Documents/quilt/02_reference/projects/photographer_crm/crm-user-guide.md`
+  `~/Documents/Obsidian/quilt/02_reference/project-support/photographer-crm/crm-user-guide.md`
 
 ## Technical constraints
 

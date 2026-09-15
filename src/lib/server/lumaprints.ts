@@ -128,6 +128,16 @@ const LUMAPRINTS_RECONCILIATION_MAX_ROWS_PER_PAGE = 100;
 const LUMAPRINTS_RECONCILIATION_MAX_ROWS =
 	LUMAPRINTS_RECONCILIATION_MAX_PAGES * LUMAPRINTS_RECONCILIATION_MAX_ROWS_PER_PAGE;
 const STRIPE_CHECKOUT_SESSION_ID = /^cs_(?:test|live)_[A-Za-z0-9]{16,120}$/;
+
+function isLumaPrintsExternalId(value: string) {
+	if (STRIPE_CHECKOUT_SESSION_ID.test(value)) return true;
+	const match = /^AR-ORD-(\d{3,16})$/.exec(value);
+	if (!match) return false;
+	const sequence = Number(match[1]);
+	return (
+		Number.isSafeInteger(sequence) && sequence > 0 && String(sequence).padStart(3, "0") === match[1]
+	);
+}
 const HTTP_TOKEN = /^[!#$%&'*+\-.^_`|~0-9A-Za-z]+$/;
 const CONTENT_ENCODINGS = new Set(["identity", "gzip", "br", "deflate"]);
 
@@ -492,7 +502,7 @@ export async function confirmOrder(
 ): Promise<boolean> {
 	if (
 		normalizeLumaPrintsProviderNumber(orderNumber) !== orderNumber ||
-		!STRIPE_CHECKOUT_SESSION_ID.test(expectedExternalId)
+		!isLumaPrintsExternalId(expectedExternalId)
 	) {
 		throw reconciliationFailure("Order confirmation identity was invalid", "client_error");
 	}
@@ -597,7 +607,7 @@ function parseReconciliationPage(value: unknown, storeId: number): Reconciliatio
 export async function findOrderByExternalId(
 	externalId: string,
 ): Promise<LumaPrintsOrderResponse | null> {
-	if (!STRIPE_CHECKOUT_SESSION_ID.test(externalId)) {
+	if (!isLumaPrintsExternalId(externalId)) {
 		throw reconciliationFailure("Order reconciliation identity was invalid", "client_error");
 	}
 	let storeId: number;

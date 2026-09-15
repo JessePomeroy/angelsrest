@@ -212,6 +212,7 @@ export async function submitPrintFulfillment(
 		orderId: Id<"orders">;
 		orderNumber: string;
 		fulfillmentType?: "lumaprints" | "self" | "digital";
+		lumaprintsExternalId?: string;
 		tenantId?: string;
 		siteUrl: string;
 		lineItems: Stripe.LineItem[];
@@ -224,6 +225,7 @@ export async function submitPrintFulfillment(
 		orderId,
 		orderNumber,
 		fulfillmentType = "lumaprints",
+		lumaprintsExternalId,
 		tenantId,
 		siteUrl,
 		lineItems,
@@ -233,6 +235,9 @@ export async function submitPrintFulfillment(
 	} = input;
 	const webhookSecret = getWebhookSecret();
 	const tenantFence = tenantId === undefined ? {} : { tenantId };
+	// Provider labels are frozen separately; Stripe still fences every internal command.
+	const providerExternalId = lumaprintsExternalId ?? session.id;
+	const providerReferenceFence = lumaprintsExternalId === undefined ? {} : { providerExternalId };
 	const legacyItems =
 		checkoutSnapshot || preparedItems ? undefined : buildOrderItemsFromSession(session, lineItems);
 	const hasPrintItems =
@@ -272,6 +277,7 @@ export async function submitPrintFulfillment(
 	const claimed = await convex.mutation(api.orders.claimPrintFulfillmentV5, {
 		orderId,
 		claimToken,
+		...providerReferenceFence,
 		...(printJobLeaseToken ? { printJobLeaseToken } : {}),
 		...tenantFence,
 		webhookSecret,
@@ -317,8 +323,8 @@ export async function submitPrintFulfillment(
 		try {
 			existing =
 				submissionOrderNumber === undefined
-					? await findLumaPrintsOrder(externalId)
-					: (await confirmLumaPrintsOrder(submissionOrderNumber, externalId))
+					? await findLumaPrintsOrder(providerExternalId)
+					: (await confirmLumaPrintsOrder(submissionOrderNumber, providerExternalId))
 						? { orderNumber: submissionOrderNumber }
 						: null;
 		} catch (error) {
@@ -366,6 +372,7 @@ export async function submitPrintFulfillment(
 			const refreshed = await convex.mutation(api.orders.claimPrintFulfillmentV5, {
 				orderId,
 				claimToken,
+				...providerReferenceFence,
 				...(printJobLeaseToken ? { printJobLeaseToken } : {}),
 				...tenantFence,
 				webhookSecret,
@@ -506,7 +513,7 @@ export async function submitPrintFulfillment(
 			);
 		}
 		recipient ??= buildRecipientFromShipping(shippingDetails);
-		lpOrder = buildLumaPrintsOrder(session.id, recipient, items);
+		lpOrder = buildLumaPrintsOrder(providerExternalId, recipient, items);
 	} catch (cause) {
 		await releasePreparationClaim();
 		throw cause;
@@ -529,7 +536,11 @@ export async function submitPrintFulfillment(
 			errorSummary: "Fulfillment was already refunded",
 		};
 	}
-	if (submission.kind !== "submitting" || submission.externalId !== lpOrder.externalId) {
+	if (
+		submission.kind !== "submitting" ||
+		submission.externalId !== session.id ||
+		lpOrder.externalId !== providerExternalId
+	) {
 		throw new Error("Print fulfillment preparation lease was lost");
 	}
 

@@ -1067,6 +1067,8 @@ export default defineSchema({
 		siteUrl: v.string(),
 		orderNumber: v.string(),
 		stripeSessionId: v.string(),
+		// Frozen provider-facing reference; absent historical rows retain their Stripe identity.
+		lumaprintsExternalId: v.optional(v.string()),
 		stripePaymentIntentId: v.optional(v.string()),
 		stripePaymentCurrency: v.optional(v.string()),
 		stripePaymentLivemode: v.optional(v.boolean()),

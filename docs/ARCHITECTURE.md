@@ -184,8 +184,9 @@ notifications use durable claims, bounded leases, stable idempotency keys, and
 explicit completion or uncertainty states. The stable cross-runtime contract is
 documented in [`contracts/commerce-intake.md`](contracts/commerce-intake.md).
 
-New Angels Rest handle-v2 checkouts can opt into frozen print input with
-`PRINT_INPUT_PROTOCOL=frozen-v1`; it is off by default. Convex captures the
+New Angels Rest handle-v2 checkouts opt into frozen print input with
+`PRINT_INPUT_PROTOCOL=frozen-v1`. It is off by default but explicitly enabled in
+Angels Rest production since September 6, 2026. Convex captures the
 resolved print specification and original artwork identity at reservation,
 then transfers them into the paid order with the verified shipping recipient.
 Frozen jobs finish from that saved input without re-entering checkout intake.
@@ -194,7 +195,17 @@ the JPEG through the Worker's dedicated print-only PUT. Existing orders keep
 their old protocol; provider submission and notification fences are shared.
 See [LumaPrints ownership and constraints](../LUMAPRINTS.md) and the
 [activation/retirement runbook](runbooks/frozen-print-rollout.md). Source merge
-does not enable capture or establish provider acceptance.
+does not enable capture or establish provider acceptance. The dated runtime
+checkpoint records the September 14–15 short-filename and real-R2 replay repairs,
+and the one paid order subsequently confirmed by the provider.
+
+Stripe checkout session IDs remain the internal order/job identity. New Angels
+Rest print jobs created by the compatible host additionally freeze a readable
+LumaPrints reference (`AR-ORD-015`, for example) in the same Convex transaction.
+Provider POST and reconciliation use that saved reference; existing orders and
+other tenants keep their original references. Claim acknowledgement prevents an
+older runner from substituting the Stripe ID. Deploy this additive backend before
+the host; never backfill provider references or clear submission fences.
 
 Manual refunds are reconciled from signed Stripe events and exact provider
 evidence. Partial, ambiguous, or conflicting evidence fails closed; absence is

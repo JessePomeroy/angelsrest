@@ -1,12 +1,14 @@
 /// <reference types="vite/client" />
 
-import type { ConvexHttpClient } from "convex/browser";
+import { ConvexHttpClient } from "convex/browser";
 import { convexTest } from "convex-test";
-import type Stripe from "stripe";
+import { Resend } from "resend";
+import Stripe from "stripe";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
-import { api } from "$convex/api";
+import { api, internal } from "$convex/api";
 import schema from "../../../../packages/crm-api/convex/schema";
 import { processStripeWebhookEvent } from "../orderIntake";
+import { finishRecordedPrintOrder } from "../webhookOrders";
 
 const modules = import.meta.glob("../../../../packages/crm-api/convex/**/*.ts");
 const WEBHOOK_SECRET = "test-webhook-secret";
@@ -160,6 +162,116 @@ describe("order intake with real Convex state", () => {
 		delete process.env.ORDER_PRODUCERS_STATE;
 		vi.useRealTimers();
 		vi.unstubAllGlobals();
+	});
+
+	test("a readable-reference job submits once and confirms against the same provider identity", async () => {
+		vi.useFakeTimers();
+		vi.setSystemTime(new Date("2026-09-15T01:00:00Z"));
+		const t = convexTest(schema, modules);
+		const convex = new ConvexHttpClient("https://test.convex.cloud");
+		vi.spyOn(convex, "mutation").mockImplementation(
+			(...parameters: Parameters<ConvexHttpClient["mutation"]>) =>
+				t.mutation(parameters[0], parameters[1]),
+		);
+		vi.spyOn(convex, "query").mockImplementation(
+			(...parameters: Parameters<ConvexHttpClient["query"]>) =>
+				t.query(parameters[0], parameters[1]),
+		);
+		const created = await t.mutation(api.orders.create, {
+			siteUrl: SITE_URL,
+			webhookSecret: WEBHOOK_SECRET,
+			stripeSessionId: SESSION_ID,
+			customerEmail: "buyer@example.com",
+			checkoutSnapshot,
+			items: [{ productName: "Print", quantity: 1, price: 4200 }],
+			total: 4200,
+			fulfillmentType: "lumaprints",
+			runPrintJob: true,
+			printOrderReferenceVersion: 1,
+		});
+		const jobId = created.printJobId;
+		if (!jobId) throw new Error("Expected a prepared print job");
+		await t.run(async (ctx) => {
+			await ctx.db.patch(jobId, { stage: "finish", nextAt: Date.now() });
+			await ctx.db.insert("commercePurposeControls", {
+				siteUrl: SITE_URL,
+				purpose: "new_provider_submission",
+				state: "open",
+				generation: 1,
+				createdAt: Date.now(),
+				updatedAt: Date.now(),
+			});
+		});
+		const lease = await t.mutation(internal.printFulfillmentJobs.begin, {
+			jobId,
+			nextAt: Date.now(),
+		});
+		if (!lease) throw new Error("Expected a print-job lease");
+		const createLumaPrintsOrder = vi.fn().mockResolvedValue({ orderNumber: "456" });
+		const adapters = {
+			convex,
+			createLumaPrintsOrder,
+			stripe: new Stripe("sk_test_fixture"),
+			resend: new Resend("re_fixture"),
+		};
+		const fetchMock = vi.fn().mockImplementation(async (input: string | URL | Request) => {
+			const url = input instanceof Request ? input.url : String(input);
+			expect(url).toBe("https://us.api.lumaprints.com/api/v1/orders/456");
+			return Response.json({ orderNumber: "456", externalId: "AR-ORD-001", storeId: "123" });
+		});
+		vi.stubGlobal("fetch", fetchMock);
+		const finish = async () => {
+			const order = await t.run((ctx) => ctx.db.get(created._id));
+			if (!order) throw new Error("Expected stored order");
+			return finishRecordedPrintOrder(adapters, {
+				orderResult: { ...order, alreadyExisted: true },
+				printJob: {
+					jobId,
+					leaseToken: lease.leaseToken,
+					items: [
+						{
+							imageUrl: "https://artwork.example/print.jpg",
+							width: 6,
+							height: 4,
+							paperSubcategoryId: 103007,
+							quantity: 1,
+						},
+					],
+				},
+				session: checkoutSession(),
+				siteUrl: SITE_URL,
+				lineItems: [],
+				shippingDetails: {
+					name: "Test recipient",
+					address: {
+						line1: "123 Example St",
+						line2: null,
+						city: "Detroit",
+						state: "MI",
+						postal_code: "48201",
+						country: "US",
+					},
+				},
+			});
+		};
+		await expect(finish()).rejects.toThrow("confirmation is pending");
+		expect(createLumaPrintsOrder).toHaveBeenCalledExactlyOnceWith(
+			expect.objectContaining({ externalId: "AR-ORD-001" }),
+		);
+		expect(fetchMock).not.toHaveBeenCalled();
+		vi.setSystemTime(Date.now() + 61_000);
+		await expect(finish()).resolves.toMatchObject({
+			fulfillment: { kind: "fulfilled", lumaprintsOrderNumber: "456" },
+		});
+		await finish();
+		expect(createLumaPrintsOrder).toHaveBeenCalledTimes(1);
+		expect(fetchMock).toHaveBeenCalledTimes(1);
+		expect(await t.run((ctx) => ctx.db.get(created._id))).toMatchObject({
+			stripeSessionId: SESSION_ID,
+			lumaprintsExternalId: "AR-ORD-001",
+			lumaprintsOrderNumber: "456",
+			printFulfillmentResolution: "resolved",
+		});
 	});
 
 	test("reconciles a refunded uncertain claim through empty and late GETs without side effects", async () => {
