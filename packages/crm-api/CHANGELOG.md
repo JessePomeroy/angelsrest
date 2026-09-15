@@ -1,5 +1,15 @@
 # @jessepomeroy/crm-api
 
+## 5.2.0
+
+### Minor Changes
+
+- ee8d283: Expose an authenticated, read-only query for the existing prepared artwork of
+  an unresolved Angels Rest print submission. The query enforces stored site
+  membership and bounded frozen-order, completed-job, and JPEG-artifact checks;
+  it does not mutate order, job, or source state or authorize a fulfillment retry.
+- 21056bc: Freeze readable LumaPrints references for newly enrolled Angels Rest print orders and require compatible runners to acknowledge the saved provider identity. Existing orders retain their original references. Deploy the additive Convex backend before the opting-in host; retain compatible consumers for already-written references.
+
 ## 5.1.0
 
 ### Minor Changes
