@@ -853,6 +853,7 @@ export const create = mutation({
 		stripeSessionExpiresAt: v.optional(v.number()),
 		checkoutSnapshot: v.optional(checkoutSnapshotValidator),
 		runPrintJob: v.optional(v.literal(true)),
+		printOrderReferenceVersion: v.optional(v.literal(1)),
 		// Unknown by design: an existing paid order must win before a malformed V2 candidate is interpreted.
 		checkoutSnapshotReservation: v.optional(v.any()),
 		// Unknown by design: an existing paid order must win before a malformed
@@ -903,9 +904,13 @@ export const create = mutation({
 			stripeSessionCreatedAt,
 			stripeSessionExpiresAt,
 			runPrintJob,
+			printOrderReferenceVersion,
 			...rest
 		} = args;
 		if (runPrintJob && auth.via !== "webhook") throw new Error("Print jobs require webhook authority");
+		if (printOrderReferenceVersion !== undefined && (auth.via !== "webhook" || args.siteUrl !== "angelsrest.online")) {
+			throw new Error("Readable print references require Angels Rest webhook authority");
+		}
 		await assertTenantRouting(ctx, tenantId, args.siteUrl);
 		// Idempotency: if an order with this stripeSessionId already exists,
 		// return it along with fulfillment state so the caller can skip
@@ -973,6 +978,7 @@ export const create = mutation({
 				alreadyExisted: true as const,
 				fulfillmentType,
 				lumaprintsOrderNumber: existing.lumaprintsOrderNumber,
+				lumaprintsExternalId: existing.lumaprintsExternalId,
 				status: existing.status,
 				stripeFees: existing.stripeFees,
 				stripeConnectedAccountId: existing.stripeConnectedAccountId,
@@ -1133,12 +1139,19 @@ export const create = mutation({
 					: auth.via === "webhook" && orderInput.stripePaymentIntentId
 						? "failed" as const
 						: undefined;
+		const printLineCount = orderInput.checkoutSnapshot?.items.length;
+		const shouldEnqueuePrintJob = runPrintJob && auth.via === "webhook" && !isManuallyRefunded
+			&& orderInput.fulfillmentType === "lumaprints" && orderInput.checkoutSnapshot?.catalogProvider === "convex"
+			&& printLineCount !== undefined;
+		const lumaprintsExternalId = shouldEnqueuePrintJob && printOrderReferenceVersion === 1
+			? `AR-${orderNumber}` : undefined;
 		const _id = await ctx.db.insert("orders", {
 			...orderInput,
 			printInput,
 			tenantId: durableTenantId,
 			stripeFees: isManuallyRefunded ? undefined : orderInput.stripeFees,
 			orderNumber,
+			lumaprintsExternalId,
 			status: isManuallyRefunded ? "refunded" : "new",
 			stripeRefundId: refundIntent?.stripeRefundId,
 			stripeFeeProvenance: hasLegacyFeeInput ? "legacy_unverified" : undefined,
@@ -1151,9 +1164,8 @@ export const create = mutation({
 		if (refundIntent) {
 			await ctx.db.patch(refundIntent._id, { orderId: _id, consumedAt: Date.now() });
 		}
-		const printJobId = runPrintJob && auth.via === "webhook" && !isManuallyRefunded
-			&& orderInput.fulfillmentType === "lumaprints" && orderInput.checkoutSnapshot?.catalogProvider === "convex"
-			? await enqueuePrintFulfillmentJob(ctx, _id, orderInput.checkoutSnapshot.items.length)
+		const printJobId = shouldEnqueuePrintJob
+			? await enqueuePrintFulfillmentJob(ctx, _id, printLineCount)
 			: undefined;
 
 		// Schedule Stripe fee capture off the webhook hot path (audit H5).
@@ -1178,6 +1190,7 @@ export const create = mutation({
 			alreadyExisted: isManuallyRefunded,
 			fulfillmentType: orderInput.fulfillmentType,
 			lumaprintsOrderNumber: undefined,
+			lumaprintsExternalId,
 			status: isManuallyRefunded ? ("refunded" as const) : ("new" as const),
 			stripeFees: undefined,
 			stripeFeeCaptureStatus: feeCaptureStatus,
@@ -1859,6 +1872,7 @@ type PrintFulfillmentClaimArgs = {
 	orderId: Id<"orders">;
 	claimToken: string;
 	printJobLeaseToken?: string;
+	providerExternalId?: string;
 	tenantId?: string;
 	webhookSecret: string;
 };
@@ -1885,6 +1899,11 @@ async function claimPrintFulfillmentWithAdmission(
 			return { kind: "fulfilled" as const, orderNumber: order.lumaprintsOrderNumber };
 		}
 		if (coordinatorVersion === 4 && order.printFulfillmentCoordinatorVersion === 5) {
+			return { kind: "busy" as const };
+		}
+		// Old runners must not send or reconcile a new reference as a Stripe ID.
+		if ((order.lumaprintsExternalId !== undefined || args.providerExternalId !== undefined)
+			&& args.providerExternalId !== (order.lumaprintsExternalId ?? order.stripeSessionId)) {
 			return { kind: "busy" as const };
 		}
 		if (hasUncertainPrintSubmission(order)) {
@@ -2012,6 +2031,7 @@ const printFulfillmentClaimArgs = {
 	orderId: v.id("orders"),
 	claimToken: v.string(),
 	printJobLeaseToken: v.optional(v.string()),
+	providerExternalId: v.optional(v.string()),
 	tenantId: v.optional(v.string()),
 	webhookSecret: v.string(),
 };

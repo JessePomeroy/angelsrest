@@ -104,7 +104,11 @@ export async function createOrderInConvex(
 		checkoutSessionAdmission,
 	});
 	const orderResult = await convex
-		.mutation(api.orders.create, { ...payload, runPrintJob: true })
+		.mutation(api.orders.create, {
+			...payload,
+			runPrintJob: true,
+			...(siteUrl === "angelsrest.online" ? { printOrderReferenceVersion: 1 as const } : {}),
+		})
 		.catch((cause) => {
 			if (checkoutSnapshotInput.protocol === "handle-v2") {
 				throw new CheckoutSnapshotProtocolError("Bound checkout snapshot transfer failed", {
@@ -156,6 +160,7 @@ type RecordedPrintOrder = Pick<
 	| "printJobId"
 	| "fulfillmentType"
 	| "lumaprintsOrderNumber"
+	| "lumaprintsExternalId"
 	| "status"
 	| "stripeFees"
 	| "fulfillmentError"
@@ -407,6 +412,7 @@ export async function finishRecordedPrintOrder(
 				orderId,
 				orderNumber,
 				fulfillmentType,
+				lumaprintsExternalId: orderResult.lumaprintsExternalId,
 				tenantId,
 				siteUrl,
 				lineItems,

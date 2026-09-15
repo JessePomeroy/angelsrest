@@ -4,6 +4,35 @@ LumaPrints is the print-on-demand fulfillment boundary for eligible shop
 orders. Stripe owns payment, Convex owns order state, and LumaPrints owns print
 production and shipment.
 
+## Runtime checkpoint — 2026-09-15 UTC
+
+Angels Rest production has used `PRINT_INPUT_PROTOCOL=frozen-v1` since the
+September 6 activation. It is still off by default in an unconfigured environment;
+those are different facts. Other tenants and historical purchases are unchanged.
+
+Two separate integration repairs are now verified:
+
+- Short print filenames: host [PR #613](https://github.com/JessePomeroy/angelsrest/pull/613)
+  and Worker [PR #110](https://github.com/JessePomeroy/gallery-worker/pull/110)
+  preserve capability security while issuing `/print-source/<token>/print.jpg`.
+  The exact saved artwork produced an identity-checked sandbox order on September 14.
+- Immutable artifact replay: Worker [PR #111](https://github.com/JessePomeroy/gallery-worker/pull/111)
+  handles real R2 conditional PUT exceptions as well as the documented `null`
+  result. On a non-size-related PUT exception, it checks the existing object's
+  complete immutable descriptor and checksum; only an exact match succeeds.
+  Conflicts, missing objects, and unreadable storage still fail closed. Synthetic
+  real-R2 tests reproduced the failure before the patch and passed after it.
+
+Worker version `ef6cdef4-4664-47c9-ad5b-f742947663b7` was deployed at 00:33 UTC.
+The already-paid `ORD-014` then recovered through its normal scheduled retry:
+artifact preparation and issuance completed, provider order `10002005297` was
+identity-confirmed, and the job became `done` at 00:39 UTC. The owner confirmed
+the same number in the provider dashboard as Awaiting Fulfillment. This proves
+that purchase reached the provider; it does not prove printing, shipment, or
+recovery of earlier unresolved orders. No manual replay or extra paid order was
+used for that recovery. Detailed incident analysis belongs in the Obsidian project
+record; this document retains the current operating contract and bounded evidence.
+
 ## Current source flow
 
 The current host uses the V5 coordinator with additive compatibility state.
@@ -22,13 +51,33 @@ Stripe checkout.session.completed
   → packages/crm-api/convex/orders.ts (fulfillment state)
 ```
 
-The immutable Stripe checkout session ID is both the Convex idempotency key and
-LumaPrints `externalId`; its documented local shape (`cs_test_`/`cs_live_` plus
-ASCII alphanumerics) fits the provider string contract and is global across
-platform tenants. A single durable claim marker fences provider submission.
+The immutable Stripe checkout session ID remains the Convex idempotency key and
+internal fulfillment-command identity. Existing orders and other tenants also
+retain it as their LumaPrints `externalId`.
+
+New Angels Rest orders enrolled in a print job by a compatible host opt into
+`printOrderReferenceVersion: 1`. Convex freezes `lumaprintsExternalId` as
+`AR-<orderNumber>` (for example `AR-ORD-015`) in the same transaction that creates
+the order and job. The `AR-` prefix separates these references from older
+unprefixed LumaPrints store IDs. Only Angels Rest webhook authority may opt in;
+the caller cannot supply the reference itself. Existing-order replay never adds
+or replaces a reference, including when an older host replays a new order.
+
+The current runner acknowledges the stored provider reference when claiming
+work. A mismatching or older runner fails closed before new submission or
+reconciliation; it cannot reinterpret a readable reference as a Stripe ID.
+Provider POST and GET use the saved reference, while Convex receipt, refund,
+and reconciliation commands retain the immutable Stripe identity. A single durable claim marker fences provider submission.
 The coordinator provides at-most-one provider POST per durable claim; it does not
 promise exact-once delivery. After a claim, retries only reconcile that exact
-persisted session ID and do not replay the POST.
+persisted provider reference and do not replay the POST.
+
+Rollout: deploy the additive Convex schema/functions before this host. The host
+then opts in only new Angels Rest orders; backend deployment alone does not
+rename orders. Rollback must retain a compatible runner for jobs that already
+have readable references. No backfill or update of existing provider orders is
+part of this change. A future intentional order-number reset must use a new
+provider-reference namespace rather than reuse `AR-` numbers already submitted.
 
 The reviewed adapter assumes a store-scoped order list: each GET
 supplies the configured `storeId` and a one-based `page`, then scans the strict
@@ -50,11 +99,12 @@ guessed compatibility paths.
 
 ## Ownership
 
-### Frozen print-input rollout (source-only, opt-in)
+### Frozen print-input protocol (opt-in; active for Angels Rest)
 
 The reservation endpoint additionally accepts `printInputVersion: 1`. Only a
-host deployed with the corresponding paid-input consumer should send it. No
-existing host opts in by default, and old reservations/orders are not backfilled.
+host deployed with the corresponding paid-input consumer should send it. The
+Angels Rest production host explicitly opts in; unconfigured environments do not.
+Old reservations/orders are not backfilled.
 Deploy the additive Convex schema/functions before enabling a consumer.
 
 For opted-in reservations, Convex captures each line's resolved price, print
@@ -78,7 +128,7 @@ re-resolve the historical catalog, create/replay the paid order, or send its
 payment receipt. Fulfillment outcome alerts still use the existing claims.
 Orders without frozen input retain the historical runner path. The new
 `product` field on job items is additive; deploy this backend before enabling
-frozen reservation capture. This source slice does not enable capture.
+frozen reservation capture. Source deployment alone does not enable capture.
 
 LP-05 activation is explicit: leave `PRINT_INPUT_PROTOCOL` unset until the
 LP-02/03/05 Convex schema/functions and LP-04 Worker (`cdc1b6f`) are deployed and
@@ -102,7 +152,7 @@ retain their progressing descriptor and token-upload protocol.
 The direct upload performs one dedicated authenticated PUT with no automatic
 fallback; timeout/retry uses the same content-addressed key and immutable replay.
 Both transports are exercised by `pnpm test:print-contract` against real Worker
-handlers pinned at `ff69466907215ff739b2f82545bf8c625a879b18`, with only R2/runtime
+handlers pinned at `fb0974b5e54f83349d52e04690323f42ff9f6d4f`, with only R2/runtime
 substituted and no network fallback. Locally place that Worker revision at
 `.contract/gallery-worker`; CI fetches it with the existing private-repo credential.
 
@@ -110,7 +160,8 @@ Rollback: disable new capture first, but keep the frozen consumer, additive
 Convex schema and Worker route until all frozen reservations/jobs are drained.
 Do not deploy a pre-LP-03 runner over frozen jobs or remove required schema fields.
 No backfill/replay, paid test order, credential activation, or manual deployment
-is authorized by source merge. Provider acceptance still needs separate evidence.
+is authorized by source merge. Provider acceptance needs separate evidence;
+the dated runtime checkpoint above records the purchase actually confirmed.
 The [activation and retirement runbook](docs/runbooks/frozen-print-rollout.md)
 records the ordered runtime gates, retained callers, and evidence needed before
 removing compatibility code.
@@ -367,7 +418,7 @@ The compatible host change was deployed first as
 `9655e6eb-b9b8-4d89-a5bf-7ccd51f8a6ff`. Worker bindings, observability settings,
 compatibility date, and existing Container image were retained; no secrets were
 rotated. The host/Worker contract passed against both the old CI-pinned Worker
-and the new source. The CI pin now adopts merged Worker repair
+and the new source. At that checkpoint, CI adopted merged Worker repair
 `ff69466907215ff739b2f82545bf8c625a879b18` ([Worker PR #110](https://github.com/JessePomeroy/gallery-worker/pull/110)).
 
 A fresh sandbox order used the same saved 1,208,785-byte, 1800 × 1200 JPEG and
@@ -455,7 +506,7 @@ cross-repository token. Locally, create that same source-only checkout:
 
 ```bash
 git clone --no-checkout https://github.com/JessePomeroy/gallery-worker.git .contract/gallery-worker
-git -C .contract/gallery-worker checkout --detach ff69466907215ff739b2f82545bf8c625a879b18
+git -C .contract/gallery-worker checkout --detach fb0974b5e54f83349d52e04690323f42ff9f6d4f
 pnpm test:print-contract
 ```
 

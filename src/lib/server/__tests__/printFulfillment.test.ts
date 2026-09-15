@@ -277,6 +277,49 @@ describe("print fulfillment", () => {
 		mockSendFulfillmentFailureAlert.mockResolvedValue({ id: "email-123" });
 	});
 
+	it("uses the frozen readable provider reference while retaining the Stripe command fence", async () => {
+		const { submitPrintFulfillment } = await import("../printFulfillment");
+		await expect(
+			submitPrintFulfillment(
+				{ convex, createLumaPrintsOrder: mockCreateLumaPrintsOrder },
+				{ ...printInput, lumaprintsExternalId: "AR-ORD-001" },
+			),
+		).resolves.toMatchObject({ kind: "fulfilled" });
+		expect(mockCreateLumaPrintsOrder).toHaveBeenCalledExactlyOnceWith({ externalId: "AR-ORD-001" });
+		expect(mockConfirmLumaPrintsOrder).toHaveBeenCalledWith("123", "AR-ORD-001");
+		expect(convex.mutation).toHaveBeenCalledWith(
+			"orders.claimPrintFulfillmentV5",
+			expect.objectContaining({
+				providerExternalId: "AR-ORD-001",
+			}),
+		);
+		expect(convex.mutation).toHaveBeenCalledWith(
+			"orders.reconcilePrintFulfillmentSubmission",
+			expect.objectContaining({
+				externalId: session.id,
+				lumaprintsOrderNumber: "123",
+			}),
+		);
+	});
+
+	it("reconciles a readable reference without a second provider POST", async () => {
+		const { submitPrintFulfillment } = await import("../printFulfillment");
+		convex.mutation.mockResolvedValueOnce({ kind: "reconcile", externalId: session.id });
+		mockFindLumaPrintsOrder.mockResolvedValue({ orderNumber: "123" });
+		await expect(
+			submitPrintFulfillment(
+				{ convex, createLumaPrintsOrder: mockCreateLumaPrintsOrder },
+				{ ...printInput, lumaprintsExternalId: "AR-ORD-001" },
+			),
+		).resolves.toMatchObject({ kind: "fulfilled" });
+		expect(mockFindLumaPrintsOrder).toHaveBeenCalledExactlyOnceWith("AR-ORD-001");
+		expect(mockCreateLumaPrintsOrder).not.toHaveBeenCalled();
+		expect(convex.mutation).toHaveBeenCalledWith(
+			"orders.reconcilePrintFulfillmentSubmission",
+			expect.objectContaining({ externalId: session.id }),
+		);
+	});
+
 	it("completes a studio-handled print without claiming or calling the provider", async () => {
 		const { submitPrintFulfillment } = await import("../printFulfillment");
 		await expect(

@@ -25,6 +25,21 @@ Every non-repeatable provider action has a durable claim or admission fence,
 uses the frozen idempotency identity, and stores completion separately. Unknown
 outcomes remain uncertain. They do not authorize a new provider request.
 
+## Order identities
+
+The immutable Stripe Checkout Session ID remains the order-creation idempotency
+key and the internal fulfillment-command identity. For newly enrolled Angels
+Rest print orders, trusted webhook intake can request `printOrderReferenceVersion: 1`.
+Convex generates and freezes `orders.lumaprintsExternalId` as `AR-<orderNumber>`
+atomically with the order and job; callers cannot supply arbitrary references.
+Provider POST and GET use that exact saved value. Other tenants, historical
+orders, and existing-order replay retain their original identity and behavior.
+
+The V4/V5 claim boundary requires the runner to acknowledge a stored readable
+reference before submission or reconciliation. A missing/mismatched acknowledgement
+fails closed; the additive field cannot make an old runner issue a different
+provider identity. This is not authority to backfill, rename, or resend an order.
+
 ## Rollout
 
 Cross-runtime changes widen the backend first, deploy compatible consumers

@@ -634,6 +634,32 @@ describe("confirmOrder", () => {
 	beforeEach(() => {
 		vi.unstubAllGlobals();
 	});
+	it.each([
+		"AR-ORD-015",
+		"AR-ORD-1000",
+	])("confirms a readable store reference exactly: %s", async (reference) => {
+		vi.stubGlobal(
+			"fetch",
+			vi
+				.fn()
+				.mockResolvedValue(providerJson({ orderNumber, externalId: reference, storeId: "83765" })),
+		);
+		await expect(confirmOrder(orderNumber, reference)).resolves.toBe(true);
+	});
+	it.each([
+		"ORD-015",
+		"ar-ORD-015",
+		"AR-ORD-000",
+		"AR-ORD-0015",
+		"AR-ORD-9007199254740992",
+	])("rejects a noncanonical readable reference before provider I/O: %s", async (reference) => {
+		const fetchMock = vi.fn();
+		vi.stubGlobal("fetch", fetchMock);
+		await expect(confirmOrder(orderNumber, reference)).rejects.toMatchObject({
+			reconciliationClass: "client_error",
+		});
+		expect(fetchMock).not.toHaveBeenCalled();
+	});
 
 	it("confirms only the exact queued order identity and treats 404 as pending", async () => {
 		const fetchMock = vi
@@ -682,6 +708,22 @@ describe("findOrderByExternalId", () => {
 
 	beforeEach(() => {
 		vi.unstubAllGlobals();
+	});
+	it("matches the exact readable reference without confusing historical unprefixed IDs", async () => {
+		vi.stubGlobal(
+			"fetch",
+			vi
+				.fn()
+				.mockResolvedValue(
+					providerPage([
+						listedOrder("ORD-015", "10000000001"),
+						listedOrder("AR-ORD-015", "10000000002"),
+					]),
+				),
+		);
+		await expect(findOrderByExternalId("AR-ORD-015")).resolves.toEqual({
+			orderNumber: "10000000002",
+		});
 	});
 
 	it("uses documented store-scoped page pagination and matches locally", async () => {
