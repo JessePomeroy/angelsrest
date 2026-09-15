@@ -187,6 +187,10 @@ describe("host ↔ Worker print artwork contract (no network)", () => {
 		expect(response.status).toBe(200);
 		const bytes = Buffer.from(await response.arrayBuffer());
 		expect(bytes.equals(rendered.bytes)).toBe(true);
+		const legacyUrl = capability.url.replace(/\/print\.jpg$/, ".jpg");
+		const legacyResponse = await fetch(legacyUrl);
+		expect(legacyResponse.status).toBe(200);
+		expect(Buffer.from(await legacyResponse.arrayBuffer()).equals(rendered.bytes)).toBe(true);
 		expect(await sharp(bytes).metadata()).toMatchObject({
 			format: "jpeg",
 			width: 600,

@@ -16,6 +16,24 @@ import { applyCapabilityResponsePrivacy } from "./server/capabilityResponsePriva
 
 describe("private capability path privacy", () => {
 	it.each([
+		"bearer-token.jpg",
+		"bearer-token.png",
+		"bearer-token/print.jpg",
+		"bearer-token/print.png",
+	])("redacts print-source capabilities in telemetry: %s", (suffix) => {
+		const prefix = "https://media.example/v1/catalog-assets/fulfillment/print-source/";
+		const event = {
+			request: { url: `${prefix}${suffix}` },
+			message: `fetch ${prefix}${suffix} failed`,
+		};
+		const redacted = JSON.stringify(scrubPrivateCapabilityTelemetry(event));
+		expect(redacted).not.toContain("bearer-token");
+		expect(redacted).toContain(`${prefix}[redacted]`);
+		expect(event.request.url).toContain("bearer-token");
+		expect(redactPrivateCapabilityPaths(`${prefix}capabilities`)).toBe(`${prefix}capabilities`);
+	});
+
+	it.each([
 		"/portal/bearer-token",
 		"/portal/bearer-token/",
 		"/delivery/gallery-token",

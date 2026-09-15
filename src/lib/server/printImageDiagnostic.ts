@@ -73,6 +73,7 @@ export async function diagnosePreparedPrintImage(
 		fetch,
 		configuration: getLumaPrintsRuntimeConfig,
 	},
+	environment: "production" | "sandbox" = "production",
 ): Promise<PrintImageDiagnosticReport> {
 	const started = Date.now();
 	const report: PrintImageDiagnosticReport = {
@@ -84,7 +85,11 @@ export async function diagnosePreparedPrintImage(
 	};
 	try {
 		const configuration = dependencies.configuration();
-		if (configuration.baseUrl !== "https://us.api.lumaprints.com") return report;
+		const expectedOrigin =
+			environment === "sandbox"
+				? "https://us.api-sandbox.lumaprints.com"
+				: "https://us.api.lumaprints.com";
+		if (configuration.baseUrl !== expectedOrigin) return report;
 		if (
 			source.descriptor.mime !== "image/jpeg" ||
 			!Number.isSafeInteger(source.descriptor.bytes) ||
@@ -99,7 +104,7 @@ export async function diagnosePreparedPrintImage(
 		const url = new URL(capability.url);
 		if (
 			url.origin !== "https://cms-media-worker.thinkingofview.workers.dev" ||
-			!/^\/v1\/catalog-assets\/fulfillment\/print-source\/[A-Za-z0-9_-]+\.jpg$/.test(
+			!/^\/v1\/catalog-assets\/fulfillment\/print-source\/[A-Za-z0-9_-]+(?:\/print)?\.jpg$/.test(
 				url.pathname,
 			) ||
 			url.search ||
