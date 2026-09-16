@@ -3,10 +3,12 @@
   "reviewDate": "2026-09-16",
   "status": "paper-updated-comparison-blocked",
   "sourceBaseline": {
-    "commit": "6fdbcbec046931d3dcb9e6e4d272260cc3bacd22",
-    "includesUncommittedChanges": true,
+    "commit": "eeb01b9cf88de5d0edb931a55cf09e1517ee7f68",
+    "includesUncommittedChanges": false,
     "adminPackage": "@jessepomeroy/admin",
-    "adminPackageVersion": "6.1.1"
+    "adminPackageVersion": "6.1.2",
+    "adminCapturePackageVersion": "6.1.1",
+    "adminPackageCompatibility": "6.1.2 changes only pending overdue-reminder identity handling in InvoiceDetailModal; it does not change the visual structure represented by the canonical boards."
   },
   "conventions": {
     "lastVerified": "Non-null only after completed browser-to-Paper comparison of this exact reference.",
@@ -6412,6 +6414,9 @@
     "updatedAt": "2026-09-16",
     "adminReferencesUpdated": 72,
     "browserCaptures": 72,
+    "capturePackageVersion": "6.1.1",
+    "currentPackageVersion": "6.1.2",
+    "currentPackageCompatibility": "The 6.1.1-to-6.1.2 package diff is behavior-only inside InvoiceDetailModal and does not change the captured board structure.",
     "editableStructureAudit": "passed: every canonical admin artboard has the expected top-level layer set from its fresh capture",
     "visualComparison": "blocked: Paper get_screenshot timed out for full boards and small child nodes after normal and software-rendered desktop restarts",
     "lastVerified": null

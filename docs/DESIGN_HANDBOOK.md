@@ -31,10 +31,11 @@ Remaining candidates and specific mismatches stay in the inventory.
 | Admin | Browser-observed and regenerated in Paper: dashboard, orders, inquiries, CRM, board, invoices, quotes, contracts, email templates, messages, platform, delivery gallery management, settings/page/portfolio/product/blog editors, product/post/author/category details, login and host session presentations. Paper visual checkpoint pending. |
 | States/layouts | Light/dark examples, tablet gallery/About, short landscape, expanded menus, selected/disabled controls, cart limits/busy/error/expiry, contact readiness/sending/success/failures, complete client/invoice/contact-editor forms, admin empty/read-error/loading/save-error examples |
 
-The source baseline is commit `6fdbcbec046931d3dcb9e6e4d272260cc3bacd22`
-plus the pre-existing local public-journey changes. This is not a claim about
-the deployed site's version. The installed shared admin package was
-`@jessepomeroy/admin` **6.1.1**; inspect its version on each update.
+The source baseline is merge commit `eeb01b9cf88de5d0edb931a55cf09e1517ee7f68`.
+The installed shared admin package is `@jessepomeroy/admin` **6.1.2**. The boards
+were captured with 6.1.1; the 6.1.2 diff only preserves invoice identity during
+a pending overdue-reminder action and does not change their visual structure.
+This is not a claim about the deployed site's version.
 
 Each Paper file has Start Here & Foundations, Components & States, Desktop,
 Mobile, and Interaction & Additional Layouts pages. Use the inventory for exact
@@ -84,7 +85,7 @@ was added.
   to 768px they use a 56px header and off-canvas menu. The 64px sidebar brand
   seam is not a universal page-title height. Editor rails are 52px + 168px
   (section panel 160px at 641–1179px); its mobile-menu change is at 640px.
-- The 6.1.1 admin workbench uses 16px text, 48px-minimum square fields, inset
+- The 6.1.x admin workbench uses 16px text, 48px-minimum square fields, inset
   control wells and restrained raised actions. Selected segmented choices use
   centered labels and tint without ornamental checks or nested borders.
   Preserve actual labels, icon lanes, native controls, table overflow and
@@ -271,11 +272,14 @@ an artificial component sheet is an implemented route.
 
 - All 72 admin screen/state references rendered from the 6.1.1 package with the
   inventory's fictional data, viewport, theme, motion and interaction setup.
+- The subsequently merged 6.1.2 package was diffed against 6.1.1. Its only
+  runtime change is behavior-only invoice identity capture during a pending
+  overdue-reminder action; no represented board structure changed.
 - All 72 existing canonical Paper artboards were replaced in place with native
   editable frames, text and SVGs. Their expected top-level layer sets matched the
   fresh capture drafts with zero structural mismatches; old modal/marker roots
   and the temporary validation board were removed.
-- Start Here, Foundations, and Components guidance now documents the 6.1.1
+- Start Here, Foundations, and Components guidance now documents the 6.1.x
   workbench, document-pane, segmented-control, mobile-sheet and tab behavior.
 - Representative browser captures were visually inspected. Paper screenshot
   checkpoints timed out for both large and small nodes, so all admin

@@ -46,7 +46,7 @@
     "paper": {
       "status": "canonical-boards-updated-visual-comparison-blocked",
       "lastVerified": null,
-      "reason": "The affected canonical boards were regenerated in place from @jessepomeroy/admin 6.1.1 on 2026-09-16 and passed an editable top-level structure audit. Paper screenshot export still timed out for full and small nodes, so no visual comparison is claimed."
+      "reason": "The affected canonical boards were regenerated in place from @jessepomeroy/admin 6.1.1 on 2026-09-16 and passed an editable top-level structure audit. The installed 6.1.2 update is behavior-only inside InvoiceDetailModal and does not change their visual structure. Paper screenshot export still timed out for full and small nodes, so no visual comparison is claimed."
     },
     "limitations": ["Firefox on the user's iPhone is not verified by a desktop Firefox test. Native WebKit cannot launch here because libicudata.so.74 is unavailable.", "Fictional fixtures only; no real provider writes or production deployment."]
   },
@@ -138,7 +138,7 @@
     "url": "https://app.paper.design/file/01M25K34Z4EFZ5BEPJ49JBF0X1/8-0",
     "status": "canonical-boards-updated-visual-comparison-blocked",
     "lastVerified": null,
-    "reason": "All 72 canonical admin references were regenerated in place from the released 6.1.1 package on 2026-09-16. Their expected editable top-level layer sets matched the fresh browser capture drafts. Required Paper screenshots still time out, so visual comparison and lastVerified remain incomplete.",
+    "reason": "All 72 canonical admin references were regenerated in place from the released 6.1.1 package on 2026-09-16. Their expected editable top-level layer sets matched the fresh browser capture drafts. The installed 6.1.2 update changes pending invoice-reminder identity handling only, not represented visual structure. Required Paper screenshots still time out, so visual comparison and lastVerified remain incomplete.",
     "canonicalReferenceKeys": "The screen keys above map to the existing handbook inventory. The canonical boards now contain the current editable treatment; use screen-inventory.json for per-reference pending visual-comparison status.",
     "unrelatedStudiesChanged": false
   },

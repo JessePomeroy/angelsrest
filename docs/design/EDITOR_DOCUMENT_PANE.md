@@ -20,7 +20,7 @@ The [synthetic re-sweep](editor-document-pane-resweep.json) has a closed 50-entr
 
 ## Paper status: editable update complete, visual verification blocked
 
-[The separate test page](https://app.paper.design/file/01M25K34Z4EFZ5BEPJ49JBF0X1/8-0) still contains the historical incomplete document scaffolds and headers, explicitly named as incomplete. On 2026-09-16 the 72 canonical admin references were instead regenerated in place from the released 6.1.1 package. Their editable top-level layer sets match the fresh browser capture drafts, and the Start, Foundations and Components guidance now describes the rollout.
+[The separate test page](https://app.paper.design/file/01M25K34Z4EFZ5BEPJ49JBF0X1/8-0) still contains the historical incomplete document scaffolds and headers, explicitly named as incomplete. On 2026-09-16 the 72 canonical admin references were instead regenerated in place from the released 6.1.1 package. Their editable top-level layer sets match the fresh browser capture drafts, and the Start, Foundations and Components guidance now describes the rollout. The installed 6.1.2 update is behavior-only inside the invoice detail modal and does not change these board structures.
 
 The [experiment inventory](editor-document-pane-experiment.json) continues to record the historical test-page drafts; do not promote those drafts to canonical references. Paper's screenshot endpoint still times out for full boards and small child nodes after normal and software-rendered desktop restarts. The canonical update is therefore recorded as `paper-updated-comparison-blocked`, with `lastVerified` empty until same-condition visual checkpoints can run.
 
