@@ -19,6 +19,15 @@ Vercel's [Ignored Build Step](https://vercel.com/kb/guide/how-do-i-use-the-ignor
 uses exit 0 to skip and exit 1 to continue. This conservative rule does not
 eliminate all preview deployments. Retention remains a separate project setting.
 
+September 16 follow-up: skip the exact
+`changesets-ghcommit-temp/changeset-release/main` ref only in the preview
+environment. The newest 100 deployment records contained five pairs where this
+temporary ref and the actual `changeset-release/main` PR ref shared a SHA.
+The temporary ref had no PR. The real release PR, all other refs, production,
+and `VERCEL_FORCE_BUILD=1` remain eligible to build. Repeated historical
+production SHAs also include explicit CLI redeploys; do not suppress empty-diff
+redeploys, which can be needed after environment or configuration changes.
+
 ## Public HTML caching
 
 `src/lib/server/publicPageCache.ts` permits Vercel CDN caching for 60 seconds on

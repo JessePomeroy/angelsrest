@@ -3,7 +3,14 @@ import { pathToFileURL } from "node:url";
 
 export function shouldSkipBuild(env = process.env, cwd = process.cwd()) {
 	const previous = env.VERCEL_GIT_PREVIOUS_SHA;
-	if (env.VERCEL_FORCE_BUILD === "1" || !/^[a-f0-9]{40}$/i.test(previous ?? "")) return false;
+	if (env.VERCEL_FORCE_BUILD === "1") return false;
+	// Changesets publishes this temporary ref and the real release PR at the same SHA.
+	if (
+		env.VERCEL_ENV === "preview" &&
+		env.VERCEL_GIT_COMMIT_REF === "changesets-ghcommit-temp/changeset-release/main"
+	)
+		return true;
+	if (!/^[a-f0-9]{40}$/i.test(previous ?? "")) return false;
 	try {
 		const files = execFileSync(
 			"git",
@@ -35,7 +42,7 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
 	const skip = shouldSkipBuild();
 	console.log(
 		skip
-			? "Skipping deployment: only documentation or tests changed."
+			? "Skipping deployment: temporary Changesets ref or documentation/test-only changes."
 			: "Building deployment: runtime changes or no safe comparison.",
 	);
 	// Vercel's ignore command uses zero to cancel, one to continue.

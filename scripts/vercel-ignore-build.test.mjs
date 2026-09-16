@@ -6,6 +6,24 @@ import { dirname, join } from "node:path";
 import { test } from "node:test";
 import { shouldSkipBuild } from "./vercel-ignore-build.mjs";
 
+test("only the duplicate temporary Changesets preview is skipped without history", () => {
+	const temporary = {
+		VERCEL_ENV: "preview",
+		VERCEL_GIT_COMMIT_REF: "changesets-ghcommit-temp/changeset-release/main",
+	};
+	assert.equal(shouldSkipBuild(temporary), true);
+	assert.equal(shouldSkipBuild({ ...temporary, VERCEL_FORCE_BUILD: "1" }), false);
+	assert.equal(shouldSkipBuild({ ...temporary, VERCEL_ENV: "production" }), false);
+	assert.equal(shouldSkipBuild({ ...temporary, VERCEL_ENV: undefined }), false);
+	for (const ref of [
+		"changeset-release/main",
+		"main",
+		"feat/work",
+		"changesets-ghcommit-temp/unrelated",
+	])
+		assert.equal(shouldSkipBuild({ ...temporary, VERCEL_GIT_COMMIT_REF: ref }), false);
+});
+
 function repo(t) {
 	const cwd = mkdtempSync(join(tmpdir(), "angelsrest-deploy-gate-"));
 	t.after(() => rmSync(cwd, { recursive: true, force: true }));
