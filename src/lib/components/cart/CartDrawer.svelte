@@ -18,6 +18,7 @@
 <script lang="ts">
 import { ArrowRightIcon, XIcon } from "@lucide/svelte";
 import { cubicOut } from "svelte/easing";
+import { tick } from "svelte";
 import { fly } from "svelte/transition";
 import { goto } from "$app/navigation";
 import { cart } from "$lib/shop/cart.svelte";
@@ -30,6 +31,16 @@ import CartLineItem from "./CartLineItem.svelte";
 
 let isCheckingOut = $state(false);
 let checkoutError = $state<string | null>(null);
+let dialog = $state<HTMLDialogElement>();
+
+async function focusAfterRemoval() {
+	await tick();
+	dialog?.querySelector<HTMLElement>(".cart-line .remove-button, .shop-link")?.focus();
+}
+
+function fallbackFocus() {
+	return document.getElementById("main-content");
+}
 
 const items = $derived(cart.items);
 const totalCents = $derived(cart.totalCents);
@@ -67,7 +78,8 @@ function viewFullCart() {
 
 {#if cartUI.isOpen}
   <dialog
-    use:openModal
+    bind:this={dialog}
+    use:openModal={fallbackFocus}
     aria-label="Shopping cart"
     class="cart-dialog"
     oncancel={(event) => {
@@ -141,7 +153,7 @@ function viewFullCart() {
         <ul class="cart-items">
           {#each items as item (item.id)}
             <li>
-              <CartLineItem {item} variant="drawer" />
+              <CartLineItem {item} variant="drawer" onNavigate={close} onRemoved={focusAfterRemoval} />
             </li>
           {/each}
         </ul>
@@ -217,7 +229,7 @@ function viewFullCart() {
     .empty-state { display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; padding-block: 4rem; }
     .empty-message { font-size: var(--text-sm); line-height: var(--text-sm--line-height); letter-spacing: 0.05em; text-transform: lowercase; color: var(--color-surface-600); margin-bottom: 0.5rem; }
     :global(.dark) .empty-message { color: var(--color-surface-300); }
-    .shop-link { font-size: var(--text-xs); line-height: var(--text-xs--line-height); letter-spacing: 0.05em; text-transform: lowercase; color: var(--color-surface-500); text-decoration-line: underline; text-underline-offset: 4px; display: inline-flex; align-items: center; gap: 0.25rem; }
+    .shop-link { font-size: var(--text-xs); line-height: var(--text-xs--line-height); letter-spacing: 0.05em; text-transform: lowercase; color: var(--color-surface-700); text-decoration-line: underline; text-underline-offset: 4px; display: inline-flex; align-items: center; gap: 0.25rem; }
     @media (hover: hover) { .shop-link:hover { color: var(--color-surface-900); } }
     @media (hover: hover) { :global(.dark) .shop-link:hover { color: var(--color-surface-50); } }
     .cart-items { list-style-type: none; padding: 0; margin: 0; }
@@ -233,9 +245,10 @@ function viewFullCart() {
     :global(.dark) .checkout-button:focus-visible { outline-color: var(--color-surface-50); }
     .checkout-button:disabled { opacity: 0.5; cursor: not-allowed; }
     @media (hover: hover) { .checkout-button:hover:not(:disabled) { background-color: color-mix(in oklab, var(--color-primary-500) 80%, transparent); } }
-    .full-cart-button { display: block; width: 100%; text-align: center; font-size: var(--text-xs); line-height: var(--text-xs--line-height); letter-spacing: 0.05em; text-transform: lowercase; color: var(--color-surface-500); text-decoration-line: underline; text-underline-offset: 4px; }
+    .full-cart-button { display: block; width: 100%; text-align: center; font-size: var(--text-xs); line-height: var(--text-xs--line-height); letter-spacing: 0.05em; text-transform: lowercase; color: var(--color-surface-700); text-decoration-line: underline; text-underline-offset: 4px; }
     @media (hover: hover) { .full-cart-button:hover { color: var(--color-surface-900); } }
     @media (hover: hover) { :global(.dark) .full-cart-button:hover { color: var(--color-surface-50); } }
-    .payment-note { font-size: 10px; color: var(--color-surface-500); text-align: center; }
+    .payment-note { font-size: 10px; color: var(--color-surface-700); text-align: center; }
+    :global(.dark) .full-cart-button, :global(.dark) .payment-note, :global(.dark) .shop-link { color: var(--color-surface-200); }
   }
 </style>

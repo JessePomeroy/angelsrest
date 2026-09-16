@@ -5,8 +5,8 @@ import { cart } from "../../../src/lib/shop/cart.svelte";
 import { showCartAddition } from "../../../src/lib/shop/cartFeedback";
 const photo = `data:image/svg+xml,${encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="400" height="900"><rect width="400" height="900" fill="#dad6c5"/><circle cx="190" cy="690" r="130" fill="#375e60"/><path d="M0 850L400 200" stroke="#f9d178" stroke-width="50"/></svg>')}`;
 function add(event: MouseEvent) {
-	cart.add({ productSlug: "fixture", type: "print", title: "Fixture", imageUrl: photo, quantity: 1, unitPriceCents: 100 });
-	showCartAddition(event.currentTarget);
+	const addedQuantity = cart.add({ productSlug: "fixture", type: "print", title: "Fixture", imageUrl: photo, quantity: 1, unitPriceCents: 100 });
+	showCartAddition(event.currentTarget, addedQuantity);
 }
 </script>
 

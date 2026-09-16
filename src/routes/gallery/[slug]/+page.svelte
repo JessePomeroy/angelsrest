@@ -50,7 +50,7 @@ function openModal(index: number) {
       <button
         class="image-button"
         onclick={() => openModal(i)}
-        aria-label="View image {i + 1}"
+        aria-label={image.alt ? `View image ${i + 1}: ${image.alt}` : `View image ${i + 1}`}
       >
         <img data-water-lens
           src={image.thumbnail}
@@ -78,7 +78,7 @@ function openModal(index: number) {
 <style>
   .gallery-detail { width: 100%; }
   .gallery-heading { min-height: 88px; margin-bottom: 8px; border-bottom: 1px solid color-mix(in srgb, currentColor 15%, transparent); }
-  .gallery-heading a { color: color-mix(in srgb, currentColor 58%, transparent); font-size: 0.72rem; letter-spacing: 0.06em; }
+  .gallery-heading a { color: color-mix(in srgb, currentColor 88%, transparent); font-size: 0.72rem; letter-spacing: 0.06em; }
   .gallery-heading a:hover { color: currentColor; }
   .gallery-heading h1 { margin-top: 8px; font-size: 1.35rem; font-weight: 500; }
   .image-grid { columns: 2; column-gap: 8px; }

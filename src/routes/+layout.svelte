@@ -27,7 +27,7 @@ import type { LayoutProps } from "./$types";
 import { onMount, setContext } from "svelte";
 import { MOBILE_CHROME, type MobileChrome } from "$lib/components/mobileNavigation";
 
-import { page } from "$app/state";
+import { navigating, page } from "$app/state";
 import { filterPrivateCapabilityAnalytics } from "$lib/capabilityPrivacy";
 
 import BottomNav from "$lib/components/BottomNav.svelte";
@@ -38,6 +38,7 @@ import MobileNav from "$lib/components/MobileNav.svelte";
 import Footer from "$lib/components/Footer.svelte";
 // Layout components
 import Nav from "$lib/components/Nav.svelte";
+import NavigationProgress from "$lib/components/NavigationProgress.svelte";
 import ThemeSwitcher from "$lib/components/ThemeSwitcher.svelte";
 import Toaster from "$lib/components/Toaster.svelte";
 
@@ -97,6 +98,7 @@ onMount(() => {
   <GrainOverlay />
 
   <a href="#main-content" class="skip-link">Skip to content</a>
+  <NavigationProgress />
 
   <div class="site-shell"
     style:--mobile-nav-height={mobileChrome.bottomNavHeight === undefined ? undefined : `${mobileChrome.bottomNavHeight}px`}
@@ -108,6 +110,8 @@ onMount(() => {
     <!-- Main content area -->
     <main
       id="main-content"
+      tabindex="-1"
+      aria-busy={navigating.to !== null}
       class="site-content"
     >
       {@render children()}

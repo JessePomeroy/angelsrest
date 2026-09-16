@@ -31,6 +31,7 @@ const links = [
     <!-- Navigation links -->
     <ul class="nav-links">
       {#each links as link (link.href)}
+        {@const current = page.url.pathname === link.href || (link.href !== '/' && page.url.pathname.startsWith(`${link.href}/`))}
         <li>
           <!-- 
             Active state: exact match for home ("/"), prefix match for other routes
@@ -38,8 +39,8 @@ const links = [
           -->
           <a
             href={link.href}
-            class:active={page.url.pathname === link.href ||
-              (link.href !== '/' && page.url.pathname.startsWith(link.href))}
+            class:active={current}
+            aria-current={current ? 'page' : undefined}
           >
             {link.label}
           </a>
@@ -87,7 +88,7 @@ const links = [
     position: relative;
     display: block;
     padding-block: 22px 20px;
-    color: color-mix(in srgb, currentColor 64%, transparent);
+    color: color-mix(in srgb, currentColor 88%, transparent);
     font-size: 0.72rem;
     letter-spacing: 0.12em;
   }

@@ -66,13 +66,14 @@ const id = $props.id();
 <style>
   @layer components {
     .configuration > :global(:not(:last-child)) { margin-block-start: 0; margin-block-end: 1.0rem; }
-    .field-label { display: block; font-size: var(--text-sm); line-height: var(--text-sm--line-height); color: var(--color-surface-600); margin-bottom: 0.25rem; }
-    :global(.dark) .field-label { color: var(--color-surface-300); }
+    .field-label { display: block; font-size: var(--text-sm); line-height: var(--text-sm--line-height); color: var(--color-surface-700); margin-bottom: 0.25rem; }
+    :global(.dark) .field-label { color: var(--color-surface-200); }
     .choice { display: block; border-radius: 0.375rem; border: 1px solid; border-color: var(--color-surface-300); background-color: transparent; font-size: var(--text-base); line-height: var(--text-base--line-height); padding-block: 0.25rem; width: 100%; }
     :global(.dark) .choice { border-color: var(--color-surface-600); }
     .choice:focus-visible { outline-style: solid; outline-width: 2px; outline-offset: 2px; outline-color: var(--color-surface-900); }
     :global(.dark) .choice:focus-visible { outline-color: var(--color-surface-50); }
     .choice:disabled { opacity: 0.5; }
-    .border-note { font-size: var(--text-xs); line-height: var(--text-xs--line-height); color: var(--color-surface-500); }
+    .border-note { font-size: var(--text-xs); line-height: var(--text-xs--line-height); color: var(--color-surface-700); }
+    :global(.dark) .border-note { color: var(--color-surface-200); }
   }
 </style>

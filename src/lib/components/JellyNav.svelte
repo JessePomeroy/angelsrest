@@ -452,7 +452,14 @@ onMount(() => {
 <div class="jelly-nav" class:expanded class:dragging class:flying class:rendered class:mounted
 	style:left={`${viewport.left}px`} style:top={`${viewport.top}px`}>
 	{#if expanded}
-		<button class="dismiss" type="button" tabindex="-1" aria-label="Close navigation" onclick={() => close(true)}></button>
+		<button class="dismiss" type="button" tabindex="-1" aria-label="Close navigation"
+			onpointerdown={(event) => {
+				if (!event.isPrimary || event.button !== 0) return;
+				// Do not move focus onto a backdrop that disappears before click.
+				event.preventDefault();
+				close(true);
+			}}
+			onclick={() => close(true)}></button>
 	{/if}
 	{#each wake as ring (ring.id)}
 		<span class="wake-ring" aria-hidden="true" style:opacity={(1 - ring.age / 750) * 0.16}

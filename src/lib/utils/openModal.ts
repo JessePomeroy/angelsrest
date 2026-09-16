@@ -2,7 +2,7 @@ const scrollLocks = new WeakMap<Document, { count: number; overflow: string }>()
 
 // Mount only while open. Native modality owns inertness; this action owns the
 // matching teardown, including overlapping dialogs removed in either order.
-export function openModal(node: HTMLDialogElement) {
+export function openModal(node: HTMLDialogElement, fallbackFocus?: () => HTMLElement | null) {
 	const document = node.ownerDocument;
 	const opener = document.activeElement;
 	node.showModal();
@@ -23,6 +23,9 @@ export function openModal(node: HTMLDialogElement) {
 			}
 			if (opener instanceof HTMLElement && opener.isConnected) {
 				opener.focus({ preventScroll: true });
+			}
+			if (document.activeElement !== opener || !opener?.isConnected) {
+				fallbackFocus?.()?.focus({ preventScroll: true });
 			}
 		},
 	};
