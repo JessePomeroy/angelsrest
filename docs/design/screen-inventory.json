@@ -192,7 +192,7 @@
     "Admin components and host session UI use fictional local fixtures. Real login, membership checks, recovery, persistence, publication, uploads, billing and provider delivery are unverified.",
     "Public contact verification and responses are simulated. Cart checkout requests were intercepted in the browser and never reached a checkout server.",
     "Additional route-specific forms, filters, confirmations, swipe/drag physics and full theme/time matrices remain outside the representative comparison pass; see pendingStateSurvey.",
-    "No production customer records or private gallery assets were used. No application behavior, production dependencies, commits, pushes or deployments were changed by this handbook task."
+    "No production customer records or private gallery assets were used. The handbook capture and Paper update made no provider writes or deployments; this branch separately includes tested public shopping and navigation behavior fixes."
   ],
   "screens": [
     {
@@ -6368,7 +6368,7 @@
     "evidenceStorage": "Private directory outside repository; preserve PNG and JSON basenames from each reference."
   },
   "verification": {
-    "reviewedAt": "2026-09-10",
+    "reviewedAt": "2026-09-16",
     "paperBoardRegistry": {
       "expected": 141,
       "found": 141,
