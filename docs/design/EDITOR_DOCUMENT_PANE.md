@@ -18,11 +18,11 @@ Use the [isolated preview instructions](../../tests/browser/editor-document-pane
 
 The [synthetic re-sweep](editor-document-pane-resweep.json) has a closed 50-entry ledger and independently rated baseline findings. No new layout regression remained. Successful provider mutations are deliberately unverified. Existing draft-loss, focus, query-error, About group-label and price-rounding issues were reported separately and were not used to expand this layout change.
 
-## Paper status: blocked, not verified
+## Paper status: editable update complete, visual verification blocked
 
-[The separate test page](https://app.paper.design/file/01M25K34Z4EFZ5BEPJ49JBF0X1/8-0) contains incomplete document scaffolds and headers, explicitly named as incomplete. Full-board capture, a small-header retry and a PNG export fallback timed out. The mandatory visual checkpoint could not complete, so further Paper composition stopped. Existing reference boards and unrelated studies remain untouched.
+[The separate test page](https://app.paper.design/file/01M25K34Z4EFZ5BEPJ49JBF0X1/8-0) still contains the historical incomplete document scaffolds and headers, explicitly named as incomplete. On 2026-09-16 the 72 canonical admin references were instead regenerated in place from the released 6.1.1 package. Their editable top-level layer sets match the fresh browser capture drafts, and the Start, Foundations and Components guidance now describes the rollout.
 
-The [experiment inventory](editor-document-pane-experiment.json) records browser conditions, document crops, source and Paper IDs, gaps and verification status. Do not promote these Paper drafts to canonical references. Once Paper rendering is available, finish the remaining editable groups in place, compare against the same fictional data/viewport/theme/period, and update the inventory.
+The [experiment inventory](editor-document-pane-experiment.json) continues to record the historical test-page drafts; do not promote those drafts to canonical references. Paper's screenshot endpoint still times out for full boards and small child nodes after normal and software-rendered desktop restarts. The canonical update is therefore recorded as `paper-updated-comparison-blocked`, with `lastVerified` empty until same-condition visual checkpoints can run.
 
 ## Follow-up: tactile gallery and product controls
 
@@ -38,4 +38,4 @@ Paper follow-up: updated the existing gallery test scaffold and added one native
 
 Phone screenshot follow-up: corrected a selector-specificity collision that gave the currency input its own border and inset shadow inside the money-field wrapper. The prefix and value now share one 48px control, with only the wrapper drawing the border and keyboard-focus outline. The browser suite now checks that compound fields have no inner border, shadow or focus ring.
 
-The user subsequently requested removal of both the choice checkmark and excess borders. All segmented choices in the product prototype now use centered labels with symmetric padding, a single outer boundary and a tinted, medium-weight selected state. The nested selected border, checkmark, reserved icon space and inset track gap are removed. Keyboard-focus outlines remain. Touch and arrow-key selection were checked in both themes, and the 17-case/four-flow browser suite still passes. Paper comparison remains blocked as documented above.
+The user subsequently requested removal of both the choice checkmark and excess borders. All segmented choices in the product prototype now use centered labels with symmetric padding, a single outer boundary and a tinted, medium-weight selected state. The nested selected border, checkmark, reserved icon space and inset track gap are removed. Keyboard-focus outlines remain. Touch and arrow-key selection were checked in both themes, and the 17-case/four-flow browser suite still passes. The treatment is now present in the canonical editable boards; Paper visual comparison remains blocked as documented above.
