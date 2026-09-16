@@ -292,8 +292,15 @@ an artificial component sheet is an implemented route.
 - Inventory key/source/setup/viewport consistency and the 72-board Paper
   structure audit passed. The 62 public references retain their 2026-09-10
   visual comparison status and were not changed in this update.
+- The application unit, protocol and package suites passed: 2,062 Vitest tests,
+  27 protocol tests, 6 Vercel-adapter tests and 14 print-catalog tests. The CRM
+  API TypeScript check also passed.
+- The production build passed. Its output retained the known optional-dependency
+  trace warnings for React Email rendering and platform-specific Sharp packages.
+- The browser suite passed 312 Chromium cases with 10 expected skips. WebKit
+  could not start on this workstation because its MiniBrowser requires
+  `libicudata.so.74`, which is unavailable; a focused rerun reproduced the same
+  launch-time dependency error before page creation.
 - Task-owned preview and Paper processes were stopped after releasing Paper's
   working indicators.
-- No production build, full application test suite, provider workflow or
-  deployment was claimed. Changes are documentation, isolated fixtures and
-  capture tooling only.
+- No real authentication, backend/provider workflow or deployment was claimed.

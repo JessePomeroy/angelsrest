@@ -6402,12 +6402,31 @@
       {
         "command": "pre-existing worktree file hashes",
         "result": "26 checked, 0 changed"
+      },
+      {
+        "command": "pnpm test",
+        "result": "passed: 6 Vercel-adapter tests, 2062 Vitest tests and 27 protocol tests"
+      },
+      {
+        "command": "pnpm --filter @jessepomeroy/print-catalog check && pnpm --filter @jessepomeroy/print-catalog test",
+        "result": "passed: type check and 14 tests"
+      },
+      {
+        "command": "pnpm --filter @jessepomeroy/crm-api exec tsc -p tsconfig.json --noEmit",
+        "result": "passed"
+      },
+      {
+        "command": "pnpm build",
+        "result": "passed with known optional-dependency trace warnings for React Email rendering and platform-specific Sharp packages"
+      },
+      {
+        "command": "pnpm test:browser",
+        "result": "partial: 312 Chromium tests passed with 10 expected skips; WebKit could not launch because libicudata.so.74 is unavailable"
       }
     ],
     "notRun": [
-      "Full application test suite",
-      "Production build",
-      "Real authentication/backend/provider workflows"
+      "Real authentication/backend/provider workflows",
+      "Deployment"
     ]
   },
   "paperUpdate": {
