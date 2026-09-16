@@ -19,12 +19,16 @@ beforeAll(async () => {
 		.toBuffer();
 });
 
-function fixture(providerStatus = 200, providerOverride: Record<string, unknown> = {}) {
+function fixture(
+	providerStatus = 200,
+	providerOverride: Record<string, unknown> = {},
+	imageBytes: Uint8Array = bytes,
+) {
 	const source = {
 		descriptor: {
 			key: "sites/angelsrest.online/catalog/print-sources/private-artifact/original",
-			hash: createHash("sha256").update(bytes).digest("hex"),
-			bytes: bytes.length,
+			hash: createHash("sha256").update(imageBytes).digest("hex"),
+			bytes: imageBytes.length,
 			mime: "image/jpeg" as const,
 			dimensions: { width: 12, height: 8 },
 		},
@@ -32,11 +36,11 @@ function fixture(providerStatus = 200, providerOverride: Record<string, unknown>
 		printWidth: 6,
 		printHeight: 4,
 	};
-	const headers = { "content-type": "image/jpeg", "content-length": String(bytes.length) };
+	const headers = { "content-type": "image/jpeg", "content-length": String(imageBytes.length) };
 	const request = vi
 		.fn<typeof fetch>()
 		.mockResolvedValueOnce(new Response(null, { headers }))
-		.mockResolvedValueOnce(new Response(new Uint8Array(bytes), { headers }))
+		.mockResolvedValueOnce(new Response(new Uint8Array(imageBytes), { headers }))
 		.mockResolvedValueOnce(
 			Response.json(
 				{
@@ -63,6 +67,151 @@ function fixture(providerStatus = 200, providerOverride: Record<string, unknown>
 	};
 	return { source, dependencies, request, headers };
 }
+
+function jpegMarker(marker: number) {
+	const offset = bytes.indexOf(Buffer.from([0xff, marker]));
+	expect(offset).toBeGreaterThan(0);
+	return offset;
+}
+
+function replaceHeaderValue(offset: number, value: number) {
+	const changed = Buffer.from(bytes);
+	changed.writeUInt16BE(value, offset);
+	return changed;
+}
+
+test.each([
+	"progressive",
+	"oriented",
+	"grayscale",
+])("checks raw dimensions of a %s JPEG without changing its pixels", async (kind) => {
+	let image = sharp(bytes);
+	if (kind === "oriented") image = image.withMetadata({ orientation: 6 });
+	if (kind === "grayscale") image = image.greyscale();
+	const encoded = await image.jpeg({ progressive: kind === "progressive" }).toBuffer();
+	const { source, dependencies, request } = fixture(200, {}, encoded);
+	const report = await diagnosePreparedPrintImage(source, dependencies);
+	expect(report).toMatchObject({
+		outcome: "passed",
+		image: { width: 12, height: 8, matches: true },
+		provider: { dimensionComparison: "exact" },
+	});
+	expect(request).toHaveBeenCalledTimes(3);
+});
+
+test("rejects non-JPEG bytes even with matching hashes and JPEG HTTP headers", async () => {
+	const png = await sharp(bytes).png().toBuffer();
+	const { source, dependencies, request } = fixture(200, {}, png);
+	expect(await diagnosePreparedPrintImage(source, dependencies)).toMatchObject({
+		outcome: "failed",
+		stage: "image",
+		code: "image_metadata_mismatch",
+	});
+	expect(request).toHaveBeenCalledTimes(2);
+});
+
+test("skips marker-like bytes inside a JPEG comment instead of treating them as headers", async () => {
+	const comment = Buffer.from([0xff, 0xfe, 0, 6, 0xff, 0xc0, 0xff, 0xda]);
+	const encoded = Buffer.concat([bytes.subarray(0, 2), comment, bytes.subarray(2)]);
+	const { source, dependencies, request } = fixture(200, {}, encoded);
+	expect(await diagnosePreparedPrintImage(source, dependencies)).toMatchObject({
+		outcome: "passed",
+		image: { width: 12, height: 8, matches: true },
+	});
+	expect(request).toHaveBeenCalledTimes(3);
+});
+
+test.each([
+	["unknown data", () => Buffer.from("not a JPEG")],
+	["truncated signature", () => bytes.subarray(0, 2)],
+	[
+		"premature end marker",
+		() => Buffer.concat([bytes.subarray(0, 2), Buffer.from([0xff, 0xd9, 0, 2]), bytes.subarray(2)]),
+	],
+	[
+		"duplicate start marker",
+		() => Buffer.concat([bytes.subarray(0, 2), Buffer.from([0xff, 0xd8, 0, 2]), bytes.subarray(2)]),
+	],
+	[
+		"restart marker before the scan",
+		() => Buffer.concat([bytes.subarray(0, 2), Buffer.from([0xff, 0xd0, 0, 2]), bytes.subarray(2)]),
+	],
+	["truncated frame", () => bytes.subarray(0, jpegMarker(0xc0) + 9)],
+	[
+		"truncated frame with end marker",
+		() => Buffer.concat([bytes.subarray(0, jpegMarker(0xc0) + 9), Buffer.from([0xff, 0xd9])]),
+	],
+	["short frame length", () => replaceHeaderValue(jpegMarker(0xc0) + 2, 2)],
+	["oversized frame length", () => replaceHeaderValue(jpegMarker(0xc0) + 2, 0xffff)],
+	["missing scan", () => bytes.subarray(0, jpegMarker(0xda))],
+	["truncated scan", () => bytes.subarray(0, jpegMarker(0xda) + 5)],
+	["short scan length", () => replaceHeaderValue(jpegMarker(0xda) + 2, 2)],
+	["zero segment length", () => replaceHeaderValue(4, 0)],
+	["zero width", () => replaceHeaderValue(jpegMarker(0xc0) + 7, 0)],
+	["zero height", () => replaceHeaderValue(jpegMarker(0xc0) + 5, 0)],
+] as const)("rejects %s before any provider request", async (_name, corrupt) => {
+	const { source, dependencies, request } = fixture(200, {}, corrupt());
+	expect(await diagnosePreparedPrintImage(source, dependencies)).toMatchObject({
+		outcome: "failed",
+		stage: "image",
+		code: "image_metadata_mismatch",
+	});
+	expect(request).toHaveBeenCalledTimes(2);
+});
+
+test.each([4000, 4001])("enforces the 40-million-pixel limit at 10000×%s", async (height) => {
+	// Metadata reads do not decode pixels; patching a small fixture avoids a huge allocation.
+	const large = replaceHeaderValue(jpegMarker(0xc0) + 7, 10_000);
+	large.writeUInt16BE(height, jpegMarker(0xc0) + 5);
+	const { source, dependencies, request } = fixture(
+		200,
+		{ actualImageWidth: 10_000, actualImageHeight: height },
+		large,
+	);
+	source.descriptor.dimensions = { width: 10_000, height };
+	const report = await diagnosePreparedPrintImage(source, dependencies);
+	if (height === 4000) {
+		expect(report.outcome).toBe("passed");
+		expect(request).toHaveBeenCalledTimes(3);
+	} else {
+		expect(report).toMatchObject({ outcome: "failed", stage: "image" });
+		expect(request).toHaveBeenCalledTimes(2);
+	}
+});
+
+test("rejects dimensions that disagree with the saved descriptor", async () => {
+	const { source, dependencies, request } = fixture();
+	source.descriptor.dimensions.width = 13;
+	expect(await diagnosePreparedPrintImage(source, dependencies)).toMatchObject({
+		outcome: "failed",
+		stage: "image",
+		image: { width: 12, height: 8, matches: false },
+	});
+	expect(request).toHaveBeenCalledTimes(2);
+});
+
+test("hashes the full download, including bytes beyond the image header", async () => {
+	const changed = Buffer.from(bytes);
+	changed[changed.length - 3] ^= 1;
+	const { source, dependencies, request } = fixture(200, {}, changed);
+	source.descriptor.hash = createHash("sha256").update(bytes).digest("hex");
+	expect(await diagnosePreparedPrintImage(source, dependencies)).toMatchObject({
+		outcome: "failed",
+		stage: "download",
+	});
+	expect(request).toHaveBeenCalledTimes(2);
+});
+
+test.each([0, 10_000_001])("rejects an invalid declared byte count: %s", async (size) => {
+	const { source, dependencies, request } = fixture();
+	source.descriptor.bytes = size;
+	expect(await diagnosePreparedPrintImage(source, dependencies)).toMatchObject({
+		outcome: "failed",
+		stage: "configuration",
+	});
+	expect(dependencies.issue).not.toHaveBeenCalled();
+	expect(request).not.toHaveBeenCalled();
+});
 
 test("validates the exact prepared JPEG through anonymous HEAD/GET and only the non-order endpoint", async () => {
 	const { source, dependencies, request } = fixture();

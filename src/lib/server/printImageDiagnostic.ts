@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import type { FunctionReturnType } from "convex/server";
-import sharp from "sharp";
+import { imageDimensionsFromData } from "image-dimensions";
 import type { api } from "$convex/api";
 import { issueTenantPrintSourceCapability } from "$lib/server/catalogCommerceClients";
 import { getLumaPrintsRuntimeConfig } from "$lib/server/runtimeConfig";
@@ -63,6 +63,37 @@ function dimension(value: unknown): value is number {
 	return (
 		typeof value === "number" && Number.isSafeInteger(value) && value > 0 && value <= 1_000_000
 	);
+}
+
+/** Dimension readers can accept a truncated SOF; require complete SOF/SOS headers too. */
+function hasCompleteJpegHeader(bytes: Buffer) {
+	if (bytes.length < 2 || bytes.readUInt16BE(0) !== 0xffd8) return false;
+	let frameComponents = 0;
+	for (let offset = 2; offset + 4 <= bytes.length; ) {
+		if (bytes[offset] !== 0xff) return false;
+		const marker = bytes[offset + 1];
+		if (marker === 0 || (marker >= 0xd0 && marker <= 0xd9)) return false;
+		const length = bytes.readUInt16BE(offset + 2);
+		if (length < 2 || offset + 2 + length > bytes.length) return false;
+		// ITU-T T.81 B.2.2/B.2.3: lengths include the per-component descriptors.
+		if (marker >= 0xc0 && marker <= 0xc3) {
+			if (frameComponents !== 0 || length < 8) return false;
+			frameComponents = bytes[offset + 9];
+			if (frameComponents === 0 || length !== 8 + 3 * frameComponents) return false;
+		}
+		if (marker === 0xda) {
+			if (length < 6) return false;
+			const scanComponents = bytes[offset + 4];
+			return (
+				frameComponents > 0 &&
+				scanComponents > 0 &&
+				scanComponents <= Math.min(4, frameComponents) &&
+				length === 6 + 2 * scanComponents
+			);
+		}
+		offset += 2 + length;
+	}
+	return false;
 }
 
 /** No order client, mutations, uploads, or retries belong in this diagnostic. */
@@ -152,15 +183,21 @@ export async function diagnosePreparedPrintImage(
 		if (!report.download.matches) return report;
 		report.stage = "image";
 		report.code = "image_metadata_mismatch";
-		const metadata = await sharp(bytes, {
-			limitInputPixels: 40_000_000,
-			failOn: "warning",
-		}).metadata();
+		if (!hasCompleteJpegHeader(bytes)) return report;
+		// Inspect raw pixel dimensions, not EXIF orientation or decoded pixel content.
+		const metadata = imageDimensionsFromData(bytes);
+		if (
+			!metadata ||
+			metadata.type !== "jpeg" ||
+			!dimension(metadata.width) ||
+			!dimension(metadata.height) ||
+			metadata.width * metadata.height > 40_000_000
+		)
+			return report;
 		report.image = {
 			width: metadata.width,
 			height: metadata.height,
 			matches:
-				metadata.format === "jpeg" &&
 				metadata.width === source.descriptor.dimensions.width &&
 				metadata.height === source.descriptor.dimensions.height,
 		};

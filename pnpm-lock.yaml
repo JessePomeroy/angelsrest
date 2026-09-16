@@ -61,6 +61,9 @@ importers:
       convex-svelte:
         specifier: ^0.14.0
         version: 0.14.0(@sveltejs/kit@2.70.3(@opentelemetry/api@1.9.1)(@sveltejs/vite-plugin-svelte@6.2.4(svelte@5.56.4)(vite@7.3.5(@types/node@25.6.0)(jiti@2.6.1)(lightningcss@1.32.0)(tsx@4.22.4)(yaml@2.9.1)))(svelte@5.56.4)(typescript@5.9.3)(vite@7.3.5(@types/node@25.6.0)(jiti@2.6.1)(lightningcss@1.32.0)(tsx@4.22.4)(yaml@2.9.1)))(convex@1.42.1(react@19.2.7))(svelte@5.56.4)(zod@4.4.3)
+      image-dimensions:
+        specifier: 2.5.1
+        version: 2.5.1
       react:
         specifier: ^19.2.7
         version: 19.2.7
@@ -2037,6 +2040,11 @@ packages:
 
   husky@9.1.7:
     resolution: {integrity: sha512-5gs5ytaNjBrh5Ow3zrvdUUY+0VxIuWVL4i9irt6friV+BqdCfmV11CQTWMiBYWHbXhco+J1kHfTOUkePhCDvMA==}
+    engines: {node: '>=18'}
+    hasBin: true
+
+  image-dimensions@2.5.1:
+    resolution: {integrity: sha512-It7CkTNp7IYA8jhvGgz8K18OAbHF3/Juk8RNEyTyMFfolJOIU1Y2wGDnzDQPbGCjyxVF/++pwIZE0BKJUEOb1g==}
     engines: {node: '>=18'}
     hasBin: true
 
@@ -4473,6 +4481,8 @@ snapshots:
   human-id@4.2.1: {}
 
   husky@9.1.7: {}
+
+  image-dimensions@2.5.1: {}
 
   import-in-the-middle@3.2.0:
     dependencies:

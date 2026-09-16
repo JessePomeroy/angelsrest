@@ -61,6 +61,7 @@
 		"better-auth": "1.6.23",
 		"convex": "^1.42.1",
 		"convex-svelte": "^0.14.0",
+		"image-dimensions": "2.5.1",
 		"react": "^19.2.7",
 		"resend": "^6.12.2",
 		"sharp": "^0.35.4",
