@@ -92,10 +92,15 @@ test("slow navigation announces progress and clears it when finished", async ({ 
 	await page.getByRole("button", { name: "Finish pending navigation" }).click();
 	await expect(page.locator(".navigation-status")).toBeEmpty();
 	await expect(page.getByRole("main")).toHaveAttribute("aria-busy", "false");
+});
+
+test("quick navigation does not announce stale progress", async ({ page }) => {
+	await page.goto("/?fixture=chrome");
 	await page.getByRole("button", { name: "Start pending navigation" }).click();
 	await page.getByRole("button", { name: "Finish pending navigation" }).click();
 	await page.waitForTimeout(350);
 	await expect(page.locator(".navigation-status")).toBeEmpty();
+	await expect(page.getByRole("main")).toHaveAttribute("aria-busy", "false");
 });
 
 test("portfolio controls include descriptions and lightbox arrows have 44px targets", async ({ page }) => {
