@@ -199,6 +199,9 @@ https://angelsrest.online`);
 		);
 		expect(payload.text).toContain("Thank you for supporting Reflecting Pool!");
 		expect(payload.html).toContain(">Reflecting Pool</a>");
+		expect(payload.html).toContain(
+			'background="https://media.angelsrest.online/sites/angelsrest.online/email/receipt-paper-warning-lines-60eaecf2f022.jpg"',
+		);
 		expect(payload.html?.match(/https:\/\/zippymiggy\.com\/orders\?order=ORD-002/g)).toHaveLength(
 			3,
 		);
@@ -315,9 +318,15 @@ https://zippymiggy.com`);
 		if (!payload) throw new Error("expected tenant shipment email payload");
 		expect(payload.from).toBe("Reflecting Pool via Angel's Rest <orders@angelsrest.online>");
 		expect(payload.text).toContain("Tracking (FedEx): TRACK-123");
-		expect(payload.text).toContain("https://zippymiggy.com/orders");
-		expect(payload.html).toContain("Your order is on its way.");
+		expect(payload.text).toContain("https://zippymiggy.com/orders?order=ORD-003");
+		expect(payload.html).toContain("On its way.");
 		expect(payload.html).toContain("TRACK-123");
+		expect(payload.html).toContain(
+			'background="https://media.angelsrest.online/sites/angelsrest.online/email/receipt-paper-warning-lines-60eaecf2f022.jpg"',
+		);
+		expect(payload.html?.match(/https:\/\/zippymiggy\.com\/orders\?order=ORD-003/g)).toHaveLength(
+			3,
+		);
 		expect(payload.html).not.toContain("buyer@example.com");
 		expect(mockResend.emails.send).toHaveBeenCalledWith(expect.anything(), {
 			idempotencyKey: "shipment-email:100000003",
@@ -782,7 +791,7 @@ https://zippymiggy.com`);
 			subject: "Payment could not be processed - Reflecting Pool",
 		});
 		expect(payloads[1]?.html).not.toContain("buyer@example.com");
-		expect(payloads[2]?.html).toContain("Your refund has been issued.");
+		expect(payloads[2]?.html).toContain("Payment returned.");
 		expect(payloads[3]?.html).toContain("Fulfillment failed; refund issued.");
 		expect(payloads[4]?.html).toContain("The automated refund was canceled.");
 		expect(payloads[5]?.html).toContain("A refund needs attention.");

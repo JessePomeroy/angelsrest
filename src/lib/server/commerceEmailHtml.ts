@@ -413,6 +413,119 @@ function receiptSection(heading: string, content: string) {
 </tr>`;
 }
 
+function receiptParagraph(value: string) {
+	return `<p style="margin: 13px 0 0; color: #373530; font-family: 'Noto Sans Mono', 'Roboto Mono', 'Lucida Console', Monaco, Consolas, 'Liberation Mono', monospace; font-size: 13px; line-height: 1.6; overflow-wrap: anywhere; word-break: break-word;">${escapeHtml(value)}</p>`;
+}
+
+function receiptDetailTable(rows: readonly SummaryFact[]) {
+	return `<table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="margin-top: 13px;">
+	${rows
+		.map(
+			(row) => `<tr>
+		<td valign="top" style="width: 118px; padding: 8px 12px 8px 0; border-bottom: 1px dashed #8a857a; color: #555149; font-family: 'Noto Sans Mono', 'Roboto Mono', 'Lucida Console', Monaco, Consolas, 'Liberation Mono', monospace; font-size: 11px; letter-spacing: 0.06em; line-height: 1.45; text-transform: uppercase;">${escapeHtml(row.label)}</td>
+		<td valign="top" style="padding: 8px 0; border-bottom: 1px dashed #8a857a; color: #262521; font-family: 'Noto Sans Mono', 'Roboto Mono', 'Lucida Console', Monaco, Consolas, 'Liberation Mono', monospace; font-size: 12px; font-weight: 700; line-height: 1.5; overflow-wrap: anywhere; word-break: break-word;">${escapedLines(row.value)}</td>
+	</tr>`,
+		)
+		.join("")}
+</table>`;
+}
+
+function receiptNotice(value: string) {
+	return `<table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="margin-top: 16px;">
+	<tr>
+		<td class="receipt-notice" bgcolor="#ebe4d5" style="padding: 15px 16px; border: 1px dashed #8a857a; color: #373530; font-family: 'Noto Sans Mono', 'Roboto Mono', 'Lucida Console', Monaco, Consolas, 'Liberation Mono', monospace; font-size: 12px; line-height: 1.6; overflow-wrap: anywhere; word-break: break-word;">${escapedLines(value)}</td>
+	</tr>
+</table>`;
+}
+
+interface ReceiptDocument {
+	brand: CommerceEmailBrand;
+	documentTitle: string;
+	preheader: string;
+	descriptor: string;
+	status: string;
+	title: string;
+	intro: string;
+	facts?: readonly SummaryFact[];
+	body: string;
+	footerTitle: string;
+	footer: string;
+}
+
+function receiptFacts(facts: readonly SummaryFact[]) {
+	if (facts.length === 0) return "";
+	return `<table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="margin-top: 22px; border-top: 1px dashed #777269; border-bottom: 1px dashed #777269;">
+	${facts
+		.map(
+			(fact, index) =>
+				`<tr><td style="padding: ${index === 0 ? "12px" : "5px"} 10px ${index === facts.length - 1 ? "12px" : "5px"} 0; color: #555149; font-family: 'Noto Sans Mono', 'Roboto Mono', 'Lucida Console', Monaco, Consolas, 'Liberation Mono', monospace; font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase;">${escapeHtml(fact.label)}</td><td align="right" style="padding: ${index === 0 ? "12px" : "5px"} 0 ${index === facts.length - 1 ? "12px" : "5px"} 10px; color: #262521; font-family: 'Noto Sans Mono', 'Roboto Mono', 'Lucida Console', Monaco, Consolas, 'Liberation Mono', monospace; font-size: 12px; font-weight: 700; overflow-wrap: anywhere; word-break: break-word; text-transform: uppercase;">${escapeHtml(fact.value)}</td></tr>`,
+		)
+		.join("")}
+</table>`;
+}
+
+function renderReceiptDocument(input: ReceiptDocument) {
+	const siteName = escapeHtml(input.brand.siteName);
+	const homeUrl = safeHref(input.brand.homeUrl);
+	const textureSource = receiptTextureSource(input.brand);
+	const textureBackground = textureSource ? ` background="${textureSource}"` : "";
+
+	return `<!doctype html>
+<html lang="en">
+<head>
+	<meta charset="utf-8">
+	<meta name="viewport" content="width=device-width, initial-scale=1">
+	<meta name="x-apple-disable-message-reformatting">
+	<meta name="color-scheme" content="light">
+	<meta name="supported-color-schemes" content="light">
+	<title>${escapeHtml(input.documentTitle)} · ${siteName}</title>
+	<style>
+		@media only screen and (max-width: 520px) {
+			.receipt-shell { width: 100% !important; }
+			.receipt-pad { padding-left: 22px !important; padding-right: 22px !important; }
+			.receipt-title { font-size: 27px !important; }
+			.receipt-action, .receipt-action td, .receipt-button { display: block !important; width: 100% !important; box-sizing: border-box !important; }
+		}
+	</style>
+</head>
+<body style="margin: 0; padding: 0; background: #d9d7d0; -webkit-text-size-adjust: 100%;">
+	<div style="display: none; max-height: 0; overflow: hidden; opacity: 0; color: transparent; mso-hide: all;">${escapeHtml(input.preheader)}</div>
+	<table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" bgcolor="#d9d7d0" style="width: 100%; background: #d9d7d0;">
+		<tr>
+			<td align="center" style="padding: 32px 12px 46px;">
+				<!--[if mso]><table role="presentation" width="480" cellspacing="0" cellpadding="0" border="0"><tr><td><![endif]-->
+				<table class="receipt-shell" role="presentation" width="480" cellspacing="0" cellpadding="0" border="0" bgcolor="#f5f1e7"${textureBackground} style="width: 100%; max-width: 480px; table-layout: fixed; background-color: #f5f1e7;${textureSource ? ` background-image: url('${textureSource}'); background-position: top center; background-repeat: repeat-y; background-size: 100% auto;` : ""} box-shadow: 0 12px 28px rgba(48, 45, 39, 0.18); font-family: 'Noto Sans Mono', 'Roboto Mono', 'Lucida Console', Monaco, Consolas, 'Liberation Mono', monospace; font-variant-ligatures: none; overflow-wrap: anywhere; word-break: break-word;">
+					<tr>
+						<td class="receipt-pad" align="center" style="padding: 34px 38px 25px; border-top: 2px dashed #5f5b53; border-bottom: 1px dashed #777269;">
+							<a href="${homeUrl}" style="color: #262521; font-family: 'Noto Sans Mono', 'Roboto Mono', 'Lucida Console', Monaco, Consolas, 'Liberation Mono', monospace; font-size: 16px; font-weight: 700; letter-spacing: 0.12em; line-height: 1.4; text-decoration: none; text-transform: uppercase;">${siteName}</a>
+							<p style="margin: 7px 0 0; color: #555149; font-family: 'Noto Sans Mono', 'Roboto Mono', 'Lucida Console', Monaco, Consolas, 'Liberation Mono', monospace; font-size: 11px; letter-spacing: 0.1em; line-height: 1.4; text-transform: uppercase;">${escapeHtml(input.descriptor)}</p>
+						</td>
+					</tr>
+					<tr>
+						<td class="receipt-pad" style="padding: 27px 38px 25px;">
+							<p style="margin: 0; color: #555149; font-family: 'Noto Sans Mono', 'Roboto Mono', 'Lucida Console', Monaco, Consolas, 'Liberation Mono', monospace; font-size: 11px; font-weight: 700; letter-spacing: 0.1em; line-height: 1.4; text-transform: uppercase;">${escapeHtml(input.status)}</p>
+							<h1 class="receipt-title" style="margin: 11px 0 0; color: #262521; font-family: 'Noto Sans Mono', 'Roboto Mono', 'Lucida Console', Monaco, Consolas, 'Liberation Mono', monospace; font-size: 32px; font-weight: 700; letter-spacing: -0.065em; line-height: 1; text-transform: uppercase;">${escapeHtml(input.title)}</h1>
+							<p style="margin: 17px 0 0; color: #373530; font-family: 'Noto Sans Mono', 'Roboto Mono', 'Lucida Console', Monaco, Consolas, 'Liberation Mono', monospace; font-size: 13px; line-height: 1.6;">${escapeHtml(input.intro)}</p>
+							${receiptFacts(input.facts ?? [])}
+						</td>
+					</tr>
+					${input.body}
+					<tr>
+						<td class="receipt-pad" align="center" style="padding: 27px 38px 36px; border-top: 1px dashed #777269; border-bottom: 2px dashed #5f5b53;">
+							<p style="margin: 0; color: #262521; font-family: 'Noto Sans Mono', 'Roboto Mono', 'Lucida Console', Monaco, Consolas, 'Liberation Mono', monospace; font-size: 15px; font-weight: 700; letter-spacing: 0.08em; line-height: 1.5; text-transform: uppercase;">${escapeHtml(input.footerTitle)}</p>
+							<p style="margin: 14px 0 0; color: #555149; font-family: 'Noto Sans Mono', 'Roboto Mono', 'Lucida Console', Monaco, Consolas, 'Liberation Mono', monospace; font-size: 11px; line-height: 1.55;">${escapeHtml(input.footer)}</p>
+							<p style="margin: 15px 0 0; font-family: 'Noto Sans Mono', 'Roboto Mono', 'Lucida Console', Monaco, Consolas, 'Liberation Mono', monospace; font-size: 11px; line-height: 1.5;"><a href="${homeUrl}" style="color: #302e29; text-decoration: underline;">${homeUrl}</a></p>
+						</td>
+					</tr>
+				</table>
+				<!--[if mso]></td></tr></table><![endif]-->
+			</td>
+		</tr>
+	</table>
+</body>
+</html>`;
+}
+
 /** Preserved R9 stationery treatment for a one-line design rollback or later reuse. */
 export function renderClassicOrderConfirmationEmailHtml(
 	input: Extract<CustomerCommerceEmailInput, { kind: "order_confirmation" }>,
@@ -457,10 +570,6 @@ export function renderClassicOrderConfirmationEmailHtml(
 function renderOrderReceipt(
 	input: Extract<CustomerCommerceEmailInput, { kind: "order_confirmation" }>,
 ) {
-	const siteName = escapeHtml(input.brand.siteName);
-	const homeUrl = safeHref(input.brand.homeUrl);
-	const textureSource = receiptTextureSource(input.brand);
-	const textureBackground = textureSource ? ` background="${textureSource}"` : "";
 	const items = `<table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="margin-top: 10px;">${renderReceiptItems(input.items)}</table>`;
 	const delivery =
 		input.delivery.kind === "digital"
@@ -480,67 +589,98 @@ function renderOrderReceipt(
 			</table>`,
 				)}`;
 
-	return `<!doctype html>
-<html lang="en">
-<head>
-	<meta charset="utf-8">
-	<meta name="viewport" content="width=device-width, initial-scale=1">
-	<meta name="x-apple-disable-message-reformatting">
-	<meta name="color-scheme" content="light">
-	<meta name="supported-color-schemes" content="light">
-	<title>Order receipt · ${siteName}</title>
-	<style>
-		@media only screen and (max-width: 520px) {
-			.receipt-shell { width: 100% !important; }
-			.receipt-pad { padding-left: 22px !important; padding-right: 22px !important; }
-			.receipt-title { font-size: 27px !important; }
-			.receipt-action, .receipt-action td, .receipt-button { display: block !important; width: 100% !important; box-sizing: border-box !important; }
-		}
-	</style>
-</head>
-<body style="margin: 0; padding: 0; background: #d9d7d0; -webkit-text-size-adjust: 100%;">
-	<div style="display: none; max-height: 0; overflow: hidden; opacity: 0; color: transparent; mso-hide: all;">${escapeHtml(input.brand.siteName)} received your payment for order ${escapeHtml(input.orderId)}.</div>
-	<table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" bgcolor="#d9d7d0" style="width: 100%; background: #d9d7d0;">
-		<tr>
-			<td align="center" style="padding: 32px 12px 46px;">
-				<!--[if mso]><table role="presentation" width="480" cellspacing="0" cellpadding="0" border="0"><tr><td><![endif]-->
-				<table class="receipt-shell" role="presentation" width="480" cellspacing="0" cellpadding="0" border="0" bgcolor="#f5f1e7"${textureBackground} style="width: 100%; max-width: 480px; table-layout: fixed; background-color: #f5f1e7;${textureSource ? ` background-image: url('${textureSource}'); background-position: top center; background-repeat: repeat-y; background-size: 100% auto;` : ""} box-shadow: 0 12px 28px rgba(48, 45, 39, 0.18); font-family: 'Noto Sans Mono', 'Roboto Mono', 'Lucida Console', Monaco, Consolas, 'Liberation Mono', monospace; font-variant-ligatures: none; overflow-wrap: anywhere; word-break: break-word;">
-					<tr>
-						<td class="receipt-pad" align="center" style="padding: 34px 38px 25px; border-top: 2px dashed #5f5b53; border-bottom: 1px dashed #777269;">
-							<a href="${homeUrl}" style="color: #262521; font-family: 'Noto Sans Mono', 'Roboto Mono', 'Lucida Console', Monaco, Consolas, 'Liberation Mono', monospace; font-size: 16px; font-weight: 700; letter-spacing: 0.12em; line-height: 1.4; text-decoration: none; text-transform: uppercase;">${siteName}</a>
-							<p style="margin: 7px 0 0; color: #555149; font-family: 'Noto Sans Mono', 'Roboto Mono', 'Lucida Console', Monaco, Consolas, 'Liberation Mono', monospace; font-size: 11px; letter-spacing: 0.1em; line-height: 1.4; text-transform: uppercase;">Online shop / payment receipt</p>
-						</td>
-					</tr>
-					<tr>
-						<td class="receipt-pad" style="padding: 27px 38px 25px;">
-							<p style="margin: 0; color: #555149; font-family: 'Noto Sans Mono', 'Roboto Mono', 'Lucida Console', Monaco, Consolas, 'Liberation Mono', monospace; font-size: 11px; font-weight: 700; letter-spacing: 0.1em; line-height: 1.4; text-transform: uppercase;">Payment received</p>
-							<h1 class="receipt-title" style="margin: 11px 0 0; color: #262521; font-family: 'Noto Sans Mono', 'Roboto Mono', 'Lucida Console', Monaco, Consolas, 'Liberation Mono', monospace; font-size: 32px; font-weight: 700; letter-spacing: -0.065em; line-height: 1; text-transform: uppercase;">Thank you.</h1>
-							<p style="margin: 17px 0 0; color: #373530; font-family: 'Noto Sans Mono', 'Roboto Mono', 'Lucida Console', Monaco, Consolas, 'Liberation Mono', monospace; font-size: 13px; line-height: 1.6;">Hi ${escapeHtml(input.customerName)} — we have received your order and payment.</p>
-							<table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="margin-top: 22px; border-top: 1px dashed #777269; border-bottom: 1px dashed #777269;">
-								<tr><td style="padding: 12px 10px 5px 0; color: #555149; font-family: 'Noto Sans Mono', 'Roboto Mono', 'Lucida Console', Monaco, Consolas, 'Liberation Mono', monospace; font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase;">Order ID</td><td align="right" style="padding: 12px 0 5px 10px; color: #262521; font-family: 'Noto Sans Mono', 'Roboto Mono', 'Lucida Console', Monaco, Consolas, 'Liberation Mono', monospace; font-size: 12px; font-weight: 700; overflow-wrap: anywhere;">${escapeHtml(input.orderId)}</td></tr>
-								<tr><td style="padding: 5px 10px 12px 0; color: #555149; font-family: 'Noto Sans Mono', 'Roboto Mono', 'Lucida Console', Monaco, Consolas, 'Liberation Mono', monospace; font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase;">Payment</td><td align="right" style="padding: 5px 0 12px 10px; color: #262521; font-family: 'Noto Sans Mono', 'Roboto Mono', 'Lucida Console', Monaco, Consolas, 'Liberation Mono', monospace; font-size: 12px; font-weight: 700; text-transform: uppercase;">Confirmed</td></tr>
-							</table>
-						</td>
-					</tr>
-					${receiptSection(
-						"Items sold",
-						`${items}<table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="margin-top: 17px;"><tr><td style="padding: 0 12px 0 0; color: #262521; font-family: 'Noto Sans Mono', 'Roboto Mono', 'Lucida Console', Monaco, Consolas, 'Liberation Mono', monospace; font-size: 16px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase;">Total purchase</td><td align="right" style="color: #262521; font-family: 'Noto Sans Mono', 'Roboto Mono', 'Lucida Console', Monaco, Consolas, 'Liberation Mono', monospace; font-size: 18px; font-weight: 700; font-variant-numeric: tabular-nums; white-space: nowrap;">${escapeHtml(input.total)}</td></tr></table>`,
-					)}
-					${delivery}
-					<tr>
-						<td class="receipt-pad" align="center" style="padding: 27px 38px 36px; border-top: 1px dashed #777269; border-bottom: 2px dashed #5f5b53;">
-							<p style="margin: 0; color: #262521; font-family: 'Noto Sans Mono', 'Roboto Mono', 'Lucida Console', Monaco, Consolas, 'Liberation Mono', monospace; font-size: 15px; font-weight: 700; letter-spacing: 0.08em; line-height: 1.5; text-transform: uppercase;">— Thank you —</p>
-							<p style="margin: 14px 0 0; color: #555149; font-family: 'Noto Sans Mono', 'Roboto Mono', 'Lucida Console', Monaco, Consolas, 'Liberation Mono', monospace; font-size: 11px; line-height: 1.55;">Questions? Reply to this email and we will help.<br>Thank you for supporting ${siteName}.</p>
-							<p style="margin: 15px 0 0; font-family: 'Noto Sans Mono', 'Roboto Mono', 'Lucida Console', Monaco, Consolas, 'Liberation Mono', monospace; font-size: 11px; line-height: 1.5;"><a href="${homeUrl}" style="color: #302e29; text-decoration: underline;">${homeUrl}</a></p>
-						</td>
-					</tr>
-				</table>
-				<!--[if mso]></td></tr></table><![endif]-->
-			</td>
-		</tr>
-	</table>
-</body>
-</html>`;
+	return renderReceiptDocument({
+		brand: input.brand,
+		documentTitle: "Order receipt",
+		preheader: `${input.brand.siteName} received your payment for order ${input.orderId}.`,
+		descriptor: "Online shop / payment receipt",
+		status: "Payment received",
+		title: "Thank you.",
+		intro: `Hi ${input.customerName} — we have received your order and payment.`,
+		facts: [
+			{ label: "Order ID", value: input.orderId },
+			{ label: "Payment", value: "Confirmed" },
+		],
+		body: `${receiptSection(
+			"Items sold",
+			`${items}<table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="margin-top: 17px;"><tr><td style="padding: 0 12px 0 0; color: #262521; font-family: 'Noto Sans Mono', 'Roboto Mono', 'Lucida Console', Monaco, Consolas, 'Liberation Mono', monospace; font-size: 16px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase;">Total purchase</td><td align="right" style="color: #262521; font-family: 'Noto Sans Mono', 'Roboto Mono', 'Lucida Console', Monaco, Consolas, 'Liberation Mono', monospace; font-size: 18px; font-weight: 700; font-variant-numeric: tabular-nums; white-space: nowrap;">${escapeHtml(input.total)}</td></tr></table>`,
+		)}${delivery}`,
+		footerTitle: "— Thank you —",
+		footer: `Questions? Reply to this email and we will help. Thank you for supporting ${input.brand.siteName}.`,
+	});
+}
+
+function renderShipmentReceipt(input: Extract<CustomerCommerceEmailInput, { kind: "shipment" }>) {
+	const tracking =
+		input.trackingNumber === undefined
+			? receiptParagraph("Tracking details should update soon.")
+			: receiptDetailTable([
+					...(input.carrier ? [{ label: "Carrier", value: input.carrier }] : []),
+					{ label: "Tracking number", value: input.trackingNumber },
+				]);
+	return renderReceiptDocument({
+		brand: input.brand,
+		documentTitle: "Shipping update",
+		preheader: `Order ${input.orderNumber} has shipped.`,
+		descriptor: "Online shop / shipping update",
+		status: "Order shipped",
+		title: "On its way.",
+		intro: `Your ${input.brand.siteName} order has shipped. Use the details below to follow its progress.`,
+		facts: [
+			{ label: "Order", value: input.orderNumber },
+			{ label: "Status", value: "Shipped" },
+		],
+		body: receiptSection(
+			"Tracking",
+			`${tracking}${receiptActionBlock("Track order", input.statusUrl)}`,
+		),
+		footerTitle: "— Shipping update —",
+		footer: "Questions about delivery? Reply to this email and we will help.",
+	});
+}
+
+function renderRefundReceipt(
+	input: Extract<CustomerCommerceEmailInput, { kind: "refund_issued" }>,
+) {
+	return renderReceiptDocument({
+		brand: input.brand,
+		documentTitle: "Refund issued",
+		preheader: `A full refund was issued for order ${input.orderNumber}.`,
+		descriptor: "Online shop / refund receipt",
+		status: "Refund issued",
+		title: "Payment returned.",
+		intro: `We could not complete order ${input.orderNumber}, so we returned the full payment to the original payment method.`,
+		facts: [
+			{ label: "Order", value: input.orderNumber },
+			{ label: "Refund", value: input.total },
+		],
+		body: receiptSection(
+			"Refund details",
+			`${receiptDetailTable([{ label: "Stripe refund ID", value: input.refundId }])}${receiptParagraph("The refund has been created successfully. Your bank determines when the credit appears on your statement.")}`,
+		),
+		footerTitle: "— Refund receipt —",
+		footer: `We are sorry we could not complete this order for ${input.brand.siteName}. Reply to this email if you need help.`,
+	});
+}
+
+function renderPaymentFailureReceipt(
+	input: Extract<CustomerCommerceEmailInput, { kind: "payment_failed" }>,
+) {
+	return renderReceiptDocument({
+		brand: input.brand,
+		documentTitle: "Payment could not be processed",
+		preheader: `Your recent ${input.brand.siteName} payment could not be processed.`,
+		descriptor: "Online shop / payment notice",
+		status: "Payment not completed",
+		title: "Please try again.",
+		intro: "No order was completed. Review the reason below and try again when you are ready.",
+		body: receiptSection(
+			"What happened",
+			`${receiptNotice(input.reason)}${receiptActionBlock("Return to the shop", input.shopUrl)}`,
+		),
+		footerTitle: "— Payment notice —",
+		footer: "If you believe this is an error or need help, reply to this email.",
+	});
 }
 
 /** Render a customer-facing commerce message without owner-only facts. */
@@ -550,70 +690,15 @@ export function renderCustomerCommerceEmailHtml(input: CustomerCommerceEmailInpu
 	}
 
 	if (input.kind === "shipment") {
-		const tracking =
-			input.trackingNumber === undefined
-				? paragraph("Tracking details should update soon.")
-				: detailTable([
-						...(input.carrier ? [{ label: "Carrier", value: input.carrier }] : []),
-						{ label: "Tracking number", value: input.trackingNumber },
-					]);
-		return renderDocument({
-			audience: "customer",
-			siteName: input.brand.siteName,
-			homeUrl: input.brand.homeUrl,
-			documentTitle: "Shipping update",
-			preheader: `Order ${input.orderNumber} has shipped.`,
-			eyebrow: "Shipping update",
-			title: "Your order is on its way.",
-			intro: `Your ${input.brand.siteName} order has shipped. Use the details below to follow its progress.`,
-			summary: [{ label: "Order", value: input.orderNumber }],
-			body: section(
-				"Tracking details",
-				`${tracking}${actionBlock("View order status", input.statusUrl)}`,
-			),
-			footer: "Questions about delivery? Reply to this email and we will help.",
-		});
+		return renderShipmentReceipt(input);
 	}
 
 	if (input.kind === "refund_issued") {
-		return renderDocument({
-			audience: "customer",
-			siteName: input.brand.siteName,
-			homeUrl: input.brand.homeUrl,
-			documentTitle: "Refund issued",
-			preheader: `A full refund was issued for order ${input.orderNumber}.`,
-			eyebrow: "Refund update",
-			title: "Your refund has been issued.",
-			intro: `We could not complete order ${input.orderNumber}, so we returned the full payment to the original payment method.`,
-			summary: [
-				{ label: "Order", value: input.orderNumber },
-				{ label: "Refund", value: input.total },
-			],
-			body: section(
-				"Refund details",
-				`${detailTable([{ label: "Stripe refund ID", value: input.refundId }])}${paragraph("The refund has been created successfully. Your bank determines when the credit appears on your statement.")}`,
-			),
-			footer: `We are sorry we could not complete this order for ${input.brand.siteName}. Reply to this email if you need help.`,
-		});
+		return renderRefundReceipt(input);
 	}
 
 	if (input.kind === "payment_failed") {
-		return renderDocument({
-			audience: "customer",
-			siteName: input.brand.siteName,
-			homeUrl: input.brand.homeUrl,
-			documentTitle: "Payment could not be processed",
-			preheader: `Your recent ${input.brand.siteName} payment could not be processed.`,
-			eyebrow: "Payment update",
-			title: "Your payment did not go through.",
-			intro:
-				"No order was completed. You can review the reason below and try again when you are ready.",
-			body: section(
-				"What happened",
-				`${notice(input.reason)}${actionBlock("Return to the shop", input.shopUrl)}`,
-			),
-			footer: "If you believe this is an error or need help, reply to this email.",
-		});
+		return renderPaymentFailureReceipt(input);
 	}
 
 	return assertNever(input);

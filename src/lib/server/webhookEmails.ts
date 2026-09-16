@@ -56,9 +56,7 @@ function commerceEmailBrand(profile: CommerceNotificationProfile) {
 	return {
 		siteName: profile.siteName,
 		homeUrl,
-		...(profile.siteUrl === SITE_DOMAIN
-			? { receiptTextureUrl: RECEIPT_PAPER_TEXTURE_PUBLIC_URL }
-			: {}),
+		receiptTextureUrl: RECEIPT_PAPER_TEXTURE_PUBLIC_URL,
 	};
 }
 
@@ -107,20 +105,21 @@ export async function sendCustomerShipmentNotification(
 	const tracking = trackingNumber
 		? `Tracking${carrier ? ` (${carrier})` : ""}: ${trackingNumber}`
 		: "Tracking details should update soon.";
+	const statusUrl = `${commerceOrigin(notificationProfile)}/orders?order=${encodeURIComponent(orderNumber)}`;
 	const html = renderCustomerCommerceEmailHtml({
 		kind: "shipment",
 		brand: commerceEmailBrand(notificationProfile),
 		orderNumber,
 		...(trackingNumber ? { trackingNumber } : {}),
 		...(carrier ? { carrier } : {}),
-		statusUrl: `${commerceOrigin(notificationProfile)}/orders`,
+		statusUrl,
 	});
 	const result = await resend.emails.send(
 		{
 			from: commerceSender(notificationProfile),
 			to: [customerEmail],
 			subject: `Order ${orderNumber} has shipped - ${notificationProfile.siteName}`,
-			text: `Your ${notificationProfile.siteName} order ${orderNumber} has shipped.\n\n${tracking}\n\nView order status: ${commerceOrigin(notificationProfile)}/orders`,
+			text: `Your ${notificationProfile.siteName} order ${orderNumber} has shipped.\n\n${tracking}\n\nView order status: ${statusUrl}`,
 			html,
 		},
 		{ idempotencyKey: `shipment-email:${lumaprintsOrderNumber}` },
