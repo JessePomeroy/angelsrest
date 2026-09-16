@@ -104,7 +104,7 @@ describe("commerceEmailHtml", () => {
 		expect(html).toContain("2 × $24.00");
 	});
 
-	it("keeps alert copy legible when a client applies the dark color scheme", () => {
+	it("renders payment failures as receipt-paper notices", () => {
 		const html = renderCustomerCommerceEmailHtml({
 			kind: "payment_failed",
 			brand: physicalInput.brand,
@@ -112,10 +112,11 @@ describe("commerceEmailHtml", () => {
 			shopUrl: "https://angelsrest.online/shop",
 		});
 
-		expect(html).toContain('<td class="notice-cell" bgcolor="#f2ede6"');
-		expect(html).toContain(
-			".email-shell .notice-cell { background: #403832 !important; color: #f0e8df !important; }",
-		);
+		expect(html).toContain("Online shop / payment notice");
+		expect(html).toContain("Payment not completed");
+		expect(html).toContain("Please try again.");
+		expect(html).toContain('<td class="receipt-notice" bgcolor="#ebe4d5"');
+		expect(html).toContain(`background="${receiptTextureUrl}"`);
 	});
 
 	it("constrains long unbroken item and address values to the mobile email width", () => {
@@ -238,17 +239,30 @@ describe("commerceEmailHtml", () => {
 		const documents = fixtures.map(renderCustomerCommerceEmailHtml);
 		for (const html of documents) {
 			expect(html.match(/<h1\b/g)).toHaveLength(1);
+			expect(html).toContain('class="receipt-shell"');
+			expect(html).toContain('width="480"');
+			expect(html).toContain("max-width: 480px");
+			expect(html).toContain("'Noto Sans Mono', 'Roboto Mono'");
+			expect(html).toContain(`background="${receiptTextureUrl}"`);
+			expect(html).not.toContain('class="email-shell"');
+			expect(html).not.toContain('width="600"');
 			expect(html).not.toMatch(/<(?:img|script|link)\b/i);
 			expect(html).not.toContain("buyer@example.com");
 			expect(html).not.toContain("Provider rejected fulfillment");
 		}
-		expect(documents[0]).toContain("Your order is on its way.");
+		expect(documents[0]).toContain("Online shop / shipping update");
+		expect(documents[0]).toContain("Order shipped");
+		expect(documents[0]).toContain("On its way.");
 		expect(documents[0]).toContain("TRACK-123");
 		expect(documents[0]).toContain("FedEx");
-		expect(documents[0]).toContain(">View order status</a>");
-		expect(documents[1]).toContain("Your refund has been issued.");
+		expect(documents[0]).toContain(">Track order</a>");
+		expect(documents[1]).toContain("Online shop / refund receipt");
+		expect(documents[1]).toContain("Refund issued");
+		expect(documents[1]).toContain("Payment returned.");
 		expect(documents[1]).toContain("re_123456789");
-		expect(documents[2]).toContain("Your payment did not go through.");
+		expect(documents[2]).toContain("Online shop / payment notice");
+		expect(documents[2]).toContain("Payment not completed");
+		expect(documents[2]).toContain("Please try again.");
 		expect(documents[2]).toContain("Your card was declined.");
 		expect(documents[2]).toContain(">Return to the shop</a>");
 	});
