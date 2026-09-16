@@ -389,7 +389,7 @@ describe("invoice checkout route", () => {
 		expect(mocks.stripeSessionCreate).not.toHaveBeenCalled();
 	});
 
-	it("rejects unknown portal tokens before creating a Stripe session", async () => {
+	it("rejects an unresolved invoice checkout target before creating a Stripe session", async () => {
 		mocks.convexQuery.mockResolvedValueOnce(null);
 
 		await expect(POST(makeRequest({ token: "missing-token" }) as any)).rejects.toMatchObject({
@@ -409,15 +409,6 @@ describe("invoice checkout route", () => {
 
 		await expect(POST(makeRequest({ token: "portal-token-123" }) as any)).rejects.toMatchObject({
 			status: 400,
-		});
-		expect(mocks.stripeSessionCreate).not.toHaveBeenCalled();
-	});
-
-	it("rejects non-invoice portal tokens before creating a Stripe session", async () => {
-		mocks.convexQuery.mockResolvedValueOnce(null);
-
-		await expect(POST(makeRequest({ token: "quote-token" }) as any)).rejects.toMatchObject({
-			status: 404,
 		});
 		expect(mocks.stripeSessionCreate).not.toHaveBeenCalled();
 	});
