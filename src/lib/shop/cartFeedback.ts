@@ -1,3 +1,5 @@
+import { toasts } from "$lib/stores/toast.svelte";
+import { MAX_QUANTITY_PER_LINE } from "./cart";
 import { cartUI } from "./cartUI.svelte";
 
 type Origin = { x: number; y: number };
@@ -13,7 +15,14 @@ export function registerCartFeedback(handler: Feedback) {
 	};
 }
 
-export function showCartAddition(source: EventTarget | null) {
+export function showCartAddition(source: EventTarget | null, addedQuantity: number) {
+	if (addedQuantity <= 0) {
+		toasts.show(
+			`Your cart already has the limit of ${MAX_QUANTITY_PER_LINE} of this item. Nothing was added.`,
+			{ duration: 6000 },
+		);
+		return;
+	}
 	if (!feedback || !(source instanceof HTMLElement)) {
 		cartUI.open();
 		return;

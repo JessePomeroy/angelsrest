@@ -10,8 +10,8 @@
   "scope": "Original rightmost editor document-pane experiment. The later full-admin rollout is recorded separately below.",
   "fullAdminRollout": {
     "inventory": "docs/design/full-admin-workbench-experiment.json",
-    "status": "implemented-local-paper-comparison-blocked",
-    "note": "The workbench control treatment now covers the full admin and all document editors. Earlier prototype observations below remain historical records."
+    "status": "released-6.1.2-canonical-paper-updated-comparison-blocked",
+    "note": "The workbench control treatment covers the full admin and all document editors. All 72 canonical admin boards were regenerated in place from 6.1.1 on 2026-09-16 and passed an editable top-level structure audit; the behavior-only 6.1.2 invoice identity fix does not alter their visual structure. Paper screenshot export remains unavailable. Earlier prototype observations below remain historical records."
   },
   "workbenchPrototype": {
     "updatedAt": "2026-09-15T16:29:00Z",
@@ -326,6 +326,6 @@
     "Successful saves/publication/uploads and provider recovery were intentionally not exercised.",
     "Mobile About pointer reorder did not initiate reliably in the fixture; not marked passed.",
     "Existing focus contrast, draft reload persistence, query-error handling and other baseline findings are recorded in the separate synthetic re-sweep audit.",
-    "Paper comparison is blocked; these test drafts are not production design references."
+    "Paper visual comparison remains blocked; these test drafts are not production design references. The separately maintained canonical boards contain the current 6.1.x visual treatment."
   ]
 }

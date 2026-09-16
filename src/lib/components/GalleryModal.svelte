@@ -157,12 +157,14 @@ function handleTouchEnd() {
     .lightbox::backdrop { background: transparent; }
     .image-stage { position: relative; max-width: 90vw; max-height: 90vh; }
     .image-stage.empty { min-width: 12rem; padding: 4rem 2rem 2rem; }
-    .close-lightbox { position: absolute; top: 1rem; right: 1rem; z-index: 10; padding: 0.5rem; color: color-mix(in oklab, white 70%, transparent); border-radius: 9999px; }
-    .image-count { position: absolute; top: 1rem; left: 1rem; z-index: 1; color: color-mix(in oklab, white 70%, transparent); font-size: var(--text-sm); line-height: var(--text-sm--line-height); }
+    .close-lightbox { position: absolute; top: 1rem; right: 1rem; z-index: 10; padding: 0.5rem; color: white; background: rgb(0 0 0 / 75%); border-radius: 9999px; }
+    .image-count { position: absolute; top: 1rem; left: 1rem; z-index: 1; padding: 0.25rem 0.5rem; color: white; background: rgb(0 0 0 / 75%); border-radius: 0.375rem; font-size: var(--text-sm); line-height: var(--text-sm--line-height); }
     .gallery-image { max-width: 100%; max-height: 90vh; object-fit: contain; border-radius: 0.375rem; }
-    .image-previous, .image-next { position: absolute; top: 50%; translate: 0 -50%; color: color-mix(in oklab, white 70%, transparent); font-size: var(--text-4xl); line-height: var(--text-4xl--line-height); }
+    .image-previous, .image-next { position: absolute; top: 50%; translate: 0 -50%; color: white; background: rgb(0 0 0 / 75%); border-radius: 9999px; font-size: var(--text-4xl); line-height: var(--text-4xl--line-height); }
     .image-previous { left: 1rem; }
+    .image-previous, .image-next { min-width: 44px; min-height: 44px; display: grid; place-items: center; }
     .image-next { right: 1rem; }
+    .close-lightbox:focus-visible, .image-previous:focus-visible, .image-next:focus-visible { outline: 2px solid white; outline-offset: 2px; box-shadow: 0 0 0 5px #000; }
     @media (hover: hover) {
       .close-lightbox:hover { background: white; color: black; }
       .image-previous:hover, .image-next:hover { color: white; }

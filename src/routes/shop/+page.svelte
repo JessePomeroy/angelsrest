@@ -156,10 +156,10 @@ const categories = [
     .shop-index { width: 100%; }
     .shop-heading { display: grid; grid-template-columns: 1fr auto; min-height: 56px; margin-bottom: 0; align-items: start; border-bottom: 1px solid color-mix(in srgb, currentColor 15%, transparent); }
     .shop-heading h1 { font-size: 1.35rem; font-weight: 500; }
-    .shop-heading p { padding-top: 5px; color: color-mix(in srgb, currentColor 55%, transparent); font-size: 0.7rem; letter-spacing: 0.08em; }
+    .shop-heading p { padding-top: 5px; color: color-mix(in srgb, currentColor 88%, transparent); font-size: 0.7rem; letter-spacing: 0.08em; }
     .category-tabs { display: flex; overflow-x: auto; overflow-y: hidden; margin-bottom: 34px; border-bottom: 1px solid color-mix(in srgb, currentColor 13%, transparent); scrollbar-width: none; }
     .category-tabs::-webkit-scrollbar { display: none; }
-    .category-tabs button { position: relative; flex: 0 0 auto; padding: 14px 16px 13px; border: 0; background: transparent; color: color-mix(in srgb, currentColor 52%, transparent); font: inherit; font-size: 0.7rem; letter-spacing: 0.1em; cursor: pointer; }
+    .category-tabs button { position: relative; flex: 0 0 auto; padding: 14px 16px 13px; border: 0; background: transparent; color: color-mix(in srgb, currentColor 88%, transparent); font: inherit; font-size: 0.7rem; letter-spacing: 0.1em; cursor: pointer; }
     .category-tabs button::after { content: ""; position: absolute; right: 16px; bottom: -1px; left: 16px; height: 1px; background: var(--time-accent); transform: scaleX(0); transition: transform 180ms ease; }
     .category-tabs button:hover,
     .category-tabs button.active-tab { color: currentColor; }
@@ -176,7 +176,7 @@ const categories = [
     .catalog-photo { width: 100%; height: auto; transition: transform 400ms cubic-bezier(.22,1,.36,1); }
     .catalog-entry:hover .catalog-photo { transform: scale(1.018); }
     .entry-title { padding: 10px 10px 9px; border-top: 1px solid color-mix(in srgb, currentColor 10%, transparent); font-family: "Synonym", sans-serif; font-size: 0.7rem; font-weight: 400; letter-spacing: 0.11em; text-align: left; }
-    .entry-price { padding: 0 10px 10px; color: color-mix(in srgb, currentColor 50%, transparent); font-size: 0.66rem; }
+    .entry-price { padding: 0 10px 10px; color: color-mix(in srgb, currentColor 88%, transparent); font-size: 0.66rem; }
     @media (min-width: 768px) { .catalog-columns { columns: 3; } }
     @media (max-width: 640px) {
         .shop-heading { grid-template-columns: 1fr; gap: 6px; padding-bottom: 16px; }

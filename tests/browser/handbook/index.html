@@ -1,0 +1,12 @@
+<!doctype html>
+<html lang="en"><head><meta charset="UTF-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Angel's Rest — isolated handbook reference</title>
+<script>
+const params = new URLSearchParams(location.search);
+const theme = params.get('theme') === 'light' ? 'light' : 'dark';
+localStorage.setItem('theme', theme);
+document.documentElement.classList.toggle('dark', theme === 'dark');
+document.documentElement.dataset.timePeriod = params.get('period') || 'afternoon';
+</script>
+<link rel="stylesheet" href="https://api.fontshare.com/v2/css?f[]=chillax@400,600&f[]=synonym@400,500&display=swap" />
+</head><body class="admin-route"><div id="app"></div><script type="module" src="/main.ts"></script></body></html>

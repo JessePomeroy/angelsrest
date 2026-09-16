@@ -93,8 +93,10 @@ class CartStore {
 	// ─── Public API (matches the pure helpers, but mutates this.#state) ───
 
 	add(item: Omit<CartItem, "id">) {
+		const previousCount = cartItemCount(this.#state);
 		this.#state = addItemToCart(this.#state, item);
 		this.#persist();
+		return cartItemCount(this.#state) - previousCount;
 	}
 
 	updateQuantity(itemId: string, quantity: number) {

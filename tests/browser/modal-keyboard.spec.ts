@@ -172,7 +172,7 @@ for (const dismissal of ["Escape", "close button", "backdrop", "unmount"] as con
 
 test("public portfolio page arrows and swipes wrap once and reopening selects the clicked image", async ({ page }) => {
 	await page.goto("/?fixture=content&kind=portfolio-page");
-	const opener = page.getByRole("button", { name: "View image 2", exact: true });
+	const opener = page.getByRole("button", { name: "View image 2: Second portfolio image", exact: true });
 	await opener.click();
 	const dialog = page.getByRole("dialog", { name: /Image lightbox/ });
 	const count = dialog.locator(".image-count");
@@ -199,7 +199,7 @@ test("public portfolio page arrows and swipes wrap once and reopening selects th
 	await expect(count).toHaveText("2/2");
 	await page.keyboard.press("Escape");
 	await expect(opener).toBeFocused();
-	await page.getByRole("button", { name: "View image 1", exact: true }).click();
+	await page.getByRole("button", { name: "View image 1: First portfolio image", exact: true }).click();
 	await expect(count).toHaveText("1/2");
 });
 

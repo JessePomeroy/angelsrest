@@ -5,9 +5,7 @@
   subtotal, and a remove button. Reused across both `CartDrawer.svelte` and
   `/cart/+page.svelte` so spacing/typography stay consistent.
 
-  Quantity controls call into `cart.updateQuantity()` which clamps to
-  [1, MAX_QUANTITY_PER_LINE] inside the pure helpers — the UI doesn't need
-  its own bounds check.
+  Quantity controls expose the shared per-line limit; the store still enforces it.
 
   For print sets (`item.type === "set"`) the thumbnail shows the first image
   with a small "+N" badge if there are more images in the set.
@@ -15,7 +13,8 @@
 
 <script lang="ts">
 import { MinusIcon, PlusIcon } from "@lucide/svelte";
-import type { CartItem } from "$lib/shop/cart";
+import { type CartItem, MAX_QUANTITY_PER_LINE } from "$lib/shop/cart";
+import { getFrame, V2_FRAME_OPTIONS } from "@jessepomeroy/print-catalog";
 import { cart } from "$lib/shop/cart.svelte";
 import { formatCents } from "$lib/utils/format";
 
@@ -23,13 +22,26 @@ interface Props {
 	item: CartItem;
 	/** "drawer" tightens spacing for the side panel; "page" gives more room. */
 	variant?: "drawer" | "page";
+	onNavigate?: () => void;
+	onRemoved?: () => void;
 }
 
-let { item, variant = "drawer" }: Props = $props();
+let { item, variant = "drawer", onNavigate, onRemoved }: Props = $props();
 
 const lineSubtotal = $derived(item.unitPriceCents * item.quantity);
+const frameLabel = $derived(
+	(getFrame(item.frameValue ?? "") ?? V2_FRAME_OPTIONS.find(frame => frame.subcategoryId === item.frameSubcategoryId))?.label,
+);
+const productHref = $derived.by(() => {
+	const path = `/shop/${item.type === "set" ? "sets/" : ""}${item.productSlug}`;
+	if (!item.paperSlug || !item.sizeSlug) return path;
+	const params = new URLSearchParams({ paper: item.paperSlug, size: item.sizeSlug,
+		border: item.borderWidthValue ?? "none", frame: item.frameValue ?? "none" });
+	return `${path}?${params}`;
+});
 
 function decrement() {
+	if (item.quantity === 1) return remove();
 	cart.updateQuantity(item.id, item.quantity - 1);
 }
 
@@ -39,6 +51,7 @@ function increment() {
 
 function remove() {
 	cart.remove(item.id);
+	onRemoved?.();
 }
 
 const extraImageCount = $derived(
@@ -82,14 +95,15 @@ const extraImageCount = $derived(
       so the order summary below also clips.
     -->
     <a
-      href={`/shop/${item.type === "set" ? "sets/" : ""}${item.productSlug}`}
+      href={productHref}
+      onclick={onNavigate}
       class="product-title"
     >
       {item.title}
     </a>
     {#if item.paperName && item.paperWidth && item.paperHeight}
       <div class="print-details">
-        {item.paperName} · {item.paperWidth}×{item.paperHeight}{item.canvasSubcategoryId ? ' · canvas' : ''}{item.borderWidth ? ` · ${item.borderWidth}" border` : ''}{item.frameSubcategoryId ? ' · framed' : ''}
+        {item.paperName} · {item.paperWidth}×{item.paperHeight}{item.canvasSubcategoryId ? ' · canvas' : ''}{item.borderWidth ? ` · ${item.borderWidth}" border` : ''}{item.frameSubcategoryId ? ` · ${frameLabel ?? 'framed'}` : ''}
       </div>
     {/if}
 
@@ -120,6 +134,7 @@ const extraImageCount = $derived(
         <button
           type="button"
           onclick={increment}
+          disabled={item.quantity >= MAX_QUANTITY_PER_LINE}
           aria-label="Increase quantity"
           class="quantity-button"
         >
@@ -136,6 +151,9 @@ const extraImageCount = $derived(
         remove
       </button>
     </div>
+    {#if item.quantity >= MAX_QUANTITY_PER_LINE}
+      <p class="quantity-limit" role="status">Limit of {MAX_QUANTITY_PER_LINE} per item reached</p>
+    {/if}
   </div>
 </div>
 
@@ -148,11 +166,13 @@ const extraImageCount = $derived(
     .line-body { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 0.25rem; }
     .product-title { display: block; font-size: var(--text-sm); line-height: var(--text-sm--line-height); font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; line-height: 1.25; }
     @media (hover: hover) { .product-title:hover { text-decoration-line: underline; } }
-    .print-details { font-size: var(--text-xs); line-height: var(--text-xs--line-height); color: var(--color-surface-600); text-transform: lowercase; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .print-details, .quantity-limit { font-size: var(--text-xs); line-height: var(--text-xs--line-height); color: var(--color-surface-700); overflow-wrap: anywhere; }
+    :global(.dark) .quantity-limit { color: var(--color-surface-300); }
     :global(.dark) .print-details { color: var(--color-surface-300); }
     .line-controls { display: flex; align-items: center; justify-content: space-between; margin-top: 0.25rem; }
     .quantity-controls { display: flex; align-items: center; border: 1px solid; border-color: color-mix(in oklab, var(--color-surface-500) 30%, transparent); border-radius: 0.375rem; overflow: hidden; }
-    .quantity-button { padding-inline: 0.5rem; padding-block: 0.25rem; transition-property: color, background-color, border-color, outline-color, text-decoration-color, fill, stroke; transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1); transition-duration: 150ms; }
+    .quantity-button { min-width: 44px; min-height: 44px; display: grid; place-items: center; padding: 0.5rem; transition-property: color, background-color, border-color, outline-color, text-decoration-color, fill, stroke; transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1); transition-duration: 150ms; }
+    .quantity-button:disabled { opacity: 0.45; cursor: not-allowed; }
     @media (hover: hover) { .quantity-button:hover { background-color: color-mix(in oklab, var(--color-surface-500) 10%, transparent); } }
     .quantity { padding-inline: 0.5rem; font-size: var(--text-sm); line-height: var(--text-sm--line-height); font-variant-numeric: tabular-nums; min-width: 1.5rem; text-align: center; }
     .line-total-label { color: var(--color-surface-700); font-size: var(--text-xs); margin-right: 0.375rem; }

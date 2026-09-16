@@ -19,7 +19,7 @@ let { data } = $props();
 
 let isLoading = $state(false);
 
-const selection = createPrintSelection(() => data.printSet);
+const selection = createPrintSelection(() => data.printSet, () => `/shop/sets/${data.printSet.slug}`);
 const selectedConfiguration = $derived(selection.configuration);
 
 function handleCheckout() {
@@ -55,7 +55,7 @@ function handleAddToCart(event: MouseEvent) {
 	);
 	if (originalUrls.length === 0) return;
 
-	cart.add({
+	const addedQuantity = cart.add({
 		productSlug: data.printSet.slug,
 		type: "set",
 		title: data.printSet.title,
@@ -63,7 +63,7 @@ function handleAddToCart(event: MouseEvent) {
 		imageUrls: originalUrls,
 		...printConfigurationCartFields(selectedConfiguration),
 	});
-	showCartAddition(event.currentTarget);
+	showCartAddition(event.currentTarget, addedQuantity);
 }
 </script>
 
@@ -163,14 +163,15 @@ function handleAddToCart(event: MouseEvent) {
     .empty-image-label { color: var(--color-surface-500); }
     .set-details > :global(:not(:last-child)) { margin-block-start: 0; margin-block-end: 1.5rem; }
     .set-title { font-size: var(--text-3xl); }
-    .set-meta { font-size: var(--text-sm); line-height: var(--text-sm--line-height); color: var(--color-surface-600); }
-    :global(.dark) .set-meta { color: var(--color-surface-300); }
+    .set-meta { font-size: var(--text-sm); line-height: var(--text-sm--line-height); color: var(--color-surface-700); }
+    :global(.dark) .set-meta { color: var(--color-surface-200); }
     .set-description { color: var(--color-surface-700); }
     :global(.dark) .set-description { color: var(--color-surface-200); }
     .stock-status { display: flex; align-items: center; gap: 0.5rem; }
     .in-stock-dot { width: 0.75rem; height: 0.75rem; border-radius: 9999px; background-color: var(--color-success-500); }
     .out-of-stock-dot { width: 0.75rem; height: 0.75rem; border-radius: 9999px; background-color: var(--color-error-500); }
     .set-details { --print-purchase-actions-shrink: 0; }
-    .payment-note { font-size: var(--text-xs); line-height: var(--text-xs--line-height); color: var(--color-surface-500); }
+    .payment-note { font-size: var(--text-xs); line-height: var(--text-xs--line-height); color: var(--color-surface-700); }
+    :global(.dark) .payment-note { color: var(--color-surface-200); }
   }
 </style>

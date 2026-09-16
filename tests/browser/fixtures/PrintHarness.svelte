@@ -3,9 +3,23 @@ import Product from "../../../src/routes/shop/[slug]/+page.svelte";
 import PrintSet from "../../../src/routes/shop/sets/[slug]/+page.svelte";
 import { cart } from "../../../src/lib/shop/cart.svelte";
 import { deliveryData, preview, printSetData } from "./data";
+import { page } from "./state.svelte";
 
 const kind = new URLSearchParams(window.location.search).get("kind") ?? "product";
+if (kind !== "both") {
+	const url = new URL(window.location.href);
+	url.pathname = kind === "set" ? "/shop/sets/fixture-set-original" : "/shop/fixture-product-original";
+	page.url = url;
+}
 let scenario = $state("original");
+function changeScenario(value: string) {
+	scenario = value;
+	if (kind === "both") return;
+	const url = new URL(window.location.href);
+	url.pathname = kind === "set" ? `/shop/sets/fixture-set-${value}` : `/shop/fixture-product-${value}`;
+	for (const key of ["paper", "size", "border", "frame"]) url.searchParams.delete(key);
+	page.url = url;
+}
 const variants = $derived(scenario === "empty" ? [] : scenario === "other"
 	? [{ paper: "glossy", size: "5x7", retailPrice: 18 }]
 	: [
@@ -39,7 +53,7 @@ const setData = $derived({
 
 <nav aria-label="Fixture scenarios">
 	{#each ["original", "other", "empty", "no-finishes", "no-frames", "sold-out", "no-images"] as value}
-		<button type="button" onclick={() => scenario = value}>{value}</button>
+		<button type="button" onclick={() => changeScenario(value)}>{value}</button>
 	{/each}
 </nav>
 {#if kind === "product" || kind === "both"}

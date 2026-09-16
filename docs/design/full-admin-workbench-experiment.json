@@ -44,9 +44,9 @@
     },
     "affectedReferenceKeys": ["admin.crm.default", "admin.quotes.default", "admin.contracts.default", "admin.shared.controls", "admin.emails.default"],
     "paper": {
-      "status": "blocked-before-update",
+      "status": "canonical-boards-updated-visual-comparison-blocked",
       "lastVerified": null,
-      "reason": "A fresh screenshot attempt on the existing small editable reference group timed out again. No Paper board is marked updated or compared for these refinements."
+      "reason": "The affected canonical boards were regenerated in place from @jessepomeroy/admin 6.1.1 on 2026-09-16 and passed an editable top-level structure audit. The installed 6.1.2 update is behavior-only inside InvoiceDetailModal and does not change their visual structure. Paper screenshot export still timed out for full and small nodes, so no visual comparison is claimed."
     },
     "limitations": ["Firefox on the user's iPhone is not verified by a desktop Firefox test. Native WebKit cannot launch here because libicudata.so.74 is unavailable.", "Fictional fixtures only; no real provider writes or production deployment."]
   },
@@ -136,10 +136,10 @@
     "fileId": "01M25K34Z4EFZ5BEPJ49JBF0X1",
     "testPageId": "8-0",
     "url": "https://app.paper.design/file/01M25K34Z4EFZ5BEPJ49JBF0X1/8-0",
-    "status": "blocked-before-update",
+    "status": "canonical-boards-updated-visual-comparison-blocked",
     "lastVerified": null,
-    "reason": "Basic information remained readable, but a new screenshot attempt on the existing small editable field group timed out again. Required visual checkpoints cannot complete. No new full-admin board or canonical reference is marked updated or verified.",
-    "canonicalReferenceKeys": "The screen keys above map to the existing handbook inventory. Update those editable references in place after the renderer recovers and the local treatment is adopted.",
+    "reason": "All 72 canonical admin references were regenerated in place from the released 6.1.1 package on 2026-09-16. Their expected editable top-level layer sets matched the fresh browser capture drafts. The installed 6.1.2 update changes pending invoice-reminder identity handling only, not represented visual structure. Required Paper screenshots still time out, so visual comparison and lastVerified remain incomplete.",
+    "canonicalReferenceKeys": "The screen keys above map to the existing handbook inventory. The canonical boards now contain the current editable treatment; use screen-inventory.json for per-reference pending visual-comparison status.",
     "unrelatedStudiesChanged": false
   },
   "checks": {
@@ -157,7 +157,7 @@
     "WebKit remains unavailable because libicudata.so.74 is missing; Chromium touch emulation is not an iPhone Safari test.",
     "Existing keyboard gallery reordering limitation and earlier documented editor baseline issues are not resolved by this styling task.",
     "Available Chillax faces remain 400/600; the existing requested 500 heading style uses the available face.",
-    "The Paper update and same-condition comparison remain incomplete."
+    "The Paper editable update is complete, but the same-condition visual comparison remains blocked by screenshot timeouts."
   ],
   "releaseState": "Source changes prepared for review; production dependencies unchanged; package publication and deployment are separate."
 }

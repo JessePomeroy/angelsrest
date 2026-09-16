@@ -17,7 +17,10 @@ let modalOpen = $state(false);
 let selectedIndex = $state(0);
 let isLoading = $state(false);
 
-const selection = createPrintSelection(() => data.productType === "v2" ? data.product : { variants: [] });
+const selection = createPrintSelection(
+	() => data.productType === "v2" ? data.product : { variants: [] },
+	() => `/shop/${data.product.slug}`,
+);
 const selectedConfiguration = $derived(selection.configuration);
 
 // ─── Shared ─────────────────────────────────────────────────
@@ -60,7 +63,7 @@ function handleV2Checkout() {
 
 function handleV2AddToCart(event: MouseEvent) {
 	if (!selectedConfiguration) return;
-	cart.add({
+	const addedQuantity = cart.add({
 		productSlug: data.product.slug,
 		type: "print",
 		title: data.product.title,
@@ -68,7 +71,7 @@ function handleV2AddToCart(event: MouseEvent) {
 			data.product.images[0]?.original || data.product.images[0]?.full || "",
 		...printConfigurationCartFields(selectedConfiguration),
 	});
-	showCartAddition(event.currentTarget);
+	showCartAddition(event.currentTarget, addedQuantity);
 }
 
 // ─── V1 checkout/cart handlers ──────────────────────────────
@@ -99,7 +102,7 @@ function handleV1AddToCart(event: MouseEvent) {
 	const priceDollars = data.product.price;
 	if (typeof priceDollars !== "number") return;
 
-	cart.add({
+	const addedQuantity = cart.add({
 		productSlug: data.product.slug,
 		type: "print",
 		title: data.product.title,
@@ -108,7 +111,7 @@ function handleV1AddToCart(event: MouseEvent) {
 		quantity: 1,
 		unitPriceCents: Math.round(priceDollars * 100),
 	});
-	showCartAddition(event.currentTarget);
+	showCartAddition(event.currentTarget, addedQuantity);
 }
 </script>
 
@@ -318,8 +321,8 @@ function handleV1AddToCart(event: MouseEvent) {
     :global(.dark) .description { color: var(--color-surface-200); }
     .stock-status { display: flex; align-items: center; gap: 0.5rem; }
     .in-stock-dot { width: 0.75rem; height: 0.75rem; border-radius: 9999px; background-color: var(--color-success-500); }
-    .stock-label { font-size: var(--text-sm); line-height: var(--text-sm--line-height); color: var(--color-surface-600); }
-    :global(.dark) .stock-label { color: var(--color-surface-300); }
+    .stock-label { font-size: var(--text-sm); line-height: var(--text-sm--line-height); color: var(--color-surface-700); }
+    :global(.dark) .stock-label { color: var(--color-surface-200); }
     .out-of-stock-dot { width: 0.75rem; height: 0.75rem; border-radius: 9999px; background-color: var(--color-error-500); }
     .desktop-purchase { display: none; align-items: baseline; justify-content: space-between; gap: 1rem; padding-block: 0.5rem; }
     @media (min-width: 48rem) { .desktop-purchase { display: flex; } }
@@ -336,7 +339,8 @@ function handleV1AddToCart(event: MouseEvent) {
     :global(.dark) .desktop-buy-button:focus-visible { outline-color: var(--color-surface-50); }
     .desktop-buy-button:disabled { opacity: 0.5; cursor: not-allowed; }
     @media (hover: hover) { .desktop-buy-button:hover:not(:disabled) { background-color: color-mix(in oklab, var(--color-primary-500) 80%, transparent); } }
-    .payment-note { font-size: var(--text-xs); line-height: var(--text-xs--line-height); color: var(--color-surface-500); }
+    .payment-note { font-size: var(--text-xs); line-height: var(--text-xs--line-height); color: var(--color-surface-700); }
+    :global(.dark) .payment-note { color: var(--color-surface-200); }
     .mobile-cart-button { display: inline-flex; align-items: center; justify-content: center; min-height: 44px; padding: 0.5rem 0.75rem; border-radius: 0.375rem; font-size: var(--text-sm); line-height: var(--text-sm--line-height); background: transparent; color: inherit; border: 1px solid currentColor; }
     .mobile-cart-button:focus-visible { outline: 2px solid currentColor; outline-offset: 3px; }
     .mobile-cart-button:disabled { opacity: 0.5; cursor: not-allowed; }

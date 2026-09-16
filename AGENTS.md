@@ -154,6 +154,20 @@ pnpm --filter @jessepomeroy/crm-api exec tsc -p tsconfig.json --noEmit
 Use `pnpm build` when production bundling is relevant. Do not run Biome with
 `--write` during an audit or other read-only task.
 
+## Living design handbooks
+
+The public website and mounted admin application have separate Paper handbooks.
+See `docs/DESIGN_HANDBOOK.md` and `docs/design/screen-inventory.json` for their
+links, scope, source mapping, verification status, and safe capture setup.
+
+New screens and material UI changes must include this workflow in the same task:
+**implement → inspect in browser → update Paper → compare → update inventory**.
+Update existing editable reference boards in place; preserve unrelated studies.
+Document implemented behavior faithfully rather than silently redesigning it.
+Never mark a board verified without comparing the same viewport, data, theme,
+and state. Report unavailable fonts, authentication, providers, or states as gaps;
+do not substitute production customer records or private gallery assets.
+
 ## Git workflow
 
 - Work on a focused branch unless the user specifies another workflow.

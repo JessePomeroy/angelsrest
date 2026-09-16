@@ -1,6 +1,6 @@
 <script lang="ts">
 import PrintHarness from "./PrintHarness.svelte";
-import { page } from "./state.svelte";
+import { navigating, page } from "./state.svelte";
 const purchase = new URLSearchParams(window.location.search).has("purchase");
 if (purchase) page.url = new URL("http://127.0.0.1:5196/shop/fixture");
 
@@ -24,5 +24,7 @@ const data = {
   {:else}
   <h1>Fixture page</h1>
   <p>Public content keeps its width, spacing and keyboard entry point.</p>
+  <button type="button" onclick={() => navigating.to = { url: new URL("/gallery", page.url) }}>Start pending navigation</button>
+  <button type="button" onclick={() => navigating.to = null}>Finish pending navigation</button>
   {/if}
 </Layout>

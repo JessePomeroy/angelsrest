@@ -8,7 +8,7 @@ import { cartUI } from "../../../src/lib/shop/cartUI.svelte";
 import ThemeSwitcher from "../../../src/lib/components/ThemeSwitcher.svelte";
 const params = new URLSearchParams(window.location.search);
 const kind = params.get("kind") ?? "about";
-const portrait = "data:image/svg+xml," + encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="300" height="400"><rect width="300" height="400" fill="#789abc"/></svg>');
+const portrait = params.get("portfolio-image") ?? "data:image/svg+xml," + encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="300" height="400"><rect width="300" height="400" fill="#789abc"/></svg>');
 const replacementPortrait = "data:image/svg+xml," + encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="300" height="400"><rect width="300" height="400" fill="#bc9876"/></svg>');
 const data = $state({
   siteSettings: { artistName: null, siteTitle: null, tagline: null, logoUrl: null, socialLinks: [], seo: { description: null, ogImageUrl: null, keywords: [] } },
