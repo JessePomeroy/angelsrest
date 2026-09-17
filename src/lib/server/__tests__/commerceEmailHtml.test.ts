@@ -40,7 +40,7 @@ describe("commerceEmailHtml", () => {
 	it("renders an email-safe used receipt with unit pricing, paper texture, and a status path", () => {
 		const html = renderCustomerCommerceEmailHtml(physicalInput);
 
-		expect(html.startsWith('<!doctype html>\n<html lang="en">')).toBe(true);
+		expect(html.startsWith('<!doctype html><html lang="en">')).toBe(true);
 		expect(html).toContain('<meta name="viewport" content="width=device-width, initial-scale=1">');
 		expect(html).toContain('<meta name="color-scheme" content="light">');
 		expect(html).toContain("mso-hide: all");
@@ -68,7 +68,7 @@ describe("commerceEmailHtml", () => {
 		expect(html).toContain(
 			'<a class="receipt-button" href="https://angelsrest.online/orders?order=ORD-018"',
 		);
-		expect(html).toContain(">View order status</a>");
+		expect(html).toMatch(/>View order status<\/span><\/span><\/a>/);
 		expect(html).toContain("mso-padding-alt: 13px 18px");
 		expect(html.match(/https:\/\/angelsrest\.online\/orders\?order=ORD-018/g)).toHaveLength(3);
 		expect(html).not.toContain("Your files are ready");
@@ -154,9 +154,9 @@ describe("commerceEmailHtml", () => {
 			},
 		});
 
-		expect(html).toContain(">Reflecting Pool</a>");
+		expect(html).toMatch(/>Reflecting Pool<\/span><\/span><\/a>/);
 		expect(html).toContain("Download");
-		expect(html).toContain(">Download purchase</a>");
+		expect(html).toMatch(/>Download purchase<\/span><\/span><\/a>/);
 		expect(html).toContain(
 			'href="https://zippymiggy.com/checkout/success?session_id=cs_test_123&amp;source=email"',
 		);
@@ -255,7 +255,7 @@ describe("commerceEmailHtml", () => {
 		expect(documents[0]).toContain("On its way.");
 		expect(documents[0]).toContain("TRACK-123");
 		expect(documents[0]).toContain("FedEx");
-		expect(documents[0]).toContain(">Track order</a>");
+		expect(documents[0]).toMatch(/>Track order<\/span><\/span><\/a>/);
 		expect(documents[1]).toContain("Online shop / refund receipt");
 		expect(documents[1]).toContain("Refund issued");
 		expect(documents[1]).toContain("Payment returned.");
@@ -264,7 +264,7 @@ describe("commerceEmailHtml", () => {
 		expect(documents[2]).toContain("Payment not completed");
 		expect(documents[2]).toContain("Please try again.");
 		expect(documents[2]).toContain("Your card was declined.");
-		expect(documents[2]).toContain(">Return to the shop</a>");
+		expect(documents[2]).toMatch(/>Return to the shop<\/span><\/span><\/a>/);
 	});
 
 	it("renders every owner lifecycle branch with private facts confined to owner documents", () => {

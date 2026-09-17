@@ -163,7 +163,7 @@ https://angelsrest.online`);
 		);
 		expect(payload.html).not.toContain('<img src="cid:');
 		expect(payload.attachments).toBeUndefined();
-		expect(payload.html).toContain(">View order status</a>");
+		expect(payload.html).toMatch(/>View order status<\/span><\/span><\/a>/);
 		expect(
 			payload.html?.match(/https:\/\/angelsrest\.online\/orders\?order=ORD-001/g),
 		).toHaveLength(3);
@@ -198,7 +198,7 @@ https://angelsrest.online`);
 			"View your order status anytime: https://zippymiggy.com/orders?order=ORD-002",
 		);
 		expect(payload.text).toContain("Thank you for supporting Reflecting Pool!");
-		expect(payload.html).toContain(">Reflecting Pool</a>");
+		expect(payload.html).toMatch(/>Reflecting Pool<\/span><\/span><\/a>/);
 		expect(payload.html).toContain(
 			'background="https://media.angelsrest.online/sites/angelsrest.online/email/receipt-paper-warning-lines-60eaecf2f022.jpg"',
 		);
@@ -253,7 +253,7 @@ Thank you for supporting Reflecting Pool!
 Best regards,
 Reflecting Pool
 https://zippymiggy.com`);
-		expect(payload.html).toContain(">Download purchase</a>");
+		expect(payload.html).toMatch(/>Download purchase<\/span><\/span><\/a>/);
 		expect(
 			payload.html?.match(/https:\/\/zippymiggy\.com\/checkout\/success\?session_id=cs_test_123/g),
 		).toHaveLength(3);
