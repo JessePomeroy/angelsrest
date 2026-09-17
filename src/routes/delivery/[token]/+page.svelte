@@ -58,17 +58,32 @@ async function moveLightbox(direction: -1 | 1) {
 	if (nextIndex < 0 || nextIndex >= images.length) return;
 	const focused = document.activeElement;
 	lightboxIndex = nextIndex;
+	await restoreLightboxFocus(focused);
+}
+
+async function restoreLightboxFocus(focused: Element | null) {
 	await tick();
-	// Endpoint navigation buttons and media controls can disappear on a change.
+	// Navigation and failed previews can remove the focused control.
 	// Keep keyboard input in the lightbox when the focused element was removed.
 	if (lightboxEl && focused && !focused.isConnected && document.activeElement === document.body) {
 		lightboxEl.querySelector<HTMLElement>(".lb-close")?.focus();
 	}
 }
 
+async function markPreviewFailed(imageId: string) {
+	const focused = document.activeElement;
+	failedPreviewIds = markFailed(failedPreviewIds, imageId);
+	await restoreLightboxFocus(focused);
+}
+
 function handleKeydown(e: KeyboardEvent) {
 	if (!lightboxOpen) return;
-	if (e.key === "Escape") closeLightbox();
+	if (e.key === "Escape") {
+		closeLightbox();
+		return;
+	}
+	// Preserve the browser's native seek controls while the video has focus.
+	if (e.target instanceof HTMLVideoElement && (e.key === "ArrowRight" || e.key === "ArrowLeft")) return;
 	if (e.key === "ArrowRight") void moveLightbox(1);
 	if (e.key === "ArrowLeft") void moveLightbox(-1);
 	if (lightboxEl) trapFocus(e, lightboxEl);
@@ -129,11 +144,11 @@ function markFailed(set: Set<string>, imageId: string) {
 }
 
 function downloadAll() {
-	return downloads.downloadImages(images, "No photos are available to download yet.");
+	return downloads.downloadImages(images, "No files are available to download yet.");
 }
 
 function downloadSelected() {
-	return downloads.downloadImages(selectedImages, "No photos selected yet.");
+	return downloads.downloadImages(selectedImages, "No files selected yet.");
 }
 
 function downloadFavorites() {
@@ -167,7 +182,7 @@ let favoriteCount = $derived(
 	<header class="gallery-header">
 		<h1>{data.gallery.name}</h1>
 		<p class="gallery-meta">
-			{data.gallery.imageCount} photo{data.gallery.imageCount !== 1 ? "s" : ""}
+			{data.gallery.imageCount} file{data.gallery.imageCount !== 1 ? "s" : ""}
 			{#if data.client}
 				<span class="separator">&middot;</span> for {data.client.name}
 			{/if}
@@ -363,10 +378,21 @@ let favoriteCount = $derived(
 	>
 		<div class="lightbox-content">
 			{#if images[lightboxIndex].isVideo}
-				<!-- svelte-ignore a11y_media_has_caption -->
-				<video src={images[lightboxIndex].previewUrl} controls playsinline preload="metadata"></video>
+				{#if !failedPreviewIds.has(images[lightboxIndex]._id)}
+					<!-- svelte-ignore a11y_media_has_caption -->
+					<video
+						src={images[lightboxIndex].previewUrl}
+						controls
+						playsinline
+						preload="metadata"
+						aria-label={"Video preview: " + images[lightboxIndex].filename}
+						onerror={() => void markPreviewFailed(images[lightboxIndex]._id)}
+					></video>
+				{:else}
+					<div class="lightbox-file"><span>video unavailable</span></div>
+				{/if}
 			{:else if images[lightboxIndex].canPreview && !failedPreviewIds.has(images[lightboxIndex]._id)}
-				<img src={images[lightboxIndex].previewUrl} alt={images[lightboxIndex].filename} draggable="false" onerror={() => failedPreviewIds = markFailed(failedPreviewIds, images[lightboxIndex]._id)} />
+				<img src={images[lightboxIndex].previewUrl} alt={images[lightboxIndex].filename} draggable="false" onerror={() => void markPreviewFailed(images[lightboxIndex]._id)} />
 			{:else}
 				<div class="lightbox-file">
 					<span>{images[lightboxIndex].canPreview ? "image unavailable" : images[lightboxIndex].fileLabel}</span>

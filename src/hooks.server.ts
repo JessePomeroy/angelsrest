@@ -40,6 +40,8 @@ function addSecurityHeaders(response: Response, pathname: string): Response {
 		//   was written to prevent).
 		// - Cloudflare's Turnstile reference requires challenges.cloudflare.com
 		//   in both script-src and frame-src for the managed widget.
+		// - Private delivery-gallery videos stream from the gallery worker. Media
+		//   does not inherit img-src, so that exact origin is also in media-src.
 		contentSecurityPolicy,
 	);
 	applyCapabilityResponsePrivacy(cloned.headers, pathname);

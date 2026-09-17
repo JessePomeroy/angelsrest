@@ -3903,9 +3903,26 @@
         "tests/browser/handbook/data.ts"
       ],
       "implementationStatus": "implemented-template",
+      "implementationUpdate": {
+        "date": "2026-09-16",
+        "change": "Owner-only any-file uploader, media-only client policy, and file labels/counts in the gallery list and detail modal.",
+        "source": "Unpublished @jessepomeroy/admin owner-delivery-files worktree, packed and linked locally for verification; registry dependency remains 6.1.2.",
+        "browserObservedAt": "2026-09-16",
+        "viewports": ["1440x1000", "390x844"],
+        "data": "Fictional handbook delivery galleries only; no provider writes.",
+        "status": "paper-update-blocked",
+        "limitations": [
+          "Paper tools are unavailable in this session. Existing boards below predate the file labels and must be updated in place before comparison.",
+          "The collaborative browser rendered the uploader and its controls; its screenshot endpoint failed. A recording and DOM/layout observations do not establish pixel-level fidelity.",
+          "Remote HTTP preview needed an in-memory randomUUID shim backed by getRandomValues for synthetic catalog fixture IDs. Production code was not changed.",
+          "Owner and client uploader states have no Paper boards yet; same-state comparison is pending."
+        ]
+      },
       "stateSurvey": "representative-with-gaps",
       "pendingStateSurvey": [
         "selected gallery",
+        "owner any-file uploader — Paper reference pending",
+        "client media-only uploader — Paper reference pending",
         "new/edit form",
         "empty",
         "loading",

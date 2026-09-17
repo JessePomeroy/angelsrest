@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
 	authorizeSiteAdminRequest,
 	getSiteAdminAccess,
+	resolveGalleryUploadPolicy,
 	verifySiteAdminRequest,
 } from "$lib/server/siteAdminAuthorization";
 
@@ -28,6 +29,7 @@ vi.mock("convex/browser", () => ({
 
 vi.mock("$convex/api", () => ({
 	api: {
+		galleries: { getUploadPolicy: "galleries.getUploadPolicy" },
 		adminAuth: {
 			whoami: "adminAuth.whoami",
 			claimAdminAccess: "adminAuth.claimAdminAccess",
@@ -51,6 +53,31 @@ vi.mock("$lib/server/adminAuth", () => ({
 describe("site admin authorization", () => {
 	beforeEach(() => {
 		vi.clearAllMocks();
+	});
+
+	it("resolves the upload policy using the current request token and configured site", async () => {
+		mockGetTokenFromRequest.mockResolvedValue("owner-session-token");
+		mockQuery.mockResolvedValue("all-files");
+		await expect(
+			resolveGalleryUploadPolicy(
+				new Request("https://example.test", {
+					headers: { "X-Owner": "true" },
+				}),
+			),
+		).resolves.toBe("all-files");
+		expect(mockSetAuth).toHaveBeenCalledWith("owner-session-token");
+		expect(mockQuery).toHaveBeenCalledWith("galleries.getUploadPolicy", {
+			siteUrl: "angelsrest.online",
+		});
+		mockGetTokenFromRequest.mockResolvedValue(null);
+		await expect(resolveGalleryUploadPolicy(new Request("https://example.test"))).resolves.toBe(
+			"media",
+		);
+		mockGetTokenFromRequest.mockResolvedValue("client-session-token");
+		mockQuery.mockRejectedValue(new Error("Not authorized"));
+		await expect(resolveGalleryUploadPolicy(new Request("https://example.test"))).rejects.toThrow(
+			"Not authorized",
+		);
 	});
 
 	it("checks stored site membership with a fresh authenticated client", async () => {

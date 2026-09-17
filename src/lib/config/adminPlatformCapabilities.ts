@@ -3,8 +3,13 @@ import type * as generatedApiModule from "$convex/api";
 
 type GeneratedApi = typeof generatedApiModule.api;
 
-export type AdminBrowserCapabilities = Omit<AdminAPI, "documentEmailAttempts" | "crm"> & {
+export type AdminBrowserCapabilities = Omit<
+	AdminAPI,
+	"documentEmailAttempts" | "crm" | "galleryDelivery"
+> & {
 	crm: AdminAPI["crm"] & Pick<GeneratedApi["crm"], "listClientsWithTags">;
+	galleryDelivery: NonNullable<AdminAPI["galleryDelivery"]> &
+		Pick<GeneratedApi["galleries"], "getUploadPolicy">;
 	readonly documentEmailAttempts?: never;
 };
 
@@ -125,6 +130,7 @@ export function createAdminBrowserCapabilities(api: GeneratedApi): AdminBrowserC
 			list: api.emailTemplates.list,
 		},
 		galleryDelivery: {
+			getUploadPolicy: api.galleries.getUploadPolicy,
 			create: api.galleries.create,
 			setPassword: api.galleryPassword.setPassword,
 			update: api.galleries.update,

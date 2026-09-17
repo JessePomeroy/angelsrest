@@ -25,6 +25,18 @@ import { requireGalleryAccessGrant } from "./galleryAccess";
 // to delete everything in one shot.
 const REMOVE_BATCH_SIZE = 500;
 
+/** UI and host presign handlers share this stored membership decision. */
+export const getUploadPolicy = query({
+	args: { siteUrl: v.string() },
+	returns: v.union(v.literal("media"), v.literal("all-files")),
+	handler: async (ctx, { siteUrl }) => {
+		const { client } = await requireSiteAdmin(ctx, siteUrl);
+		return client.siteUrl === "angelsrest.online" && client.role === "creator"
+			? "all-files" as const
+			: "media" as const;
+	},
+});
+
 async function requireGalleryPortalToken(
 	ctx: QueryCtx | MutationCtx,
 	token: string,

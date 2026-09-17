@@ -33,6 +33,8 @@ function fixtureQuery(name: string, args: Args = {}) {
 		case "messages:listPaginated": return pageOf(data.messages);
 		case "kanban:listBoardConfigs": return list([{ _id: "demo-board-1", _creationTime: data.now, siteUrl: data.siteUrl, projectType: "wedding", columns: [{ id: "lead", name: "New inquiry", position: 0 }, { id: "booked", name: "Booked", position: 1 }, { id: "complete", name: "Delivered", position: 2 }] }]);
 		case "galleries:listBySite": return list(data.galleries);
+		case "galleries:getUploadPolicy": return params.get("uploadPolicy") === "media" ? "media" : "all-files";
+		case "galleries:get": return data.galleries.find(gallery => gallery._id === args.id) ?? null;
 		case "galleries:getImages": return [];
 		case "portfolioGalleries:listForEditor": return list(data.portfolio);
 		case "portfolioGalleries:getEditorState": return data.portfolio.find(gallery => gallery.galleryId === args.galleryId) ?? null;

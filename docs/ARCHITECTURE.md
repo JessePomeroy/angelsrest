@@ -136,6 +136,16 @@ private/no-store, noindex, nofollow, noarchive, and no-referrer. Analytics omits
 these paths; browser and server telemetry scrub current and retained capability
 URLs.
 
+Delivery-gallery uploads have a server-owned policy. `galleries.getUploadPolicy`
+requires stored site membership and grants `all-files` only to the
+`angelsrest.online` creator row. The Admin picker consumes that query while the
+host separately resolves it for signed upload sessions. The gallery Worker
+restricts expanded capabilities to that tenant, binds policy to each original,
+and keeps arbitrary files behind attachment downloads. Website clients retain
+photo/video uploads. The existing `galleryImages` metadata and R2 namespaces
+remain in use; no schema or customer permission migration is needed. See
+[owner file upload rollout](runbooks/owner-delivery-files.md) for release order.
+
 Document portal hosts read `portal.getPublicByToken`, which returns explicit
 client-safe projections. Raw invoice, quote, contract, provider, signature, and
 internal fields do not cross the public boundary. Used links remain readable
