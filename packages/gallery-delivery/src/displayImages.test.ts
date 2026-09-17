@@ -5,6 +5,16 @@ const workerUrl = "https://gallery-worker.example.com/";
 const access = { token: "gallery-token", accessGrant: "server-grant" };
 
 describe("resolveGalleryDisplayImages", () => {
+	it.each(["archive.zip", "document.pdf", "scene.blend", "page.html", "movie.mkv", "README"])(
+		"keeps %s downloadable without trying an inline preview",
+		(filename) => {
+			const [file] = resolveGalleryDisplayImages([{
+				filename, r2Key: `angelsrest.online/gallery/original/${filename}`,
+			}], workerUrl, access);
+			expect(file).toMatchObject({ filename, canPreview: false, isVideo: false, previewSource: "none" });
+		},
+	);
+
 	it("uses browser-previewable images as their own thumbnail and preview source", () => {
 		const [image] = resolveGalleryDisplayImages(
 			[

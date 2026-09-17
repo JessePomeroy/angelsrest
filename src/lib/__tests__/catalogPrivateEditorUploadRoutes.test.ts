@@ -32,7 +32,10 @@ vi.mock("$lib/server/galleryWorkerUrl", () => ({
 	getGalleryWorkerUrl: () => "https://gallery-worker.thinkingofview.workers.dev",
 }));
 
-vi.mock("$lib/server/siteAdminAuthorization", () => ({ verifySiteAdminRequest }));
+vi.mock("$lib/server/siteAdminAuthorization", () => ({
+	verifySiteAdminRequest,
+	resolveGalleryUploadPolicy: vi.fn(async () => "media"),
+}));
 
 const uploadHandle = "123e4567-e89b-42d3-a456-426614174000";
 const prepareBody = JSON.stringify({

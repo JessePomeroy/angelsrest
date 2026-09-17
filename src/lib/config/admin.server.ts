@@ -11,11 +11,16 @@ import {
 	getGalleryAdminSecret,
 	getResendApiKey,
 } from "$lib/server/runtimeConfig";
-import { verifySiteAdminRequest } from "$lib/server/siteAdminAuthorization";
+import {
+	resolveGalleryUploadPolicy,
+	verifySiteAdminRequest,
+} from "$lib/server/siteAdminAuthorization";
 import { adminConfig } from "./admin";
 import { createAdminServerCapabilities } from "./adminPlatformCapabilities.server";
 
-export const adminServerConfig: AdminServerConfig = {
+export const adminServerConfig: AdminServerConfig & {
+	resolveGalleryUploadPolicy: typeof resolveGalleryUploadPolicy;
+} = {
 	...adminConfig,
 	api: createAdminServerCapabilities(api),
 	get galleryWorkerUrl() {
@@ -44,5 +49,6 @@ export const adminServerConfig: AdminServerConfig = {
 		return getResendApiKey();
 	},
 	verifyAdmin: verifySiteAdminRequest,
+	resolveGalleryUploadPolicy,
 	getConvexToken: adminAuth.getTokenFromRequest,
 };

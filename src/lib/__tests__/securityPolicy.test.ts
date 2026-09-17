@@ -13,6 +13,10 @@ function directiveSources(name: string) {
 describe("production security policy", () => {
 	it("allows the CMS media upload and public delivery boundaries", () => {
 		expect(directiveSources("img-src")).toContain("https://media.angelsrest.online");
+		expect(directiveSources("media-src")).toEqual([
+			"'self'",
+			"https://gallery-worker.thinkingofview.workers.dev",
+		]);
 		const connections = directiveSources("connect-src");
 		expect(connections).toContain("https://cms-media-worker.thinkingofview.workers.dev");
 		expect(connections).not.toContain("https://*.workers.dev");

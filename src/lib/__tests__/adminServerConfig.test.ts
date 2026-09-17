@@ -26,7 +26,10 @@ vi.mock("$lib/server/adminAuth", () => ({
 vi.mock("$lib/server/galleryWorkerUrl", () => ({
 	getGalleryWorkerUrl: () => "https://gallery-worker.example",
 }));
-vi.mock("$lib/server/siteAdminAuthorization", () => ({ verifySiteAdminRequest }));
+vi.mock("$lib/server/siteAdminAuthorization", () => ({
+	verifySiteAdminRequest,
+	resolveGalleryUploadPolicy: vi.fn(async () => "media"),
+}));
 vi.mock("$lib/config/admin", () => ({ adminConfig }));
 
 describe("admin server secret custody", () => {
