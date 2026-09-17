@@ -48,6 +48,14 @@ Private `/delivery/[token]`, client portals and provider-hosted checkout screens
 are excluded. Admin delivery gallery management uses fictional records and no
 private assets. Keep **portfolio galleries** and **delivery galleries** distinct.
 
+The local owner file-upload change adds an any-file picker for verified Angels
+Rest creator membership and file labels in delivery-gallery management. The
+handbook fixture defaults to the owner policy; add `uploadPolicy=media` for a
+website client. Open a fictional gallery to inspect its uploader. These source
+changes are newer than the current delivery-gallery boards. Paper tools were
+unavailable for this pass, so the inventory marks their update/comparison
+pending and records the local browser evidence and screenshot limitations.
+
 | Source | Authority |
 | --- | --- |
 | `src/lib/styles/{theme,global,time-theme,article}.css` | Public palette, typography, reset, time periods and article rules |

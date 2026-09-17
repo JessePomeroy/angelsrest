@@ -57,3 +57,12 @@ export async function authorizeSiteAdminRequest(request: Request) {
 export async function verifySiteAdminRequest(request: Request): Promise<boolean> {
 	return (await authorizeSiteAdminRequest(request)) !== null;
 }
+
+/** Recheck stored owner membership before minting an expanded upload session. */
+export async function resolveGalleryUploadPolicy(request: Request) {
+	const token = await adminAuth.getTokenFromRequest(request);
+	if (!token) return "media" as const;
+	return createAuthenticatedConvexClient(token).query(api.galleries.getUploadPolicy, {
+		siteUrl: adminConfig.siteUrl,
+	});
+}
