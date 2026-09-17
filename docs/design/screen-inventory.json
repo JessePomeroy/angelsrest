@@ -3906,7 +3906,7 @@
       "implementationUpdate": {
         "date": "2026-09-16",
         "change": "Owner-only any-file uploader, media-only client policy, and file labels/counts in the gallery list and detail modal.",
-        "source": "Unpublished @jessepomeroy/admin owner-delivery-files worktree, packed and linked locally for verification; registry dependency remains 6.1.2.",
+        "source": "Captured from the then-unpublished @jessepomeroy/admin owner-delivery-files worktree, packed and linked locally; the same feature is now released and pinned as 6.2.0 in the September 17 adoption.",
         "browserObservedAt": "2026-09-16",
         "viewports": ["1440x1000", "390x844"],
         "data": "Fictional handbook delivery galleries only; no provider writes.",
@@ -6451,8 +6451,8 @@
     "adminReferencesUpdated": 72,
     "browserCaptures": 72,
     "capturePackageVersion": "6.1.1",
-    "currentPackageVersion": "6.1.2",
-    "currentPackageCompatibility": "The 6.1.1-to-6.1.2 package diff is behavior-only inside InvoiceDetailModal and does not change the captured board structure.",
+    "currentPackageVersion": "6.2.0",
+    "currentPackageCompatibility": "6.2.0 adds owner-only delivery-file uploads and file labels/cards. Affected delivery-gallery states still require a Paper update and comparison; the September 16 captures and original source baseline are unchanged.",
     "editableStructureAudit": "passed: every canonical admin artboard has the expected top-level layer set from its fresh capture",
     "visualComparison": "blocked: Paper get_screenshot timed out for full boards and small child nodes after normal and software-rendered desktop restarts",
     "lastVerified": null

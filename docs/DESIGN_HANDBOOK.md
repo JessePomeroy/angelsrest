@@ -32,10 +32,12 @@ Remaining candidates and specific mismatches stay in the inventory.
 | States/layouts | Light/dark examples, tablet gallery/About, short landscape, expanded menus, selected/disabled controls, cart limits/busy/error/expiry, contact readiness/sending/success/failures, complete client/invoice/contact-editor forms, admin empty/read-error/loading/save-error examples |
 
 The source baseline is merge commit `eeb01b9cf88de5d0edb931a55cf09e1517ee7f68`.
-The installed shared admin package is `@jessepomeroy/admin` **6.1.2**. The boards
-were captured with 6.1.1; the 6.1.2 diff only preserves invoice identity during
-a pending overdue-reminder action and does not change their visual structure.
-This is not a claim about the deployed site's version.
+The installed shared admin package is `@jessepomeroy/admin` **6.2.0** as of the
+September 17 package adoption. The boards were captured with 6.1.1; the 6.1.2
+invoice-identity correction did not change their visual structure. Version 6.2.0
+adds owner-only file uploads and file labels/cards in delivery-gallery management;
+those affected states still require a Paper update and comparison. Capture
+provenance is unchanged. This is not a claim about the deployed site's version.
 
 Each Paper file has Start Here & Foundations, Components & States, Desktop,
 Mobile, and Interaction & Additional Layouts pages. Use the inventory for exact
@@ -48,7 +50,7 @@ Private `/delivery/[token]`, client portals and provider-hosted checkout screens
 are excluded. Admin delivery gallery management uses fictional records and no
 private assets. Keep **portfolio galleries** and **delivery galleries** distinct.
 
-The local owner file-upload change adds an any-file picker for verified Angels
+The Admin 6.2.0 owner file-upload change adds an any-file picker for verified Angels
 Rest creator membership and file labels in delivery-gallery management. The
 handbook fixture defaults to the owner policy; add `uploadPolicy=media` for a
 website client. Open a fictional gallery to inspect its uploader. These source
