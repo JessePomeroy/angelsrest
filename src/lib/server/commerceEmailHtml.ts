@@ -480,6 +480,8 @@ function renderReceiptDocument(input: ReceiptDocument) {
 	<meta name="supported-color-schemes" content="light">
 	<title>${escapeHtml(input.documentTitle)} · ${siteName}</title>
 	<style>
+		/* Gmail iOS recolors text but not images. Use solid paper so both can adapt together. */
+		u + .receipt-page .receipt-shell { background-image: none !important; }
 		@media only screen and (max-width: 520px) {
 			.receipt-shell { width: 100% !important; }
 			.receipt-pad { padding-left: 22px !important; padding-right: 22px !important; }
@@ -488,7 +490,7 @@ function renderReceiptDocument(input: ReceiptDocument) {
 		}
 	</style>
 </head>
-<body style="margin: 0; padding: 0; background: #d9d7d0; -webkit-text-size-adjust: 100%;">
+<body class="receipt-page" style="margin: 0; padding: 0; background: #d9d7d0; -webkit-text-size-adjust: 100%;">
 	<div style="display: none; max-height: 0; overflow: hidden; opacity: 0; color: transparent; mso-hide: all;">${escapeHtml(input.preheader)}</div>
 	<table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" bgcolor="#d9d7d0" style="width: 100%; background: #d9d7d0;">
 		<tr>
