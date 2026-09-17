@@ -1,5 +1,11 @@
 # @jessepomeroy/crm-api
 
+## 5.3.0
+
+### Minor Changes
+
+- 08b1da2: Expose the authenticated delivery-gallery upload policy. Only stored Angels Rest creator membership receives all-file uploads; website clients retain the media policy.
+
 ## 5.2.0
 
 ### Minor Changes
