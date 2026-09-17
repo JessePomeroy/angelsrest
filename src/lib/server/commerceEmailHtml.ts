@@ -212,11 +212,16 @@ function renderItems(items: readonly CommerceEmailItem[]) {
 		.join("");
 }
 
+/** Escape live text before Gmail blends. Short classes keep maximum carts below Gmail clipping. */
+function receiptText(value: string, light = false) {
+	return `<span class="${light ? "rl" : "ri"}"><span class="rd">${escapedLines(value)}</span></span>`;
+}
+
 function renderReceiptItems(items: readonly CommerceEmailItem[]) {
 	if (items.length === 0) {
 		return `<tr>
-		<td style="padding: 16px 0; border-bottom: 1px dashed #6e6a61; color: #373530; font-family: 'Noto Sans Mono', 'Roboto Mono', 'Lucida Console', Monaco, Consolas, 'Liberation Mono', monospace; font-size: 13px; letter-spacing: -0.02em; line-height: 1.55;">
-			The payment receipt has the complete item details.
+		<td style="padding: 16px 0; border-bottom: 1px dashed #6e6a61; color: #373530; font-family: 'Noto Sans Mono', 'Roboto Mono', Menlo, 'Lucida Console', Monaco, Consolas, 'Liberation Mono', monospace; font-size: 13px; letter-spacing: -0.02em; line-height: 1.55;">
+			${receiptText("The payment receipt has the complete item details.")}
 		</td>
 	</tr>`;
 	}
@@ -227,12 +232,12 @@ function renderReceiptItems(items: readonly CommerceEmailItem[]) {
 		<td style="padding: 14px 0; border-bottom: 1px dashed #8a857a;">
 			<table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="table-layout: fixed;">
 				<tr>
-					<td valign="top" style="padding: 0 14px 0 0; color: #262521; font-family: 'Noto Sans Mono', 'Roboto Mono', 'Lucida Console', Monaco, Consolas, 'Liberation Mono', monospace; font-size: 13px; font-weight: 700; letter-spacing: -0.025em; line-height: 1.35; overflow-wrap: anywhere; word-break: break-word; text-transform: uppercase;">
-						${escapeHtml(item.description)}
-						<div style="padding-top: 4px; color: #555149; font-size: 13px; font-weight: 400; line-height: 1.45; text-transform: none;">${escapeHtml(item.quantity)} × ${escapeHtml(item.unitPrice)}</div>
+					<td valign="top" style="padding: 0 14px 0 0; color: #262521; font-family: 'Noto Sans Mono', 'Roboto Mono', Menlo, 'Lucida Console', Monaco, Consolas, 'Liberation Mono', monospace; font-size: 13px; font-weight: 700; letter-spacing: -0.025em; line-height: 1.35; overflow-wrap: anywhere; word-break: break-word; text-transform: uppercase;">
+						${receiptText(item.description)}
+						<div style="padding-top: 4px; color: #555149; font-size: 13px; font-weight: 400; line-height: 1.45; text-transform: none;">${receiptText(`${item.quantity} × ${item.unitPrice}`)}</div>
 					</td>
-					<td valign="top" align="right" style="width: 96px; color: #262521; font-family: 'Noto Sans Mono', 'Roboto Mono', 'Lucida Console', Monaco, Consolas, 'Liberation Mono', monospace; font-size: 13px; font-weight: 700; font-variant-ligatures: none; font-variant-numeric: tabular-nums; letter-spacing: -0.025em; line-height: 1.35; white-space: nowrap;">
-						${escapeHtml(item.total)}
+					<td valign="top" align="right" style="width: 96px; color: #262521; font-family: 'Noto Sans Mono', 'Roboto Mono', Menlo, 'Lucida Console', Monaco, Consolas, 'Liberation Mono', monospace; font-size: 13px; font-weight: 700; font-variant-ligatures: none; font-variant-numeric: tabular-nums; letter-spacing: -0.025em; line-height: 1.35; white-space: nowrap;">
+						${receiptText(item.total)}
 					</td>
 				</tr>
 			</table>
@@ -396,25 +401,25 @@ function receiptActionBlock(label: string, url: string) {
 	return `<table class="receipt-action" role="presentation" cellspacing="0" cellpadding="0" border="0" style="margin: 22px 0 0;">
 	<tr>
 		<td bgcolor="#262521" style="mso-padding-alt: 13px 18px; text-align: center;">
-			<a class="receipt-button" href="${escapedUrl}" style="display: inline-block; padding: 13px 18px; color: #f7f3e9; font-family: 'Noto Sans Mono', 'Roboto Mono', 'Lucida Console', Monaco, Consolas, 'Liberation Mono', monospace; font-size: 13px; font-weight: 700; letter-spacing: 0.04em; line-height: 1; text-decoration: none; text-transform: uppercase;">${escapeHtml(label)}</a>
+			<a class="receipt-button" href="${escapedUrl}" style="display: inline-block; padding: 13px 18px; color: #f7f3e9; font-family: 'Noto Sans Mono', 'Roboto Mono', Menlo, 'Lucida Console', Monaco, Consolas, 'Liberation Mono', monospace; font-size: 13px; font-weight: 700; letter-spacing: 0.04em; line-height: 1; text-decoration: none; text-transform: uppercase;">${receiptText(label, true)}</a>
 		</td>
 	</tr>
 </table>
-<p style="margin: 18px 0 5px; color: #555149; font-family: 'Noto Sans Mono', 'Roboto Mono', 'Lucida Console', Monaco, Consolas, 'Liberation Mono', monospace; font-size: 11px; line-height: 1.5; text-transform: uppercase;">Button not working? Use this address:</p>
-<p style="margin: 0; font-family: 'Noto Sans Mono', 'Roboto Mono', 'Lucida Console', Monaco, Consolas, 'Liberation Mono', monospace; font-size: 11px; line-height: 1.5; overflow-wrap: anywhere; word-break: break-word;"><a href="${escapedUrl}" style="color: #302e29; text-decoration: underline;">${escapedUrl}</a></p>`;
+<p style="margin: 18px 0 5px; color: #555149; font-family: 'Noto Sans Mono', 'Roboto Mono', Menlo, 'Lucida Console', Monaco, Consolas, 'Liberation Mono', monospace; font-size: 11px; line-height: 1.5; text-transform: uppercase;">${receiptText("Button not working? Use this address:")}</p>
+<p style="margin: 0; font-family: 'Noto Sans Mono', 'Roboto Mono', Menlo, 'Lucida Console', Monaco, Consolas, 'Liberation Mono', monospace; font-size: 11px; line-height: 1.5; overflow-wrap: anywhere; word-break: break-word;"><a href="${escapedUrl}" style="color: #302e29; text-decoration: underline;">${receiptText(url)}</a></p>`;
 }
 
 function receiptSection(heading: string, content: string) {
 	return `<tr>
 	<td class="receipt-pad" style="padding: 24px 38px 28px; border-top: 1px dashed #777269;">
-		<h2 style="margin: 0; color: #262521; font-family: 'Noto Sans Mono', 'Roboto Mono', 'Lucida Console', Monaco, Consolas, 'Liberation Mono', monospace; font-size: 16px; font-weight: 700; letter-spacing: 0.08em; line-height: 1.35; text-transform: uppercase;">${escapeHtml(heading)}</h2>
+		<h2 style="margin: 0; color: #262521; font-family: 'Noto Sans Mono', 'Roboto Mono', Menlo, 'Lucida Console', Monaco, Consolas, 'Liberation Mono', monospace; font-size: 16px; font-weight: 700; letter-spacing: 0.08em; line-height: 1.35; text-transform: uppercase;">${receiptText(heading)}</h2>
 		${content}
 	</td>
 </tr>`;
 }
 
 function receiptParagraph(value: string) {
-	return `<p style="margin: 13px 0 0; color: #373530; font-family: 'Noto Sans Mono', 'Roboto Mono', 'Lucida Console', Monaco, Consolas, 'Liberation Mono', monospace; font-size: 13px; line-height: 1.6; overflow-wrap: anywhere; word-break: break-word;">${escapeHtml(value)}</p>`;
+	return `<p style="margin: 13px 0 0; color: #373530; font-family: 'Noto Sans Mono', 'Roboto Mono', Menlo, 'Lucida Console', Monaco, Consolas, 'Liberation Mono', monospace; font-size: 13px; line-height: 1.6; overflow-wrap: anywhere; word-break: break-word;">${receiptText(value)}</p>`;
 }
 
 function receiptDetailTable(rows: readonly SummaryFact[]) {
@@ -422,8 +427,8 @@ function receiptDetailTable(rows: readonly SummaryFact[]) {
 	${rows
 		.map(
 			(row) => `<tr>
-		<td valign="top" style="width: 118px; padding: 8px 12px 8px 0; border-bottom: 1px dashed #8a857a; color: #555149; font-family: 'Noto Sans Mono', 'Roboto Mono', 'Lucida Console', Monaco, Consolas, 'Liberation Mono', monospace; font-size: 11px; letter-spacing: 0.06em; line-height: 1.45; text-transform: uppercase;">${escapeHtml(row.label)}</td>
-		<td valign="top" style="padding: 8px 0; border-bottom: 1px dashed #8a857a; color: #262521; font-family: 'Noto Sans Mono', 'Roboto Mono', 'Lucida Console', Monaco, Consolas, 'Liberation Mono', monospace; font-size: 12px; font-weight: 700; line-height: 1.5; overflow-wrap: anywhere; word-break: break-word;">${escapedLines(row.value)}</td>
+		<td valign="top" style="width: 118px; padding: 8px 12px 8px 0; border-bottom: 1px dashed #8a857a; color: #555149; font-family: 'Noto Sans Mono', 'Roboto Mono', Menlo, 'Lucida Console', Monaco, Consolas, 'Liberation Mono', monospace; font-size: 11px; letter-spacing: 0.06em; line-height: 1.45; text-transform: uppercase;">${receiptText(row.label)}</td>
+		<td valign="top" style="padding: 8px 0; border-bottom: 1px dashed #8a857a; color: #262521; font-family: 'Noto Sans Mono', 'Roboto Mono', Menlo, 'Lucida Console', Monaco, Consolas, 'Liberation Mono', monospace; font-size: 12px; font-weight: 700; line-height: 1.5; overflow-wrap: anywhere; word-break: break-word;">${receiptText(row.value)}</td>
 	</tr>`,
 		)
 		.join("")}
@@ -433,7 +438,7 @@ function receiptDetailTable(rows: readonly SummaryFact[]) {
 function receiptNotice(value: string) {
 	return `<table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="margin-top: 16px;">
 	<tr>
-		<td class="receipt-notice" bgcolor="#ebe4d5" style="padding: 15px 16px; border: 1px dashed #8a857a; color: #373530; font-family: 'Noto Sans Mono', 'Roboto Mono', 'Lucida Console', Monaco, Consolas, 'Liberation Mono', monospace; font-size: 12px; line-height: 1.6; overflow-wrap: anywhere; word-break: break-word;">${escapedLines(value)}</td>
+		<td class="receipt-notice" bgcolor="#ebe4d5" style="padding: 15px 16px; border: 1px dashed #8a857a; color: #373530; font-family: 'Noto Sans Mono', 'Roboto Mono', Menlo, 'Lucida Console', Monaco, Consolas, 'Liberation Mono', monospace; font-size: 12px; line-height: 1.6; overflow-wrap: anywhere; word-break: break-word;">${receiptText(value)}</td>
 	</tr>
 </table>`;
 }
@@ -458,12 +463,14 @@ function receiptFacts(facts: readonly SummaryFact[]) {
 	${facts
 		.map(
 			(fact, index) =>
-				`<tr><td style="padding: ${index === 0 ? "12px" : "5px"} 10px ${index === facts.length - 1 ? "12px" : "5px"} 0; color: #555149; font-family: 'Noto Sans Mono', 'Roboto Mono', 'Lucida Console', Monaco, Consolas, 'Liberation Mono', monospace; font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase;">${escapeHtml(fact.label)}</td><td align="right" style="padding: ${index === 0 ? "12px" : "5px"} 0 ${index === facts.length - 1 ? "12px" : "5px"} 10px; color: #262521; font-family: 'Noto Sans Mono', 'Roboto Mono', 'Lucida Console', Monaco, Consolas, 'Liberation Mono', monospace; font-size: 12px; font-weight: 700; overflow-wrap: anywhere; word-break: break-word; text-transform: uppercase;">${escapeHtml(fact.value)}</td></tr>`,
+				`<tr><td style="padding: ${index === 0 ? "12px" : "5px"} 10px ${index === facts.length - 1 ? "12px" : "5px"} 0; color: #555149; font-family: 'Noto Sans Mono', 'Roboto Mono', Menlo, 'Lucida Console', Monaco, Consolas, 'Liberation Mono', monospace; font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase;">${receiptText(fact.label)}</td><td align="right" style="padding: ${index === 0 ? "12px" : "5px"} 0 ${index === facts.length - 1 ? "12px" : "5px"} 10px; color: #262521; font-family: 'Noto Sans Mono', 'Roboto Mono', Menlo, 'Lucida Console', Monaco, Consolas, 'Liberation Mono', monospace; font-size: 12px; font-weight: 700; overflow-wrap: anywhere; word-break: break-word; text-transform: uppercase;">${receiptText(fact.value)}</td></tr>`,
 		)
 		.join("")}
 </table>`;
 }
 
+// Gmail inverts CSS colors, not images. Exclusion/difference preserve dark ink;
+// screen/difference preserve white button text. Scope blends to Gmail’s rewritten body.
 function renderReceiptDocument(input: ReceiptDocument) {
 	const siteName = escapeHtml(input.brand.siteName);
 	const homeUrl = safeHref(input.brand.homeUrl);
@@ -480,8 +487,11 @@ function renderReceiptDocument(input: ReceiptDocument) {
 	<meta name="supported-color-schemes" content="light">
 	<title>${escapeHtml(input.documentTitle)} · ${siteName}</title>
 	<style>
-		/* Gmail iOS recolors text but not images. Use solid paper so both can adapt together. */
-		u + .receipt-page .receipt-shell { background-image: none !important; }
+		u + .receipt-page .ri { background: #000; mix-blend-mode: exclusion; }
+		u + .receipt-page .rl { background: #000; mix-blend-mode: screen; }
+		u + .receipt-page .rd { background: #000; mix-blend-mode: difference; color: #fff; }
+		u + .receipt-page .receipt-notice { background-image: linear-gradient(#ebe4d5, #ebe4d5); }
+		u + .receipt-page .receipt-action td { background-image: linear-gradient(#262521, #262521); }
 		@media only screen and (max-width: 520px) {
 			.receipt-shell { width: 100% !important; }
 			.receipt-pad { padding-left: 22px !important; padding-right: 22px !important; }
@@ -496,27 +506,27 @@ function renderReceiptDocument(input: ReceiptDocument) {
 		<tr>
 			<td align="center" style="padding: 32px 12px 46px;">
 				<!--[if mso]><table role="presentation" width="480" cellspacing="0" cellpadding="0" border="0"><tr><td><![endif]-->
-				<table class="receipt-shell" role="presentation" width="480" cellspacing="0" cellpadding="0" border="0" bgcolor="#f5f1e7"${textureBackground} style="width: 100%; max-width: 480px; table-layout: fixed; background-color: #f5f1e7;${textureSource ? ` background-image: url('${textureSource}'); background-position: top center; background-repeat: repeat-y; background-size: 100% auto;` : ""} box-shadow: 0 12px 28px rgba(48, 45, 39, 0.18); font-family: 'Noto Sans Mono', 'Roboto Mono', 'Lucida Console', Monaco, Consolas, 'Liberation Mono', monospace; font-variant-ligatures: none; overflow-wrap: anywhere; word-break: break-word;">
+				<table class="receipt-shell" role="presentation" width="480" cellspacing="0" cellpadding="0" border="0" bgcolor="#f5f1e7"${textureBackground} style="width: 100%; max-width: 480px; table-layout: fixed; background-color: #f5f1e7; background-image: ${textureSource ? `url('${textureSource}'), ` : ""}linear-gradient(#f5f1e7, #f5f1e7); background-position: top center; background-repeat: repeat-y; background-size: 100% auto; box-shadow: 0 12px 28px rgba(48, 45, 39, 0.18); font-family: 'Noto Sans Mono', 'Roboto Mono', Menlo, 'Lucida Console', Monaco, Consolas, 'Liberation Mono', monospace; font-variant-ligatures: none; overflow-wrap: anywhere; word-break: break-word;">
 					<tr>
 						<td class="receipt-pad" align="center" style="padding: 34px 38px 25px; border-top: 2px dashed #5f5b53; border-bottom: 1px dashed #777269;">
-							<a href="${homeUrl}" style="color: #262521; font-family: 'Noto Sans Mono', 'Roboto Mono', 'Lucida Console', Monaco, Consolas, 'Liberation Mono', monospace; font-size: 16px; font-weight: 700; letter-spacing: 0.12em; line-height: 1.4; text-decoration: none; text-transform: uppercase;">${siteName}</a>
-							<p style="margin: 7px 0 0; color: #555149; font-family: 'Noto Sans Mono', 'Roboto Mono', 'Lucida Console', Monaco, Consolas, 'Liberation Mono', monospace; font-size: 11px; letter-spacing: 0.1em; line-height: 1.4; text-transform: uppercase;">${escapeHtml(input.descriptor)}</p>
+							<a href="${homeUrl}" style="color: #262521; font-family: 'Noto Sans Mono', 'Roboto Mono', Menlo, 'Lucida Console', Monaco, Consolas, 'Liberation Mono', monospace; font-size: 16px; font-weight: 700; letter-spacing: 0.12em; line-height: 1.4; text-decoration: none; text-transform: uppercase;">${receiptText(input.brand.siteName)}</a>
+							<p style="margin: 7px 0 0; color: #555149; font-family: 'Noto Sans Mono', 'Roboto Mono', Menlo, 'Lucida Console', Monaco, Consolas, 'Liberation Mono', monospace; font-size: 11px; letter-spacing: 0.1em; line-height: 1.4; text-transform: uppercase;">${receiptText(input.descriptor)}</p>
 						</td>
 					</tr>
 					<tr>
 						<td class="receipt-pad" style="padding: 27px 38px 25px;">
-							<p style="margin: 0; color: #555149; font-family: 'Noto Sans Mono', 'Roboto Mono', 'Lucida Console', Monaco, Consolas, 'Liberation Mono', monospace; font-size: 11px; font-weight: 700; letter-spacing: 0.1em; line-height: 1.4; text-transform: uppercase;">${escapeHtml(input.status)}</p>
-							<h1 class="receipt-title" style="margin: 11px 0 0; color: #262521; font-family: 'Noto Sans Mono', 'Roboto Mono', 'Lucida Console', Monaco, Consolas, 'Liberation Mono', monospace; font-size: 32px; font-weight: 700; letter-spacing: -0.065em; line-height: 1; text-transform: uppercase;">${escapeHtml(input.title)}</h1>
-							<p style="margin: 17px 0 0; color: #373530; font-family: 'Noto Sans Mono', 'Roboto Mono', 'Lucida Console', Monaco, Consolas, 'Liberation Mono', monospace; font-size: 13px; line-height: 1.6;">${escapeHtml(input.intro)}</p>
+							<p style="margin: 0; color: #555149; font-family: 'Noto Sans Mono', 'Roboto Mono', Menlo, 'Lucida Console', Monaco, Consolas, 'Liberation Mono', monospace; font-size: 11px; font-weight: 700; letter-spacing: 0.1em; line-height: 1.4; text-transform: uppercase;">${receiptText(input.status)}</p>
+							<h1 class="receipt-title" style="margin: 11px 0 0; color: #262521; font-family: 'Noto Sans Mono', 'Roboto Mono', Menlo, 'Lucida Console', Monaco, Consolas, 'Liberation Mono', monospace; font-size: 32px; font-weight: 700; letter-spacing: -0.065em; line-height: 1; text-transform: uppercase;">${receiptText(input.title)}</h1>
+							<p style="margin: 17px 0 0; color: #373530; font-family: 'Noto Sans Mono', 'Roboto Mono', Menlo, 'Lucida Console', Monaco, Consolas, 'Liberation Mono', monospace; font-size: 13px; line-height: 1.6;">${receiptText(input.intro)}</p>
 							${receiptFacts(input.facts ?? [])}
 						</td>
 					</tr>
 					${input.body}
 					<tr>
 						<td class="receipt-pad" align="center" style="padding: 27px 38px 36px; border-top: 1px dashed #777269; border-bottom: 2px dashed #5f5b53;">
-							<p style="margin: 0; color: #262521; font-family: 'Noto Sans Mono', 'Roboto Mono', 'Lucida Console', Monaco, Consolas, 'Liberation Mono', monospace; font-size: 15px; font-weight: 700; letter-spacing: 0.08em; line-height: 1.5; text-transform: uppercase;">${escapeHtml(input.footerTitle)}</p>
-							<p style="margin: 14px 0 0; color: #555149; font-family: 'Noto Sans Mono', 'Roboto Mono', 'Lucida Console', Monaco, Consolas, 'Liberation Mono', monospace; font-size: 11px; line-height: 1.55;">${escapeHtml(input.footer)}</p>
-							<p style="margin: 15px 0 0; font-family: 'Noto Sans Mono', 'Roboto Mono', 'Lucida Console', Monaco, Consolas, 'Liberation Mono', monospace; font-size: 11px; line-height: 1.5;"><a href="${homeUrl}" style="color: #302e29; text-decoration: underline;">${homeUrl}</a></p>
+							<p style="margin: 0; color: #262521; font-family: 'Noto Sans Mono', 'Roboto Mono', Menlo, 'Lucida Console', Monaco, Consolas, 'Liberation Mono', monospace; font-size: 15px; font-weight: 700; letter-spacing: 0.08em; line-height: 1.5; text-transform: uppercase;">${receiptText(input.footerTitle)}</p>
+							<p style="margin: 14px 0 0; color: #555149; font-family: 'Noto Sans Mono', 'Roboto Mono', Menlo, 'Lucida Console', Monaco, Consolas, 'Liberation Mono', monospace; font-size: 11px; line-height: 1.55;">${receiptText(input.footer)}</p>
+							<p style="margin: 15px 0 0; font-family: 'Noto Sans Mono', 'Roboto Mono', Menlo, 'Lucida Console', Monaco, Consolas, 'Liberation Mono', monospace; font-size: 11px; line-height: 1.5;"><a href="${homeUrl}" style="color: #302e29; text-decoration: underline;">${receiptText(input.brand.homeUrl)}</a></p>
 						</td>
 					</tr>
 				</table>
@@ -525,7 +535,7 @@ function renderReceiptDocument(input: ReceiptDocument) {
 		</tr>
 	</table>
 </body>
-</html>`;
+</html>`.replace(/>\s+</g, "><");
 }
 
 /** Preserved R9 stationery treatment for a one-line design rollback or later reuse. */
@@ -577,17 +587,17 @@ function renderOrderReceipt(
 		input.delivery.kind === "digital"
 			? receiptSection(
 					"Download",
-					`<p style="margin: 13px 0 0; color: #373530; font-family: 'Noto Sans Mono', 'Roboto Mono', 'Lucida Console', Monaco, Consolas, 'Liberation Mono', monospace; font-size: 13px; line-height: 1.6;">Your download stays available. On a new browser, use the email address entered at checkout.</p>${receiptActionBlock("Download purchase", input.delivery.downloadUrl)}`,
+					`<p style="margin: 13px 0 0; color: #373530; font-family: 'Noto Sans Mono', 'Roboto Mono', Menlo, 'Lucida Console', Monaco, Consolas, 'Liberation Mono', monospace; font-size: 13px; line-height: 1.6;">${receiptText("Your download stays available. On a new browser, use the email address entered at checkout.")}</p>${receiptActionBlock("Download purchase", input.delivery.downloadUrl)}`,
 				)
 			: `${receiptSection(
 					"Ship to",
-					`<address style="margin: 13px 0 0; color: #373530; font-family: 'Noto Sans Mono', 'Roboto Mono', 'Lucida Console', Monaco, Consolas, 'Liberation Mono', monospace; font-size: 13px; font-style: normal; line-height: 1.6; overflow-wrap: anywhere; word-break: break-word; text-transform: uppercase;">${escapedLines(input.delivery.shippingAddress)}</address>${receiptActionBlock("View order status", input.delivery.statusUrl)}`,
+					`<address style="margin: 13px 0 0; color: #373530; font-family: 'Noto Sans Mono', 'Roboto Mono', Menlo, 'Lucida Console', Monaco, Consolas, 'Liberation Mono', monospace; font-size: 13px; font-style: normal; line-height: 1.6; overflow-wrap: anywhere; word-break: break-word; text-transform: uppercase;">${receiptText(input.delivery.shippingAddress)}</address>${receiptActionBlock("View order status", input.delivery.statusUrl)}`,
 				)}${receiptSection(
 					"Next",
 					`<table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="margin-top: 12px;">
-				<tr><td valign="top" style="width: 28px; padding: 3px 0 9px; color: #555149; font-family: 'Noto Sans Mono', 'Roboto Mono', 'Lucida Console', Monaco, Consolas, 'Liberation Mono', monospace; font-size: 12px;">01</td><td style="padding: 0 0 9px 8px; color: #373530; font-family: 'Noto Sans Mono', 'Roboto Mono', 'Lucida Console', Monaco, Consolas, 'Liberation Mono', monospace; font-size: 13px; line-height: 1.55;">We are arranging fulfillment for your order.</td></tr>
-				<tr><td valign="top" style="width: 28px; padding: 3px 0 9px; color: #555149; font-family: 'Noto Sans Mono', 'Roboto Mono', 'Lucida Console', Monaco, Consolas, 'Liberation Mono', monospace; font-size: 12px;">02</td><td style="padding: 0 0 9px 8px; color: #373530; font-family: 'Noto Sans Mono', 'Roboto Mono', 'Lucida Console', Monaco, Consolas, 'Liberation Mono', monospace; font-size: 13px; line-height: 1.55;">You can check progress on your order status page.</td></tr>
-				<tr><td valign="top" style="width: 28px; padding: 3px 0 0; color: #555149; font-family: 'Noto Sans Mono', 'Roboto Mono', 'Lucida Console', Monaco, Consolas, 'Liberation Mono', monospace; font-size: 12px;">03</td><td style="padding: 0 0 0 8px; color: #373530; font-family: 'Noto Sans Mono', 'Roboto Mono', 'Lucida Console', Monaco, Consolas, 'Liberation Mono', monospace; font-size: 13px; line-height: 1.55;">Tracking arrives by email as soon as the order ships.</td></tr>
+				<tr><td valign="top" style="width: 28px; padding: 3px 0 9px; color: #555149; font-family: 'Noto Sans Mono', 'Roboto Mono', Menlo, 'Lucida Console', Monaco, Consolas, 'Liberation Mono', monospace; font-size: 12px;">${receiptText("01")}</td><td style="padding: 0 0 9px 8px; color: #373530; font-family: 'Noto Sans Mono', 'Roboto Mono', Menlo, 'Lucida Console', Monaco, Consolas, 'Liberation Mono', monospace; font-size: 13px; line-height: 1.55;">${receiptText("We are arranging fulfillment for your order.")}</td></tr>
+				<tr><td valign="top" style="width: 28px; padding: 3px 0 9px; color: #555149; font-family: 'Noto Sans Mono', 'Roboto Mono', Menlo, 'Lucida Console', Monaco, Consolas, 'Liberation Mono', monospace; font-size: 12px;">${receiptText("02")}</td><td style="padding: 0 0 9px 8px; color: #373530; font-family: 'Noto Sans Mono', 'Roboto Mono', Menlo, 'Lucida Console', Monaco, Consolas, 'Liberation Mono', monospace; font-size: 13px; line-height: 1.55;">${receiptText("You can check progress on your order status page.")}</td></tr>
+				<tr><td valign="top" style="width: 28px; padding: 3px 0 0; color: #555149; font-family: 'Noto Sans Mono', 'Roboto Mono', Menlo, 'Lucida Console', Monaco, Consolas, 'Liberation Mono', monospace; font-size: 12px;">${receiptText("03")}</td><td style="padding: 0 0 0 8px; color: #373530; font-family: 'Noto Sans Mono', 'Roboto Mono', Menlo, 'Lucida Console', Monaco, Consolas, 'Liberation Mono', monospace; font-size: 13px; line-height: 1.55;">${receiptText("Tracking arrives by email as soon as the order ships.")}</td></tr>
 			</table>`,
 				)}`;
 
@@ -605,7 +615,7 @@ function renderOrderReceipt(
 		],
 		body: `${receiptSection(
 			"Items sold",
-			`${items}<table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="margin-top: 17px;"><tr><td style="padding: 0 12px 0 0; color: #262521; font-family: 'Noto Sans Mono', 'Roboto Mono', 'Lucida Console', Monaco, Consolas, 'Liberation Mono', monospace; font-size: 16px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase;">Total purchase</td><td align="right" style="color: #262521; font-family: 'Noto Sans Mono', 'Roboto Mono', 'Lucida Console', Monaco, Consolas, 'Liberation Mono', monospace; font-size: 18px; font-weight: 700; font-variant-numeric: tabular-nums; white-space: nowrap;">${escapeHtml(input.total)}</td></tr></table>`,
+			`${items}<table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="margin-top: 17px;"><tr><td style="padding: 0 12px 0 0; color: #262521; font-family: 'Noto Sans Mono', 'Roboto Mono', Menlo, 'Lucida Console', Monaco, Consolas, 'Liberation Mono', monospace; font-size: 16px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase;">${receiptText("Total purchase")}</td><td align="right" style="color: #262521; font-family: 'Noto Sans Mono', 'Roboto Mono', Menlo, 'Lucida Console', Monaco, Consolas, 'Liberation Mono', monospace; font-size: 18px; font-weight: 700; font-variant-numeric: tabular-nums; white-space: nowrap;">${receiptText(input.total)}</td></tr></table>`,
 		)}${delivery}`,
 		footerTitle: "— Thank you —",
 		footer: `Questions? Reply to this email and we will help. Thank you for supporting ${input.brand.siteName}.`,
