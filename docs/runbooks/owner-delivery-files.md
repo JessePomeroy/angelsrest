@@ -27,9 +27,9 @@ synchronization or a malware-scanning service.
 
 ## Release order
 
-Source changes alone do not activate the feature. This local implementation
-does not publish packages, deploy either service, update roles, or change
-Reflecting Pool's installed Admin version.
+Source changes alone do not activate the feature. Publishing packages and
+deploying services are separately authorized operations; neither changes stored
+roles or Reflecting Pool's installed Admin version.
 
 1. Deploy the additive Convex query and the matching gallery Worker. Confirm
    the owner account has its existing stored Angels Rest creator membership;
@@ -47,6 +47,23 @@ Reflecting Pool's installed Admin version.
 No new secrets, bindings, R2 resources, production dependencies, metadata table
 renames, or customer permission UI are required. Future client exceptions need
 an explicit change to both policy authorities.
+
+## September 17, 2026 rollout
+
+- The shared Convex deployment completed from reviewed, CI-green revision
+  `172245050044631d65c1ec006325d7a74b787c10`, whose tree matches merged hub
+  [PR #625](https://github.com/JessePomeroy/angelsrest/pull/625).
+- Gallery Worker [PR #113](https://github.com/JessePomeroy/gallery-worker/pull/113)
+  is deployed at version `2f88f62a-bfbe-40e9-afd2-f969c0b41da0`. Existing
+  Container, ZIP Workflow, variables and storage bindings were retained.
+- [Admin 6.2.0](https://github.com/JessePomeroy/admin-dashboard/releases/tag/v6.2.0)
+  is published and Angels Rest pins that exact version with its lockfile.
+  CI tests both owner and client upload paths against Worker commit
+  `c57b3858b8e8708569ef18800a35464ac0da240d`, not a copied response mock.
+- Production verification does not use customer gallery records or assets.
+  Authenticated owner/client upload smoke verification remains a separate gap;
+  role isolation and real upload/download handlers are covered with fictional
+  records and in-memory storage.
 
 ## Local verification
 
@@ -77,6 +94,12 @@ were inspected. Host lint, host/package/Worker/CRM API type checks and the Admin
 and production host builds passed. The host also type-checks with its original
 Admin 6.1.2 dependency restored. The production build retained the existing
 optional React Email/platform-specific Sharp tracing warnings.
+
+Release verification also passed all 36 targeted desktop/mobile delivery cases,
+508 full component browser cases (including WebKit; 11 existing platform-specific
+skips), and 11 public/server end-to-end cases. Independent review caught and
+verified the correction of focus loss when a failed video preview is removed.
+The published Admin 6.2.0 artifact passed both real Worker contract cases.
 
 ## Design reference gap
 
