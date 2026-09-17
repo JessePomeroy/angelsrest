@@ -58,12 +58,22 @@ async function moveLightbox(direction: -1 | 1) {
 	if (nextIndex < 0 || nextIndex >= images.length) return;
 	const focused = document.activeElement;
 	lightboxIndex = nextIndex;
+	await restoreLightboxFocus(focused);
+}
+
+async function restoreLightboxFocus(focused: Element | null) {
 	await tick();
-	// Endpoint navigation buttons and media controls can disappear on a change.
+	// Navigation and failed previews can remove the focused control.
 	// Keep keyboard input in the lightbox when the focused element was removed.
 	if (lightboxEl && focused && !focused.isConnected && document.activeElement === document.body) {
 		lightboxEl.querySelector<HTMLElement>(".lb-close")?.focus();
 	}
+}
+
+async function markPreviewFailed(imageId: string) {
+	const focused = document.activeElement;
+	failedPreviewIds = markFailed(failedPreviewIds, imageId);
+	await restoreLightboxFocus(focused);
 }
 
 function handleKeydown(e: KeyboardEvent) {
@@ -376,13 +386,13 @@ let favoriteCount = $derived(
 						playsinline
 						preload="metadata"
 						aria-label={"Video preview: " + images[lightboxIndex].filename}
-						onerror={() => failedPreviewIds = markFailed(failedPreviewIds, images[lightboxIndex]._id)}
+						onerror={() => void markPreviewFailed(images[lightboxIndex]._id)}
 					></video>
 				{:else}
 					<div class="lightbox-file"><span>video unavailable</span></div>
 				{/if}
 			{:else if images[lightboxIndex].canPreview && !failedPreviewIds.has(images[lightboxIndex]._id)}
-				<img src={images[lightboxIndex].previewUrl} alt={images[lightboxIndex].filename} draggable="false" onerror={() => failedPreviewIds = markFailed(failedPreviewIds, images[lightboxIndex]._id)} />
+				<img src={images[lightboxIndex].previewUrl} alt={images[lightboxIndex].filename} draggable="false" onerror={() => void markPreviewFailed(images[lightboxIndex]._id)} />
 			{:else}
 				<div class="lightbox-file">
 					<span>{images[lightboxIndex].canPreview ? "image unavailable" : images[lightboxIndex].fileLabel}</span>

@@ -55,6 +55,33 @@ test.beforeEach(async ({ page }) => {
 	});
 });
 
+for (const focusPlayer of [true, false]) {
+	test(`video failure keeps keyboard focus in the lightbox: player focused ${focusPlayer}`, async ({ page }) => {
+		let failPreview!: () => void;
+		const failure = new Promise<void>((resolve) => { failPreview = resolve; });
+		await page.route("https://gallery-worker.thinkingofview.workers.dev/**", async (route) => {
+			await failure;
+			await route.fulfill({ status: 500, body: "Preview unavailable" });
+		});
+		await page.goto("/?fixture=delivery-downloads&video&filename=ceremony.mp4");
+		const opener = page.getByRole("button", { name: "View item 1 of 4", exact: true });
+		await opener.click();
+		const dialog = page.getByRole("dialog", { name: "Gallery lightbox" });
+		const close = dialog.getByRole("button", { name: "Close lightbox" });
+		await expect(close).toBeFocused();
+		if (focusPlayer) {
+			await dialog.locator("video").focus();
+			await expect(dialog.locator("video")).toBeFocused();
+		}
+		failPreview();
+		await expect(dialog.getByText("video unavailable", { exact: true })).toBeVisible();
+		await expect(close).toBeFocused();
+		await page.keyboard.press("Escape");
+		await expect(dialog).toHaveCount(0);
+		await expect(opener).toBeFocused();
+	});
+}
+
 for (const scenario of cases) {
 	test(`delivery lightbox controls fit before interaction: ${scenario.name}`, async ({ page }, testInfo) => {
 		const params = new URLSearchParams({
