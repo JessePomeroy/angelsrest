@@ -4,6 +4,10 @@ import { createAuthenticatedConvexClient } from "$lib/server/convexClient";
 import { getPublicSiteOrigin } from "$lib/server/runtimeConfig";
 import { getStripe } from "$lib/server/stripeClient";
 import {
+	assertStripeConnectOnboardingEnabled,
+	assertStripeConnectRequestOrigin,
+} from "$lib/server/stripeConnectGate";
+import {
 	createStripeConnectOnboardingSession,
 	normalizeStripeConnectError,
 	StripeConnectOnboardingError,
@@ -15,6 +19,8 @@ export async function POST({ request, cookies }) {
 	const convex = createAuthenticatedConvexClient(token);
 
 	try {
+		assertStripeConnectRequestOrigin(request);
+		assertStripeConnectOnboardingEnabled();
 		const body: unknown = await request.json().catch(() => {
 			throw new StripeConnectOnboardingError(400, "Invalid onboarding request");
 		});

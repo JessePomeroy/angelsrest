@@ -1,6 +1,7 @@
 import type { FunctionReturnType } from "convex/server";
 import type Stripe from "stripe";
 import type { api } from "$convex/api";
+import type { StripeConnectReadiness } from "$lib/stripeConnectSetup";
 
 type ConnectTarget = FunctionReturnType<typeof api.platform.getStripeConnectTarget>;
 type ConnectAttempt = FunctionReturnType<typeof api.platform.beginStripeConnectAccount>;
@@ -35,6 +36,12 @@ export class StripeConnectOnboardingError extends Error {
 
 export function normalizeStripeConnectError(err: unknown) {
 	if (err instanceof StripeConnectOnboardingError) return err;
+	if (err && typeof err === "object" && "data" in err && err.data === "STRIPE_CONNECT_FORBIDDEN") {
+		return new StripeConnectOnboardingError(
+			403,
+			"This login cannot manage payments for that website.",
+		);
+	}
 
 	const message = getErrorMessage(err);
 	if (!message) return null;
@@ -49,8 +56,8 @@ export function normalizeStripeConnectError(err: unknown) {
 	const stripeError = err as { type?: unknown; statusCode?: unknown };
 	if (typeof stripeError.type === "string" && stripeError.type.startsWith("Stripe")) {
 		return new StripeConnectOnboardingError(
-			typeof stripeError.statusCode === "number" ? stripeError.statusCode : 502,
-			message,
+			502,
+			"Stripe could not complete this request. Please try again or contact Angels Rest.",
 		);
 	}
 
@@ -66,6 +73,36 @@ export interface StripeConnectOnboardingOptions {
 }
 
 export type StripeConnectRefreshOptions = Omit<StripeConnectOnboardingOptions, "now">;
+
+/** Read-only provider verification; visiting or returning cannot create an account. */
+export async function readStripeConnectStatus({
+	siteUrl: rawSiteUrl,
+	stripe,
+	store,
+}: Pick<StripeConnectOnboardingOptions, "siteUrl" | "stripe" | "store">) {
+	const client = await store.findClient(requireSiteUrl(rawSiteUrl));
+	if (!client.stripeConnectedAccountId) {
+		return { siteUrl: client.siteUrl, accountId: null, readiness: null };
+	}
+	if (!client.attempt || !client.tenantId) {
+		throw new StripeConnectOnboardingError(
+			409,
+			"This Stripe connection needs an Angels Rest review.",
+		);
+	}
+	assertAttemptContext(client.attempt, await readPlatformContext(stripe));
+	const account = await stripe.accounts.retrieve(client.stripeConnectedAccountId);
+	assertAccountMatchesAttempt(account, {
+		...client,
+		attempt: client.attempt,
+		tenantId: client.tenantId,
+	});
+	return {
+		siteUrl: client.siteUrl,
+		accountId: account.id,
+		readiness: readStripeConnectReadiness(account),
+	};
+}
 
 export async function createStripeConnectOnboardingSession({
 	siteUrl: rawSiteUrl,
@@ -241,15 +278,15 @@ export function readStripeConnectReadiness(
 		Stripe.Account,
 		"charges_enabled" | "payouts_enabled" | "details_submitted" | "requirements"
 	>,
-) {
-	const status =
+): StripeConnectReadiness {
+	const status: "ready" | "setup_required" | "restricted" | "pending_verification" =
 		account.charges_enabled && account.payouts_enabled
 			? "ready"
-			: !account.details_submitted
-				? "setup_required"
-				: account.requirements?.disabled_reason &&
-						account.requirements.disabled_reason !== "requirements.pending_verification"
-					? "restricted"
+			: account.requirements?.disabled_reason &&
+					account.requirements.disabled_reason !== "requirements.pending_verification"
+				? "restricted"
+				: !account.details_submitted || (account.requirements?.currently_due?.length ?? 0) > 0
+					? "setup_required"
 					: "pending_verification";
 	return {
 		status,

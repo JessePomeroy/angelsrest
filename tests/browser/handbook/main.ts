@@ -1,5 +1,6 @@
 import { mount } from "svelte";
 import "../../../src/lib/styles/global.css";
+import StripeSetupHarness from "../fixtures/StripeSetupHarness.svelte";
 import Handbook from "./Handbook.svelte";
 import HostSessionHandbook from "./HostSessionHandbook.svelte";
 
@@ -11,5 +12,6 @@ window.fetch = async () => {
 document.documentElement.dataset.handbookFixture = "synthetic-admin";
 const target = document.getElementById("app");
 if (!target) throw new Error("Missing handbook fixture mount target");
-const component = new URLSearchParams(window.location.search).get("screen") === "session" ? HostSessionHandbook : Handbook;
+const screen = new URLSearchParams(window.location.search).get("screen");
+const component = screen === "stripe-setup" ? StripeSetupHarness : screen === "session" ? HostSessionHandbook : Handbook;
 mount(component, { target });

@@ -8,6 +8,7 @@ import {
 	normalizeStripeConnectError,
 	normalizeStripeConnectSiteUrl,
 	readStripeConnectReadiness,
+	readStripeConnectStatus,
 	refreshStripeConnectOnboardingSession,
 	type StripeConnectStore,
 } from "$lib/server/stripeConnectOnboarding";
@@ -314,12 +315,66 @@ describe("Stripe Connect account foundation", () => {
 		});
 	});
 
+	it("reads fresh status without creating, binding, or issuing account links", async () => {
+		const s = setup();
+		expect(await readStripeConnectStatus(s.options)).toEqual({
+			siteUrl: "client.example",
+			accountId: null,
+			readiness: null,
+		});
+		expect(s.retrieve).not.toHaveBeenCalled();
+		s.prepared.stripeConnectedAccountId = ACCOUNT;
+		expect(await readStripeConnectStatus(s.options)).toMatchObject({
+			accountId: ACCOUNT,
+			readiness: { status: "setup_required" },
+		});
+		s.account.charges_enabled = true;
+		s.account.payouts_enabled = true;
+		expect(await readStripeConnectStatus(s.options)).toMatchObject({
+			readiness: { status: "ready" },
+		});
+		expect(s.create).not.toHaveBeenCalled();
+		expect(s.store.beginAttempt).not.toHaveBeenCalled();
+		expect(s.store.bindAccount).not.toHaveBeenCalled();
+		expect(s.link).not.toHaveBeenCalled();
+	});
+
+	it("does not expose provider status without current tenant access and matching ownership", async () => {
+		const s = setup();
+		s.prepared.stripeConnectedAccountId = ACCOUNT;
+		s.store.findClient.mockRejectedValueOnce(new Error("forbidden"));
+		await expect(readStripeConnectStatus(s.options)).rejects.toThrow("forbidden");
+		expect(s.retrieve).not.toHaveBeenCalled();
+		s.prepared.attempt.livemode = true;
+		await expect(readStripeConnectStatus(s.options)).rejects.toMatchObject({ status: 409 });
+		s.prepared.attempt.livemode = false;
+		s.account.metadata = { platformClientId: "other" };
+		await expect(readStripeConnectStatus(s.options)).rejects.toMatchObject({ status: 409 });
+	});
+
+	it("does not display Stripe's raw errors or account information", () => {
+		expect(
+			normalizeStripeConnectError(
+				Object.assign(new Error("Invalid API Key: private-value"), {
+					type: "StripeAuthenticationError",
+					statusCode: 401,
+				}),
+			),
+		).toMatchObject({
+			status: 502,
+			message: "Stripe could not complete this request. Please try again or contact Angels Rest.",
+		});
+	});
+
 	it("distinguishes incomplete, verifying, restricted, and ready accounts", () => {
 		const s = setup();
 		if (!s.account.requirements) throw new Error("Incomplete account fixture");
 		expect(readStripeConnectReadiness(s.account).status).toBe("setup_required");
 		s.account.details_submitted = true;
 		expect(readStripeConnectReadiness(s.account).status).toBe("pending_verification");
+		s.account.requirements.currently_due = ["business_profile.url"];
+		expect(readStripeConnectReadiness(s.account).status).toBe("setup_required");
+		s.account.requirements.currently_due = [];
 		s.account.requirements.disabled_reason = "requirements.past_due";
 		expect(readStripeConnectReadiness(s.account).status).toBe("restricted");
 		s.account.requirements.disabled_reason = null;

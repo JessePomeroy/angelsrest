@@ -1,6 +1,8 @@
+import { ConvexError } from "convex/values";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
+	env: { WEBHOOK_SECRET: "test-webhook-secret", STRIPE_CONNECT_ONBOARDING_ENABLED: "true" },
 	auth: vi.fn(),
 	query: vi.fn(),
 	mutation: vi.fn(),
@@ -10,6 +12,7 @@ const mocks = vi.hoisted(() => ({
 	link: vi.fn(),
 }));
 
+vi.mock("$env/dynamic/private", () => ({ env: mocks.env }));
 vi.mock("$lib/server/adminAuth", () => ({ requireAuth: mocks.auth }));
 vi.mock("$lib/server/convexClient", () => ({
 	createAuthenticatedConvexClient: () => ({ query: mocks.query, mutation: mocks.mutation }),
@@ -25,11 +28,11 @@ vi.mock("$lib/server/stripeClient", () => ({
 
 import { POST } from "./+server";
 
-function call(body: string) {
+function call(body: string, origin = "https://hub.example") {
 	return POST({
 		request: new Request("https://hub.example/api/stripe-connect/onboard", {
 			method: "POST",
-			headers: { "content-type": "application/json" },
+			headers: { "content-type": "application/json", origin },
 			body,
 		}),
 	} as Parameters<typeof POST>[0]);
@@ -38,6 +41,7 @@ function call(body: string) {
 describe("Stripe onboarding request boundary", () => {
 	beforeEach(() => {
 		vi.resetAllMocks();
+		mocks.env.STRIPE_CONNECT_ONBOARDING_ENABLED = "true";
 		mocks.auth.mockResolvedValue("session-token");
 	});
 
@@ -48,11 +52,32 @@ describe("Stripe onboarding request boundary", () => {
 		expect(mocks.retrieve).not.toHaveBeenCalled();
 	});
 
-	it("requires creator authorization before contacting Stripe", async () => {
-		mocks.query.mockRejectedValueOnce(new Error("not a creator"));
-		await expect(call('{"siteUrl":"client.example"}')).rejects.toThrow("not a creator");
+	it("requires tenant or creator authorization before contacting Stripe", async () => {
+		mocks.query.mockRejectedValueOnce(new ConvexError("STRIPE_CONNECT_FORBIDDEN"));
+		expect((await call('{"siteUrl":"client.example"}')).status).toBe(403);
 		expect(mocks.retrieve).not.toHaveBeenCalled();
 		expect(mocks.balance).not.toHaveBeenCalled();
+		expect(mocks.create).not.toHaveBeenCalled();
+	});
+
+	it.each([
+		"",
+		"false",
+		"TRUE",
+	])("does not contact providers when onboarding is disabled (%s)", async (value) => {
+		mocks.env.STRIPE_CONNECT_ONBOARDING_ENABLED = value;
+		expect((await call('{"siteUrl":"client.example"}')).status).toBe(503);
+		expect(mocks.query).not.toHaveBeenCalled();
+		expect(mocks.create).not.toHaveBeenCalled();
+	});
+
+	it.each([
+		"",
+		"null",
+		"https://attacker.example",
+	])("rejects a missing or foreign origin before provider work (%s)", async (origin) => {
+		expect((await call('{"siteUrl":"client.example"}', origin)).status).toBe(403);
+		expect(mocks.query).not.toHaveBeenCalled();
 		expect(mocks.create).not.toHaveBeenCalled();
 	});
 

@@ -52,6 +52,7 @@ async function setup() {
 		email: "client@example.com",
 		emailVerified: true,
 	});
+	const outsider = t.withIdentity({ subject: "outsider", email: "outsider@example.com", emailVerified: true });
 	const clientId = await admin.mutation(api.platform.createClient, input("client.example"));
 	const beginArgs = {
 		clientId,
@@ -60,7 +61,7 @@ async function setup() {
 		webhookSecret: SECRET,
 	};
 	const begin = () => admin.mutation(api.platform.beginStripeConnectAccount, beginArgs);
-	return { t, admin, client, clientId, creatorId, beginArgs, begin };
+	return { t, admin, client, outsider, clientId, creatorId, beginArgs, begin };
 }
 
 describe("verified Stripe account binding", () => {
@@ -147,17 +148,17 @@ describe("verified Stripe account binding", () => {
 		expect(await s.begin()).toEqual(first);
 	});
 
-	test("both creator membership and hub authority are required", async () => {
+	test("both tenant membership and hub authority are required", async () => {
 		const s = await setup();
 		await expect(
 			s.t.query(api.platform.getStripeConnectTarget, { siteUrl: "client.example" }),
 		).rejects.toThrow("Not authenticated");
 		await expect(
-			s.client.query(api.platform.getStripeConnectTarget, { siteUrl: "client.example" }),
-		).rejects.toThrow("Not authorized");
+			s.outsider.query(api.platform.getStripeConnectTarget, { siteUrl: "client.example" }),
+		).rejects.toThrow("STRIPE_CONNECT_FORBIDDEN");
 		await expect(
-			s.client.mutation(api.platform.beginStripeConnectAccount, s.beginArgs),
-		).rejects.toThrow("Not authorized");
+			s.outsider.mutation(api.platform.beginStripeConnectAccount, s.beginArgs),
+		).rejects.toThrow("STRIPE_CONNECT_FORBIDDEN");
 		await expect(
 			s.admin.mutation(api.platform.beginStripeConnectAccount, {
 				...s.beginArgs,
@@ -167,6 +168,35 @@ describe("verified Stripe account binding", () => {
 		expect(
 			(await s.t.run(async (ctx) => await ctx.db.get(s.clientId)))?.stripeConnectAttempt,
 		).toBeUndefined();
+	});
+
+	test("a site's verified admin can read, begin, and bind only with hub authority", async () => {
+		const s = await setup();
+		expect(await s.client.query(api.platform.getStripeConnectTarget, { siteUrl: "client.example" })).toMatchObject({ clientId: s.clientId });
+		await expect(s.client.mutation(api.platform.beginStripeConnectAccount, { ...s.beginArgs, webhookSecret: "wrong" })).rejects.toThrow("secret mismatch");
+		const prepared = await s.client.mutation(api.platform.beginStripeConnectAccount, s.beginArgs);
+		const binding = { ...s.beginArgs, attemptId: prepared.attempt.id, stripeConnectedAccountId: ACCOUNT };
+		await expect(s.client.mutation(api.platform.bindStripeConnectAccount, { ...binding, webhookSecret: "wrong" })).rejects.toThrow("secret mismatch");
+		await s.client.mutation(api.platform.bindStripeConnectAccount, binding);
+		expect((await s.begin()).stripeConnectedAccountId).toBe(ACCOUNT);
+	});
+
+	test("membership is rechecked after provider work and an unverified invitation is refused", async () => {
+		const s = await setup();
+		const unverified = s.t.withIdentity({ subject: "new-client", email: "client@example.com", emailVerified: false });
+		await expect(unverified.query(api.platform.getStripeConnectTarget, { siteUrl: "client.example" })).rejects.toThrow("STRIPE_CONNECT_FORBIDDEN");
+		const prepared = await s.client.mutation(api.platform.beginStripeConnectAccount, s.beginArgs);
+		await s.t.run(async ctx => await ctx.db.patch(s.clientId, { adminEmails: ["replacement@example.com"] }));
+		await expect(s.client.mutation(api.platform.bindStripeConnectAccount, { ...s.beginArgs, attemptId: prepared.attempt.id, stripeConnectedAccountId: ACCOUNT })).rejects.toThrow("STRIPE_CONNECT_FORBIDDEN");
+		expect((await s.begin()).stripeConnectedAccountId).toBeNull();
+	});
+
+	test("retained site aliases resolve to the same authorized client", async () => {
+		const s = await setup();
+		await s.admin.mutation(api.platform.updateClient, { clientId: s.clientId, siteUrl: "renamed.example" });
+		for (const siteUrl of ["client.example", "renamed.example"]) {
+			expect(await s.client.query(api.platform.getStripeConnectTarget, { siteUrl })).toMatchObject({ clientId: s.clientId, siteUrl: "renamed.example" });
+		}
 	});
 
 	test("does not onboard the platform's own tenant", async () => {
@@ -277,8 +307,8 @@ describe("verified Stripe account binding", () => {
 				s.admin.mutation(api.platform.bindStripeConnectAccount, { ...args, ...change }),
 			).rejects.toThrow();
 		}
-		await expect(s.client.mutation(api.platform.bindStripeConnectAccount, args)).rejects.toThrow(
-			"Not authorized",
+		await expect(s.outsider.mutation(api.platform.bindStripeConnectAccount, args)).rejects.toThrow(
+			"STRIPE_CONNECT_FORBIDDEN",
 		);
 		expect((await s.begin()).stripeConnectedAccountId).toBeNull();
 	});

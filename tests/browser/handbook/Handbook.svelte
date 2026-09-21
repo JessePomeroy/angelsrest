@@ -2,20 +2,22 @@
 import { readable } from "svelte/store";
 import {
   AdminLayout, LoginPage, DashboardPage, OrdersPage, InquiriesPage, CrmPage, BoardPage,
-  InvoicingPage, QuotesPage, ContractsPage, EmailsPage, MessagesPage, PlatformPage,
+  InvoicingPage, QuotesPage, ContractsPage, EmailsPage, MessagesPage,
   ClientGalleriesPage, SiteSettingsPage, EditorPagesPage, ContactPage, AboutPage,
   PortfolioGalleriesPage, PortfolioGalleryPage, ProductsPage, ProductPage, BlogPage, BlogPostPage, BlogSupportingPage,
   setAdminConfig, type AdminAuthClient,
 } from "@jessepomeroy/admin";
 import { adminConfig } from "$lib/config/admin";
+import HostPlatformPage from "../../../src/routes/admin/platform/+page.svelte";
 import BottomNav from "$lib/components/BottomNav.svelte";
+import { siteSettings } from "./public-data";
 import { page } from "./state.svelte";
 import { adminSession, inquiries, settingsPayload, siteUrl } from "./data";
 
 const params = new URLSearchParams(window.location.search);
 const route = page.url.pathname;
 const session = params.get("tier") === "basic" ? { ...adminSession, tier: "basic" as const, isCreator: false } : adminSession;
-const data = { adminSession: session, newInquiryCount: 1, inquiries: params.get("state") === "empty" ? [] : inquiries, siteSettingsEditorSeed: settingsPayload };
+const data = { siteSettings, stripeConnectOnboardingEnabled: params.get("onboarding") === "true", stripeConnectOrigin: "https://hub.example.invalid", adminSession: session, newInquiryCount: 1, inquiries: params.get("state") === "empty" ? [] : inquiries, siteSettingsEditorSeed: settingsPayload };
 const refused = async () => ({ error: { message: "Simulated sign-in failure. This reference never contacts an authentication provider." } });
 const authClient: AdminAuthClient = {
   signIn: { email: refused, social: refused }, signUp: { email: refused },
@@ -42,7 +44,7 @@ setAdminConfig({ ...adminConfig, siteUrl, fromEmail: "Demonstration <hello@examp
     {:else if route === '/admin/contracts'}<ContractsPage {data} />
     {:else if route === '/admin/emails'}<EmailsPage {data} />
     {:else if route === '/admin/messages'}<MessagesPage {data} />
-    {:else if route === '/admin/platform'}<PlatformPage {data} />
+    {:else if route === '/admin/platform'}<HostPlatformPage {data} />
     {:else if route === '/admin/galleries'}<ClientGalleriesPage adminSession={session} />
     {:else if route === '/admin/editor'}<SiteSettingsPage />
     {:else if route === '/admin/editor/pages'}<EditorPagesPage />

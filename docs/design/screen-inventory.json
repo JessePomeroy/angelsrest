@@ -3798,21 +3798,22 @@
       "key": "admin.platform.default",
       "handbook": "admin",
       "route": "/admin/platform",
-      "setup": "Isolated handbook harness: fictional platform client; all provider writes rejected.",
+      "setup": "Isolated handbook harness: actual host wrapper, fictional client; provider writes rejected. Select Juniper Studio and copy the stable setup URL.",
       "sourceComponents": [
         "src/routes/admin/platform/+page.svelte",
         "node_modules/@jessepomeroy/admin#PlatformPage",
         "tests/browser/handbook/Handbook.svelte",
         "tests/browser/handbook/data.ts"
       ],
-      "implementationStatus": "implemented-template",
+      "implementationStatus": "source-updated-paper-pending",
       "stateSurvey": "representative-with-gaps",
       "pendingStateSurvey": [
         "new/edit client",
         "tier/status",
         "empty",
         "loading",
-        "save error"
+        "save error",
+        "Stripe panel gate-off and account setup-started count"
       ],
       "references": [
         {
@@ -3831,7 +3832,7 @@
             "pageId": "4-0",
             "artboardId": "3FV-0"
           },
-          "status": "paper-updated-comparison-blocked",
+          "status": "source-updated-paper-pending",
           "browserObservedAt": "2026-09-16",
           "lastVerified": null,
           "limitations": [
@@ -3848,7 +3849,18 @@
           },
           "setupSteps": [
             "Apply captureDefaults and this reference's viewport/theme/motion; open setupUrl."
-          ]
+          ],
+          "sourceUpdate": {
+            "date": "2026-09-21",
+            "reason": "Host Stripe setup panel now shares stable URL; account existence is setup started, not ready. Paper tools unavailable.",
+            "browserEvidence": "/tmp/angelsrest-c2a-evidence/platform-1440.png",
+            "setupUrl": "http://127.0.0.1:5199/?route=/admin/platform&onboarding=true&theme=dark",
+            "setupSteps": [
+              "Select Juniper Studio",
+              "Click copy client setup link",
+              "Verify clipboard holds the stable hub portal URL"
+            ]
+          }
         },
         {
           "key": "admin.platform.default.mobile",
@@ -3866,7 +3878,7 @@
             "pageId": "5-0",
             "artboardId": "3MI-0"
           },
-          "status": "paper-updated-comparison-blocked",
+          "status": "source-updated-paper-pending",
           "browserObservedAt": "2026-09-16",
           "lastVerified": null,
           "limitations": [
@@ -3883,7 +3895,18 @@
           },
           "setupSteps": [
             "Apply captureDefaults and this reference's viewport/theme/motion; open setupUrl."
-          ]
+          ],
+          "sourceUpdate": {
+            "date": "2026-09-21",
+            "reason": "Host Stripe setup panel now shares stable URL; account existence is setup started, not ready. Paper tools unavailable.",
+            "browserEvidence": "/tmp/angelsrest-c2a-evidence/platform-390.png",
+            "setupUrl": "http://127.0.0.1:5199/?route=/admin/platform&onboarding=true&theme=dark",
+            "setupSteps": [
+              "Select Juniper Studio",
+              "Click copy client setup link",
+              "Verify clipboard holds the stable hub portal URL"
+            ]
+          }
         }
       ],
       "coveredReferenceKeys": [
@@ -3908,7 +3931,10 @@
         "change": "Owner-only any-file uploader, media-only client policy, and file labels/counts in the gallery list and detail modal.",
         "source": "Captured from the then-unpublished @jessepomeroy/admin owner-delivery-files worktree, packed and linked locally; the same feature is now released and pinned as 6.2.0 in the September 17 adoption.",
         "browserObservedAt": "2026-09-16",
-        "viewports": ["1440x1000", "390x844"],
+        "viewports": [
+          "1440x1000",
+          "390x844"
+        ],
         "data": "Fictional handbook delivery galleries only; no provider writes.",
         "status": "paper-update-blocked",
         "limitations": [
@@ -6302,6 +6328,379 @@
       "coveredReferenceKeys": [
         "admin.editor.contact.complete.desktop",
         "admin.editor.contact.complete.mobile"
+      ]
+    },
+    {
+      "key": "admin.stripe-setup",
+      "handbook": "admin",
+      "route": "/portal/stripe/[siteUrl]",
+      "setup": "Isolated actual StripeSetupPage with fictional site/session/provider status; auth and sign-out are simulated failures. Browser tests intercept form POSTs.",
+      "sourceComponents": [
+        "src/lib/components/StripeSetupPage.svelte",
+        "src/routes/portal/stripe/[siteUrl]/+page.svelte",
+        "tests/browser/fixtures/StripeSetupHarness.svelte"
+      ],
+      "implementationStatus": "source-updated-paper-pending",
+      "stateSurvey": "representative-with-gaps",
+      "pendingStateSurvey": [
+        "Real authentication and tenant-specific invitation",
+        "Stripe hosted onboarding and return",
+        "Paper update and same-viewport comparison",
+        "Provider deauthorization and persisted readiness (subsequent slice)"
+      ],
+      "references": [
+        {
+          "key": "admin.stripe-setup.signed_out.desktop",
+          "viewport": {
+            "width": 1440,
+            "height": 1000
+          },
+          "theme": "dark",
+          "motion": "reduce",
+          "status": "browser-observed-paper-pending",
+          "browserObservedAt": "2026-09-21",
+          "lastVerified": null,
+          "paper": null,
+          "setupUrl": "http://127.0.0.1:5199/?screen=stripe-setup&phase=signed_out&returned=1",
+          "setupSteps": [
+            "Render fictional data only; do not navigate to Stripe."
+          ],
+          "evidence": {
+            "browserPng": "/tmp/angelsrest-c2a-evidence/stripe-signed_out-1440.png"
+          },
+          "limitations": [
+            "Paper tools unavailable; no new board or comparison completed.",
+            "Real Better Auth and Stripe acceptance not exercised."
+          ]
+        },
+        {
+          "key": "admin.stripe-setup.new.desktop",
+          "viewport": {
+            "width": 1440,
+            "height": 1000
+          },
+          "theme": "dark",
+          "motion": "reduce",
+          "status": "browser-observed-paper-pending",
+          "browserObservedAt": "2026-09-21",
+          "lastVerified": null,
+          "paper": null,
+          "setupUrl": "http://127.0.0.1:5199/?screen=stripe-setup&phase=new&returned=1",
+          "setupSteps": [
+            "Render fictional data only; do not navigate to Stripe."
+          ],
+          "evidence": {
+            "browserPng": "/tmp/angelsrest-c2a-evidence/stripe-new-1440.png"
+          },
+          "limitations": [
+            "Paper tools unavailable; no new board or comparison completed.",
+            "Real Better Auth and Stripe acceptance not exercised."
+          ]
+        },
+        {
+          "key": "admin.stripe-setup.pending_verification.desktop",
+          "viewport": {
+            "width": 1440,
+            "height": 1000
+          },
+          "theme": "dark",
+          "motion": "reduce",
+          "status": "browser-observed-paper-pending",
+          "browserObservedAt": "2026-09-21",
+          "lastVerified": null,
+          "paper": null,
+          "setupUrl": "http://127.0.0.1:5199/?screen=stripe-setup&phase=pending_verification&returned=1",
+          "setupSteps": [
+            "Render fictional data only; do not navigate to Stripe."
+          ],
+          "evidence": {
+            "browserPng": "/tmp/angelsrest-c2a-evidence/stripe-pending_verification-1440.png"
+          },
+          "limitations": [
+            "Paper tools unavailable; no new board or comparison completed.",
+            "Real Better Auth and Stripe acceptance not exercised."
+          ]
+        },
+        {
+          "key": "admin.stripe-setup.ready.desktop",
+          "viewport": {
+            "width": 1440,
+            "height": 1000
+          },
+          "theme": "dark",
+          "motion": "reduce",
+          "status": "browser-observed-paper-pending",
+          "browserObservedAt": "2026-09-21",
+          "lastVerified": null,
+          "paper": null,
+          "setupUrl": "http://127.0.0.1:5199/?screen=stripe-setup&phase=ready&returned=1",
+          "setupSteps": [
+            "Render fictional data only; do not navigate to Stripe."
+          ],
+          "evidence": {
+            "browserPng": "/tmp/angelsrest-c2a-evidence/stripe-ready-1440.png"
+          },
+          "limitations": [
+            "Paper tools unavailable; no new board or comparison completed.",
+            "Real Better Auth and Stripe acceptance not exercised."
+          ]
+        },
+        {
+          "key": "admin.stripe-setup.restricted.desktop",
+          "viewport": {
+            "width": 1440,
+            "height": 1000
+          },
+          "theme": "dark",
+          "motion": "reduce",
+          "status": "browser-observed-paper-pending",
+          "browserObservedAt": "2026-09-21",
+          "lastVerified": null,
+          "paper": null,
+          "setupUrl": "http://127.0.0.1:5199/?screen=stripe-setup&phase=restricted&returned=1",
+          "setupSteps": [
+            "Render fictional data only; do not navigate to Stripe."
+          ],
+          "evidence": {
+            "browserPng": "/tmp/angelsrest-c2a-evidence/stripe-restricted-1440.png"
+          },
+          "limitations": [
+            "Paper tools unavailable; no new board or comparison completed.",
+            "Real Better Auth and Stripe acceptance not exercised."
+          ]
+        },
+        {
+          "key": "admin.stripe-setup.unauthorized.desktop",
+          "viewport": {
+            "width": 1440,
+            "height": 1000
+          },
+          "theme": "dark",
+          "motion": "reduce",
+          "status": "browser-observed-paper-pending",
+          "browserObservedAt": "2026-09-21",
+          "lastVerified": null,
+          "paper": null,
+          "setupUrl": "http://127.0.0.1:5199/?screen=stripe-setup&phase=unauthorized&returned=1",
+          "setupSteps": [
+            "Render fictional data only; do not navigate to Stripe."
+          ],
+          "evidence": {
+            "browserPng": "/tmp/angelsrest-c2a-evidence/stripe-unauthorized-1440.png"
+          },
+          "limitations": [
+            "Paper tools unavailable; no new board or comparison completed.",
+            "Real Better Auth and Stripe acceptance not exercised."
+          ]
+        },
+        {
+          "key": "admin.stripe-setup.disabled.desktop",
+          "viewport": {
+            "width": 1440,
+            "height": 1000
+          },
+          "theme": "dark",
+          "motion": "reduce",
+          "status": "browser-observed-paper-pending",
+          "browserObservedAt": "2026-09-21",
+          "lastVerified": null,
+          "paper": null,
+          "setupUrl": "http://127.0.0.1:5199/?screen=stripe-setup&phase=disabled&returned=1",
+          "setupSteps": [
+            "Render fictional data only; do not navigate to Stripe."
+          ],
+          "evidence": {
+            "browserPng": "/tmp/angelsrest-c2a-evidence/stripe-disabled-1440.png"
+          },
+          "limitations": [
+            "Paper tools unavailable; no new board or comparison completed.",
+            "Real Better Auth and Stripe acceptance not exercised."
+          ]
+        },
+        {
+          "key": "admin.stripe-setup.signed_out.mobile",
+          "viewport": {
+            "width": 390,
+            "height": 1000
+          },
+          "theme": "dark",
+          "motion": "reduce",
+          "status": "browser-observed-paper-pending",
+          "browserObservedAt": "2026-09-21",
+          "lastVerified": null,
+          "paper": null,
+          "setupUrl": "http://127.0.0.1:5199/?screen=stripe-setup&phase=signed_out&returned=1",
+          "setupSteps": [
+            "Render fictional data only; do not navigate to Stripe."
+          ],
+          "evidence": {
+            "browserPng": "/tmp/angelsrest-c2a-evidence/stripe-signed_out-390.png"
+          },
+          "limitations": [
+            "Paper tools unavailable; no new board or comparison completed.",
+            "Real Better Auth and Stripe acceptance not exercised."
+          ]
+        },
+        {
+          "key": "admin.stripe-setup.new.mobile",
+          "viewport": {
+            "width": 390,
+            "height": 1000
+          },
+          "theme": "dark",
+          "motion": "reduce",
+          "status": "browser-observed-paper-pending",
+          "browserObservedAt": "2026-09-21",
+          "lastVerified": null,
+          "paper": null,
+          "setupUrl": "http://127.0.0.1:5199/?screen=stripe-setup&phase=new&returned=1",
+          "setupSteps": [
+            "Render fictional data only; do not navigate to Stripe."
+          ],
+          "evidence": {
+            "browserPng": "/tmp/angelsrest-c2a-evidence/stripe-new-390.png"
+          },
+          "limitations": [
+            "Paper tools unavailable; no new board or comparison completed.",
+            "Real Better Auth and Stripe acceptance not exercised."
+          ]
+        },
+        {
+          "key": "admin.stripe-setup.pending_verification.mobile",
+          "viewport": {
+            "width": 390,
+            "height": 1000
+          },
+          "theme": "dark",
+          "motion": "reduce",
+          "status": "browser-observed-paper-pending",
+          "browserObservedAt": "2026-09-21",
+          "lastVerified": null,
+          "paper": null,
+          "setupUrl": "http://127.0.0.1:5199/?screen=stripe-setup&phase=pending_verification&returned=1",
+          "setupSteps": [
+            "Render fictional data only; do not navigate to Stripe."
+          ],
+          "evidence": {
+            "browserPng": "/tmp/angelsrest-c2a-evidence/stripe-pending_verification-390.png"
+          },
+          "limitations": [
+            "Paper tools unavailable; no new board or comparison completed.",
+            "Real Better Auth and Stripe acceptance not exercised."
+          ]
+        },
+        {
+          "key": "admin.stripe-setup.ready.mobile",
+          "viewport": {
+            "width": 390,
+            "height": 1000
+          },
+          "theme": "dark",
+          "motion": "reduce",
+          "status": "browser-observed-paper-pending",
+          "browserObservedAt": "2026-09-21",
+          "lastVerified": null,
+          "paper": null,
+          "setupUrl": "http://127.0.0.1:5199/?screen=stripe-setup&phase=ready&returned=1",
+          "setupSteps": [
+            "Render fictional data only; do not navigate to Stripe."
+          ],
+          "evidence": {
+            "browserPng": "/tmp/angelsrest-c2a-evidence/stripe-ready-390.png"
+          },
+          "limitations": [
+            "Paper tools unavailable; no new board or comparison completed.",
+            "Real Better Auth and Stripe acceptance not exercised."
+          ]
+        },
+        {
+          "key": "admin.stripe-setup.restricted.mobile",
+          "viewport": {
+            "width": 390,
+            "height": 1000
+          },
+          "theme": "dark",
+          "motion": "reduce",
+          "status": "browser-observed-paper-pending",
+          "browserObservedAt": "2026-09-21",
+          "lastVerified": null,
+          "paper": null,
+          "setupUrl": "http://127.0.0.1:5199/?screen=stripe-setup&phase=restricted&returned=1",
+          "setupSteps": [
+            "Render fictional data only; do not navigate to Stripe."
+          ],
+          "evidence": {
+            "browserPng": "/tmp/angelsrest-c2a-evidence/stripe-restricted-390.png"
+          },
+          "limitations": [
+            "Paper tools unavailable; no new board or comparison completed.",
+            "Real Better Auth and Stripe acceptance not exercised."
+          ]
+        },
+        {
+          "key": "admin.stripe-setup.unauthorized.mobile",
+          "viewport": {
+            "width": 390,
+            "height": 1000
+          },
+          "theme": "dark",
+          "motion": "reduce",
+          "status": "browser-observed-paper-pending",
+          "browserObservedAt": "2026-09-21",
+          "lastVerified": null,
+          "paper": null,
+          "setupUrl": "http://127.0.0.1:5199/?screen=stripe-setup&phase=unauthorized&returned=1",
+          "setupSteps": [
+            "Render fictional data only; do not navigate to Stripe."
+          ],
+          "evidence": {
+            "browserPng": "/tmp/angelsrest-c2a-evidence/stripe-unauthorized-390.png"
+          },
+          "limitations": [
+            "Paper tools unavailable; no new board or comparison completed.",
+            "Real Better Auth and Stripe acceptance not exercised."
+          ]
+        },
+        {
+          "key": "admin.stripe-setup.disabled.mobile",
+          "viewport": {
+            "width": 390,
+            "height": 1000
+          },
+          "theme": "dark",
+          "motion": "reduce",
+          "status": "browser-observed-paper-pending",
+          "browserObservedAt": "2026-09-21",
+          "lastVerified": null,
+          "paper": null,
+          "setupUrl": "http://127.0.0.1:5199/?screen=stripe-setup&phase=disabled&returned=1",
+          "setupSteps": [
+            "Render fictional data only; do not navigate to Stripe."
+          ],
+          "evidence": {
+            "browserPng": "/tmp/angelsrest-c2a-evidence/stripe-disabled-390.png"
+          },
+          "limitations": [
+            "Paper tools unavailable; no new board or comparison completed.",
+            "Real Better Auth and Stripe acceptance not exercised."
+          ]
+        }
+      ],
+      "coveredByReferenceKeys": [
+        "admin.stripe-setup.signed_out.desktop",
+        "admin.stripe-setup.new.desktop",
+        "admin.stripe-setup.pending_verification.desktop",
+        "admin.stripe-setup.ready.desktop",
+        "admin.stripe-setup.restricted.desktop",
+        "admin.stripe-setup.unauthorized.desktop",
+        "admin.stripe-setup.disabled.desktop",
+        "admin.stripe-setup.signed_out.mobile",
+        "admin.stripe-setup.new.mobile",
+        "admin.stripe-setup.pending_verification.mobile",
+        "admin.stripe-setup.ready.mobile",
+        "admin.stripe-setup.restricted.mobile",
+        "admin.stripe-setup.unauthorized.mobile",
+        "admin.stripe-setup.disabled.mobile"
       ]
     }
   ],
