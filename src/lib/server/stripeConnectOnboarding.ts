@@ -6,10 +6,17 @@ import type { StripeConnectReadiness } from "$lib/stripeConnectSetup";
 type ConnectTarget = FunctionReturnType<typeof api.platform.getStripeConnectTarget>;
 type ConnectAttempt = FunctionReturnType<typeof api.platform.beginStripeConnectAccount>;
 const CREATION_RETRY_WINDOW_MS = 23 * 60 * 60 * 1000;
+const STRIPE_REQUEST_OPTIONS = {
+	timeout: 10_000,
+	maxNetworkRetries: 0,
+} satisfies Stripe.RequestOptions;
 const ACCOUNT_ID = /^acct_[A-Za-z0-9]{16,64}$/;
 
 export interface StripeConnectStore {
 	findClient: (siteUrl: string) => Promise<ConnectTarget>;
+	readStatus: (
+		siteUrl: string,
+	) => Promise<FunctionReturnType<typeof api.platform.getStripeConnectStatus>>;
 	beginAttempt: (args: {
 		clientId: ConnectTarget["clientId"];
 		platformAccountId: string;
@@ -79,7 +86,9 @@ export async function readStripeConnectStatus({
 	siteUrl: rawSiteUrl,
 	stripe,
 	store,
-}: Pick<StripeConnectOnboardingOptions, "siteUrl" | "stripe" | "store">) {
+}: Pick<StripeConnectOnboardingOptions, "siteUrl" | "stripe"> & {
+	store: Pick<StripeConnectStore, "findClient">;
+}) {
 	const client = await store.findClient(requireSiteUrl(rawSiteUrl));
 	if (!client.stripeConnectedAccountId) {
 		return { siteUrl: client.siteUrl, accountId: null, readiness: null };
@@ -91,7 +100,10 @@ export async function readStripeConnectStatus({
 		);
 	}
 	assertAttemptContext(client.attempt, await readPlatformContext(stripe));
-	const account = await stripe.accounts.retrieve(client.stripeConnectedAccountId);
+	const account = await stripe.accounts.retrieve(
+		client.stripeConnectedAccountId,
+		STRIPE_REQUEST_OPTIONS,
+	);
 	assertAccountMatchesAttempt(account, {
 		...client,
 		attempt: client.attempt,
@@ -113,12 +125,16 @@ export async function createStripeConnectOnboardingSession({
 }: StripeConnectOnboardingOptions) {
 	const siteUrl = requireSiteUrl(rawSiteUrl);
 	const client = await store.findClient(siteUrl);
+	await assertConnectionCanOnboard(store, siteUrl);
 	const context = await readPlatformContext(stripe);
 	const prepared = await store.beginAttempt({ clientId: client.clientId, ...context });
 	assertAttemptContext(prepared.attempt, context);
 	let account: Stripe.Account;
 	if (prepared.stripeConnectedAccountId) {
-		account = await stripe.accounts.retrieve(prepared.stripeConnectedAccountId);
+		account = await stripe.accounts.retrieve(
+			prepared.stripeConnectedAccountId,
+			STRIPE_REQUEST_OPTIONS,
+		);
 	} else {
 		// Stripe may prune idempotency records after 24h. Never issue another
 		// create after uncertainty has outlived our shorter automatic retry window.
@@ -162,7 +178,7 @@ export async function createStripeConnectOnboardingSession({
 	return {
 		accountId: account.id,
 		readiness: readStripeConnectReadiness(account),
-		url: await createAccountLinkUrl(stripe, {
+		url: await createAccountLinkUrl(stripe, store, {
 			accountId: account.id,
 			siteUrl,
 			platformOrigin,
@@ -181,9 +197,13 @@ export async function refreshStripeConnectOnboardingSession({
 	if (!client.stripeConnectedAccountId || !client.attempt || !client.tenantId) {
 		throw new StripeConnectOnboardingError(404, `No Stripe Connect account found for ${siteUrl}`);
 	}
+	await assertConnectionCanOnboard(store, siteUrl);
 	const context = await readPlatformContext(stripe);
 	assertAttemptContext(client.attempt, context);
-	const account = await stripe.accounts.retrieve(client.stripeConnectedAccountId);
+	const account = await stripe.accounts.retrieve(
+		client.stripeConnectedAccountId,
+		STRIPE_REQUEST_OPTIONS,
+	);
 	assertAccountMatchesAttempt(account, {
 		...client,
 		attempt: client.attempt,
@@ -192,7 +212,7 @@ export async function refreshStripeConnectOnboardingSession({
 	return {
 		accountId: client.stripeConnectedAccountId,
 		readiness: readStripeConnectReadiness(account),
-		url: await createAccountLinkUrl(stripe, {
+		url: await createAccountLinkUrl(stripe, store, {
 			accountId: client.stripeConnectedAccountId,
 			siteUrl,
 			platformOrigin,
@@ -230,8 +250,8 @@ function requireSiteUrl(value: unknown) {
 
 async function readPlatformContext(stripe: Stripe) {
 	const [platform, balance] = await Promise.all([
-		stripe.accounts.retrieve(),
-		stripe.balance.retrieve(),
+		stripe.accounts.retrieve(STRIPE_REQUEST_OPTIONS),
+		stripe.balance.retrieve(STRIPE_REQUEST_OPTIONS),
 	]);
 	if (!ACCOUNT_ID.test(platform.id) || typeof balance.livemode !== "boolean") {
 		throw new StripeConnectOnboardingError(502, "Stripe platform identity is unavailable");
@@ -300,8 +320,18 @@ function getErrorMessage(err: unknown) {
 	return err instanceof Error && typeof err.message === "string" ? err.message : null;
 }
 
+async function assertConnectionCanOnboard(store: StripeConnectStore, siteUrl: string) {
+	if ((await store.readStatus(siteUrl))?.state.kind === "disconnected") {
+		throw new StripeConnectOnboardingError(
+			409,
+			"This Stripe connection was disconnected. Contact Angels Rest to reconnect it.",
+		);
+	}
+}
+
 async function createAccountLinkUrl(
 	stripe: Stripe,
+	store: StripeConnectStore,
 	{
 		accountId,
 		siteUrl,
@@ -313,11 +343,16 @@ async function createAccountLinkUrl(
 	},
 ) {
 	const origin = platformOrigin.replace(/\/+$/, "");
-	const accountLink = await stripe.accountLinks.create({
-		account: accountId,
-		type: "account_onboarding",
-		refresh_url: `${origin}/api/stripe-connect/onboard/refresh?siteUrl=${encodeURIComponent(siteUrl)}`,
-		return_url: `${origin}/api/stripe-connect/callback?siteUrl=${encodeURIComponent(siteUrl)}`,
-	});
+	const accountLink = await stripe.accountLinks.create(
+		{
+			account: accountId,
+			type: "account_onboarding",
+			refresh_url: `${origin}/api/stripe-connect/onboard/refresh?siteUrl=${encodeURIComponent(siteUrl)}`,
+			return_url: `${origin}/api/stripe-connect/callback?siteUrl=${encodeURIComponent(siteUrl)}`,
+		},
+		STRIPE_REQUEST_OPTIONS,
+	);
+	// Membership/disconnection can change while the provider issues a temporary link.
+	await assertConnectionCanOnboard(store, siteUrl);
 	return accountLink.url;
 }

@@ -74,6 +74,15 @@ async function signOut() {
 				<h2 id="connection-heading">Payment setup is being prepared</h2>
 				<p>Angels Rest will let you know when you can continue. You can return to this page then.</p>
 			</section>
+		{:else if data.connectionIssue}
+			<section class="connection-status" aria-labelledby="connection-heading">
+				<h2 id="connection-heading">{data.connectionIssue === "disconnected" ? "Your Stripe connection has been disconnected" : data.connectionIssue === "checking" ? "A status check is in progress" : "We couldn’t verify your Stripe status"}</h2>
+				<p>{data.connectionIssue === "disconnected" ? "You can still sign in to your own Stripe dashboard. Contact Angels Rest to review the connection before reconnecting your website." : data.connectionIssue === "checking" ? "A newer check is underway. Check again in a moment for the latest payment and payout status." : "Payment and payout status is temporarily unavailable. Check again or contact Angels Rest for help."}</p>
+				<div class="actions">
+					<a class="button" href={setupPath} data-sveltekit-reload>Check status again</a>
+					{#if data.accountId}<a class="button secondary" href="https://dashboard.stripe.com/" rel="noreferrer">Open Stripe dashboard</a>{/if}
+				</div>
+			</section>
 		{:else}
 			<section class="connection-status" aria-labelledby="connection-heading">
 				<p class="eyebrow">{data.readiness ? "checked with Stripe" : "before you begin"}</p>

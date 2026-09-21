@@ -27,9 +27,12 @@ vi.mock("$lib/server/stripeConnectStore", () => ({
 }));
 vi.mock("$lib/server/stripeConnectOnboarding", async (importOriginal) => ({
 	...(await importOriginal<typeof import("$lib/server/stripeConnectOnboarding")>()),
-	readStripeConnectStatus: mocks.status,
 	createStripeConnectOnboardingSession: mocks.start,
 	refreshStripeConnectOnboardingSession: mocks.refresh,
+}));
+
+vi.mock("$lib/server/stripeConnectStatusSync", () => ({
+	refreshClientStripeConnectStatus: mocks.status,
 }));
 
 import { GET as callback } from "../../../api/stripe-connect/callback/+server";

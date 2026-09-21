@@ -15,6 +15,7 @@ import { assertOrderProducersOpen, OrderProducersClosedError } from "$lib/server
 import { getResend } from "$lib/server/resendClient";
 import { getStripe } from "$lib/server/stripeClient";
 import { COMMERCE_TENANT_ID_METADATA_KEY } from "$lib/server/stripeConnect";
+import { processStripeConnectLifecycleEvent } from "$lib/server/stripeConnectStatusSync";
 import {
 	type CommerceWebhookRole,
 	type StripeWebhookSecretCandidate,
@@ -35,6 +36,8 @@ export async function POST({ request }) {
 		"Commerce webhook",
 	);
 	assertCommerceWebhookScope(event, role);
+	if (await processStripeConnectLifecycleEvent(event, role, { stripe, convex }))
+		return json({ received: true });
 	if (await isAcknowledgedOrderReplay(event)) return json({ received: true });
 	const resend = getResend();
 	await processStripeWebhookEvent(event, { stripe, resend, convex, createLumaPrintsOrder }, role);

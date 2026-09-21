@@ -40,15 +40,24 @@ test("ready accounts use their full dashboard and keep store activation separate
 	await expect(page.getByText("Store activation is a separate step.")).toBeVisible();
 });
 
-for (const phase of ["disabled", "unauthorized", "unavailable", "restricted", "setup_required", "expired"]) {
+for (const phase of ["disabled", "unauthorized", "unavailable", "restricted", "setup_required", "expired", "checking", "disconnected", "connection_unavailable"]) {
 	test(`${phase} state stays readable at the current viewport`, async ({ page }) => {
 		const errors: string[] = [];
 		page.on("pageerror", error => errors.push(error.message));
 		await page.goto(`/?fixture=stripe-setup&phase=${phase}`);
 		await expect(page.getByRole("heading", { level: 1 })).toHaveText("Set up your Stripe account");
 		expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
-		if (["disabled", "unauthorized", "unavailable"].includes(phase)) await expect(page.getByRole("button", { name: /Stripe/ })).toHaveCount(0);
+		if (["disabled", "unauthorized", "unavailable", "checking", "disconnected", "connection_unavailable"].includes(phase)) await expect(page.getByRole("button", { name: /Stripe/ })).toHaveCount(0);
 		if (phase === "expired") await expect(page.getByRole("alert")).toContainText("Your session expired");
 		expect(errors).toEqual([]);
 	});
 }
+
+
+test("disconnected accounts keep dashboard access without a reconnect action", async ({ page }) => {
+	await page.goto("/?fixture=stripe-setup&phase=disconnected");
+	await expect(page.getByRole("heading", { name: "Your Stripe connection has been disconnected" })).toBeVisible();
+	await expect(page.getByRole("link", { name: "Open Stripe dashboard" })).toHaveAttribute("href", "https://dashboard.stripe.com/");
+	await expect(page.getByRole("button", { name: /Stripe/ })).toHaveCount(0);
+	await expect(page.locator(".capabilities")).toHaveCount(0);
+});

@@ -12,6 +12,7 @@ export interface StripeConnectSetupData {
 	email: string | null;
 	accountId: string | null;
 	readiness: StripeConnectReadiness | null;
+	connectionIssue: "checking" | "unavailable" | "disconnected" | null;
 	message: string | null;
 	returned: boolean;
 }
