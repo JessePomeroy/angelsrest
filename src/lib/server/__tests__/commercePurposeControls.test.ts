@@ -15,6 +15,21 @@ const openRegistry = JSON.stringify({
 });
 
 describe("new-order Checkout control", () => {
+	it("uses the shared explicit client registry while preserving host URL normalization", () => {
+		const tenantId = "tenant_05eb6092-5d8c-43ce-ad26-1a59522bd07b";
+		const registry = JSON.stringify({
+			version: 2,
+			tenants: [{ siteUrl: "third.example", tenantId, state: "open", generation: 7 }],
+		});
+		expect(assertNewOrderCheckoutOpen("https://www.third.example/", registry)).toEqual({
+			state: "open",
+			generation: 7,
+			tenantId,
+		});
+		expect(() => assertNewOrderCheckoutOpen("fourth.example", registry)).toThrow(
+			NewOrderCheckoutClosedError,
+		);
+	});
 	it("resolves only the exact complete tenant registry", () => {
 		expect(newOrderCheckoutDecision("angelsrest.online", openRegistry)).toEqual({
 			state: "open",

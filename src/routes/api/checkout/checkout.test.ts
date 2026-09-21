@@ -64,6 +64,22 @@ describe("direct checkout failure boundary", () => {
 	});
 
 	it.each([
+		undefined,
+		"tenant_05eb6092-5d8c-43ce-ad26-1a59522bd07c",
+	])("rejects a missing or different tenant under an explicitly pinned host control", async (tenantId) => {
+		mocks.assertOpen.mockReturnValue({
+			state: "open",
+			generation: 7,
+			tenantId: "tenant_05eb6092-5d8c-43ce-ad26-1a59522bd07b",
+		});
+		mocks.resolveTenant.mockResolvedValue({ siteUrl: "angelsrest.online", tenantId });
+		await expect(
+			POST({ request: request(), cookies: {} } as Parameters<typeof POST>[0]),
+		).rejects.toMatchObject({ status: 503 });
+		expect(mocks.createDirect).not.toHaveBeenCalled();
+	});
+
+	it.each([
 		["selection_changed", 409, "CONFLICT", CHECKOUT_SELECTION_CHANGED_MESSAGE],
 		["unavailable", 503, "UNAVAILABLE", CHECKOUT_UNAVAILABLE_MESSAGE],
 		["invalid_authority", 500, "UPSTREAM_FAILED", CHECKOUT_FAILED_MESSAGE],

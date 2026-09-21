@@ -55,6 +55,7 @@ import {
 import {
 	consumeCheckoutSessionAdmission,
 	getDurablePurposeControl,
+	commerceControlMatchesTenant,
 } from "./commerceClosure";
 
 const orderStatusValidator = v.union(
@@ -473,6 +474,7 @@ async function connectedAccountMatchesSite(
 async function assertNewOrderAdmissionOpenIfActivated(ctx: QueryCtx, siteUrl: string) {
 	const control = await getDurablePurposeControl(ctx, siteUrl, "new_order_admission");
 	if (control?.state === "closed") throw new Error("New order admission is closed");
+	return control;
 }
 
 function routingConflict(): never {
@@ -607,7 +609,10 @@ export const reserveCheckoutSnapshot = internalMutation({
 		if (!await isCurrentStripeAccountForSite(ctx, args.siteUrl, args.stripeConnectedAccountId)) {
 			return { outcome: "routing_mismatch" as const };
 		}
-		await assertNewOrderAdmissionOpenIfActivated(ctx, args.siteUrl);
+		const control = await assertNewOrderAdmissionOpenIfActivated(ctx, args.siteUrl);
+		if (control && !await commerceControlMatchesTenant(ctx, control, args.tenantId)) {
+			throw new Error("Checkout reservation identity does not match activated tenant");
+		}
 		const createdAt = Date.now();
 		const unboundPurgeAt = createdAt + UNBOUND_RETENTION_MS;
 		const printInput = args.printInputVersion === 1
@@ -2047,7 +2052,8 @@ async function claimPrintFulfillmentWithAdmission(
 				order.siteUrl,
 				"new_provider_submission",
 			);
-			if (!control || control.state !== "open") {
+			if (!control || control.state !== "open"
+				|| !await commerceControlMatchesTenant(ctx, control, order.tenantId, !order.lumaprintsConnection)) {
 				return { kind: "submission_closed" as const };
 			}
 			providerGeneration = control.generation;

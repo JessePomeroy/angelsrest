@@ -88,6 +88,29 @@ describe("cart checkout", () => {
 		});
 	});
 
+	it.each([
+		undefined,
+		"tenant_05eb6092-5d8c-43ce-ad26-1a59522bd07c",
+	])("rejects a missing or different tenant under an explicitly pinned host control", async (tenantId) => {
+		mocks.assertOpen.mockReturnValue({
+			state: "open",
+			generation: 7,
+			tenantId: "tenant_05eb6092-5d8c-43ce-ad26-1a59522bd07b",
+		});
+		mocks.resolveTenant.mockResolvedValue({ siteUrl: "angelsrest.online", tenantId });
+		const request = new Request("https://www.angelsrest.online/api/cart/checkout", {
+			method: "POST",
+			headers: { "Content-Type": "application/json" },
+			body: JSON.stringify({
+				items: [{ productSlug: "tapestry-one", type: "print", quantity: 1 }],
+			}),
+		});
+		await expect(
+			POST({ request, cookies: {} } as Parameters<typeof POST>[0]),
+		).rejects.toMatchObject({ status: 503 });
+		expect(mocks.createHandle).not.toHaveBeenCalled();
+	});
+
 	it("uses only Convex-resolved price and snapshot identity for a fixed-price line", async () => {
 		const request = new Request("https://www.angelsrest.online/api/cart/checkout", {
 			method: "POST",

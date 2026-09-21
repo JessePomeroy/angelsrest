@@ -1,8 +1,10 @@
-export const COMMERCE_CONTROL_VERSION = 1 as const;
-export const COMMERCE_CONTROL_MAX_BYTES = 4096;
-export const COMMERCE_TENANTS = ["angelsrest.online", "zippymiggy.com"] as const;
+import { isTenantId } from "./tenantContext";
 
-export type CommerceTenant = (typeof COMMERCE_TENANTS)[number];
+const LEGACY_MAX_BYTES = 4096;
+const MAX_REGISTRY_BYTES = 65_536;
+const MAX_REGISTRY_TENANTS = 100;
+const LEGACY_TENANTS = new Set(["angelsrest.online", "zippymiggy.com"]);
+
 export type CommerceControlState = "closed" | "open";
 export type CommerceBackendPurpose = "new_order_admission" | "new_provider_submission";
 
@@ -15,10 +17,10 @@ export type CommerceControlDecision = {
 	state: CommerceControlState;
 	generation: number | null;
 	valid: boolean;
+	tenantId?: string;
 };
 
 const encoder = new TextEncoder();
-const tenantSet = new Set<string>(COMMERCE_TENANTS);
 
 function isExactObject(value: unknown, keys: readonly string[]): value is Record<string, unknown> {
 	return value !== null
@@ -28,8 +30,13 @@ function isExactObject(value: unknown, keys: readonly string[]): value is Record
 		&& keys.every((key) => Object.hasOwn(value, key));
 }
 
-export function isCommerceTenant(value: unknown): value is CommerceTenant {
-	return typeof value === "string" && tenantSet.has(value);
+/** Syntax only. Credentials, explicit registry intent and durable activation authorize a tenant. */
+export function isCommerceTenantSite(value: unknown): value is string {
+	if (typeof value !== "string" || value.length > 253 || value.startsWith("www.")) return false;
+	const labels = value.split(".");
+	return labels.length >= 2
+		&& labels.every(label => /^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/.test(label))
+		&& /^[a-z]/.test(labels[labels.length - 1]);
 }
 
 /**
@@ -41,8 +48,9 @@ export function parseCommerceControlRegistry(
 	queriedSiteUrl: unknown,
 ): CommerceControlDecision {
 	const closed: CommerceControlDecision = { state: "closed", generation: null, valid: false };
-	if (!isCommerceTenant(queriedSiteUrl) || typeof value !== "string") return closed;
-	if (value.length === 0 || encoder.encode(value).byteLength > COMMERCE_CONTROL_MAX_BYTES) {
+	if (!isCommerceTenantSite(queriedSiteUrl) || typeof value !== "string") return closed;
+	const byteLength = encoder.encode(value).byteLength;
+	if (byteLength === 0 || byteLength > MAX_REGISTRY_BYTES) {
 		return closed;
 	}
 
@@ -52,25 +60,29 @@ export function parseCommerceControlRegistry(
 	} catch {
 		return closed;
 	}
-	if (!isExactObject(parsed, ["version", "tenants"]) || parsed.version !== COMMERCE_CONTROL_VERSION) {
+	if (!isExactObject(parsed, ["version", "tenants"]) || (parsed.version !== 1 && parsed.version !== 2)) {
 		return closed;
 	}
-	if (!Array.isArray(parsed.tenants) || parsed.tenants.length !== COMMERCE_TENANTS.length) {
+	const legacy = parsed.version === 1;
+	if (!Array.isArray(parsed.tenants)
+		|| parsed.tenants.length > MAX_REGISTRY_TENANTS
+		|| legacy && (byteLength > LEGACY_MAX_BYTES || parsed.tenants.length !== LEGACY_TENANTS.size)) {
 		return closed;
 	}
 
-	const entries = new Map<CommerceTenant, { state: CommerceControlState; generation: number }>();
+	const entries = new Map<string, { state: CommerceControlState; generation: number; tenantId?: string }>();
 	for (const entry of parsed.tenants) {
-		if (!isExactObject(entry, ["siteUrl", "state", "generation"])) return closed;
-		if (!isCommerceTenant(entry.siteUrl) || entries.has(entry.siteUrl)) return closed;
+		if (!isExactObject(entry, legacy ? ["siteUrl", "state", "generation"] : ["siteUrl", "tenantId", "state", "generation"])) return closed;
+		if (!isCommerceTenantSite(entry.siteUrl) || entries.has(entry.siteUrl)) return closed;
+		if (legacy ? !LEGACY_TENANTS.has(entry.siteUrl) : !isTenantId(entry.tenantId)) return closed;
 		if (entry.state !== "open" && entry.state !== "closed") return closed;
 		if (!Number.isSafeInteger(entry.generation) || Number(entry.generation) < 1) return closed;
 		entries.set(entry.siteUrl, {
 			state: entry.state,
 			generation: Number(entry.generation),
+			...(isTenantId(entry.tenantId) ? { tenantId: entry.tenantId } : {}),
 		});
 	}
-	if (entries.size !== COMMERCE_TENANTS.length) return closed;
 	const decision = entries.get(queriedSiteUrl);
 	return decision ? { ...decision, valid: true } : closed;
 }

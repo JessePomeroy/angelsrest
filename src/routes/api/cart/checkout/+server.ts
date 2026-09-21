@@ -112,6 +112,9 @@ export async function POST({ request, cookies }) {
 		const tenant = await runCheckoutSessionStage("checkout_tenant", () =>
 			resolveStripeTenantForSite(siteOrigin),
 		);
+		if (control.tenantId !== undefined && control.tenantId !== tenant.tenantId) {
+			throw new NewOrderCheckoutClosedError();
+		}
 		const tenantCheckout = buildCartTenantCheckoutOptions({
 			items: resolvedItems,
 			tenant,
