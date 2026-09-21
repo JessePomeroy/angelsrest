@@ -1,5 +1,6 @@
 import { defineSchema, defineTable } from "convex/server";
 import { v } from "convex/values";
+import { checkoutFinancialSnapshotValidator } from "./helpers/checkoutFinancialSnapshot";
 import { stripeConnectStatusValidator } from "./helpers/stripeConnectStatus";
 import { lumaprintsConnectionFields, lumaprintsConnectionValidator } from "./helpers/lumaprintsConnection";
 import {
@@ -936,6 +937,7 @@ export default defineSchema({
 	// additive; old hosts do not create or consume them until Unit B is deployed.
 	checkoutSessionAdmissions: defineTable({
 		protocolVersion: v.literal(1),
+		checkoutFinancialSnapshot: v.optional(checkoutFinancialSnapshotValidator),
 		tenantId: v.optional(v.string()),
 		siteUrl: v.string(),
 		accountScope: v.string(),
@@ -1104,6 +1106,7 @@ export default defineSchema({
 
 	// Print orders (from Stripe checkout on any client site)
 	orders: defineTable({
+		checkoutFinancialSnapshot: v.optional(checkoutFinancialSnapshotValidator),
 		printJobId: v.optional(v.id("printFulfillmentJobs")),
 		tenantId: v.optional(v.string()),
 		siteUrl: v.string(),

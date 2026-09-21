@@ -1155,6 +1155,19 @@ export const create = mutation({
 		}
 		await assertTenantRouting(ctx, tenantId, args.siteUrl, durableTenantId);
 		durableTenantId ??= tenantId;
+		const checkoutFinancialSnapshot = admission?.checkoutFinancialSnapshot;
+		if (checkoutFinancialSnapshot && (
+			checkoutFinancialSnapshot.tenantId !== durableTenantId
+			|| checkoutFinancialSnapshot.stripeConnectedAccountId !== args.stripeConnectedAccountId
+			|| checkoutFinancialSnapshot.currency !== args.stripePaymentCurrency
+			|| checkoutFinancialSnapshot.stripeLivemode !== args.stripePaymentLivemode
+			|| !printInput || !orderInput.checkoutSnapshot
+			|| checkoutFinancialSnapshot.subtotalCents !== (args.subtotal ?? 0)
+			|| checkoutFinancialSnapshot.lines.length !== args.items.length
+			|| checkoutFinancialSnapshot.lines.some((line, index) => line.quantity !== args.items[index]?.quantity)
+			|| !isNonnegativeSafeInteger(args.total)
+			|| args.total > 0 && (!args.stripePaymentIntentId || !STRIPE_PAYMENT_INTENT_ID.test(args.stripePaymentIntentId))
+		)) throw new Error("Paid order does not match original financial identity");
 		if (lumaprintsConnection !== undefined) {
 			if (!printInput?.lines.some(line => line.sources.length > 0) || orderInput.fulfillmentType !== "lumaprints") {
 				throw new Error("LumaPrints connection requires frozen print input");
@@ -1202,6 +1215,7 @@ export const create = mutation({
 			? `AR-${orderNumber}` : undefined;
 		const _id = await ctx.db.insert("orders", {
 			...orderInput,
+			checkoutFinancialSnapshot,
 			printInput,
 			lumaprintsConnection,
 			tenantId: durableTenantId,
@@ -3993,7 +4007,8 @@ export const updateStatus = mutation({
 		const changesPaymentIntentBinding = updates.stripePaymentIntentId !== undefined
 			&& updates.stripePaymentIntentId !== current?.stripePaymentIntentId;
 		const hasFeeBindingOrLifecycle = current !== null && current !== undefined && (
-			current.stripePaymentIntentId !== undefined
+			current.checkoutFinancialSnapshot !== undefined
+			|| current.stripePaymentIntentId !== undefined
 			|| current.stripeFees !== undefined
 			|| current.stripeFeeCurrency !== undefined
 			|| current.stripeFeeChargeId !== undefined

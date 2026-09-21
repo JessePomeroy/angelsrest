@@ -1,6 +1,7 @@
 import { createHash, createHmac } from "node:crypto";
 import { env as publicEnv } from "$env/dynamic/public";
 import { getCheckoutSnapshotReservationCredential } from "$lib/server/checkoutBridgeConfig";
+import type { CheckoutFinancialIntent } from "../../../packages/crm-api/convex/helpers/checkoutFinancialSnapshot";
 
 const BEGIN_PATH = "/commerce/checkout-admissions/begin";
 const MARK_CREATING_PATH = "/commerce/checkout-admissions/mark-creating";
@@ -56,7 +57,11 @@ export interface CheckoutSessionAdmissionClient {
 		hostGeneration: number;
 		requestFingerprint: string;
 	}): Promise<CheckoutAdmissionPermit>;
-	markCreating(permit: CheckoutAdmissionPermit, checkoutSnapshotHandle?: string): Promise<number>;
+	markCreating(
+		permit: CheckoutAdmissionPermit,
+		checkoutSnapshotHandle?: string,
+		financialIntent?: CheckoutFinancialIntent,
+	): Promise<number>;
 	markUncertain(permit: CheckoutAdmissionPermit): Promise<void>;
 	bind(input: {
 		permit: CheckoutAdmissionPermit;
@@ -146,9 +151,10 @@ export function createCheckoutSessionAdmissionClient({
 					: { requestedStripeExpiresAt: response.requestedStripeExpiresAt }),
 			};
 		},
-		async markCreating(permit, checkoutSnapshotHandle) {
+		async markCreating(permit, checkoutSnapshotHandle, financialIntent) {
 			const response = await post(MARK_CREATING_PATH, permit.site, {
 				...(checkoutSnapshotHandle === undefined ? {} : { checkoutSnapshotHandle }),
+				...(financialIntent === undefined ? {} : { financialIntent }),
 				version: 1,
 				site: permit.site,
 				admissionId: permit.admissionId,
@@ -156,7 +162,11 @@ export function createCheckoutSessionAdmissionClient({
 				requestFingerprint: permit.requestFingerprint,
 				stripeIdempotencyDigest: permit.stripeIdempotencyDigest,
 			});
-			if (!isCreatingResponse(response)) throw unavailable();
+			const allowsLegacyCapture = ["creating", "creation_uncertain", "bound"].includes(
+				permit.state,
+			);
+			if (!isCreatingResponse(response, financialIntent !== undefined, allowsLegacyCapture))
+				throw unavailable();
 			return response.requestedStripeExpiresAt;
 		},
 		async markUncertain(permit) {
@@ -241,12 +251,23 @@ function isBeginResponse(value: unknown): value is {
 	);
 }
 
-function isCreatingResponse(value: unknown): value is {
+function isCreatingResponse(
+	value: unknown,
+	expectsFinancialCapture: boolean,
+	allowsLegacyCapture: boolean,
+): value is {
 	state: string;
 	requestedStripeExpiresAt: number;
 } {
 	return (
-		exactObject(value, ["state", "requestedStripeExpiresAt"]) &&
+		exactObject(value, [
+			"state",
+			"requestedStripeExpiresAt",
+			...(expectsFinancialCapture ? ["financialCaptureVersion"] : []),
+		]) &&
+		(!expectsFinancialCapture ||
+			value.financialCaptureVersion === 1 ||
+			(allowsLegacyCapture && value.financialCaptureVersion === 0)) &&
 		(value.state === "creating" ||
 			value.state === "creation_uncertain" ||
 			value.state === "bound") &&

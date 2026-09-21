@@ -5,6 +5,7 @@ import { convexTest } from "convex-test";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { api, internal } from "./_generated/api";
 import { requireClientPaymentReady } from "./helpers/clientPaymentReadiness";
+import { reservationHandleHash } from "./helpers/checkoutSnapshot";
 import schema from "./schema";
 
 const modules = import.meta.glob("./**/*.ts");
@@ -160,7 +161,8 @@ async function admissionFixture(print = false) {
 	});
 	const admitted = await s.t.mutation(internal.commerceClosure.beginCheckoutSessionAdmission, args);
 	const creating = { siteUrl, admissionId: admitted.admissionId, activeLeaseTokenHash: args.activeLeaseTokenHash,
-		requestFingerprint: args.requestFingerprint, stripeIdempotencyDigest: digest(7), checkoutSnapshotHandleHash: digest(5) };
+		requestFingerprint: args.requestFingerprint, stripeIdempotencyDigest: digest(7), checkoutSnapshotHandleHash: digest(5),
+		financialIntent: { version: 1 as const, currency: "usd" as const, lines: [{ unitPriceCents: 4200, quantity: 1 }], applicationFeeAmountCents: print ? 210 : 0 } };
 	const create = () => s.t.mutation(internal.commerceClosure.markCheckoutSessionCreating, creating);
 	return { ...s, args, activate, admitted, creating, create, reservationId, supplier };
 }
@@ -213,7 +215,8 @@ describe("first client checkout creation", () => {
 
 	test("mixed print/digital creation is idempotent and uncertain recovery survives later provider closure and disconnection", async () => {
 		const s = await admissionFixture(true); await s.activate("new_provider_submission");
-		await s.t.run(async ctx => { const r = await ctx.db.get(s.reservationId); if (!r?.printInput) throw new Error("Missing print input"); await ctx.db.patch(r._id, { printInput: { version: 1, lines: [...r.printInput.lines, { amountCents: 1000, sources: [] }] } }); });
+		await s.t.run(async ctx => { const r = await ctx.db.get(s.reservationId); if (!r?.printInput) throw new Error("Missing print input"); await ctx.db.patch(r._id, { snapshot: { ...r.snapshot, items: [...r.snapshot.items, { ...r.snapshot.items[0]!, productKey: "digital", productKind: "digital_download" }] }, printInput: { version: 1, lines: [...r.printInput.lines, { amountCents: 1000, sources: [] }] } }); });
+		s.creating.financialIntent.lines.push({ unitPriceCents: 1000, quantity: 1 });
 		const [one, two] = await Promise.all([s.create(), s.create()]); expect(one).toEqual(two);
 		await s.t.mutation(internal.commerceClosure.markCheckoutSessionCreationUncertain, { siteUrl: s.args.siteUrl, admissionId: s.admitted.admissionId, requestFingerprint: s.creating.requestFingerprint, stripeIdempotencyDigest: s.creating.stripeIdempotencyDigest });
 		await s.activate("new_provider_submission", "closed", 2); await s.activate("new_order_admission", "closed", 2);
@@ -253,5 +256,103 @@ describe("first client checkout creation", () => {
 	test("an unconnected client cannot start a platform-account admission", async () => {
 		const s = await admissionFixture();
 		await expect(s.t.mutation(internal.commerceClosure.beginCheckoutSessionAdmission, { ...s.args, attemptDigest: "8".repeat(64), stripeConnectedAccountId: undefined })).rejects.toThrow();
+	});
+});
+
+describe("original client checkout financial evidence", () => {
+	test("atomically freezes the original expected amounts and leaves provider collection unknown", async () => {
+		const s = await admissionFixture(true); await s.activate("new_provider_submission");
+		s.creating.financialIntent.lines[0]!.quantity = 2;
+		s.creating.financialIntent.applicationFeeAmountCents = 420;
+		const [one, two] = await Promise.all([s.create(), s.create()]);
+		expect(one).toEqual(two);
+		expect(one).toMatchObject({ financialCaptureVersion: 1 });
+		const saved = await s.t.run(ctx => ctx.db.get(s.admitted.admissionId));
+		expect(saved?.checkoutFinancialSnapshot).toEqual({
+			version: 1, policy: "print_subtotal_5pct_floor_v1", tenantId: s.first.identity.tenantId,
+			stripePlatformAccountId: PLATFORM, stripeConnectedAccountId: ACCOUNT, stripeLivemode: false,
+			currency: "usd", lines: [{ productKind: "print", unitPriceCents: 4200, quantity: 2 }],
+			subtotalCents: 8400, printSubtotalCents: 8400, applicationFeeAmountCents: 420,
+		});
+		expect(saved?.checkoutFinancialSnapshot).not.toHaveProperty("applicationFeeId");
+		await s.t.run(ctx => ctx.db.patch(s.reservationId, { printInput: { version: 1, lines: [{ amountCents: 9999, sources: [] }] } }));
+		await expect(s.create()).resolves.toMatchObject({ financialCaptureVersion: 1 });
+		expect((await s.t.run(ctx => ctx.db.get(s.admitted.admissionId)))?.checkoutFinancialSnapshot).toEqual(saved?.checkoutFinancialSnapshot);
+	});
+
+	test.each(["missing", "price", "quantity", "fee"])("rejects %s financial intent before entering provider creation", async failure => {
+		const s = await admissionFixture(true); await s.activate("new_provider_submission");
+		const financialIntent = failure === "missing" ? undefined : {
+			...s.creating.financialIntent,
+			...(failure === "price" ? { lines: [{ unitPriceCents: 4199, quantity: 1 }] } : {}),
+			...(failure === "quantity" ? { lines: [{ unitPriceCents: 4200, quantity: 0 }] } : {}),
+			...(failure === "fee" ? { applicationFeeAmountCents: 209 } : {}),
+		};
+		await expect(s.t.mutation(internal.commerceClosure.markCheckoutSessionCreating, { ...s.creating, financialIntent })).rejects.toThrow();
+		const saved = await s.t.run(ctx => ctx.db.get(s.admitted.admissionId));
+		expect(saved?.state).toBe("active_prestripe");
+		expect(saved?.checkoutFinancialSnapshot).toBeUndefined();
+	});
+
+	test("a changed replay cannot replace the captured quantities or fee", async () => {
+		const s = await admissionFixture(true); await s.activate("new_provider_submission"); await s.create();
+		const saved = await s.t.run(ctx => ctx.db.get(s.admitted.admissionId));
+		s.creating.financialIntent.lines[0]!.quantity = 2;
+		s.creating.financialIntent.applicationFeeAmountCents = 420;
+		await expect(s.create()).rejects.toThrow("financial replay");
+		expect((await s.t.run(ctx => ctx.db.get(s.admitted.admissionId)))?.checkoutFinancialSnapshot).toEqual(saved?.checkoutFinancialSnapshot);
+	});
+
+	test.each(["creating", "creation_uncertain", "bound"] as const)("preserves historical %s replay without inventing a fee record", async state => {
+		const s = await admissionFixture();
+		await s.t.run(ctx => ctx.db.patch(s.admitted.admissionId, { state, stripeIdempotencyDigest: s.creating.stripeIdempotencyDigest,
+			requestedStripeExpiresAt: Math.floor(Date.now() / 1000) + 86100, checkoutSnapshotHandleHash: s.creating.checkoutSnapshotHandleHash }));
+		await expect(s.create()).resolves.toMatchObject({ state, financialCaptureVersion: 0 });
+		const { financialIntent: _, ...legacyRequest } = s.creating;
+		expect(await s.t.mutation(internal.commerceClosure.markCheckoutSessionCreating, legacyRequest)).not.toHaveProperty("financialCaptureVersion");
+		expect((await s.t.run(ctx => ctx.db.get(s.admitted.admissionId)))?.checkoutFinancialSnapshot).toBeUndefined();
+	});
+
+	test("transfers the original financial snapshot only to its matching paid order", async () => {
+		const s = await admissionFixture();
+		const handle = "123e4567-e89b-42d3-a456-426614174000";
+		const hash = await reservationHandleHash(s.args.siteUrl, handle);
+		await s.t.run(async ctx => {
+			const reservation = await ctx.db.get(s.reservationId);
+			if (!reservation) throw new Error("Missing reservation");
+			await ctx.db.patch(s.reservationId, { handleHash: hash, snapshot: { ...reservation.snapshot, items: reservation.snapshot.items.map(item => ({ ...item, productKind: "print" as const })) } });
+		});
+		s.creating.financialIntent.applicationFeeAmountCents = 210;
+		s.creating.checkoutSnapshotHandleHash = hash;
+		const creating = await s.create();
+		const session = "cs_test_financial1234567890";
+		await s.t.mutation(internal.commerceClosure.bindCheckoutSessionAdmission, {
+			siteUrl: s.args.siteUrl, admissionId: s.admitted.admissionId, requestFingerprint: s.creating.requestFingerprint,
+			stripeIdempotencyDigest: s.creating.stripeIdempotencyDigest, stripeSessionId: session,
+			stripeExpiresAt: creating.requestedStripeExpiresAt, checkoutSnapshotHandleHash: hash,
+		});
+		const payload = { webhookSecret: SECRET, tenantId: s.first.identity.tenantId, siteUrl: s.args.siteUrl,
+			stripeConnectedAccountId: ACCOUNT, stripeSessionId: session, stripePaymentIntentId: "pi_financial1234567890",
+			stripePaymentCurrency: "usd", stripePaymentLivemode: false,
+			checkoutSessionAdmission: { version: 1, handleHash: s.args.admissionHandleHash },
+			checkoutSnapshotReservation: { version: 2, handle }, customerEmail: "buyer@example.invalid",
+			items: [{ productName: "Merchant print", quantity: 1, price: 4200 }], subtotal: 4200, total: 4200,
+			fulfillmentType: "self" as const };
+		for (const changed of [{ stripePaymentLivemode: true }, { stripePaymentCurrency: "eur" },
+			{ subtotal: 4201 }, { items: [{ productName: "Merchant print", quantity: 2, price: 4200 }] },
+			{ checkoutSnapshotReservation: undefined }, { stripePaymentIntentId: undefined }]) {
+			await expect(s.t.mutation(api.orders.create, { ...payload, ...changed })).rejects.toThrow();
+			expect((await s.t.run(ctx => ctx.db.get(s.admitted.admissionId)))?.state).toBe("bound");
+		}
+		await s.t.mutation(api.platform.markStripeConnectDisconnected, { ...s.first.args, eventId: "evt_disconnectFinancial" });
+		const created = await s.t.mutation(api.orders.create, payload);
+		const admission = await s.t.run(ctx => ctx.db.get(s.admitted.admissionId));
+		const order = await s.t.run(ctx => ctx.db.get(created._id));
+		expect(order?.checkoutFinancialSnapshot).toEqual(admission?.checkoutFinancialSnapshot);
+		expect(order?.checkoutFinancialSnapshot?.applicationFeeAmountCents).toBe(210);
+		expect(order?.stripePaymentIntentId).toBe(payload.stripePaymentIntentId);
+		await expect(s.t.mutation(api.orders.create, payload)).resolves.toMatchObject({ alreadyExisted: true });
+		await expect(s.t.mutation(api.orders.updateStatus, { orderId: created._id, webhookSecret: SECRET,
+			stripePaymentIntentId: "pi_replacement1234567890" })).rejects.toThrow("immutable");
 	});
 });

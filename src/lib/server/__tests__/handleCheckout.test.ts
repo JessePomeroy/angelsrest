@@ -3,6 +3,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { env } from "$env/dynamic/private";
 import type { CheckoutSnapshotItem } from "$lib/server/checkoutCatalog";
 import type { CheckoutSessionStageError } from "$lib/server/checkoutFailures";
+import { createCheckoutSessionAdmissionClient } from "$lib/server/checkoutSessionAdmissionClient";
 import type { CheckoutSnapshotReservationClient } from "$lib/server/checkoutSnapshotReservationClient";
 import {
 	type CreateHandleCheckoutOptions,
@@ -163,6 +164,80 @@ describe("handle checkout orchestration", () => {
 		return { ...test, connection };
 	}
 
+	it("waits for financial capture acknowledgement and recovers a lost acknowledgement without an early Stripe call", async () => {
+		const test = captureHarness();
+		const response = (body: unknown) =>
+			new Response(JSON.stringify(body), {
+				headers: { "Content-Type": "application/json" },
+			});
+		const fetcher = vi
+			.fn()
+			.mockResolvedValueOnce(
+				response({
+					outcome: "created",
+					admissionId: "admission_123",
+					state: "active_prestripe",
+					admissionGeneration: 1,
+				}),
+			)
+			.mockResolvedValueOnce(
+				response({ state: "creating", requestedStripeExpiresAt: Math.floor(NOW / 1000) + 86100 }),
+			)
+			.mockResolvedValueOnce(response({ released: false }))
+			.mockResolvedValueOnce(
+				response({
+					outcome: "replayed",
+					admissionId: "admission_123",
+					state: "creating",
+					admissionGeneration: 1,
+				}),
+			)
+			.mockResolvedValueOnce(
+				response({
+					state: "creating",
+					requestedStripeExpiresAt: Math.floor(NOW / 1000) + 86100,
+					financialCaptureVersion: 1,
+				}),
+			)
+			.mockResolvedValueOnce(response({ outcome: "bound" }));
+		test.options.admissionClient = createCheckoutSessionAdmissionClient({
+			baseUrl: "https://convex.example",
+			credential: () => "synthetic-authority-0123456789",
+			fetcher,
+		});
+		await expect(createHandleCheckoutSession(test.options)).rejects.toThrow();
+		expect(test.create).not.toHaveBeenCalled();
+		await createHandleCheckoutSession(test.options);
+		expect(test.create).toHaveBeenCalledTimes(1);
+		expect(test.options.verifyReadiness).toHaveBeenCalledTimes(1);
+		const first = JSON.parse(String(fetcher.mock.calls[1]?.[1]?.body));
+		const replay = JSON.parse(String(fetcher.mock.calls[4]?.[1]?.body));
+		expect(first).toEqual(replay);
+		expect(first.financialIntent).toEqual({
+			version: 1,
+			currency: "usd",
+			lines: [{ unitPriceCents: 4200, quantity: 1 }],
+			applicationFeeAmountCents: 210,
+		});
+		expect(test.create.mock.calls[0]?.[0].payment_intent_data?.application_fee_amount).toBe(210);
+	});
+
+	it("rejects non-USD or inconsistent fee data before admitting a client payment", async () => {
+		for (const invalidCurrency of [true, false]) {
+			const test = captureHarness();
+			if (invalidCurrency) {
+				const item = test.options.lineItems[0];
+				if (!item?.price_data) throw new Error("Missing fixture line");
+				item.price_data.currency = "eur";
+			} else test.options.tenantCheckout.platformFeeAmount = 211;
+			await expect(createHandleCheckoutSession(test.options)).rejects.toThrow(
+				"financial amounts are invalid",
+			);
+			expect(test.admissionClient.begin).not.toHaveBeenCalled();
+			expect(test.create).not.toHaveBeenCalled();
+		}
+	});
+
 	it.each([
 		true,
 		false,
@@ -211,7 +286,12 @@ describe("handle checkout orchestration", () => {
 		await createHandleCheckoutSession(test.options);
 		expect(test.options.verifyReadiness).not.toHaveBeenCalled();
 		expect(test.admissionClient.release).not.toHaveBeenCalled();
-		expect(test.admissionClient.markCreating).toHaveBeenCalledWith(expect.anything(), HANDLE);
+		expect(test.admissionClient.markCreating).toHaveBeenCalledWith(expect.anything(), HANDLE, {
+			version: 1,
+			currency: "usd",
+			lines: [{ unitPriceCents: 4200, quantity: 1 }],
+			applicationFeeAmountCents: 210,
+		});
 		expect(test.create.mock.calls[0]?.[1]?.idempotencyKey).toBe(
 			`checkout-admission-v1:${"a".repeat(64)}`,
 		);

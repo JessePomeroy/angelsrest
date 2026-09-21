@@ -16,6 +16,61 @@ function jsonResponse(body: unknown, status = 200) {
 }
 
 describe("Checkout Session admission client", () => {
+	it.each([
+		["active_prestripe", 1, true],
+		["active_prestripe", undefined, false],
+		["active_prestripe", 0, false],
+		["creation_uncertain", 1, true],
+		["creation_uncertain", 0, true],
+		["creation_uncertain", undefined, false],
+		["creation_uncertain", 2, false],
+	] as const)("requires truthful financial acknowledgement for %s/%s", async (state, version, accepted) => {
+		const fetcher = vi
+			.fn()
+			.mockResolvedValueOnce(
+				jsonResponse({
+					outcome: "replayed",
+					admissionId: "admission_123",
+					state,
+					admissionGeneration: 1,
+				}),
+			)
+			.mockResolvedValueOnce(
+				jsonResponse({
+					state: "creating",
+					requestedStripeExpiresAt: 1_800_086_100,
+					...(version === undefined ? {} : { financialCaptureVersion: version }),
+				}),
+			);
+		const client = createCheckoutSessionAdmissionClient({
+			baseUrl: "https://convex.example",
+			fetcher,
+			credential: () => "synthetic-authority-0123456789",
+		});
+		const permit = await client.begin({
+			site: "client.example",
+			tenantId: TENANT_ID,
+			account: "acct_client12345678901",
+			identity: {
+				attempt: ATTEMPT,
+				attemptStartedAt: 1_800_000_000_000,
+				proofClass: "signed_bridge_body",
+			},
+			hostGeneration: 1,
+			requestFingerprint: "a".repeat(64),
+		});
+		const financialIntent = {
+			version: 1 as const,
+			currency: "usd" as const,
+			lines: [{ unitPriceCents: 4200, quantity: 2 }],
+			applicationFeeAmountCents: 420,
+		};
+		const operation = client.markCreating(permit, ATTEMPT, financialIntent);
+		if (accepted) await expect(operation).resolves.toBe(1_800_086_100);
+		else await expect(operation).rejects.toThrow("unavailable");
+		expect(JSON.parse(String(fetcher.mock.calls[1]?.[1]?.body))).toMatchObject({ financialIntent });
+	});
+
 	it("replays one deterministic identity through creating and atomic binding", async () => {
 		const fetcher = vi
 			.fn()

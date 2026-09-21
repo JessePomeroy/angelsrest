@@ -37,6 +37,7 @@ import {
 	COMMERCE_TENANT_METADATA_KEY,
 	type TenantStripeCheckoutOptions,
 } from "$lib/server/stripeConnect";
+import { parseCheckoutFinancialIntent } from "../../../packages/crm-api/convex/helpers/checkoutFinancialSnapshot";
 
 export const HANDLE_CHECKOUT_MODE = "handle-v2";
 const UUID_V4 = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
@@ -327,6 +328,33 @@ export async function createAdmittedOrderCheckoutSession({
 	bindSession: (sessionId: string) => void;
 	verifyBeforePayment?: () => Promise<void>;
 }): Promise<PaymentCheckoutSessionResult & { expiresAt: number }> {
+	const financialIntent =
+		site === "angelsrest.online"
+			? undefined
+			: parseCheckoutFinancialIntent({
+					version: 1,
+					currency: "usd",
+					lines: lineItems.map((line) => ({
+						unitPriceCents:
+							line.price_data?.currency === "usd" &&
+							line.price_data.unit_amount_decimal === undefined
+								? line.price_data.unit_amount
+								: undefined,
+						quantity: line.quantity ?? 1,
+					})),
+					applicationFeeAmountCents:
+						tenantCheckout.session.payment_intent_data?.application_fee_amount ?? 0,
+				});
+	if (
+		financialIntent === null ||
+		(financialIntent &&
+			financialIntent.applicationFeeAmountCents !== tenantCheckout.platformFeeAmount)
+	) {
+		throw new CheckoutSessionStageError(
+			"checkout_admission",
+			new Error("Client checkout financial amounts are invalid"),
+		);
+	}
 	const requestFingerprint = checkoutRequestFingerprint({
 		version: 1,
 		site,
@@ -378,10 +406,9 @@ export async function createAdmittedOrderCheckoutSession({
 	}
 	let requestedStripeExpiresAt: number;
 	try {
-		requestedStripeExpiresAt = await admissionClient.markCreating(
-			permit,
-			site === "angelsrest.online" ? undefined : checkoutSnapshotHandle,
-		);
+		requestedStripeExpiresAt = financialIntent
+			? await admissionClient.markCreating(permit, checkoutSnapshotHandle, financialIntent)
+			: await admissionClient.markCreating(permit, undefined);
 	} catch (cause) {
 		const released = await admissionClient.release(permit).catch(() => false);
 		if (site !== "angelsrest.online" && released) {
