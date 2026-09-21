@@ -107,7 +107,8 @@ async function resolveCommerceContext(
 
 		return {
 			...(client.tenantId ? { tenantId: client.tenantId } : {}),
-			siteUrl: client.siteUrl,
+			// Keep the authenticated purchase/recovery partition; the current URL is presentation data.
+			siteUrl: metadataSiteUrl ?? client.siteUrl,
 			notificationProfile: {
 				siteName: client.name || client.siteUrl,
 				siteUrl: client.siteUrl,

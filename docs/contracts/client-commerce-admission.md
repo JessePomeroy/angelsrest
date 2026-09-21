@@ -117,7 +117,9 @@ immutable `full-v1` Stripe binding. A missing or malformed connected account nev
 falls back to Angels Rest's platform balance. Angels Rest's own checkout retains
 platform-account routing. Payment target lookup and historical account ownership
 use verified tenant aliases, including canonical requests for stored full URLs;
-this does not migrate catalog/content partitions or create aliases automatically.
+this does not migrate catalog/content partitions or create aliases automatically. Connected paid intake, stored-order recovery and refunds retain the verified
+original transaction partition; current client URLs remain notification/presentation
+data. Refund routing uses the retrieved paid Session's stable tenant marker.
 
 The hub-only `platform.getClientPaymentTarget` query requires `WEBHOOK_SECRET`
 and validates tenant/domain/account ownership before returning the creation

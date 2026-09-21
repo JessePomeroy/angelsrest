@@ -177,9 +177,10 @@ function refundArgs() {
 	};
 }
 
-test("manual refund reconciliation uses historical ownership and rejects the new account", async () => {
+test.each([SITE, "https://www.zippymiggy.com/", "https://www.renamed.example/"])("manual refund reconciliation retains historical ownership at %s", async storedSite => {
 	const s = await setup();
 	await s.replace();
+	await s.t.run(ctx => ctx.db.patch(s.clientId, { siteUrl: storedSite }));
 	expect(
 		await s.t.mutation(api.orders.reconcileSucceededManualRefund, {
 			...refundArgs(),
@@ -195,7 +196,7 @@ test("manual refund reconciliation uses historical ownership and rejects the new
 	});
 });
 
-test("automated refund status reconciles in the original account", async () => {
+test.each([SITE, "https://www.zippymiggy.com/", "https://www.renamed.example/"])("automated refund status reconciles in the original account at %s", async storedSite => {
 	const s = await setup();
 	await s.t.run((ctx) =>
 		ctx.db.patch(s.orderId, {
@@ -207,6 +208,7 @@ test("automated refund status reconciles in the original account", async () => {
 		}),
 	);
 	await s.replace();
+	await s.t.run(ctx => ctx.db.patch(s.clientId, { siteUrl: storedSite }));
 	const { stripeChargeId: _charge, ...identity } = refundArgs();
 	const result = await s.t.mutation(api.orders.reconcileAutomatedFulfillmentRefund, {
 		...identity,

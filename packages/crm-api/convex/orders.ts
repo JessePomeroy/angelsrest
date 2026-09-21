@@ -32,7 +32,7 @@ import {
 	stripeAccountScope,
 } from "./helpers/checkoutSnapshot";
 import { tenantIdentityMatchesSite } from "./helpers/tenantContext";
-import { isCurrentStripeAccountForSite, resolveStripeAccountOwner, stripeAccountMatchesSite } from "./helpers/stripeAccountOwnership";
+import { isCurrentStripeAccountForSite, stripeAccountMatchesSite } from "./helpers/stripeAccountOwnership";
 import { assertSavedLumaPrintsConnection, captureCurrentLumaPrintsConnection, lumaprintsConnectionValidator, sameLumaPrintsConnection, type LumaPrintsConnection } from "./helpers/lumaprintsConnection";
 import { AGGREGATE_SCAN_LIMIT, BULK_SCAN_LIMIT } from "./helpers/limits";
 import {
@@ -1314,8 +1314,7 @@ export const reconcileSucceededManualRefund = mutation({
 			return { kind: "rejected", reason: "identity_conflict" };
 		}
 		if (args.stripeConnectedAccountId !== undefined) {
-			const owner = await resolveStripeAccountOwner(ctx, args.stripeConnectedAccountId);
-			if (owner?.siteUrl !== args.siteUrl) {
+			if (!await stripeAccountMatchesSite(ctx, args.siteUrl, args.stripeConnectedAccountId)) {
 				return { kind: "rejected", reason: "identity_conflict" };
 			}
 		}
@@ -3453,8 +3452,7 @@ export const reconcileAutomatedFulfillmentRefund = mutation({
 			&& args.eventLivemode === args.sessionLivemode;
 		if (!validIdentity) return { kind: "rejected" as const, reason: "identity_conflict" as const };
 		if (args.stripeConnectedAccountId !== undefined) {
-			const owner = await resolveStripeAccountOwner(ctx, args.stripeConnectedAccountId);
-			if (owner?.siteUrl !== args.siteUrl) {
+			if (!await stripeAccountMatchesSite(ctx, args.siteUrl, args.stripeConnectedAccountId)) {
 				return { kind: "rejected" as const, reason: "identity_conflict" as const };
 			}
 		}
