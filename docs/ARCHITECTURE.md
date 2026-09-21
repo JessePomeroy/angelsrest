@@ -173,6 +173,16 @@ online. Portal capability authorization and tenant resolution remain unchanged.
 
 ## Commerce and fulfillment
 
+Client Stripe onboarding creates full-dashboard accounts with Stripe responsible
+for connected-account payment losses and the client paying Stripe fees. The
+host verifies these controller properties and tenant/attempt metadata before
+binding an account. Convex freezes one creation request per client, and an atomic
+binding prevents replacement or sharing an account across clients. The attempt
+also pins the Stripe platform account and test/live mode; automatic creation
+retries stop after 23 hours to stay inside Stripe's idempotency retention window.
+See [the source/adoption contract](contracts/client-stripe-onboarding.md). This
+foundation does not establish client self-service or production readiness.
+
 `current/convexShop.server.ts` owns bounded published-product reads and
 normalized 404/503 behavior. Shop loaders do not inspect preview or provider
 flags. `current/currentCheckoutCommerce.server.ts` resolves every new purchase

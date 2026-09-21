@@ -235,6 +235,17 @@ export default defineSchema({
 		stripeCustomerId: v.optional(v.string()),
 		stripeSubscriptionId: v.optional(v.string()),
 		stripeConnectedAccountId: v.optional(v.string()),
+		// One durable creation attempt. Keep its request identity after binding so
+		// retries never create a second account or silently switch Stripe environments.
+		stripeConnectAttempt: v.optional(v.object({
+			id: v.string(),
+			model: v.literal("full-v1"),
+			startedAt: v.number(),
+			email: v.string(),
+			siteUrl: v.string(),
+			platformAccountId: v.string(),
+			livemode: v.boolean(),
+		})),
 		adminEmails: v.array(v.string()),
 		// Stable Better Auth identities claimed by verified invited admins.
 		// Optional during the R12 widen/claim/narrow rollout.
