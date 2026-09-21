@@ -1,0 +1,52 @@
+import { type Infer, v } from "convex/values";
+import type { Doc } from "../_generated/dataModel";
+import type { QueryCtx } from "../_generated/server";
+import { isTenantId } from "./tenantContext";
+
+export const lumaprintsConnectionFields = {
+	version: v.literal(1),
+	connectionRef: v.string(),
+	tenantId: v.string(),
+	storeId: v.number(),
+	environment: v.union(v.literal("sandbox"), v.literal("production")),
+};
+export const lumaprintsConnectionValidator = v.object(lumaprintsConnectionFields);
+export type LumaPrintsConnection = Infer<typeof lumaprintsConnectionValidator>;
+
+export function assertLumaPrintsConnection(value: LumaPrintsConnection) {
+	if (!/^lp_[A-Za-z0-9_-]{8,80}$/.test(value.connectionRef)
+		|| !isTenantId(value.tenantId)
+		|| !Number.isSafeInteger(value.storeId) || value.storeId <= 0) {
+		throw new Error("Invalid LumaPrints connection identity");
+	}
+}
+
+/** Only non-secret, immutable routing facts may accompany accepted work. */
+export function lumaprintsConnectionContext(connection: Doc<"lumaprintsConnections">): LumaPrintsConnection {
+	const { version, connectionRef, tenantId, storeId, environment } = connection;
+	const context = { version, connectionRef, tenantId, storeId, environment };
+	assertLumaPrintsConnection(context);
+	return context;
+}
+
+/** Historical ownership survives detachment; current selection is checked by the caller. */
+export async function resolveLumaPrintsConnection(ctx: Pick<QueryCtx, "db">, connectionRef: string) {
+	if (!/^lp_[A-Za-z0-9_-]{8,80}$/.test(connectionRef)) throw new Error("Invalid LumaPrints connection reference");
+	const connection = await ctx.db.query("lumaprintsConnections")
+		.withIndex("by_connectionRef", q => q.eq("connectionRef", connectionRef)).unique();
+	const selections = await ctx.db.query("platformClients")
+		.withIndex("by_lumaprintsConnectionRef", q => q.eq("lumaprintsConnectionRef", connectionRef)).take(2);
+	if (!connection) {
+		if (selections.length) throw new Error("LumaPrints connection ownership is missing");
+		return null;
+	}
+	const context = lumaprintsConnectionContext(connection);
+	const owner = await ctx.db.get(connection.clientId);
+	const tenantOwner = await ctx.db.query("platformClients")
+		.withIndex("by_tenantId", q => q.eq("tenantId", context.tenantId)).unique();
+	if (!owner || owner.tenantId !== connection.tenantId || tenantOwner?._id !== owner._id
+		|| selections.length > 1 || selections.some(client => client._id !== connection.clientId)) {
+		throw new Error("LumaPrints connection ownership is inconsistent");
+	}
+	return { connection, context, owner };
+}
