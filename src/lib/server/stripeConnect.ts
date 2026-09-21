@@ -1,6 +1,11 @@
 import type Stripe from "stripe";
+import {
+	calculatePrintFeeAmount,
+	calculatePrintSubtotalCents,
+	type PrintFeeLine,
+} from "../../../packages/crm-api/convex/helpers/printFeePolicy";
 
-export const PLATFORM_PRINT_FEE_RATE = 0.05;
+export { PLATFORM_PRINT_FEE_RATE } from "../../../packages/crm-api/convex/helpers/printFeePolicy";
 export const COMMERCE_TENANT_METADATA_KEY = "commerceTenantSiteUrl";
 export const COMMERCE_TENANT_ID_METADATA_KEY = "commerceTenantId";
 export const COMMERCE_TENANT_ID_PATTERN =
@@ -47,8 +52,21 @@ export function calculatePlatformFeeAmount({
 	kind: CheckoutKind;
 	subtotalCents: number;
 }): number {
-	if (kind !== "print" || subtotalCents <= 0) return 0;
-	return Math.floor(subtotalCents * PLATFORM_PRINT_FEE_RATE);
+	return kind === "print" ? calculatePrintFeeAmount(subtotalCents) : 0;
+}
+
+export function buildTenantProductCheckoutOptions({
+	tenant,
+	items,
+}: {
+	tenant: StripeTenantAccount;
+	items: readonly PrintFeeLine[];
+}): TenantStripeCheckoutOptions {
+	return buildTenantCheckoutOptions({
+		tenant,
+		kind: "print",
+		subtotalCents: calculatePrintSubtotalCents(items),
+	});
 }
 
 export function buildTenantCheckoutOptions({
