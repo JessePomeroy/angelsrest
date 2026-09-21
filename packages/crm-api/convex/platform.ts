@@ -8,6 +8,7 @@ import {
 	normalizeCatalogProductKinds,
 } from "./helpers/catalogProductPolicy";
 import { DEFAULT_LIST_LIMIT } from "./helpers/limits";
+import { resolveStripeAccountOwner } from "./helpers/stripeAccountOwnership";
 import {
 	ensureTenantAliases,
 	ensureTenantIdentity,
@@ -106,6 +107,8 @@ export const getStripeAccountForSite = query({
  * Resolve a tenant from a Stripe Connect event account id. Called by the
  * platform Stripe webhook after signature verification, with the shared
  * webhook secret passed through to Convex.
+ * Historical ownership survives a changed active account. Keep provider reads
+ * scoped to the event's account; use getStripeAccountForSite for new checkout.
  */
 export const getByStripeConnectedAccountId = query({
 	args: {
@@ -117,12 +120,7 @@ export const getByStripeConnectedAccountId = query({
 		if (auth.via === "auth") {
 			await requirePlatformAdmin(ctx);
 		}
-		return await ctx.db
-			.query("platformClients")
-			.withIndex("by_stripeConnectedAccountId", (q) =>
-				q.eq("stripeConnectedAccountId", stripeConnectedAccountId),
-			)
-			.unique();
+		return await resolveStripeAccountOwner(ctx, stripeConnectedAccountId);
 	},
 });
 
@@ -452,6 +450,28 @@ export const bindStripeConnectAccount = mutation({
 			.take(2);
 		if (owners.some((owner) => owner._id !== client._id)) {
 			throw new Error("Stripe account is already bound to another client");
+		}
+		const binding = await ctx.db.query("stripeAccountBindings")
+			.withIndex("by_stripeConnectedAccountId", (q) =>
+				q.eq("stripeConnectedAccountId", args.stripeConnectedAccountId))
+			.unique();
+		if (!client.tenantId) throw new Error("Stripe account binding requires tenant identity");
+		if (binding && (
+			binding.clientId !== client._id || binding.tenantId !== client.tenantId
+			|| binding.attemptId !== attempt.id
+			|| binding.platformAccountId !== attempt.platformAccountId
+			|| binding.livemode !== attempt.livemode
+		)) throw new Error("Stripe account is already bound to a different connection");
+		if (!binding) {
+			await ctx.db.insert("stripeAccountBindings", {
+				stripeConnectedAccountId: args.stripeConnectedAccountId,
+				clientId: client._id,
+				tenantId: client.tenantId,
+				attemptId: attempt.id,
+				platformAccountId: attempt.platformAccountId,
+				livemode: attempt.livemode,
+				boundAt: Date.now(),
+			});
 		}
 		await ctx.db.patch(client._id, { stripeConnectedAccountId: args.stripeConnectedAccountId });
 		return { stripeConnectedAccountId: args.stripeConnectedAccountId };

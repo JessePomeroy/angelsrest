@@ -23,6 +23,7 @@ import {
 	stripeAccountScope,
 } from "./helpers/checkoutSnapshot";
 import { tenantIdentityMatchesSite } from "./helpers/tenantContext";
+import { isCurrentStripeAccountForSite, resolveStripeAccountOwner } from "./helpers/stripeAccountOwnership";
 
 export const ACTIVE_ADMISSION_LEASE_MS = 120_000;
 export const ORDER_SESSION_LIFETIME_SECONDS = 86_100;
@@ -45,9 +46,7 @@ function validDigest(value: string) {
 }
 
 async function canonicalSiteForConnectedAccount(ctx: QueryCtx, account: string) {
-	const client = await ctx.db.query("platformClients")
-		.withIndex("by_stripeConnectedAccountId", (q) => q.eq("stripeConnectedAccountId", account))
-		.unique();
+	const client = await resolveStripeAccountOwner(ctx, account);
 	return client?.siteUrl ?? null;
 }
 
@@ -256,6 +255,9 @@ export const beginCheckoutSessionAdmission = internalMutation({
 			};
 		}
 
+		if (!await isCurrentStripeAccountForSite(ctx, args.siteUrl, args.stripeConnectedAccountId)) {
+			throw new Error("Checkout admission requires the current Stripe account");
+		}
 		const createdAt = Date.now();
 		const activeLeaseExpiresAt = createdAt + ACTIVE_ADMISSION_LEASE_MS;
 		const admissionId = await ctx.db.insert("checkoutSessionAdmissions", {

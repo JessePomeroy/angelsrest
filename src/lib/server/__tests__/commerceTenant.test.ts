@@ -1,7 +1,7 @@
 import type { ConvexHttpClient } from "convex/browser";
 import type Stripe from "stripe";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { resolveCommerceTenant } from "$lib/server/commerceTenant";
+import { resolveCommerceTenant, resolveStoredCommerceTenant } from "$lib/server/commerceTenant";
 import {
 	COMMERCE_TENANT_ID_METADATA_KEY,
 	COMMERCE_TENANT_METADATA_KEY,
@@ -47,6 +47,38 @@ describe("commerce tenant resolution", () => {
 
 	beforeEach(() => {
 		query.mockReset();
+	});
+
+	it("keeps historical event and retry requests on their original Stripe account", async () => {
+		query.mockResolvedValue({
+			name: "Client",
+			siteUrl: "client.example",
+			email: "owner@example.com",
+			adminEmails: [],
+			stripeConnectedAccountId: "acct_current1234567890",
+		});
+		const stripeConnectedAccountId = "acct_original123456789";
+		const replay = await resolveCommerceTenant(
+			event(
+				"checkout.session.completed",
+				{
+					[COMMERCE_TENANT_METADATA_KEY]: "client.example",
+				},
+				stripeConnectedAccountId,
+			),
+			convex,
+		);
+		const retry = await resolveStoredCommerceTenant(
+			{ siteUrl: "client.example", stripeConnectedAccountId },
+			convex,
+		);
+		for (const context of [replay, retry]) {
+			expect(context.stripeRequestOptions).toEqual({ stripeAccount: stripeConnectedAccountId });
+		}
+		expect(query).toHaveBeenCalledWith("platform.getByStripeConnectedAccountId", {
+			stripeConnectedAccountId,
+			webhookSecret: "test-webhook-secret",
+		});
 	});
 
 	it("preserves the hub fallback for legacy events without tenant metadata", async () => {

@@ -32,6 +32,7 @@ import {
 	stripeAccountScope,
 } from "./helpers/checkoutSnapshot";
 import { tenantIdentityMatchesSite } from "./helpers/tenantContext";
+import { isCurrentStripeAccountForSite, resolveStripeAccountOwner } from "./helpers/stripeAccountOwnership";
 import { AGGREGATE_SCAN_LIMIT, BULK_SCAN_LIMIT } from "./helpers/limits";
 import {
 	assertOrderNumberAvailable,
@@ -438,9 +439,7 @@ export const PAID_SAFE_DELAY_MS = 35 * 24 * 60 * 60 * 1000;
 const RESERVATION_RETRY_DELAYS_MS = [60 * 60 * 1000, 6 * 60 * 60 * 1000, 24 * 60 * 60 * 1000] as const;
 
 async function canonicalSiteForConnectedAccount(ctx: QueryCtx, account: string) {
-	const client = await ctx.db.query("platformClients")
-		.withIndex("by_stripeConnectedAccountId", (q) => q.eq("stripeConnectedAccountId", account))
-		.unique();
+	const client = await resolveStripeAccountOwner(ctx, account);
 	return client?.siteUrl ?? null;
 }
 
@@ -566,6 +565,9 @@ export const reserveCheckoutSnapshot = internalMutation({
 			return { outcome: replayed ? "replayed" as const : "conflict" as const };
 		}
 		assertOrderProducersOpen();
+		if (!await isCurrentStripeAccountForSite(ctx, args.siteUrl, args.stripeConnectedAccountId)) {
+			return { outcome: "routing_mismatch" as const };
+		}
 		await assertNewOrderAdmissionOpenIfActivated(ctx, args.siteUrl);
 		const createdAt = Date.now();
 		const unboundPurgeAt = createdAt + UNBOUND_RETENTION_MS;
@@ -1257,11 +1259,8 @@ export const reconcileSucceededManualRefund = mutation({
 			return { kind: "rejected", reason: "identity_conflict" };
 		}
 		if (args.stripeConnectedAccountId !== undefined) {
-			const clients = await ctx.db.query("platformClients")
-				.withIndex("by_stripeConnectedAccountId", (q) => q
-					.eq("stripeConnectedAccountId", args.stripeConnectedAccountId))
-				.take(2);
-			if (clients.length !== 1 || clients[0].siteUrl !== args.siteUrl) {
+			const owner = await resolveStripeAccountOwner(ctx, args.stripeConnectedAccountId);
+			if (owner?.siteUrl !== args.siteUrl) {
 				return { kind: "rejected", reason: "identity_conflict" };
 			}
 		}
@@ -3389,11 +3388,8 @@ export const reconcileAutomatedFulfillmentRefund = mutation({
 			&& args.eventLivemode === args.sessionLivemode;
 		if (!validIdentity) return { kind: "rejected" as const, reason: "identity_conflict" as const };
 		if (args.stripeConnectedAccountId !== undefined) {
-			const clients = await ctx.db.query("platformClients")
-				.withIndex("by_stripeConnectedAccountId", (q) => q
-					.eq("stripeConnectedAccountId", args.stripeConnectedAccountId))
-				.take(2);
-			if (clients.length !== 1 || clients[0].siteUrl !== args.siteUrl) {
+			const owner = await resolveStripeAccountOwner(ctx, args.stripeConnectedAccountId);
+			if (owner?.siteUrl !== args.siteUrl) {
 				return { kind: "rejected" as const, reason: "identity_conflict" as const };
 			}
 		}
