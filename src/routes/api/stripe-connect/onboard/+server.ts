@@ -1,5 +1,4 @@
 import { json } from "@sveltejs/kit";
-import { api } from "$convex/api";
 import { requireAuth } from "$lib/server/adminAuth";
 import { createAuthenticatedConvexClient } from "$lib/server/convexClient";
 import { getPublicSiteOrigin } from "$lib/server/runtimeConfig";
@@ -7,29 +6,29 @@ import { getStripe } from "$lib/server/stripeClient";
 import {
 	createStripeConnectOnboardingSession,
 	normalizeStripeConnectError,
+	StripeConnectOnboardingError,
 } from "$lib/server/stripeConnectOnboarding";
-
-interface OnboardRequest {
-	siteUrl?: string;
-}
+import { createStripeConnectStore } from "$lib/server/stripeConnectStore";
 
 export async function POST({ request, cookies }) {
 	const token = await requireAuth(cookies);
 	const convex = createAuthenticatedConvexClient(token);
 
-	const body = (await request.json()) as OnboardRequest;
-
-	const stripe = getStripe();
 	try {
+		const body: unknown = await request.json().catch(() => {
+			throw new StripeConnectOnboardingError(400, "Invalid onboarding request");
+		});
+		if (!body || typeof body !== "object" || Array.isArray(body) || !("siteUrl" in body)) {
+			throw new StripeConnectOnboardingError(400, "Invalid onboarding request");
+		}
 		const result = await createStripeConnectOnboardingSession({
 			siteUrl: body.siteUrl,
 			platformOrigin: getPublicSiteOrigin(),
-			stripe,
-			listClients: () => convex.query(api.platform.listAll, {}),
-			saveAccountId: (args) => convex.mutation(api.platform.updateStripeConnectedAccount, args),
+			stripe: getStripe(),
+			store: createStripeConnectStore(convex),
 		});
 
-		return json(result);
+		return json(result, { headers: { "cache-control": "private, no-store" } });
 	} catch (err) {
 		const connectError = normalizeStripeConnectError(err);
 		if (connectError) {

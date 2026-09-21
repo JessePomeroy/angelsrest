@@ -1,5 +1,5 @@
 import { v } from "convex/values";
-import type { Id } from "./_generated/dataModel";
+import type { Doc, Id } from "./_generated/dataModel";
 import type { MutationCtx } from "./_generated/server";
 import { internalMutation, internalQuery, mutation, query } from "./_generated/server";
 import { requirePlatformAdmin, requireWebhookCallerOrAuth } from "./authHelpers";
@@ -46,6 +46,7 @@ export const checkTier = query({
 });
 
 export const listAll = query({
+	args: {},
 	handler: async (ctx) => {
 		await requirePlatformAdmin(ctx);
 		return await ctx.db.query("platformClients").order("desc").take(DEFAULT_LIST_LIMIT);
@@ -121,7 +122,7 @@ export const getByStripeConnectedAccountId = query({
 			.withIndex("by_stripeConnectedAccountId", (q) =>
 				q.eq("stripeConnectedAccountId", stripeConnectedAccountId),
 			)
-			.first();
+			.unique();
 	},
 });
 
@@ -211,6 +212,9 @@ export const createClient = mutation({
 	},
 	handler: async (ctx, args) => {
 		await requirePlatformAdmin(ctx);
+		if (args.stripeConnectedAccountId !== undefined) {
+			throw new Error("Stripe accounts must be bound through verified onboarding");
+		}
 		await assertSiteUrlAvailable(ctx, args.siteUrl);
 		const { catalogProductKinds, ...client } = args;
 		const id = await ctx.db.insert("platformClients", {
@@ -293,6 +297,12 @@ export const updateClient = mutation({
 		await requirePlatformAdmin(ctx);
 		const client = await ctx.db.get(clientId);
 		if (!client) throw new Error("Platform client not found");
+		if (
+			updates.stripeConnectedAccountId !== undefined &&
+			updates.stripeConnectedAccountId !== client.stripeConnectedAccountId
+		) {
+			throw new Error("Stripe accounts must be bound through verified onboarding");
+		}
 		if (updates.siteUrl !== undefined) {
 			await assertSiteUrlAvailable(ctx, updates.siteUrl, clientId);
 			const { tenantId } = await ensureTenantIdentity(
@@ -321,40 +331,130 @@ export const updateClient = mutation({
 	},
 });
 
-/**
- * Creator-only write path used by the hub Stripe Connect onboarding routes.
- * The browser never needs to call this directly, but keeping it a public
- * mutation lets authenticated server routes use the caller's Better Auth
- * token instead of requiring Convex internal mutation credentials.
- */
+/** Retired raw assignment endpoint. Old hosts must fail closed during adoption. */
 export const updateStripeConnectedAccount = mutation({
 	args: {
 		siteUrl: v.string(),
 		stripeConnectedAccountId: v.optional(v.string()),
 	},
-	handler: async (ctx, { siteUrl, stripeConnectedAccountId }) => {
+	handler: async (ctx) => {
 		await requirePlatformAdmin(ctx);
-		const row = await ctx.db
-			.query("platformClients")
-			.withIndex("by_siteUrl", (q) => q.eq("siteUrl", siteUrl))
-			.unique();
-		if (!row) {
-			throw new Error(`No platformClients row with siteUrl="${siteUrl}"`);
-		}
-		if (row.stripeConnectedAccountId === stripeConnectedAccountId) {
-			return {
-				changed: false,
-				id: row._id,
-				stripeConnectedAccountId: row.stripeConnectedAccountId,
-			};
-		}
-		await ctx.db.patch(row._id, { stripeConnectedAccountId });
+		throw new Error("Stripe accounts must be bound through verified onboarding");
+	},
+});
+
+function assertStripeConnectClient(client: Doc<"platformClients"> | null) {
+	if (!client) throw new Error("Platform client not found");
+	if (client.role === "creator" || client.siteUrl === "angelsrest.online") {
+		throw new Error("The platform's own account does not use client onboarding");
+	}
+	return client;
+}
+
+/** Authorize the exact client before the host contacts Stripe. */
+export const getStripeConnectTarget = query({
+	args: { siteUrl: v.string() },
+	handler: async (ctx, { siteUrl }) => {
+		await requirePlatformAdmin(ctx);
+		const client = assertStripeConnectClient(
+			await ctx.db
+				.query("platformClients")
+				.withIndex("by_siteUrl", (q) => q.eq("siteUrl", siteUrl))
+				.unique(),
+		);
 		return {
-			changed: true,
-			id: row._id,
-			before: row.stripeConnectedAccountId,
-			after: stripeConnectedAccountId,
+			clientId: client._id,
+			siteUrl: client.siteUrl,
+			tenantId: client.tenantId,
+			stripeConnectedAccountId: client.stripeConnectedAccountId ?? null,
+			attempt: client.stripeConnectAttempt ?? null,
 		};
+	},
+});
+
+/** Freeze the provider request once, including its Stripe account/environment. */
+export const beginStripeConnectAccount = mutation({
+	args: {
+		clientId: v.id("platformClients"),
+		platformAccountId: v.string(),
+		livemode: v.boolean(),
+		webhookSecret: v.string(),
+	},
+	handler: async (ctx, args) => {
+		await requirePlatformAdmin(ctx);
+		await requireWebhookCallerOrAuth(ctx, args.webhookSecret, { allowAuth: false });
+		if (!/^acct_[A-Za-z0-9]{16,64}$/.test(args.platformAccountId)) {
+			throw new Error("Invalid Stripe platform account");
+		}
+		const client = assertStripeConnectClient(await ctx.db.get(args.clientId));
+		if (client.stripeConnectedAccountId && !client.stripeConnectAttempt) {
+			throw new Error("Stripe connection has no verified creation attempt");
+		}
+		const { tenantId } = await ensureTenantIdentity(ctx, client, "platform_client_site_url");
+		const attempt = client.stripeConnectAttempt ?? {
+			id: crypto.randomUUID(),
+			model: "full-v1" as const,
+			startedAt: Date.now(),
+			email: client.email,
+			siteUrl: client.siteUrl,
+			platformAccountId: args.platformAccountId,
+			livemode: args.livemode,
+		};
+		if (
+			attempt.platformAccountId !== args.platformAccountId ||
+			attempt.livemode !== args.livemode
+		) {
+			throw new Error("Stripe connection environment does not match its creation attempt");
+		}
+		if (!client.stripeConnectAttempt) {
+			await ctx.db.patch(client._id, { stripeConnectAttempt: attempt });
+		}
+		return {
+			clientId: client._id,
+			tenantId,
+			attempt,
+			stripeConnectedAccountId: client.stripeConnectedAccountId ?? null,
+		};
+	},
+});
+
+/** Only the authenticated hub can bind the Stripe-verified result of an attempt. */
+export const bindStripeConnectAccount = mutation({
+	args: {
+		clientId: v.id("platformClients"),
+		attemptId: v.string(),
+		platformAccountId: v.string(),
+		livemode: v.boolean(),
+		stripeConnectedAccountId: v.string(),
+		webhookSecret: v.string(),
+	},
+	handler: async (ctx, args) => {
+		await requirePlatformAdmin(ctx);
+		await requireWebhookCallerOrAuth(ctx, args.webhookSecret, { allowAuth: false });
+		const client = assertStripeConnectClient(await ctx.db.get(args.clientId));
+		const attempt = client.stripeConnectAttempt;
+		if (
+			!attempt ||
+			attempt.id !== args.attemptId ||
+			attempt.platformAccountId !== args.platformAccountId ||
+			attempt.livemode !== args.livemode ||
+			!/^acct_[A-Za-z0-9]{16,64}$/.test(args.stripeConnectedAccountId) ||
+			args.stripeConnectedAccountId === args.platformAccountId ||
+			(client.stripeConnectedAccountId &&
+				client.stripeConnectedAccountId !== args.stripeConnectedAccountId)
+		)
+			throw new Error("Stripe account binding conflicts with its creation attempt");
+		const owners = await ctx.db
+			.query("platformClients")
+			.withIndex("by_stripeConnectedAccountId", (q) =>
+				q.eq("stripeConnectedAccountId", args.stripeConnectedAccountId),
+			)
+			.take(2);
+		if (owners.some((owner) => owner._id !== client._id)) {
+			throw new Error("Stripe account is already bound to another client");
+		}
+		await ctx.db.patch(client._id, { stripeConnectedAccountId: args.stripeConnectedAccountId });
+		return { stripeConnectedAccountId: args.stripeConnectedAccountId };
 	},
 });
 
@@ -399,6 +499,9 @@ export const seedClient = internalMutation({
 		notes: v.optional(v.string()),
 	},
 	handler: async (ctx, args) => {
+		if (args.stripeConnectedAccountId !== undefined) {
+			throw new Error("Stripe accounts must be bound through verified onboarding");
+		}
 		const existing = await ctx.db
 			.query("platformClients")
 			.withIndex("by_siteUrl", (q) => q.eq("siteUrl", args.siteUrl))
@@ -498,38 +601,14 @@ export const listTrustedOrigins = internalQuery({
 	},
 });
 
-/**
- * Store or clear a tenant's Stripe Connect Express account id. Internal-only:
- * it is called by onboarding/callback server flows or the Convex CLI, not
- * directly from a client dashboard.
- */
+/** Retired CLI assignment; provider account binding requires verified onboarding. */
 export const setStripeConnectedAccount = internalMutation({
 	args: {
 		siteUrl: v.string(),
 		stripeConnectedAccountId: v.optional(v.string()),
 	},
-	handler: async (ctx, { siteUrl, stripeConnectedAccountId }) => {
-		const row = await ctx.db
-			.query("platformClients")
-			.withIndex("by_siteUrl", (q) => q.eq("siteUrl", siteUrl))
-			.unique();
-		if (!row) {
-			throw new Error(`No platformClients row with siteUrl="${siteUrl}"`);
-		}
-		if (row.stripeConnectedAccountId === stripeConnectedAccountId) {
-			return {
-				changed: false,
-				id: row._id,
-				stripeConnectedAccountId: row.stripeConnectedAccountId,
-			};
-		}
-		await ctx.db.patch(row._id, { stripeConnectedAccountId });
-		return {
-			changed: true,
-			id: row._id,
-			before: row.stripeConnectedAccountId,
-			after: stripeConnectedAccountId,
-		};
+	handler: async () => {
+		throw new Error("Stripe accounts must be bound through verified onboarding");
 	},
 });
 
