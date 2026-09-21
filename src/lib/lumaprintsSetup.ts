@@ -20,5 +20,9 @@ export interface LumaPrintsSetupData {
 }
 
 export function lumaprintsSetupPath(siteUrl: string) {
-	return `/admin/platform/lumaprints/${encodeURIComponent(siteUrl)}`;
+	// Platform records can retain a full URL; setup routes carry only the tenant domain.
+	const hostname = new URL(siteUrl.includes("://") ? siteUrl : `https://${siteUrl}`).hostname
+		.toLowerCase()
+		.replace(/^www\./, "");
+	return `/admin/platform/lumaprints/${encodeURIComponent(hostname)}`;
 }

@@ -2,6 +2,7 @@ import { ConvexHttpClient } from "convex/browser";
 import { convexTest } from "convex-test";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { api } from "$convex/api";
+import { lumaprintsSetupPath } from "$lib/lumaprintsSetup";
 import schema from "../../../../packages/crm-api/convex/schema";
 import {
 	loadLumaPrintsSetup,
@@ -153,6 +154,22 @@ it("verifies the selected store before atomically saving the client's original i
 		connection: { connectionRef: s.input.connectionRef },
 	});
 	expect(await s.t.run((ctx) => ctx.db.query("lumaprintsConnections").take(3))).toHaveLength(1);
+});
+
+it("keeps setup entry and form action usable for clients stored with a full website URL", async () => {
+	const s = await fixture();
+	const storedUrl = "https://www.client1.example/";
+	await s.creator.mutation(api.platform.updateClient, {
+		clientId: s.clientIds[0],
+		siteUrl: storedUrl,
+	});
+	const path = lumaprintsSetupPath(storedUrl);
+	expect(path).toBe("/admin/platform/lumaprints/client1.example");
+	const siteUrl = decodeURIComponent(path.slice(path.lastIndexOf("/") + 1));
+	const data = await loadLumaPrintsSetup(s.convex, siteUrl);
+	expect(lumaprintsSetupPath(data.siteUrl)).toBe(path);
+	await verifyAndRegisterLumaPrintsConnection(s.convex, { ...s.input, siteUrl });
+	expect(await loadLumaPrintsSetup(s.convex, siteUrl)).toMatchObject({ status: "connected" });
 });
 
 it.each([
