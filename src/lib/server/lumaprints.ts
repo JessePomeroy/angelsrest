@@ -2,6 +2,10 @@
 
 import { getPrintProductConfiguration } from "@jessepomeroy/print-catalog";
 import { FulfillmentValidationError } from "$lib/server/fulfillmentValidationError";
+import {
+	type LumaPrintsConnection,
+	resolveLumaPrintsConfiguration,
+} from "$lib/server/lumaprintsConnections";
 import { normalizeLumaPrintsProviderNumber } from "$lib/server/lumaprintsProviderNumber";
 import { getLumaPrintsRuntimeConfig } from "$lib/server/runtimeConfig";
 import type {
@@ -21,8 +25,9 @@ function getRuntimeConfig() {
 	}
 }
 
-function getHeaders(): HeadersInit {
-	const { apiKey, apiSecret } = getRuntimeConfig();
+type ProviderConfiguration = ReturnType<typeof getLumaPrintsRuntimeConfig>;
+
+function getHeaders({ apiKey, apiSecret }: ProviderConfiguration): HeadersInit {
 	return {
 		"Content-Type": "application/json",
 		Authorization: `Basic ${btoa(`${apiKey}:${apiSecret}`)}`,
@@ -147,10 +152,6 @@ function object(value: unknown): value is Record<string, unknown> {
 
 function exact(value: Record<string, unknown>, keys: string[]) {
 	return Object.keys(value).length === keys.length && keys.every((key) => key in value);
-}
-
-function getStoreId(): number {
-	return getRuntimeConfig().storeId;
 }
 
 function parseParameterValue(value: string): string | null {
@@ -278,12 +279,13 @@ function parseOrderResponse(value: unknown): LumaPrintsOrderResponse {
 }
 
 async function fetchLumaPrints(
+	config: ProviderConfiguration,
 	path: string,
 	init: RequestInit = {},
 	timeoutMs = LUMAPRINTS_REQUEST_TIMEOUT_MS,
 ): Promise<Response> {
 	try {
-		return await fetch(`${getRuntimeConfig().baseUrl}${path}`, {
+		return await fetch(`${config.baseUrl}${path}`, {
 			...init,
 			signal: AbortSignal.timeout(timeoutMs),
 		});
@@ -426,14 +428,23 @@ async function rejectionDiagnostics(response: Response): Promise<LumaPrintsError
 }
 
 /** Submit an order to LumaPrints. */
-export async function createOrder(order: LumaPrintsOrder): Promise<LumaPrintsOrderResponse> {
+async function submitOrder(
+	config: ProviderConfiguration,
+	order: LumaPrintsOrder,
+): Promise<LumaPrintsOrderResponse> {
+	if (order.storeId !== config.storeId) {
+		throw new LumaPrintsError("LumaPrints order store does not match its connection", {
+			kind: "configuration",
+		});
+	}
 	let res: Response;
 	try {
 		res = await fetchLumaPrints(
+			config,
 			"/api/v1/orders",
 			{
 				method: "POST",
-				headers: getHeaders(),
+				headers: getHeaders(config),
 				body: JSON.stringify(order),
 			},
 			LUMAPRINTS_CREATE_TIMEOUT_MS,
@@ -496,7 +507,8 @@ function isRetryableProviderStatus(status: number) {
 }
 
 /** Confirm that a queued provider number belongs to the expected order and store. */
-export async function confirmOrder(
+async function confirmConfiguredOrder(
+	config: ProviderConfiguration,
 	orderNumber: string,
 	expectedExternalId: string,
 ): Promise<boolean> {
@@ -506,16 +518,13 @@ export async function confirmOrder(
 	) {
 		throw reconciliationFailure("Order confirmation identity was invalid", "client_error");
 	}
-	let storeId: number;
-	try {
-		storeId = getStoreId();
-	} catch {
-		throw reconciliationFailure("Order confirmation client failed", "client_error");
-	}
+	const { storeId } = config;
 
 	let res: Response;
 	try {
-		res = await fetchLumaPrints(`/api/v1/orders/${orderNumber}`, { headers: getHeaders() });
+		res = await fetchLumaPrints(config, `/api/v1/orders/${orderNumber}`, {
+			headers: getHeaders(config),
+		});
 	} catch (error) {
 		const details =
 			error instanceof LumaPrintsError && object(error.details) ? error.details : null;
@@ -604,18 +613,14 @@ function parseReconciliationPage(value: unknown, storeId: number): Reconciliatio
 }
 
 /** Reconcile an uncertain submit by its stable external ID. */
-export async function findOrderByExternalId(
+async function findConfiguredOrderByExternalId(
+	config: ProviderConfiguration,
 	externalId: string,
 ): Promise<LumaPrintsOrderResponse | null> {
 	if (!isLumaPrintsExternalId(externalId)) {
 		throw reconciliationFailure("Order reconciliation identity was invalid", "client_error");
 	}
-	let storeId: number;
-	try {
-		storeId = getStoreId();
-	} catch (error) {
-		throw reconciliationFailure("Order reconciliation client failed", "client_error");
-	}
+	const { storeId } = config;
 	let expectedTotalOrders: number | null = null;
 	let expectedTotalPages: number | null = null;
 	let rowsRead = 0;
@@ -632,8 +637,9 @@ export async function findOrderByExternalId(
 		let res: Response;
 		try {
 			res = await fetchLumaPrints(
+				config,
 				`/api/v1/orders?${query}`,
-				{ headers: getHeaders() },
+				{ headers: getHeaders(config) },
 				Math.min(LUMAPRINTS_REQUEST_TIMEOUT_MS, remainingMs),
 			);
 		} catch (error) {
@@ -723,14 +729,15 @@ export async function findOrderByExternalId(
 }
 
 /** Pure payload builder for direct paper, framed paper, and canvas options. */
-export function buildLumaPrintsOrder(
+function buildConfiguredOrder(
+	config: ProviderConfiguration,
 	externalId: string,
 	recipient: Recipient,
 	items: OrderItem[],
 ): LumaPrintsOrder {
 	return {
 		externalId,
-		storeId: getStoreId(),
+		storeId: config.storeId,
 		shippingMethod: "default",
 		productionTime: "regular",
 		recipient: {
@@ -759,4 +766,86 @@ export function buildLumaPrintsOrder(
 			};
 		}),
 	};
+}
+
+/** Verify API store access only; account ownership and billing need separate confirmation. */
+async function verifyStoreAccess(config: ProviderConfiguration): Promise<void> {
+	const res = await fetchLumaPrints(config, "/api/v1/stores", { headers: getHeaders(config) });
+	const failed = () =>
+		new LumaPrintsError("LumaPrints store access could not be verified", { kind: "configuration" });
+	if (!res.ok) throw failed();
+	const body = await readBoundedJson(res, 256 * 1024, failed, failed, failed);
+	if (!Array.isArray(body) || body.length > 1000) throw failed();
+	const stores = new Set<string>();
+	for (const row of body) {
+		if (!object(row) || typeof row.storeName !== "string" || row.storeName.length > 1000)
+			throw failed();
+		const storeId = normalizeLumaPrintsProviderNumber(row.storeId);
+		if (storeId === null || stores.has(storeId)) throw failed();
+		stores.add(storeId);
+	}
+	if (!stores.has(String(config.storeId))) throw failed();
+}
+
+function configuredClient(configuration: ProviderConfiguration) {
+	const config = Object.freeze({ ...configuration });
+	return Object.freeze({
+		buildOrder: (externalId: string, recipient: Recipient, items: OrderItem[]) =>
+			buildConfiguredOrder(config, externalId, recipient, items),
+		createOrder: (order: LumaPrintsOrder) => submitOrder(config, order),
+		confirmOrder: (orderNumber: string, externalId: string) =>
+			confirmConfiguredOrder(config, orderNumber, externalId),
+		findOrderByExternalId: (externalId: string) =>
+			findConfiguredOrderByExternalId(config, externalId),
+		verifyStoreAccess: () => verifyStoreAccess(config),
+	});
+}
+
+export type LumaPrintsClient = ReturnType<typeof configuredClient>;
+
+/** One captured server configuration governs every operation for this connection. */
+export function createLumaPrintsClient(connection: LumaPrintsConnection): LumaPrintsClient {
+	try {
+		return configuredClient(resolveLumaPrintsConfiguration(connection));
+	} catch {
+		throw new LumaPrintsError("LumaPrints connection configuration is unavailable", {
+			kind: "configuration",
+		});
+	}
+}
+
+/** Existing central work only. Never use as fallback for a supplied client context. */
+export function createLegacyLumaPrintsClient(): LumaPrintsClient {
+	return configuredClient(getRuntimeConfig());
+}
+
+// Retained until the paid-order consumer adopts one client for the entire operation.
+export function buildLumaPrintsOrder(externalId: string, recipient: Recipient, items: OrderItem[]) {
+	return createLegacyLumaPrintsClient().buildOrder(externalId, recipient, items);
+}
+
+export async function createOrder(order: LumaPrintsOrder): Promise<LumaPrintsOrderResponse> {
+	return createLegacyLumaPrintsClient().createOrder(order);
+}
+
+export async function confirmOrder(orderNumber: string, externalId: string): Promise<boolean> {
+	let client: LumaPrintsClient;
+	try {
+		client = createLegacyLumaPrintsClient();
+	} catch {
+		throw reconciliationFailure("Order confirmation client failed", "client_error");
+	}
+	return client.confirmOrder(orderNumber, externalId);
+}
+
+export async function findOrderByExternalId(
+	externalId: string,
+): Promise<LumaPrintsOrderResponse | null> {
+	let client: LumaPrintsClient;
+	try {
+		client = createLegacyLumaPrintsClient();
+	} catch {
+		throw reconciliationFailure("Order reconciliation client failed", "client_error");
+	}
+	return client.findOrderByExternalId(externalId);
 }

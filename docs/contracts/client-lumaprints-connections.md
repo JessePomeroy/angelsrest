@@ -1,9 +1,9 @@
 # Client LumaPrints connection identity
 
-This C3a foundation records a tenant's verified supplier identity independently
-of its current selection. It does not change existing fulfillment, capture an
-order's supplier yet, provision accounts, configure credentials, or establish
-that a store is ready for sales. Host adoption and shipment isolation follow.
+The C3a foundation records a tenant's verified supplier identity independently
+of its current selection. C3b1 adds the server credential resolver and explicit
+provider client. Paid-order capture/adoption, connection setup, and shipment
+isolation still follow; no client-owned fulfillment or store readiness is claimed.
 
 ## Ownership and authority
 
@@ -22,7 +22,8 @@ The provider's [store listing](https://api-docs.lumaprints.com/api-5384565) iden
 available Standard Stores for the authenticated account. It does not establish
 who owns the account or whose card pays. [LumaPrints billing setup](https://api-docs.lumaprints.com/doc-421693)
 separately requires a primary payment method and the store's default billing
-address. There is no provider verification in this database-only foundation.
+address. The host provider client can verify store access, but no setup route
+calls it or registers a connection yet.
 
 ## Immutable connection
 
@@ -71,6 +72,71 @@ rotation preserves identity; account/store replacement creates a new identity.
 Existing paid work must retain its original central-provider interpretation until
 an explicit compatible rollout establishes its context; do not backfill by guessing
 the client's current supplier.
+
+## Server credential resolution and provider client
+
+`createLumaPrintsClient(connection)` accepts the complete saved C3a identity,
+resolves its server configuration once, and exposes order building, submission,
+confirmation, external-ID search, and store-access verification. These operations
+share the captured store, environment, and credentials. A configuration change
+mid-operation cannot switch accounts between pages or calls. Credentials are
+held inside the client, not returned alongside the non-secret order context.
+
+`LUMAPRINTS_CONNECTIONS` is a server-only JSON registry with this shape:
+
+```json
+{
+  "version": 1,
+  "connections": [
+    {
+      "version": 1,
+      "connectionRef": "lp_example_12345",
+      "tenantId": "tenant_11111111-1111-4111-8111-111111111111",
+      "storeId": 12345,
+      "environment": "sandbox",
+      "credentialRef": "EXAMPLE"
+    }
+  ]
+}
+```
+
+This example is a format illustration, not a client configuration to activate.
+The credential reference selects only the dedicated server variables
+`LUMAPRINTS_CONNECTION_EXAMPLE_API_KEY` and
+`LUMAPRINTS_CONNECTION_EXAMPLE_API_SECRET`. Arbitrary environment-variable names,
+caller-selected provider URLs, central keys, and diagnostic keys are not accepted.
+Provider URLs are fixed by the explicit environment. No credential value belongs
+in this document, Convex, browser input/output, logs, or a spoke deployment.
+
+The registry is bounded to 64 KiB and 100 connections. Every entry must be valid;
+duplicate connection or credential references fail closed. All five saved
+identity fields must match the selected entry. Copied credential pairs across
+tenants or environments are rejected. An unrelated entry's absent credentials
+do not prevent a correctly configured connection from resolving. Equal numeric
+store IDs in distinct accounts/environments remain valid.
+
+Credential rotation preserves the connection reference, tenant, store, and
+environment. A newly constructed client reads the rotated credentials; an
+in-flight client retains its original configuration. Before changing credentials,
+the operator must verify they still belong to the same supplier account/store.
+The registry is trusted operator configuration, not a provider account-ownership
+oracle. A different account/store requires a new immutable connection identity.
+Never repoint historical references to replacement accounts.
+
+The shared payload builder uses the captured store. Submission rejects a payload
+with a different store before HTTP, as an operational configuration error rather
+than a refundable supplier rejection. Existing submission uncertainty, bounded
+response parsing, confirmation identity checks, pagination bounds and retry
+semantics remain in the same implementation. `verifyStoreAccess()` uses the
+documented authenticated `GET /api/v1/stores`, checks for the selected store in
+a bounded valid list, and retains no provider body or store names. It establishes
+API access only; ownership, billing and launch acceptance remain separate.
+
+`createLegacyLumaPrintsClient()` explicitly resolves the existing central
+configuration. Existing top-level provider functions temporarily call that
+client until the paid-order consumer adopts the saved context. A supplied
+client context never falls back to legacy configuration. This source slice does
+not yet change order routing or pin supplier identity to an accepted checkout.
 
 ## Adoption and verification
 
