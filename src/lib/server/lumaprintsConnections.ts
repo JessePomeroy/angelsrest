@@ -83,6 +83,17 @@ function readRegistry() {
 	return entries;
 }
 
+/** Non-secret choices for a tenant already authorized by the operator setup caller. */
+export function configuredLumaPrintsConnectionsForTenant(tenantId: string): LumaPrintsConnection[] {
+	if (!TENANT_ID.test(tenantId)) unavailable();
+	if (!env.LUMAPRINTS_CONNECTIONS) return [];
+	return readRegistry()
+		.filter((entry) => entry.tenantId === tenantId)
+		.map(({ version, connectionRef, tenantId, storeId, environment }) =>
+			Object.freeze({ version, connectionRef, tenantId, storeId, environment }),
+		);
+}
+
 /** Resolve a saved identity, never a site's current selection or a central fallback. */
 export function resolveLumaPrintsConfiguration(connection: LumaPrintsConnection) {
 	if (!isConnection(connection)) unavailable();

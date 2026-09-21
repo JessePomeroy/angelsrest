@@ -41,8 +41,10 @@ submission, confirmation and retry lookup; workers must acknowledge that exact
 context. Existing orders without context retain central routing. No checkout
 producer captures the new context yet, and central shipment intake cannot update
 client-scoped orders. Dedicated client shipment intake now authenticates each
-connection and scopes every checkpoint and email retry key. Client setup,
-pre-payment capture and provider acceptance remain required before activation. See
+connection and scopes every checkpoint and email retry key. Creator-only client
+setup verifies store access and records ownership/billing confirmations behind
+`LUMAPRINTS_CLIENT_SETUP_ENABLED=true` (off by default). Pre-payment capture and
+provider acceptance remain required before activation. See
 the
 [client supplier contract](docs/contracts/client-lumaprints-connections.md) for
 the additive rollout, legacy scope and credential-rotation rules.

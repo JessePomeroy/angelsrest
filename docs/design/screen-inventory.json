@@ -3860,6 +3860,19 @@
               "Click copy client setup link",
               "Verify clipboard holds the stable hub portal URL"
             ]
+          },
+          "supplierSetupUpdate": {
+            "date": "2026-09-21",
+            "reason": "Selected client now links to its LumaPrints operator setup page. Existing Paper IDs retained; browser is signed out and edit access is unavailable.",
+            "viewport": {
+              "width": 1440,
+              "height": 1000
+            },
+            "browserEvidence": "Manual browser screenshots inspected in session; no durable capture artifact. Selected client exposes /admin/platform/lumaprints/studio.example.invalid; no horizontal page overflow or console errors/warnings.",
+            "setupSteps": [
+              "Select Juniper Studio",
+              "Inspect the client-specific LumaPrints setup link"
+            ]
           }
         },
         {
@@ -3905,6 +3918,19 @@
               "Select Juniper Studio",
               "Click copy client setup link",
               "Verify clipboard holds the stable hub portal URL"
+            ]
+          },
+          "supplierSetupUpdate": {
+            "date": "2026-09-21",
+            "reason": "Selected client now links to its LumaPrints operator setup page. Existing Paper IDs retained; browser is signed out and edit access is unavailable.",
+            "viewport": {
+              "width": 390,
+              "height": 1000
+            },
+            "browserEvidence": "Manual browser screenshots inspected in session; no durable capture artifact. Selected client exposes /admin/platform/lumaprints/studio.example.invalid; no horizontal page overflow or console errors/warnings.",
+            "setupSteps": [
+              "Select Juniper Studio",
+              "Inspect the client-specific LumaPrints setup link"
             ]
           }
         }
@@ -6858,6 +6884,131 @@
         "admin.stripe-setup.connection_unavailable.mobile",
         "admin.stripe-setup.disconnected.mobile"
       ]
+    },
+    {
+      "key": "admin.lumaprints-setup",
+      "handbook": "admin",
+      "route": "/admin/platform/lumaprints/[siteUrl]",
+      "setup": "Actual LumaPrintsSetupPage inside AdminLayout with fictional client/store data; provider fetches refused.",
+      "sourceComponents": [
+        "src/lib/components/LumaPrintsSetupPage.svelte",
+        "src/routes/admin/platform/lumaprints/[siteUrl]/+page.svelte",
+        "tests/browser/fixtures/LumaPrintsSetupHarness.svelte",
+        "tests/browser/handbook/Handbook.svelte"
+      ],
+      "implementationStatus": "source-updated-paper-pending",
+      "stateSurvey": "representative-with-gaps",
+      "pendingStateSurvey": [
+        "Paper update and same-viewport comparison",
+        "Real authenticated setup and supplier verification under separate authorization",
+        "Live billing and shipment acceptance"
+      ],
+      "references": [
+        {
+          "key": "admin.lumaprints-setup.available.mobile",
+          "viewport": {
+            "width": 390,
+            "height": 1000
+          },
+          "theme": "dark",
+          "data": "fictional-admin-fixture",
+          "status": "browser-observed-paper-pending",
+          "browserObservedAt": "2026-09-21",
+          "lastVerified": null,
+          "paper": null,
+          "setupUrl": "http://127.0.0.1:5199/?route=/admin/platform/lumaprints/studio.example.invalid&phase=available&theme=dark",
+          "setupSteps": [
+            "Render fictional data only; do not submit to a real provider.",
+            "Select a store, check both confirmations, then change stores and observe both clear."
+          ],
+          "evidence": {
+            "browser": "Manual screenshot inspected in browser session; no durable capture artifact."
+          },
+          "limitations": [
+            "Paper read access works, but edit/font operations require owner sign-in. No board update or same-state comparison completed.",
+            "Provider/auth acceptance remains separate. Browser tests intercept the native form POST locally."
+          ]
+        },
+        {
+          "key": "admin.lumaprints-setup.connected.mobile",
+          "viewport": {
+            "width": 390,
+            "height": 1000
+          },
+          "theme": "dark",
+          "data": "fictional-admin-fixture",
+          "status": "browser-observed-paper-pending",
+          "browserObservedAt": "2026-09-21",
+          "lastVerified": null,
+          "paper": null,
+          "setupUrl": "http://127.0.0.1:5199/?route=/admin/platform/lumaprints/studio.example.invalid&phase=connected&theme=dark",
+          "setupSteps": [
+            "Render fictional data only; do not submit to a real provider."
+          ],
+          "evidence": {
+            "browser": "Manual screenshot inspected in browser session; no durable capture artifact."
+          },
+          "limitations": [
+            "Paper read access works, but edit/font operations require owner sign-in. No board update or same-state comparison completed.",
+            "Provider/auth acceptance remains separate. Browser tests intercept the native form POST locally."
+          ]
+        },
+        {
+          "key": "admin.lumaprints-setup.error.desktop",
+          "viewport": {
+            "width": 1440,
+            "height": 1000
+          },
+          "theme": "dark",
+          "data": "fictional-admin-fixture",
+          "status": "browser-observed-paper-pending",
+          "browserObservedAt": "2026-09-21",
+          "lastVerified": null,
+          "paper": null,
+          "setupUrl": "http://127.0.0.1:5199/?route=/admin/platform/lumaprints/studio.example.invalid&phase=error&theme=dark",
+          "setupSteps": [
+            "Render fictional data only; do not submit to a real provider."
+          ],
+          "evidence": {
+            "browser": "Manual screenshot inspected in browser session; no durable capture artifact."
+          },
+          "limitations": [
+            "Paper read access works, but edit/font operations require owner sign-in. No board update or same-state comparison completed.",
+            "Provider/auth acceptance remains separate. Browser tests intercept the native form POST locally."
+          ]
+        },
+        {
+          "key": "admin.lumaprints-setup.disabled.desktop",
+          "viewport": {
+            "width": 1440,
+            "height": 1000
+          },
+          "theme": "dark",
+          "data": "fictional-admin-fixture",
+          "status": "browser-observed-paper-pending",
+          "browserObservedAt": "2026-09-21",
+          "lastVerified": null,
+          "paper": null,
+          "setupUrl": "http://127.0.0.1:5199/?route=/admin/platform/lumaprints/studio.example.invalid&phase=disabled&theme=dark",
+          "setupSteps": [
+            "Render fictional data only; do not submit to a real provider."
+          ],
+          "evidence": {
+            "browser": "Manual screenshot inspected in browser session; no durable capture artifact."
+          },
+          "limitations": [
+            "Paper read access works, but edit/font operations require owner sign-in. No board update or same-state comparison completed.",
+            "Provider/auth acceptance remains separate. Browser tests intercept the native form POST locally."
+          ]
+        }
+      ],
+      "coveredReferenceKeys": [
+        "admin.lumaprints-setup.available.mobile",
+        "admin.lumaprints-setup.connected.mobile",
+        "admin.lumaprints-setup.error.desktop",
+        "admin.lumaprints-setup.disabled.desktop"
+      ],
+      "interactionEvidence": "18 desktop/mobile Chromium cases passed: exact POST fields, required confirmations, selection reset, disabled/unauthorized/unavailable/unconfigured/connected/historical/error containment."
     }
   ],
   "fontAvailability": {

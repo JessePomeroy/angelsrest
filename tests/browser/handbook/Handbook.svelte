@@ -8,6 +8,7 @@ import {
   setAdminConfig, type AdminAuthClient,
 } from "@jessepomeroy/admin";
 import { adminConfig } from "$lib/config/admin";
+import LumaPrintsSetupHarness from "../fixtures/LumaPrintsSetupHarness.svelte";
 import HostPlatformPage from "../../../src/routes/admin/platform/+page.svelte";
 import BottomNav from "$lib/components/BottomNav.svelte";
 import { siteSettings } from "./public-data";
@@ -44,6 +45,7 @@ setAdminConfig({ ...adminConfig, siteUrl, fromEmail: "Demonstration <hello@examp
     {:else if route === '/admin/contracts'}<ContractsPage {data} />
     {:else if route === '/admin/emails'}<EmailsPage {data} />
     {:else if route === '/admin/messages'}<MessagesPage {data} />
+    {:else if route.startsWith('/admin/platform/lumaprints/')}<LumaPrintsSetupHarness />
     {:else if route === '/admin/platform'}<HostPlatformPage {data} />
     {:else if route === '/admin/galleries'}<ClientGalleriesPage adminSession={session} />
     {:else if route === '/admin/editor'}<SiteSettingsPage />
