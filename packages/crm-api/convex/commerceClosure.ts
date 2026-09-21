@@ -26,6 +26,12 @@ import {
 import { isTenantId, tenantIdentityMatchesSite } from "./helpers/tenantContext";
 import { requireClientPaymentBinding, requireClientPaymentReady } from "./helpers/clientPaymentReadiness";
 import { isCurrentStripeAccountForSite, stripeAccountMatchesSite } from "./helpers/stripeAccountOwnership";
+import {
+	checkoutFinancialIntentValidator,
+	financialIntentMatchesSnapshot,
+	freezeCheckoutFinancialSnapshot,
+	type CheckoutFinancialSnapshot,
+} from "./helpers/checkoutFinancialSnapshot";
 
 export const ACTIVE_ADMISSION_LEASE_MS = 120_000;
 export const ORDER_SESSION_LIFETIME_SECONDS = 86_100;
@@ -380,6 +386,7 @@ export const markCheckoutSessionCreating = internalMutation({
 		requestFingerprint: v.string(),
 		stripeIdempotencyDigest: v.string(),
 		checkoutSnapshotHandleHash: v.optional(v.string()),
+		financialIntent: v.optional(checkoutFinancialIntentValidator),
 	},
 	handler: async (ctx, args) => {
 		if (
@@ -399,9 +406,15 @@ export const markCheckoutSessionCreating = internalMutation({
 			&& (args.checkoutSnapshotHandleHash === undefined || row.checkoutSnapshotHandleHash === undefined || row.checkoutSnapshotHandleHash === args.checkoutSnapshotHandleHash)
 			&& row.requestedStripeExpiresAt !== undefined
 		) {
+			if (args.financialIntent && row.checkoutFinancialSnapshot
+				&& !financialIntentMatchesSnapshot(args.financialIntent, row.checkoutFinancialSnapshot)) {
+				throw new Error("Checkout financial replay does not match the original record");
+			}
 			return {
 				state: row.state,
 				requestedStripeExpiresAt: row.requestedStripeExpiresAt,
+				// Historical attempts retain their original payload/fingerprint without invented fee evidence.
+				...(args.financialIntent ? { financialCaptureVersion: row.checkoutFinancialSnapshot ? 1 as const : 0 as const } : {}),
 			};
 		}
 		if (
@@ -417,12 +430,16 @@ export const markCheckoutSessionCreating = internalMutation({
 		if (!await commerceControlMatchesTenant(ctx, control, row.tenantId)) {
 			throw new Error("Checkout creation identity does not match activated tenant");
 		}
+		let checkoutFinancialSnapshot: CheckoutFinancialSnapshot | undefined;
+		if (row.siteUrl === "angelsrest.online" && args.financialIntent) {
+			throw new Error("Client financial capture cannot be assigned to hub checkout");
+		}
 		if (row.siteUrl !== "angelsrest.online") {
 			const { attempt } = await requireClientPaymentReady(ctx, {
 				siteUrl: row.siteUrl, tenantId: row.tenantId ?? "", accountId: row.stripeConnectedAccountId ?? "",
 			});
 			const handleHash = args.checkoutSnapshotHandleHash;
-			if (!row.tenantId || !handleHash || !validDigest(handleHash)) throw new Error("Client checkout requires captured fulfillment");
+			if (!row.tenantId || !row.stripeConnectedAccountId || !handleHash || !validDigest(handleHash)) throw new Error("Client checkout requires captured fulfillment");
 			const reservation = await ctx.db.query("checkoutSnapshotReservations")
 				.withIndex("by_siteUrl_and_handleHash", q => q.eq("siteUrl", row.siteUrl).eq("handleHash", handleHash)).unique();
 			if (!reservation || reservation.state !== "reserved" || reservation.accountScope !== row.accountScope
@@ -442,6 +459,18 @@ export const markCheckoutSessionCreating = internalMutation({
 					throw new Error("Client print supplier is not ready for new payments");
 				}
 			}
+			if (!args.financialIntent) throw new Error("Client checkout requires original financial amounts");
+			checkoutFinancialSnapshot = freezeCheckoutFinancialSnapshot({
+				intent: args.financialIntent,
+				snapshot: reservation.snapshot,
+				unitAmounts: reservation.printInput.lines.map(line => line.amountCents),
+				identity: {
+					tenantId: row.tenantId,
+					stripePlatformAccountId: attempt.platformAccountId,
+					stripeConnectedAccountId: row.stripeConnectedAccountId,
+					stripeLivemode: attempt.livemode,
+				},
+			});
 		}
 		const creatingAt = Date.now();
 		const requestedStripeExpiresAt = Math.floor(creatingAt / 1000)
@@ -451,6 +480,7 @@ export const markCheckoutSessionCreating = internalMutation({
 		}
 		await ctx.db.patch(row._id, {
 			state: "creating",
+			checkoutFinancialSnapshot,
 			checkoutSnapshotHandleHash: args.checkoutSnapshotHandleHash,
 			activeLeaseTokenHash: undefined,
 			activeLeaseExpiresAt: undefined,
@@ -459,7 +489,8 @@ export const markCheckoutSessionCreating = internalMutation({
 			creatingAt,
 			updatedAt: creatingAt,
 		});
-		return { state: "creating" as const, requestedStripeExpiresAt };
+		return { state: "creating" as const, requestedStripeExpiresAt,
+			...(checkoutFinancialSnapshot ? { financialCaptureVersion: 1 as const } : {}) };
 	},
 });
 

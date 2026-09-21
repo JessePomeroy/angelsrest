@@ -715,8 +715,7 @@ async function consumeReservation(
 		.withIndex("by_siteUrl_and_handleHash", (q) => q.eq("siteUrl", siteUrl).eq("handleHash", handleHash)).unique();
 	if (!row || row.state !== "bound" || row.accountScope !== stripeAccountScope(stripeConnectedAccountId)
 		|| row.stripeSessionId !== stripeSessionId || row.snapshot.items.length !== itemCount
-		|| checkoutSessionAdmissionId !== undefined
-			&& row.checkoutSessionAdmissionId !== checkoutSessionAdmissionId) {
+		|| row.checkoutSessionAdmissionId !== checkoutSessionAdmissionId) {
 		throw new Error("Checkout snapshot reservation does not match paid session");
 	}
 	await assertCapturedSupplierReservation(ctx, row);
@@ -1095,6 +1094,16 @@ export const create = mutation({
 		) throw new Error("Stripe fees must be nonnegative safe-integer minor units");
 
 		let admission = null;
+		if (checkoutSessionAdmission === undefined && args.stripeConnectedAccountId !== undefined) {
+			const savedAdmission = await ctx.db.query("checkoutSessionAdmissions")
+				.withIndex("by_accountScope_and_stripeSessionId", q => q
+					.eq("accountScope", stripeAccountScope(args.stripeConnectedAccountId))
+					.eq("stripeSessionId", args.stripeSessionId)).unique();
+			// Metadata omission cannot downgrade a known financial checkout to legacy intake.
+			if (savedAdmission?.checkoutFinancialSnapshot) {
+				throw new Error("Original financial checkout admission is required");
+			}
+		}
 		if (checkoutSessionAdmission !== undefined) {
 			if (auth.via !== "webhook") {
 				throw new Error("Checkout admission requires webhook authority");
@@ -1155,6 +1164,19 @@ export const create = mutation({
 		}
 		await assertTenantRouting(ctx, tenantId, args.siteUrl, durableTenantId);
 		durableTenantId ??= tenantId;
+		const checkoutFinancialSnapshot = admission?.checkoutFinancialSnapshot;
+		if (checkoutFinancialSnapshot && (
+			checkoutFinancialSnapshot.tenantId !== durableTenantId
+			|| checkoutFinancialSnapshot.stripeConnectedAccountId !== args.stripeConnectedAccountId
+			|| checkoutFinancialSnapshot.currency !== args.stripePaymentCurrency
+			|| checkoutFinancialSnapshot.stripeLivemode !== args.stripePaymentLivemode
+			|| !printInput || !orderInput.checkoutSnapshot
+			|| checkoutFinancialSnapshot.subtotalCents !== (args.subtotal ?? 0)
+			|| checkoutFinancialSnapshot.lines.length !== args.items.length
+			|| checkoutFinancialSnapshot.lines.some((line, index) => line.quantity !== args.items[index]?.quantity)
+			|| !isNonnegativeSafeInteger(args.total)
+			|| args.total > 0 && (!args.stripePaymentIntentId || !STRIPE_PAYMENT_INTENT_ID.test(args.stripePaymentIntentId))
+		)) throw new Error("Paid order does not match original financial identity");
 		if (lumaprintsConnection !== undefined) {
 			if (!printInput?.lines.some(line => line.sources.length > 0) || orderInput.fulfillmentType !== "lumaprints") {
 				throw new Error("LumaPrints connection requires frozen print input");
@@ -1202,6 +1224,7 @@ export const create = mutation({
 			? `AR-${orderNumber}` : undefined;
 		const _id = await ctx.db.insert("orders", {
 			...orderInput,
+			checkoutFinancialSnapshot,
 			printInput,
 			lumaprintsConnection,
 			tenantId: durableTenantId,
@@ -3993,7 +4016,8 @@ export const updateStatus = mutation({
 		const changesPaymentIntentBinding = updates.stripePaymentIntentId !== undefined
 			&& updates.stripePaymentIntentId !== current?.stripePaymentIntentId;
 		const hasFeeBindingOrLifecycle = current !== null && current !== undefined && (
-			current.stripePaymentIntentId !== undefined
+			current.checkoutFinancialSnapshot !== undefined
+			|| current.stripePaymentIntentId !== undefined
 			|| current.stripeFees !== undefined
 			|| current.stripeFeeCurrency !== undefined
 			|| current.stripeFeeChargeId !== undefined

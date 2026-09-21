@@ -46,7 +46,7 @@ async function seed(t: Backend, siteUrl = SITE, tenantId = TENANT) {
 			stripeConnectStatus: { accountId: account, state: { kind: "observed", checkedAt: Date.now(), readiness: { status: "ready", chargesEnabled: true, payoutsEnabled: true, detailsSubmitted: true } } } });
 		await ctx.db.insert("stripeAccountBindings", { stripeConnectedAccountId: account, clientId, tenantId, attemptId: attempt.id, platformAccountId: attempt.platformAccountId, livemode: false, boundAt: Date.now() });
 		if (siteUrl === SITE) await ctx.db.insert("checkoutSnapshotReservations", { state: "reserved", tenantId, siteUrl, handleHash: D4, snapshotDigest: D2, accountScope: `connected:${account}`, stripeConnectedAccountId: account,
-			snapshot: { schemaVersion: 1, catalogProvider: "convex", items: [] }, printInput: { version: 1, lines: [{ amountCents: 4200, sources: [] }] }, lumaprintsConnectionVersion: 1,
+			snapshot: { schemaVersion: 1, catalogProvider: "convex", items: [{ productKey: "digital", revisionId: "revision", productKind: "digital_download", variantKey: "default", materialOptionKey: null, sizeOptionKey: null, borderOptionKey: null, frameOptionKey: null }] }, printInput: { version: 1, lines: [{ amountCents: 4200, sources: [] }] }, lumaprintsConnectionVersion: 1,
 			createdAt: Date.now(), updatedAt: Date.now(), unboundPurgeAt: Date.now() + 86400000 });
 		return clientId;
 	});
@@ -72,8 +72,10 @@ const begin = (tenantId: string | undefined = TENANT) => ({
 	requestFingerprint: D3, activeLeaseTokenHash: D4, hostGeneration: 1,
 });
 
+const financialIntent = { version: 1 as const, currency: "usd" as const, lines: [{ unitPriceCents: 4200, quantity: 1 }], applicationFeeAmountCents: 0 };
+
 const create = (admissionId: Id<"checkoutSessionAdmissions">) => ({
-	siteUrl: SITE, admissionId, checkoutSnapshotHandleHash: D4, activeLeaseTokenHash: D4,
+	siteUrl: SITE, admissionId, financialIntent, checkoutSnapshotHandleHash: D4, activeLeaseTokenHash: D4,
 	requestFingerprint: D3, stripeIdempotencyDigest: D1,
 });
 
@@ -164,7 +166,7 @@ describe("explicit client commerce admission", () => {
 		});
 		await activate(t, "closed", 2);
 		expect(await t.mutation(internal.commerceClosure.markCheckoutSessionCreating, create(admitted.admissionId))).toEqual({
-			state: "creation_uncertain", requestedStripeExpiresAt: creating.requestedStripeExpiresAt,
+			state: "creation_uncertain", requestedStripeExpiresAt: creating.requestedStripeExpiresAt, financialCaptureVersion: 1,
 		});
 		await expect(t.mutation(internal.commerceClosure.beginCheckoutSessionAdmission, { ...begin(), attemptDigest: D4 })).rejects.toThrow("closed");
 	});
@@ -190,7 +192,7 @@ describe("explicit client commerce admission", () => {
 			if (!r) throw new Error("Missing reservation");
 			await ctx.db.patch(r._id, { handleHash: await reservationHandleHash(SITE, handle) });
 		});
-		const creatingBody = { version: 1, site: SITE, admissionId: admitted.admissionId, activeLeaseTokenHash: D4, requestFingerprint: D3, stripeIdempotencyDigest: D1, checkoutSnapshotHandle: handle };
+		const creatingBody = { version: 1, site: SITE, admissionId: admitted.admissionId, activeLeaseTokenHash: D4, requestFingerprint: D3, stripeIdempotencyDigest: D1, checkoutSnapshotHandle: handle, financialIntent };
 		expect((await t.fetch("/commerce/checkout-admissions/mark-creating", { ...post(OTHER_AUTHORITY), body: JSON.stringify(creatingBody) })).status).toBe(400);
 		expect((await t.fetch("/commerce/checkout-admissions/mark-creating", { ...post(AUTHORITY), body: JSON.stringify(creatingBody) })).status).toBe(200);
 	});

@@ -5,6 +5,7 @@ import {
 } from "./checkoutSnapshot";
 import { isCommerceTenantSite } from "./commercePurposeControl";
 import { isTenantId } from "./tenantContext";
+import { parseCheckoutFinancialIntent } from "./checkoutFinancialSnapshot";
 
 const HEX_DIGEST = /^[0-9a-f]{64}$/;
 const UUID_V4 = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
@@ -65,15 +66,20 @@ export function parseAdmissionBeginRequest(value: unknown) {
 
 export function parseAdmissionMarkCreatingRequest(value: unknown) {
 	const hasSnapshot = !!value && typeof value === "object" && Object.hasOwn(value, "checkoutSnapshotHandle");
+	const hasFinancialIntent = !!value && typeof value === "object" && Object.hasOwn(value, "financialIntent");
 	if (!exactObject(value, [
 		"version", "site", "admissionId", "activeLeaseTokenHash", "requestFingerprint",
 		"stripeIdempotencyDigest", ...(hasSnapshot ? ["checkoutSnapshotHandle"] : []),
+		...(hasFinancialIntent ? ["financialIntent"] : []),
 	])) return null;
+	const financialIntent = hasFinancialIntent ? parseCheckoutFinancialIntent(value.financialIntent) : undefined;
+	if (financialIntent === null || hasFinancialIntent && !hasSnapshot) return null;
 	return value.version === 1 && isCommerceTenantSite(value.site) && internalId(value.admissionId)
 		&& digest(value.activeLeaseTokenHash) && digest(value.requestFingerprint)
 		&& digest(value.stripeIdempotencyDigest)
 		&& (!hasSnapshot || typeof value.checkoutSnapshotHandle === "string" && UUID_V4.test(value.checkoutSnapshotHandle))
 		? {
+				...(financialIntent ? { financialIntent } : {}),
 				...(hasSnapshot ? { checkoutSnapshotHandle: String(value.checkoutSnapshotHandle) } : {}),
 				site: value.site,
 				admissionId: value.admissionId,
