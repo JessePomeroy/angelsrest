@@ -199,6 +199,20 @@ describe("verified Stripe account binding", () => {
 		}
 	});
 
+	test("a second invited admin can claim through a retained setup URL after a rename", async () => {
+		const s = await setup();
+		await s.t.run(async ctx => await ctx.db.patch(s.clientId, {
+			adminEmails: ["client@example.com", "second-admin@example.com"],
+		}));
+		await s.client.mutation(api.adminAuth.claimAdminAccess, { siteUrl: "client.example" });
+		await s.admin.mutation(api.platform.updateClient, { clientId: s.clientId, siteUrl: "renamed.example" });
+		const second = s.t.withIdentity({ subject: "second-admin", email: "second-admin@example.com", emailVerified: true });
+		await expect(second.query(api.platform.getStripeConnectTarget, { siteUrl: "client.example" })).rejects.toThrow("STRIPE_CONNECT_FORBIDDEN");
+		expect(await second.mutation(api.adminAuth.claimAdminAccess, { siteUrl: "client.example" })).toMatchObject({ claimed: true, authorized: true });
+		expect(await second.query(api.platform.getStripeConnectTarget, { siteUrl: "client.example" })).toMatchObject({ clientId: s.clientId, siteUrl: "renamed.example" });
+		await expect(s.outsider.mutation(api.adminAuth.claimAdminAccess, { siteUrl: "client.example" })).rejects.toThrow("Not authorized");
+	});
+
 	test("does not onboard the platform's own tenant", async () => {
 		const s = await setup();
 		await expect(

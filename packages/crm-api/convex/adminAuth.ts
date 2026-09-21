@@ -1,6 +1,7 @@
 import { v } from "convex/values";
 import { mutation, query } from "./_generated/server";
 import { isEmailVerified, isSiteAdminIdentity, requireAuth } from "./authHelpers";
+import { resolveTenantContext } from "./helpers/tenantContext";
 
 /**
  * Return the currently-authenticated identity for this request, or null if
@@ -30,10 +31,8 @@ export const claimAdminAccess = mutation({
 	args: { siteUrl: v.string() },
 	handler: async (ctx, { siteUrl }) => {
 		const identity = await requireAuth(ctx);
-		const client = await ctx.db
-			.query("platformClients")
-			.withIndex("by_siteUrl", (q) => q.eq("siteUrl", siteUrl))
-			.unique();
+		// Saved setup links can carry a retained hostname after a tenant rename.
+		const client = (await resolveTenantContext(ctx, { siteUrl }))?.client;
 		if (!client) throw new Error("Not authorized");
 
 		const stableIds = client.adminIdentityIds ?? [];
