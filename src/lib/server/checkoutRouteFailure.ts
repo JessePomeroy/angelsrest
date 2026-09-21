@@ -5,6 +5,7 @@ import {
 	CurrentCheckoutCommerceError,
 } from "$lib/server/checkoutFailures";
 import { logStructured } from "$lib/server/logger";
+import { ClientPaymentUnavailableError } from "$lib/server/stripeConnect";
 
 type CheckoutRouteLogger = typeof logStructured;
 
@@ -13,6 +14,8 @@ export function throwCheckoutRouteFailure(
 	event: "checkout" | "cart_checkout",
 	log: CheckoutRouteLogger = logStructured,
 ): never {
+	if (error instanceof ClientPaymentUnavailableError)
+		throw apiError(503, ApiErrorCode.UNAVAILABLE, error.message);
 	if (error instanceof CurrentCheckoutCommerceError) {
 		const level = error.kind === "selection_changed" ? "warn" : "error";
 		log({

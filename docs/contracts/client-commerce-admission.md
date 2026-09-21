@@ -2,8 +2,8 @@
 
 C4a adds explicit client admission to the existing closure protocol. Creating a
 platform client, registering an account or accepting a syntactically valid domain
-does not open commerce. C4b still owns current payment readiness, no client
-platform-payment fallback and supplier prerequisites. This source change does
+does not open commerce. C4b adds current payment readiness, no client
+platform-payment fallback and supplier prerequisites. Source delivery does
 not establish launch readiness or activate a client.
 
 ## Registry versions
@@ -90,7 +90,7 @@ alter refunds, or create an account replacement path.
 Deploy the additive backend before configuring a version-2 host. Verify stable
 tenant registration, matching canonical domains, purpose-specific credentials,
 all intended entries and the exact durable/host generations before activation.
-Complete C4b readiness enforcement, financial acceptance and the outstanding tax
+Complete backend/host adoption, provider and financial acceptance, and the outstanding tax
 determination before opening new client commercial activity. Shared backend
 deployment, secrets/configuration, live activation and provider acceptance remain
 separate effects; release PR #629 is not routine feature-merge authority.
@@ -108,3 +108,72 @@ monotonic upgrade/no-downgrade, missing host/tenant identity, scoped HTTP
 authentication, reservation replay, Stripe-creation recovery, and provider
 admission/recovery after closure. No test establishes actual provider readiness,
 billing, tax responsibility or live activation.
+
+
+## C4b: first client payment readiness
+
+New non-hub charges require a stable registered tenant and its currently selected,
+immutable `full-v1` Stripe binding. A missing or malformed connected account never
+falls back to Angels Rest's platform balance. Angels Rest's own checkout retains
+platform-account routing. Payment target lookup and historical account ownership
+use verified tenant aliases, including canonical requests for stored full URLs;
+this does not migrate catalog/content partitions or create aliases automatically. Connected paid intake, stored-order recovery and refunds retain the verified
+original transaction partition; current client URLs remain notification/presentation
+data. Refund routing uses the retrieved paid Session's stable tenant marker.
+
+The hub-only `platform.getClientPaymentTarget` query requires `WEBHOOK_SECRET`
+and validates tenant/domain/account ownership before returning the creation
+attempt and safe current status. It never exposes refresh tokens. Customer
+checkout does not impersonate an admin. First order attempts claim a status
+refresh after signature/proof/abuse checks and admission, then verify the Stripe
+platform, mode, account identity, controller and payment/payout status through
+bounded provider reads. The latest committed status is authority; a discarded
+provider observation cannot authorize a charge. Missing, checking, restricted,
+unavailable and disconnected states stop new payments.
+
+All new client order checkout uses the opt-in frozen-input/supplier-capture
+protocol. A digital or merchant-only reservation explicitly returns null supplier
+and needs no LumaPrints account. Supplier-backed print lines use their saved
+connection for outbound/shipment credential validation and a bounded store-access
+read. The supplier environment must match the verified Stripe mode. Store access
+proves API usability, not supplier billing or shipment acceptance.
+
+The version-1 `mark-creating` HTTP envelope now accepts an optional UUID
+`checkoutSnapshotHandle`. The hub sends it for client order checkout. Before the
+first transition from `active_prestripe`, the backend requires this handle,
+checks the matching reserved account/tenant and frozen-input/capture protocol,
+and rechecks current Stripe binding plus observed charges/payouts readiness less
+than 60 seconds old. Supplier-backed reservations additionally require the same
+current saved supplier, matching mode, and an open durable provider-submission
+control for that tenant. The admission pins the snapshot hash and binding cannot
+substitute a different snapshot afterward. Old hub envelopes remain unchanged.
+
+Already creating, uncertain or bound attempts replay their original Stripe
+idempotency identity before new readiness checks. A supplied snapshot handle
+must still match the pinned one; legacy replay may omit it. Host retries do not
+re-read current supplier credentials or provider status once creation may have
+started. Preserve protocol enrollment and original request/configuration needed
+for replay; removing capture enrollment or changing the current payment target
+is not an account-recovery operation.
+
+A failed pre-payment check returns a resetting 409 only after the backend
+positively confirms `released: true`. A false or unknown release result keeps
+the attempt and returns a 5xx failure. This distinction preserves the existing
+browser retry protocol and prevents replacing an attempt that another request
+may already have sent to Stripe. A later authenticated admission read confirming
+`released_definite_no_session` also permits a reset after a lost release response.
+
+Service invoices verify current payment readiness after resolving a valid
+payable token, without supplier requirements or an application fee. They retain
+the existing invoice fingerprint/idempotency protocol; invoice retries refresh
+readiness again, so a newly unavailable connection can temporarily withhold the
+Checkout URL. This slice does not introduce order-admission semantics into
+invoice payments or change their paid-event processing.
+
+Adopt the updated backend before enabling client capture/commerce on the host.
+Deploying source alone leaves enrollment and client activation closed. Existing
+paid orders, original-account refunds and already admitted provider work retain
+their previous recovery rules. Closing new commerce remains possible without
+Stripe/supplier readiness. No account creation, live provider request, secret
+change, fee/tax policy change or automatic commercial activation is performed by
+this source delivery.

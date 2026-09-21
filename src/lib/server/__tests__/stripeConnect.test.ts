@@ -54,7 +54,8 @@ describe("Stripe Connect tenant helpers", () => {
 		const options = buildTenantCheckoutOptions({
 			tenant: {
 				siteUrl: "zippymiggy.com",
-				stripeConnectedAccountId: "acct_123",
+				tenantId: "tenant_05eb6092-5d8c-43ce-ad26-1a59522bd07b",
+				stripeConnectedAccountId: "acct_1234567890TenantA",
 			},
 			kind: "print",
 			subtotalCents: 10_000,
@@ -64,11 +65,17 @@ describe("Stripe Connect tenant helpers", () => {
 			session: {
 				payment_intent_data: {
 					application_fee_amount: 500,
-					metadata: { commerceTenantSiteUrl: "zippymiggy.com" },
+					metadata: {
+						commerceTenantSiteUrl: "zippymiggy.com",
+						commerceTenantId: "tenant_05eb6092-5d8c-43ce-ad26-1a59522bd07b",
+					},
 				},
 			},
-			metadata: { commerceTenantSiteUrl: "zippymiggy.com" },
-			requestOptions: { stripeAccount: "acct_123" },
+			metadata: {
+				commerceTenantSiteUrl: "zippymiggy.com",
+				commerceTenantId: "tenant_05eb6092-5d8c-43ce-ad26-1a59522bd07b",
+			},
+			requestOptions: { stripeAccount: "acct_1234567890TenantA" },
 			platformFeeAmount: 500,
 		});
 	});
@@ -77,7 +84,8 @@ describe("Stripe Connect tenant helpers", () => {
 		const options = buildTenantCheckoutOptions({
 			tenant: {
 				siteUrl: "zippymiggy.com",
-				stripeConnectedAccountId: "acct_123",
+				tenantId: "tenant_05eb6092-5d8c-43ce-ad26-1a59522bd07b",
+				stripeConnectedAccountId: "acct_1234567890TenantA",
 			},
 			kind: "service",
 			subtotalCents: 10_000,
@@ -86,13 +94,35 @@ describe("Stripe Connect tenant helpers", () => {
 		expect(options).toEqual({
 			session: {
 				payment_intent_data: {
-					metadata: { commerceTenantSiteUrl: "zippymiggy.com" },
+					metadata: {
+						commerceTenantSiteUrl: "zippymiggy.com",
+						commerceTenantId: "tenant_05eb6092-5d8c-43ce-ad26-1a59522bd07b",
+					},
 				},
 			},
-			metadata: { commerceTenantSiteUrl: "zippymiggy.com" },
-			requestOptions: { stripeAccount: "acct_123" },
+			metadata: {
+				commerceTenantSiteUrl: "zippymiggy.com",
+				commerceTenantId: "tenant_05eb6092-5d8c-43ce-ad26-1a59522bd07b",
+			},
+			requestOptions: { stripeAccount: "acct_1234567890TenantA" },
 			platformFeeAmount: 0,
 		});
+	});
+
+	it.each([
+		{ siteUrl: "unknown.example" },
+		{ siteUrl: "client.example", stripeConnectedAccountId: "acct_1234567890TenantA" },
+		{ siteUrl: "client.example", tenantId: "tenant_05eb6092-5d8c-43ce-ad26-1a59522bd07b" },
+		{
+			siteUrl: "client.example",
+			tenantId: "tenant_05eb6092-5d8c-43ce-ad26-1a59522bd07b",
+			stripeConnectedAccountId: "acct_bad",
+		},
+		{ siteUrl: "angelsrest.online", stripeConnectedAccountId: "acct_1234567890TenantA" },
+	])("never substitutes the platform account for an invalid client payment ($siteUrl)", (tenant) => {
+		expect(() =>
+			buildTenantCheckoutOptions({ tenant, kind: "service", subtotalCents: 1000 }),
+		).toThrow("Payments are temporarily unavailable.");
 	});
 
 	it("requests application-fee refunds only for connected-account refunds", () => {
@@ -108,11 +138,12 @@ describe("Stripe Connect tenant helpers", () => {
 		expect(
 			buildTenantRefundOptions({
 				siteUrl: "zippymiggy.com",
-				stripeConnectedAccountId: "acct_123",
+				tenantId: "tenant_05eb6092-5d8c-43ce-ad26-1a59522bd07b",
+				stripeConnectedAccountId: "acct_1234567890TenantA",
 			}),
 		).toEqual({
 			params: { refund_application_fee: true },
-			requestOptions: { stripeAccount: "acct_123" },
+			requestOptions: { stripeAccount: "acct_1234567890TenantA" },
 		});
 	});
 });

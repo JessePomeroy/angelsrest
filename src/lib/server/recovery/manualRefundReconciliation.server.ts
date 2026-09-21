@@ -2,14 +2,20 @@ import type { ConvexHttpClient } from "convex/browser";
 import type Stripe from "stripe";
 import { api } from "$convex/api";
 import type { Id } from "$convex/dataModel";
-import { readCheckoutTenantMarker } from "$lib/server/checkoutSnapshotConsumer";
+import {
+	readCheckoutTenantIdMarker,
+	readCheckoutTenantMarker,
+} from "$lib/server/checkoutSnapshotConsumer";
 import {
 	type CommerceNotificationProfile,
 	CommerceTenantIdentityError,
 	resolveCommerceTenant,
 } from "$lib/server/commerceTenant";
 import { logStructured } from "$lib/server/logger";
-import { COMMERCE_TENANT_METADATA_KEY } from "$lib/server/stripeConnect";
+import {
+	COMMERCE_TENANT_ID_METADATA_KEY,
+	COMMERCE_TENANT_METADATA_KEY,
+} from "$lib/server/stripeConnect";
 import type { CommerceWebhookRole } from "$lib/server/stripeWebhook";
 import { getWebhookSecret } from "$lib/server/webhookSecret";
 
@@ -215,13 +221,18 @@ export async function reconcileSucceededManualRefund(
 
 	const metadataValue = session.metadata?.[COMMERCE_TENANT_METADATA_KEY];
 	const metadataSiteUrl = readCheckoutTenantMarker(session.metadata);
-	if (metadataValue !== undefined && metadataSiteUrl === undefined) {
+	const metadataTenantId = readCheckoutTenantIdMarker(session.metadata);
+	if (
+		(metadataValue !== undefined && metadataSiteUrl === undefined) ||
+		(session.metadata?.[COMMERCE_TENANT_ID_METADATA_KEY] !== undefined &&
+			metadataTenantId === undefined)
+	) {
 		return ignore("invalid_tenant_marker");
 	}
 
 	let tenant;
 	try {
-		tenant = await resolveCommerceTenant(event, adapters.convex, metadataSiteUrl);
+		tenant = await resolveCommerceTenant(event, adapters.convex, metadataSiteUrl, metadataTenantId);
 	} catch (cause) {
 		if (cause instanceof CommerceTenantIdentityError) {
 			return ignore("tenant_identity_conflict");

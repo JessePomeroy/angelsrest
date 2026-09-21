@@ -3,6 +3,7 @@ import type Stripe from "stripe";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
+	verifyReadiness: vi.fn(),
 	convexQuery: vi.fn(),
 	convexMutation: vi.fn(),
 	stripeSessionCreate: vi.fn(),
@@ -11,6 +12,10 @@ const mocks = vi.hoisted(() => ({
 		ORDER_PRODUCERS_STATE: "closed" as string | undefined,
 		WEBHOOK_SECRET: "test-webhook-secret" as string | undefined,
 	},
+}));
+
+vi.mock("$lib/server/clientPaymentReadiness.server", () => ({
+	verifyClientPaymentReadiness: mocks.verifyReadiness,
 }));
 
 vi.mock("$lib/server/convexClient", () => ({
@@ -95,6 +100,7 @@ function expectedFingerprint({
 describe("invoice checkout route", () => {
 	beforeEach(() => {
 		vi.clearAllMocks();
+		mocks.verifyReadiness.mockResolvedValue({ livemode: false });
 		mocks.env.ORDER_PRODUCERS_STATE = "closed";
 		mocks.env.WEBHOOK_SECRET = "test-webhook-secret";
 		mocks.stripeSessionCreate.mockResolvedValue({
@@ -413,6 +419,26 @@ describe("invoice checkout route", () => {
 		expect(mocks.stripeSessionCreate).not.toHaveBeenCalled();
 	});
 
+	it.each([
+		"missing-account",
+		"unavailable",
+	])("withholds client service payment when %s", async (failure) => {
+		mocks.resolveStripeTenantForSite.mockResolvedValueOnce({
+			siteUrl: "client.example",
+			tenantId: "tenant_05eb6092-5d8c-43ce-ad26-1a59522bd07b",
+			...(failure === "unavailable" ? { stripeConnectedAccountId: "acct_1234567890TenantA" } : {}),
+		});
+		if (failure === "unavailable") {
+			const { ClientPaymentUnavailableError } = await import("$lib/server/stripeConnect");
+			mocks.verifyReadiness.mockRejectedValueOnce(new ClientPaymentUnavailableError());
+		}
+		await expect(POST(makeRequest({ token: "authorized-token" }))).rejects.toMatchObject({
+			status: 503,
+		});
+		expect(mocks.stripeSessionCreate).not.toHaveBeenCalled();
+		expect(mocks.convexMutation).not.toHaveBeenCalled();
+	});
+
 	it("routes tenant invoices through the token site and connected Stripe account", async () => {
 		mocks.convexQuery.mockResolvedValueOnce({
 			invoiceId: "invoice-tenant-123",
@@ -423,7 +449,8 @@ describe("invoice checkout route", () => {
 		});
 		mocks.resolveStripeTenantForSite.mockResolvedValueOnce({
 			siteUrl: "zippymiggy.com",
-			stripeConnectedAccountId: "acct_123",
+			stripeConnectedAccountId: "acct_1234567890TenantA",
+			tenantId: "tenant_05eb6092-5d8c-43ce-ad26-1a59522bd07b",
 		});
 
 		await POST(makeRequest({ token: "tenant-token" }) as any);
@@ -440,17 +467,23 @@ describe("invoice checkout route", () => {
 			invoiceId: "invoice-tenant-123",
 			siteUrl: "zippymiggy.com",
 			commerceTenantSiteUrl: "zippymiggy.com",
+			commerceTenantId: "tenant_05eb6092-5d8c-43ce-ad26-1a59522bd07b",
 			checkoutFingerprint: expectedFingerprint({
 				lineItemsCents: [{ description: "Session balance", quantity: 1, unitPriceCents: 10000 }],
 				taxPercent: 0,
 				taxCents: 0,
 			}),
 		});
+		expect(mocks.verifyReadiness).toHaveBeenCalledOnce();
+		expect(mocks.convexQuery).toHaveBeenCalledBefore(mocks.verifyReadiness);
 		expect(params.payment_intent_data).toEqual({
-			metadata: { commerceTenantSiteUrl: "zippymiggy.com" },
+			metadata: {
+				commerceTenantSiteUrl: "zippymiggy.com",
+				commerceTenantId: "tenant_05eb6092-5d8c-43ce-ad26-1a59522bd07b",
+			},
 		});
 		expect(requestOptions).toEqual({
-			stripeAccount: "acct_123",
+			stripeAccount: "acct_1234567890TenantA",
 			idempotencyKey: expectedIdempotencyKey({
 				siteUrl: "zippymiggy.com",
 				invoiceId: "invoice-tenant-123",

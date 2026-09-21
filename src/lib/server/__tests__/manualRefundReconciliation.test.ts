@@ -16,6 +16,7 @@ vi.mock("$convex/api", () => ({
 		orders: { reconcileSucceededManualRefund: "orders.reconcileSucceededManualRefund" },
 		platform: {
 			getByStripeConnectedAccountId: "platform.getByStripeConnectedAccountId",
+			getTenantRoutingContext: "platform.getTenantRoutingContext",
 			getCommerceProfileForSite: "platform.getCommerceProfileForSite",
 		},
 	},
@@ -122,6 +123,58 @@ describe("manual refund reconciliation", () => {
 				sessionLivemode: false,
 			}),
 		);
+	});
+
+	it("uses the retrieved paid Session's stable tenant identity for a retained-domain refund", async () => {
+		const tenantId = "tenant_05eb6092-5d8c-43ce-ad26-1a59522bd07b";
+		list.mockResolvedValue(
+			sessionList([
+				session({
+					metadata: { commerceTenantId: tenantId, commerceTenantSiteUrl: "client.example" },
+				}),
+			]),
+		);
+		query.mockResolvedValue({
+			tenantId,
+			siteUrl: "https://www.renamed.example/",
+			name: "Client",
+			email: "owner@example.invalid",
+			adminEmails: [],
+		});
+		await expect(
+			reconcileSucceededManualRefund(
+				event("refund.updated", {}, { account: IDS.account }),
+				{ stripe, convex },
+				"connected-accounts",
+			),
+		).resolves.toEqual({ kind: "reconciled" });
+		expect(query).toHaveBeenCalledWith("platform.getTenantRoutingContext", {
+			tenantId,
+			webhookSecret: "test-webhook-secret",
+		});
+		expect(mutation).toHaveBeenCalledWith(
+			"orders.reconcileSucceededManualRefund",
+			expect.objectContaining({ siteUrl: "client.example", stripeConnectedAccountId: IDS.account }),
+		);
+	});
+
+	it("rejects a malformed stable identity on the retrieved Session instead of dropping it", async () => {
+		list.mockResolvedValue(
+			sessionList([
+				session({
+					metadata: { commerceTenantId: "invalid", commerceTenantSiteUrl: "client.example" },
+				}),
+			]),
+		);
+		await expect(
+			reconcileSucceededManualRefund(
+				event("refund.updated", {}, { account: IDS.account }),
+				{ stripe, convex },
+				"connected-accounts",
+			),
+		).resolves.toEqual({ kind: "ignored", reason: "invalid_tenant_marker" });
+		expect(query).not.toHaveBeenCalled();
+		expect(mutation).not.toHaveBeenCalled();
 	});
 
 	it("advances pending creation through succeeded update, resend, and concurrent delivery", async () => {

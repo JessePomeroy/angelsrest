@@ -85,6 +85,45 @@ describe("Checkout Session admission client", () => {
 		});
 	});
 
+	it.each([true, false])("preserves the confirmed release result (%s)", async (released) => {
+		const fetcher = vi
+			.fn()
+			.mockResolvedValueOnce(
+				jsonResponse({
+					outcome: "created",
+					admissionId: "admission_123",
+					state: "active_prestripe",
+					admissionGeneration: 1,
+				}),
+			)
+			.mockResolvedValueOnce(
+				jsonResponse({ state: "creating", requestedStripeExpiresAt: 1_800_086_100 }),
+			)
+			.mockResolvedValueOnce(jsonResponse({ released }));
+		const client = createCheckoutSessionAdmissionClient({
+			baseUrl: "https://convex.example",
+			fetcher,
+			credential: () => "synthetic-authority-0123456789",
+		});
+		const permit = await client.begin({
+			site: "client.example",
+			account: "acct_1234567890TenantA",
+			identity: {
+				attempt: ATTEMPT,
+				attemptStartedAt: 1_800_000_000_000,
+				proofClass: "signed_bridge_body",
+			},
+			hostGeneration: 1,
+			requestFingerprint: "a".repeat(64),
+		});
+		await client.markCreating(permit, ATTEMPT);
+		expect(JSON.parse(String(fetcher.mock.calls[1]?.[1]?.body))).toHaveProperty(
+			"checkoutSnapshotHandle",
+			ATTEMPT,
+		);
+		expect(await client.release(permit)).toBe(released);
+	});
+
 	it("fails closed on an oversized or non-success response", async () => {
 		const client = createCheckoutSessionAdmissionClient({
 			baseUrl: "https://convex.example",

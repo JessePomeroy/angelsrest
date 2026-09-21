@@ -6,6 +6,7 @@ import type {
 	CheckoutSessionAdmissionClient,
 } from "$lib/server/checkoutSessionAdmissionClient";
 import type { CheckoutSnapshotReservationClient } from "$lib/server/checkoutSnapshotReservationClient";
+import type { verifyClientCheckoutReadiness } from "$lib/server/clientPaymentReadiness.server";
 import { resolveCurrentCheckoutCommerce } from "$lib/server/current/currentCheckoutCommerce.server";
 import { createHandleCheckoutSession } from "$lib/server/handleCheckout";
 import { logStructured } from "$lib/server/logger";
@@ -25,6 +26,7 @@ export interface CreateDirectCheckoutSessionOptions {
 	log?: CheckoutLogger;
 	reservationClient?: CheckoutSnapshotReservationClient;
 	admissionClient?: CheckoutSessionAdmissionClient;
+	verifyReadiness?: typeof verifyClientCheckoutReadiness;
 	attemptIdentity: CheckoutAdmissionIdentity;
 	hostGeneration: number;
 	now?: number;
@@ -82,6 +84,7 @@ export async function createDirectCheckoutSession({
 	log = logStructured,
 	reservationClient,
 	admissionClient,
+	verifyReadiness,
 	attemptIdentity,
 	hostGeneration,
 	now = Date.now(),
@@ -139,6 +142,7 @@ export async function createDirectCheckoutSession({
 		bindSession,
 		reservationClient,
 		admissionClient,
+		verifyReadiness,
 		hostGeneration,
 		now,
 	});

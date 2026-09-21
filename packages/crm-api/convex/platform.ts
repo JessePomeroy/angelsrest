@@ -8,6 +8,7 @@ import {
 	normalizeCatalogProductKinds,
 } from "./helpers/catalogProductPolicy";
 import { DEFAULT_LIST_LIMIT } from "./helpers/limits";
+import { requireClientPaymentBinding } from "./helpers/clientPaymentReadiness";
 import {
 	assertLumaPrintsConnection,
 	lumaprintsConnectionFields,
@@ -16,6 +17,7 @@ import {
 import { resolveStripeAccountOwner } from "./helpers/stripeAccountOwnership";
 import {
 	requireCurrentStripeConnectBinding,
+	projectStripeConnectStatus,
 	STRIPE_STATUS_REFRESH_MAX_AGE_MS,
 	stripeConnectStatusResultValidator,
 	stripeConnectStatusTargetArgs,
@@ -100,10 +102,7 @@ export const getStripeAccountForSite = query({
 		siteUrl: v.string(),
 	},
 	handler: async (ctx, { siteUrl }) => {
-		const client = await ctx.db
-			.query("platformClients")
-			.withIndex("by_siteUrl", (q) => q.eq("siteUrl", siteUrl))
-			.unique();
+		const client = (await resolveTenantContext(ctx, { siteUrl }))?.client;
 		if (!client) return null;
 		return {
 			tenantId: client.tenantId,
@@ -508,6 +507,22 @@ export const getStripeConnectTarget = query({
 	},
 });
 
+/** Customer requests never impersonate an admin; the hub attests their resolved payment scope. */
+export const getClientPaymentTarget = query({
+	args: { siteUrl: v.string(), tenantId: v.string(), accountId: v.string(), webhookSecret: v.string() },
+	handler: async (ctx, args) => {
+		await requireWebhookCallerOrAuth(ctx, args.webhookSecret, { allowAuth: false });
+		const { client, attempt } = await requireClientPaymentBinding(ctx, args);
+		return {
+			target: {
+				clientId: client._id, siteUrl: args.siteUrl, tenantId: args.tenantId,
+				stripeConnectedAccountId: args.accountId, attempt,
+			},
+			status: projectStripeConnectStatus(client.stripeConnectStatus),
+		};
+	},
+});
+
 /** Freeze the provider request once, including its Stripe account/environment. */
 export const beginStripeConnectAccount = mutation({
 	args: {
@@ -636,11 +651,8 @@ export const getStripeConnectStatus = query({
 				clientId: client._id, accountId: status.accountId,
 				platformAccountId: attempt.platformAccountId, livemode: attempt.livemode,
 			});
-			if (status.state.kind === "checking") {
-				return { accountId: status.accountId, state: { kind: "checking" as const, startedAt: status.state.startedAt } };
-			}
 		}
-		return status ?? null;
+		return projectStripeConnectStatus(status);
 	},
 });
 

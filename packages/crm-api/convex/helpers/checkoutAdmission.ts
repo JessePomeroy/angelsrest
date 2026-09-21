@@ -64,14 +64,17 @@ export function parseAdmissionBeginRequest(value: unknown) {
 }
 
 export function parseAdmissionMarkCreatingRequest(value: unknown) {
+	const hasSnapshot = !!value && typeof value === "object" && Object.hasOwn(value, "checkoutSnapshotHandle");
 	if (!exactObject(value, [
 		"version", "site", "admissionId", "activeLeaseTokenHash", "requestFingerprint",
-		"stripeIdempotencyDigest",
+		"stripeIdempotencyDigest", ...(hasSnapshot ? ["checkoutSnapshotHandle"] : []),
 	])) return null;
 	return value.version === 1 && isCommerceTenantSite(value.site) && internalId(value.admissionId)
 		&& digest(value.activeLeaseTokenHash) && digest(value.requestFingerprint)
 		&& digest(value.stripeIdempotencyDigest)
+		&& (!hasSnapshot || typeof value.checkoutSnapshotHandle === "string" && UUID_V4.test(value.checkoutSnapshotHandle))
 		? {
+				...(hasSnapshot ? { checkoutSnapshotHandle: String(value.checkoutSnapshotHandle) } : {}),
 				site: value.site,
 				admissionId: value.admissionId,
 				activeLeaseTokenHash: value.activeLeaseTokenHash,

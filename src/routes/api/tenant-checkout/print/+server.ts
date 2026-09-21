@@ -9,6 +9,7 @@ import { getCheckoutBridgeTenantConfig } from "$lib/server/checkoutBridgeConfig"
 import { isCheckoutSnapshotReservationConflict } from "$lib/server/checkoutSnapshotReservationClient";
 import { NewOrderCheckoutClosedError } from "$lib/server/commercePurposeControls";
 import { getStripe } from "$lib/server/stripeClient";
+import { ClientPaymentUnavailableError } from "$lib/server/stripeConnect";
 import { resolveStripeTenantForSite } from "$lib/server/stripeTenant";
 
 export async function POST({ request }) {
@@ -33,6 +34,7 @@ export async function POST({ request }) {
 
 		return json(session);
 	} catch (err) {
+		if (err instanceof ClientPaymentUnavailableError) throw error(503, err.message);
 		if (err instanceof NewOrderCheckoutClosedError) {
 			throw error(503, "Checkout is temporarily unavailable");
 		}

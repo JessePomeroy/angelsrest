@@ -170,7 +170,7 @@ async function currentPurchase(kind: "digital_download" | "merchandise") {
 			markCreating: vi.fn().mockResolvedValue(Math.floor(now / 1000) + 86100),
 			markUncertain: vi.fn(),
 			bind: vi.fn(),
-			release: vi.fn(),
+			release: vi.fn().mockResolvedValue(true),
 		},
 	});
 	expect(bindSession).toHaveBeenCalledWith(sessionId);

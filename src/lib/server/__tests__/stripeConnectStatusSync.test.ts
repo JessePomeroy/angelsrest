@@ -4,6 +4,7 @@ import type Stripe from "stripe";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { api } from "$convex/api";
 import type { Id } from "$convex/dataModel";
+import type { StripeConnectStore } from "$lib/server/stripeConnectOnboarding";
 import {
 	processStripeConnectLifecycleEvent,
 	refreshClientStripeConnectStatus,
@@ -85,9 +86,9 @@ function setup() {
 			.fn<StripeConnectStatusStore["finishStatusRefresh"]>()
 			.mockResolvedValue({ applied: true }),
 		markDisconnected: vi.fn<StripeConnectStatusStore["markDisconnected"]>().mockResolvedValue(true),
-		beginAttempt: vi.fn<StripeConnectStatusStore["beginAttempt"]>(),
-		bindAccount: vi.fn<StripeConnectStatusStore["bindAccount"]>(),
-	} satisfies StripeConnectStatusStore;
+		beginAttempt: vi.fn<StripeConnectStore["beginAttempt"]>(),
+		bindAccount: vi.fn<StripeConnectStore["bindAccount"]>(),
+	} satisfies StripeConnectStatusStore & StripeConnectStore;
 	vi.mocked(createStripeConnectStore).mockReturnValue(store);
 	const client = {
 		_id: CLIENT,

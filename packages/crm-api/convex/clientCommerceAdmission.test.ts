@@ -5,6 +5,7 @@ import { convexTest } from "convex-test";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { api, internal } from "./_generated/api";
 import type { Id } from "./_generated/dataModel";
+import { reservationHandleHash } from "./helpers/checkoutSnapshot";
 import { serverSecretFingerprint } from "./helpers/serverSecrets";
 import schema from "./schema";
 
@@ -37,10 +38,18 @@ beforeEach(async () => {
 afterEach(() => { vi.useRealTimers(); vi.unstubAllEnvs(); });
 
 async function seed(t: Backend, siteUrl = SITE, tenantId = TENANT) {
-	return t.run(ctx => ctx.db.insert("platformClients", {
-		tenantId, siteUrl, name: "Test client", email: "owner@example.com",
-		tier: "full", subscriptionStatus: "active", adminEmails: ["owner@example.com"],
-	}));
+	const account = tenantId === TENANT ? "acct_client12345678901" : "acct_other123456789012";
+	return t.run(async ctx => {
+		const attempt = { id: "attempt-1", model: "full-v1" as const, email: "owner@example.com", siteUrl, startedAt: Date.now(), platformAccountId: "acct_platform1234567890", livemode: false };
+		const clientId = await ctx.db.insert("platformClients", { tenantId, siteUrl, name: "Test client", email: attempt.email,
+			tier: "full", subscriptionStatus: "active", adminEmails: [attempt.email], stripeConnectedAccountId: account, stripeConnectAttempt: attempt,
+			stripeConnectStatus: { accountId: account, state: { kind: "observed", checkedAt: Date.now(), readiness: { status: "ready", chargesEnabled: true, payoutsEnabled: true, detailsSubmitted: true } } } });
+		await ctx.db.insert("stripeAccountBindings", { stripeConnectedAccountId: account, clientId, tenantId, attemptId: attempt.id, platformAccountId: attempt.platformAccountId, livemode: false, boundAt: Date.now() });
+		if (siteUrl === SITE) await ctx.db.insert("checkoutSnapshotReservations", { state: "reserved", tenantId, siteUrl, handleHash: D4, snapshotDigest: D2, accountScope: `connected:${account}`, stripeConnectedAccountId: account,
+			snapshot: { schemaVersion: 1, catalogProvider: "convex", items: [] }, printInput: { version: 1, lines: [{ amountCents: 4200, sources: [] }] }, lumaprintsConnectionVersion: 1,
+			createdAt: Date.now(), updatedAt: Date.now(), unboundPurgeAt: Date.now() + 86400000 });
+		return clientId;
+	});
 }
 
 function intent(state: "open" | "closed" = "open", generation = 1, tenantId = TENANT, siteUrl = SITE) {
@@ -58,13 +67,13 @@ async function activate(t: Backend, state: "open" | "closed" = "open", generatio
 }
 
 const begin = (tenantId: string | undefined = TENANT) => ({
-	siteUrl: SITE, ...(tenantId ? { tenantId } : {}), attemptDigest: D1,
+	siteUrl: SITE, stripeConnectedAccountId: "acct_client12345678901", ...(tenantId ? { tenantId } : {}), attemptDigest: D1,
 	proofClass: "signed_bridge_body" as const, admissionHandleHash: D2,
 	requestFingerprint: D3, activeLeaseTokenHash: D4, hostGeneration: 1,
 });
 
 const create = (admissionId: Id<"checkoutSessionAdmissions">) => ({
-	siteUrl: SITE, admissionId, activeLeaseTokenHash: D4,
+	siteUrl: SITE, admissionId, checkoutSnapshotHandleHash: D4, activeLeaseTokenHash: D4,
 	requestFingerprint: D3, stripeIdempotencyDigest: D1,
 });
 
@@ -170,9 +179,20 @@ describe("explicit client commerce admission", () => {
 		expect((await t.fetch("/commerce/purpose-controls/activate", post(OTHER_AUTHORITY))).status).toBe(400);
 		expect(await t.run(ctx => ctx.db.query("commercePurposeControls").take(1))).toEqual([]);
 		expect((await t.fetch("/commerce/purpose-controls/activate", post(AUTHORITY))).status).toBe(200);
-		const request = { version: 1, ...begin(), site: SITE, account: null };
-		const { siteUrl: _siteUrl, ...httpBody } = request;
-		expect((await t.fetch("/commerce/checkout-admissions/begin", { ...post(AUTHORITY), body: JSON.stringify(httpBody) })).status).toBe(200);
+		const request = { version: 1, ...begin(), site: SITE, account: "acct_client12345678901" };
+		const { siteUrl: _siteUrl, stripeConnectedAccountId: _account, ...httpBody } = request;
+		const response = await t.fetch("/commerce/checkout-admissions/begin", { ...post(AUTHORITY), body: JSON.stringify(httpBody) });
+		expect(response.status).toBe(200);
+		const admitted = await response.json();
+		const handle = "123e4567-e89b-42d3-a456-426614174000";
+		await t.run(async ctx => {
+			const r = await ctx.db.query("checkoutSnapshotReservations").withIndex("by_siteUrl_and_handleHash", q => q.eq("siteUrl", SITE).eq("handleHash", D4)).unique();
+			if (!r) throw new Error("Missing reservation");
+			await ctx.db.patch(r._id, { handleHash: await reservationHandleHash(SITE, handle) });
+		});
+		const creatingBody = { version: 1, site: SITE, admissionId: admitted.admissionId, activeLeaseTokenHash: D4, requestFingerprint: D3, stripeIdempotencyDigest: D1, checkoutSnapshotHandle: handle };
+		expect((await t.fetch("/commerce/checkout-admissions/mark-creating", { ...post(OTHER_AUTHORITY), body: JSON.stringify(creatingBody) })).status).toBe(400);
+		expect((await t.fetch("/commerce/checkout-admissions/mark-creating", { ...post(AUTHORITY), body: JSON.stringify(creatingBody) })).status).toBe(200);
 	});
 
 	test.each([true, false])("first supplier admission checks owner and retains admitted work (saved tenant: %s)", async savedTenant => {
