@@ -1,3 +1,4 @@
+import { captureCurrentLumaPrintsConnection, sameLumaPrintsConnection } from "./helpers/lumaprintsConnection";
 import { v } from "convex/values";
 import { internal } from "./_generated/api";
 import type { Doc, Id } from "./_generated/dataModel";
@@ -23,7 +24,8 @@ import {
 	stripeAccountScope,
 } from "./helpers/checkoutSnapshot";
 import { isTenantId, tenantIdentityMatchesSite } from "./helpers/tenantContext";
-import { isCurrentStripeAccountForSite, resolveStripeAccountOwner } from "./helpers/stripeAccountOwnership";
+import { requireClientPaymentBinding, requireClientPaymentReady } from "./helpers/clientPaymentReadiness";
+import { isCurrentStripeAccountForSite, stripeAccountMatchesSite } from "./helpers/stripeAccountOwnership";
 
 export const ACTIVE_ADMISSION_LEASE_MS = 120_000;
 export const ORDER_SESSION_LIFETIME_SECONDS = 86_100;
@@ -45,17 +47,12 @@ function validDigest(value: string) {
 	return HEX_DIGEST.test(value);
 }
 
-async function canonicalSiteForConnectedAccount(ctx: QueryCtx, account: string) {
-	const client = await resolveStripeAccountOwner(ctx, account);
-	return client?.siteUrl ?? null;
-}
-
 async function accountMatchesSite(
 	ctx: QueryCtx,
 	siteUrl: string,
 	account: string | undefined,
 ) {
-	return account === undefined || await canonicalSiteForConnectedAccount(ctx, account) === siteUrl;
+	return account === undefined || await stripeAccountMatchesSite(ctx, siteUrl, account);
 }
 
 export async function getDurablePurposeControl(
@@ -284,6 +281,11 @@ export const beginCheckoutSessionAdmission = internalMutation({
 		if (!await isCurrentStripeAccountForSite(ctx, args.siteUrl, args.stripeConnectedAccountId)) {
 			throw new Error("Checkout admission requires the current Stripe account");
 		}
+		if (args.siteUrl !== "angelsrest.online") {
+			await requireClientPaymentBinding(ctx, {
+				siteUrl: args.siteUrl, tenantId: args.tenantId ?? "", accountId: args.stripeConnectedAccountId ?? "",
+			});
+		}
 		const createdAt = Date.now();
 		const activeLeaseExpiresAt = createdAt + ACTIVE_ADMISSION_LEASE_MS;
 		const admissionId = await ctx.db.insert("checkoutSessionAdmissions", {
@@ -377,6 +379,7 @@ export const markCheckoutSessionCreating = internalMutation({
 		activeLeaseTokenHash: v.string(),
 		requestFingerprint: v.string(),
 		stripeIdempotencyDigest: v.string(),
+		checkoutSnapshotHandleHash: v.optional(v.string()),
 	},
 	handler: async (ctx, args) => {
 		if (
@@ -393,6 +396,7 @@ export const markCheckoutSessionCreating = internalMutation({
 				|| row.state === "bound")
 			&& row.requestFingerprint === args.requestFingerprint
 			&& row.stripeIdempotencyDigest === args.stripeIdempotencyDigest
+			&& (args.checkoutSnapshotHandleHash === undefined || row.checkoutSnapshotHandleHash === undefined || row.checkoutSnapshotHandleHash === args.checkoutSnapshotHandleHash)
 			&& row.requestedStripeExpiresAt !== undefined
 		) {
 			return {
@@ -413,6 +417,32 @@ export const markCheckoutSessionCreating = internalMutation({
 		if (!await commerceControlMatchesTenant(ctx, control, row.tenantId)) {
 			throw new Error("Checkout creation identity does not match activated tenant");
 		}
+		if (row.siteUrl !== "angelsrest.online") {
+			const { attempt } = await requireClientPaymentReady(ctx, {
+				siteUrl: row.siteUrl, tenantId: row.tenantId ?? "", accountId: row.stripeConnectedAccountId ?? "",
+			});
+			const handleHash = args.checkoutSnapshotHandleHash;
+			if (!row.tenantId || !handleHash || !validDigest(handleHash)) throw new Error("Client checkout requires captured fulfillment");
+			const reservation = await ctx.db.query("checkoutSnapshotReservations")
+				.withIndex("by_siteUrl_and_handleHash", q => q.eq("siteUrl", row.siteUrl).eq("handleHash", handleHash)).unique();
+			if (!reservation || reservation.state !== "reserved" || reservation.accountScope !== row.accountScope
+				|| reservation.tenantId !== row.tenantId || reservation.stripeConnectedAccountId !== row.stripeConnectedAccountId
+				|| reservation.lumaprintsConnectionVersion !== 1 || reservation.printInput?.version !== 1
+				|| reservation.checkoutSessionAdmissionId !== undefined
+				|| reservation.printInput.lines.some(line => line.sources.length > 0) !== (reservation.lumaprintsConnection !== undefined)) {
+				throw new Error("Client checkout requires matching captured fulfillment");
+			}
+			if (reservation.lumaprintsConnection) {
+				const current = await captureCurrentLumaPrintsConnection(ctx, row.tenantId);
+				const supplierControl = await getDurablePurposeControl(ctx, row.siteUrl, "new_provider_submission");
+				if (!sameLumaPrintsConnection(current, reservation.lumaprintsConnection)
+					|| current.environment !== (attempt.livemode ? "production" : "sandbox")
+					|| supplierControl?.state !== "open"
+					|| !await commerceControlMatchesTenant(ctx, supplierControl, row.tenantId)) {
+					throw new Error("Client print supplier is not ready for new payments");
+				}
+			}
+		}
 		const creatingAt = Date.now();
 		const requestedStripeExpiresAt = Math.floor(creatingAt / 1000)
 			+ ORDER_SESSION_LIFETIME_SECONDS;
@@ -421,6 +451,7 @@ export const markCheckoutSessionCreating = internalMutation({
 		}
 		await ctx.db.patch(row._id, {
 			state: "creating",
+			checkoutSnapshotHandleHash: args.checkoutSnapshotHandleHash,
 			activeLeaseTokenHash: undefined,
 			activeLeaseExpiresAt: undefined,
 			stripeIdempotencyDigest: args.stripeIdempotencyDigest,
@@ -487,6 +518,7 @@ export const bindCheckoutSessionAdmission = internalMutation({
 			(row.state !== "creating" && row.state !== "creation_uncertain")
 			|| row.requestFingerprint !== args.requestFingerprint
 			|| row.stripeIdempotencyDigest !== args.stripeIdempotencyDigest
+			|| row.checkoutSnapshotHandleHash !== undefined && row.checkoutSnapshotHandleHash !== args.checkoutSnapshotHandleHash
 			|| row.requestedStripeExpiresAt !== args.stripeExpiresAt
 			|| !isBoundedStripeExpiration(args.stripeExpiresAt, Math.floor((row.creatingAt ?? 0) / 1000))
 		) throw new Error("Checkout admission cannot bind Session");

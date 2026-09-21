@@ -56,7 +56,7 @@ export interface CheckoutSessionAdmissionClient {
 		hostGeneration: number;
 		requestFingerprint: string;
 	}): Promise<CheckoutAdmissionPermit>;
-	markCreating(permit: CheckoutAdmissionPermit): Promise<number>;
+	markCreating(permit: CheckoutAdmissionPermit, checkoutSnapshotHandle?: string): Promise<number>;
 	markUncertain(permit: CheckoutAdmissionPermit): Promise<void>;
 	bind(input: {
 		permit: CheckoutAdmissionPermit;
@@ -64,7 +64,7 @@ export interface CheckoutSessionAdmissionClient {
 		stripeExpiresAt: number;
 		checkoutSnapshotHandle?: string;
 	}): Promise<void>;
-	release(permit: CheckoutAdmissionPermit): Promise<void>;
+	release(permit: CheckoutAdmissionPermit): Promise<boolean>;
 }
 
 export function createCheckoutSessionAdmissionClient({
@@ -146,8 +146,9 @@ export function createCheckoutSessionAdmissionClient({
 					: { requestedStripeExpiresAt: response.requestedStripeExpiresAt }),
 			};
 		},
-		async markCreating(permit) {
+		async markCreating(permit, checkoutSnapshotHandle) {
 			const response = await post(MARK_CREATING_PATH, permit.site, {
+				...(checkoutSnapshotHandle === undefined ? {} : { checkoutSnapshotHandle }),
 				version: 1,
 				site: permit.site,
 				admissionId: permit.admissionId,
@@ -195,6 +196,7 @@ export function createCheckoutSessionAdmissionClient({
 			if (!exactObject(response, ["released"]) || typeof response.released !== "boolean") {
 				throw unavailable();
 			}
+			return response.released;
 		},
 	};
 }

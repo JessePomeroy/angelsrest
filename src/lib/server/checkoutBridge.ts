@@ -3,6 +3,7 @@ import type Stripe from "stripe";
 import type { CheckoutSnapshotItem } from "$lib/server/checkoutCatalog";
 import type { CheckoutSessionAdmissionClient } from "$lib/server/checkoutSessionAdmissionClient";
 import type { CheckoutSnapshotReservationClient } from "$lib/server/checkoutSnapshotReservationClient";
+import type { verifyClientCheckoutReadiness } from "$lib/server/clientPaymentReadiness.server";
 import {
 	assertNewOrderCheckoutOpen,
 	NewOrderCheckoutClosedError,
@@ -92,6 +93,7 @@ export interface TenantPrintCheckoutOptions {
 	globalSnapshotMode?: string;
 	reservationClient?: CheckoutSnapshotReservationClient;
 	admissionClient?: CheckoutSessionAdmissionClient;
+	verifyReadiness?: typeof verifyClientCheckoutReadiness;
 	abuseGate?: () => void | Promise<void>;
 	now?: number;
 }
@@ -113,6 +115,7 @@ export async function createTenantPrintCheckoutSession({
 	globalSnapshotMode,
 	reservationClient,
 	admissionClient,
+	verifyReadiness,
 	abuseGate,
 	now = Date.now(),
 }: TenantPrintCheckoutOptions): Promise<TenantPrintCheckoutResult> {
@@ -180,6 +183,7 @@ export async function createTenantPrintCheckoutSession({
 		bindSession: () => {},
 		reservationClient,
 		admissionClient,
+		verifyReadiness,
 		hostGeneration: control.generation,
 		abuseGate,
 		now,

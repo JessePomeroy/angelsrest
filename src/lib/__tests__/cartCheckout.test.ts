@@ -151,7 +151,8 @@ describe("cart Stripe Connect options", () => {
 			],
 			tenant: {
 				siteUrl: "zippymiggy.com",
-				stripeConnectedAccountId: "acct_123",
+				tenantId: "tenant_05eb6092-5d8c-43ce-ad26-1a59522bd07b",
+				stripeConnectedAccountId: "acct_1234567890TenantA",
 			},
 		});
 
@@ -159,11 +160,17 @@ describe("cart Stripe Connect options", () => {
 			session: {
 				payment_intent_data: {
 					application_fee_amount: 450,
-					metadata: { commerceTenantSiteUrl: "zippymiggy.com" },
+					metadata: {
+						commerceTenantSiteUrl: "zippymiggy.com",
+						commerceTenantId: "tenant_05eb6092-5d8c-43ce-ad26-1a59522bd07b",
+					},
 				},
 			},
-			metadata: { commerceTenantSiteUrl: "zippymiggy.com" },
-			requestOptions: { stripeAccount: "acct_123" },
+			metadata: {
+				commerceTenantSiteUrl: "zippymiggy.com",
+				commerceTenantId: "tenant_05eb6092-5d8c-43ce-ad26-1a59522bd07b",
+			},
+			requestOptions: { stripeAccount: "acct_1234567890TenantA" },
 			platformFeeAmount: 450,
 		});
 	});
@@ -173,18 +180,25 @@ describe("cart Stripe Connect options", () => {
 			items: [makeMerchItem({ unitPriceCents: 18_900, quantity: 1 })],
 			tenant: {
 				siteUrl: "zippymiggy.com",
-				stripeConnectedAccountId: "acct_123",
+				tenantId: "tenant_05eb6092-5d8c-43ce-ad26-1a59522bd07b",
+				stripeConnectedAccountId: "acct_1234567890TenantA",
 			},
 		});
 
 		expect(options).toEqual({
 			session: {
 				payment_intent_data: {
-					metadata: { commerceTenantSiteUrl: "zippymiggy.com" },
+					metadata: {
+						commerceTenantSiteUrl: "zippymiggy.com",
+						commerceTenantId: "tenant_05eb6092-5d8c-43ce-ad26-1a59522bd07b",
+					},
 				},
 			},
-			metadata: { commerceTenantSiteUrl: "zippymiggy.com" },
-			requestOptions: { stripeAccount: "acct_123" },
+			metadata: {
+				commerceTenantSiteUrl: "zippymiggy.com",
+				commerceTenantId: "tenant_05eb6092-5d8c-43ce-ad26-1a59522bd07b",
+			},
+			requestOptions: { stripeAccount: "acct_1234567890TenantA" },
 			platformFeeAmount: 0,
 		});
 	});

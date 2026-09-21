@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import { error, json } from "@sveltejs/kit";
 import { api } from "$convex/api";
 import type { Id } from "$convex/dataModel";
+import { verifyClientPaymentReadiness } from "$lib/server/clientPaymentReadiness.server";
 import { getConvex } from "$lib/server/convexClient";
 import { getPublicSiteOrigin } from "$lib/server/runtimeConfig";
 import {
@@ -9,7 +10,11 @@ import {
 	createPaymentCheckoutSession,
 } from "$lib/server/stripeCheckoutSession";
 import { getStripe } from "$lib/server/stripeClient";
-import { buildTenantCheckoutOptions } from "$lib/server/stripeConnect";
+import {
+	buildTenantCheckoutOptions,
+	ClientPaymentUnavailableError,
+	normalizeCommerceTenantSiteUrl,
+} from "$lib/server/stripeConnect";
 import { resolveStripeTenantForSite } from "$lib/server/stripeTenant";
 import { getWebhookSecret } from "$lib/server/webhookSecret";
 import { calculateInvoiceAmounts } from "../../../../../packages/crm-api/src/invoiceAmounts";
@@ -130,6 +135,19 @@ export async function POST({ request }) {
 			);
 		}
 
+		if (normalizeCommerceTenantSiteUrl(tenant.siteUrl) !== "angelsrest.online") {
+			if (!tenant.tenantId || !tenant.stripeConnectedAccountId)
+				throw new ClientPaymentUnavailableError();
+			await verifyClientPaymentReadiness({
+				siteUrl: normalizeCommerceTenantSiteUrl(tenant.siteUrl),
+				tenantId: tenant.tenantId,
+				accountId: tenant.stripeConnectedAccountId,
+				stripe,
+				convex,
+				webhookSecret,
+			});
+		}
+
 		const session = await createPaymentCheckoutSession({
 			purpose: "invoice-payment",
 			stripe,
@@ -162,6 +180,7 @@ export async function POST({ request }) {
 
 		return json({ url: session.url });
 	} catch (err: unknown) {
+		if (err instanceof ClientPaymentUnavailableError) throw error(503, err.message);
 		if (err && typeof err === "object" && "status" in err) {
 			throw err;
 		}

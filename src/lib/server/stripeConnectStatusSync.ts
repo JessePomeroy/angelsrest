@@ -23,7 +23,8 @@ type FinishArgs = Omit<
 	"webhookSecret"
 >;
 
-export interface StripeConnectStatusStore extends StripeConnectStore {
+export interface StripeConnectStatusStore
+	extends Pick<StripeConnectStore, "findClient" | "readStatus"> {
 	beginStatusRefresh: (
 		args: RefreshArgs,
 	) => Promise<FunctionReturnType<typeof api.platform.beginStripeConnectStatusRefresh>>;

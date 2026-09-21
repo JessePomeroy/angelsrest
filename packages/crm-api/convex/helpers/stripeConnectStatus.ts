@@ -1,9 +1,17 @@
 import { v } from "convex/values";
-import type { Id } from "../_generated/dataModel";
+import type { Doc, Id } from "../_generated/dataModel";
 import type { QueryCtx } from "../_generated/server";
 import { resolveStripeAccountOwner } from "./stripeAccountOwnership";
 
 export const STRIPE_STATUS_REFRESH_MAX_AGE_MS = 60_000;
+
+/** Refresh tokens are write authority, never part of a status projection. */
+export function projectStripeConnectStatus(status: Doc<"platformClients">["stripeConnectStatus"]) {
+	if (status?.state.kind === "checking") {
+		return { accountId: status.accountId, state: { kind: "checking" as const, startedAt: status.state.startedAt } };
+	}
+	return status ?? null;
+}
 
 export const stripeConnectReadinessValidator = v.object({
 	status: v.union(v.literal("setup_required"), v.literal("pending_verification"), v.literal("restricted"), v.literal("ready")),

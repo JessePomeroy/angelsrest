@@ -6,6 +6,13 @@ export const COMMERCE_TENANT_ID_METADATA_KEY = "commerceTenantId";
 export const COMMERCE_TENANT_ID_PATTERN =
 	/^tenant_[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
 
+export class ClientPaymentUnavailableError extends Error {
+	constructor() {
+		super("Payments are temporarily unavailable. Please try again later or contact the business.");
+		this.name = "ClientPaymentUnavailableError";
+	}
+}
+
 export interface StripeTenantAccount {
 	tenantId?: string | null;
 	siteUrl: string;
@@ -55,6 +62,13 @@ export function buildTenantCheckoutOptions({
 	const tenantId = tenant.tenantId?.trim();
 	if (tenantId && !COMMERCE_TENANT_ID_PATTERN.test(tenantId)) {
 		throw new Error("Invalid commerce tenantId");
+	}
+	if (
+		tenantSiteUrl === "angelsrest.online"
+			? connectedAccountId !== null
+			: !tenantId || !connectedAccountId || !/^acct_[A-Za-z0-9]{16,64}$/.test(connectedAccountId)
+	) {
+		throw new ClientPaymentUnavailableError();
 	}
 	const metadata = {
 		[COMMERCE_TENANT_METADATA_KEY]: tenantSiteUrl,

@@ -1,5 +1,5 @@
 import type Stripe from "stripe";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { env } from "$env/dynamic/private";
 import {
 	CheckoutBridgeError,
@@ -9,6 +9,17 @@ import {
 } from "../checkoutBridge";
 import * as stripeCheckoutSession from "../stripeCheckoutSession";
 import * as stripeConnect from "../stripeConnect";
+
+const TENANT_ID = "tenant_05eb6092-5d8c-43ce-ad26-1a59522bd07b";
+beforeEach(() => {
+	(env as Record<string, string | undefined>).LUMAPRINTS_CHECKOUT_CAPTURE_TENANTS = JSON.stringify({
+		version: 1,
+		tenantIds: [TENANT_ID],
+	});
+});
+afterEach(() => {
+	delete (env as Record<string, string | undefined>).LUMAPRINTS_CHECKOUT_CAPTURE_TENANTS;
+});
 
 const SECRET = "checkout-bridge-secret";
 const NOW = 1_800_000_000_000;
@@ -91,7 +102,7 @@ function makeReservation(events?: string[]) {
 	return {
 		reserve: vi.fn(async (_input: unknown) => {
 			events?.push("reserve");
-			return { handle: HANDLE };
+			return { handle: HANDLE, lumaprintsConnection: null };
 		}),
 		bind: vi.fn(async () => {
 			events?.push("bind");
@@ -129,6 +140,7 @@ function makeAdmission(events?: string[]) {
 		}),
 		release: vi.fn(async () => {
 			events?.push("admission-release");
+			return true;
 		}),
 	};
 }
@@ -143,13 +155,18 @@ function handleOptions(
 		bodyText,
 		headers: makeHeaders(bodyText),
 		stripe,
-		tenant: { siteUrl: "zippymiggy.com", stripeConnectedAccountId: "acct_1234567890TenantA" },
+		tenant: {
+			tenantId: TENANT_ID,
+			siteUrl: "zippymiggy.com",
+			stripeConnectedAccountId: "acct_1234567890TenantA",
+		},
 		secrets: [SECRET],
 		allowedRedirectOrigins: ["https://zippymiggy.com"],
 		snapshotMode: "handle-v2",
 		globalSnapshotMode: "handle-v2",
 		reservationClient,
 		admissionClient: makeAdmission(),
+		verifyReadiness: vi.fn().mockResolvedValue(undefined),
 		now: NOW,
 		...overrides,
 	};
@@ -525,6 +542,9 @@ describe("checkout bridge", () => {
 			platformFeeAmount: 500,
 		});
 		expect(reservationClient.reserve).toHaveBeenCalledWith({
+			tenantId: TENANT_ID,
+			printInputVersion: 1,
+			lumaprintsConnectionVersion: 1,
 			site: "zippymiggy.com",
 			attempt: ATTEMPT,
 			account: "acct_1234567890TenantA",
@@ -535,6 +555,8 @@ describe("checkout bridge", () => {
 		expect(params.metadata).toEqual({
 			checkoutSnapshotVersion: "2",
 			checkoutSnapshotHandle: HANDLE,
+			printInputVersion: "1",
+			commerceTenantId: TENANT_ID,
 			checkoutAdmissionVersion: "1",
 			checkoutAdmissionHandleHash: "a".repeat(64),
 			commerceTenantSiteUrl: "zippymiggy.com",
@@ -672,7 +694,7 @@ describe("checkout bridge", () => {
 					bodyText,
 					stripe,
 					{
-						reserve: vi.fn().mockResolvedValue({ handle: HANDLE }),
+						reserve: vi.fn().mockResolvedValue({ handle: HANDLE, lumaprintsConnection: null }),
 						bind: vi.fn(),
 					},
 					{
@@ -694,7 +716,7 @@ describe("checkout bridge", () => {
 			const candidate = JSON.stringify(input);
 			if (reserved && candidate !== reserved) throw new Error("snapshot conflict");
 			reserved = candidate;
-			return { handle: HANDLE };
+			return { handle: HANDLE, lumaprintsConnection: null };
 		});
 		const { stripe, create } = makeStripe();
 		const first = makeHandleBody();

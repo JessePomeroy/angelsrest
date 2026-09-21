@@ -18,12 +18,13 @@ export async function resolveStripeTenantForSite(
 	options: ResolveStripeTenantOptions = {},
 ): Promise<StripeTenantAccount> {
 	const lookup = options.lookup ?? createConvexTenantLookup();
-	const tenant = await lookup(normalizeCommerceTenantSiteUrl(siteUrl));
+	const canonicalSite = normalizeCommerceTenantSiteUrl(siteUrl);
+	const tenant = await lookup(canonicalSite);
 
 	if (tenant) {
 		return {
 			tenantId: tenant.tenantId,
-			siteUrl: tenant.siteUrl || siteUrl,
+			siteUrl: canonicalSite,
 			name: tenant.name,
 			stripeConnectedAccountId: tenant.stripeConnectedAccountId,
 		};

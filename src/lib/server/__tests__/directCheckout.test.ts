@@ -19,7 +19,7 @@ function admissionOptions() {
 		hostGeneration: 1,
 		admissionClient: {
 			begin: vi.fn().mockResolvedValue({
-				site: "angelsrest.test",
+				site: "angelsrest.online",
 				account: null,
 				admissionId: "admission_123",
 				handleHash: "a".repeat(64),
@@ -34,7 +34,7 @@ function admissionOptions() {
 			markCreating: vi.fn().mockResolvedValue(Math.floor(ATTEMPT_STARTED_AT / 1000) + 86_100),
 			markUncertain: vi.fn(),
 			bind,
-			release: vi.fn(),
+			release: vi.fn().mockResolvedValue(true),
 		},
 	};
 }
@@ -115,8 +115,8 @@ describe("createDirectCheckoutSession", () => {
 		const result = await createDirectCheckoutSession({
 			body,
 			stripe,
-			siteUrl: "https://angelsrest.test",
-			tenant: { tenantId: TENANT_ID, siteUrl: "angelsrest.test" },
+			siteUrl: "https://angelsrest.online",
+			tenant: { tenantId: TENANT_ID, siteUrl: "angelsrest.online" },
 			bindSession,
 			resolveCommerce,
 			log: vi.fn(),
@@ -133,7 +133,7 @@ describe("createDirectCheckoutSession", () => {
 		expect(resolveCommerce).toHaveBeenCalledWith([body]);
 		expect(reservation.reservationClient.reserve).toHaveBeenCalledWith({
 			tenantId: TENANT_ID,
-			site: "angelsrest.test",
+			site: "angelsrest.online",
 			attempt: ATTEMPT,
 			account: null,
 			catalogProvider: "convex",
@@ -146,7 +146,7 @@ describe("createDirectCheckoutSession", () => {
 		expect(params.shipping_address_collection).toEqual({ allowed_countries: ["US"] });
 		expect(params.line_items?.[0]?.price_data?.unit_amount).toBe(4200);
 		expect(params.payment_intent_data).toEqual({
-			metadata: { commerceTenantId: TENANT_ID, commerceTenantSiteUrl: "angelsrest.test" },
+			metadata: { commerceTenantId: TENANT_ID, commerceTenantSiteUrl: "angelsrest.online" },
 		});
 		expect(requestOptions?.idempotencyKey).toBe(`checkout-admission-v1:${"d".repeat(64)}`);
 		expect(params.metadata).toEqual({
@@ -155,7 +155,7 @@ describe("createDirectCheckoutSession", () => {
 			checkoutAdmissionVersion: "1",
 			checkoutAdmissionHandleHash: "a".repeat(64),
 			commerceTenantId: TENANT_ID,
-			commerceTenantSiteUrl: "angelsrest.test",
+			commerceTenantSiteUrl: "angelsrest.online",
 		});
 	});
 
@@ -169,7 +169,7 @@ describe("createDirectCheckoutSession", () => {
 			createDirectCheckoutSession({
 				body: { productId: "print-one" },
 				stripe,
-				siteUrl: "https://angelsrest.test",
+				siteUrl: "https://angelsrest.online",
 				bindSession,
 				resolveCommerce: vi.fn().mockRejectedValue(new Error("catalog closed")),
 				log: vi.fn(),
@@ -192,7 +192,7 @@ describe("createDirectCheckoutSession", () => {
 				createDirectCheckoutSession({
 					body: { productId: "print-one" },
 					stripe,
-					siteUrl: "https://angelsrest.test",
+					siteUrl: "https://angelsrest.online",
 					bindSession: vi.fn(),
 					resolveCommerce: vi.fn().mockResolvedValue({ provider: "convex", items }),
 					log: vi.fn(),
@@ -219,7 +219,7 @@ describe("createDirectCheckoutSession", () => {
 				createDirectCheckoutSession({
 					body: { productId: "print-one", coupon },
 					stripe,
-					siteUrl: "https://angelsrest.test",
+					siteUrl: "https://angelsrest.online",
 					bindSession,
 					resolveCommerce,
 					log,
@@ -247,7 +247,7 @@ describe("createDirectCheckoutSession", () => {
 			createDirectCheckoutSession({
 				body: {},
 				stripe,
-				siteUrl: "https://angelsrest.test",
+				siteUrl: "https://angelsrest.online",
 				bindSession: vi.fn(),
 				resolveCommerce,
 				log: vi.fn(),

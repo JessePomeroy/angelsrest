@@ -792,6 +792,7 @@ const markCheckoutAdmissionCreating = httpAction(async (ctx, request) => {
 			internal.commerceClosure.markCheckoutSessionCreating,
 			{
 				siteUrl,
+				checkoutSnapshotHandleHash: parsed.checkoutSnapshotHandle === undefined ? undefined : await reservationHandleHash(siteUrl, parsed.checkoutSnapshotHandle),
 				admissionId: parsed.admissionId as Id<"checkoutSessionAdmissions">,
 				activeLeaseTokenHash: parsed.activeLeaseTokenHash,
 				requestFingerprint: parsed.requestFingerprint,

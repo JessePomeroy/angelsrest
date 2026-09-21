@@ -16,6 +16,7 @@ import {
 	createCheckoutSnapshotReservationClient,
 	isCheckoutSnapshotReservationConflict,
 } from "$lib/server/checkoutSnapshotReservationClient";
+import { verifyClientCheckoutReadiness } from "$lib/server/clientPaymentReadiness.server";
 import {
 	resolveLumaPrintsConfiguration,
 	resolveLumaPrintsWebhookConfiguration,
@@ -30,6 +31,7 @@ import {
 	type PaymentCheckoutSessionResult,
 } from "$lib/server/stripeCheckoutSession";
 import {
+	ClientPaymentUnavailableError,
 	COMMERCE_TENANT_ID_METADATA_KEY,
 	COMMERCE_TENANT_ID_PATTERN,
 	COMMERCE_TENANT_METADATA_KEY,
@@ -65,6 +67,7 @@ export interface CreateHandleCheckoutOptions {
 	hostGeneration: number;
 	abuseGate?: () => void | Promise<void>;
 	now?: number;
+	verifyReadiness?: typeof verifyClientCheckoutReadiness;
 }
 
 export function checkoutSnapshotMode(value: string | undefined) {
@@ -180,6 +183,7 @@ export async function createHandleCheckoutSession({
 	hostGeneration,
 	abuseGate = () => {},
 	now = Date.now(),
+	verifyReadiness = verifyClientCheckoutReadiness,
 }: CreateHandleCheckoutOptions): Promise<PaymentCheckoutSessionResult & { expiresAt: number }> {
 	assertOrderProducersOpen();
 	const validatedAttempt = validateCheckoutAttempt(attempt, attemptStartedAt, now);
@@ -212,7 +216,14 @@ export async function createHandleCheckoutSession({
 	}
 
 	let handle: string;
+	let verifyBeforePayment: (() => Promise<void>) | undefined;
 	const lumaprintsConnectionVersion = getClientSupplierCaptureVersion(site, tenantId);
+	if (
+		site !== "angelsrest.online" &&
+		(!tenantId || !account || lumaprintsConnectionVersion !== 1)
+	) {
+		throw new ClientPaymentUnavailableError();
+	}
 	const printInputVersion = lumaprintsConnectionVersion ?? getFrozenPrintInputVersion(site);
 	try {
 		const reservation = await reservationClient.reserve({
@@ -231,12 +242,20 @@ export async function createHandleCheckoutSession({
 				throw new Error("Client supplier capture is unavailable");
 			}
 			const connection = reservation.lumaprintsConnection;
-			if (connection) {
-				if (connection.tenantId !== tenantId)
-					throw new Error("Client supplier capture is inconsistent");
-				resolveLumaPrintsConfiguration(connection);
-				resolveLumaPrintsWebhookConfiguration(connection.connectionRef);
-			}
+			verifyBeforePayment = async () => {
+				if (connection) {
+					if (connection.tenantId !== tenantId) throw new ClientPaymentUnavailableError();
+					resolveLumaPrintsConfiguration(connection);
+					resolveLumaPrintsWebhookConfiguration(connection.connectionRef);
+				}
+				await verifyReadiness({
+					siteUrl: site,
+					tenantId,
+					accountId: account,
+					stripe,
+					supplier: connection,
+				});
+			};
 		}
 	} catch (cause) {
 		if (isCheckoutSnapshotReservationConflict(cause)) throw cause;
@@ -267,6 +286,7 @@ export async function createHandleCheckoutSession({
 		checkoutSnapshotHandle: handle,
 		admissionClient,
 		bindSession,
+		verifyBeforePayment,
 	});
 }
 
@@ -286,6 +306,7 @@ export async function createAdmittedOrderCheckoutSession({
 	checkoutSnapshotHandle,
 	admissionClient = createCheckoutSessionAdmissionClient(),
 	bindSession,
+	verifyBeforePayment,
 }: {
 	identity: CheckoutAdmissionIdentity;
 	tenantId?: string;
@@ -304,6 +325,7 @@ export async function createAdmittedOrderCheckoutSession({
 	checkoutSnapshotHandle?: string;
 	admissionClient?: CheckoutSessionAdmissionClient;
 	bindSession: (sessionId: string) => void;
+	verifyBeforePayment?: () => Promise<void>;
 }): Promise<PaymentCheckoutSessionResult & { expiresAt: number }> {
 	const requestFingerprint = checkoutRequestFingerprint({
 		version: 1,
@@ -331,11 +353,44 @@ export async function createAdmittedOrderCheckoutSession({
 	} catch (cause) {
 		throw new CheckoutSessionStageError("checkout_admission", cause);
 	}
+	// A lost release response can be resolved by the next authenticated admission read.
+	if (site !== "angelsrest.online" && permit.state === "released_definite_no_session") {
+		throw apiError(
+			409,
+			ApiErrorCode.CHECKOUT_ATTEMPT_REJECTED,
+			new ClientPaymentUnavailableError().message,
+		);
+	}
+	if (site !== "angelsrest.online" && permit.state === "active_prestripe") {
+		try {
+			if (!verifyBeforePayment) throw new ClientPaymentUnavailableError();
+			await verifyBeforePayment();
+		} catch {
+			const released = await admissionClient.release(permit).catch(() => false);
+			if (released)
+				throw apiError(
+					409,
+					ApiErrorCode.CHECKOUT_ATTEMPT_REJECTED,
+					new ClientPaymentUnavailableError().message,
+				);
+			throw new ClientPaymentUnavailableError();
+		}
+	}
 	let requestedStripeExpiresAt: number;
 	try {
-		requestedStripeExpiresAt = await admissionClient.markCreating(permit);
+		requestedStripeExpiresAt = await admissionClient.markCreating(
+			permit,
+			site === "angelsrest.online" ? undefined : checkoutSnapshotHandle,
+		);
 	} catch (cause) {
-		await admissionClient.release(permit).catch(() => {});
+		const released = await admissionClient.release(permit).catch(() => false);
+		if (site !== "angelsrest.online" && released) {
+			throw apiError(
+				409,
+				ApiErrorCode.CHECKOUT_ATTEMPT_REJECTED,
+				new ClientPaymentUnavailableError().message,
+			);
+		}
 		throw new CheckoutSessionStageError("checkout_admission", cause);
 	}
 	let session: PaymentCheckoutSessionResult;

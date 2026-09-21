@@ -32,7 +32,7 @@ import {
 	stripeAccountScope,
 } from "./helpers/checkoutSnapshot";
 import { tenantIdentityMatchesSite } from "./helpers/tenantContext";
-import { isCurrentStripeAccountForSite, resolveStripeAccountOwner } from "./helpers/stripeAccountOwnership";
+import { isCurrentStripeAccountForSite, resolveStripeAccountOwner, stripeAccountMatchesSite } from "./helpers/stripeAccountOwnership";
 import { assertSavedLumaPrintsConnection, captureCurrentLumaPrintsConnection, lumaprintsConnectionValidator, sameLumaPrintsConnection, type LumaPrintsConnection } from "./helpers/lumaprintsConnection";
 import { AGGREGATE_SCAN_LIMIT, BULK_SCAN_LIMIT } from "./helpers/limits";
 import {
@@ -458,17 +458,12 @@ export const UNBOUND_RETENTION_MS = 25 * 60 * 60 * 1000;
 export const PAID_SAFE_DELAY_MS = 35 * 24 * 60 * 60 * 1000;
 const RESERVATION_RETRY_DELAYS_MS = [60 * 60 * 1000, 6 * 60 * 60 * 1000, 24 * 60 * 60 * 1000] as const;
 
-async function canonicalSiteForConnectedAccount(ctx: QueryCtx, account: string) {
-	const client = await resolveStripeAccountOwner(ctx, account);
-	return client?.siteUrl ?? null;
-}
-
 async function connectedAccountMatchesSite(
 	ctx: QueryCtx,
 	siteUrl: string,
 	account: string | undefined,
 ) {
-	return account === undefined || await canonicalSiteForConnectedAccount(ctx, account) === siteUrl;
+	return account === undefined || await stripeAccountMatchesSite(ctx, siteUrl, account);
 }
 
 async function assertNewOrderAdmissionOpenIfActivated(ctx: QueryCtx, siteUrl: string) {

@@ -1,4 +1,5 @@
 import type { QueryCtx } from "../_generated/server";
+import { resolveTenantContext } from "./tenantContext";
 
 /** Resolve historical ownership without treating it as permission for new sales. */
 export async function resolveStripeAccountOwner(ctx: QueryCtx, account: string) {
@@ -27,6 +28,18 @@ export async function isCurrentStripeAccountForSite(
 	account: string | undefined,
 ) {
 	if (account === undefined) return true;
-	const owner = await resolveStripeAccountOwner(ctx, account);
-	return owner?.siteUrl === siteUrl && owner.stripeConnectedAccountId === account;
+	const owner = await accountOwnerAtSite(ctx, siteUrl, account);
+	return owner?.stripeConnectedAccountId === account;
+}
+
+/** Verified aliases retain ownership without selecting a different payment account. */
+export async function stripeAccountMatchesSite(ctx: QueryCtx, siteUrl: string, account: string) {
+	return await accountOwnerAtSite(ctx, siteUrl, account) !== null;
+}
+
+async function accountOwnerAtSite(ctx: QueryCtx, siteUrl: string, account: string) {
+	const [owner, tenant] = await Promise.all([
+		resolveStripeAccountOwner(ctx, account), resolveTenantContext(ctx, { siteUrl }),
+	]);
+	return owner && tenant?.client._id === owner._id ? owner : null;
 }

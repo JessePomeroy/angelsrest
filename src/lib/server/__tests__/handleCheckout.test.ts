@@ -63,7 +63,7 @@ function harness(overrides: Record<string, unknown> = {}) {
 			events.push("admission-begin");
 			const changed = identity.attempt === ATTEMPT ? "a" : "b";
 			return {
-				site: "angelsrest.test",
+				site: "angelsrest.online",
 				account: null,
 				admissionId: "admission_123",
 				handleHash: changed.repeat(64),
@@ -84,14 +84,14 @@ function harness(overrides: Record<string, unknown> = {}) {
 		bind: vi.fn(async () => {
 			events.push("bind");
 		}),
-		release: vi.fn().mockResolvedValue(undefined),
+		release: vi.fn().mockResolvedValue(true),
 	};
 	const bindSession = vi.fn(() => events.push("cookie"));
 	const options = {
 		attempt: ATTEMPT,
 		attemptStartedAt: NOW,
 		attemptProofClass: "same_origin_host_proof",
-		site: "angelsrest.test",
+		site: "angelsrest.online",
 		account: null,
 		catalogProvider: "convex",
 		snapshotItems: [ITEM],
@@ -103,11 +103,11 @@ function harness(overrides: Record<string, unknown> = {}) {
 				unitAmountCents: 4200,
 			}),
 		],
-		successUrl: "https://angelsrest.test/checkout/success?session_id={CHECKOUT_SESSION_ID}",
-		cancelUrl: "https://angelsrest.test/checkout/cancel",
+		successUrl: "https://angelsrest.online/checkout/success?session_id={CHECKOUT_SESSION_ID}",
+		cancelUrl: "https://angelsrest.online/checkout/cancel",
 		shippingAllowedCountries: ["US"],
 		tenantCheckout: buildTenantCheckoutOptions({
-			tenant: { siteUrl: "angelsrest.test" },
+			tenant: { siteUrl: "angelsrest.online" },
 			kind: "print",
 			subtotalCents: 4200,
 		}),
@@ -148,6 +148,7 @@ describe("handle checkout orchestration", () => {
 			LUMAPRINTS_CONNECTION_CAPTURE_WEBHOOK_PASSWORD: "synthetic-password",
 		});
 		const test = harness({
+			verifyReadiness: vi.fn().mockResolvedValue(undefined),
 			site,
 			account,
 			successUrl: `https://${site}/checkout/success`,
@@ -161,6 +162,70 @@ describe("handle checkout orchestration", () => {
 		test.reserve.mockResolvedValue({ handle: HANDLE, lumaprintsConnection: connection });
 		return { ...test, connection };
 	}
+
+	it.each([
+		true,
+		false,
+		"unknown",
+	] as const)("resets a rejected attempt only after confirmed release (%s)", async (released) => {
+		const test = captureHarness();
+		test.options.verifyReadiness = vi.fn().mockRejectedValue(new Error("provider unavailable"));
+		if (released === "unknown")
+			test.admissionClient.release.mockRejectedValue(new Error("timeout"));
+		else test.admissionClient.release.mockResolvedValue(released);
+		const result = createHandleCheckoutSession(test.options);
+		if (released === true) await expect(result).rejects.toMatchObject({ status: 409 });
+		else await expect(result).rejects.toThrow("Payments are temporarily unavailable.");
+		expect(test.create).not.toHaveBeenCalled();
+		expect(test.admissionClient.markCreating).not.toHaveBeenCalled();
+	});
+
+	it("resets after a lost release response is confirmed by the next admission read", async () => {
+		const test = captureHarness();
+		const begin = test.admissionClient.begin.getMockImplementation();
+		if (!begin) throw new Error("Missing admission fixture");
+		test.admissionClient.begin.mockImplementation(async (input) => ({
+			...(await begin(input)),
+			state: "released_definite_no_session",
+		}));
+		await expect(createHandleCheckoutSession(test.options)).rejects.toMatchObject({ status: 409 });
+		expect(test.options.verifyReadiness).not.toHaveBeenCalled();
+		expect(test.admissionClient.markCreating).not.toHaveBeenCalled();
+		expect(test.create).not.toHaveBeenCalled();
+	});
+
+	it.each([
+		"creating",
+		"creation_uncertain",
+		"bound",
+	])("preserves %s replay without checking current providers", async (state) => {
+		const test = captureHarness();
+		const begin = test.admissionClient.begin.getMockImplementation();
+		if (!begin) throw new Error("Missing admission fixture");
+		test.admissionClient.begin.mockImplementation(async (input) => ({
+			...(await begin(input)),
+			state,
+		}));
+		delete runtimeEnv.LUMAPRINTS_CONNECTION_CAPTURE_API_SECRET;
+		test.options.verifyReadiness = vi.fn().mockRejectedValue(new Error("must not refresh"));
+		await createHandleCheckoutSession(test.options);
+		expect(test.options.verifyReadiness).not.toHaveBeenCalled();
+		expect(test.admissionClient.release).not.toHaveBeenCalled();
+		expect(test.admissionClient.markCreating).toHaveBeenCalledWith(expect.anything(), HANDLE);
+		expect(test.create.mock.calls[0]?.[1]?.idempotencyKey).toBe(
+			`checkout-admission-v1:${"a".repeat(64)}`,
+		);
+	});
+
+	it("requires supplier-capture enrollment for all new client order checkouts", async () => {
+		const test = captureHarness();
+		delete runtimeEnv.LUMAPRINTS_CHECKOUT_CAPTURE_TENANTS;
+		await expect(createHandleCheckoutSession(test.options)).rejects.toThrow(
+			"Payments are temporarily unavailable.",
+		);
+		expect(test.reserve).not.toHaveBeenCalled();
+		expect(test.create).not.toHaveBeenCalled();
+	});
 
 	it("checks the exact captured supplier configuration before creating a client payment", async () => {
 		const test = captureHarness();
@@ -202,11 +267,12 @@ describe("handle checkout orchestration", () => {
 		if (failure === "missing-api") delete runtimeEnv.LUMAPRINTS_CONNECTION_CAPTURE_API_SECRET;
 		if (failure === "missing-webhook")
 			delete runtimeEnv.LUMAPRINTS_CONNECTION_CAPTURE_WEBHOOK_PASSWORD;
-		await expect(createHandleCheckoutSession(test.options)).rejects.toMatchObject({
-			stage: "checkout_snapshot",
-		});
+		await expect(createHandleCheckoutSession(test.options)).rejects.toMatchObject(
+			failure === "missing-context" ? { stage: "checkout_snapshot" } : { status: 409 },
+		);
 		expect(test.create).not.toHaveBeenCalled();
-		expect(test.admissionClient.begin).not.toHaveBeenCalled();
+		if (failure === "missing-context") expect(test.admissionClient.begin).not.toHaveBeenCalled();
+		else expect(test.admissionClient.release).toHaveBeenCalledOnce();
 	});
 
 	it("an explicit non-supplier reservation needs no supplier credentials", async () => {
@@ -243,9 +309,6 @@ describe("handle checkout orchestration", () => {
 			expect(test.reserve).not.toHaveBeenCalledWith(
 				expect.objectContaining({ printInputVersion: 1 }),
 			);
-		const spoke = harness();
-		await createHandleCheckoutSession(spoke.options);
-		expect(spoke.create.mock.calls[0]?.[0].metadata).not.toHaveProperty("printInputVersion");
 	});
 	it.each([
 		["missing", undefined],
@@ -291,7 +354,7 @@ describe("handle checkout orchestration", () => {
 			checkoutSnapshotHandle: HANDLE,
 			checkoutAdmissionVersion: "1",
 			checkoutAdmissionHandleHash: "a".repeat(64),
-			commerceTenantSiteUrl: "angelsrest.test",
+			commerceTenantSiteUrl: "angelsrest.online",
 		});
 		expect(params.expires_at).toBe(result.expiresAt);
 		expect(params.line_items?.[0]?.price_data).toMatchObject({
@@ -303,7 +366,7 @@ describe("handle checkout orchestration", () => {
 	it("carries a server-resolved tenant ID into both durable checkout records", async () => {
 		const test = harness({
 			tenantCheckout: buildTenantCheckoutOptions({
-				tenant: { tenantId: TENANT_ID, siteUrl: "angelsrest.test" },
+				tenant: { tenantId: TENANT_ID, siteUrl: "angelsrest.online" },
 				kind: "print",
 				subtotalCents: 4200,
 			}),

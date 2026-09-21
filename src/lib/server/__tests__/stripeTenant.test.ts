@@ -46,6 +46,22 @@ describe("resolveStripeTenantForSite", () => {
 		});
 	});
 
+	it("keeps the authorized request domain when the verified client row has a different full URL", async () => {
+		const lookup = vi.fn().mockResolvedValue({
+			siteUrl: "https://www.renamed.example/",
+			tenantId: "tenant_05eb6092-5d8c-43ce-ad26-1a59522bd07b",
+			stripeConnectedAccountId: "acct_1234567890TenantA",
+		});
+		const tenant = await resolveStripeTenantForSite("https://www.original.example", {
+			lookup,
+			requirePlatformClient: true,
+		});
+		expect(tenant.siteUrl).toBe("original.example");
+		expect(
+			buildTenantCheckoutOptions({ tenant, kind: "service", subtotalCents: 1000 }).requestOptions,
+		).toEqual({ stripeAccount: "acct_1234567890TenantA" });
+	});
+
 	it("can fail closed for spoke checkout cutover", async () => {
 		const lookup = vi.fn().mockResolvedValue(null);
 
