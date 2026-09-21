@@ -11,7 +11,10 @@ import { resolveCurrentCheckoutCommerce } from "$lib/server/current/currentCheck
 import { createHandleCheckoutSession } from "$lib/server/handleCheckout";
 import { logStructured } from "$lib/server/logger";
 import { buildCheckoutLineItem } from "$lib/server/stripeCheckoutSession";
-import { buildTenantCheckoutOptions, type StripeTenantAccount } from "$lib/server/stripeConnect";
+import {
+	buildTenantProductCheckoutOptions,
+	type StripeTenantAccount,
+} from "$lib/server/stripeConnect";
 
 type CheckoutBody = Record<string, unknown>;
 type CheckoutLogger = typeof logStructured;
@@ -105,15 +108,14 @@ export async function createDirectCheckoutSession({
 
 	const commerce = await resolveCommerce([body]);
 	const item = commerce.items[0];
-	if (!item || commerce.items.length !== 1) {
+	if (!item?.snapshot || commerce.items.length !== 1) {
 		throw new CurrentCheckoutCommerceError("invalid_authority", "authority");
 	}
 	const subtotalCents = item.unitPriceCents;
 	const fulfillment = item.legacyFulfillment;
-	const tenantCheckout = buildTenantCheckoutOptions({
+	const tenantCheckout = buildTenantProductCheckoutOptions({
 		tenant: tenant ?? { siteUrl },
-		kind: fulfillment.paper ? "print" : "service",
-		subtotalCents,
+		items: [{ productKind: item.snapshot.productKind, unitPriceCents: subtotalCents, quantity: 1 }],
 	});
 	const lineItems = [
 		buildCheckoutLineItem({
@@ -124,7 +126,6 @@ export async function createDirectCheckoutSession({
 	];
 	const successUrl = `${siteUrl}/checkout/success?session_id={CHECKOUT_SESSION_ID}`;
 	const cancelUrl = `${siteUrl}/checkout/cancel`;
-	if (!item.snapshot) throw new CurrentCheckoutCommerceError("invalid_authority", "authority");
 	return await createHandleCheckoutSession({
 		attempt: attemptIdentity.attempt,
 		attemptStartedAt: attemptIdentity.attemptStartedAt,

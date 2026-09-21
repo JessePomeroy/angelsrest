@@ -173,6 +173,29 @@ function handleOptions(
 }
 
 describe("checkout bridge", () => {
+	it.each([
+		["print", 500],
+		["print_set", 500],
+		["digital_download", 0],
+		["postcard", 0],
+		["tapestry", 0],
+		["merchandise", 0],
+	] as const)("charges the print-only fee for signed %s snapshots", async (productKind, fee) => {
+		const bodyText = makeHandleBody({
+			checkoutSnapshot: snapshot([{ ...SNAPSHOT_ITEM, productKind }]),
+		});
+		const { stripe, create } = makeStripe();
+		const result = await createTenantPrintCheckoutSession(
+			handleOptions(bodyText, stripe, makeReservation()),
+		);
+		expect(result.platformFeeAmount).toBe(fee);
+		expect(create.mock.calls[0]?.[0].payment_intent_data?.application_fee_amount).toBe(
+			fee || undefined,
+		);
+		expect(create.mock.calls[0]?.[0].line_items?.[0]?.price_data?.unit_amount).toBe(10_000);
+		expect(create.mock.calls[0]?.[1]?.stripeAccount).toBe("acct_1234567890TenantA");
+	});
+
 	it("requires the host's pinned identity before reservation, then permits the matching client", async () => {
 		const runtimeEnv = env as Record<string, string | undefined>;
 		const previous = runtimeEnv.NEW_ORDER_CHECKOUT_CONTROL;
@@ -255,7 +278,7 @@ describe("checkout bridge", () => {
 		const admissionClient = makeAdmission();
 		const abuseGate = vi.fn();
 		const { stripe, create } = makeStripe();
-		const tenantOptions = vi.spyOn(stripeConnect, "buildTenantCheckoutOptions");
+		const tenantOptions = vi.spyOn(stripeConnect, "buildTenantProductCheckoutOptions");
 		const lineItem = vi.spyOn(stripeCheckoutSession, "buildCheckoutLineItem");
 		try {
 			await expect(

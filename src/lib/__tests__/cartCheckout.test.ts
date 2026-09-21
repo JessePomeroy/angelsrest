@@ -1,9 +1,7 @@
 import { describe, expect, it } from "vitest";
-import {
-	buildCartTenantCheckoutOptions,
-	calculateCartPrintSubtotalCents,
-	parseHandleCartIntent,
-} from "../server/cartCheckoutHelpers";
+import { calculatePrintSubtotalCents } from "../../../packages/crm-api/convex/helpers/printFeePolicy";
+import { parseHandleCartIntent } from "../server/cartCheckoutHelpers";
+import { buildTenantProductCheckoutOptions } from "../server/stripeConnect";
 import type { CartItem } from "../shop/cart";
 
 // Live cart checkout intent and tenant-fee helpers. Historical metadata
@@ -22,24 +20,6 @@ function makeItem(overrides: Partial<CartItem> = {}): CartItem {
 		paperHeight: 12,
 		quantity: 1,
 		unitPriceCents: 4500,
-		...overrides,
-	};
-}
-
-/**
- * Build a non-print merch cart item — no paper fields. Models the
- * tapestry / postcard / merchandise case where the product is a single
- * SKU with a fixed price and no LumaPrints submission.
- */
-function makeMerchItem(overrides: Partial<CartItem> = {}): CartItem {
-	return {
-		id: "merch-1",
-		productSlug: "pokemon-tapestry",
-		type: "print",
-		title: "Pokemon Starters Tapestry",
-		imageUrl: "https://media.example.test/images/abc/pokemon-tapestry.jpg",
-		quantity: 1,
-		unitPriceCents: 18900,
 		...overrides,
 	};
 }
@@ -117,17 +97,17 @@ describe("handle cart intent", () => {
 describe("cart Stripe Connect options", () => {
 	it("calculates print subtotal from print lines only", () => {
 		expect(
-			calculateCartPrintSubtotalCents([
-				makeItem({ unitPriceCents: 4500, quantity: 2 }),
-				makeMerchItem({ unitPriceCents: 18_900, quantity: 1 }),
-				makeSetItem({ unitPriceCents: 12_000, quantity: 1 }),
+			calculatePrintSubtotalCents([
+				{ productKind: "print", unitPriceCents: 4500, quantity: 2 },
+				{ productKind: "merchandise", unitPriceCents: 18_900, quantity: 1 },
+				{ productKind: "print_set", unitPriceCents: 12_000, quantity: 1 },
 			]),
 		).toBe(21_000);
 	});
 
 	it("keeps hub cart checkout direct with no application fee", () => {
-		const options = buildCartTenantCheckoutOptions({
-			items: [makeItem({ unitPriceCents: 4500, quantity: 2 })],
+		const options = buildTenantProductCheckoutOptions({
+			items: [{ productKind: "print", unitPriceCents: 4500, quantity: 2 }],
 			tenant: { siteUrl: "angelsrest.online" },
 		});
 
@@ -144,10 +124,10 @@ describe("cart Stripe Connect options", () => {
 	});
 
 	it("uses only print subtotal for connected-account cart application fees", () => {
-		const options = buildCartTenantCheckoutOptions({
+		const options = buildTenantProductCheckoutOptions({
 			items: [
-				makeItem({ unitPriceCents: 4500, quantity: 2 }),
-				makeMerchItem({ unitPriceCents: 18_900, quantity: 1 }),
+				{ productKind: "print", unitPriceCents: 4500, quantity: 2 },
+				{ productKind: "merchandise", unitPriceCents: 18_900, quantity: 1 },
 			],
 			tenant: {
 				siteUrl: "zippymiggy.com",
@@ -176,8 +156,8 @@ describe("cart Stripe Connect options", () => {
 	});
 
 	it("routes connected merch-only carts without a platform fee", () => {
-		const options = buildCartTenantCheckoutOptions({
-			items: [makeMerchItem({ unitPriceCents: 18_900, quantity: 1 })],
+		const options = buildTenantProductCheckoutOptions({
+			items: [{ productKind: "merchandise", unitPriceCents: 18_900, quantity: 1 }],
 			tenant: {
 				siteUrl: "zippymiggy.com",
 				tenantId: "tenant_05eb6092-5d8c-43ce-ad26-1a59522bd07b",

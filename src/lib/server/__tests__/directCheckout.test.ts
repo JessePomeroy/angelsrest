@@ -1,5 +1,6 @@
 import type Stripe from "stripe";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { env } from "$env/dynamic/private";
 import type { ResolvedCheckoutItem } from "$lib/server/checkoutCatalog";
 import { createDirectCheckoutSession } from "$lib/server/directCheckout";
 
@@ -8,7 +9,11 @@ const ATTEMPT_STARTED_AT = Date.parse("2026-01-01T00:00:00Z");
 const SNAPSHOT_HANDLE = "223e4567-e89b-42d3-a456-426614174000";
 const TENANT_ID = "tenant_05eb6092-5d8c-43ce-ad26-1a59522bd07b";
 
-function admissionOptions() {
+afterEach(() => {
+	delete (env as Record<string, string | undefined>).LUMAPRINTS_CHECKOUT_CAPTURE_TENANTS;
+});
+
+function admissionOptions(site = "angelsrest.online", account: string | null = null) {
 	const bind = vi.fn();
 	return {
 		attemptIdentity: {
@@ -19,8 +24,8 @@ function admissionOptions() {
 		hostGeneration: 1,
 		admissionClient: {
 			begin: vi.fn().mockResolvedValue({
-				site: "angelsrest.online",
-				account: null,
+				site,
+				account,
 				admissionId: "admission_123",
 				handleHash: "a".repeat(64),
 				requestFingerprint: "b".repeat(64),
@@ -94,6 +99,54 @@ function makeItem(overrides: Partial<ResolvedCheckoutItem> = {}): ResolvedChecko
 }
 
 describe("createDirectCheckoutSession", () => {
+	it.each([
+		["print", 500],
+		["print_set", 500],
+		["digital_download", 0],
+		["postcard", 0],
+		["tapestry", 0],
+		["merchandise", 0],
+	] as const)("charges the print-only fee using the resolved %s snapshot", async (productKind, fee) => {
+		(env as Record<string, string | undefined>).LUMAPRINTS_CHECKOUT_CAPTURE_TENANTS =
+			JSON.stringify({ version: 1, tenantIds: [TENANT_ID] });
+		const { stripe, create } = makeStripe();
+		const fixture = makeItem();
+		if (!fixture.snapshot) throw new Error("missing fixture snapshot");
+		// Legacy presentation fields are not authority for fee classification.
+		const item = makeItem({
+			unitPriceCents: 10_000,
+			snapshot: { ...fixture.snapshot, productKind },
+			legacyFulfillment: { ...fixture.legacyFulfillment, paper: null },
+		});
+		const admission = admissionOptions("zippymiggy.com", "acct_1234567890TenantA");
+		const reservation = reservationOptions();
+		reservation.reservationClient.reserve.mockResolvedValue({
+			handle: SNAPSHOT_HANDLE,
+			lumaprintsConnection: null,
+		});
+		await createDirectCheckoutSession({
+			body: { productId: "print-one", productKind: "print", unitPriceCents: 1 },
+			stripe,
+			siteUrl: "https://zippymiggy.com",
+			tenant: {
+				tenantId: TENANT_ID,
+				siteUrl: "zippymiggy.com",
+				stripeConnectedAccountId: "acct_1234567890TenantA",
+			},
+			bindSession: vi.fn(),
+			resolveCommerce: vi.fn().mockResolvedValue({ provider: "convex", items: [item] }),
+			log: vi.fn(),
+			...reservation,
+			...admission,
+			verifyReadiness: vi.fn().mockResolvedValue(undefined),
+			now: ATTEMPT_STARTED_AT,
+		});
+		const params = create.mock.calls[0]?.[0] as Stripe.Checkout.SessionCreateParams;
+		expect(params.payment_intent_data?.application_fee_amount).toBe(fee || undefined);
+		expect(params.line_items?.[0]?.price_data?.unit_amount).toBe(10_000);
+		expect(create.mock.calls[0]?.[1]?.stripeAccount).toBe("acct_1234567890TenantA");
+	});
+
 	it.each([
 		["absent", {}],
 		["null", { coupon: null }],

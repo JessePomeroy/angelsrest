@@ -1,10 +1,7 @@
 import { error, json } from "@sveltejs/kit";
 import type Stripe from "stripe";
 import { ApiErrorCode, apiError } from "$lib/server/apiError";
-import {
-	buildCartTenantCheckoutOptions,
-	parseHandleCartIntent,
-} from "$lib/server/cartCheckoutHelpers";
+import { parseHandleCartIntent } from "$lib/server/cartCheckoutHelpers";
 import { bindCheckoutSession } from "$lib/server/checkoutBinding";
 import {
 	CurrentCheckoutCommerceError,
@@ -24,6 +21,7 @@ import {
 import { getPublicSiteOrigin } from "$lib/server/runtimeConfig";
 import { buildCheckoutLineItem } from "$lib/server/stripeCheckoutSession";
 import { getStripe } from "$lib/server/stripeClient";
+import { buildTenantProductCheckoutOptions } from "$lib/server/stripeConnect";
 import { resolveStripeTenantForSite } from "$lib/server/stripeTenant";
 import type { CartItem } from "$lib/shop/cart";
 
@@ -62,7 +60,7 @@ export async function POST({ request, cookies }) {
 		const commerce = await resolveCurrentCheckoutCommerce(handleIntents.map(selection));
 		const resolved = handleIntents.map((item, index) => {
 			const catalogItem = commerce.items[index];
-			if (!catalogItem) {
+			if (!catalogItem?.snapshot) {
 				throw new CurrentCheckoutCommerceError("invalid_authority", "authority");
 			}
 			const fulfillment = catalogItem.legacyFulfillment;
@@ -77,6 +75,7 @@ export async function POST({ request, cookies }) {
 			};
 			return {
 				catalogItem,
+				snapshot: catalogItem.snapshot,
 				cartItem: {
 					...base,
 					title: catalogItem.title,
@@ -115,19 +114,18 @@ export async function POST({ request, cookies }) {
 		if (control.tenantId !== undefined && control.tenantId !== tenant.tenantId) {
 			throw new NewOrderCheckoutClosedError();
 		}
-		const tenantCheckout = buildCartTenantCheckoutOptions({
-			items: resolvedItems,
+		const tenantCheckout = buildTenantProductCheckoutOptions({
+			items: resolved.map(({ catalogItem, snapshot, cartItem }) => ({
+				productKind: snapshot.productKind,
+				unitPriceCents: catalogItem.unitPriceCents,
+				quantity: cartItem.quantity,
+			})),
 			tenant,
 		});
 
 		const successUrl = `${siteOrigin}/checkout/success?session_id={CHECKOUT_SESSION_ID}`;
 		const cancelUrl = `${siteOrigin}/checkout/cancel`;
-		const snapshots = resolved.map(({ catalogItem }) => {
-			if (!catalogItem.snapshot) {
-				throw new CurrentCheckoutCommerceError("invalid_authority", "authority");
-			}
-			return catalogItem.snapshot;
-		});
+		const snapshots = resolved.map(({ snapshot }) => snapshot);
 		const session = await createHandleCheckoutSession({
 			attempt: attemptIdentity.attempt,
 			attemptStartedAt: attemptIdentity.attemptStartedAt,

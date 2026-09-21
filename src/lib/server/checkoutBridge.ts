@@ -15,7 +15,7 @@ import {
 } from "$lib/server/handleCheckout";
 import { buildCheckoutLineItem } from "$lib/server/stripeCheckoutSession";
 import {
-	buildTenantCheckoutOptions,
+	buildTenantProductCheckoutOptions,
 	COMMERCE_TENANT_ID_METADATA_KEY,
 	COMMERCE_TENANT_METADATA_KEY,
 	type StripeTenantAccount,
@@ -152,10 +152,15 @@ export async function createTenantPrintCheckoutSession({
 		throw new CheckoutBridgeError(503, "Checkout protocol is unavailable");
 	}
 
-	const tenantCheckout = buildTenantCheckoutOptions({
+	const tenantCheckout = buildTenantProductCheckoutOptions({
 		tenant,
-		kind: "print",
-		subtotalCents: body.amountCents,
+		items: [
+			{
+				productKind: body.checkoutSnapshot.items[0].productKind,
+				unitPriceCents: body.amountCents,
+				quantity: 1,
+			},
+		],
 	});
 	const lineItems = [
 		buildCheckoutLineItem({

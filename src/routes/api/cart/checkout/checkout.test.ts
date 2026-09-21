@@ -155,6 +155,62 @@ describe("cart checkout", () => {
 		);
 	});
 
+	it("charges only catalog-resolved print lines in a mixed client cart, including quantities", async () => {
+		mocks.resolveTenant.mockResolvedValue({
+			tenantId: "tenant_05eb6092-5d8c-43ce-ad26-1a59522bd07b",
+			siteUrl: "client.example",
+			stripeConnectedAccountId: "acct_1234567890TenantA",
+		});
+		const kinds = ["print", "print_set", "digital_download", "postcard", "tapestry", "merchandise"];
+		mocks.resolveCurrentCommerce.mockResolvedValue({
+			provider: "convex",
+			items: kinds.map((productKind, index) => ({
+				productId: `product-${index}`,
+				title: productKind,
+				unitPriceCents: 10_019,
+				snapshot: { ...snapshot, productKind },
+				legacyFulfillment: {
+					isDigital: productKind === "digital_download",
+					isPrintSet: productKind === "print_set",
+					imageUrls: [],
+					paper: null,
+				},
+			})),
+		});
+		const request = new Request("https://www.angelsrest.online/api/cart/checkout", {
+			method: "POST",
+			headers: { "Content-Type": "application/json" },
+			body: JSON.stringify({
+				items: kinds.map((_, index) => ({
+					productSlug: `product-${index}`,
+					type: "print",
+					quantity: 2,
+					unitPriceCents: 1,
+					productKind: "merchandise",
+					paperSubcategoryId: 103001,
+				})),
+			}),
+		});
+		await POST({ request, cookies: {} } as Parameters<typeof POST>[0]);
+		expect(mocks.createHandle).toHaveBeenCalledWith(
+			expect.objectContaining({
+				tenantCheckout: expect.objectContaining({
+					platformFeeAmount: 2003,
+					session: expect.objectContaining({
+						payment_intent_data: expect.objectContaining({ application_fee_amount: 2003 }),
+					}),
+					requestOptions: { stripeAccount: "acct_1234567890TenantA" },
+				}),
+				lineItems: kinds.map(() =>
+					expect.objectContaining({
+						quantity: 2,
+						price_data: expect.objectContaining({ unit_amount: 10_019 }),
+					}),
+				),
+			}),
+		);
+	});
+
 	it.each([
 		["selection_changed", 409, "CONFLICT", CHECKOUT_SELECTION_CHANGED_MESSAGE],
 		["unavailable", 503, "UNAVAILABLE", CHECKOUT_UNAVAILABLE_MESSAGE],

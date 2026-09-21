@@ -1,5 +1,4 @@
-import { buildTenantCheckoutOptions, type StripeTenantAccount } from "$lib/server/stripeConnect";
-import { type CartItem, MAX_QUANTITY_PER_LINE } from "$lib/shop/cart";
+import { MAX_QUANTITY_PER_LINE } from "$lib/shop/cart";
 
 export interface HandleCartIntent {
 	productSlug: string;
@@ -10,28 +9,6 @@ export interface HandleCartIntent {
 	paperIndex?: number;
 	borderWidthValue?: string;
 	frameValue?: string;
-}
-
-export function calculateCartPrintSubtotalCents(items: CartItem[]): number {
-	return items.reduce((total, item) => {
-		const isPrintLine = typeof item.paperSubcategoryId === "number";
-		if (!isPrintLine) return total;
-		return total + item.unitPriceCents * item.quantity;
-	}, 0);
-}
-
-export function buildCartTenantCheckoutOptions({
-	items,
-	tenant,
-}: {
-	items: CartItem[];
-	tenant: StripeTenantAccount;
-}) {
-	return buildTenantCheckoutOptions({
-		tenant,
-		kind: "print",
-		subtotalCents: calculateCartPrintSubtotalCents(items),
-	});
 }
 
 export function parseHandleCartIntent(items: unknown): HandleCartIntent[] | null {
