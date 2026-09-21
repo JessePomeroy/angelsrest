@@ -14,7 +14,7 @@ import {
 	checkedAcceptUntilMs,
 	commerceControlDecisionFromEnvironment,
 	type CommerceBackendPurpose,
-	isCommerceTenant,
+	isCommerceTenantSite,
 } from "./helpers/commercePurposeControl";
 import {
 	isBoundedStripeExpiration,
@@ -22,7 +22,7 @@ import {
 	isStripeConnectedAccountId,
 	stripeAccountScope,
 } from "./helpers/checkoutSnapshot";
-import { tenantIdentityMatchesSite } from "./helpers/tenantContext";
+import { isTenantId, tenantIdentityMatchesSite } from "./helpers/tenantContext";
 import { isCurrentStripeAccountForSite, resolveStripeAccountOwner } from "./helpers/stripeAccountOwnership";
 
 export const ACTIVE_ADMISSION_LEASE_MS = 120_000;
@@ -68,6 +68,19 @@ export async function getDurablePurposeControl(
 		.unique();
 }
 
+/** A pinned control cannot authorize a different tenant, even under the same domain. */
+export async function commerceControlMatchesTenant(
+	ctx: QueryCtx,
+	control: Doc<"commercePurposeControls">,
+	tenantId: string | undefined,
+	allowLegacySiteIdentity = false,
+) {
+	if (control.tenantId === undefined) return true;
+	return isTenantId(control.tenantId)
+		&& (tenantId === control.tenantId || tenantId === undefined && allowLegacySiteIdentity)
+		&& await tenantIdentityMatchesSite(ctx, control.tenantId, control.siteUrl);
+}
+
 function assertControlTuple(
 	row: Doc<"commercePurposeControls"> | null,
 	state: "open" | "closed",
@@ -91,7 +104,7 @@ export const activatePurposeControl = internalMutation({
 		acceptedHostGeneration: v.optional(v.number()),
 	},
 	handler: async (ctx, args) => {
-		if (!isCommerceTenant(args.siteUrl)) throw new Error("Commerce tenant is invalid");
+		if (!isCommerceTenantSite(args.siteUrl)) throw new Error("Commerce tenant is invalid");
 		assertSafeCommerceGeneration(args.generation);
 		if (args.acceptedHostGeneration !== undefined) {
 			assertSafeCommerceGeneration(args.acceptedHostGeneration);
@@ -113,16 +126,25 @@ export const activatePurposeControl = internalMutation({
 		) throw new Error("Commerce control environment intent does not match activation");
 
 		const existing = await getDurablePurposeControl(ctx, args.siteUrl, args.purpose);
+		if (existing?.tenantId !== undefined && existing.tenantId !== intended.tenantId) {
+			throw new Error("Commerce control tenant cannot change or be removed");
+		}
+		if (intended.tenantId !== undefined && (args.state === "open" || existing?.tenantId === undefined)
+			&& !await tenantIdentityMatchesSite(ctx, intended.tenantId, args.siteUrl)) {
+			throw new Error("Commerce activation requires the registered tenant identity");
+		}
 		if (existing) {
 			if (
 				existing.generation === args.generation
 				&& existing.state === args.state
 				&& existing.acceptedHostGeneration === args.acceptedHostGeneration
+				&& existing.tenantId === intended.tenantId
 			) return { outcome: "replayed" as const, generation: existing.generation };
 			if (args.generation <= existing.generation) {
 				throw new Error("Commerce control generation cannot regress or be reused");
 			}
 			await ctx.db.patch(existing._id, {
+				tenantId: intended.tenantId,
 				state: args.state,
 				generation: args.generation,
 				acceptedHostGeneration: args.acceptedHostGeneration,
@@ -134,6 +156,7 @@ export const activatePurposeControl = internalMutation({
 		const now = Date.now();
 		await ctx.db.insert("commercePurposeControls", {
 			siteUrl: args.siteUrl,
+			tenantId: intended.tenantId,
 			purpose: args.purpose,
 			state: args.state,
 			generation: args.generation,
@@ -148,7 +171,7 @@ export const activatePurposeControl = internalMutation({
 export const getNormalizedPurposeControls = internalQuery({
 	args: { siteUrl: v.string() },
 	handler: async (ctx, { siteUrl }) => {
-		if (!isCommerceTenant(siteUrl)) {
+		if (!isCommerceTenantSite(siteUrl)) {
 			return { outcome: "invalid_tenant" as const };
 		}
 		const [admission, provider] = await Promise.all([
@@ -185,7 +208,7 @@ export const beginCheckoutSessionAdmission = internalMutation({
 	},
 	handler: async (ctx, args) => {
 		if (
-			!isCommerceTenant(args.siteUrl)
+			!isCommerceTenantSite(args.siteUrl)
 			|| args.stripeConnectedAccountId !== undefined
 				&& !isStripeConnectedAccountId(args.stripeConnectedAccountId)
 			|| !validDigest(args.attemptDigest)
@@ -206,6 +229,9 @@ export const beginCheckoutSessionAdmission = internalMutation({
 			|| control.state !== "open"
 			|| control.acceptedHostGeneration !== args.hostGeneration
 		) throw new Error("New order admission is closed");
+		if (!await commerceControlMatchesTenant(ctx, control, args.tenantId)) {
+			throw new Error("Checkout admission identity does not match activated tenant");
+		}
 
 		const accountScope = stripeAccountScope(args.stripeConnectedAccountId);
 		const existing = await ctx.db.query("checkoutSessionAdmissions")
@@ -384,6 +410,9 @@ export const markCheckoutSessionCreating = internalMutation({
 		if (control?.acceptedHostGeneration !== row.hostGeneration) {
 			throw new Error("Checkout admission host generation is stale");
 		}
+		if (!await commerceControlMatchesTenant(ctx, control, row.tenantId)) {
+			throw new Error("Checkout creation identity does not match activated tenant");
+		}
 		const creatingAt = Date.now();
 		const requestedStripeExpiresAt = Math.floor(creatingAt / 1000)
 			+ ORDER_SESSION_LIFETIME_SECONDS;
@@ -537,7 +566,7 @@ export const createProtocolCutoff = internalMutation({
 	},
 	handler: async (ctx, args) => {
 		if (
-			!isCommerceTenant(args.siteUrl)
+			!isCommerceTenantSite(args.siteUrl)
 			|| args.stripeConnectedAccountId !== undefined
 				&& !isStripeConnectedAccountId(args.stripeConnectedAccountId)
 			|| !await accountMatchesSite(ctx, args.siteUrl, args.stripeConnectedAccountId)
@@ -583,7 +612,7 @@ export const getProtocolCutoffForInventory = query({
 	args: { siteUrl: v.string(), webhookSecret: v.string() },
 	handler: async (ctx, args) => {
 		await requireWebhookCallerOrAuth(ctx, args.webhookSecret, { allowAuth: false });
-		if (!isCommerceTenant(args.siteUrl)) return null;
+		if (!isCommerceTenantSite(args.siteUrl)) return null;
 		const row = await ctx.db.query("commerceProtocolCutoffs")
 			.withIndex("by_siteUrl_and_accountScope", (q) => q.eq("siteUrl", args.siteUrl))
 			.unique();
@@ -611,7 +640,7 @@ const admittedWorkBlockingStates = [
 export const getNormalizedAdmissionReadiness = internalQuery({
 	args: { siteUrl: v.string() },
 	handler: async (ctx, { siteUrl }) => {
-		if (!isCommerceTenant(siteUrl)) return { outcome: "invalid_tenant" as const };
+		if (!isCommerceTenantSite(siteUrl)) return { outcome: "invalid_tenant" as const };
 		const present = async (state: (typeof transitionBlockingAdmissionStates)[number]
 			| (typeof admittedWorkBlockingStates)[number]) =>
 			(await ctx.db.query("checkoutSessionAdmissions")
@@ -783,7 +812,7 @@ export const recordCheckoutAdmissionReconciliation = internalMutation({
 export const getNormalizedProviderReadiness = internalQuery({
 	args: { siteUrl: v.string() },
 	handler: async (ctx, { siteUrl }) => {
-		if (!isCommerceTenant(siteUrl)) return { outcome: "invalid_tenant" as const };
+		if (!isCommerceTenantSite(siteUrl)) return { outcome: "invalid_tenant" as const };
 		const orders = await ctx.db.query("orders")
 			.withIndex("by_siteUrl", (q) => q.eq("siteUrl", siteUrl))
 			.take(501);

@@ -88,10 +88,10 @@ describe("Checkout admission transport parsers", () => {
 		})).not.toBeNull();
 	});
 
-	test("rejects extra fields, unknown tenants, malformed proof, and unsafe epochs", () => {
+	test("rejects noncanonical domains, malformed proof, and unsafe epochs", () => {
 		expect(parseAdmissionBeginRequest({
 			version: 1,
-			site: "third.example",
+			site: "https://third.example",
 			account: null,
 			attemptDigest: D1,
 			proofClass: "same_origin_host_proof",

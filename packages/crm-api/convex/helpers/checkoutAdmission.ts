@@ -3,7 +3,7 @@ import {
 	isStripeCheckoutSessionId,
 	isStripeConnectedAccountId,
 } from "./checkoutSnapshot";
-import { isCommerceTenant } from "./commercePurposeControl";
+import { isCommerceTenantSite } from "./commercePurposeControl";
 import { isTenantId } from "./tenantContext";
 
 const HEX_DIGEST = /^[0-9a-f]{64}$/;
@@ -39,7 +39,7 @@ export function parseAdmissionBeginRequest(value: unknown) {
 	const connectedAccount = account(value.account);
 	const tenantId = value.tenantId === undefined ? undefined : value.tenantId;
 	return value.version === 1
-		&& isCommerceTenant(value.site)
+		&& isCommerceTenantSite(value.site)
 		&& (tenantId === undefined || isTenantId(tenantId))
 		&& connectedAccount !== undefined
 		&& digest(value.attemptDigest)
@@ -68,7 +68,7 @@ export function parseAdmissionMarkCreatingRequest(value: unknown) {
 		"version", "site", "admissionId", "activeLeaseTokenHash", "requestFingerprint",
 		"stripeIdempotencyDigest",
 	])) return null;
-	return value.version === 1 && isCommerceTenant(value.site) && internalId(value.admissionId)
+	return value.version === 1 && isCommerceTenantSite(value.site) && internalId(value.admissionId)
 		&& digest(value.activeLeaseTokenHash) && digest(value.requestFingerprint)
 		&& digest(value.stripeIdempotencyDigest)
 		? {
@@ -85,7 +85,7 @@ export function parseAdmissionUncertainRequest(value: unknown) {
 	if (!exactObject(value, [
 		"version", "site", "admissionId", "requestFingerprint", "stripeIdempotencyDigest",
 	])) return null;
-	return value.version === 1 && isCommerceTenant(value.site) && internalId(value.admissionId)
+	return value.version === 1 && isCommerceTenantSite(value.site) && internalId(value.admissionId)
 		&& digest(value.requestFingerprint) && digest(value.stripeIdempotencyDigest)
 		? {
 				site: value.site,
@@ -106,7 +106,7 @@ export function parseAdmissionBindRequest(value: unknown) {
 		: UUID_V4.test(String(value.checkoutSnapshotHandle))
 			? String(value.checkoutSnapshotHandle)
 			: undefined;
-	return value.version === 1 && isCommerceTenant(value.site) && internalId(value.admissionId)
+	return value.version === 1 && isCommerceTenantSite(value.site) && internalId(value.admissionId)
 		&& digest(value.requestFingerprint) && digest(value.stripeIdempotencyDigest)
 		&& isStripeCheckoutSessionId(value.session)
 		&& isBoundedStripeExpiration(value.stripeExpiresAt)
@@ -127,7 +127,7 @@ export function parseAdmissionReleaseRequest(value: unknown) {
 	if (!exactObject(value, ["version", "site", "admissionId", "activeLeaseTokenHash"])) {
 		return null;
 	}
-	return value.version === 1 && isCommerceTenant(value.site) && internalId(value.admissionId)
+	return value.version === 1 && isCommerceTenantSite(value.site) && internalId(value.admissionId)
 		&& digest(value.activeLeaseTokenHash)
 		? {
 				site: value.site,
@@ -146,7 +146,7 @@ export function parsePurposeActivationRequest(value: unknown) {
 		: Number.isSafeInteger(value.acceptedHostGeneration) && Number(value.acceptedHostGeneration) >= 1
 			? Number(value.acceptedHostGeneration)
 			: undefined;
-	return value.version === 1 && isCommerceTenant(value.site)
+	return value.version === 1 && isCommerceTenantSite(value.site)
 		&& (value.purpose === "new_order_admission" || value.purpose === "new_provider_submission")
 		&& (value.state === "open" || value.state === "closed")
 		&& Number.isSafeInteger(value.generation) && Number(value.generation) >= 1
@@ -166,7 +166,7 @@ export function parseCutoffRequest(value: unknown) {
 		return null;
 	}
 	const connectedAccount = account(value.account);
-	return value.version === 1 && isCommerceTenant(value.site)
+	return value.version === 1 && isCommerceTenantSite(value.site)
 		&& connectedAccount !== undefined
 		&& Number.isSafeInteger(value.activationGeneration)
 		&& Number(value.activationGeneration) >= 1

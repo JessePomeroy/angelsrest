@@ -3,7 +3,10 @@ import type Stripe from "stripe";
 import type { CheckoutSnapshotItem } from "$lib/server/checkoutCatalog";
 import type { CheckoutSessionAdmissionClient } from "$lib/server/checkoutSessionAdmissionClient";
 import type { CheckoutSnapshotReservationClient } from "$lib/server/checkoutSnapshotReservationClient";
-import { assertNewOrderCheckoutOpen } from "$lib/server/commercePurposeControls";
+import {
+	assertNewOrderCheckoutOpen,
+	NewOrderCheckoutClosedError,
+} from "$lib/server/commercePurposeControls";
 import {
 	checkoutSnapshotMode,
 	createHandleCheckoutSession,
@@ -120,6 +123,9 @@ export async function createTenantPrintCheckoutSession({
 		now,
 	});
 	const control = assertNewOrderCheckoutOpen(tenant.siteUrl);
+	if (control.tenantId !== undefined && control.tenantId !== tenant.tenantId) {
+		throw new NewOrderCheckoutClosedError();
+	}
 
 	const handleEnabled =
 		snapshotMode === "handle-v2" && checkoutSnapshotMode(globalSnapshotMode) === "handle-v2";

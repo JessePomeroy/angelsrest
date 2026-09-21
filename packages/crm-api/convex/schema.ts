@@ -903,6 +903,7 @@ export default defineSchema({
 	// these durable rows so an old or downgraded runtime cannot reuse an epoch.
 	commercePurposeControls: defineTable({
 		siteUrl: v.string(),
+		tenantId: v.optional(v.string()),
 		purpose: v.union(
 			v.literal("new_order_admission"),
 			v.literal("new_provider_submission"),

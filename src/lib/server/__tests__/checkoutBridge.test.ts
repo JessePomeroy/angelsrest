@@ -156,6 +156,37 @@ function handleOptions(
 }
 
 describe("checkout bridge", () => {
+	it("requires the host's pinned identity before reservation, then permits the matching client", async () => {
+		const runtimeEnv = env as Record<string, string | undefined>;
+		const previous = runtimeEnv.NEW_ORDER_CHECKOUT_CONTROL;
+		const tenantId = "tenant_05eb6092-5d8c-43ce-ad26-1a59522bd07b";
+		runtimeEnv.NEW_ORDER_CHECKOUT_CONTROL = JSON.stringify({
+			version: 2,
+			tenants: [{ siteUrl: "zippymiggy.com", tenantId, state: "open", generation: 1 }],
+		});
+		try {
+			const reservation = makeReservation();
+			const { stripe, create } = makeStripe();
+			const options = handleOptions(makeHandleBody(), stripe, reservation);
+			for (const wrong of [undefined, "tenant_05eb6092-5d8c-43ce-ad26-1a59522bd07c"]) {
+				await expect(
+					createTenantPrintCheckoutSession({
+						...options,
+						tenant: { ...options.tenant, tenantId: wrong },
+					}),
+				).rejects.toThrow("New order Checkout is closed");
+			}
+			expect(reservation.reserve).not.toHaveBeenCalled();
+			expect(create).not.toHaveBeenCalled();
+			await expect(
+				createTenantPrintCheckoutSession({ ...options, tenant: { ...options.tenant, tenantId } }),
+			).resolves.toMatchObject({ url: "https://stripe.test/pay" });
+			expect(reservation.reserve).toHaveBeenCalledWith(expect.objectContaining({ tenantId }));
+		} finally {
+			runtimeEnv.NEW_ORDER_CHECKOUT_CONTROL = previous;
+		}
+	});
+
 	it("fails a signed tenant request closed before reservation or Stripe", async () => {
 		const runtimeEnv = env as Record<string, string | undefined>;
 		const previous = runtimeEnv.NEW_ORDER_CHECKOUT_CONTROL;
