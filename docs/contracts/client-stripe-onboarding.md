@@ -91,6 +91,45 @@ Do not enable this flag as part of source merges. First deploy/adopt compatible
 backend code, finish readiness/checkout/supplier work, and run separately approved
 sandbox acceptance. No environment configuration is changed by this slice.
 
+## Stored status protocol (C2b1 foundation)
+
+The optional `platformClients.stripeConnectStatus` field belongs to the current
+verified account. Its state is one of `checking`, `observed`, `unavailable`, or
+`disconnected`. Only an observed state contains charges/payouts/details flags and
+the four provider readiness states. Pending and failed checks cannot retain a
+usable ready snapshot. Timestamps come from Convex, not an event or browser.
+
+- `getStripeConnectStatus` requires exact tenant/creator membership, verifies
+  current immutable binding/attempt integrity, and omits the pending refresh
+  token from its response. Missing status is unknown, never ready.
+- `beginStripeConnectStatusRefresh` requires the hub-only secret and exact
+  client/account/platform/mode binding. It replaces a pending claim with a fresh
+  server-issued token. A disconnected account cannot begin another refresh.
+- `finishStripeConnectStatusRefresh` rechecks binding and accepts only the latest
+  pending token, less than 60 seconds old. A stale/expired/replayed result returns
+  `applied: false`. A successful result must agree with its payment/payout flags;
+  provider or account-verification failures become explicit unavailable states.
+- `markStripeConnectDisconnected` requires the same hub authority and verified
+  binding. It retains a bounded signed-event identifier, invalidates pending
+  work, and preserves account ownership/history. Repeated disconnection is a
+  no-op. Begin/bind account creation cannot clear this state or silently reconnect.
+
+Status refresh is safe to repeat because it retrieves current facts; event
+creation timestamps and delivery order are not version authority. Only the
+current pending claim may commit. An obsolete successful read is discarded even
+when a newer read fails; the connection then remains unavailable until retry.
+There is no background worker or automatic timeout retry in this storage layer.
+An abandoned claim remains checking until the next authorized refresh.
+
+This slice supplies the storage/read boundary only. The client page and signed
+webhook producers will adopt it in C2b2. They must verify actual provider facts,
+use bounded requests, handle `applied: false` without displaying discarded facts,
+and process deauthorization without attempting to retrieve a now-inaccessible
+account. No event subscriptions, provider requests, backend deployment, or
+onboarding activation are performed here. Keep the onboarding switch off until
+consumer adoption and acceptance. C4 must separately enforce verified, fresh
+readiness and remove platform-charge fallback before opening client sales.
+
 ## Historical payment identity
 
 A verified binding also writes one immutable `stripeAccountBindings` record in

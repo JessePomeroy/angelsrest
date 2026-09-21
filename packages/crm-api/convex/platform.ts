@@ -10,6 +10,12 @@ import {
 import { DEFAULT_LIST_LIMIT } from "./helpers/limits";
 import { resolveStripeAccountOwner } from "./helpers/stripeAccountOwnership";
 import {
+	requireCurrentStripeConnectBinding,
+	STRIPE_STATUS_REFRESH_MAX_AGE_MS,
+	stripeConnectStatusResultValidator,
+	stripeConnectStatusTargetArgs,
+} from "./helpers/stripeConnectStatus";
+import {
 	ensureTenantAliases,
 	ensureTenantIdentity,
 	resolveTenantContext,
@@ -399,6 +405,9 @@ export const beginStripeConnectAccount = mutation({
 			throw new Error("Invalid Stripe platform account");
 		}
 		const client = await requireStripeConnectClient(ctx, { clientId: args.clientId });
+		if (client.stripeConnectStatus?.state.kind === "disconnected") {
+			throw new Error("Disconnected Stripe accounts require an explicit reconnection review");
+		}
 		if (client.stripeConnectedAccountId && !client.stripeConnectAttempt) {
 			throw new Error("Stripe connection has no verified creation attempt");
 		}
@@ -443,6 +452,9 @@ export const bindStripeConnectAccount = mutation({
 	handler: async (ctx, args) => {
 		await requireWebhookCallerOrAuth(ctx, args.webhookSecret, { allowAuth: false });
 		const client = await requireStripeConnectClient(ctx, { clientId: args.clientId });
+		if (client.stripeConnectStatus?.state.kind === "disconnected") {
+			throw new Error("Disconnected Stripe accounts require an explicit reconnection review");
+		}
 		const attempt = client.stripeConnectAttempt;
 		if (
 			!attempt ||
@@ -488,6 +500,94 @@ export const bindStripeConnectAccount = mutation({
 		}
 		await ctx.db.patch(client._id, { stripeConnectedAccountId: args.stripeConnectedAccountId });
 		return { stripeConnectedAccountId: args.stripeConnectedAccountId };
+	},
+});
+
+/** Tenant access is independent of the hub authority needed to write provider facts. */
+export const getStripeConnectStatus = query({
+	args: { siteUrl: v.string() },
+	handler: async (ctx, { siteUrl }) => {
+		const client = await requireStripeConnectClient(ctx, { siteUrl });
+		const status = client.stripeConnectStatus;
+		if (status && status.accountId !== client.stripeConnectedAccountId) {
+			throw new Error("Stripe status does not match the selected account");
+		}
+		if (status) {
+			const attempt = client.stripeConnectAttempt;
+			if (!attempt) throw new Error("Stripe status requires a verified creation attempt");
+			await requireCurrentStripeConnectBinding(ctx, {
+				clientId: client._id, accountId: status.accountId,
+				platformAccountId: attempt.platformAccountId, livemode: attempt.livemode,
+			});
+			if (status.state.kind === "checking") {
+				return { accountId: status.accountId, state: { kind: "checking" as const, startedAt: status.state.startedAt } };
+			}
+		}
+		return status ?? null;
+	},
+});
+
+/** Claim before reading Stripe, so a slow response cannot overwrite later work. */
+export const beginStripeConnectStatusRefresh = mutation({
+	args: stripeConnectStatusTargetArgs,
+	handler: async (ctx, args) => {
+		await requireWebhookCallerOrAuth(ctx, args.webhookSecret, { allowAuth: false });
+		const client = await requireCurrentStripeConnectBinding(ctx, args);
+		if (client.stripeConnectStatus?.state.kind === "disconnected") {
+			return { kind: "disconnected" as const };
+		}
+		const refreshToken = crypto.randomUUID();
+		await ctx.db.patch(client._id, { stripeConnectStatus: {
+			accountId: args.accountId,
+			state: { kind: "checking", refreshToken, startedAt: Date.now() },
+		} });
+		return { kind: "checking" as const, refreshToken };
+	},
+});
+
+/** A failed or pending read never leaves an apparently usable ready snapshot. */
+export const finishStripeConnectStatusRefresh = mutation({
+	args: {
+		...stripeConnectStatusTargetArgs,
+		refreshToken: v.string(),
+		result: stripeConnectStatusResultValidator,
+	},
+	handler: async (ctx, args) => {
+		await requireWebhookCallerOrAuth(ctx, args.webhookSecret, { allowAuth: false });
+		const client = await requireCurrentStripeConnectBinding(ctx, args);
+		const state = client.stripeConnectStatus?.state;
+		const now = Date.now();
+		if (state?.kind !== "checking" || state.refreshToken !== args.refreshToken
+			|| now - state.startedAt >= STRIPE_STATUS_REFRESH_MAX_AGE_MS || now < state.startedAt) {
+			return { applied: false };
+		}
+		if (args.result.kind === "observed") {
+			const facts = args.result.readiness;
+			if ((facts.status === "ready") !== (facts.chargesEnabled && facts.payoutsEnabled)) {
+				throw new Error("Stripe readiness contradicts its payment and payout capabilities");
+			}
+		}
+		await ctx.db.patch(client._id, { stripeConnectStatus: {
+			accountId: args.accountId,
+			state: { ...args.result, checkedAt: now },
+		} });
+		return { applied: true };
+	},
+});
+
+/** Terminal for this protocol: retries cannot recreate access or clear this marker. */
+export const markStripeConnectDisconnected = mutation({
+	args: { ...stripeConnectStatusTargetArgs, eventId: v.string() },
+	handler: async (ctx, args) => {
+		await requireWebhookCallerOrAuth(ctx, args.webhookSecret, { allowAuth: false });
+		const client = await requireCurrentStripeConnectBinding(ctx, args);
+		if (!/^evt_[A-Za-z0-9]{1,240}$/.test(args.eventId)) throw new Error("Invalid Stripe event ID");
+		if (client.stripeConnectStatus?.state.kind === "disconnected") return { applied: false };
+		await ctx.db.patch(client._id, { stripeConnectStatus: {
+			accountId: args.accountId,
+			state: { kind: "disconnected", eventId: args.eventId, disconnectedAt: Date.now() },
+		} });
+		return { applied: true };
 	},
 });
 
