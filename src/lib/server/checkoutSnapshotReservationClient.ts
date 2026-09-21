@@ -1,6 +1,10 @@
 import { env as publicEnv } from "$env/dynamic/public";
 import { getCheckoutSnapshotReservationCredential } from "$lib/server/checkoutBridgeConfig";
 import type { CheckoutSnapshotItem } from "$lib/server/checkoutCatalog";
+import {
+	type LumaPrintsConnection,
+	parseLumaPrintsConnection,
+} from "$lib/server/lumaprintsConnections";
 
 const RESERVE_PATH = "/commerce/checkout-snapshots/reserve";
 const BIND_PATH = "/commerce/checkout-snapshots/bind";
@@ -19,7 +23,8 @@ export interface CheckoutSnapshotReservationClient {
 		catalogProvider: "convex";
 		items: readonly CheckoutSnapshotItem[];
 		printInputVersion?: 1;
-	}): Promise<{ handle: string }>;
+		lumaprintsConnectionVersion?: 1;
+	}): Promise<{ handle: string; lumaprintsConnection?: LumaPrintsConnection | null }>;
 	bind(input: {
 		tenantId?: string;
 		site: string;
@@ -70,7 +75,18 @@ export function createCheckoutSnapshotReservationClient({
 	}
 
 	return {
-		async reserve({ tenantId, site, attempt, account, catalogProvider, items, printInputVersion }) {
+		async reserve({
+			tenantId,
+			site,
+			attempt,
+			account,
+			catalogProvider,
+			items,
+			printInputVersion,
+			lumaprintsConnectionVersion,
+		}) {
+			if (lumaprintsConnectionVersion === 1 && (!tenantId || !account || printInputVersion !== 1))
+				throw unavailable();
 			const response = await post(RESERVE_PATH, site, {
 				version: 1,
 				site,
@@ -79,14 +95,36 @@ export function createCheckoutSnapshotReservationClient({
 				account,
 				snapshot: { schemaVersion: 1, catalogProvider, items },
 				...(printInputVersion === undefined ? {} : { printInputVersion }),
+				...(lumaprintsConnectionVersion === undefined ? {} : { lumaprintsConnectionVersion }),
 			});
-			if (!exactRecord(response, ["version", "handle", "replayed"])) throw unavailable();
+			const capturesSupplier = lumaprintsConnectionVersion === 1;
 			if (
-				response.version !== 2 ||
+				!exactRecord(response, [
+					"version",
+					"handle",
+					"replayed",
+					...(capturesSupplier ? ["lumaprintsConnection"] : []),
+				])
+			)
+				throw unavailable();
+			if (
+				response.version !== (capturesSupplier ? 3 : 2) ||
 				!UUID_V4.test(String(response.handle)) ||
 				typeof response.replayed !== "boolean"
 			)
 				throw unavailable();
+			if (capturesSupplier) {
+				try {
+					const connection =
+						response.lumaprintsConnection === null
+							? null
+							: parseLumaPrintsConnection(response.lumaprintsConnection);
+					if (connection && connection.tenantId !== tenantId) throw unavailable();
+					return { handle: String(response.handle), lumaprintsConnection: connection };
+				} catch {
+					throw unavailable();
+				}
+			}
 			return { handle: String(response.handle) };
 		},
 		async bind({ tenantId, site, handle, account, session, stripeExpiresAt }) {

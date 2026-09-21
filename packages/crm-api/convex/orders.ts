@@ -33,7 +33,7 @@ import {
 } from "./helpers/checkoutSnapshot";
 import { tenantIdentityMatchesSite } from "./helpers/tenantContext";
 import { isCurrentStripeAccountForSite, resolveStripeAccountOwner } from "./helpers/stripeAccountOwnership";
-import { assertSavedLumaPrintsConnection, lumaprintsConnectionValidator, sameLumaPrintsConnection, type LumaPrintsConnection } from "./helpers/lumaprintsConnection";
+import { assertSavedLumaPrintsConnection, captureCurrentLumaPrintsConnection, lumaprintsConnectionValidator, sameLumaPrintsConnection, type LumaPrintsConnection } from "./helpers/lumaprintsConnection";
 import { AGGREGATE_SCAN_LIMIT, BULK_SCAN_LIMIT } from "./helpers/limits";
 import {
 	assertOrderNumberAvailable,
@@ -549,13 +549,29 @@ async function tokenlessPreProtocolCheckoutIsCompatible(
 		&& createdAt >= cutoff.cutoffCreatedSeconds - 86_400;
 }
 
+async function assertCapturedSupplierReservation(ctx: QueryCtx, row: Doc<"checkoutSnapshotReservations">) {
+	if (row.lumaprintsConnectionVersion !== 1) return;
+	if (row.printInput?.version !== 1 || !row.tenantId || !row.stripeConnectedAccountId
+		|| row.printInput.lines.some(line => line.sources.length > 0) !== (row.lumaprintsConnection !== undefined)) {
+		throw new Error("Captured supplier reservation is inconsistent");
+	}
+	if (row.lumaprintsConnection !== undefined) {
+		await assertSavedLumaPrintsConnection(ctx, row.lumaprintsConnection, row.tenantId);
+	}
+}
+
 export const reserveCheckoutSnapshot = internalMutation({
 	args: {
 		tenantId: v.optional(v.string()), siteUrl: v.string(), handleHash: v.string(), snapshotDigest: v.string(),
 		snapshot: reservedCheckoutSnapshotValidator, stripeConnectedAccountId: v.optional(v.string()),
 		printInputVersion: v.optional(v.literal(1)),
+		lumaprintsConnectionVersion: v.optional(v.literal(1)),
 	},
 	handler: async (ctx, args) => {
+		if (args.lumaprintsConnectionVersion === 1
+			&& (args.printInputVersion !== 1 || !args.tenantId || !args.stripeConnectedAccountId)) {
+			return { outcome: "invalid" as const };
+		}
 		if (
 			args.stripeConnectedAccountId !== undefined
 			&& !isStripeConnectedAccountId(args.stripeConnectedAccountId)
@@ -572,6 +588,7 @@ export const reserveCheckoutSnapshot = internalMutation({
 		if (existing) {
 			const replayed = existing.snapshotDigest === args.snapshotDigest
 				&& existing.printInput?.version === args.printInputVersion
+				&& existing.lumaprintsConnectionVersion === args.lumaprintsConnectionVersion
 				&& JSON.stringify(existing.snapshot) === JSON.stringify(args.snapshot)
 				&& existing.accountScope === accountScope
 				&& existing.stripeConnectedAccountId === args.stripeConnectedAccountId
@@ -581,7 +598,10 @@ export const reserveCheckoutSnapshot = internalMutation({
 			if (replayed && args.tenantId !== undefined && existing.tenantId === undefined) {
 				await ctx.db.patch(existing._id, { tenantId: args.tenantId, updatedAt: Date.now() });
 			}
-			return { outcome: replayed ? "replayed" as const : "conflict" as const };
+			if (!replayed) return { outcome: "conflict" as const };
+			await assertCapturedSupplierReservation(ctx, existing);
+			return { outcome: "replayed" as const,
+				...(args.lumaprintsConnectionVersion === 1 ? { lumaprintsConnection: existing.lumaprintsConnection ?? null } : {}) };
 		}
 		assertOrderProducersOpen();
 		if (!await isCurrentStripeAccountForSite(ctx, args.siteUrl, args.stripeConnectedAccountId)) {
@@ -592,17 +612,21 @@ export const reserveCheckoutSnapshot = internalMutation({
 		const unboundPurgeAt = createdAt + UNBOUND_RETENTION_MS;
 		const printInput = args.printInputVersion === 1
 			? await freezeCheckoutPrintInput(ctx, args.siteUrl, args.snapshot) : undefined;
+		const lumaprintsConnection = args.lumaprintsConnectionVersion === 1
+			&& args.tenantId && printInput?.lines.some(line => line.sources.length > 0)
+			? await captureCurrentLumaPrintsConnection(ctx, args.tenantId) : undefined;
 		const reservationId = await ctx.db.insert("checkoutSnapshotReservations", {
 			state: "reserved", tenantId: args.tenantId, siteUrl: args.siteUrl, handleHash: args.handleHash,
 			snapshotDigest: args.snapshotDigest, snapshot: args.snapshot, accountScope,
-			printInput,
+			printInput, lumaprintsConnection, lumaprintsConnectionVersion: args.lumaprintsConnectionVersion,
 			stripeConnectedAccountId: args.stripeConnectedAccountId,
 			unboundPurgeAt, createdAt, updatedAt: createdAt,
 		});
 		await ctx.scheduler.runAt(unboundPurgeAt, internal.orders.purgeUnboundCheckoutSnapshot, {
 			reservationId, createdAt, unboundPurgeAt,
 		});
-		return { outcome: "created" as const };
+		return { outcome: "created" as const,
+			...(args.lumaprintsConnectionVersion === 1 ? { lumaprintsConnection: lumaprintsConnection ?? null } : {}) };
 	},
 });
 
@@ -695,6 +719,7 @@ async function consumeReservation(
 			&& row.checkoutSessionAdmissionId !== checkoutSessionAdmissionId) {
 		throw new Error("Checkout snapshot reservation does not match paid session");
 	}
+	await assertCapturedSupplierReservation(ctx, row);
 	await ctx.db.delete(row._id);
 	return { snapshot: row.snapshot, tenantId: row.tenantId, printInput: row.printInput, lumaprintsConnection: row.lumaprintsConnection };
 }

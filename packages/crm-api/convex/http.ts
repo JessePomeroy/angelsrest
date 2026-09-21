@@ -716,11 +716,16 @@ const reserveCheckoutSnapshot = httpAction(async (ctx, request) => {
 	const result = await ctx.runMutation(internal.orders.reserveCheckoutSnapshot, {
 		tenantId: parsed.tenantId, siteUrl, handleHash, snapshotDigest, snapshot: parsed.snapshot,
 		printInputVersion: parsed.printInputVersion,
+		lumaprintsConnectionVersion: parsed.lumaprintsConnectionVersion,
 		stripeConnectedAccountId: parsed.account ?? undefined,
 	});
 	if (result.outcome === "invalid") return privateResponse({ error: "invalid_request" }, 400);
 	if (result.outcome === "routing_mismatch") return privateResponse({ error: "not_authorized" }, 403);
 	if (result.outcome === "conflict") return privateResponse({ error: "conflict" }, 409);
+	if (parsed.lumaprintsConnectionVersion === 1) {
+		return privateResponse({ version: 3, handle, replayed: result.outcome === "replayed",
+			lumaprintsConnection: result.lumaprintsConnection }, 200);
+	}
 	return privateResponse({ version: 2, handle, replayed: result.outcome === "replayed" }, 200);
 });
 

@@ -1,7 +1,7 @@
 import { type Infer, v } from "convex/values";
 import type { Doc } from "../_generated/dataModel";
 import type { QueryCtx } from "../_generated/server";
-import { isTenantId } from "./tenantContext";
+import { isTenantId, resolveTenantContext } from "./tenantContext";
 
 export const lumaprintsConnectionFields = {
 	version: v.literal(1),
@@ -29,6 +29,23 @@ export async function assertSavedLumaPrintsConnection(
 	if (!saved || !sameLumaPrintsConnection(connection, saved.context)) {
 		throw new Error("LumaPrints connection does not match saved ownership");
 	}
+}
+
+/** New print reservations capture the selected supplier in the same transaction as artwork. */
+export async function captureCurrentLumaPrintsConnection(
+	ctx: Pick<QueryCtx, "db">, tenantId: string,
+) {
+	const tenant = await resolveTenantContext(ctx, { tenantId });
+	if (!tenant || tenant.client.role === "creator" || tenant.client.siteUrl === "angelsrest.online") {
+		throw new Error("Client supplier identity is unavailable");
+	}
+	const reference = tenant.client.lumaprintsConnectionRef;
+	if (!reference) throw new Error("Client supplier connection is required");
+	const saved = await resolveLumaPrintsConnection(ctx, reference);
+	if (!saved || saved.owner._id !== tenant.client._id || saved.context.tenantId !== tenantId) {
+		throw new Error("Client supplier connection is inconsistent");
+	}
+	return saved.context;
 }
 
 export function assertLumaPrintsConnection(value: LumaPrintsConnection) {

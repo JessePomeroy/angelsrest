@@ -3,6 +3,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { env } from "$env/dynamic/private";
 import type { CheckoutSnapshotItem } from "$lib/server/checkoutCatalog";
 import type { CheckoutSessionStageError } from "$lib/server/checkoutFailures";
+import type { CheckoutSnapshotReservationClient } from "$lib/server/checkoutSnapshotReservationClient";
 import {
 	type CreateHandleCheckoutOptions,
 	createHandleCheckoutSession,
@@ -11,6 +12,7 @@ import {
 	validateCheckoutAttemptRequest,
 	validateSameOriginCheckoutAttemptRequest,
 } from "$lib/server/handleCheckout";
+import type { LumaPrintsConnection } from "$lib/server/lumaprintsConnections";
 import { buildCheckoutLineItem } from "$lib/server/stripeCheckoutSession";
 import { buildTenantCheckoutOptions } from "$lib/server/stripeConnect";
 
@@ -33,6 +35,10 @@ const ITEM: CheckoutSnapshotItem = {
 afterEach(() => {
 	runtimeEnv.ORDER_PRODUCERS_STATE = "open";
 	delete runtimeEnv.PRINT_INPUT_PROTOCOL;
+	delete runtimeEnv.LUMAPRINTS_CHECKOUT_CAPTURE_TENANTS;
+	delete runtimeEnv.LUMAPRINTS_CONNECTIONS;
+	for (const key of ["API_KEY", "API_SECRET", "WEBHOOK_USERNAME", "WEBHOOK_PASSWORD"])
+		delete runtimeEnv[`LUMAPRINTS_CONNECTION_CAPTURE_${key}`];
 });
 
 function harness(overrides: Record<string, unknown> = {}) {
@@ -43,10 +49,12 @@ function harness(overrides: Record<string, unknown> = {}) {
 			return { id: "cs_test_1234567890abcdefghijklmnop", url: "https://stripe.test/pay" };
 		},
 	);
-	const reserve = vi.fn(async () => {
-		events.push("reserve");
-		return { handle: HANDLE };
-	});
+	const reserve = vi.fn(
+		async (): Promise<Awaited<ReturnType<CheckoutSnapshotReservationClient["reserve"]>>> => {
+			events.push("reserve");
+			return { handle: HANDLE };
+		},
+	);
 	const bind = vi.fn(async () => {
 		events.push("bind");
 	});
@@ -117,6 +125,98 @@ function harness(overrides: Record<string, unknown> = {}) {
 }
 
 describe("handle checkout orchestration", () => {
+	function captureHarness() {
+		const site = "client.example";
+		const account = "acct_1234567890TenantA";
+		const connection: LumaPrintsConnection = {
+			version: 1,
+			connectionRef: "lp_client_capture",
+			tenantId: TENANT_ID,
+			storeId: 101,
+			environment: "sandbox",
+		};
+		Object.assign(runtimeEnv, {
+			ORDER_PRODUCERS_STATE: "open",
+			LUMAPRINTS_CHECKOUT_CAPTURE_TENANTS: JSON.stringify({ version: 1, tenantIds: [TENANT_ID] }),
+			LUMAPRINTS_CONNECTIONS: JSON.stringify({
+				version: 1,
+				connections: [{ ...connection, credentialRef: "CAPTURE" }],
+			}),
+			LUMAPRINTS_CONNECTION_CAPTURE_API_KEY: "synthetic-api-key",
+			LUMAPRINTS_CONNECTION_CAPTURE_API_SECRET: "synthetic-api-secret",
+			LUMAPRINTS_CONNECTION_CAPTURE_WEBHOOK_USERNAME: "synthetic-username",
+			LUMAPRINTS_CONNECTION_CAPTURE_WEBHOOK_PASSWORD: "synthetic-password",
+		});
+		const test = harness({
+			site,
+			account,
+			successUrl: `https://${site}/checkout/success`,
+			cancelUrl: `https://${site}/checkout/cancel`,
+			tenantCheckout: buildTenantCheckoutOptions({
+				tenant: { siteUrl: site, tenantId: TENANT_ID, stripeConnectedAccountId: account },
+				kind: "print",
+				subtotalCents: 4200,
+			}),
+		});
+		test.reserve.mockResolvedValue({ handle: HANDLE, lumaprintsConnection: connection });
+		return { ...test, connection };
+	}
+
+	it("checks the exact captured supplier configuration before creating a client payment", async () => {
+		const test = captureHarness();
+		await createHandleCheckoutSession(test.options);
+		expect(test.reserve).toHaveBeenCalledWith(
+			expect.objectContaining({
+				tenantId: TENANT_ID,
+				printInputVersion: 1,
+				lumaprintsConnectionVersion: 1,
+			}),
+		);
+		expect(test.create).toHaveBeenCalledTimes(1);
+		expect(test.create.mock.calls[0]?.[0].metadata?.printInputVersion).toBe("1");
+		expect(JSON.stringify(test.create.mock.calls)).not.toContain("synthetic-api");
+	});
+
+	it.each([
+		"missing-context",
+		"foreign-tenant",
+		"wrong-store",
+		"missing-api",
+		"missing-webhook",
+	])("%s stops before Stripe without falling back to central configuration", async (failure) => {
+		const test = captureHarness();
+		if (failure === "missing-context") test.reserve.mockResolvedValue({ handle: HANDLE });
+		if (failure === "foreign-tenant")
+			test.reserve.mockResolvedValue({
+				handle: HANDLE,
+				lumaprintsConnection: {
+					...test.connection,
+					tenantId: "tenant_22222222-2222-4222-8222-222222222222",
+				},
+			});
+		if (failure === "wrong-store")
+			test.reserve.mockResolvedValue({
+				handle: HANDLE,
+				lumaprintsConnection: { ...test.connection, storeId: 202 },
+			});
+		if (failure === "missing-api") delete runtimeEnv.LUMAPRINTS_CONNECTION_CAPTURE_API_SECRET;
+		if (failure === "missing-webhook")
+			delete runtimeEnv.LUMAPRINTS_CONNECTION_CAPTURE_WEBHOOK_PASSWORD;
+		await expect(createHandleCheckoutSession(test.options)).rejects.toMatchObject({
+			stage: "checkout_snapshot",
+		});
+		expect(test.create).not.toHaveBeenCalled();
+		expect(test.admissionClient.begin).not.toHaveBeenCalled();
+	});
+
+	it("an explicit non-supplier reservation needs no supplier credentials", async () => {
+		const test = captureHarness();
+		test.reserve.mockResolvedValue({ handle: HANDLE, lumaprintsConnection: null });
+		delete runtimeEnv.LUMAPRINTS_CONNECTIONS;
+		await createHandleCheckoutSession(test.options);
+		expect(test.create).toHaveBeenCalledTimes(1);
+	});
+
 	it.each([
 		undefined,
 		"frozen-v1",

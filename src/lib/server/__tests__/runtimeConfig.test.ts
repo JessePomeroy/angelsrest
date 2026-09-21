@@ -14,6 +14,53 @@ describe("server runtime configuration", () => {
 		for (const key of Object.keys(publicEnv)) delete publicEnv[key];
 	});
 
+	it("enrolls only explicit stable tenants for supplier capture without changing the hub gate", async () => {
+		const { getClientSupplierCaptureVersion, getFrozenPrintInputVersion } = await import(
+			"../runtimeConfig"
+		);
+		const tenantId = "tenant_11111111-1111-4111-8111-111111111111";
+		expect(getClientSupplierCaptureVersion("client.example", tenantId)).toBeUndefined();
+		privateEnv.LUMAPRINTS_CHECKOUT_CAPTURE_TENANTS = JSON.stringify({
+			version: 1,
+			tenantIds: [tenantId],
+		});
+		expect(getClientSupplierCaptureVersion("client.example", tenantId)).toBe(1);
+		expect(getClientSupplierCaptureVersion("renamed.example", tenantId)).toBe(1);
+		expect(getClientSupplierCaptureVersion("client.example")).toBeUndefined();
+		expect(
+			getClientSupplierCaptureVersion(
+				"other.example",
+				"tenant_22222222-2222-4222-8222-222222222222",
+			),
+		).toBeUndefined();
+		expect(getClientSupplierCaptureVersion("angelsrest.online", tenantId)).toBeUndefined();
+		expect(getFrozenPrintInputVersion("client.example")).toBeUndefined();
+		expect(getFrozenPrintInputVersion("angelsrest.online")).toBeUndefined();
+		privateEnv.PRINT_INPUT_PROTOCOL = "frozen-v1";
+		expect(getFrozenPrintInputVersion("angelsrest.online")).toBe(1);
+	});
+
+	it("rejects malformed, duplicate or oversized client capture configuration", async () => {
+		const { getClientSupplierCaptureVersion } = await import("../runtimeConfig");
+		const tenantId = "tenant_11111111-1111-4111-8111-111111111111";
+		for (const raw of [
+			"true",
+			"not-json",
+			JSON.stringify({ version: 2, tenantIds: [tenantId] }),
+			JSON.stringify({ version: 1, tenantIds: [tenantId, tenantId] }),
+			JSON.stringify({ version: 1, tenantIds: ["client.example"] }),
+			JSON.stringify({ version: 1, tenantIds: [], extra: true }),
+			JSON.stringify({ version: 1, tenantIds: Array(101).fill(tenantId) }),
+			" ".repeat(65537),
+		]) {
+			privateEnv.LUMAPRINTS_CHECKOUT_CAPTURE_TENANTS = raw;
+			expect(() => getClientSupplierCaptureVersion("client.example", tenantId)).toThrow(
+				"Client supplier capture",
+			);
+			expect(getClientSupplierCaptureVersion("angelsrest.online", tenantId)).toBeUndefined();
+		}
+	});
+
 	it("imports without configuration and fails only when an integration is requested", async () => {
 		const config = await import("$lib/server/runtimeConfig");
 		expect(() => config.getStripeSecretKey()).toThrow("Stripe is not configured");

@@ -117,14 +117,14 @@ export function isBoundedStripeExpiration(
 
 export function parseReservationRequest(value: unknown) {
 	const baseKeys = ["version", "site", "attempt", "account", "snapshot"];
-	if (
-		!exactRecord(value, baseKeys) &&
-		!exactRecord(value, [...baseKeys, "tenantId"]) &&
-		!exactRecord(value, [...baseKeys, "printInputVersion"]) &&
-		!exactRecord(value, [...baseKeys, "tenantId", "printInputVersion"])
-	)
-		return null;
+	if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+	const optional = ["tenantId", "printInputVersion", "lumaprintsConnectionVersion"]
+		.filter(key => Object.hasOwn(value, key));
+	if (!exactRecord(value, [...baseKeys, ...optional])) return null;
 	if (Object.hasOwn(value, "printInputVersion") && value.printInputVersion !== 1) return null;
+	if (Object.hasOwn(value, "lumaprintsConnectionVersion")
+		&& (value.lumaprintsConnectionVersion !== 1 || value.printInputVersion !== 1
+			|| !isTenantId(value.tenantId) || !isStripeConnectedAccountId(value.account))) return null;
 	const site = siteString(value.site);
 	const tenantId = value.tenantId === undefined ? undefined : value.tenantId;
 	const account = value.account === null ? null : value.account;
@@ -133,7 +133,8 @@ export function parseReservationRequest(value: unknown) {
 		&& (tenantId === undefined || isTenantId(tenantId))
 		&& (account === null || isStripeConnectedAccountId(account))
 		? { site, ...(tenantId ? { tenantId } : {}), attempt: value.attempt as string, account, snapshot,
-			...(value.printInputVersion === 1 ? { printInputVersion: 1 as const } : {}) } : null;
+			...(value.printInputVersion === 1 ? { printInputVersion: 1 as const } : {}),
+			...(value.lumaprintsConnectionVersion === 1 ? { lumaprintsConnectionVersion: 1 as const } : {}) } : null;
 }
 
 export function parseReservationBindRequest(value: unknown) {

@@ -16,7 +16,9 @@ test("phone navigation remains reachable after rotation on a scrolled product", 
  await sphere.tap();
  await expect.poll(()=>page.locator("#water-nav-links").evaluate(e=>Number(getComputedStyle(e).opacity)), {timeout:15000}).toBeGreaterThan(0.99);
  const nav=page.getByRole("navigation",{name:"Mobile navigation"});
- for(const name of ["Gallery","Shop","About","Home","Blog"]) await expect(nav.getByRole("link",{name,exact:true})).toBeInViewport({ratio:1});
+ // Chromium may report 0.9999997 for an entirely visible transformed link.
+ // Allow only floating-point noise, far below a pixel of clipping.
+ for(const name of ["Gallery","Shop","About","Home","Blog"]) await expect(nav.getByRole("link",{name,exact:true})).toBeInViewport({ratio:1 - 1e-6});
  await nav.getByRole("button",{name:"Close navigation",exact:true}).tap();
  await page.emulateMedia({reducedMotion:"reduce"});
  await expect(page.locator('.bottom-nav')).toBeInViewport();

@@ -1,6 +1,9 @@
 import { env as privateEnv } from "$env/dynamic/private";
 import { env as publicEnv } from "$env/dynamic/public";
-import { normalizeCommerceTenantSiteUrl } from "$lib/server/stripeConnect";
+import {
+	COMMERCE_TENANT_ID_PATTERN,
+	normalizeCommerceTenantSiteUrl,
+} from "$lib/server/stripeConnect";
 
 const MAX_TENANT_REGISTRY_BYTES = 64 * 1024;
 const MAX_TENANTS = 100;
@@ -45,6 +48,36 @@ export function getFrozenPrintInputVersion(siteUrl: string): 1 | undefined {
 	if (mode === undefined || mode === "") return undefined;
 	if (mode !== "frozen-v1") throw new RuntimeConfigurationError("Frozen print protocol");
 	return 1;
+}
+
+/** Explicit client enrollment; does not widen the existing Angels Rest print-input gate. */
+export function getClientSupplierCaptureVersion(siteUrl: string, tenantId?: string): 1 | undefined {
+	if (siteUrl === "angelsrest.online") return undefined;
+	const raw = privateEnv.LUMAPRINTS_CHECKOUT_CAPTURE_TENANTS;
+	if (!raw) return undefined;
+	const invalid = () => new RuntimeConfigurationError("Client supplier capture");
+	if (Buffer.byteLength(raw, "utf8") > MAX_TENANT_REGISTRY_BYTES) throw invalid();
+	let value: unknown;
+	try {
+		value = JSON.parse(raw);
+	} catch {
+		throw invalid();
+	}
+	if (
+		!value ||
+		typeof value !== "object" ||
+		Array.isArray(value) ||
+		Object.keys(value).length !== 2 ||
+		!("version" in value) ||
+		value.version !== 1 ||
+		!("tenantIds" in value) ||
+		!Array.isArray(value.tenantIds) ||
+		value.tenantIds.length > MAX_TENANTS ||
+		value.tenantIds.some((id) => typeof id !== "string" || !COMMERCE_TENANT_ID_PATTERN.test(id)) ||
+		new Set(value.tenantIds).size !== value.tenantIds.length
+	)
+		throw invalid();
+	return tenantId && value.tenantIds.includes(tenantId) ? 1 : undefined;
 }
 export const getStripePlatformWebhookSecret = () =>
 	required(privateEnv.STRIPE_PLATFORM_WEBHOOK_SECRET, "Stripe platform webhook");

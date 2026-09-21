@@ -5,7 +5,8 @@ of its current selection. C3b1 adds the server credential resolver and explicit
 provider client. C3b2 consumes saved order context and fences older workers.
 C3c adds authenticated client shipment intake and scoped notification retries.
 C3d adds disabled-by-default operator setup with verified store access.
-Pre-payment capture and provider acceptance still follow;
+C3e adds explicitly enrolled pre-payment capture and local configuration checks.
+Shop admission and provider acceptance still follow;
 no live client-owned fulfillment or store readiness is claimed.
 
 ## Ownership and authority
@@ -102,7 +103,7 @@ is still selected for new orders. Setup cannot reactivate a detached reference
 or replace an existing/historical connection. Reconnect and offboarding need
 their own reviewed operational path.
 
-The later checkout producer must freeze this non-secret context before payment.
+The opted-in checkout producer freezes this non-secret context before payment.
 The paid-intake consumer now copies it from the bound reservation into the order,
 and durable jobs use that original context for payload construction, submission,
 confirmation, and external-ID lookup. A changed/missing credential mapping stops the operation,
@@ -177,11 +178,59 @@ client only when the saved context is absent. A supplied context never falls bac
 The independent top-level operation wrappers were removed after host adoption;
 fulfillment receives one client factory and constructs one client per operation.
 
+## Pre-payment supplier capture
+
+`LUMAPRINTS_CHECKOUT_CAPTURE_TENANTS` is a separate server-only enrollment
+registry. Missing/empty configuration is off. It does not change the existing
+Angels Rest `PRINT_INPUT_PROTOCOL` gate or enroll other clients automatically.
+The registry is bounded to 64 KiB and 100 unique, valid stable tenant IDs; malformed
+configured data fails closed for client checkout. For example, the following is
+only a format illustration, not a configuration to activate:
+
+```json
+{"version":1,"tenantIds":["tenant_11111111-1111-4111-8111-111111111111"]}
+```
+
+An enrolled host sends `printInputVersion: 1` and
+`lumaprintsConnectionVersion: 1` through the existing tenant-authenticated
+reservation boundary. Stable tenant identity and a connected Stripe account are
+required. The caller cannot supply a connection, store, environment or credential.
+Inside the reservation transaction, Convex freezes the published print input and
+resolves the selected immutable supplier only when the frozen lines contain
+production-partner print sources. Digital and merchant-fulfilled purchases need
+no supplier; mixed purchases still freeze every line. Missing or foreign supplier
+ownership aborts the transaction instead of choosing the central account.
+
+The reservation retains the protocol marker even for non-supplier purchases.
+Same-attempt replay preserves the original input and supplier independently of
+current selection. Changing capture protocols conflicts; old reservations are not
+backfilled. Corrupt context cannot replay or enter paid intake as legacy central
+work. Historical supplier ownership must still match.
+
+Old requests keep the exact version-2 HTTP response. Opted-in requests receive
+`{ version: 3, handle, replayed, lumaprintsConnection }`, where the connection is
+the saved five-field context or explicit `null`. This response version does not
+change the version-2 opaque handle in Stripe metadata. The host rejects missing,
+malformed or foreign contexts and checks the exact saved outbound and inbound
+credential configuration before requesting a Stripe session. No supplier network
+request occurs during this configuration check. A saved context never falls back
+to central credentials, even on a retry after registry changes.
+
+This gate is protocol enrollment, not permission to sell. Full payment/supplier
+readiness and explicit shop admission remain C4; credentials, provider acceptance
+and deployment remain separately approved. Deploy this additive backend before
+enabling any host producer. Before rollback, close new client checkout admission;
+retain compatible paid-input consumers, workers, shipment routes, history and
+credentials for already-reserved/paid work. Disabling enrollment makes a pending
+attempt conflict rather than silently reinterpret its supplier. Do not deploy an
+older consumer over context-bearing work.
+
 ## Saved paid-order context
 
 Reservations and orders accept an optional `lumaprintsConnection` containing the
-five immutable, non-secret identity fields. No checkout writer emits this field
-yet. The paid-order API does not accept it as an argument, and Stripe/browser
+five immutable, non-secret identity fields. The reservation writer derives this
+field from immutable backend ownership when explicitly opted in. The paid-order
+API does not accept it as an argument, and Stripe/browser
 metadata cannot set it. Paid intake transfers it only from the exact bound
 reservation, alongside frozen print input, in the same transaction that creates
 the order/job and consumes the reservation. A missing or mismatched immutable
@@ -259,8 +308,8 @@ the provider, or activate new checkouts on deployment.
 ## Adoption and verification
 
 The schema/claim protocol are additive. Existing orders without context retain
-central routing; no backfill occurs. Operator registration exists behind its
-default-off flag; no checkout writer captures supplier context yet. Deploy the compatible backend,
+central routing; no backfill occurs. Operator registration and checkout capture
+exist behind separate default-off gates. Deploy the compatible backend,
 host consumer, and authenticated shipment intake before separately approved
 registration/capture/activation. Keep Stripe onboarding disabled through the
 unfinished commerce work. Once context-bearing work exists, rollback must retain
