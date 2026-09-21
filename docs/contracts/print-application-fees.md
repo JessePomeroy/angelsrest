@@ -68,6 +68,12 @@ order creation. Refund calculations can subsequently use the saved original
 lines and the order's immutable payment identity. Replays of an existing order
 do not replace its financial evidence.
 
+An admission-linked reservation requires that exact admission during intake.
+A known financial Session cannot become legacy intake by omitting either or
+both metadata markers. Truly historical unlinked reservations retain their
+existing path. Omission failures leave the reservation, admission and order
+state intact for recovery.
+
 This records **expected amounts**, not proof of an application fee, refund,
 supplier charge or payout. It does not schedule any new Stripe read or refund.
 Existing original-charge processing-fee capture remains separate. Missing

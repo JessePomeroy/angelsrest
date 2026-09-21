@@ -715,8 +715,7 @@ async function consumeReservation(
 		.withIndex("by_siteUrl_and_handleHash", (q) => q.eq("siteUrl", siteUrl).eq("handleHash", handleHash)).unique();
 	if (!row || row.state !== "bound" || row.accountScope !== stripeAccountScope(stripeConnectedAccountId)
 		|| row.stripeSessionId !== stripeSessionId || row.snapshot.items.length !== itemCount
-		|| checkoutSessionAdmissionId !== undefined
-			&& row.checkoutSessionAdmissionId !== checkoutSessionAdmissionId) {
+		|| row.checkoutSessionAdmissionId !== checkoutSessionAdmissionId) {
 		throw new Error("Checkout snapshot reservation does not match paid session");
 	}
 	await assertCapturedSupplierReservation(ctx, row);
@@ -1095,6 +1094,16 @@ export const create = mutation({
 		) throw new Error("Stripe fees must be nonnegative safe-integer minor units");
 
 		let admission = null;
+		if (checkoutSessionAdmission === undefined && args.stripeConnectedAccountId !== undefined) {
+			const savedAdmission = await ctx.db.query("checkoutSessionAdmissions")
+				.withIndex("by_accountScope_and_stripeSessionId", q => q
+					.eq("accountScope", stripeAccountScope(args.stripeConnectedAccountId))
+					.eq("stripeSessionId", args.stripeSessionId)).unique();
+			// Metadata omission cannot downgrade a known financial checkout to legacy intake.
+			if (savedAdmission?.checkoutFinancialSnapshot) {
+				throw new Error("Original financial checkout admission is required");
+			}
+		}
 		if (checkoutSessionAdmission !== undefined) {
 			if (auth.via !== "webhook") {
 				throw new Error("Checkout admission requires webhook authority");

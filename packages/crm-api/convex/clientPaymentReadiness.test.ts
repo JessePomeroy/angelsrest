@@ -340,9 +340,13 @@ describe("original client checkout financial evidence", () => {
 			fulfillmentType: "self" as const };
 		for (const changed of [{ stripePaymentLivemode: true }, { stripePaymentCurrency: "eur" },
 			{ subtotal: 4201 }, { items: [{ productName: "Merchant print", quantity: 2, price: 4200 }] },
-			{ checkoutSnapshotReservation: undefined }, { stripePaymentIntentId: undefined }]) {
+			{ checkoutSnapshotReservation: undefined }, { stripePaymentIntentId: undefined },
+			{ checkoutSessionAdmission: undefined },
+			{ checkoutSessionAdmission: undefined, checkoutSnapshotReservation: undefined }]) {
 			await expect(s.t.mutation(api.orders.create, { ...payload, ...changed })).rejects.toThrow();
 			expect((await s.t.run(ctx => ctx.db.get(s.admitted.admissionId)))?.state).toBe("bound");
+			expect(await s.t.run(ctx => ctx.db.get(s.reservationId))).not.toBeNull();
+			expect(await s.t.run(ctx => ctx.db.query("orders").take(1))).toEqual([]);
 		}
 		await s.t.mutation(api.platform.markStripeConnectDisconnected, { ...s.first.args, eventId: "evt_disconnectFinancial" });
 		const created = await s.t.mutation(api.orders.create, payload);
