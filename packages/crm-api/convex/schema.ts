@@ -260,6 +260,18 @@ export default defineSchema({
 		.index("by_stripeSubscriptionId", ["stripeSubscriptionId"])
 		.index("by_stripeConnectedAccountId", ["stripeConnectedAccountId"]),
 
+	// Permanent ownership, independent of the account selected for new checkout.
+	// Retain these rows through connection replacement/offboarding for paid work.
+	stripeAccountBindings: defineTable({
+		stripeConnectedAccountId: v.string(),
+		clientId: v.id("platformClients"),
+		tenantId: v.string(),
+		attemptId: v.string(),
+		platformAccountId: v.string(),
+		livemode: v.boolean(),
+		boundAt: v.number(),
+	}).index("by_stripeConnectedAccountId", ["stripeConnectedAccountId"]),
+
 	// Verified public names that may change without changing tenant identity.
 	tenantAliases: defineTable({
 		tenantId: v.string(),

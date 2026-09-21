@@ -64,6 +64,63 @@ async function setup() {
 }
 
 describe("verified Stripe account binding", () => {
+	test("retains the owner after the active Stripe selection is removed", async () => {
+		const s = await setup();
+		const prepared = await s.begin();
+		await s.admin.mutation(api.platform.bindStripeConnectAccount, {
+			...s.beginArgs,
+			attemptId: prepared.attempt.id,
+			stripeConnectedAccountId: ACCOUNT,
+		});
+		// Simulate a future offboarding operation, not a public account-reset API.
+		await s.t.run(async (ctx) =>
+			ctx.db.patch(s.clientId, {
+				stripeConnectedAccountId: undefined,
+			}),
+		);
+		expect(
+			await s.t.query(api.platform.getByStripeConnectedAccountId, {
+				stripeConnectedAccountId: ACCOUNT,
+				webhookSecret: SECRET,
+			}),
+		).toMatchObject({ _id: s.clientId, tenantId: prepared.tenantId });
+		expect(
+			(
+				await s.t.query(api.platform.getStripeAccountForSite, {
+					siteUrl: "client.example",
+				})
+			)?.stripeConnectedAccountId,
+		).toBeUndefined();
+	});
+
+	test("a historical account cannot be rebound to a different tenant", async () => {
+		const s = await setup();
+		const prepared = await s.begin();
+		await s.admin.mutation(api.platform.bindStripeConnectAccount, {
+			...s.beginArgs,
+			attemptId: prepared.attempt.id,
+			stripeConnectedAccountId: ACCOUNT,
+		});
+		await s.t.run(async (ctx) =>
+			ctx.db.patch(s.clientId, {
+				stripeConnectedAccountId: undefined,
+			}),
+		);
+		const secondId = await s.admin.mutation(api.platform.createClient, input("second.example"));
+		const second = await s.admin.mutation(api.platform.beginStripeConnectAccount, {
+			...s.beginArgs,
+			clientId: secondId,
+		});
+		await expect(
+			s.admin.mutation(api.platform.bindStripeConnectAccount, {
+				...s.beginArgs,
+				clientId: secondId,
+				attemptId: second.attempt.id,
+				stripeConnectedAccountId: ACCOUNT,
+			}),
+		).rejects.toThrow("already bound");
+	});
+
 	test("concurrent starts freeze a single attempt and tenant identity", async () => {
 		const s = await setup();
 		const [first, second] = await Promise.all([s.begin(), s.begin()]);

@@ -51,6 +51,36 @@ setters remain explicit rejection endpoints so an old caller cannot bypass the
 verified protocol. No generated Convex files were hand-edited; existing generated
 module/schema imports expose the added functions and field types.
 
+## Historical payment identity
+
+A verified binding also writes one immutable `stripeAccountBindings` record in
+the same transaction. It pins the owning client/tenant, creation attempt, Stripe
+platform account, and test/live mode. Repeated binding preserves that record;
+removing or changing the client's active selection cannot free the account for
+another tenant. No account replacement or offboarding endpoint is added here.
+
+Account-scoped webhook routing, order replay, accepted Checkout binding, and
+manual/automated refund reconciliation resolve that historical owner. Delayed
+provider requests keep the account stored on the payment or signed event, even
+when the returned client's current checkout selection differs. Missing owners,
+duplicate ownership rows, tenant drift, and conflicting current assignments fail
+closed. Existing active mappings without a history record remain readable;
+verified onboarding writes the record when binding is next confirmed. This is
+not an account migration or a way to adopt unverified accounts.
+
+New connected-account Checkout reservations and admissions require the currently selected account.
+Exact existing attempts can replay and previously reserved sessions can finish
+binding in their original account. Historical ownership is not new-sale admission.
+The separate platform-charge fallback/readiness policy remains C4 work.
+Original order/refund records are not rewritten. Provider deauthorization can
+still remove API access; retaining identity does not grant access or implement a
+new dispute processor. Reconnect/offboarding procedures remain later work.
+
+Deploy the ownership reader and writer together in the shared backend before any
+future operation can remove/change an active mapping. Retain ownership records
+on rollback; old readers cannot recover detached-account history. Source/host
+integration does not itself activate this backend or authorize live changes.
+
 ## Uncertainty and recovery
 
 If Stripe succeeds and binding fails, a retry within the window repeats the
