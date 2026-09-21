@@ -38,13 +38,14 @@ record; this document retains the current operating contract and bounded evidenc
 The client-ownership work adds an optional saved supplier connection to accepted
 orders. When present, one resolved provider client supplies the payload builder,
 submission, confirmation and retry lookup; workers must acknowledge that exact
-context. Existing orders without context retain central routing. No checkout
-producer captures the new context yet, and central shipment intake cannot update
+context. Existing orders without context retain central routing. Explicitly
+enrolled client checkout now captures it with frozen print input before payment;
+`LUMAPRINTS_CHECKOUT_CAPTURE_TENANTS` is off by default. Central shipment intake cannot update
 client-scoped orders. Dedicated client shipment intake now authenticates each
 connection and scopes every checkpoint and email retry key. Creator-only client
 setup verifies store access and records ownership/billing confirmations behind
-`LUMAPRINTS_CLIENT_SETUP_ENABLED=true` (off by default). Pre-payment capture and
-provider acceptance remain required before activation. See
+`LUMAPRINTS_CLIENT_SETUP_ENABLED=true` (off by default). Full readiness, explicit
+shop admission and provider acceptance remain required before activation. See
 the
 [client supplier contract](docs/contracts/client-lumaprints-connections.md) for
 the additive rollout, legacy scope and credential-rotation rules.

@@ -37,6 +37,12 @@ function isConnection(value: unknown): value is LumaPrintsConnection {
 	);
 }
 
+/** Read a non-secret saved context at a server transport boundary. */
+export function parseLumaPrintsConnection(value: unknown): LumaPrintsConnection {
+	if (!isConnection(value) || Object.keys(value).length !== 5) unavailable();
+	return Object.freeze({ ...value });
+}
+
 function credential(value: string | undefined, key = false): string {
 	if (!value || value.length > 512 || !/^[\x21-\x7e]+$/.test(value) || (key && value.includes(":")))
 		unavailable();

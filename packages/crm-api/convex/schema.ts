@@ -1002,6 +1002,7 @@ export default defineSchema({
 		snapshot: reservedCheckoutSnapshotValidator,
 		printInput: v.optional(reservedPrintInputValidator),
 		lumaprintsConnection: v.optional(lumaprintsConnectionValidator),
+		lumaprintsConnectionVersion: v.optional(v.literal(1)),
 		accountScope: v.string(),
 		stripeConnectedAccountId: v.optional(v.string()),
 		stripeSessionId: v.optional(v.string()),

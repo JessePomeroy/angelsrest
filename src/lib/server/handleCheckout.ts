@@ -16,8 +16,15 @@ import {
 	createCheckoutSnapshotReservationClient,
 	isCheckoutSnapshotReservationConflict,
 } from "$lib/server/checkoutSnapshotReservationClient";
+import {
+	resolveLumaPrintsConfiguration,
+	resolveLumaPrintsWebhookConfiguration,
+} from "$lib/server/lumaprintsConnections";
 import { assertOrderProducersOpen } from "$lib/server/orderProducerGate";
-import { getFrozenPrintInputVersion } from "$lib/server/runtimeConfig";
+import {
+	getClientSupplierCaptureVersion,
+	getFrozenPrintInputVersion,
+} from "$lib/server/runtimeConfig";
 import {
 	createPaymentCheckoutSession,
 	type PaymentCheckoutSessionResult,
@@ -205,9 +212,10 @@ export async function createHandleCheckoutSession({
 	}
 
 	let handle: string;
-	const printInputVersion = getFrozenPrintInputVersion(site);
+	const lumaprintsConnectionVersion = getClientSupplierCaptureVersion(site, tenantId);
+	const printInputVersion = lumaprintsConnectionVersion ?? getFrozenPrintInputVersion(site);
 	try {
-		({ handle } = await reservationClient.reserve({
+		const reservation = await reservationClient.reserve({
 			...(tenantId ? { tenantId } : {}),
 			site,
 			attempt: validatedAttempt.attempt,
@@ -215,7 +223,21 @@ export async function createHandleCheckoutSession({
 			catalogProvider,
 			items: snapshotItems,
 			...(printInputVersion === undefined ? {} : { printInputVersion }),
-		}));
+			...(lumaprintsConnectionVersion === undefined ? {} : { lumaprintsConnectionVersion }),
+		});
+		handle = reservation.handle;
+		if (lumaprintsConnectionVersion === 1) {
+			if (!tenantId || !account || reservation.lumaprintsConnection === undefined) {
+				throw new Error("Client supplier capture is unavailable");
+			}
+			const connection = reservation.lumaprintsConnection;
+			if (connection) {
+				if (connection.tenantId !== tenantId)
+					throw new Error("Client supplier capture is inconsistent");
+				resolveLumaPrintsConfiguration(connection);
+				resolveLumaPrintsWebhookConfiguration(connection.connectionRef);
+			}
+		}
 	} catch (cause) {
 		if (isCheckoutSnapshotReservationConflict(cause)) throw cause;
 		throw new CheckoutSessionStageError("checkout_snapshot", cause);

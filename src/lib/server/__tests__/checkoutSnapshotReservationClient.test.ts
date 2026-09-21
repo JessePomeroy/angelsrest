@@ -21,6 +21,95 @@ const snapshotItem = {
 };
 
 describe("checkout snapshot reservation client", () => {
+	it.each([
+		true,
+		false,
+	])("reads the exact opted-in supplier response, with supplier=%s", async (hasSupplier) => {
+		const connection = {
+			version: 1,
+			connectionRef: "lp_client_original",
+			tenantId: TENANT_ID,
+			storeId: 101,
+			environment: "sandbox",
+		};
+		const fetcher = vi.fn<typeof fetch>().mockResolvedValue(
+			Response.json({
+				version: 3,
+				handle: HANDLE,
+				replayed: true,
+				lumaprintsConnection: hasSupplier ? connection : null,
+			}),
+		);
+		const client = createCheckoutSnapshotReservationClient({
+			baseUrl: "https://tenant.convex.site",
+			fetcher,
+			credential: () => SECRET,
+		});
+		const result = await client.reserve({
+			site: "client.example",
+			tenantId: TENANT_ID,
+			attempt: ATTEMPT,
+			account: "acct_1234567890TenantA",
+			catalogProvider: "convex",
+			items: [snapshotItem],
+			printInputVersion: 1,
+			lumaprintsConnectionVersion: 1,
+		});
+		expect(result).toEqual({
+			handle: HANDLE,
+			lumaprintsConnection: hasSupplier ? connection : null,
+		});
+		expect(JSON.parse(String(fetcher.mock.calls[0]?.[1]?.body))).toMatchObject({
+			lumaprintsConnectionVersion: 1,
+			printInputVersion: 1,
+		});
+		expect(JSON.parse(String(fetcher.mock.calls[0]?.[1]?.body))).not.toHaveProperty(
+			"lumaprintsConnection",
+		);
+	});
+
+	it("rejects old, missing, foreign or malformed captured supplier responses", async () => {
+		const connection = {
+			version: 1,
+			connectionRef: "lp_client_original",
+			tenantId: TENANT_ID,
+			storeId: 101,
+			environment: "sandbox",
+		};
+		for (const response of [
+			{ version: 2, handle: HANDLE, replayed: false },
+			{ version: 3, handle: HANDLE, replayed: false },
+			...[
+				{ ...connection, tenantId: "tenant_22222222-2222-4222-8222-222222222222" },
+				{ ...connection, apiSecret: "not-a-context-field" },
+				{ ...connection, storeId: 0 },
+				{ ...connection, environment: "unknown" },
+			].map((lumaprintsConnection) => ({
+				version: 3,
+				handle: HANDLE,
+				replayed: false,
+				lumaprintsConnection,
+			})),
+		]) {
+			const client = createCheckoutSnapshotReservationClient({
+				baseUrl: "https://tenant.convex.site",
+				fetcher: vi.fn<typeof fetch>().mockResolvedValue(Response.json(response)),
+				credential: () => SECRET,
+			});
+			await expect(
+				client.reserve({
+					site: "client.example",
+					tenantId: TENANT_ID,
+					attempt: ATTEMPT,
+					account: "acct_1234567890TenantA",
+					catalogProvider: "convex",
+					items: [snapshotItem],
+					printInputVersion: 1,
+					lumaprintsConnectionVersion: 1,
+				}),
+			).rejects.toThrow("Checkout reservation is unavailable");
+		}
+	});
 	it("passes the frozen-input opt-in unchanged to the reservation authority", async () => {
 		const fetcher = vi
 			.fn<typeof fetch>()
