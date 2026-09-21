@@ -374,6 +374,7 @@ export async function submitPrintFulfillment(
 				orderId,
 				claimToken,
 				...providerReferenceFence,
+				...(lumaprintsConnection === undefined ? {} : { lumaprintsConnection }),
 				...(printJobLeaseToken ? { printJobLeaseToken } : {}),
 				...tenantFence,
 				webhookSecret,

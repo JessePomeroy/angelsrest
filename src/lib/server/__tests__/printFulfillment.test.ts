@@ -1,6 +1,7 @@
 import type Stripe from "stripe";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { Id } from "$convex/dataModel";
+import type { LumaPrintsConnection } from "$lib/server/lumaprintsConnections";
 
 const mockLogStructured = vi.fn();
 const mockCreateLumaPrintsOrder = vi.fn();
@@ -952,7 +953,16 @@ describe("print fulfillment", () => {
 		expect(stripe.refunds.create).not.toHaveBeenCalled();
 	});
 
-	it("uses the current fulfillment result when a deterministic block result is stale", async () => {
+	it.each([
+		undefined,
+		{
+			version: 1,
+			connectionRef: "lp_client_stale_block",
+			tenantId: "tenant_12345678-1234-4234-8234-123456789abc",
+			storeId: 101,
+			environment: "sandbox",
+		} satisfies LumaPrintsConnection,
+	])("uses the current fulfillment result when a deterministic block result is stale (%j)", async (lumaprintsConnection) => {
 		const { LumaPrintsReconciliationError } = await import("$lib/server/lumaprints");
 		const { submitPrintFulfillment } = await import("../printFulfillment");
 		const claimResults = [
@@ -968,11 +978,21 @@ describe("print fulfillment", () => {
 		);
 
 		await expect(
-			submitPrintFulfillment({ convex, getLumaPrintsClient: mockGetLumaPrintsClient }, printInput),
+			submitPrintFulfillment(
+				{ convex, getLumaPrintsClient: mockGetLumaPrintsClient },
+				{ ...printInput, lumaprintsConnection, tenantId: lumaprintsConnection?.tenantId },
+			),
 		).resolves.toEqual({
 			kind: "fulfilled",
 			lumaprintsOrderNumber: "457",
 		});
+		const claims = convex.mutation.mock.calls.filter(
+			([reference]: [string]) => reference === "orders.claimPrintFulfillmentV5",
+		);
+		expect(claims).toHaveLength(2);
+		for (const [, args] of claims) {
+			expect(args.lumaprintsConnection).toEqual(lumaprintsConnection);
+		}
 		expect(mockCreateLumaPrintsOrder).not.toHaveBeenCalled();
 		expect(stripe.refunds.create).not.toHaveBeenCalled();
 		expect(convex.mutation).not.toHaveBeenCalledWith(
