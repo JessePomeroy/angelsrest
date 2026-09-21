@@ -38,12 +38,12 @@ const snapshot = { version: 1 as const, policy: "print_subtotal_5pct_floor_v1" a
 	subtotalCents: 10000, printSubtotalCents: 10000, applicationFeeAmountCents: 500 };
 function session() { return { object: "checkout.session", id: SESSION, mode: "payment", status: "complete",
 	amount_total: 11000, amount_subtotal: 10000, currency: "usd", livemode: false,
-	metadata: { commerceTenantSiteUrl: SITE }, payment_status: "paid", payment_intent: PI }; }
+	metadata: { commerceTenantSiteUrl: SITE, commerceTenantId: TENANT }, payment_status: "paid", payment_intent: PI }; }
 function charge() { return { object: "charge", id: CHARGE, payment_intent: PI,
 	amount: 11000, amount_captured: 11000, amount_refunded: 0, paid: true, captured: true, status: "succeeded",
 	currency: "usd", livemode: false, application_fee_amount: 500, application_fee: FEE, application: APP }; }
 function payment() { return { object: "payment_intent", id: PI, status: "succeeded", amount: 11000,
-	amount_received: 11000, currency: "usd", livemode: false, metadata: { commerceTenantSiteUrl: SITE },
+	amount_received: 11000, currency: "usd", livemode: false, metadata: { commerceTenantSiteUrl: SITE, commerceTenantId: TENANT },
 	application_fee_amount: 500, application: APP, latest_charge: charge() }; }
 function fee() { return { object: "application_fee", id: FEE, account: ACCOUNT, charge: CHARGE,
 	currency: "usd", livemode: false, amount: 500, amount_refunded: 0, refunded: false,
@@ -159,11 +159,13 @@ describe("original application-fee provider verification", () => {
 		["balance", { object: "balance", livemode: true }],
 		["session", { ...session(), id: "cs_test_wrong1234567890" }],
 		["session", { ...session(), metadata: { commerceTenantSiteUrl: "other.example" } }],
+		["session", { ...session(), metadata: { commerceTenantSiteUrl: SITE } }],
 		["session", { ...session(), payment_intent: "pi_wrong1234567890" }],
 		["session", { ...session(), amount_subtotal: 9999 }],
 		["payment", { ...payment(), amount_received: 10999 }],
 		["payment", { ...payment(), currency: "eur" }],
 		["payment", { ...payment(), metadata: { commerceTenantSiteUrl: "other.example" } }],
+		["payment", { ...payment(), metadata: { commerceTenantSiteUrl: SITE, commerceTenantId: "tenant_other" } }],
 		["payment", { ...payment(), latest_charge: { ...charge(), payment_intent: "pi_wrong1234567890" } }],
 		["payment", { ...payment(), latest_charge: { ...charge(), amount_captured: 10999 } }],
 		["payment", { ...payment(), latest_charge: { ...charge(), paid: "false" } }],

@@ -33,6 +33,7 @@ export async function readApplicationFee(stripe: Stripe, order: ApplicationFeeOr
 		|| session.mode !== "payment" || session.currency !== saved.currency
 		|| session.livemode !== saved.stripeLivemode || session.amount_total !== order.total
 		|| session.amount_subtotal !== saved.subtotalCents
+		|| session.metadata?.commerceTenantId !== saved.tenantId
 		|| normalizeCommerceTenantSiteUrl(session.metadata?.commerceTenantSiteUrl) !== tenantSite) mismatch();
 	if (session.status !== "complete" || session.payment_status === "unpaid") {
 		throw new ApplicationFeeReadError("payment_not_ready");
@@ -49,6 +50,7 @@ export async function readApplicationFee(stripe: Stripe, order: ApplicationFeeOr
 	const pi = await stripe.paymentIntents.retrieve(order.stripePaymentIntentId, { expand: ["latest_charge"] }, scope);
 	if (pi.object !== "payment_intent" || pi.id !== order.stripePaymentIntentId
 		|| pi.amount !== order.total || pi.currency !== saved.currency || pi.livemode !== saved.stripeLivemode
+		|| pi.metadata?.commerceTenantId !== saved.tenantId
 		|| normalizeCommerceTenantSiteUrl(pi.metadata?.commerceTenantSiteUrl) !== tenantSite) mismatch();
 	if (pi.status !== "succeeded") {
 		if (["processing", "requires_action", "requires_capture", "requires_confirmation"].includes(pi.status)) {
