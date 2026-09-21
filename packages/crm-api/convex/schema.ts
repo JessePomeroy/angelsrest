@@ -1,5 +1,6 @@
 import { defineSchema, defineTable } from "convex/server";
 import { v } from "convex/values";
+import { stripeConnectStatusValidator } from "./helpers/stripeConnectStatus";
 import {
 	checkoutSnapshotValidator,
 	reservedCheckoutSnapshotValidator,
@@ -235,6 +236,7 @@ export default defineSchema({
 		stripeCustomerId: v.optional(v.string()),
 		stripeSubscriptionId: v.optional(v.string()),
 		stripeConnectedAccountId: v.optional(v.string()),
+		stripeConnectStatus: v.optional(stripeConnectStatusValidator),
 		// One durable creation attempt. Keep its request identity after binding so
 		// retries never create a second account or silently switch Stripe environments.
 		stripeConnectAttempt: v.optional(v.object({
