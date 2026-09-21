@@ -43,9 +43,7 @@ function credential(value: string | undefined, key = false): string {
 	return value;
 }
 
-/** Resolve a saved identity, never a site's current selection or a central fallback. */
-export function resolveLumaPrintsConfiguration(connection: LumaPrintsConnection) {
-	if (!isConnection(connection)) unavailable();
+function readRegistry() {
 	const raw = env.LUMAPRINTS_CONNECTIONS;
 	if (!raw || Buffer.byteLength(raw, "utf8") > MAX_REGISTRY_BYTES) unavailable();
 	let registry: unknown;
@@ -82,6 +80,13 @@ export function resolveLumaPrintsConfiguration(connection: LumaPrintsConnection)
 		credentialReferences.add(entry.credentialRef);
 		entries.push({ ...entry, credentialRef: entry.credentialRef });
 	}
+	return entries;
+}
+
+/** Resolve a saved identity, never a site's current selection or a central fallback. */
+export function resolveLumaPrintsConfiguration(connection: LumaPrintsConnection) {
+	if (!isConnection(connection)) unavailable();
+	const entries = readRegistry();
 	const selected = entries.find((entry) => entry.connectionRef === connection.connectionRef);
 	if (
 		!selected ||
@@ -111,4 +116,48 @@ export function resolveLumaPrintsConfiguration(connection: LumaPrintsConnection)
 		apiKey,
 		apiSecret,
 	});
+}
+
+/** Inbound credentials are independent of outbound API access and current selection. */
+export function resolveLumaPrintsWebhookConfiguration(connectionRef?: string) {
+	if (connectionRef !== undefined && !CONNECTION_REF.test(connectionRef)) unavailable();
+	// Unconfigured legacy hosts keep their existing central entry point.
+	const entries = connectionRef === undefined && !env.LUMAPRINTS_CONNECTIONS ? [] : readRegistry();
+	const selected = entries.find((entry) => entry.connectionRef === connectionRef);
+	if (connectionRef !== undefined && !selected) unavailable();
+	const prefix = selected ? `LUMAPRINTS_CONNECTION_${selected.credentialRef}` : "LUMAPRINTS";
+	const username = selected
+		? credential(env[`${prefix}_WEBHOOK_USERNAME`], true)
+		: env.LUMAPRINTS_WEBHOOK_USERNAME;
+	const password = selected
+		? credential(env[`${prefix}_WEBHOOK_PASSWORD`])
+		: env.LUMAPRINTS_WEBHOOK_PASSWORD;
+	const old = env[`${prefix}_WEBHOOK_PASSWORD_PREVIOUS`];
+	const previousPassword = selected && old !== undefined ? credential(old) : old;
+	const passwords = [password, previousPassword].filter((value) => value !== undefined);
+	// Reject overlap in both directions, including central intake and rotation windows.
+	for (const otherPrefix of [
+		"LUMAPRINTS",
+		...entries.map((entry) => `LUMAPRINTS_CONNECTION_${entry.credentialRef}`),
+	].filter((candidate) => candidate !== prefix)) {
+		if (
+			env[`${otherPrefix}_WEBHOOK_USERNAME`] === username &&
+			passwords.some(
+				(value) =>
+					value === env[`${otherPrefix}_WEBHOOK_PASSWORD`] ||
+					value === env[`${otherPrefix}_WEBHOOK_PASSWORD_PREVIOUS`],
+			)
+		)
+			unavailable();
+	}
+	const connection = selected
+		? Object.freeze({
+				version: selected.version,
+				connectionRef: selected.connectionRef,
+				tenantId: selected.tenantId,
+				storeId: selected.storeId,
+				environment: selected.environment,
+			})
+		: undefined;
+	return Object.freeze({ connection, username, password, previousPassword });
 }

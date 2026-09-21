@@ -40,8 +40,10 @@ orders. When present, one resolved provider client supplies the payload builder,
 submission, confirmation and retry lookup; workers must acknowledge that exact
 context. Existing orders without context retain central routing. No checkout
 producer captures the new context yet, and central shipment intake cannot update
-client-scoped orders. Client setup, pre-payment capture and authenticated client
-shipment intake remain required before activation. See the
+client-scoped orders. Dedicated client shipment intake now authenticates each
+connection and scopes every checkpoint and email retry key. Client setup,
+pre-payment capture and provider acceptance remain required before activation. See
+the
 [client supplier contract](docs/contracts/client-lumaprints-connections.md) for
 the additive rollout, legacy scope and credential-rotation rules.
 
@@ -275,9 +277,19 @@ customer-facing policy.
 
 ## Shipment notifications
 
-The hub route `/api/webhooks/lumaprints` owns legacy central shipment intake. It
-claims a tokenized Convex lease by the canonical order number within the legacy supplier scope,
-then sends through Resend with a stable provider-number idempotency key. Active
+The hub route `/api/webhooks/lumaprints` owns legacy central shipment intake.
+`/api/webhooks/lumaprints/[connectionRef]` uses dedicated per-connection Basic
+credentials, validates immutable ownership, and resolves confirmed or provisional
+numbers only in that connection. All lease/checkpoint calls retain the same scope.
+The host shares one parser/orchestrator between these entry points; spokes do not
+receive either the hub secret or a second shipment handler. Client email keys are
+`shipment-email:<connectionRef>:<providerNumber>`; legacy keys remain unchanged.
+See the client supplier contract for registry, credential rotation and provider
+subscription acceptance requirements.
+
+Both entry points claim a tokenized Convex lease by canonical order number inside
+the authenticated supplier scope, then send through Resend with a stable
+idempotency key. Active
 leases and send/checkpoint failures return retryable non-2xx responses inside
 the bounded idempotency window. A send failure releases its lease and stores
 only a bounded failure code. An expired lease can be reclaimed only before that

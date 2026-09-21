@@ -52,8 +52,10 @@ Canonical rules for working in this repository.
   tenant name, origin, sender, or notification recipient.
 - **The hub owns LumaPrints shipment intake:** `/api/webhooks/lumaprints`
   verifies the central provider's Basic credentials and resolves order numbers
-  only in the legacy central supplier scope. Client supplier contexts must be
-  authenticated independently before lookup; a bare provider order number does
+  only in the legacy central supplier scope.
+  `/api/webhooks/lumaprints/[connectionRef]` authenticates dedicated client
+  supplier credentials before lookup and carries the saved context through
+  every shipment checkpoint; a bare provider order number does
   not establish tenant ownership. Client spokes must not receive the broad
   Convex webhook secret or run a duplicate shipment handler.
 - **External systems:** Stripe, LumaPrints, Resend, Convex, and the

@@ -79,7 +79,7 @@ describe("architecture invariants", () => {
 		]);
 		expect(importers("processLumaPrintsShipment")).toEqual([
 			"src/lib/server/lumaprintsWebhook.ts",
-			"src/routes/api/webhooks/lumaprints/+server.ts",
+			"src/lib/server/lumaprintsWebhookIntake.server.ts",
 		]);
 	});
 

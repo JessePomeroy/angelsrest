@@ -3,8 +3,9 @@
 The C3a foundation records a tenant's verified supplier identity independently
 of its current selection. C3b1 adds the server credential resolver and explicit
 provider client. C3b2 consumes saved order context and fences older workers.
-Pre-payment capture, connection setup, and authenticated client shipment intake
-still follow; no live client-owned fulfillment or store readiness is claimed.
+C3c adds authenticated client shipment intake and scoped notification retries.
+Pre-payment capture, connection setup, and provider acceptance still follow;
+no live client-owned fulfillment or store readiness is claimed.
 
 ## Ownership and authority
 
@@ -165,15 +166,58 @@ Confirmed and provisional supplier numbers are unique within the immutable
 connection reference. An absent context is a separate legacy scope. Both lookup
 types use bounded compound indexes over `lumaprintsConnection.connectionRef` and
 the provider number. Thus equal numeric order IDs in separate supplier accounts
-do not conflict or change each other's orders. The existing central shipment
-claim and uncertainty lookup search only the legacy scope. They cannot confirm
-a client receipt or claim its shipping email. Authenticated client shipment
-intake must land before any context-producing checkout is enabled.
+do not conflict or change each other's orders. Calls from the central shipment
+endpoint search only the legacy scope. They cannot confirm a client receipt or
+claim its shipping email. Client shipment intake authenticates its own scope
+before using these same operations.
 
 The existing Angels Rest incident-image diagnostic is explicitly legacy-only;
 it refuses context-bearing orders instead of testing them under central keys.
 This does not introduce a general client diagnostic or restore retired public
 image/pricing relays.
+
+## Authenticated shipment intake
+
+`/api/webhooks/lumaprints/[connectionRef]` selects an entry from the same bounded
+registry, then authenticates the request before consuming its body or accessing
+orders. The reference is public routing information, not authorization. Dedicated
+server variables are `LUMAPRINTS_CONNECTION_<credentialRef>_WEBHOOK_USERNAME`,
+`_WEBHOOK_PASSWORD`, and optional `_WEBHOOK_PASSWORD_PREVIOUS`. Password rotation
+keeps the username and immutable connection fixed. Retain previous credentials
+only for the explicitly managed overlap window. No credential values belong in
+client/browser data, this document or logs.
+
+Current/previous credential pairs cannot overlap another connection or the central
+webhook pair, including connections owned by the same tenant. Both sides of an
+overlap fail closed. Central intake remains independent when no client registry
+is configured; a malformed configured registry blocks intake until corrected. A missing unrelated
+pair does not disable a correctly configured connection. Incoming shipments do not
+require working outbound API keys, so revoking order-creation access need not
+strand already-submitted work. Keep immutable history and the original inbound
+credentials available until historical deliveries are settled.
+
+Each V2 claim, send authorization, uncertainty lookup, release and completion now
+accepts an optional saved supplier context. Absence means legacy central scope.
+The backend independently checks exact saved order context and historical
+ownership; an order ID or claim token alone cannot cross supplier scopes. A valid
+shipment can resolve a provisional receipt only within that same scope. Current
+selection changes do not retarget old work, and stable tenant/domain history
+resolves the current notification profile for retained old-domain orders.
+
+Client shipping-email keys include the immutable connection reference and provider
+number. Central keys retain their original format to preserve active retry
+windows. The existing 15-minute lease and 23-hour automatic recovery bound remain;
+an unconfirmed completion after that bound becomes delivery-uncertain without a
+new automatic send. [Resend retains idempotency keys for 24 hours](https://resend.com/docs/dashboard/emails/idempotency-keys).
+The host does not claim that a provider acceptance response proves mailbox delivery.
+
+The provider supports a [store subscription with a unique URL and optional Basic credentials](https://api-docs.lumaprints.com/api-9678991).
+Our integration requires those credentials. Its subscription probe must receive
+200, but the documented request does not fully specify that probe's payload or
+method. Confirm it during separately authorized sandbox acceptance before
+subscribing a client; do not add an unauthenticated or empty-body success exception.
+The new route retains the bounded shipment parser and does not subscribe, contact
+the provider, or activate new checkouts on deployment.
 
 ## Adoption and verification
 
