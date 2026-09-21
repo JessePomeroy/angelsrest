@@ -13,8 +13,8 @@ import {
 	createStripeConnectOnboardingSession,
 	normalizeStripeConnectError,
 	normalizeStripeConnectSiteUrl,
-	readStripeConnectStatus,
 } from "$lib/server/stripeConnectOnboarding";
+import { refreshClientStripeConnectStatus } from "$lib/server/stripeConnectStatusSync";
 import { createStripeConnectStore } from "$lib/server/stripeConnectStore";
 import type { StripeConnectSetupData } from "$lib/stripeConnectSetup";
 import type { Actions, PageServerLoad } from "./$types";
@@ -38,6 +38,7 @@ export const load: PageServerLoad = async ({
 		email: null,
 		accountId: null,
 		readiness: null,
+		connectionIssue: null,
 		message: null,
 		returned: url.searchParams.get("returned") === "1",
 	};
@@ -64,7 +65,11 @@ export const load: PageServerLoad = async ({
 		data.siteUrl = target.siteUrl;
 		data.accountId = target.stripeConnectedAccountId;
 		if (!data.onboardingEnabled) return { ...data, sessionStatus: "authorized" };
-		const connection = await readStripeConnectStatus({ siteUrl, stripe: getStripe(), store });
+		const connection = await refreshClientStripeConnectStatus({
+			siteUrl,
+			stripe: getStripe(),
+			store,
+		});
 		return { ...data, ...connection, sessionStatus: "authorized" };
 	} catch (cause) {
 		const normalized = normalizeStripeConnectError(cause);

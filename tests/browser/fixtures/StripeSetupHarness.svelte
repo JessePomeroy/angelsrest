@@ -10,7 +10,8 @@ const status = ["ready", "setup_required", "restricted", "pending_verification"]
 const data: StripeConnectSetupData = {
   siteUrl: "studio.example.invalid", onboardingEnabled: phase !== "disabled", sessionStatus,
   email: phase === "signed_out" ? null : "studio@example.invalid",
-  accountId: status ? "acct_fixture" : null,
+  accountId: status || ["checking", "disconnected", "connection_unavailable"].includes(phase) ? "acct_fixture" : null,
+  connectionIssue: phase === "checking" || phase === "disconnected" ? phase : phase === "connection_unavailable" ? "unavailable" : null,
   readiness: status ? { status, chargesEnabled: status === "ready" || status === "pending_verification", payoutsEnabled: status === "ready", detailsSubmitted: status !== "setup_required" } : null,
   message: sessionStatus === "unauthorized" ? "This login cannot manage payments for that website." : "We could not verify this payment connection. Please try again or contact Angels Rest.",
   returned: params.get("returned") === "1",

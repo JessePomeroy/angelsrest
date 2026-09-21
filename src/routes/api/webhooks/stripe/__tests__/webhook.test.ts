@@ -2,7 +2,7 @@ import type Stripe from "stripe";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
-	convex: { query: vi.fn() },
+	convex: { query: vi.fn(), mutation: vi.fn() },
 	createLumaPrintsOrder: vi.fn(),
 	logStructured: vi.fn(),
 	process: vi.fn(),
@@ -294,5 +294,60 @@ describe("Stripe webhook route", () => {
 			"Stripe commerce webhook secret is not set",
 		);
 		expect(mocks.process).toHaveBeenCalledTimes(2);
+	});
+
+	it("records signed deauthorization while order producers are closed without order/email/supplier adapters", async () => {
+		mocks.env.ORDER_PRODUCERS_STATE = "closed";
+		const account = "acct_client12345678901";
+		mocks.convex.query.mockResolvedValue({
+			_id: "client-id",
+			siteUrl: "studio.example",
+			tenantId: "tenant-id",
+			stripeConnectedAccountId: account,
+			stripeConnectAttempt: { platformAccountId: "acct_platform1234567890", livemode: false },
+		});
+		mocks.verify.mockResolvedValue({
+			role: "connected-accounts",
+			event: event({
+				type: "account.application.deauthorized",
+				account,
+				livemode: false,
+				data: { object: { id: "ca_application", object: "application" } },
+			}),
+		});
+		const { POST } = await import("../+server");
+		const response = await POST({ request: request() } as Parameters<typeof POST>[0]);
+		expect(response.status).toBe(200);
+		expect(mocks.convex.mutation).toHaveBeenCalledWith(expect.anything(), {
+			clientId: "client-id",
+			accountId: account,
+			platformAccountId: "acct_platform1234567890",
+			livemode: false,
+			eventId: "evt_test_123",
+			webhookSecret: "webhook-secret",
+		});
+		expect(mocks.process).not.toHaveBeenCalled();
+		expect(mocks.getResend).not.toHaveBeenCalled();
+		expect(mocks.createLumaPrintsOrder).not.toHaveBeenCalled();
+	});
+
+	it.each([
+		"signature",
+		"destination",
+	])("rejects lifecycle %s failures before status writes", async (failure) => {
+		if (failure === "signature") mocks.verify.mockRejectedValue(new Error("invalid signature"));
+		else
+			mocks.verify.mockResolvedValue({
+				role: "your-account",
+				event: event({
+					type: "account.application.deauthorized",
+					account: "acct_client12345678901",
+				}),
+			});
+		const { POST } = await import("../+server");
+		await expect(POST({ request: request() } as Parameters<typeof POST>[0])).rejects.toBeDefined();
+		expect(mocks.convex.query).not.toHaveBeenCalled();
+		expect(mocks.convex.mutation).not.toHaveBeenCalled();
+		expect(mocks.process).not.toHaveBeenCalled();
 	});
 });

@@ -1,8 +1,8 @@
 # Client Stripe onboarding
 
-This records account creation, historical payment identity, and the authenticated
-client setup page. Account-status webhooks, checkout readiness gates,
-existing-account connection, and per-client supplier routing remain subsequent
+This records account creation, historical payment identity, the authenticated
+client setup page, and ongoing account-status synchronization. Checkout readiness
+gates, existing-account connection, and per-client supplier routing remain subsequent
 work. The source workflow is disabled by default; returning from Stripe is not
 evidence that a client can accept payments.
 
@@ -43,8 +43,9 @@ Tax collection and information-reporting obligations remain separate decisions.
    account replacement and cross-client duplicate binding. Return an onboarding
    link only after binding succeeds. Identical bindings are idempotent.
 7. Before issuing a refresh link, verify the stored account and environment
-   again. Refresh cannot create an account. The response includes provider-derived
-   readiness facts, but those facts are not yet a synchronized dashboard state.
+   again. Refresh cannot create an account. Start/resume checks stored disconnection
+   before provider work and rechecks membership/disconnection after link issuance,
+   withholding a temporary link when access changes while Stripe responds.
 
 Generic client writes cannot assign account IDs. The retired public and internal
 setters remain explicit rejection endpoints so an old caller cannot bypass the
@@ -76,22 +77,25 @@ marker only; page loads and return visits never create accounts or Account Links
 
 With setup enabled, an authorized page load reads the account afresh from Stripe,
 verifies its ownership, controller settings, platform, and test/live mode, and
-shows payments and payouts separately. States distinguish information still due,
-pending verification, restrictions, and both payments/payouts enabled. Provider
-failures are recoverable and do not expose raw SDK errors. Full-dashboard access
-uses Stripe's normal dashboard login. This is a point-in-time provider check;
-persisted status, account change/deauthorization handling, and new-sale gates
-are later slices. **Stripe readiness alone does not activate the store.**
+stores and shows payments and payouts separately. States distinguish information
+still due, pending verification, restrictions, and both payments/payouts enabled.
+The page reads committed status after the provider check and reauthorizes tenant
+membership; it never displays a discarded concurrent response. Checking,
+unavailable, and disconnected states contain no usable readiness flags or
+start/resume action. They retain a retry link and access to the client's full
+Stripe dashboard. A disconnected connection needs operator review; refreshing
+cannot reconnect it. Provider errors are generic. New-sale gates remain C4 work.
+**Stripe readiness alone does not activate the store.**
 
 `STRIPE_CONNECT_ONBOARDING_ENABLED` is a server-only activation switch. Only the
-exact value `true` permits account creation, link issuance, or status reads.
+exact value `true` permits account creation, link issuance, or client-page provider reads.
 Unset/false values keep the feature unavailable, including the JSON onboarding
 endpoint and refresh endpoint. Start POSTs also require the hub request origin.
 Do not enable this flag as part of source merges. First deploy/adopt compatible
 backend code, finish readiness/checkout/supplier work, and run separately approved
 sandbox acceptance. No environment configuration is changed by this slice.
 
-## Stored status protocol (C2b1 foundation)
+## Stored status protocol
 
 The optional `platformClients.stripeConnectStatus` field belongs to the current
 verified account. Its state is one of `checking`, `observed`, `unavailable`, or
@@ -121,14 +125,36 @@ when a newer read fails; the connection then remains unavailable until retry.
 There is no background worker or automatic timeout retry in this storage layer.
 An abandoned claim remains checking until the next authorized refresh.
 
-This slice supplies the storage/read boundary only. The client page and signed
-webhook producers will adopt it in C2b2. They must verify actual provider facts,
-use bounded requests, handle `applied: false` without displaying discarded facts,
-and process deauthorization without attempting to retrieve a now-inaccessible
-account. No event subscriptions, provider requests, backend deployment, or
-onboarding activation are performed here. Keep the onboarding switch off until
-consumer adoption and acceptance. C4 must separately enforce verified, fresh
-readiness and remove platform-charge fallback before opening client sales.
+## Page and signed webhook producers
+
+`stripeConnectStatusSync.ts` claims before all provider reads, including platform
+and mode verification. Stripe reads and link issuance use 10-second timeouts with
+SDK retries disabled; parallel platform/mode reads precede the account read, within
+the 60-second claim window. Database write failures propagate. Provider failures
+replace usable readiness with unavailable; ownership/controller/environment
+mismatches are recorded separately from transient provider failures.
+
+The existing commerce webhook handles `account.updated`, `capability.updated`,
+and `account.application.deauthorized` after signature, pinned API-version, and
+destination-role checks, before order/email/supplier adapters initialize. These
+events are independent of the order-producer gate. Only the current verified
+account binding and matching test/live mode can change status. Unknown,
+history-only, or unmanaged connections are acknowledged without provider work.
+
+Updates retrieve current provider facts rather than trusting event snapshots or
+event timestamps. A current failed provider check is persisted, then returns 502
+for Stripe retry; a superseded result is acknowledged. Account mismatches remain
+unavailable for operator investigation. Deauthorization uses the signed top-level
+`event.account`, not the application object ID, and never attempts to retrieve an
+account whose API access may be gone. The terminal marker prevents later updates
+or in-flight reads from reviving a disconnected connection.
+
+Source delivery does not configure webhook event subscriptions or activate the
+backend/provider integration. Keep the onboarding switch off through coordinated
+backend adoption and acceptance. Lifecycle processing applies only to accounts
+bound by the verified protocol; it remains available after onboarding is disabled
+so existing connections can still be restricted or disconnected. C4 must enforce
+verified fresh readiness and remove platform-charge fallback before client sales.
 
 ## Historical payment identity
 

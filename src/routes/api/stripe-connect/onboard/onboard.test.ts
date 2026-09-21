@@ -110,7 +110,9 @@ describe("Stripe onboarding request boundary", () => {
 				livemode: false,
 			},
 		};
-		mocks.query.mockResolvedValue({ ...prepared, siteUrl: "client.example" });
+		mocks.query
+			.mockResolvedValue(null)
+			.mockResolvedValueOnce({ ...prepared, siteUrl: "client.example" });
 		mocks.retrieve.mockResolvedValue({ id: platformAccountId });
 		mocks.balance.mockResolvedValue({ livemode: false });
 		mocks.mutation

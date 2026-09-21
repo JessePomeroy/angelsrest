@@ -6346,7 +6346,7 @@
         "Real authentication and tenant-specific invitation",
         "Stripe hosted onboarding and return",
         "Paper update and same-viewport comparison",
-        "Provider deauthorization and persisted readiness (subsequent slice)"
+        "Real provider deauthorization and webhook delivery acceptance"
       ],
       "references": [
         {
@@ -6684,6 +6684,156 @@
             "Paper tools unavailable; no new board or comparison completed.",
             "Real Better Auth and Stripe acceptance not exercised."
           ]
+        },
+        {
+          "key": "admin.stripe-setup.checking.desktop",
+          "viewport": {
+            "width": 1440,
+            "height": 1000
+          },
+          "theme": "dark",
+          "motion": "reduce",
+          "status": "browser-observed-paper-pending",
+          "browserObservedAt": "2026-09-21",
+          "lastVerified": null,
+          "paper": null,
+          "setupUrl": "http://127.0.0.1:5199/?screen=stripe-setup&phase=checking&returned=1",
+          "setupSteps": [
+            "Render fictional data only; do not navigate to Stripe.",
+            "Exercise Check status again with an intercepted local response."
+          ],
+          "evidence": {
+            "browserPng": "/tmp/angelsrest-c2b2-evidence/stripe-checking-1440.png"
+          },
+          "limitations": [
+            "Paper tools unavailable; no new board or comparison completed.",
+            "Real Better Auth, provider status, and webhook delivery acceptance not exercised."
+          ]
+        },
+        {
+          "key": "admin.stripe-setup.connection_unavailable.desktop",
+          "viewport": {
+            "width": 1440,
+            "height": 1000
+          },
+          "theme": "dark",
+          "motion": "reduce",
+          "status": "browser-observed-paper-pending",
+          "browserObservedAt": "2026-09-21",
+          "lastVerified": null,
+          "paper": null,
+          "setupUrl": "http://127.0.0.1:5199/?screen=stripe-setup&phase=connection_unavailable&returned=1",
+          "setupSteps": [
+            "Render fictional data only; do not navigate to Stripe.",
+            "Exercise Check status again with an intercepted local response."
+          ],
+          "evidence": {
+            "browserPng": "/tmp/angelsrest-c2b2-evidence/stripe-connection_unavailable-1440.png"
+          },
+          "limitations": [
+            "Paper tools unavailable; no new board or comparison completed.",
+            "Real Better Auth, provider status, and webhook delivery acceptance not exercised."
+          ]
+        },
+        {
+          "key": "admin.stripe-setup.disconnected.desktop",
+          "viewport": {
+            "width": 1440,
+            "height": 1000
+          },
+          "theme": "dark",
+          "motion": "reduce",
+          "status": "browser-observed-paper-pending",
+          "browserObservedAt": "2026-09-21",
+          "lastVerified": null,
+          "paper": null,
+          "setupUrl": "http://127.0.0.1:5199/?screen=stripe-setup&phase=disconnected&returned=1",
+          "setupSteps": [
+            "Render fictional data only; do not navigate to Stripe.",
+            "Exercise Check status again with an intercepted local response."
+          ],
+          "evidence": {
+            "browserPng": "/tmp/angelsrest-c2b2-evidence/stripe-disconnected-1440.png"
+          },
+          "limitations": [
+            "Paper tools unavailable; no new board or comparison completed.",
+            "Real Better Auth, provider status, and webhook delivery acceptance not exercised."
+          ]
+        },
+        {
+          "key": "admin.stripe-setup.checking.mobile",
+          "viewport": {
+            "width": 390,
+            "height": 1000
+          },
+          "theme": "dark",
+          "motion": "reduce",
+          "status": "browser-observed-paper-pending",
+          "browserObservedAt": "2026-09-21",
+          "lastVerified": null,
+          "paper": null,
+          "setupUrl": "http://127.0.0.1:5199/?screen=stripe-setup&phase=checking&returned=1",
+          "setupSteps": [
+            "Render fictional data only; do not navigate to Stripe.",
+            "Exercise Check status again with an intercepted local response."
+          ],
+          "evidence": {
+            "browserPng": "/tmp/angelsrest-c2b2-evidence/stripe-checking-390.png"
+          },
+          "limitations": [
+            "Paper tools unavailable; no new board or comparison completed.",
+            "Real Better Auth, provider status, and webhook delivery acceptance not exercised."
+          ]
+        },
+        {
+          "key": "admin.stripe-setup.connection_unavailable.mobile",
+          "viewport": {
+            "width": 390,
+            "height": 1000
+          },
+          "theme": "dark",
+          "motion": "reduce",
+          "status": "browser-observed-paper-pending",
+          "browserObservedAt": "2026-09-21",
+          "lastVerified": null,
+          "paper": null,
+          "setupUrl": "http://127.0.0.1:5199/?screen=stripe-setup&phase=connection_unavailable&returned=1",
+          "setupSteps": [
+            "Render fictional data only; do not navigate to Stripe.",
+            "Exercise Check status again with an intercepted local response."
+          ],
+          "evidence": {
+            "browserPng": "/tmp/angelsrest-c2b2-evidence/stripe-connection_unavailable-390.png"
+          },
+          "limitations": [
+            "Paper tools unavailable; no new board or comparison completed.",
+            "Real Better Auth, provider status, and webhook delivery acceptance not exercised."
+          ]
+        },
+        {
+          "key": "admin.stripe-setup.disconnected.mobile",
+          "viewport": {
+            "width": 390,
+            "height": 1000
+          },
+          "theme": "dark",
+          "motion": "reduce",
+          "status": "browser-observed-paper-pending",
+          "browserObservedAt": "2026-09-21",
+          "lastVerified": null,
+          "paper": null,
+          "setupUrl": "http://127.0.0.1:5199/?screen=stripe-setup&phase=disconnected&returned=1",
+          "setupSteps": [
+            "Render fictional data only; do not navigate to Stripe.",
+            "Exercise Check status again with an intercepted local response."
+          ],
+          "evidence": {
+            "browserPng": "/tmp/angelsrest-c2b2-evidence/stripe-disconnected-390.png"
+          },
+          "limitations": [
+            "Paper tools unavailable; no new board or comparison completed.",
+            "Real Better Auth, provider status, and webhook delivery acceptance not exercised."
+          ]
         }
       ],
       "coveredByReferenceKeys": [
@@ -6700,7 +6850,13 @@
         "admin.stripe-setup.ready.mobile",
         "admin.stripe-setup.restricted.mobile",
         "admin.stripe-setup.unauthorized.mobile",
-        "admin.stripe-setup.disabled.mobile"
+        "admin.stripe-setup.disabled.mobile",
+        "admin.stripe-setup.checking.desktop",
+        "admin.stripe-setup.connection_unavailable.desktop",
+        "admin.stripe-setup.disconnected.desktop",
+        "admin.stripe-setup.checking.mobile",
+        "admin.stripe-setup.connection_unavailable.mobile",
+        "admin.stripe-setup.disconnected.mobile"
       ]
     }
   ],

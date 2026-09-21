@@ -67,7 +67,9 @@ function setup() {
 		},
 	};
 	const create = vi.fn().mockResolvedValue(account);
-	const retrieve = vi.fn(async (id?: string) => (id ? account : { id: PLATFORM }));
+	const retrieve = vi.fn(async (id?: string | Stripe.RequestOptions) =>
+		typeof id === "string" ? account : { id: PLATFORM },
+	);
 	const balance = vi.fn().mockResolvedValue({ livemode: false });
 	const link = vi.fn().mockResolvedValue({ url: "https://connect.stripe.test/onboard" });
 	const stripe = {
@@ -77,6 +79,7 @@ function setup() {
 	} as unknown as Stripe;
 	const store = {
 		findClient: vi.fn(async () => ({ ...prepared, siteUrl: "client.example" })),
+		readStatus: vi.fn<StripeConnectStore["readStatus"]>().mockResolvedValue(null),
 		beginAttempt: vi.fn(async () => structuredClone(prepared)),
 		bindAccount: vi.fn(async (args) => {
 			if (
@@ -131,12 +134,16 @@ describe("Stripe Connect account foundation", () => {
 			stripeConnectedAccountId: ACCOUNT,
 		});
 		expect(result).toMatchObject({ accountId: ACCOUNT, readiness: { status: "setup_required" } });
-		expect(s.link).toHaveBeenCalledWith({
-			account: ACCOUNT,
-			type: "account_onboarding",
-			refresh_url: "https://hub.example/api/stripe-connect/onboard/refresh?siteUrl=client.example",
-			return_url: "https://hub.example/api/stripe-connect/callback?siteUrl=client.example",
-		});
+		expect(s.link).toHaveBeenCalledWith(
+			{
+				account: ACCOUNT,
+				type: "account_onboarding",
+				refresh_url:
+					"https://hub.example/api/stripe-connect/onboard/refresh?siteUrl=client.example",
+				return_url: "https://hub.example/api/stripe-connect/callback?siteUrl=client.example",
+			},
+			{ timeout: 10_000, maxNetworkRetries: 0 },
+		);
 	});
 
 	it("concurrent requests converge on one idempotent provider account", async () => {
@@ -174,7 +181,7 @@ describe("Stripe Connect account foundation", () => {
 		);
 		await createStripeConnectOnboardingSession(s.options);
 		expect(s.create).toHaveBeenCalledOnce();
-		expect(s.retrieve).toHaveBeenCalledWith(ACCOUNT);
+		expect(s.retrieve).toHaveBeenCalledWith(ACCOUNT, { timeout: 10_000, maxNetworkRetries: 0 });
 	});
 
 	it("stops uncertain account creation before Stripe can forget the idempotency key", async () => {
@@ -288,6 +295,41 @@ describe("Stripe Connect account foundation", () => {
 		});
 		expect(s.retrieve).not.toHaveBeenCalled();
 		expect(s.create).not.toHaveBeenCalled();
+	});
+
+	it.each([
+		createStripeConnectOnboardingSession,
+		refreshStripeConnectOnboardingSession,
+	])("refuses disconnected accounts before any provider action: %s", async (onboard) => {
+		const s = setup();
+		s.prepared.stripeConnectedAccountId = ACCOUNT;
+		s.store.readStatus.mockResolvedValue({
+			accountId: ACCOUNT,
+			state: { kind: "disconnected", eventId: "evt_disconnect", disconnectedAt: NOW },
+		});
+		await expect(onboard(s.options)).rejects.toMatchObject({ status: 409 });
+		expect(s.retrieve).not.toHaveBeenCalled();
+		expect(s.create).not.toHaveBeenCalled();
+		expect(s.link).not.toHaveBeenCalled();
+	});
+
+	it.each([
+		"disconnected",
+		"revoked",
+	])("withholds a temporary link if access is %s while Stripe issues it", async (condition) => {
+		const s = setup();
+		s.prepared.stripeConnectedAccountId = ACCOUNT;
+		s.link.mockImplementationOnce(async () => {
+			if (condition === "disconnected")
+				s.store.readStatus.mockResolvedValue({
+					accountId: ACCOUNT,
+					state: { kind: "disconnected", eventId: "evt_disconnect", disconnectedAt: NOW },
+				});
+			else s.store.readStatus.mockRejectedValue(new Error("forbidden"));
+			return { url: "https://connect.stripe.test/private-link" };
+		});
+		await expect(refreshStripeConnectOnboardingSession(s.options)).rejects.toThrow();
+		expect(s.link).toHaveBeenCalledOnce();
 	});
 
 	it.each([
