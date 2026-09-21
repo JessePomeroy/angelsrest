@@ -71,6 +71,15 @@ test("rejects another tenant's order even for the hub admin", async () => {
 	expect(await admin.query(api.printImageDiagnostics.source, { orderId })).toBeNull();
 });
 
+test("the legacy incident diagnostic cannot use central credentials for a context-bearing order", async () => {
+	const { t, admin, orderId } = await setup();
+	await t.run(ctx => ctx.db.patch(orderId, { lumaprintsConnection: {
+		version: 1, connectionRef: "lp_client_context", tenantId: "tenant_11111111-1111-4111-8111-111111111111",
+		storeId: 101, environment: "production",
+	} }));
+	expect(await admin.query(api.printImageDiagnostics.source, { orderId })).toBeNull();
+});
+
 test("will not substitute an original for missing prepared artwork", async () => {
 	const { t, admin, orderId, sourceId } = await setup();
 	await t.run((ctx) => ctx.db.patch(sourceId, { artifact: undefined }));

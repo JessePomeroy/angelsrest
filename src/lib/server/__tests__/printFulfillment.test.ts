@@ -1,6 +1,7 @@
 import type Stripe from "stripe";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { Id } from "$convex/dataModel";
+import type { LumaPrintsConnection } from "$lib/server/lumaprintsConnections";
 
 const mockLogStructured = vi.fn();
 const mockCreateLumaPrintsOrder = vi.fn();
@@ -15,6 +16,12 @@ const mockSendAutomatedRefundFailureAlert = vi.fn();
 const mockFindLumaPrintsOrder = vi.fn();
 const mockConfirmLumaPrintsOrder = vi.fn();
 const mockPreparePrintSources = vi.fn();
+const mockGetLumaPrintsClient = vi.fn(() => ({
+	buildOrder: mockBuildLumaPrintsOrder,
+	createOrder: mockCreateLumaPrintsOrder,
+	confirmOrder: mockConfirmLumaPrintsOrder,
+	findOrderByExternalId: mockFindLumaPrintsOrder,
+}));
 
 vi.mock("$lib/server/logger", () => ({
 	logStructured: mockLogStructured,
@@ -59,10 +66,6 @@ vi.mock("$lib/server/lumaprints", () => {
 		LumaPrintsError,
 		LumaPrintsReconciliationError,
 		LumaPrintsSubmissionError,
-		buildLumaPrintsOrder: mockBuildLumaPrintsOrder,
-		confirmOrder: mockConfirmLumaPrintsOrder,
-		createOrder: mockCreateLumaPrintsOrder,
-		findOrderByExternalId: mockFindLumaPrintsOrder,
 	};
 });
 
@@ -281,7 +284,7 @@ describe("print fulfillment", () => {
 		const { submitPrintFulfillment } = await import("../printFulfillment");
 		await expect(
 			submitPrintFulfillment(
-				{ convex, createLumaPrintsOrder: mockCreateLumaPrintsOrder },
+				{ convex, getLumaPrintsClient: mockGetLumaPrintsClient },
 				{ ...printInput, lumaprintsExternalId: "AR-ORD-001" },
 			),
 		).resolves.toMatchObject({ kind: "fulfilled" });
@@ -308,7 +311,7 @@ describe("print fulfillment", () => {
 		mockFindLumaPrintsOrder.mockResolvedValue({ orderNumber: "123" });
 		await expect(
 			submitPrintFulfillment(
-				{ convex, createLumaPrintsOrder: mockCreateLumaPrintsOrder },
+				{ convex, getLumaPrintsClient: mockGetLumaPrintsClient },
 				{ ...printInput, lumaprintsExternalId: "AR-ORD-001" },
 			),
 		).resolves.toMatchObject({ kind: "fulfilled" });
@@ -324,10 +327,11 @@ describe("print fulfillment", () => {
 		const { submitPrintFulfillment } = await import("../printFulfillment");
 		await expect(
 			submitPrintFulfillment(
-				{ convex, createLumaPrintsOrder: mockCreateLumaPrintsOrder },
+				{ convex, getLumaPrintsClient: mockGetLumaPrintsClient },
 				{ ...printInput, fulfillmentType: "self" },
 			),
 		).resolves.toEqual({ kind: "no_print_items" });
+		expect(mockGetLumaPrintsClient).not.toHaveBeenCalled();
 		expect(convex.mutation).toHaveBeenCalledWith("orders.claimNonPrintOrderOutcome", {
 			orderId,
 			webhookSecret: "test-webhook-secret",
@@ -346,7 +350,7 @@ describe("print fulfillment", () => {
 		});
 		await expect(
 			submitPrintFulfillment(
-				{ convex, createLumaPrintsOrder: mockCreateLumaPrintsOrder },
+				{ convex, getLumaPrintsClient: mockGetLumaPrintsClient },
 				{
 					...printInput,
 					checkoutSnapshot: {
@@ -376,8 +380,9 @@ describe("print fulfillment", () => {
 	});
 
 	it("prepares print sources inside the trusted tenant before submission", async () => {
-		const { buildLumaPrintsOrder } =
+		const { createLegacyLumaPrintsClient } =
 			await vi.importActual<typeof import("../lumaprints")>("../lumaprints");
+		const buildLumaPrintsOrder = createLegacyLumaPrintsClient().buildOrder;
 		const { submitPrintFulfillment } = await import("../printFulfillment");
 		const cases = [
 			{ id: "cs_test_tenantAglobal1234", orderId: "order-a" as Id<"orders"> },
@@ -423,7 +428,7 @@ describe("print fulfillment", () => {
 		);
 		for (const { id, orderId } of cases)
 			await submitPrintFulfillment(
-				{ convex, createLumaPrintsOrder: mockCreateLumaPrintsOrder },
+				{ convex, getLumaPrintsClient: mockGetLumaPrintsClient },
 				{ ...printInput, orderId, session: { ...session, id } },
 			);
 		const expected = (id: string) => ({
@@ -503,7 +508,7 @@ describe("print fulfillment", () => {
 				},
 			]);
 		await expect(
-			submitPrintFulfillment({ convex, createLumaPrintsOrder: mockCreateLumaPrintsOrder }, input),
+			submitPrintFulfillment({ convex, getLumaPrintsClient: mockGetLumaPrintsClient }, input),
 		).rejects.toThrow("capability unavailable");
 		expect(convex.mutation).toHaveBeenNthCalledWith(1, "orders.claimPrintFulfillmentV5", {
 			orderId,
@@ -519,10 +524,7 @@ describe("print fulfillment", () => {
 			mockBuildOrderItemsFromSnapshot.mock.invocationCallOrder[0],
 		);
 
-		await submitPrintFulfillment(
-			{ convex, createLumaPrintsOrder: mockCreateLumaPrintsOrder },
-			input,
-		);
+		await submitPrintFulfillment({ convex, getLumaPrintsClient: mockGetLumaPrintsClient }, input);
 		expect(mockBuildOrderItemsFromSnapshot).toHaveBeenLastCalledWith(
 			checkoutSnapshot,
 			session.id,
@@ -548,10 +550,7 @@ describe("print fulfillment", () => {
 		mockPreparePrintSources.mockRejectedValueOnce(new Error("R2 unavailable"));
 
 		await expect(
-			submitPrintFulfillment(
-				{ convex, createLumaPrintsOrder: mockCreateLumaPrintsOrder },
-				printInput,
-			),
+			submitPrintFulfillment({ convex, getLumaPrintsClient: mockGetLumaPrintsClient }, printInput),
 		).rejects.toThrow("R2 unavailable");
 		expect(convex.mutation.mock.invocationCallOrder[0]).toBeLessThan(
 			mockPreparePrintSources.mock.invocationCallOrder[0],
@@ -576,10 +575,7 @@ describe("print fulfillment", () => {
 		});
 
 		await expect(
-			submitPrintFulfillment(
-				{ convex, createLumaPrintsOrder: mockCreateLumaPrintsOrder },
-				printInput,
-			),
+			submitPrintFulfillment({ convex, getLumaPrintsClient: mockGetLumaPrintsClient }, printInput),
 		).resolves.toEqual({ kind: "manual_refunded", stripeRefundId: "re_manual_123" });
 		expect(mockCreateLumaPrintsOrder).not.toHaveBeenCalled();
 	});
@@ -600,10 +596,7 @@ describe("print fulfillment", () => {
 			return { kind: "claimed", externalId: session.id };
 		});
 		const submit = () =>
-			submitPrintFulfillment(
-				{ convex, createLumaPrintsOrder: mockCreateLumaPrintsOrder },
-				printInput,
-			);
+			submitPrintFulfillment({ convex, getLumaPrintsClient: mockGetLumaPrintsClient }, printInput);
 		mockCreateLumaPrintsOrder.mockRejectedValueOnce(new Error("unknown response"));
 		await expect(submit()).rejects.toThrow("submission outcome is unknown");
 		mockFindLumaPrintsOrder.mockResolvedValueOnce({ orderNumber: "123" });
@@ -647,9 +640,7 @@ describe("print fulfillment", () => {
 			submitPrintFulfillment(
 				{
 					convex,
-					createLumaPrintsOrder: mockCreateLumaPrintsOrder,
-					confirmLumaPrintsOrder: mockConfirmLumaPrintsOrder,
-					findLumaPrintsOrder: mockFindLumaPrintsOrder,
+					getLumaPrintsClient: mockGetLumaPrintsClient,
 				},
 				printInput,
 			);
@@ -690,10 +681,7 @@ describe("print fulfillment", () => {
 		);
 
 		await expect(
-			submitPrintFulfillment(
-				{ convex, createLumaPrintsOrder: mockCreateLumaPrintsOrder },
-				printInput,
-			),
+			submitPrintFulfillment({ convex, getLumaPrintsClient: mockGetLumaPrintsClient }, printInput),
 		).rejects.toThrow("rejected");
 		expect(mockLogStructured).toHaveBeenCalledWith({
 			event: "lumaprints.failed",
@@ -732,10 +720,7 @@ describe("print fulfillment", () => {
 		);
 
 		await expect(
-			submitPrintFulfillment(
-				{ convex, createLumaPrintsOrder: mockCreateLumaPrintsOrder },
-				printInput,
-			),
+			submitPrintFulfillment({ convex, getLumaPrintsClient: mockGetLumaPrintsClient }, printInput),
 		).rejects.toThrow("submission outcome is unknown");
 		expect(mockLogStructured).toHaveBeenCalledWith(
 			expect.objectContaining({
@@ -769,10 +754,7 @@ describe("print fulfillment", () => {
 			)
 			.mockResolvedValueOnce({ orderNumber: "456" });
 		const submit = () =>
-			submitPrintFulfillment(
-				{ convex, createLumaPrintsOrder: mockCreateLumaPrintsOrder },
-				printInput,
-			);
+			submitPrintFulfillment({ convex, getLumaPrintsClient: mockGetLumaPrintsClient }, printInput);
 
 		await expect(submit()).rejects.toThrow("Print provider reconciliation is pending");
 		expect(stripe.refunds.create).not.toHaveBeenCalled();
@@ -823,7 +805,7 @@ describe("print fulfillment", () => {
 			const callCount = convex.mutation.mock.calls.length;
 			await expect(
 				submitPrintFulfillment(
-					{ convex, createLumaPrintsOrder: mockCreateLumaPrintsOrder },
+					{ convex, getLumaPrintsClient: mockGetLumaPrintsClient },
 					printInput,
 				),
 			).rejects.toThrow("reconciliation is pending");
@@ -861,10 +843,7 @@ describe("print fulfillment", () => {
 			new LumaPrintsReconciliationError("malformed", "blocked", "response_contract"),
 		);
 		const submit = () =>
-			submitPrintFulfillment(
-				{ convex, createLumaPrintsOrder: mockCreateLumaPrintsOrder },
-				printInput,
-			);
+			submitPrintFulfillment({ convex, getLumaPrintsClient: mockGetLumaPrintsClient }, printInput);
 
 		await expect(submit()).resolves.toEqual({
 			kind: "reconciliation_blocked",
@@ -913,10 +892,7 @@ describe("print fulfillment", () => {
 		);
 
 		await expect(
-			submitPrintFulfillment(
-				{ convex, createLumaPrintsOrder: mockCreateLumaPrintsOrder },
-				printInput,
-			),
+			submitPrintFulfillment({ convex, getLumaPrintsClient: mockGetLumaPrintsClient }, printInput),
 		).resolves.toEqual({
 			kind: "reconciliation_blocked",
 			reconciliationClass: "ambiguous_result",
@@ -946,10 +922,7 @@ describe("print fulfillment", () => {
 		mockFindLumaPrintsOrder.mockRejectedValueOnce(new Error("unexpected adapter fault"));
 
 		await expect(
-			submitPrintFulfillment(
-				{ convex, createLumaPrintsOrder: mockCreateLumaPrintsOrder },
-				printInput,
-			),
+			submitPrintFulfillment({ convex, getLumaPrintsClient: mockGetLumaPrintsClient }, printInput),
 		).rejects.toThrow("reconciliation is pending");
 		expect(convex.mutation).not.toHaveBeenCalledWith(
 			"orders.blockPrintFulfillmentReconciliation",
@@ -973,17 +946,23 @@ describe("print fulfillment", () => {
 		});
 
 		await expect(
-			submitPrintFulfillment(
-				{ convex, createLumaPrintsOrder: mockCreateLumaPrintsOrder },
-				printInput,
-			),
+			submitPrintFulfillment({ convex, getLumaPrintsClient: mockGetLumaPrintsClient }, printInput),
 		).rejects.toThrow("alert delivery is already in progress");
 		expect(mockFindLumaPrintsOrder).not.toHaveBeenCalled();
 		expect(mockCreateLumaPrintsOrder).not.toHaveBeenCalled();
 		expect(stripe.refunds.create).not.toHaveBeenCalled();
 	});
 
-	it("uses the current fulfillment result when a deterministic block result is stale", async () => {
+	it.each([
+		undefined,
+		{
+			version: 1,
+			connectionRef: "lp_client_stale_block",
+			tenantId: "tenant_12345678-1234-4234-8234-123456789abc",
+			storeId: 101,
+			environment: "sandbox",
+		} satisfies LumaPrintsConnection,
+	])("uses the current fulfillment result when a deterministic block result is stale (%j)", async (lumaprintsConnection) => {
 		const { LumaPrintsReconciliationError } = await import("$lib/server/lumaprints");
 		const { submitPrintFulfillment } = await import("../printFulfillment");
 		const claimResults = [
@@ -1000,13 +979,20 @@ describe("print fulfillment", () => {
 
 		await expect(
 			submitPrintFulfillment(
-				{ convex, createLumaPrintsOrder: mockCreateLumaPrintsOrder },
-				printInput,
+				{ convex, getLumaPrintsClient: mockGetLumaPrintsClient },
+				{ ...printInput, lumaprintsConnection, tenantId: lumaprintsConnection?.tenantId },
 			),
 		).resolves.toEqual({
 			kind: "fulfilled",
 			lumaprintsOrderNumber: "457",
 		});
+		const claims = convex.mutation.mock.calls.filter(
+			([reference]: [string]) => reference === "orders.claimPrintFulfillmentV5",
+		);
+		expect(claims).toHaveLength(2);
+		for (const [, args] of claims) {
+			expect(args.lumaprintsConnection).toEqual(lumaprintsConnection);
+		}
 		expect(mockCreateLumaPrintsOrder).not.toHaveBeenCalled();
 		expect(stripe.refunds.create).not.toHaveBeenCalled();
 		expect(convex.mutation).not.toHaveBeenCalledWith(
@@ -1033,10 +1019,7 @@ describe("print fulfillment", () => {
 		});
 
 		await expect(
-			submitPrintFulfillment(
-				{ convex, createLumaPrintsOrder: mockCreateLumaPrintsOrder },
-				printInput,
-			),
+			submitPrintFulfillment({ convex, getLumaPrintsClient: mockGetLumaPrintsClient }, printInput),
 		).resolves.toEqual({ kind: "manual_refunded", stripeRefundId: "re_manual_123" });
 		const claimArgs = convex.mutation.mock.calls.find(
 			(call: unknown[]) => call[0] === "orders.claimPrintFulfillmentV5",
@@ -1071,10 +1054,7 @@ describe("print fulfillment", () => {
 		mockFindLumaPrintsOrder.mockResolvedValueOnce({ orderNumber: "458" });
 
 		await expect(
-			submitPrintFulfillment(
-				{ convex, createLumaPrintsOrder: mockCreateLumaPrintsOrder },
-				printInput,
-			),
+			submitPrintFulfillment({ convex, getLumaPrintsClient: mockGetLumaPrintsClient }, printInput),
 		).resolves.toEqual({ kind: "manual_refunded", stripeRefundId: "re_manual_123" });
 		expect(mockFindLumaPrintsOrder).toHaveBeenCalledOnce();
 		expect(mockCreateLumaPrintsOrder).not.toHaveBeenCalled();
@@ -1487,7 +1467,7 @@ describe("print fulfillment", () => {
 
 			await expect(
 				submitPrintFulfillment(
-					{ convex, createLumaPrintsOrder: mockCreateLumaPrintsOrder },
+					{ convex, getLumaPrintsClient: mockGetLumaPrintsClient },
 					{
 						...printInput,
 						checkoutSnapshot,

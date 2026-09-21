@@ -15,14 +15,13 @@ import {
 import { FulfillmentValidationError } from "$lib/server/fulfillmentValidationError";
 import { logStructured } from "$lib/server/logger";
 import {
-	type ConfirmLumaPrintsOrder,
 	handlePermanentFulfillmentFailure,
 	handlePrintFulfillmentFailure,
 	type PrintFulfillmentOutcome,
+	type PrintProviderFactory,
 	PrintReconciliationAlertRetryableError,
 	PrintReconciliationPendingError,
 	ProviderSubmissionClosedRetryableError,
-	type SubmitLumaPrintsOrder,
 	sendClaimedFulfillmentFailureAdminAlert,
 	submitPrintFulfillment,
 } from "$lib/server/printFulfillment";
@@ -57,16 +56,14 @@ export async function createOrderInConvex(
 		stripe,
 		convex,
 		resend,
-		createLumaPrintsOrder,
-		confirmLumaPrintsOrder,
+		getLumaPrintsClient,
 		onOrderRecorded,
 		printJob,
 	}: {
 		stripe: Stripe;
 		convex: ConvexHttpClient;
 		resend: Resend;
-		createLumaPrintsOrder: SubmitLumaPrintsOrder;
-		confirmLumaPrintsOrder?: ConfirmLumaPrintsOrder;
+		getLumaPrintsClient: PrintProviderFactory;
 		onOrderRecorded?: (orderId: Id<"orders">, orderNumber: string) => Promise<void>;
 		printJob?: PreparedPrintJob;
 	},
@@ -138,7 +135,7 @@ export async function createOrderInConvex(
 	}
 
 	return finishRecordedPrintOrder(
-		{ stripe, convex, resend, createLumaPrintsOrder, confirmLumaPrintsOrder },
+		{ stripe, convex, resend, getLumaPrintsClient },
 		{
 			orderResult,
 			printJob,
@@ -161,6 +158,7 @@ type RecordedPrintOrder = Pick<
 	| "fulfillmentType"
 	| "lumaprintsOrderNumber"
 	| "lumaprintsExternalId"
+	| "lumaprintsConnection"
 	| "status"
 	| "stripeFees"
 	| "fulfillmentError"
@@ -180,14 +178,12 @@ export async function finishRecordedPrintOrder(
 		stripe,
 		convex,
 		resend,
-		createLumaPrintsOrder,
-		confirmLumaPrintsOrder,
+		getLumaPrintsClient,
 	}: {
 		stripe: Stripe;
 		convex: ConvexHttpClient;
 		resend: Resend;
-		createLumaPrintsOrder: SubmitLumaPrintsOrder;
-		confirmLumaPrintsOrder?: ConfirmLumaPrintsOrder;
+		getLumaPrintsClient: PrintProviderFactory;
 	},
 	{
 		orderResult,
@@ -403,8 +399,7 @@ export async function finishRecordedPrintOrder(
 		fulfillment = await submitPrintFulfillment(
 			{
 				convex,
-				createLumaPrintsOrder,
-				confirmLumaPrintsOrder,
+				getLumaPrintsClient,
 				preparedItems: printJob?.items,
 				printJobLeaseToken: printJob?.leaseToken,
 			},
@@ -413,6 +408,7 @@ export async function finishRecordedPrintOrder(
 				orderNumber,
 				fulfillmentType,
 				lumaprintsExternalId: orderResult.lumaprintsExternalId,
+				lumaprintsConnection: orderResult.lumaprintsConnection,
 				tenantId,
 				siteUrl,
 				lineItems,

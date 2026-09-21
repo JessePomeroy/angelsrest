@@ -1,6 +1,7 @@
 import type Stripe from "stripe";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { Id } from "$convex/dataModel";
+import { createOrderLumaPrintsClient } from "../lumaprints";
 
 const mockLogStructured = vi.fn();
 const mockSendAdminNotification = vi.fn();
@@ -407,7 +408,16 @@ describe("processStripeWebhookEvent", () => {
 	});
 
 	function adapters() {
-		return { stripe, resend, convex, createLumaPrintsOrder, confirmLumaPrintsOrder };
+		return {
+			stripe,
+			resend,
+			convex,
+			getLumaPrintsClient: (connection: Parameters<typeof createOrderLumaPrintsClient>[0]) => ({
+				...createOrderLumaPrintsClient(connection),
+				createOrder: createLumaPrintsOrder,
+				confirmOrder: confirmLumaPrintsOrder,
+			}),
+		};
 	}
 
 	function manualRefundEvent(overrides: Record<string, unknown> = {}) {

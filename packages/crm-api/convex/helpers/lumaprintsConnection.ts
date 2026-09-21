@@ -13,6 +13,24 @@ export const lumaprintsConnectionFields = {
 export const lumaprintsConnectionValidator = v.object(lumaprintsConnectionFields);
 export type LumaPrintsConnection = Infer<typeof lumaprintsConnectionValidator>;
 
+export function sameLumaPrintsConnection(left?: LumaPrintsConnection, right?: LumaPrintsConnection) {
+	if (!left || !right) return left === right;
+	return left.version === right.version && left.connectionRef === right.connectionRef
+		&& left.tenantId === right.tenantId && left.storeId === right.storeId
+		&& left.environment === right.environment;
+}
+
+/** Accepted work uses immutable ownership, independent of the current selection. */
+export async function assertSavedLumaPrintsConnection(
+	ctx: Pick<QueryCtx, "db">, connection: LumaPrintsConnection, tenantId: string | undefined,
+) {
+	if (connection.tenantId !== tenantId) throw new Error("LumaPrints connection tenant does not match order");
+	const saved = await resolveLumaPrintsConnection(ctx, connection.connectionRef);
+	if (!saved || !sameLumaPrintsConnection(connection, saved.context)) {
+		throw new Error("LumaPrints connection does not match saved ownership");
+	}
+}
+
 export function assertLumaPrintsConnection(value: LumaPrintsConnection) {
 	if (!/^lp_[A-Za-z0-9_-]{8,80}$/.test(value.connectionRef)
 		|| !isTenantId(value.tenantId)

@@ -17,6 +17,7 @@ export const source = query({
 		const order = await ctx.db.get(orderId);
 		if (!order || order.siteUrl !== "angelsrest.online" || order.status !== "new"
 			|| order.fulfillmentType !== "lumaprints" || order.printInput?.version !== 1
+			|| order.lumaprintsConnection !== undefined
 			|| order.printFulfillmentPhase !== "submitting"
 			|| order.printFulfillmentResolution !== "reconciliation_blocked"
 			|| !order.lumaprintsSubmissionOrderNumber || order.lumaprintsOrderNumber

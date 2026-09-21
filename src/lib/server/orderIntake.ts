@@ -23,11 +23,10 @@ import { OrderReceiptRetryableError, sendOrderReceipt } from "$lib/server/orderR
 import {
 	AutomatedFulfillmentRefundRetryableError,
 	AutomatedRefundNotificationRetryableError,
-	type ConfirmLumaPrintsOrder,
+	type PrintProviderFactory,
 	PrintReconciliationAlertRetryableError,
 	PrintReconciliationPendingError,
 	ProviderSubmissionClosedRetryableError,
-	type SubmitLumaPrintsOrder,
 	sendClaimedAutomatedRefundNotification,
 } from "$lib/server/printFulfillment";
 import {
@@ -62,8 +61,7 @@ export interface OrderIntakeAdapters {
 	stripe: Stripe;
 	resend: Resend;
 	convex: ConvexHttpClient;
-	createLumaPrintsOrder: SubmitLumaPrintsOrder;
-	confirmLumaPrintsOrder?: ConfirmLumaPrintsOrder;
+	getLumaPrintsClient: PrintProviderFactory;
 	printJob?: PreparedPrintJob;
 }
 
@@ -450,8 +448,7 @@ export async function handleCheckoutCompleted(
 			stripe: adapters.stripe,
 			convex: adapters.convex,
 			resend: adapters.resend,
-			createLumaPrintsOrder: adapters.createLumaPrintsOrder,
-			confirmLumaPrintsOrder: adapters.confirmLumaPrintsOrder,
+			getLumaPrintsClient: adapters.getLumaPrintsClient,
 			printJob: adapters.printJob,
 			onOrderRecorded: async (orderId, orderNumber) => {
 				receiptError = await sendOrderReceipt(adapters.convex, adapters.resend, orderId, {

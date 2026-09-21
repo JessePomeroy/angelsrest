@@ -9,7 +9,7 @@ import {
 } from "$lib/server/checkoutSnapshotConsumer";
 import { getConvex } from "$lib/server/convexClient";
 import { logStructured } from "$lib/server/logger";
-import { createOrder as createLumaPrintsOrder } from "$lib/server/lumaprints";
+import { createOrderLumaPrintsClient as getLumaPrintsClient } from "$lib/server/lumaprints";
 import { processStripeWebhookEvent } from "$lib/server/orderIntake";
 import { assertOrderProducersOpen, OrderProducersClosedError } from "$lib/server/orderProducerGate";
 import { getResend } from "$lib/server/resendClient";
@@ -40,7 +40,7 @@ export async function POST({ request }) {
 		return json({ received: true });
 	if (await isAcknowledgedOrderReplay(event)) return json({ received: true });
 	const resend = getResend();
-	await processStripeWebhookEvent(event, { stripe, resend, convex, createLumaPrintsOrder }, role);
+	await processStripeWebhookEvent(event, { stripe, resend, convex, getLumaPrintsClient }, role);
 	return json({ received: true });
 }
 

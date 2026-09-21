@@ -2,8 +2,9 @@
 
 The C3a foundation records a tenant's verified supplier identity independently
 of its current selection. C3b1 adds the server credential resolver and explicit
-provider client. Paid-order capture/adoption, connection setup, and shipment
-isolation still follow; no client-owned fulfillment or store readiness is claimed.
+provider client. C3b2 consumes saved order context and fences older workers.
+Pre-payment capture, connection setup, and authenticated client shipment intake
+still follow; no live client-owned fulfillment or store readiness is claimed.
 
 ## Ownership and authority
 
@@ -63,10 +64,10 @@ is still selected for new orders. Setup cannot reactivate a detached reference
 or replace an existing/historical connection. Reconnect and offboarding need
 their own reviewed operational path.
 
-The next adoption slice must freeze this non-secret context before payment and
-copy it from the bound reservation into the accepted order. Durable jobs must use
-that original context for payload construction, submission, confirmation, and
-external-ID lookup. A changed/missing credential mapping must stop the operation,
+The later checkout producer must freeze this non-secret context before payment.
+The paid-intake consumer now copies it from the bound reservation into the order,
+and durable jobs use that original context for payload construction, submission,
+confirmation, and external-ID lookup. A changed/missing credential mapping stops the operation,
 never reroute it to the latest client store or central configuration. Credential
 rotation preserves identity; account/store replacement creates a new identity.
 Existing paid work must retain its original central-provider interpretation until
@@ -133,18 +134,58 @@ a bounded valid list, and retains no provider body or store names. It establishe
 API access only; ownership, billing and launch acceptance remain separate.
 
 `createLegacyLumaPrintsClient()` explicitly resolves the existing central
-configuration. Existing top-level provider functions temporarily call that
-client until the paid-order consumer adopts the saved context. A supplied
-client context never falls back to legacy configuration. This source slice does
-not yet change order routing or pin supplier identity to an accepted checkout.
+configuration. `createOrderLumaPrintsClient(savedContext)` selects that legacy
+client only when the saved context is absent. A supplied context never falls back.
+The independent top-level operation wrappers were removed after host adoption;
+fulfillment receives one client factory and constructs one client per operation.
+
+## Saved paid-order context
+
+Reservations and orders accept an optional `lumaprintsConnection` containing the
+five immutable, non-secret identity fields. No checkout writer emits this field
+yet. The paid-order API does not accept it as an argument, and Stripe/browser
+metadata cannot set it. Paid intake transfers it only from the exact bound
+reservation, alongside frozen print input, in the same transaction that creates
+the order/job and consumes the reservation. A missing or mismatched immutable
+connection, wrong tenant, or context without frozen print input aborts the entire
+transaction. Replays return the original order context; they do not infer or
+backfill it from the client's current selection.
+
+The worker passes this saved context through the shared recorded-order coordinator.
+Before claiming provider work, the coordinator checks tenant identity and resolves
+one captured provider client. Missing/mismatched configuration stops without a
+provider request or automatic refund. Non-print orders need no supplier client.
+The V5 claim requires exact acknowledgment of the saved context and validates
+historical ownership. Legacy V1–V3 workers cannot claim context-bearing work;
+V4/V5 callers without the matching acknowledgment cannot submit or reconcile it.
+All existing uncertainty, lease, refund, provisional-receipt and retry fences stay
+in place. A credential outage cannot authorize a second POST.
+
+Confirmed and provisional supplier numbers are unique within the immutable
+connection reference. An absent context is a separate legacy scope. Both lookup
+types use bounded compound indexes over `lumaprintsConnection.connectionRef` and
+the provider number. Thus equal numeric order IDs in separate supplier accounts
+do not conflict or change each other's orders. The existing central shipment
+claim and uncertainty lookup search only the legacy scope. They cannot confirm
+a client receipt or claim its shipping email. Authenticated client shipment
+intake must land before any context-producing checkout is enabled.
+
+The existing Angels Rest incident-image diagnostic is explicitly legacy-only;
+it refuses context-bearing orders instead of testing them under central keys.
+This does not introduce a general client diagnostic or restore retired public
+image/pricing relays.
 
 ## Adoption and verification
 
-The schema and API are additive; existing provider calls and orders are unchanged.
-No runtime caller registers connections in this slice. Deploy the compatible
-backend and host consumers before any separately approved registration or
-activation. Keep Stripe onboarding disabled through the unfinished commerce work.
-Retain all connection history on rollback. Do not switch a sandbox binding to
+The schema/claim protocol are additive. Existing orders without context retain
+central routing; no backfill occurs. No runtime caller registers connections or
+captures checkout supplier context in this slice. Deploy the compatible backend,
+host consumer, and authenticated shipment intake before separately approved
+registration/capture/activation. Keep Stripe onboarding disabled through the
+unfinished commerce work. Once context-bearing work exists, rollback must retain
+the optional schema fields, scoped indexes and compatible workers until that work
+is drained; an older worker cannot take it over. Retain connection history and
+historical credential references. Do not switch a sandbox binding to
 production in place; use isolated sandbox acceptance records and explicit
 production setup.
 
