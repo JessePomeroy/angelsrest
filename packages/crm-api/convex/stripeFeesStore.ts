@@ -10,7 +10,13 @@ import { v } from "convex/values";
 import { internal } from "./_generated/api";
 import type { Doc, Id } from "./_generated/dataModel";
 import type { MutationCtx } from "./_generated/server";
-import { internalMutation, internalQuery } from "./_generated/server";
+import { internalMutation, internalQuery, query } from "./_generated/server";
+import { requireDocumentSiteAdmin } from "./authHelpers";
+import {
+	APPLICATION_FEE_INITIAL_DELAY_MS, APPLICATION_FEE_LEASE_MS, APPLICATION_FEE_MAX_ATTEMPTS,
+	APPLICATION_FEE_RETRY_DELAYS, applicationFeeErrorValidator, applicationFeeMatchesExpectation,
+	applicationFeeObservationValidator, validApplicationFeeObservation, type ApplicationFeeError,
+} from "./helpers/applicationFeeVerification";
 import {
 	FEE_CAPTURE_MAX_ATTEMPTS,
 	FEE_CAPTURE_PROVENANCE_VERSION,
@@ -258,5 +264,108 @@ export const expireAttempt = internalMutation({
 			attempt: attempt + 1,
 		});
 		return true;
+	},
+});
+
+// Application-fee verification has its own lifecycle. Fulfillment cancellation
+// and processing-fee capture must not close this record of the original fee.
+export async function scheduleApplicationFeeVerification(ctx: MutationCtx, orderId: Id<"orders">) {
+	const order = await ctx.db.get(orderId);
+	if (!order?.checkoutFinancialSnapshot) return;
+	const existing = await ctx.db.query("orderApplicationFees")
+		.withIndex("by_orderId", q => q.eq("orderId", orderId)).unique();
+	if (existing) return;
+	await ctx.db.insert("orderApplicationFees", {
+		orderId, status: "pending", attempts: 0, nextAttemptAt: Date.now() + APPLICATION_FEE_INITIAL_DELAY_MS,
+	});
+	await ctx.scheduler.runAfter(APPLICATION_FEE_INITIAL_DELAY_MS,
+		internal.stripeFees.verifyApplicationFeeForOrder, { orderId, attempt: 1 });
+}
+
+export const beginApplicationFeeAttempt = internalMutation({
+	args: { orderId: v.id("orders"), attempt: v.number(), attemptToken: v.string() },
+	handler: async (ctx, { orderId, attempt, attemptToken }) => {
+		const row = await ctx.db.query("orderApplicationFees")
+			.withIndex("by_orderId", q => q.eq("orderId", orderId)).unique();
+		if (!row || row.status !== "pending" || row.attemptToken !== undefined
+			|| !Number.isInteger(attempt) || attempt < 1 || attempt > APPLICATION_FEE_MAX_ATTEMPTS
+			|| attempt !== row.attempts + 1 || row.nextAttemptAt === undefined || row.nextAttemptAt > Date.now()
+			|| attemptToken.length < 16 || attemptToken.length > 100) return null;
+		const order = await ctx.db.get(orderId);
+		if (!order?.checkoutFinancialSnapshot) {
+			await ctx.db.patch(row._id, { status: "attention", error: "original_context_invalid", nextAttemptAt: undefined });
+			return null;
+		}
+		await ctx.db.patch(row._id, { attempts: attempt, attemptToken,
+			leaseUntil: Date.now() + APPLICATION_FEE_LEASE_MS, nextAttemptAt: undefined });
+		await ctx.scheduler.runAfter(APPLICATION_FEE_LEASE_MS,
+			internal.stripeFeesStore.expireApplicationFeeAttempt, { orderId, attempt, attemptToken });
+		return { siteUrl: order.siteUrl, tenantId: order.tenantId, stripeSessionId: order.stripeSessionId,
+			stripePaymentIntentId: order.stripePaymentIntentId, stripeConnectedAccountId: order.stripeConnectedAccountId,
+			stripePaymentCurrency: order.stripePaymentCurrency, stripePaymentLivemode: order.stripePaymentLivemode,
+			total: order.total, checkoutFinancialSnapshot: order.checkoutFinancialSnapshot };
+	},
+});
+
+async function finishApplicationFeeFailure(ctx: MutationCtx, row: Doc<"orderApplicationFees">, error: ApplicationFeeError) {
+	const retryable = ["provider_unavailable", "configuration_unavailable", "payment_not_ready", "fee_not_ready", "attempt_expired"].includes(error);
+	const delay = retryable ? APPLICATION_FEE_RETRY_DELAYS[row.attempts - 1] : undefined;
+	await ctx.db.patch(row._id, { error, attemptToken: undefined, leaseUntil: undefined,
+		status: delay === undefined ? "attention" : "pending",
+		nextAttemptAt: delay === undefined ? undefined : Date.now() + delay });
+	if (delay !== undefined) await ctx.scheduler.runAfter(delay,
+		internal.stripeFees.verifyApplicationFeeForOrder, { orderId: row.orderId, attempt: row.attempts + 1 });
+}
+
+export const finishApplicationFeeAttempt = internalMutation({
+	args: { orderId: v.id("orders"), attempt: v.number(), attemptToken: v.string(),
+		result: v.union(v.object({ observation: applicationFeeObservationValidator }),
+			v.object({ error: applicationFeeErrorValidator })) },
+	handler: async (ctx, { orderId, attempt, attemptToken, result }) => {
+		const row = await ctx.db.query("orderApplicationFees")
+			.withIndex("by_orderId", q => q.eq("orderId", orderId)).unique();
+		if (!row || row.status !== "pending" || row.attempts !== attempt || row.attemptToken !== attemptToken
+			|| row.leaseUntil === undefined || row.leaseUntil <= Date.now()) return false;
+		if ("error" in result) {
+			await finishApplicationFeeFailure(ctx, row, result.error);
+			return true;
+		}
+		const order = await ctx.db.get(orderId);
+		if (!order || !validApplicationFeeObservation(order, result.observation)) {
+			await finishApplicationFeeFailure(ctx, row, "original_context_invalid");
+			return false;
+		}
+		const matches = applicationFeeMatchesExpectation(order, result.observation);
+		await ctx.db.patch(row._id, { status: matches ? "verified" : "attention",
+			observation: result.observation, observedAt: Date.now(),
+			error: matches ? undefined : "fee_amount_mismatch", attemptToken: undefined,
+			leaseUntil: undefined, nextAttemptAt: undefined });
+		return true;
+	},
+});
+
+export const expireApplicationFeeAttempt = internalMutation({
+	args: { orderId: v.id("orders"), attempt: v.number(), attemptToken: v.string() },
+	handler: async (ctx, { orderId, attempt, attemptToken }) => {
+		const row = await ctx.db.query("orderApplicationFees")
+			.withIndex("by_orderId", q => q.eq("orderId", orderId)).unique();
+		if (!row || row.status !== "pending" || row.attempts !== attempt || row.attemptToken !== attemptToken
+			|| row.leaseUntil === undefined || row.leaseUntil > Date.now()) return false;
+		await finishApplicationFeeFailure(ctx, row, "attempt_expired");
+		return true;
+	},
+});
+
+/** Tenant membership authorizes the saved order, never a browser-selected account. */
+export const getApplicationFeeForOrder = query({
+	args: { orderId: v.id("orders") },
+	handler: async (ctx, { orderId }) => {
+		const order = await requireDocumentSiteAdmin(ctx, "orders", orderId);
+		const expected = order.checkoutFinancialSnapshot ?? null;
+		const row = await ctx.db.query("orderApplicationFees")
+			.withIndex("by_orderId", q => q.eq("orderId", orderId)).unique();
+		return { expected, status: row?.status ?? "unknown" as const,
+			observation: row?.observation ?? null, observedAt: row?.observedAt ?? null,
+			error: row?.error ?? null, nextAttemptAt: row?.nextAttemptAt ?? null };
 	},
 });

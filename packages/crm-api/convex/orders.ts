@@ -1,4 +1,5 @@
 import { v } from "convex/values";
+import { scheduleApplicationFeeVerification } from "./stripeFeesStore";
 import { internal } from "./_generated/api";
 import type { Doc, Id } from "./_generated/dataModel";
 import {
@@ -1243,6 +1244,7 @@ export const create = mutation({
 		if (refundIntent) {
 			await ctx.db.patch(refundIntent._id, { orderId: _id, consumedAt: Date.now() });
 		}
+		if (checkoutFinancialSnapshot) await scheduleApplicationFeeVerification(ctx, _id);
 		const printJobId = shouldEnqueuePrintJob
 			? await enqueuePrintFulfillmentJob(ctx, _id, printLineCount)
 			: undefined;
