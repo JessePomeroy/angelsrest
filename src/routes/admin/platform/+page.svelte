@@ -1,6 +1,7 @@
 <script lang="ts">
 import { addToast, getAdminConfig, PlatformPage, type PlatformClient } from "@jessepomeroy/admin";
 import { useQuery } from "convex-svelte";
+import { lumaprintsSetupPath } from "$lib/lumaprintsSetup";
 import { stripeConnectSetupPath } from "$lib/stripeConnectSetup";
 
 type StripePlatformClient = PlatformClient & {
@@ -87,6 +88,7 @@ async function copySetupLink() {
 		{:else}
 			<p class="setup-note">Client payment setup is not open yet.</p>
 		{/if}
+		{#if selectedClient}<a href={lumaprintsSetupPath(selectedClient.siteUrl)}>Set up this client’s LumaPrints store</a>{/if}
 	</div>
 
 	<div class="stripe-status" aria-live="polite">

@@ -4,7 +4,8 @@ The C3a foundation records a tenant's verified supplier identity independently
 of its current selection. C3b1 adds the server credential resolver and explicit
 provider client. C3b2 consumes saved order context and fences older workers.
 C3c adds authenticated client shipment intake and scoped notification retries.
-Pre-payment capture, connection setup, and provider acceptance still follow;
+C3d adds disabled-by-default operator setup with verified store access.
+Pre-payment capture and provider acceptance still follow;
 no live client-owned fulfillment or store readiness is claimed.
 
 ## Ownership and authority
@@ -14,7 +15,7 @@ billing. Angels Rest owns the integration. The hub's own supplier can use the sa
 identity protocol without a Stripe Connect account.
 
 `platform.registerVerifiedLumaPrintsConnection` requires both a verified creator
-session and the hub-only secret. The future host caller must first verify that
+session and the hub-only secret. The host setup caller must first verify that
 the selected store appears under the intended provider credentials, and obtain
 explicit operator confirmation of account ownership and billing setup. The
 mutation requires both confirmation flags. A client login alone, or a creator
@@ -24,8 +25,44 @@ The provider's [store listing](https://api-docs.lumaprints.com/api-5384565) iden
 available Standard Stores for the authenticated account. It does not establish
 who owns the account or whose card pays. [LumaPrints billing setup](https://api-docs.lumaprints.com/doc-421693)
 separately requires a primary payment method and the store's default billing
-address. The host provider client can verify store access, but no setup route
-calls it or registers a connection yet.
+address. Store access, operator confirmations, and commercial readiness are
+separate facts.
+
+## Operator setup
+
+The selected client in `/admin/platform` links to
+`/admin/platform/lumaprints/[siteUrl]`. The page uses the existing admin session;
+`platform.getLumaPrintsSetupTarget` independently requires creator membership
+before resolving the client, retained domain aliases, current connection and
+bounded connection-history presence. Client logins cannot read setup choices or
+call the supplier. Hub/creator records are not client setup targets.
+
+`LUMAPRINTS_CLIENT_SETUP_ENABLED` must equal `true`; missing or any other value
+leaves setup disabled. The disabled page needs no new backend query, so the host
+can land before the additive backend. Do not enable the flag as part of source
+delivery. Deploy the compatible backend and finish separately authorized
+configuration/provider acceptance first.
+
+Only the authorized tenant's configured connection reference, store and
+environment reach the form. API keys, credential references and arbitrary
+supplier settings are not browser inputs. The native same-origin POST accepts
+only one connection reference and two explicit confirmations, with a 4 KiB
+body limit. Changing the selection clears both confirmations.
+
+The host reauthorizes the target, checks the selected registry identity and
+dedicated shipment authentication, then verifies store access with one captured
+provider client. Only a successful read can reach registration. The final
+mutation rechecks creator and hub authority and the tenant observed before the
+provider read. Its optional `tenantId` acknowledgment preserves older callers
+while preventing the new host from binding after tenant identity changes.
+Concurrent/repeated identical setup preserves the first confirmation timestamps;
+replacement and detached historical reconnection remain prohibited.
+
+A saved connection is not a fresh readiness report. No supplier subscription,
+order, credential change or shop activation occurs here. Keep billing ownership,
+shipment acceptance, payment readiness and tax setup in the separate launch
+checklist. Use isolated sandbox records; a saved sandbox identity cannot become
+a production identity in place.
 
 ## Immutable connection
 
@@ -222,8 +259,8 @@ the provider, or activate new checkouts on deployment.
 ## Adoption and verification
 
 The schema/claim protocol are additive. Existing orders without context retain
-central routing; no backfill occurs. No runtime caller registers connections or
-captures checkout supplier context in this slice. Deploy the compatible backend,
+central routing; no backfill occurs. Operator registration exists behind its
+default-off flag; no checkout writer captures supplier context yet. Deploy the compatible backend,
 host consumer, and authenticated shipment intake before separately approved
 registration/capture/activation. Keep Stripe onboarding disabled through the
 unfinished commerce work. Once context-bearing work exists, rollback must retain

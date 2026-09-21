@@ -46,7 +46,13 @@ if (params.get("populated") === "true") {
 }
 </script>
 
-{#if fixture === "stripe-setup"}
+{#if fixture === "lumaprints-setup"}
+  {#await import("./LumaPrintsSetupHarness.svelte")}
+    <p>Loading LumaPrints setup fixture…</p>
+  {:then component}
+    <component.default />
+  {/await}
+{:else if fixture === "stripe-setup"}
   {#await import("./StripeSetupHarness.svelte")}
     <p>Loading Stripe setup fixture…</p>
   {:then component}

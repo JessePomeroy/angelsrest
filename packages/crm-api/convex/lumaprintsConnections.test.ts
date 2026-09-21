@@ -33,6 +33,29 @@ async function setup() {
 }
 
 describe("immutable LumaPrints connection identity", () => {
+	test("authorizes operator setup targets before exposing any supplier choices", async () => {
+		const s = await setup();
+		for (const caller of [s.t, s.client]) await expect(caller.query(api.platform.getLumaPrintsSetupTarget, { siteUrl: "client.example" })).rejects.toThrow("LUMAPRINTS_SETUP_FORBIDDEN");
+		const target = await s.creator.query(api.platform.getLumaPrintsSetupTarget, { siteUrl: "client.example" });
+		expect(target).toMatchObject({ clientId: s.clientId, siteUrl: "client.example", name: "Client", connection: null, hasHistory: false });
+		for (const siteUrl of ["angelsrest.online", "unknown.example"]) await expect(s.creator.query(api.platform.getLumaPrintsSetupTarget, { siteUrl })).rejects.toThrow("LUMAPRINTS_SETUP_NOT_CLIENT");
+	});
+
+	test("setup targets retain aliases and distinguish saved connections from detached history", async () => {
+		const s = await setup();
+		const connection = await s.bind();
+		await s.creator.mutation(api.platform.updateClient, { clientId: s.clientId, siteUrl: "renamed.example" });
+		expect(await s.creator.query(api.platform.getLumaPrintsSetupTarget, { siteUrl: "client.example" })).toMatchObject({ siteUrl: "renamed.example", connection, hasHistory: true });
+		await s.t.run(ctx => ctx.db.patch(s.clientId, { lumaprintsConnectionRef: undefined }));
+		expect(await s.creator.query(api.platform.getLumaPrintsSetupTarget, { siteUrl: "client.example" })).toMatchObject({ connection: null, hasHistory: true });
+	});
+
+	test("registration rejects a tenant change since the host verified the supplier", async () => {
+		const s = await setup();
+		await expect(s.creator.mutation(api.platform.registerVerifiedLumaPrintsConnection, { ...s.args, tenantId: "tenant_00000000-0000-4000-8000-000000000001" })).rejects.toThrow("tenant changed");
+		expect(await s.current()).toBeNull();
+	});
+
 	test("requires creator membership and hub authority before binding", async () => {
 		const s = await setup();
 		await expect(s.t.mutation(api.platform.registerVerifiedLumaPrintsConnection, s.args)).rejects.toThrow("Not authenticated");

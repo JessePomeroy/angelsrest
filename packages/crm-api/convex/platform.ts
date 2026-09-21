@@ -352,10 +352,43 @@ export const updateStripeConnectedAccount = mutation({
 	},
 });
 
+/** Creator-only target resolution before the host reads supplier credentials or calls the provider. */
+export const getLumaPrintsSetupTarget = query({
+	args: { siteUrl: v.string() },
+	handler: async (ctx, { siteUrl }) => {
+		try {
+			await requireCreator(ctx);
+		} catch (cause) {
+			if (cause instanceof Error && ["Not authenticated", "Not authorized (not a creator)"].includes(cause.message)) {
+				throw new ConvexError("LUMAPRINTS_SETUP_FORBIDDEN");
+			}
+			throw cause;
+		}
+		const target = await resolveTenantContext(ctx, { siteUrl });
+		if (!target || target.client.role === "creator" || target.client.siteUrl === "angelsrest.online") {
+			throw new ConvexError("LUMAPRINTS_SETUP_NOT_CLIENT");
+		}
+		const { client, tenantId } = target;
+		if (!tenantId) throw new ConvexError("LUMAPRINTS_SETUP_IDENTITY_UNAVAILABLE");
+		const current = client.lumaprintsConnectionRef
+			? await resolveLumaPrintsConnection(ctx, client.lumaprintsConnectionRef) : null;
+		if (client.lumaprintsConnectionRef && (!current || current.owner._id !== client._id || current.context.tenantId !== tenantId)) {
+			throw new Error("Current LumaPrints connection is inconsistent");
+		}
+		const history = await ctx.db.query("lumaprintsConnections")
+			.withIndex("by_clientId", q => q.eq("clientId", client._id)).take(1);
+		return {
+			clientId: client._id, tenantId, siteUrl: client.siteUrl, name: client.name,
+			connection: current?.context ?? null, hasHistory: history.length > 0,
+		};
+	},
+});
+
 /** Host verifies the store and obtains operator account/billing confirmation before calling. */
 export const registerVerifiedLumaPrintsConnection = mutation({
 	args: {
 		clientId: v.id("platformClients"),
+		tenantId: v.optional(v.string()),
 		connectionRef: v.string(),
 		storeId: v.number(),
 		environment: lumaprintsConnectionFields.environment,
@@ -369,6 +402,9 @@ export const registerVerifiedLumaPrintsConnection = mutation({
 		const client = await ctx.db.get(args.clientId);
 		if (!client) throw new Error("Platform client not found");
 		const { tenantId } = await ensureTenantIdentity(ctx, client, "platform_client_site_url");
+		if (args.tenantId !== undefined && args.tenantId !== tenantId) {
+			throw new Error("LumaPrints setup tenant changed during verification");
+		}
 		if ((await resolveTenantContext(ctx, { tenantId }))?.client._id !== client._id) {
 			throw new Error("LumaPrints tenant ownership is inconsistent");
 		}

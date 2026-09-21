@@ -355,3 +355,33 @@ Paper and 21st tools were unavailable for this pass. The inventory explicitly
 marks the new portal and changed platform references as needing a Paper update
 and comparison, with `lastVerified: null`. This is browser/source verification,
 not a completed Paper comparison or real-provider acceptance.
+
+## Client supplier setup source update — September 21, 2026
+
+The platform client selector now links to the creator-only
+`/admin/platform/lumaprints/[siteUrl]` setup page. Its native store selector and
+ownership/billing confirmations reuse admin tokens. It separates saved identity
+from shop activation and renders disabled, unauthorized, unavailable,
+unconfigured, available, connected, historical-review and verification-error
+states. Source setup is disabled by default.
+
+All 18 focused desktop/mobile Chromium cases passed, covering required fields,
+the exact native POST, confirmation reset after changing stores and state
+containment. Manual browser inspection used the actual page and platform wrapper
+inside AdminLayout with fictional records at 1440×1000 and 390×1000. Store
+selection, both confirmations, reset behavior and the selected client's link
+were exercised; representative mobile form/saved and desktop error/disabled
+screens were visually inspected. No console errors/warnings or horizontal page
+overflow were observed. Images were inspected in the browser session; no durable
+capture-file artifact is claimed. No real auth/provider operation was performed.
+
+Safe handbook entry:
+`/?route=/admin/platform/lumaprints/studio.example.invalid&phase=available&theme=dark`.
+Use the state names above for `phase`, with `error` for the verification-error
+fixture. The normal browser test harness also exposes `?fixture=lumaprints-setup`.
+
+Paper WebMCP can read the existing reference, but the browser is signed out and
+font/edit operations require edit access. No Paper board was changed or marked
+verified. The inventory preserves existing platform IDs and records the new
+setup reference and same-state comparison as pending owner access under C6.
+21st tooling was unavailable; existing admin patterns supplied the design.
