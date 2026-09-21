@@ -7,6 +7,7 @@ import Stripe from "stripe";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { api, internal } from "$convex/api";
 import schema from "../../../../packages/crm-api/convex/schema";
+import { createOrderLumaPrintsClient, type LumaPrintsClient } from "../lumaprints";
 import { processStripeWebhookEvent } from "../orderIntake";
 import { finishRecordedPrintOrder } from "../webhookOrders";
 
@@ -210,7 +211,7 @@ describe("order intake with real Convex state", () => {
 		const createLumaPrintsOrder = vi.fn().mockResolvedValue({ orderNumber: "456" });
 		const adapters = {
 			convex,
-			createLumaPrintsOrder,
+			getLumaPrintsClient: providerFactory(createLumaPrintsOrder),
 			stripe: new Stripe("sk_test_fixture"),
 			resend: new Resend("re_fixture"),
 		};
@@ -336,7 +337,7 @@ describe("order intake with real Convex state", () => {
 			stripe,
 			convex,
 			resend: resend as never,
-			createLumaPrintsOrder,
+			getLumaPrintsClient: providerFactory(createLumaPrintsOrder),
 		};
 		const fetchMock = vi
 			.fn()
@@ -433,7 +434,7 @@ describe("order intake with real Convex state", () => {
 			stripe,
 			convex,
 			resend: resend as never,
-			createLumaPrintsOrder,
+			getLumaPrintsClient: providerFactory(createLumaPrintsOrder),
 		};
 		const fetchMock = vi.fn().mockResolvedValue(
 			reconciliationPage([
@@ -530,8 +531,7 @@ describe("order intake with real Convex state", () => {
 			stripe,
 			convex,
 			resend: { emails: { send: vi.fn() } } as never,
-			createLumaPrintsOrder,
-			confirmLumaPrintsOrder,
+			getLumaPrintsClient: providerFactory(createLumaPrintsOrder, confirmLumaPrintsOrder),
 		};
 		if (initialDelivery === "failed") {
 			email.confirmation.mockRejectedValueOnce(new Error("Mail unavailable"));
@@ -580,3 +580,14 @@ describe("order intake with real Convex state", () => {
 		expect(stripe.refunds.create as ReturnType<typeof vi.fn>).not.toHaveBeenCalled();
 	});
 });
+
+function providerFactory(
+	createOrder: LumaPrintsClient["createOrder"],
+	confirmOrder?: LumaPrintsClient["confirmOrder"],
+) {
+	return (connection: Parameters<typeof createOrderLumaPrintsClient>[0]) => ({
+		...createOrderLumaPrintsClient(connection),
+		createOrder,
+		...(confirmOrder ? { confirmOrder } : {}),
+	});
+}

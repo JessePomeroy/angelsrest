@@ -3,7 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
 	convex: { query: vi.fn(), mutation: vi.fn() },
-	createLumaPrintsOrder: vi.fn(),
+	getLumaPrintsClient: vi.fn(),
 	logStructured: vi.fn(),
 	process: vi.fn(),
 	getResend: vi.fn(),
@@ -21,7 +21,9 @@ const mocks = vi.hoisted(() => ({
 vi.mock("$env/dynamic/private", () => ({ env: mocks.env }));
 vi.mock("$lib/server/convexClient", () => ({ getConvex: () => mocks.convex }));
 vi.mock("$lib/server/logger", () => ({ logStructured: mocks.logStructured }));
-vi.mock("$lib/server/lumaprints", () => ({ createOrder: mocks.createLumaPrintsOrder }));
+vi.mock("$lib/server/lumaprints", () => ({
+	createOrderLumaPrintsClient: mocks.getLumaPrintsClient,
+}));
 vi.mock("$lib/server/orderIntake", () => ({ processStripeWebhookEvent: mocks.process }));
 vi.mock("$lib/server/resendClient", () => ({ getResend: mocks.getResend }));
 vi.mock("$lib/server/stripeClient", () => ({ getStripe: () => mocks.stripe }));
@@ -75,7 +77,7 @@ describe("Stripe webhook route", () => {
 				stripe: mocks.stripe,
 				resend: mocks.resend,
 				convex: mocks.convex,
-				createLumaPrintsOrder: mocks.createLumaPrintsOrder,
+				getLumaPrintsClient: mocks.getLumaPrintsClient,
 			},
 			"your-account",
 		);
@@ -105,7 +107,7 @@ describe("Stripe webhook route", () => {
 		expect(mocks.convex.query).toHaveBeenCalledOnce();
 		expect(mocks.process).not.toHaveBeenCalled();
 		expect(mocks.getResend).not.toHaveBeenCalled();
-		expect(mocks.createLumaPrintsOrder).not.toHaveBeenCalled();
+		expect(mocks.getLumaPrintsClient).not.toHaveBeenCalled();
 	});
 
 	it("acknowledges an existing-order replay while producers are closed", async () => {
@@ -125,7 +127,7 @@ describe("Stripe webhook route", () => {
 		});
 		expect(mocks.process).not.toHaveBeenCalled();
 		expect(mocks.getResend).not.toHaveBeenCalled();
-		expect(mocks.createLumaPrintsOrder).not.toHaveBeenCalled();
+		expect(mocks.getLumaPrintsClient).not.toHaveBeenCalled();
 	});
 
 	it("rejects a malformed explicit tenant ID instead of treating it as legacy", async () => {
@@ -164,7 +166,7 @@ describe("Stripe webhook route", () => {
 		expect(mocks.convex.query).toHaveBeenCalledOnce();
 		expect(mocks.process).not.toHaveBeenCalled();
 		expect(mocks.getResend).not.toHaveBeenCalled();
-		expect(mocks.createLumaPrintsOrder).not.toHaveBeenCalled();
+		expect(mocks.getLumaPrintsClient).not.toHaveBeenCalled();
 	});
 
 	it.each([
@@ -248,7 +250,7 @@ describe("Stripe webhook route", () => {
 			body: { message: "Webhook account scope does not match its destination" },
 		});
 		expect(mocks.process).not.toHaveBeenCalled();
-		expect(mocks.createLumaPrintsOrder).not.toHaveBeenCalled();
+		expect(mocks.getLumaPrintsClient).not.toHaveBeenCalled();
 		expect(mocks.logStructured).toHaveBeenCalledWith({
 			event: "webhook.commerce_scope_rejected",
 			level: "error",
@@ -328,7 +330,7 @@ describe("Stripe webhook route", () => {
 		});
 		expect(mocks.process).not.toHaveBeenCalled();
 		expect(mocks.getResend).not.toHaveBeenCalled();
-		expect(mocks.createLumaPrintsOrder).not.toHaveBeenCalled();
+		expect(mocks.getLumaPrintsClient).not.toHaveBeenCalled();
 	});
 
 	it.each([

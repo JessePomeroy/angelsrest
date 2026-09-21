@@ -819,33 +819,11 @@ export function createLegacyLumaPrintsClient(): LumaPrintsClient {
 	return configuredClient(getRuntimeConfig());
 }
 
-// Retained until the paid-order consumer adopts one client for the entire operation.
-export function buildLumaPrintsOrder(externalId: string, recipient: Recipient, items: OrderItem[]) {
-	return createLegacyLumaPrintsClient().buildOrder(externalId, recipient, items);
-}
-
-export async function createOrder(order: LumaPrintsOrder): Promise<LumaPrintsOrderResponse> {
-	return createLegacyLumaPrintsClient().createOrder(order);
-}
-
-export async function confirmOrder(orderNumber: string, externalId: string): Promise<boolean> {
-	let client: LumaPrintsClient;
-	try {
-		client = createLegacyLumaPrintsClient();
-	} catch {
-		throw reconciliationFailure("Order confirmation client failed", "client_error");
-	}
-	return client.confirmOrder(orderNumber, externalId);
-}
-
-export async function findOrderByExternalId(
-	externalId: string,
-): Promise<LumaPrintsOrderResponse | null> {
-	let client: LumaPrintsClient;
-	try {
-		client = createLegacyLumaPrintsClient();
-	} catch {
-		throw reconciliationFailure("Order reconciliation client failed", "client_error");
-	}
-	return client.findOrderByExternalId(externalId);
+/** Resolve the saved order context; absence is reserved for historical central work. */
+export function createOrderLumaPrintsClient(
+	connection: LumaPrintsConnection | undefined,
+): LumaPrintsClient {
+	return connection === undefined
+		? createLegacyLumaPrintsClient()
+		: createLumaPrintsClient(connection);
 }

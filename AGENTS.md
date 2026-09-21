@@ -51,9 +51,11 @@ Canonical rules for working in this repository.
   marker for platform-account tenant checkouts; never trust a browser-supplied
   tenant name, origin, sender, or notification recipient.
 - **The hub owns LumaPrints shipment intake:** `/api/webhooks/lumaprints`
-  verifies the provider's configured Basic credentials and resolves the
-  provider-global order number to its stored tenant. Client spokes must not
-  receive the broad Convex webhook secret or run a duplicate shipment handler.
+  verifies the central provider's Basic credentials and resolves order numbers
+  only in the legacy central supplier scope. Client supplier contexts must be
+  authenticated independently before lookup; a bare provider order number does
+  not establish tenant ownership. Client spokes must not receive the broad
+  Convex webhook secret or run a duplicate shipment handler.
 - **External systems:** Stripe, LumaPrints, Resend, Convex, and the
   gallery worker are network boundaries. Make their failure and retry behavior
   explicit; avoid speculative interfaces around pure in-process code.

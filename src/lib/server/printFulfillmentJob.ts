@@ -10,7 +10,7 @@ import { resolveStoredCommerceTenant } from "$lib/server/commerceTenant";
 import { getConvex } from "$lib/server/convexClient";
 import { FulfillmentValidationError } from "$lib/server/fulfillmentValidationError";
 import { logStructured } from "$lib/server/logger";
-import { createOrder as createLumaPrintsOrder } from "$lib/server/lumaprints";
+import { createOrderLumaPrintsClient as getLumaPrintsClient } from "$lib/server/lumaprints";
 import { deliverFulfillmentOutcome, handleCheckoutCompleted } from "$lib/server/orderIntake";
 import { PrintReconciliationPendingError } from "$lib/server/printFulfillment";
 import { renderPrintSource } from "$lib/server/printSourcePreparation";
@@ -182,7 +182,7 @@ export async function runPrintFulfillmentStep(
 							country: address.country,
 						},
 					};
-					const adapters = { stripe, convex, resend: getResend(), createLumaPrintsOrder };
+					const adapters = { stripe, convex, resend: getResend(), getLumaPrintsClient };
 					const orderResult = await finishRecordedPrintOrder(adapters, {
 						orderResult: { ...order, alreadyExisted: true },
 						printJob: { jobId, leaseToken, items },
@@ -217,7 +217,7 @@ export async function runPrintFulfillmentStep(
 							stripe,
 							convex,
 							resend: getResend(),
-							createLumaPrintsOrder,
+							getLumaPrintsClient,
 							printJob: { jobId, leaseToken, items },
 						},
 						{ ...tenant, stripeRequestOptions, routingSource: "order", completeLineItems: true },

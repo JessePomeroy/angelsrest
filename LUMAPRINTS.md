@@ -35,6 +35,16 @@ record; this document retains the current operating contract and bounded evidenc
 
 ## Current source flow
 
+The client-ownership work adds an optional saved supplier connection to accepted
+orders. When present, one resolved provider client supplies the payload builder,
+submission, confirmation and retry lookup; workers must acknowledge that exact
+context. Existing orders without context retain central routing. No checkout
+producer captures the new context yet, and central shipment intake cannot update
+client-scoped orders. Client setup, pre-payment capture and authenticated client
+shipment intake remain required before activation. See the
+[client supplier contract](docs/contracts/client-lumaprints-connections.md) for
+the additive rollout, legacy scope and credential-rotation rules.
+
 The current host uses the V5 coordinator with additive compatibility state.
 Verify the actual production deployment and admission state before live work;
 source code alone is not evidence that fulfillment is ready.
@@ -265,8 +275,8 @@ customer-facing policy.
 
 ## Shipment notifications
 
-The hub route `/api/webhooks/lumaprints` is the only shipment intake owner. It
-claims a tokenized Convex lease by the canonical provider-global order number,
+The hub route `/api/webhooks/lumaprints` owns legacy central shipment intake. It
+claims a tokenized Convex lease by the canonical order number within the legacy supplier scope,
 then sends through Resend with a stable provider-number idempotency key. Active
 leases and send/checkpoint failures return retryable non-2xx responses inside
 the bounded idempotency window. A send failure releases its lease and stores
@@ -278,7 +288,7 @@ lease immediately before sending. Later unconfirmed delivery becomes durable
 uncertainty; V2 returns baseline `completed`, and no second email is sent.
 Later shipment events can still update tracking data without clearing this
 email fence. Historical shipped rows and legacy email markers remain
-terminal unless the row has explicit V2 lease evidence. The old provider-global
+terminal unless the row has explicit V2 lease evidence. The old central
 claim/checkpoint functions remain only as an inert rollout bridge for V2 rows;
 the site-scoped shipment lookup, claim, and checkpoint APIs remain deprecated
 admin-auth compatibility surfaces. They require authenticated stored site-admin

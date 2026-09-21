@@ -1,7 +1,7 @@
 import { defineSchema, defineTable } from "convex/server";
 import { v } from "convex/values";
 import { stripeConnectStatusValidator } from "./helpers/stripeConnectStatus";
-import { lumaprintsConnectionFields } from "./helpers/lumaprintsConnection";
+import { lumaprintsConnectionFields, lumaprintsConnectionValidator } from "./helpers/lumaprintsConnection";
 import {
 	checkoutSnapshotValidator,
 	reservedCheckoutSnapshotValidator,
@@ -1001,6 +1001,7 @@ export default defineSchema({
 		snapshotDigest: v.string(),
 		snapshot: reservedCheckoutSnapshotValidator,
 		printInput: v.optional(reservedPrintInputValidator),
+		lumaprintsConnection: v.optional(lumaprintsConnectionValidator),
 		accountScope: v.string(),
 		stripeConnectedAccountId: v.optional(v.string()),
 		stripeSessionId: v.optional(v.string()),
@@ -1108,6 +1109,7 @@ export default defineSchema({
 		stripeSessionId: v.string(),
 		// Frozen provider-facing reference; absent historical rows retain their Stripe identity.
 		lumaprintsExternalId: v.optional(v.string()),
+		lumaprintsConnection: v.optional(lumaprintsConnectionValidator),
 		stripePaymentIntentId: v.optional(v.string()),
 		stripePaymentCurrency: v.optional(v.string()),
 		stripePaymentLivemode: v.optional(v.boolean()),
@@ -1398,14 +1400,19 @@ export default defineSchema({
 		.index("by_stripeSessionId", ["stripeSessionId"])
 		.index("by_orderNumber", ["siteUrl", "orderNumber"])
 		.index("by_customerEmail", ["siteUrl", "customerEmail"])
-		// Hub-owned shipment webhook lookup. LumaPrints order numbers are
-		// provider-global; the mutation rejects duplicates rather than guessing.
+		// Retained during the additive rollout; current consumers use connection scope.
 		.index("by_lumaprintsOrderNumber_global", ["lumaprintsOrderNumber"])
 		.index("by_lumaprintsSubmissionOrderNumber_global", [
 			"lumaprintsSubmissionOrderNumber",
 		])
+		.index("by_connectionRef_and_lumaprintsOrderNumber", [
+			"lumaprintsConnection.connectionRef", "lumaprintsOrderNumber",
+		])
+		.index("by_connectionRef_and_lumaprintsSubmissionOrderNumber", [
+			"lumaprintsConnection.connectionRef", "lumaprintsSubmissionOrderNumber",
+		])
 		// Deprecated authenticated-admin compatibility lookup. The hub webhook
-		// uses the provider-global index and never delegates its bearer secret.
+		// uses connection scope and never delegates its bearer secret.
 		.index("by_lumaprintsOrderNumber", ["siteUrl", "lumaprintsOrderNumber"]),
 
 	// Minimal replay protection retained after an owner-approved order reset.

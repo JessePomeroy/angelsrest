@@ -12,13 +12,12 @@ import {
 } from "$lib/server/commerceTenant";
 import { logStructured, timed } from "$lib/server/logger";
 import {
-	buildLumaPrintsOrder,
-	confirmOrder,
-	findOrderByExternalId,
+	type LumaPrintsClient,
 	type LumaPrintsReconciliationClass,
 	LumaPrintsReconciliationError,
 	LumaPrintsSubmissionError,
 } from "$lib/server/lumaprints";
+import type { LumaPrintsConnection } from "$lib/server/lumaprintsConnections";
 import { buildOrderItemsFromSession, buildRecipientFromShipping } from "$lib/server/webhookDecoder";
 import type { ShippingDetails } from "$lib/server/webhookEmails";
 import {
@@ -50,11 +49,12 @@ export type PrintReconciliationEscalationReason =
 	| "client_exception"
 	| "result_not_observed";
 
-export type SubmitLumaPrintsOrder = (order: LumaPrintsOrder) => Promise<LumaPrintsOrderResponse>;
-export type ConfirmLumaPrintsOrder = (
-	orderNumber: string,
-	expectedExternalId: string,
-) => Promise<boolean>;
+export type PrintProviderFactory = (
+	connection: LumaPrintsConnection | undefined,
+) => Pick<
+	LumaPrintsClient,
+	"buildOrder" | "createOrder" | "confirmOrder" | "findOrderByExternalId"
+>;
 
 export type PrintFulfillmentOutcome =
 	| { kind: "fulfilled"; lumaprintsOrderNumber: string }
@@ -95,9 +95,7 @@ export type PrintFulfillmentOutcome =
 
 export interface PrintFulfillmentAdapters {
 	convex: ConvexHttpClient;
-	createLumaPrintsOrder: SubmitLumaPrintsOrder;
-	confirmLumaPrintsOrder?: ConfirmLumaPrintsOrder;
-	findLumaPrintsOrder?: (externalId: string) => Promise<LumaPrintsOrderResponse | null>;
+	getLumaPrintsClient: PrintProviderFactory;
 	preparedItems?: OrderItem[];
 	printJobLeaseToken?: string;
 }
@@ -200,19 +198,13 @@ async function recordInconclusiveReconciliation(
 }
 
 export async function submitPrintFulfillment(
-	{
-		convex,
-		createLumaPrintsOrder,
-		confirmLumaPrintsOrder = confirmOrder,
-		findLumaPrintsOrder = findOrderByExternalId,
-		preparedItems,
-		printJobLeaseToken,
-	}: PrintFulfillmentAdapters,
+	{ convex, getLumaPrintsClient, preparedItems, printJobLeaseToken }: PrintFulfillmentAdapters,
 	input: {
 		orderId: Id<"orders">;
 		orderNumber: string;
 		fulfillmentType?: "lumaprints" | "self" | "digital";
 		lumaprintsExternalId?: string;
+		lumaprintsConnection?: LumaPrintsConnection;
 		tenantId?: string;
 		siteUrl: string;
 		lineItems: Stripe.LineItem[];
@@ -226,6 +218,7 @@ export async function submitPrintFulfillment(
 		orderNumber,
 		fulfillmentType = "lumaprints",
 		lumaprintsExternalId,
+		lumaprintsConnection,
 		tenantId,
 		siteUrl,
 		lineItems,
@@ -247,6 +240,12 @@ export async function submitPrintFulfillment(
 					({ productKind }) => productKind === "print" || productKind === "print_set",
 				)
 			: (preparedItems ?? legacyItems ?? []).length > 0);
+	if (
+		lumaprintsConnection !== undefined &&
+		(!hasPrintItems || lumaprintsConnection.tenantId !== tenantId)
+	) {
+		throw new Error("Saved supplier context does not match print order");
+	}
 	if (!hasPrintItems) {
 		const outcome = await convex.mutation(api.orders.claimNonPrintOrderOutcome, {
 			orderId,
@@ -273,11 +272,13 @@ export async function submitPrintFulfillment(
 			: { kind: "no_print_items_replayed" };
 	}
 
+	const provider = getLumaPrintsClient(lumaprintsConnection);
 	const claimToken = randomUUID();
 	const claimed = await convex.mutation(api.orders.claimPrintFulfillmentV5, {
 		orderId,
 		claimToken,
 		...providerReferenceFence,
+		...(lumaprintsConnection === undefined ? {} : { lumaprintsConnection }),
 		...(printJobLeaseToken ? { printJobLeaseToken } : {}),
 		...tenantFence,
 		webhookSecret,
@@ -323,8 +324,8 @@ export async function submitPrintFulfillment(
 		try {
 			existing =
 				submissionOrderNumber === undefined
-					? await findLumaPrintsOrder(providerExternalId)
-					: (await confirmLumaPrintsOrder(submissionOrderNumber, providerExternalId))
+					? await provider.findOrderByExternalId(providerExternalId)
+					: (await provider.confirmOrder(submissionOrderNumber, providerExternalId))
 						? { orderNumber: submissionOrderNumber }
 						: null;
 		} catch (error) {
@@ -513,7 +514,7 @@ export async function submitPrintFulfillment(
 			);
 		}
 		recipient ??= buildRecipientFromShipping(shippingDetails);
-		lpOrder = buildLumaPrintsOrder(providerExternalId, recipient, items);
+		lpOrder = provider.buildOrder(providerExternalId, recipient, items);
 	} catch (cause) {
 		await releasePreparationClaim();
 		throw cause;
@@ -546,7 +547,7 @@ export async function submitPrintFulfillment(
 
 	let result: LumaPrintsOrderResponse;
 	try {
-		result = await createLumaPrintsOrder(lpOrder);
+		result = await provider.createOrder(lpOrder);
 	} catch (error) {
 		logStructured({
 			event: "lumaprints.failed",

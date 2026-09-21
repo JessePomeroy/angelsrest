@@ -33,6 +33,7 @@ import {
 } from "./helpers/checkoutSnapshot";
 import { tenantIdentityMatchesSite } from "./helpers/tenantContext";
 import { isCurrentStripeAccountForSite, resolveStripeAccountOwner } from "./helpers/stripeAccountOwnership";
+import { assertSavedLumaPrintsConnection, lumaprintsConnectionValidator, sameLumaPrintsConnection, type LumaPrintsConnection } from "./helpers/lumaprintsConnection";
 import { AGGREGATE_SCAN_LIMIT, BULK_SCAN_LIMIT } from "./helpers/limits";
 import {
 	assertOrderNumberAvailable,
@@ -175,11 +176,11 @@ function canClaimShipmentEmail(status: string) {
 	return status === "new" || status === "printing" || status === "ready";
 }
 
-async function findGlobalLumaPrintsOrder(ctx: MutationCtx, lumaprintsOrderNumber: string) {
+async function findScopedLumaPrintsOrder(ctx: MutationCtx, lumaprintsOrderNumber: string, connectionRef?: string) {
 	const matchingOrders = await ctx.db
 		.query("orders")
-		.withIndex("by_lumaprintsOrderNumber_global", (q) =>
-			q.eq("lumaprintsOrderNumber", lumaprintsOrderNumber),
+		.withIndex("by_connectionRef_and_lumaprintsOrderNumber", (q) =>
+			q.eq("lumaprintsConnection.connectionRef", connectionRef).eq("lumaprintsOrderNumber", lumaprintsOrderNumber),
 		)
 		.take(2);
 	if (matchingOrders.length > 1) {
@@ -188,14 +189,15 @@ async function findGlobalLumaPrintsOrder(ctx: MutationCtx, lumaprintsOrderNumber
 	return matchingOrders[0] ?? null;
 }
 
-async function findGlobalLumaPrintsSubmission(
+async function findScopedLumaPrintsSubmission(
 	ctx: MutationCtx,
 	lumaprintsSubmissionOrderNumber: string,
+	connectionRef?: string,
 ) {
 	const matchingOrders = await ctx.db
 		.query("orders")
-		.withIndex("by_lumaprintsSubmissionOrderNumber_global", (q) =>
-			q.eq("lumaprintsSubmissionOrderNumber", lumaprintsSubmissionOrderNumber),
+		.withIndex("by_connectionRef_and_lumaprintsSubmissionOrderNumber", (q) =>
+			q.eq("lumaprintsConnection.connectionRef", connectionRef).eq("lumaprintsSubmissionOrderNumber", lumaprintsSubmissionOrderNumber),
 		)
 		.take(2);
 	if (matchingOrders.length > 1) {
@@ -206,16 +208,17 @@ async function findGlobalLumaPrintsSubmission(
 
 async function assertLumaPrintsOrderNumberAvailable(
 	ctx: MutationCtx,
-	orderId: Id<"orders">,
+	order: Doc<"orders">,
 	lumaprintsOrderNumber: string,
 ) {
+	const connectionRef = order.lumaprintsConnection?.connectionRef;
 	const [completed, submitted] = await Promise.all([
-		findGlobalLumaPrintsOrder(ctx, lumaprintsOrderNumber),
-		findGlobalLumaPrintsSubmission(ctx, lumaprintsOrderNumber),
+		findScopedLumaPrintsOrder(ctx, lumaprintsOrderNumber, connectionRef),
+		findScopedLumaPrintsSubmission(ctx, lumaprintsOrderNumber, connectionRef),
 	]);
 	if (
-		(completed && completed._id !== orderId)
-		|| (submitted && submitted._id !== orderId)
+		(completed && completed._id !== order._id)
+		|| (submitted && submitted._id !== order._id)
 	) throw new Error("LumaPrints order number belongs to another order");
 }
 
@@ -320,7 +323,7 @@ async function attachPrintFulfillmentResult(
 	) {
 		throw new Error("LumaPrints order number conflicts with its submission receipt");
 	}
-	await assertLumaPrintsOrderNumberAvailable(ctx, order._id, lumaprintsOrderNumber);
+	await assertLumaPrintsOrderNumberAvailable(ctx, order, lumaprintsOrderNumber);
 	await ctx.db.patch(order._id, {
 		lumaprintsOrderNumber,
 		lumaprintsSubmissionOrderNumber: undefined,
@@ -345,13 +348,13 @@ async function attachPrintFulfillmentResult(
 	return printFulfillmentCompletionOutcome({ ...order, lumaprintsOrderNumber });
 }
 
-async function findGlobalLumaPrintsOrderForShipment(
+async function findLegacyLumaPrintsOrderForShipment(
 	ctx: MutationCtx,
 	lumaprintsOrderNumber: string,
 ) {
 	const [completed, submitted] = await Promise.all([
-		findGlobalLumaPrintsOrder(ctx, lumaprintsOrderNumber),
-		findGlobalLumaPrintsSubmission(ctx, lumaprintsOrderNumber),
+		findScopedLumaPrintsOrder(ctx, lumaprintsOrderNumber),
+		findScopedLumaPrintsSubmission(ctx, lumaprintsOrderNumber),
 	]);
 	if (completed && submitted && completed._id !== submitted._id) {
 		throw new Error("LumaPrints order number belongs to multiple orders");
@@ -677,7 +680,7 @@ async function consumeReservation(
 		throw new Error("Checkout snapshot reservation does not match paid session");
 	}
 	await ctx.db.delete(row._id);
-	return { snapshot: row.snapshot, tenantId: row.tenantId, printInput: row.printInput };
+	return { snapshot: row.snapshot, tenantId: row.tenantId, printInput: row.printInput, lumaprintsConnection: row.lumaprintsConnection };
 }
 
 /** Private catalog commerce authority; reachable only through the authenticated HTTP route. */
@@ -981,6 +984,7 @@ export const create = mutation({
 				fulfillmentType,
 				lumaprintsOrderNumber: existing.lumaprintsOrderNumber,
 				lumaprintsExternalId: existing.lumaprintsExternalId,
+				lumaprintsConnection: existing.lumaprintsConnection,
 				status: existing.status,
 				stripeFees: existing.stripeFees,
 				stripeConnectedAccountId: existing.stripeConnectedAccountId,
@@ -1072,6 +1076,7 @@ export const create = mutation({
 			: rest;
 		let durableTenantId = admission?.tenantId;
 		let printInput: Doc<"orders">["printInput"];
+		let lumaprintsConnection: LumaPrintsConnection | undefined;
 		if (checkoutSnapshotReservation !== undefined) {
 			if (rest.checkoutSnapshot !== undefined) throw new Error("Checkout snapshot input is ambiguous");
 			const reservation = await consumeReservation(
@@ -1081,6 +1086,7 @@ export const create = mutation({
 			await assertTenantRouting(ctx, durableTenantId, args.siteUrl, reservation.tenantId);
 			durableTenantId ??= reservation.tenantId;
 			printInput = reservation.printInput;
+			lumaprintsConnection = reservation.lumaprintsConnection;
 			orderInput = {
 				...orderInput,
 				checkoutSnapshot: reservation.snapshot,
@@ -1108,6 +1114,12 @@ export const create = mutation({
 		}
 		await assertTenantRouting(ctx, tenantId, args.siteUrl, durableTenantId);
 		durableTenantId ??= tenantId;
+		if (lumaprintsConnection !== undefined) {
+			if (!printInput?.lines.some(line => line.sources.length > 0) || orderInput.fulfillmentType !== "lumaprints") {
+				throw new Error("LumaPrints connection requires frozen print input");
+			}
+			await assertSavedLumaPrintsConnection(ctx, lumaprintsConnection, durableTenantId);
+		}
 
 		let orderNumber: string;
 		if (args.orderNumber === undefined) {
@@ -1150,6 +1162,7 @@ export const create = mutation({
 		const _id = await ctx.db.insert("orders", {
 			...orderInput,
 			printInput,
+			lumaprintsConnection,
 			tenantId: durableTenantId,
 			stripeFees: isManuallyRefunded ? undefined : orderInput.stripeFees,
 			orderNumber,
@@ -1193,6 +1206,7 @@ export const create = mutation({
 			fulfillmentType: orderInput.fulfillmentType,
 			lumaprintsOrderNumber: undefined,
 			lumaprintsExternalId,
+			lumaprintsConnection,
 			status: isManuallyRefunded ? ("refunded" as const) : ("new" as const),
 			stripeFees: undefined,
 			stripeFeeCaptureStatus: feeCaptureStatus,
@@ -1667,7 +1681,7 @@ export const claimPrintFulfillment = mutation({
 		await requireWebhookCallerOrAuth(ctx, args.webhookSecret, { allowAuth: false });
 		const order = await ctx.db.get(args.orderId);
 		if (!order) throw new Error("Order not found");
-		if (order.printJobId) return { kind: "busy" as const };
+		if (order.printJobId || order.lumaprintsConnection !== undefined) return { kind: "busy" as const };
 		if (order.lumaprintsOrderNumber)
 			return { kind: "fulfilled" as const, orderNumber: order.lumaprintsOrderNumber };
 		if (hasUncertainPrintSubmission(order)) {
@@ -1719,7 +1733,7 @@ export const claimPrintFulfillmentV2 = mutation({
 		if (!CLAIM_TOKEN.test(args.claimToken)) throw new Error("Invalid print claim token");
 		const order = await ctx.db.get(args.orderId);
 		if (!order) throw new Error("Order not found");
-		if (order.printJobId) return { kind: "busy" as const };
+		if (order.printJobId || order.lumaprintsConnection !== undefined) return { kind: "busy" as const };
 		if (order.lumaprintsOrderNumber)
 			return { kind: "fulfilled" as const, orderNumber: order.lumaprintsOrderNumber };
 		if (hasUncertainPrintSubmission(order)) {
@@ -1790,7 +1804,7 @@ export const claimPrintFulfillmentV3 = mutation({
 		if (!CLAIM_TOKEN.test(args.claimToken)) throw new Error("Invalid print claim token");
 		const order = await ctx.db.get(args.orderId);
 		if (!order) throw new Error("Order not found");
-		if (order.printJobId) return { kind: "busy" as const };
+		if (order.printJobId || order.lumaprintsConnection !== undefined) return { kind: "busy" as const };
 		if (order.lumaprintsOrderNumber) {
 			return { kind: "fulfilled" as const, orderNumber: order.lumaprintsOrderNumber };
 		}
@@ -1872,6 +1886,7 @@ type PrintFulfillmentClaimArgs = {
 	claimToken: string;
 	printJobLeaseToken?: string;
 	providerExternalId?: string;
+	lumaprintsConnection?: LumaPrintsConnection;
 	tenantId?: string;
 	webhookSecret: string;
 };
@@ -1894,6 +1909,13 @@ async function claimPrintFulfillmentWithAdmission(
 		const order = await ctx.db.get(args.orderId);
 		if (!order) throw new Error("Order not found");
 		await assertOrderTenant(ctx, order, args.tenantId);
+		// Older workers cannot route this order through the legacy supplier client.
+		if (!sameLumaPrintsConnection(order.lumaprintsConnection, args.lumaprintsConnection)) {
+			return { kind: "busy" as const };
+		}
+		if (order.lumaprintsConnection !== undefined) {
+			await assertSavedLumaPrintsConnection(ctx, order.lumaprintsConnection, order.tenantId);
+		}
 		if (order.lumaprintsOrderNumber) {
 			return { kind: "fulfilled" as const, orderNumber: order.lumaprintsOrderNumber };
 		}
@@ -2031,6 +2053,7 @@ const printFulfillmentClaimArgs = {
 	claimToken: v.string(),
 	printJobLeaseToken: v.optional(v.string()),
 	providerExternalId: v.optional(v.string()),
+	lumaprintsConnection: v.optional(lumaprintsConnectionValidator),
 	tenantId: v.optional(v.string()),
 	webhookSecret: v.string(),
 };
@@ -2219,7 +2242,7 @@ export const recordPrintFulfillmentSubmissionReceipt = mutation({
 		) throw new Error("Print fulfillment submission claim is unavailable");
 		await assertLumaPrintsOrderNumberAvailable(
 			ctx,
-			order._id,
+			order,
 			args.lumaprintsSubmissionOrderNumber,
 		);
 		await ctx.db.patch(order._id, {
@@ -3869,7 +3892,7 @@ export const claimOrderConfirmation = mutation({
 			|| order.fulfillmentRecoveryStatus !== undefined
 			|| order.orderConfirmationClaimedAt !== undefined
 		) return false;
-		const owner = await findGlobalLumaPrintsOrder(ctx, order.lumaprintsOrderNumber);
+		const owner = await findScopedLumaPrintsOrder(ctx, order.lumaprintsOrderNumber, order.lumaprintsConnection?.connectionRef);
 		if (!owner || owner._id !== order._id) return false;
 		await ctx.db.patch(order._id, { orderConfirmationClaimedAt: Date.now() });
 		return true;
@@ -3972,7 +3995,7 @@ export const updateStatus = mutation({
 				throw new Error("Print fulfillment result conflicts");
 			}
 			if (auth.via !== "auth" && hasExactBaselineCompletionPayload) {
-				const owner = await findGlobalLumaPrintsOrder(ctx, updates.lumaprintsOrderNumber);
+				const owner = await findScopedLumaPrintsOrder(ctx, updates.lumaprintsOrderNumber, current.lumaprintsConnection?.connectionRef);
 				if (!owner || owner._id !== current._id) {
 					throw new Error("Print fulfillment result conflicts");
 				}
@@ -4086,7 +4109,7 @@ export const claimPaymentFailureEmail = mutation({
 
 /**
  * @deprecated Compatibility export for authenticated site administrators only.
- * Hub shipment intake uses the provider-global V2 lease below.
+ * Central hub shipment intake uses the legacy-scope V2 lease below.
  */
 export const claimShipmentEmailNotification = mutation({
 	args: {
@@ -4145,8 +4168,8 @@ export const recordShipmentEmailDelivery = mutation({
 });
 
 /**
- * Lease the hub-owned shipment email side effect by provider-global order
- * number. A V2 row may be reclaimed after its lease expires; historical
+ * Lease the hub-owned shipment email side effect by legacy central order
+ * number. Client-scoped orders require separate authenticated intake. A V2 row may be reclaimed after its lease expires; historical
  * shipped/claimed rows remain terminal because they lack V2 protocol evidence.
  */
 export const claimShipmentEmailNotificationV2 = mutation({
@@ -4180,7 +4203,7 @@ export const claimShipmentEmailNotificationV2 = mutation({
 		if (!CLAIM_TOKEN.test(args.claimToken)) {
 			throw new Error("Invalid shipment email claim token");
 		}
-		const order = await findGlobalLumaPrintsOrderForShipment(
+		const order = await findLegacyLumaPrintsOrderForShipment(
 			ctx,
 			args.lumaprintsOrderNumber,
 		);
@@ -4295,7 +4318,7 @@ export const isShipmentEmailNotificationDeliveryUncertain = mutation({
 		if (!LUMAPRINTS_ORDER_NUMBER.test(args.lumaprintsOrderNumber)) {
 			throw new Error("Invalid LumaPrints order number");
 		}
-		const order = await findGlobalLumaPrintsOrder(ctx, args.lumaprintsOrderNumber);
+		const order = await findScopedLumaPrintsOrder(ctx, args.lumaprintsOrderNumber);
 		return order?.shipmentEmailDeliveryStatus === "uncertain";
 	},
 });

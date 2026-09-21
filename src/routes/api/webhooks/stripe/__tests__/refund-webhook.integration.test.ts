@@ -4,7 +4,7 @@ import { STRIPE_API_VERSION } from "$lib/server/stripeApiVersion";
 
 const mocks = vi.hoisted(() => ({
 	convex: { mutation: vi.fn(), query: vi.fn() },
-	createLumaPrintsOrder: vi.fn(),
+	getLumaPrintsClient: vi.fn(),
 	resend: {},
 	stripe: undefined as unknown,
 	env: {
@@ -16,7 +16,9 @@ const mocks = vi.hoisted(() => ({
 
 vi.mock("$env/dynamic/private", () => ({ env: mocks.env }));
 vi.mock("$lib/server/convexClient", () => ({ getConvex: () => mocks.convex }));
-vi.mock("$lib/server/lumaprints", () => ({ createOrder: mocks.createLumaPrintsOrder }));
+vi.mock("$lib/server/lumaprints", () => ({
+	createOrderLumaPrintsClient: mocks.getLumaPrintsClient,
+}));
 vi.mock("$lib/server/resendClient", () => ({ getResend: () => mocks.resend }));
 vi.mock("$lib/server/stripeClient", () => ({ getStripe: () => mocks.stripe }));
 
@@ -127,7 +129,7 @@ describe("signed refund webhook", () => {
 		);
 		expect(mutationArgs).not.toHaveProperty("stripeConnectedAccountId");
 		expect(mutationArgs).not.toHaveProperty("stripeTenantMetadataSiteUrl");
-		expect(mocks.createLumaPrintsOrder).not.toHaveBeenCalled();
+		expect(mocks.getLumaPrintsClient).not.toHaveBeenCalled();
 	});
 
 	it("rejects a signed non-string context before outbound effects", async () => {
@@ -142,7 +144,7 @@ describe("signed refund webhook", () => {
 		expect(stripe.checkout.sessions.list).not.toHaveBeenCalled();
 		expect(mocks.convex.query).not.toHaveBeenCalled();
 		expect(mocks.convex.mutation).not.toHaveBeenCalled();
-		expect(mocks.createLumaPrintsOrder).not.toHaveBeenCalled();
+		expect(mocks.getLumaPrintsClient).not.toHaveBeenCalled();
 	});
 
 	it("rejects a signed connected refund with a non-string context", async () => {
@@ -162,6 +164,6 @@ describe("signed refund webhook", () => {
 		expect(stripe.checkout.sessions.list).not.toHaveBeenCalled();
 		expect(mocks.convex.query).not.toHaveBeenCalled();
 		expect(mocks.convex.mutation).not.toHaveBeenCalled();
-		expect(mocks.createLumaPrintsOrder).not.toHaveBeenCalled();
+		expect(mocks.getLumaPrintsClient).not.toHaveBeenCalled();
 	});
 });

@@ -2,15 +2,24 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { env } from "$env/dynamic/private";
 import type { OrderItem, Recipient } from "$lib/shop/types";
 import {
-	buildLumaPrintsOrder,
-	confirmOrder,
-	createOrder,
-	findOrderByExternalId,
+	createLegacyLumaPrintsClient,
+	type LumaPrintsClient,
 	LumaPrintsError,
 	LumaPrintsReconciliationError,
 	LumaPrintsSubmissionError,
 } from "../server/lumaprints";
 import { classifyLumaPrintsFailure } from "../server/webhookErrorClassification";
+
+// Exercise the current client interface while retaining the existing HTTP/payload cases.
+const buildLumaPrintsOrder = (...args: Parameters<LumaPrintsClient["buildOrder"]>) =>
+	createLegacyLumaPrintsClient().buildOrder(...args);
+const createOrder = async (...args: Parameters<LumaPrintsClient["createOrder"]>) =>
+	createLegacyLumaPrintsClient().createOrder(...args);
+const confirmOrder = async (...args: Parameters<LumaPrintsClient["confirmOrder"]>) =>
+	createLegacyLumaPrintsClient().confirmOrder(...args);
+const findOrderByExternalId = async (
+	...args: Parameters<LumaPrintsClient["findOrderByExternalId"]>
+) => createLegacyLumaPrintsClient().findOrderByExternalId(...args);
 
 // Ported from reflecting-pool per audit #22. Guards the pure order builder
 // and the LumaPrints API error
@@ -1039,10 +1048,10 @@ describe("findOrderByExternalId", () => {
 			"9007199254740992",
 		]) {
 			privateEnv.LUMAPRINTS_STORE_ID = invalidStoreId;
-			await expect(findOrderByExternalId(externalId)).rejects.toMatchObject({
-				disposition: "blocked",
-				reconciliationClass: "client_error",
-			});
+			const failure = await findOrderByExternalId(externalId).catch((error: unknown) => error);
+			expect(failure).toBeInstanceOf(LumaPrintsError);
+			expect(failure).toMatchObject({ details: { kind: "configuration" } });
+			expect(classifyLumaPrintsFailure(failure)).toBe("transient");
 		}
 		expect(fetchMock).not.toHaveBeenCalled();
 	});
