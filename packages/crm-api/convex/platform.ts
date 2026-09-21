@@ -1,8 +1,8 @@
-import { v } from "convex/values";
+import { ConvexError, v } from "convex/values";
 import type { Doc, Id } from "./_generated/dataModel";
-import type { MutationCtx } from "./_generated/server";
+import type { MutationCtx, QueryCtx } from "./_generated/server";
 import { internalMutation, internalQuery, mutation, query } from "./_generated/server";
-import { requirePlatformAdmin, requireWebhookCallerOrAuth } from "./authHelpers";
+import { isSiteAdminIdentity, requireAuth, requirePlatformAdmin, requireWebhookCallerOrAuth } from "./authHelpers";
 import {
 	catalogProductKindsValidator,
 	normalizeCatalogProductKinds,
@@ -349,17 +349,32 @@ function assertStripeConnectClient(client: Doc<"platformClients"> | null) {
 	return client;
 }
 
+async function requireStripeConnectClient(
+	ctx: QueryCtx,
+	reference: { siteUrl: string } | { clientId: Id<"platformClients"> },
+) {
+	const identity = await requireAuth(ctx);
+	const client = assertStripeConnectClient("clientId" in reference
+		? await ctx.db.get(reference.clientId)
+		: (await resolveTenantContext(ctx, { siteUrl: reference.siteUrl }))?.client ?? null);
+	if (!isSiteAdminIdentity(identity, client)) {
+		try {
+			await requirePlatformAdmin(ctx);
+		} catch (cause) {
+			if (cause instanceof Error && cause.message === "Not authorized (not a creator)") {
+				throw new ConvexError("STRIPE_CONNECT_FORBIDDEN");
+			}
+			throw cause;
+		}
+	}
+	return client;
+}
+
 /** Authorize the exact client before the host contacts Stripe. */
 export const getStripeConnectTarget = query({
 	args: { siteUrl: v.string() },
 	handler: async (ctx, { siteUrl }) => {
-		await requirePlatformAdmin(ctx);
-		const client = assertStripeConnectClient(
-			await ctx.db
-				.query("platformClients")
-				.withIndex("by_siteUrl", (q) => q.eq("siteUrl", siteUrl))
-				.unique(),
-		);
+		const client = await requireStripeConnectClient(ctx, { siteUrl });
 		return {
 			clientId: client._id,
 			siteUrl: client.siteUrl,
@@ -379,12 +394,11 @@ export const beginStripeConnectAccount = mutation({
 		webhookSecret: v.string(),
 	},
 	handler: async (ctx, args) => {
-		await requirePlatformAdmin(ctx);
 		await requireWebhookCallerOrAuth(ctx, args.webhookSecret, { allowAuth: false });
 		if (!/^acct_[A-Za-z0-9]{16,64}$/.test(args.platformAccountId)) {
 			throw new Error("Invalid Stripe platform account");
 		}
-		const client = assertStripeConnectClient(await ctx.db.get(args.clientId));
+		const client = await requireStripeConnectClient(ctx, { clientId: args.clientId });
 		if (client.stripeConnectedAccountId && !client.stripeConnectAttempt) {
 			throw new Error("Stripe connection has no verified creation attempt");
 		}
@@ -427,9 +441,8 @@ export const bindStripeConnectAccount = mutation({
 		webhookSecret: v.string(),
 	},
 	handler: async (ctx, args) => {
-		await requirePlatformAdmin(ctx);
 		await requireWebhookCallerOrAuth(ctx, args.webhookSecret, { allowAuth: false });
-		const client = assertStripeConnectClient(await ctx.db.get(args.clientId));
+		const client = await requireStripeConnectClient(ctx, { clientId: args.clientId });
 		const attempt = client.stripeConnectAttempt;
 		if (
 			!attempt ||

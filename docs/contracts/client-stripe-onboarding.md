@@ -1,10 +1,10 @@
 # Client Stripe onboarding
 
-This records the account-creation foundation. Client-facing onboarding,
-account-status webhooks, checkout readiness gates, existing-account connection,
-and per-client supplier routing are subsequent work. The existing operator UI
-still starts onboarding and still uses account existence for its connected
-label. Returning from Stripe is not evidence that a client can accept payments.
+This records account creation, historical payment identity, and the authenticated
+client setup page. Account-status webhooks, checkout readiness gates,
+existing-account connection, and per-client supplier routing remain subsequent
+work. The source workflow is disabled by default; returning from Stripe is not
+evidence that a client can accept payments.
 
 ## Account model
 
@@ -28,7 +28,7 @@ Tax collection and information-reporting obligations remain separate decisions.
    cannot enter client onboarding. No Stripe request runs before authorization.
 2. Read the Stripe platform account and balance's test/live mode from the same
    Stripe client. Only those routing facts are retained; balances are not stored.
-3. `platform.beginStripeConnectAccount` requires creator membership and the
+3. `platform.beginStripeConnectAccount` requires the client’s site-admin or creator membership and the
    hub-only server secret. It freezes an attempt UUID, start time, email, site,
    model version, platform account, and mode on the client. Concurrent requests
    receive the same attempt. Profile edits cannot change its provider payload.
@@ -38,7 +38,7 @@ Tax collection and information-reporting obligations remain separate decisions.
    inside the conservative window. A bound account can be retrieved later.
 5. Verify the returned account's controller settings and client, immutable tenant,
    and attempt metadata. The account must differ from the platform account.
-6. `platform.bindStripeConnectAccount` requires both creator membership and hub
+6. `platform.bindStripeConnectAccount` requires both client site-admin or creator membership and hub
    authority, checks the exact attempt/environment, and atomically prevents
    account replacement and cross-client duplicate binding. Return an onboarding
    link only after binding succeeds. Identical bindings are idempotent.
@@ -50,6 +50,46 @@ Generic client writes cannot assign account IDs. The retired public and internal
 setters remain explicit rejection endpoints so an old caller cannot bypass the
 verified protocol. No generated Convex files were hand-edited; existing generated
 module/schema imports expose the added functions and field types.
+
+## Client entry, return, and activation gate
+
+The operator selects a client in `/admin/platform` and shares the stable hub URL
+`/portal/stripe/<client-site-hostname>`. Account IDs are labeled **setup started**,
+not connected/ready. The copy control is unavailable while setup is disabled.
+Never distribute a temporary Stripe Account Link as an invitation.
+
+Clients use their existing website-admin login on that hub page. The page reuses
+Better Auth and the shared login component; it does not grant access to the
+creator's `/admin` shell. Convex checks the exact tenant's stored admin identity
+(or the verified invited email during the existing identity-claim transition).
+Creators can assist. Every begin/bind mutation rechecks membership and requires
+the hub-only secret; tenant administrators cannot write provider results directly.
+Retained site aliases resolve to the same client. No browser value supplies the
+Stripe account, email, platform origin, or return destination.
+
+The same-origin `start` form creates/resumes the durable attempt and redirects
+the authenticated holder directly to Stripe. Account Link refresh authenticates
+again, verifies the stored account, and issues a private, non-cacheable redirect.
+An expired refresh session returns to the same stable sign-in page. Refresh
+never creates an account. The callback redirects to that page with a display
+marker only; page loads and return visits never create accounts or Account Links.
+
+With setup enabled, an authorized page load reads the account afresh from Stripe,
+verifies its ownership, controller settings, platform, and test/live mode, and
+shows payments and payouts separately. States distinguish information still due,
+pending verification, restrictions, and both payments/payouts enabled. Provider
+failures are recoverable and do not expose raw SDK errors. Full-dashboard access
+uses Stripe's normal dashboard login. This is a point-in-time provider check;
+persisted status, account change/deauthorization handling, and new-sale gates
+are later slices. **Stripe readiness alone does not activate the store.**
+
+`STRIPE_CONNECT_ONBOARDING_ENABLED` is a server-only activation switch. Only the
+exact value `true` permits account creation, link issuance, or status reads.
+Unset/false values keep the feature unavailable, including the JSON onboarding
+endpoint and refresh endpoint. Start POSTs also require the hub request origin.
+Do not enable this flag as part of source merges. First deploy/adopt compatible
+backend code, finish readiness/checkout/supplier work, and run separately approved
+sandbox acceptance. No environment configuration is changed by this slice.
 
 ## Historical payment identity
 
@@ -96,20 +136,20 @@ without the recorded protocol are rejected rather than adopted automatically.
 
 ## Adoption and verification
 
-Source changes alone do not activate new accounts. Disable access to the old
-onboarding endpoint before coordinated backend-first deployment and compatible
-hub adoption: an old host creates its Express account before invoking its now
+Source changes alone do not activate new accounts. Keep the activation switch
+unset/false through coordinated backend-first deployment and compatible hub
+adoption: an old host creates its Express account before invoking its now
 retired assignment mutation. Leave onboarding unavailable through the transition
 and until the remaining client workflow has passed acceptance. Rollback must
 preserve attempt/account records and keep old raw-assignment hosts disabled.
 
 Tests cover concurrent starts/binds, frozen retries, failed persistence/link
 creation, expired uncertainty, mismatched tenant/controller/environment,
-duplicate account ownership, hub+creator authorization, request validation, and
+duplicate account ownership, hub+tenant/creator authorization, request validation, and
 retired assignment bypasses. Provider behavior is simulated locally. Actual
 Stripe account settings, hosted screens, webhooks, and payments still need
 separately authorized sandbox/live verification before production acceptance.
 
 References: [Stripe controller mappings](https://docs.stripe.com/connect/migrate-to-controller-properties),
 [idempotency retention](https://docs.stripe.com/api/idempotent_requests), and
-[hosted account onboarding](https://docs.stripe.com/connect/standard-accounts).
+[hosted account onboarding](https://docs.stripe.com/connect/hosted-onboarding).

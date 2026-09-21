@@ -1,9 +1,11 @@
 <script lang="ts">
 import { addToast, getAdminConfig, PlatformPage, type PlatformClient } from "@jessepomeroy/admin";
 import { useQuery } from "convex-svelte";
+import { stripeConnectSetupPath } from "$lib/stripeConnectSetup";
 
 type StripePlatformClient = PlatformClient & {
 	stripeConnectedAccountId?: string | null;
+	role?: "creator" | "client";
 };
 
 const config = getAdminConfig();
@@ -14,61 +16,30 @@ let { data } = $props();
 const clientsQuery = useQuery(api.platform.listAll, {});
 
 let selectedSiteUrl = $state("");
-let onboardingSiteUrl = $state<string | null>(null);
+let copiedUrl = $state("");
 
-let clients = $derived((clientsQuery.data ?? []) as StripePlatformClient[]);
+let clients = $derived(((clientsQuery.data ?? []) as StripePlatformClient[]).filter(
+	client => client.role !== "creator" && client.siteUrl !== config.siteUrl,
+));
 let selectedClient = $derived(
-	clients.find((client) => client.siteUrl === selectedSiteUrl) ?? clients[0] ?? null,
+	clients.find((client) => client.siteUrl === selectedSiteUrl) ?? null,
 );
-let connectedCount = $derived(
+let startedCount = $derived(
 	clients.filter((client) => Boolean(client.stripeConnectedAccountId)).length,
 );
-let onboardingLabel = $derived(
-	selectedClient?.stripeConnectedAccountId ? "continue stripe setup" : "connect stripe",
-);
+let setupUrl = $derived(selectedClient
+	? `${data.stripeConnectOrigin}${stripeConnectSetupPath(selectedClient.siteUrl)}`
+	: "");
 
-$effect(() => {
-	if (!selectedSiteUrl && clients[0]) {
-		selectedSiteUrl = clients[0].siteUrl;
-	}
-});
-
-async function startStripeOnboarding() {
-	if (!selectedClient || onboardingSiteUrl) return;
-
-	onboardingSiteUrl = selectedClient.siteUrl;
+async function copySetupLink() {
+	const url = setupUrl;
+	if (!url) return;
 	try {
-		const response = await fetch("/api/stripe-connect/onboard", {
-			method: "POST",
-			headers: { "content-type": "application/json" },
-			body: JSON.stringify({ siteUrl: selectedClient.siteUrl }),
-		});
-
-		if (!response.ok) {
-			const message = await readErrorMessage(response);
-			throw new Error(message || "Failed to start Stripe onboarding.");
-		}
-
-		const result = (await response.json()) as { url?: string };
-		if (!result.url) {
-			throw new Error("Stripe did not return an onboarding link.");
-		}
-
-		window.location.href = result.url;
-	} catch (error) {
-		console.error(error);
-		addToast(error instanceof Error ? error.message : "Failed to start Stripe onboarding.");
-		onboardingSiteUrl = null;
+		await navigator.clipboard.writeText(url);
+		copiedUrl = url;
+	} catch {
+		addToast("Copying did not work. Select the setup link and copy it.");
 	}
-}
-
-async function readErrorMessage(response: Response) {
-	const contentType = response.headers.get("content-type") ?? "";
-	if (contentType.includes("application/json")) {
-		const body = (await response.json().catch(() => null)) as { message?: unknown } | null;
-		return typeof body?.message === "string" ? body.message : "";
-	}
-	return response.text().catch(() => "");
 }
 </script>
 
@@ -77,8 +48,8 @@ async function readErrorMessage(response: Response) {
 		<p class="eyebrow">payments</p>
 		<h2 id="stripe-connect-heading">Stripe Connect</h2>
 		<p>
-			Route print checkout through a client's connected Stripe account while keeping
-			Angels Rest's platform fee on print orders.
+			Share the client's setup page. They sign in with their website admin login
+			and enter their business and bank details directly with Stripe.
 		</p>
 	</div>
 
@@ -90,26 +61,37 @@ async function readErrorMessage(response: Response) {
 			{:else if clients.length === 0}
 				<option value="">no clients available</option>
 			{:else}
+				<option value="">choose a client</option>
 				{#each clients as client (client._id)}
 					<option value={client.siteUrl}>
-						{client.name} — {client.stripeConnectedAccountId ? "connected" : "not connected"}
+						{client.name} — {client.stripeConnectedAccountId ? "setup started" : "not started"}
 					</option>
 				{/each}
 			{/if}
 		</select>
 
+		{#if data.stripeConnectOnboardingEnabled}
 		<button
 			type="button"
 			class="connect-button"
-			disabled={!selectedClient || Boolean(onboardingSiteUrl)}
-			onclick={startStripeOnboarding}
+			disabled={!selectedClient}
+			onclick={copySetupLink}
 		>
-			{onboardingSiteUrl ? "opening stripe..." : onboardingLabel}
+			{setupUrl && copiedUrl === setupUrl ? "link copied" : "copy client setup link"}
 		</button>
+		{#if setupUrl}
+			<label for="stripe-setup-link">client setup link</label>
+			<input id="stripe-setup-link" class="setup-link" readonly value={setupUrl} onfocus={(event) => event.currentTarget.select()} />
+			<a href={setupUrl}>open setup page</a>
+		{/if}
+		{:else}
+			<p class="setup-note">Client payment setup is not open yet.</p>
+		{/if}
 	</div>
 
 	<div class="stripe-status" aria-live="polite">
-		<span>{connectedCount} / {clients.length} connected</span>
+		<span>{startedCount} / {clients.length} setup started</span>
+		<span>Readiness is checked on each client's setup page.</span>
 		{#if selectedClient?.stripeConnectedAccountId}
 			<span class="account-id">{selectedClient.stripeConnectedAccountId}</span>
 		{/if}
@@ -174,6 +156,7 @@ async function readErrorMessage(response: Response) {
 	}
 
 	.stripe-controls select,
+	.setup-link,
 	.connect-button {
 		min-height: 40px;
 		border-radius: 6px;
@@ -187,6 +170,9 @@ async function readErrorMessage(response: Response) {
 		background: transparent;
 		color: var(--admin-text);
 	}
+	.setup-link { width: 100%; min-width: 0; padding: 8px 12px; border: 1px solid var(--admin-border); color: var(--admin-text); background: var(--admin-surface); }
+	.setup-note { margin: 0; color: var(--admin-text-muted); font-size: .85rem; line-height: 1.5; }
+	.stripe-controls a { color: var(--admin-text-muted); text-underline-offset: 4px; }
 
 	.connect-button {
 		padding: 0 16px;

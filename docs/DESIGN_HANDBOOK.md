@@ -46,8 +46,9 @@ board links; shared patterns do not require one board per content record.
 ## Scope and source authority
 
 Contact lives on About; there is no separate public `/contact` page.
-Private `/delivery/[token]`, client portals and provider-hosted checkout screens
-are excluded. Admin delivery gallery management uses fictional records and no
+Private `/delivery/[token]`, document client portals and provider-hosted checkout
+screens are excluded. The new authenticated Stripe setup portal is tracked as a
+pending admin-handbook reference using fictional data only. Admin delivery gallery management uses fictional records and no
 private assets. Keep **portfolio galleries** and **delivery galleries** distinct.
 
 The Admin 6.2.0 owner file-upload change adds an any-file picker for verified Angels
@@ -314,3 +315,43 @@ an artificial component sheet is an implemented route.
 - Task-owned preview and Paper processes were stopped after releasing Paper's
   working indicators.
 - No real authentication, backend/provider workflow or deployment was claimed.
+
+## Stripe setup source update — September 21, 2026
+
+The host platform panel now shares a stable client setup page and says “setup
+started” for account existence. The new `/portal/stripe/[siteUrl]` page reuses
+admin tokens and LoginPage, separates charges from payouts, and renders sign-in,
+setup disabled, setup required, pending verification, restricted, ready,
+unauthorized, unavailable, and session-expired states. These source changes are
+newer than the platform Paper boards. Existing board IDs are preserved.
+
+Local Chromium checks passed 20 desktop/mobile cases: login-error recovery,
+POST to the tenant setup action intercepted locally, separate payout status,
+ready dashboard access, sign-out failure recovery, disabled/error/expired states,
+and viewport containment. Browser captures at 1440×1000 and 390×1000 used the
+actual page component and actual host platform wrapper with fictional records.
+The operator client selector and clipboard action were exercised at both sizes;
+no page/console errors or horizontal page overflow were observed. Representative
+screenshots were inspected visually. The fixture does not authenticate against
+Better Auth or create/retrieve accounts with Stripe.
+
+Safe starting URLs on the existing handbook server:
+
+- `/?screen=stripe-setup&phase=signed_out`
+- `/?screen=stripe-setup&phase=pending_verification&returned=1`
+- `/?screen=stripe-setup&phase=ready`
+- `/?route=/admin/platform&onboarding=true&theme=dark`
+
+Other `phase` values: `new`, `setup_required`, `restricted`, `disabled`,
+`unauthorized`, `unavailable`, and `expired`. The platform fixture now renders
+the host wrapper instead of only the installed PlatformPage. All provider/auth
+calls remain refused; use the browser tests for the locally intercepted form.
+Temporary capture evidence: `/tmp/angelsrest-c2a-evidence/` (not committed).
+A focused local WebKit rerun could not launch because `libicudata.so.74` is
+unavailable. CI installs its own WebKit system dependencies; local WebKit
+coverage is not claimed.
+
+Paper and 21st tools were unavailable for this pass. The inventory explicitly
+marks the new portal and changed platform references as needing a Paper update
+and comparison, with `lastVerified: null`. This is browser/source verification,
+not a completed Paper comparison or real-provider acceptance.

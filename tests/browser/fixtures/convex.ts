@@ -12,3 +12,7 @@ export { api } from "../../../packages/crm-api/convex/_generated/api";
 export function useQuery() {
 	throw new Error("Unexpected Convex query in browser fixture");
 }
+
+export function usePaginatedQuery() {
+	throw new Error("Unexpected paginated Convex query in browser fixture");
+}
