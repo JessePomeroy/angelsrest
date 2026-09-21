@@ -2,12 +2,17 @@ import { ConvexError, v } from "convex/values";
 import type { Doc, Id } from "./_generated/dataModel";
 import type { MutationCtx, QueryCtx } from "./_generated/server";
 import { internalMutation, internalQuery, mutation, query } from "./_generated/server";
-import { isSiteAdminIdentity, requireAuth, requirePlatformAdmin, requireWebhookCallerOrAuth } from "./authHelpers";
+import { isSiteAdminIdentity, requireAuth, requireCreator, requirePlatformAdmin, requireWebhookCallerOrAuth } from "./authHelpers";
 import {
 	catalogProductKindsValidator,
 	normalizeCatalogProductKinds,
 } from "./helpers/catalogProductPolicy";
 import { DEFAULT_LIST_LIMIT } from "./helpers/limits";
+import {
+	assertLumaPrintsConnection,
+	lumaprintsConnectionFields,
+	resolveLumaPrintsConnection,
+} from "./helpers/lumaprintsConnection";
 import { resolveStripeAccountOwner } from "./helpers/stripeAccountOwnership";
 import {
 	requireCurrentStripeConnectBinding,
@@ -344,6 +349,82 @@ export const updateStripeConnectedAccount = mutation({
 	handler: async (ctx) => {
 		await requirePlatformAdmin(ctx);
 		throw new Error("Stripe accounts must be bound through verified onboarding");
+	},
+});
+
+/** Host verifies the store and obtains operator account/billing confirmation before calling. */
+export const registerVerifiedLumaPrintsConnection = mutation({
+	args: {
+		clientId: v.id("platformClients"),
+		connectionRef: v.string(),
+		storeId: v.number(),
+		environment: lumaprintsConnectionFields.environment,
+		accountOwnershipConfirmed: v.literal(true),
+		billingConfirmed: v.literal(true),
+		webhookSecret: v.string(),
+	},
+	handler: async (ctx, args) => {
+		await requireWebhookCallerOrAuth(ctx, args.webhookSecret, { allowAuth: false });
+		await requireCreator(ctx);
+		const client = await ctx.db.get(args.clientId);
+		if (!client) throw new Error("Platform client not found");
+		const { tenantId } = await ensureTenantIdentity(ctx, client, "platform_client_site_url");
+		if ((await resolveTenantContext(ctx, { tenantId }))?.client._id !== client._id) {
+			throw new Error("LumaPrints tenant ownership is inconsistent");
+		}
+		const context = {
+			version: 1 as const, connectionRef: args.connectionRef, tenantId,
+			storeId: args.storeId, environment: args.environment,
+		};
+		assertLumaPrintsConnection(context);
+		const existing = await resolveLumaPrintsConnection(ctx, args.connectionRef);
+		if (existing) {
+			if (existing.owner._id !== client._id || existing.context.tenantId !== tenantId
+				|| existing.context.storeId !== context.storeId || existing.context.environment !== context.environment) {
+				throw new Error("LumaPrints connection is already bound to another identity");
+			}
+			if (client.lumaprintsConnectionRef !== args.connectionRef) {
+				throw new Error("Historical LumaPrints connections cannot be reactivated by setup");
+			}
+			return existing.context;
+		}
+		const history = await ctx.db.query("lumaprintsConnections")
+			.withIndex("by_clientId", q => q.eq("clientId", client._id)).take(1);
+		if (client.lumaprintsConnectionRef !== undefined || history.length > 0) {
+			throw new Error("LumaPrints connection replacement requires operator review");
+		}
+		const now = Date.now();
+		await ctx.db.insert("lumaprintsConnections", {
+			...context, clientId: client._id, storeVerifiedAt: now,
+			accountOwnershipConfirmedAt: now, billingConfirmedAt: now,
+		});
+		await ctx.db.patch(client._id, { lumaprintsConnectionRef: context.connectionRef });
+		return context;
+	},
+});
+
+/** Current supplier selection, for a hub-authenticated tenant workflow. No central fallback. */
+export const getLumaPrintsConnectionForSite = query({
+	args: { siteUrl: v.string(), webhookSecret: v.string() },
+	handler: async (ctx, args) => {
+		await requireWebhookCallerOrAuth(ctx, args.webhookSecret, { allowAuth: false });
+		const tenant = await resolveTenantContext(ctx, { siteUrl: args.siteUrl });
+		const reference = tenant?.client.lumaprintsConnectionRef;
+		if (!reference) return null;
+		const resolved = await resolveLumaPrintsConnection(ctx, reference);
+		if (!resolved || resolved.owner._id !== tenant?.client._id || resolved.context.tenantId !== tenant.tenantId) {
+			throw new Error("Current LumaPrints connection is inconsistent");
+		}
+		return resolved.context;
+	},
+});
+
+/** Historical connection identity for pinned work and authenticated provider intake. */
+export const getLumaPrintsConnectionByRef = query({
+	args: { connectionRef: v.string(), webhookSecret: v.string() },
+	handler: async (ctx, args) => {
+		await requireWebhookCallerOrAuth(ctx, args.webhookSecret, { allowAuth: false });
+		return (await resolveLumaPrintsConnection(ctx, args.connectionRef))?.context ?? null;
 	},
 });
 

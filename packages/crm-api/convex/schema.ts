@@ -1,6 +1,7 @@
 import { defineSchema, defineTable } from "convex/server";
 import { v } from "convex/values";
 import { stripeConnectStatusValidator } from "./helpers/stripeConnectStatus";
+import { lumaprintsConnectionFields } from "./helpers/lumaprintsConnection";
 import {
 	checkoutSnapshotValidator,
 	reservedCheckoutSnapshotValidator,
@@ -237,6 +238,7 @@ export default defineSchema({
 		stripeSubscriptionId: v.optional(v.string()),
 		stripeConnectedAccountId: v.optional(v.string()),
 		stripeConnectStatus: v.optional(stripeConnectStatusValidator),
+		lumaprintsConnectionRef: v.optional(v.string()),
 		// One durable creation attempt. Keep its request identity after binding so
 		// retries never create a second account or silently switch Stripe environments.
 		stripeConnectAttempt: v.optional(v.object({
@@ -260,7 +262,19 @@ export default defineSchema({
 		.index("by_siteUrl", ["siteUrl"])
 		.index("by_email", ["email"])
 		.index("by_stripeSubscriptionId", ["stripeSubscriptionId"])
+		.index("by_lumaprintsConnectionRef", ["lumaprintsConnectionRef"])
 		.index("by_stripeConnectedAccountId", ["stripeConnectedAccountId"]),
+
+	// Stable supplier ownership; credential values remain in server configuration.
+	lumaprintsConnections: defineTable({
+		...lumaprintsConnectionFields,
+		clientId: v.id("platformClients"),
+		storeVerifiedAt: v.number(),
+		accountOwnershipConfirmedAt: v.number(),
+		billingConfirmedAt: v.number(),
+	})
+		.index("by_connectionRef", ["connectionRef"])
+		.index("by_clientId", ["clientId"]),
 
 	// Permanent ownership, independent of the account selected for new checkout.
 	// Retain these rows through connection replacement/offboarding for paid work.
