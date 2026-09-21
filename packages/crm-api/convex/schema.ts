@@ -1,6 +1,7 @@
 import { defineSchema, defineTable } from "convex/server";
 import { v } from "convex/values";
 import { checkoutFinancialSnapshotValidator } from "./helpers/checkoutFinancialSnapshot";
+import { applicationFeeErrorValidator, applicationFeeObservationValidator } from "./helpers/applicationFeeVerification";
 import { stripeConnectStatusValidator } from "./helpers/stripeConnectStatus";
 import { lumaprintsConnectionFields, lumaprintsConnectionValidator } from "./helpers/lumaprintsConnection";
 import {
@@ -1103,6 +1104,19 @@ export default defineSchema({
 		artifact: v.optional(printJobArtifact),
 		url: v.optional(v.string()), expiresAt: v.optional(v.number()),
 	}).index("by_jobId_and_index", ["jobId", "index"]),
+
+	// Original application-fee observations, separate from fulfillment and processing fees.
+	orderApplicationFees: defineTable({
+		orderId: v.id("orders"),
+		status: v.union(v.literal("pending"), v.literal("verified"), v.literal("attention")),
+		attempts: v.number(),
+		nextAttemptAt: v.optional(v.number()),
+		attemptToken: v.optional(v.string()),
+		leaseUntil: v.optional(v.number()),
+		error: v.optional(applicationFeeErrorValidator),
+		observation: v.optional(applicationFeeObservationValidator),
+		observedAt: v.optional(v.number()),
+	}).index("by_orderId", ["orderId"]),
 
 	// Print orders (from Stripe checkout on any client site)
 	orders: defineTable({

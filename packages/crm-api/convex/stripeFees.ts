@@ -38,8 +38,42 @@ import {
 	type StripeFeeCaptureError,
 } from "./helpers/stripeFeeCapture";
 import { purposeScopedServerRolesAreDisjoint } from "./helpers/serverSecrets";
+import { type ApplicationFeeError, APPLICATION_FEE_MAX_ATTEMPTS } from "./helpers/applicationFeeVerification";
+import { ApplicationFeeReadError, readApplicationFee } from "./helpers/readApplicationFee";
 
 const STRIPE_API_VERSION = "2026-01-28.clover" as const;
+
+/** Read-only original fee verification, independent of processing-fee/fulfillment state. */
+export const verifyApplicationFeeForOrder = internalAction({
+	args: { orderId: v.id("orders"), attempt: v.number() },
+	handler: async (ctx, { orderId, attempt }) => {
+		if (!Number.isInteger(attempt) || attempt < 1 || attempt > APPLICATION_FEE_MAX_ATTEMPTS) return;
+		const attemptToken = randomUUID();
+		const order = await ctx.runMutation(internal.stripeFeesStore.beginApplicationFeeAttempt, {
+			orderId, attempt, attemptToken,
+		});
+		if (!order) return;
+		let error: ApplicationFeeError = "configuration_unavailable";
+		const stripeKey = process.env.STRIPE_SECRET_KEY;
+		if (stripeKey && purposeScopedServerRolesAreDisjoint()) {
+			try {
+				const stripe = new Stripe(stripeKey, {
+					apiVersion: STRIPE_API_VERSION, timeout: 10_000, maxNetworkRetries: 0,
+				});
+				const observation = await readApplicationFee(stripe, order);
+				await ctx.runMutation(internal.stripeFeesStore.finishApplicationFeeAttempt, {
+					orderId, attempt, attemptToken, result: { observation },
+				});
+				return;
+			} catch (cause) {
+				error = cause instanceof ApplicationFeeReadError ? cause.code : "provider_unavailable";
+			}
+		}
+		await ctx.runMutation(internal.stripeFeesStore.finishApplicationFeeAttempt, {
+			orderId, attempt, attemptToken, result: { error },
+		});
+	},
+});
 const PAYMENT_INTENT_PENDING_STATUSES = new Set<Stripe.PaymentIntent.Status>([
 	"processing",
 	"requires_action",

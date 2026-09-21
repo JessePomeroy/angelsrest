@@ -75,9 +75,9 @@ existing path. Omission failures leave the reservation, admission and order
 state intact for recovery.
 
 This records **expected amounts**, not proof of an application fee, refund,
-supplier charge or payout. It does not schedule any new Stripe read or refund.
-Existing original-charge processing-fee capture remains separate. Missing
-historical financial records remain unknown and cannot be treated as zero fees.
+supplier charge or payout. The verification below records provider evidence
+separately. Existing original-charge processing-fee capture remains separate.
+Missing historical financial records remain unknown and cannot be treated as zero fees.
 
 Roll out the additive backend consumer before activating client producers at
 this revision. New client checkout requires both the original supplier capture
@@ -87,11 +87,63 @@ preserve saved records and original recovery settings during rollback. A
 successful source/hosting merge does not deploy the shared backend or activate
 clients.
 
+## Original application-fee verification
+
+New orders carrying the financial snapshot atomically create one
+`orderApplicationFees` record and schedule a read after 15 seconds. Order replay
+does not enqueue a second record. Historical orders without the snapshot are
+not backfilled. Local fulfillment status, manual refund markers and the
+processing-fee worker's terminal state do not stop original-fee verification.
+
+The existing `stripeFees` Node entrypoint delegates provider verification to
+`helpers/readApplicationFee.ts`; `stripeFeesStore` owns its distinct database
+lifecycle. It verifies the configured platform account and mode using account
+and balance reads. It retrieves the Checkout Session and PaymentIntent/expanded
+charge on the **saved connected account**, then the Application Fee on the
+verified platform. It checks Session/PI identity, original tenant marker,
+subtotal/total, currency/mode, captured payment and fee account/charge/application
+relationships. The client's latest selected account is not consulted.
+
+An Application Fee supplies the actual original amount and returned amount;
+the expected amount is never overwritten to make them agree. Different amounts
+produce `attention` with both records retained. Explicit null/zero fee-request
+fields and a null charge fee establish zero for a paid order. A requested fee
+whose object has not arrived remains pending. A free order must have a verified
+complete `no_payment_required` Session with no PaymentIntent. Missing or malformed
+provider data never substitutes for a verified zero. Currency conversion and
+non-USD records are outside this USD checkout contract and require attention.
+
+Each attempt obtains a durable 90-second lease before provider reads; Stripe
+requests have a 10-second timeout and no SDK retries. There are at most four
+attempts, with 60-second, 5-minute and 30-minute delays. An abandoned lease follows
+the same bounded retry ladder. Duplicate, early, expired and stale workers
+cannot replace the accepted result. Missing configuration, unavailable provider
+access and asynchronous payment/fee data are retryable; identity mismatches
+require attention immediately. Exhaustion retains an explicit attention state,
+never an invented amount. Provider error payloads and credentials are not saved.
+
+`stripeFeesStore.getApplicationFeeForOrder` requires membership in the stored
+order's site and exposes expected amounts, the timestamped observation and
+pending/verified/attention/unknown status. It does not expose claim tokens or
+accept financial writes. A historical order has unknown evidence, not zero.
+
+This is one original-fee observation, **not a continuously synchronized refund
+ledger or authority to execute a refund**. Returned-fee and customer-refunded
+counters are provider facts observed during this read; subsequent Dashboard
+actions require a refresh/reconciliation in the later refund workflow. Refund
+allocation and individual pending/failed/canceled refund objects remain separate.
+No net earnings, supplier bill, tax liability or bank settlement is inferred.
+Deploying the shared backend enables the scheduled read for future matching
+orders; that deployment and actual provider acceptance require separate approval.
+
+Provider references: [direct-charge fee scope and asynchronous creation](https://docs.stripe.com/connect/direct-charges?platform=web&ui=stripe-hosted),
+[Application Fee fields](https://docs.stripe.com/api/application_fees/object), and
+[Charge fee fields](https://docs.stripe.com/api/charges/object).
+
 ## Remaining financial work
 
-Reconcile actual provider fee/refund records separately before enabling guided
-partial refunds. The guided
-Hub flow must record refunded print items/amounts and return the corresponding
+Refresh and reconcile provider refund records before enabling guided partial
+refunds. The guided Hub flow must record refunded print items/amounts and return the corresponding
 fee with cumulative cent rounding and retry/concurrency protection. Dashboard
 refunds with unknown print allocation require reconciliation, not an inferred
 percentage of the total refunded charge. Existing whole-order supplier-failure

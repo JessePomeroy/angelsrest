@@ -356,6 +356,10 @@ describe("original client checkout financial evidence", () => {
 		expect(order?.checkoutFinancialSnapshot?.applicationFeeAmountCents).toBe(210);
 		expect(order?.stripePaymentIntentId).toBe(payload.stripePaymentIntentId);
 		await expect(s.t.mutation(api.orders.create, payload)).resolves.toMatchObject({ alreadyExisted: true });
+		const fees = await s.t.run(ctx => ctx.db.query("orderApplicationFees")
+			.withIndex("by_orderId", q => q.eq("orderId", created._id)).take(2));
+		expect(fees).toHaveLength(1);
+		expect(fees[0]).toMatchObject({ status: "pending", attempts: 0 });
 		await expect(s.t.mutation(api.orders.updateStatus, { orderId: created._id, webhookSecret: SECRET,
 			stripePaymentIntentId: "pi_replacement1234567890" })).rejects.toThrow("immutable");
 	});
