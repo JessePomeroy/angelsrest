@@ -348,16 +348,32 @@ async function attachPrintFulfillmentResult(
 	return printFulfillmentCompletionOutcome({ ...order, lumaprintsOrderNumber });
 }
 
-async function findLegacyLumaPrintsOrderForShipment(
+async function shipmentConnectionMatches(
+	ctx: MutationCtx,
+	order: Doc<"orders"> | null,
+	connection?: LumaPrintsConnection,
+) {
+	if (!order || !sameLumaPrintsConnection(order.lumaprintsConnection, connection)) return false;
+	if (connection) await assertSavedLumaPrintsConnection(ctx, connection, order.tenantId);
+	return true;
+}
+
+async function findLumaPrintsOrderForShipment(
 	ctx: MutationCtx,
 	lumaprintsOrderNumber: string,
+	connection?: LumaPrintsConnection,
 ) {
+	if (connection) await assertSavedLumaPrintsConnection(ctx, connection, connection.tenantId);
 	const [completed, submitted] = await Promise.all([
-		findScopedLumaPrintsOrder(ctx, lumaprintsOrderNumber),
-		findScopedLumaPrintsSubmission(ctx, lumaprintsOrderNumber),
+		findScopedLumaPrintsOrder(ctx, lumaprintsOrderNumber, connection?.connectionRef),
+		findScopedLumaPrintsSubmission(ctx, lumaprintsOrderNumber, connection?.connectionRef),
 	]);
 	if (completed && submitted && completed._id !== submitted._id) {
 		throw new Error("LumaPrints order number belongs to multiple orders");
+	}
+	const order = completed ?? submitted;
+	if (order && !await shipmentConnectionMatches(ctx, order, connection)) {
+		throw new Error("Shipment connection does not match saved order");
 	}
 	if (completed) return completed;
 	if (!submitted || !hasUncertainPrintSubmission(submitted)) return null;
@@ -4168,12 +4184,14 @@ export const recordShipmentEmailDelivery = mutation({
 });
 
 /**
- * Lease the hub-owned shipment email side effect by legacy central order
- * number. Client-scoped orders require separate authenticated intake. A V2 row may be reclaimed after its lease expires; historical
+ * Lease the hub-owned shipment email side effect inside the authenticated supplier
+ * scope. An absent context means legacy central work only. A V2 row may be
+ * reclaimed after its lease expires; historical
  * shipped/claimed rows remain terminal because they lack V2 protocol evidence.
  */
 export const claimShipmentEmailNotificationV2 = mutation({
 	args: {
+		lumaprintsConnection: v.optional(lumaprintsConnectionValidator),
 		lumaprintsOrderNumber: v.string(),
 		claimToken: v.string(),
 		webhookSecret: v.string(),
@@ -4203,9 +4221,10 @@ export const claimShipmentEmailNotificationV2 = mutation({
 		if (!CLAIM_TOKEN.test(args.claimToken)) {
 			throw new Error("Invalid shipment email claim token");
 		}
-		const order = await findLegacyLumaPrintsOrderForShipment(
+		const order = await findLumaPrintsOrderForShipment(
 			ctx,
 			args.lumaprintsOrderNumber,
+			args.lumaprintsConnection,
 		);
 		if (!order) return null;
 
@@ -4309,6 +4328,7 @@ export const claimShipmentEmailNotificationV2 = mutation({
 /** Read shipment-email uncertainty without widening the V2 claim result. */
 export const isShipmentEmailNotificationDeliveryUncertain = mutation({
 	args: {
+		lumaprintsConnection: v.optional(lumaprintsConnectionValidator),
 		lumaprintsOrderNumber: v.string(),
 		webhookSecret: v.string(),
 	},
@@ -4318,14 +4338,16 @@ export const isShipmentEmailNotificationDeliveryUncertain = mutation({
 		if (!LUMAPRINTS_ORDER_NUMBER.test(args.lumaprintsOrderNumber)) {
 			throw new Error("Invalid LumaPrints order number");
 		}
-		const order = await findScopedLumaPrintsOrder(ctx, args.lumaprintsOrderNumber);
-		return order?.shipmentEmailDeliveryStatus === "uncertain";
+		const order = await findScopedLumaPrintsOrder(ctx, args.lumaprintsOrderNumber, args.lumaprintsConnection?.connectionRef);
+		return await shipmentConnectionMatches(ctx, order, args.lumaprintsConnection)
+			&& order?.shipmentEmailDeliveryStatus === "uncertain";
 	},
 });
 
 /** Recheck a shipment-email lease immediately before the email request. */
 export const authorizeShipmentEmailNotificationSendV2 = mutation({
 	args: {
+		lumaprintsConnection: v.optional(lumaprintsConnectionValidator),
 		orderId: v.id("orders"),
 		lumaprintsOrderNumber: v.string(),
 		claimToken: v.string(),
@@ -4341,6 +4363,7 @@ export const authorizeShipmentEmailNotificationSendV2 = mutation({
 			throw new Error("Invalid shipment email claim token");
 		}
 		const order = await ctx.db.get(args.orderId);
+		if (!await shipmentConnectionMatches(ctx, order, args.lumaprintsConnection)) return false;
 		if (
 			!order
 			|| order.lumaprintsOrderNumber !== args.lumaprintsOrderNumber
@@ -4374,6 +4397,7 @@ export const authorizeShipmentEmailNotificationSendV2 = mutation({
 /** Release only the caller's unsent V2 shipment-email lease. */
 export const releaseShipmentEmailNotificationV2 = mutation({
 	args: {
+		lumaprintsConnection: v.optional(lumaprintsConnectionValidator),
 		orderId: v.id("orders"),
 		lumaprintsOrderNumber: v.string(),
 		claimToken: v.string(),
@@ -4390,6 +4414,7 @@ export const releaseShipmentEmailNotificationV2 = mutation({
 			throw new Error("Invalid shipment email claim token");
 		}
 		const order = await ctx.db.get(args.orderId);
+		if (!await shipmentConnectionMatches(ctx, order, args.lumaprintsConnection)) return false;
 		if (
 			!order
 			|| order.lumaprintsOrderNumber !== args.lumaprintsOrderNumber
@@ -4411,6 +4436,7 @@ export const releaseShipmentEmailNotificationV2 = mutation({
 /** Complete only the caller's successfully sent V2 shipment-email lease. */
 export const completeShipmentEmailNotificationV2 = mutation({
 	args: {
+		lumaprintsConnection: v.optional(lumaprintsConnectionValidator),
 		orderId: v.id("orders"),
 		lumaprintsOrderNumber: v.string(),
 		claimToken: v.string(),
@@ -4427,6 +4453,7 @@ export const completeShipmentEmailNotificationV2 = mutation({
 			throw new Error("Invalid shipment email claim token");
 		}
 		const order = await ctx.db.get(args.orderId);
+		if (!await shipmentConnectionMatches(ctx, order, args.lumaprintsConnection)) return false;
 		if (
 			!order
 			|| order.lumaprintsOrderNumber !== args.lumaprintsOrderNumber

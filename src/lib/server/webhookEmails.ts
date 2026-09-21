@@ -90,6 +90,7 @@ export async function sendCustomerShipmentNotification(
 		customerEmail,
 		orderNumber,
 		lumaprintsOrderNumber,
+		lumaprintsConnectionRef,
 		trackingNumber,
 		carrier,
 		notificationProfile = ANGELS_REST_COMMERCE_PROFILE,
@@ -97,6 +98,7 @@ export async function sendCustomerShipmentNotification(
 		customerEmail: string;
 		orderNumber: string;
 		lumaprintsOrderNumber: string;
+		lumaprintsConnectionRef?: string;
 		trackingNumber?: string;
 		carrier?: string;
 		notificationProfile?: CommerceNotificationProfile;
@@ -122,7 +124,13 @@ export async function sendCustomerShipmentNotification(
 			text: `Your ${notificationProfile.siteName} order ${orderNumber} has shipped.\n\n${tracking}\n\nView order status: ${statusUrl}`,
 			html,
 		},
-		{ idempotencyKey: `shipment-email:${lumaprintsOrderNumber}` },
+		{
+			// Keep legacy keys stable while independent accounts receive their own namespace.
+			idempotencyKey:
+				lumaprintsConnectionRef === undefined
+					? `shipment-email:${lumaprintsOrderNumber}`
+					: `shipment-email:${lumaprintsConnectionRef}:${lumaprintsOrderNumber}`,
+		},
 	);
 	requireCommerceEmailAccepted(result, "Shipment email delivery failed");
 }

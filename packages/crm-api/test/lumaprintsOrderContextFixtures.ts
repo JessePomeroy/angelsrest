@@ -69,5 +69,15 @@ export async function setup() {
 			printJobLeaseToken: lease.leaseToken, webhookSecret: secret };
 		return { ...seed, order, command, jobId, lease };
 	}
-	return { t, tenant, paid };
+	async function submitted(index: number, orderNumber = "12345") {
+		const seed = await paid(index);
+		await t.mutation(api.orders.claimPrintFulfillmentV5, { ...seed.command, lumaprintsConnection: seed.connection });
+		await t.mutation(api.orders.beginPrintFulfillmentSubmission, seed.command);
+		await t.mutation(api.orders.recordPrintFulfillmentSubmissionReceipt, {
+			orderId: seed.order._id, claimToken, externalId: seed.args.stripeSessionId,
+			lumaprintsSubmissionOrderNumber: orderNumber, tenantId: seed.connection.tenantId, webhookSecret: secret,
+		});
+		return seed;
+	}
+	return { t, tenant, paid, submitted };
 }
