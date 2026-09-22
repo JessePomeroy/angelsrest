@@ -403,12 +403,11 @@ shared AdminModal. It creates the client record through the existing authorized
 HTTP mutation, then selects the new client in the Stripe setup panel. It does not
 create a password, send an invitation, start billing or activate commerce.
 
-`tests/browser/onboarding-rehearsal/` imports the actual host Platform route,
+A now-retired isolated rehearsal imported the actual host Platform route,
 shared login/layout, Stripe setup and supplier setup components. Build-time
-fixtures simulate only authentication, persistence and provider responses; the
-production app contains no rehearsal switch. The Stripe handoff remains a
-same-tab redirect. Practice data remains in sessionStorage and uses `.example`
-domains only. The rehearsal banners and provider destination are teaching UI.
+fixtures simulated authentication, persistence and provider responses; the
+production app has no rehearsal switch. The production Stripe handoff remains a
+same-tab redirect. The former rehearsal source is retained in PR #648's history.
 
 Browser interaction covered desktop/mobile creation, invalid/duplicate details,
 cancel/focus restoration, wrong-password recovery, client sign-out/reset,
@@ -417,10 +416,10 @@ connection. Console warning/error checks were empty at the checked client/suppli
 states. Captures are in `/tmp/angelsrest-onboarding-evidence/` and were visually
 inspected. These are focused implementation checks, not a full Stripe audit.
 
-The static preview is
+The historical static preview was
 <https://angelsrest-3x3x61qyd-jesse-pomeroys-projects.vercel.app/admin/platform>.
-Vercel reports READY; this browser reaches its existing Vercel login protection,
-so remote rendered verification remains open. No protection settings changed.
+Vercel reported READY; this browser reached its existing Vercel login protection,
+so remote rendered verification was not completed. No protection settings changed.
 Paper was revisited and requires login to edit; existing boards are preserved,
 and update/comparison remain pending. The 21st CLI is unavailable. The screen
 inventory records these gaps without marking the Paper references verified.
@@ -432,8 +431,8 @@ The ready Stripe screen now adds **Next: set up LumaPrints**, two short sentence
 covering an existing/new account, a Standard Store, billing details and the
 operator handoff, plus the verified provider signup link. It uses the existing
 section spacing, typography and button styles. No setup flags, account creation
-or supplier verification behavior changed. The isolated rehearsal intercepts
-this link to a labeled simulated destination and preserves the return route.
+or supplier verification behavior changed. The former isolated rehearsal intercepted
+this link to a labeled simulated destination and preserved the return route.
 
 Local browser checks confirmed the prompt is absent before readiness and while
 pending, appears at ready, fits desktop/mobile, and navigates to/from the provider
@@ -454,3 +453,14 @@ expected conflict as a Convex application error code, translated at the existing
 HTTP boundary only for client creation. An actual SDK/handler regression covers
 production-redacted messages. Paper access remains unchanged;
 no reference board has been marked verified by these checks.
+
+### Practice app retired — September 22, 2026
+
+After the real onboarding source merged in PR #648, the owner requested removal
+of the standalone practice flow. Its static app, simulated transports, deployment
+configuration and two package scripts are removed. The production flow and its
+automated browser/HTTP/backend regressions remain. For focused UI reproduction,
+use `pnpm test:browser platform-client-create.spec.ts stripe-setup.spec.ts`.
+Historical screenshots above remain evidence; the old preview links are no longer
+the recommended setup path. Deployment deletion is tracked separately from source
+removal. Shared backend rollout and live activation remain pending.
