@@ -12,6 +12,7 @@ import {
 } from "$lib/server/stripeConnect";
 
 export interface CommerceNotificationProfile {
+	tenantId?: string;
 	siteName: string;
 	siteUrl: string;
 	adminEmail: string;
@@ -110,6 +111,7 @@ async function resolveCommerceContext(
 			// Keep the authenticated purchase/recovery partition; the current URL is presentation data.
 			siteUrl: metadataSiteUrl ?? client.siteUrl,
 			notificationProfile: {
+				...(client.tenantId ? { tenantId: client.tenantId } : {}),
 				siteName: client.name || client.siteUrl,
 				siteUrl: client.siteUrl,
 				adminEmail: client.adminEmails?.[0] || client.email || ADMIN_EMAIL,
@@ -134,6 +136,7 @@ async function resolveCommerceContext(
 		...(profile.tenantId ? { tenantId: profile.tenantId } : {}),
 		siteUrl: profile.siteUrl,
 		notificationProfile: {
+			...(profile.tenantId ? { tenantId: profile.tenantId } : {}),
 			siteName: profile.siteName,
 			siteUrl: profile.siteUrl,
 			adminEmail: profile.adminEmail,

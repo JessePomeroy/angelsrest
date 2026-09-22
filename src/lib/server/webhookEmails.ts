@@ -10,12 +10,13 @@
 import type { Resend } from "resend";
 import type Stripe from "stripe";
 import { env } from "$env/dynamic/private";
-import { ADMIN_EMAIL, SITE_DOMAIN } from "$lib/config/site";
+import { ADMIN_EMAIL } from "$lib/config/site";
 import {
 	type CommerceEmailItem,
 	renderCustomerCommerceEmailHtml,
 	renderOwnerCommerceEmailHtml,
 } from "$lib/server/commerceEmailHtml";
+import { resolveCommerceEmailIdentity } from "$lib/server/commerceEmailIdentity.server";
 import {
 	ANGELS_REST_COMMERCE_PROFILE,
 	type CommerceNotificationProfile,
@@ -60,14 +61,6 @@ function commerceEmailBrand(profile: CommerceNotificationProfile) {
 	};
 }
 
-function commerceSender(profile: CommerceNotificationProfile, suffix = "") {
-	const displayName = profile.siteName.replace(/[\r\n<>]/g, " ").trim() || "Angel's Rest";
-	if (profile.siteUrl === SITE_DOMAIN) {
-		return `Angel's Rest${suffix} <orders@angelsrest.online>`;
-	}
-	return `${displayName}${suffix} via Angel's Rest <orders@angelsrest.online>`;
-}
-
 function requireCommerceEmailAccepted(
 	result: {
 		data?: { id?: string } | null;
@@ -104,6 +97,7 @@ export async function sendCustomerShipmentNotification(
 		notificationProfile?: CommerceNotificationProfile;
 	},
 ) {
+	const identity = resolveCommerceEmailIdentity(notificationProfile, "");
 	const tracking = trackingNumber
 		? `Tracking${carrier ? ` (${carrier})` : ""}: ${trackingNumber}`
 		: "Tracking details should update soon.";
@@ -118,7 +112,7 @@ export async function sendCustomerShipmentNotification(
 	});
 	const result = await resend.emails.send(
 		{
-			from: commerceSender(notificationProfile),
+			...identity.headers,
 			to: [customerEmail],
 			subject: `Order ${orderNumber} has shipped - ${notificationProfile.siteName}`,
 			text: `Your ${notificationProfile.siteName} order ${orderNumber} has shipped.\n\n${tracking}\n\nView order status: ${statusUrl}`,
@@ -275,6 +269,7 @@ export async function sendPrintReconciliationBlockedAlert(
 		notificationProfile?: CommerceNotificationProfile;
 	},
 ) {
+	const identity = resolveCommerceEmailIdentity(notificationProfile, " Alerts");
 	const orderReference = canonicalOrderReference(orderNumber);
 	const escalationCopy = {
 		transport: "Repeated provider lookups failed at the transport boundary",
@@ -296,8 +291,8 @@ export async function sendPrintReconciliationBlockedAlert(
 	});
 	const result = await resend.emails.send(
 		{
-			from: commerceSender(notificationProfile, " Alerts"),
-			to: [notificationProfile.adminEmail],
+			...identity.headers,
+			to: [identity.notificationEmail],
 			subject: `Print reconciliation blocked for order ${orderReference}`,
 			text: `Automatic print reconciliation stopped for order ${orderReference}.
 
@@ -334,6 +329,7 @@ export async function sendCustomerConfirmation(
 	},
 	idempotencyKey?: string,
 ) {
+	const identity = resolveCommerceEmailIdentity(notificationProfile, "");
 	const origin = commerceOrigin(notificationProfile);
 	const isDigital = session.metadata?.isDigital === "true";
 	const orderReference = orderNumber ?? session.id;
@@ -399,7 +395,7 @@ ${origin}
 
 	const result = await resend.emails.send(
 		{
-			from: commerceSender(notificationProfile),
+			...identity.headers,
 			to: [customerEmail],
 			subject: `Order received — ${orderReference}`,
 			text: emailContent,
@@ -427,6 +423,7 @@ export async function sendCustomerFulfillmentFailure(
 		notificationProfile?: CommerceNotificationProfile;
 	},
 ) {
+	const identity = resolveCommerceEmailIdentity(notificationProfile, "");
 	const html = renderCustomerCommerceEmailHtml({
 		kind: "refund_issued",
 		brand: commerceEmailBrand(notificationProfile),
@@ -436,7 +433,7 @@ export async function sendCustomerFulfillmentFailure(
 	});
 	const result = await resend.emails.send(
 		{
-			from: commerceSender(notificationProfile),
+			...identity.headers,
 			to: [customerEmail],
 			subject: `Order ${orderNumber} could not be fulfilled — refund issued`,
 			text: `
@@ -475,6 +472,7 @@ export async function sendAdminNotification(
 	},
 	idempotencyKey?: string,
 ) {
+	const identity = resolveCommerceEmailIdentity(notificationProfile, " Orders");
 	const emailContent = `
 🎉 NEW ORDER RECEIVED!
 
@@ -516,8 +514,8 @@ This order was received through ${notificationProfile.siteName}.
 
 	const result = await resend.emails.send(
 		{
-			from: commerceSender(notificationProfile, " Orders"),
-			to: [notificationProfile.adminEmail],
+			...identity.headers,
+			to: [identity.notificationEmail],
 			subject: orderNumber
 				? `New Order ${orderNumber}: ${formatCents(session.amount_total || 0)} from ${shippingDetails?.name || customerEmail}`
 				: `New Order: ${formatCents(session.amount_total || 0)} from ${shippingDetails?.name || customerEmail}`,
@@ -542,6 +540,7 @@ export async function sendPaymentFailedEmail(
 		notificationProfile?: CommerceNotificationProfile;
 	},
 ) {
+	const identity = resolveCommerceEmailIdentity(notificationProfile, "");
 	const html = renderCustomerCommerceEmailHtml({
 		kind: "payment_failed",
 		brand: commerceEmailBrand(notificationProfile),
@@ -549,7 +548,7 @@ export async function sendPaymentFailedEmail(
 		shopUrl: `${commerceOrigin(notificationProfile)}/shop`,
 	});
 	const result = await resend.emails.send({
-		from: commerceSender(notificationProfile),
+		...identity.headers,
 		to: [customerEmail],
 		subject: `Payment could not be processed - ${notificationProfile.siteName}`,
 		text: `
@@ -594,6 +593,7 @@ export async function sendFulfillmentFailureAlert(
 		notificationProfile?: CommerceNotificationProfile;
 	},
 ) {
+	const identity = resolveCommerceEmailIdentity(notificationProfile, " Alerts");
 	const refundLine = `Customer auto-refunded via Stripe (refund ID: ${stripeRefundId})`;
 	const html = renderOwnerCommerceEmailHtml({
 		kind: "fulfillment_refund_succeeded",
@@ -608,8 +608,8 @@ export async function sendFulfillmentFailureAlert(
 
 	const result = await resend.emails.send(
 		{
-			from: commerceSender(notificationProfile, " Alerts"),
-			to: [notificationProfile.adminEmail],
+			...identity.headers,
+			to: [identity.notificationEmail],
 			subject: `[URGENT] Fulfillment error on order ${orderNumber}`,
 			text: `
 Order ${orderNumber} permanently failed at LumaPrints submission.
@@ -655,6 +655,7 @@ export async function sendAutomatedRefundFailureAlert(
 		notificationProfile?: CommerceNotificationProfile;
 	},
 ) {
+	const identity = resolveCommerceEmailIdentity(notificationProfile, " Alerts");
 	const html = renderOwnerCommerceEmailHtml({
 		kind: "automated_refund_failed",
 		brand: commerceEmailBrand(notificationProfile),
@@ -668,8 +669,8 @@ export async function sendAutomatedRefundFailureAlert(
 	});
 	const result = await resend.emails.send(
 		{
-			from: commerceSender(notificationProfile, " Alerts"),
-			to: [notificationProfile.adminEmail],
+			...identity.headers,
+			to: [identity.notificationEmail],
 			subject: `[ACTION REQUIRED] Refund ${refundStatus} for order ${orderNumber}`,
 			text: `Automated fulfillment refund did not succeed.
 
@@ -717,6 +718,7 @@ export async function sendAutomatedRefundAttentionAlert(
 		notificationProfile?: CommerceNotificationProfile;
 	},
 ) {
+	const identity = resolveCommerceEmailIdentity(notificationProfile, " Alerts");
 	const reason =
 		attentionReason === "request_outcome_unknown"
 			? "The refund request outcome is unknown. Do not submit another refund automatically."
@@ -743,8 +745,8 @@ export async function sendAutomatedRefundAttentionAlert(
 	});
 	const result = await resend.emails.send(
 		{
-			from: commerceSender(notificationProfile, " Alerts"),
-			to: [notificationProfile.adminEmail],
+			...identity.headers,
+			to: [identity.notificationEmail],
 			subject: `[ACTION REQUIRED] Refund needs attention for order ${orderNumber}`,
 			text: `Automated fulfillment refund still needs operator attention.
 
