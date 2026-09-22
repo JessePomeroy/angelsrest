@@ -3944,12 +3944,12 @@
         "date": "2026-09-22",
         "status": "browser-observed-paper-pending",
         "source": "src/lib/components/PlatformClientCreate.svelte",
-        "setupUrl": "http://127.0.0.1:5201/admin/platform",
-        "previewUrl": "https://angelsrest-3x3x61qyd-jesse-pomeroys-projects.vercel.app/admin/platform",
+        "setupUrl": "http://127.0.0.1:5196/?fixture=platform-client-create",
+        "retiredPreviewUrl": "https://angelsrest-3x3x61qyd-jesse-pomeroys-projects.vercel.app/admin/platform",
         "setupSteps": [
-          "Start the isolated onboarding rehearsal.",
-          "Open Add platform client; use Cedar Finch Studio, cedarfinch.example and owner@cedarfinch.example.",
-          "Submit and inspect the selected client and setup link. Reopen to exercise duplicate validation."
+          "Run pnpm test:browser platform-client-create.spec.ts to exercise the real component with intercepted HTTP responses.",
+          "The focused fixture uses Cedar Finch Studio, cedarfinch.example and owner@cedarfinch.example without creating real records.",
+          "Pending-save drag/failure/retry and duplicate recovery remain automated regressions; the standalone practice app was retired after PR #648."
         ],
         "statesObserved": [
           "empty platform",
@@ -3981,7 +3981,7 @@
         ],
         "lastVerified": null,
         "limitations": [
-          "Actual host/shared components; authentication, persistence and providers simulated in a separate static build. Rehearsal banners are not production UI.",
+          "Historical walkthrough captures used actual components with simulated authentication, persistence and providers. That standalone rehearsal is now retired; focused regression fixtures remain.",
           "The existing Paper handbook was opened, but the browser is signed out and requires login to edit. No board updated or same-state comparison claimed. Existing artboard IDs retained.",
           "21st CLI and project design context unavailable; existing admin modal and style tokens reused.",
           "Vercel preview deployed READY. Hosted browser verification reached Vercel login; full interactive verification used the identical locally built sources."
@@ -6956,10 +6956,10 @@
         "lastVerified": null,
         "limitations": [
           "Existing Paper update/comparison gap remains: handbook requires signed-in edit access; no board marked verified.",
-          "Provider registration was not submitted. Rehearsal continues to use fictional session records and simulated provider destinations.",
+          "Provider registration was not submitted. Historical rehearsal evidence used fictional records and simulated provider destinations; that standalone app is now retired.",
           "Preview deployment is READY; hosted browser remains at Vercel login protection. Local browser verification passed."
         ],
-        "previewUrl": "https://angelsrest-8xvccjjko-jesse-pomeroys-projects.vercel.app/admin/platform"
+        "retiredPreviewUrl": "https://angelsrest-8xvccjjko-jesse-pomeroys-projects.vercel.app/admin/platform"
       }
     },
     {
