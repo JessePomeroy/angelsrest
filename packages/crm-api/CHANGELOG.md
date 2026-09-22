@@ -1,5 +1,68 @@
 # @jessepomeroy/crm-api
 
+## 6.0.0
+
+### Major Changes
+
+- dd4b7e3: Replace unverified Stripe account assignment with a durable creation attempt and
+  atomic, unique account binding. The new onboarding protocol requires creator
+  membership and hub server authority, freezes tenant/provider request identity,
+  and refuses changes to the Stripe platform or test/live environment.
+  
+  Direct account assignment through createClient, updateClient, seedClient,
+  updateStripeConnectedAccount, and setStripeConnectedAccount is no longer
+  supported (an unchanged value on updateClient remains a no-op). Coordinate the
+  hub adoption while onboarding is disabled; old onboarding hosts are incompatible.
+
+### Minor Changes
+
+- 4c6f40f: Capture immutable expected financial amounts before new client Checkout creation. Validate quantities, unit prices and the print-only application fee against the original catalog reservation; retain tenant, platform, connected-account and environment identity. Transfer the record to the matching paid order and require host acknowledgement before Stripe creation. Preserve hub/invoice protocols and historical recovery without inventing original fee evidence. Backend-first adoption and client acceptance are required; no actual fee reconciliation or refund execution is enabled.
+- 8114d7d: Add explicit version-2 commerce registries pinned to stable tenant identities.
+  Retain version-1 controls and original admitted-work recovery while validating
+  new reservations, Checkout admission and first provider submission against the
+  activated tenant.
+- f4c98fa: Add immutable tenant-bound LumaPrints connection identity with hub-authorized reads and creator-plus-hub verified registration. Preserve historical supplier identity independently of current selection; do not store credentials or activate fulfillment.
+- 7a791b0: Add optional saved LumaPrints connection context to reservations and paid orders.
+  Transfer only the bound, verified identity; preserve it on replay; require workers
+  to acknowledge it before provider work. Scope supplier-number ownership by
+  connection while keeping legacy shipment intake limited to central orders.
+  No checkout producer captures client supplier context yet.
+- 941135b: Add creator-authorized supplier setup target resolution and an optional observed
+  tenant acknowledgment on verified connection registration. The host can verify
+  the intended store before binding while rejecting tenant changes during that read.
+- 25e77ac: Scope shipment claims, notification leases and receipt reconciliation to the saved
+  LumaPrints connection. Optional context preserves legacy central callers while
+  requiring complete immutable ownership for client supplier work.
+- abf44df: Require current full-dashboard Stripe bindings and fresh payment readiness for new client checkout creation. Pin captured fulfillment before payment, verify supplier ownership and admission, and resolve payment ownership through verified tenant aliases while preserving original recovery and refund identities.
+- e8b6bec: Authorize verified client site administrators alongside creators for Stripe setup target reads and hub-mediated attempt/binding writes. Retained tenant aliases resolve to the same authorized client, including verified invitation identity claims after a domain rename; the hub secret and immutable binding protocol remain required. Adopt with the gated client setup host; deployment and activation are separate steps.
+- 29a346c: Add opt-in tenant supplier capture to authenticated checkout reservations. Freeze
+  the current immutable supplier with the print input, retain protocol and supplier
+  identity on replay, and return the saved non-secret context for host pre-payment
+  configuration checks. Existing reservation callers keep their exact response.
+- bff383c: Add tenant-authorized guided client refund operations with original-order allocations, exact print-only fee returns, durable provider recovery and supplier/automatic-refund coordination. The host flow remains disabled until the additive backend and rollout gates are approved.
+- 73e3cd0: Preserve individually verified full and partial client refunds against their original checkout identity, including pre-order observations, late status changes, leased recovery and tenant-authorized bounded reads.
+  
+  Authorize refund and application-fee projections through the original financial tenant, retaining access after verified domain changes without changing legacy site authorization.
+- bb9d041: Add verified, hub-owned Stripe connection status storage with tenant-authorized reads, fresh refresh claims, stale/expired-response rejection, and terminal disconnection. Preserve immutable payment-account ownership and refuse implicit reconnection. This is the storage contract; status producers and activation follow separately.
+- 74653b9: Retain verified Stripe account ownership independently of the active checkout
+  account. Binding records the immutable client, tenant, attempt, platform, and
+  mode atomically. Old accounts cannot be reassigned across tenants after their
+  active selection is removed.
+  
+  Historical event routing, accepted Checkout retries, and refund reconciliation
+  retain the original provider account. New Checkout admission still requires the
+  current selection. Deploy the reader/writer together before any future account
+  replacement or offboarding; retain history records on rollback. No account
+  replacement endpoint, live mutation, or provider-access grant is introduced.
+- b27b450: Verify original client application fees with bounded, account-scoped provider reads, durable reconciliation state, and an authorized per-order projection. Preserve expected fee amounts separately from provider observations.
+
+### Patch Changes
+
+- f924b77: Validate and normalize operator-created platform client names, domains and admin email addresses before assigning tenant identity.
+  
+  Return duplicate website conflicts as application errors so the operator can recover in production.
+- acc63a7: Share the 5% print-subtotal policy across direct, cart and signed client checkout. Use validated print/print-set catalog kinds and trusted integer amounts/quantities; exclude other products, shipping and tax. Preserve fee-free hub checkout and service invoices. No historical fee rewrite, refund execution or client activation is included.
+
 ## 5.3.0
 
 ### Minor Changes
