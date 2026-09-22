@@ -181,20 +181,26 @@ export async function processStripeWebhookEvent(
 					verifiedDestinationRole,
 				);
 				if (event.account && isClientPrintRefundsEnabled()) {
-					const operationId = await adapters.convex.query(
-						api.orders.getClientPrintRefundForWebhook,
-						{
-							stripeConnectedAccountId: event.account,
-							refundId: event.data.object.id,
-							webhookSecret: getWebhookSecret(),
-						},
-					);
-					if (operationId)
-						await runClientPrintRefund({
-							operationId,
-							convex: adapters.convex,
-							stripe: getClientPrintRefundStripe(),
-						});
+					try {
+						const operationId = await adapters.convex.query(
+							api.orders.getClientPrintRefundForWebhook,
+							{
+								stripeConnectedAccountId: event.account,
+								refundId: event.data.object.id,
+								webhookSecret: getWebhookSecret(),
+							},
+						);
+						if (operationId)
+							await runClientPrintRefund({
+								operationId,
+								convex: adapters.convex,
+								stripe: getClientPrintRefundStripe(),
+							});
+					} catch (cause) {
+						throw cause instanceof ClientPrintRefundError
+							? cause
+							: new ClientPrintRefundError("provider_unavailable");
+					}
 				}
 				if (refundResult.kind === "automated_succeeded") {
 					const notification = {

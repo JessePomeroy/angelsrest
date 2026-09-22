@@ -528,6 +528,18 @@ describe("guided refunds across the real host and Convex boundary", () => {
 			} as Parameters<typeof POST>[0]);
 		};
 		s.customers[0].status = "succeeded";
+		vi.mocked(s.convex.query).mockImplementation(
+			async (...args: Parameters<ConvexHttpClient["query"]>) => {
+				if (getFunctionName(args[0]) === "orders:getClientPrintRefundForWebhook")
+					throw new Error("Temporary database failure");
+				return s.t.query(args[0], args[1]);
+			},
+		);
+		await expect(send()).rejects.toMatchObject({ status: 500 });
+		expect(runtime.failureAlert).not.toHaveBeenCalled();
+		vi.mocked(s.convex.query).mockImplementation((...args: Parameters<ConvexHttpClient["query"]>) =>
+			s.t.query(args[0], args[1]),
+		);
 		s.state.rejectFee = true;
 		await expect(send()).rejects.toMatchObject({ status: 500 });
 		expect(runtime.failureAlert).not.toHaveBeenCalled();
