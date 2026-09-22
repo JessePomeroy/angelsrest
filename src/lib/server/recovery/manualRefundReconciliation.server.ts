@@ -13,6 +13,11 @@ import {
 } from "$lib/server/commerceTenant";
 import { logStructured } from "$lib/server/logger";
 import {
+	CLIENT_REFUND_READ_OPTIONS,
+	isClientRefundEvidenceEnabled,
+	observeClientRefund,
+} from "$lib/server/recovery/clientRefundEvidence.server";
+import {
 	COMMERCE_TENANT_ID_METADATA_KEY,
 	COMMERCE_TENANT_METADATA_KEY,
 } from "$lib/server/stripeConnect";
@@ -52,6 +57,7 @@ export class ManualRefundReconciliationRetryableError extends Error {}
 
 export type ManualRefundReconciliationResult =
 	| { kind: "ignored"; reason: IgnoredReason }
+	| { kind: "client_refund_recorded" }
 	| { kind: "pending_order" | "reconciled" | "replayed" }
 	| { kind: "retryable"; reason: "print_submission_in_flight" }
 	| { kind: "rejected"; reason: "identity_conflict" | "state_conflict" }
@@ -122,6 +128,27 @@ function hasMetadataKey(metadata: Stripe.Metadata | null, key: string) {
 	return metadata != null && Object.hasOwn(metadata, key);
 }
 
+function legacyRefundEligibility(refund: Stripe.Refund) {
+	const isAutomated = refund.metadata?.automated === REFUND_AUTOMATION_TAG;
+	if (hasMetadataKey(refund.metadata, "automated") && !isAutomated) {
+		return { kind: "ignored" as const, reason: "automated" as const };
+	}
+	const automatedOrderNumber = isAutomated ? refund.metadata?.orderNumber : undefined;
+	if (
+		isAutomated &&
+		(typeof automatedOrderNumber !== "string" ||
+			automatedOrderNumber.length < 1 ||
+			automatedOrderNumber.length > 64)
+	) {
+		return { kind: "ignored" as const, reason: "automated" as const };
+	}
+	const refundStatus = normalizeAutomatedRefundStatus(refund.status);
+	if (isAutomated ? refundStatus === null : refund.status !== "succeeded") {
+		return { kind: "ignored" as const, reason: "not_succeeded" as const };
+	}
+	return { kind: "eligible" as const, isAutomated, automatedOrderNumber, refundStatus };
+}
+
 function normalizeAutomatedRefundStatus(status: string | null): AutomatedRefundStatus | null {
 	return status === "pending" ||
 		status === "requires_action" ||
@@ -151,21 +178,10 @@ export async function reconcileSucceededManualRefund(
 		(verifiedDestinationRole !== "your-account" || !ID_PATTERNS.account.test(stripeContext));
 	if (roleScopeMismatch || unsupportedContext) return ignore("unsupported_scope");
 	if (!ID_PATTERNS.event.test(event.id)) return ignore("invalid_event_id");
-	const refund = event.data.object;
-	const automationTag = refund.metadata?.automated;
-	const isAutomated = automationTag === REFUND_AUTOMATION_TAG;
-	if (hasMetadataKey(refund.metadata, "automated") && !isAutomated) return ignore("automated");
-	const automatedOrderNumber = isAutomated ? refund.metadata?.orderNumber : undefined;
-	if (
-		isAutomated &&
-		(typeof automatedOrderNumber !== "string" ||
-			automatedOrderNumber.length === 0 ||
-			automatedOrderNumber.length > 64)
-	)
-		return ignore("automated");
-	const refundStatus = normalizeAutomatedRefundStatus(refund.status);
-	if (isAutomated && refundStatus === null) return ignore("not_succeeded");
-	if (!isAutomated && refund.status !== "succeeded") return ignore("not_succeeded");
+	let refund = event.data.object;
+	const initialEligibility = legacyRefundEligibility(refund);
+	if ((!accountId || !isClientRefundEvidenceEnabled()) && initialEligibility.kind === "ignored")
+		return ignore(initialEligibility.reason);
 	if (!ID_PATTERNS.refund.test(refund.id)) return ignore("invalid_refund_id");
 	if (!Number.isSafeInteger(refund.amount) || refund.amount <= 0) {
 		return ignore("invalid_amount");
@@ -188,6 +204,7 @@ export async function reconcileSucceededManualRefund(
 		const params = { payment_intent: paymentIntentId, limit: 2 } as const;
 		if (accountId) {
 			sessions = await adapters.stripe.checkout.sessions.list(params, {
+				...CLIENT_REFUND_READ_OPTIONS,
 				stripeAccount: accountId,
 			});
 		} else if (stripeContext) {
@@ -214,10 +231,24 @@ export async function reconcileSucceededManualRefund(
 	if (objectId(session.payment_intent) !== paymentIntentId) {
 		return ignore("session_payment_mismatch");
 	}
-	if (session.amount_total !== refund.amount) return ignore("session_amount_mismatch");
 	if (session.currency !== refund.currency) return ignore("session_currency_mismatch");
 	if (session.livemode !== event.livemode) return ignore("session_mode_mismatch");
+	const currentRefund = await observeClientRefund({
+		...adapters,
+		eventId: event.id,
+		accountId,
+		eventLivemode: event.livemode,
+		refund,
+		session,
+	});
+	if (currentRefund) refund = currentRefund;
 	if (session.metadata?.type === "invoice_payment") return ignore("invoice_payment");
+	const eligibility = legacyRefundEligibility(refund);
+	if (eligibility.kind === "ignored")
+		return currentRefund ? { kind: "client_refund_recorded" } : ignore(eligibility.reason);
+	if (session.amount_total !== refund.amount)
+		return currentRefund ? { kind: "client_refund_recorded" } : ignore("session_amount_mismatch");
+	const { isAutomated, automatedOrderNumber, refundStatus } = eligibility;
 
 	const metadataValue = session.metadata?.[COMMERCE_TENANT_METADATA_KEY];
 	const metadataSiteUrl = readCheckoutTenantMarker(session.metadata);

@@ -122,10 +122,12 @@ access and asynchronous payment/fee data are retryable; identity mismatches
 require attention immediately. Exhaustion retains an explicit attention state,
 never an invented amount. Provider error payloads and credentials are not saved.
 
-`stripeFeesStore.getApplicationFeeForOrder` requires membership in the stored
-order's site and exposes expected amounts, the timestamped observation and
-pending/verified/attention/unknown status. It does not expose claim tokens or
-accept financial writes. A historical order has unknown evidence, not zero.
+`stripeFeesStore.getApplicationFeeForOrder` requires membership in the original
+financial tenant, preserving access after domain/account changes. It exposes
+expected amounts, the timestamped observation and pending/verified/attention/
+unknown status. It does not expose claim tokens or accept financial writes.
+Historical orders without a financial snapshot retain stored-site authorization
+and report unknown evidence, not zero.
 
 This is one original-fee observation, **not a continuously synchronized refund
 ledger or authority to execute a refund**. Returned-fee and customer-refunded
@@ -141,6 +143,10 @@ Provider references: [direct-charge fee scope and asynchronous creation](https:/
 [Charge fee fields](https://docs.stripe.com/api/charges/object).
 
 ## Remaining financial work
+
+The [individual refund evidence consumer](client-refund-evidence.md) adds gated,
+current provider observations for full and partial refunds. It does not replace
+the original fee observation or execute a fee return.
 
 Refresh and reconcile provider refund records before enabling guided partial
 refunds. The guided Hub flow must record refunded print items/amounts and return the corresponding

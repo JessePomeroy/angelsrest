@@ -1,5 +1,11 @@
 import { v } from "convex/values";
 import { scheduleApplicationFeeVerification } from "./stripeFeesStore";
+import { requireFinancialOrderAdmin } from "./helpers/financialOrderAuthorization";
+import {
+	beginClientRefundObservation as beginRefundObservation,
+	finishClientRefundObservation as finishRefundObservation,
+	clientRefundClaimArgs, clientRefundObservationValidator,
+} from "./helpers/clientRefundEvidence";
 import { internal } from "./_generated/api";
 import type { Doc, Id } from "./_generated/dataModel";
 import {
@@ -4791,5 +4797,67 @@ export const getNextOrderNumber = query({
 	handler: async (ctx, { siteUrl }) => {
 		await requireSiteAdmin(ctx, siteUrl);
 		return generateNextOrderNumber(ctx, siteUrl);
+	},
+});
+
+/** Customer refund observations; financial execution is a separate workflow. */
+export const beginClientRefundObservation = mutation({
+	args: clientRefundClaimArgs,
+	handler: async (ctx, args) => {
+		await requireWebhookCallerOrAuth(ctx, args.webhookSecret, { allowAuth: false });
+		return await beginRefundObservation(ctx, args);
+	},
+});
+
+export const finishClientRefundObservation = mutation({
+	args: { evidenceId: v.id("clientRefundEvidence"), claimToken: v.string(),
+		observation: clientRefundObservationValidator, webhookSecret: v.string() },
+	handler: async (ctx, args) => {
+		await requireWebhookCallerOrAuth(ctx, args.webhookSecret, { allowAuth: false });
+		return await finishRefundObservation(ctx, args);
+	},
+});
+
+export const failClientRefundObservation = mutation({
+	args: { evidenceId: v.id("clientRefundEvidence"), claimToken: v.string(), webhookSecret: v.string(),
+		issue: v.union(v.literal("provider_unavailable"), v.literal("evidence_mismatch")) },
+	handler: async (ctx, args) => {
+		await requireWebhookCallerOrAuth(ctx, args.webhookSecret, { allowAuth: false });
+		const row = await ctx.db.get(args.evidenceId);
+		if (!row || row.claimToken !== args.claimToken || row.leaseUntil === undefined || row.leaseUntil <= Date.now()) return false;
+		await ctx.db.patch(row._id, { state: "attention", issue: args.issue,
+			claimToken: undefined, leaseUntil: undefined, checkingEventId: undefined });
+		return true;
+	},
+});
+
+export const expireClientRefundObservation = internalMutation({
+	args: { evidenceId: v.id("clientRefundEvidence"), claimToken: v.string() },
+	handler: async (ctx, args) => {
+		const row = await ctx.db.get(args.evidenceId);
+		if (!row || row.claimToken !== args.claimToken || row.leaseUntil === undefined || row.leaseUntil > Date.now()) return false;
+		await ctx.db.patch(row._id, { state: "attention", issue: "observation_expired",
+			claimToken: undefined, leaseUntil: undefined, checkingEventId: undefined });
+		return true;
+	},
+});
+
+export const listClientRefundEvidence = query({
+	args: { orderId: v.id("orders") },
+	handler: async (ctx, { orderId }) => {
+		const order = await requireFinancialOrderAdmin(ctx, orderId);
+		const saved = order.checkoutFinancialSnapshot;
+		if (!saved) return { evidenceAvailable: false, items: [], hasMore: false };
+		const rows = await ctx.db.query("clientRefundEvidence")
+			.withIndex("by_stripeConnectedAccountId_and_stripeSessionId", q => q
+				.eq("stripeConnectedAccountId", saved.stripeConnectedAccountId).eq("stripeSessionId", order.stripeSessionId))
+			.take(51);
+		if (rows.some(row => row.tenantId !== saved.tenantId || row.stripePlatformAccountId !== saved.stripePlatformAccountId
+			|| row.stripeLivemode !== saved.stripeLivemode || row.stripePaymentIntentId !== order.stripePaymentIntentId)) {
+			throw new Error("Refund evidence identity mismatch");
+		}
+		return { evidenceAvailable: true, hasMore: rows.length > 50,
+			items: rows.slice(0, 50).map(row => ({ stripeRefundId: row.stripeRefundId, state: row.state,
+				observation: row.observation ?? null, observedAt: row.observedAt ?? null, issue: row.issue ?? null })) };
 	},
 });

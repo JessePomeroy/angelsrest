@@ -293,7 +293,7 @@ describe("manual refund reconciliation", () => {
 		);
 		expect(list).toHaveBeenCalledWith(
 			{ payment_intent: IDS.paymentIntent, limit: 2 },
-			{ stripeAccount: IDS.account },
+			{ stripeAccount: IDS.account, timeout: 10000, maxNetworkRetries: 0 },
 		);
 		expect(query).toHaveBeenCalledWith("platform.getByStripeConnectedAccountId", {
 			stripeConnectedAccountId: IDS.account,
