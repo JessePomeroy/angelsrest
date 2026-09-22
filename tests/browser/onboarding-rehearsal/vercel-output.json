@@ -1,0 +1,16 @@
+{
+	"version": 3,
+	"routes": [
+		{
+			"src": "/(.*)",
+			"headers": {
+				"X-Robots-Tag": "noindex, nofollow",
+				"X-Content-Type-Options": "nosniff",
+				"Referrer-Policy": "no-referrer"
+			},
+			"continue": true
+		},
+		{ "handle": "filesystem" },
+		{ "src": "/(.*)", "dest": "/index.html" }
+	]
+}

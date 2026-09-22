@@ -88,7 +88,7 @@ async function signOut() {
 			<section class="connection-status" aria-labelledby="connection-heading">
 				<p class="eyebrow">{data.readiness ? "checked with Stripe" : "before you begin"}</p>
 				<h2 id="connection-heading">{data.readiness ? titles[data.readiness.status] : "Connect payments to your business"}</h2>
-				<p>{data.readiness ? descriptions[data.readiness.status] : "You’ll have your own full Stripe dashboard. Stripe will ask for your business, identity, and bank information."}</p>
+				<p>{data.readiness ? descriptions[data.readiness.status] : "You’ll have your own full Stripe dashboard. You’ll complete your business and bank details securely with Stripe, then return here."}</p>
 				{#if data.returned && !ready}<p class="notice">Returning from Stripe does not mean setup is complete. Your current status is shown here.</p>{/if}
 				{#if data.readiness}
 					<dl class="capabilities">
@@ -106,6 +106,13 @@ async function signOut() {
 					<a class="status-refresh" href={setupPath} data-sveltekit-reload>Check status again</a>
 				</div>
 			</section>
+			{#if ready}
+				<section class="fulfillment-next-step" aria-labelledby="fulfillment-heading">
+					<h2 id="fulfillment-heading">Next: set up LumaPrints</h2>
+					<p>Create an account (or use your existing one), add a Standard Store and enter your billing details. Let Angels Rest know when you’re ready—we’ll connect your store.</p>
+					<a class="button" href="https://dashboard.lumaprints.com/account/register/" rel="noreferrer">Set up LumaPrints</a>
+				</section>
+			{/if}
 		{/if}
 
 		{#if data.sessionStatus === "authorized" && data.refundsEnabled}<p><a class="button secondary" href={clientPrintRefundPath(data.siteUrl)}>Print refunds</a></p>{/if}
@@ -134,6 +141,8 @@ p { line-height: 1.65; color: var(--admin-text-muted); }
 .connection-status { border-block: 1px solid var(--admin-border); padding-block: 28px; }
 .connection-status .eyebrow { margin-top: 0; }
 .connection-status p { margin: 0 0 20px; }
+.fulfillment-next-step { padding-block: 28px; border-bottom: 1px solid var(--admin-border); }
+.fulfillment-next-step p { margin: 0 0 20px; }
 .capabilities { margin: 24px 0; display: grid; gap: 12px; }
 .capabilities div { display: flex; justify-content: space-between; gap: 20px; }
 dt { color: var(--admin-text-muted); }

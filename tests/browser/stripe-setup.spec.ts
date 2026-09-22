@@ -27,6 +27,7 @@ test("a returned pending account distinguishes payments from payouts", async ({ 
 	await expect(page.getByText("Returning from Stripe does not mean setup is complete.", { exact: false })).toBeVisible();
 	await expect(page.locator(".capabilities div").filter({ hasText: "Receive payouts" })).toContainText("Not enabled");
 	await expect(page.getByRole("button", { name: "Continue with Stripe" })).toBeVisible();
+	await expect(page.getByRole("link", { name: "Set up LumaPrints" })).toHaveCount(0);
 	await page.getByRole("button", { name: "Sign out", exact: true }).click();
 	await expect(page.getByRole("alert")).toContainText("We could not sign you out");
 	await expect(page.getByRole("button", { name: "Sign out", exact: true })).toBeEnabled();
@@ -38,6 +39,7 @@ test("ready accounts use their full dashboard and keep store activation separate
 	await expect(page.getByRole("link", { name: "Open Stripe dashboard" })).toHaveAttribute("href", "https://dashboard.stripe.com/");
 	await expect(page.getByRole("button", { name: /Stripe/ })).toHaveCount(0);
 	await expect(page.getByText("Store activation is a separate step.")).toBeVisible();
+	await expect(page.getByRole("link", { name: "Set up LumaPrints" })).toHaveAttribute("href", "https://dashboard.lumaprints.com/account/register/");
 });
 
 for (const phase of ["disabled", "unauthorized", "unavailable", "restricted", "setup_required", "expired", "checking", "disconnected", "connection_unavailable"]) {

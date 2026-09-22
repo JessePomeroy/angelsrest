@@ -8,6 +8,7 @@ import {
 	normalizeCatalogProductKinds,
 } from "./helpers/catalogProductPolicy";
 import { DEFAULT_LIST_LIMIT } from "./helpers/limits";
+import { normalizePlatformClientInput, PLATFORM_CLIENT_SITE_IN_USE } from "./helpers/platformClientInput";
 import { requireClientPaymentBinding } from "./helpers/clientPaymentReadiness";
 import {
 	assertLumaPrintsConnection,
@@ -35,7 +36,7 @@ async function assertSiteUrlAvailable(
 ) {
 	const owner = await resolveTenantContext(ctx, { siteUrl });
 	if (owner && owner.client._id !== clientId) {
-		throw new Error(`A platform client already owns siteUrl="${siteUrl}"`);
+		throw new ConvexError(PLATFORM_CLIENT_SITE_IN_USE);
 	}
 }
 
@@ -223,10 +224,12 @@ export const createClient = mutation({
 		if (args.stripeConnectedAccountId !== undefined) {
 			throw new Error("Stripe accounts must be bound through verified onboarding");
 		}
-		await assertSiteUrlAvailable(ctx, args.siteUrl);
+		const identity = normalizePlatformClientInput(args);
+		await assertSiteUrlAvailable(ctx, identity.siteUrl);
 		const { catalogProductKinds, ...client } = args;
 		const id = await ctx.db.insert("platformClients", {
 			...client,
+			...identity,
 			role: args.role ?? "client",
 			catalogProductKinds: normalizeCatalogProductKinds(
 				catalogProductKinds ?? [],

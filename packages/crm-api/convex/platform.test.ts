@@ -310,10 +310,13 @@ describe("platform tenant site identity", () => {
 		);
 		await expect(
 			admin.mutation(api.platform.createClient, clientInput("first.example", "Duplicate")),
-		).rejects.toThrow(/already owns siteUrl/i);
+		).rejects.toMatchObject({
+			name: "ConvexError",
+			data: "PLATFORM_CLIENT_SITE_IN_USE",
+		});
 		await expect(
 			admin.mutation(api.platform.createClient, clientInput("www.first.example")),
-		).rejects.toThrow(/already owns siteUrl/i);
+		).rejects.toThrow("PLATFORM_CLIENT_SITE_IN_USE");
 
 		const secondId = await admin.mutation(
 			api.platform.createClient,
@@ -324,7 +327,7 @@ describe("platform tenant site identity", () => {
 				clientId: secondId,
 				siteUrl: "first.example",
 			}),
-		).rejects.toThrow(/already owns siteUrl/i);
+		).rejects.toThrow("PLATFORM_CLIENT_SITE_IN_USE");
 
 		const stored = await t.run(async (ctx) => ({
 			first: await ctx.db.get(firstId),
@@ -452,5 +455,33 @@ describe("platform catalog product capability policy", () => {
 		})).resolves.toMatchObject({ created: false, id: explicit.id });
 		await expect(t.run(async (ctx) => await ctx.db.get(explicit.id))).resolves
 			.toMatchObject({ catalogProductKinds: ["print", "postcard"] });
+	});
+});
+
+describe("operator client creation form contract", () => {
+	test("normalizes the new client and permits its verified admin without activating commerce", async () => {
+		const { t, admin } = await setupPlatformAdmin();
+		const id = await admin.mutation(api.platform.createClient, {
+			name: "  Cedar Finch Studio  ", email: " OWNER@CEDARFINCH.EXAMPLE ",
+			siteUrl: "https://www.cedarfinch.example/", adminEmails: [" OWNER@CEDARFINCH.EXAMPLE "],
+			tier: "basic", subscriptionStatus: "none", role: "client",
+		});
+		const stored = await t.run(ctx => ctx.db.get(id));
+		expect(stored).toMatchObject({ name: "Cedar Finch Studio", email: "owner@cedarfinch.example", siteUrl: "cedarfinch.example", adminEmails: ["owner@cedarfinch.example"], tier: "basic", subscriptionStatus: "none", role: "client" });
+		expect(stored?.stripeConnectedAccountId).toBeUndefined();
+		expect(stored?.lumaprintsConnectionRef).toBeUndefined();
+		const member = t.withIdentity({ subject: "cedar-admin", email: "owner@cedarfinch.example", emailVerified: true });
+		await expect(member.query(api.platform.getStripeConnectTarget, { siteUrl: "cedarfinch.example" })).resolves.toMatchObject({ clientId: id });
+		await expect(member.mutation(api.platform.createClient, clientInput("another.example"))).rejects.toThrow(/not a creator/i);
+	});
+
+	test.each([
+		{ name: "   " }, { email: "not-an-email" }, { adminEmails: ["wrong"] },
+		{ siteUrl: "https://cedarfinch.example/path" }, { siteUrl: "https://person:password@cedarfinch.example" },
+		{ siteUrl: "cedarfinch.example?other=1" }, { siteUrl: "localhost:1234" },
+	])("rejects invalid client identity before inserting: %j", async (invalid) => {
+		const { t, admin } = await setupPlatformAdmin();
+		await expect(admin.mutation(api.platform.createClient, { ...clientInput("cedarfinch.example"), ...invalid })).rejects.toThrow();
+		expect(await t.run(ctx => ctx.db.query("platformClients").take(5))).toHaveLength(1);
 	});
 });

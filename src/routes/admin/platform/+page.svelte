@@ -1,6 +1,7 @@
 <script lang="ts">
 import { addToast, getAdminConfig, PlatformPage, type PlatformClient } from "@jessepomeroy/admin";
 import { useQuery } from "convex-svelte";
+import PlatformClientCreate from "$lib/components/PlatformClientCreate.svelte";
 import { lumaprintsSetupPath } from "$lib/lumaprintsSetup";
 import { stripeConnectSetupPath } from "$lib/stripeConnectSetup";
 
@@ -43,6 +44,10 @@ async function copySetupLink() {
 	}
 }
 </script>
+
+{#if data.adminSession.status === "authorized" && data.adminSession.isCreator}
+	<PlatformClientCreate oncreated={(client) => { selectedSiteUrl = client.siteUrl; copiedUrl = ""; }} />
+{/if}
 
 <section class="stripe-panel" aria-labelledby="stripe-connect-heading">
 	<div class="stripe-copy">

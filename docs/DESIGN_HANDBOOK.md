@@ -393,3 +393,64 @@ setup reference and same-state comparison as pending owner access under C6.
 Desktop and Pixel 7 browser fixtures exercised a mixed $55 customer / $2 fee refund and a pending-operation retry through intercepted native POSTs. Disabled, complete, attention and action-error states were also checked, with no horizontal overflow or page errors. Screenshots: `/tmp/angelsrest-guided-refunds-desktop.png` and `/tmp/angelsrest-guided-refunds-mobile.png`. Both screenshots were visually inspected. WebKit's local system library is unavailable; CI provides its runtime.
 
 Paper was revisited at the existing admin handbook URL. It displays “Create an account to edit” and “Log in”; editing and comparison remain unavailable. No board is marked verified. The 21st CLI and project design manifest are unavailable, so the existing Stripe portal style was reused. Actual client authentication, provider operations and activation remain separately gated.
+
+
+## Platform client creation and hosted rehearsal — September 22, 2026
+
+The creator's Platform page now includes **Add platform client**. It collects the
+business name, website hostname, client admin email and access tier using the
+shared AdminModal. It creates the client record through the existing authorized
+HTTP mutation, then selects the new client in the Stripe setup panel. It does not
+create a password, send an invitation, start billing or activate commerce.
+
+`tests/browser/onboarding-rehearsal/` imports the actual host Platform route,
+shared login/layout, Stripe setup and supplier setup components. Build-time
+fixtures simulate only authentication, persistence and provider responses; the
+production app contains no rehearsal switch. The Stripe handoff remains a
+same-tab redirect. Practice data remains in sessionStorage and uses `.example`
+domains only. The rehearsal banners and provider destination are teaching UI.
+
+Browser interaction covered desktop/mobile creation, invalid/duplicate details,
+cancel/focus restoration, wrong-password recovery, client sign-out/reset,
+incomplete → pending → ready Stripe states and saving the simulated supplier
+connection. Console warning/error checks were empty at the checked client/supplier
+states. Captures are in `/tmp/angelsrest-onboarding-evidence/` and were visually
+inspected. These are focused implementation checks, not a full Stripe audit.
+
+The static preview is
+<https://angelsrest-3x3x61qyd-jesse-pomeroys-projects.vercel.app/admin/platform>.
+Vercel reports READY; this browser reaches its existing Vercel login protection,
+so remote rendered verification remains open. No protection settings changed.
+Paper was revisited and requires login to edit; existing boards are preserved,
+and update/comparison remain pending. The 21st CLI is unavailable. The screen
+inventory records these gaps without marking the Paper references verified.
+
+
+### Stripe completion: LumaPrints next step — September 22, 2026
+
+The ready Stripe screen now adds **Next: set up LumaPrints**, two short sentences
+covering an existing/new account, a Standard Store, billing details and the
+operator handoff, plus the verified provider signup link. It uses the existing
+section spacing, typography and button styles. No setup flags, account creation
+or supplier verification behavior changed. The isolated rehearsal intercepts
+this link to a labeled simulated destination and preserves the return route.
+
+Local browser checks confirmed the prompt is absent before readiness and while
+pending, appears at ready, fits desktop/mobile, and navigates to/from the provider
+simulation. No console errors/warnings or mobile horizontal overflow were
+observed. Screenshots: `/tmp/angelsrest-lumaprints-nudge-evidence/`. Svelte check
+0/0, lint and the rehearsal build passed. Existing Paper edit/comparison access
+and 21st tool gaps remain; no design board was marked verified.
+
+### Onboarding audit fixes — September 22, 2026
+
+The pending client form now prevents mobile drag dismissal while a save is in
+flight. At 390×844, a drag during a delayed failing mutation left the sheet in
+place and the recovered form's Cancel/Add client buttons within the viewport.
+Evidence: `/tmp/angelsrest-onboarding-audit-rc6kne7b/mobile-save-drag-fixed.png`.
+Desktop/mobile Chromium regressions also verify retry and duplicate-website
+recovery through the existing HTTP mutation client. The backend now exposes that
+expected conflict as a Convex application error code, translated at the existing
+HTTP boundary only for client creation. An actual SDK/handler regression covers
+production-redacted messages. Paper access remains unchanged;
+no reference board has been marked verified by these checks.
