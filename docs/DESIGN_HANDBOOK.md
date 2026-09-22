@@ -385,3 +385,11 @@ font/edit operations require edit access. No Paper board was changed or marked
 verified. The inventory preserves existing platform IDs and records the new
 setup reference and same-state comparison as pending owner access under C6.
 21st tooling was unavailable; existing admin patterns supplied the design.
+
+## Guided print refund source update — September 21, 2026
+
+`/portal/refunds/[siteUrl]` renders the actual `ClientPrintRefundPage` with the existing admin palette and typography. It selects a recent order, separates original print/non-print/other amounts, previews the customer refund and fee return, requires supplier acknowledgement, and displays operation status with a safe continuation action. The Stripe setup page links here only when the guided flow is enabled.
+
+Desktop and Pixel 7 browser fixtures exercised a mixed $55 customer / $2 fee refund and a pending-operation retry through intercepted native POSTs. Disabled, complete, attention and action-error states were also checked, with no horizontal overflow or page errors. Screenshots: `/tmp/angelsrest-guided-refunds-desktop.png` and `/tmp/angelsrest-guided-refunds-mobile.png`. Both screenshots were visually inspected. WebKit's local system library is unavailable; CI provides its runtime.
+
+Paper was revisited at the existing admin handbook URL. It displays “Create an account to edit” and “Log in”; editing and comparison remain unavailable. No board is marked verified. The 21st CLI and project design manifest are unavailable, so the existing Stripe portal style was reused. Actual client authentication, provider operations and activation remain separately gated.

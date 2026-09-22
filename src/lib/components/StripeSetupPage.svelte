@@ -1,5 +1,6 @@
 <script lang="ts">
 import { LoginPage, setAdminConfig, type AdminAuthClient } from "@jessepomeroy/admin";
+import { clientPrintRefundPath } from "$lib/clientPrintRefunds";
 import { adminConfig } from "$lib/config/admin";
 import { stripeConnectSetupPath, type StripeConnectSetupData } from "$lib/stripeConnectSetup";
 
@@ -107,6 +108,7 @@ async function signOut() {
 			</section>
 		{/if}
 
+		{#if data.sessionStatus === "authorized" && data.refundsEnabled}<p><a class="button secondary" href={clientPrintRefundPath(data.siteUrl)}>Print refunds</a></p>{/if}
 		{#if data.email}
 			<div class="session">
 				<span>Signed in as {data.email}</span>

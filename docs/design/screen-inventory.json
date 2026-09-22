@@ -7009,6 +7009,71 @@
         "admin.lumaprints-setup.disabled.desktop"
       ],
       "interactionEvidence": "18 desktop/mobile Chromium cases passed: exact POST fields, required confirmations, selection reset, disabled/unauthorized/unavailable/unconfigured/connected/historical/error containment."
+    },
+    {
+      "key": "admin.client-print-refunds",
+      "handbook": "admin",
+      "route": "/portal/refunds/[siteUrl]",
+      "setup": "Actual ClientPrintRefundPage with fictional original order and refund states; native form POSTs intercepted locally.",
+      "sourceComponents": [
+        "src/lib/components/ClientPrintRefundPage.svelte",
+        "src/routes/portal/refunds/[siteUrl]/+page.svelte",
+        "tests/browser/fixtures/ClientPrintRefundHarness.svelte"
+      ],
+      "implementationStatus": "source-updated-paper-pending",
+      "stateSurvey": "representative-with-gaps",
+      "pendingStateSurvey": [
+        "Real authentication and provider acceptance remain gated",
+        "Paper signed out: edit and same-viewport comparison unavailable"
+      ],
+      "references": [
+        {
+          "key": "admin.client-print-refunds.desktop",
+          "viewport": {
+            "width": 1280,
+            "height": 720
+          },
+          "theme": "light",
+          "motion": "normal",
+          "status": "browser-observed-paper-pending",
+          "browserObservedAt": "2026-09-21",
+          "lastVerified": null,
+          "paper": null,
+          "setupUrl": "http://127.0.0.1:5196/?fixture=client-print-refunds",
+          "evidence": {
+            "browserPng": "/tmp/angelsrest-guided-refunds-desktop.png"
+          },
+          "limitations": [
+            "Paper login required; no board update or comparison",
+            "Live provider and authentication acceptance not exercised"
+          ]
+        },
+        {
+          "key": "admin.client-print-refunds.mobile",
+          "viewport": {
+            "width": 393,
+            "height": 727
+          },
+          "theme": "light",
+          "motion": "normal",
+          "status": "browser-observed-paper-pending",
+          "browserObservedAt": "2026-09-21",
+          "lastVerified": null,
+          "paper": null,
+          "setupUrl": "http://127.0.0.1:5196/?fixture=client-print-refunds",
+          "evidence": {
+            "browserPng": "/tmp/angelsrest-guided-refunds-mobile.png"
+          },
+          "limitations": [
+            "Paper login required; no board update or comparison",
+            "Live provider and authentication acceptance not exercised"
+          ]
+        }
+      ],
+      "coveredReferenceKeys": [
+        "admin.client-print-refunds.desktop",
+        "admin.client-print-refunds.mobile"
+      ]
     }
   ],
   "fontAvailability": {

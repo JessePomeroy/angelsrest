@@ -15,6 +15,12 @@ import {
 	selectCheckoutSnapshotInput,
 } from "$lib/server/checkoutSnapshotConsumer";
 import {
+	ClientPrintRefundError,
+	getClientPrintRefundStripe,
+	isClientPrintRefundsEnabled,
+	runClientPrintRefund,
+} from "$lib/server/clientPrintRefunds.server";
+import {
 	type CommerceNotificationProfile,
 	resolveCommerceTenant,
 } from "$lib/server/commerceTenant";
@@ -174,6 +180,28 @@ export async function processStripeWebhookEvent(
 					adapters,
 					verifiedDestinationRole,
 				);
+				if (event.account && isClientPrintRefundsEnabled()) {
+					try {
+						const operationId = await adapters.convex.query(
+							api.orders.getClientPrintRefundForWebhook,
+							{
+								stripeConnectedAccountId: event.account,
+								refundId: event.data.object.id,
+								webhookSecret: getWebhookSecret(),
+							},
+						);
+						if (operationId)
+							await runClientPrintRefund({
+								operationId,
+								convex: adapters.convex,
+								stripe: getClientPrintRefundStripe(),
+							});
+					} catch (cause) {
+						throw cause instanceof ClientPrintRefundError
+							? cause
+							: new ClientPrintRefundError("provider_unavailable");
+					}
+				}
 				if (refundResult.kind === "automated_succeeded") {
 					const notification = {
 						orderId: refundResult.orderId,
@@ -248,6 +276,7 @@ export async function processStripeWebhookEvent(
 			!(err instanceof CheckoutSnapshotProtocolError) &&
 			!(err instanceof ManualRefundReconciliationRetryableError) &&
 			!(err instanceof ClientRefundEvidenceError) &&
+			!(err instanceof ClientPrintRefundError) &&
 			!(err instanceof PaymentFailureEmailClaimError) &&
 			!(err instanceof OrderReceiptRetryableError) &&
 			!(err instanceof PrintReconciliationAlertDeliveryError) &&

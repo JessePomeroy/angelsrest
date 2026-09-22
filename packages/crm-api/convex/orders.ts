@@ -1,3 +1,10 @@
+import {
+	requestClientPrintRefund as requestPrintRefund, claimClientPrintRefund as claimPrintRefund,
+	checkpointClientPrintRefund as checkpointPrintRefund, recordClientPrintRefund as recordPrintRefund,
+	releaseClientPrintRefund as releasePrintRefund, clientPrintRefundAllocationValidator,
+	clientPrintRefundCheckpointValidator, clientPrintRefundResultValidator, clientPrintRefundIssueValidator,
+	clientPrintRefundRows, clientRefundSite, publicClientPrintRefund, remainingClientRefundAmounts, syncClientPrintRefundObservation,
+} from "./helpers/clientPrintRefunds";
 import { v } from "convex/values";
 import { scheduleApplicationFeeVerification } from "./stripeFeesStore";
 import { requireFinancialOrderAdmin } from "./helpers/financialOrderAuthorization";
@@ -1752,6 +1759,7 @@ export const claimPrintFulfillment = mutation({
 		await requireWebhookCallerOrAuth(ctx, args.webhookSecret, { allowAuth: false });
 		const order = await ctx.db.get(args.orderId);
 		if (!order) throw new Error("Order not found");
+		if (order.clientPrintRefundOperationId) return { kind: "busy" as const };
 		if (order.printJobId || order.lumaprintsConnection !== undefined) return { kind: "busy" as const };
 		if (order.lumaprintsOrderNumber)
 			return { kind: "fulfilled" as const, orderNumber: order.lumaprintsOrderNumber };
@@ -1804,6 +1812,7 @@ export const claimPrintFulfillmentV2 = mutation({
 		if (!CLAIM_TOKEN.test(args.claimToken)) throw new Error("Invalid print claim token");
 		const order = await ctx.db.get(args.orderId);
 		if (!order) throw new Error("Order not found");
+		if (order.clientPrintRefundOperationId) return { kind: "busy" as const };
 		if (order.printJobId || order.lumaprintsConnection !== undefined) return { kind: "busy" as const };
 		if (order.lumaprintsOrderNumber)
 			return { kind: "fulfilled" as const, orderNumber: order.lumaprintsOrderNumber };
@@ -1875,6 +1884,7 @@ export const claimPrintFulfillmentV3 = mutation({
 		if (!CLAIM_TOKEN.test(args.claimToken)) throw new Error("Invalid print claim token");
 		const order = await ctx.db.get(args.orderId);
 		if (!order) throw new Error("Order not found");
+		if (order.clientPrintRefundOperationId) return { kind: "busy" as const };
 		if (order.printJobId || order.lumaprintsConnection !== undefined) return { kind: "busy" as const };
 		if (order.lumaprintsOrderNumber) {
 			return { kind: "fulfilled" as const, orderNumber: order.lumaprintsOrderNumber };
@@ -1980,6 +1990,7 @@ async function claimPrintFulfillmentWithAdmission(
 		const order = await ctx.db.get(args.orderId);
 		if (!order) throw new Error("Order not found");
 		await assertOrderTenant(ctx, order, args.tenantId);
+		if (order.clientPrintRefundOperationId) return { kind: "busy" as const };
 		// Older workers cannot route this order through the legacy supplier client.
 		if (!sameLumaPrintsConnection(order.lumaprintsConnection, args.lumaprintsConnection)) {
 			return { kind: "busy" as const };
@@ -2226,6 +2237,7 @@ export const beginPrintFulfillmentSubmission = mutation({
 		const order = await ctx.db.get(args.orderId);
 		if (!order) throw new Error("Order not found");
 		await assertOrderTenant(ctx, order, args.tenantId);
+		if (order.clientPrintRefundOperationId) return { kind: "lost" as const };
 		if (!await ownsPrintJobPreparation(ctx, order, args.printJobLeaseToken)) return { kind: "lost" as const };
 		if (
 			order.status === "refunded"
@@ -2822,7 +2834,7 @@ export const claimAutomatedFulfillmentRefund = mutation({
 		v.object({ kind: v.literal("claimed"), leaseExpiresAt: v.number() }),
 		v.object({ kind: v.literal("busy"), leaseExpiresAt: v.number() }),
 		v.object({ kind: v.literal("refunded"), stripeRefundId: v.string() }),
-		v.object({ kind: v.literal("unavailable") }),
+		v.object({ kind: v.literal("unavailable"), guidedRefund: v.optional(v.literal(true)) }),
 	),
 	handler: async (ctx, args) => {
 		await requireWebhookCallerOrAuth(ctx, args.webhookSecret, { allowAuth: false });
@@ -2832,6 +2844,7 @@ export const claimAutomatedFulfillmentRefund = mutation({
 		}
 		const order = await ctx.db.get(args.orderId);
 		if (!order) throw new Error("Order not found");
+		if (order.clientPrintRefundOperationId || order.clientPrintRefundStartedAt !== undefined) return { kind: "unavailable" as const, guidedRefund: true as const };
 		if (
 			order.status === "fulfillment_error"
 			&& order.fulfillmentRecoveryStatus === "refunded"
@@ -2939,7 +2952,7 @@ export const claimAutomatedFulfillmentRefundV2 = mutation({
 				v.literal("age_exceeded"),
 			),
 		}),
-		v.object({ kind: v.literal("unavailable") }),
+		v.object({ kind: v.literal("unavailable"), guidedRefund: v.optional(v.literal(true)) }),
 	),
 	handler: async (ctx, args) => {
 		await requireWebhookCallerOrAuth(ctx, args.webhookSecret, { allowAuth: false });
@@ -2949,6 +2962,7 @@ export const claimAutomatedFulfillmentRefundV2 = mutation({
 		}
 		const order = await ctx.db.get(args.orderId);
 		if (!order) throw new Error("Order not found");
+		if (order.clientPrintRefundOperationId || order.clientPrintRefundStartedAt !== undefined) return { kind: "unavailable" as const, guidedRefund: true as const };
 		if (
 			order.status === "fulfillment_error"
 			&& order.fulfillmentRecoveryStatus === "refunded"
@@ -4814,7 +4828,9 @@ export const finishClientRefundObservation = mutation({
 		observation: clientRefundObservationValidator, webhookSecret: v.string() },
 	handler: async (ctx, args) => {
 		await requireWebhookCallerOrAuth(ctx, args.webhookSecret, { allowAuth: false });
-		return await finishRefundObservation(ctx, args);
+		const stored = await finishRefundObservation(ctx, args);
+		if (stored) await syncClientPrintRefundObservation(ctx, args.evidenceId);
+		return stored;
 	},
 });
 
@@ -4859,5 +4875,106 @@ export const listClientRefundEvidence = query({
 		return { evidenceAvailable: true, hasMore: rows.length > 50,
 			items: rows.slice(0, 50).map(row => ({ stripeRefundId: row.stripeRefundId, state: row.state,
 				observation: row.observation ?? null, observedAt: row.observedAt ?? null, issue: row.issue ?? null })) };
+	},
+});
+
+/** The Hub starts a financial request only with both client membership and its private capability. */
+export const requestClientPrintRefund = mutation({
+	args: { orderId: v.id("orders"), requestToken: v.string(), allocation: clientPrintRefundAllocationValidator, webhookSecret: v.string() },
+	handler: async (ctx, args) => {
+		await requireWebhookCallerOrAuth(ctx, args.webhookSecret, { allowAuth: false });
+		return await requestPrintRefund(ctx, args);
+	},
+});
+export const claimClientPrintRefund = mutation({
+	args: { operationId: v.id("clientPrintRefundOperations"), leaseToken: v.string(), webhookSecret: v.string() },
+	handler: async (ctx, args) => {
+		await requireWebhookCallerOrAuth(ctx, args.webhookSecret, { allowAuth: false });
+		return await claimPrintRefund(ctx, args.operationId, args.leaseToken);
+	},
+});
+export const checkpointClientPrintRefund = mutation({
+	args: { operationId: v.id("clientPrintRefundOperations"), leaseToken: v.string(), checkpoint: clientPrintRefundCheckpointValidator, webhookSecret: v.string() },
+	handler: async (ctx, args) => {
+		await requireWebhookCallerOrAuth(ctx, args.webhookSecret, { allowAuth: false });
+		return await checkpointPrintRefund(ctx, args.operationId, args.leaseToken, args.checkpoint);
+	},
+});
+export const recordClientPrintRefund = mutation({
+	args: { operationId: v.id("clientPrintRefundOperations"), leaseToken: v.string(), result: clientPrintRefundResultValidator, webhookSecret: v.string() },
+	handler: async (ctx, args) => {
+		await requireWebhookCallerOrAuth(ctx, args.webhookSecret, { allowAuth: false });
+		return await recordPrintRefund(ctx, args.operationId, args.leaseToken, args.result);
+	},
+});
+export const releaseClientPrintRefund = mutation({
+	args: { operationId: v.id("clientPrintRefundOperations"), leaseToken: v.string(), issue: v.optional(clientPrintRefundIssueValidator), webhookSecret: v.string() },
+	handler: async (ctx, args) => {
+		await requireWebhookCallerOrAuth(ctx, args.webhookSecret, { allowAuth: false });
+		return await releasePrintRefund(ctx, args.operationId, args.leaseToken, args.issue);
+	},
+});
+export const cancelClientPrintRefund = mutation({
+	args: { operationId: v.id("clientPrintRefundOperations"), webhookSecret: v.string() },
+	handler: async (ctx, args) => {
+		await requireWebhookCallerOrAuth(ctx, args.webhookSecret, { allowAuth: false });
+		const operation = await ctx.db.get(args.operationId);
+		if (!operation) throw new Error("Refund request not found");
+		const order = await requireFinancialOrderAdmin(ctx, operation.orderId);
+		if (operation.customerRequestAt !== undefined || operation.customerRefundId || order.clientPrintRefundOperationId !== operation._id) throw new Error("This refund can no longer be canceled in the Hub");
+		await ctx.db.patch(operation._id, { state: "canceled", leaseToken: undefined, leaseUntil: undefined, updatedAt: Date.now() });
+		await ctx.db.patch(order._id, { clientPrintRefundOperationId: undefined });
+	},
+});
+export const getClientPrintRefundPage = query({
+	args: { siteUrl: v.string(), orderId: v.optional(v.id("orders")) },
+	handler: async (ctx, args) => {
+		const tenant = await clientRefundSite(ctx, args.siteUrl);
+		const recent = await ctx.db.query("orders").withIndex("by_tenantId", q => q.eq("tenantId", tenant.tenantId!)).order("desc").take(20);
+		const orders = recent.filter(order => order.checkoutFinancialSnapshot).map(order => ({ id: order._id, orderNumber: order.orderNumber, total: order.total, createdAt: order._creationTime }));
+		if (!args.orderId) return { siteUrl: tenant.siteUrl, orders, selected: null };
+		const order = await requireFinancialOrderAdmin(ctx, args.orderId);
+		if (order.tenantId !== tenant.tenantId || !order.checkoutFinancialSnapshot) throw new Error("Order does not belong to this client");
+		const operations = await clientPrintRefundRows(ctx, order._id);
+		const remaining = remainingClientRefundAmounts(order, operations);
+		return { siteUrl: tenant.siteUrl, orders, selected: { id: order._id, orderNumber: order.orderNumber, total: order.total,
+			status: order.status, supplierReviewRequired: order.status === "fulfillment_error", supplierOrderExists: !!order.lumaprintsOrderNumber,
+			lines: order.checkoutFinancialSnapshot.lines.map((line, index) => ({ index, name: order.items[index]?.productName ?? `Item ${index + 1}`,
+				kind: line.productKind, originalCents: line.unitPriceCents * line.quantity, remainingCents: remaining.lineAmountsCents[index] })),
+			otherRemainingCents: remaining.otherAmountCents, printRefundedCents: remaining.printRefundedCents, feeReturnedCents: remaining.feeReturnedCents,
+			operations: operations.map(publicClientPrintRefund), activeOperationId: order.clientPrintRefundOperationId ?? null } };
+	},
+});
+/** A retry action proves current membership before using the hub-only worker interface. */
+export const authorizeClientPrintRefund = query({
+	args: { operationId: v.id("clientPrintRefundOperations"), siteUrl: v.string() },
+	handler: async (ctx, args) => {
+		const tenant = await clientRefundSite(ctx, args.siteUrl); const operation = await ctx.db.get(args.operationId);
+		if (!operation) throw new Error("Refund request not found");
+		const order = await requireFinancialOrderAdmin(ctx, operation.orderId);
+		if (order.tenantId !== tenant.tenantId) throw new Error("Order does not belong to this client");
+		return { orderId: order._id };
+	},
+});
+export const getClientPrintRefundForWebhook = query({
+	args: { stripeConnectedAccountId: v.string(), refundId: v.string(), webhookSecret: v.string() },
+	handler: async (ctx, args) => {
+		await requireWebhookCallerOrAuth(ctx, args.webhookSecret, { allowAuth: false });
+		const row = await ctx.db.query("clientPrintRefundOperations").withIndex("by_stripeConnectedAccountId_and_customerRefundId", q => q
+			.eq("stripeConnectedAccountId", args.stripeConnectedAccountId).eq("customerRefundId", args.refundId)).unique();
+		if (!row || (await ctx.db.get(row.orderId))?.clientPrintRefundOperationId !== row._id) return null;
+		return row._id;
+	},
+});
+export const markClientPrintRefundSupplierReview = mutation({
+	args: { orderId: v.id("orders"), fulfillmentError: v.string(), webhookSecret: v.string() },
+	handler: async (ctx, args) => {
+		await requireWebhookCallerOrAuth(ctx, args.webhookSecret, { allowAuth: false });
+		const order = await ctx.db.get(args.orderId);
+		if (!order || !order.clientPrintRefundOperationId && order.clientPrintRefundStartedAt === undefined) return false;
+		if (!args.fulfillmentError || args.fulfillmentError.length > 1000) throw new Error("Invalid fulfillment error");
+		await ctx.db.patch(order._id, { fulfillmentError: args.fulfillmentError,
+			...(order.status !== "refunded" ? { status: "fulfillment_error" as const } : {}) });
+		return true;
 	},
 });

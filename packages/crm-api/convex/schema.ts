@@ -2,6 +2,7 @@ import { defineSchema, defineTable } from "convex/server";
 import { v } from "convex/values";
 import { checkoutFinancialSnapshotValidator } from "./helpers/checkoutFinancialSnapshot";
 import { applicationFeeErrorValidator, applicationFeeObservationValidator } from "./helpers/applicationFeeVerification";
+import { clientPrintRefundFields } from "./helpers/clientPrintRefunds";
 import { clientRefundObservationValidator } from "./helpers/clientRefundEvidence";
 import { stripeConnectStatusValidator } from "./helpers/stripeConnectStatus";
 import { lumaprintsConnectionFields, lumaprintsConnectionValidator } from "./helpers/lumaprintsConnection";
@@ -1106,6 +1107,10 @@ export default defineSchema({
 		url: v.optional(v.string()), expiresAt: v.optional(v.number()),
 	}).index("by_jobId_and_index", ["jobId", "index"]),
 
+	clientPrintRefundOperations: defineTable(clientPrintRefundFields)
+		.index("by_orderId", ["orderId"])
+		.index("by_stripeConnectedAccountId_and_customerRefundId", ["stripeConnectedAccountId", "customerRefundId"]),
+
 	// Individually verified customer refunds; observed amounts are not print allocations.
 	clientRefundEvidence: defineTable({
 		stripeSessionId: v.string(), stripeConnectedAccountId: v.string(), stripeRefundId: v.string(),
@@ -1134,6 +1139,8 @@ export default defineSchema({
 
 	// Print orders (from Stripe checkout on any client site)
 	orders: defineTable({
+		clientPrintRefundOperationId: v.optional(v.id("clientPrintRefundOperations")),
+		clientPrintRefundStartedAt: v.optional(v.number()),
 		checkoutFinancialSnapshot: v.optional(checkoutFinancialSnapshotValidator),
 		printJobId: v.optional(v.id("printFulfillmentJobs")),
 		tenantId: v.optional(v.string()),
@@ -1430,6 +1437,7 @@ export default defineSchema({
 			"siteUrl",
 			"printProviderAdmissionStatus",
 		])
+		.index("by_tenantId", ["tenantId"])
 		.index("by_stripeSessionId", ["stripeSessionId"])
 		.index("by_orderNumber", ["siteUrl", "orderNumber"])
 		.index("by_customerEmail", ["siteUrl", "customerEmail"])
