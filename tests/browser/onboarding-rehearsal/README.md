@@ -108,9 +108,13 @@ or billing action occurred. These existing previews predate the audit fixes belo
 The Ponytail/Deslop pass covered pending onboarding changes and their immediate
 integration points. Two findings were fixed: mobile dragging is disabled while
 the client form saves, and duplicate website conflicts use a Convex application
-error so their recovery message survives production error redaction.
+error code. A narrow adapter in the existing HTTP mutation handler passes only
+that expected client-creation code through to the form; other errors retain the
+existing behavior. The final review caught that the shared proxy otherwise
+drops Convex error data even when the backend throws an application error.
 
-Focused validation: 87 unit/backend tests, desktop/mobile Chromium regression
+Focused validation: 92 unit/backend tests, including the actual Convex SDK and
+HTTP handler with production-redacted messages, desktop/mobile Chromium regression
 tests for delayed-save failure/retry and duplicate recovery, plus the existing
 Stripe state browser tests. Lint, host/Convex type checks and static build passed.
 The mobile failure was also checked interactively at 390×844: the form stayed

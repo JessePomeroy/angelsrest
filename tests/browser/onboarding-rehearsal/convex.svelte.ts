@@ -1,7 +1,7 @@
 import { toId } from "@jessepomeroy/admin";
 import { getFunctionName } from "convex/server";
 import { ConvexError } from "convex/values";
-import { normalizePlatformClientInput } from "../../../packages/crm-api/convex/helpers/platformClientInput";
+import { normalizePlatformClientInput, PLATFORM_CLIENT_SITE_IN_USE } from "../../../packages/crm-api/convex/helpers/platformClientInput";
 import { persist, practice } from "./state.svelte";
 
 type Ref = Parameters<typeof getFunctionName>[0];
@@ -27,7 +27,7 @@ export function useConvexClient() {
 			if (!input.siteUrl.endsWith(".example") || !input.email.endsWith(".example")) {
 				throw new Error("Use fictional .example domains and email addresses in this rehearsal.");
 			}
-			if (practice.clients.some(client => client.siteUrl === input.siteUrl)) throw new ConvexError(`A platform client already owns siteUrl="${input.siteUrl}"`);
+			if (practice.clients.some(client => client.siteUrl === input.siteUrl)) throw new ConvexError(PLATFORM_CLIENT_SITE_IN_USE);
 			const id = toId<"platformClients">(`practice-${crypto.randomUUID()}`);
 			practice.clients.push({ ...input, _id: id, _creationTime: Date.now(), tier: args.tier, role: "client", subscriptionStatus: "none" });
 			persist();

@@ -450,5 +450,7 @@ place and the recovered form's Cancel/Add client buttons within the viewport.
 Evidence: `/tmp/angelsrest-onboarding-audit-rc6kne7b/mobile-save-drag-fixed.png`.
 Desktop/mobile Chromium regressions also verify retry and duplicate-website
 recovery through the existing HTTP mutation client. The backend now exposes that
-expected conflict as a Convex application error. Paper access remains unchanged;
+expected conflict as a Convex application error code, translated at the existing
+HTTP boundary only for client creation. An actual SDK/handler regression covers
+production-redacted messages. Paper access remains unchanged;
 no reference board has been marked verified by these checks.

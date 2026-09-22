@@ -8,7 +8,7 @@ import {
 	normalizeCatalogProductKinds,
 } from "./helpers/catalogProductPolicy";
 import { DEFAULT_LIST_LIMIT } from "./helpers/limits";
-import { normalizePlatformClientInput } from "./helpers/platformClientInput";
+import { normalizePlatformClientInput, PLATFORM_CLIENT_SITE_IN_USE } from "./helpers/platformClientInput";
 import { requireClientPaymentBinding } from "./helpers/clientPaymentReadiness";
 import {
 	assertLumaPrintsConnection,
@@ -36,7 +36,7 @@ async function assertSiteUrlAvailable(
 ) {
 	const owner = await resolveTenantContext(ctx, { siteUrl });
 	if (owner && owner.client._id !== clientId) {
-		throw new ConvexError(`A platform client already owns siteUrl="${siteUrl}"`);
+		throw new ConvexError(PLATFORM_CLIENT_SITE_IN_USE);
 	}
 }
 

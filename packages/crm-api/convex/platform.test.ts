@@ -312,11 +312,11 @@ describe("platform tenant site identity", () => {
 			admin.mutation(api.platform.createClient, clientInput("first.example", "Duplicate")),
 		).rejects.toMatchObject({
 			name: "ConvexError",
-			data: 'A platform client already owns siteUrl="first.example"',
+			data: "PLATFORM_CLIENT_SITE_IN_USE",
 		});
 		await expect(
 			admin.mutation(api.platform.createClient, clientInput("www.first.example")),
-		).rejects.toThrow(/already owns siteUrl/i);
+		).rejects.toThrow("PLATFORM_CLIENT_SITE_IN_USE");
 
 		const secondId = await admin.mutation(
 			api.platform.createClient,
@@ -327,7 +327,7 @@ describe("platform tenant site identity", () => {
 				clientId: secondId,
 				siteUrl: "first.example",
 			}),
-		).rejects.toThrow(/already owns siteUrl/i);
+		).rejects.toThrow("PLATFORM_CLIENT_SITE_IN_USE");
 
 		const stored = await t.run(async (ctx) => ({
 			first: await ctx.db.get(firstId),

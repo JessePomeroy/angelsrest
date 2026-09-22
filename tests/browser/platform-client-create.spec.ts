@@ -37,7 +37,7 @@ test("a pending save cannot drag the sheet away, and a failed save can be retrie
 });
 
 test("the HTTP application error gives duplicate-website recovery without losing input", async ({ page }) => {
-	await page.route("**/api/admin/mutation", route => route.fulfill({ status: 500, json: { error: 'Uncaught ConvexError: A platform client already owns siteUrl="cedarfinch.example"' } }));
+	await page.route("**/api/admin/mutation", route => route.fulfill({ status: 500, json: { error: "PLATFORM_CLIENT_SITE_IN_USE" } }));
 	await page.goto("/?fixture=platform-client-create");
 	await page.getByRole("button", { name: "Add platform client", exact: true }).click();
 	await page.getByLabel("Business name", { exact: true }).fill("Cedar Finch Studio");

@@ -1,3 +1,5 @@
+export const PLATFORM_CLIENT_SITE_IN_USE = "PLATFORM_CLIENT_SITE_IN_USE";
+
 /** Shared input rules for operator-created platform clients, including the Hub form. */
 export function normalizePlatformClientInput(input: {
 	name: string;
