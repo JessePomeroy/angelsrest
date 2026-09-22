@@ -11,7 +11,7 @@ import { internal } from "./_generated/api";
 import type { Doc, Id } from "./_generated/dataModel";
 import type { MutationCtx } from "./_generated/server";
 import { internalMutation, internalQuery, query } from "./_generated/server";
-import { requireDocumentSiteAdmin } from "./authHelpers";
+import { requireFinancialOrderAdmin } from "./helpers/financialOrderAuthorization";
 import {
 	APPLICATION_FEE_INITIAL_DELAY_MS, APPLICATION_FEE_LEASE_MS, APPLICATION_FEE_MAX_ATTEMPTS,
 	APPLICATION_FEE_RETRY_DELAYS, applicationFeeErrorValidator, applicationFeeMatchesExpectation,
@@ -360,7 +360,7 @@ export const expireApplicationFeeAttempt = internalMutation({
 export const getApplicationFeeForOrder = query({
 	args: { orderId: v.id("orders") },
 	handler: async (ctx, { orderId }) => {
-		const order = await requireDocumentSiteAdmin(ctx, "orders", orderId);
+		const order = await requireFinancialOrderAdmin(ctx, orderId);
 		const expected = order.checkoutFinancialSnapshot ?? null;
 		const row = await ctx.db.query("orderApplicationFees")
 			.withIndex("by_orderId", q => q.eq("orderId", orderId)).unique();

@@ -1,5 +1,6 @@
 import { v } from "convex/values";
 import { scheduleApplicationFeeVerification } from "./stripeFeesStore";
+import { requireFinancialOrderAdmin } from "./helpers/financialOrderAuthorization";
 import {
 	beginClientRefundObservation as beginRefundObservation,
 	finishClientRefundObservation as finishRefundObservation,
@@ -4844,7 +4845,7 @@ export const expireClientRefundObservation = internalMutation({
 export const listClientRefundEvidence = query({
 	args: { orderId: v.id("orders") },
 	handler: async (ctx, { orderId }) => {
-		const order = await requireDocumentSiteAdmin(ctx, "orders", orderId);
+		const order = await requireFinancialOrderAdmin(ctx, orderId);
 		const saved = order.checkoutFinancialSnapshot;
 		if (!saved) return { evidenceAvailable: false, items: [], hasMore: false };
 		const rows = await ctx.db.query("clientRefundEvidence")

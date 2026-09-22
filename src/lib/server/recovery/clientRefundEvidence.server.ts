@@ -34,7 +34,7 @@ function objectId(value: string | { id: string } | null) {
 }
 
 /** Observe current provider truth before the existing whole-order recovery path. */
-export async function observeClientRefund({
+async function recordClientRefundObservation({
 	stripe,
 	convex,
 	eventId,
@@ -162,5 +162,18 @@ export async function observeClientRefund({
 		});
 		if (cause instanceof ClientRefundEvidenceError) throw cause;
 		throw new ClientRefundEvidenceError("Refund provider observation is unavailable");
+	}
+}
+
+/** All observation failures retry without suggesting manual fulfillment of a refunded order. */
+export async function observeClientRefund(
+	args: Parameters<typeof recordClientRefundObservation>[0],
+) {
+	try {
+		return await recordClientRefundObservation(args);
+	} catch (cause) {
+		if (cause instanceof ClientRefundEvidenceError) throw cause;
+		// This also covers uncertain begin/failure persistence; the durable lease expires independently.
+		throw new ClientRefundEvidenceError("Refund observation is unavailable");
 	}
 }

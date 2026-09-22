@@ -307,6 +307,28 @@ describe("current client refund evidence through the existing webhook consumer",
 	});
 
 	test.each([
+		"begin",
+		"fail",
+	])("keeps a %s persistence failure retryable without a misleading fulfillment email", async (phase) => {
+		const s = await setup();
+		vi.mocked(s.convex.mutation).mockImplementation(
+			async (...args: Parameters<ConvexHttpClient["mutation"]>) => {
+				if (getFunctionName(args[0]) === `orders:${phase}ClientRefundObservation`) {
+					throw new Error("Database transport unavailable");
+				}
+				return await s.t.mutation(args[0], args[1]);
+			},
+		);
+		if (phase === "fail") s.readRefund.mockRejectedValue(new Error("Provider unavailable"));
+		await expect(signedRequest(s)).rejects.toMatchObject({ status: 500 });
+		expect(runtime.failureAlert).not.toHaveBeenCalled();
+		expect(s.createRefund).not.toHaveBeenCalled();
+		expect(s.createFeeRefund).not.toHaveBeenCalled();
+		if (phase === "begin") expect(await s.row()).toBeNull();
+		else expect(await s.row()).toMatchObject({ state: "checking", claimToken: expect.any(String) });
+	});
+
+	test.each([
 		undefined,
 		"false",
 		"TRUE",

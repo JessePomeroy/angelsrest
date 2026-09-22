@@ -65,11 +65,16 @@ claims even if the host stops before recording an error.
 
 Observation failures keep HTTP retry responses and structured error logs. Busy
 claims retry; provider or identity failures retain their durable attention state.
+If begin/failure persistence itself is unavailable, the same retry contract
+applies and any committed claim still has its independently scheduled expiry.
 They do not send the generic order-intake email instructing manual fulfillment,
 which is not a remedy for refund observation failure.
 
-`orders.listClientRefundEvidence` requires the stored order's site membership,
-checks original financial identity and returns at most 50 observations with
+`orders.listClientRefundEvidence` and the original application-fee projection
+authorize current admin membership through the saved financial tenant identity.
+A changed domain or selected account does not strand old financial records or
+grant a later domain owner access. Legacy orders without a financial snapshot
+keep their existing site-membership rule. The refund projection checks original financial identity and returns at most 50 observations with
 `hasMore` if additional records exist. It hides claim tokens. Historical orders
 report unavailable evidence. An empty list is **not proof of zero refunds**;
 event capture is not a complete provider inventory.

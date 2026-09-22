@@ -200,6 +200,41 @@ describe("client refund evidence authority and lifecycle", () => {
 		expect((await s.row())?.observation).toEqual(observation);
 	});
 
+	test.each(["https://client.example", "renamed.example"])("keeps both financial projections accessible to original tenant membership after %s", async siteUrl => {
+		const s = await setup(); await s.begin();
+		if (siteUrl === "renamed.example") {
+			await s.t.mutation(internal.platform.renameClientSiteUrl, { fromSiteUrl: "client.example", toSiteUrl: siteUrl });
+		}
+		await s.t.run(ctx => ctx.db.patch(s.clientId, { siteUrl, stripeConnectedAccountId: "acct_replacement123456" }));
+		expect(await s.owner.query(api.orders.listClientRefundEvidence, { orderId: s.orderId! }))
+			.toMatchObject({ evidenceAvailable: true, items: [{ state: "checking" }] });
+		expect(await s.owner.query(api.stripeFeesStore.getApplicationFeeForOrder, { orderId: s.orderId! }))
+			.toMatchObject({ expected: snapshot, status: "unknown" });
+	});
+
+	test("does not transfer financial access to a different owner of the original domain", async () => {
+		const s = await setup(); await s.begin();
+		await s.t.run(async ctx => {
+			await ctx.db.patch(s.clientId, { siteUrl: "renamed.example" });
+			// Defend against domain reuse/corruption without changing the original payment tenant.
+			await ctx.db.insert("platformClients", { siteUrl: "client.example", name: "Foreign",
+				tenantId: "tenant_05eb6092-5d8c-43ce-ad26-1a59522bd07c", email: "foreign@example.invalid",
+				adminEmails: ["foreign@example.invalid"], tier: "full", subscriptionStatus: "active" });
+		});
+		const foreign = s.t.withIdentity({ subject: "foreign", email: "foreign@example.invalid", emailVerified: true });
+		await expect(foreign.query(api.orders.listClientRefundEvidence, { orderId: s.orderId! })).rejects.toThrow();
+		await expect(foreign.query(api.stripeFeesStore.getApplicationFeeForOrder, { orderId: s.orderId! })).rejects.toThrow();
+		expect(await s.owner.query(api.orders.listClientRefundEvidence, { orderId: s.orderId! }))
+			.toMatchObject({ evidenceAvailable: true });
+	});
+
+	test("rejects inconsistent original tenant authority in both financial projections", async () => {
+		const s = await setup();
+		await s.t.run(ctx => ctx.db.patch(s.orderId!, { tenantId: "tenant_05eb6092-5d8c-43ce-ad26-1a59522bd07c" }));
+		await expect(s.owner.query(api.orders.listClientRefundEvidence, { orderId: s.orderId! })).rejects.toThrow();
+		await expect(s.owner.query(api.stripeFeesStore.getApplicationFeeForOrder, { orderId: s.orderId! })).rejects.toThrow();
+	});
+
 	test("authorizes reads using stored membership and hides worker credentials", async () => {
 		const s = await setup(); await s.begin();
 		await expect(s.t.query(api.orders.listClientRefundEvidence, { orderId: s.orderId! })).rejects.toThrow();
