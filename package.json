@@ -25,7 +25,9 @@
 		"smoke:gallery-host-bulk-delete": "node scripts/smoke-gallery-host-bulk-delete.mjs",
 		"test:protocol": "vitest run --config vitest.protocol.config.ts",
 		"test:gallery-upload-contract": "vitest run --config vitest.gallery-upload-contract.config.ts",
-		"test:print-contract": "vitest run --config vitest.print-contract.config.ts"
+		"test:print-contract": "vitest run --config vitest.print-contract.config.ts",
+		"dev:onboarding-rehearsal": "vite --config tests/browser/onboarding-rehearsal/vite.config.ts",
+		"build:onboarding-rehearsal": "vite build --config tests/browser/onboarding-rehearsal/vite.config.ts"
 	},
 	"devDependencies": {
 		"@biomejs/biome": "^2.4.13",

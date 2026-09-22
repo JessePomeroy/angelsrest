@@ -3801,6 +3801,7 @@
       "setup": "Isolated handbook harness: actual host wrapper, fictional client; provider writes rejected. Select Juniper Studio and copy the stable setup URL.",
       "sourceComponents": [
         "src/routes/admin/platform/+page.svelte",
+        "src/lib/components/PlatformClientCreate.svelte",
         "node_modules/@jessepomeroy/admin#PlatformPage",
         "tests/browser/handbook/Handbook.svelte",
         "tests/browser/handbook/data.ts"
@@ -3938,7 +3939,54 @@
       "coveredReferenceKeys": [
         "admin.platform.default.desktop",
         "admin.platform.default.mobile"
-      ]
+      ],
+      "clientCreationUpdate": {
+        "date": "2026-09-22",
+        "status": "browser-observed-paper-pending",
+        "source": "src/lib/components/PlatformClientCreate.svelte",
+        "setupUrl": "http://127.0.0.1:5201/admin/platform",
+        "previewUrl": "https://angelsrest-3x3x61qyd-jesse-pomeroys-projects.vercel.app/admin/platform",
+        "setupSteps": [
+          "Start the isolated onboarding rehearsal.",
+          "Open Add platform client; use Cedar Finch Studio, cedarfinch.example and owner@cedarfinch.example.",
+          "Submit and inspect the selected client and setup link. Reopen to exercise duplicate validation."
+        ],
+        "statesObserved": [
+          "empty platform",
+          "desktop dialog",
+          "invalid website",
+          "successful creation",
+          "duplicate domain",
+          "mobile sheet",
+          "cancel/focus restoration",
+          "pending-save drag stays in place; failure leaves controls reachable and retry succeeds"
+        ],
+        "viewports": [
+          {
+            "width": 1280,
+            "height": 720
+          },
+          {
+            "width": 390,
+            "height": 844
+          }
+        ],
+        "evidenceDirectory": "/tmp/angelsrest-onboarding-evidence",
+        "auditFixEvidence": "/tmp/angelsrest-onboarding-audit-rc6kne7b/mobile-save-drag-fixed.png",
+        "evidenceFiles": [
+          "add-client-desktop.png",
+          "add-client-duplicate-desktop.png",
+          "add-client-mobile.png",
+          "stripe-ready-desktop.png"
+        ],
+        "lastVerified": null,
+        "limitations": [
+          "Actual host/shared components; authentication, persistence and providers simulated in a separate static build. Rehearsal banners are not production UI.",
+          "The existing Paper handbook was opened, but the browser is signed out and requires login to edit. No board updated or same-state comparison claimed. Existing artboard IDs retained.",
+          "21st CLI and project design context unavailable; existing admin modal and style tokens reused.",
+          "Vercel preview deployed READY. Hosted browser verification reached Vercel login; full interactive verification used the identical locally built sources."
+        ]
+      }
     },
     {
       "key": "admin.delivery_galleries.default",
@@ -6883,7 +6931,36 @@
         "admin.stripe-setup.checking.mobile",
         "admin.stripe-setup.connection_unavailable.mobile",
         "admin.stripe-setup.disconnected.mobile"
-      ]
+      ],
+      "lumaprintsNudgeUpdate": {
+        "date": "2026-09-22",
+        "status": "browser-observed-paper-pending",
+        "source": "src/lib/components/StripeSetupPage.svelte",
+        "state": "ready",
+        "description": "Adds Next: set up LumaPrints, two short instructions and the provider signup link only in the authorized, enabled, current ready state.",
+        "signupUrl": "https://dashboard.lumaprints.com/account/register/",
+        "providerSources": [
+          "https://www.lumaprints.com/",
+          "https://api-docs.lumaprints.com/doc-2394350"
+        ],
+        "browserEvidence": [
+          "/tmp/angelsrest-lumaprints-nudge-evidence/ready-desktop.png",
+          "/tmp/angelsrest-lumaprints-nudge-evidence/ready-mobile.png"
+        ],
+        "browserChecks": [
+          "Prompt absent before readiness and while pending.",
+          "Ready prompt renders on desktop and 390px mobile with no horizontal overflow.",
+          "Signup link reaches the local provider simulation in the rehearsal; Back to payment setup preserves ready state.",
+          "No browser warnings/errors observed."
+        ],
+        "lastVerified": null,
+        "limitations": [
+          "Existing Paper update/comparison gap remains: handbook requires signed-in edit access; no board marked verified.",
+          "Provider registration was not submitted. Rehearsal continues to use fictional session records and simulated provider destinations.",
+          "Preview deployment is READY; hosted browser remains at Vercel login protection. Local browser verification passed."
+        ],
+        "previewUrl": "https://angelsrest-8xvccjjko-jesse-pomeroys-projects.vercel.app/admin/platform"
+      }
     },
     {
       "key": "admin.lumaprints-setup",
