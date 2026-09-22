@@ -46,7 +46,9 @@ if (params.get("populated") === "true") {
 }
 </script>
 
-{#if fixture === "lumaprints-setup"}
+{#if fixture === "client-print-refunds"}
+  {#await import("./ClientPrintRefundHarness.svelte")}<p>Loading refund fixture…</p>{:then component}<component.default />{/await}
+{:else if fixture === "lumaprints-setup"}
   {#await import("./LumaPrintsSetupHarness.svelte")}
     <p>Loading LumaPrints setup fixture…</p>
   {:then component}

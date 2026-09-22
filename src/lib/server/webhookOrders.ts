@@ -458,7 +458,8 @@ export async function finishRecordedPrintOrder(
 		fulfillment.kind === "reconciliation_blocked" ||
 		fulfillment.kind === "automated_refund_failed" ||
 		fulfillment.kind === "automated_refund_attention" ||
-		fulfillment.kind === "automated_refund_request_uncertain"
+		fulfillment.kind === "automated_refund_request_uncertain" ||
+		fulfillment.kind === "guided_refund_review_required"
 	) {
 		notification = "none";
 	} else if (fulfillment.kind === "permanent_failure_refunded") {

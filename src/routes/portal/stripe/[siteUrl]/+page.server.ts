@@ -1,6 +1,7 @@
 import { error, fail, isHttpError, redirect } from "@sveltejs/kit";
 import { api } from "$convex/api";
 import { requireAuth, requireAuthWithIdentity } from "$lib/server/adminAuth";
+import { isClientPrintRefundsEnabled } from "$lib/server/clientPrintRefunds.server";
 import { createAuthenticatedConvexClient } from "$lib/server/convexClient";
 import { getPublicSiteOrigin } from "$lib/server/runtimeConfig";
 import { getStripe } from "$lib/server/stripeClient";
@@ -34,6 +35,7 @@ export const load: PageServerLoad = async ({
 	const data: StripeConnectSetupData = {
 		siteUrl,
 		onboardingEnabled: isStripeConnectOnboardingEnabled(),
+		refundsEnabled: isClientPrintRefundsEnabled(),
 		sessionStatus: "signed_out",
 		email: null,
 		accountId: null,

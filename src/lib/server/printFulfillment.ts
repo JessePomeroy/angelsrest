@@ -6,6 +6,7 @@ import type Stripe from "stripe";
 import { api } from "$convex/api";
 import type { Id } from "$convex/dataModel";
 import type { CheckoutSnapshotV1 } from "$lib/server/checkoutSnapshotConsumer";
+import { isClientPrintRefundsEnabled } from "$lib/server/clientPrintRefunds.server";
 import {
 	ANGELS_REST_COMMERCE_PROFILE,
 	type CommerceNotificationProfile,
@@ -62,6 +63,7 @@ export type PrintFulfillmentOutcome =
 	| { kind: "no_print_items" }
 	| { kind: "no_print_items_replayed" }
 	| { kind: "canceled" }
+	| { kind: "guided_refund_review_required" }
 	| { kind: "manual_refunded"; stripeRefundId: string }
 	| {
 			kind: "reconciliation_blocked";
@@ -735,6 +737,23 @@ export async function handlePermanentFulfillmentFailure(
 		);
 	}
 	if (refundClaim.kind === "unavailable") {
+		if (
+			isClientPrintRefundsEnabled() &&
+			(await convex.query(api.orders.getClientPrintRefundBlock, { orderId, webhookSecret }))
+		) {
+			await convex.mutation(api.orders.markClientPrintRefundSupplierReview, {
+				orderId,
+				webhookSecret,
+				fulfillmentError: truncatedError,
+			});
+			logStructured({
+				event: "refund.guided_review_required",
+				level: "warn",
+				stage: "stripe_refund",
+				orderId: orderNumber,
+			});
+			return { kind: "guided_refund_review_required" } satisfies PrintFulfillmentOutcome;
+		}
 		const requestUncertain = await convex.mutation(
 			api.orders.isAutomatedFulfillmentRefundRequestUncertain,
 			{ webhookSecret, orderId },

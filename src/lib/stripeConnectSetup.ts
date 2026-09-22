@@ -8,6 +8,7 @@ export interface StripeConnectReadiness {
 export interface StripeConnectSetupData {
 	siteUrl: string;
 	onboardingEnabled: boolean;
+	refundsEnabled?: boolean;
 	sessionStatus: "signed_out" | "unauthorized" | "authorized" | "unavailable";
 	email: string | null;
 	accountId: string | null;
