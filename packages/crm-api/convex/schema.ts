@@ -2,6 +2,7 @@ import { defineSchema, defineTable } from "convex/server";
 import { v } from "convex/values";
 import { checkoutFinancialSnapshotValidator } from "./helpers/checkoutFinancialSnapshot";
 import { applicationFeeErrorValidator, applicationFeeObservationValidator } from "./helpers/applicationFeeVerification";
+import { clientRefundObservationValidator } from "./helpers/clientRefundEvidence";
 import { stripeConnectStatusValidator } from "./helpers/stripeConnectStatus";
 import { lumaprintsConnectionFields, lumaprintsConnectionValidator } from "./helpers/lumaprintsConnection";
 import {
@@ -1104,6 +1105,19 @@ export default defineSchema({
 		artifact: v.optional(printJobArtifact),
 		url: v.optional(v.string()), expiresAt: v.optional(v.number()),
 	}).index("by_jobId_and_index", ["jobId", "index"]),
+
+	// Individually verified customer refunds; observed amounts are not print allocations.
+	clientRefundEvidence: defineTable({
+		stripeSessionId: v.string(), stripeConnectedAccountId: v.string(), stripeRefundId: v.string(),
+		stripePaymentIntentId: v.string(), tenantId: v.string(), stripePlatformAccountId: v.string(), stripeLivemode: v.boolean(),
+		state: v.union(v.literal("checking"), v.literal("observed"), v.literal("attention")),
+		claimToken: v.optional(v.string()), leaseUntil: v.optional(v.number()), checkingEventId: v.optional(v.string()),
+		lastEventId: v.optional(v.string()), observedAt: v.optional(v.number()),
+		observation: v.optional(clientRefundObservationValidator),
+		issue: v.optional(v.union(v.literal("provider_unavailable"), v.literal("evidence_mismatch"), v.literal("observation_expired"))),
+	})
+		.index("by_stripeConnectedAccountId_and_stripeRefundId", ["stripeConnectedAccountId", "stripeRefundId"])
+		.index("by_stripeConnectedAccountId_and_stripeSessionId", ["stripeConnectedAccountId", "stripeSessionId"]),
 
 	// Original application-fee observations, separate from fulfillment and processing fees.
 	orderApplicationFees: defineTable({

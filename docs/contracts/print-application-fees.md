@@ -142,6 +142,10 @@ Provider references: [direct-charge fee scope and asynchronous creation](https:/
 
 ## Remaining financial work
 
+The [individual refund evidence consumer](client-refund-evidence.md) adds gated,
+current provider observations for full and partial refunds. It does not replace
+the original fee observation or execute a fee return.
+
 Refresh and reconcile provider refund records before enabling guided partial
 refunds. The guided Hub flow must record refunded print items/amounts and return the corresponding
 fee with cumulative cent rounding and retry/concurrency protection. Dashboard
