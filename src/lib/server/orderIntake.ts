@@ -29,6 +29,7 @@ import {
 	ProviderSubmissionClosedRetryableError,
 	sendClaimedAutomatedRefundNotification,
 } from "$lib/server/printFulfillment";
+import { ClientRefundEvidenceError } from "$lib/server/recovery/clientRefundEvidence.server";
 import {
 	ManualRefundReconciliationRetryableError,
 	reconcileSucceededManualRefund,
@@ -246,6 +247,7 @@ export async function processStripeWebhookEvent(
 		if (
 			!(err instanceof CheckoutSnapshotProtocolError) &&
 			!(err instanceof ManualRefundReconciliationRetryableError) &&
+			!(err instanceof ClientRefundEvidenceError) &&
 			!(err instanceof PaymentFailureEmailClaimError) &&
 			!(err instanceof OrderReceiptRetryableError) &&
 			!(err instanceof PrintReconciliationAlertDeliveryError) &&

@@ -4,6 +4,7 @@ import { getFunctionName } from "convex/server";
 import { convexTest } from "convex-test";
 import Stripe from "stripe";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
+import { api } from "../../../../packages/crm-api/convex/_generated/api";
 import schema from "../../../../packages/crm-api/convex/schema";
 import { reconcileSucceededManualRefund } from "../recovery/manualRefundReconciliation.server";
 import { STRIPE_API_VERSION } from "../stripeApiVersion";
@@ -17,10 +18,15 @@ const runtime = vi.hoisted(() => ({
 	stripe: undefined as unknown,
 	convex: undefined as unknown,
 	fulfill: vi.fn(),
+	failureAlert: vi.fn().mockResolvedValue(undefined),
 	resend: {},
 }));
 vi.mock("$env/dynamic/private", () => ({ env }));
 vi.mock("$lib/server/logger", () => ({ logStructured: vi.fn() }));
+vi.mock("$lib/server/webhookEmails", async (importOriginal) => ({
+	...(await importOriginal<typeof import("../webhookEmails")>()),
+	sendFailureAlert: runtime.failureAlert,
+}));
 vi.mock("$lib/server/convexClient", () => ({ getConvex: () => runtime.convex }));
 vi.mock("$lib/server/stripeClient", () => ({ getStripe: () => runtime.stripe }));
 vi.mock("$lib/server/resendClient", () => ({ getResend: () => runtime.resend }));
@@ -108,6 +114,7 @@ function charge() {
 
 beforeEach(() => {
 	env.CLIENT_REFUND_EVIDENCE_ENABLED = "true";
+	runtime.failureAlert.mockClear();
 	vi.useFakeTimers();
 	vi.setSystemTime(new Date("2026-09-21T12:00:00Z"));
 	vi.stubEnv("WEBHOOK_SECRET", env.WEBHOOK_SECRET);
@@ -249,7 +256,56 @@ async function setup(beforeOrder = false) {
 	};
 }
 
+async function signedRequest(s: Awaited<ReturnType<typeof setup>>) {
+	// The route captures its Convex adapter on import; each test owns a new database.
+	vi.resetModules();
+	runtime.stripe = s.stripe;
+	runtime.convex = s.convex;
+	const { POST } = await import("../../../routes/api/webhooks/stripe/+server");
+	const payload = JSON.stringify(event());
+	const signature = s.stripe.webhooks.generateTestHeaderString({
+		payload,
+		secret: env.STRIPE_CONNECT_WEBHOOK_SECRET,
+	});
+	return await POST({
+		request: new Request("https://angelsrest.test/api/webhooks/stripe", {
+			method: "POST",
+			headers: { "stripe-signature": signature },
+			body: payload,
+		}),
+	} as Parameters<typeof POST>[0]);
+}
+
 describe("current client refund evidence through the existing webhook consumer", () => {
+	test.each([
+		"busy",
+		"provider_unavailable",
+		"evidence_mismatch",
+	])("requests a signed-webhook retry for %s without a manual-fulfillment alert", async (reason) => {
+		const s = await setup();
+		if (reason === "busy") {
+			await s.t.mutation(api.orders.beginClientRefundObservation, {
+				webhookSecret: env.WEBHOOK_SECRET,
+				claimToken: "123e4567-e89b-42d3-a456-426614174000",
+				stripeEventId: event().id,
+				stripeSessionId: SESSION,
+				stripeConnectedAccountId: ACCOUNT,
+				stripePaymentIntentId: PI,
+				stripeRefundId: REFUND,
+			});
+		} else if (reason === "provider_unavailable") {
+			s.readRefund.mockRejectedValue(new Error("Provider temporarily unavailable"));
+		} else s.readCharge.mockResolvedValue({ ...charge(), livemode: true });
+		await expect(signedRequest(s)).rejects.toMatchObject({ status: 500 });
+		expect(runtime.failureAlert).not.toHaveBeenCalled();
+		expect(s.createRefund).not.toHaveBeenCalled();
+		expect(s.createFeeRefund).not.toHaveBeenCalled();
+		expect(runtime.fulfill).not.toHaveBeenCalled();
+		expect(await s.row()).toMatchObject(
+			reason === "busy" ? { state: "checking" } : { state: "attention", issue: reason },
+		);
+	});
+
 	test.each([
 		undefined,
 		"false",
@@ -291,21 +347,7 @@ describe("current client refund evidence through the existing webhook consumer",
 
 	test("accepts a correctly signed partial refund through the real hub HTTP handler", async () => {
 		const s = await setup();
-		runtime.stripe = s.stripe;
-		runtime.convex = s.convex;
-		const { POST } = await import("../../../routes/api/webhooks/stripe/+server");
-		const payload = JSON.stringify(event());
-		const signature = s.stripe.webhooks.generateTestHeaderString({
-			payload,
-			secret: env.STRIPE_CONNECT_WEBHOOK_SECRET,
-		});
-		const result = await POST({
-			request: new Request("https://angelsrest.test/api/webhooks/stripe", {
-				method: "POST",
-				headers: { "stripe-signature": signature },
-				body: payload,
-			}),
-		} as Parameters<typeof POST>[0]);
+		const result = await signedRequest(s);
 		expect(result.status).toBe(200);
 		expect(await result.json()).toEqual({ received: true });
 		expect((await s.row())?.observation?.amountCents).toBe(4000);

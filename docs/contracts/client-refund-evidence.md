@@ -63,6 +63,11 @@ and asks Stripe to retry the webhook. A lost persistence acknowledgement can be
 replayed without a second row or any refund POST. The backend expires abandoned
 claims even if the host stops before recording an error.
 
+Observation failures keep HTTP retry responses and structured error logs. Busy
+claims retry; provider or identity failures retain their durable attention state.
+They do not send the generic order-intake email instructing manual fulfillment,
+which is not a remedy for refund observation failure.
+
 `orders.listClientRefundEvidence` requires the stored order's site membership,
 checks original financial identity and returns at most 50 observations with
 `hasMore` if additional records exist. It hides claim tokens. Historical orders
