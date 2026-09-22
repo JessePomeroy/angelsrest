@@ -2834,7 +2834,7 @@ export const claimAutomatedFulfillmentRefund = mutation({
 		v.object({ kind: v.literal("claimed"), leaseExpiresAt: v.number() }),
 		v.object({ kind: v.literal("busy"), leaseExpiresAt: v.number() }),
 		v.object({ kind: v.literal("refunded"), stripeRefundId: v.string() }),
-		v.object({ kind: v.literal("unavailable") }),
+		v.object({ kind: v.literal("unavailable"), guidedRefund: v.optional(v.literal(true)) }),
 	),
 	handler: async (ctx, args) => {
 		await requireWebhookCallerOrAuth(ctx, args.webhookSecret, { allowAuth: false });
@@ -2844,7 +2844,7 @@ export const claimAutomatedFulfillmentRefund = mutation({
 		}
 		const order = await ctx.db.get(args.orderId);
 		if (!order) throw new Error("Order not found");
-		if (order.clientPrintRefundOperationId || order.clientPrintRefundStartedAt !== undefined) return { kind: "unavailable" as const };
+		if (order.clientPrintRefundOperationId || order.clientPrintRefundStartedAt !== undefined) return { kind: "unavailable" as const, guidedRefund: true as const };
 		if (
 			order.status === "fulfillment_error"
 			&& order.fulfillmentRecoveryStatus === "refunded"
@@ -2952,7 +2952,7 @@ export const claimAutomatedFulfillmentRefundV2 = mutation({
 				v.literal("age_exceeded"),
 			),
 		}),
-		v.object({ kind: v.literal("unavailable") }),
+		v.object({ kind: v.literal("unavailable"), guidedRefund: v.optional(v.literal(true)) }),
 	),
 	handler: async (ctx, args) => {
 		await requireWebhookCallerOrAuth(ctx, args.webhookSecret, { allowAuth: false });
@@ -2962,7 +2962,7 @@ export const claimAutomatedFulfillmentRefundV2 = mutation({
 		}
 		const order = await ctx.db.get(args.orderId);
 		if (!order) throw new Error("Order not found");
-		if (order.clientPrintRefundOperationId || order.clientPrintRefundStartedAt !== undefined) return { kind: "unavailable" as const };
+		if (order.clientPrintRefundOperationId || order.clientPrintRefundStartedAt !== undefined) return { kind: "unavailable" as const, guidedRefund: true as const };
 		if (
 			order.status === "fulfillment_error"
 			&& order.fulfillmentRecoveryStatus === "refunded"
@@ -4966,15 +4966,6 @@ export const getClientPrintRefundForWebhook = query({
 		return row._id;
 	},
 });
-export const getClientPrintRefundBlock = query({
-	args: { orderId: v.id("orders"), webhookSecret: v.string() },
-	handler: async (ctx, args) => {
-		await requireWebhookCallerOrAuth(ctx, args.webhookSecret, { allowAuth: false });
-		const order = await ctx.db.get(args.orderId);
-		return !!order && (order.clientPrintRefundOperationId !== undefined || order.clientPrintRefundStartedAt !== undefined);
-	},
-});
-
 export const markClientPrintRefundSupplierReview = mutation({
 	args: { orderId: v.id("orders"), fulfillmentError: v.string(), webhookSecret: v.string() },
 	handler: async (ctx, args) => {

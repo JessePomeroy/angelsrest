@@ -6,7 +6,6 @@ import type Stripe from "stripe";
 import { api } from "$convex/api";
 import type { Id } from "$convex/dataModel";
 import type { CheckoutSnapshotV1 } from "$lib/server/checkoutSnapshotConsumer";
-import { isClientPrintRefundsEnabled } from "$lib/server/clientPrintRefunds.server";
 import {
 	ANGELS_REST_COMMERCE_PROFILE,
 	type CommerceNotificationProfile,
@@ -737,10 +736,7 @@ export async function handlePermanentFulfillmentFailure(
 		);
 	}
 	if (refundClaim.kind === "unavailable") {
-		if (
-			isClientPrintRefundsEnabled() &&
-			(await convex.query(api.orders.getClientPrintRefundBlock, { orderId, webhookSecret }))
-		) {
+		if ("guidedRefund" in refundClaim && refundClaim.guidedRefund) {
 			await convex.mutation(api.orders.markClientPrintRefundSupplierReview, {
 				orderId,
 				webhookSecret,

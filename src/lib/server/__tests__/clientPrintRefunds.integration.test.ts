@@ -562,9 +562,13 @@ describe("guided refunds across the real host and Convex boundary", () => {
 		await s.t.finishAllScheduledFunctions(vi.runAllTimers);
 	});
 
-	test("supplier failure after a guided partial refund cannot run the old full refund", async () => {
+	test.each([
+		"true",
+		"false",
+	])("supplier failure after a guided partial refund remains reviewable with flag=%s", async (flag) => {
 		const s = await setup();
 		await s.run();
+		env.CLIENT_PRINT_REFUNDS_ENABLED = flag;
 		const { handlePermanentFulfillmentFailure } = await import("../printFulfillment");
 		const resend = new Resend("re_offline_fixture");
 		const mail = vi.spyOn(resend.emails, "send").mockRejectedValue(new Error("Unexpected email"));
