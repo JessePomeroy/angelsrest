@@ -1,6 +1,6 @@
 <script lang="ts">
 import { AdminModal } from "@jessepomeroy/admin";
-import { normalizePlatformClientInput, PLATFORM_CLIENT_SITE_IN_USE } from "../../../packages/crm-api/convex/helpers/platformClientInput";
+import { normalizePlatformClientInput, PLATFORM_CLIENT_LOGIN_UNVERIFIED, PLATFORM_CLIENT_SITE_IN_USE } from "../../../packages/crm-api/convex/helpers/platformClientInput";
 
 let { oncreated }: { oncreated: (client: { name: string; siteUrl: string }) => void } = $props();
 let open = $state(false);
@@ -76,8 +76,11 @@ async function save(event: SubmitEvent) {
 		added = `${identity.name} was added. Share their setup link when payment onboarding is enabled.`;
 		oncreated({ name: identity.name, siteUrl: identity.siteUrl });
 	} catch (error) {
-		message = error instanceof Error && error.message.includes(PLATFORM_CLIENT_SITE_IN_USE)
+		const reason = error instanceof Error ? error.message : "";
+		message = reason.includes(PLATFORM_CLIENT_SITE_IN_USE)
 			? "That website already belongs to a platform client. Select the existing client below."
+			: reason.includes(PLATFORM_CLIENT_LOGIN_UNVERIFIED)
+				? "This email has an unverified login without existing site access. Verify the login before adding this client."
 			: "We could not confirm the client was added. Check the platform list before trying again.";
 	} finally {
 		saving = false;

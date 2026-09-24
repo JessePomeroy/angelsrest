@@ -76,3 +76,17 @@ test("existing accounts keep their login and do not display a generated password
 	await expect(page.getByLabel("Temporary password", { exact: true })).toHaveCount(0);
 	await expect(page.getByRole("button", { name: "Copy login details" })).toHaveCount(0);
 });
+
+test("an unverified existing login explains the rejected creation and keeps the form details", async ({ page }) => {
+	await page.route("**/api/admin/platform-clients", route => route.fulfill({ status: 409, json: { error: "PLATFORM_CLIENT_LOGIN_UNVERIFIED" } }));
+	await page.goto("/?fixture=platform-client-create");
+	await page.getByRole("button", { name: "Add platform client", exact: true }).click();
+	await page.getByLabel("Business name", { exact: true }).fill("Cedar Finch Studio");
+	await page.getByLabel("Website hostname").fill("cedarfinch.example");
+	await page.getByLabel("Client admin email").fill("owner@cedarfinch.example");
+	await page.getByRole("button", { name: "Add client", exact: true }).click();
+	await expect(page.getByRole("alert")).toContainText("Verify the login before adding this client.");
+	await expect(page.getByLabel("Client admin email")).toHaveValue("owner@cedarfinch.example");
+	await expect(page.getByLabel("Temporary password", { exact: true })).toHaveCount(0);
+	await expect(page.getByRole("button", { name: "Add client", exact: true })).toBeEnabled();
+});
