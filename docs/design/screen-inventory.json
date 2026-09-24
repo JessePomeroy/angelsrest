@@ -3986,6 +3986,38 @@
           "21st CLI and project design context unavailable; existing admin modal and style tokens reused.",
           "Vercel preview deployed READY. Hosted browser verification reached Vercel login; full interactive verification used the identical locally built sources."
         ]
+      },
+      "temporaryPasswordHandoffUpdate": {
+        "date": "2026-09-23",
+        "status": "browser-observed-paper-pending",
+        "source": "src/lib/components/PlatformClientCreate.svelte",
+        "statesObserved": [
+          "new login password masked/revealed",
+          "copy login details",
+          "close clears password",
+          "existing login unchanged",
+          "pending save, retry and duplicate recovery"
+        ],
+        "viewports": [
+          {
+            "width": 1440,
+            "height": 1000
+          },
+          {
+            "width": 390,
+            "height": 844
+          }
+        ],
+        "evidenceFiles": [
+          "/tmp/angelsrest-client-password-desktop.png",
+          "/tmp/angelsrest-client-password-mobile.png"
+        ],
+        "lastVerified": null,
+        "limitations": [
+          "Browser tests used the actual component with fictional intercepted HTTP responses. Better Auth credential creation, sign-in and password change were exercised separately against convex-test.",
+          "No real client credentials created. No source deployment or live client acceptance claimed.",
+          "Paper tools are unavailable in this session. Existing artboards are preserved; update and same-state comparison remain pending."
+        ]
       }
     },
     {

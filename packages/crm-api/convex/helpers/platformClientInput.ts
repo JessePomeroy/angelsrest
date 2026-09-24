@@ -1,4 +1,5 @@
 export const PLATFORM_CLIENT_SITE_IN_USE = "PLATFORM_CLIENT_SITE_IN_USE";
+export const PLATFORM_CLIENT_LOGIN_UNVERIFIED = "PLATFORM_CLIENT_LOGIN_UNVERIFIED";
 
 /** Shared input rules for operator-created platform clients, including the Hub form. */
 export function normalizePlatformClientInput(input: {
