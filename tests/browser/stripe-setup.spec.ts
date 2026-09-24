@@ -1,4 +1,5 @@
 import { expect, test } from "@playwright/test";
+import { applyCapabilityResponsePrivacy } from "../../src/lib/server/capabilityResponsePrivacy";
 
 test("client sign-in shows recoverable errors without provider requests", async ({ page }) => {
 	await page.goto("/?fixture=stripe-setup&phase=signed_out");
@@ -10,8 +11,15 @@ test("client sign-in shows recoverable errors without provider requests", async 
 });
 
 test("setup posts to the stable tenant action", async ({ page }) => {
+	const headers = new Headers();
+	applyCapabilityResponsePrivacy(headers, "/portal/stripe/studio.example.invalid");
+	await page.route("**/?fixture=stripe-setup", async route => {
+		const response = await route.fetch();
+		await route.fulfill({ response, headers: { ...response.headers(), ...Object.fromEntries(headers) } });
+	});
 	await page.route("**/portal/stripe/**", async route => {
 		expect(route.request().method()).toBe("POST");
+		expect(route.request().headers().origin).toBe(new URL(route.request().url()).origin);
 		expect(new URL(route.request().url()).pathname).toBe("/portal/stripe/studio.example.invalid");
 		expect(new URL(route.request().url()).search).toBe("?/start");
 		await route.fulfill({ status: 200, contentType: "text/html", body: "<h1>Local Stripe redirect fixture</h1>" });

@@ -55,6 +55,8 @@ describe("private capability path privacy", () => {
 		"/api/portal/bearer-token/accept",
 		"/api/portal/bearer-token/decline",
 		"/api/portal/bearer-token/sign",
+		"/portal/stripe",
+		"/portal/stripe-other/bearer-token",
 	])("sets no-store, no-referrer, and crawler denial on %s", (pathname) => {
 		const headers = new Headers({ "Cache-Control": "public, max-age=300" });
 		expect(isPrivateCapabilityResponsePath(pathname)).toBe(true);
@@ -70,6 +72,14 @@ describe("private capability path privacy", () => {
 		expect(headers.get("X-Robots-Tag")).toBeNull();
 		expect(headers.get("Referrer-Policy")).toBeNull();
 		expect(headers.get("Cache-Control")).toBe("public, max-age=300");
+	});
+
+	it("keeps authenticated Stripe form origins without caching or indexing the page", () => {
+		const headers = new Headers();
+		applyCapabilityResponsePrivacy(headers, "/portal/stripe/client.example");
+		expect(headers.get("Referrer-Policy")).toBe("same-origin");
+		expect(headers.get("X-Robots-Tag")).toBe("noindex, nofollow, noarchive");
+		expect(headers.get("Cache-Control")).toBe("private, no-store");
 	});
 
 	it("redacts direct request URLs and transaction fields while retaining route labels", () => {

@@ -162,6 +162,7 @@ describe("client Stripe setup boundary", () => {
 		expect(await start(event(undefined, "https://attacker.example"))).toMatchObject({
 			status: 403,
 		});
+		expect(await start(event(undefined, "null"))).toMatchObject({ status: 403 });
 		expect(mocks.start).not.toHaveBeenCalled();
 		expect(mocks.stripe).not.toHaveBeenCalled();
 	});
