@@ -12,6 +12,8 @@ export default defineConfig({
 	resolve: {
 		dedupe: ["svelte"],
 		alias: {
+			// Component fixtures stay offline; production E2E verifies the real font files.
+			"./fonts.css": path("./fixtures/fonts.css"),
 			$lib: path("../../src/lib"),
 			"@vercel/analytics/sveltekit": path("./fixtures/analytics.ts"),
 			"$app/stores": path("./fixtures/stores.ts"),

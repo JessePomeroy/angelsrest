@@ -1,0 +1,2 @@
+/* Keep the component harness's existing system-font fallback without CDN requests.
+ * Real font delivery and failure behavior are covered by tests/e2e/fonts.spec.ts. */
