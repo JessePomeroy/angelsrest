@@ -59,13 +59,37 @@ proxying the image. Custom content-managed social images remain supported.
 | Asset | Bytes | SHA-256 prefix |
 | --- | ---: | --- |
 | clouds2.gif | 672,091 | 4e50727fe4b79453 |
+| clouds2-400.gif | 258,328 | c3ae2cd7270ab0a7 |
 | og-image.png | 935,956 | 3189eae23f5f64e7 |
 
-Both objects use `public, max-age=31536000, immutable`. Publish a new hashed key
+These objects use `public, max-age=31536000, immutable`. Publish a new hashed key
 and update the reference when replacing an image; do not overwrite these keys.
-The 1,608,047-byte pair moves static asset delivery off Vercel, not private media
+The original 1,608,047-byte hero/social-image pair moved static asset delivery off Vercel, not private media
 or the application. Public downloads matched source hashes and returned HTTP
 200 without Referer for browser and social crawler user agents.
+
+The 400px hero derivative is for low-density small viewports. Responsive image
+selection retains the original 800px animation on higher-density screens;
+the default Lighthouse mobile profile still selects the original. Both retain
+18 frames, 30ms per frame and infinite looping. The homepage reserves the
+800:420 aspect ratio and prioritizes the selected image without lazy loading.
+No extra preload or media security-policy change is needed.
+
+The derivative is reproducible with the repository's existing Sharp dependency:
+
+```zsh
+pnpm exec node --input-type=module -e '
+import sharp from "sharp";
+await sharp("src/lib/assets/clouds2.gif", { animated: true })
+  .resize({ width: 400 })
+  .gif({ effort: 7, interFrameMaxError: 0, interPaletteMaxError: 0, keepDuplicateFrames: true })
+  .toFile("src/lib/assets/clouds2-400.gif");
+'
+```
+
+Hash and inspect the generated output before publishing a new immutable key.
+The original GIF remains the fidelity/rollback source. Same-resolution WebP and
+APNG experiments were larger for this dithered artwork, so they were not adopted.
 
 ## Function artifacts
 

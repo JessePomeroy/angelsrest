@@ -81,6 +81,44 @@ or automatic production audit has been added to the application.
 
 ## Interpretation and scope
 
+### PERF-02 local hero comparison
+
+The responsive 400px GIF is 258,328 bytes versus 672,091 bytes for the original
+(61.6% smaller). This saving applies to low-density small viewports, not to the
+default 1.75× Lighthouse mobile profile, which retains the original 800px GIF.
+Intrinsic dimensions reserve the existing aspect ratio before either image loads.
+
+An alternating original/candidate comparison used three fresh runs per version
+at each density, otherwise matching the mobile settings above, with dark `night`
+theme and normal motion. Both were local production builds: baseline `7002863e`
+(runtime unchanged from `9d3a112e`) and the PERF-02 working tree based on it.
+The evidence folder's `compare-hero.mjs` and `perf02-alternating-v3/` retain the
+procedure, reports, audit-time viewport, and selected network request.
+
+| Profile | Score median (range), before → after | LCP median, before → after |
+| --- | --- | --- |
+| Mobile, 1× density | 47 (44–53) → 57 (56–65) | 7.48 s → 5.23 s |
+| Mobile, 1.75× density | 46 (45–51) → 47 (47–48) | 7.31 s → 7.19 s |
+| Desktop, separate sequential batches | 96 (96–96) → 96 (95–97) | 1.29 s → 1.32 s |
+
+The 1× LCP ranges were 5.80–7.56 s before and 3.82–5.33 s after. The 1.75×
+ranges overlapped (5.94–7.39 s before, 7.18–7.28 s after); do not claim a
+reliable high-density speed improvement. Initial non-alternating mobile batches
+were slower after the change (5.96 → 7.39 s median), prompting this investigation;
+those reports remain preserved, not discarded. None of these local results is a
+post-deployment measurement or comparable directly with the evening production
+baseline. The first two alternating attempts stopped on a harness validation
+error: a post-audit device-pixel ratio was not the audit-time ratio. They are
+excluded; the corrected runner captures the viewport during document loading.
+
+All completed comparison runs were warning-free. Candidate CLS was approximately
+0.00007 mobile / 0.00008 desktop; original runs intermittently shifted by 0.073
+mobile / 0.020 desktop. Chromium and WebKit tests hold the actual image request,
+verify reserved geometry, release it, and confirm no image-induced size change.
+WebKit coverage is engine-level emulation, not a physical iPhone test. Both
+densities request only the intended variant during loading. Fonts/effects remain
+unchanged; the broader mobile performance targets are not yet met.
+
 First address the hero's transfer size/loading priority/intrinsic dimensions
 and the external font waterfall. Profile effects one at a time before changing
 them, then reassess remaining startup JavaScript. Preserve navigation and cart

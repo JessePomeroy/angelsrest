@@ -41,3 +41,45 @@ test("public image references use the media host and the old social URL redirect
 	expect(response.headers().location).toBe(publicAssets.openGraph);
 	expect((await response.body()).length).toBe(0);
 });
+
+test.describe("low-density mobile hero", () => {
+	test.use({ viewport: { width: 412, height: 823 }, deviceScaleFactor: 1 });
+	test("reserves space before its selected image loads", async ({ page }) => {
+		const requested: string[] = [];
+		const gate = Promise.withResolvers<void>();
+		await page.route("https://media.angelsrest.online/**/site/clouds2-*.gif", async (route) => {
+			requested.push(route.request().url());
+			await gate.promise;
+			await route.continue();
+		});
+		try {
+			await page.goto("/", { waitUntil: "domcontentloaded" });
+			const hero = page.locator(".hero-image img");
+			await expect(hero).toHaveAttribute("width", "800");
+			await expect(hero).toHaveAttribute("height", "420");
+			await expect(hero).toHaveAttribute("fetchpriority", "high");
+			await expect.poll(() => requested).toEqual([publicAssets.heroSmall]);
+			const before = await hero.boundingBox();
+			expect(before?.width).toBeCloseTo(380, 0);
+			expect(before?.height).toBeCloseTo(199.5, 0);
+			gate.resolve();
+			await expect
+				.poll(() => hero.evaluate((img: HTMLImageElement) => img.complete && img.naturalWidth > 0))
+				.toBe(true);
+			const after = await hero.boundingBox();
+			expect(after?.width).toBe(before?.width);
+			expect(after?.height).toBe(before?.height);
+			await expect(hero).toHaveJSProperty("currentSrc", publicAssets.heroSmall);
+		} finally {
+			gate.resolve();
+		}
+	});
+});
+
+test.describe("high-density mobile hero", () => {
+	test.use({ viewport: { width: 412, height: 823 }, deviceScaleFactor: 2 });
+	test("retains the original resolution instead of enlarging the small variant", async ({ page }) => {
+		await page.goto("/");
+		await expect(page.locator(".hero-image img")).toHaveJSProperty("currentSrc", publicAssets.hero);
+	});
+});

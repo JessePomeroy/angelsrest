@@ -45,7 +45,15 @@ import SEO from "$lib/components/SEO.svelte";
 <section class="home-hero">
     <!-- Hero gif -->
     <div class="hero-image">
-        <img src={publicAssets.hero} alt="Angel's Rest" />
+        <img
+            src={publicAssets.hero}
+            srcset={`${publicAssets.heroSmall} 400w, ${publicAssets.hero} 800w`}
+            sizes="(min-width: 980px) 900px, (min-width: 768px) calc(100vw - 5rem), calc(100vw - 2rem)"
+            width="800"
+            height="420"
+            fetchpriority="high"
+            alt="Angel's Rest"
+        />
     </div>
 
     <!-- Tagline -->
