@@ -10,7 +10,9 @@ The initial audit was repeated after the unrelated login PR #650 merged.
 The implementation baseline is production source
 `9d3a112e3a6362b51d35528fa1a16e6359a9ccce`, served by READY deployment
 `dpl_7Vefwak1X8u6jh2vCPJzrm3mHP2F` at `https://www.angelsrest.online/`.
-The deployment identity was checked before and after measurement.
+The deployment identity was checked before and after measurement in read-only
+Vercel CLI results. Those checks were observed in the task transcript, not saved
+as separate raw provider-response artifacts.
 
 Three sequential fresh-browser runs per profile used Lighthouse 13.5.0,
 Chromium 154, and hardware rendering on an NVIDIA RTX 3070. All six completed
@@ -29,8 +31,8 @@ used the desktop preset. A desktop GPU does not emulate a physical phone GPU.
 
 The dated Obsidian roadmap owns task status. Its sibling evidence directory
 `performance-evidence-2026-09-23/perf01-baseline-9d3a112e/` retains each HTML/JSON
-report, per-run context, and embedded report screenshots. Its `capture.mjs`
-records the measurement procedure. Raw traces were not saved for this baseline;
+report, per-run context, and embedded report screenshots. The parent evidence
+directory's `capture.mjs` records the measurement procedure. Raw traces were not saved for this baseline;
 capture them when isolating effects. Do not commit customer data, browser
 profiles, credentials, or large measurement artifacts to this repository.
 
@@ -72,7 +74,8 @@ CHROME_PATH=/absolute/path/to/chrome \
 This CLI command alone does not reproduce the controlled theme/timezone setup.
 Use browser media/timezone emulation and record page context for a comparable
 controlled run. The evidence capture used a fresh Puppeteer page passed to
-Lighthouse; it set only the browser's theme preference, not application code.
+Lighthouse; it selected dark media emulation and set the isolated browser's saved
+`theme` preference to `dark` before page scripts, without changing application code.
 Use the installed project tools for subsequent checks; no Lighthouse dependency
 or automatic production audit has been added to the application.
 
