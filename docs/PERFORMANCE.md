@@ -141,8 +141,9 @@ investigated rather than reported as a speedup:
 | Applied DevTools throttling, mobile control | 56 → 57 | 1.43 → 1.44 s | 6.10 → 6.12 s | 918 → 880 ms |
 
 The applied-throttling control used three new alternating pairs, not substituted
-results or the same scale as simulated scores. Its overlapping ranges show no
-meaningful overall paint change. Median final font download completion improved
+results or the same scale as simulated scores. These three pairs did not reproduce
+a meaningful paint regression; their ranges overlap, but do not establish
+equivalence. Median final font download completion improved
 from 2.393 to 2.298 s; CLS remained approximately 0.00007. In the unthrottled
 traces underlying simulation, mobile FCP improved from 333 to 258 ms and final
 font completion from 372 to 275 ms. These are different conditions, not physical
