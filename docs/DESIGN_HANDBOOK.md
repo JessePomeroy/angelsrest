@@ -76,7 +76,8 @@ was added.
 ## Foundations to preserve
 
 - Body text uses Synonym; display headings use Chillax. The site loads Chillax
-  400/600 and Synonym 400/500 from Fontshare. Some headings request weight 500
+  400/600 and Synonym 400/500 from Fontshare's CDN, with face declarations in
+  `src/lib/styles/fonts.css`. Some headings request weight 500
   while the browser selects Chillax 400. Verify the actual rendered face.
 - Original static TrueType faces are available in Paper after the authorized
   installation/restart. Initially installed wider OpenType copies were moved to

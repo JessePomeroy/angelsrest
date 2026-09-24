@@ -23,10 +23,10 @@ export default defineConfig({
 		},
 		{
 			name: "webkit-footprint",
-			testMatch: "footprint.spec.ts",
-			// Exercise image selection/decoding in mobile WebKit without profiling
+			testMatch: ["footprint.spec.ts", "fonts.spec.ts"],
+			// Exercise public image/font delivery in mobile WebKit without profiling
 			// optional GPU effects on the CI software renderer.
-			use: { ...devices["iPhone 13"], reducedMotion: "reduce" },
+			use: { ...devices["iPhone 13"], contextOptions: { reducedMotion: "reduce" } },
 		},
 	],
 });
