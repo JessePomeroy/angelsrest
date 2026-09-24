@@ -119,6 +119,53 @@ WebKit coverage is engine-level emulation, not a physical iPhone test. Both
 densities request only the intended variant during loading. Fonts/effects remain
 unchanged; the broader mobile performance targets are not yet met.
 
+### PERF-03 font delivery and measurement limits
+
+The existing Chillax 400/600 and Synonym 400/500 declarations now ship with site
+CSS. Their original Fontshare CDN files, format fallbacks and `font-display: swap`
+remain unchanged. A CORS preconnect warms that existing font origin. The external
+API stylesheet request is gone; no extra font preload was justified. No font
+binaries were redistributed/subsetted, and no CSP, dependency or infrastructure
+change was needed. The CDN remains an external dependency; fallback text still
+works when it is unavailable.
+
+Three alternating original/candidate runs per profile used the same production
+build baseline `a2e4d3bd`, normal motion, dark/night and hardware renderer.
+The default simulated mobile result was **worse**, so it was retained and
+investigated rather than reported as a speedup:
+
+| Comparison | Score median, before → after | FCP median | LCP median | TBT median |
+| --- | --- | --- | --- | --- |
+| Default simulated mobile | 48 → 44 | 2.00 → 2.40 s | 6.30 → 7.36 s | 2,185 → 2,588 ms |
+| Default simulated desktop | 96 → 96 | 0.54 → 0.61 s | 1.27 → 1.26 s | 71 → 105 ms |
+| Applied DevTools throttling, mobile control | 56 → 57 | 1.43 → 1.44 s | 6.10 → 6.12 s | 918 → 880 ms |
+
+The applied-throttling control used three new alternating pairs, not substituted
+results or the same scale as simulated scores. Its overlapping ranges show no
+meaningful overall paint change. Median final font download completion improved
+from 2.393 to 2.298 s; CLS remained approximately 0.00007. In the unthrottled
+traces underlying simulation, mobile FCP improved from 333 to 258 ms and final
+font completion from 372 to 275 ms. These are different conditions, not physical
+phone measurements or proof of a large page-speed gain.
+
+The simulator's FCP graph includes VeryHigh-priority resources that finished
+before the observed paint. In the first two candidate traces, fonts finished
+before paint; in all baseline traces and the third candidate they finished
+afterward. That matches the slower simulated FCP in those two samples. This is
+evidence consistent with a simulation artifact, **not proof that every score
+difference is artificial**. [Lighthouse's throttling documentation](https://github.com/GoogleChrome/lighthouse/blob/main/docs/throttling.md)
+describes the limits of both simulation and request-level throttling. Retain both
+methods when assessing later changes; do not optimize the site to manipulate the
+model. Fonts are a modest delivery improvement; effects and hero transfer remain.
+
+Evidence is in `perf03-alternating/`, `perf03-applied-throttling/` and
+`perf03-visual/`, with `compare-pages.mjs` preserving the alternating procedure.
+Mobile-dark and desktop-light snapshots cover home, gallery, shop and the observed
+`/shop/time-aware-theming-kit` product. Sampled typography and text geometry matched
+exactly before/after. Browser tests load all four faces while blocking the old API
+stylesheet, and verify visible text/navigation when the font CDN fails. The former
+test was observed failing against the baseline before passing against the candidate.
+
 First address the hero's transfer size/loading priority/intrinsic dimensions
 and the external font waterfall. Profile effects one at a time before changing
 them, then reassess remaining startup JavaScript. Preserve navigation and cart

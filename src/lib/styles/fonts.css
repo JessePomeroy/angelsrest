@@ -1,0 +1,59 @@
+/* Keep the existing faces/files while removing the render-blocking API stylesheet.
+ * Source: https://api.fontshare.com/v2/css?f[]=chillax@400,600&f[]=synonym@400,500&display=swap
+ * Font binaries remain on Fontshare; no subsetting or redistribution is performed.
+ */
+@font-face {
+	font-family: "Chillax";
+	src:
+		url("https://cdn.fontshare.com/wf/WSPWZKQM26GGKSLVGSP2CFUHUMS5BCYQ/UE3YJANJM3SE3IWT4TOMYQVMLCQ6GZGG/XESIRBQU62YFBC7YQZI6D2NT5CNZ4PPU.woff2")
+		format("woff2"),
+		url("https://cdn.fontshare.com/wf/WSPWZKQM26GGKSLVGSP2CFUHUMS5BCYQ/UE3YJANJM3SE3IWT4TOMYQVMLCQ6GZGG/XESIRBQU62YFBC7YQZI6D2NT5CNZ4PPU.woff")
+		format("woff"),
+		url("https://cdn.fontshare.com/wf/WSPWZKQM26GGKSLVGSP2CFUHUMS5BCYQ/UE3YJANJM3SE3IWT4TOMYQVMLCQ6GZGG/XESIRBQU62YFBC7YQZI6D2NT5CNZ4PPU.ttf")
+		format("truetype");
+	font-weight: 400;
+	font-display: swap;
+	font-style: normal;
+}
+
+@font-face {
+	font-family: "Chillax";
+	src:
+		url("https://cdn.fontshare.com/wf/2T24MWUOKZU65SZJ33GPRGNOKE4KPOBX/T6LIXZJIPB23UDPMTIKURYWSZLXZBJ3A/THF5L6EHVL4N4NNE3GYDZNZSHABL5CH5.woff2")
+		format("woff2"),
+		url("https://cdn.fontshare.com/wf/2T24MWUOKZU65SZJ33GPRGNOKE4KPOBX/T6LIXZJIPB23UDPMTIKURYWSZLXZBJ3A/THF5L6EHVL4N4NNE3GYDZNZSHABL5CH5.woff")
+		format("woff"),
+		url("https://cdn.fontshare.com/wf/2T24MWUOKZU65SZJ33GPRGNOKE4KPOBX/T6LIXZJIPB23UDPMTIKURYWSZLXZBJ3A/THF5L6EHVL4N4NNE3GYDZNZSHABL5CH5.ttf")
+		format("truetype");
+	font-weight: 600;
+	font-display: swap;
+	font-style: normal;
+}
+
+@font-face {
+	font-family: "Synonym";
+	src:
+		url("https://cdn.fontshare.com/wf/DFYGA7EPVEG7D7UPFPAIYFH2F4NM27PX/EVVPJ6WZV4QLGKO7KZL6GMJI3CXH433B/EMRNL4XMLBJQUVRD4I5XB7IIBFI5JC3Z.woff2")
+		format("woff2"),
+		url("https://cdn.fontshare.com/wf/DFYGA7EPVEG7D7UPFPAIYFH2F4NM27PX/EVVPJ6WZV4QLGKO7KZL6GMJI3CXH433B/EMRNL4XMLBJQUVRD4I5XB7IIBFI5JC3Z.woff")
+		format("woff"),
+		url("https://cdn.fontshare.com/wf/DFYGA7EPVEG7D7UPFPAIYFH2F4NM27PX/EVVPJ6WZV4QLGKO7KZL6GMJI3CXH433B/EMRNL4XMLBJQUVRD4I5XB7IIBFI5JC3Z.ttf")
+		format("truetype");
+	font-weight: 400;
+	font-display: swap;
+	font-style: normal;
+}
+
+@font-face {
+	font-family: "Synonym";
+	src:
+		url("https://cdn.fontshare.com/wf/FGFTDNARUVIBDKBH6IHNBOQNDT4HPTOW/DQI5KYN7O74HFIZJLVB36XBKUIAOAGYJ/DXASCID3BXP555YRRIR7LNOVRX77YPHC.woff2")
+		format("woff2"),
+		url("https://cdn.fontshare.com/wf/FGFTDNARUVIBDKBH6IHNBOQNDT4HPTOW/DQI5KYN7O74HFIZJLVB36XBKUIAOAGYJ/DXASCID3BXP555YRRIR7LNOVRX77YPHC.woff")
+		format("woff"),
+		url("https://cdn.fontshare.com/wf/FGFTDNARUVIBDKBH6IHNBOQNDT4HPTOW/DQI5KYN7O74HFIZJLVB36XBKUIAOAGYJ/DXASCID3BXP555YRRIR7LNOVRX77YPHC.ttf")
+		format("truetype");
+	font-weight: 500;
+	font-display: swap;
+	font-style: normal;
+}
