@@ -1,9 +1,17 @@
 import { expect, test } from "@playwright/test";
+import { applyCapabilityResponsePrivacy } from "../../src/lib/server/capabilityResponsePrivacy";
 test("mixed refund previews the print-only fee and submits the confirmed allocation", async ({ page }) => {
 	const errors: string[] = []; page.on("pageerror", error => errors.push(error.message));
+	const headers = new Headers();
+	applyCapabilityResponsePrivacy(headers, "/portal/refunds/studio.example.invalid");
+	await page.route("**/?fixture=client-print-refunds", async route => {
+		const response = await route.fetch();
+		await route.fulfill({ response, headers: { ...response.headers(), ...Object.fromEntries(headers) } });
+	});
 	await page.route("**/portal/refunds/**", async route => {
 		const form = new URLSearchParams(route.request().postData() ?? "");
 		expect(route.request().method()).toBe("POST");
+		expect(route.request().headers().origin).toBe(new URL(route.request().url()).origin);
 		expect(Object.fromEntries(form)).toMatchObject({ intent: "request", orderId: "fixture_order", line_0: "40", line_1: "10", other: "5", confirmed: "yes" });
 		await route.fulfill({ status: 200, contentType: "text/html", body: "<h1>Refund recorded locally</h1>" });
 	});

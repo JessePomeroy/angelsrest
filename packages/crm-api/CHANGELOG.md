@@ -1,5 +1,11 @@
 # @jessepomeroy/crm-api
 
+## 6.1.0
+
+### Minor Changes
+
+- 9d3a112: Add creator-authorized client login provisioning that atomically creates the tenant, hashed Better Auth credential and scoped stable membership. Preserve existing users and passwords.
+
 ## 6.0.0
 
 ### Major Changes
