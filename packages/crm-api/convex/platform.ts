@@ -1,4 +1,5 @@
 import { ConvexError, v } from "convex/values";
+import { api } from "./_generated/api";
 import type { Doc, Id } from "./_generated/dataModel";
 import type { MutationCtx, QueryCtx } from "./_generated/server";
 import { internalMutation, internalQuery, mutation, query } from "./_generated/server";
@@ -8,6 +9,7 @@ import {
 	normalizeCatalogProductKinds,
 } from "./helpers/catalogProductPolicy";
 import { DEFAULT_LIST_LIMIT } from "./helpers/limits";
+import { provisionClientAdmin } from "./helpers/provisionClientAdmin";
 import { normalizePlatformClientInput, PLATFORM_CLIENT_SITE_IN_USE } from "./helpers/platformClientInput";
 import { requireClientPaymentBinding } from "./helpers/clientPaymentReadiness";
 import {
@@ -239,6 +241,31 @@ export const createClient = mutation({
 		if (!stored) throw new Error("Created tenant could not be read back");
 		await ensureTenantIdentity(ctx, stored, "platform_client_site_url");
 		return id;
+	},
+});
+
+/** Operator-only provisioning. Tenant, credential and membership commit together. */
+export const createClientWithAdmin = mutation({
+	args: {
+		name: v.string(),
+		email: v.string(),
+		siteUrl: v.string(),
+		tier: v.union(v.literal("basic"), v.literal("full")),
+		passwordHash: v.string(),
+	},
+	returns: v.object({ clientId: v.id("platformClients"), passwordCreated: v.boolean() }),
+	handler: async (ctx, args): Promise<{ clientId: Id<"platformClients">; passwordCreated: boolean }> => {
+		await requirePlatformAdmin(ctx);
+		const identity = normalizePlatformClientInput({ ...args, adminEmails: [args.email] });
+		const clientId: Id<"platformClients"> = await ctx.runMutation(api.platform.createClient, {
+			...identity,
+			tier: args.tier,
+			subscriptionStatus: "none",
+			role: "client",
+		});
+		const tokenIdentifier = await provisionClientAdmin(ctx, { ...identity, passwordHash: args.passwordHash });
+		if (tokenIdentifier) await ctx.db.patch(clientId, { adminIdentityIds: [tokenIdentifier] });
+		return { clientId, passwordCreated: tokenIdentifier !== null };
 	},
 });
 

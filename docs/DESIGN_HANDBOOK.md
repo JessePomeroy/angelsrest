@@ -464,3 +464,25 @@ use `pnpm test:browser platform-client-create.spec.ts stripe-setup.spec.ts`.
 Historical screenshots above remain evidence; the old preview links are no longer
 the recommended setup path. Deployment deletion is tracked separately from source
 removal. Shared backend rollout and live activation remain pending.
+
+
+### Temporary client password handoff — September 23, 2026
+
+The existing Add platform client modal now keeps its success state open. For a new
+login it shows a masked 24-character temporary password with Reveal/Hide and Copy
+login details controls, plus the instruction to save before closing and change the
+password from the client's admin sidebar. Existing logins show a short unchanged-
+login message. The server response forbids caching; closing clears the component's
+password state. No browser persistence or invitation email is added.
+
+Desktop and mobile Chromium regressions cover new/existing login results, reveal,
+copy, close, pending-save drag, failed-save retry and duplicate recovery. Actual
+rendered captures at 1440×1000 and 390×844 were visually inspected:
+`/tmp/angelsrest-client-password-desktop.png` and
+`/tmp/angelsrest-client-password-mobile.png`. These are fictional response fixtures;
+provider/production authentication is not simulated as live acceptance. Separate
+Convex/Better Auth tests create a hashed credential, sign in and change its password.
+
+Paper tools are unavailable in this session. The inventory records the pending
+reference update and comparison; no artboard is marked verified. The existing
+shared AdminModal and admin style tokens remain the design authority.
