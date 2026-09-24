@@ -79,6 +79,7 @@ test("membership denial reveals no order data", async () => {
 });
 test("requires same origin and enabled flag before creating a request", async () => {
 	expect(await action(event({}, "https://foreign.example"))).toMatchObject({ status: 503 });
+	expect(await action(event({}, "null"))).toMatchObject({ status: 503 });
 	mocks.env.CLIENT_PRINT_REFUNDS_ENABLED = "false";
 	expect(await action()).toMatchObject({ status: 503 });
 	expect(mocks.mutation).not.toHaveBeenCalled();

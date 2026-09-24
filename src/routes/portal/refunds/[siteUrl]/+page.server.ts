@@ -66,7 +66,7 @@ export const load: PageServerLoad = async ({
 	url,
 	setHeaders,
 }): Promise<ClientPrintRefundPageData> => {
-	setHeaders({ "cache-control": "private, no-store", "referrer-policy": "no-referrer" });
+	setHeaders({ "cache-control": "private, no-store" });
 	const siteUrl = site(params.siteUrl);
 	let token: string;
 	try {
