@@ -21,5 +21,12 @@ export default defineConfig({
 			name: "chromium",
 			use: { ...devices["Desktop Chrome"] },
 		},
+		{
+			name: "webkit-footprint",
+			testMatch: "footprint.spec.ts",
+			// Exercise image selection/decoding in mobile WebKit without profiling
+			// optional GPU effects on the CI software renderer.
+			use: { ...devices["iPhone 13"], reducedMotion: "reduce" },
+		},
 	],
 });
