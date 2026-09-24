@@ -263,9 +263,9 @@ export const createClientWithAdmin = mutation({
 			subscriptionStatus: "none",
 			role: "client",
 		});
-		const tokenIdentifier = await provisionClientAdmin(ctx, { ...identity, passwordHash: args.passwordHash });
-		if (tokenIdentifier) await ctx.db.patch(clientId, { adminIdentityIds: [tokenIdentifier] });
-		return { clientId, passwordCreated: tokenIdentifier !== null };
+		const { tokenIdentifier, passwordCreated } = await provisionClientAdmin(ctx, { ...identity, passwordHash: args.passwordHash });
+		await ctx.db.patch(clientId, { adminIdentityIds: [tokenIdentifier] });
+		return { clientId, passwordCreated };
 	},
 });
 

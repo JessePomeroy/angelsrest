@@ -14,7 +14,11 @@ Convex; neither the plaintext password nor its hash is stored on the client row.
 and stable tenant membership in one Convex transaction. It grants the new
 operator-created identity explicitly without setting `emailVerified` to true.
 Other invitation claims still require verified email. Existing users and
-credentials are left unchanged and receive no newly generated password.
+credentials are left unchanged and receive no newly generated password. A verified
+existing user or an unverified identity already granted access to a client with
+the same administrator email receives stable membership for the new site. An
+unverified existing login without that prior grant is rejected atomically, so
+the form cannot report success for an inaccessible client or bypass email verification.
 
 The successful no-store response displays the password in the creator's existing
 modal, with reveal and copy controls. The browser keeps it only in component

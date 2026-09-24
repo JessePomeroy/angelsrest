@@ -90,3 +90,13 @@ it("does not expose backend exception details on an uncertain result", async () 
 	expect(response.status).toBe(500);
 	expect(await response.text()).not.toContain("sensitive-provider-detail");
 });
+
+it("explains a rejected unverified login without returning credentials", async () => {
+	mocks.mutation.mockRejectedValue(new ConvexError("PLATFORM_CLIENT_LOGIN_UNVERIFIED"));
+	const response = await POST(request());
+	expect(response.status).toBe(409);
+	expect(await response.json()).toEqual({
+		error:
+			"This email has an unverified login without existing site access. Verify the login before adding this client.",
+	});
+});

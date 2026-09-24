@@ -75,13 +75,41 @@ describe("operator-provisioned client login", () => {
 			await internalAdapter.createAccount({ userId: user.id, accountId: user.id, providerId: "credential", password: passwordHash });
 			return user;
 		});
-		const result = await t.withIdentity(owner).mutation(api.platform.createClientWithAdmin, { ...input, passwordHash });
+		const result = await t.withIdentity(owner).mutation(api.platform.createClientWithAdmin, { ...input, passwordHash: await hashPassword("Unused-New-Password-64!") });
 		expect(result.passwordCreated).toBe(false);
 		const saved = await t.run(async ctx => (await createAuth(ctx).$context).internalAdapter.findUserByEmail(input.email, { includeAccounts: true }));
 		expect(saved?.user.id).toBe(existing.id);
 		expect(saved?.accounts).toHaveLength(1);
 		expect(saved?.accounts[0].password).toBe(passwordHash);
-		expect((await t.run(ctx => ctx.db.get(result.clientId)))?.adminIdentityIds).toBeUndefined();
+		expect((await t.run(ctx => ctx.db.get(result.clientId)))?.adminIdentityIds).toEqual([`${issuer}|${existing.id}`]);
+	});
+
+	test("reuses an operator-provisioned login for a second site without replacing its password", async () => {
+		const t = await setup();
+		await t.withIdentity(owner).mutation(api.platform.createClientWithAdmin, { ...input, passwordHash });
+		const secondSite = "second-cedar.example";
+		const result = await t.withIdentity(owner).mutation(api.platform.createClientWithAdmin, { ...input, siteUrl: secondSite, passwordHash: await hashPassword("Unused-New-Password-64!") });
+		expect(result.passwordCreated).toBe(false);
+		const saved = await t.run(async ctx => (await createAuth(ctx).$context).internalAdapter.findUserByEmail(input.email, { includeAccounts: true }));
+		expect(saved?.accounts).toHaveLength(1);
+		expect(saved?.accounts[0].password).toBe(passwordHash);
+		expect(saved?.user.emailVerified).toBe(false);
+		const identity = { issuer, subject: saved!.user.id, email: input.email, emailVerified: false };
+		for (const siteUrl of [input.siteUrl, secondSite]) {
+			expect(await t.withIdentity(identity).mutation(api.adminAuth.claimAdminAccess, { siteUrl })).toMatchObject({ authorized: true });
+		}
+		expect(await t.withIdentity(identity).query(api.adminAuth.checkAdminAccess, { siteUrl: "angelsrest.online", email: input.email })).toMatchObject({ authorized: false });
+	});
+
+	test("an arbitrary unverified existing email cannot acquire site access or leave a partial client", async () => {
+		const t = await setup();
+		await t.run(async ctx => {
+			const { internalAdapter } = await createAuth(ctx).$context;
+			await internalAdapter.createUser({ name: "Unverified", email: input.email, emailVerified: false });
+			await ctx.db.insert("platformClients", { name: "Other identity", email: input.email, siteUrl: "other.example", tier: "basic", role: "client", subscriptionStatus: "none", adminEmails: [input.email], adminIdentityIds: [`${issuer}|different-user`] });
+		});
+		await expect(t.withIdentity(owner).mutation(api.platform.createClientWithAdmin, { ...input, passwordHash })).rejects.toThrow("PLATFORM_CLIENT_LOGIN_UNVERIFIED");
+		expect(await t.run(ctx => ctx.db.query("platformClients").withIndex("by_siteUrl", q => q.eq("siteUrl", input.siteUrl)).unique())).toBeNull();
 	});
 
 	test("rejects unauthenticated and client callers before provisioning", async () => {

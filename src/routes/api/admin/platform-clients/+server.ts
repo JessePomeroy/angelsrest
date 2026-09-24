@@ -8,6 +8,7 @@ import { getSiteAdminAccess } from "$lib/server/siteAdminAuthorization";
 import { createTemporaryPassword } from "$lib/server/temporaryPassword";
 import {
 	normalizePlatformClientInput,
+	PLATFORM_CLIENT_LOGIN_UNVERIFIED,
 	PLATFORM_CLIENT_SITE_IN_USE,
 } from "../../../../../packages/crm-api/convex/helpers/platformClientInput";
 import type { RequestHandler } from "./$types";
@@ -66,6 +67,15 @@ export const POST: RequestHandler = async ({ cookies, request, url }) => {
 			{ headers },
 		);
 	} catch (cause) {
+		if (cause instanceof ConvexError && cause.data === PLATFORM_CLIENT_LOGIN_UNVERIFIED) {
+			return json(
+				{
+					error:
+						"This email has an unverified login without existing site access. Verify the login before adding this client.",
+				},
+				{ status: 409, headers },
+			);
+		}
 		if (cause instanceof ConvexError && cause.data === PLATFORM_CLIENT_SITE_IN_USE) {
 			return json({ error: PLATFORM_CLIENT_SITE_IN_USE }, { status: 409, headers });
 		}
