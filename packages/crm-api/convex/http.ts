@@ -1,3 +1,4 @@
+import { catalogEditorTenantOrigin } from "./helpers/catalogEditorTenantOrigins";
 import { httpRouter } from "convex/server";
 import { internal } from "./_generated/api";
 import type { Id } from "./_generated/dataModel";
@@ -15,7 +16,6 @@ import {
 } from "./helpers/catalogPrivateAssetReceiptValidation";
 import {
 	CATALOG_EDITOR_PREPARE_ATTESTATION_HEADER,
-	CATALOG_EDITOR_SUPPORTED_SITE,
 	CATALOG_EDITOR_WORKER_ORIGIN,
 	CATALOG_EDITOR_WORKER_PREPARE_PATH,
 	catalogEditorCapabilityDigest,
@@ -446,7 +446,7 @@ const recordCatalogEditorInspectionReceipt = catalogReceiptHandler("inspection")
 const beginCatalogEditorJournal = journalHandler("host", CATALOG_EDITOR_JOURNAL_BEGIN_PATH, async (ctx, siteUrl, body) => {
 	const parsed = parseCatalogEditorBeginBody(body);
 	if (!parsed) return privateResponse("Invalid request", 400);
-	if (siteUrl !== CATALOG_EDITOR_SUPPORTED_SITE) {
+	if (!catalogEditorTenantOrigin(siteUrl)) {
 		return privateResponse("Request could not be processed", 422);
 	}
 	const { uploadHandle, ...descriptor } = parsed;

@@ -1,3 +1,4 @@
+import { catalogEditorTenantOrigin, validEditorSiteOrigin } from "./catalogEditorTenantOrigins";
 import { ConvexError } from "convex/values";
 import type { CatalogProductKind } from "./catalogProductValidators";
 
@@ -235,12 +236,13 @@ export function createCatalogEditorWorkerDeclaration(
 	siteUrl: string,
 	operationId: string,
 	descriptor: CatalogEditorJournalDescriptor,
+	uploadOrigin = catalogEditorTenantOrigin(siteUrl),
 ) {
-	if (!OPERATION_ID_PATTERN.test(operationId)) throw catalogEditorJournalError("validation");
+	if (!validEditorSiteOrigin(siteUrl, uploadOrigin) || !OPERATION_ID_PATTERN.test(operationId)) throw catalogEditorJournalError("validation");
 	return {
 		operationId,
 		siteUrl,
-		uploadOrigin: CATALOG_EDITOR_UPLOAD_ORIGIN,
+		uploadOrigin,
 		kind: descriptor.kind,
 		originalFilename: descriptor.originalFilename,
 		contentType: descriptor.contentType,
@@ -258,8 +260,9 @@ export function canonicalCatalogEditorDeclaration(
 	siteUrl: string,
 	operationId: string,
 	descriptor: CatalogEditorJournalDescriptor,
+	uploadOrigin = catalogEditorTenantOrigin(siteUrl),
 ) {
-	return JSON.stringify(createCatalogEditorWorkerDeclaration(siteUrl, operationId, descriptor));
+	return JSON.stringify(createCatalogEditorWorkerDeclaration(siteUrl, operationId, descriptor, uploadOrigin));
 }
 
 async function sha256Bytes(value: Uint8Array) {
@@ -374,7 +377,7 @@ export function parseCatalogEditorWorkerPrepareResponse(
 	binding: CatalogEditorPrepareExchangeBinding,
 ): CatalogEditorWorkerPrepareResponse | null {
 	if (
-		binding.siteUrl !== CATALOG_EDITOR_SUPPORTED_SITE
+		!catalogEditorTenantOrigin(binding.siteUrl)
 		|| !OPERATION_ID_PATTERN.test(binding.operationId)
 		|| !SHA256_PATTERN.test(binding.declarationHash)
 		|| !exactKeys(value, ["status", "uploadPath", "uploadToken", "uploadExpiresAt", "serverOnly"])

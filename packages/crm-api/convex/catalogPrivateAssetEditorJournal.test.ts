@@ -58,6 +58,7 @@ const DELETION_PATH = "/cms-media/complete-deletion";
 const HANDLE_A = "12345678-1234-4123-8123-123456789abc";
 const HANDLE_B = "22345678-1234-4123-8123-123456789abc";
 const envNames = [
+	"CATALOG_PRIVATE_EDITOR_TENANT_ORIGINS",
 	"SITE_URL",
 	"BETTER_AUTH_SECRET",
 	"AUTH_GOOGLE_SECRET",
@@ -1704,4 +1705,22 @@ describe("catalog editor inspection global single-flight", () => {
 		expect((await journalState(t)).effects.find(({ _id }) => _id === active.effectId))
 			.toMatchObject({ state: "leased", attempts: 1 });
 	});
+});
+
+
+describe("registered tenant upload reservations", () => {
+ test("reserves a client declaration and preserves its original origin on replay", async () => {
+  process.env.CATALOG_PRIVATE_EDITOR_TENANT_ORIGINS = JSON.stringify({[OTHER_SITE]:`https://${OTHER_SITE}`});
+  const t=convexTest(schema,modules);await seedClients(t);
+  const {uploadHandle:_handle,...input}=printBegin();
+  const descriptor={...input,kind:"print_source" as const,contentType:"image/jpeg" as const};
+  const args={siteUrl:OTHER_SITE,uploadHandleHash:"a".repeat(64),proposedOperationId:"b".repeat(40),descriptor};
+  const first=await t.mutation(internal.catalogPrivateAssets.beginEditorJournal,args);
+  expect(first.workerPrepare.siteUrl).toBe(OTHER_SITE);
+  expect(first.workerPrepare.uploadOrigin).toBe(`https://${OTHER_SITE}`);
+  process.env.CATALOG_PRIVATE_EDITOR_TENANT_ORIGINS=JSON.stringify({[OTHER_SITE]:`https://www.${OTHER_SITE}`});
+  const replay=await t.mutation(internal.catalogPrivateAssets.beginEditorJournal,args);
+  expect(replay.replayed).toBe(true);expect(replay.workerPrepare).toEqual(first.workerPrepare);expect(replay.declarationHash).toBe(first.declarationHash);
+  await expect(t.mutation(internal.catalogPrivateAssets.beginEditorJournal,{...args,siteUrl:SITE})).rejects.toThrow();
+ });
 });

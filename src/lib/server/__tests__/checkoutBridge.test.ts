@@ -770,3 +770,139 @@ describe("checkout bridge", () => {
 		);
 	});
 });
+
+describe("signed tenant basket bridge", () => {
+	const cartBody = (overrides: Record<string, unknown> = {}) =>
+		JSON.stringify({
+			siteUrl: "zippymiggy.com",
+			attempt: ATTEMPT,
+			attemptStartedAt: NOW,
+			successUrl: "https://zippymiggy.com/cart?checkout=returned",
+			cancelUrl: "https://zippymiggy.com/cart?checkout=cancelled",
+			items: [
+				{
+					selection: SNAPSHOT_ITEM,
+					quantity: 2,
+					unitAmountCents: 10_000,
+					name: "First print",
+					imageUrl: "https://media.example/first.webp",
+				},
+				{
+					selection: {
+						...SNAPSHOT_ITEM,
+						productKey: "second-product",
+						variantKey: "second-variant",
+					},
+					quantity: 3,
+					unitAmountCents: 20_000,
+					name: "Second print",
+					imageUrl: null,
+				},
+			],
+			...overrides,
+		});
+	it("keeps separate catalog snapshots, quantities and the authoritative financial intent", async () => {
+		const { createTenantCartCheckoutSession } = await import("../tenantCartCheckout");
+		const { stripe, create } = makeStripe();
+		const reservation = makeReservation();
+		const options = handleOptions(cartBody(), stripe, reservation);
+		const result = await createTenantCartCheckoutSession(options);
+		expect(result.platformFeeAmount).toBe(4000);
+		expect(create.mock.calls[0][0].line_items?.map((item) => item.quantity)).toEqual([2, 3]);
+		expect(reservation.reserve).toHaveBeenCalledOnce();
+		expect(JSON.stringify(reservation.reserve.mock.calls[0])).toContain("second-product");
+	});
+	it("rejects tampering, foreign tenants, redirects and invalid quantities before Stripe", async () => {
+		const { createTenantCartCheckoutSession } = await import("../tenantCartCheckout");
+		for (const bodyText of [
+			cartBody({ siteUrl: "foreign.example" }),
+			cartBody({ successUrl: "https://foreign.example/cart" }),
+			cartBody({ items: [] }),
+			cartBody({
+				items: [
+					{
+						selection: SNAPSHOT_ITEM,
+						quantity: 21,
+						unitAmountCents: 10_000,
+						name: "print",
+						imageUrl: null,
+					},
+				],
+			}),
+			cartBody({ metadata: { siteUrl: "foreign.example" } }),
+		]) {
+			const { stripe, create } = makeStripe();
+			await expect(
+				createTenantCartCheckoutSession(handleOptions(bodyText, stripe, makeReservation())),
+			).rejects.toBeInstanceOf(CheckoutBridgeError);
+			expect(create).not.toHaveBeenCalled();
+		}
+		const { stripe, create } = makeStripe();
+		const options = handleOptions(cartBody(), stripe, makeReservation());
+		options.headers.set("x-checkout-bridge-signature", "0".repeat(64));
+		await expect(createTenantCartCheckoutSession(options)).rejects.toBeInstanceOf(
+			CheckoutBridgeError,
+		);
+		expect(create).not.toHaveBeenCalled();
+	});
+	it("retains closed protocol and financial authority rejection", async () => {
+		const { createTenantCartCheckoutSession } = await import("../tenantCartCheckout");
+		const { stripe, create } = makeStripe();
+		const reservation = makeReservation();
+		await expect(
+			createTenantCartCheckoutSession(
+				handleOptions(cartBody(), stripe, reservation, { snapshotMode: undefined }),
+			),
+		).rejects.toMatchObject({ status: 503 });
+		const options = handleOptions(cartBody(), stripe, reservation);
+		if (!options.admissionClient) throw new Error("Missing admission test client");
+		vi.mocked(options.admissionClient.begin).mockRejectedValueOnce(
+			new Error("Frozen price does not match"),
+		);
+		await expect(createTenantCartCheckoutSession(options)).rejects.toThrow();
+		expect(create).not.toHaveBeenCalled();
+	});
+});
+
+describe("tenant basket limits and definite retry outcome", () => {
+	it("rejects nine-digit totals before reserving or creating a payment", async () => {
+		const { parseTenantCart } = await import("../tenantCartCheckout");
+		const body = {
+			siteUrl: "zippymiggy.com",
+			attempt: ATTEMPT,
+			attemptStartedAt: NOW,
+			successUrl: "https://zippymiggy.com/cart",
+			cancelUrl: "https://zippymiggy.com/cart",
+			items: [
+				{
+					selection: SNAPSHOT_ITEM,
+					quantity: 1,
+					unitAmountCents: 99_999_999,
+					name: "Print",
+					imageUrl: null,
+				},
+			],
+		};
+		expect(parseTenantCart(JSON.stringify(body), NOW).items[0].unitAmountCents).toBe(99_999_999);
+		body.items[0].unitAmountCents = 100_000_000;
+		expect(() => parseTenantCart(JSON.stringify(body), NOW)).toThrow();
+		body.items[0].unitAmountCents = 50_000_000;
+		body.items[0].quantity = 2;
+		expect(() => parseTenantCart(JSON.stringify(body), NOW)).toThrow();
+	});
+	it("marks only durable no-session rejections as safe for an explicit new attempt", async () => {
+		const { stripe, create } = makeStripe();
+		const options = handleOptions(makeHandleBody(), stripe, makeReservation());
+		const permit = await makeAdmission().begin();
+		if (!options.admissionClient) throw new Error("Missing admission test client");
+		vi.mocked(options.admissionClient.begin).mockResolvedValueOnce({
+			...permit,
+			state: "released_definite_no_session",
+		});
+		await expect(createTenantPrintCheckoutSession(options)).rejects.toMatchObject({
+			status: 409,
+			body: { details: { attemptState: "released_definite_no_session" } },
+		});
+		expect(create).not.toHaveBeenCalled();
+	});
+});

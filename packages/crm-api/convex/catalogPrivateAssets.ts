@@ -1,3 +1,4 @@
+import { catalogEditorTenantOrigin, validEditorSiteOrigin } from "./helpers/catalogEditorTenantOrigins";
 import { v } from "convex/values";
 import { internal } from "./_generated/api";
 import type { Doc } from "./_generated/dataModel";
@@ -19,8 +20,6 @@ import {
 	CATALOG_EDITOR_INSPECTION_LEASE_MS,
 	CATALOG_EDITOR_MAX_ATTEMPTS,
 	CATALOG_EDITOR_STORAGE_LEASE_MS,
-	CATALOG_EDITOR_SUPPORTED_SITE,
-	CATALOG_EDITOR_UPLOAD_ORIGIN,
 	CATALOG_EDITOR_UPLOAD_TOKEN_TTL_MS,
 	canonicalCatalogEditorDeclaration,
 	catalogEditorCapabilityDigest,
@@ -137,10 +136,11 @@ async function requireReservedOperationMatchesReceipt(
 		operation.siteUrl,
 		operation.operationId,
 		descriptor,
+		operation.uploadOrigin,
 	);
 	const expectedDeclarationHash = await catalogEditorDeclarationHash(canonical);
 	if (
-		operation.uploadOrigin !== CATALOG_EDITOR_UPLOAD_ORIGIN
+		!validEditorSiteOrigin(operation.siteUrl, operation.uploadOrigin)
 		|| operation.uploadHandleHash === undefined
 		|| operation.generation !== 1
 		|| operation.lifecycle === undefined
@@ -548,12 +548,13 @@ async function journalReservationIsIntact(
 		operation.siteUrl,
 		operation.operationId,
 		descriptor,
+		operation.uploadOrigin,
 	);
 	return operation.journalVersion === 1
 		&& operation.generation === 1
 		&& operation.lifecycle !== undefined
 		&& operation.updatedAt !== undefined
-		&& operation.uploadOrigin === CATALOG_EDITOR_UPLOAD_ORIGIN
+		&& validEditorSiteOrigin(operation.siteUrl, operation.uploadOrigin)
 		&& operation.sourceId === `editor-upload:${operation.operationId}`
 		&& operation.assetKey === `editor-upload-${operation.operationId}`
 		&& operation.privateObjectKey === privateObjectKey(
@@ -580,7 +581,7 @@ export const beginEditorJournal = internalMutation({
 			...descriptorInput,
 		});
 		if (
-			siteUrl !== CATALOG_EDITOR_SUPPORTED_SITE
+			!catalogEditorTenantOrigin(siteUrl)
 			|| !/^[0-9a-f]{64}$/.test(uploadHandleHash)
 			|| !CATALOG_PRIVATE_EDITOR_OPERATION_ID_PATTERN.test(proposedOperationId)
 			|| !normalized
@@ -616,6 +617,7 @@ export const beginEditorJournal = internalMutation({
 					siteUrl,
 					existing.operationId,
 					descriptor,
+					existing.uploadOrigin,
 				),
 			};
 		}
@@ -640,6 +642,7 @@ export const beginEditorJournal = internalMutation({
 						siteUrl,
 						operationCollision.operationId,
 						descriptor,
+						operationCollision.uploadOrigin,
 					),
 				};
 			}
@@ -663,7 +666,7 @@ export const beginEditorJournal = internalMutation({
 			journalVersion: 1,
 			uploadHandleHash,
 			productKind: descriptor.productKind,
-			uploadOrigin: CATALOG_EDITOR_UPLOAD_ORIGIN,
+			uploadOrigin: catalogEditorTenantOrigin(siteUrl),
 			originalFilename: descriptor.originalFilename,
 			contentType: descriptor.contentType,
 			sizeBytes: descriptor.sizeBytes,
