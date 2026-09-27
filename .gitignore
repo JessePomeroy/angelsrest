@@ -23,8 +23,11 @@ vite.config.js.timestamp-*
 vite.config.ts.timestamp-*
 .claude/worktrees/
 
-# Machine-local AI tooling. Keep repository instructions in AGENTS.md only.
-/.agents/
+# Machine-local AI tooling, except the maintained invoice verification skill.
+/.agents/*
+!/.agents/skills/
+/.agents/skills/*
+!/.agents/skills/verify-angelsrest-invoices/
 /.claude/
 /.codex/
 /skills/

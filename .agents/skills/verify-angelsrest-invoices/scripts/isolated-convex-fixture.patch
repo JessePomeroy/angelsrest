@@ -1,0 +1,147 @@
+diff --git a/packages/crm-api/convex/http.ts b/packages/crm-api/convex/http.ts
+index 88b75919..a9bc4065 100644
+--- a/packages/crm-api/convex/http.ts
++++ b/packages/crm-api/convex/http.ts
+@@ -1,3 +1,4 @@
++import { receiveInvoiceVerificationWebhook } from "./invoiceVerification";
+ import { catalogEditorTenantOrigin } from "./helpers/catalogEditorTenantOrigins";
+ import { httpRouter } from "convex/server";
+ import { internal } from "./_generated/api";
+@@ -59,6 +60,7 @@ import {
+ } from "./helpers/serverSecrets";
+ 
+ const http = httpRouter();
++http.route({ path: "/invoice-verification/stripe", method: "POST", handler: receiveInvoiceVerificationWebhook });
+ const textEncoder = new TextEncoder();
+ 
+ const CATALOG_COMMERCE_PATHS = {
+diff --git a/packages/crm-api/convex/schema.ts b/packages/crm-api/convex/schema.ts
+index bab947c8..33f89670 100644
+--- a/packages/crm-api/convex/schema.ts
++++ b/packages/crm-api/convex/schema.ts
+@@ -224,6 +224,10 @@ const manualRefundRecoveryEvidenceFields = {
+ };
+ 
+ export default defineSchema({
++	invoiceVerificationDeliveries: defineTable({
++		body: v.string(), signature: v.string(), eventId: v.string(), receivedAt: v.number(),
++		delivered: v.boolean(), responseStatus: v.optional(v.number()),
++	}).index("by_delivered", ["delivered"]),
+ 	// Photographers you've built sites for
+ 	platformClients: defineTable({
+ 		// Immutable routing identity. Optional only while existing rows are widened.
+diff --git a/packages/crm-api/convex/invoiceVerification.ts b/packages/crm-api/convex/invoiceVerification.ts
+new file mode 100644
+--- /dev/null
++++ b/packages/crm-api/convex/invoiceVerification.ts
+@@ -0,0 +1,110 @@
++// Test-environment fixture only. Never ship this module to a shared deployment.
++import Stripe from "stripe";
++import { v } from "convex/values";
++import { internal } from "./_generated/api";
++import type { Doc, Id } from "./_generated/dataModel";
++import { httpAction, internalMutation, internalQuery } from "./_generated/server";
++import { provisionClientAdmin } from "./helpers/provisionClientAdmin";
++import { ensureTenantIdentity } from "./helpers/tenantContext";
++import { checksumContentPayload } from "./helpers/contentStore";
++
++function requireIsolatedDeployment() {
++  if (process.env.CONVEX_SITE_URL !== "https://adjoining-iguana-707.convex.site") {
++    throw new Error("Invoice verification requires its dedicated deployment");
++  }
++}
++
++export const bootstrap = internalMutation({
++  args: { passwordHash: v.string() },
++  handler: async (ctx, { passwordHash }): Promise<{ email: string; tenantId: Id<"platformClients"> }> => {
++    requireIsolatedDeployment();
++    if (await ctx.db.query("platformClients").first()) throw new Error("Already bootstrapped");
++    const email = "invoice-verification-admin@example.invalid";
++    const { tokenIdentifier } = await provisionClientAdmin(ctx, {
++      name: "Invoice Verification Admin", email, passwordHash,
++    });
++    const id = await ctx.db.insert("platformClients", {
++      name: "Invoice Verification", email, siteUrl: "angelsrest.online", tier: "full",
++      subscriptionStatus: "active", role: "creator", adminEmails: [email],
++      adminIdentityIds: [tokenIdentifier], catalogProductKinds: [],
++      notes: "Synthetic invoice verification tenant in an isolated expiring deployment.",
++    });
++    const row = await ctx.db.get(id);
++    if (!row) throw new Error("Missing seed");
++    await ensureTenantIdentity(ctx, row, "operator");
++    return { email, tenantId: id };
++  },
++});
++
++export const seedSiteSettings = internalMutation({
++  args: {},
++  handler: async (ctx): Promise<void> => {
++    requireIsolatedDeployment();
++    if (await ctx.db.query("contentDocuments").first()) throw new Error("Content already seeded");
++    const siteUrl = "angelsrest.online";
++    const assetId = "00000000-0000-4000-8000-000000000001";
++    const prefix = `sites/${siteUrl}/web/${assetId}/`;
++    const image = (filename: string) => ({key: prefix + filename, contentType: "image/webp" as const, width: 1, height: 1});
++    // Synthetic metadata satisfies the root layout. No object is uploaded to the production media worker.
++    const seoOgImageAssetId = await ctx.db.insert("mediaAssets", {
++      siteUrl, assetId, intent: "web", status: "ready", originalFilename: "synthetic-placeholder.webp",
++      source: {contentType: "image/webp", sizeBytes: 1, width: 1, height: 1, sha256: "0".repeat(64)},
++      master: {...image("master.webp"), sizeBytes: 1},
++      derivatives: {thumb: image("thumb.webp"), card: image("card.webp"), display1280: image("display-1280.webp"), display2048: image("display-2048.webp"), display2560: image("display-2560.webp")},
++      createdAt: Date.now(), updatedAt: Date.now(), createdBy: "invoice-verification-fixture", updatedBy: "invoice-verification-fixture",
++    });
++    const payload = {artistName: "Invoice Verification", siteTitle: "Invoice Verification Sandbox", tagline: "Synthetic test data only", socialLinks: [], seoDescription: "Isolated invoice verification environment", seoOgImageAssetId};
++    const documentId = await ctx.db.insert("contentDocuments", {siteUrl, kind: "siteSettings", createdAt: Date.now(), updatedAt: Date.now(), createdBy: "invoice-verification-fixture", updatedBy: "invoice-verification-fixture"});
++    const revisionId = await ctx.db.insert("contentRevisions", {siteUrl, documentId, kind: "siteSettings", schemaVersion: 1, payload, source: "admin", checksum: await checksumContentPayload(JSON.stringify(payload)), createdAt: Date.now(), createdBy: "invoice-verification-fixture"});
++    await ctx.db.patch(documentId, {publishedRevisionId: revisionId, publishedAt: Date.now(), publishedBy: "invoice-verification-fixture"});
++  },
++});
++
++export const receiveInvoiceVerificationWebhook = httpAction(async (ctx, request): Promise<Response> => {
++  requireIsolatedDeployment();
++  const body = await request.text();
++  if (body.length > 128 * 1024) return new Response("Too large", { status: 413 });
++  const signature = request.headers.get("stripe-signature");
++  const secret = process.env.INVOICE_VERIFICATION_WEBHOOK_SECRET;
++  if (!signature || !secret) return new Response("Unconfigured or unsigned", { status: 400 });
++  const stripe = new Stripe("sk_test_verification_signature_only", {
++    httpClient: Stripe.createFetchHttpClient(),
++  });
++  let event: Stripe.Event;
++  try {
++    event = await stripe.webhooks.constructEventAsync(body, signature, secret, 300, Stripe.createSubtleCryptoProvider());
++  } catch {
++    return new Response("Invalid signature", { status: 400 });
++  }
++  if (event.livemode || event.account || event.type !== "checkout.session.completed" ||
++      event.api_version !== "2026-01-28.clover" || event.data.object.metadata?.type !== "invoice_payment") {
++    return new Response("Unexpected event", { status: 400 });
++  }
++  // Preserve each provider delivery, including replay, without changing body or signature.
++  await ctx.runMutation(internal.invoiceVerification.record, { body, signature, eventId: event.id });
++  return new Response("Recorded for local handler verification", { status: 200 });
++});
++
++export const record = internalMutation({
++  args: { body: v.string(), signature: v.string(), eventId: v.string() },
++  handler: async (ctx, args): Promise<Id<"invoiceVerificationDeliveries">> => {
++    requireIsolatedDeployment();
++    return ctx.db.insert("invoiceVerificationDeliveries", { ...args, receivedAt: Date.now(), delivered: false });
++  },
++});
++
++export const pending = internalQuery({
++  args: {},
++  handler: async (ctx): Promise<Doc<"invoiceVerificationDeliveries">[]> => {
++    requireIsolatedDeployment();
++    return ctx.db.query("invoiceVerificationDeliveries").withIndex("by_delivered", q => q.eq("delivered", false)).take(20);
++  },
++});
++
++export const acknowledge = internalMutation({
++  args: { id: v.id("invoiceVerificationDeliveries"), responseStatus: v.number() },
++  handler: async (ctx, { id, responseStatus }): Promise<void> => {
++    requireIsolatedDeployment();
++    await ctx.db.patch(id, { delivered: responseStatus >= 200 && responseStatus < 300, responseStatus });
++  },
++});

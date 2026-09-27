@@ -3325,8 +3325,8 @@
         "send confirmation",
         "empty",
         "save error",
-        "2026-09-27: partial-payment editing, received/remaining balances, and overpayment review in shared Admin 6.4.0; isolated Chromium desktop/mobile check completed with fallback fonts; host pins the published 6.4.0 package",
-        "2026-09-27: Paper update and same-state comparison pending; Paper tools unavailable"
+        "2026-09-27: installed Admin 6.4.0 partial-payment and overpayment modals captured and inspected at desktop/mobile handbook viewports with original local font faces; separate browser regressions cover partial-payment editing.",
+        "2026-09-27: four editable capture drafts are ready; Paper board updates and same-state comparison remain pending because the configured local connector refused the connection."
       ],
       "references": [
         {
@@ -3403,7 +3403,104 @@
       "coveredReferenceKeys": [
         "admin.invoicing.default.desktop",
         "admin.invoicing.default.mobile"
-      ]
+      ],
+      "invoiceRevisionCapture": {
+        "observedAt": "2026-09-27",
+        "installedAdminVersion": "6.4.0",
+        "status": "browser-captured-paper-pending",
+        "sourceComponents": [
+          "tests/browser/handbook/data.ts",
+          "node_modules/@jessepomeroy/admin/dist/pages/invoicing/InvoiceDetailModal.svelte"
+        ],
+        "data": {
+          "invoiceNumber": "INV-DEMO-001",
+          "totalCents": 20000,
+          "partialPaidCents": 10000,
+          "overpaidPaidCents": 30000,
+          "fixedTime": "2026-09-10T14:00:00Z"
+        },
+        "references": [
+          {
+            "key": "admin-invoice-partial-desktop",
+            "viewport": {
+              "width": 1440,
+              "height": 1000
+            },
+            "theme": "dark",
+            "period": "afternoon",
+            "motion": "reduce",
+            "setupUrl": "http://127.0.0.1:5199/?route=/admin/invoicing&invoicePayment=partial&theme=dark&period=afternoon",
+            "setupSteps": [
+              "Open INV-DEMO-001 using the invoice row."
+            ],
+            "browserPng": "admin-invoice-partial-desktop.png",
+            "editableDraft": "admin-invoice-partial-desktop.json",
+            "paper": null,
+            "lastVerified": null
+          },
+          {
+            "key": "admin-invoice-partial-mobile",
+            "viewport": {
+              "width": 390,
+              "height": 844
+            },
+            "theme": "dark",
+            "period": "afternoon",
+            "motion": "reduce",
+            "setupUrl": "http://127.0.0.1:5199/?route=/admin/invoicing&invoicePayment=partial&theme=dark&period=afternoon",
+            "setupSteps": [
+              "Open INV-DEMO-001 using the invoice row."
+            ],
+            "browserPng": "admin-invoice-partial-mobile.png",
+            "editableDraft": "admin-invoice-partial-mobile.json",
+            "paper": null,
+            "lastVerified": null
+          },
+          {
+            "key": "admin-invoice-overpaid-desktop",
+            "viewport": {
+              "width": 1440,
+              "height": 1000
+            },
+            "theme": "dark",
+            "period": "afternoon",
+            "motion": "reduce",
+            "setupUrl": "http://127.0.0.1:5199/?route=/admin/invoicing&invoicePayment=overpaid&theme=dark&period=afternoon",
+            "setupSteps": [
+              "Open INV-DEMO-001 using the invoice row."
+            ],
+            "browserPng": "admin-invoice-overpaid-desktop.png",
+            "editableDraft": "admin-invoice-overpaid-desktop.json",
+            "paper": null,
+            "lastVerified": null
+          },
+          {
+            "key": "admin-invoice-overpaid-mobile",
+            "viewport": {
+              "width": 390,
+              "height": 844
+            },
+            "theme": "dark",
+            "period": "afternoon",
+            "motion": "reduce",
+            "setupUrl": "http://127.0.0.1:5199/?route=/admin/invoicing&invoicePayment=overpaid&theme=dark&period=afternoon",
+            "setupSteps": [
+              "Open INV-DEMO-001 using the invoice row."
+            ],
+            "browserPng": "admin-invoice-overpaid-mobile.png",
+            "editableDraft": "admin-invoice-overpaid-mobile.json",
+            "paper": null,
+            "lastVerified": null
+          }
+        ],
+        "limitations": [
+          "Paper local connector unavailable; no Paper write or comparison completed.",
+          "Synthetic local fixture; no authentication, persistence or provider claim.",
+          "Mobile overpaid reference is the initial viewport; final footer requires modal scrolling.",
+          "Original local font faces loaded; duplicate remote declarations were blocked."
+        ],
+        "captureStorage": "Audit task outputs/audit-closeout/design-captures/run3; editable drafts and PNGs retained outside Git."
+      }
     },
     {
       "key": "admin.quotes.default",

@@ -40,12 +40,28 @@ those affected states still require a Paper update and comparison. Capture
 provenance is unchanged. This is not a claim about the deployed site's version.
 
 The September 27 invoice revision work adds received/remaining balances,
-partial-payment editing, and overpayment review in shared Admin 6.4.0. Its modal was inspected in isolated desktop/mobile Chromium fixtures
-with fictional data and fallback fonts. The host now pins the published 6.4.0
-package; the source captures do not establish live provider settlement.
-Paper tools were unavailable, so those new states require a board update and
-same-state comparison; the invoice inventory records that gap. Customer invoice
-portals remain outside this handbook's scope. See the
+partial-payment editing, and overpayment review in shared Admin 6.4.0. Four new
+source captures now use the installed 6.4.0 package, fictional invoices, the
+original Synonym/Chillax faces, dark afternoon theme, reduced motion, and the
+existing desktop (1440×1000) and mobile (390×844) viewports. Add
+`invoicePayment=partial` or `invoicePayment=overpaid` to the isolated invoicing
+fixture URL, then open `INV-DEMO-001`. These states use a $200 total with $100 or
+$300 received. The fixture does not persist changes or contact providers.
+
+PNG references and editable HTML-fragment drafts were captured and inspected on
+September 27; the audit task retains them under `outputs/audit-closeout/design-captures/run3`.
+The mobile overpayment modal requires scrolling to reach its final footer;
+the reference records the initial viewport. Locally served original fonts loaded;
+duplicate remote font declarations were blocked by the offline capture guard.
+Paper's configured local connector was unavailable (connection refused), so the
+four board updates and same-state comparisons remain pending. No new Paper
+board IDs or verified states are claimed. The inventory retains this distinction
+and does not count draft captures as additional handbook boards.
+
+The separate [Stripe sandbox acceptance](verification/invoice-payment-sandbox-2026-09-27.md)
+passed actual hosted Checkout, signed deliveries, and reloaded balances. That
+provider proof does not replace the Paper comparison. Customer invoice portals
+remain outside this handbook's scope. See the
 [invoice payment runbook](runbooks/invoice-payment-revisions.md) for release order.
 
 Each Paper file has Start Here & Foundations, Components & States, Desktop,

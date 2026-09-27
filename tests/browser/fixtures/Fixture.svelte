@@ -62,6 +62,8 @@ if (params.get("populated") === "true") {
   {:then component}
     <component.default />
   {/await}
+{:else if fixture === "invoice-verification"}
+  {#await import("./InvoiceVerificationHarness.svelte")}<p>Loading invoice fixture…</p>{:then component}<component.default />{/await}
 {:else if fixture === "portal-css"}
   <PortalHarness />
 {:else if fixture === "shop"}
