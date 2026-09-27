@@ -95,6 +95,11 @@ the table or reverting the backend after writes risks losing payment evidence.
 
 ## Local verification
 
+Use the project-local [invoice verification skill](../../.agents/skills/verify-angelsrest-invoices/SKILL.md)
+for repeatable route/ledger and published-admin/portal browser checks. Its feature
+map separates offline regression coverage from the completed, isolated
+[Stripe sandbox acceptance](../verification/invoice-payment-sandbox-2026-09-27.md).
+
 Convex tests cover edited amounts, old and out-of-order sessions, duplicate
 delivery, webhook/registration races, legacy fingerprints, account/tenant
 boundaries, cancellation, and uncertain creation. Route tests check frozen

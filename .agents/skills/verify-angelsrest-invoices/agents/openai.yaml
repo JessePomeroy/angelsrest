@@ -1,0 +1,4 @@
+interface:
+  display_name: "Verify Angels Rest invoices"
+  short_description: "Verify revised invoice balances and payment delivery"
+  default_prompt: "Use $verify-angelsrest-invoices to verify invoice revision and payment behavior in Angels Rest."
