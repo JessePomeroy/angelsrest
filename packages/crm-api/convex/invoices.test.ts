@@ -247,6 +247,7 @@ describe("invoice checkout state", () => {
 			stripeCheckoutSessionId: "cs_current",
 			stripeCheckoutFingerprint: "fingerprint-current",
 			webhookSecret: WEBHOOK_SECRET,
+            paidCents: 100, currency: "usd",
 		});
 
 		await expect(

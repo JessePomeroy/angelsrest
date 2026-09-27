@@ -39,6 +39,15 @@ adds owner-only file uploads and file labels/cards in delivery-gallery managemen
 those affected states still require a Paper update and comparison. Capture
 provenance is unchanged. This is not a claim about the deployed site's version.
 
+The September 27 invoice revision work adds received/remaining balances,
+partial-payment editing, and overpayment review in unpublished shared admin
+source. Its modal was inspected in isolated desktop/mobile Chromium fixtures
+with fictional data and fallback fonts. The installed host remains on 6.2.0.
+Paper tools were unavailable, so those new states require a board update and
+same-state comparison; the invoice inventory records that gap. Customer invoice
+portals remain outside this handbook's scope. See the
+[invoice payment runbook](runbooks/invoice-payment-revisions.md) for release order.
+
 Each Paper file has Start Here & Foundations, Components & States, Desktop,
 Mobile, and Interaction & Additional Layouts pages. Use the inventory for exact
 board links; shared patterns do not require one board per content record.

@@ -22,6 +22,7 @@
 		"test:watch": "vitest",
 		"test:e2e": "node scripts/run-playwright.mjs",
 		"test:browser": "node scripts/run-playwright.mjs --config tests/browser/playwright.config.ts",
+		"test:browser:container": "node scripts/run-browser-container.mjs",
 		"smoke:gallery-host-bulk-delete": "node scripts/smoke-gallery-host-bulk-delete.mjs",
 		"test:protocol": "vitest run --config vitest.protocol.config.ts",
 		"test:gallery-upload-contract": "vitest run --config vitest.gallery-upload-contract.config.ts",
