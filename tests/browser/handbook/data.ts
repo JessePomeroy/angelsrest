@@ -23,11 +23,18 @@ export const orders = ["new", "printing", "delivered"].map((status, index) => ({
 	stripeFeeCaptureStatus: "pending", fulfillmentType: "self",
 	items: [{ productName: "Demonstration print", quantity: 1, price: [4500, 9000, 6500][index] }],
 }));
+const invoicePaymentState = new URLSearchParams(window.location.search).get("invoicePayment");
 export const invoices = ["draft", "sent", "paid"].map((status, index) => ({
 	_id: `demo-invoice-${index + 1}`, _creationTime: now - index * 86400000, siteUrl,
 	invoiceNumber: `INV-DEMO-00${index + 1}`, clientId: clients[index]._id,
 	clientName: clients[index].name, clientEmail: clients[index].email,
 	invoiceType: "one-time", status, items: [{ description: "Demonstration photography session", quantity: 1, unitPrice: 45000 }], taxPercent: 0, dueDate: "2026-09-24",
+	...(index === 0 && (invoicePaymentState === "partial" || invoicePaymentState === "overpaid") ? {
+		status: invoicePaymentState === "partial" ? "partial" : "paid",
+		items: [{ description: "Demonstration photography session", quantity: 1, unitPrice: 20000 }],
+		paidAmount: invoicePaymentState === "partial" ? 10000 : 30000,
+		paidAt: invoicePaymentState === "overpaid" ? now : undefined,
+	} : {}),
 }));
 export const quotes = ["draft", "sent", "accepted"].map((status, index) => ({
 	_id: `demo-quote-${index + 1}`, _creationTime: now - index * 86400000, siteUrl,
