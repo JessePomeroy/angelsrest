@@ -77,8 +77,9 @@ runbook or by merging source alone.
    `invoices.prepareCheckout` or the new payment evidence arguments.
 4. Publish the shared admin package with its Changeset. Prepare an exact-version
    host adoption and lockfile update only after that version is available.
-   The local hub still uses released Admin 6.2.0; its checks do not establish
-   integration of the unpublished admin source changes.
+   Admin 6.4.0 provides the corresponding UI. Verify the exact published
+   package in the host; checks against an older installed version do not
+   establish integration of the new admin behavior.
 5. Verify a test invoice through edit, old checkout settlement, partial balance
    settlement, webhook replay, and overpayment review in an authorized test
    environment before any production release.
