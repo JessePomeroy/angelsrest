@@ -1,5 +1,22 @@
 # @jessepomeroy/crm-api
 
+## 6.2.0
+
+### Minor Changes
+
+- 0299ae1: Admit explicitly registered client origins for private catalog editor uploads while freezing each operation's tenant, origin, and declaration across retries. Requires the matching CMS Worker tenant-origin registry before activation.
+- ea1f589: Retain immutable invoice checkout snapshots across amount and tax edits. Credit
+  verified payments exactly once against the current balance, preserve partial
+  payments and overpayments, and reject cross-tenant or conflicting payment
+  evidence. Add checkout preparation and return the authoritative invoice from
+  updates. Invoices with checkout/payment history must be retained instead of
+  deleted.
+  
+  Deploy the additive Convex changes before the matching hub checkout/webhook
+  handlers. Legacy handlers remain compatible when their saved fingerprint proves
+  the issued amount; ambiguous historical sessions need verified payment evidence.
+  See `docs/runbooks/invoice-payment-revisions.md` for rollout and recovery limits.
+
 ## 6.1.0
 
 ### Minor Changes
