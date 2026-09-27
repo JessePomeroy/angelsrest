@@ -255,7 +255,7 @@ export function verifyCheckoutBridgeSignature({
 	}
 }
 
-function validateRedirectUrl(
+export function validateRedirectUrl(
 	value: string,
 	field: "successUrl" | "cancelUrl",
 	allowedOrigins: readonly string[],

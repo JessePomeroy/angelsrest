@@ -65,7 +65,7 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: JessePomeroy/gallery-worker
-          ref: c57b3858b8e8708569ef18800a35464ac0da240d
+          ref: fd82eb9f89d251d1348319dcd2a456771d210bce
           path: .contract/gallery-worker
           token: ${{ secrets.GH_PACKAGES_TOKEN }}
           persist-credentials: false

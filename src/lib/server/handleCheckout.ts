@@ -387,6 +387,7 @@ export async function createAdmittedOrderCheckoutSession({
 			409,
 			ApiErrorCode.CHECKOUT_ATTEMPT_REJECTED,
 			new ClientPaymentUnavailableError().message,
+			{ attemptState: "released_definite_no_session" },
 		);
 	}
 	if (site !== "angelsrest.online" && permit.state === "active_prestripe") {
@@ -400,6 +401,7 @@ export async function createAdmittedOrderCheckoutSession({
 					409,
 					ApiErrorCode.CHECKOUT_ATTEMPT_REJECTED,
 					new ClientPaymentUnavailableError().message,
+					{ attemptState: "released_definite_no_session" },
 				);
 			throw new ClientPaymentUnavailableError();
 		}
@@ -416,6 +418,7 @@ export async function createAdmittedOrderCheckoutSession({
 				409,
 				ApiErrorCode.CHECKOUT_ATTEMPT_REJECTED,
 				new ClientPaymentUnavailableError().message,
+				{ attemptState: "released_definite_no_session" },
 			);
 		}
 		throw new CheckoutSessionStageError("checkout_admission", cause);
