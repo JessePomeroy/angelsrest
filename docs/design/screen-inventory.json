@@ -3325,7 +3325,7 @@
         "send confirmation",
         "empty",
         "save error",
-        "2026-09-27: partial-payment editing, received/remaining balances, and overpayment review in unpublished shared admin source; isolated Chromium desktop/mobile check completed with fallback fonts; installed host remains 6.2.0",
+        "2026-09-27: partial-payment editing, received/remaining balances, and overpayment review in shared Admin 6.4.0; isolated Chromium desktop/mobile check completed with fallback fonts; host pins the published 6.4.0 package",
         "2026-09-27: Paper update and same-state comparison pending; Paper tools unavailable"
       ],
       "references": [
@@ -7333,8 +7333,8 @@
     "adminReferencesUpdated": 72,
     "browserCaptures": 72,
     "capturePackageVersion": "6.1.1",
-    "currentPackageVersion": "6.2.0",
-    "currentPackageCompatibility": "6.2.0 adds owner-only delivery-file uploads and file labels/cards. Affected delivery-gallery states still require a Paper update and comparison; the September 16 captures and original source baseline are unchanged.",
+    "currentPackageVersion": "6.4.0",
+    "currentPackageCompatibility": "6.4.0 includes owner-only delivery-file uploads, client catalog origin support, and invoice payment balances/partial editing. Affected delivery-gallery and invoice states still require a Paper update and comparison; the September 16 captures and original source baseline are unchanged.",
     "editableStructureAudit": "passed: every canonical admin artboard has the expected top-level layer set from its fresh capture",
     "visualComparison": "blocked: Paper get_screenshot timed out for full boards and small child nodes after normal and software-rendered desktop restarts",
     "lastVerified": null
