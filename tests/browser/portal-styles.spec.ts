@@ -52,3 +52,23 @@ for (const kind of ["invoice", "quote", "contract"]) {
     expect(errors).toEqual([]);
   });
 }
+
+for (const kind of ["partial", "overpaid"]) {
+ test(`revised invoice presents the ${kind} balance`, async ({page}, testInfo) => {
+  await page.goto(`/?fixture=portal-css&kind=${kind}`);
+  await expect(page.getByText("Payments received",{exact:true})).toBeVisible();
+  await expect(page.getByText("Remaining balance",{exact:true})).toBeVisible();
+  if (kind === "partial") {
+   await expect(page.getByText("$150.00",{exact:true})).toBeVisible();
+   await expect(page.getByRole("button",{name:"Pay Now",exact:true})).toBeEnabled();
+   await page.route("**/api/invoice/checkout", route => route.fulfill({status:503,contentType:"application/json",body:JSON.stringify({message:"Please retry payment shortly"})}));
+   await page.getByRole("button",{name:"Pay Now",exact:true}).click();
+   await expect(page.getByRole("button",{name:"Pay Now",exact:true})).toBeEnabled();
+   await expect(page.getByText("$150.00",{exact:true})).toBeVisible();
+  } else {
+   await expect(page.getByText(/Overpayment: \$50.00/)).toBeVisible();
+   await expect(page.getByRole("button",{name:"Pay Now",exact:true})).toHaveCount(0);
+  }
+  await page.screenshot({path:testInfo.outputPath(`invoice-${kind}.png`),fullPage:true});
+ });
+}

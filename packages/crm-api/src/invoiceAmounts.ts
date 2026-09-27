@@ -1,5 +1,16 @@
 export type InvoiceAmountItem = { quantity: number; unitPrice: number };
 
+export function invoiceBalance(totalCents: number, paidAmount = 0) {
+	if (!Number.isSafeInteger(paidAmount) || paidAmount < 0) {
+		throw new Error("Invalid invoice payment amount");
+	}
+	return {
+		paidCents: paidAmount,
+		remainingCents: Math.max(0, totalCents - paidAmount),
+		overpaidCents: Math.max(0, paidAmount - totalCents),
+	};
+}
+
 /** Unit prices are cents; fractional quantities are rounded per line before tax. */
 export function calculateInvoiceAmounts(
 	items: ReadonlyArray<InvoiceAmountItem>,

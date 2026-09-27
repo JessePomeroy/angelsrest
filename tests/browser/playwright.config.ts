@@ -10,7 +10,7 @@ export default defineConfig({
 	expect: { timeout: 5_000 },
 	use: { baseURL: "http://127.0.0.1:5196", trace: "retain-on-failure" },
 	webServer: {
-		command: "pnpm exec vite --config tests/browser/vite.config.ts",
+		command: "node node_modules/vite/bin/vite.js --config tests/browser/vite.config.ts",
 		cwd: fileURLToPath(new URL("../..", import.meta.url)),
 		url: "http://127.0.0.1:5196",
 		reuseExistingServer: false,

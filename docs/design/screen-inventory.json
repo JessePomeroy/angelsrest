@@ -3324,7 +3324,9 @@
         "filters",
         "send confirmation",
         "empty",
-        "save error"
+        "save error",
+        "2026-09-27: partial-payment editing, received/remaining balances, and overpayment review in unpublished shared admin source; isolated Chromium desktop/mobile check completed with fallback fonts; installed host remains 6.2.0",
+        "2026-09-27: Paper update and same-state comparison pending; Paper tools unavailable"
       ],
       "references": [
         {

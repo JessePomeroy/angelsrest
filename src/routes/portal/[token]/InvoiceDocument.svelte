@@ -2,6 +2,7 @@
 import { formatCents, formatDateOnly, formatTimestamp } from "$lib/utils/format";
 import { calculateInvoiceAmounts } from "./portalPageData";
 import type { PortalInvoiceDocument } from "./portalPageData";
+import { invoiceBalance } from "../../../../packages/crm-api/src/invoiceAmounts";
 
 type Props = {
 	document: PortalInvoiceDocument;
@@ -15,7 +16,9 @@ type Props = {
 let { document: doc, client, used, status, loading, onPay }: Props = $props();
 const amounts = $derived.by(() => {
 	try {
-		return calculateInvoiceAmounts(doc.items, doc.taxPercent);
+		if (status === "partial" && doc.paidAmount === undefined) return null;
+		const result = calculateInvoiceAmounts(doc.items, doc.taxPercent);
+		return { ...result, ...invoiceBalance(result.totalCents, doc.paidAmount ?? (status === "paid" ? result.totalCents : 0)) };
 	} catch {
 		return null;
 	}
@@ -43,6 +46,11 @@ const amounts = $derived.by(() => {
 		<div class="subtotal-row"><span>Subtotal</span><span>{formatCents(amounts.subtotalCents)}</span></div>
 		{#if doc.taxPercent}<div class="subtotal-row"><span>Tax ({doc.taxPercent}%)</span><span>{formatCents(amounts.taxCents)}</span></div>{/if}
 		<div class="total-row"><span class="total-label">Total</span><span class="total-amount">{formatCents(amounts.totalCents)}</span></div>
+		{#if amounts.paidCents > 0}
+			<div class="subtotal-row"><span>Payments received</span><span>{formatCents(amounts.paidCents)}</span></div>
+			<div class="subtotal-row"><span>Remaining balance</span><span>{formatCents(amounts.remainingCents)}</span></div>
+		{/if}
+		{#if amounts.overpaidCents > 0}<p class="status-message">Overpayment: {formatCents(amounts.overpaidCents)}. Please contact the business to arrange a refund or credit.</p>{/if}
 	</div>
 	{:else}
 		<p class="status-message">This invoice has invalid amounts. Please contact the business for a corrected invoice.</p>
@@ -52,8 +60,10 @@ const amounts = $derived.by(() => {
 
 {#if status === "paid"}
 	<div class="status-message success-message">This invoice has been paid. Thank you!</div>
-{:else if amounts && (status === "sent" || status === "overdue") && !used}
+{:else if amounts && amounts.remainingCents >= 50 && (status === "sent" || status === "overdue" || status === "partial") && !used}
 	<div class="doc-actions"><button class="btn-primary" onclick={onPay} disabled={loading}>{loading ? "..." : "Pay Now"}</button></div>
+{:else if amounts && amounts.remainingCents > 0 && amounts.remainingCents < 50 && !used}
+	<div class="status-message">Please contact the business to settle the remaining balance of {formatCents(amounts.remainingCents)}.</div>
 {:else if used}
 	<div class="status-message">This invoice link is read-only.</div>
 {/if}

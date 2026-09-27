@@ -9,7 +9,7 @@
 	<div class="content">
 		<h1>payment received</h1>
 		<p>thank you — your invoice payment has been processed successfully.</p>
-		<p class="muted">you will receive a confirmation email shortly.</p>
+		<p class="muted">reopen your invoice link to see the updated balance. if the invoice changed while you were paying, a balance or credit may remain.</p>
 	</div>
 </div>
 

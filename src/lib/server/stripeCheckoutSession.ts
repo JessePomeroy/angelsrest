@@ -26,7 +26,7 @@ interface CreatePaymentCheckoutSessionBase {
 
 export type CreatePaymentCheckoutSessionOptions = CreatePaymentCheckoutSessionBase &
 	(
-		| { purpose: "invoice-payment"; idempotencyKey?: string; expiresAt?: never }
+		| { purpose: "invoice-payment"; idempotencyKey?: string; expiresAt?: number }
 		| { purpose: "order"; idempotencyKey: string; expiresAt: number }
 	);
 

@@ -1572,6 +1572,8 @@ export default defineSchema({
 		),
 		stripeCheckoutStartedAt: v.optional(v.number()),
 		stripeCheckoutUpdatedAt: v.optional(v.number()),
+		paymentRevision: v.optional(v.number()),
+		activeCheckoutId: v.optional(v.id("invoiceCheckouts")),
 		// Recurring config
 		recurring: v.optional(
 			v.object({
@@ -1600,6 +1602,28 @@ export default defineSchema({
 		.index("by_siteUrl_and_status_and_overdueAt", ["siteUrl", "status", "overdueAt"])
 		.index("by_siteUrl_status", ["siteUrl", "status"])
 		.index("by_siteUrl_and_invoiceNumber", ["siteUrl", "invoiceNumber"]),
+
+	// Issued invoice checkouts are immutable payment snapshots, retained across edits.
+	invoiceCheckouts: defineTable({
+		invoiceId: v.id("invoices"),
+		siteUrl: v.string(),
+		fingerprint: v.string(),
+		legacy: v.boolean(),
+		revision: v.optional(v.number()),
+		items: v.optional(v.array(v.object({ description: v.string(), quantity: v.number(), unitPrice: v.number() }))),
+		taxPercent: v.optional(v.number()),
+		totalCents: v.optional(v.number()),
+		paidBeforeCents: v.optional(v.number()),
+		amountCents: v.optional(v.number()),
+		stripeAccountId: v.optional(v.string()),
+		origin: v.optional(v.string()),
+		expiresAt: v.optional(v.number()),
+		stripeSessionId: v.optional(v.string()),
+		paidCents: v.optional(v.number()),
+		paidAt: v.optional(v.number()),
+		paymentIntentId: v.optional(v.string()),
+	}).index("by_invoiceId", ["invoiceId"])
+		.index("by_siteUrl_and_stripeSessionId", ["siteUrl", "stripeSessionId"]),
 
 	// Authoritative allocation state for invoice and quote numbers.
 	documentNumberCounters: defineTable({

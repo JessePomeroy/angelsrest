@@ -1366,11 +1366,13 @@ describe("processStripeWebhookEvent", () => {
 
 	it("routes invoice payment sessions to invoice settlement only", async () => {
 		const session = makeCheckoutSession({
+			currency: "usd",
 			metadata: {
 				type: "invoice_payment",
 				invoiceId: "invoice-123",
-				siteUrl: "https://client.example",
+				siteUrl: "angelsrest.online",
 				checkoutFingerprint: "checkout-fingerprint-123",
+				invoiceCheckoutId: "invoice-checkout-123",
 			},
 		});
 
@@ -1383,10 +1385,45 @@ describe("processStripeWebhookEvent", () => {
 		expect(convex.mutation).toHaveBeenCalledWith("invoices.markPaid", {
 			webhookSecret: "test-webhook-secret",
 			invoiceId: "invoice-123",
-			siteUrl: "https://client.example",
+			siteUrl: "angelsrest.online",
 			stripeCheckoutSessionId: "cs_test_123",
 			stripeCheckoutFingerprint: "checkout-fingerprint-123",
+			checkoutId: "invoice-checkout-123",
+			paidCents: session.amount_total,
+			currency: session.currency,
+			stripeAccountId: undefined,
+			paymentIntentId: "pi_test_123",
 		});
+		expect(createLumaPrintsOrder).not.toHaveBeenCalled();
+	});
+
+	it("does not credit a completed invoice checkout whose payment is unpaid", async () => {
+		const session = makeCheckoutSession({
+			payment_status: "unpaid",
+			metadata: { type: "invoice_payment", invoiceId: "invoice-123", siteUrl: "angelsrest.online" },
+		});
+		const { processStripeWebhookEvent } = await import("../orderIntake");
+		await processStripeWebhookEvent(
+			makeStripeEvent("checkout.session.completed", session),
+			adapters(),
+		);
+		expect(convex.mutation).not.toHaveBeenCalled();
+		expect(createLumaPrintsOrder).not.toHaveBeenCalled();
+	});
+
+	it("rejects invoice metadata that disagrees with the authenticated commerce tenant", async () => {
+		const session = makeCheckoutSession({
+			metadata: {
+				type: "invoice_payment",
+				invoiceId: "invoice-123",
+				siteUrl: "other-tenant.example",
+			},
+		});
+		const { processStripeWebhookEvent } = await import("../orderIntake");
+		await expect(
+			processStripeWebhookEvent(makeStripeEvent("checkout.session.completed", session), adapters()),
+		).rejects.toThrow();
+		expect(convex.mutation).not.toHaveBeenCalled();
 		expect(createLumaPrintsOrder).not.toHaveBeenCalled();
 	});
 

@@ -97,7 +97,7 @@ export async function processStripeWebhookEvent(
 				if (session.mode !== "payment" || session.metadata?.type === "platform_subscription") break;
 				if (session.metadata?.type === "invoice_payment") {
 					const tenant = await resolveCommerceTenant(event, adapters.convex);
-					await markInvoicePaidFromSession(session, adapters.convex, tenant.siteUrl);
+					await markInvoicePaidFromSession(session, adapters.convex, tenant.siteUrl, event.account);
 					break;
 				}
 
@@ -299,9 +299,13 @@ async function markInvoicePaidFromSession(
 	session: Stripe.Checkout.Session,
 	convex: ConvexHttpClient,
 	siteUrl: string,
+	stripeAccountId?: string,
 ) {
 	const invoiceId = session.metadata?.invoiceId;
 	if (!invoiceId) return;
+	if (session.payment_status !== "paid") return;
+	if (session.metadata?.siteUrl && session.metadata.siteUrl !== siteUrl)
+		throw new Error("Invoice tenant mismatch");
 
 	const webhookSecret = env.WEBHOOK_SECRET;
 	if (!webhookSecret) {
@@ -310,9 +314,17 @@ async function markInvoicePaidFromSession(
 	await convex.mutation(api.invoices.markPaid, {
 		webhookSecret,
 		invoiceId: invoiceId as Id<"invoices">,
-		siteUrl: session.metadata?.siteUrl || siteUrl,
+		siteUrl,
 		stripeCheckoutSessionId: session.id,
 		stripeCheckoutFingerprint: session.metadata?.checkoutFingerprint,
+		checkoutId: session.metadata?.invoiceCheckoutId as Id<"invoiceCheckouts"> | undefined,
+		paidCents: session.amount_total ?? undefined,
+		currency: session.currency ?? undefined,
+		stripeAccountId,
+		paymentIntentId:
+			typeof session.payment_intent === "string"
+				? session.payment_intent
+				: session.payment_intent?.id,
 	});
 	logStructured({
 		event: "invoice.marked_paid",

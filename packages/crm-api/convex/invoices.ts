@@ -4,12 +4,15 @@ import { v } from "convex/values";
 import { mutation, query } from "./_generated/server";
 import { requireSiteAdmin, requireWebhookCallerOrAuth } from "./authHelpers";
 import { deleteDocument } from "./helpers/deleting";
-import {
-	allocateNextInvoiceNumber,
-	previewNextInvoiceNumber,
-} from "./helpers/documentNumbering";
+import { allocateNextInvoiceNumber, previewNextInvoiceNumber } from "./helpers/documentNumbering";
 import { markDocumentSent } from "./helpers/marking";
 import { patchDocument } from "./helpers/patching";
+import {
+	invoicePaymentBalance,
+	invoiceReceivedCents,
+	paidInvoiceStatus,
+	preserveLegacyCheckout,
+} from "./helpers/invoicePayments";
 
 // Keep in sync with the `invoices.status` union in schema.ts. Widening to
 // v.string() here lets nonsense values through arg validation and only fails
@@ -33,9 +36,12 @@ export const list = query({
 		const selectedStatus = statusValidator.members.find((member) => member.value === status)?.value;
 		if (status !== undefined && selectedStatus === undefined) return [];
 		const documents = ctx.db.query("invoices");
-		const matching = selectedStatus === undefined
-			? documents.withIndex("by_siteUrl", (q) => q.eq("siteUrl", siteUrl))
-			: documents.withIndex("by_siteUrl_status", (q) => q.eq("siteUrl", siteUrl).eq("status", selectedStatus));
+		const matching =
+			selectedStatus === undefined
+				? documents.withIndex("by_siteUrl", (q) => q.eq("siteUrl", siteUrl))
+				: documents.withIndex("by_siteUrl_status", (q) =>
+						q.eq("siteUrl", siteUrl).eq("status", selectedStatus),
+					);
 		const all = await matching.order("desc").take(200);
 		return all.map((invoice) => ({
 			...invoice,
@@ -148,6 +154,15 @@ export const update = mutation({
 	},
 	handler: async (ctx, { invoiceId, siteUrl, ...updates }) => {
 		const previous = await patchDocument(ctx, invoiceId, siteUrl, updates);
+		await preserveLegacyCheckout(ctx, previous);
+		const previousPaidCents = invoiceReceivedCents(previous);
+		if (previous.paidAmount === undefined && previous.status === "paid")
+			await ctx.db.patch(invoiceId, { paidAmount: previousPaidCents });
+		const items = updates.items ?? previous.items;
+		const taxPercent = updates.taxPercent ?? previous.taxPercent;
+		const changed =
+			JSON.stringify(items) !== JSON.stringify(previous.items) ||
+			(taxPercent ?? 0) !== (previous.taxPercent ?? 0);
 		if (updates.items !== undefined || updates.taxPercent !== undefined) {
 			// A failed validation rolls back the patch in this atomic mutation.
 			calculateInvoiceAmounts(
@@ -155,10 +170,36 @@ export const update = mutation({
 				updates.taxPercent ?? previous.taxPercent,
 			);
 		}
+		if (changed) {
+			const { totalCents } = calculateInvoiceAmounts(items, taxPercent);
+			const status =
+				previousPaidCents > 0
+					? paidInvoiceStatus(
+							{ ...previous, status: updates.status ?? previous.status },
+							previousPaidCents,
+							totalCents,
+						)
+					: (updates.status ?? previous.status);
+			await ctx.db.patch(invoiceId, {
+				paymentRevision: (previous.paymentRevision ?? 0) + 1,
+				paidAmount: previousPaidCents,
+				status,
+				paidAt: status === "paid" ? (previous.paidAt ?? Date.now()) : undefined,
+			});
+		}
 		if (updates.status !== previous.status) {
-			if (updates.status === "paid") await ctx.db.patch(invoiceId, { paidAt: Date.now() });
+			if (updates.status === "paid")
+				await ctx.db.patch(invoiceId, {
+					status: "paid",
+					paidAt: Date.now(),
+					paidAmount: Math.max(
+						previousPaidCents,
+						calculateInvoiceAmounts(items, taxPercent).totalCents,
+					),
+				});
 			if (updates.status === "overdue") await ctx.db.patch(invoiceId, { overdueAt: Date.now() });
 		}
+		return await ctx.db.get(invoiceId);
 	},
 });
 
@@ -182,16 +223,47 @@ export const recordCheckoutStarted = mutation({
 		siteUrl: v.string(),
 		stripeCheckoutSessionId: v.string(),
 		stripeCheckoutFingerprint: v.string(),
+		checkoutId: v.optional(v.id("invoiceCheckouts")),
 		webhookSecret: v.string(),
 	},
 	handler: async (
 		ctx,
-		{ invoiceId, siteUrl, stripeCheckoutSessionId, stripeCheckoutFingerprint, webhookSecret },
+		{
+			invoiceId,
+			siteUrl,
+			stripeCheckoutSessionId,
+			stripeCheckoutFingerprint,
+			webhookSecret,
+			checkoutId,
+		},
 	) => {
 		await requireWebhookCallerOrAuth(ctx, webhookSecret, { allowAuth: false });
 		const invoice = await ctx.db.get(invoiceId);
 		if (!invoice || invoice.siteUrl !== siteUrl) {
 			throw new Error("Not found");
+		}
+		if (checkoutId) {
+			const checkout = await ctx.db.get(checkoutId);
+			if (
+				!checkout ||
+				checkout.invoiceId !== invoiceId ||
+				checkout.siteUrl !== siteUrl ||
+				checkout.fingerprint !== stripeCheckoutFingerprint ||
+				(checkout.stripeSessionId && checkout.stripeSessionId !== stripeCheckoutSessionId)
+			) {
+				throw new Error("Invoice checkout session mismatch");
+			}
+			const bound = await ctx.db
+				.query("invoiceCheckouts")
+				.withIndex("by_siteUrl_and_stripeSessionId", (q) =>
+					q.eq("siteUrl", siteUrl).eq("stripeSessionId", stripeCheckoutSessionId),
+				)
+				.unique();
+			if (bound && bound._id !== checkoutId)
+				throw new Error("Invoice checkout session already bound");
+			await ctx.db.patch(checkoutId, { stripeSessionId: stripeCheckoutSessionId });
+			// A webhook can win this race. Registration never reopens a paid invoice.
+			return;
 		}
 		if (invoice.status === "paid") {
 			throw new Error("Invoice has already been paid");
@@ -200,6 +272,7 @@ export const recordCheckoutStarted = mutation({
 			throw new Error("Invoice is not payable");
 		}
 		const now = Date.now();
+		await preserveLegacyCheckout(ctx, invoice);
 		await ctx.db.patch(invoiceId, {
 			stripeCheckoutSessionId,
 			stripeCheckoutFingerprint,
@@ -207,6 +280,70 @@ export const recordCheckoutStarted = mutation({
 			stripeCheckoutStartedAt: invoice.stripeCheckoutStartedAt ?? now,
 			stripeCheckoutUpdatedAt: now,
 		});
+		await preserveLegacyCheckout(ctx, {
+			...invoice,
+			stripeCheckoutSessionId,
+			stripeCheckoutFingerprint,
+			stripeCheckoutStatus: "open",
+		});
+	},
+});
+
+/** Snapshot the current balance before provider I/O; retries reuse its immutable identity. */
+export const prepareCheckout = mutation({
+	args: {
+		invoiceId: v.id("invoices"),
+		siteUrl: v.string(),
+		webhookSecret: v.string(),
+		stripeAccountId: v.optional(v.string()),
+		origin: v.string(),
+	},
+	handler: async (ctx, { invoiceId, siteUrl, webhookSecret, stripeAccountId, origin }) => {
+		await requireWebhookCallerOrAuth(ctx, webhookSecret, { allowAuth: false });
+		const invoice = await ctx.db.get(invoiceId);
+		if (!invoice || invoice.siteUrl !== siteUrl) throw new Error("Not found");
+		if (!["sent", "overdue", "partial"].includes(invoice.status))
+			throw new Error("Invoice is not payable");
+		const balance = invoicePaymentBalance(invoice);
+		if (balance.remainingCents < 50)
+			throw new Error("Invoice balance must be at least $0.50 to pay online.");
+		await preserveLegacyCheckout(ctx, invoice);
+		const revision = invoice.paymentRevision ?? 0;
+		const current = invoice.activeCheckoutId ? await ctx.db.get(invoice.activeCheckoutId) : null;
+		if (
+			current &&
+			current.revision === revision &&
+			current.paidBeforeCents === balance.paidCents &&
+			current.stripeAccountId === stripeAccountId &&
+			current.origin === origin &&
+			current.paidAt === undefined
+		) {
+			if (current.expiresAt !== undefined && Date.now() < current.expiresAt * 1000 - 60_000)
+				return current;
+			// Replaying an unknown creation after Stripe's idempotency window could charge twice.
+			if (!current.stripeSessionId)
+				throw new Error("Invoice checkout needs reconciliation before retry");
+		}
+		const fingerprint = `${revision}:${balance.paidCents}:${balance.totalCents}`;
+		const id = await ctx.db.insert("invoiceCheckouts", {
+			invoiceId,
+			siteUrl,
+			legacy: false,
+			revision,
+			fingerprint,
+			items: invoice.items,
+			taxPercent: invoice.taxPercent ?? 0,
+			totalCents: balance.totalCents,
+			paidBeforeCents: balance.paidCents,
+			amountCents: balance.remainingCents,
+			stripeAccountId,
+			origin,
+			expiresAt: Math.floor(Date.now() / 1000) + 23 * 60 * 60,
+		});
+		await ctx.db.patch(invoiceId, { activeCheckoutId: id });
+		const checkout = await ctx.db.get(id);
+		if (!checkout) throw new Error("Invoice checkout snapshot missing");
+		return checkout;
 	},
 });
 
@@ -225,10 +362,26 @@ export const markPaid = mutation({
 		webhookSecret: v.optional(v.string()),
 		stripeCheckoutSessionId: v.optional(v.string()),
 		stripeCheckoutFingerprint: v.optional(v.string()),
+		checkoutId: v.optional(v.id("invoiceCheckouts")),
+		paidCents: v.optional(v.number()),
+		currency: v.optional(v.string()),
+		stripeAccountId: v.optional(v.string()),
+		paymentIntentId: v.optional(v.string()),
 	},
 	handler: async (
 		ctx,
-		{ invoiceId, siteUrl, webhookSecret, stripeCheckoutSessionId, stripeCheckoutFingerprint },
+		{
+			invoiceId,
+			siteUrl,
+			webhookSecret,
+			stripeCheckoutSessionId,
+			stripeCheckoutFingerprint,
+			checkoutId,
+			paidCents,
+			currency,
+			stripeAccountId,
+			paymentIntentId,
+		},
 	) => {
 		const auth = await requireWebhookCallerOrAuth(ctx, webhookSecret);
 		if (auth.via === "auth") {
@@ -239,32 +392,113 @@ export const markPaid = mutation({
 			throw new Error("Not found");
 		}
 		if (stripeCheckoutSessionId) {
-			if (invoice.stripeCheckoutSessionId !== stripeCheckoutSessionId) {
+			if (auth.via !== "webhook")
+				throw new Error("Provider payment evidence requires webhook authorization");
+			await preserveLegacyCheckout(ctx, invoice);
+			const checkout = checkoutId
+				? await ctx.db.get(checkoutId)
+				: await ctx.db
+						.query("invoiceCheckouts")
+						.withIndex("by_siteUrl_and_stripeSessionId", (q) =>
+							q.eq("siteUrl", siteUrl).eq("stripeSessionId", stripeCheckoutSessionId),
+						)
+						.unique();
+			if (
+				!checkout ||
+				checkout.invoiceId !== invoiceId ||
+				checkout.siteUrl !== siteUrl ||
+				(checkout.stripeSessionId && checkout.stripeSessionId !== stripeCheckoutSessionId)
+			)
 				throw new Error("Invoice checkout session mismatch");
+			if (checkout.fingerprint !== (stripeCheckoutFingerprint ?? ""))
+				throw new Error("Invoice checkout fingerprint mismatch");
+			if (!checkout.legacy && checkout.stripeAccountId !== stripeAccountId)
+				throw new Error("Invoice checkout account mismatch");
+			if (checkout.paidAt !== undefined && checkout.paidCents === undefined) return; // historical completed settlement
+			// Older hub handlers omit amount/currency. Only a fingerprint-proven frozen
+			// legacy session can supply that evidence during the backend-first rollout.
+			if (
+				paidCents === undefined &&
+				currency === undefined &&
+				checkout.legacy &&
+				checkout.amountCents !== undefined
+			) {
+				paidCents = checkout.amountCents;
+				currency = "usd";
 			}
 			if (
-				stripeCheckoutFingerprint &&
-				invoice.stripeCheckoutFingerprint !== stripeCheckoutFingerprint
-			) {
-				throw new Error("Invoice checkout fingerprint mismatch");
+				!Number.isSafeInteger(paidCents) ||
+				paidCents === undefined ||
+				paidCents <= 0 ||
+				currency !== "usd"
+			)
+				throw new Error("Verified invoice payment amount and currency are required");
+			if (checkout.amountCents !== undefined && checkout.amountCents !== paidCents)
+				throw new Error("Invoice payment amount mismatch");
+			if (checkout.paidAt !== undefined) {
+				if (
+					checkout.paidCents !== paidCents ||
+					(checkout.paymentIntentId &&
+						paymentIntentId &&
+						checkout.paymentIntentId !== paymentIntentId)
+				)
+					throw new Error("Invoice payment replay mismatch");
+				return;
 			}
+			const alreadyBound = await ctx.db
+				.query("invoiceCheckouts")
+				.withIndex("by_siteUrl_and_stripeSessionId", (q) =>
+					q.eq("siteUrl", siteUrl).eq("stripeSessionId", stripeCheckoutSessionId),
+				)
+				.unique();
+			if (alreadyBound && alreadyBound._id !== checkout._id)
+				throw new Error("Invoice checkout session already bound");
+			const balance = invoicePaymentBalance(invoice);
+			const totalPaid = balance.paidCents + paidCents;
+			if (!Number.isSafeInteger(totalPaid))
+				throw new Error("Invoice payment exceeds safe cent precision");
+			const now = Date.now();
+			const status = paidInvoiceStatus(invoice, totalPaid, balance.totalCents);
+			await ctx.db.patch(checkout._id, {
+				stripeSessionId: stripeCheckoutSessionId,
+				paidCents,
+				paidAt: now,
+				paymentIntentId,
+			});
+			await ctx.db.patch(invoiceId, {
+				paidAmount: totalPaid,
+				status,
+				paidAt: status === "paid" ? (invoice.paidAt ?? now) : undefined,
+				...(invoice.stripeCheckoutSessionId === stripeCheckoutSessionId
+					? { stripeCheckoutStatus: "paid" as const }
+					: {}),
+			});
+			await logActivity(ctx, {
+				siteUrl,
+				clientId: invoice.clientId,
+				action: "invoice_payment_received",
+				description: `invoice ${invoice.invoiceNumber}: received ${paidCents} cents; ${Math.max(0, balance.totalCents - totalPaid)} cents remaining${totalPaid > balance.totalCents ? "; overpayment requires review" : ""}${status === "canceled" ? "; canceled invoice requires review" : ""}`,
+				metadata: JSON.stringify({
+					docType: "invoice",
+					docId: invoiceId,
+					checkoutId: checkout._id,
+				}),
+			});
+			return;
 		}
+		if (auth.via !== "auth") throw new Error("Provider checkout session is required");
 		if (invoice.status === "paid") {
-			// Idempotent — retry-safe on Stripe webhook replays.
+			// Repeated manual settlement does not add another payment.
 			return;
 		}
 		const now = Date.now();
 		await ctx.db.patch(invoiceId, {
 			status: "paid",
 			paidAt: now,
-			...(stripeCheckoutSessionId
-				? {
-						stripeCheckoutSessionId,
-						...(stripeCheckoutFingerprint ? { stripeCheckoutFingerprint } : {}),
-						stripeCheckoutStatus: "paid" as const,
-						stripeCheckoutUpdatedAt: now,
-					}
-				: {}),
+			paidAmount: Math.max(
+				invoicePaymentBalance(invoice).paidCents,
+				calculateInvoiceAmounts(invoice.items, invoice.taxPercent).totalCents,
+			),
 		});
 
 		await logActivity(ctx, {
@@ -280,6 +514,15 @@ export const markPaid = mutation({
 export const remove = mutation({
 	args: { invoiceId: v.id("invoices"), siteUrl: v.string() },
 	handler: async (ctx, { invoiceId, siteUrl }) => {
+		await requireSiteAdmin(ctx, siteUrl);
+		const invoice = await ctx.db.get(invoiceId);
+		if (!invoice || invoice.siteUrl !== siteUrl) throw new Error("Not found");
+		if (
+			invoice.activeCheckoutId ||
+			invoice.stripeCheckoutSessionId ||
+			(invoice.paidAmount ?? 0) > 0
+		)
+			throw new Error("Invoices with payment history must be retained; cancel instead");
 		await deleteDocument(ctx, invoiceId, siteUrl);
 	},
 });

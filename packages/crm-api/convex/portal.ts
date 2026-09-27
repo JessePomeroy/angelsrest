@@ -116,6 +116,7 @@ function projectInvoice(invoice: Doc<"invoices">) {
 		invoiceNumber: invoice.invoiceNumber,
 		status: invoice.status,
 		items: invoice.items,
+		...(invoice.paidAmount !== undefined ? { paidAmount: invoice.paidAmount } : {}),
 		...(invoice.taxPercent !== undefined ? { taxPercent: invoice.taxPercent } : {}),
 		...(invoice.notes !== undefined ? { notes: invoice.notes } : {}),
 		...(invoice.dueDate !== undefined ? { dueDate: invoice.dueDate } : {}),
@@ -611,6 +612,7 @@ export const getInvoiceCheckoutTarget = query({
 			siteUrl: invoice.siteUrl,
 			status: invoice.status,
 			items: invoice.items,
+			...(invoice.paidAmount !== undefined ? { paidAmount: invoice.paidAmount } : {}),
 			...(invoice.taxPercent !== undefined ? { taxPercent: invoice.taxPercent } : {}),
 		};
 	},

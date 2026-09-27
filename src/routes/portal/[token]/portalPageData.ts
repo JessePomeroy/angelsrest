@@ -24,6 +24,7 @@ export type PortalInvoiceDocument = {
 	status: "draft" | "sent" | "paid" | "partial" | "overdue" | "canceled";
 	items: Array<{ description: string; quantity: number; unitPrice: number }>;
 	taxPercent?: number;
+	paidAmount?: number;
 	dueDate?: string;
 	notes?: string;
 };
