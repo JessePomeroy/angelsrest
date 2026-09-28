@@ -1,3 +1,4 @@
+import { isPublicSiteOffline } from "./helpers/publicSiteAvailability";
 import { v } from "convex/values";
 import { internal } from "./_generated/api";
 import type { Doc } from "./_generated/dataModel";
@@ -412,6 +413,7 @@ export const reorder = mutation({
 export const listPublished = query({
 	args: { siteUrl: v.string() },
 	handler: async (ctx, { siteUrl }) => {
+		if (await isPublicSiteOffline(ctx, siteUrl)) return [];
 		const galleries = await ctx.db
 			.query("portfolioGalleries")
 			.withIndex("by_siteUrl_and_isPublished_and_isVisible_and_portfolioOrder", (q) =>
@@ -441,6 +443,7 @@ export const listPublished = query({
 export const listPublishedWithPlacements = query({
 	args: { siteUrl: v.string() },
 	handler: async (ctx, { siteUrl }) => {
+		if (await isPublicSiteOffline(ctx, siteUrl)) return [];
 		const galleries = await ctx.db
 			.query("portfolioGalleries")
 			.withIndex("by_siteUrl_and_isPublished_and_isVisible_and_portfolioOrder", (q) =>
@@ -469,6 +472,7 @@ export const listPublishedWithPlacements = query({
 export const getPublishedBySlug = query({
 	args: { siteUrl: v.string(), slug: v.string() },
 	handler: async (ctx, { siteUrl, slug }) => {
+		if (await isPublicSiteOffline(ctx, siteUrl)) return null;
 		const gallery = await ctx.db
 			.query("portfolioGalleries")
 			.withIndex("by_siteUrl_and_slug", (q) => q.eq("siteUrl", siteUrl).eq("slug", slug))

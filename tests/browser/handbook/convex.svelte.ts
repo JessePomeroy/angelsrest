@@ -28,6 +28,9 @@ function fixtureQuery(name: string, args: Args = {}) {
 		case "tags:listTags": return [];
 		case "tags:getClientTags": return [];
 		case "activityLog:getClientActivity": return [];
+		case "platformOffboarding:getState": return { siteUrl: "demo-client.example", isCreator: false, offboarding: { retainUntil: data.now + 90 * 86400000 } };
+		case "contentCleanup:list": return pageOf([{ documentId: "demo-archived", slug: "archived-demo-post", archivedAt: data.now, updatedAt: data.now }]);
+		case "contentCleanup:listRevisions": return pageOf([{ revisionId: "demo-old-revision", createdAt: data.now, active: false }, { revisionId: "demo-current-revision", createdAt: data.now, active: true }]);
 		case "platform:listAll": return list(data.platformClients);
 		case "messages:allThreadsPaginated": return pageOf([{ client: data.platformClients[0], unreadCount: 0, latestMessage: data.messages[0] }]);
 		case "messages:listPaginated": return pageOf(data.messages);
@@ -38,7 +41,9 @@ function fixtureQuery(name: string, args: Args = {}) {
 		case "galleries:getImages": return [];
 		case "portfolioGalleries:listForEditor": return list(data.portfolio);
 		case "portfolioGalleries:getEditorState": return data.portfolio.find(gallery => gallery.galleryId === args.galleryId) ?? null;
-		case "mediaAssets:listForEditor": return pageOf([]);
+		case "mediaAssets:listForEditor": return pageOf([{ _id: "demo-web-cleanup", originalFilename: "unused-web-image.webp", status: "ready", source: { sizeBytes: 102400 } }]);
+		case "catalogPrivateAssets:listForCleanup": return pageOf([{ id: "demo-private-cleanup", kind: args.kind, filename: args.kind === "paid_digital_file" ? "unused-download.zip" : "unused-print-master.jpg", sizeBytes: 2048000, status: "verified" }]);
+		case "catalogPrivateAssets:listExpiredUploadsForCleanup": return pageOf([{ id: "demo-expired-cleanup", kind: args.kind, filename: "expired-upload.jpg", sizeBytes: 2048000, status: "expired" }]);
 		case "mediaAssets:getManyForEditor": return [];
 		case "catalogProducts:listForEditor":
 		case "catalogProductGraphs:listForEditor": return detail ? list(data.productSummaries.filter(product => !args.productKind || product.productKind === args.productKind)) : [];

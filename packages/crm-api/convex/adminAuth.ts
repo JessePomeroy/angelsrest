@@ -1,6 +1,6 @@
 import { v } from "convex/values";
 import { mutation, query } from "./_generated/server";
-import { isEmailVerified, isSiteAdminIdentity, requireAuth } from "./authHelpers";
+import { isEmailVerified, isSiteAdminIdentity, requireAuth, requireCreator } from "./authHelpers";
 import { resolveTenantContext } from "./helpers/tenantContext";
 
 /**
@@ -35,6 +35,10 @@ export const claimAdminAccess = mutation({
 		const client = (await resolveTenantContext(ctx, { siteUrl }))?.client;
 		if (!client) throw new Error("Not authorized");
 
+		if (client.offboarding) {
+			await requireCreator(ctx);
+			return { claimed: false, authorized: true, tier: client.tier };
+		}
 		const stableIds = client.adminIdentityIds ?? [];
 		if (stableIds.includes(identity.tokenIdentifier)) {
 			return { claimed: false, authorized: true, tier: client.tier };
@@ -85,7 +89,11 @@ export const checkAdminAccess = query({
 
 		if (!client) return { authorized: false, tier: "basic" as const };
 
-		const isAuthorized = isSiteAdminIdentity(identity, client);
+		let isAuthorized = isSiteAdminIdentity(identity, client);
+		if (client.offboarding) {
+			try { await requireCreator(ctx); isAuthorized = true; }
+			catch { isAuthorized = false; }
+		}
 
 		return {
 			authorized: isAuthorized,

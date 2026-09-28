@@ -19,7 +19,7 @@ export async function requireClientPaymentBinding(ctx: QueryCtx, identity: Clien
 	const tenant = await resolveTenantContext(ctx, { siteUrl: identity.siteUrl });
 	const client = tenant?.client;
 	const attempt = client?.stripeConnectAttempt;
-	if (!client || tenant?.tenantId !== identity.tenantId || client.role === "creator"
+	if (!client || client.offboarding || tenant?.tenantId !== identity.tenantId || client.role === "creator"
 		|| !attempt || client.stripeConnectedAccountId !== identity.accountId) {
 		throw new Error("Client payments require the current verified Stripe connection");
 	}

@@ -1,5 +1,15 @@
 {
   "schemaVersion": 1,
+  "pendingChanges": [
+    {
+      "id": "catalog-cleanup",
+      "status": "pending-paper-sync",
+      "recordedAt": "2026-09-28",
+      "surfaces": ["product header and upload cleanup dialog", "product deletion action", "inquiry deletion action", "blog content history cleanup dialog", "platform client offboarding controls", "dashboard content export"],
+      "evidence": "docs/design/catalog-cleanup-review.md",
+      "reason": "Local implementation and browser comparison complete; Paper editing tool unavailable in this session."
+    }
+  ],
   "reviewDate": "2026-09-27",
   "status": "compared-with-limitations",
   "sourceBaseline": {

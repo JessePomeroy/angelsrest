@@ -260,6 +260,13 @@ export const markDeclined = mutation({
 export const remove = mutation({
 	args: { quoteId: v.id("quotes"), siteUrl: v.string() },
 	handler: async (ctx, { quoteId, siteUrl }) => {
+		await requireSiteAdmin(ctx, siteUrl);
+		const doc = await ctx.db.get(quoteId);
+		if (!doc || doc.siteUrl !== siteUrl) throw new Error("Not found");
+		// Historical evidence remains authoritative even after a status change.
+		if (doc.status === "accepted" || doc.acceptedAt !== undefined || doc.convertedToInvoice !== undefined) {
+			throw new Error("Accepted or converted quotes must be retained");
+		}
 		await deleteDocument(ctx, quoteId, siteUrl);
 	},
 });

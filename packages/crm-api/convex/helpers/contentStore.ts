@@ -1,3 +1,4 @@
+import { isPublicSiteOffline } from "./publicSiteAvailability";
 import type { Doc, Id } from "../_generated/dataModel";
 import type { MutationCtx, QueryCtx } from "../_generated/server";
 import { requireSiteAdmin } from "../authHelpers";
@@ -169,6 +170,7 @@ export async function getPublishedContentState<T>(
 	kind: SingletonContentKind,
 	projectPayload: (payload: ContentRevisionPayload) => T,
 ) {
+	if (await isPublicSiteOffline(ctx, siteUrl)) return null;
 	const document = await getContentDocument(ctx, siteUrl, kind);
 	if (!document?.publishedRevisionId) return null;
 	const revision = await getRevision(ctx, document.publishedRevisionId);

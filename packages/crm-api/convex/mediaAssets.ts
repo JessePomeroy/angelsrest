@@ -213,13 +213,9 @@ async function requireAssetUnused(
 		.withIndex("by_siteUrl_and_assetId", (q) =>
 			q.eq("siteUrl", asset.siteUrl).eq("assetId", asset._id),
 		);
-	for await (const usage of catalogUsages) {
-		const product = await ctx.db.get(usage.productId);
-		if (
-			product?.siteUrl === asset.siteUrl
-			&& (product.draftRevisionId === usage.revisionId
-				|| product.publishedRevisionId === usage.revisionId)
-		) throw new Error("Media asset is in use by catalog content");
+	for await (const _usage of catalogUsages) {
+		// Paid historical graph resolution still requires its web-media rows.
+		throw new Error("Media asset is retained by catalog content. Delete the unused product first.");
 	}
 
 	const about = await getActiveSingletonRevisions(ctx, asset.siteUrl, "aboutPage");
@@ -246,6 +242,9 @@ export const registerReadyWebAsset = mutation({
 	handler: async (ctx, { siteUrl, asset }) => {
 		const { identity, client } = await requireSiteAdmin(ctx, siteUrl);
 		validateReadyWebAsset(client.siteUrl, asset);
+		const orphanFence = await ctx.db.query("mediaOrphanDeletions")
+			.withIndex("by_siteUrl_and_assetId", q => q.eq("siteUrl", client.siteUrl).eq("assetId", asset.assetId)).unique();
+		if (orphanFence) throw new Error("Media asset is reserved for orphan cleanup");
 		const existing = await ctx.db
 			.query("mediaAssets")
 			.withIndex("by_siteUrl_and_assetId", (q) =>
@@ -474,4 +473,18 @@ export const completeDeletion = internalMutation({
 		await ctx.db.delete(id);
 		return { deleted: true, alreadyDeleted: false };
 	},
+});
+
+/** Owner-selected storage cleanup; registration and this fence serialize atomically. */
+export const requestOrphanDeletion = mutation({
+ args: { siteUrl: v.string(), assetId: v.string() },
+ handler: async (ctx, { siteUrl, assetId }) => {
+  const { identity } = await requireSiteAdmin(ctx, siteUrl);
+  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/.test(assetId)) throw new Error("Invalid media identity");
+  const registered = await ctx.db.query("mediaAssets").withIndex("by_siteUrl_and_assetId", q => q.eq("siteUrl", siteUrl).eq("assetId", assetId)).unique();
+  if (registered) throw new Error("Registered media must use the library deletion workflow");
+  const existing = await ctx.db.query("mediaOrphanDeletions").withIndex("by_siteUrl_and_assetId", q => q.eq("siteUrl", siteUrl).eq("assetId", assetId)).unique();
+  if (!existing) await ctx.db.insert("mediaOrphanDeletions", { siteUrl, assetId, requestedAt: Date.now(), requestedBy: identity.tokenIdentifier });
+  return { siteUrl, assetId, fenced: true };
+ },
 });

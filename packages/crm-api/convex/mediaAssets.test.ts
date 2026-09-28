@@ -682,3 +682,16 @@ describe("tenant-scoped CMS media assets", () => {
 		})).resolves.toMatchObject({ status: "deleting" });
 	});
 });
+
+
+test("orphan cleanup serializes with registration and preserves registered media", async () => {
+ const t = await setup();
+ const admin = asAdmin(t, SITE_A.email);
+ await expect(asAdmin(t, SITE_B.email).mutation(api.mediaAssets.requestOrphanDeletion, { siteUrl: SITE_A.siteUrl, assetId: ASSET_ID })).rejects.toThrow();
+ await admin.mutation(api.mediaAssets.requestOrphanDeletion, { siteUrl: SITE_A.siteUrl, assetId: ASSET_ID });
+ await expect(admin.mutation(api.mediaAssets.registerReadyWebAsset, { siteUrl: SITE_A.siteUrl, asset: readyAsset() })).rejects.toThrow("orphan cleanup");
+ await admin.mutation(api.mediaAssets.requestOrphanDeletion, { siteUrl: SITE_A.siteUrl, assetId: ASSET_ID });
+ const registered = await admin.mutation(api.mediaAssets.registerReadyWebAsset, { siteUrl: SITE_A.siteUrl, asset: readyAsset(SITE_A.siteUrl, ASSET_ID_B) });
+ await expect(admin.mutation(api.mediaAssets.requestOrphanDeletion, { siteUrl: SITE_A.siteUrl, assetId: ASSET_ID_B })).rejects.toThrow("Registered media");
+ expect(await t.run(ctx => ctx.db.get(registered.id))).not.toBeNull();
+});

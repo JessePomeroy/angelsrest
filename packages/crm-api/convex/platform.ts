@@ -885,6 +885,7 @@ export const listTrustedOrigins = internalQuery({
 		const clients = await ctx.db.query("platformClients").take(DEFAULT_LIST_LIMIT);
 		const origins = new Set<string>();
 		for (const client of clients) {
+			if (client.offboarding) continue;
 			for (const origin of trustedOriginVariants(client.siteUrl)) {
 				origins.add(origin);
 			}

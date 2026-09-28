@@ -1,3 +1,4 @@
+import { requireSnapshotProductsNotDeleted } from "./helpers/catalogDeletion";
 import {
 	requestClientPrintRefund as requestPrintRefund, claimClientPrintRefund as claimPrintRefund,
 	checkpointClientPrintRefund as checkpointPrintRefund, recordClientPrintRefund as recordPrintRefund,
@@ -579,6 +580,8 @@ export const reserveCheckoutSnapshot = internalMutation({
 		lumaprintsConnectionVersion: v.optional(v.literal(1)),
 	},
 	handler: async (ctx, args) => {
+		const client = await ctx.db.query("platformClients").withIndex("by_siteUrl", q => q.eq("siteUrl", args.siteUrl)).unique();
+		if (client?.offboarding) return { outcome: "routing_mismatch" as const };
 		if (args.lumaprintsConnectionVersion === 1
 			&& (args.printInputVersion !== 1 || !args.tenantId || !args.stripeConnectedAccountId)) {
 			return { outcome: "invalid" as const };
@@ -629,6 +632,7 @@ export const reserveCheckoutSnapshot = internalMutation({
 		const lumaprintsConnection = args.lumaprintsConnectionVersion === 1
 			&& args.tenantId && printInput?.lines.some(line => line.sources.length > 0)
 			? await captureCurrentLumaPrintsConnection(ctx, args.tenantId) : undefined;
+		await requireSnapshotProductsNotDeleted(ctx, args.siteUrl, args.snapshot.items);
 		const reservationId = await ctx.db.insert("checkoutSnapshotReservations", {
 			state: "reserved", tenantId: args.tenantId, siteUrl: args.siteUrl, handleHash: args.handleHash,
 			snapshotDigest: args.snapshotDigest, snapshot: args.snapshot, accountScope,
@@ -1236,6 +1240,7 @@ export const create = mutation({
 			&& printLineCount !== undefined;
 		const lumaprintsExternalId = shouldEnqueuePrintJob && printOrderReferenceVersion === 1
 			? `AR-${orderNumber}` : undefined;
+		await requireSnapshotProductsNotDeleted(ctx, orderInput.siteUrl, orderInput.checkoutSnapshot?.items ?? []);
 		const _id = await ctx.db.insert("orders", {
 			...orderInput,
 			checkoutFinancialSnapshot,
