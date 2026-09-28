@@ -1,7 +1,8 @@
 # Living design handbooks
 
 These references document the current implementation, not a redesign or a
-replacement for source code. Review date: **2026-09-16**.
+replacement for source code. Baseline review: **2026-09-16**. Invoice-state
+addition and comparison: **2026-09-27**.
 
 - [Angel's Rest — public handbook](https://app.paper.design/file/01M25K34J49JSK8D34H0HGQCW1/2-0)
 - [Angel's Rest Admin Dashboard — handbook](https://app.paper.design/file/01M25K34Z4EFZ5BEPJ49JBF0X1/2-0)
@@ -9,8 +10,10 @@ replacement for source code. Review date: **2026-09-16**.
 
 ## Reference pass and coverage
 
-The handbooks contain **134 editable screen/state boards: 62 public and 72
-admin**. The public boards retain their 2026-09-10 browser comparison. All 72
+The handbooks contain **138 editable screen/state boards: 62 public and 76
+admin**. Four Admin 6.4.0 invoice states were added and compared with limitations
+on September 27; the remaining 72 admin boards retain their September 16 status.
+The public boards retain their 2026-09-10 browser comparison. All 72 baseline
 admin boards were regenerated in place from `@jessepomeroy/admin` 6.1.1 on
 2026-09-16, and their editable top-level layer structure was audited against the
 fresh captures. Paper's renderer timed out on both full-board and small-node
@@ -18,7 +21,8 @@ screenshot checkpoints, so the admin visual comparison remains pending. Seven
 additional Start Here, Foundations, component and behavior guides were reviewed
 for readability and source accuracy. Guide boards are not application replicas.
 
-Public screen references remain `compared-with-limitations`; admin references are
+Public screen references and the four new invoice states are
+`compared-with-limitations`; the 72 baseline admin references remain
 `paper-updated-comparison-blocked`. Neither status is a pixel-perfect or
 end-to-end claim. Text, frames, SVGs and original image assets remain editable.
 Screenshots are comparison evidence, not flattened finished UI. This is a
@@ -33,8 +37,8 @@ Remaining candidates and specific mismatches stay in the inventory.
 
 The source baseline is merge commit `eeb01b9cf88de5d0edb931a55cf09e1517ee7f68`.
 The installed shared admin package is `@jessepomeroy/admin` **6.4.0** as of the
-September 27 package adoption. The boards were captured with 6.1.1; the 6.1.2
-invoice-identity correction did not change their visual structure. Version 6.2.0
+September 27 package adoption. The 72 baseline admin boards were captured with
+6.1.1; the 6.1.2 invoice-identity correction did not change their visual structure. Version 6.2.0
 adds owner-only file uploads and file labels/cards in delivery-gallery management;
 those affected states still require a Paper update and comparison. Capture
 provenance is unchanged. This is not a claim about the deployed site's version.
@@ -53,10 +57,31 @@ September 27; the audit task retains them under `outputs/audit-closeout/design-c
 The mobile overpayment modal requires scrolling to reach its final footer;
 the reference records the initial viewport. Locally served original fonts loaded;
 duplicate remote font declarations were blocked by the offline capture guard.
-Paper's configured local connector was unavailable (connection refused), so the
-four board updates and same-state comparisons remain pending. No new Paper
-board IDs or verified states are claimed. The inventory retains this distinction
-and does not count draft captures as additional handbook boards.
+The browser-provided Paper tools were used to add four native editable boards on
+Components & States, reusing the existing invoice background layers with updated
+fixture values. Each new board was rendered with `get_screenshot` and compared
+against its matching source PNG:
+
+| Invoice state | Viewport | Paper artboard |
+| --- | --- | --- |
+| Partial | 1440×1000 | `KIK-0` |
+| Partial | 390×844 | `KPF-0` |
+| Overpaid | 1440×1000 | `KV0-0` |
+| Overpaid | 390×844 | `L1W-0` |
+
+Status, $200 total, $100/$300 received, $100/$0 remaining, overpayment guidance,
+actions, spacing, number alignment and mobile clipping were compared. Source
+font tokens remain editable. Direct font discovery returned no face records;
+binding the existing Synonym/Chillax tokens restored the intended styling, with
+small text-metric differences still visible. Paper blur and shadow rendering also
+differ slightly. These four references are `compared-with-limitations`, verified
+September 27; this does not re-certify the 72 older admin references. The Start
+Here guide was updated and screenshot-checked. Unrelated studies were preserved.
+
+The configured desktop connector still refused connections. Browser screenshot
+checkpoints succeeded; a separate multi-board export timed out, so no exported
+Paper image files are claimed. The captured source PNG/JSON pairs remain the
+local comparison evidence.
 
 The separate [Stripe sandbox acceptance](verification/invoice-payment-sandbox-2026-09-27.md)
 passed actual hosted Checkout, signed deliveries, and reloaded balances. That
