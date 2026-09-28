@@ -1,3 +1,4 @@
+import { isPublicSiteOffline } from "./publicSiteAvailability";
 import {
 	FRAMED_BORDER_INCHES,
 	getBorder,
@@ -341,6 +342,7 @@ export async function resolveCatalogCommerce(
 	request: CatalogCommerceRequest,
 ) {
 	if (request.purpose === "checkout") {
+		if (await isPublicSiteOffline(ctx, siteUrl)) throw rejected();
 		const { product, graph } = await loadExactGraph(ctx, siteUrl, request.item);
 		const enabledKinds = await loadCatalogProductKinds(ctx, siteUrl);
 		if (!enabledKinds.includes(product.productKind)

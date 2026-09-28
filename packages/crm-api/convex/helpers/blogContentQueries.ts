@@ -1,3 +1,4 @@
+import { isPublicSiteOffline } from "./publicSiteAvailability";
 import type { Id } from "../_generated/dataModel";
 import type { QueryCtx } from "../_generated/server";
 import { requireDocumentSiteAdmin, requireSiteAdmin } from "../authHelpers";
@@ -83,6 +84,7 @@ export async function getPublishedBlogBySlug(
 	ctx: QueryCtx,
 	args: { siteUrl: string; kind: BlogSupportingKind; slug: string },
 ) {
+	if (await isPublicSiteOffline(ctx, args.siteUrl)) return null;
 	let slug: string;
 	try {
 		slug = requireCanonicalBlogSlug(
@@ -139,6 +141,7 @@ export async function resolvePublishedBlogSlug(
 	ctx: QueryCtx,
 	args: { siteUrl: string; kind: BlogSupportingKind; slug: string },
 ) {
+	if (await isPublicSiteOffline(ctx, args.siteUrl)) return null;
 	let slug: string;
 	try {
 		slug = requireCanonicalBlogSlug(
@@ -188,6 +191,7 @@ export async function listPublishedBlogDocuments(
 	siteUrl: string,
 	kind: BlogSupportingKind,
 ) {
+	if (await isPublicSiteOffline(ctx, siteUrl)) return [];
 	const documents = await listBlogDocuments(ctx, siteUrl, kind);
 	return await Promise.all(
 		documents

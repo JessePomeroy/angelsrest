@@ -312,6 +312,47 @@ async function prevalidateEditorReceipt(
 	} as const;
 }
 
+const readCatalogPrivateDeletion = httpAction(async (ctx, request) => {
+	const registry = purposeScopedServerRoleConfiguration()?.deletion;
+	if (!registry?.size) return privateResponse("Deletion completion is not configured", 503);
+	if (request.headers.get("Content-Type") !== "application/json") return privateResponse("Invalid request", 400);
+	const body = await readJsonObject(request, MAX_COMPLETION_BODY_BYTES);
+	const supplied = bearerToken(request);
+	if (!body || Object.keys(body).length !== 4 || !isTenantSiteSegment(body.siteUrl)
+		|| (body.kind !== "print_source" && body.kind !== "paid_digital_file")
+		|| typeof body.id !== "string" || body.id.length < 1 || body.id.length > 128
+		|| typeof body.deletionId !== "string" || body.deletionId.length < 1 || body.deletionId.length > 128) return privateResponse("Invalid request", 400);
+	if (!isServerSecretCandidate(supplied) || !(await tenantSecretMatches(registry, body.siteUrl, supplied))) return privateResponse("Unauthorized", 401);
+	try {
+		const manifest = await ctx.runQuery(internal.catalogPrivateAssets.getDeletionManifest, {
+			siteUrl: body.siteUrl, kind: body.kind, id: body.id, deletionId: body.deletionId as Id<"catalogPrivateAssetDeletions">,
+		});
+		return privateResponse(manifest, 200);
+	} catch { return privateResponse("Cleanup manifest is unavailable", 409); }
+});
+
+const completeCatalogPrivateDeletion = httpAction(async (ctx, request) => {
+	const registry = purposeScopedServerRoleConfiguration()?.deletion;
+	if (!registry?.size) return privateResponse("Deletion completion is not configured", 503);
+	if (request.headers.get("Content-Type") !== "application/json") return privateResponse("Invalid request", 400);
+	const body = await readJsonObject(request, MAX_COMPLETION_BODY_BYTES);
+	const supplied = bearerToken(request);
+	if (!body || Object.keys(body).length !== 5 || !isTenantSiteSegment(body.siteUrl)
+		|| (body.kind !== "print_source" && body.kind !== "paid_digital_file")
+		|| typeof body.id !== "string" || body.id.length < 1 || body.id.length > 128
+		|| typeof body.assetKey !== "string" || body.assetKey.length < 1 || body.assetKey.length > 160
+		|| typeof body.sha256 !== "string" || !/^[a-f0-9]{64}$/.test(body.sha256)) return privateResponse("Invalid request", 400);
+	if (!isServerSecretCandidate(supplied) || !(await tenantSecretMatches(registry, body.siteUrl, supplied))) return privateResponse("Unauthorized", 401);
+	try {
+		await ctx.runMutation(internal.catalogPrivateAssets.completeDeletion, {
+			siteUrl: body.siteUrl, kind: body.kind, id: body.id, assetKey: body.assetKey, sha256: body.sha256,
+		});
+		return privateResponse({ deleted: true, id: body.id }, 200);
+	} catch {
+		return privateResponse("Private catalog deletion could not be completed", 409);
+	}
+});
+
 const completeCmsMediaDeletion = httpAction(async (ctx, request) => {
 	const roles = purposeScopedServerRoleConfiguration();
 	const registry = roles?.deletion;
@@ -967,6 +1008,18 @@ http.route({
 });
 http.route({ path: PROTOCOL_CUTOFF_PATH, method: "POST", handler: createProtocolCutoff });
 http.route({ path: CLOSURE_READINESS_PATH, method: "POST", handler: getClosureReadiness });
+http.route({
+	path: "/cms-media/catalog-private-assets/deletion-manifest",
+	method: "POST",
+	handler: readCatalogPrivateDeletion,
+});
+
+http.route({
+	path: "/cms-media/catalog-private-assets/complete-deletion",
+	method: "POST",
+	handler: completeCatalogPrivateDeletion,
+});
+
 http.route({
 	path: CMS_MEDIA_COMPLETION_PATH,
 	method: "POST",

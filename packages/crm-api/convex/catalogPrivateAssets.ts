@@ -1,9 +1,11 @@
+import { paginationOptsValidator } from "convex/server";
+import { privateAssetDeletion, requirePrivateAssetUnused, requirePrivateObjectUnused } from "./helpers/catalogDeletion";
 import { catalogEditorTenantOrigin, validEditorSiteOrigin } from "./helpers/catalogEditorTenantOrigins";
 import { v } from "convex/values";
 import { internal } from "./_generated/api";
 import type { Doc } from "./_generated/dataModel";
 import type { MutationCtx, QueryCtx } from "./_generated/server";
-import { internalMutation, internalQuery, query } from "./_generated/server";
+import { internalMutation, internalQuery, mutation, query } from "./_generated/server";
 import { requireSiteAdmin } from "./authHelpers";
 import {
 	CATALOG_PRIVATE_ASSET_CANARY_EXPECTATION,
@@ -1562,5 +1564,116 @@ export const resolveEditorUpload = query({
 			|| (binding.journalVersion === 1 && binding.productKind !== productKind)
 		) throw new Error("Private catalog editor upload is not verified");
 		return await resolveVerifiedEditorBinding(ctx, binding);
+	},
+});
+
+const deletionKind = v.union(v.literal("print_source"), v.literal("paid_digital_file"));
+
+export const listForCleanup = query({
+	args: { siteUrl: v.string(), kind: deletionKind, paginationOpts: paginationOptsValidator },
+	handler: async (ctx, { siteUrl, kind, paginationOpts }) => {
+		await requireSiteAdmin(ctx, siteUrl);
+		if (!Number.isInteger(paginationOpts.numItems) || paginationOpts.numItems < 1 || paginationOpts.numItems > 50) {
+			throw new Error("Cleanup pages must contain 1–50 files");
+		}
+		const table = kind === "print_source" ? "catalogPrintSourceAssets" : "catalogDigitalFileAssets";
+		const result = await ctx.db.query(table).withIndex("by_siteUrl_and_createdAt", (q) => q.eq("siteUrl", siteUrl)).order("desc").paginate(paginationOpts);
+		const page = await Promise.all(result.page.map(async (asset) => {
+			const deletion = await privateAssetDeletion(ctx, siteUrl, kind, asset.assetKey);
+			return { id: asset._id, kind, filename: asset.originalFilename, sizeBytes: asset.sizeBytes, status: deletion?.status ?? "verified" };
+		}));
+		return { ...result, page: page.filter((asset) => asset.status !== "deleted") };
+	},
+});
+
+async function expiredUploadCanBeCleaned(ctx: Pick<QueryCtx, "db">, operation: Doc<"catalogPrivateAssetEditorOperations">) {
+	const now = Date.now();
+	if (!Number.isSafeInteger(operation.createdAt) || operation.createdAt < 0 || !operation.sha256
+		|| now < operation.createdAt + CATALOG_EDITOR_CONTINUATION_TTL_MS + CATALOG_EDITOR_CAPABILITY_PURGE_SKEW_MS) return false;
+	for (const purpose of ["upload", "storage", "inspection"] as const) {
+		const capability = await ctx.db.query("catalogPrivateAssetEditorCapabilities")
+			.withIndex("by_siteUrl_and_operationId_and_purpose", (q) => q.eq("siteUrl", operation.siteUrl).eq("operationId", operation.operationId).eq("purpose", purpose)).unique();
+		if (capability && (!Number.isSafeInteger(capability.expiresAt) || capability.expiresAt + CATALOG_EDITOR_CAPABILITY_PURGE_SKEW_MS > now)) return false;
+	}
+	for (const kind of ["prepare", "storage", "inspection_dispatch"] as const) {
+		const effect = await ctx.db.query("catalogPrivateAssetEditorEffects")
+			.withIndex("by_siteUrl_and_operationId_and_kind", (q) => q.eq("siteUrl", operation.siteUrl).eq("operationId", operation.operationId).eq("kind", kind)).unique();
+		if (effect?.state === "leased" && (effect.leaseExpiresAt === undefined || !Number.isSafeInteger(effect.leaseExpiresAt) || effect.leaseExpiresAt > now)) return false;
+	}
+	return true;
+}
+
+export const listExpiredUploadsForCleanup = query({
+	args: { siteUrl: v.string(), kind: deletionKind, paginationOpts: paginationOptsValidator },
+	handler: async (ctx, { siteUrl, kind, paginationOpts }) => {
+		await requireSiteAdmin(ctx, siteUrl);
+		if (!Number.isInteger(paginationOpts.numItems) || paginationOpts.numItems < 1 || paginationOpts.numItems > 50) throw new Error("Cleanup pages must contain 1–50 files");
+		const result = await ctx.db.query("catalogPrivateAssetEditorOperations")
+			.withIndex("by_siteUrl_and_kind_and_createdAt", (q) => q.eq("siteUrl", siteUrl).eq("kind", kind)).order("desc").paginate(paginationOpts);
+		const page = [];
+		for (const operation of result.page) {
+			if (operation.lifecycle === "verified" || !operation.originalFilename || !(await expiredUploadCanBeCleaned(ctx, operation))) continue;
+			const deletion = await privateAssetDeletion(ctx, siteUrl, kind, operation.assetKey);
+			if (deletion?.status === "deleted") continue;
+			page.push({ id: operation._id, kind, filename: operation.originalFilename, sizeBytes: operation.sizeBytes ?? 0, status: deletion?.status ?? "expired" });
+		}
+		return { ...result, page };
+	},
+});
+
+export const requestDeletion = mutation({
+	args: { siteUrl: v.string(), kind: deletionKind, id: v.string() },
+	handler: async (ctx, { siteUrl, kind, id }) => {
+		const { identity } = await requireSiteAdmin(ctx, siteUrl);
+		const table = kind === "print_source" ? "catalogPrintSourceAssets" : "catalogDigitalFileAssets";
+		const normalizedAssetId = ctx.db.normalizeId(table, id);
+		let asset = normalizedAssetId ? await ctx.db.get(normalizedAssetId) : null;
+		const operationId = ctx.db.normalizeId("catalogPrivateAssetEditorOperations", id);
+		const operation = operationId ? await ctx.db.get(operationId) : null;
+		if (operation) {
+			if (operation.siteUrl !== siteUrl || operation.kind !== kind || !(await expiredUploadCanBeCleaned(ctx, operation))) {
+				throw new Error("Upload is not eligible for cleanup yet; capabilities or inspection may still be active");
+			}
+			asset = await ctx.db.query(table).withIndex("by_siteUrl_and_assetKey", (q) => q.eq("siteUrl", siteUrl).eq("assetKey", operation.assetKey)).unique();
+		}
+		if ((!asset && !operation) || (asset && asset.siteUrl !== siteUrl)) throw new Error("Private catalog file not found");
+		const source = asset ?? operation;
+		if (!source || !source.sha256) throw new Error("Upload identity is incomplete");
+		const existing = await privateAssetDeletion(ctx, siteUrl, kind, source.assetKey);
+		if (existing) {
+			if (id !== existing.assetId && id !== existing.operationId) throw new Error("Private deletion identity conflict");
+			return { status: existing.status, deletionId: existing._id };
+		}
+		if (asset) await requirePrivateAssetUnused(ctx, siteUrl, kind, asset._id);
+		await requirePrivateObjectUnused(ctx, siteUrl, source.privateObjectKey);
+		const deletionId = await ctx.db.insert("catalogPrivateAssetDeletions", {
+			siteUrl, kind, ...(asset ? { assetId: asset._id } : {}), ...(operation ? { operationId: operation._id } : {}), assetKey: source.assetKey,
+			privateObjectKey: source.privateObjectKey, sha256: source.sha256,
+			status: "deleting", requestedAt: Date.now(), requestedBy: identity.tokenIdentifier,
+		});
+		return { status: "deleting" as const, deletionId };
+	},
+});
+
+/** Storage identities are available only to the tenant's server completion authority. */
+export const getDeletionManifest = internalQuery({
+	args: { siteUrl: v.string(), kind: deletionKind, id: v.string(), deletionId: v.id("catalogPrivateAssetDeletions") },
+	handler: async (ctx, { siteUrl, kind, id, deletionId }) => {
+		const row = await ctx.db.get(deletionId);
+		if (!row || row.siteUrl !== siteUrl || row.kind !== kind || (row.assetId !== id && row.operationId !== id)) throw new Error("Private deletion identity conflict");
+		return { status: row.status, siteUrl, kind, assetKey: row.assetKey, privateObjectKey: row.privateObjectKey, sha256: row.sha256 };
+	},
+});
+
+export const completeDeletion = internalMutation({
+	args: { siteUrl: v.string(), kind: deletionKind, id: v.string(), assetKey: v.string(), sha256: v.string() },
+	handler: async (ctx, { siteUrl, kind, id, assetKey, sha256 }) => {
+		const deletion = await privateAssetDeletion(ctx, siteUrl, kind, assetKey);
+		if (!deletion || (deletion.assetId !== id && deletion.operationId !== id) || deletion.sha256 !== sha256) throw new Error("Private catalog deletion identity conflict");
+		if (deletion.status === "deleted") return { deleted: true };
+		if (deletion.assetId) await requirePrivateAssetUnused(ctx, siteUrl, kind, deletion.assetId);
+		await requirePrivateObjectUnused(ctx, siteUrl, deletion.privateObjectKey);
+		await ctx.db.patch(deletion._id, { status: "deleted", completedAt: Date.now() });
+		return { deleted: true };
 	},
 });

@@ -1,3 +1,4 @@
+import { isPublicSiteOffline } from "./publicSiteAvailability";
 import type { Id } from "../_generated/dataModel";
 import type { QueryCtx } from "../_generated/server";
 import { requireDocumentSiteAdmin, requireSiteAdmin } from "../authHelpers";
@@ -112,6 +113,7 @@ export async function getPublishedPostBySlug(
 	ctx: QueryCtx,
 	args: { siteUrl: string; slug: string },
 ) {
+	if (await isPublicSiteOffline(ctx, args.siteUrl)) return null;
 	let slug: string;
 	try {
 		slug = requireCanonicalPostSlug(args.slug);
@@ -152,6 +154,7 @@ export async function resolvePublishedPostSlug(
 	ctx: QueryCtx,
 	args: { siteUrl: string; slug: string },
 ) {
+	if (await isPublicSiteOffline(ctx, args.siteUrl)) return null;
 	let slug: string;
 	try {
 		slug = requireCanonicalPostSlug(args.slug);
@@ -195,6 +198,7 @@ export async function listPublishedPosts(
 	siteUrl: string,
 	limit: number,
 ) {
+	if (await isPublicSiteOffline(ctx, siteUrl)) return [];
 	if (!Number.isSafeInteger(limit) || limit < 1 || limit > POST_PUBLIC_LIST_MAX) {
 		throw new Error(
 			`Published Post lists must request between 1 and ${POST_PUBLIC_LIST_MAX} items`,

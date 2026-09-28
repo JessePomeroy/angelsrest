@@ -20,6 +20,7 @@ export function isSiteAdminIdentity(
 	identity: UserIdentity,
 	client: Doc<"platformClients">,
 ) {
+	if (client.offboarding) return false;
 	const stableIds = client.adminIdentityIds ?? [];
 	if (stableIds.length > 0) {
 		return stableIds.includes(identity.tokenIdentifier);
@@ -144,6 +145,10 @@ export async function requireSiteAdmin(
 		.unique();
 	if (!client) {
 		throw new Error("Not authorized (site not found)");
+	}
+	if (client.offboarding) {
+		await requireCreator(ctx);
+		return { identity, client };
 	}
 	if (!isSiteAdminIdentity(identity, client)) {
 		throw new Error("Not authorized (not a site admin)");

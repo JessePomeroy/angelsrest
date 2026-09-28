@@ -1,3 +1,4 @@
+import { requirePrivateAssetAvailable } from "./catalogDeletion";
 import type { Doc, Id } from "../_generated/dataModel";
 import type { MutationCtx, QueryCtx } from "../_generated/server";
 import type {
@@ -288,6 +289,7 @@ export async function requireNoPrivateCatalogTargetRows(
 	facts: readonly CatalogPrivateAssetFacts[],
 ) {
 	for (const asset of facts) {
+		await requirePrivateAssetAvailable(ctx, siteUrl, asset.kind, asset.assetKey);
 		// V1 identity was table-scoped, so an opposite-kind key is not a conflict.
 		const [target, authority] = asset.kind === "print_source"
 			? await Promise.all([
@@ -346,6 +348,7 @@ export async function insertPrivateCatalogTargetRows(
 ) {
 	const targets: CatalogPrivateAssetTargetMapping[] = [];
 	for (const item of facts) {
+		await requirePrivateAssetAvailable(ctx, coordination.siteUrl, item.kind, item.assetKey);
 		const target = privateCatalogRegistrationTarget(coordination.siteUrl, item, {
 			createdAt: storageReceivedAt,
 			createdBy: STORAGE_ACTOR,
@@ -516,6 +519,7 @@ export async function resolvePrivateCatalogV2TargetPlan(
 	const plan: CatalogPrivateAssetTargetPlan[] = [];
 	let sharedOrigin: ValidatedV1Origin | undefined;
 	for (const item of facts) {
+		await requirePrivateAssetAvailable(ctx, siteUrl, item.kind, item.assetKey);
 		const [printTarget, paidTarget, printAuthority, paidAuthority] = await Promise.all([
 			printTargetByKey(ctx, siteUrl, item.assetKey),
 			paidTargetByKey(ctx, siteUrl, item.assetKey),
@@ -651,6 +655,7 @@ export async function materializePrivateCatalogV2Targets(
 	storageReceivedAt: number,
 	verifiedAt: number,
 ) {
+	for (const item of facts) await requirePrivateAssetAvailable(ctx, coordination.siteUrl, item.kind, item.assetKey);
 	if (facts.length !== plan.length) {
 		throw new Error("Private catalog V2 target plan is incomplete");
 	}
@@ -772,6 +777,7 @@ export async function requireVerifiedPrivateCatalogTargets(
 	coordination: VerifiedCoordination,
 ) {
 	const facts = await requireVerifiedCoordinationEvidence(coordination);
+	for (const item of facts) await requirePrivateAssetAvailable(ctx, coordination.siteUrl, item.kind, item.assetKey);
 	if (
 		"targetResolutionVersion" in coordination
 		|| "targetBindings" in coordination

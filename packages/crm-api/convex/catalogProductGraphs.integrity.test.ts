@@ -202,7 +202,7 @@ describe("catalog product graph V2 integrity and asset boundaries", () => {
 		})).rejects.toThrow(/unique|duplicate|identity ownership|more than one/i);
 	});
 
-	test("releases web media once only immutable catalog history references it", async () => {
+	test("retains web media while immutable catalog history references it", async () => {
 		const fixture = await setup(modules);
 		const created = await createGraph(
 			fixture.adminA,
@@ -217,9 +217,9 @@ describe("catalog product graph V2 integrity and asset boundaries", () => {
 		await expect(fixture.adminA.mutation(api.mediaAssets.requestDeletion, {
 			siteUrl: SITE_A.siteUrl,
 			id: fixture.webA,
-		})).resolves.toMatchObject({ status: "deleting" });
+		})).rejects.toThrow(/retained by catalog/);
 		expect((await fixture.adminA.query(api.mediaAssets.get, { id: fixture.webA })).status)
-			.toBe("deleting");
+			.toBe("ready");
 	});
 
 	test("stores and reloads the maximum twenty-member aggregate graph atomically", async () => {

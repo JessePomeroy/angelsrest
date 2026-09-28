@@ -1,3 +1,4 @@
+import { removeUnusedCatalogProduct } from "./helpers/catalogDeletion";
 import { paginationOptsValidator } from "convex/server";
 import { v } from "convex/values";
 import { mutation, query } from "./_generated/server";
@@ -136,4 +137,10 @@ export const listForEditor = query({
 	},
 	handler: async (ctx, { siteUrl, productKind }) =>
 		await listCatalogProductGraphsV2ForEditor(ctx, siteUrl, productKind),
+});
+
+/** Permanently remove an unpublished, commercially unreferenced product graph. */
+export const remove = mutation({
+	args: { productId: v.id("catalogProducts"), expectedUpdatedAt: v.number() },
+	handler: removeUnusedCatalogProduct,
 });

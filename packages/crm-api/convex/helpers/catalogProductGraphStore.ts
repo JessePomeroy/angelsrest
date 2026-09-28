@@ -1,3 +1,4 @@
+import { isPublicSiteOffline } from "./publicSiteAvailability";
 import type { PaginationOptions } from "convex/server";
 import type { Doc, Id } from "../_generated/dataModel";
 import type { MutationCtx, QueryCtx } from "../_generated/server";
@@ -242,7 +243,7 @@ async function projectCatalogGraphAssetEligibility(
 		referenceCount: references.length,
 		activeReferenceCount,
 		retainedReferenceCount: references.length - activeReferenceCount,
-		eligibleForExternalCleanup: activeReferenceCount === 0,
+		eligibleForExternalCleanup: references.length === 0,
 		externalObjectsWillBeDeleted: false,
 	};
 }
@@ -944,6 +945,7 @@ export async function listPublishedCatalogProductGraphsV2(
 	ctx: QueryCtx,
 	siteUrl: string,
 ) {
+	if (await isPublicSiteOffline(ctx, siteUrl)) return [];
 	const enabledKinds = await loadPublicCatalogProductKinds(ctx, siteUrl);
 	const rows = await loadPublishedCatalogProductHeaders(ctx, siteUrl);
 	if (rows.length > CATALOG_PUBLIC_PRODUCT_CAP) {
@@ -969,6 +971,7 @@ export async function getPublishedCatalogProductGraphV2BySlug(
 	ctx: QueryCtx,
 	args: { siteUrl: string; slug: string },
 ) {
+	if (await isPublicSiteOffline(ctx, args.siteUrl)) return null;
 	const enabledKinds = await loadPublicCatalogProductKinds(ctx, args.siteUrl);
 	const value = await ctx.db
 		.query("catalogProducts")

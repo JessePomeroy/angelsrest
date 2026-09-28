@@ -553,7 +553,7 @@ describe("dormant private catalog product graph V2", () => {
 		expect(resumed.revisionId).not.toBe(created.revisionId);
 	});
 
-	test("reports retired graph rows and private assets as cleanup-eligible without deleting them", async () => {
+	test("reports retained graph references as ineligible until unused product removal", async () => {
 		const fixture = await setup(modules);
 		const draft = graphDraft("print", fixture, "retired-print");
 		const created = await createGraph(fixture.adminA, SITE_A.siteUrl, "retired-print", draft);
@@ -607,7 +607,7 @@ describe("dormant private catalog product graph V2", () => {
 		expect(retired.webMedia.every((asset) =>
 			asset.activeReferenceCount === 0
 			&& asset.retainedReferenceCount >= 1
-			&& asset.eligibleForExternalCleanup
+			&& !asset.eligibleForExternalCleanup
 			&& !asset.externalObjectsWillBeDeleted
 		)).toBe(true);
 		expect(retired.printSources).toEqual([expect.objectContaining({
@@ -615,7 +615,7 @@ describe("dormant private catalog product graph V2", () => {
 			referenceCount: 1,
 			activeReferenceCount: 0,
 			retainedReferenceCount: 1,
-			eligibleForExternalCleanup: true,
+			eligibleForExternalCleanup: false,
 			externalObjectsWillBeDeleted: false,
 		})]);
 		expect(await graphRows(fixture, created.revisionId)).toMatchObject({
@@ -624,7 +624,7 @@ describe("dormant private catalog product graph V2", () => {
 		});
 	});
 
-	test("keeps shared web media ineligible while allowing unshared private-file cleanup eligibility", async () => {
+	test("retains both shared web media and historical private files", async () => {
 		const fixture = await setup(modules);
 		const downloadDraft = graphDraft("digital_download", fixture, "retired-download");
 		const download = await createGraph(
@@ -664,7 +664,7 @@ describe("dormant private catalog product graph V2", () => {
 			referenceCount: 1,
 			activeReferenceCount: 0,
 			retainedReferenceCount: 1,
-			eligibleForExternalCleanup: true,
+			eligibleForExternalCleanup: false,
 			externalObjectsWillBeDeleted: false,
 		})]);
 	});
@@ -676,6 +676,7 @@ describe("dormant private catalog product graph V2", () => {
 			"discardDraft",
 			"getEditorState",
 			"listForEditor",
+			"remove",
 			"saveDraft",
 		]);
 		expect(Object.keys(catalogProductGraphsModule).sort()).toEqual([
@@ -688,6 +689,7 @@ describe("dormant private catalog product graph V2", () => {
 			"listForEditor",
 			"listPublished",
 			"publishDraft",
+			"remove",
 			"replaceDraftPrivateAsset",
 			"saveDraft",
 			"unpublish",
@@ -799,4 +801,19 @@ describe("dormant private catalog product graph V2", () => {
 		)).toMatchObject({ productId: expect.any(String) });
 	});
 
+});
+
+test("offboarded tenants retain their published graph but cannot serve the public catalog", async () => {
+ const fixture = await setup(modules);
+ const created = await createGraph(fixture.adminA, SITE_A.siteUrl, "offline-print", graphDraft("print", fixture, "offline-print"));
+ const header = await fixture.t.run(ctx => ctx.db.get(created.productId));
+ await fixture.adminA.mutation(api.catalogProductGraphs.publishDraft, { productId: created.productId, expectedDraftRevisionId: created.revisionId, expectedPublishedRevisionId: null, expectedUpdatedAt: header!.updatedAt });
+ expect((await fixture.t.query(api.catalogProductGraphs.listPublished, { siteUrl: SITE_A.siteUrl })).length).toBeGreaterThan(0);
+ await fixture.t.run(async ctx => {
+  const client = await ctx.db.query("platformClients").withIndex("by_siteUrl", q => q.eq("siteUrl", SITE_A.siteUrl)).unique();
+  await ctx.db.patch(client!._id, { offboarding: { disabledAt: Date.now(), disabledBy: "test-owner", retainUntil: Date.now() + 90 * 86400000 } });
+ });
+ expect(await fixture.t.query(api.catalogProductGraphs.listPublished, { siteUrl: SITE_A.siteUrl })).toEqual([]);
+ expect(await fixture.t.query(api.catalogProductGraphs.getPublishedBySlug, { siteUrl: SITE_A.siteUrl, slug: slugFor("offline-print") })).toBeNull();
+ expect(await fixture.t.run(ctx => ctx.db.get(created.revisionId))).not.toBeNull();
 });

@@ -21,6 +21,8 @@ export const create = mutation({
 	},
 	handler: async (ctx, { webhookSecret, ...args }) => {
 		await requireWebhookCallerOrAuth(ctx, webhookSecret, { allowAuth: false });
+		const client = await ctx.db.query("platformClients").withIndex("by_siteUrl", q => q.eq("siteUrl", args.siteUrl)).unique();
+		if (client?.offboarding) throw new Error("Site intake is disabled");
 		return await ctx.db.insert("inquiries", {
 			...args,
 			status: "new",
@@ -88,5 +90,15 @@ export const updateStatus = mutation({
 	handler: async (ctx, { id, status }) => {
 		await requireDocumentSiteAdmin(ctx, "inquiries", id);
 		await ctx.db.patch(id, { status });
+	},
+});
+
+/** Removes the stored inquiry only; sent messages and audit records remain separate. */
+export const remove = mutation({
+	args: { id: v.id("inquiries") },
+	handler: async (ctx, { id }) => {
+		await requireDocumentSiteAdmin(ctx, "inquiries", id);
+		await ctx.db.delete(id);
+		return { deleted: true };
 	},
 });

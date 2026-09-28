@@ -86,6 +86,7 @@ export async function restoreContentDocument(
 	ctx: MutationCtx,
 	document: ContentDocument,
 ) {
+	if (document.purgedAt !== undefined) throw new Error("Content was permanently deleted");
 	if (!isContentDocumentArchived(document)) {
 		return { documentId: document._id, archivedAt: null };
 	}

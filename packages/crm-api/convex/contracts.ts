@@ -150,6 +150,13 @@ export const markSigned = mutation({
 export const remove = mutation({
 	args: { contractId: v.id("contracts"), siteUrl: v.string() },
 	handler: async (ctx, { contractId, siteUrl }) => {
+		await requireSiteAdmin(ctx, siteUrl);
+		const doc = await ctx.db.get(contractId);
+		if (!doc || doc.siteUrl !== siteUrl) throw new Error("Not found");
+		// Historical evidence remains authoritative even after a status change.
+		if (doc.status === "signed" || doc.signedAt !== undefined || doc.signatureData !== undefined || doc.signedByName !== undefined || doc.signedByEmail !== undefined || doc.signedIp !== undefined) {
+			throw new Error("Signed contracts must be retained");
+		}
 		await deleteDocument(ctx, contractId, siteUrl);
 	},
 });

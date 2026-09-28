@@ -520,9 +520,11 @@ export const remove = mutation({
 		if (
 			invoice.activeCheckoutId ||
 			invoice.stripeCheckoutSessionId ||
-			(invoice.paidAmount ?? 0) > 0
+			(invoice.paidAmount ?? 0) > 0 || invoice.paidAt !== undefined || invoice.status === "paid" || invoice.status === "partial"
 		)
 			throw new Error("Invoices with payment history must be retained; cancel instead");
+		const sourceQuote = await ctx.db.query("quotes").withIndex("by_convertedToInvoice", q => q.eq("convertedToInvoice", invoiceId)).first();
+		if (sourceQuote) throw new Error("Invoices linked to retained quotes must be retained");
 		await deleteDocument(ctx, invoiceId, siteUrl);
 	},
 });

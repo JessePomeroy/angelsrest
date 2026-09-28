@@ -1,3 +1,4 @@
+import { privateAssetDeletion, requirePrivateAssetAvailable } from "./catalogDeletion";
 import type { PaginationOptions } from "convex/server";
 import type { Doc, Id } from "../_generated/dataModel";
 import type { MutationCtx, QueryCtx } from "../_generated/server";
@@ -58,7 +59,8 @@ export async function listCatalogPrivateAssetCandidates(
 			.paginate(boundedPaginationOpts);
 		return {
 			...result,
-			page: result.page.map(toEditorSafePrivatePrintSourceAsset),
+			page: (await Promise.all(result.page.map(async (asset) =>
+				await privateAssetDeletion(ctx, siteUrl, "print_source", asset.assetKey) ? [] : [toEditorSafePrivatePrintSourceAsset(asset)]))).flat(),
 		};
 	}
 
@@ -69,7 +71,8 @@ export async function listCatalogPrivateAssetCandidates(
 		.paginate(boundedPaginationOpts);
 	return {
 		...result,
-		page: result.page.map(toEditorSafePaidDigitalFileAsset),
+		page: (await Promise.all(result.page.map(async (asset) =>
+			await privateAssetDeletion(ctx, siteUrl, "paid_digital_file", asset.assetKey) ? [] : [toEditorSafePaidDigitalFileAsset(asset)]))).flat(),
 	};
 }
 
@@ -161,6 +164,7 @@ export async function requireVerifiedPrintSourceAsset(
 			"Catalog print sources require a verified private asset owned by the same site",
 		);
 	}
+	await requirePrivateAssetAvailable(ctx, siteUrl, "print_source", asset.assetKey);
 	validatePrivatePrintSourceAsset(privatePrintSourceValue(asset));
 	return asset;
 }
@@ -178,6 +182,7 @@ export async function requireVerifiedPaidFileAssetById(
 			"Catalog paid files require a verified private asset owned by the same site",
 		);
 	}
+	await requirePrivateAssetAvailable(ctx, siteUrl, "paid_digital_file", asset.assetKey);
 	validatePaidDigitalFileAsset(paidDigitalFileValue(asset));
 	return asset;
 }

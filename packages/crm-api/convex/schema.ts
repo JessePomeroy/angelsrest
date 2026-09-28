@@ -254,6 +254,10 @@ export default defineSchema({
 			platformAccountId: v.string(),
 			livemode: v.boolean(),
 		})),
+		offboarding: v.optional(v.object({
+			disabledAt: v.number(), disabledBy: v.string(), retainUntil: v.number(),
+			erasureRequestedAt: v.optional(v.number()), erasureRequestedBy: v.optional(v.string()), immediateErasure: v.optional(v.boolean()),
+		})),
 		adminEmails: v.array(v.string()),
 		// Stable Better Auth identities claimed by verified invited admins.
 		// Optional during the R12 widen/claim/narrow rollout.
@@ -323,6 +327,7 @@ export default defineSchema({
 		updatedBy: v.string(),
 		publishedAt: v.optional(v.number()),
 		publishedBy: v.optional(v.string()),
+		purgedAt: v.optional(v.number()),
 		archivedAt: v.optional(v.number()),
 		archivedBy: v.optional(v.string()),
 	})
@@ -367,6 +372,7 @@ export default defineSchema({
 	})
 		.index("by_documentId_and_createdAt", ["documentId", "createdAt"])
 		.index("by_siteUrl_and_kind_and_createdAt", ["siteUrl", "kind", "createdAt"])
+		.index("by_restoredFromRevisionId", ["restoredFromRevisionId"])
 		.index("by_siteUrl_and_restoreOperationId", [
 			"siteUrl",
 			"restoreOperationId",
@@ -484,6 +490,10 @@ export default defineSchema({
 	// A completed storage deletion permanently reserves the Worker's asset UUID.
 	// Keeping this small record outside the active media library prevents a
 	// delayed registration from recreating metadata for tombstoned R2 objects.
+	mediaOrphanDeletions: defineTable({
+		siteUrl: v.string(), assetId: v.string(), requestedAt: v.number(), requestedBy: v.string(),
+	}).index("by_siteUrl_and_assetId", ["siteUrl", "assetId"]),
+
 	mediaAssetDeletionTombstones: defineTable({
 		siteUrl: v.string(),
 		assetId: v.string(),
@@ -678,6 +688,27 @@ export default defineSchema({
 		.index("by_productId_and_revisionId", ["productId", "revisionId"])
 		.index("by_siteUrl_and_assetId", ["siteUrl", "assetId"]),
 
+	catalogProductDeletions: defineTable({
+		siteUrl: v.string(), productId: v.id("catalogProducts"), productKey: v.string(),
+		deletedAt: v.number(), deletedBy: v.string(),
+	}).index("by_siteUrl_and_productId", ["siteUrl", "productId"])
+		.index("by_productId", ["productId"]),
+
+	// Durable deletion fence. Asset metadata and upload journals remain audit records.
+	catalogPrivateAssetDeletions: defineTable({
+		siteUrl: v.string(),
+		kind: v.union(v.literal("print_source"), v.literal("paid_digital_file")),
+		assetId: v.optional(v.union(v.id("catalogPrintSourceAssets"), v.id("catalogDigitalFileAssets"))),
+		operationId: v.optional(v.id("catalogPrivateAssetEditorOperations")),
+		assetKey: v.string(),
+		privateObjectKey: v.string(),
+		sha256: v.string(),
+		status: v.union(v.literal("deleting"), v.literal("deleted")),
+		requestedAt: v.number(),
+		requestedBy: v.string(),
+		completedAt: v.optional(v.number()),
+	}).index("by_siteUrl_and_kind_and_assetKey", ["siteUrl", "kind", "assetKey"]),
+
 	// Full-resolution print masters and paid files use separate registries and
 	// private namespaces. No public URL or download capability is stored here.
 	catalogPrintSourceAssets: defineTable(privatePrintSourceAssetValidator)
@@ -739,6 +770,7 @@ export default defineSchema({
 		inspectionReceivedAt: v.optional(v.number()),
 	})
 		.index("by_siteUrl_and_operationId", ["siteUrl", "operationId"])
+		.index("by_siteUrl_and_kind_and_createdAt", ["siteUrl", "kind", "createdAt"])
 		.index("by_siteUrl_and_uploadHandleHash", ["siteUrl", "uploadHandleHash"]),
 
 	// One row per purpose and generation. Raw opaque values are purged after
@@ -1666,7 +1698,8 @@ export default defineSchema({
 		.index("by_siteUrl_and_status_and_acceptedAt", ["siteUrl", "status", "acceptedAt"])
 		.index("by_siteUrl_and_status_and_declinedAt", ["siteUrl", "status", "declinedAt"])
 		.index("by_siteUrl_status", ["siteUrl", "status"])
-		.index("by_siteUrl_and_quoteNumber", ["siteUrl", "quoteNumber"]),
+		.index("by_siteUrl_and_quoteNumber", ["siteUrl", "quoteNumber"])
+		.index("by_convertedToInvoice", ["convertedToInvoice"]),
 
 	// Quote presets — saved package configurations for quick loading
 	quotePresets: defineTable({

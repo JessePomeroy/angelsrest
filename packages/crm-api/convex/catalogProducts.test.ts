@@ -951,6 +951,7 @@ describe("tenant-scoped catalog product drafts", () => {
 			"discardDraft",
 			"getEditorState",
 			"listForEditor",
+			"remove",
 			"saveDraft",
 		]);
 
