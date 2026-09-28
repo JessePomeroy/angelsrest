@@ -1,0 +1,37 @@
+/* Keep shared Admin feedback within the site's slate, periwinkle, and time accent
+ * palette. Explicit labels and icons continue to communicate each status. */
+html.dark body [data-admin] {
+	--status-slate: var(--color-surface-300);
+	--status-amber: color-mix(in srgb, var(--admin-accent) 50%, var(--color-surface-50));
+	--status-lavender: var(--color-primary-500);
+	--status-peach: color-mix(in srgb, var(--admin-accent) 50%, var(--color-surface-50));
+	--status-sage: var(--color-primary-500);
+	--status-rose: var(--color-surface-100);
+}
+
+html:not(.dark) body [data-admin] {
+	--status-slate: var(--color-surface-700);
+	--status-amber: color-mix(in srgb, var(--admin-accent) 25%, var(--color-surface-950));
+	--status-lavender: var(--color-surface-700);
+	--status-peach: color-mix(in srgb, var(--admin-accent) 20%, var(--color-surface-900));
+	--status-sage: var(--color-surface-700);
+	--status-rose: var(--color-surface-950);
+}
+
+html.dark body [data-admin],
+html:not(.dark) body [data-admin] {
+	--admin-success: var(--status-sage);
+	--admin-info: var(--status-lavender);
+	--admin-warning: var(--status-amber);
+	--admin-error: var(--status-rose);
+	--admin-danger: var(--status-rose);
+}
+
+/* Toasts use solid status fills, unlike the translucent badges and alerts. */
+html body [data-admin] .toast {
+	color: var(--admin-bg);
+}
+
+html body [data-admin] .toast-info {
+	background: var(--status-lavender);
+}
