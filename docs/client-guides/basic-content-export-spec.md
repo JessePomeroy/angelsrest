@@ -1,6 +1,6 @@
 # Free basic content export — proposed specification
 
-**Client-facing draft. A local Convex/R2 operator implementation and optional bounded dashboard download now exist; see [the runbook](../runbooks/content-export.md) for its exact scope, limits and rollout status. No live client archive or delivery link has been created.**
+**Client-facing draft. A Convex/R2 operator implementation and optional bounded dashboard download now exist; see [the runbook](../runbooks/content-export.md) for its exact scope, limits and rollout status. A real Queen Worm operator archive has been verified. Dashboard staging verification is tracked in the runbook; no archive has been delivered to the client.**
 
 ## Client-facing description
 
@@ -34,13 +34,9 @@ client-content-export-YYYY-MM-DD.zip
 ├── README.md
 ├── manifest.json
 ├── content/
-│   ├── site-settings.json
-│   ├── pages.json
+│   ├── content.json       # typed page/site/post/author/category documents
 │   ├── portfolio.json
-│   ├── products.json
-│   ├── posts.json
-│   ├── authors.json
-│   └── categories.json
+│   └── products.json
 ├── media/
 │   ├── web/ASSET_UUID/master.webp
 │   ├── print/ASSET_KEY/original.jpg
@@ -52,15 +48,15 @@ client-content-export-YYYY-MM-DD.zip
 
 Only include content types the site uses. Empty files are unnecessary. JSON is the authoritative structured export; CSV is a convenient inventory, not a lossy replacement for product relationships or structured page text. Keep original names as metadata while using validated, collision-resistant archive paths.
 
-`manifest.json` records the export format version, canonical tenant/site, creation time, included scope, source document/revision IDs, relative file paths, content types, byte counts and SHA-256 checksums. Do not include private bucket names, credentials, signed URLs or the exporter's account details. Content references point to package-relative media paths; any external links that cannot be packaged are explicitly listed.
+`manifest.json` records the export format version, canonical tenant/site, creation time, included scope, source fingerprint, counts, relative file paths, content types, byte counts and SHA-256 checksums. Source document/revision IDs and relationships remain in `content/*.json`. Do not include private bucket names, credentials, signed URLs or the exporter's account details. Content references point to package-relative media paths; any external links that cannot be packaged are explicitly listed.
 
-`README.md` explains the package, publication/draft labels, file formats, media limitations, counts and verification. `exceptions.json` lists missing, unreadable, deleted, unfinished or excluded items with reasons. A required missing file blocks a complete-success result; the owner must resolve it or explicitly approve a clearly labeled partial handoff.
+`README.md` explains the package, publication/draft labels, file formats, media limitations and verification. `exceptions.json` records excluded deleted/unfinished items and external links with reasons. A missing or unreadable required file aborts the export; the current implementation does not produce an approved partial handoff.
 
-For a large site, use numbered archives plus one manifest rather than buffering the entire export or silently truncating it. Agree the resulting package size before secure delivery. Expiring delivery links are separate from the 90-day retention period.
+The current operator implementation streams into one ZIP64 archive with explicit limits. Numbered archives are a possible future option for sites beyond those limits; they are not implemented. Never silently truncate an export. Agree the resulting package size before secure delivery. Expiring delivery links are separate from the 90-day retention period.
 
-## Recommended first implementation
+## Implementation sequence
 
-Start with an **operator-run export command**, not a public endpoint or a dashboard button. This keeps the first version small while establishing a reusable, tested export boundary.
+The **operator-run export command** established the reusable export boundary first. A real Queen Worm archive now verifies that path. The on-demand dashboard adapter reuses the same core; its live activation is tracked in the runbook.
 
 1. **Plan without writing data.** Accept a tenant identity and explicit scope. Authenticate the platform owner/site administrator and resolve the stored canonical tenant. Enumerate paginated content and ready media through dedicated, allowlisted export projections. Report expected counts, bytes, exclusions and blockers. Never export a whole shared Convex deployment.
 2. **Capture current state.** Record exact immutable revision IDs, relations and asset identities. Use a defined source fingerprint and recheck it before declaring success. If content changes or a referenced item is deleted during export, abort/retry or report an explicit partial result. Requesting an export must not offboard the site or change its publishing state.
@@ -68,7 +64,7 @@ Start with an **operator-run export command**, not a public endpoint or a dashbo
 4. **Build and verify locally.** Create the normalized JSON and manifest, reconcile all expected items, check every internal reference, validate archive paths against traversal/collisions, reopen the archive and verify checksums. Keep temporary output private and outside Git; clean up interrupted runs deliberately.
 5. **Deliver separately.** The owner approves the recipient and package before sharing through an authenticated or expiring private link. Do not automatically email the archive or create a public bucket URL. Record a sanitized completion receipt, not the customer's files or credentials, in operational evidence.
 
-The export projections should preserve portable content fields rather than exposing raw tables wholesale. Queen Worm's content source is Convex plus managed media; Reflecting Pool still uses Sanity for public content, so it needs its own source adapter. Both can produce the same package format without pretending their source schemas are identical.
+The export projections preserve portable content fields rather than exposing raw tables wholesale. Queen Worm’s content source is Convex plus managed media. Other source adapters are outside this implementation’s scope.
 
 The implemented dashboard path reuses the operator command's portable inventory/package core. It prepares small exports on demand with cancellation, integrity checks and an explicit download link (16 MiB, 100 media files, 250 inventory records, 1 MiB metadata). Larger exports remain operator-assisted. Persistent asynchronous jobs and expiring delivery links remain a future option; they are not required to offer the free export.
 
@@ -86,6 +82,6 @@ The implemented dashboard path reuses the operator command's portable inventory/
 
 ## Service terms still to approve
 
-Recommended defaults: published content plus current drafts; all ready website-library media and retained client-owned product source files; no historical revisions or confidential CRM/delivery records in the basic package; one standard package per departure with correction of export defects included. A client may request a smaller scope.
+Recommended defaults: published content plus current drafts; all ready website-library media and retained client-owned product source files; no historical revisions or confidential CRM/delivery records in the basic package; one standard package per departure with correction of export defects included. A client may request a smaller scope for a separately prepared operator handoff; the current dashboard exports the fixed standard scope.
 
 The free export covers the standard handoff. Destination imports, transformations, setup, coordination and verification on the new host belong to the proposed $300 migration-assistance allowance or a separate approved quote. Do not charge a rebuild fee merely to provide an already-supported standard export.

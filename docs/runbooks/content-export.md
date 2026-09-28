@@ -1,6 +1,6 @@
 # Convex/R2 website content export
 
-Queen Worm implementation with a resumable operator command and an optional bounded dashboard download. The Convex query, shared Admin package and CMS media Worker routes must be reviewed and deployed before a live run. The CMS Worker routes are deployed as version `96da5935-554f-489b-856f-68451e7e36b9` (Worker PR #116). Health returned 200 and unauthenticated export returned 401. Backend/package/host rollout remains pending. No live export or client delivery has been performed yet. Keep the dashboard option disabled until its staging verification passes.
+Queen Worm's resumable operator exporter passed a live Convex/R2 run on 2026-09-28. Admin 6.5.0 and CRM API 6.3.0 are published. The shared Convex backend was deployed in [run 36435147857](https://github.com/JessePomeroy/angelsrest/actions/runs/36435147857), and the CMS Worker routes are deployed as version `96da5935-554f-489b-856f-68451e7e36b9` (Worker PR #116). The dashboard host requires Admin 6.5.1 or newer for streamed Worker responses. Its activation and authenticated download verification are recorded in [Queen Worm’s release PR](https://github.com/JessePomeroy/queenworm/pull/10); keep the dashboard option disabled until that staging verification passes. No client delivery has been performed.
 
 ## Included scope
 
@@ -79,4 +79,6 @@ node --test scripts/content-export.test.mjs
 pnpm exec vitest run packages/crm-api/convex/contentExport.test.ts
 ```
 
-Worker tests: `npm test` in `gallery-worker`. Synthetic checks cover tenant separation, published/draft selection, pagination, relationships and credits, private-file authorization, streamed archive creation/reopen, interruption/resume, wrong tenant, missing files, corruption, changed source and path safety. A synthetic 32 MiB stream exercises the bounded media path. Live credentials, deployed behavior, and a sample Queen Worm archive still require an authorized staging run before enabling a dashboard button or offering the tool as a completed client service.
+Worker tests: `npm test` in `gallery-worker`. Synthetic checks cover tenant separation, published/draft selection, pagination, relationships and credits, private-file authorization, streamed archive creation/reopen, interruption/resume, wrong tenant, missing files, corruption, changed source and path safety. A synthetic 32 MiB stream exercises the bounded media path.
+
+The live Queen Worm operator run on 2026-09-28 exported 3 portfolio galleries, 1 product, 4 web files and 2 print files with 0 exceptions. Source inventory remained stable through verification. The verified archive is 1,815,909 bytes with SHA-256 `7bc47a1788d69fb36b8febe10f5839003541048b9466732ecf7fa73f8747dd77`. The dashboard uses the same portable package core; its separate hosted verification is recorded in Queen Worm’s release PR. Archive delivery remains a separate owner-approved step.
