@@ -14,21 +14,26 @@ const editor = vi.hoisted(() => ({
 		[
 			["A", "Alpha"],
 			["B", "Beta"],
-		].map(([galleryId, title]) => [
-			galleryId,
-			{
-				galleryId,
+			["P", "Published"],
+		].map(([galleryId, title]) => {
+			const revision = {
+				revisionId: `revision-${galleryId}`,
+				title,
 				slug: title.toLowerCase(),
-				isPublished: false,
-				isVisible: true,
-				draft: {
-					revisionId: `revision-${galleryId}`,
-					title,
+				placements: [],
+			};
+			return [
+				galleryId,
+				{
+					galleryId,
 					slug: title.toLowerCase(),
-					placements: [],
+					isPublished: galleryId === "P",
+					isVisible: true,
+					draft: revision,
+					published: galleryId === "P" ? revision : null,
 				},
-			},
-		]),
+			];
+		}),
 	),
 }));
 
@@ -41,14 +46,23 @@ vi.mock("@jessepomeroy/admin", async () => ({
 		)
 	).default,
 }));
-vi.mock("../../../../node_modules/@jessepomeroy/admin/dist/config.js", () => ({
-	getAdminConfig: () => ({
-		siteUrl: "angelsrest.test",
-		siteName: "Test portfolio",
-		api: { portfolioEditor: { getEditorState: "get", saveDraft: "save" } },
-		editor: { portfolio: { mediaBaseUrl: "https://media.example.test" } },
-	}),
-}));
+vi.mock("../../../../node_modules/@jessepomeroy/admin/dist/config.js", async () => {
+	const { api } = await import("../../../../packages/crm-api/convex/_generated/api");
+	const { createAdminBrowserCapabilities } = await import(
+		"../../../lib/config/adminPlatformCapabilities"
+	);
+	const capabilities = createAdminBrowserCapabilities(api);
+	return {
+		getAdminConfig: () => ({
+			siteUrl: "angelsrest.test",
+			siteName: "Test portfolio",
+			api: {
+				portfolioEditor: { ...capabilities.portfolioEditor, saveDraft: "save" },
+			},
+			editor: { portfolio: { mediaBaseUrl: "https://media.example.test" } },
+		}),
+	};
+});
 vi.mock("../../../../node_modules/@jessepomeroy/admin/dist/adminClient.js", () => ({
 	useAdminClient: () => ({ mutation: editor.mutation }),
 }));
@@ -140,6 +154,19 @@ describe("portfolio route document identity", () => {
 		component.navigate(galleryId);
 		await tick();
 	}
+
+	it("offers host publication for drafts and visibility controls for published galleries", async () => {
+		const button = (label: string) =>
+			[...document.querySelectorAll("button")].find(
+				(element) => element.textContent?.trim() === label,
+			);
+		expect(button("publish")).toBeDefined();
+		expect(button("hide from site")).toBeUndefined();
+		await navigate("P");
+		expect(button("publish")).toBeDefined();
+		expect(button("hide from site")).toBeDefined();
+		expect(editor.mutation).not.toHaveBeenCalled();
+	});
 
 	it("keeps a pending A draft out of B and cancels A's debounce on navigation", async () => {
 		await editTitle("Alpha edited");
