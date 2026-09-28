@@ -35,6 +35,8 @@ export const adminConfig: AdminConfig = {
 			marginCalculator: calculateCatalogProductMargin,
 			variantOptionResolver: resolveCatalogProductVariantOptions,
 			privateAssetReplacementEnabled: true,
+			privateAssetDeleteEndpoint: "/api/admin/catalog-private-assets/delete",
+			mediaDeleteEndpoint: "/api/admin/media/delete",
 			privateAssetUpload: {
 				prepareEndpoint: "/api/admin/catalog-private-assets/editor-uploads/prepare",
 				completeEndpoint: "/api/admin/catalog-private-assets/editor-uploads/complete",

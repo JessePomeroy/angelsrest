@@ -33,6 +33,7 @@ const {
 		createDraft: "catalogProducts.createDraft",
 		saveDraft: "catalogProducts.saveDraft",
 		discardDraft: "catalogProducts.discardDraft",
+		remove: "catalogProducts.remove",
 	};
 	const catalogGraphRefs = {
 		listForEditor: "catalogProductGraphs.listForEditor",
@@ -40,6 +41,7 @@ const {
 		createDraft: "catalogProductGraphs.createDraft",
 		saveDraft: "catalogProductGraphs.saveDraft",
 		discardDraft: "catalogProductGraphs.discardDraft",
+		remove: "catalogProductGraphs.remove",
 		listDraftPrivateAssetCandidates: "catalogProductGraphs.listDraftPrivateAssetCandidates",
 		replaceDraftPrivateAsset: "catalogProductGraphs.replaceDraftPrivateAsset",
 		publishDraft: "catalogProductGraphs.publishDraft",
@@ -170,6 +172,7 @@ describe("admin platform capabilities", () => {
 			createDraft: catalogGraphApi.createDraft,
 			saveDraft: catalogGraphApi.saveDraft,
 			discardDraft: catalogGraphApi.discardDraft,
+			remove: catalogGraphApi.remove,
 			listDraftPrivateAssetCandidates: catalogGraphApi.listDraftPrivateAssetCandidates,
 			replaceDraftPrivateAsset: catalogGraphApi.replaceDraftPrivateAsset,
 			publishDraft: catalogGraphApi.publishDraft,
@@ -277,6 +280,8 @@ describe("admin platform capabilities", () => {
 			marginCalculator: calculateCatalogProductMargin,
 			variantOptionResolver: resolveCatalogProductVariantOptions,
 			privateAssetReplacementEnabled: true,
+			privateAssetDeleteEndpoint: "/api/admin/catalog-private-assets/delete",
+			mediaDeleteEndpoint: "/api/admin/media/delete",
 			privateAssetUpload: {
 				prepareEndpoint: "/api/admin/catalog-private-assets/editor-uploads/prepare",
 				completeEndpoint: "/api/admin/catalog-private-assets/editor-uploads/complete",

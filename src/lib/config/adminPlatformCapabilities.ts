@@ -95,6 +95,7 @@ export function createAdminBrowserCapabilities(api: GeneratedApi): AdminBrowserC
 			createDraft: api.catalogProducts.createDraft,
 			saveDraft: api.catalogProducts.saveDraft,
 			discardDraft: api.catalogProducts.discardDraft,
+			remove: api.catalogProducts.remove,
 		},
 		catalogProductGraphs: {
 			listForEditor: api.catalogProductGraphs.listForEditor,
@@ -102,10 +103,16 @@ export function createAdminBrowserCapabilities(api: GeneratedApi): AdminBrowserC
 			createDraft: api.catalogProductGraphs.createDraft,
 			saveDraft: api.catalogProductGraphs.saveDraft,
 			discardDraft: api.catalogProductGraphs.discardDraft,
+			remove: api.catalogProductGraphs.remove,
 			listDraftPrivateAssetCandidates: api.catalogProductGraphs.listDraftPrivateAssetCandidates,
 			replaceDraftPrivateAsset: api.catalogProductGraphs.replaceDraftPrivateAsset,
 			publishDraft: api.catalogProductGraphs.publishDraft,
 			unpublish: api.catalogProductGraphs.unpublish,
+		},
+		catalogPrivateAssets: {
+			listForCleanup: api.catalogPrivateAssets.listForCleanup,
+			listExpiredUploadsForCleanup: api.catalogPrivateAssets.listExpiredUploadsForCleanup,
+			requestDeletion: api.catalogPrivateAssets.requestDeletion,
 		},
 		mediaAssets: {
 			listForEditor: api.mediaAssets.listForEditor,
@@ -143,7 +150,7 @@ export function createAdminBrowserCapabilities(api: GeneratedApi): AdminBrowserC
 			listImageStorageKeys: api.galleries.listImageStorageKeys,
 			listBySite: api.galleries.listBySite,
 		},
-		inquiries: { updateStatus: api.inquiries.updateStatus },
+		inquiries: { updateStatus: api.inquiries.updateStatus, remove: api.inquiries.remove },
 		invoices: {
 			create: api.invoices.create,
 			update: api.invoices.update,
@@ -178,6 +185,19 @@ export function createAdminBrowserCapabilities(api: GeneratedApi): AdminBrowserC
 			list: api.orders.list,
 			updateStatus: api.orders.updateStatus,
 			getStats: api.orders.getStats,
+		},
+		platformOffboarding: {
+			getState: api.platformOffboarding.getState,
+			disable: api.platformOffboarding.disable,
+			requestErasure: api.platformOffboarding.requestErasure,
+			restoreAccess: api.platformOffboarding.restoreAccess,
+			eraseRecords: api.platformOffboarding.eraseRecords,
+		},
+		contentCleanup: {
+			list: api.contentCleanup.list,
+			listRevisions: api.contentCleanup.listRevisions,
+			purgeArchived: api.contentCleanup.purgeArchived,
+			pruneRevision: api.contentCleanup.pruneRevision,
 		},
 		platform: {
 			createClient: api.platform.createClient,
