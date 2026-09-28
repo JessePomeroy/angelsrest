@@ -125,12 +125,12 @@
       "fileId": "01M25K34Z4EFZ5BEPJ49JBF0X1",
       "pageId": "2-0",
       "artboardId": "1-0",
-      "status": "documentation-updated-comparison-blocked",
-      "lastReviewed": "2026-09-16",
+      "status": "documentation-reviewed",
+      "lastReviewed": "2026-09-27",
       "lastVerified": null,
       "limitations": [
-        "Updated for @jessepomeroy/admin 6.1.1. Paper text and editable structure were reviewed; renderer screenshot export remained unavailable, so visual re-verification is pending.",
-        "Readable source-bound guidance, not an application screen replica. Original-font specimens are editable; screen-rendering differences remain documented per reference."
+        "Updated for four Admin 6.4.0 invoice additions and 76 admin boards. Full guide screenshot checked for readability, contrast, fit and source accuracy. Other baseline comparison gaps remain unchanged.",
+        "Readable handbook guidance, not an application screen replica."
       ]
     },
     {
@@ -185,7 +185,7 @@
     }
   ],
   "globalLimitations": [
-    "All 72 admin screen/state boards were regenerated from @jessepomeroy/admin 6.1.1 with their recorded safe fixture conditions, and their editable top-level structures were audited. Paper screenshot export timed out for full and small nodes, so admin visual comparisons remain pending; the 62 public references retain their 2026-09-10 comparison status.",
+    "The 72 baseline admin screen/state boards were regenerated from Admin 6.1.1 on September 16; their visual comparisons remain pending after that renderer failure. Four additional Admin 6.4.0 invoice references were added and compared with limitations on September 27 using working browser Paper screenshot tools. The 62 public references retain their September 10 comparison status.",
     "Original Chillax and Synonym faces are available. Paper text metrics and browser-synthesized bold/italic differ; some references have documented optical spacing corrections.",
     "Paper gradient interpolation, blur compositing and native control chrome differ from Chromium. Native editable approximations are labeled; film grain and GIF/skeleton phases are static samples.",
     "The liquid-navigation water renderer never reported a healthy rendered state in this capture browser. Expanded CSS fallback is compared; live GPU refraction is not.",
@@ -3324,9 +3324,7 @@
         "filters",
         "send confirmation",
         "empty",
-        "save error",
-        "2026-09-27: installed Admin 6.4.0 partial-payment and overpayment modals captured and inspected at desktop/mobile handbook viewports with original local font faces; separate browser regressions cover partial-payment editing.",
-        "2026-09-27: four editable capture drafts are ready; Paper board updates and same-state comparison remain pending because the configured local connector refused the connection."
+        "save error"
       ],
       "references": [
         {
@@ -3402,12 +3400,16 @@
       ],
       "coveredReferenceKeys": [
         "admin.invoicing.default.desktop",
-        "admin.invoicing.default.mobile"
+        "admin.invoicing.default.mobile",
+        "admin-invoice-partial-desktop",
+        "admin-invoice-partial-mobile",
+        "admin-invoice-overpaid-desktop",
+        "admin-invoice-overpaid-mobile"
       ],
       "invoiceRevisionCapture": {
         "observedAt": "2026-09-27",
         "installedAdminVersion": "6.4.0",
-        "status": "browser-captured-paper-pending",
+        "status": "compared-with-limitations",
         "sourceComponents": [
           "tests/browser/handbook/data.ts",
           "node_modules/@jessepomeroy/admin/dist/pages/invoicing/InvoiceDetailModal.svelte"
@@ -3435,8 +3437,21 @@
             ],
             "browserPng": "admin-invoice-partial-desktop.png",
             "editableDraft": "admin-invoice-partial-desktop.json",
-            "paper": null,
-            "lastVerified": null
+            "paper": {
+              "fileId": "01M25K34Z4EFZ5BEPJ49JBF0X1",
+              "pageId": "3-0",
+              "artboardId": "KIK-0"
+            },
+            "lastVerified": "2026-09-27",
+            "status": "compared-with-limitations",
+            "limitations": [
+              "Paper source font tokens are preserved (Synonym body, Chillax display). Direct font discovery returned no family records; token-bound rendering restored the intended styling, with small text-width/weight differences from Chromium. Captured line breaks are preserved.",
+              "Editable backdrop layers reuse the existing invoice references with updated first-invoice total, status and summary counts. The focused comparison covers the visible modal and blurred background, not a fresh certification of the older default invoice boards.",
+              "Paper blur/shadow compositing and font metrics differ slightly from Chromium; these are compared-with-limitations references, not pixel-perfect replicas.",
+              "Synthetic local fixture; no authentication, persistence or provider claim.",
+              "Mobile overpaid reference is the initial viewport; the source app requires modal scrolling for its final footer. The Paper board preserves this viewport crop.",
+              "Paper get_screenshot checkpoints succeeded for all four boards. The separate multi-board export command timed out; no exported Paper image files are claimed."
+            ]
           },
           {
             "key": "admin-invoice-partial-mobile",
@@ -3453,8 +3468,21 @@
             ],
             "browserPng": "admin-invoice-partial-mobile.png",
             "editableDraft": "admin-invoice-partial-mobile.json",
-            "paper": null,
-            "lastVerified": null
+            "paper": {
+              "fileId": "01M25K34Z4EFZ5BEPJ49JBF0X1",
+              "pageId": "3-0",
+              "artboardId": "KPF-0"
+            },
+            "lastVerified": "2026-09-27",
+            "status": "compared-with-limitations",
+            "limitations": [
+              "Paper source font tokens are preserved (Synonym body, Chillax display). Direct font discovery returned no family records; token-bound rendering restored the intended styling, with small text-width/weight differences from Chromium. Captured line breaks are preserved.",
+              "Editable backdrop layers reuse the existing invoice references with updated first-invoice total, status and summary counts. The focused comparison covers the visible modal and blurred background, not a fresh certification of the older default invoice boards.",
+              "Paper blur/shadow compositing and font metrics differ slightly from Chromium; these are compared-with-limitations references, not pixel-perfect replicas.",
+              "Synthetic local fixture; no authentication, persistence or provider claim.",
+              "Mobile overpaid reference is the initial viewport; the source app requires modal scrolling for its final footer. The Paper board preserves this viewport crop.",
+              "Paper get_screenshot checkpoints succeeded for all four boards. The separate multi-board export command timed out; no exported Paper image files are claimed."
+            ]
           },
           {
             "key": "admin-invoice-overpaid-desktop",
@@ -3471,8 +3499,21 @@
             ],
             "browserPng": "admin-invoice-overpaid-desktop.png",
             "editableDraft": "admin-invoice-overpaid-desktop.json",
-            "paper": null,
-            "lastVerified": null
+            "paper": {
+              "fileId": "01M25K34Z4EFZ5BEPJ49JBF0X1",
+              "pageId": "3-0",
+              "artboardId": "KV0-0"
+            },
+            "lastVerified": "2026-09-27",
+            "status": "compared-with-limitations",
+            "limitations": [
+              "Paper source font tokens are preserved (Synonym body, Chillax display). Direct font discovery returned no family records; token-bound rendering restored the intended styling, with small text-width/weight differences from Chromium. Captured line breaks are preserved.",
+              "Editable backdrop layers reuse the existing invoice references with updated first-invoice total, status and summary counts. The focused comparison covers the visible modal and blurred background, not a fresh certification of the older default invoice boards.",
+              "Paper blur/shadow compositing and font metrics differ slightly from Chromium; these are compared-with-limitations references, not pixel-perfect replicas.",
+              "Synthetic local fixture; no authentication, persistence or provider claim.",
+              "Mobile overpaid reference is the initial viewport; the source app requires modal scrolling for its final footer. The Paper board preserves this viewport crop.",
+              "Paper get_screenshot checkpoints succeeded for all four boards. The separate multi-board export command timed out; no exported Paper image files are claimed."
+            ]
           },
           {
             "key": "admin-invoice-overpaid-mobile",
@@ -3489,17 +3530,36 @@
             ],
             "browserPng": "admin-invoice-overpaid-mobile.png",
             "editableDraft": "admin-invoice-overpaid-mobile.json",
-            "paper": null,
-            "lastVerified": null
+            "paper": {
+              "fileId": "01M25K34Z4EFZ5BEPJ49JBF0X1",
+              "pageId": "3-0",
+              "artboardId": "L1W-0"
+            },
+            "lastVerified": "2026-09-27",
+            "status": "compared-with-limitations",
+            "limitations": [
+              "Paper source font tokens are preserved (Synonym body, Chillax display). Direct font discovery returned no family records; token-bound rendering restored the intended styling, with small text-width/weight differences from Chromium. Captured line breaks are preserved.",
+              "Editable backdrop layers reuse the existing invoice references with updated first-invoice total, status and summary counts. The focused comparison covers the visible modal and blurred background, not a fresh certification of the older default invoice boards.",
+              "Paper blur/shadow compositing and font metrics differ slightly from Chromium; these are compared-with-limitations references, not pixel-perfect replicas.",
+              "Synthetic local fixture; no authentication, persistence or provider claim.",
+              "Mobile overpaid reference is the initial viewport; the source app requires modal scrolling for its final footer. The Paper board preserves this viewport crop.",
+              "Paper get_screenshot checkpoints succeeded for all four boards. The separate multi-board export command timed out; no exported Paper image files are claimed."
+            ]
           }
         ],
         "limitations": [
-          "Paper local connector unavailable; no Paper write or comparison completed.",
+          "Paper source font tokens are preserved (Synonym body, Chillax display). Direct font discovery returned no family records; token-bound rendering restored the intended styling, with small text-width/weight differences from Chromium. Captured line breaks are preserved.",
+          "Editable backdrop layers reuse the existing invoice references with updated first-invoice total, status and summary counts. The focused comparison covers the visible modal and blurred background, not a fresh certification of the older default invoice boards.",
+          "Paper blur/shadow compositing and font metrics differ slightly from Chromium; these are compared-with-limitations references, not pixel-perfect replicas.",
           "Synthetic local fixture; no authentication, persistence or provider claim.",
-          "Mobile overpaid reference is the initial viewport; final footer requires modal scrolling.",
-          "Original local font faces loaded; duplicate remote declarations were blocked."
+          "Mobile overpaid reference is the initial viewport; the source app requires modal scrolling for its final footer. The Paper board preserves this viewport crop.",
+          "Paper get_screenshot checkpoints succeeded for all four boards. The separate multi-board export command timed out; no exported Paper image files are claimed."
         ],
-        "captureStorage": "Audit task outputs/audit-closeout/design-captures/run3; editable drafts and PNGs retained outside Git."
+        "captureStorage": "Audit task outputs/audit-closeout/design-captures/run3; editable drafts and PNGs retained outside Git.",
+        "paperUpdatedAt": "2026-09-27",
+        "comparedAt": "2026-09-27",
+        "sourceCommit": "6d518c923638a190af69d4833d88527944b7282d",
+        "comparison": "Compared all four Paper get_screenshot renders with the run3 Chromium PNGs at the recorded viewport, invoice data, dark afternoon theme and reduced-motion state. Checked status, totals, received/remaining balances, overpayment notice, action visibility, type, spacing, contrast, aligned columns and mobile clipping. Existing unrelated references were preserved."
       }
     },
     {
@@ -7294,11 +7354,17 @@
     "limitation": "Paper measures some strings a few pixels wider than the reference browser; preserve readable gaps and actual line breaks during comparison."
   },
   "coverage": {
-    "screenAndStateBoards": 134,
+    "screenAndStateBoards": 138,
     "publicBoards": 62,
-    "adminBoards": 72,
+    "adminBoards": 76,
     "documentationBoards": 7,
-    "scope": "Representative implemented templates and shared states; not an exhaustive route × state × theme matrix."
+    "scope": "Representative implemented templates and shared states; not an exhaustive route × state × theme matrix.",
+    "invoiceRevisionAddition": {
+      "observedAt": "2026-09-27",
+      "newBoards": 4,
+      "status": "compared-with-limitations",
+      "referenceLocation": "screens[admin.invoicing.default].invoiceRevisionCapture.references"
+    }
   },
   "interactionEvidence": [
     {
@@ -7431,9 +7497,22 @@
     "browserCaptures": 72,
     "capturePackageVersion": "6.1.1",
     "currentPackageVersion": "6.4.0",
-    "currentPackageCompatibility": "6.4.0 includes owner-only delivery-file uploads, client catalog origin support, and invoice payment balances/partial editing. Affected delivery-gallery and invoice states still require a Paper update and comparison; the September 16 captures and original source baseline are unchanged.",
+    "currentPackageCompatibility": "6.4.0 includes owner-only delivery-file uploads, client catalog origin support, and invoice payment balances/partial editing. Four invoice detail states were added and compared with limitations on September 27. Delivery-gallery updates and comparisons, and the September 16 baseline comparison gaps, remain pending.",
     "editableStructureAudit": "passed: every canonical admin artboard has the expected top-level layer set from its fresh capture",
     "visualComparison": "blocked: Paper get_screenshot timed out for full boards and small child nodes after normal and software-rendered desktop restarts",
-    "lastVerified": null
+    "lastVerified": null,
+    "invoiceRevisionAddition": {
+      "updatedAt": "2026-09-27",
+      "adminReferencesAdded": 4,
+      "capturePackageVersion": "6.4.0",
+      "status": "compared-with-limitations",
+      "lastVerified": "2026-09-27",
+      "artboardIds": [
+        "KIK-0",
+        "KPF-0",
+        "KV0-0",
+        "L1W-0"
+      ]
+    }
   }
 }
