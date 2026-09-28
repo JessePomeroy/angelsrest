@@ -18,7 +18,7 @@ Why separate export from paid assistance: the client can obtain their content wi
 Before publishing the client policy:
 
 - Approve the price, included hours and additional hourly rate.
-- Verify a complete tenant-scoped export/handoff procedure. There is no new self-service export button in this change; fulfillment would be operator-assisted until that tooling exists.
+- Verify the final handoff procedure. The operator export has passed a real Queen Worm run, and the on-demand dashboard adapter is implemented; live rollout status is recorded in the [runbook](../runbooks/content-export.md). Recipient approval and assisted migration remain separate.
 - Confirm the project agreement's treatment of frontend source, custom design and shared-package licensing; do not promise ownership or transfer rights not granted there.
 - Use an agreed end-of-hosting date for planned departures. Offboarding immediately takes the public site offline; 90-day retention is not continued hosting.
 - Align the owner-operated immediate-erasure control with any retention promise made to the client. The proposed client wording allows earlier deletion on the client's request.
@@ -26,4 +26,4 @@ Before publishing the client policy:
 
 The client-facing draft is `hosting-and-moving-your-website-draft.md`. Neither draft has been sent, published or incorporated into a client agreement.
 
-See [the proposed free-export specification](basic-content-export-spec.md) for the package contents, exclusions, implementation phases and acceptance checks. The recommended first build is operator-assisted; a dashboard export button is a later decision.
+See [the proposed free-export specification](basic-content-export-spec.md) for the package contents, exclusions, implementation phases and acceptance checks. The operator exporter was built first; the owner subsequently chose fresh dashboard exports on demand.
