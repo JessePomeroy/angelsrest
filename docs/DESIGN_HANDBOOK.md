@@ -1,8 +1,8 @@
 # Living design handbooks
 
-These references document the current implementation, not a redesign or a
-replacement for source code. Baseline review: **2026-09-16**. Invoice-state
-addition and comparison: **2026-09-27**.
+These references document the current implementation. Admin refresh and visual
+comparison: **2026-09-27**, using **Admin 6.4.0**. Public references retain their
+September 10 comparison and September 16 baseline review.
 
 - [Angel's Rest — public handbook](https://app.paper.design/file/01M25K34J49JSK8D34H0HGQCW1/2-0)
 - [Angel's Rest Admin Dashboard — handbook](https://app.paper.design/file/01M25K34Z4EFZ5BEPJ49JBF0X1/2-0)
@@ -10,38 +10,47 @@ addition and comparison: **2026-09-27**.
 
 ## Reference pass and coverage
 
-The handbooks contain **138 editable screen/state boards: 62 public and 76
-admin**. Four Admin 6.4.0 invoice states were added and compared with limitations
-on September 27; the remaining 72 admin boards retain their September 16 status.
-The public boards retain their 2026-09-10 browser comparison. All 72 baseline
-admin boards were regenerated in place from `@jessepomeroy/admin` 6.1.1 on
-2026-09-16, and their editable top-level layer structure was audited against the
-fresh captures. Paper's renderer timed out on both full-board and small-node
-screenshot checkpoints, so the admin visual comparison remains pending. Seven
-additional Start Here, Foundations, component and behavior guides were reviewed
-for readability and source accuracy. Guide boards are not application replicas.
+The handbooks contain **176 editable screen/state boards: 62 public and 114
+admin**, plus **seven documentation guides**. The September 27 completion
+refreshed all **72 older admin boards in place**, preserving their IDs, and added
+**38 references** on **05 — Platform setup & uploads**. All 110 were compared
+against their matching browser captures. Four previously compared invoice boards
+remain on Components & States. The three admin guides were updated and visually
+checked for readability, contrast, fit and source accuracy; the four public
+guides were preserved.
 
-Public screen references and the four new invoice states are
-`compared-with-limitations`; the 72 baseline admin references remain
-`paper-updated-comparison-blocked`. Neither status is a pixel-perfect or
-end-to-end claim. Text, frames, SVGs and original image assets remain editable.
-Screenshots are comparison evidence, not flattened finished UI. This is a
-representative template/state pass, not every route × state × theme combination.
-Remaining candidates and specific mismatches stay in the inventory.
+All screen references are `compared-with-limitations`. This is a representative
+template/state pass; it does not establish pixel-perfect rendering or real
+provider acceptance. Text, frames, SVGs and original image assets remain editable.
+Each comparison records its source, viewport, state and remaining differences.
 
 | Handbook | Compared coverage |
 | --- | --- |
 | Public | Home, navigation, portfolio index/detail/lightbox, shop, print/print-set templates, selected print options, physical/digital/unavailable products, drawer/full cart, blog index and all five article presentations, About and complete contact form |
-| Admin | Browser-observed and regenerated in Paper: dashboard, orders, inquiries, CRM, board, invoices, quotes, contracts, email templates, messages, platform, delivery gallery management, settings/page/portfolio/product/blog editors, product/post/author/category details, login and host session presentations. Paper visual checkpoint pending. |
+| Admin baseline | Dashboard, orders, inquiries, CRM, board, invoices, quotes, contracts, email templates, messages, platform, delivery gallery management, settings/page/portfolio/product/blog editors, product/post/author/category details, login and host session presentations; all 72 refreshed and compared |
+| Admin additions | 20 Stripe setup states, four LumaPrints setup states, two refund previews, four owner/client delivery upload states, two selected-client onboarding views and six client form/new-login/existing-login views |
 | States/layouts | Light/dark examples, tablet gallery/About, short landscape, expanded menus, selected/disabled controls, cart limits/busy/error/expiry, contact readiness/sending/success/failures, complete client/invoice/contact-editor forms, admin empty/read-error/loading/save-error examples |
 
-The source baseline is merge commit `eeb01b9cf88de5d0edb931a55cf09e1517ee7f68`.
-The installed shared admin package is `@jessepomeroy/admin` **6.4.0** as of the
-September 27 package adoption. The 72 baseline admin boards were captured with
-6.1.1; the 6.1.2 invoice-identity correction did not change their visual structure. Version 6.2.0
-adds owner-only file uploads and file labels/cards in delivery-gallery management;
-those affected states still require a Paper update and comparison. Capture
-provenance is unchanged. This is not a claim about the deployed site's version.
+The 110 current admin captures use host commit
+`25b9458755b8e4659674d8edc9f201b5f6379385` and installed
+`@jessepomeroy/admin` **6.4.0**. The subsequent merge `82f9253` changes only
+documentation. Public provenance remains
+`eeb01b9cf88de5d0edb931a55cf09e1517ee7f68`; public screens were not recaptured.
+This records local capture provenance, not the deployed site's version.
+
+Source PNG/JSON pairs and the 110 comparison records are retained in the audit
+task under `outputs/handbook-completion/`. Captures ran in the cached Playwright
+1.59.1 container with networking disabled, loopback fixtures, locally supplied
+original fonts and a fixed September 10 afternoon clock. All data is fictional;
+the client handoff password remains masked. Refund previews use their recorded
+light theme and normal motion; other references use their inventory conditions.
+
+Paper screenshots were inspected for every reference. Expanded operation/editor
+menus needed layer-order corrections; the settled save-error toast was restored;
+refund button and checkbox paint was corrected. Each correction was rechecked.
+Small font-metric, native-control, shadow/blur and static-animation differences
+remain. Tall forms and initial mobile crops are intentional. Unrelated studies
+and the public handbook were preserved.
 
 The September 27 invoice revision work adds received/remaining balances,
 partial-payment editing, and overpayment review in shared Admin 6.4.0. Four new
@@ -75,8 +84,8 @@ font tokens remain editable. Direct font discovery returned no face records;
 binding the existing Synonym/Chillax tokens restored the intended styling, with
 small text-metric differences still visible. Paper blur and shadow rendering also
 differ slightly. These four references are `compared-with-limitations`, verified
-September 27; this does not re-certify the 72 older admin references. The Start
-Here guide was updated and screenshot-checked. Unrelated studies were preserved.
+September 27. These four retain their original comparison provenance; the later
+110-reference completion is recorded separately above.
 
 The configured desktop connector still refused connections. Browser screenshot
 checkpoints succeeded; a separate multi-board export timed out, so no exported
@@ -90,24 +99,25 @@ remain outside this handbook's scope. See the
 [invoice payment runbook](runbooks/invoice-payment-revisions.md) for release order.
 
 Each Paper file has Start Here & Foundations, Components & States, Desktop,
-Mobile, and Interaction & Additional Layouts pages. Use the inventory for exact
-board links; shared patterns do not require one board per content record.
+Mobile, and Interaction & Additional Layouts pages. Admin also has
+[Platform setup & uploads](https://app.paper.design/file/01M25K34Z4EFZ5BEPJ49JBF0X1/p-9-0),
+with paired desktop/mobile rows where both exist. Use the inventory for exact
+board IDs; shared patterns do not require one board per content record.
 
 ## Scope and source authority
 
 Contact lives on About; there is no separate public `/contact` page.
 Private `/delivery/[token]`, document client portals and provider-hosted checkout
-screens are excluded. The new authenticated Stripe setup portal is tracked as a
-pending admin-handbook reference using fictional data only. Admin delivery gallery management uses fictional records and no
+screens are excluded. The Stripe setup and refund portals have admin-handbook
+references using fictional data only. Admin delivery gallery management uses fictional records and no
 private assets. Keep **portfolio galleries** and **delivery galleries** distinct.
 
 The Admin 6.2.0 owner file-upload change adds an any-file picker for verified Angels
 Rest creator membership and file labels in delivery-gallery management. The
 handbook fixture defaults to the owner policy; add `uploadPolicy=media` for a
-website client. Open a fictional gallery to inspect its uploader. These source
-changes are newer than the current delivery-gallery boards. Paper tools were
-unavailable for this pass, so the inventory marks their update/comparison
-pending and records the local browser evidence and screenshot limitations.
+website client. Open a fictional gallery to inspect its uploader. Current list
+boards and both uploader policies now have desktop/mobile Paper comparisons.
+No file was uploaded during this visual pass.
 
 | Source | Authority |
 | --- | --- |
@@ -178,7 +188,7 @@ published Convex content. Do not exercise checkout, inquiry or provider writes.
 This pass used isolated public configuration without loading the repository's
 private environment file.
 
-No authorized local admin account/backend was available. The dedicated harness
+For safe visual capture, the dedicated harness
 renders **actual installed components**, host capabilities and fictional data
 without visiting authenticated production pages:
 
@@ -302,10 +312,9 @@ Important gaps:
   not exhaustively covered. See each screen's remaining state survey.
 - Font, gradient, native-control and static-effect differences are recorded.
   These references are not accessibility certification or end-to-end tests.
-- Paper accepted the complete 6.1.1 admin imports and all 72 canonical artboards
-  passed a top-level editable-structure audit. Its screenshot endpoint still
-  timed out after normal and software-rendered desktop restarts, including for a
-  small header node, so those boards are not marked visually re-verified.
+- Paper comparison access was restored for the September 27 completion. All 72
+  older boards now use current captures and have visual comparisons; remaining
+  rendering differences are recorded per reference.
 
 ## Maintenance contract
 
@@ -330,7 +339,28 @@ Important gaps:
 use `documentationReferences` and `coveredByReferenceKeys` instead of pretending
 an artificial component sheet is an implemented route.
 
-## Verification recorded on 2026-09-16
+## Verification recorded on 2026-09-27
+
+- All 110 current source captures completed without page errors; 72 existing
+  artboard IDs were preserved and 38 additions received explicit IDs.
+- Every matching source/Paper pair was visually inspected. The three admin
+  guides were also screenshot-checked. Public boards and the four invoice
+  detail boards retain their earlier comparison evidence.
+- Captures used fictional local responses in a container with networking
+  disabled. Font bytes came from the original local faces; duplicate remote
+  font declarations were blocked. No production data or provider write was used.
+- Repository validation and delivery evidence are recorded in the inventory
+  and the completion pull request. The changes are documentation only.
+
+## Historical verification and implementation records
+
+The dated records below preserve what was established at each earlier point.
+Their Paper sign-in/renderer blockers were resolved by the September 27 pass for
+the 110 references listed above. Historical test results are not new test runs,
+and historical source descriptions may have been superseded by later entries.
+Unrepresented states and real provider/authentication acceptance remain separate.
+
+### Verification recorded on 2026-09-16
 
 - All 72 admin screen/state references rendered from the 6.1.1 package with the
   inventory's fictional data, viewport, theme, motion and interaction setup.
@@ -367,7 +397,7 @@ an artificial component sheet is an implemented route.
   working indicators.
 - No real authentication, backend/provider workflow or deployment was claimed.
 
-## Stripe setup source update — September 21, 2026
+### Stripe setup source update — September 21, 2026
 
 The host platform panel now shares a stable client setup page and says “setup
 started” for account existence. The new `/portal/stripe/[siteUrl]` page reuses
@@ -407,7 +437,7 @@ marks the new portal and changed platform references as needing a Paper update
 and comparison, with `lastVerified: null`. This is browser/source verification,
 not a completed Paper comparison or real-provider acceptance.
 
-## Client supplier setup source update — September 21, 2026
+### Client supplier setup source update — September 21, 2026
 
 The platform client selector now links to the creator-only
 `/admin/platform/lumaprints/[siteUrl]` setup page. Its native store selector and
@@ -437,7 +467,7 @@ verified. The inventory preserves existing platform IDs and records the new
 setup reference and same-state comparison as pending owner access under C6.
 21st tooling was unavailable; existing admin patterns supplied the design.
 
-## Guided print refund source update — September 21, 2026
+### Guided print refund source update — September 21, 2026
 
 `/portal/refunds/[siteUrl]` renders the actual `ClientPrintRefundPage` with the existing admin palette and typography. It selects a recent order, separates original print/non-print/other amounts, previews the customer refund and fee return, requires supplier acknowledgement, and displays operation status with a safe continuation action. The Stripe setup page links here only when the guided flow is enabled.
 
@@ -446,7 +476,7 @@ Desktop and Pixel 7 browser fixtures exercised a mixed $55 customer / $2 fee ref
 Paper was revisited at the existing admin handbook URL. It displays “Create an account to edit” and “Log in”; editing and comparison remain unavailable. No board is marked verified. The 21st CLI and project design manifest are unavailable, so the existing Stripe portal style was reused. Actual client authentication, provider operations and activation remain separately gated.
 
 
-## Platform client creation and hosted rehearsal — September 22, 2026
+### Platform client creation and hosted rehearsal — September 22, 2026
 
 The creator's Platform page now includes **Add platform client**. It collects the
 business name, website hostname, client admin email and access tier using the
