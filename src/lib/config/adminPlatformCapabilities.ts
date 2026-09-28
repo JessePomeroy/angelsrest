@@ -59,6 +59,7 @@ export function createAdminBrowserCapabilities(api: GeneratedApi): AdminBrowserC
 			listForEditor: api.portfolioGalleries.listForEditor,
 			getEditorState: api.portfolioGalleries.getEditorState,
 			saveDraft: api.portfolioGalleries.saveDraft,
+			publish: api.portfolioGalleries.publish,
 			setVisibility: api.portfolioGalleries.setVisibility,
 			remove: api.portfolioGalleries.remove,
 			reorder: api.portfolioGalleries.reorder,

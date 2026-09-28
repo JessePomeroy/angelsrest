@@ -252,6 +252,7 @@ describe("admin platform capabilities", () => {
 			"listForEditor",
 			"getEditorState",
 			"saveDraft",
+			"publish",
 			"setVisibility",
 			"remove",
 			"reorder",
@@ -263,7 +264,7 @@ describe("admin platform capabilities", () => {
 		expect(portfolioEditor?.listForEditor).toBe(portfolioApi.listForEditor);
 		expect(portfolioEditor?.getEditorState).toBe(portfolioApi.getEditorState);
 		expect(portfolioEditor?.saveDraft).toBe(portfolioApi.saveDraft);
-		expect(portfolioEditor?.publish).toBeUndefined();
+		expect(portfolioEditor?.publish).toBe(portfolioApi.publish);
 		expect(portfolioEditor?.setVisibility).toBe(portfolioApi.setVisibility);
 		expect(portfolioEditor?.remove).toBe(portfolioApi.remove);
 		expect(portfolioEditor?.reorder).toBe(portfolioApi.reorder);
