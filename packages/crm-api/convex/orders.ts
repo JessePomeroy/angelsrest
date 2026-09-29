@@ -1,3 +1,5 @@
+import { requireCreator } from "./authHelpers";
+import { recordOrderRevenue, readOrderRevenue, advanceOrderRevenueBackfill } from "./helpers/orderRevenue";
 import { requireSnapshotProductsNotDeleted } from "./helpers/catalogDeletion";
 import {
 	requestClientPrintRefund as requestPrintRefund, claimClientPrintRefund as claimPrintRefund,
@@ -57,7 +59,6 @@ import {
 } from "./helpers/numbering";
 import { assertOrderProducersOpen } from "./helpers/orderProducerGate";
 import { enqueuePrintFulfillmentJob } from "./helpers/printFulfillmentJobs";
-import { resolveBoundedOrderStatsScan } from "./helpers/orderStats";
 import {
 	classifyRefundTargetRows,
 	refundTargetClassificationValidator,
@@ -1259,6 +1260,9 @@ export const create = mutation({
 			stripeFeeCaptureError:
 				feeCaptureStatus === "failed" ? "payment_projection_invalid" : undefined,
 		});
+		const recordedOrder = await ctx.db.get(_id);
+		if (!recordedOrder) throw new Error("Created order is unavailable");
+		await recordOrderRevenue(ctx, recordedOrder);
 		if (refundIntent) {
 			await ctx.db.patch(refundIntent._id, { orderId: _id, consumedAt: Date.now() });
 		}
@@ -4628,19 +4632,57 @@ export const getByLumaprintsOrderNumber = query({
 	},
 });
 
-export const getStats = query({
+function projectRecentOrder(order: Doc<"orders">) { return {
+			_id: order._id,
+			orderNumber: order.orderNumber,
+			createdAt: new Date(order._creationTime).toISOString(),
+			customerEmail: order.customerEmail,
+			customerName: order.customerName || "",
+			total: order.total,
+			stripePaymentCurrency: order.stripePaymentCurrency,
+			stripeFees: order.stripeFees,
+			stripeFeeCurrency: order.stripeFeeCurrency,
+			stripeFeeChargeId: order.stripeFeeChargeId,
+			stripeFeeBalanceTransactionId: order.stripeFeeBalanceTransactionId,
+			stripeFeeCapturedAt: order.stripeFeeCapturedAt,
+			stripeFeeProvenanceVersion: order.stripeFeeProvenanceVersion,
+			stripeFeeProvenance: order.stripeFeeProvenance,
+			stripeFeeCaptureStatus: order.stripeFeeCaptureStatus,
+			stripeFeeCaptureAttempts: order.stripeFeeCaptureAttempts,
+			stripeFeeCaptureLastAttemptAt: order.stripeFeeCaptureLastAttemptAt,
+			stripeFeeCaptureNextAttemptAt: order.stripeFeeCaptureNextAttemptAt,
+			stripeFeeCaptureError: order.stripeFeeCaptureError,
+			status: order.status,
+		 }; }
+
+export const dashboardBackfillStatus = query({
 	args: { siteUrl: v.string() },
 	handler: async (ctx, { siteUrl }) => {
+		await requireCreator(ctx);
+		return ctx.db.query("orderRevenueBackfills").withIndex("by_siteUrl", (q) => q.eq("siteUrl", siteUrl)).unique();
+	},
+});
+
+export const advanceDashboardBackfill = mutation({
+	args: { siteUrl: v.string(), cursor: v.union(v.string(), v.null()), phase: v.union(v.literal("copy"), v.literal("verify"), v.literal("compare")) },
+	handler: async (ctx, { siteUrl, cursor, phase }) => {
+		await requireCreator(ctx);
+		return advanceOrderRevenueBackfill(ctx, siteUrl, cursor, phase);
+	},
+});
+
+async function readDashboardStats(ctx: QueryCtx, siteUrl: string) {
 		await requireSiteAdmin(ctx, siteUrl);
-		const rowsWithSentinel = await ctx.db
-			.query("orders")
-			.withIndex("by_siteUrl", (q) => q.eq("siteUrl", siteUrl))
-			.order("desc")
-			.take(AGGREGATE_SCAN_LIMIT + 1);
-		const { orders, isTruncated } = resolveBoundedOrderStatsScan(
-			rowsWithSentinel,
-			AGGREGATE_SCAN_LIMIT,
-		);
+		const maintained = await readOrderRevenue(ctx, siteUrl);
+		if (maintained) {
+			const recent = await ctx.db.query("orders").withIndex("by_siteUrl", (q) => q.eq("siteUrl", siteUrl)).order("desc").take(10);
+			return { ...maintained, recentOrders: recent.map(projectRecentOrder) };
+		}
+		const matchingOrders = ctx.db.query("orders")
+			.withIndex("by_siteUrl", (q) => q.eq("siteUrl", siteUrl)).order("desc");
+		let totalOrders = 0;
+		let isTruncated = false;
+		const recentOrderRows: Doc<"orders">[] = [];
 
 		const now = new Date();
 		const todayStart = new Date(
@@ -4676,7 +4718,12 @@ export const getStats = query({
 			dailyRevenueMap.set(d.toISOString().split("T")[0], 0);
 		}
 
-		for (const order of orders) {
+		// Stream the bounded scan: retain only the ten recent rows, not thousands
+		// of line-item arrays and frozen checkout snapshots.
+		for await (const order of matchingOrders) {
+			if (totalOrders === AGGREGATE_SCAN_LIMIT) { isTruncated = true; break; }
+			totalOrders++;
+			if (recentOrderRows.length < 10) recentOrderRows.push(order);
 			const total = order.total;
 			allTimeRevenue += total;
 
@@ -4764,28 +4811,7 @@ export const getStats = query({
 			? currencies[0]
 			: undefined;
 
-		const recentOrders = orders.slice(0, 10).map((order) => ({
-			_id: order._id,
-			orderNumber: order.orderNumber,
-			createdAt: new Date(order._creationTime).toISOString(),
-			customerEmail: order.customerEmail,
-			customerName: order.customerName || "",
-			total: order.total,
-			stripePaymentCurrency: order.stripePaymentCurrency,
-			stripeFees: order.stripeFees,
-			stripeFeeCurrency: order.stripeFeeCurrency,
-			stripeFeeChargeId: order.stripeFeeChargeId,
-			stripeFeeBalanceTransactionId: order.stripeFeeBalanceTransactionId,
-			stripeFeeCapturedAt: order.stripeFeeCapturedAt,
-			stripeFeeProvenanceVersion: order.stripeFeeProvenanceVersion,
-			stripeFeeProvenance: order.stripeFeeProvenance,
-			stripeFeeCaptureStatus: order.stripeFeeCaptureStatus,
-			stripeFeeCaptureAttempts: order.stripeFeeCaptureAttempts,
-			stripeFeeCaptureLastAttemptAt: order.stripeFeeCaptureLastAttemptAt,
-			stripeFeeCaptureNextAttemptAt: order.stripeFeeCaptureNextAttemptAt,
-			stripeFeeCaptureError: order.stripeFeeCaptureError,
-			status: order.status,
-		}));
+		const recentOrders = recentOrderRows.map(projectRecentOrder);
 
 		return {
 			stats: {
@@ -4795,7 +4821,7 @@ export const getStats = query({
 				// Legacy field names are preserved for compatible clients. Consumers
 				// must use isTruncated before presenting these values as complete.
 				allTimeRevenue,
-				totalOrders: orders.length,
+				totalOrders,
 				isTruncated,
 				scanLimit: AGGREGATE_SCAN_LIMIT,
 				legacyRevenueCurrency,
@@ -4808,8 +4834,11 @@ export const getStats = query({
 			invalidGrossAmountOrderCount,
 			recentOrders,
 		};
-	},
-});
+}
+
+export const getStats = query({ args: { siteUrl: v.string() }, handler: (ctx, { siteUrl }) => readDashboardStats(ctx, siteUrl) });
+// The day is a cache key supplied by current clients, never authority for the reporting period.
+export const getStatsForDay = query({ args: { siteUrl: v.string(), day: v.string() }, handler: (ctx, { siteUrl }) => readDashboardStats(ctx, siteUrl) });
 
 export const getNextOrderNumber = query({
 	args: { siteUrl: v.string() },

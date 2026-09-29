@@ -50,6 +50,34 @@ export const list = query({
 	},
 });
 
+/** Dashboard projection excludes document bodies and line items from subscriptions. */
+export const getDashboardSummary = query({
+	args: { siteUrl: v.string() },
+	handler: async (ctx, { siteUrl }) => {
+		await requireSiteAdmin(ctx, siteUrl);
+		const found = await ctx.db.query("invoices").withIndex("by_siteUrl", (q) => q.eq("siteUrl", siteUrl)).order("desc").take(201);
+		const rows = found.slice(0, 200);
+		const counts = { draft: 0, sent: 0, paid: 0, overdue: 0 };
+		for (const row of rows) {
+			if (row.status in counts) counts[row.status as keyof typeof counts] += 1;
+		}
+		let pendingAmount: number | null = 0;
+		for (const invoice of rows) {
+			if (!["draft", "sent", "overdue", "partial"].includes(invoice.status)) continue;
+			try {
+				if (invoice.status === "partial" && invoice.paidAmount === undefined) throw new Error("Unknown payment");
+				const { totalCents } = calculateInvoiceAmounts(invoice.items, invoice.taxPercent);
+				const next: number = (pendingAmount ?? 0) + Math.max(0, totalCents - (invoice.paidAmount ?? 0));
+				pendingAmount = pendingAmount !== null && Number.isSafeInteger(next) ? next : null;
+			} catch { pendingAmount = null; }
+		}
+		return { counts, isTruncated: found.length > 200, pendingAmount,
+			recent: rows.slice(0, 5).map((row) => ({ _id: row._id, _creationTime: row._creationTime,
+				invoiceNumber: row.invoiceNumber, clientName: row.clientName ?? "unknown", status: row.status })),
+		};
+	},
+});
+
 export const get = query({
 	args: { invoiceId: v.id("invoices") },
 	handler: async (ctx, { invoiceId }) => {

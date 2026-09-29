@@ -151,3 +151,36 @@ describe("gallery password access grants", () => {
 		).rejects.toThrow("Gallery password required");
 	});
 });
+
+test("paginated gallery access rechecks grants and resolves RAW companions beyond the page", async () => {
+	const { t, admin, galleryId, token } = await setupProtectedGallery();
+	await admin.mutation(api.galleries.addImage, { siteUrl: SITE, galleryId, r2Key: `${SITE}/${galleryId}/original/PAIR.CR3`, filename: "PAIR.CR3", sizeBytes: 20, width: 120, height: 80 });
+	for (let i = 0; i < 49; i++) await admin.mutation(api.galleries.addImage, { siteUrl: SITE, galleryId, r2Key: `${SITE}/${galleryId}/original/image-${i}.jpg`, filename: `image-${i}.jpg`, sizeBytes: 10, width: 120, height: 80 });
+	const companion = await admin.mutation(api.galleries.addImage, { siteUrl: SITE, galleryId, r2Key: `${SITE}/${galleryId}/original/pair.jpg`, filename: "pair.jpg", sizeBytes: 10, width: 120, height: 80 });
+	await expect(t.query(api.galleries.getImagesPage, { galleryId, token, cursor: null })).rejects.toThrow("password required");
+	const grant = await t.mutation(internal.galleryPasswordStore.createGrant, { token, grant: "page-grant", verifierVersion: "password-v1" });
+	const access = { galleryId, token, accessGrant: grant.accessGrant };
+	const first = await t.query(api.galleries.getImagesPage, { ...access, cursor: null });
+	expect(first.page).toHaveLength(48);
+	expect(first.previewSources).toContainEqual({ filename: "pair.jpg", r2Key: `${SITE}/${galleryId}/original/pair.jpg` });
+	const second = await t.query(api.galleries.getImagesPage, { ...access, cursor: first.continueCursor });
+	expect(second.page).toHaveLength(4);
+	expect(new Set([...first.page, ...second.page].map((row) => row._id)).size).toBe(52);
+	const selected = await t.query(api.galleries.getImagesPage, { ...access, cursor: first.continueCursor, selection: { kind: "selected", ids: [companion] } });
+	expect(selected.page.map((row) => row._id)).toEqual([companion]);
+	await t.run(async (ctx) => { const row = await ctx.db.query("portalTokens").withIndex("by_token", (q) => q.eq("token", token)).unique(); if (row) await ctx.db.patch(row._id, { revokedAt: Date.now() }); });
+	await expect(t.query(api.galleries.getImagesPage, { ...access, cursor: first.continueCursor })).rejects.toThrow("revoked");
+});
+
+test("existing gallery preview indexes backfill before pagination and downloads respect current permissions", async () => {
+	const { t, admin, galleryId, token } = await setupProtectedGallery();
+	const issued = await t.mutation(internal.galleryPasswordStore.createGrant, { token, grant: "migration-grant", verifierVersion: "password-v1" });
+	const args = { galleryId, token, accessGrant: issued.accessGrant, cursor: null };
+	await t.run(async (ctx) => { await ctx.db.patch(galleryId, { previewIndexVersion: undefined }); });
+	await expect(t.query(api.galleries.getImagesPage, args)).rejects.toThrow("preview index");
+	expect(await admin.mutation(api.galleries.backfillPreviewIndex, { galleryId, cursor: null })).toEqual({ isDone: true, cursor: null });
+	expect((await t.query(api.galleries.getImagesPage, args)).page).toHaveLength(1);
+	await admin.mutation(api.galleries.update, { id: galleryId, siteUrl: SITE, downloadEnabled: false });
+	await expect(t.query(api.galleries.getImagesPage, { ...args, selection: { kind: "all", excludedIds: [] } })).rejects.toThrow("Downloads are disabled");
+	await expect(t.mutation(api.galleries.backfillPreviewIndex, { galleryId, cursor: null })).rejects.toThrow();
+});

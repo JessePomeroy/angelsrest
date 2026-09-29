@@ -441,6 +441,34 @@ export const listPublished = query({
 	},
 });
 
+export const listPublishedSummaries = query({
+	args: { siteUrl: v.string() },
+	handler: async (ctx, { siteUrl }) => {
+		if (await isPublicSiteOffline(ctx, siteUrl)) return [];
+		const galleries = await ctx.db.query("portfolioGalleries")
+			.withIndex("by_siteUrl_and_isPublished_and_isVisible_and_portfolioOrder", (q) =>
+				q.eq("siteUrl", siteUrl).eq("isPublished", true).eq("isVisible", true))
+			.take(PORTFOLIO_GALLERY_MAX);
+		return Promise.all(galleries.map(async (gallery) => {
+			const revision = await getPortfolioRevision(ctx, gallery.publishedRevisionId);
+			if (!revision) throw new Error("Published portfolio revision not found");
+			assertRevisionOwnership(revision, gallery);
+			const title = revision.title?.trim();
+			if (!title) throw new Error("Published portfolio title is missing");
+			const placement = await ctx.db.query("portfolioPlacements")
+				.withIndex("by_revisionId_and_order", (q) => q.eq("revisionId", revision._id)).first();
+			if (placement && (placement.galleryId !== gallery._id || placement.siteUrl !== siteUrl || placement.order !== 0)) {
+				throw new Error("Portfolio preview ownership mismatch");
+			}
+			const asset = placement ? await ctx.db.get(placement.assetId) : null;
+			if (placement && (!asset || asset.siteUrl !== siteUrl || asset.status !== "ready" || asset.intent !== "web" || !asset.derivatives?.card)) {
+				throw new Error("Portfolio preview requires a ready web asset from the same site");
+			}
+			return { title, slug: revision.slug, preview: asset ? { assetId: asset.assetId, card: asset.derivatives!.card } : null };
+		}));
+	},
+});
+
 export const listPublishedWithPlacements = query({
 	args: { siteUrl: v.string() },
 	handler: async (ctx, { siteUrl }) => {

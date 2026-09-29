@@ -1170,6 +1170,23 @@ export default defineSchema({
 	}).index("by_orderId", ["orderId"]),
 
 	// Print orders (from Stripe checkout on any client site)
+	orderRevenueTotals: defineTable({
+		siteUrl: v.string(), day: v.string(), currency: v.string(),
+		amount: v.string(), count: v.number(), invalidCount: v.number(),
+	}).index("by_siteUrl_and_day_and_currency", ["siteUrl", "day", "currency"]),
+	orderRevenueVerificationTotals: defineTable({
+		siteUrl: v.string(), day: v.string(), currency: v.string(),
+		amount: v.string(), count: v.number(), invalidCount: v.number(),
+	}).index("by_siteUrl_and_day_and_currency", ["siteUrl", "day", "currency"]),
+	orderRevenueContributions: defineTable({
+		orderId: v.id("orders"), siteUrl: v.string(), day: v.string(), currency: v.string(),
+		amount: v.string(), invalid: v.boolean(), verified: v.optional(v.boolean()),
+	}).index("by_orderId", ["orderId"]),
+	orderRevenueBackfills: defineTable({
+		siteUrl: v.string(), phase: v.union(v.literal("copy"), v.literal("verify"), v.literal("compare"), v.literal("ready")),
+		cursor: v.union(v.string(), v.null()), copied: v.number(), verified: v.number(),
+	}).index("by_siteUrl", ["siteUrl"]),
+
 	orders: defineTable({
 		clientPrintRefundOperationId: v.optional(v.id("clientPrintRefundOperations")),
 		clientPrintRefundStartedAt: v.optional(v.number()),
@@ -1923,6 +1940,8 @@ export default defineSchema({
 	// Gallery delivery — private photo galleries for client delivery
 	galleries: defineTable({
 		siteUrl: v.string(),
+		previewIndexVersion: v.optional(v.literal(1)),
+		previewIndexCursor: v.optional(v.union(v.string(), v.null())),
 		clientId: v.id("photographyClients"),
 		name: v.string(),
 		slug: v.string(),
@@ -1993,6 +2012,8 @@ export default defineSchema({
 		siteUrl: v.string(),
 		galleryId: v.id("galleries"),
 		r2Key: v.string(),
+		pairKey: v.optional(v.string()),
+		previewable: v.optional(v.boolean()),
 		filename: v.string(),
 		sizeBytes: v.number(),
 		width: v.number(),
@@ -2002,6 +2023,8 @@ export default defineSchema({
 		downloadCount: v.number(),
 	})
 		.index("by_gallery", ["galleryId"])
+		.index("by_galleryId_and_siteUrl_and_order", ["galleryId", "siteUrl", "order"])
+		.index("by_galleryId_and_siteUrl_and_pairKey_and_previewable_and_order", ["galleryId", "siteUrl", "pairKey", "previewable", "order"])
 		.index("by_siteUrl", ["siteUrl"])
 		.index("by_r2Key", ["r2Key"]),
 

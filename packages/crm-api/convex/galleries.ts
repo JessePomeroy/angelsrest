@@ -37,6 +37,15 @@ export const getUploadPolicy = query({
 	},
 });
 
+function previewIdentity(image: { r2Key: string; filename: string }) {
+	const path = image.r2Key || image.filename;
+	const slash = path.lastIndexOf("/");
+	const filename = path.slice(slash + 1);
+	const dot = filename.lastIndexOf(".");
+	return { pairKey: `${path.slice(0, slash + 1)}${dot >= 0 ? filename.slice(0, dot) : filename}`.trim().toLowerCase(),
+		previewable: /\.(jpg|jpeg|png|webp)$/i.test(image.filename.trim()) };
+}
+
 async function requireGalleryPortalToken(
 	ctx: QueryCtx | MutationCtx,
 	token: string,
@@ -50,6 +59,7 @@ async function requireGalleryPortalToken(
 	if (!tokenDoc || tokenDoc.type !== "gallery" || tokenDoc.documentId !== galleryId) {
 		throw new Error("Invalid gallery token");
 	}
+	if (tokenDoc.revokedAt !== undefined) throw new Error("Gallery token has been revoked");
 	if (tokenDoc.used) throw new Error("Gallery token has already been used");
 	if (tokenDoc.expiresAt && Date.now() > tokenDoc.expiresAt) {
 		throw new Error("Gallery token has expired");
@@ -59,6 +69,7 @@ async function requireGalleryPortalToken(
 	if (!gallery || gallery.siteUrl !== tokenDoc.siteUrl || gallery.status !== "published") {
 		throw new Error("Gallery not found");
 	}
+	if (gallery.expiresAt !== undefined && gallery.expiresAt <= Date.now()) throw new Error("Gallery has expired");
 	await requireGalleryAccessGrant(ctx, tokenDoc, gallery, accessGrant);
 	return gallery;
 }
@@ -106,6 +117,7 @@ export const create = mutation({
 		return await ctx.db.insert("galleries", {
 			...args,
 			status: "draft",
+			previewIndexVersion: 1,
 			imageCount: 0,
 			totalSizeBytes: 0,
 		});
@@ -358,6 +370,7 @@ export const addImage = mutation({
 		}
 
 		const imageId = await ctx.db.insert("galleryImages", {
+			...previewIdentity(args),
 			siteUrl: args.siteUrl,
 			galleryId: args.galleryId,
 			r2Key: args.r2Key,
@@ -451,6 +464,58 @@ export const updateImage = mutation({
 });
 
 // Image queries
+
+export const backfillPreviewIndex = mutation({
+	args: { galleryId: v.id("galleries"), cursor: v.union(v.string(), v.null()) },
+	handler: async (ctx, { galleryId, cursor }) => {
+		const gallery = await requireDocumentSiteAdmin(ctx, "galleries", galleryId);
+		if (gallery.previewIndexVersion === 1) return { isDone: true, cursor: null };
+		if ((gallery.previewIndexCursor ?? null) !== cursor) return { isDone: false, cursor: gallery.previewIndexCursor ?? null };
+		const batch = await ctx.db.query("galleryImages").withIndex("by_gallery", (q) => q.eq("galleryId", galleryId))
+			.paginate({ numItems: 100, cursor, maximumBytesRead: 1_000_000 });
+		for (const image of batch.page) {
+			if (image.siteUrl !== gallery.siteUrl) throw new Error("Gallery image ownership mismatch");
+			await ctx.db.patch(image._id, previewIdentity(image));
+		}
+		await ctx.db.patch(galleryId, { previewIndexCursor: batch.isDone ? null : batch.continueCursor,
+			...(batch.isDone ? { previewIndexVersion: 1 as const } : {}) });
+		return { isDone: batch.isDone, cursor: batch.isDone ? null : batch.continueCursor };
+	},
+});
+
+export const getImagesPage = query({
+	args: {
+		galleryId: v.id("galleries"), token: v.string(), accessGrant: v.optional(v.string()),
+		cursor: v.union(v.string(), v.null()),
+		selection: v.optional(v.union(
+			v.object({ kind: v.literal("all"), excludedIds: v.array(v.id("galleryImages")) }),
+			v.object({ kind: v.literal("selected"), ids: v.array(v.id("galleryImages")) }),
+			v.object({ kind: v.literal("favorites") }),
+		)),
+	},
+	handler: async (ctx, { galleryId, token, accessGrant, cursor, selection }) => {
+		const gallery = await requireGalleryPortalToken(ctx, token, galleryId, accessGrant);
+		if (gallery.previewIndexVersion !== 1) throw new Error("Gallery preview index must be prepared before paginated access");
+		if (selection && !gallery.downloadEnabled) throw new Error("Downloads are disabled");
+		if (selection?.kind === "favorites" && !gallery.favoritesEnabled) throw new Error("Favorites are disabled");
+		const ids = selection?.kind === "all" ? selection.excludedIds : selection?.kind === "selected" ? selection.ids : [];
+		if (ids.length > GALLERY_IMAGE_LIMIT) throw new Error("Selection is too large");
+		const selected = new Set(ids);
+		const result = await ctx.db.query("galleryImages")
+			.withIndex("by_galleryId_and_siteUrl_and_order", (q) => q.eq("galleryId", galleryId).eq("siteUrl", gallery.siteUrl))
+			.paginate({ numItems: 48, cursor, maximumBytesRead: 1_000_000 });
+		const previewSources = selection ? [] : await Promise.all(result.page.filter((image) => !image.previewable).map(async (image) => {
+			const companion = await ctx.db.query("galleryImages")
+				.withIndex("by_galleryId_and_siteUrl_and_pairKey_and_previewable_and_order", (q) => q.eq("galleryId", galleryId)
+					.eq("siteUrl", gallery.siteUrl).eq("pairKey", image.pairKey).eq("previewable", true)).first();
+			return companion ? { filename: companion.filename, r2Key: companion.r2Key } : null;
+		}));
+		return { ...result, totalCount: gallery.imageCount, previewSources: previewSources.filter((image) => image !== null),
+			page: result.page.filter((image) => !selection || (selection.kind === "all" ? !selected.has(image._id)
+				: selection.kind === "selected" ? selected.has(image._id) : image.isFavorite)),
+		};
+	},
+});
 
 export const getImages = query({
 	args: {
