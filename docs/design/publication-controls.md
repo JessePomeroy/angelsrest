@@ -1,7 +1,7 @@
 # Consistent publishing controls
 
-Implemented locally on September 28, 2026. Shared admin source and the portfolio
-backend change must ship together; the public site has not been changed by this task.
+Implemented on September 28–29, 2026. Shared admin source and the portfolio
+backend change ship in order; see the release record below for verified delivery.
 
 ## Interaction
 
@@ -56,9 +56,9 @@ its navigation entry, and its content are not interchangeable operations.
   public endpoint is introduced.
 - Publish the backend change before adopting the shared admin release. Otherwise
   a previously hidden gallery could still remain hidden on an old backend.
-- Both working branches are `fix/editor-publication-controls`. No package versions,
-  production records, production environment settings, commits or deployments were
-  changed. Existing unrelated local changes were preserved.
+- Initial implementation used `fix/editor-publication-controls` in both repositories.
+  Delivery is recorded below. No production content records or environment settings
+  were changed; unrelated local work was preserved.
 
 ## Research basis
 
@@ -121,7 +121,7 @@ hidden redundant saved labels, and matching dropdown/action edges. Follow-up
 evidence and reviewed screenshots are in
 `/tmp/angelsrest-publication-mobile-20260929/`. This supersedes the September 28
 mobile screenshot referenced in the conversation. Paper update/comparison remains
-pending because editing tools are unavailable. Changes remain local.
+pending because editing tools are unavailable.
 
 Follow-up verification: 119 focused component tests passed; shared Svelte check
 reported 0 errors/0 warnings; package build passed. All 36 browser states and
@@ -129,3 +129,29 @@ reported 0 errors/0 warnings; package build passed. All 36 browser states and
 320, 390 and 1440 pixels confirmed Escape focus recovery and visible unsaved
 feedback. Updated open/closed blog captures and product/portfolio mobile captures
 were inspected. The focused Impeccable detector reported no findings.
+
+
+## Release record — September 29, 2026
+
+- Shared admin source merged in [admin-dashboard #257](https://github.com/JessePomeroy/admin-dashboard/pull/257).
+  [Version PR #258](https://github.com/JessePomeroy/admin-dashboard/pull/258) published
+  `@jessepomeroy/admin@6.5.5`; the immutable GitHub Packages version was verified.
+- Portfolio backend merged in [Angels Rest #671](https://github.com/JessePomeroy/angelsrest/pull/671).
+  [Production deployment](https://github.com/JessePomeroy/angelsrest/actions/runs/36558541763)
+  succeeded against `loyal-swan-967` at CI-verified source revision
+  `1e2b1059bd242a559d53ef4a4ab9a1be3b01f821`, whose tree matches the source merge.
+- Host adoption pins the published admin package to `6.5.5` and updates the
+  existing portfolio protocol assertion to the approved Publish/Unpublish labels.
+  The automatic adoption preparation exposed that stale assertion; manual
+  preparation keeps the same checks and package-manager lockfile update.
+- Installed-package verification: host lint, Svelte check (0 errors/0 warnings),
+  package-contract check, full test command including 28 auth/editor protocol
+  tests, and the 10 portfolio backend tests passed. No source alias or provider
+  writes were used for these host checks.
+- The installed package also passed all 36 browser states and 20 interactions at
+  390 and 1440 pixels without page errors or horizontal overflow. The mobile blog
+  dropdown screenshot was inspected; evidence is in
+  `/tmp/publication-ship-20260929/installed-browser/`.
+- Admin source/version and backend source PR checks passed before merge. Host adoption CI and Vercel
+  production status must be checked on the adoption PR before reporting it live.
+  Paper update/comparison remains pending; no design board is marked verified.

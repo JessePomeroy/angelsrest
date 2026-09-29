@@ -155,16 +155,17 @@ describe("portfolio route document identity", () => {
 		await tick();
 	}
 
-	it("offers host publication for drafts and visibility controls for published galleries", async () => {
+	it("offers publish for drafts and unpublish for current public galleries", async () => {
 		const button = (label: string) =>
 			[...document.querySelectorAll("button")].find(
 				(element) => element.textContent?.trim() === label,
 			);
 		expect(button("publish")).toBeDefined();
-		expect(button("hide from site")).toBeUndefined();
+		expect(button("unpublish")).toBeUndefined();
 		await navigate("P");
-		expect(button("publish")).toBeDefined();
-		expect(button("hide from site")).toBeDefined();
+		expect(button("publish")).toBeUndefined();
+		expect(button("unpublish")).toBeDefined();
+		expect(document.querySelector(".publication-status")?.textContent).toBe("published");
 		expect(editor.mutation).not.toHaveBeenCalled();
 	});
 
