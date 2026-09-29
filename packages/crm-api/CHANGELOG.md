@@ -1,5 +1,15 @@
 # @jessepomeroy/crm-api
 
+## 6.4.0
+
+### Minor Changes
+
+- 501ce7f: Add bounded portfolio index projections, atomic authorized board reordering, and compact invoice/quote dashboard summaries.
+- 501ce7f: Add authorized delivery metadata pages and resumable preview-index preparation;
+  preserve RAW companions across pages. Maintain per-currency order totals with a
+  resumable, independently reconciled historical backfill and day-sensitive query.
+  The host must prepare existing gallery indexes before adopting pagination.
+
 ## 6.3.1
 
 ### Patch Changes
