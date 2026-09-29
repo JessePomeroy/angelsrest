@@ -82,16 +82,16 @@ were unavailable, so the handbook comparison remains pending in the inventory.
 
 ## Local integration and release order
 
-The hub's installed admin symlink currently points to a local candidate under
-`node_modules/.pnpm/@jessepomeroy+admin@performance/` for verification. The committed
-package range and lockfile still reference released 6.5.5. A clean install will
-not yet resolve the new entrypoints. Do not ship the host ahead of its package.
+The shipped host candidate pins published admin **6.6.0** and its immutable
+registry integrity in the lockfile. Its checks and build were repeated against
+that package, replacing the temporary local link used during development.
 
-1. Follow the backend preparation and migration gates in the [scaling follow-up](performance-scaling-follow-up.md) before deploying the paginated host.
-2. Publish the shared admin minor release using its changeset.
-3. Update the hub dependency using pnpm, repeat checks with the published package,
-   then deploy the host.
-4. Verify live page payloads and provider-independent onboarding/login navigation.
+Backend source landed in [PR 674](https://github.com/JessePomeroy/angelsrest/pull/674).
+The reviewed backend deployed successfully and its four gallery indexes and
+fourteen historical order contributions were prepared and verified before host
+activation. See the [scaling follow-up](performance-scaling-follow-up.md) for the
+release record and migration invariants. The combined host release is tracked in
+[PR 675](https://github.com/JessePomeroy/angelsrest/pull/675).
 
 The available Reflecting Pool checkout consumes admin 3.41.6 and CRM API 3.1.0.
 It was inspected for context but not upgraded or certified against this candidate.

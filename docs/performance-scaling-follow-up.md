@@ -1,7 +1,19 @@
 # Performance scaling follow-up — 2026-09-29
 
-Status: implemented and verified locally. No backend deployment, historical
-migration, package publication, or host deployment has been performed.
+Release preparation record: backend PR 674 is merged and its reviewed revision
+`78999c872730d64896218c3348b84c39314f88a4` deployed successfully through
+[the shared Convex workflow](https://github.com/JessePomeroy/angelsrest/actions/runs/36609745014).
+All four production galleries were prepared. All fourteen order contributions
+were copied and independently verified; before/after currency and dashboard
+totals matched, and the resulting dashboard scan limit is zero. A live read-only
+comparison of all four galleries across 32 metadata pages matched the old
+endpoint’s file membership and ordering; no gallery content was changed.
+
+Admin **6.6.0**, CRM **6.4.0**, and gallery-delivery **0.3.0** are published;
+their immutable registry versions were verified. The CRM/gallery release is recorded in
+[version PR 676](https://github.com/JessePomeroy/angelsrest/pull/676).
+The complete host rollout is tracked in
+[PR 675](https://github.com/JessePomeroy/angelsrest/pull/675).
 
 ## Delivery galleries
 
@@ -82,7 +94,7 @@ version 1: it deliberately rejects unprepared galleries rather than scanning the
 
 ## Local evidence and remaining checks
 
-- Hub: 2,884 unit/integration tests, 28 protocol tests, and 21 script tests passed.
+- Hub: 2,885 unit/integration tests, 28 protocol tests, and 21 script tests passed.
   Svelte check, lint, CRM TypeScript, consumer package-contract checks, and the
   production build passed using fictional public Convex settings. The build retained
   existing optional Sharp/Resend dependency-tracing warnings.
@@ -98,7 +110,8 @@ version 1: it deliberately rejects unprepared galleries rather than scanning the
   this change. Paper tools were unavailable; handbook synchronization is pending
   in the screen inventory.
 
-The admin candidate is locally linked for verification; committed dependency
-ranges still refer to the published package. A clean install cannot consume the
-new entrypoints until the coordinated release. Reflecting Pool was not upgraded.
+The host candidate pins published admin 6.6.0; a clean install, full test suite,
+and build passed against that immutable package. Seventeen targeted mobile browser
+cases passed against it, and a server-rendering regression check confirms the
+initial gallery page renders before JavaScript hydration. Reflecting Pool was not upgraded.
 Production timing, provider load, and physical-device performance were not measured.
