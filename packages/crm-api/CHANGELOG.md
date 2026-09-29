@@ -1,5 +1,13 @@
 # @jessepomeroy/crm-api
 
+## 6.3.1
+
+### Patch Changes
+
+- 4b7db93: Make publishing a portfolio gallery restore its public visibility atomically,
+  including when republishing the same saved revision after hiding it. Existing
+  authorization, draft checks, and public asset validation remain in place.
+
 ## 6.3.0
 
 ### Minor Changes
