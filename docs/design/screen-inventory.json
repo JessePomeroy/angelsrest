@@ -2,6 +2,21 @@
   "schemaVersion": 1,
   "pendingChanges": [
     {
+      "id": "consistent-publication-controls",
+      "updatedAt": "2026-09-29",
+      "followUp": "Owner-reported mobile staggering corrected: full-width publishing row and aligned dropdown; Paper comparison remains pending.",
+      "status": "pending-paper-sync",
+      "recordedAt": "2026-09-28",
+      "surfaces": [
+        "product editor publication header",
+        "portfolio gallery detail and list",
+        "blog post, author and category publication headers and lists",
+        "page and site settings publication status"
+      ],
+      "evidence": "docs/design/publication-controls.md",
+      "reason": "Local shared-source UI and portfolio backend implementation verified with fictional browser fixtures. Paper editing tools unavailable; update and same-state comparison remain pending."
+    },
+    {
       "id": "catalog-cleanup",
       "status": "pending-paper-sync",
       "recordedAt": "2026-09-28",

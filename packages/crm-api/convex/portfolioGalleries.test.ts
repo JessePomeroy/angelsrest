@@ -265,6 +265,25 @@ describe("tenant-scoped portfolio gallery revisions", () => {
 		expect(published?.title).toBe("Published title");
 	});
 
+	test.each([false, true])("publishing a hidden gallery makes the requested revision public (new draft=%s)", async (newDraft) => {
+		const { adminA, assetA } = await setup();
+		const initial = await adminA.mutation(api.portfolioGalleries.saveDraft, {
+			siteUrl: SITE_A.siteUrl,
+			draft: { title: "Saved gallery", slug: "republish", placements: [placement("one", assetA.id, { altText: "Portrait" })] },
+		});
+		await adminA.mutation(api.portfolioGalleries.publish, { galleryId: initial.galleryId, draftRevisionId: initial.revisionId });
+		await adminA.mutation(api.portfolioGalleries.setVisibility, { galleryId: initial.galleryId, isVisible: false });
+		const saved = newDraft ? await adminA.mutation(api.portfolioGalleries.saveDraft, {
+			siteUrl: SITE_A.siteUrl, galleryId: initial.galleryId, expectedDraftRevisionId: initial.revisionId,
+			draft: { title: "Updated gallery", slug: "republish", placements: [placement("one", assetA.id, { altText: "Portrait" })] },
+		}) : initial;
+		expect(await adminA.query(api.portfolioGalleries.getPublishedBySlug, { siteUrl: SITE_A.siteUrl, slug: "republish" })).toBeNull();
+		await adminA.mutation(api.portfolioGalleries.publish, { galleryId: initial.galleryId, draftRevisionId: saved.revisionId });
+		expect(await adminA.query(api.portfolioGalleries.getPublishedBySlug, { siteUrl: SITE_A.siteUrl, slug: "republish" })).toMatchObject({ title: newDraft ? "Updated gallery" : "Saved gallery" });
+		const state = await adminA.query(api.portfolioGalleries.getEditorState, { galleryId: initial.galleryId });
+		expect(state).toMatchObject({ isVisible: true, draft: { revisionId: saved.revisionId }, published: { revisionId: saved.revisionId } });
+	});
+
 	test("hides and restores a gallery before permanently removing only its gallery records", async () => {
 		const { t, adminA, adminB, assetA } = await setup();
 		const draft = await adminA.mutation(api.portfolioGalleries.saveDraft, {

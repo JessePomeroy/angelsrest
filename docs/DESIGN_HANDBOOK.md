@@ -567,3 +567,27 @@ Convex/Better Auth tests create a hashed credential, sign in and change its pass
 Paper tools are unavailable in this session. The inventory records the pending
 reference update and comparison; no artboard is marked verified. The existing
 shared AdminModal and admin style tokens remain the design authority.
+
+
+### Consistent publication controls — September 28, 2026
+
+The local shared admin source now groups Publish, Publish changes and Unpublish
+in one header control, separates publication status from draft-save status, and
+removes portfolio Show/Hide and product Remove from Shop wording. Existing page
+publication gates remain. The portfolio backend publishes hidden galleries visibly
+in one mutation. See [coverage and evidence](design/publication-controls.md).
+
+Thirty-six synthetic desktop/mobile states and twenty interactions passed; key
+mobile captures were visually inspected. The shared package and backend are not
+deployed by this task. Paper editing tooling was unavailable, so existing boards
+remain unchanged and the inventory records a pending update/comparison.
+
+
+### Publication control mobile alignment — September 29, 2026
+
+The local publication control was corrected after owner feedback: status above a
+full-width button row, matching-width dropdown, and no redundant mobile saved
+label. Saving/error feedback and publication behavior remain intact. The focused
+browser regression now measures alignment instead of checking overflow alone.
+See [the publication coverage record](design/publication-controls.md). This is a
+local source correction; the existing Paper update/comparison is still pending.
