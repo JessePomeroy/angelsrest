@@ -59,9 +59,23 @@ test("mobile navigation defers its renderer and rests after interaction", async 
 	await page.locator(".sphere").tap();
 	await expect.poll(() => surfaceRequests.length).toBeGreaterThan(0);
 	await expect.poll(() => page.evaluate(() => Reflect.get(window, "navDraws"))).toBeGreaterThan(0);
-	// Wait beyond spring settling, then prove draw calls stay flat while idle.
-	await page.waitForTimeout(3500);
-	const settled = await page.evaluate(() => Reflect.get(window, "navDraws"));
-	await page.waitForTimeout(500);
-	expect(await page.evaluate(() => Reflect.get(window, "navDraws"))).toBe(settled);
+	// Physics caps each step at 50ms, so slow software GPUs need more wall time.
+	// Require a full quiet second while browser frames still advance.
+	await expect(async () => {
+		const sample = await page.evaluate(async () => {
+			const before = Number(Reflect.get(window, "navDraws"));
+			const started = performance.now();
+			let frames = 0;
+			await new Promise<void>((resolve) => {
+				function observe(time: number) {
+					frames++;
+					if (time - started >= 1000 && frames >= 3) resolve();
+					else requestAnimationFrame(observe);
+				}
+				requestAnimationFrame(observe);
+			});
+			return { before, after: Number(Reflect.get(window, "navDraws")) };
+		});
+		expect(sample.after).toBe(sample.before);
+	}).toPass({ timeout: 20_000, intervals: [250] });
 });

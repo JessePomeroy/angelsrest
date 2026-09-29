@@ -97,3 +97,13 @@ The available Reflecting Pool checkout consumes admin 3.41.6 and CRM API 3.1.0.
 It was inspected for context but not upgraded or certified against this candidate.
 The optional new admin capabilities preserve older-host behavior; full spoke
 adoption remains a separate release integration check.
+
+## CI settling-time verification
+
+The initial idle-render test assumed the spring settled within 3.5 wall-clock
+seconds. CI software rendering produced too few capped physics steps in that
+interval. A controlled four-frame-per-second browser reproduced the failure
+(14 to 16 draws), then reached a stable 25 draws. The corrected test requires a
+full second with no new draws across at least three observed browser frames,
+within a 20-second settling deadline. Three repetitions each in mobile Chromium
+and WebKit passed. This correction changes the test oracle, not product motion.
