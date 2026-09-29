@@ -1,4 +1,4 @@
-import { getTenantAdminLayoutData, type TenantAdminLayoutData } from "@jessepomeroy/admin";
+import { getTenantAdminLayoutData, type TenantAdminLayoutData } from "@jessepomeroy/admin/core";
 import { requireAuthWithIdentity } from "$lib/server/adminAuth";
 import { getSiteAdminAccess } from "$lib/server/siteAdminAuthorization";
 

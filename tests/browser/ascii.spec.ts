@@ -124,6 +124,7 @@ test("About replacement disconnects pending image work before it can paint the n
 	const portrait = page.locator(".ascii-image-container");
 	const photo = portrait.locator("img").first();
 	const originalSrc = await photo.getAttribute("src");
+	await portrait.click();
 	await expect.poll(() => page.evaluate(() => window.asciiPending.length)).toBe(1);
 	await page.evaluate(async () => {
 		const old = window.asciiPending[0];

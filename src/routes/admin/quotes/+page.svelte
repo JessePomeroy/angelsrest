@@ -1,5 +1,5 @@
 <script lang="ts">
-import { QuotesPage } from "@jessepomeroy/admin";
+import QuotesPage from "@jessepomeroy/admin/pages/QuotesPage";
 
 let { data } = $props();
 </script>

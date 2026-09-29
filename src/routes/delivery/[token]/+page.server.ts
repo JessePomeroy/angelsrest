@@ -1,9 +1,12 @@
-import { resolveGalleryDisplayImages } from "@jessepomeroy/gallery-delivery/display-images";
+import {
+	type GalleryDisplayImage,
+	resolveGalleryDisplayImages,
+} from "@jessepomeroy/gallery-delivery/display-images";
 import { galleryOriginalDownloadUrl } from "@jessepomeroy/gallery-delivery/download-urls";
 import { error, fail, redirect } from "@sveltejs/kit";
 import { dev } from "$app/environment";
 import { api } from "$convex/api";
-import type { Id } from "$convex/dataModel";
+import type { Doc, Id } from "$convex/dataModel";
 import { getConvex } from "$lib/server/convexClient";
 import { getGalleryWorkerUrl } from "$lib/server/galleryWorkerUrl";
 import type { Actions } from "./$types";
@@ -83,13 +86,17 @@ export async function load({ params, cookies }) {
 			accessGrant: "",
 			requiresPassword: true,
 			gallery,
-			images: [],
+			imagePage: null,
+			images: [] as Array<
+				GalleryDisplayImage<Doc<"galleryImages"> & { downloadUrl: string | null }>
+			>,
 			client: result.client,
 			workerUrl: getGalleryWorkerUrl(),
 		};
 	}
 
-	const images = await convex.query(api.galleries.getImages, {
+	const imagePage = await convex.query(api.galleries.getImagesPage, {
+		cursor: null,
 		galleryId: gallery._id,
 		token,
 		accessGrant,
@@ -100,8 +107,9 @@ export async function load({ params, cookies }) {
 	return {
 		token,
 		gallery,
+		imagePage: { cursor: imagePage.continueCursor, isDone: imagePage.isDone },
 		images: resolveGalleryDisplayImages(
-			images.map((img) => ({
+			imagePage.page.map((img) => ({
 				...img,
 				downloadUrl: gallery.downloadEnabled
 					? galleryOriginalDownloadUrl(workerUrl, img.r2Key, token, accessGrant)
@@ -109,6 +117,7 @@ export async function load({ params, cookies }) {
 			})),
 			workerUrl,
 			{ token, accessGrant },
+			imagePage.previewSources,
 		),
 		client: result.client,
 		workerUrl,

@@ -9,6 +9,7 @@ export const preview =
 
 // These synthetic branded IDs are confined to the fixture; no provider receives them.
 export const deliveryData = {
+	imagePage: null,
 	siteSettings: {
 		artistName: null,
 		siteTitle: null,
@@ -52,7 +53,7 @@ export const deliveryData = {
 	accessGrant: "",
 	workerUrl: "https://fixture.invalid",
 	requiresPassword: false,
-	client: { name: "Fixture client" },
+	client: { name: "Fixture client", email: undefined },
 } satisfies PageData;
 
 export const printSetData = {

@@ -115,7 +115,7 @@ const categories = [
     <!-- Products grid -->
     {#if filteredProducts.length > 0}
         <div class="catalog-columns">
-            {#each filteredProducts as product (product.slug)}
+            {#each filteredProducts as product, index (product.slug)}
                 <a
                     href="/shop/{product.slug}"
                     class="catalog-entry"
@@ -128,6 +128,12 @@ const categories = [
                             <div class="image-clip">
                                 <img
                                     src={product.preview}
+                                    srcset={product.previewSrcset}
+                                    sizes="(max-width: 767px) calc((100vw - 54px) / 2), 33vw"
+                                    width={product.previewWidth}
+                                    height={product.previewHeight}
+                                    loading={index < 2 ? "eager" : "lazy"}
+                                    decoding="async"
                                     alt={product.title}
                                     class="catalog-photo"
                                 />

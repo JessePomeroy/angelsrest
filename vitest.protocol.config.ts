@@ -23,6 +23,7 @@ export default defineConfig({
 		},
 	},
 	test: {
+		server: { deps: { inline: [/@jessepomeroy[+/]admin/] } },
 		include: ["src/routes/admin/__tests__/*.client.ts"],
 		environment: "jsdom",
 		globals: true,

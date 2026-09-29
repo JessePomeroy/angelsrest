@@ -125,3 +125,20 @@ test("unmount cancels a prepared ZIP with the original capability and stops poll
  expect(requests).toHaveLength(2);
  await expect(page.getByRole("status")).toHaveCount(0);
 });
+
+test("paged galleries resolve selection before requesting a save-location click", async ({ page }) => {
+ await page.goto("/?fixture=delivery-downloads&count=55&paged");
+ await page.evaluate(() => {
+  const original = window.fetch.bind(window);
+  window.fetch = async (input, options) => String(input).includes("/image/") ? new Response("fixture bytes") : original(input, options);
+ });
+ await page.getByLabel("choose location", { exact: true }).check();
+ await page.getByRole("button", { name: "download all", exact: true }).click();
+ const ready = page.getByRole("button", { name: "Choose save location (55 files)", exact: true });
+ await expect(ready).toBeVisible();
+ expect(await page.evaluate(() => window.downloadFixture.saved)).toEqual([]);
+ await ready.click();
+ await expect(page.getByRole("status")).toHaveText("saved 55 files.");
+ expect(await page.evaluate(() => window.downloadFixture.saved.length)).toBe(55);
+ await expect(page.locator(".grid-cell")).toHaveCount(48);
+});

@@ -1,5 +1,6 @@
 <script lang="ts">
-import { addToast, getAdminConfig, PlatformPage, type PlatformClient } from "@jessepomeroy/admin";
+import PlatformPage from "@jessepomeroy/admin/pages/PlatformPage";
+import { addToast, getAdminConfig, type PlatformClient } from "@jessepomeroy/admin/core";
 import { useQuery } from "convex-svelte";
 import PlatformClientCreate from "$lib/components/PlatformClientCreate.svelte";
 import { lumaprintsSetupPath } from "$lib/lumaprintsSetup";

@@ -1,6 +1,6 @@
 <script lang="ts">
 import { untrack } from "svelte";
-import { clientPrintRefundPath, refundCents, type ClientPrintRefundPageData } from "$lib/clientPrintRefunds";
+import { clientPrintRefundPath, previewClientPrintRefund, type ClientPrintRefundPageData } from "$lib/clientPrintRefunds";
 import { stripeConnectSetupPath } from "$lib/stripeConnectSetup";
 let { data, form }: { data: ClientPrintRefundPageData; form?: { message: string } | null } = $props();
 const order = $derived(data.page?.selected);
@@ -9,10 +9,7 @@ let amounts = $state<string[]>(untrack(() => data.page?.selected?.lines.map(() =
 let other = $state("0.00");
 let confirmed = $state(false);
 const money = (cents: number) => new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" }).format(cents / 100);
-const selectedCents = $derived(amounts.map(value => refundCents(value) ?? 0));
-const printCents = $derived(order?.lines.reduce((sum, line) => sum + (["print", "print_set"].includes(line.kind) ? selectedCents[line.index] ?? 0 : 0), 0) ?? 0);
-const total = $derived(selectedCents.reduce((sum, value) => sum + value, refundCents(other) ?? 0));
-const fee = $derived(Math.max(0, Math.floor(((order?.printRefundedCents ?? 0) + printCents) / 20) - (order?.feeReturnedCents ?? 0)));
+const preview = $derived(order ? previewClientPrintRefund(order, amounts, other) : { valid: false, totalCents: 0, feeCents: 0 });
 const blocked = $derived(order?.operations.some(operation => !["complete", "failed", "canceled"].includes(operation.state)));
 const states = { checking: "Checking refund", customer_pending: "Waiting for Stripe", fee_pending: "Customer refunded · fee return pending", complete: "Complete", failed: "Customer refund failed", canceled: "Canceled", attention: "Needs a status check or Angels Rest review" };
 </script>
@@ -40,10 +37,10 @@ const states = { checking: "Checking refund", customer_pending: "Waiting for Str
 							<fieldset><legend>Amounts to refund</legend>
 								{#each order.lines as line}<div class="amount-row"><label for={`line_${line.index}`}>{line.name}<small>{["print", "print_set"].includes(line.kind) ? "Print · 5% fee returned" : "No Angels Rest fee"} · {money(line.remainingCents)} available</small></label><input id={`line_${line.index}`} name={`line_${line.index}`} type="number" inputmode="decimal" min="0" max={(line.remainingCents / 100).toFixed(2)} step="0.01" required value={amounts[line.index]} oninput={event => { amounts[line.index] = event.currentTarget.value; }} aria-label={`Refund dollars for ${line.name}`} /></div>{/each}
 								<div class="amount-row"><label for="other">Shipping, tax and other charges<small>No Angels Rest fee · {money(order.otherRemainingCents)} available</small></label><input id="other" name="other" type="number" inputmode="decimal" min="0" max={(order.otherRemainingCents / 100).toFixed(2)} step="0.01" required value={other} oninput={event => { other = event.currentTarget.value; }} /></div>
-								<dl aria-live="polite"><div><dt>Customer receives</dt><dd>{money(total)}</dd></div><div><dt>Angels Rest fee returned to you</dt><dd>{money(fee)}</dd></div></dl>
+								<dl aria-live="polite"><div><dt>Customer receives</dt><dd>{money(preview.totalCents)}</dd></div><div><dt>Angels Rest fee returned to you</dt><dd>{money(preview.feeCents)}</dd></div></dl>
 								<p class="fine">The fee return is separate from the customer refund. Fractions of a cent carry across refunds on this order.</p>
 								<label class="confirm"><input type="checkbox" name="confirmed" value="yes" required bind:checked={confirmed} />I confirm these amounts and understand that LumaPrints fulfillment is separate.</label>
-								<button type="submit" disabled={!confirmed || total <= 0}>{`Refund ${money(total)}`}</button>
+								<button type="submit" disabled={!confirmed || !preview.valid || preview.totalCents <= 0}>{`Refund ${money(preview.totalCents)}`}</button>
 							</fieldset>
 						</form>
 					{:else if blocked}<p>Finish or resolve the existing refund before starting another.</p>{/if}

@@ -1,5 +1,6 @@
 <script lang="ts">
-import { AboutPage, LoadingState } from "@jessepomeroy/admin";
+import AboutPage from "@jessepomeroy/admin/pages/editor/AboutPage";
+import LoadingState from "@jessepomeroy/admin/components/LoadingState";
 import { useQuery } from "convex-svelte";
 import { api } from "$convex/api";
 import { adminConfig } from "$lib/config/admin";

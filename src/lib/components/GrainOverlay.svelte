@@ -75,7 +75,6 @@ onMount(() => {
 
 	const motion = window.matchMedia("(prefers-reduced-motion: reduce)");
 	let frame: number | undefined;
-	let lastTime = 0;
 	let disposed = false;
 	function draw() {
 		gl.uniform1f(seedLoc, Math.random() * 100);
@@ -88,29 +87,28 @@ onMount(() => {
 		gl.viewport(0, 0, canvas.width, canvas.height);
 		draw();
 	}
-	function render(time: number) {
+	function render() {
 		frame = undefined;
-		if (disposed || motion.matches) return;
-		if (time - lastTime > 125) {
-			draw();
-			lastTime = time;
-		}
-		frame = requestAnimationFrame(render);
+		if (disposed || motion.matches || document.hidden) return;
+		draw();
+		frame = window.setTimeout(render, 125);
 	}
 	function syncMotion() {
-		if (frame !== undefined) cancelAnimationFrame(frame);
+		if (frame !== undefined) clearTimeout(frame);
 		frame = undefined;
-		if (!motion.matches) frame = requestAnimationFrame(render);
+		if (!motion.matches && !document.hidden) frame = window.setTimeout(render, 125);
 	}
 	resize();
 	syncMotion();
 	window.addEventListener("resize", resize, { passive: true });
 	motion.addEventListener("change", syncMotion);
+	document.addEventListener("visibilitychange", syncMotion);
 	return () => {
 		disposed = true;
-		if (frame !== undefined) cancelAnimationFrame(frame);
+		if (frame !== undefined) clearTimeout(frame);
 		window.removeEventListener("resize", resize);
 		motion.removeEventListener("change", syncMotion);
+		document.removeEventListener("visibilitychange", syncMotion);
 		releaseResources();
 	};
 });

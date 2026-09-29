@@ -1,5 +1,5 @@
 <script lang="ts">
-import { AdminModal } from "@jessepomeroy/admin";
+import AdminModal from "@jessepomeroy/admin/components/AdminModal";
 import { normalizePlatformClientInput, PLATFORM_CLIENT_LOGIN_UNVERIFIED, PLATFORM_CLIENT_SITE_IN_USE } from "../../../packages/crm-api/convex/helpers/platformClientInput";
 
 let { oncreated }: { oncreated: (client: { name: string; siteUrl: string }) => void } = $props();

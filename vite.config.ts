@@ -39,6 +39,8 @@ export default defineConfig(({ isSsrBuild }) => ({
 		}),
 		sveltekit(),
 	],
+	// Compile the shared Svelte package, including its granular entrypoints.
+	ssr: { noExternal: [/^@jessepomeroy\/admin(?:\/|$)/] },
 	build: {
 		minify: "esbuild",
 		chunkSizeWarningLimit: 900,
@@ -62,6 +64,7 @@ export default defineConfig(({ isSsrBuild }) => ({
 		},
 	},
 	test: {
+		server: { deps: { inline: [/@jessepomeroy[+/]admin/] } },
 		include: [
 			"src/**/*.test.ts",
 			"packages/crm-api/convex/**/*.test.ts",

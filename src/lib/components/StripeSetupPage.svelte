@@ -1,5 +1,6 @@
 <script lang="ts">
-import { LoginPage, setAdminConfig, type AdminAuthClient } from "@jessepomeroy/admin";
+import LoginPage from "@jessepomeroy/admin/components/LoginPage";
+import { setAdminConfig, type AdminAuthClient } from "@jessepomeroy/admin/core";
 import { clientPrintRefundPath } from "$lib/clientPrintRefunds";
 import { adminConfig } from "$lib/config/admin";
 import { stripeConnectSetupPath, type StripeConnectSetupData } from "$lib/stripeConnectSetup";

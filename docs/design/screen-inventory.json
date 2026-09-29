@@ -2,6 +2,28 @@
   "schemaVersion": 1,
   "pendingChanges": [
     {
+      "id": "delivery-metadata-pagination",
+      "status": "pending-paper-sync",
+      "recordedAt": "2026-09-29",
+      "surfaces": ["delivery gallery page loading and retry", "download preparation, cancellation, and save-location handoff"],
+      "evidence": "docs/performance-scaling-follow-up.md",
+      "reason": "Chromium and mobile WebKit behavior verified with fictional data; mobile save-location state visually inspected without overflow. Paper editing tools unavailable; handbook update and same-state comparison remain pending."
+    },
+    {
+      "id": "performance-eight-findings",
+      "status": "pending-paper-sync",
+      "recordedAt": "2026-09-29",
+      "surfaces": [
+        "delivery gallery Show more control and keyboard focus",
+        "mobile navigation renderer loading and idle state",
+        "shop responsive image loading",
+        "About ASCII activation",
+        "dashboard bounded-summary notice"
+      ],
+      "evidence": "docs/performance-2026-09-29.md",
+      "reason": "Local fictional browser behavior and captures inspected. No Paper editing tools available; same-state handbook update/comparison remains pending."
+    },
+    {
       "id": "consistent-publication-controls",
       "updatedAt": "2026-09-29",
       "followUp": "Owner-reported mobile staggering corrected: full-width publishing row and aligned dropdown; Paper comparison remains pending.",

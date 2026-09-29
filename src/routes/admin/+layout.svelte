@@ -1,13 +1,8 @@
 <script lang="ts">
-import {
-	AdminLayout,
-	AuthGuard,
-	isTenantAdminServerAuthorized,
-	LoadingState,
-	setAdminConfig,
-	shouldHoldAdminShellForServerSession,
-	shouldRefreshAdminServerSession,
-} from "@jessepomeroy/admin";
+import AdminLayout from "@jessepomeroy/admin/components/AdminLayout";
+import AuthGuard from "@jessepomeroy/admin/components/AuthGuard";
+import LoadingState from "@jessepomeroy/admin/components/LoadingState";
+import { isTenantAdminServerAuthorized, setAdminConfig, shouldHoldAdminShellForServerSession, shouldRefreshAdminServerSession } from "@jessepomeroy/admin/core";
 import { closeConvex, setupAuth, setupConvex, useAuth } from "convex-svelte";
 import { onDestroy, untrack } from "svelte";
 import { browser } from "$app/environment";

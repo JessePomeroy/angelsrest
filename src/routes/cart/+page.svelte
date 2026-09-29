@@ -18,11 +18,10 @@ import { ArrowLeftIcon } from "@lucide/svelte";
 import CartLineItem from "$lib/components/cart/CartLineItem.svelte";
 import SEO from "$lib/components/SEO.svelte";
 import { cart } from "$lib/shop/cart.svelte";
-import { createCartCheckout } from "$lib/utils/cartCheckout";
+import { createCartCheckoutState } from "$lib/shop/cartCheckoutState.svelte";
 import { formatCents } from "$lib/utils/format";
 
-let isCheckingOut = $state(false);
-let checkoutError = $state<string | null>(null);
+const checkoutState = createCartCheckoutState();
 
 const items = $derived(cart.items);
 const totalCents = $derived(cart.totalCents);
@@ -35,17 +34,7 @@ function dismissExpired() {
 }
 
 async function checkout() {
-	if (isEmpty || isCheckingOut) return;
-	isCheckingOut = true;
-	checkoutError = null;
-	try {
-		const url = await createCartCheckout(items);
-		window.location.href = url;
-	} catch (err: unknown) {
-		console.error("Cart checkout error:", err);
-		checkoutError = err instanceof Error ? err.message : "checkout failed. please try again.";
-		isCheckingOut = false;
-	}
+	await checkoutState.checkout(items);
 }
 </script>
 
@@ -143,18 +132,18 @@ async function checkout() {
           </span>
         </div>
 
-        {#if checkoutError}
-          <p class="checkout-error">{checkoutError}</p>
+        {#if checkoutState.error}
+          <p class="checkout-error">{checkoutState.error}</p>
         {/if}
 
         <button
           type="button"
           onclick={checkout}
-          disabled={isCheckingOut}
+          disabled={checkoutState.isCheckingOut}
           class="checkout-button"
         >
           <span>
-            {isCheckingOut ? "processing..." : "checkout"}
+            {checkoutState.isCheckingOut ? "processing..." : "checkout"}
           </span>
         </button>
 

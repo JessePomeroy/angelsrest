@@ -47,7 +47,7 @@ vi.mock("convex-svelte", () => ({
 }));
 // Keep the installed guard, login, loading UI and session helpers real. Existing
 // protocol tests separately keep Convex itself real at its WebSocket boundary.
-vi.mock("@jessepomeroy/admin", async () => ({
+vi.mock("@jessepomeroy/admin/core", async () => ({
 	...(await import("../../../../node_modules/@jessepomeroy/admin/dist/adminSession.js")),
 	...(await import("../../../../node_modules/@jessepomeroy/admin/dist/config.js")),
 	AuthGuard: (
@@ -263,3 +263,8 @@ describe("real shared guard with host server-session recovery", () => {
 		expectNoChildren();
 	});
 });
+
+vi.mock("@jessepomeroy/admin/components/AdminLayout", () => ({
+	default: (anchor: unknown, props: { children?: (anchor: unknown) => void }) =>
+		props.children?.(anchor),
+}));

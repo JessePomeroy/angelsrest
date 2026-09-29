@@ -1,5 +1,8 @@
 <script lang="ts">
-import { tick } from "svelte";
+import { tick, onDestroy, untrack } from "svelte";
+import { resolveGalleryDisplayImages } from "@jessepomeroy/gallery-delivery/display-images";
+import { galleryOriginalDownloadUrl } from "@jessepomeroy/gallery-delivery/download-urls";
+import type { FunctionArgs, FunctionReturnType } from "convex/server";
 import { setupConvex, useConvexClient } from "convex-svelte";
 import { api } from "$convex/api";
 import type { Id } from "$convex/dataModel";
@@ -24,18 +27,85 @@ const client = useConvexClient();
 // The server remains the source of truth; the pure state helper owns
 // per-image optimistic updates and concurrency-safe rollback.
 let favoriteState = $state(createGalleryFavoriteState());
-let images = $derived(applyGalleryFavoriteOverrides(data.images, favoriteState));
+let loadedImages = $state.raw<typeof data.images>(untrack(() => data.images));
+let images = $derived(applyGalleryFavoriteOverrides(loadedImages, favoriteState));
+let nextCursor = $state<string | null>(untrack(() => data.imagePage?.cursor ?? null));
+let pageDone = $state(untrack(() => data.imagePage?.isDone ?? true));
+let loadingPage = $state(false);
+let pageError = $state("");
+let knownCount = $state(untrack(() => data.gallery.imageCount));
+let generation = 0;
+let downloadGeneration = 0;
+let disposed = false;
+onDestroy(() => { disposed = true; generation++; });
+const totalCount = $derived(data.imagePage ? knownCount : images.length);
+$effect(() => {
+	generation++;
+	downloadGeneration++;
+	lightboxIndex = -1;
+	loadedImages = data.images;
+	knownCount = data.gallery.imageCount;
+	nextCursor = data.imagePage?.cursor ?? null;
+	pageDone = data.imagePage?.isDone ?? true;
+	loadingPage = false;
+	pageError = "";
+	favoriteState = createGalleryFavoriteState();
+	selectedImageIds = new Set();
+	selectEntireGallery = false;
+	readyDownload = null;
+	resolvingDownload = false;
+});
+type ImageSelection = NonNullable<FunctionArgs<typeof api.galleries.getImagesPage>["selection"]>;
+function displayImages(rows: FunctionReturnType<typeof api.galleries.getImagesPage>["page"], previews: FunctionReturnType<typeof api.galleries.getImagesPage>["previewSources"] = []) {
+	return resolveGalleryDisplayImages(rows.map((image) => ({ ...image,
+		downloadUrl: data.gallery.downloadEnabled ? galleryOriginalDownloadUrl(data.workerUrl, image.r2Key, data.token, data.accessGrant) : null,
+	})), data.workerUrl, { token: data.token, accessGrant: data.accessGrant }, previews);
+}
+async function loadNextPage() {
+	if (pageDone || loadingPage) return;
+	const current = generation;
+	const source = data;
+	loadingPage = true;
+	pageError = "";
+	try {
+		const result = await client.query(api.galleries.getImagesPage, {
+			galleryId: data.gallery._id, token: data.token, accessGrant: data.accessGrant || undefined, cursor: nextCursor,
+		});
+		if (disposed || current !== generation || source !== data) return;
+		if (!result.isDone && result.continueCursor === nextCursor) throw new Error("Cursor did not advance");
+		const seen = new Set(loadedImages.map((image) => image._id));
+		loadedImages = [...loadedImages, ...displayImages(result.page, result.previewSources).filter((image) => !seen.has(image._id))];
+		knownCount = result.totalCount;
+		nextCursor = result.continueCursor;
+		pageDone = result.isDone;
+	} catch {
+		if (current === generation && !disposed) pageError = "Couldn't load more files. Please try again.";
+	} finally { if (current === generation && !disposed) loadingPage = false; }
+}
 let lightboxIndex = $state(-1);
 let lightboxOpen = $derived(lightboxIndex >= 0);
 const downloads = createDeliveryDownloads(() => data);
 let selectedImageIds = $state(new Set<string>());
+let selectEntireGallery = $state(false);
+const isSelected = (id: string) => selectEntireGallery ? !selectedImageIds.has(id) : selectedImageIds.has(id);
 let failedThumbnailIds = $state(new Set<string>());
 let failedPreviewIds = $state(new Set<string>());
 let galleryView = $state<"grid" | "list">("grid");
-let selectedImages = $derived(images.filter((img) => selectedImageIds.has(img._id)));
-let selectedCount = $derived(selectedImages.length);
+// Keep selection/downloads over the complete gallery, while mounting a small page.
+let visibleCount = $state(48);
+let galleryItems = $state<HTMLDivElement>();
+const visibleImages = $derived(images.slice(0, visibleCount));
+$effect(() => { data.token; visibleCount = 48; });
+async function showMore() {
+	const firstNewIndex = visibleCount;
+	if (visibleCount >= images.length && !pageDone) await loadNextPage();
+	visibleCount = Math.min(images.length, visibleCount + 48);
+	await tick();
+	galleryItems?.children.item(firstNewIndex)?.querySelector<HTMLButtonElement>("button")?.focus();
+}
+let selectedCount = $derived(selectEntireGallery ? Math.max(0, totalCount - selectedImageIds.size) : selectedImageIds.size);
 let allImagesSelected = $derived(
-	images.length > 0 && selectedCount === images.length,
+	totalCount > 0 && selectedCount === totalCount,
 );
 let lightboxEl = $state<HTMLDivElement | null>(null);
 let previouslyFocused: HTMLElement | null = null;
@@ -54,8 +124,10 @@ function closeLightbox() {
 }
 
 async function moveLightbox(direction: -1 | 1) {
-	const nextIndex = lightboxIndex + direction;
-	if (nextIndex < 0 || nextIndex >= images.length) return;
+	const from = lightboxIndex;
+	const nextIndex = from + direction;
+	if (nextIndex >= images.length && !pageDone) await loadNextPage();
+	if (lightboxIndex !== from || nextIndex < 0 || nextIndex >= images.length) return;
 	const focused = document.activeElement;
 	lightboxIndex = nextIndex;
 	await restoreLightboxFocus(focused);
@@ -122,6 +194,7 @@ async function toggleFavorite(index: number) {
 }
 
 function toggleImageSelection(imageId: string) {
+	readyDownload = null;
 	const next = new Set(selectedImageIds);
 	if (next.has(imageId)) {
 		next.delete(imageId);
@@ -132,10 +205,14 @@ function toggleImageSelection(imageId: string) {
 }
 
 function selectAllImages() {
-	selectedImageIds = new Set(images.map((img) => img._id));
+	readyDownload = null;
+	selectEntireGallery = true;
+	selectedImageIds = new Set();
 }
 
 function clearSelection() {
+	readyDownload = null;
+	selectEntireGallery = false;
 	selectedImageIds = new Set();
 }
 
@@ -143,21 +220,53 @@ function markFailed(set: Set<string>, imageId: string) {
 	return new Set(set).add(imageId);
 }
 
-function downloadAll() {
-	return downloads.downloadImages(images, "No files are available to download yet.");
+let resolvingDownload = $state(false);
+let readyDownload = $state.raw<{ images: typeof data.images; name: string; message: string } | null>(null);
+async function downloadSelection(selection: ImageSelection, message: string, name = data.gallery.name) {
+	if (resolvingDownload || downloads.downloading) return;
+	if (pageDone && images.length === totalCount) {
+		const rows = images.filter((image) => selection.kind === "all" ? !selection.excludedIds.includes(image._id)
+			: selection.kind === "selected" ? selection.ids.includes(image._id) : image.isFavorite);
+		return downloads.downloadImages(rows, message, name);
+	}
+	const current = generation;
+	const request = ++downloadGeneration;
+	const context = { galleryId: data.gallery._id, token: data.token, accessGrant: data.accessGrant || undefined };
+	resolvingDownload = true;
+	readyDownload = null;
+	try {
+		let cursor: string | null = null;
+		const rows: typeof data.images = [];
+		const cursors = new Set<string>();
+		// The server checks permission and selection on every bounded page.
+		for (;;) {
+			const result: FunctionReturnType<typeof api.galleries.getImagesPage> = await client.query(api.galleries.getImagesPage, { ...context, cursor, selection });
+			if (disposed || current !== generation || request !== downloadGeneration || context.token !== data.token) return;
+			rows.push(...displayImages(result.page));
+			if (result.isDone) break;
+			if (cursors.has(result.continueCursor)) throw new Error("Cursor did not advance");
+			cursors.add(result.continueCursor);
+			cursor = result.continueCursor;
+		}
+		const unique = [...new Map(rows.map((image) => [image._id, image])).values()];
+		if (downloads.chooseDownloadFolder && unique.length) readyDownload = { images: unique, name, message };
+		else await downloads.downloadImages(unique, message, name);
+	} catch {
+		if (!disposed && current === generation && request === downloadGeneration) toasts.show("Couldn't prepare this download. Please try again.", { type: "error" });
+	} finally { if (!disposed && current === generation && request === downloadGeneration) resolvingDownload = false; }
 }
-
+function cancelPreparation() { downloadGeneration++; resolvingDownload = false; readyDownload = null; }
+function saveReadyDownload() {
+	const ready = readyDownload;
+	readyDownload = null;
+	if (ready) return downloads.downloadImages(ready.images, ready.message, ready.name);
+}
+function downloadAll() { return downloadSelection({ kind: "all", excludedIds: [] }, "No files are available to download yet."); }
 function downloadSelected() {
-	return downloads.downloadImages(selectedImages, "No files selected yet.");
+	const ids = [...selectedImageIds] as Id<"galleryImages">[];
+	return downloadSelection(selectEntireGallery ? { kind: "all", excludedIds: ids } : { kind: "selected", ids }, "No files selected yet.");
 }
-
-function downloadFavorites() {
-	return downloads.downloadImages(
-		images.filter((img) => img.isFavorite),
-		"No favorites selected yet.",
-		`${data.gallery.name}-favorites`,
-	);
-}
+function downloadFavorites() { return downloadSelection({ kind: "favorites" }, "No favorites selected yet.", `${data.gallery.name}-favorites`); }
 
 let favoriteCount = $derived(
 	images.filter((img) => img.isFavorite).length,
@@ -189,25 +298,27 @@ let favoriteCount = $derived(
 		</p>
 		{#if data.gallery.downloadEnabled}
 			<div class="download-bar">
-				<button class="download-btn" onclick={downloadAll} disabled={downloads.downloading}>
+				{#if resolvingDownload}<p role="status">Preparing file list...</p><button class="download-btn secondary" onclick={cancelPreparation}>Cancel preparation</button>{/if}
+				{#if readyDownload}<button class="download-btn" onclick={saveReadyDownload}>Choose save location ({readyDownload.images.length} files)</button>{/if}
+				<button class="download-btn" onclick={downloadAll} disabled={resolvingDownload || downloads.downloading}>
 					{downloads.folderDownloadInProgress ? "saving..." : downloads.downloading ? "starting..." : "download all"}
 				</button>
 				<button
 					class="download-btn secondary"
 					onclick={downloadSelected}
-					disabled={downloads.downloading || selectedCount === 0}
+					disabled={resolvingDownload || downloads.downloading || selectedCount === 0}
 				>
 					download selected ({selectedCount})
 				</button>
-				{#if data.gallery.favoritesEnabled && favoriteCount > 0}
-					<button class="download-btn secondary" onclick={downloadFavorites} disabled={downloads.downloading}>
-						download favorites ({favoriteCount})
+				{#if data.gallery.favoritesEnabled && (data.imagePage || favoriteCount > 0)}
+					<button class="download-btn secondary" onclick={downloadFavorites} disabled={resolvingDownload || downloads.downloading}>
+						download favorites{!data.imagePage ? ` (${favoriteCount})` : ""}
 					</button>
 				{/if}
 				<button
 					class="download-btn tertiary"
 					onclick={allImagesSelected ? clearSelection : selectAllImages}
-					disabled={downloads.downloading || images.length === 0}
+					disabled={resolvingDownload || downloads.downloading || images.length === 0}
 				>
 					{allImagesSelected ? "clear selection" : "select all"}
 				</button>
@@ -263,10 +374,10 @@ let favoriteCount = $derived(
 	</header>
 
 	{#if galleryView === "grid"}
-		<div class="image-grid">
-			{#each images as image, i (image._id)}
+		<div class="image-grid" bind:this={galleryItems}>
+			{#each visibleImages as image, i (image._id)}
 				<div class="grid-cell">
-					<button class="image-btn" onclick={() => openLightbox(i)} aria-label={"View item " + (i + 1) + " of " + images.length}>
+					<button class="image-btn" onclick={() => openLightbox(i)} aria-label={"View item " + (i + 1) + " of " + totalCount}>
 						{#if image.isVideo}
 							<span class="file-tile" aria-label={image.filename}><span>video</span></span>
 						{:else if image.canPreview && !failedThumbnailIds.has(image._id)}
@@ -298,12 +409,12 @@ let favoriteCount = $derived(
 					{#if data.gallery.downloadEnabled}
 						<label
 							class="select-photo"
-							class:selected={selectedImageIds.has(image._id)}
+							class:selected={isSelected(image._id)}
 							aria-label={"Select " + image.filename}
 						>
 							<input
 								type="checkbox"
-								checked={selectedImageIds.has(image._id)}
+								checked={isSelected(image._id)}
 								onchange={() => toggleImageSelection(image._id)}
 							/>
 							<span aria-hidden="true"></span>
@@ -314,8 +425,8 @@ let favoriteCount = $derived(
 			{/each}
 		</div>
 	{:else}
-		<div class="image-list">
-			{#each images as image, i (image._id)}
+		<div class="image-list" bind:this={galleryItems}>
+			{#each visibleImages as image, i (image._id)}
 				<div class="list-row">
 					<button class="list-thumb" type="button" onclick={() => openLightbox(i)} aria-label={"View " + image.filename}>
 						{#if image.isVideo}
@@ -349,7 +460,7 @@ let favoriteCount = $derived(
 							<label class="list-select" aria-label={"Select " + image.filename}>
 								<input
 									type="checkbox"
-									checked={selectedImageIds.has(image._id)}
+									checked={isSelected(image._id)}
 									onchange={() => toggleImageSelection(image._id)}
 								/>
 								<span>select</span>
@@ -362,6 +473,14 @@ let favoriteCount = $derived(
 	{/if}
 </div>
 
+{#if visibleCount < images.length || !pageDone}
+	<div class="gallery-pagination">
+		<p aria-live="polite">Showing {visibleImages.length} of {totalCount}</p>
+		<button type="button" onclick={showMore} disabled={loadingPage}>{loadingPage ? "Loading..." : "Show more"}</button>
+	</div>
+{/if}
+
+{#if pageError}<p role="alert">{pageError}</p>{/if}
 {#if lightboxOpen}
 	<div
 		class="lightbox"
@@ -399,7 +518,7 @@ let favoriteCount = $derived(
 				</div>
 			{/if}
 			<div class="lightbox-controls">
-				<span class="lightbox-counter" aria-live="polite">{lightboxIndex + 1} / {images.length}</span>
+				<span class="lightbox-counter" aria-live="polite">{lightboxIndex + 1} / {totalCount}</span>
 				<span class="lightbox-filename">{images[lightboxIndex].filename}</span>
 				<div class="lightbox-actions">
 					{#if data.gallery.favoritesEnabled}
@@ -423,7 +542,7 @@ let favoriteCount = $derived(
 		{#if lightboxIndex > 0}
 			<button class="lb-nav lb-prev" aria-label="Previous image" onclick={(e) => { e.stopPropagation(); void moveLightbox(-1); }}>‹</button>
 		{/if}
-		{#if lightboxIndex < images.length - 1}
+		{#if (!pageDone || lightboxIndex < images.length - 1)}
 			<button class="lb-nav lb-next" aria-label="Next image" onclick={(e) => { e.stopPropagation(); void moveLightbox(1); }}>›</button>
 		{/if}
 		<button class="lb-close" aria-label="Close lightbox" onclick={closeLightbox}>✕</button>
@@ -432,6 +551,9 @@ let favoriteCount = $derived(
 {/if}
 
 <style>
+	.gallery-pagination { text-align: center; padding: 1.5rem; }
+	.gallery-pagination button { min-height: 44px; padding: 0.75rem 1.5rem; border: 1px solid currentColor; border-radius: 0.375rem; background: transparent; font: inherit; cursor: pointer; }
+	.gallery-pagination button:focus-visible { outline: 2px solid currentColor; outline-offset: 3px; }
 	.password-gate {
 		max-width: 420px;
 		margin: 12vh auto 0;

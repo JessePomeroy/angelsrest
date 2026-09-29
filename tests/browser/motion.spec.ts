@@ -16,6 +16,13 @@ const probeScript = `(() => {
  };
  window.requestAnimationFrame = callback => { const id = nextId++; queue.set(id, callback); return id; };
  window.cancelAnimationFrame = id => queue.delete(id);
+ const nativeTimeout = window.setTimeout;
+ const nativeClear = window.clearTimeout;
+ window.setTimeout = (callback, delay, ...args) => {
+  if (delay === 125 && typeof callback === "function") { const id = nextId++; queue.set(id, callback); return id; }
+  return nativeTimeout(callback, delay, ...args);
+ };
+ window.clearTimeout = id => { queue.delete(id); nativeClear(id); };
  const fail = new URLSearchParams(location.search).get("failure");
  const gl = {
   VERTEX_SHADER: 1, FRAGMENT_SHADER: 2, COMPILE_STATUS: 3, LINK_STATUS: 4,
@@ -197,6 +204,7 @@ test("ASCII keeps the original under reduced motion and cancels active scramble 
 test("ASCII unmount disconnects pending image handlers and rejects a captured late callback", async ({ page }) => {
 	await page.emulateMedia({ reducedMotion: "no-preference" });
 	await page.goto("/?fixture=motion&kind=ascii&delay-image=1");
+	await page.locator(".ascii-image-container").dispatchEvent("pointerenter", { pointerType: "mouse" });
 	await expect.poll(() => page.evaluate(() => window.motionProbe.images.length)).toBe(1);
 	await page.evaluate(() => window.motionProbe.captureLate());
 	await page.getByRole("button", { name: "Unmount motion" }).click();
@@ -212,6 +220,7 @@ for (const failure of ["image", "canvas", "read"]) {
 		await page.emulateMedia({ reducedMotion: "no-preference" });
 		await page.goto(`/?fixture=motion&kind=ascii&failure=${failure}`);
 		const portrait = page.locator(".ascii-image-container");
+		await portrait.dispatchEvent("pointerenter", { pointerType: "mouse" });
 		await expect.poll(() => page.evaluate(() => window.motionProbe.images[0]?.onload === null)).toBe(true);
 		await portrait.click();
 		await expect(portrait.locator("img")).toBeVisible();

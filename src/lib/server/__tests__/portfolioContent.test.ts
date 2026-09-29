@@ -33,10 +33,19 @@ function gallery() {
 	};
 }
 
-function provider(value: unknown) {
+function summary(row: ReturnType<typeof gallery>) {
+	const asset = row.placements[0]?.asset;
+	return {
+		title: row.title,
+		slug: row.slug,
+		preview: asset ? { assetId: asset.assetId, card: asset.derivatives.card } : null,
+	};
+}
+
+function provider(value: unknown, listValue: unknown = value) {
 	return createPortfolioContentProvider({
 		createReader: () => ({
-			listPublished: async () => [value],
+			listPublished: async () => [listValue],
 			getPublishedBySlug: async () => value,
 		}),
 	});
@@ -44,7 +53,7 @@ function provider(value: unknown) {
 
 describe("published portfolio galleries", () => {
 	it("projects list previews and detail images from immutable public derivatives", async () => {
-		const content = provider(gallery());
+		const content = provider(gallery(), summary(gallery()));
 		await expect(content.list()).resolves.toEqual([
 			{
 				title: "Quiet Places",
@@ -135,7 +144,10 @@ describe("published portfolio galleries", () => {
 	});
 
 	it("supports published galleries without images", async () => {
-		const content = provider({ ...gallery(), placements: [] });
+		const content = provider(
+			{ ...gallery(), placements: [] },
+			summary({ ...gallery(), placements: [] }),
+		);
 		await expect(content.list()).resolves.toMatchObject([{ preview: null }]);
 		await expect(content.getBySlug("quiet-places")).resolves.toMatchObject({ images: [] });
 	});
