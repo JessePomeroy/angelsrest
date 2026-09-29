@@ -153,6 +153,7 @@ export function createAdminBrowserCapabilities(api: GeneratedApi): AdminBrowserC
 		},
 		inquiries: { updateStatus: api.inquiries.updateStatus, remove: api.inquiries.remove },
 		invoices: {
+			getDashboardSummary: api.invoices.getDashboardSummary,
 			create: api.invoices.create,
 			update: api.invoices.update,
 			remove: api.invoices.remove,
@@ -163,6 +164,7 @@ export function createAdminBrowserCapabilities(api: GeneratedApi): AdminBrowserC
 			getNextNumber: api.invoices.getNextNumber,
 		},
 		kanban: {
+			reorderCards: api.kanban.reorderCards,
 			initializeBoard: api.kanban.initializeBoard,
 			moveCard: api.kanban.moveCard,
 			addColumn: api.kanban.addColumn,
@@ -183,6 +185,7 @@ export function createAdminBrowserCapabilities(api: GeneratedApi): AdminBrowserC
 			markSeen: api.notifications.markSeen,
 		},
 		orders: {
+			getStatsForDay: api.orders.getStatsForDay,
 			list: api.orders.list,
 			updateStatus: api.orders.updateStatus,
 			getStats: api.orders.getStats,
@@ -208,6 +211,7 @@ export function createAdminBrowserCapabilities(api: GeneratedApi): AdminBrowserC
 		},
 		portal: { createToken: api.portal.createToken },
 		quotes: {
+			getDashboardSummary: api.quotes.getDashboardSummary,
 			create: api.quotes.create,
 			update: api.quotes.update,
 			remove: api.quotes.remove,

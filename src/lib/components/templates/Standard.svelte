@@ -10,7 +10,7 @@
 <script lang="ts">
 import type { BlogPostDetail } from "$lib/blog/content";
 import BlogRichText from "$lib/components/BlogRichText.svelte";
-import { formatDate } from "$lib/utils/format";
+import PostByline from "./PostByline.svelte";
 
 let { post }: { post: BlogPostDetail } = $props();
 </script>
@@ -34,22 +34,7 @@ let { post }: { post: BlogPostDetail } = $props();
     </h1>
 
     <!-- Author and Date -->
-    <div class="byline">
-      {#if post.author}
-        <div class="author">
-          {#if post.author.image}
-            <img
-              src={post.author.image.src}
-              alt={post.author.image.alt}
-              class="author-avatar"
-            />
-          {/if}
-          <span>{post.author.name}</span>
-        </div>
-        <span>•</span>
-      {/if}
-      <span>{formatDate(post.publishedAt)}</span>
-    </div>
+    <PostByline {post} portrait alwaysDate />
   </header>
 
   <!-- Featured Image -->
@@ -86,9 +71,6 @@ let { post }: { post: BlogPostDetail } = $props();
     .category { font-size: var(--text-xs); line-height: var(--text-xs--line-height); color: var(--color-surface-400); letter-spacing: 0.05em; }
     .post-title { font-size: var(--text-3xl); }
     @media (min-width: 48rem) { .post-title { font-size: var(--text-4xl); } }
-    .byline { display: flex; align-items: center; gap: 1rem; font-size: var(--text-sm); line-height: var(--text-sm--line-height); color: var(--color-surface-400); }
-    .author { display: flex; align-items: center; gap: 0.5rem; }
-    .author-avatar { width: 2rem; height: 2rem; border-radius: 3.40282e38px; object-fit: cover; }
     .featured-image { margin-bottom: 2rem; border-radius: 0.5rem; overflow: hidden; }
     .featured-photo { width: 100%; height: auto; }
     .post-footer { margin-top: 3rem; padding-top: 2rem; border-top-width: 1px; border-top-style: solid; border-color: color-mix(in oklab, var(--color-surface-500) 20%, transparent); }

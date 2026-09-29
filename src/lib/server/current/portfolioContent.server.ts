@@ -196,8 +196,15 @@ function adaptConvexGallery(value: unknown) {
 }
 
 export function adaptConvexPortfolioList(value: unknown): PortfolioIndexGallery[] {
-	const galleries = list(value, GALLERY_MAX).map(adaptConvexGallery);
-	return galleries.map(({ index }) => index);
+	return list(value, GALLERY_MAX).map((value) => {
+		const row = object(value, ["title", "slug", "preview"]);
+		let preview: string | null = null;
+		if (row.preview !== null) {
+			const image = object(row.preview, ["assetId", "card"]);
+			preview = derivative(image.card, requiredText(image.assetId, 36, UUID_V4), "card.webp");
+		}
+		return { title: requiredText(row.title, 120), slug: requiredText(row.slug, 80), preview };
+	});
 }
 
 export function adaptConvexPortfolioDetail(value: unknown): PortfolioDetail | null {
@@ -214,7 +221,7 @@ function createConvexReader(): ConvexReader {
 	}
 	return {
 		async listPublished(signal) {
-			return await client(signal).query(api.portfolioGalleries.listPublishedWithPlacements, {
+			return await client(signal).query(api.portfolioGalleries.listPublishedSummaries, {
 				siteUrl: SITE_DOMAIN,
 			});
 		},

@@ -14,7 +14,7 @@ const printSets = [{ title: "Fixture pair", slug: "fixture-pair", previewImage: 
 const shopData = {
   siteSettings: deliveryData.siteSettings,
   printSets: empty ? [] : printSets,
-  products: empty ? [] : products,
+  products: empty ? [] : products.map((product) => ({ ...product, previewSrcset: "", previewWidth: 768, previewHeight: 512 })),
 } satisfies import("../../../src/routes/shop/$types").PageData;
 </script>
 

@@ -22,15 +22,14 @@ import { tick } from "svelte";
 import { fly } from "svelte/transition";
 import { goto } from "$app/navigation";
 import { cart } from "$lib/shop/cart.svelte";
+import { createCartCheckoutState } from "$lib/shop/cartCheckoutState.svelte";
 import { cartUI } from "$lib/shop/cartUI.svelte";
-import { createCartCheckout } from "$lib/utils/cartCheckout";
 import { formatCents } from "$lib/utils/format";
 import { trapFocus } from "$lib/utils/focusTrap";
 import { openModal } from "$lib/utils/openModal";
 import CartLineItem from "./CartLineItem.svelte";
 
-let isCheckingOut = $state(false);
-let checkoutError = $state<string | null>(null);
+const checkoutState = createCartCheckoutState();
 let dialog = $state<HTMLDialogElement>();
 
 async function focusAfterRemoval() {
@@ -56,17 +55,7 @@ function dismissExpired() {
 }
 
 async function checkout() {
-	if (isEmpty || isCheckingOut) return;
-	isCheckingOut = true;
-	checkoutError = null;
-	try {
-		const url = await createCartCheckout(items);
-		window.location.href = url;
-	} catch (err: unknown) {
-		console.error("Cart checkout error:", err);
-		checkoutError = err instanceof Error ? err.message : "checkout failed. please try again.";
-		isCheckingOut = false;
-	}
+	await checkoutState.checkout(items);
 }
 
 function viewFullCart() {
@@ -174,18 +163,18 @@ function viewFullCart() {
           </span>
         </div>
 
-        {#if checkoutError}
-          <p class="checkout-error">{checkoutError}</p>
+        {#if checkoutState.error}
+          <p class="checkout-error">{checkoutState.error}</p>
         {/if}
 
         <button
           type="button"
           onclick={checkout}
-          disabled={isCheckingOut}
+          disabled={checkoutState.isCheckingOut}
           class="checkout-button"
         >
           <span>
-            {isCheckingOut ? "processing..." : "checkout"}
+            {checkoutState.isCheckingOut ? "processing..." : "checkout"}
           </span>
         </button>
 

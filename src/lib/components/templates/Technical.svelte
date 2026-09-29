@@ -12,7 +12,7 @@
 <script lang="ts">
 import type { BlogPostDetail } from "$lib/blog/content";
 import BlogRichText from "$lib/components/BlogRichText.svelte";
-import { formatDate } from "$lib/utils/format";
+import PostByline from "./PostByline.svelte";
 
 let { post }: { post: BlogPostDetail } = $props();
 </script>
@@ -26,17 +26,7 @@ let { post }: { post: BlogPostDetail } = $props();
     <h1 class="post-title">
       {post.title}
     </h1>
-    {#if post.author || post.publishedAt}
-      <div class="byline">
-        {#if post.author}
-          <span>{post.author.name}</span>
-          {#if post.publishedAt}<span>•</span>{/if}
-        {/if}
-        {#if post.publishedAt}
-          <span>{formatDate(post.publishedAt)}</span>
-        {/if}
-      </div>
-    {/if}
+    <PostByline {post} />
   </header>
 
   <!-- Gear Grid -->
@@ -110,7 +100,6 @@ let { post }: { post: BlogPostDetail } = $props();
     .template-label { font-size: var(--text-xs); line-height: var(--text-xs--line-height); letter-spacing: 0.1em; color: var(--color-surface-400); text-transform: uppercase; margin-bottom: 1rem; display: block; }
     .post-title { font-size: var(--text-3xl); }
     @media (min-width: 48rem) { .post-title { font-size: var(--text-4xl); } }
-    .byline { display: flex; align-items: center; gap: 1rem; font-size: var(--text-sm); line-height: var(--text-sm--line-height); color: var(--color-surface-400); }
     .equipment-heading { font-size: var(--text-sm); color: var(--color-surface-400); text-transform: uppercase; }
     .equipment-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1rem; }
     @media (min-width: 48rem) { .equipment-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); } }

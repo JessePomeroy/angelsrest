@@ -27,6 +27,7 @@ let {
 let canvas = $state<HTMLCanvasElement>();
 let art = $state.raw<{ chars: string[]; paint: (chars: string[]) => void }>();
 let hovering = $state(false);
+let requested = $state(false);
 let toggled = $state(false);
 let reducedMotion = $state(true);
 const active = $derived(!reducedMotion && !!art && (hovering || toggled));
@@ -46,7 +47,7 @@ $effect(() => {
 	const characters = charSet;
 	const spacing = resolution;
 	art = undefined;
-	if (reducedMotion || !output) return;
+	if (reducedMotion || !output || !requested) return;
 
 	const image = new Image();
 	let disposed = false;
@@ -149,7 +150,8 @@ function reset() {
 }
 
 function toggle() {
-	const next = !active;
+	requested = true;
+	const next = !toggled;
 	hovering = false;
 	toggled = next;
 }
@@ -161,7 +163,7 @@ function toggle() {
 	aria-label={alt ? `${alt} — toggle ASCII art` : "Toggle ASCII art"}
 	aria-pressed={active}
 	disabled={reducedMotion}
-	onpointerenter={(event) => { if (event.pointerType === "mouse") hovering = true; }}
+	onpointerenter={(event) => { if (event.pointerType === "mouse") { requested = true; hovering = true; } }}
 	onpointerleave={() => hovering = false}
 	onclick={toggle}
 	onblur={reset}

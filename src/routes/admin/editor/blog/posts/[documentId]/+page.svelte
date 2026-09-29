@@ -1,5 +1,5 @@
 <script lang="ts">
-import { BlogPostPage } from "@jessepomeroy/admin";
+import BlogPostPage from "@jessepomeroy/admin/pages/editor/BlogPostPage";
 
 let { data } = $props();
 </script>

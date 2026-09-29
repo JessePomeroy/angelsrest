@@ -74,7 +74,7 @@ vi.mock("$lib/adminFullPageReload", () => ({
 }));
 vi.mock("$lib/auth/client", () => ({ authClient: authHarness.client }));
 vi.mock("$lib/config/admin", () => ({ adminConfig: {} }));
-vi.mock("@jessepomeroy/admin", async () => {
+vi.mock("@jessepomeroy/admin/core", async () => {
 	const renderChildren = (anchor: unknown, props: { children?: (anchor: unknown) => void }) =>
 		props.children?.(anchor);
 
@@ -636,3 +636,13 @@ describe("admin layout Convex auth protocol and lifecycle", () => {
 		unsubscribe();
 	});
 });
+
+vi.mock("@jessepomeroy/admin/components/AdminLayout", () => ({
+	default: (anchor: unknown, props: { children?: (anchor: unknown) => void }) =>
+		props.children?.(anchor),
+}));
+vi.mock("@jessepomeroy/admin/components/AuthGuard", () => ({
+	default: (anchor: unknown, props: { children?: (anchor: unknown) => void }) =>
+		props.children?.(anchor),
+}));
+vi.mock("@jessepomeroy/admin/components/LoadingState", () => ({ default: () => undefined }));

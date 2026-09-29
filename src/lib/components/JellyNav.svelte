@@ -79,6 +79,7 @@ const frostRadius = $derived(DOCK_RADIUS - frame.open * 11);
 let innerIcons = $state.raw(createInnerIcons(links.length).map(({ x, y }) => ({ x, y })));
 let announcement = $state("");
 let requestFrame = () => {};
+let prepareSurface = () => {};
 let pointer: {
 	id: number; origin: Point; offset: Point; last: Point;
 	time: number; velocity: Point; moved: boolean;
@@ -101,6 +102,7 @@ function savePosition() {
 
 function pointerDown(event: PointerEvent) {
 	if (!event.isPrimary || event.button !== 0 || pointer) return;
+	prepareSurface();
 	event.preventDefault();
 	trigger.focus({ preventScroll: true });
 	flight = null;
@@ -158,6 +160,7 @@ function finishPointer(cancelled = false, releaseTime?: number) {
 }
 
 function activate(event: MouseEvent) {
+	prepareSurface();
 	// Pointer taps are handled on release because touchstart is cancelled to
 	// prevent native text selection. Keep synthesized keyboard/AT activation.
 	if (event.detail !== 0) return;
@@ -208,6 +211,7 @@ onMount(() => {
 			loadingSurface = false;
 		}
 	}
+	prepareSurface = () => { if (!reducedMotion) void loadSurface(); };
 	function measure() {
 		viewport = {
 			width: visualViewport?.width ?? window.innerWidth,
@@ -219,7 +223,6 @@ onMount(() => {
 		flight = null;
 		flying = false;
 		requestFrame();
-		void loadSurface();
 	}
 	measureViewport = measure;
 	measure();
@@ -253,11 +256,11 @@ onMount(() => {
 	};
 	let warmth = warmthForPeriod();
 	let lastWake = 0;
-	let restStarted = 0;
-	let lastLensDraw = 0;
+	let lensTimer: ReturnType<typeof setTimeout> | undefined;
 	let absorbedAt = -10000;
 	let delivery: { origin: Point; start: number; absorbed?: boolean; complete: () => void } | null = null;
 	const unregisterFeedback = registerCartFeedback((origin, complete) => {
+		prepareSurface();
 		delivery?.complete();
 		close();
 		flight = null;
@@ -267,9 +270,9 @@ onMount(() => {
 		requestFrame();
 	});
 	function clearDetails() {
+		stopLens();
 		wake = [];
 		lensVisible = false;
-		restStarted = 0;
 		cartDrop = null;
 		const pending = delivery;
 		delivery = null;
@@ -286,7 +289,8 @@ onMount(() => {
 		animation = 0;
 		if (disposed || document.hidden) return;
 		const moving = time < activeUntil || dragging || flying
-			|| Math.hypot(flow.x, flow.y) > 1 || Math.hypot(compression.x, compression.y) > 0.001;
+			|| Math.hypot(center.vx, center.vy) > 1 || Math.abs(openness.vx) > 0.001
+			|| Math.hypot(flow.x, flow.y) > 1 || delivery !== null || absorption > 0 || wake.length > 0;
 		// Idle ripples need fewer draws than direct touch motion on a phone GPU.
 		if (!reducedMotion && !moving && lastTime && time - lastTime < 1000 / 30) {
 			animation = requestAnimationFrame(animate);
@@ -354,15 +358,7 @@ onMount(() => {
 		}
 		absorption = Math.max(0, 1 - (time - absorbedAt) / 650);
 		if (dragging || flying || expanded || cartUI.isOpen || Math.hypot(center.vx, center.vy) > 8) {
-			restStarted = time;
 			lensVisible = false;
-		} else if (time - lastLensDraw > 100) {
-			if (!restStarted) restStarted = time;
-			const moment = (time - restStarted) % 12000;
-			lensVisible = moment > 1200 && moment < 4000 && drawPhotoLens(lensCanvas, {
-				x: center.x + viewport.left, y: center.y + viewport.top,
-			});
-			lastLensDraw = time;
 		}
 		const pressure = {
 			x: clamp((DOCK_RADIUS + 2 - Math.min(center.x, viewport.width - center.x)) / DOCK_RADIUS, 0, 0.45),
@@ -386,12 +382,29 @@ onMount(() => {
 			dark,
 			warmth,
 		}) ?? false;
-		if (!reducedMotion && (surface || moving || !expanded)) {
+		if (!moving) scheduleLens();
+		if (!reducedMotion && moving) {
 			animation = requestAnimationFrame(animate);
 		}
 	}
 
+	function stopLens() {
+		clearTimeout(lensTimer);
+		lensTimer = undefined;
+		lensVisible = false;
+	}
+	function scheduleLens() {
+		if (lensTimer || expanded || dragging || flying || reducedMotion || document.hidden || cartUI.isOpen) return;
+		lensTimer = setTimeout(() => {
+			if (!disposed && !document.hidden && !expanded && !cartUI.isOpen) {
+				lensVisible = drawPhotoLens(lensCanvas, { x: center.x + viewport.left, y: center.y + viewport.top });
+			}
+			lensTimer = setTimeout(() => { lensVisible = false; lensTimer = undefined; }, 2800);
+		}, 1200);
+	}
+
 	requestFrame = () => {
+		stopLens();
 		activeUntil = performance.now() + 1800;
 		if (!animation && !document.hidden) {
 			lastTime = 0;
@@ -409,7 +422,7 @@ onMount(() => {
 			animation = 0;
 		} else requestFrame();
 	}
-	function scrollDetails() { lensVisible = false; restStarted = performance.now(); }
+	function scrollDetails() { stopLens(); scheduleLens(); }
 	window.addEventListener("scroll", scrollDetails, { passive: true, capture: true });
 	function motionPreference() { reducedMotion = media.matches; requestFrame(); }
 	// Safari can initiate selection from content beneath a transparent overlay.
@@ -434,6 +447,7 @@ onMount(() => {
 		trigger.removeEventListener("touchmove", preventNativeTouch);
 		cancelAnimationFrame(animation);
 		requestFrame = () => {};
+		prepareSurface = () => {};
 		window.removeEventListener("resize", measure);
 		visualViewport?.removeEventListener("resize", measure);
 		visualViewport?.removeEventListener("scroll", measure);

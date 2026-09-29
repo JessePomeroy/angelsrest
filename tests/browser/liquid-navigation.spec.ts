@@ -26,8 +26,8 @@ test("liquid navigation opens destinations and cart, and responds to motion pref
 	await page.goto("/?fixture=liquid-navigation");
 	const sphere = page.locator(".sphere");
 	await expect(sphere).toBeVisible();
-	await expect(page.locator(".jelly-nav")).toHaveClass(/rendered/);
 	await sphere.tap();
+	await expect(page.locator(".jelly-nav")).toHaveClass(/rendered/);
 	await expect(sphere).toHaveAttribute("aria-expanded", "true");
 	const nav = page.getByRole("navigation", { name: "Mobile navigation" });
 	await expect(nav.getByRole("link")).toHaveCount(5);

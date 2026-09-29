@@ -80,7 +80,11 @@ function asset(value: unknown) {
 		if (derivativeWidth !== expectedWidth || Math.abs(derivativeHeight - expectedHeight) > 1)
 			fail();
 	}
-	return { url: (preset: Preset) => `${MEDIA_ROOT}/${assetId}/${PRESETS[preset].filename}.webp` };
+	return {
+		width: sourceWidth,
+		height: sourceHeight,
+		url: (preset: Preset) => `${MEDIA_ROOT}/${assetId}/${PRESETS[preset].filename}.webp`,
+	};
 }
 
 function variants(value: unknown, isPrint: boolean, available: boolean) {
@@ -347,6 +351,12 @@ export function adaptConvexIndex(value: unknown) {
 				title: product.title,
 				slug: product.slug,
 				preview: display.url("card"),
+				previewSrcset:
+					display.width <= 320
+						? `${display.url("thumb")} ${display.width}w`
+						: `${display.url("thumb")} 320w, ${display.url("card")} ${Math.min(display.width, 768)}w`,
+				previewWidth: display.width,
+				previewHeight: display.height,
 				price: amount,
 				...(product.kind === "print" ? { startingPrice: amount } : {}),
 				category: category(product.kind),

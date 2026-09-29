@@ -1,10 +1,7 @@
 <script lang="ts">
-import {
-	LoadingState,
-	SiteSettingsPage,
-	type SiteSettingsEditorState,
-	useAdminClient,
-} from "@jessepomeroy/admin";
+import LoadingState from "@jessepomeroy/admin/components/LoadingState";
+import SiteSettingsPage from "@jessepomeroy/admin/pages/editor/SiteSettingsPage";
+import { type SiteSettingsEditorState, useAdminClient } from "@jessepomeroy/admin/core";
 import { useQuery } from "convex-svelte";
 import { api } from "$convex/api";
 import { adminConfig } from "$lib/config/admin";
