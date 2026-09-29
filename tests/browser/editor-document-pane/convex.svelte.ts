@@ -11,6 +11,17 @@ const detail =
 	params.get("state") === "populated";
 const list = <T>(items: T[]) => (empty ? [] : items);
 const pageOf = <T>(items: T[]) => ({ page: list(items), isDone: true, continueCursor: "" });
+// Render-only lifecycle states. All mutations still reject below.
+function publicationFixture<T extends { draft: { revisionId: string } | null; published: { revisionId: string } | null }>(value: T): T {
+	const state = params.get("publication");
+	if (!state || !value.draft) return value;
+	return {
+		...value,
+		published: state === "unpublished" ? null : { ...value.draft, revisionId: state === "changed" ? "previous-published-revision" : value.draft.revisionId },
+		...("isPublished" in value ? { isPublished: state !== "unpublished", isVisible: state !== "hidden" } : {}),
+		...("archivedAt" in value ? { archivedAt: state === "archived" ? data.now : null } : {}),
+	};
+}
 function fixtureQuery(name: string, args: Args = {}) {
 	if (args === "skip") return undefined;
 	switch (name) {
@@ -119,9 +130,9 @@ function fixtureQuery(name: string, args: Args = {}) {
 		case "galleries:getImages":
 			return [];
 		case "portfolioGalleries:listForEditor":
-			return list(data.portfolio);
+			return list(data.portfolio.map(publicationFixture));
 		case "portfolioGalleries:getEditorState":
-			return data.portfolio.find((gallery) => gallery.galleryId === args.galleryId) ?? null;
+			return data.portfolio.map(publicationFixture).find((gallery) => gallery.galleryId === args.galleryId) ?? null;
 		case "mediaAssets:listForEditor":
 			return pageOf(data.mediaAssets);
 		case "mediaAssets:getManyForEditor":
@@ -130,36 +141,39 @@ function fixtureQuery(name: string, args: Args = {}) {
 		case "catalogProductGraphs:listForEditor":
 			return detail
 				? list(
-						data.productSummaries.filter(
+						data.productSummaries.map(publicationFixture).filter(
 							(product) => !args.productKind || product.productKind === args.productKind,
 						),
 					)
 				: [];
 		case "catalogProducts:getEditorState":
 		case "catalogProductGraphs:getEditorState":
-			return data.product;
+			return publicationFixture(data.product);
 		case "postContent:listForEditor":
-			return detail ? list(data.postSummaries) : [];
+			return detail ? list(data.postSummaries.map(publicationFixture)) : [];
 		case "postContent:getEditorState":
-			return data.post;
+			return publicationFixture(data.post);
 		case "blogContent:listForEditor":
 			return detail
 				? list(
-						data.supportingSummaries.filter(
+						data.supportingSummaries.map((value) => {
+							const state = publicationFixture(value);
+							return { ...state, publishedRevisionId: state.published?.revisionId ?? null };
+						}).filter(
 							(document) => !args.kind || document.kind === args.kind,
 						),
 					)
 				: [];
 		case "blogContent:getEditorState":
 			return (
-				data.supportingDocuments.find((document) => document.documentId === args.documentId) ?? null
+				data.supportingDocuments.map(publicationFixture).find((document) => document.documentId === args.documentId) ?? null
 			);
 		case "content:getSiteSettingsEditorState":
-			return data.editorState(data.settingsPayload);
+			return publicationFixture(data.editorState(data.settingsPayload));
 		case "content:getContactPageEditorState":
 			return data.editorState(data.contactPayload);
 		case "content:getAboutPageEditorState":
-			return data.editorState(data.aboutPayload);
+			return publicationFixture(data.editorState(data.aboutPayload));
 		default:
 			throw new Error(`No synthetic handbook query fixture for ${name}`);
 	}

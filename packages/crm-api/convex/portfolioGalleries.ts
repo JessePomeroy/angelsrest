@@ -230,7 +230,7 @@ export const publish = mutation({
 				`A published portfolio cannot exceed ${PORTFOLIO_PUBLIC_PLACEMENT_MAX} images`,
 			);
 		}
-		if (gallery.publishedRevisionId === revision._id) {
+		if (gallery.publishedRevisionId === revision._id && gallery.isVisible === true) {
 			return { galleryId: gallery._id, revisionId: revision._id };
 		}
 
@@ -240,7 +240,8 @@ export const publish = mutation({
 		await ctx.db.patch(gallery._id, {
 			publishedRevisionId: revision._id,
 			isPublished: true,
-			isVisible: gallery.isVisible ?? true,
+			// Publishing also restores a previously unpublished (hidden) gallery.
+			isVisible: true,
 			publishedAt: now,
 			publishedBy: identity.tokenIdentifier,
 			updatedAt: now,

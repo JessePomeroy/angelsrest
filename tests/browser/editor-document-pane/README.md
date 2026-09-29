@@ -92,3 +92,20 @@ node tests/browser/editor-document-pane/verify-preview-fidelity.mjs
 ```
 
 Seven checks cover real navigation between both gallery examples at phone/desktop sizes in both themes, and the actual compiled paginated hook plus message-page presentation for populated/loading/error states. Before the corrections, one passed and six failed consistently. All seven pass afterward. The existing message page shows its loading branch after an initial query error; the fixture preserves that application behavior and does not add an error banner to production code.
+
+## Publication controls
+
+`publication=unpublished|published|changed|hidden|archived` selects a render-only
+lifecycle fixture for the document editors. It does not enable provider writes.
+`hidden` is the saved portfolio visibility state; its UI should say Unpublished.
+With the shared source preview on port 5218, run:
+
+```zsh
+node tests/browser/editor-document-pane/verify-publication.mjs
+```
+
+Override `PUBLICATION_PREVIEW_URL` and `PUBLICATION_EVIDENCE_DIR` if needed. The
+check exercises 390/1440-pixel rendering, publication options, keyboard recovery,
+confirmation cancellation and mutation-error containment. Successful backend
+transitions are covered by the package and Convex tests, not this refusing fixture.
+See [the coverage record](../../../docs/design/publication-controls.md).
