@@ -49,6 +49,24 @@ export const list = query({
 	},
 });
 
+/** Dashboard projection excludes document bodies and line items from subscriptions. */
+export const getDashboardSummary = query({
+	args: { siteUrl: v.string() },
+	handler: async (ctx, { siteUrl }) => {
+		await requireSiteAdmin(ctx, siteUrl);
+		const found = await ctx.db.query("quotes").withIndex("by_siteUrl", (q) => q.eq("siteUrl", siteUrl)).order("desc").take(201);
+		const rows = found.slice(0, 200);
+		const counts = { draft: 0, sent: 0, accepted: 0, declined: 0 };
+		for (const row of rows) {
+			if (row.status in counts) counts[row.status as keyof typeof counts] += 1;
+		}
+		return { counts, isTruncated: found.length > 200,
+			recent: rows.slice(0, 5).map((row) => ({ _id: row._id, _creationTime: row._creationTime,
+				quoteNumber: row.quoteNumber, clientName: row.clientName ?? "unknown", status: row.status })),
+		};
+	},
+});
+
 export const get = query({
 	args: { quoteId: v.id("quotes") },
 	handler: async (ctx, { quoteId }) => {

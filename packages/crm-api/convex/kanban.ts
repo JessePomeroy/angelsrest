@@ -203,6 +203,31 @@ export const initializeBoard = mutation({
 	},
 });
 
+export const reorderCards = mutation({
+	args: {
+		siteUrl: v.string(), projectType: v.string(), targetColumnId: v.string(),
+		clientIds: v.array(v.id("photographyClients")),
+	},
+	handler: async (ctx, { siteUrl, projectType, targetColumnId, clientIds }) => {
+		await requireSiteAdmin(ctx, siteUrl);
+		if (clientIds.length > LARGE_SCAN_LIMIT || new Set(clientIds).size !== clientIds.length) {
+			throw new Error("Invalid board order");
+		}
+		const config = await ctx.db.query("boardConfigs")
+			.withIndex("by_siteUrl_and_projectType", (q) => q.eq("siteUrl", siteUrl).eq("projectType", projectType)).first();
+		if (!config?.columns.some((column) => column.id === targetColumnId)) throw new Error("Invalid target column");
+		const cards = await Promise.all(clientIds.map((id) => ctx.db.get(id)));
+		for (const card of cards) {
+			if (!card || card.siteUrl !== siteUrl || card.type !== projectType) throw new Error("Not found");
+		}
+		for (const [position, card] of cards.entries()) {
+			if (card && (card.boardColumnId !== targetColumnId || card.boardPosition !== position)) {
+				await ctx.db.patch(card._id, { boardColumnId: targetColumnId, boardPosition: position });
+			}
+		}
+	},
+});
+
 export const moveCard = mutation({
 	args: {
 		clientId: v.id("photographyClients"),

@@ -227,6 +227,11 @@ describe("tenant-scoped portfolio gallery revisions", () => {
 			{ siteUrl: SITE_A.siteUrl },
 		);
 		expect(portfolio).toEqual([published]);
+		expect(await adminA.query(api.portfolioGalleries.listPublishedSummaries, { siteUrl: SITE_A.siteUrl })).toEqual([{
+			title: "Selected work", slug: "selected-work",
+			preview: { assetId: ASSET_A, card: readyAsset(SITE_A.siteUrl, ASSET_A).derivatives.card },
+		}]);
+		expect(await adminA.query(api.portfolioGalleries.listPublishedSummaries, { siteUrl: SITE_B.siteUrl })).toEqual([]);
 		expect(
 			await adminA.query(api.portfolioGalleries.listPublishedWithPlacements, {
 				siteUrl: SITE_B.siteUrl,
@@ -457,4 +462,24 @@ describe("tenant-scoped portfolio gallery revisions", () => {
 			first.galleryId,
 		]);
 	});
+});
+
+test("summary reads only the first published image and enforces its ownership and visibility", async () => {
+	const { t, adminA, assetA, assetB } = await setup();
+	const saved = await adminA.mutation(api.portfolioGalleries.saveDraft, {
+		siteUrl: SITE_A.siteUrl,
+		draft: { title: "Summary fixture", slug: "summary-fixture", placements: [
+			placement("first", assetA.id, { altText: "First" }), placement("second", assetB.id, { altText: "Second" }),
+		] },
+	});
+	await adminA.mutation(api.portfolioGalleries.publish, { galleryId: saved.galleryId, draftRevisionId: saved.revisionId });
+	// A missing unrelated detail asset must not force an index read of the whole gallery.
+	await t.run(async (ctx) => { await ctx.db.delete(assetB.id); });
+	const result = await t.query(api.portfolioGalleries.listPublishedSummaries, { siteUrl: SITE_A.siteUrl });
+	expect(result).toHaveLength(1);
+	expect(Object.keys(result[0]).sort()).toEqual(["preview", "slug", "title"]);
+	await t.run(async (ctx) => { await ctx.db.patch(assetA.id, { siteUrl: SITE_B.siteUrl }); });
+	await expect(t.query(api.portfolioGalleries.listPublishedSummaries, { siteUrl: SITE_A.siteUrl })).rejects.toThrow("same site");
+	await t.run(async (ctx) => { await ctx.db.patch(saved.galleryId, { isVisible: false }); });
+	expect(await t.query(api.portfolioGalleries.listPublishedSummaries, { siteUrl: SITE_A.siteUrl })).toEqual([]);
 });

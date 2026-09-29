@@ -116,3 +116,12 @@ describe("resolveGalleryDisplayImages", () => {
 		);
 	});
 });
+
+it("uses an authorized companion supplied from another metadata page without adding it to the page", () => {
+	const raw = { filename: "FRAME.CR3", r2Key: "tenant/gallery/original/FRAME.CR3" };
+	const companion = { filename: "frame.jpg", r2Key: "tenant/gallery/original/frame.jpg" };
+	const result = resolveGalleryDisplayImages([raw], workerUrl, access, [companion]);
+	expect(result).toHaveLength(1);
+	expect(result[0]).toMatchObject({ ...raw, canPreview: true, previewSource: "sidecar" });
+	expect(result[0].previewUrl).toContain("frame.jpg");
+});

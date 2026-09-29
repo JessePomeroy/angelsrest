@@ -50,10 +50,11 @@ export function resolveGalleryDisplayImages<T extends GalleryDisplayInput>(
 	images: T[],
 	workerUrl: string,
 	access: { token: string; accessGrant?: string },
+	previewSources: readonly GalleryDisplayInput[] = [],
 ): Array<GalleryDisplayImage<T>> {
-	const sidecarsByPairKey = new Map<string, T>();
+	const sidecarsByPairKey = new Map<string, GalleryDisplayInput>();
 
-	for (const image of images) {
+	for (const image of [...previewSources, ...images]) {
 		if (!isBrowserPreviewableGalleryFile(image.filename)) continue;
 		const pairKey = pairKeyForImage(image);
 		if (!sidecarsByPairKey.has(pairKey)) {
