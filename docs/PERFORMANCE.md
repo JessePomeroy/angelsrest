@@ -246,3 +246,57 @@ Proposed goals are mobile median 90+, LCP ≤2.5 seconds, TBT ≤200 ms and CLS 
 while preserving desktop performance and visual fidelity. They are goals, not
 promised outcomes. The homepage results do not diagnose gallery/shop routes,
 backend capacity, or Vercel storage. Those require their own relevant evidence.
+
+
+## September 29 release — measured October 1, 2026
+
+A fresh comparison pairs pre-release source `5b0939da` (admin 6.5.5) with
+deployed source `ca274a04` (admin 6.6.0). Both use local production builds,
+identical public backend configuration, Lighthouse 13.5.0 / Chromium
+154.0.8037.0, verified RTX 3070 rendering, dark/afternoon, America/Detroit,
+and ordinary motion. Three fresh-browser pairs per profile alternate order.
+There were no Lighthouse warnings. Local previews return the same known
+Vercel analytics-script 404; these are lab comparisons, not field Core Web Vitals.
+
+| Metric | Mobile before → after | Desktop before → after |
+| --- | --- | --- |
+| Performance median (range) | 54 (50–56) → 75 (69–75) | 97 (96–97) → 97 (97–97) |
+| FCP median | 1.83 → 1.83 s | 0.424 → 0.425 s |
+| LCP median | 6.82 → 6.59 s | 1.25 → 1.29 s |
+| TBT median | 929 → 114 ms | 0 → 0 ms |
+| CLS median | 0.000068 → 0.000068 | 0.000082 → 0.000082 |
+
+Mobile TBT ranges fell from 812–1,531 ms to 111–312 ms. LCP ranges overlap
+(6.49–7.09 s before, 6.56–6.63 s after), so these samples support lower
+startup blocking, not a reliable image-loading gain. Mobile 90+ and LCP ≤2.5 s
+goals remain unmet. Desktop changes are small and do not establish a speedup.
+Initial mobile JavaScript transfer in these local runs fell from 271,480 to
+143,211 bytes; deferred renderer work remains part of later interaction.
+
+Static import closure estimates, individually gzipped at level 9, fell from
+344,687 to 167,912 bytes for the admin shell and 346,627 to 140,923 bytes for
+client Stripe setup. These exclude dynamic imports and are neither actual
+authenticated HTTP transfers nor measurements of admin/backend latency.
+
+A separate three-pair instrumented mobile diagnostic used applied 4× CPU /
+1474.56 Kbps throttling. Startup blocking fell from 411 ms (282–435) to
+258 ms (226–267). Navigation links became visible after the automated tap in
+117 ms (100–125) before and 111 ms (102–111) after. The renderer continued
+21–23 draws during a one-second window after 20 seconds settling before,
+versus zero in all three after samples. Gallery navigation passed every run.
+The interaction phase, including first renderer initialization, settling and
+Gallery navigation, incurred 0 ms blocking before versus 233 ms (90–244)
+after. This is a real deferral tradeoff; these diagnostic timings include
+probes and automation and are not Lighthouse TBT or real-user INP.
+
+Raw reports, contexts, traces, bundle estimates and the separately captured
+live-site snapshot are retained in the Obsidian sibling directory
+`performance-evidence-2026-10-01/`. The first interaction batch also remains
+there, identified as a secondary diagnostic because filesystem cleanup
+overlapped it; the quoted interaction results use a new quiet batch. Desktop
+background applications remained running (GPU utilization observed around
+17–22% between Lighthouse runs); no application build or other browser
+audit competed with the comparison. No physical-phone, production Convex
+load or provider-capacity measurement is claimed. The older unshipped
+four-file shader/sizing experiment was preserved in the maintenance archive
+and removed from active worktrees; it is not the source of these improvements.
