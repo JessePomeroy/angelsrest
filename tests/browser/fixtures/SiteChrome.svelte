@@ -1,8 +1,14 @@
 <script lang="ts">
 import PrintHarness from "./PrintHarness.svelte";
+import ContentHarness from "./ContentHarness.svelte";
+import ShopHarness from "./ShopHarness.svelte";
+import ProductHarness from "./ProductHarness.svelte";
 import { navigating, page } from "./state.svelte";
-const purchase = new URLSearchParams(window.location.search).has("purchase");
+const params = new URLSearchParams(window.location.search);
+const purchase = params.has("purchase");
+const surface = params.get("surface");
 if (purchase) page.url = new URL("http://127.0.0.1:5196/shop/fixture");
+if (surface) page.url = new URL(surface === "portfolio" ? "/gallery/fixture" : "/shop", page.url);
 
 import Layout from "../../../src/routes/+layout.svelte";
 
@@ -19,7 +25,13 @@ const data = {
 </script>
 
 <Layout {data} params={{}}>
-  {#if purchase}
+  {#if surface === "portfolio"}
+    <ContentHarness />
+  {:else if surface === "shop"}
+    <ShopHarness />
+  {:else if surface === "product"}
+    <ProductHarness />
+  {:else if purchase}
     <PrintHarness />
   {:else}
   <h1>Fixture page</h1>

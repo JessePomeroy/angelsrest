@@ -9,6 +9,7 @@
  * - full (1600px) for the lightbox
  */
 
+import MagneticImages from "$lib/components/MagneticImages.svelte";
 import GalleryModal from "$lib/components/GalleryModal.svelte";
 import SEO from "$lib/components/SEO.svelte";
 
@@ -45,21 +46,24 @@ function openModal(index: number) {
     - break-inside-avoid prevents images from splitting across columns
     - Uses optimized thumbnail URLs (400px webp)
   -->
-  <div class="image-grid">
-    {#each data.gallery.images as image, i (image.full ?? i)}
-      <button
-        class="image-button"
-        onclick={() => openModal(i)}
-        aria-label={image.alt ? `View image ${i + 1}: ${image.alt}` : `View image ${i + 1}`}
-      >
-        <img data-water-lens
-          src={image.thumbnail}
-          alt={image.alt || "Gallery image " + (i + 1)}
-          loading="lazy"
-        />
-      </button>
-    {/each}
-  </div>
+  <MagneticImages>
+    <div class="image-grid">
+      {#each data.gallery.images as image, i (image.full ?? i)}
+        <button
+          class="image-button"
+          data-magnetic-item
+          onclick={() => openModal(i)}
+          aria-label={image.alt ? `View image ${i + 1}: ${image.alt}` : `View image ${i + 1}`}
+        >
+          <img data-water-lens
+            src={image.thumbnail}
+            alt={image.alt || "Gallery image " + (i + 1)}
+            loading="lazy"
+          />
+        </button>
+      {/each}
+    </div>
+  </MagneticImages>
 </section>
 
 <!-- 
@@ -83,9 +87,7 @@ function openModal(index: number) {
   .gallery-heading h1 { margin-top: 8px; font-size: 1.35rem; font-weight: 500; }
   .image-grid { columns: 2; column-gap: 8px; }
   .image-button { display: block; width: 100%; margin: 0 0 8px; padding: 0; break-inside: avoid; border: 0; background: transparent; cursor: zoom-in; }
-  .image-button img { display: block; width: 100%; height: auto; transition: opacity 180ms ease; }
-  .image-button:hover img { opacity: 0.86; }
-  .image-button:focus-visible { outline: 1px solid var(--time-accent); outline-offset: 2px; }
+  .image-button img { display: block; width: 100%; height: auto; }
   @media (min-width: 768px) { .image-grid { columns: 3; } }
   @media (min-width: 1100px) { .image-grid { columns: 4; } }
 </style>

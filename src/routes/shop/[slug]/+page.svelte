@@ -1,4 +1,5 @@
 <script lang="ts">
+import MagneticImages from "$lib/components/MagneticImages.svelte";
 import GalleryModal from "$lib/components/GalleryModal.svelte";
 import SEO from "$lib/components/SEO.svelte";
 import StickyMobileBar from "$lib/components/StickyMobileBar.svelte";
@@ -129,40 +130,43 @@ function handleV1AddToCart(event: MouseEvent) {
 
 	<div class="product-layout">
 		<!-- Image gallery (shared between V1 and V2) -->
-		<div class="product-images">
-			{#if data.product.images.length > 0}
-				<button class="main-image-button" onclick={() => openModal(0)}>
-					<img data-water-lens
-						src={data.product.images[0].full}
-						alt={data.product.images[0].alt}
-						loading="lazy"
-						class="main-image"
-					/>
-				</button>
+		<MagneticImages>
+			<div class="product-images">
+				{#if data.product.images.length > 0}
+					<button class="main-image-button" data-magnetic-item onclick={() => openModal(0)}>
+						<img data-water-lens
+							src={data.product.images[0].full}
+							alt={data.product.images[0].alt}
+							loading="lazy"
+							class="main-image"
+						/>
+					</button>
 
-				{#if data.product.images.length > 1}
-					<div class="thumbnails">
-						{#each data.product.images.slice(1) as image, i (image.full ?? i)}
-							<button
-								class="thumbnail-button"
-								onclick={() => openModal(i + 1)}
-							>
-								<img data-water-lens
-									src={image.thumbnail}
-									alt={image.alt}
-									loading="lazy"
-									class="thumbnail-image"
-								/>
-							</button>
-						{/each}
+					{#if data.product.images.length > 1}
+						<div class="thumbnails">
+							{#each data.product.images.slice(1) as image, i (image.full ?? i)}
+								<button
+									class="thumbnail-button"
+									data-magnetic-item
+									onclick={() => openModal(i + 1)}
+								>
+									<img data-water-lens
+										src={image.thumbnail}
+										alt={image.alt}
+										loading="lazy"
+										class="thumbnail-image"
+									/>
+								</button>
+							{/each}
+						</div>
+					{/if}
+				{:else}
+					<div class="empty-images">
+						<span class="empty-image-label">No image available</span>
 					</div>
 				{/if}
-			{:else}
-				<div class="empty-images">
-					<span class="empty-image-label">No image available</span>
-				</div>
-			{/if}
-		</div>
+			</div>
+		</MagneticImages>
 
 		<!-- Product details -->
 		<div class="product-details">
@@ -300,16 +304,14 @@ function handleV1AddToCart(event: MouseEvent) {
     @media (min-width: 48rem) { .product-page { padding-inline: 2rem; } }
     .back-link { font-size: var(--text-sm); line-height: var(--text-sm--line-height); opacity: 0.7; margin-bottom: 1rem; display: inline-block; }
     @media (hover: hover) { .back-link:hover { opacity: 1.0; } }
-    .product-layout { display: grid; grid-template-columns: minmax(0, 1fr); gap: 2rem; }
+    .product-layout { --magnetic-radius: 0.375rem; display: grid; grid-template-columns: minmax(0, 1fr); gap: 2rem; }
     @media (min-width: 48rem) { .product-layout { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
     .product-images > :global(:not(:last-child)) { margin-block-start: 0; margin-block-end: 1.0rem; }
-    .main-image-button { width: 100%; }
-    .main-image { width: 100%; height: auto; transition-property: transform, translate, scale, rotate; transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1); transition-duration: 150ms; border-radius: 0.375rem; }
-    @media (hover: hover) { .main-image:hover { scale: 1.05; } }
+    .main-image-button { display: block; width: 100%; border-radius: 0.375rem; }
+    .main-image { width: 100%; height: auto; border-radius: 0.375rem; }
     .thumbnails { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 0.5rem; }
     .thumbnail-button { aspect-ratio: 1 / 1; overflow: hidden; border-radius: 0.375rem; }
-    .thumbnail-image { width: 100%; height: 100%; object-fit: cover; transition-property: transform, translate, scale, rotate; transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1); transition-duration: 150ms; }
-    @media (hover: hover) { .thumbnail-image:hover { scale: 1.05; } }
+    .thumbnail-image { width: 100%; height: 100%; object-fit: cover; }
     .empty-images { aspect-ratio: 1 / 1; background-color: var(--color-surface-100); border-radius: 0.375rem; display: flex; align-items: center; justify-content: center; }
     :global(.dark) .empty-images { background-color: var(--color-surface-800); }
     .empty-image-label { color: var(--color-surface-500); }
