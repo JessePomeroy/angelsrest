@@ -4,6 +4,7 @@
  * Shows a grid of all galleries — click one to view its images.
  * Data comes from the Convex-owned public portfolio projection.
  */
+import MagneticImages from "$lib/components/MagneticImages.svelte";
 import SEO from "$lib/components/SEO.svelte";
 
 // Page data from the load function (contains galleries array)
@@ -26,18 +27,20 @@ let { data } = $props();
         <h1>gallery</h1>
         <span>{data.galleries.length} collections</span>
     </header>
-    <div class="gallery-columns">
-        {#each data.galleries as gallery (gallery.slug)}
-            <a href="/gallery/{gallery.slug}" class="gallery-entry">
-                <div class="image-frame">
-                    <img data-water-lens src={gallery.preview} alt={gallery.title} loading="lazy" />
-                </div>
-                <div class="entry-caption">
-                    <h2>{gallery.title}</h2>
-                </div>
-            </a>
-        {/each}
-    </div>
+    <MagneticImages>
+        <div class="gallery-columns">
+            {#each data.galleries as gallery (gallery.slug)}
+                <a href="/gallery/{gallery.slug}" class="gallery-entry" data-magnetic-item>
+                    <div class="image-frame" data-magnetic-target>
+                        <img data-water-lens src={gallery.preview} alt={gallery.title} loading="lazy" />
+                    </div>
+                    <div class="entry-caption">
+                        <h2>{gallery.title}</h2>
+                    </div>
+                </a>
+            {/each}
+        </div>
+    </MagneticImages>
 </section>
 
 <style>
@@ -55,8 +58,7 @@ let { data } = $props();
     .gallery-columns { columns: 2; column-gap: 18px; }
     .gallery-entry { display: block; margin-bottom: 24px; break-inside: avoid; color: inherit; }
     .image-frame { overflow: hidden; border: 1px solid color-mix(in srgb, currentColor 13%, transparent); }
-    .image-frame img { width: 100%; transition: transform 400ms cubic-bezier(.22,1,.36,1); }
-    .gallery-entry:hover img { transform: scale(1.018); }
+    .image-frame img { width: 100%; }
     .entry-caption { display: flex; padding-top: 9px; align-items: baseline; justify-content: space-between; border-top: 1px solid color-mix(in srgb, currentColor 10%, transparent); }
     .entry-caption h2 { font-family: "Synonym", sans-serif; font-size: 0.72rem; font-weight: 400; letter-spacing: 0.13em; }
     @media (min-width: 768px) { .gallery-columns { columns: 3; } }

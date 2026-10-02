@@ -164,13 +164,18 @@ The public website and mounted admin application have separate Paper handbooks.
 See `docs/DESIGN_HANDBOOK.md` and `docs/design/screen-inventory.json` for their
 links, scope, source mapping, verification status, and safe capture setup.
 
-New screens and material UI changes must include this workflow in the same task:
-**implement → inspect in browser → update Paper → compare → update inventory**.
-Update existing editable reference boards in place; preserve unrelated studies.
-Document implemented behavior faithfully rather than silently redesigning it.
-Never mark a board verified without comparing the same viewport, data, theme,
-and state. Report unavailable fonts, authentication, providers, or states as gaps;
-do not substitute production customer records or private gallery assets.
+For new screens and material UI changes, use this order:
+**implement → inspect in browser → ship → confirm live → update Paper → compare → update inventory**.
+Defer Paper and inventory updates until the UI changes are fully shipped and
+confirmed live. They are post-release documentation work, not a requirement for
+completing local implementation or a prerequisite for shipping. This workflow
+does not authorize commits, pushes, merges, or deployments on its own.
+After release, update existing editable reference boards in place; preserve
+unrelated studies. Document the live behavior faithfully rather than silently
+redesigning it. Never mark a board verified without comparing the same viewport,
+data, theme, and state. Report unavailable fonts, authentication, providers, or
+states as gaps; do not substitute production customer records or private gallery
+assets.
 
 ## Git workflow
 

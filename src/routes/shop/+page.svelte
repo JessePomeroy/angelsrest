@@ -9,6 +9,7 @@
  *
  * Print Sets are specific to the Prints category.
  */
+import MagneticImages from "$lib/components/MagneticImages.svelte";
 import SEO from "$lib/components/SEO.svelte";
 import type { PageData } from "./$types";
 
@@ -65,94 +66,98 @@ const categories = [
         {/each}
     </div>
 
-    <!-- Print Sets grid (Prints only) -->
-    {#if filteredPrintSets.length > 0}
-        <div class="catalog-section">
-            <h2 class="catalog-heading">sets</h2>
-            <div class="catalog-columns">
-                {#each filteredPrintSets as set (set.slug)}
-                    <a
-                        href="/shop/sets/{set.slug}"
-                        class="catalog-entry"
-                    >
-                        <div class="catalog-image">
-                            <!-- Two images side by side -->
-                            <div
-                                class="set-preview"
-                            >
-                                {#if set.preview1}
-                                    <img
-                                        src={set.preview1}
-                                        alt="{set.title} - 1"
-                                        loading="lazy"
-                                        class="catalog-photo"
-                                    />
-                                {/if}
-                                {#if set.preview2}
-                                    <img
-                                        src={set.preview2}
-                                        alt="{set.title} - 2"
-                                        loading="lazy"
-                                        class="catalog-photo"
-                                    />
+    <MagneticImages>
+        <!-- Print Sets grid (Prints only) -->
+        {#if filteredPrintSets.length > 0}
+            <div class="catalog-section">
+                <h2 class="catalog-heading">sets</h2>
+                <div class="catalog-columns">
+                    {#each filteredPrintSets as set (set.slug)}
+                        <a
+                            href="/shop/sets/{set.slug}"
+                            class="catalog-entry"
+                            data-magnetic-item
+                        >
+                            <div class="catalog-image">
+                                <!-- Two images side by side -->
+                                <div
+                                    class="set-preview" data-magnetic-target
+                                >
+                                    {#if set.preview1}
+                                        <img
+                                            src={set.preview1}
+                                            alt="{set.title} - 1"
+                                            loading="lazy"
+                                            class="catalog-photo"
+                                        />
+                                    {/if}
+                                    {#if set.preview2}
+                                        <img
+                                            src={set.preview2}
+                                            alt="{set.title} - 2"
+                                            loading="lazy"
+                                            class="catalog-photo"
+                                        />
+                                    {/if}
+                                </div>
+                                <h2 class="entry-title">
+                                    {set.title}
+                                </h2>
+                                {#if set.price}
+                                    <p class="entry-price">
+                                        ${set.price}
+                                    </p>
                                 {/if}
                             </div>
-                            <h2 class="entry-title">
-                                {set.title}
-                            </h2>
-                            {#if set.price}
-                                <p class="entry-price">
-                                    ${set.price}
-                                </p>
+                        </a>
+                    {/each}
+                </div>
+            </div>
+        {/if}
+
+        <!-- Products grid -->
+        {#if filteredProducts.length > 0}
+            <div class="catalog-columns">
+                {#each filteredProducts as product, index (product.slug)}
+                    <a
+                        href="/shop/{product.slug}"
+                        class="catalog-entry"
+                        data-magnetic-item
+                    >
+                        <div
+                            class="catalog-image"
+                            class:featured-card={product.featured}
+                        >
+                            {#if product.preview}
+                                <div class="image-clip" data-magnetic-target>
+                                    <img
+                                        src={product.preview}
+                                        srcset={product.previewSrcset}
+                                        sizes="(max-width: 767px) calc((100vw - 54px) / 2), 33vw"
+                                        width={product.previewWidth}
+                                        height={product.previewHeight}
+                                        loading={index < 2 ? "eager" : "lazy"}
+                                        decoding="async"
+                                        alt={product.title}
+                                        class="catalog-photo"
+                                    />
+                                </div>
                             {/if}
+                            <h2 class="entry-title">
+                                {product.title}
+                            </h2>
                         </div>
                     </a>
                 {/each}
             </div>
-        </div>
-    {/if}
+        {/if}
 
-    <!-- Products grid -->
-    {#if filteredProducts.length > 0}
-        <div class="catalog-columns">
-            {#each filteredProducts as product, index (product.slug)}
-                <a
-                    href="/shop/{product.slug}"
-                    class="catalog-entry"
-                >
-                    <div
-                        class="catalog-image"
-                        class:featured-card={product.featured}
-                    >
-                        {#if product.preview}
-                            <div class="image-clip">
-                                <img
-                                    src={product.preview}
-                                    srcset={product.previewSrcset}
-                                    sizes="(max-width: 767px) calc((100vw - 54px) / 2), 33vw"
-                                    width={product.previewWidth}
-                                    height={product.previewHeight}
-                                    loading={index < 2 ? "eager" : "lazy"}
-                                    decoding="async"
-                                    alt={product.title}
-                                    class="catalog-photo"
-                                />
-                            </div>
-                        {/if}
-                        <h2 class="entry-title">
-                            {product.title}
-                        </h2>
-                    </div>
-                </a>
-            {/each}
-        </div>
-    {/if}
-
-    {#if filteredProducts.length === 0 && filteredPrintSets.length === 0}
-        <div class="empty-state">
-            <p>No products found in this category.</p>
-        </div>
-    {/if}
+        {#if filteredProducts.length === 0 && filteredPrintSets.length === 0}
+            <div class="empty-state">
+                <p>No products found in this category.</p>
+            </div>
+        {/if}
+    </MagneticImages>
 </section>
 
 <style>
@@ -179,8 +184,7 @@ const categories = [
     .image-clip,
     .set-preview { overflow: hidden; }
     .set-preview { display: grid; grid-template-columns: 1fr 1fr; gap: 1px; }
-    .catalog-photo { width: 100%; height: auto; transition: transform 400ms cubic-bezier(.22,1,.36,1); }
-    .catalog-entry:hover .catalog-photo { transform: scale(1.018); }
+    .catalog-photo { width: 100%; height: auto; }
     .entry-title { padding: 10px 10px 9px; border-top: 1px solid color-mix(in srgb, currentColor 10%, transparent); font-family: "Synonym", sans-serif; font-size: 0.7rem; font-weight: 400; letter-spacing: 0.11em; text-align: left; }
     .entry-price { padding: 0 10px 10px; color: color-mix(in srgb, currentColor 88%, transparent); font-size: 0.66rem; }
     @media (min-width: 768px) { .catalog-columns { columns: 3; } }

@@ -318,7 +318,12 @@ Important gaps:
 
 ## Maintenance contract
 
-**Implement → inspect in browser → update Paper → compare → update inventory.**
+**Implement → inspect in browser → ship → confirm live → update Paper → compare → update inventory.**
+
+Complete implementation and browser verification first. Start the Paper and
+inventory maintenance below only after the UI changes are fully shipped and
+confirmed live; this documentation does not block local completion or shipping.
+Shipping still requires the user's separate authorization.
 
 1. Read instructions and Git state. Identify affected template/state keys and
    package versions. Preserve unrelated studies and local changes.
@@ -335,7 +340,8 @@ Important gaps:
 6. Run checks, report gaps, stop owned previews and release Paper indicators.
    Do not commit, push, publish or deploy without separate approval.
 
-`AGENTS.md` requires this for new screens and material UI changes. Shared guides
+`AGENTS.md` requires this post-release maintenance for new screens and material UI
+changes. Shared guides
 use `documentationReferences` and `coveredByReferenceKeys` instead of pretending
 an artificial component sheet is an implemented route.
 
