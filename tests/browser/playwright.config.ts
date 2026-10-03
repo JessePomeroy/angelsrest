@@ -20,7 +20,7 @@ export default defineConfig({
 		{ name: "desktop", use: { ...devices["Desktop Chrome"] } },
 		{
 			name: "firefox-desktop",
-			testMatch: "magnetic-images.spec.ts",
+			testMatch: ["magnetic-images.spec.ts", "delivery-modality.spec.ts"],
 			use: {
 				...devices["Desktop Firefox"],
 				launchOptions: {
