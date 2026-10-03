@@ -93,15 +93,22 @@ function start(next: "checking" | "creating") {
 }
 async function requestSetup(path: string, snapshot: NonNullable<typeof review>, signal: AbortSignal) {
 	const deadline = new AbortController();
+	// Keep fetch attached to this controller: WebKit can collect an inline AbortSignal.any signal.
+	const abort = () => deadline.abort(signal.reason);
+	signal.addEventListener("abort", abort, { once: true });
+	if (signal.aborted) abort();
 	const timer = setTimeout(() => deadline.abort(), 20_000);
 	try {
 		const response = await fetch(path, {
 			method: "POST", headers: { "content-type": "application/json" }, cache: "no-store", body: bodyFor(snapshot),
-			signal: AbortSignal.any([signal, deadline.signal]),
+			signal: deadline.signal,
 		});
 		const body: unknown = await response.json();
 		return { ok: response.ok, status: response.status, body };
-	} finally { clearTimeout(timer); }
+	} finally {
+		clearTimeout(timer);
+		signal.removeEventListener("abort", abort);
+	}
 }
 async function readStatus(snapshot: NonNullable<typeof review>, signal: AbortSignal) {
 	const response = await requestSetup("/api/admin/platform-clients/status", snapshot, signal);
