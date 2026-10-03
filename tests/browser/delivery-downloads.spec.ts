@@ -142,3 +142,45 @@ test("paged galleries resolve selection before requesting a save-location click"
  expect(await page.evaluate(() => window.downloadFixture.saved.length)).toBe(55);
  await expect(page.locator(".grid-cell")).toHaveCount(48);
 });
+
+for (const change of ["gallery", "grant"] as const) {
+ test(`same-capability refresh retains a stream; changing ${change} aborts it`, async ({ page }) => {
+  await page.goto("/?fixture=delivery-downloads");
+  await page.evaluate(() => { window.downloadFixture.mode = "stream"; });
+  await page.getByLabel("choose location", { exact: true }).check();
+  await page.getByRole("button", { name: "download all", exact: true }).click();
+  await expect.poll(() => page.evaluate(() => window.downloadFixture.fetched.length)).toBe(1);
+  await page.evaluate(() => Reflect.get(window, "galleryFixture").refresh());
+  await expect(page.getByRole("button", { name: "cancel download", exact: true })).toBeEnabled();
+  expect(await page.evaluate(() => window.downloadFixture.aborted)).toBe(0);
+  await page.evaluate((change) => change === "gallery"
+   ? Reflect.get(window, "galleryFixture").replace("b") : Reflect.get(window, "galleryFixture").renewGrant(), change);
+  await expect.poll(() => page.evaluate(() => window.downloadFixture.aborted)).toBe(1);
+  expect(await page.evaluate(() => window.downloadFixture.streamCanceled)).toBe(1);
+  expect(await page.evaluate(() => window.downloadFixture.saved)).toEqual([]);
+  await expect(page.getByRole("button", { name: "download all", exact: true })).toBeEnabled();
+  await expect(page.getByRole("status")).toHaveCount(0);
+ });
+}
+
+test("replacing the gallery cleans up a ZIP with its original capability", async ({ page }) => {
+ const requests: Array<{ path: string; query: string }> = [];
+ await page.route("**/download/zip/prepare**", async route => {
+  const url = new URL(route.request().url());
+  requests.push({ path: url.pathname, query: url.search });
+  await route.fulfill({ contentType: "application/json", body: JSON.stringify({ status: url.pathname.endsWith("/cancel") ? "canceled" : "queued", requestId: "fixture-request", imageCount: 4, totalBytes: 4 * 1024 ** 3, archiveBytes: 0, processedBytes: 0 }) });
+ });
+ await page.goto("/?fixture=delivery-downloads&large");
+ await page.getByRole("button", { name: "download all", exact: true }).click();
+ await expect(page.getByRole("status")).toHaveText("queued ZIP build...");
+ await page.evaluate(() => Reflect.get(window, "galleryFixture").refresh());
+ await expect(page.getByRole("status")).toHaveText("queued ZIP build...");
+ await page.evaluate(() => Reflect.get(window, "galleryFixture").replace("b"));
+ await expect.poll(() => requests.length).toBe(2);
+ expect(requests[1]).toEqual({ path: "/download/zip/prepare/fixture-request/cancel", query: "?token=fixture-token&accessGrant=fixture-grant" });
+ await page.clock.install();
+ await page.clock.fastForward(6000);
+ expect(requests).toHaveLength(2);
+ await expect(page.getByRole("status")).toHaveCount(0);
+ await expect(page.getByRole("button", { name: "download all", exact: true })).toBeEnabled();
+});
