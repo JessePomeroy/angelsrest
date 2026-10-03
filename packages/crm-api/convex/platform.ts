@@ -1,5 +1,5 @@
-import { ConvexError, v } from "convex/values";
-import { api } from "./_generated/api";
+import { ConvexError, type Infer, v } from "convex/values";
+import { api, components } from "./_generated/api";
 import type { Doc, Id } from "./_generated/dataModel";
 import type { MutationCtx, QueryCtx } from "./_generated/server";
 import { internalMutation, internalQuery, mutation, query } from "./_generated/server";
@@ -28,6 +28,7 @@ import {
 import {
 	ensureTenantAliases,
 	ensureTenantIdentity,
+	isTenantId,
 	resolveTenantContext,
 } from "./helpers/tenantContext";
 
@@ -67,6 +68,95 @@ export const listAll = query({
 	handler: async (ctx) => {
 		await requirePlatformAdmin(ctx);
 		return await ctx.db.query("platformClients").order("desc").take(DEFAULT_LIST_LIMIT);
+	},
+});
+
+const clientSetupConflictValidator = v.union(
+	v.literal("name"),
+	v.literal("email"),
+	v.literal("tier"),
+	v.literal("siteUrl"),
+	v.literal("tenantIdentity"),
+	v.literal("expectedTenantId"),
+	v.literal("role"),
+	v.literal("offboarding"),
+	v.literal("adminIdentity"),
+);
+const clientSetupStatusValidator = v.union(
+	v.object({ kind: v.literal("absent"), siteUrl: v.string() }),
+	v.object({
+		kind: v.literal("matching"),
+		siteUrl: v.string(),
+		clientId: v.id("platformClients"),
+		tenantId: v.string(),
+	}),
+	v.object({
+		kind: v.literal("conflict"),
+		siteUrl: v.string(),
+		clientId: v.union(v.id("platformClients"), v.null()),
+		tenantId: v.union(v.string(), v.null()),
+		conflicts: v.array(clientSetupConflictValidator),
+	}),
+);
+
+/** Reconcile an operator's setup intent without creating a tenant or reading credentials. */
+export const getClientSetupStatus = query({
+	args: {
+		name: v.string(),
+		email: v.string(),
+		siteUrl: v.string(),
+		tier: v.union(v.literal("basic"), v.literal("full")),
+		expectedTenantId: v.optional(v.string()),
+	},
+	returns: clientSetupStatusValidator,
+	handler: async (ctx, args): Promise<Infer<typeof clientSetupStatusValidator>> => {
+		await requireCreator(ctx);
+		const intended = normalizePlatformClientInput({ ...args, adminEmails: [args.email] });
+		if (args.expectedTenantId !== undefined && !isTenantId(args.expectedTenantId)) {
+			throw new Error("Invalid expected tenant identity");
+		}
+		const context = await resolveTenantContext(ctx, { siteUrl: intended.siteUrl });
+		if (!context) {
+			return args.expectedTenantId === undefined
+				? { kind: "absent", siteUrl: intended.siteUrl }
+				: {
+					kind: "conflict", siteUrl: intended.siteUrl, clientId: null, tenantId: null,
+					conflicts: ["expectedTenantId"],
+				};
+		}
+		const { client } = context;
+		const tenantId = isTenantId(context.tenantId) ? context.tenantId : null;
+		const conflicts: Infer<typeof clientSetupConflictValidator>[] = [];
+		if (client.name !== intended.name) conflicts.push("name");
+		if (client.email !== intended.email) conflicts.push("email");
+		if (client.tier !== args.tier) conflicts.push("tier");
+		if (client.siteUrl !== intended.siteUrl) conflicts.push("siteUrl");
+		if (!tenantId || (await resolveTenantContext(ctx, { tenantId }))?.client._id !== client._id) {
+			conflicts.push("tenantIdentity");
+		}
+		if (args.expectedTenantId !== undefined && args.expectedTenantId !== tenantId) {
+			conflicts.push("expectedTenantId");
+		}
+		if (client.role !== "client" || intended.siteUrl === "angelsrest.online") conflicts.push("role");
+		if (client.offboarding) conflicts.push("offboarding");
+		if (conflicts.length === 0) {
+			const issuer = process.env.CONVEX_SITE_URL;
+			// The component projects only the user ID; account records and password hashes are never read.
+			const user: unknown = await ctx.runQuery(components.betterAuth.adapter.findOne, {
+				model: "user",
+				where: [{ field: "email", value: intended.email }],
+				select: ["_id"],
+			});
+			if (
+				!issuer?.startsWith("https://") || !user || typeof user !== "object"
+				|| !("_id" in user) || typeof user._id !== "string"
+				|| !client.adminIdentityIds?.includes(`${issuer}|${user._id}`)
+			) conflicts.push("adminIdentity");
+		}
+		if (conflicts.length > 0 || tenantId === null) {
+			return { kind: "conflict", siteUrl: intended.siteUrl, clientId: client._id, tenantId, conflicts };
+		}
+		return { kind: "matching", siteUrl: intended.siteUrl, clientId: client._id, tenantId };
 	},
 });
 
