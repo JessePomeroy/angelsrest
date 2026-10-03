@@ -81,6 +81,10 @@ describe("inquiry pagination", () => {
 			adminEmails: [email],
 			role: "client",
 		}));
+		await t.run((ctx) => ctx.db.insert("platformClients", {
+			name: "Other tenant", email: "other@example.test", siteUrl: "foreign.example.test",
+			tier: "full", subscriptionStatus: "active", adminEmails: ["other@example.test"], role: "client",
+		}));
 		return {
 			t,
 			siteId,
@@ -131,6 +135,27 @@ describe("inquiry pagination", () => {
 		expect(unread.page.map((row) => row._id)).toEqual([oldest]);
 		expect(unread.isDone).toBe(true);
 		expect(await admin.query(api.inquiries.countNew, { siteUrl })).toBe(1);
+	});
+
+	test("bounds a widened reactive cursor range and preserves its split metadata", async () => {
+		const { t, admin } = await setup();
+		const endCursor = await t.run(async (ctx) => {
+			for (let i = 0; i < 80; i++) {
+				await ctx.db.insert("inquiries", {
+					siteUrl, name: `Range ${i}`, email, message: "Synthetic", status: "new",
+				});
+			}
+			return (await ctx.db.query("inquiries")
+				.withIndex("by_siteUrl", (q) => q.eq("siteUrl", siteUrl))
+				.order("desc").paginate({ numItems: 80, cursor: null })).continueCursor;
+		});
+		const result = await admin.query(api.inquiries.listPaginated, {
+			siteUrl, paginationOpts: { numItems: 1, cursor: null, endCursor, maximumRowsRead: 500 },
+		});
+		expect(result.page.length).toBeLessThanOrEqual(50);
+		expect(result.isDone).toBe(false);
+		expect(result.pageStatus).toBe("SplitRequired");
+		expect(result.splitCursor).toBeTruthy();
 	});
 
 	test("status changes and deletion update filtered results and the unread count", async () => {
