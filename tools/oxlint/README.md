@@ -4,12 +4,16 @@ Run `pnpm lint:anti-slop` to check the baseline rules, or `pnpm lint` to run
 all configured lint checks. The active severities and file exclusions live in
 `.oxlintrc.json`.
 
-The initial profile reports these rules as warnings while existing findings are
-reviewed for migration:
+The reviewed profile uses these severities:
 
-- `no-chained-type-assertions`
-- `no-known-value-widening`
-- `no-widen-then-assert`
+- `no-chained-type-assertions`: warning
+- `no-known-value-widening`: warning
+- `no-widen-then-assert`: error
+
+The enforced rule has no existing findings. A deliberate violation was verified
+to fail the normal lint command. The remaining warnings were reviewed against
+their owner contracts, including intentional dictionaries and partial SDK mocks;
+they do not justify blanket suppression or changing valid boundary validation.
 
 These rules inspect TypeScript/JavaScript, including script blocks in Svelte
 components. They do not lint Svelte template expressions. Legitimate boundary
@@ -25,10 +29,12 @@ profiles are not enabled.
 ## Source and updates
 
 `anti-slop/` is a vendored copy from the shared `install-anti-slop` skill,
-originating from <https://github.com/dmmulroy/anti-slop>. The bundled snapshot was
-copied on 2026-10-02; its exact upstream commit was not recorded in the installed
-bundle. Its source-file inventory SHA-256 is `4d3dd6afb28099dbea6f9d9a0e065b0568198099ec2ecab0db4e2536463ccb9f`.
-The upstream MIT license is preserved in `anti-slop/LICENSE`.
+originating from <https://github.com/dmmulroy/anti-slop>. All 21 TypeScript files
+were matched byte-for-byte to upstream revision
+`6d538555cb151d4121ed51a27db81890eacf8ae9` on 2026-10-03. No rule source was upgraded.
+`anti-slop/PROVENANCE.json` records that revision and each source/license SHA-256.
+The upstream MIT license is preserved in `anti-slop/LICENSE`. These hashes detect
+drift; they are not a signed upstream attestation.
 
 The copy's TypeScript sources are unmodified. Keep the original copy available
 through version control when updating, review upstream changes, and preserve
