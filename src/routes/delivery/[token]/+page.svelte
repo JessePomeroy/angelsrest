@@ -17,6 +17,7 @@ import {
 import { createDeliveryDownloads } from "$lib/delivery/downloads.svelte";
 import { toasts } from "$lib/stores/toast.svelte";
 import { trapFocus } from "$lib/utils/focusTrap";
+import { openModal } from "$lib/utils/openModal";
 import PrivateCapabilityHead from "$lib/components/PrivateCapabilityHead.svelte";
 
 let { data, form } = $props();
@@ -107,11 +108,9 @@ let selectedCount = $derived(selectEntireGallery ? Math.max(0, totalCount - sele
 let allImagesSelected = $derived(
 	totalCount > 0 && selectedCount === totalCount,
 );
-let lightboxEl = $state<HTMLDivElement | null>(null);
-let previouslyFocused: HTMLElement | null = null;
+let lightboxEl = $state<HTMLDialogElement | null>(null);
 
 function openLightbox(index: number) {
-	previouslyFocused = document.activeElement as HTMLElement;
 	lightboxIndex = index;
 	requestAnimationFrame(() => {
 		lightboxEl?.querySelector<HTMLElement>(".lb-close")?.focus();
@@ -120,7 +119,6 @@ function openLightbox(index: number) {
 
 function closeLightbox() {
 	lightboxIndex = -1;
-	previouslyFocused?.focus();
 }
 
 async function moveLightbox(direction: -1 | 1) {
@@ -150,10 +148,6 @@ async function markPreviewFailed(imageId: string) {
 
 function handleKeydown(e: KeyboardEvent) {
 	if (!lightboxOpen) return;
-	if (e.key === "Escape") {
-		closeLightbox();
-		return;
-	}
 	// Preserve the browser's native seek controls while the video has focus.
 	if (e.target instanceof HTMLVideoElement && (e.key === "ArrowRight" || e.key === "ArrowLeft")) return;
 	if (e.key === "ArrowRight") void moveLightbox(1);
@@ -482,13 +476,15 @@ let favoriteCount = $derived(
 
 {#if pageError}<p role="alert">{pageError}</p>{/if}
 {#if lightboxOpen}
-	<div
+	<dialog
 		class="lightbox"
-		role="dialog"
-		aria-modal="true"
 		aria-label="Gallery lightbox"
-		tabindex="-1"
 		bind:this={lightboxEl}
+		use:openModal
+		oncancel={(event) => {
+			event.preventDefault();
+			closeLightbox();
+		}}
 		onclick={(e) => {
 			// Backdrop click: only close when the target is the backdrop itself
 			if (e.target === e.currentTarget) closeLightbox();
@@ -546,7 +542,7 @@ let favoriteCount = $derived(
 			<button class="lb-nav lb-next" aria-label="Next image" onclick={(e) => { e.stopPropagation(); void moveLightbox(1); }}>›</button>
 		{/if}
 		<button class="lb-close" aria-label="Close lightbox" onclick={closeLightbox}>✕</button>
-	</div>
+	</dialog>
 {/if}
 {/if}
 
@@ -920,12 +916,20 @@ let favoriteCount = $derived(
 		position: fixed;
 		inset: 0;
 		z-index: 200;
+		width: 100%;
+		height: 100%;
+		max-width: none;
+		max-height: none;
+		margin: 0;
+		border: 0;
+		color: inherit;
 		background: rgba(0, 0, 0, 0.92);
-		display: flex;
 		align-items: center;
 		justify-content: center;
 		padding: 40px;
 	}
+	.lightbox[open] { display: flex; }
+	.lightbox::backdrop { background: transparent; }
 
 	.lightbox-content {
 		max-width: 90vw;
