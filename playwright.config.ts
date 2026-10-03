@@ -9,7 +9,11 @@ export default defineConfig({
 		trace: "retain-on-failure",
 	},
 	webServer: {
-		command: "pnpm dev --host 127.0.0.1",
+		// CI already builds for the size budget. Exercise that output instead of
+		// spending the first test's timeout on dev compilation and CSS injection.
+		command: process.env.CI
+			? "pnpm preview --host 127.0.0.1 --port 5173 --strictPort"
+			: "pnpm dev --host 127.0.0.1",
 		// Probe a static asset so remote content availability and the closed
 		// commerce gate cannot block server readiness.
 		url: "http://127.0.0.1:5173/robots.txt",

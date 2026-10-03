@@ -63,10 +63,13 @@ job-level environment in `.github/workflows/ci.yml`, and no `SENTRY_AUTH_TOKEN`,
 measurement checkout.
 
 CI runs one production build and appends the size table to the job summary.
-The check's nonzero exit fails CI. Existing browser suites use development
-servers; they do not supply deployment artifacts. No full bundle upload or
-additional artifact-retention policy is needed. This CI check does not stop a
-Vercel Git deployment that runs independently of CI.
+The check's nonzero exit fails CI. Public end-to-end tests then reuse this build
+through `vite preview`, avoiding dev compilation and CSS injection during their
+first navigation. Component fixtures and ordinary local end-to-end runs still
+use development servers. Set the CI environment and run `pnpm build` before
+`CI=1 pnpm test:e2e` when reproducing the built-app checks locally. No full bundle
+upload or additional artifact-retention policy is needed. This CI check does not
+stop a Vercel Git deployment that runs independently of CI.
 
 When the check fails, inspect the per-function table and changed dependencies,
 route configurations, and static assets. Compare with a clean build of the
