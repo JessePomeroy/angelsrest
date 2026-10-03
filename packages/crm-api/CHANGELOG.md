@@ -1,5 +1,11 @@
 # @jessepomeroy/crm-api
 
+## 6.7.0
+
+### Minor Changes
+
+- f47f643: Store bounded operator-imported release evidence and expose creator-only release status for the platform view. Imports reuse the release-record validators, preserve earlier observations, and atomically reject concurrent or conflicting changes.
+
 ## 6.6.0
 
 ### Minor Changes
