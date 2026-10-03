@@ -18,6 +18,17 @@ export default defineConfig({
 	},
 	projects: [
 		{ name: "desktop", use: { ...devices["Desktop Chrome"] } },
+		{
+			name: "firefox-desktop",
+			testMatch: "magnetic-images.spec.ts",
+			use: {
+				...devices["Desktop Firefox"],
+				launchOptions: {
+					// Headless Linux can report no mouse; exercise the desktop hover path.
+					firefoxUserPrefs: { "ui.primaryPointerCapabilities": 6, "ui.allPointerCapabilities": 6 },
+				},
+			},
+		},
 		{ name: "mobile", use: { ...devices["Pixel 7"] } },
 		{ name: "webkit-mobile", use: { ...devices["iPhone 13"] } },
 	],

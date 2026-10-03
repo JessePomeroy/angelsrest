@@ -10,6 +10,24 @@ async function expectFrameOn(frame: Locator, target: Locator) {
 	}).toBeLessThan(1);
 }
 
+async function pauseFrameMotion(frame: Locator, progress: number) {
+	return frame.evaluate((element, fraction) => {
+		const geometry = ["inset", "top", "right", "bottom", "left", "margin", "marginTop", "marginRight", "marginBottom", "marginLeft"];
+		const animations = element.getAnimations().filter(animation =>
+			animation.effect instanceof KeyframeEffect &&
+			animation.effect.getKeyframes().some(keyframe => geometry.some(property => property in keyframe)),
+		);
+		for (const animation of animations) {
+			const duration = animation.effect?.getTiming().duration;
+			if (typeof duration !== "number" || duration <= 0) throw new Error("Expected finite frame motion");
+			animation.pause();
+			animation.currentTime = duration * fraction;
+		}
+		const { x, y, width, height } = element.getBoundingClientRect();
+		return { count: animations.length, bounds: { x, y, width, height } };
+	}, progress);
+}
+
 const surfaces = [
 	{ name: "portfolio collections", url: "?fixture=content&kind=portfolio-index", item: ".gallery-entry", target: ".image-frame" },
 	{ name: "portfolio photographs", url: "?fixture=content&kind=portfolio-page&mixed", item: ".image-button", target: null },
@@ -49,12 +67,24 @@ test("frame glides across masonry gutters and follows reflow and late image sizi
 	const frame = page.locator(".magnetic-indicator");
 	await items.first().hover();
 	await expectFrameOn(frame, items.first());
+	expect(await page.evaluate(() => matchMedia("(hover: hover) and (pointer: fine)").matches)).toBe(true);
 	const first = await items.first().boundingBox();
 	if (!first) throw new Error("Missing first photograph");
 	await page.mouse.move(first.x + first.width + 2, first.y + 10);
 	await expectFrameOn(frame, items.first());
+	const target = await items.nth(2).boundingBox();
+	if (!target) throw new Error("Missing target photograph");
 	await items.nth(2).hover();
-	expect(await frame.evaluate(el => el.getAnimations().length)).toBeGreaterThan(0);
+	const motion = await pauseFrameMotion(frame, 0.25);
+	expect(motion.count, "The frame must animate geometry, not only opacity").toBeGreaterThan(0);
+	const axes = ["x", "y", "width", "height"] as const;
+	expect(Math.max(...axes.map(axis => Math.abs(motion.bounds[axis] - first[axis])))).toBeGreaterThan(1);
+	expect(Math.max(...axes.map(axis => Math.abs(motion.bounds[axis] - target[axis])))).toBeGreaterThan(1);
+	for (const axis of axes) {
+		expect(motion.bounds[axis]).toBeGreaterThanOrEqual(Math.min(first[axis], target[axis]) - 1);
+		expect(motion.bounds[axis]).toBeLessThanOrEqual(Math.max(first[axis], target[axis]) + 1);
+	}
+	await frame.evaluate(el => el.getAnimations().forEach(animation => animation.play()));
 	await expectFrameOn(frame, items.nth(2));
 	await page.setViewportSize({ width: 800, height: 900 });
 	await items.nth(2).hover();
@@ -64,6 +94,55 @@ test("frame glides across masonry gutters and follows reflow and late image sizi
 	await expectFrameOn(frame, items.nth(2));
 	await page.mouse.move(0, 0);
 	await expect(frame).toHaveCSS("opacity", "0");
+});
+
+test("leaving during a glide fades the frame without snapping to its destination", async ({ page, isMobile }) => {
+	test.skip(isMobile, "Spatial hover transitions require a mouse");
+	await page.goto("/?fixture=content&kind=portfolio-page&mixed");
+	const items = page.locator(".image-button");
+	const frame = page.locator(".magnetic-indicator");
+	await items.first().hover();
+	await expectFrameOn(frame, items.first());
+	await items.nth(2).hover();
+	const before = await pauseFrameMotion(frame, 0.25);
+	expect(before.count).toBeGreaterThan(0);
+	await page.mouse.move(0, 0);
+	const after = await frame.boundingBox();
+	if (!after) throw new Error("Missing fading frame");
+	expect(Math.max(...(["x", "y", "width", "height"] as const).map(axis => Math.abs(after[axis] - before.bounds[axis])))).toBeLessThan(1);
+	await frame.evaluate(el => el.getAnimations().forEach(animation => animation.play()));
+	await expect(frame).toHaveCSS("opacity", "0");
+	await expect.poll(() => frame.evaluate(el => el.getAnimations().length)).toBe(0);
+	await items.nth(2).hover();
+	await expectFrameOn(frame, items.nth(2));
+});
+
+test("re-entering another image during fade resumes from the visible frame", async ({ page, isMobile }) => {
+	test.skip(isMobile, "Spatial hover transitions require a mouse");
+	await page.goto("/?fixture=content&kind=portfolio-page&mixed");
+	const items = page.locator(".image-button");
+	const frame = page.locator(".magnetic-indicator");
+	await items.first().hover();
+	await expectFrameOn(frame, items.first());
+	await items.nth(2).hover();
+	const before = await pauseFrameMotion(frame, 0.25);
+	expect(before.count).toBeGreaterThan(0);
+	await page.mouse.move(0, 0);
+	await frame.evaluate(element => {
+		const fade = element.getAnimations().find(animation => animation instanceof CSSTransition && animation.transitionProperty === "opacity");
+		if (!fade) throw new Error("Missing frame fade");
+		fade.pause();
+		fade.currentTime = 30;
+	});
+	const target = await items.nth(1).boundingBox();
+	if (!target) throw new Error("Missing re-entry photograph");
+	// Avoid hover() scrolling the page while comparing viewport coordinates.
+	await page.mouse.move(target.x + target.width / 2, target.y + 10);
+	const resumed = await pauseFrameMotion(frame, 0);
+	expect(resumed.count, "A still-visible frame must interpolate on re-entry").toBeGreaterThan(0);
+	expect(Math.max(...(["x", "y", "width", "height"] as const).map(axis => Math.abs(resumed.bounds[axis] - before.bounds[axis])))).toBeLessThan(1);
+	await frame.evaluate(el => el.getAnimations().forEach(animation => animation.play()));
+	await expectFrameOn(frame, items.nth(1));
 });
 
 test("shop filtering clears removed anchors and supports print-set previews", async ({ page, isMobile }) => {
@@ -95,8 +174,8 @@ test("keyboard focus and reduced motion preserve immediate feedback and lightbox
 	if (hasHoverFrame) {
 		await expectFrameOn(frame, images.nth(1));
 		await page.keyboard.press("Tab");
+		expect((await pauseFrameMotion(frame, 0.25)).count).toBe(0);
 		await expectFrameOn(frame, images.nth(2));
-		expect(await frame.evaluate(el => el.getAnimations().filter(animation => animation instanceof CSSTransition && animation.transitionProperty !== "opacity").length)).toBe(0);
 	}
 	await page.keyboard.press("Enter");
 	await expect(page.getByRole("dialog")).toBeVisible();

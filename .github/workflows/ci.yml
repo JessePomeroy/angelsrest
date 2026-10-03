@@ -133,8 +133,8 @@ jobs:
           pnpm build
           pnpm check:build-budget | tee -a "$GITHUB_STEP_SUMMARY"
 
-      - name: Install Playwright Chromium and WebKit
-        run: pnpm exec playwright install --with-deps chromium webkit
+      - name: Install Playwright browsers
+        run: pnpm exec playwright install --with-deps chromium firefox webkit
 
       - name: Component browser regressions
         id: component_browser
