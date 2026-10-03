@@ -2,6 +2,14 @@
   "schemaVersion": 1,
   "pendingChanges": [
     {
+      "id": "inquiry-pagination-and-navigation-focus",
+      "status": "pending-paper-sync",
+      "recordedAt": "2026-10-03",
+      "surfaces": ["admin inquiry pagination and status filters", "liquid navigation keyboard focus"],
+      "evidence": "docs/DESIGN_HANDBOOK.md#verification-recorded-on-2026-10-03",
+      "reason": "Admin 6.7.0 and the focus fix are deployed. Synthetic inbox states and live public keyboard traversal passed. Authenticated inbox access is unavailable; Paper is signed out/read-only. Existing Paper board IDs, capture provenance and comparison dates are preserved pending a same-state editable update and comparison."
+    },
+    {
       "id": "delivery-metadata-pagination",
       "status": "pending-paper-sync",
       "recordedAt": "2026-09-29",
@@ -3092,7 +3100,7 @@
       "key": "admin.inquiries.default",
       "handbook": "admin",
       "route": "/admin/inquiries",
-      "setup": "Isolated handbook harness: two fictional inquiries passed as loader-shaped data; all provider writes rejected.",
+      "setup": "Current isolated handbook harness: two fictional inquiries returned by the paginated query fixture with server-style status filtering; all provider writes rejected. Existing Paper references retain their September 27 Admin 6.4.0 loader-data provenance pending refresh.",
       "sourceComponents": [
         "src/routes/admin/inquiries/+page.svelte",
         "node_modules/@jessepomeroy/admin#InquiriesPage",
