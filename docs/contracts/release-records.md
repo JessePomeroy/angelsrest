@@ -117,6 +117,64 @@ identifiers and upload receipts. An expired or missing artifact is unresolved
 provenance, not proof of a healthy build. Authenticated provider association is a
 separate delivery step; this generator does not deploy, promote or delete.
 
+## Authenticated deployment observation
+
+Run `scripts/observe-release.mjs` from the repository root with authenticated
+GitHub (`gh`) and Vercel CLIs, Node 24 and Python 3. Python's standard-library ZIP
+reader reads one bounded `build.json` in memory; it never extracts archive paths.
+No new application dependency or provider credential is required by the host.
+
+The observer downloads the exact GitHub artifact by ID, verifies its archive
+digest and size against authenticated metadata, and validates the content against
+the successful workflow attempt, repository and expected workflow path. Expired,
+missing, foreign-repository or mismatched records fail without changing history.
+The observer accepts successful push or manually dispatched workflow runs only,
+with build source equal to the authenticated run's head SHA. GitHub's run metadata
+does not independently identify a pull request's synthetic merge checkout, so its
+artifact is not accepted for deployment binding. Select the main CI artifact for
+the actual deployed revision. A logical `production` environment requires the
+provider's production target; other explicit environments remain separate.
+
+An authenticated Vercel read must agree on the explicit team, project, deployment
+ID, environment target, GitHub repository ID/name and source SHA. Only the bounded
+identity fields enter the record. Raw provider responses, environment values and
+provider CLI diagnostics are never saved or printed. Deployment configuration
+remains unknown; association is always `source-only` for this delivery path.
+
+The optional `--public-path` checks make credential-free GET requests to explicit
+paths on the authenticated alias. They record HTTP status and HTML content type,
+cancel the body, and never follow redirects. The alias must point to the selected
+READY deployment both before and after the requests. A changed or unresolved
+alias, authentication challenge, redirect or unavailable request blocks that
+proof. These checks establish public reachability only. They do not exercise
+cart behavior, authenticated admin, checkout, provider effects or client handoff.
+No `--public-path` arguments means no verification record; it cannot establish
+health. For offline status without a specified policy, `/` is the minimum required
+public check, so missing observations remain unknown.
+
+Validated build, deployment and optional verification records are retained under
+`docs/integration-evidence/releases/<environment>/`, named by their content IDs.
+A separate immutable observation receipt retains artifact provenance and the
+bounded public-check results. Existing records are reused only when their bytes
+are identical; conflicting files and linked paths are refused. Each file is
+fully written and synced before exclusive atomic publication. An interruption
+may leave an ignored `.pending-<random-id>.json` temporary or an orphan receipt;
+neither prevents reading earlier healthy evidence. Published records must have
+receipts with valid content IDs and matching artifact, deployment and probe
+references. A missing or corrupt published receipt stops status evaluation
+without making a health claim or overwriting the earlier files. Re-running
+observation adds timestamped evidence; `status` reads it without provider access.
+
+The operator must preserve this small evidence directory through repository
+review or the site's existing evidence-retention process before the CI artifact
+expires. Local hash IDs detect changed bytes, not hostile rewrites or forged
+provenance. Do not accept client-supplied files as authenticated observations.
+No deployment promotion, rollback, deletion or capability activation occurs.
+
+Provider contracts: [GitHub artifacts API](https://docs.github.com/en/rest/actions/artifacts),
+[Vercel deployment lookup](https://vercel.com/docs/rest-api/deployments/get-a-deployment-by-id-or-url)
+and [Vercel alias lookup](https://vercel.com/docs/rest-api/aliases/get-an-alias).
+
 Rollback of these tools consists of reverting the focused scripts/workflow change.
 Existing application behavior, provider resources and retained observations do not
 change. Host, package, Convex and Worker rollbacks retain their separate gates in
