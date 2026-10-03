@@ -1,5 +1,11 @@
 # @jessepomeroy/crm-api
 
+## 6.6.0
+
+### Minor Changes
+
+- 0baec3a: Add a creator-only client setup status query for reconciling interrupted provisioning against the exact tenant and stored administrator identity without changing credentials or creating a replacement client.
+
 ## 6.5.1
 
 ### Patch Changes
