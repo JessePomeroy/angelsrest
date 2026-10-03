@@ -682,6 +682,10 @@ describe("checkout bridge", () => {
 			"unsupported kind",
 			{ checkoutSnapshot: snapshot([{ ...SNAPSHOT_ITEM, productKind: "book" }]) },
 		],
+		[
+			"non-string kind",
+			{ checkoutSnapshot: snapshot([{ ...SNAPSHOT_ITEM, productKind: ["print"] }]) },
+		],
 		["missing item", { checkoutSnapshot: snapshot([]) }],
 		["multiple items", { checkoutSnapshot: snapshot([SNAPSHOT_ITEM, SNAPSHOT_ITEM]) }],
 		[
