@@ -7,6 +7,7 @@ import {
 	readFileSync,
 	rmSync,
 	symlinkSync,
+	unlinkSync,
 	writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
@@ -108,5 +109,57 @@ test("invalid package manifest shapes fail before any installation writes", (t) 
 		assert.equal(readFileSync(join(root, "package.json"), "utf8"), original);
 		assert.equal(existsSync(join(root, "scripts")), false);
 		assert.equal(existsSync(join(root, "docs")), false);
+	}
+});
+
+test("resume fills interrupted outputs and preserves unrelated package changes", (t) => {
+	const root = fixture(t);
+	installWorkflow(root, example);
+	const retained = readFileSync(join(root, "docs/client-integration.json"));
+	const missing = ["scripts/client-integration/preflight.mjs", "docs/CLIENT_INTEGRATION.md"];
+	for (const path of missing) unlinkSync(join(root, path));
+	const packageJson = JSON.parse(readFileSync(join(root, "package.json"), "utf8"));
+	delete packageJson.scripts["check:integration"];
+	packageJson.scripts.custom = "node scripts/custom.mjs";
+	writeFileSync(join(root, "package.json"), JSON.stringify(packageJson));
+	const result = installWorkflow(root, example, { resume: true });
+	assert.equal(result.resumed, true);
+	assert.deepEqual(result.files.sort(), [...missing, "package.json"].sort());
+	assert.ok(readFileSync(join(root, "docs/client-integration.json")).equals(retained));
+	assert.equal(
+		JSON.parse(readFileSync(join(root, "package.json"), "utf8")).scripts.custom,
+		"node scripts/custom.mjs",
+	);
+	const before = readFileSync(join(root, "package.json"));
+	assert.deepEqual(installWorkflow(root, example, { resume: true }).files, []);
+	assert.ok(readFileSync(join(root, "package.json")).equals(before));
+});
+
+test("resume refuses changed evidence, tools, commands or symlinks before filling missing outputs", (t) => {
+	for (const change of ["manifest", "tool", "command", "symlink"]) {
+		const root = fixture(t);
+		installWorkflow(root, example);
+		const missing = join(root, "docs/CLIENT_INTEGRATION.md");
+		unlinkSync(missing);
+		const manifest = join(root, "docs/client-integration.json");
+		if (change === "manifest") writeFileSync(manifest, "locally updated evidence");
+		if (change === "tool")
+			writeFileSync(join(root, "scripts/client-integration/plan.mjs"), "local changes");
+		if (change === "command") {
+			const data = JSON.parse(readFileSync(join(root, "package.json"), "utf8"));
+			data.scripts["check:integration"] = "node scripts/other-gate.mjs";
+			writeFileSync(join(root, "package.json"), JSON.stringify(data));
+		}
+		if (change === "symlink") {
+			writeFileSync(join(root, "saved-manifest.json"), readFileSync(manifest));
+			unlinkSync(manifest);
+			symlinkSync(join(root, "saved-manifest.json"), manifest);
+		}
+		const before = readFileSync(join(root, "package.json"));
+		const manifestBefore = readFileSync(manifest);
+		assert.throws(() => installWorkflow(root, example, { resume: true }), /differs|already exists/);
+		assert.equal(existsSync(missing), false);
+		assert.ok(readFileSync(join(root, "package.json")).equals(before));
+		assert.ok(readFileSync(manifest).equals(manifestBefore));
 	}
 });

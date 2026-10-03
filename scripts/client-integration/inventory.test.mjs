@@ -55,7 +55,7 @@ function recordEvidence(f, environmentId = "staging") {
 			verifiedAt: new Date().toISOString(),
 			environmentId,
 			siteUrl: f.contract.tenant.siteUrl,
-			tenantId: "tenant-fixture",
+			tenantId: "tenant_11111111-1111-4111-8111-111111111111",
 			sourceFingerprint: source,
 			contractFingerprint: desired,
 			evidenceFile,
@@ -101,7 +101,7 @@ test("portfolio-only handoff needs actual unavailable outcomes and all six envir
 
 test("staging evidence cannot certify production or a different tenant", (t) => {
 	const f = fixture(t);
-	f.contract.tenant.expectedTenantId = "tenant-fixture";
+	f.contract.tenant.expectedTenantId = "tenant_11111111-1111-4111-8111-111111111111";
 	recordEvidence(f);
 	for (const stage of f.contract.stages)
 		stage.verification.production = structuredClone(stage.verification.staging);
@@ -111,7 +111,8 @@ test("staging evidence cannot certify production or a different tenant", (t) => 
 		).length,
 		6,
 	);
-	f.contract.stages[0].verification.staging.tenantId = "tenant-other";
+	f.contract.stages[0].verification.staging.tenantId =
+		"tenant_22222222-2222-4222-8222-222222222222";
 	f.contract.stages[1].verification.staging.siteUrl = "other.example.test";
 	const issues = checkReadiness(f.contract, f.root, "staging");
 	assert.equal(issues.filter((issue) => issue.includes("intended tenant binding")).length, 2);
