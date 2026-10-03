@@ -57,6 +57,7 @@ import {
 import { stripeFeeCaptureErrorValidator } from "./helpers/stripeFeeCapture";
 import { printJobArtifact, printJobDescriptor, printJobItem, printJobStage, reservedPrintInputValidator } from "./helpers/printFulfillmentJobs";
 import { categoryValidator } from "./helpers/validators";
+import { releaseEnvironmentFields } from "./helpers/platformReleaseRecords";
 
 const contentBlockValueValidator = v.union(
 	v.object({
@@ -272,6 +273,17 @@ export default defineSchema({
 		.index("by_stripeSubscriptionId", ["stripeSubscriptionId"])
 		.index("by_lumaprintsConnectionRef", ["lumaprintsConnectionRef"])
 		.index("by_stripeConnectedAccountId", ["stripeConnectedAccountId"]),
+
+	// Keep the operator projection small; the bounded append-only evidence is read only on import.
+	platformReleaseEnvironments: defineTable({
+		...releaseEnvironmentFields,
+		environmentId: v.string(),
+	}).index("by_clientId_and_environmentId", ["clientId", "environmentId"]),
+	platformReleaseHistory: defineTable({
+		releaseEnvironmentId: v.id("platformReleaseEnvironments"),
+		evidenceJson: v.string(),
+		digest: v.string(),
+	}).index("by_releaseEnvironmentId", ["releaseEnvironmentId"]),
 
 	// Stable supplier ownership; credential values remain in server configuration.
 	lumaprintsConnections: defineTable({

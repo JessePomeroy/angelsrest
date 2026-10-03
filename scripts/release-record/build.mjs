@@ -1,6 +1,10 @@
 import { lstatSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import {
+	createReleaseRecord,
+	fingerprintPublicConfig,
+} from "../../packages/crm-api/src/releases/records.mjs";
+import {
 	assertContract,
 	contractFingerprint,
 	getEnvironment,
@@ -12,7 +16,6 @@ import {
 	collectPackages,
 	fileDigest,
 } from "./build-inputs.mjs";
-import { createReleaseRecord, fingerprintPublicConfig } from "./records.mjs";
 
 function clientContract(root) {
 	const path = resolve(root, "docs/client-integration.json");

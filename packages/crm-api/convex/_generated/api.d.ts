@@ -87,6 +87,7 @@ import type * as helpers_orderProducerGate from "../helpers/orderProducerGate.js
 import type * as helpers_orderRevenue from "../helpers/orderRevenue.js";
 import type * as helpers_patching from "../helpers/patching.js";
 import type * as helpers_platformClientInput from "../helpers/platformClientInput.js";
+import type * as helpers_platformReleaseRecords from "../helpers/platformReleaseRecords.js";
 import type * as helpers_portfolioData from "../helpers/portfolioData.js";
 import type * as helpers_portfolioValidators from "../helpers/portfolioValidators.js";
 import type * as helpers_postContentGraph from "../helpers/postContentGraph.js";
@@ -124,6 +125,8 @@ import type * as notifications from "../notifications.js";
 import type * as orders from "../orders.js";
 import type * as platform from "../platform.js";
 import type * as platformOffboarding from "../platformOffboarding.js";
+import type * as platformReleaseRecords from "../platformReleaseRecords.js";
+import type * as platformReleaseRecordsNode from "../platformReleaseRecordsNode.js";
 import type * as portal from "../portal.js";
 import type * as portfolioGalleries from "../portfolioGalleries.js";
 import type * as postContent from "../postContent.js";
@@ -220,6 +223,7 @@ declare const fullApi: ApiFromModules<{
   "helpers/orderRevenue": typeof helpers_orderRevenue;
   "helpers/patching": typeof helpers_patching;
   "helpers/platformClientInput": typeof helpers_platformClientInput;
+  "helpers/platformReleaseRecords": typeof helpers_platformReleaseRecords;
   "helpers/portfolioData": typeof helpers_portfolioData;
   "helpers/portfolioValidators": typeof helpers_portfolioValidators;
   "helpers/postContentGraph": typeof helpers_postContentGraph;
@@ -257,6 +261,8 @@ declare const fullApi: ApiFromModules<{
   orders: typeof orders;
   platform: typeof platform;
   platformOffboarding: typeof platformOffboarding;
+  platformReleaseRecords: typeof platformReleaseRecords;
+  platformReleaseRecordsNode: typeof platformReleaseRecordsNode;
   portal: typeof portal;
   portfolioGalleries: typeof portfolioGalleries;
   postContent: typeof postContent;

@@ -14,9 +14,13 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
+import {
+	createReleaseRecord,
+	deriveReleaseStatus,
+	fingerprintPublicConfig,
+} from "../../packages/crm-api/src/releases/records.mjs";
 import { readReleaseHistory, retainReleaseObservation } from "./history.mjs";
 import { authenticatedReaders, observeRelease, publicProbe, statusTarget } from "./observe.mjs";
-import { createReleaseRecord, deriveReleaseStatus, fingerprintPublicConfig } from "./records.mjs";
 
 const target = {
 	repository: "example/site",

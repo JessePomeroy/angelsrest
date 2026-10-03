@@ -13,8 +13,11 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
+import {
+	assertReleaseRecord,
+	fingerprintPublicConfig,
+} from "../../packages/crm-api/src/releases/records.mjs";
 import { buildReleaseRecord, observePublicConfig } from "./build.mjs";
-import { assertReleaseRecord, fingerprintPublicConfig } from "./records.mjs";
 
 function buildFixture(t, client) {
 	const root = mkdtempSync(join(tmpdir(), "release-producer-"));

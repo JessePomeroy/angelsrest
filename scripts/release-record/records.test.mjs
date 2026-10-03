@@ -5,7 +5,7 @@ import {
 	createReleaseRecord,
 	deriveReleaseStatus,
 	fingerprintPublicConfig,
-} from "./records.mjs";
+} from "../../packages/crm-api/src/releases/records.mjs";
 
 const identity = {
 	repository: "JessePomeroy/angelsrest",
