@@ -20,7 +20,6 @@ vi.mock("$convex/api", () => ({
 	api: {
 		inquiries: {
 			countNew: "inquiries.countNew",
-			list: "inquiries.list",
 		},
 	},
 }));
@@ -67,38 +66,10 @@ describe("authenticated admin page loaders", () => {
 		});
 	});
 
-	it("creates a request-scoped client and maps authorized inquiry data", async () => {
-		mockGetToken.mockReturnValue("inquiries-token");
-		mockQuery.mockResolvedValue([
-			{
-				_id: "inquiry-1",
-				_creationTime: 1_700_000_000_000,
-				name: "Example",
-				email: "person@example.com",
-				phone: null,
-				subject: "Question",
-				message: "Hello",
-				status: "new",
-			},
-		]);
-
-		const result = await loadInquiries(eventWithStatus("authorized") as never);
-
-		expect(mockCreateAuthenticatedClient).toHaveBeenCalledWith("inquiries-token");
-		expect(mockQuery).toHaveBeenCalledWith("inquiries.list", {
-			siteUrl: "angelsrest.online",
+	it("leaves inquiry reads to the authenticated paginated browser query", async () => {
+		await expect(loadInquiries(eventWithStatus("authorized") as never)).resolves.toEqual({
+			inquiries: [],
 		});
-		expect(result.inquiries).toEqual([
-			{
-				_id: "inquiry-1",
-				name: "Example",
-				email: "person@example.com",
-				phone: null,
-				subject: "Question",
-				message: "Hello",
-				status: "new",
-				submittedAt: new Date(1_700_000_000_000).toISOString(),
-			},
-		]);
+		expect(mockCreateAuthenticatedClient).not.toHaveBeenCalled();
 	});
 });
