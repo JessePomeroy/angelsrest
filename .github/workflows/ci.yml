@@ -41,6 +41,7 @@ jobs:
       GALLERY_ADMIN_SECRET: placeholder
       CHECKOUT_SNAPSHOT_MODE: handle-v2
       NEW_ORDER_CHECKOUT_CONTROL: '{"version":1,"tenants":[{"siteUrl":"angelsrest.online","state":"open","generation":1},{"siteUrl":"zippymiggy.com","state":"open","generation":1}]}'
+      RELEASE_WORKER_REVISION: fd82eb9f89d251d1348319dcd2a456771d210bce
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -62,20 +63,23 @@ jobs:
 
       # Use the real, reviewed peer implementation; never copy its response shapes.
       - name: Check out pinned gallery and artwork Worker contracts
+        id: worker_checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: JessePomeroy/gallery-worker
-          ref: fd82eb9f89d251d1348319dcd2a456771d210bce
+          ref: ${{ env.RELEASE_WORKER_REVISION }}
           path: .contract/gallery-worker
           token: ${{ secrets.GH_PACKAGES_TOKEN }}
           persist-credentials: false
 
       - name: Install dependencies
+        id: dependency_install
         run: corepack pnpm install --frozen-lockfile --ignore-scripts
         env:
           NODE_AUTH_TOKEN: ${{ secrets.GH_PACKAGES_TOKEN }}
 
       - name: Install Worker contract dependencies
+        id: worker_install
         run: npm ci --prefix .contract/gallery-worker --ignore-scripts
 
       - name: Require a changeset for CRM API surface changes
@@ -104,9 +108,11 @@ jobs:
       # and local linting agree on scope. Previously CI scanned only src/,
       # which meant scripts/ and convex/ lint errors slipped through.
       - name: Lint
+        id: lint
         run: pnpm lint
 
       - name: Type check
+        id: typecheck
         run: |
           pnpm check
           pnpm check:package-contract
@@ -117,6 +123,7 @@ jobs:
       # Audit H41: run the full vitest suite on every PR / push so regressions
       # land in the status check, not in production.
       - name: Tests
+        id: tests
         run: |
           pnpm test:print-contract
           pnpm test:gallery-upload-contract
@@ -125,9 +132,11 @@ jobs:
           pnpm --filter @jessepomeroy/print-catalog test
 
       - name: Retired platform checkout handler stays absent
+        id: retired_checkout
         run: test ! -f src/routes/api/platform/create-checkout/+server.ts
 
       - name: Build and enforce size budgets
+        id: build
         shell: bash
         run: |
           pnpm build
@@ -143,6 +152,45 @@ jobs:
       - name: Browser and public server E2E
         id: e2e
         run: pnpm test:e2e
+
+      - name: Record the tested build
+        id: release_record
+        env:
+          RELEASE_SITE_URL: angelsrest.online
+          RELEASE_ENVIRONMENT: production
+          RELEASE_WORKFLOW_PATH: .github/workflows/ci.yml
+          RELEASE_HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+          RELEASE_CHECKS_JSON: >-
+            {"dependency_install":"${{ steps.dependency_install.outcome }}",
+            "worker_checkout":"${{ steps.worker_checkout.outcome }}",
+            "worker_install":"${{ steps.worker_install.outcome }}",
+            "lint":"${{ steps.lint.outcome }}",
+            "typecheck":"${{ steps.typecheck.outcome }}",
+            "tests":"${{ steps.tests.outcome }}",
+            "retired_checkout":"${{ steps.retired_checkout.outcome }}",
+            "build":"${{ steps.build.outcome }}",
+            "component_browser":"${{ steps.component_browser.outcome }}",
+            "e2e":"${{ steps.e2e.outcome }}"}
+        run: node scripts/release-record.mjs build
+
+      - name: Preserve the immutable release record
+        id: release_artifact
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: release-record-${{ github.repository_id }}-${{ github.sha }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: .output/release-record/build.json
+          include-hidden-files: true
+          if-no-files-found: error
+          overwrite: false
+          retention-days: 30
+
+      - name: Link the release artifact receipt
+        env:
+          ARTIFACT_ID: ${{ steps.release_artifact.outputs.artifact-id }}
+          ARTIFACT_URL: ${{ steps.release_artifact.outputs.artifact-url }}
+          ARTIFACT_DIGEST: ${{ steps.release_artifact.outputs.artifact-digest }}
+        run: |
+          printf 'Release record artifact: [%s](%s)\n\nArchive SHA-256: `%s`\n\nThis CI fixture build is not a deployment or capability observation.\n' "$ARTIFACT_ID" "$ARTIFACT_URL" "$ARTIFACT_DIGEST" >> "$GITHUB_STEP_SUMMARY"
 
       - name: Preserve failed browser diagnostics
         if: failure() && (steps.component_browser.outcome == 'failure' || steps.e2e.outcome == 'failure')

@@ -42,3 +42,18 @@ publication or deployment.
 
 Never use a source merge as implicit authority to publish, adopt, merge, deploy,
 or combine these runtimes.
+
+## Release evidence
+
+Keep intended releases, CI builds, provider deployments, enabled capabilities and
+verification separate using the [release-record contract](../contracts/release-records.md).
+Successful hub CI uploads a small immutable build record with exact source/package
+identity, public configuration fingerprint, required interfaces and actual check
+results. CI fixture configuration does not establish production configuration.
+
+Retain the build record and upload receipt with authenticated deployment and scoped
+verification evidence in the site's integration-evidence history. A matching source
+SHA associates Vercel's independent rebuild with the CI source; it does not prove
+identical artifact bytes. Preserve the last scoped healthy deployment when a newer
+upgrade fails. Missing observations remain unknown, and staging evidence never
+completes production handoff.
