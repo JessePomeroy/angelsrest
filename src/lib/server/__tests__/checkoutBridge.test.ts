@@ -764,11 +764,12 @@ describe("checkout bridge", () => {
 		const options = handleOptions(bodyText, stripe, reservationClient);
 		await createTenantPrintCheckoutSession(options);
 		await createTenantPrintCheckoutSession(options);
-		const calls = create.mock.calls as unknown as Array<
-			[Stripe.Checkout.SessionCreateParams, Stripe.RequestOptions]
-		>;
+		const calls = create.mock.calls;
+		expect(calls).toHaveLength(2);
+		expect(calls[0]?.[0].expires_at).toEqual(expect.any(Number));
+		expect(calls[0]?.[1]?.idempotencyKey).toEqual(expect.any(String));
 		expect(calls[0]?.[0].expires_at).toBe(calls[1]?.[0].expires_at);
-		expect(calls[0]?.[1].idempotencyKey).toBe(calls[1]?.[1].idempotencyKey);
+		expect(calls[0]?.[1]?.idempotencyKey).toBe(calls[1]?.[1]?.idempotencyKey);
 		expect(reservationClient.reserve.mock.calls[0]).toEqual(
 			reservationClient.reserve.mock.calls[1],
 		);

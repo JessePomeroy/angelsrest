@@ -299,7 +299,10 @@ export const updateSubscription = mutation({
 
 		if (!client) return;
 
-		const patch: Record<string, unknown> = {
+		const patch: Pick<
+			Doc<"platformClients">,
+			"tier" | "subscriptionStatus" | "stripeCustomerId" | "stripeSubscriptionId"
+		> = {
 			tier: args.tier,
 			subscriptionStatus: args.subscriptionStatus,
 		};
