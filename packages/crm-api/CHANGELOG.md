@@ -1,5 +1,11 @@
 # @jessepomeroy/crm-api
 
+## 6.5.0
+
+### Minor Changes
+
+- a9f2391: Add site-authorized inquiry pagination with indexed status filtering and bounded reads, allowing admin consumers to reach older inquiries without increasing the legacy list limit.
+
 ## 6.4.0
 
 ### Minor Changes
