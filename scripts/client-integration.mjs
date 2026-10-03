@@ -11,9 +11,10 @@ import {
 	checkPreflight,
 	loadRegistryValidator,
 } from "./client-integration/preflight.mjs";
+import { prepareClientSetup } from "./client-integration/prepare.mjs";
 
 const usage =
-	"Usage: node scripts/client-integration.mjs check|plan|preflight|candidate|convex-registry <environment> OR init <repository> <contract.json>. Registry JSON uses protected stdin.";
+	"Usage: node scripts/client-integration.mjs check|plan|preflight|candidate|convex-registry <environment> OR prepare <environment> <reviewed-plan.json> OR init|resume <repository> <contract.json>. Registry JSON uses protected stdin.";
 
 async function readProtectedInput(stream) {
 	if (stream.isTTY) throw new Error("Protected input is required.");
@@ -49,14 +50,18 @@ function configuredInputs(contract) {
 
 export async function main(args, root = process.cwd()) {
 	const [mode, value, extra, ...remaining] = args;
-	if (mode === "init" && value && extra && remaining.length === 0) {
+	if (["init", "resume"].includes(mode) && value && extra && remaining.length === 0) {
 		const desired = JSON.parse(readFileSync(resolve(root, extra), "utf8"));
-		return { result: installWorkflow(resolve(root, value), desired), exitCode: 0 };
+		return {
+			result: installWorkflow(resolve(root, value), desired, { resume: mode === "resume" }),
+			exitCode: 0,
+		};
 	}
 	if (
-		!["check", "plan", "preflight", "candidate", "convex-registry"].includes(mode) ||
+		!["check", "plan", "prepare", "preflight", "candidate", "convex-registry"].includes(mode) ||
 		!value ||
-		extra !== undefined
+		remaining.length !== 0 ||
+		(mode === "prepare" ? !extra : extra !== undefined)
 	) {
 		throw new Error("Invalid command.");
 	}
@@ -69,6 +74,9 @@ export async function main(args, root = process.cwd()) {
 		result = { environmentId: value, sourceFingerprint: fingerprint, issues };
 	} else if (mode === "plan") {
 		result = createSetupPlan(contract, root, value, configuredInputs(contract));
+	} else if (mode === "prepare") {
+		const reviewed = JSON.parse(readFileSync(resolve(root, extra), "utf8"));
+		result = prepareClientSetup(contract, root, value, configuredInputs(contract), reviewed);
 	} else if (mode === "preflight") {
 		result = checkPreflight(contract, value, configuredInputs(contract));
 	} else if (mode === "candidate") {

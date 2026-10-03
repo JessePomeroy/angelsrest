@@ -106,8 +106,61 @@ node scripts/client-integration.mjs init /absolute/path/to/client /absolute/path
 This installs the portable tool bundle, a pending inventory, a runbook and the
 `check:integration` package script. It reports required host work; it neither
 mounts routes nor installs packages. Existing targets are refused before writing.
-If interrupted, retain the partial files for reconciliation instead of overwriting
-them or inventing completed evidence.
+If interrupted, run `resume` from the same complete, reviewed tool bundle with
+the same target and desired contract:
+
+```sh
+node scripts/client-integration.mjs resume /absolute/path/to/client /absolute/path/to/reviewed-contract.json
+```
+
+Resume validates every existing output as a regular file with exactly the
+expected bytes before filling missing files. The package script must be absent
+or the canonical command; unrelated package changes remain intact. Repeating a
+completed installation writes nothing. A changed tool, runbook, manifest or
+evidence record is a conflict requiring explicit adoption, never overwrite
+permission. New outputs publish complete bytes without replacing a racing file.
+An abrupt process termination can leave an unreferenced temporary file; resume
+does not delete historical temporary files. Inspect those exact files separately.
+Use normal verification commands for an already developed site.
+
+## Review and resume tenant provisioning
+
+From the client repository, write the read-only plan into its evidence directory,
+review its concrete targets and gaps, then prepare the operator attachment:
+
+```sh
+mkdir -p docs/integration-evidence
+node scripts/client-integration.mjs plan staging > docs/integration-evidence/setup-plan.json
+node scripts/client-integration.mjs prepare staging docs/integration-evidence/setup-plan.json > docs/integration-evidence/setup-attachment.json
+```
+
+Preparation recomputes the complete plan. Source, desired contract, environment,
+installed packages or supplied configuration observations changing since review
+require a new review. The attachment contains only its version, `client-setup`
+kind, public plan identity and expected public/backend origins. It contains no
+owner details, credential values or claim of readiness.
+
+Load the attachment in the hub's existing client-creation modal, enter the
+private owner details and selected tier, and review the captured request before
+creating or resuming. Changing the form or attachment invalidates that review.
+The server checks the declared tenant and backend pair against its fixed runtime
+target; attachment values never select a backend. The attachment records
+operator intent and is not a signed proof of local source freshness.
+
+Exact creator-authorized status reads use the same tenant resolver as creation
+and verify the intended owner's actual stored identity. An existing matching
+tenant resumes without changing its account, tier, credentials or other tenants.
+An expected immutable tenant that is missing, or conflicting existing details,
+blocks creation. The existing atomic create transaction remains the final guard
+against concurrent requests; no new creation mutation or attempt table is needed.
+
+An uncertain creation result triggers one status read. Only an authoritative
+absent result permits an explicit retry, which still uses the atomic duplicate
+guard. A successful original creation response is the only source of a new
+password, kept in the existing modal's memory. A resumed or observed-existing
+result cannot prove credential delivery: its handoff remains unconfirmed. Never
+reset or regenerate a password to resolve uncertainty. Query failure remains
+unknown, and the workflow does not activate commerce or configure services.
 
 Existing v1 clients retain their own working gate until an explicit reviewed
 adoption: preserve their evidence history, map their actual requirements into
@@ -116,6 +169,8 @@ the selected release. Updating the hub does not silently alter Queen Worm or
 the personal skill's legacy bootstrap assets. Never relabel old evidence as v2
 verification solely by copying the new fingerprint.
 
-Rollback is local tooling/contract rollback to the prior reviewed version. Keep
-the evidence history. This slice changes no tenant, credential, service, live
-alias, provider account or activation state.
+Rollback the host and local tools independently of the additive backend status
+query. Keep existing tenant identities, credentials and evidence history. The
+status query performs no writes; operator-confirmed creation still uses the
+existing transaction. No service, live alias, provider account or activation
+state is changed by a status read, plan or local installation.

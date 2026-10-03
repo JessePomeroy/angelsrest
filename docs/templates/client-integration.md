@@ -95,9 +95,22 @@ Update design handbooks only after changed UI is shipped and confirmed live.
 
 ## Recovery boundaries
 
-Local installation refuses existing files and preserves prior workflows. Inspect
-partial installation before resuming; do not overwrite changed user files.
-On an uncertain provisioning result, reread the authoritative tenant before any
-retry. Do not reset passwords or replace shared credential maps to make a retry
-succeed. Service provisioning, paid plans, publishing, deployment, client handoff
-and sales activation require their corresponding authorization and evidence.
+For an interrupted installation, use the complete original tool bundle's
+`resume <repository> <contract.json>` command. It fills missing outputs only when
+all existing outputs match exactly. Changed runbooks, evidence, commands or tools
+are conflicts; preserve them and review adoption. A completed identical install
+is a no-op. This is not a command for replacing an existing client's workflow.
+
+Review `plan` output saved under `docs/integration-evidence/`, then run
+`prepare <environment> <reviewed-plan.json>` to produce a public attachment for
+the hub's client-creation modal. Preparation fails if the current plan differs.
+Enter owner details and tier in the modal and review them there; they do not
+belong in the attachment. The server checks its own fixed backend and the exact
+tenant binding, not an uploaded claim of source authenticity.
+
+An uncertain creation result is reread before retry. Existing matching tenants
+resume without changes. Only the original successful response can hand over a
+new password; a lost response leaves credential handoff unconfirmed. Confirm
+access before handoff, without resetting credentials or creating another tenant.
+Service provisioning, registry changes, paid plans, publishing, deployment,
+client handoff and sales activation retain their authorization and evidence.

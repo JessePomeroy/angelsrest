@@ -124,13 +124,19 @@ function siteKey(value) {
 	return (
 		text(value, 253) &&
 		value === value.toLowerCase() &&
+		!value.startsWith("www.") &&
 		value.includes(".") &&
+		!value.split(".").every((label) => /^\d+$/.test(label)) &&
 		value.split(".").every((label) => /^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/.test(label))
 	);
 }
 
 function tenantId(value) {
-	return value === null || (text(value, 200) && /^[A-Za-z0-9_-]+$/.test(value));
+	return (
+		value === null ||
+		(typeof value === "string" &&
+			/^tenant_[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/.test(value))
+	);
 }
 
 function publicPath(value) {

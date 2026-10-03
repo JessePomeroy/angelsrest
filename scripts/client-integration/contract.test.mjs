@@ -39,6 +39,15 @@ test("rejects wrong tenant, backend pairing, package ranges, undeclared settings
 			contract.tenant.expectedTenantId = " tenant-wrong ";
 		},
 		(contract) => {
+			contract.tenant.expectedTenantId = "unclaimed-tenant";
+		},
+		(contract) => {
+			contract.tenant.siteUrl = "www.portfolio.example.test";
+		},
+		(contract) => {
+			contract.tenant.siteUrl = "127.0.0.1";
+		},
+		(contract) => {
 			contract.environments[0].convexSiteUrl = "https://wrong.convex.site";
 		},
 		(contract) => {
@@ -142,7 +151,7 @@ test("contract fingerprints ignore object key order and observations but bind de
 		verifiedAt: "2026-01-01T00:00:00.000Z",
 		environmentId: "staging",
 		siteUrl: contract.tenant.siteUrl,
-		tenantId: "tenant-fixture",
+		tenantId: "tenant_11111111-1111-4111-8111-111111111111",
 		sourceFingerprint: "a".repeat(64),
 		contractFingerprint: fingerprint,
 		evidenceFile: "docs/integration-evidence/staging/backend.md",
