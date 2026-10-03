@@ -86,11 +86,18 @@ export type LumaPrintsReconciliationClass =
 	| "ambiguous_result"
 	| "client_error";
 
+export type LumaPrintsReconciliationRetryReason = "transport" | "rate_or_server" | "resource_bound";
+
 export class LumaPrintsReconciliationError extends LumaPrintsError {
 	readonly disposition: "retryable" | "blocked";
 	readonly reconciliationClass?: LumaPrintsReconciliationClass;
+	readonly retryReason?: LumaPrintsReconciliationRetryReason;
 
-	constructor(message: string, disposition: "retryable");
+	constructor(
+		message: string,
+		disposition: "retryable",
+		retryReason: LumaPrintsReconciliationRetryReason,
+	);
 	constructor(
 		message: string,
 		disposition: "blocked",
@@ -99,19 +106,28 @@ export class LumaPrintsReconciliationError extends LumaPrintsError {
 	constructor(
 		message: string,
 		disposition: "retryable" | "blocked",
-		reconciliationClass?: LumaPrintsReconciliationClass,
+		classification: LumaPrintsReconciliationClass | LumaPrintsReconciliationRetryReason,
 	) {
-		if (
-			disposition === "blocked" &&
-			reconciliationClass !== "provider_rejected" &&
-			reconciliationClass !== "response_contract" &&
-			reconciliationClass !== "ambiguous_result" &&
-			reconciliationClass !== "client_error"
-		) {
-			throw new TypeError("Blocked LumaPrints reconciliation requires an exact class");
+		let reconciliationClass: LumaPrintsReconciliationClass | undefined;
+		let retryReason: LumaPrintsReconciliationRetryReason | undefined;
+		if (disposition === "blocked") {
+			if (
+				classification !== "provider_rejected" &&
+				classification !== "response_contract" &&
+				classification !== "ambiguous_result" &&
+				classification !== "client_error"
+			)
+				throw new TypeError("Blocked LumaPrints reconciliation requires an exact class");
+			reconciliationClass = classification;
 		}
-		if (disposition === "retryable" && reconciliationClass !== undefined) {
-			throw new TypeError("Retryable LumaPrints reconciliation cannot have a blocked class");
+		if (disposition === "retryable") {
+			if (
+				classification !== "transport" &&
+				classification !== "rate_or_server" &&
+				classification !== "resource_bound"
+			)
+				throw new TypeError("Retryable LumaPrints reconciliation requires an exact reason");
+			retryReason = classification;
 		}
 		super(message, {
 			kind: disposition,
@@ -119,6 +135,7 @@ export class LumaPrintsReconciliationError extends LumaPrintsError {
 		});
 		this.disposition = disposition;
 		this.reconciliationClass = reconciliationClass;
+		this.retryReason = retryReason;
 		this.name = "LumaPrintsReconciliationError";
 	}
 }
@@ -498,8 +515,8 @@ function reconciliationFailure(
 	return new LumaPrintsReconciliationError(message, "blocked", reconciliationClass);
 }
 
-function reconciliationRetryable(message: string) {
-	return new LumaPrintsReconciliationError(message, "retryable");
+function reconciliationRetryable(message: string, reason: LumaPrintsReconciliationRetryReason) {
+	return new LumaPrintsReconciliationError(message, "retryable", reason);
 }
 
 function isRetryableProviderStatus(status: number) {
@@ -529,14 +546,14 @@ async function confirmConfiguredOrder(
 		const details =
 			error instanceof LumaPrintsError && object(error.details) ? error.details : null;
 		if (details?.kind === "network" || details?.kind === "timeout") {
-			throw reconciliationRetryable("Order confirmation transport failed");
+			throw reconciliationRetryable("Order confirmation transport failed", "transport");
 		}
 		throw reconciliationFailure("Order confirmation client failed", "client_error");
 	}
 	if (res.status === 404) return false;
 	if (!res.ok) {
 		if (isRetryableProviderStatus(res.status)) {
-			throw reconciliationRetryable("Order confirmation is unavailable");
+			throw reconciliationRetryable("Order confirmation is unavailable", "rate_or_server");
 		}
 		throw reconciliationFailure("Order confirmation was rejected", "provider_rejected");
 	}
@@ -545,8 +562,12 @@ async function confirmConfiguredOrder(
 		res,
 		LUMAPRINTS_RECONCILIATION_RESPONSE_MAX_BYTES,
 		() => reconciliationFailure("Order confirmation response was malformed", "response_contract"),
-		() => reconciliationRetryable("Order confirmation stream failed"),
-		() => reconciliationRetryable("Order confirmation response exceeded its size bound"),
+		() => reconciliationRetryable("Order confirmation stream failed", "transport"),
+		() =>
+			reconciliationRetryable(
+				"Order confirmation response exceeded its size bound",
+				"resource_bound",
+			),
 	);
 	if (!object(body) || typeof body.externalId !== "string") {
 		throw reconciliationFailure("Order confirmation response was malformed", "response_contract");
@@ -590,7 +611,10 @@ function parseReconciliationPage(value: unknown, storeId: number): Reconciliatio
 		throw reconciliationFailure("Order reconciliation response was malformed", "response_contract");
 	}
 	if (value.orders.length > LUMAPRINTS_RECONCILIATION_MAX_ROWS_PER_PAGE) {
-		throw reconciliationRetryable("Order reconciliation response exceeded its row bound");
+		throw reconciliationRetryable(
+			"Order reconciliation response exceeded its row bound",
+			"resource_bound",
+		);
 	}
 	const orders: ReconciliationPage["orders"] = [];
 	for (const row of value.orders) {
@@ -628,7 +652,10 @@ async function findConfiguredOrderByExternalId(
 	const seenOrderNumbers = new Set<string>();
 	const deadline = Date.now() + LUMAPRINTS_RECONCILIATION_TIMEOUT_MS;
 	const timeBoundFailure = () =>
-		reconciliationRetryable("Order reconciliation response exceeded its time bound");
+		reconciliationRetryable(
+			"Order reconciliation response exceeded its time bound",
+			"resource_bound",
+		);
 
 	for (let page = 1; page <= LUMAPRINTS_RECONCILIATION_MAX_PAGES; page += 1) {
 		const remainingMs = deadline - Date.now();
@@ -647,14 +674,14 @@ async function findConfiguredOrderByExternalId(
 			const details =
 				error instanceof LumaPrintsError && object(error.details) ? error.details : null;
 			if (details?.kind === "network" || details?.kind === "timeout") {
-				throw reconciliationRetryable("Order reconciliation transport failed");
+				throw reconciliationRetryable("Order reconciliation transport failed", "transport");
 			}
 			throw reconciliationFailure("Order reconciliation client failed", "client_error");
 		}
 		if (res.status === 404 && page === 1) return null;
 		if (!res.ok) {
 			if (isRetryableProviderStatus(res.status) || res.status === 404) {
-				throw reconciliationRetryable("Order reconciliation is unavailable");
+				throw reconciliationRetryable("Order reconciliation is unavailable", "rate_or_server");
 			}
 			throw reconciliationFailure("Order reconciliation was rejected", "provider_rejected");
 		}
@@ -666,8 +693,12 @@ async function findConfiguredOrderByExternalId(
 			() =>
 				Date.now() >= deadline
 					? timeBoundFailure()
-					: reconciliationRetryable("Order reconciliation stream failed"),
-			() => reconciliationRetryable("Order reconciliation response exceeded its size bound"),
+					: reconciliationRetryable("Order reconciliation stream failed", "transport"),
+			() =>
+				reconciliationRetryable(
+					"Order reconciliation response exceeded its size bound",
+					"resource_bound",
+				),
 		);
 		if (Date.now() >= deadline) throw timeBoundFailure();
 		const parsed = parseReconciliationPage(body, storeId);
@@ -688,7 +719,10 @@ async function findConfiguredOrderByExternalId(
 			parsed.totalPages > LUMAPRINTS_RECONCILIATION_MAX_PAGES ||
 			parsed.totalOrders > LUMAPRINTS_RECONCILIATION_MAX_ROWS
 		) {
-			throw reconciliationRetryable("Order reconciliation response exceeded its pagination bound");
+			throw reconciliationRetryable(
+				"Order reconciliation response exceeded its pagination bound",
+				"resource_bound",
+			);
 		}
 		if (expectedTotalOrders === null) {
 			expectedTotalOrders = parsed.totalOrders;
@@ -697,19 +731,28 @@ async function findConfiguredOrderByExternalId(
 			parsed.totalOrders !== expectedTotalOrders ||
 			parsed.totalPages !== expectedTotalPages
 		) {
-			throw reconciliationRetryable("Order reconciliation pagination changed");
+			throw reconciliationRetryable("Order reconciliation pagination changed", "resource_bound");
 		}
 		if (parsed.totalOrders === 0) return null;
 		if (page < parsed.totalPages && parsed.orders.length === 0) {
-			throw reconciliationRetryable("Order reconciliation pagination was unstable");
+			throw reconciliationRetryable(
+				"Order reconciliation pagination was unstable",
+				"resource_bound",
+			);
 		}
 		rowsRead += parsed.orders.length;
 		if (rowsRead > parsed.totalOrders || rowsRead > LUMAPRINTS_RECONCILIATION_MAX_ROWS) {
-			throw reconciliationRetryable("Order reconciliation pagination was unstable");
+			throw reconciliationRetryable(
+				"Order reconciliation pagination was unstable",
+				"resource_bound",
+			);
 		}
 		for (const row of parsed.orders) {
 			if (seenOrderNumbers.has(row.orderNumber)) {
-				throw reconciliationRetryable("Order reconciliation pagination contained a duplicate");
+				throw reconciliationRetryable(
+					"Order reconciliation pagination contained a duplicate",
+					"resource_bound",
+				);
 			}
 			seenOrderNumbers.add(row.orderNumber);
 			if (row.externalId !== externalId) continue;
@@ -720,12 +763,18 @@ async function findConfiguredOrderByExternalId(
 		}
 		if (page === parsed.totalPages) {
 			if (rowsRead !== parsed.totalOrders) {
-				throw reconciliationRetryable("Order reconciliation pagination was unstable");
+				throw reconciliationRetryable(
+					"Order reconciliation pagination was unstable",
+					"resource_bound",
+				);
 			}
 			return match;
 		}
 	}
-	throw reconciliationRetryable("Order reconciliation response exceeded its pagination bound");
+	throw reconciliationRetryable(
+		"Order reconciliation response exceeded its pagination bound",
+		"resource_bound",
+	);
 }
 
 /** Pure payload builder for direct paper, framed paper, and canvas options. */

@@ -708,7 +708,7 @@ describe("print fulfillment", () => {
 		});
 		mockFindLumaPrintsOrder
 			.mockRejectedValueOnce(
-				new LumaPrintsReconciliationError("temporarily unavailable", "retryable"),
+				new LumaPrintsReconciliationError("temporarily unavailable", "retryable", "rate_or_server"),
 			)
 			.mockResolvedValueOnce({ orderNumber: "456" });
 		const submit = () =>
@@ -734,7 +734,7 @@ describe("print fulfillment", () => {
 		});
 	});
 
-	it("records every bounded inconclusive GET class before retrying", async () => {
+	it("records typed inconclusive GET reasons independently of error wording", async () => {
 		const { LumaPrintsReconciliationError } = await import("$lib/server/lumaprints");
 		const { submitPrintFulfillment } = await import("../printFulfillment");
 		convex.mutation.mockImplementation(async (reference: string) => {
@@ -746,10 +746,20 @@ describe("print fulfillment", () => {
 			}
 		});
 		const cases = [
-			[new LumaPrintsReconciliationError("transport connection reset", "retryable"), "transport"],
-			[new LumaPrintsReconciliationError("temporarily unavailable", "retryable"), "rate_or_server"],
 			[
-				new LumaPrintsReconciliationError("lookup exceeded its page bound", "retryable"),
+				new LumaPrintsReconciliationError(
+					"lookup exceeded its page bound",
+					"retryable",
+					"transport",
+				),
+				"transport",
+			],
+			[
+				new LumaPrintsReconciliationError("stream failed", "retryable", "rate_or_server"),
+				"rate_or_server",
+			],
+			[
+				new LumaPrintsReconciliationError("temporarily unavailable", "retryable", "resource_bound"),
 				"resource_bound",
 			],
 			[new Error("adapter threw"), "client_exception"],
