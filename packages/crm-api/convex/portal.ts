@@ -58,18 +58,6 @@ type NarrowedPortalToken<T extends PortalTokenType> = Omit<
 	documentId: PortalDocumentIdFor<T>;
 };
 
-/**
- * Given a token doc that's already had its `type` narrowed (e.g. inside a
- * branch of `switch (tokenDoc.type)`), return its `documentId` with the
- * Id type that matches `type`. Runs no runtime check — callers must narrow
- * first. Replaces per-site `documentId as Id<"...">` casts.
- */
-function typedDocumentId<T extends PortalTokenType>(
-	doc: PortalTokenDoc & { type: T },
-): PortalDocumentIdFor<T> {
-	return doc.documentId as PortalDocumentIdFor<T>;
-}
-
 function normalizePortalDocumentId<T extends PortalTokenType>(
 	ctx: QueryCtx | MutationCtx,
 	doc: PortalTokenDoc & { type: T },
@@ -299,16 +287,18 @@ async function loadPortalTokenForAction<T extends PortalTokenType>(
 	if (tokenDoc.type !== expectedType) {
 		throw new Error(`Token is not for a ${expectedType}`);
 	}
-	const document = await loadPortalDocument(ctx, tokenDoc);
+	const actionToken = { ...tokenDoc, type: expectedType };
+	const documentId = normalizePortalDocumentId(ctx, actionToken);
+	const document = documentId ? await ctx.db.get(documentId) : null;
 	if (
+		!documentId ||
 		!document ||
 		document.siteUrl !== tokenDoc.siteUrl ||
 		document.clientId !== tokenDoc.clientId
 	) {
 		throw new Error("Portal token does not match its document client");
 	}
-	// Narrowed by the runtime `type` check just above.
-	return tokenDoc as unknown as NarrowedPortalToken<T>;
+	return { ...actionToken, documentId };
 }
 
 /**

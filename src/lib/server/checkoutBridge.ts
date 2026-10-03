@@ -24,7 +24,6 @@ import {
 const SIGNATURE_HEADER = "x-checkout-bridge-signature";
 const TIMESTAMP_HEADER = "x-checkout-bridge-timestamp";
 const SIGNATURE_TOLERANCE_MS = 5 * 60 * 1000;
-const KIND = /^(?:print|print_set|postcard|tapestry|digital_download|merchandise)$/;
 const ITEM_KEYS = [
 	"productKey",
 	"revisionId",
@@ -313,21 +312,52 @@ function parseSinglePrintSnapshot(value: unknown) {
 	)
 		invalidSnapshot();
 	const item = value.items[0];
-	if (!exactRecord(item, ITEM_KEYS) || !KIND.test(String(item.productKind))) invalidSnapshot();
-	for (const key of ITEM_KEYS) {
-		if (key === "productKind") continue;
-		const field = item[key];
-		const required = key === "productKey" || key === "revisionId";
-		if (
-			(required && !boundedString(field, 128)) ||
-			(!required && field !== null && !boundedString(field, 128))
-		)
-			invalidSnapshot();
-	}
+	if (!exactRecord(item, ITEM_KEYS)) invalidSnapshot();
+	const {
+		productKey,
+		revisionId,
+		productKind,
+		variantKey,
+		materialOptionKey,
+		sizeOptionKey,
+		borderOptionKey,
+		frameOptionKey,
+	} = item;
+	if (
+		!boundedString(productKey, 128) ||
+		!boundedString(revisionId, 128) ||
+		(productKind !== "print" &&
+			productKind !== "print_set" &&
+			productKind !== "postcard" &&
+			productKind !== "tapestry" &&
+			productKind !== "digital_download" &&
+			productKind !== "merchandise") ||
+		(variantKey !== null && !boundedString(variantKey, 128)) ||
+		(materialOptionKey !== null && !boundedString(materialOptionKey, 128)) ||
+		(sizeOptionKey !== null && !boundedString(sizeOptionKey, 128)) ||
+		(borderOptionKey !== null && !boundedString(borderOptionKey, 128)) ||
+		(frameOptionKey !== null && !boundedString(frameOptionKey, 128))
+	)
+		invalidSnapshot();
 	return {
-		schemaVersion: 1 as const,
-		catalogProvider: "convex" as const,
-		items: [item as unknown as CheckoutSnapshotItem] as [CheckoutSnapshotItem],
+		schemaVersion: 1,
+		catalogProvider: "convex",
+		items: [
+			{
+				productKey,
+				revisionId,
+				productKind,
+				variantKey,
+				materialOptionKey,
+				sizeOptionKey,
+				borderOptionKey,
+				frameOptionKey,
+			},
+		],
+	} satisfies {
+		schemaVersion: 1;
+		catalogProvider: "convex";
+		items: [CheckoutSnapshotItem];
 	};
 }
 
