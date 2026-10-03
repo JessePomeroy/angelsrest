@@ -1,4 +1,5 @@
 <script lang="ts">
+import { onDestroy } from "svelte";
 import { invalidateAll } from "$app/navigation";
 import PrivateCapabilityHead from "$lib/components/PrivateCapabilityHead.svelte";
 import type { PageData } from "./$types";
@@ -8,126 +9,119 @@ import QuoteDocument from "./QuoteDocument.svelte";
 
 let { data }: { data: PageData } = $props();
 
-// Keep only the transient fields changed by portal actions. The authoritative,
-// discriminated document remains the load-function prop and is never mutated.
-let optimisticQuoteStatus = $state<"accepted" | "declined" | null>(null);
-let optimisticContractStatus = $state<"signed" | null>(null);
-let optimisticSignedAt = $state<number | null>(null);
+type OptimisticDocument = {
+	document: PageData["document"];
+	quoteStatus?: "accepted" | "declined";
+	contractStatus?: "signed";
+	signedAt?: number;
+};
 
-// Clear the override whenever the load function produces a new document
-// (e.g. after `invalidateAll()` runs). Without this, stale optimistic fields
-// would keep overriding authoritative server state.
-$effect(() => {
-	// Read data.document to register the dependency, then reset override.
-	data.document;
-	optimisticQuoteStatus = null;
-	optimisticContractStatus = null;
-	optimisticSignedAt = null;
+class DocumentActions {
+	readonly token: string;
+	loading = $state(false);
+	result = $state<"success" | "error" | null>(null);
+	message = $state("");
+	optimistic = $state.raw<OptimisticDocument | null>(null);
+
+	constructor(token: string) {
+		this.token = token;
+	}
+}
+
+// A new token gets a new owner, even when SvelteKit reuses this page. Refreshing
+// the same token keeps its pending request but retires stale optimistic fields.
+let token = $derived(data.token);
+let actions = $derived(new DocumentActions(token));
+let optimistic = $derived(
+	actions.optimistic?.document === data.document ? actions.optimistic : null,
+);
+let mounted = true;
+onDestroy(() => {
+	mounted = false;
 });
 
-let actionLoading = $state(false);
-let actionResult = $state<"success" | "error" | null>(null);
-let actionMessage = $state("");
+function isCurrent(owner: DocumentActions) {
+	return mounted && actions === owner;
+}
 
-async function acceptQuote() {
-	actionLoading = true;
-	actionResult = null;
+function beginAction() {
+	const owner = actions;
+	if (owner.loading) return null;
+	owner.loading = true;
+	owner.result = null;
+	owner.message = "";
+	return owner;
+}
+
+function showError(owner: DocumentActions, message = "something went wrong. please try again.") {
+	if (!isCurrent(owner)) return;
+	owner.result = "error";
+	owner.message = message;
+}
+
+async function submitDocumentAction(action: "accept" | "decline" | "sign", signerName?: string) {
+	const owner = beginAction();
+	if (!owner) return;
+	const document = data.document;
 	try {
-		const res = await fetch(`/api/portal/${data.token}/accept`, {
+		const res = await fetch(`/api/portal/${owner.token}/${action}`, {
 			method: "POST",
+			...(action === "sign" ? {
+				headers: { "Content-Type": "application/json" },
+				body: JSON.stringify({ signerName }),
+			} : {}),
 		});
-		if (res.ok) {
-			actionResult = "success";
-			actionMessage = "quote accepted! we'll be in touch.";
-			optimisticQuoteStatus = "accepted";
-			// Refresh load data so navigation reflects the new state; the
-			// $effect will clear the optimistic override once fresh data arrives.
-			await invalidateAll();
-		} else {
-			actionResult = "error";
-			actionMessage = "something went wrong. please try again.";
+		if (!isCurrent(owner)) return;
+		if (!res.ok) {
+			showError(owner);
+			return;
 		}
+		owner.result = "success";
+		owner.message = action === "accept"
+			? "quote accepted! we'll be in touch."
+			: action === "decline" ? "quote declined." : "contract signed successfully!";
+		owner.optimistic = action === "sign"
+			? { document, contractStatus: "signed", signedAt: Date.now() }
+			: { document, quoteStatus: action === "accept" ? "accepted" : "declined" };
+		await invalidateAll();
 	} catch {
-		actionResult = "error";
-		actionMessage = "something went wrong. please try again.";
+		showError(owner);
 	} finally {
-		actionLoading = false;
+		if (isCurrent(owner)) owner.loading = false;
 	}
 }
 
-async function declineQuote() {
-	actionLoading = true;
-	actionResult = null;
-	try {
-		const res = await fetch(`/api/portal/${data.token}/decline`, {
-			method: "POST",
-		});
-		if (res.ok) {
-			actionResult = "success";
-			actionMessage = "quote declined.";
-			optimisticQuoteStatus = "declined";
-			await invalidateAll();
-		} else {
-			actionResult = "error";
-			actionMessage = "something went wrong. please try again.";
-		}
-	} catch {
-		actionResult = "error";
-		actionMessage = "something went wrong. please try again.";
-	} finally {
-		actionLoading = false;
-	}
-}
-
-async function signContract(signerName: string) {
-	if (!signerName.trim()) return;
-	actionLoading = true;
-	actionResult = null;
-	try {
-		const res = await fetch(`/api/portal/${data.token}/sign`, {
-			method: "POST",
-			headers: { "Content-Type": "application/json" },
-			body: JSON.stringify({ signerName: signerName.trim() }),
-		});
-		if (res.ok) {
-			actionResult = "success";
-			actionMessage = "contract signed successfully!";
-			optimisticContractStatus = "signed";
-			optimisticSignedAt = Date.now();
-			await invalidateAll();
-		} else {
-			actionResult = "error";
-			actionMessage = "something went wrong. please try again.";
-		}
-	} catch {
-		actionResult = "error";
-		actionMessage = "something went wrong. please try again.";
-	} finally {
-		actionLoading = false;
-	}
+function signContract(signerName: string) {
+	const name = signerName.trim();
+	if (name) void submitDocumentAction("sign", name);
 }
 
 async function payInvoice() {
-	actionLoading = true;
-	actionResult = null;
+	const owner = beginAction();
+	if (!owner) return;
 	try {
 		const res = await fetch("/api/invoice/checkout", {
 			method: "POST",
 			headers: { "Content-Type": "application/json" },
-			body: JSON.stringify({ token: data.token }),
+			body: JSON.stringify({ token: owner.token }),
 		});
-		const result = await res.json().catch(() => ({}));
-		if (res.ok && typeof result.url === "string") {
+		const result: unknown = await res.json().catch(() => null);
+		if (!isCurrent(owner)) return;
+		if (
+			res.ok && result && typeof result === "object" &&
+			"url" in result && typeof result.url === "string"
+		) {
 			window.location.href = result.url;
 			return;
 		}
-		actionResult = "error";
-		actionMessage = result.message || "something went wrong. please try again.";
+		const message = result && typeof result === "object" &&
+			"message" in result && typeof result.message === "string"
+			? result.message : undefined;
+		showError(owner, message);
 	} catch {
-		actionResult = "error";
-		actionMessage = "something went wrong. please try again.";
+		showError(owner);
 	} finally {
-		actionLoading = false;
+		if (isCurrent(owner)) owner.loading = false;
 	}
 }
 </script>
@@ -140,44 +134,46 @@ async function payInvoice() {
 	</header>
 
 	<div aria-live="polite">
-		{#if actionResult}
-			<div class="action-banner" class:success={actionResult === "success"} class:error-banner={actionResult === "error"}>
-				{actionMessage}
+		{#if actions.result}
+			<div class="action-banner" class:success={actions.result === "success"} class:error-banner={actions.result === "error"}>
+				{actions.message}
 			</div>
 		{/if}
 	</div>
 
 	<main class="portal-card">
-		{#if data.type === "quote"}
-			<QuoteDocument
-				document={data.document}
-				client={data.client}
-				used={data.used}
-				status={optimisticQuoteStatus ?? data.document.status}
-				loading={actionLoading}
-				onAccept={acceptQuote}
-				onDecline={declineQuote}
-			/>
-		{:else if data.type === "invoice"}
-			<InvoiceDocument
-				document={data.document}
-				client={data.client}
-				used={data.used}
-				status={data.document.status}
-				loading={actionLoading}
-				onPay={payInvoice}
-			/>
-		{:else if data.type === "contract"}
-			<ContractDocument
-				document={data.document}
-				client={data.client}
-				used={data.used}
-				status={optimisticContractStatus ?? data.document.status}
-				signedAt={optimisticSignedAt ?? data.document.signedAt}
-				loading={actionLoading}
-				onSign={signContract}
-			/>
-		{/if}
+		{#key actions}
+			{#if data.type === "quote"}
+				<QuoteDocument
+					document={data.document}
+					client={data.client}
+					used={data.used}
+					status={optimistic?.quoteStatus ?? data.document.status}
+					loading={actions.loading}
+					onAccept={() => submitDocumentAction("accept")}
+					onDecline={() => submitDocumentAction("decline")}
+				/>
+			{:else if data.type === "invoice"}
+				<InvoiceDocument
+					document={data.document}
+					client={data.client}
+					used={data.used}
+					status={data.document.status}
+					loading={actions.loading}
+					onPay={payInvoice}
+				/>
+			{:else if data.type === "contract"}
+				<ContractDocument
+					document={data.document}
+					client={data.client}
+					used={data.used}
+					status={optimistic?.contractStatus ?? data.document.status}
+					signedAt={optimistic?.signedAt ?? data.document.signedAt}
+					loading={actions.loading}
+					onSign={signContract}
+				/>
+			{/if}
+		{/key}
 	</main>
 
 	<footer class="portal-footer">

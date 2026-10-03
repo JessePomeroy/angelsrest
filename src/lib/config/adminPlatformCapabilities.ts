@@ -151,7 +151,11 @@ export function createAdminBrowserCapabilities(api: GeneratedApi): AdminBrowserC
 			listImageStorageKeys: api.galleries.listImageStorageKeys,
 			listBySite: api.galleries.listBySite,
 		},
-		inquiries: { updateStatus: api.inquiries.updateStatus, remove: api.inquiries.remove },
+		inquiries: {
+			listPaginated: api.inquiries.listPaginated,
+			updateStatus: api.inquiries.updateStatus,
+			remove: api.inquiries.remove,
+		},
 		invoices: {
 			getDashboardSummary: api.invoices.getDashboardSummary,
 			create: api.invoices.create,

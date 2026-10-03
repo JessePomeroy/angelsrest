@@ -27,6 +27,10 @@ function fixtureQuery(name: string, args: Args = {}) {
 	switch (name) {
 		case "orders:list":
 			return list(data.orders);
+		case "inquiries:listPaginated":
+			return pageOf(data.inquiries
+				.filter((inquiry) => !args.status || inquiry.status === args.status)
+				.map((inquiry) => ({ ...inquiry, _creationTime: Date.parse(inquiry.submittedAt) })));
 		case "orders:getStats":
 			return {
 				stats: { totalOrders: empty ? 0 : 3, isTruncated: false, scanLimit: 100 },

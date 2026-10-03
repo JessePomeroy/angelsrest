@@ -606,7 +606,11 @@ onMount(() => {
 		backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px);
 	}
 	.destination[aria-current="page"] .bubble-label { text-decoration: underline; text-underline-offset: 3px; }
-	.sphere:focus, .sphere:focus-visible, .destination:focus, .destination:focus-visible { outline: none; }
+	.sphere:focus-visible, .destination:focus-visible {
+		outline: 2px solid var(--color-surface-50);
+		outline-offset: 2px;
+		box-shadow: 0 0 0 5px var(--color-surface-950);
+	}
 	.cart-count { position: absolute; top: 6px; right: 4px; min-width: 17px; padding: 2px 4px; border-radius: 10px; background: #344041; color: #fff; font-size: 9px; line-height: 13px; text-align: center; }
 	:global(.dark) .sphere, :global(.dark) .destination { color: #e5e9e8; }
 	:global(.dark) .bubble-label { color: #edf0ef; background: rgb(24 32 34 / 82%); text-shadow: none; }
