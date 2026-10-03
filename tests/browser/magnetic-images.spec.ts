@@ -117,6 +117,34 @@ test("leaving during a glide fades the frame without snapping to its destination
 	await expectFrameOn(frame, items.nth(2));
 });
 
+test("re-entering another image during fade resumes from the visible frame", async ({ page, isMobile }) => {
+	test.skip(isMobile, "Spatial hover transitions require a mouse");
+	await page.goto("/?fixture=content&kind=portfolio-page&mixed");
+	const items = page.locator(".image-button");
+	const frame = page.locator(".magnetic-indicator");
+	await items.first().hover();
+	await expectFrameOn(frame, items.first());
+	await items.nth(2).hover();
+	const before = await pauseFrameMotion(frame, 0.25);
+	expect(before.count).toBeGreaterThan(0);
+	await page.mouse.move(0, 0);
+	await frame.evaluate(element => {
+		const fade = element.getAnimations().find(animation => animation instanceof CSSTransition && animation.transitionProperty === "opacity");
+		if (!fade) throw new Error("Missing frame fade");
+		fade.pause();
+		fade.currentTime = 30;
+	});
+	const target = await items.nth(1).boundingBox();
+	if (!target) throw new Error("Missing re-entry photograph");
+	// Avoid hover() scrolling the page while comparing viewport coordinates.
+	await page.mouse.move(target.x + target.width / 2, target.y + 10);
+	const resumed = await pauseFrameMotion(frame, 0);
+	expect(resumed.count, "A still-visible frame must interpolate on re-entry").toBeGreaterThan(0);
+	expect(Math.max(...(["x", "y", "width", "height"] as const).map(axis => Math.abs(resumed.bounds[axis] - before.bounds[axis])))).toBeLessThan(1);
+	await frame.evaluate(el => el.getAnimations().forEach(animation => animation.play()));
+	await expectFrameOn(frame, items.nth(1));
+});
+
 test("shop filtering clears removed anchors and supports print-set previews", async ({ page, isMobile }) => {
 	test.skip(isMobile, "Hover is intentionally disabled for touch devices");
 	await page.goto("/?fixture=shop");
@@ -146,8 +174,8 @@ test("keyboard focus and reduced motion preserve immediate feedback and lightbox
 	if (hasHoverFrame) {
 		await expectFrameOn(frame, images.nth(1));
 		await page.keyboard.press("Tab");
-		await expectFrameOn(frame, images.nth(2));
 		expect((await pauseFrameMotion(frame, 0.25)).count).toBe(0);
+		await expectFrameOn(frame, images.nth(2));
 	}
 	await page.keyboard.press("Enter");
 	await expect(page.getByRole("dialog")).toBeVisible();

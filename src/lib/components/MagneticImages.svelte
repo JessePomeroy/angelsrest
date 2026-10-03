@@ -44,7 +44,9 @@ function trackImages(node: HTMLDivElement) {
 
 	const highlight = (item: HTMLElement | null) => {
 		const target = item?.querySelector<HTMLElement>("[data-magnetic-target]") ?? item;
-		const wasVisible = node.hasAttribute("data-magnetic-visible") && node.contains(anchor);
+		// The visibility marker can be gone while the frame is still fading.
+		const wasVisible = node.contains(anchor) &&
+			(node.hasAttribute("data-magnetic-visible") || Number(getComputedStyle(frame).opacity) > 0);
 		node.toggleAttribute("data-magnetic-visible", item !== null);
 		if (!target) return;
 		if (target === anchor) return;
