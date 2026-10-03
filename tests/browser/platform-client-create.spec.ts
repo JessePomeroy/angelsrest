@@ -242,14 +242,17 @@ test("a timed-out write gets one fresh status request and a timed-out readback u
 		await pending.promise;
 		await route.fulfill({ json: { kind: "created", email: input.email, temporaryPassword: "Late-Fixture-Password" } }).catch(() => {});
 	});
-	await openForm(page);
 	await page.clock.install();
+	await openForm(page);
 	await review(page);
 	await page.getByRole("button", { name: "Create client", exact: true }).click();
 	await mutationStarted.promise;
+	// Pending fetches must retain cancellation even when WebKit collects unused signals.
+	await page.requestGC();
 	await page.clock.fastForward(20_001);
 	await readbackStarted.promise;
 	await expect(page.getByRole("button", { name: "Adding client…" })).toBeDisabled();
+	await page.requestGC();
 	await page.clock.fastForward(20_001);
 	await expect(page.getByRole("alert")).toContainText("Client creation is unconfirmed");
 	await expect(page.getByRole("button", { name: "Check status", exact: true })).toBeEnabled();
