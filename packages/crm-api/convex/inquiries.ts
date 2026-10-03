@@ -1,3 +1,4 @@
+import { paginationOptsValidator } from "convex/server";
 import { v } from "convex/values";
 import { mutation, query } from "./_generated/server";
 import {
@@ -55,6 +56,29 @@ export const list = query({
 			.withIndex("by_siteUrl", (q) => q.eq("siteUrl", siteUrl))
 			.order("desc")
 			.take(take);
+	},
+});
+
+/** Page through the complete site inbox, filtering before the bounded read. */
+export const listPaginated = query({
+	args: {
+		siteUrl: v.string(),
+		status: v.optional(v.union(v.literal("new"), v.literal("read"), v.literal("replied"))),
+		paginationOpts: paginationOptsValidator,
+	},
+	handler: async (ctx, { siteUrl, status, paginationOpts }) => {
+		await requireSiteAdmin(ctx, siteUrl);
+		const inquiries = status
+			? ctx.db.query("inquiries").withIndex("by_siteUrl_status", (q) =>
+				q.eq("siteUrl", siteUrl).eq("status", status),
+			)
+			: ctx.db.query("inquiries").withIndex("by_siteUrl", (q) => q.eq("siteUrl", siteUrl));
+		return await inquiries.order("desc").paginate({
+			...paginationOpts,
+			numItems: Math.min(paginationOpts.numItems, 50),
+			// Also bound reactive ranges requested with an end cursor.
+			maximumRowsRead: 50,
+		});
 	},
 });
 
