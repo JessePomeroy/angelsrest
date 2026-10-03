@@ -1,0 +1,230 @@
+{
+  "version": 2,
+  "repository": "example/portfolio-client",
+  "tenant": {
+    "siteUrl": "portfolio.example.test",
+    "expectedTenantId": null
+  },
+  "environments": [
+    {
+      "id": "staging",
+      "publicOrigin": "https://staging.portfolio.example.test",
+      "convexUrl": "https://example-staging.convex.cloud",
+      "convexSiteUrl": "https://example-staging.convex.site",
+      "cmsMediaOrigin": "https://media.example.test",
+      "publicPath": "/portfolio"
+    },
+    {
+      "id": "production",
+      "publicOrigin": "https://portfolio.example.test",
+      "convexUrl": "https://example-production.convex.cloud",
+      "convexSiteUrl": "https://example-production.convex.site",
+      "cmsMediaOrigin": "https://media.example.test",
+      "publicPath": "/portfolio"
+    }
+  ],
+  "packages": {
+    "@jessepomeroy/admin": "6.7.1",
+    "@jessepomeroy/crm-api": "6.5.1"
+  },
+  "contracts": {
+    "backend": [
+      "tenant-membership",
+      "published-portfolio"
+    ],
+    "workers": [
+      "cms-media"
+    ]
+  },
+  "environmentRequirements": [
+    {
+      "name": "PUBLIC_SITE_DOMAIN",
+      "purpose": "Canonical tenant binding",
+      "service": "host",
+      "phase": "runtime",
+      "sensitive": false,
+      "capabilities": []
+    },
+    {
+      "name": "PUBLIC_CONVEX_URL",
+      "purpose": "Public Convex queries",
+      "service": "host",
+      "phase": "runtime",
+      "sensitive": false,
+      "capabilities": []
+    },
+    {
+      "name": "PUBLIC_CONVEX_SITE_URL",
+      "purpose": "Same-deployment authentication",
+      "service": "host",
+      "phase": "runtime",
+      "sensitive": false,
+      "capabilities": []
+    },
+    {
+      "name": "PUBLIC_CMS_MEDIA_BASE_URL",
+      "purpose": "Published portfolio media",
+      "service": "host",
+      "phase": "runtime",
+      "sensitive": false,
+      "capabilities": [
+        "portfolio"
+      ]
+    }
+  ],
+  "capabilities": {
+    "portfolio": {
+      "status": "included",
+      "reason": "Published portfolio galleries are the agreed launch scope.",
+      "requiredFiles": [
+        "src/lib/server/publicContent.ts",
+        "src/routes/portfolio/+page.server.ts"
+      ],
+      "checks": [
+        {
+          "id": "publish-readback",
+          "description": "Publish a sample portfolio gallery and verify tenant-scoped public read-back without draft leakage."
+        }
+      ]
+    },
+    "sitePages": {
+      "status": "excluded",
+      "reason": "Portfolio-only launch; this feature is outside the agreed scope.",
+      "requiredFiles": [],
+      "checks": [
+        {
+          "id": "unavailable",
+          "description": "Custom CMS page editing is unavailable in the admin UI and its write routes."
+        }
+      ]
+    },
+    "blog": {
+      "status": "excluded",
+      "reason": "Portfolio-only launch; this feature is outside the agreed scope.",
+      "requiredFiles": [],
+      "checks": [
+        {
+          "id": "unavailable",
+          "description": "Blog editing and public journal routes are unavailable."
+        }
+      ]
+    },
+    "catalog": {
+      "status": "excluded",
+      "reason": "Portfolio-only launch; this feature is outside the agreed scope.",
+      "requiredFiles": [],
+      "checks": [
+        {
+          "id": "unavailable",
+          "description": "Product authoring and public catalog routes are unavailable."
+        }
+      ]
+    },
+    "privateCatalogAssets": {
+      "status": "excluded",
+      "reason": "Portfolio-only launch; this feature is outside the agreed scope.",
+      "requiredFiles": [],
+      "checks": [
+        {
+          "id": "unavailable",
+          "description": "Private catalog upload and deletion endpoints are unavailable."
+        }
+      ]
+    },
+    "crm": {
+      "status": "excluded",
+      "reason": "Portfolio-only launch; this feature is outside the agreed scope.",
+      "requiredFiles": [],
+      "checks": [
+        {
+          "id": "unavailable",
+          "description": "CRM document sending and recipient portal routes are unavailable for this scope."
+        }
+      ]
+    },
+    "delivery": {
+      "status": "excluded",
+      "reason": "Portfolio-only launch; this feature is outside the agreed scope.",
+      "requiredFiles": [],
+      "checks": [
+        {
+          "id": "unavailable",
+          "description": "Private delivery administration and recipient routes are unavailable."
+        }
+      ]
+    },
+    "commerce": {
+      "status": "excluded",
+      "reason": "Portfolio-only launch; this feature is outside the agreed scope.",
+      "requiredFiles": [],
+      "checks": [
+        {
+          "id": "unavailable",
+          "description": "Purchase controls are absent and checkout cannot create a payment session."
+        }
+      ]
+    }
+  },
+  "stages": [
+    {
+      "id": "backend",
+      "requiredFiles": [
+        "package.json",
+        "src/lib/config/admin.ts",
+        "src/lib/config/admin.server.ts"
+      ],
+      "verification": {
+        "staging": null,
+        "production": null
+      }
+    },
+    {
+      "id": "tenant",
+      "requiredFiles": [
+        "src/lib/server/adminAuth.ts",
+        "src/routes/admin/+layout.server.ts",
+        "src/routes/api/auth/[...all]/+server.ts",
+        "src/routes/api/admin/mutation/+server.ts"
+      ],
+      "verification": {
+        "staging": null,
+        "production": null
+      }
+    },
+    {
+      "id": "content",
+      "requiredFiles": [],
+      "verification": {
+        "staging": null,
+        "production": null
+      }
+    },
+    {
+      "id": "workflows",
+      "requiredFiles": [],
+      "verification": {
+        "staging": null,
+        "production": null
+      }
+    },
+    {
+      "id": "commerce",
+      "requiredFiles": [],
+      "verification": {
+        "staging": null,
+        "production": null
+      }
+    },
+    {
+      "id": "handoff",
+      "requiredFiles": [
+        ".env.example",
+        "docs/CLIENT_INTEGRATION.md"
+      ],
+      "verification": {
+        "staging": null,
+        "production": null
+      }
+    }
+  ]
+}

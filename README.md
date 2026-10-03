@@ -134,6 +134,7 @@ changes or enabling experimental template parsing across the repository.
 - [AGENTS.md](AGENTS.md) — canonical repository rules and implementation constraints
 - [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) — current ownership, dependencies, authentication, and transport boundaries
 - [docs/contracts/architecture-invariants.md](docs/contracts/architecture-invariants.md) — stable safety rules and their primary proofs
+- [docs/contracts/client-setup.md](docs/contracts/client-setup.md) — portable client setup contract, preflight and per-environment handoff gate
 - [docs/runbooks/security-operations.md](docs/runbooks/security-operations.md) — authority, least-privilege, recovery, and incident response
 - [docs/migrations/](docs/migrations/) — completed migration narratives and source-bound records
 - [LUMAPRINTS.md](LUMAPRINTS.md) — current print-fulfillment integration
