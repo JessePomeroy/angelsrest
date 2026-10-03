@@ -15,6 +15,7 @@ import {
 	type LumaPrintsClient,
 	type LumaPrintsReconciliationClass,
 	LumaPrintsReconciliationError,
+	type LumaPrintsReconciliationRetryReason,
 	LumaPrintsSubmissionError,
 } from "$lib/server/lumaprints";
 import type { LumaPrintsConnection } from "$lib/server/lumaprintsConnections";
@@ -43,9 +44,7 @@ export class AutomatedFulfillmentRefundRetryableError extends Error {}
 export class AutomatedRefundNotificationRetryableError extends Error {}
 
 export type PrintReconciliationEscalationReason =
-	| "transport"
-	| "rate_or_server"
-	| "resource_bound"
+	| LumaPrintsReconciliationRetryReason
 	| "client_exception"
 	| "result_not_observed";
 
@@ -159,17 +158,9 @@ async function claimReconciliationAlert(
 }
 
 function classifyInconclusiveReconciliation(error: unknown): PrintReconciliationEscalationReason {
-	if (!(error instanceof LumaPrintsReconciliationError)) return "client_exception";
-	if (
-		error.message.includes("exceeded its") ||
-		error.message.includes("pagination was unstable") ||
-		error.message.includes("pagination changed") ||
-		error.message.includes("pagination contained a duplicate")
-	)
-		return "resource_bound";
-	if (error.message.includes("transport") || error.message.includes("stream")) return "transport";
-	if (error.message.includes("unavailable")) return "rate_or_server";
-	return "client_exception";
+	return error instanceof LumaPrintsReconciliationError
+		? (error.retryReason ?? "client_exception")
+		: "client_exception";
 }
 
 async function recordInconclusiveReconciliation(

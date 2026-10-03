@@ -239,25 +239,33 @@ describe("LumaPrintsError", () => {
 		expect(new LumaPrintsError("test")).toBeInstanceOf(Error);
 	});
 
-	it("requires an exact bounded class for every blocked reconciliation error", () => {
+	it("requires an exact bounded classification for reconciliation errors", () => {
 		const ReconciliationError = LumaPrintsReconciliationError as unknown as new (
 			message: string,
 			disposition: string,
-			reconciliationClass?: string,
+			classification?: string,
 		) => Error;
 		expect(() => new ReconciliationError("blocked", "blocked")).toThrow("requires an exact class");
 		expect(() => new ReconciliationError("blocked", "blocked", "guessed_class")).toThrow(
 			"requires an exact class",
 		);
 		expect(() => new ReconciliationError("retry", "retryable", "client_error")).toThrow(
-			"cannot have a blocked class",
+			"requires an exact reason",
 		);
+		expect(() => new ReconciliationError("retry", "retryable")).toThrow("requires an exact reason");
 
 		const ambiguous = new LumaPrintsReconciliationError("ambiguous", "blocked", "ambiguous_result");
 		expect(ambiguous).toMatchObject({
 			disposition: "blocked",
 			reconciliationClass: "ambiguous_result",
 			details: { kind: "blocked", reconciliationClass: "ambiguous_result" },
+		});
+		expect(
+			new LumaPrintsReconciliationError("changed wording", "retryable", "transport"),
+		).toMatchObject({
+			disposition: "retryable",
+			retryReason: "transport",
+			details: { kind: "retryable" },
 		});
 	});
 });
@@ -338,6 +346,7 @@ describe("LumaPrints request deadlines", () => {
 		try {
 			await expect(findOrderByExternalId("cs_test_1234567890abcdef")).rejects.toMatchObject({
 				disposition: "retryable",
+				retryReason: "resource_bound",
 				message: "Order reconciliation response exceeded its time bound",
 			});
 			expect(timeout.mock.calls.map(([duration]) => duration)).toEqual([15_000, 6_000]);
@@ -707,6 +716,7 @@ describe("confirmOrder", () => {
 		vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(null, { status })));
 		await expect(confirmOrder(orderNumber, externalId)).rejects.toMatchObject({
 			disposition,
+			retryReason: disposition === "retryable" ? "rate_or_server" : undefined,
 			...(reconciliationClass ? { reconciliationClass } : {}),
 		});
 	});
@@ -843,6 +853,7 @@ describe("findOrderByExternalId", () => {
 		vi.stubGlobal("fetch", vi.fn().mockResolvedValue(response));
 		await expect(findOrderByExternalId(externalId)).rejects.toMatchObject({
 			disposition: "retryable",
+			retryReason: "resource_bound",
 		});
 	});
 
@@ -866,6 +877,7 @@ describe("findOrderByExternalId", () => {
 		vi.stubGlobal("fetch", changingTotals);
 		await expect(findOrderByExternalId(externalId)).rejects.toMatchObject({
 			disposition: "retryable",
+			retryReason: "resource_bound",
 		});
 
 		vi.stubGlobal(
@@ -880,6 +892,7 @@ describe("findOrderByExternalId", () => {
 		);
 		await expect(findOrderByExternalId(externalId)).rejects.toMatchObject({
 			disposition: "retryable",
+			retryReason: "resource_bound",
 		});
 	});
 
@@ -897,6 +910,7 @@ describe("findOrderByExternalId", () => {
 			vi.stubGlobal("fetch", fetchMock);
 			await expect(findOrderByExternalId(externalId)).rejects.toMatchObject({
 				disposition: "retryable",
+				retryReason: "resource_bound",
 			});
 			expect(fetchMock).toHaveBeenCalledTimes(1);
 		}
@@ -962,6 +976,7 @@ describe("findOrderByExternalId", () => {
 		vi.stubGlobal("fetch", vi.fn().mockResolvedValue(overBound));
 		await expect(findOrderByExternalId(externalId)).rejects.toMatchObject({
 			disposition: "retryable",
+			retryReason: "resource_bound",
 		});
 	});
 
@@ -972,6 +987,7 @@ describe("findOrderByExternalId", () => {
 		vi.stubGlobal("fetch", vi.fn().mockRejectedValue(error));
 		await expect(findOrderByExternalId(externalId)).rejects.toMatchObject({
 			disposition: "retryable",
+			retryReason: "transport",
 		});
 	});
 
@@ -991,6 +1007,7 @@ describe("findOrderByExternalId", () => {
 		);
 		await expect(findOrderByExternalId(externalId)).rejects.toMatchObject({
 			disposition: "retryable",
+			retryReason: "transport",
 		});
 
 		vi.stubGlobal(
@@ -1008,6 +1025,7 @@ describe("findOrderByExternalId", () => {
 		);
 		await expect(findOrderByExternalId(externalId)).rejects.toMatchObject({
 			disposition: "retryable",
+			retryReason: "rate_or_server",
 		});
 	});
 
@@ -1016,6 +1034,7 @@ describe("findOrderByExternalId", () => {
 		await expect(findOrderByExternalId(externalId)).rejects.toMatchObject({
 			name: "LumaPrintsReconciliationError",
 			disposition: "retryable",
+			retryReason: "rate_or_server",
 		});
 	});
 
