@@ -345,6 +345,35 @@ changes. Shared guides
 use `documentationReferences` and `coveredByReferenceKeys` instead of pretending
 an artificial component sheet is an implemented route.
 
+## Verification recorded on 2026-10-03
+
+The inquiry pagination update shipped in [host PR #686](https://github.com/JessePomeroy/angelsrest/pull/686)
+at `4ecad988fe03825f84fb7b05f0531743d2318a4c`, with published Admin **6.7.0** and
+CRM API **6.5.0**. Its production deployment became READY and served both public
+aliases before the navigation release. Synthetic inbox loading, empty, read-error and populated
+states and status-filter/failure interactions passed at phone and desktop sizes
+in both themes. The handbook query fixture now supports the installed package's
+paginated inquiry contract. Its two fictional records are a visual fixture;
+the backend regression separately verifies reachability beyond 200 records.
+
+The keyboard focus fix shipped in [PR #687](https://github.com/JessePomeroy/angelsrest/pull/687)
+at `22dae589f2e3404cabed8d69adfbdef6405b51c3`. On that live production revision,
+real Tab/Shift+Tab traversal, Enter opening and Escape focus return passed at
+390×844 and 767×844 in both themes. The trigger and all six destinations showed
+the two-tone focus ring, with no page errors. Settled dark-phone and light-narrow
+desktop screenshots were visually inspected. This does not resume physical-device
+or VoiceOver acceptance, or replace a matched Paper comparison.
+
+The available production admin browser shows a login form; authenticated inbox
+verification remains unavailable. Paper opens signed out/read-only, so no board
+was edited or marked newly compared. Preserve inquiry artboards `Z2-0` and
+`165-0`, public navigation artboards `5UE-0` and `5Y7-0`, and their original
+`lastVerified` dates. Refresh them in place when editing access is available,
+matching viewport, data, theme, motion and time period before comparison.
+The inventory records this pending change without replacing historical provenance.
+Customer document portals and private delivery lightboxes remain outside the
+handbook scope.
+
 ## Verification recorded on 2026-09-27
 
 - All 110 current source captures completed without page errors; 72 existing
