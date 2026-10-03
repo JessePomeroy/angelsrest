@@ -1,5 +1,12 @@
 # @jessepomeroy/crm-api
 
+## 6.5.1
+
+### Patch Changes
+
+- 87fbeea: Return portal action tokens with their validated document identifier without a double type assertion, preserving token ownership and replay checks.
+- a645d54: Check subscription update fields against the platform-client document contract instead of an unrestricted dictionary. Runtime behavior and the public API are unchanged.
+
 ## 6.5.0
 
 ### Minor Changes
