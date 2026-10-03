@@ -3,7 +3,7 @@
 Source, builds, deployments, capability activation and verification are separate
 facts. Version 1 release records preserve each fact independently. An absent record
 means unknown. The validators and history rules live in
-`scripts/release-record/records.mjs`; a valid JSON shape is not proof that its
+`packages/crm-api/src/releases/records.mjs`; a valid JSON shape is not proof that its
 contents were observed.
 
 ## Identity and record kinds
@@ -179,3 +179,29 @@ Rollback of these tools consists of reverting the focused scripts/workflow chang
 Existing application behavior, provider resources and retained observations do not
 change. Host, package, Convex and Worker rollbacks retain their separate gates in
 the [release runbook](../runbooks/package-release-and-adoption.md).
+
+## Durable operator projection
+
+The shared CRM API package owns the record/receipt validator implementation under
+`src/releases/`; local CI and deployment tools import that same source. Its Node
+import action validates the complete saved history and incoming proof, checks the
+saved SHA-256, resolves every link, and derives a small query projection. Only an
+internal action accepts imports. The creator-only `platformReleaseRecords.forSite`
+query returns summaries, never raw evidence or authentication material.
+
+`platformReleaseEnvironments` binds an existing platform client and logical
+environment to a fixed repository/site/origin/verification-policy target. Its
+summary and version commit atomically with `platformReleaseHistory`'s evidence
+JSON and digest. Compare-and-swap rejects a stale concurrent snapshot; repeated
+identical imports leave the version unchanged. No deletion or automatic retention
+path is provided. Reassigning site ownership or changing a target requires an
+explicit migration rather than displaying the old site's health.
+
+The projection uses the current deployment's linked build for displayed versions;
+a newer unbound build cannot replace those values. Intended package comparisons
+cover each requested package. Source and contract comparisons stay unknown without
+both observations, and runtime compatibility stays unknown. A failed latest
+attempt takes priority in the next action even when an earlier deployment still
+serves the alias. All health and recovery labels retain the target's named-check
+scope. See the [operator runbook](../runbooks/package-release-and-adoption.md#platform-release-status)
+for import, bounds, retry and release ordering.

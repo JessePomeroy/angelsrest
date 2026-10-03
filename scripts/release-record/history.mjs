@@ -13,9 +13,15 @@ import {
 	writeFileSync,
 } from "node:fs";
 import { join } from "node:path";
+import {
+	assertObservationLinks,
+	assertObservationReceipt,
+} from "../../packages/crm-api/src/releases/receipts.mjs";
+import {
+	assertReleaseRecord,
+	deriveReleaseStatus,
+} from "../../packages/crm-api/src/releases/records.mjs";
 import { statusTarget } from "./observe.mjs";
-import { assertObservationLinks, assertObservationReceipt } from "./receipts.mjs";
-import { assertReleaseRecord, deriveReleaseStatus } from "./records.mjs";
 
 function directory(root, environmentId, create) {
 	let current = realpathSync(root);
@@ -43,10 +49,10 @@ function existingBytes(path) {
 	}
 }
 
-export function readReleaseHistory(root, target) {
+export function readReleaseEvidence(root, target) {
 	deriveReleaseStatus([], statusTarget(target));
 	const path = directory(root, target.environmentId, false);
-	if (path === null) return [];
+	if (path === null) return { records: [], receipts: [] };
 	const files = readdirSync(path);
 	if (files.length > 1000) throw new Error("Release history needs an explicit retention review.");
 	const records = [];
@@ -67,7 +73,11 @@ export function readReleaseHistory(root, target) {
 	}
 	assertObservationLinks(records, receipts, target);
 	deriveReleaseStatus(records, statusTarget(target));
-	return records;
+	return { records, receipts: [...receipts].map(([name, value]) => ({ name, value })) };
+}
+
+export function readReleaseHistory(root, target) {
+	return readReleaseEvidence(root, target).records;
 }
 
 function publishBytes(directory, filename, bytes) {

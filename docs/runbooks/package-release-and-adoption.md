@@ -99,3 +99,55 @@ retained history is unchanged and does not establish the new release's status.
 
 The [record contract](../contracts/release-records.md) describes alias races,
 artifact retention, source-only binding, unresolved observations and scope limits.
+
+## Platform release status
+
+The creator-only Platform page shows the intended release, last observed deployment,
+its exact linked package versions, named verification gaps and a next action for
+an existing platform client. Selecting another website hides the previous site's
+evidence while the new query loads. Unrecorded environments are empty, not healthy.
+
+Deploy the additive Convex schema/functions first, publish the matching CRM API
+contract, then adopt it in the host before enabling this view. The browser only
+reads the bounded summary. It never receives provider credentials, uploads trusted
+proof or changes deployment state.
+
+After observing a deployment with the command above, import its retained receipt
+through authenticated Convex operator tooling. Select the deployment explicitly:
+
+```zsh
+node scripts/import-release.mjs \
+  --repository JessePomeroy/angelsrest \
+  --site angelsrest.online --environment production \
+  --origin https://www.angelsrest.online \
+  --public-path / --public-path /cart \
+  --convex-deployment loyal-swan-967 \
+  --receipt "$RELEASE_OBSERVATION_RECEIPT"
+```
+
+Set `RELEASE_OBSERVATION_RECEIPT` to the exact `observation-<digest>.json` filename
+in that environment's retained history. The CLI sends only that receipt and its
+linked build, deployment and verification records. Use `--record <digest>.json`
+instead of `--receipt` to import a reviewed intended-release record prepared under
+the [record contract](../contracts/release-records.md). It must already belong to
+the same repository, website and environment. No intended release is inferred from
+the newest published package or a successful deployment.
+
+The existing platform client's canonical site URL is the ownership boundary. The
+first import fixes that client's repository, environment, origin and required-check
+policy. A later change requires an explicit migration review; it cannot silently
+reuse earlier health. Importing the same proof again does not create another
+version. If the CLI times out, retry the same import to confirm its outcome. A
+concurrent update requests a retry; prior evidence survives either way.
+
+History is bounded to 500 records, 500 receipts and 512 KiB per environment, with
+at most 16 environments per client. Incoming evidence is limited to 96 KiB (the CLI
+also counts serialized argument overhead). Hitting a bound requires a reviewed
+retention change; the importer does not prune recovery evidence automatically.
+
+“Required checks passed” means only that the named policy passed at the recorded
+time. Package/source/contract comparison is separate from runtime compatibility,
+which remains unverified until runtime evidence has a defined producer. The view
+keeps configuration and capability observations explicit. Failed upgrades retain
+the last deployment that passed the same checks as a recovery reference; using it
+still requires a fresh compatibility and provider-availability check.

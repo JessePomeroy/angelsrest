@@ -1,7 +1,11 @@
 import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { fileURLToPath } from "node:url";
-import { assertReleaseRecord, createReleaseRecord, deriveReleaseStatus } from "./records.mjs";
+import {
+	assertReleaseRecord,
+	createReleaseRecord,
+	deriveReleaseStatus,
+} from "../../packages/crm-api/src/releases/records.mjs";
 
 function requireObserved(condition) {
 	if (!condition) throw new Error("Release observation is incomplete or inconsistent.");
