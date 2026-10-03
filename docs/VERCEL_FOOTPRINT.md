@@ -105,6 +105,11 @@ its dependency symlinks; shared dependencies count per function. It is neither
 unique disk usage nor Vercel's billed Function Storage measurement. The static
 asset reduction above is separate. Recheck artifact size after major SDK changes.
 
+October 2: the current released baseline has six function bundles. The measured
+limits, CI check, and recurring usage-review procedure are maintained in
+[Build budgets and usage review](BUILD_BUDGETS.md). The four-bundle measurements
+above remain historical evidence, not current CI thresholds.
+
 ## Operating constraint
 
 These controls reduce footprint; they do not guarantee staying under quotas.
