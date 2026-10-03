@@ -110,15 +110,20 @@ describe("inquiry pagination", () => {
 			return id;
 		});
 		const expected = await admin.query(api.inquiries.list, { siteUrl, limit: 500 });
+		const capped = await admin.query(api.inquiries.listPaginated, {
+			siteUrl, paginationOpts: { numItems: 500, maximumRowsRead: 500, cursor: null },
+		});
+		expect(capped.page.length).toBeLessThanOrEqual(50);
 		const seen: Id<"inquiries">[] = [];
 		let cursor: string | null = null;
 		let isDone = false;
-		for (let i = 0; i < 6 && !isDone; i++) {
+		for (let i = 0; i < 10 && !isDone; i++) {
 			const result: PaginationResult<Doc<"inquiries">> = await admin.query(
 				api.inquiries.listPaginated,
-				{ siteUrl, paginationOpts: { numItems: 500, maximumRowsRead: 500, cursor } },
+				{ siteUrl, paginationOpts: { numItems: 25, cursor } },
 			);
-			expect(result.page.length).toBeLessThanOrEqual(50);
+			expect(result.page.length).toBeLessThanOrEqual(25);
+			expect(result.pageStatus).not.toBe("SplitRequired");
 			expect(result.page.every((row) => row.siteUrl === siteUrl)).toBe(true);
 			seen.push(...result.page.map((row) => row._id));
 			cursor = result.continueCursor;
