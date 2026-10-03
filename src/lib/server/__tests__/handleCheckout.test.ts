@@ -478,8 +478,11 @@ describe("handle checkout orchestration", () => {
 		const test = harness();
 		await createHandleCheckoutSession(test.options);
 		await createHandleCheckoutSession(test.options);
-		const calls = test.create.mock.calls as unknown as Array<[unknown, Stripe.RequestOptions]>;
-		expect(calls[0]?.[1].idempotencyKey).toBe(calls[1]?.[1].idempotencyKey);
+		const calls = test.create.mock.calls;
+		expect(calls).toHaveLength(2);
+		expect(calls[0]?.[0].expires_at).toEqual(expect.any(Number));
+		expect(calls[0]?.[1]?.idempotencyKey).toEqual(expect.any(String));
+		expect(calls[0]?.[1]?.idempotencyKey).toBe(calls[1]?.[1]?.idempotencyKey);
 		expect(calls[0]?.[0]).toEqual(calls[1]?.[0]);
 	});
 
@@ -493,8 +496,11 @@ describe("handle checkout orchestration", () => {
 			...test.options,
 			attempt: "423e4567-e89b-42d3-a456-426614174000",
 		});
-		const calls = test.create.mock.calls as unknown as Array<[unknown, Stripe.RequestOptions]>;
-		expect(calls[0]?.[1].idempotencyKey).not.toBe(calls[1]?.[1].idempotencyKey);
+		const calls = test.create.mock.calls;
+		expect(calls).toHaveLength(2);
+		expect(calls[0]?.[1]?.idempotencyKey).toEqual(expect.any(String));
+		expect(calls[1]?.[1]?.idempotencyKey).toEqual(expect.any(String));
+		expect(calls[0]?.[1]?.idempotencyKey).not.toBe(calls[1]?.[1]?.idempotencyKey);
 	});
 
 	it("withholds browser binding and success when reservation binding fails", async () => {

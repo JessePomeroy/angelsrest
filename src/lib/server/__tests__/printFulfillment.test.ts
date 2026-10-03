@@ -28,47 +28,6 @@ vi.mock("$lib/server/logger", () => ({
 	timed: async (_meta: unknown, fn: () => Promise<unknown>) => fn(),
 }));
 
-vi.mock("$lib/server/lumaprints", () => {
-	class LumaPrintsError extends Error {
-		details: unknown;
-
-		constructor(message: string, details?: unknown) {
-			super(message);
-			this.name = "LumaPrintsError";
-			this.details = details;
-		}
-	}
-	class LumaPrintsReconciliationError extends LumaPrintsError {
-		constructor(
-			message: string,
-			readonly disposition: "retryable" | "blocked",
-			readonly reconciliationClass?:
-				| "provider_rejected"
-				| "response_contract"
-				| "ambiguous_result"
-				| "client_error",
-		) {
-			super(message);
-			this.name = "LumaPrintsReconciliationError";
-		}
-	}
-	class LumaPrintsSubmissionError extends LumaPrintsError {
-		constructor(
-			message: string,
-			readonly disposition: "definitely_rejected" | "uncertain",
-			details?: unknown,
-		) {
-			super(message, details);
-			this.name = "LumaPrintsSubmissionError";
-		}
-	}
-	return {
-		LumaPrintsError,
-		LumaPrintsReconciliationError,
-		LumaPrintsSubmissionError,
-	};
-});
-
 vi.mock("$lib/server/webhookDecoder", () => ({
 	buildOrderItemsFromSession: mockBuildOrderItemsFromSession,
 	buildRecipientFromShipping: mockBuildRecipientFromShipping,
@@ -664,13 +623,7 @@ describe("print fulfillment", () => {
 	});
 
 	it("clears only a definitely rejected POST fence before entering refund recovery", async () => {
-		const { LumaPrintsSubmissionError } = (await import("$lib/server/lumaprints")) as unknown as {
-			LumaPrintsSubmissionError: new (
-				message: string,
-				disposition: "definitely_rejected" | "uncertain",
-				details?: unknown,
-			) => Error;
-		};
+		const { LumaPrintsSubmissionError } = await import("$lib/server/lumaprints");
 		const { submitPrintFulfillment } = await import("../printFulfillment");
 		mockCreateLumaPrintsOrder.mockRejectedValueOnce(
 			new LumaPrintsSubmissionError("rejected", "definitely_rejected", {
@@ -688,8 +641,14 @@ describe("print fulfillment", () => {
 			level: "error",
 			stage: "lumaprints_submit",
 			orderId: "ORD-001",
-			error: expect.any(Error),
-			meta: { phase: "status", statusCode: 400, providerReason: "billing_address" },
+			error: new Error("LumaPrints order submission failed"),
+			meta: {
+				operation: "create_order",
+				disposition: "definitely_rejected",
+				phase: "status",
+				statusCode: 400,
+				providerReason: "billing_address",
+			},
 		});
 		const claim = convex.mutation.mock.calls.find(
 			([reference]: unknown[]) => reference === "orders.claimPrintFulfillmentV5",
@@ -708,15 +667,14 @@ describe("print fulfillment", () => {
 	});
 
 	it("keeps an uncertain typed submission fenced for GET reconciliation", async () => {
-		const { LumaPrintsSubmissionError } = (await import("$lib/server/lumaprints")) as unknown as {
-			LumaPrintsSubmissionError: new (
-				message: string,
-				disposition: "definitely_rejected" | "uncertain",
-			) => Error;
-		};
+		const { LumaPrintsSubmissionError } = await import("$lib/server/lumaprints");
 		const { submitPrintFulfillment } = await import("../printFulfillment");
 		mockCreateLumaPrintsOrder.mockRejectedValueOnce(
-			new LumaPrintsSubmissionError("unknown", "uncertain"),
+			new LumaPrintsSubmissionError("unknown", "uncertain", {
+				phase: "transport",
+				kind: "network",
+				timeoutMs: 10_000,
+			}),
 		);
 
 		await expect(
