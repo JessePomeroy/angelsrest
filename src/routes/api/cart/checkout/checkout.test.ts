@@ -30,6 +30,7 @@ vi.mock("$lib/server/stripeTenant", () => ({
 	resolveStripeTenantForSite: mocks.resolveTenant,
 }));
 
+import type { ResolvedCheckoutItem } from "$lib/server/checkoutCatalog";
 import {
 	CHECKOUT_FAILED_MESSAGE,
 	CHECKOUT_SELECTION_CHANGED_MESSAGE,
@@ -155,35 +156,58 @@ describe("cart checkout", () => {
 		);
 	});
 
-	it("charges only catalog-resolved print lines in a mixed client cart, including quantities", async () => {
+	it("preserves authoritative line items and print fees in a mixed client cart", async () => {
 		mocks.resolveTenant.mockResolvedValue({
 			tenantId: "tenant_05eb6092-5d8c-43ce-ad26-1a59522bd07b",
 			siteUrl: "client.example",
 			stripeConnectedAccountId: "acct_1234567890TenantA",
 		});
-		const kinds = ["print", "print_set", "digital_download", "postcard", "tapestry", "merchandise"];
+		const kinds = [
+			"print",
+			"print_set",
+			"digital_download",
+			"postcard",
+			"tapestry",
+			"merchandise",
+		] as const;
+		const catalogItems = kinds.map(
+			(productKind, index) =>
+				({
+					productId: `product-${index}`,
+					title: productKind,
+					unitPriceCents: 10_019,
+					productCategory: productKind,
+					publicImage: null,
+					snapshot: { ...snapshot, productKind },
+					legacyFulfillment: {
+						isDigital: productKind === "digital_download",
+						isPrintSet: productKind === "print_set",
+						imageUrl:
+							productKind === "digital_download"
+								? null
+								: `https://media.example/product-${index}.webp`,
+						imageUrls: [],
+						paper:
+							productKind === "print" || productKind === "print_set"
+								? { name: "Archival paper", subcategoryId: 101002, width: 8, height: 10 }
+								: null,
+					},
+				}) satisfies ResolvedCheckoutItem,
+		);
 		mocks.resolveCurrentCommerce.mockResolvedValue({
 			provider: "convex",
-			items: kinds.map((productKind, index) => ({
-				productId: `product-${index}`,
-				title: productKind,
-				unitPriceCents: 10_019,
-				snapshot: { ...snapshot, productKind },
-				legacyFulfillment: {
-					isDigital: productKind === "digital_download",
-					isPrintSet: productKind === "print_set",
-					imageUrls: [],
-					paper: null,
-				},
-			})),
+			items: catalogItems,
 		});
 		const request = new Request("https://www.angelsrest.online/api/cart/checkout", {
 			method: "POST",
 			headers: { "Content-Type": "application/json" },
 			body: JSON.stringify({
-				items: kinds.map((_, index) => ({
+				items: kinds.map((kind, index) => ({
 					productSlug: `product-${index}`,
-					type: "print",
+					type: kind === "print_set" ? "set" : "print",
+					...(kind === "print" || kind === "print_set"
+						? { paperSlug: "archival", sizeSlug: "8x10" }
+						: {}),
 					quantity: 2,
 					unitPriceCents: 1,
 					productKind: "merchandise",
@@ -194,6 +218,7 @@ describe("cart checkout", () => {
 		await POST({ request, cookies: {} } as Parameters<typeof POST>[0]);
 		expect(mocks.createHandle).toHaveBeenCalledWith(
 			expect.objectContaining({
+				snapshotItems: catalogItems.map((item) => item.snapshot),
 				tenantCheckout: expect.objectContaining({
 					platformFeeAmount: 2003,
 					session: expect.objectContaining({
@@ -201,12 +226,19 @@ describe("cart checkout", () => {
 					}),
 					requestOptions: { stripeAccount: "acct_1234567890TenantA" },
 				}),
-				lineItems: kinds.map(() =>
-					expect.objectContaining({
-						quantity: 2,
-						price_data: expect.objectContaining({ unit_amount: 10_019 }),
-					}),
-				),
+				lineItems: kinds.map((kind, index) => ({
+					quantity: 2,
+					price_data: {
+						currency: "usd",
+						unit_amount: 10_019,
+						product_data: {
+							name:
+								kind === "print" || kind === "print_set" ? `${kind} — Archival paper, 8×10` : kind,
+							images:
+								kind === "digital_download" ? [] : [`https://media.example/product-${index}.webp`],
+						},
+					},
+				})),
 			}),
 		);
 	});

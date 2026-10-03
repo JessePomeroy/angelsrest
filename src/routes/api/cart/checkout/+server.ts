@@ -23,7 +23,6 @@ import { buildCheckoutLineItem } from "$lib/server/stripeCheckoutSession";
 import { getStripe } from "$lib/server/stripeClient";
 import { buildTenantProductCheckoutOptions } from "$lib/server/stripeConnect";
 import { resolveStripeTenantForSite } from "$lib/server/stripeTenant";
-import type { CartItem } from "$lib/shop/cart";
 
 interface CartCheckoutRequest {
 	items: unknown;
@@ -63,50 +62,28 @@ export async function POST({ request, cookies }) {
 			if (!catalogItem?.snapshot) {
 				throw new CurrentCheckoutCommerceError("invalid_authority", "authority");
 			}
-			const fulfillment = catalogItem.legacyFulfillment;
-			const base: CartItem = {
-				id: "server-resolved",
-				productSlug: catalogItem.productId,
-				type: fulfillment.isPrintSet ? "set" : "print",
-				quantity: item.quantity,
-				title: catalogItem.title,
-				imageUrl: fulfillment.imageUrl ?? "",
-				unitPriceCents: catalogItem.unitPriceCents,
-			};
 			return {
 				catalogItem,
 				snapshot: catalogItem.snapshot,
-				cartItem: {
-					...base,
-					title: catalogItem.title,
-					imageUrl: fulfillment.imageUrl ?? "",
-					imageUrls: fulfillment.isPrintSet ? [...fulfillment.imageUrls] : undefined,
-					paperName: fulfillment.paper?.name,
-					paperSubcategoryId: fulfillment.paper?.subcategoryId,
-					paperWidth: fulfillment.paper?.width,
-					paperHeight: fulfillment.paper?.height,
-					borderWidth: fulfillment.paper?.borderWidth,
-					frameSubcategoryId: fulfillment.paper?.frameSubcategoryId,
-					canvasSubcategoryId: fulfillment.paper?.canvasSubcategoryId,
-					canvasWrapHex: fulfillment.paper?.canvasWrapHex,
-					unitPriceCents: catalogItem.unitPriceCents,
-				} satisfies CartItem,
+				quantity: item.quantity,
 			};
 		});
-		const resolvedItems = resolved.map(({ cartItem }) => cartItem);
 
-		const lineItems: Stripe.Checkout.SessionCreateParams.LineItem[] = resolvedItems.map((item) => {
-			const hasPaper = typeof item.paperSubcategoryId === "number";
-			const name = hasPaper
-				? `${item.title} — ${item.paperName}, ${item.paperWidth}×${item.paperHeight}`
-				: item.title;
-			return buildCheckoutLineItem({
-				name,
-				imageUrl: item.imageUrl,
-				unitAmountCents: item.unitPriceCents,
-				quantity: item.quantity,
-			});
-		});
+		const lineItems: Stripe.Checkout.SessionCreateParams.LineItem[] = resolved.map(
+			({ catalogItem, quantity }) => {
+				const { paper, imageUrl } = catalogItem.legacyFulfillment;
+				const hasPaper = typeof paper?.subcategoryId === "number";
+				const name = hasPaper
+					? `${catalogItem.title} — ${paper.name}, ${paper.width}×${paper.height}`
+					: catalogItem.title;
+				return buildCheckoutLineItem({
+					name,
+					imageUrl: imageUrl ?? undefined,
+					unitAmountCents: catalogItem.unitPriceCents,
+					quantity,
+				});
+			},
+		);
 
 		const tenant = await runCheckoutSessionStage("checkout_tenant", () =>
 			resolveStripeTenantForSite(siteOrigin),
@@ -115,10 +92,10 @@ export async function POST({ request, cookies }) {
 			throw new NewOrderCheckoutClosedError();
 		}
 		const tenantCheckout = buildTenantProductCheckoutOptions({
-			items: resolved.map(({ catalogItem, snapshot, cartItem }) => ({
+			items: resolved.map(({ catalogItem, snapshot, quantity }) => ({
 				productKind: snapshot.productKind,
 				unitPriceCents: catalogItem.unitPriceCents,
-				quantity: cartItem.quantity,
+				quantity,
 			})),
 			tenant,
 		});
