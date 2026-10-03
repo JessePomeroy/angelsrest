@@ -249,6 +249,10 @@ them in route code.
   Sentry flush. Diagnostics do not change the submission disposition.
 - Network, timeout, rate-limit, server, and not-yet-visible reconciliation
   results remain retryable. They keep the durable submission claim.
+- Retryable reconciliation errors carry an explicit `transport`, `rate_or_server`,
+  or `resource_bound` reason from the provider adapter. Retry accounting uses that
+  reason rather than parsing the human-readable message. Untyped exceptions and
+  an unobserved result keep their existing separate escalation reasons.
 - A documented create non-acceptance can enter the refund path only after an
   atomic, claim-bound rejection checkpoint. Reconciliation read rejection does
   not prove that the earlier create request was rejected.
