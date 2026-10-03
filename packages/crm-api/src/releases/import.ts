@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { isDeepStrictEqual } from "node:util";
 import {
 	MAX_RELEASE_HISTORY_BYTES,
 	MAX_RELEASE_IMPORT_BYTES,
@@ -57,8 +58,12 @@ function append<T>(prior: T[], incoming: T[], key: (value: T) => string): T[] {
 	for (const value of [...prior, ...incoming]) {
 		const id = key(value);
 		const previous = entries.get(id);
-		if (previous && JSON.stringify(previous) !== JSON.stringify(value))
-			throw new Error("Immutable release evidence conflict.");
+		if (previous) {
+			if (!isDeepStrictEqual(previous, value))
+				throw new Error("Immutable release evidence conflict.");
+			// A canonical record ID ignores object-key order; preserve the first validated bytes.
+			continue;
+		}
 		entries.set(id, value);
 	}
 	return [...entries.entries()].sort(([a], [b]) => a.localeCompare(b)).map(([, value]) => value);

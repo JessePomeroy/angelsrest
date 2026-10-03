@@ -346,6 +346,61 @@ describe("operator release evidence", () => {
 		).toEqual(before);
 	});
 
+	test("object-key reordering is an idempotent replay while changed content is rejected", async () => {
+		const { t } = await setup();
+		const fixture = observation();
+		await t.action(internal.platformReleaseRecordsNode.importObservation, {
+			target,
+			evidenceJson: fixture.evidenceJson,
+		});
+		const before = await t.query(internal.platformReleaseRecords.snapshot, {
+			siteUrl: target.siteUrl,
+			environmentId: target.environmentId,
+		});
+		function reorder(value: unknown): unknown {
+			if (Array.isArray(value)) return value.map(reorder);
+			if (value !== null && typeof value === "object")
+				return Object.fromEntries(
+					Object.entries(value)
+						.reverse()
+						.map(([key, entry]) => [key, reorder(entry)]),
+				);
+			return value;
+		}
+		const reordered = JSON.stringify({
+			records: [fixture.build, fixture.deployment, fixture.verification].map(reorder),
+			receipts: [{ name: fixture.receiptName, value: fixture.receipt }],
+		});
+		expect(
+			await t.action(internal.platformReleaseRecordsNode.importObservation, {
+				target,
+				evidenceJson: reordered,
+			}),
+		).toEqual({ changed: false, version: 1 });
+		expect(
+			await t.query(internal.platformReleaseRecords.snapshot, {
+				siteUrl: target.siteUrl,
+				environmentId: target.environmentId,
+			}),
+		).toEqual(before);
+		fixture.build.data.packages[0].version = "9.0.0";
+		await expect(
+			t.action(internal.platformReleaseRecordsNode.importObservation, {
+				target,
+				evidenceJson: JSON.stringify({
+					records: [fixture.build],
+					receipts: [{ name: fixture.receiptName, value: fixture.receipt }],
+				}),
+			}),
+		).rejects.toThrow("Invalid release record");
+		expect(
+			await t.query(internal.platformReleaseRecords.snapshot, {
+				siteUrl: target.siteUrl,
+				environmentId: target.environmentId,
+			}),
+		).toEqual(before);
+	});
+
 	test("missing proof, a foreign target or excessive data cannot leave partial history", async () => {
 		const { t } = await setup();
 		const fixture = observation();
