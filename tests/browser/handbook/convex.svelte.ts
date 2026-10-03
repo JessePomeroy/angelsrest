@@ -13,6 +13,10 @@ function fixtureQuery(name: string, args: Args = {}) {
 	if (args === "skip") return undefined;
 	switch (name) {
 		case "orders:list": return list(data.orders);
+		case "inquiries:listPaginated":
+			return pageOf(data.inquiries
+				.filter((inquiry) => !args.status || inquiry.status === args.status)
+				.map((inquiry) => ({ ...inquiry, _creationTime: Date.parse(inquiry.submittedAt) })));
 		case "orders:getStats": return { stats: { totalOrders: empty ? 0 : 3, isTruncated: false, scanLimit: 100 }, grossPayments: [{ currency: "usd", orderCount: empty ? 0 : 3, todayMinorUnits: empty ? 0 : 4500, weekMinorUnits: empty ? 0 : 20000, monthMinorUnits: empty ? 0 : 20000, allTimeMinorUnits: empty ? 0 : 20000 }], dailyGrossPayments: list([4500, 9000, 6500].map((amountMinorUnits, index) => ({ date: `2026-09-0${index + 7}`, currency: "usd", amountMinorUnits }))), recentOrders: list(data.orders.map(order => ({ ...order, createdAt: new Date(order._creationTime).toISOString() }))) };
 		case "crm:listClients": return list(data.clients);
 		case "crm:listClientsWithTags": return pageOf(data.clients.filter(client => (!args.category || client.category === args.category) && (!args.status || client.status === args.status)));
