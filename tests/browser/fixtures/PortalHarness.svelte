@@ -14,9 +14,27 @@ function createData(): PageData {
   if (kind === "contract") return { ...base, type: "contract", document: { _creationTime: 1_700_000_000_000, title: "Photography agreement", status: "sent", body: "A portrait session and five finished photographs.\nDelivery within two weeks.", eventDate: "2026-10-10", eventLocation: "Fixture studio", totalPrice: 25000, depositAmount: 5000 } };
   return { ...base, type: "invoice", document: { _creationTime: 1_700_000_000_000, invoiceNumber: "INV-100", status: kind === "paid" ? "paid" : "sent", items: [{ description: "Portrait session", quantity: 1, unitPrice: 20000 }, { description: "Prints", quantity: 2, unitPrice: 2500 }], taxPercent: 6, dueDate: "2026-10-10", notes: "Thank you for your support." } };
 }
-const data = createData();
+const reuse = new URLSearchParams(window.location.search).has("reuse");
+let documentId = $state("A");
+let mounted = $state(true);
+function loadDocument(id: string): PageData {
+  return { ...createData(), token: `fixture-portal-${id}`, client: { name: `Fixture client ${id}` } };
+}
+let data = $state.raw(reuse ? loadDocument("A") : createData());
+function showDocument(id: string) {
+  documentId = id;
+  data = loadDocument(id);
+}
 </script>
 
+{#if reuse}
+  <nav aria-label="Fixture document navigation">
+    <button onclick={() => showDocument("A")}>Show document A</button>
+    <button onclick={() => showDocument("B")}>Show document B</button>
+    <button onclick={() => showDocument(documentId)}>Refresh document</button>
+    <button onclick={() => { mounted = false; }}>Leave portal</button>
+  </nav>
+{/if}
 {#if kind === "payment-success"}<PaymentSuccess />
 {:else if kind === "payment-canceled"}<PaymentCanceled />
-{:else}<Portal {data} />{/if}
+{:else if mounted}<Portal {data} />{/if}
