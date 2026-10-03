@@ -2,8 +2,10 @@
 // @vitest-environment edge-runtime
 
 import { convexTest } from "convex-test";
+import type { PaginationResult } from "convex/server";
 import { afterEach, beforeEach, describe, expect, test } from "vitest";
 import { api } from "./_generated/api";
+import type { Doc, Id } from "./_generated/dataModel";
 import schema from "./schema";
 
 const modules = import.meta.glob("./**/*.ts");
@@ -60,5 +62,118 @@ describe("inquiry creation boundary", () => {
 				message: "Hello",
 			}),
 		).rejects.toThrow("Not authorized (webhook secret mismatch)");
+	});
+});
+
+describe("inquiry pagination", () => {
+	const siteUrl = "inquiries.example.test";
+	const email = "admin@inquiries.example.test";
+	const firstPage = { numItems: 50, cursor: null };
+
+	async function setup() {
+		const t = convexTest(schema, modules);
+		const siteId = await t.run((ctx) => ctx.db.insert("platformClients", {
+			name: "Synthetic inbox",
+			email,
+			siteUrl,
+			tier: "full",
+			subscriptionStatus: "active",
+			adminEmails: [email],
+			role: "client",
+		}));
+		return {
+			t,
+			siteId,
+			admin: t.withIdentity({ subject: "inquiry-admin", email, emailVerified: true }),
+		};
+	}
+
+	test("reaches the oldest unanswered inquiry beyond 200 rows and filters before paging", async () => {
+		const { t, admin } = await setup();
+		const oldest = await t.run(async (ctx) => {
+			const id = await ctx.db.insert("inquiries", {
+				siteUrl, name: "Oldest unanswered", email, message: "Synthetic", status: "new",
+			});
+			for (let i = 0; i < 205; i++) {
+				await ctx.db.insert("inquiries", {
+					siteUrl, name: `Replied ${i}`, email, message: "Synthetic", status: "replied",
+				});
+			}
+			await ctx.db.insert("inquiries", {
+				siteUrl: "foreign.example.test", name: "Other tenant", email,
+				message: "Synthetic", status: "new",
+			});
+			return id;
+		});
+		const expected = await admin.query(api.inquiries.list, { siteUrl, limit: 500 });
+		const seen: Id<"inquiries">[] = [];
+		let cursor: string | null = null;
+		let isDone = false;
+		for (let i = 0; i < 6 && !isDone; i++) {
+			const result: PaginationResult<Doc<"inquiries">> = await admin.query(
+				api.inquiries.listPaginated,
+				{ siteUrl, paginationOpts: { numItems: 500, maximumRowsRead: 500, cursor } },
+			);
+			expect(result.page.length).toBeLessThanOrEqual(50);
+			expect(result.page.every((row) => row.siteUrl === siteUrl)).toBe(true);
+			seen.push(...result.page.map((row) => row._id));
+			cursor = result.continueCursor;
+			isDone = result.isDone;
+		}
+		expect(isDone).toBe(true);
+		expect(seen).toEqual(expected.map((row) => row._id));
+		expect(seen).toHaveLength(206);
+		expect(new Set(seen).size).toBe(seen.length);
+		expect(seen.at(-1)).toBe(oldest);
+		const unread = await admin.query(api.inquiries.listPaginated, {
+			siteUrl, status: "new", paginationOpts: firstPage,
+		});
+		expect(unread.page.map((row) => row._id)).toEqual([oldest]);
+		expect(unread.isDone).toBe(true);
+		expect(await admin.query(api.inquiries.countNew, { siteUrl })).toBe(1);
+	});
+
+	test("status changes and deletion update filtered results and the unread count", async () => {
+		const { t, admin } = await setup();
+		const id = await t.run((ctx) => ctx.db.insert("inquiries", {
+			siteUrl, name: "Status transition", email, message: "Synthetic", status: "new",
+		}));
+		await admin.mutation(api.inquiries.updateStatus, { id, status: "read" });
+		const unread = await admin.query(api.inquiries.listPaginated, {
+			siteUrl, status: "new", paginationOpts: firstPage,
+		});
+		expect(unread.page).toEqual([]);
+		expect(await admin.query(api.inquiries.countNew, { siteUrl })).toBe(0);
+		const read = await admin.query(api.inquiries.listPaginated, {
+			siteUrl, status: "read", paginationOpts: firstPage,
+		});
+		expect(read.page.map((row) => row._id)).toEqual([id]);
+		await admin.mutation(api.inquiries.remove, { id });
+		expect((await admin.query(api.inquiries.listPaginated, {
+			siteUrl, paginationOpts: firstPage,
+		})).page).toEqual([]);
+	});
+
+	test("authorizes every page against current stored membership", async () => {
+		const { t, admin, siteId } = await setup();
+		const args = { siteUrl, paginationOpts: firstPage };
+		await expect(t.query(api.inquiries.listPaginated, args)).rejects.toThrow("Not authenticated");
+		await expect(admin.query(api.inquiries.listPaginated, {
+			...args, siteUrl: "foreign.example.test",
+		})).rejects.toThrow("Not authorized");
+		await t.run(async (ctx) => {
+			for (let i = 0; i < 2; i++) {
+				await ctx.db.insert("inquiries", {
+					siteUrl, name: `Member ${i}`, email, message: "Synthetic", status: "new",
+				});
+			}
+		});
+		const first = await admin.query(api.inquiries.listPaginated, {
+			siteUrl, paginationOpts: { numItems: 1, cursor: null },
+		});
+		await t.run((ctx) => ctx.db.patch(siteId, { adminEmails: [] }));
+		await expect(admin.query(api.inquiries.listPaginated, {
+			siteUrl, paginationOpts: { numItems: 1, cursor: first.continueCursor },
+		})).rejects.toThrow("Not authorized");
 	});
 });
