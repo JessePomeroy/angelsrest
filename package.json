@@ -17,7 +17,7 @@
 		"check": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json",
 		"check:package-contract": "tsc -p packages/crm-api/tests/tsconfig.consumer.json --noEmit",
 		"check:watch": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json --watch",
-		"lint": "biome check .",
+		"lint": "pnpm lint:anti-slop && biome check .",
 		"format": "biome format --write .",
 		"test": "node --test scripts/vercel-ignore-build.test.mjs scripts/check-build-budget.test.mjs scripts/content-export.test.mjs scripts/cms-orphan-cleanup.test.mjs && vitest run && pnpm test:protocol",
 		"test:watch": "vitest",
@@ -27,12 +27,14 @@
 		"smoke:gallery-host-bulk-delete": "node scripts/smoke-gallery-host-bulk-delete.mjs",
 		"test:protocol": "vitest run --config vitest.protocol.config.ts",
 		"test:gallery-upload-contract": "vitest run --config vitest.gallery-upload-contract.config.ts",
-		"test:print-contract": "vitest run --config vitest.print-contract.config.ts"
+		"test:print-contract": "vitest run --config vitest.print-contract.config.ts",
+		"lint:anti-slop": "oxlint ."
 	},
 	"devDependencies": {
 		"@biomejs/biome": "^2.4.13",
 		"@changesets/cli": "^3.0.2",
 		"@edge-runtime/vm": "^5.0.0",
+		"@oxlint/plugins": "1.86.0",
 		"@playwright/test": "^1.59.1",
 		"@sveltejs/adapter-auto": "^7.0.1",
 		"@sveltejs/adapter-vercel": "^6.3.4",
@@ -44,6 +46,7 @@
 		"dotenv": "^17.4.2",
 		"husky": "^9.1.7",
 		"lint-staged": "^16.4.0",
+		"oxlint": "1.86.0",
 		"svelte": "^5.56.4",
 		"svelte-check": "^4.4.6",
 		"tsx": "^4.22.4",
