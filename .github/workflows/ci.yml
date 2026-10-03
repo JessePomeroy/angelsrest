@@ -127,6 +127,12 @@ jobs:
       - name: Retired platform checkout handler stays absent
         run: test ! -f src/routes/api/platform/create-checkout/+server.ts
 
+      - name: Build and enforce size budgets
+        shell: bash
+        run: |
+          pnpm build
+          pnpm check:build-budget | tee -a "$GITHUB_STEP_SUMMARY"
+
       - name: Install Playwright Chromium and WebKit
         run: pnpm exec playwright install --with-deps chromium webkit
 

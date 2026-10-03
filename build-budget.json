@@ -1,0 +1,18 @@
+{
+	"measuredCommit": "96090f17a48db7bdeec0927f2c37d6160e92f61a",
+	"measuredDate": "2026-10-02",
+	"environment": "Linux x64; Node 24.18.0; pnpm 10.34.5; frozen lockfile; CI placeholders; no Sentry uploads",
+	"runtime": "nodejs24.x",
+	"baseline": {
+		"functionCount": 6,
+		"functionBytes": 250174013,
+		"largestFunctionBytes": 70120049,
+		"staticBytes": 2617808
+	},
+	"limits": {
+		"functionCount": 6,
+		"functionBytes": 275200000,
+		"largestFunctionBytes": 77200000,
+		"staticBytes": 2900000
+	}
+}
