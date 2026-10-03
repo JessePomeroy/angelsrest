@@ -1,4 +1,44 @@
-import { expect, test } from "@playwright/test";
+import { expect, test, type Locator } from "@playwright/test";
+
+async function expectVisibleFocus(control: Locator) {
+	await expect(control).toBeFocused();
+	expect(await control.evaluate((element) => element.matches(":focus-visible"))).toBe(true);
+	await expect(control).toHaveCSS("outline-style", "solid");
+	await expect(control).toHaveCSS("outline-width", "2px");
+	await expect(control).not.toHaveCSS("box-shadow", "none");
+}
+
+for (const theme of ["light", "dark"]) {
+	test(`liquid navigation keeps visible keyboard focus in the ${theme} theme`, async ({ page, isMobile }, testInfo) => {
+		test.setTimeout(60_000);
+		// The desktop project deliberately exercises a narrow desktop window too.
+		await page.setViewportSize({ width: isMobile ? 390 : 767, height: 844 });
+		await page.emulateMedia({ reducedMotion: "no-preference" });
+		await page.goto("/?fixture=liquid-navigation");
+		await page.evaluate((dark) => document.documentElement.classList.toggle("dark", dark), theme === "dark");
+		const sphere = page.locator(".sphere");
+		await expect(sphere).toBeVisible();
+		await page.keyboard.press("Tab");
+		await expectVisibleFocus(sphere);
+		await page.keyboard.press("Enter");
+		await expect(sphere).toHaveAttribute("aria-expanded", "true");
+		await expect(page.locator(".jelly-nav")).toHaveClass(/rendered/);
+		const navigation = page.getByRole("navigation", { name: "Mobile navigation" });
+		const destinations = ["Gallery", "Shop", "Open cart, 0 items", "About", "Home", "Blog"];
+		for (const label of destinations) {
+			await page.keyboard.press("Tab");
+			await expectVisibleFocus(navigation.getByRole(label.startsWith("Open cart") ? "button" : "link", { name: label, exact: true }));
+		}
+		await page.screenshot({ path: testInfo.outputPath(`liquid-keyboard-${theme}.png`) });
+		for (const label of destinations.slice(0, -1).reverse()) {
+			await page.keyboard.press("Shift+Tab");
+			await expectVisibleFocus(navigation.getByRole(label.startsWith("Open cart") ? "button" : "link", { name: label, exact: true }));
+		}
+		await page.keyboard.press("Escape");
+		await expect(sphere).toHaveAttribute("aria-expanded", "false");
+		await expectVisibleFocus(sphere);
+	});
+}
 
 test("reduced motion keeps the original nav and cart without loading liquid modules", async ({ page, isMobile }) => {
 	await page.emulateMedia({ reducedMotion: "reduce" });
