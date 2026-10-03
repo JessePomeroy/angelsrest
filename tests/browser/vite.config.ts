@@ -8,7 +8,11 @@ export default defineConfig({
 	root: path("./fixtures"),
 	// Keep real component styles while avoiding dev virtual-CSS cache misses for packed packages.
 	plugins: [svelte({ configFile: false, compilerOptions: { css: "injected" } })],
-	optimizeDeps: { exclude: ["@jessepomeroy/admin", "@jessepomeroy/admin/theme"] },
+	optimizeDeps: {
+		// Lazy liquid-navigation activation must not reload the fixture mid-interaction.
+		include: ["three"],
+		exclude: ["@jessepomeroy/admin", "@jessepomeroy/admin/theme"],
+	},
 	resolve: {
 		dedupe: ["svelte"],
 		alias: {
