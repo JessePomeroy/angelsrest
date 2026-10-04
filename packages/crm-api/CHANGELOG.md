@@ -1,5 +1,11 @@
 # @jessepomeroy/crm-api
 
+## 6.7.1
+
+### Patch Changes
+
+- 1fd8336: Extract transaction-local checkout routing and order tenant checks for background intake while preserving existing orders API names, authority checks and replay behavior.
+
 ## 6.7.0
 
 ### Minor Changes
