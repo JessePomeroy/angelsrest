@@ -58,6 +58,7 @@ async function copySetupLink() {
 </script>
 
 {#if data.adminSession.status === "authorized" && data.adminSession.isCreator}
+	<p class="intake-link"><a href="/admin/platform/intake">Review background checkout intake</a></p>
 	<PlatformClientCreate oncreated={(client) => { selectedSiteUrl = client.siteUrl; copiedUrl = ""; }} />
 {/if}
 
@@ -131,6 +132,10 @@ async function copySetupLink() {
 <PlatformPage {data} />
 
 <style>
+	.intake-link { margin: 28px 40px 0; font-size: .9rem; }
+	.intake-link a { color: var(--admin-heading); text-underline-offset: 3px; }
+	.intake-link a:focus-visible { outline: 2px solid var(--admin-heading); outline-offset: 3px; }
+	@media (max-width: 640px) { .intake-link { margin-inline: 20px; } }
 	.stripe-panel {
 		display: grid;
 		grid-template-columns: minmax(0, 1fr) minmax(260px, 360px) auto;

@@ -7,6 +7,7 @@ import {
 	readCheckoutTenantIdMarker,
 	readCheckoutTenantMarker,
 } from "$lib/server/checkoutSnapshotConsumer";
+import { acceptCommerceIntake } from "$lib/server/commerceIntakeJob";
 import { getConvex } from "$lib/server/convexClient";
 import { logStructured } from "$lib/server/logger";
 import { createOrderLumaPrintsClient as getLumaPrintsClient } from "$lib/server/lumaprints";
@@ -54,6 +55,7 @@ export async function POST({ request }) {
 		if (await processStripeConnectLifecycleEvent(event, role, { stripe, convex }))
 			return json({ received: true });
 		phase = "admission";
+		if (await acceptCommerceIntake(event, role, convex)) return json({ received: true });
 		if (await isAcknowledgedOrderReplay(event)) return json({ received: true });
 		phase = "intake";
 		const resend = getResend();

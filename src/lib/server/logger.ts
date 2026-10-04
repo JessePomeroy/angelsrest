@@ -28,7 +28,15 @@
  *   error-vs-info routing — change them once, every call site updates.
  */
 
+import { AsyncLocalStorage } from "node:async_hooks";
 import { addBreadcrumb, captureException, withScope } from "@sentry/node";
+
+const privateIntakeLogs = new AsyncLocalStorage<true>();
+
+/** Retained-event processing must not copy customer/provider payloads into logs or Sentry. */
+export function withPrivateIntakeLogs<T>(work: () => Promise<T>): Promise<T> {
+	return privateIntakeLogs.run(true, work);
+}
 
 export type LogLevel = "info" | "warn" | "error";
 
@@ -83,7 +91,15 @@ export interface StructuredLogEntry {
  * Emit a structured log entry. Always writes JSON to console; routes
  * errors to Sentry; adds a breadcrumb otherwise.
  */
-export function logStructured(entry: StructuredLogEntry): void {
+export function logStructured(input: StructuredLogEntry): void {
+	const entry: StructuredLogEntry = privateIntakeLogs.getStore()
+		? {
+				event: /^[a-z][a-z0-9_.]{1,96}$/.test(input.event) ? input.event : "commerce_intake.event",
+				level: input.level,
+				stage: input.stage,
+				durationMs: input.durationMs,
+			}
+		: input;
 	const level = entry.level ?? "info";
 	const payload = {
 		ts: new Date().toISOString(),

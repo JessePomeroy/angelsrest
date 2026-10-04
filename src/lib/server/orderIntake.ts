@@ -60,6 +60,10 @@ import {
 	type PreparedPrintJob,
 } from "$lib/server/webhookOrders";
 import { getWebhookSecret } from "$lib/server/webhookSecret";
+import type {
+	CheckoutIntakeSession,
+	CommerceIntakeEvent,
+} from "../../../packages/crm-api/convex/helpers/commerceIntakeEnvelope";
 
 class PaymentFailureEmailClaimError extends Error {}
 class PrintReconciliationAlertDeliveryError extends Error {}
@@ -73,15 +77,12 @@ export interface OrderIntakeAdapters {
 }
 
 export async function processStripeWebhookEvent(
-	event: Stripe.Event,
+	event: Stripe.Event | CommerceIntakeEvent,
 	adapters: OrderIntakeAdapters,
 	verifiedDestinationRole?: CommerceWebhookRole,
 ) {
 	const webhookStart = Date.now();
-	const sessionId =
-		event.type === "checkout.session.completed"
-			? (event.data.object as Stripe.Checkout.Session).id
-			: undefined;
+	const sessionId = event.type === "checkout.session.completed" ? event.data.object.id : undefined;
 
 	logStructured({
 		event: "webhook.received",
@@ -93,7 +94,7 @@ export async function processStripeWebhookEvent(
 	try {
 		switch (event.type) {
 			case "checkout.session.completed": {
-				const session = event.data.object as Stripe.Checkout.Session;
+				const session = event.data.object;
 				if (session.mode !== "payment" || session.metadata?.type === "platform_subscription") break;
 				if (session.metadata?.type === "invoice_payment") {
 					const tenant = await resolveCommerceTenant(event, adapters.convex);
@@ -305,7 +306,7 @@ function classifyIntakeFailure(cause: unknown) {
 }
 
 async function markInvoicePaidFromSession(
-	session: Stripe.Checkout.Session,
+	session: CheckoutIntakeSession,
 	convex: ConvexHttpClient,
 	siteUrl: string,
 	stripeAccountId?: string,
@@ -428,7 +429,7 @@ async function handlePaymentFailed(
 }
 
 export async function handleCheckoutCompleted(
-	session: Stripe.Checkout.Session,
+	session: CheckoutIntakeSession,
 	adapters: OrderIntakeAdapters,
 	{
 		tenantId,
@@ -747,7 +748,7 @@ export async function deliverFulfillmentOutcome(
 }
 
 async function fetchSessionDetails(
-	session: Stripe.Checkout.Session,
+	session: CheckoutIntakeSession,
 	stripe: Stripe,
 	requestOptions?: Stripe.RequestOptions,
 	completeLineItems = false,
@@ -771,7 +772,7 @@ async function fetchSessionDetails(
 		};
 	}
 
-	let fullSession: Stripe.Checkout.Session;
+	let fullSession: CheckoutIntakeSession;
 	let lineItems: Stripe.LineItem[] = [];
 	let shippingDetails: ShippingDetails;
 

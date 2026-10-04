@@ -10,6 +10,7 @@ import {
 	COMMERCE_TENANT_METADATA_KEY,
 	normalizeCommerceTenantSiteUrl,
 } from "$lib/server/stripeConnect";
+import type { CommerceIntakeEvent } from "../../../packages/crm-api/convex/helpers/commerceIntakeEnvelope";
 
 export interface CommerceNotificationProfile {
 	tenantId?: string;
@@ -35,7 +36,7 @@ export const ANGELS_REST_COMMERCE_PROFILE: CommerceNotificationProfile = {
 };
 
 export async function resolveCommerceTenant(
-	event: Stripe.Event,
+	event: Stripe.Event | CommerceIntakeEvent,
 	convex: ConvexHttpClient,
 	routedSiteUrl?: string,
 	routedTenantId?: string,
@@ -144,13 +145,13 @@ async function resolveCommerceContext(
 	};
 }
 
-function readMetadataSiteUrl(event: Stripe.Event) {
+function readMetadataSiteUrl(event: Stripe.Event | CommerceIntakeEvent) {
 	const object = event.data.object as { metadata?: Record<string, string> | null };
 	const value = object.metadata?.[COMMERCE_TENANT_METADATA_KEY];
 	return typeof value === "string" && value.trim() ? value.trim() : undefined;
 }
 
-function readMetadataTenantId(event: Stripe.Event) {
+function readMetadataTenantId(event: Stripe.Event | CommerceIntakeEvent) {
 	const object = event.data.object as { metadata?: Record<string, string> | null };
 	const value = object.metadata?.[COMMERCE_TENANT_ID_METADATA_KEY];
 	if (value === undefined) return undefined;
