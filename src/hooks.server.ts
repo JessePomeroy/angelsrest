@@ -14,6 +14,7 @@ import type { Handle, HandleServerError } from "@sveltejs/kit";
 import { contentSecurityPolicy } from "$lib/config/securityPolicy";
 import { applyCapabilityResponsePrivacy } from "$lib/server/capabilityResponsePrivacy";
 import { applyPublicPageCache } from "$lib/server/publicPageCache";
+import { isStagingEnvironment } from "$lib/server/runtimeConfig";
 
 function addSecurityHeaders(response: Response, pathname: string): Response {
 	const cloned = new Response(response.body, response);
@@ -49,6 +50,7 @@ function addSecurityHeaders(response: Response, pathname: string): Response {
 }
 
 const appHandle: Handle = async ({ event, resolve }) => {
+	const staging = isStagingEnvironment();
 	const response = await resolve(event);
 
 	// Skip security headers for auth API routes — the auth library sets its
@@ -59,6 +61,7 @@ const appHandle: Handle = async ({ event, resolve }) => {
 	}
 
 	const secured = addSecurityHeaders(response, event.url.pathname);
+	if (staging) secured.headers.set("X-Robots-Tag", "noindex, nofollow, noarchive");
 	applyPublicPageCache(event, secured);
 	return secured;
 };

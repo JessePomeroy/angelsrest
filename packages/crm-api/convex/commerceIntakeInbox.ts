@@ -1,5 +1,6 @@
 import { paginationOptsValidator } from "convex/server";
 import { v } from "convex/values";
+import { hubRunnerUrl } from "../src/hubRunnerUrl";
 import { internal } from "./_generated/api";
 import type { Doc, Id } from "./_generated/dataModel";
 import { internalAction, internalMutation, internalQuery, mutation, query,
@@ -200,11 +201,10 @@ export const dispatch = internalAction({
 		const ready: boolean = await ctx.runQuery(internal.commerceIntakeInbox.dispatchReady, args);
 		if (!ready) return null;
 		try {
-			const url = new URL(process.env.COMMERCE_INTAKE_RUNNER_URL ?? "");
+			const url = hubRunnerUrl(process.env.COMMERCE_INTAKE_RUNNER_URL,
+				process.env.CONVEX_SITE_URL, "/api/internal/commerce-intake");
 			const secret = process.env.COMMERCE_INTAKE_RUNNER_SECRET;
-			if (!["https://angelsrest.online", "https://www.angelsrest.online"].includes(url.origin)
-				|| url.pathname !== "/api/internal/commerce-intake" || url.search || url.hash || url.username || url.password
-				|| !secret || secret.length < 32 || secret === process.env.WEBHOOK_SECRET
+			if (!secret || secret.length < 32 || secret === process.env.WEBHOOK_SECRET
 				|| secret === process.env.PRINT_FULFILLMENT_RUNNER_SECRET) {
 				throw new Error("Commerce intake runner configuration is invalid");
 			}

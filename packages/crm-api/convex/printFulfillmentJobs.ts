@@ -1,4 +1,5 @@
 import { v, type Infer } from "convex/values";
+import { hubRunnerUrl } from "../src/hubRunnerUrl";
 import { internal } from "./_generated/api";
 import type { Doc } from "./_generated/dataModel";
 import { internalAction, internalMutation, mutation, query, type MutationCtx, type QueryCtx } from "./_generated/server";
@@ -232,11 +233,10 @@ export const dispatch = internalAction({
 		const lease: { leaseToken: string } | null = await ctx.runMutation(internal.printFulfillmentJobs.begin, args);
 		if (!lease) return;
 		try {
-			const url = new URL(process.env.PRINT_FULFILLMENT_RUNNER_URL ?? "");
+			const url = hubRunnerUrl(process.env.PRINT_FULFILLMENT_RUNNER_URL,
+				process.env.CONVEX_SITE_URL, "/api/internal/print-fulfillment");
 			const secret = process.env.PRINT_FULFILLMENT_RUNNER_SECRET;
-			if (!["https://angelsrest.online", "https://www.angelsrest.online"].includes(url.origin)
-				|| url.pathname !== "/api/internal/print-fulfillment" || url.search || url.hash || url.username || url.password
-				|| !secret || secret.length < 32 || secret === process.env.WEBHOOK_SECRET) {
+			if (!secret || secret.length < 32 || secret === process.env.WEBHOOK_SECRET) {
 				throw new Error("Print runner configuration is invalid");
 			}
 			const response = await fetch(url, {

@@ -1,5 +1,6 @@
 import type { Doc } from "$convex/dataModel";
 import { env } from "$env/dynamic/private";
+import { isStagingEnvironment } from "$lib/server/runtimeConfig";
 
 export type LumaPrintsConnection = Readonly<
 	Pick<
@@ -50,6 +51,7 @@ function credential(value: string | undefined, key = false): string {
 }
 
 function readRegistry() {
+	const staging = isStagingEnvironment();
 	const raw = env.LUMAPRINTS_CONNECTIONS;
 	if (!raw || Buffer.byteLength(raw, "utf8") > MAX_REGISTRY_BYTES) unavailable();
 	let registry: unknown;
@@ -74,6 +76,7 @@ function readRegistry() {
 	for (const entry of registry.connections) {
 		if (
 			!isConnection(entry) ||
+			(staging && entry.environment !== "sandbox") ||
 			Object.keys(entry).length !== 6 ||
 			!("credentialRef" in entry) ||
 			typeof entry.credentialRef !== "string" ||
