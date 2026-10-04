@@ -188,4 +188,3 @@ export async function readCheckoutAdmissionRouting(ctx: QueryCtx, args: Checkout
 		stripeConnectedAccountId: admission.stripeConnectedAccountId,
 	};
 }
-
