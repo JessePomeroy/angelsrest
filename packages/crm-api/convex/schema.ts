@@ -1,3 +1,4 @@
+import { commerceIntakeFields, intakeFailure, intakeRecoveryReason, intakeState } from "./helpers/commerceIntakeJobs";
 import { defineSchema, defineTable } from "convex/server";
 import { v } from "convex/values";
 import { checkoutFinancialSnapshotValidator } from "./helpers/checkoutFinancialSnapshot";
@@ -979,6 +980,18 @@ export default defineSchema({
 	})
 		.index("by_siteUrl_and_accountScope", ["siteUrl", "accountScope"])
 		.index("by_siteUrl_and_activationGeneration", ["siteUrl", "activationGeneration"]),
+
+	commerceIntakeInbox: defineTable(commerceIntakeFields)
+		.index("by_stripeEventId", ["stripeEventId"])
+		.index("by_siteUrl_and_state_and_nextAt", ["siteUrl", "state", "nextAt"])
+		.index("by_siteUrl_and_acceptedAt", ["siteUrl", "acceptedAt"]),
+
+	commerceIntakeRecoveries: defineTable({
+		inboxId: v.id("commerceIntakeInbox"), at: v.number(), operatorTokenIdentifier: v.string(),
+		previousVersion: v.number(), previousState: intakeState,
+		previousErrorCode: v.optional(intakeFailure), reason: intakeRecoveryReason,
+	})
+		.index("by_inboxId_and_at", ["inboxId", "at"]),
 
 	// Universal durable admission for every order-purpose Checkout. New rows are
 	// additive; old hosts do not create or consume them until Unit B is deployed.
