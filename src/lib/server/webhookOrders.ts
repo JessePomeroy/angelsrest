@@ -29,6 +29,7 @@ import type { OrderEmailSession, ShippingDetails } from "$lib/server/webhookEmai
 import { buildConvexOrderCreatePayload } from "$lib/server/webhookOrderPayload";
 import { getWebhookSecret } from "$lib/server/webhookSecret";
 import type { OrderItem } from "$lib/shop/types";
+import type { CheckoutIntakeSession } from "../../../packages/crm-api/convex/helpers/commerceIntakeEnvelope";
 
 export type PreparedPrintJob = {
 	jobId: Id<"printFulfillmentJobs">;
@@ -78,7 +79,7 @@ export async function createOrderInConvex(
 		checkoutSnapshotInput = { protocol: "legacy" },
 		checkoutSessionAdmission,
 	}: {
-		session: Stripe.Checkout.Session;
+		session: CheckoutIntakeSession;
 		shippingDetails: ShippingDetails;
 		lineItems: Stripe.LineItem[];
 		tenantId?: string;

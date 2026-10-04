@@ -6,8 +6,13 @@ import {
 } from "../../../packages/crm-api/convex/helpers/printFeePolicy";
 
 export { PLATFORM_PRINT_FEE_RATE } from "../../../packages/crm-api/convex/helpers/printFeePolicy";
-export const COMMERCE_TENANT_METADATA_KEY = "commerceTenantSiteUrl";
-export const COMMERCE_TENANT_ID_METADATA_KEY = "commerceTenantId";
+
+import {
+	COMMERCE_TENANT_ID_METADATA_KEY,
+	COMMERCE_TENANT_METADATA_KEY,
+} from "../../../packages/crm-api/src/stripeContract";
+
+export { COMMERCE_TENANT_ID_METADATA_KEY, COMMERCE_TENANT_METADATA_KEY };
 export const COMMERCE_TENANT_ID_PATTERN =
 	/^tenant_[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
 

@@ -54,6 +54,8 @@ describe("Stripe webhook route", () => {
 		mocks.env.STRIPE_WEBHOOK_SECRET = "platform-secret";
 		mocks.env.WEBHOOK_SECRET = "webhook-secret";
 		mocks.convex.query.mockResolvedValue(null);
+		mocks.convex.mutation.mockReset().mockResolvedValue({ kind: "synchronous" });
+		delete mocks.env.COMMERCE_INTAKE_ENABLED;
 		mocks.getResend.mockReturnValue(mocks.resend);
 		mocks.verify.mockResolvedValue({ event: event(), role: "your-account" });
 	});
@@ -452,5 +454,79 @@ describe("Stripe webhook route", () => {
 				}),
 			}),
 		);
+	});
+});
+
+describe("durable commerce acknowledgement", () => {
+	beforeEach(() => {
+		vi.clearAllMocks();
+		mocks.env.ORDER_PRODUCERS_STATE = "closed";
+		mocks.env.COMMERCE_INTAKE_ENABLED = "false";
+		mocks.env.WEBHOOK_SECRET = "webhook-secret";
+		mocks.verify.mockResolvedValue({ event: event(), role: "your-account" });
+		mocks.convex.mutation.mockReset().mockResolvedValue({ kind: "accepted", state: "pending" });
+	});
+
+	it("honors an accepted receipt before closure and disabled new-acceptance checks", async () => {
+		const { POST } = await import("../+server");
+		const response = await POST({ request: request() } as Parameters<typeof POST>[0]);
+		expect(response.status).toBe(200);
+		expect(mocks.convex.mutation).toHaveBeenCalledWith(expect.anything(), {
+			stripeEventId: "evt_test_123",
+			eventJson: null,
+			allowNew: false,
+			webhookSecret: "webhook-secret",
+		});
+		expect(mocks.convex.query).not.toHaveBeenCalled();
+		expect(mocks.process).not.toHaveBeenCalled();
+		expect(mocks.getResend).not.toHaveBeenCalled();
+	});
+
+	it("waits for the persistence transaction before returning success", async () => {
+		let resolveReceipt: (value: { kind: "accepted" }) => void = () => {
+			throw new Error("Not started");
+		};
+		mocks.convex.mutation.mockImplementation(
+			() =>
+				new Promise((resolve) => {
+					resolveReceipt = resolve;
+				}),
+		);
+		const { POST } = await import("../+server");
+		let acknowledged = false;
+		const response = POST({ request: request() } as Parameters<typeof POST>[0]).then((value) => {
+			acknowledged = true;
+			return value;
+		});
+		await vi.waitFor(() => expect(mocks.convex.mutation).toHaveBeenCalledOnce());
+		expect(acknowledged).toBe(false);
+		resolveReceipt({ kind: "accepted" });
+		expect((await response).status).toBe(200);
+	});
+
+	it("keeps persistence failure retryable by Stripe without inline provider effects", async () => {
+		mocks.convex.mutation.mockRejectedValue(new Error("Synthetic lost acknowledgement"));
+		const { POST } = await import("../+server");
+		await expect(POST({ request: request() } as Parameters<typeof POST>[0])).rejects.toMatchObject({
+			status: 503,
+		});
+		expect(mocks.process).not.toHaveBeenCalled();
+		expect(mocks.getResend).not.toHaveBeenCalled();
+	});
+
+	it("never consults intake for a wrong destination or unverified request", async () => {
+		const { POST } = await import("../+server");
+		mocks.verify.mockResolvedValue({
+			event: event({ account: "acct_wrong123456789012" }),
+			role: "your-account",
+		});
+		await expect(POST({ request: request() } as Parameters<typeof POST>[0])).rejects.toMatchObject({
+			status: 400,
+		});
+		mocks.verify.mockRejectedValue(new Error("Signature failed"));
+		await expect(POST({ request: request() } as Parameters<typeof POST>[0])).rejects.toThrow(
+			"Signature failed",
+		);
+		expect(mocks.convex.mutation).not.toHaveBeenCalled();
 	});
 });

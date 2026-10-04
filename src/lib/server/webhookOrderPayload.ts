@@ -5,6 +5,7 @@ import type {
 } from "$lib/server/checkoutSnapshotConsumer";
 import { CheckoutSnapshotProtocolError } from "$lib/server/checkoutSnapshotConsumer";
 import type { ShippingDetails } from "$lib/server/webhookEmails";
+import type { CheckoutIntakeSession } from "../../../packages/crm-api/convex/helpers/commerceIntakeEnvelope";
 
 export type ConvexOrderCreatePayload = {
 	webhookSecret: string;
@@ -54,7 +55,7 @@ export function buildConvexOrderCreatePayload({
 	checkoutSnapshotInput = { protocol: "legacy" },
 	checkoutSessionAdmission,
 }: {
-	session: Stripe.Checkout.Session;
+	session: CheckoutIntakeSession;
 	shippingDetails: ShippingDetails;
 	lineItems: Stripe.LineItem[];
 	tenantId?: string;
