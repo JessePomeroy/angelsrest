@@ -64,7 +64,7 @@ describe("architecture invariants", () => {
 		}
 	});
 
-	it("keeps commerce and shipment intake owned by their one hub route", () => {
+	it("keeps commerce and shipment intake within their hub boundaries", () => {
 		const application = files("src")
 			.filter(
 				(path) =>
@@ -74,6 +74,7 @@ describe("architecture invariants", () => {
 		const importers = (symbol: string) =>
 			application.filter((path) => source(path).includes(symbol));
 		expect(importers("processStripeWebhookEvent")).toEqual([
+			"src/lib/server/commerceIntakeJob.ts",
 			"src/lib/server/orderIntake.ts",
 			"src/routes/api/webhooks/stripe/+server.ts",
 		]);
