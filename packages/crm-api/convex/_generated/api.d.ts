@@ -85,6 +85,7 @@ import type * as helpers_modelingPageValidators from "../helpers/modelingPageVal
 import type * as helpers_numbering from "../helpers/numbering.js";
 import type * as helpers_orderProducerGate from "../helpers/orderProducerGate.js";
 import type * as helpers_orderRevenue from "../helpers/orderRevenue.js";
+import type * as helpers_orderRouting from "../helpers/orderRouting.js";
 import type * as helpers_patching from "../helpers/patching.js";
 import type * as helpers_platformClientInput from "../helpers/platformClientInput.js";
 import type * as helpers_platformReleaseRecords from "../helpers/platformReleaseRecords.js";
@@ -221,6 +222,7 @@ declare const fullApi: ApiFromModules<{
   "helpers/numbering": typeof helpers_numbering;
   "helpers/orderProducerGate": typeof helpers_orderProducerGate;
   "helpers/orderRevenue": typeof helpers_orderRevenue;
+  "helpers/orderRouting": typeof helpers_orderRouting;
   "helpers/patching": typeof helpers_patching;
   "helpers/platformClientInput": typeof helpers_platformClientInput;
   "helpers/platformReleaseRecords": typeof helpers_platformReleaseRecords;
