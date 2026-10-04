@@ -293,6 +293,19 @@ The latest production verification and explicit deferred outcomes are recorded
 in
 [`migrations/architecture-retrofit-verification-2026-09-03.md`](migrations/architecture-retrofit-verification-2026-09-03.md).
 
+### Durable completed-commerce intake
+
+The additive `commerceIntakeInbox` owns accepted checkout replay independently of
+Stripe redelivery. Receipt insertion and the initial mutation wakeup share one
+transaction; that mutation claims a lease and schedules both watchdog and private
+hub callback atomically. The callback reuses existing order/receipt/print fences
+and checkpoints against persisted evidence. New acceptance is disabled by default;
+accepted IDs are always guarded before synchronous fallback. Creator-only status
+and audited recovery live at `/admin/platform/intake`. See
+[`commerce-event-inbox.md`](contracts/commerce-event-inbox.md) and the
+[operating runbook](runbooks/commerce-intake.md) for release order, exclusions,
+retention and rollback requirements. Shipping these paths is not activation.
+
 ## Repositories
 
 | Repository | Responsibility |

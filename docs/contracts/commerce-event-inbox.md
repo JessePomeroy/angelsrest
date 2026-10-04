@@ -1,9 +1,10 @@
 # Completed commerce event inbox
 
-This contract defines the background-intake implementation in roadmap items
-35–39. It is a design contract; its presence does not mean persistence, workers,
-recovery or production activation have shipped. The synchronous host remains the
-current intake path until each implementation and activation gate is verified.
+This contract governs the additive background-intake implementation in roadmap
+items 35–39. Backend deployment, package publication, host adoption, authorized
+staging acceptance and production activation remain separate gates. New acceptance
+is off by default; the accepted-event guard remains active when it is disabled.
+See the [operating runbook](../runbooks/commerce-intake.md) for release and recovery.
 
 ## Scope and authority
 
@@ -134,11 +135,15 @@ existence alone is insufficient. The permitted successful outcomes are:
   completed intake or durable handoff to its existing print job. Paid receipts
   require separate customer/admin acceptance checkpoints. Any documented receipt
   exclusion must be backed by the existing stored order state, not a caller flag.
+- A provider-authoritative completed refund: stored `refunded` status plus its
+  refund identifier or succeeded automated refund checkpoint excludes sending
+  the original paid receipt. Local fulfillment cancellation is not this proof
+  and remains blocked for financial reconciliation.
 - A matching authenticated retired-session tombstone with no conflicting live
   order, using the existing routing checks.
 
-Missing customer email currently causes a normal early return before order
-creation; that path must produce a fixed retry/blocked intake outcome for the
+Outside that verified refund exclusion, missing customer email currently causes
+a normal early return before order creation; that path must produce a fixed retry/blocked intake outcome for the
 background worker. Missing orders, pending receipts and uncertain receipt delivery
 cannot become `done`. Uncertainty or an excluded receipt requiring a decision
 must remain `blocked` with its scoped order/reason and durable operator-recovery
@@ -152,8 +157,18 @@ a provider claim, refunds an order by inference, or permits a fresh supplier POS
 
 ## Retry, retention and operator recovery
 
+The implemented automatic cycle is capped at 12 claims or 23 hours. After fixing
+the cause, an authenticated creator can grant at most three further cycles within
+30 days of original acceptance. Each grants a new bounded cycle, preserves lifetime
+attempt counts and records actual operator identity, prior state/version/reason,
+and time. It does not renew receipt idempotency windows or clear effect fences.
+Uncertain receipts, invalid retained payloads and financial recovery cannot use
+ordinary retry. Checking saved completion evidence changes state only when the
+same backend completion predicate succeeds. The creator view is bounded and
+refresh-driven; raw replay data and lease tokens never reach it.
+
 Retries use fixed failure categories and delays of 30, 60 and then 120 seconds
-(capped). Block after 12 failed/expired attempts or 23 hours since acceptance,
+(capped). Block after 12 failed/expired attempts or 23 hours in the current cycle,
 whichever happens first; duplicate deliveries do not reset either bound. These
 limits do not extend any existing provider-key or receipt uncertainty window. An
 ambiguous effect remains subject to its existing reconciliation rules even when

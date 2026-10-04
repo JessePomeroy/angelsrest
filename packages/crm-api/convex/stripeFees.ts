@@ -1,4 +1,6 @@
 "use node";
+
+import { STRIPE_API_VERSION } from "../src/stripeContract";
 /**
  * Stripe fee capture (audit H5).
  *
@@ -41,7 +43,7 @@ import { purposeScopedServerRolesAreDisjoint } from "./helpers/serverSecrets";
 import { type ApplicationFeeError, APPLICATION_FEE_MAX_ATTEMPTS } from "./helpers/applicationFeeVerification";
 import { ApplicationFeeReadError, readApplicationFee } from "./helpers/readApplicationFee";
 
-const STRIPE_API_VERSION = "2026-01-28.clover" as const;
+
 
 /** Read-only original fee verification, independent of processing-fee/fulfillment state. */
 export const verifyApplicationFeeForOrder = internalAction({
