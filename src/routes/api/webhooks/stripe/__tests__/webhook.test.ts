@@ -1,5 +1,5 @@
 import type Stripe from "stripe";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
 	convex: { query: vi.fn(), mutation: vi.fn() },
@@ -46,6 +46,7 @@ function request() {
 }
 
 describe("Stripe webhook route", () => {
+	afterEach(() => vi.useRealTimers());
 	beforeEach(() => {
 		vi.clearAllMocks();
 		mocks.env.ORDER_PRODUCERS_STATE = "open";
@@ -224,7 +225,9 @@ describe("Stripe webhook route", () => {
 			expect.anything(),
 			"connected-accounts",
 		);
-		expect(mocks.logStructured).not.toHaveBeenCalled();
+		expect(mocks.logStructured).not.toHaveBeenCalledWith(
+			expect.objectContaining({ event: "webhook.commerce_scope_rejected" }),
+		);
 	});
 
 	it("forwards the verified Your-account role for a platform context", async () => {
@@ -351,5 +354,103 @@ describe("Stripe webhook route", () => {
 		expect(mocks.convex.query).not.toHaveBeenCalled();
 		expect(mocks.convex.mutation).not.toHaveBeenCalled();
 		expect(mocks.process).not.toHaveBeenCalled();
+	});
+
+	it("measures verification and awaited intake before acknowledgement without retaining event data", async () => {
+		vi.useFakeTimers({ toFake: ["performance"] });
+		const { POST } = await import("../+server");
+		const verified = Promise.withResolvers<{ event: Stripe.Event; role: "your-account" }>();
+		const processed = Promise.withResolvers<void>();
+		const intakeStarted = Promise.withResolvers<void>();
+		mocks.verify.mockReturnValueOnce(verified.promise);
+		mocks.process.mockImplementationOnce(() => {
+			intakeStarted.resolve();
+			return processed.promise;
+		});
+		const pending = POST({ request: request() } as Parameters<typeof POST>[0]);
+		vi.advanceTimersByTime(250);
+		verified.resolve({ event: event(), role: "your-account" });
+		await intakeStarted.promise;
+		expect(mocks.logStructured).not.toHaveBeenCalled();
+		vi.advanceTimersByTime(1250);
+		processed.resolve();
+		expect((await pending).status).toBe(200);
+		expect(mocks.logStructured).toHaveBeenLastCalledWith({
+			event: "webhook.commerce_response",
+			stage: "webhook",
+			durationMs: 1500,
+			meta: {
+				metricVersion: 1,
+				phase: "intake",
+				category: "commerce_checkout",
+				destination: "your-account",
+				mode: "unknown",
+				status: 200,
+			},
+		});
+	});
+
+	it("records rejection and replay timing while retaining the original response", async () => {
+		const { POST } = await import("../+server");
+		mocks.env.ORDER_PRODUCERS_STATE = "closed";
+		await expect(POST({ request: request() } as Parameters<typeof POST>[0])).rejects.toMatchObject({
+			status: 503,
+		});
+		expect(mocks.logStructured).toHaveBeenLastCalledWith(
+			expect.objectContaining({
+				event: "webhook.commerce_response",
+				meta: expect.objectContaining({ phase: "admission", status: 503 }),
+			}),
+		);
+		mocks.convex.query.mockResolvedValueOnce({ source: "order", siteUrl: "angelsrest.online" });
+		expect((await POST({ request: request() } as Parameters<typeof POST>[0])).status).toBe(200);
+		expect(mocks.logStructured).toHaveBeenLastCalledWith(
+			expect.objectContaining({
+				meta: expect.objectContaining({ phase: "admission", status: 200 }),
+			}),
+		);
+	});
+
+	it("does not change acknowledgement when the timing sink fails", async () => {
+		const { POST } = await import("../+server");
+		mocks.logStructured.mockImplementationOnce(() => {
+			throw new Error("telemetry unavailable");
+		});
+		expect((await POST({ request: request() } as Parameters<typeof POST>[0])).status).toBe(200);
+	});
+
+	it.each([
+		"account.updated",
+		"capability.updated",
+		"account.application.deauthorized",
+	] as const)("classifies %s with the real account lifecycle handler", async (type) => {
+		const account = "acct_client12345678901";
+		mocks.verify.mockResolvedValue({
+			role: "connected-accounts",
+			event: event({
+				type,
+				account,
+				livemode: false,
+				data: {
+					object: {
+						id: type === "account.updated" ? account : "capability_or_application",
+						account,
+					},
+				},
+			}),
+		});
+		const { POST } = await import("../+server");
+		expect((await POST({ request: request() } as Parameters<typeof POST>[0])).status).toBe(200);
+		expect(mocks.process).not.toHaveBeenCalled();
+		expect(mocks.getResend).not.toHaveBeenCalled();
+		expect(mocks.logStructured).toHaveBeenLastCalledWith(
+			expect.objectContaining({
+				meta: expect.objectContaining({
+					phase: "lifecycle",
+					category: "account_lifecycle",
+					status: 200,
+				}),
+			}),
+		);
 	});
 });

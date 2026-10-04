@@ -510,6 +510,12 @@ describe("processStripeWebhookEvent", () => {
 		await expect(processStripeWebhookEvent(manualRefundEvent(), adapters())).rejects.toMatchObject({
 			status: 500,
 		});
+		expect(mockLogStructured).toHaveBeenCalledWith(
+			expect.objectContaining({
+				event: "webhook.failed",
+				meta: { stripeEventType: "refund.created", retryCause: "manual_refund_reconciliation" },
+			}),
+		);
 		expect(convex.mutation).toHaveBeenCalledWith(
 			"orders.reconcileSucceededManualRefund",
 			expect.anything(),
@@ -2327,6 +2333,15 @@ describe("processStripeWebhookEvent", () => {
 		});
 		paymentFailureClaimResults = [true];
 		await processStripeWebhookEvent(event, adapters());
+		expect(mockLogStructured).toHaveBeenCalledWith(
+			expect.objectContaining({
+				event: "webhook.failed",
+				meta: {
+					stripeEventType: "payment_intent.payment_failed",
+					retryCause: "payment_failure_email",
+				},
+			}),
+		);
 
 		expect(convex.mutation).toHaveBeenCalledTimes(2);
 		expect(mockSendPaymentFailedEmail).toHaveBeenCalledOnce();
