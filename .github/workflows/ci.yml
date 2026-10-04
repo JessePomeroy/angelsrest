@@ -2,6 +2,15 @@ name: CI
 
 on:
   workflow_dispatch:
+    inputs:
+      release_environment:
+        description: Logical environment for this immutable CI record (not a deployment)
+        type: choice
+        required: true
+        default: production
+        options:
+          - production
+          - staging
   push:
     branches: [main]
   pull_request:
@@ -9,7 +18,7 @@ on:
 
 # Audit H43: cancel in-progress runs for the same ref when a newer push arrives.
 concurrency:
-  group: ci-${{ github.ref }}
+  group: ci-${{ github.ref }}-${{ inputs.release_environment || 'production' }}
   cancel-in-progress: true
 
 permissions:
@@ -157,7 +166,7 @@ jobs:
         id: release_record
         env:
           RELEASE_SITE_URL: angelsrest.online
-          RELEASE_ENVIRONMENT: production
+          RELEASE_ENVIRONMENT: ${{ github.event_name == 'workflow_dispatch' && inputs.release_environment || 'production' }}
           RELEASE_WORKFLOW_PATH: .github/workflows/ci.yml
           RELEASE_HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
           RELEASE_CHECKS_JSON: >-
