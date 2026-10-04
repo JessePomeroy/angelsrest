@@ -8,6 +8,7 @@ import {
 } from "$lib/server/checkoutFailures";
 
 const mocks = vi.hoisted(() => ({
+	staging: false,
 	assertOpen: vi.fn(),
 	createDirect: vi.fn(),
 	getStripe: vi.fn(),
@@ -18,7 +19,9 @@ const mocks = vi.hoisted(() => ({
 }));
 
 vi.mock("$lib/server/runtimeConfig", () => ({
-	getPublicSiteOrigin: () => "https://www.angelsrest.online",
+	getPublicSiteOrigin: () =>
+		mocks.staging ? "https://staging.angelsrest.online" : "https://www.angelsrest.online",
+	isStagingEnvironment: () => mocks.staging,
 }));
 vi.mock("$lib/server/commercePurposeControls", () => ({
 	assertNewOrderCheckoutOpen: mocks.assertOpen,
@@ -49,6 +52,7 @@ const request = () =>
 describe("direct checkout failure boundary", () => {
 	beforeEach(() => {
 		vi.clearAllMocks();
+		mocks.staging = false;
 		mocks.assertOpen.mockReturnValue({ state: "open", generation: 7 });
 		mocks.validateAttempt.mockReturnValue({
 			attempt: "123e4567-e89b-42d3-a456-426614174000",
@@ -61,6 +65,21 @@ describe("direct checkout failure boundary", () => {
 			sessionId: "cs_direct",
 			url: "https://stripe.example/direct",
 		});
+	});
+
+	it("uses the canonical hub tenant and staging return origin independently", async () => {
+		mocks.staging = true;
+		await POST({ request: request(), cookies: {} } as Parameters<typeof POST>[0]);
+		expect(mocks.assertOpen).toHaveBeenCalledWith("angelsrest.online");
+		expect(mocks.resolveTenant).toHaveBeenCalledWith("angelsrest.online");
+		expect(mocks.validateAttempt.mock.calls[0]?.[0]).toBe("angelsrest.online");
+		expect(mocks.createDirect).toHaveBeenCalledWith(
+			expect.objectContaining({
+				siteUrl: "https://staging.angelsrest.online",
+				tenant: { siteUrl: "angelsrest.online" },
+				allowedRedirectOrigins: ["https://staging.angelsrest.online"],
+			}),
+		);
 	});
 
 	it.each([

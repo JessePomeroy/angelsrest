@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
+	staging: false,
 	assertOpen: vi.fn(),
 	createHandle: vi.fn(),
 	getStripe: vi.fn(),
@@ -11,7 +12,9 @@ const mocks = vi.hoisted(() => ({
 }));
 
 vi.mock("$lib/server/runtimeConfig", () => ({
-	getPublicSiteOrigin: () => "https://www.angelsrest.online",
+	getPublicSiteOrigin: () =>
+		mocks.staging ? "https://staging.angelsrest.online" : "https://www.angelsrest.online",
+	isStagingEnvironment: () => mocks.staging,
 }));
 vi.mock("$lib/server/commercePurposeControls", () => ({
 	assertNewOrderCheckoutOpen: mocks.assertOpen,
@@ -54,6 +57,7 @@ const snapshot = {
 describe("cart checkout", () => {
 	beforeEach(() => {
 		vi.clearAllMocks();
+		mocks.staging = false;
 		mocks.assertOpen.mockReturnValue({ state: "open", generation: 7 });
 		mocks.validateAttempt.mockReturnValue({
 			attempt: "123e4567-e89b-42d3-a456-426614174000",
@@ -87,6 +91,31 @@ describe("cart checkout", () => {
 			url: "https://stripe.example/cart",
 			expiresAt: 1_800_086_100,
 		});
+	});
+
+	it("keeps staging cart ownership on the hub tenant and confines both return URLs", async () => {
+		mocks.staging = true;
+		const request = new Request("https://staging.angelsrest.online/api/cart/checkout", {
+			method: "POST",
+			headers: { "Content-Type": "application/json" },
+			body: JSON.stringify({
+				items: [{ productSlug: "tapestry-one", type: "print", quantity: 1 }],
+			}),
+		});
+		await POST({ request, cookies: {} } as Parameters<typeof POST>[0]);
+		expect(mocks.assertOpen).toHaveBeenCalledWith("angelsrest.online");
+		expect(mocks.resolveTenant).toHaveBeenCalledWith("angelsrest.online");
+		expect(mocks.validateAttempt.mock.calls[0]?.[0]).toBe("angelsrest.online");
+		expect(mocks.createHandle).toHaveBeenCalledWith(
+			expect.objectContaining({
+				site: "angelsrest.online",
+				account: null,
+				successUrl:
+					"https://staging.angelsrest.online/checkout/success?session_id={CHECKOUT_SESSION_ID}",
+				cancelUrl: "https://staging.angelsrest.online/checkout/cancel",
+				allowedRedirectOrigins: ["https://staging.angelsrest.online"],
+			}),
+		);
 	});
 
 	it.each([

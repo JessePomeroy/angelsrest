@@ -25,6 +25,13 @@ fails before the request is resolved. Staging responses carry a no-index header.
 The canonical tenant
 key remains `angelsrest.online` inside this separate database.
 
+Direct and cart checkout use that canonical key for admission controls, attempt
+proofs, tenant lookup and catalog reservations. Their success/cancel URLs use the
+staging public origin, which the host passes as the exact allowed return origin.
+Checkout role credentials and the backend's test intake scope must therefore be
+keyed by `angelsrest.online`, not the staging hostname. This separation does not
+change signed spoke routing or production checkout attempts.
+
 Generate fresh, distinct `BETTER_AUTH_SECRET`, `WEBHOOK_SECRET`,
 `ORDER_LOOKUP_SECRET`, `COMMERCE_INTAKE_RUNNER_SECRET` and
 `PRINT_FULFILLMENT_RUNNER_SECRET`. Share only the applicable role's new credential

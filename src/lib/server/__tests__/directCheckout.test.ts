@@ -99,6 +99,60 @@ function makeItem(overrides: Partial<ResolvedCheckoutItem> = {}): ResolvedChecko
 }
 
 describe("createDirectCheckoutSession", () => {
+	it("reserves the hub catalog while returning a staged checkout to its approved origin", async () => {
+		const { stripe, create } = makeStripe();
+		const reservation = reservationOptions();
+		await createDirectCheckoutSession({
+			body: { productId: "print-one", successUrl: "https://foreign.example" },
+			stripe,
+			siteUrl: "https://staging.angelsrest.online",
+			tenant: { tenantId: TENANT_ID, siteUrl: "angelsrest.online" },
+			allowedRedirectOrigins: ["https://staging.angelsrest.online"],
+			bindSession: vi.fn(),
+			resolveCommerce: vi.fn().mockResolvedValue({ provider: "convex", items: [makeItem()] }),
+			log: vi.fn(),
+			...reservation,
+			...admissionOptions(),
+			now: ATTEMPT_STARTED_AT,
+		});
+		expect(reservation.reservationClient.reserve).toHaveBeenCalledWith(
+			expect.objectContaining({ site: "angelsrest.online", tenantId: TENANT_ID, account: null }),
+		);
+		expect(create).toHaveBeenCalledWith(
+			expect.objectContaining({
+				success_url:
+					"https://staging.angelsrest.online/checkout/success?session_id={CHECKOUT_SESSION_ID}",
+				cancel_url: "https://staging.angelsrest.online/checkout/cancel",
+				metadata: expect.objectContaining({
+					commerceTenantSiteUrl: "angelsrest.online",
+					commerceTenantId: TENANT_ID,
+				}),
+			}),
+			expect.anything(),
+		);
+	});
+
+	it("rejects an unapproved return origin before creating a staged checkout", async () => {
+		const { stripe, create } = makeStripe();
+		const reservation = reservationOptions();
+		await expect(
+			createDirectCheckoutSession({
+				body: { productId: "print-one" },
+				stripe,
+				siteUrl: "https://foreign.example",
+				tenant: { tenantId: TENANT_ID, siteUrl: "angelsrest.online" },
+				allowedRedirectOrigins: ["https://staging.angelsrest.online"],
+				bindSession: vi.fn(),
+				resolveCommerce: vi.fn().mockResolvedValue({ provider: "convex", items: [makeItem()] }),
+				log: vi.fn(),
+				...reservation,
+				...admissionOptions(),
+				now: ATTEMPT_STARTED_AT,
+			}),
+		).rejects.toThrow("Invalid checkout attempt");
+		expect(reservation.reservationClient.reserve).not.toHaveBeenCalled();
+		expect(create).not.toHaveBeenCalled();
+	});
 	it.each([
 		["print", 500],
 		["print_set", 500],

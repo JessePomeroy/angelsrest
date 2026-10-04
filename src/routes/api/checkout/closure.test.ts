@@ -10,6 +10,7 @@ const mocks = vi.hoisted(() => ({
 
 vi.mock("$lib/server/runtimeConfig", () => ({
 	getPublicSiteOrigin: () => "https://www.angelsrest.online",
+	isStagingEnvironment: () => false,
 }));
 vi.mock("$lib/server/current/currentCheckoutCommerce.server", () => ({
 	resolveCurrentCheckoutCommerce: mocks.resolveCurrentCommerce,

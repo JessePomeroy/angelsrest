@@ -1,5 +1,6 @@
 import { error, json } from "@sveltejs/kit";
 import type Stripe from "stripe";
+import { SITE_DOMAIN } from "$lib/config/site";
 import { ApiErrorCode, apiError } from "$lib/server/apiError";
 import { parseHandleCartIntent } from "$lib/server/cartCheckoutHelpers";
 import { bindCheckoutSession } from "$lib/server/checkoutBinding";
@@ -18,7 +19,7 @@ import {
 	createHandleCheckoutSession,
 	validateSameOriginCheckoutAttemptRequest,
 } from "$lib/server/handleCheckout";
-import { getPublicSiteOrigin } from "$lib/server/runtimeConfig";
+import { getPublicSiteOrigin, isStagingEnvironment } from "$lib/server/runtimeConfig";
 import { buildCheckoutLineItem } from "$lib/server/stripeCheckoutSession";
 import { getStripe } from "$lib/server/stripeClient";
 import { buildTenantProductCheckoutOptions } from "$lib/server/stripeConnect";
@@ -34,10 +35,12 @@ interface CartCheckoutRequest {
 export async function POST({ request, cookies }) {
 	try {
 		const siteOrigin = getPublicSiteOrigin();
+		const staging = isStagingEnvironment();
+		const checkoutSite = staging ? SITE_DOMAIN : siteOrigin;
 		const body = (await request.json()) as CartCheckoutRequest;
-		const control = assertNewOrderCheckoutOpen(siteOrigin);
+		const control = assertNewOrderCheckoutOpen(checkoutSite);
 		const attemptIdentity = validateSameOriginCheckoutAttemptRequest(
-			siteOrigin,
+			checkoutSite,
 			body.attempt,
 			body.attemptStartedAt,
 			body.attemptProof,
@@ -86,7 +89,7 @@ export async function POST({ request, cookies }) {
 		);
 
 		const tenant = await runCheckoutSessionStage("checkout_tenant", () =>
-			resolveStripeTenantForSite(siteOrigin),
+			resolveStripeTenantForSite(checkoutSite),
 		);
 		if (control.tenantId !== undefined && control.tenantId !== tenant.tenantId) {
 			throw new NewOrderCheckoutClosedError();
@@ -115,6 +118,7 @@ export async function POST({ request, cookies }) {
 			lineItems,
 			successUrl,
 			cancelUrl,
+			allowedRedirectOrigins: staging ? [siteOrigin] : undefined,
 			shippingAllowedCountries: ["US"],
 			tenantCheckout,
 			bindSession: (sessionId) => bindCheckoutSession(cookies, sessionId),
