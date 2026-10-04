@@ -11,8 +11,13 @@ or deployment.
 3. Verify the immutable version in GitHub Packages.
 4. Prepare a host PR that pins the exact published version and updates its lockfile.
    For Admin, dispatch `Prepare Admin package adoption PR` with the exact version
-   and reviewed release URL.
-5. Review and merge the host PR, then approve that host's deployment separately.
+   and reviewed release URL from `main`. The workflow checks strict peer compatibility,
+   consumer imports, host types and tests before opening the PR.
+5. Verify the exact candidate in staging and retain the production recovery reference
+   using the controlled adoption gate below. Review runtime compatibility separately.
+6. Review and merge the host PR, then approve that host's deployment separately.
+   Observe its actual production deployment after main CI; staging does not satisfy
+   production acceptance.
 
 Angels Rest is the required real-host fixture for `@jessepomeroy/admin`; its CI
 type-checks representative browser-root and `/server` imports plus every CRM API
@@ -42,6 +47,71 @@ publication or deployment.
 
 Never use a source merge as implicit authority to publish, adopt, merge, deploy,
 or combine these runtimes.
+
+## Controlled Admin adoption
+
+The preparation workflow starts from current `main`, pins only the requested
+published Admin dependency and its package-manager lockfile, and opens a host PR.
+It dispatches full CI on the exact candidate branch with
+`release_environment=staging`. Main/pull-request CI retains its production identity;
+a staging dispatch has its own concurrency key. Both CI configurations remain
+`ci-fixture`: the environment label does not deploy code or establish runtime state.
+
+Once that dispatch passes and the candidate's authorized preview deployment is
+READY, observe it using the exact artifact and deployment IDs. The staging origin
+must be a provider-observed alias of that preview, distinct from production. A
+protected preview returns blocked evidence; do not disable protection or substitute
+the production origin to make a check pass.
+
+```zsh
+node scripts/observe-release.mjs observe \
+  --repository JessePomeroy/angelsrest \
+  --site angelsrest.online --environment staging \
+  --origin "$STAGING_ORIGIN" \
+  --team team_YA4WhxHjBPoepo8e5ijnFxmq \
+  --project prj_q6x2BF1DUnXDMYWNh0oWOQltLjxE \
+  --target preview \
+  --artifact "$STAGING_ARTIFACT_ID" --deployment "$STAGING_DEPLOYMENT_ID" \
+  --public-path / --public-path /cart
+
+node scripts/check-release-adoption.mjs \
+  --repository JessePomeroy/angelsrest --site angelsrest.online \
+  --candidate "$ADOPTION_HEAD" --version "$ADMIN_VERSION" \
+  --staging-origin "$STAGING_ORIGIN" \
+  --production-origin https://www.angelsrest.online \
+  --public-path / --public-path /cart
+```
+
+Supply the reviewed candidate SHA, exact Admin version and observed nonsecret IDs.
+First refresh production using the production observation command below with the
+same public-check policy. The adoption check is offline and requires intact retained
+observation receipts in both environments. It refuses a different source/version,
+failed or missing staging checks, missing production recovery proof, unresolved
+links, or changed non-Admin package/backend/Worker requirements. A newer unbound CI
+record cannot replace the candidate deployment's actual linked build.
+
+Exit zero means this bounded evidence gate passed. It does not authorize merge or
+prove runtime compatibility. Review the package release's runtime requirements;
+apply required additive backend/Worker changes before adoption. A change outside
+the Admin-only path requires the ordered mixed-version rollout above, followed by
+new staging and production observations. Missing runtime/configuration/capability
+evidence remains unknown. The gate does not create an intended release from a
+package version or change a client's capability choices.
+
+Retain the command's complete JSON output as the pre-merge adoption receipt through
+the site's evidence process. Its production recovery reference contains exact
+deployment/source/build IDs, package versions and the lockfile digest. Preserve
+that receipt after production advances; a later `lastHealthy` may describe the new
+release. Before a separately authorized host rollback, refresh the retained
+deployment's provider availability and backend/Worker compatibility. Roll back
+only the host or its exact dependency/lockfile pair; do not undo shared writes or
+redeploy Convex/Workers as a side effect. A failed upgrade keeps the earlier scoped
+healthy deployment in retained history.
+
+After merge, wait for main CI and the production deployment, then observe/import
+their separate production evidence. A squash merge has a new source SHA and needs
+its own main artifact; never relabel the staging record as production. Actual
+client runtime acceptance and a staging pilot remain separate from fixture checks.
 
 ## Release evidence
 

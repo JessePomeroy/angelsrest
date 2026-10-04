@@ -20,6 +20,7 @@ permissions:
 
 jobs:
   prepare:
+    if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     env:
       # SvelteKit generates static env exports before host checks and tests.
@@ -29,6 +30,7 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          ref: main
           fetch-depth: 0
           persist-credentials: false
 
@@ -49,9 +51,17 @@ jobs:
         env:
           NODE_AUTH_TOKEN: ${{ secrets.GH_PACKAGES_TOKEN }}
           VERSION: ${{ inputs.version }}
+          RELEASE_URL: ${{ inputs.release_url }}
         run: |
-          [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]] || { echo 'version must be exact semver'; exit 1; }
-          corepack pnpm add -w "@jessepomeroy/admin@$VERSION" --save-exact --ignore-scripts
+          [[ "$VERSION" =~ ^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-[0-9A-Za-z.-]+)?$ ]] || { echo 'version must be exact semver'; exit 1; }
+          node --input-type=module <<'NODE'
+          const url = new URL(process.env.RELEASE_URL);
+          if (url.origin !== 'https://github.com' || url.username || url.password || url.search || url.hash ||
+              !/^\/[A-Za-z0-9-]+\/[A-Za-z0-9._-]+\/(?:pull\/[1-9]\d*|releases\/tag\/[A-Za-z0-9._-]+)$/.test(url.pathname)) {
+            throw new Error('Expected a reviewed GitHub release or PR URL.');
+          }
+          NODE
+          corepack pnpm add -w "@jessepomeroy/admin@$VERSION" --save-exact --ignore-scripts --strict-peer-dependencies
           test "$(node -p "require('./package.json').dependencies['@jessepomeroy/admin']")" = "$VERSION"
 
       - run: corepack pnpm check:package-contract
@@ -73,5 +83,12 @@ jobs:
           git commit -m "chore(admin): adopt $VERSION"
           gh auth setup-git
           git push --set-upstream origin "$branch"
-          gh pr create --base main --head "$branch" --title "chore(admin): adopt $VERSION" --body "Adopts the exact reviewed package release: $RELEASE_URL\n\nThis workflow does not merge or deploy the host."
-          gh workflow run ci.yml --ref "$branch"
+          export ADOPTION_HEAD="$(git rev-parse HEAD)"
+          node --input-type=module <<'NODE'
+          import { writeFileSync } from 'node:fs';
+          const { VERSION, RELEASE_URL, ADOPTION_HEAD, RUNNER_TEMP } = process.env;
+          const url = new URL(RELEASE_URL);
+          writeFileSync(`${RUNNER_TEMP}/adoption-body.md`, `Adopts Admin ${VERSION} from [the reviewed release](${url.href}).\n\nCandidate source: \`${ADOPTION_HEAD}\`. Exact dependency/peer installation, consumer types, host types and tests passed during preparation. Full CI is dispatched with a staging release record.\n\nBefore merge, observe the exact preview deployment and its staging CI artifact, then run \`scripts/check-release-adoption.mjs\` against retained staging and production evidence. Review runtime compatibility and the independent host recovery reference. Apply additive backend changes before host adoption.\n\nProduction deployment and verification are separate steps. This workflow does not merge, deploy, roll back shared services, or treat staging checks as production acceptance.\n`);
+          NODE
+          gh pr create --base main --head "$branch" --title "chore(admin): adopt $VERSION" --body-file "$RUNNER_TEMP/adoption-body.md"
+          gh workflow run ci.yml --ref "$branch" -f release_environment=staging
