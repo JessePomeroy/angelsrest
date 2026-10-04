@@ -1,5 +1,5 @@
 import type { Config } from "@sveltejs/adapter-vercel";
-import { error, json } from "@sveltejs/kit";
+import { error, isHttpError, json } from "@sveltejs/kit";
 import type Stripe from "stripe";
 import { api } from "$convex/api";
 import { env } from "$env/dynamic/private";
@@ -28,20 +28,72 @@ const convex = getConvex();
 export const config = { maxDuration: 120 } satisfies Config;
 
 export async function POST({ request }) {
-	const stripe = getStripe();
-	const { event, role } = await verifyStripeWebhookWithRole(
-		request,
-		stripe,
-		getCommerceWebhookSecrets(),
-		"Commerce webhook",
-	);
-	assertCommerceWebhookScope(event, role);
-	if (await processStripeConnectLifecycleEvent(event, role, { stripe, convex }))
+	const startedAt = performance.now();
+	let phase: "configuration" | "verification" | "scope" | "lifecycle" | "admission" | "intake" =
+		"configuration";
+	let category: ReturnType<typeof webhookCategory> | "unverified" = "unverified";
+	let destination: CommerceWebhookRole | "unverified" = "unverified";
+	let mode: "live" | "test" | "unknown" = "unknown";
+	let status = 200;
+	try {
+		const stripe = getStripe();
+		const secrets = getCommerceWebhookSecrets();
+		phase = "verification";
+		const { event, role } = await verifyStripeWebhookWithRole(
+			request,
+			stripe,
+			secrets,
+			"Commerce webhook",
+		);
+		destination = role;
+		mode = event.livemode === true ? "live" : event.livemode === false ? "test" : "unknown";
+		category = webhookCategory(event);
+		phase = "scope";
+		assertCommerceWebhookScope(event, role);
+		phase = "lifecycle";
+		if (await processStripeConnectLifecycleEvent(event, role, { stripe, convex }))
+			return json({ received: true });
+		phase = "admission";
+		if (await isAcknowledgedOrderReplay(event)) return json({ received: true });
+		phase = "intake";
+		const resend = getResend();
+		await processStripeWebhookEvent(event, { stripe, resend, convex, getLumaPrintsClient }, role);
 		return json({ received: true });
-	if (await isAcknowledgedOrderReplay(event)) return json({ received: true });
-	const resend = getResend();
-	await processStripeWebhookEvent(event, { stripe, resend, convex, getLumaPrintsClient }, role);
-	return json({ received: true });
+	} catch (cause) {
+		status = isHttpError(cause) ? cause.status : 500;
+		throw cause;
+	} finally {
+		// Observe the whole handler, including early exits; metrics cannot change its response.
+		try {
+			logStructured({
+				event: "webhook.commerce_response",
+				stage: "webhook",
+				durationMs: Math.round((performance.now() - startedAt) * 1000) / 1000,
+				meta: { metricVersion: 1, phase, category, destination, mode, status },
+			});
+		} catch {
+			// Payment acknowledgement must survive an unavailable telemetry sink.
+		}
+	}
+}
+
+function webhookCategory(event: Stripe.Event) {
+	if (event.type === "checkout.session.completed") {
+		const session = event.data.object;
+		if (session.metadata?.type === "invoice_payment") return "invoice_checkout";
+		return session.mode === "payment" && session.metadata?.type !== "platform_subscription"
+			? "commerce_checkout"
+			: "other_checkout";
+	}
+	if (event.type === "payment_intent.payment_failed") return "payment_failure";
+	if (["refund.created", "refund.updated", "refund.failed"].includes(event.type)) return "refund";
+	if (
+		["account.updated", "capability.updated", "account.application.deauthorized"].includes(
+			event.type,
+		)
+	)
+		return "account_lifecycle";
+	return "other";
 }
 
 async function isAcknowledgedOrderReplay(event: Stripe.Event) {

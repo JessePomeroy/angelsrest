@@ -262,6 +262,7 @@ export async function processStripeWebhookEvent(
 		});
 	} catch (err) {
 		const errorMessage = err instanceof Error ? err.message : String(err);
+		const retryCause = classifyIntakeFailure(err);
 
 		logStructured({
 			event: "webhook.failed",
@@ -270,22 +271,9 @@ export async function processStripeWebhookEvent(
 			sessionId,
 			durationMs: Date.now() - webhookStart,
 			error: err,
-			meta: { stripeEventType: event.type },
+			meta: { stripeEventType: event.type, retryCause },
 		});
-		if (
-			!(err instanceof CheckoutSnapshotProtocolError) &&
-			!(err instanceof ManualRefundReconciliationRetryableError) &&
-			!(err instanceof ClientRefundEvidenceError) &&
-			!(err instanceof ClientPrintRefundError) &&
-			!(err instanceof PaymentFailureEmailClaimError) &&
-			!(err instanceof OrderReceiptRetryableError) &&
-			!(err instanceof PrintReconciliationAlertDeliveryError) &&
-			!(err instanceof PrintReconciliationAlertRetryableError) &&
-			!(err instanceof PrintReconciliationPendingError) &&
-			!(err instanceof ProviderSubmissionClosedRetryableError) &&
-			!(err instanceof AutomatedFulfillmentRefundRetryableError) &&
-			!(err instanceof AutomatedRefundNotificationRetryableError)
-		) {
+		if (retryCause === "unclassified") {
 			await sendFailureAlert(adapters.resend, event.type, sessionId ?? "unknown", errorMessage);
 		}
 		throw error(
@@ -293,6 +281,27 @@ export async function processStripeWebhookEvent(
 			"Webhook processing failed",
 		);
 	}
+}
+
+function classifyIntakeFailure(cause: unknown) {
+	if (cause instanceof CheckoutSnapshotProtocolError) return "checkout_snapshot";
+	if (cause instanceof ManualRefundReconciliationRetryableError)
+		return "manual_refund_reconciliation";
+	if (cause instanceof ClientRefundEvidenceError) return "client_refund_evidence";
+	if (cause instanceof ClientPrintRefundError) return "client_refund";
+	if (cause instanceof PaymentFailureEmailClaimError) return "payment_failure_email";
+	if (cause instanceof OrderReceiptRetryableError) return "order_receipt";
+	if (
+		cause instanceof PrintReconciliationAlertDeliveryError ||
+		cause instanceof PrintReconciliationAlertRetryableError
+	)
+		return "print_reconciliation_alert";
+	if (cause instanceof PrintReconciliationPendingError) return "print_reconciliation_pending";
+	if (cause instanceof ProviderSubmissionClosedRetryableError) return "provider_submission_closed";
+	if (cause instanceof AutomatedFulfillmentRefundRetryableError) return "automated_refund";
+	if (cause instanceof AutomatedRefundNotificationRetryableError)
+		return "automated_refund_notification";
+	return "unclassified";
 }
 
 async function markInvoicePaidFromSession(
