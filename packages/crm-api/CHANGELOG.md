@@ -1,5 +1,11 @@
 # @jessepomeroy/crm-api
 
+## 6.8.1
+
+### Patch Changes
+
+- 3cc5517: Bind scheduled hub callbacks to their production or isolated staging backend, and add guarded operator setup for the permanent staging deployment.
+
 ## 6.8.0
 
 ### Minor Changes
