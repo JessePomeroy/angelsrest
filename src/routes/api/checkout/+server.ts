@@ -1,4 +1,5 @@
 import { json } from "@sveltejs/kit";
+import { SITE_DOMAIN } from "$lib/config/site";
 import { ApiErrorCode, apiError } from "$lib/server/apiError";
 import { bindCheckoutSession } from "$lib/server/checkoutBinding";
 import { runCheckoutSessionStage } from "$lib/server/checkoutFailures";
@@ -10,25 +11,28 @@ import {
 } from "$lib/server/commercePurposeControls";
 import { createDirectCheckoutSession, rejectCouponAttempt } from "$lib/server/directCheckout";
 import { validateSameOriginCheckoutAttemptRequest } from "$lib/server/handleCheckout";
-import { getPublicSiteOrigin } from "$lib/server/runtimeConfig";
+import { getPublicSiteOrigin, isStagingEnvironment } from "$lib/server/runtimeConfig";
 import { getStripe } from "$lib/server/stripeClient";
 import { resolveStripeTenantForSite } from "$lib/server/stripeTenant";
 
 export async function POST({ request, cookies }) {
 	try {
 		const siteOrigin = getPublicSiteOrigin();
+		const staging = isStagingEnvironment();
+		// The isolated staging database keeps the hub's canonical catalog tenant.
+		const checkoutSite = staging ? SITE_DOMAIN : siteOrigin;
 		const rawBody = await request.json();
 		rejectCouponAttempt(rawBody);
-		const control = assertNewOrderCheckoutOpen(siteOrigin);
+		const control = assertNewOrderCheckoutOpen(checkoutSite);
 		const attemptIdentity = validateSameOriginCheckoutAttemptRequest(
-			siteOrigin,
+			checkoutSite,
 			rawBody?.attempt,
 			rawBody?.attemptStartedAt,
 			rawBody?.attemptProof,
 		);
 		const stripe = await runCheckoutSessionStage("checkout_stripe", () => getStripe());
 		const tenant = await runCheckoutSessionStage("checkout_tenant", () =>
-			resolveStripeTenantForSite(siteOrigin),
+			resolveStripeTenantForSite(checkoutSite),
 		);
 		if (control.tenantId !== undefined && control.tenantId !== tenant.tenantId) {
 			throw new NewOrderCheckoutClosedError();
@@ -37,6 +41,7 @@ export async function POST({ request, cookies }) {
 			body: rawBody,
 			stripe,
 			siteUrl: siteOrigin,
+			allowedRedirectOrigins: staging ? [siteOrigin] : undefined,
 			tenant,
 			bindSession: (sessionId) => bindCheckoutSession(cookies, sessionId),
 			attemptIdentity,

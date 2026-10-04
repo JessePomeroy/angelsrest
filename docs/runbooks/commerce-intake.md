@@ -20,8 +20,10 @@ retain their existing processing.
    It must differ from `WEBHOOK_SECRET` and `PRINT_FULFILLMENT_RUNNER_SECRET`.
    Do not print it or distribute it to a spoke. Set backend
    `COMMERCE_INTAKE_RUNNER_URL` to the HTTPS hub's
-   `/api/internal/commerce-intake` route. Only the apex/www Angels Rest origins
-   are accepted; redirects and alternate paths are rejected.
+   `/api/internal/commerce-intake` route. The live backend accepts only the
+   apex/www Angels Rest origins; the isolated staging backend accepts only
+   `https://staging.angelsrest.online`. Each is pinned to its physical deployment.
+   Redirects and alternate paths are rejected; see [staging setup](staging.md).
 4. The backend requires `COMMERCE_INTAKE_SCOPES`, a closed JSON object such as
    `{"version":1,"sites":[{"siteUrl":"approved.example","mode":"test"}]}`.
    This example is not an activation instruction. The host also requires

@@ -23,6 +23,7 @@ export interface CreateDirectCheckoutSessionOptions {
 	body: unknown;
 	stripe: Stripe;
 	siteUrl: string;
+	allowedRedirectOrigins?: readonly string[];
 	tenant?: StripeTenantAccount;
 	bindSession: (sessionId: string) => void;
 	resolveCommerce?: typeof resolveCurrentCheckoutCommerce;
@@ -81,6 +82,7 @@ export async function createDirectCheckoutSession({
 	body: rawBody,
 	stripe,
 	siteUrl,
+	allowedRedirectOrigins,
 	tenant,
 	bindSession,
 	resolveCommerce = resolveCurrentCheckoutCommerce,
@@ -138,6 +140,7 @@ export async function createDirectCheckoutSession({
 		lineItems,
 		successUrl,
 		cancelUrl,
+		allowedRedirectOrigins,
 		shippingAllowedCountries: fulfillment.isDigital ? undefined : ["US"],
 		tenantCheckout,
 		bindSession,
