@@ -3,6 +3,8 @@ import PlatformPage from "@jessepomeroy/admin/pages/PlatformPage";
 import { addToast, getAdminConfig, type PlatformClient } from "@jessepomeroy/admin/core";
 import { useQuery } from "convex-svelte";
 import PlatformClientCreate from "$lib/components/PlatformClientCreate.svelte";
+import PlatformReleaseStatus from "$lib/components/PlatformReleaseStatus.svelte";
+import { api as hostApi } from "$convex/api";
 import { lumaprintsSetupPath } from "$lib/lumaprintsSetup";
 import { stripeConnectSetupPath } from "$lib/stripeConnectSetup";
 
@@ -20,8 +22,17 @@ const clientsQuery = useQuery(api.platform.listAll, {});
 
 let selectedSiteUrl = $state("");
 let copiedUrl = $state("");
+let releaseSiteUrl = $state(config.siteUrl);
 
-let clients = $derived(((clientsQuery.data ?? []) as StripePlatformClient[]).filter(
+const releaseQuery = useQuery(hostApi.platformReleaseRecords.forSite, () =>
+	data.adminSession.status === "authorized" && data.adminSession.isCreator
+		? { siteUrl: releaseSiteUrl }
+		: "skip",
+);
+
+let allClients = $derived((clientsQuery.data ?? []) as StripePlatformClient[]);
+let releaseClients = $derived(allClients.map(({ name, siteUrl }) => ({ name, siteUrl })));
+let clients = $derived(allClients.filter(
 	client => client.role !== "creator" && client.siteUrl !== config.siteUrl,
 ));
 let selectedClient = $derived(
@@ -48,6 +59,17 @@ async function copySetupLink() {
 
 {#if data.adminSession.status === "authorized" && data.adminSession.isCreator}
 	<PlatformClientCreate oncreated={(client) => { selectedSiteUrl = client.siteUrl; copiedUrl = ""; }} />
+{/if}
+
+{#if data.adminSession.status === "authorized" && data.adminSession.isCreator}
+	<PlatformReleaseStatus
+		clients={releaseClients}
+		selectedSiteUrl={releaseSiteUrl}
+		onselect={(siteUrl) => { releaseSiteUrl = siteUrl; }}
+		result={releaseQuery.data}
+		loading={clientsQuery.isLoading || releaseQuery.isLoading}
+		unavailable={Boolean(clientsQuery.error || releaseQuery.error)}
+	/>
 {/if}
 
 <section class="stripe-panel" aria-labelledby="stripe-connect-heading">

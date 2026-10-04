@@ -46,7 +46,9 @@ if (params.get("populated") === "true") {
 }
 </script>
 
-{#if fixture === "platform-client-create"}
+{#if fixture === "platform-release-status"}
+  {#await import("./PlatformReleaseStatusHarness.svelte")}<p>Loading release status fixture…</p>{:then component}<component.default />{/await}
+{:else if fixture === "platform-client-create"}
   {#await import("./PlatformClientCreateHarness.svelte")}<p>Loading platform client fixture…</p>{:then component}<component.default />{/await}
 {:else if fixture === "client-print-refunds"}
   {#await import("./ClientPrintRefundHarness.svelte")}<p>Loading refund fixture…</p>{:then component}<component.default />{/await}

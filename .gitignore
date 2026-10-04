@@ -52,3 +52,6 @@ packages/crm-api/convex/**/*.d.ts.map
 
 # Pinned, read-only Worker checkout used by the cross-repository artwork proof.
 /.contract/
+
+# Local rendered evidence; retain the small source surface brief separately.
+/.impeccable/review/
