@@ -1,3 +1,7 @@
+import {
+	adoptOrderTenant, assertOrderTenant, assertTenantRouting, connectedAccountMatchesSite,
+	readCheckoutAdmissionRouting, readCheckoutRouting, retiredOrderSession, routingConflict,
+} from "./helpers/orderRouting";
 import { requireCreator } from "./authHelpers";
 import { recordOrderRevenue, readOrderRevenue, advanceOrderRevenueBackfill } from "./helpers/orderRevenue";
 import { requireSnapshotProductsNotDeleted } from "./helpers/catalogDeletion";
@@ -474,64 +478,10 @@ export const UNBOUND_RETENTION_MS = 25 * 60 * 60 * 1000;
 export const PAID_SAFE_DELAY_MS = 35 * 24 * 60 * 60 * 1000;
 const RESERVATION_RETRY_DELAYS_MS = [60 * 60 * 1000, 6 * 60 * 60 * 1000, 24 * 60 * 60 * 1000] as const;
 
-async function connectedAccountMatchesSite(
-	ctx: QueryCtx,
-	siteUrl: string,
-	account: string | undefined,
-) {
-	return account === undefined || await stripeAccountMatchesSite(ctx, siteUrl, account);
-}
-
 async function assertNewOrderAdmissionOpenIfActivated(ctx: QueryCtx, siteUrl: string) {
 	const control = await getDurablePurposeControl(ctx, siteUrl, "new_order_admission");
 	if (control?.state === "closed") throw new Error("New order admission is closed");
 	return control;
-}
-
-function routingConflict(): never {
-	throw new Error("Checkout routing facts conflict");
-}
-
-async function assertTenantRouting(
-	ctx: Pick<QueryCtx, "db">,
-	tenantId: string | undefined,
-	siteUrl: string,
-	storedTenantId?: string,
-) {
-	if (
-		tenantId !== undefined
-		&& (storedTenantId !== undefined && storedTenantId !== tenantId
-			|| !await tenantIdentityMatchesSite(ctx, tenantId, siteUrl))
-	) routingConflict();
-}
-
-async function adoptOrderTenant(
-	ctx: MutationCtx,
-	order: Doc<"orders">,
-	tenantId: string | undefined,
-) {
-	await assertTenantRouting(ctx, tenantId, order.siteUrl, order.tenantId);
-	if (tenantId !== undefined && order.tenantId === undefined) {
-		await ctx.db.patch(order._id, { tenantId });
-	}
-}
-
-async function assertOrderTenant(
-	ctx: Pick<QueryCtx, "db">,
-	order: Doc<"orders">,
-	tenantId: string | undefined,
-) {
-	await assertTenantRouting(ctx, tenantId, order.siteUrl, order.tenantId);
-}
-
-async function retiredOrderSession(
-	ctx: Pick<QueryCtx, "db">,
-	stripeSessionId: string,
-) {
-	return await ctx.db
-		.query("retiredOrderSessions")
-		.withIndex("by_stripeSessionId", (q) => q.eq("stripeSessionId", stripeSessionId))
-		.unique();
 }
 
 async function tokenlessPreProtocolCheckoutIsCompatible(
@@ -1624,88 +1574,7 @@ export const resolveCheckoutRouting = query({
 	},
 	handler: async (ctx, args) => {
 		await requireWebhookCallerOrAuth(ctx, args.webhookSecret, { allowAuth: false });
-		const order = await ctx.db.query("orders")
-			.withIndex("by_stripeSessionId", (q) => q.eq("stripeSessionId", args.stripeSessionId)).unique();
-		const retired = await retiredOrderSession(ctx, args.stripeSessionId);
-		if (retired && order) routingConflict();
-		if (retired) {
-			await assertTenantRouting(
-				ctx, args.stripeTenantMetadataTenantId, retired.siteUrl,
-			);
-			if (retired.routingKind === "connected") {
-				if (
-					retired.stripeConnectedAccountId === undefined
-					|| args.stripeConnectedAccountId !== retired.stripeConnectedAccountId
-				) routingConflict();
-			} else if (
-				retired.stripeConnectedAccountId !== undefined
-				|| args.stripeConnectedAccountId !== undefined
-					&& !await connectedAccountMatchesSite(
-						ctx, retired.siteUrl, args.stripeConnectedAccountId,
-					)
-			) routingConflict();
-			if (
-				args.stripeTenantMetadataSiteUrl !== undefined
-				&& args.stripeTenantMetadataSiteUrl !== retired.siteUrl
-			) routingConflict();
-			return { source: "retired" as const, siteUrl: retired.siteUrl,
-				stripeConnectedAccountId: retired.stripeConnectedAccountId };
-		}
-		if (order) {
-			await assertTenantRouting(
-				ctx, args.stripeTenantMetadataTenantId, order.siteUrl, order.tenantId,
-			);
-			if (order.stripeConnectedAccountId !== undefined) {
-				if (
-					args.stripeConnectedAccountId !== order.stripeConnectedAccountId
-					|| !await connectedAccountMatchesSite(
-						ctx, order.siteUrl, order.stripeConnectedAccountId,
-					)
-				) routingConflict();
-			} else if (
-				args.stripeConnectedAccountId !== undefined
-				&& !await connectedAccountMatchesSite(
-					ctx, order.siteUrl, args.stripeConnectedAccountId,
-				)
-			) {
-				// Explicit legacy fallback: old connected-account orders may not
-				// carry the stored account, but the signed event account must still
-				// resolve canonically to the order tenant.
-				routingConflict();
-			}
-			if (
-				args.stripeTenantMetadataSiteUrl !== undefined
-				&& args.stripeTenantMetadataSiteUrl !== order.siteUrl
-			) routingConflict();
-			return { source: "order" as const, siteUrl: order.siteUrl,
-				stripeConnectedAccountId: order.stripeConnectedAccountId };
-		}
-		const reservation = await ctx.db.query("checkoutSnapshotReservations")
-			.withIndex("by_accountScope_and_stripeSessionId", (q) => q
-				.eq("accountScope", stripeAccountScope(args.stripeConnectedAccountId))
-				.eq("stripeSessionId", args.stripeSessionId)).unique();
-		if (!reservation || reservation.state !== "bound") return null;
-		await assertTenantRouting(
-			ctx, args.stripeTenantMetadataTenantId, reservation.siteUrl, reservation.tenantId,
-		);
-		if (args.stripeConnectedAccountId !== undefined) {
-			if (
-				reservation.stripeConnectedAccountId !== args.stripeConnectedAccountId
-				|| !await connectedAccountMatchesSite(
-					ctx, reservation.siteUrl, args.stripeConnectedAccountId,
-				)
-			) routingConflict();
-		} else if (args.stripeTenantMetadataSiteUrl !== reservation.siteUrl) {
-			// Platform-account sessions are tenant-routable only through the
-			// marker stamped by the trusted Checkout creation response path.
-			routingConflict();
-		}
-		if (
-			args.stripeTenantMetadataSiteUrl !== undefined
-			&& args.stripeTenantMetadataSiteUrl !== reservation.siteUrl
-		) routingConflict();
-		return { source: "reservation" as const, siteUrl: reservation.siteUrl,
-			stripeConnectedAccountId: reservation.stripeConnectedAccountId };
+		return await readCheckoutRouting(ctx, args);
 	},
 });
 
@@ -1724,40 +1593,7 @@ export const resolveCheckoutAdmissionRouting = query({
 	},
 	handler: async (ctx, args) => {
 		await requireWebhookCallerOrAuth(ctx, args.webhookSecret, { allowAuth: false });
-		if (!isStripeCheckoutSessionId(args.stripeSessionId)) return null;
-		const [order, retired, admission] = await Promise.all([
-			ctx.db.query("orders")
-				.withIndex("by_stripeSessionId", (q) => q.eq("stripeSessionId", args.stripeSessionId))
-				.unique(),
-			retiredOrderSession(ctx, args.stripeSessionId),
-			ctx.db.query("checkoutSessionAdmissions")
-				.withIndex("by_accountScope_and_stripeSessionId", (q) => q
-					.eq("accountScope", stripeAccountScope(args.stripeConnectedAccountId))
-					.eq("stripeSessionId", args.stripeSessionId))
-				.unique(),
-		]);
-		if (order || retired || !admission || admission.state !== "bound") return null;
-		await assertTenantRouting(
-			ctx, args.stripeTenantMetadataTenantId, admission.siteUrl, admission.tenantId,
-		);
-		if (
-			admission.stripeConnectedAccountId !== args.stripeConnectedAccountId
-			|| args.stripeTenantMetadataSiteUrl !== undefined
-				&& args.stripeTenantMetadataSiteUrl !== admission.siteUrl
-		) routingConflict();
-		if (
-			args.stripeConnectedAccountId !== undefined
-			&& !await connectedAccountMatchesSite(
-				ctx,
-				admission.siteUrl,
-				args.stripeConnectedAccountId,
-			)
-		) routingConflict();
-		return {
-			source: "admission" as const,
-			siteUrl: admission.siteUrl,
-			stripeConnectedAccountId: admission.stripeConnectedAccountId,
-		};
+		return await readCheckoutAdmissionRouting(ctx, args);
 	},
 });
 

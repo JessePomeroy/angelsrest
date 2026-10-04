@@ -204,6 +204,14 @@ notifications use durable claims, bounded leases, stable idempotency keys, and
 explicit completion or uncertainty states. The stable cross-runtime contract is
 documented in [`contracts/commerce-intake.md`](contracts/commerce-intake.md).
 
+`convex/helpers/orderRouting.ts` owns transaction-local checkout routing and
+order tenant checks. The existing `api.orders.resolveCheckoutRouting` and
+`resolveCheckoutAdmissionRouting` queries keep their webhook authentication and
+separate versioned result shapes. Internal callers must establish trusted event
+authority before calling the readers directly; the helpers neither authorize a
+caller nor create a separate query/mutation transaction. Reservations, order
+creation, receipt claims, refunds and print jobs retain their existing boundaries.
+
 New Angels Rest handle-v2 checkouts opt into frozen print input with
 `PRINT_INPUT_PROTOCOL=frozen-v1`. It is off by default but explicitly enabled in
 Angels Rest production since September 6, 2026. Convex captures the
