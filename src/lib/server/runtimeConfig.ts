@@ -40,7 +40,36 @@ function origin(value: string | undefined, integration: string): string {
 
 export const getPublicSiteOrigin = () => origin(publicEnv.PUBLIC_SITE_URL, "Public site origin");
 export const getConvexUrl = () => origin(publicEnv.PUBLIC_CONVEX_URL, "Convex");
-export const getStripeSecretKey = () => required(privateEnv.STRIPE_SECRET_KEY, "Stripe");
+
+/** Staging's public configuration must select the isolated host and backend together. */
+export function isStagingEnvironment() {
+	const urls = [
+		[publicEnv.PUBLIC_SITE_URL, "https://staging.angelsrest.online"],
+		[publicEnv.PUBLIC_CONVEX_URL, "https://rosy-firefly-366.convex.cloud"],
+		[publicEnv.PUBLIC_CONVEX_SITE_URL, "https://rosy-firefly-366.convex.site"],
+	] as const;
+	const stagingHosts = new Set(urls.map(([, expected]) => new URL(expected).hostname));
+	const selected = urls.some(([value]) => {
+		try {
+			return stagingHosts.has(new URL(value ?? "").hostname.replace(/\.$/, ""));
+		} catch {
+			return false;
+		}
+	});
+	if (!selected) return false;
+	if (urls.some(([value, expected]) => origin(value, "Staging isolation") !== expected)) {
+		throw new RuntimeConfigurationError("Staging isolation");
+	}
+	return true;
+}
+
+export function getStripeSecretKey() {
+	const key = required(privateEnv.STRIPE_SECRET_KEY, "Stripe");
+	if (isStagingEnvironment() && !/^(sk|rk)_test_/.test(key)) {
+		throw new RuntimeConfigurationError("Staging Stripe sandbox");
+	}
+	return key;
+}
 /** Enable only after the additive Convex schema and dedicated artwork Worker are deployed. */
 export function getFrozenPrintInputVersion(siteUrl: string): 1 | undefined {
 	if (siteUrl !== "angelsrest.online") return undefined;
@@ -81,7 +110,12 @@ export function getClientSupplierCaptureVersion(siteUrl: string, tenantId?: stri
 }
 export const getStripePlatformWebhookSecret = () =>
 	required(privateEnv.STRIPE_PLATFORM_WEBHOOK_SECRET, "Stripe platform webhook");
-export const getResendApiKey = () => required(privateEnv.RESEND_API_KEY, "Resend");
+export function getResendApiKey() {
+	// Shared Admin constructs its own client. Keep that unrestricted transport
+	// unavailable in staging; commerce uses the separately guarded test sender.
+	if (isStagingEnvironment()) throw new RuntimeConfigurationError("Staging CRM email");
+	return required(privateEnv.RESEND_API_KEY, "Resend");
+}
 export const getGalleryAdminSecret = () =>
 	required(privateEnv.GALLERY_ADMIN_SECRET, "Gallery administration");
 export function getCmsMediaTenantSecret(siteUrl?: string) {
@@ -178,6 +212,9 @@ export function getLumaPrintsRuntimeConfig() {
 	const rawStoreId = required(privateEnv.LUMAPRINTS_STORE_ID, "LumaPrints");
 	const storeId = /^\d+$/.test(rawStoreId) ? Number(rawStoreId) : Number.NaN;
 	const sandbox = privateEnv.LUMAPRINTS_USE_SANDBOX;
+	if (isStagingEnvironment() && sandbox !== "true") {
+		throw new RuntimeConfigurationError("Staging LumaPrints sandbox");
+	}
 	if (
 		!Number.isSafeInteger(storeId) ||
 		storeId <= 0 ||

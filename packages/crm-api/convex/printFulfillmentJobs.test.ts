@@ -28,7 +28,7 @@ beforeEach(() => {
 	vi.stubEnv("WEBHOOK_SECRET", secret);
 	vi.stubEnv("ORDER_PRODUCERS_STATE", "open");
 });
-afterEach(() => { vi.useRealTimers(); vi.unstubAllEnvs(); });
+afterEach(() => { vi.useRealTimers(); vi.unstubAllEnvs(); vi.unstubAllGlobals(); });
 
 async function setup(printOrderReferenceVersion?: 1) {
 	const t = convexTest(schema, modules);
@@ -108,6 +108,23 @@ test("new webhook orders enqueue once; historical orders never acquire jobs on r
 	expect((await t.mutation(api.orders.create, { ...historical, runPrintJob: true })).printJobId).toBeUndefined();
 	expect(await t.run((ctx) => ctx.db.query("printFulfillmentJobs").take(3))).toHaveLength(1);
 });
+
+test.each(["https://staging.angelsrest.online", "https://angelsrest.online"])(
+	"staging print dispatch enforces its environment before sending credentials: %s", async (origin) => {
+		const { t, jobId } = await setup();
+		const job = await t.run((ctx) => ctx.db.get(jobId));
+		if (!job) throw new Error("Expected queued print job");
+		vi.setSystemTime(job.nextAt);
+		vi.stubEnv("CONVEX_SITE_URL", "https://rosy-firefly-366.convex.site");
+		vi.stubEnv("PRINT_FULFILLMENT_RUNNER_URL", `${origin}/api/internal/print-fulfillment`);
+		vi.stubEnv("PRINT_FULFILLMENT_RUNNER_SECRET", "staging-print-runner-fixture-0123456789abcdef");
+		const fetcher = vi.fn().mockResolvedValue(new Response("{}")); vi.stubGlobal("fetch", fetcher);
+		await t.action(internal.printFulfillmentJobs.dispatch, { jobId, nextAt: Date.now() });
+		expect(fetcher).toHaveBeenCalledTimes(origin === "https://staging.angelsrest.online" ? 1 : 0);
+		if (fetcher.mock.calls.length) expect(fetcher.mock.calls[0][1]).toMatchObject({ redirect: "error" });
+		expect(await t.run((ctx) => ctx.db.get(jobId))).toMatchObject({ attempts: 1, errorCode: "runner_unavailable" });
+	},
+);
 
 test("source checkpoints survive retry and reject stale workers and unauthenticated reads", async () => {
 	const { t, jobId, claim, step } = await setup();

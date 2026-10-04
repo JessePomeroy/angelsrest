@@ -35,6 +35,7 @@ beforeEach(() => {
 	vi.useFakeTimers();
 	vi.setSystemTime(new Date("2026-10-03T12:00:00Z"));
 	vi.stubEnv("WEBHOOK_SECRET", secret);
+	vi.stubEnv("CONVEX_SITE_URL", "https://loyal-swan-967.convex.site");
 	vi.stubEnv("ORDER_PRODUCERS_STATE", "open");
 	vi.stubEnv("COMMERCE_INTAKE_SCOPES", JSON.stringify({ version: 1, sites: [{ siteUrl, mode: "test" }] }));
 	vi.stubEnv("COMMERCE_INTAKE_RUNNER_URL", "");
@@ -200,6 +201,20 @@ test("HTTP 200 without a durable completion checkpoint never marks done", async 
 	expect(JSON.parse(fetcher.mock.calls[0][1].body)).toEqual({ inboxId, leaseToken: active.leaseToken });
 	expect((await row(t, inboxId)).state).toBe("retry");
 });
+
+test.each(["https://staging.angelsrest.online", "https://angelsrest.online"])(
+	"staging intake dispatch enforces its environment before sending credentials: %s", async (origin) => {
+		const { t } = await setup(); const inboxId = await accept(t); const active = await claim(t, inboxId);
+		vi.stubEnv("CONVEX_SITE_URL", "https://rosy-firefly-366.convex.site");
+		vi.stubEnv("COMMERCE_INTAKE_RUNNER_URL", `${origin}/api/internal/commerce-intake`);
+		vi.stubEnv("COMMERCE_INTAKE_RUNNER_SECRET", runnerSecret);
+		const fetcher = vi.fn().mockResolvedValue(new Response("{}")); vi.stubGlobal("fetch", fetcher);
+		await t.action(internal.commerceIntakeInbox.dispatch, { inboxId, leaseToken: active.leaseToken });
+		expect(fetcher).toHaveBeenCalledTimes(origin === "https://staging.angelsrest.online" ? 1 : 0);
+		if (fetcher.mock.calls.length) expect(fetcher.mock.calls[0][1]).toMatchObject({ redirect: "error" });
+		expect((await row(t, inboxId)).state).toBe("retry");
+	},
+);
 
 test("processed with no order blocks visibly instead of silently completing", async () => {
 	const { t } = await setup(); const inboxId = await accept(t);

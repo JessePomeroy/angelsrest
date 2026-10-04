@@ -137,6 +137,7 @@ import type * as postContent from "../postContent.js";
 import type * as printFulfillmentJobs from "../printFulfillmentJobs.js";
 import type * as printImageDiagnostics from "../printImageDiagnostics.js";
 import type * as quotes from "../quotes.js";
+import type * as stagingSetup from "../stagingSetup.js";
 import type * as stripeFees from "../stripeFees.js";
 import type * as stripeFeesStore from "../stripeFeesStore.js";
 import type * as tags from "../tags.js";
@@ -277,6 +278,7 @@ declare const fullApi: ApiFromModules<{
   printFulfillmentJobs: typeof printFulfillmentJobs;
   printImageDiagnostics: typeof printImageDiagnostics;
   quotes: typeof quotes;
+  stagingSetup: typeof stagingSetup;
   stripeFees: typeof stripeFees;
   stripeFeesStore: typeof stripeFeesStore;
   tags: typeof tags;
