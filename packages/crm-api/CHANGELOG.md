@@ -1,5 +1,11 @@
 # @jessepomeroy/crm-api
 
+## 6.8.0
+
+### Minor Changes
+
+- 4d5e4b7: Add a disabled-by-default durable commerce inbox with transactional deduplication, leased dispatch, persisted completion checks and creator-audited recovery.
+
 ## 6.7.1
 
 ### Patch Changes
