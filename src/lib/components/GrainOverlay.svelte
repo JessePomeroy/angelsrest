@@ -19,7 +19,10 @@ onMount(() => {
 	const fs = gl.createShader(gl.FRAGMENT_SHADER);
 	const prog = gl.createProgram();
 	const buf = gl.createBuffer();
+	let resourcesReleased = false;
 	function releaseResources() {
+		if (resourcesReleased) return;
+		resourcesReleased = true;
 		gl.useProgram(null);
 		gl.bindBuffer(gl.ARRAY_BUFFER, null);
 		if (buf) gl.deleteBuffer(buf);
@@ -31,6 +34,8 @@ onMount(() => {
 		releaseResources();
 		return;
 	}
+	// Enable parallel mode before queuing shader work; late activation can still stall.
+	const parallel = gl.getExtension("KHR_parallel_shader_compile");
 	gl.shaderSource(vs, `
 		attribute vec2 p;
 		void main() { gl_Position = vec4(p, 0, 1); }
@@ -50,28 +55,12 @@ onMount(() => {
 		}
 	`);
 	gl.compileShader(fs);
-	if (!gl.getShaderParameter(vs, gl.COMPILE_STATUS) || !gl.getShaderParameter(fs, gl.COMPILE_STATUS)) {
-		releaseResources();
-		return;
-	}
 	gl.attachShader(prog, vs);
 	gl.attachShader(prog, fs);
 	gl.linkProgram(prog);
-	if (!gl.getProgramParameter(prog, gl.LINK_STATUS)) {
-		releaseResources();
-		return;
-	}
-	gl.useProgram(prog);
-	const seedLoc = gl.getUniformLocation(prog, "seed");
-	gl.bindBuffer(gl.ARRAY_BUFFER, buf);
-	gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1,-1, 1,-1, -1,1, 1,1]), gl.STATIC_DRAW);
-	const pLoc = gl.getAttribLocation(prog, "p");
-	if (pLoc < 0) {
-		releaseResources();
-		return;
-	}
-	gl.enableVertexAttribArray(pLoc);
-	gl.vertexAttribPointer(pLoc, 2, gl.FLOAT, false, 0, 0);
+	let seedLoc: WebGLUniformLocation | null = null;
+	let initialized = false;
+	let compilationFrame: number | undefined;
 
 	const motion = window.matchMedia("(prefers-reduced-motion: reduce)");
 	let frame: number | undefined;
@@ -81,6 +70,7 @@ onMount(() => {
 		gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
 	}
 	function resize() {
+		if (!initialized) return;
 		const dpr = Math.min(window.devicePixelRatio, 2);
 		canvas.width = Math.round(window.innerWidth * dpr);
 		canvas.height = Math.round(window.innerHeight * dpr);
@@ -89,22 +79,51 @@ onMount(() => {
 	}
 	function render() {
 		frame = undefined;
-		if (disposed || motion.matches || document.hidden) return;
+		if (disposed || !initialized || motion.matches || document.hidden) return;
 		draw();
 		frame = window.setTimeout(render, 125);
 	}
 	function syncMotion() {
 		if (frame !== undefined) clearTimeout(frame);
 		frame = undefined;
-		if (!motion.matches && !document.hidden) frame = window.setTimeout(render, 125);
+		if (initialized && !motion.matches && !document.hidden) frame = window.setTimeout(render, 125);
 	}
-	resize();
-	syncMotion();
+	function initialize() {
+		compilationFrame = undefined;
+		if (disposed || !vs || !fs) return;
+		// Shader status queries can stall the main thread. Poll readiness first when supported.
+		if (parallel && !gl.getProgramParameter(prog, parallel.COMPLETION_STATUS_KHR)) {
+			compilationFrame = requestAnimationFrame(initialize);
+			return;
+		}
+		if (!gl.getShaderParameter(vs, gl.COMPILE_STATUS) ||
+			!gl.getShaderParameter(fs, gl.COMPILE_STATUS) ||
+			!gl.getProgramParameter(prog, gl.LINK_STATUS)) {
+			releaseResources();
+			return;
+		}
+		gl.useProgram(prog);
+		seedLoc = gl.getUniformLocation(prog, "seed");
+		gl.bindBuffer(gl.ARRAY_BUFFER, buf);
+		gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1,-1, 1,-1, -1,1, 1,1]), gl.STATIC_DRAW);
+		const pLoc = gl.getAttribLocation(prog, "p");
+		if (pLoc < 0) {
+			releaseResources();
+			return;
+		}
+		gl.enableVertexAttribArray(pLoc);
+		gl.vertexAttribPointer(pLoc, 2, gl.FLOAT, false, 0, 0);
+		initialized = true;
+		resize();
+		syncMotion();
+	}
 	window.addEventListener("resize", resize, { passive: true });
 	motion.addEventListener("change", syncMotion);
 	document.addEventListener("visibilitychange", syncMotion);
+	initialize();
 	return () => {
 		disposed = true;
+		if (compilationFrame !== undefined) cancelAnimationFrame(compilationFrame);
 		if (frame !== undefined) clearTimeout(frame);
 		window.removeEventListener("resize", resize);
 		motion.removeEventListener("change", syncMotion);

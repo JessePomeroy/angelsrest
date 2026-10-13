@@ -7,6 +7,7 @@ const probeScript = `(() => {
  let nextId = 1;
  const probe = window.motionProbe = {
   draws: 0, rasterDraws: 0, glyphDraws: 0, encodes: 0, deleted: [], images: [], lateLoad: null, lateFrame: null, failPaint: false,
+  compilationComplete: false, shaderStatusReads: 0, motionChanges: 0,
   queued: () => queue.size,
   tick(time) { const callbacks = [...queue.values()]; queue.clear(); callbacks.forEach(callback => callback(time)); },
   captureLate() { const image = this.images[0]; this.lateLoad = image.onload && (() => image.onloadSaved.call(image, new Event("load"))); image.onloadSaved = image.onload; },
@@ -33,7 +34,9 @@ const probeScript = `(() => {
   deleteProgram: () => probe.deleted.push("program"),
   deleteBuffer: () => probe.deleted.push("buffer"),
   shaderSource() {}, compileShader() {}, attachShader() {}, linkProgram() {}, useProgram() {},
-  getShaderParameter: () => fail !== "compile", getProgramParameter: () => fail !== "link",
+  getExtension: name => name === "KHR_parallel_shader_compile" && new URLSearchParams(location.search).has("parallel") ? { COMPLETION_STATUS_KHR: 9 } : null,
+  getShaderParameter: () => { probe.shaderStatusReads++; return fail !== "compile"; },
+  getProgramParameter: (program, parameter) => parameter === 9 ? probe.compilationComplete : fail !== "link",
   getUniformLocation: () => ({}), bindBuffer() {}, bufferData() {},
   getAttribLocation: () => 0, enableVertexAttribArray() {}, vertexAttribPointer() {},
   viewport() {}, uniform1f() {}, drawArrays: () => probe.draws++,
@@ -79,6 +82,10 @@ declare global {
 			glyphDraws: number;
 			encodes: number;
 			failPaint: boolean;
+			compilationComplete: boolean;
+			shaderStatusReads: number;
+			motionChanges: number;
+			motionQuery?: MediaQueryList;
 			deleted: string[];
 			images: HTMLImageElement[];
 			queued: () => number;
@@ -123,6 +130,75 @@ test("grain is static when reduced, resumes dynamically, and releases every GPU 
 	await page.evaluate(() => window.dispatchEvent(new Event("resize")));
 	expect(await page.evaluate(() => [window.motionProbe.queued(), window.motionProbe.draws])).toEqual([0, 2]);
 });
+
+test("grain waits for parallel compilation without reading blocking shader status", async ({ page }) => {
+	await page.emulateMedia({ reducedMotion: "no-preference" });
+	await page.goto("/?fixture=motion&kind=grain&parallel");
+	await expect(page.locator(".grain-canvas")).toBeAttached();
+	expect(await page.evaluate(() => [window.motionProbe.draws, window.motionProbe.shaderStatusReads, window.motionProbe.queued()])).toEqual([0, 0, 1]);
+	await page.evaluate(() => window.motionProbe.tick(1000));
+	expect(await page.evaluate(() => [window.motionProbe.draws, window.motionProbe.shaderStatusReads, window.motionProbe.queued()])).toEqual([0, 0, 1]);
+	await page.evaluate(() => {
+		const query = matchMedia("(prefers-reduced-motion: reduce)");
+		window.motionProbe.motionQuery = query;
+		query.addEventListener("change", () => window.motionProbe.motionChanges++, { once: true });
+	});
+	await page.emulateMedia({ reducedMotion: "reduce" });
+	await expect.poll(() => page.evaluate(() => window.motionProbe.motionChanges)).toBe(1);
+	await page.evaluate(() => { window.motionProbe.compilationComplete = true; window.motionProbe.tick(2000); });
+	expect(await page.evaluate(() => [window.motionProbe.draws, window.motionProbe.queued()])).toEqual([1, 0]);
+	await page.emulateMedia({ reducedMotion: "no-preference" });
+	await expect.poll(() => page.evaluate(() => window.motionProbe.queued())).toBe(1);
+	await page.evaluate(() => window.motionProbe.tick(3000));
+	expect(await page.evaluate(() => window.motionProbe.draws)).toBe(2);
+	await page.getByRole("button", { name: "Unmount motion" }).click();
+	expect(await page.evaluate(() => window.motionProbe.deleted.sort())).toEqual(["buffer", "program", "shader", "shader"]);
+});
+
+test("grain cancels pending compilation and ignores a late completion after unmount", async ({ page }) => {
+	await page.goto("/?fixture=motion&kind=grain&parallel");
+	await expect(page.locator(".grain-canvas")).toBeAttached();
+	await page.evaluate(() => window.motionProbe.captureFrame());
+	await page.getByRole("button", { name: "Unmount motion" }).click();
+	expect(await page.evaluate(() => [window.motionProbe.draws, window.motionProbe.queued()])).toEqual([0, 0]);
+	expect(await page.evaluate(() => window.motionProbe.deleted.sort())).toEqual(["buffer", "program", "shader", "shader"]);
+	await page.evaluate(() => { window.motionProbe.compilationComplete = true; window.motionProbe.fireLateFrame(1000); });
+	expect(await page.evaluate(() => [window.motionProbe.draws, window.motionProbe.shaderStatusReads, window.motionProbe.queued()])).toEqual([0, 0, 0]);
+});
+
+test("grain completed in a hidden document waits to animate until visible", async ({ page }) => {
+	await page.emulateMedia({ reducedMotion: "no-preference" });
+	await page.goto("/?fixture=motion&kind=grain&parallel");
+	await expect(page.locator(".grain-canvas")).toBeAttached();
+	await page.evaluate(() => {
+		Object.defineProperty(document, "hidden", { configurable: true, value: true });
+		document.dispatchEvent(new Event("visibilitychange"));
+		window.motionProbe.compilationComplete = true;
+		window.motionProbe.tick(1000);
+	});
+	expect(await page.evaluate(() => [window.motionProbe.draws, window.motionProbe.queued()])).toEqual([1, 0]);
+	await page.evaluate(() => {
+		Object.defineProperty(document, "hidden", { configurable: true, value: false });
+		document.dispatchEvent(new Event("visibilitychange"));
+		window.motionProbe.tick(2000);
+	});
+	expect(await page.evaluate(() => window.motionProbe.draws)).toBe(2);
+	await page.getByRole("button", { name: "Unmount motion" }).click();
+	expect(await page.evaluate(() => window.motionProbe.queued())).toBe(0);
+});
+
+for (const failure of ["compile", "link"]) {
+	test(`grain releases failed parallel ${failure} resources exactly once`, async ({ page }) => {
+		await page.goto(`/?fixture=motion&kind=grain&parallel&failure=${failure}`);
+		await expect(page.locator(".grain-canvas")).toBeAttached();
+		expect(await page.evaluate(() => window.motionProbe.deleted)).toEqual([]);
+		await page.evaluate(() => { window.motionProbe.compilationComplete = true; window.motionProbe.tick(1000); });
+		expect(await page.evaluate(() => [window.motionProbe.draws, window.motionProbe.queued()])).toEqual([0, 0]);
+		expect(await page.evaluate(() => window.motionProbe.deleted.sort())).toEqual(["buffer", "program", "shader", "shader"]);
+		await page.getByRole("button", { name: "Unmount motion" }).click();
+		expect(await page.evaluate(() => window.motionProbe.deleted.sort())).toEqual(["buffer", "program", "shader", "shader"]);
+	});
+}
 
 for (const failure of ["compile", "link", "buffer"]) {
 	test(`grain releases partial resources after ${failure} failure`, async ({ page }) => {
