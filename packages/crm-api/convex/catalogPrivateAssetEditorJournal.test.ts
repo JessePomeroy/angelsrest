@@ -1709,18 +1709,105 @@ describe("catalog editor inspection global single-flight", () => {
 
 
 describe("registered tenant upload reservations", () => {
- test("reserves a client declaration and preserves its original origin on replay", async () => {
-  process.env.CATALOG_PRIVATE_EDITOR_TENANT_ORIGINS = JSON.stringify({[OTHER_SITE]:`https://${OTHER_SITE}`});
-  const t=convexTest(schema,modules);await seedClients(t);
-  const {uploadHandle:_handle,...input}=printBegin();
-  const descriptor={...input,kind:"print_source" as const,contentType:"image/jpeg" as const};
-  const args={siteUrl:OTHER_SITE,uploadHandleHash:"a".repeat(64),proposedOperationId:"b".repeat(40),descriptor};
-  const first=await t.mutation(internal.catalogPrivateAssets.beginEditorJournal,args);
-  expect(first.workerPrepare.siteUrl).toBe(OTHER_SITE);
-  expect(first.workerPrepare.uploadOrigin).toBe(`https://${OTHER_SITE}`);
-  process.env.CATALOG_PRIVATE_EDITOR_TENANT_ORIGINS=JSON.stringify({[OTHER_SITE]:`https://www.${OTHER_SITE}`});
-  const replay=await t.mutation(internal.catalogPrivateAssets.beginEditorJournal,args);
-  expect(replay.replayed).toBe(true);expect(replay.workerPrepare).toEqual(first.workerPrepare);expect(replay.declarationHash).toBe(first.declarationHash);
-  await expect(t.mutation(internal.catalogPrivateAssets.beginEditorJournal,{...args,siteUrl:SITE})).rejects.toThrow();
- });
+	test("reserves a client declaration and preserves its original origin on replay", async () => {
+		process.env.CATALOG_PRIVATE_EDITOR_TENANT_ORIGINS = JSON.stringify({
+			[OTHER_SITE]: `https://${OTHER_SITE}`,
+		});
+		const t = convexTest(schema, modules);
+		await seedClients(t);
+		const { uploadHandle: _handle, ...input } = printBegin();
+		const descriptor = {
+			...input,
+			kind: "print_source" as const,
+			contentType: "image/jpeg" as const,
+		};
+		const args = {
+			siteUrl: OTHER_SITE,
+			uploadHandleHash: "a".repeat(64),
+			proposedOperationId: "b".repeat(40),
+			descriptor,
+		};
+		const first = await t.mutation(internal.catalogPrivateAssets.beginEditorJournal, args);
+		expect(first.workerPrepare.siteUrl).toBe(OTHER_SITE);
+		expect(first.workerPrepare.uploadOrigin).toBe(`https://${OTHER_SITE}`);
+		process.env.CATALOG_PRIVATE_EDITOR_TENANT_ORIGINS = JSON.stringify({
+			[OTHER_SITE]: "https://custom.example",
+		});
+		const replay = await t.mutation(internal.catalogPrivateAssets.beginEditorJournal, args);
+		expect(replay.replayed).toBe(true);
+		expect(replay.workerPrepare).toEqual(first.workerPrepare);
+		expect(replay.declarationHash).toBe(first.declarationHash);
+		await expect(
+			t.mutation(internal.catalogPrivateAssets.beginEditorJournal, { ...args, siteUrl: SITE }),
+		).rejects.toThrow();
+		const next = await t.mutation(internal.catalogPrivateAssets.beginEditorJournal, {
+			...args,
+			uploadHandleHash: "c".repeat(64),
+			proposedOperationId: "d".repeat(40),
+		});
+		expect(next.workerPrepare).toMatchObject({
+			siteUrl: OTHER_SITE,
+			uploadOrigin: "https://custom.example",
+		});
+		await expect(
+			t.mutation(internal.catalogPrivateAssets.beginEditorJournal, {
+				...args,
+				siteUrl: "custom.example",
+			}),
+		).rejects.toThrow();
+	});
+
+	test("completes a custom-origin upload under the stable tenant and object key", async () => {
+		const uploadOrigin = "https://custom.example";
+		process.env.CATALOG_PRIVATE_EDITOR_TENANT_ORIGINS = JSON.stringify({
+			[SITE]: uploadOrigin,
+		});
+		const t = convexTest(schema, modules);
+		await seedClients(t);
+		expect(
+			(
+				await post(t, BEGIN_PATH, HOST_SECRET, {
+					...printBegin(),
+					uploadOrigin: "https://unregistered.example",
+				})
+			).status,
+		).toBe(400);
+		const begun = await begin(t);
+		const declaration = JSON.parse(
+			new TextDecoder().decode(
+				requestBodyBytes(vi.mocked(globalThis.fetch).mock.calls.at(-1)?.[1]?.body),
+			),
+		);
+		expect(declaration).toMatchObject({ siteUrl: SITE, uploadOrigin });
+		const receipts = await receiptsFor(begun.operationId);
+		for (const [path, secret, receipt] of [
+			[EDITOR_STORAGE_PATH, STORAGE_SECRET, receipts.storage],
+			[EDITOR_INSPECTION_PATH, INSPECTION_RECEIPT_SECRET, receipts.inspection],
+		] as const) {
+			expect((await postReceipt(t, path, secret, receipt)).status).toBe(200);
+		}
+		const state = await journalState(t);
+		expect(state.operations).toHaveLength(1);
+		expect(state.operations[0]).toMatchObject({
+			siteUrl: SITE,
+			uploadOrigin,
+			lifecycle: "verified",
+			privateObjectKey: `sites/${SITE}/catalog/print-sources/editor-upload-${begun.operationId}/original`,
+		});
+		const admin = t.withIdentity({ subject: ADMIN_EMAIL, email: ADMIN_EMAIL, emailVerified: true });
+		await expect(
+			admin.query(api.catalogPrivateAssets.resolveEditorUpload, {
+				siteUrl: SITE,
+				operationId: begun.operationId,
+				productKind: "print",
+			}),
+		).resolves.toMatchObject({ kind: "print_source" });
+		await expect(
+			admin.query(api.catalogPrivateAssets.resolveEditorUpload, {
+				siteUrl: "custom.example",
+				operationId: begun.operationId,
+				productKind: "print",
+			}),
+		).rejects.toThrow();
+	});
 });
