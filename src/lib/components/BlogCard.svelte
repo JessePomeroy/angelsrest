@@ -2,7 +2,7 @@
 import type { BlogPostSummary } from "$lib/blog/content";
 import { formatDate } from "$lib/utils/format";
 
-let { post }: { post: BlogPostSummary } = $props();
+let { post, loading = "lazy" }: { post: BlogPostSummary; loading?: "eager" | "lazy" } = $props();
 </script>
 
 <a
@@ -35,7 +35,7 @@ let { post }: { post: BlogPostSummary } = $props();
 
   {#if post.mainImage}
     <div class="post-image">
-      <img src={post.mainImage.src} alt={post.mainImage.alt} />
+      <img src={post.mainImage.src} alt={post.mainImage.alt} width={post.mainImage.width} height={post.mainImage.height} {loading} decoding="async" />
     </div>
   {/if}
 </a>

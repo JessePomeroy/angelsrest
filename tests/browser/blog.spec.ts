@@ -51,3 +51,24 @@ test("blog listing handles populated and empty content", async ({ page }) => {
 	await expect(page.getByText("no posts yet — check back soon!")).toBeVisible();
 	await expect(page.getByText("0 entries")).toBeVisible();
 });
+
+test("blog archive uses native links and preserves page identity and image loading", async ({ page }) => {
+	await page.goto("/?fixture=blog&kind=index");
+	await expect(page.locator(".post-row")).toHaveCount(12);
+	const images = page.locator(".post-image img");
+	await expect(images.first()).toHaveAttribute("loading", "eager");
+	await expect(images.nth(1)).toHaveAttribute("loading", "lazy");
+	await expect(images.first()).toHaveAttribute("width", "600");
+	await expect(images.first()).toHaveAttribute("height", "240");
+	await page.getByRole("link", { name: "older posts", exact: true }).click();
+	await expect(page).toHaveURL(/\/blog\?page=2$/);
+	await expect(page.locator(".post-row")).toHaveCount(2);
+	await expect(page.getByRole("heading", { name: "Field note 13", exact: true })).toBeVisible();
+	await expect(page.locator('link[rel="canonical"]')).toHaveAttribute("href", "https://angelsrest.online/blog?page=2");
+	await expect(page.getByRole("link", { name: "older posts", exact: true })).toHaveCount(0);
+	await page.getByRole("link", { name: "newer posts", exact: true }).click();
+	await expect(page).toHaveURL(/\/blog$/);
+	await expect(page.locator(".post-row")).toHaveCount(12);
+	await page.goBack();
+	await expect(page.locator(".post-row")).toHaveCount(2);
+});
