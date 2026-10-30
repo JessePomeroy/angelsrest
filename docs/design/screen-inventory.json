@@ -2,6 +2,19 @@
   "schemaVersion": 1,
   "pendingChanges": [
     {
+      "id": "editor-alignment-and-gallery-reliability-2026-10-30",
+      "status": "pending-paper-sync",
+      "recordedAt": "2026-10-30",
+      "surfaces": [
+        "admin paired fields and bounded media uploaders",
+        "delivery gallery pagination and page-owned upload queues",
+        "public portfolio responsive images",
+        "blog archive pagination and image loading"
+      ],
+      "evidence": "docs/verification/gallery-reliability-release-2026-10-30.md",
+      "reason": "Admin 6.9.0 and the public changes are deployed and confirmed live. Synthetic geometry/controller/browser checks and authenticated isolated-staging pagination/session checks passed. Direct Paper editing tools are unavailable in this session; existing board IDs, source baselines and comparison dates remain unchanged pending an editable update and same-state comparison."
+    },
+    {
       "id": "inquiry-pagination-and-navigation-focus",
       "status": "pending-paper-sync",
       "recordedAt": "2026-10-03",

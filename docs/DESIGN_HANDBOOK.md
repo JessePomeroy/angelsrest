@@ -626,3 +626,21 @@ label. Saving/error feedback and publication behavior remain intact. The focused
 browser regression now measures alignment instead of checking overflow alone.
 See [the publication coverage record](design/publication-controls.md). This is a
 local source correction; the existing Paper update/comparison is still pending.
+
+
+## Verification recorded on 2026-10-30
+
+Admin **6.9.0** is deployed on host source
+`077832e15d0294428c4f2313b27898c457589c68`. The product and supporting-editor
+fields now share aligned control rows and content columns, with bounded media
+uploaders. Delivery galleries have server-filtered pagination and page-owned
+upload queues that remain available through modal and settings changes. Public
+portfolio images use their existing responsive derivatives and intrinsic sizes;
+the blog archive has bounded pagination and deliberate image loading.
+
+[Release verification and limitations](verification/gallery-reliability-release-2026-10-30.md)
+records the actual production/staging deployments, adoption gate and synthetic
+browser coverage. The new inventory entry is **pending-paper-sync**. Direct
+Paper editing tools are unavailable in this session, so no board update or
+same-state Paper comparison is claimed. Existing editable board IDs, reference
+provenance and comparison dates are preserved.
