@@ -44,7 +44,11 @@ describe("admin layout authorization", () => {
 			token: "session-token",
 			identity: { email: "creator@example.com", name: null, subject: "user-1" },
 		});
-		mockGetSiteAdminAccess.mockResolvedValue({ authorized: true, tier: "full" });
+		mockGetSiteAdminAccess.mockResolvedValue({
+			authorized: true,
+			tier: "full",
+			enabledFeatures: ["editor"],
+		});
 
 		await expect(load({ cookies: {} } as never)).resolves.toEqual({
 			adminSession: {
@@ -52,6 +56,7 @@ describe("admin layout authorization", () => {
 				email: "creator@example.com",
 				tier: "full",
 				isCreator: true,
+				enabledFeatures: ["editor"],
 			},
 		});
 		expect(mockGetSiteAdminAccess).toHaveBeenCalledWith("session-token", "creator@example.com");

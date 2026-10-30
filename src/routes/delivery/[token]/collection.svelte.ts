@@ -1,5 +1,6 @@
 import { resolveGalleryDisplayImages } from "@jessepomeroy/gallery-delivery/display-images";
 import { galleryOriginalDownloadUrl } from "@jessepomeroy/gallery-delivery/download-urls";
+import { mergeGalleryImagePages } from "@jessepomeroy/gallery-delivery/image-pages";
 import type { FunctionArgs, FunctionReturnType } from "convex/server";
 import { onDestroy, tick, untrack } from "svelte";
 import type { api } from "$convex/api";
@@ -93,15 +94,11 @@ export function createGalleryCollection(
 			if (!result.isDone && result.continueCursor === nextCursor) {
 				throw new Error("Cursor did not advance");
 			}
-			const seen = new Set(images.map((image) => image._id));
-			const added = displayPageImages(source, result.page, result.previewSources).filter(
-				(image) => {
-					if (seen.has(image._id)) return false;
-					seen.add(image._id);
-					return true;
-				},
+			images = mergeGalleryImagePages(
+				images,
+				displayPageImages(source, result.page, result.previewSources),
+				(image) => image._id,
 			);
-			images = [...images, ...added];
 			knownCount = result.totalCount;
 			nextCursor = result.continueCursor;
 			pageDone = result.isDone;

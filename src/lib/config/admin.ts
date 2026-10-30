@@ -17,6 +17,7 @@ export const adminConfig: AdminConfig = {
 	editor: {
 		siteSettings: { previewEndpoint: "/api/admin/draft-preview/settings" },
 		contactPage: {
+			publicationEnabled: false,
 			previewEndpoint: "/api/admin/draft-preview/contact",
 			initialPayload: contactPageSeed,
 		},

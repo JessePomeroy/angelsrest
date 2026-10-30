@@ -113,7 +113,11 @@ describe("site admin authorization", () => {
 				email: "creator@example.com",
 				subject: "user-1",
 			})
-			.mockResolvedValueOnce({ authorized: true, tier: "full" });
+			.mockResolvedValueOnce({
+				authorized: true,
+				tier: "full",
+				enabledFeatures: ["editor", "orders"],
+			});
 
 		await expect(authorizeSiteAdminRequest(new Request("https://example.test"))).resolves.toEqual({
 			convexToken: "session-token",

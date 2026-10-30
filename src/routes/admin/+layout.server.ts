@@ -27,7 +27,7 @@ export async function load({ cookies }): Promise<TenantAdminLayoutData> {
 	}
 
 	const access = await getSiteAdminAccess(session.token, session.identity.email);
-	if (!access?.authorized) {
+	if (!access?.authorized || !("enabledFeatures" in access)) {
 		return getTenantAdminLayoutData({
 			status: "unauthorized",
 			email: session.identity.email,
@@ -38,6 +38,7 @@ export async function load({ cookies }): Promise<TenantAdminLayoutData> {
 		status: "authorized",
 		email: session.identity.email,
 		tier: access.tier,
+		enabledFeatures: access.enabledFeatures,
 		isCreator: true,
 	});
 }

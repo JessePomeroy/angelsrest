@@ -8,7 +8,8 @@ let {
 	hideHeader = false,
 	preview = false,
 	confirmationMessage = "message sent !",
-}: { hideHeader?: boolean; confirmationMessage?: string; preview?: boolean } = $props();
+	inquiryChoices = [],
+}: { hideHeader?: boolean; confirmationMessage?: string; preview?: boolean; inquiryChoices?: string[] } = $props();
 
 let status = $state("idle"); // 'idle' | 'sending' | 'success' | 'error'
 let verificationError = $state("");
@@ -95,12 +96,14 @@ async function handleSubmit(e: SubmitEvent) {
             <input
                 type="text"
                 id="subject"
+                list="contact-inquiry-choices"
                 name="subject"
                 placeholder="what's this about ?"
                 class="contact-field"
             />
         </div>
         <div class="field-group">
+            {#if inquiryChoices.length}<datalist id="contact-inquiry-choices">{#each inquiryChoices as choice}<option value={choice}></option>{/each}</datalist>{/if}
             <label for="message" class="field-label">message</label>
             <textarea
                 id="message"

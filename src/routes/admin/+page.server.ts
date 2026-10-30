@@ -7,7 +7,10 @@ export async function load({ parent, cookies }) {
 	// Skip the Convex query entirely for unauthenticated requests so we
 	// don't leak the inquiry count (or burn a request on what would be a
 	// 401 anyway). AuthGuard on the client renders the login form.
-	if (adminSession.status !== "authorized") {
+	if (
+		adminSession.status !== "authorized" ||
+		(adminSession.enabledFeatures && !adminSession.enabledFeatures.includes("inquiries"))
+	) {
 		return { newInquiryCount: 0 };
 	}
 	let newInquiryCount = 0;
