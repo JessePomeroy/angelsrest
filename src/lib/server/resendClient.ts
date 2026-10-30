@@ -50,3 +50,8 @@ export function getResend(): Resend {
 	}
 	return _resend;
 }
+
+/** Tenant sending keys never replace the hub singleton or bypass staging isolation. */
+export function getTenantResend(apiKey: string): Resend {
+	return isStagingEnvironment() ? getResend() : new Resend(apiKey);
+}

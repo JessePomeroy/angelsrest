@@ -3,7 +3,7 @@ import { api } from "$convex/api";
 import { env } from "$env/dynamic/private";
 import { renderContactOwnerNotificationHtml } from "$lib/server/contactNotificationEmailHtml";
 import { getConvex } from "$lib/server/convexClient";
-import { getResend } from "$lib/server/resendClient";
+import { getTenantResend } from "$lib/server/resendClient";
 import { createTenantContact } from "$lib/server/tenantContact";
 import type { RequestHandler } from "./$types";
 
@@ -20,7 +20,7 @@ const intake = createTenantContact({
 		}),
 	notify: async (inquiry, notification, inquiryId) => {
 		if (typeof inquiryId !== "string") throw new Error("Missing inquiry identity");
-		const result = await getResend().emails.send(
+		const result = await getTenantResend(notification.apiKey).emails.send(
 			{
 				from: notification.from,
 				to: notification.to,

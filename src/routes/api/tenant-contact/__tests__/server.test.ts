@@ -3,6 +3,7 @@ import { afterEach, expect, it, vi } from "vitest";
 const mocks = vi.hoisted(() => ({
 	save: vi.fn(),
 	send: vi.fn(),
+	client: vi.fn(),
 	capture: vi.fn(),
 	env: {
 		WEBHOOK_SECRET: "synthetic-hub-secret",
@@ -15,6 +16,7 @@ const mocks = vi.hoisted(() => ({
 					from: "contact@queenworm.example",
 					to: "owner@example.test",
 					brand: "Queen Worm",
+					apiKey: "re_synthetic_queenworm_sender",
 				},
 			},
 		}),
@@ -28,7 +30,10 @@ vi.mock("$lib/server/convexClient", () => ({
 	getConvex: () => ({ query: async () => ({ active: true }), mutation: mocks.save }),
 }));
 vi.mock("$lib/server/resendClient", () => ({
-	getResend: () => ({ emails: { send: mocks.send } }),
+	getTenantResend: (apiKey: string) => {
+		mocks.client(apiKey);
+		return { emails: { send: mocks.send } };
+	},
 }));
 vi.mock("@sentry/sveltekit", () => ({ captureException: mocks.capture }));
 
@@ -66,6 +71,7 @@ it("uses the configured owner/sender, visitor Reply-To, escaped HTML, and an inq
 	// The route uses only Request; other SvelteKit event fields are irrelevant here.
 	const response = await POST({ request } as Parameters<typeof POST>[0]);
 	expect(response.status).toBe(200);
+	expect(mocks.client).toHaveBeenCalledExactlyOnceWith("re_synthetic_queenworm_sender");
 	const [mail, options] = mocks.send.mock.calls[0];
 	expect(mail).toMatchObject({
 		from: "contact@queenworm.example",
@@ -75,6 +81,7 @@ it("uses the configured owner/sender, visitor Reply-To, escaped HTML, and an inq
 	expect(mail.html).toContain("Queen Worm");
 	expect(mail.html).toContain("&lt;script&gt;");
 	expect(mail.html).not.toContain("<script>");
+	expect(JSON.stringify(mail)).not.toContain("re_synthetic_queenworm_sender");
 	expect(options).toEqual({ idempotencyKey: "inquiry/inquiry-one" });
 	expect(mocks.save.mock.invocationCallOrder[0]).toBeLessThan(
 		mocks.send.mock.invocationCallOrder[0],
