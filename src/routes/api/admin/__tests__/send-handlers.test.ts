@@ -31,6 +31,10 @@ vi.mock("@jessepomeroy/admin/server", () => ({
 	createInvoiceSendHandler: () => mockInvoiceHandler,
 	createQuoteSendHandler: () => mockQuoteHandler,
 	createContractSendHandler: () => mockContractHandler,
+	createAdminTokenHandler: () => vi.fn(),
+}));
+
+vi.mock("@jessepomeroy/admin/server/auth", () => ({
 	createAdminAuthValidator: (options: {
 		getToken: (cookies: import("@sveltejs/kit").Cookies) => string | null | undefined;
 		whoami: unknown;
@@ -53,7 +57,6 @@ vi.mock("@jessepomeroy/admin/server", () => ({
 			getTokenFromRequest: async () => null,
 		};
 	},
-	createAdminTokenHandler: () => vi.fn(),
 }));
 
 vi.mock("$lib/config/admin.server", () => ({

@@ -1,4 +1,5 @@
 <script lang="ts">
+import { draftPreviewData } from "./draftPreview";
 import About from "../../../src/routes/about/+page.svelte";
 import Home from "../../../src/routes/+page.svelte";
 import GalleryModal from "../../../src/lib/components/GalleryModal.svelte";
@@ -12,6 +13,7 @@ const kind = params.get("kind") ?? "about";
 const portrait = params.get("portfolio-image") ?? "data:image/svg+xml," + encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="300" height="400"><rect width="300" height="400" fill="#789abc"/></svg>');
 const replacementPortrait = "data:image/svg+xml," + encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="300" height="400"><rect width="300" height="400" fill="#bc9876"/></svg>');
 const data = $state({
+ ...draftPreviewData,
   siteSettings: { artistName: null, siteTitle: null, tagline: null, logoUrl: null, socialLinks: [], seo: { description: null, ogImageUrl: null, keywords: [] } },
   instagramUrl: "https://example.invalid/photographer",
   content: {

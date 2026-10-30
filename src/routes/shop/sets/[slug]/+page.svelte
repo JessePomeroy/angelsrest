@@ -23,7 +23,7 @@ const selection = createPrintSelection(() => data.printSet, () => `/shop/sets/${
 const selectedConfiguration = $derived(selection.configuration);
 
 function handleCheckout() {
-	if (!selectedConfiguration) return;
+	if (data.draftPreview || !selectedConfiguration) return;
 	isLoading = true;
 
 	createCheckout({
@@ -48,7 +48,7 @@ function handleCheckout() {
 }
 
 function handleAddToCart(event: MouseEvent) {
-	if (!selectedConfiguration) return;
+	if (data.draftPreview || !selectedConfiguration) return;
 
 	const originalUrls = (data.images as ProductImage[]).map(
 		(img) => img.original,
@@ -131,7 +131,7 @@ function handleAddToCart(event: MouseEvent) {
 				{/if}
 			</div>
 
-			<PrintPurchase
+			<PrintPurchase preview={Boolean(data.draftPreview)}
 				configuration={selectedConfiguration}
 				inStock={data.printSet.inStock}
 				loading={isLoading}

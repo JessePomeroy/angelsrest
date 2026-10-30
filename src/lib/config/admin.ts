@@ -15,11 +15,13 @@ export const adminConfig: AdminConfig = {
 	galleryWorkerUrl: "https://gallery-worker.thinkingofview.workers.dev",
 	api: createAdminBrowserCapabilities(api),
 	editor: {
-		siteSettings: {},
+		siteSettings: { previewEndpoint: "/api/admin/draft-preview/settings" },
 		contactPage: {
+			previewEndpoint: "/api/admin/draft-preview/contact",
 			initialPayload: contactPageSeed,
 		},
 		aboutPage: {
+			previewEndpoint: "/api/admin/draft-preview/about",
 			// The route does not mount the shared editor until migration creates the draft.
 			initialPayload: {},
 			mediaBaseUrl: "https://media.angelsrest.online",
@@ -30,6 +32,7 @@ export const adminConfig: AdminConfig = {
 			mediaBaseUrl: "https://media.angelsrest.online",
 		},
 		products: {
+			previewEndpoint: "/api/admin/draft-preview/product",
 			publicationEnabled: true,
 			publicShopEnabled: true,
 			marginCalculator: calculateCatalogProductMargin,
@@ -45,6 +48,7 @@ export const adminConfig: AdminConfig = {
 				"print",
 				"print_set",
 				"postcard",
+				"zine",
 				"merchandise",
 				"tapestry",
 				"digital_download",
@@ -53,6 +57,7 @@ export const adminConfig: AdminConfig = {
 			uploadEndpoint: "/api/admin/media",
 		},
 		portfolio: {
+			previewEndpoint: "/api/admin/draft-preview/portfolio",
 			mediaBaseUrl: "https://media.angelsrest.online",
 			uploadEndpoint: "/api/admin/media",
 		},

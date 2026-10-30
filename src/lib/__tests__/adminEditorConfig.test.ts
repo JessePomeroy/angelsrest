@@ -110,7 +110,7 @@ const {
 			postContent: postApi,
 			portfolioGalleries: portfolioApi,
 			mediaAssets: mediaApi,
-			crm: { getStats: "crm.getStats" },
+			crm: { getStats: "crm.getStats", getClient: "crm.getClient" },
 		},
 		{
 			get(target, prop, receiver) {
@@ -276,6 +276,7 @@ describe("admin platform capabilities", () => {
 		expect(adminConfig.editor?.blog?.mediaBaseUrl).toBe("https://media.angelsrest.online");
 		expect(adminConfig.editor?.blog?.mode).toBe("compact");
 		expect(adminConfig.editor?.products).toEqual({
+			previewEndpoint: "/api/admin/draft-preview/product",
 			publicationEnabled: true,
 			publicShopEnabled: true,
 			marginCalculator: calculateCatalogProductMargin,
@@ -291,6 +292,7 @@ describe("admin platform capabilities", () => {
 				"print",
 				"print_set",
 				"postcard",
+				"zine",
 				"merchandise",
 				"tapestry",
 				"digital_download",
@@ -298,8 +300,11 @@ describe("admin platform capabilities", () => {
 			mediaBaseUrl: "https://media.angelsrest.online",
 			uploadEndpoint: "/api/admin/media",
 		});
-		expect(adminConfig.editor?.siteSettings).toEqual({});
+		expect(adminConfig.editor?.siteSettings).toEqual({
+			previewEndpoint: "/api/admin/draft-preview/settings",
+		});
 		expect(adminConfig.editor?.contactPage).toEqual({
+			previewEndpoint: "/api/admin/draft-preview/contact",
 			initialPayload: {
 				heading: "Get in Touch",
 				intro:
@@ -313,16 +318,20 @@ describe("admin platform capabilities", () => {
 				inquiryChoices: [],
 			},
 		});
-		expect(adminConfig.editor?.contactPage).not.toHaveProperty("previewEndpoint");
+		expect(adminConfig.editor?.contactPage?.previewEndpoint).toBe(
+			"/api/admin/draft-preview/contact",
+		);
 		expect(adminConfig.editor?.contactPage?.initialPayload).not.toHaveProperty("phone");
 		expect(adminConfig.editor?.contactPage?.initialPayload).not.toHaveProperty("availability");
 		expect(adminConfig.editor?.contactPage?.initialPayload).not.toHaveProperty("responseTime");
 		expect(adminConfig.editor?.aboutPage).toEqual({
+			previewEndpoint: "/api/admin/draft-preview/about",
 			initialPayload: {},
 			mediaBaseUrl: "https://media.angelsrest.online",
 			uploadEndpoint: "/api/admin/media",
 		});
 		expect(adminConfig.editor?.portfolio).toEqual({
+			previewEndpoint: "/api/admin/draft-preview/portfolio",
 			mediaBaseUrl: "https://media.angelsrest.online",
 			uploadEndpoint: "/api/admin/media",
 		});

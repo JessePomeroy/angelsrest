@@ -22,13 +22,16 @@ export function isPrivateCapabilityResponsePath(pathname: string) {
 /** Drop capability-bearing page views before Vercel Analytics sees the URL. */
 export function filterPrivateCapabilityAnalytics<T extends AnalyticsUrlEvent>(event: T): T | null {
 	let pathname: string;
+	let draftPreview: boolean;
 	try {
-		pathname = new URL(event.url, "https://analytics.invalid").pathname;
+		const url = new URL(event.url, "https://analytics.invalid");
+		pathname = url.pathname;
+		draftPreview = url.searchParams.has("draftPreview");
 	} catch {
 		// A malformed analytics URL is safer to drop than to forward.
 		return null;
 	}
-	return isPrivateCapabilityPagePath(pathname) ? null : event;
+	return draftPreview || isPrivateCapabilityPagePath(pathname) ? null : event;
 }
 
 /**
@@ -58,7 +61,9 @@ function scrubTelemetryValue(value: unknown, seen: WeakMap<object, unknown>): un
 				} catch {
 					return match;
 				}
-				return key === "token" || key === "accessgrant" ? `${separator}${name}=[redacted]` : match;
+				return key === "token" || key === "accessgrant" || key === "draftpreview"
+					? `${separator}${name}=[redacted]`
+					: match;
 			},
 		);
 	}

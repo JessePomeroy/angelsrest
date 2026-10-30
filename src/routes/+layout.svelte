@@ -105,6 +105,9 @@ onMount(() => {
     style:--mobile-purchase-safe-area={mobileChrome.bottomNavHeight === 0 ? "env(safe-area-inset-bottom)" : "0px"}
   >
     <!-- Desktop navigation (hidden on mobile) -->
+    {#if data.draftPreview}
+      <aside class="draft-preview-notice" aria-label="Draft preview" role="status">Saved draft preview · Contact and purchases are disabled. <a href={data.draftPreview.editorHref}>Return to editor</a></aside>
+    {/if}
     <Nav />
 
     <!-- Main content area -->
@@ -136,7 +139,7 @@ onMount(() => {
   mobile pill) can open it via the cartUI store. Skipped on portal/admin
   routes since they don't share the public site chrome.
 -->
-{#if !isPortal && !isAdmin}
+{#if !isPortal && !isAdmin && !data.draftPreview}
   <CartDrawer />
 {/if}
 
@@ -144,6 +147,9 @@ onMount(() => {
 <Toaster />
 
 <style>
+.draft-preview-notice { padding: 12px 20px; border-bottom: 1px solid currentColor; color: var(--color-surface-900); background: var(--color-surface-100); font-size: .85rem; line-height: 1.6; }
+.draft-preview-notice a { margin-left: 12px; text-decoration: underline; }
+
 .site-shell {
   display: flex;
   flex-direction: column;

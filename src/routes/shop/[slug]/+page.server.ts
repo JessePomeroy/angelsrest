@@ -1,4 +1,8 @@
 import { convexShop } from "$lib/server/current/convexShop.server";
 import type { PageServerLoad } from "./$types";
 
-export const load: PageServerLoad = ({ params }) => convexShop.loadProduct(params.slug);
+export const load: PageServerLoad = async ({ params, parent, url }) => {
+	const preview = url.searchParams.has("draftPreview") ? (await parent()).draftPreview : null;
+	if (preview?.kind === "product" && "productType" in preview.product) return preview.product;
+	return convexShop.loadProduct(params.slug);
+};

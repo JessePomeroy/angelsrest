@@ -6,9 +6,12 @@
 
 import { error } from "@sveltejs/kit";
 import { portfolioContent } from "$lib/server/current/portfolioContent.server";
+import type { PageServerLoad } from "./$types";
 
-export async function load({ params }) {
-	const gallery = await portfolioContent.getBySlug(params.slug);
+export const load: PageServerLoad = async ({ params, parent, url }) => {
+	const preview = url.searchParams.has("draftPreview") ? (await parent()).draftPreview : null;
+	const gallery =
+		preview?.kind === "portfolio" ? preview.gallery : await portfolioContent.getBySlug(params.slug);
 	if (!gallery) throw error(404, "Gallery not found");
 	return { gallery };
-}
+};

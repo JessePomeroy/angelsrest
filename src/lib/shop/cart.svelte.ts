@@ -80,7 +80,7 @@ class CartStore {
 	}
 
 	#persist() {
-		if (!browser) return;
+		if (!browser || new URLSearchParams(window.location.search).has("draftPreview")) return;
 		try {
 			localStorage.setItem(STORAGE_KEY, JSON.stringify(this.#state));
 		} catch {

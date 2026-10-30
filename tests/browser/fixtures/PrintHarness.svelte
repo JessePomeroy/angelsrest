@@ -1,4 +1,5 @@
 <script lang="ts">
+import { draftPreviewData } from "./draftPreview";
 import Product from "../../../src/routes/shop/[slug]/+page.svelte";
 import PrintSet from "../../../src/routes/shop/sets/[slug]/+page.svelte";
 import { cart } from "../../../src/lib/shop/cart.svelte";
@@ -36,7 +37,7 @@ const options = $derived({
 	inStock: scenario !== "sold-out",
 });
 const productData = $derived({
-	siteSettings: deliveryData.siteSettings,
+	...draftPreviewData, siteSettings: deliveryData.siteSettings,
 	productType: "v2",
 	product: {
 		...options, title: "Fixture product", slug: `fixture-product-${scenario}`,
@@ -45,7 +46,7 @@ const productData = $derived({
 	},
 } satisfies import("../../../src/routes/shop/[slug]/$types").PageData);
 const setData = $derived({
-	...printSetData,
+	...printSetData, ...draftPreviewData,
 	images: scenario === "no-images" ? [] : printSetData.images,
 	printSet: { ...printSetData.printSet, ...options, slug: `fixture-set-${scenario}` },
 } satisfies import("../../../src/routes/shop/sets/[slug]/$types").PageData);

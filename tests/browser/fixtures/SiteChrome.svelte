@@ -1,4 +1,5 @@
 <script lang="ts">
+import { draftPreviewData } from "./draftPreview";
 import PrintHarness from "./PrintHarness.svelte";
 import ContentHarness from "./ContentHarness.svelte";
 import ShopHarness from "./ShopHarness.svelte";
@@ -13,6 +14,7 @@ if (surface) page.url = new URL(surface === "portfolio" ? "/gallery/fixture" : "
 import Layout from "../../../src/routes/+layout.svelte";
 
 const data = {
+ ...draftPreviewData,
 	siteSettings: {
 		artistName: null,
 		siteTitle: null,

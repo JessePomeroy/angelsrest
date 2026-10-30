@@ -63,6 +63,16 @@ const appHandle: Handle = async ({ event, resolve }) => {
 	const secured = addSecurityHeaders(response, event.url.pathname);
 	if (staging) secured.headers.set("X-Robots-Tag", "noindex, nofollow, noarchive");
 	applyPublicPageCache(event, secured);
+	if (
+		event.url.searchParams.has("draftPreview") ||
+		event.url.pathname.startsWith("/api/admin/draft-preview/")
+	) {
+		secured.headers.set("Cache-Control", "private, no-store");
+		secured.headers.set("X-Robots-Tag", "noindex, nofollow, noarchive");
+		secured.headers.set("Referrer-Policy", "no-referrer");
+		secured.headers.delete("Vercel-CDN-Cache-Control");
+		secured.headers.delete("CDN-Cache-Control");
+	}
 	return secured;
 };
 

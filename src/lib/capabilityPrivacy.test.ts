@@ -232,3 +232,12 @@ describe("private capability path privacy", () => {
 		expect(scrubPrivateCapabilityTelemetry(input)).toBe(expected);
 	});
 });
+
+it("drops preview analytics and scrubs signed preview grants from telemetry", () => {
+	const url = "https://angelsrest.online/about?draftPreview=private-signed-grant";
+	expect(filterPrivateCapabilityAnalytics({ url })).toBeNull();
+	expect(scrubPrivateCapabilityTelemetry({ url, message: `failed ${url}` })).toEqual({
+		url: "https://angelsrest.online/about?draftPreview=[redacted]",
+		message: "failed https://angelsrest.online/about?draftPreview=[redacted]",
+	});
+});
