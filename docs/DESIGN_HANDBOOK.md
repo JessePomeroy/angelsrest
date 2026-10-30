@@ -644,3 +644,19 @@ browser coverage. The new inventory entry is **pending-paper-sync**. Direct
 Paper editing tools are unavailable in this session, so no board update or
 same-state Paper comparison is claimed. Existing editable board IDs, reference
 provenance and comparison dates are preserved.
+
+### Mobile navigation release — October 30, 2026
+
+The public navigation now continues animating after its opening motion. Admin
+**6.9.1** supplies keyboard/scroll ownership, closed-drawer inertness, landscape
+sidebar scrolling, corrected host layering and the tablet editor rail.
+The final host source `c4e761c90b3a4d2e24f3e7568feff50f0fbb61fc` is deployed
+and its live public navigation behavior was verified. Authenticated isolated
+staging checks cover the Admin navigation in both themes.
+
+[Release evidence and remaining limits](verification/mobile-navigation-release-2026-10-30.md)
+distinguish those observed results from the still-pending final main-CI artifact
+and production receipt. Paper editing remains unavailable, so the inventory adds
+a separate **pending-paper-sync** entry without changing existing board
+verification dates. The separately discussed editor redesign remains local and
+is excluded from this release record.
