@@ -2,7 +2,12 @@ import { expect, it, vi } from "vitest";
 import { createTenantContact, inquiryTenants } from "../tenantContact";
 
 const key = "synthetic-queenworm-inquiry-credential-0123456789";
-const notice = { from: "contact@queenworm.example", to: "owner@example.test", brand: "Queen Worm" };
+const notice = {
+	from: "contact@queenworm.example",
+	to: "owner@example.test",
+	brand: "Queen Worm",
+	apiKey: "re_synthetic_queenworm_sender",
+};
 const registry = JSON.stringify({
 	"queenworm.angelsrest.online": {
 		origin: "https://queenworm.example",
@@ -94,5 +99,16 @@ it("rejects broad/reused credentials and missing notification configuration", ()
 	expect(() => inquiryTenants(JSON.stringify(parsed), "hub-only-secret")).toThrow();
 	delete parsed["another.example"];
 	delete parsed["queenworm.angelsrest.online"].notification;
+	expect(() => inquiryTenants(JSON.stringify(parsed), "hub-only-secret")).toThrow();
+});
+it.each([
+	undefined,
+	"",
+	" re_synthetic_sender",
+	"re_synthetic sender",
+	"re_short",
+])("rejects an unavailable or malformed tenant sending key: %s", (apiKey) => {
+	const parsed = JSON.parse(registry);
+	parsed["queenworm.angelsrest.online"].notification.apiKey = apiKey;
 	expect(() => inquiryTenants(JSON.stringify(parsed), "hub-only-secret")).toThrow();
 });

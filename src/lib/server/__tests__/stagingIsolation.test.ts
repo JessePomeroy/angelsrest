@@ -131,9 +131,10 @@ test("dedicated supplier connections reject live endpoints before fetch and reta
 test("staging has no fallback to unrestricted mail credentials", async () => {
 	privateEnv.RESEND_API_KEY = "re_unrestricted_fixture";
 	const { getResendApiKey } = await import("../runtimeConfig");
-	const { getResend } = await import("../resendClient");
+	const { getResend, getTenantResend } = await import("../resendClient");
 	expect(() => getResendApiKey()).toThrow("Staging CRM email");
 	expect(() => getResend()).toThrow("Staging email");
+	expect(() => getTenantResend("re_synthetic_tenant_sender")).toThrow("Staging email");
 });
 
 test("real SDK sends only to the test recipient and retains the receipt idempotency key", async () => {
@@ -194,4 +195,54 @@ test("production keeps its configured sender and recipients", async () => {
 	};
 	await getResend().emails.send(message);
 	expect(JSON.parse(String(fetcher.mock.calls[0][1]?.body))).toEqual(message);
+});
+
+test("tenant sending keys remain isolated from other tenants and the hub", async () => {
+	Object.assign(publicEnv, {
+		PUBLIC_SITE_URL: "https://www.angelsrest.online",
+		PUBLIC_CONVEX_URL: "https://loyal-swan-967.convex.cloud",
+		PUBLIC_CONVEX_SITE_URL: "https://loyal-swan-967.convex.site",
+	});
+	privateEnv.RESEND_API_KEY = "re_synthetic_hub_sender";
+	const fetcher = vi.fn<typeof fetch>(async () => Response.json({ id: "test-email-id" }));
+	vi.stubGlobal("fetch", fetcher);
+	const { getResend, getTenantResend } = await import("../resendClient");
+	const message = {
+		from: "sender@example.invalid",
+		to: "recipient@example.invalid",
+		subject: "Fixture",
+		text: "Synthetic notification",
+	};
+	await getTenantResend("re_synthetic_first_tenant").emails.send(message);
+	await getTenantResend("re_synthetic_second_tenant").emails.send(message);
+	await getResend().emails.send(message);
+	expect(
+		fetcher.mock.calls.map(([, options]) => new Headers(options?.headers).get("Authorization")),
+	).toEqual([
+		"Bearer re_synthetic_first_tenant",
+		"Bearer re_synthetic_second_tenant",
+		"Bearer re_synthetic_hub_sender",
+	]);
+});
+
+test("tenant sending keys cannot bypass staging recipients or credentials", async () => {
+	privateEnv.STAGING_RESEND_API_KEY = "re_synthetic_staging_sender";
+	const fetcher = vi.fn<typeof fetch>(async () => Response.json({ id: "test-email-id" }));
+	vi.stubGlobal("fetch", fetcher);
+	const { getTenantResend } = await import("../resendClient");
+	await getTenantResend("re_synthetic_live_tenant").emails.send({
+		from: "sender@example.invalid",
+		to: "owner@example.invalid",
+		subject: "Fixture",
+		text: "Synthetic notification",
+	});
+	expect(fetcher).toHaveBeenCalledOnce();
+	const [, options] = fetcher.mock.calls[0];
+	expect(new Headers(options?.headers).get("Authorization")).toBe(
+		"Bearer re_synthetic_staging_sender",
+	);
+	expect(JSON.parse(String(options?.body))).toMatchObject({
+		from: "Angel's Rest staging <staging@angelsrest.online>",
+		to: ["delivered@resend.dev"],
+	});
 });

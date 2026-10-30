@@ -1,7 +1,7 @@
 import { createHash, timingSafeEqual } from "node:crypto";
 import { error, json } from "@sveltejs/kit";
 
-type Notification = { from: string; to: string; brand: string };
+type Notification = { from: string; to: string; brand: string; apiKey: string };
 type Tenant = {
 	notification: Notification;
 	siteUrl: string;
@@ -55,7 +55,8 @@ export function inquiryTenants(raw: string | undefined, webhookSecret: string) {
 		const notice = new Map<string, unknown>(Object.entries(notification));
 		const from = notice.get("from"),
 			to = notice.get("to"),
-			brand = notice.get("brand");
+			brand = notice.get("brand"),
+			apiKey = notice.get("apiKey");
 		const email = /^[^\s@<>]+@[^\s@<>]+\.[^\s@<>]+$/;
 		if (
 			typeof from !== "string" ||
@@ -66,7 +67,9 @@ export function inquiryTenants(raw: string | undefined, webhookSecret: string) {
 			typeof brand !== "string" ||
 			!brand.trim() ||
 			brand.length > 100 ||
-			/[\r\n]/.test(brand)
+			/[\r\n]/.test(brand) ||
+			typeof apiKey !== "string" ||
+			!/^re_\S{10,509}$/.test(apiKey)
 		)
 			throw new Error("Invalid inquiry notification");
 		const keys: string[] = [];
@@ -88,7 +91,7 @@ export function inquiryTenants(raw: string | undefined, webhookSecret: string) {
 			origin,
 			secrets: keys,
 			turnstileSecret,
-			notification: { from, to, brand },
+			notification: { from, to, brand, apiKey },
 		});
 	}
 	if (!tenants.length || tenants.length > 100) throw new Error("Invalid inquiry tenant count");

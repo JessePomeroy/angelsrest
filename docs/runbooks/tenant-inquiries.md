@@ -11,7 +11,8 @@ The existing Angels Rest `/api/contact` path and default notification remain int
 Configure `INQUIRY_TENANTS` as a complete JSON object keyed by stored tenant key.
 Each value contains `origin` (exact canonical HTTPS origin), `secrets` (one or two
 unique, purpose-scoped intake credentials), `turnstileSecret`, and `notification` with
-`from`, `to`, and `brand`. Missing notification settings fail configuration validation;
+`from`, `to`, `brand`, and `apiKey` (that tenant's domain-restricted Resend sending key).
+Missing notification settings fail configuration validation;
 this is the full saved-inquiry and owner-notification flow. The sender domain must
 match the configured canonical hostname; the notification recipient and sender are
 server configuration, never request fields. Duplicate intake keys or reuse of
@@ -26,6 +27,12 @@ approved secret store; place only that tenant credential in the spoke's
 `INQUIRY_BRIDGE_SECRET`. The spoke also needs the matching `PUBLIC_TURNSTILE_SITE_KEY`
 and the canonical origin/hub URL. Configure Turnstile for the canonical hostname.
 Do not distribute the verification secret or hub webhook credential to the browser.
+
+The hub's default sending key is restricted to its own domain. Tenant notifications
+use their configured sending key without replacing the hub transport. Staging still
+uses its dedicated test key and delivery simulator; tenant keys cannot bypass that
+isolation. Keep sending keys only in the private registry and its complete secure
+backup, never in a spoke or public configuration.
 
 The notification uses the existing HTML renderer with tenant branding, escaped
 visitor content, a plain-text part, the visitor as Reply-To, and an idempotency key
