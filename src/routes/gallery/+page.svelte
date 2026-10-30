@@ -29,10 +29,10 @@ let { data } = $props();
     </header>
     <MagneticImages>
         <div class="gallery-columns">
-            {#each data.galleries as gallery (gallery.slug)}
+            {#each data.galleries as gallery, index (gallery.slug)}
                 <a href="/gallery/{gallery.slug}" class="gallery-entry" data-magnetic-item>
                     <div class="image-frame" data-magnetic-target>
-                        <img data-water-lens src={gallery.preview} alt={gallery.title} loading="lazy" />
+                        <img data-water-lens src={gallery.preview} width={gallery.previewWidth} height={gallery.previewHeight} alt={gallery.title} loading={index === 0 ? "eager" : "lazy"} decoding="async" />
                     </div>
                     <div class="entry-caption">
                         <h2>{gallery.title}</h2>
@@ -58,7 +58,7 @@ let { data } = $props();
     .gallery-columns { columns: 2; column-gap: 18px; }
     .gallery-entry { display: block; margin-bottom: 24px; break-inside: avoid; color: inherit; }
     .image-frame { overflow: hidden; border: 1px solid color-mix(in srgb, currentColor 13%, transparent); }
-    .image-frame img { width: 100%; }
+    .image-frame img { width: 100%; height: auto; }
     .entry-caption { display: flex; padding-top: 9px; align-items: baseline; justify-content: space-between; border-top: 1px solid color-mix(in srgb, currentColor 10%, transparent); }
     .entry-caption h2 { font-family: "Synonym", sans-serif; font-size: 0.72rem; font-weight: 400; letter-spacing: 0.13em; }
     @media (min-width: 768px) { .gallery-columns { columns: 3; } }
