@@ -1,5 +1,14 @@
 # @jessepomeroy/gallery-delivery
 
+## 0.4.0
+
+### Minor Changes
+
+- 7fd1934: Use Basic/Full tiers for shared client permissions, including commerce and proofing,
+  with backend enforcement that preserves issued recipient links. Export shared
+  policy and invoice amounts. Add complete gallery manifest pagination helpers
+  shared by hub and spokes.
+
 ## 0.3.0
 
 ### Minor Changes
