@@ -59,8 +59,8 @@ function post() {
 function reader() {
 	return {
 		listPublished: vi
-			.fn<(signal: AbortSignal) => Promise<unknown>>()
-			.mockResolvedValue([summary()]),
+			.fn<(pageNumber: number, signal: AbortSignal) => Promise<unknown>>()
+			.mockResolvedValue({ posts: [summary()], totalCount: 1, hasNext: false }),
 		getPublishedBySlug: vi
 			.fn<(slug: string, signal: AbortSignal) => Promise<unknown>>()
 			.mockResolvedValue(post()),
@@ -71,28 +71,75 @@ function reader() {
 }
 
 describe("published Blog", () => {
+	it("requests and validates an older page", async () => {
+		const read = reader();
+		read.listPublished.mockResolvedValue({ posts: [summary()], totalCount: 13, hasNext: false });
+		const content = createBlogContentProvider({ createReader: () => read });
+		await expect(content.loadIndex(2)).resolves.toMatchObject({
+			pageNumber: 2,
+			totalCount: 13,
+			hasNext: false,
+			posts: [{ slug: "quiet-light" }],
+		});
+		expect(read.listPublished).toHaveBeenCalledWith(2, expect.any(AbortSignal));
+	});
+
+	it.each([
+		0,
+		-1,
+		1.5,
+		Number.MAX_SAFE_INTEGER,
+	])("rejects page %s before reading content", async (pageNumber) => {
+		const read = reader();
+		await expect(
+			createBlogContentProvider({ createReader: () => read }).loadIndex(pageNumber),
+		).rejects.toMatchObject({ status: 404 });
+		expect(read.listPublished).not.toHaveBeenCalled();
+	});
+
+	it("returns 404 for a page beyond the archive", async () => {
+		const read = reader();
+		read.listPublished.mockResolvedValue({ posts: [], totalCount: 1, hasNext: false });
+		await expect(
+			createBlogContentProvider({ createReader: () => read }).loadIndex(2),
+		).rejects.toMatchObject({ status: 404 });
+	});
+
+	it("rejects inconsistent pagination metadata", async () => {
+		const read = reader();
+		read.listPublished.mockResolvedValue({ posts: [summary()], totalCount: 1, hasNext: true });
+		await expect(
+			createBlogContentProvider({ createReader: () => read }).loadIndex(),
+		).rejects.toMatchObject({ status: 503 });
+	});
+
 	it("projects summaries using delivered card dimensions and the display publication date", async () => {
 		const content = createBlogContentProvider({ createReader: reader });
-		await expect(content.loadIndex()).resolves.toEqual([
-			{
-				siteUrl: SITE_URL,
-				title: "Quiet Light",
-				slug: "quiet-light",
-				publishedAt: "1970-01-01T00:00:00.000Z",
-				excerpt: "A morning at the lake",
-				presentation: "standard",
-				author: { name: "Jesse", image: null },
-				categories: [{ title: "Field notes" }],
-				mainImage: {
-					src: `${assetRoot}/card.webp`,
-					alt: "Light on the water",
-					width: 768,
-					height: 512,
-					caption: null,
-					framing: null,
+		await expect(content.loadIndex()).resolves.toEqual({
+			pageNumber: 1,
+			totalCount: 1,
+			hasNext: false,
+			posts: [
+				{
+					siteUrl: SITE_URL,
+					title: "Quiet Light",
+					slug: "quiet-light",
+					publishedAt: "1970-01-01T00:00:00.000Z",
+					excerpt: "A morning at the lake",
+					presentation: "standard",
+					author: { name: "Jesse", image: null },
+					categories: [{ title: "Field notes" }],
+					mainImage: {
+						src: `${assetRoot}/card.webp`,
+						alt: "Light on the water",
+						width: 768,
+						height: 512,
+						caption: null,
+						framing: null,
+					},
 				},
-			},
-		]);
+			],
+		});
 	});
 
 	it("preserves rich text and technical details without resolving an already-published slug", async () => {
@@ -142,7 +189,7 @@ describe("published Blog", () => {
 		const read = reader();
 		const row = summary();
 		row.payload.excerpt = "A different summary";
-		read.listPublished.mockResolvedValue([row]);
+		read.listPublished.mockResolvedValue({ posts: [row], totalCount: 1, hasNext: false });
 		await expect(
 			createBlogContentProvider({ createReader: () => read }).loadIndex(),
 		).rejects.toMatchObject({ status: 503 });
@@ -181,10 +228,10 @@ describe("published Blog", () => {
 
 	it("returns an empty index when no posts are published", async () => {
 		const read = reader();
-		read.listPublished.mockResolvedValue([]);
+		read.listPublished.mockResolvedValue({ posts: [], totalCount: 0, hasNext: false });
 		await expect(
 			createBlogContentProvider({ createReader: () => read }).loadIndex(),
-		).resolves.toEqual([]);
+		).resolves.toEqual({ posts: [], totalCount: 0, hasNext: false, pageNumber: 1 });
 	});
 
 	it.each([

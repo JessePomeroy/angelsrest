@@ -36,7 +36,7 @@ type SlugResolution =
 	| { status: "redirect"; kind: "post"; slug: string }
 	| null;
 type BlogReader = {
-	listPublished(signal: AbortSignal): Promise<unknown>;
+	listPublished(pageNumber: number, signal: AbortSignal): Promise<unknown>;
 	getPublishedBySlug(slug: string, signal: AbortSignal): Promise<unknown>;
 	resolvePublishedSlug(slug: string, signal: AbortSignal): Promise<unknown>;
 };
@@ -497,9 +497,10 @@ function createBlogReader(): BlogReader {
 			fetch: (input, init) => fetch(input, { ...init, signal }),
 		});
 	return {
-		listPublished: (signal) =>
-			request(signal).query(api.postContent.listPublished, {
+		listPublished: (pageNumber, signal) =>
+			request(signal).query(api.postContent.listPublishedPage, {
 				siteUrl: SITE_DOMAIN,
+				pageNumber,
 				limit: BLOG_LIST_LIMIT,
 			}),
 		getPublishedBySlug: (slug, signal) =>
@@ -534,12 +535,33 @@ export function createBlogContentProvider(dependencies: { createReader?: () => B
 	}
 
 	return {
-		async loadIndex() {
+		async loadIndex(pageNumber = 1) {
+			const offset = (pageNumber - 1) * BLOG_LIST_LIMIT;
+			if (!Number.isSafeInteger(pageNumber) || pageNumber < 1 || !Number.isSafeInteger(offset)) {
+				throw error(404, "Blog page not found");
+			}
+			let result: { posts: BlogPostSummary[]; hasNext: boolean; totalCount: number };
 			try {
-				return adaptConvexBlogIndex(await reader().listPublished(AbortSignal.timeout(6_000)));
+				const raw = object(await reader().listPublished(pageNumber, AbortSignal.timeout(6_000)), [
+					"posts",
+					"hasNext",
+					"totalCount",
+				]);
+				const posts = adaptConvexBlogIndex(raw.posts);
+				const totalCount = integer(raw.totalCount);
+				const hasNext = offset + posts.length < totalCount;
+				if (
+					typeof raw.hasNext !== "boolean" ||
+					posts.length !== Math.min(BLOG_LIST_LIMIT, Math.max(0, totalCount - offset)) ||
+					raw.hasNext !== hasNext
+				)
+					fail();
+				result = { posts, totalCount, hasNext };
 			} catch {
 				unavailable();
 			}
+			if (pageNumber > 1 && result.posts.length === 0) throw error(404, "Blog page not found");
+			return { ...result, pageNumber };
 		},
 		async loadPost(slugValue: string) {
 			let slug: string;

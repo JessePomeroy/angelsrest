@@ -30,7 +30,7 @@ import { cartUI } from "../../../src/lib/shop/cartUI.svelte";
 import { deliveryData, preview, printSetData } from "./data";
 
 const params = new URLSearchParams(window.location.search);
-const fixture = params.get("fixture") ?? "cart";
+const fixture = params.get("fixture") ?? (window.location.pathname === "/blog" ? "blog" : "cart");
 const setData = { ...printSetData, printSet: { ...printSetData.printSet, inStock: params.get("stock") !== "false" } };
 document.documentElement.dataset.timePeriod = "afternoon";
 
