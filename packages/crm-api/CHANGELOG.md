@@ -1,5 +1,11 @@
 # @jessepomeroy/crm-api
 
+## 6.11.0
+
+### Minor Changes
+
+- 4036220: Add private, revision-bound draft projections for real-site previews; inquiry-to-client links and follow-up tracking; immutable delivery-gallery selections with editing notes and owner notification flags; collection navigation summaries; and merchant-fulfilled zines throughout the catalog and checkout contracts.
+
 ## 6.10.0
 
 ### Minor Changes
