@@ -16,6 +16,45 @@ const ASSET_A = "123e4567-e89b-42d3-a456-426614174000";
 const ASSET_B = "223e4567-e89b-42d3-a456-426614174001";
 const ASSET_C = "323e4567-e89b-42d3-a456-426614174002";
 
+describe("public Blog pagination", () => {
+	test("reaches posts beyond the first twelve without exposing drafts or another tenant", async () => {
+		const { t, adminA, adminB } = await setup();
+		const author = await createAuthor(adminA, SITE_A.siteUrl, "page-author", "page-author");
+		for (let index = 0; index < 14; index++) {
+			const post = await createPost(adminA, SITE_A.siteUrl, `page-post-${index}`, completePost(author.documentId, {
+				slug: `page-post-${index}`, displayPublishedAt: index * 1_000,
+			}));
+			await publishPost(adminA, post.documentId, post.revisionId);
+		}
+		await createPost(adminA, SITE_A.siteUrl, "private-draft", completePost(author.documentId, { slug: "private-draft" }));
+		const otherAuthor = await createAuthor(adminB, SITE_B.siteUrl, "other-author", "other-author");
+		const other = await createPost(adminB, SITE_B.siteUrl, "other-post", completePost(otherAuthor.documentId, { slug: "other-post" }));
+		await publishPost(adminB, other.documentId, other.revisionId);
+		const first = await t.query(api.postContent.listPublishedPage, { siteUrl: SITE_A.siteUrl, pageNumber: 1, limit: 12 });
+		const second = await t.query(api.postContent.listPublishedPage, { siteUrl: SITE_A.siteUrl, pageNumber: 2, limit: 12 });
+		expect(first).toMatchObject({ totalCount: 14, hasNext: true });
+		expect(first.posts).toHaveLength(12);
+		expect(second).toMatchObject({ totalCount: 14, hasNext: false });
+		expect(second.posts.map((post) => post.payload.slug)).toEqual(["page-post-1", "page-post-0"]);
+		expect(new Set([...first.posts, ...second.posts].map((post) => post.payload.slug)).size).toBe(14);
+		expect(await t.query(api.postContent.listPublished, { siteUrl: SITE_A.siteUrl, limit: 12 })).toEqual(first.posts);
+		expect(await t.query(api.postContent.listPublishedPage, { siteUrl: SITE_A.siteUrl, pageNumber: 3, limit: 12 })).toEqual({ posts: [], totalCount: 14, hasNext: false });
+		for (const forbidden of ["private-draft", "other-post", "body", "documentId"]) {
+			expect(JSON.stringify([first, second])).not.toContain(`"${forbidden}"`);
+		}
+	});
+
+	test.each([0, -1, 1.5, Number.MAX_SAFE_INTEGER])("rejects invalid page %s", async (pageNumber) => {
+		const { t } = await setup();
+		await expect(t.query(api.postContent.listPublishedPage, { siteUrl: SITE_A.siteUrl, pageNumber, limit: 12 })).rejects.toThrow("page must be a positive safe integer");
+	});
+
+	test("retains the per-page read bound", async () => {
+		const { t } = await setup();
+		await expect(t.query(api.postContent.listPublishedPage, { siteUrl: SITE_A.siteUrl, pageNumber: 1, limit: 13 })).rejects.toThrow("between 1 and 12");
+	});
+});
+
 function readyAsset(siteUrl: string, assetId: string, filename: string) {
 	const prefix = `sites/${siteUrl}/web/${assetId}/`;
 	return {

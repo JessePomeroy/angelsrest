@@ -5,6 +5,7 @@ import {
 	getPublishedPostBySlug,
 	listPostEditorDocuments,
 	listPublishedPosts,
+	listPublishedPostPage,
 	resolvePublishedPostSlug,
 } from "./helpers/postContentQueries";
 import {
@@ -108,4 +109,11 @@ export const listPublished = query({
 	args: { siteUrl: v.string(), limit: v.number() },
 	handler: async (ctx, { siteUrl, limit }) =>
 		await listPublishedPosts(ctx, siteUrl, limit),
+});
+
+/** Numbered public Blog pages; only the requested page joins supporting content. */
+export const listPublishedPage = query({
+	args: { siteUrl: v.string(), pageNumber: v.number(), limit: v.number() },
+	handler: async (ctx, { siteUrl, pageNumber, limit }) =>
+		await listPublishedPostPage(ctx, siteUrl, pageNumber, limit),
 });
