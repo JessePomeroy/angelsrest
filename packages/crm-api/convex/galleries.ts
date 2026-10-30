@@ -1,7 +1,7 @@
 import { v } from "convex/values";
 import { paginationOptsValidator } from "convex/server";
 import { internal } from "./_generated/api";
-import type { Id } from "./_generated/dataModel";
+import type { Doc, Id } from "./_generated/dataModel";
 import {
 	internalMutation,
 	type MutationCtx,
@@ -302,29 +302,36 @@ export const listBySite = query({
 			.order("desc")
 			.take(DEFAULT_LIST_LIMIT);
 
-		// Collect unique client IDs and fan out the reads in parallel
-		// (audit M24). Mirrors the Promise.all pattern in tags.getClientTags.
-		const clientIds = [...new Set(galleries.map((g) => g.clientId))];
-		const clients = await Promise.all(clientIds.map((id) => ctx.db.get(id)));
-		const clientMap = new Map();
-		for (const client of clients) {
-			if (client) clientMap.set(client._id, client);
-		}
-		const protection = await Promise.all(
-			galleries.map(async (gallery) => {
-				const verifier = await ctx.db
-					.query("galleryPasswordVerifiers")
-					.withIndex("by_gallery", (q) => q.eq("galleryId", gallery._id))
-					.unique();
-				return verifier !== null;
-			}),
-		);
-		const withClients = galleries.map((gallery, index) => ({
-			...gallery,
-			clientName: clientMap.get(gallery.clientId)?.name ?? "Unknown",
-			passwordProtected: protection[index],
-		}));
-		return withClients;
+		return await galleryListDetails(ctx, galleries);
+	},
+});
+
+async function galleryListDetails(ctx: QueryCtx, galleries: Doc<"galleries">[]) {
+	const clientIds = [...new Set(galleries.map((gallery) => gallery.clientId))];
+	const clients = await Promise.all(clientIds.map((id) => ctx.db.get(id)));
+	const clientNames = new Map(clients.filter((client) => client !== null).map((client) => [client._id, client.name]));
+	return await Promise.all(galleries.map(async (gallery) => ({
+		...await withPasswordProtection(ctx, gallery),
+		clientName: clientNames.get(gallery.clientId) ?? "Unknown",
+	})));
+}
+
+/** Filtering precedes the bounded read, so older published galleries remain reachable. */
+export const listBySitePaginated = query({
+	args: {
+		siteUrl: v.string(),
+		status: v.optional(v.union(v.literal("draft"), v.literal("uploading"), v.literal("published"), v.literal("archived"))),
+		paginationOpts: paginationOptsValidator,
+	},
+	handler: async (ctx, { siteUrl, status, paginationOpts }) => {
+		await requireSiteAdmin(ctx, siteUrl);
+		const matching = status
+			? ctx.db.query("galleries").withIndex("by_siteUrl_status", (q) => q.eq("siteUrl", siteUrl).eq("status", status))
+			: ctx.db.query("galleries").withIndex("by_siteUrl", (q) => q.eq("siteUrl", siteUrl));
+		const result = await matching.order("desc").paginate({ ...paginationOpts,
+			numItems: Math.min(paginationOpts.numItems, 50), maximumRowsRead: 50,
+		});
+		return { ...result, page: await galleryListDetails(ctx, result.page) };
 	},
 });
 
@@ -368,6 +375,19 @@ export const addImage = mutation({
 		if (!gallery || gallery.siteUrl !== args.siteUrl) {
 			throw new Error("Gallery not found");
 		}
+		// A lost mutation response must be replayable without counting the same
+		// stored original twice. Different facts cannot adopt an existing identity.
+		const matches = await ctx.db.query("galleryImages").withIndex("by_r2Key", (q) => q.eq("r2Key", args.r2Key)).take(2);
+		if (matches.length > 1) throw new Error("Gallery file registration is ambiguous");
+		const existing = matches[0];
+		if (existing) {
+			if (existing.siteUrl !== args.siteUrl || existing.galleryId !== args.galleryId
+				|| existing.filename !== args.filename || existing.sizeBytes !== args.sizeBytes
+				|| existing.width !== args.width || existing.height !== args.height) {
+				throw new Error("Gallery file registration conflicts with existing metadata");
+			}
+			return existing._id;
+		}
 
 		const imageId = await ctx.db.insert("galleryImages", {
 			...previewIdentity(args),
@@ -393,10 +413,16 @@ export const addImage = mutation({
 });
 
 export const removeImage = mutation({
-	args: { id: v.id("galleryImages") },
-	handler: async (ctx, { id }) => {
-		const image = await requireDocumentSiteAdmin(ctx, "galleryImages", id);
-		if (!image) throw new Error("Image not found");
+	args: { id: v.id("galleryImages"), siteUrl: v.optional(v.string()) },
+	handler: async (ctx, { id, siteUrl }) => {
+		if (siteUrl !== undefined) await requireSiteAdmin(ctx, siteUrl);
+		const image = await ctx.db.get(id);
+		if (!image) {
+			if (siteUrl !== undefined) return null;
+			throw new Error("Image not found");
+		}
+		if (siteUrl !== undefined && image.siteUrl !== siteUrl) throw new Error("Image not found");
+		if (siteUrl === undefined) await requireSiteAdmin(ctx, image.siteUrl);
 
 		const gallery = await ctx.db.get(image.galleryId);
 		if (gallery) {
