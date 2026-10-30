@@ -43,6 +43,8 @@ Repeated submission returns the same submission. The owner can explicitly reopen
 the selection; earlier snapshots stay immutable, and a stale submission from the
 previous round is rejected. Owner management requires Full access; reads are tenant-authorized and paginated.
 Submission raises the Galleries admin notification flag and records CRM activity.
+The indexed submitted-selections filter reaches older galleries and orders them
+by their latest submission; reopened selections leave that queue.
 Gallery deletion includes bounded cleanup of submission and snapshot records.
 Host notification email and recipient controls require the corresponding host
 adoption; these backend contracts alone do not establish email delivery.

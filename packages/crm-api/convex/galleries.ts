@@ -325,6 +325,18 @@ async function galleryListDetails(ctx: QueryCtx, galleries: Doc<"galleries">[]) 
 	})));
 }
 
+export const listSubmittedProofs = query({
+	args: { siteUrl: v.string(), paginationOpts: paginationOptsValidator },
+	handler: async (ctx, { siteUrl, paginationOpts }) => {
+		const { client } = await requireSiteAdmin(ctx, siteUrl);
+		if (client.tier !== "full") throw new Error("Full gallery access is required");
+		const result = await ctx.db.query("galleries")
+			.withIndex("by_siteUrl_and_proofSubmittedAt", (q) => q.eq("siteUrl", siteUrl).gt("proofSubmittedAt", 0))
+			.order("desc").paginate({ ...paginationOpts, numItems: Math.min(paginationOpts.numItems, 25), maximumRowsRead: 25 });
+		return { ...result, page: await galleryListDetails(ctx, result.page) };
+	},
+});
+
 /** Filtering precedes the bounded read, so older published galleries remain reachable. */
 export const listBySitePaginated = query({
 	args: {
@@ -516,15 +528,16 @@ export const submitProof = mutation({
 			.take(GALLERY_IMAGE_LIMIT + 1);
 		if (selected.length === 0) throw new Error("Choose at least one favorite before submitting");
 		if (selected.length > GALLERY_IMAGE_LIMIT) throw new Error("Gallery image limit exceeded");
+		const submittedAt = Date.now();
 		const submissionId = await ctx.db.insert("galleryProofSubmissions", {
 			siteUrl: gallery.siteUrl, galleryId, clientId: gallery.clientId,
-			selectedCount: selected.length, notes: notes.trim(), submittedAt: Date.now(),
+			selectedCount: selected.length, notes: notes.trim(), submittedAt,
 		});
 		for (const [order, image] of selected.sort((a, b) => a.order - b.order).entries()) {
 			await ctx.db.insert("galleryProofImages", { siteUrl: gallery.siteUrl, galleryId, submissionId,
 				imageId: image._id, filename: image.filename, editingNotes: image.editingNotes ?? "", order });
 		}
-		await ctx.db.patch(galleryId, { proofSubmissionId: submissionId });
+		await ctx.db.patch(galleryId, { proofSubmissionId: submissionId, proofSubmittedAt: submittedAt });
 		await logActivity(ctx, { siteUrl: gallery.siteUrl, clientId: gallery.clientId, action: "gallery_proof_submitted",
 			description: `${selected.length} selections submitted for ${gallery.name}` });
 		return submissionId;
@@ -570,7 +583,7 @@ export const reopenProof = mutation({
 		const gallery = await requireProofingAdmin(ctx, "galleries", galleryId);
 		if (gallery.proofSubmissionId !== submissionId) throw new Error("This submission is no longer current");
 		await ctx.db.patch(submissionId, { reopenedAt: Date.now() });
-		await ctx.db.patch(galleryId, { proofSubmissionId: undefined, proofRound: (gallery.proofRound ?? 0) + 1 });
+		await ctx.db.patch(galleryId, { proofSubmissionId: undefined, proofSubmittedAt: undefined, proofRound: (gallery.proofRound ?? 0) + 1 });
 	},
 });
 

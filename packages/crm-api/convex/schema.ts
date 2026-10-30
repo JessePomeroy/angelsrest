@@ -1989,9 +1989,11 @@ export default defineSchema({
 		favoritesEnabled: v.boolean(),
 		proofSubmissionId: v.optional(v.id("galleryProofSubmissions")),
 		proofRound: v.optional(v.number()),
+		proofSubmittedAt: v.optional(v.number()),
 	})
 		.index("by_siteUrl", ["siteUrl"])
 		.index("by_siteUrl_status", ["siteUrl", "status"])
+		.index("by_siteUrl_and_proofSubmittedAt", ["siteUrl", "proofSubmittedAt"])
 		.index("by_siteUrl_and_slug", ["siteUrl", "slug"])
 		.index("by_client", ["clientId"]),
 

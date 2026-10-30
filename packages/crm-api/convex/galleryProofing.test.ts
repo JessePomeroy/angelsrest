@@ -26,7 +26,9 @@ test("freezes final selections and editing notes once, notifies the owner and re
 	expect(await t.query(api.galleries.getProof, { galleryId, token })).toMatchObject({ selectedCount: 1, notes: args.notes });
 	expect((await admin.query(api.notifications.getUnreadFlags, { siteUrl })).galleries).toBe(true);
 	await expect(t.mutation(api.galleries.updateImage, { id: imageId, token, isFavorite: false })).rejects.toThrow("submitted");
+	expect((await admin.query(api.galleries.listSubmittedProofs, { siteUrl, paginationOpts: { numItems: 25, cursor: null } })).page.map((gallery) => gallery._id)).toEqual([galleryId]);
 	await admin.mutation(api.galleries.reopenProof, { galleryId, submissionId });
+	expect((await admin.query(api.galleries.listSubmittedProofs, { siteUrl, paginationOpts: { numItems: 25, cursor: null } })).page).toEqual([]);
 	await t.mutation(api.galleries.updateImage, { id: imageId, token, editingNotes: "New request" });
 	await expect(t.mutation(api.galleries.submitProof, args)).rejects.toThrow("reopened");
 	const snapshot = await admin.query(api.galleries.getProofImages, { submissionId, paginationOpts: { cursor: null, numItems: 25 } });
@@ -69,4 +71,18 @@ test("owner proof management requires the Full gallery capability", async () => 
  await t.run(async (ctx) => { const site = await ctx.db.query("platformClients").withIndex("by_siteUrl", q => q.eq("siteUrl", siteUrl)).unique(); if (!site) throw new Error("Missing tenant"); await ctx.db.patch(site._id, { tier: "basic" }); });
  await expect(admin.query(api.galleries.getProof, { galleryId })).rejects.toThrow("Full gallery");
  await expect(admin.query(api.galleries.listProofs, { galleryId, paginationOpts: { numItems: 25, cursor: null } })).rejects.toThrow("Full gallery");
+});
+
+
+test("submitted selections remain reachable beyond newer ordinary gallery pages", async () => {
+ const { t, admin, galleryId, imageId, token } = await setup();
+ await t.mutation(api.galleries.updateImage, { id: imageId, token, isFavorite: true });
+ await t.mutation(api.galleries.submitProof, { galleryId, token, expectedRound: 0, notes: "" });
+ await t.run(async (ctx) => {
+  const original = await ctx.db.get(galleryId); if (!original) throw new Error("Missing gallery");
+  for (let i = 0; i < 35; i++) await ctx.db.insert("galleries", { siteUrl, clientId: original.clientId, name: `Newer ${i}`, slug: `newer-${i}`, status: "draft", imageCount: 0, totalSizeBytes: 0, downloadEnabled: false, favoritesEnabled: false });
+ });
+ const args = { siteUrl, paginationOpts: { cursor: null, numItems: 25 } };
+ expect((await admin.query(api.galleries.listBySitePaginated, args)).page.some((gallery) => gallery._id === galleryId)).toBe(false);
+ expect((await admin.query(api.galleries.listSubmittedProofs, args)).page.map((gallery) => gallery._id)).toEqual([galleryId]);
 });
