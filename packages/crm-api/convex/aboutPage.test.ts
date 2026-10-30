@@ -301,3 +301,13 @@ describe("typed About-page content", () => {
 		]);
 	});
 });
+
+
+test("real-page About previews project ready owned portraits without publishing the draft", async () => {
+ const { t, adminA, adminB, assetA } = await setup();
+ const draft = await adminA.mutation(api.content.saveAboutPageDraft, { siteUrl: SITE_A.siteUrl, payload: completeAbout(assetA.id) });
+ const args = { siteUrl: SITE_A.siteUrl, draftRevisionId: draft.revisionId };
+ expect(await adminA.query(api.content.getAboutPageDraftPreview, args)).toMatchObject({ payload: { portraits: [{ asset: { assetId: ASSET_A } }] } });
+ expect(await t.query(api.content.getPublishedAboutPageWithRevision, { siteUrl: SITE_A.siteUrl })).toBeNull();
+ await expect(adminB.query(api.content.getAboutPageDraftPreview, args)).rejects.toThrow("Not authorized");
+});

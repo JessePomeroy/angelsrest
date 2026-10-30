@@ -32,6 +32,7 @@ export function calculatePrintSubtotalCents(lines: readonly PrintFeeLine[]): num
 				assertCents(subtotalCents);
 				break;
 			case "digital_download":
+			case "zine":
 			case "postcard":
 			case "tapestry":
 			case "merchandise":

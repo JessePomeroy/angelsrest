@@ -250,3 +250,17 @@ describe("typed Contact & Booking content", () => {
 		});
 	});
 });
+
+
+test("real-page Contact previews are private, revision-bound and leave publication untouched", async () => {
+ const t = await setup();
+ const admin = asAdmin(t, SITE_A.adminEmail);
+ const draft = await admin.mutation(api.content.saveContactPageDraft, { siteUrl: SITE_A.siteUrl, payload: COMPLETE_CONTACT });
+ const args = { siteUrl: SITE_A.siteUrl, draftRevisionId: draft.revisionId };
+ expect(await admin.query(api.content.getContactPageDraftPreview, args)).toMatchObject({ payload: { heading: COMPLETE_CONTACT.heading } });
+ expect(await t.query(api.content.getPublishedContactPageWithRevision, { siteUrl: SITE_A.siteUrl })).toBeNull();
+ await expect(t.query(api.content.getContactPageDraftPreview, args)).rejects.toThrow("Not authenticated");
+ await expect(asAdmin(t, SITE_B.adminEmail).query(api.content.getContactPageDraftPreview, args)).rejects.toThrow("Not authorized");
+ await admin.mutation(api.content.saveContactPageDraft, { siteUrl: SITE_A.siteUrl, expectedDraftRevisionId: draft.revisionId, payload: { ...COMPLETE_CONTACT, heading: "Changed" } });
+ await expect(admin.query(api.content.getContactPageDraftPreview, args)).rejects.toThrow("Draft changed");
+});

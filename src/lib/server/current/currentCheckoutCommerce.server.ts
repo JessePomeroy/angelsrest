@@ -14,7 +14,9 @@ import {
 import { getConvexUrl } from "$lib/server/runtimeConfig";
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
-const KINDS = new Set("print print_set postcard tapestry digital_download merchandise".split(" "));
+const KINDS = new Set(
+	"print print_set zine postcard tapestry digital_download merchandise".split(" "),
+);
 const PRIMARY_ROLES = { print: "primary", print_set: "cover" } as const;
 const CANVAS_KEYS = "color thickness subcategoryId wrapOptionId wrapHex";
 

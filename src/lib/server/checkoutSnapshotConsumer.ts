@@ -8,6 +8,7 @@ import {
 const kindValues = [
 	"print",
 	"print_set",
+	"zine",
 	"postcard",
 	"tapestry",
 	"digital_download",

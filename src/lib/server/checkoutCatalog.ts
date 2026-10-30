@@ -1,6 +1,7 @@
 type ProductKind =
 	| "print"
 	| "print_set"
+	| "zine"
 	| "postcard"
 	| "tapestry"
 	| "digital_download"

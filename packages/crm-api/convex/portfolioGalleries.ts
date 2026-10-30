@@ -2,7 +2,7 @@ import { isPublicSiteOffline } from "./helpers/publicSiteAvailability";
 import { v } from "convex/values";
 import { internal } from "./_generated/api";
 import type { Doc } from "./_generated/dataModel";
-import { internalMutation, mutation, type MutationCtx, query } from "./_generated/server";
+import { internalMutation, mutation, type MutationCtx, type QueryCtx, query } from "./_generated/server";
 import { requireDocumentSiteAdmin, requireSiteAdmin } from "./authHelpers";
 import {
 	assertExpectedDraft,
@@ -346,6 +346,19 @@ export const getEditorState = query({
 	},
 });
 
+export const getDraftPreview = query({
+	args: { siteUrl: v.string(), galleryId: v.id("portfolioGalleries"), draftRevisionId: v.id("portfolioGalleryRevisions") },
+	handler: async (ctx, { siteUrl, galleryId, draftRevisionId }) => {
+		const gallery = await requireDocumentSiteAdmin(ctx, "portfolioGalleries", galleryId);
+		if (gallery.siteUrl !== siteUrl) throw new Error("Gallery not found");
+		assertGalleryActive(gallery);
+		if (gallery.draftRevisionId !== draftRevisionId) throw new Error("Draft changed. Save and open a new preview.");
+		const revision = await getPortfolioRevision(ctx, draftRevisionId);
+		if (!revision) throw new Error("Draft not found");
+		return await loadPublicPortfolioGallery(ctx, gallery, revision);
+	},
+});
+
 export const listForEditor = query({
 	args: { siteUrl: v.string() },
 	handler: async (ctx, { siteUrl }) => {
@@ -441,9 +454,7 @@ export const listPublished = query({
 	},
 });
 
-export const listPublishedSummaries = query({
-	args: { siteUrl: v.string() },
-	handler: async (ctx, { siteUrl }) => {
+async function loadPublishedNavigation(ctx: QueryCtx, siteUrl: string) {
 		if (await isPublicSiteOffline(ctx, siteUrl)) return [];
 		const galleries = await ctx.db.query("portfolioGalleries")
 			.withIndex("by_siteUrl_and_isPublished_and_isVisible_and_portfolioOrder", (q) =>
@@ -464,9 +475,21 @@ export const listPublishedSummaries = query({
 			if (placement && (!asset || asset.siteUrl !== siteUrl || asset.status !== "ready" || asset.intent !== "web" || !asset.derivatives?.card)) {
 				throw new Error("Portfolio preview requires a ready web asset from the same site");
 			}
-			return { title, slug: revision.slug, preview: asset ? { assetId: asset.assetId, card: asset.derivatives!.card } : null };
+			return { galleryId: gallery._id, revisionId: revision._id, title, slug: revision.slug, description: revision.description?.trim() || null, placementCount: revision.placementCount,
+				preview: asset ? { assetId: asset.assetId, card: asset.derivatives!.card } : null,
+				cover: asset && placement ? { key: placement.placementKey, assetId: asset.assetId, altText: placement.altText ?? null, caption: placement.caption ?? null, focalPoint: placement.focalPoint ?? null, width: asset.source.width, height: asset.source.height } : null };
 		}));
-	},
+}
+
+export const listPublishedSummaries = query({
+	args: { siteUrl: v.string() },
+	handler: async (ctx, { siteUrl }) => (await loadPublishedNavigation(ctx, siteUrl)).map(({ title, slug, preview }) => ({ title, slug, preview })),
+});
+
+/** Collection navigation reads one cover per gallery, never the full archive. */
+export const listPublishedNavigation = query({
+	args: { siteUrl: v.string() },
+	handler: async (ctx, { siteUrl }) => await loadPublishedNavigation(ctx, siteUrl),
 });
 
 export const listPublishedWithPlacements = query({

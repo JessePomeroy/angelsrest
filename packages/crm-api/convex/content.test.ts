@@ -255,3 +255,12 @@ describe("typed site settings CMS foundation", () => {
 		});
 	});
 });
+
+
+test("real-site settings previews do not replace published settings", async () => {
+ const t = await setup();
+ const admin = asAdmin(t, SITE_A.adminEmail);
+ const draft = await admin.mutation(api.content.saveSiteSettingsDraft, { siteUrl: SITE_A.siteUrl, payload: COMPLETE_SETTINGS });
+ expect(await admin.query(api.content.getSiteSettingsDraftPreview, { siteUrl: SITE_A.siteUrl, draftRevisionId: draft.revisionId })).toMatchObject({ artistName: COMPLETE_SETTINGS.artistName });
+ expect(await t.query(api.content.getPublishedSiteSettings, { siteUrl: SITE_A.siteUrl })).toBeNull();
+});

@@ -84,7 +84,7 @@ describe("dormant private catalog product graph V2", () => {
 			catalogProductKinds: [
 				"print",
 				"print_set",
-				"postcard",
+				"zine", "postcard",
 				"tapestry",
 				"digital_download",
 				"merchandise",
@@ -118,7 +118,7 @@ describe("dormant private catalog product graph V2", () => {
 		const kinds: CatalogProductKind[] = [
 			"print",
 			"print_set",
-			"postcard",
+			"zine", "postcard",
 			"tapestry",
 			"digital_download",
 			"merchandise",
@@ -682,6 +682,7 @@ describe("dormant private catalog product graph V2", () => {
 		expect(Object.keys(catalogProductGraphsModule).sort()).toEqual([
 			"createDraft",
 			"discardDraft",
+			"getDraftPreview",
 			"getEditorState",
 			"getPublishedBySlug",
 			"getRetirementEligibility",
@@ -816,4 +817,15 @@ test("offboarded tenants retain their published graph but cannot serve the publi
  expect(await fixture.t.query(api.catalogProductGraphs.listPublished, { siteUrl: SITE_A.siteUrl })).toEqual([]);
  expect(await fixture.t.query(api.catalogProductGraphs.getPublishedBySlug, { siteUrl: SITE_A.siteUrl, slug: slugFor("offline-print") })).toBeNull();
  expect(await fixture.t.run(ctx => ctx.db.get(created.revisionId))).not.toBeNull();
+});
+
+
+test("real-product draft previews expose the safe catalog graph without publishing", async () => {
+ const fixture = await setup(modules);
+ const draft = graphDraft("zine", fixture, "preview-zine");
+ const created = await createGraph(fixture.adminA, SITE_A.siteUrl, "preview-zine", draft);
+ const args = { siteUrl: SITE_A.siteUrl, productId: created.productId, draftRevisionId: created.revisionId };
+ expect(await fixture.adminA.query(api.catalogProductGraphs.getDraftPreview, args)).toMatchObject({ productKind: "zine", title: draft.title });
+ expect(await fixture.t.query(api.catalogProductGraphs.listPublished, { siteUrl: SITE_A.siteUrl })).toEqual([]);
+ await expect(fixture.adminB.query(api.catalogProductGraphs.getDraftPreview, args)).rejects.toThrow("Not authorized");
 });

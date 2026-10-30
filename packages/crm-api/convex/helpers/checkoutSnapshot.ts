@@ -11,7 +11,7 @@ export const STRIPE_SESSION_MIN_LIFETIME_SECONDS = 30 * 60;
 export const STRIPE_SESSION_MAX_LIFETIME_SECONDS = 24 * 60 * 60;
 export const STRIPE_CLOCK_SKEW_SECONDS = 5 * 60;
 const PRODUCT_KINDS = new Set([
-	"print", "print_set", "postcard", "tapestry", "digital_download", "merchandise",
+	"print", "print_set", "zine", "postcard", "tapestry", "digital_download", "merchandise",
 ]);
 const ITEM_KEYS = [
 	"productKey", "revisionId", "productKind", "variantKey", "materialOptionKey",

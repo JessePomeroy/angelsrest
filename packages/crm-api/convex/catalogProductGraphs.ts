@@ -25,6 +25,23 @@ import {
 	catalogProductPublicationRevisionValidator,
 } from "./helpers/catalogProductGraphValidators";
 import { catalogProductKindValidator } from "./helpers/catalogProductValidators";
+import { requireDocumentSiteAdmin } from "./authHelpers";
+import { loadCatalogProductGraphV2Revision, projectCatalogProductGraphV2Public, requireCatalogProductGraphV2Product } from "./helpers/catalogProductGraphData";
+
+export const getDraftPreview = query({
+	args: { siteUrl: v.string(), productId: v.id("catalogProducts"), draftRevisionId: v.id("catalogProductRevisions") },
+	returns: catalogProductGraphV2PublicValidator,
+	handler: async (ctx, { siteUrl, productId, draftRevisionId }) => {
+		const product = requireCatalogProductGraphV2Product(await requireDocumentSiteAdmin(ctx, "catalogProducts", productId));
+		if (product.siteUrl !== siteUrl) throw new Error("Product not found");
+		if (product.draftRevisionId !== draftRevisionId) throw new Error("Draft changed. Save and open a new preview.");
+		// Reuse the editor lifecycle guard before reading immutable graph rows.
+		await getCatalogProductGraphV2EditorState(ctx, productId);
+		const draft = await loadCatalogProductGraphV2Revision(ctx, product, draftRevisionId);
+		if (!draft) throw new Error("Draft not found");
+		return projectCatalogProductGraphV2Public(draft);
+	},
+});
 
 /** Create the first private, immutable V2 graph for one catalog product. */
 export const createDraft = mutation({

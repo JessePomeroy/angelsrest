@@ -169,6 +169,11 @@ const catalogProductRevisionV2Validators = [
 	}),
 	v.object({
 		...catalogProductRevisionV2CommonFields,
+		productKind: v.literal("zine"),
+		fulfillmentMode: v.literal("merchant_fulfilled"),
+	}),
+	v.object({
+		...catalogProductRevisionV2CommonFields,
 		productKind: v.literal("postcard"),
 		fulfillmentMode: v.literal("merchant_fulfilled"),
 	}),
@@ -1982,9 +1987,13 @@ export default defineSchema({
 		expiresAt: v.optional(v.number()),
 		downloadEnabled: v.boolean(),
 		favoritesEnabled: v.boolean(),
+		proofSubmissionId: v.optional(v.id("galleryProofSubmissions")),
+		proofRound: v.optional(v.number()),
+		proofSubmittedAt: v.optional(v.number()),
 	})
 		.index("by_siteUrl", ["siteUrl"])
 		.index("by_siteUrl_status", ["siteUrl", "status"])
+		.index("by_siteUrl_and_proofSubmittedAt", ["siteUrl", "proofSubmittedAt"])
 		.index("by_siteUrl_and_slug", ["siteUrl", "slug"])
 		.index("by_client", ["clientId"]),
 
@@ -2045,13 +2054,39 @@ export default defineSchema({
 		height: v.number(),
 		order: v.number(),
 		isFavorite: v.boolean(),
+		editingNotes: v.optional(v.string()),
 		downloadCount: v.number(),
 	})
 		.index("by_gallery", ["galleryId"])
+		.index("by_galleryId_and_siteUrl_and_isFavorite", ["galleryId", "siteUrl", "isFavorite"])
 		.index("by_galleryId_and_siteUrl_and_order", ["galleryId", "siteUrl", "order"])
 		.index("by_galleryId_and_siteUrl_and_pairKey_and_previewable_and_order", ["galleryId", "siteUrl", "pairKey", "previewable", "order"])
 		.index("by_siteUrl", ["siteUrl"])
 		.index("by_r2Key", ["r2Key"]),
+
+	galleryProofSubmissions: defineTable({
+		siteUrl: v.string(),
+		galleryId: v.id("galleries"),
+		clientId: v.id("photographyClients"),
+		selectedCount: v.number(),
+		notes: v.string(),
+		submittedAt: v.number(),
+		reopenedAt: v.optional(v.number()),
+	})
+		.index("by_siteUrl", ["siteUrl"])
+		.index("by_galleryId", ["galleryId"]),
+	galleryProofImages: defineTable({
+		siteUrl: v.string(),
+		galleryId: v.id("galleries"),
+		submissionId: v.id("galleryProofSubmissions"),
+		imageId: v.id("galleryImages"),
+		filename: v.string(),
+		editingNotes: v.string(),
+		order: v.number(),
+	})
+		.index("by_siteUrl", ["siteUrl"])
+		.index("by_galleryId", ["galleryId"])
+		.index("by_submissionId_and_order", ["submissionId", "order"]),
 
 	// Gallery download tracking
 	galleryDownloads: defineTable({
@@ -2081,9 +2116,16 @@ export default defineSchema({
 		subject: v.optional(v.string()),
 		message: v.string(),
 		status: v.union(v.literal("new"), v.literal("read"), v.literal("replied")),
+		clientId: v.optional(v.id("photographyClients")),
+		linkedAt: v.optional(v.number()),
+		followUpDate: v.optional(v.string()),
+		followUpCompletedAt: v.optional(v.number()),
+		internalNotes: v.optional(v.string()),
 	})
 		.index("by_siteUrl", ["siteUrl"])
-		.index("by_siteUrl_status", ["siteUrl", "status"]),
+		.index("by_siteUrl_status", ["siteUrl", "status"])
+		.index("by_siteUrl_and_followUpDate", ["siteUrl", "followUpDate"])
+		.index("by_clientId", ["clientId"]),
 
 	// Admin sidebar notification tracking
 	adminLastSeen: defineTable({

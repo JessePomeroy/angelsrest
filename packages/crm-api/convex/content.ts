@@ -368,6 +368,36 @@ export const getAboutPageEditorState = query({
 		),
 });
 
+/** Private real-page previews use the published-safe projection without changing publication. */
+export const getAboutPageDraftPreview = query({
+	args: { siteUrl: v.string(), draftRevisionId: v.id("contentRevisions") },
+	handler: async (ctx, { siteUrl, draftRevisionId }) => {
+		const state = await getContentEditorState(ctx, siteUrl, ABOUT_PAGE_KIND, asAboutPagePayload);
+		if (!state?.draft || state.draft.revisionId !== draftRevisionId) throw new Error("Draft changed. Save and open a new preview.");
+		return await projectPublishedAboutPage(ctx, siteUrl, { revisionId: draftRevisionId, publishedAt: state.draft.createdAt,
+			payload: toPublishedAboutPage(state.draft.payload) });
+	},
+});
+
+export const getContactPageDraftPreview = query({
+	args: { siteUrl: v.string(), draftRevisionId: v.id("contentRevisions") },
+	handler: async (ctx, { siteUrl, draftRevisionId }) => {
+		const state = await getContentEditorState(ctx, siteUrl, CONTACT_PAGE_KIND, asContactPagePayload);
+		if (!state?.draft || state.draft.revisionId !== draftRevisionId) throw new Error("Draft changed. Save and open a new preview.");
+		return { revisionId: draftRevisionId, publishedAt: state.draft.createdAt, payload: toPublishedContactPage(state.draft.payload) };
+	},
+});
+
+export const getSiteSettingsDraftPreview = query({
+	args: { siteUrl: v.string(), draftRevisionId: v.id("contentRevisions") },
+	handler: async (ctx, { siteUrl, draftRevisionId }) => {
+		const state = await getContentEditorState(ctx, siteUrl, SITE_SETTINGS_KIND, asSiteSettingsPayload);
+		if (!state?.draft || state.draft.revisionId !== draftRevisionId) throw new Error("Draft changed. Save and open a new preview.");
+		return (await projectPublishedSiteSettings(ctx, siteUrl, { revisionId: draftRevisionId, publishedAt: state.draft.createdAt,
+			payload: toPublishedSiteSettings(state.draft.payload) })).payload;
+	},
+});
+
 /** Public-safe About content with ready web derivatives only. */
 export const getPublishedAboutPageWithRevision = query({
 	args: { siteUrl: v.string() },

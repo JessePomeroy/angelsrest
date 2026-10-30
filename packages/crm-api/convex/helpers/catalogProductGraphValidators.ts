@@ -127,6 +127,10 @@ export const catalogProductGraphV2DraftValidator = v.union(
 	}),
 	v.object({
 		...fixedPricePhysicalFields,
+		productKind: v.literal("zine"),
+	}),
+	v.object({
+		...fixedPricePhysicalFields,
 		productKind: v.literal("postcard"),
 	}),
 	v.object({
@@ -497,6 +501,7 @@ export function validateCatalogProductGraphV2Draft(draft: CatalogProductGraphV2D
 	if (![
 		"print",
 		"print_set",
+		"zine",
 		"postcard",
 		"tapestry",
 		"digital_download",
@@ -553,7 +558,8 @@ export function validateCatalogProductGraphV2Draft(draft: CatalogProductGraphV2D
 	validateVariants(draft);
 	validateWebMedia(draft);
 	if (
-		draft.productKind === "postcard"
+		draft.productKind === "zine"
+		|| draft.productKind === "postcard"
 		|| draft.productKind === "tapestry"
 		|| draft.productKind === "merchandise"
 		|| draft.productKind === "digital_download"

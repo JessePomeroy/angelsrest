@@ -32,7 +32,7 @@ const itemValidator = v.object({
 	productKey: v.string(),
 	revisionId: v.string(),
 	productKind: v.union(
-		v.literal("print"), v.literal("print_set"), v.literal("postcard"),
+		v.literal("print"), v.literal("print_set"), v.literal("zine"), v.literal("postcard"),
 		v.literal("tapestry"), v.literal("digital_download"), v.literal("merchandise"),
 	),
 	variantKey: v.union(v.string(), v.null()),

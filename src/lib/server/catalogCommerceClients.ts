@@ -180,6 +180,7 @@ function productKind(value: unknown): value is CheckoutSnapshotItem["productKind
 	return (
 		value === "print" ||
 		value === "print_set" ||
+		value === "zine" ||
 		value === "postcard" ||
 		value === "tapestry" ||
 		value === "digital_download" ||

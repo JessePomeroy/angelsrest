@@ -8,7 +8,7 @@ import {
 
 type PrintDraft = Extract<CatalogProductGraphV2Draft, { productKind: "print" }>;
 type PrintSetDraft = Extract<CatalogProductGraphV2Draft, { productKind: "print_set" }>;
-type FixedKind = "postcard" | "tapestry" | "digital_download" | "merchandise";
+type FixedKind = "zine" | "postcard" | "tapestry" | "digital_download" | "merchandise";
 
 const webAssetId = (value: string) => value as Id<"mediaAssets">;
 const printSourceAssetId = (value: string) =>
@@ -150,6 +150,7 @@ describe("catalog product graph V2 accepted shapes", () => {
 		const drafts = [
 			validPrint(),
 			validPrintSet(),
+			validFixed("zine"),
 			validFixed("postcard"),
 			validFixed("tapestry"),
 			validFixed("digital_download"),

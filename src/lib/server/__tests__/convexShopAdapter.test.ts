@@ -266,6 +266,7 @@ describe("Convex Shop page-shape adapter", () => {
 		expect(Object.hasOwn(print.product, "price")).toBe(false);
 		expect(Object.hasOwn(print.product, "category")).toBe(false);
 		for (const [kind, category] of [
+			["zine", "zines"],
 			["postcard", "postcards"],
 			["tapestry", "tapestries"],
 			["digital_download", "digital"],
@@ -340,6 +341,7 @@ describe("Convex Shop page-shape adapter", () => {
 	});
 
 	it.each([
+		"zine",
 		"postcard",
 		"tapestry",
 		"digital_download",
