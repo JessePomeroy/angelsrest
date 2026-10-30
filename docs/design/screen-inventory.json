@@ -2,6 +2,19 @@
   "schemaVersion": 1,
   "pendingChanges": [
     {
+      "id": "shared-editor-header-cleanup-2026-10-30",
+      "status": "pending-paper-sync",
+      "recordedAt": "2026-10-30",
+      "surfaces": [
+        "product, portfolio and blog document headers",
+        "page and site-settings document headers",
+        "collection counts and cleanup controls",
+        "bounded media uploaders and tablet chooser targets"
+      ],
+      "evidence": "docs/verification/editor-cleanup-release-2026-10-30.md",
+      "reason": "The reviewed 6.9.2 cleanup is deployed within Admin 6.11.0. Published-package layout, picker and cleanup checks passed, and the serving production source/navigation were verified. Paper editing tools are unavailable, and production editor forms were not authenticated for these checks; preserve existing board IDs, source baselines and comparison dates until an editable update and same-state comparison."
+    },
+    {
       "id": "mobile-navigation-lifecycle-2026-10-30",
       "status": "pending-paper-sync",
       "recordedAt": "2026-10-30",

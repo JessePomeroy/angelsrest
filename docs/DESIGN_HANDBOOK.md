@@ -660,3 +660,18 @@ Paper editing remains unavailable, so the inventory adds
 a separate **pending-paper-sync** entry without changing existing board
 verification dates. The separately discussed editor redesign remains local and
 is excluded from this release record.
+
+### Shared editor header cleanup — October 30, 2026
+
+The approved editor cleanup is deployed through Admin **6.11.0**, which includes
+the earlier **6.9.2** source. Titles/publication controls share a quieter header;
+collection counts and cleanup tools sit with their lists; product deletion sits
+below the form; populated media uploaders stay bounded and media chooser targets
+remain 44 pixels tall.
+
+[Release evidence and verification limits](verification/editor-cleanup-release-2026-10-30.md)
+record the superseding host release, exact production source/deployment, published
+package rendering and live navigation check. Authenticated production editor
+inspection was not performed, and Paper editing tools are unavailable. The inventory adds a separate
+**pending-paper-sync** entry and preserves existing reference provenance and
+comparison dates.
