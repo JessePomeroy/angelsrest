@@ -1,11 +1,12 @@
 <script lang="ts">
+import { draftPreviewData } from "./draftPreview";
 import Product from "../../../src/routes/shop/[slug]/+page.svelte";
 import { cart } from "../../../src/lib/shop/cart.svelte";
 import { deliveryData, preview } from "./data";
 
 let scenario = $state(new URLSearchParams(window.location.search).get("scenario") ?? "physical");
 const productData = $derived({
-  siteSettings: deliveryData.siteSettings,
+  ...draftPreviewData, siteSettings: deliveryData.siteSettings,
   productType: "v1",
   product: {
     title: "Fixture merchandise", slug: `fixture-merch-${scenario}`,

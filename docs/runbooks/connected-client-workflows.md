@@ -76,3 +76,43 @@ unchanged for existing consumers.
 Queen Worm checkout remains closed until separate commerce activation. Paper
 handbook synchronization remains deferred at the user's request. None of these
 local checks replaces the client integration readiness gate or owner handoff.
+
+## Host adoption: saved previews and inquiry workflows
+
+The host now pins Admin 6.11.0 and binds the Full inquiry follow-up/client-link
+and owner proof-history APIs. Its editor preview controls issue session-bound
+links through `POST /api/admin/draft-preview/[kind]`. Site settings render on `/`,
+About and Contact share `/about`, portfolio drafts render on `/gallery/[slug]`,
+and products use `/shop/[slug]` or `/shop/sets/[slug]` according to their kind.
+Each preview load rechecks stored site membership and the exact current draft.
+Private projections pass through the same validated public adapters. Hidden
+portfolio drafts are visible only inside the authorized preview; storage
+visibility and publication do not change.
+
+Contact/booking and purchase actions are disabled in previews. Existing baskets
+stay untouched. Signed preview parameters are omitted from analytics and scrubbed
+from telemetry. Both preview pages and grant endpoints retain private no-store,
+noindex and no-referrer controls, including rejected requests. Ordinary published
+pages continue through the existing public boundaries and cache policy.
+
+Zine is enabled in this host's product editor; tenant policy and service
+activation remain separate. Recipient proofing controls and notification email
+still need their own host adoption. Queen Worm's matching host changes are a
+companion release. Package and backend publication alone do not make these
+website controls live.
+
+The granular auth and preview entrypoints are used by public loaders to avoid
+tracing unrelated email modules into their bundles. The original barrel-import
+adoption measured 275,657,186 function bytes and exceeded the existing limit.
+A controlled granular-import trial measured 273,022,310 bytes. The normal
+production build using published Admin 6.11.0 measured 273,022,310 bytes under
+the unchanged 275,200,000-byte limit, with six functions and a largest function
+of 70,154,852 bytes. Its built HTTP preview denial test passed. Local lint,
+zero-diagnostic Svelte checks, 115 script tests, 3,139 unit tests and 28 protocol
+tests also passed. Authentication mocks were updated to target the new public
+entrypoint; production authentication behavior is unchanged.
+
+The final desktop/mobile preview cases preserve the visible product category and
+stored basket while disabling contact and purchases. Both rendered preview notices
+were inspected. The rebuilt host repeated the private HTTP check and size budget,
+and final type/lint checks passed with synthetic public Convex build endpoints.

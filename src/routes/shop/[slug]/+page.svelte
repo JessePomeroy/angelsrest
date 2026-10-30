@@ -39,7 +39,7 @@ const displayPriceLabel = $derived(
 
 // ─── V2 checkout/cart handlers ──────────────────────────────
 function handleV2Checkout() {
-	if (!selectedConfiguration) return;
+	if (data.draftPreview || !selectedConfiguration) return;
 	isLoading = true;
 
 	createCheckout({
@@ -63,7 +63,7 @@ function handleV2Checkout() {
 }
 
 function handleV2AddToCart(event: MouseEvent) {
-	if (!selectedConfiguration) return;
+	if (data.draftPreview || !selectedConfiguration) return;
 	const addedQuantity = cart.add({
 		productSlug: data.product.slug,
 		type: "print",
@@ -77,6 +77,7 @@ function handleV2AddToCart(event: MouseEvent) {
 
 // ─── V1 checkout/cart handlers ──────────────────────────────
 async function handleV1Checkout() {
+	if (data.draftPreview) return;
 	isLoading = true;
 	try {
 		const url = await createCheckout({
@@ -93,13 +94,14 @@ async function handleV1Checkout() {
 }
 
 const canAddToCartV1 = $derived(
-	data.productType === "v1" &&
+	!data.draftPreview &&
+		data.productType === "v1" &&
 		data.product.category !== "digital" &&
 		data.product.inStock,
 );
 
 function handleV1AddToCart(event: MouseEvent) {
-	if (!canAddToCartV1) return;
+	if (data.draftPreview || !canAddToCartV1) return;
 	const priceDollars = data.product.price;
 	if (typeof priceDollars !== "number") return;
 
@@ -199,7 +201,7 @@ function handleV1AddToCart(event: MouseEvent) {
 			{#if data.productType === "v2"}
 				<!-- ═══ V2 Configurator ═══ -->
 
-				<PrintPurchase
+				<PrintPurchase preview={Boolean(data.draftPreview)}
 					configuration={selectedConfiguration}
 					inStock={data.product.inStock}
 					loading={isLoading}
@@ -225,7 +227,7 @@ function handleV1AddToCart(event: MouseEvent) {
 						{/if}
 						<button
 							class="desktop-buy-button"
-							disabled={!data.product.inStock || isLoading}
+							disabled={Boolean(data.draftPreview) || !data.product.inStock || isLoading}
 							onclick={handleV1Checkout}
 						>
 							{#if isLoading}
@@ -268,7 +270,7 @@ function handleV1AddToCart(event: MouseEvent) {
 								{/if}
 								<button
 									class="mobile-buy-button"
-									disabled={!data.product.inStock || isLoading}
+									disabled={Boolean(data.draftPreview) || !data.product.inStock || isLoading}
 									onclick={handleV1Checkout}
 								>
 									{#if isLoading}

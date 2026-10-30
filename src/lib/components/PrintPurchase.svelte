@@ -4,10 +4,11 @@ import type { ResolvedPrintConfiguration } from "$lib/shop/printConfigurator";
 import StickyMobileBar from "./StickyMobileBar.svelte";
 
 let {
-	configuration, inStock, loading, onAddToCart, onCheckout, children,
+	configuration, inStock, loading, preview = false, onAddToCart, onCheckout, children,
 }: {
 	configuration: ResolvedPrintConfiguration | null;
 	inStock: boolean;
+	preview?: boolean;
 	loading: boolean;
 	onAddToCart: (event: MouseEvent) => void;
 	onCheckout: () => void;
@@ -33,12 +34,12 @@ const summary = $derived(configuration
 	</div>
 	<div class="desktop-actions">
 		{#if inStock && configuration}
-			<button class="desktop-cart-button" onclick={onAddToCart}>
+			<button class="desktop-cart-button" disabled={preview} onclick={onAddToCart}>
 				add to cart
 			</button>
 			<button
 				class="desktop-buy-button"
-				disabled={loading}
+				disabled={preview || loading}
 				onclick={onCheckout}
 			>
 				{loading ? "processing..." : "buy now"}
@@ -66,12 +67,12 @@ const summary = $derived(configuration
 			</div>
 			<div class="mobile-actions">
 				{#if inStock && configuration}
-					<button class="mobile-cart-button" onclick={onAddToCart}>
+					<button class="mobile-cart-button" disabled={preview} onclick={onAddToCart}>
 						add to cart
 					</button>
 					<button
 						class="mobile-buy-button"
-						disabled={loading}
+						disabled={preview || loading}
 						onclick={onCheckout}
 					>
 						{loading ? "..." : "buy now"}

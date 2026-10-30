@@ -53,7 +53,7 @@ const contact = $derived(data.content.contact);
                     >
                 </p>
             {/if}
-            {#if contact.booking.enabled && contact.booking.calLink}
+            {#if !data.draftPreview && contact.booking.enabled && contact.booking.calLink}
                 <div class="booking-section">
                     <p class="booking-intro">
                         {contact.booking.intro}
@@ -73,7 +73,7 @@ const contact = $derived(data.content.contact);
                     <p>{#each paragraph.split("\n") as line, index}{#if index > 0}<br />{/if}{line}{/each}</p>
                 {/each}
             </div>
-            <ContactForm hideHeader confirmationMessage={contact.confirmationMessage} />
+            <ContactForm preview={Boolean(data.draftPreview)} hideHeader confirmationMessage={contact.confirmationMessage} />
         </div>
     </div>
 </section>

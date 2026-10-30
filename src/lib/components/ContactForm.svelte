@@ -6,13 +6,14 @@ import TurnstileWidget from "$lib/components/TurnstileWidget.svelte";
 
 let {
 	hideHeader = false,
+	preview = false,
 	confirmationMessage = "message sent !",
-}: { hideHeader?: boolean; confirmationMessage?: string } = $props();
+}: { hideHeader?: boolean; confirmationMessage?: string; preview?: boolean } = $props();
 
 let status = $state("idle"); // 'idle' | 'sending' | 'success' | 'error'
 let verificationError = $state("");
 let verificationReady = $state(false);
-let turnstileWidget: TurnstileWidget | undefined;
+let turnstileWidget = $state<TurnstileWidget>();
 
 function resetTurnstile() {
 	verificationReady = false;
@@ -21,7 +22,7 @@ function resetTurnstile() {
 
 async function handleSubmit(e: SubmitEvent) {
 	e.preventDefault();
-	if (status === "sending") return;
+	if (preview || status === "sending") return;
 
 	const form = e.currentTarget as HTMLFormElement;
 	const formData = new FormData(form);
@@ -66,6 +67,7 @@ async function handleSubmit(e: SubmitEvent) {
     {/if}
 
     <form onsubmit={handleSubmit} class="contact-form">
+        <fieldset disabled={preview}>
         <div class="field-group">
             <label for="name" class="field-label">name</label>
             <input
@@ -109,6 +111,7 @@ async function handleSubmit(e: SubmitEvent) {
                 class="contact-field"
             ></textarea>
         </div>
+        {#if !preview}
 		<TurnstileWidget
 			bind:this={turnstileWidget}
 			theme="auto"
@@ -130,14 +133,16 @@ async function handleSubmit(e: SubmitEvent) {
 				verificationError = "Verification could not load. Please refresh and try again.";
 			}}
 		/>
+        {/if}
         <button
             type="submit"
             class="contact-submit"
-            disabled={status === "sending" || !verificationReady}
+            disabled={preview || status === "sending" || !verificationReady}
         >
             {status === "sending" ? "sending..." : "send message"}
         </button>
-
+        </fieldset>
+        {#if preview}<p>Sending is unavailable in draft previews.</p>{/if}
         <div aria-live="polite">
             {#if verificationError}
                 <p class="form-error">{verificationError}</p>
@@ -163,6 +168,7 @@ async function handleSubmit(e: SubmitEvent) {
         .form-success { color: oklch(79.2% 0.209 151.711); }
     }
 
+    fieldset { display: contents; border: 0; padding: 0; margin: 0; }
     .contact-field, .contact-submit { color: #000; }
     :global(.dark) .contact-field, :global(.dark) .contact-submit { color: #fafafa; }
     .contact-field { width: 100%; min-height: 44px; padding: 10px 12px; border: 1px solid color-mix(in srgb, currentColor 18%, transparent); border-radius: 0; background: color-mix(in srgb, var(--color-surface-900) 18%, transparent); font-size: 0.82rem; transition: border-color 160ms ease, background 160ms ease; }

@@ -1,4 +1,4 @@
-import { createAdminAuthValidator } from "@jessepomeroy/admin/server";
+import { createAdminAuthValidator } from "@jessepomeroy/admin/server/auth";
 import { getToken } from "@mmailaender/convex-better-auth-svelte/sveltekit";
 import { api } from "$convex/api";
 import { getConvexUrl } from "$lib/server/runtimeConfig";

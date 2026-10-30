@@ -121,6 +121,7 @@ export function createAdminBrowserCapabilities(api: GeneratedApi): AdminBrowserC
 			registerReadyWebAsset: api.mediaAssets.registerReadyWebAsset,
 		},
 		crm: {
+			getClient: api.crm.getClient,
 			createClient: api.crm.createClient,
 			updateClient: api.crm.updateClient,
 			deleteClient: api.crm.deleteClient,
@@ -138,6 +139,10 @@ export function createAdminBrowserCapabilities(api: GeneratedApi): AdminBrowserC
 			list: api.emailTemplates.list,
 		},
 		galleryDelivery: {
+			listSubmittedProofs: api.galleries.listSubmittedProofs,
+			listProofs: api.galleries.listProofs,
+			getProofImages: api.galleries.getProofImages,
+			reopenProof: api.galleries.reopenProof,
 			getUploadPolicy: api.galleries.getUploadPolicy,
 			create: api.galleries.create,
 			setPassword: api.galleryPassword.setPassword,
@@ -153,6 +158,12 @@ export function createAdminBrowserCapabilities(api: GeneratedApi): AdminBrowserC
 			listBySitePaginated: api.galleries.listBySitePaginated,
 		},
 		inquiries: {
+			getWorkflow: api.inquiries.getWorkflow,
+			clientOptions: api.inquiries.clientOptions,
+			linkClient: api.inquiries.linkClient,
+			unlinkClient: api.inquiries.unlinkClient,
+			updateFollowUp: api.inquiries.updateFollowUp,
+			listForClient: api.inquiries.listForClient,
 			listPaginated: api.inquiries.listPaginated,
 			updateStatus: api.inquiries.updateStatus,
 			remove: api.inquiries.remove,
