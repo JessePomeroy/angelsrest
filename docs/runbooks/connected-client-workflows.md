@@ -23,9 +23,9 @@ submissions must remain unavailable.
 `inquiries.linkClient` creates a lead or links an existing client from the same
 tenant. Repeating the same action returns the existing link. The original inquiry
 stays intact; a new lead receives the request in its notes, and the CRM activity
-records the inquiry link. Existing client notes and booking status stay intact.
+records the inquiry link. Existing client notes and booking status stay intact. Unlinking requires the expected current client and retains the original request and CRM audit history.
 
-`getWorkflow`, `clientOptions`, `linkClient`, `updateFollowUp` and `listForClient`
+`getWorkflow`, `clientOptions`, `linkClient`, `unlinkClient`, `updateFollowUp` and `listForClient`
 require Full access and stored site membership. Follow-up dates use calendar
 dates; completed follow-ups leave the due list. The paginated inbox can select
 due work before limiting its read. Ordinary Basic-tier inquiry triage is
@@ -41,7 +41,7 @@ gallery's existing 2,000-image bound also bounds this transaction.
 
 Repeated submission returns the same submission. The owner can explicitly reopen
 the selection; earlier snapshots stay immutable, and a stale submission from the
-previous round is rejected. Owner reads are tenant-authorized and paginated.
+previous round is rejected. Owner management requires Full access; reads are tenant-authorized and paginated.
 Submission raises the Galleries admin notification flag and records CRM activity.
 Gallery deletion includes bounded cleanup of submission and snapshot records.
 Host notification email and recipient controls require the corresponding host

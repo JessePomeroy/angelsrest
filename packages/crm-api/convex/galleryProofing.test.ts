@@ -62,3 +62,11 @@ test("gallery deletion removes proof history and selected-file snapshots", async
 	expect(await t.run((ctx) => ctx.db.query("galleryProofSubmissions").take(10))).toEqual([]);
 	expect(await t.run((ctx) => ctx.db.query("galleryProofImages").take(10))).toEqual([]);
 });
+
+
+test("owner proof management requires the Full gallery capability", async () => {
+ const { t, admin, galleryId } = await setup();
+ await t.run(async (ctx) => { const site = await ctx.db.query("platformClients").withIndex("by_siteUrl", q => q.eq("siteUrl", siteUrl)).unique(); if (!site) throw new Error("Missing tenant"); await ctx.db.patch(site._id, { tier: "basic" }); });
+ await expect(admin.query(api.galleries.getProof, { galleryId })).rejects.toThrow("Full gallery");
+ await expect(admin.query(api.galleries.listProofs, { galleryId, paginationOpts: { numItems: 25, cursor: null } })).rejects.toThrow("Full gallery");
+});

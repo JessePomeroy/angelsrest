@@ -169,6 +169,22 @@ export const updateFollowUp = mutation({
 	},
 });
 
+export const unlinkClient = mutation({
+	args: { id: v.id("inquiries"), expectedClientId: v.id("photographyClients") },
+	handler: async (ctx, { id, expectedClientId }) => {
+		const inquiry = await requireWorkflowAdmin(ctx, id);
+		if (!inquiry.clientId) return;
+		if (inquiry.clientId !== expectedClientId) throw new Error("Client link changed. Reload before unlinking.");
+		await ctx.db.patch(id, { clientId: undefined, linkedAt: undefined });
+		const prior = await ctx.db.get(expectedClientId);
+		if (prior?.siteUrl === inquiry.siteUrl) await logActivity(ctx, {
+			siteUrl: inquiry.siteUrl, clientId: expectedClientId, action: "inquiry_unlinked",
+			description: `website inquiry unlinked: ${inquiry.subject || "no subject"}`,
+			metadata: JSON.stringify({ docType: "inquiry", docId: id }),
+		});
+	},
+});
+
 export const listForClient = query({
 	args: { clientId: v.id("photographyClients"), paginationOpts: paginationOptsValidator },
 	handler: async (ctx, { clientId, paginationOpts }) => {

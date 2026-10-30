@@ -27,6 +27,9 @@ test("links an existing client without replacing their notes or booking status",
 	const clientId = await t.run((ctx) => ctx.db.insert("photographyClients", { siteUrl, name: "Returning client", category: "photography", status: "booked", notes: "Keep this" }));
 	await admin.mutation(api.inquiries.linkClient, { id, clientId, category: "photography" });
 	expect(await t.run((ctx) => ctx.db.get(clientId))).toMatchObject({ notes: "Keep this", status: "booked" });
+	await admin.mutation(api.inquiries.unlinkClient, { id, expectedClientId: clientId });
+	expect((await admin.query(api.inquiries.getWorkflow, { id })).inquiry.clientId).toBeUndefined();
+	expect(await t.run((ctx) => ctx.db.get(clientId))).toMatchObject({ notes: "Keep this", status: "booked" });
 });
 test("persists notes, pages due follow-ups by date and removes completed work from the due list", async () => {
 	const { id, admin } = await setup();

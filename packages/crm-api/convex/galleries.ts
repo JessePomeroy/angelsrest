@@ -9,7 +9,7 @@ import {
 	type QueryCtx,
 	query,
 } from "./_generated/server";
-import { requireDocumentSiteAdmin, requireSiteAdmin } from "./authHelpers";
+import { requireDocumentSiteAdmin, requireDocumentSiteAdminWithClient, requireSiteAdmin } from "./authHelpers";
 import {
 	COMPACT_LIST_LIMIT,
 	DEFAULT_LIST_LIMIT,
@@ -531,11 +531,17 @@ export const submitProof = mutation({
 	},
 });
 
+async function requireProofingAdmin<T extends "galleries" | "galleryProofSubmissions">(ctx: QueryCtx | MutationCtx, table: T, id: Id<T>) {
+	const { doc, client } = await requireDocumentSiteAdminWithClient(ctx, table, id);
+	if (client.tier !== "full") throw new Error("Full gallery access is required");
+	return doc;
+}
+
 export const getProof = query({
 	args: { galleryId: v.id("galleries"), token: v.optional(v.string()), accessGrant: v.optional(v.string()) },
 	handler: async (ctx, { galleryId, token, accessGrant }) => {
 		const gallery = token ? await requireGalleryPortalToken(ctx, token, galleryId, accessGrant)
-			: await requireDocumentSiteAdmin(ctx, "galleries", galleryId);
+			: await requireProofingAdmin(ctx, "galleries", galleryId);
 		return gallery.proofSubmissionId ? await ctx.db.get(gallery.proofSubmissionId) : null;
 	},
 });
@@ -543,7 +549,7 @@ export const getProof = query({
 export const listProofs = query({
 	args: { galleryId: v.id("galleries"), paginationOpts: paginationOptsValidator },
 	handler: async (ctx, { galleryId, paginationOpts }) => {
-		await requireDocumentSiteAdmin(ctx, "galleries", galleryId);
+		await requireProofingAdmin(ctx, "galleries", galleryId);
 		return await ctx.db.query("galleryProofSubmissions").withIndex("by_galleryId", (q) => q.eq("galleryId", galleryId))
 			.order("desc").paginate({ ...paginationOpts, numItems: Math.min(paginationOpts.numItems, 25), maximumRowsRead: 25 });
 	},
@@ -552,7 +558,7 @@ export const listProofs = query({
 export const getProofImages = query({
 	args: { submissionId: v.id("galleryProofSubmissions"), paginationOpts: paginationOptsValidator },
 	handler: async (ctx, { submissionId, paginationOpts }) => {
-		const submission = await requireDocumentSiteAdmin(ctx, "galleryProofSubmissions", submissionId);
+		const submission = await requireProofingAdmin(ctx, "galleryProofSubmissions", submissionId);
 		return await ctx.db.query("galleryProofImages").withIndex("by_submissionId_and_order", (q) => q.eq("submissionId", submission._id))
 			.paginate({ ...paginationOpts, numItems: Math.min(paginationOpts.numItems, 50), maximumRowsRead: 50 });
 	},
@@ -561,7 +567,7 @@ export const getProofImages = query({
 export const reopenProof = mutation({
 	args: { galleryId: v.id("galleries"), submissionId: v.id("galleryProofSubmissions") },
 	handler: async (ctx, { galleryId, submissionId }) => {
-		const gallery = await requireDocumentSiteAdmin(ctx, "galleries", galleryId);
+		const gallery = await requireProofingAdmin(ctx, "galleries", galleryId);
 		if (gallery.proofSubmissionId !== submissionId) throw new Error("This submission is no longer current");
 		await ctx.db.patch(submissionId, { reopenedAt: Date.now() });
 		await ctx.db.patch(galleryId, { proofSubmissionId: undefined, proofRound: (gallery.proofRound ?? 0) + 1 });
