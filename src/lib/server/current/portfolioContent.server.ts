@@ -15,6 +15,8 @@ export type PortfolioIndexGallery = {
 	title: string;
 	slug: string;
 	preview: string | null;
+	previewWidth: number | null;
+	previewHeight: number | null;
 };
 
 export type PortfolioDetail = {
@@ -22,7 +24,16 @@ export type PortfolioDetail = {
 	description: string | null;
 	canonicalUrl: string;
 	seo: { description: string | null; ogImageUrl: string | null } | null;
-	images: Array<{ thumbnail: string; full: string; alt: string }>;
+	images: Array<{
+		thumbnail: string;
+		full: string;
+		alt: string;
+		width: number;
+		height: number;
+		fullWidth: number;
+		fullHeight: number;
+		srcset: string;
+	}>;
 };
 
 type ConvexReader = {
@@ -87,9 +98,9 @@ function derivative(value: unknown, assetId: string, filename: string) {
 	if (item.contentType !== "image/webp") fail();
 	const key = requiredText(item.key, 500);
 	if (key !== `sites/${SITE_DOMAIN}/web/${assetId}/${filename}`) fail();
-	integer(item.width, 1, 100_000);
-	integer(item.height, 1, 100_000);
-	return `${MEDIA_ORIGIN}/${key}`;
+	const width = integer(item.width, 1, 100_000);
+	const height = integer(item.height, 1, 100_000);
+	return { src: `${MEDIA_ORIGIN}/${key}`, width, height };
 }
 
 function convexImage(value: unknown, index: number) {
@@ -114,11 +125,19 @@ function convexImage(value: unknown, index: number) {
 		"display2048",
 		"display2560",
 	]);
-	derivative(derivatives.thumb, assetId, "thumb.webp");
+	const thumb = derivative(derivatives.thumb, assetId, "thumb.webp");
 	const thumbnail = derivative(derivatives.card, assetId, "card.webp");
-	derivative(derivatives.display1280, assetId, "display-1280.webp");
+	const display1280 = derivative(derivatives.display1280, assetId, "display-1280.webp");
 	const full = derivative(derivatives.display2048, assetId, "display-2048.webp");
-	derivative(derivatives.display2560, assetId, "display-2560.webp");
+	const display2560 = derivative(derivatives.display2560, assetId, "display-2560.webp");
+	// Small originals may yield several derivatives with the same actual width.
+	const candidates = new Map(
+		[thumb, thumbnail, display1280, full, display2560].map((image) => [image.width, image]),
+	);
+	const srcset = [...candidates.values()]
+		.sort((a, b) => a.width - b.width)
+		.map((image) => `${image.src} ${image.width}w`)
+		.join(", ");
 	if (source.sha256 !== null) requiredText(source.sha256, 64, SHA256);
 	requiredText(item.key, 100);
 	if (item.sourceAssetRef !== null) requiredText(item.sourceAssetRef, 500, LEGACY_SOURCE_IMAGE_REF);
@@ -127,7 +146,16 @@ function convexImage(value: unknown, index: number) {
 	if (item.sourceCropCanonical !== null) requiredText(item.sourceCropCanonical, 500);
 	if (item.sourceHotspotCanonical !== null) requiredText(item.sourceHotspotCanonical, 500);
 	if (integer(item.order, 0, PLACEMENT_MAX - 1) !== index) fail();
-	return { thumbnail, full, alt: optionalText(item.altText, 500) ?? "" };
+	return {
+		thumbnail: thumbnail.src,
+		full: full.src,
+		alt: optionalText(item.altText, 500) ?? "",
+		width: thumbnail.width,
+		height: thumbnail.height,
+		fullWidth: full.width,
+		fullHeight: full.height,
+		srcset,
+	};
 }
 
 function adaptConvexGallery(value: unknown) {
@@ -181,6 +209,8 @@ function adaptConvexGallery(value: unknown) {
 			title,
 			slug,
 			preview: images[0]?.thumbnail ?? null,
+			previewWidth: images[0]?.width ?? null,
+			previewHeight: images[0]?.height ?? null,
 		} satisfies PortfolioIndexGallery,
 		detail: {
 			title,
@@ -198,12 +228,18 @@ function adaptConvexGallery(value: unknown) {
 export function adaptConvexPortfolioList(value: unknown): PortfolioIndexGallery[] {
 	return list(value, GALLERY_MAX).map((value) => {
 		const row = object(value, ["title", "slug", "preview"]);
-		let preview: string | null = null;
+		let preview: ReturnType<typeof derivative> | null = null;
 		if (row.preview !== null) {
 			const image = object(row.preview, ["assetId", "card"]);
 			preview = derivative(image.card, requiredText(image.assetId, 36, UUID_V4), "card.webp");
 		}
-		return { title: requiredText(row.title, 120), slug: requiredText(row.slug, 80), preview };
+		return {
+			title: requiredText(row.title, 120),
+			slug: requiredText(row.slug, 80),
+			preview: preview?.src ?? null,
+			previewWidth: preview?.width ?? null,
+			previewHeight: preview?.height ?? null,
+		};
 	});
 }
 

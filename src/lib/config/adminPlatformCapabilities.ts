@@ -9,7 +9,7 @@ export type AdminBrowserCapabilities = Omit<
 > & {
 	crm: AdminAPI["crm"] & Pick<GeneratedApi["crm"], "listClientsWithTags">;
 	galleryDelivery: NonNullable<AdminAPI["galleryDelivery"]> &
-		Pick<GeneratedApi["galleries"], "getUploadPolicy">;
+		Pick<GeneratedApi["galleries"], "getUploadPolicy" | "listBySitePaginated">;
 	readonly documentEmailAttempts?: never;
 };
 
@@ -150,6 +150,7 @@ export function createAdminBrowserCapabilities(api: GeneratedApi): AdminBrowserC
 			getImages: api.galleries.getImages,
 			listImageStorageKeys: api.galleries.listImageStorageKeys,
 			listBySite: api.galleries.listBySite,
+			listBySitePaginated: api.galleries.listBySitePaginated,
 		},
 		inquiries: {
 			listPaginated: api.inquiries.listPaginated,

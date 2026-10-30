@@ -6,6 +6,11 @@ interface GalleryImage {
 	full?: string;
 	url?: string;
 	alt?: string;
+	width?: number;
+	height?: number;
+	fullWidth?: number;
+	fullHeight?: number;
+	srcset?: string;
 }
 
 let {
@@ -39,6 +44,11 @@ function getImageUrl(img: GalleryImage | undefined) {
 	return img?.full || img?.url || "";
 }
 
+function imageSizes(image: GalleryImage | undefined) {
+	return image?.fullWidth && image.fullHeight
+		? `min(90vw, ${90 * image.fullWidth / image.fullHeight}vh)` : "90vw";
+}
+
 $effect(() => {
 	if (images.length < 2) return;
 	const preloadIndexes = [
@@ -47,6 +57,8 @@ $effect(() => {
 	];
 	preloadIndexes.forEach((i) => {
 		const img = new Image();
+		img.sizes = imageSizes(images[i]);
+		if (images[i]?.srcset) img.srcset = images[i].srcset;
 		img.src = getImageUrl(images[i]);
 	});
 });
@@ -115,6 +127,9 @@ function handleTouchEnd() {
     {#if images.length}
     <img
       src={getImageUrl(images[index])}
+      srcset={images[index]?.srcset} sizes={imageSizes(images[index])}
+      width={images[index]?.fullWidth ?? images[index]?.width} height={images[index]?.fullHeight ?? images[index]?.height}
+      decoding="async"
       alt={images[index]?.alt || `Gallery image ${index + 1} of ${images.length}`}
       class="gallery-image"
       style="transform: translateX({offsetX}px); transition: {isDragging
@@ -159,7 +174,7 @@ function handleTouchEnd() {
     .image-stage.empty { min-width: 12rem; padding: 4rem 2rem 2rem; }
     .close-lightbox { position: absolute; top: 1rem; right: 1rem; z-index: 10; padding: 0.5rem; color: white; background: rgb(0 0 0 / 75%); border-radius: 9999px; }
     .image-count { position: absolute; top: 1rem; left: 1rem; z-index: 1; padding: 0.25rem 0.5rem; color: white; background: rgb(0 0 0 / 75%); border-radius: 0.375rem; font-size: var(--text-sm); line-height: var(--text-sm--line-height); }
-    .gallery-image { max-width: 100%; max-height: 90vh; object-fit: contain; border-radius: 0.375rem; }
+    .gallery-image { width: auto; height: auto; max-width: 100%; max-height: 90vh; object-fit: contain; border-radius: 0.375rem; }
     .image-previous, .image-next { position: absolute; top: 50%; translate: 0 -50%; color: white; background: rgb(0 0 0 / 75%); border-radius: 9999px; font-size: var(--text-4xl); line-height: var(--text-4xl--line-height); }
     .image-previous { left: 1rem; }
     .image-previous, .image-next { min-width: 44px; min-height: 44px; display: grid; place-items: center; }

@@ -5,8 +5,8 @@
  * Click an image to open the lightbox modal.
  *
  * Images are optimized:
- * - thumbnail (400px) for the grid
- * - full (1600px) for the lightbox
+ * - responsive immutable derivatives for the grid and lightbox
+ * - intrinsic dimensions reserve each image's space before loading
  */
 
 import MagneticImages from "$lib/components/MagneticImages.svelte";
@@ -56,9 +56,11 @@ function openModal(index: number) {
           aria-label={image.alt ? `View image ${i + 1}: ${image.alt}` : `View image ${i + 1}`}
         >
           <img data-water-lens
-            src={image.thumbnail}
+            src={image.thumbnail} srcset={image.srcset}
+            sizes="(min-width: 1100px) calc((min(100vw, 1400px) - 104px) / 4), (min-width: 768px) calc((100vw - 96px) / 3), calc((100vw - 40px) / 2)"
+            width={image.width} height={image.height}
             alt={image.alt || "Gallery image " + (i + 1)}
-            loading="lazy"
+            loading={i === 0 ? "eager" : "lazy"} decoding="async"
           />
         </button>
       {/each}
