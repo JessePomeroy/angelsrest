@@ -23,6 +23,7 @@ import SEO from "$lib/components/SEO.svelte";
  * So: data.posts = the posts array from our server load function
  */
 let { data } = $props();
+const pageUrl = (pageNumber: number) => pageNumber === 1 ? "/blog" : `/blog?page=${pageNumber}`;
 </script>
 
 <!--
@@ -31,25 +32,32 @@ let { data } = $props();
   Important for search engines and social sharing.
 -->
 <SEO
-  title="blog | angel's rest"
+  title={data.pageNumber > 1 ? `blog — page ${data.pageNumber} | angel's rest` : "blog | angel's rest"}
   description="Thoughts on photography, art, and creative process."
-  url="https://angelsrest.online/blog"
+  url={`https://angelsrest.online${pageUrl(data.pageNumber)}`}
 />
 
 <section class="blog-index">
   <header class="section-heading">
     <h1>blog</h1>
-    <span>{data.posts?.length ?? 0} entries</span>
+    <span>{data.totalCount} {data.totalCount === 1 ? "entry" : "entries"}</span>
   </header>
 
   {#if data.posts && data.posts.length > 0}
     <div class="post-list">
-      {#each data.posts as post (post.slug)}
-        <BlogCard {post} />
+      {#each data.posts as post, index (post.slug)}
+        <BlogCard {post} loading={index === 0 ? "eager" : "lazy"} />
       {/each}
     </div>
   {:else}
     <p class="empty-message">no posts yet — check back soon!</p>
+  {/if}
+  {#if data.pageNumber > 1 || data.hasNext}
+    <nav class="pagination" aria-label="Blog pages">
+      <div>{#if data.pageNumber > 1}<a href={pageUrl(data.pageNumber - 1)} rel="prev">newer posts</a>{/if}</div>
+      <span>page {data.pageNumber}</span>
+      <div>{#if data.hasNext}<a href={pageUrl(data.pageNumber + 1)} rel="next">older posts</a>{/if}</div>
+    </nav>
   {/if}
 </section>
 
@@ -60,4 +68,8 @@ let { data } = $props();
   .section-heading h1 { font-size: 1.35rem; font-weight: 500; }
   .section-heading span { padding-top: 5px; color: color-mix(in srgb, currentColor 55%, transparent); font-size: 0.68rem; letter-spacing: 0.12em; }
   .post-list { display: flex; flex-direction: column; }
+  .pagination { display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; gap: 16px; margin-top: 24px; font-size: 0.85rem; }
+  .pagination > :last-child { text-align: right; }
+  .pagination a { display: inline-flex; align-items: center; min-height: 44px; color: inherit; text-underline-offset: 4px; }
+  .pagination a:focus-visible { outline: 2px solid var(--time-accent); outline-offset: 4px; }
 </style>

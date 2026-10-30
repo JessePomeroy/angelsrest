@@ -6,7 +6,9 @@ import CaseStudy from "$lib/components/templates/CaseStudy.svelte";
 import ClientStory from "$lib/components/templates/ClientStory.svelte";
 import Technical from "$lib/components/templates/Technical.svelte";
 import BlogIndex from "../../../src/routes/blog/+page.svelte";
-const kind = new URLSearchParams(window.location.search).get("kind") ?? "standard";
+const params = new URLSearchParams(window.location.search);
+const kind = params.get("kind") ?? (window.location.pathname === "/blog" ? "index" : "standard");
+const pageNumber = Number(params.get("page") ?? 1);
 const image = { src: "data:image/svg+xml," + encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="600" height="240"><rect width="600" height="240" fill="#789abc"/><circle cx="400" cy="120" r="80" fill="#ccddee"/></svg>'), alt: "Fixture landscape", width: 600, height: 240, caption: "A quiet moment beside the water.", framing: null };
 const spans = (text: string): BlogTextSpan[] => [{ text, marks: [] }];
 const post: BlogPostDetail = {
@@ -26,6 +28,11 @@ const post: BlogPostDetail = {
     { type: "paragraph", spans: spans("A few good frames and a reason to come back.") },
   ],
 };
+const posts = kind === "empty" ? [] : Array.from({ length: pageNumber === 1 ? 12 : 2 }, (_, index) => ({
+  ...post,
+  title: pageNumber === 1 && index === 0 ? post.title : `Field note ${(pageNumber - 1) * 12 + index + 1}`,
+  slug: pageNumber === 1 && index === 0 ? post.slug : `field-note-${(pageNumber - 1) * 12 + index + 1}`,
+}));
 </script>
 
 <div class="blog-fixture">
@@ -34,6 +41,6 @@ const post: BlogPostDetail = {
   {:else if kind === "caseStudy"}<CaseStudy {post} />
   {:else if kind === "clientStory"}<ClientStory {post} />
   {:else if kind === "technical"}<Technical {post} />
-  {:else}<BlogIndex data={{ siteSettings: { artistName: null, siteTitle: null, tagline: null, logoUrl: null, socialLinks: [], seo: { description: null, ogImageUrl: null, keywords: [] } }, posts: kind === "empty" ? [] : [post] }} />{/if}
+  {:else}<BlogIndex data={{ siteSettings: { artistName: null, siteTitle: null, tagline: null, logoUrl: null, socialLinks: [], seo: { description: null, ogImageUrl: null, keywords: [] } }, posts, pageNumber, totalCount: kind === "empty" ? 0 : 14, hasNext: kind !== "empty" && pageNumber === 1 }} />{/if}
 </div>
 <style>.blog-fixture { padding: 2rem 1rem; max-width: 1200px; margin-inline: auto; }</style>
