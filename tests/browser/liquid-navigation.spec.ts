@@ -1,23 +1,11 @@
 import { expect, test, type Locator } from "@playwright/test";
 
 async function expectVisibleFocus(control: Locator) {
-	// Read one focus state per control; software WebGL makes separate browser calls costly.
-	await expect.poll(() => control.evaluate((element) => {
-		const style = getComputedStyle(element);
-		return {
-			focused: element.ownerDocument.activeElement === element,
-			focusVisible: element.matches(":focus-visible"),
-			outlineStyle: style.outlineStyle,
-			outlineWidth: style.outlineWidth,
-			hasShadow: style.boxShadow !== "none",
-		};
-	})).toEqual({
-		focused: true,
-		focusVisible: true,
-		outlineStyle: "solid",
-		outlineWidth: "2px",
-		hasShadow: true,
-	});
+	await expect(control).toBeFocused();
+	expect(await control.evaluate((element) => element.matches(":focus-visible"))).toBe(true);
+	await expect(control).toHaveCSS("outline-style", "solid");
+	await expect(control).toHaveCSS("outline-width", "2px");
+	await expect(control).not.toHaveCSS("box-shadow", "none");
 }
 
 for (const theme of ["light", "dark"]) {
@@ -26,27 +14,38 @@ for (const theme of ["light", "dark"]) {
 		// The desktop project deliberately exercises a narrow desktop window too.
 		await page.setViewportSize({ width: isMobile ? 390 : 767, height: 844 });
 		await page.emulateMedia({ reducedMotion: "no-preference" });
+		await page.clock.install({ time: new Date("2026-01-01T00:00:00Z") });
 		await page.goto("/?fixture=liquid-navigation");
 		await page.evaluate((dark) => document.documentElement.classList.toggle("dark", dark), theme === "dark");
 		const sphere = page.locator(".sphere");
 		await expect(sphere).toBeVisible();
+		// Step the real animation between inputs so software WebGL cannot starve focus reads.
+		await page.clock.pauseAt(new Date("2026-01-01T00:01:00Z"));
 		await page.keyboard.press("Tab");
 		await expectVisibleFocus(sphere);
 		await page.keyboard.press("Enter");
 		await expect(sphere).toHaveAttribute("aria-expanded", "true");
-		await expect(page.locator(".jelly-nav")).toHaveClass(/rendered/);
+		await expect.poll(async () => {
+			await page.clock.runFor(16);
+			return page.locator(".jelly-nav").getAttribute("class");
+		}).toMatch(/rendered/);
+		await page.clock.runFor(600);
+		expect(await page.locator("#water-nav-links").evaluate((element) => Number(getComputedStyle(element).opacity))).toBeGreaterThan(0.9);
 		const navigation = page.getByRole("navigation", { name: "Mobile navigation" });
 		const destinations = ["Gallery", "Shop", "Open cart, 0 items", "About", "Home", "Blog"];
 		for (const label of destinations) {
 			await page.keyboard.press("Tab");
+			await page.clock.runFor(16);
 			await expectVisibleFocus(navigation.getByRole(label.startsWith("Open cart") ? "button" : "link", { name: label, exact: true }));
 		}
 		await page.screenshot({ path: testInfo.outputPath(`liquid-keyboard-${theme}.png`) });
 		for (const label of destinations.slice(0, -1).reverse()) {
 			await page.keyboard.press("Shift+Tab");
+			await page.clock.runFor(16);
 			await expectVisibleFocus(navigation.getByRole(label.startsWith("Open cart") ? "button" : "link", { name: label, exact: true }));
 		}
 		await page.keyboard.press("Escape");
+		await page.clock.runFor(16);
 		await expect(sphere).toHaveAttribute("aria-expanded", "false");
 		await expectVisibleFocus(sphere);
 	});
