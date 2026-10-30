@@ -34,9 +34,14 @@ const mixedImages = [
   { width: 600, height: 400, color: "#8b789c" },
 ].map(({ width, height, color }, index) => {
   const full = "data:image/svg+xml," + encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}"><rect width="${width}" height="${height}" fill="${color}"/></svg>`);
-  return { full, thumbnail: full, alt: `Portfolio photograph ${index + 1}` };
+  return { full, thumbnail: full, width, height, fullWidth: width, fullHeight: height, srcset: `${full} ${width}w`, alt: `Portfolio photograph ${index + 1}` };
 });
-const portfolioImages = params.has("mixed") ? mixedImages : images.map(image => ({ ...image, thumbnail: image.full }));
+const responsiveImages = [1, 2].map((index) => {
+  const url = (width: number) => `/portfolio-candidates/${index}-${width}.svg`;
+  return { thumbnail: url(768), full: url(2048), width: 768, height: 1024, fullWidth: 2048, fullHeight: 2731,
+    srcset: [320, 768, 1280, 2048, 2560].map(width => `${url(width)} ${width}w`).join(", "), alt: `Responsive portfolio image ${index}` };
+});
+const portfolioImages = params.has("responsive") ? responsiveImages : params.has("mixed") ? mixedImages : images.map(image => ({ ...image, thumbnail: image.full, width: 300, height: 400, fullWidth: 300, fullHeight: 400, srcset: `${image.full} 300w` }));
 </script>
 
 <ThemeSwitcher />
@@ -50,7 +55,7 @@ const portfolioImages = params.has("mixed") ? mixedImages : images.map(image => 
 {:else if kind === "portfolio-page"}
   <PortfolioGallery data={{ siteSettings: data.siteSettings, gallery: { title: "Fixture portfolio", description: null, seo: null, canonicalUrl: "https://example.invalid/gallery/fixture", images: portfolioImages } }} />
 {:else if kind === "portfolio-index"}
-  <PortfolioIndex data={{ siteSettings: data.siteSettings, galleries: mixedImages.map((image, index) => ({ title: `Portfolio collection ${index + 1}`, slug: `fixture-${index + 1}`, preview: image.full })) }} />
+  <PortfolioIndex data={{ siteSettings: data.siteSettings, galleries: mixedImages.map((image, index) => ({ title: `Portfolio collection ${index + 1}`, slug: `fixture-${index + 1}`, preview: image.full, previewWidth: image.width, previewHeight: image.height })) }} />
 {:else}
   <button type="button" onclick={() => open = true}>Open portfolio lightbox</button>
   <a href="#outside">Outside lightbox link</a>

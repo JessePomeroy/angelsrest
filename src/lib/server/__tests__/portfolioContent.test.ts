@@ -59,6 +59,8 @@ describe("published portfolio galleries", () => {
 				title: "Quiet Places",
 				slug: "quiet-places",
 				preview: `${assetRoot}/card.webp`,
+				previewWidth: 768,
+				previewHeight: 512,
 			},
 		]);
 		await expect(content.getBySlug("quiet-places")).resolves.toEqual({
@@ -71,8 +73,37 @@ describe("published portfolio galleries", () => {
 					thumbnail: `${assetRoot}/card.webp`,
 					full: `${assetRoot}/display-2048.webp`,
 					alt: "Mist over the lake",
+					width: 768,
+					height: 512,
+					fullWidth: 2048,
+					fullHeight: 1365,
+					srcset: [
+						`thumb.webp 320w`,
+						`card.webp 768w`,
+						`display-1280.webp 1280w`,
+						`display-2048.webp 2048w`,
+						`display-2560.webp 2560w`,
+					]
+						.map((value) => `${assetRoot}/${value}`)
+						.join(", "),
 				},
 			],
+		});
+	});
+
+	it("uses actual derivative widths and removes duplicate source-size candidates", async () => {
+		const row = gallery();
+		for (const image of Object.values(row.placements[0].asset.derivatives)) {
+			image.width = 300;
+			image.height = 200;
+		}
+		const result = await provider(row).getBySlug("quiet-places");
+		expect(result?.images[0]).toMatchObject({
+			width: 300,
+			height: 200,
+			fullWidth: 300,
+			fullHeight: 200,
+			srcset: `${assetRoot}/display-2560.webp 300w`,
 		});
 	});
 
