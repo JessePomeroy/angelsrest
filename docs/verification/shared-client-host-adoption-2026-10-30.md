@@ -3,8 +3,10 @@
 This host adopts published `@jessepomeroy/admin` 6.13.0 and the reviewed shared
 client feature contract from hub source `7fd1934952c5e393dddfdeb4ab46f92105777748`.
 The CRM and gallery-delivery packages resolve through this hub's workspace.
-Their version-only publication PR is #740; its publication and the shared backend
-deployment remain separate release gates.
+CRM API 6.12.0 and gallery-delivery 0.4.0 were published by merged version PR
+#740 at `59a81a9e7e029caa9ef28578d3a5f1603eb61365`; immutable registry metadata
+was verified. Shared Convex deployment run 41143203883 succeeded at the reviewed
+backend source above, after its exact merged-source CI passed.
 
 Both Angels Rest and Queen Worm bind the standard Admin API factory. Basic and
 Full are the feature controls; individual capability switches and module pauses
@@ -48,6 +50,7 @@ The observed current READY provider deployments before host cutover are:
   `7f26358403b75eff89a368b04f242c6b7be9bc97`.
 
 Retain these deployments. Provider readiness and source identity were observed;
-final host CI, staging/runtime observations, publication, backend deployment and
-production acceptance must still be recorded. No live email, customer record,
+final host CI, staging/runtime observations and production acceptance must still
+be recorded. The live public feature-access read returns expected Full features
+for Queen Worm and Angels Rest; this does not establish authenticated acceptance. No live email, customer record,
 payment or gallery mutation was performed for this verification.
