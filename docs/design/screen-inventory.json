@@ -11,7 +11,7 @@
         "editor mobile section drawer and tablet navigation rail"
       ],
       "evidence": "docs/verification/mobile-navigation-release-2026-10-30.md",
-      "reason": "Admin 6.9.1 and the public navigation fix are deployed and live behavior is verified. Authenticated isolated-staging navigation passed in both themes. Final main-CI artifact observation remains pending as recorded in the evidence. Direct Paper editing tools are unavailable; preserve existing board IDs, source baselines and comparison dates until an editable update and same-state comparison. The local editor redesign is outside this release."
+      "reason": "Admin 6.9.1 and the public navigation fix are deployed and live behavior is verified. Authenticated isolated-staging navigation passed in both themes; the exact final main-CI artifact and production observation passed. Direct Paper editing tools are unavailable; preserve existing board IDs, source baselines and comparison dates until an editable update and same-state comparison. The local editor redesign is outside this release."
     },
     {
       "id": "editor-alignment-and-gallery-reliability-2026-10-30",

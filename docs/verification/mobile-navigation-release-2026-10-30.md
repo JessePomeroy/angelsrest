@@ -65,9 +65,12 @@ served the CI artifact's bytes.
 
 Final post-merge main CI
 [41056374139](https://github.com/JessePomeroy/angelsrest/actions/runs/41056374139)
-was still running when this record was prepared. Its exact-source immutable
-artifact and final production observation receipt must be retained after it
-completes; they are not claimed as passed here.
+passed on the exact final host source. Its immutable artifact `12978092272` was
+matched to the serving production deployment in the final observation at
+12:57 UTC. Both `/` and `/cart` passed, the deployment was healthy, and no
+unresolved record IDs remained. The retained receipt is
+`observation-6ec0be8e032b536bc215cd87963119bc5130941244a471532cb0929f84c82835.json`.
+Provider binding remains source-only.
 
 The verified pre-adoption production recovery remains
 `dpl_MHpUtij4hsyxRtwLrD6aa1Nnm5dZ` at source `8e1c2498`, with main-CI artifact

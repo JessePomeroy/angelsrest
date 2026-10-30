@@ -655,8 +655,8 @@ and its live public navigation behavior was verified. Authenticated isolated
 staging checks cover the Admin navigation in both themes.
 
 [Release evidence and remaining limits](verification/mobile-navigation-release-2026-10-30.md)
-distinguish those observed results from the still-pending final main-CI artifact
-and production receipt. Paper editing remains unavailable, so the inventory adds
+include the passing final main-CI artifact and production observation receipt.
+Paper editing remains unavailable, so the inventory adds
 a separate **pending-paper-sync** entry without changing existing board
 verification dates. The separately discussed editor redesign remains local and
 is excluded from this release record.
