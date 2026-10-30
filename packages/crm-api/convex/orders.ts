@@ -791,7 +791,7 @@ export const list = query({
 		status: v.optional(orderStatusValidator),
 	},
 	handler: async (ctx, { siteUrl, status }) => {
-		await requireSiteAdmin(ctx, siteUrl);
+		await requireSiteAdmin(ctx, siteUrl, "orders");
 		if (status) {
 			return await ctx.db
 				.query("orders")
@@ -825,7 +825,7 @@ export const classifyRefundTarget = query({
 	},
 	returns: refundTargetClassificationValidator,
 	handler: async (ctx, { siteUrl, target }) => {
-		await requireSiteAdmin(ctx, siteUrl);
+		await requireSiteAdmin(ctx, siteUrl, "orders");
 		if (
 			target.orderNumber.length === 0
 			|| target.orderNumber.length > 160
@@ -907,7 +907,7 @@ export const create = mutation({
 	handler: async (ctx, args) => {
 		const auth = await requireWebhookCallerOrAuth(ctx, args.webhookSecret);
 		if (auth.via === "auth") {
-			await requireSiteAdmin(ctx, args.siteUrl);
+			await requireSiteAdmin(ctx, args.siteUrl, "orders");
 		}
 		// Don't let either capability leak into the stored document.
 		const {
@@ -3865,7 +3865,7 @@ export const updateStatus = mutation({
 			|| updates.stripeFees !== undefined
 			|| updates.fulfillmentError !== undefined;
 		if (auth.via === "auth") {
-			await requireDocumentSiteAdmin(ctx, "orders", orderId);
+			await requireDocumentSiteAdmin(ctx, "orders", orderId, "orders");
 			if (refundUpdate) throw new Error("Stripe refund facts require webhook authority");
 		}
 		const current = fulfillmentUpdate ? await ctx.db.get(orderId) : null;
@@ -3992,7 +3992,7 @@ export const cancelFulfillment = mutation({
 	args: { orderId: v.id("orders") },
 	returns: v.boolean(),
 	handler: async (ctx, { orderId }) => {
-		const order = await requireDocumentSiteAdmin(ctx, "orders", orderId);
+		const order = await requireDocumentSiteAdmin(ctx, "orders", orderId, "orders");
 		if (order.status === "canceled") return false;
 		if (
 			order.status !== "new"
@@ -4054,7 +4054,7 @@ export const claimShipmentEmailNotification = mutation({
 		ctx,
 		{ siteUrl, lumaprintsOrderNumber, webhookSecret: _deprecatedSecret, trackingNumber, trackingUrl },
 	) => {
-		await requireSiteAdmin(ctx, siteUrl);
+		await requireSiteAdmin(ctx, siteUrl, "orders");
 		const matchingOrders = await ctx.db
 			.query("orders")
 			.withIndex("by_lumaprintsOrderNumber", (q) =>
@@ -4085,7 +4085,7 @@ export const recordShipmentEmailDelivery = mutation({
 		ctx,
 		{ siteUrl, lumaprintsOrderNumber, webhookSecret: _deprecatedSecret, status },
 	) => {
-		await requireSiteAdmin(ctx, siteUrl);
+		await requireSiteAdmin(ctx, siteUrl, "orders");
 		const matchingOrders = await ctx.db
 			.query("orders")
 			.withIndex("by_lumaprintsOrderNumber", (q) =>
@@ -4445,7 +4445,7 @@ export const getByLumaprintsOrderNumber = query({
 		webhookSecret: v.optional(v.string()),
 	},
 	handler: async (ctx, { siteUrl, lumaprintsOrderNumber, webhookSecret: _deprecatedSecret }) => {
-		await requireSiteAdmin(ctx, siteUrl);
+		await requireSiteAdmin(ctx, siteUrl, "orders");
 		if (!LUMAPRINTS_ORDER_NUMBER.test(lumaprintsOrderNumber)) return null;
 		const matchingOrders = await ctx.db
 			.query("orders")
@@ -4508,7 +4508,7 @@ export const advanceDashboardBackfill = mutation({
 });
 
 async function readDashboardStats(ctx: QueryCtx, siteUrl: string) {
-		await requireSiteAdmin(ctx, siteUrl);
+		await requireSiteAdmin(ctx, siteUrl, "orders");
 		const maintained = await readOrderRevenue(ctx, siteUrl);
 		if (maintained) {
 			const recent = await ctx.db.query("orders").withIndex("by_siteUrl", (q) => q.eq("siteUrl", siteUrl)).order("desc").take(10);
@@ -4679,7 +4679,7 @@ export const getStatsForDay = query({ args: { siteUrl: v.string(), day: v.string
 export const getNextOrderNumber = query({
 	args: { siteUrl: v.string() },
 	handler: async (ctx, { siteUrl }) => {
-		await requireSiteAdmin(ctx, siteUrl);
+		await requireSiteAdmin(ctx, siteUrl, "orders");
 		return generateNextOrderNumber(ctx, siteUrl);
 	},
 });

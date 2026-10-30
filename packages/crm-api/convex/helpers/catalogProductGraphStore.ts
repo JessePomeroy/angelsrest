@@ -410,7 +410,7 @@ export async function createCatalogProductGraphV2Draft(
 		draft: CatalogProductGraphV2Draft;
 	},
 ) {
-	const { identity, client } = await requireSiteAdmin(ctx, args.siteUrl);
+	const { identity, client } = await requireSiteAdmin(ctx, args.siteUrl, "editor");
 	validateCatalogProductKey(args.productKey);
 	validateCatalogProductGraphV2Draft(args.draft);
 	const draft = await normalizeCatalogProductGraphV2DraftAssets(
@@ -501,7 +501,7 @@ export async function saveCatalogProductGraphV2Draft(
 	const { doc, client } = await requireDocumentSiteAdminWithClient(
 		ctx,
 		"catalogProducts",
-		args.productId,
+		args.productId, "editor",
 	);
 	const product = requireCatalogProductGraphV2Product(doc);
 	requireCatalogProductKindEnabled(client, product.productKind);
@@ -572,7 +572,7 @@ export async function listCatalogProductGraphV2DraftPrivateAssetCandidates(
 	const { doc, client } = await requireDocumentSiteAdminWithClient(
 		ctx,
 		"catalogProducts",
-		args.productId,
+		args.productId, "editor",
 	);
 	const product = requireCatalogProductGraphV2Product(doc);
 	requireCatalogProductKindEnabled(client, product.productKind);
@@ -616,7 +616,7 @@ export async function replaceCatalogProductGraphV2DraftPrivateAsset(
 	const { doc, client } = await requireDocumentSiteAdminWithClient(
 		ctx,
 		"catalogProducts",
-		args.productId,
+		args.productId, "editor",
 	);
 	const product = requireCatalogProductGraphV2Product(doc);
 	requireCatalogProductKindEnabled(client, product.productKind);
@@ -689,7 +689,7 @@ export async function discardCatalogProductGraphV2Draft(
 	const { doc, client } = await requireDocumentSiteAdminWithClient(
 		ctx,
 		"catalogProducts",
-		args.productId,
+		args.productId, "editor",
 	);
 	const product = requireCatalogProductGraphV2Product(doc);
 	requireCatalogProductKindEnabled(client, product.productKind);
@@ -781,7 +781,7 @@ async function requireCatalogPublicationSiteAdmin(
 	const authorized = await requireDocumentSiteAdminWithClient(
 		ctx,
 		"catalogProducts",
-		productId,
+		productId, "editor",
 	);
 	const product = requireCatalogProductGraphV2Product(authorized.doc);
 	return {
@@ -1001,7 +1001,7 @@ export async function getCatalogProductGraphV2EditorState(
 	const { doc } = await requireDocumentSiteAdminWithClient(
 		ctx,
 		"catalogProducts",
-		productId,
+		productId, "editor",
 	);
 	const product = requireCatalogProductGraphV2Product(doc);
 	const [draft, published] = await Promise.all([
@@ -1035,7 +1035,7 @@ export async function getCatalogProductGraphV2RetirementEligibility(
 	const { doc, client } = await requireDocumentSiteAdminWithClient(
 		ctx,
 		"catalogProducts",
-		productId,
+		productId, "editor",
 	);
 	const product = requireCatalogProductGraphV2Product(doc);
 	requireCatalogProductKindEnabled(client, product.productKind);
@@ -1124,7 +1124,7 @@ export async function listCatalogProductGraphsV2ForEditor(
 	siteUrl: string,
 	productKind: CatalogProductKind,
 ) {
-	const { client } = await requireSiteAdmin(ctx, siteUrl);
+	const { client } = await requireSiteAdmin(ctx, siteUrl, "editor");
 	const products = await ctx.db
 		.query("catalogProducts")
 		.withIndex("by_siteUrl_and_graphVersion_and_productKind_and_createdAt", (query) =>

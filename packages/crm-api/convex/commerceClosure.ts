@@ -9,7 +9,7 @@ import {
 	query,
 	type QueryCtx,
 } from "./_generated/server";
-import { requireWebhookCallerOrAuth } from "./authHelpers";
+import { assertClientFeature, requireWebhookCallerOrAuth } from "./authHelpers";
 import {
 	assertSafeCommerceGeneration,
 	checkedAcceptUntilMs,
@@ -23,7 +23,7 @@ import {
 	isStripeConnectedAccountId,
 	stripeAccountScope,
 } from "./helpers/checkoutSnapshot";
-import { isTenantId, tenantIdentityMatchesSite } from "./helpers/tenantContext";
+import { isTenantId, tenantIdentityMatchesSite, resolveTenantContext } from "./helpers/tenantContext";
 import { requireClientPaymentBinding, requireClientPaymentReady } from "./helpers/clientPaymentReadiness";
 import { isCurrentStripeAccountForSite, stripeAccountMatchesSite } from "./helpers/stripeAccountOwnership";
 import {
@@ -220,6 +220,8 @@ export const beginCheckoutSessionAdmission = internalMutation({
 			|| !validDigest(args.activeLeaseTokenHash)
 		) throw new Error("Checkout admission input is invalid");
 		assertSafeCommerceGeneration(args.hostGeneration);
+		const featureOwner = (await resolveTenantContext(ctx, { siteUrl: args.siteUrl }))?.client;
+		if (featureOwner) assertClientFeature(featureOwner, "orders");
 		if (!await accountMatchesSite(ctx, args.siteUrl, args.stripeConnectedAccountId)) {
 			throw new Error("Checkout admission routing does not match tenant");
 		}

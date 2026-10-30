@@ -58,7 +58,7 @@ export const setVerifier = internalMutation({
 		),
 	},
 	handler: async (ctx, { galleryId, siteUrl, verifier }) => {
-		const gallery = await requireDocumentSiteAdmin(ctx, "galleries", galleryId);
+		const gallery = await requireDocumentSiteAdmin(ctx, "galleries", galleryId, "galleryDelivery");
 		if (gallery.siteUrl !== siteUrl) throw new Error("Gallery not found");
 		const existing = await ctx.db
 			.query("galleryPasswordVerifiers")

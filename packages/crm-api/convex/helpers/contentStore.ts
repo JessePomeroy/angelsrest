@@ -144,7 +144,7 @@ export async function getContentEditorState<T>(
 	kind: SingletonContentKind,
 	projectPayload: (payload: ContentRevisionPayload) => T,
 ) {
-	await requireSiteAdmin(ctx, siteUrl);
+	await requireSiteAdmin(ctx, siteUrl, "editor");
 	const document = await getContentDocument(ctx, siteUrl, kind);
 	if (!document) return null;
 
@@ -193,7 +193,7 @@ export async function saveContentDraft(
 		serializedPayload: string;
 	},
 ) {
-	const { identity, client } = await requireSiteAdmin(ctx, args.siteUrl);
+	const { identity, client } = await requireSiteAdmin(ctx, args.siteUrl, "editor");
 	const now = Date.now();
 	const actor = identity.tokenIdentifier;
 	const checksum = await checksumContentPayload(args.serializedPayload);
@@ -248,7 +248,7 @@ export async function publishContentDraft<T>(
 	},
 	projectPayload: (payload: ContentRevisionPayload) => T,
 ) {
-	const { identity, client } = await requireSiteAdmin(ctx, args.siteUrl);
+	const { identity, client } = await requireSiteAdmin(ctx, args.siteUrl, "editor");
 	const document = await getContentDocument(ctx, client.siteUrl, args.kind);
 	if (!document) throw new Error("Content draft not found");
 	assertExpectedDraft(document, args.draftRevisionId);
@@ -277,7 +277,7 @@ export async function discardContentDraft(
 		draftRevisionId: Id<"contentRevisions">;
 	},
 ) {
-	const { identity, client } = await requireSiteAdmin(ctx, args.siteUrl);
+	const { identity, client } = await requireSiteAdmin(ctx, args.siteUrl, "editor");
 	const document = await getContentDocument(ctx, client.siteUrl, args.kind);
 	if (!document) throw new Error("Content draft not found");
 	assertExpectedDraft(document, args.draftRevisionId);

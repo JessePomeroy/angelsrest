@@ -127,7 +127,7 @@ function generateId(): string {
 export const getBoardConfig = query({
 	args: { siteUrl: v.string(), projectType: v.string() },
 	handler: async (ctx, { siteUrl, projectType }) => {
-		await requireSiteAdmin(ctx, siteUrl);
+		await requireSiteAdmin(ctx, siteUrl, "board");
 		return await ctx.db
 			.query("boardConfigs")
 			.withIndex("by_siteUrl_and_projectType", (q) =>
@@ -140,7 +140,7 @@ export const getBoardConfig = query({
 export const listBoardConfigs = query({
 	args: { siteUrl: v.string() },
 	handler: async (ctx, { siteUrl }) => {
-		await requireSiteAdmin(ctx, siteUrl);
+		await requireSiteAdmin(ctx, siteUrl, "board");
 		return await ctx.db
 			.query("boardConfigs")
 			.withIndex("by_siteUrl", (q) => q.eq("siteUrl", siteUrl))
@@ -153,7 +153,7 @@ export const listBoardConfigs = query({
 export const initializeBoard = mutation({
 	args: { siteUrl: v.string(), projectType: v.string() },
 	handler: async (ctx, { siteUrl, projectType }) => {
-		await requireSiteAdmin(ctx, siteUrl);
+		await requireSiteAdmin(ctx, siteUrl, "board");
 		const existing = await ctx.db
 			.query("boardConfigs")
 			.withIndex("by_siteUrl_and_projectType", (q) =>
@@ -209,7 +209,7 @@ export const reorderCards = mutation({
 		clientIds: v.array(v.id("photographyClients")),
 	},
 	handler: async (ctx, { siteUrl, projectType, targetColumnId, clientIds }) => {
-		await requireSiteAdmin(ctx, siteUrl);
+		await requireSiteAdmin(ctx, siteUrl, "board");
 		if (clientIds.length > LARGE_SCAN_LIMIT || new Set(clientIds).size !== clientIds.length) {
 			throw new Error("Invalid board order");
 		}
@@ -239,7 +239,7 @@ export const moveCard = mutation({
 		ctx,
 		{ clientId, siteUrl, targetColumnId, targetPosition },
 	) => {
-		await requireSiteAdmin(ctx, siteUrl);
+		await requireSiteAdmin(ctx, siteUrl, "board");
 		const doc = await ctx.db.get(clientId);
 		if (!doc || doc.siteUrl !== siteUrl) {
 			throw new Error("Not found");
@@ -277,7 +277,7 @@ export const addColumn = mutation({
 		name: v.string(),
 	},
 	handler: async (ctx, { configId, siteUrl, name }) => {
-		await requireSiteAdmin(ctx, siteUrl);
+		await requireSiteAdmin(ctx, siteUrl, "board");
 		const config = await ctx.db.get(configId);
 		if (!config || config.siteUrl !== siteUrl) {
 			throw new Error("Not found");
@@ -305,7 +305,7 @@ export const renameColumn = mutation({
 		name: v.string(),
 	},
 	handler: async (ctx, { configId, siteUrl, columnId, name }) => {
-		await requireSiteAdmin(ctx, siteUrl);
+		await requireSiteAdmin(ctx, siteUrl, "board");
 		const config = await ctx.db.get(configId);
 		if (!config || config.siteUrl !== siteUrl) {
 			throw new Error("Not found");
@@ -327,7 +327,7 @@ export const deleteColumn = mutation({
 		moveToColumnId: v.optional(v.string()),
 	},
 	handler: async (ctx, { configId, siteUrl, columnId, moveToColumnId }) => {
-		await requireSiteAdmin(ctx, siteUrl);
+		await requireSiteAdmin(ctx, siteUrl, "board");
 		const config = await ctx.db.get(configId);
 		if (!config || config.siteUrl !== siteUrl) {
 			throw new Error("Not found");
@@ -386,7 +386,7 @@ export const reorderColumns = mutation({
 		columnIds: v.array(v.string()),
 	},
 	handler: async (ctx, { configId, siteUrl, columnIds }) => {
-		await requireSiteAdmin(ctx, siteUrl);
+		await requireSiteAdmin(ctx, siteUrl, "board");
 		const config = await ctx.db.get(configId);
 		if (!config || config.siteUrl !== siteUrl) {
 			throw new Error("Not found");

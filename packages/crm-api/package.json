@@ -20,6 +20,14 @@
 		"./server": {
 			"types": "./src/server.ts",
 			"default": "./src/server.ts"
+		},
+		"./client-features": {
+			"types": "./src/clientFeatures.ts",
+			"default": "./src/clientFeatures.ts"
+		},
+		"./invoice-amounts": {
+			"types": "./src/invoiceAmounts.ts",
+			"default": "./src/invoiceAmounts.ts"
 		}
 	},
 	"files": [

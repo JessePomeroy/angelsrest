@@ -95,7 +95,7 @@ export async function createCatalogProductDraft(
 		draft: CatalogProductDraft;
 	},
 ) {
-	const { identity, client } = await requireSiteAdmin(ctx, args.siteUrl);
+	const { identity, client } = await requireSiteAdmin(ctx, args.siteUrl, "editor");
 	requireCatalogProductKindEnabled(client, "print");
 	validateCatalogProductKey(args.productKey);
 	validateCatalogProductDraft(args.draft);
@@ -165,7 +165,7 @@ export async function saveCatalogProductDraft(
 	const { doc, client } = await requireDocumentSiteAdminWithClient(
 		ctx,
 		"catalogProducts",
-		args.productId,
+		args.productId, "editor",
 	);
 	const product = requireSinglePrintProduct(doc);
 	requireCatalogProductKindEnabled(client, product.productKind);
@@ -213,7 +213,7 @@ export async function discardCatalogProductDraft(
 	const { doc, client } = await requireDocumentSiteAdminWithClient(
 		ctx,
 		"catalogProducts",
-		args.productId,
+		args.productId, "editor",
 	);
 	const product = requireSinglePrintProduct(doc);
 	requireCatalogProductKindEnabled(client, product.productKind);
@@ -246,7 +246,7 @@ export async function getCatalogProductEditorState(
 	const { doc, client } = await requireDocumentSiteAdminWithClient(
 		ctx,
 		"catalogProducts",
-		productId,
+		productId, "editor",
 	);
 	const product = requireSinglePrintProduct(doc);
 	requireCatalogProductKindEnabled(client, product.productKind);
@@ -277,7 +277,7 @@ export async function listCatalogProductsForEditor(
 	ctx: QueryCtx,
 	siteUrl: string,
 ) {
-	const { client } = await requireSiteAdmin(ctx, siteUrl);
+	const { client } = await requireSiteAdmin(ctx, siteUrl, "editor");
 	requireCatalogProductKindEnabled(client, "print");
 	const products = await ctx.db
 		.query("catalogProducts")

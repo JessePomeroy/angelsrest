@@ -25,7 +25,7 @@ export async function getBlogEditorState(
 	const stored = await requireDocumentSiteAdmin(
 		ctx,
 		"contentDocuments",
-		documentId,
+		documentId, "editor",
 	);
 	const document = assertBlogDocument(stored);
 	const [draft, published] = await Promise.all([
@@ -51,7 +51,7 @@ export async function listBlogEditorDocuments(
 	siteUrl: string,
 	kind: BlogSupportingKind,
 ) {
-	const { client } = await requireSiteAdmin(ctx, siteUrl);
+	const { client } = await requireSiteAdmin(ctx, siteUrl, "editor");
 	const documents = await listBlogDocuments(ctx, client.siteUrl, kind);
 	return await Promise.all(
 		documents.filter((document) => !isContentDocumentArchived(document)).map(async (document) => {

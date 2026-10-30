@@ -32,7 +32,7 @@ export const getDraftPreview = query({
 	args: { siteUrl: v.string(), productId: v.id("catalogProducts"), draftRevisionId: v.id("catalogProductRevisions") },
 	returns: catalogProductGraphV2PublicValidator,
 	handler: async (ctx, { siteUrl, productId, draftRevisionId }) => {
-		const product = requireCatalogProductGraphV2Product(await requireDocumentSiteAdmin(ctx, "catalogProducts", productId));
+		const product = requireCatalogProductGraphV2Product(await requireDocumentSiteAdmin(ctx, "catalogProducts", productId, "editor"));
 		if (product.siteUrl !== siteUrl) throw new Error("Product not found");
 		if (product.draftRevisionId !== draftRevisionId) throw new Error("Draft changed. Save and open a new preview.");
 		// Reuse the editor lifecycle guard before reading immutable graph rows.

@@ -2,6 +2,7 @@ import { paginationOptsValidator } from "convex/server";
 import { v } from "convex/values";
 import { mutation, query, type QueryCtx, type MutationCtx } from "./_generated/server";
 import type { Id } from "./_generated/dataModel";
+import { assertClientFeature } from "./authHelpers";
 import { logActivity } from "./activityLog";
 import { categoryValidator } from "./helpers/validators";
 import {
@@ -28,6 +29,7 @@ export const create = mutation({
 		await requireWebhookCallerOrAuth(ctx, webhookSecret, { allowAuth: false });
 		const client = await ctx.db.query("platformClients").withIndex("by_siteUrl", q => q.eq("siteUrl", args.siteUrl)).unique();
 		if (client?.offboarding) throw new Error("Site intake is disabled");
+		if (client) assertClientFeature(client, "inquiries");
 		return await ctx.db.insert("inquiries", {
 			...args,
 			status: "new",
@@ -42,7 +44,7 @@ export const list = query({
 		limit: v.optional(v.number()),
 	},
 	handler: async (ctx, { siteUrl, status, limit }) => {
-		await requireSiteAdmin(ctx, siteUrl);
+		await requireSiteAdmin(ctx, siteUrl, "inquiries");
 		// Bounded by default — spam writes to inquiries are public, so an
 		// unbounded `.collect()` was a DoS vector. See audit H11.
 		const take = Math.min(limit ?? 200, 500);
@@ -72,7 +74,7 @@ export const listPaginated = query({
 		followUpBefore: v.optional(v.string()),
 	},
 	handler: async (ctx, { siteUrl, status, paginationOpts, followUpBefore }) => {
-		await requireSiteAdmin(ctx, siteUrl);
+		await requireSiteAdmin(ctx, siteUrl, "inquiries");
 		if (followUpBefore && status) throw new Error("Choose a status or follow-up filter");
 		if (followUpBefore) validateFollowUpDate(followUpBefore);
 		const inquiries = followUpBefore
@@ -100,8 +102,9 @@ function validateFollowUpDate(value: string) {
 }
 
 async function requireWorkflowAdmin(ctx: QueryCtx | MutationCtx, id: Id<"inquiries">) {
-	const { doc, client } = await requireDocumentSiteAdminWithClient(ctx, "inquiries", id);
+	const { doc, client } = await requireDocumentSiteAdminWithClient(ctx, "inquiries", id, "inquiries");
 	if (client.tier !== "full") throw new Error("Full CRM access is required");
+	assertClientFeature(client, "crm");
 	return doc;
 }
 
@@ -188,8 +191,9 @@ export const unlinkClient = mutation({
 export const listForClient = query({
 	args: { clientId: v.id("photographyClients"), paginationOpts: paginationOptsValidator },
 	handler: async (ctx, { clientId, paginationOpts }) => {
-		const { client } = await requireDocumentSiteAdminWithClient(ctx, "photographyClients", clientId);
+		const { client } = await requireDocumentSiteAdminWithClient(ctx, "photographyClients", clientId, "inquiries");
 		if (client.tier !== "full") throw new Error("Full CRM access is required");
+	assertClientFeature(client, "crm");
 		return await ctx.db.query("inquiries").withIndex("by_clientId", (q) => q.eq("clientId", clientId))
 			.order("desc").paginate({ ...paginationOpts, numItems: Math.min(paginationOpts.numItems, 25), maximumRowsRead: 25 });
 	},
@@ -203,7 +207,7 @@ export const listForClient = query({
 export const countNew = query({
 	args: { siteUrl: v.string() },
 	handler: async (ctx, { siteUrl }) => {
-		await requireSiteAdmin(ctx, siteUrl);
+		await requireSiteAdmin(ctx, siteUrl, "inquiries");
 		const CAP = 99;
 		const rows = await ctx.db
 			.query("inquiries")
@@ -225,7 +229,7 @@ export const updateStatus = mutation({
 		status: v.union(v.literal("new"), v.literal("read"), v.literal("replied")),
 	},
 	handler: async (ctx, { id, status }) => {
-		await requireDocumentSiteAdmin(ctx, "inquiries", id);
+		await requireDocumentSiteAdmin(ctx, "inquiries", id, "inquiries");
 		await ctx.db.patch(id, { status });
 	},
 });
@@ -234,7 +238,7 @@ export const updateStatus = mutation({
 export const remove = mutation({
 	args: { id: v.id("inquiries") },
 	handler: async (ctx, { id }) => {
-		await requireDocumentSiteAdmin(ctx, "inquiries", id);
+		await requireDocumentSiteAdmin(ctx, "inquiries", id, "inquiries");
 		await ctx.db.delete(id);
 		return { deleted: true };
 	},

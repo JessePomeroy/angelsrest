@@ -240,7 +240,7 @@ export const registerReadyWebAsset = mutation({
 		asset: readyWebAssetValidator,
 	},
 	handler: async (ctx, { siteUrl, asset }) => {
-		const { identity, client } = await requireSiteAdmin(ctx, siteUrl);
+		const { identity, client } = await requireSiteAdmin(ctx, siteUrl, "editor");
 		validateReadyWebAsset(client.siteUrl, asset);
 		const orphanFence = await ctx.db.query("mediaOrphanDeletions")
 			.withIndex("by_siteUrl_and_assetId", q => q.eq("siteUrl", client.siteUrl).eq("assetId", asset.assetId)).unique();
@@ -287,7 +287,7 @@ export const registerReadyWebAsset = mutation({
 export const get = query({
 	args: { id: v.id("mediaAssets") },
 	handler: async (ctx, { id }) => {
-		return await requireDocumentSiteAdmin(ctx, "mediaAssets", id);
+		return await requireDocumentSiteAdmin(ctx, "mediaAssets", id, "editor");
 	},
 });
 
@@ -297,7 +297,7 @@ export const listBySite = query({
 		paginationOpts: paginationOptsValidator,
 	},
 	handler: async (ctx, { siteUrl, paginationOpts }) => {
-		const { client } = await requireSiteAdmin(ctx, siteUrl);
+		const { client } = await requireSiteAdmin(ctx, siteUrl, "editor");
 		if (
 			!Number.isSafeInteger(paginationOpts.numItems)
 			|| paginationOpts.numItems < 1
@@ -317,7 +317,7 @@ export const listForEditor = query({
 		paginationOpts: paginationOptsValidator,
 	},
 	handler: async (ctx, { siteUrl, paginationOpts }) => {
-		const { client } = await requireSiteAdmin(ctx, siteUrl);
+		const { client } = await requireSiteAdmin(ctx, siteUrl, "editor");
 		if (
 			!Number.isSafeInteger(paginationOpts.numItems)
 			|| paginationOpts.numItems < 1
@@ -338,7 +338,7 @@ export const getManyForEditor = query({
 		ids: v.array(v.id("mediaAssets")),
 	},
 	handler: async (ctx, { siteUrl, ids }) => {
-		const { client } = await requireSiteAdmin(ctx, siteUrl);
+		const { client } = await requireSiteAdmin(ctx, siteUrl, "editor");
 		if (ids.length > MEDIA_BATCH_MAX || new Set(ids).size !== ids.length) {
 			throw new Error(`Media batches must contain at most ${MEDIA_BATCH_MAX} unique assets`);
 		}
@@ -385,7 +385,7 @@ export const verifyImportTargets = internalQuery({
 export const requestDeletion = mutation({
 	args: { siteUrl: v.string(), id: v.id("mediaAssets") },
 	handler: async (ctx, { siteUrl, id }) => {
-		const { identity, client } = await requireSiteAdmin(ctx, siteUrl);
+		const { identity, client } = await requireSiteAdmin(ctx, siteUrl, "editor");
 		const asset = await ctx.db.get(id);
 		if (!asset) {
 			const completed = await ctx.db
@@ -479,7 +479,7 @@ export const completeDeletion = internalMutation({
 export const requestOrphanDeletion = mutation({
  args: { siteUrl: v.string(), assetId: v.string() },
  handler: async (ctx, { siteUrl, assetId }) => {
-  const { identity } = await requireSiteAdmin(ctx, siteUrl);
+  const { identity } = await requireSiteAdmin(ctx, siteUrl, "editor");
   if (!/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/.test(assetId)) throw new Error("Invalid media identity");
   const registered = await ctx.db.query("mediaAssets").withIndex("by_siteUrl_and_assetId", q => q.eq("siteUrl", siteUrl).eq("assetId", assetId)).unique();
   if (registered) throw new Error("Registered media must use the library deletion workflow");

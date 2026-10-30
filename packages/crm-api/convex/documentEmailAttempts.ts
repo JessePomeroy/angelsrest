@@ -1,3 +1,4 @@
+import { DOCUMENT_FEATURES } from "../src/clientFeatures";
 import { makeFunctionReference } from "convex/server";
 import { ConvexError, v } from "convex/values";
 import type { Doc, Id } from "./_generated/dataModel";
@@ -628,6 +629,8 @@ export const prepare = mutation({
 			}
 			return { outcome: "replay" as const, attempt: existing };
 		}
+
+		await requireSiteAdmin(ctx, args.siteUrl, DOCUMENT_FEATURES[args.document.type]);
 
 		// This indexed range read and the later insert share one Convex
 		// transaction. Concurrent different UUIDs for the same document therefore

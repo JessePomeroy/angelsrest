@@ -2,6 +2,7 @@ import { v } from "convex/values";
 import { mutation, query } from "./_generated/server";
 import { isEmailVerified, isSiteAdminIdentity, requireAuth, requireCreator } from "./authHelpers";
 import { resolveTenantContext } from "./helpers/tenantContext";
+import { resolveClientFeatures } from "../src/clientFeatures";
 
 /**
  * Return the currently-authenticated identity for this request, or null if
@@ -99,6 +100,7 @@ export const checkAdminAccess = query({
 			authorized: isAuthorized,
 			tier: client.tier,
 			siteName: client.name,
+			enabledFeatures: isAuthorized ? resolveClientFeatures(client) : [],
 		};
 	},
 });

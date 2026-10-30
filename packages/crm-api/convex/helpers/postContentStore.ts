@@ -298,7 +298,7 @@ export async function createPostDraft(
 	ctx: MutationCtx,
 	args: { siteUrl: string; documentKey: string; draft: PostDraft },
 ) {
-	const { identity, client } = await requireSiteAdmin(ctx, args.siteUrl);
+	const { identity, client } = await requireSiteAdmin(ctx, args.siteUrl, "editor");
 	const { documentId, revisionId } = await createPostDraftForSite(ctx, {
 		siteUrl: client.siteUrl,
 		documentKey: args.documentKey,
@@ -323,7 +323,7 @@ export async function savePostDraft(
 	const stored = await requireDocumentSiteAdmin(
 		ctx,
 		"contentDocuments",
-		args.documentId,
+		args.documentId, "editor",
 	);
 	const document = assertPostDocument(stored);
 	requireActiveContentDocument(document, "Post document");
@@ -379,7 +379,7 @@ export async function publishPostDraft(
 	const stored = await requireDocumentSiteAdmin(
 		ctx,
 		"contentDocuments",
-		args.documentId,
+		args.documentId, "editor",
 	);
 	const document = assertPostDocument(stored);
 	requireActiveContentDocument(document, "Post document");
@@ -451,7 +451,7 @@ export async function discardPostDraft(
 	const stored = await requireDocumentSiteAdmin(
 		ctx,
 		"contentDocuments",
-		args.documentId,
+		args.documentId, "editor",
 	);
 	const document = assertPostDocument(stored);
 	requireActiveContentDocument(document, "Post document");
@@ -479,7 +479,7 @@ export async function unpublishPostDocument(
 	const stored = await requireDocumentSiteAdmin(
 		ctx,
 		"contentDocuments",
-		documentId,
+		documentId, "editor",
 	);
 	const document = assertPostDocument(stored);
 	return await unpublishContentDocument(ctx, document, "Post document");
@@ -492,7 +492,7 @@ export async function archivePostDocument(
 	const stored = await requireDocumentSiteAdmin(
 		ctx,
 		"contentDocuments",
-		documentId,
+		documentId, "editor",
 	);
 	const document = assertPostDocument(stored);
 	return await archiveContentDocument(ctx, document);
@@ -505,7 +505,7 @@ export async function restorePostDocument(
 	const stored = await requireDocumentSiteAdmin(
 		ctx,
 		"contentDocuments",
-		documentId,
+		documentId, "editor",
 	);
 	const document = assertPostDocument(stored);
 	return await restoreContentDocument(ctx, document);

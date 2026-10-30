@@ -53,7 +53,7 @@ export const saveDraft = mutation({
 		draft: portfolioGalleryDraftValidator,
 	},
 	handler: async (ctx, args) => {
-		const { identity, client } = await requireSiteAdmin(ctx, args.siteUrl);
+		const { identity, client } = await requireSiteAdmin(ctx, args.siteUrl, "galleries");
 		await requirePortfolioEditorUnlocked(ctx, client.siteUrl);
 		validatePortfolioGalleryDraft(args.draft);
 		const checksum = await checksumPortfolioDraft(serializePortfolioGalleryDraft(args.draft));
@@ -194,7 +194,7 @@ export const publish = mutation({
 		draftRevisionId: v.id("portfolioGalleryRevisions"),
 	},
 	handler: async (ctx, args) => {
-		const gallery = await requireDocumentSiteAdmin(ctx, "portfolioGalleries", args.galleryId);
+		const gallery = await requireDocumentSiteAdmin(ctx, "portfolioGalleries", args.galleryId, "galleries");
 		assertGalleryActive(gallery);
 		await requirePortfolioEditorUnlocked(ctx, gallery.siteUrl);
 		assertExpectedDraft(gallery, args.draftRevisionId);
@@ -257,7 +257,7 @@ export const setVisibility = mutation({
 		isVisible: v.boolean(),
 	},
 	handler: async (ctx, { galleryId, isVisible }) => {
-		const gallery = await requireDocumentSiteAdmin(ctx, "portfolioGalleries", galleryId);
+		const gallery = await requireDocumentSiteAdmin(ctx, "portfolioGalleries", galleryId, "galleries");
 		assertGalleryActive(gallery);
 		const identity = await ctx.auth.getUserIdentity();
 		if (!identity) throw new Error("Not authenticated");
@@ -273,7 +273,7 @@ export const setVisibility = mutation({
 export const remove = mutation({
 	args: { galleryId: v.id("portfolioGalleries") },
 	handler: async (ctx, { galleryId }) => {
-		const gallery = await requireDocumentSiteAdmin(ctx, "portfolioGalleries", galleryId);
+		const gallery = await requireDocumentSiteAdmin(ctx, "portfolioGalleries", galleryId, "galleries");
 		if (gallery.deletionRequestedAt === undefined) {
 			const identity = await ctx.auth.getUserIdentity();
 			if (!identity) throw new Error("Not authenticated");
@@ -326,7 +326,7 @@ export const _removeBatch = internalMutation({
 export const getEditorState = query({
 	args: { galleryId: v.id("portfolioGalleries") },
 	handler: async (ctx, { galleryId }) => {
-		const gallery = await requireDocumentSiteAdmin(ctx, "portfolioGalleries", galleryId);
+		const gallery = await requireDocumentSiteAdmin(ctx, "portfolioGalleries", galleryId, "galleries");
 		assertGalleryActive(gallery);
 		const [draft, published] = await Promise.all([
 			loadEditorRevision(ctx, gallery, gallery.draftRevisionId),
@@ -349,7 +349,7 @@ export const getEditorState = query({
 export const getDraftPreview = query({
 	args: { siteUrl: v.string(), galleryId: v.id("portfolioGalleries"), draftRevisionId: v.id("portfolioGalleryRevisions") },
 	handler: async (ctx, { siteUrl, galleryId, draftRevisionId }) => {
-		const gallery = await requireDocumentSiteAdmin(ctx, "portfolioGalleries", galleryId);
+		const gallery = await requireDocumentSiteAdmin(ctx, "portfolioGalleries", galleryId, "galleries");
 		if (gallery.siteUrl !== siteUrl) throw new Error("Gallery not found");
 		assertGalleryActive(gallery);
 		if (gallery.draftRevisionId !== draftRevisionId) throw new Error("Draft changed. Save and open a new preview.");
@@ -362,7 +362,7 @@ export const getDraftPreview = query({
 export const listForEditor = query({
 	args: { siteUrl: v.string() },
 	handler: async (ctx, { siteUrl }) => {
-		const { client } = await requireSiteAdmin(ctx, siteUrl);
+		const { client } = await requireSiteAdmin(ctx, siteUrl, "galleries");
 		const galleries = await ctx.db
 			.query("portfolioGalleries")
 			.withIndex("by_siteUrl_and_portfolioOrder", (q) => q.eq("siteUrl", client.siteUrl))
@@ -399,7 +399,7 @@ export const reorder = mutation({
 		galleryIds: v.array(v.id("portfolioGalleries")),
 	},
 	handler: async (ctx, { siteUrl, galleryIds }) => {
-		const { identity, client } = await requireSiteAdmin(ctx, siteUrl);
+		const { identity, client } = await requireSiteAdmin(ctx, siteUrl, "galleries");
 		const galleries = (await ctx.db
 			.query("portfolioGalleries")
 			.withIndex("by_siteUrl_and_portfolioOrder", (q) => q.eq("siteUrl", client.siteUrl))

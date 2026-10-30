@@ -80,9 +80,10 @@ const create = (admissionId: Id<"checkoutSessionAdmissions">) => ({
 });
 
 describe("explicit client commerce admission", () => {
-	test("a registered client stays closed until exact environment intent is activated", async () => {
+	test.each(["basic", "full"] as const)("a %s client includes checkout but stays closed until exact environment intent is activated", async (tier) => {
 		const t = convexTest(schema, modules);
-		await seed(t);
+		const clientId = await seed(t);
+		await t.run(ctx => ctx.db.patch(clientId, { tier }));
 		vi.stubEnv("NEW_ORDER_ADMISSION_CONTROL", intent());
 		await expect(t.mutation(internal.commerceClosure.beginCheckoutSessionAdmission, begin())).rejects.toThrow("New order admission is closed");
 		expect(await activate(t)).toMatchObject({ outcome: "created" });

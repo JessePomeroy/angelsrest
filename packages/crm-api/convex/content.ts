@@ -145,7 +145,7 @@ export const saveSiteSettingsDraft = mutation({
 	},
 	handler: async (ctx, args) => {
 		validateSiteSettingsDraft(args.payload);
-		const { client } = await requireSiteAdmin(ctx, args.siteUrl);
+		const { client } = await requireSiteAdmin(ctx, args.siteUrl, "editor");
 		const document = await getContentDocument(ctx, client.siteUrl, SITE_SETTINGS_KIND);
 		let retainedSeoOgImageAssetId = args.payload.seoOgImageAssetId;
 		if (retainedSeoOgImageAssetId === undefined && document) {
@@ -194,7 +194,7 @@ export const publishSiteSettings = mutation({
 		draftRevisionId: v.id("contentRevisions"),
 	},
 	handler: async (ctx, args) => {
-		const { client } = await requireSiteAdmin(ctx, args.siteUrl);
+		const { client } = await requireSiteAdmin(ctx, args.siteUrl, "editor");
 		const document = await getContentDocument(ctx, client.siteUrl, SITE_SETTINGS_KIND);
 		const revision = await ctx.db.get(args.draftRevisionId);
 		if (!revision || !document) {
@@ -224,7 +224,7 @@ export const discardSiteSettingsDraft = mutation({
 		draftRevisionId: v.id("contentRevisions"),
 	},
 	handler: async (ctx, args) => {
-		const { client } = await requireSiteAdmin(ctx, args.siteUrl);
+		const { client } = await requireSiteAdmin(ctx, args.siteUrl, "editor");
 		const document = await getContentDocument(ctx, client.siteUrl, SITE_SETTINGS_KIND);
 		return await discardContentDraft(ctx, { ...args, kind: SITE_SETTINGS_KIND });
 	},
@@ -447,7 +447,7 @@ export const saveAboutPageDraft = mutation({
 	handler: async (ctx, args) => {
 		const payload = args.payload;
 		validateAboutPageDraft(payload);
-		const { client } = await requireSiteAdmin(ctx, args.siteUrl);
+		const { client } = await requireSiteAdmin(ctx, args.siteUrl, "editor");
 		await requireReadyAboutAssets(
 			ctx,
 			client.siteUrl,
@@ -468,7 +468,7 @@ export const publishAboutPage = mutation({
 		draftRevisionId: v.id("contentRevisions"),
 	},
 	handler: async (ctx, args) => {
-		const { client } = await requireSiteAdmin(ctx, args.siteUrl);
+		const { client } = await requireSiteAdmin(ctx, args.siteUrl, "editor");
 		const revision = await ctx.db.get(args.draftRevisionId);
 		if (!revision) throw new Error("About draft revision not found");
 		const payload = asAboutPagePayload(revision.payload);
@@ -533,7 +533,7 @@ export const saveModelingPageDraft = mutation({
 	handler: async (ctx, args) => {
 		const payload = args.payload;
 		validateModelingPageDraft(payload);
-		const { client } = await requireSiteAdmin(ctx, args.siteUrl);
+		const { client } = await requireSiteAdmin(ctx, args.siteUrl, "editor");
 		await requireReadyModelingAssets(
 			ctx,
 			client.siteUrl,
@@ -554,7 +554,7 @@ export const publishModelingPage = mutation({
 		draftRevisionId: v.id("contentRevisions"),
 	},
 	handler: async (ctx, args) => {
-		const { client } = await requireSiteAdmin(ctx, args.siteUrl);
+		const { client } = await requireSiteAdmin(ctx, args.siteUrl, "editor");
 		const revision = await ctx.db.get(args.draftRevisionId);
 		if (!revision) throw new Error("Modeling draft revision not found");
 		const payload = asModelingPagePayload(revision.payload);

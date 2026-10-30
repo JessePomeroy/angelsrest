@@ -27,7 +27,7 @@ export const list = query({
 		status: v.optional(v.string()),
 	},
 	handler: async (ctx, { siteUrl, status }) => {
-		await requireSiteAdmin(ctx, siteUrl);
+		await requireSiteAdmin(ctx, siteUrl, "contracts");
 		const selectedStatus = statusValidator.members.find((member) => member.value === status)?.value;
 		if (status !== undefined && selectedStatus === undefined) return [];
 		const documents = ctx.db.query("contracts");
@@ -45,7 +45,7 @@ export const list = query({
 export const get = query({
 	args: { contractId: v.id("contracts") },
 	handler: async (ctx, { contractId }) => {
-		const contract = await requireDocumentSiteAdmin(ctx, "contracts", contractId);
+		const contract = await requireDocumentSiteAdmin(ctx, "contracts", contractId, "contracts");
 		if (!contract) return null;
 		const client = await ctx.db.get(contract.clientId);
 		return {
@@ -70,7 +70,7 @@ export const create = mutation({
 		depositAmount: v.optional(v.number()),
 	},
 	handler: async (ctx, args) => {
-		await requireSiteAdmin(ctx, args.siteUrl);
+		await requireSiteAdmin(ctx, args.siteUrl, "contracts");
 		const client = await ctx.db.get(args.clientId);
 		if (!client || client.siteUrl !== args.siteUrl) {
 			throw new Error("Client not found");
@@ -106,7 +106,7 @@ export const update = mutation({
 		status: v.optional(statusValidator),
 	},
 	handler: async (ctx, { contractId, siteUrl, ...updates }) => {
-		const previous = await patchDocument(ctx, contractId, siteUrl, updates);
+		const previous = await patchDocument(ctx, contractId, siteUrl, updates, "contracts");
 		if (updates.status !== previous.status) {
 			if (updates.status === "signed") await ctx.db.patch(contractId, { signedAt: Date.now() });
 		}
@@ -122,7 +122,7 @@ export const markSent = mutation({
 			siteUrl,
 			"contract_sent",
 			"contract",
-			(contract) => `contract "${contract.title}" sent`,
+			(contract) => `contract "${contract.title}" sent`, "contracts",
 		);
 	},
 });
@@ -130,7 +130,7 @@ export const markSent = mutation({
 export const markSigned = mutation({
 	args: { contractId: v.id("contracts"), siteUrl: v.string() },
 	handler: async (ctx, { contractId, siteUrl }) => {
-		await requireSiteAdmin(ctx, siteUrl);
+		await requireSiteAdmin(ctx, siteUrl, "contracts");
 		const contract = await ctx.db.get(contractId);
 		if (!contract || contract.siteUrl !== siteUrl) {
 			throw new Error("Not found");
@@ -150,14 +150,14 @@ export const markSigned = mutation({
 export const remove = mutation({
 	args: { contractId: v.id("contracts"), siteUrl: v.string() },
 	handler: async (ctx, { contractId, siteUrl }) => {
-		await requireSiteAdmin(ctx, siteUrl);
+		await requireSiteAdmin(ctx, siteUrl, "contracts");
 		const doc = await ctx.db.get(contractId);
 		if (!doc || doc.siteUrl !== siteUrl) throw new Error("Not found");
 		// Historical evidence remains authoritative even after a status change.
 		if (doc.status === "signed" || doc.signedAt !== undefined || doc.signatureData !== undefined || doc.signedByName !== undefined || doc.signedByEmail !== undefined || doc.signedIp !== undefined) {
 			throw new Error("Signed contracts must be retained");
 		}
-		await deleteDocument(ctx, contractId, siteUrl);
+		await deleteDocument(ctx, contractId, siteUrl, "contracts");
 	},
 });
 
@@ -165,7 +165,7 @@ export const remove = mutation({
 export const listTemplates = query({
 	args: { siteUrl: v.string() },
 	handler: async (ctx, { siteUrl }) => {
-		await requireSiteAdmin(ctx, siteUrl);
+		await requireSiteAdmin(ctx, siteUrl, "contracts");
 		return await ctx.db
 			.query("contractTemplates")
 			.withIndex("by_siteUrl", (q) => q.eq("siteUrl", siteUrl))
@@ -181,7 +181,7 @@ export const createTemplate = mutation({
 		variables: v.optional(v.array(v.string())),
 	},
 	handler: async (ctx, args) => {
-		await requireSiteAdmin(ctx, args.siteUrl);
+		await requireSiteAdmin(ctx, args.siteUrl, "contracts");
 		return await ctx.db.insert("contractTemplates", args);
 	},
 });
@@ -195,13 +195,13 @@ export const updateTemplate = mutation({
 		variables: v.optional(v.array(v.string())),
 	},
 	handler: async (ctx, { templateId, siteUrl, ...updates }) => {
-		await patchDocument(ctx, templateId, siteUrl, updates);
+		await patchDocument(ctx, templateId, siteUrl, updates, "contracts");
 	},
 });
 
 export const removeTemplate = mutation({
 	args: { templateId: v.id("contractTemplates"), siteUrl: v.string() },
 	handler: async (ctx, { templateId, siteUrl }) => {
-		await deleteDocument(ctx, templateId, siteUrl);
+		await deleteDocument(ctx, templateId, siteUrl, "contracts");
 	},
 });

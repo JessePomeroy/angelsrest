@@ -2,6 +2,7 @@ import { logActivity } from "../activityLog";
 import type { Doc, Id } from "../_generated/dataModel";
 import type { MutationCtx } from "../_generated/server";
 import { patchDocument } from "./patching";
+import type { ClientFeature } from "../../src/clientFeatures";
 
 /**
  * Tables that support the markSent flow — they all have a `clientId` field
@@ -31,11 +32,12 @@ export async function markDocumentSent<T extends SendableTable>(
 	action: string,
 	docType: DocType,
 	describe: (doc: Doc<T>) => string,
+	feature?: ClientFeature,
 ): Promise<void> {
 	const doc = await patchDocument(ctx, id, siteUrl, {
 		status: "sent",
 		sentAt: Date.now(),
-	});
+	}, feature);
 	await logActivity(ctx, {
 		siteUrl,
 		clientId: doc.clientId,

@@ -56,7 +56,7 @@ export const listClients = query({
 		status: v.optional(statusValidator),
 	},
 	handler: async (ctx, args) => {
-		await requireSiteAdmin(ctx, args.siteUrl);
+		await requireSiteAdmin(ctx, args.siteUrl, "crm");
 		return await clientsByFilter(ctx, args).order("desc").take(BULK_SCAN_LIMIT);
 	},
 });
@@ -69,7 +69,7 @@ export const listClientsPaginated = query({
 		status: v.optional(statusValidator),
 	},
 	handler: async (ctx, args) => {
-		await requireSiteAdmin(ctx, args.siteUrl);
+		await requireSiteAdmin(ctx, args.siteUrl, "crm");
 		return await clientsByFilter(ctx, args).order("desc").paginate(args.paginationOpts);
 	},
 });
@@ -83,7 +83,7 @@ export const listClientsWithTags = query({
 		status: v.optional(statusValidator),
 	},
 	handler: async (ctx, args) => {
-		await requireSiteAdmin(ctx, args.siteUrl);
+		await requireSiteAdmin(ctx, args.siteUrl, "crm");
 		const result = await clientsByFilter(ctx, args).order("desc").paginate({
 			...args.paginationOpts,
 			numItems: Math.min(args.paginationOpts.numItems, 50),
@@ -102,7 +102,7 @@ export const listClientsWithTags = query({
 export const getClient = query({
 	args: { clientId: v.id("photographyClients") },
 	handler: async (ctx, { clientId }) => {
-		return await requireDocumentSiteAdmin(ctx, "photographyClients", clientId);
+		return await requireDocumentSiteAdmin(ctx, "photographyClients", clientId, "crm");
 	},
 });
 
@@ -119,7 +119,7 @@ export const createClient = mutation({
 		siteUrl_client: v.optional(v.string()),
 	},
 	handler: async (ctx, args) => {
-		await requireSiteAdmin(ctx, args.siteUrl);
+		await requireSiteAdmin(ctx, args.siteUrl, "crm");
 		const clientId = await ctx.db.insert("photographyClients", {
 			...args,
 			type:
@@ -163,7 +163,7 @@ export const updateClient = mutation({
 		siteUrl_client: v.optional(v.string()),
 	},
 	handler: async (ctx, { clientId, siteUrl, ...updates }) => {
-		const existing = await patchDocument(ctx, clientId, siteUrl, updates);
+		const existing = await patchDocument(ctx, clientId, siteUrl, updates, "crm");
 
 		// Log status changes
 		if (updates.status && updates.status !== existing.status) {
@@ -180,14 +180,14 @@ export const updateClient = mutation({
 export const deleteClient = mutation({
 	args: { clientId: v.id("photographyClients"), siteUrl: v.string() },
 	handler: async (ctx, { clientId, siteUrl }) => {
-		await deleteDocument(ctx, clientId, siteUrl);
+		await deleteDocument(ctx, clientId, siteUrl, "crm");
 	},
 });
 
 export const getStats = query({
 	args: { siteUrl: v.string() },
 	handler: async (ctx, { siteUrl }) => {
-		await requireSiteAdmin(ctx, siteUrl);
+		await requireSiteAdmin(ctx, siteUrl, "crm");
 		const rows = await ctx.db
 			.query("photographyClients")
 			.withIndex("by_siteUrl", (q) => q.eq("siteUrl", siteUrl))

@@ -32,7 +32,7 @@ export const list = query({
 		status: v.optional(v.string()),
 	},
 	handler: async (ctx, { siteUrl, status }) => {
-		await requireSiteAdmin(ctx, siteUrl);
+		await requireSiteAdmin(ctx, siteUrl, "invoicing");
 		const selectedStatus = statusValidator.members.find((member) => member.value === status)?.value;
 		if (status !== undefined && selectedStatus === undefined) return [];
 		const documents = ctx.db.query("invoices");
@@ -54,7 +54,7 @@ export const list = query({
 export const getDashboardSummary = query({
 	args: { siteUrl: v.string() },
 	handler: async (ctx, { siteUrl }) => {
-		await requireSiteAdmin(ctx, siteUrl);
+		await requireSiteAdmin(ctx, siteUrl, "invoicing");
 		const found = await ctx.db.query("invoices").withIndex("by_siteUrl", (q) => q.eq("siteUrl", siteUrl)).order("desc").take(201);
 		const rows = found.slice(0, 200);
 		const counts = { draft: 0, sent: 0, paid: 0, overdue: 0 };
@@ -83,7 +83,7 @@ export const get = query({
 	handler: async (ctx, { invoiceId }) => {
 		const invoice = await ctx.db.get(invoiceId);
 		if (!invoice) return null;
-		await requireSiteAdmin(ctx, invoice.siteUrl);
+		await requireSiteAdmin(ctx, invoice.siteUrl, "invoicing");
 		const client = await ctx.db.get(invoice.clientId);
 		return {
 			...invoice,
@@ -136,7 +136,7 @@ export const create = mutation({
 		parentInvoiceId: v.optional(v.id("invoices")),
 	},
 	handler: async (ctx, args) => {
-		await requireSiteAdmin(ctx, args.siteUrl);
+		await requireSiteAdmin(ctx, args.siteUrl, "invoicing");
 		const client = await ctx.db.get(args.clientId);
 		if (!client || client.siteUrl !== args.siteUrl) {
 			throw new Error("Client not found");
@@ -181,7 +181,7 @@ export const update = mutation({
 		status: v.optional(statusValidator),
 	},
 	handler: async (ctx, { invoiceId, siteUrl, ...updates }) => {
-		const previous = await patchDocument(ctx, invoiceId, siteUrl, updates);
+		const previous = await patchDocument(ctx, invoiceId, siteUrl, updates, "invoicing");
 		await preserveLegacyCheckout(ctx, previous);
 		const previousPaidCents = invoiceReceivedCents(previous);
 		if (previous.paidAmount === undefined && previous.status === "paid")
@@ -240,7 +240,7 @@ export const markSent = mutation({
 			siteUrl,
 			"invoice_sent",
 			"invoice",
-			(invoice) => `invoice ${invoice.invoiceNumber} sent`,
+			(invoice) => `invoice ${invoice.invoiceNumber} sent`, "invoicing",
 		);
 	},
 });
@@ -413,7 +413,7 @@ export const markPaid = mutation({
 	) => {
 		const auth = await requireWebhookCallerOrAuth(ctx, webhookSecret);
 		if (auth.via === "auth") {
-			await requireSiteAdmin(ctx, siteUrl);
+			await requireSiteAdmin(ctx, siteUrl, "invoicing");
 		}
 		const invoice = await ctx.db.get(invoiceId);
 		if (!invoice || invoice.siteUrl !== siteUrl) {
@@ -542,7 +542,7 @@ export const markPaid = mutation({
 export const remove = mutation({
 	args: { invoiceId: v.id("invoices"), siteUrl: v.string() },
 	handler: async (ctx, { invoiceId, siteUrl }) => {
-		await requireSiteAdmin(ctx, siteUrl);
+		await requireSiteAdmin(ctx, siteUrl, "invoicing");
 		const invoice = await ctx.db.get(invoiceId);
 		if (!invoice || invoice.siteUrl !== siteUrl) throw new Error("Not found");
 		if (
@@ -553,14 +553,14 @@ export const remove = mutation({
 			throw new Error("Invoices with payment history must be retained; cancel instead");
 		const sourceQuote = await ctx.db.query("quotes").withIndex("by_convertedToInvoice", q => q.eq("convertedToInvoice", invoiceId)).first();
 		if (sourceQuote) throw new Error("Invoices linked to retained quotes must be retained");
-		await deleteDocument(ctx, invoiceId, siteUrl);
+		await deleteDocument(ctx, invoiceId, siteUrl, "invoicing");
 	},
 });
 
 export const getNextNumber = query({
 	args: { siteUrl: v.string() },
 	handler: async (ctx, { siteUrl }) => {
-		await requireSiteAdmin(ctx, siteUrl);
+		await requireSiteAdmin(ctx, siteUrl, "invoicing");
 		return previewNextInvoiceNumber(ctx, siteUrl);
 	},
 });

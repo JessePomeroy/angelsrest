@@ -44,7 +44,7 @@ export async function getPostEditorState(
 	const stored = await requireDocumentSiteAdmin(
 		ctx,
 		"contentDocuments",
-		documentId,
+		documentId, "editor",
 	);
 	const document = assertPostDocument(stored);
 	const [draft, published] = await Promise.all([
@@ -85,7 +85,7 @@ async function getRevisionHeader(
 }
 
 export async function listPostEditorDocuments(ctx: QueryCtx, siteUrl: string) {
-	const { client } = await requireSiteAdmin(ctx, siteUrl);
+	const { client } = await requireSiteAdmin(ctx, siteUrl, "editor");
 	const documents = (await listPostDocuments(ctx, client.siteUrl)).filter(
 		(document) => !isContentDocumentArchived(document),
 	);
