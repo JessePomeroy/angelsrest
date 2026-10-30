@@ -1,5 +1,6 @@
 import { getFunctionName, type FunctionArgs, type FunctionReturnType } from "convex/server";
 import { api } from "../../../packages/crm-api/convex/_generated/api";
+import { resolveClientFeatures } from "../../../packages/crm-api/src/clientFeatures";
 let galleryPages: ((args: FunctionArgs<typeof api.galleries.getImagesPage>) => Promise<FunctionReturnType<typeof api.galleries.getImagesPage>>) | undefined;
 export function configureGalleryPages(handler: NonNullable<typeof galleryPages>) {
 	galleryPages = handler;
@@ -26,8 +27,25 @@ export function useConvexClient() {
 }
 export { api };
 
-export function useQuery() {
-	throw new Error("Unexpected Convex query in browser fixture");
+export function useQuery(
+	ref: typeof api.platform.getFeatureAccess,
+	args: FunctionArgs<typeof api.platform.getFeatureAccess>,
+) {
+	if (
+		getFunctionName(ref) !== "platform:getFeatureAccess" ||
+		!["angelsrest.online", "fixture.invalid"].includes(args.siteUrl)
+	)
+		throw new Error("Unexpected Convex query in browser fixture");
+	return {
+		data: args.siteUrl === "fixture.invalid" ? null : {
+			tier: "full" as const,
+			enabledFeatures: resolveClientFeatures({ tier: "full", role: "creator" }),
+			siteUrl: args.siteUrl,
+			siteName: "Angel's Rest",
+		},
+		isLoading: false,
+		error: undefined,
+	};
 }
 
 export function usePaginatedQuery() {

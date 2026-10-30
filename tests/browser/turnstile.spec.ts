@@ -173,7 +173,7 @@ test("order lookup preserves POST token protocol and resets after rejection", as
 	await page.getByRole("button", { name: "Provider verify" }).click();
 	await submit.click();
 	await expect(page.getByText("Order not found", { exact: true })).toBeVisible();
-	expect(submitted).toEqual({ email: "fixture@example.invalid", orderNumber: "ORD-FIXTURE", "cf-turnstile-response": "widget-0" });
+	expect(submitted).toEqual({ siteUrl: "angelsrest.online", email: "fixture@example.invalid", orderNumber: "ORD-FIXTURE", "cf-turnstile-response": "widget-0" });
 	await expect(submit).toBeDisabled();
 	expect(await page.evaluate(() => window.turnstileFixture.resets)).toEqual(["widget-0"]);
 });
