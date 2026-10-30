@@ -34,7 +34,7 @@ export const list = query({
 		status: v.optional(v.string()),
 	},
 	handler: async (ctx, { siteUrl, status }) => {
-		await requireSiteAdmin(ctx, siteUrl);
+		await requireSiteAdmin(ctx, siteUrl, "quotes");
 		const selectedStatus = statusValidator.members.find((member) => member.value === status)?.value;
 		if (status !== undefined && selectedStatus === undefined) return [];
 		const documents = ctx.db.query("quotes");
@@ -53,7 +53,7 @@ export const list = query({
 export const getDashboardSummary = query({
 	args: { siteUrl: v.string() },
 	handler: async (ctx, { siteUrl }) => {
-		await requireSiteAdmin(ctx, siteUrl);
+		await requireSiteAdmin(ctx, siteUrl, "quotes");
 		const found = await ctx.db.query("quotes").withIndex("by_siteUrl", (q) => q.eq("siteUrl", siteUrl)).order("desc").take(201);
 		const rows = found.slice(0, 200);
 		const counts = { draft: 0, sent: 0, accepted: 0, declined: 0 };
@@ -70,7 +70,7 @@ export const getDashboardSummary = query({
 export const get = query({
 	args: { quoteId: v.id("quotes") },
 	handler: async (ctx, { quoteId }) => {
-		const quote = await requireDocumentSiteAdmin(ctx, "quotes", quoteId);
+		const quote = await requireDocumentSiteAdmin(ctx, "quotes", quoteId, "quotes");
 		if (!quote) return null;
 		const client = await ctx.db.get(quote.clientId);
 		return {
@@ -101,7 +101,7 @@ export const create = mutation({
 		notes: v.optional(v.string()),
 	},
 	handler: async (ctx, args) => {
-		await requireSiteAdmin(ctx, args.siteUrl);
+		await requireSiteAdmin(ctx, args.siteUrl, "quotes");
 		const client = await ctx.db.get(args.clientId);
 		if (!client || client.siteUrl !== args.siteUrl) {
 			throw new Error("Client not found");
@@ -145,7 +145,7 @@ export const update = mutation({
 		status: v.optional(statusValidator),
 	},
 	handler: async (ctx, { quoteId, siteUrl, ...updates }) => {
-		const previous = await patchDocument(ctx, quoteId, siteUrl, updates);
+		const previous = await patchDocument(ctx, quoteId, siteUrl, updates, "quotes");
 		if (updates.status !== previous.status) {
 			if (updates.status === "accepted") await ctx.db.patch(quoteId, { acceptedAt: Date.now() });
 			if (updates.status === "declined") await ctx.db.patch(quoteId, { declinedAt: Date.now() });
@@ -162,7 +162,7 @@ export const markSent = mutation({
 			siteUrl,
 			"quote_sent",
 			"quote",
-			(quote) => `quote ${quote.quoteNumber} sent`,
+			(quote) => `quote ${quote.quoteNumber} sent`, "quotes",
 		);
 	},
 });
@@ -175,7 +175,7 @@ export const markSent = mutation({
 export const markAccepted = mutation({
 	args: { quoteId: v.id("quotes"), siteUrl: v.string() },
 	handler: async (ctx, { quoteId, siteUrl }) => {
-		await requireSiteAdmin(ctx, siteUrl);
+		await requireSiteAdmin(ctx, siteUrl, "quotes");
 		const quote = await ctx.db.get(quoteId);
 		if (!quote || quote.siteUrl !== siteUrl) {
 			throw new Error("Not found");
@@ -213,7 +213,7 @@ export const convertToInvoice = mutation({
 		ctx,
 		{ quoteId, siteUrl, invoiceType, dueDate, notes },
 	) => {
-		await requireSiteAdmin(ctx, siteUrl);
+		await requireSiteAdmin(ctx, siteUrl, "quotes");
 		const quote = await ctx.db.get(quoteId);
 		if (!quote || quote.siteUrl !== siteUrl) throw new Error("Not found");
 
@@ -264,7 +264,7 @@ export const convertToInvoice = mutation({
 export const markDeclined = mutation({
 	args: { quoteId: v.id("quotes"), siteUrl: v.string() },
 	handler: async (ctx, { quoteId, siteUrl }) => {
-		await requireSiteAdmin(ctx, siteUrl);
+		await requireSiteAdmin(ctx, siteUrl, "quotes");
 		const doc = await ctx.db.get(quoteId);
 		if (!doc || doc.siteUrl !== siteUrl) {
 			throw new Error("Not found");
@@ -278,14 +278,14 @@ export const markDeclined = mutation({
 export const remove = mutation({
 	args: { quoteId: v.id("quotes"), siteUrl: v.string() },
 	handler: async (ctx, { quoteId, siteUrl }) => {
-		await requireSiteAdmin(ctx, siteUrl);
+		await requireSiteAdmin(ctx, siteUrl, "quotes");
 		const doc = await ctx.db.get(quoteId);
 		if (!doc || doc.siteUrl !== siteUrl) throw new Error("Not found");
 		// Historical evidence remains authoritative even after a status change.
 		if (doc.status === "accepted" || doc.acceptedAt !== undefined || doc.convertedToInvoice !== undefined) {
 			throw new Error("Accepted or converted quotes must be retained");
 		}
-		await deleteDocument(ctx, quoteId, siteUrl);
+		await deleteDocument(ctx, quoteId, siteUrl, "quotes");
 	},
 });
 
@@ -293,7 +293,7 @@ export const remove = mutation({
 export const listPresets = query({
 	args: { siteUrl: v.string() },
 	handler: async (ctx, { siteUrl }) => {
-		await requireSiteAdmin(ctx, siteUrl);
+		await requireSiteAdmin(ctx, siteUrl, "quotes");
 		return await ctx.db
 			.query("quotePresets")
 			.withIndex("by_siteUrl", (q) => q.eq("siteUrl", siteUrl))
@@ -316,7 +316,7 @@ export const createPreset = mutation({
 		),
 	},
 	handler: async (ctx, args) => {
-		await requireSiteAdmin(ctx, args.siteUrl);
+		await requireSiteAdmin(ctx, args.siteUrl, "quotes");
 		return await ctx.db.insert("quotePresets", args);
 	},
 });
@@ -339,21 +339,21 @@ export const updatePreset = mutation({
 		),
 	},
 	handler: async (ctx, { presetId, siteUrl, ...updates }) => {
-		await patchDocument(ctx, presetId, siteUrl, updates);
+		await patchDocument(ctx, presetId, siteUrl, updates, "quotes");
 	},
 });
 
 export const removePreset = mutation({
 	args: { presetId: v.id("quotePresets"), siteUrl: v.string() },
 	handler: async (ctx, { presetId, siteUrl }) => {
-		await deleteDocument(ctx, presetId, siteUrl);
+		await deleteDocument(ctx, presetId, siteUrl, "quotes");
 	},
 });
 
 export const getNextNumber = query({
 	args: { siteUrl: v.string() },
 	handler: async (ctx, { siteUrl }) => {
-		await requireSiteAdmin(ctx, siteUrl);
+		await requireSiteAdmin(ctx, siteUrl, "quotes");
 		return previewNextQuoteNumber(ctx, siteUrl);
 	},
 });

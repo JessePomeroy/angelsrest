@@ -31,7 +31,7 @@ export const getUploadPolicy = query({
 	args: { siteUrl: v.string() },
 	returns: v.union(v.literal("media"), v.literal("all-files")),
 	handler: async (ctx, { siteUrl }) => {
-		const { client } = await requireSiteAdmin(ctx, siteUrl);
+		const { client } = await requireSiteAdmin(ctx, siteUrl, "galleryDelivery");
 		return client.siteUrl === "angelsrest.online" && client.role === "creator"
 			? "all-files" as const
 			: "media" as const;
@@ -102,7 +102,7 @@ export const create = mutation({
 		if (password) {
 			throw new Error("Update the admin app to enable hashed gallery passwords");
 		}
-		await requireSiteAdmin(ctx, args.siteUrl);
+		await requireSiteAdmin(ctx, args.siteUrl, "galleryDelivery");
 		const client = await ctx.db.get(args.clientId);
 		if (!client || client.siteUrl !== args.siteUrl) {
 			throw new Error("Client not found");
@@ -150,7 +150,7 @@ export const update = mutation({
 		if (password) {
 			throw new Error("Update the admin app to enable hashed gallery passwords");
 		}
-		await patchDocument(ctx, id, siteUrl, fields);
+		await patchDocument(ctx, id, siteUrl, fields, "galleryDelivery");
 	},
 });
 
@@ -175,7 +175,7 @@ export const update = mutation({
 export const remove = mutation({
 	args: { id: v.id("galleries") },
 	handler: async (ctx, { id }) => {
-		const gallery = await requireDocumentSiteAdmin(ctx, "galleries", id);
+		const gallery = await requireDocumentSiteAdmin(ctx, "galleries", id, "galleryDelivery");
 
 		// Flag the gallery so any in-flight reads see it's being removed.
 		if (gallery.status !== "archived") {
@@ -279,7 +279,7 @@ export const _removeBatch = internalMutation({
 export const get = query({
 	args: { id: v.id("galleries") },
 	handler: async (ctx, { id }) => {
-		const gallery = await requireDocumentSiteAdmin(ctx, "galleries", id);
+		const gallery = await requireDocumentSiteAdmin(ctx, "galleries", id, "galleryDelivery");
 		return await withPasswordProtection(ctx, gallery);
 	},
 });
@@ -290,7 +290,7 @@ export const getBySlug = query({
 		slug: v.string(),
 	},
 	handler: async (ctx, { siteUrl, slug }) => {
-		await requireSiteAdmin(ctx, siteUrl);
+		await requireSiteAdmin(ctx, siteUrl, "galleryDelivery");
 		const gallery = await ctx.db
 			.query("galleries")
 			.withIndex("by_siteUrl_and_slug", (q) =>
@@ -304,7 +304,7 @@ export const getBySlug = query({
 export const listBySite = query({
 	args: { siteUrl: v.string() },
 	handler: async (ctx, { siteUrl }) => {
-		await requireSiteAdmin(ctx, siteUrl);
+		await requireSiteAdmin(ctx, siteUrl, "galleryDelivery");
 		const galleries = await ctx.db
 			.query("galleries")
 			.withIndex("by_siteUrl", (q) => q.eq("siteUrl", siteUrl))
@@ -328,7 +328,7 @@ async function galleryListDetails(ctx: QueryCtx, galleries: Doc<"galleries">[]) 
 export const listSubmittedProofs = query({
 	args: { siteUrl: v.string(), paginationOpts: paginationOptsValidator },
 	handler: async (ctx, { siteUrl, paginationOpts }) => {
-		const { client } = await requireSiteAdmin(ctx, siteUrl);
+		const { client } = await requireSiteAdmin(ctx, siteUrl, "galleryDelivery");
 		if (client.tier !== "full") throw new Error("Full gallery access is required");
 		const result = await ctx.db.query("galleries")
 			.withIndex("by_siteUrl_and_proofSubmittedAt", (q) => q.eq("siteUrl", siteUrl).gt("proofSubmittedAt", 0))
@@ -345,7 +345,7 @@ export const listBySitePaginated = query({
 		paginationOpts: paginationOptsValidator,
 	},
 	handler: async (ctx, { siteUrl, status, paginationOpts }) => {
-		await requireSiteAdmin(ctx, siteUrl);
+		await requireSiteAdmin(ctx, siteUrl, "galleryDelivery");
 		const matching = status
 			? ctx.db.query("galleries").withIndex("by_siteUrl_status", (q) => q.eq("siteUrl", siteUrl).eq("status", status))
 			: ctx.db.query("galleries").withIndex("by_siteUrl", (q) => q.eq("siteUrl", siteUrl));
@@ -359,7 +359,7 @@ export const listBySitePaginated = query({
 export const listByClient = query({
 	args: { clientId: v.id("photographyClients") },
 	handler: async (ctx, { clientId }) => {
-		await requireDocumentSiteAdmin(ctx, "photographyClients", clientId);
+		await requireDocumentSiteAdmin(ctx, "photographyClients", clientId, "galleryDelivery");
 		const galleries = await ctx.db
 			.query("galleries")
 			.withIndex("by_client", (q) => q.eq("clientId", clientId))
@@ -391,7 +391,7 @@ export const addImage = mutation({
 		height: v.number(),
 	},
 	handler: async (ctx, args) => {
-		await requireSiteAdmin(ctx, args.siteUrl);
+		await requireSiteAdmin(ctx, args.siteUrl, "galleryDelivery");
 		const gallery = await ctx.db.get(args.galleryId);
 		if (!gallery || gallery.siteUrl !== args.siteUrl) {
 			throw new Error("Gallery not found");
@@ -436,14 +436,14 @@ export const addImage = mutation({
 export const removeImage = mutation({
 	args: { id: v.id("galleryImages"), siteUrl: v.optional(v.string()) },
 	handler: async (ctx, { id, siteUrl }) => {
-		if (siteUrl !== undefined) await requireSiteAdmin(ctx, siteUrl);
+		if (siteUrl !== undefined) await requireSiteAdmin(ctx, siteUrl, "galleryDelivery");
 		const image = await ctx.db.get(id);
 		if (!image) {
 			if (siteUrl !== undefined) return null;
 			throw new Error("Image not found");
 		}
 		if (siteUrl !== undefined && image.siteUrl !== siteUrl) throw new Error("Image not found");
-		if (siteUrl === undefined) await requireSiteAdmin(ctx, image.siteUrl);
+		if (siteUrl === undefined) await requireSiteAdmin(ctx, image.siteUrl, "galleryDelivery");
 
 		const gallery = await ctx.db.get(image.galleryId);
 		if (gallery) {
@@ -472,7 +472,7 @@ export const reorderImages = mutation({
 			const firstImage = await requireDocumentSiteAdmin(
 				ctx,
 				"galleryImages",
-				updates[0].id,
+				updates[0].id, "galleryDelivery",
 			);
 			for (const { id } of updates.slice(1)) {
 				const image = await ctx.db.get(id);
@@ -545,7 +545,7 @@ export const submitProof = mutation({
 });
 
 async function requireProofingAdmin<T extends "galleries" | "galleryProofSubmissions">(ctx: QueryCtx | MutationCtx, table: T, id: Id<T>) {
-	const { doc, client } = await requireDocumentSiteAdminWithClient(ctx, table, id);
+	const { doc, client } = await requireDocumentSiteAdminWithClient(ctx, table, id, "galleryDelivery");
 	if (client.tier !== "full") throw new Error("Full gallery access is required");
 	return doc;
 }
@@ -592,7 +592,7 @@ export const reopenProof = mutation({
 export const backfillPreviewIndex = mutation({
 	args: { galleryId: v.id("galleries"), cursor: v.union(v.string(), v.null()) },
 	handler: async (ctx, { galleryId, cursor }) => {
-		const gallery = await requireDocumentSiteAdmin(ctx, "galleries", galleryId);
+		const gallery = await requireDocumentSiteAdmin(ctx, "galleries", galleryId, "galleryDelivery");
 		if (gallery.previewIndexVersion === 1) return { isDone: true, cursor: null };
 		if ((gallery.previewIndexCursor ?? null) !== cursor) return { isDone: false, cursor: gallery.previewIndexCursor ?? null };
 		const batch = await ctx.db.query("galleryImages").withIndex("by_gallery", (q) => q.eq("galleryId", galleryId))
@@ -641,6 +641,17 @@ export const getImagesPage = query({
 	},
 });
 
+/** Single recipient-authorized row for host actions, independent of collection size. */
+export const getImage = query({
+ args: { galleryId: v.id("galleries"), imageId: v.string(), token: v.string(), accessGrant: v.optional(v.string()) },
+ handler: async (ctx, { galleryId, imageId, token, accessGrant }) => {
+  const gallery = await requireGalleryPortalToken(ctx, token, galleryId, accessGrant);
+  const id = ctx.db.normalizeId("galleryImages", imageId);
+  const image = id ? await ctx.db.get(id) : null;
+  return image?.galleryId === galleryId && image.siteUrl === gallery.siteUrl ? image : null;
+ },
+});
+
 export const getImages = query({
 	args: {
 		galleryId: v.id("galleries"),
@@ -650,7 +661,7 @@ export const getImages = query({
 	handler: async (ctx, { galleryId, token, accessGrant }) => {
 		const gallery = token
 			? await requireGalleryPortalToken(ctx, token, galleryId, accessGrant)
-			: await requireDocumentSiteAdmin(ctx, "galleries", galleryId);
+			: await requireDocumentSiteAdmin(ctx, "galleries", galleryId, "galleryDelivery");
 		const images = await ctx.db
 			.query("galleryImages")
 			.withIndex("by_gallery", (q) => q.eq("galleryId", galleryId))
@@ -670,7 +681,7 @@ export const listImageStorageKeys = query({
 		paginationOpts: paginationOptsValidator,
 	},
 	handler: async (ctx, { galleryId, paginationOpts }) => {
-		const gallery = await requireDocumentSiteAdmin(ctx, "galleries", galleryId);
+		const gallery = await requireDocumentSiteAdmin(ctx, "galleries", galleryId, "galleryDelivery");
 		const page = await ctx.db
 			.query("galleryImages")
 			.withIndex("by_gallery", (q) => q.eq("galleryId", galleryId))
@@ -735,7 +746,7 @@ export const logDownload = mutation({
 export const getDownloadStats = query({
 	args: { galleryId: v.id("galleries") },
 	handler: async (ctx, { galleryId }) => {
-		await requireDocumentSiteAdmin(ctx, "galleries", galleryId);
+		await requireDocumentSiteAdmin(ctx, "galleries", galleryId, "galleryDelivery");
 		// Audit M23: scope via `by_siteUrl_and_galleryId` (single source of
 		// truth for tenant-filtered reads) rather than the dropped `by_gallery`.
 		const gallery = await ctx.db.get(galleryId);

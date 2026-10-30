@@ -1,6 +1,7 @@
 import type { Doc, Id, TableNames } from "../_generated/dataModel";
 import type { MutationCtx } from "../_generated/server";
 import { requireSiteAdmin } from "../authHelpers";
+import type { ClientFeature } from "../../src/clientFeatures";
 
 /**
  * Patch a document with tenant-admin auth, siteUrl ownership check, and
@@ -24,8 +25,9 @@ export async function patchDocument<T extends TableNames>(
 	id: Id<T>,
 	siteUrl: string,
 	updates: Record<string, unknown>,
+	feature?: ClientFeature,
 ): Promise<Doc<T>> {
-	await requireSiteAdmin(ctx, siteUrl);
+	await requireSiteAdmin(ctx, siteUrl, feature);
 	const doc = await ctx.db.get(id);
 	if (!doc || (doc as { siteUrl?: string }).siteUrl !== siteUrl) {
 		throw new Error("Not found");

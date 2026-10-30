@@ -18,7 +18,7 @@ const categoryValidator = v.union(
 export const list = query({
 	args: { siteUrl: v.string() },
 	handler: async (ctx, { siteUrl }) => {
-		await requireSiteAdmin(ctx, siteUrl);
+		await requireSiteAdmin(ctx, siteUrl, "emails");
 		return await ctx.db
 			.query("emailTemplates")
 			.withIndex("by_siteUrl", (q) => q.eq("siteUrl", siteUrl))
@@ -29,7 +29,7 @@ export const list = query({
 export const get = query({
 	args: { templateId: v.id("emailTemplates") },
 	handler: async (ctx, { templateId }) => {
-		return await requireDocumentSiteAdmin(ctx, "emailTemplates", templateId);
+		return await requireDocumentSiteAdmin(ctx, "emailTemplates", templateId, "emails");
 	},
 });
 
@@ -39,7 +39,7 @@ export const getByCategory = query({
 		category: categoryValidator,
 	},
 	handler: async (ctx, { siteUrl, category }) => {
-		await requireSiteAdmin(ctx, siteUrl);
+		await requireSiteAdmin(ctx, siteUrl, "emails");
 		return await ctx.db
 			.query("emailTemplates")
 			.withIndex("by_siteUrl_category", (q) =>
@@ -59,7 +59,7 @@ export const create = mutation({
 		variables: v.optional(v.array(v.string())),
 	},
 	handler: async (ctx, args) => {
-		await requireSiteAdmin(ctx, args.siteUrl);
+		await requireSiteAdmin(ctx, args.siteUrl, "emails");
 		return await ctx.db.insert("emailTemplates", args);
 	},
 });
@@ -75,13 +75,13 @@ export const update = mutation({
 		variables: v.optional(v.array(v.string())),
 	},
 	handler: async (ctx, { templateId, siteUrl, ...updates }) => {
-		await patchDocument(ctx, templateId, siteUrl, updates);
+		await patchDocument(ctx, templateId, siteUrl, updates, "emails");
 	},
 });
 
 export const remove = mutation({
 	args: { templateId: v.id("emailTemplates"), siteUrl: v.string() },
 	handler: async (ctx, { templateId, siteUrl }) => {
-		await deleteDocument(ctx, templateId, siteUrl);
+		await deleteDocument(ctx, templateId, siteUrl, "emails");
 	},
 });

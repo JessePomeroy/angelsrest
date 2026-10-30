@@ -3,6 +3,13 @@ import type { UserIdentity } from "convex/server";
 import type { MutationCtx, QueryCtx } from "./_generated/server";
 import { DEFAULT_LIST_LIMIT } from "./helpers/limits";
 import { purposeScopedServerRolesAreDisjoint } from "./helpers/serverSecrets";
+import { clientFeatureAllowed, type ClientFeature } from "../src/clientFeatures";
+
+export function assertClientFeature(client: Doc<"platformClients">, feature: ClientFeature) {
+	if (clientFeatureAllowed(client, feature)) return;
+	if (feature === "galleryDelivery" && client.tier !== "full") throw new Error("Full gallery access is required");
+	throw new Error("Your plan does not include this feature");
+}
 
 /**
  * Require an authenticated user identity. Throws if not authenticated.
@@ -137,6 +144,7 @@ function constantTimeEquals(a: string, b: string): boolean {
 export async function requireSiteAdmin(
 	ctx: MutationCtx | QueryCtx,
 	siteUrl: string,
+	feature?: ClientFeature,
 ) {
 	const identity = await requireAuth(ctx);
 	const client = await ctx.db
@@ -148,11 +156,13 @@ export async function requireSiteAdmin(
 	}
 	if (client.offboarding) {
 		await requireCreator(ctx);
+		if (feature) assertClientFeature(client, feature);
 		return { identity, client };
 	}
 	if (!isSiteAdminIdentity(identity, client)) {
 		throw new Error("Not authorized (not a site admin)");
 	}
+	if (feature) assertClientFeature(client, feature);
 	return { identity, client };
 }
 
@@ -166,8 +176,9 @@ export async function requireDocumentSiteAdmin<T extends TableNames>(
 	ctx: MutationCtx | QueryCtx,
 	table: T,
 	id: Id<T>,
+	feature?: ClientFeature,
 ) {
-	const { doc } = await requireDocumentSiteAdminWithClient(ctx, table, id);
+	const { doc } = await requireDocumentSiteAdminWithClient(ctx, table, id, feature);
 	return doc;
 }
 
@@ -179,6 +190,7 @@ export async function requireDocumentSiteAdminWithClient<T extends TableNames>(
 	ctx: MutationCtx | QueryCtx,
 	table: T,
 	id: Id<T>,
+	feature?: ClientFeature,
 ): Promise<{
 	doc: Doc<T>;
 	identity: Awaited<ReturnType<typeof requireAuth>>;
@@ -195,7 +207,7 @@ export async function requireDocumentSiteAdminWithClient<T extends TableNames>(
 	if (!siteUrl) {
 		throw new Error(`Document in ${table} is not site-scoped`);
 	}
-	const { client } = await requireSiteAdmin(ctx, siteUrl);
+	const { client } = await requireSiteAdmin(ctx, siteUrl, feature);
 	return { doc, identity, client };
 }
 

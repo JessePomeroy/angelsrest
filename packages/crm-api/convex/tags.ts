@@ -10,7 +10,7 @@ import { BULK_SCAN_LIMIT, COMPACT_LIST_LIMIT, LOOKUP_LIMIT } from "./helpers/lim
 export const listTags = query({
 	args: { siteUrl: v.string() },
 	handler: async (ctx, { siteUrl }) => {
-		await requireSiteAdmin(ctx, siteUrl);
+		await requireSiteAdmin(ctx, siteUrl, "crm");
 		return await ctx.db
 			.query("clientTags")
 			.withIndex("by_siteUrl", (q) => q.eq("siteUrl", siteUrl))
@@ -29,7 +29,7 @@ export async function readClientTags(ctx: QueryCtx, clientId: Id<"photographyCli
 export const getClientTags = query({
 	args: { clientId: v.id("photographyClients") },
 	handler: async (ctx, { clientId }) => {
-		const client = await requireDocumentSiteAdmin(ctx, "photographyClients", clientId);
+		const client = await requireDocumentSiteAdmin(ctx, "photographyClients", clientId, "crm");
 		return await readClientTags(ctx, clientId, client.siteUrl);
 	},
 });
@@ -41,7 +41,7 @@ export const createTag = mutation({
 		color: v.optional(v.string()),
 	},
 	handler: async (ctx, args) => {
-		await requireSiteAdmin(ctx, args.siteUrl);
+		await requireSiteAdmin(ctx, args.siteUrl, "crm");
 		return await ctx.db.insert("clientTags", args);
 	},
 });
@@ -68,7 +68,7 @@ export const deleteTagAssignments = internalMutation({
 export const deleteTag = mutation({
 	args: { tagId: v.id("clientTags") },
 	handler: async (ctx, { tagId }) => {
-		await requireDocumentSiteAdmin(ctx, "clientTags", tagId);
+		await requireDocumentSiteAdmin(ctx, "clientTags", tagId, "crm");
 		await ctx.runMutation(internal.tags.deleteTagAssignments, { tagId });
 		// Deleting the parent also prevents assignments from being added between batches.
 		await ctx.db.delete(tagId);
@@ -82,7 +82,7 @@ export const assignTag = mutation({
 		tagId: v.id("clientTags"),
 	},
 	handler: async (ctx, args) => {
-		await requireSiteAdmin(ctx, args.siteUrl);
+		await requireSiteAdmin(ctx, args.siteUrl, "crm");
 		const client = await ctx.db.get(args.clientId);
 		const tag = await ctx.db.get(args.tagId);
 		if (
@@ -125,7 +125,7 @@ export const removeTag = mutation({
 		tagId: v.id("clientTags"),
 	},
 	handler: async (ctx, args) => {
-		await requireSiteAdmin(ctx, args.siteUrl);
+		await requireSiteAdmin(ctx, args.siteUrl, "crm");
 		const client = await ctx.db.get(args.clientId);
 		const tag = await ctx.db.get(args.tagId);
 		if (

@@ -18,6 +18,7 @@ import {
 	resolveLumaPrintsConnection,
 } from "./helpers/lumaprintsConnection";
 import { resolveStripeAccountOwner } from "./helpers/stripeAccountOwnership";
+import { resolveClientFeatures } from "../src/clientFeatures";
 import {
 	requireCurrentStripeConnectBinding,
 	projectStripeConnectStatus,
@@ -68,6 +69,16 @@ export const listAll = query({
 	handler: async (ctx) => {
 		await requirePlatformAdmin(ctx);
 		return await ctx.db.query("platformClients").order("desc").take(DEFAULT_LIST_LIMIT);
+	},
+});
+
+/** Public presentation policy only; membership and writes are independently authorized. */
+export const getFeatureAccess = query({
+	args: { siteUrl: v.string() },
+	handler: async (ctx, { siteUrl }) => {
+		const client = (await resolveTenantContext(ctx, { siteUrl }))?.client;
+		if (!client || client.offboarding) return null;
+		return { enabledFeatures: resolveClientFeatures(client), tier: client.tier, siteUrl: client.siteUrl, siteName: client.name };
 	},
 });
 

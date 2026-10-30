@@ -1536,7 +1536,7 @@ export const resolveEditorUpload = query({
 		productKind: catalogProductKindValidator,
 	},
 	handler: async (ctx, { siteUrl, operationId, productKind }) => {
-		const { client } = await requireSiteAdmin(ctx, siteUrl);
+		const { client } = await requireSiteAdmin(ctx, siteUrl, "editor");
 		requireCatalogProductKindEnabled(client, productKind);
 		const expectedKind =
 			productKind === "print" || productKind === "print_set"
@@ -1572,7 +1572,7 @@ const deletionKind = v.union(v.literal("print_source"), v.literal("paid_digital_
 export const listForCleanup = query({
 	args: { siteUrl: v.string(), kind: deletionKind, paginationOpts: paginationOptsValidator },
 	handler: async (ctx, { siteUrl, kind, paginationOpts }) => {
-		await requireSiteAdmin(ctx, siteUrl);
+		await requireSiteAdmin(ctx, siteUrl, "editor");
 		if (!Number.isInteger(paginationOpts.numItems) || paginationOpts.numItems < 1 || paginationOpts.numItems > 50) {
 			throw new Error("Cleanup pages must contain 1–50 files");
 		}
@@ -1606,7 +1606,7 @@ async function expiredUploadCanBeCleaned(ctx: Pick<QueryCtx, "db">, operation: D
 export const listExpiredUploadsForCleanup = query({
 	args: { siteUrl: v.string(), kind: deletionKind, paginationOpts: paginationOptsValidator },
 	handler: async (ctx, { siteUrl, kind, paginationOpts }) => {
-		await requireSiteAdmin(ctx, siteUrl);
+		await requireSiteAdmin(ctx, siteUrl, "editor");
 		if (!Number.isInteger(paginationOpts.numItems) || paginationOpts.numItems < 1 || paginationOpts.numItems > 50) throw new Error("Cleanup pages must contain 1–50 files");
 		const result = await ctx.db.query("catalogPrivateAssetEditorOperations")
 			.withIndex("by_siteUrl_and_kind_and_createdAt", (q) => q.eq("siteUrl", siteUrl).eq("kind", kind)).order("desc").paginate(paginationOpts);
@@ -1624,7 +1624,7 @@ export const listExpiredUploadsForCleanup = query({
 export const requestDeletion = mutation({
 	args: { siteUrl: v.string(), kind: deletionKind, id: v.string() },
 	handler: async (ctx, { siteUrl, kind, id }) => {
-		const { identity } = await requireSiteAdmin(ctx, siteUrl);
+		const { identity } = await requireSiteAdmin(ctx, siteUrl, "editor");
 		const table = kind === "print_source" ? "catalogPrintSourceAssets" : "catalogDigitalFileAssets";
 		const normalizedAssetId = ctx.db.normalizeId(table, id);
 		let asset = normalizedAssetId ? await ctx.db.get(normalizedAssetId) : null;

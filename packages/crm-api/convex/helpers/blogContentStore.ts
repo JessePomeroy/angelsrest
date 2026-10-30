@@ -202,7 +202,7 @@ export async function createBlogDraft(
 		draft: BlogSupportingDraft;
 	},
 ) {
-	const { identity, client } = await requireSiteAdmin(ctx, args.siteUrl);
+	const { identity, client } = await requireSiteAdmin(ctx, args.siteUrl, "editor");
 	const { documentId, revisionId } = await createBlogDraftForSite(ctx, {
 		siteUrl: client.siteUrl,
 		documentKey: args.documentKey,
@@ -227,7 +227,7 @@ export async function saveBlogDraft(
 	const stored = await requireDocumentSiteAdmin(
 		ctx,
 		"contentDocuments",
-		args.documentId,
+		args.documentId, "editor",
 	);
 	const document = assertBlogDocument(stored, args.draft.kind);
 	requireActiveContentDocument(document, "Blog supporting document");
@@ -282,7 +282,7 @@ export async function publishBlogDraft(
 	const stored = await requireDocumentSiteAdmin(
 		ctx,
 		"contentDocuments",
-		args.documentId,
+		args.documentId, "editor",
 	);
 	const document = assertBlogDocument(stored);
 	requireActiveContentDocument(document, "Blog supporting document");
@@ -370,7 +370,7 @@ export async function discardBlogDraft(
 	const stored = await requireDocumentSiteAdmin(
 		ctx,
 		"contentDocuments",
-		args.documentId,
+		args.documentId, "editor",
 	);
 	const document = assertBlogDocument(stored);
 	requireActiveContentDocument(document, "Blog supporting document");
@@ -398,7 +398,7 @@ export async function unpublishBlogDocument(
 	const stored = await requireDocumentSiteAdmin(
 		ctx,
 		"contentDocuments",
-		documentId,
+		documentId, "editor",
 	);
 	const document = assertBlogDocument(stored);
 	await requireNoActivePostReferences(ctx, document, {
@@ -415,7 +415,7 @@ export async function archiveBlogDocument(
 	const stored = await requireDocumentSiteAdmin(
 		ctx,
 		"contentDocuments",
-		documentId,
+		documentId, "editor",
 	);
 	const document = assertBlogDocument(stored);
 	await requireNoActivePostReferences(ctx, document, {
@@ -432,7 +432,7 @@ export async function restoreBlogDocument(
 	const stored = await requireDocumentSiteAdmin(
 		ctx,
 		"contentDocuments",
-		documentId,
+		documentId, "editor",
 	);
 	const document = assertBlogDocument(stored);
 	return await restoreContentDocument(ctx, document);

@@ -211,6 +211,7 @@ test("pruning protects active revisions and incoming history prevents supporting
 
 test("owner erasure deletes disposable records but retains signed evidence", async () => {
 	const { t, owner, admin, clientId } = await setup();
+	await t.run((ctx) => ctx.db.patch(clientId, { tier: "full" }));
 	const photographyClient = await admin.mutation(api.crm.createClient, {
 		siteUrl: "a.example",
 		name: "Customer",

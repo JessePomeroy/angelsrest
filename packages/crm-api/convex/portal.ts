@@ -1,3 +1,4 @@
+import { DOCUMENT_FEATURES } from "../src/clientFeatures";
 import { logActivity } from "./activityLog";
 import { v } from "convex/values";
 import type { Doc, Id } from "./_generated/dataModel";
@@ -319,7 +320,7 @@ export const createToken = mutation({
 		expiresAt: v.optional(v.number()),
 	},
 	handler: async (ctx, args) => {
-		await requireSiteAdmin(ctx, args.siteUrl);
+		await requireSiteAdmin(ctx, args.siteUrl, DOCUMENT_FEATURES[args.type]);
 		const client = await ctx.db.get(args.clientId);
 		if (!client || client.siteUrl !== args.siteUrl) {
 			throw new Error("Client not found");
