@@ -21,8 +21,7 @@ import { getContentSlugHistoryOwner } from "./contentSlugHistory";
 import { isContentDocumentArchived } from "./contentLifecycle";
 
 // A detail page may resolve up to twenty supporting records. Keeping the
-// first public index page to twelve protects the function's read budget until
-// cursor pagination is introduced with the Blog host workflow.
+// public index pages to twelve protects the function's joined-read budget.
 export const POST_PUBLIC_LIST_MAX = 12;
 
 function toEditorRevision(
@@ -198,11 +197,26 @@ export async function listPublishedPosts(
 	siteUrl: string,
 	limit: number,
 ) {
-	if (await isPublicSiteOffline(ctx, siteUrl)) return [];
+	return (await listPublishedPostPage(ctx, siteUrl, 1, limit)).posts;
+}
+
+export async function listPublishedPostPage(
+	ctx: QueryCtx,
+	siteUrl: string,
+	pageNumber: number,
+	limit: number,
+) {
+	if (await isPublicSiteOffline(ctx, siteUrl)) {
+		return { posts: [], hasNext: false, totalCount: 0 };
+	}
 	if (!Number.isSafeInteger(limit) || limit < 1 || limit > POST_PUBLIC_LIST_MAX) {
 		throw new Error(
 			`Published Post lists must request between 1 and ${POST_PUBLIC_LIST_MAX} items`,
 		);
+	}
+	const offset = (pageNumber - 1) * limit;
+	if (!Number.isSafeInteger(pageNumber) || pageNumber < 1 || !Number.isSafeInteger(offset)) {
+		throw new Error("Published Post page must be a positive safe integer");
 	}
 	const documents = (await listPostDocuments(ctx, siteUrl)).filter(
 		(document) =>
@@ -226,13 +240,15 @@ export async function listPublishedPosts(
 			right.header.displayPublishedAt - left.header.displayPublishedAt
 			|| (right.document.publishedAt ?? right.revision.createdAt)
 				- (left.document.publishedAt ?? left.revision.createdAt)
-			|| left.document.rank - right.document.rank,
+			|| left.document.rank - right.document.rank
+			|| left.document._id.localeCompare(right.document._id),
 	);
-	return await Promise.all(
+	const posts = await Promise.all(
 		revisions
-			.slice(0, limit)
+			.slice(offset, offset + limit)
 			.map(({ document, revision }) =>
 				projectPublishedPostSummary(ctx, document, revision),
 			),
 	);
+	return { posts, hasNext: offset + posts.length < revisions.length, totalCount: revisions.length };
 }
