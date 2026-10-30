@@ -11,7 +11,7 @@ export const catalogProductKindsValidator = v.array(catalogProductKindValidator)
 export const CATALOG_PRODUCT_KIND_ORDER = [
 	"print",
 	"print_set",
-	"postcard",
+	"zine", "postcard",
 	"tapestry",
 	"digital_download",
 	"merchandise",

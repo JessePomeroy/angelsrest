@@ -328,6 +328,7 @@ function parseSinglePrintSnapshot(value: unknown) {
 		!boundedString(revisionId, 128) ||
 		(productKind !== "print" &&
 			productKind !== "print_set" &&
+			productKind !== "zine" &&
 			productKind !== "postcard" &&
 			productKind !== "tapestry" &&
 			productKind !== "digital_download" &&

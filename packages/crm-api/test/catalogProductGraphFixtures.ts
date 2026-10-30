@@ -130,7 +130,7 @@ export async function setup(modules: Record<string, () => Promise<unknown>>) {
 			catalogProductKinds: [
 				"print",
 				"print_set",
-				"postcard",
+				"zine", "postcard",
 				"tapestry",
 				"digital_download",
 				"merchandise",

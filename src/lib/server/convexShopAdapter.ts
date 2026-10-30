@@ -5,6 +5,7 @@ const CATALOG_PRODUCT_LIMIT = 40;
 const KINDS = [
 	"print",
 	"print_set",
+	"zine",
 	"postcard",
 	"tapestry",
 	"digital_download",
@@ -12,6 +13,7 @@ const KINDS = [
 ] as const;
 const CATEGORIES = {
 	postcard: "postcards",
+	zine: "zines",
 	tapestry: "tapestries",
 	digital_download: "digital",
 	merchandise: "merchandise",

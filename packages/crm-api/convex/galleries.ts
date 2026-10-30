@@ -18,6 +18,7 @@ import {
 } from "./helpers/limits";
 import { patchDocument } from "./helpers/patching";
 import { requireGalleryAccessGrant } from "./galleryAccess";
+import { logActivity } from "./activityLog";
 
 // Audit H14: cap per-batch DB deletes so the mutation transaction never
 // runs into Convex's operation-count ceiling. Galleries with >2000 photos
@@ -229,6 +230,12 @@ export const _removeBatch = internalMutation({
 				await ctx.db.delete(grant._id);
 			}
 			remainingBudget -= grants.length;
+			for (const table of ["galleryProofImages", "galleryProofSubmissions"] as const) {
+				if (remainingBudget === 0) break;
+				const rows = await ctx.db.query(table).withIndex("by_galleryId", (q) => q.eq("galleryId", id)).take(remainingBudget);
+				for (const row of rows) await ctx.db.delete(row._id);
+				remainingBudget -= rows.length;
+			}
 
 			// If we had budget left AND everything's clean, drop the gallery.
 			if (remainingBudget > 0) {
@@ -246,7 +253,9 @@ export const _removeBatch = internalMutation({
 					.query("galleryAccessGrants")
 					.withIndex("by_gallery", (q) => q.eq("galleryId", id))
 					.first();
-				if (!stillHasImages && !stillHasDownloads && !stillHasGrants) {
+				const stillHasProofImages = await ctx.db.query("galleryProofImages").withIndex("by_galleryId", (q) => q.eq("galleryId", id)).first();
+				const stillHasProofs = await ctx.db.query("galleryProofSubmissions").withIndex("by_galleryId", (q) => q.eq("galleryId", id)).first();
+				if (!stillHasImages && !stillHasDownloads && !stillHasGrants && !stillHasProofImages && !stillHasProofs) {
 					const verifier = await ctx.db
 						.query("galleryPasswordVerifiers")
 						.withIndex("by_gallery", (q) => q.eq("galleryId", id))
@@ -472,12 +481,16 @@ export const updateImage = mutation({
 		token: v.string(),
 		accessGrant: v.optional(v.string()),
 		isFavorite: v.optional(v.boolean()),
+		editingNotes: v.optional(v.string()),
 	},
 	handler: async (ctx, { id, token, accessGrant, ...fields }) => {
 		const image = await ctx.db.get(id);
 		if (!image) throw new Error("Image not found");
 		const gallery = await requireGalleryPortalToken(ctx, token, image.galleryId, accessGrant);
 		if (image.siteUrl !== gallery.siteUrl) throw new Error("Image not found");
+		if (!gallery.favoritesEnabled) throw new Error("Proofing is disabled");
+		if (gallery.proofSubmissionId) throw new Error("Selection has been submitted. Ask the photographer to reopen it.");
+		if ((fields.editingNotes?.length ?? 0) > 1000) throw new Error("Editing notes must be at most 1000 characters");
 
 		const updates: Record<string, unknown> = {};
 		for (const [key, value] of Object.entries(fields)) {
@@ -486,6 +499,72 @@ export const updateImage = mutation({
 		if (Object.keys(updates).length > 0) {
 			await ctx.db.patch(id, updates);
 		}
+	},
+});
+
+/** A submitted proof is immutable, even when an owner later reopens the gallery. */
+export const submitProof = mutation({
+	args: { galleryId: v.id("galleries"), token: v.string(), accessGrant: v.optional(v.string()), notes: v.string(), expectedRound: v.number() },
+	handler: async (ctx, { galleryId, token, accessGrant, notes, expectedRound }) => {
+		const gallery = await requireGalleryPortalToken(ctx, token, galleryId, accessGrant);
+		if (!gallery.favoritesEnabled) throw new Error("Proofing is disabled");
+		if ((gallery.proofRound ?? 0) !== expectedRound) throw new Error("Selection was reopened. Reload the gallery before submitting.");
+		if (gallery.proofSubmissionId) return gallery.proofSubmissionId;
+		if (notes.length > 5000) throw new Error("Submission notes must be at most 5000 characters");
+		const selected = await ctx.db.query("galleryImages")
+			.withIndex("by_galleryId_and_siteUrl_and_isFavorite", (q) => q.eq("galleryId", galleryId).eq("siteUrl", gallery.siteUrl).eq("isFavorite", true))
+			.take(GALLERY_IMAGE_LIMIT + 1);
+		if (selected.length === 0) throw new Error("Choose at least one favorite before submitting");
+		if (selected.length > GALLERY_IMAGE_LIMIT) throw new Error("Gallery image limit exceeded");
+		const submissionId = await ctx.db.insert("galleryProofSubmissions", {
+			siteUrl: gallery.siteUrl, galleryId, clientId: gallery.clientId,
+			selectedCount: selected.length, notes: notes.trim(), submittedAt: Date.now(),
+		});
+		for (const [order, image] of selected.sort((a, b) => a.order - b.order).entries()) {
+			await ctx.db.insert("galleryProofImages", { siteUrl: gallery.siteUrl, galleryId, submissionId,
+				imageId: image._id, filename: image.filename, editingNotes: image.editingNotes ?? "", order });
+		}
+		await ctx.db.patch(galleryId, { proofSubmissionId: submissionId });
+		await logActivity(ctx, { siteUrl: gallery.siteUrl, clientId: gallery.clientId, action: "gallery_proof_submitted",
+			description: `${selected.length} selections submitted for ${gallery.name}` });
+		return submissionId;
+	},
+});
+
+export const getProof = query({
+	args: { galleryId: v.id("galleries"), token: v.optional(v.string()), accessGrant: v.optional(v.string()) },
+	handler: async (ctx, { galleryId, token, accessGrant }) => {
+		const gallery = token ? await requireGalleryPortalToken(ctx, token, galleryId, accessGrant)
+			: await requireDocumentSiteAdmin(ctx, "galleries", galleryId);
+		return gallery.proofSubmissionId ? await ctx.db.get(gallery.proofSubmissionId) : null;
+	},
+});
+
+export const listProofs = query({
+	args: { galleryId: v.id("galleries"), paginationOpts: paginationOptsValidator },
+	handler: async (ctx, { galleryId, paginationOpts }) => {
+		await requireDocumentSiteAdmin(ctx, "galleries", galleryId);
+		return await ctx.db.query("galleryProofSubmissions").withIndex("by_galleryId", (q) => q.eq("galleryId", galleryId))
+			.order("desc").paginate({ ...paginationOpts, numItems: Math.min(paginationOpts.numItems, 25), maximumRowsRead: 25 });
+	},
+});
+
+export const getProofImages = query({
+	args: { submissionId: v.id("galleryProofSubmissions"), paginationOpts: paginationOptsValidator },
+	handler: async (ctx, { submissionId, paginationOpts }) => {
+		const submission = await requireDocumentSiteAdmin(ctx, "galleryProofSubmissions", submissionId);
+		return await ctx.db.query("galleryProofImages").withIndex("by_submissionId_and_order", (q) => q.eq("submissionId", submission._id))
+			.paginate({ ...paginationOpts, numItems: Math.min(paginationOpts.numItems, 50), maximumRowsRead: 50 });
+	},
+});
+
+export const reopenProof = mutation({
+	args: { galleryId: v.id("galleries"), submissionId: v.id("galleryProofSubmissions") },
+	handler: async (ctx, { galleryId, submissionId }) => {
+		const gallery = await requireDocumentSiteAdmin(ctx, "galleries", galleryId);
+		if (gallery.proofSubmissionId !== submissionId) throw new Error("This submission is no longer current");
+		await ctx.db.patch(submissionId, { reopenedAt: Date.now() });
+		await ctx.db.patch(galleryId, { proofSubmissionId: undefined, proofRound: (gallery.proofRound ?? 0) + 1 });
 	},
 });
 

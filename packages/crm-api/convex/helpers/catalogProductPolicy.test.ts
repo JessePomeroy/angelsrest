@@ -15,6 +15,7 @@ describe("catalog product capability policy", () => {
 			"print",
 			"tapestry",
 			"postcard",
+			"zine",
 		])).toEqual(CATALOG_PRODUCT_KIND_ORDER);
 	});
 

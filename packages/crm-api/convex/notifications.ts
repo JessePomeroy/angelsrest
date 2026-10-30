@@ -5,6 +5,7 @@ import { requireSiteAdmin } from "./authHelpers";
 const TRACKED_PAGES = [
 	"orders",
 	"inquiries",
+	"galleries",
 	"messages",
 	"crm",
 	"quotes",
@@ -36,6 +37,7 @@ export const getUnreadFlags = query({
 		const flags: Record<PageKey, boolean> = {
 			orders: false,
 			inquiries: false,
+			galleries: false,
 			messages: false,
 			crm: false,
 			quotes: false,
@@ -75,6 +77,10 @@ export const getUnreadFlags = query({
 		if (newMsg[0] && newMsg[0]._creationTime > messagesLastSeen) {
 			flags.messages = true;
 		}
+
+		const galleryProof = await ctx.db.query("galleryProofSubmissions")
+			.withIndex("by_siteUrl", (q) => q.eq("siteUrl", siteUrl)).order("desc").first();
+		flags.galleries = Boolean(galleryProof && galleryProof.submittedAt > (lastSeenMap.get("galleries") ?? 0));
 
 		// CRM: any new lead since last seen
 		const crmLastSeen = lastSeenMap.get("crm") ?? 0;

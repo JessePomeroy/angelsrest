@@ -13,6 +13,7 @@ import { buildTenantProductCheckoutOptions } from "./stripeConnect";
 const KINDS = [
 	"print",
 	"print_set",
+	"zine",
 	"postcard",
 	"tapestry",
 	"digital_download",

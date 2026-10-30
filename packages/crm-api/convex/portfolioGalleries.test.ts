@@ -483,3 +483,18 @@ test("summary reads only the first published image and enforces its ownership an
 	await t.run(async (ctx) => { await ctx.db.patch(saved.galleryId, { isVisible: false }); });
 	expect(await t.query(api.portfolioGalleries.listPublishedSummaries, { siteUrl: SITE_A.siteUrl })).toEqual([]);
 });
+
+
+test("real-site Portfolio previews are revision-bound and navigation reads only a collection cover", async () => {
+ const { t, adminA, adminB, assetA, assetB } = await setup();
+ const draft = await adminA.mutation(api.portfolioGalleries.saveDraft, { siteUrl: SITE_A.siteUrl, draft: { title: "Night walks", slug: "night-walks", placements: [placement("first", assetA.id, { altText: "First photograph" }), placement("second", assetB.id, { altText: "Second photograph" })] } });
+ const args = { siteUrl: SITE_A.siteUrl, galleryId: draft.galleryId, draftRevisionId: draft.revisionId };
+ expect((await adminA.query(api.portfolioGalleries.getDraftPreview, args)).placements).toHaveLength(2);
+ expect(await t.query(api.portfolioGalleries.listPublishedNavigation, { siteUrl: SITE_A.siteUrl })).toEqual([]);
+ await expect(adminB.query(api.portfolioGalleries.getDraftPreview, args)).rejects.toThrow("Not authorized");
+ await expect(t.query(api.portfolioGalleries.getDraftPreview, args)).rejects.toThrow("Not authenticated");
+ await adminA.mutation(api.portfolioGalleries.publish, { galleryId: draft.galleryId, draftRevisionId: draft.revisionId });
+ const navigation = await t.query(api.portfolioGalleries.listPublishedNavigation, { siteUrl: SITE_A.siteUrl });
+ expect(navigation).toMatchObject([{ slug: "night-walks", placementCount: 2, cover: { assetId: ASSET_A, altText: "First photograph" } }]);
+ expect(navigation[0]).not.toHaveProperty("placements");
+});
