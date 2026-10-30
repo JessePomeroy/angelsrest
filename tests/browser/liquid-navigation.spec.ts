@@ -1,11 +1,23 @@
 import { expect, test, type Locator } from "@playwright/test";
 
 async function expectVisibleFocus(control: Locator) {
-	await expect(control).toBeFocused();
-	expect(await control.evaluate((element) => element.matches(":focus-visible"))).toBe(true);
-	await expect(control).toHaveCSS("outline-style", "solid");
-	await expect(control).toHaveCSS("outline-width", "2px");
-	await expect(control).not.toHaveCSS("box-shadow", "none");
+	// Read one focus state per control; software WebGL makes separate browser calls costly.
+	await expect.poll(() => control.evaluate((element) => {
+		const style = getComputedStyle(element);
+		return {
+			focused: element.ownerDocument.activeElement === element,
+			focusVisible: element.matches(":focus-visible"),
+			outlineStyle: style.outlineStyle,
+			outlineWidth: style.outlineWidth,
+			hasShadow: style.boxShadow !== "none",
+		};
+	})).toEqual({
+		focused: true,
+		focusVisible: true,
+		outlineStyle: "solid",
+		outlineWidth: "2px",
+		hasShadow: true,
+	});
 }
 
 for (const theme of ["light", "dark"]) {
