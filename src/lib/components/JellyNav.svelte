@@ -383,7 +383,8 @@ onMount(() => {
 			warmth,
 		}) ?? false;
 		if (!moving) scheduleLens();
-		if (!reducedMotion && moving) {
+		// Ambient motion stays alive within the idle branch's 30fps draw budget.
+		if (!reducedMotion) {
 			animation = requestAnimationFrame(animate);
 		}
 	}

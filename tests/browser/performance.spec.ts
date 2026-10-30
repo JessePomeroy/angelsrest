@@ -36,7 +36,7 @@ test("large delivery galleries mount 48 items and retain whole-gallery selection
 	await expect(page.getByText("Showing 96 of 2000")).toBeVisible();
 });
 
-test("mobile navigation defers its renderer and rests after interaction", async ({ page, isMobile }) => {
+test("mobile navigation defers its renderer and budgets visible idle draws", async ({ page, isMobile }) => {
 	test.skip(!isMobile);
 	test.setTimeout(45_000);
 	await page.emulateMedia({ reducedMotion: "no-preference" });
@@ -60,7 +60,7 @@ test("mobile navigation defers its renderer and rests after interaction", async 
 	await expect.poll(() => surfaceRequests.length).toBeGreaterThan(0);
 	await expect.poll(() => page.evaluate(() => Reflect.get(window, "navDraws"))).toBeGreaterThan(0);
 	// Physics caps each step at 50ms, so slow software GPUs need more wall time.
-	// Require a full quiet second while browser frames still advance.
+	// Keep ambient motion running within a 30fps idle draw budget.
 	await expect(async () => {
 		const sample = await page.evaluate(async () => {
 			const before = Number(Reflect.get(window, "navDraws"));
@@ -74,8 +74,9 @@ test("mobile navigation defers its renderer and rests after interaction", async 
 				}
 				requestAnimationFrame(observe);
 			});
-			return { before, after: Number(Reflect.get(window, "navDraws")) };
+			return { before, after: Number(Reflect.get(window, "navDraws")), elapsed: performance.now() - started };
 		});
-		expect(sample.after).toBe(sample.before);
+		expect(sample.after).toBeGreaterThan(sample.before);
+		expect(sample.after - sample.before).toBeLessThanOrEqual(Math.ceil(sample.elapsed * 30 / 1000) + 1);
 	}).toPass({ timeout: 20_000, intervals: [250] });
 });
