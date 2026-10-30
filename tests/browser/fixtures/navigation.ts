@@ -4,6 +4,9 @@ export async function goto(url: string) {
 
 export function afterNavigate(callback: () => void) { callback(); }
 
+// These component fixtures do not perform SvelteKit route transitions.
+export function beforeNavigate() {}
+
 export async function invalidateAll() {}
 import { page } from "./state.svelte";
 
