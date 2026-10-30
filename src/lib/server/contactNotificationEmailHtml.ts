@@ -1,6 +1,7 @@
 /** Pure, dependency-free HTML rendering for the public contact owner notification. */
 
 export interface ContactOwnerNotificationFacts {
+	brand?: string;
 	name: string;
 	email: string;
 	subject?: string;
@@ -32,6 +33,7 @@ function factRow(label: string, value: string) {
 
 /** Render the private owner notification for a durable public contact inquiry. */
 export function renderContactOwnerNotificationHtml(input: ContactOwnerNotificationFacts) {
+	const brand = escapeHtml(input.brand || "Angel's Rest");
 	const name = escapeHtml(input.name);
 	const preheader = escapeHtml(`New contact inquiry from ${input.name}.`);
 	const message = escapedLines(input.message);
@@ -44,7 +46,7 @@ export function renderContactOwnerNotificationHtml(input: ContactOwnerNotificati
 	<meta name="x-apple-disable-message-reformatting">
 	<meta name="color-scheme" content="light dark">
 	<meta name="supported-color-schemes" content="light dark">
-	<title>New contact inquiry · Angel's Rest</title>
+	<title>New contact inquiry · ${brand}</title>
 	<style>
 		@media only screen and (max-width: 640px) {
 			.email-shell { width: 100% !important; }
@@ -72,13 +74,13 @@ export function renderContactOwnerNotificationHtml(input: ContactOwnerNotificati
 				<!--[if mso]><table role="presentation" width="600" cellspacing="0" cellpadding="0" border="0"><tr><td><![endif]-->
 				<table class="email-shell" role="presentation" width="600" cellspacing="0" cellpadding="0" border="0" bgcolor="#fbfaf7" style="width: 100%; max-width: 600px; table-layout: fixed; background: #fbfaf7; border: 1px solid #ddd6cc; overflow-wrap: anywhere; word-break: break-word;">
 					<tr>
-						<td class="section" style="padding: 30px 48px 26px; border-bottom: 1px solid #ddd6cc; color: #40362f; font-family: Arial, Helvetica, sans-serif; font-size: 12px; font-weight: 600; letter-spacing: 0.14em; line-height: 1; text-transform: uppercase;">Angel's Rest</td>
+						<td class="section" style="padding: 30px 48px 26px; border-bottom: 1px solid #ddd6cc; color: #40362f; font-family: Arial, Helvetica, sans-serif; font-size: 12px; font-weight: 600; letter-spacing: 0.14em; line-height: 1; text-transform: uppercase;">${brand}</td>
 					</tr>
 					<tr>
 						<td class="section" style="padding: 40px 48px 38px;">
 							<p style="margin: 0 0 14px; color: #756c64; font-family: Arial, Helvetica, sans-serif; font-size: 11px; font-weight: 600; letter-spacing: 0.13em; line-height: 1.4; text-transform: uppercase;">Contact form</p>
 							<h1 class="hero-title" style="margin: 0; max-width: 500px; color: #2f2a26; font-family: Georgia, 'Times New Roman', serif; font-size: 42px; font-weight: 400; letter-spacing: -0.035em; line-height: 1.08;">A new message arrived.</h1>
-							<p style="margin: 20px 0 0; max-width: 520px; color: #5f5750; font-family: Arial, Helvetica, sans-serif; font-size: 16px; line-height: 1.7; overflow-wrap: anywhere; word-break: break-word;">${name} sent a message through the Angel's Rest contact form.</p>
+							<p style="margin: 20px 0 0; max-width: 520px; color: #5f5750; font-family: Arial, Helvetica, sans-serif; font-size: 16px; line-height: 1.7; overflow-wrap: anywhere; word-break: break-word;">${name} sent a message through the ${brand} contact form.</p>
 						</td>
 					</tr>
 					<tr>

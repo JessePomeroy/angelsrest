@@ -116,11 +116,13 @@ token validity alone is authentication, not authorization. Use the host's
 per-request site-admin verifier for shared HTTP handlers; do not restore an
 identity-only `verifyAdmin` callback.
 
-Public inquiry writes must enter through `/api/contact`. That route validates
-Turnstile through the managed siteverify Worker and supplies the server-only
-`WEBHOOK_SECRET` to Convex. Do not make `inquiries.create` directly writable by
-the browser or move Turnstile verification into browser-only code. The temporary
-missing-secret compatibility path used for the staged rollout has been removed.
+Angels Rest public inquiry writes enter through `/api/contact`, which validates
+Turnstile through the managed siteverify Worker. Client sites forward through the
+hub's `/api/tenant-contact` using purpose-scoped credentials; the hub resolves the
+tenant and verifies its Turnstile hostname and action before saving. Only the hub
+supplies the server-only `WEBHOOK_SECRET` to Convex. Never distribute that secret to
+spokes, make `inquiries.create` browser-writable, or verify Turnstile only in the
+browser. See `docs/runbooks/tenant-inquiries.md` for the tenant intake configuration.
 
 Customer-order lookup is owned by the hub broker and uses a dedicated
 server-only `ORDER_LOOKUP_SECRET`. The broker must supply it only after abuse
