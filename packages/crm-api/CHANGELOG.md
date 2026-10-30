@@ -1,5 +1,15 @@
 # @jessepomeroy/crm-api
 
+## 6.9.0
+
+### Minor Changes
+
+- 5ded736: Add public numbered Blog pages with total counts and next-page availability. Each response retains the twelve-summary joined-read limit, and the existing first-page query remains compatible.
+
+### Patch Changes
+
+- 3abb251: Allow operator-configured catalog upload origins to use a custom domain while retaining the stable tenant identity and storage paths. Reject duplicate origins and malformed registries, and verify custom-domain authentication through the existing trusted-origin configuration.
+
 ## 6.8.1
 
 ### Patch Changes
