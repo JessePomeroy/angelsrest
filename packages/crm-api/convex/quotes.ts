@@ -230,13 +230,14 @@ export const convertToInvoice = mutation({
 		// Create the invoice
 		calculateInvoiceAmounts(items);
 		const client = await ctx.db.get(quote.clientId);
+		const clientName = client?.name ?? quote.clientName ?? "unknown";
 		const invoiceNumber = await allocateNextInvoiceNumber(ctx, quote.siteUrl);
 		const invoiceId = await ctx.db.insert("invoices", {
-			searchText: businessSearchText({ invoiceNumber, clientName: client?.name ?? "unknown" }),
+			searchText: businessSearchText({ invoiceNumber, clientName }),
 			siteUrl: quote.siteUrl,
 			invoiceNumber,
 			clientId: quote.clientId,
-			clientName: client?.name ?? quote.clientName ?? "unknown",
+			clientName,
 			invoiceType,
 			status: "draft",
 			items,

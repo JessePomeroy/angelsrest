@@ -77,6 +77,19 @@ test("recovers an original identity after reload, registers idempotently, and pr
 	await reopened.mutation(api.deliveryUploads.finishDelete, { siteUrl, id });
 	await expect(reopened.mutation(api.galleries.addImage, facts)).rejects.toThrow();
 	expect((await reopened.query(api.galleries.get, { id: galleryId }))?.imageCount).toBe(0);
+	const ordinaryDeleteFacts = { ...facts, r2Key: `${siteUrl}/${galleryId}/original/ordinary.jpg` };
+	const ordinaryCheckpoint = await admin.mutation(api.deliveryUploads.begin, ordinaryDeleteFacts);
+	const ordinaryImage = await admin.mutation(api.galleries.addImage, ordinaryDeleteFacts);
+	await admin.mutation(api.galleries.removeImage, { siteUrl, id: ordinaryImage });
+	await expect(reopened.mutation(api.galleries.addImage, ordinaryDeleteFacts)).rejects.toThrow();
+	expect(await t.run((ctx) => ctx.db.get(ordinaryCheckpoint))).toMatchObject({ state: "deleted", open: false });
+	expect((await reopened.query(api.galleries.get, { id: galleryId }))?.imageCount).toBe(0);
+	// A registered checkpoint cannot recreate unexpectedly missing metadata either.
+	const missingFacts = { ...facts, r2Key: `${siteUrl}/${galleryId}/original/missing.jpg` };
+	await admin.mutation(api.deliveryUploads.begin, missingFacts);
+	const missingImage = await admin.mutation(api.galleries.addImage, missingFacts);
+	await t.run((ctx) => ctx.db.delete(missingImage));
+	await expect(reopened.mutation(api.galleries.addImage, missingFacts)).rejects.toThrow("Registered upload metadata");
 	await expect(
 		t
 			.withIdentity({ subject: "foreign", email: "foreign@example.test", emailVerified: true })

@@ -418,6 +418,9 @@ export const addImage = mutation({
 			if (checkpoint) await ctx.db.patch(checkpoint._id, {state:"registered",open:false});
 			return existing._id;
 		}
+		if (checkpoint?.state === "registered") {
+			throw new Error("Registered upload metadata is unavailable");
+		}
 
 		const imageId = await ctx.db.insert("galleryImages", {
 			...previewIdentity(args),
@@ -454,6 +457,15 @@ export const removeImage = mutation({
 		}
 		if (siteUrl !== undefined && image.siteUrl !== siteUrl) throw new Error("Image not found");
 		if (siteUrl === undefined) await requireSiteAdmin(ctx, image.siteUrl, "galleryDelivery");
+
+		// Ordinary image deletion must also revoke registration in another tab.
+		const checkpoint = await ctx.db.query("deliveryUploads")
+			.withIndex("by_key", (q) => q.eq("r2Key", image.r2Key)).unique();
+		if (checkpoint) {
+			if (checkpoint.siteUrl !== image.siteUrl || checkpoint.galleryId !== image.galleryId)
+				throw new Error("Upload identity conflict");
+			await ctx.db.patch(checkpoint._id, { state: "deleted", open: false });
+		}
 
 		const gallery = await ctx.db.get(image.galleryId);
 		if (gallery) {
