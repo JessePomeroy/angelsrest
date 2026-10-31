@@ -1,4 +1,5 @@
 <script lang="ts">
+import { iterateGalleryImagePages } from "@jessepomeroy/gallery-delivery/image-pages";
 import { tick, onDestroy } from "svelte";
 import type { FunctionReturnType } from "convex/server";
 import { useConvexClient } from "convex-svelte";
@@ -181,19 +182,12 @@ async function downloadSelection(selection: ImageSelection, message: string, nam
 	resolvingDownload = true;
 	readyDownload = null;
 	try {
-		let cursor: string | null = null;
 		const rows: typeof data.images = [];
-		const cursors = new Set<string>();
-		// The server checks permission and selection on every bounded page.
-		for (;;) {
-			const result: FunctionReturnType<typeof api.galleries.getImagesPage> = await client.query(api.galleries.getImagesPage, { ...context, cursor, selection });
+		for await (const result of iterateGalleryImagePages(cursor => client.query(api.galleries.getImagesPage, { ...context, cursor, selection }))) {
 			if (disposed || current !== generation || request !== downloadGeneration || source !== data) return;
 			rows.push(...displayPageImages(source, result.page, result.previewSources));
-			if (result.isDone) break;
-			if (cursors.has(result.continueCursor)) throw new Error("Cursor did not advance");
-			cursors.add(result.continueCursor);
-			cursor = result.continueCursor;
 		}
+
 		const unique = [...new Map(rows.map((image) => [image._id, image])).values()];
 		if (downloads.chooseDownloadFolder && unique.length) readyDownload = { images: unique, name, message };
 		else await downloads.downloadImages(unique, message, name);

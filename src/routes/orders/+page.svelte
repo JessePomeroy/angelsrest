@@ -8,6 +8,8 @@ import { formatCents } from "$lib/utils/format";
 
 type CustomerOrder = NonNullable<FunctionReturnType<typeof api.orders.lookupForCustomer>>;
 
+let { data }: { data: { siteUrl: string; siteName: string } } = $props();
+
 let email = $state("");
 let orderNumber = $state(page.url.searchParams.get("order") || "");
 let loading = $state(false);
@@ -46,15 +48,16 @@ async function lookupOrder(form: HTMLFormElement) {
 			body: JSON.stringify({
 				email,
 				orderNumber,
+				siteUrl: data.siteUrl,
 				"cf-turnstile-response": turnstileToken,
 			}),
 		});
-		const data: { order?: CustomerOrder; error?: string } = await response.json();
+		const result: { order?: CustomerOrder; error?: string } = await response.json();
 
-		if (response.ok && data.order) {
-			order = data.order;
+		if (response.ok && result.order) {
+			order = result.order;
 		} else {
-			error = data.error || "Order not found";
+			error = result.error || "Order not found";
 		}
 	} catch (err) {
 		console.error("orders lookup failed", err);
@@ -88,9 +91,10 @@ const statusLabels: Record<string, string> = {
 
 <div class="orders-page">
 	<div class="lookup-content">
-		<a href="/" class="home-link">← Angel's Rest</a>
+		<a href="/" class="home-link">Angel's Rest customer services</a>
 		
 		<h1 class="page-title">Track Your Order</h1>
+		<p>{data.siteName}</p>
 		<p class="intro">Enter your order details to check the status</p>
 
 		<form class="lookup-form" onsubmit={handleSubmit}>

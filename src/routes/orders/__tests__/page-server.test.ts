@@ -1,4 +1,7 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
+
+vi.mock("$lib/config/site", () => ({ SITE_DOMAIN: "angelsrest.online" }));
+
 import { load } from "../+page.server";
 
 async function expectRedirect(callback: () => Promise<unknown> | unknown, location: string) {
@@ -34,11 +37,11 @@ describe("orders page privacy redirect", () => {
 		);
 	});
 
-	it("does not redirect clean order lookup URLs", () => {
+	it("does not redirect clean order lookup URLs", async () => {
 		expect(
-			load({
+			await load({
 				url: new URL("https://angelsrest.test/orders?order=ORD-001"),
 			} as never),
-		).toEqual({});
+		).toEqual({ siteUrl: "angelsrest.online", siteName: "Angel's Rest" });
 	});
 });

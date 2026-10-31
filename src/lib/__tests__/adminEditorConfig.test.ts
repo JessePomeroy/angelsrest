@@ -114,10 +114,17 @@ const {
 		},
 		{
 			get(target, prop, receiver) {
-				return (
+				const namespace =
 					Reflect.get(target, prop, receiver) ??
-					(typeof prop === "string" ? editorRefs(prop) : undefined)
-				);
+					(typeof prop === "string" ? editorRefs(prop) : undefined);
+				if (!namespace || typeof prop !== "string") return namespace;
+				return new Proxy(namespace, {
+					get(source, key) {
+						return (
+							Reflect.get(source, key) ?? (typeof key === "string" ? `${prop}.${key}` : undefined)
+						);
+					},
+				});
 			},
 		},
 	);
@@ -227,7 +234,8 @@ describe("admin platform capabilities", () => {
 			contentApi.getContactPageEditorState,
 		);
 		expect(adminConfig.api.siteEditor?.saveContactPageDraft).toBe(contentApi.saveContactPageDraft);
-		expect(adminConfig.api.siteEditor?.publishContactPage).toBeUndefined();
+		expect(adminConfig.api.siteEditor?.publishContactPage).toBe(contentApi.publishContactPage);
+		expect(adminConfig.editor?.contactPage?.publicationEnabled).toBe(false);
 		expect(adminConfig.api.siteEditor?.discardContactPageDraft).toBe(
 			contentApi.discardContactPageDraft,
 		);
@@ -248,19 +256,21 @@ describe("admin platform capabilities", () => {
 
 		const portfolioEditor = adminConfig.api.portfolioEditor;
 		expect(Object.getPrototypeOf(portfolioEditor ?? {})).toBe(Object.prototype);
-		expect(Object.keys(portfolioEditor ?? {})).toEqual([
-			"listForEditor",
-			"getEditorState",
-			"saveDraft",
-			"publish",
-			"setVisibility",
-			"remove",
-			"reorder",
-			"listMediaAssets",
-			"getPlacedMediaAssets",
-			"registerReadyWebAsset",
-			"requestDeletion",
-		]);
+		expect(new Set(Object.keys(portfolioEditor ?? {}))).toEqual(
+			new Set([
+				"listForEditor",
+				"getEditorState",
+				"saveDraft",
+				"publish",
+				"setVisibility",
+				"remove",
+				"reorder",
+				"listMediaAssets",
+				"getPlacedMediaAssets",
+				"registerReadyWebAsset",
+				"requestDeletion",
+			]),
+		);
 		expect(portfolioEditor?.listForEditor).toBe(portfolioApi.listForEditor);
 		expect(portfolioEditor?.getEditorState).toBe(portfolioApi.getEditorState);
 		expect(portfolioEditor?.saveDraft).toBe(portfolioApi.saveDraft);
@@ -304,6 +314,7 @@ describe("admin platform capabilities", () => {
 			previewEndpoint: "/api/admin/draft-preview/settings",
 		});
 		expect(adminConfig.editor?.contactPage).toEqual({
+			publicationEnabled: false,
 			previewEndpoint: "/api/admin/draft-preview/contact",
 			initialPayload: {
 				heading: "Get in Touch",

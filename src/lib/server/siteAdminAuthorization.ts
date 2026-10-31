@@ -1,3 +1,4 @@
+import { adminFeatureForPath } from "@jessepomeroy/admin/client-integration";
 import { api } from "$convex/api";
 import { adminConfig } from "$lib/config/admin";
 import { adminAuth } from "$lib/server/adminAuth";
@@ -46,7 +47,9 @@ export async function authorizeSiteAdminRequest(request: Request) {
 		if (!identity?.email) return null;
 
 		const access = await querySiteAdminAccess(client, identity.email);
-		if (!access.authorized) return null;
+		if (!access.authorized || !("enabledFeatures" in access)) return null;
+		const feature = adminFeatureForPath(new URL(request.url).pathname);
+		if (feature && !access.enabledFeatures?.includes(feature)) return null;
 		return { convexToken: token };
 	} catch {
 		return null;

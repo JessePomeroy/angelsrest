@@ -73,7 +73,7 @@ const contact = $derived(data.content.contact);
                     <p>{#each paragraph.split("\n") as line, index}{#if index > 0}<br />{/if}{line}{/each}</p>
                 {/each}
             </div>
-            <ContactForm preview={Boolean(data.draftPreview)} hideHeader confirmationMessage={contact.confirmationMessage} />
+            <ContactForm preview={Boolean(data.draftPreview)} hideHeader confirmationMessage={contact.confirmationMessage} inquiryChoices={contact.inquiryChoices} />
         </div>
     </div>
 </section>

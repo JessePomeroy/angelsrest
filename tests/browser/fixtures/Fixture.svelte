@@ -99,7 +99,7 @@ if (params.get("populated") === "true") {
 {:else if fixture === "turnstile"}
 	<TurnstileHarness />
 {:else if fixture === "orders"}
-	<Orders />
+	<Orders data={{ siteUrl: "angelsrest.online", siteName: "Angel's Rest" }} />
 {:else if fixture === "contact"}
 	<ThemeSwitcher />
 	<ContactForm />

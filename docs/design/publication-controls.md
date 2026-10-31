@@ -39,7 +39,7 @@ pending draft changes.
 | Product sale availability | “Not for sale” remains distinct: it controls purchasing rather than publication |
 | Private delivery galleries | Inspected, unchanged: publish/archive/restore controls client delivery access, not public portfolio visibility |
 
-Angels Rest currently omits the Contact publish capability and deliberately hides
+Angels Rest explicitly configures Contact with `publicationEnabled: false` and deliberately hides
 the About Publish button in its host wrapper. Those restrictions remain intact.
 The shared homepage quote and Modeling editors are checked as package components;
 they are not exposed as standalone routes in the Angels Rest browser fixture.

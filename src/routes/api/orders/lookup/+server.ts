@@ -25,7 +25,10 @@ async function lookupOrder(
 	orderNumber: unknown,
 	turnstileToken: unknown,
 	remoteIp: string,
+	siteUrl: unknown = SITE_DOMAIN,
 ) {
+	if (typeof siteUrl !== "string" || !/^[a-z0-9][a-z0-9.-]{0,252}$/.test(siteUrl))
+		return lookupJson({ error: "Invalid store" }, 400);
 	// Audit H34: reject obviously malformed input before hitting the
 	// backend. Email must at minimum contain "@"; both fields required.
 	if (typeof email !== "string" || typeof orderNumber !== "string") {
@@ -62,7 +65,7 @@ async function lookupOrder(
 
 	try {
 		const order = await getConvex().query(api.orders.lookupForCustomer, {
-			siteUrl: SITE_DOMAIN,
+			siteUrl,
 			email: normalizedEmail,
 			orderNumber: normalizedOrderNumber,
 			lookupSecret,
@@ -95,5 +98,11 @@ export async function POST({ request, getClientAddress }) {
 		return lookupJson({ error: "Invalid JSON body" }, 400);
 	}
 	const b = (body ?? {}) as Record<string, unknown>;
-	return lookupOrder(b.email, b.orderNumber, b["cf-turnstile-response"], getClientAddress());
+	return lookupOrder(
+		b.email,
+		b.orderNumber,
+		b["cf-turnstile-response"],
+		getClientAddress(),
+		b.siteUrl,
+	);
 }
