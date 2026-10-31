@@ -101,9 +101,13 @@ Host rollback preserves the additive backend, Worker and their durable records.
 The merged host's production deployment `dpl_HXAhKgrB5GSzLpRZkSfWupYsJxJQ` is
 Ready at `ec32d0faa057fc0a46cae61dff89aaa397eef4a9` and serves the canonical aliases.
 Anonymous `/`, `/cart`, and `/admin` returned HTML 200. This does not establish an
-authenticated production customer workflow. Main CI 41160480819 is still pending;
-its final source-bound observation must be added before this release record is
-complete.
+authenticated production customer workflow. Main CI 41160480819 passed for that
+exact source. Artifact `13027601128` and the live deployment passed the final
+[source-bound production observation](../integration-evidence/releases/production/observation-4261a67a01975c91c8ddf02ee6a7c490626ee009b322907221956c733434bed0.json),
+including a stable canonical alias and HTML 200 for `/` and `/cart`. The retained
+binding proves source identity; it does not claim a byte-identical provider build.
+The exact receipt was imported through the canonical operator command to the
+production release history, returning `changed: true` and version 12.
 
 Paper editing tools were unavailable. No editable handbook board was updated or
 marked verified for these new workflow states. That post-release design reference
