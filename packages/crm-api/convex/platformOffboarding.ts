@@ -126,7 +126,7 @@ export const eraseRecords = mutation({
 					(row.paidAmount ?? 0) > 0 ||
 					row.paidAt !== undefined ||
 					row.status === "paid" ||
-					row.status === "partial");
+					row.status === "partial" || row.recurringScheduleId !== undefined);
 			const linkedQuote =
 				"invoiceNumber" in row
 					? await ctx.db
@@ -134,11 +134,19 @@ export const eraseRecords = mutation({
 							.withIndex("by_convertedToInvoice", (q) => q.eq("convertedToInvoice", row._id))
 							.first()
 					: null;
-			if (protectedQuote || protectedContract || protectedInvoice || linkedQuote) {
+			const retainedSchedule = "invoiceNumber" in row ? await ctx.db.query("recurringInvoiceSchedules").withIndex("by_template",q=>q.eq("templateInvoiceId",row._id)).first() : null;
+   if (protectedQuote || protectedContract || protectedInvoice || linkedQuote || retainedSchedule) {
 				retained++;
 				continue;
 			}
-			await ctx.db.delete(row._id);
+			if(args.collection === "inquiries") {
+    const inquiryId=ctx.db.normalizeId("inquiries",row._id);
+    if(inquiryId) {
+     const notice=await ctx.db.query("inquiryNotifications").withIndex("by_inquiryId",q=>q.eq("inquiryId",inquiryId)).unique();
+     if(notice) await ctx.db.delete(notice._id);
+    }
+   }
+   await ctx.db.delete(row._id);
 			deleted++;
 		}
 		return { deleted, retained, isDone: result.isDone, cursor: result.continueCursor };

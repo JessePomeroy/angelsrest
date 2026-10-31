@@ -1,3 +1,4 @@
+import { businessSearchText } from "./helpers/businessSearch";
 import {
 	adoptOrderTenant, assertOrderTenant, assertTenantRouting, connectedAccountMatchesSite,
 	readCheckoutAdmissionRouting, readCheckoutRouting, retiredOrderSession, routingConflict,
@@ -1193,6 +1194,7 @@ export const create = mutation({
 			? `AR-${orderNumber}` : undefined;
 		await requireSnapshotProductsNotDeleted(ctx, orderInput.siteUrl, orderInput.checkoutSnapshot?.items ?? []);
 		const _id = await ctx.db.insert("orders", {
+			searchText: businessSearchText({ ...orderInput, orderNumber }),
 			...orderInput,
 			checkoutFinancialSnapshot,
 			printInput,

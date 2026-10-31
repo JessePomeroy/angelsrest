@@ -1,3 +1,4 @@
+import { businessSearchText } from "./helpers/businessSearch";
 import { logActivity } from "./activityLog";
 import { calculateInvoiceAmounts } from "../src/invoiceAmounts";
 import { v } from "convex/values";
@@ -108,6 +109,7 @@ export const create = mutation({
 		}
 		const quoteNumber = await allocateNextQuoteNumber(ctx, args.siteUrl);
 		const quoteId = await ctx.db.insert("quotes", {
+			searchText: businessSearchText({ ...args, quoteNumber, clientName: client.name }),
 			...args,
 			quoteNumber,
 			clientName: client.name,
@@ -230,6 +232,7 @@ export const convertToInvoice = mutation({
 		const client = await ctx.db.get(quote.clientId);
 		const invoiceNumber = await allocateNextInvoiceNumber(ctx, quote.siteUrl);
 		const invoiceId = await ctx.db.insert("invoices", {
+			searchText: businessSearchText({ invoiceNumber, clientName: client?.name ?? "unknown" }),
 			siteUrl: quote.siteUrl,
 			invoiceNumber,
 			clientId: quote.clientId,
