@@ -4,7 +4,6 @@ import { env } from "$env/dynamic/private";
 import { ADMIN_EMAIL, SITE_DOMAIN } from "$lib/config/site";
 import { renderContactOwnerNotificationHtml } from "$lib/server/contactNotificationEmailHtml";
 import { getConvex } from "$lib/server/convexClient";
-import { getResend } from "$lib/server/resendClient";
 import { verifyTurnstileToken } from "$lib/server/turnstile";
 import { trimString, validateEmail } from "$lib/server/validation";
 import type { RequestHandler } from "./$types";
@@ -65,34 +64,24 @@ export const POST: RequestHandler = async ({ request, getClientAddress }) => {
 			email: trimmedEmail,
 			subject: trimmedSubject || undefined,
 			message: trimmedMessage,
+			notification: {
+				transport: "hub",
+				from: "contact@angelsrest.online",
+				to: env.NOTIFICATION_EMAIL || ADMIN_EMAIL,
+				replyTo: trimmedEmail,
+				subject: trimmedSubject || `Contact from ${trimmedName}`,
+				text: `Name: ${trimmedName}\nEmail: ${trimmedEmail}\n\n${trimmedMessage}`,
+				html: renderContactOwnerNotificationHtml({
+					name: trimmedName,
+					email: trimmedEmail,
+					subject: trimmedSubject || undefined,
+					message: trimmedMessage,
+				}),
+			},
 		});
 	} catch (err) {
 		console.error("Contact form error:", err);
 		return json({ error: "Failed to send" }, { status: 500 });
-	}
-
-	try {
-		const result = await getResend().emails.send({
-			from: "contact@angelsrest.online",
-			to: env.NOTIFICATION_EMAIL || ADMIN_EMAIL,
-			replyTo: trimmedEmail,
-			subject: trimmedSubject || `Contact from ${trimmedName}`,
-			text: `Name: ${trimmedName}\nEmail: ${trimmedEmail}\n\n${trimmedMessage}`,
-			html: renderContactOwnerNotificationHtml({
-				name: trimmedName,
-				email: trimmedEmail,
-				subject: trimmedSubject || undefined,
-				message: trimmedMessage,
-			}),
-		});
-		if (result.error) {
-			throw new Error(result.error.message || "Owner notification delivery failed");
-		}
-		if (!result.data?.id) {
-			throw new Error("Owner notification returned no delivery id");
-		}
-	} catch (err) {
-		console.error("[contact] owner notification failed after inquiry was saved", err);
 	}
 
 	return json({ success: true });

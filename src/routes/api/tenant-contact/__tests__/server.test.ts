@@ -43,7 +43,7 @@ afterEach(() => {
 	vi.unstubAllGlobals();
 	vi.resetAllMocks();
 });
-it("uses the configured owner/sender, visitor Reply-To, escaped HTML, and an inquiry-specific send key", async () => {
+it("uses the configured owner/sender, visitor Reply-To, escaped HTML, in a durable envelope", async () => {
 	vi.stubGlobal(
 		"fetch",
 		vi
@@ -71,9 +71,11 @@ it("uses the configured owner/sender, visitor Reply-To, escaped HTML, and an inq
 	// The route uses only Request; other SvelteKit event fields are irrelevant here.
 	const response = await POST({ request } as Parameters<typeof POST>[0]);
 	expect(response.status).toBe(200);
-	expect(mocks.client).toHaveBeenCalledExactlyOnceWith("re_synthetic_queenworm_sender");
-	const [mail, options] = mocks.send.mock.calls[0];
+	expect(mocks.client).not.toHaveBeenCalled();
+	expect(mocks.send).not.toHaveBeenCalled();
+	const mail = mocks.save.mock.calls[0][1].notification;
 	expect(mail).toMatchObject({
+		transport: "tenant",
 		from: "contact@queenworm.example",
 		to: "owner@example.test",
 		replyTo: "visitor@example.test",
@@ -82,8 +84,4 @@ it("uses the configured owner/sender, visitor Reply-To, escaped HTML, and an inq
 	expect(mail.html).toContain("&lt;script&gt;");
 	expect(mail.html).not.toContain("<script>");
 	expect(JSON.stringify(mail)).not.toContain("re_synthetic_queenworm_sender");
-	expect(options).toEqual({ idempotencyKey: "inquiry/inquiry-one" });
-	expect(mocks.save.mock.invocationCallOrder[0]).toBeLessThan(
-		mocks.send.mock.invocationCallOrder[0],
-	);
 });

@@ -5,8 +5,8 @@ Its own `/api/contact` host route forwards validated input to the hub's
 `POST /api/tenant-contact`. The hub resolves one tenant from a dedicated intake
 credential, verifies that tenant's Turnstile secret, canonical hostname and `contact`
 action, checks platform availability, saves through the existing `inquiries.create`,
-and attempts an owner notification. The broad `WEBHOOK_SECRET` never leaves the hub.
-The existing Angels Rest `/api/contact` path and default notification remain intact.
+and atomically queues an owner notification. The broad `WEBHOOK_SECRET` never leaves the hub.
+The Angels Rest `/api/contact` path queues through the same durable runner using its existing owner and sender.
 
 Configure `INQUIRY_TENANTS` as a complete JSON object keyed by stored tenant key.
 Each value contains `origin` (exact canonical HTTPS origin), `secrets` (one or two
@@ -36,11 +36,9 @@ backup, never in a spoke or public configuration.
 
 The notification uses the existing HTML renderer with tenant branding, escaped
 visitor content, a plain-text part, the visitor as Reply-To, and an idempotency key
-based on the saved inquiry ID. An email provider failure leaves the inquiry saved
-and returns success, matching the existing contact route. A sanitized Sentry error
-identifies notification failure without visitor content. No automatic email retry or
-recipient acknowledgment email is added; owners can recover the message in Inquiries.
-Transport uncertainty does not trigger an automatic inquiry resubmission.
+based on the saved inquiry ID. A provider failure leaves the inquiry saved and returns success after atomic enqueue. The durable job retries with the same frozen content, sender credential fingerprint, and provider idempotency key. It stops after five automatic attempts or before the 24-hour provider replay window expires. The Admin inquiry dialog exposes queued, sending, provider-accepted, failed, and uncertain states, with at most three safe manual recoveries inside that window. Provider acceptance is not inbox delivery. Changed sender credentials stop the job; do not issue a fresh key to resolve uncertainty.
+
+Configure `INQUIRY_NOTIFICATION_RUNNER_SECRET` (a unique 32–512 character secret) on both the hub host and Convex, and `INQUIRY_NOTIFICATION_RUNNER_ORIGIN` on Convex as the exact HTTPS origin of the matching hub deployment. Never use a protected preview or production origin as a staging substitute. This purpose-specific credential must differ from every other authority. No spoke receives it. The runner authenticates the job lease and resolves sending credentials from private host configuration. No automatic visitor acknowledgment or inquiry resubmission is added.
 
 A bounded per-tenant burst limit supplements single-use server-verified Turnstile
 challenges. The spoke also checks same-origin submissions, bounded fields and an

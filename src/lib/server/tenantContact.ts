@@ -102,9 +102,7 @@ export function createTenantContact(deps: {
 	registry: () => string | undefined;
 	webhookSecret: () => string;
 	active: (siteUrl: string) => Promise<boolean>;
-	save: (inquiry: Inquiry) => Promise<unknown>;
-	notify: (inquiry: Inquiry, notification: Notification, inquiryId: unknown) => Promise<unknown>;
-	notificationFailed: () => void;
+	save: (inquiry: Inquiry, notification: Notification) => Promise<unknown>;
 	fetch?: typeof fetch;
 }) {
 	const bursts = new Map<string, { start: number; count: number }>();
@@ -207,17 +205,11 @@ export function createTenantContact(deps: {
 			subject: subject || undefined,
 			message,
 		};
-		let inquiryId: unknown;
 		try {
 			if (!(await deps.active(tenant.siteUrl))) error(503, "Intake is unavailable.");
-			inquiryId = await deps.save(inquiry);
+			await deps.save(inquiry, tenant.notification);
 		} catch {
 			error(503, "Your message could not be confirmed.");
-		}
-		try {
-			await deps.notify(inquiry, tenant.notification, inquiryId);
-		} catch {
-			deps.notificationFailed();
 		}
 		return json({ success: true }, { headers: { "cache-control": "private, no-store" } });
 	};

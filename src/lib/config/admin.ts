@@ -12,7 +12,6 @@ export const adminConfig: AdminConfig = {
 	siteName: "angel's rest",
 	fromEmail: "Angel's Rest <noreply@angelsrest.online>",
 	isCreator: true,
-	galleryWorkerUrl: "https://gallery-worker.thinkingofview.workers.dev",
 	api: createAdminBrowserCapabilities(api),
 	editor: {
 		siteSettings: { previewEndpoint: "/api/admin/draft-preview/settings" },

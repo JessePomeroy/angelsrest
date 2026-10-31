@@ -36,8 +36,6 @@ function setup(
 		webhookSecret: () => "hub-only-secret",
 		active,
 		save,
-		notify,
-		notificationFailed,
 		fetch: transport,
 	});
 	const request = (patch = {}, credential = key) =>
@@ -48,7 +46,7 @@ function setup(
 		});
 	return { handler, request, save, active, notify, notificationFailed, transport };
 }
-it("derives tenant identity from its credential, saves, then notifies the configured owner", async () => {
+it("derives tenant identity from its credential, saves with the configured owner notification", async () => {
 	const flow = setup();
 	expect((await flow.handler(flow.request())).status).toBe(200);
 	const expected = {
@@ -58,11 +56,7 @@ it("derives tenant identity from its credential, saves, then notifies the config
 		subject: fields.subject,
 		message: fields.message,
 	};
-	expect(flow.save).toHaveBeenCalledExactlyOnceWith(expected);
-	expect(flow.notify).toHaveBeenCalledExactlyOnceWith(expected, notice, "synthetic-inquiry-id");
-	expect(flow.save.mock.invocationCallOrder[0]).toBeLessThan(
-		flow.notify.mock.invocationCallOrder[0],
-	);
+	expect(flow.save).toHaveBeenCalledExactlyOnceWith(expected, notice);
 });
 it("rejects tenant injection and wrong credentials before saving or notifying", async () => {
 	const flow = setup();
@@ -82,15 +76,14 @@ it.each([
 	await expect(flow.handler(flow.request())).rejects.toMatchObject({ status: 403 });
 	expect(flow.save).not.toHaveBeenCalled();
 });
-it("blocks offboarded tenants and preserves a saved inquiry when email fails", async () => {
+it("blocks offboarded tenants and fails closed when atomic persistence fails", async () => {
 	const flow = setup();
 	flow.active.mockResolvedValue(false);
 	await expect(flow.handler(flow.request())).rejects.toMatchObject({ status: 503 });
 	expect(flow.save).not.toHaveBeenCalled();
 	flow.active.mockResolvedValue(true);
-	flow.notify.mockRejectedValue(new Error("Provider unavailable"));
-	expect((await flow.handler(flow.request())).status).toBe(200);
-	expect(flow.notificationFailed).toHaveBeenCalledOnce();
+	flow.save.mockRejectedValue(new Error("Queue unavailable"));
+	await expect(flow.handler(flow.request())).rejects.toMatchObject({ status: 503 });
 });
 it("rejects broad/reused credentials and missing notification configuration", () => {
 	expect(() => inquiryTenants(registry, key)).toThrow();

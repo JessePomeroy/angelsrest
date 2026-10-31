@@ -1,6 +1,17 @@
 import { getTenantAdminLayoutData, type TenantAdminLayoutData } from "@jessepomeroy/admin/core";
+import { env } from "$env/dynamic/private";
 import { requireAuthWithIdentity } from "$lib/server/adminAuth";
 import { getSiteAdminAccess } from "$lib/server/siteAdminAuthorization";
+
+type HostAdminLayoutData = TenantAdminLayoutData & { galleryWorkerUrl?: string };
+
+function layoutData(session: Parameters<typeof getTenantAdminLayoutData>[0]): HostAdminLayoutData {
+	return {
+		...getTenantAdminLayoutData(session),
+		// Browser uploads must use the same nonsecret endpoint as server handlers.
+		galleryWorkerUrl: env.GALLERY_WORKER_URL,
+	};
+}
 
 /**
  * Server-side auth gate for /admin/**. Browser-side `<AuthGuard>` controls
@@ -14,27 +25,27 @@ import { getSiteAdminAccess } from "$lib/server/siteAdminAuthorization";
  * handles the login flow; child +page.server.ts loaders read the normalized
  * session state and skip their Convex fetches when it is not authorized.
  */
-export async function load({ cookies }): Promise<TenantAdminLayoutData> {
+export async function load({ cookies }): Promise<HostAdminLayoutData> {
 	let session: Awaited<ReturnType<typeof requireAuthWithIdentity>>;
 	try {
 		session = await requireAuthWithIdentity(cookies);
 	} catch {
-		return getTenantAdminLayoutData({ status: "unauthenticated" });
+		return layoutData({ status: "unauthenticated" });
 	}
 
 	if (!session.identity.email) {
-		return getTenantAdminLayoutData({ status: "unauthenticated" });
+		return layoutData({ status: "unauthenticated" });
 	}
 
 	const access = await getSiteAdminAccess(session.token, session.identity.email);
 	if (!access?.authorized || !("enabledFeatures" in access)) {
-		return getTenantAdminLayoutData({
+		return layoutData({
 			status: "unauthorized",
 			email: session.identity.email,
 		});
 	}
 
-	return getTenantAdminLayoutData({
+	return layoutData({
 		status: "authorized",
 		email: session.identity.email,
 		tier: access.tier,
