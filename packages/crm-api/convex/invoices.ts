@@ -1,3 +1,4 @@
+import { businessSearchText } from "./helpers/businessSearch";
 import { logActivity } from "./activityLog";
 import { calculateInvoiceAmounts } from "../src/invoiceAmounts";
 import { v } from "convex/values";
@@ -144,6 +145,7 @@ export const create = mutation({
 		calculateInvoiceAmounts(args.items, args.taxPercent);
 		const invoiceNumber = await allocateNextInvoiceNumber(ctx, args.siteUrl);
 		const invoiceId = await ctx.db.insert("invoices", {
+			searchText: businessSearchText({ ...args, invoiceNumber, clientName: client.name }),
 			...args,
 			invoiceNumber,
 			clientName: client.name,
@@ -551,6 +553,8 @@ export const remove = mutation({
 			(invoice.paidAmount ?? 0) > 0 || invoice.paidAt !== undefined || invoice.status === "paid" || invoice.status === "partial"
 		)
 			throw new Error("Invoices with payment history must be retained; cancel instead");
+		const schedule = await ctx.db.query("recurringInvoiceSchedules").withIndex("by_template", q => q.eq("templateInvoiceId", invoiceId)).first();
+		if (schedule || invoice.recurringScheduleId) throw new Error("Recurring invoice history must be retained; cancel the schedule instead");
 		const sourceQuote = await ctx.db.query("quotes").withIndex("by_convertedToInvoice", q => q.eq("convertedToInvoice", invoiceId)).first();
 		if (sourceQuote) throw new Error("Invoices linked to retained quotes must be retained");
 		await deleteDocument(ctx, invoiceId, siteUrl, "invoicing");

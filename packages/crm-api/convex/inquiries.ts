@@ -1,4 +1,5 @@
 import { paginationOptsValidator } from "convex/server";
+import { enqueueInquiryNotification, inquiryNotificationEnvelope } from "./helpers/inquiryNotifications";
 import { v } from "convex/values";
 import { mutation, query, type QueryCtx, type MutationCtx } from "./_generated/server";
 import type { Id } from "./_generated/dataModel";
@@ -24,16 +25,19 @@ export const create = mutation({
 		phone: v.optional(v.string()),
 		subject: v.optional(v.string()),
 		message: v.string(),
+		notification: v.optional(inquiryNotificationEnvelope),
 	},
-	handler: async (ctx, { webhookSecret, ...args }) => {
+	handler: async (ctx, { webhookSecret, notification, ...args }) => {
 		await requireWebhookCallerOrAuth(ctx, webhookSecret, { allowAuth: false });
 		const client = await ctx.db.query("platformClients").withIndex("by_siteUrl", q => q.eq("siteUrl", args.siteUrl)).unique();
 		if (client?.offboarding) throw new Error("Site intake is disabled");
 		if (client) assertClientFeature(client, "inquiries");
-		return await ctx.db.insert("inquiries", {
+		const id = await ctx.db.insert("inquiries", {
 			...args,
 			status: "new",
 		});
+		if (notification) await enqueueInquiryNotification(ctx, id, args.siteUrl, notification);
+		return id;
 	},
 });
 
@@ -239,7 +243,9 @@ export const remove = mutation({
 	args: { id: v.id("inquiries") },
 	handler: async (ctx, { id }) => {
 		await requireDocumentSiteAdmin(ctx, "inquiries", id, "inquiries");
-		await ctx.db.delete(id);
+		const notice=await ctx.db.query("inquiryNotifications").withIndex("by_inquiryId",q=>q.eq("inquiryId",id)).unique();
+  if(notice) await ctx.db.delete(notice._id);
+  await ctx.db.delete(id);
 		return { deleted: true };
 	},
 });
