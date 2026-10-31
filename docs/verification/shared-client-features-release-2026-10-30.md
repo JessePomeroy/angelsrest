@@ -54,14 +54,30 @@ or a blanket guarantee of backend/Worker compatibility.
 Vercel reported new hub production deployment `dpl_23j25vUvKTvpdFEvJa1eQ19oU53b`
 Ready at merged source `cd352b1808f658ae6b094f98f95b952ca93e246b`. The canonical
 alias and four bounded public route checks passed. Its post-merge CI run 41149645579
-and source-bound production observation remain pending in this progress record.
+passed at that exact source. Artifact `13023271870` is retained in the
+[production observation](../integration-evidence/releases/production/observation-e2856143a68ec9203b48091d0f2c7a8741bfb65116f6304bc6e0829a2429e30e.json). Public `/` and
+`/cart` checks passed and the current healthy reference advanced to this deployment;
+the previous recovery receipt remains retained. These are bounded HTTP checks,
+not owner or payment-workflow acceptance.
 
 Queen Worm PR #34 merged as `08aae4b6e2ddfdeefb4f9d4459d19936273e731f`. Its tree
 matches reviewed head `a440b712ce752b312ed8d65486d203e1d253c83d`, which passed Site
 checks run 41143944219, local lint/types/142 unit tests/build, 16 Admin browser checks
-and 62 configured-site browser checks. Its monitored cutover remains pending.
-The existing live source `7f26358403b75eff89a368b04f242c6b7be9bc97`, deployment
-`dpl_GJ5qZoLkdqrk2sV2RJHJb4ywSTVV`, still serves queenworm.com with checkout closed.
+and 62 configured-site browser checks. Its guarded monitored build, output scan,
+14 candidate checks, alias cutover and 14 live checks completed successfully.
+Ready Preview deployment `dpl_5rPQNX5bwdTJeq6gYbm3gZtAJeQj` now serves
+queenworm.com at reviewed source `a440b712ce752b312ed8d65486d203e1d253c83d`.
+The public release marker reports inquiries enabled and checkout disabled. The
+provider alias/source read-back agrees. Tenant-scoped `/orders` redirects to the
+hub; an unverified checkout-success URL does not show a payment confirmation.
+Sentry's authenticated read API returned this exact release in the dedicated
+Queen Worm project; no new diagnostic event was sent.
+
+The Queen Worm repository retains the unmodified guarded release receipt and
+its [release record](https://github.com/JessePomeroy/queenworm/blob/38c332b4eb7469abc213a788edac423ef3c7d8e6/docs/integration-evidence/shared-client-features-release.md).
+The prior healthy deployment `dpl_GJ5qZoLkdqrk2sV2RJHJb4ywSTVV`, source
+`7f26358403b75eff89a368b04f242c6b7be9bc97`, remains retained for rollback.
+Host rollback does not roll back the additive shared backend.
 
 All six Queen Worm owner/handoff records remain pending. No live customer record,
 email, payment or gallery mutation was created for these checks. No deployment was
