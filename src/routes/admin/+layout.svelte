@@ -189,6 +189,9 @@ let shouldRecoverConvexAuth = $derived(
 
 setAdminConfig({
 	...adminConfig,
+	get galleryWorkerUrl() {
+		return data.galleryWorkerUrl;
+	},
 	authClient: adminAuthClient,
 });
 </script>

@@ -44,6 +44,7 @@ const authHarness = vi.hoisted(() => {
 		token,
 		unchangedMethod,
 		configuredClient: null as typeof client | null,
+		configureWorker: vi.fn<(url?: string) => void>(),
 		emitSession(value: SessionValue) {
 			session = value;
 			for (const subscriber of subscribers) subscriber(value);
@@ -83,8 +84,12 @@ vi.mock("@jessepomeroy/admin/core", async () => {
 		AdminLayout: renderChildren,
 		AuthGuard: renderChildren,
 		LoadingState: () => undefined,
-		setAdminConfig: (config: { authClient?: typeof authHarness.client }) => {
+		setAdminConfig: (config: {
+			authClient?: typeof authHarness.client;
+			galleryWorkerUrl?: string;
+		}) => {
 			authHarness.configuredClient = config.authClient ?? null;
+			authHarness.configureWorker(config.galleryWorkerUrl);
 		},
 	};
 });
@@ -168,6 +173,7 @@ function getConfiguredAuthClient() {
 }
 
 const authorizedData = {
+	galleryWorkerUrl: "https://staging-worker.example",
 	isPreview: false,
 	siteSettings: {
 		artistName: "Jesse Pomeroy",
@@ -319,6 +325,7 @@ describe("admin layout Convex auth protocol and lifecycle", () => {
 		});
 		authHarness.unchangedMethod.mockReset();
 		authHarness.configuredClient = null;
+		authHarness.configureWorker.mockReset();
 		navigationHarness.invalidateAll.mockReset();
 		navigationHarness.invalidateAll.mockResolvedValue();
 		reloadHarness.events.length = 0;
@@ -359,6 +366,7 @@ describe("admin layout Convex auth protocol and lifecycle", () => {
 		});
 
 		const client = mountAuthorizedLayout(children);
+		expect(authHarness.configureWorker).toHaveBeenLastCalledWith(authorizedData.galleryWorkerUrl);
 		await vi.waitFor(() => {
 			const messages = messagesFor(sockets[0]);
 			expect(messages.some(authenticatesUser)).toBe(true);

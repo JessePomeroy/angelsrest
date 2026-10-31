@@ -1,10 +1,16 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { load } from "../+layout.server";
 
-const { mockRequireAuthWithIdentity, mockGetSiteAdminAccess } = vi.hoisted(() => ({
+const { mockRequireAuthWithIdentity, mockGetSiteAdminAccess, privateEnv } = vi.hoisted(() => ({
 	mockRequireAuthWithIdentity: vi.fn(),
 	mockGetSiteAdminAccess: vi.fn(),
+	privateEnv: {
+		GALLERY_WORKER_URL: "https://staging-worker.example",
+		GALLERY_ADMIN_SECRET: "synthetic-private-worker-key",
+	} as Record<string, string | undefined>,
 }));
+
+vi.mock("$env/dynamic/private", () => ({ env: privateEnv }));
 
 vi.mock("$lib/server/adminAuth", () => ({
 	requireAuthWithIdentity: mockRequireAuthWithIdentity,
@@ -17,12 +23,14 @@ vi.mock("$lib/server/siteAdminAuthorization", () => ({
 describe("admin layout authorization", () => {
 	beforeEach(() => {
 		vi.clearAllMocks();
+		privateEnv.GALLERY_WORKER_URL = "https://staging-worker.example";
 	});
 
 	it("returns unauthenticated when the session is invalid", async () => {
 		mockRequireAuthWithIdentity.mockRejectedValue(new Error("invalid session"));
 
 		await expect(load({ cookies: {} } as never)).resolves.toEqual({
+			galleryWorkerUrl: "https://staging-worker.example",
 			adminSession: { status: "unauthenticated" },
 		});
 	});
@@ -35,6 +43,7 @@ describe("admin layout authorization", () => {
 		mockGetSiteAdminAccess.mockResolvedValue({ authorized: false, tier: "basic" });
 
 		await expect(load({ cookies: {} } as never)).resolves.toEqual({
+			galleryWorkerUrl: "https://staging-worker.example",
 			adminSession: { status: "unauthorized", email: "other@example.com" },
 		});
 	});
@@ -51,6 +60,7 @@ describe("admin layout authorization", () => {
 		});
 
 		await expect(load({ cookies: {} } as never)).resolves.toEqual({
+			galleryWorkerUrl: "https://staging-worker.example",
 			adminSession: {
 				status: "authorized",
 				email: "creator@example.com",
@@ -60,5 +70,14 @@ describe("admin layout authorization", () => {
 			},
 		});
 		expect(mockGetSiteAdminAccess).toHaveBeenCalledWith("session-token", "creator@example.com");
+	});
+
+	it("keeps unrelated admin access available without media configuration and never serializes its key", async () => {
+		privateEnv.GALLERY_WORKER_URL = undefined;
+		mockRequireAuthWithIdentity.mockRejectedValue(new Error("invalid session"));
+		const data = await load({ cookies: {} } as never);
+		expect(data.adminSession.status).toBe("unauthenticated");
+		expect(data.galleryWorkerUrl).toBeUndefined();
+		expect(JSON.stringify(data)).not.toContain(privateEnv.GALLERY_ADMIN_SECRET);
 	});
 });
