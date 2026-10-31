@@ -1,5 +1,11 @@
 # @jessepomeroy/crm-api
 
+## 6.13.0
+
+### Minor Changes
+
+- bf955bf: Add cursor-based business record access, durable inquiry notification jobs, delivery upload checkpoints, and explicitly activated recurring invoice draft schedules. Deploy the additive schema, search backfill, runner configuration, and matching Worker before enabling new Admin capabilities.
+
 ## 6.12.0
 
 ### Minor Changes
