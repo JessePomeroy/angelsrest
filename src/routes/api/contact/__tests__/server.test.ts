@@ -81,126 +81,44 @@ describe("contact API", () => {
 		expect(mocks.convexMutation).not.toHaveBeenCalled();
 	});
 
-	it("persists the verified inquiry before sending one replyable owner notification", async () => {
+	it("atomically requests one durable, replyable owner notification with the verified inquiry", async () => {
 		const response = await POST(postRequest() as never);
-
 		expect(response.status).toBe(200);
-		expect(await response.json()).toEqual({ success: true });
-		expect(mocks.verifyTurnstileToken).toHaveBeenCalledWith({
-			token: "challenge-token",
-			remoteIp: "203.0.113.4",
-		});
-		expect(mocks.convexMutation).toHaveBeenCalledWith("inquiries.create", {
+		expect(mocks.convexMutation).toHaveBeenCalledExactlyOnceWith("inquiries.create", {
 			webhookSecret: "test-webhook-secret",
 			siteUrl: "angelsrest.online",
 			name: "Example Person",
 			email: "person@example.com",
 			subject: "Question",
 			message: "Hello",
-		});
-		expect(mocks.resendSend).toHaveBeenCalledOnce();
-		expect(mocks.resendSend).toHaveBeenCalledWith({
-			from: "contact@angelsrest.online",
-			to: "notifications@example.com",
-			replyTo: "person@example.com",
-			subject: "Question",
-			text: "Name: Example Person\nEmail: person@example.com\n\nHello",
-			html: renderContactOwnerNotificationHtml({
-				name: "Example Person",
-				email: "person@example.com",
+			notification: {
+				transport: "hub",
+				from: "contact@angelsrest.online",
+				to: "notifications@example.com",
+				replyTo: "person@example.com",
 				subject: "Question",
-				message: "Hello",
-			}),
+				text: "Name: Example Person\nEmail: person@example.com\n\nHello",
+				html: renderContactOwnerNotificationHtml({
+					name: "Example Person",
+					email: "person@example.com",
+					subject: "Question",
+					message: "Hello",
+				}),
+			},
 		});
-		expect(mocks.convexMutation.mock.invocationCallOrder[0]).toBeLessThan(
-			mocks.resendSend.mock.invocationCallOrder[0] as number,
-		);
-	});
-
-	it("preserves the fallback envelope while rendering an absent-subject state", async () => {
-		const response = await POST(postRequest({ subject: "   " }) as never);
-
-		expect(response.status).toBe(200);
-		expect(mocks.resendSend).toHaveBeenCalledWith({
-			from: "contact@angelsrest.online",
-			to: "notifications@example.com",
-			replyTo: "person@example.com",
-			subject: "Contact from Example Person",
-			text: "Name: Example Person\nEmail: person@example.com\n\nHello",
-			html: renderContactOwnerNotificationHtml({
-				name: "Example Person",
-				email: "person@example.com",
-				subject: undefined,
-				message: "Hello",
-			}),
-		});
-	});
-
-	it("does not notify the owner when inquiry persistence fails", async () => {
-		const persistenceError = new Error("Convex unavailable");
-		mocks.convexMutation.mockRejectedValue(persistenceError);
-		const consoleError = vi.spyOn(console, "error").mockImplementation(() => {});
-
-		const response = await POST(postRequest() as never);
-
-		expect(response.status).toBe(500);
-		expect(await response.json()).toEqual({ error: "Failed to send" });
-		expect(mocks.convexMutation).toHaveBeenCalledOnce();
 		expect(mocks.resendSend).not.toHaveBeenCalled();
-		expect(consoleError).toHaveBeenCalledWith("Contact form error:", persistenceError);
 	});
-
-	it("contains a rejected owner notification after the inquiry is durable", async () => {
-		const deliveryError = new Error("Resend transport unavailable");
-		mocks.resendSend.mockRejectedValue(deliveryError);
-		const consoleError = vi.spyOn(console, "error").mockImplementation(() => {});
-
-		const response = await POST(postRequest() as never);
-
-		expect(response.status).toBe(200);
-		expect(await response.json()).toEqual({ success: true });
-		expect(mocks.convexMutation).toHaveBeenCalledOnce();
-		expect(mocks.resendSend).toHaveBeenCalledOnce();
-		expect(consoleError).toHaveBeenCalledWith(
-			"[contact] owner notification failed after inquiry was saved",
-			deliveryError,
+	it("uses a fallback subject in the queued envelope", async () => {
+		expect((await POST(postRequest({ subject: " " }) as never)).status).toBe(200);
+		expect(mocks.convexMutation.mock.calls[0][1].notification.subject).toBe(
+			"Contact from Example Person",
 		);
 	});
-
-	it("contains a resolved Resend API error after the inquiry is durable", async () => {
-		mocks.resendSend.mockResolvedValue({
-			data: null,
-			error: { message: "Resend rejected notification" },
-			headers: null,
-		});
-		const consoleError = vi.spyOn(console, "error").mockImplementation(() => {});
-
-		const response = await POST(postRequest() as never);
-
-		expect(response.status).toBe(200);
-		expect(await response.json()).toEqual({ success: true });
-		expect(mocks.convexMutation).toHaveBeenCalledOnce();
-		expect(mocks.resendSend).toHaveBeenCalledOnce();
-		expect(consoleError).toHaveBeenCalledWith(
-			"[contact] owner notification failed after inquiry was saved",
-			expect.objectContaining({ message: "Resend rejected notification" }),
-		);
-	});
-
-	it("contains a Resend response with no delivery id after the inquiry is durable", async () => {
-		mocks.resendSend.mockResolvedValue({ data: null, error: null, headers: null });
-		const consoleError = vi.spyOn(console, "error").mockImplementation(() => {});
-
-		const response = await POST(postRequest() as never);
-
-		expect(response.status).toBe(200);
-		expect(await response.json()).toEqual({ success: true });
-		expect(mocks.convexMutation).toHaveBeenCalledOnce();
-		expect(mocks.resendSend).toHaveBeenCalledOnce();
-		expect(consoleError).toHaveBeenCalledWith(
-			"[contact] owner notification failed after inquiry was saved",
-			expect.objectContaining({ message: "Owner notification returned no delivery id" }),
-		);
+	it("does not confirm persistence when atomic enqueue fails", async () => {
+		mocks.convexMutation.mockRejectedValue(new Error("Unavailable"));
+		vi.spyOn(console, "error").mockImplementation(() => {});
+		expect((await POST(postRequest() as never)).status).toBe(500);
+		expect(mocks.resendSend).not.toHaveBeenCalled();
 	});
 
 	it("fails closed when the shared Convex secret is missing", async () => {
