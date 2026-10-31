@@ -11,7 +11,8 @@
 
 import { captureException, flush, withIsolationScope } from "@sentry/node";
 import type { Handle, HandleServerError } from "@sveltejs/kit";
-import { contentSecurityPolicy } from "$lib/config/securityPolicy";
+import { env } from "$env/dynamic/private";
+import { getContentSecurityPolicy } from "$lib/config/securityPolicy";
 import { applyCapabilityResponsePrivacy } from "$lib/server/capabilityResponsePrivacy";
 import { applyPublicPageCache } from "$lib/server/publicPageCache";
 import { isStagingEnvironment } from "$lib/server/runtimeConfig";
@@ -43,7 +44,7 @@ function addSecurityHeaders(response: Response, pathname: string): Response {
 		//   in both script-src and frame-src for the managed widget.
 		// - Private delivery-gallery videos stream from the gallery worker. Media
 		//   does not inherit img-src, so that exact origin is also in media-src.
-		contentSecurityPolicy,
+		getContentSecurityPolicy(env.GALLERY_WORKER_URL),
 	);
 	applyCapabilityResponsePrivacy(cloned.headers, pathname);
 	return cloned;
