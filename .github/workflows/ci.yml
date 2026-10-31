@@ -50,7 +50,7 @@ jobs:
       GALLERY_ADMIN_SECRET: placeholder
       CHECKOUT_SNAPSHOT_MODE: handle-v2
       NEW_ORDER_CHECKOUT_CONTROL: '{"version":1,"tenants":[{"siteUrl":"angelsrest.online","state":"open","generation":1},{"siteUrl":"zippymiggy.com","state":"open","generation":1}]}'
-      RELEASE_WORKER_REVISION: fd82eb9f89d251d1348319dcd2a456771d210bce
+      RELEASE_WORKER_REVISION: c496745ba0c137db7ad959b934064e0398d5b93c
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
