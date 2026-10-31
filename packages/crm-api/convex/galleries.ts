@@ -177,6 +177,9 @@ export const remove = mutation({
 	handler: async (ctx, { id }) => {
 		const gallery = await requireDocumentSiteAdmin(ctx, "galleries", id, "galleryDelivery");
 
+  const unfinished=await ctx.db.query("deliveryUploads").withIndex("by_gallery_open",q=>q.eq("galleryId",id).eq("open",true)).first();
+  if(unfinished) throw new Error("Resume or remove interrupted uploads before deleting this gallery");
+
 		// Flag the gallery so any in-flight reads see it's being removed.
 		if (gallery.status !== "archived") {
 			await ctx.db.patch(id, { status: "archived" });
@@ -207,7 +210,10 @@ export const _removeBatch = internalMutation({
 			await ctx.db.delete(image._id);
 		}
 
-		let remainingBudget = REMOVE_BATCH_SIZE - images.length;
+  const checkpoints=await ctx.db.query("deliveryUploads").withIndex("by_gallery",q=>q.eq("galleryId",id)).take(REMOVE_BATCH_SIZE-images.length);
+  for(const checkpoint of checkpoints) await ctx.db.delete(checkpoint._id);
+
+		let remainingBudget = REMOVE_BATCH_SIZE - images.length - checkpoints.length;
 		if (remainingBudget > 0 && siteUrl) {
 			const downloads = await ctx.db
 				.query("galleryDownloads")
@@ -396,6 +402,8 @@ export const addImage = mutation({
 		if (!gallery || gallery.siteUrl !== args.siteUrl) {
 			throw new Error("Gallery not found");
 		}
+  const checkpoint = await ctx.db.query("deliveryUploads").withIndex("by_key", q=>q.eq("r2Key",args.r2Key)).unique();
+  if (gallery.status === "archived" || checkpoint && (checkpoint.state === "deleting" || checkpoint.state === "deleted" || checkpoint.galleryId !== args.galleryId || checkpoint.siteUrl !== args.siteUrl || checkpoint.filename !== args.filename || checkpoint.sizeBytes !== args.sizeBytes || checkpoint.width !== args.width || checkpoint.height !== args.height)) throw new Error("Upload checkpoint is unavailable or conflicts with registration");
 		// A lost mutation response must be replayable without counting the same
 		// stored original twice. Different facts cannot adopt an existing identity.
 		const matches = await ctx.db.query("galleryImages").withIndex("by_r2Key", (q) => q.eq("r2Key", args.r2Key)).take(2);
@@ -407,7 +415,11 @@ export const addImage = mutation({
 				|| existing.width !== args.width || existing.height !== args.height) {
 				throw new Error("Gallery file registration conflicts with existing metadata");
 			}
+			if (checkpoint) await ctx.db.patch(checkpoint._id, {state:"registered",open:false});
 			return existing._id;
+		}
+		if (checkpoint?.state === "registered") {
+			throw new Error("Registered upload metadata is unavailable");
 		}
 
 		const imageId = await ctx.db.insert("galleryImages", {
@@ -429,6 +441,7 @@ export const addImage = mutation({
 			totalSizeBytes: gallery.totalSizeBytes + args.sizeBytes,
 		});
 
+		if (checkpoint) await ctx.db.patch(checkpoint._id, {state:"registered",open:false});
 		return imageId;
 	},
 });
@@ -444,6 +457,15 @@ export const removeImage = mutation({
 		}
 		if (siteUrl !== undefined && image.siteUrl !== siteUrl) throw new Error("Image not found");
 		if (siteUrl === undefined) await requireSiteAdmin(ctx, image.siteUrl, "galleryDelivery");
+
+		// Ordinary image deletion must also revoke registration in another tab.
+		const checkpoint = await ctx.db.query("deliveryUploads")
+			.withIndex("by_key", (q) => q.eq("r2Key", image.r2Key)).unique();
+		if (checkpoint) {
+			if (checkpoint.siteUrl !== image.siteUrl || checkpoint.galleryId !== image.galleryId)
+				throw new Error("Upload identity conflict");
+			await ctx.db.patch(checkpoint._id, { state: "deleted", open: false });
+		}
 
 		const gallery = await ctx.db.get(image.galleryId);
 		if (gallery) {

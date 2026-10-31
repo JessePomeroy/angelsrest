@@ -1,3 +1,4 @@
+import { businessSearchText } from "./helpers/businessSearch";
 import { logActivity } from "./activityLog";
 import { v } from "convex/values";
 import { mutation, query } from "./_generated/server";
@@ -76,6 +77,7 @@ export const create = mutation({
 			throw new Error("Client not found");
 		}
 		const contractId = await ctx.db.insert("contracts", {
+			searchText: businessSearchText({ ...args, clientName: client.name }),
 			...args,
 			clientName: client.name,
 			status: "draft",
@@ -107,6 +109,7 @@ export const update = mutation({
 	},
 	handler: async (ctx, { contractId, siteUrl, ...updates }) => {
 		const previous = await patchDocument(ctx, contractId, siteUrl, updates, "contracts");
+		if (updates.title !== undefined) await ctx.db.patch(contractId, { searchText: businessSearchText({ ...previous, ...updates }) });
 		if (updates.status !== previous.status) {
 			if (updates.status === "signed") await ctx.db.patch(contractId, { signedAt: Date.now() });
 		}

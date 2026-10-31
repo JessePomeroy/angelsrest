@@ -1,5 +1,6 @@
 import { commerceIntakeFields, intakeFailure, intakeRecoveryReason, intakeState } from "./helpers/commerceIntakeJobs";
 import { defineSchema, defineTable } from "convex/server";
+import { inquiryNotificationEnvelope } from "./helpers/inquiryNotifications";
 import { v } from "convex/values";
 import { checkoutFinancialSnapshotValidator } from "./helpers/checkoutFinancialSnapshot";
 import { applicationFeeErrorValidator, applicationFeeObservationValidator } from "./helpers/applicationFeeVerification";
@@ -231,6 +232,14 @@ const manualRefundRecoveryEvidenceFields = {
 };
 
 export default defineSchema({
+	inquiryNotifications: defineTable({
+		inquiryId: v.id("inquiries"), siteUrl: v.string(), envelope: inquiryNotificationEnvelope,
+		state: v.union(v.literal("pending"), v.literal("sending"), v.literal("accepted"), v.literal("failed"), v.literal("uncertain")),
+		senderFingerprint: v.optional(v.string()),
+		attempts: v.number(), recoveries: v.number(), nextAt: v.number(), firstAttemptAt: v.optional(v.number()),
+		leaseToken: v.optional(v.string()), errorCode: v.optional(v.string()), providerId: v.optional(v.string()), acceptedAt: v.optional(v.number()),
+	}).index("by_inquiryId", ["inquiryId"]),
+	businessSearchMigrations: defineTable({ kind: v.union(v.literal("orders"), v.literal("invoices"), v.literal("quotes"), v.literal("contracts")), cursor: v.string(), done: v.boolean() }).index("by_kind", ["kind"]),
 	// Photographers you've built sites for
 	platformClients: defineTable({
 		// Immutable routing identity. Optional only while existing rows are widened.
@@ -1218,6 +1227,7 @@ export default defineSchema({
 	}).index("by_siteUrl", ["siteUrl"]),
 
 	orders: defineTable({
+		searchText: v.optional(v.string()),
 		clientPrintRefundOperationId: v.optional(v.id("clientPrintRefundOperations")),
 		clientPrintRefundStartedAt: v.optional(v.number()),
 		checkoutFinancialSnapshot: v.optional(checkoutFinancialSnapshotValidator),
@@ -1511,6 +1521,7 @@ export default defineSchema({
 		notes: v.optional(v.string()),
 	})
 		.index("by_siteUrl", ["siteUrl"])
+		.searchIndex("search_records", { searchField: "searchText", filterFields: ["siteUrl", "status"] })
 		.index("by_siteUrl_status", ["siteUrl", "status"])
 		.index("by_siteUrl_and_printProviderAdmissionStatus", [
 			"siteUrl",
@@ -1612,6 +1623,7 @@ export default defineSchema({
 
 	// Invoices — Full tier only
 	invoices: defineTable({
+		searchText: v.optional(v.string()),
 		siteUrl: v.string(),
 		invoiceNumber: v.string(),
 		clientId: v.id("photographyClients"),
@@ -1673,14 +1685,30 @@ export default defineSchema({
 		// Milestone tracking
 		milestoneName: v.optional(v.string()),
 		milestoneIndex: v.optional(v.number()),
-		parentInvoiceId: v.optional(v.id("invoices")),
+		recurringScheduleId: v.optional(v.id("recurringInvoiceSchedules")),
+  recurringCycleDate: v.optional(v.string()),
+  parentInvoiceId: v.optional(v.id("invoices")),
 	})
 		.index("by_siteUrl", ["siteUrl"])
+		.searchIndex("search_records", { searchField: "searchText", filterFields: ["siteUrl", "status"] })
 		.index("by_client", ["clientId"])
 		.index("by_siteUrl_and_status_and_paidAt", ["siteUrl", "status", "paidAt"])
 		.index("by_siteUrl_and_status_and_overdueAt", ["siteUrl", "status", "overdueAt"])
 		.index("by_siteUrl_status", ["siteUrl", "status"])
+		.index("by_schedule_cycle", ["recurringScheduleId", "recurringCycleDate"])
 		.index("by_siteUrl_and_invoiceNumber", ["siteUrl", "invoiceNumber"]),
+
+ deliveryUploads: defineTable({
+  siteUrl:v.string(),galleryId:v.id("galleries"),r2Key:v.string(),filename:v.string(),sizeBytes:v.number(),width:v.number(),height:v.number(),
+  state:v.union(v.literal("pending"),v.literal("registered"),v.literal("deleting"),v.literal("deleted")),open:v.boolean(),
+ }).index("by_key",["r2Key"]).index("by_gallery_open",["galleryId","open"]).index("by_gallery",["galleryId"]).index("by_siteUrl",["siteUrl"]),
+ recurringInvoiceSchedules: defineTable({
+  siteUrl: v.string(), templateInvoiceId: v.id("invoices"), clientId: v.id("photographyClients"), clientName: v.string(),
+  items: v.array(v.object({description:v.string(),quantity:v.number(),unitPrice:v.number()})), taxPercent:v.optional(v.number()), notes:v.optional(v.string()),
+  interval:v.union(v.literal("weekly"),v.literal("monthly"),v.literal("quarterly"),v.literal("yearly")),
+  anchor:v.string(), cycle:v.number(), nextDueDate:v.string(), endDate:v.optional(v.string()),
+  state:v.union(v.literal("active"),v.literal("paused"),v.literal("canceled"),v.literal("completed")), reason:v.optional(v.string()),
+ }).index("by_template",["templateInvoiceId"]).index("by_state_next",["state","nextDueDate"]).index("by_siteUrl",["siteUrl"]),
 
 	// Issued invoice checkouts are immutable payment snapshots, retained across edits.
 	invoiceCheckouts: defineTable({
@@ -1713,6 +1741,7 @@ export default defineSchema({
 
 	// Quotes — Full tier only
 	quotes: defineTable({
+		searchText: v.optional(v.string()),
 		siteUrl: v.string(),
 		quoteNumber: v.string(),
 		clientId: v.id("photographyClients"),
@@ -1741,6 +1770,7 @@ export default defineSchema({
 		convertedToInvoice: v.optional(v.id("invoices")),
 	})
 		.index("by_siteUrl", ["siteUrl"])
+		.searchIndex("search_records", { searchField: "searchText", filterFields: ["siteUrl", "status"] })
 		.index("by_client", ["clientId"])
 		.index("by_siteUrl_and_status_and_acceptedAt", ["siteUrl", "status", "acceptedAt"])
 		.index("by_siteUrl_and_status_and_declinedAt", ["siteUrl", "status", "declinedAt"])
@@ -1765,6 +1795,7 @@ export default defineSchema({
 
 	// Contracts — Full tier only
 	contracts: defineTable({
+		searchText: v.optional(v.string()),
 		siteUrl: v.string(),
 		title: v.string(),
 		clientId: v.id("photographyClients"),
@@ -1790,6 +1821,7 @@ export default defineSchema({
 		signedIp: v.optional(v.string()),
 	})
 		.index("by_siteUrl", ["siteUrl"])
+		.searchIndex("search_records", { searchField: "searchText", filterFields: ["siteUrl", "status"] })
 		.index("by_client", ["clientId"])
 		.index("by_siteUrl_and_status_and_signedAt", ["siteUrl", "status", "signedAt"])
 		.index("by_siteUrl_status", ["siteUrl", "status"]),
