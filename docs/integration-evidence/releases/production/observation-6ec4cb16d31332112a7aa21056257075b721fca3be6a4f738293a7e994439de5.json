@@ -1,0 +1,34 @@
+{
+  "version": 1,
+  "observedAt": "2026-10-31T02:29:12.505Z",
+  "buildRecordId": "sha256:f982a3d2c4ebbe2b644e6204c06973ac506543809b25373bb33f1d14fcb79368",
+  "deploymentRecordId": "sha256:2b971e1bb0e539ea1cb1070334a2e47e74acd9e70a0a653d883fbbc786812ae3",
+  "artifact": {
+    "id": "13024834107",
+    "digest": "sha256:0f041e68331303e0d9b50ab154b2db7227ccb678a282bce6d65b3a757526906f",
+    "bytes": 1310,
+    "runId": "41154441157",
+    "runAttempt": 1,
+    "url": "https://github.com/JessePomeroy/angelsrest/actions/runs/41154441157/artifacts/13024834107"
+  },
+  "provider": {
+    "accountId": "team_YA4WhxHjBPoepo8e5ijnFxmq",
+    "projectId": "prj_q6x2BF1DUnXDMYWNh0oWOQltLjxE",
+    "deploymentId": "dpl_EZxMdbvDYowEypnhUVqJGrvvMXSA",
+    "aliasStableDuringChecks": true
+  },
+  "publicChecks": [
+    {
+      "path": "/",
+      "status": 200,
+      "html": true,
+      "result": "passed"
+    },
+    {
+      "path": "/cart",
+      "status": 200,
+      "html": true,
+      "result": "passed"
+    }
+  ]
+}
