@@ -68,6 +68,8 @@ it("uses frozen content and the same provider key, and records acceptance only w
 	expect(JSON.stringify(mocks.mutation.mock.calls)).not.toContain("re_synthetic");
 });
 it.each([
+	[{ data: null, error: { statusCode: null, name: "application_error" } }, "uncertain"],
+	[{ data: null, error: { name: "application_error" } }, "uncertain"],
 	[{ data: null, error: { statusCode: 429, name: "rate_limit_exceeded" } }, "retryable"],
 	[{ data: null, error: { statusCode: 409, name: "concurrent_idempotent_requests" } }, "retryable"],
 	[{ data: null, error: { statusCode: 422, name: "validation_error" } }, "rejected"],

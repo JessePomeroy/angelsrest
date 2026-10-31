@@ -66,11 +66,11 @@ export async function runInquiryNotification(id: Id<"inquiryNotifications">, lea
 		} else if (result.error) {
 			const code = result.error.statusCode;
 			outcome =
-				result.error.name === "concurrent_idempotent_requests" ||
-				code === 429 ||
-				(code !== null && code !== undefined && code >= 500)
-					? "retryable"
-					: "rejected";
+				code === null || code === undefined
+					? "uncertain"
+					: result.error.name === "concurrent_idempotent_requests" || code === 429 || code >= 500
+						? "retryable"
+						: "rejected";
 		}
 	} catch {
 		outcome = "uncertain";
