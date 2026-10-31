@@ -1,0 +1,31 @@
+{
+  "data": {
+    "accountId": "team_YA4WhxHjBPoepo8e5ijnFxmq",
+    "aliases": [
+      {
+        "assigned": true,
+        "hostname": "angelsrest-jesse-pomeroys-projects.vercel.app"
+      }
+    ],
+    "binding": "source-only",
+    "buildRecordId": "sha256:83daed215cbf3465f60016dc0765553686abefcd9d94c9961d543a2177502c8e",
+    "configFingerprint": null,
+    "deploymentId": "dpl_AdPtNCfYzQ3hkkxKzS1EU8raGVfo",
+    "projectId": "prj_q6x2BF1DUnXDMYWNh0oWOQltLjxE",
+    "provider": "vercel",
+    "sourceRevision": "017e051b5b5026f163753d0b8068f8598501c258",
+    "status": "READY",
+    "target": "staging",
+    "url": "https://angelsrest-ny07btu3t-jesse-pomeroys-projects.vercel.app"
+  },
+  "identity": {
+    "contractFingerprint": null,
+    "environmentId": "staging",
+    "repository": "JessePomeroy/angelsrest",
+    "siteUrl": "angelsrest.online"
+  },
+  "kind": "deployment",
+  "observedAt": "2026-10-31T00:19:01.068Z",
+  "recordId": "sha256:52fe989f8dc69fdf76e7029a002517ef843693cb60a1e8cfe014dcb8d29e89c3",
+  "version": 1
+}
