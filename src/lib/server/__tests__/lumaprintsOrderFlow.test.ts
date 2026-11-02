@@ -1,4 +1,5 @@
 import { ConvexHttpClient } from "convex/browser";
+import { getFunctionName, makeFunctionReference } from "convex/server";
 import { Resend } from "resend";
 import Stripe from "stripe";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
@@ -55,11 +56,14 @@ async function fixture() {
 	const convex = new ConvexHttpClient("https://test.convex.cloud");
 	vi.spyOn(convex, "mutation").mockImplementation(
 		(...parameters: Parameters<ConvexHttpClient["mutation"]>) =>
-			s.t.mutation(parameters[0], parameters[1]),
+			s.t.mutation(
+				makeFunctionReference<"mutation">(getFunctionName(parameters[0])),
+				parameters[1],
+			),
 	);
 	vi.spyOn(convex, "query").mockImplementation(
 		(...parameters: Parameters<ConvexHttpClient["query"]>) =>
-			s.t.query(parameters[0], parameters[1]),
+			s.t.query(makeFunctionReference<"query">(getFunctionName(parameters[0])), parameters[1]),
 	);
 	const stripe = new Stripe("sk_test_fixture");
 	const refund = vi

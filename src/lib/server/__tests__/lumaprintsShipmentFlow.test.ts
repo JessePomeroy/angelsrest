@@ -1,5 +1,5 @@
 import { ConvexHttpClient } from "convex/browser";
-import { getFunctionName } from "convex/server";
+import { getFunctionName, makeFunctionReference } from "convex/server";
 import { Resend } from "resend";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { ensureTenantAliases } from "../../../../packages/crm-api/convex/helpers/tenantContext";
@@ -72,11 +72,11 @@ async function fixture(secondOrderNumber = "12345") {
 	// No outbound provider API credentials are available or needed for shipment intake.
 	const convex = new ConvexHttpClient("https://test.convex.cloud");
 	const mutate = (...parameters: Parameters<ConvexHttpClient["mutation"]>) =>
-		s.t.mutation(parameters[0], parameters[1]);
+		s.t.mutation(makeFunctionReference<"mutation">(getFunctionName(parameters[0])), parameters[1]);
 	const mutation = vi.spyOn(convex, "mutation").mockImplementation(mutate);
 	vi.spyOn(convex, "query").mockImplementation(
 		(...parameters: Parameters<ConvexHttpClient["query"]>) =>
-			s.t.query(parameters[0], parameters[1]),
+			s.t.query(makeFunctionReference<"query">(getFunctionName(parameters[0])), parameters[1]),
 	);
 	const resend = new Resend("re_fixture");
 	const send = vi

@@ -1,6 +1,7 @@
 /// <reference types="vite/client" />
 
 import { ConvexHttpClient } from "convex/browser";
+import { getFunctionName, makeFunctionReference } from "convex/server";
 import { convexTest } from "convex-test";
 import { Resend } from "resend";
 import Stripe from "stripe";
@@ -172,11 +173,14 @@ describe("order intake with real Convex state", () => {
 		const convex = new ConvexHttpClient("https://test.convex.cloud");
 		vi.spyOn(convex, "mutation").mockImplementation(
 			(...parameters: Parameters<ConvexHttpClient["mutation"]>) =>
-				t.mutation(parameters[0], parameters[1]),
+				t.mutation(
+					makeFunctionReference<"mutation">(getFunctionName(parameters[0])),
+					parameters[1],
+				),
 		);
 		vi.spyOn(convex, "query").mockImplementation(
 			(...parameters: Parameters<ConvexHttpClient["query"]>) =>
-				t.query(parameters[0], parameters[1]),
+				t.query(makeFunctionReference<"query">(getFunctionName(parameters[0])), parameters[1]),
 		);
 		const created = await t.mutation(api.orders.create, {
 			siteUrl: SITE_URL,

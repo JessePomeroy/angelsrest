@@ -39,8 +39,11 @@ export default defineConfig(({ isSsrBuild }) => ({
 		}),
 		sveltekit(),
 	],
-	// Compile the shared Svelte package, including its granular entrypoints.
-	ssr: { noExternal: [/^@jessepomeroy\/admin(?:\/|$)/] },
+	// Compile the shared Svelte package and tree-shake the Convex auth barrels.
+	// The host uses their cookie/client helpers; the auth server runs in Convex.
+	ssr: {
+		noExternal: [/^@jessepomeroy\/admin(?:\/|$)/, /^@convex-dev\/better-auth(?:\/|$)/],
+	},
 	build: {
 		minify: "esbuild",
 		chunkSizeWarningLimit: 900,

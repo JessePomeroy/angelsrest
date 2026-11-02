@@ -1,4 +1,5 @@
 import { ConvexHttpClient } from "convex/browser";
+import { getFunctionName, makeFunctionReference } from "convex/server";
 import { convexTest } from "convex-test";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { api } from "$convex/api";
@@ -83,11 +84,14 @@ async function fixture() {
 	privateEnv.LUMAPRINTS_CONNECTIONS = JSON.stringify({ version: 1, connections });
 	const convex = new ConvexHttpClient("https://test.convex.cloud");
 	const mutate = (...parameters: Parameters<ConvexHttpClient["mutation"]>) =>
-		creator.mutation(parameters[0], parameters[1]);
+		creator.mutation(
+			makeFunctionReference<"mutation">(getFunctionName(parameters[0])),
+			parameters[1],
+		);
 	const query = vi
 		.spyOn(convex, "query")
 		.mockImplementation((...parameters: Parameters<ConvexHttpClient["query"]>) =>
-			creator.query(parameters[0], parameters[1]),
+			creator.query(makeFunctionReference<"query">(getFunctionName(parameters[0])), parameters[1]),
 		);
 	const mutation = vi.spyOn(convex, "mutation").mockImplementation(mutate);
 	const input = {
@@ -195,7 +199,7 @@ it("denies client and anonymous identities before reading credentials or making 
 	privateEnv.LUMAPRINTS_CONNECTIONS = "invalid-config";
 	for (const caller of [s.t, s.client]) {
 		s.query.mockImplementation((...parameters: Parameters<ConvexHttpClient["query"]>) =>
-			caller.query(parameters[0], parameters[1]),
+			caller.query(makeFunctionReference<"query">(getFunctionName(parameters[0])), parameters[1]),
 		);
 		for (const action of [
 			() => loadLumaPrintsSetup(s.convex, s.input.siteUrl),

@@ -1,5 +1,6 @@
 /// <reference types="vite/client" />
 import { ConvexHttpClient } from "convex/browser";
+import { getFunctionName, makeFunctionReference } from "convex/server";
 import { convexTest } from "convex-test";
 import type Stripe from "stripe";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
@@ -23,7 +24,7 @@ async function setup(siteUrl: string) {
 	const t = convexTest(schema, modules);
 	const convex = new ConvexHttpClient("https://synthetic.invalid");
 	vi.spyOn(convex, "query").mockImplementation((...args: Parameters<ConvexHttpClient["query"]>) =>
-		t.query(args[0], args[1]),
+		t.query(makeFunctionReference<"query">(getFunctionName(args[0])), args[1]),
 	);
 	await t.run(async (ctx) => {
 		const clientId = await ctx.db.insert("platformClients", {
