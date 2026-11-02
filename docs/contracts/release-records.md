@@ -165,6 +165,16 @@ references. A missing or corrupt published receipt stops status evaluation
 without making a health claim or overwriting the earlier files. Re-running
 observation adds timestamped evidence; `status` reads it without provider access.
 
+One environment directory may retain observations of successive public origins.
+The reader validates every stored record and receipt before selecting deployments
+for the explicitly requested hostname, together with their linked builds, checks,
+capabilities and receipts. An observer deployment has exactly one checked alias;
+ambiguous alias sets are rejected. Another origin's health cannot satisfy the
+requested origin's checks or supply its recovery reference. Environment-wide
+intended releases remain visible. Old files and the environment-wide retention
+limits remain intact; an origin with no observations reports unknown status.
+This local selection does not migrate a durable backend environment's fixed target.
+
 The operator must preserve this small evidence directory through repository
 review or the site's existing evidence-retention process before the CI artifact
 expires. Local hash IDs detect changed bytes, not hostile rewrites or forged
