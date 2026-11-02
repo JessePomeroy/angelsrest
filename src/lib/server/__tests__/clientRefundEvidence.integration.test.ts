@@ -1,6 +1,6 @@
 /// <reference types="vite/client" />
 import { ConvexHttpClient } from "convex/browser";
-import { getFunctionName } from "convex/server";
+import { getFunctionName, makeFunctionReference } from "convex/server";
 import { convexTest } from "convex-test";
 import Stripe from "stripe";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
@@ -202,10 +202,11 @@ async function setup(beforeOrder = false) {
 		);
 	const convex = new ConvexHttpClient("https://test.convex.cloud");
 	vi.spyOn(convex, "mutation").mockImplementation(
-		(...args: Parameters<ConvexHttpClient["mutation"]>) => t.mutation(args[0], args[1]),
+		(...args: Parameters<ConvexHttpClient["mutation"]>) =>
+			t.mutation(makeFunctionReference<"mutation">(getFunctionName(args[0])), args[1]),
 	);
 	vi.spyOn(convex, "query").mockImplementation((...args: Parameters<ConvexHttpClient["query"]>) =>
-		t.query(args[0], args[1]),
+		t.query(makeFunctionReference<"query">(getFunctionName(args[0])), args[1]),
 	);
 	const stripe = new Stripe("sk_test_offline_refund_fixture", { apiVersion: STRIPE_API_VERSION });
 	const list = vi.spyOn(stripe.checkout.sessions, "list").mockResolvedValue(
@@ -316,7 +317,10 @@ describe("current client refund evidence through the existing webhook consumer",
 				if (getFunctionName(args[0]) === `orders:${phase}ClientRefundObservation`) {
 					throw new Error("Database transport unavailable");
 				}
-				return await s.t.mutation(args[0], args[1]);
+				return await s.t.mutation(
+					makeFunctionReference<"mutation">(getFunctionName(args[0])),
+					args[1],
+				);
 			},
 		);
 		if (phase === "fail") s.readRefund.mockRejectedValue(new Error("Provider unavailable"));
@@ -382,7 +386,10 @@ describe("current client refund evidence through the existing webhook consumer",
 		let dropAcknowledgement = true;
 		vi.mocked(s.convex.mutation).mockImplementation(
 			async (...args: Parameters<ConvexHttpClient["mutation"]>) => {
-				const result = await s.t.mutation(args[0], args[1]);
+				const result = await s.t.mutation(
+					makeFunctionReference<"mutation">(getFunctionName(args[0])),
+					args[1],
+				);
 				if (
 					getFunctionName(args[0]) === "orders:finishClientRefundObservation" &&
 					dropAcknowledgement

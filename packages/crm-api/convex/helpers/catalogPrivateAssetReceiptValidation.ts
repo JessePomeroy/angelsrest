@@ -39,8 +39,8 @@ const CATALOG_PRIVATE_EDITOR_ASSET_KEY_PREFIX = "editor-upload-";
 
 /** Portable direct-upload and independently inspected source ceiling. */
 export const CATALOG_PRIVATE_EDITOR_UPLOAD_MAX_SIZE_BYTES = 100_000_000;
-export const CATALOG_PRIVATE_EDITOR_UPLOAD_SHARP_VERSION = "0.35.3";
-export const CATALOG_PRIVATE_EDITOR_UPLOAD_LIBVIPS_VERSION = "8.18.3";
+export const CATALOG_PRIVATE_EDITOR_UPLOAD_SHARP_VERSION = "0.35.5";
+export const CATALOG_PRIVATE_EDITOR_UPLOAD_LIBVIPS_VERSION = "8.18.7";
 export const CATALOG_PRIVATE_EDITOR_ZIP_MAX_UNCOMPRESSED_BYTES = 64 * 1024 * 1024;
 export const CATALOG_PRIVATE_EDITOR_ZIP_MAX_COMPRESSION_RATIO = 100;
 
@@ -720,8 +720,7 @@ export async function validateCatalogPrivateEditorInspectionReceiptSet(receiptSe
 	if (
 		facts.kind === "print_source" &&
 		(receipt.inspection.method !== "sharp_libvips_full_raster_v1" ||
-			receipt.inspection.sharpVersion !== CATALOG_PRIVATE_EDITOR_UPLOAD_SHARP_VERSION ||
-			receipt.inspection.libvipsVersion !== CATALOG_PRIVATE_EDITOR_UPLOAD_LIBVIPS_VERSION)
+			!supportedEditorDecoderVersions(receipt.inspection.sharpVersion, receipt.inspection.libvipsVersion))
 	) {
 		throw catalogPrivateAssetValidationError(
 			"Private catalog editor decoder policy is unsupported",
@@ -740,6 +739,14 @@ export async function validateCatalogPrivateEditorInspectionReceiptSet(receiptSe
 		);
 	}
 	return { ...checked, receiptSet, operation };
+}
+
+function supportedEditorDecoderVersions(sharpVersion: string, libvipsVersion: string) {
+	// Accept the previous exact pair while its stored receipts or deployed image
+	// remain in use. Deploy this admission before upgrading the Worker/Container.
+	return (sharpVersion === CATALOG_PRIVATE_EDITOR_UPLOAD_SHARP_VERSION &&
+		libvipsVersion === CATALOG_PRIVATE_EDITOR_UPLOAD_LIBVIPS_VERSION) ||
+		(sharpVersion === "0.35.3" && libvipsVersion === "8.18.3");
 }
 
 export function sameCatalogPrivateStorageReceiptSet(

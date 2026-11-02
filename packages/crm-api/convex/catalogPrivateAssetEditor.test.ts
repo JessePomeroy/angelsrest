@@ -143,6 +143,30 @@ function editorOperationId(facts: CatalogPrivateAssetFacts) {
 }
 
 describe("exact-one private catalog editor receipt contract", () => {
+	test.each([
+		["0.35.5", "8.18.7", 200],
+		["0.35.3", "8.18.3", 200],
+		["0.35.5", "8.18.3", 400],
+		["0.35.3", "8.18.7", 400],
+	] as const)("admits only reviewed decoder pairs: Sharp %s / libvips %s", async (sharpVersion, libvipsVersion, status) => {
+		const t = convexTest(schema, modules);
+		const facts = editorPrintFacts();
+		const receiptSet = editorInspectionSetV2(await editorIdentity(facts), facts);
+		const receipt = receiptSet.receipts[0];
+		if (receipt?.inspection.method !== "sharp_libvips_full_raster_v1") {
+			throw new Error("fixture drift");
+		}
+		receipt.inspection.sharpVersion = sharpVersion;
+		receipt.inspection.libvipsVersion = libvipsVersion;
+		await withReceiptEnvironment(async () => {
+			const response = await postReceipt(t, EDITOR_INSPECTION_PATH, INSPECTION_SECRET_A, receiptSet);
+			expect(response.status).toBe(status);
+		});
+		if (status === 400) {
+			expect((await storedState(t)).operations).toHaveLength(0);
+		}
+	});
+
 	test("admits storage first, resolves only an authenticated safe print projection, and replays without catalog writes", async () => {
 		const t = convexTest(schema, modules);
 		const { adminA, adminB, stranger } = await seedClients(t);

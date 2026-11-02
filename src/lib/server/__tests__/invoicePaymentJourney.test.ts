@@ -2,6 +2,7 @@
 // @vitest-environment edge-runtime
 
 import { ConvexHttpClient } from "convex/browser";
+import { getFunctionName, makeFunctionReference } from "convex/server";
 import { convexTest } from "convex-test";
 import Stripe from "stripe";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -48,10 +49,10 @@ async function setup() {
 	// Only the network boundary is replaced: routes retain real API references,
 	// authorization checks, schema validators, and invoice/portal functions.
 	vi.spyOn(ConvexHttpClient.prototype, "query").mockImplementation((ref, args = {}) =>
-		backend.query(ref, args),
+		backend.query(makeFunctionReference<"query">(getFunctionName(ref)), args),
 	);
 	vi.spyOn(ConvexHttpClient.prototype, "mutation").mockImplementation((...args) =>
-		backend.mutation(args[0], args[1] ?? {}),
+		backend.mutation(makeFunctionReference<"mutation">(getFunctionName(args[0])), args[1] ?? {}),
 	);
 	await backend.mutation(internal.platform.seedClient, {
 		name: "Invoice verification",

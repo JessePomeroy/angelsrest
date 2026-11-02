@@ -1,6 +1,6 @@
 /// <reference types="vite/client" />
 import { ConvexHttpClient } from "convex/browser";
-import { getFunctionName } from "convex/server";
+import { getFunctionName, makeFunctionReference } from "convex/server";
 import { convexTest } from "convex-test";
 import { Resend } from "resend";
 import Stripe from "stripe";
@@ -102,7 +102,7 @@ test("signed acknowledgement survives partial receipt completion and retries onl
 	const convex = new ConvexHttpClient("https://fixture.convex.cloud");
 	let loseAdminCheckpoint = true;
 	vi.spyOn(convex, "query").mockImplementation((...args: Parameters<ConvexHttpClient["query"]>) =>
-		t.query(args[0], args[1]),
+		t.query(makeFunctionReference<"query">(getFunctionName(args[0])), args[1]),
 	);
 	vi.spyOn(convex, "mutation").mockImplementation(
 		async (...args: Parameters<ConvexHttpClient["mutation"]>) => {
@@ -118,7 +118,7 @@ test("signed acknowledgement survives partial receipt completion and retries onl
 				loseAdminCheckpoint = false;
 				throw new Error("Synthetic lost receipt checkpoint after provider acceptance");
 			}
-			return t.mutation(args[0], args[1]);
+			return t.mutation(makeFunctionReference<"mutation">(getFunctionName(args[0])), args[1]);
 		},
 	);
 	mocks.convex.mockReturnValue(convex);
