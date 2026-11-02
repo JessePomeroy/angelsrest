@@ -99,6 +99,19 @@ GitHub CI and merged. Their merge revisions are respectively
 `a5c8ab0fe20cff533e64a64cc396025ee104e5dd` and
 `1d2129f8808c19fdd6df03dc68da3fee55e99faa`. Hub CI pins that Worker merge,
 whose tree matches the locally tested source. Hub CI and merge gates remain
-separate from these local results. No
-maintenance package publication, backend deployment, or Container rollout has
-completed at this checkpoint; retain their exact identities after rollout.
+separate from these local results.
+
+[Admin release #296](https://github.com/JessePomeroy/admin-dashboard/pull/296)
+merged as `54f881e4757da025ddfe056c8df876a791bec4fa` after its dispatched and
+PR-triggered CI passed. Publication run `41542825625` succeeded, and GitHub
+Packages confirms immutable version 6.14.1 with the integrity recorded in this
+host's lockfile. The host candidate now pins exactly 6.14.1 after a strict-peer
+package-manager install. All 619 runtime files in its published `dist` match
+6.14.0 byte-for-byte; this patch changes verification dependencies. Host package
+contracts, Svelte checks, and the 28 auth/mutation protocol tests pass with the
+installed 6.14.1 artifact.
+
+Actions updates #716 and #717 merged with passing CI. The hub maintenance branch
+includes their current-main merge. Fresh combined-candidate CI remains a merge
+gate. CRM maintenance publication, the additive backend deployment, and both
+Container rollouts remain pending; retain their exact identities after rollout.
