@@ -1,0 +1,99 @@
+{
+  "data": {
+    "checks": {
+      "build": "success",
+      "component_browser": "success",
+      "dependency_install": "success",
+      "e2e": "success",
+      "lint": "success",
+      "retired_checkout": "success",
+      "tests": "success",
+      "typecheck": "success",
+      "worker_checkout": "success",
+      "worker_install": "success"
+    },
+    "configFingerprint": "7a189bd1ed2d6117783a374b62ec63af4f133c153fb3a7b42737b4c7278d8d8a",
+    "github": {
+      "event": "push",
+      "headSha": "ec32d0faa057fc0a46cae61dff89aaa397eef4a9",
+      "ref": "refs/heads/main",
+      "runAttempt": 1,
+      "runId": "41160480819",
+      "workflow": ".github/workflows/ci.yml"
+    },
+    "lockfileDigest": "4f6a87b1db761632761b09cedf3bc7792d340f65860f0647911faafc9302af75",
+    "output": {
+      "bytes": 2807883,
+      "digest": "d2dcd1277983b9951d28a02fec6ae6863179b713110f93c410d26e5d1a583c9f",
+      "fileCount": 218,
+      "scope": "static-client-assets"
+    },
+    "packages": [
+      {
+        "name": "@jessepomeroy/admin",
+        "source": "installed",
+        "version": "6.14.0"
+      },
+      {
+        "name": "@jessepomeroy/crm-api",
+        "source": "workspace",
+        "version": "6.13.0"
+      },
+      {
+        "name": "@jessepomeroy/gallery-delivery",
+        "source": "workspace",
+        "version": "0.4.0"
+      },
+      {
+        "name": "@jessepomeroy/print-catalog",
+        "source": "workspace",
+        "version": "0.3.1"
+      }
+    ],
+    "publicConfig": {
+      "checkoutSnapshotMode": "handle-v2",
+      "cmsMediaOrigin": null,
+      "convexSiteUrl": "https://loyal-swan-967.convex.site",
+      "convexUrl": "https://loyal-swan-967.convex.cloud",
+      "mutationTransport": "http",
+      "publicOrigin": "https://www.angelsrest.online"
+    },
+    "requiredContracts": {
+      "backend": [
+        "crm-api@6.13.0",
+        "commerce-intake-sha256:54f639bc9b076ab14bcef146ce0abf69bdd702f2987704b05ee28122347be94c",
+        "platform-provisioning-sha256:39bc2a2f2044e591c98632986a1d92929ed6ede7dd59829210d815e2450ee0fb"
+      ],
+      "workers": [
+        {
+          "id": "gallery-artwork-contract",
+          "repository": "JessePomeroy/gallery-worker",
+          "sourceRevision": "c496745ba0c137db7ad959b934064e0398d5b93c"
+        },
+        {
+          "id": "cms-media-editor-and-deletion",
+          "repository": "JessePomeroy/gallery-worker",
+          "sourceRevision": null
+        },
+        {
+          "id": "managed-turnstile-siteverify",
+          "repository": null,
+          "sourceRevision": null
+        }
+      ]
+    },
+    "scope": "ci-fixture",
+    "sourceFingerprint": null,
+    "sourceRevision": "ec32d0faa057fc0a46cae61dff89aaa397eef4a9"
+  },
+  "identity": {
+    "contractFingerprint": null,
+    "environmentId": "production",
+    "repository": "JessePomeroy/angelsrest",
+    "siteUrl": "angelsrest.online"
+  },
+  "kind": "build",
+  "observedAt": "2026-10-31T02:49:59.718Z",
+  "recordId": "sha256:6acd9536fbb54dfa5357d2a0da7776d32b5cc1b935e35b69d5523987ac57d34e",
+  "version": 1
+}

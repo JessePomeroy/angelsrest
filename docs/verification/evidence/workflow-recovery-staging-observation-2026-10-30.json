@@ -1,0 +1,199 @@
+{
+  "records": [
+    {
+      "data": {
+        "checks": {
+          "build": "success",
+          "component_browser": "success",
+          "dependency_install": "success",
+          "e2e": "success",
+          "lint": "success",
+          "retired_checkout": "success",
+          "tests": "success",
+          "typecheck": "success",
+          "worker_checkout": "success",
+          "worker_install": "success"
+        },
+        "configFingerprint": "7a189bd1ed2d6117783a374b62ec63af4f133c153fb3a7b42737b4c7278d8d8a",
+        "github": {
+          "event": "workflow_dispatch",
+          "headSha": "be76b739d5f9e7ea21fe9ac85d07339ed61f9b87",
+          "ref": "refs/heads/feat/workflow-recovery-host-20261030",
+          "runAttempt": 1,
+          "runId": "41158156737",
+          "workflow": ".github/workflows/ci.yml"
+        },
+        "lockfileDigest": "4f6a87b1db761632761b09cedf3bc7792d340f65860f0647911faafc9302af75",
+        "output": {
+          "bytes": 2807883,
+          "digest": "1455c7b5b84a61c92e8ade7159c190c71c01bf8e1e8294ca0edb730f90a15871",
+          "fileCount": 218,
+          "scope": "static-client-assets"
+        },
+        "packages": [
+          {
+            "name": "@jessepomeroy/admin",
+            "source": "installed",
+            "version": "6.14.0"
+          },
+          {
+            "name": "@jessepomeroy/crm-api",
+            "source": "workspace",
+            "version": "6.13.0"
+          },
+          {
+            "name": "@jessepomeroy/gallery-delivery",
+            "source": "workspace",
+            "version": "0.4.0"
+          },
+          {
+            "name": "@jessepomeroy/print-catalog",
+            "source": "workspace",
+            "version": "0.3.1"
+          }
+        ],
+        "publicConfig": {
+          "checkoutSnapshotMode": "handle-v2",
+          "cmsMediaOrigin": null,
+          "convexSiteUrl": "https://loyal-swan-967.convex.site",
+          "convexUrl": "https://loyal-swan-967.convex.cloud",
+          "mutationTransport": "http",
+          "publicOrigin": "https://www.angelsrest.online"
+        },
+        "requiredContracts": {
+          "backend": [
+            "crm-api@6.13.0",
+            "commerce-intake-sha256:54f639bc9b076ab14bcef146ce0abf69bdd702f2987704b05ee28122347be94c",
+            "platform-provisioning-sha256:39bc2a2f2044e591c98632986a1d92929ed6ede7dd59829210d815e2450ee0fb"
+          ],
+          "workers": [
+            {
+              "id": "gallery-artwork-contract",
+              "repository": "JessePomeroy/gallery-worker",
+              "sourceRevision": "c496745ba0c137db7ad959b934064e0398d5b93c"
+            },
+            {
+              "id": "cms-media-editor-and-deletion",
+              "repository": "JessePomeroy/gallery-worker",
+              "sourceRevision": null
+            },
+            {
+              "id": "managed-turnstile-siteverify",
+              "repository": null,
+              "sourceRevision": null
+            }
+          ]
+        },
+        "scope": "ci-fixture",
+        "sourceFingerprint": null,
+        "sourceRevision": "be76b739d5f9e7ea21fe9ac85d07339ed61f9b87"
+      },
+      "identity": {
+        "contractFingerprint": null,
+        "environmentId": "staging",
+        "repository": "JessePomeroy/angelsrest",
+        "siteUrl": "angelsrest.online"
+      },
+      "kind": "build",
+      "observedAt": "2026-10-31T02:26:12.238Z",
+      "recordId": "sha256:d267792c0d9ab50c424e49206aace4df16037d5901033a3ccf8cd38039c77a48",
+      "version": 1
+    },
+    {
+      "data": {
+        "accountId": "team_YA4WhxHjBPoepo8e5ijnFxmq",
+        "aliases": [
+          {
+            "assigned": true,
+            "hostname": "staging.angelsrest.online"
+          }
+        ],
+        "binding": "source-only",
+        "buildRecordId": "sha256:d267792c0d9ab50c424e49206aace4df16037d5901033a3ccf8cd38039c77a48",
+        "configFingerprint": null,
+        "deploymentId": "dpl_HTNmmC1zHFbgqmecLDNcyBDRRddy",
+        "projectId": "prj_TZXP4xYmWst9RNYhihhgaRoZ52xq",
+        "provider": "vercel",
+        "sourceRevision": "be76b739d5f9e7ea21fe9ac85d07339ed61f9b87",
+        "status": "READY",
+        "target": "production",
+        "url": "https://angelsrest-staging-d3fvjgjvq-jesse-pomeroys-projects.vercel.app"
+      },
+      "identity": {
+        "contractFingerprint": null,
+        "environmentId": "staging",
+        "repository": "JessePomeroy/angelsrest",
+        "siteUrl": "angelsrest.online"
+      },
+      "kind": "deployment",
+      "observedAt": "2026-10-31T02:32:20.437Z",
+      "recordId": "sha256:46b263cfcbf2e84f65cf0515d5e67723b46ac1ee65c981dd9ec97d016356444b",
+      "version": 1
+    },
+    {
+      "data": {
+        "checks": [
+          {
+            "evidenceRef": "docs/integration-evidence/releases/staging/observation-e6d03292e582e7f272d36b98a0d75122e9c24182a0974d62a97de9daa30d2523.json",
+            "id": "http:/",
+            "result": "passed",
+            "scope": "public"
+          },
+          {
+            "evidenceRef": "docs/integration-evidence/releases/staging/observation-e6d03292e582e7f272d36b98a0d75122e9c24182a0974d62a97de9daa30d2523.json",
+            "id": "http:/cart",
+            "result": "passed",
+            "scope": "public"
+          }
+        ],
+        "configFingerprint": null,
+        "deploymentRecordId": "sha256:46b263cfcbf2e84f65cf0515d5e67723b46ac1ee65c981dd9ec97d016356444b"
+      },
+      "identity": {
+        "contractFingerprint": null,
+        "environmentId": "staging",
+        "repository": "JessePomeroy/angelsrest",
+        "siteUrl": "angelsrest.online"
+      },
+      "kind": "verification",
+      "observedAt": "2026-10-31T02:32:20.437Z",
+      "recordId": "sha256:c905045604ef0b967a934ef6ec4cb441c3343fc60a4c95e0234dfe2efc1b9ced",
+      "version": 1
+    }
+  ],
+  "receipt": {
+    "version": 1,
+    "observedAt": "2026-10-31T02:32:20.437Z",
+    "buildRecordId": "sha256:d267792c0d9ab50c424e49206aace4df16037d5901033a3ccf8cd38039c77a48",
+    "deploymentRecordId": "sha256:46b263cfcbf2e84f65cf0515d5e67723b46ac1ee65c981dd9ec97d016356444b",
+    "artifact": {
+      "id": "13025579662",
+      "digest": "sha256:3ed72af6ef890601c35f2dcb07bbdf0c474b11e36fda3c255081613fbf1a7da4",
+      "bytes": 1340,
+      "runId": "41158156737",
+      "runAttempt": 1,
+      "url": "https://github.com/JessePomeroy/angelsrest/actions/runs/41158156737/artifacts/13025579662"
+    },
+    "provider": {
+      "accountId": "team_YA4WhxHjBPoepo8e5ijnFxmq",
+      "projectId": "prj_TZXP4xYmWst9RNYhihhgaRoZ52xq",
+      "deploymentId": "dpl_HTNmmC1zHFbgqmecLDNcyBDRRddy",
+      "aliasStableDuringChecks": true
+    },
+    "publicChecks": [
+      {
+        "path": "/",
+        "status": 200,
+        "html": true,
+        "result": "passed"
+      },
+      {
+        "path": "/cart",
+        "status": 200,
+        "html": true,
+        "result": "passed"
+      }
+    ]
+  },
+  "receiptName": "observation-e6d03292e582e7f272d36b98a0d75122e9c24182a0974d62a97de9daa30d2523.json"
+}
