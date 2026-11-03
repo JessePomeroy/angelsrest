@@ -16,7 +16,12 @@ export function isPrivateCapabilityPagePath(pathname: string) {
 
 /** Responses that carry or act on a private bearer capability in their path. */
 export function isPrivateCapabilityResponsePath(pathname: string) {
-	return isPrivateCapabilityPagePath(pathname) || isPathWithin(pathname, "/api/portal");
+	return (
+		isPrivateCapabilityPagePath(pathname) ||
+		isPathWithin(pathname, "/api/portal") ||
+		isPathWithin(pathname, "/api/admin/gmail") ||
+		pathname === "/admin/google-connection"
+	);
 }
 
 /** Drop capability-bearing page views before Vercel Analytics sees the URL. */
@@ -61,7 +66,15 @@ function scrubTelemetryValue(value: unknown, seen: WeakMap<object, unknown>): un
 				} catch {
 					return match;
 				}
-				return key === "token" || key === "accessgrant" || key === "draftpreview"
+				return [
+					"token",
+					"accessgrant",
+					"draftpreview",
+					"code",
+					"state",
+					"access_token",
+					"refresh_token",
+				].includes(key)
 					? `${separator}${name}=[redacted]`
 					: match;
 			},

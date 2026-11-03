@@ -12,6 +12,11 @@ export const adminConfig: AdminConfig = {
 	siteName: "angel's rest",
 	fromEmail: "Angel's Rest <noreply@angelsrest.online>",
 	isCreator: true,
+	gmail: {
+		endpoint: "/api/admin/gmail",
+		linking: true,
+		correspondencePath: "/admin/correspondence",
+	},
 	api: createAdminBrowserCapabilities(api),
 	editor: {
 		siteSettings: { previewEndpoint: "/api/admin/draft-preview/settings" },
