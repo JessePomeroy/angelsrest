@@ -145,6 +145,9 @@ function header(message: Record<string, unknown>, name: string) {
 	if (headers.length > 1) throw new Error("Ambiguous message headers");
 	return headers[0] ? string(headers[0].value, 8192) : "";
 }
+export function hasSendId(message: Record<string, unknown>, sendId: string) {
+	return header(message, "X-Angels-Rest-Send-ID") === sendId;
+}
 export function decodeHeader(value: string) {
 	return value.replace(
 		/=\?([^?]+)\?([bq])\?([^?]*)\?=/gi,
@@ -374,6 +377,7 @@ export function verifyFile(bytes: Uint8Array, type: string, size: number) {
 }
 export function composeReply(
 	a: {
+		sendId: string;
 		rfcId: string;
 		recipient: string;
 		subject: string;
@@ -387,6 +391,7 @@ export function composeReply(
 	mailboxAddress(sender);
 	mailboxAddress(a.recipient);
 	if (
+		!/^[A-Za-z0-9;_-]{1,128}$/.test(a.sendId) ||
 		/[\r\n\0]/.test(a.subject) ||
 		a.subject.length > 200 ||
 		!/^<[^<>\s]+@[^<>\s]+>$/.test(a.rfcId) ||
@@ -405,6 +410,8 @@ export function composeReply(
 		`To: ${a.recipient}`,
 		`Subject: =?UTF-8?B?${Buffer.from(a.subject).toString("base64")}?=`,
 		`Message-ID: ${a.rfcId}`,
+		// Gmail can replace Message-ID even on API sends; keep our durable attempt reference.
+		`X-Angels-Rest-Send-ID: ${a.sendId}`,
 		`Date: ${new Date().toUTCString()}`,
 		"MIME-Version: 1.0",
 		...(a.parentRfcId ? [`In-Reply-To: ${a.parentRfcId}`, `References: ${a.parentRfcId}`] : []),

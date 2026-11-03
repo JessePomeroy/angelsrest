@@ -130,6 +130,7 @@ describe("Gmail production protocol lessons", () => {
 	});
 	test("composes fixed recipients and thread references, includes every selected file and refuses header injection", () => {
 		const attempt = {
+			sendId: "synthetic-attempt",
 			rfcId: "<unique@example.test>",
 			recipient: expected.recipient,
 			subject: "Same subject",
@@ -144,10 +145,12 @@ describe("Gmail production protocol lessons", () => {
 			"base64url",
 		).toString();
 		expect(mime).toContain("To: guest@example.test\r\n");
+		expect(mime).toContain("X-Angels-Rest-Send-ID: synthetic-attempt\r\n");
 		expect(mime).toContain("In-Reply-To: <parent@example.test>");
 		expect(mime).toContain("Content-Type: image/png");
 		expect(mime).toContain('Content-Disposition: attachment; filename="image.png"\r\n');
 		expect(mime).not.toContain("Bcc:");
+		expect(() => composeReply({ ...attempt, sendId: "id\r\nBcc: attacker@example.test" }, expected.mailbox, [])).toThrow();
 		expect(() =>
 			composeReply(
 				{ ...attempt, subject: "Hello\r\nBcc: attacker@example.test" },
@@ -163,6 +166,7 @@ describe("Gmail production protocol lessons", () => {
 		const mime = Buffer.from(
 			composeReply(
 				{
+					sendId: "synthetic-filename-attempt",
 					rfcId: "<filename@example.test>",
 					recipient: expected.recipient,
 					subject: "Filename regression",

@@ -14,6 +14,7 @@ import {
 	GmailError,
 	gmailClient,
 	gmailScopes,
+	hasSendId,
 	historyPage,
 	normalizeMessage,
 	oauthToken,
@@ -352,7 +353,7 @@ export const send = internalAction({
 					return { name: f.name, type: f.type, bytes };
 				}),
 			);
-			const raw = composeReply(data.attempt, data.mailbox.address, files);
+			const raw = composeReply({ ...data.attempt, sendId: attemptId }, data.mailbox.address, files);
 			if (!(await ctx.runMutation(internal.gmailState.claimSend, { attemptId }))) return null;
 			submitted = true;
 			const result = await gmail("/messages/send", {
@@ -392,10 +393,34 @@ export const reconcile = internalAction({
 			const a = data.attempt;
 			if (!["submitting", "uncertain"].includes(a.status)) return null;
 			const gmail = gmailClient(await access(data.mailbox));
-			const result = await gmail(
+			let result = await gmail(
 				`/messages?${new URLSearchParams({ q: `in:sent rfc822msgid:${a.rfcId.slice(1, -1)}`, maxResults: "2" })}`,
 			);
-			const rows = array(result.messages ?? [], 2);
+			let rows = array(result.messages ?? [], 2);
+			let matchedSendId = false;
+			if (!rows.length && !result.nextPageToken) {
+				// Read only correlation metadata for a bounded submission window. An
+				// incomplete scan or missing marker is never evidence that a send failed.
+				const startedAt = a.startedAt ?? a._creationTime;
+				result = await gmail(`/messages?${new URLSearchParams({
+					q: `in:sent after:${Math.floor((startedAt - 60_000) / 1000)} before:${Math.ceil((startedAt + 86_400_000) / 1000)}`,
+					maxResults: "100",
+				})}`);
+				const candidates = array(result.messages ?? [], 100);
+				outcome = "ambiguous";
+				if (result.nextPageToken) return null;
+				rows = [];
+				for (const candidate of candidates) {
+					const ref = object(candidate), id = providerId(ref.id);
+					const metadata = await gmail(`/messages/${id}?${new URLSearchParams({
+						format: "metadata", metadataHeaders: "X-Angels-Rest-Send-ID",
+						fields: "id,payload/headers",
+					})}`);
+					if (providerId(metadata.id) !== id) throw new Error("Gmail returned a different message");
+					if (hasSendId(metadata, attemptId)) rows.push(ref);
+				}
+				matchedSendId = true;
+			}
 			outcome = rows.length === 0 && !result.nextPageToken ? "not_found" : "ambiguous";
 			if (rows.length !== 1 || result.nextPageToken) return null;
 			outcome = "mismatch";
@@ -403,14 +428,17 @@ export const reconcile = internalAction({
 				id = providerId(ref.id),
 				threadId = providerId(ref.threadId);
 			if (a.threadId && a.threadId !== threadId) return null;
-			const message = normalizeMessage(await gmail(`/messages/${id}?format=full`), {
+			const raw = await gmail(`/messages/${id}?format=full`);
+			if (matchedSendId && !hasSendId(raw, attemptId)) return null;
+			const message = normalizeMessage(raw, {
 				threadId,
 				recipient: a.recipient,
 				mailbox: data.mailbox.address,
 			});
 			if (
 				message.providerId !== id ||
-				message.rfcId !== a.rfcId ||
+				(!matchedSendId && message.rfcId !== a.rfcId) ||
+				!/^<[^<>\s]+@[^<>\s]+>$/.test(message.rfcId) ||
 				message.subject !== a.subject ||
 				!message.sent ||
 				message.blocked
@@ -421,6 +449,7 @@ export const reconcile = internalAction({
 				providerId: id,
 				threadId,
 				date: message.date,
+				rfcId: message.rfcId,
 			});
 			outcome = "accepted";
 		} catch {

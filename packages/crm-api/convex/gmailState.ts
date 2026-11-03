@@ -528,10 +528,13 @@ export const acceptSend = internalMutation({
 		providerId: v.string(),
 		threadId: v.string(),
 		date: v.number(),
+		rfcId: v.optional(v.string()),
 	},
 	handler: async (ctx, a) => {
 		providerId(a.providerId);
 		providerId(a.threadId);
+		if (a.rfcId !== undefined && !/^<[^<>\s]+@[^<>\s]+>$/.test(a.rfcId))
+			throw new Error("Invalid provider Message-ID");
 		const old = await ctx.db.get(a.attemptId);
 		if (!old || old.status === "accepted") return;
 		if (!["submitting", "uncertain"].includes(old.status))
@@ -563,7 +566,7 @@ export const acceptSend = internalMutation({
 			{
 				providerId: a.providerId,
 				threadId: a.threadId,
-				rfcId: old.rfcId,
+				rfcId: a.rfcId ?? old.rfcId,
 				from: m.address,
 				to: [old.recipient],
 				subject: old.subject,
