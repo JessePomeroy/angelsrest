@@ -176,6 +176,38 @@ login, production Convex and the public site out of the pilot configuration.
 Receipts and logs are retained in the private task directory's `release-20261103/`.
 No consent, new message or production Gmail activation occurred in this deployment.
 
+### Cross-account attachment check — 2026-11-03 UTC
+
+The owner completed sign-in for the second approved pilot account. Its active
+Google account was independently verified. A new synthetic CRM record was created
+through the staging UI, and one message was queued once to that approved recipient.
+Gmail acceptance and the recipient's Inbox arrival were observed separately. A
+sender-and-marker search found exactly one matching synthetic message.
+
+The saved draft survived a fresh login with five ready files totaling exactly
+6,291,456 bytes: two JPEGs, a WebP, a one-page PDF and a PNG. The largest JPEG was
+3,145,727 bytes. The generated files contain no customer content; legal JPEG
+comment segments and a private PNG ancillary chunk provide exact boundary sizes.
+Recipient-side downloaded-byte verification, private rendering and a native reply
+remain pending. The initial RFC Message-ID search did not match; the received
+header still needs inspection before treating this as reconciliation evidence.
+
+The UI rejected an unsupported file and a file one byte above 3 MiB. The backend
+also rejected a combined selection one byte above 6 MiB, preserving four saved
+files, but its error appeared as a generic server failure. The targeted composer
+correction in [Admin #299](https://github.com/JessePomeroy/admin-dashboard/pull/299)
+adds a specific warning before reserving the extra file. Its browser regression
+failed before the correction and passed afterward on desktop/mobile, including
+retrying an interrupted file at the exact total limit. All 1,132 Admin tests and
+package checks pass. The correction is not yet deployed to the pilot.
+
+Admin 6.15.0 is confirmed in the registry. The patch release and exact host adoption
+remain pending. [Backend PR #750](https://github.com/JessePomeroy/angelsrest/pull/750)
+separates the additive backend deployment from the later host rollout. Production
+Gmail remains unconfigured. Nonsecret receipts are retained in
+`release-20261103/pilot-files-ui.json` and `recipient-arrival.json`; file hashes are
+in `attachments/manifest.json` within that private task directory.
+
 ### Earlier staging checkpoint — 2026-11-02
 
 - Convex functions and additive indexes deployed successfully to `rosy-firefly-366`.
@@ -466,7 +498,7 @@ acceptance artifacts. Simulated provider tests do not satisfy any row here.
 | Reviewed existing-thread link | Participants/destination/scope confirmed; duplicate retry is idempotent; another destination rejected; drafts excluded | Pending |
 | Unexpected participants / oversized thread | Visible refusal/withheld state, no silent partial association or reply | Pending |
 | Native Gmail incoming and Sent | Correct thread import/dedup, review/needs-reply/waiting transitions and date clearing | Admin-origin Sent observation/dedup passed for two self-sends; native compose and another sender pending |
-| Representative files | Real approved JPEG/PNG/WebP/PDF, near 3 MiB, exactly 6 MiB combined, five-file selection; over-limit/unsupported rejection | Tiny PNGs and ASCII/accented filenames passed; JPEG/WebP/PDF and size/count boundaries pending |
+| Representative files | Real approved JPEG/PNG/WebP/PDF, near 3 MiB, exactly 6 MiB combined, five-file selection; over-limit/unsupported rejection | Five files at exactly 6 MiB, including a near-3-MiB JPEG, uploaded and were accepted by Gmail; recipient Inbox arrival observed. Downloaded bytes/rendering pending. Unsupported/per-file limits rejected; combined-limit warning correction awaits deployment. |
 | Interrupted upload and private read | Reservation survives reload, incomplete send blocked, original retry works, logout/membership revocation denies reads | Pending |
 | Authenticated push and replay | Valid Google JWT accepted only for configured service identity/audience/subscription; retry only acknowledges durable coverage | Real signed synthetic notice and mailbox notices observed; live negative/replay matrix pending |
 | Lost notification and host downtime | Scheduled catch-up imports once; returning pushes do not skip pages or duplicate mail | Pending |
@@ -475,7 +507,7 @@ acceptance artifacts. Simulated provider tests do not satisfy any row here.
 | Lost send response | One submission only; uncertainty stays blocked; exact Sent reconciliation supplies evidence; no match stays held | Pending |
 | Export and 30-day cleanup | Complete authorized metadata/original downloads; cached bytes removed; holds preserved; backup/log procedure verified | Pending |
 | Offboarding and rollback | Local credential removed, no import/send after fence, ordinary sign-in/grant handling distinct, evidence retained | Pending |
-| Gmail acceptance and recipient delivery | Separately observe provider acceptance and the approved recipient's actual mailbox (including spam); never equate them | Passed separately for two self-sends to the primary approved address; another recipient pending |
+| Gmail acceptance and recipient delivery | Separately observe provider acceptance and the approved recipient's actual mailbox (including spam); never equate them | Passed separately for two self-sends and one five-attachment message to the second approved account's Inbox. Attachment integrity and native reply remain pending. |
 | Deployed latency | Record provider receive/internal timestamp, authenticated notice, durable commit and visible UI update in desktop/mobile sessions | Pending |
 
 For latency, use a declared sample count and retain individual durations, failures
