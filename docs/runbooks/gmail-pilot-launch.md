@@ -33,11 +33,12 @@ not represent this complete feature. Confirm current paths, heads and dirty stat
 before continuing; never treat a remembered branch name as sufficient identity.
 
 The reflection follow-up adds a project verification skill and specific,
-credential-safe OAuth failure reporting. Those new host/backend changes are
-**local and not deployed**. Earlier staging consent/send evidence below applies to
-the recorded deployments, not to the new error handling. The shared admin artifact
-and its package contract are unchanged by this follow-up. Its focused local proof
-is recorded in [the follow-up verification record](../verification/gmail-follow-up-2026-11-02.md).
+credential-safe OAuth failure reporting. These host/backend changes are now
+deployed to the isolated pilot in the release-candidate checkpoint below. Earlier
+consent/send evidence still applies to its recorded deployments; the new deployment
+does not retroactively extend that proof. The shared admin contract was unchanged
+by the error-handling follow-up. Its original local proof is recorded in
+[the follow-up verification record](../verification/gmail-follow-up-2026-11-02.md).
 
 The release branches now include the dependency-maintenance release: Better Auth
 1.6.34, Convex 1.49.0, Admin base 6.14.1 and CRM API base 6.13.1. The updated local
@@ -53,9 +54,9 @@ The installed archive's existing version label is not proof of publication.
 | Environment | A dedicated Angels Rest-owned Google testing project, isolated Convex deployment and host; synthetic records only | Google project `angelsrest-gmail-pilot-261102` created; existing `staging.angelsrest.online` and `rosy-firefly-366` selected after host/backend configuration verification |
 | Cost | Routine low-volume pilot usage; no paid assessment purchase during pilot setup | Owner waived a separate spending-cap approval for routine pilot usage on 2026-11-02; monitor usage without treating that cap as a blocker |
 | Accounts | Approved owner Google login and mailbox; existing synthetic administrator retained for recovery | Owner Google sign-in and stored membership verified; explicit same-account Gmail upgrade connected after replacing the pilot grant; watch and synchronization active |
-| Recipients | Exact addresses for send/reply/delivery tests, mirrored into the server allowlist | Two self-sends to the primary pilot mailbox were delivered. The owner subsequently approved the second pilot mailbox as the second test mailbox and recipient on 2026-11-02; its provider test-user registration, allowlist installation, consent and cross-account checks remain pending. |
+| Recipients | Exact addresses for send/reply/delivery tests, mirrored into the server allowlist | Two self-sends to the primary pilot mailbox were delivered. The approved second mailbox is now in Google's testing audience and the staging mailbox/recipient allowlists; consent and cross-account checks remain pending. |
 | Privacy | Approved policy below, published disclosure, operator access list, backup/log settings and deletion handling | Pilot notice published and linked in Google branding; synthetic tests only; provider recovery/log retention remains a gate for non-test correspondence |
-| Source delivery | Reviewable commits/source PRs in both repositories, additive backend release, then package publication/adoption | Staging uses the earlier verified local Admin artifact; source review and ordered package release are in progress. Publication and production Gmail activation remain separate |
+| Source delivery | Reviewable commits/source PRs in both repositories, additive backend release, then package publication/adoption | Staging now uses the verified candidate built from committed source and current maintenance dependencies. Ordered source/package release is in progress. Publication and production Gmail activation remain separate |
 
 Google Cloud CLI 591.0.0 is installed under the private task directory, using the
 exact official Linux archive and its published SHA-256 checksum. Its configuration
@@ -147,7 +148,35 @@ is currently `angelsrest.online`; isolation must come from its separate backend 
 host environment, not a browser-supplied alternate tenant. Keep production Google
 login, production Convex and the public site out of the pilot configuration.
 
-### Deployed staging checkpoint — 2026-11-02
+### Current release-candidate deployment — 2026-11-03 UTC
+
+- The updated backend deployed to the explicitly selected `rosy-firefly-366`.
+  The dry run confirmed no indexes would be deleted.
+- Prebuilt host `dpl_BuLJwHvHnPTiY7N4eqJJ6Cep6KcK` is Ready. The alias API confirms
+  `staging.angelsrest.online` points to that deployment in the staging project.
+  The preceding host `dpl_Cu7m58U6aTVW9mD5zKZebtgbmyhC` remains available as a
+  rollback candidate, subject to current backend compatibility review.
+- Operator-retained build manifests bind the prebuilt output to hub source
+  `eda30bb53015f970a8cb20f4e6f5d26c8a5794a7` and the Admin archive identified in
+  the release-candidate verification record. No package publication is implied.
+- Password HTTP login returns 200, and the authorized Gmail status returns 200,
+  configured/connected, with an advancing last-sync timestamp. This is distinct
+  from provider-consent and send acceptance.
+- The rendered recovery-account login, inquiries navigation, correspondence page
+  and separate reconnect control passed with no page errors. The login and mailbox
+  identities remain different. Anonymous Gmail status returns 403. No new consent
+  was started by this smoke check.
+- Google remains External/Testing. Its audience contains exactly the two approved
+  accounts, verified after reload. Both staging allowlists were read back with
+  those same two addresses. No administrator membership or mailbox registry changed.
+- The 10,468-file build scan found none of the configured Gmail server keys. The
+  OAuth credential was not passed to the build. Provider logging/retention gates
+  remain open; an artifact scan does not establish their behavior.
+
+Receipts and logs are retained in the private task directory's `release-20261103/`.
+No consent, new message or production Gmail activation occurred in this deployment.
+
+### Earlier staging checkpoint — 2026-11-02
 
 - Convex functions and additive indexes deployed successfully to `rosy-firefly-366`.
 - Host deployment `dpl_Cu7m58U6aTVW9mD5zKZebtgbmyhC` is Ready; Vercel's alias API
@@ -428,7 +457,7 @@ acceptance artifacts. Simulated provider tests do not satisfy any row here.
 
 | Scenario | Required observed result | Observed live status |
 |---|---|---|
-| Ordinary admin login before Gmail configuration | Google/password/session navigation and stored membership work independently | Password HTTP login and owner Google browser sign-in/navigation passed; full expiry matrix pending |
+| Ordinary admin login before Gmail configuration | Google/password/session navigation and stored membership work independently | Password and owner Google login passed earlier; updated candidate's recovery-account browser login/navigation passed after deployment. Full expiry matrix pending |
 | Explicit same-account Gmail upgrade | Both scopes and offline grant verified; login identity/membership unchanged | Passed after grant replacement and account-update repair |
 | Separate business mailbox | Different approved mailbox connects without a new login account or membership | Pending |
 | Declined and partial consent | Clear recovery message, no false connection, ordinary login still works | Pending |
@@ -446,7 +475,7 @@ acceptance artifacts. Simulated provider tests do not satisfy any row here.
 | Lost send response | One submission only; uncertainty stays blocked; exact Sent reconciliation supplies evidence; no match stays held | Pending |
 | Export and 30-day cleanup | Complete authorized metadata/original downloads; cached bytes removed; holds preserved; backup/log procedure verified | Pending |
 | Offboarding and rollback | Local credential removed, no import/send after fence, ordinary sign-in/grant handling distinct, evidence retained | Pending |
-| Gmail acceptance and recipient delivery | Separately observe provider acceptance and the approved recipient's actual mailbox (including spam); never equate them | Passed separately for two self-sends to the sole approved address; another recipient pending |
+| Gmail acceptance and recipient delivery | Separately observe provider acceptance and the approved recipient's actual mailbox (including spam); never equate them | Passed separately for two self-sends to the primary approved address; another recipient pending |
 | Deployed latency | Record provider receive/internal timestamp, authenticated notice, durable commit and visible UI update in desktop/mobile sessions | Pending |
 
 For latency, use a declared sample count and retain individual durations, failures

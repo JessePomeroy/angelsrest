@@ -1,8 +1,9 @@
 # Gmail workflow and connection-error follow-up — 2026-11-02
 
 Scope: the three authorized reflection follow-ups in the existing Gmail feature
-worktree. These changes are local and uncommitted. The new error reporting has not
-been deployed; no mailbox consent, revocation or live send occurred during this run.
+worktree. At this verification checkpoint, the changes were local and uncommitted
+and the new error reporting was not deployed. No mailbox consent, revocation or
+live send occurred during this run.
 Current deployed acceptance remains in the [launch packet](../runbooks/gmail-pilot-launch.md).
 
 ## Changes
