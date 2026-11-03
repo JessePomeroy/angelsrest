@@ -1,6 +1,6 @@
 # Gmail controlled pilot and launch packet
 
-Updated 2026-11-02. **Isolated staging connected; two approved self-sends delivered.** The
+Updated 2026-11-03 UTC. **Isolated staging connected; two approved self-sends delivered.** The
 owner accepted routine pilot spend, selected the first mailbox and the same account
 as project owner, and completed Google Cloud CLI sign-in. The dedicated Google
 project, APIs and notification resources below are created and verified. The owner
@@ -27,7 +27,8 @@ for commands, safe handoffs and resumable evidence.
 
 The feature remains in the existing hub/admin checkouts under
 `/home/strayblackdog/.local/state/angelsrest-gmail-20261101/`, both on
-`feat/gmail-conversations-local-20261101`. The ordinary repository checkouts do
+`feat/gmail-conversations-release-20261102`. The original feature commits remain
+on `feat/gmail-conversations-local-20261101`. The ordinary repository checkouts do
 not represent this complete feature. Confirm current paths, heads and dirty state
 before continuing; never treat a remembered branch name as sufficient identity.
 
@@ -37,6 +38,13 @@ credential-safe OAuth failure reporting. Those new host/backend changes are
 the recorded deployments, not to the new error handling. The shared admin artifact
 and its package contract are unchanged by this follow-up. Its focused local proof
 is recorded in [the follow-up verification record](../verification/gmail-follow-up-2026-11-02.md).
+
+The release branches now include the dependency-maintenance release: Better Auth
+1.6.34, Convex 1.49.0, Admin base 6.14.1 and CRM API base 6.13.1. The updated local
+candidate passed full Admin/host suites and desktop/mobile browser checks. Its
+matched, unpublished Admin archive and generated API are recorded in
+[release-candidate verification](../verification/gmail-release-2026-11-03.md).
+The installed archive's existing version label is not proof of publication.
 
 ## Pilot setup status
 
@@ -330,10 +338,10 @@ External launch gates still required:
 
 ## Concrete release and adoption order
 
-Current local bases are hub `54d3549185a00be4f149e94540ddb6c5e450684c` and admin
-`d03fa84eb7b07a5b62151c77b40379b6ffba7e33`, with uncommitted changes on
-`feat/gmail-conversations-local-20261101`. Local Changesets planning predicts
-CRM API **6.13.0 → 6.14.0** and Admin **6.14.0 → 6.15.0**. These are candidates,
+Original feature commits are hub `b55c322c` and Admin `59cb8cc`; the separate release
+branches merge maintenance bases hub `2f5ccbe99afbc650593617bcd817554edda0f73b` and
+Admin `54f881e4757da025ddfe056c8df876a791bec4fa`. Local Changesets planning predicts
+CRM API **6.13.1 → 6.14.0** and Admin **6.14.1 → 6.15.0**. These are candidates,
 not published versions; recompute against the actual release PR before adoption.
 
 1. With source-delivery authorization, commit/review both focused branches and

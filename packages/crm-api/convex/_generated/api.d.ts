@@ -86,6 +86,7 @@ import type * as helpers_deleting from "../helpers/deleting.js";
 import type * as helpers_documentEmailAttemptValidators from "../helpers/documentEmailAttemptValidators.js";
 import type * as helpers_documentNumbering from "../helpers/documentNumbering.js";
 import type * as helpers_financialOrderAuthorization from "../helpers/financialOrderAuthorization.js";
+import type * as helpers_gmail_connection from "../helpers/gmail/connection.js";
 import type * as helpers_gmail_policy from "../helpers/gmail/policy.js";
 import type * as helpers_gmail_protocol from "../helpers/gmail/protocol.js";
 import type * as helpers_inquiryNotifications from "../helpers/inquiryNotifications.js";
@@ -241,6 +242,7 @@ declare const fullApi: ApiFromModules<{
   "helpers/documentEmailAttemptValidators": typeof helpers_documentEmailAttemptValidators;
   "helpers/documentNumbering": typeof helpers_documentNumbering;
   "helpers/financialOrderAuthorization": typeof helpers_financialOrderAuthorization;
+  "helpers/gmail/connection": typeof helpers_gmail_connection;
   "helpers/gmail/policy": typeof helpers_gmail_policy;
   "helpers/gmail/protocol": typeof helpers_gmail_protocol;
   "helpers/inquiryNotifications": typeof helpers_inquiryNotifications;
