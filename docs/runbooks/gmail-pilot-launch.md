@@ -23,6 +23,27 @@ is separate from the live matrix below. This packet is the sole current acceptan
 record. Use [the Gmail verification skill](../../.agents/skills/verify-angelsrest-gmail/SKILL.md)
 for commands, safe handoffs and resumable evidence.
 
+### Recovery and cross-account checkpoint — 2026-11-03 01:55 UTC
+
+Admin **6.15.1** is published and its registry integrity is recorded. The version
+PR #300 is merged. The host still uses its previously recorded staging artifact;
+published package adoption and the composer-warning deployment remain pending.
+
+The second approved mailbox received the five-attachment message and all downloaded
+bytes matched (6 MiB combined). One native reply imported once into the registered
+conversation and set its workflow to `review`, observed through authenticated
+export without a manual sync. Rendering and full workflow/UI acceptance remain
+separate pending checks.
+
+The provider replaced generated Message-IDs in both an application send and a
+fresh diagnostic. A custom correlation header survived and its bounded metadata
+lookup succeeded. The correction is committed at hub `e299c6a8` and backend
+`1f610c7d`, and deployed only to staging `rosy-firefly-366` at 01:55:12 UTC.
+All 76 Gmail tests, backend types and root lint pass; five existing backend lint
+warnings remain. Backend PR #750 requires renewed CI before merge. Deployed
+lost-response fault injection remains pending. See [the scoped evidence](../verification/gmail-recovery-2026-11-03.md).
+Production Gmail remains unconfigured.
+
 ### Current local follow-up
 
 The feature remains in the existing hub/admin checkouts under
@@ -366,8 +387,9 @@ messages and attachment records are removed with the conversation. Minute-based,
 bounded cleanup must be monitored; overdue cleanup is a fault, not a new policy.
 
 Queued, submitting and uncertain sends hold the conversation and frozen evidence.
-No negative Sent search proves that a message was not sent. Reconciliation uses a
-unique exact RFC Message-ID plus matching thread, participants and subject. If it
+No negative Sent search proves that a message was not sent. Reconciliation checks the exact RFC Message-ID, then a bounded Sent metadata
+scan for the server-created attempt header when Gmail replaces that identifier.
+A unique match must also satisfy the thread, participants and subject checks. If it
 cannot resolve the attempt, stop further use and obtain a separately approved
 exceptional erasure procedure. **There is no erase-to-resend or force-clear button.**
 Irreversible platform offboarding erasure is also blocked while such evidence is
@@ -497,17 +519,17 @@ acceptance artifacts. Simulated provider tests do not satisfy any row here.
 | Membership removed / foreign record | Reads, linking, mutations, export and every attachment read fail closed | Pending |
 | Reviewed existing-thread link | Participants/destination/scope confirmed; duplicate retry is idempotent; another destination rejected; drafts excluded | Pending |
 | Unexpected participants / oversized thread | Visible refusal/withheld state, no silent partial association or reply | Pending |
-| Native Gmail incoming and Sent | Correct thread import/dedup, review/needs-reply/waiting transitions and date clearing | Admin-origin Sent observation/dedup passed for two self-sends; native compose and another sender pending |
-| Representative files | Real approved JPEG/PNG/WebP/PDF, near 3 MiB, exactly 6 MiB combined, five-file selection; over-limit/unsupported rejection | Five files at exactly 6 MiB, including a near-3-MiB JPEG, uploaded and were accepted by Gmail; recipient Inbox arrival observed. Downloaded bytes/rendering pending. Unsupported/per-file limits rejected; combined-limit warning correction awaits deployment. |
+| Native Gmail incoming and Sent | Correct thread import/dedup, review/needs-reply/waiting transitions and date clearing | Admin-origin Sent observation/dedup passed for two self-sends. A native reply from the second approved mailbox imported once into the registered thread and set review; native Sent and UI-state checks remain pending |
+| Representative files | Real approved JPEG/PNG/WebP/PDF, near 3 MiB, exactly 6 MiB combined, five-file selection; over-limit/unsupported rejection | Five files at exactly 6 MiB, including a near-3-MiB JPEG, uploaded and were accepted by Gmail; recipient Inbox arrival observed. All five recipient downloads matched their original SHA-256 fingerprints (6 MiB combined). PDF/image rendering remains pending. Unsupported/per-file limits rejected; combined-limit warning correction awaits deployment. |
 | Interrupted upload and private read | Reservation survives reload, incomplete send blocked, original retry works, logout/membership revocation denies reads | Pending |
 | Authenticated push and replay | Valid Google JWT accepted only for configured service identity/audience/subscription; retry only acknowledges durable coverage | Real signed synthetic notice and mailbox notices observed; live negative/replay matrix pending |
 | Lost notification and host downtime | Scheduled catch-up imports once; returning pushes do not skip pages or duplicate mail | Pending |
 | Watch renewal | Daily/near-expiry renewal observed with actual Google expiry and no cursor reset | Initial watch installed with real expiry; daily/near-expiry renewal pending |
 | Expired history and recovery interruption | Profile anchor, all registered threads, durable batches, catch-up; sends paused until complete | Pending |
-| Lost send response | One submission only; uncertainty stays blocked; exact Sent reconciliation supplies evidence; no match stays held | Pending |
+| Lost send response | One submission only; uncertainty stays blocked; exact Sent reconciliation supplies evidence; no match stays held | Live provider probe reproduced replacement of generated Message-ID and preservation of the custom attempt header. Local fallback regressions passed; deployed fault-injection acceptance pending. See [recovery evidence](../verification/gmail-recovery-2026-11-03.md). |
 | Export and 30-day cleanup | Complete authorized metadata/original downloads; cached bytes removed; holds preserved; backup/log procedure verified | Pending |
 | Offboarding and rollback | Local credential removed, no import/send after fence, ordinary sign-in/grant handling distinct, evidence retained | Pending |
-| Gmail acceptance and recipient delivery | Separately observe provider acceptance and the approved recipient's actual mailbox (including spam); never equate them | Passed separately for two self-sends and one five-attachment message to the second approved account's Inbox. Attachment integrity and native reply remain pending. |
+| Gmail acceptance and recipient delivery | Separately observe provider acceptance and the approved recipient's actual mailbox (including spam); never equate them | Passed separately for two self-sends and one five-attachment message to the second approved account's Inbox. All five recipient attachment fingerprints passed. One native reply from the second mailbox imported once into the same conversation and changed its workflow to review (observed through authenticated export; UI check pending). |
 | Deployed latency | Record provider receive/internal timestamp, authenticated notice, durable commit and visible UI update in desktop/mobile sessions | Pending |
 
 For latency, use a declared sample count and retain individual durations, failures
