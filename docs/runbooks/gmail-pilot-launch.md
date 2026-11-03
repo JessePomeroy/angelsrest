@@ -57,6 +57,33 @@ Strict peer installation, host/consumer/backend types, the full host suite and
 contains exact counts and remaining limits. The currently deployed staging host
 still uses the previous artifact; the new candidate is local only.
 
+### Backend release and published host staging — 2026-11-03 02:54 UTC
+
+Main CI passed for backend merge `fcb46673`. Workflow `41568219627` deployed
+that exact source to shared production `loyal-swan-967` at 02:47:23 UTC. Version
+PR #751 then merged as `8696bbfa`; publication workflow `41568303445` succeeded,
+and immutable CRM API **6.14.0** is confirmed in the registry. This deploys backend
+code; it does not install live Gmail credentials or connect a production mailbox.
+
+The host candidate built from `4b9a9fd1` uses registry Admin **6.15.1** and workspace
+CRM API **6.14.0**. Build and size checks pass. Staging deployment
+`dpl_Gcs7HEVK22xKep1EEbvFcfUaQ2zz` is READY, and the provider confirmed that
+`staging.angelsrest.online` points to it. The build scan found none of the three
+server keys embedded in its outputs.
+
+Twelve live staging checks passed: ordinary login and connected status, one native
+reply in the original two-message conversation with review status, original-byte
+integrity for five private attachments, four rendered image previews, the clear
+combined-size warning retaining four files, an empty restored verification draft,
+mobile width containment and anonymous status denial. Nothing was sent by this
+check. PDF bytes passed; browser PDF rendering remains unverified. Cached files
+selected solely for the warning check were removed from the draft and retain the
+normal expiry policy.
+
+The host source/configuration is moving through its own PR. Production Gmail
+activation, production retention and remaining fault/expiry/provider-log checks
+remain separate. The current Gmail connection continues on staging.
+
 ### Current local follow-up
 
 The feature remains in the existing hub/admin checkouts under
@@ -353,10 +380,12 @@ fault injection or deployed latency distribution was established by these tests.
   needed for administrator replies. No modify, delete, settings or domain-wide
   delegation scope is requested. Gmail does not provide a per-selected-thread OAuth
   read grant for this web-server design. [Gmail scopes](https://developers.google.com/workspace/gmail/api/auth/scopes).
-- Public use requires the applicable brand/scope verification. Server-side access
-  to restricted Gmail data puts this design within the security-assessment path,
-  normally renewed annually. Treat an exemption as an explicit reviewed decision;
-  do not assume a small paid client base is an internal organization app.
+- Broader distribution requires the applicable brand/scope verification; server-side
+  restricted-data access can also require a security assessment. Google documents
+  a personal-use exception for a limited set of personally known users. An
+  owner-only live connection may qualify, but that classification must be recorded
+  before activation and does not establish eligibility for a general client rollout.
+  A small paid client base does not make the app an internal organization app.
   [Restricted-scope verification](https://developers.google.com/identity/protocols/oauth2/production-readiness/restricted-scope-verification).
 - Development/testing apps can use the testing exception; Google still requires
   its data-use policies. Use a separate testing project, not an unverified general
@@ -532,8 +561,8 @@ acceptance artifacts. Simulated provider tests do not satisfy any row here.
 | Membership removed / foreign record | Reads, linking, mutations, export and every attachment read fail closed | Pending |
 | Reviewed existing-thread link | Participants/destination/scope confirmed; duplicate retry is idempotent; another destination rejected; drafts excluded | Pending |
 | Unexpected participants / oversized thread | Visible refusal/withheld state, no silent partial association or reply | Pending |
-| Native Gmail incoming and Sent | Correct thread import/dedup, review/needs-reply/waiting transitions and date clearing | Admin-origin Sent observation/dedup passed for two self-sends. A native reply from the second approved mailbox imported once into the registered thread and set review; native Sent and UI-state checks remain pending |
-| Representative files | Real approved JPEG/PNG/WebP/PDF, near 3 MiB, exactly 6 MiB combined, five-file selection; over-limit/unsupported rejection | Five files at exactly 6 MiB, including a near-3-MiB JPEG, uploaded and were accepted by Gmail; recipient Inbox arrival observed. All five recipient downloads matched their original SHA-256 fingerprints (6 MiB combined). PDF/image rendering remains pending. Unsupported/per-file limits rejected; combined-limit warning correction awaits deployment. |
+| Native Gmail incoming and Sent | Correct thread import/dedup, review/needs-reply/waiting transitions and date clearing | Admin-origin Sent observation/dedup passed for two self-sends. A native reply from the second approved mailbox imported once into the registered thread and set review; deployed review-state UI passed; native Sent checks remain pending |
+| Representative files | Real approved JPEG/PNG/WebP/PDF, near 3 MiB, exactly 6 MiB combined, five-file selection; over-limit/unsupported rejection | Five files at exactly 6 MiB, including a near-3-MiB JPEG, uploaded and were accepted by Gmail; recipient Inbox arrival observed. All five recipient downloads matched their original SHA-256 fingerprints (6 MiB combined). All four image previews rendered through authenticated private reads on the published-package host. Browser PDF rendering remains pending. Unsupported/per-file limits rejected; combined-limit warning correction is deployed and verified on staging. |
 | Interrupted upload and private read | Reservation survives reload, incomplete send blocked, original retry works, logout/membership revocation denies reads | Pending |
 | Authenticated push and replay | Valid Google JWT accepted only for configured service identity/audience/subscription; retry only acknowledges durable coverage | Real signed synthetic notice and mailbox notices observed; live negative/replay matrix pending |
 | Lost notification and host downtime | Scheduled catch-up imports once; returning pushes do not skip pages or duplicate mail | Pending |
@@ -542,7 +571,7 @@ acceptance artifacts. Simulated provider tests do not satisfy any row here.
 | Lost send response | One submission only; uncertainty stays blocked; exact Sent reconciliation supplies evidence; no match stays held | Live provider probe reproduced replacement of generated Message-ID and preservation of the custom attempt header. Local fallback regressions passed; deployed fault-injection acceptance pending. See [recovery evidence](../verification/gmail-recovery-2026-11-03.md). |
 | Export and 30-day cleanup | Complete authorized metadata/original downloads; cached bytes removed; holds preserved; backup/log procedure verified | Pending |
 | Offboarding and rollback | Local credential removed, no import/send after fence, ordinary sign-in/grant handling distinct, evidence retained | Pending |
-| Gmail acceptance and recipient delivery | Separately observe provider acceptance and the approved recipient's actual mailbox (including spam); never equate them | Passed separately for two self-sends and one five-attachment message to the second approved account's Inbox. All five recipient attachment fingerprints passed. One native reply from the second mailbox imported once into the same conversation and changed its workflow to review (observed through authenticated export; UI check pending). |
+| Gmail acceptance and recipient delivery | Separately observe provider acceptance and the approved recipient's actual mailbox (including spam); never equate them | Passed separately for two self-sends and one five-attachment message to the second approved account's Inbox. All five recipient attachment fingerprints passed. One native reply from the second mailbox imported once into the same conversation and changed its workflow to review (observed through authenticated export and the deployed desktop/mobile conversation UI). |
 | Deployed latency | Record provider receive/internal timestamp, authenticated notice, durable commit and visible UI update in desktop/mobile sessions | Pending |
 
 For latency, use a declared sample count and retain individual durations, failures

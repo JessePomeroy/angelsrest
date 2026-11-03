@@ -68,3 +68,26 @@ Production backend deployment is awaiting CI on the merged source. CRM API 6.14.
 is prepared in version PR #751 and is not yet published. The host adoption remains
 local until the backend/package order is satisfied; this checkpoint does not claim
 new host bundling, deployment, provider acceptance or production Gmail activation.
+
+
+## Published host staged — 02:54 UTC
+
+The live backend deployed from main `fcb46673` through workflow `41568219627`.
+CRM API 6.14.0 publication is confirmed after version PR #751 merged. The host
+candidate now includes version main `8696bbfa`; its runtime build source is
+`4b9a9fd1`, with Admin 6.15.1 from the registry and CRM API 6.14.0 in the workspace.
+The remaining source edits after that build update documentation only.
+
+Production bundling for the isolated staging public endpoints and the size gate
+passed. Three known server keys were absent from every output file. Vercel reports
+staging deployment `dpl_Gcs7HEVK22xKep1EEbvFcfUaQ2zz` READY; provider alias read-back
+matches `staging.angelsrest.online` to that deployment.
+
+Twelve live checks passed on that deployed host: recovery login, connected mailbox,
+the retained native reply and review workflow, private reads for all five original
+files with exact size/SHA-256 matches, four browser-rendered raster previews, the
+specific combined-size warning with four selections retained, an empty restored
+verification draft, mobile width containment, and anonymous status denial.
+No email was sent. PDF byte transport passed; native browser PDF rendering remains
+unverified. The driver/browser processes exited. The backend's real lost-response
+fault injection and remaining launch-packet gates are still open.
