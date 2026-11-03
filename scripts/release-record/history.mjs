@@ -49,10 +49,10 @@ function existingBytes(path) {
 	}
 }
 
-export function readReleaseEvidence(root, target) {
+function readStoredEvidence(root, target) {
 	deriveReleaseStatus([], statusTarget(target));
 	const path = directory(root, target.environmentId, false);
-	if (path === null) return { records: [], receipts: [] };
+	if (path === null) return { records: [], receipts: new Map() };
 	const files = readdirSync(path);
 	if (files.length > 1000) throw new Error("Release history needs an explicit retention review.");
 	const records = [];
@@ -71,9 +71,45 @@ export function readReleaseEvidence(root, target) {
 		if (filename !== `${value.recordId.slice(7)}.json`) throw new Error("Changed release history.");
 		records.push(value);
 	}
-	assertObservationLinks(records, receipts, target);
+	// Validate every chain before selecting an origin. An unrelated corrupt record
+	// must not disappear from validation just because this request uses another alias.
 	deriveReleaseStatus(records, statusTarget(target));
-	return { records, receipts: [...receipts].map(([name, value]) => ({ name, value })) };
+	for (const record of records) {
+		let observedTarget = target;
+		if (record.kind === "deployment") {
+			// The observer records exactly the one alias it independently checked.
+			// More aliases would make the receipt's public-check origin ambiguous.
+			if (record.data.aliases.length !== 1)
+				throw new Error("Ambiguous release observation origin.");
+			observedTarget = { ...target, publicOrigin: `https://${record.data.aliases[0].hostname}` };
+		}
+		assertObservationLinks([record], receipts, observedTarget);
+	}
+	return { records, receipts };
+}
+
+function evidenceForOrigin({ records, receipts }, target) {
+	const hostname = new URL(target.publicOrigin).hostname;
+	const deployments = records.filter(
+		(record) => record.kind === "deployment" && record.data.aliases[0].hostname === hostname,
+	);
+	const deploymentIds = new Set(deployments.map((record) => record.recordId));
+	const buildIds = new Set(deployments.map((record) => record.data.buildRecordId));
+	return {
+		records: records.filter((record) => {
+			if (record.kind === "intended") return true;
+			if (record.kind === "build") return buildIds.has(record.recordId);
+			if (record.kind === "deployment") return deploymentIds.has(record.recordId);
+			return deploymentIds.has(record.data.deploymentRecordId);
+		}),
+		receipts: [...receipts]
+			.filter(([, receipt]) => deploymentIds.has(receipt.deploymentRecordId))
+			.map(([name, value]) => ({ name, value })),
+	};
+}
+
+export function readReleaseEvidence(root, target) {
+	return evidenceForOrigin(readStoredEvidence(root, target), target);
 }
 
 export function readReleaseHistory(root, target) {
@@ -113,7 +149,10 @@ function publishBytes(directory, filename, bytes) {
 
 /** Validate the whole batch before exclusive writes; interruption never removes old proof. */
 export function retainReleaseObservation(root, target, observation) {
-	const prior = readReleaseHistory(root, target);
+	const stored = readStoredEvidence(root, target);
+	// Retention and cross-record invariants still cover the complete environment.
+	deriveReleaseStatus([...stored.records, ...observation.records], statusTarget(target));
+	const prior = evidenceForOrigin(stored, target).records;
 	const status = deriveReleaseStatus([...prior, ...observation.records], statusTarget(target));
 	if (!/^observation-[a-f0-9]{64}\.json$/.test(observation.receiptName))
 		throw new Error("Invalid observation receipt name.");

@@ -19,7 +19,7 @@ import {
 	deriveReleaseStatus,
 	fingerprintPublicConfig,
 } from "../../packages/crm-api/src/releases/records.mjs";
-import { readReleaseHistory, retainReleaseObservation } from "./history.mjs";
+import { readReleaseEvidence, readReleaseHistory, retainReleaseObservation } from "./history.mjs";
 import { authenticatedReaders, observeRelease, publicProbe, statusTarget } from "./observe.mjs";
 
 const target = {
@@ -531,6 +531,52 @@ test("receipt content IDs do not permit unrelated probe proof to satisfy verific
 	observation.receiptName = `observation-${createHash("sha256").update(JSON.stringify(observation.receipt)).digest("hex")}.json`;
 	assert.throws(() => retainReleaseObservation(root, target, observation));
 	assert.deepEqual(readdirSync(root), []);
+});
+
+test("retained observations remain readable and isolated when the requested origin changes", async () => {
+	const root = mkdtempSync(join(tmpdir(), "release-origin-"));
+	const initial = fixture();
+	const oldObservation = await observeRelease(target, initial.readers, initial.probe);
+	retainReleaseObservation(root, target, oldObservation);
+	const directory = join(root, "docs/integration-evidence/releases", target.environmentId);
+	const originalBytes = new Map(
+		readdirSync(directory).map((name) => [name, readFileSync(join(directory, name), "utf8")]),
+	);
+	const nextTarget = {
+		...target,
+		publicOrigin: "https://staging.example.com",
+		deploymentId: "dpl_next",
+	};
+	assert.deepEqual(readReleaseHistory(root, nextTarget), []);
+	assert.deepEqual(readReleaseEvidence(root, nextTarget).receipts, []);
+	const empty = deriveReleaseStatus(readReleaseHistory(root, nextTarget), statusTarget(nextTarget));
+	assert.equal(empty.currentDeployment, null);
+	assert.equal(empty.lastHealthy, null);
+
+	const next = fixture("d".repeat(40));
+	next.provider.id = nextTarget.deploymentId;
+	next.alias.alias = new URL(nextTarget.publicOrigin).hostname;
+	next.alias.deploymentId = nextTarget.deploymentId;
+	const nextObservation = await observeRelease(nextTarget, next.readers, next.probe);
+	const status = retainReleaseObservation(root, nextTarget, nextObservation);
+	assert.equal(status.currentDeployment.data.deploymentId, nextTarget.deploymentId);
+	assert.equal(status.lastHealthy.data.deploymentId, nextTarget.deploymentId);
+	assert.equal(readReleaseHistory(root, nextTarget).length, 3);
+	assert.deepEqual(
+		readReleaseEvidence(root, nextTarget).receipts.map(({ name }) => name),
+		[nextObservation.receiptName],
+	);
+	const oldStatus = deriveReleaseStatus(readReleaseHistory(root, target), statusTarget(target));
+	assert.equal(oldStatus.currentDeployment.data.deploymentId, target.deploymentId);
+	assert.equal(oldStatus.lastHealthy.data.deploymentId, target.deploymentId);
+	assert.equal(readReleaseHistory(root, target).length, 3);
+	for (const [name, bytes] of originalBytes) {
+		assert.equal(readFileSync(join(directory, name), "utf8"), bytes);
+	}
+
+	// Origin selection cannot conceal corrupt evidence elsewhere in the same history.
+	writeFileSync(join(directory, oldObservation.receiptName), "{broken");
+	assert.throws(() => readReleaseHistory(root, nextTarget));
 });
 
 test("process interruption during publication leaves a complete orphan receipt and readable old rollback proof", async (t) => {
