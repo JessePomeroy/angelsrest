@@ -49,3 +49,22 @@ No claim of separate-mailbox consent, representative-file delivery, expiry/recov
 fault acceptance, provider log/backup retention or production Gmail activation is
 made by these local results. Source/package publication and configured production
 use are separate steps. The approved synthetic pilot is the only live-mail scope.
+
+
+## Published Admin adoption candidate — 02:24 UTC
+
+Backend source PR #750 merged at `fcb46673`. The host feature branch now includes
+that main revision and pins the published **Admin 6.15.1** through pnpm with strict
+peer validation. The lockfile integrity matches the registry record; the installed
+package resolves into pnpm's store rather than the earlier local archive.
+
+The current candidate passes the Svelte check with zero errors/warnings,
+package-consumer types, CRM TypeScript, **116 Node tests**, **3,299 application/backend
+tests**, **28 protocol tests**, and all **12** desktop/mobile Google-connection
+browser scenarios. The rendered support-reference state was inspected at both
+sizes. The fixture exited and its port closed.
+
+Production backend deployment is awaiting CI on the merged source. CRM API 6.14.0
+is prepared in version PR #751 and is not yet published. The host adoption remains
+local until the backend/package order is satisfied; this checkpoint does not claim
+new host bundling, deployment, provider acceptance or production Gmail activation.

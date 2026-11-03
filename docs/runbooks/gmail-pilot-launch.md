@@ -40,9 +40,22 @@ fresh diagnostic. A custom correlation header survived and its bounded metadata
 lookup succeeded. The correction is committed at hub `e299c6a8` and backend
 `1f610c7d`, and deployed only to staging `rosy-firefly-366` at 01:55:12 UTC.
 All 76 Gmail tests, backend types and root lint pass; five existing backend lint
-warnings remain. Backend PR #750 requires renewed CI before merge. Deployed
+warnings remain. Backend PR #750 subsequently passed renewed CI and merged as `fcb46673`; main CI
+and production backend deployment remain separate. Deployed
 lost-response fault injection remains pending. See [the scoped evidence](../verification/gmail-recovery-2026-11-03.md).
 Production Gmail remains unconfigured.
+
+### Published package preparation — 2026-11-03 02:24 UTC
+
+Backend PR #750 merged after all checks passed. CRM API 6.14.0 version PR #751
+contains only the expected Changeset consumption, version and changelog. Its CI
+is running; publication waits for the additive backend deployment.
+
+The host branch now pins registry Admin 6.15.1 and includes the merged backend.
+Strict peer installation, host/consumer/backend types, the full host suite and
+12 desktop/mobile connection checks pass. [The candidate record](../verification/gmail-release-2026-11-03.md)
+contains exact counts and remaining limits. The currently deployed staging host
+still uses the previous artifact; the new candidate is local only.
 
 ### Current local follow-up
 
