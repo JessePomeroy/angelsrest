@@ -58,7 +58,9 @@ it with the installed Better Auth `hashPassword`. Temporarily install the hash a
 `staging-admin@example.invalid` through the existing authentication helper and
 grants stored creator membership. Remove the bootstrap hash after successful
 login verification. A repeat preserves the existing credential; a populated
-environment is never reset. Public signup and Google OAuth are not enabled.
+environment is never reset. Public signup remains disabled. This bootstrap does
+not configure Google OAuth; the subsequently authorized Gmail pilot setup and
+owner Google login are recorded in [its current launch packet](gmail-pilot-launch.md).
 
 `stagingSetup:seedSiteSettings` creates synthetic published settings so the root
 layout can load. It preserves existing content. The SEO asset is placeholder

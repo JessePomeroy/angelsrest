@@ -23,11 +23,12 @@ vite.config.js.timestamp-*
 vite.config.ts.timestamp-*
 .claude/worktrees/
 
-# Machine-local AI tooling, except the maintained invoice verification skill.
+# Machine-local AI tooling, except maintained project verification skills.
 /.agents/*
 !/.agents/skills/
 /.agents/skills/*
 !/.agents/skills/verify-angelsrest-invoices/
+!/.agents/skills/verify-angelsrest-gmail/
 /.claude/
 /.codex/
 /skills/

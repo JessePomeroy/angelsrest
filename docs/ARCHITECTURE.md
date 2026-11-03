@@ -317,3 +317,21 @@ retention and rollback requirements. Shipping these paths is not activation.
 
 Cross-repository contracts land in the owning upstream first, then flow to each
 affected consumer with repository-specific checks.
+
+### Optional Gmail correspondence
+
+Inquiry and CRM client correspondence can opt into the shared Gmail UI. Convex
+owns record-bound conversations, mailbox history cursors, drafts, private file
+metadata and durable send attempts. Node actions own Google transport and
+encrypted refresh credentials; SvelteKit owns site-authorized OAuth/private-file
+adapters and authenticated Pub/Sub push verification. The shared admin does not
+own provider secrets. Google sign-in and optional Gmail permission are separate;
+connecting a business mailbox never grants admin identity or site membership.
+Existing-thread association requires a reviewed, identity/record/mailbox-bound
+snapshot; the correspondence queue never infers record ownership from mail.
+Pilot imports expire after 30 days with unresolved-send holds. Export, erasure,
+stopping synchronization, Google sign-in unlinking and provider revocation are
+separate operations. Pilot provider access and recipients require explicit
+server-side allowlists. These controls do not establish production launch approval.
+See [Gmail synchronization](runbooks/gmail-synchronization.md) for boundaries,
+recovery behavior, local verification and the remaining production gates.

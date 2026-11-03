@@ -20,8 +20,24 @@ export const createAuth = (ctx: GenericCtx<DataModel>) => {
 		secret: process.env.BETTER_AUTH_SECRET!,
 		trustedOrigins: () => resolveTrustedOrigins(ctx, siteUrl),
 		database: authComponent.adapter(ctx),
+		databaseHooks: {
+			account: {
+				update: {
+					before: async (account) => {
+						// Better Auth 1.6 refresh spreads the saved account into its patch.
+						// Its ID selects the row; Convex must never receive it as a writable field.
+						delete account.id;
+						return { data: account };
+					},
+				},
+			},
+		},
 		hooks: {
-			before: createAuthMiddleware(async () => {
+			before: createAuthMiddleware(async (requestContext) => {
+				// Mailbox grants must stay server-side; internal auth.api calls have no HTTP request.
+				if (requestContext.request && ["/get-access-token", "/refresh-token"].includes(requestContext.path)) {
+					throw new APIError("FORBIDDEN", { message: "Provider tokens are available only to server integrations" });
+				}
 				if (!purposeScopedServerRolesAreDisjoint()) {
 					throw new APIError("FORBIDDEN", {
 						message: "Authentication authority is unavailable",

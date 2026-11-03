@@ -53,6 +53,9 @@ describe("private capability path privacy", () => {
 		"/portal/bearer-token",
 		"/delivery/gallery-token",
 		"/api/portal/bearer-token/accept",
+		"/api/admin/gmail/callback",
+		"/api/admin/gmail/attachments/private-file",
+		"/admin/google-connection",
 		"/api/portal/bearer-token/decline",
 		"/api/portal/bearer-token/sign",
 		"/portal/stripe",
@@ -240,4 +243,19 @@ it("drops preview analytics and scrubs signed preview grants from telemetry", ()
 		url: "https://angelsrest.online/about?draftPreview=[redacted]",
 		message: "failed https://angelsrest.online/about?draftPreview=[redacted]",
 	});
+});
+
+it("redacts Google authorization codes, state and provider tokens from telemetry URLs", () => {
+	const result = JSON.stringify(
+		scrubPrivateCapabilityTelemetry({
+			url: "https://admin.example.test/api/admin/gmail/callback?code=synthetic-code&state=synthetic-state&access_token=synthetic-access&refresh_token=synthetic-refresh",
+		}),
+	);
+	for (const value of [
+		"synthetic-code",
+		"synthetic-state",
+		"synthetic-access",
+		"synthetic-refresh",
+	])
+		expect(result).not.toContain(value);
 });

@@ -21,6 +21,8 @@ export const disable = mutation({
 			retainUntil: now + RETENTION_DAYS * 86400000,
 		};
 		await ctx.db.patch(client._id, { offboarding });
+		const mailbox = await ctx.db.query("gmailMailboxes").withIndex("by_siteUrl", q => q.eq("siteUrl", client.siteUrl)).unique();
+		if (mailbox) await ctx.db.patch(mailbox._id, { status: "disconnected", encryptedRefreshToken: undefined, generation: mailbox.generation + 1, lease: undefined, leaseExpiresAt: undefined });
 		return offboarding;
 	},
 });
@@ -38,6 +40,11 @@ export const requestErasure = mutation({
 		if (client.role === "creator" || client.siteUrl === "angelsrest.online")
 			throw new Error("The platform owner cannot be erased");
 		if (client.offboarding.erasureRequestedAt !== undefined) return client.offboarding;
+		const mailbox = await ctx.db.query("gmailMailboxes").withIndex("by_siteUrl", q => q.eq("siteUrl", client.siteUrl)).unique();
+		if (mailbox) for (const status of ["queued", "submitting", "uncertain"] as const) {
+			if (await ctx.db.query("gmailSendAttempts").withIndex("by_mailboxId_and_status", q => q.eq("mailboxId", mailbox._id).eq("status", status)).first())
+				throw new Error("Resolve retained Gmail send evidence before requesting irreversible offboarding erasure; restoration remains available for reconciliation");
+		}
 		if (!args.eraseImmediately && Date.now() < client.offboarding.retainUntil)
 			throw new Error(
 				"The 90-day retention period has not elapsed; immediate erasure needs an explicit owner choice",
@@ -142,6 +149,7 @@ export const eraseRecords = mutation({
 			if(args.collection === "inquiries") {
     const inquiryId=ctx.db.normalizeId("inquiries",row._id);
     if(inquiryId) {
+     if(await ctx.db.query("gmailConversations").withIndex("by_inquiryId",q=>q.eq("inquiryId",inquiryId)).first()) { retained++; continue; }
      const notice=await ctx.db.query("inquiryNotifications").withIndex("by_inquiryId",q=>q.eq("inquiryId",inquiryId)).unique();
      if(notice) await ctx.db.delete(notice._id);
     }

@@ -44,7 +44,9 @@ function addSecurityHeaders(response: Response, pathname: string): Response {
 		//   in both script-src and frame-src for the managed widget.
 		// - Private delivery-gallery videos stream from the gallery worker. Media
 		//   does not inherit img-src, so that exact origin is also in media-src.
-		getContentSecurityPolicy(env.GALLERY_WORKER_URL),
+		pathname.startsWith("/api/admin/gmail/attachments/")
+			? "default-src 'none'; sandbox"
+			: getContentSecurityPolicy(env.GALLERY_WORKER_URL),
 	);
 	applyCapabilityResponsePrivacy(cloned.headers, pathname);
 	return cloned;

@@ -46,7 +46,9 @@ if (params.get("populated") === "true") {
 }
 </script>
 
-{#if fixture === "commerce-intake"}
+{#if fixture === "gmail-connection"}
+  {#await import("./GmailConnectionHarness.svelte")}<p>Loading Gmail result…</p>{:then component}<component.default />{/await}
+{:else if fixture === "commerce-intake"}
   {#await import("./CommerceIntakeHarness.svelte")}<p>Loading intake fixture…</p>{:then component}<component.default />{/await}
 {:else if fixture === "platform-release-status"}
   {#await import("./PlatformReleaseStatusHarness.svelte")}<p>Loading release status fixture…</p>{:then component}<component.default />{/await}
