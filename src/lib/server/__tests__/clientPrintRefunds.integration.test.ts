@@ -1,6 +1,6 @@
 /// <reference types="vite/client" />
 import { ConvexHttpClient } from "convex/browser";
-import { getFunctionName } from "convex/server";
+import { getFunctionName, makeFunctionReference } from "convex/server";
 import { convexTest } from "convex-test";
 import { Resend } from "resend";
 import Stripe from "stripe";
@@ -146,10 +146,10 @@ async function setup(lines = [4000, 1000], other = 500) {
 	const mutation = vi
 		.spyOn(convex, "mutation")
 		.mockImplementation((...args: Parameters<ConvexHttpClient["mutation"]>) =>
-			t.mutation(args[0], args[1]),
+			t.mutation(makeFunctionReference<"mutation">(getFunctionName(args[0])), args[1]),
 		);
 	vi.spyOn(convex, "query").mockImplementation((...args: Parameters<ConvexHttpClient["query"]>) =>
-		t.query(args[0], args[1]),
+		t.query(makeFunctionReference<"query">(getFunctionName(args[0])), args[1]),
 	);
 	const stripe = new Stripe("sk_test_offline_fixture", { apiVersion: STRIPE_API_VERSION });
 	const customers: Stripe.Refund[] = [],
@@ -361,7 +361,10 @@ describe("guided refunds across the real host and Convex boundary", () => {
 		const s = await setup();
 		let lose = true;
 		s.mutation.mockImplementation(async (...args: Parameters<ConvexHttpClient["mutation"]>) => {
-			const result = await s.t.mutation(args[0], args[1]);
+			const result = await s.t.mutation(
+				makeFunctionReference<"mutation">(getFunctionName(args[0])),
+				args[1],
+			);
 			if (
 				lose &&
 				getFunctionName(args[0]) === "orders:recordClientPrintRefund" &&
@@ -532,13 +535,13 @@ describe("guided refunds across the real host and Convex boundary", () => {
 			async (...args: Parameters<ConvexHttpClient["query"]>) => {
 				if (getFunctionName(args[0]) === "orders:getClientPrintRefundForWebhook")
 					throw new Error("Temporary database failure");
-				return s.t.query(args[0], args[1]);
+				return s.t.query(makeFunctionReference<"query">(getFunctionName(args[0])), args[1]);
 			},
 		);
 		await expect(send()).rejects.toMatchObject({ status: 500 });
 		expect(runtime.failureAlert).not.toHaveBeenCalled();
 		vi.mocked(s.convex.query).mockImplementation((...args: Parameters<ConvexHttpClient["query"]>) =>
-			s.t.query(args[0], args[1]),
+			s.t.query(makeFunctionReference<"query">(getFunctionName(args[0])), args[1]),
 		);
 		s.state.rejectFee = true;
 		await expect(send()).rejects.toMatchObject({ status: 500 });
