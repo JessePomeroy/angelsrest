@@ -158,6 +158,13 @@ The default workflow is `.github/workflows/ci.yml`; a different client workflow
 requires its explicit `--workflow` path. Python 3, Node 24, and authenticated
 `gh`/`vercel` CLIs are operator prerequisites. The `status` command is offline.
 
+After changing a staging origin, keep its earlier observation files. The reader
+validates all retained evidence and selects only the requested origin's deployment
+chains. The new origin reports unknown until it has its own observation; old health
+is not transferred. Use the former origin explicitly to inspect its historical
+proof. This does not change an already imported backend environment's fixed origin:
+that target still requires an explicit migration review before importing a new one.
+
 Review and retain `docs/integration-evidence/releases/production/` through the
 site's evidence process. `lastHealthy` is the most recent retained deployment
 with all required CI and named public checks passing. A failed upgrade adds its

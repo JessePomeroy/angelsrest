@@ -111,7 +111,42 @@ package-manager install. All 619 runtime files in its published `dist` match
 contracts, Svelte checks, and the 28 auth/mutation protocol tests pass with the
 installed 6.14.1 artifact.
 
-Actions updates #716 and #717 merged with passing CI. The hub maintenance branch
-includes their current-main merge. Fresh combined-candidate CI remains a merge
-gate. CRM maintenance publication, the additive backend deployment, and both
-Container rollouts remain pending; retain their exact identities after rollout.
+Actions updates #716 and #717 merged with passing CI. Hub #747 then passed its
+combined-candidate CI and merged as `e95d3aae2d5e97ab7a9340a01961568100d82892`.
+Main CI run `41548166459` passed at that revision. Its production deployment
+`dpl_FvJVDrcBD2WynPBwbaYzrBT8wGTh` served the verified production alias with home
+and cart checks passing. The retained observation is
+`../integration-evidence/releases/production/observation-1d2c8fcc94c1e8bae5601ca1a264b15f56daaabf96cb136ab6e9e1a75fb1f923.json`.
+The protected preview also passed authenticated public-page and unauthenticated
+admin-mutation checks using existing Vercel automation access; protection settings
+and credentials were not changed.
+
+## Runtime rollout — November 3, 2026 UTC
+
+The shared Convex deployment completed first: workflow `41550821253` deployed
+the CI-verified `e95d3aae2d5e97ab7a9340a01961568100d82892` to `loyal-swan-967`.
+CRM release #748 subsequently merged as
+`2f5ccbe99afbc650593617bcd817554edda0f73b`; publication run `41551156766` succeeded.
+GitHub Packages confirms immutable CRM API 6.13.1. Its published archive integrity
+is `sha512-EfKU1grmqclE8cmQrKHnynCxFKdTaM9x8YrvAGNskvPNOP2AepnVNAtuu93XcmfNNOyXOeLdotGgPv9ubPs4bA==`.
+
+Both image services deployed reviewed Worker source
+`1d2129f8808c19fdd6df03dc68da3fee55e99faa` after the additive backend was available:
+
+| Service | Active Worker version | Container image digest |
+| --- | --- | --- |
+| Gallery | `93163364-493c-4aff-84d2-9d88bdead674` | `sha256:2aa65817cb639fae574917804b68152eae3ed2d7814175900129d36865e853c0` |
+| CMS media | `b0e6d973-4c62-4e3b-8636-3ae7d4a15493` | `sha256:9b9ceb744c7373bbacbc74007b39e71907dda40894b5017b85729ef903e9844d` |
+
+The provider reports each Worker at 100% and each Container application's current
+configuration at version 3 with the corresponding image. Only the container image
+changed: existing bindings, variables, network settings and one-instance limits
+were preserved. The gallery retains 0.5 vCPU/4096 MiB and CMS 0.25 vCPU/1024 MiB.
+The previously active CMS script's ETag matched its reviewed predecessor; the
+service-source comparison identified only the scoped decoder changes.
+
+Both exact published image digests were run locally with networking disabled and
+reported Node 24.22.1, Sharp 0.35.5 and libvips 8.18.7. Both live `/health` routes
+returned 200. Unauthenticated gallery processing and CMS upload-capability requests
+returned 401 before storage writes. Native raster tests passed locally; no production
+customer object or production raster canary was used for these deployment checks.
