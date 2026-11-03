@@ -243,6 +243,8 @@ export const remove = mutation({
 	args: { id: v.id("inquiries") },
 	handler: async (ctx, { id }) => {
 		await requireDocumentSiteAdmin(ctx, "inquiries", id, "inquiries");
+		if (await ctx.db.query("gmailConversations").withIndex("by_inquiryId", q => q.eq("inquiryId", id)).first())
+			throw new Error("Delete this inquiry's imported Gmail conversations before deleting the inquiry");
 		const notice=await ctx.db.query("inquiryNotifications").withIndex("by_inquiryId",q=>q.eq("inquiryId",id)).unique();
   if(notice) await ctx.db.delete(notice._id);
   await ctx.db.delete(id);

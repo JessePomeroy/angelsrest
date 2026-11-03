@@ -2139,6 +2139,59 @@ export default defineSchema({
 		.index("by_siteUrl", ["siteUrl"])
 		.index("by_siteUrl_and_galleryId", ["siteUrl", "galleryId"]),
 
+	gmailMailboxes: defineTable({
+		siteUrl: v.string(), address: v.string(), encryptedRefreshToken: v.optional(v.string()), generation: v.number(),
+		status: v.union(v.literal("connected"), v.literal("reconnect"), v.literal("disconnected")),
+		credentialSource: v.optional(v.union(v.literal("login"), v.literal("mailbox"))),
+		connectionBusyUntil: v.optional(v.number()),
+		forceRecovery: v.optional(v.boolean()), catchingUp: v.optional(v.boolean()), dataDeletionRequestedAt: v.optional(v.number()), lastDataDeletionAt: v.optional(v.number()),
+		cursor: v.string(), watchExpiresAt: v.number(), watchRenewedAt: v.number(), lastSyncAt: v.optional(v.number()),
+		lastNoticeAt: v.optional(v.number()), syncError: v.optional(v.string()),
+		lease: v.optional(v.string()), leaseExpiresAt: v.optional(v.number()),
+		pageToken: v.optional(v.string()),
+		pending: v.optional(v.object({ kind: v.union(v.literal("history"), v.literal("resync")), refs: v.array(v.object({ id: v.string(), threadId: v.string() })), offset: v.number(), nextPageToken: v.optional(v.string()), done: v.boolean(), endHistoryId: v.string(), conversationId: v.optional(v.id("gmailConversations")) })),
+		resync: v.optional(v.object({ anchor: v.string(), conversationCursor: v.optional(v.string()) })),
+	}).index("by_siteUrl", ["siteUrl"]).index("by_address", ["address"]).index("by_status", ["status"]),
+	gmailConnectStates: defineTable({ siteUrl: v.string(), identity: v.string(), nonce: v.string(), expiresAt: v.number(), used: v.boolean() })
+		.index("by_expiresAt", ["expiresAt"]).index("by_siteUrl", ["siteUrl"]),
+	gmailConversations: defineTable({
+		siteUrl: v.string(), mailboxId: v.id("gmailMailboxes"), inquiryId: v.optional(v.id("inquiries")), clientId: v.optional(v.id("photographyClients")),
+		recipient: v.string(), subject: v.string(), threadId: v.optional(v.string()), lastRfcId: v.optional(v.string()),
+		lastMessageId: v.optional(v.string()), lastMessageAt: v.optional(v.number()), revision: v.number(), problem: v.optional(v.string()),
+		importPending: v.optional(v.boolean()), deletingAt: v.optional(v.number()), retentionHoldAt: v.optional(v.number()),
+		workflowState: v.optional(v.union(v.literal("review"), v.literal("needs_reply"), v.literal("waiting"), v.literal("done"))),
+		followUpAt: v.optional(v.number()), lastRelevantAt: v.optional(v.number()),
+		lastIncomingId: v.optional(v.id("gmailMessages")), lastIncomingAt: v.optional(v.number()),
+	}).index("by_siteUrl", ["siteUrl"]).index("by_inquiryId", ["inquiryId"]).index("by_clientId", ["clientId"])
+		.index("by_mailboxId_and_threadId", ["mailboxId", "threadId"]).index("by_mailboxId", ["mailboxId"])
+		.index("by_siteUrl_and_workflowState_and_followUpAt", ["siteUrl", "workflowState", "followUpAt"]),
+	gmailMessages: defineTable({
+		siteUrl: v.string(), mailboxId: v.id("gmailMailboxes"), conversationId: v.id("gmailConversations"), providerId: v.string(),
+		rfcId: v.string(), from: v.string(), to: v.array(v.string()), subject: v.string(), text: v.string(), sent: v.boolean(), date: v.number(),
+		blocked: v.optional(v.string()), origin: v.union(v.literal("gmail"), v.literal("admin")),
+		providerObservedAt: v.optional(v.number()),
+	}).index("by_mailboxId_and_providerId", ["mailboxId", "providerId"]).index("by_conversationId_and_date", ["conversationId", "date"]),
+	gmailAttachments: defineTable({
+		siteUrl: v.string(), conversationId: v.id("gmailConversations"), messageId: v.optional(v.id("gmailMessages")),
+		author: v.optional(v.string()), partId: v.optional(v.string()), providerAttachmentId: v.optional(v.string()), inlineData: v.optional(v.string()),
+		name: v.string(), type: v.string(), size: v.number(), sha256: v.optional(v.string()), storageId: v.optional(v.id("_storage")),
+		status: v.union(v.literal("pending"), v.literal("ready"), v.literal("blocked")), problem: v.optional(v.string()), expiresAt: v.optional(v.number()),
+	}).index("by_messageId", ["messageId"]).index("by_conversationId", ["conversationId"]).index("by_expiresAt", ["expiresAt"]),
+	gmailDrafts: defineTable({
+		conversationId: v.id("gmailConversations"), author: v.string(), text: v.string(), attachmentIds: v.array(v.id("gmailAttachments")), revision: v.number(),
+	}).index("by_conversationId_and_author", ["conversationId", "author"]),
+	gmailSendAttempts: defineTable({
+		siteUrl: v.string(), mailboxId: v.id("gmailMailboxes"), conversationId: v.id("gmailConversations"), author: v.string(), requestId: v.string(),
+		rfcId: v.string(), recipient: v.string(), subject: v.string(), text: v.string(), parentRfcId: v.optional(v.string()), threadId: v.optional(v.string()),
+		attachmentIds: v.array(v.id("gmailAttachments")), draftRevision: v.number(), conversationRevision: v.number(), generation: v.number(),
+		status: v.union(v.literal("queued"), v.literal("submitting"), v.literal("accepted"), v.literal("failed"), v.literal("uncertain")),
+		startedAt: v.optional(v.number()), providerId: v.optional(v.string()), problem: v.optional(v.string()),
+		checkedAt: v.optional(v.number()), checkOutcome: v.optional(v.union(v.literal("accepted"), v.literal("not_found"), v.literal("ambiguous"), v.literal("mismatch"), v.literal("unavailable"))),
+	}).index("by_conversationId_and_requestId", ["conversationId", "requestId"]).index("by_conversationId", ["conversationId"]).index("by_status", ["status"])
+		.index("by_conversationId_and_status", ["conversationId", "status"]).index("by_mailboxId_and_status", ["mailboxId", "status"]),
+	gmailPushReceipts: defineTable({ mailboxId: v.id("gmailMailboxes"), generation: v.number(), pubsubId: v.string(), historyId: v.string(), expiresAt: v.number() })
+		.index("by_mailboxId_and_pubsubId", ["mailboxId", "pubsubId"]).index("by_expiresAt", ["expiresAt"]),
+
 	// Contact form inquiries (from public site visitors)
 	inquiries: defineTable({
 		siteUrl: v.string(),

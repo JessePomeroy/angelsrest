@@ -133,6 +133,8 @@ export function purposeScopedServerRoleConfiguration() {
 	const scalarSecrets = AUTHORITY_BEARING_SCALAR_ENV_NAMES
 		.map((name) => process.env[name])
 		.filter((secret): secret is string => secret !== undefined);
+	// Optional Gmail setup must not make ordinary login depend on a mailbox grant.
+	if (process.env.GMAIL_CONNECTOR_SECRET) scalarSecrets.push(process.env.GMAIL_CONNECTOR_SECRET);
 	if (
 		new Set(scalarSecrets).size !== scalarSecrets.length
 		|| scalarSecrets.some((secret) => registrySecrets.has(secret))

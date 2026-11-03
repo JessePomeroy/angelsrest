@@ -180,6 +180,10 @@ export const updateClient = mutation({
 export const deleteClient = mutation({
 	args: { clientId: v.id("photographyClients"), siteUrl: v.string() },
 	handler: async (ctx, { clientId, siteUrl }) => {
+		const target = await requireDocumentSiteAdmin(ctx, "photographyClients", clientId, "crm");
+		if (target.siteUrl !== siteUrl) throw new Error("Not found");
+		if (await ctx.db.query("gmailConversations").withIndex("by_clientId", q => q.eq("clientId", clientId)).first())
+			throw new Error("Delete this client's imported Gmail conversations before deleting the client");
 		await deleteDocument(ctx, clientId, siteUrl, "crm");
 	},
 });
