@@ -306,6 +306,70 @@ describe("real connector orchestration with isolated provider responses", () => 
 	});
 });
 
+test.each([
+	"rewritten", "new-thread", "missing", "duplicate", "paginated", "wrong-participant",
+	"wrong-subject", "wrong-thread", "changed-marker", "duplicate-header", "not-sent",
+])("reconciles a rewritten Gmail Message-ID conservatively: %s", async (scenario) => {
+	const s = await setup();
+	if (scenario === "new-thread")
+		await s.t.run(ctx => ctx.db.patch(s.conversationId, { threadId: undefined, lastRfcId: undefined }));
+	await s.admin.mutation(api.gmailConversations.saveDraft, {
+		conversationId: s.conversationId, text: "A deliberate reply", attachmentIds: [], expectedRevision: 0,
+	});
+	const attemptId = await s.admin.mutation(api.gmailConversations.queueSend, {
+		conversationId: s.conversationId, requestId: "20000000-0000-4000-8000-000000000001",
+		draftRevision: 1, conversationRevision: 0,
+	});
+	const fetcher = mockGmail((url, init) => {
+		if (url.pathname.endsWith("/history")) return response({ historyId: "100", history: [] });
+		if (url.pathname.endsWith("/messages/send")) {
+			const submitted = JSON.parse(String(init?.body));
+			expect(Buffer.from(submitted.raw, "base64url").toString()).toContain(`X-Angels-Rest-Send-ID: ${attemptId}\r\n`);
+			throw new Error("Lost response after Gmail accepted and rewrote Message-ID");
+		}
+		if (url.pathname.endsWith("/messages")) {
+			if (url.searchParams.get("q")?.includes("rfc822msgid:")) return response({ messages: [] });
+			expect(url.searchParams.get("q")).toMatch(/^in:sent after:\d+ before:\d+$/);
+			expect(url.searchParams.get("maxResults")).toBe("100");
+			return response({ messages: [
+				{ id: "unrelated", threadId: "elsewhere" },
+				{ id: "sent1", threadId: scenario === "wrong-thread" ? "wrong" : "thread1" },
+				...(scenario === "duplicate" ? [{ id: "sent2", threadId: "thread1" }] : []),
+			], ...(scenario === "paginated" ? { nextPageToken: "more" } : {}) });
+		}
+		const id = url.pathname.split("/").at(-1) ?? "";
+		if (["sent1", "sent2", "unrelated"].includes(id)) {
+			const marker = { name: "X-Angels-Rest-Send-ID", value: id === "unrelated" || scenario === "missing" ? "different-attempt" : attemptId };
+			if (url.searchParams.get("format") === "metadata") {
+				expect(url.searchParams.get("metadataHeaders")).toBe("X-Angels-Rest-Send-ID");
+				expect(url.searchParams.get("fields")).toBe("id,payload/headers");
+				return response({ id, payload: { headers: [marker, ...(scenario === "duplicate-header" ? [marker] : [])] } });
+			}
+			expect(id).toBe("sent1");
+			const m = full(id, true, "<provider-rewritten@mail.gmail.com>");
+			m.payload.headers.push(scenario === "changed-marker" ? { ...marker, value: "different-attempt" } : marker);
+			if (scenario === "wrong-participant") m.payload.headers[0].value = "stranger@example.test";
+			if (scenario === "wrong-subject") m.payload.headers[2].value = "Another conversation";
+			if (scenario === "not-sent") m.labelIds = ["INBOX"];
+			return response(m);
+		}
+		throw new Error("Unexpected request");
+	});
+	await s.t.action(internal.gmailNode.send, { attemptId });
+	expect((await s.t.run(ctx => ctx.db.get(attemptId)))?.status).toBe("uncertain");
+	await s.t.action(internal.gmailNode.reconcile, { attemptId });
+	const recovered = ["rewritten", "new-thread"].includes(scenario);
+	expect((await s.t.run(ctx => ctx.db.get(attemptId)))?.status).toBe(recovered ? "accepted" : "uncertain");
+	if (recovered) {
+		expect((await s.t.run(ctx => ctx.db.get(s.conversationId)))?.lastRfcId).toBe("<provider-rewritten@mail.gmail.com>");
+		expect(await s.t.run(ctx => ctx.db.query("gmailMessages").take(10))).toHaveLength(1);
+	}
+	await s.t.action(internal.gmailNode.send, { attemptId });
+	expect(fetcher.mock.calls.filter(([u]) => String(u).includes("/messages/send"))).toHaveLength(1);
+	// Unrelated Sent mail never has its body fetched or imported.
+	expect(fetcher.mock.calls.filter(([u]) => String(u).includes("/messages/unrelated?format=full"))).toHaveLength(0);
+});
+
 test("a separately consented business mailbox never creates a login or site membership", async () => {
 	const s = await setup();
 	// This tenant has no mailbox yet; ordinary admin identity remains the existing owner.
