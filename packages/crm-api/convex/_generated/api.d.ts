@@ -8,7 +8,6 @@
  * @module
  */
 
-import type { ApiFromModules, FilterApi, FunctionReference } from "convex/server";
 import type * as activityLog from "../activityLog.js";
 import type * as adminAuth from "../adminAuth.js";
 import type * as auth from "../auth.js";
@@ -34,6 +33,10 @@ import type * as galleries from "../galleries.js";
 import type * as galleryAccess from "../galleryAccess.js";
 import type * as galleryPassword from "../galleryPassword.js";
 import type * as galleryPasswordStore from "../galleryPasswordStore.js";
+import type * as gmailAuthLink from "../gmailAuthLink.js";
+import type * as gmailConversations from "../gmailConversations.js";
+import type * as gmailNode from "../gmailNode.js";
+import type * as gmailState from "../gmailState.js";
 import type * as helpers_aboutContactHostContract from "../helpers/aboutContactHostContract.js";
 import type * as helpers_aboutPageData from "../helpers/aboutPageData.js";
 import type * as helpers_aboutPageValidators from "../helpers/aboutPageValidators.js";
@@ -83,6 +86,9 @@ import type * as helpers_deleting from "../helpers/deleting.js";
 import type * as helpers_documentEmailAttemptValidators from "../helpers/documentEmailAttemptValidators.js";
 import type * as helpers_documentNumbering from "../helpers/documentNumbering.js";
 import type * as helpers_financialOrderAuthorization from "../helpers/financialOrderAuthorization.js";
+import type * as helpers_gmail_connection from "../helpers/gmail/connection.js";
+import type * as helpers_gmail_policy from "../helpers/gmail/policy.js";
+import type * as helpers_gmail_protocol from "../helpers/gmail/protocol.js";
 import type * as helpers_inquiryNotifications from "../helpers/inquiryNotifications.js";
 import type * as helpers_invoicePayments from "../helpers/invoicePayments.js";
 import type * as helpers_limits from "../helpers/limits.js";
@@ -151,14 +157,12 @@ import type * as stripeFees from "../stripeFees.js";
 import type * as stripeFeesStore from "../stripeFeesStore.js";
 import type * as tags from "../tags.js";
 
-/**
- * A utility for referencing Convex functions in your app's API.
- *
- * Usage:
- * ```js
- * const myFunctionReference = api.myModule.myFunction;
- * ```
- */
+import type {
+  ApiFromModules,
+  FilterApi,
+  FunctionReference,
+} from "convex/server";
+
 declare const fullApi: ApiFromModules<{
   activityLog: typeof activityLog;
   adminAuth: typeof adminAuth;
@@ -185,6 +189,10 @@ declare const fullApi: ApiFromModules<{
   galleryAccess: typeof galleryAccess;
   galleryPassword: typeof galleryPassword;
   galleryPasswordStore: typeof galleryPasswordStore;
+  gmailAuthLink: typeof gmailAuthLink;
+  gmailConversations: typeof gmailConversations;
+  gmailNode: typeof gmailNode;
+  gmailState: typeof gmailState;
   "helpers/aboutContactHostContract": typeof helpers_aboutContactHostContract;
   "helpers/aboutPageData": typeof helpers_aboutPageData;
   "helpers/aboutPageValidators": typeof helpers_aboutPageValidators;
@@ -234,6 +242,9 @@ declare const fullApi: ApiFromModules<{
   "helpers/documentEmailAttemptValidators": typeof helpers_documentEmailAttemptValidators;
   "helpers/documentNumbering": typeof helpers_documentNumbering;
   "helpers/financialOrderAuthorization": typeof helpers_financialOrderAuthorization;
+  "helpers/gmail/connection": typeof helpers_gmail_connection;
+  "helpers/gmail/policy": typeof helpers_gmail_policy;
+  "helpers/gmail/protocol": typeof helpers_gmail_protocol;
   "helpers/inquiryNotifications": typeof helpers_inquiryNotifications;
   "helpers/invoicePayments": typeof helpers_invoicePayments;
   "helpers/limits": typeof helpers_limits;
@@ -302,8 +313,32 @@ declare const fullApi: ApiFromModules<{
   stripeFeesStore: typeof stripeFeesStore;
   tags: typeof tags;
 }>;
-export declare const api: FilterApi<typeof fullApi, FunctionReference<any, "public">>;
-export declare const internal: FilterApi<typeof fullApi, FunctionReference<any, "internal">>;
+
+/**
+ * A utility for referencing Convex functions in your app's public API.
+ *
+ * Usage:
+ * ```js
+ * const myFunctionReference = api.myModule.myFunction;
+ * ```
+ */
+export declare const api: FilterApi<
+  typeof fullApi,
+  FunctionReference<any, "public">
+>;
+
+/**
+ * A utility for referencing Convex functions in your app's internal API.
+ *
+ * Usage:
+ * ```js
+ * const myFunctionReference = internal.myModule.myFunction;
+ * ```
+ */
+export declare const internal: FilterApi<
+  typeof fullApi,
+  FunctionReference<any, "internal">
+>;
 
 export declare const components: {
   betterAuth: import("@convex-dev/better-auth/_generated/component.js").ComponentApi<"betterAuth">;
