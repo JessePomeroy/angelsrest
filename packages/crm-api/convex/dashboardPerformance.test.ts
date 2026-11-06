@@ -47,6 +47,7 @@ test("dashboard summary preserves invoice balances without sending line items", 
 	await t.run(async (ctx) => { await ctx.db.patch(id, { status: "partial", paidAmount: 500 }); });
 	const summary = await admin.query(api.invoices.getDashboardSummary, { siteUrl });
 	expect(summary.pendingAmount).toBe(1700);
+	expect(summary.counts).toEqual({ draft: 0, sent: 0, paid: 0, overdue: 0, partial: 1 });
 	expect(summary.recent).toHaveLength(1);
 	expect(JSON.stringify(summary)).not.toContain("Private line description");
 	expect(summary.isTruncated).toBe(false);
@@ -54,6 +55,60 @@ test("dashboard summary preserves invoice balances without sending line items", 
 	await expect(admin.query(api.invoices.getDashboardSummary, { siteUrl: "foreign.example" })).rejects.toThrow();
 });
 
+
+test("invoice summary counts the same outstanding statuses as its balance", async () => {
+	const { t, admin, siteUrl, clients } = await setup();
+	await t.run(async (ctx) => {
+		for (const status of ["draft", "sent", "overdue", "partial", "paid", "canceled"] as const) {
+			await ctx.db.insert("invoices", {
+				siteUrl, clientId: clients[0], invoiceType: "one-time", invoiceNumber: `INV-${status}`,
+				status, items: [{ description: "Private item", quantity: 1, unitPrice: 1000 }],
+				...(status === "partial" ? { paidAmount: 400 } : {}),
+			});
+		}
+		await ctx.db.insert("invoices", {
+			siteUrl: "foreign.example", clientId: clients[1], invoiceType: "one-time", invoiceNumber: "FOREIGN",
+			status: "partial", items: [{ description: "Foreign item", quantity: 1, unitPrice: 9000 }], paidAmount: 100,
+		});
+	});
+	const summary = await admin.query(api.invoices.getDashboardSummary, { siteUrl });
+	expect(summary.counts).toEqual({ draft: 1, sent: 1, paid: 1, overdue: 1, partial: 1 });
+	expect(summary.pendingAmount).toBe(3600);
+	expect(summary.isTruncated).toBe(false);
+	expect(summary.recent).toHaveLength(5);
+	expect(JSON.stringify(summary)).not.toContain("Foreign item");
+});
+
+test("invoice summary retains the 200-document boundary and partial count", async () => {
+	const { t, admin, siteUrl, clients } = await setup();
+	await t.run(async (ctx) => {
+		for (let i = 0; i < 201; i++) {
+			await ctx.db.insert("invoices", {
+				siteUrl, clientId: clients[0], invoiceType: "one-time", invoiceNumber: `INV-${i}`,
+				status: "partial", items: [{ description: "Private item", quantity: 1, unitPrice: 100 }], paidAmount: 20,
+			});
+		}
+	});
+	const summary = await admin.query(api.invoices.getDashboardSummary, { siteUrl });
+	expect(summary.counts).toEqual({ draft: 0, sent: 0, paid: 0, overdue: 0, partial: 200 });
+	expect(summary.pendingAmount).toBe(16000);
+	expect(summary.isTruncated).toBe(true);
+	expect(summary.recent).toHaveLength(5);
+	expect(JSON.stringify(summary)).not.toContain("Private item");
+});
+
+test("unknown partial payments keep the count but make the amount unavailable", async () => {
+	const { t, admin, siteUrl, clients } = await setup();
+	await t.run(async (ctx) => {
+		await ctx.db.insert("invoices", {
+			siteUrl, clientId: clients[0], invoiceType: "one-time", invoiceNumber: "INV-unknown",
+			status: "partial", items: [{ description: "Private item", quantity: 1, unitPrice: 1000 }],
+		});
+	});
+	const summary = await admin.query(api.invoices.getDashboardSummary, { siteUrl });
+	expect(summary.counts).toEqual({ draft: 0, sent: 0, paid: 0, overdue: 0, partial: 1 });
+	expect(summary.pendingAmount).toBeNull();
+});
 
 test("order statistics stream the bounded history, preserve currencies, and flag truncation", async () => {
 	const { t, admin, siteUrl } = await setup();

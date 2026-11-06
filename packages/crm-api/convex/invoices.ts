@@ -58,7 +58,7 @@ export const getDashboardSummary = query({
 		await requireSiteAdmin(ctx, siteUrl, "invoicing");
 		const found = await ctx.db.query("invoices").withIndex("by_siteUrl", (q) => q.eq("siteUrl", siteUrl)).order("desc").take(201);
 		const rows = found.slice(0, 200);
-		const counts = { draft: 0, sent: 0, paid: 0, overdue: 0 };
+		const counts = { draft: 0, sent: 0, paid: 0, overdue: 0, partial: 0 };
 		for (const row of rows) {
 			if (row.status in counts) counts[row.status as keyof typeof counts] += 1;
 		}
