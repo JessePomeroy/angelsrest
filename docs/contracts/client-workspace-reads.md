@@ -70,41 +70,39 @@ Worker protocol work, schema changes, record migration or provider calls.
 Client-page navigation and rendered acceptance belong to LW-02 after ownership
 release and reconciliation of the original thread's CRM save/clear work.
 
-## Pending generated-contract gate
+## Generated contract and delivery gates
 
-The existing `_generated/api.d.ts` remains unchanged until official component
-generation succeeds. Runtime fixture tests discover the new source module, but
-they do not establish generated API/type acceptance. Package and consumer types
-and exact-head green CI remain required before this slice can be treated as
-complete.
+The owner approved official component generation and explicitly selected the
+existing staging deployment `rosy-firefly-366`. Its current dashboard settings
+classify it as Production-type with the custom label `staging`; its CLI selector
+is therefore `prod:rosy-firefly-366`. This selects the staging backend, not the
+live production deployment `loyal-swan-967`.
 
-The owner approved provider access for the installed official CLI from
-`packages/crm-api` at the reviewed source head:
+The installed official CLI succeeded from `packages/crm-api` on November 6:
 
 ```zsh
-pnpm exec convex codegen --typecheck disable
+CONVEX_DEPLOYMENT=prod:rosy-firefly-366 CI=1 pnpm exec convex codegen --typecheck disable
 ```
 
-The first non-interactive attempt on November 6 exited before generation with
-`No CONVEX_DEPLOYMENT set`. This bound workspace has no Convex deployment
-selection or environment file. The permitted existing deployment/authentication
-context is still required; historical CI URLs do not select it by inference.
-No credential creation, broader access, or credential value in chat is part of
-this action. Do not substitute `convex dev`, `convex deploy`, a legacy/offline
-template, system-UDF generation, synthesized component analysis, a stub or a
-hand-merged declaration.
+Only `_generated/api.d.ts` changed: one typed module import and one `fullApi`
+binding for `clientWorkspace`. The existing Better Auth `components` binding and
+all other API members remain intact; the other six generated files are unchanged.
+No declaration was hand edited. The earlier unconfigured attempt stopped with
+`No CONVEX_DEPLOYMENT set`; the successful run used the owner's explicit selector
+and existing CLI login without creating or copying credentials or persisting an
+environment file.
 
 The [official codegen reference](https://docs.convex.dev/cli/reference/codegen)
 states that this command generates local code without changing running deployed
-code. That does not establish an offline operation: the installed component CLI
-selects deployment credentials and obtains component analysis. Provider contact
-is therefore still a separate gate.
+code. This is a provider-backed operation: the installed component CLI obtains
+deployment metadata and uploads source for component analysis before generating
+bindings. Its codegen path returns without the deployment `finishPush` step.
+No `convex dev` or `convex deploy` ran. A legacy/offline template, system-UDF
+generation, synthesized component analysis, stub or hand merge is not an
+alternative to this official generation path.
 
-Expected source diff: the generated typed module import and `fullApi` binding for
-`clientWorkspace`, preserving the existing Better Auth `components` binding and
-all existing API members. Only `_generated/api.d.ts` is released for generated
-changes. Review the actual complete generator diff; unexpected files or contract
-changes require coordination rather than hand editing output into the expected
-shape. After generation, rerun package/host types and the required tests/review/CI
-at the exact head. Publication, backend deployment and consumer adoption remain
-separate approvals.
+Generated API/package/consumer checks and required tests must use the actual
+generated head. Local fixture success alone is insufficient. Remote PR review
+and exact-head CI remain required before slice completion. Hosting-triggering
+push/PR and main merge need their applicable effect authorization. Publication,
+backend deployment and consumer adoption remain separate approvals.
