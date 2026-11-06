@@ -72,24 +72,27 @@ release and reconciliation of the original thread's CRM save/clear work.
 
 ## Pending generated-contract gate
 
-The existing `_generated/api.d.ts` remains unchanged until separately approved
-official component generation is available. Runtime fixture tests discover the
-new source module, but they do not establish generated API/type acceptance.
-Package and consumer types and exact-head green CI remain required before this
-slice can be treated as complete.
+The existing `_generated/api.d.ts` remains unchanged until official component
+generation succeeds. Runtime fixture tests discover the new source module, but
+they do not establish generated API/type acceptance. Package and consumer types
+and exact-head green CI remain required before this slice can be treated as
+complete.
 
-The proposed generation action, **not executed**, is the installed official CLI
-from `packages/crm-api` at the reviewed source head:
+The owner approved provider access for the installed official CLI from
+`packages/crm-api` at the reviewed source head:
 
 ```zsh
 pnpm exec convex codegen --typecheck disable
 ```
 
-The owner must first approve provider access and identify the existing permitted
-deployment/authentication context. No credential creation, broader access, or
-credential value in chat is part of this action. Do not substitute `convex dev`,
-`convex deploy`, a legacy/offline template, system-UDF generation, synthesized
-component analysis, a stub or a hand-merged declaration.
+The first non-interactive attempt on November 6 exited before generation with
+`No CONVEX_DEPLOYMENT set`. This bound workspace has no Convex deployment
+selection or environment file. The permitted existing deployment/authentication
+context is still required; historical CI URLs do not select it by inference.
+No credential creation, broader access, or credential value in chat is part of
+this action. Do not substitute `convex dev`, `convex deploy`, a legacy/offline
+template, system-UDF generation, synthesized component analysis, a stub or a
+hand-merged declaration.
 
 The [official codegen reference](https://docs.convex.dev/cli/reference/codegen)
 states that this command generates local code without changing running deployed
