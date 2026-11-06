@@ -17,6 +17,7 @@ import type * as businessRecords from "../businessRecords.js";
 import type * as catalogPrivateAssets from "../catalogPrivateAssets.js";
 import type * as catalogProductGraphs from "../catalogProductGraphs.js";
 import type * as catalogProducts from "../catalogProducts.js";
+import type * as clientWorkspace from "../clientWorkspace.js";
 import type * as commerceClosure from "../commerceClosure.js";
 import type * as commerceIntakeInbox from "../commerceIntakeInbox.js";
 import type * as content from "../content.js";
@@ -173,6 +174,7 @@ declare const fullApi: ApiFromModules<{
   catalogPrivateAssets: typeof catalogPrivateAssets;
   catalogProductGraphs: typeof catalogProductGraphs;
   catalogProducts: typeof catalogProducts;
+  clientWorkspace: typeof clientWorkspace;
   commerceClosure: typeof commerceClosure;
   commerceIntakeInbox: typeof commerceIntakeInbox;
   content: typeof content;
