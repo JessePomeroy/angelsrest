@@ -1,7 +1,9 @@
 /// <reference types="vite/client" />
 // @vitest-environment edge-runtime
-import type { PaginationResult } from "convex/server";
-import type { Doc } from "./_generated/dataModel";
+import { deepStrictEqual } from "node:assert/strict";
+import { makeFunctionReference, type FunctionArgs, type PaginationResult } from "convex/server";
+import { convexToJson, jsonToConvex } from "convex/values";
+import type { Doc, Id } from "./_generated/dataModel";
 import { convexTest } from "convex-test";
 import { afterEach, expect, test, vi } from "vitest";
 import { api, internal } from "./_generated/api";
@@ -9,13 +11,13 @@ import schema from "./schema";
 const modules = import.meta.glob("./**/*.ts");
 const siteUrl = "crm-audit.example";
 afterEach(() => vi.useRealTimers());
-async function setup() {
+async function setup(tier: "full" | "basic" = "full") {
 	const t = convexTest(schema, modules);
 	await t.mutation(internal.platform.seedClient, {
 		name: "CRM",
 		email: "admin@crm-audit.example",
 		siteUrl,
-		tier: "full",
+		tier,
 		subscriptionStatus: "active",
 		adminEmails: ["admin@crm-audit.example"],
 		role: "client",
@@ -29,6 +31,94 @@ async function setup() {
 		}),
 	};
 }
+
+const populatedClient = {
+	siteUrl,
+	name: "Avery Stone",
+	category: "web",
+	email: "avery@example.invalid",
+	phone: "555-0100",
+	type: "website" as const,
+	source: "referral",
+	notes: "Original notes",
+	siteUrl_client: "https://avery.example.invalid",
+} satisfies FunctionArgs<typeof api.crm.createClient>;
+
+test.each(["http", "websocket"])("persists explicit optional-field clearing through %s encoding", async (transport) => {
+	const { admin } = await setup();
+	const clientId = await admin.mutation(api.crm.createClient, populatedClient);
+	const args: FunctionArgs<typeof api.crm.updateClient> = {
+		clientId,
+		siteUrl,
+		clearFields: ["email", "phone", "type", "source", "notes", "siteUrl_client"],
+	};
+	const decoded: unknown = transport === "http"
+		? JSON.parse(JSON.stringify(args))
+		: jsonToConvex(convexToJson(args));
+	deepStrictEqual(decoded, args);
+	await admin.mutation(api.crm.updateClient, decoded);
+	const saved = await admin.query(api.crm.getClient, { clientId });
+	for (const field of args.clearFields ?? []) expect(saved).not.toHaveProperty(field);
+	expect(saved).toMatchObject({ name: populatedClient.name, siteUrl, category: "web", status: "lead" });
+	expect(await admin.query(api.crm.listClients, { siteUrl })).toEqual([saved]);
+});
+
+test("preserves omitted fields and keeps status activity when clearing one field", async () => {
+	const { admin } = await setup();
+	const clientId = await admin.mutation(api.crm.createClient, populatedClient);
+	await admin.mutation(api.crm.updateClient, { clientId, siteUrl, name: "Renamed", phone: undefined });
+	expect(await admin.query(api.crm.getClient, { clientId })).toMatchObject({ ...populatedClient, name: "Renamed" });
+	await admin.mutation(api.crm.updateClient, { clientId, siteUrl, status: "booked", clearFields: ["notes"] });
+	const saved = await admin.query(api.crm.getClient, { clientId });
+	expect(saved).toMatchObject({ email: populatedClient.email, phone: populatedClient.phone, type: "website", source: "referral", siteUrl_client: populatedClient.siteUrl_client, name: "Renamed", status: "booked" });
+	expect(saved).not.toHaveProperty("notes");
+	const activity = await admin.query(api.activityLog.getClientActivity, { clientId });
+	expect(activity.filter(row => row.action === "status_changed")).toMatchObject([{ description: "status changed to booked" }]);
+});
+
+test("rejects conflicting updates atomically", async () => {
+	const { admin } = await setup();
+	const clientId = await admin.mutation(api.crm.createClient, populatedClient);
+	await expect(admin.mutation(api.crm.updateClient, { clientId, siteUrl, name: "Must not persist", status: "booked", notes: "Conflict", clearFields: ["notes"] })).rejects.toThrow("Cannot set and clear notes");
+	expect(await admin.query(api.crm.getClient, { clientId })).toMatchObject({ ...populatedClient, status: "lead" });
+	expect((await admin.query(api.activityLog.getClientActivity, { clientId })).filter(row => row.action === "status_changed")).toEqual([]);
+});
+
+test.each(["name", "siteUrl", "status", "boardColumnId"])("rejects clearing non-allowlisted %s", async (field) => {
+	const { admin } = await setup();
+	const clientId = await admin.mutation(api.crm.createClient, populatedClient);
+	// Widen only attack input to exercise the registered function's runtime validator.
+	const untrustedUpdate = makeFunctionReference<"mutation", { clientId: Id<"photographyClients">; siteUrl: string; clearFields: string[] }, null>("crm:updateClient");
+	await expect(admin.mutation(untrustedUpdate, { clientId, siteUrl, clearFields: [field] })).rejects.toThrow();
+	expect(await admin.query(api.crm.getClient, { clientId })).toMatchObject(populatedClient);
+});
+
+test("bounds the clear request before writing", async () => {
+	const { admin } = await setup();
+	const clientId = await admin.mutation(api.crm.createClient, populatedClient);
+	await expect(admin.mutation(api.crm.updateClient, { clientId, siteUrl, clearFields: Array.from({ length: 7 }, () => "email" as const) })).rejects.toThrow("Too many fields");
+	expect(await admin.query(api.crm.getClient, { clientId })).toMatchObject(populatedClient);
+});
+
+test("keeps authentication and stored-site ownership checks on clears", async () => {
+	const { t, admin } = await setup();
+	const clientId = await admin.mutation(api.crm.createClient, populatedClient);
+	await expect(t.mutation(api.crm.updateClient, { clientId, siteUrl, clearFields: ["notes"] })).rejects.toThrow("Not authenticated");
+	const outsider = t.withIdentity({ subject: "outsider", email: "outsider@example.invalid", emailVerified: true });
+	await expect(outsider.mutation(api.crm.updateClient, { clientId, siteUrl, clearFields: ["notes"] })).rejects.toThrow("Not authorized");
+	const foreignId = await t.run(ctx => ctx.db.insert("photographyClients", { ...populatedClient, siteUrl: "foreign.example.invalid", status: "lead" }));
+	await expect(admin.mutation(api.crm.updateClient, { clientId: foreignId, siteUrl, clearFields: ["notes"] })).rejects.toThrow("Not found");
+	await expect(admin.mutation(api.crm.updateClient, { clientId, siteUrl: "foreign.example.invalid", clearFields: ["notes"] })).rejects.toThrow("Not authorized");
+	expect(await admin.query(api.crm.getClient, { clientId })).toMatchObject(populatedClient);
+	expect(await t.run(ctx => ctx.db.get(foreignId))).toMatchObject({ notes: populatedClient.notes });
+});
+
+test("requires the CRM feature for clears", async () => {
+	const { t, admin } = await setup("basic");
+	const clientId = await t.run(ctx => ctx.db.insert("photographyClients", { ...populatedClient, status: "lead" }));
+	await expect(admin.mutation(api.crm.updateClient, { clientId, siteUrl, clearFields: ["notes"] })).rejects.toThrow();
+	expect(await t.run(ctx => ctx.db.get(clientId))).toMatchObject(populatedClient);
+});
 test.each([
 	undefined,
 	"photography",

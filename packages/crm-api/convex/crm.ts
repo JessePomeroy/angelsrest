@@ -21,6 +21,15 @@ const statusValidator = v.union(
 	v.literal("archived"),
 );
 
+const clearableClientField = v.union(
+	v.literal("email"),
+	v.literal("phone"),
+	v.literal("type"),
+	v.literal("source"),
+	v.literal("notes"),
+	v.literal("siteUrl_client"),
+);
+
 function clientsByFilter(
 	ctx: QueryCtx,
 	{
@@ -161,9 +170,20 @@ export const updateClient = mutation({
 		source: v.optional(v.string()),
 		notes: v.optional(v.string()),
 		siteUrl_client: v.optional(v.string()),
+		clearFields: v.optional(v.array(clearableClientField)),
 	},
-	handler: async (ctx, { clientId, siteUrl, ...updates }) => {
+	handler: async (ctx, { clientId, siteUrl, clearFields = [], ...updates }) => {
+		if (clearFields.length > 6) throw new Error("Too many fields to clear");
+		const clearPatch: Partial<Doc<"photographyClients">> = {};
+		for (const field of clearFields) {
+			if (updates[field] !== undefined) {
+				throw new Error(`Cannot set and clear ${field} in the same update`);
+			}
+			clearPatch[field] = undefined;
+		}
 		const existing = await patchDocument(ctx, clientId, siteUrl, updates, "crm");
+		// Ordinary omitted values remain unchanged; only explicit intent removes fields.
+		if (clearFields.length > 0) await ctx.db.patch(clientId, clearPatch);
 
 		// Log status changes
 		if (updates.status && updates.status !== existing.status) {
