@@ -65,8 +65,8 @@ export const createAuth = (ctx: GenericCtx<DataModel>) => {
 				},
 				// Auto-rotate JWKS keys if the JWT library hits
 				// ERR_JOSE_NOT_SUPPORTED (alg mismatch between the stored key
-				// and the current plugin config). Without this flag, sign-in
-				// silently fails to set the `better-auth.convex_jwt` cookie
+				// and the current plugin config). Without this flag, established-session
+				// requests can silently fail to set the `better-auth.convex_jwt` cookie
 				// — the error is swallowed in the convex plugin's after-hook
 				// try/catch, so the browser gets a valid session but no JWT,
 				// breaking Convex WebSocket auth on the admin dashboard.
