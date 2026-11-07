@@ -21,9 +21,10 @@ lists 2.70.4 as patched, but its prose and GitHub alert metadata also refer to
 integrity, calls `escape_html(value, true)` for that attribute. This patch selection
 therefore rests on the release and shipped code, not an assumed alert closure.
 
-The lock changes update Kit's peer snapshots and reuse the already-locked
-`set-cookie-parser` 3.2.2 for Kit, removing its older duplicate. No other package
-version, auth peer constraint, override, generated API, or application code changes.
+The framework slice updated Kit's peer snapshots and reused the already-locked
+`set-cookie-parser` 3.2.2 for Kit, removing its older duplicate. The separate auth
+component patch below preserves the auth peer constraints, overrides, generated
+API and application configuration.
 
 ## Current reachability and remaining work
 
@@ -44,7 +45,7 @@ points are each repository's Svelte/Vite configuration and the installed Svelte
 plugin's `src/utils/options.js` configuration merge.
 
 Both repositories retain Better Auth 1.6.34. The installed Convex component
-`@convex-dev/better-auth` 0.12.6 requires `better-auth >=1.6.11 <1.7.0`; the listed
+`@convex-dev/better-auth` 0.12.7 requires `better-auth >=1.6.11 <1.7.0`; the listed
 advisory fixes are outside that range. A supported adapter/auth upgrade needs
 its own compatibility and auth/session verification. Do not bypass the peer
 constraint or enable an affected plugin under this disposition.
@@ -55,9 +56,15 @@ and [changelog](https://github.com/convex/better-auth/blob/v0.13.0/CHANGELOG.md)
 describe breaking endpoint, adapter, schema and session changes. This is a
 concrete follow-up candidate, rather than evidence that no upgrade path exists.
 Keep that coordinated migration separate from this framework patch. The same
-changelog identifies a compatible 0.12.7 component security patch, with unchanged
-Better Auth peers and component schema/generated bindings. Keep it as the next
-bounded dependency slice:
+changelog identifies the compatible 0.12.7 component security patch now selected
+by the Hub, with unchanged Better Auth peers and component schema/generated
+bindings:
+
+The component update's package-manager resolution also moves `better-call`'s
+`@better-fetch/fetch` edge from 1.3.1 to the already-locked 1.3.3 within its declared
+range. Both password and Google callback flows and the existing auth/session/HTTP
+regressions are checked with that resolution; it is not represented as an
+adapter-only lock change.
 
 - [Request-origin poisoning](https://github.com/convex/better-auth/security/advisories/GHSA-9qq3-v9g3-cxhw)
   requires self-hosted Convex without the relevant header normalization, matching
@@ -72,13 +79,23 @@ bounded dependency slice:
   if that plugin were introduced.
 
 Neither configured exploit path was established. The compatible maintenance
-patch still warrants its own sign-in/session verification: 0.12.7 clears the
+patch changes the sign-in/session sequence: 0.12.7 clears the
 Convex JWT at sign-in/callback and issues it after an established-session request.
-Hub's server reads that cookie and LoginPage reloads after sign-in. Verify the
-registered router, trusted/untrusted origin handling, cookie establishment,
-session recovery and sign-out before accepting the patch. A frontend-only deploy
-would not update Convex auth runtime. This framework patch does not claim the
-component's complete advisory set is resolved.
+Hub's server reads that cookie and LoginPage reloads after sign-in. Registered
+HTTP-router tests cover password and the configured Google callback, deletion of
+the previous JWT, session establishment, both token-issuing endpoints and sign-out.
+They verify issued JWT signatures and issuer/audience/session claims against local
+public JWKS, reject a tampered payload, and preserve trusted callback origins while
+denying unrelated browser origins. Test-mode origin-check bypass is explicitly
+disabled and asserted before those tests run. The installed SvelteKit adapter's
+unmocked `getToken` also reads the issued cookie and observes its deletion.
+
+The Google token endpoint is intercepted with fictional provider data. The router
+tests establish local cookie and cryptographic behavior; existing client-session
+protocol tests check recovery separately. They do not establish a live browser
+sign-in, Google credential validation or admission by a deployed Convex gateway.
+A frontend-only deploy would not update Convex auth runtime. This disposition does
+not claim the component's complete advisory set or deployed rollout is resolved.
 
 An independent read-only validation found no current configured exploit path
 for the four Better Auth advisories and no untrusted-request path into deepmerge.
