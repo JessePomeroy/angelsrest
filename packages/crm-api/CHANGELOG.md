@@ -1,5 +1,25 @@
 # @jessepomeroy/crm-api
 
+## 6.15.0
+
+### Minor Changes
+
+- 903fbf6: Add bounded, authorized client-workspace summary reads for invoices, quotes,
+  contracts and delivery galleries. Existing client/site relationships and area
+  permissions remain authoritative; no mutations or schema changes are introduced.
+- 3467ab6: Add optional, allowlisted `clearFields` to `crm.updateClient`, preserving omitted-field updates and stored-site authorization. Deploy this receiver before adopting Admin consumers that emit explicit clears.
+- 2af5adc: Add the partial-payment invoice count to the bounded dashboard summary so outstanding counts cover the same draft, sent, overdue and partial statuses as pending balances. Existing fields, amount validation, tenant authorization, 200-document limit and truncation metadata remain unchanged.
+- 5876a64: Add an authorized, bounded client-filter scan preserving name/email substring
+  matching and selected-tag membership across continuation batches. Existing list
+  reads are unchanged; deploy the new reader before opting in Admin consumers.
+
+### Patch Changes
+
+- 3fd9b73: Reject delivery gallery portal capabilities when their gallery is unpublished, archived or expired, keeping image authorization consistent with gallery metadata access.
+- 7a7c1b9: Clarify the established-session JWT issuance used with the compatible Convex auth
+  component security patch. The generated API and component schema are unchanged;
+  auth-runtime deployment remains a separate rollout step.
+
 ## 6.14.0
 
 ### Minor Changes
