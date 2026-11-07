@@ -466,6 +466,11 @@ async function projectGalleryPortalRead(
 		throw new Error("Expected a gallery portal capability");
 	}
 	const gallery = loaded.document as Doc<"galleries">;
+	// Image delivery and public metadata share this capability decision.
+	if (gallery.status !== "published") return null;
+	if (gallery.expiresAt !== undefined && loaded.now >= gallery.expiresAt) {
+		return { expired: true as const, reason: "expired" as const };
+	}
 	const access = await hasValidGalleryAccessGrant(
 		ctx,
 		loaded.tokenDoc,
