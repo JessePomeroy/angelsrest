@@ -2,7 +2,7 @@
 // @vitest-environment edge-runtime
 
 import { convexTest } from "convex-test";
-import { describe, expect, test } from "vitest";
+import { describe, expect, test, vi } from "vitest";
 import { api, internal } from "./_generated/api";
 import schema from "./schema";
 
@@ -75,6 +75,55 @@ async function setupProtectedGallery() {
 }
 
 describe("gallery password access grants", () => {
+	test.each(["draft", "archived"] as const)(
+		"both portal readers stop authorizing a gallery changed to %s",
+		async (status) => {
+			const { t, admin, galleryId, token } = await setupProtectedGallery();
+			const grant = await t.mutation(internal.galleryPasswordStore.createGrant, {
+				token,
+				grant: "availability-grant",
+				verifierVersion: "password-v1",
+			});
+			const args = { token, accessGrant: grant.accessGrant };
+			for (const reader of [api.portal.getByToken, api.portal.getPublicByToken]) {
+				expect(await t.query(reader, args)).toMatchObject({ expired: false });
+			}
+			await admin.mutation(api.galleries.update, { id: galleryId, siteUrl: SITE, status });
+			for (const reader of [api.portal.getByToken, api.portal.getPublicByToken]) {
+				expect(await t.query(reader, args)).toBeNull();
+			}
+			await expect(t.query(api.galleries.getImages, { galleryId, ...args })).rejects.toThrow("Gallery not found");
+		},
+	);
+
+	test("both portal readers expire with the gallery at its exact deadline", async () => {
+		const { t, admin, galleryId, token } = await setupProtectedGallery();
+		const grant = await t.mutation(internal.galleryPasswordStore.createGrant, {
+			token,
+			grant: "expiry-grant",
+			verifierVersion: "password-v1",
+		});
+		const args = { token, accessGrant: grant.accessGrant };
+		const deadline = Date.now() + 60_000;
+		await admin.mutation(api.galleries.update, { id: galleryId, siteUrl: SITE, expiresAt: deadline });
+		const clock = vi.spyOn(Date, "now");
+		try {
+			clock.mockReturnValue(deadline - 1);
+			for (const reader of [api.portal.getByToken, api.portal.getPublicByToken]) {
+				expect(await t.query(reader, args)).toMatchObject({ expired: false });
+			}
+			for (const now of [deadline, deadline + 1]) {
+				clock.mockReturnValue(now);
+				for (const reader of [api.portal.getByToken, api.portal.getPublicByToken]) {
+					expect(await t.query(reader, args)).toEqual({ expired: true, reason: "expired" });
+				}
+				await expect(t.query(api.galleries.getImages, { galleryId, ...args })).rejects.toThrow("Gallery has expired");
+			}
+		} finally {
+			clock.mockRestore();
+		}
+	});
+
 	test("protected portal metadata requires a grant and never returns password material", async () => {
 		const { t, galleryId, token } = await setupProtectedGallery();
 		const portal = await t.query(api.portal.getPublicByToken, { token });

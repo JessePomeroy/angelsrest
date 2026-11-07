@@ -574,6 +574,7 @@ describe("document email attempt preparation", () => {
 			downloadEnabled: true,
 			favoritesEnabled: true,
 		});
+		await adminA.mutation(api.galleries.update, { id: galleryId, siteUrl: SITE_A, status: "published" });
 		await t.run(async (ctx) => {
 			for (
 				let index = 0;
@@ -2788,6 +2789,7 @@ describe("portal public projections and validity boundaries", () => {
 			downloadEnabled: true,
 			favoritesEnabled: true,
 		});
+		await adminA.mutation(api.galleries.update, { id: galleryId, siteUrl: SITE_A, status: "published" });
 		const token = await adminA.mutation(api.portal.createToken, {
 			siteUrl: SITE_A,
 			type: "gallery",
