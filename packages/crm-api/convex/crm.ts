@@ -108,6 +108,74 @@ export const listClientsWithTags = query({
 	},
 });
 
+/** Matching rows from one bounded candidate batch; empty pages can still continue. */
+export const scanClientsWithTags = query({
+	args: {
+		siteUrl: v.string(),
+		paginationOpts: paginationOptsValidator,
+		category: v.optional(categoryValidator),
+		status: v.optional(statusValidator),
+		search: v.optional(v.string()),
+		tagId: v.optional(v.id("clientTags")),
+	},
+	handler: async (ctx, args) => {
+		await requireSiteAdmin(ctx, args.siteUrl, "crm");
+		if (
+			!Number.isInteger(args.paginationOpts.numItems) ||
+			args.paginationOpts.numItems < 1 ||
+			args.paginationOpts.numItems > 50
+		) {
+			throw new Error("Client filter batches must contain 1 to 50 candidates");
+		}
+		if (args.search !== undefined && args.search.length > 200) {
+			throw new Error("Client search must contain at most 200 characters");
+		}
+		const tagId = args.tagId;
+		if (tagId) {
+			const tag = await ctx.db.get(tagId);
+			if (!tag || tag.siteUrl !== args.siteUrl) throw new Error("Not found");
+		}
+		const result = await clientsByFilter(ctx, args)
+			.order("desc")
+			.paginate({
+				...args.paginationOpts,
+				maximumRowsRead: 50,
+				maximumBytesRead: 1_000_000,
+			});
+		const search = args.search?.toLowerCase() ?? "";
+		const matches: Doc<"photographyClients">[] = [];
+		for (const client of result.page) {
+			if (
+				search &&
+				!client.name.toLowerCase().includes(search) &&
+				!client.email?.toLowerCase().includes(search)
+			)
+				continue;
+			if (tagId) {
+				// The displayed tag projection is capped; membership needs a point lookup.
+				const assignment = await ctx.db
+					.query("clientTagAssignments")
+					.withIndex("by_clientId_and_tagId", (q) =>
+						q.eq("clientId", client._id).eq("tagId", tagId),
+					)
+					.unique();
+				if (!assignment || assignment.siteUrl !== args.siteUrl) continue;
+			}
+			matches.push(client);
+		}
+		return {
+			...result,
+			scannedCount: result.page.length,
+			page: await Promise.all(
+				matches.map(async (client) => ({
+					...client,
+					tags: await readClientTags(ctx, client._id, args.siteUrl),
+				})),
+			),
+		};
+	},
+});
+
 export const getClient = query({
 	args: { clientId: v.id("photographyClients") },
 	handler: async (ctx, { clientId }) => {
