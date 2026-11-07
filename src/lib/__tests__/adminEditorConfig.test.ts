@@ -110,7 +110,12 @@ const {
 			postContent: postApi,
 			portfolioGalleries: portfolioApi,
 			mediaAssets: mediaApi,
-			crm: { getStats: "crm.getStats", getClient: "crm.getClient" },
+			crm: {
+				getStats: "crm.getStats",
+				getClient: "crm.getClient",
+				listClientsWithTags: "crm.listClientsWithTags",
+				scanClientsWithTags: "crm.scanClientsWithTags",
+			},
 		},
 		{
 			get(target, prop, receiver) {
@@ -145,6 +150,15 @@ const {
 vi.mock("$convex/api", () => ({ api: apiMock }));
 
 describe("admin platform capabilities", () => {
+	it("enables progressive CRM filtering without widening the browser or server facade", () => {
+		for (const capabilities of [adminConfig.api, createAdminServerCapabilities(api)]) {
+			expect(capabilities.crm?.scanClientsWithTags).toBe(apiMock.crm.scanClientsWithTags);
+			expect(capabilities.crm?.listClientsWithTags).toBe(apiMock.crm.listClientsWithTags);
+			expect(Object.getPrototypeOf(capabilities.crm)).toBe(Object.prototype);
+			expect(Reflect.get(capabilities.crm ?? {}, "unknownCapability")).toBeUndefined();
+		}
+	});
+
 	it("adapts the generated API without exposing server-only browser capabilities", () => {
 		expect(Object.getPrototypeOf(adminConfig.api)).toBe(Object.prototype);
 		expect(Reflect.get(adminConfig.api, "unknownCapability")).toBeUndefined();

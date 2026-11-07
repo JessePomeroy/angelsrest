@@ -8,7 +8,7 @@ export type AdminBrowserCapabilities = Omit<
 	AdminAPI,
 	"documentEmailAttempts" | "crm" | "galleryDelivery"
 > & {
-	crm: AdminAPI["crm"] & Pick<GeneratedApi["crm"], "listClientsWithTags">;
+	crm: AdminAPI["crm"] & Pick<GeneratedApi["crm"], "listClientsWithTags" | "scanClientsWithTags">;
 	galleryDelivery: NonNullable<AdminAPI["galleryDelivery"]> &
 		Pick<GeneratedApi["galleries"], "getUploadPolicy" | "listBySitePaginated">;
 	readonly documentEmailAttempts?: never;
@@ -21,8 +21,13 @@ export type AdminBrowserCapabilities = Omit<
  * through this interface.
  */
 export function createAdminBrowserCapabilities(api: GeneratedApi): AdminBrowserCapabilities {
+	const standard = createStandardAdminAPI(api);
 	const capabilities = {
-		...createStandardAdminAPI(api),
+		...standard,
+		crm: {
+			...standard.crm,
+			scanClientsWithTags: api.crm.scanClientsWithTags,
+		},
 		blogContent: {
 			listForEditor: api.blogContent.listForEditor,
 			getEditorState: api.blogContent.getEditorState,
