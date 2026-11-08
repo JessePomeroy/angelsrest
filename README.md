@@ -46,7 +46,11 @@ brand, content, administrators, and public origin.
 | `angelsrest` | Angel's Rest public site, platform hub, Convex backend, and shared domain packages |
 | `admin-dashboard` | Source for the shared `@jessepomeroy/admin` UI and server adapters |
 | `gallery-worker` | Separate Cloudflare Worker deployments for private gallery delivery and public-site Editor media |
-| `reflecting-pool` | Client spoke and tenant admin host; currently in pre-handoff production testing |
+| `reflecting-pool` | Archived client spoke and tenant admin host; work paused for now |
+
+Active cross-repository work covers Angels Rest, the shared Admin, and the
+gallery Worker. Reflecting Pool is excluded unless explicitly requested; its
+existing tenant compatibility and runtime configuration remain in place.
 
 Cross-repository contracts are changed in their owning upstream repository
 first, then adopted and verified by affected consumers.

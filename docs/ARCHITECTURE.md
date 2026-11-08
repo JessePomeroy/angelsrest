@@ -313,7 +313,7 @@ retention and rollback requirements. Shipping these paths is not activation.
 | `angelsrest` | Public site, platform hub, Convex/package owner, composition root |
 | `admin-dashboard` | Source for the shared `@jessepomeroy/admin` package |
 | `gallery-worker` | Independent delivery-gallery and CMS-media Worker runtimes |
-| `reflecting-pool` | Deferred spoke consuming shared packages and services |
+| `reflecting-pool` | Archived for now; retained tenant compatibility context, outside active work unless explicitly requested |
 
 Cross-repository contracts land in the owning upstream first, then flow to each
 affected consumer with repository-specific checks.
