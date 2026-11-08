@@ -51,7 +51,11 @@ $effect(() => {
 
 $effect(() => {
 	if (!bar || !chrome) return;
-	const observer = new IntersectionObserver(([entry]) => { barVisible = entry.isIntersecting; });
+	const observer = new IntersectionObserver((entries) => {
+		// Queued crossings can share a delivery; the latest describes this bar.
+		const latest = entries.at(-1);
+		if (latest) barVisible = latest.isIntersecting;
+	});
 	observer.observe(bar);
 	return () => observer.disconnect();
 });
