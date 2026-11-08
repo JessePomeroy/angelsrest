@@ -13,6 +13,9 @@ try {
 		"--version": "version",
 		"--staging-origin": "stagingOrigin",
 		"--production-origin": "productionOrigin",
+		"--team": "providerTeamId",
+		"--staging-project": "stagingProjectId",
+		"--production-project": "productionProjectId",
 	};
 	const values = { publicPaths: [] };
 	if (args.length % 2) throw new Error("Expected option/value pairs.");
@@ -44,6 +47,17 @@ try {
 		production: environment("production", values.productionOrigin),
 		candidateRevision: values.candidateRevision,
 		version: values.version,
+		providerProjects: [
+			values.providerTeamId,
+			values.stagingProjectId,
+			values.productionProjectId,
+		].some((value) => value !== undefined)
+			? {
+					teamId: values.providerTeamId,
+					stagingProjectId: values.stagingProjectId,
+					productionProjectId: values.productionProjectId,
+				}
+			: undefined,
 	});
 	console.log(JSON.stringify(result, null, 2));
 	if (!result.evidenceReady) process.exitCode = 1;
