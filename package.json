@@ -58,7 +58,7 @@
 	},
 	"dependencies": {
 		"@convex-dev/better-auth": "^0.12.7",
-		"@jessepomeroy/admin": "6.16.0",
+		"@jessepomeroy/admin": "6.16.1",
 		"@jessepomeroy/gallery-delivery": "workspace:^",
 		"@jessepomeroy/print-catalog": "workspace:^",
 		"@lucide/svelte": "^0.563.1",
