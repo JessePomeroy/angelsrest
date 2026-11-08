@@ -27,6 +27,7 @@ test("queued visibility changes keep keyboard navigation above purchase controls
 							callback([earlier, current], observer);
 							document.documentElement.dataset.purchaseVisibilityDelivered = "true";
 						};
+						document.documentElement.dataset.purchaseVisibilityReady = "true";
 					}
 					callback(entries, observer);
 				}, options);
@@ -41,6 +42,7 @@ test("queued visibility changes keep keyboard navigation above purchase controls
 	const sphere = page.locator(".sphere");
 	await expect(sphere).toBeInViewport();
 	await expect(page.locator(".sticky-bar")).toHaveCSS("bottom", "0px");
+	await expect(page.locator("html")).toHaveAttribute("data-purchase-visibility-ready", "true");
 	await page.evaluate(() => window.dispatchEvent(new Event("test:purchase-visibility")));
 	await expect(page.locator("html")).toHaveAttribute("data-purchase-visibility-delivered", "true");
 	await sphere.focus();
