@@ -22,6 +22,8 @@ function environment(
 		minute = 0,
 		backend = "crm-api@6.7.0",
 		target: providerTarget = environmentId === "production" ? "production" : "preview",
+		accountId = "team_fixture",
+		projectId = "prj_fixture",
 	} = {},
 ) {
 	const publicOrigin = `https://${environmentId}.example.com`;
@@ -94,8 +96,8 @@ function environment(
 		data: {
 			buildRecordId: build.recordId,
 			provider: "vercel",
-			accountId: "team_fixture",
-			projectId: "prj_fixture",
+			accountId,
+			projectId,
 			deploymentId: `dpl_${environmentId}${minute}`,
 			url: "https://fixture.vercel.app",
 			target: providerTarget,
@@ -133,6 +135,113 @@ function input() {
 		version: "6.7.2",
 	};
 }
+
+const providerProjects = {
+	teamId: "team_fixture",
+	stagingProjectId: "prj_stagingFixture",
+	productionProjectId: "prj_productionFixture",
+};
+function isolatedInput() {
+	return {
+		...input(),
+		staging: environment("staging", {
+			target: "production",
+			projectId: providerProjects.stagingProjectId,
+		}),
+		production: environment("production", {
+			source: "d".repeat(40),
+			admin: "6.7.1",
+			projectId: providerProjects.productionProjectId,
+		}),
+		providerProjects,
+	};
+}
+
+test("explicit distinct projects allow isolated production-target staging without relabeling evidence", () => {
+	const value = isolatedInput();
+	const result = assessAdminAdoption(value);
+	assert.equal(result.evidenceReady, true);
+	assert.deepEqual(result.providerProjects, providerProjects);
+	assert.equal(value.staging.records[1].data.target, "production");
+	assert.equal(result.runtimeCompatibility, "unknown");
+	assert.equal(result.rollback.providerAvailability, "unverified");
+});
+
+test("isolated staging requires an explicit complete policy with different project identities", () => {
+	for (const policy of [
+		undefined,
+		null,
+		{ teamId: "team_fixture" },
+		{ ...providerProjects, stagingProjectId: providerProjects.productionProjectId },
+		{ ...providerProjects, teamId: "not-a-team" },
+		{ ...providerProjects, stagingProjectId: "not-a-project" },
+		{ ...providerProjects, allowUnverified: true },
+	]) {
+		assert.throws(() => assessAdminAdoption({ ...isolatedInput(), providerProjects: policy }));
+	}
+});
+
+test("configured project and account identity are enforced for staging, current production and recovery", () => {
+	for (const changed of [{ projectId: "prj_wrong" }, { accountId: "team_wrong" }]) {
+		const stage = isolatedInput();
+		stage.staging = environment("staging", {
+			target: "production",
+			projectId: providerProjects.stagingProjectId,
+			...changed,
+		});
+		assert.throws(() => assessAdminAdoption(stage));
+		const current = isolatedInput();
+		current.production.records.push(
+			...environment("production", {
+				minute: 10,
+				result: "failed",
+				projectId: providerProjects.productionProjectId,
+				...changed,
+			}).records,
+		);
+		assert.throws(() => assessAdminAdoption(current));
+		const recovery = isolatedInput();
+		recovery.production = environment("production", {
+			projectId: providerProjects.productionProjectId,
+			...changed,
+		});
+		recovery.production.records.push(
+			...environment("production", {
+				minute: 10,
+				result: "failed",
+				projectId: providerProjects.productionProjectId,
+			}).records,
+		);
+		assert.throws(() => assessAdminAdoption(recovery));
+	}
+});
+
+test("isolated project policy retains candidate, health, contract and recovery requirements", () => {
+	for (const change of [
+		{ source: "e".repeat(40) },
+		{ admin: "6.7.1" },
+		{ result: "failed" },
+		{ result: "blocked" },
+		{ backend: "crm-api@7.0.0" },
+	]) {
+		const value = isolatedInput();
+		value.staging = environment("staging", {
+			target: "production",
+			projectId: providerProjects.stagingProjectId,
+			...change,
+		});
+		assert.equal(assessAdminAdoption(value).evidenceReady, false);
+	}
+	const missingRecovery = isolatedInput();
+	missingRecovery.production.records.pop();
+	assert.throws(() => assessAdminAdoption(missingRecovery));
+	const wrongProductionTarget = isolatedInput();
+	wrongProductionTarget.production = environment("production", {
+		target: "preview",
+		projectId: providerProjects.productionProjectId,
+	});
+	assert.throws(() => assessAdminAdoption(wrongProductionTarget));
+});
 
 test("staging checks retain a separate production recovery reference and never prove runtime compatibility", () => {
 	const result = assessAdminAdoption(input());
@@ -244,5 +353,29 @@ test("the real CLI is offline, refuses missing evidence and does not write a his
 	assert.equal(result.status, 1);
 	assert.equal(result.stderr, "");
 	assert.equal(JSON.parse(result.stdout).evidenceReady, false);
+	const scoped = spawnSync(
+		process.execPath,
+		[
+			...args,
+			"--team",
+			providerProjects.teamId,
+			"--staging-project",
+			providerProjects.stagingProjectId,
+			"--production-project",
+			providerProjects.productionProjectId,
+		],
+		{ cwd: root, encoding: "utf8" },
+	);
+	assert.equal(scoped.status, 1);
+	assert.equal(scoped.stderr, "");
+	assert.deepEqual(JSON.parse(scoped.stdout).providerProjects, providerProjects);
+	assert.equal(JSON.parse(scoped.stdout).evidenceReady, false);
+	const partial = spawnSync(process.execPath, [...args, "--team", providerProjects.teamId], {
+		cwd: root,
+		encoding: "utf8",
+	});
+	assert.equal(partial.status, 1);
+	assert.equal(partial.stdout, "");
+	assert.match(partial.stderr, /Adoption evidence could not be checked/);
 	assert.deepEqual(readdirSync(root), [".git"]);
 });

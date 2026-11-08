@@ -90,6 +90,36 @@ failed or missing staging checks, missing production recovery proof, unresolved
 links, or changed non-Admin package/backend/Worker requirements. A newer unbound CI
 record cannot replace the candidate deployment's actual linked build.
 
+An existing isolated staging project may serve its staging domain from that
+project's Vercel `production` target. Preserve the actual provider target in the
+observation; it does not make that project the live website. For the dedicated
+Angels Rest staging project, observe with
+`--project prj_TZXP4xYmWst9RNYhihhgaRoZ52xq --target production` and the same
+staging environment, origin, artifact, deployment and public-check flags above.
+
+The adoption checker rejects production-target staging by default. To verify an
+explicitly identified isolated project, supply all three expected provider IDs:
+
+```zsh
+node scripts/check-release-adoption.mjs \
+  --repository JessePomeroy/angelsrest --site angelsrest.online \
+  --candidate "$ADOPTION_HEAD" --version "$ADMIN_VERSION" \
+  --staging-origin https://staging.angelsrest.online \
+  --production-origin https://www.angelsrest.online \
+  --team team_YA4WhxHjBPoepo8e5ijnFxmq \
+  --staging-project prj_TZXP4xYmWst9RNYhihhgaRoZ52xq \
+  --production-project prj_q6x2BF1DUnXDMYWNh0oWOQltLjxE \
+  --public-path / --public-path /cart
+```
+
+These IDs are expected identities, not values inferred from the candidate's
+records. The staging project must differ from the live project. Current staging,
+current Production and retained healthy Production recovery records must match
+the expected project and team. Partial options or mismatches fail. Distinct
+origins alone never enable this path. All existing candidate/version, health,
+contract, receipt-link and recovery requirements still apply. This changes no
+provider settings and does not authorize deployment or waive runtime acceptance.
+
 Exit zero means this bounded evidence gate passed. It does not authorize merge or
 prove runtime compatibility. Review the package release's runtime requirements;
 apply required additive backend/Worker changes before adoption. A change outside

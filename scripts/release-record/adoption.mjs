@@ -35,8 +35,35 @@ function reference(deployment, build) {
 		: null;
 }
 
+function validateProviderProjects(value) {
+	if (value === undefined) return;
+	if (
+		!value ||
+		Object.keys(value).sort().join(",") !== "productionProjectId,stagingProjectId,teamId" ||
+		typeof value.teamId !== "string" ||
+		!/^team_[A-Za-z0-9]+$/.test(value.teamId) ||
+		![value.stagingProjectId, value.productionProjectId].every(
+			(id) => typeof id === "string" && /^prj_[A-Za-z0-9]+$/.test(id),
+		) ||
+		value.stagingProjectId === value.productionProjectId
+	) {
+		throw new Error("Expected a team and distinct staging and production project IDs.");
+	}
+}
+
+function matchesProject(deployment, projectId, teamId) {
+	return deployment?.data.projectId === projectId && deployment.data.accountId === teamId;
+}
+
 /** A retained-evidence gate for an Admin-only host update; it grants no runtime authority. */
-export function assessAdminAdoption({ staging, production, candidateRevision, version }) {
+export function assessAdminAdoption({
+	staging,
+	production,
+	candidateRevision,
+	version,
+	providerProjects,
+}) {
+	validateProviderProjects(providerProjects);
 	if (
 		!/^[a-f0-9]{40,64}$/.test(candidateRevision) ||
 		!/^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-[0-9A-Za-z.-]+)?$/.test(version)
@@ -60,8 +87,28 @@ export function assessAdminAdoption({ staging, production, candidateRevision, ve
 	const stagedBuild = linkedBuild(staging.records, staged.currentDeployment);
 	const liveBuild = linkedBuild(production.records, live.currentDeployment);
 	const rollbackBuild = linkedBuild(production.records, live.lastHealthy);
+	const projectMismatch =
+		providerProjects &&
+		[
+			[staged.currentDeployment, providerProjects.stagingProjectId],
+			[live.currentDeployment, providerProjects.productionProjectId],
+			[live.lastHealthy, providerProjects.productionProjectId],
+		].some(
+			([deployment, projectId]) =>
+				deployment && !matchesProject(deployment, projectId, providerProjects.teamId),
+		);
+	// An isolated staging project's production target is distinct from the live
+	// project. Require explicit identities and both live/recovery records; never
+	// infer this exception from different origins alone.
+	const isolatedStaging =
+		providerProjects &&
+		staged.currentDeployment &&
+		live.currentDeployment &&
+		live.lastHealthy &&
+		!projectMismatch;
 	if (
-		staged.currentDeployment?.data.target === "production" ||
+		projectMismatch ||
+		(staged.currentDeployment?.data.target === "production" && !isolatedStaging) ||
 		(live.currentDeployment && live.currentDeployment.data.target !== "production") ||
 		(live.lastHealthy && live.lastHealthy.data.target !== "production")
 	) {
@@ -97,6 +144,7 @@ export function assessAdminAdoption({ staging, production, candidateRevision, ve
 		live.unresolvedRecordIds.length === 0;
 	return {
 		version: 1,
+		...(providerProjects ? { providerProjects } : {}),
 		repository: staging.target.repository,
 		siteUrl: staging.target.siteUrl,
 		candidate: { sourceRevision: candidateRevision, package: adminPackage, version },
