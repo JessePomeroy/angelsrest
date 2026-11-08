@@ -192,7 +192,9 @@ assets.
 - **packages/crm-api** owns the shared Convex schema/functions and publishable
   generated API surface.
 - **@jessepomeroy/admin** is an installed shared admin package.
-- **reflecting-pool** is a spoke/client site that consumes the shared platform.
+- **reflecting-pool** is archived for now. Exclude it from active development,
+  audits, synchronization, and rollout work unless explicitly requested. Retain
+  its existing tenant compatibility and runtime configuration.
 
 <!-- convex-ai-start -->
 This project uses [Convex](https://convex.dev) as its operational backend.
