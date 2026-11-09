@@ -680,3 +680,27 @@ package rendering and live navigation check. Authenticated production editor
 inspection was not performed, and Paper editing tools are unavailable. The inventory adds a separate
 **pending-paper-sync** entry and preserves existing reference provenance and
 comparison dates.
+
+
+### Gmail correspondence closeout — November 9, 2026
+
+The shipped Admin **6.16.2** now has four editable references on the admin
+handbook's **06 — Gmail correspondence** page: a saved reply and the separate
+business-mailbox connection control at 1440×1000 and 390×844, light theme and
+reduced motion. Captures use fictional inquiry/client records and
+`example.test` accounts, with all external requests refused. The reply
+references intentionally scroll the composer into view; the viewport crop is
+part of the captured state.
+
+All four source captures completed without page errors and were visually
+inspected. Their computed layout was imported as editable frames, text, controls
+and SVGs. Existing handbook pages, tokens and unrelated references were preserved.
+Paper's screenshot renderer returned “Tool call timed out” for every new board,
+so the same-state visual comparison remains pending and `lastVerified` is null.
+No pixel match, native-control fidelity or Paper typography/contrast verdict is
+claimed. Complete that comparison before using these boards as verified references.
+
+[The Gmail closeout record](verification/gmail-closeout-2026-11-09.md) distinguishes
+these synthetic captures from read-only live staging checks and unfinished
+production activation. This handbook update does not establish real consent,
+sending, provider recovery or production mailbox readiness.

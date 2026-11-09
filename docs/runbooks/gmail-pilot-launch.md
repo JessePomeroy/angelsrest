@@ -1,15 +1,41 @@
 # Gmail controlled pilot and launch packet
 
-Updated 2026-11-03 UTC. **Isolated staging connected; two approved self-sends delivered.** The
-owner accepted routine pilot spend, selected the first mailbox and the same account
-as project owner, and completed Google Cloud CLI sign-in. The dedicated Google
-project, APIs and notification resources below are created and verified. The owner
-then authorized staging configuration/deployment and a synthetic self-send to the
-selected mailbox. The backend and locally built host are deployed to staging.
-The owner Google login, explicit Gmail upgrade, watch, synchronization, Gmail
-acceptance and self-addressed Inbox delivery were observed. Two synthetic PNG
-filenames and downloaded bytes were verified after a MIME filename correction.
-At that staging milestone, no source commits, pushes, PRs or package publication had occurred. Source delivery is now in progress; Gmail remains unconfigured in production.
+Updated 2026-11-09 UTC. **Gmail source and packages are released; the staging
+mailbox is connected. Live mailbox activation is being prepared separately.**
+
+Backend PR #750 deployed the additive functions to `loyal-swan-967`; CRM API
+6.14.0 and Admin 6.15.1 were published. Host PR #752 merged as `7d97b0c3`, passed
+main CI and is included in the later production releases. Current production is
+READY at `663e9ca6`, with Admin 6.16.2. A code deployment does not establish a
+configured live Gmail mailbox: the November 9 provider read found no production
+Gmail host settings or backend environment names.
+
+Jesse authorized completion of the remaining acceptance, production setup,
+reviewed delivery and cleanup on November 9. A separate production Google project,
+`angelsrest-gmail-261109` (number `1044809186946`), is ACTIVE with Gmail, Pub/Sub
+and IAM enabled. Dedicated notification resources and a separate web OAuth
+client are prepared; its credential remains private. No production Gmail
+credential or grant is installed. The
+production retention decision is pending; the existing 30-day approval applies to
+the isolated pilot until that decision is recorded. Staging keys and grants will
+not be copied into production.
+
+The November 9 read-only staging checks passed at deployment
+`dpl_sHnGsjQwftAtiiJRcwZZSmXsUptu`, source `e48e6c65`, Admin 6.16.2:
+ordinary recovery login, connected status, correspondence and separate-mailbox
+controls, anonymous denial, the original two-message conversation and review state,
+five original-file fingerprints, four image previews, native PDF rendering and
+mobile containment. The saved watch expiration advanced from the original pilot
+checkpoint. No email, consent, upload or draft change was requested by these checks.
+See [the current closeout evidence](../verification/gmail-closeout-2026-11-09.md).
+
+GitHub reported a partial Actions outage during this closeout. The current main
+workflow's internal failures and unavailable immutable release record remain an
+infrastructure gap; they are not recorded as a successful release observation.
+Historical scoped recovery and staging receipts are retained without relabeling.
+
+The dated checkpoints below are historical evidence. They do not override the
+current release, configuration or acceptance state above.
 
 Exact approved account addresses and recipient allowlists remain in the private pilot scope record. This public runbook identifies them by role.
 Never use the Graham experiment's project, credentials, mailbox state, or timings
@@ -86,12 +112,11 @@ remain separate. The current Gmail connection continues on staging.
 
 ### Current local follow-up
 
-The feature remains in the existing hub/admin checkouts under
-`/home/strayblackdog/.local/state/angelsrest-gmail-20261101/`, both on
-`feat/gmail-conversations-release-20261102`. The original feature commits remain
-on `feat/gmail-conversations-local-20261101`. The ordinary repository checkouts do
-not represent this complete feature. Confirm current paths, heads and dirty state
-before continuing; never treat a remembered branch name as sufficient identity.
+The active Gmail closeout branch is `chore/gmail-live-closeout-20261109` in the
+preserved Gmail hub worktree. Its base is current main `663e9ca6`, and it uses the
+locked registry Admin 6.16.2 package. Original feature and backend/Admin source
+branches remain preservation references. The ordinary repository contains a
+separate order-intake refinement; it is not part of the Gmail change.
 
 The reflection follow-up adds a project verification skill and specific,
 credential-safe OAuth failure reporting. These host/backend changes are now
@@ -115,9 +140,9 @@ The installed archive's existing version label is not proof of publication.
 | Environment | A dedicated Angels Rest-owned Google testing project, isolated Convex deployment and host; synthetic records only | Google project `angelsrest-gmail-pilot-261102` created; existing `staging.angelsrest.online` and `rosy-firefly-366` selected after host/backend configuration verification |
 | Cost | Routine low-volume pilot usage; no paid assessment purchase during pilot setup | Owner waived a separate spending-cap approval for routine pilot usage on 2026-11-02; monitor usage without treating that cap as a blocker |
 | Accounts | Approved owner Google login and mailbox; existing synthetic administrator retained for recovery | Owner Google sign-in and stored membership verified; explicit same-account Gmail upgrade connected after replacing the pilot grant; watch and synchronization active |
-| Recipients | Exact addresses for send/reply/delivery tests, mirrored into the server allowlist | Two self-sends to the primary pilot mailbox were delivered. The approved second mailbox is now in Google's testing audience and the staging mailbox/recipient allowlists; consent and cross-account checks remain pending. |
+| Recipients | Exact addresses for send/reply/delivery tests, mirrored into the server allowlist | Two self-sends and a five-attachment delivery to the approved second mailbox passed. The second mailbox's native reply imported once. Separate-business-mailbox consent remains pending; delivery to that mailbox is not consent evidence. |
 | Privacy | Approved policy below, published disclosure, operator access list, backup/log settings and deletion handling | Pilot notice published and linked in Google branding; synthetic tests only; provider recovery/log retention remains a gate for non-test correspondence |
-| Source delivery | Reviewable commits/source PRs in both repositories, additive backend release, then package publication/adoption | Staging now uses the verified candidate built from committed source and current maintenance dependencies. Ordered source/package release is in progress. Publication and production Gmail activation remain separate |
+| Source delivery | Reviewable commits/source PRs in both repositories, additive backend release, then package publication/adoption | Backend and host source merged; CRM API 6.14.0 and Admin 6.15.1 published. Later releases contain them. November 9 staging uses Admin 6.16.2. Production mailbox setup and the remaining acceptance rows are separate |
 
 Google Cloud CLI 591.0.0 is installed under the private task directory, using the
 exact official Linux archive and its published SHA-256 checksum. Its configuration
@@ -562,11 +587,11 @@ acceptance artifacts. Simulated provider tests do not satisfy any row here.
 | Reviewed existing-thread link | Participants/destination/scope confirmed; duplicate retry is idempotent; another destination rejected; drafts excluded | Pending |
 | Unexpected participants / oversized thread | Visible refusal/withheld state, no silent partial association or reply | Pending |
 | Native Gmail incoming and Sent | Correct thread import/dedup, review/needs-reply/waiting transitions and date clearing | Admin-origin Sent observation/dedup passed for two self-sends. A native reply from the second approved mailbox imported once into the registered thread and set review; deployed review-state UI passed; native Sent checks remain pending |
-| Representative files | Real approved JPEG/PNG/WebP/PDF, near 3 MiB, exactly 6 MiB combined, five-file selection; over-limit/unsupported rejection | Five files at exactly 6 MiB, including a near-3-MiB JPEG, uploaded and were accepted by Gmail; recipient Inbox arrival observed. All five recipient downloads matched their original SHA-256 fingerprints (6 MiB combined). All four image previews rendered through authenticated private reads on the published-package host. Browser PDF rendering remains pending. Unsupported/per-file limits rejected; combined-limit warning correction is deployed and verified on staging. |
+| Representative files | Real approved JPEG/PNG/WebP/PDF, near 3 MiB, exactly 6 MiB combined, five-file selection; over-limit/unsupported rejection | Five files at exactly 6 MiB, including a near-3-MiB JPEG, uploaded and were accepted by Gmail; recipient Inbox arrival observed. All five recipient downloads matched their original SHA-256 fingerprints (6 MiB combined). All four image previews rendered through authenticated private reads. Native Chromium PDF rendering and all five original fingerprints passed again on November 9. Unsupported/per-file limits rejected; combined-limit warning correction is deployed and verified on staging. |
 | Interrupted upload and private read | Reservation survives reload, incomplete send blocked, original retry works, logout/membership revocation denies reads | Pending |
 | Authenticated push and replay | Valid Google JWT accepted only for configured service identity/audience/subscription; retry only acknowledges durable coverage | Real signed synthetic notice and mailbox notices observed; live negative/replay matrix pending |
 | Lost notification and host downtime | Scheduled catch-up imports once; returning pushes do not skip pages or duplicate mail | Pending |
-| Watch renewal | Daily/near-expiry renewal observed with actual Google expiry and no cursor reset | Initial watch installed with real expiry; daily/near-expiry renewal pending |
+| Watch renewal | Daily/near-expiry renewal observed with actual Google expiry and no cursor reset | November 9 saved provider expiry advanced beyond the initial expiry, establishing renewal occurred. Exact daily cadence and a controlled near-expiry case remain unverified |
 | Expired history and recovery interruption | Profile anchor, all registered threads, durable batches, catch-up; sends paused until complete | Pending |
 | Lost send response | One submission only; uncertainty stays blocked; exact Sent reconciliation supplies evidence; no match stays held | Live provider probe reproduced replacement of generated Message-ID and preservation of the custom attempt header. Local fallback regressions passed; deployed fault-injection acceptance pending. See [recovery evidence](../verification/gmail-recovery-2026-11-03.md). |
 | Export and 30-day cleanup | Complete authorized metadata/original downloads; cached bytes removed; holds preserved; backup/log procedure verified | Pending |

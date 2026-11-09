@@ -91,6 +91,17 @@
       "surfaces": ["product header and upload cleanup dialog", "product deletion action", "inquiry deletion action", "blog content history cleanup dialog", "platform client offboarding controls", "dashboard content export"],
       "evidence": "docs/design/catalog-cleanup-review.md",
       "reason": "Local implementation and browser comparison complete; Paper editing tool unavailable in this session."
+    },
+    {
+      "id": "gmail-correspondence-2026-11-09",
+      "status": "pending-paper-comparison",
+      "recordedAt": "2026-11-09",
+      "surfaces": [
+        "saved Gmail reply at desktop/mobile",
+        "separate connected business mailbox at desktop/mobile"
+      ],
+      "evidence": "docs/verification/gmail-closeout-2026-11-09.md",
+      "reason": "Four native editable references imported on Gmail page; Paper screenshot renderer timed out. Source captures inspected; no Paper comparison or new lastVerified claim."
     }
   ],
   "reviewDate": "2026-09-27",
@@ -142,7 +153,8 @@
         "desktop": "4-0",
         "mobile": "5-0",
         "interactions": "6-0",
-        "platformSetupAndUploads": "p-9-0"
+        "platformSetupAndUploads": "p-9-0",
+        "gmailCorrespondence": "p-A-0"
       }
     }
   },
@@ -8785,6 +8797,175 @@
         ],
         "scope": "Represented visual states only; separate provider/authentication and unrepresented interaction gaps remain."
       }
+    },
+    {
+      "key": "admin.gmail-correspondence",
+      "handbook": "admin",
+      "route": "/admin/inquiries",
+      "setup": "Installed Admin 6.16.2 in isolated synthetic fixture; saved reply and separate mailbox connection controls.",
+      "sourceComponents": [
+        "@jessepomeroy/admin/components/AdminLayout",
+        "@jessepomeroy/admin/pages/GmailQueuePage",
+        "@jessepomeroy/admin/pages/inquiries/InquiryDetailModal",
+        "@jessepomeroy/admin: GmailConversationPanel, GmailConversationComposer, GoogleConnectionModal"
+      ],
+      "implementationStatus": "released",
+      "stateSurvey": "representative-with-gaps",
+      "pendingStateSurvey": [
+        "Paper same-state visual comparison after renderer access recovers",
+        "Dark theme and other correspondence/error/recovery states",
+        "Production mailbox connection and live acceptance remain separate"
+      ],
+      "references": [
+        {
+          "key": "admin.gmail-reply-1440",
+          "viewport": {
+            "width": 1440,
+            "height": 1000
+          },
+          "theme": "light",
+          "data": "fictional-admin-fixture",
+          "status": "paper-imported-comparison-pending",
+          "browserObservedAt": "2026-11-09",
+          "lastVerified": null,
+          "paper": {
+            "fileId": "01M25K34Z4EFZ5BEPJ49JBF0X1",
+            "pageId": "p-A-0",
+            "artboardId": "Y9X-0"
+          },
+          "setupSteps": [
+            "Render installed Admin 6.16.2 with fictional inquiry/client/mailbox responses; refuse all external requests.",
+            "saved reply; composer scrolled into view. No real consent, send, upload or private correspondence."
+          ],
+          "limitations": [
+            "Paper screenshot renderer timed out on all four references; visual comparison is unverified.",
+            "Editable computed-style import preserves viewport cropping; native controls, backdrop/filter support and font shaping require comparison.",
+            "Fictional fixture does not establish real membership, consent, persistence, attachment or sending acceptance."
+          ],
+          "period": "afternoon",
+          "motion": "reduce",
+          "captureSource": {
+            "commit": "663e9ca65d86f1cc9fc0ca8dc190bfd96ea623d3",
+            "adminPackageVersion": "6.16.2"
+          },
+          "captureFiles": {
+            "browserPng": "gmail-reply-1440.png",
+            "editableDraft": "gmail-reply-1440.json",
+            "storage": "Private task release-20261109/handbook-captures; screenshots and drafts outside Git."
+          }
+        },
+        {
+          "key": "admin.gmail-reply-390",
+          "viewport": {
+            "width": 390,
+            "height": 844
+          },
+          "theme": "light",
+          "data": "fictional-admin-fixture",
+          "status": "paper-imported-comparison-pending",
+          "browserObservedAt": "2026-11-09",
+          "lastVerified": null,
+          "paper": {
+            "fileId": "01M25K34Z4EFZ5BEPJ49JBF0X1",
+            "pageId": "p-A-0",
+            "artboardId": "Y9Y-0"
+          },
+          "setupSteps": [
+            "Render installed Admin 6.16.2 with fictional inquiry/client/mailbox responses; refuse all external requests.",
+            "saved reply; composer scrolled into view. No real consent, send, upload or private correspondence."
+          ],
+          "limitations": [
+            "Paper screenshot renderer timed out on all four references; visual comparison is unverified.",
+            "Editable computed-style import preserves viewport cropping; native controls, backdrop/filter support and font shaping require comparison.",
+            "Fictional fixture does not establish real membership, consent, persistence, attachment or sending acceptance."
+          ],
+          "period": "afternoon",
+          "motion": "reduce",
+          "captureSource": {
+            "commit": "663e9ca65d86f1cc9fc0ca8dc190bfd96ea623d3",
+            "adminPackageVersion": "6.16.2"
+          },
+          "captureFiles": {
+            "browserPng": "gmail-reply-390.png",
+            "editableDraft": "gmail-reply-390.json",
+            "storage": "Private task release-20261109/handbook-captures; screenshots and drafts outside Git."
+          }
+        },
+        {
+          "key": "admin.gmail-business-connection-1440",
+          "viewport": {
+            "width": 1440,
+            "height": 1000
+          },
+          "theme": "light",
+          "data": "fictional-admin-fixture",
+          "status": "paper-imported-comparison-pending",
+          "browserObservedAt": "2026-11-09",
+          "lastVerified": null,
+          "paper": {
+            "fileId": "01M25K34Z4EFZ5BEPJ49JBF0X1",
+            "pageId": "p-A-0",
+            "artboardId": "Y9Z-0"
+          },
+          "setupSteps": [
+            "Render installed Admin 6.16.2 with fictional inquiry/client/mailbox responses; refuse all external requests.",
+            "separate business mailbox connected. No real consent, send, upload or private correspondence."
+          ],
+          "limitations": [
+            "Paper screenshot renderer timed out on all four references; visual comparison is unverified.",
+            "Editable computed-style import preserves viewport cropping; native controls, backdrop/filter support and font shaping require comparison.",
+            "Fictional fixture does not establish real membership, consent, persistence, attachment or sending acceptance."
+          ],
+          "period": "afternoon",
+          "motion": "reduce",
+          "captureSource": {
+            "commit": "663e9ca65d86f1cc9fc0ca8dc190bfd96ea623d3",
+            "adminPackageVersion": "6.16.2"
+          },
+          "captureFiles": {
+            "browserPng": "gmail-business-connection-1440.png",
+            "editableDraft": "gmail-business-connection-1440.json",
+            "storage": "Private task release-20261109/handbook-captures; screenshots and drafts outside Git."
+          }
+        },
+        {
+          "key": "admin.gmail-business-connection-390",
+          "viewport": {
+            "width": 390,
+            "height": 844
+          },
+          "theme": "light",
+          "data": "fictional-admin-fixture",
+          "status": "paper-imported-comparison-pending",
+          "browserObservedAt": "2026-11-09",
+          "lastVerified": null,
+          "paper": {
+            "fileId": "01M25K34Z4EFZ5BEPJ49JBF0X1",
+            "pageId": "p-A-0",
+            "artboardId": "YA0-0"
+          },
+          "setupSteps": [
+            "Render installed Admin 6.16.2 with fictional inquiry/client/mailbox responses; refuse all external requests.",
+            "separate business mailbox connected. No real consent, send, upload or private correspondence."
+          ],
+          "limitations": [
+            "Paper screenshot renderer timed out on all four references; visual comparison is unverified.",
+            "Editable computed-style import preserves viewport cropping; native controls, backdrop/filter support and font shaping require comparison.",
+            "Fictional fixture does not establish real membership, consent, persistence, attachment or sending acceptance."
+          ],
+          "period": "afternoon",
+          "motion": "reduce",
+          "captureSource": {
+            "commit": "663e9ca65d86f1cc9fc0ca8dc190bfd96ea623d3",
+            "adminPackageVersion": "6.16.2"
+          },
+          "captureFiles": {
+            "browserPng": "gmail-business-connection-390.png",
+            "editableDraft": "gmail-business-connection-390.json",
+            "storage": "Private task release-20261109/handbook-captures; screenshots and drafts outside Git."
+          }
+        }
+      ]
     }
   ],
   "fontAvailability": {
