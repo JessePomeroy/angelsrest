@@ -8807,7 +8807,9 @@
         "@jessepomeroy/admin/components/AdminLayout",
         "@jessepomeroy/admin/pages/GmailQueuePage",
         "@jessepomeroy/admin/pages/inquiries/InquiryDetailModal",
-        "@jessepomeroy/admin: GmailConversationPanel, GmailConversationComposer, GoogleConnectionModal"
+        "@jessepomeroy/admin/dist/pages/gmail/GmailConversations.svelte",
+        "@jessepomeroy/admin/dist/pages/gmail/GmailThread.svelte",
+        "@jessepomeroy/admin/dist/components/GoogleAccountLink.svelte"
       ],
       "implementationStatus": "released",
       "stateSurvey": "representative-with-gaps",

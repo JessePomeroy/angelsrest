@@ -118,20 +118,17 @@ locked registry Admin 6.16.2 package. Original feature and backend/Admin source
 branches remain preservation references. The ordinary repository contains a
 separate order-intake refinement; it is not part of the Gmail change.
 
-The reflection follow-up adds a project verification skill and specific,
-credential-safe OAuth failure reporting. These host/backend changes are now
-deployed to the isolated pilot in the release-candidate checkpoint below. Earlier
-consent/send evidence still applies to its recorded deployments; the new deployment
-does not retroactively extend that proof. The shared admin contract was unchanged
-by the error-handling follow-up. Its original local proof is recorded in
-[the follow-up verification record](../verification/gmail-follow-up-2026-11-02.md).
+The released reflection follow-up supplies the project verification skill and
+credential-safe OAuth failure reporting. Its original local proof remains in
+[the follow-up verification record](../verification/gmail-follow-up-2026-11-02.md);
+those tests and early pilot observations apply only to their recorded revisions.
 
-The release branches now include the dependency-maintenance release: Better Auth
-1.6.34, Convex 1.49.0, Admin base 6.14.1 and CRM API base 6.13.1. The updated local
-candidate passed full Admin/host suites and desktop/mobile browser checks. Its
-matched, unpublished Admin archive and generated API are recorded in
+The November 3 prepublication candidate incorporated Better Auth 1.6.34, Convex
+1.49.0, Admin base 6.14.1 and CRM API base 6.13.1. Its then-unpublished archive
+and generated API are historical evidence in
 [release-candidate verification](../verification/gmail-release-2026-11-03.md).
-The installed archive's existing version label is not proof of publication.
+That local archive was superseded by the published packages and exact-version
+host adoption described above; it is not pending publication work.
 
 ## Pilot setup status
 
@@ -486,13 +483,19 @@ External launch gates still required:
 4. Publish the reviewed privacy/retention/Limited Use disclosure on an app-owned
    verified domain before consent. Production retention requires a new decision.
 
-## Concrete release and adoption order
+## Historical release and adoption plan
+
+The following plan records the original rollout order. Source delivery, additive
+backend deployment, package publication and host adoption have completed as
+recorded above. Do not repeat them as unfinished setup. Production mailbox
+configuration and the live acceptance matrix remain separate.
 
 Original feature commits are hub `b55c322c` and Admin `59cb8cc`; the separate release
 branches merge maintenance bases hub `2f5ccbe99afbc650593617bcd817554edda0f73b` and
-Admin `54f881e4757da025ddfe056c8df876a791bec4fa`. Local Changesets planning predicts
-CRM API **6.13.1 → 6.14.0** and Admin **6.14.1 → 6.15.0**. These are candidates,
-not published versions; recompute against the actual release PR before adoption.
+Admin `54f881e4757da025ddfe056c8df876a791bec4fa`. The original Changesets plan predicted
+CRM API **6.13.1 → 6.14.0** and Admin **6.14.1 → 6.15.0**. These were candidates
+at that checkpoint; CRM API 6.14.0 and the corrected Admin 6.15.1 were subsequently
+published. Current host adoption is registry Admin 6.16.2.
 
 1. With source-delivery authorization, commit/review both focused branches and
    their minor Changesets. Preserve all current feature work. Retain exact source
@@ -521,8 +524,10 @@ not published versions; recompute against the actual release PR before adoption.
    follow [package release and adoption](package-release-and-adoption.md). Update
    Paper/inventory only after authorized shipping and confirmed live behavior.
 
-The current host was verified with a **locally packed** Admin artifact. No checked-in
-package range/lockfile was changed, and a successful local pack is not publication.
+The original local checkpoint used a **locally packed** Admin artifact and had
+not changed the checked-in dependency/lockfile. That historical limitation was
+superseded by published-package verification and the merged host adoption; it
+does not describe the current host.
 
 ## App-owned OAuth and Pub/Sub configuration
 
