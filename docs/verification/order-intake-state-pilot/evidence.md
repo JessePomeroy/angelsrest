@@ -110,3 +110,19 @@ with the same model state counts and unchanged application/source hashes.
 The retained mutation patches express the same edits with zero context so
 ordinary Git whitespace checks can inspect the pilot without treating patch
 context prefixes as source indentation. No commerce behavior changed.
+
+Independent pre-merge review at `d9d1c37bd4b218d5b40d8670931d25e649b7270f`
+found that a timed-out Vitest command could leave a running forked worker. A
+review-owned temporary Vitest fixture reproduced the orphan; the reviewer stopped
+that exact recorded process. The command helper now starts a separate process
+group and kills that recorded group on timeout/interruption before removing its
+temporary copy. The timeout still yields an incomplete result.
+
+Ten driver regressions now pass, including real descendant termination and the
+incomplete timeout result. In an isolated copy, the new cleanup regression fails
+against the original helper and cleans up its own deliberately surviving child.
+The complete updated pilot in
+`test-results/order-intake-state-20261109T175503Z-1970557/` again passes all seven
+checks with the same model counts and unchanged application fingerprints.
+The timeout-control log is retained locally at
+`test-results/angelsrest-reconciliation-20261109/timeout-negative-control.log`.

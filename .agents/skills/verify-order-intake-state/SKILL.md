@@ -39,6 +39,8 @@ No server starts. Implementation probes run in a temporary code copy and a
 network namespace, with dotenv disabled and a synthetic environment. Cleanup
 removes that copy, including both model variants and the mutated application
 copy; logs, patches and JSON reports survive in the evidence directory.
+Timeouts terminate the command's recorded process group, including forked workers,
+and remain incomplete results. Abrupt driver termination can require manual cleanup.
 
 ## Interpret and investigate
 

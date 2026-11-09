@@ -11,6 +11,7 @@ from pathlib import Path
 import platform
 import re
 import shutil
+import signal
 import subprocess
 import tarfile
 import tempfile
@@ -38,9 +39,21 @@ def clean_env():
 
 
 def command(args, cwd=ROOT, timeout=180):
-    return subprocess.run([str(a) for a in args], cwd=cwd, env=clean_env(),
-                          text=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
-                          timeout=timeout, check=False)
+    argv = [str(a) for a in args]
+    with subprocess.Popen(argv, cwd=cwd, env=clean_env(), start_new_session=True,
+                          text=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT) as process:
+        try:
+            output, _ = process.communicate(timeout=timeout)
+        except BaseException:
+            # Vitest forks workers. Stop the recorded task-owned process group,
+            # including children that outlive its leader, before removing the copy.
+            try:
+                os.killpg(process.pid, signal.SIGKILL)
+            except ProcessLookupError:
+                pass
+            process.communicate()
+            raise
+        return subprocess.CompletedProcess(argv, process.returncode, output)
 
 
 def fetch_pinned(url, path, expected, setup):

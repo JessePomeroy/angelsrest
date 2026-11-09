@@ -39,7 +39,12 @@ Baseline and restored runs must execute the complete recorded suite inventory
 without skips or todos. Only the mutation's explicit name filter may skip its
 nine unrelated probes; its three failures must identify all three purchase scopes.
 
-When changing the driver, check its report acceptance rules without Java,
+Each command has its own task-owned process group. A timeout or Python
+interruption stops that group, including forked Vitest workers, before cleanup;
+timeouts still produce an incomplete result. Abruptly killing the driver itself
+does not provide this cleanup guarantee.
+
+When changing the driver, check report acceptance and timeout cleanup without Java,
 repository dependencies, downloads or namespaces:
 
 ```zsh
