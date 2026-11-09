@@ -28,8 +28,14 @@ owner address. The separate mailbox flow uses the new client and Google project,
 even when the mailbox address matches the existing Google login. It does not
 replace that login's OAuth client or alter membership. The Google app's saved
 scope declaration contains basic identity scopes and Gmail read/send scopes.
-App publishing state, fresh consent, watch installation and initial synchronization
-still require observation; no production connection is claimed here.
+The Google app is now External / **In production**, read back from its Audience
+page, and remains unverified with its 100-user cap. This is the approved owner-only
+connection scope, assessed against Google's
+[personal-use exception](https://support.google.com/cloud/answer/13464323?hl=en),
+not a verified public application or general client launch. No assessment was
+purchased or verification submission made. Fresh consent, watch installation and
+initial synchronization still require observation; no production connection is
+claimed here.
 
 The backend settings are installed. The running host still requires a deployment
 to load its new settings. The existing `/gmail-pilot-privacy` URL is retained so
