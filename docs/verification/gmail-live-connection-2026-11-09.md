@@ -7,13 +7,13 @@ customer mailbox, a wider recipient list, or a general client-site rollout.
 
 ## Configuration installed; consent pending
 
-- Origin: `https://angelsrest.online`; backend: `loyal-swan-967`.
+- Origin: `https://www.angelsrest.online`; backend: `loyal-swan-967`.
 - Source base: `ace5dd2e`; immutable Admin package: 6.16.2; workspace CRM API: 6.15.0.
 - Google project: `angelsrest-gmail-261109`, number `1044809186946`.
-- Exact separate-mailbox callback: `/api/admin/gmail/callback` at the apex origin.
+- Exact separate-mailbox callback: `/api/admin/gmail/callback` at the `www` origin.
 - Push topic: `projects/angelsrest-gmail-261109/topics/gmail-events`.
 - Push subscription: `projects/angelsrest-gmail-261109/subscriptions/gmail-events-push`.
-- Push audience: `https://angelsrest.online/api/webhooks/gmail`.
+- Push audience: `https://www.angelsrest.online/api/webhooks/gmail`.
 - Keyless push identity: `gmail-push@angelsrest-gmail-261109.iam.gserviceaccount.com`.
 
 Three new independent production keys were generated and retained privately.
@@ -44,6 +44,24 @@ both the live connection and isolated testing, including the approved retention
 policy. Source delivery alone does not prove that revised notice is live.
 
 ## Privacy and operational boundaries
+
+Direct HTTP checks found that the apex domain redirects every checked path,
+including the Gmail callback, to `www`. The running host's public URL setting
+still contained the apex; earlier redirect-following health checks had hidden
+that mismatch. Production `PUBLIC_SITE_URL`, Gmail callback, push audience and
+subscription endpoint were corrected to the canonical `www` origin. The Google
+mailbox client's registered callback was updated accordingly. The existing domain
+redirect remains intact, and development/preview retain their previous public URL
+through a separate environment entry. The site tenant key remains
+`angelsrest.online`; existing sign-in credentials are unchanged. Forty-one existing
+runtime configuration, staging-isolation and Gmail-handler tests passed.
+
+A focused independent origin review found no blocking Gmail integration defect.
+Changing the production public origin can invalidate an existing checkout-attempt
+proof created with the apex string. The checkout handler rejects that stale proof;
+the frontend discards it after the rejection and a retry can obtain a fresh one.
+This limited retry impact remains part of the configuration rollout, without
+changing checkout credentials or payment authorization.
 
 The 30-day deadline starts at local conversation creation and does not move when
 a reply arrives. Cleanup covers the conversation, drafts, cached attachments and

@@ -29,6 +29,12 @@ and grants are not copied into production. See the
 [live connection record](../verification/gmail-live-connection-2026-11-09.md) for
 the current bounded activation work and remaining steps.
 
+The live connection uses **https://www.angelsrest.online**. Direct HTTP and domain
+configuration reads confirmed that the apex redirects to `www`, including API
+callbacks. Production public URL and Gmail callback/push settings were aligned
+with that existing redirect; development and preview settings remain unchanged.
+Use the `www` origin for fresh production consent.
+
 The November 9 read-only staging checks passed at deployment
 `dpl_sHnGsjQwftAtiiJRcwZZSmXsUptu`, source `e48e6c65`, Admin 6.16.2:
 ordinary recovery login, connected status, correspondence and separate-mailbox
