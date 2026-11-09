@@ -151,6 +151,42 @@ export default defineConfig({
     return target
 
 
+def implementation_report_ok(data, returncode, mutant=False, bridge_only=False):
+    expected_suites = {"intake.bridge.test.ts": 12}
+    if not bridge_only:
+        expected_suites.update({"checkoutSnapshotReservations.test.ts": 29,
+                                "orders.test.ts": 178, "commerceIntakeInbox.test.ts": 30})
+    suites = data.get("testResults", [])
+    inventory = {Path(suite["name"]).name: len(suite.get("assertionResults", []))
+                 for suite in suites}
+    if inventory != expected_suites or len(suites) != len(expected_suites):
+        return False
+    assertions = [test for suite in suites for test in suite.get("assertionResults", [])]
+    expected_total = sum(expected_suites.values())
+    if data.get("numTotalTests") != expected_total or data.get("numTodoTests") != 0:
+        return False
+    if not mutant:
+        return (returncode == 0 and data.get("success") is True
+                and data.get("numPassedTests") == expected_total
+                and data.get("numFailedTests") == 0 and data.get("numPendingTests") == 0
+                and data.get("numFailedTestSuites") == 0
+                and all(test.get("status") == "passed" and not test.get("failureMessages")
+                        for test in assertions))
+    # Only the name-filtered controls may skip tests. Each purchase scope must
+    # fail its own duplicate-row assertion; unrelated failures are not evidence.
+    failed = [test for test in assertions if test.get("status") == "failed"]
+    expected_failures = {f"'{scope}' fresh order route retries converge after a lost reply"
+                         for scope in ["hub platform", "tenant platform", "tenant connected"]}
+    return (returncode == 1 and data.get("success") is False
+            and data.get("numFailedTests") == 3 and data.get("numPassedTests") == 0
+            and data.get("numPendingTests") == 9 and len(failed) == 3
+            and {test.get("fullName") for test in failed} == expected_failures
+            and sum(test.get("status") == "skipped" for test in assertions) == 9
+            and all(len(test.get("failureMessages", [])) == 1
+                    and "length of 1" in test["failureMessages"][0]
+                    and "got 2" in test["failureMessages"][0] for test in failed))
+
+
 def implementation_check(target, output, name, mutant=False, bridge_only=False):
     args = ["unshare", "-Urn", "--", "node", ROOT / "node_modules/vitest/vitest.mjs",
             "run", "--config", target / "vitest.config.mjs", "--reporter=json",
@@ -165,17 +201,13 @@ def implementation_check(target, output, name, mutant=False, bridge_only=False):
     data = json.loads(report_file.read_text()) if report_file.exists() else {}
     failed = data.get("numFailedTests", 0)
     total = data.get("numTotalTests", 0)
-    messages = [message for suite in data.get("testResults", [])
-                for test in suite.get("assertionResults", []) for message in test.get("failureMessages", [])]
-    # Require the intended duplicate-row assertion; compilation/setup errors do not count.
-    meaningful = sum("length of 1" in message and "got 2" in message for message in messages)
-    ok = (result.returncode == 1 and failed == 3 and meaningful == 3) if mutant else (
-        result.returncode == 0 and failed == 0 and total > 0 and data.get("success") is True)
+    ok = implementation_report_ok(data, result.returncode, mutant, bridge_only)
     print(f"{name}: {'mutation caught' if mutant and ok else 'PASS' if ok else 'FAILED'} "
           f"({data.get('numPassedTests', 0)} passed, {failed} failed)", flush=True)
     return {"name": name, "ok": ok, "expected_failure": mutant,
             "exit_code": result.returncode, "tests": total,
-            "passed": data.get("numPassedTests"), "failed": failed}
+            "passed": data.get("numPassedTests"), "failed": failed,
+            "pending": data.get("numPendingTests")}
 
 
 def main():
@@ -230,7 +262,7 @@ def main():
             results.append(check_tlc(java, jar, work, output, "tlc-split-transaction", split, config, True))
             for name, variant in [("missing-lookup", broken), ("split-transaction", split)]:
                 (output / f"{name}.patch").write_text("".join(difflib.unified_diff(
-                    model.splitlines(True), variant.splitlines(True), fromfile="OrderIntake.tla", tofile=name + "/OrderIntake.tla")))
+                    model.splitlines(True), variant.splitlines(True), fromfile="OrderIntake.tla", tofile=name + "/OrderIntake.tla", n=0)))
             target = copy_sources(work)
             versions = command(["node", "--input-type=module", "-e",
                 "import {createRequire} from 'node:module'; const r=createRequire(import.meta.url); "
@@ -249,7 +281,7 @@ def main():
             end = original.index("\n\t\tconst retired", start)
             mutated = original[:start] + "\t\tconst existing = null; // isolated negative control" + original[end:]
             (output / "implementation-mutation.patch").write_text("".join(difflib.unified_diff(
-                original.splitlines(True), mutated.splitlines(True), fromfile="orders.ts", tofile="temporary-copy/orders.ts")))
+                original.splitlines(True), mutated.splitlines(True), fromfile="orders.ts", tofile="temporary-copy/orders.ts", n=0)))
             try:
                 orders.write_text(mutated)
                 results.append(implementation_check(target, output, "implementation-missing-lookup", mutant=True, bridge_only=True))

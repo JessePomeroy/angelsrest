@@ -95,3 +95,18 @@ mutation produced the three expected failures, and restored code passed 12 probe
 Fresh local reports are in
 `test-results/order-intake-state-20261109T171325Z-1933440/`; the retained evidence
 above preserves the initial pilot run.
+
+The inclusion review at source commit `24490663fbe19de9e57a1a20c81babc63f591d0b`
+found that the driver accepted an otherwise successful baseline report with
+one skipped bridge probe (248 passed, one pending). A report-level negative
+control reproduced that false pass in the original runner. The reviewed runner
+rejects it and now requires the complete suite inventory without skips/todos
+for baseline/restored runs, and the exact three purchase-scope failures for the
+filtered source mutation. Eight standard-library regression tests passed.
+
+The updated driver's full run in
+`test-results/order-intake-state-20261109T174540Z-1955411/` passed all seven checks
+with the same model state counts and unchanged application/source hashes.
+The retained mutation patches express the same edits with zero context so
+ordinary Git whitespace checks can inspect the pilot without treating patch
+context prefixes as source indentation. No commerce behavior changed.

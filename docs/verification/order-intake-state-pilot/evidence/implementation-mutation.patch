@@ -1,9 +1,6 @@
 --- orders.ts
 +++ temporary-copy/orders.ts
-@@ -933,12 +933,7 @@
- 		// confirmation emails). Previously only `_id` and `orderNumber` were
- 		// returned, which caused retries to re-submit to LumaPrints and
- 		// re-email the customer. See audit C13.
+@@ -936,6 +936 @@
 -		const existing = await ctx.db
 -			.query("orders")
 -			.withIndex("by_stripeSessionId", (q) =>
@@ -11,6 +8,3 @@
 -			)
 -			.unique();
 +		const existing = null; // isolated negative control
- 		const retired = await retiredOrderSession(ctx, args.stripeSessionId);
- 		if (retired && existing) routingConflict();
- 		if (retired) {

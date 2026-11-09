@@ -35,6 +35,16 @@ convex-test 0.0.52, @edge-runtime/vm 5.0.0. The driver pins Node and those packa
 versions, checks the existing lockfile hash and uses the installed dependencies.
 It needs `unshare -Urn` permission. Missing dependencies/namespaces or a timeout
 produce an incomplete result, never ordinary tests relabeled as formal checking.
+Baseline and restored runs must execute the complete recorded suite inventory
+without skips or todos. Only the mutation's explicit name filter may skip its
+nine unrelated probes; its three failures must identify all three purchase scopes.
+
+When changing the driver, check its report acceptance rules without Java,
+repository dependencies, downloads or namespaces:
+
+```zsh
+python3 -B docs/verification/order-intake-state-pilot/test_check.py
+```
 
 | Development tool | Pinned download | SHA-256 |
 | --- | --- | --- |
