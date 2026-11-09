@@ -32,6 +32,7 @@ vite.config.ts.timestamp-*
 /.agents/skills/*
 !/.agents/skills/verify-angelsrest-invoices/
 !/.agents/skills/verify-angelsrest-gmail/
+!/.agents/skills/verify-order-intake-state/
 /.claude/
 /.codex/
 /skills/

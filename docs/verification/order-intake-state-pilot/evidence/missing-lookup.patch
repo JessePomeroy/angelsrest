@@ -1,0 +1,11 @@
+--- OrderIntake.tla
++++ missing-lookup/OrderIntake.tla
+@@ -42,7 +42,7 @@
+    A fresh order-route retry omits the reservation candidate in the real host. *)
+ CreateTransaction(w) ==
+   /\ pc[w] = "details"
+-  /\ IF orders # {}
++  /\ IF FALSE
+         THEN /\ pendingReply' = [pendingReply EXCEPT ![w] = (CHOOSE o \in orders : TRUE).id]
+              /\ pc' = [pc EXCEPT ![w] = "committed"]
+              /\ UNCHANGED <<reservation, orders>>

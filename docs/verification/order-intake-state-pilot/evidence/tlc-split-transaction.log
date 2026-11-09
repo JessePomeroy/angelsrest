@@ -1,0 +1,55 @@
+TLC2 Version 2.19 of 08 August 2024 (rev: 5a47802)
+Running breadth-first search Model-Checking with fp 0 and seed 1 with 1 worker on 16 cores with 491MB heap and 64MB offheap memory [pid: 1921000] (Linux 7.2.9-2-cachyos amd64, Eclipse Adoptium 21.0.9 x86_64, MSBDiskFPSet, DiskStateQueue).
+Parsing file /tmp/angelsrest-order-intake-x4h0_vtw/tlc-split-transaction/OrderIntake.tla
+Parsing file /tmp/Naturals.tla
+Parsing file /tmp/FiniteSets.tla
+Parsing file /tmp/Sequences.tla
+Semantic processing of module Naturals
+Semantic processing of module Sequences
+Semantic processing of module FiniteSets
+Semantic processing of module OrderIntake
+Starting... (2026-11-09 11:59:26)
+Computing initial states...
+Finished computing initial states: 1 distinct state generated at 2026-11-09 11:59:26.
+Error: Invariant SingleDurableReceipt is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ replies = {}
+/\ pendingReply = (deliveryA :> 0 @@ deliveryB :> 0)
+/\ route = (deliveryA :> "none" @@ deliveryB :> "none")
+/\ attempt = (deliveryA :> 1 @@ deliveryB :> 1)
+/\ reservation = TRUE
+/\ pc = (deliveryA :> "ready" @@ deliveryB :> "ready")
+/\ orders = {}
+
+State 2: <ResolveRouting line 23, col 3 to line 26, col 70 of module OrderIntake>
+/\ replies = {}
+/\ pendingReply = (deliveryA :> 0 @@ deliveryB :> 0)
+/\ route = (deliveryA :> "reservation" @@ deliveryB :> "none")
+/\ attempt = (deliveryA :> 1 @@ deliveryB :> 1)
+/\ reservation = TRUE
+/\ pc = (deliveryA :> "routed" @@ deliveryB :> "ready")
+/\ orders = {}
+
+State 3: <FetchDetails line 31, col 3 to line 33, col 77 of module OrderIntake>
+/\ replies = {}
+/\ pendingReply = (deliveryA :> 0 @@ deliveryB :> 0)
+/\ route = (deliveryA :> "reservation" @@ deliveryB :> "none")
+/\ attempt = (deliveryA :> 1 @@ deliveryB :> 1)
+/\ reservation = TRUE
+/\ pc = (deliveryA :> "details" @@ deliveryB :> "ready")
+/\ orders = {}
+
+State 4: <SplitConsume line 92, col 3 to line 94, col 68 of module OrderIntake>
+/\ replies = {}
+/\ pendingReply = (deliveryA :> 0 @@ deliveryB :> 0)
+/\ route = (deliveryA :> "reservation" @@ deliveryB :> "none")
+/\ attempt = (deliveryA :> 1 @@ deliveryB :> 1)
+/\ reservation = FALSE
+/\ pc = (deliveryA :> "details" @@ deliveryB :> "ready")
+/\ orders = {}
+
+10 states generated, 9 distinct states found, 4 states left on queue.
+The depth of the complete state graph search is 4.
+The average outdegree of the complete state graph is 2 (minimum is 2, the maximum 3 and the 95th percentile is 3).
+Finished in 00s at (2026-11-09 11:59:26)

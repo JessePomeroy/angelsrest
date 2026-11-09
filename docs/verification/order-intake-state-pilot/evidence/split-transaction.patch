@@ -1,0 +1,17 @@
+--- OrderIntake.tla
++++ split-transaction/OrderIntake.tla
+@@ -88,8 +88,13 @@
+   /\ \A w \in Workers : pc[w] \in {"stopped", "done"}
+   /\ UNCHANGED vars
+ 
++SplitConsume(w) ==
++  /\ pc[w] = "details" /\ reservation
++  /\ reservation' = FALSE
++  /\ UNCHANGED <<orders, pc, route, attempt, pendingReply, replies>>
++
+ Next == (\E w \in Workers :
+-          ResolveRouting(w) \/ FetchDetails(w) \/ CreateTransaction(w)
++          SplitConsume(w) \/ ResolveRouting(w) \/ FetchDetails(w) \/ CreateTransaction(w)
+           \/ AbortTransaction(w) \/ CrashOrLostReply(w) \/ ReceiveReply(w)
+           \/ RetryOrDuplicate(w)) \/ Quiescent
+ 
