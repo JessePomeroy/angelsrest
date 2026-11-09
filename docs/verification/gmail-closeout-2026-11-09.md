@@ -10,7 +10,8 @@ turn email contents into instructions.
 - Initial closeout base: `663e9ca65d86f1cc9fc0ca8dc190bfd96ea623d3`.
 - Gmail records PR #769 merged as `430b735f`; order-intake verification PR #768
   merged as `55f1315daff39a5487fadd839d82acd432e42d09`. Both PR CI runs passed.
-- Installed immutable Admin package: **6.16.2**; CRM API: **6.14.0**.
+- Installed immutable Admin package: **6.16.2**; current workspace/build CRM API:
+  **6.15.0**. The original Gmail publication of CRM API 6.14.0 is historical.
 - Gmail host PR #752 merged as `7d97b0c3`; its main CI `41647278243` passed.
 - Current production provider observation: READY `dpl_9Jk9KoJfTtqNNCxBWBr19foxCSJH`,
   source `55f1315d`, with apex and `www` aliases assigned. Production Gmail host/backend configuration is absent.
