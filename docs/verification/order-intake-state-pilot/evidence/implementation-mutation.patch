@@ -1,0 +1,10 @@
+--- orders.ts
++++ temporary-copy/orders.ts
+@@ -936,6 +936 @@
+-		const existing = await ctx.db
+-			.query("orders")
+-			.withIndex("by_stripeSessionId", (q) =>
+-				q.eq("stripeSessionId", args.stripeSessionId),
+-			)
+-			.unique();
++		const existing = null; // isolated negative control

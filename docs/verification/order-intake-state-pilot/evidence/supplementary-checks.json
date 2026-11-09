@@ -1,0 +1,46 @@
+{
+  "repository_lint": {
+    "command": "pnpm lint",
+    "exit_code": 0,
+    "note": "Existing anti-slop warnings; Biome checked 448 files without changes."
+  },
+  "pilot_typescript_lint": {
+    "tool": "Biome recommended linter, isolated temporary config; formatter/assist disabled",
+    "exit_code": 0,
+    "files_checked": 1,
+    "warnings": 0
+  },
+  "skill_validation": {
+    "validator": "/home/strayblackdog/.codex/skills/.system/skill-creator/scripts/quick_validate.py",
+    "skill": ".agents/skills/verify-order-intake-state",
+    "result": "Skill is valid!",
+    "dependency": "PyYAML 6.0.3 installed only in a removed temporary directory"
+  },
+  "python_syntax": "ast.parse passed",
+  "inline_render": {
+    "preview_width": 728,
+    "content_height": 752,
+    "console_messages": [],
+    "rendered": true
+  },
+  "retention_review": {
+    "source_commit": "24490663fbe19de9e57a1a20c81babc63f591d0b",
+    "covered_source_hashes": "unchanged",
+    "pilot_run": "test-results/order-intake-state-20261109T174540Z-1955411/",
+    "report_acceptance_tests": {
+      "command": "python3 -B docs/verification/order-intake-state-pilot/test_check.py",
+      "passed": 8
+    },
+    "skipped_probe_negative_control": {
+      "previous_runner_accepted": true,
+      "reviewed_runner_accepted": false
+    },
+    "repository_lint": {
+      "command": "pnpm lint",
+      "exit_code": 0,
+      "note": "Existing advisory warnings; no fixes applied."
+    },
+    "python_syntax": "check.py and test_check.py ast.parse passed",
+    "patch_format": "Same mutations, regenerated with zero context to avoid patch-context whitespace diagnostics."
+  }
+}

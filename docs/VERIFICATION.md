@@ -77,6 +77,23 @@ production records or credentials. The maintained
 [invoice skill](../.agents/skills/verify-angelsrest-invoices/SKILL.md) maps the
 ledger, browser, and separately authorized sandbox evidence.
 
+## Bounded order-intake check
+
+Use the [order-intake pilot](verification/order-intake-state-pilot/README.md) and
+[verification skill](../.agents/skills/verify-order-intake-state/SKILL.md) when
+changing session deduplication, checkout routing, reservation consumption, or
+transaction boundaries:
+
+```zsh
+python3 docs/verification/order-intake-state-pilot/check.py
+```
+
+Append `--setup` on first use to fetch checksum-pinned development tools. The
+command checks source hashes, runs the bounded TLC model and offline Convex
+probes, and requires deliberately broken controls to fail. See the pilot for
+Linux/toolchain prerequisites, retained evidence, and limits; it does not verify
+live providers or exactly-once external fulfillment.
+
 ## Browser and Worker prerequisites
 
 Component fixtures run at `127.0.0.1:5196` with strict port selection and no

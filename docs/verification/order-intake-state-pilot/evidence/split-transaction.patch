@@ -1,0 +1,11 @@
+--- OrderIntake.tla
++++ split-transaction/OrderIntake.tla
+@@ -90,0 +91,5 @@
++SplitConsume(w) ==
++  /\ pc[w] = "details" /\ reservation
++  /\ reservation' = FALSE
++  /\ UNCHANGED <<orders, pc, route, attempt, pendingReply, replies>>
++
+@@ -92 +97 @@
+-          ResolveRouting(w) \/ FetchDetails(w) \/ CreateTransaction(w)
++          SplitConsume(w) \/ ResolveRouting(w) \/ FetchDetails(w) \/ CreateTransaction(w)

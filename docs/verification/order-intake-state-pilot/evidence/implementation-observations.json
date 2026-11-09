@@ -1,0 +1,82 @@
+{
+  "run_directory": "/home/strayblackdog/Documents/work/angelsrest/test-results/order-intake-state-20261109T165923Z-1920844",
+  "command": "python3 docs/verification/order-intake-state-pilot/check.py",
+  "checks": [
+    {
+      "name": "implementation-baseline",
+      "success": true,
+      "passed": 249,
+      "failed": 0,
+      "pending": 0,
+      "suites": [
+        {
+          "file": "intake.bridge.test.ts",
+          "passed": 12,
+          "failed": [],
+          "skipped": 0
+        },
+        {
+          "file": "checkoutSnapshotReservations.test.ts",
+          "passed": 29,
+          "failed": [],
+          "skipped": 0
+        },
+        {
+          "file": "commerceIntakeInbox.test.ts",
+          "passed": 30,
+          "failed": [],
+          "skipped": 0
+        },
+        {
+          "file": "orders.test.ts",
+          "passed": 178,
+          "failed": [],
+          "skipped": 0
+        }
+      ]
+    },
+    {
+      "name": "implementation-missing-lookup",
+      "success": false,
+      "passed": 0,
+      "failed": 3,
+      "pending": 9,
+      "suites": [
+        {
+          "file": "intake.bridge.test.ts",
+          "passed": 0,
+          "failed": [
+            {
+              "test": "'hub platform' fresh order route retries converge after a lost reply",
+              "message": "AssertionError: expected [ { \u2026(12) }, { \u2026(14) } ] to have a length of 1 but got 2"
+            },
+            {
+              "test": "'tenant platform' fresh order route retries converge after a lost reply",
+              "message": "AssertionError: expected [ { \u2026(13) }, { \u2026(15) } ] to have a length of 1 but got 2"
+            },
+            {
+              "test": "'tenant connected' fresh order route retries converge after a lost reply",
+              "message": "AssertionError: expected [ { \u2026(14) }, { \u2026(16) } ] to have a length of 1 but got 2"
+            }
+          ],
+          "skipped": 0
+        }
+      ]
+    },
+    {
+      "name": "implementation-restored",
+      "success": true,
+      "passed": 12,
+      "failed": 0,
+      "pending": 0,
+      "suites": [
+        {
+          "file": "intake.bridge.test.ts",
+          "passed": 12,
+          "failed": [],
+          "skipped": 0
+        }
+      ]
+    }
+  ]
+}
