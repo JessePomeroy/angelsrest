@@ -9,19 +9,31 @@ main CI and is included in the later production releases. Current production is
 READY at `55f1315d` (`dpl_9Jk9KoJfTtqNNCxBWBr19foxCSJH`), with Admin 6.16.2.
 The follow-up Gmail records and order-intake verification are merged in PRs #769
 and #768; root `main` is synchronized and clean, with the parked originals archived. A code deployment does not establish a
-configured live Gmail mailbox: the November 9 provider read found no production
-Gmail host settings or backend environment names.
+configured live Gmail mailbox. Earlier on November 9, production had no Gmail
+host or backend settings. The subsequent owner-only connection setup below has
+installed those settings; a host rollout and fresh consent are still pending.
 
 Jesse authorized completion of the remaining acceptance, production setup,
 reviewed delivery and cleanup on November 9. A separate production Google project,
 `angelsrest-gmail-261109` (number `1044809186946`), is ACTIVE with Gmail, Pub/Sub
 and IAM enabled. Dedicated notification resources and a separate web OAuth
-client are prepared; its credential remains private. No production Gmail
-credential or grant is installed. On November 9, Jesse approved the proposed
+client are prepared. Independent production keys and the separate mailbox client
+credential are now installed in the production server stores. The host settings
+require a new deployment; no production mailbox grant is installed. The exact
+mailbox and recipient allowlists each contain only the approved owner address.
+This connection request does not widen sending to customer recipients. On November 9, Jesse approved the proposed
 production retention policy: expire each imported conversation 30 days after its
 local creation, with unresolved-send holds. The remaining privacy, provider and
-acceptance gates below still apply. Staging keys and grants will not be copied
-into production.
+acceptance gates below remain recorded for their respective scopes. Staging keys
+and grants are not copied into production. See the
+[live connection record](../verification/gmail-live-connection-2026-11-09.md) for
+the current bounded activation work and remaining steps.
+
+The live connection uses **https://www.angelsrest.online**. Direct HTTP and domain
+configuration reads confirmed that the apex redirects to `www`, including API
+callbacks. Production public URL and Gmail callback/push settings were aligned
+with that existing redirect; development and preview settings remain unchanged.
+Use the `www` origin for fresh production consent.
 
 The November 9 read-only staging checks passed at deployment
 `dpl_sHnGsjQwftAtiiJRcwZZSmXsUptu`, source `e48e6c65`, Admin 6.16.2:
@@ -119,12 +131,13 @@ remain separate. The current Gmail connection continues on staging.
 
 ### Current local follow-up
 
-Gmail records PR #769 merged as `430b735f`. The post-release evidence branch is
-`docs/gmail-live-observation-20261109` in the preserved Gmail hub worktree, based
-on main `55f1315d`. It uses the
+Gmail records PR #769 merged as `430b735f`; post-release evidence and the approved
+retention choice merged in PR #770 as `ace5dd2e`. The live connection branch is
+`feat/gmail-live-connection-20261109` in the preserved Gmail hub worktree, based
+on main `ace5dd2e`. It uses the
 locked registry Admin 6.16.2 package. Original feature and backend/Admin source
-branches remain preservation references. The ordinary repository contains a
-separate order-intake refinement; it is not part of the Gmail change.
+branches remain preservation references. The separate order-intake refinement
+merged in PR #768; its parked originals were archived before root cleanup.
 
 The released reflection follow-up supplies the project verification skill and
 credential-safe OAuth failure reporting. Its original local proof remains in
@@ -453,7 +466,9 @@ remain separate from application deletion and require the procedures below.
 
 This records the production retention choice. The public production disclosure,
 provider handling and live acceptance gates remain open; no production credential
-or mailbox grant was installed as part of this decision.
+or mailbox grant was installed as part of the retention decision. The later
+connection setup installs independent server settings as recorded above; fresh
+mailbox consent remains pending.
 
 ### Disclosure and operational gates
 
