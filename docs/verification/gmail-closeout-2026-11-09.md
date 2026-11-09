@@ -82,10 +82,23 @@ not rewritten as current production evidence. The existing offline release-histo
 reader validates their digests and links.
 
 Earlier on November 9, GitHub reported a partial system outage. Main CI at
-`663e9ca6` had repeatedly failed internally before jobs started. No successful
-build record is inferred from those failures. Final current-production release
-observation waits for an authentic successful main artifact and provider binding.
-[GitHub service status](https://www.githubstatus.com/) is the external incident source.
+`663e9ca6` repeatedly failed internally before jobs started; those failures are
+not treated as a successful build. The later main CI at `55f1315d`, run
+[42694777767](https://github.com/JessePomeroy/angelsrest/actions/runs/42694777767),
+completed successfully and produced immutable artifact
+[13710516607](https://github.com/JessePomeroy/angelsrest/actions/runs/42694777767/artifacts/13710516607).
+
+The canonical observer verified the artifact archive digest, successful run and
+exact source identity, Vercel project/team/production target and Git revision,
+and the live alias before and after the `/` and `/cart` public checks. Both
+checks passed, with no unresolved records. The generated build, deployment,
+verification and [observation receipt](../integration-evidence/releases/production/observation-35a201f69115c62755fbb6dc63a4e0b275bb0c7c90446422061032f7fc067bf9.json)
+are retained unchanged in the production evidence directory.
+
+The deployment binding is **source-only**, with a null configuration fingerprint.
+It does not establish identical CI/provider artifact bytes or prove backend,
+Worker, Gmail activation or private-provider capabilities. Historical recovery
+and staging receipts retain their original scope.
 
 ## Production activation preparation
 

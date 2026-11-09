@@ -32,8 +32,11 @@ checkpoint. No email, consent, upload or draft change was requested by these che
 See [the current closeout evidence](../verification/gmail-closeout-2026-11-09.md).
 
 Earlier on November 9, GitHub reported a partial Actions outage during this closeout. Those `663e9ca6` main runs failed internally before jobs started. PRs #768/#769
-and main `430b735f` passed CI; final main `55f1315d` is still running, so its
-immutable production release observation remains pending.
+and main `430b735f` passed CI. Main `55f1315d` subsequently passed run
+`42694777767`; immutable artifact `13710516607` and the exact live deployment
+passed the canonical production observer, with stable alias ownership and both
+public checks passing. The binding remains source-only; identical artifact bytes,
+runtime configuration and Gmail capability acceptance are not inferred.
 Historical scoped recovery and staging receipts are retained without relabeling.
 
 The dated checkpoints below are historical evidence. They do not override the
