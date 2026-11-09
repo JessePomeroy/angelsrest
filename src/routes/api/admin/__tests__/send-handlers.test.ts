@@ -1,187 +1,172 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { cookiesFromRequest } from "@jessepomeroy/admin/server";
+import type { Cookies, RequestEvent } from "@sveltejs/kit";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { POST as sendContract } from "../contracts/[id]/send/+server";
+import { POST as sendInvoice } from "../invoicing/[id]/send/+server";
+import { POST as createPortal } from "../portal/+server";
+import { POST as sendQuote } from "../quotes/[id]/send/+server";
 
-/**
- * These routes are thin wrappers around handler factories from
- * @jessepomeroy/admin/server. The angelsrest-side responsibility is:
- *   1. Call requireAuth() before delegating.
- *   2. Delegate to the package handler and return its response.
- *
- * Deeper logic (template fallback, Resend, activity logging) is tested
- * inside the admin-dashboard package — see audit item #5.
- */
-
-// ─── Module Mocks ─────────────────────────────────────────────────────────────
-
-const mockInvoiceHandler = vi.fn();
-const mockQuoteHandler = vi.fn();
-const mockContractHandler = vi.fn();
-const mockSetServerConfig = vi.fn();
-const mockGetToken = vi.fn();
-const mockConvexQuery = vi.fn();
-const mockConvexSetAuth = vi.fn();
-
-function throwStatus(status: number, message: string): never {
-	const err = new Error(message) as Error & { status: number };
-	err.status = status;
-	throw err;
-}
-
-vi.mock("@jessepomeroy/admin/server", () => ({
-	setServerConfig: mockSetServerConfig,
-	createInvoiceSendHandler: () => mockInvoiceHandler,
-	createQuoteSendHandler: () => mockQuoteHandler,
-	createContractSendHandler: () => mockContractHandler,
-	createAdminTokenHandler: () => vi.fn(),
+const state = vi.hoisted(() => ({
+	member: true,
+	features: ["invoicing", "quotes", "contracts", "crm"],
+	identityValid: true,
+	backendUnavailable: false,
+	calls: [] as { path: string; token: string | null; args: unknown[] }[],
 }));
 
-vi.mock("@jessepomeroy/admin/server/auth", () => ({
-	createAdminAuthValidator: (options: {
-		getToken: (cookies: import("@sveltejs/kit").Cookies) => string | null | undefined;
-		whoami: unknown;
-	}) => {
-		async function requireAuthWithIdentity(cookies: import("@sveltejs/kit").Cookies) {
-			const token = options.getToken(cookies);
-			if (!token) throwStatus(401, "Unauthorized");
-			const identity = await mockConvexQuery(options.whoami, {});
-			if (!identity) throwStatus(401, "Unauthorized");
-			mockConvexSetAuth(token);
-			return { token, identity };
-		}
-		return {
-			requireAuth: async (cookies: import("@sveltejs/kit").Cookies) => {
-				const { token } = await requireAuthWithIdentity(cookies);
-				return token;
-			},
-			requireAuthWithIdentity,
-			verifyRequest: async () => true,
-			getTokenFromRequest: async () => null,
-		};
+vi.mock("$env/dynamic/public", () => ({
+	env: {
+		PUBLIC_CONVEX_URL: "https://fixture.convex.cloud",
+		PUBLIC_CONVEX_SITE_URL: "https://fixture.convex.site",
 	},
 }));
-
-vi.mock("$lib/config/admin.server", () => ({
-	adminServerConfig: { stub: true },
-}));
-
+vi.mock("$env/dynamic/private", () => ({ env: {} }));
 vi.mock("@mmailaender/convex-better-auth-svelte/sveltekit", () => ({
-	getToken: mockGetToken,
+	getToken: (cookies: Cookies) => cookies.get("fixture-session"),
 }));
 
-vi.mock("convex/browser", () => ({
-	ConvexHttpClient: class MockConvexHttpClient {
-		setAuth = mockConvexSetAuth;
-		query = mockConvexQuery;
-	},
-}));
-vi.mock("$convex/api", () => ({
-	api: { adminAuth: { whoami: "adminAuth.whoami" } },
-}));
+const routes = [
+	[
+		"invoicing/synthetic/send",
+		(token?: string) => invoke(sendInvoice, "invoicing/synthetic/send", token),
+	],
+	["quotes/synthetic/send", (token?: string) => invoke(sendQuote, "quotes/synthetic/send", token)],
+	[
+		"contracts/synthetic/send",
+		(token?: string) => invoke(sendContract, "contracts/synthetic/send", token),
+	],
+	["portal", (token?: string) => invoke(createPortal, "portal", token)],
+] as const;
 
-// ─── Helpers ──────────────────────────────────────────────────────────────────
+function invoke<T extends RequestEvent>(
+	handler: (event: T) => Response | Promise<Response>,
+	path: string,
+	token?: string,
+	body = {},
+) {
+	const request = new Request(`https://fixture.example/api/admin/${path}`, {
+		method: "POST",
+		headers: {
+			"content-type": "application/json",
+			...(token ? { cookie: `fixture-session=${token}` } : {}),
+		},
+		body: JSON.stringify(body),
+	});
+	return handler({
+		request,
+		cookies: cookiesFromRequest(request),
+		params: { id: "synthetic" },
+		url: new URL(request.url),
+	} as T);
+}
 
-function makeEvent() {
-	return {
-		cookies: {
-			get: vi.fn(),
-			getAll: vi.fn(),
-			set: vi.fn(),
-		} as unknown as import("@sveltejs/kit").Cookies,
-		params: { id: "doc-1" },
-		request: new Request("http://localhost/api/admin/x/doc-1/send", {
-			method: "POST",
-			body: JSON.stringify({ subject: "hi", body: "<p>hi</p>" }),
+function convexResult(path: string, token: string | null) {
+	switch (path) {
+		case "adminAuth:whoami":
+			return state.identityValid ? { email: `${token}@example.test`, subject: token } : null;
+		case "adminAuth:claimAdminAccess":
+			return { claimed: true };
+		case "adminAuth:checkAdminAccess":
+			return { authorized: state.member, enabledFeatures: state.features };
+		case "portal:createToken":
+			return "synthetic-portal-token";
+		default:
+			throw new Error(`Unexpected protected operation: ${path}`);
+	}
+}
+
+beforeEach(() => {
+	state.member = true;
+	state.features = ["invoicing", "quotes", "contracts", "crm"];
+	state.identityValid = true;
+	state.backendUnavailable = false;
+	state.calls = [];
+	vi.stubGlobal(
+		"fetch",
+		vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+			expect(String(input)).toMatch(/^https:\/\/fixture\.convex\.cloud\/api\/(query|mutation)$/);
+			const body: unknown = JSON.parse(String(init?.body));
+			if (
+				!body ||
+				typeof body !== "object" ||
+				!("path" in body) ||
+				typeof body.path !== "string" ||
+				!("args" in body) ||
+				!Array.isArray(body.args)
+			) {
+				throw new Error("Unexpected Convex request");
+			}
+			const token = new Headers(init?.headers).get("authorization");
+			state.calls.push({ path: body.path, token, args: body.args });
+			if (state.backendUnavailable) throw new Error("Synthetic backend failure");
+			const value = convexResult(body.path, token);
+			return Response.json({ status: "success", value });
 		}),
-	};
-}
+	);
+});
+afterEach(() => vi.unstubAllGlobals());
 
-async function loadHandler(path: string) {
-	vi.resetModules();
-	const mod = await import(path);
-	return mod.POST as (event: any) => Promise<Response>;
-}
-
-// ─── Tests ────────────────────────────────────────────────────────────────────
-
-describe.each([
-	{
-		name: "invoice",
-		path: "../invoicing/[id]/send/+server",
-		mockHandler: mockInvoiceHandler,
-	},
-	{
-		name: "quote",
-		path: "../quotes/[id]/send/+server",
-		mockHandler: mockQuoteHandler,
-	},
-	{
-		name: "contract",
-		path: "../contracts/[id]/send/+server",
-		mockHandler: mockContractHandler,
-	},
-])("POST /api/admin/$name send handler", ({ path, mockHandler }) => {
-	beforeEach(() => {
-		vi.clearAllMocks();
-		mockConvexQuery.mockReset();
+describe.each(routes)("shared %s authorization", (_path, run) => {
+	it("denies missing sessions before backend access", async () => {
+		await expect(run()).rejects.toMatchObject({ status: 401 });
+		expect(state.calls).toEqual([]);
 	});
-
-	it("returns 401 when no session token is present", async () => {
-		mockGetToken.mockReturnValue(null);
-		const POST = await loadHandler(path);
-
-		try {
-			await POST(makeEvent());
-			expect.fail("should have thrown");
-		} catch (err: any) {
-			expect(err.status).toBe(401);
-		}
-		expect(mockHandler).not.toHaveBeenCalled();
+	it("denies an invalid identity before membership or protected operations", async () => {
+		state.identityValid = false;
+		await expect(run("stale")).rejects.toMatchObject({ status: 401 });
+		expect(state.calls.map((call) => call.path)).toEqual(["adminAuth:whoami"]);
 	});
-
-	it("returns 401 when Convex rejects the session", async () => {
-		mockGetToken.mockReturnValue("stale-token");
-		mockConvexQuery.mockResolvedValue(null);
-		const POST = await loadHandler(path);
-
-		try {
-			await POST(makeEvent());
-			expect.fail("should have thrown");
-		} catch (err: any) {
-			expect(err.status).toBe(401);
-		}
-		expect(mockHandler).not.toHaveBeenCalled();
+	it("denies nonmembers before protected operations", async () => {
+		state.member = false;
+		await expect(run("nonmember")).rejects.toMatchObject({ status: 401 });
+		expect(state.calls.map((call) => call.path)).toEqual([
+			"adminAuth:whoami",
+			"adminAuth:claimAdminAccess",
+			"adminAuth:checkAdminAccess",
+		]);
 	});
+	it("authorizes once before validating the protected request body", async () => {
+		await expect(run("owner")).rejects.toMatchObject({ status: 400 });
+		expect(state.calls.map((call) => call.path)).toEqual([
+			"adminAuth:whoami",
+			"adminAuth:claimAdminAccess",
+			"adminAuth:checkAdminAccess",
+		]);
+	});
+});
 
-	it("delegates to the package handler when auth passes", async () => {
-		mockGetToken.mockReturnValue("valid-session-token");
-		mockConvexQuery.mockResolvedValue({
-			email: "admin@example.com",
-			name: "Admin",
-			subject: "user-1",
+it("checks document feature access before processing the request", async () => {
+	state.features = ["crm"];
+	await expect(invoke(sendInvoice, "invoicing/synthetic/send", "owner")).rejects.toMatchObject({
+		status: 401,
+	});
+	expect(state.calls).toHaveLength(3);
+});
+
+it("fails closed when the identity backend is unavailable", async () => {
+	state.backendUnavailable = true;
+	await expect(invoke(createPortal, "portal", "owner")).rejects.toMatchObject({ status: 401 });
+	expect(state.calls.map((call) => call.path)).toEqual(["adminAuth:whoami"]);
+});
+
+it("keeps concurrent portal writes bound to their own validated sessions and site", async () => {
+	const body = { type: "invoice", documentId: "synthetic-invoice", clientId: "synthetic-client" };
+	const responses = await Promise.all(
+		["first", "second"].map((token) => invoke(createPortal, "portal", token, body)),
+	);
+	expect(responses.map((response) => response.status)).toEqual([200, 200]);
+	for (const token of ["Bearer first", "Bearer second"]) {
+		const calls = state.calls.filter((call) => call.token === token);
+		expect(calls.map((call) => call.path)).toEqual([
+			"adminAuth:whoami",
+			"adminAuth:claimAdminAccess",
+			"adminAuth:checkAdminAccess",
+			"portal:createToken",
+		]);
+		expect(calls[2].args[0]).toEqual({
+			email: `${token}@example.test`,
+			siteUrl: "angelsrest.online",
 		});
-		mockHandler.mockResolvedValue(new Response(JSON.stringify({ sent: true }), { status: 200 }));
-
-		const POST = await loadHandler(path);
-		const event = makeEvent();
-		const response = await POST(event);
-
-		expect(mockHandler).toHaveBeenCalledTimes(1);
-		expect(mockHandler).toHaveBeenCalledWith(event);
-		expect(response.status).toBe(200);
-		const body = await response.json();
-		expect(body.sent).toBe(true);
-	});
-
-	it("propagates errors thrown by the package handler", async () => {
-		mockGetToken.mockReturnValue("valid-session-token");
-		mockConvexQuery.mockResolvedValue({
-			email: "admin@example.com",
-			name: "Admin",
-			subject: "user-1",
-		});
-		mockHandler.mockRejectedValue(new Error("resend exploded"));
-
-		const POST = await loadHandler(path);
-
-		await expect(POST(makeEvent())).rejects.toThrow("resend exploded");
-	});
+		expect(calls[3].args[0]).toMatchObject({ siteUrl: "angelsrest.online", ...body });
+	}
 });
