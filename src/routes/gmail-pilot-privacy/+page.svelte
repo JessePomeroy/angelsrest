@@ -1,17 +1,17 @@
 <svelte:head>
-  <title>Gmail pilot privacy | Angel's Rest</title>
-  <meta name="description" content="How the Angels Rest Gmail pilot uses, protects, retains, and deletes connected mailbox data." />
+  <title>Gmail privacy | Angel's Rest</title>
+  <meta name="description" content="How Angel's Rest uses, protects, retains, and deletes connected Gmail data." />
   <meta name="robots" content="noindex, nofollow" />
 </svelte:head>
 
 <article class="privacy-notice">
-  <h1>Gmail pilot privacy</h1>
-  <p>Updated November 2, 2026</p>
+  <h1>Gmail privacy</h1>
+  <p>Updated November 9, 2026</p>
   <p>
     Angel's Rest, operated by Jesse Pomeroy, offers an optional Gmail connection for
     reading and replying to conversations associated with an inquiry or client.
-    This notice covers the controlled testing pilot. Use only approved test accounts
-    and synthetic test conversations; do not import personal or customer correspondence.
+    This notice covers the connection on angelsrest.online and its separate testing
+    environment. Access is limited to approved mailboxes and authorized site administrators.
   </p>
 
   <h2>Your permission and the data we use</h2>
@@ -58,7 +58,7 @@
     does not load remote email images or execute email HTML.
   </p>
 
-  <h2>Pilot retention</h2>
+  <h2>Retention and deletion</h2>
   <p>
     Imported conversations expire from the application 30 days after their local
     creation. Later messages do not extend that deadline, so they may be retained
@@ -73,12 +73,16 @@
     Gmail search does not, by itself, prove a message was never sent.
   </p>
   <p>
-    The pilot has no scheduled application snapshots. Application deletion does not
-    delete originals in Gmail or administrator-downloaded exports. Infrastructure
-    recovery copies, if any, are subject to provider controls; their retention and
-    erasure handling must be verified before this pilot accepts non-test correspondence.
-    Operational monitoring is intended to use status and timing information rather
-    than message bodies, filenames, search text, or credentials.
+    Application deletion does not delete originals in Gmail or administrator-downloaded
+    exports. The 30-day period applies to active application records. Infrastructure
+    recovery copies and operational logs are subject to provider controls and separate
+    retention periods. Expired or erased correspondence must be excluded from active
+    use after a restoration.
+  </p>
+  <p>
+    Application monitoring uses status, timing, and error-reference information.
+    We do not intentionally log message bodies, filenames, search text, or credentials.
+    Hosting providers may retain request metadata under their own logging policies.
   </p>
 
   <h2>Your controls</h2>
@@ -103,7 +107,7 @@
     Contact <a href="mailto:thinkingofview@gmail.com">thinkingofview@gmail.com</a>
     about access, exports, deletion, or a retention hold. Include the relevant account
     and request, without sending passwords, credentials, or unnecessary message content.
-    Production use and its retention policy require a separate launch decision.
+    Administrator-downloaded copies must be handled separately when responding to a deletion request.
   </p>
 </article>
 
