@@ -1,0 +1,18 @@
+{
+  "head": "663e9ca65d86f1cc9fc0ca8dc190bfd96ea623d3",
+  "status": "pass",
+  "driver_regressions": 12,
+  "isolated_fixture_biome_lint": "pass; original project linter rules, VCS disabled and temporary file inclusion, formatter/assist disabled; no fixes",
+  "skill_validation": "pass; installed skill-creator quick_validate.py; temporary PyYAML 6.0.3 removed",
+  "diagram": "HTML preview at width 728, height 847, no console messages; then inline render",
+  "historical_evidence": "original evidence/ files and original source-snapshot.json unchanged",
+  "scope": "local verification/skill/docs only; no application changes, no commit/push/deploy of refinement",
+  "file_sha256": {
+    "docs/verification/order-intake-state-pilot/OrderIntake.cfg": "f29a61538251ce4a4634d39ac48399fa863f29f9b32424962056830fa8d0ef88",
+    "docs/verification/order-intake-state-pilot/OrderIntake.tla": "88b1e71f620cba8d41c5a10a336d1eb041cb2e3add3e1b546f0d8b6e5ce8fb13",
+    "docs/verification/order-intake-state-pilot/check.py": "ae2c28b27a99ad890856bb12a1dde7e102819b4bf3a7bf876f44878e62d07d89",
+    "docs/verification/order-intake-state-pilot/intake.bridge.test.ts": "d7be6150476aa39c462870a0be7fb4b011fbac4aa8c0d01fa0b8b82d25dde053",
+    "docs/verification/order-intake-state-pilot/statechart.html": "2112ebb8b42acf3b977082af9ac26f118e6bdd2da9152428a6a57529899e484b",
+    "docs/verification/order-intake-state-pilot/test_check.py": "d1eeb6c2aa76638254bbea21282918f44923d26a9cb0ef8a49f6f7f1f040e968"
+  }
+}

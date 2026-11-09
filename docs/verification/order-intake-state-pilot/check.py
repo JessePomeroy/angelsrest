@@ -92,8 +92,10 @@ def toolchain(setup):
 
 def source_snapshot():
     baseline = json.loads((PILOT / "source-snapshot.json").read_text())
-    actual = {path: digest(ROOT / path) for path in baseline["sources"]}
-    stale = [path for path in actual if actual[path] != baseline["sources"][path]]
+    supplement = json.loads((PILOT / "refinement-source-snapshot.json").read_text())
+    expected = baseline["sources"] | supplement["sources"]
+    actual = {path: digest(ROOT / path) for path in expected}
+    stale = [path for path in actual if actual[path] != expected[path]]
     if stale:
         raise RuntimeError("Model source correspondence is STALE; review before updating hashes: "
                            + ", ".join(stale))
@@ -107,7 +109,8 @@ def source_snapshot():
     return actual
 
 
-def check_tlc(java, jar, work, output, name, model, config, should_fail):
+def check_tlc(java, jar, work, output, name, model, config, should_fail,
+              invariant="SingleDurableReceipt"):
     model_dir = work / name
     model_dir.mkdir()
     (model_dir / "OrderIntake.tla").write_text(model)
@@ -117,7 +120,7 @@ def check_tlc(java, jar, work, output, name, model, config, should_fail):
             "-metadir", model_dir / "states", "-config", "OrderIntake.cfg", "OrderIntake.tla"]
     result = command(args, cwd=model_dir)
     (output / f"{name}.log").write_text(result.stdout)
-    violation = "Invariant SingleDurableReceipt is violated" in result.stdout
+    violation = f"Invariant {invariant} is violated" in result.stdout
     completed = "Model checking completed. No error has been found." in result.stdout
     counts = re.search(r"([\d,]+) states generated, ([\d,]+) distinct states found, ([\d,]+) states left on queue", result.stdout)
     count_data = dict(zip(("generated", "distinct", "queued"),
@@ -128,7 +131,8 @@ def check_tlc(java, jar, work, output, name, model, config, should_fail):
         ok = result.returncode == 0 and completed and count_data is not None and count_data["queued"] == 0
     print(f"{name}: {'expected violation' if should_fail and ok else 'PASS' if ok else 'FAILED'} {count_data}", flush=True)
     return {"name": name, "ok": ok, "expected_failure": should_fail,
-            "exit_code": result.returncode, "states": count_data}
+            "exit_code": result.returncode, "states": count_data,
+            "expected_invariant": invariant if should_fail else None}
 
 
 def copy_sources(work):
@@ -165,7 +169,7 @@ export default defineConfig({
 
 
 def implementation_report_ok(data, returncode, mutant=False, bridge_only=False):
-    expected_suites = {"intake.bridge.test.ts": 12}
+    expected_suites = {"intake.bridge.test.ts": 15}
     if not bridge_only:
         expected_suites.update({"checkoutSnapshotReservations.test.ts": 29,
                                 "orders.test.ts": 178, "commerceIntakeInbox.test.ts": 30})
@@ -186,18 +190,25 @@ def implementation_report_ok(data, returncode, mutant=False, bridge_only=False):
                 and all(test.get("status") == "passed" and not test.get("failureMessages")
                         for test in assertions))
     # Only the name-filtered controls may skip tests. Each purchase scope must
-    # fail its own duplicate-row assertion; unrelated failures are not evidence.
+    # fail its own control-specific outcome; unrelated failures are not evidence.
     failed = [test for test in assertions if test.get("status") == "failed"]
-    expected_failures = {f"'{scope}' fresh order route retries converge after a lost reply"
+    title = ("closed producer gate permits fresh and stale committed-order recovery"
+             if mutant == "gate-first" else "fresh order route retries converge after a lost reply")
+    expected_failures = {f"'{scope}' {title}"
                          for scope in ["hub platform", "tenant platform", "tenant connected"]}
+    def expected_message(test):
+        messages = test.get("failureMessages", [])
+        if len(messages) != 1:
+            return False
+        if mutant == "gate-first":
+            return "Error: Order producers are closed" in messages[0]
+        return "length of 1" in messages[0] and "got 2" in messages[0]
     return (returncode == 1 and data.get("success") is False
             and data.get("numFailedTests") == 3 and data.get("numPassedTests") == 0
-            and data.get("numPendingTests") == 9 and len(failed) == 3
+            and data.get("numPendingTests") == 12 and len(failed) == 3
             and {test.get("fullName") for test in failed} == expected_failures
-            and sum(test.get("status") == "skipped" for test in assertions) == 9
-            and all(len(test.get("failureMessages", [])) == 1
-                    and "length of 1" in test["failureMessages"][0]
-                    and "got 2" in test["failureMessages"][0] for test in failed))
+            and sum(test.get("status") == "skipped" for test in assertions) == 12
+            and all(expected_message(test) for test in failed))
 
 
 def implementation_check(target, output, name, mutant=False, bridge_only=False):
@@ -207,7 +218,8 @@ def implementation_check(target, output, name, mutant=False, bridge_only=False):
     if bridge_only:
         args.append("docs/verification/order-intake-state-pilot/intake.bridge.test.ts")
     if mutant:
-        args += ["-t", "fresh order route retries converge after a lost reply"]
+        args += ["-t", "closed producer gate permits fresh and stale committed-order recovery"
+                 if mutant == "gate-first" else "fresh order route retries converge after a lost reply"]
     result = command(args, cwd=target)
     (output / f"{name}.log").write_text(result.stdout)
     report_file = output / f"{name}.json"
@@ -217,7 +229,8 @@ def implementation_check(target, output, name, mutant=False, bridge_only=False):
     ok = implementation_report_ok(data, result.returncode, mutant, bridge_only)
     print(f"{name}: {'mutation caught' if mutant and ok else 'PASS' if ok else 'FAILED'} "
           f"({data.get('numPassedTests', 0)} passed, {failed} failed)", flush=True)
-    return {"name": name, "ok": ok, "expected_failure": mutant,
+    return {"name": name, "ok": ok, "expected_failure": bool(mutant),
+            "mutation": "gate-first" if mutant == "gate-first" else "missing-lookup" if mutant else None,
             "exit_code": result.returncode, "tests": total,
             "passed": data.get("numPassedTests"), "failed": failed,
             "pending": data.get("numPendingTests")}
@@ -235,6 +248,8 @@ def main():
                "evidence_directory": str(output), "python": platform.python_version()}
     try:
         summary["sources"] = source_snapshot()
+        summary["source_records_sha256"] = {name: digest(PILOT / name) for name in
+            ["source-snapshot.json", "refinement-source-snapshot.json"]}
         summary["head"] = command(["git", "rev-parse", "HEAD"]).stdout.strip()
         summary["git_status"] = command(["git", "status", "--short"]).stdout
         summary["node"] = command(["node", "--version"]).stdout.strip()
@@ -265,15 +280,24 @@ def main():
             broken = model.replace(needle, '  /\\ IF FALSE')
             results.append(check_tlc(java, jar, work, output, "tlc-missing-lookup", broken, config, True))
             split_action = '''SplitConsume(w) ==
-  /\\ pc[w] = "details" /\\ reservation
-  /\\ reservation' = FALSE
-  /\\ UNCHANGED <<orders, pc, route, attempt, pendingReply, replies>>
+  /\\ pc[w] = "details" /\\ HasReservation
+  /\\ reservation' = {}
+  /\\ UNCHANGED <<orders, pc, route, attempt, pendingReply, replies, producersOpen, rejectedReceipts>>
 
 '''
             split = model.replace("Next ==", split_action + "Next ==")
             split = split.replace("ResolveRouting(w) \\/ FetchDetails(w)", "SplitConsume(w) \\/ ResolveRouting(w) \\/ FetchDetails(w)")
             results.append(check_tlc(java, jar, work, output, "tlc-split-transaction", split, config, True))
-            for name, variant in [("missing-lookup", broken), ("split-transaction", split)]:
+            gate_guard = '  /\\ (orders # {} \\/ producersOpen)'
+            assert model.count(gate_guard) == 1
+            gate_first = model.replace(gate_guard, '  /\\ producersOpen')
+            reject_guard = '  /\\ orders = {}\n  /\\ rejectedReceipts'
+            assert model.count(reject_guard) == 1
+            gate_first = gate_first.replace(reject_guard, '  /\\ rejectedReceipts')
+            results.append(check_tlc(java, jar, work, output, "tlc-gate-first", gate_first, config,
+                                     True, "CommittedReplayAvailable"))
+            for name, variant in [("missing-lookup", broken), ("split-transaction", split),
+                                  ("gate-first", gate_first)]:
                 (output / f"{name}.patch").write_text("".join(difflib.unified_diff(
                     model.splitlines(True), variant.splitlines(True), fromfile="OrderIntake.tla", tofile=name + "/OrderIntake.tla", n=0)))
             target = copy_sources(work)
@@ -298,6 +322,23 @@ def main():
             try:
                 orders.write_text(mutated)
                 results.append(implementation_check(target, output, "implementation-missing-lookup", mutant=True, bridge_only=True))
+            finally:
+                orders.write_text(original)
+            # Non-equivalence control: moving only the producer gate ahead of
+            # existing-order recovery blocks a receipt without duplicating it.
+            create_start = original.index("export const create = mutation")
+            gate_position = original.index("\n\t\tassertOrderProducersOpen();", create_start)
+            gate_moved = original[:gate_position] + original[gate_position:].replace(
+                "\n\t\tassertOrderProducersOpen();", "", 1)
+            lookup_position = gate_moved.index('\t\tconst existing = await ctx.db', create_start)
+            gate_moved = gate_moved[:lookup_position] + "\t\tassertOrderProducersOpen();\n" + gate_moved[lookup_position:]
+            (output / "implementation-gate-first.patch").write_text("".join(difflib.unified_diff(
+                original.splitlines(True), gate_moved.splitlines(True), fromfile="orders.ts",
+                tofile="temporary-copy/orders.ts", n=0)))
+            try:
+                orders.write_text(gate_moved)
+                results.append(implementation_check(target, output, "implementation-gate-first",
+                                                     mutant="gate-first", bridge_only=True))
             finally:
                 orders.write_text(original)
             results.append(implementation_check(target, output, "implementation-restored", bridge_only=True))

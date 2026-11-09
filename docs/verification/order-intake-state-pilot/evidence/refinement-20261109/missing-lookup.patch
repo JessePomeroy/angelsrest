@@ -1,0 +1,5 @@
+--- OrderIntake.tla
++++ missing-lookup/OrderIntake.tla
+@@ -65 +65 @@
+-  /\ IF orders # {}
++  /\ IF FALSE

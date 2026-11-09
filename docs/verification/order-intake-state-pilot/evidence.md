@@ -126,3 +126,69 @@ The complete updated pilot in
 checks with the same model counts and unchanged application fingerprints.
 The timeout-control log is retained locally at
 `test-results/angelsrest-reconciliation-20261109/timeout-negative-control.log`.
+
+## Ordering refinement 2026-11-09
+
+Separate **local-only** refinement at released HEAD
+`663e9ca65d86f1cc9fc0ca8dc190bfd96ea623d3`; not included in PR #767.
+Original source hashes, the original source manifest and all original evidence
+above remain unchanged. The [supplemental manifest](refinement-source-snapshot.json)
+adds two inspected host effect-boundary hashes; the driver now gates all 31
+individual source hashes plus the unchanged 272-file CRM execution-tree digest.
+
+The [ordering/ownership map](ordering-refinement.md) defines observations,
+guard checkpoints, persistent owners, conditional commutativity, repeated
+effects and exclusions. The existing model now contains a bound reservation
+record and one monotonic environment producer closure, separates pre-commit
+failure from lost commit response, and restricts late transaction rollback to
+the new-order branch. `CommittedReplayAvailable` adds the outcome that producer
+closure cannot itself reject a matching committed receipt. This was already
+supported by current code and an existing gate test, not invented policy.
+
+Final documented skill run:
+`test-results/order-intake-state-20261109T183545Z-2019557/`.
+Retained [summary](evidence/refinement-20261109/summary.json) includes HEAD,
+dirty Git status, model/driver/fixture hashes, both source-record hashes and
+actual tool versions. [Implementation observations](evidence/refinement-20261109/implementation-observations.json)
+retain inventories and exact control failures; full Vitest JSON remains in the
+run directory. [Supplementary checks](evidence/refinement-20261109/supplementary-checks.json)
+record the 12 passing driver regressions, isolated Biome lint, successful
+installed skill-creator validation and the previewed/rendered HTML diagram.
+
+| Check | Observed result | Scope / interpretation |
+| --- | --- | --- |
+| Correct connected and platform configurations | Each: 4,196 generated / 1,206 distinct / zero queued; depth 18; exit 0 | Exhausted finite graph; both receipt invariants and `TypeOK` hold. Configurations remain isomorphic substitutions, not authorization proofs. |
+| Lookup removal model | 233 generated / 119 distinct / 54 queued; exit 12 | Expected `SingleDurableReceipt` violation, 6 transitions. |
+| Split transfer model | 22 generated / 17 distinct / 9 queued; exit 12 | Expected `SingleDurableReceipt` violation, 3 transitions; design-only fault. |
+| [Gate-first model](evidence/refinement-20261109/tlc-gate-first.log) | 390 generated / 185 distinct / 75 queued; exit 12 | Expected `CommittedReplayAvailable` violation, 7 transitions; witness still has one order. |
+| Actual Convex baseline | 252 passed, none skipped/failed | 237 existing tests plus 15 bridge probes; persistent bound ownership, paid amount and revenue projections observed. |
+| Actual lookup removed | Exactly 3 expected duplicate-row failures; 12 filtered probes skipped | Existing real-source negative control preserved in disposable copy. |
+| [Actual gate moved first](evidence/refinement-20261109/implementation-gate-first.patch) | Exactly 3 `Order producers are closed` failures; 12 filtered probes skipped | Same fresh-route counterexample against real mutated code, one failure per hub/platform-tenant/connected-tenant scope. |
+| Actual source restored | All 15 probes passed, none skipped | Also tests stale reservation-route recovery through the closed gate, and unchanged local revenue projections. |
+
+New counterexample, in domain language: A resolves reservation → reads details
+→ commits order (reply still unobserved) → producers close → B resolves saved
+order → reads details → a gate-first mutation rejects B before checking the
+receipt. The unmodified implementation returns A's order ID. The isolated
+source replay has the same durable ordering and fresh route, with synthetic
+provider details; its earlier extra reservation read does not affect the trace.
+No original product failure was found. This demonstrates non-equivalence of a
+deliberate hypothetical guard move for one known trace, not a general refactor
+equivalence proof or an actual proposed refactor assessment.
+
+The first refinement attempt used a heterogeneous record/string reservation
+representation that TLC refused to compare. It failed before exploration,
+while implementation probes passed; it is not counted as formal evidence. The
+record-set correction passed in a separate run; subsequent changes added
+revenue observations, the exact fresh-route replay and final evidence metadata.
+Their final complete run is the one retained here. The initial failed run
+remains locally at `test-results/order-intake-state-20261109T183006Z-2012730/`.
+The stdin Biome invocation did not provide a usable lint result; the isolated
+file lint above did. Skill validation initially lacked PyYAML; the successful
+validation used a pinned disposable dependency, with no global install.
+
+All task-created execution copies and the temporary validator dependency were
+removed. Historical controls were not weakened. Revenue and authorization
+guards are representative real-code observations, not newly proved model
+properties. No provider contract, production OCC, arbitrary account collision,
+retention/offboarding race, liveness or exactly-once external effect is verified.

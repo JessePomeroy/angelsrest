@@ -1,0 +1,8 @@
+{
+  "reviewed_head": "663e9ca65d86f1cc9fc0ca8dc190bfd96ea623d3",
+  "scope": "Supplementary read-only effect-boundary correspondence; these effects are excluded from formal checking. Original source snapshot remains unchanged.",
+  "sources": {
+    "src/lib/server/orderReceipt.ts": "c63032da99da963457852295d88f3f8c50cb40cd9b50ddd7adc20d5f5eb572c7",
+    "src/lib/server/printFulfillment.ts": "dc40d3a32e31310feef0057317b9e378071f02c3daf341700923a5ec678afd6b"
+  }
+}

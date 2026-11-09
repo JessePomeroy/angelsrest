@@ -20,12 +20,19 @@ discarded commit replies followed by a fresh route, malformed/changed replay
 inputs, tenant/account conflicts before and after intake, and a late validation
 failure after reservation deletion followed by a successful retry. The fresh
 route replay calls the production selector and payload builder.
+It also checks fresh/stale recovery after producer closure and persistent bound
+ownership. Receipt assertions include the one contribution and daily/all-time
+revenue totals; those projections are offline implementation evidence only.
 
 Success: exactly one row, original snapshot/identity and paid total preserved,
 all successful replay IDs equal, consumed reservation absent. Aborted creation:
 no order, original bound row unchanged. Conflicting identity: rejected without
 consuming/altering the valid receipt. Cancellation and refunds are outside this
 feature's scope.
+Producer closure can reject new intake, but cannot itself block the existing-order
+return. A separate gate-first source mutation must fail this recovery outcome
+while the lookup-removal mutation must fail uniqueness. See the pilot's ordering
+map for conditional commutativity and the excluded provider/notification effects.
 
 Proof: `summary.json`, full `tlc-*.log` traces, Vitest JSON reports and the isolated
 mutation patches in the printed evidence directory. The model covers all its

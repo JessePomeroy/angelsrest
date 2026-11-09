@@ -9,6 +9,7 @@ import { api, internal } from "../../../packages/crm-api/convex/_generated/api";
 import {
 	reservationHandleHash,
 	reservationSnapshotDigest,
+	stripeAccountScope,
 } from "../../../packages/crm-api/convex/helpers/checkoutSnapshot";
 import schema from "../../../packages/crm-api/convex/schema";
 
@@ -70,6 +71,13 @@ describe.each(cases)("$name", ({ site, tenant, account }) => {
 			siteUrl: site, tenantId: tenant, stripeConnectedAccountId: account,
 			handleHash, stripeSessionId: SESSION, stripeExpiresAt: Date.now() / 1000 + 3600,
 		})).toMatchObject({ outcome: "bound" });
+		const bound = await t.run((ctx) => ctx.db.query("checkoutSnapshotReservations").unique());
+		expect(bound).toMatchObject({
+			state: "bound", siteUrl: site, stripeSessionId: SESSION,
+			accountScope: stripeAccountScope(account), snapshot,
+		});
+		expect(bound?.tenantId).toBe(tenant);
+		expect(bound?.stripeConnectedAccountId).toBe(account);
 		return t;
 	}
 	const routeArgs = {
@@ -99,6 +107,17 @@ describe.each(cases)("$name", ({ site, tenant, account }) => {
 		expect(orders[0]?.stripeConnectedAccountId).toBe(account);
 		const order = orders[0];
 		if (!order) throw new Error("Expected one persisted order");
+		// These durable dashboard projections are observable without a UI change.
+		const [contributions, totals] = await t.run(async (ctx) => Promise.all([
+			ctx.db.query("orderRevenueContributions").take(10),
+			ctx.db.query("orderRevenueTotals").take(10),
+		]));
+		expect(contributions).toHaveLength(1);
+		expect(contributions[0]).toMatchObject({ orderId: order._id, siteUrl: site, amount: "4200" });
+		expect(totals).toHaveLength(2); // daily and all-time projections
+		for (const total of totals) {
+			expect(total).toMatchObject({ siteUrl: site, amount: "4200", count: 1, invalidCount: 0 });
+		}
 		return order;
 	}
 
@@ -146,6 +165,24 @@ describe.each(cases)("$name", ({ site, tenant, account }) => {
 		expect((await t.mutation(api.orders.create, {
 			...payload, checkoutSnapshotReservation: { malformed: true },
 		}))._id).toBe(order._id);
+	});
+
+	test("closed producer gate permits fresh and stale committed-order recovery", async () => {
+		const t = await setup();
+		expect((await t.query(api.orders.resolveCheckoutRouting, routeArgs))?.source).toBe("reservation");
+		// Another delivery commits while this routing result is still in flight.
+		await t.mutation(api.orders.create, { ...payload, checkoutSnapshotReservation: candidate });
+		const before = await assertReceipt(t);
+		vi.stubEnv("ORDER_PRODUCERS_STATE", "closed");
+		// TLC's shortest gate-first counterexample uses this fresh order route.
+		expect((await t.query(api.orders.resolveCheckoutRouting, routeArgs))?.source).toBe("order");
+		const fresh = await t.mutation(api.orders.create, { ...payload, total: 9999 });
+		expect(fresh).toMatchObject({ _id: before._id, alreadyExisted: true });
+		const replay = await t.mutation(api.orders.create, {
+			...payload, total: 9999, checkoutSnapshotReservation: candidate,
+		});
+		expect(replay).toMatchObject({ _id: before._id, alreadyExisted: true });
+		expect(await assertReceipt(t)).toEqual(before);
 	});
 
 	test("late transaction failure preserves the bound reservation for retry", async () => {

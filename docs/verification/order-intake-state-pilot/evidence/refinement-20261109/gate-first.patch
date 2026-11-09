@@ -1,0 +1,7 @@
+--- OrderIntake.tla
++++ gate-first/OrderIntake.tla
+@@ -64 +64 @@
+-  /\ (orders # {} \/ producersOpen)
++  /\ producersOpen
+@@ -82 +81,0 @@
+-  /\ orders = {}

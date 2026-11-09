@@ -18,7 +18,7 @@ from check import command, implementation_report_ok, main
 
 
 def passing_report(bridge_only=False):
-    counts = {"intake.bridge.test.ts": 12}
+    counts = {"intake.bridge.test.ts": 15}
     if not bridge_only:
         counts.update({"checkoutSnapshotReservations.test.ts": 29,
                        "orders.test.ts": 178, "commerceIntakeInbox.test.ts": 30})
@@ -32,17 +32,20 @@ def passing_report(bridge_only=False):
     }
 
 
-def mutation_report():
+def mutation_report(gate_first=False):
     data = passing_report(bridge_only=True)
     data.update(success=False, numPassedTests=0, numFailedTests=3,
-                numPendingTests=9, numFailedTestSuites=4)
+                numPendingTests=12, numFailedTestSuites=4)
     assertions = data["testResults"][0]["assertionResults"]
     for test in assertions:
         test["status"] = "skipped"
+    title = ("closed producer gate permits fresh and stale committed-order recovery"
+             if gate_first else "fresh order route retries converge after a lost reply")
+    message = ("Error: Order producers are closed" if gate_first
+               else "AssertionError: expected array to have a length of 1 but got 2")
     for test, scope in zip(assertions[:3], ["hub platform", "tenant platform", "tenant connected"]):
         test.update(status="failed",
-                    fullName=f"'{scope}' fresh order route retries converge after a lost reply",
-                    failureMessages=["AssertionError: expected array to have a length of 1 but got 2"])
+                    fullName=f"'{scope}' {title}", failureMessages=[message])
     return data
 
 
@@ -72,6 +75,15 @@ class ImplementationReportTests(unittest.TestCase):
 
     def test_exact_three_scope_mutation_control_passes(self):
         self.assertTrue(implementation_report_ok(mutation_report(), 1, True, True))
+
+    def test_gate_order_control_requires_its_own_failure(self):
+        data = mutation_report(gate_first=True)
+        self.assertTrue(implementation_report_ok(data, 1, "gate-first", True))
+        data["testResults"][0]["assertionResults"][0]["failureMessages"] = ["Setup failed"]
+        self.assertFalse(implementation_report_ok(data, 1, "gate-first", True))
+
+    def test_lookup_control_cannot_stand_in_for_gate_control(self):
+        self.assertFalse(implementation_report_ok(mutation_report(), 1, "gate-first", True))
 
     def test_unrelated_mutation_failure_is_rejected(self):
         data = mutation_report()
