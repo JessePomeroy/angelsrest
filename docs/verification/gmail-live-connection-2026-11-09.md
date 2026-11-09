@@ -5,7 +5,41 @@ continues the approved owner-mailbox setup with the separately approved 30-day
 application retention policy and unresolved-send holds. It does not authorize a
 customer mailbox, a wider recipient list, or a general client-site rollout.
 
-## Configuration installed; consent pending
+## Verified live connection — 22:35–22:37 UTC
+
+PR #771 merged as `3c5d69dc9412e60e9763b8829ad766b8c26dd4e3` after its exact-head
+CI and Vercel checks passed. Production deployment
+`dpl_8i84gbrmj5Z3tKqVGkPM5Pvs8SFo` is READY at that Git revision. Both live aliases
+resolve to it, the revised notice returns HTTP 200, and the serving page serializes
+the corrected `www` public origin. This establishes provider source/alias identity,
+not identical CI/provider artifact bytes or a runtime configuration fingerprint.
+
+The existing primary owner's production administrator session remained usable.
+The owner was selected in the actual separate-mailbox Google consent flow, and
+the expected Gmail read/send permissions were approved. The callback returned to
+the live site with a connected result. An independent authenticated status read
+returned HTTP 200, `configured: true`, the approved mailbox and `status: connected`.
+
+The watch expires **2026-11-16 22:35:15.288 UTC**. The saved authenticated-notice
+timestamp is **2026-11-09 22:35:18.744 UTC**. At 22:35:28.194 UTC, the saved sync
+timestamp was 22:35:23.680; at the independent 22:37:19.995 status read it had
+advanced to 22:36:23.728, an increase of 60,048 ms. Both reads showed no connection
+problem, incomplete recovery or active lease. This later advancement supplies
+background-sync proof beyond the initial installation timestamp.
+
+All eight post-connection public/anonymous checks passed across apex and `www`:
+home, cart and admin HTTP 200; anonymous Gmail status HTTP 403. Apex checks followed
+the canonical redirect; these are the final response codes. Missing, malformed
+and forged push credentials returned HTTP 503 with `private, no-store` before
+consent. These probes do not establish the wider genuine-JWT negative/replay matrix.
+The verification sent no mail and deliberately linked no existing thread.
+
+Root `main` was fast-forwarded to the merged revision and is clean. The completed
+local and remote connection branch was removed only after its exact head and
+merged-tree equality were checked. Production credentials, the live grant, staging
+resources and private receipts remain intact.
+
+## Installed configuration and preparation history
 
 - Origin: `https://www.angelsrest.online`; backend: `loyal-swan-967`.
 - Source base: `ace5dd2e`; immutable Admin package: 6.16.2; workspace CRM API: 6.15.0.
@@ -34,14 +68,14 @@ connection scope, assessed against Google's
 [personal-use exception](https://support.google.com/cloud/answer/13464323?hl=en),
 not a verified public application or general client launch. No assessment was
 purchased or verification submission made. Fresh consent, watch installation and
-initial synchronization still require observation; no production connection is
-claimed here.
+background synchronization subsequently passed as recorded above; broad client
+launch and the remaining lifecycle matrix are not inferred.
 
-The backend settings are installed. The running host still requires a deployment
-to load its new settings. The existing `/gmail-pilot-privacy` URL is retained so
+The backend settings are installed and the serving host has loaded its new
+settings. The existing `/gmail-pilot-privacy` URL is retained so
 the Google application's privacy link remains valid; its notice now describes
 both the live connection and isolated testing, including the approved retention
-policy. Source delivery alone does not prove that revised notice is live.
+policy. Its live response was independently checked after deployment.
 
 ## Privacy and operational boundaries
 
@@ -88,7 +122,7 @@ No restore or exceptional erasure is authorized by this connection request.
 Deletion requests and unresolved holds go to the operator through the published
 privacy contact; administrator-downloaded copies require separate handling.
 
-## Verification and next actions
+## Verification and limits
 
 `pnpm lint` passed with existing warnings. The first `pnpm check` lacked the public
 Convex URL; the rerun with the documented nonsecret staging public configuration
@@ -108,13 +142,11 @@ from the new mailbox topic. Initial separate-mailbox connection remains valid;
 do not use that sign-in action as recovery for this connection or claim reconnect
 acceptance complete. Existing sign-in credentials remain unchanged.
 
-After reviewed delivery, confirm the revised notice and configuration on the exact
-live deployment, verify anonymous and forged-push rejection, complete fresh consent
-for the approved owner through the separate-mailbox control, and independently
-observe persisted connection, watch expiry and a later advancing synchronization
-timestamp. Initial installation itself sets `lastSyncAt`; its first nonnull value
-is not independent sync proof. Do not
-substitute Cloud CLI access or a staging grant for application consent.
+The reviewed delivery, exact deployed notice/configuration, bounded rejection
+probes, fresh separate-mailbox consent and persisted/watch/later-sync checks are
+recorded above. Initial installation itself sets `lastSyncAt`; its first nonnull
+value was not used as independent sync proof. No Cloud CLI access or staging grant
+was substituted for application consent.
 
 Connecting a mailbox does not require sending a message or importing an existing
 customer thread. No send or thread import is part of this connection check. The

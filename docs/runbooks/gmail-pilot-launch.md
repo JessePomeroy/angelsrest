@@ -1,25 +1,29 @@
 # Gmail controlled pilot and launch packet
 
-Updated 2026-11-09 UTC. **Gmail source and packages are released; the staging
-mailbox is connected. Live mailbox activation is being prepared separately.**
+Updated 2026-11-09 UTC. **The approved owner mailbox is connected on the live
+site. The separate staging mailbox remains isolated.** Fresh production consent,
+an active watch, persisted connected status and a later advancing background sync
+were observed. This check sent no email and linked no existing thread. See the
+[live connection record](../verification/gmail-live-connection-2026-11-09.md).
 
 Backend PR #750 deployed the additive functions to `loyal-swan-967`; CRM API
 6.14.0 and Admin 6.15.1 were published. Host PR #752 merged as `7d97b0c3`, passed
 main CI and is included in the later production releases. Current production is
-READY at `55f1315d` (`dpl_9Jk9KoJfTtqNNCxBWBr19foxCSJH`), with Admin 6.16.2.
+READY at `3c5d69dc` (`dpl_8i84gbrmj5Z3tKqVGkPM5Pvs8SFo`), with Admin 6.16.2.
 The follow-up Gmail records and order-intake verification are merged in PRs #769
 and #768; root `main` is synchronized and clean, with the parked originals archived. A code deployment does not establish a
 configured live Gmail mailbox. Earlier on November 9, production had no Gmail
 host or backend settings. The subsequent owner-only connection setup below has
-installed those settings; a host rollout and fresh consent are still pending.
+installed those settings. PR #771 then merged and deployed; fresh consent and the
+bounded production connection check completed at approximately 22:35–22:37 UTC.
 
 Jesse authorized completion of the remaining acceptance, production setup,
 reviewed delivery and cleanup on November 9. A separate production Google project,
 `angelsrest-gmail-261109` (number `1044809186946`), is ACTIVE with Gmail, Pub/Sub
 and IAM enabled. Dedicated notification resources and a separate web OAuth
 client are prepared. Independent production keys and the separate mailbox client
-credential are now installed in the production server stores. The host settings
-require a new deployment; no production mailbox grant is installed. The exact
+credential are installed in the production server stores and serving deployment.
+A fresh production mailbox grant is installed through the separate-mailbox flow. The exact
 mailbox and recipient allowlists each contain only the approved owner address.
 This connection request does not widen sending to customer recipients. On November 9, Jesse approved the proposed
 production retention policy: expire each imported conversation 30 days after its
@@ -46,7 +50,7 @@ See [the current closeout evidence](../verification/gmail-closeout-2026-11-09.md
 
 Earlier on November 9, GitHub reported a partial Actions outage during this closeout. Those `663e9ca6` main runs failed internally before jobs started. PRs #768/#769
 and main `430b735f` passed CI. Main `55f1315d` subsequently passed run
-`42694777767`; immutable artifact `13710516607` and the exact live deployment
+`42694777767`; immutable artifact `13710516607` and the then-live `55f1315d` deployment
 passed the canonical production observer, with stable alias ownership and both
 public checks passing. The binding remains source-only; identical artifact bytes,
 runtime configuration and Gmail capability acceptance are not inferred.
@@ -132,9 +136,8 @@ remain separate. The current Gmail connection continues on staging.
 ### Current local follow-up
 
 Gmail records PR #769 merged as `430b735f`; post-release evidence and the approved
-retention choice merged in PR #770 as `ace5dd2e`. The live connection branch is
-`feat/gmail-live-connection-20261109` in the preserved Gmail hub worktree, based
-on main `ace5dd2e`. It uses the
+retention choice merged in PR #770 as `ace5dd2e`. The live connection delivery
+merged in PR #771 as `3c5d69dc`. The preserved Gmail hub worktree uses the
 locked registry Admin 6.16.2 package. Original feature and backend/Admin source
 branches remain preservation references. The separate order-intake refinement
 merged in PR #768; its parked originals were archived before root cleanup.
@@ -464,11 +467,13 @@ conversation and frozen evidence until reconciliation. Original Gmail messages
 remain in Gmail. Administrator-downloaded copies and provider recovery/log handling
 remain separate from application deletion and require the procedures below.
 
-This records the production retention choice. The public production disclosure,
-provider handling and live acceptance gates remain open; no production credential
+This records the production retention choice. The public production disclosure is
+now published; provider-internal handling and the wider acceptance matrix remain
+open. No production credential
 or mailbox grant was installed as part of the retention decision. The later
-connection setup installs independent server settings as recorded above; fresh
-mailbox consent remains pending.
+connection setup installed independent server settings and completed fresh owner
+consent as recorded above. This does not mark the wider lifecycle or
+provider-internal recovery/log matrix complete.
 
 ### Disclosure and operational gates
 
@@ -506,7 +511,7 @@ mail, the Google provider grant and Better Auth sign-in linkage are separate.
 Combined sign-in/Gmail grants may remain in Better Auth until separately managed;
 confirm an alternative login recovery method before revoking them.
 
-External launch gates still required:
+Operational acceptance and disclosure:
 
 1. Set backup/snapshot retention and restoration procedures so erased or expired
    correspondence cannot be silently restored or retained beyond the agreed policy.
@@ -519,9 +524,10 @@ External launch gates still required:
    how holds are reviewed, and how exported/downloaded administrator copies are
    handled. JSON exports exclude credentials and other authors' private drafts;
    attachment originals are downloaded separately through authenticated reads.
-4. Publish the reviewed privacy/retention/Limited Use disclosure on an app-owned
-   verified domain before consent. The production retention choice is recorded
-   above; the existing pilot-only notice does not complete this production gate.
+4. The reviewed privacy/retention/Limited Use disclosure is published at the
+   existing app-owned `/gmail-pilot-privacy` URL and now covers the live connection
+   and isolated testing. Its live response was checked before fresh production
+   consent. This does not establish provider-internal recovery/log erasure.
 
 ## Historical release and adoption plan
 
