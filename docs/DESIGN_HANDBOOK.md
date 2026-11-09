@@ -240,6 +240,11 @@ A query fixture is not proof that every loader on a page has the same state.
 
 ## Capture and compare
 
+When changing the helper, run `pnpm test:handbook-capture` after installing the
+matching Chromium browser. CI runs these local HTML regressions after browser
+installation; they check hidden-content/password exclusion and capture layout
+without contacting Paper or a running application.
+
 The one-shot helper uses existing Playwright tooling:
 
 ```bash

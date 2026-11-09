@@ -3,9 +3,18 @@
 Shared Convex API for the photographer CRM platform. It owns the schema and
 functions used by Angels Rest and spoke sites such as reflecting-pool.
 
-**Do not edit `src/` by hand.** It is a small re-export layer over
-`./convex/_generated/`. Schema and function changes belong in `./convex/` and
-generated files are refreshed by running `npx convex dev` from this package.
+`convex/_generated/` contains generated outputs; never edit them by hand.
+`src/index.ts`, `api.ts`, `dataModel.ts`, and `server.ts` are maintained entry
+points that re-export those outputs. Other `src/` modules, including
+`invoiceAmounts.ts`, contain hand-maintained domain logic shared by the backend
+and host. Schema and function changes belong in `convex/`.
+
+Read `convex/_generated/ai/guidelines.md` before Convex work. Run the installed
+Convex CLI from this package, not the repository root. `pnpm exec convex dev`
+can update the selected backend; local type checks do not require running it.
+Deployment and provider actions still require their own authorization. See the
+[verification guide](../../docs/VERIFICATION.md) for local checks and the
+[release runbook](../../docs/runbooks/package-release-and-adoption.md) for rollout.
 
 ## Usage
 

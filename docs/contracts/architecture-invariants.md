@@ -14,7 +14,7 @@ building overlapping suites.
 | Public document portals use client-safe projections | `src/lib/server/__tests__/architectureInvariants.test.ts` and portal projection tests |
 | External effects use durable claim and idempotency protocols | `documentEmailAttempts.test.ts`, `lumaprintsWebhook.test.ts`, and focused order-intake tests |
 | Current authority modules cannot import migration, compatibility, or recovery code | `src/lib/server/__tests__/architectureInvariants.test.ts` |
-| Generated Convex files are regenerated, never hand-edited | generator markers checked by `architectureInvariants.test.ts`; code-generation procedure in `packages/crm-api/README.md` |
+| Generated Convex files are regenerated, never hand-edited | Convex CLI workflow and generated-diff review in `packages/crm-api/README.md`; no automated provenance proof |
 
 ## Contract details
 
@@ -23,8 +23,10 @@ Convex only, and does not accept a provider selector. Browser code may use only
 explicitly public environment values. Server secrets stay under `.server.ts`,
 server routes, or `src/lib/server/`.
 
-Only `/api/webhooks/stripe` may import the commerce order-intake coordinator,
-and only `/api/webhooks/lumaprints` may import the shipment-intake coordinator.
+Stripe commerce enters through `/api/webhooks/stripe`; recorded inbox jobs
+resume through `commerceIntakeJob.ts`, using the shared `orderIntake.ts` coordinator.
+The `/api/webhooks/lumaprints` route family owns shipment intake, including the
+dedicated `[connectionRef]` route's authenticated supplier scope.
 Subscription billing remains a separate Stripe route and domain. Spokes request
 checkout through the signed bridge; they do not reproduce either intake path.
 
@@ -39,6 +41,7 @@ completion remains uncertain and does not authorize a fresh effect. A
 best-effort secondary notification may instead be deliberately non-retryable
 after its authoritative local record is durable.
 
-Convex generated files carry their generator marker and are refreshed only by
-the sanctioned Convex code-generation command. Generated diffs are reviewed as
-outputs, not used as an editing surface.
+Convex generated files carry generator markers and must be refreshed by the
+sanctioned Convex CLI workflow. A marker does not prove a file was generated;
+the architecture test does not verify generation provenance. Review generated
+diffs as outputs, not as an editing surface.

@@ -113,9 +113,8 @@ jobs:
             node -e "const s=require('/tmp/changeset-status.json'); if (!s.releases.some(r => r.name === '@jessepomeroy/crm-api')) process.exit(1)"
           fi
 
-      # Audit H50: match the local `pnpm lint` command (biome check .) so CI
-      # and local linting agree on scope. Previously CI scanned only src/,
-      # which meant scripts/ and convex/ lint errors slipped through.
+      # Use the same lint and package gates locally and in CI. Individual
+      # linters retain the source scope configured in their own config files.
       - name: Lint
         id: lint
         run: pnpm lint
@@ -124,10 +123,7 @@ jobs:
         id: typecheck
         run: |
           pnpm check
-          pnpm check:package-contract
-          pnpm --filter @jessepomeroy/crm-api exec tsc -p tsconfig.json --noEmit
-          pnpm --filter @jessepomeroy/gallery-delivery check
-          pnpm --filter @jessepomeroy/print-catalog check
+          pnpm check:packages
 
       # Audit H41: run the full vitest suite on every PR / push so regressions
       # land in the status check, not in production.
@@ -137,8 +133,7 @@ jobs:
           pnpm test:print-contract
           pnpm test:gallery-upload-contract
           pnpm test
-          pnpm --filter @jessepomeroy/gallery-delivery test
-          pnpm --filter @jessepomeroy/print-catalog test
+          pnpm test:packages
 
       - name: Retired platform checkout handler stays absent
         id: retired_checkout
@@ -156,7 +151,9 @@ jobs:
 
       - name: Component browser regressions
         id: component_browser
-        run: pnpm test:browser
+        run: |
+          pnpm test:handbook-capture
+          pnpm test:browser
 
       - name: Browser and public server E2E
         id: e2e

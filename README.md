@@ -86,7 +86,7 @@ published from the separate `admin-dashboard` repository.
 
 ### Requirements
 
-- Node.js 22 or newer
+- Node.js 24.x (CI uses 24.22.1; `.npmrc` enforces package engines)
 - pnpm 10.34.5 or newer
 - Development credentials for the services exercised by the change
 
@@ -115,15 +115,15 @@ pull request:
 ```bash
 pnpm lint
 pnpm check
+pnpm check:packages
 pnpm test
-pnpm --filter @jessepomeroy/print-catalog check
-pnpm --filter @jessepomeroy/print-catalog test
-pnpm --filter @jessepomeroy/crm-api exec tsc -p tsconfig.json --noEmit
+pnpm test:packages
 ```
 
-Use `pnpm build` when production bundling is relevant. End-to-end and focused
-smoke checks are available through the scripts in `package.json` and should be
-run when their flows are affected.
+See [docs/VERIFICATION.md](docs/VERIFICATION.md) for check scope, focused commands,
+credential-free inputs, Worker contract prerequisites, and the distinction
+between isolated browser fixtures and full-site E2E. Use `pnpm build` when
+production bundling is relevant.
 
 Biome also lints the script blocks of the root layout, order lookup, Footer,
 and GalleryModal, with `noExplicitAny` enforced. This pilot is listed in
