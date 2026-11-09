@@ -1,0 +1,30 @@
+{
+  "data": {
+    "checks": [
+      {
+        "evidenceRef": "docs/integration-evidence/releases/production/observation-4d65741e56a38a82435ea97ab3a40ca9bafd11e5f34b09bda7f53c2ecabf65f0.json",
+        "id": "http:/",
+        "result": "passed",
+        "scope": "public"
+      },
+      {
+        "evidenceRef": "docs/integration-evidence/releases/production/observation-4d65741e56a38a82435ea97ab3a40ca9bafd11e5f34b09bda7f53c2ecabf65f0.json",
+        "id": "http:/cart",
+        "result": "passed",
+        "scope": "public"
+      }
+    ],
+    "configFingerprint": null,
+    "deploymentRecordId": "sha256:fe239ddafe340514c216e37b1c4dfc500af5217d850c3522fb21b456d9433683"
+  },
+  "identity": {
+    "contractFingerprint": null,
+    "environmentId": "production",
+    "repository": "JessePomeroy/angelsrest",
+    "siteUrl": "angelsrest.online"
+  },
+  "kind": "verification",
+  "observedAt": "2026-11-03T13:43:35.165Z",
+  "recordId": "sha256:7fa25c850f7adb29fa1fa8620508d0b652c34e265e794997b6399fbc6ffd5c7b",
+  "version": 1
+}
