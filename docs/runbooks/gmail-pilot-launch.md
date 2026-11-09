@@ -6,7 +6,9 @@ mailbox is connected. Live mailbox activation is being prepared separately.**
 Backend PR #750 deployed the additive functions to `loyal-swan-967`; CRM API
 6.14.0 and Admin 6.15.1 were published. Host PR #752 merged as `7d97b0c3`, passed
 main CI and is included in the later production releases. Current production is
-READY at `663e9ca6`, with Admin 6.16.2. A code deployment does not establish a
+READY at `55f1315d` (`dpl_9Jk9KoJfTtqNNCxBWBr19foxCSJH`), with Admin 6.16.2.
+The follow-up Gmail records and order-intake verification are merged in PRs #769
+and #768; root `main` is synchronized and clean, with the parked originals archived. A code deployment does not establish a
 configured live Gmail mailbox: the November 9 provider read found no production
 Gmail host settings or backend environment names.
 
@@ -29,9 +31,9 @@ mobile containment. The saved watch expiration advanced from the original pilot
 checkpoint. No email, consent, upload or draft change was requested by these checks.
 See [the current closeout evidence](../verification/gmail-closeout-2026-11-09.md).
 
-GitHub reported a partial Actions outage during this closeout. The current main
-workflow's internal failures and unavailable immutable release record remain an
-infrastructure gap; they are not recorded as a successful release observation.
+Earlier on November 9, GitHub reported a partial Actions outage during this closeout. Those `663e9ca6` main runs failed internally before jobs started. PRs #768/#769
+and main `430b735f` passed CI; final main `55f1315d` is still running, so its
+immutable production release observation remains pending.
 Historical scoped recovery and staging receipts are retained without relabeling.
 
 The dated checkpoints below are historical evidence. They do not override the
@@ -112,8 +114,9 @@ remain separate. The current Gmail connection continues on staging.
 
 ### Current local follow-up
 
-The active Gmail closeout branch is `chore/gmail-live-closeout-20261109` in the
-preserved Gmail hub worktree. Its base is current main `663e9ca6`, and it uses the
+Gmail records PR #769 merged as `430b735f`. The post-release evidence branch is
+`docs/gmail-live-observation-20261109` in the preserved Gmail hub worktree, based
+on main `55f1315d`. It uses the
 locked registry Admin 6.16.2 package. Original feature and backend/Admin source
 branches remain preservation references. The ordinary repository contains a
 separate order-intake refinement; it is not part of the Gmail change.
@@ -586,6 +589,7 @@ acceptance artifacts. Simulated provider tests do not satisfy any row here.
 | Ordinary admin login before Gmail configuration | Google/password/session navigation and stored membership work independently | Password and owner Google login passed earlier; updated candidate's recovery-account browser login/navigation passed after deployment. Full expiry matrix pending |
 | Explicit same-account Gmail upgrade | Both scopes and offline grant verified; login identity/membership unchanged | Passed after grant replacement and account-update repair |
 | Separate business mailbox | Different approved mailbox connects without a new login account or membership | Pending |
+| Deployed transport and missing intent | Anonymous and cross-origin access is denied; absent intent cannot complete a connection | November 9 live staging checks denied status/export/private reads and six control endpoints; missing linked and separate-mailbox intents returned intent_expired, with the mailbox still connected. No new consent was started |
 | Declined and partial consent | Clear recovery message, no false connection, ordinary login still works | Pending |
 | Scope revocation / seven-day testing expiry | Sync/send pause, saved data retained, reconnect same mailbox, login recovery tested | Pilot grant revoked and fresh consent succeeded before first mailbox install; connected-mailbox revocation/expiry pending |
 | Membership removed / foreign record | Reads, linking, mutations, export and every attachment read fail closed | Pending |
@@ -594,12 +598,12 @@ acceptance artifacts. Simulated provider tests do not satisfy any row here.
 | Native Gmail incoming and Sent | Correct thread import/dedup, review/needs-reply/waiting transitions and date clearing | Admin-origin Sent observation/dedup passed for two self-sends. A native reply from the second approved mailbox imported once into the registered thread and set review; deployed review-state UI passed; native Sent checks remain pending |
 | Representative files | Real approved JPEG/PNG/WebP/PDF, near 3 MiB, exactly 6 MiB combined, five-file selection; over-limit/unsupported rejection | Five files at exactly 6 MiB, including a near-3-MiB JPEG, uploaded and were accepted by Gmail; recipient Inbox arrival observed. All five recipient downloads matched their original SHA-256 fingerprints (6 MiB combined). All four image previews rendered through authenticated private reads. Native Chromium PDF rendering and all five original fingerprints passed again on November 9. Unsupported/per-file limits rejected; combined-limit warning correction is deployed and verified on staging. |
 | Interrupted upload and private read | Reservation survives reload, incomplete send blocked, original retry works, logout/membership revocation denies reads | Pending |
-| Authenticated push and replay | Valid Google JWT accepted only for configured service identity/audience/subscription; retry only acknowledges durable coverage | Real signed synthetic notice and mailbox notices observed; live negative/replay matrix pending |
+| Authenticated push and replay | Valid Google JWT accepted only for configured service identity/audience/subscription; retry only acknowledges durable coverage | Real signed synthetic notice and mailbox notices observed. November 9 missing/malformed/forged-HS256 credentials returned retryable 503 without notice acceptance. Genuine-JWT identity/audience/expiry negatives and replay cases remain pending |
 | Lost notification and host downtime | Scheduled catch-up imports once; returning pushes do not skip pages or duplicate mail | Pending |
 | Watch renewal | Daily/near-expiry renewal observed with actual Google expiry and no cursor reset | November 9 saved provider expiry advanced beyond the initial expiry, establishing renewal occurred. Exact daily cadence and a controlled near-expiry case remain unverified |
 | Expired history and recovery interruption | Profile anchor, all registered threads, durable batches, catch-up; sends paused until complete | Pending |
 | Lost send response | One submission only; uncertainty stays blocked; exact Sent reconciliation supplies evidence; no match stays held | Live provider probe reproduced replacement of generated Message-ID and preservation of the custom attempt header. Local fallback regressions passed; deployed fault-injection acceptance pending. See [recovery evidence](../verification/gmail-recovery-2026-11-03.md). |
-| Export and 30-day cleanup | Complete authorized metadata/original downloads; cached bytes removed; holds preserved; backup/log procedure verified | Pending |
+| Export and 30-day cleanup | Complete authorized metadata/original downloads; cached bytes removed; holds preserved; backup/log procedure verified | Registered synthetic export passed: two messages, five message-original and four retained own attachment metadata records, and one send record. Five original names/sizes/SHA-256 values matched the approved manifest; private original downloads passed separately. Thirty-day cleanup, hold handling and provider backup/log procedure remain pending |
 | Offboarding and rollback | Local credential removed, no import/send after fence, ordinary sign-in/grant handling distinct, evidence retained | Pending |
 | Gmail acceptance and recipient delivery | Separately observe provider acceptance and the approved recipient's actual mailbox (including spam); never equate them | Passed separately for two self-sends and one five-attachment message to the second approved account's Inbox. All five recipient attachment fingerprints passed. One native reply from the second mailbox imported once into the same conversation and changed its workflow to review (observed through authenticated export and the deployed desktop/mobile conversation UI). |
 | Deployed latency | Record provider receive/internal timestamp, authenticated notice, durable commit and visible UI update in desktop/mobile sessions | Pending |
