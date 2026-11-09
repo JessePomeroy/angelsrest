@@ -1,0 +1,81 @@
+TLC2 Version 2.19 of 08 August 2024 (rev: 5a47802)
+Running breadth-first search Model-Checking with fp 0 and seed 1 with 1 worker on 16 cores with 491MB heap and 64MB offheap memory [pid: 2019814] (Linux 7.2.9-2-cachyos amd64, Eclipse Adoptium 21.0.9 x86_64, MSBDiskFPSet, DiskStateQueue).
+Parsing file /tmp/angelsrest-order-intake-22tysr6a/tlc-split-transaction/OrderIntake.tla
+Parsing file /tmp/Naturals.tla
+Parsing file /tmp/FiniteSets.tla
+Parsing file /tmp/Sequences.tla
+Semantic processing of module Naturals
+Semantic processing of module Sequences
+Semantic processing of module FiniteSets
+Semantic processing of module OrderIntake
+Starting... (2026-11-09 13:35:48)
+Computing initial states...
+Finished computing initial states: 1 distinct state generated at 2026-11-09 13:35:48.
+Error: Invariant SingleDurableReceipt is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ replies = {}
+/\ rejectedReceipts = {}
+/\ pendingReply = (deliveryA :> 0 @@ deliveryB :> 0)
+/\ route = (deliveryA :> "none" @@ deliveryB :> "none")
+/\ attempt = (deliveryA :> 1 @@ deliveryB :> 1)
+/\ reservation = { [ tenant |-> tenantA,
+    site |-> domainA,
+    session |-> checkoutA,
+    account |-> connectedAccountA,
+    scope |-> connectedScopeA,
+    snapshot |-> reservedSnapshotA,
+    state |-> "bound" ] }
+/\ pc = (deliveryA :> "ready" @@ deliveryB :> "ready")
+/\ orders = {}
+/\ producersOpen = TRUE
+
+State 2: <ResolveRouting line 40, col 3 to line 44, col 50 of module OrderIntake>
+/\ replies = {}
+/\ rejectedReceipts = {}
+/\ pendingReply = (deliveryA :> 0 @@ deliveryB :> 0)
+/\ route = (deliveryA :> "reservation" @@ deliveryB :> "none")
+/\ attempt = (deliveryA :> 1 @@ deliveryB :> 1)
+/\ reservation = { [ tenant |-> tenantA,
+    site |-> domainA,
+    session |-> checkoutA,
+    account |-> connectedAccountA,
+    scope |-> connectedScopeA,
+    snapshot |-> reservedSnapshotA,
+    state |-> "bound" ] }
+/\ pc = (deliveryA :> "routed" @@ deliveryB :> "ready")
+/\ orders = {}
+/\ producersOpen = TRUE
+
+State 3: <FetchDetails line 49, col 3 to line 52, col 50 of module OrderIntake>
+/\ replies = {}
+/\ rejectedReceipts = {}
+/\ pendingReply = (deliveryA :> 0 @@ deliveryB :> 0)
+/\ route = (deliveryA :> "reservation" @@ deliveryB :> "none")
+/\ attempt = (deliveryA :> 1 @@ deliveryB :> 1)
+/\ reservation = { [ tenant |-> tenantA,
+    site |-> domainA,
+    session |-> checkoutA,
+    account |-> connectedAccountA,
+    scope |-> connectedScopeA,
+    snapshot |-> reservedSnapshotA,
+    state |-> "bound" ] }
+/\ pc = (deliveryA :> "details" @@ deliveryB :> "ready")
+/\ orders = {}
+/\ producersOpen = TRUE
+
+State 4: <SplitConsume line 132, col 3 to line 134, col 101 of module OrderIntake>
+/\ replies = {}
+/\ rejectedReceipts = {}
+/\ pendingReply = (deliveryA :> 0 @@ deliveryB :> 0)
+/\ route = (deliveryA :> "reservation" @@ deliveryB :> "none")
+/\ attempt = (deliveryA :> 1 @@ deliveryB :> 1)
+/\ reservation = {}
+/\ pc = (deliveryA :> "details" @@ deliveryB :> "ready")
+/\ orders = {}
+/\ producersOpen = TRUE
+
+22 states generated, 17 distinct states found, 9 states left on queue.
+The depth of the complete state graph search is 4.
+The average outdegree of the complete state graph is 3 (minimum is 2, the maximum 3 and the 95th percentile is 3).
+Finished in 00s at (2026-11-09 13:35:48)

@@ -1,0 +1,6 @@
+--- orders.ts
++++ temporary-copy/orders.ts
+@@ -935,0 +936 @@
++		assertOrderProducersOpen();
+@@ -1024 +1024,0 @@
+-		assertOrderProducersOpen();

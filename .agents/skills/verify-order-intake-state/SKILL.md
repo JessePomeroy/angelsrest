@@ -1,18 +1,21 @@
 ---
 name: verify-order-intake-state
-description: Check Angels Rest's bounded reservation-to-order intake state model and replay offline Convex recovery paths. Use after changes to session deduplication, checkout routing, reservation consumption, or transaction boundaries; excludes live provider acceptance and external fulfillment guarantees.
+description: Check Angels Rest's bounded reservation-to-order intake state model and replay offline Convex recovery paths. Use after changes to session deduplication, checkout routing, reservation consumption, producer-gate ordering or transaction boundaries; excludes live provider acceptance and external fulfillment guarantees.
 ---
 
 # Verify order intake state
 
 Check one rule: duplicate attempts for the same authenticated purchase retain
 one local order identity and its reserved snapshot, even with stale routing
-reads, transaction aborts, or a lost commit reply. This is bounded model evidence
-plus real-code regression probes, not a proof of arbitrary application code.
+reads, transaction aborts, or a lost commit reply. A closed new-order producer
+gate must still allow matching committed receipt recovery. This is bounded model
+evidence plus real-code regression probes, not a proof of arbitrary application code.
 
 Read AGENTS.md and the complete Convex AI guidelines before inspecting Convex
 source. Then read the [feature map](references/features/README.md) and
 [pilot correspondence and limits](../../../docs/verification/order-intake-state-pilot/README.md).
+Use the [ordering/ownership map](../../../docs/verification/order-intake-state-pilot/ordering-refinement.md)
+when reviewing guard movements, await boundaries or changed representations.
 No provider account, credential, application server, or operational database is needed.
 
 ## Run
@@ -37,7 +40,7 @@ Missing prerequisites mean **incomplete**, not a pass.
 The driver prints a fresh `test-results/order-intake-state-*` evidence directory.
 No server starts. Implementation probes run in a temporary code copy and a
 network namespace, with dotenv disabled and a synthetic environment. Cleanup
-removes that copy, including both model variants and the mutated application
+removes that copy, including all model variants and the mutated application
 copy; logs, patches and JSON reports survive in the evidence directory.
 Timeouts terminate the command's recorded process group, including forked workers,
 and remain incomplete results. Abrupt driver termination can require manual cleanup.
@@ -47,12 +50,17 @@ and remain incomplete results. Abrupt driver termination can require manual clea
 Exit 0 and `summary.json` status `pass` require all of these:
 
 - Both correct configurations exhaust the reachable graph with no violation:
-  603 distinct / 1,904 generated states each at the reviewed model version.
-- Both model controls violate `SingleDurableReceipt`: skipping the in-transaction
+  1,206 distinct / 4,196 generated states each at the refined model version.
+- Two model controls violate `SingleDurableReceipt`: skipping the in-transaction
   lookup permits two orders; splitting delete/insert permits a lost reservation.
-- The real Convex baseline passes 249 tests (237 existing, 12 bridge probes).
+- Moving the gate before existing-order recovery violates `CommittedReplayAvailable`;
+  uniqueness alone cannot catch this deliberately broken ordering.
+- The real Convex baseline passes 252 tests (237 existing, 15 bridge probes).
 - Removing the actual session lookup in a disposable `orders.ts` copy causes
-  exactly three duplicate-row assertion failures; restored code passes 12 probes.
+  exactly three duplicate-row assertion failures. Moving only the producer gate
+  causes three expected closed-gate errors, one per scope; each control skips
+  twelve unrelated probes. Restored code passes all 15 without skips. Receipt
+  assertions include one revenue contribution and unchanged daily/all-time totals.
 
 Read the failing `tlc-*.log` for its shortest breadth-first path, translate the
 actions using the correspondence table, and compare the transaction boundaries
@@ -63,8 +71,10 @@ timeouts do not count as successful negative controls. Never weaken the rule or
 repair commerce code merely to obtain green evidence.
 
 This checks two concurrent executions, up to two attempts each, one already-bound
-V2 reservation, one checkout and fixed tenant/account ownership. It excludes
-universal admission consumption, retention/offboarding/reset races, liveness,
+V2 reservation record, one checkout and fixed tenant/account ownership, plus one
+producer-gate closure between mutations. The gate is server configuration, not
+a modeled durable tenant admission control. It excludes reopening, mid-mutation
+configuration changes, universal admission consumption, retention/offboarding/reset races, liveness,
 and supplier/email/refund effects. No exactly-once external fulfillment claim.
 
 ## Source synchronization
@@ -73,9 +83,15 @@ Reviewed HEAD: `187ca087f859999a7f0b5c82779f39bc89b6e28b`.
 The [source snapshot](../../../docs/verification/order-intake-state-pilot/source-snapshot.json)
 records per-file SHA-256 hashes of the covered sources and a hash of the copied
 CRM execution tree. HEAD alone cannot identify a dirty source snapshot.
+The [supplemental record](../../../docs/verification/order-intake-state-pilot/refinement-source-snapshot.json)
+reviews unchanged application sources at `663e9ca65d86f1cc9fc0ca8dc190bfd96ea623d3`
+and pins the additional read-only supplier/email boundary descriptions. Historical
+evidence is not overwritten when model bounds or fixture observations change.
 Changes to any recorded source/dependency invalidate the correspondence gate.
 Review guards, transaction boundaries, host payload selection and scope before
-updating that record; then rerun the complete workflow including both controls.
+updating either record; then rerun the complete workflow including all controls.
+When the driver changes, run `python3 -B docs/verification/order-intake-state-pilot/test_check.py`.
+Changed state counts require a correspondence/bounds review, not just edited expectations.
 Do not refresh hashes just to bypass a stale result.
 
 Local discovery follows `.agents/skills/`; this skill is allowlisted in

@@ -28,34 +28,34 @@ footer { margin-top: 20px; border-top: 1px solid var(--border); padding-top: 12p
 </style>
 </head>
 <body>
-<p class="muted">Abstraction · two executions, at most four attempts · one bound checkout · local orders only</p>
+<p class="muted">Checked abstraction · 1,206 distinct states per configuration · two executions / four attempts · one bound checkout / one producer closure</p>
 <div class="columns">
 <section aria-label="Checked design statechart">
 <h2>One durable receipt <span class="badge pass">MODEL PASS</span></h2>
-<div class="state"><strong>Bound reservation · zero orders</strong><span>Reserve and bind have already committed.</span></div>
+<div class="state"><strong>Bound reservation · zero orders</strong><span>Persistent tenant, site, account scope, session and snapshot. Reserve and bind have committed.</span></div>
 <div class="arrow"><b>↓</b> Resolve route; read checkout details</div>
 <div class="state"><strong>Execution ready to create</strong><span>Another delivery may now have created the order.</span></div>
 <div class="arrow"><b>↓</b> One serializable Convex mutation</div>
-<div class="state atomic"><strong>Recheck session inside the transaction</strong><span>Existing order → return its ID.<br>Otherwise → consume reservation + insert order.</span></div>
+<div class="state atomic"><strong>Recheck session inside the transaction</strong><span>Existing matching order → return its ID before the producer gate.<br>Otherwise → require open gate, consume reservation + insert order.</span></div>
 <div class="arrow"><b>↓</b> Commit survives a lost reply</div>
 <div class="state"><strong>One order · saved snapshot retained</strong><span>Reservation consumed. Successful replies name this order.</span></div>
 <div class="arrow"><b>↻</b> Redelivery returns to route lookup</div>
-<div class="state"><strong>Retry converges on the same order</strong><span>Stale reservation route or fresh order route: the transaction rechecks.</span></div>
+<div class="state"><strong>Retry converges on the same order</strong><span>Stale or fresh route, even after producer closure: the transaction rechecks. Owner authorization still applies.</span></div>
 <p class="note">Abort before commit: zero orders and the original bound reservation. A host crash cannot expose half a committed transaction.</p>
 </section>
 <section aria-label="Deliberately broken model counterexample">
-<h2>Lookup removed <span class="badge fail">CONTROL FAIL</span></h2>
+<h2>Gate moved before lookup <span class="badge fail">CONTROL FAIL</span></h2>
 <div class="state"><strong>Start · bound reservation</strong><span>Zero orders. Both deliveries are for the same purchase.</span></div>
 <div class="arrow"><b>↓</b> 1. A resolves reservation route<br>2. A reads checkout details</div>
 <div class="state"><strong>3. A commits order #1</strong><span>The reservation is consumed; A has not observed its reply.</span></div>
-<div class="arrow"><b>↓</b> 4. B resolves the saved order<br>5. B reads checkout details</div>
+<div class="arrow"><b>↓</b> 4. New-order producers close<br>5. B resolves order · 6. B reads details</div>
 <div class="state"><strong>B submits an order-route payload</strong><span>The real host omits the consumed reservation handle.</span></div>
-<div class="arrow"><b>↓</b> 6. Broken transaction skips its lookup</div>
-<div class="state violation"><strong>Two local orders for one checkout</strong><span>Order #2 also lacks the reserved snapshot. The invariant fails.</span></div>
-<p class="note">TLC's shortest counterexample: 6 transitions. The same durable ordering produces duplicate rows after the actual lookup is removed in a temporary source copy.</p>
-<p class="note">Second design control: separating reservation deletion from insertion loses the reservation in 3 transitions. The real rollback probe preserves it.</p>
+<div class="arrow"><b>↓</b> 7. Broken transaction checks the gate first</div>
+<div class="state violation"><strong>Existing receipt wrongly rejected</strong><span>Still one order, but recovery fails. Uniqueness alone misses this change.</span></div>
+<p class="note">TLC's shortest new counterexample: 7 transitions. Moving the real gate in a temporary source copy reproduces rejection in all three synthetic scopes.</p>
+<p class="note">Other retained controls: skipping the lookup duplicates orders in 6 transitions; splitting delete/insert loses the reservation in 3. Neither is a defect in unmodified commerce code.</p>
 </section>
 </div>
-<footer>Hand-drawn projection of checked actions and TLC's counterexample, not the full state graph. No provider submission, liveness, hosted OCC, or exactly-once external fulfillment claim.</footer>
+<footer>Projection of checked actions and a deliberately broken variant, not the full graph. Fifteen offline bridge probes also check durable ownership and revenue projections; revenue is not modeled. Email and supplier calls follow local intake and have separate acceptance/checkpoint steps. No liveness, hosted OCC or exactly-once external effect claim.</footer>
 </body>
 </html>

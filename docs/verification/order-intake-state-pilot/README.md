@@ -12,6 +12,12 @@ snapshot and purchase identity. Until a create commits, the reservation remains;
 afterward, every successful replay returns that order. This prevents duplicate
 local orders and loss of the customer's purchased product snapshot.
 
+The [2026-11-09 ordering refinement](ordering-refinement.md) adds a narrow
+recovery outcome: closing new-order producers cannot itself reject a matching
+already-committed receipt. It makes reservation ownership explicit and maps
+conditional operation orderings, authoritative representations and external effects.
+Original run evidence is preserved; the refinement is a separate local-only change.
+
 ## Rerun
 
 From the repository root:
@@ -37,7 +43,8 @@ It needs `unshare -Urn` permission. Missing dependencies/namespaces or a timeout
 produce an incomplete result, never ordinary tests relabeled as formal checking.
 Baseline and restored runs must execute the complete recorded suite inventory
 without skips or todos. Only the mutation's explicit name filter may skip its
-nine unrelated probes; its three failures must identify all three purchase scopes.
+twelve unrelated probes; each control's three failures must identify all three
+purchase scopes and its own expected assertion/error.
 
 Each command has its own task-owned process group. A timeout or Python
 interruption stops that group, including forked Vitest workers, before cleanup;
@@ -77,8 +84,9 @@ gates were inventoried, not rerun or claimed as fresh acceptance here.
 Added value: TLC exhausts the bounded combinations of stale route reads,
 transaction abort, commit followed by reply loss, concurrent execution and
 redelivery. The existing concurrent scenario alone does not explore these
-orderings. Twelve bridge probes relate key paths to actual Convex code; a real
-source mutation demonstrates the check catches duplicate local orders.
+orderings, plus one producer-gate closure between mutations. Fifteen bridge
+probes relate key paths to actual Convex code and durable revenue projections;
+isolated source mutations catch duplicate local orders and blocked receipt recovery.
 
 ## Identifiers and actual checkpoints
 
@@ -128,7 +136,8 @@ That different-purchase question is outside this single-purchase bound.
 | `FetchDetails` | [orderIntake.ts](../../../src/lib/server/orderIntake.ts), `processStripeWebhookEvent`, `handleCheckoutCompleted`, `fetchSessionDetails`; [commerceTenant.ts](../../../src/lib/server/commerceTenant.ts) | Abstracts successful external reads/tenant resolution; their contents/authorization are assumed, not formally verified |
 | `CreateTransaction` | [orders.ts](../../../packages/crm-api/convex/orders.ts), `create`, `consumeReservation`; [webhookOrders.ts](../../../src/lib/server/webhookOrders.ts), `createOrderInConvex` | Lookup + consume + insert are one mutation; stale and concurrent fixture paths return the same ID |
 | `AbortTransaction` | `consumeReservation` delete followed by later validation in `create` | Invalid supplied order number throws after delete; fixture observes unchanged reservation and no order, then retries |
-| `CrashOrLostReply` | Awaiting the `orders.create` call; transaction can abort or commit before host observes its result | Model includes both durable outcomes; fixture discards a successful result. No actual OS crash/production network fault is claimed |
+| `FailBeforeCommit`, `LoseCommitReply` | Host/read failure before invoking create versus a lost response after commit | Separate actions and durable outcomes; fixture discards a successful result. No actual OS crash/production network fault is claimed |
+| `CloseProducers`, `RejectClosed`, `CommittedReplayAvailable` | `helpers/orderProducerGate.ts`, `orders.create` existing return before `assertOrderProducersOpen`; existing gate tests and new bridge probe | One environment closure between mutations. Rejecting new intake preserves the reservation; a matching committed receipt bypasses this gate. Gate-first model/source controls demonstrate the distinction |
 | `RetryOrDuplicate` | Hub webhook redelivery or inbox runner re-entry | Re-executes route selection; actual [checkoutSnapshotConsumer.ts](../../../src/lib/server/checkoutSnapshotConsumer.ts) `selectCheckoutSnapshotInput` and [webhookOrderPayload.ts](../../../src/lib/server/webhookOrderPayload.ts) `buildConvexOrderCreatePayload` omit the consumed handle on order-route replay |
 | `ReceiveReply` | `orders.create` return value through `createOrderInConvex` | Collects successful IDs only; it does not mean supplier fulfillment or webhook HTTP acknowledgement completed |
 | `Quiescent` | Abstraction of no further deliveries in this finite run | Stuttering end condition; no new implementation operation or liveness promise |
@@ -139,6 +148,10 @@ SHA-256 hashes in [source-snapshot.json](source-snapshot.json). The initial
 checkout was clean. The runner also checks a digest of the copied CRM source and
 fixture tree before/after execution, to detect dependency drift during concurrent
 work. Any correspondence mismatch requires review, not automatic hash refresh.
+The [supplemental source record](refinement-source-snapshot.json) records the
+refinement review at HEAD `663e9ca65d86f1cc9fc0ca8dc190bfd96ea623d3` and hashes the
+two additional inspected host effect boundaries; original application hashes
+are unchanged. The driver validates both records before and after execution.
 
 ## Bounds and limits
 
@@ -149,6 +162,9 @@ tenant/site/account tuple. Connected and platform configurations are checked
 separately. Each attempt can abort/crash; it may commit and lose its reply, or
 return successfully and receive another duplicate. Durable writes survive host
 re-entry. No symmetry, view, depth cutoff or state constraint discards states.
+One monotonic producer-gate closure may interleave; reopening, configuration
+changes inside a mutation and durable tenant-admission control changes are omitted.
+The original 603-state runs and the expanded 1,206-state runs have separate evidence.
 The two configurations are isomorphic parameter substitutions, not separate
 authorization proofs; the actual fixtures exercise the different routing guards.
 TLC uses breadth-first exploration, one worker, fixed seed/fingerprint polynomial;

@@ -1,0 +1,91 @@
+{
+  "implementation-baseline": {
+    "numTotalTests": 252,
+    "numPassedTests": 252,
+    "numFailedTests": 0,
+    "numPendingTests": 0,
+    "numTodoTests": 0,
+    "success": true,
+    "suites": {
+      "intake.bridge.test.ts": 15,
+      "checkoutSnapshotReservations.test.ts": 29,
+      "commerceIntakeInbox.test.ts": 30,
+      "orders.test.ts": 178
+    },
+    "failures": []
+  },
+  "implementation-missing-lookup": {
+    "numTotalTests": 15,
+    "numPassedTests": 0,
+    "numFailedTests": 3,
+    "numPendingTests": 12,
+    "numTodoTests": 0,
+    "success": false,
+    "suites": {
+      "intake.bridge.test.ts": 15
+    },
+    "failures": [
+      {
+        "name": "'hub platform' fresh order route retries converge after a lost reply",
+        "messages": [
+          "AssertionError: expected [ { \u2026(12) }, { \u2026(14) } ] to have a length of 1 but got 2\n    at Proxy.<anonymous> (file:///home/strayblackdog/Documents/work/angelsrest/node_modules/.pnpm/@vitest+expect@4.1.12/node_modules/@vitest/expect/dist/index.js:1389:20)\n    at Proxy.<anonymous> (file:///home/strayblackdog/Documents/work/angelsrest/node_modules/.pnpm/@vitest+expect@4.1.12/node_modules/@vitest/expect/dist/index.js:1156:15)\n    at Proxy.methodWrapper (file:///home/strayblackdog/Documents/work/angelsrest/node_modules/.pnpm/chai@6.3.0/node_modules/chai/index.js:1737:25)\n    at assertReceipt (/tmp/angelsrest-order-intake-22tysr6a/implementation/docs/verification/order-intake-state-pilot/intake.bridge.test.ts:100:18)\n    at /tmp/angelsrest-order-intake-22tysr6a/implementation/docs/verification/order-intake-state-pilot/intake.bridge.test.ts:147:17\n    at file:///home/strayblackdog/Documents/work/angelsrest/node_modules/.pnpm/@vitest+runner@4.1.12/node_modules/@vitest/runner/dist/chunk-artifact.js:1903:20"
+        ]
+      },
+      {
+        "name": "'tenant platform' fresh order route retries converge after a lost reply",
+        "messages": [
+          "AssertionError: expected [ { \u2026(13) }, { \u2026(15) } ] to have a length of 1 but got 2\n    at Proxy.<anonymous> (file:///home/strayblackdog/Documents/work/angelsrest/node_modules/.pnpm/@vitest+expect@4.1.12/node_modules/@vitest/expect/dist/index.js:1389:20)\n    at Proxy.<anonymous> (file:///home/strayblackdog/Documents/work/angelsrest/node_modules/.pnpm/@vitest+expect@4.1.12/node_modules/@vitest/expect/dist/index.js:1156:15)\n    at Proxy.methodWrapper (file:///home/strayblackdog/Documents/work/angelsrest/node_modules/.pnpm/chai@6.3.0/node_modules/chai/index.js:1737:25)\n    at assertReceipt (/tmp/angelsrest-order-intake-22tysr6a/implementation/docs/verification/order-intake-state-pilot/intake.bridge.test.ts:100:18)\n    at /tmp/angelsrest-order-intake-22tysr6a/implementation/docs/verification/order-intake-state-pilot/intake.bridge.test.ts:147:17\n    at file:///home/strayblackdog/Documents/work/angelsrest/node_modules/.pnpm/@vitest+runner@4.1.12/node_modules/@vitest/runner/dist/chunk-artifact.js:1903:20"
+        ]
+      },
+      {
+        "name": "'tenant connected' fresh order route retries converge after a lost reply",
+        "messages": [
+          "AssertionError: expected [ { \u2026(14) }, { \u2026(16) } ] to have a length of 1 but got 2\n    at Proxy.<anonymous> (file:///home/strayblackdog/Documents/work/angelsrest/node_modules/.pnpm/@vitest+expect@4.1.12/node_modules/@vitest/expect/dist/index.js:1389:20)\n    at Proxy.<anonymous> (file:///home/strayblackdog/Documents/work/angelsrest/node_modules/.pnpm/@vitest+expect@4.1.12/node_modules/@vitest/expect/dist/index.js:1156:15)\n    at Proxy.methodWrapper (file:///home/strayblackdog/Documents/work/angelsrest/node_modules/.pnpm/chai@6.3.0/node_modules/chai/index.js:1737:25)\n    at assertReceipt (/tmp/angelsrest-order-intake-22tysr6a/implementation/docs/verification/order-intake-state-pilot/intake.bridge.test.ts:100:18)\n    at /tmp/angelsrest-order-intake-22tysr6a/implementation/docs/verification/order-intake-state-pilot/intake.bridge.test.ts:147:17\n    at file:///home/strayblackdog/Documents/work/angelsrest/node_modules/.pnpm/@vitest+runner@4.1.12/node_modules/@vitest/runner/dist/chunk-artifact.js:1903:20"
+        ]
+      }
+    ]
+  },
+  "implementation-gate-first": {
+    "numTotalTests": 15,
+    "numPassedTests": 0,
+    "numFailedTests": 3,
+    "numPendingTests": 12,
+    "numTodoTests": 0,
+    "success": false,
+    "suites": {
+      "intake.bridge.test.ts": 15
+    },
+    "failures": [
+      {
+        "name": "'hub platform' closed producer gate permits fresh and stale committed-order recovery",
+        "messages": [
+          "Error: Order producers are closed\n    at assertOrderProducersOpen (/tmp/angelsrest-order-intake-22tysr6a/implementation/packages/crm-api/convex/helpers/orderProducerGate.ts:12:9)\n    at handler (/tmp/angelsrest-order-intake-22tysr6a/implementation/packages/crm-api/convex/orders.ts:936:3)\n    at invokeFunction (file:///home/strayblackdog/Documents/work/angelsrest/node_modules/.pnpm/convex@1.49.0_react@19.2.7/node_modules/convex/dist/esm/server/impl/registration_impl.js:56:14)\n    at invokeMutation (file:///home/strayblackdog/Documents/work/angelsrest/node_modules/.pnpm/convex@1.49.0_react@19.2.7/node_modules/convex/dist/esm/server/impl/registration_impl.js:42:18)\n    at runMutationWithHandler (file:///home/strayblackdog/Documents/work/angelsrest/node_modules/.pnpm/convex-test@0.0.52_convex@1.49.0_react@19.2.7_/node_modules/convex-test/dist/index.js:1535:31)\n    at Object.mutationFromPath (file:///home/strayblackdog/Documents/work/angelsrest/node_modules/.pnpm/convex-test@0.0.52_convex@1.49.0_react@19.2.7_/node_modules/convex-test/dist/index.js:1664:32)\n    at mutation (file:///home/strayblackdog/Documents/work/angelsrest/node_modules/.pnpm/convex-test@0.0.52_convex@1.49.0_react@19.2.7_/node_modules/convex-test/dist/index.js:1710:20)\n    at /tmp/angelsrest-order-intake-22tysr6a/implementation/docs/verification/order-intake-state-pilot/intake.bridge.test.ts:179:17\n    at file:///home/strayblackdog/Documents/work/angelsrest/node_modules/.pnpm/@vitest+runner@4.1.12/node_modules/@vitest/runner/dist/chunk-artifact.js:1903:20"
+        ]
+      },
+      {
+        "name": "'tenant platform' closed producer gate permits fresh and stale committed-order recovery",
+        "messages": [
+          "Error: Order producers are closed\n    at assertOrderProducersOpen (/tmp/angelsrest-order-intake-22tysr6a/implementation/packages/crm-api/convex/helpers/orderProducerGate.ts:12:9)\n    at handler (/tmp/angelsrest-order-intake-22tysr6a/implementation/packages/crm-api/convex/orders.ts:936:3)\n    at invokeFunction (file:///home/strayblackdog/Documents/work/angelsrest/node_modules/.pnpm/convex@1.49.0_react@19.2.7/node_modules/convex/dist/esm/server/impl/registration_impl.js:56:14)\n    at invokeMutation (file:///home/strayblackdog/Documents/work/angelsrest/node_modules/.pnpm/convex@1.49.0_react@19.2.7/node_modules/convex/dist/esm/server/impl/registration_impl.js:42:18)\n    at runMutationWithHandler (file:///home/strayblackdog/Documents/work/angelsrest/node_modules/.pnpm/convex-test@0.0.52_convex@1.49.0_react@19.2.7_/node_modules/convex-test/dist/index.js:1535:31)\n    at Object.mutationFromPath (file:///home/strayblackdog/Documents/work/angelsrest/node_modules/.pnpm/convex-test@0.0.52_convex@1.49.0_react@19.2.7_/node_modules/convex-test/dist/index.js:1664:32)\n    at mutation (file:///home/strayblackdog/Documents/work/angelsrest/node_modules/.pnpm/convex-test@0.0.52_convex@1.49.0_react@19.2.7_/node_modules/convex-test/dist/index.js:1710:20)\n    at /tmp/angelsrest-order-intake-22tysr6a/implementation/docs/verification/order-intake-state-pilot/intake.bridge.test.ts:179:17\n    at file:///home/strayblackdog/Documents/work/angelsrest/node_modules/.pnpm/@vitest+runner@4.1.12/node_modules/@vitest/runner/dist/chunk-artifact.js:1903:20"
+        ]
+      },
+      {
+        "name": "'tenant connected' closed producer gate permits fresh and stale committed-order recovery",
+        "messages": [
+          "Error: Order producers are closed\n    at assertOrderProducersOpen (/tmp/angelsrest-order-intake-22tysr6a/implementation/packages/crm-api/convex/helpers/orderProducerGate.ts:12:9)\n    at handler (/tmp/angelsrest-order-intake-22tysr6a/implementation/packages/crm-api/convex/orders.ts:936:3)\n    at invokeFunction (file:///home/strayblackdog/Documents/work/angelsrest/node_modules/.pnpm/convex@1.49.0_react@19.2.7/node_modules/convex/dist/esm/server/impl/registration_impl.js:56:14)\n    at invokeMutation (file:///home/strayblackdog/Documents/work/angelsrest/node_modules/.pnpm/convex@1.49.0_react@19.2.7/node_modules/convex/dist/esm/server/impl/registration_impl.js:42:18)\n    at runMutationWithHandler (file:///home/strayblackdog/Documents/work/angelsrest/node_modules/.pnpm/convex-test@0.0.52_convex@1.49.0_react@19.2.7_/node_modules/convex-test/dist/index.js:1535:31)\n    at Object.mutationFromPath (file:///home/strayblackdog/Documents/work/angelsrest/node_modules/.pnpm/convex-test@0.0.52_convex@1.49.0_react@19.2.7_/node_modules/convex-test/dist/index.js:1664:32)\n    at mutation (file:///home/strayblackdog/Documents/work/angelsrest/node_modules/.pnpm/convex-test@0.0.52_convex@1.49.0_react@19.2.7_/node_modules/convex-test/dist/index.js:1710:20)\n    at /tmp/angelsrest-order-intake-22tysr6a/implementation/docs/verification/order-intake-state-pilot/intake.bridge.test.ts:179:17\n    at file:///home/strayblackdog/Documents/work/angelsrest/node_modules/.pnpm/@vitest+runner@4.1.12/node_modules/@vitest/runner/dist/chunk-artifact.js:1903:20"
+        ]
+      }
+    ]
+  },
+  "implementation-restored": {
+    "numTotalTests": 15,
+    "numPassedTests": 15,
+    "numFailedTests": 0,
+    "numPendingTests": 0,
+    "numTodoTests": 0,
+    "success": true,
+    "suites": {
+      "intake.bridge.test.ts": 15
+    },
+    "failures": []
+  }
+}
