@@ -115,7 +115,13 @@ review subscription retain notifications for one day, with resource-scoped Gmail
 publish and Pub/Sub delivery permissions. These resources do not connect a mailbox.
 A dedicated web OAuth client is created for the exact apex callback; its secret
 is retained privately and has not been installed in production.
-Production retention approval, server-only independent keys, host/backend
+On November 9, Jesse approved the proposed production retention policy: expire
+each conversation 30 days after local creation, including its drafts and cached
+attachments, with unresolved-send holds. Later messages do not extend the deadline;
+original Gmail messages remain in Gmail. This settles the retention choice, not
+provider recovery/log handling or completed launch acceptance.
+
+The public production disclosure, server-only independent keys, host/backend
 configuration, fresh mailbox consent and production acceptance remain unfinished. Staging credentials/grants are not a
 production migration mechanism. No production Gmail secret or mailbox grant has
 been installed in this checkpoint.

@@ -17,10 +17,11 @@ reviewed delivery and cleanup on November 9. A separate production Google projec
 `angelsrest-gmail-261109` (number `1044809186946`), is ACTIVE with Gmail, Pub/Sub
 and IAM enabled. Dedicated notification resources and a separate web OAuth
 client are prepared; its credential remains private. No production Gmail
-credential or grant is installed. The
-production retention decision is pending; the existing 30-day approval applies to
-the isolated pilot until that decision is recorded. Staging keys and grants will
-not be copied into production.
+credential or grant is installed. On November 9, Jesse approved the proposed
+production retention policy: expire each imported conversation 30 days after its
+local creation, with unresolved-send holds. The remaining privacy, provider and
+acceptance gates below still apply. Staging keys and grants will not be copied
+into production.
 
 The November 9 read-only staging checks passed at deployment
 `dpl_sHnGsjQwftAtiiJRcwZZSmXsUptu`, source `e48e6c65`, Admin 6.16.2:
@@ -46,8 +47,9 @@ Exact approved account addresses and recipient allowlists remain in the private 
 Never use the Graham experiment's project, credentials, mailbox state, or timings
 as pilot evidence.
 
-The owner approved a **30-day pilot retention maximum with unresolved-send holds**.
-That approval does not authorize external actions or establish production retention.
+The owner approved a **30-day retention maximum with unresolved-send holds** for
+the pilot and subsequently for production on November 9. The retention decision
+does not establish completed production configuration or acceptance.
 The [synchronization runbook](gmail-synchronization.md) is the implementation and
 incident reference; [local evidence](../verification/gmail-local-2026-11-02.md)
 is separate from the live matrix below. This packet is the sole current acceptance
@@ -439,6 +441,22 @@ or accepted exception evidence. No submission or assessment was performed here.
 
 ## Privacy and retention acceptance
 
+### Production retention decision — 2026-11-09
+
+Jesse accepted the proposed live retention plan in this delivery thread. Each
+imported conversation expires 30 days after its local creation; later messages do
+not extend that deadline. Cleanup includes its messages, drafts, cached attachments
+and resolved send records. Queued, submitting or uncertain sends hold the affected
+conversation and frozen evidence until reconciliation. Original Gmail messages
+remain in Gmail. Administrator-downloaded copies and provider recovery/log handling
+remain separate from application deletion and require the procedures below.
+
+This records the production retention choice. The public production disclosure,
+provider handling and live acceptance gates remain open; no production credential
+or mailbox grant was installed as part of this decision.
+
+### Disclosure and operational gates
+
 Before retaining real pilot correspondence, record the approved accounts and
 participants, who may administer the test site, and the following disclosure:
 
@@ -487,7 +505,8 @@ External launch gates still required:
    handled. JSON exports exclude credentials and other authors' private drafts;
    attachment originals are downloaded separately through authenticated reads.
 4. Publish the reviewed privacy/retention/Limited Use disclosure on an app-owned
-   verified domain before consent. Production retention requires a new decision.
+   verified domain before consent. The production retention choice is recorded
+   above; the existing pilot-only notice does not complete this production gate.
 
 ## Historical release and adoption plan
 
