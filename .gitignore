@@ -9,6 +9,9 @@ node_modules
 /build
 /test-results/
 
+# Machine-local package exports and security-review artifacts.
+/.local/
+
 # OS
 .DS_Store
 Thumbs.db

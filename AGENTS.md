@@ -151,14 +151,18 @@ tenant-authenticated cross-origin billing boundary.
 ```bash
 pnpm lint
 pnpm check
+pnpm check:packages
 pnpm test
-pnpm --filter @jessepomeroy/print-catalog check
-pnpm --filter @jessepomeroy/print-catalog test
-pnpm --filter @jessepomeroy/crm-api exec tsc -p tsconfig.json --noEmit
+pnpm test:packages
 ```
 
 Use `pnpm build` when production bundling is relevant. Do not run Biome with
 `--write` during an audit or other read-only task.
+
+See `docs/VERIFICATION.md` for focused commands, each gate's actual scope, safe
+environment inputs, and browser/Worker prerequisites. `pnpm test` includes the
+protocol and Convex suites; gallery-delivery, print-catalog, and browser tests
+have separate gates.
 
 ## Living design handbooks
 

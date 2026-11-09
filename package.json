@@ -16,6 +16,7 @@
 		"prepare": "husky",
 		"check": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json",
 		"check:package-contract": "tsc -p packages/crm-api/tests/tsconfig.consumer.json --noEmit",
+		"check:packages": "pnpm check:package-contract && pnpm --filter @jessepomeroy/crm-api exec tsc -p tsconfig.json --noEmit && pnpm --filter @jessepomeroy/gallery-delivery check && pnpm --filter @jessepomeroy/print-catalog check",
 		"check:watch": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json --watch",
 		"lint": "pnpm lint:anti-slop && biome check .",
 		"format": "biome format --write .",
@@ -28,6 +29,8 @@
 		"test:browser:container": "node scripts/run-browser-container.mjs",
 		"smoke:gallery-host-bulk-delete": "node scripts/smoke-gallery-host-bulk-delete.mjs",
 		"test:protocol": "vitest run --config vitest.protocol.config.ts",
+		"test:packages": "pnpm --filter @jessepomeroy/gallery-delivery test && pnpm --filter @jessepomeroy/print-catalog test",
+		"test:handbook-capture": "node --test scripts/capture-design-handbook.test.mjs",
 		"test:gallery-upload-contract": "vitest run --config vitest.gallery-upload-contract.config.ts",
 		"test:print-contract": "vitest run --config vitest.print-contract.config.ts",
 		"lint:anti-slop": "oxlint ."

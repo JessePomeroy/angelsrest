@@ -3,16 +3,20 @@
 Run from the repository root:
 
 ```sh
-node scripts/run-playwright.mjs --config tests/browser/playwright.config.ts
+pnpm test:browser --project=desktop --project=mobile
 ```
 
 The suite mounts the production Svelte components in a standalone Vite fixture
 on `127.0.0.1:5196`. Playwright owns the server process and stops it after the run;
 port conflicts fail instead of reusing an unrelated server. Install Chromium
 with `pnpm exec playwright install chromium` if it is not already available.
+The default `pnpm test:browser` also selects mobile WebKit and the focused
+Firefox desktop project; those require their matching browser installs.
+See [the verification guide](../../docs/VERIFICATION.md) for the full matrix and
+the existing offline container option.
 
-Fixtures use the production global stylesheet and explicitly include `src` in
-Tailwind's source scan. The cart uses its actual reactive stores. The delivery
+Fixtures use the production global stylesheet, native scoped CSS, and the
+installed Admin stylesheet. The cart uses its actual reactive stores. The delivery
 page receives four local SVG previews and static gallery data. Only framework
 navigation/environment and the Convex transport are substituted. Unexpected
 Convex mutations throw, and browser requests to external origins fail the test.
