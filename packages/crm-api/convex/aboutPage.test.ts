@@ -1,78 +1,13 @@
 /// <reference types="vite/client" />
 // @vitest-environment edge-runtime
 
-import { convexTest } from "convex-test";
 import { describe, expect, test } from "vitest";
-import { api, internal } from "./_generated/api";
+import { api } from "./_generated/api";
 import type { Id } from "./_generated/dataModel";
-import schema from "./schema";
+
+import { SITE_A, ASSET_A, ASSET_C, setupWebMedia } from "../test/webMediaFixtures";
 
 const modules = import.meta.glob("./**/*.ts");
-const SITE_A = { siteUrl: "site-a.example", email: "admin-a@example.com" };
-const SITE_B = { siteUrl: "site-b.example", email: "admin-b@example.com" };
-const ASSET_A = "123e4567-e89b-42d3-a456-426614174000";
-const ASSET_B = "223e4567-e89b-42d3-a456-426614174001";
-const ASSET_C = "323e4567-e89b-42d3-a456-426614174002";
-
-function readyAsset(siteUrl: string, assetId: string) {
-	const prefix = `sites/${siteUrl}/web/${assetId}/`;
-	return {
-		assetId,
-		originalFilename: `${assetId}.jpg`,
-		source: {
-			contentType: "image/jpeg" as const,
-			sizeBytes: 1_000_000,
-			width: 3000,
-			height: 2000,
-		},
-		master: {
-			key: `${prefix}master.webp`,
-			contentType: "image/webp" as const,
-			sizeBytes: 700_000,
-			width: 3000,
-			height: 2000,
-		},
-		derivatives: {
-			thumb: { key: `${prefix}thumb.webp`, contentType: "image/webp" as const, width: 320, height: 213 },
-			card: { key: `${prefix}card.webp`, contentType: "image/webp" as const, width: 768, height: 512 },
-			display1280: { key: `${prefix}display-1280.webp`, contentType: "image/webp" as const, width: 1280, height: 853 },
-			display2048: { key: `${prefix}display-2048.webp`, contentType: "image/webp" as const, width: 2048, height: 1365 },
-			display2560: { key: `${prefix}display-2560.webp`, contentType: "image/webp" as const, width: 2560, height: 1707 },
-		},
-	};
-}
-
-async function setup() {
-	const t = convexTest(schema, modules);
-	for (const site of [SITE_A, SITE_B]) {
-		await t.mutation(internal.platform.seedClient, {
-			name: site.siteUrl,
-			email: site.email,
-			siteUrl: site.siteUrl,
-			tier: "full",
-			subscriptionStatus: "active",
-			adminEmails: [site.email],
-			role: "client",
-		});
-	}
-	const adminA = t.withIdentity({ subject: SITE_A.email, email: SITE_A.email, emailVerified: true });
-	const adminB = t.withIdentity({ subject: SITE_B.email, email: SITE_B.email, emailVerified: true });
-	const [assetA, assetB, assetC] = await Promise.all([
-		adminA.mutation(api.mediaAssets.registerReadyWebAsset, {
-			siteUrl: SITE_A.siteUrl,
-			asset: readyAsset(SITE_A.siteUrl, ASSET_A),
-		}),
-		adminB.mutation(api.mediaAssets.registerReadyWebAsset, {
-			siteUrl: SITE_B.siteUrl,
-			asset: readyAsset(SITE_B.siteUrl, ASSET_B),
-		}),
-		adminA.mutation(api.mediaAssets.registerReadyWebAsset, {
-			siteUrl: SITE_A.siteUrl,
-			asset: readyAsset(SITE_A.siteUrl, ASSET_C),
-		}),
-	]);
-	return { t, adminA, adminB, assetA, assetB, assetC };
-}
 
 function portrait(
 	assetId: Id<"mediaAssets">,
@@ -109,7 +44,7 @@ function completeAbout(assetId: Id<"mediaAssets">) {
 
 describe("typed About-page content", () => {
 	test("keeps About content in its own tenant singleton and protects editor state", async () => {
-		const { t, adminA, adminB, assetA } = await setup();
+		const { t, adminA, adminB, assetA } = await setupWebMedia(modules);
 		await adminA.mutation(api.content.saveSiteSettingsDraft, {
 			siteUrl: SITE_A.siteUrl,
 			payload: { artistName: "Maggie" },
@@ -136,7 +71,7 @@ describe("typed About-page content", () => {
 	});
 
 	test("keeps autosave retries idempotent and rejects stale revisions", async () => {
-		const { adminA, assetA } = await setup();
+		const { adminA, assetA } = await setupWebMedia(modules);
 		const first = await adminA.mutation(api.content.saveAboutPageDraft, {
 			siteUrl: SITE_A.siteUrl,
 			payload: completeAbout(assetA.id),
@@ -163,7 +98,7 @@ describe("typed About-page content", () => {
 	});
 
 	test("allows incomplete drafts but enforces bounded accessible publication", async () => {
-		const { adminA, assetA } = await setup();
+		const { adminA, assetA } = await setupWebMedia(modules);
 		await expect(
 			adminA.mutation(api.content.saveAboutPageDraft, {
 				siteUrl: SITE_A.siteUrl,
@@ -208,7 +143,7 @@ describe("typed About-page content", () => {
 	});
 
 	test("rejects cross-tenant portraits and protects active About references from deletion", async () => {
-		const { adminA, assetA, assetB } = await setup();
+		const { adminA, assetA, assetB } = await setupWebMedia(modules);
 		await expect(
 			adminA.mutation(api.content.saveAboutPageDraft, {
 				siteUrl: SITE_A.siteUrl,
@@ -239,7 +174,7 @@ describe("typed About-page content", () => {
 	});
 
 	test("projects only normalized copy and public responsive derivatives", async () => {
-		const { t, adminA, assetA, assetC } = await setup();
+		const { t, adminA, assetA, assetC } = await setupWebMedia(modules);
 		const draft = await adminA.mutation(api.content.saveAboutPageDraft, {
 			siteUrl: SITE_A.siteUrl,
 			payload: {
@@ -302,9 +237,8 @@ describe("typed About-page content", () => {
 	});
 });
 
-
 test("real-page About previews project ready owned portraits without publishing the draft", async () => {
- const { t, adminA, adminB, assetA } = await setup();
+ const { t, adminA, adminB, assetA } = await setupWebMedia(modules);
  const draft = await adminA.mutation(api.content.saveAboutPageDraft, { siteUrl: SITE_A.siteUrl, payload: completeAbout(assetA.id) });
  const args = { siteUrl: SITE_A.siteUrl, draftRevisionId: draft.revisionId };
  expect(await adminA.query(api.content.getAboutPageDraftPreview, args)).toMatchObject({ payload: { portraits: [{ asset: { assetId: ASSET_A } }] } });
