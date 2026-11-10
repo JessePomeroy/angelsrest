@@ -67,26 +67,10 @@ export function createGalleryDownloadPlan({
 		return { type: "single", image: images[0] };
 	}
 
-	const hasUnknownSize = images.some((image) => !isKnownSizeBytes(image.sizeBytes));
-	if (hasUnknownSize) {
-		return {
-			type: "tooLarge",
-			totalBytes: null,
-			maxBytes: maxZipBytes,
-			prepare: {
-				action: galleryPrepareZipDownloadUrl(workerUrl),
-				body: {
-					token,
-					...(accessGrant ? { accessGrant } : {}),
-					galleryName,
-					imageKeys: images.map((img) => img.r2Key),
-				},
-			},
-		};
-	}
-
-	const totalBytes = images.reduce((sum, image) => sum + image.sizeBytes, 0);
-	if (totalBytes > maxZipBytes) {
+	const totalBytes = images.some((image) => !isKnownSizeBytes(image.sizeBytes))
+		? null
+		: images.reduce((sum, image) => sum + image.sizeBytes, 0);
+	if (totalBytes === null || totalBytes > maxZipBytes) {
 		return {
 			type: "tooLarge",
 			totalBytes,
