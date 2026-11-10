@@ -1280,8 +1280,9 @@ describe("print fulfillment", () => {
 	});
 
 	it("retries a refund notification after completion crashes without releasing its lease", async () => {
-		const { sendClaimedFulfillmentFailureAdminAlert } = await import("../printFulfillment");
+		const { sendClaimedAutomatedRefundNotification } = await import("../printFulfillment");
 		const input = {
+			audience: "admin" as const,
 			orderId,
 			orderNumber: "ORD-001",
 			customerEmail: "jane@example.com",
@@ -1300,17 +1301,17 @@ describe("print fulfillment", () => {
 			.mockResolvedValueOnce(true);
 		mockSendFulfillmentFailureAlert.mockResolvedValue({ id: "email-accepted" });
 
-		await expect(
-			sendClaimedFulfillmentFailureAdminAlert({ convex, resend }, input),
-		).rejects.toThrow("completion response lost");
+		await expect(sendClaimedAutomatedRefundNotification({ convex, resend }, input)).rejects.toThrow(
+			"completion response lost",
+		);
 		expect(convex.mutation).not.toHaveBeenCalledWith(
 			"orders.releaseFulfillmentFailureNotificationV2",
 			expect.anything(),
 		);
-		await expect(
-			sendClaimedFulfillmentFailureAdminAlert({ convex, resend }, input),
-		).rejects.toThrow("already in progress");
-		await expect(sendClaimedFulfillmentFailureAdminAlert({ convex, resend }, input)).resolves.toBe(
+		await expect(sendClaimedAutomatedRefundNotification({ convex, resend }, input)).rejects.toThrow(
+			"already in progress",
+		);
+		await expect(sendClaimedAutomatedRefundNotification({ convex, resend }, input)).resolves.toBe(
 			true,
 		);
 
@@ -1328,13 +1329,14 @@ describe("print fulfillment", () => {
 	});
 
 	it("does not resend a refund notification after delivery becomes uncertain", async () => {
-		const { sendClaimedFulfillmentFailureAdminAlert } = await import("../printFulfillment");
+		const { sendClaimedAutomatedRefundNotification } = await import("../printFulfillment");
 		convex.mutation.mockResolvedValueOnce({ kind: "unavailable" }).mockResolvedValueOnce(true);
 
 		await expect(
-			sendClaimedFulfillmentFailureAdminAlert(
+			sendClaimedAutomatedRefundNotification(
 				{ convex, resend },
 				{
+					audience: "admin",
 					orderId,
 					orderNumber: "ORD-001",
 					customerEmail: "jane@example.com",

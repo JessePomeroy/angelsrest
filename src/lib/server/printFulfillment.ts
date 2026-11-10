@@ -751,9 +751,10 @@ export async function handlePermanentFulfillmentFailure(
 		);
 	}
 	if (refundClaim.kind === "refunded") {
-		await sendClaimedFulfillmentFailureAdminAlert(
+		await sendClaimedAutomatedRefundNotification(
 			{ convex, resend },
 			{
+				audience: "admin",
 				orderId,
 				orderNumber,
 				customerEmail,
@@ -959,9 +960,10 @@ export async function handlePermanentFulfillmentFailure(
 		} satisfies PrintFulfillmentOutcome;
 	}
 
-	await sendClaimedFulfillmentFailureAdminAlert(
+	await sendClaimedAutomatedRefundNotification(
 		{ convex, resend },
 		{
+			audience: "admin",
 			orderId,
 			orderNumber,
 			customerEmail,
@@ -977,41 +979,6 @@ export async function handlePermanentFulfillmentFailure(
 		stripeRefundId,
 		errorSummary,
 	} satisfies PrintFulfillmentOutcome;
-}
-
-export async function sendClaimedFulfillmentFailureAdminAlert(
-	{ convex, resend }: { convex: ConvexHttpClient; resend: Resend },
-	{
-		orderId,
-		orderNumber,
-		customerEmail,
-		errorSummary,
-		stripeRefundId,
-		total,
-		notificationProfile = ANGELS_REST_COMMERCE_PROFILE,
-	}: {
-		orderId: Id<"orders">;
-		orderNumber: string;
-		customerEmail: string;
-		errorSummary: string;
-		stripeRefundId: string;
-		total: number;
-		notificationProfile?: CommerceNotificationProfile;
-	},
-) {
-	return sendClaimedAutomatedRefundNotification(
-		{ convex, resend },
-		{
-			audience: "admin",
-			orderId,
-			orderNumber,
-			customerEmail,
-			errorSummary,
-			stripeRefundId,
-			total,
-			notificationProfile,
-		},
-	);
 }
 
 export async function sendClaimedAutomatedRefundNotification(
